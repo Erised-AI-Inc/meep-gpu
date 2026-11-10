@@ -94,11 +94,11 @@ jobs:
     # and the engine steps single precision. The tests whose premise is a
     # single-precision MEEP skip by a declared resource, and the two monitor tests
     # compare against the bound of the MEEP they find. The suites have been run in
-    # this configuration (conda-forge MEEP 1.33.0, no GPU library) on one Apple
-    # host, not yet on this runner; until a run here has been read, this job
-    # reports and does not decide. MEEP is pinned to 1.33.0, the release the
+    # this configuration (conda-forge MEEP 1.35.0, no GPU library) on one Linux
+    # x86_64 host, not yet on this runner; until a run here has been read, this
+    # job reports and does not decide. MEEP is pinned to 1.35.0, the release the
     # files under environments/ install.
-    name: CPU only, with MEEP 1.33.0 from conda-forge (reported, not judged)
+    name: CPU only, with MEEP 1.35.0 from conda-forge (reported, not judged)
     runs-on: ubuntu-latest
     timeout-minutes: 240
     continue-on-error: true
@@ -110,13 +110,17 @@ jobs:
       - uses: mamba-org/setup-micromamba@v2
         with:
           environment-name: suite
+          # The action takes the channel from its condarc input (it has no channels
+          # input), so the packages come from conda-forge alone.
+          condarc: |
+            channels:
+              - conda-forge
           create-args: >-
             python=3.12
-            pymeep=1.33.0=nompi*
+            pymeep=1.35.0=nompi*
             numpy=2.2
             scipy
             pytest
-          channels: conda-forge
       - name: Install the package
         run: python -m pip install -e . --no-deps
       - name: The MEEP build this host has

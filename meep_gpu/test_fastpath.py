@@ -1,4 +1,4 @@
-"""The fast-path seam ON THIS HOST: the plan cache, the kill switch, invalidation.
+"""The fast-path seam on this host: the plan cache, the kill switch, invalidation.
 
 Everything here runs on the NumPy laptop, which is one of the dispatch contract's
 own cases and not an approximation of another: the array path IS the reference
@@ -9,7 +9,7 @@ machinery every certification leans on — that each material mutator invalidate
 the cached plan, and that the driver re-plans exactly once per configuration
 freeze.
 
-"NO KERNEL TABLE BEHIND IT" IS A CONDITION NOW, NOT A PROPERTY OF NUMPY. Since
+"no kernel table behind it" is a condition now, not a property of NumPy. Since
 the seam grew a second table, a NumPy engine on a host with an MPS device is a
 candidate for the Metal table, so the tests about the backend rung answer the
 hardware probe themselves through :func:`no_metal_device` rather than inheriting
@@ -47,7 +47,7 @@ from meep_gpu.fastpath import (
 def no_metal_device(monkeypatch) -> None:
     """Answer the Metal hardware probe "no", so the BACKEND rung is what refuses.
 
-    THIS HOST HAS AN MPS DEVICE, and since the dispatch seam grew a second table
+    This host has an MPS device, and since the dispatch seam grew a second table
     a NumPy engine here is a *candidate* for the Metal table rather than an
     automatic refusal. The tests below are about the backend rung — "the array
     path IS the reference on a plain NumPy engine" — so they hold the hardware
@@ -56,13 +56,13 @@ def no_metal_device(monkeypatch) -> None:
     where the test means the backend rung's refusal, and the same green would mean
     two different things on two machines.
 
-    THE ENABLE IS LEFT AT ITS DEFAULT, not merely inherited, so the backend rung is
+    The enable is left at its default, not merely inherited, so the backend rung is
     the one that answers: a shell or fixture that exported ``MEEP_GPU_DISPATCH=0``
     would otherwise have these tests pinning the enable rung while reading as if
     they had pinned the backend one.
 
     ``raising=False`` because the rung-3 branch that defines
-    ``fastpath.metal_hardware_present`` lands in its own batch: before it, there
+    ``fastpath.metal_hardware_present`` lands in its own change: before it, there
     is nothing to hold still and the refusal is unconditional anyway.
     """
     monkeypatch.setattr(fastpath_module, "metal_hardware_present",
@@ -138,9 +138,9 @@ def test_plan_is_none_off_the_numpy_backend_without_importing_cupy(monkeypatch):
     """Fail-closed even for an unknown backend, and decided without cupy.
 
     ``plan_fast_path`` may only touch cupy AFTER deciding the backend is CuPy;
-    a stub backend proves the Phase 0 predicate never gets that far.
+    a stub backend proves the fast-path predicate never gets that far.
 
-    THE ENABLE AND THE KILL SWITCH ARE CLEARED, so the BACKEND rung is the one that
+    The enable and the kill switch are cleared, so the BACKEND rung is the one that
     answers. Under the suite's ``MEEP_GPU_DISPATCH=0`` pin rung 2 refused first and
     this test passed without the backend rung ever running — it would have held
     with that rung deleted.
@@ -181,7 +181,7 @@ def test_the_kill_switch_passes_on_one_or_unset(monkeypatch, value):
 
 
 #: Values a permissive reader would have guessed at. Before the strict reader every
-#: one of these but the two padded zeros LEFT DISPATCH ON (the reader stripped, and
+#: one of these but the two padded zeros left dispatch on (the reader stripped, and
 #: only ``0`` vetoed), including the ones a user types to mean "off". The padded
 #: zeros vetoed then and are refused now, which lands on the array path either way.
 REJECTED_KILL_SWITCH_VALUES = ["", " ", "yes", "no", "true", "false", "off", "on",
@@ -555,8 +555,8 @@ def test_mid_run_epsilon_change_invalidates_and_replans(monkeypatch):
     Plain ``set_epsilon`` is legal after stepping has begun and REPLACES the
     material arrays, so a plan cached at the first freeze would keep stale
     pointers. The fused-vs-array numerical comparison across the change is a
-    Phase 1+ CUDA test (no kernel exists to compare); what must hold from
-    Phase 0 on is the mechanism: mutation -> invalidation -> exactly one re-plan.
+    kernel-level CUDA test (no kernel exists to compare); what must hold
+    without one is the mechanism: mutation -> invalidation -> exactly one re-plan.
     """
     opted_out(monkeypatch)
     calls = _count_plans(monkeypatch)

@@ -2,7 +2,7 @@
 """Native MPS byte gate for the H->D weld's NONLINEAR WIDENING — the one leg its
 release still owed.
 
-THIS GATE CERTIFIES NO NEW KERNEL AND NO NEW PRODUCT, and saying so first is the point
+This gate certifies no new kernel and no new product, and saying so first is the point
 of the file. ``meep_gpu/metal_kernels/fused_hd_pair.py`` already ADMITS a chi2/chi3 run:
 its predicate conjoins each half's ordinary verdict with
 ``nonlinear_update_e``'s spine verdict, and ``launch.FUSED_PAIR_EXTRA_ARMS`` carries the
@@ -12,7 +12,7 @@ in its own words (``build_fusion_matrix.py``, the ``fused_hd_pair`` row's
 predicate and is NOT credited by this board: no device gate has driven a complete step
 on a chi2/chi3 configuration."* This gate is that drive.
 
-WHY IT IS A WIDENING AND NOT A THIRD KERNEL, stated as a claim this gate MEASURES
+Why it is a widening and not a third kernel, stated as a claim this gate MEASURES
 rather than repeats. A chi2/chi3 run selects ``nonlinear_update_e``'s two SPINE arms on
 this seam's slots -- ``nonlinear PML magnetic`` at ``update_H`` and ``nonlinear PML
 curl`` at ``step_D`` -- and both build through the CERTIFIED builders:
@@ -24,25 +24,25 @@ that: the sources the two spine plans hand ``compile_source`` are compared as by
 against the ones the LINEAR arms hand it on the same geometry, and against the two
 emitters the weld itself lifts.
 
-**A SECOND PRODUCT HERE WOULD BE A DEFECT, not a widening.** Two fused products
+**A second product here would be a defect, not a widening.** Two fused products
 admitting one slot is an over-covering composition the arm table refuses by design, and
 the shipped predicate already admits this cell -- measured in leg ``no_second_product``,
 which asks every registered ``update_H`` weld whether it admits the nonlinear fixture
 and requires exactly one to.
 
-THE CLAIM IS PER COMPLETE DRIVER STEP, as uint32 WORDS over every stored volume the
+The claim is per complete driver step, as uint32 WORDS over every stored volume the
 engine allocates (never ``allclose``: ``-0.0 == 0.0`` lies), against FOUR references
 from one seed:
 
   1. the ARRAY PATH -- ``stepping``'s passes under the driver's own loop, with the Pade
      ``update_E`` where the driver runs it;
-  2. the CERTIFIED NONLINEAR SINGLES -- ``plan_nonlinear_run_constitutive(..., 'H')`` at
+  2. the certified nonlinear singles -- ``plan_nonlinear_run_constitutive(..., 'H')`` at
      ``update_H`` and ``plan_nonlinear_run_pml_curl(..., 'step_D')`` at ``step_D``;
-  3. the COMPOSITION THE COMPOSER INSTALLS TODAY -- ``plan_step(fuse=True)``;
+  3. the composition the composer installs today -- ``plan_step(fuse=True)``;
   4. the same slots DISPATCHED UNFUSED -- ``plan_step(fuse=False)``.
 
 =============================================================================
-THE ARBITRATION FINDING THIS CELL EXISTS FOR
+The arbitration finding this cell exists for
 =============================================================================
 
 ``fused_hd_pair.INSTALLABLE_REASON`` names this cell as the ONE place a H->D product
@@ -78,7 +78,7 @@ LEGS
   byte_neutral      the one armed edit required NOT to diverge
   disarm            the identical harness, shipped bytes, must not diverge
 
-THE KERNEL, THE MUTATIONS AND THE WHOLE HARNESS ARE ``gate_metal_fused_hd_pair``'S,
+The kernel, the mutations and the whole harness are ``gate_metal_fused_hd_pair``'s,
 imported rather than copied: this gate widens that gate's subject to a configuration it
 did not drive, and a second copy of the mutation table would be a second place for the
 same needles to go stale.
@@ -152,7 +152,7 @@ NONLINEAR_COMPONENTS: Tuple[str, ...] = ("Ez",)
 
 #: name -> the fixture's keywords.
 #:
-#: THE 1-D ROW IS NOT A DECORATION. Both corpus rows of this cell are 1-D
+#: The 1-D row is not a decoration. Both corpus rows of this cell are 1-D
 #: (``examples:3rd-harm-1d.py`` is [1, 1, 2500] and
 #: ``tests:Test3rdHarm1d.test_3rd_harm_1d`` is [1, 1, 2000]), and a 1-D grid is where a
 #: weld's index decode and its ghost rule are least like the 3-D case it was written
@@ -160,7 +160,7 @@ NONLINEAR_COMPONENTS: Tuple[str, ...] = ("Ez",)
 #: cell itself under a periodic wrap and the ownership mask covers a whole volume.
 #: A gate that drove only 3-D fixtures would credit the cell without touching its shape.
 #:
-#: THE SCALAR-CHI ROW IS THE OTHER COEFFICIENT ARM. ``nonlinear_update_e`` takes chi
+#: The scalar-chi row is the other coefficient arm. ``nonlinear_update_e`` takes chi
 #: either as a volume or as a packed scalar, and while the Pade factor lives one seam
 #: LATER the arm a run takes decides which predicate answers here.
 CASES: Tuple[Tuple[str, Dict[str, Any]], ...] = (
@@ -261,7 +261,7 @@ def build_driver(keywords: Mapping[str, Any], seed: int,
                         force_complex_fields=False,
                         boundaries=dict(keywords.get("boundaries") or {}) or None,
                         dimensions=dimensions)
-    # A PER-AXIS THICKNESS ON A REDUCED-DIMENSION GRID. The engine REFUSES a layer
+    # A per-axis thickness on a reduced-dimension grid. The engine REFUSES a layer
     # on an axis `dimensions=1` makes translationally invariant (driver.py:2207) --
     # correctly: an invariant axis has no face to absorb at. So the 1-D fixtures put
     # the layer on the one axis they resolve, which is what MEEP does too.
@@ -284,7 +284,7 @@ def build_driver(keywords: Mapping[str, Any], seed: int,
     for array in stored_volumes(driver.fields).values():
         array[...] = (0.37 * rng.standard_normal(array.shape)).astype(array.dtype)
         array *= scale
-    # A SEEDED STATE IS A MID-RUN ONE (gate_metal_fused_hd_pair.build_driver says why):
+    # A seeded state is a mid-run one (gate_metal_fused_hd_pair.build_driver says why):
     # stepping.separate_h_from_b must not run again on it.
     driver.fields.h_separated = True
     driver.invalidate_fast_path()
@@ -399,7 +399,7 @@ def run_product(driver: Any, steps: int,
     seam_moved = {name: int(result["moved_from_seed"].get(name, 0))
                   for name in seam_outputs}
     if movement_floor == "all":
-        # A 1-D FIXTURE MOVES FEWER COMPONENTS THAN A 3-D ONE, and that is the grid
+        # A 1-D fixture moves fewer components than a 3-D one, and that is the grid
         # rather than the kernel: on a [1, 1, n] grid the curl's transverse
         # differences are exact zeros by construction. So the floor here is the
         # SEAM's outputs rather than every stored volume, with the per-volume split
@@ -447,8 +447,8 @@ def _indented(text: str, width: int = 4) -> str:
 def leg_text_identity() -> Dict[str, Any]:
     """The spine arms' sources ARE the linear arms', byte for byte.
 
-    THE CLAIM THE WIDENING RESTS ON, driven rather than repeated -- and the witness is
-    the compiler cache's OWN KEY SET, which is the source text itself.
+    The claim the widening rests on, driven rather than repeated -- and the witness is
+    the compiler cache's own key set, which is the source text itself.
     ``device.compile_source`` memoises on the SOURCE STRING
     (``device.py:_LIBRARY_CACHE``), so building the LINEAR arm and then the NONLINEAR
     SPINE arm on the same geometry adds a second key if and only if the two emitted
@@ -458,7 +458,7 @@ def leg_text_identity() -> Dict[str, Any]:
     ``shaders.curl_source`` / ``shaders.constitutive_source('H')``, the two emitters
     the WELD itself lifts.
 
-    A CACHE HIT IS A STRONGER WITNESS THAN A DIGEST COMPARISON I COMPUTE MYSELF: it is
+    A cache hit is a stronger witness than a digest comparison the gate computes itself: it is
     the same dictionary lookup the compile path makes, so it cannot be right about a
     string the compiler never saw.
     """
@@ -515,9 +515,9 @@ def leg_text_identity() -> Dict[str, Any]:
             "curl_source_sha256": hashlib.sha256(emitted_curl.encode()).hexdigest(),
             "constitutive_source_sha256": hashlib.sha256(
                 emitted_constitutive.encode()).hexdigest(),
-            # AND THE WELD LIFTS THOSE SAME TWO TEXTS -- the third side of the
+            # And the weld lifts those same two texts -- the third side of the
             # triangle, checked on the emitted text rather than on a name.
-            # THE LIFT INDENTS THE TAIL BY FOUR, and nothing else: `step_cell_function`
+            # The lift indents the tail by four, and nothing else: `step_cell_function`
             # wraps it in an inline function body. So the comparison indents the same
             # way rather than loosening to a "looks similar" test.
             "the_weld_lifts_the_certified_constitutive_tail":
@@ -567,7 +567,7 @@ def _library_of(plan: Any) -> Any:
 def leg_no_second_product() -> Dict[str, Any]:
     """EXACTLY ONE registered ``update_H`` weld admits the nonlinear fixture.
 
-    THE REASON THIS CELL IS A WIDENING AND NOT A NEW PRODUCT, measured. Two fused
+    The reason this cell is a widening and not a new product, measured. Two fused
     products admitting one slot is an over-covering composition; the arm table's own
     ``_select_slot`` leaves such a slot UNSELECTED naming both. So the honest way to
     say "a second H->D product here would be a defect" is to ask every registered weld
@@ -631,7 +631,7 @@ def leg_refusal() -> Dict[str, Any]:
                                                   Residency())
     record("a_linear_grid_is_still_admitted", verdict.covered, verdict.reasons, True)
 
-    # THE SPINE ARMS ARE NONLINEAR-ONLY, and that inversion is what keeps the linear
+    # The spine arms are nonlinear-only, and that inversion is what keeps the linear
     # and nonlinear arms from co-admitting one slot.
     spine = nonlinear.nonlinear_run_pml_curl_coverage(linear.fields, linear.pml,
                                                       "step_D", Residency())
@@ -642,7 +642,7 @@ def leg_refusal() -> Dict[str, Any]:
     record("the_spine_constitutive_refuses_a_linear_grid", spine.covered,
            spine.reasons, False, ["no chi2/chi3 is installed"])
 
-    # AND THE ORDINARY ARMS REFUSE THE NONLINEAR GRID, which is the other half.
+    # And the ordinary arms refuse the nonlinear grid, which is the other half.
     from meep_gpu.metal_kernels.coverage import (  # noqa: PLC0415
         constitutive_coverage, pml_curl_coverage,
     )
@@ -654,7 +654,7 @@ def leg_refusal() -> Dict[str, Any]:
     record("the_ordinary_curl_refuses_the_nonlinear_grid", ordinary.covered,
            ordinary.reasons, False)
 
-    # THE SEAM'S ONE PASS, unchanged by the widening.
+    # The seam's one pass, unchanged by the widening.
     verdict = family.metal_fused_hd_pair_coverage(driver.fields, driver.pml, None,
                                                   Residency())
     record("an_undeclared_source_set_is_refused", verdict.covered, verdict.reasons,
@@ -665,8 +665,8 @@ def leg_refusal() -> Dict[str, Any]:
 def leg_arbitration() -> Dict[str, Any]:
     """The composer, asked, on the nonlinear fixtures.
 
-    THIS IS THE CELL ``fused_hd_pair.INSTALLABLE_REASON`` NAMES AS THE ONE GENUINE
-    GAIN, so what it selects is RECORDED rather than asserted: the substantive claims
+    This is the cell ``fused_hd_pair.INSTALLABLE_REASON`` names as the one genuine
+    gain, so what it selects is RECORDED rather than asserted: the substantive claims
     are that this product is installed on nothing today, that every slot is still
     filled (``update_E`` by the Pade arm), and that the installed-pair count is what
     the gain arithmetic reads.
@@ -679,7 +679,7 @@ def leg_arbitration() -> Dict[str, Any]:
         plan = metal_launch.plan_step(driver.fields, driver.pml,
                                       residency=Residency(), sources=(), fuse=True)
         labels = {slot: str(value) for slot, value in plan.selected.items()}
-        # A PAIR IS A LABEL THAT OCCUPIES TWO ADJACENT SLOTS. Counted off the table
+        # A pair is a label that occupies two adjacent slots. Counted off the table
         # rather than by name, so a renamed product does not change the arithmetic.
         pairs = sum(1 for a, b in (("step_B", "update_H"), ("step_D", "update_E"))
                     if labels.get(a) and labels.get(a) == labels.get(b))
@@ -1057,7 +1057,7 @@ def lift_basis(results: Path) -> Tuple[List[dict], Dict[str, Any]]:
                 # the shim's own generated case name, which the census records.
                 "case": record.get("case") or record["row"],
                 "module": record.get("module") or seam_row.get("module"),
-                # WHERE THE CHILD RUNS: this gate's interpreter. The path the census
+                # Where the child runs: this gate's interpreter. The path the census
                 # recorded is kept as recorded_interpreter and never launched.
                 **lift_host.row_fields(record, seam_row),
                 "grid_cells": record.get("grid_cells"),
@@ -1124,7 +1124,7 @@ def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float
                 encoding="utf-8", errors="replace"):
             needs_shim.add(module_name)
 
-    # WHAT THIS HOST CANNOT LIFT, asked once before any child: the needs the rows
+    # What this host cannot lift, asked once before any child: the needs the rows
     # declare, probed under this interpreter (lift_host).
     host = lift_host.host_check(rows, environment, work)
     if host["unreadable"]:
@@ -1211,18 +1211,30 @@ def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float
                       if b.get("predicate_admits"))
     refused = sorted(label for label, b in blocks.items()
                      if b.get("predicate_admits") is False)
+    # A row the identity corpus's manifest retires that reached no predicate verdict is
+    # refused by name with the manifest's reason, never scored as unmeasured
+    # (``lift_host.corpus_refusals``), and is out of the denominator like a row unlifted on
+    # this host.
+    corpus = lift_host.corpus_refusals(HERE / "results", [
+        record for record in measured
+        if "predicate_admits" not in blocks[record["label"]]
+        and record["label"] not in unlifted])
+    refused_by_the_corpus = corpus["refused"]
+    counted_out = len(unlifted) + len(refused_by_the_corpus)
     unmeasured = sorted(label for label, b in blocks.items()
-                        if "predicate_admits" not in b and label not in unlifted)
+                        if "predicate_admits" not in b and label not in unlifted
+                        and label not in refused_by_the_corpus)
     driven = sorted(label for label in admitted if blocks[label].get("driven"))
     passed_rows = sorted(label for label in driven if blocks[label].get("passed"))
     expected_refused = sorted(facts["rows_with_a_standing_withdraw"])
     if only:
         expected_refused = sorted(set(expected_refused) & set(blocks))
-    expected_refused = sorted(set(expected_refused) - set(unlifted))
+    expected_refused = sorted(set(expected_refused) - set(unlifted)
+                              - set(refused_by_the_corpus))
     return {
-        # AT LEAST ONE ROW IS ASKED: a cell whose every row is unlifted on this host
+        # At least one row is asked: a cell whose every row is unlifted on this host
         # measured nothing, and "no row disagreed" over no rows is not a pass.
-        "passed": bool(len(blocks) > len(unlifted) and not unmeasured
+        "passed": bool(len(blocks) > counted_out and not unmeasured
                        and refused == expected_refused
                        and driven == admitted and passed_rows == driven
                        and all(blocks[label].get("steps_compared", 0)
@@ -1233,7 +1245,9 @@ def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float
         "refused_labels": refused,
         "unmeasured": unmeasured,
         "unlifted_on_this_host": unlifted,
-        "rows_the_engine_was_asked_about": len(blocks) - len(unlifted),
+        "refused_by_the_corpus_manifest": refused_by_the_corpus,
+        "corpus_manifest": corpus["basis"],
+        "rows_the_engine_was_asked_about": len(blocks) - counted_out,
         "host_capabilities": host,
         "driven": len(driven),
         "driven_and_identical": len(passed_rows),
@@ -1254,7 +1268,7 @@ COVERAGE = family.metal_fused_hd_pair_coverage
 
 
 def leg_policy_refusal() -> Dict[str, Any]:
-    """UNDER A POLICY THE EXECUTOR CANNOT HONOUR, every fixture is refused BY NAME.
+    """Under a policy the executor cannot honour, every fixture is refused BY NAME.
 
     This is the ``keep`` leg's whole measurement, and it is a measurement rather than a
     skip. MPS flushes float32 denormals natively and exposes no lever -- both denormal
@@ -1340,7 +1354,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         log(f"LEG {leg}: {'PASS' if row.get('passed') else 'FAIL'} "
             f"({time.perf_counter() - started:.1f}s)")
 
-    # A POLICY THIS EXECUTOR CANNOT HONOUR IS MEASURED, NOT SKIPPED. See
+    # A policy this executor cannot honour is measured, not skipped. See
     # `leg_policy_refusal`: under a resolved `keep` the shipped predicate refuses by
     # name on both halves, so the byte legs have nothing to drive and running them
     # would either crash on a refused plan or -- worse -- report a green harness that
@@ -1373,7 +1387,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         record("product", leg_product(args.steps))
     if "race" in legs:
         launcher, why = HOST_MUTATIONS["H_and_f_w_H_written_in_place"]
-        # ON THE 1-D FIXTURES THE RACE CANNOT SHOW, and that is the per-chunk forms:
+        # On the 1-D fixtures the race cannot show, and that is the per-chunk forms:
         # the curl's live taps read Hx and Hy only, whose own (dsigw) axes are the
         # invariant x and y, so every tap is the output select H = B and reads no
         # pre-launch H or f_w_H. Scored on agreeing there (_shared.race_observable).

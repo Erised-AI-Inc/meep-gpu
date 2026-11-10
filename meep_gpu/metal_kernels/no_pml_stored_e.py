@@ -205,7 +205,9 @@ class MetalStoredEPlan:
     def run(self, contract: Optional[str] = None) -> None:
         mode = shaders.CONTRACT_OFF if contract is None else contract
         for entry in self.entries:
-            poles = tuple(state.P[entry.component] for state in entry.states)
+            # Resolving which array is current is not a read of its words: the plain dict
+            # subscript keeps a held mirror on the device (barrier.BarrierDict acquires).
+            poles = tuple(dict.__getitem__(state.P, entry.component) for state in entry.states)
             function = self._functions[(mode, len(poles))]
             # Metal needs every declared buffer bound.  The source chain makes the
             # unused source aliases unreachable; binding D avoids null-pointer ABI.

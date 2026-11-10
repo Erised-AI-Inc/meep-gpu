@@ -1,32 +1,32 @@
 """The real-field PML curl slice: its coverage predicate, and the mutations that pin it.
 
-THE BIT-IDENTITY GATE LIVES ELSEWHERE — it needs a device and a sweep, so it is
+The bit-identity gate lives elsewhere — it needs a device and a sweep, so it is
 ``parity/meep_gpu/probe_fused_kernel_bit_identity.py`` (``--experiments
 pml,multistep``) with ``run_pml_gate_mutations.py`` driving its mutation legs.
 What is pinned HERE is the other half of the slice's silent-failure surface: the
 predicate that decides whether the kernel may run at all.
 
-WHY THE PREDICATE NEEDS MUTATIONS OF ITS OWN. Every configuration it refuses
+Why the predicate needs mutations of its own. Every configuration it refuses
 produces a plausible, smooth, WRONG field if it leaks — not a crash, not a NaN.
 A predicate that no mutation exercises is indistinguishable from one that
 returns True, and the five mutations below are the difference:
 
-  * WIDEN IT BY ONE AXIS — let a mirrored grid through — and a configuration
+  * Widen it by one axis — let a mirrored grid through — and a configuration
     with an entirely different ghost rule becomes "covered".
-  * DROP ONE COVERED-CONFIGURATION CHECK — the float32 dtype — and complex
+  * Drop one covered-configuration check — the float32 dtype — and complex
     storage becomes "covered".
-  * WIDEN THE CONDUCTIVITY LOOP back over both sub-steps' targets and the
-    over-refusal this file's 2026-08-15 round removed comes straight back.
-  * DROP ``stores_E`` and an E that ``update_E`` never wrote is "covered" —
+  * Widen the conductivity loop back over both sub-steps' targets and the
+    over-refusal this file's 2026-08-15 change removed comes straight back.
+  * Drop ``stores_E`` and an E that ``update_E`` never wrote is "covered" —
     the invariant admitting dispersion rests on.
-  * DROP THE INT32 BOUND and a volume the kernel's ``int idx`` cannot address
+  * Drop the int32 bound and a volume the kernel's ``int idx`` cannot address
     is "covered". Two of the five leak only when a second clause goes with
     them, and each records which survivor caught it.
 
 Every one is applied to the REAL function's source, not to a hand-written
 stand-in, so they cannot drift away from what ships.
 
-AND THE SAME ARGUMENT RUN BACKWARDS, because this file's round WIDENED two
+And the same argument run backwards, because the change this file pins WIDENED two
 fail-closed clauses rather than only narrowing coverage: the pre-widening
 verdicts are carried as data and asserted ABSENT, so a predicate drifting back
 to over-refusing fails a test instead of quietly costing seven corpus slots. The
@@ -35,13 +35,13 @@ neither curl's bits while changing ``update_E``'s, and a D conductivity changes
 ``step_D``'s and not ``step_B``'s — because a verdict table only says what the
 predicate returns, never whether it describes the engine.
 
-COVERAGE IS PER SUB-STEP HERE TOO. ``covers_real_pml_curl`` takes a required
+Coverage is per sub-step here too. ``covers_real_pml_curl`` takes a required
 ``sub_step``, so every verdict below is measured at both ``step_B`` and
 ``step_D``. They are not always equal: a D conductivity refuses ``step_D`` and
 admits ``step_B``, which is a configuration the pre-2026-08-15 predicate could
 not express at all.
 
-THIS FILE USED TO BE ONE SKIP. ``step_curl_kernels`` imports ``cupy`` at module
+This file used to be one skip. ``step_curl_kernels`` imports ``cupy`` at module
 scope, and while the predicate lived beside the kernel strings the whole file
 collapsed to a single sanctioned ``requires_resource('cupy')`` skip on any host
 without a GPU — the one part of the track that is pure decision logic, pinned
@@ -51,7 +51,7 @@ everything below runs at the merge bar. The three tests that genuinely need CuPy
 — the two coefficient-table tests and the boundary-code refusal, all of which
 reach through ``step_curl_kernels`` — are marked and skip on their own.
 
-THE BACKEND STAND-IN, AND WHAT IT IS NOT. Off device the fixture hands ``Grid``
+The backend stand-in, and what it is not. Off device the fixture hands ``Grid``
 a module that is NumPy wearing CuPy's ``__name__``, because the predicate's
 first question is whether the backend is CuPy at all. Everything the predicate
 reads — dtype, shape, contiguity, the PML vectors, the grid's own resolution of
@@ -149,7 +149,7 @@ SUB_STEPS = ("step_B", "step_D")
 # a configuration unexpectedly stays on the array path, and a refusal that fires
 # for a different clause than the one intended is a refusal nobody can act on.
 #
-# TWO VERDICTS HAVE SINCE MOVED, DELIBERATELY, and they are the only two: see
+# Two verdicts have since moved, deliberately, and they are the only two: see
 # ``_WIDENED_ON_2026_08_15`` below, which carries what each one used to be and
 # the ``stepping.py`` line that says the old answer was wrong. Everything else
 # still reproduces the pre-extraction function exactly.
@@ -166,7 +166,7 @@ _GOLDEN = {
     # measurement. See ``_WIDENED_ON_2026_08_20``.
     "mirror_plane": (True, "covered"),
     "mirror_plane_metallic": (True, "covered"),
-    # THE PLANE CAP, RAISED 2 -> 3 ON 2026-08-20 by re-running the gate with three
+    # The plane cap, raised 2 -> 3 on 2026-08-20 by re-running the gate with three
     # ``fold_XYZ_*`` specs at both terminations and both of them in the mutation
     # plan: 456 cases per policy, all identical, every mutation as required
     # (``CURL_FOLD_ADMISSION["planes_round_artifacts"]``). Three is every plane a
@@ -175,7 +175,7 @@ _GOLDEN = {
     # ``test_the_fold_plane_cap_is_the_record_s_number`` lowers the record instead
     # of building a four-plane grid nothing can build.
     "three_mirror_planes": (True, "covered"),
-    # THE TWO ROUTES TO THE FOLD'S TERMINATION, disagreeing and unanswerable. A
+    # The two routes to the fold's termination, disagreeing and unanswerable. A
     # real ``Grid`` cannot produce either — ``stored_cells`` adds its extra slot
     # exactly when the axis is mirrored and not metallic — which is the reason
     # both are built here from a proxy rather than left as prose in a comment.
@@ -262,7 +262,7 @@ _WIDENED_ON_2026_08_15 = {
 #: the block above: so the widening cannot be undone quietly, and so a reader can
 #: see what each half of it cost to establish.
 #:
-#: ``mirror_plane_metallic`` moved on 2026-08-19 with NO DEVICE CODE WRITTEN — the
+#: ``mirror_plane_metallic`` moved on 2026-08-19 with no device code written — the
 #: shipped pair was already bit-identical on a folded METALLIC axis, 48/48 at one
 #: launch and at 60 under both float32 subnormal policies. ``mirror_plane`` (a
 #: folded PERIODIC axis) moved on 2026-08-20, and only because a KERNEL BRANCH was
@@ -300,7 +300,7 @@ _ALL_CASES = tuple(sorted(set(_GOLDEN) | set(_GOLDEN_BY_SUB_STEP)))
 class _GridWhoseFoldRoutesDisagree:
     """A folded PERIODIC grid that also claims the folded axis is metallic.
 
-    THE TWO ROUTES ARE INDEPENDENT AND MUST AGREE. ``Grid.stored_cells`` exceeds
+    The two routes are independent and must agree. ``Grid.stored_cells`` exceeds
     ``owned_cells`` exactly when an axis is mirrored and not metallic, so this
     object is unbuildable from a real ``Grid`` — which is why the predicate's
     cross-check would otherwise be a clause nothing exercises. The consequence of
@@ -480,7 +480,7 @@ def test_the_predicate_states_the_verdict_the_table_specifies(case, sub_step, xp
 
 @pytest.mark.parametrize("case,sub_step", sorted(_WIDENED_ON_2026_08_15))
 def test_the_widened_clauses_have_not_drifted_back_to_over_refusing(case, sub_step, xp):
-    """THE TEST THAT FAILS IF THE PREDICATE GOES BACK TO REFUSING THESE.
+    """The test that fails if the predicate goes back to refusing these.
 
     Two clauses were narrowed on 2026-08-15 because they refused a sub-step for a
     fact belonging to a different one: the dispersion refusal (an ``update_E``
@@ -536,7 +536,7 @@ def test_the_sub_step_targets_are_steppings_own_curl_terms(xp):
 # Every ``return False`` in the shipped curl predicate that NO configuration in
 # the table reaches, identified by a distinctive fragment of its own source line.
 #
-# IT IS EMPTY, and as of 2026-08-20 that is a fact rather than an aspiration: every
+# It is empty, and as of 2026-08-20 that is a fact rather than an aspiration: every
 # refusal this predicate can state is reached by a table case or by a hand-built
 # triple from the constitutive slice's ``_synthetic``, which is where the objects
 # that cannot answer live. The list held THREE entries until the fold was admitted:
@@ -550,12 +550,12 @@ def test_the_sub_step_targets_are_steppings_own_curl_terms(xp):
 #     the blanket mirror refusal sat above it and fired first. With the fold
 #     admitted, ``_synthetic``'s ``grid_reports_the_axis_rule_without_cylindrical``
 #     — an axis rule declared with no ``cylindrical`` flag — walks straight into it.
-#     MEASURED, not argued: that case is the one this list was checked against.
+#     Measured, not argued: that case is the one this list was checked against.
 #
 # An empty list is the strong form of this test. Adding an entry means declaring a
 # refusal nothing can reach, and it has to be justified where it is added.
 #: Refusal lines no configuration in this slice can reach, each with the reason.
-#: THE LIST IS NOT A WAIVER: a clause on it must be unreachable as a matter of
+#: The list is not a waiver: a clause on it must be unreachable as a matter of
 #: arithmetic, not merely unbuilt, and the test below fails if one of them becomes
 #: reachable again.
 #:
@@ -621,7 +621,7 @@ def _lines_executed(function, *args) -> set:
 def test_the_golden_table_covers_every_refusal_the_predicate_can_state(xp):
     """A verdict table that has drifted away from the predicate pins nothing.
 
-    NOT A COUNT — A TRACE, which is what the constitutive slice's equivalent
+    Not a count — a trace, which is what the constitutive slice's equivalent
     already was. The count version compared the table's distinct reasons against
     ``len(re.findall("return False"))`` minus a hard-coded 3, so it moved for
     reasons that had nothing to do with coverage: consolidating the per-array
@@ -697,8 +697,8 @@ def test_the_boundary_spellings_are_steppings_own():
     assert coverage.METALLIC == stepping.METALLIC
     assert coverage.CYL_AXIS == stepping.CYL_AXIS
     assert set(coverage.BC_CODES) == {stepping.PERIODIC, stepping.METALLIC}
-    # THE CURL PAIR'S OWN MAP IS A SUPERSET, AND THE EXTRA KEY IS NOT A STEPPING
-    # SPELLING. ``stepping._boundary_kinds`` answers "mirror" at both terminations;
+    # The curl pair's own map is a superset, and the extra key is not a stepping
+    # spelling. ``stepping._boundary_kinds`` answers "mirror" at both terminations;
     # "mirror_periodic" is this pair's name for the half that stores the slot past
     # MEEP's owned window. Keeping it OUT of ``BC_CODES`` is what stops
     # ``complex_pml_kernels``, which refuses any kind outside that dict, from
@@ -760,7 +760,7 @@ def test_the_predicate_module_pulls_in_no_device_dependency():
         f"coverage.py imports {sorted(report['absolute'] - STDLIB_ONLY)}; the "
         f"predicate has to stay evaluable on a host with no GPU and no optional "
         f"dependency, which is the only reason it lives in its own module")
-    # RELATIVE AND DYNAMIC TOO. This check used to filter ``node.level == 0`` and
+    # Relative and dynamic too. This check used to filter ``node.level == 0`` and
     # so was blind to every ``from . import ...`` — a spelling that reaches CuPy
     # through any sibling in this package, and that the Triton track's own
     # coverage module uses.
@@ -843,7 +843,7 @@ def test_the_probe_can_still_load_the_kernel_module_by_path():
 
 
 # --------------------------------------------------------------------------
-# Refusals. Each of these is a SILENT WRONG ANSWER if it leaks.
+# Refusals. Each of these is a silent wrong answer if it leaks.
 # --------------------------------------------------------------------------
 
 @pytest.mark.parametrize("sub_step", SUB_STEPS)
@@ -877,7 +877,7 @@ def test_a_third_simultaneous_fold_plane_is_admitted_on_its_own_measurement(
         sub_step, xp):
     """Three planes were refused until the gate swept three, and then admitted.
 
-    THE CAP MOVED BECAUSE A MEASUREMENT MOVED, and both halves are pinned here:
+    The cap moved because a measurement moved, and both halves are pinned here:
     the grid is admitted, and the record says the number came from a run at three
     planes rather than from the spec tuple that used to supply it. The companion
     test lowers the record and shows the refusal comes back, which is what stops
@@ -1037,7 +1037,7 @@ def test_the_launcher_raises_on_a_grid_the_predicate_refuses(kernels, xp):
     codes = kernels.real_curl_boundary_codes(grid)
     assert [int(c) for c in codes] == [0, 2, 0], codes
 
-    # AND THE THREE-PLANE FOLD, which the predicate now admits, must HAVE a code
+    # And the three-plane fold, which the predicate now admits, must HAVE a code
     # triple -- the same pairing read from the widened side.
     fields, layer, grid = configuration("three_mirror_planes", xp)
     assert coverage.covers_real_pml_curl(fields, layer, grid, "step_B")[0]
@@ -1071,7 +1071,7 @@ def test_the_two_sub_lattices_are_different_tables(kernels):
 
 
 # --------------------------------------------------------------------------
-# The two required predicate mutations (R4). Applied to the REAL source.
+# The two required predicate mutations. Applied to the REAL source.
 # --------------------------------------------------------------------------
 
 def mutated_predicate(pattern: str, replacement: str):
@@ -1136,7 +1136,7 @@ def test_mutation_drop_the_two_route_cross_check_is_caught(xp):
     fields, layer, grid = configuration("fold_routes_disagree", xp)
     assert not coverage.covers_real_pml_curl(fields, layer, grid, "step_B")[0]
 
-    # ALL THREE FUNCTIONS GO INTO ONE NAMESPACE. Only the first is edited; the
+    # All three functions go into one namespace. Only the first is edited; the
     # other two are re-exec'd unchanged so that their name lookups resolve inside
     # the mutated module. Recompiling the leaf alone leaves the predicate calling
     # the SHIPPED one through its own ``__globals__``, and the mutation measures
@@ -1163,7 +1163,7 @@ def test_mutation_drop_the_two_route_cross_check_is_caught(xp):
 def _recompiled(label: str, **mutations):
     """A module holding the named shipped functions with refusals edited out.
 
-    MORE THAN ONE FUNCTION, because a refusal may not live in the predicate any
+    More than one function, because a refusal may not live in the predicate any
     more: the array dtype/shape/contiguity checks moved into ``_array_problem``
     when the reads went fail-closed, and a mutation that only rewrote
     ``covers_real_pml_curl`` would silently match nothing there. Every mutated
@@ -1242,7 +1242,7 @@ def test_mutation_drop_the_dtype_check_is_caught(xp):
 
 
 # --------------------------------------------------------------------------
-# The three clauses the 2026-08-15 sub-step round touched, each with a mutation
+# The three clauses the 2026-08-15 sub-step change touched, each with a mutation
 # that makes the leak visible. A widening is a fail-closed refusal being
 # RELAXED, so it needs more than a verdict table saying the new answer: it needs
 # the old answer's absence pinned (above), the stepping.py fact behind it
@@ -1343,15 +1343,15 @@ def test_mutation_drop_the_int32_clause_is_caught(xp):
 
 
 # --------------------------------------------------------------------------
-# THE WIDENINGS, MEASURED ON THE ARRAY PATH ITSELF.
+# The widenings, measured on the array path itself.
 #
 # The two clauses above were narrowed on the strength of a claim about
 # ``stepping.py``: that a curl reads no polarization, and that it reads only its
 # OWN targets' conductivity. Neither is checked by any verdict table — a verdict
 # table only says what the predicate returns. These run the real sub-steps on
 # this host's NumPy and compare bytes, so the claims are measured rather than
-# read. A gate leg on device is still owed for the kernel side (disposition
-# §8.2a); this is the array-path half, and it is the half that says whether the
+# read. A gate leg on device is still owed for the kernel side; this is the
+# array-path half, and it is the half that says whether the
 # predicate is describing the engine correctly.
 # --------------------------------------------------------------------------
 
@@ -1415,7 +1415,7 @@ def _identical(left: dict, right: dict) -> bool:
 
 @pytest.mark.parametrize("sub_step", SUB_STEPS)
 def test_a_registered_polarization_changes_neither_curl_bit_for_bit(sub_step, xp):
-    """THE MEASUREMENT BEHIND ADMITTING DISPERSION.
+    """The measurement behind admitting dispersion.
 
     Two runs whose fields hold identical values, one with a live Lorentzian
     driving all three E components. ``step_B`` differences the stored E arrays
@@ -1459,7 +1459,7 @@ def test_a_registered_polarization_changes_neither_curl_bit_for_bit(sub_step, xp
 
 
 def test_a_one_sided_conductivity_reaches_one_curl_and_not_the_other(xp):
-    """THE MEASUREMENT BEHIND CHARGING A SIGMA TO ONE SUB-STEP.
+    """The measurement behind charging a sigma to one sub-step.
 
     A D conductivity must change ``step_D``'s output and leave ``step_B``'s bits
     untouched — which is what ``_apply_curl`` reading ``condfac_for(term.target)``
@@ -1499,7 +1499,7 @@ CHI_NEEDLES = ("chi2", "chi3", "nonlinear")
 def _stepping_chi_scan():
     """Re-perform the gate's static scan of ``stepping``, here, at the merge bar.
 
-    THE GATE RAN THIS ON A DEVICE HOST AGAINST THE FILE AS IT WAS THEN. What this
+    The gate ran this on a device host against the file as it was then. What this
     copy adds is that the reading is re-checked against the file as it is NOW, on
     every test run: a helper that gained a chi lookup after the gate ran would
     make the admission false, and nothing else in this suite would notice.
@@ -1558,9 +1558,9 @@ def _stepping_chi_scan():
 
 
 def test_the_curl_call_closure_names_no_chi_and_update_E_s_does():
-    """THE READING THE ADMISSION RESTS ON, re-performed rather than quoted.
+    """The reading the admission rests on, re-performed rather than quoted.
 
-    BOTH HALVES ARE THE TEST. The negative -- neither curl sub-step's transitive
+    Both halves are the test. The negative -- neither curl sub-step's transitive
     call closure names a chi2/chi3/nonlinear symbol -- is the claim. The POSITIVE
     CONTROL is what makes the negative mean anything: the same scan must find them
     inside ``update_E``'s closure, or it is a scan that finds nothing anywhere and
@@ -1635,7 +1635,7 @@ def test_the_chi_admission_is_the_run_that_produced_it():
         live = hashlib.sha256(subject.read_bytes()).hexdigest()
         if live == digest:
             continue
-        # ONE HOME FOR THE RULE (device_identity.py:209): an edit that provably
+        # One home for the rule (device_identity.py:209): an edit that provably
         # cannot reach the compiled program leaves this admission describing the
         # kernel that ships. The helper returns False for anything it cannot
         # establish -- this record carries no device_sha256/code_sha256 today --
@@ -1652,13 +1652,13 @@ def test_the_chi_admission_is_the_run_that_produced_it():
         assert summary["single_launch_identical"] == record["identical_single_launch"]
         assert (summary["multi_step_identical"]
                 == record["identical_at_sixty_launches"])
-        # THE NON-VACUITY CLAUSE: a live chi on each sub-step, or the identity is
+        # The non-vacuity clause: a live chi on each sub-step, or the identity is
         # about a grid whose nonlinearity does nothing.
         assert summary["chi_arms"]["chi_live"] == \
             record["cases_with_a_measurably_live_chi"], policy_leg
         assert summary["chi_live_by_sub_step"] == record["live_cases_per_sub_step"]
         assert summary["chi_words_moved_in_update_E"]["min_on_the_live_arm"] > 0
-        # THE PREMISE, ARMED AND CAUGHT, on BOTH device strings.
+        # The premise, armed and caught, on BOTH device strings.
         for sub_step in SUB_STEPS:
             leg = payload["source_mutations"][f"{sub_step}:chi_pade_scale_the_curl"]
             assert leg["verdict"] == "CAUGHT", (policy_leg, sub_step)

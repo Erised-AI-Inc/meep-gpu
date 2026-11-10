@@ -1,20 +1,20 @@
-"""THE FOLDED-BETA SPELLING PROBE: what does THIS backend do with the beta tail?
+"""The folded-beta spelling probe: what does THIS backend do with the beta tail?
 
-WHY IT EXISTS. ``metal_kernels/folded_beta.py`` is a composition of two families
+Why it exists. ``metal_kernels/folded_beta.py`` is a composition of two families
 that are each already byte-certified on this host, and the whole point of writing
 it as a family rather than as a flag is that a composition may still carry
 arithmetic neither parent carries. The beta tail is the one expression the fold
 puts in a new place — between the curl and TWO ownership masks instead of one — so
-its spelling is re-measured here rather than inherited from ``special_kz``'s round
-or, worse, from the Triton track's.
+its spelling is re-measured here rather than inherited from ``special_kz``'s earlier
+measurement or, worse, from the Triton track's.
 
-WHAT IS DELIBERATELY NOT INHERITED. Triton spells its negations ``* -1.0`` because
+What is deliberately not inherited. Triton spells its negations ``* -1.0`` because
 *Triton* lowers unary minus as ``0.0 - x`` and canonicalizes a zero's sign. That is
 a fact about Triton. This probe asks the three spellings on Metal and reports what
 it measured; ``metal_kernels/templates.py`` records the same answer from an earlier
-round and this leg is the independent re-measurement, not a citation of it.
+measurement and this leg is the independent re-measurement, not a citation of it.
 
-THE FOUR LEGS:
+The four legs:
 
 1. ``real_tail`` — the REAL arm's ``curl = curl - (beta * partner)``
    (``special_kz._REAL_BETA_INSERT``) against the array path's
@@ -29,11 +29,11 @@ THE FOUR LEGS:
 3. ``uniform_vs_literal`` — the coefficient bound as ``constant float&`` against
    the same value baked into the source as a decimal literal. This is the leg that
    licenses the family's ONE runtime-versus-compile-time choice: the beta words
-   stay bound uniforms and are never specialised into the string. The arity round
+   stay bound uniforms and are never specialised into the string. The arity probe
    (``probe_metal_dynamic_loop_arity.py``) measured the loop-shaped version of this
    question and got IDENTICAL; this measures the scalar-shaped version the
    folded-beta family actually makes.
-4. ``mask_order`` — THE COMPOSITION'S OWN, and the one no parent can measure. The
+4. ``mask_order`` — the composition's own, and the one no parent can measure. The
    fold adds a SECOND ownership mask after the first, and the array path applies
    BOTH after the beta term (stepping.py:384-391 then :397, whose
    ``_mask_non_owned_cells`` carries the cell-0 arm at :1945-1949 and the top-plane
@@ -99,7 +99,7 @@ SMALLEST_NORMAL = np.float32(np.ldexp(1.0, -126))
 #: A BAND-FREE, OVERFLOW-FREE exhaustive table: both signed zeros and both signs at
 #: five magnitudes spanning eighteen decades either side of one.
 #:
-#: THE ENDPOINTS ARE CHOSEN, NOT ARBITRARY, and the reason is the platform. Every
+#: The endpoints are chosen, not arbitrary, and the reason is the platform. Every
 #: PRODUCT of two entries lies in ``[1e-18, 1e36]`` and every SUM of two products
 #: stays under ``FLT_MAX``, so no lane can reach the subnormal band (which this
 #: platform flushes, so a lane there would measure the flush rather than the
@@ -151,7 +151,7 @@ __BODY__
 #: ``expect`` is what the AUTHOR predicts, recorded BEFORE the run so a surprise is
 #: visible as a surprise; the verdict column is what was measured.
 #:
-#: ``expect`` IS SCOPED TO ``contract=off``, WHICH IS THE SHIPPED MODE. Under
+#: ``expect`` is scoped to ``contract=off``, which is the shipped mode. Under
 #: ``contract=fast`` the compiler is licensed to contract ``curl - (c * b)`` into an
 #: fma and the shipped spelling then diverges from the array path just as the
 #: explicit ``fused`` variant does — which is not a surprise, it is the measurement
@@ -201,12 +201,12 @@ __BODY__
 #: purely imaginary (stepping.py:798-799 multiplies by ``+/-1j``, so the real word is
 #: a signed zero Python's own complex multiply produced).
 #:
-#: ``orientation_swap`` IS PREDICTED NULL FOR A STATED REASON, and the reason is
+#: ``orientation_swap`` is predicted null for a stated reason, and the reason is
 #: exactly why the ``general_coefficient`` sweep below exists. Under the FMA_V1
 #: expansion the imaginary word is ``fma(z.x, p.y, z.y * p.x)``, which fuses a
 #: DIFFERENT product depending on which operand is left — but with ``z.x`` an exact
 #: signed zero, ``z.x * p.y`` is exact either way and the two spellings collapse.
-#: That is an equivalence SCOPED TO A ZERO REAL WORD, not a general one, and the
+#: That is an equivalence scoped to a zero real word, not a general one, and the
 #: probe sweeps a general coefficient to keep the scope measured rather than argued.
 COMPLEX_SPELLINGS: Tuple[Tuple[str, str, str], ...] = (
     ("shipped",

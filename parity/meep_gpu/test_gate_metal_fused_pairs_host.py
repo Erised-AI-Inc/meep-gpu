@@ -8,8 +8,9 @@ runs:
 
 * **every source mutation and every battery row lands**: each needle is present in the
   shipped source it is armed on and changes it, so no leg is disarmed by a re-spelled
-  kernel. The grouping mutations are the INVERTED ones (KERNELS.md §7.1): the shipped
-  forms are MEEP's groupings, so each plants the package's previous grouping;
+  kernel. The grouping mutations are the INVERTED ones
+  (docs/development/certification.md#inverted-grouping-mutations): the shipped forms
+  are MEEP's groupings, so each plants the package's previous grouping;
 * **the battery keeps the base gate's declarations**: two declared nulls, one row on the
   +-0 lattice, the rest must-catch;
 * **the text-only legs pass**: the transcription legs and the E->P chain's single-guard

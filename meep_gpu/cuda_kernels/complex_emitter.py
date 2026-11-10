@@ -1,6 +1,6 @@
 """The COMPLEX-storage PML device sources -- no CuPy.
 
-WHAT THIS FAMILY IS. Complex64 field storage under a real (split-field) PML: the
+What this family is. Complex64 field storage under a real (split-field) PML: the
 four sub-steps ``step_B`` / ``step_D`` / ``update_H`` / ``update_E`` when the run
 carries ``force_complex_fields`` or a nonzero ``k_point``. ``coverage.covers_real_pml_curl``
 and ``coverage.covers_real_pml_constitutive`` refuse this configuration by name
@@ -9,7 +9,7 @@ the kernel, and ``coverage.covers_real_pml_complex_curl`` /
 ``coverage.covers_real_pml_complex_constitutive`` are the written refusal for the
 configurations it must NOT serve.
 
-WHY AN EMITTER RATHER THAN FOUR STRING CONSTANTS. Every complex kernel on this table
+Why an emitter rather than four string constants. Every complex kernel on this table
 lifts its helpers from here -- the fused pairs, the folds, the fill carries, the H->D
 weld, the off-diagonal row and the no-absorber family -- so the device code is a
 function that can be imported and called, and checked, on a machine with no GPU. It is
@@ -17,13 +17,13 @@ a stdlib-only sibling of ``coverage.py``, ``compile_cache.py`` and ``offdiag_emi
 on this package's rule that the parts whose failure mode is a SILENT WRONG ANSWER are the
 parts that must be exercisable on a laptop.
 
-NOTHING HERE IMPORTS CUPY OR NUMPY, and nothing here imports ``coverage`` or
+Nothing here imports CuPy or NumPy, and nothing here imports ``coverage`` or
 ``bounds_block`` either: this family's tables are its own, and the chunk-record decode is
 carried as a literal that ``test_complex_pml.py`` pins equal to
 ``bounds_block.bounds_block`` (the one spelling of that decode on this table).
 
 =============================================================================
-THE REFERENCE: THE ARRAY PATH, PART BY PART
+The reference: the array path, part by part
 =============================================================================
 
 The array path is ``stepping.py`` (with ``part_products.py`` for every product on complex
@@ -35,11 +35,11 @@ with THREE changes and only three:
 1. every field access is a float32 WORD PAIR at ``2*idx`` / ``2*idx + 1`` (complex64 is
    bit-layout (re, im) interleaved, so a C-contiguous complex volume IS a C-contiguous
    float32 volume of shape ``(nx, ny, nz, 2)``);
-2. every real-coefficient product is formed ONCE PER PART -- ``c * z.re`` and
+2. every real-coefficient product is formed once per part -- ``c * z.re`` and
    ``c * z.im``, ``part_products.scale``'s ``multiply(coeff, values.real)`` and
    ``multiply(coeff, values.imag)``; complex add and subtract are per part already;
 3. on a Bloch-phased axis the operand read at the cell ITSELF takes MEEP's not-owned word
-   on plane 0 (``stepping._bloch_ghost_operand``; see THE STORED WINDOW below), formed by
+   on plane 0 (``stepping._bloch_ghost_operand``; see the stored window below), formed by
    ``part_products.connect``'s rule: a copy, a per-part negation, or
    ``complex<realnum>(thephase) * word`` with every product and sum rounded on its own.
 
@@ -49,7 +49,7 @@ In particular no product is FUSED: every real-coefficient product is formed part
 part, as MEEP does and as the array path does, so the emitter has one body.
 
 =============================================================================
-THE FORMS, PER STRUCTURE CHUNK
+The forms, per structure chunk
 =============================================================================
 
 MEEP chooses the PML form of each curl and constitutive update per structure chunk
@@ -74,12 +74,12 @@ The forms are the real root's, per part:
   (``stepping._apply_dsig_only_update``), which IS MEEP's plain ``f - curl`` wherever the
   dsig coefficients are exactly 1 (the region plan's precondition,
   ``chunk_map.check_unit_coefficients``). ``fu`` is read and written only on the
-  recurrence's cells (the auxiliary contract, KERNELS.md section 1, C2);
+  recurrence's cells (the auxiliary contract, docs/design/floating-point.md);
 * constitutive, dsigw cell: ``f + ((kps * src) - (kms * prev))``, the right-hand side
   formed first (``stepping._apply_constitutive_pml``, MEEP step_generic.cpp:689, :697),
   with ``prev`` loaded before ``fw`` takes ``src``;
 * constitutive, every other cell: ``f = src`` (H = B, E = D * inv_eps), an output select
-  that reads neither ``fw`` nor the old field (C4: a ``kps = 1, kms = 0`` accumulation is
+  that reads neither ``fw`` nor the old field (a ``kps = 1, kms = 0`` accumulation is
   wrong on every -0).
 
 THE STENCIL is MEEP's left-to-right ``((g1s - g1) + g2) - g2s`` per part
@@ -88,7 +88,7 @@ absent from the step plan (``stepping.curl_presence``): ``dtdx * (g1s - g1)`` wi
 absent, ``(-dtdx) * (g2s - g2)`` with ``g1`` absent, and an exact zero with neither.
 
 =============================================================================
-THE STORED WINDOW: WHERE THE BLOCH PHASE GOES
+The stored window: where the Bloch phase goes
 =============================================================================
 
 On an axis MEEP makes Bloch-periodic it OWNS, for a component with Yee shift 0 there, the
@@ -97,7 +97,7 @@ points ``lc + 2 .. lc + 2N`` and holds ``lc`` as a not-owned word filled from th
 stored cell 0 of a shift-0 component on a phased axis IS the owned top point
 (``Grid.stored_window_low``). So:
 
-* a read ONE STORED CELL OVER is always an owned word, and both shift helpers are plain
+* a read one stored cell over is always an owned word, and both shift helpers are plain
   wraps there -- no phase (``stepping._shift_up`` / ``_shift_down``);
 * the reads that leave the window are the ones at the SAME stored index across the half
   cell, on plane 0 (``stepping._bloch_ghost_operand``): B's forward curl at stored cell 0
@@ -117,14 +117,14 @@ curl and ``eikna`` to the D curl. No tolerance test runs on the device.
 PLATFORM REQUIREMENTS
 =============================================================================
 
-* NO FMA CONTRACTION. ``--fmad=false`` is CORRECTNESS, not tuning: the recurrence has
+* No FMA contraction. ``--fmad=false`` is CORRECTNESS, not tuning: the recurrence has
   contraction candidates at ``(fu*kms) - curl`` and ``(f*kms_u) + fu_new``, the
   constitutive tail at ``(kps*src) - (kms*prev)``, and the connection at both of its sums.
   Nothing in this family fuses on purpose.
 * NEGATION IS ``* -1.0f``: exact on every word (a sign flip, signed zero included) and the
   same spelling as the sibling transcriptions; ``test_complex_pml.py`` pins the absence of
   unary minus on any float path.
-* THE DEVICE STRINGS ARE PURE ASCII, a compile requirement rather than a style rule:
+* The device strings are pure ASCII, a compile requirement rather than a style rule:
   ``cupy.cuda.compiler.compile_using_nvrtc`` writes the source through a bare
   ``open(..., 'w')`` (compiler.py:368), so the bytes go through the interpreter's LOCALE
   encoding -- ASCII under C/POSIX, which is what a non-interactive shell on the validation
@@ -189,7 +189,7 @@ CONSTITUTIVE_FLAGS: Dict[str, Tuple[str, str, str]] = {
 # ---------------------------------------------------------------------------
 
 _BOUNDS_COMMENT = (
-    "    // THE CHUNK RECORD (chunk_map.chunk_bounds_record): row r of this lattice and axis\n"
+    "    // The chunk record (chunk_map.chunk_bounds_record): row r of this lattice and axis\n"
     "    // lies in a chunk that carries the axis's layer iff (a0 <= r < a1) || (b0 <= r < b1).\n")
 
 _BOUNDS_LATTICE: Dict[bool, str] = {
@@ -309,7 +309,7 @@ __device__ __forceinline__ cf cf_neg(cf a) {
 
 #: The products, part by part (module docstring).
 _PART_PRODUCTS = r'''
-// ---- PART BY PART ----------------------------------------------------------
+// ---- Part by part ----------------------------------------------------------
 // A real coefficient times a field is ONE float32 product per part
 // (part_products.scale: multiply(coeff, values.real), multiply(coeff,
 // values.imag); MEEP's DOCMP loops, step_db.cpp:47, update_eh.cpp:149). The two

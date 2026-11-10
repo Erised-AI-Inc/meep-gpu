@@ -19,7 +19,7 @@ walks on the ``Fields`` and the PML -- not the four primaries the first probes r
 And the admission rung refuses a hold it cannot serve BY NAME, to the array path --
 never to shipped, which is slower than the array path at every measured size.
 
-EVERY TEST SETS BOTH SWITCHES ITSELF. The package conftest pins
+Every test sets both switches itself. The package conftest pins
 ``MEEP_GPU_DISPATCH=0`` for every test, so a test that forgot the enable would run
 the array path against the array path and pass vacuously; each dispatching leg here
 asserts the plan it froze actually HELD (mode ``held``, held count > 0, nothing

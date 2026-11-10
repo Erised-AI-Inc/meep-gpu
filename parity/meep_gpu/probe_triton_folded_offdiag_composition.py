@@ -4,14 +4,14 @@ The sub-step gate (``gate_triton_folded_offdiag.py``) certifies the kernel
 against an in-file transcription pinned to ``stepping.update_E``. This probe
 asks the composition question, which is a different one: with ``step_B`` and
 ``step_D`` served by the CERTIFIED FOLDED curl kernel, ``fill_B``/``fill_D`` by
-the CERTIFIED MIRROR GHOST FILL, ``update_H`` by the CERTIFIED constitutive
+the certified mirror ghost fill, ``update_H`` by the CERTIFIED constitutive
 kernel on a validated folded extent, and ``update_E`` by the NEW folded
 off-diagonal kernel — installed by monkeypatch, production dispatch untouched,
 ``plan_fast_path`` still returning None — does the complete driver state
-reproduce the array-path driver EXACTLY after EVERY COMPLETE STEP, for a STATED
+reproduce the array-path driver EXACTLY after every complete step, for a STATED
 budget, sources, PML, ghost fills and metal zeroing included?
 
-THIS IS THE PARTIAL-UNLOCK MEASUREMENT FOR THE FOLDED FAMILY, and the unlock it
+This is the partial-unlock measurement for the folded family, and the unlock it
 completes is narrow and stated. On a folded grid carrying off-diagonal rows:
 
 * ``symmetry.folded_pml_curl_coverage``      ADMITS   -> step_B, step_D
@@ -28,7 +28,7 @@ Both seams are ASSERTED per case, by name, before any step is taken: a seam
 that narrowed underfoot would make this probe's install route wrong rather than
 its numbers wrong, and that has to fail loudly.
 
-WHAT EACH CASE IS THE ONLY WITNESS TO. The demand the family's own gate spans is
+What each case is the only witness to. The demand the family's own gate spans is
 carried here at DRIVER level, where the fold's ghost fills and the curls run
 between successive ``update_E`` calls:
 
@@ -43,13 +43,13 @@ between successive ``update_E`` calls:
 4. ``foldY_partial_row``             a single surviving slot ``Ez <- Ex`` on a
    folded Y: two components compile the plain arm while one takes the coupled
    arm, over whole steps.
-5. ``foldY_signed_zero_lattice``     THE +-0 LATTICE SEEDING (below), no source.
+5. ``foldY_signed_zero_lattice``     the +-0 lattice seeding (below), no source.
 6. ``foldY_reduced_2d``              the 2-D reduced run: the invariant axis's
    partner pair is g+g (MEEP's stride(d)=0 double read), composed over whole
    steps.
 
-THE +-0 LATTICE SEEDING, AND WHY A PLAIN ZERO-INIT IS NOT ONE. The cylindrical
-round measured that ZERO-INIT IS A FIXED POINT of the constitutive sub-step: with
+The +-0 lattice seeding, and why a plain zero-init is not one. The cylindrical
+complex probe measured that zero-init is a fixed point of the constitutive sub-step: with
 every array zero the sub-step writes zeros, the mirror ghost's parity sign is
 annihilated by the ``values + ghost`` add (``+0.0 + -0.0 == +0.0``), the
 negative-zero census is 0 and a sign-flipped ghost is INVISIBLE. A leg seeded
@@ -61,7 +61,7 @@ the folded axis carrying real amplitude, so the mirror ghost is the only path to
 a nonzero fold-plane E while the signed-zero background stays in place for the
 sign bit to be visible against.
 
-PER-SEEDING VACUITY FLOOR, checked at the seed AND after the first complete step,
+Per-seeding vacuity floor, checked at the seed AND after the first complete step,
 each failing the case by name rather than passing quietly:
 
 * the negative-zero census over the stored primaries must be > 0 at seed time
@@ -139,6 +139,7 @@ try:
 except ImportError:                                   # the laptop preflight
     cp = None
 
+import neutral_ids                                                     # noqa: E402
 from meep_gpu.triton_kernels import folded_offdiag_update_e as fomod  # noqa: E402
 from meep_gpu.triton_kernels import offdiag_update_e as odmod         # noqa: E402
 from meep_gpu.triton_kernels import symmetry as symmod                # noqa: E402
@@ -167,8 +168,15 @@ def log(message: str) -> None:
 
 
 def save(payload: Any, path: str) -> None:
-    """Atomic rewrite after every case (the progress-reporting rule)."""
+    """Atomic rewrite after every case (the progress-reporting rule).
+
+    The artifact leaves the machine with the round's results, so every string in it is
+    written as ``neutral_ids`` spells it, in place (``neutral_ids.neutralize_in_place``, the
+    last step of ``gate_provenance.stamp``): the cache directory, the provenance file and
+    any error that quotes a path are written under their labels, never under the account's
+    home directory."""
     os.makedirs(os.path.dirname(os.path.abspath(path)) or ".", exist_ok=True)
+    neutral_ids.neutralize_in_place(payload)
     temporary = path + ".tmp"
     with open(temporary, "w", encoding="utf-8") as handle:
         json.dump(payload, handle, indent=2, sort_keys=True, default=str)
@@ -250,7 +258,7 @@ CASES: Tuple[Dict[str, Any], ...] = (
      "why": "the 2-D reduced run: the invariant axis's partner pair is g+g"},
 )
 
-# SOURCE PLACEMENT IS CONSTRAINED BY THE FOLD, and the engine says so rather
+# Source placement is constrained by the fold, and the engine says so rather
 # than depositing a plausible wrong answer: a point source ON the mirror plane
 # whose component the plane makes ODD carries only zero current, and the engine
 # REFUSES it (MEEP does not — it deposits with use_symmetry=false and returns a
@@ -511,7 +519,7 @@ class PlanCounter:
 def ghost_fill_install_is_sound(driver) -> Tuple[bool, str]:
     """Can the COMBINED ghost-fill plan be installed at the near slot here?
 
-    MEASURED FINDING, and it belongs to the composition INSTALL CONVENTION, not
+    Measured finding, and it belongs to the composition INSTALL CONVENTION, not
     to any kernel. The driver's order is
 
         step_B -> sources -> fill_symmetry_bc_B -> zero_metal_B
@@ -762,7 +770,7 @@ def run_case(xp, case: Dict[str, Any],
                                    drop_backend=False)
         assert_seams(row["seams"], name)
 
-        # THE PER-SEEDING VACUITY FLOOR, at seed time.
+        # The per-seeding vacuity floor, at seed time.
         row["negative_zero_census_at_seed"] = negative_zero_census(xp, reference)
         if case["seeding"] == "signed_zero_lattice" and \
                 row["negative_zero_census_at_seed"] == 0:
@@ -851,7 +859,7 @@ def run_case(xp, case: Dict[str, Any],
         row["bit_identical"] = first_divergence is None
         row["source_effect_seen"] = source_effect_seen
 
-        # THE PER-SEEDING VACUITY FLOOR, after the run.
+        # The per-seeding vacuity floor, after the run.
         if case["seeding"] == "signed_zero_lattice":
             axis = row["folded_axes"][0]
             row["negative_zero_census_after"] = negative_zero_census(xp, reference)
@@ -876,7 +884,7 @@ def run_case(xp, case: Dict[str, Any],
                 f"({row['launches']} vs {expected}): a bit-identical row "
                 f"without launch evidence certifies nothing")
         if tolerate_divergence:
-            # THE ATTRIBUTION LEG. Divergence is the measurement here, not a
+            # The attribution leg. Divergence is the measurement here, not a
             # failure: the point is WHICH slot set first produces one.
             return row
         if mutation is None and not source_effect_seen:
@@ -889,7 +897,7 @@ def run_case(xp, case: Dict[str, Any],
                                      else first_divergence["step"])
             if not row["caught"]:
                 raise AssertionError(
-                    f"{name}: ARMED MUTATION NOT CAUGHT — the composition "
+                    f"{name}: armed mutation NOT CAUGHT — the composition "
                     f"reproduced the array path with the defect installed")
             if first_divergence["step"] != 1:
                 raise AssertionError(
@@ -1109,7 +1117,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         if failures:
             break                                   # divergence: STOP, report
 
-    # THE ATTRIBUTION LEG runs on every case whose fills could not be installed
+    # The attribution leg runs on every case whose fills could not be installed
     # — the configurations that produced the finding. It is evidence, not a
     # footnote, and a run that could not attribute the divergence FAILS.
     if not failures:

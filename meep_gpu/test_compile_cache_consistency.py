@@ -1,11 +1,11 @@
 """One invariant, three backends: a compile cache must key on everything that can
 change the binary it hands back.
 
-WHY THIS FILE EXISTS. The three tracks memoize compiled kernels in three different
+Why this file exists. The three tracks memoize compiled kernels in three different
 places, for three good reasons, and each is individually correct today:
 
 * **CUDA** -- :func:`meep_gpu.cuda_kernels.compile_cache.kernel_cache_key` folds
-  ``(name, is_complex, options, source, policy_token)``. The policy is IN THE KEY because
+  ``(name, is_complex, options, source, policy_token)``. The policy is in the key because
   CuPy appends ``-ftz=true`` to every NVRTC compile and the strip that removes it happens
   BELOW the seam CuPy computes its own disk-cache key from, so the same source under two
   policies is two different binaries. That module's docstring records what the weaker
@@ -15,12 +15,12 @@ places, for three good reasons, and each is individually correct today:
   signature, and :func:`~meep_gpu.subnormal_policy.install_triton_policy` folds the policy
   into that key and drops the in-process caches, because the policy genuinely moves the
   binary (an LLVM denormal attribute under flush; a libdevice ftz rewrite under keep).
-* **Metal** -- ``metal_kernels.device._LIBRARY_CACHE`` keys on the EXACT SOURCE STRING and
+* **Metal** -- ``metal_kernels.device._LIBRARY_CACHE`` keys on the exact source string and
   nothing else. That is complete, and only because no policy lever reaches MPS: the policy
   machinery installs for ``host``, ``cupy`` and ``triton``, and there is no MPS executor
   at all.
 
-THE RISK THIS FILE GUARDS, and it is a quiet one. Metal's key is complete because of an
+The risk this file guards, and it is a quiet one. Metal's key is complete because of an
 ABSENCE. The day an MPS subnormal lever is added -- or any other per-run compile switch --
 ``_LIBRARY_CACHE`` silently starts serving one policy's library to another, with no error
 and no test failing, which is exactly the defect CUDA already paid for once. So the

@@ -1,7 +1,7 @@
-"""SERVED IN DISPATCH: how many of a board's served seam-instances actually fuse
+"""Served in dispatch: how many of a board's served seam-instances actually fuse
 at runtime — measured off the shipped ladder, on every backend, for all three boards.
 
-WHY THIS FILE EXISTS AT ALL. Until 2026-08-29 each of the three fusion boards
+Why this file exists at all. Until 2026-08-29 each of the three fusion boards
 answered this question with a constant. The Metal board wrote
 ``"served_in_dispatch": 0`` as a literal (``build_fusion_matrix.py``); the Triton
 board wrote the sentence "nothing dispatches a fused Triton product in production
@@ -12,23 +12,23 @@ flip, which is the failure this project ranks worst dressed up as a clean number
 They are now computed here, from the same constants the dispatcher reads, so a
 board that says "0" is saying it because the tree still refuses.
 
-THE TWO QUESTIONS, AND THEY ARE DIFFERENT.
+The two questions, and they are different.
 
-  (1) CAN THIS BACKEND REACH THE SEAM AT ALL? A structural fact about
+  (1) Can this backend reach the seam at all? A structural fact about
       ``meep_gpu/fastpath.py``, read off its parse tree rather than remembered:
       rung 3 refuses any backend that is not CuPy, rung 4 imports ``triton``, and
       the composer it calls is ``triton_kernels.plan_step``. No Metal or CUDA
       product is reachable from that function — however well gated, however total
       its fill cover. :func:`backend_reaches_the_dispatch_seam` measures it.
 
-  (2) FOR THE BACKEND THAT CAN: WHICH SERVED CELLS DOES THE RELEASE COVER? A
+  (2) For the backend that can: which served cells does the release cover? A
       fused product only dispatches when its arm label is in
       ``fastpath.RELEASED_FUSED_ARMS`` and the row's configuration is inside
       ``fastpath.FUSED_RELEASE_ENVELOPE``. :func:`released_for_row` asks the
       shipped predicate itself — never a re-implementation of it, so a narrowing
       of the envelope moves every board on the next cut without touching them.
 
-IT IS AN UPPER BOUND, and the board that publishes it must say so. Three clauses
+It is an upper bound, and the board that publishes it must say so. Three clauses
 below this one can still refuse a cell it counts: the composer's own
 ``specialized_family_owns_the_grid`` guard, ``_pair_may_absorb`` (the pair may only
 absorb slots its constituent arms won), and the plan-time warm pass (a kernel that
@@ -36,7 +36,7 @@ will not compile unfills its slot). The census hosts have no Triton, so none of
 the three was measurable when the census was cut — the same reason every board's
 served count is already declared an upper bound.
 
-A FOURTH CLAUSE EXISTED BETWEEN 2026-09-02's PRODUCT WAVE AND ITS RELEASE ROUND,
+A fourth clause existed between 2026-09-02's product wave and its release,
 and it made this number an OVER-count rather than an upper bound, which is worse.
 A fused product occupies both slots of its seam, so a product the ladder could not
 admit forced clause (8) to refuse the WHOLE plan — including the released arm
@@ -115,7 +115,7 @@ def _imported_names(source: str) -> Tuple[List[str], List[str]]:
 def _composer_packages(source: str) -> Tuple[str, ...]:
     """Every ``meep_gpu`` kernel package the dispatch seam can reach, transitively.
 
-    ONE LEVEL DEEPER THAN THE FILE, and the depth is the 2026-09-10 correction. The
+    One level deeper than the file, and the depth is the 2026-09-10 correction. The
     Metal ladder does NOT live in ``fastpath.py``: its rungs, its release table and
     its residency install are in ``meep_gpu/metal_dispatch.py``, a sibling
     ``fastpath`` reaches through a function-local import at the backend rung. That
@@ -151,7 +151,7 @@ def _composer_packages(source: str) -> Tuple[str, ...]:
 def _calls_a_composer(source: str) -> bool:
     """Does this module CALL a kernel package's ``plan_step``?
 
-    THE DISCRIMINATOR THE SIBLING WALK NEEDS, and it was measured as necessary
+    The discriminator the sibling walk needs, and it was measured as necessary
     rather than added for tidiness. ``meep_gpu/subnormal_policy.py`` imports
     ``metal_kernels.subnormal`` — that is the ``mps`` executor arm of the policy
     installer, a lazy import of one function — and ``fastpath`` imports
@@ -184,7 +184,7 @@ def _calls_a_composer(source: str) -> bool:
 def backend_reaches_the_dispatch_seam(backend: str) -> Dict[str, Any]:
     """Whether a product of ``backend`` can be selected by ``plan_fast_path``.
 
-    MEASURED, BOTH DIRECTIONS. The answer is not "triton is the dispatch backend"
+    Measured, both directions. The answer is not "triton is the dispatch backend"
     asserted; it is "``fastpath`` imports exactly these kernel packages, and this
     one is/is not among them" — so the day a second backend is wired in, this
     function says so on its own and every board's headline moves with it.
@@ -220,7 +220,7 @@ def run_shape_from_census(configuration: Mapping[str, Any]) -> Dict[str, Any]:
     the row carries (:func:`_dimensions_from_census`), and by the count of axes with
     extent greater than one only for a row handed over without them. On a
     cylindrical grid MEEP's normalization reports 2 whatever the extents are
-    (``grid.py``: CYLINDRICAL sets ``dimensions = 2``). MEASURED against real lifts
+    (``grid.py``: CYLINDRICAL sets ``dimensions = 2``). Measured against real lifts
     rather than assumed: a 2-D Cartesian lift reports ``dimensions 2`` with
     ``grid_shape (200, 120, 1)``, a 3-D one reports 3 with ``(48, 48, 48)``, a Dcyl
     m=0 one reports 2 with ``(80, 1, 80)``, a 1-D one DECLARED 1-D reports 1 with
@@ -228,7 +228,7 @@ def run_shape_from_census(configuration: Mapping[str, Any]) -> Dict[str, Any]:
     ``kz_2d="3d"`` cell reports 3 with ``(135, 92, 1)`` and a ``(0, 0, L)`` cell
     declared 3-D reports 3 with ``(1, 1, N)``.
 
-    THE DERIVATION IS CHECKED, NOT TRUSTED. :func:`assert_every_row_shape_is_read`
+    The derivation is checked, not trusted. :func:`assert_every_row_shape_is_read`
     refuses a corpus carrying a non-cylindrical row whose non-unit axes are not a
     prefix of (X, Y, Z) — the one pattern under which the extent count could name a
     grid MEEP builds along different axes — and records how many rows carried the
@@ -268,7 +268,7 @@ def _dimensions_from_census(configuration: Mapping[str, Any], extents: Sequence[
                             cylindrical: bool) -> int:
     """MEEP's ``dimensions`` for a census row, by MEEP's own rule where the row carries it.
 
-    THE EXTENT COUNT IS NOT THE RULE, and the 2026-09-12 ``complex`` round measured
+    The extent count is not the rule, and the 2026-09-12 ``complex`` measurements found
     the two places it disagrees with what the runtime reads (``fastpath._run_shape``
     reports ``grid.dimensions``, which ``from_meep._effective_dimensions`` transcribes
     from ``Simulation._infer_dimensions``):
@@ -341,7 +341,7 @@ def assert_every_row_shape_is_read(configurations: Sequence[Mapping[str, Any]]) 
             continue
         if configuration.get("cylindrical"):
             continue
-        # THE EXTENT COUNT IS TRUSTED ONLY ON THE SHAPES MEEP BUILDS THAT WAY: a
+        # The extent count is trusted only on the shapes MEEP builds that way: a
         # 2-D cell is XY, a 3-D one XYZ, and MEEP's ``vol1d`` is Z alone. An XZ or
         # YZ slab is a 3-D grid with one cell on the missing axis, which the count
         # would call 2-D and the release would credit.
@@ -360,7 +360,7 @@ def assert_every_row_shape_is_read(configurations: Sequence[Mapping[str, Any]]) 
 def _release_module(backend: str):
     """The module that owns ``backend``'s release table.
 
-    TWO TABLES, TWO MODULES, AND THAT IS THE ARCHITECTURE RATHER THAN AN ACCIDENT.
+    Two tables, two modules, and that is the architecture rather than an accident.
     The Triton rows are in ``fastpath.py``; the Metal rows are in
     ``meep_gpu/metal_dispatch.py`` precisely so a Metal release edit does not
     re-drift the Triton ``driver_dispatch`` record. This function is the one place
@@ -388,7 +388,7 @@ def _release_module(backend: str):
 def cuda_product_arm_labels() -> Mapping[str, str]:
     """Board product -> the NAMESPACED label the merge writes, read off the composer.
 
-    DERIVED, NEVER TYPED, and doubly so: the ``label`` key on each
+    Derived, never typed, and doubly so: the ``label`` key on each
     ``FUSED_PRODUCTS`` row is compared against the ``label=`` literal its plan
     builder passes (the AST read below), so a row whose label had drifted from its
     builder's is a failure here rather than a board crediting a cell to a name
@@ -431,7 +431,7 @@ def cuda_product_arm_labels() -> Mapping[str, str]:
 def _cuda_installable_labels() -> Mapping[str, str]:
     """The join RESTRICTED to products the composer can actually install.
 
-    THE TWO MAPS ARE DISJOINT BY CONTRACT (a board that found a product in both
+    The two maps are disjoint by contract (a board that found a product in both
     would be told it is installed and not installed at once), so the products
     :func:`cuda_certified_but_not_installed` answers for are taken out here. That is
     not a loss of coverage: their instances are counted in their own bucket with
@@ -485,7 +485,7 @@ def released_for_row(arm_label: str, configuration: Mapping[str, Any],
     shape = run_shape_from_census(configuration)
     released = released_fused_arms(shape)
     reasons = fused_release_reasons(shape)
-    # THE PREDICATE HAS TWO HALVES SINCE 2026-09-02 AND SO DOES THIS ANSWER. The
+    # The predicate has two halves since 2026-09-02 and so does this answer. The
     # shared envelope refuses every arm at once; each arm's own axes refuse only it.
     # Reading the shared half alone left an instance refused by the per-arm half in
     # NO bucket at all — the counts stopped summing to the served total, which is
@@ -511,8 +511,8 @@ def released_for_row(arm_label: str, configuration: Mapping[str, Any],
 #: arm must be attributable to a product, or a board would silently report a
 #: dispatching cell as not dispatching.
 #:
-#: A ROW HERE MEANS "THE SHIPPED COMPOSER INSTALLS THIS PRODUCT", and that is now
-#: MEASURED rather than declared: :func:`composer_installed_labels` reads
+#: A row here means "the shipped composer installs this product", and that is now
+#: measured rather than declared: :func:`composer_installed_labels` reads
 #: ``triton_kernels/launch.py``'s parse tree, and the assertion below requires
 #: every label in this map to be one the composer can actually write. A row for a
 #: product no composer installs would be a claim that ``selected`` carries a label
@@ -590,7 +590,7 @@ PRODUCT_ARM_LABELS: Mapping[str, str] = {
 
 #: Board product name -> why the shipped composer installs NOTHING for it.
 #:
-#: A THIRD ANSWER, and it exists because the other two were both wrong for these
+#: A third answer, and it exists because the other two were both wrong for these
 #: five. "Cannot name" reads as an accounting gap in this file; a row in
 #: :data:`PRODUCT_ARM_LABELS` would claim ``selected`` carries a label nothing
 #: writes. What is true of all five is that the product is CERTIFIED and the
@@ -626,7 +626,7 @@ CERTIFIED_BUT_NOT_INSTALLED: Mapping[str, str] = {
         "not offered is a LABEL, and on this backend a label plan_step can write must "
         "also appear in fastpath.FUSED_ARM_CONSTITUENTS and in "
         "PENDING_DEVICE_GATE_ARMS until a ledger entry exists. Both are in "
-        "meep_gpu/fastpath.py, outside the round that built the product, so it is "
+        "meep_gpu/fastpath.py, outside the work that built the product, so it is "
         "absent from CERTIFIED_FUSED_PRODUCTS and no composer installs it; it "
         "additionally declares INSTALLABLE = False",
     "conductive_bfast_fused_hd_pair":
@@ -648,10 +648,10 @@ CERTIFIED_BUT_NOT_INSTALLED: Mapping[str, str] = {
     "beta_complex_fused_hd_pair":
         "the H->D weld on the two COMPLEX beta cells, one family and two emitted "
         "kernels; the same label objection, and INSTALLABLE = False",
-    # THE SECOND BOARD CELL OF FOUR FAMILIES ABOVE. The board keys a row PER CELL and
+    # The second board cell of four families above. The board keys a row per cell and
     # three of these families emit two kernels from one transform, so each carries a
     # second cell under a suffixed name while the composer sees ONE family. The reason
-    # is the base family's, unchanged -- a label in meep_gpu/fastpath.py that the round
+    # is the base family's, unchanged -- a label in meep_gpu/fastpath.py that the work
     # which built the product does not own, plus INSTALLABLE = False -- and it is
     # repeated per cell rather than aliased so that a reader of any one cell finds it.
     "beta_complex_fused_hd_pair_unfolded":
@@ -672,7 +672,7 @@ CERTIFIED_BUT_NOT_INSTALLED: Mapping[str, str] = {
         "on the fourth seam and the largest cell this backend's board carries "
         "unbuilt: 78 seam-instances, 75 of them buildable_not_built. The objection is "
         "the plain product's exactly -- a LABEL in meep_gpu/fastpath.py that the "
-        "round which built it does not own. Its own gate prices the DRIVEN rows at "
+        "work which built it does not own. Its own gate prices the DRIVEN rows at "
         "loss 55 / tie 19 / gain 0 (the lift leg's arbitration_counts over 74 rows); "
         "a predicate-level reading of the same cell says 67/11, which prices by "
         "admission rather than installation and cannot be a subset of the measured "
@@ -691,7 +691,7 @@ CERTIFIED_BUT_NOT_INSTALLED: Mapping[str, str] = {
 # The METAL join, derived live rather than typed
 # ---------------------------------------------------------------------------
 #
-# NO TABLE FOR THIS BACKEND, AND THAT IS THE POINT. The Triton maps above are hand
+# No table for this backend, and that is the point. The Triton maps above are hand
 # kept because that composer's labels live in literal dicts inside its ``launch.py``
 # and the board's product names differ from the arm families in several places. The
 # Metal composer has neither problem: every fused label is REGISTERED by the module
@@ -701,7 +701,7 @@ CERTIFIED_BUT_NOT_INSTALLED: Mapping[str, str] = {
 # join is the registry, read at cut time, and a family registered tomorrow is
 # scored tomorrow instead of being silently dropped.
 #
-# THE SPLIT BETWEEN THE TWO BUCKETS IS ALSO MEASURED, off the composer's own
+# The split between the two buckets is also measured, off the composer's own
 # tables rather than off a list of names:
 #
 #   * a weld family with a ``launch.FUSED_PAIR_ARMS`` row that does NOT declare
@@ -712,7 +712,7 @@ CERTIFIED_BUT_NOT_INSTALLED: Mapping[str, str] = {
 #     including the four E->P chains, whose seam has no row in FUSED_PAIR_SEAMS at
 #     all);
 #   * a family that declares itself uninstallable through
-#     ``launch._declared_uninstallable`` is CERTIFIED AND NOT INSTALLED by its own
+#     ``launch._declared_uninstallable`` is certified and not installed by its own
 #     declaration (measured: the ten H->D products).
 #
 # 27 + 20 = 47, and the five-bucket floor below is what keeps that arithmetic honest.
@@ -747,7 +747,7 @@ def metal_certified_but_not_installed() -> Dict[str, str]:
             out[family] = (f"the family declares itself uninstallable and the "
                            f"composer reports it by name on every row: {declared}")
         elif family not in launch.FUSED_PAIR_ARMS:
-            # ASKED OF THE PRODUCT'S SLOT, NOT ITS NAME. This read `any(family in row
+            # Asked of the product's slot, not its name. This read `any(family in row
             # for row in FUSED_PAIR_SEAMS.values())` until 2026-09-17, which compared a
             # FAMILY NAME against that table's VALUES -- and those values are
             # (partner-slot, seam-letter) tuples like ("update_H", "B"). No family name
@@ -793,7 +793,7 @@ def certified_but_not_installed(backend: str = DISPATCHABLE_BACKEND) -> Mapping[
 def triton_composer_installed_labels() -> Tuple[str, ...]:
     """Every fused arm label ``launch.plan_step`` can write, from its parse tree.
 
-    MEASURED, not declared, for the reason every other reader in this file is: the
+    Measured, not declared, for the reason every other reader in this file is: the
     labels live in the composer and the join lives here, and a hand-kept copy of
     the first is a second place to forget an edit. Read as the union of
 
@@ -803,7 +803,7 @@ def triton_composer_installed_labels() -> Tuple[str, ...]:
       recognises — which is how the ``fuse_ade`` block's ``"fused ADE state"`` is
       caught, since it is written inline at the slot rather than in a table.
 
-    F-STRING FRAGMENTS ARE EXCLUDED: the ordinary pairs' labels are built as
+    F-string fragments are excluded: the ordinary pairs' labels are built as
     ``f"fused pair {pair_name}"``, whose literal half ``"fused pair "`` matches the
     prefix and is a label no composer writes. They are added back explicitly.
     """
@@ -831,7 +831,7 @@ def triton_composer_installed_labels() -> Tuple[str, ...]:
 def composer_installed_labels(backend: str = DISPATCHABLE_BACKEND) -> Tuple[str, ...]:
     """Every fused arm label ``backend``'s composer can write into a slot.
 
-    TWO READINGS FOR TWO COMPOSERS, and neither is a copy of a table. Triton's
+    Two readings for two composers, and neither is a copy of a table. Triton's
     labels live in literal dicts inside its ``launch.py`` and are read off that
     file's parse tree. The Metal composer registers its labels instead, so the
     registry IS the reading — and the installable half of it is the half that can
@@ -840,7 +840,7 @@ def composer_installed_labels(backend: str = DISPATCHABLE_BACKEND) -> Tuple[str,
     if backend == "metal":
         return tuple(sorted(metal_product_arm_labels().values()))
     if backend == "cuda":
-        # THE CUDA READING IS THE PRODUCT TABLE ITSELF, which is the composer's own
+        # The CUDA reading is the product table itself, which is the composer's own
         # declaration of what it can install: ``install_fused_pairs`` walks
         # ``FUSED_PRODUCTS`` and writes each row's builder label. Reading the labels
         # off that walk is the same measurement Triton's parse-tree read makes, one
@@ -858,7 +858,7 @@ def assert_the_label_map_covers_the_release(
     label the dispatcher does not recognise as fused would be counted as
     dispatching when clause (8) never even looks at it.
 
-    AND A THIRD, ADDED WITH THE 2026-09-02 INSTALLER WAVE: every label in the map
+    And a third, added with the 2026-09-02 installer wave: every label in the map
     has to be one the SHIPPED COMPOSER can write. Before the wave the map carried a
     row for a product no board scores while the board's own E->P product had none,
     and nothing measured either fact. It does now, against ``launch.py``'s parse
@@ -868,7 +868,7 @@ def assert_the_label_map_covers_the_release(
     products = product_arm_labels(backend)
     not_installed = certified_but_not_installed(backend)
     _released, _reasons, _arm_reasons, released_table = _release_module(backend)
-    # WHICH PREDICATE ANSWERS "IS THIS LABEL FUSED" IS PER BACKEND. ``arm_is_fused``
+    # Which predicate answers "is this label fused" is per backend. ``arm_is_fused``
     # is the TRITON spelling — a "fused pair" prefix plus two names — and it answers
     # False for every Metal label ("fused magnetic B/H pair", "folded fused B/H
     # pair", ...). The Metal ladder reads the registry's own ``is_weld`` flag
@@ -880,7 +880,7 @@ def assert_the_label_map_covers_the_release(
         def _is_fused(label: str) -> bool:
             return label in fused_labels
     else:
-        # ``arm_is_fused`` ANSWERS FOR BOTH NVIDIA TABLES since the hand-CUDA one
+        # ``arm_is_fused`` answers for both NVIDIA tables since the hand-CUDA one
         # landed: a ``"cuda:"`` label is looked up in the typed
         # ``fastpath_cuda.CUDA_FUSED_LABELS`` (pinned to the composer's AST) and a
         # bare one takes the Triton prefix rule. So this branch is one predicate for
@@ -937,12 +937,12 @@ def arm_label_for_product(product: str,
     return product_arm_labels(backend).get(product)
 
 
-#: WHICH TWO SLOTS EACH SEAM SPANS, over the driver's step_B -> update_H -> step_D ->
+#: Which two slots each seam spans, over the driver's step_B -> update_H -> step_D ->
 #: update_E -> update_P path. Built from ``h_to_d_seam``'s own constants for the fourth
 #: seam rather than a second spelling of them, the same join
 #: ``build_cuda_fusion_matrix.SPANNABLE_SEAM_SLOTS`` makes.
 #:
-#: H_to_D IS THE ONLY INTERIOR SPAN, and that is the whole reason this table exists
+#: H_to_D is the only interior span, and that is the whole reason this table exists
 #: here. B_to_H and E_to_P sit on the end edges and D_to_E's slots are its own, so on
 #: today's tables no two dispatching products ever want the same slot. H_to_D takes
 #: ``update_H`` from the B seam and ``step_D`` from the D seam -- one slot from EACH
@@ -959,13 +959,13 @@ SEAM_SLOTS: Mapping[str, Tuple[str, ...]] = {
 def _slot_contention(counted: Sequence[Tuple[str, str, str]]) -> Dict[str, Any]:
     """Which counted instances want a slot another counted instance already wants.
 
-    THE CLAUSE THIS EVALUATES, and until 2026-09-11 it was declared and not run:
+    The clause this evaluates, and until 2026-09-11 it was declared and not run:
     ``_pair_may_absorb`` (``<backend>_kernels/launch.py``) lets a fused pair take a
     slot only when the arm table already gave that slot to the arm the fused kernel
     implements, so a pair whose slot another product won is NOT installed. This count
     used to say so in ``clauses_below_this_one`` and then credit the instance anyway.
 
-    WHY IT COST NOTHING UNTIL IT WOULD COST EVERYTHING. ``H_to_D`` is the only span
+    Why it cost nothing until it would cost everything. ``H_to_D`` is the only span
     that reaches into a neighbour's slots, and no H->D arm is released on any backend,
     so every counted instance today owns its slots outright and this function returns
     an empty contention set -- which is the assertion
@@ -973,7 +973,7 @@ def _slot_contention(counted: Sequence[Tuple[str, str, str]]) -> Dict[str, Any]:
     would credit 173 instances per backend against at most 244 possible installs
     across all three, because the clause was never evaluated.
 
-    WHAT IT IS NOT. This is the slot-contention HALF of ``_pair_may_absorb``: it
+    What it is not. This is the slot-contention HALF of ``_pair_may_absorb``: it
     refuses a credit where two counted products want one slot on one row. It does not
     evaluate which arm the arm table actually selected for a slot -- that needs the
     composer and the row's own arm resolution, and the remaining clause says so.
@@ -981,12 +981,12 @@ def _slot_contention(counted: Sequence[Tuple[str, str, str]]) -> Dict[str, Any]:
     by_row: Dict[str, Dict[str, Dict[str, List[str]]]] = {}
     unknown: Dict[str, int] = {}
     for row_label, seam, product in counted:
-        # THE BOARDS DO NOT SHARE A SEAM SPELLING, and discovering that by examining
+        # The boards do not share a seam spelling, and discovering that by examining
         # zero rows while reporting evaluated: True is the vacuous-check failure this
         # whole floor exists to stop. Triton writes "B->H"/"D->E", the other two
         # "B_to_H"/"D_to_E"; ``fusion_taxonomy.canonical_seam`` is the one place that
         # knows, so it is asked rather than a second map being written here. A seam it
-        # cannot name is COUNTED AS UNKNOWN and refuses below.
+        # cannot name is counted as unknown and refuses below.
         canonical = _fusion_taxonomy.canonical_seam(seam)
         if canonical not in SEAM_SLOTS:
             unknown[seam] = unknown.get(seam, 0) + 1
@@ -1002,7 +1002,7 @@ def _slot_contention(counted: Sequence[Tuple[str, str, str]]) -> Dict[str, Any]:
                 contended.append({"row": row_label, "slot": slot,
                                   "claimants": sorted(claimants)})
                 continue
-            # ONE PRODUCT UNDER TWO SEAMS IS NOT CONTENTION, it is a weld that spans
+            # One product under two seams is not contention, it is a weld that spans
             # them. ``cuda_three_slot_dispersive_weld`` is the shipped example: it
             # takes step_D -> update_E -> update_P in ONE launch and is credited one
             # seam-instance at D_to_E and one at E_to_P, so ``update_E`` carries its
@@ -1026,9 +1026,9 @@ _SPECIALIZED_FAMILY_GUARD = "specialized_family_owns_the_grid"
 
 
 def _specialized_family_guard_clause(backend: str) -> str:
-    """What this count does not evaluate about that guard — ON THIS BACKEND.
+    """What this count does not evaluate about that guard — on this backend.
 
-    UNTIL 2026-09-11 THIS SENTENCE NAMED A FILE THAT DOES NOT CONTAIN THE GUARD. It
+    Until 2026-09-11 this sentence named a file that does not contain the guard. It
     was one string with the backend's own package interpolated into it, so the CUDA
     board published "the composer's specialized_family_owns_the_grid guard
     (cuda_kernels/launch.py) refuses fusion on a grid a specialized family owns" and
@@ -1073,14 +1073,14 @@ def served_in_dispatch(backend: str,
     seam-instance the board counted — the board decides what "served" means, this
     function decides what "dispatches" means, and the two stay separable.
 
-    THE SECOND ELEMENT IS THE PRODUCT, NOT THE ARM LABEL, since 2026-09-02, and the
+    The second element is the product, not the arm label, since 2026-09-02, and the
     change is what lets the third answer exist. A board used to call
     :func:`arm_label_for_product` itself and hand the result over, so every product
     this file could not join arrived here as ``None`` — a certified product nobody
     routes and a product nobody has heard of, indistinguishable. Doing the join
     HERE keeps the vocabulary in one place and lets the two be counted apart.
 
-    A backend that cannot reach the seam answers 0 WITH ITS REASON, not a bare
+    A backend that cannot reach the seam answers 0 with its reason, not a bare
     zero: the difference between "no product of mine is reachable" and "my products
     are reachable and none is released" is the whole content of the number.
     """
@@ -1097,7 +1097,7 @@ def served_in_dispatch(backend: str,
         "clauses_below_this_one": [
             _specialized_family_guard_clause(backend),
             "_pair_may_absorb: a pair may only absorb slots its constituent arms "
-            "actually won. THE SLOT-CONTENTION HALF IS EVALUATED since 2026-09-11 "
+            "actually won. The slot-contention half is evaluated since 2026-09-11 "
             "when the board passes each instance's seam (see result.slot_contention): "
             "two counted products may not claim one slot on one row. What remains "
             "below this count is the other half -- WHICH arm the arm table selected "
@@ -1127,7 +1127,7 @@ def served_in_dispatch(backend: str,
     counted: List[Tuple[str, str, str]] = []
     seams_given = 0
     for instance in instances:
-        # THE SEAM IS OPTIONAL AND ITS ABSENCE IS RECORDED, never assumed. A board that
+        # The seam is optional and its absence is recorded, never assumed. A board that
         # still hands three-tuples gets the old count and an honest
         # ``slot_contention.evaluated: False`` beside it, so the clause stays declared
         # rather than silently dropped for that backend.
@@ -1139,7 +1139,7 @@ def served_in_dispatch(backend: str,
             seam = None
         arm_label = arm_label_for_product(product, backend)
         if arm_label is None:
-            # THREE ANSWERS, NOT TWO, and the split is the 2026-09-02 correction.
+            # Three answers, not two, and the split is the 2026-09-02 correction.
             # A certified product the composer does not install is a DECISION with
             # a reason (:data:`CERTIFIED_BUT_NOT_INSTALLED`); a product neither map
             # has heard of is an accounting gap in this file. Folding the first into
@@ -1159,7 +1159,7 @@ def served_in_dispatch(backend: str,
         elif arm_label not in released_table:
             unreleased_arm += 1
         else:
-            # ONE BUCKET PER INSTANCE, not one per reason, and the change matters
+            # One bucket per instance, not one per reason, and the change matters
             # for the arithmetic rather than for tidiness: a shape outside two axes
             # used to be counted twice, so the refusal buckets could exceed the
             # served total while an instance refused by the per-arm half was counted
@@ -1177,7 +1177,7 @@ def served_in_dispatch(backend: str,
     result["why_not_installed"] = {name: not_installed_reasons[name]
                                    for name in sorted(not_installed)}
     result["served_by_a_product_this_file_cannot_name"] = unnamed_product
-    # THE SLOT-CONTENTION HALF OF ``_pair_may_absorb``, evaluated rather than declared
+    # The slot-contention half of ``_pair_may_absorb``, evaluated rather than declared
     # whenever the board hands the seam. See :func:`_slot_contention`.
     evaluated = seams_given == len(instances) and bool(instances)
     contention = _slot_contention(counted) if evaluated else {}
@@ -1191,7 +1191,7 @@ def served_in_dispatch(backend: str,
             f"fusion_taxonomy._CANONICAL_SEAM, or the seam to "
             f"dispatch_reachability.SEAM_SLOTS.")
     if evaluated and sum(arms.values()) and not contention.get("rows_examined"):
-        # ONLY WHEN SOMETHING WAS COUNTED. A backend that dispatches nothing examines
+        # Only when something was counted. A backend that dispatches nothing examines
         # no rows and that is the right answer, not a vacuous check -- the first
         # version of this guard refused it and turned a correct zero into a crash,
         # which is the reverse defect of the one it was written for.
@@ -1207,7 +1207,7 @@ def served_in_dispatch(backend: str,
             f"_pair_may_absorb clause to be evaluated rather than declared"),
         **contention}
     if evaluated and contention.get("contended_slots"):
-        # A CONTENDED SLOT IS NOT SILENTLY DROPPED. Refusing here rather than
+        # A contended slot is not silently dropped. Refusing here rather than
         # subtracting: which of two claimants the composer installs is the arm
         # table's answer, not this file's, and publishing a total that guessed
         # would be the over-credit in the other direction.
@@ -1225,7 +1225,7 @@ def served_in_dispatch(backend: str,
         sorted(refused.items(), key=lambda item: (-item[1], item[0])))
     result["refused_reasons"] = {axis: rows[:4] for axis, rows
                                  in sorted(refused_detail.items())}
-    # THE BUCKETS MUST TOTAL THE SERVED COUNT, asserted rather than hoped. Every
+    # The buckets must total the served count, asserted rather than hoped. Every
     # served instance lands in exactly one of five: it dispatches, its arm is
     # released nowhere, its product is certified and not installed, this file
     # cannot name its product, or the release declines this row. A split that
@@ -1241,7 +1241,7 @@ def served_in_dispatch(backend: str,
             f"{len(instances)} served instances; {parts} — a served instance is in "
             "no bucket or in two")
     result["released_arms"] = sorted(released_table)
-    # THE ROUTE STAMP THE BOARD CITES, read from the registry here and nowhere else in
+    # The route stamp the board cites, read from the registry here and nowhere else in
     # this file, so the probes that import this module for its predicates do not hold
     # the registry (``import_closure.py bill meep_gpu/route_stamps.py``).
     from meep_gpu import route_stamps  # noqa: PLC0415
@@ -1250,7 +1250,7 @@ def served_in_dispatch(backend: str,
     result["dispatch_by_default"] = fastpath.DISPATCH_BY_DEFAULT
     result["requires"] = dispatch_condition()
     if backend == "cuda":
-        # EVERY CUDA DISPATCH NUMBER CARRIES ITS CONDITION IN THE SAME SENTENCE.
+        # Every CUDA dispatch number carries its condition in the same sentence.
         # Under the SHIPPED precedence Triton composes first and holds every slot
         # both tables admit, so this count is what dispatches when the run asks for
         # the hand-CUDA table by name — or when the host has no validated Triton at

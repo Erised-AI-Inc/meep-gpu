@@ -19,7 +19,7 @@ Three layers, in the order a defect would reach them:
 3. **The lift end to end on a stock MEEP**, against CPU MEEP stepping the same
    cell, plus the route record that says which of the two paths ran.
 
-THE HONEST COMPARISON. The lookup is NOT cheaper than the inversion at ANY object
+The honest comparison. The lookup is NOT cheaper than the inversion at ANY object
 count, including zero — measured per call on this machine, ``mp.is_point_in_object``
 costs 4.38 us against ``get_chi1inv``'s 0.64 us at a nonzero frequency, and end to
 end the lookup runs 1.4-2.0x the inversion at one or two objects and 14.6x at
@@ -551,7 +551,7 @@ def test_this_engines_own_yee_coordinate_differs_from_meeps_snap_at_an_unreprese
 @requires_meep
 @skip_without_meep
 def test_the_check_catches_a_lookup_at_the_nominal_coordinate_and_the_lift_falls_back(monkeypatch):
-    """THE CHECK DOING ITS JOB, on the defect the test above measures.
+    """The check doing its job, on the defect the test above measures.
 
     ``_yee_point_location`` is nudged by exactly one ulp — the size of the
     disagreement measured above — and the lookup's per-point check must refuse
@@ -615,7 +615,7 @@ def test_the_check_catches_a_lookup_at_the_nominal_coordinate_and_the_lift_falls
 @requires_meep
 @skip_without_meep
 def test_a_structure_flush_with_the_cell_face_needs_meeps_own_ownership_gate():
-    """THE UNOWNED PLANE: a structure flush with the plane MEEP does not own.
+    """The unowned plane: a structure flush with the plane MEEP does not own.
 
     ``_lattice_indices`` enumerates the full closed lattice, and one plane per axis
     of it lies outside the region MEEP owns — ``little_owned_corner`` is
@@ -951,7 +951,7 @@ def test_a_crowded_cell_goes_to_the_inversion_before_the_lookup_pays_for_it():
 @pytest.mark.parametrize("curve", ["dispersive", "plain"])
 def test_a_smoothed_curved_interface_anywhere_in_the_cell_is_refused_by_name(
         monkeypatch, curve, route):
-    """THE REFUSAL STOCK MEEP LEAVES, and the escape it names, on both routes.
+    """The refusal stock MEEP leaves, and the escape it names, on both routes.
 
     Both routes read eps as ``1/chi1inv[c][c]`` and check that the tensor is
     diagonal at every lattice point of the cell, so subpixel averaging at ANY curved
@@ -1008,18 +1008,34 @@ def test_a_declared_off_diagonal_permittivity_is_refused_without_the_smoothing_e
     not send the user to a setting the cell already has, and it ends with the
     instruction that does apply.
 
-    A cylindrical cell is refused by the same check on the builds measured here, but is
-    not pinned: at a nonzero frequency MEEP 1.33.0 returns
-    ``chi1_inv_tensor[component_index(c) + 3 * d]`` (monitor.cpp:367) from a nine-entry
-    tensor (monitor.cpp:311), and ``d`` is R or P (3 or 4, vec.hpp:79) in a cylindrical
-    structure, so the entry the check reads there lies past the end of the array
-    rather than being a value MEEP defines.
+    A cylindrical cell never reaches this check: the gate refuses it by name
+    (``from_meep._check_structured_sigma_cylindrical``,
+    ``test_sigma_cylindrical_refusal.py``), because at a nonzero frequency MEEP reads
+    the entry the check would read past the end of its nine-entry tensor.
     """
     import meep as mp
 
     from . import from_meep
-    from .from_meep import MeepSimulationNotLiftable, lift_simulation
+    from .from_meep import MeepSimulationNotLiftable, gpu_compatibility, lift_simulation
 
+    # The gate decides it: the declaration alone fixes the lift's answer, so the
+    # compatibility check refuses the cell before anything is built, and the lift
+    # raises exactly those reasons.
+    gate = gpu_compatibility(_anisotropic_unsmoothed_cell(mp))
+    hits = [reason for reason in gate.reasons if "declares epsilon_offdiag" in reason]
+    assert not gate.supported and len(hits) == 1, gate.reasons
+    assert "eps_averaging=False does not change that" in hits[0], hits[0]
+    assert hits[0].endswith("otherwise run this simulation on CPU MEEP."), hits[0]
+    sim = _anisotropic_unsmoothed_cell(mp)
+    with pytest.raises(MeepSimulationNotLiftable) as refusal:
+        lift_simulation(sim, prefer_gpu=False)
+    assert tuple(refusal.value.reasons) == gate.reasons, refusal.value.reasons
+    assert sim.structure is None, "the refusal must come before init_sim"
+
+    # On the lift's own fact: with the gate's clause taken out, the route the cell
+    # takes reads the off-diagonal entry the declaration put there and refuses.
+    monkeypatch.setattr(from_meep, "_check_sigma_reads_a_diagonal_tensor",
+                        lambda materials, reasons: None)
     if route == "inversion":
         monkeypatch.setattr(
             from_meep, "_why_the_lookup_cannot_run",
@@ -1030,9 +1046,7 @@ def test_a_declared_off_diagonal_permittivity_is_refused_without_the_smoothing_e
     assert "chi1inv tensor is not diagonal" in message, message
     assert ("has to be checked against" if route == "lookup"
             else "has to be recovered from chi1inv") in message, message
-    assert ("so do a medium with a nonzero epsilon_offdiag and a cylindrical cell"
-            in message), message
-    assert "otherwise run this simulation on CPU MEEP." in message, message
+    assert "a declared epsilon_offdiag in such a cell is refused there" in message, message
 
 
 # --- the lift, end to end, and the route record ------------------------------------

@@ -1,6 +1,6 @@
 """The hand-CUDA arms that carry a launch, and the fill twins the merge adopts.
 
-WHAT THIS FILE SETTLES. On 2026-09-27 four families gained a launch-argument
+What this file settles. On 2026-09-27 four families gained a launch-argument
 resolution and a launcher -- the three off-diagonal ``update_E`` singles and the
 mirror fill over the certified in-seam kernels -- so the CUDA table can compose a
 folded run and an off-diagonal D/E seam without a second table. Four questions decide
@@ -25,7 +25,7 @@ whether that can be trusted, and each has a section below:
    condition rung 6b refuses on (a fill slot with no kernel) no longer holds. The
    twin is never split across two tables.
 
-NOTHING HERE NEEDS A DEVICE. The kernel modules that import CuPy at scope are loaded
+Nothing here needs a device. The kernel modules that import CuPy at scope are loaded
 against NumPy wearing CuPy's name for the duration of one test and REMOVED from
 ``sys.modules`` afterwards (the ``meep_gpu/conftest.py`` guard fails a test that
 leaves a stand-in behind, and a kernel module bound to the stand-in would be the same
@@ -206,7 +206,7 @@ def registered_arm(family: str, slot: str) -> arms.ArmSpec:
 
 
 # ---------------------------------------------------------------------------
-# 1. REGISTRY AND CERTIFICATION
+# 1. Registry and certification
 # ---------------------------------------------------------------------------
 
 def test_the_launchable_arms_are_exactly_the_nine():
@@ -217,7 +217,7 @@ def test_the_launchable_arms_are_exactly_the_nine():
 
 
 def test_every_launchable_arm_has_a_certification_row_for_its_own_family():
-    """Launchable, certified, and certified FOR THE KERNELS THE LAUNCHER COMPILES."""
+    """Launchable, certified, and certified for the kernels the launcher compiles."""
     context = arms.StepContext(fields=None, pml=None, grid=None)
     ledger = fastpath_cuda.fingerprints()
     blocks = fastpath_cuda.certification()
@@ -264,11 +264,12 @@ def test_the_new_certification_rows_point_at_their_own_byte_gates():
     assert rows["cuda:mirror fill"] == ("cuda_mirror_fill", "in_seam_2026-08-21")
     # A certification row is what the device-identity rung reads its architecture
     # from, so a new row must not widen the validated list.
-    assert fastpath_cuda.validated_compute_capabilities() == ("8.6",)
+    # Retires 8.6 alone: 8.9 is listed from its ledger runs, not from a certification row.
+    assert fastpath_cuda.validated_compute_capabilities() == ("8.6", "8.9")
 
 
 def test_the_launcher_entry_points_are_the_modules_own_kernel_names():
-    """Compiled BY ENTRY POINT, and each entry point is the module's own name."""
+    """Compiled by entry point, and each entry point is the module's own name."""
     assert arms.launch_offdiag._ENTRY_POINTS == {  # noqa: SLF001
         "update_E": offdiag_emitter.KERNEL_NAME}
     assert arms.launch_folded_offdiag._ENTRY_POINTS == {  # noqa: SLF001
@@ -302,7 +303,7 @@ def test_no_driver_slot_is_left_without_an_arm():
 
 
 # ---------------------------------------------------------------------------
-# 2. THE OFF-DIAGONAL LAUNCHES, BOUND AND RUN
+# 2. The off-diagonal launches, bound and run
 # ---------------------------------------------------------------------------
 
 #: family -> (kernel module stem, kernel name, emitted-source builder, evaluator)
@@ -521,7 +522,7 @@ def test_a_launcher_that_warms_from_the_context_is_handed_it():
 
 
 # ---------------------------------------------------------------------------
-# 3. THE FILL: TWO PASSES, BOUND AND RUN AROUND THE WALL WIPE
+# 3. The fill: two passes, bound and run around the wall wipe
 # ---------------------------------------------------------------------------
 
 def _folded(axes: str = "", phases=(), boundaries=None, extent: float = 2.0,
@@ -708,7 +709,7 @@ def test_the_fill_arm_refuses_complex_storage_for_its_own_reason(xp):
 
 
 # ---------------------------------------------------------------------------
-# 4. THE MERGE, AND THE FOLD RUNG'S CONDITION
+# 4. The merge, and the fold rung's condition
 # ---------------------------------------------------------------------------
 
 def _merged_alone(plan) -> Tuple[Any, Dict[str, Any]]:
@@ -729,7 +730,7 @@ def test_a_folded_real_run_composed_by_this_table_alone_covers_both_fills(
     assert {"fill_B", "fill_D"} <= set(plan.launchable)
     merged, refused = _merged_alone(plan)
     assert merged.selected["fill_B"] == merged.selected["fill_D"] == "cuda:mirror fill"
-    # THE RUNG'S OWN CONDITION (fastpath.py rung 6b): a fold is refused whole when
+    # The rung's own condition (fastpath.py rung 6b): a fold is refused whole when
     # any far-fill-owning slot is not dispatchable while another slot is.
     assert fastpath._fold_description(grid) is not None  # noqa: SLF001
     assert not set(fastpath.FAR_FILL_PASSES) - set(merged.plans)

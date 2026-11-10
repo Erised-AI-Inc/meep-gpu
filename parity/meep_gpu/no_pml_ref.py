@@ -85,7 +85,7 @@ def _pairwise_order(sf, f, s, ss, dtdx):
     """``dtdx * ((sf - f) + (s - ss))``, the package's tree before MEEP's grouping.
 
     ``stepping._curl_from_operands`` no longer writes it; a consumer that holds it is
-    holding the pre-alignment grouping, as a control or a planted mutant. The probe
+    holding the package's pre-1.0 grouping, as a control or a planted mutant. The probe
     names the same tree ``pairwise_order``.
     """
     return dtdx * ((sf - f) + (s - ss))
@@ -94,16 +94,16 @@ def _pairwise_order(sf, f, s, ss, dtdx):
 def _kernel_order(sf, f, s, ss, dtdx):
     """``dtdx * (((sf - f) + s) - ss)``, C's left-to-right (step_generic.cpp:104).
 
-    MEEP's grouping, and ``stepping._curl_from_operands``'s since the array path was
-    aligned to it.
+    MEEP's grouping, and ``stepping._curl_from_operands``'s since the array path
+    adopted it.
     """
     return dtdx * (((sf - f) + s) - ss)
 
 
-#: THE CURL GROUPINGS THIS REFERENCE CAN EVALUATE, by name. Each consumer names
+#: The curl groupings this reference can evaluate, by name. Each consumer names
 #: the one it takes as its reference and the one it holds as its control
 #: (``kernel_order``, MEEP's, is every consumer's reference and the default;
-#: ``pairwise_order``, the pre-alignment tree, is the control or the planted mutant),
+#: ``pairwise_order``, the package's tree before MEEP's, is the control or the planted mutant),
 #: so re-grouping one consumer's reference is an edit to that consumer and to no
 #: other, and a new grouping is a new row here rather than a new branch inside
 #: :func:`reference_plain_step`.

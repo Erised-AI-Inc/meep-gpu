@@ -353,7 +353,7 @@ def test_the_composer_routes_this_product_and_the_driver_seam_released_it():
     ``_install_fused_pair``, taking both slots only when ``_pair_may_absorb`` finds
     the arm table has already given them to the arms this kernel implements.
 
-    WIRING WAS NOT RELEASING, and this is the file where that sentence ended. It
+    Wiring was not releasing, and this is the file where that sentence ended. It
     was named ``..._and_dispatch_still_refuses_it`` for as long as the label sat
     outside ``fastpath.RELEASED_FUSED_ARMS``; on 2026-09-11
     ``dispatch_fused_route_2026-09-11_realarms`` drove it through the driver's own
@@ -364,7 +364,7 @@ def test_the_composer_routes_this_product_and_the_driver_seam_released_it():
     keep the old name and the old assertion, which is what makes the two states
     legible per file.
 
-    THIS ONE WAS ALREADY ON THE CERTIFIED SIDE OF THE PARTITION, which the other
+    This one was already on the certified side of the partition, which the other
     three released with it were not: its ledger entry
     (``triton_cylindrical_real_fused_magnetic_pair_device_gate``) was cut on
     2026-08-20, long before any case drove it, so the release is the only half
@@ -453,11 +453,11 @@ def test_the_gates_transcription_leg_traces_every_arithmetic_line_to_its_source(
 def test_the_curls_ownership_mask_is_observable_in_the_gates_own_fixture():
     """A mask whose value is already present measures nothing when it is dropped.
 
-    Under the aligned forms ``Ep`` is exactly ``+0`` on both masked planes after any
-    ``update_E`` (``E = D * inv_eps`` off E's own layer, ``Dp[0] = 0``, ``Dy`` cleared on
-    the wall), so the mask is visible only to the first ``step_B`` of a fixture that
-    seeds ``E`` itself. The gate's fixture seeds it, and this contract is what stops a
-    future harness from quietly un-seeding it.
+    Under MEEP's per-chunk forms (docs/design/floating-point.md#alignment-with-meep) ``Ep``
+    is exactly ``+0`` on both masked planes after any ``update_E`` (``E = D * inv_eps``
+    off E's own layer, ``Dp[0] = 0``, ``Dy`` cleared on the wall), so the mask is visible
+    only to the first ``step_B`` of a fixture that seeds ``E`` itself. The gate's fixture
+    seeds it, and this contract is what stops a future harness from quietly un-seeding it.
     """
     row = load_gate().mask_observability_leg()
     assert row["findings"] == [], row["findings"]

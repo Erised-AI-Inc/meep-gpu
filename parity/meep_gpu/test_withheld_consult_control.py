@@ -7,7 +7,7 @@ computed. Two things about that were wrong until 2026-09-14, and both are silent
 failures of the kind this tree is built to catch — a control that passes while
 measuring nothing, and a control that fails while measuring nothing.
 
-THE FIRST IS WHAT IT WITHHELD. A three-slot weld is ONE product with TWO device
+The first is what it withheld. A three-slot weld is ONE product with TWO device
 groups (``cuda_kernels.fused_pairs.CudaFusedTriplePlan``), and
 ``_install_fused_triple`` puts the trailing group — a ``_TripleHalfPlan``, which
 LAUNCHES — into ``update_P``. Its ``absorbed_by`` names the TRIPLE and it has no
@@ -21,7 +21,7 @@ passed the same control with their second group equally suppressed — they dive
 off the constitutive accumulation instead — which is a pass on a composition the
 control does not describe.
 
-THE SECOND IS WHERE THE MECHANISM EXISTS AT ALL. ``stepping.update_E`` forks on
+The second is where the mechanism exists at all. ``stepping.update_E`` forks on
 ``_pml_is_active``: the active arm ACCUMULATES, so a second application is a wrong
 answer and the control is armed; the inactive arm is a pure OVERWRITE, so a second
 application is the identity and the control has no armed direction whatever the
@@ -256,7 +256,7 @@ def _leg_with(plans: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def test_a_trailing_group_that_did_not_launch_is_a_failure_not_a_skip():
-    """THE POSITIVE HALF, and the mutation that must redden it.
+    """The positive half, and the mutation that must redden it.
 
     Leaving a device group running is only honest while the row can show it ran. The
     group's own counter is the witness: consulted twelve times, it must have launched

@@ -2,11 +2,11 @@
 """Byte gate for the COMPLEX CONDUCTIVE fused pair: no-PML conductive ``step_D``
 welded into complex stored-E ``update_E``.
 
-THE CLAIM THIS GATE IS ALLOWED TO SUPPORT: for every configuration
+The claim this gate is allowed to support: for every configuration
 :func:`~meep_gpu.triton_kernels.complex_conductive_fused_pair.complex_conductive_fused_pair_coverage`
 admits, ONE launch of ``complex_conductive_fused_curl_constitutive_D`` leaves the
 engine in a state that is BIT-IDENTICAL, over every dynamic volume, on the uint32
-word view, PER COMPLETE DRIVER STEP, to BOTH
+word view, per complete driver step, to BOTH
 
   * the CuPy ARRAY PATH (``stepping.step_D`` -> ``stepping.update_E``), and
   * the SEPARATELY CERTIFIED Triton products it replaces — the complex conductive
@@ -16,7 +16,7 @@ word view, PER COMPLETE DRIVER STEP, to BOTH
 
 ``allclose`` appears nowhere.
 
-WHY THIS SEAM IS EMPTY, AND WHY THAT IS THE DESIGN QUESTION RATHER THAN A SHRUG.
+Why this seam is empty, and why that is the design question rather than a shrug.
 The driver runs four passes between the two halves. This family carries NONE of
 them and REFUSES each by a named clause instead:
 
@@ -35,7 +35,7 @@ harness installs the fused plan in ``step_D`` and ``update_E`` ONLY, leaves the
 other three on the array path, and COUNTS them. A run in which one of the three did
 work would show as a counter event rather than as an invisible correction.
 
-WHAT THIS GATE REFUSES TO INFER
+What this gate refuses to infer
 ===============================
 
 * **Bytes alone cannot prove the fused path ran.** A silent fallback is
@@ -54,7 +54,7 @@ WHAT THIS GATE REFUSES TO INFER
   mutation case carries FOUR poles on every component, so the order-reversal needle
   has somewhere to be caught; a one-pole row would report it as a null.
 
-THE FAMILY IS NOT WIRED. ``launch.plan_step`` assigns at most one plan per slot and
+The family is not wired. ``launch.plan_step`` assigns at most one plan per slot and
 this product spans two of them with no measured composition rule. Nothing in
 ``launch.py`` names it and ``fastpath`` is unchanged.
 
@@ -89,7 +89,7 @@ FAMILY_MODULE = "meep_gpu/triton_kernels/complex_conductive_fused_pair.py"
 
 #: ``(name, poles, kind, conductive, k_point, steps)``.
 #:
-#: EVERY AXIS IS A COMPILE-TIME ARM, NOT DECORATION:
+#: Every axis is a compile-time arm, not decoration:
 #:   poles      ``NP0``/``NP1``/``NP2`` compile a DIFFERENT NUMBER of subtraction
 #:              arms. A one-pole row cannot discriminate the chain's ORDER at all.
 #:   conductive ``COND0``/``COND1``/``COND2`` gate the conductive tail per target;
@@ -98,7 +98,7 @@ FAMILY_MODULE = "meep_gpu/triton_kernels/complex_conductive_fused_pair.py"
 #:   k_point    ``CNX``/``CNY``/``CNZ`` gate the Bloch connection of the unshifted
 #:              partners on plane 0. A zero-k row leaves all three unfilled.
 #:
-#: THE FIRST ROW IS THE CORPUS SHAPE: one pole, all three components conductive,
+#: The first row is the corpus shape: one pole, all three components conductive,
 #: which is what ``TestLoadDump.test_load_dump_*_3d`` drives.
 CASES: Tuple[Tuple[str, int, str, Tuple[bool, bool, bool],
                    Tuple[float, float, float], int], ...] = (
@@ -114,7 +114,7 @@ CASES: Tuple[Tuple[str, int, str, Tuple[bool, bool, bool],
      (0.23, 0.0, 0.0), 10),
 )
 
-#: THE LOSSLESS ROW IS A REFUSAL CASE, NOT A PRODUCT CASE, and the distinction is
+#: The lossless row is a refusal case, not a product case, and the distinction is
 #: the family boundary rather than a gap in the sweep. With no conductivity on any
 #: target the curl half refuses BY NAME — "no curl target carries a conductivity;
 #: the lossless complex no-PML family owns this slot" — because a DIFFERENT
@@ -149,7 +149,7 @@ ABSORBED: Tuple[str, ...] = ("step_D", "update_E")
 #: listed so a renamed volume cannot silently drop out of the comparison; this
 #: tuple is the tripwire for the scan itself shrinking.
 #:
-#: ``Hx``/``Hy``/``Hz`` ARE DELIBERATELY NOT HERE, and their absence is a fact
+#: ``Hx``/``Hy``/``Hz`` are deliberately not here, and their absence is a fact
 #: about this family rather than a gap in the check. This is the NO-PML branch:
 #: with no absorber and mu = 1 the engine keeps no separate magnetic volume — the
 #: curl's source IS the stored ``B`` — so a run that carried ``Hx`` would not be
@@ -209,7 +209,7 @@ def build_driver(cp, poles, kind, conductive, k_point, seed: int,
         (1.45 + 0.30 * np.sin(index * np.float32(0.037))).astype(np.float32))
     driver.set_epsilon(cp.asarray(epsilon))
 
-    # THE CONDUCTIVITY IS PER COMPONENT, and the mask is the point of the mixed
+    # The conductivity is per component, and the mask is the point of the mixed
     # rows: `conductive_no_pml_targets` reads a per-target flag, and a component
     # with none compiles the SPLIT tail instead of the conductive one.
     if any(conductive):
@@ -248,7 +248,7 @@ def build_driver(cp, poles, kind, conductive, k_point, seed: int,
 
 
 #: Private ``Fields`` attributes that are HARNESS SCRATCH rather than state, and
-#: are excluded from the compared inventory for a MEASURED reason.
+#: are excluded from the compared inventory for a measured reason.
 #:
 #: ``_fmp_scratch`` is allocated LAZILY by the array path's own ``update_E``, so a
 #: route that substitutes that pass never creates it — and the two inventories then
@@ -256,11 +256,11 @@ def build_driver(cp, poles, kind, conductive, k_point, seed: int,
 #: gate's first campaign reported ``{'reason': 'asymmetric', 'names':
 #: ['_fmp_scratch']}`` as a byte divergence on all five product rows and broke the
 #: step loop at step 1, so every row was scored over ONE step and none of them
-#: measured what it exists to measure. THE ASYMMETRY IS STILL RECORDED —
+#: measured what it exists to measure. The asymmetry is still recorded —
 #: ``inventory_asymmetry_vs_array`` carries it per row and ``verdict_of`` fails on a
 #: non-empty list — it just no longer masquerades as a divergence.
 #:
-#: THE RULE IS THE LEADING UNDERSCORE, not this list: a private attribute is not
+#: The rule is the leading underscore, not this list: a private attribute is not
 #: physical state, and every PUBLIC volume stays in the comparison.
 PRIVATE_SCRATCH: Tuple[str, ...] = ("_fmp_scratch",)
 
@@ -281,7 +281,7 @@ def inventory(driver) -> Dict[str, Any]:
         raise AssertionError(
             f"the state scan lost {missing}; the comparison inventory is not "
             f"complete and every row below would pass for that reason")
-    # AND THE CURL'S OWN SOURCES, by IDENTITY rather than by name. On this no-PML
+    # And the curl's own sources, by IDENTITY rather than by name. On this no-PML
     # branch the sub-step's source accessor returns the stored B arrays themselves,
     # so asking for "Hx" would be asking for a volume this configuration does not
     # have — while asking whether the scan CONTAINS the object the plan will read is
@@ -393,7 +393,7 @@ class _Absorbed:
 def install(driver_module, routes, counter: Dict[str, int], roles: Dict[int, str]):
     """Replace the named passes for the fields objects in ``routes``.
 
-    INSTALLED ON ALL FIVE NAMES, not only the two this product replaces: the point
+    Installed on all five names, not only the two this product replaces: the point
     of the counter is to record that the other three ran on the ARRAY PATH in the
     fused route too, which is what "the seam is empty" means operationally.
     """
@@ -487,7 +487,7 @@ def run_leg(cp, name: str, case, product, mutant: Any = None,
             raise AssertionError(f"the product refused the case: {verdict.reasons}")
         row["plan"] = repr(plan)
         row["plan_replaces"] = list(plan.replaces)
-        # THE REPLACES CLAIM IS ASSERTED, not trusted: a product that claimed five
+        # The replaces claim is asserted, not trusted: a product that claimed five
         # call sites here while carrying none of the three in between would be
         # licensing an inline pass it does not perform.
         if tuple(plan.replaces) != ABSORBED:
@@ -554,14 +554,14 @@ def run_leg(cp, name: str, case, product, mutant: Any = None,
             set(final) - set(ever_moved) - set(material))
         row["material_changed"] = sorted(key for key in material
                                          if key in ever_moved)
-        # THE ASYMMETRY IS RECORDED, not compared through. See PRIVATE_SCRATCH.
+        # The asymmetry is recorded, not compared through. See PRIVATE_SCRATCH.
         row["inventory_asymmetry_vs_array"] = sorted(
             set(final).symmetric_difference(snapshot(cp, reference)))
         row["private_scratch_on_the_array_route"] = sorted(
             name for name in vars(reference.fields) if name in PRIVATE_SCRATCH)
         row["private_scratch_on_the_fused_route"] = sorted(
             name for name in vars(fused.fields) if name in PRIVATE_SCRATCH)
-        # THE POLE ARRAYS ARE READ, NEVER WRITTEN, BY THIS SEAM. `update_P` runs
+        # The pole arrays are read, never written, by this seam. `update_P` runs
         # after `update_E` and is outside it, so the pole volumes MUST have moved
         # (the run is live) and the fused route's must equal the array path's.
         row["polarization_volumes_seen"] = len(opening_poles)
@@ -656,7 +656,7 @@ def shipped_block() -> str:
 
 def compile_mutant(source: str, entry: str):
     """Compile one mutated kernel pair from a REAL FILE."""
-    # THE MODULE NAME MUST NOT START WITH ``triton``: Triton's dependency finder
+    # The module name must not start with ``triton``: Triton's dependency finder
     # leaves callees of a ``triton*`` module out of the kernel's cache key, so
     # helper-only mutants would key alike and be served one binary (measured on the
     # off-diagonal gate, 2026-10-08; gate_triton_complex.compile_mutated).
@@ -694,7 +694,7 @@ def _renamed(source: str, suffix: str) -> Tuple[str, str]:
 
 
 MUTATIONS: Dict[str, Tuple[str, str, str, str]] = {
-    # ---- THE SEAM ITSELF: the one substitution this weld makes -------------
+    # ---- The seam itself: the one substitution this weld makes -------------
     "seam_reloads_D_instead_of_taking_the_register":
         (MUTATION_CASE,
          "    s0_re, s0_im = _subtract_complex_poles_in_registers(\n"
@@ -703,7 +703,7 @@ MUTATIONS: Dict[str, Tuple[str, str, str, str]] = {
          "        tl.load(f0 + word, mask=live, other=0.0),\n"
          "        tl.load(f0 + word + 1, mask=live, other=0.0),\n"
          "        a0, a1, a2, a3, a4, a5, a6, a7, word, live, NP0)",
-         # A RELOAD OF THE VOLUME THE SAME LAUNCH JUST WROTE. On this kernel the
+         # A reload of the volume the same launch just wrote. On this kernel the
          # store precedes the constitutive half, so the reload reads the same word
          # the register holds — for the lane that wrote it. It is armed as a NULL
          # with that reason, because the interesting fact is that the D STORE IS
@@ -722,7 +722,7 @@ MUTATIONS: Dict[str, Tuple[str, str, str, str]] = {
          "    s2_re, s2_im = _subtract_complex_poles_in_registers(\n"
          "        curl2_re, curl2_im, q0, q1, q2, q3, q4, q5, q6, q7, word, live, NP2)",
          "catch"),
-    # ---- THE POLE CHAIN: the order is bit-load-bearing ---------------------
+    # ---- The pole chain: the order is bit-load-bearing ---------------------
     "pole_chain_order_reversed":
         (MUTATION_CASE,
          "    if NP > 0:\n"
@@ -761,7 +761,7 @@ MUTATIONS: Dict[str, Tuple[str, str, str, str]] = {
          "        imag = imag - tl.load(p0 + word + 1, mask=live, other=0.0)\n",
          "        imag = imag - tl.load(p0 + word, mask=live, other=0.0)\n",
          "catch"),
-    # ---- THE inv_eps MULTIPLY ---------------------------------------------
+    # ---- The inv_eps multiply ---------------------------------------------
     "inv_eps_word_doubled":
         (MUTATION_CASE,
          "        s0_re, s0_im, tl.load(iv0 + idx, mask=live, other=0.0))",
@@ -778,8 +778,8 @@ MUTATIONS: Dict[str, Tuple[str, str, str, str]] = {
          "    o1_re, o1_im = _subtract_complex_poles_in_registers(\n"
          "        p1_re, p1_im, b0, b1, b2, b3, b4, b5, b6, b7, word, live, NP1)\n",
          "catch"),
-    # ---- THE CONDUCTIVE TAIL ----------------------------------------------
-    # THE CONDUCTIVE TAIL is `D *= condfac; D -= curl; D *= condinv`, three in-place
+    # ---- The conductive tail ----------------------------------------------
+    # The conductive tail is `D *= condfac; D -= curl; D *= condinv`, three in-place
     # complex64 operations that each round before the next begins. Handing the tail
     # its own inverse where the factor belongs collapses the pair.
     "conductive_factor_and_inverse_swapped":
@@ -804,9 +804,10 @@ MUTATIONS: Dict[str, Tuple[str, str, str, str]] = {
          "        factor = tl.load(cf1 + idx, mask=live, other=0.0)\n"
          "        v1_re, v1_im = _mul_field_left(v1_re, v1_im, factor)\n",
          "catch"),
-    # ---- THE CERTIFIED COMPLEX BASE ----------------------------------------
-    # THE INVERSION (KERNELS.md section 7.1): the previous package grouping of the
-    # curl, ``dtdx * ((g1s - g1) + (g2 - g2s))``, against MEEP's left-to-right stencil.
+    # ---- The certified complex base ----------------------------------------
+    # INVERTED (must be caught): the previous package grouping of the curl,
+    # ``dtdx * ((g1s - g1) + (g2 - g2s))``, against MEEP's left-to-right stencil
+    # (docs/development/certification.md#inverted-grouping-mutations).
     "previous_pairwise_grouping":
         (MUTATION_CASE,
          "    curl1_re = curl_stencil(a_z_re, a1_re, c1_re, c_x_re, dtdx, pz, px)",
@@ -962,7 +963,7 @@ def leg_needle_reachability() -> Dict[str, Any]:
         present = old in block
         chain = guard_chain(block, old) if present else []
         holds = guard_chain_holds(chain, context) if present else None
-        # A NEEDLE THAT SWALLOWS ITS OWN ``if`` HAS NO ENCLOSING CHAIN, and the
+        # A needle that swallows its own ``if`` has no enclosing chain, and the
         # reachability question moves INSIDE it. `pole_chain_order_reversed`
         # rewrites four `if NP > n:` arms and `conductive_*` rewrite `if COND*:`
         # ones; scored on a case that does not compile them, each would rewrite
@@ -996,17 +997,17 @@ def leg_needle_reachability() -> Dict[str, Any]:
 
 
 def leg_mutants_compile() -> Dict[str, Any]:
-    """EVERY MUTANT MUST PARSE, and this is checked on the laptop.
+    """Every mutant must parse, and this is checked on the laptop.
 
     A needle that deletes the whole body of an ``if`` leaves an empty block, and the
-    mutant is then an ``IndentationError`` rather than a defect. MEASURED ON
-    THE GPU HOST 2026-08-30: the cylindrical twin's ``m_one_axis_clear_dropped`` did exactly that and killed
+    mutant is then an ``IndentationError`` rather than a defect. Measured on
+    the GPU host 2026-08-30: the cylindrical twin's ``m_one_axis_clear_dropped`` did exactly that and killed
     that campaign 146 seconds in, AFTER thirteen mutations had already been scored —
     so the cost of finding it on a device is the whole run, and the cost of finding
     it here is a syntax parse. This family's needles are checked by the same leg
     rather than trusted because none of them happens to delete a block today.
 
-    THIS IS NOT A SUBSTITUTE FOR THE DEVICE LEG. A mutant that parses may still be
+    This is not a substitute for the device leg. A mutant that parses may still be
     unreachable, byte-invisible or wrong about what it edits; those are what
     ``needle_reachability`` and the mutation rows measure. This leg answers one
     question only, and it answers it before a GPU is asked for.
@@ -1027,7 +1028,7 @@ def leg_mutants_compile() -> Dict[str, Any]:
         except SyntaxError as exc:  # noqa: PERF203 - one row per mutation
             rows.append({"mutation": name, "parsed": False,
                          "error": f"{type(exc).__name__}: {exc}"})
-    # AND THE PRISTINE BLOCK ITSELF, so a leg that reported every mutant broken
+    # And the pristine block itself, so a leg that reported every mutant broken
     # because the SHIPPED text stopped parsing says which it was.
     try:
         ast.parse(block)
@@ -1081,7 +1082,7 @@ def leg_transcription() -> Dict[str, Any]:
         "    # ==================== the constitutive half ===="))
     curl_missing = [line for line in curl_lines if line not in fused_statements]
 
-    # THE POLE HELPER, statement for statement against the certified one. Its two
+    # The pole helper, statement for statement against the certified one. Its two
     # OPENING LOADS are the only lines the weld removes, so they are the only ones
     # allowed to be missing — and they are named rather than tolerated.
     # The END anchor carries the DECORATOR of the next definition, so the certified
@@ -1138,7 +1139,7 @@ def leg_refusal(cp) -> Dict[str, Any]:
     finally:
         driver.close()
 
-    # THE FAMILY BOUNDARY. With no conductivity on any target the curl half refuses
+    # The family boundary. With no conductivity on any target the curl half refuses
     # by name and a DIFFERENT certified product owns the slot. Measured here rather
     # than assumed, because a fused pair that admitted it would be stepping a
     # configuration whose certified arithmetic is not the one it compiles.
@@ -1188,6 +1189,7 @@ def leg_refusal(cp) -> Dict[str, Any]:
 # ===========================================================================
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
+    import neutral_ids  # noqa: PLC0415
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", required=True)
     parser.add_argument("--steps", type=int, default=None)
@@ -1250,7 +1252,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             f"measured here")
         log(f"[device] SKIPPED cleanly: {results['skipped']['device']}")
         results["verdict"] = "SKIPPED_DEVICE"
-        # NO DEVICE, NO RELEASE, and all three of the board's conditions fail by
+        # No device, no release, and all three of the board's conditions fail by
         # construction rather than by omission. A laptop run measured no bytes and
         # must never be readable as one that did.
         results["device_status"] = "NO_DEVICE"
@@ -1328,7 +1330,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     results["failed_rows"] = [row.get("label", row.get("case", row.get("leg")))
                               for row in rows if not row.get("passed")]
     results["elapsed_seconds"] = time.time() - started
-    # THE DEVICE IDENTITY, RECORDED WHERE THE LEDGER TOOLS READ IT (2026-09-15).
+    # The device identity, recorded where the ledger tools read it (2026-09-15).
     # ``seed_triton_welds.py`` cuts a weld only from an artifact whose own
     # ``environment`` carries ``device``, ``compute_capability`` and ``hostname``,
     # and composes the weld's host line through ``rebind_triton_welds._host_line``
@@ -1343,22 +1345,22 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     # ``probe_triton_no_pml_fused_electric_pair.py`` does.
     import triton_device_identity  # noqa: PLC0415
     results["environment"] = triton_device_identity.record({
-        "argv": list(sys.argv),
+        "argv": neutral_ids.argv(sys.argv),
         "python": sys.version.split()[0],
         "numpy": np.__version__,
         "cupy": getattr(cp, "__version__", None),
-        "cupy_cache_dir": os.environ.get("CUPY_CACHE_DIR"),
+        "cupy_cache_dir": neutral_ids.path(os.environ.get("CUPY_CACHE_DIR")),
         "subnormal_policy_stamp": results.get("policy_stamp"),
     })
 
     # ------------------------------------------------------------------
-    # THE RELEASE RECORD, in the shape the fleet's readers require.
+    # The release record, in the shape the fleet's readers require.
     #
     # ``gate_provenance.read_verdict`` normalises the outcome for the campaign
     # driver, and ``build_triton_fusion_matrix``'s GATE_BOUND branch requires ALL
     # of ``device_status == "RUN"``, ``release.released is True`` and ``passed is
-    # True`` before it will credit a cell to this artifact. A FALSE ``released`` IS
-    # THE TRAP THAT BRANCH IS WRITTEN AGAINST: a laptop run that measured no bytes
+    # True`` before it will credit a cell to this artifact. A false ``released`` is
+    # the trap that branch is written against: a laptop run that measured no bytes
     # on any device must not be readable as a release, so the no-device path above
     # writes ``device_status = "NO_DEVICE"`` and ``released = False`` and every one
     # of the three conditions fails by construction.
@@ -1369,7 +1371,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     results["device_status"] = "RUN"
     results["passed"] = results["verdict"] == "PASS"
     results["planted_defect"] = False
-    # THE POLICY BLOCK IS THE INSTALLED MODULE'S OWN STAMP (2026-09-15), in the shape
+    # The policy block is the installed module's own stamp (2026-09-15), in the shape
     # the artifacts of the seeded Triton welds carry -- read off
     # ``triton_fleet_2026-09-14_target_B/folded_dispersive_fused_pair/gate.json``:
     # ``policy`` ieee_keep_ftz_stripped, ``requested`` and ``resolved`` keep, and
@@ -1390,11 +1392,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     }
     results["source_sha256"] = {
         FAMILY_MODULE: sha256_of(os.path.join(API_ROOT, FAMILY_MODULE)),
-        # KEYED BY ITS REPO-RELATIVE PATH, not by the word "gate". Every reader of
+        # Keyed by its repo-relative path, not by the word "gate". Every reader of
         # this map — ``build_triton_fusion_matrix``'s GATE_BOUND branch and the
         # weld-record walk — resolves each key against the tree and re-hashes it,
         # so a key that is not a path resolves to nothing and is reported as DRIFT
-        # on every cut. Measured 2026-08-31: it was, on both of this round's gates.
+        # on every cut. Measured 2026-08-31 on two gates, this one included: it was.
         "parity/meep_gpu/probe_triton_complex_conductive_fused_pair.py": sha256_of(os.path.abspath(__file__)),
         "meep_gpu/triton_kernels/complex_no_pml_conductive.py": sha256_of(
             os.path.join(API_ROOT,

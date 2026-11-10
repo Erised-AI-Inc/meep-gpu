@@ -1,17 +1,17 @@
 """The COMPLEX/BLOCH fused Metal pair: complex ``step_D`` welded into ``update_E``.
 
-THE D-SIDE TWIN OF :mod:`.complex_fused_magnetic_pair`, and the largest cell the
+The D-side twin of :mod:`.complex_fused_magnetic_pair`, and the largest cell the
 Metal fusion board had left unbuilt: 16 corpus instances, the biggest
 ``would_fit_not_built`` entry on either seam. Its B/H sibling shipped 16/16 on the
 mirror cell; this is the same construction on the other half of the step.
 
-ONE DISPATCH FOR ALL THREE COMPONENTS. The separate composition for this
+One dispatch for all three components. The separate composition for this
 configuration is TWO device dispatches (the certified complex curl, then the
 certified complex constitutive) plus one host wall pass on a walled run; this is
 ONE, and the complex displacement never leaves a register.
 
-EVERYTHING HERE IS TRANSCRIBED, and the two halves are not re-spelled at all — they
-are SPLICED FROM THE CERTIFIED COMPLEX EMITTERS' OWN OUTPUT:
+Everything here is transcribed, and the two halves are not re-spelled at all — they
+are spliced from the certified complex emitters' own output:
 
 * the D curl half — :func:`.complex_fields.bloch_curl_source` with ``backward=True``
   (complex_fields.py:248-343), whose body is lifted verbatim by
@@ -35,7 +35,7 @@ certified complex arithmetic" is a property of the construction that a reader ca
 check by running :func:`certified_curl_body`.
 
 ===========================================================================
-THE SIGNATURE — 30 pointers plus one packed struct, EXACTLY ON THE CEILING
+The signature — 30 pointers plus one packed struct, exactly on the ceiling
 ===========================================================================
 
     3 D  +  3 fu_D  +  3 H        (float2, the curl half)
@@ -44,7 +44,7 @@ THE SIGNATURE — 30 pointers plus one packed struct, EXACTLY ON THE CEILING
   + 6 curl coefficients  +  6 constitutive coefficients   (float32)
   = 30 pointers, + one ``constant Params&`` = 31 bindings
 
-31 IS :data:`.device.MAX_BUFFER_BINDINGS` — THE COUNT, NOT THE HEADROOM. One more
+31 is :data:`.device.MAX_BUFFER_BINDINGS` — the count, not the headroom. One more
 pointer of any kind is a compile error, measured on this toolchain (torch 2.10.0,
 MPS) rather than asserted: a 15-``float2``/15-``float``/``Params`` probe COMPILES
 at 31 and the same probe with one more ``float`` FAILS with ``'buffer' attribute
@@ -52,7 +52,7 @@ parameter is out of bounds: must be between 0 and 30``. That is why the eight
 non-pointer arguments ride PACKED and why :data:`SEPARATE_SCALAR_BINDINGS` is
 spelled as data.
 
-**THE THREE INVERSE-EPSILON POINTERS ARE WHY THIS IS 30 AND THE MAGNETIC TWIN IS
+**The three inverse-epsilon pointers are why this is 30 and the magnetic twin is
 27**, and the difference is physics rather than layout, exactly as it is between
 :mod:`.fused_electric_pair` and :mod:`.fused_magnetic_pair`: ``update_H`` is
 ``H = B`` with mu = 1 baked into the array path, so the magnetic pair drops the
@@ -60,18 +60,18 @@ three volumes the certified constitutive keeps; ``update_E`` cannot, because its
 product is ``source * inverse_epsilon_for(component)`` (stepping.py:1011-1013) with D
 on the LEFT, and all three volumes are read.
 
-**THE INVERSE EPSILON STAYS float32 UNDER COMPLEX STORAGE.** ``c_mul_field_left``
+**The inverse epsilon stays float32 under complex storage.** ``c_mul_field_left``
 takes a ``float2`` and a ``float`` — one real coefficient per cell, applied to both
 planes — so these three bind ``device const float*`` and are indexed by the COMPLEX
 CELL index, never word-doubled. Had they widened with the fields this signature
 would need 33 pointers and could not be built at all.
 
-**THE COEFFICIENTS STAY float32 TOO, AND THAT IS LOAD-BEARING** — the invariant
+**The coefficients stay float32 too, and that is load-bearing** — the invariant
 :mod:`.complex_fused_magnetic_pair` records at stepping.py:41-50. Twelve
 coefficient buffers, not twenty-four.
 
 ===========================================================================
-THE TWO YEE SUB-LATTICES, AND WHY THEY ARE CROSSED HERE
+The two Yee sub-lattices, and why they are crossed here
 ===========================================================================
 
 The D curl reads the INTEGER split-field coefficients ``kms_a``/``sinv_a`` and the
@@ -84,7 +84,7 @@ pointers and never asks which lattice they came from, so a swap on either group 
 a silent half-cell error in the absorber profile.
 
 ===========================================================================
-THE SEAM, AND WHAT SITS INSIDE IT — measured from the driver, not assumed
+The seam, and what sits inside it — measured from the driver, not assumed
 ===========================================================================
 
 The driver runs FIVE passes between ``step_D`` and ``update_E``
@@ -111,13 +111,13 @@ The driver runs FIVE passes between ``step_D`` and ``update_E``
   fill slots dead for every configuration this family admits. A FOLDED complex D/E
   seam is a different product and is NOT built here.
 
-THE STRUCT FIELD ORDER IS THE MAGNETIC TWIN'S, AND FOR THE MEASURED REASON IT
-GIVES: Metal aligns ``float2`` to 8 bytes, so with the scalars first the natural
+The struct field order is the magnetic twin's, and for the measured reason it
+gives: Metal aligns ``float2`` to 8 bytes, so with the scalars first the natural
 44-byte host record puts every phase one word early and reads back as a plausible
 complex number rather than as garbage. The three ``float2`` members come FIRST and
 :func:`params_record_dtype` is the one home for the layout.
 
-NOT WIRED AS AN ARM, for the reason every fused pair records: ``plan_step`` assigns
+Not wired as an arm, for the reason every fused pair records: ``plan_step`` assigns
 at most one arm per slot and this product spans three. It registers ``wired=False``
 and reaches its two slots through ``launch.FUSED_PAIR_ARMS`` instead.
 """
@@ -145,17 +145,17 @@ from .. import deposit_repair as _deposit_repair
 #: builds -- that the leading slot saves and the trailing slot restores -- and is only
 #: ever changed in the same edit as that wiring.
 #:
-#: TRUE FROM THE FIRST COMMIT OF THIS FAMILY, in the same edit as the
+#: True from the first commit of this family, in the same edit as the
 #: ``launch.FUSED_PAIR_ARMS`` row that lets the seam loop bracket it. Three things
 #: hold, and none of them is new here:
 #:
-#: * THE ARITHMETIC ON COMPLEX STORAGE was measured for the magnetic twin --
+#: * The arithmetic on complex storage was measured for the magnetic twin --
 #:   ``deposit_repair`` indexes and accumulates element-wise over one ``complex64``
 #:   array per component (deposit_repair.py:118-129, :146-168) and needs no change --
 #:   and ``test_deposit_repair.py``'s ``COMPLEX_CASES`` is that measurement.
-#: * THE ELECTRIC BRANCH is the one :mod:`.fused_electric_pair` already drives, with
+#: * The electric branch is the one :mod:`.fused_electric_pair` already drives, with
 #:   the same ``'D'`` pair label and the same two wrappers.
-#: * THE FOLD BOUNDARY DOES NOT APPLY. What held the two folded complex families at
+#: * The fold boundary does not apply. What held the two folded complex families at
 #:   ``False`` is that a folded seam runs ``fill_symmetry_bc_D`` /
 #:   ``fill_folded_far_ghosts_D`` AFTER the injection. This family REFUSES every
 #:   mirrored axis by name in its own predicate below, so no configuration it admits
@@ -228,7 +228,7 @@ __HELPERS__
 
 __RECORD_STRUCT__
 
-// THE THREE float2 MEMBERS COME FIRST. Metal aligns float2 to 8 bytes, so with the
+// The three float2 members come first. Metal aligns float2 to 8 bytes, so with the
 // scalars first this struct needs internal padding and the natural host record puts
 // every phase one word early — measured on this toolchain, and it reads as a
 // plausible complex number rather than as garbage. Phases first, no internal padding.
@@ -273,7 +273,7 @@ kernel void complex_fused_electric_pair_step(
     constant Params&     prm     [[buffer(30)]],
     uint idx [[thread_position_in_grid]])
 {
-    // THE EIGHT PACKED ARGUMENTS ARE UNPACKED INTO THE CERTIFIED BODIES' OWN NAMES,
+    // The eight packed arguments are unpacked into the certified bodies' own names,
     // once, before any of the lifted text runs. Everything below this line is then
     // character-for-character what `complex_fields.bloch_curl_source` and
     // `complex_fields.bloch_constitutive_source` emit, plus the wall clear.
@@ -339,7 +339,7 @@ def certified_constitutive_body(contract: str = shaders.CONTRACT_OFF) -> str:
     * the decode prologue is dropped (the curl half already emitted it);
     * the three targets ``f0``/``f1``/``f2`` become ``h0``/``h1``/``h2``.
 
-    THE INVERSE EPSILON IS **NOT** RENAMED, and that is the whole reason this lift is
+    The inverse epsilon is **not** renamed, and that is the whole reason this lift is
     two edits where :func:`.fused_electric_pair.certified_constitutive_body` needs
     three with a placeholder. That family renames its E target onto ``e``, which
     collides with the inverse epsilon and forces the crossing rename; this one takes
@@ -347,7 +347,7 @@ def certified_constitutive_body(contract: str = shaders.CONTRACT_OFF) -> str:
     meaning the certified body gave them and the fused signature declares them under
     that same name. One fewer rename is one fewer place a volume can be swapped.
 
-    THE SOURCE LINES ARE NOT EDITED HERE. ``float2 src0 = c_mul_field_left(g0[ii],
+    The source lines are not edited here. ``float2 src0 = c_mul_field_left(g0[ii],
     e0[ii]);`` is left standing and :func:`complex_fused_electric_pair_source` is
     what turns it into the register — so the seam is one visible substitution in one
     place. That also resolves the one genuine name collision in this splice: ``g0``
@@ -446,8 +446,8 @@ def complex_fused_electric_pair_source(
     # THE SEAM, and it is exactly three lines. The certified complex E body opens each
     # component with `float2 srcN = c_mul_field_left(gN[ii], eN[ii]);` — a RELOAD of
     # the complex displacement the curl just stored, scaled by the inverse
-    # permittivity. Fused, the reload becomes the live register and NOTHING ELSE
-    # MOVES: the inverse-epsilon factor stays on the right and D stays on the LEFT,
+    # permittivity. Fused, the reload becomes the live register and nothing else
+    # moves: the inverse-epsilon factor stays on the right and D stays on the LEFT,
     # which is the order `c_mul_field_left` means and the order the array path writes
     # (stepping.py:1011-1013) — not a commutation this transcription is entitled to
     # make.
@@ -463,7 +463,7 @@ def complex_fused_electric_pair_source(
             f"    // THE SEAM: the register step_D just wrote, not a reload of "
             f"D{'xyz'[target]}.\n"
             f"    float2 src{target} = c_mul_field_left(v{target}, e{target}[ii]);\n")
-    # THE CURL'S `g` IS H AND THE CONSTITUTIVE'S `g` WAS D. After the seam there must
+    # The curl's `g` is H and the constitutive's `g` WAS D. After the seam there must
     # be no `g` left in the electric half at all -- one surviving read would take the
     # magnetic field as a displacement, which is a smooth, plausible, entirely wrong
     # answer rather than a crash.
@@ -617,12 +617,12 @@ def metal_complex_fused_electric_pair_coverage(
     if not electric.covered:
         reasons.extend(f"constitutive half: {reason}" for reason in electric.reasons)
 
-    # THE SOURCE SEAM, and for this family it is the clause that decides whether the
+    # The source seam, and for this family it is the clause that decides whether the
     # cell is worth anything at all: every one of the 16 census rows admitting both
     # halves carries an electric source. An ELECTRIC source is injected BETWEEN the
     # two halves (driver.py:3294-3299), so a fused pair would consume a pre-injection
     # D unless the deposit repair brackets the launch — which for this family it does.
-    # IGNORANCE IS NEVER AN EMPTY SET: `Fields` does not hold the source list, so a
+    # Ignorance is never an empty set: `Fields` does not hold the source list, so a
     # predicate that inferred "no sources" from not being told would be the
     # over-covering refusal this clause exists to prevent. A MAGNETIC source is
     # injected in the B/H half and does NOT disqualify the pair.
@@ -643,7 +643,7 @@ def metal_complex_fused_electric_pair_coverage(
         return Coverage(False,
                         tuple(dict.fromkeys(reasons + ["fields carries no grid"])))
 
-    # THE TWO FILLS. Both halves already refuse a mirror plane
+    # The two fills. Both halves already refuse a mirror plane
     # (complex_fields._complex_grid_reasons clause 4), so this restates by NAME what
     # that refusal buys on THIS seam — a reader should not have to chase a shared grid
     # clause to learn that two driver passes sit between the halves on a folded grid.
@@ -739,7 +739,7 @@ class MetalComplexFusedElectricPairPlan(KernelPlan):
 def params_record_dtype() -> Any:
     """The host record's dtype — THE THREE ``float2`` MEMBERS FIRST, itemsize 144.
 
-    ONE HOME FOR THE LAYOUT, because getting it wrong is a silent wrong answer rather
+    One home for the layout, because getting it wrong is a silent wrong answer rather
     than a crash: see :mod:`.complex_fused_magnetic_pair` for the measurement. The
     offsets are stated EXPLICITLY even though the phases-first order makes them the
     natural ones, so that the record cannot drift into agreeing with Metal only by
@@ -761,7 +761,7 @@ def _params_tensor(shape: Sequence[int], dtdx: float,
                    chunk_words: Any) -> Any:
     """The five scalars, three phases and the chunk record as one 144-byte record.
 
-    PLAN-OWNED AND OUTSIDE THE RESIDENCY REGISTRY, for the reason the magnetic twin's
+    Plan-owned and outside the residency registry, for the reason the magnetic twin's
     ``_params_tensor`` gives: :meth:`.Residency.mirror` binds float32 and complex64
     volumes and refuses anything else BY NAME, because a wider element silently
     reinterprets. This record is neither, so it is built here, once, at plan time, and
@@ -830,7 +830,7 @@ def plan_metal_complex_fused_electric_pair(
         volumes.append(name)
         return residency.mirror(name, host, constant=True)
 
-    # THE ORDER HERE IS THE SIGNATURE'S ORDER and nothing else keeps them in step, so
+    # The order here is the signature's order and nothing else keeps them in step, so
     # the groups are built in the order the kernel declares them.
     flux = [bind_complex(name, getattr(fields, name)) for name in ("Dx", "Dy", "Dz")]
     auxiliary = [bind_complex("fu_" + name, getattr(fields, "fu_" + name))
@@ -841,13 +841,13 @@ def plan_metal_complex_fused_electric_pair(
                 for name in ("Ex", "Ey", "Ez")]
     workspace = [bind_complex("f_w_" + name, getattr(fields, "f_w_" + name))
                  for name in ("Ex", "Ey", "Ez")]
-    # THE INVERSE EPSILON IS float32 UNDER COMPLEX STORAGE — one real coefficient per
+    # The inverse epsilon is float32 under complex storage — one real coefficient per
     # cell, applied to both planes by `c_mul_field_left`, indexed by the COMPLEX CELL
     # index. Three pointers, not six.
     inverse_epsilon = [
         bind_real("inv_eps_" + name, fields.inverse_epsilon_for(name))
         for name in ("Ex", "Ey", "Ez")]
-    # THE D CURL TAKES THE INTEGER LATTICE and the E constitutive the HALF-INTEGER one
+    # The D curl takes the integer lattice and the E constitutive the HALF-INTEGER one
     # (complex_fields.SUB_STEPS['step_D']['suffix'] == '';
     # CONSTITUTIVE_SIDES['E']['half_integer'] is True). That is the OPPOSITE pairing
     # to the B/H pair, and the kernel cannot tell — the gate carries a host mutation
@@ -905,7 +905,7 @@ def _arm_plan(context: Any,
 def register_arms() -> Tuple[Any, ...]:
     """One row on ``step_D``, ``wired=False``.
 
-    THE FLAG IS THE WHOLE COMPOSITION STORY, as it is on every other pair.
+    The flag is the whole composition story, as it is on every other pair.
     ``plan_step`` assigns at most one arm per slot and this product spans three, so
     there is no slot it could claim through the arm table. Registering unwired keeps
     it ENUMERABLE for the disjointness sweep (``arms.registered``) while
@@ -913,7 +913,7 @@ def register_arms() -> Tuple[Any, ...]:
     arm's selection changes — including the ``complex/Bloch`` curl and constitutive
     arms this pair's own predicate is built out of.
 
-    THE OTHER HALF IS THE ABSORB TABLE. ``launch._install_fused_pairs`` reaches this
+    The other half is the absorb table. ``launch._install_fused_pairs`` reaches this
     row through ``arms.registered`` precisely BECAUSE it is registered — ``is_weld``
     with ``replaces`` covering ``update_E`` — and
     ``launch.FUSED_PAIR_ARMS["complex_fused_electric_pair"]`` declares which arm each

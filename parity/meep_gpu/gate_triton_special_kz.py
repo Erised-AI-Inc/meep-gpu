@@ -7,7 +7,7 @@ choice the kernels could not force by construction — the term's position betwe
 curl and mask, the subtraction-as-negated-add, the unrotated center partner, the
 HAS_BETA constexpr's identity arm — is HELD HERE, empirically, per platform.
 
-CLONED from the complex tranche's certified harness (``gate_triton_complex.py``),
+CLONED from the complex family's certified harness (``gate_triton_complex.py``),
 and deliberately IMPORTING it rather than restating: the subnormal
 policy machinery (``install_ftz_strip`` / ``ftz_strip_license_reasons`` /
 ``policy_stamp``), the complex reference transcription (``complex_curl`` / ``complex_mask``
@@ -26,8 +26,8 @@ measured).
 Legs, in order:
 
 * ``reference``  — a SECOND transcription of the beta curl sub-steps (the
-  laptop test file carries a third): the aligned curl (MEEP's left-to-right
-  stencil by partner presence, the chunk forms keyed on the run's record) and
+  laptop test file carries a third): the curl in MEEP's per-chunk arithmetic (its left-to-right
+  stencil by partner presence, the chunk forms keyed on the run's record; see docs/design/floating-point.md#alignment-with-meep) and
   then MEEP's beta pass after every component's curl (step_db.cpp:161-175)
   through its additive ladder (``fold_pass_reference``), and the record-keyed
   constitutive with MEEP's start of H, pinned against ``stepping.step_B``/
@@ -53,8 +53,8 @@ Legs, in order:
   beta+chi2/chi3, no-PML+beta, conductivity cross-refusal in BOTH directions
   (this module refuses conductive targets; ``conductivity.py`` refuses beta),
   C5 complex+fold+beta recorded as a predicted null ('complex-by-fold
-  inherited from the complex tranche, not a beta gap'), R9 folded-real
-  recorded as Phase B deferred.
+  inherited from the complex family, not a beta gap'), R9 folded-real
+  recorded as deferred and refused by name.
 * ``mutations``  — armed and launch-counted, DISARMED/NEEDLE-MISSED are
   failures, each scored per family (an OR would let a family-specific miss
   hide behind the other family's catch) at its declared expectation: the beta
@@ -194,7 +194,7 @@ def write_provenance(results_dir: str) -> str:
             "parity/gate_triton_special_kz.py": gate._digest(
                 os.path.abspath(__file__)),
         },
-        "tranche": "special_kz (grid.beta) — Phase A",
+        "tranche": "special_kz (grid.beta), unfolded grids",
     }
     composition = os.path.join(_HERE, "probe_triton_special_kz_composition.py")
     if os.path.exists(composition):
@@ -208,7 +208,7 @@ def real_beta_pml_step(xp: Any, arrays: Dict[str, Any],
                        sub_step: str, boundaries: Sequence[str],
                        beta: float, dt: float, record: Sequence[int],
                        words: Optional[Tuple[float, float]] = None) -> None:
-    """One REAL beta curl sub-step, in place: the aligned real curl and its chunk
+    """One REAL beta curl sub-step, in place: the real curl in MEEP's per-chunk arithmetic and its chunk
     forms (``gate_triton_symmetry.reference_pml_step`` keyed on ``record``), then
     MEEP's beta pass after every component's curl through its ladder
     (``fold_pass_reference.beta_pass``). ``words`` defaults to the host-rounded pair
@@ -231,7 +231,7 @@ def complex_beta_pml_step(xp: Any, arrays: Dict[str, Any],
                           phases: Sequence[Optional[complex]],
                           beta: float, dt: float, record: Sequence[int],
                           words: Optional[Tuple[float, float]] = None) -> None:
-    """One COMPLEX beta curl sub-step, in place: the complex gate's aligned curl and
+    """One COMPLEX beta curl sub-step, in place: the complex gate's curl in MEEP's per-chunk arithmetic and
     chunk forms per part (``gate_triton_complex.complex_pml_step``), then MEEP's beta
     pass -- a quarter turn of the partner's parts by one host-rounded word -- after
     every component's curl (``fold_pass_reference.beta_pass``)."""
@@ -770,7 +770,7 @@ def run_refusals(results: Dict[str, Any], out_path: str) -> Dict[str, Any]:
            f"beta side: {[r for r in mine if 'conductivity' in r]}; "
            f"conductive side: {[r for r in theirs if 'beta' in r]}")
 
-    # C5: complex + fold + beta — predicted null, the complex tranche's gap.
+    # C5: complex + fold + beta — predicted null, the complex family's gap.
     fields, _unused = build(symmetry=("X",), complex_storage=True, beta=0.2,
                             skip_pml=True)
     pml = _mirror_pml(fields.grid)
@@ -779,18 +779,18 @@ def run_refusals(results: Dict[str, Any], out_path: str) -> Dict[str, Any]:
     record("c5_complex_fold_beta_predicted_null",
            any("fold" in r.lower() or "mirror" in r for r in reasons),
            "predicted null with reason: complex-by-fold inherited from the "
-           "complex tranche's composition gap, not a beta gap "
+           "complex family's composition gap, not a beta gap "
            f"(binary_grating/eigsrc_0 anchors); reasons={list(reasons)[:3]}")
 
-    # R9: the folded REAL family is Phase B — recorded as deferred, by name.
+    # R9: the folded REAL family is deferred; the kernel's refusal reason calls it "Phase B".
     fields, _unused = build(symmetry=("X",), beta=0.2, skip_pml=True)
     pml = _mirror_pml(fields.grid)
     reasons = special_kz.beta_pml_curl_coverage(fields, pml, "step_B").reasons
     record("r9_folded_real_phase_b_deferred",
            any("Phase B" in r for r in reasons),
-           "Phase B (folded real beta curl restating symmetry.py's clauses; "
+           "the folded real beta curl (restating symmetry.py's clauses; "
            "unlocks test_eigsrc_kz_1_real_imag) is DEFERRED and refused by "
-           f"name in Phase A; reasons={[r for r in reasons if 'Phase B' in r]}")
+           f"name; reasons={[r for r in reasons if 'Phase B' in r]}")
 
     leg = {"rows": rows, "failures": failures,
            "m11_note": ("predicate mutations (drop offdiag-real clause, drop "
@@ -1088,7 +1088,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     device_available = cp is not None and _TRITON_AVAILABLE
     results: Dict[str, Any] = {
         "seed": SEED,
-        "tranche": "special_kz (grid.beta) — Phase A: plain real + plain complex",
+        "tranche": "special_kz (grid.beta), unfolded grids: plain real + plain complex",
         "granularity": "sub-step (the composition probe holds the whole-step "
                        "claim)",
         "correctness_only": "no throughput or timing claims in this artifact",

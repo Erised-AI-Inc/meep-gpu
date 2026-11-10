@@ -97,7 +97,7 @@ def code_of(path: pathlib.Path) -> str:
 def test_the_dependency_between_dispatch_and_this_package_runs_ONE_WAY():
     """File ownership, enforced rather than agreed — and the direction is the point.
 
-    ``fastpath.py`` now dispatches this track, so it names it; that is the round
+    ``fastpath.py`` now dispatches this track, so it names it; that is the change
     that wired the driver seam. What must NOT happen is the reverse. Nothing in
     this package may know a dispatcher exists, for two reasons that both bite:
 
@@ -110,22 +110,22 @@ def test_the_dependency_between_dispatch_and_this_package_runs_ONE_WAY():
 
     So the dispatch vocabulary — the runnable slot names, the null and fused arm
     labels, the warm helper — lives in ``fastpath.py``, and its agreement with
-    what this package actually writes is MEASURED against a real composition in
+    what this package actually writes is measured against a real composition in
     ``test_dispatch_contract`` rather than asserted by a shared symbol.
 
     ``stepping.py`` keeps the stricter rule unchanged: it is the ORACLE every gate
     compares against, and it must stay free of the track that is measured against
     it. The hand-CUDA track stays walled off from both.
 
-    THE SEAM NOW COMPOSES ALL THREE TABLES AND THE RULE IS NO LONGER "WHICH ONE IS
-    NAMED". ``fastpath.py`` composes the Triton table here, the hand-CUDA table
+    The seam now composes all three tables and the rule is no longer "which one is
+    named". ``fastpath.py`` composes the Triton table here, the hand-CUDA table
     through the one function-local import measured below, and the Metal table
     through the sibling ``meep_gpu/metal_dispatch.py``. So "``cuda_kernels`` is not
-    named in ``fastpath.py``" stopped being the boundary on the day Phase 2 landed,
-    and what replaced it is a STRUCTURAL clause rather than a weaker one: the import
-    must be function-local, and it must sit inside ``_decide`` — below the backend
-    rung, which is what keeps a NumPy step off a package that needs a device.
-    ``test_package_boundary`` measures the runtime half of the same rule.
+    named in ``fastpath.py``" stopped being the boundary once the hand-CUDA table became
+    a second arm table (2026-09-11), and what replaced it is a STRUCTURAL clause rather
+    than a weaker one: the import must be function-local, and it must sit inside
+    ``_decide`` — below the backend rung, which keeps a NumPy step off a package that
+    needs a device. ``test_package_boundary`` measures the runtime half of the same rule.
     """
     for path in PACKAGE_DIR.glob("*.py"):
         code = code_of(path)
@@ -141,12 +141,12 @@ def test_the_dependency_between_dispatch_and_this_package_runs_ONE_WAY():
 def _assert_the_cuda_import_is_function_local_and_below_the_backend_rung(engine):
     """Every ``cuda_kernels`` import in ``fastpath.py``, measured off the parse tree.
 
-    TWO CLAUSES, AND THE SECOND IS THE ONE THAT MATTERS AT RUNTIME:
+    Two clauses, and the second is the one that matters at runtime:
 
-    * MODULE LEVEL IS FORBIDDEN. ``cuda_kernels`` reaches modules that import cupy
+    * Module level is forbidden. ``cuda_kernels`` reaches modules that import cupy
       at module scope, so a module-level import here is an ImportError on every
       NumPy host and a needless NVRTC pull-in on the rest.
-    * IT MUST BE INSIDE ``_decide``. That is where the backend rung lives; an import
+    * It must be inside ``_decide``. That is where the backend rung lives; an import
       in any other function could be reached from a NumPy step, which is exactly the
       pull-in ``test_package_boundary`` measures the consequence of.
     """
@@ -172,6 +172,253 @@ def _assert_the_cuda_import_is_function_local_and_below_the_backend_rung(engine)
         assert id(node) in inside_decide, (
             f"fastpath.py:{node.lineno} imports cuda_kernels outside _decide, so a "
             "step that never reached the backend rung could pull in the package")
+
+
+# ---------------------------------------------------------------------------
+# Packaging: the supported recipe and the certified recipe
+# ---------------------------------------------------------------------------
+#
+# pyproject.toml installs the device libraries two ways. The SUPPORTED extras
+# take a lower bound and no upper bound, so newer releases install and run,
+# recorded as not certified. The CERTIFIED extras pin the exact versions the
+# certification record was cut on. These tests hold both to that, and read the
+# certified versions from the records rather than from a second copy here.
+
+REPOSITORY = pathlib.Path(launch_module.__file__).parents[2]
+LINUX_X86_64 = "sys_platform == 'linux' and platform_machine == 'x86_64'"
+DARWIN_ARM64 = "sys_platform == 'darwin' and platform_machine == 'arm64'"
+#: Each extra, and the platform marker every device library in it carries.
+SUPPORTED_EXTRAS = {"nvidia": LINUX_X86_64, "nvidia-cuda11": LINUX_X86_64,
+                    "fdtd-gpu": LINUX_X86_64, "fdtd-gpu-triton": LINUX_X86_64,
+                    "apple": DARWIN_ARM64}
+CERTIFIED_EXTRAS = {"nvidia-certified": LINUX_X86_64, "apple-certified": DARWIN_ARM64}
+#: Operators that cap a range: an upper bound, or a pin.
+CAPPING = ("<", "<=", "==", "===", "~=")
+
+
+def pyproject_text() -> str:
+    return (REPOSITORY / "pyproject.toml").read_text(encoding="utf-8")
+
+
+def declared_project(text: str) -> dict:
+    """``[project]`` of a pyproject.toml text, read by a TOML parser."""
+    try:
+        import tomllib  # noqa: PLC0415
+    except ModuleNotFoundError:  # Python 3.10, where pytest itself depends on tomli
+        import tomli as tomllib  # noqa: PLC0415
+    return tomllib.loads(text)["project"]
+
+
+def parse_requirement(entry: str) -> tuple:
+    """``(name, referenced extra or None, {operator: version}, marker)`` of one entry."""
+    import re  # noqa: PLC0415
+
+    requirement, _, marker = (part.strip() for part in entry.partition(";"))
+    match = re.fullmatch(r"([A-Za-z0-9_.-]+)(?:\[([A-Za-z0-9_,.-]+)\])?\s*(.*)", requirement)
+    assert match, f"unreadable requirement {entry!r}"
+    name, extra, specifiers = match.groups()
+    pins = {}
+    for specifier in filter(None, (part.strip() for part in specifiers.split(","))):
+        operator = re.match(r"(===|==|~=|!=|<=|>=|<|>)", specifier)
+        assert operator, f"unreadable specifier {specifier!r} in {entry!r}"
+        pins[operator.group(1)] = specifier[operator.end():].strip()
+    return name.lower(), extra, pins, marker
+
+
+def resolved_entries(project: dict, name: str) -> list:
+    """An extra's entries, with the distribution's references to its own extras expanded.
+
+    The distribution's name is read, not spelled: tools/rename_distribution.py renames
+    it, and these references with it.
+    """
+    extras, own = project["optional-dependencies"], project["name"].lower()
+    entries = []
+    for entry in extras[name]:
+        requirement, extra, _, _ = parse_requirement(entry)
+        if requirement == own and extra in extras:
+            entries += resolved_entries(project, extra)
+        else:
+            entries.append(entry)
+    return entries
+
+
+def certified_stack() -> dict:
+    """The certified versions, each read from the record that holds it.
+
+    CuPy and its CUDA major from every compute capability's certified NVIDIA stack
+    (``fastpath.certified_nvidia_stacks()``; the CUDA major is that of the NVRTC the
+    record names); Triton from the Triton ledger; PyTorch on
+    Apple silicon from the Metal certification records; PyTorch on Linux from the
+    certification reference environment's pip lock, the one record that names it,
+    found by the name ``numerics-relevant.json`` gives it.
+    """
+    import json  # noqa: PLC0415
+    import re  # noqa: PLC0415
+
+    from meep_gpu import fastpath, metal_dispatch  # noqa: PLC0415
+
+    locks = REPOSITORY / "environments" / "locks"
+    platforms = json.loads((locks / "numerics-relevant.json").read_text(
+        encoding="utf-8"))["platforms"]
+    lock = (locks / platforms["linux-64"]["pip_lock"]).read_text(encoding="utf-8")
+    stacks = list((fastpath.certified_nvidia_stacks() or {}).values())
+    assert stacks, "no compute capability records a certified NVIDIA stack"
+    cuda_major = {nvrtc.split(".")[0] for stack in stacks for nvrtc in stack["nvrtc"]}
+    return {
+        "cupy": {cupy for stack in stacks for cupy in stack["cupy"]},
+        "cupy_wheels": {f"cupy-cuda{major}x" for major in cuda_major},
+        "triton": set(fastpath.validated_triton_versions()),
+        "torch_linux": set(re.findall(r"(?m)^torch==(\S+)\s", lock)),
+        "torch_darwin": set(metal_dispatch.certified_values("torch")),
+        "triton_minimum": ".".join(str(part) for part in fastpath.TRITON_MINIMUM_VERSION),
+    }
+
+
+def supported_problems(project: dict, stack: dict) -> list:
+    """Every way a supported extra stops being a forward-looking range."""
+    extras = project["optional-dependencies"]
+    problems = []
+    for name, platform in SUPPORTED_EXTRAS.items():
+        if name not in extras:
+            problems.append(f"{name}: not declared")
+            continue
+        entries = [parse_requirement(entry) for entry in resolved_entries(project, name)]
+        if not entries:
+            problems.append(f"{name}: installs nothing")
+        for requirement, _, pins, marker in entries:
+            where = f"{name}: {requirement}"
+            if marker != platform:
+                problems.append(f"{where} is not marked {platform!r}")
+            if requirement == "triton":
+                ceilings = {op: v for op, v in pins.items() if op in CAPPING}
+                if ceilings:
+                    problems.append(f"{where} carries an upper bound or a pin {ceilings}")
+                if pins.get(">=") != stack["triton_minimum"]:
+                    problems.append(f"{where} has floor {pins.get('>=')}, not the package's "
+                                    f"minimum Triton {stack['triton_minimum']}")
+            elif requirement == "torch":
+                ceilings = {op: v for op, v in pins.items() if op in CAPPING}
+                if ceilings:
+                    problems.append(f"{where} carries an upper bound or a pin {ceilings}")
+                floor = stack["torch_linux" if platform == LINUX_X86_64 else "torch_darwin"]
+                if pins.get(">=") not in floor:
+                    problems.append(f"{where} has floor {pins.get('>=')}, not the certified "
+                                    f"version {sorted(floor)}")
+            elif requirement.startswith("cupy-cuda"):
+                ceilings = {op: v for op, v in pins.items() if op in CAPPING}
+                if ceilings:
+                    problems.append(f"{where} carries an upper bound or a pin {ceilings}")
+                if pins.get(">=") not in stack["cupy"]:
+                    problems.append(f"{where} has floor {pins.get('>=')}, not the certified "
+                                    f"CuPy {sorted(stack['cupy'])}")
+            else:
+                problems.append(f"{where} is not a device library of this route")
+    return problems
+
+
+def certified_problems(project: dict, stack: dict) -> list:
+    """Every way a certified extra drifts from the versions the records name."""
+    extras = project["optional-dependencies"]
+    expected = {
+        "nvidia-certified": {**{wheel: stack["cupy"] for wheel in stack["cupy_wheels"]},
+                             "triton": stack["triton"], "torch": stack["torch_linux"]},
+        "apple-certified": {"torch": stack["torch_darwin"]},
+    }
+    problems = []
+    for name, platform in CERTIFIED_EXTRAS.items():
+        if name not in extras:
+            problems.append(f"{name}: not declared")
+            continue
+        seen = set()
+        for entry in extras[name]:
+            requirement, extra, pins, marker = parse_requirement(entry)
+            where = f"{name}: {requirement}"
+            seen.add(requirement)
+            if extra is not None:
+                problems.append(f"{where}[{extra}] refers to another extra; a certified "
+                                f"recipe states every pin itself")
+            if marker != platform:
+                problems.append(f"{where} is not marked {platform!r}")
+            if set(pins) != {"=="}:
+                problems.append(f"{where} is {pins}, not one exact pin")
+            elif requirement not in expected[name]:
+                problems.append(f"{where}=={pins['==']} is not in the certified stack "
+                                f"{sorted(expected[name])}")
+            elif pins["=="] not in expected[name][requirement]:
+                problems.append(f"{where}=={pins['==']} is not the certified version "
+                                f"{sorted(expected[name][requirement])}")
+        for missing in sorted(set(expected[name]) - seen):
+            problems.append(f"{name}: {missing} is not pinned")
+    return problems
+
+
+def test_the_supported_extras_install_newer_releases():
+    """A floor at the certified version, no ceiling on CuPy, Triton or PyTorch, a platform marker.
+
+    PyTorch pins an exact Triton on linux-x86_64 (2.5.1 pins 3.1.0), so a Triton pin
+    beside an open PyTorch range would be an unsolvable conflict for every newer
+    PyTorch. Triton has no Metal backend and CuPy no Apple build, so each extra is
+    installable and inert off its platform, as on the laptop that is the merge bar.
+    """
+    problems = supported_problems(declared_project(pyproject_text()), certified_stack())
+    assert problems == [], problems
+
+
+def test_the_certified_extras_pin_the_stack_the_records_name():
+    """One exact pin per library, each equal to the record that certifies it.
+
+    The CuPy wheel is the CUDA major of the NVRTC the record names: a CuPy built for
+    another CUDA major loads another NVRTC, which MEEP_GPU_HARDWARE=certified refuses.
+    """
+    problems = certified_problems(declared_project(pyproject_text()), certified_stack())
+    assert problems == [], problems
+
+
+def test_the_records_each_name_one_certified_version():
+    """An empty record would make every pin above fail, or none: say which instead."""
+    stack = certified_stack()
+    for key in ("cupy", "cupy_wheels", "triton", "torch_linux", "torch_darwin"):
+        assert len(stack[key]) == 1, (key, stack[key])
+
+
+#: The last ``triton`` entry of the file, the one in ``fdtd-gpu-triton``.
+_FDTD_GPU_TRITON = f"triton>=3.1; {LINUX_X86_64}\"\n]"
+
+
+@pytest.mark.parametrize("old,new", [
+    pytest.param("triton>=3.1; ", "triton>=3.1,<3.2; ", id="nvidia-cuda11-triton-ceiling"),
+    pytest.param(_FDTD_GPU_TRITON, f"triton>=3.1,<3.2; {LINUX_X86_64}\"\n]",
+                 id="fdtd-gpu-triton-triton-ceiling"),
+    pytest.param("triton>=3.1; ", "triton==3.1.0; ", id="nvidia-cuda11-triton-pinned"),
+    pytest.param("torch>=2.5.1; ", "torch>=2.5.1,<2.6; ", id="nvidia-torch-ceiling"),
+    pytest.param("torch>=2.10.0; ", "torch==2.10.0; ", id="apple-torch-pinned"),
+    pytest.param("cupy-cuda12x>=13.5.1; ", "cupy-cuda12x>=13.5.1,<14; ",
+                 id="fdtd-gpu-cupy-ceiling"),
+    pytest.param("cupy-cuda11x>=13.5.1; ", "cupy-cuda11x>=13.5.1,<14; ",
+                 id="nvidia-cuda11-cupy-ceiling"),
+    pytest.param("cupy-cuda12x>=13.5.1; ", "cupy-cuda12x>=13.0; ", id="fdtd-gpu-cupy-floor"),
+    pytest.param(_FDTD_GPU_TRITON, "triton>=3.1\"\n]", id="fdtd-gpu-triton-marker-dropped"),
+])
+def test_a_supported_extra_that_stops_looking_forward_is_caught(old, new):
+    text = pyproject_text()
+    assert old in text, old
+    problems = supported_problems(declared_project(text.replace(old, new, 1)), certified_stack())
+    assert problems, f"{old!r} -> {new!r} was not caught"
+
+
+@pytest.mark.parametrize("old,new", [
+    pytest.param("triton==3.1.0; ", "triton==3.1.1; ", id="triton-version"),
+    pytest.param("torch==2.5.1; ", "torch==2.5.0; ", id="nvidia-torch-version"),
+    pytest.param("cupy-cuda11x==13.5.1; ", "cupy-cuda11x==13.6.0; ", id="cupy-version"),
+    pytest.param("cupy-cuda11x==13.5.1; ", "cupy-cuda12x==13.5.1; ", id="cupy-cuda-major"),
+    pytest.param("torch==2.10.0; ", "torch==2.11.0; ", id="apple-torch-version"),
+    pytest.param("triton==3.1.0; ", "triton>=3.1.0; ", id="triton-range"),
+])
+def test_a_certified_extra_that_drifts_from_the_record_is_caught(old, new):
+    text = pyproject_text()
+    assert old in text, old
+    problems = certified_problems(declared_project(text.replace(old, new, 1)), certified_stack())
+    assert problems, f"{old!r} -> {new!r} was not caught"
 
 
 # ---------------------------------------------------------------------------
@@ -209,7 +456,7 @@ def test_every_launch_site_passes_the_shared_guard_constant():
     # (a folded-grid kernel, a dispersive one) must be held to the same rule, and
     # a fixed list would have failed on its arrival instead of checking it.
     #
-    # TWO SITES ARE EXEMPT, AND THE EXEMPTION IS MEASURED, NOT ASSERTED.
+    # Two sites are exempt, and the exemption is measured, not asserted.
     #
     # The shared spelling needs ``ENABLE_FP_FUSION`` in scope, which means
     # importing kernels.py — and that import RAISES ModuleNotFoundError on a
@@ -218,7 +465,7 @@ def test_every_launch_site_passes_the_shared_guard_constant():
     # conforming module imports it unconditionally at the top of ``run``, which
     # is fine for them because their ``run`` cannot execute without Triton
     # anyway. These two families are different: they are exercised through the
-    # explicit-guard route ON THIS HOST — test_triton_complex_no_pml_stored_e.py
+    # explicit-guard route on this host — test_triton_complex_no_pml_stored_e.py
     # calls ``plan.run(guard=False)`` at :284 and :302, and those tests pass
     # here — so they bind the guard through a local under ``if guard is None``
     # and never touch kernels.py on the explicit route.
@@ -262,7 +509,7 @@ def test_every_launch_site_passes_the_shared_guard_constant():
 
 
 def test_the_guard_is_a_launch_keyword_and_never_an_options_dict():
-    """MEASURED asymmetry: the two routes fail differently and only one fails loudly.
+    """Measured asymmetry: the two routes fail differently and only one fails loudly.
 
     Passed as a JIT launch keyword, an unrecognised name RAISES. Passed inside a
     ``options={...}`` dict, an unrecognised name is SILENTLY DROPPED and the kernel
@@ -317,7 +564,7 @@ def test_the_fingerprint_record_matches_the_shipped_kernel_source():
         "kernel_source_sha256.")
     path = PACKAGE_DIR / "kernels.py"
     live = hashlib.sha256(path.read_bytes()).hexdigest()
-    # ONE HOME FOR THE RULE (device_identity.py:209). What the gate measured is
+    # One home for the rule (device_identity.py:209). What the gate measured is
     # the compiled kernels, and for Triton those ARE the ``@triton.jit`` bodies
     # plus the constants they read -- so an edit the shared rule proves left
     # those untouched cannot move the verdict. It returns False for everything
@@ -338,9 +585,9 @@ def test_the_fingerprint_record_matches_the_shipped_host_side():
 
     ``launch.py`` picks the Yee sub-lattice, binds the coefficient pointers and
     decides ``SIGMA_IS_VOLUME``; predicate and specialized modules decide whether
-    and how a kernel runs. Each is a silent wrong answer if it changes, and this
-    round supplied the
-    proof: ``plan_constitutive_from_arrays`` dropped its ``kernel=`` argument on
+    and how a kernel runs. Each is a silent wrong answer if it changes, and the
+    2026-08-10 constitutive-step work supplied the proof:
+    ``plan_constitutive_from_arrays`` dropped its ``kernel=`` argument on
     the way to the plan object and every source-mutation leg quietly launched the
     SHIPPED kernel — 4/4 real defects reported back as 120/120 identical, with
     kernels.py byte-perfect throughout.
@@ -354,7 +601,7 @@ def test_the_fingerprint_record_matches_the_shipped_host_side():
         live = hashlib.sha256(path.read_bytes()).hexdigest()
         if digest == live:
             continue
-        # ONE HOME FOR THE RULE (device_identity.py:209), and the SAME call
+        # One home for the rule (device_identity.py:209), and the SAME call
         # test_triton_planner_composition's C19 drift test makes, deliberately:
         # two spellings of "this host file moved" is two places to disagree.
         # These are host files, so only comments and docstrings are free here --
@@ -457,13 +704,18 @@ def test_the_fused_electric_record_is_welded_to_both_oracles_and_the_route():
         throughput_probe.read_bytes()).hexdigest()
 
 
+@pytest.mark.certification
 def test_the_installed_triton_version_is_one_the_gate_certified():
     """FAILS, does not skip, on an uncertified Triton. A no-op where Triton is absent.
 
-    On a machine with no Triton this is a no-op BY CONSTRUCTION rather than a skip:
-    there is no version to disagree with, and the version guard's job there is done
-    by the source-hash test above. Where Triton IS importable, an unlisted version
-    fails before anything is launched.
+    A check of the certification environment, not of the code, so it belongs to the
+    certification suite (``-m certification``), not the default one: the supported
+    extras install newer Triton releases, which the runtime admits as supported and
+    records as not certified (and refuses by name under ``MEEP_GPU_HARDWARE=certified``;
+    those tests stay in the default suite). On a machine with no Triton this is a no-op
+    BY CONSTRUCTION rather than a skip: there is no version to disagree with, and the
+    version guard's job there is done by the source-hash test above. Where Triton IS
+    importable, an unlisted version fails before anything is launched.
     """
     try:
         import triton  # noqa: PLC0415
@@ -471,31 +723,12 @@ def test_the_installed_triton_version_is_one_the_gate_certified():
         return
     validated = fingerprints()["validated_triton_versions"]
     assert triton.__version__ in validated, (
-        f"Triton {triton.__version__} is outside the validated set {validated}. "
-        "The kernels' expression grouping is held empirically by the byte gate, so "
-        "a version bump is a correctness event. To clear it: re-run the byte gate "
-        "on a CUDA host, then append the version and the new verdict to "
-        "fingerprints.json. Nothing re-records that file automatically.")
-
-
-def test_the_packaging_extra_pins_a_range_and_is_a_no_op_off_linux_x86_64():
-    """A RANGE, not an exact pin, and a platform marker.
-
-    torch 2.5.x pins ``triton==3.1.0`` on linux-x86_64, so an exact pin here would
-    be an unsolvable conflict against any environment that also wants torch. And
-    Triton has no Metal backend, so the marker is not "unvalidated on Darwin", it
-    is "unavailable" — the extra has to be installable-and-inert on the laptop that
-    is the merge bar.
-    """
-    text = (pathlib.Path(launch_module.__file__).parents[2] /
-            "pyproject.toml").read_text(encoding="utf-8")
-    assert "fdtd-gpu-triton = [" in text
-    # Split on the closing bracket at column 0: the entries themselves contain
-    # "[fdtd-gpu]", so splitting on a bare "]" truncates after the first line.
-    extra = text.split("fdtd-gpu-triton = [", 1)[1].split("\n]", 1)[0]
-    assert "triton>=3.1,<3.2" in extra, extra
-    assert "triton==" not in extra, "an exact pin conflicts with torch's own"
-    assert "sys_platform == 'linux' and platform_machine == 'x86_64'" in extra
+        f"Triton {triton.__version__} is outside the validated set {validated}: it is "
+        "not certified until the byte gate is re-run on it. The kernels' expression "
+        "grouping is held empirically by the byte gate, so a version bump is a "
+        "correctness event. To certify it: re-run the byte gate on a CUDA host, then "
+        "append the version and the new verdict to fingerprints.json. Nothing "
+        "re-records that file automatically.")
 
 
 def test_the_unbuilt_tier_is_recorded_rather_than_omitted():
@@ -808,7 +1041,7 @@ def test_mutation_dropping_the_magnetic_target_check_is_caught(monkeypatch):
 
 
 def test_mutation_admitting_a_conductivity_is_caught(monkeypatch):
-    """MUTATION 9 (spec §G.m9): the widening went one clause too far.
+    """MUTATION 9: the widening went one clause too far.
 
     Dispersion was admitted because the curl provably does not depend on it. A
     conductivity is the control: the curl genuinely DOES depend on it — a conductive
@@ -878,7 +1111,7 @@ def _with_pole(component="Ez", sigma=0.3, kind="lorentzian"):
 
 
 def test_an_electric_lorentz_pole_is_admitted_by_the_curl_predicate():
-    """THE COMPOSABILITY FIX, stated as a test.
+    """The composability fix, stated as a test.
 
     Before this pass the curl refused any registered susceptibility, which meant the
     curl kernel and the ADE kernel could never be used in the same run — the ADE
@@ -1000,7 +1233,7 @@ def test_update_E_refuses_off_diagonal_epsilon():
 
 
 def test_the_constitutive_predicate_refuses_a_fold_even_though_it_reads_no_neighbour():
-    """RISK 2, pinned: no stencil does NOT mean boundaries do not matter.
+    """Pinned: no stencil does NOT mean boundaries do not matter.
 
     ``update_H``/``update_E`` read no neighbour, which invites the reasoning "no
     stencil, so accept mirror and cylindrical". Wrong: a fold changes the STORED
@@ -1225,7 +1458,7 @@ def forms_source() -> str:
 
 
 def test_the_constitutive_kernel_reads_the_auxiliary_before_it_writes_it():
-    """RISK 4: ``_apply_constitutive_pml`` copies ``fw`` BEFORE overwriting it.
+    """``_apply_constitutive_pml`` copies ``fw`` BEFORE overwriting it.
 
     A kernel that stores ``src`` into ``f_w`` before loading ``prev`` reads its own
     write. On the array path the copy makes that impossible; in a fused kernel it is
@@ -1318,7 +1551,7 @@ def test_an_undeclared_source_set_is_a_refusal_not_an_empty_one(pair):
     """``sources=None`` must REFUSE. ``Fields`` does not hold the source list.
 
     A predicate that reads "no magnetic source" off its own ignorance is the
-    over-covering failure the plan's §10.4 names as the dangerous one: it would
+    over-covering failure, the dangerous one: it would
     dispatch a fused pair on a run whose magnetic current lands inside the seam,
     and the deposit would vanish silently.
     """
@@ -1514,7 +1747,7 @@ def test_the_fused_kernel_substitutes_the_register_for_the_reload():
     ``constitutive_step`` reads ``src0 = tl.load(g0 + idx)``; here ``g0`` is the
     CURL's source (Ex), and the constitutive source is the register. A reload would
     be bit-identical — it is a float32 register into a float32 array and back — but
-    it is the whole of the traffic this round is trying to remove, so its absence
+    it is the whole of the traffic the fused kernel exists to remove, so its absence
     is asserted rather than assumed.
     """
     body = fused_body()
@@ -1592,7 +1825,7 @@ def test_both_cross_sub_step_pairs_are_explicitly_enumerated():
 
 
 def test_plan_step_leaves_the_unfused_composition_as_the_default():
-    """The control this round is measured against must stay the default path."""
+    """The control the fused path is measured against must stay the default path."""
     assert inspect.signature(launch_module.plan_step).parameters["fuse"].default is False
 
 

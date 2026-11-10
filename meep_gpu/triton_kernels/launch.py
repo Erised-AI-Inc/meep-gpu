@@ -12,7 +12,7 @@ below:
     plan_step(fields, pml)                            -> TritonStepPlan
 
 :func:`plan_step` is the composition: it asks each predicate independently and
-reports the SUBSET of sub-steps that are covered. COVERAGE IS A SET PER SUB-STEP,
+reports the SUBSET of sub-steps that are covered. Coverage is a set per sub-step,
 not per run — a supported dispersive PML run gets the ordinary curl/H plans, the
 specialized dispersive ``update_E`` plan and ``update_P``; a non-dispersive one gets
 the ordinary E plan instead. Nothing about that mixes paths *within* a sub-step;
@@ -23,11 +23,11 @@ timestep. Everything that can be resolved ahead of the loop is resolved there:
 the coverage verdict, the boundary constexprs, the Yee sub-lattice pairing, the
 flattened coefficient views and the pointer adapters. Nothing on the launch path
 allocates — the flattening in particular is a ``reshape(-1)`` VIEW taken once,
-because doing it per launch is port-reference defect 5.14 (an allocation and a
-copy, six times a timestep, of an array the plan already owns).
+because doing it per launch costs an allocation and a copy, six times a
+timestep, of an array the plan already owns.
 
-DISPATCH IS WIRED AND ON BY DEFAULT for a driver built with ``prefer_gpu=True``.
-The driver-seam round gave ``meep_gpu.fastpath.plan_fast_path`` a real return and
+Dispatch is wired and on by default for a driver built with ``prefer_gpu=True``.
+A later change gave ``meep_gpu.fastpath.plan_fast_path`` a real return and
 the driver consults it at seven sites, so the planner is reached by a default
 run, not by tests, gates and the benchmark alone. What bounds it is the ENABLE
 and each arm's release entry, not the absence of a caller:
@@ -172,7 +172,7 @@ def cylindrical_grid_active(fields: Any) -> bool:
     reason spelled out at :func:`beta_active`: refusing to read is not evidence
     the family does not apply.
 
-    ``fields.grid`` IS READ INSIDE THE TRY, and that is not a style choice.
+    ``fields.grid`` is read inside the try, and that is not a style choice.
     Hoisted out of it — as this gate and the two below it used to have it — a
     ``fields`` whose ``grid`` attribute raises took the WHOLE composition down
     from the gate block, before a single predicate ran: measured as
@@ -408,9 +408,9 @@ def plan_offdiagonal_constitutive(fields: Any, pml: Any,
 # The four further certified families — lazy forwarders
 # ---------------------------------------------------------------------------
 #
-# THE IMPORT MUST STAY INSIDE THE BODY HERE FOR A SECOND REASON, on top of the
+# The import must stay inside the body here for a second reason, on top of the
 # lazy-import one every forwarder above carries: ``folded_complex`` and
-# ``cylindrical_complex`` both import FROM THIS MODULE at module scope
+# ``cylindrical_complex`` both import from this module at module scope
 # (folded_complex.py:283, cylindrical_complex.py:460 — ``SUB_STEPS``,
 # ``CupyPointer``, ``_flat``, ``ConstitutivePlan``). A module-scope import here
 # would close that into a cycle, and the failure would land on `import
@@ -420,7 +420,7 @@ def plan_offdiagonal_constitutive(fields: Any, pml: Any,
 # ``no_pml_constitutive`` is the one family here that ships NO KERNEL. Its
 # product is a NULL plan, because under an inactive absorber ``stepping.update_H``
 # returns at :916-917 before reading any array, and ``update_E`` does the same at
-# :954-955 WHEN ``fields.stores_E`` IS ALSO FALSE — the guard there is
+# :954-955 when ``fields.stores_E`` is also false — the guard there is
 # ``if not pml_active and not fields.stores_E``, and dropping its second half
 # (as three comments in this file used to) states something measurably untrue:
 # on a grid with field storage switched on behind an inert layer ``update_E``
@@ -486,7 +486,7 @@ def plan_folded_mirror_ghost_fill_complex(fields: Any, family: str,
                                           block: Optional[int] = None) -> Any:
     """Build one complex-storage mirror-fill plan (K2).
 
-    ITS TWO PASSES ARE LAUNCHED SEPARATELY, as ``symmetry.MirrorGhostFillPlan``'s
+    Its two passes are launched separately, as ``symmetry.MirrorGhostFillPlan``'s
     are: the plan's ``run_near`` answers the fill slot's consult and ``run_far`` the
     folded-far consult, because the driver runs ``zero_metal_*`` BETWEEN the two
     passes: a far ghost images the wall cell after the clear has zeroed it, and a
@@ -647,8 +647,8 @@ def plan_null_constitutive(fields: Any, pml: Any, side: str,
 # (results/residual_closure_2026-08-15/device/newpred/new_predicates.json). Each
 # family module carries its own numbers; they are not repeated here.
 #
-# WHY EACH IS AN ARM RATHER THAN A NARROWING OF THE INCUMBENT. Every one of these
-# predicates is disjoint from its incumbent BY THE INVERTED CLAUSE — the incumbent
+# Why each is an arm rather than a narrowing of the incumbent. Every one of these
+# predicates is disjoint from its incumbent by the inverted clause — the incumbent
 # refuses exactly what this one requires. Narrowing the incumbent's clause instead
 # would put TWO admitters on the same slot, which :func:`_select_slot` fails closed
 # on: the slot would be left UNSELECTED and fall to the array path, which is the
@@ -740,7 +740,7 @@ def plan_folded_offdiag_dispersive_constitutive(
 def folded_complex_offdiag_pml_curl_coverage(fields: Any, pml: Any, sub_step: str) -> Coverage:
     """Ask whether K1's curl may step a folded complex run carrying an off-diagonal row.
 
-    THE SCOPE CHANGE TWO BACKENDS LICENSED. ``folded_complex._media_reasons``'
+    The scope change two backends licensed. ``folded_complex._media_reasons``'
     off-diagonal clause is shared by the incumbent curl and constitutive
     predicates and refuses the row on ALL FOUR sub-steps; the row product it names
     (``stepping._offdiagonal_terms``, S:1190-1225) is reached from ``update_E``
@@ -765,9 +765,9 @@ def folded_complex_offdiag_constitutive_coverage(fields: Any, pml: Any, side: st
     """Ask whether the certified complex constitutive kernel may step that run's ``update_H``.
 
     ``side='E'`` is refused BY NAME and STAYS refused: 25041 of 110592 words
-    differing over eight complete cycles, the largest divergence the closure round
-    measured. That slot needs a complex folded off-diagonal kernel, which is not
-    built, and this arm must never claim it.
+    differing over eight complete cycles, the largest divergence measured in
+    ``results/residual_closure_2026-08-15/``. That slot needs a complex folded
+    off-diagonal kernel, which is not built, and this arm must never claim it.
     """
     from .folded_complex import (  # noqa: PLC0415
         folded_complex_offdiag_constitutive_coverage as predicate)
@@ -790,9 +790,9 @@ def no_pml_ade_update_p_coverage(fields: Any, pml: Any, state: Any,
     ``coverage.ade_update_p_coverage`` pins the EXISTENCE of ``f_w_*``; what the
     kernel needs is the LAYOUT of whatever ``Fields.drive_field`` hands it, which
     without an absorber is the stored E (fields.py:1158-1162). The inverted clause
-    REQUIRES the layer to be inert, so the two are disjoint — and the closure
-    round's CONTROL, which bound the stored E as the drive UNDER an active layer,
-    diverged 3072/15360 words, which is what the inverted clause keeps out.
+    REQUIRES the layer to be inert, so the two are disjoint — and the CONTROL leg
+    in ``results/residual_closure_2026-08-15/``, which bound the stored E as the drive
+    UNDER an active layer, diverged 3072/15360 words, which is what the inverted clause keeps out.
     """
     from .no_pml_ade import no_pml_ade_update_p_coverage as predicate  # noqa: PLC0415
     return predicate(fields, pml, state, component)
@@ -906,7 +906,7 @@ def plan_complex_stored_e(fields: Any, pml: Any,
 # The gates: which arms are even CONSULTED for a configuration
 # ---------------------------------------------------------------------------
 #
-# THE GATE RULE, stated so it stays checkable: a gate must be a NECESSARY
+# The gate rule, stated so it stays checkable: a gate must be a NECESSARY
 # condition of its arm's admission — not-gate implies the arm's own predicate
 # would have refused anyway — and it must be computed from the SAME attribute
 # the arm's inverted clause reads. Under that rule gating removes REFUSALS only,
@@ -996,7 +996,7 @@ def absorber_inactive(pml: Any) -> bool:
     stepping.py:944 and :982. An unreadable layer CONSULTS the arm, this file's
     rule everywhere; the arm then refuses it by name.
 
-    THE ONLY GATE HERE THAT READS THE LAYER RATHER THAN THE FIELDS, because the
+    The only gate here that reads the layer rather than the fields, because the
     only family it guards is the one whose product is a NULL plan. Without it the
     null arm's refusal string would be appended to every unselected constitutive
     slot on every active-PML configuration in the suite; with it, only an
@@ -1018,7 +1018,7 @@ def offdiag_rows_possible(fields: Any) -> bool:
     suppress the specialized arm exactly there, the ordinary product would win
     unopposed, and the row would be silently dropped.
 
-    REACHABILITY, MEASURED rather than assumed. Against the engine's own class
+    Reachability, measured rather than assumed. Against the engine's own class
     the flag-False/slot-live direction CANNOT occur: ``has_offdiagonal_epsilon``
     is a read-only property returning ``bool(self._chi1inv_offdiagonal)`` and
     ``chi1inv_offdiagonal_for`` reads the same dict (fields.py:1313-1319), so
@@ -1061,7 +1061,7 @@ def live_offdiagonal_rows(fields: Any) -> bool:
     coupling cannot be shown dead, and the fail-closed answer for a product that
     would drop it is the array path.
 
-    THE ACCESSOR LOOKUP IS INSIDE THE TRY, and the "unreadable is not dead"
+    The accessor lookup is inside the try, and the "unreadable is not dead"
     intent above is exactly why. It used to sit outside, so a ``fields`` whose
     ``chi1inv_offdiagonal_for`` attribute raised on ACCESS — rather than on call
     — propagated out of the veto and out of :func:`plan_step`, measured as
@@ -1085,7 +1085,7 @@ def live_offdiagonal_rows(fields: Any) -> bool:
 #: the array path because every consulted arm refuses them by name.
 #:
 #: EMPTY, and that is NOT the same claim as "every module in this package is an
-#: arm" — which is what the four-family round's version of this comment said, and
+#: arm" — which is what an earlier version of this comment said, and
 #: which is false by one module. The whole-chain dispersive fusion (``step_D`` +
 #: ``update_E`` + ``update_P`` in ONE launch, a level above the ``fuse`` and
 #: ``fuse_ade`` seams below) is not an arm, has no gate, and has no slot in
@@ -1109,7 +1109,7 @@ RESERVED_FAMILIES: Tuple[str, ...] = ()
 #: seam test compares against the shipped file.
 #:
 #: NONE of these may be imported at module scope. Two of them
-#: (``folded_complex``, ``cylindrical_complex``) import FROM THIS MODULE at their
+#: (``folded_complex``, ``cylindrical_complex``) import from this module at their
 #: own module scope, so a module-scope import here closes an import cycle; and
 #: every one of them must stay absent from ``sys.modules`` after a bare package
 #: import, which each family's own test pins on a machine with no Triton. The
@@ -1159,7 +1159,7 @@ SUPPORT_MODULES: Tuple[str, ...] = (
     "cylindrical_triton",
     "dispersive_fused_pair",
     "fused_ade_state",
-    # THE TWO FOLDED PAIRS, routed 2026-08-27 by :func:`_install_folded_fused_pairs`.
+    # The two folded pairs, routed 2026-08-27 by :func:`_install_folded_fused_pairs`.
     # They sit here beside ``dispersive_fused_pair`` rather than in
     # ``FAMILY_MODULES`` because a fused pair is not an arm: it never registers on
     # a slot, it is reached only from the opt-in ``fuse`` block, and it takes TWO
@@ -1168,7 +1168,7 @@ SUPPORT_MODULES: Tuple[str, ...] = (
     # been measured for them; ``FOLDED_FUSED_PAIR_ARMS`` is that rule.
     "folded_fused_magnetic_pair",
     "folded_fused_pair",
-    # THE INSTALLER WAVE, 2026-09-02. Twenty-five certified products routed
+    # The installer wave, 2026-09-02. Twenty-five certified products routed
     # through :func:`_install_certified_fused_products`, which is one seam loop
     # over :data:`CERTIFIED_FUSED_PRODUCTS` rather than one branch per product.
     # They sit here for the reason the two folded pairs do and not a new one: a
@@ -1177,7 +1177,7 @@ SUPPORT_MODULES: Tuple[str, ...] = (
     # the "two admitters leave the slot UNSELECTED" hazard that kept several of
     # them out of ``FAMILY_MODULES`` does not apply to this route at all.
     #
-    # THE LIST IS NOT MAINTAINED BY HAND AGAINST THE TABLE: the AST seam test
+    # The list is not maintained by hand against the table: the AST seam test
     # compares this declaration with the modules this file actually imports, and
     # ``test_triton_certified_fused_products`` additionally requires that the two
     # sets agree — a product added to the table without a line here fails both.
@@ -1189,7 +1189,7 @@ SUPPORT_MODULES: Tuple[str, ...] = (
     "complex_beta_fused_magnetic_pair",
     "complex_conductive_fused_pair",
     "complex_fused_electric_pair",
-    # THE COMPLEX H->D PRODUCT, 2026-09-07: routed for the reason the two
+    # The complex H->D product, 2026-09-07: routed for the reason the two
     # cylindrical H->D products are -- so the composer records its own
     # INSTALLABLE = False refusal by name on every complex row rather than leaving
     # an absence, and so the label boundary the Cartesian H->D product names is
@@ -1201,7 +1201,7 @@ SUPPORT_MODULES: Tuple[str, ...] = (
     "cylindrical_fused_magnetic_pair",
     "cylindrical_real_fused_electric_pair",
     "cylindrical_real_fused_magnetic_pair",
-    # THE TWO CYLINDRICAL H->D PRODUCTS, 2026-09-07: routed so the composer records
+    # The two cylindrical H->D products, 2026-09-07: routed so the composer records
     # their own refusal by name on every cylindrical row (both declare
     # INSTALLABLE = False for the arbitration reason each module states), and so
     # the label boundary the Cartesian H->D product names is closed for the seam.
@@ -1214,7 +1214,7 @@ SUPPORT_MODULES: Tuple[str, ...] = (
     "folded_complex_fused_magnetic_pair",
     "folded_complex_fused_pair",
     "folded_dispersive_fused_pair",
-    # THE TWO SCRATCH-OUTPUT OFF-DIAGONAL D->E WELDS, 2026-09-15: routed once their
+    # The two scratch-output off-diagonal D->E welds, 2026-09-15: routed once their
     # shared plan base gained a ``warm`` that never rotates. See the note above
     # :data:`CERTIFIED_FUSED_PAIR_SEAMS`.
     "folded_offdiag_fused_electric_pair",
@@ -1330,21 +1330,21 @@ def _has_libcuda_dev_symlink() -> bool:
 # vector of ``RECORD_WORDS`` words (``[a0, a1, b0, b1]`` per Yee sub-lattice and axis,
 # then the partner-presence word), bound as ONE pointer argument, ``cb``.
 #
-# A POINTER, NOT INTEGER ARGUMENTS. Triton specialises an integer argument equal to 1
+# A pointer, not integer arguments. Triton specialises an integer argument equal to 1
 # or divisible by 16, so bounds passed as scalars would fork the compiled binary on
 # whichever bounds happen to be multiples of 16; one pointer also adds one parameter
 # to a signature rather than twenty-five.
 #
-# WHERE ``cb`` SITS IN A LAUNCH. Directly after the plan's last pointer argument and
+# Where ``cb`` sits in a launch. Directly after the plan's last pointer argument and
 # before its first scalar (``nx``). The three plans below pass it from the moment they
 # bind it, and the four ``kernels.py`` entry points they launch declare the parameter
 # in the same position and read it through the forms of ``forms.py``
 # (``test_triton_chunk_bounds`` pins both sides). No host test launches a compiled
 # kernel.
 #
-# ONE ENGINE-ROUTE SOURCE. :func:`chunk_bounds_for` is the only place the engine route
+# One engine-route source. :func:`chunk_bounds_for` is the only place the engine route
 # takes a record: the division the caller hands over, or the one-rank default of the
-# grid and layer when it hands over none. THE HARNESS ROUTE (``*_from_arrays``) has no
+# grid and layer when it hands over none. The harness route (``*_from_arrays``) has no
 # default at all: a plan built without a record is refused by name, because a gate
 # whose mutation legs fell back to some default division would stop measuring the
 # predicate it exists to measure.
@@ -1615,7 +1615,7 @@ class ConstitutivePlan:
     ``chunk_bounds`` is the chunk record, required, bound as :class:`PmlCurlPlan`
     binds it.
 
-    ``h_state`` IS THE ``Fields`` THE H SIDE STARTS FROM, or ``None``. MEEP's first
+    ``h_state`` is the ``Fields`` the H side starts from, or ``None``. MEEP's first
     ``update_eh(H_stuff)`` of a run starts H as a copy of B on the cells whose chunk
     carries H's layer (``stepping.separate_h_from_b``); the array path runs that
     function, and a dispatched sub-step replaces the whole call, so the kernel has to
@@ -1757,7 +1757,7 @@ def plan_constitutive_from_arrays(side: str, arrays: Dict[str, Any],
 
 
 # ---------------------------------------------------------------------------
-# The CROSS-SUB-STEP fused pair (step_B + zero_metal_B + update_H) — F1
+# The CROSS-SUB-STEP fused pair (step_B + zero_metal_B + update_H)
 # ---------------------------------------------------------------------------
 #
 # An ADDITION. `PmlCurlPlan` and `ConstitutivePlan` are untouched, still built by
@@ -1782,7 +1782,7 @@ class FusedPairPlan:
     the curl half reads its entries on the curl's sub-lattice and the constitutive half
     on its own, the same rule that picks each half's coefficient table.
 
-    ``h_state`` IS THE ``Fields`` THE H SIDE STARTS FROM, or ``None``. MEEP's first
+    ``h_state`` is the ``Fields`` the H side starts from, or ``None``. MEEP's first
     ``update_eh(H_stuff)`` of a run starts H as a copy of B on the cells whose chunk
     carries H's layer (``stepping.separate_h_from_b``); the array path runs that
     function, and a dispatched sub-step replaces the whole call, so the kernel has to
@@ -1832,7 +1832,7 @@ class FusedPairPlan:
             CupyPointer(_flat(a)) for a in constitutive_coefficients)
         self._grid = ((self.n_elem + self.block - 1) // self.block,)
         self._kernel = kernel
-        # This is MEASURED RATHER THAN INFERRED. The separate plans carry the same
+        # This is measured rather than inferred. The separate plans carry the same
         # optional control so the benchmark compares an explicitly tuned fusion
         # against an explicitly tuned four-kernel control. Triton's default (4 for
         # a 1-D BLOCK=256 program) starves this
@@ -1925,7 +1925,7 @@ def _install_fused_pair(plans, selected, fields, pml, sources, pair_name,
                         repair_paths=(_deposit_repair.SPLIT_FIELD_PATH,)):
     """Put a built fused pair into its two slots, with the deposit repair if it needs one.
 
-    THE TWO SLOTS ARE THE MECHANISM, not an accounting detail. ``FastPath.dispatch``
+    The two slots are the mechanism, not an accounting detail. ``FastPath.dispatch``
     contracts that True means the whole sub-step ran, so a pair that owns ``step_D`` and
     ``update_E`` is consulted twice with the driver's inject, symmetry fill and wall clear
     in between. Without a deposit the second consult has nothing to do and holds a
@@ -1941,8 +1941,8 @@ def _install_fused_pair(plans, selected, fields, pml, sources, pair_name,
     refuses by name any configuration whose recurrence is not among the paths its caller
     declares, so a wrong declaration is a refusal rather than a silent mis-repair.
 
-    THE H->D SEAM IS ROUTED TO THE WITHDRAW HOIST, 2026-09-04, AND THE BRANCH IS HERE
-    RATHER THAN IN A FAMILY — the same argument that keeps the deposit bracket out of
+    The H->D seam is routed to the withdraw hoist, 2026-09-04, and the branch is here
+    rather than in a family — the same argument that keeps the deposit bracket out of
     the families, so both mechanisms read as one protocol. That seam's ``pair_name``
     is ``withdraw_hoist.SEAM``, which is not a ``deposit_repair`` field letter: nothing
     is injected between ``update_H`` and ``step_D``, so there is no list to select and
@@ -1984,7 +1984,7 @@ class NoopPlan:
     ``absorbed_by`` names the plan that did the work, so the composition can be
     inspected rather than inferred from a bare no-op.
 
-    ONE SLOT IS NOT A PLAN AND NEVER WAS: ``update_P`` holds the LIST of
+    One slot is not a plan and never was: ``update_P`` holds the LIST of
     per-susceptibility plans, because the driver advances the whole polarization
     list in one pass and it is that pass the slot replaces. So "``run()`` on
     whatever is in the slot" is the rule for six of the seven ``STEP_ORDER``
@@ -2026,7 +2026,7 @@ def plan_fused_pair(fields: Any, pml: Any, pair: str = "B", sources: Any = None,
     ``sources`` is the driver's source list and is REQUIRED in substance: the
     predicate refuses ``None`` rather than assuming an empty set, because ``Fields``
     does not hold the sources and a predicate that infers coverage from what it
-    cannot see is the over-covering failure §10.4 names.
+    cannot see over-covers, the dangerous failure: the run quietly returns wrong physics.
 
     ``chunk_layout`` is the run's chunk division, ``None`` for the one-rank default;
     the plan binds its record (:func:`chunk_bounds_for`).
@@ -2112,7 +2112,7 @@ def plan_fused_pair_from_arrays(pair: str, arrays: Dict[str, Any],
 class AdeUpdatePPlan:
     """One susceptibility's ADE recurrence for every component it drives.
 
-    POINTERS ARE RESOLVED PER LAUNCH, DELIBERATELY, and this class exists mostly to
+    Pointers are resolved per launch, deliberately, and this class exists mostly to
     say why. ``PolarizationState.update`` rotates three buffers per component per
     step (dispersion.py:687-691): the result lands in ``_scratch``, ``_scratch``
     takes over the array that held ``P_prev``, and ``P``/``P_prev`` shift down — and
@@ -2189,7 +2189,7 @@ def plan_ade_update_p(fields: Any, state: Any,
                       block: Optional[int] = None) -> Optional[AdeUpdatePPlan]:
     """Plan one susceptibility's ADE update, or None when any driven component is refused.
 
-    ALL OR NOTHING PER STATE, on purpose. ``PolarizationState.update`` rotates a
+    All or nothing per state, on purpose. ``PolarizationState.update`` rotates a
     SHARED scratch buffer from component to component inside one call; covering two
     of three components and leaving the third to the array path would interleave two
     rotations over one buffer set. Sub-steps compose; halves of one sub-step do not.
@@ -2427,10 +2427,10 @@ FUSED_PAIR_ARMS: Dict[str, Tuple[str, str]] = {
     "dispersive_D": ("PML", "dispersive"),
 }
 
-#: THE FOLDED GRID'S TWO PAIRS, routed 2026-08-27 — the same two-slot protocol,
+#: The folded grid's two pairs, routed 2026-08-27 — the same two-slot protocol,
 #: keyed by the seam name :mod:`..deposit_repair` knows.
 #:
-#: WHAT USED TO BE HERE WAS A BLANKET REFUSAL. ``fuse=True`` on a folded grid
+#: What used to be here was a blanket refusal. ``fuse=True`` on a folded grid
 #: returned "cross-sub-step fusion for this product is not implemented" for both
 #: pairs, which was true of the ORDINARY pair — it carries no mirror fill — and
 #: false of the two products that do. Each of these families welds the folded curl
@@ -2438,7 +2438,7 @@ FUSED_PAIR_ARMS: Dict[str, Tuple[str, str]] = {
 #: the far ghost image inline (their ``REPLACES``), so the seam the blanket refusal
 #: named is the seam they close.
 #:
-#: THE ARM PAIR IS READ, NOT GUESSED, exactly as the ordinary rows above are.
+#: The arm pair is read, not guessed, exactly as the ordinary rows above are.
 #: ``folded_fused_magnetic_pair_coverage`` is literally
 #: ``folded_composition_curl_coverage(fields, pml, "step_B")`` AND
 #: ``folded_constitutive_coverage(fields, pml, "H")``
@@ -2447,12 +2447,12 @@ FUSED_PAIR_ARMS: Dict[str, Tuple[str, str]] = {
 #: so a configuration this pair admits is one where those two arms won. The D row
 #: is the same conjunction on ``step_D``/``E`` (folded_fused_pair.py:996-1001).
 #:
-#: NEITHER ROW LICENSES THE DEPOSIT REPAIR, AND THAT IS STILL TRUE AFTER THE FLIP.
+#: Neither row licenses the deposit repair, and that is still true after the flip.
 #: A row here says which arm the kernel implements; whether the seam's deposit can be
 #: repaired is the family's own ``CARRIES_DEPOSIT_REPAIR``, which both folded
 #: families flipped to ``True`` on 2026-08-30.
 #:
-#: THE PREMISE THAT KEPT THEM ``False`` WAS RETIRED BY MEASUREMENT, NOT BY OPINION.
+#: The premise that kept them ``False`` was retired by measurement, not by opinion.
 #: It read: the driver's post-injection ``fill_symmetry_bc_*`` writes the MIRROR
 #: IMAGE of a deposited cell (stepping.py:1450-1451) and ``deposit_repair.apply``
 #: only ever touches the deposit index itself. The second half is no longer the
@@ -2460,16 +2460,16 @@ FUSED_PAIR_ARMS: Dict[str, Tuple[str, str]] = {
 #: ``repair_cells`` (:258) close the saved and restored set over exactly the cells
 #: the near fill, the far fill and the wall clear image a deposit into, so
 #: ``apply`` puts back every cell those passes touch. A point-only repair was
-#: MEASURED wrong on a fold (images left holding a pre-injection field), which is
+#: measured wrong on a fold (images left holding a pre-injection field), which is
 #: why the closure had to land before the flag could.
 #:
-#: SO THESE TWO NOW ROUTE THE CARRIED SEAM AS WELL AS THE CLEAN ONE, and every seam
+#: So these two now route the carried seam as well as the clean one, and every seam
 #: the repair cannot invert is still refused BY NAME by ``repairable`` rather than
 #: by the flag — off-diagonal, nonlinear, the cylindrical axis, a fold too short for
 #: the near fill's source row, and an absorber that never ran its split-field
 #: recurrence.
 #:
-#: THE ``fused pair`` PREFIX ON BOTH LABELS IS LOAD-BEARING, not a naming taste.
+#: The ``fused pair`` prefix on both labels is load-bearing, not a naming taste.
 #: ``fastpath.arm_is_fused`` (fastpath.py:209-213) recognises a fused product by
 #: ``FUSED_ARM_PREFIXES = ("fused pair",)``, and clause (8) of
 #: ``fastpath.plan_fast_path`` (fastpath.py:2084-2091) refuses the WHOLE dispatch
@@ -2518,13 +2518,13 @@ def _install_folded_fused_pairs(plans, reasons, selected, fields, pml, sources,
                                 block, num_warps, offered=None, chunk_layout=None):
     """Route the folded grid's two pairs through their OWN builders, or refuse by name.
 
-    GUARDED EXACTLY AS AN ARM IS, and for the same reason the ordinary block is:
+    Guarded exactly as an arm is, and for the same reason the ordinary block is:
     ``plan_step`` never raises, the family predicates read a source list this
     composer did not build, and the builders import Triton, which the merge-bar host
     does not have. A raising predicate is a refusal and a raising builder leaves the
     seam on its separate plans with a named reason.
 
-    WHAT STAYS ON THE ARRAY PATH WHEN A PAIR IS INSTALLED. The driver runs
+    What stays on the array path when a pair is installed. The driver runs
     ``fill_symmetry_bc_*``, ``zero_metal_*`` and ``fill_folded_far_ghosts_*``
     UNCONDITIONALLY — driver.py:3285-3287 and :3298-3300 are plain calls with no
     ``fast.dispatch`` consult — so a folded pair that carries them inline has them
@@ -2533,8 +2533,8 @@ def _install_folded_fused_pairs(plans, reasons, selected, fields, pml, sources,
     copies cell 2 into cell 0 (stepping.py:1450-1451), the far fill copies the
     reflect row, and the wall clear zeroes a stored plane.
 
-    SOMETHING DOES WRITE THE SEAM IN BETWEEN, SINCE 2026-08-30, AND THE REPAIR IS
-    WHAT KEEPS IT BYTE-SAFE. Both families now declare ``CARRIES_DEPOSIT_REPAIR``,
+    Something does write the seam in between, since 2026-08-30, and the repair is
+    what keeps it byte-safe. Both families now declare ``CARRIES_DEPOSIT_REPAIR``,
     so an in-seam deposit is CARRIED rather than refused: ``_install_fused_pair``
     brackets the pair with ``LeadingRepairPlan``/``TrailingRepairPlan``, the save
     happens before the launch and the restore after the driver's inject and all
@@ -2590,7 +2590,7 @@ def _label_not_offered(label: str,
                        offered: Optional[FrozenSet[str]]) -> Optional[str]:
     """``None`` when this caller will run ``label``, else why the seam stays unfused.
 
-    WHY A CALLER MAY OFFER A SUBSET AT ALL, and it is the one thing this composer
+    Why a caller may offer a subset at all, and it is the one thing this composer
     knows about its callers: ``fuse`` says WHETHER to attempt fusion, and a caller
     that will only RUN some of the products this table can build had, until
     2026-09-02, no way to say so. ``fuse=True`` then installed every product whose
@@ -2598,7 +2598,7 @@ def _label_not_offered(label: str,
     a composition it had to reject WHOLE — the fused label occupies both slots, so
     rejecting it rejects the separate arms that would otherwise have run.
 
-    MEASURED, which is why this exists rather than being argued. On a conductive 2-D
+    Measured, which is why this exists rather than being argued. On a conductive 2-D
     PML grid the 2026-09-02 product wave installed ``conductive_fused_electric_pair``
     over ``step_D``/``update_E``; its caller could run ``fused pair B`` and not that
     label, and the whole plan went to the array path — a grid that had been running
@@ -2606,11 +2606,11 @@ def _label_not_offered(label: str,
     declared, the electric seam simply keeps its separate plans and the magnetic pair
     runs, which is the composition that grid had.
 
-    ``None`` MEANS NO RESTRICTION, and that is the right default for every caller
+    ``None`` means no restriction, and that is the right default for every caller
     that composes in order to INSPECT — the gates, the probes, the census. They ask
     what the table can build, and an offer they did not make must not narrow it.
 
-    THIS IS NOT A PREFERENCE AND IT IS NOT A TIE-BREAK. It is applied LAST, after
+    This is not a preference and it is not a tie-break. It is applied LAST, after
     every predicate, after the ambiguity rule and after :func:`_pair_may_absorb`, so
     a product that would have been refused for any of those reasons is still refused
     for that reason and with that wording. All this clause can do is leave a seam on
@@ -2644,8 +2644,8 @@ def _pair_may_absorb(selected: Dict[str, str], curl_name: str,
                      update_name: str, arms: Tuple[str, str]) -> Optional[str]:
     """``None`` when the fused product may take both slots, else why it may not.
 
-    THE FUSION BLOCK IS THE ONE PLACE THAT FILLS A ``STEP_ORDER`` SLOT WITHOUT
-    GOING THROUGH THE ARM TABLE, and it used to write both slots unconditionally.
+    The fusion block is the one place that fills a ``STEP_ORDER`` slot without
+    going through the arm table, and it used to write both slots unconditionally.
     That defeated the fail-closed contract at its own point of decision: a slot
     left UNSELECTED because two predicates admitted it (clause (b)) or because
     its builder refused (clause (c)) was then claimed anyway — by the ordinary
@@ -2672,10 +2672,10 @@ def _pair_may_absorb(selected: Dict[str, str], curl_name: str,
 
 
 # ---------------------------------------------------------------------------
-# THE CERTIFIED-PRODUCT SEAM LOOP — the installer wave of 2026-09-02
+# The certified-product seam loop — the installer wave of 2026-09-02
 # ---------------------------------------------------------------------------
 #
-# WHAT THIS BLOCK IS FOR. Twenty-five modules in this package held a released
+# What this block is for. Twenty-five modules in this package held a released
 # device gate, a shipped predicate and a builder, and were reached by NO composer:
 # ``launch.py`` imported none of them, so the reachability join could not even name
 # them and their cells landed in the fusion board's "served by a product this file
@@ -2683,14 +2683,14 @@ def _pair_may_absorb(selected: Dict[str, str], curl_name: str,
 # the largest single bucket on any backend's board. Nothing about those products was
 # missing except the composition rule; this is it.
 #
-# IT IS A PORT, NOT AN INVENTION, and porting rather than inventing is the whole
+# It is a port, not an invention, and porting rather than inventing is the whole
 # reason it is a table and a loop instead of twenty-five hand-written branches.
 # ``cuda_kernels/fused_pairs.install_fused_pairs`` is the same seam loop over the
 # same three shared helpers (:func:`_guarded_verdict`, :func:`_guarded_plan`,
 # :func:`_pair_may_absorb`), and it was itself ported from the two hand-written
 # blocks above. Reading one is reading all three.
 #
-# WHY THE INCUMBENTS ARE NOT IN THE TABLE. ``fused_pair_B``/``fused_pair_D``,
+# Why the incumbents are not in the table. ``fused_pair_B``/``fused_pair_D``,
 # ``dispersive_fused_pair`` and the two folded pairs keep their hand-written
 # branches, byte-for-byte. Their gates measured THOSE branches — including the
 # ``specialized_family_owns_the_grid`` refusal and the fold/cylindrical refusals in
@@ -2701,14 +2701,14 @@ def _pair_may_absorb(selected: Dict[str, str], curl_name: str,
 # cross-block precedence rule: there is no table order, only "the arm table's
 # selection, as it stands when this loop is reached".
 #
-# WIRING IS NOT RELEASING. Every label below is refused BY NAME at
+# Wiring is not releasing. Every label below is refused BY NAME at
 # ``fastpath.plan_fast_path``'s clause (8) — none is in
 # ``fastpath.RELEASED_FUSED_ARMS`` — so a run that installs one of these products
 # does not dispatch it: the whole plan is refused unless ``MEEP_GPU_FUSE_ARMS``
 # opts into that exact label. What this block changes is that the product can be
-# SELECTED at all, which is the precondition a release round measures against.
+# SELECTED at all, which is the precondition a release certification measures against.
 #
-# THE TWO SCRATCH-OUTPUT OFF-DIAGONAL D->E WELDS ARE ROUTED SINCE 2026-09-15, and
+# The two scratch-output off-diagonal D->E welds are routed since 2026-09-15, and
 # what kept them out until then was a mechanism rather than a preference. Their
 # plan ROTATES the engine's own ``D``/``fu_D`` attributes after each launch, which
 # the array path never does, and with no ``warm`` on the shared plan base
@@ -2721,7 +2721,7 @@ def _pair_may_absorb(selected: Dict[str, str], curl_name: str,
 # tree, and the stencil gate's two ``warm`` legs measure it (a recording stub on
 # the host, the shipped kernel on the device).
 #
-# NOTHING ELSE ABOUT THIS LOOP CHANGES FOR THEM. Each builder takes the loop's
+# Nothing else about this loop changes for them. Each builder takes the loop's
 # positional ``(fields, pml, sources, block, num_warps)``. Each predicate refuses
 # every in-seam electric source (``CARRIES_DEPOSIT_REPAIR`` is False), so
 # :func:`_install_fused_pair` puts a ``NoopPlan`` in ``update_E`` and brackets no
@@ -2735,7 +2735,7 @@ def _pair_may_absorb(selected: Dict[str, str], curl_name: str,
 #: is ``deposit_repair``'s own: ``'B'`` selects the magnetic deposit list and
 #: anything else the electric one (``deposit_repair._in_seam_indexed``).
 #:
-#: NO ``update_E -> update_P`` ROW, and its absence is a statement. The three E->P
+#: No ``update_E -> update_P`` row, and its absence is a statement. The three E->P
 #: chain products in this package are NOT in the table below (they are named in
 #: ``test_triton_planner_composition``'s deferral tuple, which is where a deferred
 #: product's name belongs — naming one here is what that seam reads): that seam's
@@ -2747,22 +2747,22 @@ def _pair_may_absorb(selected: Dict[str, str], curl_name: str,
 #: with no product to fill it would report "no candidate" on every configuration,
 #: which is the same defect ``cuda_kernels.fused_pairs.FUSED_PAIR_SEAMS`` records
 #: for its own D/E row: a reason true of every run reads as a claim about the run.
-#: AN ``update_H -> step_D`` ROW SINCE 2026-09-04, AND IT LANDED AHEAD OF ITS
-#: PRODUCT, which is the one row here that did. What it buys before any H->D kernel
+#: An ``update_H -> step_D`` row since 2026-09-04, and it landed ahead of its
+#: product, which is the one row here that did. What it buys before any H->D kernel
 #: exists is the ARBITRATION (:func:`_neighbouring_seam_claimant`) and the KEY ORDER,
 #: and an empty row costs nothing on this loop: it opens each seam with
 #: ``if not candidates: continue`` and records no reason, so a seam nobody bids on is
 #: SILENT rather than reporting "no candidate" on every configuration. That is the
 #: defect the paragraph above cites, and it is the loop's behaviour that retired it.
 #:
-#: THE ORDER IS LOAD-BEARING AND THE ROW IS APPENDED LAST. This loop walks
+#: The order is load-bearing and the row is appended last. This loop walks
 #: ``.items()`` in dict order against the LIVE ``selected``. Placed first, the seam
 #: would be offered ``update_H`` before the B->H products were, would find an ARM
 #: label rather than a fused one there, and :func:`_pair_may_absorb` would let it take
 #: both slots — displacing a released, gate-passing product on every row it reached.
 #: ``test_the_h_to_d_seam_row_is_last`` pins the order with that reason.
 #:
-#: ITS SEAM NAME IS ``withdraw_hoist.SEAM``, NOT A ``deposit_repair`` FIELD LETTER.
+#: Its seam name is ``withdraw_hoist.SEAM``, not a ``deposit_repair`` field letter.
 #: Nothing is injected between ``update_H`` and ``step_D``, so there is no deposit
 #: list to select, and ``_in_seam_indexed`` reads any string other than ``'B'`` as the
 #: ELECTRIC list — which would bracket this seam with a repair for an injection that
@@ -2778,10 +2778,10 @@ CERTIFIED_FUSED_PAIR_SEAMS: Dict[str, Tuple[str, str]] = {
 #: Which ARM each certified product's kernel implements, per slot it absorbs — the
 #: bound in front of the loop, exactly as ``FUSED_PAIR_ARMS`` is in front of the
 #: ordinary block and ``FOLDED_FUSED_PAIR_ARMS`` in front of the folded one. A
-#: product with no row here is REFUSED BY NAME rather than absorbing a slot on a
+#: product with no row here is refused by name rather than absorbing a slot on a
 #: mapping nobody established.
 #:
-#: EVERY ROW IS READ OFF THE PREDICATE THE PRODUCT CONJOINS, never assigned: each
+#: Every row is read off the predicate the product conjoins, never assigned: each
 #: module's ``*_coverage`` opens by calling the two arms' own predicates on its two
 #: slots, and the pair below is those two arms' labels. The same derivation is
 #: recorded per product, with the citation, in
@@ -2835,7 +2835,7 @@ CERTIFIED_FUSED_PAIR_ARMS: Dict[str, Tuple[str, str]] = {
 #: primary row — a separate table rather than a widened value shape, so every
 #: existing pin on a primary row stays a pin.
 #:
-#: TWO ROWS, and each is a SECOND CELL the SAME gate artifact released. The fusion
+#: Two rows, and each is a SECOND CELL the SAME gate artifact released. The fusion
 #: board scores each of them as its own product name against the same module and the
 #: same ``gate.json`` (``no_pml_fused_electric_pair_lossless`` beside
 #: ``no_pml_fused_electric_pair``, ``folded_complex_fused_magnetic_pair_offdiag``
@@ -2864,7 +2864,7 @@ CERTIFIED_FUSED_PAIR_EXTRA_ARMS: Dict[str, Tuple[Tuple[str, str], ...]] = {
 #: :data:`SUPPORT_MODULES` declares that seam and the AST test compares the
 #: declaration against this file.
 #:
-#: THE LABEL CARRIES THE ``fused pair`` PREFIX ON PURPOSE, exactly as the two folded
+#: The label carries the ``fused pair`` prefix on purpose, exactly as the two folded
 #: labels do. ``fastpath.arm_is_fused`` recognises a fused product by
 #: ``FUSED_ARM_PREFIXES = ("fused pair",)`` and clause (8) refuses the WHOLE dispatch
 #: when any slot carries such a label. A label spelled any other way would punch a
@@ -2986,7 +2986,7 @@ CERTIFIED_FUSED_PRODUCTS: Dict[str, Dict[str, str]] = {
         "coverage": "no_pml_fused_electric_pair_coverage",
         "builder": "plan_no_pml_fused_electric_pair",
         "label": "fused pair D (no-PML stored E)"},
-    # THE TWO SCRATCH-OUTPUT OFF-DIAGONAL D->E WELDS, 2026-09-15. The note above
+    # The two scratch-output off-diagonal D->E welds, 2026-09-15. The note above
     # :data:`CERTIFIED_FUSED_PAIR_SEAMS` says why they were absent until then and why
     # this loop needs nothing new to route them.
     "offdiag_fused_electric_pair": {
@@ -2999,7 +2999,7 @@ CERTIFIED_FUSED_PRODUCTS: Dict[str, Dict[str, str]] = {
         "coverage": "folded_offdiag_fused_electric_pair_coverage",
         "builder": "plan_folded_offdiag_fused_electric_pair",
         "label": "fused pair D (folded off-diagonal)"},
-    # THE H->D SEAM'S TWO CYLINDRICAL PRODUCTS, 2026-09-07. Both declare
+    # The H->D seam's two cylindrical products, 2026-09-07. Both declare
     # INSTALLABLE = False, so ``_declared_uninstallable`` refuses each by name on
     # every row before its predicate is asked; routing them makes that refusal a
     # recorded reason rather than an absence, and the seam row (``update_H`` ->
@@ -3014,10 +3014,10 @@ CERTIFIED_FUSED_PRODUCTS: Dict[str, Dict[str, str]] = {
         "coverage": "cylindrical_fused_hd_pair_coverage",
         "builder": "plan_cylindrical_fused_hd_pair",
         "label": "fused pair H->D (cylindrical complex)"},
-    # THE CARTESIAN COMPLEX H->D PRODUCT, 17 seam-instances. INSTALLABLE = False,
+    # The Cartesian complex H->D product, 17 seam-instances. INSTALLABLE = False,
     # so `_declared_uninstallable` refuses it by name on every row before its
     # predicate is asked; routing it makes that refusal a recorded reason rather
-    # than an absence. The arbitration is MEASURED rather than assumed and it is a
+    # than an absence. The arbitration is measured rather than assumed and it is a
     # LOSS on this cell: on a complex row the composer installs `fused pair B
     # (complex)` on step_B+update_H and `fused pair D (complex)` on
     # step_D+update_E, so a two-slot H->D span takes one slot from each and turns
@@ -3034,7 +3034,7 @@ CERTIFIED_FUSED_PRODUCTS: Dict[str, Dict[str, str]] = {
 def _certified_fused_product_modules():
     """``{module name: module}`` for the certified products, imported LAZILY.
 
-    THE IMPORTS ARE WRITTEN OUT, one ``from .<module> import`` per product, rather
+    The imports are written out, one ``from .<module> import`` per product, rather
     than resolved through ``importlib`` — and that is not a style choice. Two
     separate readers measure what this composer can reach by walking THIS FILE'S
     PARSE TREE: ``build_triton_fusion_matrix.launch_imported_modules``, which
@@ -3051,7 +3051,7 @@ def _certified_fused_product_modules():
     these modules import Triton at their own module scope, and the package must stay
     importable — and free of them in ``sys.modules`` — on a host with none.
 
-    THE MODULE OBJECT IS RECOVERED FROM THE PREDICATE, because the import form that
+    The module object is recovered from the predicate, because the import form that
     the two readers can see binds the FUNCTION and not the module. A plain
     function's ``__module__`` is the module that defines it, so the lookup is exact
     and — unlike a second hand-written list of module objects — cannot fall out of
@@ -3128,7 +3128,7 @@ def _certified_fused_product_entry(modules, product: Dict[str, str]):
     before ``deposit_repair.PLAIN_PATH`` existed implicitly declares. Read here and
     handed to :func:`_install_fused_pair` rather than defaulted there, so a product
     whose repair inverts the plain branch is bracketed with the repair it actually
-    carries. THE FLAG (``CARRIES_DEPOSIT_REPAIR``) IS NOT READ HERE, deliberately
+    carries. The flag (``CARRIES_DEPOSIT_REPAIR``) is not read here, deliberately
     and as on the other two composers: it is enforced inside the product's own
     coverage predicate, which passes it to ``deposit_repair.seam_source_reasons``,
     so a product that has not declared it refuses every in-seam source and a
@@ -3145,7 +3145,7 @@ def _certified_fused_product_entry(modules, product: Dict[str, str]):
 def _declared_uninstallable(modules, name: str, product: Dict[str, str]):
     """``None`` when the product may be installed, else the reason it may not.
 
-    ``INSTALLABLE`` IS A DECLARATION ABOUT THE PRODUCT, NOT ABOUT A RUN, which is why
+    ``INSTALLABLE`` is a declaration about the product, not about a run, which is why
     it is read here and reported on every configuration rather than folded into a
     coverage predicate. A predicate answers "can this weld serve this run" — a
     question about arithmetic, and the one its gate measures — and that answer must
@@ -3154,7 +3154,7 @@ def _declared_uninstallable(modules, name: str, product: Dict[str, str]):
     certified and the COMPOSITION is refused, on every row, for a measured reason of
     its own.
 
-    IT IS BELT AND BRACES, NOT THE RULE. :func:`_neighbouring_seam_claimant` is what
+    It is belt and braces, not the rule. :func:`_neighbouring_seam_claimant` is what
     decides a seam collision from the run; this flag is what keeps a careless edit —
     a new seam row, a reordered table, a widened absorb declaration — from installing
     a product whose own module says it must not be.
@@ -3175,7 +3175,7 @@ def _declared_uninstallable(modules, name: str, product: Dict[str, str]):
 def _slot_degrees(seams: Dict[str, Tuple[str, Any]]) -> Dict[str, int]:
     """How many rows of ``seams`` name each slot -- its degree on the seam path.
 
-    COMPUTED FROM THE TABLE, NEVER SPELLED. :func:`_neighbouring_seam_claimant` asks
+    Computed from the table, never spelled. :func:`_neighbouring_seam_claimant` asks
     its question only of a span whose two END slots both have degree >= 2 -- an
     INTERIOR edge -- and the end/interior split has to follow the table so that a
     row added later moves it without anyone having to remember to.
@@ -3200,7 +3200,7 @@ def _neighbouring_seam_claimant(modules, fields, pml, sources, name: str,
                                 span: Sequence[str] = ()):
     """``(claimant, refusal)`` for a product that would lose a slot to this one.
 
-    THE RULE, SINCE 2026-09-05: the question is asked ONLY of a span that is an
+    The rule, since 2026-09-05: the question is asked ONLY of a span that is an
     INTERIOR edge of the seam path -- both of its END slots sit in two or more rows
     of ``CERTIFIED_FUSED_PAIR_SEAMS`` -- and such a product is refused where another
     product claims the seam its LAST slot opens. An end-edge span is never asked and
@@ -3208,7 +3208,7 @@ def _neighbouring_seam_claimant(modules, fields, pml, sources, name: str,
     never spelled, so a seam row added later moves the split without anyone
     remembering to.
 
-    WHY THAT IS THE RIGHT SHAPE IS A MATCHING ARGUMENT, not a corpus accident. Over a
+    Why that is the right shape is a matching argument, not a corpus accident. Over a
     path of four slots the maximum matching has size 2 and it is always the two END
     edges; an interior edge belongs to no maximum matching unless both of its
     neighbours are absent. So an end-edge span must never yield, and an interior span
@@ -3224,7 +3224,7 @@ def _neighbouring_seam_claimant(modules, fields, pml, sources, name: str,
     ``update_E`` 1. So ``B_to_H`` (1, 2) and ``D_to_E`` (2, 1) are end edges and
     never yield, and ``H_to_D`` (2, 2) is interior and yields.
 
-    WHAT THE GUARD CLOSED was measured 2026-09-04 through the METAL composer, whose
+    What the guard closed was measured 2026-09-04 through the Metal composer, whose
     seam table has the same three rows as this one: with the ``update_H`` row in the
     table, the later half ALONE refused the RELEASED B->H pair on every row an
     admitting H->D product reached -- even a stand-in with no absorb declaration,
@@ -3238,7 +3238,7 @@ def _neighbouring_seam_claimant(modules, fields, pml, sources, name: str,
     the same day; the block below records why, and the guard above cannot reproduce
     what it did because a terminal seam is an end edge by the table's own degrees.
 
-    WHY IT EXISTS, AND IT IS ARITHMETIC RATHER THAN A CORPUS ACCIDENT. The driver's
+    Why it exists, and it is arithmetic rather than a corpus accident. The driver's
     slot path is ``step_B — update_H — step_D — update_E``: four slots, three seams,
     and an installed pair is an edge of a matching on that path. Launches over those
     four slots are therefore
@@ -3252,7 +3252,7 @@ def _neighbouring_seam_claimant(modules, fields, pml, sources, name: str,
     serves it ties at 3 launches and one seam; and where neither serves it would be a
     gain.
 
-    GAIN, TIE OR LOSS FOR AN H->D PRODUCT, MEASURED 2026-09-04 at COMPOSER level
+    Gain, tie or loss for an H->D product, measured 2026-09-04 at COMPOSER level
     (predicate AND absorb row) on Metal, over the 179 buildable rows of the 194-row
     ``h_to_d_seam_2026-09-04`` basis (Triton's predicate-level join is 154 / 25 /
     0 / 0 on the same basis, one row different from Metal's 155 / 24):
@@ -3278,38 +3278,38 @@ def _neighbouring_seam_claimant(modules, fields, pml, sources, name: str,
     in the existing "who gets the slot" wording: where no neighbour's product admits,
     this returns ``None`` and the product installs.
 
-    THE SCAN IS WITHIN THIS TABLE, and that boundary is the one the ambiguity rule
+    The scan is within this table, and that boundary is the one the ambiguity rule
     already draws for the same reason. The hand-written incumbent block's products
     are not here, and they do not need to be: they run BEFORE this loop and write
     their label into ``selected``, so a slot one of them took is already refused to
     every candidate here by :func:`_pair_may_absorb`, by name. Extending this scan
     across the blocks would change what the incumbent gates measured, which is not a
-    thing a composition round may do.
+    thing a composition change may do.
 
-    IT IS SLOT ARBITRATION AND NOT A VERDICT ABOUT ARITHMETIC. Every predicate that
+    It is slot arbitration and not a verdict about arithmetic. Every predicate that
     reaches this admitted and every gate that released one certified it; what is
     decided here is who gets the slots.
 
-    THE ONLY SHAPE THAT ESCAPES IT is a span that REACHES the neighbouring seam
+    The only shape that escapes it is a span that REACHES the neighbouring seam
     instead of colliding with it — a four-slot ``step_B -> update_H -> step_D ->
     update_E`` weld in ONE launch, which serves three seams where today's two pairs
     serve two in two launches. ``span`` is how that is said here: a product whose own
     span already covers the neighbouring seam's slots makes no trade.
     """
     span = tuple(span) or (curl_name, update_name)
-    # R1: AN END-EDGE SPAN IS NEVER ASKED. The matching argument is in the docstring;
+    # The end-edge rule: an end-edge span is never asked. The matching argument is in the docstring;
     # the degrees are read off the table so the answer moves with it.
     if _is_end_edge_span(span, CERTIFIED_FUSED_PAIR_SEAMS):
         return None
     neighbours = []
-    # THE EARLIER-NEIGHBOUR HALF WAS REMOVED 2026-09-04, MEASURED, NOT ARGUED. It
+    # The earlier-neighbour half was removed 2026-09-04, measured, not argued. It
     # asked the same question in the other direction -- "does a product claim the seam
     # my FIRST slot closes?" -- and it did two things, both wrong:
     #
     # * it was REDUNDANT where it was meant to help. An H->D span's last slot is
     #   ``step_D``, which opens the D->E seam, so the later half above already names a
     #   D->E claimant and returns before the earlier half is reached.
-    # * it REVERSED A RELEASED RULING where it did fire. The only product class whose
+    # * it reversed a released decision where it did fire. The only product class whose
     #   last slot opens no seam is E->P (``update_P`` is terminal), so the earlier half
     #   fired there and there alone -- refusing the polarization pair because a D->E
     #   product admits, while the later half was already refusing that D->E product
@@ -3317,7 +3317,7 @@ def _neighbouring_seam_claimant(modules, fields, pml, sources, name: str,
     #   and the seam went unserved. Measured on a dispersive PML run (poles=2): the
     #   later half names ``cuda_fused_polarization_pair`` for the D->E product, and the
     #   earlier half named ``cuda_dispersive_fused_electric_pair`` for the polarization
-    #   pair. The 2026-09-02 trade ruling gives ``update_E`` to the E->P incumbent, and
+    #   pair. The 2026-09-02 slot-trade decision gives ``update_E`` to the E->P incumbent, and
     #   this function may not re-litigate it from the other side.
     #
     # What the earlier half was FOR -- an H->D product installing on a row where only
@@ -3387,20 +3387,20 @@ def _install_certified_fused_products(plans, reasons, selected, fields, pml,
     ``None``-returning builder leaves the seam unfused with a NAMED reason under
     ``fused_pair_<product>``.
 
-    TWO ADMITTING PREDICATES ON ONE SEAM IS AN AMBIGUITY, NOT A PICK — clause (b)'s
+    Two admitting predicates on one seam is an ambiguity, not a pick — clause (b)'s
     rule one level up, and the reason this loop takes every verdict before it
     installs anything. The wording deliberately avoids :func:`_select_slot`'s phrase
     "admitted the same configuration" so a probe scanning ``reasons`` for an
     ambiguous SLOT does not report a seam as one.
 
-    THE AMBIGUITY RULE IS WITHIN THIS TABLE, and that boundary is deliberate rather
+    The ambiguity rule is within this table, and that boundary is deliberate rather
     than an oversight. An incumbent pair's predicate CAN admit a configuration one
     of these products also admits — ``fused_pair_coverage`` admits a conductive grid,
     and so does ``conductive_fused_electric_pair`` — but the two implement DIFFERENT
     arms, the arm table gives the slot to exactly one of them, and this loop reads
     the live ``selected``, so the incumbent's install is already in front of it.
     Extending the ambiguity rule across the blocks would change what the incumbent
-    gates measured, which is not a thing a wiring round may do.
+    gates measured, which is not a thing a wiring change may do.
     """
     modules, import_refusal = _guarded_plan(_certified_fused_product_modules,
                                             "the certified fused product modules")
@@ -3415,7 +3415,7 @@ def _install_certified_fused_products(plans, reasons, selected, fields, pml,
             if product["curl_slot"] != curl_name:
                 continue
             key = f"fused_pair_{name}"
-            # THE ABSORB DECLARATION IS ASKED FIRST, BEFORE THE PREDICATE, and the
+            # The absorb declaration is asked first, before the predicate, and the
             # order is the point: a missing declaration is a fact about the TABLE,
             # true of every configuration, so it is reported on every configuration.
             # Asking the predicate first would make the reason appear and disappear
@@ -3427,8 +3427,8 @@ def _install_certified_fused_products(plans, reasons, selected, fields, pml,
                     f"product may not substitute a numerical product no arm "
                     f"admitted",)
                 continue
-            # THE PRODUCT'S OWN INSTALLATION DECLARATION, ASKED BESIDE THE ABSORB
-            # ONE AND FOR THE SAME REASON: it is a fact about the PRODUCT, true of
+            # The product's own installation declaration, asked beside the absorb
+            # one and for the same reason: it is a fact about the PRODUCT, true of
             # every configuration, so it is reported on every configuration. See
             # :func:`_declared_uninstallable`.
             uninstallable = _declared_uninstallable(modules, name, product)
@@ -3462,7 +3462,7 @@ def _install_certified_fused_products(plans, reasons, selected, fields, pml,
             continue
         name, builder, repair_paths = candidates[0]
         key = f"fused_pair_{name}"
-        # THE PRIMARY ROW FIRST, THEN EVERY DECLARED EXTRA, and the pair absorbs on
+        # The primary row first, then every declared extra, and the pair absorbs on
         # the FIRST arm pair the table already gave both slots to. At most one can
         # ever match — the slots hold one selection each — so the loop is a lookup,
         # not a preference order. A product with no matching declaration is refused
@@ -3478,7 +3478,7 @@ def _install_certified_fused_products(plans, reasons, selected, fields, pml,
         if refusal is not None:
             reasons[key] = (refusal,)
             continue
-        # A NEIGHBOURING SEAM'S CLAIM, ASKED BEFORE THIS PRODUCT IS BUILT. See
+        # A neighbouring seam's claim, asked before this product is built. See
         # :func:`_neighbouring_seam_claimant`: over ``step_B..update_E`` launches are
         # ``4 - #pairs``, so a product taking a slot from a neighbouring seam can only
         # tie or lose -- and an END-EDGE span is never asked. No product in this table
@@ -3536,7 +3536,7 @@ def _ade_family_admits(states: Sequence[Any], ask: Any) -> bool:
     components of a state), and the composer then keeps the whole sub-step on the
     array path if any state refuses.
 
-    A STATE THAT DRIVES NOTHING IS NOT AN ADMISSION. An empty component list would
+    A state that drives nothing is not an admission. An empty component list would
     make ``all(())`` true and hand the family a unanimous verdict over no
     evidence — the same vacuity the refusal path spells ``"<none driven>"``.
 
@@ -3563,7 +3563,7 @@ def _ade_family_admits(states: Sequence[Any], ask: Any) -> bool:
 #: which the ARRAY PATH forms that product — the flag and a live row slot, both,
 #: see :func:`_veto_dropped_offdiagonal_coupling`.
 #:
-#: ``no-PML null`` IS DELIBERATELY NOT HERE, and adding it would be the wrong
+#: ``no-PML null`` is deliberately not here, and adding it would be the wrong
 #: repair for the right complaint. Its product implements nothing, so listing it
 #: among "the arms that implement the row product" makes one tuple mean two
 #: things; and it is unreachable under the veto's conjunction anyway, because
@@ -3571,7 +3571,7 @@ def _ade_family_admits(states: Sequence[Any], ask: Any) -> bool:
 #: off-diagonal row by name (no_pml_constitutive.py:514). What used to empty that
 #: slot was the missing FLAG half of the trigger, and that is where it is fixed.
 #:
-#: THIS TUPLE IS PART OF THE SAME CHANGE AS THE ``folded off-diagonal`` ARM, and
+#: This tuple is part of the same change as the ``folded off-diagonal`` arm, and
 #: it has to be: measured on both folded row-live grids, that arm ADMITS and
 #: ``live_offdiagonal_rows`` is True, so with the old two-entry exemption the
 #: veto fired on the one product that implements exactly the term the message
@@ -3593,22 +3593,22 @@ def _veto_dropped_offdiagonal_coupling(fields: Any, plans: Dict[str, Any],
                                        selected: Dict[str, str]) -> None:
     """Refuse an ``update_E`` product that does not implement a LIVE row.
 
-    THE HOLE THIS CLOSES. Thirteen of the eighteen ``update_E`` arms decide
+    The hole this closes. Thirteen of the eighteen ``update_E`` arms decide
     off-diagonal epsilon by the ``has_offdiagonal_epsilon`` FLAG; the five that own
     the row product (``off-diagonal`` and ``folded off-diagonal``, named together
     in :data:`ROW_PRODUCT_ARMS`) deliberately refuse to trust that flag and count
-    LIVE ROW SLOTS instead. Where the flag and the slots disagree, a flag-reading
+    live row slots instead. Where the flag and the slots disagree, a flag-reading
     arm can win a slot whose grid carries a coupling its kernel has no term for:
     the coupling would be neither refused, nor reported, nor computed.
 
-    BOTH HALVES OF THAT DISAGREEMENT ARE TESTED, and the round that wired the
+    Both halves of that disagreement are tested, and the change that wired the
     four remaining families shipped only one of them. The trigger used to be the
     live ROW SLOTS alone, which is the wrong half on its own, because the
-    ARRAY PATH THIS COMPOSER IS MEASURED AGAINST reads the FLAG:
+    array path this composer is measured against reads the FLAG:
     ``stepping.update_E`` sets ``offdiagonal = fields.has_offdiagonal_epsilon``
     (stepping.py:992) and forms the row product only under it. So on a
     flag-False/slot-live object the array path drops the row too, and a Triton
-    product that also drops it is not wrong — it is byte-exact. MEASURED on
+    product that also drops it is not wrong — it is byte-exact. Measured on
     identical-input copies of one such object, one with ``ROW_SLOTS[0]`` planted
     and one without: ``stepping.update_E`` writes 0 of 1536 differing uint32
     words under an active PML and 0 of 1536 under an inert layer, against 512 of
@@ -3623,7 +3623,7 @@ def _veto_dropped_offdiagonal_coupling(fields: Any, plans: Dict[str, Any],
     :func:`_reads_true` and :func:`live_offdiagonal_rows` both answer True — so
     an object that cannot be read still fails closed.
 
-    WHAT IT IS WORTH NOW. Under the shipped predicates the conjunction is
+    What it is worth now. Under the shipped predicates the conjunction is
     unreachable: all thirteen non-exempt ``update_E`` predicates carry their own
     ``has_offdiagonal_epsilon`` refusal, so a flag-True grid leaves the slot to
     the row-product arms or to nobody (measured: BFAST, beta and complex flag-True
@@ -3704,7 +3704,7 @@ def plan_step(fields: Any, pml: Any, block: Optional[int] = None,
     Never raises and never returns None: a configuration nothing covers is a plan
     that replaces nothing, which is the array path, which is the correct answer.
 
-    THE FAIL-CLOSED CONTRACT, for every slot and every ``(fields, pml)``:
+    The fail-closed contract, for every slot and every ``(fields, pml)``:
 
     (a) a slot is filled only when EXACTLY ONE consulted predicate admits and
         its builder returns a plan;
@@ -3727,7 +3727,7 @@ def plan_step(fields: Any, pml: Any, block: Optional[int] = None,
     An over-covering dispatch is a silent wrong answer; a slot on the array path
     is a slower right answer. Every ambiguity resolves to the second.
 
-    THE NULL FAMILY IS NOT AN EXCEPTION TO ANY OF THIS. ``no-PML null`` is the
+    The null family is not an exception to any of this. ``no-PML null`` is the
     one arm whose product launches nothing — the array path's ``update_H``
     returns at stepping.py:944-945 under an inactive absorber, and ``update_E``
     at :983-984 under an inactive absorber AND ``fields.stores_E`` False, which
@@ -3740,7 +3740,7 @@ def plan_step(fields: Any, pml: Any, block: Optional[int] = None,
     applies unchanged — and here failing closed costs nothing at runtime, because
     the array-path call it falls back to is the one that returns immediately.
 
-    ONE CONSEQUENCE FOR ``replaces``, named here because it is a meaning change
+    One consequence for ``replaces``, named here because it is a meaning change
     and not an accident. Every other arm refuses a host whose array module is not
     CuPy at ``coverage._grid_reasons`` clause 1; the null family carries no such
     clause, deliberately (no_pml_constitutive.py:610-613 — a sub-step that
@@ -3753,11 +3753,11 @@ def plan_step(fields: Any, pml: Any, block: Optional[int] = None,
     reading it wrong. ``plan.selected`` names the arm and is the seam that still
     answers that question.
 
-    ``fill_B``/``fill_D`` GO THROUGH THE TABLE TOO. They used to consult a single
+    ``fill_B``/``fill_D`` go through the table too. They used to consult a single
     predicate in a hand-rolled block, which made them the last slots here whose
     second admitting product would have been decided by position.
 
-    "NEVER RAISES" IS ENFORCED AT EVERY CALL SITE, not only inside the arm table.
+    "Never raises" is enforced at every call site, not only inside the arm table.
     The opt-in fusion block and the polarization loop go
     through :func:`_guarded_verdict` / :func:`_guarded_plan` for the same reason
     :func:`_arm_verdict` exists, and every gate answers an unreadable attribute
@@ -3766,8 +3766,8 @@ def plan_step(fields: Any, pml: Any, block: Optional[int] = None,
     of this function on every dispersive run and on every ``fuse=True`` run, from
     a builder import inside a block that had no guard.
 
-    A FUSED PAIR MAY ABSORB A SLOT ONLY WHEN THE ARM TABLE GAVE THAT SLOT TO THE
-    ARM THE FUSED KERNEL IMPLEMENTS (:func:`_pair_may_absorb`). The fusion block
+    A fused pair may absorb a slot only when the arm table gave that slot to the
+    arm the fused kernel implements (:func:`_pair_may_absorb`). The fusion block
     is the only place here that fills a ``STEP_ORDER`` slot without consulting the
     arm table, and writing it unconditionally was a hole straight through clauses
     (b) and (c): a slot left unselected by an ambiguity, or by a builder that
@@ -3775,14 +3775,14 @@ def plan_step(fields: Any, pml: Any, block: Optional[int] = None,
     the ambiguity had refused to pick — leaving ``reasons`` and ``plans``
     contradicting each other for the same slot.
 
-    ``fuse`` IS OPT-IN AND DEFAULTS OFF. The composed-but-unfused plan — one launch
+    ``fuse`` is opt-in and defaults off. The composed-but-unfused plan — one launch
     per sub-step — is the control the cross-sub-step fusion is measured against,
     and it stays the default so every existing caller keeps measuring it. With
     ``fuse=True`` and ``fused_pair_coverage`` satisfied, ``step_B`` holds a
     :class:`FusedPairPlan` and ``update_H`` a :class:`NoopPlan`: ``replaces``
     still reports BOTH names, because both sub-steps really are replaced.
 
-    ``fuse_labels`` IS THE CALLER'S OFFER, AND IT IS A SECOND QUESTION FROM
+    ``fuse_labels`` is the caller's offer, and it is a second question from
     ``fuse``. ``fuse`` asks whether to ATTEMPT fusion at all; ``fuse_labels`` names
     the fused labels this caller will actually RUN. ``None`` — the default, and what
     every inspecting caller passes — means no restriction. A label left out of a
@@ -3791,7 +3791,7 @@ def plan_step(fields: Any, pml: Any, block: Optional[int] = None,
     the measured failure this closes, which is that a fused label occupies BOTH
     slots, so a caller that has to reject one rejects the arms underneath it too.
 
-    ``chunk_layout`` IS THE RUN'S CHUNK DIVISION (``FdtdDriver.chunk_layout``), and
+    ``chunk_layout`` is the run's chunk division (``FdtdDriver.chunk_layout``), and
     ``None`` — the default — means the division the array path steps with: the lifted
     one the fields carry (``Fields.chunk_layout``) when a lift installed one, which is
     then judged and bound as if handed over, and otherwise the one-rank division of
@@ -3964,7 +3964,7 @@ def plan_step(fields: Any, pml: Any, block: Optional[int] = None,
         ), _curl_ambiguity, plans, reasons, selected)
 
     if has_fold:
-        # THE FILL SLOTS GO THROUGH THE ARM TABLE TOO, as of the round that added
+        # The fill slots go through the arm table too, as of the change that added
         # the complex-storage fill. Before that this block consulted ONE predicate
         # and hand-rolled its own guards, which made it the last place in the
         # function where a second admitting product would have been decided by
@@ -3973,7 +3973,7 @@ def plan_step(fields: Any, pml: Any, block: Optional[int] = None,
         # configuration in the disjointness sweep — it buys uniform fail-closure
         # and one spelling of "a raising predicate is a refusal".
         #
-        # A PARTIAL FOLD COVERAGE IS LEGAL AND HAPPENS: neither fill predicate
+        # A partial fold coverage is legal and happens: neither fill predicate
         # carries an absorber clause, correctly — `fill_symmetry_bc_*` runs
         # whether or not a PML is installed — so on a folded no-PML run these two
         # slots are covered while every curl and constitutive slot is on the array
@@ -4061,7 +4061,7 @@ def plan_step(fields: Any, pml: Any, block: Optional[int] = None,
         # `constitutive_coverage` refuses it through the same `_grid_reasons`
         # clause 10 the curls are refused by, and update_H reads B and mu with the
         # integer coefficient pair — never chi2, chi3 or inverse epsilon. The
-        # family predicate refuses side='E' BY NAME, so this arm cannot appear in
+        # family predicate refuses side='E' by name, so this arm cannot appear in
         # the update_E table and the Pade product keeps that slot.
         _Arm("nonlinear run", has_nonlinearity,
              lambda: nonlinear_run_constitutive_coverage(fields, pml, "H"),
@@ -4070,7 +4070,7 @@ def plan_step(fields: Any, pml: Any, block: Optional[int] = None,
              "nonlinear run: ", "nonlinear run constitutive"),
         # The update_H half of the folded complex off-diagonal scope change. Its
         # side='E' twin is refused by name and stays refused: 25041/110592 words
-        # differing is the largest divergence the closure round measured.
+        # differing is the largest divergence measured in results/residual_closure_2026-08-15/.
         _Arm("folded complex off-diagonal",
              has_fold and has_complex and has_offdiag_rows,
              lambda: folded_complex_offdiag_constitutive_coverage(
@@ -4080,7 +4080,7 @@ def plan_step(fields: Any, pml: Any, block: Optional[int] = None,
                  chunk_layout=chunk_layout),
              "folded complex off-diagonal: ",
              "folded complex off-diagonal constitutive"),
-        # THE NULL ARM. Its product launches nothing because the array path's
+        # The null arm. Its product launches nothing because the array path's
         # `update_H` returns at stepping.py:944-945 before reading an array. It
         # gets NO preference of any kind, and the reason is symmetric: a null
         # preferred over a kernel silently deletes a real sub-step, and a kernel
@@ -4184,7 +4184,7 @@ def plan_step(fields: Any, pml: Any, block: Optional[int] = None,
                  fields, pml, block, chunk_layout=chunk_layout),
              "folded off-diagonal dispersive: ",
              "folded off-diagonal dispersive constitutive"),
-        # The second arm that counts LIVE ROW SLOTS rather than reading the flag,
+        # The second arm that counts live row slots rather than reading the flag,
         # and therefore the second entry in ROW_PRODUCT_ARMS. Adding it without
         # adding it there would have had the veto empty the one slot the correct
         # product had just won, with a message that was false about that product.
@@ -4251,7 +4251,7 @@ def plan_step(fields: Any, pml: Any, block: Optional[int] = None,
     # would admit — a family's curls becoming coverable must not be able to reach
     # the ordinary pair through the back door.
     #
-    # THIS DISJUNCTION IS THE WHOLE-GRID HALF ONLY, as of 2026-09-13. It used to
+    # This disjunction is the whole-grid half only, as of 2026-09-13. It used to
     # carry two further terms, both about an off-diagonal chi1inv, and both have
     # moved to `off_diagonal_owns_update_e` below because that property is NOT a
     # whole-grid one: it owns exactly one seam. See the note there for what the
@@ -4260,7 +4260,7 @@ def plan_step(fields: Any, pml: Any, block: Optional[int] = None,
         has_complex or has_beta or has_bfast or has_nonlinearity
     )
 
-    # THE OFF-DIAGONAL HALF OF THAT GUARD, SPLIT OUT AND NARROWED TO ONE SEAM.
+    # The off-diagonal half of that guard, split out and narrowed to one seam.
     # Until 2026-09-13 these two terms sat in the disjunction above, so an
     # off-diagonal grid never reached the `elif fuse:` block at all: every pair
     # was refused one branch earlier, by name. That was conservatism rather than a
@@ -4269,7 +4269,7 @@ def plan_step(fields: Any, pml: Any, block: Optional[int] = None,
     # was hiding is decidable from the kernels' own signatures rather than
     # argued:
     #
-    #   * THE MAGNETIC PAIR NEVER RECEIVES chi1inv. :func:`plan_fused_pair`
+    #   * The magnetic pair never receives chi1inv. :func:`plan_fused_pair`
     #     passes the inverse-epsilon volumes only when the pair's constitutive
     #     side is "E" (`if spec["constitutive"] == "E" else None`), and
     #     `FUSED_PAIRS["B"]` is constitutive "H"; `FusedPairPlan.__init__` stores
@@ -4279,8 +4279,8 @@ def plan_step(fields: Any, pml: Any, block: Optional[int] = None,
     #     pointer in its signature at all. An off-diagonal chi1inv therefore
     #     cannot change one value the B seam computes. The narrowing is what the
     #     kernel reads, not a judgement about how much the coupling matters.
-    #   * THE ELECTRIC PAIR DOES READ IT, AND READS IT AS THREE DIAGONAL
-    #     VOLUMES. `kernels.fused_curl_constitutive_D` takes `ie0, ie1, ie2` and
+    #   * The electric pair does read it, and reads it as three diagonal
+    #     volumes. `kernels.fused_curl_constitutive_D` takes `ie0, ie1, ie2` and
     #     applies them pointwise, with no row-product term, and the dispersive
     #     D/E pair's kernel takes the same three and applies them the same way
     #     (`dispersive_fused_pair.py:72,215`). Fusing either on a grid whose
@@ -4290,7 +4290,7 @@ def plan_step(fields: Any, pml: Any, block: Optional[int] = None,
     #     both E-side pairs keep the refusal, BY NAME and in the same words,
     #     inside the `elif fuse:` block below.
     #
-    # THE NARROWING IS NOT SELF-LICENSING, and it is not the same KIND of edit as
+    # The narrowing is not self-licensing, and it is not the same KIND of edit as
     # widening a release row: what it changes is which compositions the engine
     # INSTALLS on a real run, not only which ones a table admits. Its device
     # evidence is therefore owed rather than inherited, and it is the unfolded
@@ -4298,13 +4298,13 @@ def plan_step(fields: Any, pml: Any, block: Optional[int] = None,
     # PASS-FUSED verdict with the substitution proved exact AND the electric pair
     # refused by name on the same row. Until that record exists the composition
     # is one no Triton gate has exercised. The analogous composition HAS been
-    # measured on another backend — the Metal round of 2026-09-12 composed the
+    # measured on another backend — a Metal measurement of 2026-09-12 composed the
     # ordinary magnetic pair on `offdiag_2d`, 4 -> 3 launches per step,
     # byte-identical to the array path at every rung to 192 steps — but that
     # backend's composer holds no guard of this kind, so its measurement is
     # evidence about the ARITHMETIC and not a licence for this file.
     #
-    # BOTH TRIGGERS ARE KEPT VERBATIM, and for the reason they were written. The
+    # Both triggers are kept verbatim, and for the reason they were written. The
     # term is DELIBERATELY NARROWER than the arm's gate: `offdiag_rows_possible`
     # is true for every real Fields (it holds the accessor), so using it here
     # would silently disable fusion for every engine-route run and change the
@@ -4319,7 +4319,7 @@ def plan_step(fields: Any, pml: Any, block: Optional[int] = None,
     )
 
     if fuse and has_fold:
-        # THE ORDINARY PAIR STILL MAY NOT RUN HERE, and that half of the old
+        # The ordinary pair still may not run here, and that half of the old
         # blanket refusal is unchanged: its kernel carries no mirror fill, so the
         # folded ghost-fill passes the driver runs after injection would be work
         # the launch never did. What changed 2026-08-27 is that the two products
@@ -4367,14 +4367,14 @@ def plan_step(fields: Any, pml: Any, block: Optional[int] = None,
             "the dispersive D/E pair predicate")
         for pair_name, spec in FUSED_PAIRS.items():
             if off_diagonal_owns_update_e and spec["constitutive"] == "E":
-                # THE HALF OF THE OLD BLANKET REFUSAL THAT SURVIVES THE SPLIT,
+                # The half of the old blanket refusal that survives the split,
                 # keyed on the constitutive side rather than on the pair's letter
                 # because the side is the reason: this is the seam whose kernel
                 # takes the inverse-epsilon pointers and applies them as three
                 # diagonal volumes. The magnetic pair falls through and is now
                 # composed here for the first time.
                 #
-                # THE REASON TEXT IS UNCHANGED ON PURPOSE. It is the string the
+                # The reason text is unchanged on purpose. It is the string the
                 # frozen gate artifacts under parity/meep_gpu/results recorded,
                 # and the refusal it names is the same refusal arriving from a
                 # different branch — `_pair_may_absorb` would also decline this
@@ -4425,7 +4425,7 @@ def plan_step(fields: Any, pml: Any, block: Optional[int] = None,
                 reasons[f"fused_pair_{pair_name}"] = ("the fused pair was refused",)
 
         if off_diagonal_owns_update_e:
-            # THE DISPERSIVE D/E PAIR COMPOSES THE SAME SEAM, so the narrowing
+            # The dispersive D/E pair composes the same seam, so the narrowing
             # above does not reach it: its kernel takes the same three
             # inverse-epsilon volumes and applies them pointwise. Refused here,
             # ahead of the builder, rather than left to the `_pair_may_absorb`
@@ -4467,16 +4467,16 @@ def plan_step(fields: Any, pml: Any, block: Optional[int] = None,
     _veto_dropped_offdiagonal_coupling(fields, plans, reasons, selected)
 
     if fuse:
-        # THE CERTIFIED-PRODUCT SEAM LOOP, and it runs AFTER the veto rather than
+        # The certified-product seam loop, and it runs AFTER the veto rather than
         # inside the four-branch chain above. Two reasons, both about correctness
         # rather than tidiness:
         #
-        #   * THE VETO WOULD OTHERWISE RIP OUT A CORRECT PRODUCT. It early-returns
+        #   * The veto would otherwise rip out a correct product. It early-returns
         #     when ``selected["update_E"]`` is one of ``ROW_PRODUCT_ARMS``; a fused
         #     label is not one, so an off-diagonal product installed BEFORE it
         #     would be vetoed for having "no row-product term" — which is false of
         #     exactly the two products that implement the term.
-        #   * A VETOED SLOT IS THEN UNSELECTED, which is the fail-closed half:
+        #   * A vetoed slot is then unselected, which is the fail-closed half:
         #     the veto pops ``selected["update_E"]``, so :func:`_pair_may_absorb`
         #     refuses every candidate on that seam by name. There is no path on
         #     which this loop installs a product the veto would have refused.
@@ -4497,14 +4497,14 @@ def plan_step(fields: Any, pml: Any, block: Optional[int] = None,
         reasons["update_P"] = (f"the polarization list could not be read ({exc!r})",)
     polarization_plans: List[Any] = []
     if states:
-        # WHICH ADE FAMILY OWNS ``update_P`` — decided ONCE for the whole sub-step,
+        # Which ADE family owns ``update_P`` — decided ONCE for the whole sub-step,
         # not per state, because the families are held apart by facts about
         # the RUN (is the split-field absorber active?) rather than about a pole.
         # The driver advances every polarization in one pass and it is that pass
         # this slot replaces, so a plan that took state 0 from one family and
         # state 1 from the other would describe a pass nothing runs.
         #
-        # THE AMBIGUITY IS CHECKED BEFORE ANYTHING IS BUILT, which is the whole
+        # The ambiguity is checked before anything is built, which is the whole
         # reason the predicates are consulted here at all: this block is
         # BUILDER-FIRST (each builder asks its own predicate and answers None),
         # and a builder-first fallback would silently prefer the incumbent if both

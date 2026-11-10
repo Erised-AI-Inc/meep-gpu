@@ -1,21 +1,21 @@
-"""THE DYNAMIC-LOOP GATE, Metal leg: is a runtime trip count bit-identical to an
+"""The dynamic-loop gate, Metal leg: is a runtime trip count bit-identical to an
 unrolled compile-time twin?
 
-WHY THIS EXISTS, AND WHY THE CUDA ANSWER DOES NOT SETTLE IT. The sibling
+Why this exists, and why the CUDA answer does not settle it. The sibling
 ``probe_cuda_dynamic_loop_arity.py`` measured the same question on NVCC/PTX and
 got IDENTICAL at every arity 0-8, and it could say WHY: the PTX showed NVCC
 unrolling by four with a nounroll remainder over a strictly serial chain on one
 accumulator, so no reassociation occurred. That is a fact about one compiler.
 
-**THIS BACKEND HAS NO DISASSEMBLY.** ``torch.mps.compile_shader`` takes a source
+**This backend has no disassembly.** ``torch.mps.compile_shader`` takes a source
 string and returns callable entry points; it exposes no AIR, no GPU ISA and no
-optimisation report, so the mechanism cannot be read the way the CUDA round read
+optimisation report, so the mechanism cannot be read the way the CUDA probe read
 it. Everything this probe reports is therefore BEHAVIOURAL EVIDENCE: it catches a
 wrong ANSWER, never a wrong INSTRUCTION. That is the certification gap this
 backend carries against the Triton and CUDA tracks and it is stated, not papered
 over.
 
-WHAT IS AT STAKE. Triton's ``cyl_complex_pml_curl_step`` carries an UNBOUNDED
+What is at stake. Triton's ``cyl_complex_pml_curl_step`` carries an UNBOUNDED
 ``tl.constexpr`` axis (``triton_kernels/cylindrical_complex.py:725``), so its
 variant count is ``8 x unbounded`` and no author can enumerate it. Metal
 specialises by SOURCE SUBSTITUTION (``metal_kernels/shaders.py``), so an unbounded
@@ -24,7 +24,7 @@ is bit-identical to the specialised one, the axis collapses to a bound uniform a
 the family is finite; if it is not, every arity the corpus asks for must be
 compiled separately and the port pays a variant per arity.
 
-WHAT IT MEASURES, in the order it measures it:
+What it measures, in the order it measures it:
 
 1. ``accumulate`` - THE HEADLINE. A strictly serial float32 accumulation over an
    arity axis: ``acc = acc + coef[p]*state[p]``, one trip per pole, the shape the
@@ -33,7 +33,7 @@ WHAT IT MEASURES, in the order it measures it:
    is the same arithmetic emitted as straight-line source with literal indices.
    Compared as UINT32 WORDS.
 
-2. ``threshold`` - WHAT CYLINDRICAL ACTUALLY NEEDS, which is NOT a sum. The
+2. ``threshold`` - what cylindrical actually needs, which is NOT a sum. The
    Triton kernel spends ``ZERO_ROWS`` at exactly one site,
    ``cylindrical_complex.py:971`` ``near = i < ZERO_ROWS``: an INTEGER comparison
    bound on the row index, not a trip count and not a reduction. This leg measures
@@ -154,7 +154,7 @@ __PRAGMA__
 
 #: THE SUBJECT: the trip count is read from a buffer, so no constant folding is
 #: available to the compiler. The chain is STRICTLY SERIAL on one accumulator —
-#: that is the property the CUDA round attributed its null to, and stating it here
+#: that is the property the CUDA probe attributed its null to, and stating it here
 #: keeps the two measurements about the same shape.
 _DYNAMIC = _PREAMBLE + """
 kernel void arity_dynamic(
@@ -295,7 +295,7 @@ def _draw(value_class: str, arity: int, lanes: int, seed: int
         # A geometric ladder of terms: adding small-to-large and large-to-small
         # give different answers, the classic order-sensitive summation.
         #
-        # THE DECADE SPAN IS CHOSEN, NOT ARBITRARY. At -0.6 per pole the smallest
+        # The decade span is chosen, not arbitrary. At -0.6 per pole the smallest
         # term at arity 8 is ~6e-5 against an accumulator of order one, which is
         # ~500 float32 ulps — so the ``dynamic_short`` control (which drops
         # exactly that term) still BITES. A steeper ladder would push the last
@@ -414,7 +414,7 @@ def _reference(base: np.ndarray, coef: np.ndarray, state: np.ndarray,
 
 def run_accumulate(runner: Runner, lanes: int, arities: Sequence[int],
                    emit) -> List[Dict[str, Any]]:
-    """THE HEADLINE LEG: runtime trip count vs unrolled twin."""
+    """The headline leg: runtime trip count vs unrolled twin."""
     rows: List[Dict[str, Any]] = []
     seed = 20260816
     for contract in CONTRACT_MODES:

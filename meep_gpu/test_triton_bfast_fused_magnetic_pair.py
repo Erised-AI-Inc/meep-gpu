@@ -7,7 +7,7 @@ TRANSCRIPTION leg: this product claims to be
 claim is checked here as two EXACT STATEMENT-LIST equalities against the shipped
 sources rather than by reading the docstring.
 
-THE COMPARISON IS PER TOP-LEVEL STATEMENT, NOT PER LINE, and that is the one
+The comparison is per top-level statement, not per line, and that is the one
 difference from the sibling beta suite. The BFAST tail CONTAINS lines that also
 appear elsewhere in both bodies (``if BACKWARD:``, ``if BCX == METALLIC:``), so a
 flat line subtraction would leave those orphans behind and could not express the

@@ -1,18 +1,18 @@
 """The fused magnetic Metal kernel, as claims a laptop can check without a GPU.
 
-WHAT THIS SUITE OWNS AND WHAT IT DELIBERATELY DOES NOT. The BYTES are the device
+What this suite owns and what it deliberately does not. The BYTES are the device
 gate's — ``parity/meep_gpu/gate_metal_fused_magnetic_pair.py`` steps two engines
 side by side for twelve complete steps and compares uint32 words, and no assertion
 here duplicates that. What lives here is everything true about the family WITHOUT
 a device: what the emitted source says, which configurations the predicate refuses
-and by what name, that the arm is registered UNWIRED, and that the plan binds the
+and by what name, that the arm is registered unwired, and that the plan binds the
 lattice each half is supposed to take.
 
-THE TWO CLAIMS THIS SUITE MAKES THAT THE GATE CANNOT.
+The two claims this suite makes that the gate cannot.
 
 1. That the product is invisible to ``plan_step``'s DEFAULT composition — a
    property of the TABLE, and the whole reason this family may land beside the
-   wired tree without touching it. ``plan_step(fuse=True)`` is the one path that
+   wired families without touching it. ``plan_step(fuse=True)`` is the one path that
    can reach it, opt-in and off by default; what it composes, and the two-slot
    protocol it composes it with, are pinned in
    ``test_metal_fused_pair_deposit_wiring.py``.
@@ -132,7 +132,7 @@ def test_the_inline_wall_clear_is_the_b_yee_shift_table(walled, expected):
 
 
 def test_the_b_table_is_the_complement_of_the_d_table():
-    """THE PORT HAZARD, pinned. The D side is the OFF-diagonal, B is the DIAGONAL.
+    """The port hazard, pinned. The D side is the OFF-diagonal, B is the DIAGONAL.
 
     Reusing :data:`.fused_dispersive_pair._ZERO_METAL_ROWS` here would clear the
     wrong two components on every walled run. The two tables are asserted DISJOINT
@@ -191,7 +191,7 @@ class _Source:
 
 
 def test_an_undeclared_source_set_is_refused_by_name():
-    """IGNORANCE IS NOT AN EMPTY SET. ``Fields`` does not hold the source list, so
+    """Ignorance is not an empty set. ``Fields`` does not hold the source list, so
     inferring "no sources" from not being told is the over-covering refusal this
     clause exists to prevent."""
     coverage = family.metal_fused_magnetic_pair_coverage(object(), None, None)
@@ -204,11 +204,11 @@ def test_a_magnetic_source_is_carried_and_an_electric_one_is_not_this_seam():
     D-side one. A magnetic current lands BETWEEN ``step_B`` and ``update_H``
     (driver.py:3283-3284); an electric one lands in the other half entirely.
 
-    THE MAGNETIC SIDE IS NOW CARRIED, NOT REFUSED. ``CARRIES_DEPOSIT_REPAIR`` is
+    The magnetic side is now carried, not refused. ``CARRIES_DEPOSIT_REPAIR`` is
     True, so the seam clause stops returning the flat "is magnetic" refusal and
     returns instead only what the REPAIR cannot reconstruct. On the degenerate
     ``object()`` fields used here that is the missing ``f_w_H`` storage and the
-    absent deposit index -- both of which are refusals ABOUT THE REPAIR, which is
+    absent deposit index -- both of which are refusals about the repair, which is
     what distinguishes this from the old blanket clause. An electric source still
     contributes nothing either way.
     """
@@ -226,7 +226,7 @@ def test_a_magnetic_source_is_carried_and_an_electric_one_is_not_this_seam():
 
 
 def test_the_flag_and_the_installer_move_together():
-    """THE CLAIM THE FLAG MAKES, checked against the composer that must honour it.
+    """The claim the flag makes, checked against the composer that must honour it.
 
     ``deposit_repair`` is explicit that True without the wrappers is the exact defect
     it exists to prevent. On this track the wrappers are built by
@@ -316,7 +316,7 @@ def test_the_plan_declares_every_pass_it_performs():
 def test_the_refuted_separate_scalar_signature_really_does_break_the_ceiling():
     """The 32-binding count is spelled once and the emitter agrees with it.
 
-    Whether it FAILS TO COMPILE is a device measurement and belongs to the gate's
+    Whether it fails to compile is a device measurement and belongs to the gate's
     ``binding_ceiling`` leg; what belongs here is that the signature this suite and
     that leg talk about is the same one, and that it is over the documented limit.
     """
@@ -376,7 +376,7 @@ def _declared_locals(source):
 
 
 def test_the_params_struct_embeds_the_record_and_one_alias_binds_it():
-    """No binding to spare, so the record rides in ``Params`` (DESIGN.md D10).
+    """No binding to spare, so the record rides in ``Params`` (docs/development/kernel-tables.md#record-bindings).
 
     The struct is declared once, ``Params`` carries it as its last member, and ONE
     line before the lifted text gives the bodies' anchored bounds blocks the ``cb``

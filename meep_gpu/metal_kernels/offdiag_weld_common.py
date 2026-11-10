@@ -11,7 +11,7 @@ D output, so the weld that fuses them must never mutate D in place. Instead
 * the constitutive half takes its own cell's displacement from registers and
   RE-DERIVES every foreign stencil tap from pre-launch state through the same
   inline function (:func:`step_cell_function`) — at most three foreign cells per
-  live term, and NOTHING WRITTEN IS EVER READ;
+  live term, and nothing written is ever read;
 * the in-seam passes are carried per cell by a CLOSED FORM
   (:func:`d_final_function`): a fill destination redirects to its image source
   (near: stored 0 -> ``MIRROR_SOURCE_INDEX`` with ``mirror_parity``; far: stored
@@ -27,7 +27,7 @@ D output, so the weld that fuses them must never mutate D in place. Instead
   D seam, where the array path itself never rotates, so the plan owns both
   buffers outright rather than following an engine rotation.
 
-WHAT IS LIFTED AND WHAT IS NEW. The curl arithmetic inside
+What is lifted and what is new. The curl arithmetic inside
 :func:`step_cell_function` is the certified curl emitter's own body — cut at the
 decode-prologue anchor, re-headed as an inline function of ``(i, j, k)``, stores
 replaced by a struct return, and asserted line for line
@@ -40,7 +40,7 @@ parity spellings are the fills' own (``-x`` real, plain copy for +1 real, and
 the per-part product ``c_mul_coefficient_left(+/-1, z)`` complex: the array path's
 ``part_products.scale`` of the parity).
 
-THE PER-CHUNK FORMS. The lifted curl reads the chunk record, so
+The per-chunk forms. The lifted curl reads the chunk record, so
 :func:`step_cell_function` takes it (a family passes ``constant ChunkBounds& cb``
 among its scalar parameters) and the select is evaluated at the cell being stepped,
 a re-derived foreign cell included. The curl's auxiliary store is guarded by its
@@ -101,7 +101,7 @@ def lift_curl_tail(source: str, *, store_edits: Sequence[Tuple[str, str]],
     cut, so the helper is total on every stored cell and the dispatch keeps the
     guard.
 
-    ``decode_end`` IS A PER-FAMILY ANCHOR and not a constant, because the real and
+    ``decode_end`` is a per-family anchor and not a constant, because the real and
     complex emitters end their prologues differently: the real curl's last decode
     line is ``int i = plane / nyi;`` with ``nyz`` above it, and the complex one
     puts ``int nxi = int(nx);`` and ``int nyz = nyi * nzi;`` BELOW that line. Cut
@@ -112,7 +112,7 @@ def lift_curl_tail(source: str, *, store_edits: Sequence[Tuple[str, str]],
     ``("...f0[ii] = v0...", "")`` where the certified line computed the value into
     a register first and only stored it, and ``("f0[ii] = f0[ii] - curl0;",
     "float2 v0 = f0[ii] - curl0;")`` where the certified line was the computation.
-    THE RIGHT-HAND SIDE IS NEVER TOUCHED by either form: what moves is the
+    The right-hand side is never touched by either form: what moves is the
     destination, from a volume the fused kernel must not write to a register the
     struct returns.
     """
@@ -302,7 +302,7 @@ def _forward_labels(call_arguments: str) -> str:
 def substitute_loads(text: str, substitutions: Sequence[Tuple[str, str, int]]) -> str:
     """Apply the (old, new, count) needles that turn loads into re-derivations.
 
-    A ``count`` of ``-1`` means AT LEAST ONE and however many the emitter wrote:
+    A ``count`` of ``-1`` means at least one and however many the emitter wrote:
     ``g0[ii]`` appears once as the component's own displacement and once more per
     live term that takes component 0 as a partner, and the number is a property of
     the row mask rather than of this function. Zero occurrences is still refused —
@@ -328,7 +328,7 @@ def displacement_needles(row_mask: Sequence[int], *, e_terms: Sequence[Any],
                          register: str, call: str) -> List[Tuple[str, str, int]]:
     """Every displacement read the certified constitutive body makes, redirected.
 
-    THE NEEDLES ARE BUILT FROM THE EMITTER'S OWN TABLES — ``index`` is that
+    The needles are built from the emitter's own tables — ``index`` is that
     emitter's ``_index``, ``neighbour_names`` its per-axis ``(down, up)`` index
     variable names, and ``transverse_partners``/``e_terms`` its partner tables —
     so a change to how the certified kernel spells a neighbour index reaches this
@@ -379,7 +379,7 @@ def weld_body(constitutive_source: str, *, decode_end: str, seam: str,
     where every index the seam needs first exists and before any displacement is
     read — and every displacement read below is redirected by ``needles``.
 
-    THE FINAL CHECK IS THE ONE THAT MATTERS. After the substitution no ``gN[``
+    The final check is the one that matters. After the substitution no ``gN[``
     may survive anywhere in the body: in the fused signature those three
     pointers are the MAGNETIC field, so one missed read is a smooth, plausible,
     entirely wrong answer rather than a compile error.
@@ -410,7 +410,7 @@ def seam_lines(*, value_type: str, forward: str, split_field: bool,
                d_final_arguments: str = "") -> str:
     """The scratch stores and the three final displacements, as kernel text.
 
-    ORDER IS LOAD-BEARING AND IS THE DRIVER'S. ``step_cell`` at this thread's own
+    Order is load-bearing and is the driver's. ``step_cell`` at this thread's own
     cell gives the RAW stepped auxiliary, which the fills and the wall clear never
     touch (``stepping._fill_symmetry_ghost_cells`` and ``._zero_metal`` both walk
     ``D_CURL_TERMS`` / ``D_COMPONENTS``, never ``fu_*``), so the split-field
@@ -418,7 +418,7 @@ def seam_lines(*, value_type: str, forward: str, split_field: bool,
     which is the same raw value with the seam's three passes resolved per cell.
     """
     lines = [
-        "\n    // --- THE SCRATCH WELD: step_D and the three in-seam passes ----",
+        "\n    // --- The scratch weld: step_D and the three in-seam passes ----",
         "    // Nothing written below is read: the constitutive half re-derives",
         "    // every foreign tap from PRE-LAUNCH state through the same",
         "    // `step_cell`, and the launcher rotates the buffers afterwards.",
@@ -450,7 +450,7 @@ class ScratchWeldPairPlan:
 
     ``rotated`` maps attribute name -> the twin host array the plan owns.
 
-    THE SIGNATURE ORDER IS THE ARGUMENT ORDER AND IS NOT NEGOTIABLE: every
+    The signature order is the argument order and is not negotiable: every
     rotating WRITE (the scratch) first, in ``rotated_names`` order, then every
     rotating READ (the pre-launch buffer) in the same order, then
     ``static_args`` — the non-rotating pointers and the packed ``Params``
@@ -564,7 +564,7 @@ def scratch_twin(residency: Residency, name: str, host: Any,
                  dtype: Any = None) -> Tuple[Any, Any]:
     """The plan-owned twin of one rotating volume, and its device mirror.
 
-    A FRESH ZERO ARRAY OF THE SAME DTYPE AND SHAPE, registered under a name of
+    A fresh zero array of the same dtype and shape, registered under a name of
     its own. Zeroing rather than copying is deliberate and is measurable: the
     kernel writes EVERY stored cell of the twin on every launch (the dispatch is
     sized from it and the closed form is total), so a leftover value can only

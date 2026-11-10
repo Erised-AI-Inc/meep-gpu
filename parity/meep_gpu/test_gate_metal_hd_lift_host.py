@@ -2,7 +2,7 @@
 
 Two things every Metal H->D gate carries need no Apple GPU:
 
-* **the lift's refusal accounting on the 0.10 source path**
+* **the lift's refusal accounting on the 1.0 source path**
   (``gate_metal_fused_hd_pair.lift_refusal_accounting``): a lifted row carrying a
   magnetic source is refused by ``launch.h_start_reasons`` and every other row is
   admitted, the seam record's ``withdraw_in_seam`` rows included. The rows are built

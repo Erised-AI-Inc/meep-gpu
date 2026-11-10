@@ -1,6 +1,6 @@
 """MEEP's folded increments as passes after the curl: the one CUDA spelling.
 
-WHAT A FOLDED PASS IS. Two families add a term to the B and D curls that MEEP does
+What a folded pass is. Two families add a term to the B and D curls that MEEP does
 not form inside the curl: BFAST (``grid.bfast_active``) and special_kz
 (``grid.beta != 0``). MEEP's ``step_db`` (step_db.cpp:47-175) runs, per component,
 ``STEP_CURL`` and then ``STEP_BFAST`` on the same component (:124-142), and after every
@@ -19,16 +19,16 @@ visits keeps its word, while adding a masked ``+0`` would turn a stored ``-0`` i
 ``+0``. Two additions into one word do not commute in rounding, so the order on every
 cell is the curl form, then the BFAST ladder, then the beta ladder.
 
-WHY A PASS AFTER ``pml_apply`` AND NOT A TERM INSIDE THE CURL. Until 0.10 these kernels
+Why a pass after ``pml_apply`` and not a term inside the curl. Until 1.0 these kernels
 added the increment to ``curl`` before the masks, so it rode the curl's own
 ``((f * kms) - curl) * sinv`` recurrence; the array path does not, and on the complex
-lane's ``bf`` case the old folding differs in 120,035 of 278,318 words
-(bit_parity_0_10 AP6b). The pass helper below runs after the certified ``pml_apply``
+storage ``bf`` case the old folding differs in 120,035 of 278,318 words
+(measured for 1.0). The pass helper below runs after the certified ``pml_apply``
 call of the same component, on the words ``pml_apply`` just stored: a float32 stored and
 reloaded is the identity on the bits, so the two roundings of MEEP's two passes are the
 two roundings here. The certified ``pml_apply`` is not edited.
 
-THE BFAST STATE (``stepping._bfast_term``). With both partners present::
+The BFAST state (``stepping._bfast_term``). With both partners present::
 
     F_prev = F[i];  F[i] = (k1*(g1s + g1) - k2*(g2s + g2)) - F_prev;  raw = F[i] - F_prev
 
@@ -40,21 +40,21 @@ no layer on the dsig or dsigu axis in the chunk, and no conductivity -- the stat
 no such component: no increment, no state word. The state is written on MEEP's owned
 cells only, and the increment is ``+0`` elsewhere.
 
-THE BETA INCREMENT (``stepping._special_kz_beta_term``). Real storage: ``-(c * g)`` with
+The beta increment (``stepping._special_kz_beta_term``). Real storage: ``-(c * g)`` with
 ``c = float32(sign * 2*pi*beta*dt)``. Complex storage: ``-quarter_turn(c, g)``, the
 quarter turn ``i*c*(x + iy) = -(c*y) + i*(c*x)`` formed part by part
 (``part_products.quarter_turn``), negated -- two real products and two sign flips, never a
 complex product. ``g`` is the partner's STORED word at the cell itself (the component
 snapshot, no Bloch connection).
 
-THE FUSED PRODUCTS derive ``fold_apply_reg`` / ``cfold_apply_reg`` from the helpers below
+The fused products derive ``fold_apply_reg`` / ``cfold_apply_reg`` from the helpers below
 by the same four anchored rewrites the fused pairs apply to ``pml_apply``
 (``fused_magnetic_pair``: the signature returns the value, the parameter list gains
 ``owned``, the ownership guard sits above the one load of the field, and the closing
 store also returns the value). The ``fu`` stage stays above the guard, as in
 ``pml_apply_reg``: the curl writes ``fu`` at every recurrence cell and no fill touches it.
 
-STDLIB ONLY: the emitters run on a host with no CuPy, where the coverage census runs.
+Stdlib only: the emitters run on a host with no CuPy, where the coverage census runs.
 """
 
 from __future__ import annotations
@@ -201,7 +201,7 @@ _CFOLD_FCUR = "    cf fcur = cf_load(f, idx);\n"
 _CFOLD_STORE = "    cf_store(f, idx, value);\n"
 
 _GUARD_COMMENT = (
-    "    // THE OWNERSHIP GUARD, the fused pairs' own (pml_apply_reg): on a cell a fill\n"
+    "    // The ownership guard, the fused pairs' own (pml_apply_reg): on a cell a fill\n"
     "    // images the SOURCE thread writes f, so this thread neither reads nor writes\n"
     "    // it. The fu stage above stays unguarded: the curl writes fu at every\n"
     "    // recurrence cell and no fill touches it.\n")

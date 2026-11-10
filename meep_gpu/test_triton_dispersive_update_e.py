@@ -97,7 +97,7 @@ def restored_module():
     ``importlib.reload`` mutates the module object every other module holds, and
     rebinds its names to FRESH objects. Siblings that did ``from ... import E_TERMS``
     keep the object bound at their own import, so after this test the source module
-    and its consumers hold two equal-but-distinct tuples. MEASURED 2026-08-17: that
+    and its consumers hold two equal-but-distinct tuples. Measured 2026-08-17: that
     is exactly how ``test_triton_folded_offdiag_dispersive_update_e`` failed its
     ``module.E_TERMS is dispersive_update_e.E_TERMS`` restatement check — but only in
     a full-suite run, and it passed alone, so the failure read as record drift in a
@@ -669,7 +669,7 @@ def test_the_dispersive_composition_fingerprint_names_the_exact_gated_bytes():
     assert gate["real_engine_route"]["covered_whole_step_identical"] == (
         "8/8 over six complete steps")
     assert gate["real_engine_route"]["refusals_returned_none"] == "3/4"
-    # THE COUNTER THAT REPLACES WHAT 4/4 USED TO MEAN, and the reason dropping to
+    # The counter that replaces what 4/4 used to mean, and the reason dropping to
     # 3/4 above costs this weld nothing. The old counter collapsed two builder calls
     # into one bit with `all(... is None)`; this one is an EQUIVALENCE per curl
     # sub-step — `plan_pml_curl` returns None exactly where its own named-sub-step
@@ -683,7 +683,7 @@ def test_the_dispersive_composition_fingerprint_names_the_exact_gated_bytes():
 
 
 # ---------------------------------------------------------------------------
-# The per-chunk forms (bit_parity_0_10 WP KT6), read off the parse tree
+# The per-chunk forms of the Triton dispersive kernels, read off the parse tree
 # ---------------------------------------------------------------------------
 
 def _kt6_function(path, name):

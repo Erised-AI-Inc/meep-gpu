@@ -52,7 +52,7 @@ request resolved to.
 |---|---|---|
 | <code>prefer_gpu=False</code> | any | <code>(numpy, None)</code>, the NumPy reference |
 | <code>prefer_gpu=True</code> | CUDA device | <code>(cupy, "cuda")</code>, with device <code>gpu_id</code> selected |
-| <code>prefer_gpu=True</code> | Apple GPU | <code>(numpy, "metal")</code>; Metal kernels run over NumPy-owned fields |
+| <code>prefer_gpu=True</code> | Apple GPU | <code>(numpy, "metal")</code>; Metal kernels run on MPS mirrors of the engine's NumPy arrays, and by default (<code>held</code> residency) the device owns each one between launches |
 | <code>prefer_gpu=True</code> | neither | raises <code>RuntimeError</code>; the message names <code>prefer_gpu=False</code> |
 
 <code>gpu_id</code> selects a CUDA device. An Apple GPU has one device, so a
@@ -215,11 +215,11 @@ finally:
 | <code>SubnormalPolicyLocked</code> | A different subnormal policy was requested after one was installed in this process | Set the policy before the first kernel compiles, or use a fresh process |
 | <code>SubnormalPolicyUnattainable</code> | The requested policy cannot be installed on one of the executors | <code>keep</code> is not attainable on an Apple GPU; <code>flush</code> with CuPy needs <code>CUPY_ACCELERATORS=''</code> set before CuPy is imported ([the floating-point contract](../design/floating-point.md#the-subnormal-policy)) |
 
-Not every refusal is an exception. A kernel table that cannot serve a
-configuration, an NVIDIA device or toolchain outside the supported range, an
-identity outside the certified one under
-<code>MEEP_GPU_HARDWARE=certified</code>, an environment switch with a value it
-does not accept (other than <code>0</code> or <code>1</code>; for
+Not every refusal is an exception. A configuration no kernel table can serve, an
+NVIDIA device and toolchain no kernel table supports (unless
+<code>MEEP_GPU_HARDWARE=any</code>), an identity outside every table's certified
+one under <code>MEEP_GPU_HARDWARE=certified</code>, an environment switch with a
+value it does not accept (other than <code>0</code> or <code>1</code>; for
 <code>MEEP_GPU_HARDWARE</code>, other than <code>certified</code>,
 <code>supported</code> or <code>any</code>), and the retired
 <code>MEEP_GPU_ALLOW_UNCERTIFIED</code> set to any value leave the run on the array
@@ -233,11 +233,11 @@ since every Apple GPU is supported, and says they are not certified there
 ## Subnormal policy
 
 Float32 subnormal handling is part of the numerical contract, not a tuning knob.
-It affects reproducibility against CPU MEEP, and each compiled-kernel table
-declares the policy its certification was cut under: the two NVIDIA tables
-(Triton and hand-written CUDA) under <code>keep</code>, the Metal table under
-<code>flush</code>. When dispatch is
-enabled it installs that policy on all three executors or refuses by name.
+It affects reproducibility against CPU MEEP. When dispatch is enabled it installs
+<code>keep</code> for the two NVIDIA tables (Triton and hand-written CUDA),
+certified under both policies, and <code>flush</code> for the Metal table, certified
+under it alone, on every executor the step drives, or refuses by name; an NVIDIA
+table instead keeps a <code>flush</code> the caller installed on all of them.
 Dispatch is on by default. So a run that dispatches gets that policy for the
 whole process, including its array-path sub-steps, unless it sets
 <code>MEEP_GPU_DISPATCH=0</code>. The policy per executor, and what it does to
@@ -255,7 +255,7 @@ a comparison, is in
 
 Two operational notes. <code>MEEP_GPU_SUBNORMAL_INSTALL=0</code> moves the
 install to the caller but does not relax the rule — dispatch still refuses unless
-the certified policy is already installed. And under <code>keep</code>, the
+a policy the table admits is already installed. And under <code>keep</code>, the
 <code>CUPY_CACHE_DIR</code> in force must carry <code>ftz_stripped</code> in its
 path, or the run silently executes the other policy's arithmetic.
 
@@ -274,11 +274,11 @@ configuration freeze, so a long run's dispatch state is readable with
 The record is a dictionary of more than twenty keys. The ones to read first are
 <code>step_path</code>, <code>decision</code>, <code>refused_because</code>,
 <code>table</code>, <code>composition</code>, <code>slots</code>,
-<code>certified</code> (three-valued: <code>True</code>; <code>False</code>
-when an identity that served is not certified, by default on a supported
-NVIDIA device or toolchain and on an Apple GPU outside the certified
-environment; <code>None</code> when nothing dispatched or
-an identity could not be judged) and <code>reference_driver</code>;
+<code>certified</code> (three-valued: <code>True</code>; <code>False</code> when an
+identity that served, the NVIDIA stack included, is not certified, whether admitted by
+default or by <code>MEEP_GPU_HARDWARE=any</code>, or when a caller's <code>flush</code>
+is not certified for every dispatched arm; <code>None</code> when nothing dispatched, or
+an identity could not be read or the records do not name it) and <code>reference_driver</code>;
 [Reading what ran](../getting-started/reading-what-ran.md) describes each, and
 why <code>tables</code> and <code>arbitration</code> can read as not reached on a
 dispatched run.
@@ -293,7 +293,7 @@ them is an exception; each reason is also in the dispatch record.
 | <code>meep_gpu: step path fused;</code> | Compiled kernels served part of the step: which sub-steps, which kernels, the table, the subnormal policy installed, and the device and toolchain, each marked certified or not; on a Mac the GPU with its architecture, marked <code>supported, UNCERTIFIED</code> on an Apple GPU outside the certified environment |
 | <code>meep_gpu: step path array on the host CPU; dispatch refused:</code> | On an Apple GPU no kernel could serve; the whole run stepped on the host CPU |
 | <code>meep_gpu: step path array; dispatch refused:</code> | On an NVIDIA GPU no kernel could serve; the run stepped on the array path on the device |
-| <code>meep_gpu: NOTE the kernels are NOT CERTIFIED on this host:</code> | The kernels ran on an identity outside the certified list: by default on a supported one (an Apple GPU outside the certified environment, because every Apple GPU is supported; an NVIDIA GPU of compute capability 7.0 to 9.0 or a Triton 3.1 release outside the certified identity); on an NVIDIA identity outside the supported range because <code>MEEP_GPU_HARDWARE=any</code> admitted it |
+| <code>meep_gpu: NOTE the kernels are NOT CERTIFIED on this host:</code> | The kernels ran on an identity outside the certified list: by default on a supported one (an Apple GPU outside the certified environment, because every Apple GPU is supported; a supported NVIDIA GPU, Triton release or stack outside the certified identity) or on an NVIDIA GPU or Triton version whose support could not be checked; on an NVIDIA identity that is not supported because <code>MEEP_GPU_HARDWARE=any</code> admitted it. The same line follows a caller-installed <code>flush</code> on an NVIDIA GPU when not every dispatched arm was certified under it on that compute capability |
 | <code>meep_gpu: step path array (NumPy reference, prefer_gpu=False);</code> | <code>MEEP_GPU_DISPATCH</code> is set on a reference driver, where it does not apply |
 | <code>meep_gpu: this MEEP build is double precision</code> | The lift read a double-precision MEEP; the engine steps single precision |
 
@@ -350,7 +350,7 @@ host's GPU and raises on a host with none. Two attributes record the outcome:
 | Attribute | Meaning |
 |---|---|
 | <code>xp</code> | The array module the engine's fields live in: NumPy or CuPy |
-| <code>gpu</code> | What <code>prefer_gpu</code> resolved to: <code>"cuda"</code> (CuPy arrays on a CUDA device), <code>"metal"</code> (Metal kernels over NumPy host arrays on an Apple GPU), or <code>None</code> for the NumPy reference |
+| <code>gpu</code> | What <code>prefer_gpu</code> resolved to: <code>"cuda"</code> (CuPy arrays on a CUDA device), <code>"metal"</code> (Metal kernels on MPS mirrors of NumPy host arrays, on an Apple GPU), or <code>None</code> for the NumPy reference |
 
 The arrays on <code>driver.fields</code> are internal storage, not part of this
 surface: read fields with <code>get_field</code> and write a primary field with

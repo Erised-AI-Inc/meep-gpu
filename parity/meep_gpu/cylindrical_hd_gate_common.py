@@ -1,6 +1,6 @@
 """Shared machinery for the two CUDA cylindrical H->D product gates.
 
-THE TWO GATES THAT IMPORT THIS are ``gate_cuda_cylindrical_real_fused_hd_pair.py``
+The two gates that import this are ``gate_cuda_cylindrical_real_fused_hd_pair.py``
 (real float32 storage, m = 0) and ``gate_cuda_cylindrical_fused_hd_pair.py``
 (complex64 storage, any m). Both certify the SAME SHAPE -- launch 1 in the ``update_H``
 slot computes the certified magnetic constitutive at the thread's own cell into
@@ -15,17 +15,17 @@ seam leg (``withdraw``: the magnetic f_minus_p restore, hd_seam_restore), the co
 runner. A second transcription of a launch counter is a second place for a counter to
 stop counting.
 
-WHAT A FAMILY SUPPLIES is an :class:`Adapter`: the module, the fixtures, how to seed a
+What a family supplies is an :class:`Adapter`: the module, the fixtures, how to seed a
 volume of its storage, the certified single-slot launchers and the released neighbouring
 pairs it is measured against, the armed mutations with their null controls, and the
 two host legs whose text is the family's own (transcription, refusal).
 
-THE EVIDENCE STANDARD is the brief's: bit identity as uint32 WORDS per COMPLETE driver
+The evidence standard is bit identity as uint32 WORDS per COMPLETE driver
 step against the array path (never ``allclose``; ``-0.0 == 0.0`` lies), every zero
 beside a control that moves words, every count as N of D with D named, nothing
 unmeasured credited.
 
-NOTHING PASSES BY NOT EXECUTING. Every weld step advances THREE counters -- the family's
+Nothing passes by not executing. Every weld step advances THREE counters -- the family's
 own tally (3 per run), the shipped compile memo's launch count (the three ``RawKernel``
 launches: launch 1, the scan, the curl) and the family's scan tally -- and the product
 leg requires all three to have moved on every case. A wrapper around ``cupy.cumsum``
@@ -48,7 +48,6 @@ import hashlib
 import inspect
 import json
 import os
-import platform
 import subprocess
 import sys
 import tempfile
@@ -76,7 +75,7 @@ import gate_provenance  # noqa: E402
 import hd_seam_restore  # noqa: E402
 import probe_fused_kernel_bit_identity as probe  # noqa: E402
 
-# THE SIBLING GATES, imported for the machinery every scratch-output weld gate shares.
+# The sibling gates, imported for the machinery every scratch-output weld gate shares.
 import gate_cuda_offdiag_stencil_welds as scratch_gate  # noqa: E402
 import gate_cuda_fused_hd_pair as hd_gate  # noqa: E402
 
@@ -110,7 +109,7 @@ SEED_SCALE_BITS = 80
 #: How many clean complete steps a lifted corpus row must reach to count.
 LIFT_CLEAN_STEP_FLOOR = 8
 
-#: The board this round's two cells are read from, and the census it was cut over.
+#: The board the two cylindrical H->D products' cells are read from, and the census it was cut over.
 BOARD = "fusion_matrix_cuda_2026-09-06_hd"
 CENSUS = "cuda_predicate_coverage_2026-09-06_hd"
 
@@ -208,7 +207,7 @@ class Adapter:
         if spec.get("thin_absorber"):
             thickness = {"x": (0, 2), "z": 2}
         if shape[2] < 4:
-            # A ONE-COLUMN ROW absorbs on r only: no layer fits a one-cell z axis, and
+            # A one-column row absorbs on r only: no layer fits a one-cell z axis, and
             # the one-column corpus rows carry exactly that.
             thickness = {"x": thickness["x"]}
         pml = PML(grid=grid, thickness=thickness)
@@ -244,7 +243,7 @@ class Adapter:
         if value_class == "subnormal_band":
             return probe.subnormal_band_hosts((name,), shape, rng)[name]
         if value_class == "signed_zero":
-            # HALF THE CELLS OF EVERY REAL PLANE ARE EXACT ZEROS OF RANDOM SIGN (the
+            # Half the cells of every real plane are exact zeros of random sign (the
             # imaginary planes stay uniform): the class on which the zero cross
             # terms, the divide's zero-valued terms and the sum's sign are decided.
             if name.endswith("/imag"):
@@ -521,7 +520,7 @@ def make_arrangement(adapter: Adapter, mode: str, fields, grid, pml, dtdx: float
             from meep_gpu.cuda_kernels.cylindrical_prefix import (  # noqa: PLC0415
                 radial_difference)
             if order == "curl_first":
-                # THE SUB-STEP ORDER INVERTED: the certified curl runs on the
+                # The sub-step order inverted: the certified curl runs on the
                 # PRE-update H and the radial difference of the pre-update Hy, then
                 # the constitutive. An armed host mutation, never a shipped path.
                 radial_difference(fields, pml, "step_D", tables=state["scan"],
@@ -607,7 +606,7 @@ def drive(adapter: Adapter, spec: Mapping[str, Any], value_class: str, steps: in
                 for mode in modes:
                     engines[mode].step()
             except ValueError as error:
-                # A REFUSAL RAISED BY THE LAUNCHER (the aliasing assert) is a
+                # A refusal raised by the launcher (the aliasing assert) is a
                 # measurement, recorded as such; the case cannot continue.
                 refused = repr(error)[:400]
                 break
@@ -629,7 +628,7 @@ def drive(adapter: Adapter, spec: Mapping[str, Any], value_class: str, steps: in
     final = frozen(engines[modes[-1]].fields)
     array_final = frozen(engines[modes[0]].fields)
     must_move = STATE_NAMES if value_class != "subnormal_band" else BAND_MUST_MOVE
-    # A VOLUME THE ARRAY PATH ITSELF LEAVES UNTOUCHED IS NOT A VACUITY. On a one-column
+    # A volume the array path itself leaves untouched is not a vacuity. On a one-column
     # row (nz = 1, phi = 1) Dx's two curl terms are self-differences on one-cell axes
     # and fu_Dx/fu_Bx never move on ANY arrangement; the floor is that the product's
     # OWN outputs moved. Both sets are recorded.
@@ -639,7 +638,7 @@ def drive(adapter: Adapter, spec: Mapping[str, Any], value_class: str, steps: in
                      if name in seeded and name not in array_unmoved
                      and not differing(seeded[name], final[name]))
     product_outputs = ("Hx", "Hy", "Hz", "f_w_Hx", "f_w_Hy", "f_w_Hz", "Dz", "fu_Dz")
-    # THE AUXILIARY CONTRACT (KERNELS.md section 1, C2): an auxiliary is read and written
+    # The auxiliary contract (docs/design/floating-point.md): an auxiliary is read and written
     # only on the cells whose chunk carries its form, so one whose axis carries no layer
     # anywhere on this grid (f_w_Hy: phi; fu_Dz: phi) keeps its seed on the array path
     # itself. Those are exempt from the product's floor, read off the ARRAY engine (never
@@ -729,10 +728,10 @@ def leg_driver_order(adapter: Adapter) -> Dict[str, Any]:
                  if node.args and isinstance(node.args[0], ast.Constant)]
     between = [name for name in consulted
                if consulted.index("update_H") < consulted.index(name) < consulted.index("step_D")]
-    # THE SEAM'S ONE PASS, read off driver.py: the magnetic f_minus_p restore (writes B
-    # alone, where H is stored), not the electric withdraw entry 25 retired.
+    # The seam's one pass, read off driver.py: the magnetic f_minus_p restore (writes B
+    # alone, where H is stored), not the electric withdraw 1.0 retired.
     seam = hd_seam_restore.driver_seam_facts()
-    # THE ORACLE'S OWN TEXT: the radial sum runs over post-update_H Hy at ir0 = 0.5,
+    # The oracle's own text: the radial sum runs over post-update_H Hy at ir0 = 0.5,
     # backward, and feeds Dz only -- read off stepping rather than trusted.
     step_d_source = inspect.getsource(stepping.step_D)
     record = {
@@ -924,7 +923,7 @@ def leg_launch_structure(adapter: Adapter, spec: Mapping[str, Any], steps: int) 
     """Launches per step at the seam and over the whole step, all arrangements, two
     counters (arrangement tally, memo counter) and the ``cupy.cumsum`` wrapper.
 
-    THE HONEST NUMBER IS REPORTED WHOLE. Under MEEP's per-chunk radial sum the D-side
+    The honest number is reported whole. Under MEEP's per-chunk radial sum the D-side
     seam is ``update_H`` + the scan + ``step_D`` = 3 on the certified singles, every one
     a memo-counted kernel; the weld is 3 too (launch 1, the scan, the curl). No library
     scan runs on any arrangement, the array path's included.
@@ -966,7 +965,9 @@ def leg_launch_structure(adapter: Adapter, spec: Mapping[str, Any], steps: int) 
                  "so its memo count is the seam's three launches; the singles "
                  "arrangement dispatches update_H and step_D as certified singles, whose "
                  "step_D runs the scan and the curl -- three as well. No launch is saved; "
-                 "a two-launch shape is an owner's design ruling (INSTALLABLE_REASON)"),
+                 "a two-launch shape (update_H row by row inside the scan) is a design "
+                 "decision not yet taken, and until it is the product is not installable "
+                 "(INSTALLABLE_REASON)"),
     }
     out["passed"] = bool(
         weld["memo_kernel_launches_per_step"] == 3.0
@@ -1104,7 +1105,7 @@ def leg_sync(adapter: Adapter, spec: Mapping[str, Any], steps: int) -> Dict[str,
 def leg_withdraw(adapter: Adapter, spec: Mapping[str, Any], steps: int) -> Dict[str, Any]:
     """The seam's one pass on a device: :func:`hd_seam_restore.seam_restore_leg`.
 
-    Since entry 25 what stands between the two consults is the magnetic ``f_minus_p``
+    Since 1.0 what stands between the two consults is the magnetic ``f_minus_p``
     restore, not an electric withdraw. The driver carries an integrated electric AND an
     integrated magnetic source (:meth:`Adapter.seam_sources`); the product is
     force-installed, stepped in lockstep with its own array-path reference and required
@@ -1356,12 +1357,12 @@ def wired_in_process(adapter: Adapter):
 
 
 def leg_arbitration(adapter: Adapter, spec: Mapping[str, Any]) -> Dict[str, Any]:
-    """The COMPOSER, asked twice on a cylindrical fixture: AS SHIPPED, and WITH THE
-    WIRING ROWS PATCHED IN-PROCESS. The product is refused BY NAME through its own
+    """The COMPOSER, asked twice on a cylindrical fixture: AS SHIPPED, and WITH the
+    wiring rows patched in-process. The product is refused BY NAME through its own
     INSTALLABLE declaration, holds no slot, and the two released cylindrical pairs keep
     theirs; the seam row already routes to the withdraw hoist.
 
-    THE SHIPPED STATE MOVED ON 2026-09-07, and the clause reads which one it is
+    The shipped state moved on 2026-09-07, and the clause reads which one it is
     measuring rather than assuming. Before the wiring landed the family was ABSENT from
     ``fused_pairs``' tables (the build campaigns, ``results/cuda_cylindrical_*_2026-09-07``,
     record ``as_shipped.product_in_tables`` False and the refusal only under the
@@ -1441,7 +1442,7 @@ def leg_arbitration(adapter: Adapter, spec: Mapping[str, Any]) -> Dict[str, Any]
         holder_d is not None and selected_shipped.get("update_E") == holder_d
         and family.FAMILY not in str(holder_d))
     shipped = record["as_shipped"]
-    # ABSENT (pre-wiring) or PRESENT AND REFUSED BY NAME on the wiring's own rows
+    # ABSENT (pre-wiring) or present and refused by name on the wiring's own rows
     # (post-wiring); never present under some other row, and never holding a slot.
     shipped["consistent"] = bool(
         (not shipped["product_in_tables"])
@@ -1795,6 +1796,7 @@ def leg_lift(adapter: Adapter, gate_file: str, block_key: str, out_dir: Path, st
              import_meep: bool) -> Dict[str, Any]:
     """Every corpus row in the cell, re-lifted in its own interpreter and driven. The
     child installs the SAME policy this parent installed, before its first compile."""
+    import lift_host  # noqa: PLC0415
     import measure_predicate_coverage as census  # noqa: PLC0415
 
     out_dir = Path(out_dir).resolve()
@@ -1919,9 +1921,21 @@ def leg_lift(adapter: Adapter, gate_file: str, block_key: str, out_dir: Path, st
                              if "predicate_admits" not in (blocks.get(label) or {})
                              and label not in unlifted
                              and (reason := hd_seam_restore.lifter_refusal(record))}
+    # A row the identity corpus's manifest retires is a fourth class: it reached no
+    # predicate verdict and no disposition above, and it is refused by name with the
+    # manifest's reason (``lift_host.corpus_refusals``, the rule every table's lift legs
+    # share) and counted out with the rows above, never scored as unmeasured. The sharded
+    # dump/load tests are such rows: MEEP 1.35.0 runs them only under mpirun with more
+    # than one process, so their replay here builds no simulation.
+    corpus = lift_host.corpus_refusals(Path(_HERE) / "results", [
+        record for label, record in by_label.items()
+        if "predicate_admits" not in (blocks.get(label) or {})
+        and label not in unlifted and label not in refused_by_the_lifter])
+    refused_by_the_corpus = corpus["refused"]
     unmeasured = sorted(label for label, b in blocks.items()
                         if "predicate_admits" not in b and label not in unlifted
-                        and label not in refused_by_the_lifter)
+                        and label not in refused_by_the_lifter
+                        and label not in refused_by_the_corpus)
     driven = sorted(label for label in admitted if blocks[label].get("driven"))
     diverged = sorted(label for label in driven if blocks[label].get("first_divergence"))
     backend_rows = {label: len(blocks[label].get("backend_disagreement_steps") or ())
@@ -1931,8 +1945,8 @@ def leg_lift(adapter: Adapter, gate_file: str, block_key: str, out_dir: Path, st
     unreplayable = {label: blocks[label]["not_replayable"]["volumes"]
                     for label in driven if blocks[label].get("not_replayable")}
     passed_rows = sorted(label for label in driven if blocks[label].get("passed"))
-    # THE REFUSALS, DERIVED FROM EACH ROW'S OWN SOURCES (an electric source whose
-    # withdraw does work; none since entry 25), so the seam record's withdraw_in_seam
+    # The refusals, derived from each row's own sources (an electric source whose
+    # withdraw does work; none since 1.0), so the seam record's withdraw_in_seam
     # rows -- cut on the driver before f_minus_p -- are admitted and driven.
     accounting = hd_seam_restore.lift_withdraw_accounting(
         blocks, facts["rows_with_a_standing_withdraw"])
@@ -1944,8 +1958,11 @@ def leg_lift(adapter: Adapter, gate_file: str, block_key: str, out_dir: Path, st
         "refusal_accounting": accounting,
         "unmeasured": unmeasured, "unlifted_on_this_host": unlifted,
         "refused_by_the_lifter": refused_by_the_lifter,
+        "refused_by_the_corpus_manifest": refused_by_the_corpus,
+        "corpus_manifest": corpus["basis"],
         "rows_the_engine_was_asked_about": (len(blocks) - len(unlifted)
-                                            - len(refused_by_the_lifter)),
+                                            - len(refused_by_the_lifter)
+                                            - len(refused_by_the_corpus)),
         "driven": len(driven), "passed_rows": len(passed_rows), "diverged": diverged,
         "backend_disagreement_rows": backend_rows,
         "steps_scored": sum(int(blocks[l].get("steps_scored") or 0) for l in driven),
@@ -2010,6 +2027,7 @@ def make_parser(description: str) -> argparse.ArgumentParser:
 def install_policy(results: Dict[str, Any], args) -> Dict[str, Any]:
     """Observer first (innermost), MEEP import if the host half needs it, then the
     policy -- BEFORE the first compile. Returns the cache snapshot at install."""
+    import neutral_ids  # noqa: PLC0415
     if args.import_meep_for_host_policy:
         results["meep_host_import"] = probe.import_meep_for_host_policy()
     results["nvrtc_observer"] = probe.install_nvrtc_binary_observer()
@@ -2017,7 +2035,7 @@ def install_policy(results: Dict[str, Any], args) -> Dict[str, Any]:
         results["subnormal_policy_install"] = probe.install_subnormal_policy_for_run(
             args.subnormal_policy, _REPO_API)
     results["cupy_cache"] = cupy_cache_snapshot()
-    results["host"] = platform.node()
+    results["host"] = neutral_ids.machine_id()
     results["environment"] = probe.device_info()
     results["subnormal_policy_stamp"] = probe.subnormal_policy_stamp(_REPO_API)
     return results["cupy_cache"]
@@ -2028,6 +2046,7 @@ def run_gate(make_adapter: Callable[[Optional[str]], Adapter],
              argv: Optional[Sequence[str]] = None) -> int:
     """The shared ``main``. ``make_adapter(policy)`` builds the family's adapter once
     the policy is installed."""
+    import neutral_ids  # noqa: PLC0415
     parser = make_parser(description)
     args = parser.parse_args(argv)
 
@@ -2049,7 +2068,7 @@ def run_gate(make_adapter: Callable[[Optional[str]], Adapter],
     results: Dict[str, Any] = {
         "gate": Path(gate_file).name, "family": family_name, "seam": withdraw_hoist.SEAM,
         "started_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "argv": list(argv if argv is not None else sys.argv[1:]),
+        "argv": neutral_ids.argv(argv if argv is not None else sys.argv[1:]),
         "legs_requested": list(legs), "steps": args.steps,
         "standalone_note": (
             "this family is NOT in fused_pairs' tables (the wiring change is a patch, "

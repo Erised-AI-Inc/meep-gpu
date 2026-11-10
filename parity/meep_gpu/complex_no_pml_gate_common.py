@@ -18,7 +18,8 @@ must not drift apart:
   forms differ from their reversed spellings only in the sign of a zero;
 * **the mutations** (:func:`curl_mutations`), each needle required exactly once in the
   source it is armed on (:func:`needle`), with its case and its expectation: the
-  previous pairwise bracket (KERNELS.md §7.1, inverted from the old
+  previous pairwise bracket (an inverted grouping mutation,
+  docs/development/certification.md#inverted-grouping-mutations; it replaces the old
   ``curl_grouping_flattened``), the full bracket over an absent partner, the
   absent-first-partner form with the sign of ``dtdx`` kept or its difference reversed,
   the plane-0 connection dropped or a negation spelled as a product by the bound

@@ -6,19 +6,19 @@ and ``constitutive_kernels``' ``update_H_pml_real`` (its statement form,
 ``own_cell_hoist.unhoisted_kernel_code``) -- and this module introduces no arithmetic: every
 edit is a register capture, a seam or a rename, listed in :data:`LIFT_EDITS`.
 
-THE REGISTER FOLLOWS THE STORE. The m = 0 axis rule (``stepping._cylindrical_axis_zero_B``)
+The register follows the store. The m = 0 axis rule (``stepping._cylindrical_axis_zero_B``)
 stores +0 into Br on the axis row AFTER the recurrence, so the weld clears the register
 beside that store; ``zero_metal_B`` is then carried after it, the driver's order.
 
-THE RADIAL SCAN IS THE CURL'S FIRST LAUNCH (``cylindrical_prefix``): it runs before this
+The radial scan is the curl's first launch (``cylindrical_prefix``): it runs before this
 launch over the CURRENT Ep and hands the difference in as ``rad`` -- a cached one would be a
-stale field one step later. ONE DECODE of the chunk record serves both halves (DESIGN.md
-D10). The run's first ``update_H`` starts H from B (``stepping.separate_h_from_b``), so that
+stale field one step later. ONE DECODE of the chunk record serves both halves.
+The run's first ``update_H`` starts H from B (``stepping.separate_h_from_b``), so that
 launch re-steps ``update_H`` on the array path over the stored B (:func:`start_of_h`), as
 the Cartesian pairs do.
 
-NO FILLS ARE CARRIED, BY REFUSAL: the predicate refuses every folded grid. B is bound EXACTLY
-ONCE; the constitutive half reads the registers. ``kms_x/y/z`` collide between the halves
+No fills are carried, by refusal: the predicate refuses every folded grid. B is bound exactly
+once; the constitutive half reads the registers. ``kms_x/y/z`` collide between the halves
 (half-integer for the B curl, integer for ``update_H``), so the constitutive group is
 ``kms_int_*``.
 """
@@ -37,7 +37,7 @@ if TYPE_CHECKING:
     from ..grid import Grid
     from ..pml import PML
 
-# THE CERTIFIED HALVES. These imports ARE the lift -- the device text below is
+# The certified halves. These imports ARE the lift -- the device text below is
 # spliced from these modules' own strings -- and they are DEFENSIVE because both
 # import CuPy at module scope while the predicate (which touches neither) must run
 # on the census laptop.
@@ -107,7 +107,7 @@ except ImportError:  # loaded by path, outside the package
 
 
 # =============================================================================
-# THE PARTITION -- EMPTY ON THE CERTIFIED SIDE UNTIL A GATE MOVES IT
+# The partition -- empty on the certified side until a gate moves it
 # =============================================================================
 
 #: Byte-identical with a gate verdict AND a record behind it; empty until the
@@ -124,7 +124,7 @@ CERTIFIED_KERNELS = (
 #: EMPTY since 2026-09-02; what emptied it was the run above, not an argument.
 UNCERTIFIED_KERNELS = {}
 
-#: FALSE, MEASURED OFF THE CELL rather than defaulted, the same reading the
+#: False, measured off the cell rather than defaulted, the same reading the
 #: Triton twin (``triton_kernels/cylindrical_real_fused_magnetic_pair``) and the
 #: CUDA no-absorber electric pair made on their own cells: all three of this
 #: cell's rows declare ``source_field_types == ['D']`` (the certclose census's
@@ -141,7 +141,7 @@ FAMILY = "cuda_cylindrical_real_fused_magnetic_pair"
 KERNEL_NAME = "fused_magnetic_pair_pml_cyl_real"
 
 #: The driver passes ONE launch performs (driver.py:3291, :3295, :3298). The two
-#: mirror fills are ABSENT BY REFUSAL: the predicate refuses every folded grid,
+#: mirror fills are absent by refusal: the predicate refuses every folded grid,
 #: and on an unfolded one both fills do nothing at all.
 REPLACES = ("step_B", "zero_metal_B", "update_H")
 
@@ -157,7 +157,7 @@ LIFT_EDITS: Tuple[Dict[str, str], ...] = (
             "stores are unchanged, so the global state it leaves is the certified one."},
     {"line": "    <the curl body's chunk-record block> + <update_H's>",
      "became": "    <ONE block, bounds_block.bounds_block(both entry sets, presence xyz)>",
-     "why": "one decode of the record for both halves (DESIGN.md D10); "
+     "why": "one decode of the record for both halves (docs/development/kernel-tables.md); "
             "bounds_block.strip_bounds_block refuses unless each is exactly the block "
             "its body carries."},
     {"line": "        pml_apply(Bx, fu_Bx, idx, curl, ...);",
@@ -204,7 +204,7 @@ _PML_APPLY_SIGNATURE_REG = "__device__ __forceinline__ float pml_apply_reg(\n"
 _PML_APPLY_STORE = "    f[idx] = value;\n"
 _PML_APPLY_STORE_REG = (
     "    f[idx] = value;\n"
-    "    // THE ONE EDIT TO THIS HELPER'S ARITHMETIC: none. Both forms and the store\n"
+    "    // The one edit to this helper's arithmetic: none. Both forms and the store\n"
     "    // are the certified ones; the value is additionally RETURNED so the\n"
     "    // constitutive half can read it from a register instead of reloading it.\n"
     "    return value;\n")
@@ -212,7 +212,7 @@ _PML_APPLY_STORE_REG = (
 #: The certified m = 0 axis tail, and the register-following rewrite.
 _AXIS_TAIL = "    if (i == 0) Bx[idx] = 0.0f;\n"
 _AXIS_TAIL_REG = (
-    "    // stepping._cylindrical_axis_zero_B, THE CERTIFIED STORE FOLLOWED: the\n"
+    "    // stepping._cylindrical_axis_zero_B, the certified store followed: the\n"
     "    // register is cleared beside it so update_H reads the post-rule value. The\n"
     "    // auxiliary is untouched, as on the array path.\n"
     "    if (i == 0) { b_x = 0.0f; Bx[idx] = 0.0f; }\n")
@@ -228,7 +228,7 @@ _ZERO_METAL_ROWS: Tuple[Tuple[str, str, str], ...] = (
 #: the INTEGER constitutive tables and the wall flags appended. B appears ONCE.
 _SIGNATURE = r'''
 extern "C" __global__ void fused_magnetic_pair_pml_cyl_real(
-    // THE SHARED VOLUME, BOUND ONCE. The curl half writes it and the
+    // The shared volume, bound once. The curl half writes it and the
     // constitutive half reads it from a register; a second const __restrict__
     // binding of the same allocation would be UB NVRTC miscompiles silently.
     float* __restrict__ Bx, float* __restrict__ By, float* __restrict__ Bz,
@@ -253,7 +253,7 @@ extern "C" __global__ void fused_magnetic_pair_pml_cyl_real(
     int bc_x, int bc_y, int bc_z,
     // zero_metal_B's walled-axis flags, from in_seam_coverage.zero_metal_axes.
     int wall_x, int wall_y, int wall_z,
-    // THE CHUNK RECORD (chunk_map.chunk_bounds_record), int32[25]: which cells take
+    // The chunk record (chunk_map.chunk_bounds_record), int32[25]: which cells take
     // which PML form, decoded once for both halves.
     const int* __restrict__ cb
 ) {
@@ -375,7 +375,7 @@ def certified_curl_body() -> str:
         raise AssertionError(
             "a pml_apply call survived the capture rewrite; its value would be "
             "written to global memory and never read into the seam")
-    # THE AXIS TAIL, FOLLOWED. The certified store is kept and the register is
+    # The axis tail, followed. The certified store is kept and the register is
     # cleared beside it; a body without the tail is a different kernel and the
     # splice refuses it.
     if body.count(_AXIS_TAIL) != 1:
@@ -506,7 +506,7 @@ def covers_cylindrical_real_fused_magnetic_pair(
     ordinary certified constitutive, which the Dcyl rows' composer selection
     already goes to) -- plus the seam clauses.
 
-    DISJOINT FROM EVERY SEAM SIBLING ON THE GRID ALONE: every other magnetic-seam
+    Disjoint from every seam sibling on the grid alone: every other magnetic-seam
     product either refuses a Dcyl grid by name or requires complex64 storage,
     and this one requires real-storage Dcyl.
     """
@@ -518,7 +518,7 @@ def covers_cylindrical_real_fused_magnetic_pair(
     if not covered:
         return False, f"constitutive half: {reason}"
 
-    # THE SOURCE SEAM, REFUSED RATHER THAN CARRIED: all three of this cell's
+    # The source seam, refused rather than carried: all three of this cell's
     # rows are electric-only sourced, so the magnetic seam is empty on every
     # reachable configuration and the flag is False by measurement. A declared
     # in-seam magnetic source is refused by name through the shared clause.
@@ -534,7 +534,7 @@ def covers_cylindrical_real_fused_magnetic_pair(
     if seam:
         return False, seam[0]
 
-    # THE TWO FILLS ARE REFUSED, NOT CARRIED, and the refusal is stated HERE
+    # The two fills are refused, not carried, and the refusal is stated HERE
     # rather than inherited, so the guarantee does not rest on a clause another
     # module could widen.
     mirrored = getattr(grid, "is_mirrored", None)

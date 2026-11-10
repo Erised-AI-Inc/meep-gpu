@@ -11,7 +11,7 @@ inline — the product of :mod:`meep_gpu.triton_kernels.folded_beta_fused_electr
 serving the ``folded real beta PML`` -> ``folded beta run`` D->E cell.
 
 ===========================================================================
-WHAT THE PRODUCT CLAIMS, AND WHAT EACH LEG MEASURES
+What the product claims, and what each leg measures
 ===========================================================================
 
 The claim is narrow and checkable: this kernel is
@@ -26,7 +26,7 @@ PLUS exactly the three lines ``folded_complex.folded_beta_pml_curl_step`` adds t
    ``pml_curl_step_folded``. Neither side is ``ast.unparse``d — what is being
    compared includes the PARENTHESISATION.
 2. **REDUCTION (device).** ``HAS_BETA = 0`` must reproduce the shipped
-   ``folded_fused_curl_constitutive_D`` BIT FOR BIT over complete steps on the
+   ``folded_fused_curl_constitutive_D`` bit for bit over complete steps on the
    same volumes, while DIFFERING from the array path (which really does add the
    beta term on a ``beta = 0.2`` grid) — the transcription claim measured on
    silicon, with the discrimination precondition recorded per value class.
@@ -64,7 +64,7 @@ THE SEAM
     step_D -> ELECTRIC SOURCES -> fill_symmetry_bc_D -> zero_metal_D
            -> fill_folded_far_ghosts_D -> update_E
 
-WHAT THE CORPUS SAYS, from ``results/fusion_matrix_triton_2026-08-31_plainrepair7``
+What the corpus says, from ``results/fusion_matrix_triton_2026-08-31_plainrepair7``
 at the D->E cell (``folded real beta PML``, ``folded beta run``): ONE
 seam-instance, ``tests:TestSpecialKz.test_eigsrc_kz_1_real_imag``,
 ``in_seam_source == true`` and ``in_seam_source_blocks == false``. The
@@ -133,18 +133,18 @@ CURL_ANCHOR = "curl2 = curl_stencil(b_x, b, a, a_y, dtdx, px, py)"
 
 #: The device cases. ``(name, cell, boundaries, mirrors, steps, options)``.
 #:
-#: EVERY CELL IS 2-D WITH A ZERO Z EXTENT: ``Grid`` refuses beta anywhere else by
-#: name (grid.py:690). Z THEREFORE STAYS PERIODIC in every case — it is the
+#: Every cell is 2-D with a zero Z extent: ``Grid`` refuses beta anywhere else by
+#: name (grid.py:690). Z therefore stays periodic in every case — it is the
 #: INVARIANT axis and ``Grid`` refuses a PEC there by name (grid.py:842-877).
 #:
-#: THE PARITIES AND THE TERMINATIONS ARE BOTH SWEPT. An EVEN plane makes the
+#: The parities and the terminations are both swept. An EVEN plane makes the
 #: near-parity mutation invisible (the multiply is by +1), so the odd rows are
 #: what give it anywhere to be caught; a folded PERIODIC axis is what makes the
 #: far carry live at all; an ODD full count is what separates the runtime reflect
 #: row from the fixed ``n - 2`` a wrong transcription would bake.
 CASES: Tuple[Tuple[str, Tuple[float, float, float], Any,
                    Tuple[Tuple[str, int], ...], int, Dict[str, Any]], ...] = (
-    # THE CORPUS GEOMETRY: all-periodic with a Y fold over the PERIODIC
+    # The corpus geometry: all-periodic with a Y fold over the PERIODIC
     # declaration, so the FAR fill is LIVE — exactly what
     # tests:TestSpecialKz.test_eigsrc_kz_1_real_imag lifts to (mirrored
     # [false, true, false], has_metallic false, an active PML).
@@ -172,7 +172,7 @@ CASES: Tuple[Tuple[str, Tuple[float, float, float], Any,
     ("two_folds_periodic_odd", (1.75, 1.75, 0.0),
      {"x": "periodic", "y": "periodic", "z": "periodic"},
      (("X", 1), ("Y", -1)), 60, {"expect_ghost_destinations": 3}),
-    # ONE FOLD OF EACH TERMINATION on the same grid: x images a far ghost and y
+    # One fold of each termination on the same grid: x images a far ghost and y
     # does not, so a carry keyed off "is folded" rather than "is folded
     # PERIODIC" is wrong here and nowhere else.
     ("mixed_terminations", (1.6, 1.6, 0.0),
@@ -204,7 +204,7 @@ MUTATION_CASE: Dict[str, str] = {
     "m_far_carry_dropped": "corpus_y_fold_periodic",
 }
 
-#: The CARRY family: a real ELECTRIC deposit IN THIS SEAM, on the corpus
+#: The CARRY family: a real ELECTRIC deposit in this seam, on the corpus
 #: geometry (fold over PERIODIC — the repair must image the deposit through the
 #: far fill too) and on the walled metallic fold (the deposit beside a live wall
 #: clear and the near fill).
@@ -569,7 +569,7 @@ def equivalence_leg() -> Dict[str, Any]:
         findings.append("no case was admitted modulo the backend clause: this leg "
                         "measured only refusals and could not see a widening")
 
-    # THE FLAG IS THE PRODUCT. With CARRIES_DEPOSIT_REPAIR at False the corpus
+    # The flag is the product. With CARRIES_DEPOSIT_REPAIR at False the corpus
     # row's own electric sources are refused outright and the cell is worth ZERO.
     fields, pml = _laptop_fixture()
     before = [r for r in product.folded_beta_fused_electric_pair_coverage(
@@ -612,7 +612,7 @@ def corpus_admission_leg() -> Dict[str, Any]:
 
     A row is in this cell when it declares a NONZERO beta, an active absorber,
     real storage, a FOLD, no cylindrical axis, k = 0, no BFAST, no nonlinearity
-    and no off-diagonal epsilon. AN ABSENT CENSUS IS NOT AN EMPTY ONE: a missing
+    and no off-diagonal epsilon. An absent census is not an empty one: a missing
     artifact is a REFUSAL here, never a funnel of zero reported as a pass.
     """
     findings: List[str] = []
@@ -865,7 +865,7 @@ def build_driver(cp, cell, boundaries, mirror_specs, seed: int, value_class: str
                                    for name, values in epsilon.items()})
     center = _off_plane_center(cell, mirror_specs)
     if electric:
-        # THE DEPOSIT THIS PRODUCT EXISTS FOR, injected BETWEEN the two halves
+        # The deposit this product exists for, injected BETWEEN the two halves
         # (driver.py:3294-3299) and OFF the mirror plane on every folded axis.
         driver.add_source({"component": "Ez", "frequency": 0.31,
                            "center": center, "width": 0.4})
@@ -874,7 +874,7 @@ def build_driver(cp, cell, boundaries, mirror_specs, seed: int, value_class: str
         driver.add_source({"component": "Hz", "frequency": 0.31,
                            "center": center, "width": 0.4})
     seed_values(cp, driver, seed, value_class)
-    # THE FAST PATH IS DISABLED, EXPLICITLY: the `folded real beta PML` and
+    # The fast path is disabled, explicitly: the `folded real beta PML` and
     # `folded beta run` arms ARE wired, so a driver left alone would step this
     # seam on Triton and the "array path" reference would be no such thing.
     driver.invalidate_fast_path()
@@ -1020,8 +1020,8 @@ def separate_route(driver):
     ``plan_folded_beta_pml_curl``), the mirror ghost fill on ``fill_D``, and the
     ``folded beta run`` constitutive on ``update_E``. ``zero_metal_D`` and
     ``fill_folded_far_ghosts_D`` stay on the ARRAY PATH here — no separate
-    Triton product owns either — and both are COUNTED. THE INJECTION ALSO STAYS
-    ON THE ARRAY PATH, which is what makes this the right oracle for the carry
+    Triton product owns either — and both are COUNTED. The injection also stays
+    on the array path, which is what makes this the right oracle for the carry
     family: the certified kernels with the driver's own deposit between them.
     """
     from meep_gpu.triton_kernels import folded_complex, symmetry  # noqa: PLC0415
@@ -1047,7 +1047,7 @@ def separate_route(driver):
 def fused_route(plan, driver=None, sources=(), bracket: bool = True):
     """The fused plan in its two slots, BRACKETED when the seam carries a deposit.
 
-    THE BRACKET IS THE SHIPPED ONE — ``deposit_repair.LeadingRepairPlan`` /
+    The bracket is the shipped one — ``deposit_repair.LeadingRepairPlan`` /
     ``TrailingRepairPlan``, whose fold rules (``repair_cells``) save the
     deposit's IMAGES through the same fill map this kernel's forward carry
     implements. ``bracket=False`` is the NULL CONTROL and it must diverge.
@@ -1352,7 +1352,7 @@ def verdict_of(row: Dict[str, Any], *, require_identical: bool = True,
 
 
 # ---------------------------------------------------------------------------
-# THE REDUCTION LEG — HAS_BETA = 0 must BE the shipped plain folded kernel
+# The reduction leg — HAS_BETA = 0 must BE the shipped plain folded kernel
 # ---------------------------------------------------------------------------
 
 def reduction_leg(cp, product, cell, boundaries, mirrors, steps: int,
@@ -1360,10 +1360,10 @@ def reduction_leg(cp, product, cell, boundaries, mirrors, steps: int,
     """``HAS_BETA = 0`` reproduces ``folded_fused_curl_constitutive_D`` bit for
     bit, while DIFFERING from the array path (which really adds the beta term).
 
-    Route B goes through ``folded_fused_pair.plan_folded_fused_pair_from_arrays``
+    The shipped route goes through ``folded_fused_pair.plan_folded_fused_pair_from_arrays``
     — the bare-array route, because the plain folded predicate refuses a beta
-    run by name and its engine builder would return ``None``. NO ELECTRIC SOURCE
-    HERE: both fused routes are unbracketed, so a deposit in the seam would put
+    run by name and its engine builder would return ``None``. No electric source
+    here: both fused routes are unbracketed, so a deposit in the seam would put
     both one injection behind the array path and the discrimination precondition
     would fire for the wrong reason.
     """
@@ -1559,9 +1559,9 @@ CASE_CARRIES: Dict[str, Tuple[str, ...]] = {
     "corpus_single_launch": ("wall", "layer", "mirror_periodic"),
 }
 
-#: The beta pass's own mutations and the root forms' (KERNELS.md 7.1's inversions and
-#: 7.2's chunk-form battery): ``fold_pass_mutations``' shared spellings, the same text
-#: in every carrier of the pass.
+#: The beta pass's own mutations and the root forms' (the inverted grouping mutations and
+#: the per-chunk form battery of docs/development/certification.md):
+#: ``fold_pass_mutations``' shared spellings, the same text in every carrier of the pass.
 SHARED_MUTATIONS = (fold_passes.beta_mutations(False, True, CURL_ANCHOR)
                     + fold_passes.form_mutations(True))
 _SHARED_ROWS, MUTATION_NEEDS = fold_passes.table(SHARED_MUTATIONS)
@@ -1833,20 +1833,21 @@ def run_refusals(cp, product) -> List[Dict[str, Any]]:
 # ---------------------------------------------------------------------------
 
 def environment(cp: Any = None) -> Dict[str, Any]:
+    import neutral_ids  # noqa: PLC0415
     import platform  # noqa: PLC0415
 
     out: Dict[str, Any] = {
-        "argv": list(sys.argv),
+        "argv": neutral_ids.argv(sys.argv),
         "python": sys.version.split()[0],
         "platform": platform.platform(),
         "numpy": np.__version__,
         "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
-        "cupy_cache_dir": os.environ.get("CUPY_CACHE_DIR"),
+        "cupy_cache_dir": neutral_ids.path(os.environ.get("CUPY_CACHE_DIR")),
     }
     try:
         import socket  # noqa: PLC0415
 
-        out["hostname"] = socket.gethostname()
+        out["hostname"] = neutral_ids.machine_id()
     except Exception:  # noqa: BLE001
         pass
     try:

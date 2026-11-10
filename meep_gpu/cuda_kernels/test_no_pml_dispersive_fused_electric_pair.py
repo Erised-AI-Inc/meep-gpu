@@ -1,27 +1,27 @@
 """The no-absorber dispersive-store D/E weld: emitter, predicate and the census cell.
 
-WHAT THIS SUITE PINS, and each section says which failure it is the tripwire for:
+What this suite pins, and each section says which failure it is the tripwire for:
 
-1. THE LIFT. The emitted kernel is the two CERTIFIED bodies with a named list of edits
+1. The lift. The emitted kernel is the two CERTIFIED bodies with a named list of edits
    and nothing else. Every anchor is asserted, and a moved anchor must fail the EMIT
    rather than emit a kernel that compiles and is quietly not the certified
    arithmetic.
-2. THE SEAM ORDER. The wall clear sits between the curl's register capture and BOTH
+2. The seam order. The wall clear sits between the curl's register capture and BOTH
    its consumers -- the store and the constitutive read. That order is the whole
    product, and the probe measured it; here it is read off the emitted text so a
    reordering is caught without a device.
-3. THE PREDICATE, on real engine objects, including the DISJOINTNESS that keeps this
+3. The predicate, on real engine objects, including the DISJOINTNESS that keeps this
    product from colliding with the other eleven ``step_D`` products -- an overlap
    would leave the seam UNFUSED and COST coverage rather than add it.
-4. THE REPAIR DECLARATION. This is the first CUDA product to declare a non-default
+4. The repair declaration. This is the first CUDA product to declare a non-default
    ``REPAIR_PATHS``, and the declaration is load-bearing: the split-field repair
    inverts a recurrence this cell does not run. The wrong declaration must be a
    REFUSAL, and that is measured here rather than asserted.
-5. THE CENSUS CELL. The three corpus rows, their arms, and
+5. The census cell. The three corpus rows, their arms, and
    ``CARRIES_DEPOSIT_REPAIR`` as a per-cell MEASUREMENT off the census rather than a
    constant read back to itself.
 
-NO DEVICE IS NEEDED. ``conductive_kernels`` and ``dispersive_kernels`` are importable
+No device is needed. ``conductive_kernels`` and ``dispersive_kernels`` are importable
 without CuPy on this host, so both certified halves' text is the real thing; the
 predicate runs on NumPy wearing CuPy's name.
 """
@@ -45,7 +45,7 @@ from . import fused_electric_pair as real
 from . import no_pml_dispersive_fused_electric_pair as family
 from .test_fused_pairs import _NumpyWearingCupysName
 
-#: The census this round's numbers are read off. Named so a re-cut that moved the rows
+#: The census this suite's numbers are read off. Named so a re-cut that moved the rows
 #: is a NAMED failure here rather than a silently different denominator.
 CENSUS = (pathlib.Path(__file__).resolve().parents[2] / "parity" / "meep_gpu"
           / "results" / "cuda_predicate_coverage_2026-09-02_conductive_final")
@@ -88,13 +88,13 @@ def source():
 
 
 # ---------------------------------------------------------------------------
-# 1. THE LIFT
+# 1. The lift
 # ---------------------------------------------------------------------------
 
 def test_the_curl_stencil_is_reused_unchanged(source):
     """The three curl stencil lines are the certified ones, character for character.
 
-    THIS IS THE POINT OF THE FAMILY: the weld exists to reuse the certified curl, so
+    This is the point of the family: the weld exists to reuse the certified curl, so
     its survival is asserted rather than claimed. A stencil that had been retyped here
     would be a second copy free to drift.
     """
@@ -110,7 +110,7 @@ def test_both_branches_of_the_certified_conditional_are_captured(source):
     """Every per-target tail writes a REGISTER, on both the conductive and the plain
     branch of ``conductive_kernels``' own ``#if``.
 
-    CAPTURING ONE BRANCH ONLY is the failure this is the tripwire for: the other would
+    Capturing one branch only is the failure this is the tripwire for: the other would
     store to global memory, the wall clear below could not reach it, and the
     constitutive half would read a pre-clear volume on exactly the runs whose mask
     took that branch.
@@ -148,13 +148,13 @@ def test_the_lift_edits_are_declared_and_no_more(source):
 
 
 # ---------------------------------------------------------------------------
-# 2. THE SEAM ORDER -- the whole product
+# 2. The seam order -- the whole product
 # ---------------------------------------------------------------------------
 
 def test_the_clear_sits_between_the_capture_and_both_consumers(source):
     """``curl -> clear -> {store, constitutive read}``, in that order in the text.
 
-    THE ARRAY PATH'S OWN ORDER: ``step_D`` writes D (:3306), ``zero_metal_D`` zeroes
+    The array path's own order: ``step_D`` writes D (:3306), ``zero_metal_D`` zeroes
     it at the wall cells (:3310), ``update_E`` reads it (:3313). The fused kernel
     holds one value and both consumers must see the POST-clear one. The probe measured
     that both orderings diverge (``subtract_before_clear`` and ``store_before_clear``
@@ -185,7 +185,7 @@ def test_the_wall_clears_the_off_diagonal_pair_on_each_axis(source):
 def test_the_displacement_is_bound_exactly_once(source):
     """D appears once in the signature, and the constitutive half reads no D volume.
 
-    THE ALIASING HAZARD: binding it a second time as ``const __restrict__`` would be
+    The aliasing hazard: binding it a second time as ``const __restrict__`` would be
     two restrict pointers to one allocation, which NVRTC miscompiles WITHOUT A
     DIAGNOSTIC -- a silent wrong answer, which is why this is a test and not a note.
     """
@@ -227,7 +227,7 @@ def test_a_zero_arity_component_forms_no_chain(source):
 
 
 # ---------------------------------------------------------------------------
-# 3. THE EMITTER'S REFUSALS
+# 3. The emitter's refusals
 # ---------------------------------------------------------------------------
 
 def test_a_moved_certified_anchor_fails_the_emit(monkeypatch):
@@ -271,7 +271,7 @@ def test_every_swept_source_emits_and_is_pure_ascii():
 
 
 # ---------------------------------------------------------------------------
-# 4. THE PREDICATE, ON REAL ENGINE OBJECTS
+# 4. The predicate, on real engine objects
 # ---------------------------------------------------------------------------
 
 def electric_source(grid, component="Ez"):
@@ -321,7 +321,7 @@ def build(xp, *, poles=5, conductivity=0.4, boundaries=("periodic", "periodic",
     else:
         fields.enable_field_storage()
         layer = PML(grid=grid, thickness=0)
-    # SEEDED NON-ZERO: zero is a fixed point of ``s = s - P``.
+    # Seeded non-zero: zero is a fixed point of ``s = s - P``.
     for state in fields.polarizations:
         for store in (state.P, state.P_prev):
             for _component, array in store.items():
@@ -332,25 +332,25 @@ def build(xp, *, poles=5, conductivity=0.4, boundaries=("periodic", "periodic",
 
 
 def test_the_installer_gives_the_span_to_the_three_slot_weld(xp):
-    """SLOT ARBITRATION, and it is a fact about the COMPOSER not about this weld.
+    """Slot arbitration, and it is a fact about the COMPOSER not about this weld.
 
     The predicate ADMITS every row of both cells (the tests below measure that) and
     the gate certifies the arithmetic on 14 of 14 cases under both float32 policies.
     This product has never been about to install here, and the reason changed shape
     once:
 
-    * FIRST READING: it owns ``update_E`` as its SECOND slot,
+    * First reading: it owns ``update_E`` as its SECOND slot,
       ``cuda_no_pml_fused_polarization_pair`` owns it as its FIRST, and all THREE
       rows of these two cells are exactly the three that pair serves at E->P.
       Installing here was +3 at D_to_E and -3 at E_to_P -- NET ZERO, paid for by
       displacing a released product -- so ``fused_pairs._later_seam_claimant`` left
       the slot where it was.
-    * SECOND READING, and strictly better: ``cuda_three_slot_no_pml_dispersive_weld``
+    * Second reading, and strictly better: ``cuda_three_slot_no_pml_dispersive_weld``
       takes ``step_D``, ``update_E`` AND ``update_P``, so BOTH seams are served and
       there is no trade to arbitrate. This product is refused by
       ``_superseded_by_a_longer_span``, whose reason names the containing span.
 
-    WHAT IS PINNED IS THE INVARIANT BOTH READINGS SHARE, and it is stronger now: this
+    What is pinned is the invariant both readings share, and it is stronger now: this
     product never silently displaces the later seam's product, the refusal is BY
     NAME, and its own predicate still admits the run. Both cells are walked, because
     the two take DIFFERENT curl arms and the weld declares the second in
@@ -429,7 +429,7 @@ def test_an_active_absorber_is_refused(xp):
 def test_a_mirror_plane_is_refused_by_name(xp):
     """The two symmetry fills run INSIDE this seam and this weld carries neither.
 
-    Restated in this predicate rather than inherited: if either half's tranche ever
+    Restated in this predicate rather than inherited: if either half's predicate ever
     admits a fold, the weld would silently swallow two passes that had started doing
     work.
     """
@@ -442,7 +442,7 @@ def test_a_mirror_plane_is_refused_by_name(xp):
 
 
 def test_an_undeclared_source_set_is_refused(xp):
-    """IGNORANCE IS A REFUSAL. ``Fields`` does not hold the source list, so ``None``
+    """Ignorance is a refusal. ``Fields`` does not hold the source list, so ``None``
     cannot be read as an empty seam -- it is the caller failing to say."""
     fields, grid, layer = build(xp)
     covered, why = family.covers_no_pml_dispersive_fused_electric_pair(
@@ -471,7 +471,7 @@ def test_it_partitions_against_every_other_step_D_product(xp):
 
 
 # ---------------------------------------------------------------------------
-# 5. THE REPAIR DECLARATION -- the first non-default one on this track
+# 5. The repair declaration -- the first non-default one on this track
 # ---------------------------------------------------------------------------
 
 def test_the_declared_path_is_the_one_the_layer_selects(xp):
@@ -487,7 +487,7 @@ def test_the_declared_path_is_the_one_the_layer_selects(xp):
 
 
 def test_declaring_the_split_field_repair_is_refused_not_mis_applied(xp):
-    """THE MEASUREMENT BEHIND THE DECLARATION, and the reason it is load-bearing.
+    """The measurement behind the declaration, and the reason it is load-bearing.
 
     The split-field repair inverts ``field + kps*fresh - kms*fw_prev``. This cell runs
     a PURE OVERWRITE with no ``f_w`` at all, so applying that inverse would write an
@@ -498,7 +498,7 @@ def test_declaring_the_split_field_repair_is_refused_not_mis_applied(xp):
     covered, why = deposit_repair.repairable(
         fields, "D", pml=layer, paths=(deposit_repair.SPLIT_FIELD_PATH,))
     assert not covered
-    # ``why`` IS A TUPLE of reasons, not a string: the refusal names the layer AND
+    # ``why`` is a tuple of reasons, not a string: the refusal names the layer AND
     # the missing f_w, and both are the evidence that the split-field inverse has
     # nothing here to invert.
     joined = " | ".join(why)
@@ -520,7 +520,7 @@ def test_the_installer_reads_the_declaration_off_this_module():
     product = fused_pairs.FUSED_PRODUCTS[
         "cuda_no_pml_dispersive_fused_electric_pair"]
     assert fused_pairs._repair_paths_of(product) == (deposit_repair.PLAIN_PATH,)
-    # AND EVERY PRODUCT WRITTEN BEFORE THE PARAMETER KEEPS ITS EXACT ANSWER.
+    # And every product written before the parameter keeps its exact answer.
     assert fused_pairs._repair_paths_of(
         fused_pairs.FUSED_PRODUCTS["cuda_fused_electric_pair"]) == (
             deposit_repair.SPLIT_FIELD_PATH,)
@@ -545,7 +545,7 @@ def test_the_flag_reaches_the_shared_clause_with_the_declared_paths(xp):
 
 
 # ---------------------------------------------------------------------------
-# 6. THE CENSUS CELL -- measured, not transcribed
+# 6. The census cell -- measured, not transcribed
 # ---------------------------------------------------------------------------
 
 def _census_rows():
@@ -553,16 +553,16 @@ def _census_rows():
     rows = {}
     for leg in ("examples.jsonl", "tests.jsonl"):
         path = CENSUS / leg
-        # A MISSING CENSUS IS A FAILURE, NOT A SKIP. This suite's cell facts -- which
+        # A missing census is a failure, not a skip. This suite's cell facts -- which
         # rows the product serves, and that every one of them carries a deposit -- are
-        # MEASUREMENTS off that file. Skipping would turn the round's central claim
+        # MEASUREMENTS off that file. Skipping would turn the suite's central claim
         # into a silent coverage gap, which is exactly what the no-silent-skip policy
         # is for.
         assert path.exists(), (
             f"the census leg {path} has not been cut; this suite reads the cell's "
             f"membership and its deposit denominator off it and cannot assert either "
             f"without it")
-        # THE LEG PREFIX IS THIS SUITE'S, NOT THE CENSUS'S. The census stores a bare
+        # The leg prefix is this suite's, not the census's. The census stores a bare
         # `row` ("absorber-1d.py", "TestAbsorber.test_absorber"); the BOARD keys its
         # instances by "<leg>:<row>", which is the name a reader of
         # taxonomy.instances sees and the name CELL_ROWS spells. Prefixing here means
@@ -594,7 +594,7 @@ def test_the_census_names_the_three_rows_and_this_product_admits_them_all():
 
 
 def test_every_row_of_the_cell_carries_an_electric_deposit():
-    """CARRIES_DEPOSIT_REPAIR IS THE PRODUCT, measured off the census.
+    """CARRIES_DEPOSIT_REPAIR is the product, measured off the census.
 
     At False this module would compile, pass every arithmetic leg and serve ZERO of
     the three rows -- so the flag is asserted against what the corpus actually
@@ -629,11 +629,11 @@ def test_no_row_of_the_cell_is_folded_or_absorbing():
 def test_the_product_column_admits_exactly_the_cell_rows():
     """The battery asks the PREDICATE, and the predicate admits exactly these three.
 
-    THE DISJOINTNESS MEASURED OVER THE WHOLE CORPUS rather than argued on fixtures: no
+    The disjointness measured over the whole corpus rather than argued on fixtures: no
     other row in either leg is admitted, so this weld's arithmetic claims its two
     cells and nothing else.
 
-    WHAT THIS COLUMN DOES NOT SAY IS THAT THE COMPOSER INSTALLS IT. It does not, on
+    What this column does not say is that the composer installs it. It does not, on
     any of the three: each is a row ``cuda_no_pml_fused_polarization_pair`` already
     serves at the E->P seam, and ``fused_pairs._later_seam_claimant`` leaves
     ``update_E`` with that product because the trade is one seam-instance for one.
@@ -645,7 +645,7 @@ def test_the_product_column_admits_exactly_the_cell_rows():
     column = "cuda_no_pml_dispersive_fused_electric_pair"
     assert column in next(iter(rows.values())), (
         "this census predates the product column; the battery edit and the census "
-        "cut belong to the same round")
+        "cut belong to the same change")
     admitted = {name for name, record in rows.items()
                 if (record.get(column) or {}).get("covered_modulo_backend")}
     assert admitted == set(CELL_ROWS), (

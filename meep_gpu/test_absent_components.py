@@ -10,8 +10,8 @@ reads them as 0.0 (monitor.cpp:160-164).
 This engine steps every component. Those components only ever hold zeros, so the
 difference is the sign of a zero, and the constitutive product makes it: on a
 perfect-conductor cell (chi1inv = -1e-20, ``driver.PEC_CHI1INV_SENTINEL``)
-``-1e-20 * (+0)`` is -0 where MEEP holds nothing and reads +0. MEASURED on
-metal-cavity-ldos.py (bit_parity_0_10 lane REF): 535 Ex and 535 Ey words of the
+``-1e-20 * (+0)`` is -0 where MEEP holds nothing and reads +0. Measured on
+metal-cavity-ldos.py: 535 Ex and 535 Ey words of the
 metal shell read -0 against MEEP's +0 from step 1 (31,950 stored words over the run,
 value-differing 0). The lift now records the components ``fields::have_component``
 answers False for (:meth:`~.driver.FdtdDriver.set_absent_components`) and

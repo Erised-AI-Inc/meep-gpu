@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """Native MPS byte gate for the COMPLEX fused magnetic Metal kernel: ``step_B`` -> ``update_H``.
 
-WHAT IS BEING CERTIFIED, and it is not a sub-step. This product spans THREE driver
+What is being certified, and it is not a sub-step. This product spans THREE driver
 passes — ``step_B``, ``zero_metal_B`` and ``update_H`` — so a per-sub-step comparison
 could not see it at all: the whole claim is about the SEAM between them. The
-comparison is therefore per COMPLETE DRIVER STEP over a stated budget, against an
+comparison is therefore per complete driver step over a stated budget, against an
 array-path oracle running the identical live pass list, with the first divergent step
 reported rather than a final pass/fail.
 
-THE NINE THINGS THIS GATE REFUSES TO LET PASS SILENTLY:
+The nine things this gate refuses to let pass silently:
 
 1. **A silent fallback.** Bytes alone cannot prove the fused path ran: a plan that was
    never launched is byte-identical to the oracle BY CONSTRUCTION, because the oracle
@@ -33,7 +33,7 @@ THE NINE THINGS THIS GATE REFUSES TO LET PASS SILENTLY:
 5. **A struct that binds wrongly.** Leg ``params_layout`` reads every ``Params`` field
    back off the device and compares it to what the host wrote. This is not ceremony:
    the phases are ``float2`` and Metal aligns them to 8 bytes, so the natural 44-byte
-   NumPy record puts every phase ONE WORD EARLY — a well-formed, plausible complex
+   NumPy record puts every phase one word early — a well-formed, plausible complex
    number rather than garbage. That record is carried as a MUST-CATCH mutation.
 6. **A transcription that drifted.** Both halves are LIFTED from the certified COMPLEX
    emitters rather than retyped, and leg ``transcription`` MEASURES that: the certified
@@ -49,16 +49,16 @@ THE NINE THINGS THIS GATE REFUSES TO LET PASS SILENTLY:
    source slot — this family's binding clause on the measured corpus — plus the fold
    and the real-storage domain split, each by name.
 
-THE PER-CHUNK FORMS AND THE PART-WISE PRODUCTS (bit_parity_0_10, KERNELS.md §7, step
-M5). Both halves lift the aligned complex emitters: the curl's per-chunk forms on the
+The per-chunk forms and the part-wise products (the Metal table's complex
+kernels). Both halves lift the complex emitters in MEEP's order: the curl's per-chunk forms on the
 half-integer record, the constitutive's on the integer one, every product one per part
 and every Bloch connection MEEP's (copy, negate, or the unfused product on plane 0 of
 the unshifted operand). The plans bind the chunk record of the division the oracle steps
 with (``gate_chunk_records.layer_record``), carried in ``Params``. The grouping and
-product mutations are INVERTED (§7.1) -- each plants the package's PREVIOUS spelling and
+product mutations are INVERTED -- each plants the package's PREVIOUS spelling and
 stays must-catch (``curl_previous_grouping``,
 ``constitutive_previous_accumulation_grouping``, ``previous_fused_connection``) -- the
-§7.2 battery is armed on both halves (``b*`` rows, the record rows as host defects), and
+form battery is armed on both halves (``b*`` rows, the record rows as host defects), and
 its declared nulls ride with the predicted nulls. The connection's operand order is a
 declared null now: with every product and sum rounded on its own it moves no word. Where
 the text below names the expansion arms, the zero cross terms or the ``0.0f - x``
@@ -68,12 +68,12 @@ the point of use. The "measured limit" below is SUPERSEDED: armed as a predicted
 the previous real-coefficient product diverged (1 word in ``fu_Bx`` on the uniform
 class, where an exact-zero operand follows the product), so both previous spellings are
 scored mutations, the real-scale one and ``b13`` on the planted +-0 lattice
-(``MUTATION_VALUE_CLASS``, KERNELS.md §7.2's "caught only by a planted case").
+(``MUTATION_VALUE_CLASS``; docs/development/certification.md#chunk-form-battery, "caught only by a planted case").
 
-A MEASURED LIMIT OF THIS GATE, STATED UP FRONT RATHER THAN DISCOVERED. Two refuted
+A measured limit of this gate, stated up front rather than discovered. Two refuted
 spellings — folding the literal zero cross terms, and spelling negation ``0.0f - x`` —
 are genuinely different arithmetic on this toolchain and genuinely change the bits this
-kernel computes, but the difference they produce is a SIGN OF ZERO and the certified
+kernel computes, but the difference they produce is a sign of zero and the certified
 recurrence's next operation is an addition. Measured 2026-08-19: the folded inner
 product differs at 282/5040 cells on the real seeded field, and after one ``- curl0``
 with a generic nonzero curl 0/5040 survive. A complete-step byte compare therefore
@@ -180,7 +180,7 @@ STATE_NAMES: Tuple[str, ...] = tuple(
 
 #: name -> ``metal_composition_matrix.cart`` keywords.
 #:
-#: WHAT THE ROWS CARRY BETWEEN THEM, and the phase axis is the one that matters here:
+#: What the rows carry between them, and the phase axis is the one that matters here:
 #:
 #:   k = 0          the REDUCTION. No phase object is built, the kernel emits no
 #:                  rotation at all, and the fused pair must be byte-identical to the
@@ -199,7 +199,7 @@ STATE_NAMES: Tuple[str, ...] = tuple(
 #:   WALLS          ``zero_metal_B`` emits a line per metallic axis, and for B the
 #:                  table is the DIAGONAL — Bx on x, By on y, Bz on z. The rows span no
 #:                  wall, one wall and all three;
-#:   PML ON A PHASED AXIS is ADMITTED by the array path (settled by measurement,
+#:   PML on a phased axis is ADMITTED by the array path (settled by measurement,
 #:                  S:2322-2337), so a gate that only ran unabsorbed phased axes would
 #:                  not be testing what ships. Every periodic row here is absorbed.
 CASES: Tuple[Tuple[str, Dict[str, Any]], ...] = (
@@ -254,9 +254,9 @@ def differing(left: Any, right: Any) -> int:
 
 
 def complex_from_planes(real: Any, imag: Any) -> Any:
-    """Build a complex64 array from two float32 planes THROUGH THE WORD VIEW.
+    """Build a complex64 array from two float32 planes through the word view.
 
-    ``real + 1j*imag`` DESTROYS THE SIGN OF ZEROS in ``imag``: ``1j`` is a complex128
+    ``real + 1j*imag`` destroys the sign of zeros in ``imag``: ``1j`` is a complex128
     scalar, so the product is a full complex multiply whose imaginary part comes out
     ``-0.0`` regardless of what ``imag`` held. That defect made the first three
     expansion probes classify NumPy as matching NO arm. Every complex construction in
@@ -284,7 +284,7 @@ def build(keywords: Mapping[str, Any], seed: int,
     identically on every side — the epsilon volume must stay bit-equal or the
     comparison measures the material rather than the kernel.
 
-    SIGNED ZEROS ARE SEEDED INTO BOTH PLANES. MEEP keeps float32 subnormals on arm64,
+    Signed zeros are seeded into both planes. MEEP keeps float32 subnormals on arm64,
     so the signed-zero class is constructible on the HOST here, and it is the class the
     complex helpers' literal zero cross terms exist for: folding ``z_im * 0.0f`` to a
     literal misses 12/128 words on the exhaustive table and 0/16,384 on random data.
@@ -390,7 +390,7 @@ def metal_step(fields: Any, pml: Any, dispatch: Mapping[str, Any],
 
 def leg_subnormal_ladder(keywords: Mapping[str, Any], seed: int,
                          budget: int = 4) -> Dict[str, Any]:
-    """THE EMPTY CENSUS, TURNED INTO A MEASUREMENT.
+    """The empty census, turned into a measurement.
 
     Every product row in this file reports ``reference_subnormals: 0`` and
     ``subnormal_free: true`` under policy ``flush``. Read alone that is a SILENCE:
@@ -399,7 +399,7 @@ def leg_subnormal_ladder(keywords: Mapping[str, Any], seed: int,
     This leg is the difference — not a second byte comparison, which MPS cannot
     give, but the precondition FIRING.
 
-    THE ORACLE ALONE runs here, seeded at each rung of
+    The oracle alone runs here, seeded at each rung of
     :data:`metal_value_classes.PRECONDITION_SCALES` and stepped through the same
     live pass list, with the same census the product rows report taken after
     every step. Nothing is compared against the device and the artifact says so:
@@ -451,7 +451,7 @@ def run_case(keywords: Mapping[str, Any], seed: int, steps: int,
     live = live_passes(actual, actual_pml)
     assert live == live_passes(reference, reference_pml)
     before = frozen(actual)
-    # THE SIGNED-ZERO FLOOR. A census of zero would mean the seeding never built the
+    # The signed-zero floor. A census of zero would mean the seeding never built the
     # class the literal zero cross terms exist for, and every zero-term mutation would
     # be armed at nothing.
     zeros = subnormal.signed_zero_census(
@@ -483,7 +483,7 @@ def run_case(keywords: Mapping[str, Any], seed: int, steps: int,
     launches_ok = (plan.runs == len(per_step)
                    and plan.launches == plan.launches_per_run * len(per_step))
     seeded_zeros = int(zeros.get("negative_zero", 0)) + int(zeros.get("positive_zero", 0))
-    # THE FLOOR, AND WHICH ONE DEPENDS ON THE VALUE CLASS. The uniform class must
+    # The floor, and which one depends on the value class. The uniform class must
     # move every compared array AND carry the seeded signed zeros the literal-zero
     # cross-term mutations are armed at. The +-0 lattice is every word a zero, so
     # it answers to the SIGN floor on the REFERENCE OUTPUT instead: both bit
@@ -532,7 +532,7 @@ def run_separate_control(keywords: Mapping[str, Any], seed: int, steps: int,
                          ) -> Dict[str, Any]:
     """The SEPARATE certified complex products beside the fused one, same state.
 
-    THIS IS THE LEG THAT MAKES "FUSION" A MEASUREMENT RATHER THAN A NAME. Three engines
+    This is the leg that makes "FUSION" a measurement rather than a name. Three engines
     from one seed: the array path, the two ALREADY CERTIFIED complex Metal products
     stepping the same seam as separate dispatches with the wall clear left on the HOST
     between them, and the fused product. All three must agree word for word at every
@@ -647,20 +647,20 @@ def shader_mutations(codes: Sequence[int], phased: Sequence[int],
     is verified present before it is applied — an absent needle raises here rather than
     silently arming nothing.
 
-    THE MUTATION CASE'S GEOMETRY, which is what makes each of these reachable: all
+    The mutation case's geometry, which is what makes each of these reachable: all
     three axes periodic AND phased at a generic k, so all three rotation blocks are
     emitted on a phase that is neither real nor a root of unity. The wall defects are
     armed separately, on the walled case.
     """
     base = family.complex_fused_magnetic_pair_source(codes, phased, walls)
     edits: Dict[str, str] = {
-        # THE SEAM ITSELF: take the curl instead of the recurrence's output.
+        # The seam itself: take the curl instead of the recurrence's output.
         "seam_takes_pre_recurrence_curl":
             needle(base, "float2 src0 = v0;", "float2 src0 = curl0;"),
-        # THE SEAM, WRONG COMPONENT. Bx's constitutive source is v0, not v1.
+        # The seam, wrong component. Bx's constitutive source is v0, not v1.
         "seam_takes_the_wrong_component":
             needle(base, "float2 src1 = v1;", "float2 src1 = v0;"),
-        # THE PREVIOUS CONNECTION, INVERTED (KERNELS.md §7.1): NumPy's fused complex64
+        # The previous connection, inverted (certification.md#inverted-grouping-mutations): NumPy's fused complex64
         # multiply, one rounding of z.x*p.x - z.y*p.y, where MEEP's libc++ operator*
         # rounds each product and the sum. Reachable only through a CONNECT_PHASE
         # plane, which is why it is armed on the all-phased case.
@@ -669,7 +669,7 @@ def shader_mutations(codes: Sequence[int], phased: Sequence[int],
                          "                  (z.x * p.y) + (z.y * p.x));",
                    "    return float2(fma(z.x, p.x, -(z.y * p.y)),\n"
                    "                  fma(z.x, p.y,  (z.y * p.x)));"),
-        # THE PLANE-WISE COLLAPSE of a connection product.
+        # The plane-wise collapse of a connection product.
         "connection_collapsed_to_plane_wise":
             needle(base, "a_dy = c_mul(a, py);",
                    "a_dy = float2(a.x * py.x, a.y * py.y);"),
@@ -680,11 +680,11 @@ def shader_mutations(codes: Sequence[int], phased: Sequence[int],
         "curl_direction_reversed":
             needle(base, "int si = i + 1, sj = j + 1, sk = k + 1;",
                    "int si = i - 1, sj = j - 1, sk = k - 1;"),
-        # INVERTED (KERNELS.md §7.1): the package's previous pairwise grouping planted
+        # INVERTED (certification.md#inverted-grouping-mutations): the package's previous pairwise grouping planted
         # in place of MEEP's left-to-right bracket.
         "curl_previous_grouping":
             needle(base, "((c_y - c_dy) + b_dz) - b_z", "(c_y - c_dy) + (b_dz - b_z)"),
-        # THE RECURRENCE PAIRS are vec.hpp's cycle_direction: target 0 takes (y, z).
+        # The recurrence pairs are vec.hpp's cycle_direction: target 0 takes (y, z).
         "recurrence_axis_pair_swapped":
             needle(base,
                    "float2 n0 = c_mul_field_left(c_mul_field_left(p0, km_y) - curl0, si_y);",
@@ -704,13 +704,13 @@ def shader_mutations(codes: Sequence[int], phased: Sequence[int],
             needle(base, _H_ACCUMULATION_0,
                    "if (dw0) { a0 = h0[ii] + (c_mul_coefficient_left(kp_0, prev0) - "
                    "c_mul_coefficient_left(km_0, src0)); }"),
-        # INVERTED (KERNELS.md §7.1): the package's previous accumulation grouping.
+        # INVERTED (certification.md#inverted-grouping-mutations): the package's previous accumulation grouping.
         "constitutive_previous_accumulation_grouping":
             needle(base, _H_ACCUMULATION_0,
                    "if (dw0) { a0 = (h0[ii] + c_mul_coefficient_left(kp_0, src0)) - "
                    "c_mul_coefficient_left(km_0, prev0); }"),
         # `prev` is read BEFORE `fw` is written. Reversed, this is wrong only where
-        # kms != 0 -- INSIDE THE PML ONLY.
+        # kms != 0 -- inside the PML only.
         "constitutive_prev_read_after_write":
             needle(base, "    float2 prev0 = dw0 ? w0[ii] : float2(0.0f, 0.0f);\n"
                          "    // THE SEAM: the register step_B just wrote, not a "
@@ -723,7 +723,7 @@ def shader_mutations(codes: Sequence[int], phased: Sequence[int],
                    "    if (dw0) { w0[ii] = src0; }\n"
                    "    float2 prev0 = dw0 ? w0[ii] : float2(0.0f, 0.0f);"),
     }
-    # INVERTED (KERNELS.md §7.1): THE PREVIOUS REAL-COEFFICIENT PRODUCT, NumPy's fused
+    # INVERTED (certification.md#inverted-grouping-mutations): the previous real-coefficient product, NumPy's fused
     # complex multiply against (c + 0j). Its zero cross terms change only the sign of a
     # zero part, which survives wherever the recurrence's next operand is an exact
     # zero, so it is must-catch on the planted +-0 lattice (MUTATION_VALUE_CLASS).
@@ -731,7 +731,7 @@ def shader_mutations(codes: Sequence[int], phased: Sequence[int],
         base, "    return float2(z.x * c, z.y * c);",
         "    return float2(fma(z.x, c,    -(z.y * 0.0f)),\n"
         "                  fma(z.x, 0.0f,  (z.y * c)));")
-    # THE §7.2 BATTERY, both halves (KERNELS.md §7.2). The declared nulls (b7, b12)
+    # The form battery, both halves (certification.md#chunk-form-battery). The declared nulls (b7, b12)
     # ride with the predicted nulls; the record rows are host defects.
     edits.update(b_battery(base))
     mutants: Dict[str, Dict[str, Any]] = {}
@@ -742,7 +742,7 @@ def shader_mutations(codes: Sequence[int], phased: Sequence[int],
 
 
 #: The value class a shader mutation is walked on, where it is not the default. A
-#: signed-zero defect is caught only by a planted case (KERNELS.md §7.2): on the
+#: signed-zero defect is caught only by a planted case (certification.md#chunk-form-battery): on the
 #: uniform class ``b13`` moves 0 words over 6 launches on four seeds and the previous
 #: real-scale spelling 1 word on three of four (both in ``fu``/``H`` where an exact
 #: zero meets the next operation); on the +-0 lattice they move 1820 and 14732.
@@ -765,7 +765,7 @@ def _flags(source: str, line: str, stem: str, values: Sequence[str]) -> str:
 
 
 def b_battery(base: str) -> Dict[str, str]:
-    """KERNELS.md §7.2's must-catch source rows on both halves of the fused source."""
+    """The form battery's must-catch source rows on both halves of the fused source."""
     return {
         "b1_select_removed":
             _flags(base, _CURL_FLAGS_LINE, "du", ("true", "true", "true")),
@@ -799,23 +799,23 @@ def b_battery(base: str) -> Dict[str, str]:
 
 #: The two SIGNED-ZERO SPELLINGS, and why they are not in :func:`shader_mutations`.
 #:
-#: MEASURED 2026-08-19, and this is a finding rather than a convenience. Both spellings
+#: Measured 2026-08-19, and this is a finding rather than a convenience. Both spellings
 #: are genuinely wrong and both genuinely change the bits this kernel computes —
 #: ``leg_zero_spellings`` measures 384/2048 and 144/2048 differing words at the point of
-#: use on the exhaustive signed-zero table. But the difference they produce is a SIGN OF
-#: ZERO, and the certified recurrence's very next operation is an addition:
+#: use on the exhaustive signed-zero table. But the difference they produce is a sign of
+#: zero, and the certified recurrence's very next operation is an addition:
 #: ``c_mul_field_left(p0, km_y) - curl0``. On the real seeded field the folded inner
 #: product differs at 282/5040 cells and, after that one subtraction with a generic
 #: nonzero curl, 0/5040 survive; with an exact complex-zero curl 14/5040 survive.
 #:
-#: SO THESE TWO DEFECTS ARE STRUCTURALLY INVISIBLE TO A COMPLETE-STEP BYTE COMPARE, and
+#: So these two defects are structurally invisible to a complete-step byte compare, and
 #: a mutation leg that armed them there would report them as uncaught for a reason that
 #: has nothing to do with the kernel being right. They are carried HERE, scored on being
 #: NULL with that measured reason recorded, and the defect itself is put under test by
 #: ``leg_zero_spellings`` at the level where it is observable. Deleting them would hide
 #: the gap; reporting them as caught would be false.
 #:
-#: SUPERSEDED under the per-chunk forms (KERNELS.md §7.1-§7.2), by measurement. Both
+#: SUPERSEDED under the per-chunk forms (certification.md#inverted-grouping-mutations), by measurement. Both
 #: spellings are now the PREVIOUS ones and are scored mutations: the fused connection
 #: (``previous_fused_connection``) moves inexact products, and the previous real-scale
 #: product DIVERGED when armed here as a predicted null -- 1 word in ``fu_Bx`` on the
@@ -839,10 +839,10 @@ NULL_REASONS: Dict[str, str] = {
         "With every product and every sum rounded on its own, IEEE multiplication and "
         "two-operand addition are commutative, so the orientation moves no word"),
     "b7_auxiliary_load_unconditional": (
-        "DECLARED NULL (KERNELS.md §7.2): an fu load outside the guard with the store "
+        "DECLARED NULL (certification.md#chunk-form-battery): an fu load outside the guard with the store "
         "still guarded changes no word -- the dsig-only form reads f"),
     "b12_constitutive_load_unconditional": (
-        "DECLARED NULL (KERNELS.md §7.2): prev is consumed only on the accumulation's "
+        "DECLARED NULL (certification.md#chunk-form-battery): prev is consumed only on the accumulation's "
         "cells, so an unguarded load changes no word"),
 }
 
@@ -886,26 +886,26 @@ def wall_mutations(codes: Sequence[int], phased: Sequence[int],
     base = family.complex_fused_magnetic_pair_source(codes, phased, walls)
     zero = templates.COMPLEX_ZERO
     edits: Dict[str, str] = {
-        # THE WALL CLEAR, DROPPED on the x wall.
+        # The wall clear, dropped on the x wall.
         "zero_metal_dropped":
             needle(base, f"    v0 = at_x ? {zero} : v0;\n", ""),
-        # THE WALL TABLE IS THE DIAGONAL FOR B, the off-diagonal for D. Reusing the
+        # The wall table is the diagonal for B, the off-diagonal for D. Reusing the
         # D-side table clears Bx on the y wall instead of the x wall, which is the
         # single most likely slip in porting this family from its D-side sibling.
         "zero_metal_uses_the_d_side_table":
             needle(base, f"    v0 = at_x ? {zero} : v0;",
                    f"    v0 = at_y ? {zero} : v0;"),
-        # THE CLEAR IS A *COMPLEX* ZERO — both planes (S:1896, :1902). Clearing only
+        # The clear is a *COMPLEX* ZERO — both planes (S:1896, :1902). Clearing only
         # the real plane is the plane-wise slip in its wall-clear disguise.
         "zero_metal_clears_only_the_real_plane":
             needle(base, f"    v0 = at_x ? {zero} : v0;",
                    "    v0 = at_x ? float2(0.0f, v0.y) : v0;"),
-        # THE AUXILIARY IS NOT CLEARED. `zero_metal_B` passes B_COMPONENTS only
+        # The auxiliary is not cleared. `zero_metal_B` passes B_COMPONENTS only
         # (stepping.py:2250); masking fu_B as well is a plausible over-carry.
         "zero_metal_also_masks_the_auxiliary":
             needle(base, "    if (du0) { u0[ii] = n0; }",
                    f"    if (du0) {{ u0[ii] = at_x ? {zero} : n0; }}"),
-        # THE OWNERSHIP MASK, dropped. A different pass from the wall clear, on the
+        # The ownership mask, dropped. A different pass from the wall clear, on the
         # same component and the same axis — which is exactly why both are armed.
         "ownership_mask_dropped":
             needle(base, f"    curl0 = at_x ? {zero} : curl0;\n", ""),
@@ -978,7 +978,7 @@ def swap_h_lattice(plan: Any, pml: Any, residency: Residency) -> None:
 def naive_params_tensor(plan: Any, pml: Any, residency: Residency) -> None:
     """HOST DEFECT: the NAIVE 44-byte Params record — the alignment trap, armed.
 
-    THE MOST IMPORTANT HOST MUTATION IN THIS FILE, because it is the one a future
+    The most important host mutation in this file, because it is the one a future
     editor is most likely to write by accident. Metal aligns ``float2`` to 8 bytes; a
     NumPy record whose fields are laid end to end is 44 bytes where Metal's struct is
     48. Shipped, the phases are FIRST and the natural offsets coincide, so this mutant
@@ -1157,7 +1157,7 @@ def leg_binding_ceiling() -> Dict[str, Any]:
 def leg_params_layout() -> Dict[str, Any]:
     """The struct layout, both orders, measured — and the naive record must FAIL.
 
-    THIS LEG EXISTS BECAUSE THE FAILURE IS SILENT. A ``float2`` member forces 8-byte
+    This leg exists because the failure is silent. A ``float2`` member forces 8-byte
     alignment; with the scalars first the struct needs internal padding and the natural
     NumPy record is 44 bytes against Metal's 48, so every phase lands one word early
     and reads as its neighbour's component. That is a converged, smooth, WRONG field.
@@ -1249,9 +1249,9 @@ def leg_params_layout() -> Dict[str, Any]:
 
 
 def leg_zero_spellings() -> Dict[str, Any]:
-    """The previous spellings, measured AT THE POINT OF USE — and why one of them dies.
+    """The previous spellings, measured at the point of use — and why one of them dies.
 
-    RE-POINTED WITH THE PART-WISE HELPERS. The shipped real-coefficient product is one
+    Re-pointed with the part-wise helpers. The shipped real-coefficient product is one
     float32 product per part and the shipped connection is MEEP's unfused one; the two
     refuted spellings measured here are the PREVIOUS ones -- the real product through
     NumPy's fused complex multiply against ``(c + 0j)`` (its zero cross terms: the
@@ -1264,7 +1264,7 @@ def leg_zero_spellings() -> Dict[str, Any]:
     The "cannot reach a stored word" half below is the previous reading, kept for the
     measurement it describes.
 
-    THIS LEG EXISTS BECAUSE A COMPLETE-STEP BYTE COMPARE CANNOT SEE THESE DEFECTS, and
+    This leg exists because a complete-step byte compare cannot see these defects, and
     that fact is itself measured here rather than asserted. Two halves:
 
     * **the defect is real.** On an exhaustive signed-zero table the shipped helpers and
@@ -1273,7 +1273,7 @@ def leg_zero_spellings() -> Dict[str, Any]:
       therefore genuinely different arithmetic on this toolchain, not stylistic
       variants — which is what licenses the literal zeros and the ``-x`` in the shipped
       helpers;
-    * **and it cannot reach a stored word.** The difference is a SIGN OF ZERO, and the
+    * **and it cannot reach a stored word.** The difference is a sign of zero, and the
       certified recurrence's next operation is ``- curl0``. Run on the REAL seeded
       field, the folded inner product differs at a counted number of cells and, after
       that one subtraction with a generic nonzero curl, none survive. The control is the
@@ -1473,12 +1473,12 @@ class _SourceWithNoDepositIndex:
 def leg_refusal() -> Dict[str, Any]:
     """The source seam, the fold and the storage split, each measured by name.
 
-    THE MOST IMPORTANT LEG IN THIS FILE, and on 2026-08-28 the source-seam question
+    The most important leg in this file, and on 2026-08-28 the source-seam question
     turned over. It used to be "is a magnetic source REFUSED"; the family now declares
     :data:`family.CARRIES_DEPOSIT_REPAIR` and holds a row in
     ``metal_kernels.launch.FUSED_PAIR_ARMS``, so the question is "is it CARRIED, and is
-    what the repair cannot reconstruct still refused". BOTH DIRECTIONS ARE MEASURED
-    HERE, because a leg that only checked the new answer could not tell a carried seam
+    what the repair cannot reconstruct still refused". Both directions are measured
+    here, because a leg that only checked the new answer could not tell a carried seam
     from a deleted clause. Seven questions:
 
     1. an UNDECLARED source list must be refused (ignorance is not an empty set);
@@ -1495,8 +1495,8 @@ def leg_refusal() -> Dict[str, Any]:
     3. a real ELECTRIC ``VolumeSource`` must NOT be refused — it is injected in the D/E
        half, outside this seam, and treating it as disqualifying would throw away every
        row this family exists to serve;
-    4. a FOLDED grid must be refused, naming both B-side fills. UNCHANGED BY THE FLIP
-       AND LOAD-BEARING BECAUSE OF IT: a folded seam fills mirror ghosts AFTER the
+    4. a FOLDED grid must be refused, naming both B-side fills. Unchanged by the flip
+       and load-bearing because of it: a folded seam fills mirror ghosts AFTER the
        injection and a point repair never visits a deposit's mirror image, so this
        clause is what keeps the carried seam inside what the repair can actually do;
     5. a REAL-STORAGE run must be refused — this product binds float2 volumes, and the
@@ -1519,7 +1519,7 @@ def leg_refusal() -> Dict[str, Any]:
     deposit_points = (0 if deposit_index is None
                       else int(np.asarray(deposit_index[0]).size))
 
-    # 2b. THE PRE-FLIP ANSWER, from the same code path with the flag held down.
+    # 2b. The pre-flip answer, from the same code path with the flag held down.
     shipped_flag = family.CARRIES_DEPOSIT_REPAIR
     try:
         family.CARRIES_DEPOSIT_REPAIR = False
@@ -1699,7 +1699,7 @@ def main() -> int:
                      **leg_refusal()})
         emit(handle, rows[-1])
 
-        # THE ONE ARMED EDIT REQUIRED TO BE UNCAUGHT. Scored on NOT diverging.
+        # The one armed edit required to be uncaught. Scored on NOT diverging.
         index += 1
         result = run_case(cases[MUTATION_CASE], 71000, args.steps, functions=neutral)
         row = {"index": index, "total": total, "leg": "byte_neutral_control",
@@ -1730,7 +1730,7 @@ def main() -> int:
                 rows.append(row)
                 emit(handle, row)
 
-        # THE PREDICTED NULLS. Scored on NOT diverging, with the measured reason
+        # The predicted nulls. Scored on NOT diverging, with the measured reason
         # carried on the row. A row here that DID diverge would mean the annihilation
         # model is wrong — which is a result to read, not a failure to silence.
         for name, functions in null_mutants.items():
@@ -1765,7 +1765,7 @@ def main() -> int:
             rows.append(row)
             emit(handle, row)
 
-        # THE DISARM CHECK. The identical harness, the identical case, the SHIPPED
+        # The disarm check. The identical harness, the identical case, the SHIPPED
         # bytes and no host patch. A nonzero here would mean every "caught" above is a
         # harness that diverges on its own.
         index += 1

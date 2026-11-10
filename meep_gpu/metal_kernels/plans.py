@@ -1,20 +1,20 @@
 """The launchable-plan base every Metal family subclasses.
 
-WHAT A PLAN IS. Built once for a (fields, pml, sub-step) triple and launched per
+What a plan is. Built once for a (fields, pml, sub-step) triple and launched per
 timestep. Everything resolvable ahead of the loop is resolved at build time: the
 coverage verdict, the boundary specialisation, the Yee sub-lattice pairing, the
 compiled shader functions, the flattened coefficient views and the device mirrors.
-NOTHING ON THE LAUNCH PATH ALLOCATES, COMPILES OR COPIES — the argument tuple is
+Nothing on the launch path allocates, compiles or copies — the argument tuple is
 built once and :meth:`KernelPlan.run` unpacks one tuple and calls one function.
 
-WHY THIS BASE EXISTS. ``PmlCurlPlan`` and ``ConstitutivePlan`` duplicated their
+Why this base exists. ``PmlCurlPlan`` and ``ConstitutivePlan`` duplicated their
 ``__slots__``, their variant selector and their ``__repr__`` almost verbatim while
 the package carried one family. With a tree of families that duplication becomes
 the place a contract quietly drifts, so exactly the shared part is here and each
-family contributes only its ``_args`` layout. NOTHING IS ADDED TO THE LAUNCH PATH:
+family contributes only its ``_args`` layout. Nothing is added to the launch path:
 :meth:`run` is still one dict lookup and one call.
 
-THE VARIANT SELECTOR IS A CONTRACT, NOT A CONVENIENCE. ``contract`` is not for
+The variant selector is a contract, not a convenience. ``contract`` is not for
 callers — it exists so a byte gate can MEASURE the contraction guard's effect
 (identical with, non-identical without). ``None`` takes the pinned mode. A mode the
 plan was NOT built with RAISES rather than silently launching the pinned one,
@@ -46,7 +46,7 @@ class KernelPlan:
     #: Subclasses list the attributes ``__repr__`` reports, in order.
     REPR_FIELDS: Tuple[str, ...] = ()
 
-    #: HOW MANY KERNEL LAUNCHES ONE ``run`` OWES. One for this base, by
+    #: How many kernel launches one ``run`` OWES. One for this base, by
     #: construction: :meth:`run` unpacks one tuple and calls one function. It is
     #: DECLARED rather than left implicit because the whole-step gate asserts the
     #: exact per-cycle launch count on every filled slot — that assertion is what

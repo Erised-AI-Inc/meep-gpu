@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Device byte gate for the CUDA COMPLEX Dcyl H->D product (three launches), any m.
 
-WHAT IS BEING CERTIFIED. ``meep_gpu/cuda_kernels/cylindrical_fused_hd_pair.py``: launch
+What is being certified. ``meep_gpu/cuda_kernels/cylindrical_fused_hd_pair.py``: launch
 1 (slot ``update_H``) computes the certified ``update_H_pml_complex_bloch`` body, lifted
 PURE, at the thread's own cell into launch-local scratch, with MEEP's per-chunk
 constitutive forms part by part; launch 2 is the column-serial radial scan
@@ -13,9 +13,9 @@ in -- the ``i*m/r`` couplings, the |m| = 1 fold, the m = 0 axis post-add and the
 D side's own baseline is three under the per-chunk sum: the product saves NO launch and
 ships ``INSTALLABLE = False``.
 
-THE ARITHMETIC IS THE CERTIFIED HALVES', and the battery says so: launch 1's
-accumulation inverted to the package's old grouping (KERNELS.md section 7.1), the
-section 7.2 B battery on its constitutive select, the unguarded build, and the scratch
+The arithmetic is the certified halves', and the battery says so: launch 1's
+accumulation inverted to the package's old grouping (must be caught), the per-chunk
+form battery on its constitutive select, the unguarded build, and the scratch
 stores; the scan's own battery is ``gate_cuda_cylindrical_scan.py``'s, re-read here on
 complex storage and the family's shapes by the ``spelling`` leg.
 
@@ -27,7 +27,7 @@ no ``cupy.cumsum`` may run), the floors, the scan stage per case, the driver-lev
 and seam legs (the seam leg drives the magnetic f_minus_p restore, hd_seam_restore), the
 arbitration as shipped and wired in-process, and the corpus lift over the cell's 18 rows
 (all 18 admitted and driven: the 2 the seam record flags withdraw_in_seam were refused
-on their standing withdraw before entry 25, and since it no engine source stands one).
+on their standing withdraw before 1.0, and since then no engine source stands one).
 
 STANDALONE: every arrangement here is planned from arrays by this gate and the array
 path is driven by this gate; the arbitration leg patches the product row in-process.
@@ -75,7 +75,7 @@ SPECS: Tuple[Dict[str, Any], ...] = (
     {"label": "m0_r16_z20_periodic", "shape": (16, 1, 20), "m": 0, "z_kind": "periodic"},
     {"label": "m+1_r16_z20_metallic", "shape": (16, 1, 20), "m": 1, "z_kind": "metallic",
      "classes": ("uniform", "subnormal_band", "planted", "signed_zero")},
-    # THE DIVISOR-LADDER FIXTURE. On the D side the divisor is the INTEGER ladder
+    # The divisor-ladder fixture. On the D side the divisor is the INTEGER ladder
     # d = 1, 2, 3, ... (ir0 = 0.5), and CuPy's scaled divide reduces EXACTLY to
     # numpy's re * fl(1/d) wherever d * fl(1/d) rounds to 1 in float32 -- which is every
     # d < 41 (first exceptions 41, 47, 55, 61, 82, 83, 94, 97, ...; measured on the
@@ -112,7 +112,7 @@ REDUCED_LABELS: Tuple[str, ...] = ("m0_r16_z20_metallic", "m+1_r16_z20_metallic"
 #: ``{name: {"old", "new", "why", "live_on", ...}}`` -- device-source rewrites of
 #: launch 1, each of which MUST make a scored fixture diverge unless declared null.
 DEVICE_MUTATIONS: Dict[str, Dict[str, Any]] = {
-    # INVERTED (bit_parity_0_10 KERNELS.md section 7.1 and Appendix A): the shipped
+    # INVERTED: the shipped
     # accumulation IS MEEP's grouping, part by part, so the must-catch edit installs the
     # package's old two left-to-right accumulations.
     "accumulation_regrouped_to_the_old_package_order": {
@@ -146,11 +146,11 @@ DEVICE_MUTATIONS: Dict[str, Dict[str, Any]] = {
                 "it: B where it needs B_prev"),
         "live_on": "every fixture with an active absorber (kms != 0)",
     },
-    # --- MEEP's per-chunk forms (KERNELS.md section 7.2, the B battery) ---------------
+    # --- the per-chunk form battery (certification.md) --------------------------------
     "constitutive_auxiliary_stored_on_a_plain_cell": {
         "old": "    *fw_out = dsigw ? src : cf_load(fw, idx);",
         "new": "    *fw_out = src;",
-        "why": ("the auxiliary contract (C2): off the dsigw run the array path leaves "
+        "why": ("the auxiliary contract: off the dsigw run the array path leaves "
                 "f_w_H untouched, and the rotation makes the scratch the live f_w_H"),
         "live_on": "every fixture with an active absorber and a plain cell",
     },
@@ -239,7 +239,7 @@ class ComplexAdapter(Adapter):
 
     @staticmethod
     def real_plane(name: str, shape: Tuple[int, int, int], value_class: str, rng) -> np.ndarray:
-        # THE SIGNED-ZERO CLASS, DENSE ON THE RADIAL SUM'S OWN VOLUMES: the real planes
+        # The signed-zero class, dense on the radial sum's own volumes: the real planes
         # of Hy, By and f_w_Hy are signed zeros on EVERY cell (so Hy_new.re is a signed
         # zero everywhere and the scan's zero-sign classes are hit on every word),
         # the other real planes on half their cells, the imaginary planes uniform.
@@ -248,7 +248,7 @@ class ComplexAdapter(Adapter):
         return Adapter.real_plane(name, shape, value_class, rng)
 
     def plant(self, fields, grid, value_class: str) -> None:
-        """THE ROW-0 TINY-NORMAL PLANT on top of a uniform seed. With no absorber on
+        """The row-0 tiny-normal plant on top of a uniform seed. With no absorber on
         phi (kps_y = kms_y = 1 everywhere) ``Hy_new = (Hy + By) - f_w_Hy_prev`` exactly, so
         the pre-launch state is chosen to make ``Hy_new[0] = (-tiny_normal, negative)`` --
         the class where the scan's first weighted word ``Hy.re * 0.5`` underflows (a
@@ -528,7 +528,7 @@ class ComplexAdapter(Adapter):
                                   envelope=ContinuousEnvelope(frequency=1.0, is_integrated=True))
             return fields, pml, grid, [source]
 
-        # Since entry 25 an engine integrated source enters through f_minus_p and stands
+        # Since 1.0 an engine integrated source enters through f_minus_p and stands
         # no withdraw, so it is ADMITTED; a source class bringing its own withdraw is
         # still refused by name (hd_seam_restore.withdraw_refusal_checks).
         i_fields, i_pml, i_grid, i_sources = integrated()

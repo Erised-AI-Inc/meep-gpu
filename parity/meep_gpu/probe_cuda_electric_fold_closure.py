@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""IS THE THREE-LEG FOLD-CLOSURE PROTOCOL NON-VACUOUS ON THE TWO CUDA ELECTRIC PAIRS?
+"""Is the three-leg fold-closure protocol non-vacuous on the two CUDA electric pairs?
 
-THE QUESTION AND WHY IT HAS TO BE ASKED RATHER THAN ASSUMED. On a FOLDED seam a
+The question and why it has to be asked rather than assumed. On a FOLDED seam a
 deposit's MIRROR IMAGES must be in the repair's save/apply set: ``fill_symmetry_bc_*``
 and ``fill_folded_far_ghosts_*`` run AFTER the injection, so a deposit landing on a row
 a fill READS FROM is imaged into cells a point-only repair never visits.
@@ -12,7 +12,7 @@ standard for a product that carries it is a three-leg protocol:
     B  point only     -> MUST diverge
     C  no repair      -> MUST diverge
 
-AND A CASE WHERE B DOES NOT DIVERGE IS VACUOUS. Running one anyway and reporting the
+And a case where B does not diverge is vacuous. Running one anyway and reporting the
 pass would be reporting ignorance as a measurement, which is the failure this whole
 track exists to refuse. So the question this file answers is not "does the closure
 hold" but "CAN it be asked at all" of
@@ -20,14 +20,14 @@ hold" but "CAN it be asked at all" of
     ``cuda_kernels/complex_fused_electric_pair``      (D_to_E, Cartesian complex)
     ``cuda_kernels/cylindrical_fused_electric_pair``  (D_to_E, Dcyl complex, |m| >= 1)
 
-WHAT THIS MEASURES, IN THREE STEPS, ALL WITHOUT A DEVICE
+What this measures, in three steps, all without a device
 =======================================================
 
-1. **THE PREDICATES REFUSE EVERY FOLDED GRID.** Built, asked, and the refusal recorded
+1. **The predicates refuse every folded grid.** Built, asked, and the refusal recorded
    with its reason -- on all three axes and on both products. A folded configuration is
    therefore not a configuration either launch can ever see.
 
-2. **ON EVERY CONFIGURATION THEY DO ADMIT, THE CLOSURE IS THE POINT.**
+2. **On every configuration they do admit, the closure is the point.**
    ``deposit_repair.fill_image_rules`` is called on the ADMITTED fixtures for all six
    D-seam target components. It returns the per-axis ``(axis, source row, destination
    row)`` rules the repair inverts, and ``_fill_image_rules`` opens with ``if not
@@ -35,14 +35,14 @@ WHAT THIS MEASURES, IN THREE STEPS, ALL WITHOUT A DEVICE
    ``repair_cells(index)`` is ``index``. Leg A and leg B are then the SAME SET by
    construction, and B cannot diverge from A on any input.
 
-3. **THE PROTOCOL IS RUN ANYWAY, ON A REAL DEPOSIT, AND THE VACUITY IS EXHIBITED.** The
+3. **The protocol is run anyway, on a real deposit, and the vacuity is exhibited.** The
    two-consult protocol is driven on an admitted fixture with legs A, B and C, and the
    three word counts are reported. C must diverge -- that is the leg that proves the
    deposit is really in the seam and the fixture discriminates -- while A and B are
    required to be EQUAL, which is the measured statement that B is vacuous here rather
    than a claim that it passed.
 
-WHAT THIS DOES NOT LICENSE. Nothing about a folded CUDA electric weld. If either
+What this does not license. Nothing about a folded CUDA electric weld. If either
 product ever admits a fold, its closure is unmeasured and this file's answer changes
 from "vacuous" to "owed". The refusal in step 1 is what makes that a tripwire rather
 than an assumption.
@@ -276,7 +276,7 @@ def main() -> int:
     xp = _NumpyWearingCupysName()
 
     print("=" * 78, flush=True)
-    print("THE FOLD-CLOSURE QUESTION ON THE TWO CUDA ELECTRIC PAIRS", flush=True)
+    print("The fold-closure question on the two CUDA electric pairs", flush=True)
     print("=" * 78, flush=True)
 
     record: Dict[str, Any] = {"products": {}}
@@ -286,7 +286,7 @@ def main() -> int:
         block: Dict[str, Any] = {"folded_refusals": {}, "image_rules_on_admitted": {},
                                  "protocol": {}}
 
-        # 1. EVERY FOLDED GRID IS REFUSED.
+        # 1. Every folded grid is refused.
         for axis, builder in spec["folded"].items():
             fields, pml, grid = builder(xp)
             covered, reason = spec["predicate"](fields, pml, grid, ())
@@ -298,7 +298,7 @@ def main() -> int:
             log(f"  folded axis {axis}: mirrored={grid.is_mirrored(axis)} "
                 f"covered={covered}  {'OK' if good else '<-- FAILED'}")
 
-        # 2. THE CLOSURE IS THE POINT ON EVERYTHING THEY ADMIT.
+        # 2. The closure is the point on everything they admit.
         fields, pml, grid = spec["admitted"](xp)
         covered, reason = spec["predicate"](fields, pml, grid, ())
         block["admitted_fixture"] = {"covered": bool(covered), "reason": str(reason),
@@ -313,7 +313,7 @@ def main() -> int:
             log(f"  fill_image_rules({target}) = {rules}  "
                 f"{'EMPTY -> closure IS the point' if not rules else '<-- NON-EMPTY'}")
 
-        # 3. THE PROTOCOL, RUN ANYWAY.
+        # 3. The protocol, run anyway.
         for leg in ("closure", "point_only", "none"):
             result = run_leg(spec["admitted"], spec["module"], leg)
             block["protocol"][leg] = result
@@ -327,7 +327,7 @@ def main() -> int:
             "A_closure_is_zero": closure == 0,
             "B_point_only_equals_A": point == closure,
             "C_no_repair_diverges": none > 0,
-            # THE HONEST NAME FOR WHAT B MEASURED. Leg B did not "pass": on an unfolded
+            # The honest name for what B measured. Leg B did not "pass": on an unfolded
             # grid its cell set IS leg A's, so it could not have diverged whatever the
             # repair did. Recording that as a pass is the vacuity this file exists to
             # name.

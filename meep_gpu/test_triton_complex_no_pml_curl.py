@@ -1,11 +1,11 @@
 """Merge-bar tests for :mod:`meep_gpu.triton_kernels.complex_no_pml_curl`.
 
-WHAT A LAPTOP CAN AND CANNOT SETTLE FOR THIS FAMILY. The family ships no kernel:
+What a laptop can and cannot settle for this family. The family ships no kernel:
 it re-uses ``complex_fields.bloch_pml_curl_step`` under a no-absorber binding (the
 absorber-free chunk record and unit columns). So the byte-identity claim belongs to
 a device — ``parity/meep_gpu/gate_triton_complex_no_pml_curl.py``. What is
 settleable here, and is settled here, is everything the 2026-08-16 group-(J)
-artifact said the closing round still owed:
+artifact said was still owed:
 
 * the PREDICATE — that it admits group (J)'s four slots and refuses everything
   adjacent, on both no-absorber shapes the engine can present (``pml=None`` and
@@ -190,7 +190,7 @@ def test_the_builder_returns_a_plan_and_raises_on_neither_shape(family, row,
 def test_the_shipped_split_field_builder_still_refuses_these_slots(row, sub_step):
     """DISJOINTNESS, direction one: the incumbent must not also admit.
 
-    The refusal is asserted BY ITS CLAUSE, not merely as a False. Measured: the
+    The refusal is asserted by its clause, not merely as a False. Measured: the
     incumbent refuses these slots on TWO independent clauses — the absorber
     clause and ``fu_* is not allocated`` — so a bare ``not covered`` still holds
     with clause 3 deleted, and would report the partition intact while it was
@@ -737,7 +737,7 @@ def test_the_gate_header_reports_the_device_result_and_known_residual(gate):
     2026-08-17 release ran on the PREVIOUS binding, and its residual is that
     binding's, which the present gate arms as a mutation."""
     text = GATE_PATH.read_text(encoding="utf-8")
-    assert "DEVICE RESULT (2026-08-17), ON THE PREVIOUS BINDING" in text
+    assert "Device result (2026-08-17), on the previous binding" in text
     assert "triton_complex_no_pml_curl_device_gate" in text
     assert "86,450/281,250" in text and "3,552/11,250" in text
     assert "NO LEG HAS BEEN RUN" not in text

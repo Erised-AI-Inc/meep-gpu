@@ -1,6 +1,6 @@
 """The conductive H->D weld: the ORDINARY ``update_H`` into the CONDUCTIVE ``step_D``.
 
-THE FOURTH ARM PAIR ON THE FOURTH SEAM, and the only one on this backend whose two
+The fourth arm pair on the fourth seam, and the only one on this backend whose two
 halves come from DIFFERENT FAMILIES. The driver runs
 
     ``update_H`` (driver.py:3311) -> the electric integrated-source withdraw
@@ -19,7 +19,7 @@ side-``H`` body -- the SAME certified body :mod:`.fused_hd_pair` lifts -- and th
 curl half is :func:`.conductive_pml.conductive_pml_curl_source`'s.
 
 =============================================================================
-THE SHAPE, AND WHY IT IS THE PLAIN WELD'S
+The shape, and why it is the plain weld's
 =============================================================================
 
 ``step_D``'s curl reads ``H`` at the thread's own cell AND at its three BACKWARD
@@ -37,13 +37,13 @@ than restating it:
   :class:`.offdiag_weld_common.ScratchWeldPairPlan`'s certified choreography.
 
 ``D``, ``fu_D`` and the conductive history ``f_cond_D`` step IN PLACE, and that is
-safe by construction: the conductive tail reads and writes all three at the THREAD'S
-OWN CELL only (``f0[ii]``, ``u0[ii]``, ``c0[ii]``), so no thread reads a value
+safe by construction: the conductive tail reads and writes all three at the thread's
+own cell only (``f0[ii]``, ``u0[ii]``, ``c0[ii]``), so no thread reads a value
 another thread wrote. The conductivity coefficient volumes ``cf``/``ci`` are
 READ-ONLY on the device.
 
 =============================================================================
-THE SIGNATURE: TWO PACKS, AND THE SECOND ONE IS LOAD-BEARING
+The signature: two packs, and the second one is load-bearing
 =============================================================================
 
 Unpacked this weld needs::
@@ -84,14 +84,14 @@ as 0 and nothing is stored for it. That is checkable rather than hopeful:
 ASSERTS the emitted source names none of them, so a future edit that made a lossless
 tail read ``cf0[ii]`` fails at plan build instead of reading past the pack.
 
-THE CONSTITUTIVE ``km`` GROUP IS SHARED WITH THE CURL'S, exactly as in
+The constitutive ``km`` group is shared with the curl's, exactly as in
 :mod:`.fused_hd_pair`: ``launch.SUB_STEPS['step_D']['suffix']`` is ``''`` and
 ``CONSTITUTIVE_SIDES['H']['half_integer']`` is False, so the two halves read the SAME
 three ``kms`` volumes. The plan ASSERTS that equality -- binding the half-integer set
 instead compiles and is a smooth, converged, half-cell-wrong absorber profile.
 
 =============================================================================
-THE LIFT NEEDS ITS OWN EDIT TABLES, AND THE REASON IS SPELLING
+The lift needs its own edit tables, and the reason is spelling
 =============================================================================
 
 :mod:`.folded_fused_hd_pair` and :mod:`.bfast_fused_hd_pair` reuse
@@ -109,7 +109,7 @@ retyping either, so a metallic ghost that read an exact ``0.0f`` still reads an 
 that drifted RAISES here rather than emitting a kernel that reads the wrong volume.
 
 =============================================================================
-THE PML FORMS PER STRUCTURE CHUNK, AND THE RECORD IN ``Params``
+The PML forms per structure chunk, and the record in ``Params``
 =============================================================================
 
 Both halves select their forms per structure chunk: the curl half is
@@ -134,7 +134,7 @@ single binds them; a presence the words cannot carry is refused by the curl half
 predicate (:func:`.conductive_pml.presence_reasons`).
 
 =============================================================================
-WHAT SITS IN THE SEAM
+What sits in the seam
 =============================================================================
 
 :data:`CARRIES_DEPOSIT_REPAIR` is False and it is a FACT about the driver rather than
@@ -153,14 +153,14 @@ would perform the withdraw before its launch. The cell's one corpus row carries 
 integrated electric source, so the refusal costs zero instances here.
 
 =============================================================================
-THE CELL, AND WHAT INSTALLING WOULD COST
+The cell, and what installing would cost
 =============================================================================
 
 The ``(ordinary -> conductive PML curl)`` H->D cell is **1 corpus row** on the
 standing Metal census: ``tests:TestAdjointSolver.test_damping`` -- the SAME row whose
 D->E seam :mod:`.conductive_fused_electric_pair` serves.
 
-:data:`INSTALLABLE` is False on a MEASURED arbitration: over the driver's ``step_B -
+:data:`INSTALLABLE` is False on a measured arbitration: over the driver's ``step_B -
 update_H - step_D - update_E`` slot path launches are ``4 - (installed pairs)``, and
 this product takes one slot from EACH neighbour. On this configuration the D->E
 neighbour is a released, gated Metal product (:mod:`.conductive_fused_electric_pair`,
@@ -174,10 +174,10 @@ composer and records the verdict rather than restating it here.
 **No timing exists for this shape and none is licensed by anything in this module.**
 
 =============================================================================
-WHAT THIS FAMILY DOES NOT CARRY
+What this family does not carry
 =============================================================================
 
-ONE ARM PAIR ONLY: ``(ordinary -> conductive PML curl)``, real float32 Cartesian
+One arm pair only: ``(ordinary -> conductive PML curl)``, real float32 Cartesian
 storage under an ACTIVE split-field PML. A MAGNETIC conductivity puts the conductive
 curl on ``step_B`` and leaves ``step_D`` ordinary -- that is
 :mod:`.fused_hd_pair`'s cell, refused here by the curl half's own per-sub-step
@@ -228,7 +228,7 @@ CARRIES_DEPOSIT_REPAIR = False
 #: False, and the flag and the wiring move together. See the module docstring.
 HOISTS_THE_WITHDRAW = False
 
-#: May the composer install this product? NO, on a MEASURED arbitration verdict.
+#: May the composer install this product? NO, on a measured arbitration verdict.
 INSTALLABLE = False
 
 INSTALLABLE_REASON = (
@@ -265,7 +265,7 @@ INSTALLABLE_REASON = (
 #: gate measures the emptied tree.
 WELD_OWED: str = ""
 
-#: WHAT THE GATE MEASURED, KEPT, AND WHY THIS ONE IS WORTH KEEPING TWICE OVER. The
+#: What the gate measured, kept, and why this one is worth keeping twice over. The
 #: pre-weld declaration is not deleted with the weld: it is the one-line record of
 #: which artifact the release rests on, and it is also this family's record of the
 #: 2026-09-08 forgery -- an entry hand-written to buy a green test, whose tells were a
@@ -290,22 +290,22 @@ _RETIRED_WELD_OWED = (
     "before any entry is minted. Empty this string in the same change that lands it"
 )
 
-#: The read-only per-axis coefficient VECTORS that ride the first pack, IN PACK
-#: ORDER: the curl's six, then the constitutive's three. Disjointly named, so one
+#: The read-only per-axis coefficient VECTORS that ride the first pack, in pack
+#: order: the curl's six, then the constitutive's three. Disjointly named, so one
 #: prologue re-creates all nine under their certified names.
 #:
-#: THE CONSTITUTIVE'S ``km0``/``km1``/``km2`` ARE NOT MEMBERS -- they are the curl's
+#: The constitutive's ``km0``/``km1``/``km2`` are not members -- they are the curl's
 #: ``kmx``/``kmy``/``kmz``, the same three volumes, and the lift renames the reads
 #: rather than binding them twice.
 PACKED_VECTORS: Tuple[str, ...] = ("kmx", "sinvx", "kmy", "sinvy", "kmz", "sinvz",
                                    "kp0", "kp1", "kp2")
 
-#: The read-only conductivity VOLUMES that ride the second pack, IN PACK ORDER.
+#: The read-only conductivity VOLUMES that ride the second pack, in pack order.
 #: Every member is grid-shaped, which is why they get a pack of their own rather
 #: than joining the per-axis vectors in one mixed-geometry offset table.
 PACKED_VOLUMES: Tuple[str, ...] = ("cf0", "cf1", "cf2", "ci0", "ci1", "ci2")
 
-#: THE FOUR BINDING COUNTS, ALL COMPILED BY THE GATE:
+#: The four binding counts, all compiled by the gate:
 #:
 #: * :data:`PACKED_BINDINGS` -- the shipped shape, 26 pointers plus ``Params``.
 #: * :data:`VECTORS_ONLY_BINDINGS` -- the nine per-axis vectors packed and the six
@@ -367,7 +367,7 @@ __all__ = [
 def redirect_magnetic_reads(tail: str) -> str:
     """Replace the conductive curl's nine magnetic loads with register/recompute.
 
-    THE TWO-PER-LINE SPELLING IS WHY THIS IS NOT
+    The two-per-line spelling is why this is not
     :func:`.fused_hd_pair.welded_curl_tail`. Each shifted tap is found as the
     FRAGMENT ``<var> = <guard> ? g<t>[<offset>] : 0.0f`` inside whatever line it
     shares, and every piece of it except the leaf load is the emitter's own text:
@@ -504,8 +504,8 @@ kernel void conductive_fused_hd_pair_step(
     constant Params&    prm     [[buffer(26)]],
     uint idx [[thread_position_in_grid]])
 {
-    // THE FIVE SCALARS AND BOTH PACKS ARE UNPACKED INTO THE CERTIFIED BODIES' OWN
-    // NAMES, once, before any lifted text runs. Everything below this block is then
+    // The five scalars and both packs are unpacked into the certified bodies' own
+    // names, once, before any lifted text runs. Everything below this block is then
     // character-for-character what `conductive_pml.conductive_pml_curl_source` and
     // `shaders.constitutive_source('H')` emit, with the declared lift edits and the
     // redirected magnetic reads.
@@ -532,7 +532,7 @@ __PROLOGUE__
     // --- step_D, conductive (stepping.step_D / _apply_curl:479) -----------------
     // D, fu_D and the conductive history f_cond_D update IN PLACE and that is safe
     // by construction: the conductive tail reads and writes all three at the
-    // THREAD'S OWN CELL only (`f0[ii]`, `u0[ii]`, `c0[ii]`).
+    // thread's own cell only (`f0[ii]`, `u0[ii]`, `c0[ii]`).
 __CURL__
 }
 """
@@ -543,7 +543,7 @@ def conductive_fused_hd_pair_source(codes: Sequence[int],
                                     contract: str = shaders.CONTRACT_OFF) -> str:
     """One specialised fused source: (boundary triple, lossy triple, mode).
 
-    THE WALL CLEAR IS NOT CARRIED and must not be. ``zero_metal_B`` runs one seam
+    The wall clear is not carried and must not be. ``zero_metal_B`` runs one seam
     EARLIER (driver.py:3306) and ``zero_metal_D`` one seam LATER (:3324); neither is
     inside this seam, so a mask here would be a pass the driver runs again.
     """
@@ -661,7 +661,7 @@ def shipped_signature_bindings() -> int:
 def refuted_vectors_only_source(contract: str = shaders.CONTRACT_OFF) -> str:
     """The 32-binding shape with ONLY the per-axis vectors packed.
 
-    THE MEASUREMENT THAT MAKES THE SECOND PACK LOAD-BEARING. With the nine read-only
+    The measurement that makes the second pack load-bearing. With the nine read-only
     per-axis vectors in one buffer and the six read-only conductivity VOLUMES each
     given their own binding, the signature is 31 pointers plus one packed ``Params``
     -- over the ceiling by EXACTLY ONE, so the volume pack is a necessity rather
@@ -712,7 +712,7 @@ def metal_conductive_fused_hd_pair_coverage(fields: Any, pml: Any,
     Nothing is weakened: a configuration either half refuses is refused here with
     that half's reasons, prefixed so a reader can tell which side said it.
 
-    THE ORDER IS THE DRIVER'S. The constitutive half is asked FIRST because it runs
+    The order is the driver's. The constitutive half is asked FIRST because it runs
     first (driver.py:3311). ``chunk_layout`` is the division the run steps with, read by
     the curl half for the per-chunk conductivity presence (``None``: the one-rank
     division).
@@ -722,7 +722,7 @@ def metal_conductive_fused_hd_pair_coverage(fields: Any, pml: Any,
     magnetic = constitutive_coverage(fields, pml, "H", residency)
     if not magnetic.covered:
         reasons.extend(f"constitutive half: {reason}" for reason in magnetic.reasons)
-    # THE RUN'S FIRST update_H, on the composer's rule for the base constitutive kernel
+    # The run's first update_H, on the composer's rule for the base constitutive kernel
     # this half lifts, in the same words (see the module docstring).
     reasons.extend(f"constitutive half: {reason}"
                    for reason in h_start_reasons(fields, sources))
@@ -732,9 +732,9 @@ def metal_conductive_fused_hd_pair_coverage(fields: Any, pml: Any,
         reasons.extend(f"curl half: {reason}" for reason in curl.reasons)
     lossy = tuple(conductive_targets(fields, "step_D"))
 
-    # THE SEAM'S ONE PASS -- the electric integrated-source withdraw
+    # The seam's one pass -- the electric integrated-source withdraw
     # (driver.py:3313-3314). Nothing is INJECTED between the two consults, so
-    # `deposit_repair` is not consulted at all. IGNORANCE IS NEVER AN EMPTY SET:
+    # `deposit_repair` is not consulted at all. Ignorance is never an empty set:
     # `Fields` does not hold the source list, so a predicate that inferred "no
     # withdraw stands" from not being told would be the over-covering refusal this
     # clause exists to prevent.
@@ -758,7 +758,7 @@ def metal_conductive_fused_hd_pair_coverage(fields: Any, pml: Any,
         return Coverage(False,
                         tuple(dict.fromkeys(reasons + ["fields carries no grid"])))
 
-    # THE FOLD, RESTATED BY NAME. Both halves already refuse a mirror plane, and on
+    # The fold, restated by name. Both halves already refuse a mirror plane, and on
     # THIS seam the usual reason does not apply: neither fill runs between these two
     # consults (fill_B closes one seam earlier at driver.py:3306-3309 and fill_D
     # opens one seam later at :3324-3327), so the H->D seam is fill-FREE on a folded
@@ -775,14 +775,14 @@ def metal_conductive_fused_hd_pair_coverage(fields: Any, pml: Any,
                 f"conductive cell needs its own product and its own ghost-map "
                 f"measurement")
 
-    # THE ROTATION IS THE PRODUCT'S OWN INVARIANT.
+    # The rotation is the product's own invariant.
     for name in ROTATED_NAMES:
         if getattr(fields, name, None) is None:
             reasons.append(
                 f"{name} is not allocated; this weld rotates it against a "
                 f"plan-owned scratch twin after every launch")
 
-    # THE CONDUCTIVE HISTORY THIS WELD STEPS IN PLACE, FOR THE LOSSY TARGETS ONLY.
+    # The conductive history this weld steps in place, for the lossy targets only.
     # The engine allocates `f_cond_*` per component, so on a partly-conductive run a
     # LOSSLESS target has none -- measured 2026-09-07 on the mixed fixture, where a
     # clause demanding all three refused a configuration this kernel steps correctly.
@@ -861,7 +861,7 @@ def _params_tensor(shape: Sequence[int], dtdx: float,
                    chunk_bounds: Any, presence: Any) -> Any:
     """The scalars, both packs' offsets, the chunk record and the presence words.
 
-    PLAN-OWNED AND OUTSIDE THE RESIDENCY REGISTRY: :meth:`.Residency.mirror` binds
+    Plan-owned and outside the residency registry: :meth:`.Residency.mirror` binds
     float32 and complex64 volumes and refuses anything else BY NAME, and this record
     is neither.
     """
@@ -912,7 +912,7 @@ def plan_metal_conductive_fused_hd_pair(
         volumes.append(name)
         return residency.mirror(name, host, constant=constant)
 
-    # THE ROTATING GROUP FIRST, in ROTATED_NAMES order: every scratch, then every
+    # The rotating group first, in ROTATED_NAMES order: every scratch, then every
     # pre-launch buffer. `ScratchWeldPairPlan.run` splices exactly those two groups
     # ahead of `static_args`, so this order IS the signature's.
     twins: Dict[str, Any] = {}
@@ -928,7 +928,7 @@ def plan_metal_conductive_fused_hd_pair(
     displacement = [bind(name, getattr(fields, name)) for name in targets]
     auxiliary = [bind("fu_" + name, getattr(fields, "fu_" + name))
                  for name in targets]
-    # THE CONDUCTIVE HISTORY, IN PLACE, FOR THE LOSSY TARGETS. The signature binds
+    # The conductive history, in place, for the lossy targets. The signature binds
     # three pointers unconditionally; a LOSSLESS target has no `f_cond_*` volume at
     # all (the engine allocates them per component) and its slot is aliased to that
     # target's own tensor -- `conductive_pml.plan_metal_conductive_pml_curl`'s own
@@ -939,7 +939,7 @@ def plan_metal_conductive_fused_hd_pair(
          if conductive[index] else displacement[index])
         for index, name in enumerate(targets)]
 
-    # ONE SUB-LATTICE, TWO HALVES -- asserted, not assumed. See the module docstring.
+    # One sub-lattice, two halves -- asserted, not assumed. See the module docstring.
     suffix = SUB_STEPS["step_D"]["suffix"]
     constitutive_suffix = "_h" if CONSTITUTIVE_SIDES["H"]["half_integer"] else ""
     if suffix != constitutive_suffix:
@@ -956,7 +956,7 @@ def plan_metal_conductive_fused_hd_pair(
         residency, f"{FAMILY}:cpack", np, PACKED_VECTORS, vectors)
     volumes.append(f"{FAMILY}:cpack")
 
-    # THE VOLUME PACK holds only the members a LOSSY target's tail actually indexes.
+    # The volume pack holds only the members a LOSSY target's tail actually indexes.
     # A lossless target contributes nothing and its offset is 0; the assertion below
     # is what makes "nothing indexes it" a measurement rather than a memory.
     omitted = unread_conductivity_members(conductive)
@@ -1033,7 +1033,7 @@ def _arm_plan(context: Any, slot: str) -> Optional["_weld.ScratchWeldPairPlan"]:
 def register_arms() -> Tuple[Any, ...]:
     """One row on ``update_H``, ``wired=False``.
 
-    REGISTERED SO IT IS ENUMERABLE, NOT SO IT IS SELECTABLE, for the reason
+    Registered so it is enumerable, not so it is selectable, for the reason
     :func:`.fused_hd_pair.register_arms` gives: the composition sweep measures
     disjointness against this predicate instead of assuming it, and
     ``launch._neighbouring_seam_claimant`` sees the row when it asks who claims the

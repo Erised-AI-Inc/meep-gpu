@@ -1,6 +1,6 @@
 """Bit-identity gate for the conductivity + PML Triton kernel (MEEP's per-chunk forms).
 
-WHY THIS IS A SEPARATE FILE AND NOT A BRANCH OF THE SHARED PROBE. The shared probe
+Why this is a separate file and not a branch of the shared probe. The shared probe
 (``probe_fused_kernel_bit_identity.py``) and the shared track adapter
 (``track_triton_pml.py``) serve every Triton family and are a serialisation point, so
 this gate does not edit them — the same call ``gate_triton_symmetry.py`` made. What is
@@ -11,7 +11,7 @@ the curl in MEEP's grouping with the record's partner presence, the record-keyed
 lossless and conductive forms, the coefficient tables fitted to a record, the
 conductivity and conductive-chunk volumes, and the planted and decay legs.
 
-THE FORMS ARE KEYED ON THE CHUNK DIVISION, NOT ON A COEFFICIENT.
+The forms are keyed on the chunk division, not on a coefficient.
 ``stepping._apply_conductive_pml_update`` selects MEEP's conductive forms per
 structure chunk, from the chunk's dsig and dsigu membership (the record,
 ``chunk_map.chunk_bounds_record``) and from whether the chunk keeps the component's
@@ -45,23 +45,23 @@ Legs, in order:
 * ``decay``     — the same recurrence with the sources ZEROED, which is the only
   leg that manufactures subnormals: every case multiplies by
   ``condfac*condinv < 1`` each step on top of the PML decay. It records the
-  subnormal cell count per step beside the verdict, because §16 of the plan says
-  a subnormal divergence is what blocks dispatch and discovering it as a failure
+  subnormal cell count per step beside the verdict, because
+  a subnormal divergence would block dispatch, and discovering it as a failure
   is worse than measuring it.
 * ``controls``  — the three rows without which ``multi``'s and ``decay``'s
   first-divergence step numbers are uninterpretable. See below.
-* ``mutations`` — defects injected into the shipped kernel's SOURCE or its plan,
-  each of which must be caught (the previous groupings planted back, KERNELS.md
-  7.1, and the B battery, 7.2), and two declared nulls that must not move a word.
-  The previous forms' near-one tolerance leg is retired with the coefficient
-  predicate it tested (DESIGN D13).
+* ``mutations`` — defects injected into the shipped kernel's SOURCE or its plan, each of which
+  must be caught (the previous groupings planted back, and the per-chunk form battery, called
+  the B battery below: docs/development/certification.md#inverted-grouping-mutations and
+  #chunk-form-battery), and two declared nulls that must not move a word. The previous forms'
+  near-one tolerance leg is retired with the coefficient predicate it tested, not inverted.
 
-THE LONG-RUN DIVERGENCE, AND WHAT IS ALLOWED TO ATTRIBUTE IT. Measured twice, on
+The long-run divergence, and what is allowed to attribute it. Measured twice, on
 2026-08-10 and again on 2026-08-19 with identical step numbers: every ``cond =
 (1,1,1)`` row is bit-identical for the whole budget, and every ``cond = (1,0,1)``
 row — the MIXED pattern, whose middle component is LOSSLESS — first differs
 somewhere between step 160 and step 253. A step number cannot tell a defect in
-this kernel from the amplifying float32 disagreement plan §16 measured, and a
+this kernel from the amplifying float32 disagreement measured on ``2d_pml``, and a
 diagnostic that only asks "does something else also diverge?" cannot either. This
 gate therefore carries the same three controls
 ``gate_triton_cylindrical.py`` carries, adapted to what is mixed HERE:
@@ -114,7 +114,7 @@ leave it inferred. ``--subnormal-policy`` drives both executors to one policy fo
 a confirming arm; the default installs nothing and is what every earlier run of
 this gate measured.
 
-WHAT THE FORENSICS FOUND, 2026-08-19 on GPU 3, no policy installed. At every
+What the forensics found, 2026-08-19 on GPU 3, no policy installed. At every
 first divergence in the ``multi`` and ``decay`` legs the differing floats number
 ONE or TWO out of 1287, and every one of them is EXACTLY ZERO on the array-path
 side and SUBNORMAL on the kernel side — ``fu_Dy`` at 1.03e-38 against 0.0,
@@ -155,7 +155,6 @@ import importlib.util
 import inspect
 import json
 import os
-import platform
 import re
 import subprocess
 import sys
@@ -210,8 +209,8 @@ DTDX = probe.PML_DTDX
 #: that assumes all-three-or-none is wrong there and does not crash.
 COND_PATTERNS: Tuple[Tuple[int, int, int], ...] = ((1, 1, 1), (1, 0, 1))
 
-#: Steps in the `multi` leg. STATED, not implied: §16 measured `2d_pml` identical
-#: over 60 steps and FIRST DIFFERENT AT STEP 67, so a budget can certify something
+#: Steps in the `multi` leg. STATED, not implied: `2d_pml` was measured identical
+#: over 60 steps and first different at step 67, so a budget can certify something
 #: that diverges just past it. This is the number this gate may claim and no more.
 MULTI_STEP_COUNT = 256
 
@@ -250,7 +249,7 @@ def log(message: str) -> None:
 # matches this" means "the kernel matches the array path" rather than "the kernel
 # reproduces whatever was written twice".
 #
-# THE FORMS ARE KEYED ON THE CHUNK RECORD, never on a coefficient: every function
+# The forms are keyed on the chunk record, never on a coefficient: every function
 # below takes the record (``chunk_map.chunk_bounds_record``; REQUIRED, because it
 # decides which cells take which form) and, where some chunk keeps no conductivity
 # for a component, that component's conductive-chunk volume (``kept``).
@@ -282,7 +281,7 @@ def reference_curl(xp: Any, first: Any, second: Any, first_axis: int,
     one-partner form is taken, ``dtdx * (g1s - g1)`` or ``(-dtdx) * (g2s - g2)``;
     with neither the curl is an exact ``+0``.
 
-    ``pairwise_order`` is the package's grouping before the alignment,
+    ``pairwise_order`` is the package's grouping before it took MEEP's,
     ``dtdx * ((g1s - g1) + (g2 - g2s))`` over both partners whatever the presence:
     a control the kernel must NOT reproduce.
     """
@@ -614,7 +613,7 @@ def case_mix(record: Sequence[int], shape: Tuple[int, int, int], sub_step: str,
              dsig: str, dsigu: str, kept: Any = None) -> Dict[str, int]:
     """How many cells of this case took each conductive form, and the lossless pair.
 
-    RECORDED PER CASE, not asserted, from the RECORD (the forms' own predicate):
+    Recorded per case, not asserted, from the RECORD (the forms' own predicate):
     ``A`` dsig and dsigu, ``B`` dsigu only, ``C`` dsig only, ``D`` neither, each in a
     chunk that keeps the conductivity, and ``plain`` the cells whose chunk keeps none.
     A sweep that never says which forms it exercised cannot claim to have gated them.
@@ -829,7 +828,7 @@ def one_case(shape, boundaries, dtdx, sub_step, cond, source, repo_root,
              planted_kind: Optional[str] = None) -> Dict[str, Any]:
     """One launch of one sub-step against the reference, bytewise.
 
-    ``guarded=True`` means the CONTRACTION GUARD IS APPLIED, i.e. the launch
+    ``guarded=True`` means the contraction guard is applied, i.e. the launch
     passes ``enable_fp_fusion=False``. The plan's ``guard=`` keyword is the raw
     ``enable_fp_fusion`` value and reads the other way round, so the negation
     below is the whole of the translation — and it is written here, once, because
@@ -876,7 +875,7 @@ def one_case(shape, boundaries, dtdx, sub_step, cond, source, repo_root,
     arrays = make_arrays(cp, shape, sub_step, cond, kept_kind=kept_kind,
                          quiet_sources=planted_kind is not None)
     if planted_kind is not None:
-        # THE PLANTED CASE: no drive, so every curl is an exact +0, and every target
+        # The planted case: no drive, so every curl is an exact +0, and every target
         # word -0. A dsig cell then keeps MEEP's -0 (``((-0 * km) - +0) * si``), and a
         # form that rides a +0 through an add instead -- the lossless curl collapsed
         # into the recurrence with ``fu := 0``, or a chunk without conductivity stepped
@@ -1047,7 +1046,7 @@ def run_multi(results: Dict[str, Any], out_path: str, steps: int,
 
     ``quiet_sources`` is the decay leg: with the drive removed the recurrence is a
     product of per-step factors below one and the state walks into the subnormal
-    range, which is where §16's amplification lives. With the drive present the
+    range, which is where the float32 amplification lives. With the drive present the
     state reaches a fixed point instead and never underflows — so the two legs
     measure different things and both are run.
     """
@@ -1124,7 +1123,7 @@ def run_multi(results: Dict[str, Any], out_path: str, steps: int,
                        "first_divergence_forensics": forensics,
                        "conductive_components": conductive,
                        "lossless_components": lossless,
-                       # THE CLAUSE THE ATTRIBUTION IS BUILT ON. A conductive
+                       # The clause the attribution is built on. A conductive
                        # component that never differs is the conductive
                        # recurrence — this kernel's whole subject — agreeing with
                        # the array path for the entire budget.
@@ -1181,10 +1180,10 @@ def _multi_summary(runs: List[Dict[str, Any]], steps: int) -> Dict[str, Any]:
 # nothing else
 # ---------------------------------------------------------------------------
 #
-# THE PRECEDENT THIS TRANSCRIBES. gate_triton_cylindrical.py faced the same shape:
+# The precedent this transcribes. gate_triton_cylindrical.py faced the same shape:
 # a single-launch sweep bit-identical everywhere, and a consecutive-step leg that
 # first differed at step 23-72 on a single subnormal auxiliary float. It resolved
-# it not by arguing but by adding two rows in which TRITON DOES NOT APPEAR — the
+# it not by arguing but by adding two rows in which Triton does not appear — the
 # array path against itself (`null`, must be clean) and the array path against
 # itself with one mantissa bit flipped (`one_ulp`, must diverge) — and then
 # declaring its long-run number a BUDGET on the strength of those two. Its own
@@ -1192,7 +1191,7 @@ def _multi_summary(runs: List[Dict[str, Any]], steps: int) -> Dict[str, Any]:
 # controls leg says the array path is otherwise deterministic and that this
 # configuration amplifies". Both are carried over here unchanged in role.
 #
-# WHAT THIS GATE NEEDS THAT CYLINDRICAL DID NOT. Cylindrical's divergence was in
+# What this gate needs that cylindrical did not. Cylindrical's divergence was in
 # the one kernel under test. Here it is not: every diverging row is the MIXED
 # pattern, and the 2026-08-10 diagnostic located the differing floats in the
 # LOSSLESS component's `fu` — an array the conductive kernel fills through the
@@ -1784,9 +1783,9 @@ _STENCIL = re.compile(r"curl(?P<t>\d) = curl_stencil\((?P<g1s>\w+), (?P<g1>\w+),
 
 
 def regroup_stencil(source: str) -> Tuple[str, int]:
-    """m8, INVERTED (KERNELS.md 7.1): the pairwise ``dtdx*((a-b)+(c-d))`` at the call site.
+    """m8, INVERTED: the pairwise ``dtdx*((a-b)+(c-d))`` at the call site.
 
-    That is the curl grouping this kernel carried before the alignment; MEEP's C
+    That is the curl grouping this kernel carried before it took MEEP's; MEEP's C
     associates the stencil left to right (step_generic.cpp:104), which
     ``forms.curl_stencil`` carries. Must be caught.
     """
@@ -1797,14 +1796,14 @@ def regroup_stencil(source: str) -> Tuple[str, int]:
 
 
 def old_increment_grouping_fu(source: str) -> Tuple[str, int]:
-    """INVERTED (KERNELS.md 7.1): the dsig-and-dsigu ``fu`` form with the increment
+    """INVERTED: the dsig-and-dsigu ``fu`` form with the increment
     added in two operations, ``((u*km1) + c_new) - c`` -- the previous grouping."""
     return _replacing("u_split = ((u * km1) + increment) * si1",
                       "u_split = (((u * km1) + c_new) - c) * si1")(source)
 
 
 def old_increment_grouping_f(source: str) -> Tuple[str, int]:
-    """INVERTED (KERNELS.md 7.1): the dsig-only ``f`` form's previous grouping."""
+    """INVERTED: the dsig-only ``f`` form's previous grouping."""
     return _replacing("f_first = ((f * km1) + increment) * si1",
                       "f_first = (((f * km1) + c_new) - c) * si1")(source)
 
@@ -1878,7 +1877,7 @@ def plain_forms_via_unit_coefficients(source: str) -> Tuple[str, int]:
 
 
 def aux_load_unmasked(source: str) -> Tuple[str, int]:
-    """DECLARED NULL (KERNELS.md 7.2): ``fu`` loaded on every cell, stores guarded."""
+    """DECLARED NULL: ``fu`` loaded on every cell, stores guarded."""
     return _replacing("u = tl.load(u_ptr + idx, mask=live & du, other=0.0)",
                       "u = tl.load(u_ptr + idx, mask=live, other=0.0)")(source)
 
@@ -1927,7 +1926,7 @@ HOST_MUTATIONS = ("integer_coefficients_on_B", "metallic_as_periodic",
                   "conductive_chunks_unbound")
 
 #: The previous forms' coefficient-predicate leg (a tolerance against ``!= 1.0``,
-#: driven on a near-one table) is RETIRED with the predicate (DESIGN D13): the
+#: driven on a near-one table) is RETIRED with the predicate, not inverted: the
 #: kernel no longer tests a coefficient, and ``coefficient_predicate`` above is the
 #: B battery's mutation of the membership test instead.
 
@@ -1945,11 +1944,11 @@ def compile_mutated(source: str):
     would report itself uncaught. The shared forms and the record's word offsets are
     imported under the names the shipped bodies use.
 
-    EACH MUTANT IS COMPILED UNDER ITS OWN NAMES (the kernel and the helper both take a
+    Each mutant is compiled under its own names (the kernel and the helper both take a
     per-mutant suffix; the module exposes the kernel under its shipped name as well).
-    MEASURED 2026-10-08 on one RTX A6000, Triton 3.1.0: with the names unchanged, the
-    second and every later mutant compiled in one process LAUNCHED THE FIRST MUTANT'S
-    BINARY -- an unrewritten copy compiled after ``flatten_split_grouping`` differed from
+    Measured 2026-10-08 on one RTX A6000, Triton 3.1.0: with the names unchanged, the
+    second and every later mutant compiled in one process launched the first mutant's
+    binary -- an unrewritten copy compiled after ``flatten_split_grouping`` differed from
     the shipped kernel exactly as that mutant does, and a declared null scored "caught" --
     because the outer kernel's text was the same in every mutant (most rewrites touch the
     helper only) and the on-disk cache entry the first compile wrote was reused. A
@@ -2071,7 +2070,7 @@ def run_planted(results: Dict[str, Any], out_path: str, repo_root: str) -> Dict[
 # The reading of the long-run legs, and the recorded verdict
 # ---------------------------------------------------------------------------
 #
-# WHY BOTH EXIST. Before 2026-08-19 this gate wrote sixteen diverging rows and
+# Why both exist. Before 2026-08-19 this gate wrote sixteen diverging rows and
 # never wrote down what it CONCLUDED from them — no ``status``, no ``verdict``,
 # no ``release``. ``gate_provenance.read_verdict`` reports that as
 # ``released=None``: UNREADABLE, which is deliberately not the same claim as
@@ -2081,9 +2080,9 @@ def run_planted(results: Dict[str, Any], out_path: str, repo_root: str) -> Dict[
 # ``gate_triton_cylindrical`` already writes and ``read_verdict`` already
 # understands — not an eleventh spelling of one fact.
 #
-# THE LONG-RUN LEGS ARE NOT A PASS/FAIL CLAUSE, transcribed from
+# The long-run legs are not a pass/fail clause, transcribed from
 # ``gate_triton_cylindrical.verdict`` unchanged in role: what ``multi`` and
-# ``decay`` report is a MEASURED BUDGET. What IS a clause is whether the
+# ``decay`` report is a measured BUDGET. What IS a clause is whether the
 # divergence has been ATTRIBUTED — a gate may not release on a step number it
 # cannot explain, and it may not release at all if the explanation is a defect.
 
@@ -2125,7 +2124,7 @@ def _configuration(row: Dict[str, Any]) -> Tuple[Any, ...]:
 def control_pairs(results: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
     """Per CONFIGURATION: did the control amplify, and did the kernel diverge?
 
-    WHY PER CONFIGURATION AND NOT A FLEET COUNT. Measured 2026-08-19 on GPU 3,
+    Why per configuration and not a fleet count. Measured 2026-08-19 on GPU 3,
     320 steps: seven of eight ``one_ulp`` rows diverged, and the eighth —
     ``(32,32,32) step_B driven`` — did not, even though the flip was applied
     (``fu_By`` flat index 16384, ``0x3e7394e3 -> 0x3e7394e2``) and recorded. A
@@ -2169,7 +2168,7 @@ def control_pairs(results: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
     for key in sorted(set(amplified) & set(diverged), key=repr):
         merged = dict(amplified[key])
         merged.update(diverged[key])
-        # A ROW THAT COULD NOT BE SEEDED IS NOT A ROW THAT DID NOT AMPLIFY.
+        # A row that could not be seeded is not a row that did not amplify.
         # ``_flip_one_ulp`` returns None when the volume held no normal float,
         # and reading that as a quiet control would let an unseeded row excuse a
         # divergence — or condemn a clean one.
@@ -2207,7 +2206,7 @@ def flush_signature(results: Dict[str, Any]) -> Dict[str, Any]:
 def attribute_long_run(results: Dict[str, Any]) -> Dict[str, Any]:
     """BUDGET, DEFECT or UNATTRIBUTED — and the row that says which.
 
-    THE ORDER OF THESE TESTS IS THE ARGUMENT, so it is written out rather than
+    The order of these tests is the argument, so it is written out rather than
     left to be reconstructed from the code:
 
     1. **No controls, no reading.** A first-divergence step number with no
@@ -2584,7 +2583,8 @@ def _digest(path: str) -> str:
 
 
 def device_info() -> Dict[str, Any]:
-    info: Dict[str, Any] = {"host": platform.node(), "python": sys.version.split()[0],
+    import neutral_ids  # noqa: PLC0415
+    info: Dict[str, Any] = {"host": neutral_ids.machine_id(), "python": sys.version.split()[0],
                             "numpy": np.__version__,
                             "visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES")}
     if cp is not None:
@@ -2612,7 +2612,7 @@ def device_info() -> Dict[str, Any]:
 def install_policy(request: str) -> Dict[str, Any]:
     """Drive every executor to ONE float32 subnormal policy, or record that none is.
 
-    THE DEFAULT IS ``none`` AND IT IS NOT NEUTRAL. With nothing installed CuPy
+    The default is ``none`` and it is not neutral. With nothing installed CuPy
     13.5.1 appends ``-ftz=true`` to every NVRTC compile while Triton 3.1.0 keeps
     subnormals natively, so the oracle FLUSHES exactly where the kernel KEEPS.
     That is the configuration every earlier run of this gate measured, and it is
@@ -2685,15 +2685,15 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         },
         "step_budget": {"multi": args.multi_steps, "decay": args.decay_steps,
                         "claim": "bit-identity is claimed for these step counts "
-                                 "and no further; plan section 16 bounds any "
-                                 "whole-run claim independently"},
+                                 "and no further; 2d_pml once held a 60-step budget and first "
+                                 "differed at step 67, so a whole-run claim needs its own bound"},
     }
     save(results, args.out)
 
     def run_leg(name: str, body: Callable[[], Any]) -> None:
         """One leg, or the record of why it did not finish.
 
-        A LEG IS NOT ALLOWED TO KILL THE RUN. An uncaught exception here writes
+        A leg is not allowed to kill the run. An uncaught exception here writes
         no verdict at all, and ``read_verdict`` reports a verdict-less artifact
         as ``released=None`` — unreadable, which is deliberately NOT the claim
         "refused". Recording the exception and carrying on turns a leg that blew

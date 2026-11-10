@@ -379,7 +379,7 @@ def test_the_flag_is_passed_to_the_clause_that_reads_it_and_not_merely_declared(
     keywords = {keyword.arg: ast.unparse(keyword.value)
                 for keyword in calls[0].keywords}
     assert keywords["carries_repair"] == "CARRIES_DEPOSIT_REPAIR", keywords
-    # THE SEAM IS 'D'. A D-seam product mis-assigned 'B' refuses the magnetic source
+    # The seam is 'D'. A D-seam product mis-assigned 'B' refuses the magnetic source
     # it should admit and ADMITS the electric one it must repair.
     assert ast.unparse(calls[0].args[2]) == "'D'", ast.unparse(calls[0].args[2])
 
@@ -475,7 +475,7 @@ def test_the_plan_refuses_rather_than_raises_on_a_numpy_host(product):
 
 
 def test_the_beta_seam_flag_is_INERT_on_real_storage_and_live_on_complex():
-    """MEASURED, and it corrects the thing a reader would assume.
+    """Measured, and it corrects the thing a reader would assume.
 
     ``beta_curl_coefficients`` takes ``magnetic=``, and on COMPLEX storage that flag
     decides a multiply by ``+1j`` or ``-1j`` (special_kz.py:277-281). On REAL storage
@@ -518,17 +518,17 @@ def test_the_beta_seam_flag_is_INERT_on_real_storage_and_live_on_complex():
 # ---------------------------------------------------------------------------
 
 def test_the_composer_routes_this_product_and_dispatch_admits_it():
-    """ROUTED 2026-09-02 by the installer wave, and RELEASED at dispatch — both halves.
+    """ROUTED 2026-09-02 by the installer change, and RELEASED at dispatch — both halves.
 
     This test replaces the refusal it used to make. Until 2026-09-02 it asserted
     that ``launch.py`` and ``fastpath.py`` named this module NOWHERE, which was the
-    seam that kept a certified-but-unrouted product deferred. The wave routed it:
+    seam that kept a certified-but-unrouted product deferred. The 2026-09-02 change routed it:
     ``launch.CERTIFIED_FUSED_PRODUCTS`` holds its row and
     ``_install_certified_fused_products`` builds it through the shared
     ``_install_fused_pair``, taking both slots only when ``_pair_may_absorb`` finds
     the arm table has already given them to the arms this kernel implements.
 
-    The 2026-09-13 phase-B batch RELEASED it, and the second half is that sentence
+    The 2026-09-13 release campaign RELEASED it, and the second half is that sentence
     made checkable from the PRODUCT's side rather than from the composer's: the
     label this product writes is now in ``fastpath.RELEASED_FUSED_ARMS``, so clause
     (8) admits the whole plan; and it carries an ``ARM_CERTIFICATION`` row (its gate

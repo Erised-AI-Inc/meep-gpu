@@ -2,7 +2,7 @@
 
 The B battery is the set of must-catch legs every table's gates carry once the curl
 and constitutive sub-steps select their form by chunk membership
-(``results/bit_parity_0_10/DESIGN.md`` D13, and KERNELS.md §7.2 beside it). Its
+(since 1.0, on every table). Its
 states have three requirements that the gates' current fixtures do not all meet, and
 this module builds them once, so a gate on any table and a host test draw the same
 words from the same seed:
@@ -25,7 +25,7 @@ words from the same seed:
 
 And one check: :func:`require_form_coverage` refuses, by name, a gate configuration
 that leaves a (component × form) class empty, a membership line with no cell inside
-or no cell outside its run on either sub-lattice, or no wrapping axis (D13's
+or no cell outside its run on either sub-lattice, or no wrapping axis (the
 form-coverage rule). The per-cell form masks and the membership lines are ARGUMENTS:
 the layout that derives them from a lifted run (``chunk_map``) is a later work
 package, and this module imports nothing from the package.
@@ -241,7 +241,7 @@ def form_counts(forms: Mapping[str, Mapping[str, np.ndarray]]) -> Dict[str, Dict
 def coverage_gaps(forms: Mapping[str, Mapping[str, np.ndarray]],
                   membership: Mapping[Tuple[int, str], np.ndarray],
                   periodic: Sequence[bool]) -> List[str]:
-    """Every way a gate configuration falls short of D13's form-coverage rule, by name.
+    """Every way a gate configuration falls short of the form-coverage rule, by name.
 
     ``membership[(axis, lattice)]`` is the 1-D in-run line of that axis on that
     sub-lattice (``lattice`` in :data:`LATTICES`); ``periodic[axis]`` says whether the

@@ -2,10 +2,10 @@
 
 The complex family of :mod:`gate_triton_cylindrical`, whose machinery it imports: twin real
 ``Grid``/``Fields``/``PML`` triples on one array module, the same seeded full-volume state,
-:mod:`meep_gpu.stepping` (the aligned oracle) on one and the Triton plan on the other,
-every stored word compared as ``uint32``. Nothing is transcribed here.
+:mod:`meep_gpu.stepping` (the oracle, in MEEP's per-chunk forms) on one and the Triton
+plan on the other, every stored word compared as ``uint32``. Nothing is transcribed here.
 
-WHAT IS MEASURED. :mod:`meep_gpu.triton_kernels.cylindrical_complex`'s curl kernel with the
+What is measured. :mod:`meep_gpu.triton_kernels.cylindrical_complex`'s curl kernel with the
 shared radial scan (:func:`cylindrical_triton.cyl_radial_difference`) at every m class --
 m = 0 under complex storage, |m| = 1 (the axis-row increments, the Dz axis zero), |m| >= 2
 (the near-axis zeroing, on the default and the accurate branch) -- on both z terminations
@@ -14,8 +14,8 @@ and on layers with one and with two r chunks; and the complex constitutive plan
 :func:`cylindrical_complex.plan_cylindrical_complex_constitutive` binds it) against
 ``stepping.update_H`` / ``update_E`` through MEEP's start of H.
 
-THE MUTATIONS name the forms they guard: the Appendix A inversion (the previous pairwise
-curl grouping), the section 7.2 battery (whole-grid recurrence, membership a row off,
+THE MUTATIONS name the forms they guard: the inverted grouping (the previous pairwise
+curl grouping), the per-chunk form battery (whole-grid recurrence, membership a row off,
 lattices swapped, ``fu`` stored on every cell, the predicate on coefficient identity), the
 i*m/r pass (dropped, its dsig scale, its inside form, its ``fu`` stage, its quarter-turn
 sign, its unowned mask), the |m| = 1 axis increments (in float32, not negated, the

@@ -1,9 +1,10 @@
 """One process-wide float32 subnormal policy, obeyed by every executor.
 
-WHAT THIS IS. Three independent things in this process decide, separately, whether
+What this is. Three independent things in this process decide, separately, whether
 a float32 subnormal survives an arithmetic operation: the host FPU (MEEP sets the
-x86 FTZ and DAZ bits when it initializes), CuPy's device binaries (CuPy 13.5.1
-appends ``-ftz=true`` to every NVRTC compile, ``cupy/cuda/compiler.py:552``), and
+x86 FTZ and DAZ bits when it initializes), CuPy's device binaries (CuPy appends
+``-ftz=true`` to every NVRTC compile, ``_compile_with_cache_cuda`` in
+``cupy/cuda/compiler.py`` at 13.5.1 and 14.2.0 alike), and
 Triton's device binaries (Triton 3.1.0 emits plain IEEE ``mul.rn.f32`` and keeps —
 except through libdevice, which it routes to the ``.ftz`` variants unconditionally).
 Left alone they do not agree, and a half-applied policy is worse than either
@@ -12,8 +13,8 @@ steps are bit-identical under uniform keep, and diverge at step 1 with 92 differ
 floats of 2880 across 22 arrays when only Triton is flipped. This module is the
 single place that decides, and it drives all three from that one decision.
 
-THE DEFAULT IS "WHAT MEEP ITSELF DOES ON THIS HOST", AND IT IS MEASURED RATHER
-THAN TABULATED. The default request is :data:`MATCH_MEEP`, and
+The default is "what MEEP itself does on this host", and it is measured rather
+than tabulated. The default request is :data:`MATCH_MEEP`, and
 :func:`resolve_match_meep` answers it the same way every other verdict in this
 module is reached — by reading the machine. MEEP decides its own subnormal
 behaviour at import: ``initialize::initialize()`` calls ``setup()`` calls
@@ -41,7 +42,7 @@ would make this module's own startup a hard refusal on every non-x86 host — an
 why an EXPLICIT request this host cannot deliver is a REFUSAL rather than a silent
 downgrade.
 
-THE THREE EXECUTORS, AND WHAT EACH POLICY DOES TO THEM:
+The three executors, and what each policy does to them:
 
 ===========  ==========================================  =============================
 executor     ``"flush"``                                 ``"keep"``
@@ -49,15 +50,16 @@ executor     ``"flush"``                                 ``"keep"``
 host/NumPy   ``mp.set_zero_subnormals(True)``, then      ``mp.set_zero_subnormals(False)``
              MEASURE that the FPU actually flushes       then measure that it does not
 CuPy         native for compiled kernels — CuPy already  strip ``-ftz=true`` at the
-             appends ``-ftz=true`` — and REFUSE unless   ``compile_using_nvrtc`` seam,
+             appends ``-ftz=true`` — and REFUSE unless   compiler front-end seam,
              ``CUPY_ACCELERATORS=''`` took CUB out of    with a policy-suffixed cache
              the reduction path before CuPy imported     dir; CUB keeps already
-Triton       inject the LLVM per-function attribute      set the module flag
-             ``denormal-fp-math-f32`` into the ``llir``  ``nvvm-reflect-ftz`` to 0 so
-             stage, and AUDIT the resulting PTX          libdevice stops flushing
+Triton       inject the LLVM per-function denormal       set the module flag
+             attribute, in the spelling this Triton's    ``nvvm-reflect-ftz`` to 0 so
+             LLVM is measured to read, into the          libdevice stops flushing
+             ``llir`` stage, and AUDIT the result's PTX
 ===========  ==========================================  =============================
 
-NEITHER POLICY IS FREE AT THE EDGES, and the exceptions are recorded rather than
+Neither policy is free at the edges, and the exceptions are recorded rather than
 smoothed over — see :data:`EXECUTOR_OP_EXCEPTIONS`. Two are load-bearing:
 
 * Under ``"flush"`` the HOST does not flush ``-x``. x86 FTZ/DAZ are MXCSR bits
@@ -69,7 +71,7 @@ smoothed over — see :data:`EXECUTOR_OP_EXCEPTIONS`. Two are load-bearing:
 * CuPy's DEFAULT reduction path is a CUB binary compiled when CuPy was BUILT, so
   neither CuPy's own ``-ftz=true`` nor this module's strip reaches it: measured,
   ``cp.sum`` over one ``2^-135`` among zeros returns ``0x00004000`` with the rest
-  of the process flushing. AND IT CANNOT BE SWITCHED OFF FROM INSIDE THE PROCESS.
+  of the process flushing. And it cannot be switched off from inside the process.
   ``set_reduction_accelerators([])`` returns cleanly, the getter then reports
   ``[]``, and the dispatch does not move: measured on device in exactly that
   state, ``cp.sum`` / ``cp.max`` / ``cp.add.reduce`` / ``ndarray.sum`` all still
@@ -83,8 +85,8 @@ smoothed over — see :data:`EXECUTOR_OP_EXCEPTIONS`. Two are load-bearing:
   keeps and is left alone, which also means ``"keep"`` needs no such setup.
 
 NEVER PASS ``-ftz=false``. NVRTC hard-errors on a duplicate ``-ftz`` option, in
-both orders; the only alignment direction for CuPy is to remove the option CuPy
-adds. And the CuPy cache key is computed ABOVE the ``compile_using_nvrtc`` seam,
+both orders; the only way to bring CuPy into line is to remove the option CuPy
+adds. And the CuPy cache key is computed ABOVE the compiler front-end seam,
 so the strip changes binaries without changing keys — hence the mandatory
 policy-suffixed ``CUPY_CACHE_DIR``, and, because a keep directory can already hold
 binaries CuPy compiled natively before the install, a keep token folded into the
@@ -94,7 +96,15 @@ MECHANISM into: the name alone is not enough, measured — four different inject
 attribute strings compiled into one ``TRITON_CACHE_DIR`` all returned the first
 variant's PTX.
 
-WHY THE PTX AUDIT EXISTS AT ALL. The LLVM attribute is complete on today's kernel
+The flush attribute's spelling is measured, not tabulated. Triton 3.1.0 through
+3.7.1 ship an LLVM that reads the string attribute ``denormal-fp-math-f32``;
+Triton 3.8.0 ships one that ignores it and reads only ``denormal_fpenv``, which
+the older LLVMs cannot even parse (an abort, not an exception). So the flush
+install measures, in a child process, which spelling this Triton's LLVM flushes an
+FMA under (:func:`select_denormal_spelling`), injects that one, folds it into the
+cache key, and leaves the per-compile audit as the verdict on every kernel.
+
+Why the PTX audit exists at all. The LLVM attribute is complete on today's kernel
 source — every f32 arithmetic instruction the shipped kernels emit lowers through
 LLVM and flips (censused: 26 kernels AOT-compiled twice, 11 736 f32 arithmetic
 instructions, every one carrying ``.ftz`` under flush and none left behind;
@@ -110,7 +120,7 @@ instruction, not a directive) and the packed ``.f32x2`` opcodes. The shipped
 kernels use ``tl.math.fma``, ``tl.math.div_rn``, ``tl.where``, ``!=`` and plain
 ``+ - *``; none uses a plain ``/``.
 
-WHY INSTALLATION MUST COME FIRST, and what happens when it does not. Both device
+Why installation must come first, and what happens when it does not. Both device
 executors memoize compiled kernels IN PROCESS, above their disk caches: a CuPy
 kernel compiled before the install keeps flushing after a ``"keep"`` install, and
 a Triton kernel compiled before a ``"flush"`` install keeps keeping, with every
@@ -127,7 +137,7 @@ disk cache, so the keep token is also folded into CuPy's cache key
 (:func:`_wrap_cache_key_entry_point`): otherwise the rebuild reads back the native
 binary the pre-install compile wrote into a keep directory.
 
-INSTALLATION IS ADDITIVE. This module never edits :mod:`meep_gpu.backends`; it
+Installation is additive. This module never edits :mod:`meep_gpu.backends`; it
 composes with it. :func:`install_cupy_policy` calls
 ``backends.guard_kernel_compilation`` first and then wraps the same entry points
 on top, and because both wrappers are built with ``functools.wraps`` (which copies
@@ -146,6 +156,7 @@ import functools
 import hashlib
 import importlib
 import importlib.util
+import inspect
 import json
 import os
 import platform
@@ -259,18 +270,18 @@ def resolve_match_meep() -> Dict[str, Any]:
 
     Measured on this package's own dev laptop (arm64, MEEP 1.33.0): flushing False
     before ``import meep``, False after — and ``mp.set_zero_subnormals(True)``
-    leaves it False. The default there resolves to ``"keep"``, BECAUSE THE HOST WAS
-    MEASURED. On an x86 host the same read returns True and it resolves to
+    leaves it False. The default there resolves to ``"keep"``, because the host was
+    measured. On an x86 host the same read returns True and it resolves to
     ``"flush"``.
 
-    WHEN THE MEASUREMENT CANNOT BE TAKEN this does not quietly pick a side. A
+    When the measurement cannot be taken this does not quietly pick a side. A
     process that has not imported MEEP has nothing to read, and this module may not
     import it (:func:`_meep_module`) — so the record says ``measured=False``, names
     :data:`MATCH_MEEP_FALLBACK` as a FALLBACK rather than an answer, says why that
     one, and says what to do to get the question answered instead. The whole record
     travels into :func:`policy_stamp`.
 
-    ONE CAVEAT IS RECORDED RATHER THAN GUARDED: once this module has installed a
+    One caveat is recorded rather than guarded: once this module has installed a
     policy, the FPU state is partly ITS doing, so the reading is no longer
     attributable to MEEP alone. ``attributable_to_meep`` says so. It does not
     change any resolution in practice — :func:`get_subnormal_policy` returns the
@@ -368,15 +379,11 @@ UNINSTALLED_POLICY_NAME = "none_installed"
 #: or silently serves flushed ones.
 CUPY_CACHE_POLICY_TOKEN = "ftz_stripped"
 
-#: The CuPy compiler front ends, in every backend CuPy ships — the same tuple
-#: ``backends.guard_kernel_compilation`` wraps, because it is the same seam.
-_COMPILER_ENTRY_POINTS = backends._COMPILER_ENTRY_POINTS
-
-#: Where CuPy 13.5.1 computes the key of its on-disk kernel cache
-#: (``cupy/cuda/compiler.py``, ``_compile_with_cache_cuda``), ABOVE the entry points
-#: the strip wraps. Under ``"keep"`` this is wrapped as well, to fold
-#: :data:`CUPY_KEEP_CACHE_KEY_TOKEN` into the key.
-CUPY_CACHE_KEY_ENTRY_POINT = "_compile_with_cache_cuda"
+#: Where CuPy computes the key of its on-disk kernel cache: its NVIDIA compile path
+#: (``cupy/cuda/compiler.py``, ``_compile_with_cache_cuda``, at 13.5.1 and 14.2.0),
+#: ABOVE the front ends the strip wraps. Under ``"keep"`` this is wrapped as well, to
+#: fold :data:`CUPY_KEEP_CACHE_KEY_TOKEN` into the key.
+CUPY_CACHE_KEY_ENTRY_POINT = backends.CUPY_NVIDIA_COMPILE_PATH
 
 #: Appended to ``extra_source`` under ``"keep"``. CuPy hashes ``extra_source`` into
 #: its cache key and hands it to no compiler ("NVRTC does not use extra_source.
@@ -393,7 +400,59 @@ _CUPY_FTZ_OPTIONS = ("-ftz=true", "--ftz=true")
 #: kernel to its ``.ftz`` form; the older ``nvptx-f32ftz`` spelling is IGNORED by
 #: the LLVM in Triton 3.1.0, so the spelling is part of the mechanism, not a
 #: preference — which is why :func:`mechanism_digest` folds it into the cache key.
+#: It is the FIRST of the two spellings :func:`select_denormal_spelling` measures,
+#: and the one used whenever no measurement selects another.
 TRITON_DENORMAL_ATTRIBUTE = '"denormal-fp-math-f32"="preserve-sign,preserve-sign"'
+
+#: The same request in LLVM's first-class spelling. One LLVM commit (2502e3b,
+#: llvm-project PR #174293, 2026-02-05) folded the ``denormal-fp-math`` string
+#: attributes into the ``denormal_fpenv`` attribute, in the parser and in the
+#: backends that read it. Measured on the synthetic FMA module
+#: (:data:`TRITON_DENORMAL_PROBE_LLIR`) through Triton's own ``ptx`` stage: the
+#: LLVM in Triton 3.8.0 leaves ``fma.rn.f32`` under the string attribute above and
+#: gives ``fma.rn.ftz.f32`` under this one; the LLVM in Triton 3.1.0 through 3.7.1
+#: honours the string attribute. And the LLVM in Triton 3.1.0 does not PARSE this
+#: one: ``failed to parse IR: unterminated attribute group``, raised as
+#: ``report_fatal_error`` — an abort inside ``translate_to_asm`` that no exception
+#: handler sees. So this spelling reaches an LLVM in this process only after a
+#: CHILD process has measured that this Triton's LLVM reads it and flushes under it
+#: (:func:`select_denormal_spelling`).
+TRITON_DENORMAL_FPENV_ATTRIBUTE = "denormal_fpenv(float: preservesign)"
+
+#: The compute capability the spelling probe compiles for. The probe asks a
+#: question about Triton's LLVM — which spelling its NVPTX backend reads — and the
+#: ``.ftz`` modifier on ``fma.rn.f32`` exists on every target Triton compiles for,
+#: so any target Triton accepts answers it.
+TRITON_DENORMAL_PROBE_CAPABILITY = 80
+
+#: The probe module: one ``llvm.fma.f32`` in a kernel entry (``ptx_kernel``, so
+#: Triton's ``make_ptx`` finds exactly the one ``.visible .entry`` it asserts), no
+#: attribute group of its own — :func:`inject_denormal_attribute` mints it, so the
+#: probe also exercises the placement the real kernels get. Measured through
+#: Triton's own ``ptx`` stage on 3.1.0 and 3.8.0: with no attribute it lowers to
+#: ``fma.rn.f32`` on both.
+TRITON_DENORMAL_PROBE_LLIR = (
+    "target triple = \"nvptx64-nvidia-cuda\"\n"
+    "\n"
+    "define ptx_kernel void @meep_gpu_denormal_probe(ptr addrspace(1) %0, float %1, "
+    "float %2, float %3) {\n"
+    "  %5 = call float @llvm.fma.f32(float %1, float %2, float %3)\n"
+    "  store float %5, ptr addrspace(1) %0, align 4\n"
+    "  ret void\n"
+    "}\n"
+    "\n"
+    "declare float @llvm.fma.f32(float, float, float)\n"
+)
+
+#: How long the child process that runs the probe may take before its verdict is
+#: "unmeasured". Measured at 0.2 s on the GPU host (warm); generous on purpose,
+#: because an unmeasured probe only means today's spelling is used.
+TRITON_DENORMAL_PROBE_TIMEOUT_S = 120.0
+
+#: The two lines the probe child prints: one before it hands the module to LLVM
+#: (so a death after it is a death INSIDE Triton's LLVM), one with the PTX.
+_DENORMAL_PROBE_STARTED = "MEEP_GPU_DENORMAL_PROBE_STARTED "
+_DENORMAL_PROBE_RESULT = "MEEP_GPU_DENORMAL_PROBE_RESULT "
 
 #: Prefix the policy contributes to Triton's cache key via ``CUDABackend.hash``.
 TRITON_HASH_PREFIX = "meep-gpu-subnormal-"
@@ -499,7 +558,7 @@ def policy_resolution(policy: Optional[str] = None) -> Dict[str, Any]:
     :data:`REQUESTABLE`; the third IS :data:`MATCH_MEEP`, which
     :func:`resolve_match_meep` answers by measuring this host.
 
-    AN EXPLICIT ``"flush"`` OR ``"keep"`` IS AN ANSWER ALREADY and is passed
+    An explicit ``"flush"`` or ``"keep"`` is an answer already and is passed
     straight through — nothing about match_meep may change what an explicit
     request does, in either direction. ``resolution`` is the measurement record for
     a match_meep request and ``None`` for an explicit one, so a reader can always
@@ -535,7 +594,7 @@ def resolve_policy(policy: Optional[str] = None) -> Tuple[str, str]:
 
     ``(policy, source)``, where ``policy`` is always a member of :data:`POLICIES`
     — an executor can be driven to ``"flush"`` or to ``"keep"`` and to nothing
-    else. When :data:`MATCH_MEEP` was requested, this is its MEASURED answer; the
+    else. When :data:`MATCH_MEEP` was requested, this is its measured answer; the
     request itself and the measurement behind it are in :func:`policy_resolution`,
     and both travel into :func:`policy_stamp`.
     """
@@ -604,7 +663,7 @@ def record_executor_report(executor: str, report: Dict[str, Any], *,
                            strict: bool = True) -> Dict[str, Any]:
     """File one executor arm's install record, and refuse if it did not attain.
 
-    THE WRITE SIDE OF :func:`executor_report`, and it exists so an executor arm
+    The write side of :func:`executor_report`, and it exists so an executor arm
     that lives in ANOTHER MODULE can file its report without reaching into
     ``_STATE`` or into :func:`_announce`. The MPS arm
     (``metal_kernels.subnormal.install_mps_policy``) is the first: its lever is
@@ -680,14 +739,14 @@ FENV_MECHANISM_PREFIX = "fenv:"
 def _drive_host_fpu_by_fenv(want_flush: bool) -> bool:
     """The non-x86 host lever: install a whole floating-point ENVIRONMENT. Did it work?
 
-    WHY THIS EXISTS AT ALL. MEEP's ``set_zero_subnormals`` is the only FTZ/DAZ knob
+    Why this exists at all. MEEP's ``set_zero_subnormals`` is the only FTZ/DAZ knob
     this package may use, and on arm64 it is the ``#if HAVE_IMMINTRIN_H`` no-op — so
     without a second lever the ``flush`` policy is permanently unattainable on Apple
     silicon, and the Metal executor, which can deliver NOTHING BUT flush, is
     permanently refused with it. Darwin exports ``_FE_DFL_DISABLE_DENORMS_ENV``
     exactly for this, and ``fesetenv`` on it flips FTZ/DAZ for the calling thread.
 
-    THE MEASUREMENT IS THE VERDICT AND THE RESTORE IS UNCONDITIONAL, both for the
+    The measurement is the verdict and the restore is unconditional, both for the
     same reason ``backends._default_environment`` works that way: a header reading
     cannot settle whether an environment object carries the denormal bits on this
     ABI, and a lever that moved the FPU without attaining the policy would leave the
@@ -817,7 +876,7 @@ def glibc_x86_64_abi() -> Tuple[bool, str]:
 def _drive_host_fpu_by_mxcsr(want_flush: bool) -> bool:
     """The x86-64 glibc host lever: set or clear MXCSR FTZ|DAZ. Did it work?
 
-    WHY THIS EXISTS. On x86 MEEP's ``set_zero_subnormals`` is the mechanism, and it
+    Why this exists. On x86 MEEP's ``set_zero_subnormals`` is the mechanism, and it
     stays first whenever MEEP is imported (:func:`_drive_host_fpu`). A process that
     has NOT imported MEEP — the Tier A replay of MEEP identity, which blocks MEEP on
     purpose, or an engine user with no MEEP at all — had no way to reach ``flush``
@@ -829,7 +888,7 @@ def _drive_host_fpu_by_mxcsr(want_flush: bool) -> bool:
     structure as given: measured on the reference host, ``fegetenv`` afterwards
     reads back the word installed).
 
-    WHAT IT REACHES: THE CALLING THREAD. MXCSR is per thread. MEEP's switch sets it
+    What it reaches: the calling thread. MXCSR is per thread. MEEP's switch sets it
     on every OpenMP thread through a parallel loop; this lever sets it on the
     thread that calls it, which is the thread that steps the array path (NumPy's
     elementwise operations run on the calling thread, and the MEEP flush reference
@@ -837,7 +896,7 @@ def _drive_host_fpu_by_mxcsr(want_flush: bool) -> bool:
     copy of its creator's floating-point state on Linux; a thread already running
     keeps its own.
 
-    THE MEASUREMENT IS THE VERDICT AND THE RESTORE IS UNCONDITIONAL, exactly as in
+    The measurement is the verdict and the restore is unconditional, exactly as in
     :func:`_drive_host_fpu_by_fenv`: the environment is saved, the candidate
     installed, ``backends.subnormals_flushed`` asked (its FTZ probe and its DAZ
     probe), and the saved environment put back the moment the answer is no. Two
@@ -889,14 +948,14 @@ def _drive_host_fpu_by_mxcsr(want_flush: bool) -> bool:
 def _drive_host_fpu(want_flush: bool) -> Tuple[Any, str]:
     """Drive this thread's FTZ/DAZ state. Returns ``(module used, mechanism)``.
 
-    MEEP'S KNOB FIRST, ALWAYS, because on x86 it IS the mechanism the certified
+    MEEP's knob first, always, because on x86 it IS the mechanism the certified
     families were cut under and matching MEEP is the point of the ``match_meep``
     resolution. Only when the measurement says the knob did not move the FPU does
     :func:`_drive_host_fpu_by_fenv` get its turn — so on x86 nothing about this
     function's behaviour changes, and on arm64 the policy becomes attainable
     instead of being refused on a platform fact.
 
-    THE x86-64 glibc MXCSR LEVER IS THE MEEP-LESS PATH ONLY
+    THE x86-64 glibc MXCSR lever is the MEEP-less path only
     (:func:`_drive_host_fpu_by_mxcsr`). It is tried when MEEP is not imported, the
     Darwin object did not attain the policy (it is absent outside Darwin), and the
     thread is not already in the requested state — so a keep install on an x86 host
@@ -926,7 +985,7 @@ def _drive_host_fpu(want_flush: bool) -> Tuple[Any, str]:
             return module, lever
         return module, f"{mechanism} (no-op here) + {lever}"
     if module is None:
-        # NOTHING TO MOVE, NOTHING WRITTEN: a MEEP-less process already in the
+        # Nothing to move, nothing written: a MEEP-less process already in the
         # requested state (the common case, keep on a host that keeps) is reported
         # exactly as it was before this lever existed, with no mechanism claimed.
         if backends.subnormals_flushed() == bool(want_flush):
@@ -947,7 +1006,7 @@ def install_host_policy(policy: str, *, strict: bool = True) -> Dict[str, Any]:
     whether it is flushing (``backends.subnormals_flushed``) before and after, the
     same way ``backends._default_environment`` decides what ``FE_DFL_ENV`` is.
 
-    ``installed`` NAMES WHAT ACTUALLY DROVE THE FPU, which since the fenv lever
+    ``installed`` names what actually drove the FPU, which since the fenv lever
     landed is no longer the same question as "was MEEP imported": on a host where
     MEEP's knob is the no-op, the environment object is what moved the bits, and a
     report saying nothing was installed would leave the process flushing under a
@@ -983,7 +1042,7 @@ def install_host_policy(policy: str, *, strict: bool = True) -> Dict[str, Any]:
 def cupy_cache_reasons(policy: str, cache_dir: Optional[str]) -> List[str]:
     """Why this ``CUPY_CACHE_DIR`` may not be used under ``policy``, by name.
 
-    CuPy computes its kernel cache key ABOVE the ``compile_using_nvrtc`` seam, so
+    CuPy computes its kernel cache key ABOVE the compiler front-end seam, so
     stripping the option changes the binaries without changing the key. The
     directory name is therefore the only separator there is, in both directions:
     a keep run needs a private policy-suffixed directory, and a flush run must not
@@ -995,7 +1054,7 @@ def cupy_cache_reasons(policy: str, cache_dir: Optional[str]) -> List[str]:
             return [
                 "CUPY_CACHE_DIR is unset: the -ftz=true strip changes binaries "
                 "without changing CuPy's cache keys (the key is computed above "
-                "the compile_using_nvrtc seam), so a private cache directory "
+                "the compiler front-end seam), so a private cache directory "
                 f"carrying {CUPY_CACHE_POLICY_TOKEN!r} is mandatory under {KEEP!r}"
             ]
         if CUPY_CACHE_POLICY_TOKEN not in cache_dir:
@@ -1040,7 +1099,7 @@ def keep_policy_cache_dir(cache_dir: Optional[str] = None, cupy: Any = None) -> 
     caller's chosen LOCATION survives and only the policy separation is added.
     With nothing set, the sibling of CuPy's own default is used.
 
-    ONLY ``"keep"`` IS DERIVABLE. Under ``"flush"`` the sole cache refusal is a
+    Only ``"keep"`` is derivable. Under ``"flush"`` the sole cache refusal is a
     directory carrying the keep token, and the fix there is to stop pointing at
     another policy's cache — a decision about the caller's environment, not a
     string this function may invent. So there is no ``flush_policy_cache_dir``:
@@ -1070,9 +1129,9 @@ def keep_policy_cache_marker(cache_dir: str) -> str:
 def keep_policy_cache_provenance(cache_dir: str) -> Dict[str, Any]:
     """Whether this keep-policy cache directory is one this package can vouch for.
 
-    THE TOKEN IN THE NAME IS NOT EVIDENCE ABOUT THE BINARIES INSIDE.
+    The token in the name is not evidence about the binaries inside.
     :func:`cupy_cache_reasons` enforces the naming rule and that is all it can do:
-    CuPy's cache key is computed ABOVE the ``compile_using_nvrtc`` seam the strip
+    CuPy's cache key is computed ABOVE the compiler front-end seam the strip
     installs at, so nothing in a cached ``.cubin`` records which policy compiled
     it, and a hit serves it back with no NVRTC call — no counter moves, and
     ``ftz_removed`` simply stays low. A directory that already holds entries and
@@ -1107,15 +1166,18 @@ def keep_policy_cache_provenance(cache_dir: str) -> Dict[str, Any]:
 def point_cupy_cache_at_keep_policy(cupy: Any = None) -> Dict[str, Any]:
     """Set ``CUPY_CACHE_DIR`` to a keep-policy directory, and report what moved.
 
-    THE LATE SET BITES, and that is the measured precondition for installing this
+    The late set bites, and that is the measured precondition for installing this
     policy after CuPy has already compiled something. CuPy 13.5.1 reads the
     variable on EVERY compile — ``get_cache_dir()`` is
     ``os.environ.get('CUPY_CACHE_DIR', _default_cache_dir)``
     (``cupy/cuda/compiler.py:503``) and is called from inside
     ``_compile_with_cache_cuda`` (``:548``), not once at import — so a directory
-    chosen now governs every compile from now on. The in-process memo is what the
-    install drops separately (:func:`_clear_cupy_kernel_memo`); together they are
-    what makes a post-setup install reach the kernels that matter.
+    chosen now governs every compile from now on. CuPy 14.x reads it once, at
+    import, so on that shape the every-compile read is put back first
+    (:func:`cupy_reads_the_cache_dir_on_every_compile`, recorded under
+    ``cupy_reads_it``). The in-process memo is what the install drops separately
+    (:func:`_clear_cupy_kernel_memo`); together they are what makes a post-setup
+    install reach the kernels that matter.
 
     Returns the before/after pair and whether the move was needed, for the
     artifact. Creating the directory is deliberate: an unwritable choice fails
@@ -1155,8 +1217,114 @@ def point_cupy_cache_at_keep_policy(cupy: Any = None) -> Dict[str, Any]:
             provenance["marked"] = True
         except Exception as exc:  # noqa: BLE001 - not fatal HERE; fatal next process
             provenance["marker_error"] = repr(exc)
+    try:
+        compiler = _cupy_compiler(cupy)
+    except Exception as exc:  # noqa: BLE001 - no CuPy compiler: the install refuses by name
+        record["cupy_reads_it"] = {"reads": None, "reasons": [
+            f"cupy.cuda.compiler is not importable: {exc}"]}
+    else:
+        record["cupy_reads_it"] = cupy_reads_the_cache_dir_on_every_compile(compiler, cupy)
     os.environ["CUPY_CACHE_DIR"] = chosen
     return record
+
+
+# --- where CuPy reads CUPY_CACHE_DIR ----------------------------------------
+#
+# The directory rules above rest on CuPy reading ``CUPY_CACHE_DIR`` on EVERY
+# compile. CuPy 13.x does: its compile path calls ``get_cache_dir()``, which reads
+# the variable. CuPy 14.x reads it ONCE, when ``cupy.cuda.compiler`` is imported:
+# the compile path loads and saves through the module-level
+# ``_kernel_cache_backend``, a ``DiskKernelCacheBackend`` whose directory was fixed
+# when it was built, and ``get_cache_dir`` is gone (``cupy/cuda/compiler.py`` and
+# ``cupy/cuda/_compiler_cache.py`` at v14.2.0). A variable set later then moves
+# nothing: the keep policy's private directory, its marker and the dispatch gate's
+# repair of an unusable one would all describe a directory CuPy is not writing to.
+# So on that shape this package puts the every-compile read back: CuPy's backend is
+# replaced by :class:`_CacheDirectoryFromTheVariable`, which hands each load and
+# save to CuPy's own disk backend opened at the directory the variable names at
+# that moment. Which shape a CuPy has is read off its compile path, as the front
+# ends are (``backends.compiler_front_ends``).
+
+#: The compile path reads the variable itself on every compile (CuPy 13.x).
+CUPY_CACHE_DIR_READER = "get_cache_dir"
+
+#: The compile path loads and saves through this module-level backend (CuPy 14.x).
+CUPY_CACHE_BACKEND = "_kernel_cache_backend"
+
+#: CuPy's disk backend class, under the name ``cupy.cuda.compiler`` imports it as.
+CUPY_DISK_CACHE_CLASS = "_DiskKernelCacheBackend"
+
+
+class _CacheDirectoryFromTheVariable:
+    """A CuPy kernel-cache backend that reads ``CUPY_CACHE_DIR`` on every load and save.
+
+    CuPy 13.x's own behaviour, rebuilt over CuPy 14.x's disk backend. The variable
+    is read as CuPy 13.x's ``get_cache_dir`` read it (unset means CuPy's default
+    directory), and each directory gets one instance of CuPy's disk backend, opened
+    the first time the variable names it, which creates the directory as CuPy does.
+    """
+
+    def __init__(self, disk_class: Any, default: str):
+        self.disk_class = disk_class
+        self.default = default
+        self._disks: Dict[str, Any] = {}
+
+    def directory(self) -> str:
+        return os.environ.get("CUPY_CACHE_DIR", self.default)
+
+    def _disk(self) -> Any:
+        directory = self.directory()
+        disk = self._disks.get(directory)
+        if disk is None:
+            disk = self._disks[directory] = self.disk_class(directory)
+        return disk
+
+    def load(self, name: str) -> Any:
+        return self._disk().load(name)
+
+    def save(self, name: str, cubin: Any, source: Any) -> None:
+        self._disk().save(name, cubin, source)
+
+
+def cupy_reads_the_cache_dir_on_every_compile(compiler: Any, cupy: Any = None) -> Dict[str, Any]:
+    """Make CuPy read ``CUPY_CACHE_DIR`` on every compile, and report how it does.
+
+    Returns ``{"reads": ..., "mechanism": ..., "reasons": [...]}``. ``reads`` is
+    ``"every compile"`` when the variable now decides where the next compile caches,
+    and the reasons say why it does not otherwise. Idempotent; the backend it
+    replaces is put back by :func:`uninstall_subnormal_policy`.
+    """
+    code, problem = backends.compile_path_code(compiler, backends.CUPY_NVIDIA_COMPILE_PATH)
+    if problem:
+        return {"reads": None, "reasons": [
+            f"where CuPy caches kernels cannot be read off its compile path: {problem}"]}
+    called = backends.names_read(code)
+    if CUPY_CACHE_DIR_READER in called:
+        return {"reads": "every compile", "reasons": [],
+                "mechanism": f"cupy.cuda.compiler.{CUPY_CACHE_DIR_READER}(), CuPy's own"}
+    if CUPY_CACHE_BACKEND not in called:
+        return {"reads": None, "reasons": [
+            f"cupy.cuda.compiler.{backends.CUPY_NVIDIA_COMPILE_PATH} reads neither "
+            f"{CUPY_CACHE_DIR_READER} nor {CUPY_CACHE_BACKEND}, so where CuPy caches "
+            f"kernels cannot be established: the seam has moved"]}
+    current = getattr(compiler, CUPY_CACHE_BACKEND, None)
+    mechanism = (f"cupy.cuda.compiler.{CUPY_CACHE_BACKEND} replaced by a backend that "
+                 f"opens CuPy's {CUPY_DISK_CACHE_CLASS} at CUPY_CACHE_DIR on every load "
+                 f"and save (CuPy reads the variable once, at import)")
+    if isinstance(current, _CacheDirectoryFromTheVariable):
+        return {"reads": "every compile", "reasons": [], "mechanism": mechanism}
+    disk_class = getattr(compiler, CUPY_DISK_CACHE_CLASS, None)
+    if disk_class is None or type(current) is not disk_class:
+        return {"reads": "once, at import", "reasons": [
+            f"CuPy's kernel cache backend is {type(current).__name__}, not CuPy's own "
+            f"{CUPY_DISK_CACHE_CLASS}, so CUPY_CACHE_DIR does not decide where its "
+            f"kernels are cached and no private keep-policy directory can be given to "
+            f"it"]}
+    _STATE.setdefault("_cupy_originals", {}).setdefault(CUPY_CACHE_BACKEND, (compiler, current))
+    setattr(compiler, CUPY_CACHE_BACKEND,
+            _CacheDirectoryFromTheVariable(disk_class, _cupy_default_cache_dir(cupy)))
+    return {"reads": "every compile", "reasons": [], "mechanism": mechanism,
+            "replaced_backend_directory": getattr(current, "_cache_dir", None)}
 
 
 # --- end of the dispatch policy gate's addition ----------------------------
@@ -1166,7 +1334,7 @@ def _strip_ftz(options: Any) -> Tuple[Any, ...]:
     """CuPy's option tuple with ``-ftz=true`` removed. Never adds ``-ftz=false``.
 
     NVRTC hard-errors on a duplicate ``-ftz`` option — measured in both orders —
-    so removal is the only alignment direction.
+    so removal is the only way to bring CuPy into line.
     """
     return tuple(option for option in tuple(options) if option not in _CUPY_FTZ_OPTIONS)
 
@@ -1200,7 +1368,7 @@ def _wrap_compiler_entry_point(original: Callable, state: Dict[str, Any], name: 
 def _wrap_cache_key_entry_point(original: Callable, state: Dict[str, Any]) -> Callable:
     """CuPy's cache-key front end, with :data:`CUPY_KEEP_CACHE_KEY_TOKEN` folded in.
 
-    WHY THE DIRECTORY NAME WAS NOT ENOUGH. The key is computed above the strip, so a
+    Why the directory name was not enough. The key is computed above the strip, so a
     binary CuPy compiled with its own ``-ftz=true`` and a stripped one share a key.
     The policy-suffixed directory separates them only when nothing compiles into it
     before the install, and that does not hold when ``CUPY_CACHE_DIR`` already names
@@ -1212,17 +1380,60 @@ def _wrap_cache_key_entry_point(original: Callable, state: Dict[str, Any]) -> Ca
     pre-minted keep directory (0 of 3), and 9.99995e-41 in a fresh plain one (3 of
     3). With the token in the key, a keep compile can only ever read an entry a
     keep compile wrote, whatever the directory.
+
+    Bound by name, not by position. CuPy 13.x's compile path takes
+    ``(source, options, arch, cache_dir, extra_source, ...)``; CuPy 14.x dropped
+    ``cache_dir`` and is called ``(source, options, arch, extra_source, backend,
+    ...)``, so a positional wrapper would fold the token into ``backend`` and every
+    keep compile would raise. The arguments are bound to the original's own
+    signature and ``extra_source`` is found by name; :func:`_cache_key_parameter_problem`
+    refuses a compile path that has none.
     """
+    signature = inspect.signature(original)
 
     @functools.wraps(original)
-    def keyed(source, options, arch, cache_dir, extra_source=None, *args, **kwargs):
+    def keyed(*args, **kwargs):
         state["keyed"] = state.get("keyed", 0) + 1
-        folded = (CUPY_KEEP_CACHE_KEY_TOKEN if extra_source is None
-                  else f"{extra_source}\n{CUPY_KEEP_CACHE_KEY_TOKEN}")
-        return original(source, options, arch, cache_dir, folded, *args, **kwargs)
+        bound = signature.bind(*args, **kwargs)
+        extra_source = bound.arguments.get("extra_source")
+        bound.arguments["extra_source"] = (
+            CUPY_KEEP_CACHE_KEY_TOKEN if extra_source is None
+            else f"{extra_source}\n{CUPY_KEEP_CACHE_KEY_TOKEN}")
+        return original(*bound.args, **bound.kwargs)
 
     setattr(keyed, _POLICY_MARK, KEEP)
     return keyed
+
+
+def _cache_key_parameter_problem(original: Callable) -> Optional[str]:
+    """Why the keep token cannot be folded into this compile path's key, or None."""
+    try:
+        parameters = inspect.signature(original).parameters
+    except (TypeError, ValueError) as exc:
+        return (f"the signature of cupy.cuda.compiler.{CUPY_CACHE_KEY_ENTRY_POINT} "
+                f"cannot be read ({exc})")
+    if "extra_source" not in parameters:
+        return (f"cupy.cuda.compiler.{CUPY_CACHE_KEY_ENTRY_POINT} has no extra_source "
+                f"parameter, the one input CuPy hashes into its cache key and hands to "
+                f"no compiler")
+    return None
+
+
+def _front_end_parameter_problem(name: str, front_end: Callable) -> Optional[str]:
+    """Why the strip cannot find the options of this front end, or None.
+
+    The strip filters the second argument, so the front end must take
+    ``(source, options, ...)``: every one CuPy 13.5.1 and 14.2.0 ships does.
+    """
+    try:
+        first = list(inspect.signature(front_end).parameters)[:2]
+    except (TypeError, ValueError) as exc:
+        return f"the signature of cupy.cuda.compiler.{name} cannot be read ({exc})"
+    if first != ["source", "options"]:
+        return (f"cupy.cuda.compiler.{name} takes {first!r} first, not "
+                f"['source', 'options'], so the strip cannot tell which argument is "
+                f"the option tuple")
+    return None
 
 
 def _cupy_compiler(cupy: Any) -> Any:  # ``cupy.cuda.compiler``, however it is reachable.
@@ -1234,8 +1445,8 @@ def _cupy_compiler(cupy: Any) -> Any:  # ``cupy.cuda.compiler``, however it is r
 
 #: The per-object kernel memos :func:`_clear_cupy_kernel_memo` drops, as
 #: ``(module under cupy._core, class, attribute)``. Each attribute is a dict that maps a
-#: launch key to a compiled ``cupy.cuda.function.Function`` and lives ON THE KERNEL
-#: OBJECT, so ``cupy.clear_memo()`` (which clears only ``@memoize``d functions) never
+#: launch key to a compiled ``cupy.cuda.function.Function`` and lives on the kernel
+#: object, so ``cupy.clear_memo()`` (which clears only ``@memoize``d functions) never
 #: reaches it. Measured on the GPU host (CuPy 13.5.1, RTX A6000): a float32 ``x * y``
 #: compiled before a keep install still returned 0.0 for 1e-30 * 1e-10 after
 #: ``clear_memo()`` through ``cp.multiply``, the ``*`` operator and a user
@@ -1306,7 +1517,7 @@ def _clear_cupy_kernel_memo(cupy: Any) -> Dict[str, Any]:
     through the garbage collector. Kernels are recompiled on next use, under the
     policy now in force.
 
-    THE FIRST REVISION CLEARED ONLY THE ``@memoize`` CACHES, and that was a
+    The first revision cleared only the ``@memoize`` caches, and that was a
     measured falsehood in the field: a lift compiles
     ``cupy_multiply__float32_float32_float32`` before dispatch installs the policy
     (``dft._volume_boundary_weights``), stepping reuses that signature, and the
@@ -1314,7 +1525,7 @@ def _clear_cupy_kernel_memo(cupy: Any) -> Dict[str, Any]:
     install that reported ``attained=True`` — 11 of 15 landed-family cases of the
     shipped route diverged from the array path in the subnormal range.
 
-    MEASURED, NOT ASSUMED: the report carries how many entries were dropped (a
+    Measured, not assumed: the report carries how many entries were dropped (a
     nonzero count is the fingerprint of a late install) and how many compiled
     kernels are still ALIVE afterwards. On a lifted ``pml_2d`` driver the count
     went from 48 live kernels to 0. What stays alive is what neither drop reaches:
@@ -1391,7 +1602,7 @@ def _cupy_reduction_accelerators(policy: str, cupy: Any = None) -> Dict[str, Any
     of the process flushing: ``cp.sum`` over one ``2^-135`` among 4095 zeros
     returned ``0x00004000`` (kept) and zero NVRTC compiles were recorded.
 
-    THE RUNTIME SWITCH-OFF DOES NOT WORK, and this function used to believe it
+    The runtime switch-off does not work, and this function used to believe it
     did. ``set_reduction_accelerators([])`` returns cleanly and
     ``get_reduction_accelerators()`` then reports ``[]`` — and the very next
     ``cp.sum`` still runs CUB. Measured on device (the GPU host, CuPy 13.5.1, the
@@ -1478,7 +1689,8 @@ def _cupy_policy_lock(compiler: Any, policy: str) -> None:
     strip is still filtering ``-ftz=true`` out of every compile. That is a process
     whose bytes belong to neither policy.
     """
-    for name in _COMPILER_ENTRY_POINTS:
+    front_ends, _problem = backends.compiler_front_ends(compiler)
+    for name in front_ends:
         installed = getattr(getattr(compiler, name, None), _POLICY_MARK, None)
         if installed is not None and installed != policy:
             raise SubnormalPolicyLocked(
@@ -1505,6 +1717,14 @@ def install_cupy_policy(policy: str, cupy: Any = None, *, strict: bool = True) -
     literals in CCCL's ``<cuda/std/limits>``. That guard matters MORE under
     ``"flush"``, not less, because the host is then deliberately flushing — so
     under ``"flush"`` a guard that could not be installed is a REFUSAL, not a note.
+
+    WHERE, ON CuPy 13 AND 14 ALIKE. The front ends are the ones CuPy's compile path
+    calls, read off its code by ``backends.compiler_front_ends`` (the guard reads
+    the same ones); the cache-key fold binds ``extra_source`` by name; and CuPy is
+    made to read ``CUPY_CACHE_DIR`` on every compile
+    (:func:`cupy_reads_the_cache_dir_on_every_compile`). Under ``"keep"`` any of
+    the three that cannot be established is a refusal by name, recorded under
+    ``front_ends``, ``cache_key_folded`` and ``cache_dir_read``.
     """
     if cupy is None:
         if importlib.util.find_spec("cupy") is None:
@@ -1547,15 +1767,19 @@ def install_cupy_policy(policy: str, cupy: Any = None, *, strict: bool = True) -
         return report
 
     _cupy_policy_lock(compiler, policy)
+    front_ends, front_end_problem = backends.compiler_front_ends(compiler)
     guarded = backends.guard_kernel_compilation(cupy)
     report["compile_guard_installed"] = bool(guarded)
+    report["front_ends"] = list(front_ends)
+    cache_read = cupy_reads_the_cache_dir_on_every_compile(compiler, cupy)
+    report["cache_dir_read"] = cache_read
     memo = _clear_cupy_kernel_memo(cupy)
     report["kernel_memo"] = memo
     reductions = _cupy_reduction_accelerators(policy, cupy)
     report["reduction_accelerators"] = reductions
     reasons: List[str] = list(reductions["reasons"])
     if not memo.get("cleared"):
-        # THE DROP IS THE MECHANISM, so a drop that did not happen is a policy
+        # The drop is the mechanism, so a drop that did not happen is a policy
         # that is not in force — and this used to be recorded and then left out of
         # the verdict, so ``attained`` read True. Measured (this module's own
         # note): ``cp.multiply`` compiled BEFORE a "keep" install kept flushing
@@ -1575,20 +1799,20 @@ def install_cupy_policy(policy: str, cupy: Any = None, *, strict: bool = True) -
         if not guarded:
             reasons.append(
                 "backends.guard_kernel_compilation could not guarantee that host "
-                "flushing is suspended for the duration of an NVRTC compile "
-                "(either this CuPy exposes none of "
-                f"{', '.join(_COMPILER_ENTRY_POINTS)} or FE_DFL_ENV is not "
-                "addressable here), and 'flush' deliberately turns host flushing "
+                "flushing is suspended for the duration of an NVRTC compile ("
+                + (f"the compiler front ends CuPy's compile path calls could not be "
+                   f"found: {front_end_problem}" if front_end_problem else
+                   "FE_DFL_ENV is not addressable here")
+                + "), and 'flush' deliberately turns host flushing "
                 "ON — so the first cold kernel including CCCL's <cuda/std/limits> "
                 "would die on __FLT_DENORM_MIN__")
         report.update(
             attained=not reasons,
             installed=False,
-            mechanism="compiles native — CuPy 13.5.1 appends '-ftz=true' to every "
-                      "NVRTC compile (cupy/cuda/compiler.py:552, "
-                      "_compile_with_cache_cuda); the flush policy adds no option "
-                      "override, switches the CUB reduction accelerator off, and "
-                      "drops the in-process kernel memo",
+            mechanism="compiles native — CuPy appends '-ftz=true' to every NVRTC "
+                      "compile (_compile_with_cache_cuda); the flush policy adds no "
+                      "option override, switches the CUB reduction accelerator off, "
+                      "and drops the in-process kernel memo",
             exceptions=[EXECUTOR_OP_EXCEPTIONS["cupy_cub_reductions"]],
             reasons=reasons,
         )
@@ -1596,48 +1820,59 @@ def install_cupy_policy(policy: str, cupy: Any = None, *, strict: bool = True) -
         _announce(report, strict=strict)
         return report
 
+    # The keep policy's private directory is only a directory CuPy uses if CuPy
+    # reads the variable on every compile (CuPy 14.x is made to; see
+    # :func:`cupy_reads_the_cache_dir_on_every_compile`).
+    reasons.extend(cache_read["reasons"])
     state = _STATE.setdefault("_cupy_strip", {"entry_points": {}, "example_options": []})
+    # The front ends are read off the compile path, as the guard reads them: a strip
+    # on a function the compile path no longer calls installs and never runs.
+    problems = [problem for problem in (
+        [front_end_problem] + [_front_end_parameter_problem(name, getattr(compiler, name))
+                               for name in front_ends]) if problem]
     found: List[str] = []
-    for name in _COMPILER_ENTRY_POINTS:
-        original = getattr(compiler, name, None)
-        if original is None:
-            continue
-        found.append(name)
-        if getattr(original, _POLICY_MARK, None) is None:
-            _STATE.setdefault("_cupy_originals", {}).setdefault(name, (compiler, original))
-            setattr(compiler, name, _wrap_compiler_entry_point(original, state, name))
-
-    if not found:
-        reasons.append(
-            "this CuPy exposes none of the compiler entry points the strip "
-            f"installs at ({', '.join(_COMPILER_ENTRY_POINTS)}): the seam has moved")
-    keyer = getattr(compiler, CUPY_CACHE_KEY_ENTRY_POINT, None)
-    if keyer is not None:
-        if getattr(keyer, _POLICY_MARK, None) is None:
-            _STATE.setdefault("_cupy_originals", {}).setdefault(
-                CUPY_CACHE_KEY_ENTRY_POINT, (compiler, keyer))
-            setattr(compiler, CUPY_CACHE_KEY_ENTRY_POINT,
-                    _wrap_cache_key_entry_point(keyer, state))
-    elif isinstance(compiler, type(sys)) and compiler.__name__ == "cupy.cuda.compiler":
-        # The real module, without the function that computes the key: the token
-        # cannot be folded in, so a native binary already written under a keep
-        # directory would be served to this policy with no NVRTC call to notice.
-        reasons.append(
-            f"cupy.cuda.compiler has no {CUPY_CACHE_KEY_ENTRY_POINT}, so the keep "
-            f"token cannot be folded into CuPy's cache key and a binary compiled "
-            f"before this install with CuPy's own -ftz=true stays reachable on disk")
+    if problems:
+        reasons.append("the -ftz=true strip cannot be installed where CuPy compiles: "
+                       + "; ".join(problems))
+    else:
+        for name in front_ends:
+            original = getattr(compiler, name)
+            found.append(name)
+            if getattr(original, _POLICY_MARK, None) is None:
+                _STATE.setdefault("_cupy_originals", {}).setdefault(name, (compiler, original))
+                setattr(compiler, name, _wrap_compiler_entry_point(original, state, name))
+    # The cache key is folded only where the strip went in: the front ends were read
+    # off this same compile path, so it exists and is Python.
+    folded = False
+    if not problems:
+        keyer = getattr(compiler, CUPY_CACHE_KEY_ENTRY_POINT)
+        key_problem = _cache_key_parameter_problem(keyer)
+        if key_problem:
+            # Without the token in the key, a native binary already written under a
+            # keep directory would be served to this policy with no NVRTC call to notice.
+            reasons.append(
+                key_problem + ", so the keep token cannot be folded into CuPy's cache "
+                "key and a binary compiled before this install with CuPy's own "
+                "-ftz=true stays reachable on disk")
+        else:
+            folded = True
+            if getattr(keyer, _POLICY_MARK, None) is None:
+                _STATE.setdefault("_cupy_originals", {}).setdefault(
+                    CUPY_CACHE_KEY_ENTRY_POINT, (compiler, keyer))
+                setattr(compiler, CUPY_CACHE_KEY_ENTRY_POINT,
+                        _wrap_cache_key_entry_point(keyer, state))
     report.update(
         attained=not reasons,
         installed=bool(found),
         wrapped_entry_points=found,
-        cache_key_folded=keyer is not None,
+        cache_key_folded=folded,
         mechanism="cupy.cuda.compiler.{" + ",".join(found) + "} wrapped; "
                   "'-ftz=true' filtered from every option tuple (never replaced "
                   "by '-ftz=false': NVRTC rejects a duplicate -ftz option); "
                   "policy-suffixed private CUPY_CACHE_DIR because the cache key "
                   "is computed above the seam"
                   + (f"; cupy.cuda.compiler.{CUPY_CACHE_KEY_ENTRY_POINT} wrapped to "
-                     f"fold the keep token into that key" if keyer is not None else ""),
+                     f"fold the keep token into that key" if folded else ""),
         reasons=reasons,
     )
     _STATE["executors"]["cupy"] = report
@@ -1688,7 +1923,7 @@ def _define_attribute_slot(line: str) -> Tuple[int, List[int]]:
     """Where a function attribute group belongs on this ``define`` line, and which
     groups it already references.
 
-    THIS IS THE WHOLE POINT OF THE FUNCTION. LLVM's grammar puts function
+    This is the whole point of the function. LLVM's grammar puts function
     attributes BEFORE metadata attachments::
 
         define <ret> @f(<args>) [unnamed_addr] [#N] [section ..] (!name !M)* {
@@ -1732,8 +1967,20 @@ def _define_attribute_slot(line: str) -> Tuple[int, List[int]]:
     return (metadata if metadata >= 0 else brace), referenced
 
 
-def inject_denormal_attribute(llir: str) -> Tuple[str, Dict[str, int]]:
-    """Put ``denormal-fp-math-f32`` on every function defined in this LLVM IR text.
+def _denormal_attribute_key(attribute: str) -> str:
+    """The name an attribute is recognized by in a group: the quoted key of a
+    string attribute (``denormal-fp-math-f32``), the keyword of a first-class one
+    (``denormal_fpenv``)."""
+    return attribute.split("=", 1)[0].split("(", 1)[0].strip().strip('"')
+
+
+def inject_denormal_attribute(llir: str, attribute: Optional[str] = None,
+                              ) -> Tuple[str, Dict[str, int]]:
+    """Put the denormal attribute on every function defined in this LLVM IR text.
+
+    ``attribute`` is the spelling to inject: :data:`TRITON_DENORMAL_ATTRIBUTE` when
+    it is None (read at call time), otherwise the spelling
+    :func:`select_denormal_spelling` measured this Triton's LLVM to read.
 
     Text, not the LLVM C API, because Triton's ``llir`` stage hands the next stage
     a STRING and ``make_ptx`` re-parses it — so the text is the artifact.
@@ -1741,9 +1988,12 @@ def inject_denormal_attribute(llir: str) -> Tuple[str, Dict[str, int]]:
     Composes rather than replaces: an existing attribute group gains the attribute
     (its other attributes are untouched), and a ``define`` with no group at all
     gets a freshly minted one, placed where LLVM's grammar accepts it (see
-    :func:`_define_attribute_slot`). A function that already carries the attribute
-    is left alone, so this is idempotent.
+    :func:`_define_attribute_slot`). A group that already carries an attribute of
+    the same name is left alone, so this is idempotent — and a first-class
+    ``denormal_fpenv`` is never written twice into one group.
     """
+    attribute = TRITON_DENORMAL_ATTRIBUTE if attribute is None else attribute
+    key = _denormal_attribute_key(attribute)
     lines = llir.splitlines()
     groups: Dict[int, int] = {}   # group number -> line index of its definition
     highest = -1
@@ -1775,19 +2025,19 @@ def inject_denormal_attribute(llir: str) -> Tuple[str, Dict[str, int]]:
     for number in sorted(referenced):
         index = groups.get(number)
         if index is None:  # A referenced group with no definition: mint it below.
-            lines.append(f"attributes #{number} = {{ {TRITON_DENORMAL_ATTRIBUTE} }}")
+            lines.append(f"attributes #{number} = {{ {attribute} }}")
             extended += 1
             continue
-        if "denormal-fp-math-f32" in lines[index]:
+        if key in lines[index]:
             continue
         head, _, tail = lines[index].rpartition("}")
-        lines[index] = f"{head.rstrip()} {TRITON_DENORMAL_ATTRIBUTE} }}{tail}"
+        lines[index] = f"{head.rstrip()} {attribute} }}{tail}"
         extended += 1
 
     for index, number, slot in minted:
         line = lines[index]
         lines[index] = f"{line[:slot].rstrip()} #{number} {line[slot:]}"
-        lines.append(f"attributes #{number} = {{ {TRITON_DENORMAL_ATTRIBUTE} }}")
+        lines.append(f"attributes #{number} = {{ {attribute} }}")
 
     counts = {"defines": defines, "groups_extended": extended, "groups_minted": len(minted)}
     return "\n".join(lines) + ("\n" if llir.endswith("\n") else ""), counts
@@ -1917,7 +2167,8 @@ def verify_reflect_rewrite(llir_shape: str = TRITON_LLIR_SHAPE) -> Dict[str, Any
             "checks": checks, "counts": {"reflect_rewrites": rewrites}, "reasons": reasons}
 
 
-def verify_injection(llir_shape: str = TRITON_LLIR_SHAPE) -> Dict[str, Any]:
+def verify_injection(llir_shape: str = TRITON_LLIR_SHAPE,
+                     attribute: Optional[str] = None) -> Dict[str, Any]:
     """Check that what the injector produces is IR LLVM will actually accept.
 
     Why this exists as an INSTALL-TIME step rather than a test: LLVM rejects a
@@ -1932,11 +2183,18 @@ def verify_injection(llir_shape: str = TRITON_LLIR_SHAPE) -> Dict[str, Any]:
     ``llvmlite`` is importable and is definitive — it hands the text to LLVM's own
     parser. ``llvmlite`` is not a dependency of this package; its absence
     downgrades the verification, it does not fail it.
+
+    ``attribute`` is the spelling that will be injected (None: the string
+    attribute). The placement check runs on it. The parse check always runs on the
+    STRING spelling: the grammar slot is the same for both, and llvmlite carries
+    an LLVM of its own that may predate ``denormal_fpenv`` and reject it where
+    Triton's LLVM reads it. That spelling's parse is settled by Triton's own LLVM,
+    in the child process of :func:`select_denormal_spelling`, before it is chosen.
     """
     checks: List[Dict[str, Any]] = []
     reasons: List[str] = []
 
-    injected, counts = inject_denormal_attribute(llir_shape)
+    injected, counts = inject_denormal_attribute(llir_shape, attribute=attribute)
     define = next((line for line in injected.splitlines()
                    if line.lstrip().startswith("define ")), "")
     group = define.find("#")
@@ -1960,7 +2218,8 @@ def verify_injection(llir_shape: str = TRITON_LLIR_SHAPE) -> Dict[str, Any]:
     else:
         verified_by = "llvmlite parse + placement"
         for name, text in (("baseline", _PARSEABLE_SHAPE),
-                           ("injected", inject_denormal_attribute(_PARSEABLE_SHAPE)[0])):
+                           ("injected", inject_denormal_attribute(
+                               _PARSEABLE_SHAPE, attribute=TRITON_DENORMAL_ATTRIBUTE)[0])):
             error = parse_llvm_error(text, parser)
             checks.append({"check": f"llvmlite parses the {name} module",
                            "ok": error is None,
@@ -1972,11 +2231,14 @@ def verify_injection(llir_shape: str = TRITON_LLIR_SHAPE) -> Dict[str, Any]:
                 del checks[-1]
                 break
 
+    if attribute is not None and attribute != TRITON_DENORMAL_ATTRIBUTE:
+        verified_by += (f"; the parse of {attribute} is the spelling probe's "
+                        f"(Triton's own LLVM), not llvmlite's")
     return {"ok": not reasons, "verified_by": verified_by,
             "checks": checks, "counts": counts, "reasons": reasons}
 
 
-def mechanism_digest(policy: str) -> str:
+def mechanism_digest(policy: str, attribute: Optional[str] = None) -> str:
     """A short digest of WHAT the injection does, for Triton's cache key.
 
     Triton keys its disk cache on ``backend.hash()``. Folding only the policy NAME
@@ -1984,8 +2246,15 @@ def mechanism_digest(policy: str) -> str:
     into one ``TRITON_CACHE_DIR`` all returned the FIRST variant's PTX, because
     the key never changed. Everything that changes the emitted bytes therefore
     goes into the digest.
+
+    ``attribute`` is the denormal spelling the flush policy injects (None: the
+    string attribute, read at call time). With the string attribute the material
+    is exactly what it was before the spelling became a measured choice, so keep's
+    digest, and flush's wherever the string attribute is selected, are unchanged;
+    a selected ``denormal_fpenv`` gives flush a key of its own.
     """
-    material = "|".join((policy, INJECTION_REVISION, TRITON_DENORMAL_ATTRIBUTE,
+    attribute = TRITON_DENORMAL_ATTRIBUTE if attribute is None else attribute
+    material = "|".join((policy, INJECTION_REVISION, attribute,
                          TRITON_REFLECT_FTZ_FLAG,
                          str(_REFLECT_FTZ_VALUE.get(policy))))
     return hashlib.sha256(material.encode("utf-8")).hexdigest()[:12]
@@ -2108,7 +2377,7 @@ def _executor_present(name: str) -> bool:
     ``__spec__`` is ``None``. Unguarded, that turned a policy DECISION into an
     exception out of the middle of :func:`install_subnormal_policy` — measured,
     as ``ValueError('triton.__spec__ is None')`` — after the bookkeeping had
-    already been written, which is the state finding 8 describes. Reading it as
+    already been written, which left the process locked to an undriven policy. Reading it as
     "absent" would be worse: a module present enough to be found and interrogated
     is a module that runs, and skipping it is the split this module exists to
     prevent. So: found means present, and unanswerable means present too.
@@ -2120,7 +2389,7 @@ def _executor_present(name: str) -> bool:
 
 
 def _cuda_backend_class() -> Any:
-    """Triton's NVIDIA ``CUDABackend`` CLASS, reached through the backend registry.
+    """Triton's NVIDIA ``CUDABackend`` class, reached through the backend registry.
 
     ``triton.backends.backends["nvidia"].compiler`` is the class the compiler
     actually instantiates. Importing ``triton.backends.nvidia.compiler`` directly
@@ -2131,7 +2400,206 @@ def _cuda_backend_class() -> Any:
     return registry["nvidia"].compiler
 
 
-def _wrap_add_stages(backend_class: Any, policy: str, state: Dict[str, Any]) -> bool:
+#: The probe child. Self-contained: it imports nothing from this package, so what
+#: it measures is the Triton it imports, which the parent checks is its own
+#: (``triton.__file__``). It runs Triton's OWN ``ptx`` stage — the callable
+#: ``add_stages`` installs for a compile — on the module it reads from stdin, after
+#: ``llvm.init_targets`` (a real compile's ``llir`` stage does that first; measured,
+#: the ``ptx`` stage alone segfaults on Triton 3.1.0 and fails a pass-manager
+#: assertion on 3.8.0). It prints one line before the module reaches LLVM and one
+#: with the PTX, and touches no device (the parent hides them).
+_DENORMAL_PROBE_CHILD = r"""
+import json
+import sys
+sys.path[:] = [entry for entry in sys.path if entry not in ("", ".")]
+capability = int(sys.argv[1])
+module = sys.stdin.read()
+import triton
+from triton.backends.compiler import GPUTarget
+from triton.compiler.compiler import make_backend
+backend = make_backend(GPUTarget("cuda", capability, 32))
+options = backend.parse_options({})
+stages = {}
+try:
+    backend.add_stages(stages, options)
+except TypeError:
+    from triton.compiler.compiler import Language
+    stages.clear()
+    backend.add_stages(stages, options, Language.TRITON)
+from triton._C.libtriton import llvm
+llvm.init_targets()
+identity = {"version": getattr(triton, "__version__", None), "file": triton.__file__}
+print(%r + json.dumps(identity), flush=True)
+ptx = stages["ptx"](module, {})
+print(%r + json.dumps(dict(identity, ptx=ptx)), flush=True)
+""" % (_DENORMAL_PROBE_STARTED, _DENORMAL_PROBE_RESULT)
+
+
+def _run_denormal_probe(module_text: str) -> Dict[str, Any]:
+    """Run the probe child on ``module_text`` and return what it did, unread.
+
+    A CHILD, because the question includes "can this LLVM parse the spelling at
+    all", and an LLVM that cannot answers with ``report_fatal_error`` — an abort,
+    measured on Triton 3.1.0 for ``denormal_fpenv`` — which only a parent can
+    observe and survive. The child is this interpreter with this environment
+    (so it imports the same Triton), the parent's ``-E`` / ``-s`` flags, and no
+    visible device.
+    """
+    import subprocess  # noqa: PLC0415 - only a flush install measures
+
+    command = [sys.executable]
+    if sys.flags.ignore_environment:
+        command.append("-E")
+    if sys.flags.no_user_site:
+        command.append("-s")
+    command += ["-c", _DENORMAL_PROBE_CHILD, str(TRITON_DENORMAL_PROBE_CAPABILITY)]
+    environment = dict(os.environ, CUDA_VISIBLE_DEVICES="")
+    try:
+        done = subprocess.run(command, input=module_text, capture_output=True, text=True,
+                              timeout=TRITON_DENORMAL_PROBE_TIMEOUT_S, env=environment,
+                              check=False)
+    except Exception as exc:  # noqa: BLE001 - a probe that cannot run is "unmeasured"
+        return {"returncode": None, "stdout": "", "stderr": f"{type(exc).__name__}: {exc}"}
+    return {"returncode": done.returncode, "stdout": done.stdout or "",
+            "stderr": done.stderr or ""}
+
+
+def _probe_line(stdout: str, marker: str) -> Optional[Dict[str, Any]]:
+    """The JSON payload of the probe child's ``marker`` line, or None."""
+    for line in stdout.splitlines():
+        if line.startswith(marker):
+            try:
+                payload = json.loads(line[len(marker):])
+            except ValueError:
+                return None
+            return payload if isinstance(payload, dict) else None
+    return None
+
+
+#: An absolute path inside a probe child's message. A verdict lands in the policy
+#: stamp, and the stamp in gate artifacts, so a path in it would carry this host's
+#: layout into a record; the verdict keeps the message and drops the path.
+_ABSOLUTE_PATH_RE = re.compile(r"(?:[A-Za-z]:)?[/\\][^\s'\"():,;]+")
+
+
+def _probe_message(stderr: str) -> str:
+    """The last line of a probe child's stderr, with absolute paths removed."""
+    lines = [line.strip() for line in (stderr or "").strip().splitlines() if line.strip()]
+    return _ABSOLUTE_PATH_RE.sub("<path>", lines[-1])[:300] if lines else "(no stderr)"
+
+
+def _same_file(first: Any, second: Any) -> bool:
+    try:
+        return bool(first) and bool(second) and (
+            os.path.realpath(str(first)) == os.path.realpath(str(second)))
+    except Exception:  # noqa: BLE001 - an unreadable path is not the same file
+        return False
+
+
+def measure_denormal_spelling(attribute: str) -> Dict[str, Any]:
+    """Does THIS Triton's LLVM flush an f32 FMA under ``attribute``? Measured.
+
+    The probe module (:data:`TRITON_DENORMAL_PROBE_LLIR`) with ``attribute``
+    injected the way the real kernels get it goes through Triton's own ``ptx``
+    stage in a child process (:func:`_run_denormal_probe`), and the PTX is read by
+    :func:`audit_ptx` — the audit every compile under the policy gets. Outcomes:
+
+    ``"flushes"``    the FMA came back ``fma.rn.ftz.f32``, nothing unflushed;
+    ``"ignored"``    LLVM read the module and the FMA came back without ``.ftz``;
+    ``"aborted"``    the child died after handing the module to LLVM — the
+                     signature of a spelling this LLVM cannot parse;
+    ``"unmeasured"`` anything else: the child did not reach LLVM, measured a
+                     different Triton than this process imports, or returned
+                     PTX with no f32 FMA to read.
+    """
+    module = inject_denormal_attribute(TRITON_DENORMAL_PROBE_LLIR, attribute=attribute)[0]
+    run = _run_denormal_probe(module)
+    code = run.get("returncode")
+    stdout = run.get("stdout") or ""
+    tail = _probe_message(run.get("stderr") or "")
+    verdict: Dict[str, Any] = {"attribute": attribute, "returncode": code}
+    started = _probe_line(stdout, _DENORMAL_PROBE_STARTED)
+    result = _probe_line(stdout, _DENORMAL_PROBE_RESULT)
+    if code != 0 or result is None:
+        if started is not None and result is None:
+            verdict["outcome"] = "aborted"
+            verdict["detail"] = (f"the probe child died inside Triton's LLVM "
+                                 f"(return code {code}): {tail}")
+        else:
+            verdict["outcome"] = "unmeasured"
+            verdict["detail"] = (f"the probe child did not reach Triton's LLVM "
+                                 f"(return code {code}): {tail}")
+        return verdict
+    try:
+        ours = getattr(sys.modules.get("triton") or importlib.import_module("triton"),
+                       "__file__", None)
+    except Exception:  # noqa: BLE001 - a Triton this process cannot import is not the child's
+        ours = None
+    verdict["triton"] = result.get("version")
+    if not _same_file(result.get("file"), ours):
+        verdict["outcome"] = "unmeasured"
+        verdict["detail"] = ("the probe child imported a different Triton (by triton.__file__) "
+                             "from the one this process imports")
+        return verdict
+    audit = audit_ptx(str(result.get("ptx") or ""), FLUSH)
+    fma = sorted(token for token in audit["by_opcode"] if token.split(".")[0] == "fma")
+    verdict.update({"audited": audit["audited"], "with_ftz": audit["with_ftz"], "fma": fma})
+    if not fma:
+        verdict["outcome"] = "unmeasured"
+        verdict["detail"] = "the probe's PTX carries no f32 FMA to read the spelling from"
+    elif audit["violations"]:
+        verdict["outcome"] = "ignored"
+        verdict["detail"] = (f"Triton's LLVM read the module and left "
+                             f"{audit['violations'][0][1]}")
+    else:
+        verdict["outcome"] = "flushes"
+        verdict["detail"] = f"Triton's LLVM gave {', '.join(fma)}"
+    return verdict
+
+
+def select_denormal_spelling() -> Dict[str, Any]:
+    """The denormal spelling the flush policy injects into this Triton's kernels.
+
+    Measured, once per process, and never at the risk of the process. The two
+    spellings are tried in order — :data:`TRITON_DENORMAL_ATTRIBUTE`, then
+    :data:`TRITON_DENORMAL_FPENV_ATTRIBUTE` — by :func:`measure_denormal_spelling`,
+    and the first whose probe FMA comes back ``.ftz`` is selected. The next
+    spelling is measured ONLY when the previous one was read and ignored: a
+    string attribute parses on every LLVM, ``denormal_fpenv`` aborts the LLVMs
+    that predate it, and "the string was ignored" is what says this LLVM is a
+    later one. When nothing is selected (the probe could not be measured, or no
+    spelling flushed) the string attribute is injected as before and the per-compile
+    PTX audit stays the verdict: it refuses every compile that does not flush, by
+    name, and its refusal carries this record's summary. The measurement never
+    downgrades a policy: it only chooses what to inject.
+    """
+    known = _STATE.get("_triton_denormal")
+    if known is not None:
+        return known
+    verdicts: List[Dict[str, Any]] = []
+    selected: Optional[str] = None
+    for attribute in (TRITON_DENORMAL_ATTRIBUTE, TRITON_DENORMAL_FPENV_ATTRIBUTE):
+        verdict = measure_denormal_spelling(attribute)
+        verdicts.append(verdict)
+        if verdict["outcome"] == "flushes":
+            selected = attribute
+            break
+        if verdict["outcome"] != "ignored":
+            break
+    summary = "; ".join(f"{v['attribute']}: {v['outcome']} ({v.get('detail', '')})"
+                        for v in verdicts)
+    record = {"selected": selected,
+              "attribute": selected if selected is not None else TRITON_DENORMAL_ATTRIBUTE,
+              "how": ("measured" if selected is not None else
+                      "no spelling measured to flush; the string attribute is injected "
+                      "and the PTX audit decides"),
+              "verdicts": verdicts, "summary": summary}
+    _STATE["_triton_denormal"] = record
+    return record
+
+
+def _wrap_add_stages(backend_class: Any, policy: str, state: Dict[str, Any],
+                     denormal: Optional[Dict[str, Any]] = None) -> bool:
     """Wrap ``CUDABackend.add_stages`` so every compile carries the policy.
 
     Triton 3.1.0's ``CUDAOptions`` has no ftz field, so ``add_stages`` — where the
@@ -2145,7 +2613,13 @@ def _wrap_add_stages(backend_class: Any, policy: str, state: Dict[str, Any]) -> 
     idempotence marker records which policy armed it, and an install that found
     someone else's wrapper and reported success would leave the process running
     one policy's stages under the other policy's name.
+
+    ``denormal`` is the flush policy's spelling record
+    (:func:`select_denormal_spelling`): its ``attribute`` is what the ``llir`` stage
+    injects, and its summary rides on every refusal the audit raises.
     """
+    attribute = (denormal or {}).get("attribute")
+    probe_summary = (denormal or {}).get("summary")
     original = getattr(backend_class, "add_stages", None)
     if original is None:
         return False
@@ -2173,7 +2647,7 @@ def _wrap_add_stages(backend_class: Any, policy: str, state: Dict[str, Any]) -> 
             def llir_stage(src, metadata):
                 text = inner_llir(src, metadata)
                 if policy == FLUSH:
-                    text, counts = inject_denormal_attribute(text)
+                    text, counts = inject_denormal_attribute(text, attribute=attribute)
                     state["llir_defines"] += counts["defines"]
                     state["llir_groups_extended"] += counts["groups_extended"]
                     state["llir_groups_minted"] += counts["groups_minted"]
@@ -2208,6 +2682,8 @@ def _wrap_add_stages(backend_class: Any, policy: str, state: Dict[str, Any]) -> 
                         f"would keep subnormals while every neighbouring "
                         f"instruction flushes. Rewrite it (tl.math.div_rn is the "
                         f"shipped spelling) or extend the policy deliberately."
+                        + (f" Denormal spelling probe: {probe_summary}."
+                           if policy == FLUSH and probe_summary else "")
                     )
                 return text
 
@@ -2221,7 +2697,8 @@ def _wrap_add_stages(backend_class: Any, policy: str, state: Dict[str, Any]) -> 
     return True
 
 
-def _wrap_backend_hash(backend_class: Any, policy: str) -> bool:
+def _wrap_backend_hash(backend_class: Any, policy: str,
+                       attribute: Optional[str] = None) -> bool:
     """Fold the policy AND the mechanism into Triton's cache key via ``CUDABackend.hash``.
 
     Triton's key is ``triton_key + source hash + backend.hash() + options.hash()``,
@@ -2247,7 +2724,7 @@ def _wrap_backend_hash(backend_class: Any, policy: str) -> bool:
                 f"already cached under the first key. Choose the policy before "
                 f"the first compile, in a fresh process.")
         return True
-    suffix = f"-{TRITON_HASH_PREFIX}{policy}-{mechanism_digest(policy)}"
+    suffix = f"-{TRITON_HASH_PREFIX}{policy}-{mechanism_digest(policy, attribute)}"
 
     @functools.wraps(original)
     def hash_with_policy(self, *args, **kwargs):
@@ -2307,12 +2784,20 @@ def install_triton_policy(policy: str, *, strict: bool = True) -> Dict[str, Any]
     called unconditionally — so keep rewrites that module flag to 0 and audits the
     result. Both policies fold into the cache key and drop the in-process caches.
 
-    THE VERDICT IS MEASURED, NOT STRUCTURAL. "The hook is installed" and "the
+    The verdict is measured, not structural. "The hook is installed" and "the
     policy is attained" are different claims: an earlier revision reported
     ``attained=True`` for a mechanism that aborted the process on the first
     compile. :func:`verify_injection` runs the rewrite over Triton-shaped IR — and
     hands it to LLVM's own parser when ``llvmlite`` is importable — BEFORE the
     hook is armed, and a failure there is a refusal.
+
+    The flush spelling is measured too. Which spelling of the denormal attribute
+    Triton's LLVM reads moved between Triton releases (the string attribute up to
+    3.7.1, ``denormal_fpenv`` from 3.8.0), so under ``"flush"``
+    :func:`select_denormal_spelling` measures it in a child process before the
+    hook is armed, the hook injects the selected spelling, the cache key folds it,
+    and the report carries the measurement (``denormal_spelling``). Keep injects
+    no attribute and measures nothing here.
     """
     if not _executor_present("triton"):
         report = {"executor": "triton", "requested": policy, "attained": True,
@@ -2339,18 +2824,23 @@ def install_triton_policy(policy: str, *, strict: bool = True) -> Dict[str, Any]
         "ptx_compiles": 0, "ptx_audited": 0, "ptx_with_ftz": 0, "ptx_violations": 0,
     })
 
-    verification = verify_injection() if policy == FLUSH else verify_reflect_rewrite()
+    denormal = select_denormal_spelling() if policy == FLUSH else None
+    attribute = denormal["attribute"] if denormal is not None else None
+    verification = (verify_injection(attribute=attribute) if policy == FLUSH
+                    else verify_reflect_rewrite())
     reasons: List[str] = list(verification["reasons"])
     if not verification["ok"]:
         report = {"executor": "triton", "requested": policy, "attained": False,
                   "installed": False, "mechanism": "refused before arming the hook",
                   "verification": verification, "reasons": reasons}
+        if denormal is not None:
+            report["denormal_spelling"] = json.loads(json.dumps(denormal))
         _STATE["executors"]["triton"] = report
         _announce(report, strict=strict)
         return report
 
-    hash_folded = _wrap_backend_hash(backend_class, policy)
-    staged = _wrap_add_stages(backend_class, policy, state)
+    hash_folded = _wrap_backend_hash(backend_class, policy, attribute)
+    staged = _wrap_add_stages(backend_class, policy, state, denormal)
     dropped = _clear_triton_jit_caches()
 
     cache_dir = os.environ.get("TRITON_CACHE_DIR", "")
@@ -2363,6 +2853,9 @@ def install_triton_policy(policy: str, *, strict: bool = True) -> Dict[str, Any]
         )
 
     version = getattr(importlib.import_module("triton"), "__version__", "unknown")
+    spelling_how = ("the denormal spelling measured to flush on this Triton"
+                    if denormal is not None and denormal["selected"] is not None
+                    else "no spelling was measured to flush; the PTX audit decides")
     report = {
         "executor": "triton",
         "requested": policy,
@@ -2376,7 +2869,7 @@ def install_triton_policy(policy: str, *, strict: bool = True) -> Dict[str, Any]
         "exceptions": [] if policy == FLUSH else [EXECUTOR_OP_EXCEPTIONS["triton_libdevice"]],
         "mechanism": (
             "CUDABackend.add_stages wrapped; the llir stage's output gains "
-            f"{TRITON_DENORMAL_ATTRIBUTE} on every function, and every generated "
+            f"{attribute} on every function ({spelling_how}), and every generated "
             "PTX is audited per instruction and REFUSED if any audited f32 "
             "arithmetic instruction lacks .ftz"
             if policy == FLUSH else
@@ -2389,6 +2882,8 @@ def install_triton_policy(policy: str, *, strict: bool = True) -> Dict[str, Any]
         ),
         "reasons": reasons,
     }
+    if denormal is not None:
+        report["denormal_spelling"] = json.loads(json.dumps(denormal))
     _STATE["executors"]["triton"] = report
     _announce(report, strict=strict)
     return report
@@ -2437,7 +2932,7 @@ def install_subnormal_policy(policy: Optional[str] = None, *, cupy: Any = None,
     refused with :class:`SubnormalPolicyLocked`: device binaries and cache
     entries already exist under the first one.
 
-    ``executors`` NAMES THE ARMS TO DRIVE and defaults to the three an NVIDIA host
+    ``executors`` names the arms to drive and defaults to the three an NVIDIA host
     has. ``"mps"`` is the fourth, asked for explicitly by a Metal dispatch
     (``executors=("host", "mps")``): its lever is native rather than a compiler
     seam, so it attains ``flush`` with no action and REFUSES ``keep`` by name — see
@@ -2445,14 +2940,14 @@ def install_subnormal_policy(policy: Optional[str] = None, *, cupy: Any = None,
     because a process with no MPS device has no business importing the Metal
     package to be told an arm it never asked for was skipped.
 
-    THE HOST GOES FIRST, AND ITS FAILURE STOPS THE REST. Under ``strict=False`` an
+    The host goes first, and its failure stops the rest. Under ``strict=False`` an
     earlier revision warned that the host could not flush and then installed the
     device halves anyway, manufacturing the exact configuration this module exists
     to prevent — host keeping, Triton flushing, which is measured to diverge at
     step 1 with 92 differing floats of 2880. An unattained host now aborts the
     device legs and is recorded as such.
 
-    AND A REFUSAL PUTS THE FPU BACK. ``install_host_policy`` mutates the process
+    And a refusal puts the FPU back. ``install_host_policy`` mutates the process
     MXCSR through MEEP's knob before anything else runs; a later refusal that
     restored only the bookkeeping left the process flushing with
     ``policy_is_installed()`` False — bytes attributable to no policy at all,
@@ -2498,7 +2993,7 @@ def install_subnormal_policy(policy: Optional[str] = None, *, cupy: Any = None,
         if "triton" in executors:
             install_triton_policy(resolved, strict=strict)
         if "mps" in executors:
-            # THE ONE ARM WHOSE LEVER LIVES IN ANOTHER MODULE, and the import is
+            # The one arm whose lever lives in another module, and the import is
             # lazy for the reason the module docstring gives: this file is
             # importable with no CuPy, no Triton and no MEEP, and torch belongs on
             # that list. ``metal_kernels.subnormal`` imports no torch either, but
@@ -2553,7 +3048,7 @@ def _rollback(previous_state: Dict[str, Any], host_flushing_at_entry: bool) -> N
     policy — but it must actually be re-driven, which is the half an earlier
     revision skipped.
 
-    ``mps`` IS NAMED IN THE SEAM CHECK AND REPORTS ``installed`` FALSE TODAY, which
+    ``mps`` is named in the seam check and reports ``installed`` False today, which
     is not a contradiction: Metal's flushing is native, so that arm wraps no
     compiler seam and memoizes no binary under a policy, and there is nothing a
     rollback could fail to undo. It is named anyway because the question the check
@@ -2621,7 +3116,7 @@ def set_subnormal_policy(policy: Optional[str] = None, *, strict: bool = True) -
     ``_set_zero_subnormals`` is the ``#if HAVE_IMMINTRIN_H`` no-op.
 
     ``meep_gpu.set_subnormal_policy()`` — :data:`MATCH_MEEP`: whichever of those
-    MEEP itself does HERE, MEASURED (:func:`resolve_match_meep`) rather than
+    MEEP itself does here, measured (:func:`resolve_match_meep`) rather than
     assumed, so the default configuration is the one a MEEP comparison on this
     host is against. The stamp carries both the question and its answer.
 
@@ -2648,7 +3143,7 @@ def policy_stamp() -> Dict[str, Any]:
     ``MEEP_GPU_SUBNORMAL_POLICY=keep`` and no install, the old stamp read
     ``ieee_keep_ftz_stripped`` with zero NVRTC calls and zero options stripped.
 
-    ``requested`` IS THE QUESTION AND ``resolved`` IS THE ANSWER. A default startup
+    ``requested`` is the question and ``resolved`` is the answer. A default startup
     asks :data:`MATCH_MEEP`, which is not a policy any executor can be driven to,
     so the two differ and both are recorded — with ``match_meep`` carrying the
     measurement that connects them: what was read, on what mechanism, and why it
@@ -2686,7 +3181,105 @@ def policy_stamp() -> Dict[str, Any]:
     stamp["unattained"] = sorted(
         name for name, report in _STATE["executors"].items() if not report.get("attained")
     )
-    return stamp
+    return recorded_value(stamp)
+
+
+#: The labels a record writes for a local root (the spellings of the certification
+#: harness's ``parity/meep_gpu/neutral_ids.py``).
+HOME_LABEL, TMP_LABEL, ACCOUNT_LABEL = "<home>", "<tmp>", "<account>"
+_SYSTEM_ROOTS = ("/usr/", "/opt/", "/etc/", "/lib", "/bin/", "/sbin/", "/proc/", "/sys/",
+                 "/dev/", "/System/", "/Library/", "/Applications/", "/nix/")
+#: What may stand right before a recorded path: anything but a word or path character, or a
+#: one-letter option glued to it (``-I/opt/x``), as compiler flags spell directories.
+_RECORDED_BEFORE = r"(?:(?<![A-Za-z0-9._~<>-])|(?<=(?<![A-Za-z0-9_])-[A-Za-z]))"
+_RECORDED_PATH = r"/[^\s'\"<>,;:()\[\]{}=]+"
+#: Words every record carries (the harness's ``neutral_ids.RECORD_WORDS``, the same set): an
+#: account name spelled like one is written ``<account>`` only as a whole path component.
+_RECORDED_WORDS = frozenset({
+    "apple", "array", "card", "census", "check", "control", "cpu", "cuda", "cupy", "darwin",
+    "default", "device", "examples", "flush", "fused", "gate", "gpu", "host", "identity",
+    "keep", "ladder", "linux", "local", "machine", "main", "meep", "metal", "mps", "node",
+    "numpy", "nvidia", "other", "own", "probe", "python", "reference", "release", "route",
+    "stage", "table", "test", "tests", "torch", "triton", "unfused", "variance"})
+
+
+def recorded_value(value: Any) -> Any:
+    """``value`` as a record writes it: in every string, this account's home directory and
+    the temporary directory written as ``<home>`` and ``<tmp>`` (a per-account directory
+    under a temporary root, named for the account's numeric id, too), and this account's
+    name elsewhere as ``<account>``: as a path component, and where it leads a component or
+    a hyphen-joined word. A stamp or a dispatch record leaves the machine; the process
+    itself keeps using the real paths."""
+    if isinstance(value, str):
+        return _recorded_text(value)
+    if isinstance(value, dict):
+        return {(_recorded_text(k) if isinstance(k, str) else k): recorded_value(v)
+                for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [recorded_value(v) for v in value]
+    return value
+
+
+@functools.lru_cache(maxsize=None)
+def _recorded_roots() -> Tuple[Tuple[str, str], ...]:
+    import tempfile  # noqa: PLC0415 - only the record spelling needs it
+
+    pairs = []
+    for root, label in ((os.path.expanduser("~"), HOME_LABEL),
+                        (tempfile.gettempdir(), TMP_LABEL)):
+        for spelling in (root, os.path.realpath(root)):
+            spelling = spelling.rstrip("/")
+            if spelling.count("/") >= 2 and spelling not in ("/tmp", "/private/tmp"):
+                pairs.append((spelling, label))
+    return tuple(sorted(set(pairs), key=lambda pair: -len(pair[0])))
+
+
+@functools.lru_cache(maxsize=None)
+def _recorded_login() -> str:
+    try:
+        import getpass  # noqa: PLC0415 - only the record spelling needs it
+
+        return getpass.getuser()
+    except Exception:  # noqa: BLE001 - no account name is a fact, not a failure
+        return ""
+
+
+@functools.lru_cache(maxsize=None)
+def _recorded_scratch() -> Optional["re.Pattern[str]"]:
+    """``/tmp/<tool>-<uid>`` or ``/private/tmp/<tool>-<uid>`` for this account's numeric id,
+    with the directory under it when that one spells a whole path as one name."""
+    try:
+        uid = str(os.getuid())
+    except AttributeError:  # no numeric account ids on this platform
+        return None
+    return re.compile(_RECORDED_BEFORE + r"(?:/private)?(?:/var)?/tmp/[A-Za-z][A-Za-z0-9._]*-"
+                      + re.escape(uid) + r"(?:/-[^/\s'\"]+)?(?=$|/|[^A-Za-z0-9._-])")
+
+
+def _recorded_text(text: str) -> str:
+    if "/" not in text:
+        return text
+    for root, label in _recorded_roots():
+        if root in text:
+            text = re.sub(_RECORDED_BEFORE + re.escape(root)
+                          + r"(?=$|/|[^A-Za-z0-9._-])", label, text)
+    scratch = _recorded_scratch()
+    if scratch is not None:
+        text = scratch.sub(TMP_LABEL, text)
+    login = _recorded_login()
+    if len(login) >= 2 and login in text:
+        text = re.sub(_RECORDED_BEFORE + _RECORDED_PATH,
+                      lambda match: match.group() if match.group().startswith(_SYSTEM_ROOTS)
+                      else re.sub(r"(?<=/)" + re.escape(login) + r"(?=/|$)", ACCOUNT_LABEL,
+                                  match.group()), text)
+        if len(login) >= 3 and login.lower() not in _RECORDED_WORDS and login in text:
+            text = re.sub(r"(?:<(?:home|tmp)>|" + _RECORDED_BEFORE + r")" + _RECORDED_PATH,
+                          lambda match: match.group()
+                          if match.group().startswith(_SYSTEM_ROOTS)
+                          else re.sub(r"(?:(?<=/)|(?<=-))" + re.escape(login)
+                                      + r"(?![A-Za-z0-9.])", ACCOUNT_LABEL, match.group()),
+                          text)
+    return text
 
 
 def uninstall_subnormal_policy() -> Dict[str, int]:
@@ -2704,7 +3297,7 @@ def uninstall_subnormal_policy() -> Dict[str, int]:
     for name, (compiler, original) in originals.items():
         setattr(compiler, name, original)
         restored += 1
-    # THE STRIP'S KERNELS GO WITH THE STRIP. Kernels compiled while it was installed
+    # The strip's kernels go with the strip. Kernels compiled while it was installed
     # are memoized in process exactly as pre-install kernels are, so restoring the
     # seam alone would leave stripped binaries serving a process that now compiles
     # natively. Dropped only when a strip was installed and CuPy is already
@@ -2721,6 +3314,7 @@ def uninstall_subnormal_policy() -> Dict[str, int]:
                    "resolved_from": None, "executors": {}})
     _STATE.pop("_cupy_strip", None)
     _STATE.pop("_triton", None)
+    _STATE.pop("_triton_denormal", None)
     _bump_epoch()
     return {"seams_restored": restored, "cupy_kernels_dropped": kernels_dropped}
 

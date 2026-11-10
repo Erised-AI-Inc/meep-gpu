@@ -7,6 +7,13 @@ round's own step code (`run_lane.py`, the Triton fleet driver's `run_one`, `meta
 wrote no ledger, fingerprint, census or record, and its verdicts are what the round's gates
 print. Every number is N / D with D named.
 
+The stage names CERT-1 to CERT-8 are the runbook's, defined in
+`docs/development/certification.md`, "The stages of a certification round": CERT-1 the freeze,
+CERT-2 the device smoke, CERT-3 the device gates (then the bind, which writes the ledgers from
+the gates' artifacts), CERT-4 the route campaigns, the end-to-end go/no-go and the records cut
+from them, CERT-5 the direct corpus check (L3), CERT-6 a new device, CERT-7 the test suites in
+each reference environment, and CERT-8 the timing, which is not part of certification.
+
 ## 1. Series and trees
 
 - The series: 0.9.2 (`fa59c2f`) plus 115 entries, `01` to `115-LHF`, the series list's sha256
@@ -35,7 +42,7 @@ print. Every number is N / D with D named.
   stability sample of an unchanged rest would have been empty. The route legs of entry 113's own
   campaign (tree `82524592`) were not reused: of the 142 to 144 sources each digests,
   `meep_gpu/subnormal_policy.py` differs on `15da8cd4`.
-- **Landed after this pass: `117-XR`** (work package XR, the deleted expansion licence's residue in
+- **Landed after this pass: `117-XR`** (the deleted expansion licence's residue in
   the harness), text and dead code only. No file under `meep_gpu/` changes and no ledger, needle,
   mutation anchor, pending-list id, predicate, kernel, plan or gate decision moves; 26 harness
   modules under `parity/meep_gpu/` change, 10 in comments and docstrings only and 16 in recorded
@@ -47,7 +54,7 @@ print. Every number is N / D with D named.
   `metal_cylindrical_complex_fused_hd_pair`, `metal_cylindrical_real`,
   `metal_cylindrical_real_fused_magnetic_pair` and `metal_whole_step`; the Triton device gates
   `triton_complex`, `triton_complex_fused_ade_chain`, `triton_cylindrical` and
-  `triton_unified_expansion`, which the bind retires instead of re-pinning: see the XF item
+  `triton_unified_expansion`, which the bind retires instead of re-pinning: see the `119-XF` bullet
   below),
   plus every gate artifact's source map that digests one of the 26
   files, and the coverage board, whose outcome subject it moves (`build_parity_board.py check`
@@ -57,15 +64,15 @@ print. Every number is N / D with D named.
   13 / 4,016 / 331 on both, 4,360 of 4,360 the same; `check_failures.py` 62 of 62 failures declared,
   0 undeclared; needles 0 differences; 200 mutation anchors, 0 stale; census child 15 of 15 records
   identical.
-- **Landed after this pass: `118-ENVL`** (work package ENVL): the certification reference
+- **Landed after this pass: `118-ENVL`**: the certification reference
   environments carry the corpus libraries themselves. shapely 2.1.2 and nlopt 2.11.0 become pins
   of both reference pip locks (osx-arm64 13 to 15 pins, linux-64 22 to 24), the PyMieScatt 1.8.1.1
   stand-in is built from its PyPI sdist (checked by SHA-256) and a two-line patch by this
   directory's `build_pymiescatt_standin.py`, and both build scripts install and check them and
   link a host `ffmpeg` into the prefix (their step 7b). Entry 115's two corpus overlay requirement
   files (sections 1 and 6) are deleted, and `tools/compare_reference_environment.py` reports the
-  corpus-only packages apart from its verdict and gains `--require-pip-lock`. Measured by the work
-  package on entries 01 to 115 plus it: both live reference environments hold all three as
+  corpus-only packages apart from its verdict and gains `--require-pip-lock`. Measured on
+  entries 01 to 115 plus it: both live reference environments hold all three as
   additions only (modified 0 / 43,623 prefix files on the Mac and 0 / 46,510 on Linux, removed 0,
   conda lists byte-identical, every other distribution at its version; `--require-pip-lock`
   16 / 16 and 25 / 25), and with no overlay and no extra `PATH` entry the rows that need them plus
@@ -79,7 +86,7 @@ print. Every number is N / D with D named.
   kernel ledgers among them), or a subject of the three censuses of record, so no verdict in
   sections 2 to 9 moves. Five of its files are top-level `parity/meep_gpu` files, in the coverage
   board's outcome subject, which entry 117 already moved; the board re-cut owed there covers it.
-- **Landed after this pass: `119-XF`** (work package XF, the pre-freeze fixes), harness and one
+- **Landed after this pass: `119-XF`** (the pre-freeze fixes), harness and one
   package test, no shipped module: the four behaviour items entry 117 left, and the planner's
   prices.
   The CUDA board's three emitted-text cells are determined
@@ -90,20 +97,20 @@ print. Every number is N / D with D named.
   (section 8), and `test_triton_weld_contract.py`'s two floors that count it drop by one; the
   special-kz gate's mutant header loses its two unused arm constants; `legs.py` prices the Triton
   fleet and hand legs at this pass's measured walls (CERT-3 NVIDIA on 4 GPUs: 17,195 s to
-  23,834 s). For the round: its bind (`RUNBOOK.md`, between CERT-3 and CERT-4) re-pins no XF
-  file (none of the four kernel ledgers' 2,270 `code_sha256` / `source_sha256` pins names one,
+  23,834 s). For the round: its bind (`RUNBOOK.md`, between CERT-3 and CERT-4) re-pins no file
+  entry 119 changes (none of the four kernel ledgers' 2,270 `code_sha256` / `source_sha256` pins names one,
   and no ledger changes) and retires `triton_unified_expansion_device_gate` by tool, never by
   hand (its GO wants the report's `RETIRED` line and the rebound ledger without the entry),
   which removes 41 lines of `meep_gpu/triton_kernels/fingerprints.json`, a file no pin binds.
-  Of the pass's recorded bindings only two XF files are digested: `rounds/1.0/legs.py`, a
-  round driver every NVIDIA leg binds (261 / 261 legs of the FPC2N set, 566 digest hits with
+  Of the pass's recorded bindings only two of entry 119's files are digested: `rounds/1.0/legs.py`, a
+  round driver every NVIDIA leg binds (261 / 261 of this pass's NVIDIA legs in section 9, 566 digest hits with
   the re-run sets), and
   `gate_triton_special_kz.py` (the two `special_kz` fleet legs, 12 hits). So no NVIDIA leg of
-  sections 2 and 9 is byte-reusable on a tree carrying XF; CERT-3 re-runs every one. No Metal leg
-  binds an XF file. Six XF files are in the coverage board's outcome subject (and the pending
+  sections 2 and 9 is byte-reusable on a tree carrying entry 119; CERT-3 re-runs every one. No Metal leg
+  binds a file of entry 119. Six of its files are in the coverage board's outcome subject (and the pending
   list in its board subject); the re-cut owed since entry 117 covers them. Measured on entries 01
-  to 118 with XF (Apple M1 Max), against the controls of entries 117 and 118 (work packages A16
-  and A17): package suite (CPU-only shim, every marker) 221 F / 14,751 P / 851 S, 15,823 of
+  to 118 with entry 119 (Apple M1 Max), against the controls of entries 117 and
+  118: package suite (CPU-only shim, every marker) 221 F / 14,751 P / 851 S, 15,823 of
   15,823 ids the same outcome; harness suite 0 / 1,978 / 20, 1,989 of 1,989 the same and 9 new,
   all passing; the 92 device-visible files on the Apple GPU 13 / 4,016 / 331, 4,360 of 4,360 the
   same; `check_failures.py` 62 of 17,538 failures, 62 / 62 declared, 0 undeclared; needles 0
@@ -149,9 +156,9 @@ Class (i), each with the step that resolves it:
   ran on `b676c5f5`, reused on `87febcc8` by the byte check). Same reason.
 - **i-4, `gate_metal_spine_byte_neutrality`**: not released: "A CERTIFIED KERNEL SOURCE MOVED"
   against the frozen round input `results/metal_pml_2026-08-14/provenance.json`; the series
-  moves the tranche-1 PML kernel sources by design (first at entry 18). **Owner ruling
+  moves the PML kernel sources of the first Metal certification (2026-08-14) by design (first at entry 18). **Decision
   pending**: re-baseline its frozen artifact at CERT-1 (recommended) or retire the gate and its
-  weld (`metal_spine_byte_neutrality_device_gate`). Until it is ruled it is class (i).
+  weld (`metal_spine_byte_neutrality_device_gate`). Until it is decided it is class (i).
 - The other items the certification round resolves produce no non-release in this pass, because
   no gate verdict reads them: the `_mixed_policy` declarations of `triton_no_pml_device_gate`
   and `triton_cylindrical_device_gate`, retired at the bind; the Triton census re-cut without
@@ -183,7 +190,7 @@ The pass on entries 01 to 106 (tree `c2d533b0`) did not meet the bar. Each of it
 | E | the flush host-import wrapper imported CuPy before the gate set `CUPY_ACCELERATORS` (three ADE chains) | 108 | Triton flush 61 / 61 |
 | F | Triton cylindrical under flush: two `div.full.f32` not flush-uniform | 109 (they were in a planted mutant, not a shipped kernel) | same |
 | G | three Triton gates installed keep under the flush campaign | 108 | same |
-| H | the spine byte-neutrality gate's frozen baseline | not closed: class (i), ruling pending (section 2, i-4) | - |
+| H | the spine byte-neutrality gate's frozen baseline | not closed: class (i), decision pending (section 2, i-4) | - |
 | I | eight Triton flush calibrations vacuous under flush | 108 (declared by `flush_vacuity.py`) | same |
 
 ## 4. The board (entry 114)
@@ -195,16 +202,17 @@ Built by `parity/meep_gpu/build_parity_board.py` at 2026-10-11T02:38:07Z on subj
 |---|---|---|---|---|---|---|---|---|---|---|
 | CUDA | 75 | 55 / 55 (+1 refused) | 57 / 57 (+8 refused) | 18 / 18 (+47 refused) | 0 / 53 (+12 refused) | 0 / 53 (+12 refused) | 4 / 4 (+61 refused) | 0 / 0 (+65 refused) | 0 / 53 (+12 refused) | 0 / 53 (+12 refused) |
 | Triton | 73 | 55 / 56 (+2 refused) | 61 / 61 (+7 refused) | 26 / 29 (+39 refused) | 0 / 55 (+13 refused) | 0 / 55 (+13 refused) | 2 / 2 (+66 refused) | 0 / 0 (+68 refused) | 0 / 55 (+13 refused) | 0 / 55 (+13 refused) |
-| Metal | 92 | 60 / 60 (+4 refused) | 68 / 68 (+9 refused) | 29 / 29 (+48 refused) | n/a (R13) | 0 / 74 (+3 refused) | n/a (R13) | 3 / 3 (+74 refused) | n/a (R13) | 0 / 74 (+3 refused) |
+| Metal | 92 | 60 / 60 (+4 refused) | 68 / 68 (+9 refused) | 29 / 29 (+48 refused) | n/a (flush only) | 0 / 74 (+3 refused) | n/a (flush only) | 3 / 3 (+74 refused) | n/a (flush only) | 0 / 74 (+3 refused) |
 
 The array path against MEEP: keep 6 / 6 (+4 refused) families identical; flush 6 / 6 (+4
 refused) families identical. (d) and (e) are 0 under every baseline until the certification
-round re-gates and the ledgers are re-minted.
+round re-gates and the ledgers are re-minted. Metal's keep columns are n/a because the Apple
+GPU flushes subnormals and exposes no lever (section 7).
 
 ## 5. The pending list by owner
 
 `tools/ci/pending_certification.txt` lists 63 tests in 31 blocks. Every one is owned by the
-certification round; no development lane owns any. By the step whose output removes it (each
+certification round; no development task owns any. By the step whose output removes it (each
 block's own "Removed when" clause):
 
 | Owner (step) | Entries | Test files |
@@ -253,39 +261,45 @@ BinaryPartition chunk layout with mirror symmetry, which the lift refuses).
   `code_sha256` / `source_sha256` pins names one, and the board's subject does not include them, so
   no verdict in sections 2 to 9 moves.
 
-## 7. Owner rulings
+## 7. Decisions and defaults
 
-- **R1**, Metal's claim against MEEP: the x86 flush reference, falling back to a per-row claim
+Each item was either decided on the date it gives or is a default that stands unless overruled.
+
+- Metal's claim against MEEP: the x86 flush reference, falling back to a per-row claim
   where Linux keep and flush coincide, then none (default; decided at CERT-5).
-- **R2**, the Mac's contraction-off MEEP becomes the Mac certification MEEP, replacing the
+- The Mac's contraction-off MEEP becomes the Mac certification MEEP, replacing the
   osx-arm64 lock environment, whose lock is re-cut (default).
-- **R3**, lifted runs form their currents through MEEP's `src_time` (default; design decision
-  D24).
-- **R4**, RULED 2026-10-09: hold the 0.9.x H200 bind; the H200 is certified on the 1.0 bytes in
+- Lifted runs form their currents through MEEP's `src_time` (default): the package's own
+  transcription of the waveforms cannot reproduce MEEP's carrier on every host, so it serves
+  only drivers built without MEEP (`docs/design/floating-point.md`, "Sources: MEEP's currents,
+  MEEP's deposit list, MEEP's `f_minus_p`").
+- Decided 2026-10-09: hold the 0.9.x H200 bind; the H200 is certified on the 1.0 bytes in
   CERT-6 with the 1.0 runbook.
-- **R5**, the timing ladder re-times both sides in one session (default; CERT-8).
-- **R6**, RULED 2026-10-09: the Tier A fixture budget in the repository is 5 MB, measured at
+- The timing ladder re-times both sides in one session (default; CERT-8).
+- Decided 2026-10-09: the Tier A fixture budget in the repository is 5 MB, measured at
   mint.
-- **R7**, RULED 2026-10-08: Metal off-diagonal and nonlinear rows step in soft-fp64 rather than
-  refusing to the array path.
-- **R8**, `board_controls` is re-baselined by tool at CERT-4 if refusals move
+- Decided 2026-10-08: Metal off-diagonal and nonlinear rows step in soft-fp64 rather than
+  refusing to the array path (`docs/design/floating-point.md`, "Double precision on the Metal
+  table").
+- `board_controls` is re-baselined by tool at CERT-4 if refusals move
   `served_in_dispatch` (default).
-- **R9**, development in a fresh owner-named clone at the 0.9.2 tag, staging copies per lane;
-  the owner commits (default).
-- **R10**, `chunk_layout` together with mirror symmetry is refused until the separability probe
+- Development in a fresh clone at the 0.9.2 tag, with a staging copy per work stream; the
+  repository owner commits (default).
+- `chunk_layout` together with mirror symmetry is refused until the separability probe
   shows 0 (default).
-- **R11**, RULED 2026-10-09: the NumPy floor is raised to >= 2.
-- **R12**, non-separable chunk divisions are refused on every kernel table in 1.0; the array
+- Decided 2026-10-09: the NumPy floor is raised to >= 2.
+- Non-separable chunk divisions are refused on every kernel table in 1.0; the array
   path steps them (default).
-- **R13**, RULED 2026-10-08: certify against both subnormal baselines where the hardware
+- Decided 2026-10-08: certify against both subnormal baselines where the hardware
   supports both: keep and flush on the NVIDIA tables and the array path, flush only on Metal
   (the Apple GPU flushes and exposes no lever).
-- **R14**, RULED 2026-10-09: a CuPy RawKernel the caller compiled before a keep install keeps
+- Decided 2026-10-09: a CuPy RawKernel the caller compiled before a keep install keeps
   its policy; the install records it and the guide documents the remedy, and it does not refuse.
-- **R15**, RULED 2026-10-09: where MEEP aliases H onto B's array, those B points are compared
+- Decided 2026-10-09: where MEEP aliases H onto B's array, those B points are compared
   through MEEP's point read under both reader rules, each erroring on anything unexplained.
-- **R16**, RULED 2026-10-10: option (a), the composition gates install and stamp the campaign's
-  subnormal policy, so their flush runs carry per-arm flush evidence.
+- Decided 2026-10-10: the composition gates install and stamp the campaign's subnormal policy
+  (rather than mapping their arms to device gates or refusing them under flush), so their flush
+  runs carry per-arm flush evidence.
 - **Pending**: the spine byte-neutrality gate (section 2, i-4): re-baseline its frozen artifact
   at CERT-1 (recommended) or retire the gate and its weld.
 
@@ -293,8 +307,8 @@ BinaryPartition chunk layout with mirror symmetry, which the lift refuses).
 
 - **CERT-1**: move `fastpath.DRIVER_ROUTE_FUSED_GATE`,
   `fastpath_cuda.CUDA_DRIVER_ROUTE_FUSED_GATE` and `metal_dispatch.METAL_DRIVER_ROUTE_GATE` to
-  1.0 stamps (i-1), and act on the spine byte-neutrality ruling (i-4). Done at the freeze
-  (section 11): both, the second by the owner's default. The constants moved again at the
+  1.0 stamps (i-1), and act on the spine byte-neutrality decision (i-4). Done at the freeze
+  (section 11): both, the second by its default. The constants moved again at the
   re-freeze (the Metal one) and at the freeze after per-kernel certification (all three, to
   `2026-10-13_10`; section 11's last bullet).
 - **Bind: the curated pins the round's records cannot hold leave by generated rows.** Under
@@ -307,7 +321,7 @@ BinaryPartition chunk layout with mirror symmetry, which the lift refuses).
   bind but read the lines.
 - **Bind**: write per-arm flush evidence from the flush runs (the CUDA gates and the Triton
   fleet released under flush on these bytes, 59 / 59 and 61 / 61), with
-  `recut_composition_records.py --flush-run` for the five composition gates (R16), before the
+  `recut_composition_records.py --flush-run` for the five composition gates (they install and stamp the campaign's policy), before the
   flush route legs run (i-2, i-3).
 - **Bind**: the Triton rebind retires `triton_unified_expansion_device_gate` by name. Its gate was
   deleted with the expansion licence, so no campaign can rebind it; `rebind_triton_welds.py` lists
@@ -319,7 +333,7 @@ BinaryPartition chunk layout with mirror symmetry, which the lift refuses).
   `triton_fused_electric_device_gate`'s gate now installs and stamps the campaign's policy and
   its declaration is retired (`RUNBOOK.md` section 5), so the arms `fused pair B` and `fused
   pair D` carry flush evidence once its keep and flush runs on the round's bytes are rebound.
-- **F2, closed at the re-freeze (owner ruling 2026-10-11)**: rung 8b read a bare label in a
+- **F2, closed at the re-freeze (decided 2026-10-11)**: rung 8b read a bare label in a
   CUDA-led plan against the CUDA ledger, so under `MEEP_GPU_BACKEND_PREFERENCE=cuda` with
   `flush` every Triton arm of the merged plan read as unmapped and `cuda_flush` could not
   release (`dispersive_2d` `NO-SUBSTITUTION`, the `nonlinear_3d` envelope control
@@ -342,11 +356,11 @@ BinaryPartition chunk layout with mirror symmetry, which the lift refuses).
     Metal board: all 62 gate artifacts of `_2026-10-11_10` record `meep_gpu/fastpath.py` in
     their `source_sha256`, which `build_fusion_matrix.py` re-hashes for every artifact it
     credits, so its release bindings move to `_2026-10-12_10`.
-  - **The NVIDIA bind, carried or re-run (owner ruling).** Every NVIDIA artifact of the round
+  - **The NVIDIA bind, carried or re-run (an open decision).** Every NVIDIA artifact of the round
     with a source record names `meep_gpu/fastpath.py` too (246 of 246), and the bind tools
     that check a run's whole import record refuse those runs on the re-frozen bytes.
     Measured against the round's roots with `legs.py bind`'s own commands (report mode), on
-    the FXE tree and on the re-frozen tree: `rebind_triton_welds.py --campaign ...` rebinds
+    the tree after entry 123 and on the re-frozen tree: `rebind_triton_welds.py --campaign ...` rebinds
     43 and skips 11 (51 and 3 before): eight device welds that pin their own test file,
     which their gate does not import, cannot take that pin from a tree the run disagrees with
     (`triton_complex_fused_ade_chain`, `triton_complex_fused_electric_pair`,
@@ -357,7 +371,7 @@ BinaryPartition chunk layout with mirror symmetry, which the lift refuses).
     22 arms, `nonlinear` among them); the bit-identity binder refuses. The CUDA rebinds, the
     ADE re-cut and the composition records read the same on both trees. Either the bind
     written on the frozen bytes is carried to the re-frozen commit (no curated pin of those
-    entries names a file F2X moves) or those gates are re-run on it. The Triton board's
+    entries names a file entry 124 moves) or those gates are re-run on it. The Triton board's
     gate-bound rows and the CUDA board's gate-tier columns re-hash their artifacts' import
     records the same way.
   - **Triton**: the bit identity (`bit_identity_gate` pins `fastpath.py`). A hand step whose
@@ -368,7 +382,7 @@ BinaryPartition chunk layout with mirror symmetry, which the lift refuses).
     ...`.
   - **NVIDIA routes**: neither `driver_dispatch` record was cut on the frozen bytes; the
     one-shot route (stamps `2026-10-11_10`, unused) cuts both on the re-frozen ones.
-- **CERT-4, the CUDA board's own controls**: closed before the freeze (work package XG). The
+- **CERT-4, the CUDA board's own controls**: closed before the freeze (entry 122). The
   detector control `cylindrical_kernels.py` read POINTWISE from entry 76 because the curl's
   neighbour reads (`shift_up`/`shift_dn`, `g[idx +/- stride]`) live in the real-PML prelude the
   module imports from `step_curl_kernels` and concatenates into its kernels, and the detector read
@@ -382,7 +396,7 @@ BinaryPartition chunk layout with mirror symmetry, which the lift refuses).
   splice points). `test_cuda_board_detector.py` pins both, and that each control fails on a
   planted error.
 - **The Metal composition matrix's four cylindrical complex rows**: closed before the freeze
-  (work package XG). At the builder's Courant 0.37, not a float32 word, the cylindrical complex
+  (entry 122). At the builder's Courant 0.37, not a float32 word, the cylindrical complex
   curl refuses by name the slots that carry an axis product with Courant: `step_B` and `step_D`
   on `dcyl_m1_complex`, `_negative` and `_zperiodic`, `step_D` alone on `dcyl_m0_complex`. The
   four rows are pinned to that (the refusal is unchanged), and four `_f32_courant` twins at the
@@ -390,7 +404,7 @@ BinaryPartition chunk layout with mirror symmetry, which the lift refuses).
   specialisation axis (listed under `torch` in `declared_resources.txt`, as their siblings). The
   composition test and probe pass with the evidence archive (153 of 153; 114 configurations,
   VERDICT PASS) and without it.
-- **CERT-4, the route watchdogs**: closed before the freeze (work package XG). The route and
+- **CERT-4, the route watchdogs**: closed before the freeze (entry 122). The route and
   licence legs' expected walls in `legs.py` are this pass's measured walls, so the route stage's
   `max(3600 s, 12 x expected)` (entry 121) is at least 12.0 x the wall each leg guards, computed
   from `round.py`'s own route plans (on the 0.9.2 prices it was 1.70 x for Triton `shipped` and
@@ -401,13 +415,13 @@ BinaryPartition chunk layout with mirror symmetry, which the lift refuses).
   more of the measured walls it records.
 - **CERT-4**: re-cut the Triton census without the retired `@unified_expansion` keys before the
   board (`build_triton_fusion_matrix.py` refuses the census of record by name); re-baseline
-  `board_controls` by tool (R8).
+  `board_controls` by tool if refusals move `served_in_dispatch`.
 - **CERT-4 records**: re-mint the ledgers with `record_array_path_oracle.py` (every byte-binding
   entry records `real-v1`; the live oracle is `real-v6`), so (e) can read anything.
-- **The Triton H->D welds' full gates under flush** (every leg, lifts on) are not in the round's
-  leg table and have not run on these bytes; they are not dispatched (`INSTALLABLE` is False on
-  all ten), so no route leg reads them. Under keep they are in it since the harness-tools entry
-  after the 1.0 round (`legs.py` `TRITON_HD`), because the Triton board binds their keep runs.
+- **The Triton H->D welds' full gates under flush** (every leg, lifts on) are not in the round's leg table and
+  have not run on these bytes; they are not dispatched (`INSTALLABLE` is False on all ten), so no route leg
+  reads them. Under keep they are in it since the harness-tools entry (127, after the 1.0 runs under stamps
+  `2026-10-11_10` and `2026-10-12_10`; `legs.py` `TRITON_HD`), because the Triton board binds their keep runs.
 - **The planner's Triton prices**: closed after this pass. `legs.py` `TRITON_EXPECT` and
   `TRITON_HAND_EXPECT` now carry this pass's measured walls (the larger of keep and flush per
   gate), where they priced `special_kz` at 184 s against a measured 2,265 s (keep) and 4,109 s
@@ -421,7 +435,7 @@ BinaryPartition chunk layout with mirror symmetry, which the lift refuses).
   rather than reuse them.
 - **The Tier A flush record states no contraction setting**: the board renders its reference as
   "contraction None" beside the keep reference's "contraction off".
-- **CERT-6** (H200, R4) and **CERT-8** (timing on an idle box; it re-cuts the two timing records
+- **CERT-6** (the H200, certified on the 1.0 bytes with the 1.0 runbook) and **CERT-8** (timing on an idle box; it re-cuts the two timing records
   the pending list holds) run on the frozen bytes.
 
 ## 9. Every leg, with the tree it ran on
@@ -794,7 +808,7 @@ differs between `15da8cd4` and `87febcc8`.
 - Metal, on one Apple M1 Max: `metal_round.py fleet` (the environment record, every
   `gate_metal_*`, the environment record), `status`, then `route`
   (`run_metal_dispatch_campaign.sh`, held residency, three lanes), each item holding the Mac's
-  GPU and one CPU slot in one call; flush only (R13); the 7 Metal round inputs staged and
+  GPU and one CPU slot in one call; flush only (the Apple GPU always flushes subnormals); the 7 Metal round inputs staged and
   sha256-checked; 0 dirty lines.
 - Dry-run deviations, none changing a gate's argv or what it measures: the route stamps (i-1);
   route legs run before a bind, so the flush route legs can only be refused (i-2, i-3); the
@@ -809,11 +823,15 @@ its bullet below), the frozen commit `2b75bef8`. The re-freeze made the tree aft
 the frozen tree (`126-WALLS`, the frozen commit `44232311`; its bullet below). The freeze after
 per-kernel certification made the tree after entry 135 the frozen tree (`133-CERT1b`;
 `134-MZ`, the Metal fix for what CERT-5 found on `44232311`; then `135-PINR`, the reviewed
-retirement of the curated pins the round's records cannot hold; its bullet below). **The R22
+retirement of the curated pins the round's records cannot hold; its bullet below). **The hygiene
 freeze made the tree after entry 154 the frozen tree** (`153-FREEZE`, the round's CERT-1,
-and `154-BOARD13`, the board's re-cut; its bullet below). **The R27 freeze makes the tree
-after entry 170 the frozen tree** (`169-FREEZE`, the round's CERT-1, and `170-BOARD14`, the
-board's re-cut; the last bullet of this section). Entry 122 is cut on
+and `154-BOARD13`, the board's re-cut; its bullet below). **The reference-environment freeze made
+the tree after entry 170 the frozen tree** (`169-FREEZE`, the round's CERT-1, and `170-BOARD14`, the
+board's re-cut; its bullet below). **The MEEP 1.35.0 freeze made the tree after entry 216 the
+frozen tree** (`215-FREEZE101`, the 1.0.1 round's CERT-1, and `216-BOARD`, the board's re-cut;
+its bullet below). **The re-certification freeze makes the tree after entry 228 the frozen
+tree** (`227-FREEZE102`, the 1.0.1 round's CERT-1 again, and `228-BOARD102`, the board's
+re-cut; the last bullet of this section). Entry 122 is cut on
 entry 121's tree (`051a71a2ff2f8ecf76b432bb9c2059045ba6be02`); it changes no file under
 `meep_gpu/` and none of the 29 files that decide the freeze criteria (0 / 29 moved since entry
 117). The numbers in the other bullets were measured on entries 01 to 119 with entry 121's
@@ -864,20 +882,20 @@ bytes (entry 121's): entry 120 changes only the coverage board's three generated
   65,610,420 equal (205 s); the keep leaf and the keep files were byte-identical after it.
   Every `digests.json` and currents file is unchanged; the 8 keep capsules change (they record
   the array-path modules as they are now), the 8 flush capsules are byte-identical, and the
-  fixtures hold 4,633,671 of the 5,000,000 bytes R6 allows. Every row of both sets replayed
+  fixtures hold 4,633,671 of the 5,000,000 bytes the Tier A fixture budget allows. Every row of both sets replayed
   with MEEP not importable holds: 16 / 16 rows on the Apple M1 Max (flush rows under FZ) and
   16 / 16 on x86-64 Linux (flush rows under the MXCSR lever), 2,916 / 2,916 stored and
   2,916 / 2,916 reader digests per set on each host, each planted flip caught and placed. The
   Tier A test file reads 62 / 62 on the Apple M1 Max after the keep mint and, NumPy only with
   no MEEP, 62 / 62 entering in keep and 62 / 62 entering in flush on x86-64 Linux.
-- **The spine byte-neutrality baseline, re-baselined (i-4, owner default).** No ruling
+- **The spine byte-neutrality baseline, re-baselined (i-4, the default).** No decision
   arrived, so the default applies: re-baseline at CERT-1. The baseline is not in the package:
   it is `results/metal_pml_2026-08-14/provenance.json` in the evidence archive, which every
   Mac checkout's `results/metal_pml_2026-08-14` links to. The gate has no write mode; its
   producer, `gate_metal_pml.provenance()`, run on these bytes (no kernel compiled or
   launched), gave the `kernel_sources` block (the 18 specialised Metal sources, all 18 moved
   since 2026-08-14), and the 2026-08-14 `sources` block was kept: the gate's refactor-present
-  clause requires a tranche-1 host module (`shaders.py`, `coverage.py`, `launch.py`,
+  clause requires one of the four host modules the first Metal certification hashed (`shaders.py`, `coverage.py`, `launch.py`,
   `subnormal.py`) to differ from that block, so a whole-file re-baseline would leave it
   VACUOUS for good. The new file (sha256
   `bc1269c8dd6ffff853acbed33345be09faa55da72fe8dbf7f02ec028c2235d45`) names both origins in
@@ -885,11 +903,12 @@ bytes (entry 121's): entry 120 changes only the coverage board's three generated
   `dbe7fdcf1ff56eb7099b96353ec89f7d94e722daf31e684e8c14d9e8fde0695f`) is kept beside it as
   `provenance.json.2026-08-14`. On these bytes, against the archive's file, the gate reads
   passed and released: 18 / 18
-  certified kernel sources unchanged, 4 / 4 tranche-1 host modules moved; against the
+  certified kernel sources unchanged, 4 / 4 of the first Metal certification's host modules moved; against the
   2026-08-14 file it reads FAILED (18 / 18 moved), as in section 2. The input manifest of the
-  2026-10-04 Metal round (`rounds/metal_2026-10-04/INPUTS_SHA256SUMS`, line 7) stays the
-  record of that round and no longer verifies this file, by design: a Mac that stages its
-  inputs from a bundle needs the re-baselined file.
+  2026-10-04 Metal certification round (its `INPUTS_SHA256SUMS`, line 7) was the record of that round and
+  no longer verified this file once it was re-baselined, by design: a Mac that stages its inputs from a
+  bundle needs the re-baselined file. That round's directory has since been removed from the tree;
+  this directory and the certification guide (`docs/development/certify-a-new-gpu.md`) replace it.
 - **The coverage board, re-cut** by its unchanged generator (`build_parity_board.py
   outcomes`, `build`) on this entry's stage, whose subjects the entry moves (the pending list,
   the re-minted fixtures, the three route modules and the new top-level harness test): every
@@ -906,11 +925,12 @@ bytes (entry 121's): entry 120 changes only the coverage board's three generated
   pass. `tools/ci/check_failures.py`: 62 failed of 17,541 run, 62 / 62 declared (63 entries),
   0 undeclared. Needle anchors 0 differences; 200 mutation anchors, 0 stale.
 - **The freeze criteria**, each on these bytes or by byte check. Against entry 117
-  (`ee0ed45d`), on which L1′ and AP9 were last re-run, 0 of the 29 files that decide them
-  moved: the 18 array-path files (`array_path_oracle.PROVENANCE_MODULES`, `capsule.py`,
-  `array_path_oracle.py`, `subnormal_policy.py`, `backends.py`, `readback.py`) and AP9's 11
+  (`ee0ed45d`), on which the CuPy check and the hand-reference check (both below) were last
+  re-run, 0 of the 29 files that decide them moved: the 18 array-path files
+  (`array_path_oracle.PROVENANCE_MODULES`, `capsule.py`, `array_path_oracle.py`,
+  `subnormal_policy.py`, `backends.py`, `readback.py`) and the hand-reference check's 11
   harness files.
-  - **AP8's exit**: Table 2 holds 189 / 194 rows on each of the four references (57 / 60
+  - **The corpus criterion (Table 2)**: Table 2 holds 189 / 194 rows on each of the four references (57 / 60
     examples, 132 / 134 tests; differ 0, error 0; 4 refused by name, 1 excluded by name;
     section 6), measured on entry 115's tree. Of the 289 package modules and identity-harness
     files it depends on, 4 moved since: Table 2's page (its provenance paragraph, entry 118)
@@ -919,18 +939,21 @@ bytes (entry 121's): entry 120 changes only the coverage board's three generated
     control, in the environments as they are now (16 / 16 row-modes), and the two mints above
     ran Tier C on these bytes on 8 cases per host, 4 of them corpus rows, with 0 differing
     words.
-  - **L1′ green** (CuPy equals NumPy after every sub-step, D22/AP7), re-run on `ee0ed45d` on
+  - **The CuPy check is green** (the CuPy array path stores the NumPy array path's words after
+    every sub-step; `docs/design/floating-point.md`, "The CuPy array path stores the NumPy
+    array path's words"), re-run on `ee0ed45d` on
     one RTX A6000 under keep and flush: 118 cases, 0 / 26,176,530,098 words differing per
     policy, the planted one-bit flip caught 118 / 118, the mixed-policy control differing
     2,446,768 / 6,272,469 words (10 / 10 cases), `test_cupy_array_path.py` 20 / 20 on the
     device, and the hand references on CuPy 0 / 197,902,068 words per policy.
-  - **AP9 green** (the hand references re-validated, D23), re-run on these bytes on the Apple
+  - **The hand-reference check is green** (the gates' hand references re-validated against
+    the array path on the CPU), re-run on these bytes on the Apple
     M1 Max: `validate_pml` 308 / 308 (44 skipped), `validate_no_pml` 112 / 112 (regrouped
     control differs 56 / 56, derivation 28 / 28), `validate_fold` 8 / 8,
     `validate_folded_complex` 17 / 17 (0 NaN words), `validate_folded_offdiag` 16 / 16 with
     refusals 13 / 13; `record_numpy_reference_weld.py` has nothing to write; needle anchors 0
-    differences; 200 mutation anchors, 0 stale. Its CuPy half ran with L1′.
-- **Entry 122 (`122-XG`), the last pre-freeze fixes** (work package XG): harness, round
+    differences; 200 mutation anchors, 0 stale. Its CuPy half ran with the CuPy check.
+- **Entry 122 (`122-XG`), the last pre-freeze fixes**: harness, round
   drivers, documents and the pending list's comments only. No shipped module, kernel,
   predicate, plan, gate decision, ledger, needle or mutation anchor changes, no refusal is
   relaxed and no pending-list id moves. Section 8 records the three items it closes.
@@ -963,7 +986,7 @@ bytes (entry 121's): entry 120 changes only the coverage board's three generated
     `probe_metal_planner_composition.py` VERDICT PASS (114 configurations, 0 disagreeing).
   - **The coverage board**, re-cut by its unchanged generator: every cell as at entry 121
     (0 transitions), subject `d24d19280e6470d9` (1,120 files); `check` passes.
-  - **Measured by the work package** on its code-final tree (`5dc97d7b`; the frozen tree
+  - **Measured on the entry's code-final tree** (`5dc97d7b`; the frozen tree
     differs from it only in comments, documents, the pending list's comment block and the
     coverage board's files), Apple M1 Max, every marker, dispatch off: the package suite under
     the CPU-only shim 225 F / 14,751 P / 851 S, the harness suite 0 / 1,996 / 20, the 92
@@ -992,9 +1015,9 @@ bytes (entry 121's): entry 120 changes only the coverage board's three generated
     (keep and flush, on `b676c5f5`); `differential_cross_section.py` and `mie_scattering.py`
     did not lift on that host (`measured=False`).
     Re-cut again on the re-frozen tree (`h_to_d_seam_2026-10-12_729b161c`, 0 withdraw rows of
-    192), the probe the 1.0 round's boards read: its CUDA board, on a census cut on those
-    bytes, served 531 of 591 with 347 in dispatch.
-- **The re-freeze (entries 123 to 126; owner rulings 2026-10-11).** The first frozen commit
+    192), the probe the boards of the run on that tree (stamp `2026-10-12_10`) read: its CUDA board,
+    on a census cut on those bytes, served 531 of 591 with 347 in dispatch.
+- **The re-freeze (entries 123 to 126; decided 2026-10-11).** The first frozen commit
   `2b75bef8` (tree `8ac75ea542f580c9fd34fedca9a7bde6903ae363`) carried two defects that keep
   the required CUDA route leg `cuda_flush` from releasing, and a route leg that runs and does
   not release spends its one-shot name. The NVIDIA route lane therefore stopped before
@@ -1007,15 +1030,15 @@ bytes (entry 121's): entry 120 changes only the coverage board's three generated
   dry run of `cuda_flush` on one RTX A6000, on the frozen commit with the rebound ledgers,
   confirmed it (`REFUSED` on 3 of the 4 cases that reached arbitration) and found F2 (section
   8): rung 8b read a bare label in a CUDA-led plan against the CUDA ledger, which failed
-  `dispersive_2d` and the `nonlinear_3d` envelope control with or without the first fix. The
-  owner ruled both fixed in 1.0. **Entry 123** (`123-FXE`, fix B): `gate_triton_fused_electric.py`
+  `dispersive_2d` and the `nonlinear_3d` envelope control with or without the first fix. It was
+  decided to fix both in 1.0. **Entry 123** (`123-FXE`, the first fix): `gate_triton_fused_electric.py`
   installs, stamps and confirms the campaign's policy, and the ledger entry
   `triton_fused_electric_device_gate` no longer declares `_mixed_policy`; it is cut on
   `8ac75ea5` and gives `3da5bfe3ac97f259e282c60d8e127c1923674429`. **Entry 124** (`124-F2X`,
   F2): `fastpath._table_for_label` answers a bare label in a plan composed on the CUDA table
   from the Triton ledger, `metal_dispatch.METAL_DRIVER_ROUTE_GATE` moves to
   `dispatch_metal_route_2026-10-12_10`, and this bullet; it is cut on `3da5bfe3`. **Entry 125**
-  (`125-HW`, the hardware-scope rename, owner ruling 2026-10-11): `MEEP_GPU_HARDWARE` =
+  (`125-HW`, the hardware-scope rename, decided 2026-10-11): `MEEP_GPU_HARDWARE` =
   `certified` | `supported` | `any` replaces `MEEP_GPU_ALLOW_UNCERTIFIED` (`0` | unset | `1`),
   which is now refused by name, set to anything, naming the value that does what it did; each
   value admits exactly what its old spelling admitted, on every table, so no admission moves.
@@ -1027,12 +1050,12 @@ bytes (entry 121's): entry 120 changes only the coverage board's three generated
   it. The NVIDIA route constants keep `_2026-10-11_10`.
   - **The freeze criteria, by byte check against the first frozen tree**: 0 of the 18
     array-path files moved, and no Metal kernel source or host module, so the array-path
-    oracle, `meep_identity.json`, the spine baseline and L1′ stand. Of the 289 files AP8's
+    oracle, `meep_identity.json`, the spine baseline and the CuPy check stand. Of the 289 files
     Table 2 depends on, the same 4 as at the freeze have moved since entry 115: `fastpath.py`
     and `metal_dispatch.py` again (the lookup and the constant), and Table 2's rows lift with
-    `prefer_gpu=False`, the NumPy reference, which consults no kernel table. Of AP9's 11
-    harness files 1 moved, `gate_triton_fused_electric.py` (fix B: the policy install, stamp
-    and confirmation; no case, mutation or verdict rule), and AP9's NumPy half re-ran on these
+    `prefer_gpu=False`, the NumPy reference, which consults no kernel table. Of the hand-reference check's 11
+    harness files 1 moved, `gate_triton_fused_electric.py` (entry 123: the policy install, stamp
+    and confirmation; no case, mutation or verdict rule), and the hand-reference check's NumPy half re-ran on these
     bytes: `validate_pml` 308 / 308 (44 skipped), `validate_no_pml` 112 / 112 (regrouped
     control differs 56 / 56, derivation 28 / 28), `validate_fold` 8 / 8,
     `validate_folded_complex` 17 / 17 (0 NaN words), `validate_folded_offdiag` 16 / 16 with
@@ -1052,7 +1075,7 @@ bytes (entry 121's): entry 120 changes only the coverage board's three generated
       pins the moved `fastpath.py` and `metal_dispatch.py`), and `recut_driver_dispatch_record.py
       --backend metal` on that campaign.
     - **Triton**: the `fused_electric` fleet gate under keep and under flush, then the Triton
-      rebind of `triton_fused_electric_device_gate` from those two runs (fix B; its pending id
+      rebind of `triton_fused_electric_device_gate` from those two runs (entry 123; its pending id
       clears there); the bit identity under keep and flush, then `--bind-bit-identity`
       (`bit_identity_gate` pins `fastpath.py`).
     - **The NVIDIA route and the licence**: a scratch dry run of the two flush legs
@@ -1061,7 +1084,7 @@ bytes (entry 121's): entry 120 changes only the coverage board's three generated
       cut on the first frozen bytes).
     - **The boards**: the coverage board is re-cut in entry 124 and again in entry 125 (below);
       the Metal board after the Metal fleet, its release bindings moved to `_2026-10-12_10`; the
-      Triton board's gate-bound rows and the CUDA board's gate-tier columns after the ruling
+      Triton board's gate-bound rows and the CUDA board's gate-tier columns after the decision
       below.
   - **What stands, by byte check of the ledgers' curated pins.** Every 64-hex digest in the
     ledgers the bind wrote (the evidence host's checkout, uncommitted) was compared with the 12
@@ -1072,7 +1095,7 @@ bytes (entry 121's): entry 120 changes only the coverage board's three generated
       bytes, so the re-freeze changes nothing about them: `driver_dispatch`, never cut on them,
       and `fused_electric_gate`'s probe pin, a 2026-10-03 record no arm cites. So the NVIDIA
       CERT-3 runs stand except the bit identity and `fused_electric`: the other 16 Triton roots
-      of the stamp (both fleets and their probes and tranches, both composition roots, both
+      of the stamp (both fleets with their probes and their tier-2 parts, both composition roots, both
       stencil-weld roots) are cited by entries that stand (`triton_fleet_2026-10-11_10` also
       by the voided `fused_electric` entry).
     - CUDA: 54 of 55 fingerprint entries and 110 of 110 certification entries stand
@@ -1098,17 +1121,17 @@ bytes (entry 121's): entry 120 changes only the coverage board's three generated
     entry changes (of the committed ones, Triton 78 of 80, CUDA 54 of 55 and 108 of 108, Metal
     60 of 64). By import record it voids none either: every gate artifact with a source record
     already names `fastpath.py`, which entry 124 moves (Metal 62 of 62, NVIDIA 246 of 246; the
-    open ruling below), so a tool that compares a run's whole import record with the tree
+    open decision below), so a tool that compares a run's whole import record with the tree
     refuses the same runs with this entry as without it. Against the first frozen tree, with
     entry 125's files added to the 12: Triton 75 of 79 entries stand, CUDA 54 of 55 and 110 of
     110, Metal 60 of 64, with the same 2 Triton and 4 Metal entries voided: the counts above
     are unchanged. The freeze criteria, by byte check against the tree after entry 124: 0 of
-    the 18 array-path files and 0 of AP9's 11 harness files moved (since entry 117, 1 of the
+    the 18 array-path files and 0 of the hand-reference check's 11 harness files moved (since entry 117, 1 of the
     29, `gate_triton_fused_electric.py`, as at entry 124), so the array-path oracle,
-    `meep_identity.json`, the spine baseline and L1′ stand; of the 289 files AP8's Table 2
-    depends on, 3 moved (`fastpath.py`, `fastpath_cuda.py` and `metal_dispatch.py`), and since
+    `meep_identity.json`, the spine baseline and the CuPy check stand; of the 289 files
+    Table 2 depends on, 3 moved (`fastpath.py`, `fastpath_cuda.py` and `metal_dispatch.py`), and since
     entry 115 the same 4 as at the freeze. On these bytes the oracle reads fixture set
-    `real-v6`, fingerprint `1ab51627` (20 cases), and AP9's NumPy half passes: `validate_pml`
+    `real-v6`, fingerprint `1ab51627` (20 cases), and the hand-reference check's NumPy half passes: `validate_pml`
     308 / 308 (44 skipped), `validate_no_pml` 112 / 112, `validate_fold` 8 / 8,
     `validate_folded_complex` 17 / 17, `validate_folded_offdiag` 16 / 16 with refusals 13 / 13;
     `record_numpy_reference_weld.py` has nothing to write. The round's runs on the re-frozen
@@ -1117,7 +1140,7 @@ bytes (entry 121's): entry 120 changes only the coverage board's three generated
     either, and `drive_triton_weld_gates.py` runs its gate children with
     `MEEP_GPU_HARDWARE=certified`; a shell or environment file that still exports
     `MEEP_GPU_ALLOW_UNCERTIFIED` sees the named refusal on every GPU run.
-  - **Open, an owner ruling: the NVIDIA bind on these bytes.** By import record the picture
+  - **Open decision: the NVIDIA bind on these bytes.** By import record the picture
     differs: every gate artifact with a source record names `meep_gpu/fastpath.py` (Metal 62
     of 62, NVIDIA 246 of 246), and the tools that compare a run's whole import record with the
     tree refuse those runs here. Measured with `legs.py bind`'s own commands in report mode
@@ -1133,8 +1156,8 @@ bytes (entry 121's): entry 120 changes only the coverage board's three generated
     - **Suites**, on the tree of entries 123 and 124 before this section's text and the board's
       re-cut (neither moves a file either suite's outcome reads but the board's own tests): the
       package suite under the CPU-only shim 226 F / 14,790 P / 851 S, the harness suite 0 /
-      2,005 / 20, the 92 device-visible files on the Apple GPU 13 / 4,020 / 331. Against the
-      work package's own reports every id reads the same outcome: 15,867 / 15,867 package ids,
+      2,005 / 20, the 92 device-visible files on the Apple GPU 13 / 4,020 / 331. Against
+      entry 124's own development reports every id reads the same outcome: 15,867 / 15,867 package ids,
       2,025 / 2,025 harness ids and 4,364 / 4,364 device ids, 0 new and 0 gone.
       `tools/ci/check_failures.py`: 63 failed of 17,609 run, 63 / 63 declared (64 entries), 0
       undeclared. Needle anchors 0 differences; 200 mutation anchors, 0 stale. Re-run after the
@@ -1162,7 +1185,7 @@ bytes (entry 121's): entry 120 changes only the coverage board's three generated
       the first bind's three ledgers copied in, `check --route` `CHECK OK` and Triton 73 / 75
       (lacking `triton_fused_electric_device_gate`, owed above), CUDA 34 / 34.
   - **Measured on the tree after entry 125** (Apple M1 Max, every marker, dispatch off):
-    - **Suites**, on the tree of entries 01 to 122, FXE.patch, F2X.patch and RNM.patch
+    - **Suites**, on the tree of entries 01 to 122 with the patches of entries 123, 124 and 125
       (`4ec404ac`: entry 124's suite tree `e6512c6c` with the rename merged), which differs
       from this tree only in `CHANGELOG.md`, this section and the coverage board's three files
       and carries the same outcome subject (`1c2b9a2b`): the package suite under the CPU-only
@@ -1181,7 +1204,7 @@ bytes (entry 121's): entry 120 changes only the coverage board's three generated
       id the same outcome as on the suites' tree (2,051 / 2,051; the board's own tests and
       `test_reference_environment.py`, which reads the CHANGELOG, among them);
       `tools/ci/check_failures.py` over it with the package and device reports 63 failed of
-      17,752 run, 63 / 63 declared, 0 undeclared; the oracle, needles, AP9's validators and the
+      17,752 run, 63 / 63 declared, 0 undeclared; the oracle, needles, the hand-reference validators and the
       200 mutation anchors as above; `build_parity_board.py check` passes.
     - **The coverage board.** Re-cut by its unchanged generator (`build_parity_board.py
       outcomes`, `build`) from those package and device reports; before the cut `check` refused
@@ -1204,12 +1227,12 @@ bytes (entry 121's): entry 120 changes only the coverage board's three generated
       `flush-coverage` as at entry 124: Triton 0 / 75 and CUDA 0 / 34 on the committed ledgers;
       with the first bind's three ledgers copied in, `check --route` `CHECK OK` and Triton 73 /
       75, CUDA 34 / 34.
-- **The freeze after per-kernel certification (entries 127 to 135; owner ruling R17, amended
-  2026-10-12: in 1.0, so the paper can cite it).** The round ran on the frozen commit
+- **The freeze after per-kernel certification (entries 127 to 135; decided 2026-10-12 for 1.0.1,
+  then moved into 1.0 the same day so the paper can cite it).** The round ran on the frozen commit
   `44232311` (tree `729b161c05cdde2d1d58903711ffba02107e0e03`): CERT-3 GO on NVIDIA and Metal,
   CERT-4's NVIDIA route and licence and its Metal route released, CERT-5's NVIDIA L3 189 / 189
   rows on both baselines and both precedences. Its records stand as the record of that pass.
-  Entries 127 to 132 (the R17 batch) make a kernel gate's import record its own dependency set
+  Entries 127 to 132 make a kernel gate's import record its own dependency set
   (`meep_gpu/__init__.py` binds its names on first use; `parity/meep_gpu/
   test_gate_import_closure.py` holds every gate and probe to its declared closure), bring two of
   the fixes that share the round (the lift's partition clause keyed on MEEP's built grid, entry
@@ -1247,8 +1270,8 @@ bytes (entry 121's): entry 120 changes only the coverage board's three generated
     flush mint (32 / 32). Of the ledger's 1,841 leaves 70 move and none is a digest, a word count
     or a verdict: times (35), the 16 capsules' byte counts and sha256 (30; a capsule records the
     lift module's digests, and those two are the only fields of its document that move), the
-    two sets' `from_meep.py` digests (4) and the fixture bytes (4,633,685 of the 5,000,000 R6
-    allows). Every row of both sets replayed with MEEP not importable holds: 16 / 16 rows on the
+    two sets' `from_meep.py` digests (4) and the fixture bytes (4,633,685 of the 5,000,000 bytes the
+    fixture budget allows). Every row of both sets replayed with MEEP not importable holds: 16 / 16 rows on the
     Apple M1 Max (flush rows under FZ) and 16 / 16 on x86-64 Linux (flush rows under the MXCSR
     lever), 2,916 / 2,916 stored and 2,916 / 2,916 reader digests per set on each host, the
     planted flip caught and placed in 8 / 8 rows per set on each host. The Tier A test file
@@ -1274,21 +1297,21 @@ bytes (entry 121's): entry 120 changes only the coverage board's three generated
     new and 0 gone. `tools/ci/check_failures.py`: 63 failed of 17,896 run, 63 / 63 declared (64
     entries), 0 undeclared. Needle anchors 0 differences; 204 mutation anchors, 0 stale.
   - **The freeze criteria.** Against entry 131 (`dbca770023f978c9ca28b4cb8ebaa776eb2ee034`), on
-    which L1′ and AP9 re-ran green, 0 of the 29 files that decide them moved (against the
+    which the CuPy check and the hand-reference check re-ran green, 0 of the 29 files that decide them moved (against the
     previous frozen tree 1 of 29: `from_meep.py`, entry 129).
-    - **L1′ green** on entry 131, on one RTX A6000 under keep and flush: 123 case-rows over the
+    - **The CuPy check is green** on entry 131, on one RTX A6000 under keep and flush: 123 case-rows over the
       cylindrical, family (67 capsules lifted on that tree), oracle, hand and tiny legs, 0 /
       26,302,894,838 words differing per policy after every sub-step, the planted flip caught
       123 / 123, the mixed-policy control differing 2,446,768 / 6,272,469 words (10 / 10
       cases); the hand references on CuPy 0 / 197,902,068 words per policy;
       `test_cupy_array_path.py` 20 / 20 on the device.
-    - **AP9 green**, re-run on these bytes on the Apple M1 Max: `validate_pml` 308 / 308 (44
+    - **The hand-reference check is green**, re-run on these bytes on the Apple M1 Max: `validate_pml` 308 / 308 (44
       skipped), `validate_no_pml` 112 / 112 (regrouped control differs 56 / 56, derivation 28 /
       28), `validate_fold` 8 / 8, `validate_folded_complex` 17 / 17 (0 NaN words),
       `validate_folded_offdiag` 16 / 16 with refusals 13 / 13; `record_numpy_reference_weld.py`
       has nothing to write; needle anchors 0 differences; 204 mutation anchors, 0 stale. Its
-      CuPy half ran with L1′.
-    - **AP8's exit is not settled at the freeze.** Of the 290 package modules and
+      CuPy half ran with the CuPy check.
+    - **Table 2's corpus criterion is not settled at the freeze.** Of the 290 package modules and
       identity-harness files Table 2 depends on, 14 moved since the previous frozen tree, the
       lift (`from_meep.py`, entry 129) among them. Entry 129 measured its two rows on all four
       references with a 20-row sample (Table 2 191 / 194 on each), not the whole corpus. The
@@ -1311,7 +1334,8 @@ bytes (entry 121's): entry 120 changes only the coverage board's three generated
     re-stepped after a fused magnetic pair's), as the hand-CUDA launchers carry it and the Triton
     kernels carry it in their own statements. No shader byte, array-path module, minted input,
     ledger, needle or mutation anchor changes, so the freeze criteria, `meep_identity.json`, the
-    array-path oracle, L1′ and AP9 stand as above (0 of the 29 files that decide L1′ and AP9 move;
+    array-path oracle, the CuPy check and the hand-reference check stand as above (0 of the 29
+    files that decide them move;
     of the 290 files Table 2 depends on, 1, `metal_kernels/launch.py`, a kernel-table module), and
     no Tier A replay is owed. The corpus Tier C run launched at this freeze lifts with
     `prefer_gpu=False` and loads none of the entry's files (measured on these bytes: a lift and
@@ -1320,7 +1344,7 @@ bytes (entry 121's): entry 120 changes only the coverage board's three generated
     `gate_metal_fused_magnetic_pair` a `first_update_h` row; on these bytes both release, the
     composition equals the array path with 0 differing words at steps 1 and 2 and the start run
     once, and with the start stripped it differs on 48 H words at step 1 (16 each in Hx, Hy and
-    Hz). L3M's instrument on these bytes: `ex.differential_cross_section` holds against all three
+    Hz). The Metal L3 instrument on these bytes: `ex.differential_cross_section` holds against all three
     reference sets, 372 / 372 stored and 372 / 372 reader digests each (it held 369 / 372 stored
     on the previous frozen commit), dispatched and fused; a 12-row sample covering every
     `update_H` shape the corpus dispatches holds 12 / 12 against the two flush sets (4,416 / 4,416
@@ -1347,7 +1371,7 @@ bytes (entry 121's): entry 120 changes only the coverage board's three generated
     keep, and the Metal fleet of 62 gates); the bind; CERT-4, the NVIDIA route and licence and
     the Metal route under this stamp, then the records, the three censuses, the H->D probe and
     the boards; CERT-5, L3 with the committed driver; CERT-7 and CERT-8 as `RUNBOOK.md` orders.
-    After this round a dispatch-only edit re-runs the declared route, dispatch, composition and
+    After that full re-run, a dispatch-only edit re-runs the declared route, dispatch, composition and
     driver gates and the records that pin the planner, and a kernel edit the gates
     `parity/meep_gpu/import_closure.py bill <file>` names.
   - **Entry 135 (`135-PINR`), closed before the round: the curated pins the round's records cannot
@@ -1360,14 +1384,15 @@ bytes (entry 121's): entry 120 changes only the coverage board's three generated
     (`dispersion.py`) needed a sharper run closure: a harness table's stored callables are reached
     only where reached code names the table. Of the 13 Triton entries counted earlier,
     `bit_identity_gate`'s binder writes its own pin set and 8 welds pin their own test file on
-    purpose. On post-R17 runs the Metal rebind binds the three welds and the Triton rebind the
+    purpose. On runs made under per-kernel certification the Metal rebind binds the three welds and the Triton rebind the
     four; never a hand edit of a ledger. The entry changes harness tools (`import_closure.py` and
     the three rebind tools), one test file (`test_rebind_unimported_pins.py`, 44 tests) and text:
     no package module, kernel, gate, probe, ledger, needle, mutation anchor, minted input or
     pending-list id. None of the 250 gate and probe scripts holds a changed file in its run
     closure, so no gate's import record moves and the round's bill is unchanged; 0 of the 29 files
     that decide the freeze criteria and 0 of the 290 files Table 2 depends on move, so the freeze
-    criteria, `meep_identity.json`, L1′, AP9 and the corpus Tier C run stand, and no Tier A replay
+    criteria, `meep_identity.json`, the CuPy check, the hand-reference check and the corpus Tier C
+    run stand, and no Tier A replay
     is owed. Measured on these bytes before this text (Apple M1 Max, every marker, dispatch off):
     the package suite under the CPU-only shim 226 F / 14,921 P / 873 S, the harness suite 0 /
     2,196 / 20, the 95 device-visible files on the Apple GPU 13 / 4,164 / 331; against entry 134's
@@ -1375,8 +1400,8 @@ bytes (entry 121's): entry 120 changes only the coverage board's three generated
     harness ids, 4,508 / 4,508 device ids), and the entry's 44 new tests pass;
     `tools/ci/check_failures.py` 63 failed of 17,953 run, 63 / 63 declared (64 entries), 0
     undeclared. Needle anchors 0 differences; 204 mutation anchors, 0 stale. The rebind tools in
-    report mode on scratch copies of the committed ledgers: on post-R17 runs of the seven welds'
-    gates the Metal tool rebinds 3 / 3 welds and retires 34 pins (the 31 rows and the 3
+    report mode on scratch copies of the committed ledgers: on the seven welds' gates' runs made
+    under per-kernel certification the Metal tool rebinds 3 / 3 welds and retires 34 pins (the 31 rows and the 3
     deleted-file pins) and the Triton tool 4 / 4, retiring `driver.py` on each; a second `--write`
     retires nothing and leaves the Metal ledger byte-identical; against the 2026-10-12_10 round's
     records both skip those welds by name. The coverage board is re-cut, the entry having moved
@@ -1385,11 +1410,11 @@ bytes (entry 121's): entry 120 changes only the coverage board's three generated
     1,138 files; `check` passes. `legs.py check` on the GPU host with the fresh stamp and the
     corpus root `CHECK OK`, `check --route` `CHECK OK`; the Metal preflight rc 0, 0 FAIL lines, 29
     / 29.
-- **The R22 freeze (entries 141 to 153; owner ruling R22, 2026-10-13).** The export dry run of
+- **The hygiene freeze (entries 141 to 153; decided 2026-10-13).** The export dry run of
   1.0 found host names, account names and local paths in certified bytes (the NVIDIA ledgers'
   host fields and dispatch environment, two pinned source comments, three files of the board's
-  subject), and the 1.0 line had not taken the 0.9.2 release's development commits. The owner
-  ruled that the source of each is fixed, that certification is re-run for 1.0, and that the
+  subject), and the 1.0 line had not taken the 0.9.2 release's development commits. It was
+  decided that the source of each is fixed, that certification is re-run for 1.0, and that the
   1.0.1 items land with it. Entries 141 to 152 carry that work: the hygiene guard and
   neutral record labels (141), the 0.9.2 commits (142), the export tooling (143), three
   round-tool fixes (144), the route-stamp registry (145), the timing harness (146), the
@@ -1406,12 +1431,12 @@ bytes (entry 121's): entry 120 changes only the coverage board's three generated
     `dispatch_fused_route_2026-10-14_10_cc86`, `dispatch_fused_route_cuda_2026-10-14_10_cc86`
     and `dispatch_metal_route_2026-10-14_10_applegpu_g13s`, the licence as
     `dispatch_end_to_end_2026-10-14_10`. `route_stamps.SPENT` already holds every route campaign
-    directory of an earlier round found on the evidence hosts; no name containing `2026-10-14`
+    directory of any earlier round found on the evidence hosts; no name containing `2026-10-14`
     names a route or licence directory on either host. The registry is in the run closure of 0
     of the 250 gate and probe scripts, and with this entry's files counted as changing
     `chunks.py ready` reads 4 of 4 NVIDIA and 3 of 3 Metal chunks ready, so the freeze moves no
     chunk's closure; `chunks.py check` CHECK OK on both indices. The pending list's 3 "Removed
-    when" clauses that named an earlier round's campaigns name these, with one comment block; 0
+    when" clauses that named the `2026-10-13_10` campaigns (`2026-10-13_20` on Metal) name these, with one comment block; 0
     ids added, 0 removed.
   - **`meep_identity.json`, re-minted by `record_meep_identity.py`**, because a minted input
     moved: of the 20 files the tool hashes, 3 differed from both sets' record
@@ -1423,7 +1448,7 @@ bytes (entry 121's): entry 120 changes only the coverage board's three generated
     reader words equal to MEEP's in each; the keep files byte-identical after the flush mint (32
     / 32). Of the ledger's 1,899 leaves 88 move and none is a digest, a word count or a verdict:
     times (36), the 16 capsules' byte counts and sha256 (31), the two sets' digests of the three
-    moved inputs (10), the fixture bytes (4,636,170 of the 5,000,000 R6 allows) and the Tier A
+    moved inputs (10), the fixture bytes (4,636,170 of the 5,000,000 bytes the fixture budget allows) and the Tier A
     load reports' compared-scalar counts of the five structured-permittivity cases per set (10;
     35 to 37 more each: the capsule carries the lift's read report since entry 149). Every row of
     both sets replayed with MEEP not importable holds: 16 / 16 rows on the Apple M1 Max (flush
@@ -1441,9 +1466,9 @@ bytes (entry 121's): entry 120 changes only the coverage board's three generated
     written after the round on these bytes (the pending block "CERT-4 records"), as at the
     earlier freezes.
   - **The freeze criteria.** Against entry 131 (`dbca770023f978c9ca28b4cb8ebaa776eb2ee034`), on
-    which L1′ and AP9 last re-ran green, 4 of the 29 files that decide them moved
+    which the CuPy check and the hand-reference check last re-ran green, 4 of the 29 files that decide them moved
     (`sources.py`, `from_meep.py`, `capsule.py`, `readback.py`), so both re-ran on these bytes.
-    - **L1′ green** on one RTX A6000 under keep and flush: 123 case-rows per policy over the
+    - **The CuPy check is green** on one RTX A6000 under keep and flush: 123 case-rows per policy over the
       cylindrical, family (67 substrates, 59 capsules lifted on these bytes), oracle, hand and
       tiny legs, 0 /
       26,302,894,838 words differing per policy after every sub-step, the planted flip caught
@@ -1452,18 +1477,18 @@ bytes (entry 121's): entry 120 changes only the coverage board's three generated
       complex 17 / 17 and folded off-diagonal 16 / 16 per policy; `test_cupy_array_path.py` 20
       / 20 on the device. Every per-leg, per-family and per-sub-step count equals entry 131's
       run.
-    - **AP9 green** on the Apple M1 Max: `validate_pml` 308 / 308 (44 skipped),
+    - **The hand-reference check is green** on the Apple M1 Max: `validate_pml` 308 / 308 (44 skipped),
       `validate_no_pml` 112 / 112 (regrouped control differs 56 / 56, derivation 28 / 28),
       `validate_fold` 8 / 8, `validate_folded_complex` 17 / 17 (0 NaN words),
       `validate_folded_offdiag` 16 / 16 with refusals 13 / 13; `record_numpy_reference_weld.py`
-      has nothing to write. Its CuPy half ran with L1′.
+      has nothing to write. Its CuPy half ran with the CuPy check.
     - **The hygiene guard reads CLEAN** (`tools/ci/check_hygiene.py --legs tracked,subject`: 0
-      hits) on these bytes, and on this entry's patch. The ledgers leg (the previous round's
-      machine labels) stays declared until the round's bind writes neutral labels.
+      hits) on these bytes, and on this entry's patch. The ledgers leg (the machine labels the
+      committed ledgers carry from their last bind) stays declared until the round's bind writes neutral labels.
     - **The Metal route gate's controls dry run** (`RUNBOOK.md` section 3) against the shipped
       leg of `dispatch_metal_route_2026-10-13_20_applegpu_g13s`: CONTROLS DRY RUN OK, 42 / 42
       cases read, 0 moved, no must-diverge control arming, so nothing to smoke.
-    - **AP8's exit is not settled at the freeze.** Of the 291 package modules and
+    - **Table 2's corpus criterion is not settled at the freeze.** Of the 291 package modules and
       identity-harness files Table 2 depends on, 10 moved since the tree the corpus Tier C last
       ran on (entry 133), the lift (`from_meep.py`, entry 149) and the deposit (`sources.py`,
       entry 151) among them. The corpus Tier C therefore re-runs in full on all four
@@ -1485,7 +1510,7 @@ bytes (entry 121's): entry 120 changes only the coverage board's three generated
     coverage board is re-cut by entry 154 on these bytes: 0 transitions, 216 / 216 per-file
     outcome records equal to entry 152's, outcome subject `7abf9fe4b3b34512` (1,143 files),
     board subject 1,154 files; `check` passes.
-- **The R27 freeze (entries 155 to 169; owner ruling R27, 2026-10-14).** The owner ruled
+- **The reference-environment freeze (entries 155 to 169; decided 2026-10-14).** It was decided
   that the reference environments are one clean set of builds per platform, made end to end
   by the repository's own script from the locks: MEEP 1.33.0 from the sha256-pinned tarball,
   single precision, MPI, contraction off, with libGDSII, and every package, library and tool
@@ -1505,7 +1530,7 @@ bytes (entry 121's): entry 120 changes only the coverage board's three generated
   certifies on any pushed tip that holds the chunk tooling, and one whose closure moves is
   re-run alone.
   - **The stamp: `2026-10-15_10`**, set by entry 165 as `route_stamps.ROUND`; the three route
-    campaigns the R22 round ran under `2026-10-14_10` are in `route_stamps.SPENT`. The chunk
+    campaigns run under `2026-10-14_10` are in `route_stamps.SPENT`. The chunk
     indices name it on both machines (NVIDIA `2026-10-15_10_cc86_c0` to `_c3`, Metal
     `2026-10-15_10_applegpu_g13s_m0` to `_m3`, `_m3` the re-run of the one unit the corpus gap
     touched).
@@ -1522,7 +1547,7 @@ bytes (entry 121's): entry 120 changes only the coverage board's three generated
     verdict: times (36), the 16 capsules' byte counts and sha256 (30), the moved input's digest
     in both sets (4), the reference blocks (9: each set's build record and its two MEEP images,
     and the flush set's recorded contraction, now `off`) and the fixture bytes (4,636,168 of
-    the 5,000,000 R6 allows). Every row of both sets replayed with MEEP not importable holds:
+    the 5,000,000 bytes the fixture budget allows). Every row of both sets replayed with MEEP not importable holds:
     16 / 16 rows on the Apple M1 Max (flush rows under FZ) and 16 / 16 on x86-64 Linux (flush
     rows under the MXCSR lever), 2,916 / 2,916 stored and 2,916 / 2,916 reader digests per set
     on each host, the planted flip caught and placed in 8 / 8 rows per set on each host. The
@@ -1534,7 +1559,7 @@ bytes (entry 121's): entry 120 changes only the coverage board's three generated
     not bumped; the kernel ledgers' leaves are written after the round on these bytes (the
     pending block "CERT-4 records"), as at the earlier freezes.
   - **The freeze criteria**, every leg in the reference environments.
-    - **L1′ green** on one RTX A6000: under keep and flush, 123 case-rows per policy over the
+    - **The CuPy check is green** on one RTX A6000: under keep and flush, 123 case-rows per policy over the
       cylindrical, family (67 substrates), oracle, hand and tiny legs, 0 / 26,302,894,838 words
       differing per policy after every sub-step, the planted flip caught 123 / 123, the
       mixed-policy control differing 2,446,768 / 6,272,469 words; the hand references on CuPy
@@ -1542,9 +1567,9 @@ bytes (entry 121's): entry 120 changes only the coverage board's three generated
       folded off-diagonal 16 / 16 per policy; `test_cupy_array_path.py` 20 / 20 on the device;
       the toolchain check OK (compute capability 8.6, CuPy 13.5.1, Triton 3.1.0, MEEP 1.33.0
       single precision with MPI). Every per-leg, per-family and per-sub-step count equals the
-      R22 freeze's run. 1 of the 29 files that decide L1′ and AP9 moved since that run
+      hygiene freeze's run. 1 of the 29 files that decide the two checks moved since that run
       (`meep_gpu/from_meep.py`, entry 155), and the environment is new, so both re-ran here.
-    - **AP9 green** on the Apple M1 Max: `validate_pml` 308 / 308 (44 skipped),
+    - **The hand-reference check is green** on the Apple M1 Max: `validate_pml` 308 / 308 (44 skipped),
       `validate_no_pml` 112 / 112 (regrouped control differs 56 / 56, derivation 28 / 28),
       `validate_fold` 8 / 8, `validate_folded_complex` 17 / 17 (0 NaN words),
       `validate_folded_offdiag` 16 / 16 with refusals 13 / 13; `record_numpy_reference_weld.py`
@@ -1554,8 +1579,8 @@ bytes (entry 121's): entry 120 changes only the coverage board's three generated
       337 files), and with this entry's files counted as changing `chunks.py ready` reads 4 / 4
       NVIDIA and 4 / 4 Metal chunks ready; `chunks.py check` CHECK OK on both indices.
     - **The hygiene guard reads CLEAN** (`tools/ci/check_hygiene.py --legs tracked,subject`: 0
-      hits) on these bytes and on this entry's patch. The ledgers leg (the previous round's
-      machine labels) stays declared until the round's bind writes neutral labels.
+      hits) on these bytes and on this entry's patch. The ledgers leg (the machine labels the
+      committed ledgers carry from their last bind) stays declared until the round's bind writes neutral labels.
     - **The Metal route gate's controls dry run** (`RUNBOOK.md` section 3) against the shipped
       leg of `dispatch_metal_route_2026-10-14_10_applegpu_g13s`: CONTROLS DRY RUN OK, 42 / 42
       cases read, 0 moved, no must-diverge control arming, so nothing to smoke; the route gate's
@@ -1570,15 +1595,156 @@ bytes (entry 121's): entry 120 changes only the coverage board's three generated
     device-visible files on the Apple GPU run in the Mac reference environment on the bytes of
     this entry's code and fixtures, every marker, dispatch off, and entry 170 re-cuts the board
     from them; its CHANGELOG section states the counts and the transitions.
+- **The MEEP 1.35.0 freeze (entries 180 to 216; decided 2026-10-15 to 2026-10-18).** It was
+  decided that 1.0.1 certifies against MEEP 1.35.0: both reference environments are rebuilt by
+  the repository's own script on the MEEP 1.35.0 tarball (single precision, MPI, contraction
+  off, the corpus from the same tarball), and 1.0.1's changes move certified bytes in any case,
+  so the round re-runs in full (CERT-1 to CERT-7) on a new stamp. Entries 180 to 212 carry the
+  1.0.1 changes, entry 213 sets the stamp, entry 214 makes the H->D lift legs refuse by name a row the
+  identity corpus retires and names three corpus exclusions, and entry 215 (`215-FREEZE101`) is this freeze, cut
+  on the tree after entry 214 (`7d998850d981aee17299dc1dad7e6e4e3d562f61`); entry 216
+  re-cuts the coverage board, whose subject it moves.
+  - **The stamp: `2026-10-18_101`**, set by entry 213 as `route_stamps.ROUND`; the three route
+    campaigns run under `2026-10-15_10` are in `route_stamps.SPENT`. The chunk indices name it
+    on both machines (NVIDIA `2026-10-18_101_cc86_c<k>`, Metal
+    `2026-10-18_101_applegpu_g13s_m<k>`).
+  - **`meep_identity.json`, re-minted by `record_meep_identity.py` against MEEP 1.35.0**,
+    because both MEEPs are new and 17 of the 20 files the tool hashes moved since the 1.0 mint.
+    Keep on the Apple M1 Max against the Mac reference environment's MEEP (182 s), flush on
+    x86-64 Linux against the Linux reference environment's MEEP (MEEP's flush on import; 216 s,
+    into the keep-minted fixtures), 8 / 8 cases per set, one invocation per set, each MEEP first
+    judged an identity reference by `tools/check_install.py` against its own build record:
+    39,991,116 stored and 65,610,420 reader words equal to MEEP's in each; the keep files
+    byte-identical after the flush mint (32 / 32). Of the ledger's 1,841 leaves 131 move and
+    none is a digest, a word count or a verdict (times 36, capsule byte counts and sha256 32,
+    build-record sha256 2, moved-input digests 40, MEEP version 2, image names 8, load-report
+    scalar counts 10, fixture bytes 1: 4,636,409 of the 5,000,000 bytes the fixture budget
+    allows). Every row of both sets replayed with MEEP not importable holds: 16 / 16 rows on the
+    Apple M1 Max (flush rows under FZ) and 16 / 16 on x86-64 Linux (flush rows under the MXCSR
+    lever), 2,916 / 2,916 stored and 2,916 / 2,916 reader digests per set on each host, the
+    planted flip caught and placed in 8 / 8 rows per set on each host. The Tier A test file
+    reads 62 / 62 on the Apple M1 Max and, NumPy only with no MEEP, 62 / 62 entering in keep and
+    62 / 62 entering in flush on x86-64 Linux.
+  - **The lift's needs table, read off the MEEP 1.35.0 corpus** (`lift_host.py`): `coupler.py`
+    and `ring_gds.py` read their GDSII layouts with gdstk at 1.35.0 and neither calls MEEP's
+    GDSII functions nor imports gdspy (measured on both reference environments' corpora, whose
+    five scripts are byte-equal), so both rows need gdstk and no row needs gdspy or libGDSII. In
+    the 1.35.0 reference environments, which carry gdstk and neither of the others, the 1.33.0
+    table counted the two rows out of the H->D lift legs as unlifted on the host; they now
+    lift. `test_lift_host.py`'s corpus check passes in both reference environments.
+  - **The array-path oracle.** `record_array_path_oracle.py --report` on these bytes: fixture
+    set `real-v6`, fingerprint `1ab516279d74002a`, 20 / 20 case digests, on the Apple M1 Max
+    (NumPy 2.4.3) and on x86-64 Linux (NumPy 2.2.6). It did not move, so `FIXTURE_SET` is not
+    bumped; the kernel ledgers' leaves are written after the round on these bytes (CERT-4
+    records).
+  - **The freeze criteria**, every leg in the MEEP 1.35.0 reference environments.
+    - **The CuPy check is green** on one RTX A6000: under keep and flush, 123 case-rows per policy
+      over the cylindrical, family (67 substrates), oracle, hand and tiny legs, 0 / 26,302,894,838
+      words differing per policy after every sub-step, the planted flip caught 123 / 123, the
+      mixed-policy control differing 2,446,768 / 6,272,469 words; the hand references on CuPy 0 /
+      197,902,068 words per policy (2,564 calls); the native CuPy folded complex 17 / 17 and folded
+      off-diagonal 16 / 16 per policy; `test_cupy_array_path.py` 20 / 20 on the device; the
+      toolchain check OK (compute capability 8.6, CuPy 13.5.1, Triton 3.1.0, MEEP 1.35.0 single
+      precision with MPI). Every per-leg, per-family and per-sub-step count equals the run at the
+      `2026-10-15_10` freeze (2,814 / 2,814 summary leaves). It ran on the code of the tree after
+      entry 213, which neither entry 214 nor this entry changes (0 / 29 of the files that decide
+      the two checks move); its eight Tier A substrate rows read the capsules of the 1.0 mint, whose arrays are
+      byte-equal to the re-minted capsules' (only their provenance and the lift's record of the
+      chi1inv read move).
+    - **The hand-reference check is green** on the Apple M1 Max: `validate_pml` 308 / 308 (44
+      skipped), `validate_no_pml` 112 / 112 (regrouped control differs 56 / 56, derivation
+      28 / 28), `validate_fold` 8 / 8, `validate_folded_complex` 17 / 17 (0 NaN words),
+      `validate_folded_offdiag` 16 / 16 with refusals 13 / 13; `record_numpy_reference_weld.py`
+      has nothing to write.
+    - **No unit goes stale beyond the ones entry 214 re-runs.** Against the tree after entry 214,
+      the per-unit closure digests on these bytes move in 13 / 123 NVIDIA units (445 files) and
+      10 / 62 Metal units (339 files), all of them among the 18 NVIDIA and 10 Metal units whose
+      closure entry 214 moved, through one file (`lift_host.py`, which entry 214 also changed);
+      no ledger pins it. With this entry's files counted as changing, `chunks.py ready` reads the
+      chunks ready that entry 214's files alone leave (NVIDIA c4 to c7, 4 / 12; Metal 0 / 3);
+      `chunks.py check` CHECK OK on both indices.
+    - **The hygiene guard reads CLEAN** (`tools/ci/check_hygiene.py --legs
+      tracked,subject,ledgers`: 0 hits) on these bytes and on this entry's patch.
+    - **The Metal route gate's controls dry run** (`RUNBOOK.md` section 3), on the code of the tree
+      after entry 213, whose route-gate run closure (264 files) holds none of the files changed since:
+      without a reference,
+      CONTROLS DRY RUN OK, 42 / 42 cases read, 0 problems. The held-residency null (it drops one
+      `sync_in` write) arms on all 42 cases, so all 42 are smoke cases; the full gate's shipped leg
+      on the 42, under a scratch name, released: 42 / 42 cases PASS-FUSED, equal to the shipped leg
+      of `dispatch_metal_route_2026-10-15_10_applegpu_g13s` on 42 / 42 common cases; of the 326
+      control rows in common with that leg exactly 42 move, all of them this null (NOT-APPLICABLE to
+      DIVERGED-AS-REQUIRED), and 42 new rows record the default preference. Against that leg's
+      `controls.jsonl` as the dry run's reference, the 42 problems are this null's 42 cases
+      (NOT-APPLICABLE in the reference, ARMS now) and nothing else.
+    - Needle anchors 0 differences; 231 mutation anchors, 0 stale.
+    - **The corpus (Table 2) runs beside the round** in the reference environments; this entry
+      changes none of the bytes a corpus row loads (Tier C reads no Tier A fixture). The Tier B
+      record that L3 judges against is re-minted from that run, with the round's inputs bundle
+      re-packed, after the freeze: neither is in a gate's closure or the board's subject.
+  - **The suites and the coverage board.** The package suite (CPU-only shim) and the
+    device-visible files on the Apple GPU run in the Mac reference environment on the bytes of
+    this entry's code and fixtures, every marker, dispatch off, and entry 216 re-cuts the board
+    from them; its CHANGELOG section states the counts and the transitions.
+- **The re-certification freeze (entries 217 to 228; decided 2026-10-21).** It was decided that
+  every place a record, a log or certified code named a machine, an account or a local path is
+  rewritten before certification is handed to other hosts, certified code included, and that
+  1.0.1, not yet public, is certified again with those changes. Entries 217 to 219 add a card
+  that drives the display to a round and the certification guide; entries 220 to 226 carry the
+  rewrites and the changes decided with them (the records a run writes, the kernel text, the
+  certified NVIDIA stack per compute capability, the size-aware dispatch preference, plan-keyed
+  route and L3 records, the metal-block fix); entry 227 (`227-FREEZE102`) is this freeze, cut on
+  the tree after entry 226 (`bc256497`), and entry 228 re-cuts the coverage board, whose subject
+  it moves. The stamp stays `2026-10-18_101`.
+  - **The inputs archive names no machine, account or local path**: `round_inputs_1_0.tgz`,
+    46,467,250 bytes, 2,038 files, sha256 `239b4a39dae5dcd0...`. Its censuses, seam records,
+    coverage boards, Metal baseline and corpus legs are relabelled, not measured again (6,551
+    strings in 56 of 57 files, `<home>`, `<tmp>` and `<staging-root>` for the paths; each file
+    shown to differ from the record it replaces only in those strings); the Tier B record is
+    re-minted; a sweep of every string finds only kept facts.
+  - **The corpus manifest** (`d9e7758f...`) and **the Tier B record** (`8969000014e47d01...`),
+    re-minted from a corpus Tier C run on these bytes on all four references in the MEEP 1.35.0
+    reference environments: 221 / 221 rows outside the exclusions hold in each Apple set and 220
+    / 220 in each Linux set, 0 differ, 0 error, 0 refused, replays 115 / 115 per set. The two
+    metal-block rows hold on all four and are no longer excluded; the exclusions are
+    `ex.stochastic_emitter` (all four), `ex.coupler` (Linux) and
+    `test_eigenmode_source_with_cylinders` (all four). L3 never plans an excluded row
+    (`l3_corpus.py`).
+  - **`meep_identity.json` and the 16 Tier A capsules, re-minted**: keep on the Apple M1 Max,
+    flush on x86-64 Linux, 8 / 8 cases each, 39,991,116 stored and 65,610,420 reader words equal
+    to MEEP's in each; 99 of 1,841 leaves move, none a digest of MEEP's words, a word count or a
+    verdict; the capsules' arrays byte-equal to the previous mint's; replays with MEEP not
+    importable 16 / 16 on each host (2,916 / 2,916 stored and reader digests per set); the Tier
+    A test file 62 / 62 on the Mac and 62 / 62 entering keep and flush on x86-64 Linux.
+  - **The array-path oracle**: `real-v6`, fingerprint `1ab516279d74002a`, 20 / 20 case digests
+    on both hosts; `FIXTURE_SET` not bumped.
+  - **The freeze criteria**, on these bytes' code. The CuPy check on one RTX A6000: 123
+    case-rows per policy, 0 / 26,302,894,838 words differing, the planted flip caught 123 / 123,
+    the hand references 0 / 197,902,068 words per policy, the native folded complex 17 / 17 and
+    folded off-diagonal 16 / 16, `test_cupy_array_path.py` 20 / 20, the toolchain check OK; its
+    2,814 summary leaves equal the first 1.0.1 freeze's run. The hand references on the Apple M1
+    Max: `validate_pml` 308 / 308 (44 skipped), `validate_no_pml` 112 / 112, `validate_fold` 8 /
+    8, `validate_folded_complex` 17 / 17, `validate_folded_offdiag` 16 / 16 with refusals 13 /
+    13. The Metal route gate's controls dry run: CONTROLS DRY RUN OK, 42 / 42 cases, 0 problems;
+    the full gate's shipped leg on its 42 smoke cases released, 42 / 42 PASS-FUSED; against the
+    shipped leg of `dispatch_metal_route_2026-10-14_10_applegpu_g13s` exactly 42 of 326 common
+    control rows move, all the held-residency null. Needle anchors 0 differences; 231 mutation
+    anchors, 0 stale. Every unit of both machines re-runs after entries 220 to 226 in any case;
+    this entry adds no file to any gate or probe run closure (0 / 250).
+  - **The suites and the coverage board.** The package suite (CPU-only shim) and the
+    device-visible files on the Apple GPU run in the Mac reference environment on this entry's
+    code and fixtures, every marker, dispatch off, and entry 228 re-cuts the board from them;
+    its CHANGELOG section states the counts and the transitions.
 
-## 12. The certification round (R27)
+## 12. The certification round
 
 The round that certifies 1.0, CERT-1 to CERT-5, under the round stamp `2026-10-15_10`
-(`165-ROUND`), on 2026-10-14 and 2026-10-15, in the R27 reference environments. Every
+(`165-ROUND`), on 2026-10-14 and 2026-10-15, in the script-built reference environments. Every
 number below is N / D with D named, and each bullet names the round record it comes from by
-the record's name (`SCHN2`, `MR27`, ...): private evidence of the development archive, never
-shipped, which names hosts by role. The timing (CERT-8) is not part of it (owner ruling
-R25); CERT-6 (a new device) and CERT-7 (the suites on the release tip) are their own steps.
+the record's name (`SCHN2`, `MR27`, ...; a `27` in a name is the archive's label for this
+round): private evidence of the development archive, never shipped, which names hosts by
+role. The timing (CERT-8) is not part of it (the release does not wait for it, and it
+changes no code); CERT-6 (a new device) and CERT-7 (the suites on the release tip) are their
+own steps.
 
 - **The trees.** The frozen commit is `2644fc1dd29499cfd5aae8e8372b6c356cadfe5f` (tree
   `0223919995b72a10a7e6fbb5fa34fbfdd33a1f2a`, entries 01 to 170; `FROZEN_R27`,
@@ -1586,27 +1752,27 @@ R25); CERT-6 (a new device) and CERT-7 (the suites on the release tip) are their
   launched on the tips of entries 165, 167 and 168 as they landed, and the closure of every
   unit is the frozen commit's: 123 of 123 NVIDIA unit digests over 442 files and 62 of 62
   Metal unit digests over 337 files equal the final closures, read on the frozen commit
-  (`SCHN2`, `SCHM2`, `BIND27M` section 2). The corpus rows were
+  (`SCHN2`, `SCHM2`, `BIND27M`). The corpus rows were
   measured on entries 01 to 157, whose corpus-runner closure (268 paths) equals the frozen
   commit's (`CORP2`, `TIERB27`). The records stage ran on the development
   tip after `173-BINDFIX` (`0e83e1cea08b`, tree `213713d630cc`): the 13 files entries 171 to
   173 change are each in the run closure of 0 of the 250 gate and probe scripts, and 0 of
-  the 4 ledgers name any of them (`REC27`, BASE). Per-kernel certification (owner
-  ruling R17) is what lets these trees make one release: an artifact stands wherever every
+  the 4 ledgers name any of them (`REC27`). Per-kernel certification
+  (entries 127 to 132) is what lets these trees make one release: an artifact stands wherever every
   file its import record names is byte-equal.
-- **One script-built reference environment per platform (owner ruling R27).**
+- **One script-built reference environment per platform (decided 2026-10-14).**
   `build_meep_133_linux.sh` and `build_meep_133_macos.sh` build each from the locks: MEEP
   1.33.0 from the SHA-256-pinned tarball, single precision, MPI, libGDSII, no floating-point
   contraction, with every package the tests, the round and the timing use (`158-ENV`,
   `162-LINUX`). The MEEP corpus is that tarball's `python/` tree kept in the environment,
   with the one file outside it two corpus rows read (`tests/cyl-ellipsoid-eps-ref.h5`), named
-  file by file in the build record and verified by every round reader: 330 of 330 files and
-  1 of 1 sibling on both hosts (`167-CORPFIX`; `CORP2` finding 1,
+  file by file in the build record and verified by every reader in the round: 330 of 330 files and
+  1 of 1 sibling on both hosts (`167-CORPFIX`; `CORP2`,
   `CORPUS_FIX_MAC`, `CORPUS_FIX_LINUX`). The Linux environment's 16 field
   kernels are instruction-identical to the previous Linux reference's, 72,820 of 72,820
-  instructions (the Linux environment review, `SCHN2` ENVIRONMENT). Every step of the
+  instructions (the Linux environment review, `SCHN2`). Every step of the
   round ran in these two environments with the user site off.
-- **The sigma reader retired on measured evidence (`155-SIGMA`, owner ruling R27).** No
+- **The sigma reader retired on measured evidence (`155-SIGMA`, decided 2026-10-14).** No
   reference build carries the MEEP patch, and the package's branch for it left. Measured
   before and after the removal, a digest of every array word and scalar of each lifted
   driver: under the lock environment's MEEP 192 of 192 lifted rows equal and 27 of 27 rows
@@ -1615,18 +1781,18 @@ R25); CERT-6 (a new device) and CERT-7 (the suites on the release tip) are their
   each tree; the two GDSII rows 2 of 2 under a GDSII build; the 4 cells of the 2026-08-04
   retirement assessment refused before and after (`CHANGELOG.md`, "The susceptibility-sigma
   reader patch leaves the package").
-- **The Metal lift children run under the round's interpreter (`156-LIFT`, owner ruling
-  R26).** Before the fix 145 of 145 lift children ran under the interpreter a 2026-09-04
-  census recorded, outside the round's environment. In this round's re-cut of the H->D probe,
+- **The Metal lift children run under the round's interpreter (`156-LIFT`, decided
+  2026-10-14).** Before the fix 145 of 145 lift children ran under the interpreter a 2026-09-04
+  census recorded, outside the round's environment. In the 1.0 certification round's re-cut of the H->D probe,
   60 of its 194 rows differ from the previous cut's only in the interpreter, the reference
-  Python now, and the other 134 only in the subject field (`REC27` section 3); every
+  Python now, and the other 134 only in the subject field (`REC27`); every
   Metal L3 row imported
   MEEP from the reference environment's own site-packages, 192 of 192 (`L3M27`).
 - **Modular chunks: any subset of the units certifies on its own (`150-CHUNK`, `163-CC90`;
-  owner rulings R17, R22, R26).** The index schema is `cert_chunks/2`; a unit binds from its
+  chunking is a scheduling choice, not part of what an artifact certifies).** The index schema is `cert_chunks/2`; a unit binds from its
   own newest run whose import record holds on the release tree and whose device is the
   index's, so a unit runs again alone and the plan re-partitions without voiding another
-  unit's run. The chunks of this round (the `CHUNKS27` indices;
+  unit's run. The chunks of the 1.0 certification round (the `CHUNKS27` indices;
   walls from each lane's start to its end, item walls on the Mac):
 
   | Device | Chunks allocated / launched | Units (selected per launched chunk) | Walls |
@@ -1639,7 +1805,7 @@ R25); CERT-6 (a new device) and CERT-7 (the suites on the release tip) are their
   stopped (`c2` on the shared card, `c10` split over two cards); `m3`, the one Metal unit
   whose lift basis reads the sibling, whose `m1` run failed for it. No closure moved, so no
   unit went stale (`SCHN2`, `SCHM2`).
-- **Card sharing that yields at once to other users (owner ruling R28, `168-SHARE`).** One
+- **Card sharing that yields at once to other users (decided 2026-10-15, `168-SHARE`).** One
   card holding another account's idle process (4,970 MiB, 0 % utilisation on 538 of 538
   readings) was shared by opt-in for chunks `c2`, `c6` and `c7`. The yield supervisor read
   every held card every 30 s, 1,743 readings, and yielded 0 times; the shared card's free
@@ -1647,18 +1813,19 @@ R25); CERT-6 (a new device) and CERT-7 (the suites on the release tip) are their
   process, so on the shared card 11 legs of `c2` ran no gate (an environment refusal; its
   fleet units ran again on unshared cards), and the memory bound must be the units' measured
   peak (a Triton H->D lift used 12,348 MiB, against a bound set from a smoke's 270 MiB)
-  (`SCHN2` CARDS and findings 3 and 4).
+  (`SCHN2`).
 - **CERT-1: the freeze and the corpus.** The freeze criteria on the frozen tree, in the new
-  environments: Tier A re-minted, 8 of 8 cases per set, 16 of 16 replays per host; L1′ 0 of
-  26,302,894,838 words differing per policy, 123 of 123 plants caught; AP9 green; the hygiene
+  environments: Tier A re-minted, 8 of 8 cases per set, 16 of 16 replays per host; the CuPy check
+  0 of 26,302,894,838 words differing per policy, 123 of 123 plants caught; the hand-reference
+  check green; the hygiene
   guard CLEAN on the tracked files and the board's subject (`FREEZE27`). Table 2,
   from the Tier B record `126e3255…` re-minted from the corpus run (94 of 94 replays per set;
   `TIERB27`): 193, 193, 192 and 192 of 194 rows hold on `mac_keep`, `mac_flush`,
-  `linux_keep` and `linux_flush`, 0 differing, 0 errors, 0 not run (`REC27` section
-  7b). `ex.stochastic_emitter` is excluded by name on all four; `ex.coupler` on the two Linux
-  sets, the R24 expected difference: 12 of 20 of its GPU-host runs held, 4 of 4 on the Mac,
+  `linux_keep` and `linux_flush`, 0 differing, 0 errors, 0 not run (`REC27`).
+  `ex.stochastic_emitter` is excluded by name on all four; `ex.coupler` on the two Linux
+  sets, the documented expected difference for `EigenModeSource` rows: 12 of 20 of its GPU-host runs held, 4 of 4 on the Mac,
   and only the lift's re-solved eigenmode amplitudes and, under flush, MEEP's own solve
-  varied between processes (`CORP2` finding 2). The two GDSII rows run now:
+  varied between processes (`CORP2`). The two GDSII rows run now:
   `ex.ring_gds` holds on 4 of 4 sets, `ex.coupler` on both Apple sets. The round's inputs
   bundle: 1,782 files, `round_inputs_1_0.tgz` `1cc0c933…` (`TIERB27`).
 - **CERT-2: the device smokes**, the first launches in the new environments: NVIDIA 7 of 7
@@ -1672,7 +1839,7 @@ R25); CERT-6 (a new device) and CERT-7 (the suites on the release tip) are their
 - **The binds.** NVIDIA (`BIND27N`): 55 CUDA families with 116 canonical legs
   recorded, 54 CUDA welds and 52 Triton welds rebound, the bit identity, 5 of 5 composition
   records, the labels made neutral; `flush` admitted for 75 of 75 Triton arms and 34 of 34
-  CUDA arms; `legs.py check --route` CHECK OK. Finding N1 (the chunked bind's `--only` named
+  CUDA arms; `legs.py check --route` CHECK OK. A defect the bind found (the chunked bind's `--only` named
   two keys the Triton ledger never held) is fixed by `173-BINDFIX`, which names each such unit
   on a `# REFUSED` line (`BINDFIX`). Metal (`BIND27M`,
   `METALDIG`): 62 of 62 weld keys rebound; `172-METALDIG` re-cuts the welds' device
@@ -1682,24 +1849,24 @@ R25); CERT-6 (a new device) and CERT-7 (the suites on the release tip) are their
   dry run `DRY27N`): every required leg released, Triton 3 of 3 (37 of 37 cases
   dispatched on each) and CUDA 4 of 4 with the optional `cuda_alone` (37 of 39 dispatched on
   each of the four, the other 2 with no fused arm); both blocking preflights 6 of 6;
-  0 failures and 0 control failures on 11 of 11 legs; 0 of 323 cases moved against the R22
-  route. The go/no-go: VERDICT GO, ship 9 of 9 PASS-DISPATCHED, null 9 of 9 PASS-FELL-BACK.
+  0 failures and 0 control failures on 11 of 11 legs; 0 of 323 cases moved against the
+  `2026-10-14_10` route. The go/no-go: VERDICT GO, ship 9 of 9 PASS-DISPATCHED, null 9 of 9 PASS-FELL-BACK.
   Metal (`MR27`, dry run `DRY27M`): 4 of 4 legs released under held
   residency (held on 84 of 84 leg-cases), 42 of 44 cases dispatched on each dispatch leg,
-  the comparison with the R22 route equal on every leg. `residency-sync_in-dropped` reads
+  the comparison with the `2026-10-14_10` route equal on every leg. `residency-sync_in-dropped` reads
   NOT-APPLICABLE on 42 of 42 dispatched cases per dispatch leg (`acquire_write` entered 0
   times): under held residency the seam has no must-diverge null of its own in 1.0, and its
-  evidence is `residency-verify-after-every-sync_out` and byte identity (owner ruling R29; a
-  door-write null is a 1.0.1 item). The three `driver_dispatch` records are re-cut from these
+  evidence is `residency-verify-after-every-sync_out` and byte identity (decided 2026-10-15; a
+  null that drops one door write is a 1.0.1 item). The three `driver_dispatch` records are re-cut from these
   campaigns.
 - **CERT-4: the records** (`REC27`). The H->D probe and the three censuses are cut
   again on the records' tree (194 of 194 rows on each basis), and the boards from them:
   seam-instances reachable in dispatch 334 (Triton), 352 (CUDA) and 327 (Metal) of 597, and
   seam-instances a fused product exists for 537, 538 and 507 of 597, each equal instance by
   instance to the boards cut for the 2026-10-13 records entry. The Metal ledger's
-  `metal_kernels` block is re-cut by `launch.write_fingerprints()` (finding K1: its
+  `metal_kernels` block is re-cut by `launch.write_fingerprints()` (its
   kernel-source digests now name
-  the shaders this round certified, 36 of 36), and the array-path oracle is minted into the
+  the shaders the 1.0 certification round certified, 36 of 36), and the array-path oracle is minted into the
   three kernel ledgers (fixture set `real-v6`, fingerprint `1ab516279d74002a`). The pending
   list's removal block is measured in the evidence and the CI views: 21 entries removed,
   56 -> 35, 0 undeclared failures.
@@ -1711,33 +1878,35 @@ R25); CERT-6 (a new device) and CERT-7 (the suites on the release tip) are their
   rows run, VERDICT HOLDS: 160 of 160 hold against `linux_flush` outside the 32 pre-registered
   rows where the two reference MEEPs differ, which hold against `mac_flush`, as all 192 do;
   190 of 192 dispatched on the Metal table under held residency.
-- **What this round does not license.**
+- **What the 1.0 certification round does not license.**
   - Certification of any GPU but one RTX A6000 (compute capability 8.6) and one M1 Max
     (`applegpu_g13s`), in these two reference environments; another GPU certifies by its own
     round on these bytes (`docs/development/certify-a-new-gpu.md`).
   - Identity with a double-precision or contracting MEEP, or on a row Table 2 excludes;
-    `EigenModeSource` runs can differ from MEEP until 1.0.1 reads MEEP's stored amplitudes
-    (owner ruling R24).
+    `EigenModeSource` runs can differ from MEEP, and from another run of themselves (the lift
+    solves the mode again through MPB, whose solve is not reproducible between processes;
+    `docs/guides/compatibility.md`).
   - L3 on any host but the two that cut its record (each row checks the MEEP images'
     SHA-256).
   - Any timing or speed. The 1.0 timing (CERT-8) is not part of certification: it ran on
-    2026-10-16 on the release's bytes, and its figures, each with its gate status under owner
-    ruling R33, are in `docs/guides/will-it-help.md` (owner rulings R20, R25, R32, R33); 1.0.0
+    2026-10-16 on the release's bytes, and its figures, each with its status under the timing
+    gate of record (`docs/development/timing.md`, "The gate of record"), are in
+    `docs/guides/will-it-help.md`; 1.0.0
     ships the 2026-09-21 dispatch-preference records, and the records the 1.0 timing cut land
     in a later 1.0.x release.
-  - A must-diverge null for the held Metal seam (R29), and a board figure for the CUDA table
+  - A must-diverge null for the held Metal seam (a 1.0.1 item), and a board figure for the CUDA table
     composing without Triton.
-  - The records this round's tools did not re-cut, carried unchanged (`BIND27N`):
+  - The records the round's tools did not re-cut, carried unchanged (`BIND27N`):
     the Triton family re-certification record that 22 of 75 Triton arms cite (its tool
     requires one host line, and the nine families ran on three cards), the CUDA ADE re-cut
     (refused; admission does not read it), two Triton entries with a declared mixed policy,
     one CUDA weld never seeded and two Triton device-gate keys never seeded. The 35 pending
     ids that stay are declared with the step that removes each.
-- **Owed after this round.** CERT-7, the suites per environment on the release tip. CERT-8,
+- **Owed after the 1.0 certification round.** CERT-7, the suites per environment on the release tip. CERT-8,
   the timing, ran on 2026-10-16 (`docs/guides/will-it-help.md`).
 - **The bit-parity coverage board** is re-cut on entries 01 to 175 (`176-BOARD`; its subjects
   had moved after `170-BOARD14`). (a) to (c) do not move. (d) device identity and (e)
-  CERTIFIED land with this round's records: CUDA 53 / 53 under keep and under flush, Triton
+  CERTIFIED land with the 1.0 certification round's records: CUDA 53 / 53 under keep and under flush, Triton
   53 / 56 under keep and 0 / 56 under flush (no module's pinning entry carries a live run
   under flush, by the board's rule), Metal 74 / 74 under flush; each was 0 before them.
   It is re-cut again on entries 01 to 178 (`179-BOARD`; entry 177's timing cutters moved

@@ -1,6 +1,6 @@
 """Does the D-side fill carry's CLOSED FORM reproduce the driver's three in-seam passes?
 
-WHY THIS PROBE EXISTS, AND WHY IT IS NOT THE DEVICE GATE. ``fused_electric_pair`` gained
+Why this probe exists, and why it is not the device gate. ``fused_electric_pair`` gained
 the ownership inversion on 2026-08-31, and the arithmetic it now carries is a COMPOSITION
 of three driver passes that run in a fixed order:
 
@@ -12,7 +12,7 @@ the same arithmetic is a question about the closed form, and it is answerable on
 against the ENGINE'S OWN passes -- which is what this probe answers, before a device is
 booked. ``gate_cuda_fused_electric_pair.py`` is what answers it about the compiled kernel.
 
-WHAT IT MEASURES, AND THE CONTROL THAT MAKES IT NON-VACUOUS. Two orderings are run
+What it measures, and the control that makes it non-vacuous. Two orderings are run
 against the array path on every configuration:
 
   * SHIPPED   -- the near product is formed from the PRE-clear displacement and the wall
@@ -25,7 +25,7 @@ A configuration where the naive ordering does NOT diverge measures nothing about
 ordering, and this probe SAYS SO per row rather than reporting a pass. The rows where it
 does diverge are the ones the gate's spec table has to carry.
 
-THE GEOMETRY THAT MAKES THE TWO FAMILIES DIFFERENT, in one paragraph. A B component's
+The geometry that makes the two families different, in one paragraph. A B component's
 Yee shift is 0 on its OWN axis and 1 on the other two, so its ONE near axis is its own
 and is also the only axis ``zero_metal_B`` clears it on -- and a folded axis is never
 walled (``stepping._zero_metal``:2237-2239), so a B near ghost can never land in a cleared
@@ -86,7 +86,7 @@ _CLEAR_AXES: Dict[str, Tuple[int, ...]] = {
 
 SEED = 20260831
 
-#: Every configuration, and what each is here to exercise. THE LAST TWO ARE THE POINT:
+#: Every configuration, and what each is here to exercise. The last two are the point:
 #: an ODD plane on one near axis with a wall on the other is the only shape in which the
 #: driver's order between :3309 and :3310 is observable at all.
 CASES: Tuple[Dict[str, Any], ...] = (
@@ -114,12 +114,12 @@ CASES: Tuple[Dict[str, Any], ...] = (
     {"label": "fold_y_odd_wall_z", "cell": (9., 10., 11.),
      "boundaries": ("periodic", "periodic", "metallic"), "symmetry": (("Y", -1),),
      "pml": 2,
-     "why": "THE CROSS TERM: Dx folded on y at an ODD phase and walled on z, so its "
+     "why": "The cross term: Dx folded on y at an ODD phase and walled on z, so its "
             "near ghost lands in the cleared plane"},
     {"label": "fold_y_odd_wall_x", "cell": (9., 10., 11.),
      "boundaries": ("metallic", "periodic", "periodic"), "symmetry": (("Y", -1),),
      "pml": 2,
-     "why": "THE CROSS TERM on the other component: Dz folded on y at an ODD phase "
+     "why": "The cross term on the other component: Dz folded on y at an ODD phase "
             "and walled on x"},
     {"label": "fold_xy_mixed_phase", "cell": (9., 10., 11.),
      "boundaries": ("periodic",) * 3, "symmetry": (("X", 1), ("Y", -1)), "pml": 2,
@@ -147,7 +147,7 @@ def build(case: Dict[str, Any]):
                 xp=np, courant=0.5)
     fields = Fields(grid=grid)
     fields.enable_pml_storage()
-    # A FOLDED AXIS TAKES ITS ABSORBER ON THE HIGH FACE ONLY: the mirror plane is the
+    # A folded axis takes its absorber on the high face only: the mirror plane is the
     # low face and ``stepping._require_consistent_pml`` admits nothing there.
     folded = {"XYZ".index(axis) for axis, _phase in case["symmetry"]}
     if isinstance(case["pml"], int):
@@ -177,7 +177,7 @@ def closed_form(pre: Dict[str, np.ndarray], shape: Tuple[int, int, int],
                 naive: bool) -> Tuple[Dict[str, np.ndarray], Dict[str, int]]:
     """The kernel's own composition, evaluated as arrays.
 
-    ONE ARRAY OP PER EMITTED LINE, in the order :func:`family.fill_carry_blocks` emits
+    One array op per emitted line, in the order :func:`family.fill_carry_blocks` emits
     them, and the ownership guard is the mask the emitted blocks nest inside. The write
     COUNT per cell is returned beside the volume: the carry's whole legality argument is
     that every destination word is written by exactly one thread, and a probe that only
@@ -326,7 +326,7 @@ def main() -> int:
         print(f"  case {number}/{len(CASES)} {case['label']}: shipped={shipped} words "
               f"naive={naive} words races={races} -> {verdict}, {control} "
               f"({row['elapsed_s']} s)", flush=True)
-        # WRITTEN PER CASE, not at the end: an interrupted run keeps every row that
+        # Written per case, not at the end: an interrupted run keeps every row that
         # landed, which is what makes a long sweep resumable (the progress-reporting rule).
         artifact.write_text(json.dumps({
             "probe": "cuda_electric_fill_carry_order",
@@ -353,7 +353,7 @@ def main() -> int:
     print(f"  {len(rows)} configurations, {failed} differing from the array path, "
           f"{discriminating} where the naive ordering diverges", flush=True)
     if not discriminating:
-        print("  THE WHOLE SWEEP IS VACUOUS: no configuration separates the two "
+        print("  The whole sweep is vacuous: no configuration separates the two "
               "orderings, so this probe measured nothing about the order", flush=True)
     print(f"  wrote {artifact}", flush=True)
     return 0 if (failed == 0 and discriminating > 0) else 1

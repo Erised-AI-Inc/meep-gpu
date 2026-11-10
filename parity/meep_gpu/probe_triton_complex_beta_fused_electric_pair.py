@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""THE COMPLEX BETA FUSED ELECTRIC PAIR GATE — complex beta ``step_D`` welded
+"""The complex beta fused electric pair gate — complex beta ``step_D`` welded
 into complex ``update_E``.
 
 Does ONE launch of ``complex_beta_fused_curl_constitutive_D`` leave the engine
@@ -8,16 +8,16 @@ separately certified Triton products it replaces (the K2 beta bloch curl and the
 complex constitutive on a beta run) — over every allocated volume, compared as
 uint32 words?
 
-THE BETA-LESS ELECTRIC GATE IS THE TEMPLATE AND THE DIFFERENCES ARE THE POINT.
+The beta-less electric gate is the template and the differences are the point.
 ``probe_triton_complex_fused_electric_pair.py`` asks the same question with no
 beta term. Three things are genuinely different here:
 
-1. **EVERY CASE CARRIES A NONZERO ``grid.beta``**, on a 2-D cell (the only place
+1. **Every case carries a nonzero ``grid.beta``**, on a 2-D cell (the only place
    MEEP allows beta), and the separate oracle is the BETA pair of certified
    singles (``special_kz.plan_beta_bloch_pml_curl`` /
    ``plan_beta_run_complex_constitutive``), not the plain complex ones — whose
    predicates refuse every one of these runs by name.
-2. **THE BETA PASS HAS ITS OWN MUTATIONS AND ITS OWN REDUCTION ARM.**
+2. **The beta pass has its own mutations and its own reduction arm.**
    ``fold_pass_mutations``' shared beta rows (the pass dropped, its partners
    swapped, its sign flipped, scaled by dtdx, run inside the curl, its increment
    unmasked, the ladder without dsigu or with its axes swapped, the auxiliary not
@@ -25,7 +25,7 @@ beta term. Three things are genuinely different here:
    coefficient words each must be caught; ``HAS_BETA = 0`` must DIVERGE from the
    beta array path (the reduction arm is discriminating, not decorative).
 
-Correctness only. NOTHING HERE IS TIMED and no throughput claim is admissible.
+Correctness only. Nothing here is timed and no throughput claim is admissible.
 Dispatch stays disabled: ``launch.plan_step`` does not know this module exists.
 """
 
@@ -85,8 +85,8 @@ CASES: Tuple[Tuple[str, int, Tuple[float, float, float], Any,
 )
 
 #: The CARRY family: the same grids, run with a real electric deposit in the seam
-#: and the SHIPPED repair bracket installed. THE PRODUCT IS WORTH NOTHING WITHOUT
-#: THIS FAMILY: its one corpus row declares an electric source in this seam.
+#: and the SHIPPED repair bracket installed. The product is worth nothing without
+#: this family: its one corpus row declares an electric source in this seam.
 CARRY_CASES: Tuple[int, ...] = (0, 3, 4)
 
 #: Steps per armed mutation.
@@ -431,8 +431,8 @@ def _welded_seam(fields, pml, driver_module, *, wall: str = "before",
 
     ``driver_module.step_D`` IS the array path and
     carries the beta pass, so the weld's design knobs are the same questions on a beta
-    run, and the twin's per-cell forms (KT5's re-cut of this emulation) are imported
-    rather than restated.
+    run, and the twin's per-cell forms (the emulation as re-cut when the Triton table's
+    complex kernels took the per-chunk forms) are imported rather than restated.
     """
     twin_probe._welded_seam(fields, pml, driver_module, wall=wall, history=history,
                             scale=scale)
@@ -479,7 +479,7 @@ def design_sweep_leg() -> Dict[str, Any]:
                                                (0.0, 0.0, 0.0), -0.685)
         right_fields, right_pml = _build_complex((3.0, 3.0, 0.0), boundaries,
                                                  (0.0, 0.0, 0.0), -0.685)
-        # LATCHED PER STEP: a flip that differs at one step and is rewritten by the
+        # Latched per step: a flip that differs at one step and is rewritten by the
         # next step's plain form (H or E = src outside the layer) is still visible.
         differing_set: set = set()
         for _ in range(2):
@@ -497,7 +497,7 @@ def design_sweep_leg() -> Dict[str, Any]:
                 f"kernel's choice there is constrained by nothing this gate "
                 f"measures")
 
-    # THE BETA TERM ITSELF MUST BE LIVE in this seam: the same grid stepped with
+    # The beta term itself must be live in this seam: the same grid stepped with
     # beta and with beta = 0 must differ, or every beta mutation below would be
     # scored on a term the cases never exercise.
     live_fields, live_pml = _build_complex((3.0, 3.0, 0.0), "periodic",
@@ -739,7 +739,7 @@ def build_driver(cp, dimensions, cell, boundaries, k_point, pml_spec, beta,
         driver.set_field(name, cp.asarray(np.ascontiguousarray(host)))
     # f_w_E IS SEEDED so the history-ordering mutation is armed from step 1.
     #
-    # H IS SEEDED TOO, AND IT IS NOT DECORATION. H is this seam's beta PARTNER,
+    # H is seeded too, and it is not decoration. H is this seam's beta PARTNER,
     # and the ownership mask fires only on METALLIC axes — where the wall clears
     # pin the wall row's B (and with it an unseeded H and f_w_H) to exact zero
     # from the first step onward. Measured on the first device run of this gate
@@ -1039,10 +1039,10 @@ def run_leg(cp, name: str, dimensions, cell, boundaries, k_point, pml_spec,
         row["arrays_total"] = len(final)
         row["arrays_compared"] = sorted(final)
         row["arrays_ever_moved"] = len(ever_moved)
-        # THE AUXILIARY CONTRACT'S EXEMPTION. fu_* and f_w_* move only on their
-        # layer's cells (KERNELS.md section 1, C2), so on a 2-D grid the invariant
-        # axis's auxiliaries are inert on EVERY route. An auxiliary the array path
-        # also leaves inert is exempt; every other unmoved array still refuses.
+        # The auxiliary contract's exemption. fu_* and f_w_* move only on their layer's
+        # cells (docs/design/floating-point.md#auxiliary-contract), so on a 2-D grid the
+        # invariant axis's auxiliaries are inert on EVERY route. An auxiliary the array
+        # path also leaves inert is exempt; every other unmoved array still refuses.
         reference_moved = moved(reference_opening, snapshot(cp, reference))
         unmoved = set(final) - set(ever_moved) - set(material)
         row["inert_on_every_route"] = sorted(
@@ -1115,7 +1115,7 @@ def compile_mutant(source: str, kernel_name: str) -> Any:
 
     The connection and the shared forms are IMPORTED into the mutant's namespace
     rather than copied (``fold_pass_mutations.MUTANT_IMPORTS``), as the shipped module
-    imports them. THE MODULE NAME MUST NOT START WITH ``triton``: Triton's dependency
+    imports them. The module name must not start with ``triton``: Triton's dependency
     finder leaves every callee whose ``__module__`` starts with its package name out of
     the kernel's cache key.
     """
@@ -1164,7 +1164,7 @@ _SHARED_ROWS, MUTATION_NEEDS = fold_passes.table(SHARED_MUTATIONS)
 def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, int]]], ...]:
     """(id, why it is armed, expectation, rewrite).
 
-    THE TWIN'S TABLE FIRST: this kernel's body IS ``complex_fused_curl_constitutive_D``'s (the
+    The twin's table first: this kernel's body IS ``complex_fused_curl_constitutive_D``'s (the
     transcription leg), so its rewrites -- the wall clear, the Bloch connection, the
     inversions and the chunk-form battery, the f_w order and the weld's registers --
     are the twin probe's own, imported from ``probe_triton_complex_fused_electric_pair``, and score the same
@@ -1305,16 +1305,17 @@ def run_refusals(cp, product) -> List[Dict[str, Any]]:
 
 def environment(cp: Any = None) -> Dict[str, Any]:
     """What ran this, in the shape the WELD PIPELINE reads."""
+    import neutral_ids  # noqa: PLC0415
     import socket  # noqa: PLC0415
 
     payload: Dict[str, Any] = {
-        "hostname": socket.gethostname(),
+        "hostname": neutral_ids.machine_id(),
         "python": sys.version.split()[0],
         "numpy": np.__version__,
-        "argv": list(sys.argv),
+        "argv": neutral_ids.argv(sys.argv),
         "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
-        "cupy_cache_dir": os.environ.get("CUPY_CACHE_DIR"),
-        "triton_cache_dir": os.environ.get("TRITON_CACHE_DIR"),
+        "cupy_cache_dir": neutral_ids.path(os.environ.get("CUPY_CACHE_DIR")),
+        "triton_cache_dir": neutral_ids.path(os.environ.get("TRITON_CACHE_DIR")),
     }
     try:
         import triton  # noqa: PLC0415
@@ -1451,7 +1452,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     payload["device_legs"].append(row)
     save(payload, args.out)
 
-    # THE REDUCTION ARM IS DISCRIMINATING: HAS_BETA = 0 on a beta run must
+    # The reduction arm is discriminating: HAS_BETA = 0 on a beta run must
     # diverge from the beta array path.
     row = run_leg(cp, "armed:has_beta_zero", base[1], base[2], base[3], base[4],
                   base[5], base[6], 3, product, has_beta=0)
@@ -1464,7 +1465,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     payload["device_legs"].append(row)
     save(payload, args.out)
 
-    # THE COEFFICIENT WORDS ARE LOAD-BEARING: the MAGNETIC side's +1j pair on
+    # The coefficient words are load-bearing: the MAGNETIC side's +1j pair on
     # this electric weld must diverge (the array path binds -1j here, S:771-772).
     magnetic_words = special_kz.beta_curl_coefficients(
         base[6], 0.35 / 12.0, magnetic=True, complex_storage=True)

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Which repository files does a gate import? Its import closure, read off the source.
 
-WHY THIS EXISTS. A gate artifact's import record (``gate_provenance.IMPORTED_KEY``, the Metal
+Why this exists. A gate artifact's import record (``gate_provenance.IMPORTED_KEY``, the Metal
 runner's ``source_sha256``) is every repository module the gate's process held when it wrote
 the artifact, and the rebind tools, the family and composition re-cuts, the bit-identity
 re-cut, the Metal runner's per-stamp manifest and the three board builders all check that
@@ -45,7 +45,7 @@ in the function that loads it, which is how the harness spells every such load.
 
 Stdlib only: it runs on every host the CI view runs on.
 
-CURATED PINS THE OLD EAGER ROOT LEFT BEHIND (:func:`unimported_pins`). A weld's curated pin
+Curated pins the old eager root left behind (:func:`unimported_pins`). A weld's curated pin
 set was cut from its gate's import record while the package root loaded its 23 submodules
 eagerly, so some welds pin core modules (the driver, the planner, the lift) that their gate
 never needed. Their next record cannot hold those files, and the rebind tools keep curated
@@ -94,6 +94,26 @@ DISPATCH_LAYER: Tuple[str, ...] = (
 LIFT: Tuple[str, ...] = ("meep_gpu/from_meep.py",)
 #: What a kernel gate's record must not hold.
 NOT_KERNEL: Tuple[str, ...] = DISPATCH_LAYER + LIFT
+
+#: What a process on an NVIDIA table cannot import, though the run closure says otherwise:
+#: the closure does not read a branch, so it follows each of :data:`METAL_TABLE_EDGES` and
+#: bills every NVIDIA gate for every Metal kernel, which no NVIDIA import record holds. The
+#: ladder is entered only under ``if table == METAL_TABLE``, and the Metal shader corpus only
+#: for a file under ``metal_kernels/``.
+METAL_TABLE_ONLY: Tuple[str, ...] = ("meep_gpu/metal_dispatch.py",
+                                     "meep_gpu/metal_kernels/corpus.py")
+#: Every function-level import of :data:`METAL_TABLE_ONLY` outside the Metal modules themselves:
+#: (importing module, function, imported module). ``test_gate_import_closure`` holds it to the
+#: source both ways.
+METAL_TABLE_EDGES: Tuple[Tuple[str, str, str], ...] = (
+    ("meep_gpu/device_identity.py", "metal_shader_digests", "meep_gpu/metal_kernels/corpus.py"),
+    ("meep_gpu/fastpath.py", "_arm_certification_map", "meep_gpu/metal_dispatch.py"),
+    ("meep_gpu/fastpath.py", "_decide", "meep_gpu/metal_dispatch.py"),
+    ("meep_gpu/fastpath.py", "_environment_block", "meep_gpu/metal_dispatch.py"),
+)
+
+#: The one function that imports every Metal family; see ``metal_closed_table``.
+ARM_TABLE_COMPLETION: Tuple[str, str] = ("meep_gpu/metal_kernels/arms.py", "ensure_registered")
 
 #: Every function-level import of a :data:`NOT_KERNEL` module inside the package's
 #: production modules (its tests excluded): (importing module, function, imported module).
@@ -268,6 +288,8 @@ def _deferred_lambdas(statement: ast.AST) -> Tuple[Tuple[str, ...], List[ast.exp
 
 class Resolver:
     """Repository files for import statements, under one checkout root."""
+
+    METAL_TABLE_ONLY = METAL_TABLE_ONLY
 
     def __init__(self, root: Path = REPO_ROOT, overrides: Optional[Mapping[str, str]] = None):
         self.root = root.resolve()
@@ -568,12 +590,24 @@ class Resolver:
                         methods.append(node.attr)
         return tuple(files), tuple(nodes), tuple(sorted(set(methods)))
 
-    def run_closure(self, script: str) -> FrozenSet[str]:
-        return self.run_closure_with_witness(script)[0]
+    def _closes_the_arm_table(self, script: str) -> bool:
+        """Does the gate's ``main`` call ``close_table``, the rule ``metal_closed_table`` states."""
+        for node in self.tree(script).body:
+            if isinstance(node, ast.FunctionDef) and node.name == "main":
+                return any(isinstance(call, ast.Call) and (
+                    getattr(call.func, "attr", None) == "close_table"
+                    or getattr(call.func, "id", None) == "close_table")
+                    for call in ast.walk(node))
+        return False
 
-    def run_closure_with_witness(self, script: str
+    def run_closure(self, script: str, stop: Iterable[str] = ()) -> FrozenSet[str]:
+        return self.run_closure_with_witness(script, stop)[0]
+
+    def run_closure_with_witness(self, script: str, stop: Iterable[str] = ()
                                  ) -> Tuple[FrozenSet[str], Dict[str, Tuple[str, str]]]:
         """An upper bound on the record: the import closure plus what the reached calls import.
+
+        A file in ``stop`` is not entered, and neither is anything only it reaches.
 
         The entry is the gate's module-level code with its ``__main__`` block, and its
         ``main``. A reached
@@ -590,6 +624,10 @@ class Resolver:
         table, in its own file, through a module alias or by a from-import
         (:func:`_deferred_lambdas`). A package file's tables keep the rule above.
         """
+        stopped = frozenset(stop)
+        # A gate that closes the arm table runs ``ensure_registered`` as a no-op, so the
+        # import inside it, of every family at once, is not reached.
+        closed = self._closes_the_arm_table(script)
         files: Set[str] = set()
         why: Dict[str, Tuple[str, str]] = {}
         reached: Set[Tuple[str, str]] = set()
@@ -601,7 +639,7 @@ class Resolver:
         pending_methods: Set[str] = set()
 
         def add_file(rel: str, witness: Tuple[str, str]) -> None:
-            if rel in files or not self.exists(rel):
+            if rel in files or rel in stopped or not self.exists(rel):
                 return
             files.add(rel)
             why[rel] = witness
@@ -621,11 +659,13 @@ class Resolver:
             if not todo_nodes:
                 break
             rel, node_name = todo_nodes.pop()
-            if (rel, node_name) in reached or not self.exists(rel):
+            if (rel, node_name) in reached or rel in stopped or not self.exists(rel):
                 continue
             reached.add((rel, node_name))
             if rel not in files:
                 todo_files.append((rel, (rel, node_name)))
+            if closed and (rel, node_name) == ARM_TABLE_COMPLETION:
+                continue
             new_files, new_nodes, methods = self._node_effects(rel, node_name)
             todo_files.extend((f, (rel, node_name)) for f in new_files)
             todo_nodes.extend(new_nodes)

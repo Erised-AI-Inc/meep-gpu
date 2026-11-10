@@ -1,7 +1,7 @@
 """The COMPLEX curl with NO absorber: predicate and plan, and no kernel of its own.
 
-WHAT THIS CLOSES, and it is four slots and not six. The 2026-08-16 group-(J)
-round measured a complex, all-periodic, Bloch-phased, off-diagonal, no-absorber
+What this closes, and it is four slots and not six. The 2026-08-16 group-(J)
+device run measured a complex, all-periodic, Bloch-phased, off-diagonal, no-absorber
 configuration sub-step by sub-step on an RTX A6000
 (``parity/meep_gpu/results/group_j_2026-08-16/``):
 
@@ -26,7 +26,7 @@ this module ships no constitutive predicate at all, and
 ``test_triton_complex_no_pml_curl.py`` pins the refusal so a later widening
 cannot take it by accident.
 
-THIS MODULE SHIPS NO KERNEL. It re-uses ``complex_fields.bloch_pml_curl_step``
+This module ships no kernel. It re-uses ``complex_fields.bloch_pml_curl_step``
 byte for byte, under a NO-ABSORBER BINDING, and the whole of its content is the
 predicate and that binding.
 
@@ -62,13 +62,13 @@ the second the only one, with three parts:
    and a plan-time snapshot of the value is exactly the group-(G) mechanism the
    gate's STALESOURCE control re-arms.
 
-THE AUXILIARY IS A PLACEHOLDER. The kernel takes three ``fu`` pointers, and reads
+The auxiliary is a placeholder. The kernel takes three ``fu`` pointers, and reads
 and writes them only on the recurrence's cells (the auxiliary contract), of which
 this record has none. The plan therefore binds three zeroed volumes of its own,
 allocated once, and never touches them at launch; the engine has no ``fu`` on this
 run. The gate poisons them before every launch and requires the bytes unchanged.
 
-WHAT IT IS FOR. The same demand list as the split-field complex product, minus
+What it is for. The same demand list as the split-field complex product, minus
 the absorber: group (J)'s two ``test_material_grid.py`` rows are the measured
 demand, and any complex or Bloch-phased run whose boundaries are all periodic or
 metallic and which declares no layer lands here. It accelerates no corpus
@@ -77,7 +77,7 @@ EXAMPLE script — of the 57 carrying boundary facts, 54 declare ``PML`` and 1
 
 DISJOINTNESS is the risk here, not arithmetic. Two admitters leave a slot
 UNSELECTED and it falls back to the array path — a silent coverage LOSS, not an
-error. This family INVERTS EXACTLY ONE numbered question,
+error. This family inverts exactly one numbered question,
 ``_complex_grid_reasons`` clause 3, and shares the other twelve by CALLING them
 rather than copying them. Against every other curl family the separating clause
 is named in the test file and measured there, not asserted here.
@@ -360,7 +360,7 @@ def plan_complex_no_pml_curl_from_arrays(sub_step: str, arrays: Dict[str, Any],
 
 
 # ---------------------------------------------------------------------------
-# WIRING AND DEVICE CERTIFICATION — COMPLETE
+# Wiring and device certification — complete
 # ---------------------------------------------------------------------------
 #
 # ``launch.plan_step`` consults this predicate for ``step_B`` and ``step_D`` when

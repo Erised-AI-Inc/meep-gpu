@@ -1,6 +1,6 @@
 """The hand-CUDA arm table and the composer that reads it.
 
-WHAT THIS FILE SETTLES, AND WHY IT IS NOT A SMOKE TEST. Until this table existed
+What this file settles, and why it is not a smoke test. Until this table existed
 nothing selected a CUDA kernel: 22 predicate families admitted 759 of 759 census
 slots and every one of them was reachable only from a harness that asked a
 hand-picked subset in a hand-written order. So the questions here are not "does it
@@ -20,7 +20,7 @@ import" but the four that decide whether a selection can be trusted:
    effect, and a missing arm does not produce a refusal; it produces a different
    selection with no ambiguity detected.
 
-NOTHING HERE COMPILES OR LAUNCHES ANYTHING, and nothing here needs CuPy: the grid is
+Nothing here compiles or launches anything, and nothing here needs CuPy: the grid is
 real NumPy wearing CuPy's ``__name__``, this directory's standing stand-in, which is
 also how the coverage census itself is cut (it lifts with ``prefer_gpu=False``).
 """
@@ -120,7 +120,7 @@ def covered(*_args, **_kwargs) -> Coverage:
 
 
 # --------------------------------------------------------------------------
-# 1. THE TABLE
+# 1. The table
 # --------------------------------------------------------------------------
 
 def test_the_table_is_complete_before_it_is_read():
@@ -172,7 +172,7 @@ def test_residency_is_not_carried_across_from_the_sibling_track():
 
 
 def test_an_arm_is_launchable_exactly_where_its_row_names_a_resolver_and_a_launcher():
-    """A resolver is a MEASURED argument binding, not a guess.
+    """A resolver is a measured argument binding, not a guess.
 
     An arm launches only where its registry row names a ``resolve`` token that BOTH
     ``registry._RESOLVERS`` and ``registry._LAUNCHERS`` carry -- the two ends of one
@@ -418,7 +418,7 @@ def test_a_builder_that_raises_refuses_its_slot(xp, probe_arms):
 def test_a_configuration_nothing_covers_replaces_nothing(xp):
     """The array path is always correct, and reaching it is not an error.
 
-    A REAL NumPy grid -- not the stand-in -- is refused by every arm on the backend
+    A real NumPy grid -- not the stand-in -- is refused by every arm on the backend
     clause, which is the one refusal every family shares.
     """
     grid = Grid(resolution=1.0, cell_size=(8.0, 8.0, 8.0),
@@ -437,7 +437,7 @@ def test_a_configuration_nothing_covers_replaces_nothing(xp):
 
 
 def test_a_duplicate_registration_is_refused_rather_than_replaced(probe_arms):
-    """Keeping one of two would make WHICH KERNEL RUNS depend on import order."""
+    """Keeping one of two would make which kernel runs depend on import order."""
     probe_arms(family="probe_only", slot="update_P", label="twice",
                coverage=covered,
                plan=lambda context, slot: None, noun="twice", shape="whole_slot")
@@ -448,11 +448,11 @@ def test_a_duplicate_registration_is_refused_rather_than_replaced(probe_arms):
 
 
 # --------------------------------------------------------------------------
-# 4. THE READABILITY OF A REFUSAL
+# 4. The readability of a refusal
 # --------------------------------------------------------------------------
 
 def test_a_refusal_is_one_reason_per_arm_and_never_one_per_character(xp):
-    """THE TUPLE TRAP, pinned on the shipped table.
+    """The tuple trap, pinned on the shipped table.
 
     ``triton_kernels/launch.py`` normalises a verdict with
     ``tuple(str(reason) for reason in reasons)``. Every shipped CUDA predicate
@@ -549,7 +549,7 @@ def test_a_launchable_plan_runs_its_family_launcher_with_the_resolved_arguments(
                       {"tables": "T", "boundary_codes": (0, 0, 0), "dtdx": 0.5})]
     assert plan.launches == 1
     assert plan.launch_grid == (7,)
-    # RESOLVED ONCE PER PLAN: the second consult launches again and resolves nothing.
+    # Resolved once per plan: the second consult launches again and resolves nothing.
     assert plan.run() == {"launched": True, "blocks": 7}
     assert plan.launches == 2
     assert [c[0] for c in calls] == ["resolve", "launch", "launch"]

@@ -1,10 +1,10 @@
 """Install, measure and stamp the campaign's subnormal policy in a composition gate.
 
-WHY THIS EXISTS. The five Triton composition gates (``probe_triton_cylindrical_
+Why this exists. The five Triton composition gates (``probe_triton_cylindrical_
 composition``, ``probe_triton_symmetry_composition``, ``probe_triton_conductivity_
 composition``, ``probe_triton_engine_route`` and ``gate_triton_no_pml``) certify the
 routing of 11 dispatchable arms (``fastpath.ARM_CERTIFICATION``: cylindrical 2,
-folded 3, conductive PML 1, dispersive 4, no-PML 1). Until owner ruling R16 they
+folded 3, conductive PML 1, dispersive 4, no-PML 1). Before this module they
 installed no float32 subnormal policy and stated none, so the CuPy array path they
 compare against flushed (CuPy's default ``-ftz=true``) while Triton kept natively, and
 ``recut_composition_records.py --flush-run`` could never record ``flush`` for them: a
@@ -13,7 +13,7 @@ flush campaign of these gates released with no stamp (measured on the GPU host,
 caller-installed ``flush`` per arm only on that evidence, so their 11 arms were
 refused on every flush leg whatever the gates measured.
 
-WHAT EACH GATE NOW DOES, through :func:`install_campaign_policy`, before it builds a
+What each gate now does, through :func:`install_campaign_policy`, before it builds a
 driver or compiles a kernel:
 
 * reads the campaign's policy from ``MEEP_GPU_SUBNORMAL_POLICY`` (the variable the
@@ -39,14 +39,14 @@ gate that imported MEEP after a ``keep`` install would end flushing under a ``ke
 stamp; gates that lift MEEP simulations therefore import MEEP before installing
 (``import_meep=True``), and this check refuses if anything moved the host since.
 
-A REFUSAL IS A VERDICT, NOT A CRASH. :class:`CampaignPolicyRefused` carries the
+A refusal is a verdict, not a crash. :class:`CampaignPolicyRefused` carries the
 reason and the stamp as it stood, and :func:`refusal` writes the block the gate's own
 verdict spelling reads (``summary.status`` or ``validation.status`` = ``refused``), so
 ``recut_composition_records.released`` and ``gate_provenance.read_verdict`` both read
 the run as not released.
 
 Under ``flush`` on an x86 host the host half needs MEEP imported first (its
-``set_zero_subnormals`` is the only lever this package may use there). The round's
+``set_zero_subnormals`` is the only lever this package may use there). A certification round's
 flush fleet starts every gate through its MEEP-importing wrapper
 (``rounds/1.0/fleet_launch.py``); a direct flush run of a gate that does not lift MEEP
 simulations refuses by name, naming that remedy.

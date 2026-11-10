@@ -1,6 +1,6 @@
 """The walker itself, held to the rules it exists to enforce.
 
-WHY THIS FILE. :mod:`meep_gpu.weld_record_walk` is now the single denominator for
+Why this file. :mod:`meep_gpu.weld_record_walk` is now the single denominator for
 three weld records — 1,772 digests across the Triton, Metal and CUDA ledgers — and
 a defect in it would be invisible in exactly the way the four defects before it
 were: every contract test would still report a stable count and a green tier,
@@ -15,10 +15,10 @@ So the walker is tested here, not only through the records:
     a live one, and if ``source_digest_map`` matched first the record's own
     ``why_superseded`` would be overruled by which rule happens to be written
     higher up;
-  * NO RULE IS DEAD: every rule in :data:`RULE_REASONS` fires on at least one of
+  * no rule is dead: every rule in :data:`RULE_REASONS` fires on at least one of
     the three real records, so a rule cannot outlive the shape it was written for
     and sit around as a place for the next omission to hide;
-  * and the CLASSIFIER READS NO FILE AND NO DIGEST, which is what makes it
+  * and the classifier reads no file and no digest, which is what makes it
     impossible to aim at an outcome.
 
 Stdlib and pytest. No device, no tree writes outside tmp_path.
@@ -91,17 +91,17 @@ def test_the_walk_ignores_everything_that_is_not_a_64_hex_string():
 
 
 def test_a_digest_at_a_depth_no_record_reaches_is_still_found_and_still_fails():
-    """THE ARMED CONTROL, shared by all three contracts and executed once here too.
+    """The armed control, shared by all three contracts and executed once here too.
 
     Both halves matter. A walker that stopped early would report a stable count
     and zero unclassified digests, which is indistinguishable from a correct one.
     A walker that found the digest and quietly classified it as excluded would be
     the original defect wearing this test as cover.
     """
-    deep = {"e": {"a": [{"b": {"c": [{"d": {"a_key_nobody_wrote": A}}]}}]}}
+    deep = {"e": {"a": [{"b": {"c": [{"d": {"f": {"g": {"a_key_nobody_wrote": A}}}}]}}]}}
     found = walk.census(deep)
     assert len(found) == 1
-    assert walk.dotted(found[0].trail) == "e.a[0].b.c[0].d.a_key_nobody_wrote"
+    assert walk.dotted(found[0].trail) == "e.a[0].b.c[0].d.f.g.a_key_nobody_wrote"
     assert found[0].rule == walk.UNCLASSIFIED
     assert found[0].tier is None
 
@@ -115,12 +115,12 @@ def test_a_digest_at_a_depth_no_record_reaches_is_still_found_and_still_fails():
 
 
 # ---------------------------------------------------------------------------
-# THE RULES, AND THE ORDER THEY RUN IN
+# The rules, and the order they run in
 # ---------------------------------------------------------------------------
 
 
 def test_a_superseded_source_map_is_history_and_a_live_one_is_checked():
-    """THE ORDER IS THE RULE. Same inner shape, opposite fates.
+    """The order is the rule. Same inner shape, opposite fates.
 
     ``superseded_runs[0].source_sha256`` is a ``source_sha256`` map in every
     respect except the one that matters: the record says out loud it is not about
@@ -161,6 +161,8 @@ def test_a_superseded_source_map_is_history_and_a_live_one_is_checked():
     ({"g": {"probe": "~/elsewhere/p.py", "probe_sha256": A}},
      "out_of_tree_sibling_path"),
     ({"g": {"probe": "parity/meep_gpu/results/r/p.py", "probe_sha256": A}},
+     "out_of_tree_sibling_path"),
+    ({"g": {"probe": "<staging-root>/elsewhere/p.py", "probe_sha256": A}},
      "out_of_tree_sibling_path"),
     ({"g": {"gate_sha256": A}}, "pin_names_no_path"),
     ({"g": {"a.py": {"sha256": A}}}, walk.TIER_RAW + ":parent_key_named_pin"),
@@ -228,7 +230,7 @@ def test_a_path_naming_exclusion_carries_the_path_it_excuses():
 
 
 def test_the_premise_of_a_not_in_this_checkout_exclusion_is_decided_not_assumed():
-    """THE ARMED CONTROL FOR THE FIFTH SUB-FORM, driven in both directions.
+    """The armed control for the fifth sub-form, driven in both directions.
 
     An exclusion is a decision NOT to compare a digest, and these two rest on a
     claim about the tree that can stop being true. Watched failing here, because
@@ -252,6 +254,14 @@ def test_the_premise_of_a_not_in_this_checkout_exclusion_is_decided_not_assumed(
     ignored = walk.census({"g": {"probe": walk.GITIGNORED_PREFIX + "r/p.py",
                                  "probe_sha256": A}})
     assert walk.premise_violations(ignored, lambda p: True, lambda p: True) == []
+
+    # A path under a neutral label's root (what a label pass writes for a machine's
+    # directory) names no directory of this checkout, so it stays excluded even where
+    # the predicates would call it present.
+    for root in walk.NEUTRAL_ROOTS:
+        labelled = walk.census({"g": {"probe": root + "launchers/p.sh", "probe_sha256": A}})
+        assert [f.rule for f in labelled] == ["out_of_tree_sibling_path"], (root, labelled)
+        assert walk.premise_violations(labelled, lambda p: True, lambda p: True) == []
 
     # A repo-relative path OUTSIDE the results tree that comes back into the
     # checkout must stop being excludable.
@@ -284,7 +294,7 @@ def test_only_the_premise_bearing_rules_are_evaluated():
 
 
 def test_the_delegation_register_names_real_rules_and_only_excluded_ones():
-    """THE CITATION REGISTER, pinned in both directions.
+    """The citation register, pinned in both directions.
 
     :data:`walk.DELEGATED_COVERAGE` is the list of exclusions whose digests are
     claimed to be compared somewhere else, and it is a REGISTER rather than a
@@ -321,7 +331,7 @@ def test_the_delegation_register_names_real_rules_and_only_excluded_ones():
 
 
 def test_the_classifier_reads_no_file_and_no_digest(monkeypatch, tmp_path):
-    """WHAT MAKES THE CLASSIFICATION UNSTEERABLE.
+    """What makes the classification unsteerable.
 
     If classification consulted the tree, a shape's fate could depend on whether
     the comparison would pass — which is the mechanism behind every "green bought
@@ -390,12 +400,12 @@ def test_compare_reports_each_tier_and_never_skips_an_incomputable_one(tmp_path)
         ("g.source_sha256.meep_gpu/gone.py", "meep_gpu/gone.py",
          "MISSING FROM THE TREE")]
 
-    # A CODE PIN WHOSE FILE HAS NO CODE IDENTITY: reported, never skipped.
+    # A code pin whose file has no code identity: reported, never skipped.
     code = walk.census({"g": {"code_sha256": {"meep_gpu/m.py": A}}})
     reported = walk.compare(code, resolve, raw, never, never)
     assert len(reported) == 1 and "no code identity" in reported[0][2], reported
 
-    # A DEVICE PIN NAMING A KERNEL THE MODULE NO LONGER GENERATES: reported.
+    # A device pin naming a kernel the module no longer generates: reported.
     device = walk.census(
         {"g": {"device_sha256": {"meep_gpu/m.py": {"digests": {"k": A}}}}})
     reported = walk.compare(device, resolve, raw, never,
@@ -451,7 +461,7 @@ def test_the_unbound_placeholder_is_reported_as_itself(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# THE ROUTE RECORD
+# The route record
 # ---------------------------------------------------------------------------
 #
 # Synthetic records, with liveness passed in as the contracts pass

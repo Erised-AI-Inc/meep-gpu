@@ -16,14 +16,14 @@ its own provenance record inside its results directory. Callers are the gate
 (``parity/meep_gpu/gate_triton_nonlinear.py``), the composition probe
 (``probe_triton_nonlinear_composition.py``) and the laptop tests, nothing else.
 
-WHAT IT REPLACES. ``stepping.update_E`` (stepping.py:954) with an active PML, an
+What it replaces. ``stepping.update_E`` (stepping.py:954) with an active PML, an
 instantaneous chi2/chi3 installed (``fields.has_nonlinearity``, stepping.py:989;
 fields.py:966-967), diagonal epsilon and NO registered susceptibility. The
-nonlinearity enters HERE and only here (stepping.py:975-979): the curls,
-``update_H`` and ``update_P`` are untouched arithmetic, which is why the current
-package-wide every-sub-step refusal is broader than the recurrence requires —
-the composition probe's partial-nonlinearity case is the MEASUREMENT that
-licenses narrowing it, the way plan §13.1 narrowed the curl's dispersion clause.
+nonlinearity enters HERE and only here (stepping.py:975-979): the curls, ``update_H``
+and ``update_P`` are untouched arithmetic, which is why the current package-wide
+every-sub-step refusal is broader than the recurrence requires — the composition
+probe's partial-nonlinearity case is the MEASUREMENT that licenses narrowing it, as
+the curl's dispersion clause was narrowed (the curl reads no polarization).
 
 Per component ``c`` with own axis ``a`` the array path runs, with no poles
 registered (``displacement_minus_polarization_volumes`` then aliases each
@@ -44,20 +44,20 @@ component to its D array, fields.py:1107-1138)::
     everywhere else:
         E_c = src                                         # f_w_c keeps its word
 
-THE THINGS THAT DECIDE BIT-IDENTITY, each held by the gate rather than assumed:
+The things that decide bit-identity, each held by the gate rather than assumed:
 
-1. **THE FOUR-CORNER SUM ASSOCIATES LEFT TO RIGHT, AS MEEP's C DOES.**
+1. **The four-corner sum associates left to right, as MEEP's C does.**
    ``stepping._nonlinear_transverse_sums`` forms
    ``((g[i] + g[i+s]) + g[i-s1]) + g[i+(s-s1)]`` (step_generic.cpp:646-648), each
    addition rounded once. Pairing the corners, ``(g[i] + g[i-s1]) + (g[i+s] +
    g[i+(s-s1)])``, is the same sum in exact arithmetic and a different float32
    word; the gate's pair-association mutation is what proves the difference is
    byte-visible rather than argued.
-2. **THE TWO SHIFTS GO IN OPPOSITE DIRECTIONS** — half a cell DOWN the
+2. **The two shifts go in opposite directions** — half a cell DOWN the
    partner's axis, half a cell UP the component's own axis. Taking both the
    same way is the half-cell registration error that survives every scalar
    test; the gate carries a mutation for exactly it.
-2a. **Dsqr IS FORMED IN DOUBLE AND ROUNDED ONCE.** ``gs*gs`` and
+2a. **Dsqr is formed in double and rounded once.** ``gs*gs`` and
    ``g1s*g1s + g2s*g2s`` are float32 operations, but ``0.0625`` is a double
    literal in MEEP's C, so the scaled sum and the addition after it are double
    operations, rounded once to float32 by ``calc_nonlinear_u``'s ``realnum``
@@ -67,7 +67,7 @@ THE THINGS THAT DECIDE BIT-IDENTITY, each held by the gate rather than assumed:
    exact ``0.0625*t`` lies below float32's normal range, so the gate pins it on
    planted operands in that band rather than on field-scale states, where the
    two forms agree.
-3. **SCALAR COEFFICIENT POWERS ARE PYTHON-DOUBLE POWERS, ROUNDED ONCE.** With a
+3. **Scalar coefficient powers are Python-double powers, rounded once.** With a
    PYTHON-FLOAT ``us``, NumPy evaluates ``(chi1inv * chi1inv)`` in double and
    rounds ONCE when the product meets the float32 array; ``f32(us)*f32(us)`` in
    float32 is a different word for most values. The plan therefore ships THREE
@@ -77,12 +77,12 @@ THE THINGS THAT DECIDE BIT-IDENTITY, each held by the gate rather than assumed:
    in-kernel float32 powers, exactly as NumPy's elementwise arm does. Scalars
    ride the fp32 kernel ABI (the measured platform fact: a ``tl.float64``
    annotation on a scalar is DEAD, re-rounded to fp32).
-4. **THE PADE QUOTIENT'S GROUPINGS ARE THE TRANSCRIBED ONES**:
+4. **The Pade quotient's groupings are the transcribed ones**:
    ``(gs*chi2)*(us*us)``, ``(Dsqr*chi3)*((us*us)*us)``,
    ``((1 + c2) + 2*c3) / ((1 + 2*c2) + 3*c3)``, then ``(gs*us)*u`` — the
    explicit power groupings and the row-then-scale order of stepping.py:
    1054-1056 and :1107-1109. The division is spelled ``tl.math.div_rn``, NOT
-   the plain ``/`` — a MEASURED platform fact, not style: Triton 3.1.0's
+   the plain ``/`` — a measured platform fact, not style: Triton 3.1.0's
    ``semantic.truediv`` emits a bare LLVM ``fdiv``, which the NVPTX backend
    lowers to ``div.full.f32`` (~2 ulp), and a sweep measured every nonlinear
    sweep case divergent while the linear arm stayed byte-identical;
@@ -95,14 +95,14 @@ THE THINGS THAT DECIDE BIT-IDENTITY, each held by the gate rather than assumed:
    NEAR-POLE amplitude class (u far from 1) is the leg that makes any
    divergence in the quotient byte-visible in f32 — the complex gate's
    assertion-layer lesson applied to division.
-5. **A LINEAR COMPONENT IN A PARTLY NONLINEAR RUN COMPILES TO THE CERTIFIED
-   PLAIN BODY.** ``NL0``/``NL1``/``NL2`` are ``tl.constexpr``; the 0 arm is
+5. **A linear component in a partly nonlinear run compiles to the certified
+   plain body.** ``NL0``/``NL1``/``NL2`` are ``tl.constexpr``; the 0 arm is
    verbatim :func:`kernels.constitutive_step`'s SCALE=1 component body (MEEP's
    ``else if (u)`` branch, stepping.py:1100-1102), so the per-component split
    the array path performs is a compile-time specialization here — and the
    gate's identity leg pins the NL=(0,0,0) build byte-identical to the
    certified kernel, which is what makes the seam a measurement.
-6. **THE TAIL IS THE CERTIFIED CONSTITUTIVE KERNEL's, FORM FOR FORM.** The
+6. **The tail is the certified constitutive kernel's, form for form.** The
    chunk record (``cb``, ``chunk_map.chunk_bounds_record``) keys it: on a cell
    whose chunk carries the component's own (dsigw) layer, on the half-integer
    sub-lattice an E component occupies along its own axis, MEEP's accumulation
@@ -111,11 +111,11 @@ THE THINGS THAT DECIDE BIT-IDENTITY, each held by the gate rather than assumed:
    contract). Both are :func:`.forms.constitutive_form`, the one spelling
    :func:`.kernels.constitutive_step` uses, and the select is an output select:
    the plain form is never ``kps = 1, kms = 0`` (a stored ``-0`` would come
-   back ``+0``). ``prev`` IS READ BEFORE ``f_w`` IS WRITTEN. ``ENABLE_FP_FUSION
+   back ``+0``). ``prev`` is read before ``f_w`` is written. ``ENABLE_FP_FUSION
    = False`` is the certified configuration for the multiply-subtract tail and
    for the double add of 2a.
 
-GHOSTS. Phase A carries exactly the two plain rules of ``_shift_up``
+GHOSTS. This kernel carries exactly the two plain rules of ``_shift_up``
 (stepping.py:1770) / ``_shift_down`` (:1834): the periodic wrap and the metallic
 zero ghost, per axis, composed independently for the doubly-shifted corner. No
 mirror parity (the fold changes the stored extent and is refused), no Bloch
@@ -123,14 +123,14 @@ phase (k = 0 only), no far reflect-row (the folded-periodic rule; stepping
 itself terminates the nonlinear sums with the zero face and the driver refuses
 that pairing, stepping.py:1785-1791).
 
-WHAT IS REFUSED, BY NAME, in :func:`nonlinear_constitutive_coverage` — every
+What is refused, by name, in :func:`nonlinear_constitutive_coverage` — every
 ``_grid_reasons`` clause restated verbatim EXCEPT the chi2/chi3 one, which is
 INVERTED (this product exists only for nonlinear runs; a zero-chi run belongs to
 ``coverage.constitutive_coverage(side="E")`` and MEEP's install-time trivial-pair
 drop, fields.py:853-857/:879-880, is what makes the two predicates disjoint by
 construction): the non-CuPy backend, complex storage (the DOCMP split,
-stepping.py:1084-1091, is a Phase B leg composing with the certified complex
-tranche), no active PML (without one ``update_E`` is a DIFFERENT sub-step —
+stepping.py:1084-1091, is a later leg composing with the certified complex-field
+kernels), no active PML (without one ``update_E`` is a DIFFERENT sub-step —
 ``field[...] = constitutive``, stepping.py:1019-1022), boundary kinds outside
 {periodic, metallic}, any fold, cylindrical coordinates, nonzero ``k_point``,
 BFAST, nonzero ``beta``, any registered polarization (the source becomes
@@ -595,11 +595,11 @@ def _nonlinear_grid_reasons(fields: Any, pml: Any, grid: Any) -> List[str]:
     # 2. Real storage. MEEP nonlinearizes the two parts of a complex field
     #    INDEPENDENTLY (the DOCMP split, stepping.py:1084-1091/:1110-1116, with
     #    the parts taken AFTER the sums are formed because a Bloch wrap mixes
-    #    them, :1109-1112); that arm is a Phase B leg composing with the
-    #    certified complex tranche, not this kernel.
+    #    them, :1109-1112); that arm is a later leg composing with the
+    #    certified complex-field kernels, not this kernel.
     if getattr(fields, "force_complex_fields", False):
         reasons.append("force_complex_fields=True (the DOCMP nonlinear split is "
-                       "a Phase B leg with the complex tranche)")
+                       "a later leg composing with the complex-field kernels)")
 
     # 3. An active absorber. Without one update_E writes
     #    ``field[...] = constitutive`` (stepping.py:1019-1022) — a DIFFERENT
@@ -668,7 +668,7 @@ def _nonlinear_grid_reasons(fields: Any, pml: Any, grid: Any) -> List[str]:
 def nonlinear_constitutive_coverage(fields: Any, pml: Any) -> "_coverage.Coverage":
     """May the Triton nonlinear kernel step ``update_E`` for this (fields, pml) pair?
 
-    POSITIVE CLAUSES ONLY; a failing clause appends its reason and the scan
+    Positive clauses only; a failing clause appends its reason and the scan
     continues. The grid clauses are :func:`_nonlinear_grid_reasons`' (the shared
     set with the chi clause inverted); added here, each a silent wrong answer if
     missing:
@@ -1030,8 +1030,8 @@ def plan_nonlinear_constitutive_from_arrays(arrays: Dict[str, Any],
 
     ``kernel=`` IS LOAD-BEARING: the mutation legs route a mutated kernel
     through it, and a builder that drops it launches the shipped kernel and
-    reports a pass for a defect it never introduced (plan §13.4's measured
-    harness-disarm failure).
+    reports a pass for a defect it never introduced (measured once: planted defects
+    came back identical through a builder that dropped it).
 
     ``chunk_bounds`` is REQUIRED and has no default, as in
     :func:`.launch.plan_from_arrays`: a harness states which division its
@@ -1059,7 +1059,7 @@ def plan_nonlinear_constitutive_from_arrays(arrays: Dict[str, Any],
 # The OTHER sub-steps of a nonlinear run — predicate scope only, no new kernel
 # ---------------------------------------------------------------------------
 #
-# MEASURED, not argued. `coverage._grid_reasons` clause 10 (coverage.py:192-196)
+# Measured, not argued. `coverage._grid_reasons` clause 10 (coverage.py:192-196)
 # refuses chi2/chi3 on the WHOLE GRID and says so in its own comment ("refused on
 # every sub-step rather than only on update_E"). That is broader than the engine:
 #
@@ -1085,10 +1085,10 @@ def plan_nonlinear_constitutive_from_arrays(arrays: Dict[str, Any],
 # update_H, and load-bearing for update_E — where `nonlinear_constitutive_coverage`
 # above already carries the run.
 #
-# AND THE ADMISSION ITSELF WAS MEASURED, not just the body. The triage leg above
+# And the admission itself was measured, not just the body. The triage leg above
 # reaches the certified body by patching the INCUMBENT predicate to admit, which
 # licenses a claim about the kernel and not about the two predicates below. The
-# closure round's second leg builds through `plan_nonlinear_run_pml_curl` and
+# 2026-08-15 residual-closure run's second leg builds through `plan_nonlinear_run_pml_curl` and
 # `plan_nonlinear_run_constitutive` with their OWN predicates unpatched — a plan of
 # None would be a failed leg — and measures the same identity:
 #
@@ -1115,7 +1115,7 @@ def _nonlinear_run_grid_reasons(fields: Any, pml: Any, grid: Any) -> List[str]:
     is not this module's to narrow; ``_nonlinear_grid_reasons`` inverts the same
     clause but spells its absorber and storage refusals in ``update_E``'s words
     ("without one the nonlinear update_E is field[...] = constitutive"), which
-    would be a TRUE VERDICT WITH A FALSE REASON on a curl. ``no_pml.py``'s clause
+    would be a true verdict with a false reason on a curl. ``no_pml.py``'s clause
     3b comment records that failure mode and why it is worth a second
     transcription. Every clause other than 10 is kept verbatim in force.
     """
@@ -1127,7 +1127,7 @@ def _nonlinear_run_grid_reasons(fields: Any, pml: Any, grid: Any) -> List[str]:
         reasons.append(f"array module is {getattr(xp, '__name__', xp)!r}, not cupy")
 
     # 2. Real storage. complex64 changes the STORAGE, not the recurrence, and the
-    #    complex tranche has its own certified curl and constitutive bodies.
+    #    complex-field kernels have their own certified curl and constitutive bodies.
     if getattr(fields, "force_complex_fields", False):
         reasons.append("force_complex_fields=True (complex64 storage is not carried; "
                        "that is complex_fields.py's certified pair)")
@@ -1218,7 +1218,7 @@ def nonlinear_run_pml_curl_coverage(fields: Any, pml: Any,
     ``None`` is a reporting convenience; a builder that plans one sub-step must
     ask about that sub-step, because the conductivity clause is per sub-step.
 
-    ONE CLAUSE IS NARROWER THAN THE INCUMBENT'S, and it is stated as such rather
+    One clause is narrower than the incumbent's, and it is stated as such rather
     than inherited: an unallocated CURL TARGET (``Bx``..``Dz``) is refused here.
     ``coverage.pml_curl_coverage`` admits it — its allocation clause (:307-315)
     lists ``fu_* + B_SOURCES + D_SOURCES`` and stops, while ``_layout_reasons``
@@ -1227,7 +1227,7 @@ def nonlinear_run_pml_curl_coverage(fields: Any, pml: Any,
     ``fields.Bx = None`` and the backend clause cleared, the incumbent returns
     ``covered=True`` and ``launch.plan_pml_curl`` builds a ``PmlCurlPlan`` over
     the ``None``. Narrowing is always safe (a refusal is the array path); the
-    hole belongs to the shared clause and is reported to the round that owns it.
+    hole belongs to the shared clause and is reported to the owner of that clause.
     """
     if sub_step not in _coverage.CURL_SUB_STEPS:
         raise ValueError(f"sub_step must be one of {tuple(_coverage.CURL_SUB_STEPS)}, "
@@ -1273,12 +1273,12 @@ def nonlinear_run_pml_curl_coverage(fields: Any, pml: Any,
     #        because "Already reported by the allocation clause" (coverage.py:630).
     #        For the targets it is not: nothing reports them, so an unallocated
     #        `Bx` reaches `plan_pml_curl` and a `PmlCurlPlan` is built binding
-    #        None. That is the shared clause's hole, this round may not edit
+    #        None. That is the shared clause's hole, this change may not edit
     #        coverage.py, and a restatement that merely reproduced it would ship a
     #        builder that raises into a caller the contract promises to fall back
     #        for. Narrowing is always safe (a refusal is the array path), so the
     #        clause is stated in force HERE and the hole is reported upward for the
-    #        round that owns coverage.py.
+    #        owner of coverage.py.
     volumes = (tuple(_coverage.CURL_TARGETS)
                + tuple("fu_" + t for t in _coverage.CURL_TARGETS)
                + _coverage.B_SOURCES + _coverage.D_SOURCES)
@@ -1298,7 +1298,7 @@ def nonlinear_run_constitutive_coverage(fields: Any, pml: Any,
                                         side: str) -> "_coverage.Coverage":
     """May the CERTIFIED constitutive kernel step a NONLINEAR run's ``update_H``?
 
-    ``side='H'`` ONLY, and ``side='E'`` is REFUSED BY NAME rather than raised:
+    ``side='H'`` ONLY, and ``side='E'`` is refused by name rather than raised:
     'E' is a real side of a real sub-step, it is simply the one the Pade factor
     replaces (``stepping.py:999-1000``), and the CONTROL leg measured 1536 of
     12288 words differing there. That configuration is
@@ -1434,14 +1434,14 @@ def plan_nonlinear_run_constitutive(fields: Any, pml: Any, side: str,
 # ``Test3rdHarm1d.test_3rd_harm_1d``: 6 slots, and the only residual group that
 # takes real-physics rows (no ``TestLoadDump``) to full whole-step coverage.
 #
-# THE FUSED D-PAIR DOES NOT INHERIT THE ADMISSION, and must not. That pair
+# The fused D-pair does not inherit the admission, and must not. That pair
 # COMPOSES ``update_E``, where the Pade factor lives, so a fused D-pair on a
 # nonlinear run is exactly the configuration the CONTROL leg measured at
 # 1536/12288 words differing. ``plan_step`` keeps it out structurally rather than
 # by a clause: ``specialized_family_owns_the_grid`` includes ``has_nonlinearity``,
 # so opt-in fusion is refused by name on every nonlinear grid, both pairs at once.
 #
-# ``coverage.py`` CLAUSE 10 WAS NOT NARROWED, deliberately. Rewriting it from
+# ``coverage.py`` clause 10 was not narrowed, deliberately. Rewriting it from
 # "refused on every sub-step" to "refused only where the nonlinearity changes the
 # arithmetic" would make ``pml_curl_coverage`` and this module's curl predicate
 # admit the SAME configuration — and ``_select_slot`` fails closed on a double

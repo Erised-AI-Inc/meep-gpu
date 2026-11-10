@@ -1,18 +1,24 @@
 {
  "schema": "meep_gpu.cert8_catalog/1",
- "what": "The 1.0 round's NVIDIA timing rows on compute capability 8.6: the identical-case ladder (pml_3d at the three sizes of record, both routes, three passes, the MEEP controls of the 1.0 round) and the fused-product rows the dispatch-preference records are cut from (every DRIVE case the release dispatches, and the size sweep).",
+ "what": "The NVIDIA timing rows, first cut on compute capability 8.6 and portable to any certified NVIDIA GPU (cert8.py --architecture <the device's compute capability>): the identical-case ladder of pml_3d and the three cases the extended ladder adds (pml_3d_lorentz, dispersive; pml_3d_monitors, monitor-heavy; pml_3d_hz, a source on a fused seam) at the three sizes of record, both routes, three passes, with the MEEP controls, the hybrid MPI x OpenMP rows as reference legs (H6 fixed) and the labelled context legs the site names; and the fused-product rows the dispatch-preference records are cut from (every DRIVE case the release dispatches, and the size sweep).",
  "architecture": "8.6",
+ "portable": true,
  "ladder": {
-  "cases": ["pml_3d"],
+  "cases": ["pml_3d", "pml_3d_lorentz", "pml_3d_monitors", "pml_3d_hz"],
   "sizes": {"priority": [512000, 2097152, 7077888]},
   "passes": 3,
   "routes": ["default", "cuda"],
-  "variance": {"case": "pml_3d", "cells": 512000, "route": "default", "meep_ranks": 32},
+  "preference_routes": ["default_prefoff", "cuda_prefoff"],
+  "variance": {"case": "pml_3d", "cells": 512000, "route": "default", "meep_ranks": "2P/3"},
   "ladder_args": ["--binding", "bound",
-                  "--controls", "threads2,threads4,hwthread,split",
+                  "--controls", "threads2,threads4,hwthread,split,context",
+                  "--threaded-reference", "1",
+                  "--leave-free-share", "0.25",
                   "--expect-launched", "default:pml_3d=triton",
                   "--expect-launched", "cuda:pml_3d=cuda"],
-  "binding": "bound is the 1.0 binding probe's choice on this host type; a new host runs the probe once (timing_ladder.py --tiers bindprobe) and its catalog names the binding chosen"
+  "binding": "bound is the 1.0 binding probe's choice on this host type; a new host runs the probe once (timing_ladder.py --tiers bindprobe) and its catalog names the binding chosen",
+  "context": "the context legs (--controls context) are named by the SITE, never here: --context-meep ctx-native=<python>,<mpirun>,<build record> and --context-meep ctx-cfdouble=<python>,<mpiexec>,<build record> in the --ladder-params file; without them the control is omitted by name",
+  "notes": "--threaded-reference 1 makes the threads2/threads4 rows reference legs, so MEEP's best (the denominator) may be hybrid MPI x OpenMP; --leave-free-share 0.25 leaves a quarter of the CPUs free on a shared host (the 2P bound-hwthread row is not planned); preference_routes run only with cert8.py --preference-legs"
  },
  "fused": {
   "tables": {

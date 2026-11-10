@@ -2,7 +2,7 @@
 
 :mod:`meep_gpu.subnormal_policy` resolves what this process does to float32
 subnormals and drives each executor to it. This module adds the arm for the one
-executor that has NO LEVER AT ALL:
+executor that has no lever at all:
 
 * **flush is NATIVE and UNCONTROLLABLE.** Metal's compiler defaults to fast math,
   which includes denormal flushing, and there is no source-level or environment
@@ -14,8 +14,8 @@ executor that has NO LEVER AT ALL:
   parent already holds that an explicit request the host cannot deliver is a
   refusal, and the MPS arm has nothing to install.
 
-THE AWKWARD PART, STATED RATHER THAN HIDDEN. The process-wide default on this
-arm64 host RESOLVES TO KEEP — ``match_meep`` measures MEEP's own behaviour, and
+The awkward part, stated rather than hidden. The process-wide default on this
+arm64 host resolves to keep — ``match_meep`` measures MEEP's own behaviour, and
 MEEP's ``set_zero_subnormals`` is a no-op here because it is guarded by ``#if
 HAVE_IMMINTRIN_H``. So the default policy on this machine is exactly the one the
 MPS executor cannot honour, and an MPS plan must either be run under an explicit
@@ -24,7 +24,7 @@ MPS executor cannot honour, and an MPS plan must either be run under an explicit
 the gate and the composition probe both request ``flush`` explicitly and stamp
 the resolution into every artifact.
 
-IT IS ALSO WHY THE PRECONDITION IS THE REAL BOUND, not this refusal. Under a
+It is also why the precondition is the real bound, not this refusal. Under a
 CHECKED subnormal-free precondition, flush and keep are indistinguishable: no
 operand, result or intermediate is in the band, so no flush ever fires. The
 measured cliff behind that claim, from scaling the whole field state and
@@ -40,20 +40,20 @@ Three decades of headroom, then total divergence. That is a CLIFF, not a
 tolerance, which is why the claim is byte-identity subject to a checked
 precondition rather than a stated tolerance.
 
-THE CENSUS MUST COVER RESULTS, NOT ONLY OPERANDS. In the 1e-38 case the oracle's
+The census must cover results, not only operands. In the 1e-38 case the oracle's
 OUTPUT subnormal count (6432) is nearly double its INPUT count (3233): the curl
 PRODUCES subnormals it was not given. :func:`census` is therefore applied to every
 operand and every result, and (for the families that multiply field by field by
 field) will have to be applied to every intermediate.
 
-WHAT DOES NOT PORT, and must not be: every mechanical part of the CuPy and Triton
+What does not port, and must not be: every mechanical part of the CuPy and Triton
 arms. The NVRTC ``-ftz`` strip, the policy-suffixed ``CUPY_CACHE_DIR``, the
 CUB/``CUPY_ACCELERATORS`` refusal, the ``nvvm-reflect-ftz`` rewrite, the LLVM
 denormal attribute injection and the PTX audit all act on a compiler seam that
 does not exist here.
 
-NAMED GAP, WITH NO ANALOGUE: THERE IS NO PTX-EQUIVALENT AUDIT. ``subnormal_policy``
-can read every generated instruction and REFUSE THE COMPILE on a policy violation,
+Named gap, with no analogue: there is no PTX-equivalent audit. ``subnormal_policy``
+can read every generated instruction and refuse the compile on a policy violation,
 which upgrades "complete by accident" to "invariant enforced at compile time".
 ``torch.mps.compile_shader`` exposes no disassembly, so that upgrade is not
 available on Metal: the mutation legs and the byte gate are the only arbiters
@@ -105,7 +105,7 @@ EXECUTOR_OP_EXCEPTIONS: Dict[str, Dict[str, str]] = {
                      "arithmetic",
         "why": "Measured: `x == 0.0f` is TRUE for a subnormal x, and `x < 0.0f` is "
                "FALSE for a NEGATIVE subnormal x. Any select on a FIELD VALUE must "
-               "therefore be checked per family. The two kernels in this tranche "
+               "therefore be checked per family. The Metal port's first two kernels "
                "are clear: the ownership mask and the ghost rule branch on INTEGER "
                "indices only. A metal/PEC mask that branched on a material flag "
                "would need the check.",
@@ -154,7 +154,7 @@ def declared_dispatch_policy() -> Optional[str]:
 def resolve_mps_policy(policy: Optional[str] = None) -> tuple:
     """``(policy, source)`` for the MPS arm, in the order a DISPATCH can answer.
 
-    FOUR SOURCES, MOST AUTHORITATIVE FIRST, and the third is the one this function
+    Four sources, most authoritative first, and the third is the one this function
     exists for:
 
     1. an EXPLICIT ARGUMENT — a caller that already knows what it is asking;
@@ -167,9 +167,9 @@ def resolve_mps_policy(policy: Optional[str] = None) -> tuple:
     4. :func:`subnormal_policy.resolve_policy` — the request or this host's own
        default.
 
-    WHY THE DECLARATION HAD TO BE ADDED HERE. ``coverage._metal_backend_reasons``
+    Why the declaration had to be added here. ``coverage._metal_backend_reasons``
     consults :func:`mps_policy_reasons` at every predicate, and a dispatch reaches
-    the composer FOUR RUNGS BEFORE it installs a policy — so with only source (4)
+    the composer four rungs before it installs a policy — so with only source (4)
     the composer refused every arm on this host, whose ``match_meep`` resolution is
     ``keep`` (MEEP's ``set_zero_subnormals`` being the ``#if HAVE_IMMINTRIN_H``
     no-op on arm64). Measured: with no ``MEEP_GPU_SUBNORMAL_POLICY`` set, the
@@ -235,7 +235,7 @@ def mps_policy_report(policy: Optional[str] = None) -> Dict[str, Any]:
         "requested": record["requested"],
         "source": record["source"],
         "resolved": record["policy"],
-        # WHICH OF THE FOUR SOURCES ANSWERED, recorded because the answer can
+        # Which of the four sources answered, recorded because the answer can
         # DIFFER from ``resolved`` above: ``policy_resolution`` reads only the request and
         # the host default, while this arm also honours an install and a dispatch's
         # declaration. An artifact that reported one of them would be describing a
@@ -257,13 +257,13 @@ def mps_policy_report(policy: Optional[str] = None) -> Dict[str, Any]:
 def install_mps_policy(policy: str, *, strict: bool = True) -> Dict[str, Any]:
     """"Drive" the MPS executor to ``policy`` and MEASURE the result — the executor arm.
 
-    THE SHAPE IS ``subnormal_policy.install_host_policy``'S, because
+    The shape is ``subnormal_policy.install_host_policy``'s, because
     :func:`subnormal_policy.install_subnormal_policy` reads the report rather than
     the executor: ``attained`` decides whether the install stands, ``installed``
     decides whether a rollback may drop the process's lock, and ``reasons`` is what
     the refusal quotes.
 
-    THERE IS NOTHING TO INSTALL AND THAT IS THE HONEST REPORT. Metal's compiler
+    There is nothing to install and that is the honest report. Metal's compiler
     defaults to fast math, denormal flushing included, and both spellings that would
     ask for IEEE denormals are compile errors on this toolchain (see the module
     docstring). So ``flush`` is ATTAINED with no action and ``installed`` is False —
@@ -300,9 +300,9 @@ def install_mps_policy(policy: str, *, strict: bool = True) -> Dict[str, Any]:
 def _words(array: Any) -> Any:
     """The uint32 word view of a float32 OR complex64 volume.
 
-    COMPLEX64 IS TWO WORDS PER CELL AND BOTH ARE COUNTED. Casting a complex volume
+    Complex64 is two words per cell and both are counted. Casting a complex volume
     with ``dtype=np.float32`` silently DISCARDS the imaginary plane — measured while
-    the complex tranche's composition probe was being written, where it made the
+    the complex family's composition probe was being written, where it made the
     census a half-census that would have reported a clean window over data it had
     never looked at. A census that quietly halves its own denominator is worse than
     no census, because it still reports a number.

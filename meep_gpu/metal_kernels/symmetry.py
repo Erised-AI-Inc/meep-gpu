@@ -17,7 +17,7 @@ restated-and-pinned clause list with ONE inverted clause, the source-substitutio
 specialisation, ``_needle``-able template text, the ``register_arms()`` /
 ``ARMS = register_arms()`` tail — this file does the same way.
 
-WHAT A FOLD IS, in one paragraph (transcription, with citations kept). An
+What a fold is, in one paragraph (transcription, with citations kept). An
 ``mp.Mirror`` plane HALVES an axis: the engine stores the half above the plane and
 the discarded half is reconstructed by parity. ``stepping._boundary_kinds``
 (stepping.py:2191-2196) resolves such an axis to MIRROR, and the fold OUTRANKS the
@@ -27,13 +27,13 @@ stencils. The outer declaration survives in exactly one place —
 FALSE on a folded METALLIC one — which is what splits MIRROR into the two codes
 this file specialises on.
 
-WHY THE CURL NEEDS ALMOST NOTHING, and it is a MEASURED claim on the Triton track
+Why the curl needs almost nothing, and it is a measured claim on the Triton track
 rather than an argument. A fold changes the ghost rule on the folded axis: the near
 face becomes ``parity * field[2]`` (``_shift_down``, stepping.py:1865-1873, source
 index ``MIRROR_SOURCE_INDEX = 2``) and the far face becomes
 ``parity * field[reflect_row]`` on a folded PERIODIC axis (``_shift_up``,
-stepping.py:1815-1827) or an exact zero on a folded METALLIC one (:1828-1830). BOTH
-GHOST VALUES ARE DEAD IN THE CURL: their only consumer is a plane one of the two
+stepping.py:1815-1827) or an exact zero on a folded METALLIC one (:1828-1830). Both
+ghost values are dead in the curl: their only consumer is a plane one of the two
 ownership masks zeroes. ``_shift_down`` is used by ``step_D`` only and its ghost
 lands at stored cell 0, whose target has Yee shift 0 there — the cell the widened
 cell-0 mask drops. ``_shift_up`` is used by ``step_B`` only and its ghost lands at
@@ -52,22 +52,22 @@ rather than as a copy. The only text this file emits that the certified emitters
 not is :func:`folded_top_plane_mask`. ``test_metal_symmetry`` pins that by
 CHARACTER, in both directions.
 
-THE MASKS ARE INVISIBLE AT WHOLE-STEP GRANULARITY (symmetry.py:42-49 on the Triton
+The masks are invisible at whole-step granularity (symmetry.py:42-49 on the Triton
 side): the driver's fill passes overwrite exactly the planes the two masks protect,
 so a kernel carrying NEITHER mask is bytewise-identical after a complete step. A
-whole-step check therefore CERTIFIES A MASK-LESS KERNEL AS CORRECT. Both legs are
+whole-step check therefore certifies a mask-less kernel as correct. Both legs are
 needed and each catches what the other cannot — the sub-step leg for the masks, the
 whole-step leg for the seams and the accumulating ``fu_*`` auxiliaries.
 
 ===========================================================================
-WHAT IS METAL-SPECIFIC, AND IT IS NOT WHAT THE TRITON TRACK WOULD PREDICT
+What is Metal-specific, and it is not what the Triton track would predict
 ===========================================================================
 
-THE PARITY WEIGHT IS A COMPILE-TIME SPECIALISATION HERE, NOT A RUNTIME SCALAR, and
+The parity weight is a compile-time specialisation here, not a runtime scalar, and
 that is the OPPOSITE of the Triton folded off-diagonal family's central platform
 rule (``triton_kernels/folded_offdiag_update_e.py:93-107`` holds the ghost weight
 RUNTIME because Triton lowers ``-x`` as ``0.0 - x`` and canonicalizes signed
-zeros). MEASURED ON THIS HOST, 2026-08-16, torch 2.10.0 MPS / numpy 2.4.3 /
+zeros). Measured on this host, 2026-08-16, torch 2.10.0 MPS / numpy 2.4.3 /
 macOS 26.2 arm64, under the contraction guard (``shaders.contraction_pragma``
 in its ``off`` mode — spelled there and nowhere else), against NumPy float32
 ``(+/-1) * x`` over a 30-word set carrying both signed zeros, twelve values across
@@ -90,12 +90,12 @@ exact. That makes ``PHASE`` a source-specialisation axis in
 :func:`mirror_ghost_fill_source`, where Triton can leave it a constexpr multiply.
 The refuted spellings are gate mutations, not comments.
 
-THE ``x * -1.0f`` DISAGREEMENT IN THE TREE IS SETTLED, AND IT WAS A NUMPY FACT.
+The ``x * -1.0f`` disagreement in the tree is settled, and it was a NumPy fact.
 ``shaders.py:47-52`` records ``x * -1.0f`` at 13 mismatches on an 8045-value probe
 while ``templates.py:51-56`` records it EXACT at 0/512; the fold's parity multiply
 is precisely that expression, so it was re-measured here by VALUE CLASS rather than
 inherited from either record. On finite (0/12), subnormal (0/10) and infinite (0/2)
-operands ``-x`` and ``x * -1.0f`` are BYTE-IDENTICAL TO EACH OTHER and to NumPy. On
+operands ``-x`` and ``x * -1.0f`` are byte-identical to each other and to NumPy. On
 NaN they are byte-identical to each other and BOTH differ from NumPy 6/6 — NumPy's
 ``float32(-1.0) * nan`` leaves the sign bit alone, Metal's negation flips it. That
 is the whole of the 13, it is a property of the NumPy reference and not of the two
@@ -104,8 +104,8 @@ not a parity question. ``0.0f - x`` additionally CANONICALIZES NaN to
 ``0x7FC00000`` (5/6), which is the Triton behaviour reproducing on this platform
 for that one spelling — and is a second reason it is refused.
 
-THE SUBNORMAL PRECONDITION BOUNDS THE ARITHMETIC HALF OF THIS FAMILY AND NOT THE
-FILL, and that is measured rather than assumed for the family as a whole. On MPS
+The subnormal precondition bounds the arithmetic half of this family and not the
+fill, and that is measured rather than assumed for the family as a whole. On MPS
 the float32 subnormal flush is native and has no lever, so every ARITHMETIC claim
 rides on a checked subnormal-free precondition — but the fill performs no
 arithmetic at all: its parity reduces to a sign-bit operation or to a plain copy,
@@ -120,14 +120,14 @@ A folded run is also where the band is most likely to be reached: the fold puts 
 deep-PML plane on the far face, which is exactly where tiny magnitudes live, and
 the fill reads and writes exactly those planes.
 
-NOTHING ELSE IN THIS FAMILY DIVIDES, TAKES A SQUARE ROOT, OR TAKES A MIN OR A MAX,
+Nothing else in this family divides, takes a square root, or takes a min or a max,
 so the signed-zero ``min``/``max`` hazard (shaders.py:41-46) and ``fast::divide``
 do not arise. Both ownership masks are selects writing the literal ``0.0f``,
 matching the array path's ``curl[face] = 0`` (stepping.py:1943, :1949) — a Python
 int zero into a float32 array, which is ``+0.0``. ``reflect_row`` is an integer
 runtime scalar and the index arithmetic is exact.
 
-THERE IS NO GENERATED-CODE AUDIT ON THIS BACKEND. ``torch.mps.compile_shader``
+There is no generated-code audit on this backend. ``torch.mps.compile_shader``
 exposes no disassembly, so unlike the Triton track this family CANNOT refuse a
 compile whose emitted code violates the policy, and it cannot establish that
 the contraction guard was obeyed. The byte gate and the mutation legs
@@ -136,16 +136,16 @@ a wrong instruction. That is this certification's one weakness against the Trito
 one and it is stated rather than buried.
 
 ===========================================================================
-THE INVERTED CLAUSES — how this family stays disjoint from the other seven
+The inverted clauses — how this family stays disjoint from the other seven
 ===========================================================================
 
 ``registry.py``'s contract is that every family's grid-reason list carries the same
-numbered questions and answers exactly one of them THE OTHER WAY. A new family
+numbered questions and answers exactly one of them the other way. A new family
 states its inversion rather than inheriting disjointness. Fold is the hardest case
 because it composes with complex storage and with off-diagonal epsilon, so the
 folded arms must invert against the plain arms AND against each other.
 
-CLAUSE 5 IS THE INVERSION, IN BOTH DIRECTIONS AND ON EVERY SLOT:
+Clause 5 is the inversion, in both directions and on every slot:
 
 * ``coverage._grid_reasons`` clause 5 (metal, coverage.py:168-174) REFUSES a fold
   — "a mirror plane is active (symmetry folding is not carried)" plus one
@@ -153,17 +153,17 @@ CLAUSE 5 IS THE INVERSION, IN BOTH DIRECTIONS AND ON EVERY SLOT:
   and ``constitutive``, the two shipped families;
 * ``bfast_curl._bfast_grid_reasons`` clause 5 refuses it again, by name;
 * ``complex_fields`` and ``special_kz`` refuse it again, by name;
-* HERE IT IS REQUIRED. :func:`folded_composition_curl_coverage` and
+* Here it is required. :func:`folded_composition_curl_coverage` and
   :func:`folded_constitutive_coverage` append "no mirror plane is active: ..." when
   the grid carries no fold, so the two verdicts can never both admit.
 
-CLAUSE 4 IS REPLACED, NOT WIDENED. The plain families refuse a fold a SECOND time
+Clause 4 is replaced, not widened. The plain families refuse a fold a SECOND time
 through the boundary whitelist (``kind not in COVERED_BOUNDARIES``, where
 ``COVERED_BOUNDARIES == ("periodic", "metallic")``). This family does not widen
 that shared tuple — widening it would silently admit folds into every plain arm at
 once — it replaces the clause entirely with :func:`folded_axis_kinds`.
 
-THE STANDALONE PREDICATE IS NOT THE ROUTING PREDICATE.
+The standalone predicate is not the routing predicate.
 :func:`folded_pml_curl_coverage` deliberately ADMITS an unfolded grid so the gate
 can prove the reduction to the certified kernel. Registering THAT on a slot would
 make every unfolded row ambiguous. The narrower
@@ -171,13 +171,13 @@ make every unfolded row ambiguous. The narrower
 and the reason is the Triton module's: selecting between two valid products by
 branch order would make the numerical method depend on composer order.
 
-THE CURL'S CONTRACT AND THE CONSTITUTIVE'S ARE SEPARATE.
+The curl's contract and the constitutive's are separate.
 :func:`_folded_curl_grid_reasons` refuses conductivity because conductivity changes
 the CURL recurrence; :func:`_folded_constitutive_grid_reasons` deliberately does
 NOT, because conductivity does not change ``update_H``/``update_E``. Inheriting the
 curl-only refusal would silently narrow an independent sub-step.
 
-FOLD x CYLINDRICAL IS A THREE-WAY HAZARD, NOT A TWO-WAY ONE, and it is refused
+Fold x cylindrical is a three-way hazard, not a two-way one, and it is refused
 TWICE on purpose. ``_boundary_kinds`` puts ``is_axis`` AHEAD of ``is_mirrored``
 (stepping.py:2191-2196), so a folded r axis would report CYL_AXIS and the fold
 would vanish silently; and ``_mirror_phases`` (stepping.py:2346-2366) puts
@@ -186,7 +186,7 @@ reads the phase without first refusing ``is_axis`` reads a cylindrical m-factor 
 a mirror parity. The grid flag alone is not the inversion; the per-axis clause is
 there too.
 
-WHAT THIS FAMILY DOES NOT CLAIM, each refused by name rather than by omission:
+What this family does not claim, each refused by name rather than by omission:
 complex64 storage (the folded-complex family's), a nonzero ``beta`` (the folded
 special_kz family's), an off-diagonal chi1inv row on ``update_E`` (the folded
 off-diagonal family's), a registered susceptibility on ``update_E`` (the folded
@@ -194,20 +194,20 @@ dispersive family's), BFAST, a nonzero ``k_point`` on any axis, and cylindrical
 coordinates folded or not.
 
 ===========================================================================
-THE RESIDENCY MODEL WAS SHORT TWO SLOTS AND THAT WAS BLOCKING
+The residency model was short two slots and that was blocking
 ===========================================================================
 
 ``coverage.RESIDENCY_ORDER`` had no entry for ``fill_folded_far_ghosts_B/D`` — the
 driver's FIFTH pass per half (driver.py:3287 and :3302), which WRITES B and D on
 every folded PERIODIC run. A device mirror held across a step would have been stale
 in exactly the plane the fold owns and the residency predicate would not have said
-so. The two entries are added in this round's ``coverage.py`` change, and
+so. The two entries were added in this family's ``coverage.py`` change, and
 ``live_sub_steps`` now derives the fold's own seam passes from the grid rather than
 from the source list: ``fill_symmetry_bc_*`` runs whenever ``grid.has_symmetry()``
 whether or not any source exists, which the source-driven derivation could not see.
 
-THE FILL IS TWO PASSES, NOT ONE, AND THEY MAY NOT BE FUSED — ``zero_metal_*`` SITS
-BETWEEN THEM. The driver's order is ``step_B`` -> inject -> ``fill_symmetry_bc_B``
+The fill is two passes, not one, and they may not be fused — ``zero_metal_*`` sits
+between them. The driver's order is ``step_B`` -> inject -> ``fill_symmetry_bc_B``
 -> ``zero_metal_B`` -> ``fill_folded_far_ghosts_B`` -> ``update_H``
 (driver.py:3282-3287; the D half at :3293-3302). The far pass READS a whole plane
 at ``reflect_row``, which on a run with a live wall includes cells ``zero_metal``
@@ -230,7 +230,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-# ONE DEFINITION, IMPORTED — the same doctrine `metal_kernels.coverage` uses for
+# One definition, imported — the same doctrine `metal_kernels.coverage` uses for
 # every leaf helper. Each of these is pure Python over duck-typed engine objects
 # and carries no Triton clause: the four boundary codes, the halved-origin source
 # index, the Yee-shift table, the fill families, and the two engine readers
@@ -329,11 +329,11 @@ __all__ = [
 #: fold-aware are emitted by ``shaders``' OWN emitters through reduced codes (see
 #: :func:`folded_curl_source`).
 #:
-#: THE FORMS UNDER A FOLD NEED NOTHING NEW. The record's membership line is
+#: The forms under a fold need nothing new. The record's membership line is
 #: ghost-adjusted (``chunk_map.ChunkLayout.membership``): the near ghost row of a
 #: mirrored axis and the far ghost slot of a folded periodic one read the row they
 #: image, as the array path's line does, so evaluating it at the stored index is
-#: the array path's own select (DESIGN D5).
+#: the array path's own select (docs/development/kernel-tables.md#record-layout).
 #:
 #: 21 BINDINGS, identical to the certified curl's: 9 volume pointers, 6
 #: coefficient vectors, 4 uints, dtdx and the chunk record. The fold adds no
@@ -390,7 +390,7 @@ kernel void folded_pml_curl_step(
 __BOUNDS__
 
     // --- the ghost rule, per axis (stepping._shift_up / _shift_down) -------------
-    // BOTH MIRROR CODES TAKE THE METALLIC BRANCH, serving an exact 0.0 past the
+    // Both mirror codes take the metallic branch, serving an exact 0.0 past the
     // face. That is NOT the array path's ghost VALUE on a fold (`_shift_down`
     // serves `parity * field[2]`, `_shift_up` serves `parity * field[reflect_row]`
     // on a folded periodic axis) and it does not have to be: the only cell that
@@ -444,8 +444,8 @@ __MASK__
     // `_mask_non_owned_cells`' `if iyee[axis] != 0` arm (stepping.py:1887-1897)
     // does this because that slot sits half a cell past MEEP's `big_corner`,
     // outside `owns` (vec.cpp:445-462), so the FILL PASS writes it and the curl
-    // must not. This is THE ONLY TEXT IN THIS KERNEL THE CERTIFIED EMITTERS DO NOT
-    // PRODUCE. On a folded METALLIC axis the top plane IS stepped and no line is
+    // must not. This is the only text in this kernel the certified emitters do not
+    // produce. On a folded METALLIC axis the top plane IS stepped and no line is
     // emitted here, which is why a sweep on one termination proves nothing about
     // the other.
     bool last_x = (i == nxi - 1), last_y = (j == nyi - 1), last_z = (k == nzi - 1);
@@ -485,7 +485,7 @@ __TOP_MASK__
 def _reduced_codes(codes: Sequence[int]) -> Tuple[int, int, int]:
     """The four folded codes as the certified emitters' two.
 
-    THIS FUNCTION IS THE FIRST OF THE TWO DOCUMENTED FOLD DELTAS, expressed as a
+    This function is the first of the two documented fold deltas, expressed as a
     mapping instead of as a copied emitter: "both mirror codes take the METALLIC
     ghost branch" and "the cell-0 mask widens from ``== METALLIC`` to
     ``!= PERIODIC``" are the SAME statement once every non-periodic code is spelled
@@ -558,7 +558,7 @@ def folded_top_plane_mask(codes: Sequence[int], backward: bool,
                           zero: str = "0.0f") -> str:
     """``_mask_non_owned_cells``' top-plane arm — a folded PERIODIC axis ONLY.
 
-    THE ONE BLOCK THIS FAMILY EMITS THAT THE CERTIFIED EMITTERS DO NOT. It fires
+    The one block this family emits that the certified emitters do not. It fires
     only where ``stepping._stored_past_owned`` is True, which is exactly a folded
     axis whose outer declaration is periodic, at either full-count parity; on a
     folded METALLIC axis the stored array stops at ``big_corner`` and the top plane
@@ -591,7 +591,7 @@ def folded_curl_source(codes: Sequence[int], backward: bool,
     ``step_B``'s forward ones. Both are baked into the string, as Triton bakes its
     constexprs, so no branch survives around a float expression.
 
-    THE CORPUS DRIVES TWELVE OF THESE, not the static 128: six boundary triples
+    The corpus drives twelve of these, not the static 128: six boundary triples
     appear across the 86 folded rows and each is specialised in both directions.
     """
     codes = tuple(int(code) for code in codes)
@@ -691,18 +691,18 @@ _PLANE_INDEX: Dict[int, str] = {
 
 
 def _parity_spelling(weight: int, operand: str) -> str:
-    """The ONE place a parity is turned into Metal text, and it is MEASURED.
+    """The ONE place a parity is turned into Metal text, and it is measured.
 
     ``weight`` is +1 or -1 — ``fields.mirror_parity(component, axis, phase)``,
     which collapses to ``+phase`` for a shift-0 component and ``-phase`` for a
     shift-1 one (fields.py:180-182, and the Yee-table collapse pinned at
     symmetry.py:365-371 on the Triton side).
 
-    ON THIS BACKEND +1 IS A PLAIN COPY AND -1 IS ``-x``, AND NOTHING ELSE IS
-    ADMISSIBLE. Measured 2026-08-16 against NumPy float32 ``(+/-1) * x`` over
+    On this backend +1 is a plain copy and -1 is ``-x``, and nothing else is
+    admissible. Measured 2026-08-16 against NumPy float32 ``(+/-1) * x`` over
     signed zeros, the whole subnormal band, normals and +/-FLT_MAX: ``-x`` 0/30 and
     a plain copy 0/30, against ``0.0f - x`` 13/30 (twelve subnormals plus one
-    -0.0), a RUNTIME ``w * x`` 12/30 AT BOTH SIGNS — a runtime multiply by 1.0 is
+    -0.0), a RUNTIME ``w * x`` 12/30 at both signs — a runtime multiply by 1.0 is
     not the identity here — and ``(at ? w : 1.0f) * x`` 12/30, which flushes the
     whole volume rather than the ghost lane. ``x * -1.0f`` is also 0/30 and is
     byte-identical to ``-x`` on every value class including NaN; ``-x`` is used
@@ -725,16 +725,16 @@ def mirror_ghost_fill_source(axis: int, phase: int, pass_name: str,
                              contract: str = shaders.CONTRACT_OFF) -> str:
     """One (axis, phase, pass, Yee-shift triple) specialisation of the fill.
 
-    ``shifts`` is the three targets' Yee shift ON THIS AXIS, in kernel argument
+    ``shifts`` is the three targets' Yee shift on this axis, in kernel argument
     order — ``TARGET_IYEE[name][axis]`` for the family's three components. It is
     not free: ``(family, axis)`` determines it, and :func:`ghost_fill_axis_entries`
     is what reads it off the table.
 
-    THE NEAR PASS writes stored cell 0 from stored cell ``MIRROR_SOURCE_INDEX``
+    The near pass writes stored cell 0 from stored cell ``MIRROR_SOURCE_INDEX``
     (= 2) with weight ``+phase``, for every component whose shift here is ZERO —
     MEEP's ``little_owned_corner0(c) = little_corner + 2 - iyee_shift(c)``, which
     on a halved grid (``io = -2``) excludes cell 0 for exactly the shift-0
-    components. THE FAR PASS writes the last stored slot from ``reflect_row`` with
+    components. The far pass writes the last stored slot from ``reflect_row`` with
     weight ``-phase``, for every component whose shift here is ONE, and runs only
     on a folded PERIODIC axis.
 
@@ -942,7 +942,7 @@ def _folded_curl_grid_reasons(fields: Any, pml: Any, grid: Any,
                        "not carried, and a nonlinear fold has no single parity)")
 
     # 11/12. BFAST adds a second additive curl term; beta adds out-of-plane
-    #        couplings. BOTH LAND INSIDE THE FOLD'S MASK REACH — the increments are
+    #        couplings. Both land inside the fold's mask reach — the increments are
     #        added at stepping.py:371-396 / :459-478 and masked at :397 / :479, and
     #        a fold WIDENS that mask from metallic-at-cell-0 to non-periodic-at-
     #        cell-0 PLUS folded-periodic-at-the-top-plane. So the pairings are not
@@ -1000,17 +1000,17 @@ def _curl_conductivity_reasons(fields: Any, sub_step: Optional[str]) -> List[str
 
 def folded_pml_curl_coverage(fields: Any, pml: Any, sub_step: Optional[str] = None,
                              residency: Any = None) -> Coverage:
-    """May the Metal folded curl step this (fields, pml, sub_step)? THE WIDE VERDICT.
+    """May the Metal folded curl step this (fields, pml, sub_step)? The wide verdict.
 
-    ZERO FOLDED AXES IS ADMITTED HERE, and that is not an oversight: with every
+    Zero folded axes is admitted here, and that is not an oversight: with every
     axis resolving to PERIODIC/METALLIC, :func:`folded_curl_source` reduces to the
-    certified kernel's ghost gather and cell-0 mask CHARACTER FOR CHARACTER and its
+    certified kernel's ghost gather and cell-0 mask character for character and its
     top-plane block is empty, which is a property the gate MEASURES rather than a
-    claim. THIS VERDICT MUST NOT BE REGISTERED ON A SLOT — it would make every
+    claim. This verdict must not be registered on a slot — it would make every
     unfolded row ambiguous. :func:`folded_composition_curl_coverage` is the routing
     verdict; this one is the gate's.
 
-    WHAT IT ADMITS, in one sentence: a real-field Cartesian run under an active
+    What it admits, in one sentence: a real-field Cartesian run under an active
     split-field PML on a host whose subnormal policy this executor can deliver, at
     k = 0 on every axis, with no conductivity, no nonlinearity, no BFAST, no
     special_kz, no complex storage, whose susceptibilities if any are electric
@@ -1071,7 +1071,7 @@ def folded_pml_curl_coverage(fields: Any, pml: Any, sub_step: Optional[str] = No
 
 def folded_composition_curl_coverage(fields: Any, pml: Any, sub_step: str,
                                      residency: Any = None) -> Coverage:
-    """THE ROUTING VERDICT — :func:`folded_pml_curl_coverage` with a fold MANDATORY.
+    """The routing verdict — :func:`folded_pml_curl_coverage` with a fold MANDATORY.
 
     The one clause that separates this family from ``pml_curl``, ``bfast_curl``,
     ``complex_fields`` and ``special_kz`` on the two curl slots, spelled as its own
@@ -1105,12 +1105,12 @@ def _folded_constitutive_grid_reasons(fields: Any, pml: Any, grid: Any) -> List[
     contract prevents a curl-only refusal from silently narrowing an independent
     sub-step — the same split the Triton twin makes, for the same reason.
 
-    THE FOLD REACHES THIS SUB-STEP THROUGH EXACTLY ONE THING: THE STORED EXTENT.
+    The fold reaches this sub-step through exactly one thing: the stored extent.
     ``update_H`` (stepping.py:907-924) and the diagonal ``update_E``
     (stepping.py:1012-1020) are three ``_apply_constitutive_pml`` calls over
     integer-position coefficients, with no shift helper, no ghost and no ownership
     mask. The PML coefficient vectors are already built at the folded stored extent,
-    so this family adds NO DEVICE CODE on these two slots — it re-admits the
+    so this family adds no device code on these two slots — it re-admits the
     certified body, and the layout clauses below are where "already built at the
     stored extent" stops being an assumption.
     """
@@ -1162,7 +1162,7 @@ def folded_constitutive_coverage(fields: Any, pml: Any, side: str,
     the folded extent and the coefficient lengths explicitly instead of weakening
     that family globally.
 
-    THE E SIDE REFUSES EVERYTHING THAT CHANGES WHAT ``source`` IS, and each refusal
+    The E side refuses everything that changes what ``source`` is, and each refusal
     names the family that owns it: a registered susceptibility (the source is
     ``D - sum P``, not ``D`` — the folded dispersive family, which likewise needs no
     kernel), an off-diagonal chi1inv row (the row product READS NEIGHBOURS through
@@ -1211,7 +1211,7 @@ def folded_constitutive_coverage(fields: Any, pml: Any, side: str,
 
 
 def _wall_seam_reasons(grid: Any, codes: Optional[Sequence[int]]) -> List[str]:
-    """THE ONE CONFIGURATION THIS FAMILY REFUSES RATHER THAN FUSES.
+    """The one configuration this family refuses rather than fuses.
 
     ``zero_metal_B`` / ``zero_metal_D`` run BETWEEN the two fill passes
     (driver.py:3285-3287 and :3300-3302). The far pass READS a whole plane at
@@ -1252,10 +1252,10 @@ def mirror_ghost_fill_coverage(fields: Any, family: str,
                                residency: Any = None) -> Coverage:
     """May the Metal mirror fill write this family's ghost planes?
 
-    NARROWER THAN THE CURL'S PREDICATE AND INDEPENDENT OF IT: this pass reads no
+    Narrower than the curl's predicate and independent of it: this pass reads no
     coefficient, no source and no PML, so it has no Courant number, no sub-lattice
     and no absorber clause — ``fill_symmetry_bc_*`` runs whether or not an absorber
-    is installed. A PARTIAL FOLD COVERAGE IS THEREFORE LEGAL AND HAPPENS: on a
+    is installed. A partial fold coverage is therefore legal and happens: on a
     folded no-PML run these two slots are covered while every curl and constitutive
     slot is on the array path. That is a substitution with no throughput benefit and
     a driver-adapter seam, and it is named here rather than discovered later.
@@ -1310,7 +1310,7 @@ def mirror_ghost_fill_coverage(fields: Any, family: str,
                                f"reflect row from stepping._far_reflect_rows")
                 continue
             row = int(row)
-            # THREE CHECKS, NOT ONE, AND THE SECOND TWO ARE THIS PORT'S.
+            # Three checks, not one, and the second two are this port's.
             #
             # 1. The Triton predicate's: the row must be inside the allocation and
             #    below the plane the far pass writes, or the far ghost images the
@@ -1487,7 +1487,7 @@ def plan_folded_pml_curl_from_arrays(sub_step: str, arrays: Dict[str, Any],
 class MirrorGhostFillPlan:
     """One family's mirror ghost planes, as one launch per (pass, folded axis).
 
-    DELIBERATELY A SIBLING OF :class:`.plans.KernelPlan` RATHER THAN A SUBCLASS.
+    Deliberately a sibling of :class:`.plans.KernelPlan` rather than a subclass.
     That base's whole contract is that ``run`` unpacks ONE argument tuple and calls
     ONE function, and one implementation of that is what makes the launch path
     uniform across the family tree. This plan cannot honour it: the array path
@@ -1498,14 +1498,14 @@ class MirrorGhostFillPlan:
     and walks it in that order, and the divergence from the base is stated here
     rather than hidden behind an overridden ``run``.
 
-    THE TWO PASSES ARE SEPARATE ATTRIBUTES, NOT ONE LIST, because ``zero_metal_*``
+    The two passes are separate attributes, not one list, because ``zero_metal_*``
     runs between them in the driver (driver.py:3286 / :3301) and the far pass reads
     a plane the wall clear can touch. :meth:`run` walks near-then-far for a caller
     that has established the wall is not live — which
     :func:`mirror_ghost_fill_coverage` refuses to admit otherwise — and
     :meth:`run_near` / :meth:`run_far` are what a driver adapter places.
 
-    ``replaces_sub_steps`` IS DECLARED, NOT INFERRED. The composer reads it to
+    ``replaces_sub_steps`` is declared, not inferred. The composer reads it to
     learn that a plan filling ``fill_B`` also performs
     ``fill_folded_far_ghosts_B`` on the device, which is a residency fact no slot
     name carries. A plan that does not declare it replaces only its own slot, which
@@ -1587,7 +1587,7 @@ def ghost_fill_axis_entries(grid: Any, family: str,
                             pass_name: str) -> Tuple[Dict[str, Any], ...]:
     """One entry per folded axis for one pass, in X, Y, Z order.
 
-    PUBLIC AND SEPARATE FROM THE PLAN BUILDER so it can be checked on a host with
+    Public and separate from the plan builder so it can be checked on a host with
     no GPU, which is where the two things that silently go wrong here live: the
     X, Y, Z ORDER (a doubly-unowned corner must end up carrying the product of both
     parities) and the REFLECT ROW (``stored - 2`` at an even full count,
@@ -1750,7 +1750,7 @@ def plan_folded_constitutive(fields: Any, pml: Any, side: str,
 # WIRING — six arms over six slots
 # ---------------------------------------------------------------------------
 #
-# WHAT SEPARATES THEM, per slot, and every one of these is a clause that names the
+# What separates them, per slot, and every one of these is a clause that names the
 # fold rather than an omission:
 #
 #   step_B / step_D    `coverage._grid_reasons` clause 5 refuses a fold BY NAME
@@ -1771,7 +1771,7 @@ def plan_folded_constitutive(fields: Any, pml: Any, side: str,
 #                      which is why the fill is placed after it and not fused over
 #                      it.
 #
-# REGISTERED-BUT-CANNOT-WIN IS NOT USED HERE, and the absence is worth stating.
+# Registered-but-cannot-win is not used here, and the absence is worth stating.
 # `registry.py` keeps `registered` and `wins` separate so a missing capability gets
 # NAMED at composition time instead of falling silently to the array path, and this
 # family would have used it if either constitutive half were unported. Both halves
@@ -1837,7 +1837,7 @@ def _has_fold(context: Any) -> bool:
 def register_arms() -> Tuple[Any, ...]:
     """This family's six arms: two curls, the certified constitutive pair, two fills.
 
-    THE FILL ARMS ARE DELIBERATELY UNGATED and the other four are not. The gate
+    The fill arms are deliberately ungated and the other four are not. The gate
     exists so a gated-out arm contributes NO reason, which is right where other
     arms will speak — ``step_B``/``step_D`` carry four other families and
     ``update_H``/``update_E`` carry four more, so a silent folded arm on an

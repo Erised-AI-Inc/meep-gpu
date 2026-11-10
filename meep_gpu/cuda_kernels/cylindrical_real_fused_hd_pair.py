@@ -7,7 +7,7 @@ and ``tests:TestPMLCylindrical.test_pml_cyl_0_0_0``, all ``pml_active``
 (``parity/meep_gpu/results/fusion_matrix_cuda_2026-09-06_hd/fusion_matrix_cuda.json``,
 ``h_to_d_seam.instances``).
 
-WHAT THE THREE LAUNCHES ARE. Launch 1 (slot ``update_H``, :data:`KERNEL_NAME`) steps
+What the three launches are. Launch 1 (slot ``update_H``, :data:`KERNEL_NAME`) steps
 ``update_H`` at the thread's own cell into launch-local SCRATCH through
 :mod:`.fused_hd_pair`'s pure cell function -- the root ``update_H_pml_real`` body lifted,
 the chunk record decoded at the cell, imported and never retyped -- so H, ``f_w_H`` and B
@@ -18,18 +18,18 @@ H/``f_w_H`` bindings rotate against the scratch (``fused_hd_pair.rotate_into_fie
 launch 3 is ``cylindrical_kernels``' ``cyl_step_D_pml_real`` over the rotated H with the
 difference handed in.
 
-THE RUN'S FIRST ``update_H`` STARTS H FROM B (``stepping.separate_h_from_b``): B is final
+The run's first ``update_H`` starts H from B (``stepping.separate_h_from_b``): B is final
 at this seam, so the start runs on the array path BEFORE launch 1, with the layer -- the
 :mod:`.fused_hd_pair` arrangement.
 
-THE LAUNCH ALGEBRA, AND THE INSTALLATION VERDICT. Under the per-chunk radial sum the D
+The launch algebra, and the installation verdict. Under the per-chunk radial sum the D
 side's own baseline is three launches -- ``update_H``, the scan, ``step_D`` -- because the
 scan computes its increments from Hp itself. The 0.9.2 product fused the pre-``cumsum``
 increment into launch 1 and saved four launches against a seven-launch baseline; that
 saving is gone with the elementwise passes it removed. This product therefore saves NO
 launch, and it ships ``INSTALLABLE = False`` (:data:`INSTALLABLE_REASON`). A two-launch
-shape (``update_H`` row by row inside the column-serial scan) exists and is an owner's
-design ruling, not this module's to make.
+shape (``update_H`` row by row inside the column-serial scan) exists; whether to adopt it is
+an open design decision, not this module's to make.
 
 The seam's electric withdraw is not carried (:data:`HOISTS_THE_WITHDRAW`): a row with a
 standing integrated electric withdraw is refused by name. Nothing is injected in this
@@ -96,13 +96,13 @@ H_TARGETS: Tuple[str, str, str] = _hd.H_TARGETS
 #: The component the D-side radial sum runs over (``Hy``), read off the shared table.
 PREFIX_SOURCE: str = PREFIX_COMPONENT["step_D"]
 
-#: Launches per complete seam: launch 1, the scan, launch 3. THE SCAN IS COUNTED.
+#: Launches per complete seam: launch 1, the scan, launch 3. The scan is counted.
 LAUNCHES_PER_RUN = 3
 
 #: The entry point is NEW with the per-chunk radial sum and no record names it yet: its
 #: 0.9.2 predecessor (``update_H_increment_pml_cyl_real``, which fused the pre-cumsum
 #: increment) is gone, and the record that certified it is re-cut in the combined
-#: certification round (bit_parity_0_10 CERT-3).
+#: certification round of 1.0 (its device-gate stage, CERT-3).
 CERTIFIED_KERNELS = ()
 
 #: Spelled as a dict WITHOUT an annotation (the partition reader matches ``ast.Assign``).
@@ -131,7 +131,7 @@ INSTALLABLE_REASON = (
     "the scan over the scratch Hp, step_D over the rotated H). The 0.9.2 product saved "
     "four launches against a seven-launch baseline by fusing the pre-cumsum increment, "
     "and those elementwise passes no longer exist. A two-launch shape -- update_H row "
-    "by row inside the column-serial scan -- is an owner's design ruling. Until then "
+    "by row inside the column-serial scan -- is a design decision not yet taken. Until then "
     "INSTALLABLE stays False and the board credits the cell by predicate admission, as "
     "fused_hd_pair is credited")
 
@@ -176,13 +176,13 @@ def _certified() -> None:
 
 _SIGNATURE = '''
 extern "C" __global__ void update_H_scratch_pml_cyl_real(
-    // THE SCRATCH OUTPUTS: a DIFFERENT allocation from every pre-launch volume below
+    // The scratch outputs: a DIFFERENT allocation from every pre-launch volume below
     // (assert_bindings_are_disjoint checks it by base address before every launch).
     float* __restrict__ Hx_out, float* __restrict__ Hy_out,
     float* __restrict__ Hz_out,
     float* __restrict__ f_w_Hx_out, float* __restrict__ f_w_Hy_out,
     float* __restrict__ f_w_Hz_out,
-    // THE PRE-LAUNCH STATE, read and written by none.
+    // The pre-launch state, read and written by none.
     const float* __restrict__ Hx, const float* __restrict__ Hy,
     const float* __restrict__ Hz,
     const float* __restrict__ f_w_Hx, const float* __restrict__ f_w_Hy,
@@ -195,7 +195,7 @@ extern "C" __global__ void update_H_scratch_pml_cyl_real(
     const float* __restrict__ kms_x, const float* __restrict__ kms_y,
     const float* __restrict__ kms_z,
     int nx, int ny, int nz,
-    // THE CHUNK RECORD (chunk_map.chunk_bounds_record), int32[25], decoded by the
+    // The chunk record (chunk_map.chunk_bounds_record), int32[25], decoded by the
     // lifted body at the cell it is evaluated for.
     const int* __restrict__ cb
 ) {
@@ -281,7 +281,7 @@ def covers_cylindrical_real_fused_hd_pair(fields: Any, pml: Any, grid: Any,
     if not covered:
         return False, f"curl half: {reason}"
 
-    # THE SEAM'S ONE PASS. IGNORANCE IS NEVER AN EMPTY SET: ``Fields`` does not hold
+    # The seam's one pass. Ignorance is never an empty set: ``Fields`` does not hold
     # the source list, so an undeclared set is a refusal, not an empty seam.
     seam_reasons = _withdraw_hoist.seam_withdraw_reasons(
         fields, sources,
@@ -299,7 +299,7 @@ def covers_cylindrical_real_fused_hd_pair(fields: Any, pml: Any, grid: Any,
     if seam_reasons:
         return False, seam_reasons[0]
 
-    # THE BOUNDARY TRIPLE LAUNCH 3 BINDS, resolved the way the certified curl resolves
+    # The boundary triple launch 3 binds, resolved the way the certified curl resolves
     # it; a grid it refuses is a grid this product must not bind.
     try:
         from .coverage import real_pml_boundary_kinds  # noqa: PLC0415
@@ -308,12 +308,12 @@ def covers_cylindrical_real_fused_hd_pair(fields: Any, pml: Any, grid: Any,
         return False, (f"the cylindrical curl's boundary resolution refuses this grid: "
                        f"{type(exc).__name__}: {exc}")
 
-    # THE SCAN'S SOURCE MUST EXIST: the radial sum runs over the new Hy.
+    # The scan's source must exist: the radial sum runs over the new Hy.
     source = getattr(fields, PREFIX_SOURCE, None)
     if source is None:
         return False, f"{PREFIX_SOURCE} is not allocated; the radial sum is built from it"
 
-    # THE ROTATION'S OWN INVARIANT.
+    # The rotation's own invariant.
     for name in SCRATCH_VOLUMES:
         if getattr(fields, name, None) is None:
             return False, (f"{name} is not allocated; this product rotates it against "
@@ -452,7 +452,7 @@ def run_cylindrical_real_fused_hd_pair(fields: Any, grid: Any, pml: Any, *,
                                        rotate: bool = True) -> Dict[str, Any]:
     """Gate on the predicate, resolve once, then launch 1 -> scan -> rotate -> launch 3.
 
-    A REFUSAL IS RETURNED, NOT RAISED. ``state`` carries the resolved tables and the
+    A refusal is returned, not raised. ``state`` carries the resolved tables and the
     scratch between steps (the caller keeps it; ``chunk_bounds`` is required to build
     one); ``kernel``, ``scan_kernel``, ``threads`` and ``rotate`` are the gate's doors.
     """

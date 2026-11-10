@@ -16,7 +16,7 @@ load either one. The native MPS byte gate establishes this B/D sub-step pair; it
 complete-step composition is separately exercised with the stored-E and null
 companions before the arm is wired in the experimental composer.
 
-THE STENCIL AND THE BLOCH CONNECTION ARE THE COMPLEX PML CURL'S, character for
+The stencil and the Bloch connection are the complex PML curl's, character for
 character (:data:`CONNECTED_REGISTERS`, :data:`CURL_STATEMENTS`; the lines
 :func:`.complex_fields.bloch_curl_source` emits), because ``stepping._curl_operands``
 and ``stepping._curl_from_operands`` are one function with and without an absorber:
@@ -284,7 +284,7 @@ def _base_reasons(fields: Any, pml: Any, grid: Any, residency: Any) -> List[str]
         reasons.append("an active PML layer requires the split-field conductive curl")
     if bool(getattr(fields, "_pml_active", False)):
         reasons.append("Fields remains in PML storage mode while the layer is inert")
-    # UNREADABLE IS A REFUSAL, NEVER A CRASH. `_boundary_kinds` returns None for a
+    # Unreadable is a refusal, never a crash. `_boundary_kinds` returns None for a
     # grid the array path will not resolve (coverage.py:105-121), and the triple is
     # read TWICE below — once for the covered ghost rule and once for per-axis Bloch
     # legality — so iterating it would raise where the contract says refuse. This is
@@ -395,7 +395,7 @@ def metal_complex_conductive_no_pml_curl_coverage(
 class MetalComplexConductiveNoPmlCurlPlan(KernelPlan):
     """Persistent-mirror plan for a complex no-PML conductive curl sub-step.
 
-    THE CHUNK RECORD BINDS LAST (:data:`RECORD_BUFFER`), checked against the plan's
+    The chunk record binds last (:data:`RECORD_BUFFER`), checked against the plan's
     shape (:func:`.chunk_bounds.plan_words`) and uploaded once as a plan-owned
     ``int32`` vector on the residency's device, as every base plan binds it. Its
     presence word decides each curl's stencil form; ``chunk_bounds`` keeps the host

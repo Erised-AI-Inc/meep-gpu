@@ -5,7 +5,7 @@ subject to a declared and CHECKED subnormal-free precondition.** Not a stated
 tolerance. Leg 7 is the check, and it is required to FIRE on a scaled control — a
 precondition never demonstrated to fire is decorative.
 
-THE ORACLE IS IN PROCESS. ``stepping.step_B(fields, pml)`` and the Metal launch run
+The oracle is in process. ``stepping.step_B(fields, pml)`` and the Metal launch run
 in ONE process against ONE seed, on real ``Grid``/``Fields``/``PML`` objects, on the
 machine that is both target and oracle. The array path IS the reference: it steps
 MEEP's per-chunk forms and runs BFAST as MEEP's own pass after each component's curl
@@ -15,9 +15,9 @@ transcription: every mutation row compares the mutant with ``stepping`` itself. 
 one host reconstruction left (:func:`bfast_intermediates`) recomputes the pass's
 un-storable intermediates for the subnormal census and steps nothing.
 
-WHAT IS COMPARED: uint32 word equality on float32 storage, never ``allclose``. The
+What is compared: uint32 word equality on float32 storage, never ``allclose``. The
 compared arrays are the sub-step's TARGETS, its PML AUXILIARIES (``fu_*``) **and its
-THREE IIR STATES** (``f_bfast_*``). The states are the whole point of this family:
+three IIR states** (``f_bfast_*``). The states are the whole point of this family:
 they are the only STATE the tail carries, the IIR is MARGINALLY STABLE by
 construction (the homogeneous mode of ``F_n = -F_{n-1}`` is ``(-1)^n``, undamped
 forever, stepping.py:868-874), so a kernel that is right for one launch and wrong
@@ -28,7 +28,7 @@ THE LEGS:
 
   0b execution       proof the bytes came off the GPU: mirror residency, the entry
                      point's type, the launch counter, an unlaunched control, and
-                     the MEASURED refusal of a host tensor at a Metal entry point
+                     the measured refusal of a host tensor at a Metal entry point
   1  reference       the Metal kernel vs ``stepping.py``, real engine objects, the
                      eight boundary triples in 3-D and the one-partner 2-D cases
                      that reach MEEP's plain one-partner branch, one of them with
@@ -60,13 +60,13 @@ THE LEGS:
                      update_H/update_E under an INACTIVE absorber, which this
                      family refuses by clause 3, so the two cannot collide
 
-PREDICTED NULLS ARE RECORDED, NOT QUIETLY DROPPED. Three defects this gate CANNOT
+Predicted nulls are recorded, not quietly dropped. Three defects this gate CANNOT
 hold because they are byte-invisible in float32 — the tail's POSITION between the
 curl and the mask, the shifted-plus-centre SUM ORDER, and ``curl - adv`` spelled as
 a subtraction rather than as an addition of a negation — are named in
 ``summary.predicted_nulls`` with the reason each is invisible and the SOURCE-TEXT
 assertion in ``test_metal_bfast.py`` that pins it instead. That discipline matters
-more here than on the Triton track, because there is NO PTX-EQUIVALENT AUDIT on this
+more here than on the Triton track, because there is no PTX-equivalent audit on this
 executor: ``compile_shader`` exposes no disassembly, so the mutation legs and this
 gate are the only arbiters.
 
@@ -74,14 +74,14 @@ CASE DISCIPLINE, inherited and non-negotiable: a non-power-of-two Courant FIRST 
 and the marquee corpus row's own ``(1 - kx)/sqrt(3) ~ 0.105679`` is one of them;
 every leg proves the step MOVED STATE; the signed-zero census carries a FLOOR
 because a census of zero is VACUOUS and not a pass; armed mutations are
-launch-counted — INCLUDING THE HOST MUTATIONS (m10, m11), which plant their defect
+launch-counted — including the host mutations (m10, m11), which plant their defect
 in the plan's arguments rather than in the source and were previously recorded with
 a literal launch count, so a disarmed row would have reported itself CAUGHT (the
 untouched input differs from the oracle just as a caught defect does); the top-level
 verdict reads BOTH the compare COUNT and the OUTCOME, the outcome re-read from the
 recorded rows rather than inferred from having reached the summary.
 
-NaN AND OVERFLOW NEEDLES ARE EXCLUDED, on this track as on the Triton one: NaN sign
+NaN and overflow needles are excluded, on this track as on the Triton one: NaN sign
 and payload are IEEE-unspecified and every Metal op carries NaN-class residuals, so
 a needle there measures the toolchain's mood rather than the transcription.
 """
@@ -209,10 +209,10 @@ def record_mutation(rows: List[Dict[str, Any]], payload: Dict[str, Any], out: st
 def certified_from_rows(legs: Dict[str, Any]) -> Tuple[bool, List[str]]:
     """Re-read the recorded ARTIFACT and decide whether it says the bytes agreed.
 
-    A SECOND, INDEPENDENT READ OF THE OUTCOME, and it is deliberately not the same
+    A second, independent read of the outcome, and it is deliberately not the same
     evidence as the per-case assertions. The assertions live inside the legs; this
     reads the rows that were WRITTEN, so a leg that recorded a nonempty ``differing``
-    and then failed to assert on it — the exact shape of the Triton track's round
+    and then failed to assert on it — the exact shape of the Triton track's artifact
     that stamped ``passed: true`` while every compare failed — is caught by the
     summary rather than by the code that produced it. Returns the verdict and the
     rows that carried it.
@@ -239,7 +239,7 @@ def certified_from_rows(legs: Dict[str, Any]) -> Tuple[bool, List[str]]:
 def wiring_from_rows(rows: Any) -> str:
     """What the composer DID, read back off leg 9's rows.
 
-    DERIVED, NEVER TYPED. This field was a hand-written sentence saying the family
+    Derived, never typed. This field was a hand-written sentence saying the family
     was unwired; the tree wired it and the sentence stayed true-looking in the
     artifact for as long as nobody re-read leg 9. Anything a summary asserts about
     the tree has to come out of a row this run recorded.
@@ -267,8 +267,8 @@ def summarize(legs_run: Sequence[str], compared: int, claim: str, scope: str,
               problems: Sequence[str] = (), wiring: str = "") -> Dict[str, Any]:
     """The summary block, reading BOTH the compare COUNT and the OUTCOME.
 
-    THE BUG THIS EXISTS TO PREVENT IS A REAL ONE from the Triton track: a gate
-    shipped a round where every compare FAILED and it still stamped
+    The bug this exists to prevent is a real one from the Triton track: a gate
+    shipped an artifact where every compare FAILED and it still stamped
     ``passed: true`` and exited 0, because the summary read a count where it meant
     an outcome. ``compared`` is a COUNT — how many rows were recorded, and zero of
     them is VACUOUS, not a pass. ``certified`` is the OUTCOME, re-read from the
@@ -294,7 +294,7 @@ def summarize(legs_run: Sequence[str], compared: int, claim: str, scope: str,
         "predicted_nulls": [{"defect": n, "why_not_measurable": w,
                              "pinned_by": p, "measured": False}
                             for n, w, p in PREDICTED_NULLS],
-        # THE STEP BUDGET, STATED IN ONE PLACE. Scattered across leg rows it is
+        # The step budget, stated in one place. Scattered across leg rows it is
         # recoverable but not readable, and "how long did you actually run it for"
         # is the first question asked of any identity claim on a recurrence that
         # never decays.
@@ -310,7 +310,7 @@ def summarize(legs_run: Sequence[str], compared: int, claim: str, scope: str,
             "note": ("every number here is a COMPLETE driver step (B, update_H, D, "
                      "update_E) except the census interval"),
         },
-        # WHICH SHIPPED SPECIALISATIONS WERE LAUNCHED, not merely fingerprinted. The
+        # Which shipped specialisations were launched, not merely fingerprinted. The
         # provenance block hashes all 32 emitted sources; hashing records that a
         # source did not change, which is a different claim from certifying it.
         "specialisation_coverage": {
@@ -325,7 +325,7 @@ def summarize(legs_run: Sequence[str], compared: int, claim: str, scope: str,
                                   "cases, the k on the invariant axis included, "
                                   "which clause 11a admits"),
         },
-        # THE PRECONDITION IS NOT HYPOTHETICAL, AND SAYING SO IS A MEASUREMENT.
+        # The precondition is not hypothetical, and saying so is a measurement.
         # Leg 7 measures that a DRIVEN run does not reach the band. That is one
         # half of the question; the other half — can anything reach it — was
         # answered by `probe_metal_bfast_engine_route`, which drives the ENGINE
@@ -368,12 +368,12 @@ def summarize(legs_run: Sequence[str], compared: int, claim: str, scope: str,
 def package_fingerprint_state() -> Dict[str, Any]:
     """Does the tree still match the package's CHECKED-IN fingerprints, and where not?
 
-    RECORDED, NEVER RE-CUT HERE. ``launch.write_fingerprints`` is a deliberate act
+    Recorded, never re-cut here. ``launch.write_fingerprints`` is a deliberate act
     owned by whoever changed the module; a gate that silently re-cut it would launder
     an unrecorded change into a green artifact, which is the exact failure mode the
     fingerprint exists to prevent.
 
-    IT BELONGS IN THIS ARTIFACT because it BOUNDS THIS GATE'S CLAIM. The composed
+    It belongs in this artifact because it bounds this gate's claim. The composed
     route runs through ``launch.plan_step``, so a ``launch.py`` that has drifted from
     the last cut is a fact about what was certified here, not a housekeeping note
     about somebody else's file. The two questions are separated: a drifted KERNEL
@@ -447,18 +447,18 @@ def write_provenance(files: Dict[str, str], out_dir: str,
 #: the same family of non-representable multiplicands.
 COURANTS: Tuple[float, ...] = (0.105679, 0.35, 0.5)
 
-#: THE STEP BUDGET, DECLARED ONCE AND CONSUMED AS THE DEFAULT ARGUMENT. Naming the
+#: The step budget, declared once and consumed as the default argument. Naming the
 #: budget in a comment and passing a literal to the leg is how a recorded budget
 #: drifts from the executed one; these constants ARE the legs' defaults and are what
 #: ``summary.step_budget`` reports.
 TRANSCRIPTION_CYCLES = 3
 MULTI_STEP_CYCLES = 4
 
-#: ALL EIGHT BOUNDARY TRIPLES, and the first three keep their positions because
+#: All eight boundary triples, and the first three keep their positions because
 #: several legs bind ``CONFIGS[1]`` (metallic_xy — masks and walls both live) by
 #: index.
 #:
-#: THE GAP THIS CLOSES. ``enumerate_bfast_sources`` ships THIRTY-TWO specialised
+#: The gap this closes. ``enumerate_bfast_sources`` ships THIRTY-TWO specialised
 #: sources (2 directions x 2 HAS_BFAST arms x 8 boundary triples) and the provenance
 #: block fingerprints every one of them, but a three-triple matrix launched only six
 #: of the sixteen HAS_BFAST=1 builds against ``stepping.py``. Fingerprinting a source
@@ -491,7 +491,7 @@ BFAST_KS: Tuple[Tuple[str, Tuple[float, float, float]], ...] = (
 SUB_STEPS = bfast.SUB_STEPS
 STATES = bfast.BFAST_STATE_NAMES
 
-#: THE ONE-PARTNER CASES. Every 3-D row above gives every component both partners,
+#: The one-partner cases. Every 3-D row above gives every component both partners,
 #: so MEEP's one-partner forms -- the plain branch's ``F = k1*(g1s + g1)`` with no
 #: ``- F`` (step_generic.cpp:373-379), and the ``S - F`` of every other branch --
 #: never run there. A z-invariant 2-D grid gives the x and y components one partner,
@@ -539,7 +539,7 @@ def build(cell, boundaries, courant: float, seed: int,
     ``#if HAVE_IMMINTRIN_H``), so the signed-zero class is constructible on the HOST
     side here — unlike on a flushing x86 host.
 
-    THE IIR STATES ARE SEEDED TOO, and that is deliberate rather than incidental.
+    The IIR states are seeded too, and that is deliberate rather than incidental.
     With ``f_bfast`` left at zero the advance is ``total - 2*0``, so the ``-2*state``
     term — half the recurrence — would never be exercised, and the marginally
     stable pole would be invisible.
@@ -567,7 +567,7 @@ def build(cell, boundaries, courant: float, seed: int,
             host.reshape(-1)[::17] = np.float32(-0.0)
             host.reshape(-1)[7::23] = np.float32(0.0)
         array[...] = host
-    # A SEEDED STATE IS A MID-RUN ONE: H was started from B long ago, so
+    # A seeded state is a mid-run one: H was started from B long ago, so
     # ``stepping.separate_h_from_b`` must not run on it again -- the array path would
     # copy B into H and f_w on the dsigw cells at the first update_H, and no kernel
     # this gate launches does (``launch.h_start_reasons``).
@@ -699,7 +699,7 @@ def run_bfast_on_device(state: Dict[str, Any], pml, sub_step: str, codes,
     ``BfastPmlCurlPlan.run`` so the bytes this gate certifies are the bytes the
     engine route would launch.
 
-    ``counter`` LAUNCH-COUNTS THE SHIPPED KERNEL TOO, and that is not a
+    ``counter`` launch-counts the shipped kernel too, and that is not a
     convenience. The HOST mutations (m10, m11) plant their defect in the plan's own
     arguments rather than in the source, so they hand no ``source`` — and while this
     helper only wrapped a counter around a MUTATED source, those two rows could not
@@ -746,17 +746,17 @@ def compared_names(sub_step: str) -> Tuple[str, ...]:
 
 
 # ---------------------------------------------------------------------------
-# LEG 0b — PROOF THE METAL PATH EXECUTED
+# LEG 0b — proof the Metal path executed
 # ---------------------------------------------------------------------------
 
 def leg_execution(payload: Dict[str, Any], out: str) -> None:
     """That the bytes this gate compares came off the GPU, measured four ways.
 
-    THE FALSE-PASS THIS CLOSES. Every other device leg reads host arrays after the
+    The false-pass this closes. Every other device leg reads host arrays after the
     launch and compares them to ``stepping.py``. If the launch had silently not
     happened, or had happened on the host, those arrays would still be *some*
     numbers — and a gate that never asks "did the Metal kernel actually run" is
-    certifying an unknown executor. The certified PML tranche established the launch
+    certifying an unknown executor. The certified PML curl's gate established the launch
     counter for MUTATIONS, where a disarmed row is the failure mode; this leg asks
     the same question of the SHIPPED path, which is where a silent fallback would
     live. Four independent measurements, none of them an argument:
@@ -765,7 +765,7 @@ def leg_execution(payload: Dict[str, Any], out: str) -> None:
        ``torch`` device string and every one must be ``mps``. The plan binds the
        engine's OWN volumes (``plan_bfast_pml_curl``, not the from-arrays harness
        route), so this is the residency the wired family would have.
-    2. THE ENTRY POINT'S IDENTITY. The object the launch path calls is recorded by
+    2. The entry point's identity. The object the launch path calls is recorded by
        type. It must be ``torch._C._mps_MetalKernel`` — a compiled Metal handle from
        ``torch.mps.compile_shader``. No Python callable in this tree can satisfy
        that, so "a host function stood in for the kernel" is excluded by the type
@@ -774,12 +774,12 @@ def leg_execution(payload: Dict[str, Any], out: str) -> None:
        and 2 after a second ``run`` — so the counter counts launches rather than
        plans, and a leg that reported a launch it never made would have to lie about
        an integer this leg reads directly.
-    4. THE NEGATIVE CONTROL, which is what makes 1-3 mean something. The host arrays
+    4. The negative control, which is what makes 1-3 mean something. The host arrays
        are compared to the oracle BEFORE the launch: they differ (by exactly the
        words the launch is about to move), so "the plan was built and never run"
        CANNOT pass this gate's comparison. Recorded as ``unlaunched_differing``.
 
-    AND THE FALLBACK ITSELF IS MEASURED, not argued away: the same shipped plan is
+    And the fallback itself is measured, not argued away: the same shipped plan is
     built against a CPU-resident registry and launched. The platform raises
     ``RuntimeError: Passed CPU tensor to MPS op`` — so a host tensor reaching a
     Metal entry point is a LOUD failure on this executor, never a quiet one. The
@@ -810,7 +810,7 @@ def leg_execution(payload: Dict[str, Any], out: str) -> None:
         entry = plan._functions[shaders.CONTRACT_OFF]
         entry_type = f"{type(entry).__module__}.{type(entry).__name__}"
 
-        # (4) THE NEGATIVE CONTROL — before any launch.
+        # (4) The negative control — before any launch.
         assert plan.launches == 0, "a freshly built plan reports a launch"
         before_launch = snapshot(fields)
         unlaunched = sum(differing(before_launch[n], after[n]) for n in compared)
@@ -829,7 +829,7 @@ def leg_execution(payload: Dict[str, Any], out: str) -> None:
         residency.sync_out()
         launched_twice = plan.launches
 
-        # THE FALLBACK, MEASURED. A CPU-resident registry through the same shipped
+        # The fallback, measured. A CPU-resident registry through the same shipped
         # plan builder and the same compiled entry point.
         cpu_error: Optional[str] = None
         cpu_residency = device.Residency(device="cpu")
@@ -894,7 +894,7 @@ def leg_execution(payload: Dict[str, Any], out: str) -> None:
 def case_census(before: Dict[str, Any], after: Dict[str, Any], pml,
                 sub_step: str, codes, dtdx: float,
                 ks: Sequence[float]) -> Dict[str, int]:
-    """The subnormal-free precondition, CHECKED ON THIS CASE rather than nearby.
+    """The subnormal-free precondition, checked on this case rather than nearby.
 
     Leg 7 establishes the cliff and its control on one configuration. That leaves
     every OTHER certified case resting on an ASSUMED precondition — which is exactly
@@ -971,7 +971,7 @@ def leg_reference(payload: Dict[str, Any], out: str) -> None:
                     assert state_moved > 0, (
                         f"VACUOUS: {name}/{k_label}/{sub_step} moved no f_bfast "
                         f"state")
-                    # THE PRECONDITION IS CHECKED ON THE CASE BEING CERTIFIED.
+                    # The precondition is checked on the case being certified.
                     assert census["subnormal_words"] == 0, (
                         f"PRECONDITION BREACH on {name}/C={courant}/{k_label}/"
                         f"{sub_step}: {census['subnormal_words']} of "
@@ -988,7 +988,7 @@ def leg_reference(payload: Dict[str, Any], out: str) -> None:
 def leg_identity(payload: Dict[str, Any], out: str) -> None:
     """A HAS_BFAST=0 build must be byte-identical to the CERTIFIED plain curl.
 
-    THIS IS WHAT LICENSES THE SPECIALISATION. The tail is substituted into a copy
+    This is what licenses the specialisation. The tail is substituted into a copy
     of ``shaders._CURL_TEMPLATE``'s body; if that copy had drifted — a reordered
     recurrence, a lost paren, a different ghost — this leg is where it shows,
     because the comparison is against the kernel whose sha256 is in
@@ -1015,7 +1015,7 @@ def leg_identity(payload: Dict[str, Any], out: str) -> None:
             got = run_bfast_on_device(before, pml, sub_step, codes, dtdx, scalars,
                                       has_bfast=False)
 
-            # THE CONTROL THAT MAKES `state_touched == 0` A MEASUREMENT. Without it
+            # The control that makes `state_touched == 0` a measurement. Without it
             # the leg proves only that the states did not move, which is equally
             # true of a tail that IS present and whose six bound scalars are dead —
             # "if the tail were present these would move it" was an assertion about
@@ -1082,7 +1082,7 @@ def first_divergence(got: Dict[str, Any], expected: Dict[str, Any],
     """The FIRST array and the FIRST word at which the device left the array path.
 
     A leg that reports only ``{name: count}`` says a step diverged; the failure
-    protocol for this tranche says to report the first case, step AND array, which
+    protocol for this family says to report the first case, step AND array, which
     needs the word. Both values are reported as the uint32 word AND as the float it
     decodes to, because the two answer different questions: the word says how far
     apart the bits are (one ulp, a sign bit, a NaN class), the float says whether
@@ -1110,25 +1110,25 @@ def first_divergence(got: Dict[str, Any], expected: Dict[str, Any],
 
 def leg_multi_step(payload: Dict[str, Any], out: str,
                    cycles: int = MULTI_STEP_CYCLES) -> None:
-    """Full B -> H -> D -> E cycles, COMPARED AFTER EVERY COMPLETE DRIVER STEP.
+    """Full B -> H -> D -> E cycles, compared after every complete driver step.
 
-    THE REASON THIS LEG IS LOAD-BEARING FOR THIS FAMILY IN PARTICULAR: the IIR is
+    The reason this leg is load-bearing for this family in particular: the IIR is
     marginally stable, so an error in the state does not decay — it persists at
     full amplitude forever, alternating sign. A single-launch leg cannot see a
     defect that only enters through the state on the second launch.
 
-    THE COMPARISON UNIT IS ONE COMPLETE DRIVER STEP, NOT THE WHOLE RUN, and that is
+    The comparison unit is one complete driver step, not the whole run, and that is
     a correction rather than a refinement. An earlier revision advanced both routes
     ``cycles`` times and compared once at the end. That detects a divergence — the
     IIR guarantees it never decays back — but it cannot ATTRIBUTE one: the artifact
     could say only "after four steps these thirty arrays disagree", and the failure
-    protocol for this tranche requires the first case, the first STEP and the first
+    protocol for this family requires the first case, the first STEP and the first
     ARRAY. Comparing the full stored inventory (all 30 volumes: targets, PML
     auxiliaries, both constitutive sides and the six IIR states) after each complete
     step costs six extra compares per case and makes the first divergent step the
     thing that is recorded.
 
-    THE TWO ROUTES RUN ON SEPARATE ``Fields`` OBJECTS, in lockstep, rather than one
+    The two routes run on separate ``Fields`` objects, in lockstep, rather than one
     object rewound between them: a rewind compares a route against itself if the
     restore is incomplete, and ``f_bfast`` — allocated lazily, carried across steps,
     and never decaying — is exactly the array a partial restore would miss.
@@ -1176,8 +1176,8 @@ def leg_multi_step(payload: Dict[str, Any], out: str,
                 stepping.update_E(oracle_fields, pml_o)
                 oracle = snapshot(oracle_fields)
 
-                # THE DEVICE ROUTE: the same complete step, with the BFAST curls on
-                # Metal and the constitutive halves on the array path (this tranche
+                # The device route: the same complete step, with the BFAST curls on
+                # Metal and the constitutive halves on the array path (this family
                 # ports no constitutive kernel). The IIR state is carried across
                 # steps through the engine's own host arrays.
                 census = {"subnormal_words": 0, "censused_words": 0}
@@ -1308,7 +1308,7 @@ def leg_refusal(payload: Dict[str, Any], out: str) -> None:
     the one its presence zeroes, so a k on the invariant axis multiplies nothing MEEP
     reads -- the array path's separate-pass change measured that class (case ``bfz``)
     at 0 differing words against MEEP (CHANGELOG). The Triton predicate admits it since
-    its fold lane, and this one with it (the two clause lists are pinned equal,
+    its fold support landed, and this one with it (the two clause lists are pinned equal,
     ``test_metal_bfast``).
 
     This leg measures, on this host: the premise (on a z-invariant grid the array
@@ -1414,15 +1414,15 @@ def leg_refusal(payload: Dict[str, Any], out: str) -> None:
 def leg_signed_zero(payload: Dict[str, Any], out: str) -> None:
     """+-0 lattice seeding, with a census FLOOR.
 
-    ZERO INIT IS NOT A FIXED POINT OF THIS SUB-STEP the way it is for the
+    Zero init is not a fixed point of this sub-step the way it is for the
     constitutive one — with zero state and zero fields the advance is
     ``0 - 2*0 = 0`` and the curl is zero, so nothing moves and the case would be
     vacuous. So the seeding is a ``+-0`` LATTICE with a live amplitude beside it,
     and the moved floor, the IIR-STATE floor and the census floor are all asserted.
 
-    A CENSUS OF ZERO IS VACUOUS, NOT PASSED.
+    A census of zero is vacuous, not passed.
 
-    THE FLOOR IS ASSERTED ON EVERY CONFIGURATION, and the exception that used to
+    The floor is asserted on every configuration, and the exception that used to
     excuse the periodic one was FALSE. Earlier revisions carried a
     ``SIGNED_ZERO_CONFIGS`` allow-list and stamped ``periodic_all`` with the
     recorded reason "no metallic axis: the ownership mask writes no exact zeros
@@ -1506,7 +1506,7 @@ def leg_signed_zero(payload: Dict[str, Any], out: str) -> None:
             assert census > 0, (
                 f"VACUOUS signed-zero census on {name}/{sub_step}: a census of 0 "
                 f"means the class was never constructed, not that it was handled")
-            # THE INPUT FLOOR IS THE ONE THAT IS ASSERTABLE FOR THE TAIL. The -0.0
+            # The input floor is the one that is assertable for the tail. The -0.0
             # OUTPUT class in f_bfast is unreachable by construction (see the row's
             # own recorded reason), so asserting it would be asserting an
             # impossibility; asserting nothing would leave the tail's signed-zero
@@ -1525,8 +1525,8 @@ def leg_signed_zero(payload: Dict[str, Any], out: str) -> None:
 SUBNORMAL_SCALES = (("physical", 1.0, True), ("small_normal", 1e-20, True),
                     ("subnormal_band", 1e-38, False))
 
-#: How long the f_bfast reachability census runs. The DEFERRAL'S ATTACHED
-#: MEASUREMENT: this family's Triton counterpart was deferred pending a census of
+#: How long the f_bfast reachability census runs. The deferral's attached
+#: measurement: this family's Triton counterpart was deferred pending a census of
 #: ``f_bfast`` on its one lifted corpus row over a REALISTIC budget, with the claim
 #: shape — byte-identity, stated tolerance, or refusal — to be decided by the
 #: answer rather than assumed. This is that budget.
@@ -1548,7 +1548,7 @@ def leg_precondition(payload: Dict[str, Any], out: str) -> None:
        homogeneous mode is undamped forever — so unlike every other auxiliary in
        this stepper its noise floor does NOT decay toward zero, and the question
        "can a real run drive f_bfast into the subnormal band" has a different
-       answer here than for the certified curl. It is MEASURED over
+       answer here than for the certified curl. It is measured over
        :data:`REACHABILITY_STEPS` driven steps rather than argued, and the claim
        shape recorded in the artifact follows the measurement.
     """
@@ -1630,16 +1630,16 @@ def leg_precondition(payload: Dict[str, Any], out: str) -> None:
 
 
 def _reachability(payload: Dict[str, Any], out: str, started: float) -> Dict[str, Any]:
-    """Drive a real pulsed run and census the tail's STATE AND ITS INTERMEDIATES.
+    """Drive a real pulsed run and census the tail's state and its intermediates.
 
-    THE MEASUREMENT THE DEFERRAL ATTACHED. A source is injected into Ez every step
+    The measurement the deferral attached. A source is injected into Ez every step
     with a Gaussian envelope; after it dies the fields ring down. For the certified
     curl the smallest nonzero |f| was measured to bottom out at ~3e-19 and HOLD,
     because the tail decays to the float32 round-off floor and stops. The IIR here
     is marginally stable, so its own floor is measured separately rather than
     assumed to behave the same way.
 
-    THE INTERMEDIATES ARE CENSUSED TOO, and leaving them out was a real hole rather
+    The intermediates are censused too, and leaving them out was a real hole rather
     than a tidiness point. ``preconditions`` requires the census to cover RESULTS and
     NAMED INTERMEDIATES because a kernel PRODUCES band values it was not given, and
     this tail's ``advance = total - 2*state`` is a CANCELLATION: ``total`` can
@@ -1724,7 +1724,7 @@ def _reachability(payload: Dict[str, Any], out: str, started: float) -> Dict[str
         payload["legs"]["reachability"] = {"samples": samples}
         save(payload, out)
 
-    # THE CLAIM SHAPE FOLLOWS THE MEASUREMENT, and is not chosen in advance.
+    # The claim shape follows the measurement, and is not chosen in advance.
     if peak_subnormal == 0:
         shape = ("byte-identity under a CHECKED subnormal-free precondition: "
                  "neither f_bfast NOR the tail's reconstructed total/advance "
@@ -1739,13 +1739,13 @@ def _reachability(payload: Dict[str, Any], out: str, started: float) -> Dict[str
         [row["smallest_nonzero_intermediate_abs"] for row in samples
          if row["smallest_nonzero_intermediate_abs"] is not None] or [float("inf")])
 
-    # --- THE SOURCE-FREE CONTROL -------------------------------------------
+    # --- The source-free control -------------------------------------------
     #
     # The reachability verdict is a statement about a DRIVEN run, and "driven" is
     # the half of it a census cannot see: every number above is consistent with a
     # run that was never driven at all and merely evolved seeded noise. The control
     # is the same configuration, the same rest initial condition and the same step
-    # budget with the SOURCE LINE REMOVED. From rest and with no drive the stepper
+    # budget with the source line removed. From rest and with no drive the stepper
     # is linear and homogeneous, so every volume must stay identically zero —
     # including f_bfast, whose marginally stable pole would otherwise keep any
     # injected noise alive forever. A nonzero word here would mean the driven run's
@@ -2120,7 +2120,7 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
 
     # --- HOST mutations: the plan's own choices, not the kernel's source -----
     #
-    # THESE TWO ARE LAUNCH-COUNTED LIKE THE SOURCE MUTATIONS, and the counting is
+    # These two are launch-counted like the source mutations, and the counting is
     # load-bearing rather than decorative. A host mutation plants its defect in the
     # plan's ARGUMENTS, so the shipped kernel runs unmodified — and if it did not
     # run at all, the returned arrays would still be the untouched input, which
@@ -2172,7 +2172,7 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
 def leg_composition(payload: Dict[str, Any], out: str) -> None:
     """Plans from the engine's own objects, and what the SHIPPED COMPOSER now does.
 
-    THIS LEG WAS INVERTED BY THE TREE, and the inversion is the tranche-2 fact worth
+    This leg was inverted by the tree, and the inversion is the second Metal certification's fact worth
     stating plainly. It used to assert that ``plan_step`` leaves both curl slots
     UNSELECTED on a BFAST run — the safety argument for gating a family before
     dispatch was decided. ``bfast_curl.register_arms`` now registers four arms (two
@@ -2181,17 +2181,17 @@ def leg_composition(payload: Dict[str, Any], out: str) -> None:
     have thrown away the disjointness check; so the rule is split, and BOTH halves
     are asserted here:
 
-      * NO FOREIGN PRODUCT MAY ADMIT on ``step_B``/``step_D``. Unweakened, and now
+      * No foreign product may admit on ``step_B``/``step_D``. Unweakened, and now
         swept over the ARM TABLE for those slots rather than over one hand-named
         predicate: every registered arm whose family is not this one must refuse,
-        and the shipped tranche-1 curl must refuse BY NAME (clause 11).
-      * THE COMPOSER MUST SELECT THIS FAMILY on both curl slots, and the object it
+        and the shipped plain PML curl must refuse BY NAME (clause 11).
+      * The composer must select this family on both curl slots, and the object it
         selected must be this family's plan class. An arm that is registered but
         never wins routes nothing, and the disjointness half alone would call that
         silence a pass.
 
-    THE CONSTITUTIVE PAIR IS THE SECOND CLAIM AND IT IS A DIFFERENT ONE. This family
-    also fills ``update_H``/``update_E``, with NO NEW ARITHMETIC: the plan is built by
+    The constitutive pair is the second claim and it is a different one. This family
+    also fills ``update_H``/``update_E``, with no new arithmetic: the plan is built by
     the CERTIFIED builder and only the ADMISSION is this module's. "Same kernel" is
     checked as an identity rather than asserted as a sentence — the plan's compiled
     entry point must BE the object ``launch.compile_constitutive(side, contract)``
@@ -2200,7 +2200,7 @@ def leg_composition(payload: Dict[str, Any], out: str) -> None:
     BYTES do on that composed route is not this leg's question; it is measured per
     complete driver step by ``probe_metal_bfast_engine_route``'s composed leg.
 
-    THE RESIDENCY VERDICT IS RECORDED because the wiring changed it: with all four
+    The residency verdict is recorded because the wiring changed it: with all four
     sub-steps on the device there is no array-path wall inside a step, so the mirror
     set may be held across one. That is a property of the COMPOSITION, not of any
     plan, and it is read here rather than inferred.
@@ -2243,7 +2243,7 @@ def leg_composition(payload: Dict[str, Any], out: str) -> None:
     context = metal_arms.StepContext(fields, pml, residency,
                                      contract_variants=(shaders.CONTRACT_OFF,),
                                      sources=(), synced=())
-    # THE SWEEP IS PARTITIONED BY ARM KIND, NOT BY ``wired``, and that distinction is
+    # The sweep is partitioned by arm kind, not by ``wired``, and that distinction is
     # the whole correctness of this leg. A PEER replaces exactly the slot it sits on, so
     # two peers admitting one slot is the over-covering dispatch the composer fails
     # closed on, and that stays an error. A WELD (``spec.is_weld``) replaces a whole
@@ -2252,7 +2252,7 @@ def leg_composition(payload: Dict[str, Any], out: str) -> None:
     # arm's, so it ALWAYS co-admits with the arm it welds. "At most one admits" over
     # welds asserts something no weld can ever satisfy.
     #
-    # FILTERING ON ``not spec.wired`` WOULD BE WRONG WHILE LOOKING IDENTICAL: every
+    # Filtering on ``not spec.wired`` would be wrong while looking identical: every
     # unwired arm on this tree is a weld (measured 16 of 16), so the two filters agree
     # today -- and the ``wired`` one would silently delete the case this sweep was built
     # for, a deferred SINGLE-SLOT peer registered ahead of its wiring.
@@ -2295,11 +2295,11 @@ def leg_composition(payload: Dict[str, Any], out: str) -> None:
             f"there, so 'nobody else admits' measures nothing")
         assert not foreign, (
             f"a FOREIGN PEER admits a BFAST run on {sub_step}: {foreign}")
-        # THE WELD HALF IS A STRICTER CHECK, NOT A SKIP. A weld may co-admit -- that is
+        # The weld half is a stricter check, not a skip. A weld may co-admit -- that is
         # its construction -- but only ALONGSIDE a single-slot arm that admits the same
         # configuration. A weld admitting where NOTHING else does would mean it covers a
         # configuration no certified sub-step arm covers: that is the over-coverage this
-        # leg exists to catch, wearing a weld's clothes. ``own_admitting`` is MEASURED
+        # leg exists to catch, wearing a weld's clothes. ``own_admitting`` is measured
         # in the loop above rather than assumed, so this cannot pass by default.
         if welds_admitting:
             assert own_admitting or foreign, (
@@ -2317,12 +2317,12 @@ def leg_composition(payload: Dict[str, Any], out: str) -> None:
     curl_plan_classes = {slot: isinstance(composed.plans.get(slot),
                                           bfast.BfastPmlCurlPlan)
                          for slot in SUB_STEPS}
-    # WHY THE ENTRY POINT IS CHECKED THROUGH THE LIBRARY CACHE AND NOT BY `is` ON
-    # THE FUNCTION. Measured on this executor: `_mps_ShaderLibrary.<name>` mints a
+    # Why the entry point is checked through the library cache and not by `is` on
+    # the function. Measured on this executor: `_mps_ShaderLibrary.<name>` mints a
     # FRESH `_mps_MetalKernel` on every attribute access, so
     # `compile_constitutive(side, mode) is compile_constitutive(side, mode)` is
     # False for the same compiled binary — an identity test there reports a defect
-    # that is not one. What IS memoized, and memoized on the EXACT SOURCE STRING,
+    # that is not one. What IS memoized, and memoized on the exact source string,
     # is `device.compile_source`'s library cache. So the checkable claim is the one
     # that matters anyway: the only constitutive kernel SOURCE this process ever
     # compiled is the certified text, whose bytes `gate_metal_spine_byte_neutrality`
@@ -2344,7 +2344,7 @@ def leg_composition(payload: Dict[str, Any], out: str) -> None:
         # The half-cell trap, read off the mirrors the plan actually bound. The
         # composed plans SHARE one residency — which is the point of the composition
         # — so its name list carries every side's coefficients at once and cannot
-        # attribute them. Rebuilding this one plan on a RESIDENCY OF ITS OWN is what
+        # attribute them. Rebuilding this one plan on a residency of its own is what
         # makes the question answerable: the E side must carry the `_h` sub-lattice
         # (stepping.py:1015) and the H side must not (stepping.py:948).
         alone = device.Residency()
@@ -2451,7 +2451,7 @@ def main() -> int:
     started = time.time()
     payload: Dict[str, Any] = {
         "environment": environment_stamp(),
-        # THE CLAIM IS ONLY AS GOOD AS THE PRECONDITION IT WAS CERTIFIED UNDER.
+        # The claim is only as good as the precondition it was certified under.
         "subnormal_policy": subnormal.mps_policy_report(),
         "provenance": write_provenance(
             {"stepping.py": os.path.join(API_ROOT, "meep_gpu", "stepping.py"),

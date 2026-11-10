@@ -1,11 +1,11 @@
 """Merge-bar tests for the Metal CYLINDRICAL COMPLEX family (Dcyl, complex64
 storage at every m — m = 0 since 2026-09-04).
 
-THE FAMILY IS ``complex_fields`` PLUS FIVE CYLINDRICAL ADDITIONS, so this file does
+The family is ``complex_fields`` plus five cylindrical additions, so this file does
 not re-test complex storage: that is byte-certified elsewhere. It tests the five
 additions, the two things this family gets to assume, and the two things it costs.
 
-**1. THE FIVE ADDITIONS, AGAINST ``stepping.py`` DIRECTLY.** The per-chunk radial
+**1. The five additions, against ``stepping.py`` directly.** The per-chunk radial
 sum, the i*m/r pass through MEEP's additive ladder, the |m| = 1 axis-row replacement,
 the per-|m| near-axis rules and the m = 0 arm (no coupling, the m = 0 axis rules as
 post-recurrence edits) are
@@ -14,18 +14,18 @@ terminations, both branches of ``accurate_fields_near_cylorigin`` and multi-laun
 runs. Every leg asserts a VACUITY FLOOR: a plan that wrote nothing would otherwise
 agree with anything, and half this family's work is writing zeros.
 
-**2. THE COMPARISON HAS TEETH, AND THAT IS MEASURED RATHER THAN HOPED.** Five
+**2. The comparison has teeth, and that is measured rather than hoped.** Five
 mutations are planted in the shipped source and each must be CAUGHT. Without them
 "0 differing words" is compatible with a plan that never launched, a reference that
 never moved, and a kernel whose cylindrical blocks are all dead.
 
-**3. THE TWO THINGS THE KERNEL ASSUMES ABOUT THE r AXIS.** It compiles ``BCX =
+**3. The two things the kernel assumes about the r axis.** It compiles ``BCX =
 METALLIC`` where ``_boundary_kinds`` says ``'axis'``. The FAR ghost half is a SOURCE
 IDENTITY and is asserted as one, by reading ``stepping``'s branch text — so a future
 split of that branch fails here rather than in a field. The NEAR ghost half is NOT an
-identity and is MEASURED on the array path, in this file, at both m classes.
+identity and is measured on the array path, in this file, at both m classes.
 
-**4. THE ONE THING IT COSTS.** The radial sum is the array path's own, on the HOST, so
+**4. The one thing it costs.** The radial sum is the array path's own, on the HOST, so
 every launch syncs one source volume out and the radial difference in. That is
 counted, and the counter is ARMED: a plan whose difference is not refreshed after its
 source changes is shown to diverge, so ``prefix_syncs == launches`` is evidence rather
@@ -152,7 +152,7 @@ def build(m: int = 1, z_kind: str = "metallic", accurate: bool = False,
 # ---------------------------------------------------------------------------
 
 def test_the_specialisation_enumeration_is_CLOSED_at_twelve():
-    """``12``, not ``12 x UNBOUNDED``. This is the whole point of the round.
+    """``12``, not ``12 x UNBOUNDED``. This is the whole point of the design.
 
     Triton carries ``ZERO_ROWS`` as a ``tl.constexpr`` equal to ``abs(m)``, so its
     variant count cannot be enumerated by any author. Here it is a
@@ -290,8 +290,8 @@ def test_the_contraction_directive_is_present_and_the_two_modes_differ():
     """The pragma is mandatory and is a property of the SOURCE on this backend.
 
     Not a style check: without it the compiler contracts and byte-identity fails
-    (measured by the real tranche at 37,483-37,568 differing words). Spelled exactly
-    once per source, from ``shaders``' single home.
+    (measured on the composed PML expression, 37,483-37,568 differing words of 262,144
+    per component; see ``shaders``). Spelled exactly once per source, from that one home.
     """
     off = cyl.cylindrical_curl_source(templates.METALLIC, False, cyl.M_ONE, shaders.CONTRACT_OFF)
     fast = cyl.cylindrical_curl_source(templates.METALLIC, False, cyl.M_ONE, shaders.CONTRACT_FAST)
@@ -340,7 +340,7 @@ def test_negation_is_unary_minus_and_not_the_triton_workaround():
 def test_the_FAR_ghost_is_a_source_identity_in_stepping():
     """``_shift_up`` has ONE branch over MIRROR, METALLIC and CYL_AXIS.
 
-    THIS IS THE HALF THAT IS NOT MEASURED, because it is not a measurement — it is a
+    This is the half that is NOT measured, because it is not a measurement — it is a
     reading, and this test is what keeps the reading true. The kernel compiles
     ``BCX = METALLIC`` on an axis ``_boundary_kinds`` calls ``'axis'``; if that
     branch is ever split, the compile-time choice silently stops matching the array
@@ -357,7 +357,7 @@ def test_the_FAR_ghost_is_a_source_identity_in_stepping():
 @pytest.mark.parametrize("m,z_kind", ((1, "metallic"), (3, "periodic")),
                          ids=("m1-metallic", "m3-periodic"))
 def test_the_NEAR_ghost_is_unobservable_on_the_array_path(m, z_kind):
-    """Forcing ``boundaries[0] = 'metallic'`` must change NOT ONE WORD.
+    """Forcing ``boundaries[0] = 'metallic'`` must change not one word.
 
     ``_shift_down``'s CYL_AXIS branch writes the ``r_to_minus_r`` image where
     METALLIC writes zero, so this is a real difference in the shifted buffer. The
@@ -486,7 +486,7 @@ def test_m_class_has_three_arms_and_splits_at_zero_and_two():
 @pytest.mark.parametrize("sub_step", ("step_B", "step_D"))
 def test_the_radial_difference_is_the_array_paths_own(sub_step):
     """``radial_difference`` CALLS ``stepping.cylindrical_rderiv_difference``: B extends
-    Ep by ONE ZERO WALL ROW and differences forward, D differences Hy backward; the
+    Ep by one zero wall row and differences forward, D differences Hy backward; the
     chunk starts are the run's own (two r chunks under the high-r layer)."""
     fields, pml = build(1)
     shape = tuple(fields.grid.shape)
@@ -559,7 +559,7 @@ def test_a_complex_m_zero_run_is_ADMITTED_here_and_refused_by_the_real_family():
     assert plan is not None
     assert plan.m_arm == cyl.M_ZERO and plan.zero_rows == 0
     assert plan.axis_factor == cyl.axis_factor("step_D", 0, fields.grid.courant)
-    # THE OTHER DIRECTION, by name: float32 storage at m = 0 is the real family's.
+    # The other direction, by name: float32 storage at m = 0 is the real family's.
     real_fields, real_pml = build(m=0, complex_storage=False)
     verdict = cyl.cylindrical_complex_pml_curl_coverage(
         real_fields, real_pml, "step_B", device.Residency())
@@ -587,7 +587,7 @@ def test_each_inverted_clause_refuses_by_name(mutate, fragment):
 def test_a_single_radial_row_is_refused_because_the_axis_increment_reads_row_one():
     """nr < 2 is a SILENT out-of-bounds read on the GPU, not a loud one.
 
-    Measured by the Triton tranche on a real ``(1, 1, 20)`` grid: ``numpy.take``
+    Measured on the Triton track on a real ``(1, 1, 20)`` grid: ``numpy.take``
     RAISES IndexError there and ``cupy.take`` silently returns row 0, so the two
     backends do not agree that the configuration is steppable. The kernel's matching
     load is live on every lane and would read a plane past the end.
@@ -735,7 +735,7 @@ def _run_pair(m, z_kind, sub_step, accurate=False, steps=1, courant=COURANT,
                     for n in touched)
     moved = sum(_differing(before[n], getattr(fields_a, n)) for n in touched)
 
-    # THE CHECKED SUBNORMAL PRECONDITION, over the WINDOW this comparison covers.
+    # The checked subnormal precondition, over the WINDOW this comparison covers.
     # MPS flushes float32 subnormals natively and exposes no lever, so `keep` is not
     # offerable and every byte claim on this backend rides on the band being empty.
     # A census at step 0 of a 6-step run certifies step 0, which is why the window
@@ -872,7 +872,7 @@ MUTATIONS = (
      "c_mul_coefficient_left(dtdx, rad[ii >= nzi ? ii - nzi : ii]);"),
     ("near_axis_auxiliary_not_zeroed", "step_B", 3,
      "        n0 = near ? float2(0.0f, 0.0f) : n0;", "        // n0 kept"),
-    # THE m = 0 ARM'S OWN RULES, each a transcription slip a reader could make.
+    # The m = 0 arm's own rules, each a transcription slip a reader could make.
     ("m_zero_B_axis_clear_dropped", "step_B", 0,
      "    v0 = at_x ? float2(0.0f, 0.0f) : v0;", "    // MUTANT: Bx[r=0] kept"),
     ("m_zero_D_post_add_dropped", "step_D", 0,
@@ -889,7 +889,7 @@ MUTATIONS = (
 def test_the_m_zero_post_add_is_not_a_curl_fold():
     """The one m = 0 defect the needle table above cannot spell in place.
 
-    ``stepping._cylindrical_axis_increment_D`` records the fold as MEASURED WRONG for
+    ``stepping._cylindrical_axis_increment_D`` records the fold as measured wrong for
     m = 0 under PML: routing the increment through the curl form instead of adding it
     to the stored value gives a different ``Dz``. Planted here as the fold, and it must
     be CAUGHT.

@@ -5,7 +5,7 @@ subject to a declared and CHECKED subnormal-free precondition, and that precondi
 is a WINDOW rather than a scalar.** Not a stated tolerance. Leg 7 is the check and it
 is required to FIRE — a precondition never demonstrated to fire is decorative.
 
-THE ORACLE IS IN PROCESS. ``stepping.step_B`` / ``step_D``, ``fill_symmetry_bc_*``,
+The oracle is in process. ``stepping.step_B`` / ``step_D``, ``fill_symmetry_bc_*``,
 ``fill_folded_far_ghosts_*``, ``update_H`` / ``update_E`` and the Metal launches run
 in ONE process against ONE seed, on real ``Grid``/``Fields``/``PML`` objects built by
 ``metal_composition_matrix.folded`` — the SAME builder the composition sweep uses, so
@@ -17,7 +17,7 @@ under a restated predicate. What is new is the FOLD — a ghost rule, a mask, tw
 passes and a plane written by one sub-step and read by the next — and a transcription
 would only give the fold a second chance to be wrong the same way twice.
 
-WHAT IS COMPARED: uint32 word equality on float32 storage, NEVER ``allclose``. The
+What is compared: uint32 word equality on float32 storage, NEVER ``allclose``. The
 compared set is the sub-step's TARGETS and its PML AUXILIARIES (``fu_*``) for the
 curl, the family's three targets for the fill, and targets plus ``f_w_*`` for the
 constitutive pair — and in the whole-step leg the FULL stored inventory after every
@@ -36,12 +36,12 @@ THE LEGS:
                     the driver's order
   3  constitutive   the re-admitted CERTIFIED body vs ``update_H``/``update_E``
   4  whole_step     the driver's five passes per half, per COMPLETE STEP over a
-                    stated budget, reporting the FIRST DIVERGENT STEP, with every
+                    stated budget, reporting the first divergent step, with every
                     slot's launch counter asserted
   5  reduction      the folded curl on an UNFOLDED grid vs the CERTIFIED
                     ``pml_curl_step`` — the structural claim, measured
-  6  signed_zero    a +-0 lattice through every fill plane, census-floored. THE
-                    FILL'S PARITY IS A SIGN-BIT OPERATION, so this is the seeding
+  6  signed_zero    a +-0 lattice through every fill plane, census-floored. The
+                    fill's parity is a sign-bit operation, so this is the seeding
                     that separates the shipped spelling from the refuted one
   7  precondition   THE WINDOW: three driven runs censused at EVERY step, each
                     recording first_fired / last_fired; plus the scaled ladder that
@@ -49,24 +49,24 @@ THE LEGS:
   8  mutations      armed, launch-counted, three-valued, and FOLD-SPECIFIC
   9  composition    the six slots, the foreign-arm check, and the named refusal
 
-WHY BOTH A SUB-STEP LEG AND A WHOLE-STEP LEG, and neither is redundant:
+Why both a sub-step leg and a whole-step leg, and neither is redundant:
 
-* THE TWO OWNERSHIP MASKS ARE INVISIBLE AT WHOLE-STEP GRANULARITY. The driver's fill
+* The two ownership masks are invisible at whole-step granularity. The driver's fill
   passes overwrite exactly the planes the masks protect, so a kernel carrying NEITHER
   mask is bytewise-identical after a complete step. Only leg 1 can fail on a mask —
   measured here: ``drop_top_plane_mask`` moves 384-1,080 words at sub-step
   granularity and the whole-step leg cannot see it at all;
-* THREE FAILURE CLASSES LIVE ONLY IN A COMPLETE STEP. A STALE MIRROR (the engine
+* Three failure classes live only in a complete step. A stale mirror (the engine
   holds NumPy, so a sub-step left on the array path writes the HOST array and a
   device mirror held across it is a smooth, plausible, WRONG field); a SEAM
   (``zero_metal_B``/``zero_metal_D`` clear stored cell 0 between the curl and the
-  constitutive sub-step); and an ACCUMULATING AUXILIARY. THE FOLD ADDS A FOURTH: the
-  folded axis's ghost plane is WRITTEN BY ONE PASS AND READ BY THE NEXT, so a fold
+  constitutive sub-step); and an accumulating auxiliary. The fold adds a fourth: the
+  folded axis's ghost plane is written by one pass and read by the next, so a fold
   bug can be byte-perfect per sub-step and wrong per step. Leg 8's
   ``ghost_consumed_before_it_is_written`` is that class, and it is caught at step 0
   with 1,152-5,424 words on every case.
 
-THE PRECONDITION IS A WINDOW AND THIS GATE MEASURED WHY. A census that reports a
+The precondition is a window and this gate measured why. A census that reports a
 scalar answers "how many", which licenses nothing about a run whose band entry is
 transient. Measured here on a folded 3-D grid, censusing all 24 stored volumes after
 every complete step:
@@ -83,7 +83,7 @@ Q~50 run is refusable at its leading edge and certifiable after step 21 — and 
 gate REFUSES the two firing runs BY NAME, recorded as a coverage refusal rather than
 as a failure.
 
-THE FILL AND THE CURL DO NOT SHARE THE PRECONDITION, and stating it per sub-step is
+The fill and the curl do not share the precondition, and stating it per sub-step is
 what makes it a measurement. The fill performs NO ARITHMETIC — its parity reduces to
 a sign-bit operation or a plain copy, and a subnormal can live in a Metal buffer
 because it is the arithmetic that flushes, not the storage. Measured in leg 7 with
@@ -91,16 +91,16 @@ because it is the arithmetic that flushes, not the storage. Measured in leg 7 wi
 (0 differing, 576 moved) while THE CURL diverges in 13,248 words on the same grid at
 the same scale. A family-wide precondition would understate what the fill delivers.
 
-THE SIGNED-ZERO LEG IS NOT DECORATION HERE. On this backend the fold's parity is a
+The signed-zero leg is not decoration here. On this backend the fold's parity is a
 COMPILE-TIME specialisation — ``-x`` for odd, a PLAIN COPY for even — because a
 runtime weight flushes every subnormal at BOTH signs. The refuted spelling
 ``0.0f - x`` is byte-identical to ``-x`` on the physical band and MEASURABLY WRONG on
-signed zeros: leg 8's ``parity_spelled_as_zero_minus_x`` is a MEASURED NULL on the
+signed zeros: leg 8's ``parity_spelled_as_zero_minus_x`` is a measured NULL on the
 physical seeding (0 words on every case) and CAUGHT under the +-0 lattice (64-140
 words). That pair is what turns the platform fact into an enforced one.
 
-STATED WEAKNESS, WHICH IS THIS CERTIFICATION'S ONE GAP AGAINST THE TRITON TWIN:
-THERE IS NO GENERATED-CODE AUDIT ON THIS BACKEND. ``torch.mps.compile_shader``
+Stated weakness, which is this certification's one gap against the Triton twin:
+there is no generated-code audit on this backend. ``torch.mps.compile_shader``
 exposes no disassembly, so unlike the Triton track this gate cannot refuse a compile
 whose emitted code violates the policy, and it cannot establish that the contraction
 guard was OBEYED — only that removing it changes the answer (leg 8's ``contract_on``,
@@ -117,7 +117,7 @@ NEEDLE-MISSED and FAILS; and the top-level verdict reads BOTH the compare COUNT 
 the OUTCOME, the outcome re-read from the recorded rows rather than inferred from
 having reached the summary.
 
-NaN NEEDLES ARE EXCLUDED, on this track as on the Triton one. Measured while this
+NaN needles are excluded, on this track as on the Triton one. Measured while this
 family was built: ``-x`` and ``x * -1.0f`` are byte-identical to each other on every
 value class and BOTH differ from NumPy on NaN 6/6 (NumPy leaves the sign bit, Metal
 flips it). That is a property of the NumPy reference, it is unreachable — a NaN in a
@@ -197,7 +197,7 @@ DRIVER_ORDER: Tuple[str, ...] = (
 #                    odd plane is a DIFFERENT COMPILED FILL, not a different scalar;
 #   FULL-COUNT       `reflect_row` is `stored - 2` at an even full count and
 #                    `stored - 3` at an odd one, so at the default extent the wrong
-#                    `n - 2` formula HAPPENS TO BE RIGHT (measured: 0 words at 2.0,
+#                    `n - 2` formula happens to be right (measured: 0 words at 2.0,
 #                    384 at 2.1) and a matrix carrying only 2.0 measures nothing
 #                    about the reflect row;
 #   FOLDED AXES      a corner unowned on two planes must carry the PRODUCT of both
@@ -254,7 +254,7 @@ def tags(fields: Any, pml: Any) -> Tuple[str, ...]:
         found.append("three_d")
     else:
         found.append("two_d")
-    # DOES ANY EMITTED FILL ON THIS GRID CARRY A SIGN FLIP? Asked of the EMITTER,
+    # Does any emitted fill on this grid carry a sign flip? Asked of the EMITTER,
     # not re-derived from the phase, because the answer is not the phase: the near
     # pass's weight is `+phase` and the far pass's is `-phase`, so an EVEN plane on
     # a folded METALLIC axis (which has no far pass at all) emits no `-x` anywhere
@@ -301,7 +301,7 @@ def constitutive_names(side: str) -> Tuple[str, ...]:
 
 def oracle(fields: Any, apply: Callable[[], None],
            names: Sequence[str]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-    """Run the array path, capture before/after, and PUT THE STATE BACK.
+    """Run the array path, capture before/after, and put the state back.
 
     Returning the fields to ``before`` is what lets the device launch start from the
     same bytes the oracle started from. A leg that forgot it would compare the
@@ -392,7 +392,7 @@ def apply_fill_source(plan: Any, text: Callable[[str, Dict[str, Any]], Optional[
                       counters: Optional[List[kit.Counter]] = None) -> int:
     """Recompile each launch's entry point through ``text``. Returns how many took.
 
-    THE PLANT COUNT IS THE RETURN VALUE AND IT IS LOAD-BEARING. This plan holds one
+    The plant count is the return value and it is load-bearing. This plan holds one
     launch per (pass, folded axis) and a needle naturally lives in only one of them
     — ``base + 2 * stride`` is the NEAR pass's and ``reflect_row`` is the FAR
     pass's. A harness that demanded every entry match would report a structurally
@@ -572,7 +572,7 @@ def leg_execution(payload: Dict[str, Any], out: str) -> None:
 def leg_curl(payload: Dict[str, Any], out: str) -> None:
     """``folded_pml_curl_step`` vs ``stepping.step_B`` / ``step_D``, every case.
 
-    SUB-STEP GRANULARITY IS THE POINT. The driver's fill passes overwrite exactly
+    Sub-step granularity is the point. The driver's fill passes overwrite exactly
     the planes the cell-0 and top-plane masks protect, so a mask-less kernel is
     bytewise-identical after a complete step; this is the only leg that can fail on
     a mask, and leg 8 proves it can.
@@ -691,13 +691,13 @@ def leg_fill(payload: Dict[str, Any], out: str) -> None:
 def leg_constitutive(payload: Dict[str, Any], out: str) -> None:
     """``update_H`` / ``update_E`` on a folded grid.
 
-    THIS FAMILY CONTRIBUTES ONLY THE ADMISSION on these two slots — the arithmetic,
+    This family contributes only the admission on these two slots — the arithmetic,
     the source and the plan class are the certified ones, reached through the
     certified builder. So a divergence here could only come from the predicate, and
     that is exactly why the leg exists: a predicate that admitted a folded grid the
     certified body cannot step would be invisible to the curl and fill legs.
 
-    ZERO-INIT IS A FIXED POINT OF THIS SUB-STEP, which is why the builder fills
+    Zero-init is a fixed point of this sub-step, which is why the builder fills
     every volume with physical-band values and why the vacuity floor is checked
     before the identity is claimed.
     """
@@ -740,13 +740,13 @@ WHOLE_STEP_BUDGET = 12
 def leg_whole_step(payload: Dict[str, Any], out: str) -> None:
     """The object the engine would actually run, over a stated budget.
 
-    THE REAL ARBITER. Six green per-sub-step legs say nothing about a composed step:
+    The real arbiter. Six green per-sub-step legs say nothing about a composed step:
     a STALE MIRROR, a SEAM and an ACCUMULATING AUXILIARY are invisible in a
     single-launch comparison, and the FOLD adds a fourth — the mirror plane is
     written by one pass and READ by the next, so a fold bug can be byte-perfect per
     sub-step and wrong per step.
 
-    THE FIRST DIVERGENT STEP IS REPORTED, not just "it diverged": with an
+    The first divergent step is reported, not just "it diverged": with an
     accumulating auxiliary the step number is the diagnosis. Every slot's launch
     counter is asserted, because a slot that passes by NOT EXECUTING is the hollow
     pass this whole discipline exists to make impossible.
@@ -816,7 +816,7 @@ def leg_reduction(payload: Dict[str, Any], out: str) -> None:
     a grid where the mask emits nothing at all, so the two kernels must produce
     identical words from identical inputs.
 
-    IT RUNS THROUGH ``plan_folded_pml_curl_from_arrays`` DELIBERATELY. The routing
+    It runs through ``plan_folded_pml_curl_from_arrays`` DELIBERATELY. The routing
     predicate REFUSES an unfolded grid (that is the inverted clause that keeps this
     family disjoint from the plain one), so the engine route cannot reach this
     configuration and the array route is the only way to measure the reduction. Leg
@@ -919,16 +919,16 @@ def leg_reduction(payload: Dict[str, Any], out: str) -> None:
 def seed_signed_zeros(fields: Any, seed: int = 20260816) -> Dict[str, int]:
     """A +-0 lattice in every field volume, over a physical-band background.
 
-    NOT A DECORATION ON THIS FAMILY. The fill's parity is a SIGN-BIT OPERATION, so
+    Not a decoration on this family. The fill's parity is a sign-bit operation, so
     a signed zero is the ONLY value class that separates the shipped spelling
     (``-x``) from the refuted one (``0.0f - x``): ``-(+0.0)`` is ``-0.0`` and
     ``0.0f - (+0.0f)`` is ``+0.0``, while on every normal operand the two agree in
     bits. Leg 8 measures exactly that — the refuted spelling is 0 words on the
     physical seeding and 64-152 under this one.
 
-    THE LATTICE IS INDEXED IN 3-D, NOT FLAT, AND THAT IS A MEASURED CORRECTION.
+    The lattice is indexed in 3-D, not flat, and that is a measured correction.
     This function first strided the FLATTENED array by 3 (``values[0::3] = +0.0``,
-    ``values[1::3] = -0.0``), and on the 2-D case that ALIASED WITH THE GRID STRIDE:
+    ``values[1::3] = -0.0``), and on the 2-D case that aliased with the grid stride:
     with ``nz = 1`` the far pass's read plane is flat index ``12*i + 10``, which is
     congruent to 1 modulo 3 for EVERY ``i``, so the whole plane carried ``-0.0`` and
     nothing else. Both spellings agree on ``-0.0`` (``-(-0.0)`` and
@@ -958,7 +958,7 @@ def seed_signed_zeros(fields: Any, seed: int = 20260816) -> Dict[str, int]:
     return counts
 
 
-#: THE CURLS' NON-VACUITY FLOOR UNDER THE +-0 LATTICE, and it is a measurement. The
+#: The curls' non-vacuity floor under the +-0 LATTICE, and it is a measurement. The
 #: array path's own ``step_B`` / ``step_D`` on this lattice move 455 / 491 of the 2-D
 #: case's 1,152 words each, and at least 4,427 on every 3-D case, since the array path
 #: steps the per-chunk region forms; before that change they moved 745-750 / 888 on the
@@ -1025,7 +1025,7 @@ def leg_signed_zero(payload: Dict[str, Any], out: str) -> None:
 #: Three driven runs, chosen so the answer is not the same for all three. ``df`` is
 #: the source bandwidth and ``cut`` how many widths before the peak the run starts,
 #: so ``envelope(0) = exp(-cut^2/2)`` is the LEADING-EDGE magnitude the fields are
-#: born at. THE MEASURED RESULTS, on a folded 3-D grid on this host 2026-08-16:
+#: born at. The measured results, on a folded 3-D grid on this host 2026-08-16:
 #:
 #:   Q ~ 20   envelope(0) = 3.7e-06   500 steps   NEVER fires
 #:   Q ~ 50   envelope(0) = 1.9e-22   700 steps   window [10, 21], then 678 CLEAN
@@ -1104,12 +1104,12 @@ def leg_precondition(payload: Dict[str, Any], out: str) -> None:
 
     THREE PARTS:
 
-    1. THE DRIVEN RUNS. Each records ``first_fired`` / ``last_fired``. A run that
-       stays clean CERTIFIES its window; a run that enters the band is REFUSED BY
-       NAME and the refusal is recorded as a COVERAGE REFUSAL, not a failure — the
+    1. The driven runs. Each records ``first_fired`` / ``last_fired``. A run that
+       stays clean CERTIFIES its window; a run that enters the band is refused by
+       name and the refusal is recorded as a COVERAGE REFUSAL, not a failure — the
        claim simply does not extend to those steps, and saying so is the honest
        outcome on a backend whose flush has no lever;
-    2. THE SCALED LADDER, which demonstrates the census FIRING. A precondition never
+    2. The scaled ladder, which demonstrates the census FIRING. A precondition never
        shown to fire is decorative;
     3. THE SPLIT. At the same scale, on the same grid, the FILL is byte-identical
        inside the band and the CURL is not. The precondition bounds the arithmetic
@@ -1197,7 +1197,7 @@ def leg_precondition(payload: Dict[str, Any], out: str) -> None:
                    # The band rows' divergence is EXPECTED, so it is reported under
                    # its own key and `differing` stays empty there; a divergence on
                    # a band that must agree lands in `differing` and reaches the
-                   # summary's independent second read. ONLY NONZERO ENTRIES GO IN,
+                   # summary's independent second read. Only nonzero entries go in,
                    # which is the convention `divergence()` sets for every other
                    # leg — an all-zero dict is TRUTHY and this row carried one, so
                    # the summary's second read reported four clean ladder rows as
@@ -1264,7 +1264,7 @@ def rebuild_curl(codes: Sequence[int], backward: bool,
     return symmetry.folded_curl_source(wanted, backward)
 
 
-#: THE CURL MUTATIONS. ``tags`` scopes a mutation to the cases where its defect is
+#: The curl mutations. ``tags`` scopes a mutation to the cases where its defect is
 #: STRUCTURALLY REACHABLE; ``must_catch`` is three-valued, and the two conditional
 #: pairs below are the gate's own demonstration that the two terminations are
 #: different kernels rather than one kernel with a flag.
@@ -1336,7 +1336,7 @@ CURL_MUTATIONS: Tuple[Dict[str, Any], ...] = (
          shaders.contraction_pragma("fast"))},
 )
 
-#: THE FILL MUTATIONS. These are the fold's own — the plane, the half, the sign and
+#: The fill mutations. These are the fold's own — the plane, the half, the sign and
 #: the row — and they are the reason this gate exists separately from the certified
 #: curl's.
 FILL_MUTATIONS: Tuple[Dict[str, Any], ...] = (
@@ -1402,7 +1402,7 @@ FILL_MUTATIONS: Tuple[Dict[str, Any], ...] = (
      "apply": lambda src, entry: replace(src, "= -f", "= 0.0f - f")},
 )
 
-#: THE HOST MUTATIONS — defects in the PLAN's own choices, not in device code. Each
+#: The host mutations — defects in the PLAN's own choices, not in device code. Each
 #: is launch-counted for the reason the certified gates spell out: the shipped
 #: kernel runs unmodified, so if it did not run at all the returned arrays would be
 #: the untouched input, which differs from the oracle exactly as a caught defect
@@ -1476,7 +1476,7 @@ HOST_MUTATIONS: Tuple[Dict[str, Any], ...] = (
      "entries": entries_axis_order_reversed},
 )
 
-#: THE STEP-ORDER MUTATIONS — the class that lives ONLY in a complete step, which
+#: The step-order mutations — the class that lives ONLY in a complete step, which
 #: is the fold's fourth risk: the mirror plane is written by one pass and read by
 #: the next.
 ORDER_MUTATIONS: Tuple[Dict[str, Any], ...] = (
@@ -1584,7 +1584,7 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
     for entry in HOST_MUTATIONS:
         caught = ran = 0
         counters = []
-        # ONE RECORD PER CASE, not one for the family. The reachability check runs
+        # One record per case, not one for the family. The reachability check runs
         # on every case the mutation is scoped to, and keeping only the last one
         # would leave the artifact unable to show that the OTHER case was checked.
         reachability: List[Dict[str, Any]] = []
@@ -1654,7 +1654,7 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
 def axis_order_reachability(fields: Any, family: str) -> Dict[str, Any]:
     """Is the fill's X, Y, Z order EXERCISED on this grid?
 
-    A MEASURED NULL IS ONLY A MEASUREMENT IF THE THING IT MEASURES WAS REACHABLE, and
+    A measured null is only a measurement if the thing it measures was reachable, and
     "reversing the axis order changed nothing" is the easiest null in this family to
     obtain by accident — one folded axis makes every ordering question trivially
     empty. Three conditions make the order observable at all and all three are
@@ -1709,7 +1709,7 @@ def leg_composition(payload: Dict[str, Any], out: str) -> None:
        ``registry.FAMILY_MODULES`` is invisible to ``plan_step`` — a silent coverage
        loss with no error anywhere — so the module list is asserted against the
        package's own contents;
-    3. THE NAMED REFUSAL. A folded PERIODIC grid with a live ``zero_metal`` axis is
+    3. The named refusal. A folded PERIODIC grid with a live ``zero_metal`` axis is
        refused BY NAME rather than mis-stepped: ``zero_metal_*`` runs BETWEEN the
        two fill passes and the far pass reads a plane the wall clear touches. The
        refusal is scoped — the curl and constitutive slots still compose — and it is
@@ -1852,8 +1852,8 @@ def certified_from_rows(legs: Dict[str, Any]) -> Tuple[bool, List[str]]:
 
     The per-case assertions live inside the legs; this reads the artifact. A leg
     that recorded a nonempty ``differing`` and then failed to assert on it — the
-    shape of the Triton round that stamped ``passed: true`` while every compare
-    failed — is caught here rather than by the code that produced it.
+    shape of the Triton gate run that stamped ``passed: true`` while
+    every compare failed — is caught here rather than by the code that produced it.
     """
     def diverged(value: Any) -> bool:
         """Truthiness is NOT the question; the WORD COUNT is.

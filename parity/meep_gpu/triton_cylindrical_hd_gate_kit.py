@@ -28,7 +28,7 @@ Every product row also carries the cylindrical floors the CUDA cylindrical gate
 defines: the radial difference the scan hands the curl is live (nonzero somewhere) and
 the axis row moves.
 
-THE TWO POLICIES NEED NOT BE SYMMETRIC. Where a family's predicate refuses a policy,
+The two policies need not be symmetric. Where a family's predicate refuses a policy,
 the composer selects nothing on its seam and the two composition references are
 UNREACHABLE under it. What that record then measures is the product's arithmetic built
 from arrays, against the array path and the two certified singles built the same way;
@@ -36,7 +36,7 @@ the verdict names the unreachable references rather than scoring them, and
 ``composer_reachable_under_this_policy`` is RECORDED, never a release clause a family
 could pass under a policy its predicate refuses by construction.
 
-THE EVIDENCE STANDARD is the template's: uint32 words per COMPLETE driver step over
+The evidence standard is the template's: uint32 words per COMPLETE driver step over
 every stored volume, never ``allclose``; every zero beside a control that moves words;
 N of D with D named. Progress reporting: one flushed line per case, every row appended and fsynced
 as it lands, the lift leg writing one JSON per corpus row and a progress log the child
@@ -451,7 +451,7 @@ def build_driver(spec: FamilySpec, keywords: Mapping[str, Any], seed: int,
         else:
             host = (float(amplitude) * rng.standard_normal(array.shape)).astype(np.float32) * scale
             array[...] = _module_of(array).asarray(host.astype(np.float32))
-    # A SEEDED STATE IS A MID-RUN ONE unless the case says otherwise: H was started
+    # A seeded state is a mid-run one unless the case says otherwise: H was started
     # from B long ago, so no arrangement starts it again. A first-update case
     # (``h_started`` False) keeps the flag False, and ``capture``/``restore`` carry it,
     # so every arrangement's step 1 is the run's first update_H -- MEEP's start of H
@@ -770,7 +770,7 @@ def arrangement_composition(spec: FamilySpec, driver: Any, fuse: bool) -> Arrang
         plans["update_P"] = list(plan.polarization_plans)
     name = "composition_today" if fuse else "unfused"
     reasons = {key: list(value) for key, value in plan.reasons.items()}
-    # THE COMPOSER SELECTED NOTHING FOR THIS SEAM: under a policy the family's arms
+    # The composer selected nothing for this seam: under a policy the family's arms
     # are not certified for, the composition IS the array path. Recorded as
     # unreachable rather than compared, so a trivial agreement of the array path with
     # itself is never read as a composition's.
@@ -1115,8 +1115,8 @@ def leg_driver_order(spec: FamilySpec) -> Dict[str, Any]:
     if SYNC_PASS_OWNERS.get(SYNC_UPDATE_H_PASS) != "update_H":
         findings.append("the sync channel no longer owns update_H by name")
     if family.CARRIES_DEPOSIT_REPAIR or family.HOISTS_THE_WITHDRAW or family.INSTALLABLE:
-        findings.append("a declaration flag is True that this round's verdicts say is False")
-    # THE RADIAL DIFFERENCE'S PLACE IN step_D, read off stepping.py: MEEP's per-chunk
+        findings.append("a declaration flag is True that this gate's verdicts say is False")
+    # The radial difference's place in step_D, read off stepping.py: MEEP's per-chunk
     # sum of the POST-update_H magnetic snapshot's Hy at ir0 = 0.5, over the Dz chunk
     # starts, fed to the Dz term only -- what the certified plan's scan computes.
     stepping_text = (API_ROOT / "meep_gpu" / "stepping.py").read_text(encoding="utf-8")
@@ -1168,7 +1168,7 @@ def leg_transcription(spec: FamilySpec) -> Dict[str, Any]:
 def purity_ledger(spec: FamilySpec, fields: Any, pml: Any) -> Dict[str, Any]:
     """How many ``Hy`` words ``update_H`` MOVES over the rows the radial scan reads.
 
-    THE FLOOR FOR THE SCAN'S ONE ORDERING FACT. The certified scan in launch 2 sums the
+    The floor for the scan's one ordering fact. The certified scan in launch 2 sums the
     SCRATCH ``Hy`` launch 1 wrote; if ``update_H`` moved nothing there, a scan of the
     PRE-LAUNCH ``Hy`` would agree with it by accident and the scan-reads-the-pre-launch-
     Hy mutation would be a null about the fixture rather than the product.
@@ -1358,7 +1358,7 @@ def leg_arbitration(spec: FamilySpec, policy: Optional[str]) -> Dict[str, Any]:
                                "policy_reaches_composer": reachable,
                                "shipped_selected": shipped_selected}
         if not reachable:
-            # UNDER THIS POLICY THE FAMILY'S ARMS ARE NOT CERTIFIED and the composer
+            # Under this policy the family's arms are not certified and the composer
             # must select nothing on the seam; the predicate must refuse by that name.
             needle = spec.composition_refusal_needle()
             if verdict.covered:
@@ -1387,7 +1387,7 @@ def leg_arbitration(spec: FamilySpec, policy: Optional[str]) -> Dict[str, Any]:
                             f"not {holder_d!r}")
         routed = family.FAMILY in triton_launch.CERTIFIED_FUSED_PRODUCTS
         if routed:
-            # THE SHIPPED TABLES CARRY THIS PRODUCT (routed 2026-09-07): the composer
+            # The shipped tables carry this product (routed 2026-09-07): the composer
             # consulted the shipped row in the plan above, so the arbitration is
             # measured against THAT row and nothing is injected. The row the composer
             # holds is required to be the family's own declaration, and the arm pair
@@ -1579,7 +1579,7 @@ def leg_launch_structure(spec: FamilySpec, steps: int, seed: int, forced: bool) 
         "the_honest_reading": (
             "under MEEP's per-chunk radial sum the weld performs the D-side seam in the "
             "same number of kernel launches as the two certified singles it replaces "
-            "(update_H, the scan, the curl); it is kept for its form alignment, not for "
+            "(update_H, the scan, the curl); it is kept for its match to MEEP's forms, not for "
             "a launch saving, and the composer's own rule refuses it (arbitration leg)"),
     }
 
@@ -1646,14 +1646,14 @@ def volume_source(keywords: Mapping[str, Any], component: str = "Ez",
 def leg_withdraw(spec: FamilySpec, steps: int, seed: int, forced: bool) -> Dict[str, Any]:
     """The seam's one pass on a device: :func:`hd_seam_restore.seam_restore_leg`.
 
-    Since entry 25 what stands between the two consults is the magnetic ``f_minus_p``
+    Since 1.0 what stands between the two consults is the magnetic ``f_minus_p``
     restore, not an electric withdraw. The Dcyl driver carries an integrated electric
     (``Ez``) AND an integrated magnetic (``Hz``) source inside the cell and clear of the
     absorbers; the weld arrangement is force-installed, stepped in lockstep with its own
     array-path reference (its rotation settled after every step, as :func:`drive`
     settles it) and required identical, and the weld with the restore moved before the
-    launch and with no magnetic ``f_minus_p`` must each diverge. THE SEED IS NOT SCALED
-    HERE (2^0): the ``f_minus_p`` words are the sources' amplitude.
+    launch and with no magnetic ``f_minus_p`` must each diverge. The seed is not scaled
+    here (2^0): the ``f_minus_p`` words are the sources' amplitude.
 
     ``forced`` is the run's own: under a policy the family's arms are not certified for,
     the predicate must refuse by that clause and no other (never by a withdraw) and the
@@ -1761,7 +1761,7 @@ class FusionOn:
 class CurlReadsPreLaunchH:
     """Launches 2 and 3 run over the PRE-LAUNCH H instead of this run's scratch.
 
-    THE ORDER DEFECT, driven through the shipped ``_launch``: launch 1 still writes the
+    The order defect, driven through the shipped ``_launch``: launch 1 still writes the
     scratch, and the certified step_D plan the weld picks is swapped for the one built
     over the OTHER allocation -- the pre-launch H -- for exactly one run, so the scan
     sums and the curl differences the state the seam's first half has not yet produced.
@@ -2024,7 +2024,7 @@ def lift_basis(spec: FamilySpec, results: Path) -> Tuple[List[dict], Dict[str, A
         record = facts_by_label.get(label, {})
         rows.append({
             "label": label, "leg": seam_row.get("leg"), "row": seam_row["row"],
-            # THE CASE THE HARNESS ENUMERATES. A parameterised test row is named by
+            # The case the harness enumerates. A parameterised test row is named by
             # the census's matcher (`_0_0_0`) but enumerated by the shim (`__idx0`);
             # the matched census record carries the shim's name, and the child must be
             # asked for THAT one or it finds no Simulation and the row is silently
@@ -2058,8 +2058,8 @@ def _child_progress(message: str) -> None:
 def lift_child(spec: FamilySpec, leg: str, script: Optional[str], module_path: Optional[str],
                case: Optional[str], out_json: str, steps: int, max_cells: Optional[int],
                policy: Optional[str] = None) -> int:
-    """One corpus row: capture the simulation, lift it TO THE DEVICE, drive it, with the
-    subnormal policy installed IN THIS PROCESS before the first device compile."""
+    """One corpus row: capture the simulation, lift it to the device, drive it, with the
+    subnormal policy installed in this process before the first device compile."""
     record: Dict[str, Any] = {"leg": leg, "row": case or Path(script or "").name}
     started = time.time()
     try:
@@ -2172,7 +2172,7 @@ def evaluate_row(spec: FamilySpec, driver: Any, steps: int, max_cells: Optional[
                                      f"{control['first_divergence_step']}"))
         return block
     block["driven"] = True
-    # THE DRIVER'S OWN CHUNK DIVISION for every plan built on this lifted row, the one the
+    # The driver's own chunk division for every plan built on this lifted row, the one the
     # array path steps with (hd_seam_restore.plans_bind_the_driver_chunk_layout).
     with hd_seam_restore.plans_bind_the_driver_chunk_layout(driver):
         block.update(run_product(spec, driver, steps, progress=_child_progress,
@@ -2184,6 +2184,8 @@ def leg_lift(spec: FamilySpec, gate_path: Path, out_dir: Path, steps: int,
              max_cells: Optional[int], timeout: float, resume: bool,
              only: Optional[Sequence[str]], interpreter: str,
              policy: Optional[str] = None) -> Dict[str, Any]:
+    import neutral_ids  # noqa: PLC0415
+    import lift_host  # noqa: PLC0415
     import measure_predicate_coverage as census  # noqa: PLC0415
 
     out_dir = Path(out_dir).resolve()
@@ -2282,7 +2284,7 @@ def leg_lift(spec: FamilySpec, gate_path: Path, out_dir: Path, steps: int,
     blocks = {r["label"]: (r.get(key) or {}) for r in measured}
     unliftable = {record["label"]: str(record.get("error") or record.get("note") or "")
                   for record in measured if record.get("unliftable_on_this_host")}
-    # A ROW THE ENGINE'S OWN LIFTER REFUSES BY NAME (MeepSimulationNotLiftable) is
+    # A row the engine's own lifter refuses by name (MeepSimulationNotLiftable) is
     # nobody's to step either: named and counted out with the rows above.
     refused_by_the_lifter = {record["label"]: reason for record in measured
                              if record["label"] not in unliftable
@@ -2290,13 +2292,24 @@ def leg_lift(spec: FamilySpec, gate_path: Path, out_dir: Path, steps: int,
                              and (reason := hd_seam_restore.lifter_refusal(record))}
     unliftable.update({label: f"refused by the engine's lifter: {reason}"
                        for label, reason in refused_by_the_lifter.items()})
+    # A row the identity corpus's manifest retires that reached no predicate verdict is
+    # refused by name with the manifest's reason (``lift_host.corpus_refusals``, the rule
+    # every table's lift legs share) and counted out with the rows above, never scored as
+    # unmeasured. The sharded dump/load tests are such rows: MEEP 1.35.0 runs them only
+    # under mpirun with more than one process, so their replay here builds no simulation.
+    corpus = lift_host.corpus_refusals(HERE / "results", [
+        record for record in measured
+        if record["label"] not in unliftable
+        and "predicate_admits" not in (record.get(key) or {})])
+    refused_by_the_corpus = corpus["refused"]
+    unliftable.update(refused_by_the_corpus)
     blocks = {label: block for label, block in blocks.items() if label not in unliftable}
     admitted = sorted(label for label, b in blocks.items() if b.get("predicate_admits"))
     refused = sorted(label for label, b in blocks.items() if b.get("predicate_admits") is False)
     refused_by_policy = sorted(label for label in refused
                                if blocks[label].get("refused_by_the_certification_policy"))
-    # THE WITHDRAW REFUSALS, DERIVED FROM EACH ROW'S OWN SOURCES (an electric source
-    # whose withdraw does work; none since entry 25), never from the predicate's answer;
+    # The withdraw refusals, derived from each row's own sources (an electric source
+    # whose withdraw does work; none since 1.0), never from the predicate's answer;
     # the certification clause's refusals are scored by the ledger below.
     accounting = hd_seam_restore.lift_withdraw_accounting(
         blocks, facts["rows_with_a_standing_withdraw"],
@@ -2316,8 +2329,8 @@ def leg_lift(spec: FamilySpec, gate_path: Path, out_dir: Path, steps: int,
     diverged_against_the_array_path = sorted(label for label in driven
                                              if not blocks[label].get("bit_identical"))
     reachable, why_unreachable = spec.policy_reaches_composer(policy)
-    # THE REFUSAL LEDGER: every refused row is either a standing withdraw (expected from
-    # the row's own sources; none since entry 25, so the seam record's withdraw_in_seam
+    # The refusal ledger: every refused row is either a standing withdraw (expected from
+    # the row's own sources; none since 1.0, so the seam record's withdraw_in_seam
     # rows are admitted) or, under a policy the family's arms are not certified for, the
     # certification clause -- and under such a policy EVERY liftable row must be refused
     # by it, or a row slipped through a clause that should have held.
@@ -2364,7 +2377,7 @@ def leg_lift(spec: FamilySpec, gate_path: Path, out_dir: Path, steps: int,
     }
     children_ran_under_the_policy = (policy is None or not driven or (
         len(stamps) == len(driven) and not child_policy_mismatches))
-    # A LEG THAT LIFTED NOTHING OF A NON-EMPTY CELL DID NOT MEASURE. Every unliftable
+    # A leg that lifted nothing of a non-empty cell did not measure. Every unliftable
     # row is named with MEEP's own error, but a cell whose EVERY row is unliftable is
     # the promoted-harness-path shape (a child that never finds a Simulation) and must
     # fail rather than pass by exclusion.
@@ -2379,7 +2392,7 @@ def leg_lift(spec: FamilySpec, gate_path: Path, out_dir: Path, steps: int,
                        and passed_rows == driven
                        and set(driven) | set(non_deterministic) == set(admitted)
                        and children_ran_under_the_policy
-                       # UNDER A POLICY THE COMPOSER REACHES, ROWS MUST BE DRIVEN: a leg
+                       # Under a policy the composer reaches, rows must be driven: a leg
                        # that drove nothing where it could have is a pass by not executing.
                        and (bool(driven) or not reachable or not admitted)),
         "facts": facts,
@@ -2387,6 +2400,8 @@ def leg_lift(spec: FamilySpec, gate_path: Path, out_dir: Path, steps: int,
         "this_host_lifted_at_least_one_row_of_the_cell": lifted_something,
         "harness_case_per_row": {row["label"]: row["harness_case"] for row in rows},
         "rows_unliftable_on_this_host": unliftable,
+        "refused_by_the_corpus_manifest": refused_by_the_corpus,
+        "corpus_manifest": corpus["basis"],
         "rows_this_host_could_lift": len(blocks),
         "the_denominator": (f"{len(blocks)} of the cell's {facts['rows_in_cell']} rows; "
                             f"{len(unliftable)} NAMED in rows_unliftable_on_this_host"),
@@ -2421,7 +2436,7 @@ def leg_lift(spec: FamilySpec, gate_path: Path, out_dir: Path, steps: int,
                                                   for label in driven)),
         "words_compared": int(sum(blocks[label].get("words_compared", 0) for label in driven)),
         "modules_lifted_with_the_parameterized_shim": sorted(needs_shim),
-        "steps": steps, "rows_jsonl": str(lift_dir / "rows.jsonl"),
+        "steps": steps, "rows_jsonl": neutral_ids.path(str(lift_dir / "rows.jsonl")),
     }
 
 
@@ -2473,7 +2488,7 @@ def verdict(spec: FamilySpec, rows: Sequence[Dict[str, Any]], legs: Sequence[str
             row.get("reference_moved_words_step_1", 0) > 0 for row in products)
         clauses["every_product_case_ran_the_full_budget"] = all(
             row.get("steps_compared") == row.get("steps_requested") for row in products)
-        # EVERY REFERENCE THE POLICY REACHES WAS CARRIED, and every one it does not
+        # Every reference the policy reaches was carried, and every one it does not
         # reach is NAMED with its reason: under a policy the family's arms are not
         # certified for, the two composition references are the array path and are
         # recorded as unreachable rather than compared against themselves.
@@ -2508,7 +2523,7 @@ def verdict(spec: FamilySpec, rows: Sequence[Dict[str, Any]], legs: Sequence[str
     clauses["every_leg_requested_ran"] = set(legs) <= set(by_leg)
     clauses["the_whole_gate_ran"] = set(legs) == set(ALL_LEGS)
     return {"clauses": clauses, "released": all(clauses.values()),
-            # RECORDED, NOT A CLAUSE: a keep-certified complex family cannot reach the
+            # Recorded, not a clause: a keep-certified complex family cannot reach the
             # composer under flush by construction, and the flush record's claim is the
             # forced-arm arithmetic against the array path, which the clauses above
             # score. A reader who wants the composition claim reads this flag first.
@@ -2524,6 +2539,7 @@ def verdict(spec: FamilySpec, rows: Sequence[Dict[str, Any]], legs: Sequence[str
 
 
 def main(spec: FamilySpec, gate_path: Path, argv: Optional[Sequence[str]] = None) -> int:
+    import neutral_ids  # noqa: PLC0415
     parser = argparse.ArgumentParser(description=spec.gate)
     parser.add_argument("--out", default=None)
     parser.add_argument("--no-device", action="store_true")
@@ -2576,7 +2592,7 @@ def main(spec: FamilySpec, gate_path: Path, argv: Optional[Sequence[str]] = None
             "this product is not registered in the composer's tables; the composition the "
             "composer installs today on its rows is the two neighbouring cylindrical pairs, "
             "which this gate drives as its composition_today reference. The composition "
-            "with this product INSTALLED BY THE COMPOSER awaits wiring and is not measured "
+            "with this product installed by the composer awaits wiring and is not measured "
             "here -- the weld arrangements force-install it"),
         "rows": rows,
     }
@@ -2605,8 +2621,8 @@ def main(spec: FamilySpec, gate_path: Path, argv: Optional[Sequence[str]] = None
             "device": str(cupy.cuda.runtime.getDeviceProperties(
                 cupy.cuda.runtime.getDevice())["name"]),
             "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
-            "cupy_cache_dir": os.environ.get("CUPY_CACHE_DIR"),
-            "triton_cache_dir": os.environ.get("TRITON_CACHE_DIR")})
+            "cupy_cache_dir": neutral_ids.path(os.environ.get("CUPY_CACHE_DIR")),
+            "triton_cache_dir": neutral_ids.path(os.environ.get("TRITON_CACHE_DIR"))})
         log(f"subnormal policy installed: {payload['subnormal_policy'].get('policy')!r} "
             f"(requested {args.subnormal_policy!r}); composer reachable: {composer_reachable}"
             + (f" ({why})" if why else ""))
@@ -2685,7 +2701,7 @@ def main(spec: FamilySpec, gate_path: Path, argv: Optional[Sequence[str]] = None
     payload["passed"] = bool(payload["release"]["released"])
     payload["seconds"] = round(time.time() - started, 1)
     if not args.no_device:
-        # THE STAMP AT EXIT, beside the one taken at install: the executor counters (the
+        # The stamp at exit, beside the one taken at install: the executor counters (the
         # Triton compiles audited for `.ftz`, the NVRTC strips) are zero at install by
         # construction and only mean something once this process has compiled.
         from meep_gpu import subnormal_policy as _policy  # noqa: PLC0415

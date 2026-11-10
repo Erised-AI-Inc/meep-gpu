@@ -1,6 +1,6 @@
 """The SCRATCH-OUTPUT lift both off-diagonal D/E welds are built from.
 
-WHY THERE IS A SHARED MODULE AND NOT TWO COPIES. :mod:`.offdiag_fused_electric_pair`
+Why there is a shared module and not two copies. :mod:`.offdiag_fused_electric_pair`
 and :mod:`.folded_offdiag_fused_electric_pair` occupy two different board cells with
 two different constitutive arms whose predicates are disjoint on the fold -- but the
 CURL half, the scratch discipline, the per-cell resolution and the rotation are one
@@ -8,13 +8,13 @@ piece of arithmetic, and the one thing this track will not do is let two copies 
 resolution drift apart. Everything that decides a float lives here; each family module
 owns its predicate, its signature, its cell and its record.
 
-NOTHING HERE IMPORTS CuPy. The lift is string work over the certified device text and
+Nothing here imports CuPy. The lift is string work over the certified device text and
 the resolution is emitted from ``fields.IYEE_SHIFTS``, so both are exercisable at the
 merge bar on a laptop -- which is the rule this package applies to every part whose
 failure mode is a silent wrong answer rather than a crash.
 
 =============================================================================
-THE DESIGN, AND WHY THE RECORDED REFUSAL DOES NOT REACH IT
+The design, and why the recorded refusal does not reach it
 =============================================================================
 
 The board records both cells STENCIL-BLOCKED with
@@ -23,7 +23,7 @@ The board records both cells STENCIL-BLOCKED with
      thread does not own. In one launch that cell is written by another block, and
      CUDA offers no grid-wide barrier inside an ordinary launch"
 
--- true, and true OF THE IN-PLACE WELD. It has two premises, and this shape removes
+-- true, and true of the in-place weld. It has two premises, and this shape removes
 both:
 
 * **the curl half writes nothing in place.** ``D_new`` and ``fu_new`` go to a
@@ -38,13 +38,13 @@ The launcher then ROTATES the ``D``/``fu`` bindings, which is the choreography t
 certified E->P path already ships (``ade_kernels.update_P_fused_pml_real`` rotates
 ``P``/``P_prev``/``_scratch`` per component, :414-424).
 
-WHAT MAKES THE RECOMPUTE EXACT RATHER THAN CLOSE. ``step_D_pml_real`` at a cell reads
-``H`` at that cell and its three backward neighbours, and ``D``/``fu`` AT THAT CELL
-ONLY -- ``pml_apply`` touches ``f[idx]`` and ``fu[idx]`` and nothing else. So the
+What makes the recompute exact rather than close. ``step_D_pml_real`` at a cell reads
+``H`` at that cell and its three backward neighbours, and ``D``/``fu`` at that cell
+only -- ``pml_apply`` touches ``f[idx]`` and ``fu[idx]`` and nothing else. So the
 stepped value at any cell is a function of state this launch does not write, and
 evaluating it twice gives the same bits by construction rather than by a tolerance.
 
-WHY THE RECOMPUTE IS LOAD-BEARING, MEASURED. ``parity/meep_gpu/results/
+Why the recompute is load-bearing, measured. ``parity/meep_gpu/results/
 cuda_offdiag_scratch_weld_2026-09-02/probe.json`` counts, per fixture, how many of the
 constitutive's foreign taps land on a cell whose stepped value DIFFERS from its
 pre-launch value: **227,892 of 227,892 across eleven fixtures.** Every single foreign
@@ -52,7 +52,7 @@ tap is a cell the in-place weld would read at an undefined time. That number is 
 makes this a design rather than a formality.
 
 =============================================================================
-THE RESOLUTION -- WHAT ONE LAUNCH PERFORMS BETWEEN THE TWO HALVES
+The resolution -- what one launch performs between the two halves
 =============================================================================
 
 The array path runs three passes between ``step_D`` and ``update_E``
@@ -61,7 +61,7 @@ therefore does not read a stored D at all: it reads
 
     resolve_D(component, cell) =
         the raw stepped value at ONE redirected cell, times a product of per-axis
-        parities applied ONE MULTIPLY AT A TIME, or an exact +0.0f where the wall
+        parities applied one multiply at a time, or an exact +0.0f where the wall
         clear owns the plane
 
 with the redirect and the parities exactly as ``stepping._write_mirror_ghost``
@@ -70,8 +70,8 @@ with the redirect and the parities exactly as ``stepping._write_mirror_ghost``
 fill. A near ghost landing in a cleared plane is therefore CLEARED, and the far image
 reads the post-clear, post-near value at its source row.
 
-THAT COMPOSITION IS MEASURED, not argued. The probe above puts it against the driver's
-own pass order over TWO COMPLETE STEPS on eleven fixtures -- unfolded one-row, all-rows
+That composition is measured, not argued. The probe above puts it against the driver's
+own pass order over two complete steps on eleven fixtures -- unfolded one-row, all-rows
 and walled; folded even, odd, odd-count, metallic-terminated, odd-walled, two-axis
 mixed-phase and 3-D -- and reports zero differing words on every stored volume at step
 1 and at step 2, with every reachable null control diverging and every unreachable one
@@ -80,13 +80,13 @@ recorded ``predicted_null`` WITH its reason. The sibling Metal probe
 independently; this one measures it on the CUDA arms and adds the per-cell purity
 ledger and the race census.
 
-PER-CELL PURITY IS THE PROPERTY THAT LICENSES THE RECOMPUTE, and the probe asserts it
+Per-cell purity is the property that licenses the recompute, and the probe asserts it
 rather than assuming it: every resolved cell consults EXACTLY ONE raw cell. A
 resolution that needed a plane would not fit in a ``__device__`` function a thread can
 call for a neighbour.
 
 =============================================================================
-THE PARITIES ARE HANDED IN, NOT NEGATED IN THE KERNEL
+The parities are handed in, not negated in the kernel
 =============================================================================
 
 ``fields.mirror_parity(c, axis, phase)`` is ``phase * (1 - 2 * iyee[c][axis])``: a D
@@ -104,7 +104,7 @@ array path's own spelling (``phase * _mirror_source(...)``, a Python int times a
 float32 array) and is what the probe measured.
 
 =============================================================================
-WHAT THIS MODULE DOES NOT DO
+What this module does not do
 =============================================================================
 
 It plans nothing and launches nothing on its own; it emits device text and resolves
@@ -199,7 +199,7 @@ _PML_APPLY_PARAMETERS_PURE = (
     "    float* fu_out\n)")
 _PML_APPLY_FU_STORE = "    if (dsigu) fu[idx] = fu_new;\n"
 _PML_APPLY_FU_STORE_PURE = (
-    "    // THE FIRST OF THE TWO STORES, HANDED BACK INSTEAD OF PERFORMED. The\n"
+    "    // The first of the two stores, handed back instead of performed. The\n"
     "    // caller writes it to the SCRATCH volume, so nothing this launch reads\n"
     "    // is ever a word this launch wrote. The scratch replaces the stored split\n"
     "    // field at every cell, so on a cell outside the recurrence's chunks -- where\n"
@@ -207,7 +207,7 @@ _PML_APPLY_FU_STORE_PURE = (
     "    *fu_out = dsigu ? fu_new : fu[idx];\n")
 _PML_APPLY_F_STORE = "    f[idx] = value;\n"
 _PML_APPLY_F_STORE_PURE = (
-    "    // THE SECOND STORE, LIKEWISE. Same right-hand side, same tree, same\n"
+    "    // The second store, likewise. Same right-hand side, same tree, same\n"
     "    // parenthesisation; the value is RETURNED so the resolution can redirect\n"
     "    // it, the wall clear can replace it and the constitutive can consume it\n"
     "    // from a register.\n"
@@ -281,7 +281,7 @@ RESOLUTION_LIFT_EDITS: Tuple[Dict[str, str], ...] = (
     {"line": "    constitutive_apply(E*, f_w_E*, idx, src_E*, kps_*[*], kms_*[*]);",
      "became": "    constitutive_apply(E*, f_w_E*, idx, src_E*, kps_*[*], "
                "kms_half_*[*]);",
-     "why": "ONE RENAME, NO ARITHMETIC. kms_* is the INTEGER sub-lattice for the D "
+     "why": "One rename, no arithmetic. kms_* is the INTEGER sub-lattice for the D "
             "curl and the HALF-INTEGER one for update_E; letting one shadow the "
             "other in a single scope is a half-cell error in the absorber profile "
             "rather than a compile failure. The same rename fused_electric_pair "
@@ -422,7 +422,7 @@ def the_line_starting(body: str, prefix: str, what: str) -> str:
 def close_call_with_the_pack(body: str, opening: str, what: str) -> str:
     """Append ``, weld`` to the call whose first line is ``opening``.
 
-    THE OTHER HALF OF THE TERM REWRITE. The resolved ``offdiag_term`` needs the
+    The other half of the term rewrite. The resolved ``offdiag_term`` needs the
     argument pack, and the certified call spans four lines with its last argument on
     the closing one. Found STRUCTURALLY -- the opening line, then the first line
     below it that closes the call -- rather than by matching the corner index
@@ -480,7 +480,7 @@ def weld_args_struct() -> str:
     """The argument pack, declared."""
     lines = [
         "",
-        "// THE PRE-LAUNCH STATE AND THE RUNTIME PLAN, packed once. Every member is",
+        "// The pre-launch state and the runtime plan, packed once. Every member is",
         "// read-only for the whole launch: that is the property the recompute rests",
         "// on, and binding D/fu/H const here is where it is stated in the type",
         "// system rather than in a comment.",
@@ -503,7 +503,7 @@ def weld_args_construction(indent: str = "    ") -> str:
 def raw_step_D_cell_source() -> str:
     """The certified ``step_D_pml_real`` body as a ``__device__`` function of a CELL.
 
-    THE ENTIRE BODY IS LIFTED. Only the two blocks that tie it to a thread index and
+    The entire body is lifted. Only the two blocks that tie it to a thread index and
     the three ``pml_apply`` call lines are edited, each through an exact anchor, so a
     change in the certified text is a named failure rather than a silently different
     kernel. The three component blocks -- their curls, their masks, their coefficient
@@ -527,7 +527,7 @@ def raw_step_D_cell_source() -> str:
                 f"{what}, not one; the cell lift has no anchor")
     body = body.replace(
         _THREAD_PREAMBLE,
-        "    // THE CELL ARRIVES AS COORDINATES. The flat index is composed by the\n"
+        "    // The cell arrives as coordinates. The flat index is composed by the\n"
         "    // same layout the certified decode inverts; the bounds guard left with\n"
         "    // the thread index, and every caller is either the kernel's own\n"
         "    // guarded thread or a redirect target the resolution proved in range.\n"
@@ -547,7 +547,7 @@ def raw_step_D_cell_source() -> str:
         body = body.replace(line, captured, 1)
 
     signature = (
-        "\n// The certified step_D_pml_real, evaluated at ONE ARBITRARY CELL and\n"
+        "\n// The certified step_D_pml_real, evaluated at one arbitrary cell and\n"
         "// storing nothing. This is the function the constitutive half calls for\n"
         "// every foreign sample it needs: a pure function of D_old, fu_old and H,\n"
         "// none of which this launch writes, so a foreign evaluation cannot depend\n"
@@ -638,7 +638,7 @@ def resolution_source() -> str:
         ]
         if near:
             lines.append(
-                "        // ONE MULTIPLY PER IMAGED PLANE, NESTED and in X, Y, Z"
+                "        // One multiply per imaged plane, nested and in X, Y, Z"
                 " order, because")
             lines.append(
                 "        // the fill writes plane after plane: a corner unowned on"
@@ -699,7 +699,7 @@ def resolution_source() -> str:
 def fill_plan(grid: Any) -> Dict[str, Tuple[Any, ...]]:
     """The three in-seam passes' runtime plan, as the flat per-axis triples.
 
-    THE THREE READINGS ANSWER DIFFERENT QUESTIONS and confusing them is a plane of
+    The three readings answer different questions and confusing them is a plane of
     wrong values rather than a crash:
 
     * ``near[a]`` is 1 on a MIRROR-folded axis of EITHER termination -- the near
@@ -711,7 +711,7 @@ def fill_plan(grid: Any) -> Dict[str, Tuple[Any, ...]]:
       read it anyway would index outside the volume and be caught rather than
       silently imaging row 0.
 
-    THE TWO PARITIES ARE COMPUTED BY THE ENGINE'S OWN HELPER, per component and per
+    The two parities are computed by the engine's own helper, per component and per
     axis, and the per-axis collapse is ASSERTED rather than assumed: a D component's
     near axes are exactly its shift-0 axes (weight ``+phase``) and its far axis its
     one shift-1 axis (weight ``-phase``), so the weight depends on the axis alone --

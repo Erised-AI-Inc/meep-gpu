@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Native MPS byte gate for folded tensor-row dispersive ``update_E``.
 
-RULING R7: SOFTWARE BINARY64. The kernel forms the off-diagonal single's double row
+SOFTWARE BINARY64 (docs/design/floating-point.md). The kernel forms the off-diagonal single's double row
 over the ordered ``D - P`` gathers (``offdiag_update_e._row_assembly``, through
 ``metal_kernels.softfp64``) with the six per-chunk presence words in ``Params``, and
 its arm is wired. Every plan is the ENGINE builder's
@@ -17,9 +17,9 @@ with. The gate runs:
   ``kps*src`` and ``kms*prev`` are not exact, so its grouping and form stay
   byte-visible). Each case records the cells of each constitutive form per component;
 * ``mutations`` -- on the exact states: the previous accumulation grouping planted
-  (must-catch, KERNELS.md §7.1), the select removed, the auxiliary stored on a plain
+  (must-catch, an inverted grouping), the select removed, the auxiliary stored on a plain
   cell, the integer lattice read, and the pole and fold defects; on a generic state
-  the float32 row (ruling R7's must-catch, the pre-R7 spelling); on a planted
+  the float32 row (must-catch, the pre-binary64 spelling); on a planted
   cancelling-terms state the terms summed before the diagonal (must-catch, a
   different double rounding visible only there);
 * ``presence`` -- rows zero in the PML chunks of the metallic axes with
@@ -28,7 +28,7 @@ with. The gate runs:
   and the presence ignored (source), cleared and forced all-kept (``Params``) are
   caught;
 * ``engine`` -- every product case: the arm is wired and offered, the predicate
-  admits with no ruling clause, and the builder returns a plan whose words are
+  admits with no clause refusing the binary64 row, and the builder returns a plan whose words are
   ``offdiag_update_e.presence_for``'s.
 """
 
@@ -371,7 +371,7 @@ _ROW0 = ("    ulong od_row0 = sd_widen_f(gs0 * us0, true);\n"
 
 
 def _float32_row(source: str) -> str:
-    """RULING R7'S MUTATION: component 0's row in float32, the pre-R7 spelling --
+    """THE FLOAT32-ROW MUTATION: component 0's row in float32, the pre-binary64 spelling --
     ``0.25f`` times each pair sum, the terms summed and added to ``gs*us`` in float32."""
     return _planted(source, _ROW0 + "    float src0 = sd_narrow_f(od_row0, true);",
                     "    float total0 = (0.25f * sum_00) + (0.25f * sum_01);\n"
@@ -413,7 +413,7 @@ def _mutant_sources(counts: Sequence[int]) -> Dict[str, Tuple[str, str, str]]:
             base, "dmp1(g1, p1, ii, n_elem) + (at_y", "g1[ii] + (at_y")),
         "mirror_ghost_sign_dropped": ("caught", _planted(
             base, "at_y ? -dn_00 : dn_00", "dn_00")),
-        # §7.1, inverted: the package's previous grouping, (f + kps*src) - kms*prev.
+        # INVERTED: the package's previous grouping, (f + kps*src) - kms*prev.
         "previous_accumulation_grouping": ("caught", _planted(
             base, _ACCUMULATE0,
             "    if (dw0) { a0 = (f0[ii] + (kp_0 * src0)) - (km_0 * prev0); }")),
@@ -443,7 +443,7 @@ def _mutants(counts: Sequence[int]) -> Dict[str, Tuple[str, str, Dict[str, Any]]
 
 
 def _engine_leg(products: Sequence[Tuple[Any, ...]]) -> List[Dict[str, Any]]:
-    """The engine route admits every case with no ruling clause, the arm is wired and
+    """The engine route admits every case (no clause refuses the binary64 row), the arm is wired and
     offered, and the builder's words are ``offdiag_update_e.presence_for``'s."""
     arm = next(spec for spec in arms.registered("update_E") if spec.family == family.FAMILY)
     rows_out = []
@@ -563,6 +563,8 @@ def _emit(handle: Any, row: Dict[str, Any]) -> None:
 
 
 def main() -> int:
+    from metal_closed_table import close_table  # noqa: PLC0415
+    close_table()
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--cycles", type=int, default=3)

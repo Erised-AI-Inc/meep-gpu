@@ -10,9 +10,10 @@ them, beside the digests.
 
 So the writer is held to the same rule here: a CUDA cut files PASS under the
 capability and none beside the digests, the record it writes satisfies the CUDA
-contract's own check, and the cut of every backend refuses a record that carries an
-entry-level ``status``. The Metal cut is driven end to end in
-``test_recut_metal_runs.py``.
+contract's own check, two capabilities whose defaults differ keep their own statements
+of the default, a cut that would write one beside the digests is refused, and the cut of
+every backend refuses a record that carries an entry-level ``status`` or one shared
+statement of the default. The Metal cut is driven end to end in ``test_recut_metal_runs.py``.
 
 Driven over a CUDA route campaign built in the test against the live tree's digests,
 and over records built in the test; no GPU and no results tree are read.
@@ -30,6 +31,7 @@ import pytest
 HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
+import gate_dispatch_fused_route as route_gate  # noqa: E402
 import recut_driver_dispatch_record as recut  # noqa: E402
 
 from meep_gpu import fastpath, fastpath_cuda, route_stamps  # noqa: E402
@@ -46,9 +48,20 @@ def _live(name: str) -> str:
     return hashlib.sha256(recut._resolve("cuda", name).read_bytes()).hexdigest()  # noqa: SLF001
 
 
-def _campaign(results: pathlib.Path) -> str:
+def recorded_default(dispatching: bool, vetoes=()) -> dict:
+    """A leg's ``dispatch_preference`` as the route gate writes it, on the live records,
+    with the default vetoing ``vetoes`` (product labels) on its one case."""
+    rows = ([{"control": "default-preference", "case": "pml_2d",
+              "verdict": route_gate.DEFAULT_PREFERENCE_RECORDED, "records_read": {},
+              "prior_derived_from": [],
+              "vetoes_applied": [{"label": label} for label in vetoes]}]
+            if dispatching else [])
+    return route_gate.dispatch_preference_summary(rows, route_gate.shipped_timing_records())
+
+
+def _campaign(results: pathlib.Path, capability: str = CAPABILITY, vetoes=()) -> str:
     """A released four-leg CUDA route campaign on the live bytes, as the gate writes it."""
-    name = fastpath.route_campaign(route_stamps.route_gate("cuda"), CAPABILITY)
+    name = fastpath.route_campaign(route_stamps.route_gate("cuda"), capability)
     released = fastpath_cuda.CUDA_RELEASED_FUSED_ARMS
     cases = sorted({case for arm_cases in released.values() for case in arm_cases})
     arms_driven = {case: {f"slot{index}": arm
@@ -63,16 +76,19 @@ def _campaign(results: pathlib.Path) -> str:
             "provenance": {
                 "source_sha256": {recut._leg_key("cuda", key): _live(key)  # noqa: SLF001
                                   for key in recut._cuda_bound_files()},  # noqa: SLF001
-                "device": {"compute_capability": CAPABILITY},
+                "device": {"compute_capability": capability},
             },
             "arms_driven": arms_driven if dispatching else {},
+            # The timing records the tree ships, stated as the gate states them, with one
+            # case's default recorded on a dispatching leg.
+            "dispatch_preference": recorded_default(dispatching, vetoes),
             "arbitration": ({case: ["INCUMBENT-YIELDED", "ARBITRATION-DEFAULT-HELD"]
                              for case in cases} if dispatching else {}),
         }
         (directory / "gate.json").write_text(json.dumps(artifact))
         rows = [{"case": case, "legs": {"fused": {"plan": {
             "composition": {"tables_dispatched": ["cuda"]},
-            "environment": {"device": {"compute_capability": CAPABILITY},
+            "environment": {"device": {"compute_capability": capability},
                             "device_certified_by_table": {"cuda": True}}}}}}
             for case in cases]
         (directory / "cases.jsonl").write_text(
@@ -101,7 +117,7 @@ def tree(tmp_path, monkeypatch):
     monkeypatch.setattr(recut, "RESULTS", results)
     monkeypatch.setitem(recut.BACKENDS, "cuda",
                         dict(recut.BACKENDS["cuda"], record=ledger))
-    # WHICH TABLE LICENSES THE DEFAULT is read from the shipped ledgers' admissions;
+    # Which table licenses the default is read from the shipped ledgers' admissions;
     # pinned here to the precedence's first table so this file does not move with the
     # certification state of the tree it runs on. The CUDA cut then neither needs nor
     # takes a licence.
@@ -174,7 +190,98 @@ def test_every_cut_refuses_a_record_carrying_an_entry_level_status(
     assert ledger.read_text() == before
 
 
-# THE CAMPAIGN NAME IS THE REGISTRY'S, and the cut keys on it (meep_gpu/route_stamps.py).
+def test_two_capabilities_whose_defaults_differ_keep_their_own_statements(
+        tree, monkeypatch, capsys):
+    """Compute capability 8.6 and a stand-in, 8.7, whose defaults differ: 8.6's gives way
+    on its one case, 8.7's does not. Each run keeps its own statement of the default,
+    8.6's comes through 8.7's cut byte for byte, and no statement sits beside the
+    digests. Then the fault the shared statement was, planted in the writer: a bind that
+    also files the cut's statement in the other run is refused by name, nothing written."""
+    results, ledger = tree
+    _ledger(ledger)
+    assert _cut(_campaign(results, CAPABILITY, vetoes=("fused pair D",))) == 0
+    first = _dispatch(ledger)["runs"][CAPABILITY]
+    assert first["dispatch_preference"]["vetoes_applied"] == {"pml_2d": ["fused pair D"]}
+    second = _campaign(results, "8.7")
+    assert _cut(second) == 0
+    record = _dispatch(ledger)
+    assert recut.PREFERENCE_KEY not in record
+    assert record["runs"][CAPABILITY] == first
+    statement = record["runs"]["8.7"]["dispatch_preference"]
+    assert statement["vetoes_applied"] == {}
+    assert statement["run"] == second == record["runs"]["8.7"]["released_fused_arms"]["gate"]
+    assert contract._dispatch_record_problems({"driver_dispatch": record}) == []  # noqa: SLF001
+
+    real = fastpath.bind_capability
+
+    def shared(entry, **kwargs):
+        staled = real(entry, **kwargs)
+        for run in entry[fastpath.RUNS].values():
+            run[recut.PREFERENCE_KEY] = kwargs["run"][recut.PREFERENCE_KEY]
+        return staled
+
+    monkeypatch.setattr(fastpath, "bind_capability", shared)
+    before = ledger.read_text()
+    assert _cut(second) == 1
+    error = capsys.readouterr().err
+    assert "cut_would_change_another_architecture" in error
+    assert f"runs['{CAPABILITY}'] fields ['dispatch_preference']" in error
+    assert ledger.read_text() == before
+
+
+def test_a_cuda_cut_that_would_write_a_statement_beside_the_digests_is_refused(
+        tree, monkeypatch, capsys):
+    """The tool checks the record it writes as it checks the one it reads: a planted
+    writer that files the cut's statement in its own run and also beside the digests is
+    refused by name, nothing written."""
+    results, ledger = tree
+    _ledger(ledger)
+    real = fastpath.bind_capability
+
+    def beside(entry, **kwargs):
+        staled = real(entry, **kwargs)
+        entry[recut.PREFERENCE_KEY] = kwargs["run"][recut.PREFERENCE_KEY]
+        return staled
+
+    monkeypatch.setattr(fastpath, "bind_capability", beside)
+    before = ledger.read_text()
+    assert _cut(_campaign(results)) == 1
+    error = capsys.readouterr().err
+    assert "cut_would_write_route_run_fields_at_entry_level" in error
+    assert "'dispatch_preference'" in error
+    assert ledger.read_text() == before
+
+
+@pytest.mark.parametrize("backend", ["cuda", "triton", "metal"])
+def test_every_cut_refuses_a_record_carrying_one_shared_statement_of_the_default(
+        backend, tmp_path, monkeypatch, capsys):
+    """Each run's statement of the default is a route-run field (the tool's
+    ``NVIDIA_ROUTE_RUN_FIELDS``, ``metal_runs.DISPATCH_RUN_FIELDS``), so a record carrying
+    one beside its digests, the statement every cut used to rewrite, is refused with
+    nothing written before any leg's artifact is read."""
+    results = tmp_path / "results"
+    ledger = tmp_path / "fingerprints.json"
+    monkeypatch.setattr(recut, "RESULTS", results)
+    monkeypatch.setitem(recut.BACKENDS, backend,
+                        dict(recut.BACKENDS[backend], record=ledger))
+    name = f"{recut.BACKENDS[backend]['run_prefix']}_a_campaign"
+    for leg in recut.BACKENDS[backend]["required_legs"]:
+        (results / name / leg).mkdir(parents=True)
+        (results / name / leg / "gate.json").write_text("{}")
+    record = {"table": backend, "source_sha256": {"meep_gpu/fastpath.py": "0" * 64},
+              "exclusions": {"released_fused_arms": {}}, "runs": {},
+              recut.PREFERENCE_KEY: recorded_default(True)}
+    ledger.write_text(json.dumps({"driver_dispatch": record}))
+    before = ledger.read_text()
+    assert recut.main(["--backend", backend, "--run", name, "--write"]) == 2
+    error = capsys.readouterr().err
+    assert "record_carries_route_run_fields_at_entry_level" in error
+    assert "'dispatch_preference'" in error
+    assert "each run's statement belongs in runs[<key>].dispatch_preference" in error
+    assert ledger.read_text() == before
+
+
+# The campaign name is the registry's, and the cut keys on it (meep_gpu/route_stamps.py).
 # Each refusal below is of a campaign the legs would otherwise file cleanly (the first
 # test of this file cuts the same campaign), and each writes nothing.
 
@@ -228,7 +335,7 @@ def _ledger_with_licence(path: pathlib.Path, directory: str) -> None:
 
 
 def test_a_carried_licence_of_this_round_travels_forward(tree, monkeypatch):
-    """The control for the refusal below: the same carry, the round's own name."""
+    """The control for the refusal below: the same carry, under the certification round's own name."""
     results, ledger = tree
     monkeypatch.setattr(fastpath, "primary_table", lambda capability: "cuda")
     _ledger_with_licence(ledger, route_stamps.licence_campaign("cuda"))

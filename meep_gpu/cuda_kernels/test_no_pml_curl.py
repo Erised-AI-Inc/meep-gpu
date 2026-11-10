@@ -1,13 +1,13 @@
 """The hand-CUDA NO-ABSORBER curl family: what the array path does, and what the predicate says.
 
-WHAT THIS FILE CAN SETTLE ON A LAPTOP AND WHAT IT CANNOT. The bit-identity claim
+What this file can settle on a laptop and what it cannot. The bit-identity claim
 for ``step_{B,D}_no_pml_real`` and ``step_B_no_pml_real_derived``
 belongs to ``parity/meep_gpu/gate_cuda_no_pml_curl.py``, on a device, under both
 float32 subnormal policies and with the NVRTC contraction guard as an
-experimental variable. NOTHING HERE COMPILES ANYTHING. What runs here is
+experimental variable. Nothing here compiles anything. What runs here is
 everything else, and it is most of what would be wrong:
 
-1. **THE ORACLE'S SHAPE, MEASURED.** The three kernels exist in the shape they do
+1. **The oracle's shape, measured.** The three kernels exist in the shape they do
    because of three facts about ``stepping`` that were measured rather than read:
    without an absorber ``step_B`` differences ``D * inv_eps`` when nothing stores
    E, ``step_D`` differences the B ARRAYS, and an INERT ``PML`` object steps
@@ -16,24 +16,24 @@ everything else, and it is most of what would be wrong:
    them stopped being true, the kernels would be solving the wrong problem and no
    amount of device green would say so.
 
-2. **THE DEVICE TEXT'S STRUCTURE.** The two verbatim kernels must differ from the
-   certified ``step_{B,D}_pml_real`` in the TAIL AND NOWHERE ELSE, and the
+2. **The device text's structure.** The two verbatim kernels must differ from the
+   certified ``step_{B,D}_pml_real`` in the tail and nowhere else, and the
    derived kernel must differ from the stored one only by the documented
    substitution. That is the file's whole safety argument, and it is checkable
    rather than reviewable.
 
-3. **THE PREDICATE, CLAUSE BY CLAUSE**, pinned to exact refusal strings -- in a
+3. **The predicate, clause by clause**, pinned to exact refusal strings -- in a
    first-refusal predicate the clause ORDER is part of the contract -- plus the
    two structural properties the delegation rests on: that the ONE forgiven
    refusal is the sibling's LAST clause (so forgiving it skips nothing), and that
    the clauses which follow ``stores_E`` are still reached.
 
-4. **THE GATE'S NUMPY BACKEND, END TO END.** A handful of the gate's own cases are
+4. **The gate's NumPy backend, end to end.** A handful of the gate's own cases are
    run in process, so the transcription the device leg's laptop half depends on is
    exercised on every laptop rather than for the first time on the one host that
    runs the gate.
 
-5. **MUTATIONS OF THE PREDICATE AND OF THE DEVICE TEXT.** Every clause must change
+5. **Mutations of the predicate and of the device text.** Every clause must change
    a verdict when it is deleted from the REAL source, and every mutation the gate
    names must ARM on the kernel it claims -- a mutation silently absent from a
    battery and a mutation that cannot bite look identical in a verdict.
@@ -126,7 +126,7 @@ def words(array) -> numpy.ndarray:
 
 
 # ---------------------------------------------------------------------------
-# 1. WHAT THE ARRAY PATH ACTUALLY DOES WITHOUT AN ABSORBER
+# 1. What the array path actually does without an absorber
 #
 # Every one of these is the reason a kernel here has the signature it has. They
 # are measured against ``stepping`` itself, as uint32 words, with a nonzero
@@ -179,7 +179,7 @@ def _hand_curl_step(fields, grid, boundaries, terms, operands, targets, backward
 def test_without_stored_E_step_B_differences_D_times_inverse_epsilon(xp):
     """``stepping.step_B`` derives its operands; ``fields.Ex`` does not even exist.
 
-    THIS IS WHY THE DERIVED KERNEL EXISTS. ``_read_component`` (stepping.py:2892)
+    This is why the derived kernel exists. ``_read_component`` (stepping.py:2892)
     routes E through ``get_E``'s un-stored branch, ``D * inv_eps``
     (fields.py:1047), whenever ``fields.stores_E`` is False -- which, with no
     absorber and no susceptibility, is the normal case. A kernel binding
@@ -215,7 +215,7 @@ def test_without_stored_E_step_B_differences_D_times_inverse_epsilon(xp):
 
 
 def test_step_D_differences_the_B_arrays_because_get_H_returns_them(xp):
-    """``fields.Hx`` is None and ``get_H`` hands back B. THE TRAP THIS FAMILY EXISTS FOR.
+    """``fields.Hx`` is None and ``get_H`` hands back B. The trap this family exists for.
 
     A predicate that delegates its storage inventory to the certified curl
     predicate refuses every no-absorber run for "Hx is not allocated" -- and the
@@ -277,7 +277,7 @@ def test_an_inert_layer_steps_identically_to_no_layer(sub_step, xp):
 
 
 # ---------------------------------------------------------------------------
-# 2. THE DEVICE TEXT'S STRUCTURE
+# 2. The device text's structure
 # ---------------------------------------------------------------------------
 
 def _kernel_body(source: str, entry: str) -> str:
@@ -312,7 +312,7 @@ def test_the_verbatim_kernels_differ_from_the_certified_pair_only_in_the_tail(
         sub_step, mine, theirs):
     """Line for line, the ONLY changes are the signature, the record's form words and the tails.
 
-    THE WHOLE SAFETY ARGUMENT OF THIS FAMILY is that the curl -- the term table,
+    The whole safety argument of this family is that the curl -- the term table,
     the ghost rule, MEEP's stencil with its partner-presence forms and the six
     wall-mask lines -- is the certified pair's, unedited. That is a property of the
     bytes, so it is measured on the bytes: every changed line must be a
@@ -648,7 +648,7 @@ def test_the_fold_is_admitted_at_both_terminations(sub_step, xp):
 
 @pytest.mark.parametrize("sub_step", SUB_STEPS)
 def test_a_third_simultaneous_fold_plane_is_refused(sub_step, xp):
-    """THIS FAMILY'S OWN CAP since 2026-08-20, and the reason it stopped being
+    """This family's own cap since 2026-08-20, and the reason it stopped being
     inherited.
 
     It WAS inherited: the sibling refused a third plane and delegation carried the
@@ -665,22 +665,22 @@ def test_a_third_simultaneous_fold_plane_is_refused(sub_step, xp):
     covered, reason = covers(fields, None, grid, sub_step)
     assert covered is False and "3 mirror planes at once" in reason
     assert "this family's gate swept 2" in reason, reason
-    # AND THE SIBLING MUST DISAGREE, or the clause is not this family's and the
+    # And the sibling must disagree, or the clause is not this family's and the
     # test would pass on inheritance again without saying so.
     assert coverage.covers_real_pml_curl(fields, None, grid, sub_step)[1] != reason
 
 
-# THE CLAUSES BEHIND THE FORGIVEN ONE. Each of these lives AFTER ``stores_E`` in
+# The clauses behind the forgiven one. Each of these lives AFTER ``stores_E`` in
 # ``covers_real_pml_curl``, so each of them was silently skipped while the
 # delegation forgave that refusal by string instead of answering it at the input.
 @pytest.mark.parametrize("sub_step", SUB_STEPS)
 def test_the_clauses_that_follow_stores_E_are_still_reached(sub_step, xp):
     """chi2/chi3 on a derived-E run, and where the clause now lives.
 
-    A STRING FILTER OVER A SHORT-CIRCUITING PREDICATE SKIPS EVERYTHING BEHIND THE
-    REFUSAL IT FORGIVES, and ``stores_E`` is clause 12 of 16; this case is the arm
+    A string filter over a short-circuiting predicate skips everything behind the
+    refusal it forgives, and ``stores_E`` is clause 12 of 16; this case is the arm
     such a filter would have waved through. The clause itself moved on 2026-08-20:
-    the sibling retired its chi2/chi3 refusal on a device round that ran the PML
+    the sibling retired its chi2/chi3 refusal on a device gate run over the PML
     kernels (``coverage.CURL_NONLINEAR_ADMISSION``), and this family's gate
     installs no chi anywhere, so the refusal is now stated HERE and asked before
     delegation. It costs zero slots -- both corpus nonlinear rows are PML-active.
@@ -723,7 +723,7 @@ def test_the_forgiven_refusal_is_the_siblings_last_clause(xp):
 
 
 # ---------------------------------------------------------------------------
-# 4. THE GATE'S NUMPY BACKEND, IN PROCESS
+# 4. The gate's NumPy backend, in process
 # ---------------------------------------------------------------------------
 
 @pytest.fixture(scope="module")
@@ -753,7 +753,7 @@ def gate():
 def test_the_gate_numpy_backend_reproduces_stepping(gate, label, sub_step, e_storage):
     """The transcription the gate's laptop half rests on, exercised on every laptop.
 
-    IT CERTIFIES NOTHING ABOUT THE DEVICE -- it compiles nothing and is not the
+    It certifies nothing about the device -- it compiles nothing and is not the
     shipped bytes. What it settles is that the harness agrees with ``stepping``
     where it should, so a divergence on the device leg is about the compiler or
     the kernel and not about the fixture.
@@ -892,7 +892,7 @@ def test_the_index_decomposition_twin_is_computed_rather_than_argued(gate):
 def test_the_folded_far_ghost_leg_is_a_null_and_the_metallic_one_is_not(gate):
     """The same transform, two names, DISJOINT grids -- and only one may be inert.
 
-    MEASURED on the GPU host (GPU 6, smoke leg, 2026-08-20): dropping the zero far
+    Measured on the GPU host (GPU 6, smoke leg, 2026-08-20): dropping the zero far
     ghost from ``derived_up`` was caught on ``3d_metallic`` (505 differing words)
     and ``3d_mixed`` (370) and came back IDENTICAL on ``fold_Y_periodic``. The
     fold's top-plane mask drops exactly the plane that consumes the changed ghost,
@@ -1015,7 +1015,7 @@ def test_mutation_dropping_the_conductivity_delegation_is_caught(xp):
 def test_mutation_forgiving_every_refusal_instead_of_the_coefficient_one_is_caught(xp):
     """The forgiveness must be a PREFIX MATCH, not a blanket pass.
 
-    THE FIXTURE IS A DELEGATED REFUSAL, and which one matters. It was a chi3 grid
+    The fixture is a delegated refusal, and which one matters. It was a chi3 grid
     until 2026-08-20, when the sibling retired its chi2/chi3 clause and this file
     took the refusal back as its OWN (it is asked before delegation, so a blanket
     forgiveness of the DELEGATED answer cannot reach it) -- and the mutation went
@@ -1074,7 +1074,7 @@ def _load(source: str, name: str):
 
 
 # ---------------------------------------------------------------------------
-# 6. THE ADMISSION RECORD
+# 6. The admission record
 # ---------------------------------------------------------------------------
 
 def test_admission_record_is_all_or_nothing():
@@ -1099,15 +1099,15 @@ def test_admission_record_is_all_or_nothing():
 
 
 def test_the_recorded_device_digests_are_the_device_text_that_ships():
-    """The record pins the THREE DEVICE STRINGS, and they are re-measured here.
+    """The record pins the three device strings, and they are re-measured here.
 
-    NO SKIP AND NO BRANCH ON EMPTINESS: an empty record has an empty digest map
+    No skip and no branch on emptiness: an empty record has an empty digest map
     and the loop below runs zero times, which is the right amount of checking for
     a family no device has seen. Once a leg HAS run, all three digests are
     recomputed from :func:`kernel_source`, so editing a kernel without a re-run
     fails here.
 
-    THE RECORD PINS THE DEVICE TEXT AND NOT THE FILE, deliberately. A record
+    The record pins the device text and not the file, deliberately. A record
     written after a gate ran cannot be inside the bytes that gate stamped, so a
     whole-file digest would make every comment edit read as an un-gated kernel
     change; the device strings are the thing that must not have moved.

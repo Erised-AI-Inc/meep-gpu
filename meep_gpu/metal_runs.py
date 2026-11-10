@@ -1,14 +1,14 @@
 """Per-architecture run records for the Metal ledger: the rules every writer obeys.
 
-WHY THIS EXISTS. A Metal weld entry held ONE run: its artifact, its ``host`` line and
+Why this exists. A Metal weld entry held ONE run: its artifact, its ``host`` line and
 its timestamp sat beside the digests of the bytes it certified. That shape can hold
-one Apple GPU architecture, so a second Mac's round could only replace the first
+one Apple GPU architecture, so a second Mac's run could only replace the first
 one's certification, never add to it. The NVIDIA ledgers solved the same problem with
 one record per compute capability (``fastpath.bind_capability`` and its neighbours);
 this module is the Metal half of that design, keyed by the GPU architecture Metal
 compiles for (``applegpu_g13s``, ...).
 
-WHAT A RUN RECORD IS. Each weld entry keeps its digests and gains
+What a run record is. Each weld entry keeps its digests and gains
 ``runs[<architecture>]``: the fields that describe one run of the gate
 (:data:`RUN_FIELDS`), the torch and Metal frontend that run recorded, and
 ``bound_sha256``, the digest :func:`fastpath.bound_digest` takes over
@@ -16,7 +16,7 @@ WHAT A RUN RECORD IS. Each weld entry keeps its digests and gains
 entry's, and :func:`fastpath.live_capabilities` is the one liveness answer: the
 dispatch admission (``metal_dispatch.cited_environments``) and every tool here ask it.
 
-WHY THE NVIDIA WRITERS ARE NOT REUSED AS THEY ARE. ``fastpath._require_capability``,
+Why the NVIDIA writers are not reused as they are. ``fastpath._require_capability``,
 ``fastpath.bind_capability``, ``fastpath.retired_shape_reasons`` and
 ``fastpath.route_campaign`` accept only a ``major.minor`` key and refuse
 ``applegpu_g13s`` by name, and ``fastpath.RUN_FIELDS`` does not list
@@ -25,7 +25,7 @@ needs untouched, so the Metal rules live here, in a module no ledger pins, and b
 only what works as it is: ``RUNS``, ``BOUND_FIELDS``, ``bound_digest`` and
 ``live_capabilities``.
 
-WHO READS THIS MODULE. The writers (``parity/meep_gpu/rebind_metal_welds.py``,
+Who reads this module. The writers (``parity/meep_gpu/rebind_metal_welds.py``,
 ``mint_metal_weld.py``, ``migrate_metal_runs.py``,
 ``recut_driver_dispatch_record.py --backend metal``), the weld contract and the
 fusion-matrix builder. The dispatch ladder does NOT import it: the admission reads
@@ -67,13 +67,14 @@ RUN_FIELDS: Tuple[str, ...] = (
     "_subnormal_policy_read_from",)
 
 #: The route-campaign fields of the Metal ``driver_dispatch`` record, kept per
-#: architecture. ``residency`` and ``lift`` are read off the legs case by case, so a
-#: second architecture's cut must not overwrite the first's; ``subnormal``,
-#: ``environments``, the slots and the release predicate are statements about the
-#: shipped module and stay at entry level.
+#: architecture. ``residency``, ``lift`` and the run's statement of the default (the
+#: last field: the timing records it ran with, what the default read and vetoed) are
+#: read off the legs case by case, so a second architecture's cut must not overwrite
+#: the first's; ``subnormal``, ``environments``, the slots and the release predicate
+#: are statements about the shipped module and stay at entry level.
 DISPATCH_RUN_FIELDS: Tuple[str, ...] = (
     "status", "records", "legs", "recorded_utc", "verdict_read_from",
-    "released_fused_arms", "residency", "lift")
+    "released_fused_arms", "residency", "lift", "dispatch_preference")
 
 #: Entries of the Metal ledger that are not weld records.
 NOT_WELDS: Tuple[str, ...] = ("driver_dispatch", "metal_kernels")
@@ -166,7 +167,7 @@ def weld_keys(ledger: Mapping[str, Any]) -> List[str]:
 def shape_reasons(entry: Any, run_fields: Sequence[str] = RUN_FIELDS) -> List[str]:
     """Why this entry is not in the per-architecture shape. Empty means it is.
 
-    THE SHAPE IS REFUSED BY NAME rather than read both ways, as on the NVIDIA
+    The shape is refused by name rather than read both ways, as on the NVIDIA
     ledgers: a run field beside the digests would make "which bytes did this run
     certify" a question with two answers. A run's ``host`` line must also name the
     architecture it is keyed by and the torch and frontend it records, so the line a
@@ -280,7 +281,7 @@ def bind_architecture(entry: Dict[str, Any], *, bound_before: Optional[str],
 def admission_report(ledger: Mapping[str, Any], keys: Sequence[str]) -> Dict[str, Any]:
     """Which architectures every one of ``keys`` has a live run for, and what blocks.
 
-    THE INTERSECTION IS THE ANSWER, as in ``fastpath.capability_report``: the table
+    The intersection is the answer, as in ``fastpath.capability_report``: the table
     dispatches an arm from any cited weld, so an architecture one cited weld never
     ran on is one the table cannot claim. ``admitted`` is ``None`` for a ledger that
     could not be read and ``()`` for one whose cited welds share no live

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """DEVICE gate for the SCRATCH-OUTPUT off-diagonal D/E welds.
 
-THIS GATE EXISTS TO SUPERSEDE ONE ARTIFACT, ON ITS OWN TERMS.
+This gate exists to supersede one artifact, on its own terms.
 
 ``parity/meep_gpu/results/triton_fused_offdiag_electric_2026-08-20`` is this
 backend's own recorded refusal of the D->E off-diagonal pair. It measured, on an
@@ -22,7 +22,7 @@ foreign tap from pre-launch state, and the plan rotates the buffers afterwards.
 So the two numbers this gate has to beat are the two that artifact recorded:
 
     S1 must be 60/60 IDENTICAL, where it was 42/60 DIVERGENT.
-    S2 must be IDENTICAL AT EVERY BLOCK SIZE, where its differing-word count
+    S2 must be identical at every block size, where its differing-word count
        moved with the block size on every fixture that could arm the window.
 
 Everything else here is the standing byte-identity standard: per COMPLETE driver
@@ -62,7 +62,6 @@ import hashlib
 import importlib
 import json
 import os
-import socket
 import sys
 import textwrap
 import time
@@ -106,7 +105,7 @@ SOURCES: Tuple[str, ...] = (
     "meep_gpu/triton_kernels/symmetry.py",
     "meep_gpu/triton_kernels/launch.py",
     "meep_gpu/stepping.py",
-    # THE DRIVER IS BOUND ON PURPOSE. This weld's whole `REPLACES` claim is about
+    # The driver is bound on purpose. This weld's whole `REPLACES` claim is about
     # WHICH passes run between `step_D` and `update_E`, and the reference this
     # gate compares against is that call order. A driver that reordered its seam
     # would leave every clause here reading correctly while the bytes described a
@@ -114,7 +113,7 @@ SOURCES: Tuple[str, ...] = (
     # a re-run rather than be invisible.
     "meep_gpu/driver.py",
     "meep_gpu/fields.py",
-    # THE WARM LEGS DRIVE ``fastpath.warm_plan``, the plan-time path dispatch takes
+    # The warm legs drive ``fastpath.warm_plan``, the plan-time path dispatch takes
     # before step 1 on a slot these products fill, so from 2026-09-15 its bytes are
     # part of this verdict; and the identity helper writes the ``environment`` block
     # the ledger seed reads.
@@ -191,7 +190,7 @@ FAMILIES: Dict[str, Dict[str, Any]] = {
              "boundaries": {"x": "metallic", "y": "metallic", "z": "periodic"},
              "rows_interior": True, "plant_negative_zero_d": True},
         ),
-        # EXACTLY THE 2026-08-20 GRID. That artifact's schedule-dependence table
+        # Exactly the 2026-08-20 grid. That artifact's schedule-dependence table
         # is 4096 cells: 64 programs at BLOCK=64 and FOUR at BLOCK=1024, which is
         # where it recorded the race window closing "entirely". A sweep on a
         # smaller grid would reach one program at the top and prove nothing
@@ -299,7 +298,7 @@ def _seed_class(shape: Sequence[int], rng: np.random.Generator,
     if value_class == "signed_zero_lattice":
         # Normal values with a +/-0 lattice over about a third of the cells. An
         # array of nothing but +/-0 leaves every route unmoved and makes the leg
-        # VACUOUS, which the 2026-08-20 round measured and refused by name; the
+        # VACUOUS, which the 2026-08-20 run measured and refused by name; the
         # lattice is what makes a sign observable without that.
         picks = rng.random(tuple(shape))
         values = np.where(picks < 0.18, np.float32(0.0), values)
@@ -391,7 +390,7 @@ def compare(left: Dict[str, np.ndarray],
             right: Dict[str, np.ndarray]) -> Dict[str, Any]:
     """Differing uint32 words per volume, the total, and the words compared.
 
-    UINT32 AND NOT FLOAT: ``-0.0 != 0.0`` is False, so a float comparison is
+    uint32 and not float: ``-0.0 != 0.0`` is False, so a float comparison is
     blind exactly where the signed-zero class matters.
     """
     out: Dict[str, Any] = {}
@@ -447,7 +446,7 @@ def array_path_step(fields: Any, pml: Any) -> None:
 class _CountingKernel:
     """A launch counter that wraps a Triton kernel without changing its bytes.
 
-    ONE OF THE TWO INDEPENDENT COUNTERS. It sits at the ``kernel[grid](...)``
+    One of the two independent counters. It sits at the ``kernel[grid](...)``
     boundary and counts dispatches; the plan's own ``launches`` counts calls to
     ``run``. The two disagree exactly when a plan launches more than once per
     run, which is the thing a fused product's whole claim denies.
@@ -528,7 +527,7 @@ def certified_composition(fields: Any, pml: Any, family: str) -> Tuple[Any, int]
 #: A mutation scored where it cannot fire is a disarmed leg wearing a pass.
 MUTATIONS: Dict[str, Tuple[Tuple[str, str, str, str, str, Optional[str]], ...]] = {
     "offdiag_fused_electric_pair": (
-        # SCORED ON THE 3-D FIXTURE. On a 2-D one z is invariant, the curl takes
+        # Scored on the 3-D fixture. On a 2-D one z is invariant, the curl takes
         # its one-partner form and the planted bracket differs from it only on a
         # -0 word: the grouping is observable where both partners are present.
         ("m_pairwise_curl_grouping", "kernel",
@@ -553,7 +552,7 @@ MUTATIONS: Dict[str, Tuple[Tuple[str, str, str, str, str, Optional[str]], ...]] 
          "tap_xu_1 = _tap(1, ui, j, k, uvx,",
          "tap_xu_1 = _tap(1, di, j, k, dvx,",
          "CAUGHT", None),
-        # SCORED ON THE 3-D FIXTURE: Dx's recurrence runs on its dsigu (z) layer,
+        # Scored on the 3-D fixture: Dx's recurrence runs on its dsigu (z) layer,
         # which a 2-D grid does not have.
         ("m_aux_takes_the_resolved_value", "kernel",
          "tl.store(a0s + idx, tl.where(du0, aux0, tl.load(",
@@ -588,7 +587,7 @@ MUTATIONS: Dict[str, Tuple[Tuple[str, str, str, str, str, Optional[str]], ...]] 
          "u02, idx,\n                ui * nyz + j * nz + k,\n"
          "                live, uvx, wy, MG_Y)",
          "CAUGHT", None),
-        # SCORED ON THE ODD PLANE, and the first run of this gate is why. On an
+        # Scored on the odd plane, and the first run of this gate is why. On an
         # EVEN plane `PH_Y` is +1 and `PH_Y * value` IS `value`, so dropping the
         # multiply moves no byte: declared CAUGHT, measured NULL, on the even
         # fixture. The parity is only observable where the parity is not the
@@ -601,7 +600,7 @@ MUTATIONS: Dict[str, Tuple[Tuple[str, str, str, str, str, Optional[str]], ...]] 
          "                j = tl.where(near_y, MIRROR_ROW, j)",
          "                j = tl.where(near_y, 1, j)",
          "CAUGHT", None),
-        # THE ORDER OF THE TWO CARRIED PASSES, as a real swap of the two blocks.
+        # The order of the two carried passes, as a real swap of the two blocks.
         # The first version of this mutation neutralised the clear's guard under
         # `if ZM_Y:` and measured NULL — correctly, and for a reason worth
         # keeping: `zero_metal_axes` excludes a MIRRORED axis, so `ZM_Y` is 0 on
@@ -768,7 +767,7 @@ def mutated_module(family: str, old: str, new: str, tag: str) -> Any:
         raise AssertionError(f"{family}/{tag}: the mutation changed nothing")
     name = f"{FAMILIES[family]['module']}__mut_{tag}"
     filename = source_path + f"#{tag}"
-    # TRITON READS THE SOURCE BACK. `JITFunction.__init__` calls
+    # Triton reads the source back. `JITFunction.__init__` calls
     # `inspect.getsourcelines(fn)` (and `getsource` for the body it compiles), and
     # a function created by `exec` has no file for `inspect` to find — the run
     # that discovered this died with `OSError: source code not available` at the
@@ -879,7 +878,7 @@ def s1_leg(family: str, steps: int, seed: int, xp: Any) -> List[Dict[str, Any]]:
         for value_class in VALUE_CLASSES:
             for block in S1_BLOCKS:
                 for reference in ("array_path", "certified_kernels"):
-                    # A LEG THAT RAISES IS A RESULT, NOT A CRASH. The certified
+                    # A leg that raises is a result, not a crash. The certified
                     # composition can refuse a fixture (its own predicates are
                     # narrower than this weld's in places), and a gate that died
                     # there would lose every leg after it — which is the reason
@@ -899,7 +898,7 @@ def s1_leg(family: str, steps: int, seed: int, xp: Any) -> List[Dict[str, Any]]:
 
 
 def s2_leg(family: str, steps: int, seed: int, xp: Any) -> List[Dict[str, Any]]:
-    """THE BLOCK SCHEDULE. One fixture, every block size, repeated.
+    """The block schedule. One fixture, every block size, repeated.
 
     The direct rebuttal of the 2026-08-20 table, which moved from 4384 differing
     words at BLOCK=64 to 0 at BLOCK=1024 on a 4096-cell grid. A race is not
@@ -920,7 +919,7 @@ def s2_leg(family: str, steps: int, seed: int, xp: Any) -> List[Dict[str, Any]]:
                              reference="certified_kernels")
         counts.append(sum(certified["differing_words_per_step"]))
         programs = (cells + block - 1) // block
-        # A POINT WITH ONE PROGRAM MEASURES NOTHING. The whole claim is about
+        # A point with one program measures nothing. The whole claim is about
         # cross-program reads; at one program there are none, so "identical" is
         # free. Recorded per point rather than assumed, and a clause requires
         # every point to have carried at least two.
@@ -1038,10 +1037,10 @@ def mutation_leg(family: str, steps: int, seed: int,
 
 
 def warm_leg(family: str, steps: int, seed: int, xp: Any) -> List[Dict[str, Any]]:
-    """THE PLAN-TIME WARM, ON THE DEVICE, through ``fastpath.warm_plan``.
+    """The plan-time warm, on the device, through ``fastpath.warm_plan``.
 
     What dispatch does on a slot this product fills before step 1, and the one
-    thing this gate's 2026-09-13 batch never ran: it drove ``run`` alone, because
+    thing this gate's 2026-09-13 fleet run never ran: it drove ``run`` alone, because
     nothing warmed these plans while no composer routed them. On the family's
     first fixture ``warm_plan`` must answer ``None`` (warmed); the counted kernel
     must be subscripted ONCE, at grid ``(0,)``, and launched once; the plan's
@@ -1051,7 +1050,7 @@ def warm_leg(family: str, steps: int, seed: int, xp: Any) -> List[Dict[str, Any]
     identical, so the warm is shown to leave a plan that steps correctly rather
     than one that was merely left alone.
 
-    WHAT IT MEASURES THAT NOTHING ELSE HERE DOES: whether Triton compiles this
+    What it measures that nothing else here does: whether Triton compiles this
     kernel and enqueues nothing at grid ``(0,)``, which ``fastpath.warm_plan``'s
     docstring records as unmeasured in general.
     """
@@ -1213,7 +1212,7 @@ def no_device_warm_leg(family: str) -> Dict[str, Any]:
 
 
 def _no_device_warm_leg_body(family: str) -> Dict[str, Any]:
-    """THE WARM'S STRUCTURE on the host: the shipped plan, a recording stub kernel.
+    """The warm's structure on the host: the shipped plan, a recording stub kernel.
 
     Through ``fastpath.warm_plan``, exactly as dispatch reaches it: the stub must be
     subscripted once at ``(0,)`` and launched once, ``launches`` must stay 0,
@@ -1400,22 +1399,23 @@ def environment(xp: Any) -> Dict[str, Any]:
     ``hostname``, ``device``, ``compute_capability``, ``cupy``, ``triton`` and
     ``cuda_visible_devices`` are the keys ``rebind_triton_welds._host_line``
     composes a weld's ``host`` from, and ``seed_triton_welds`` refuses an artifact
-    with no ``environment.device`` by name. This gate's 2026-09-13 batch artifacts
+    with no ``environment.device`` by name. This gate's 2026-09-13 fleet-run artifacts
     carry no such block, which is one of three reasons neither can seed the two
     products' ledger entries (the others: directories named ``plain``/``folded``,
-    and digests the routing batch moves). The block is handed to
+    and digests that later edits moved). The block is handed to
     ``triton_device_identity.record``, which fills what this function could not read
     and normalises the capability spelling. On ``--no-device`` it records the host
     and no device, so a host-only artifact can never be seeded.
     """
+    import neutral_ids  # noqa: PLC0415
     record: Dict[str, Any] = {
-        "hostname": socket.gethostname(),
+        "hostname": neutral_ids.machine_id(),
         "python": sys.version.split()[0],
         "numpy": np.__version__,
-        "argv": list(sys.argv),
+        "argv": neutral_ids.argv(sys.argv),
         "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
-        "cupy_cache_dir": os.environ.get("CUPY_CACHE_DIR"),
-        "triton_cache_dir": os.environ.get("TRITON_CACHE_DIR"),
+        "cupy_cache_dir": neutral_ids.path(os.environ.get("CUPY_CACHE_DIR")),
+        "triton_cache_dir": neutral_ids.path(os.environ.get("TRITON_CACHE_DIR")),
     }
     if xp is not None and xp is not np:
         record["cupy"] = getattr(xp, "__version__", "?")
@@ -1444,6 +1444,7 @@ def environment(xp: Any) -> Dict[str, Any]:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
+    import neutral_ids  # noqa: PLC0415
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--out", default=None,
@@ -1464,7 +1465,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     families = ([args.family] if args.family else sorted(FAMILIES))
     if args.out and args.out_root:
         parser.error("--out and --out-root name two layouts; pass one")
-    # A DEVICE ARTIFACT IS WRITTEN ONLY WHERE A SEED CAN READ IT RIGHT. The ledger
+    # A device artifact is written only where a seed can read it right. The ledger
     # key is derived from the directory name, so a device run that wrote one
     # gate.json over both families -- or per-family directories under any other
     # names -- would certify bytes under a key no ARM_CERTIFICATION row names.
@@ -1483,7 +1484,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
         from meep_gpu import subnormal_policy
 
-        # BEFORE THE FIRST DEVICE COMPILE, and ONCE per process however many
+        # Before the first device compile, and ONCE per process however many
         # families follow. strict=True: a process that asked to keep and quietly
         # did not is a process whose bytes mean nothing, and the 2026-08-20
         # artifact this gate supersedes reports its two cuts separately for exactly
@@ -1501,7 +1502,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             "device": str(cupy.cuda.runtime.getDeviceProperties(
                 cupy.cuda.runtime.getDevice())["name"]),
             "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
-            "cupy_cache_dir": os.environ.get("CUPY_CACHE_DIR"),
+            "cupy_cache_dir": neutral_ids.path(os.environ.get("CUPY_CACHE_DIR")),
             "nvidia_smi_compute_apps_at_start": _compute_apps(),
         }
         log(f"subnormal policy installed: "
@@ -1611,7 +1612,7 @@ def run_gate(families: Sequence[str], args: Any, out: Optional[str],
         policy_attained=bool((payload.get("subnormal_policy") or {}).get(
             "attained", True)))
     payload["elapsed_s"] = round(time.time() - started, 2)
-    # THE RELEASE SHAPE THE BOARD'S BINDING CHECK READS, and it is deliberately
+    # The release shape the board's binding check reads, and it is deliberately
     # four separate keys rather than one. `build_triton_fusion_matrix`'s
     # GATE_BOUND arm refuses a gate unless device_status is RUN, release.released
     # is True, passed is True and no planted defect is recorded — so a run that
@@ -1651,10 +1652,12 @@ def _compute_apps() -> List[str]:
 
     try:
         out = subprocess.run(
-            ["nvidia-smi", "--query-compute-apps=pid,used_memory",
+            ["nvidia-smi", "--query-compute-apps=used_memory",
              "--format=csv,noheader"],
             capture_output=True, text=True, timeout=30, check=False)
-        return [line for line in out.stdout.splitlines() if line.strip()]
+        # The memory of each compute app, never its process id: another account's
+        # process is counted, not named.
+        return [line.strip() for line in out.stdout.splitlines() if line.strip()]
     except Exception as error:  # noqa: BLE001
         return [f"unreadable: {error}"]
 

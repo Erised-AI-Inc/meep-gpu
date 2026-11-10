@@ -1,6 +1,6 @@
-"""Is the off-diagonal fold refusal's boundary the boundary that was MEASURED?
+"""Is the off-diagonal fold refusal's boundary the boundary that was measured?
 
-WHAT THIS GATE IS, AND WHAT IT IS NOT. It makes NO device measurement and
+What this gate is, and what it is not. It makes NO device measurement and
 launches NO kernel. ``gate_cuda_folded_offdiag.py`` did that on 2026-08-20
 (the GPU host GPU 7, both float32 subnormal policies, 960 cases per policy) and the
 artifact is
@@ -35,7 +35,7 @@ So this gate answers four things, and each is scored separately:
               scored CAUGHT or NULL CONFIRMED, and the release verdict itself
               re-run under each planted defect and required to FLIP.
 
-WHY THE ARM IS NOT INSTALLED, which is this gate's finding rather than its
+Why the arm is not installed, which is this gate's finding rather than its
 premise: the measured-exact arm admits zero corpus slots (the widened predicate
 serves the SAME 16 ``update_E`` slots as the shipped one on all 186 rows), and
 ``offdiag_constitutive_kernels.offdiag_boundary_codes`` has no code to hand a
@@ -186,7 +186,7 @@ def rule_says_identical(folded: Sequence[int], mask: Sequence[int],
         # the arithmetic has a disjunction.
         return not (partner and own)
     if mutation == "refuse_every_fold_as_the_predicate_does_today":
-        # THE SHIPPED CLAUSE'S OWN WIDTH, armed as a rule. It must be caught by
+        # The shipped clause's own width, armed as a rule. It must be caught by
         # the boundary legs (it calls the 96 measured-exact cases divergent) and
         # must NOT be caught by the corpus leg, whose delta stays 0 — which is the
         # whole reason this record exists rather than the census alone.
@@ -194,7 +194,7 @@ def rule_says_identical(folded: Sequence[int], mask: Sequence[int],
     if mutation == "admit_every_fold":
         return True
     if mutation == "rename_the_roles":
-        # THE PREDICTED NULL: the same two booleans read out of the record under
+        # The predicted null: the same two booleans read out of the record under
         # their other names. Nothing about the boundary moves.
         return not (roles["folded_partner_axes"]
                     or (roles["folded_own_axes"] and periodic))
@@ -265,7 +265,7 @@ def leg_replay(mutation: Optional[str] = None) -> Dict[str, Any]:
     tables = {}
     for policy in ("keep", "flush"):
         cases = load_artifact_cases(policy, "sweep")
-        # THE 60-LAUNCH LEG IS A DIFFERENT CLAIM AND IS SCORED SEPARATELY: ``f_w``
+        # The 60-launch leg is a different claim and is scored separately: ``f_w``
         # is state, so a tree that gets E right and ``f_w`` wrong is exact for one
         # launch and wrong forever after. A boundary that held only at n=1 would
         # be a boundary about one launch.
@@ -392,7 +392,7 @@ def leg_local(mutation: Optional[str] = None,
 
 
 # ---------------------------------------------------------------------------
-# LEG 3 — WHAT THE ARM IS WORTH, recomputed from the census
+# Leg 3 — what the arm is worth, recomputed from the census
 # ---------------------------------------------------------------------------
 
 def census_rows() -> List[Dict[str, Any]]:
@@ -474,7 +474,7 @@ def leg_corpus(mutation: Optional[str] = None) -> Dict[str, Any]:
         out["why_not_measurable"] = f"{CENSUS} carries no rows"
         return out
 
-    # THE REPLAY IS VALIDATED BEFORE IT IS TRUSTED WITH A NUMBER: every recorded
+    # The replay is validated before it is trusted with a number: every recorded
     # verdict and every recorded first-refusal string must reproduce against the
     # LIVE predicate, or the stand-ins are not standing in for this census.
     validation = replay.validate(
@@ -576,7 +576,7 @@ def run_legs(mutation: Optional[str] = None) -> Dict[str, Any]:
 def verdict_of(legs: Dict[str, Any]) -> Dict[str, Any]:
     """Conjunctive over every leg, and over the finding the arm is worth zero.
 
-    THE LAST TWO CLAUSES ARE THE POINT OF THE GATE. ``slot_delta == 0`` and
+    The last two clauses are the point of the gate. ``slot_delta == 0`` and
     ``arm_is_not_installed`` are not bookkeeping: this gate releases a REFUSAL,
     so a run in which the arm suddenly bought slots, or in which the predicate had
     quietly been widened, must NOT release on the strength of the boundary legs
@@ -603,7 +603,7 @@ def verdict_of(legs: Dict[str, Any]) -> Dict[str, Any]:
 def leg_mutations(baseline: Dict[str, Any]) -> Dict[str, Any]:
     """Every mutation, scored CAUGHT or NULL CONFIRMED — and by WHICH leg.
 
-    ARMED ON A PASSING BASELINE, which is the folded-curl gate's own lesson: a
+    Armed on a passing baseline, which is the folded-curl gate's own lesson: a
     leg planted on an already-failing baseline scores CAUGHT for free and every
     null reads as violated.
     """
@@ -644,7 +644,7 @@ def leg_mutations(baseline: Dict[str, Any]) -> Dict[str, Any]:
             f"(replay {out['legs'][mutation]['replay_disagreements']}, local "
             f"{out['legs'][mutation]['local_disagreements']}, caught_by "
             f"{caught_by})")
-    # WHAT A FOLD-BLIND WIDENING WOULD BUY, measured here rather than quoted:
+    # What a fold-blind widening would buy, measured here rather than quoted:
     # ``admit_every_fold`` is that widening, and its corpus delta is the number
     # the record carries. It is NOT zero, and every slot it buys is one the
     # device gate measured divergent — which is why "the refusal is too broad"
@@ -660,7 +660,7 @@ def leg_mutations(baseline: Dict[str, Any]) -> Dict[str, Any]:
         leg["scored"] == "NULL CONFIRMED" for leg in out["legs"].values())
     out["ok"] = bool(out["conforming"] == out["scored"]
                      and out["record_agrees_about_the_fold_blind_delta"])
-    # THE VERDICT HAS TO BE ABLE TO SAY NO, and this is where that is measured
+    # The verdict has to be able to say no, and this is where that is measured
     # rather than asserted: at least one planted defect must flip it.
     out["verdict_flips_against_a_planted_defect"] = any(
         not leg["verdict_released"] for leg in out["legs"].values())

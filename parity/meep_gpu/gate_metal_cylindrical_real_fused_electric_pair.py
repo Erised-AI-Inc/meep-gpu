@@ -1,10 +1,10 @@
 """Byte gate for the Metal Dcyl m = 0 fused ELECTRIC pair: ``step_D`` into ``update_E``.
 
-THE CLAIM THIS GATE IS ALLOWED TO SUPPORT: for every configuration
+The claim this gate is allowed to support: for every configuration
 :func:`~meep_gpu.metal_kernels.cylindrical_real_fused_electric_pair.metal_cylindrical_real_fused_electric_pair_coverage`
 admits, the device radial scan followed by ONE dispatch of
 ``cyl_real_fused_electric_pair_step`` leaves the engine in a state that is
-BIT-IDENTICAL, PER COMPLETE STEP, to
+bit-identical, per complete step, to
 
   * the CuPy-free NumPy array path (``stepping.step_D`` / ``zero_metal_D`` /
     ``stepping.update_E``, plus the rest of the composer's live pass set), and
@@ -15,7 +15,7 @@ BIT-IDENTICAL, PER COMPLETE STEP, to
 
 over every stored volume, compared as uint32 words. ``allclose`` appears nowhere.
 
-WHAT IS NEW ON THIS PRODUCT, and it is the reason this gate carries two legs its
+What is new on this product, and it is the reason this gate carries two legs its
 magnetic twin does not: **the fused signature does not fit unless an ARRAY is
 packed.** Every shipped Metal pair buys its slots back by packing SCALARS into one
 ``constant Params&``; this cell is one POINTER over the ceiling with that already
@@ -55,7 +55,7 @@ THE LEGS
  12  refusal              the source seam, the order and the geometry, by name
  13  disarm               the same harness, shipped bytes, must not diverge
 
-WHAT THE GATE REFUSES TO INFER
+What the gate refuses to infer
 
 * **A no-op agreeing with a no-op is trivially identical.** Every compared volume
   must MOVE during a case, and the fixture seeds the ``fu_*`` and ``f_w_*``
@@ -64,7 +64,7 @@ WHAT THE GATE REFUSES TO INFER
   module's guard — leg 4 runs them.
 * **"The pack is byte-neutral" is a measurement**, not an argument from
   concatenation — leg 2 runs both shapes.
-* **A DECLARED NULL MUST BE CONFIRMED.** Two of the eleven offset corruptions are
+* **A declared null must be confirmed.** Two of the eleven offset corruptions are
   declared null and the reason is measured: on a Dcyl grid the phi axis carries no
   PML, so ``kms_y[0]`` and ``sinv_y[0]`` are both exactly ``1.0f`` and swapping the
   two offsets moves no word. Their siblings — the same two offsets moved the OTHER
@@ -146,7 +146,7 @@ STATE_NAMES: Tuple[str, ...] = tuple(
     + [f"fu_{stem}{axis}" for stem in ("B", "D") for axis in "xyz"]
     + [f"f_w_{stem}{axis}" for stem in ("E", "H") for axis in "xyz"])
 
-#: name -> the grid this case builds. THE ROWS ARE THE MAGNETIC TWIN'S, deliberately:
+#: name -> the grid this case builds. The rows are the magnetic twin's, deliberately:
 #: the two products are the same two halves on the two seams, so a divergence between
 #: the gates' verdicts is then a fact about the seam and not about the fixtures.
 #:
@@ -154,7 +154,7 @@ STATE_NAMES: Tuple[str, ...] = tuple(
 #:                       ``zero_metal_D`` in the composer's live set; a PERIODIC z
 #:                       emits no clear at all and drops the pass. Both are admitted
 #:                       on this backend, so both are walked.
-#:   THE COURANT NUMBER  three of the four are NOT powers of two, which is the family
+#:   The Courant number  three of the four are NOT powers of two, which is the family
 #:                       of non-representable multiplicands the association defects
 #:                       need in order to be visible at all.
 #:   THE SHAPE           square, tall-and-thin and short-and-wide, because the radial
@@ -169,7 +169,7 @@ def _f32(value: float) -> float:
     return float(np.float32(value))
 
 
-#: EVERY COURANT HERE IS A FLOAT32 WORD. The m = 0 D side's axis rule is MEEP's double
+#: Every Courant here is a float32 word. The m = 0 D side's axis rule is MEEP's double
 #: product ``4 * Courant * Hp[r=0]`` rounded once, which this backend forms in float32
 #: only for such a word, and any other Courant is refused by name. The composition
 #: matrix's default 0.37 is not one; its rows take its word.
@@ -213,7 +213,7 @@ def words(array: Any) -> np.ndarray:
 
 
 def floor_violations(moved: Mapping[str, int], pml: Any) -> List[str]:
-    """The vacuity floor under the auxiliary contract (KERNELS.md §1, C2).
+    """The vacuity floor under the auxiliary contract (docs/design/floating-point.md#auxiliary-contract).
 
     ``f_w_{H,E}c`` is touched only where c's own axis (its dsigw) carries a layer and
     ``fu_{B,D}c`` only where its dsigu axis, ``(c + 2) % 3``, does, by the array path
@@ -254,7 +254,7 @@ def build(label: str, seed: int, value_class: str = values.UNIFORM,
           scale: float = 1.0) -> Tuple[Any, Any]:
     """One seeded Dcyl m = 0 engine. Called twice (or three times) per case.
 
-    THE SEED COVERS ``fu_*`` AND ``f_w_*`` AS WELL AS THE TWELVE FIELD VOLUMES, and
+    The seed covers ``fu_*`` AND ``f_w_*`` as well as the twelve field volumes, and
     that is not cosmetic. Zero init is a FIXED POINT of the constitutive sub-step and
     a near-fixed-point of the split-field recurrence — a no-op agreeing with a no-op
     is trivially identical — so the auxiliaries carry physical-band values from step
@@ -283,7 +283,7 @@ def build(label: str, seed: int, value_class: str = values.UNIFORM,
         pml = PML(grid=grid, thickness={"x": (0, max(2, shape[0] // 4)),
                                         "z": max(2, shape[2] // 4)})
 
-    # A SEEDED STATE IS A MID-RUN ONE: the run's first update_H, which starts H and
+    # A seeded state is a mid-run one: the run's first update_H, which starts H and
     # f_w from B on the dsigw cells (stepping.separate_h_from_b), is behind it, as the
     # composition matrix records for its own fixtures. This pair never takes update_H,
     # but the refusal leg asks its magnetic twin about the same fixture.
@@ -367,7 +367,7 @@ def metal_step(fields: Any, pml: Any, dispatch: Mapping[str, Any],
 # ---------------------------------------------------------------------------
 
 def leg_subnormal_ladder(label: str, seed: int, budget: int = 4) -> Dict[str, Any]:
-    """THE EMPTY CENSUS, TURNED INTO A MEASUREMENT.
+    """The empty census, turned into a measurement.
 
     Every product row reports ``reference_subnormals: 0`` under policy ``flush``.
     Read alone that is a SILENCE: it cannot distinguish "the band was exercised and
@@ -502,13 +502,13 @@ def run_case(label: str, seed: int, steps: int,
 def run_separate_control(label: str, seed: int, steps: int) -> Dict[str, Any]:
     """The SEPARATE certified products beside the fused one, same state.
 
-    THIS IS THE LEG THAT MAKES "FUSION" A MEASUREMENT RATHER THAN A NAME, and on this
+    This is the leg that makes "FUSION" a measurement rather than a name, and on this
     product it also makes "the pack is byte-neutral" one: the separate side binds the
     six PML coefficient vectors as six pointers through the CERTIFIED curl kernel,
     the fused side reads the same six through one packed buffer, and the two must
     agree word for word at every complete step.
 
-    THE SEPARATE SIDE IS THREE DISPATCHES AND THE FUSED SIDE IS TWO. Both compute the
+    The separate side is three dispatches and the fused side is two. Both compute the
     same radial scan; what the fusion removes is the constitutive dispatch and the
     ``D`` round trip in front of it.
     """
@@ -587,7 +587,7 @@ def _volume_source(fields: Any, component: str = "Ez") -> Any:
     classified the same component the other way; ``sources.VolumeSource`` resolves the
     slot itself.
 
-    ``amplitude=1j`` IS A MEASUREMENT, NOT A DECORATION, and it is the difference
+    ``amplitude=1j`` is a measurement, not a decoration, and it is the difference
     between this leg measuring the repair and measuring nothing. A real-storage run
     injects ``real((amp * current(t)) * dt)`` (``sources._deposit``), and
     ``ContinuousEnvelope``'s current carries the CW source's ``1/(-i*omega)`` factor —
@@ -596,7 +596,7 @@ def _volume_source(fields: Any, component: str = "Ez") -> Any:
     changed: the injection moved 0 of 400 words, the unbracketed null control agreed
     with the array path to the bit, and the leg reported PASS while exercising no
     deposit at all. ``1j`` cancels that factor and the deposit becomes the O(dt)
-    real current MEEP writes. THE FLOOR BELOW is what stops this from ever being a
+    real current MEEP writes. The floor below is what stops this from ever being a
     silence again: the injection must MOVE WORDS on both sides or the leg fails.
     """
     from meep_gpu.sources import ContinuousEnvelope, VolumeSource  # noqa: PLC0415
@@ -619,7 +619,7 @@ def run_deposit_case(label: str, seed: int, steps: int,
                      repair: bool = True) -> Dict[str, Any]:
     """Complete driver steps with an ELECTRIC source in the seam, byte compared.
 
-    THE SHIPPED COMPOSER BUILDS THE PLAN, not this file. Reaching for
+    The shipped composer builds the plan, not this file. Reaching for
     ``plan_metal_cylindrical_real_fused_electric_pair`` directly would test the
     kernel and skip the wiring, and the wiring — ``launch._install_fused_pair``
     reaching this family through its new ``FUSED_PAIR_ARMS`` row — is what
@@ -774,27 +774,27 @@ def shader_mutations(codes: Sequence[int],
     verified present before it is applied — an absent needle raises here rather than
     silently arming nothing.
 
-    THE FIRST SIX ARE THE PACK'S OWN, and they exist because this product's prologue
+    The first six are the pack's own, and they exist because this product's prologue
     is new code rather than lifted text: the six aliases are the one place a wrong
     edit reads a valid float from the wrong vector, which is a plausible absorber and
     not a crash.
     """
     base = family.cylindrical_real_fused_electric_pair_source(codes, walls)
     edits: Dict[str, str] = {
-        # --- THE PACK PROLOGUE ------------------------------------------------
-        # THE ALIAS TAKES THE WRONG OFFSET, in the source rather than in the struct.
+        # --- the pack prologue ------------------------------------------------
+        # The alias takes the wrong offset, in the source rather than in the struct.
         # Reads sinvx where kmx belongs: a valid float from a real vector.
         "pack_alias_kmx_reads_sinvx":
             needle(base, "device const float* kmx = cpml + prm.off_kmx;",
                    "device const float* kmx = cpml + prm.off_sinvx;"),
-        # THE AXIS PAIR SWAPPED IN THE PROLOGUE. x and z are both PML axes here, so
+        # The axis pair swapped in the prologue. x and z are both PML axes here, so
         # this is a real absorber transposition rather than a null.
         "pack_alias_x_and_z_swapped":
             needle(base, "device const float* kmx = cpml + prm.off_kmx;\n"
                          "    device const float* sinvx = cpml + prm.off_sinvx;",
                    "device const float* kmx = cpml + prm.off_kmz;\n"
                    "    device const float* sinvx = cpml + prm.off_sinvz;"),
-        # THE OFFSET DROPPED ENTIRELY — the alias reads the pack's base, which is
+        # The offset dropped entirely — the alias reads the pack's base, which is
         # kmx, so every axis reads the radial coefficients.
         "pack_alias_sinvz_loses_its_offset":
             needle(base, "device const float* sinvz = cpml + prm.off_sinvz;",
@@ -804,24 +804,24 @@ def shader_mutations(codes: Sequence[int],
         "seam_takes_pre_recurrence_curl":
             needle(base, "float src0 = v0 * ie0[ii];",
                    "float src0 = curl0 * ie0[ii];"),
-        # THE SEAM, WRONG COMPONENT. Dx's constitutive source is v0, not v1.
+        # The seam, wrong component. Dx's constitutive source is v0, not v1.
         "seam_takes_the_wrong_component":
             needle(base, "float src1 = v1 * ie1[ii];",
                    "float src1 = v0 * ie1[ii];"),
-        # THE INVERSE PERMITTIVITY DROPPED. update_E is (D * inv_eps), not D.
+        # The inverse permittivity dropped. update_E is (D * inv_eps), not D.
         "seam_drops_the_inverse_permittivity":
             needle(base, "float src2 = v2 * ie2[ii];", "float src2 = v2;"),
-        # --- THE WALL CLEAR ---------------------------------------------------
+        # --- the wall clear ---------------------------------------------------
         # z is the walled axis on the mutation case; the D table clears the two
         # TANGENTIAL components there, Dx and Dy.
         "zero_metal_dropped":
             needle(base, "    v0 = at_z ? 0.0f : v0;\n", ""),
-        # THE WALL TABLE IS THE OFF-DIAGONAL FOR D. Clearing v2 on the z wall is the
+        # The wall table is the off-diagonal for D. Clearing v2 on the z wall is the
         # B-side table's shape and the single most likely porting slip.
         "zero_metal_uses_the_b_side_table":
             needle(base, "    v0 = at_z ? 0.0f : v0;",
                    "    v2 = at_z ? 0.0f : v2;"),
-        # THE WALL CLEAR MOVED AFTER THE CONSTITUTIVE READ. D ends up right and E
+        # The wall clear moved after the constitutive read. D ends up right and E
         # does not, which is the seam's ORDER rather than the clear's existence. TWO
         # edits, and both are needed: re-applying the clear at the store while the
         # shipped one still runs in front of it is BYTE-NEUTRAL (measured: 0 words),
@@ -849,25 +849,25 @@ def shader_mutations(codes: Sequence[int],
         "dz_radial_term_negated":
             needle(base, "    float curl2 = dtdx * rad[ii];",
                    "    float curl2 = (-dtdx) * rad[ii];"),
-        # --- THE OWNERSHIP MASK AND THE CURL ----------------------------------
-        # THE OWNERSHIP MASK ON THE r AXIS, both components, each DECLARED a null
+        # --- the ownership mask and the curl ----------------------------------
+        # The ownership mask on the r axis, both components, each DECLARED a null
         # below. Dropping the r mask on Dz changes nothing: the array path's radial
         # sum writes row 0 of the D side's radial difference as +0, so curl2 is +0
         # there before the mask runs. On Dy it changes nothing either under MEEP's
         # forms: the m = 0 axis rule stores Dp[r = 0] = +0 over whatever the form
         # gave, and fu_Dy is stored only on Dy's dsigu (r) layer, which row 0 is
-        # outside of (KERNELS.md §1, C2).
+        # outside of (the auxiliary contract; floating-point.md#auxiliary-contract).
         "ownership_mask_dropped_on_r_for_dz":
             needle(base, "    curl2 = at_x ? 0.0f : curl2;\n", ""),
         "ownership_mask_dropped_on_r_for_dy":
             needle(base, "    curl1 = at_x ? 0.0f : curl1;\n", ""),
-        # INVERTED (KERNELS.md §7.1): the package's previous pairwise grouping planted
+        # INVERTED (docs/development/certification.md#inverted-grouping-mutations): the package's previous pairwise grouping planted
         # in place of MEEP's left-to-right bracket on target 1, whose pair (z, r) is
         # live.
         "curl_previous_package_grouping_on_a_live_pair":
             needle(base, "dtdx * (((a_z - a) + c) - c_x)",
                    "dtdx * ((a_z - a) + (c - c_x))"),
-        # THE INVARIANT-AXIS TERM (Appendix A): target 0's phi partner is absent and
+        # The invariant-axis term (certification.md#inverted-grouping-mutations): target 0's phi partner is absent and
         # MEEP's one-partner form is (-dtdx) * (g2s - g2); the package's previous
         # spelling kept it as a self-difference. Declared a NULL.
         "curl_invariant_term_kept_as_a_self_difference":
@@ -884,7 +884,7 @@ def shader_mutations(codes: Sequence[int],
                    "    f1[ii] = v1; f2[ii] = v2;"),
         "fw_store_dropped":
             needle(base, "    if (dw0) { w0[ii] = src0; }", "    // stale f_w_Ex"),
-        # --- THE CONSTITUTIVE HALF --------------------------------------------
+        # --- the constitutive half --------------------------------------------
         # The dsigw index is the component's OWN axis. Moving it to the z index is
         # in bounds on a SQUARE case and is a wrong value.
         "constitutive_coefficient_index_moved":
@@ -893,7 +893,7 @@ def shader_mutations(codes: Sequence[int],
         "constitutive_coefficients_exchanged":
             needle(base, "a0 = e0[ii] + ((kp_0 * src0) - (km_0 * prev0));",
                    "a0 = e0[ii] + ((km_0 * src0) - (kp_0 * prev0));"),
-        # INVERTED (KERNELS.md §7.1): the package's previous constitutive grouping.
+        # INVERTED (certification.md#inverted-grouping-mutations): the package's previous constitutive grouping.
         "constitutive_previous_package_grouping":
             needle(base, "a0 = e0[ii] + ((kp_0 * src0) - (km_0 * prev0));",
                    "a0 = (e0[ii] + (kp_0 * src0)) - (km_0 * prev0);"),
@@ -908,16 +908,16 @@ def shader_mutations(codes: Sequence[int],
 
 #: Mutation id -> what it is DECLARED to do. Anything not named here must be CAUGHT.
 #:
-#: A DECLARED NULL MUST BE CONFIRMED, not merely permitted: a null that IS caught
+#: A declared null must be confirmed, not merely permitted: a null that IS caught
 #: means the reasoning behind it is wrong, and that has to fail too.
 #:
-#: THE THREE ENTRIES, and each has a live sibling beside it in the armed set:
+#: The three entries, and each has a live sibling beside it in the armed set:
 #:
 #: * ``curl_invariant_term_kept_as_a_self_difference`` — phi has n = 1 on a Dcyl
 #:   grid, so ``(c_y - c)`` is an exact ``+0.0`` and the package's previous spelling
 #:   equals MEEP's one-partner form on every word but a zero curl's sign. Its sibling
 #:   on target 1, whose pair is (z, r) and both live, is armed as must-catch.
-#: * the two PHI OFFSET swaps — MEASURED on this host before they were armed:
+#: * the two phi offset swaps — measured on this host before they were armed:
 #:   ``kms_y`` and ``sinv_y`` are each ONE element on a Dcyl grid and both hold
 #:   exactly ``1.0f`` (0x3F800000), because the phi axis carries no PML at all. So
 #:   pointing ``kmy`` at ``sinvy[0]`` (and ``sinvy`` back at ``kmy[0]``) reads the
@@ -1007,7 +1007,7 @@ HOST_MUTATIONS: Dict[str, Callable[[Any, Any, Residency], None]] = {
 def _offset_mutation(index: int, delta: int) -> Callable[[Any], Any]:
     """A ``params`` record whose ``index``-th pack offset is off by ``delta``.
 
-    THE HAZARD THE PACK INTRODUCES, ARMED. Six vectors in one allocation are told
+    The hazard the pack introduces, armed. Six vectors in one allocation are told
     apart by six uints and nothing else, so an offset that is wrong by one element
     reads a valid float from a real vector — the exact shape of a defect that
     produces a plausible absorber rather than a fault. Built from the SHIPPED plan's
@@ -1082,7 +1082,7 @@ def _compiles(source: str) -> Tuple[bool, str]:
 def leg_binding_ceiling() -> Dict[str, Any]:
     """Three signatures compiled, and the ceiling BISECTED on this host.
 
-    THIS IS THE LEG THE PACK EXISTS FOR, and it measures four things rather than
+    This is the leg the pack exists for, and it measures four things rather than
     asserting one:
 
     1. the SEPARATE-SCALAR shape (37 bindings) FAILS — the shape scalar packing
@@ -1094,7 +1094,7 @@ def leg_binding_ceiling() -> Dict[str, Any]:
        rather than cited;
     3. the SHIPPED packed shape (27 bindings) COMPILES, LAUNCHES, and reads every
        struct field back — including the six pack offsets, from the REAL packer;
-    4. THE CEILING ITSELF, by bisection: N pointers plus one ``Params&`` for N around
+    4. The ceiling itself, by bisection: N pointers plus one ``Params&`` for N around
        the limit, so the largest N that compiles and the smallest that does not are
        both numbers this host returned. ``MAX_BUFFER_BINDINGS`` is then checked
        against the measurement instead of standing in for it.
@@ -1140,7 +1140,7 @@ def leg_binding_ceiling() -> Dict[str, Any]:
     ceiling_ok = (largest + 1 == MAX_BUFFER_BINDINGS
                   and smallest == largest + 1)
     row["ceiling_measured_equals_declared"] = ceiling_ok
-    # AND THE ARITHMETIC THE MODULE ARGUES FROM: the cell is over by exactly one.
+    # And the arithmetic the module argues from: the cell is over by exactly one.
     row["over_the_ceiling_by"] = family.UNPACKED_POINTERS - largest
     row["pack_saves_pointers"] = family.UNPACKED_POINTERS - family.PACKED_POINTERS
 
@@ -1150,7 +1150,7 @@ def leg_binding_ceiling() -> Dict[str, Any]:
     row["shipped_compiled"] = shipped_ok
     row["shipped_error"] = shipped_error
 
-    # THE STRUCT MUST BE READ CORRECTLY, not merely bound. A signature that compiled
+    # The struct must be read correctly, not merely bound. A signature that compiled
     # but decoded the record wrongly would produce a smooth, plausible, wrong field,
     # so every field is written out to its own buffer and read back — the six
     # OFFSETS included, because they are what the pack rests on.
@@ -1310,7 +1310,7 @@ def leg_transcription(codes: Sequence[int], walls: Sequence[bool]) -> Dict[str, 
     * the constitutive half must differ from the certified ``update_E`` body in
       EXACTLY the three ``float srcN =`` lines.
 
-    AND THE PACK MAY NOT HAVE REACHED THE ARITHMETIC. The prologue re-creates the six
+    And the pack may not have reached the arithmetic. The prologue re-creates the six
     names, so the lifted text is unchanged — which means the fused source must
     contain no ``prm.off_`` outside the prologue block, and the six aliases must be
     declared before the first line of the lifted curl body.
@@ -1337,7 +1337,7 @@ def leg_transcription(codes: Sequence[int], walls: Sequence[bool]) -> Dict[str, 
     prologue_present = prologue in source
     offsets_outside = [line for line in source.splitlines()
                        if "prm.off_" in line and line not in prologue.splitlines()]
-    # AGAINST THE WHOLE LIFTED HEAD, not against one of its lines: a single line of
+    # Against the whole lifted head, not against one of its lines: a single line of
     # the certified body can also occur inside this family's own template preamble,
     # and `str.index` would then find the template's copy and report the prologue as
     # late. The head is unique by construction — the assertion above just checked it
@@ -1417,7 +1417,7 @@ def leg_refusal() -> Dict[str, Any]:
 
     1. an UNDECLARED source list must be refused (ignorance is not an empty set);
     2. a real ELECTRIC ``VolumeSource`` must be ADMITTED, and the admission must come
-       WITH THE WIRING: ``plan_step(..., fuse=True)`` must put a ``LeadingRepairPlan``
+       with the wiring: ``plan_step(..., fuse=True)`` must put a ``LeadingRepairPlan``
        in ``step_D`` and a ``TrailingRepairPlan`` in ``update_E``;
     3. an electric source that does NOT publish the index it writes must still be
        refused BY NAME, and by the PLAN as well as the predicate;
@@ -1463,7 +1463,7 @@ def leg_refusal() -> Dict[str, Any]:
     magnetic = _volume_source(fields, "Hy")
     magnetic_coverage = family.metal_cylindrical_real_fused_electric_pair_coverage(
         fields, pml, (magnetic,), residency)
-    # THE MIRROR IMAGE, asked of the magnetic twin rather than asserted about it.
+    # The mirror image, asked of the magnetic twin rather than asserted about it.
     sibling_magnetic = sibling.metal_cylindrical_real_fused_magnetic_pair_coverage(
         fields, pml, (magnetic,), Residency())
     sibling_electric = sibling.metal_cylindrical_real_fused_magnetic_pair_coverage(
@@ -1532,6 +1532,8 @@ def emit(handle: Any, row: Dict[str, Any]) -> None:
 
 
 def main() -> int:
+    from metal_closed_table import close_table  # noqa: PLC0415
+    close_table()
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--steps", type=int, default=STEPS)
@@ -1630,7 +1632,7 @@ def main() -> int:
                      **run_deposit_case(DEPOSIT_CASE, 69000, args.steps)})
         emit(handle, rows[-1])
 
-        # THE NULL CONTROL. The SAME launch with the trailing repair replaced by the
+        # The null control. The SAME launch with the trailing repair replaced by the
         # NoopPlan the False branch would leave there. Scored on DIVERGING.
         index += 1
         result = run_deposit_case(DEPOSIT_CASE, 69001, args.steps, repair=False)
@@ -1656,7 +1658,7 @@ def main() -> int:
                      **leg_refusal()})
         emit(handle, rows[-1])
 
-        # THE ONE ARMED EDIT REQUIRED TO BE UNCAUGHT. Scored on NOT diverging.
+        # The one armed edit required to be uncaught. Scored on NOT diverging.
         index += 1
         result = run_case(MUTATION_CASE, 71000, args.steps, fused_function=neutral)
         row = {"index": index, "total": total, "leg": "byte_neutral_control",
@@ -1718,7 +1720,7 @@ def main() -> int:
             rows.append(row)
             emit(handle, row)
 
-        # THE DISARM CHECK. The identical harness, the identical case, the SHIPPED
+        # The disarm check. The identical harness, the identical case, the SHIPPED
         # bytes and no patch. A nonzero here would mean every "caught" above is a
         # harness that diverges on its own.
         index += 1

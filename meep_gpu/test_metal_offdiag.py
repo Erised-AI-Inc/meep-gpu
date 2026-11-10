@@ -1,6 +1,6 @@
 """Laptop tests for the Metal off-diagonal ``update_E`` family.
 
-THE MERGE BAR, NOT THE CERTIFICATION. The byte claim is
+The merge bar, not the certification. The byte claim is
 ``parity/meep_gpu/gate_metal_offdiag.py``'s nine legs and the composition probe's
 three; these tests are what must stay green on every change, and they are chosen
 for the defects a byte gate would catch LATE or not at all:
@@ -17,7 +17,7 @@ for the defects a byte gate would catch LATE or not at all:
   configuration nobody sweeps;
 * the predicate's refusals, all of which are answerable WITHOUT a GPU;
 * the registration's ``wired=True``, and the composer's selection of it;
-* RULING R7, SOFTWARE BINARY64: the row is the array path's double row, emitted
+* SOFTWARE BINARY64 (docs/design/floating-point.md#double-precision-on-the-metal-table): the row is the array path's double row, emitted
   through :mod:`.metal_kernels.softfp64` (each term's float32 pair sum widened,
   scaled by MEEP's double 0.25 and added left to right, one rounding), pinned as
   text here and measured on the device against ``stepping.update_E`` on generic
@@ -93,7 +93,7 @@ def test_wall_mask_axes_match_the_engines_yee_shifts():
 def test_transverse_partners_follow_meeps_cycle_direction():
     """Own axis + 1 then own axis + 2, X -> Y -> Z (stepping.py:1235-1237).
 
-    The order BINDS COEFFICIENTS TO PARTNERS, so a swap makes every row read the
+    The order binds coefficients to partners, so a swap makes every row read the
     wrong volume — which is the gate's m3 mutation and is invisible to any
     magnitude check.
     """
@@ -223,7 +223,7 @@ def test_the_metallic_ghost_is_a_flag_and_the_periodic_one_is_a_wrap():
     assert "    ui = (ui == nxi) ? 0 : ui;" in periodic
 
 
-#: The per-axis stride and home tokens, SPELLED A SECOND TIME on purpose.
+#: The per-axis stride and home tokens, spelled a second time on purpose.
 #: ``_index`` assembles six flat-index triples from ``_STRIDE``/``_HOME``; a test
 #: that called ``_index`` would agree with any table, including a wrong one. This
 #: is the independent spelling the assembled indices are checked against.
@@ -292,7 +292,7 @@ def test_the_wall_declaration_is_locked_to_the_boundary_codes_in_the_admitted_sp
     ``_boundary_kinds``. Those are genuinely different questions — but this family
     REFUSES folds, and with mirrors gone the two answers coincide on every admitted
     grid. Pinned so the separation is understood as future-proofing rather than as
-    a live degree of freedom, and so the round that admits folds has to face the
+    a live degree of freedom, and so the change that admits folds has to face the
     divergence deliberately instead of discovering it as a wrong field.
     """
     for x in ("periodic", "metallic"):
@@ -332,7 +332,7 @@ def test_no_float_divides_and_no_min_or_max_builtin_is_called():
     with ``numpy.minimum``/``maximum``. This family needs none of them; the test is
     what stops a future edit from reaching for one.
 
-    THE INDEX DIVISIONS ARE DELIBERATELY EXEMPT and the exemption is the point of
+    The index divisions are deliberately exempt and the exemption is the point of
     checking float lines rather than every ``/``: ``ii / nzi`` is INTEGER and EXACT,
     so no float rounds on that path and two spellings of it cannot differ in bits.
     A float divide is the hazard; an int divide is the flat-index decode.
@@ -469,7 +469,7 @@ class _Planted:
     those clauses in :func:`offdiag._row_reasons` need a row that arrives another
     way, and this is how a test constructs one.
 
-    NOT ALL OF IT, AND THIS DOCSTRING USED TO SAY OTHERWISE. The cast is
+    Not all of it, and this docstring used to say otherwise. The cast is
     ``astype(..., copy=False)`` (fields.py:1296), whose default ``order="K"``
     PRESERVES Fortran order, so the CONTIGUITY clause is reachable through the
     front door — see
@@ -500,7 +500,7 @@ class _NoDtype:
 
 
 def test_a_row_volume_with_no_readable_dtype_is_REFUSED_rather_than_raising():
-    """The predicate must not raise. MEASURED: it used to.
+    """The predicate must not raise. Measured: it used to.
 
     ``_row_reasons`` read ``str(getattr(value, "dtype", ""))[0]``, which is an
     ``IndexError`` on a volume-shaped object answering no dtype. A raising
@@ -640,7 +640,7 @@ def test_an_isotropic_inverse_epsilon_install_is_still_admitted():
     go stale. A clause that refused them would have made the family's own sweep
     (which runs both the aliased and the three-distinct form) unbuildable.
 
-    ASSERTED ON THE REASON SET, NOT ON ``covered``: this host's DEFAULT subnormal
+    Asserted on the reason set, not on ``covered``: this host's DEFAULT subnormal
     policy resolves to ``keep``, which the MPS executor refuses, so a coverage
     verdict here would measure the ambient environment rather than the clause.
     """
@@ -682,7 +682,7 @@ def test_wall_mask_axes_reads_the_declaration_not_the_resolved_ghost_rule():
 # ---------------------------------------------------------------------------
 
 def test_the_arm_is_registered_and_wired_on_update_E_alone():
-    """One arm, on ``update_E``, WIRED (as of tranche 2; under ruling R7 its row is
+    """One arm, on ``update_E``, WIRED (its row is now
     the software-binary64 one).
 
     The slot matters as much as the flag: this family's whole effect is inside
@@ -708,7 +708,7 @@ def test_re_registering_the_same_arm_is_refused():
 
 
 # ---------------------------------------------------------------------------
-# Ruling R7: the software-binary64 row, and its per-chunk presence
+# The software-binary64 row (docs/design/floating-point.md#double-precision-on-the-metal-table), and its per-chunk presence
 # ---------------------------------------------------------------------------
 
 def _record(fields, pml):
@@ -747,7 +747,7 @@ def test_the_row_is_summed_left_to_right_in_double_and_rounded_once():
 
 
 def test_the_presence_word_is_read_at_the_cells_chunk_code():
-    """KERNELS.md §2: the words bind LAST, and each live slot's flag is bit ``code``
+    """The presence words (docs/development/kernel-tables.md#record-layout) bind LAST, and each live slot's flag is bit ``code``
     of its word, ``code = lx + 3*ly + 9*lz`` read off the record on the component's
     own Yee sub-lattice per axis (half-integer on its own axis, integer on the other
     two), with a metallic axis's integer-lattice wall row 0 read at row 1."""
@@ -837,7 +837,7 @@ def test_a_presence_the_record_cannot_carry_is_refused_by_name():
 
 def test_an_otherwise_admitted_run_is_admitted(monkeypatch):
     """Every structural clause and the presence clause admit an ordinary run: the
-    arm is not refused by a ruling any more."""
+    arm is not refused for its double row."""
     monkeypatch.setenv(subnormal.POLICY_ENV, subnormal.FLUSH)
     monkeypatch.setattr(offdiag._coverage, "_metal_backend_reasons", lambda grid: [])
     grid = _grid()
@@ -885,7 +885,7 @@ def test_the_tail_is_the_base_constitutive_kernels_per_chunk_select():
     auxiliary load and store sits behind the component's ``dsigw`` membership.
 
     The plain form is an output select (``E = src``), never ``kps = 1, kms = 0``
-    with zeroed inputs: that spelling is wrong on every ``-0`` (KERNELS.md §1, C4).
+    with zeroed inputs: that spelling is wrong on every ``-0`` (docs/design/floating-point.md#output-selects-and-signed-zero).
     """
     source = offdiag.offdiag_source(FULL, (0, 0, 0), (0, 0, 0))
     assert offdiag.RECORD_BUFFER == offdiag.BINDING_COUNT - 2
@@ -908,8 +908,8 @@ def test_the_tail_is_the_base_constitutive_kernels_per_chunk_select():
 
 
 def test_the_previous_accumulation_grouping_is_gone():
-    """KERNELS.md §7.1: the shipped form is MEEP's ``f + ((kps*src) - (kms*prev))``;
-    the previous ``((f + kps*src) - kms*prev)`` is now the gate's mutant."""
+    """The shipped form is MEEP's ``f + ((kps*src) - (kms*prev))``;
+    the previous ``((f + kps*src) - kms*prev)`` is now the gate's mutant (docs/development/certification.md#inverted-grouping-mutations)."""
     source = offdiag.offdiag_source(FULL, (1, 1, 1), (1, 1, 1))
     assert "a0 = a0 + kp_0 * src0;" not in source
     assert "a0 = a0 - km_0 * prev0;" not in source
@@ -990,7 +990,7 @@ def test_one_update_e_is_byte_identical_to_stepping(monkeypatch):
     gate. uint32 words, never ``allclose``, and the step is proven to have MOVED
     STATE — a no-op agreeing with a no-op is trivially identical.
 
-    THE POLICY IS PINNED PER TEST, as the certified suite pins it. This arm64
+    The policy is pinned per test, as the certified suite pins it. This arm64
     host's DEFAULT resolves to ``keep`` (MEEP's ``set_zero_subnormals`` is a no-op
     under ``#if HAVE_IMMINTRIN_H``, so ``match_meep`` measures keep), and the MPS
     executor cannot honour keep — Metal flushes denormals natively with no lever.
@@ -1201,7 +1201,7 @@ def test_the_per_chunk_tail_is_the_array_paths_on_an_exact_row_state(
 @pytest.mark.parametrize("boundaries", ("periodic", "metallic"))
 def test_the_double_row_is_the_array_paths_word_on_a_generic_state(
         monkeypatch, boundaries):
-    """THE RULING'S CLAIM, measured: on a generic state, where the float32 row
+    """The double-row claim, measured: on a generic state, where the float32 row
     differs from the array path's double row in about 1.6 % of words, the shipped
     software-binary64 row is 0 words from ``stepping.update_E``."""
     monkeypatch.setenv(subnormal.POLICY_ENV, subnormal.FLUSH)
@@ -1223,7 +1223,7 @@ def test_the_double_row_is_the_array_paths_word_on_a_generic_state(
 
 @needs_mps
 def test_a_term_its_chunk_dropped_keeps_a_negative_zero_row(monkeypatch):
-    """PRESENCE ON THE DEVICE. The row is zero in every PML chunk, so MEEP drops the
+    """Presence on the device. The row is zero in every PML chunk, so MEEP drops the
     term there; with ``Dx = -0`` the row so far is ``-0`` and adding the term's
     ``+0`` would give ``+0``. The kernel must keep ``-0`` where the chunk dropped the
     term, which is the array path's word."""

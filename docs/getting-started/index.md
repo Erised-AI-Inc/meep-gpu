@@ -31,10 +31,10 @@ Two defaults to know from the start:
 - `run_on_gpu` and `lift_simulation` run on this host's GPU and raise on a host
   that has none. Pass `prefer_gpu=False` for the NumPy reference: it runs on the
   host CPU on every host and never runs a compiled kernel. On the one Mac
-  measured it was faster than the GPU for a small cell.
-- Compiled kernels serve the sub-steps they cover, on a certified NVIDIA GPU
+  measured, on pre-1.0 code, it was faster than the GPU for a small cell.
+- Compiled kernels serve the sub-steps they cover, on a supported NVIDIA GPU
   and on any Apple GPU, every one of which is supported (a run outside the
-  certified Apple environment says it is not certified); the rest of each step
+  certified identity says it is not certified); the rest of each step
   runs on the array path, the same equations in NumPy or CuPy.
   `MEEP_GPU_DISPATCH=0` keeps a whole run on the array path.
 

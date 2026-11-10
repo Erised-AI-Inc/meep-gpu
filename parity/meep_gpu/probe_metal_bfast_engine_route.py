@@ -1,35 +1,35 @@
 """ENGINE-ROUTE byte probe for the Metal BFAST curl — the binding the gate does not compare.
 
-WHY THIS EXISTS, stated as the gap it closes rather than as extra assurance.
+Why this exists, stated as the gap it closes rather than as extra assurance.
 ``gate_metal_bfast`` certifies the family through
 ``plan_bfast_pml_curl_from_arrays``: the GATE supplies the coefficient dictionary
 (picking the Yee suffix itself), the GATE supplies the six scalars, and the plan
 mirrors bare host arrays the gate allocated. That is the right substrate for
 mutation — a deliberately wrong configuration has to be constructible — but it means
-the SHIPPED ENGINE ROUTE, ``bfast.plan_bfast_pml_curl(fields, pml, sub_step,
+the shipped engine route, ``bfast.plan_bfast_pml_curl(fields, pml, sub_step,
 residency)``, which reaches into a live ``Fields``/``PML`` for its mirrors and
 computes its own scalars, is exercised by the gate only in leg 4 (pointer identity)
-and leg 9 (a plan was built). NEITHER COMPARES ITS BYTES AGAINST ``stepping.py``.
+and leg 9 (a plan was built). Neither compares its bytes against ``stepping.py``.
 A wrong suffix, a swapped stem order, a mirror bound to the wrong volume or a k
 vector read off the wrong axis would pass both of those legs and this probe is where
 it lands.
 
-THE SECOND GAP: HORIZON. The gate's multi-step leg runs FOUR complete driver steps.
+The second gap: horizon. The gate's multi-step leg runs FOUR complete driver steps.
 For a recurrence whose homogeneous mode is ``(-1)^n``, undamped forever
 (stepping.py:868-874), four steps is a short look — the whole hazard of this family
 is a state error that never decays and therefore never has to appear early. This
-probe runs the same comparison per COMPLETE DRIVER STEP over a long horizon, on a
+probe runs the same comparison per complete driver step over a long horizon, on a
 seeded lattice (where ``-2*state`` is live from step 1) and on a DRIVEN run from
 rest (where the values are the ones a real simulation carries).
 
-WHAT IS COMPARED, and it is the same discipline as the gate: uint32 word equality on
-float32 storage, never ``allclose``, over the FULL STORED INVENTORY (all 30 volumes:
+What is compared, and it is the same discipline as the gate: uint32 word equality on
+float32 storage, never ``allclose``, over the full stored inventory (all 30 volumes:
 both curl targets, both PML auxiliary sets, both constitutive sides, and the six IIR
 states) after every complete driver step. The oracle is ``stepping.py`` in this
 process, on a SECOND ``Fields`` object advanced in lockstep — never a rewind of the
 same object, because ``f_bfast`` is exactly the array an incomplete restore misses.
 
-THE RESIDENCY INVARIANT IS PART OF THE ROUTE. A Metal plan owns persistent device
+The residency invariant is part of the route. A Metal plan owns persistent device
 mirrors; ``KernelPlan.run`` does NOT sync them in. Between the two curl launches the
 array path (``update_H``/``update_E``) writes the host arrays, so a real engine loop
 must ``sync_in`` before each launch. Leg 5 measures that the staleness is REAL — it
@@ -48,7 +48,7 @@ SOURCE-FREE control, because a run that was never excited agrees with itself
 trivially; every launch is counted, and an arming leg proves each comparison can
 fail.
 
-WHAT THIS PROBE BORROWS from ``gate_metal_bfast``: ``build`` (the Grid/Fields/PML
+What this probe borrows from ``gate_metal_bfast``: ``build`` (the Grid/Fields/PML
 triple and its seeding), ``STATE`` (the stored inventory), ``snapshot``, and
 ``reference_bfast_curl`` (the host transcription used ONLY to reconstruct the tail's
 un-storable ``total``/``advance`` intermediates for the census — the gate's leg 0
@@ -110,7 +110,7 @@ BFAST_KS: Tuple[Tuple[str, Tuple[float, float, float]], ...] = (
     ("full_3d", (0.31, 0.17, 0.23)),
 )
 
-#: THE STEP BUDGET, declared once and consumed as the legs' defaults.
+#: The step budget, declared once and consumed as the legs' defaults.
 SEEDED_STEPS = 120
 DRIVEN_STEPS = 300
 SEED = 20260816
@@ -272,7 +272,7 @@ def confinement(got: Dict[str, Any], expected: Dict[str, Any],
                 names: Sequence[str]) -> Dict[str, Any]:
     """Is every differing word EXACTLY the flush, and nothing else?
 
-    THE QUESTION A BARE BREACH LEAVES OPEN. "The census fired and the bytes
+    The question a bare breach leaves open. "The census fired and the bytes
     diverged" is consistent with two very different worlds: the device flushed the
     band cells the census named and agreed everywhere else (fact (e), the cliff, and
     a divergence bounded by 1.18e-38 per cell), or the device is wrong for some
@@ -310,7 +310,7 @@ def confinement(got: Dict[str, Any], expected: Dict[str, Any],
             "largest_absolute_difference": largest,
             "reading": ("every differing word is a band cell the device flushed to "
                         "zero" if not unexplained else
-                        "AT LEAST ONE differing word is NOT explained by the "
+                        "at least one differing word is NOT explained by the "
                         "subnormal flush")}
 
 
@@ -334,9 +334,9 @@ class EngineRoute:
         self.residency = device.Residency()
         self.plans = {}
         for sub_step in SUB_STEPS:
-            # ``plain`` takes the CERTIFIED tranche-1 curl instead, which is what the
-            # attribution leg needs: the same lattice and the same horizon with the
-            # BFAST tail absent entirely.
+            # ``plain`` takes the CERTIFIED plain PML curl (``metal_launch.plan_pml_curl``)
+            # instead, which is what the attribution leg needs: the same lattice and the
+            # same horizon with the BFAST tail absent entirely.
             plan = (metal_launch.plan_pml_curl(fields, pml, sub_step, self.residency,
                                                chunk_bounds=layer_record(fields.grid, pml))
                     if plain else
@@ -378,28 +378,28 @@ class EngineRoute:
 class ComposedRoute:
     """The SHIPPED COMPOSER's route: every sub-step ``plan_step`` fills, on the device.
 
-    THE CLAIM THIS EXISTS TO MEASURE IS NEW AS OF TRANCHE 2, and nothing else in this
-    family's trio touches it. ``bfast_curl.register_arms`` registers FOUR arms — the
+    The claim this exists to measure is new with the BFAST curl wiring, and nothing
+    else in this family's trio touches it. ``bfast_curl.register_arms`` registers FOUR arms — the
     two curls this family's kernel owns, and ``update_H``/``update_E``, which it fills
     with the CERTIFIED constitutive kernel under a restated predicate. So
     ``launch.plan_step`` now returns a plan for every sub-step of a BFAST run, and the
-    composed route runs a COMPLETE DRIVER STEP on the device with no array-path wall
+    composed route runs a complete driver step on the device with no array-path wall
     inside it. :class:`EngineRoute` cannot measure that: it hard-codes
     ``stepping.update_H``/``update_E`` between the curls, which is what the tree did
     before the wiring and is no longer what ships.
 
-    WHY IT IS NOT THE SAME MEASUREMENT AS :class:`EngineRoute` RUN TWICE. Two things
+    Why it is not the same measurement as :class:`EngineRoute` run twice. Two things
     change and each can be wrong on its own. First, the constitutive halves are now
     computed by a kernel rather than by ``stepping.py``, on a configuration the
     CERTIFIED predicate refuses (clause 11 names BFAST) — the arithmetic is certified
     but this ADMISSION is not, and an admission is exactly what a byte comparison
     tests. Second, the IIR states and the PML auxiliaries now cross a sub-step
-    boundary IN DEVICE MEMORY instead of being round-tripped through the host between
+    boundary in device memory instead of being round-tripped through the host between
     every launch; a mirror bound to the wrong volume, or an aliasing between the two
     families' mirrors of the same array, is invisible while a host round trip papers
     over it every half-step.
 
-    THE SYNC DISCIPLINE IS THE ENGINE'S, not a convenience. One ``sync_in`` at the top
+    The sync discipline is the engine's, not a convenience. One ``sync_in`` at the top
     of the step — the seam where the driver's source injection wrote host arrays — and
     one ``sync_out`` at the bottom, with nothing in between, which is precisely the
     arrangement the residency verdict licenses when every live sub-step is planned.
@@ -426,7 +426,7 @@ class ComposedRoute:
                 f"not composed. Refusals: {self.step_plan.reasons}")
         self.selected = dict(self.step_plan.selected)
         self.residency_verdict = self.step_plan.residency
-        # A NULL PLAN LAUNCHES NOTHING AND STILL COUNTS. `plan_step` splits the
+        # A null plan launches nothing and still counts. `plan_step` splits the
         # filled slots on a DECLARED `performs_device_work` attribute, and the
         # no-PML family's plan declares False — so "four launches per step" would be
         # satisfied by a composition in which two of them did no device work at all.
@@ -441,7 +441,7 @@ class ComposedRoute:
             raise AssertionError(
                 f"the composed route filled {hollow} with plans that declare no "
                 f"device work; a launch count over those slots measures nothing")
-        # THE RESIDENCY VERDICT IS COMPUTED FOR A SOURCE-FREE STEP (`sources=()`)
+        # The residency verdict is computed for a source-free step (`sources=()`)
         # and is RECORDED, never acted on. The driven case writes a host array at
         # the top of each step, which is a seam the verdict was not asked about —
         # so this route syncs in every step regardless of what the verdict says.
@@ -520,7 +520,7 @@ def build_pair(name: str, cell, boundaries, courant: float, bfast_k,
 def leg_binding(payload: Dict[str, Any], out: str) -> None:
     """Every mirror the engine route binds, checked against the engine's own object.
 
-    THE DISCRIMINATION IS RECORDED, not assumed: for each coefficient mirror the
+    The discrimination is recorded, not assumed: for each coefficient mirror the
     WRONG-suffix array is compared too, and the row carries how many words separate
     them. If the two suffixes happened to hold identical bytes, "the right one is
     bound" would be an unfalsifiable statement on this configuration, and the row
@@ -536,7 +536,7 @@ def leg_binding(payload: Dict[str, Any], out: str) -> None:
             plan = bfast.plan_bfast_pml_curl(fields, pml, sub_step, residency,
                                              chunk_bounds=layer_record(fields.grid, pml))
             assert plan is not None, "the engine route refused a covered case"
-            mirrors = residency._mirrors  # noqa: SLF001 - the audit's whole subject
+            mirrors = residency._mirrors  # noqa: SLF001 - this leg's whole subject
 
             volume_binding = {}
             for volume in (tuple(spec["targets"])
@@ -661,12 +661,12 @@ def run_horizon(payload: Dict[str, Any], out: str, leg: str, case: str,
                 use_bfast: bool = True, composed: bool = False) -> Dict[str, Any]:
     """One long run of both routes in lockstep, compared after EVERY complete step.
 
-    TWO OUTCOMES, AND THEY ARE NOT THE SAME OUTCOME.
+    Two outcomes, and they are not the same outcome.
 
-    * A BYTE DIVERGENCE WITH A CLEAN CENSUS is a defect and raises. There is no
+    * A byte divergence with a clean census is a defect and raises. There is no
       configuration of this family in which the device may leave the array path
       while every operand, result and intermediate is a normal number.
-    * A PRECONDITION BREACH — a band word anywhere in the census — ENDS THE CLAIM
+    * A precondition breach — a band word anywhere in the census — ends the claim
       for that case at that step, and the case is recorded as REFUSED rather than
       failed. The claim was always "byte-identity subject to a CHECKED
       subnormal-free precondition"; a breach is the precondition being FALSE, which
@@ -848,17 +848,17 @@ def run_horizon(payload: Dict[str, Any], out: str, leg: str, case: str,
         assert not state_names, (
             "the attribution control allocated f_bfast storage, so its grid did "
             "activate BFAST after all")
-    # THE STALENESS FLOOR IS ROUTE-DEPENDENT, and discovering that was a measurement
+    # The staleness floor is route-dependent, and discovering that was a measurement
     # rather than a guess: the composed route's first undriven case tripped a floor
     # inherited from the per-sub-step route.
     #
     #   * PER-SUB-STEP ROUTE — the array path writes the host arrays between the two
     #     curl launches, so the mirrors MUST go stale. A run where they did not is a
     #     run that never tested them, and the floor stands.
-    #   * COMPOSED ROUTE, DRIVEN — nothing inside the step touches the host, but the
+    #   * Composed route, driven — nothing inside the step touches the host, but the
     #     source seam at the top of each step does, so the Ez mirror is stale on every
     #     sync_in. The floor stands for the same reason, on a different seam.
-    #   * COMPOSED ROUTE, UNDRIVEN — nothing whatsoever writes a host array, so
+    #   * Composed route, undriven — nothing whatsoever writes a host array, so
     #     ZERO stale words is the CORRECT answer and the one that licenses holding
     #     the mirror set across a complete step. Asserting equality is the stronger
     #     statement than waiving the check: a nonzero count here would mean something
@@ -911,7 +911,7 @@ def leg_driven_long(payload: Dict[str, Any], out: str) -> None:
                           cell, boundaries, BFAST_KS[0][1], DRIVEN_STEPS,
                           seeded=False, driven=True, rows=rows, started=started)
 
-    # THE SOURCE-FREE CONTROL, on the DEVICE route. From rest with no drive the
+    # The source-free control, on the device route. From rest with no drive the
     # stepper is linear and homogeneous, so every volume must stay identically zero
     # — including f_bfast, whose marginally stable pole would keep any injected
     # noise alive forever. Without this the driven leg's agreement is consistent
@@ -945,7 +945,7 @@ def leg_driven_long(payload: Dict[str, Any], out: str) -> None:
 def leg_composed_long(payload: Dict[str, Any], out: str) -> None:
     """The SHIPPED COMPOSER's whole-step route: all four sub-steps on the device.
 
-    THE GAP THIS CLOSES was opened by the tranche-2 wiring and by nothing else. Until
+    The gap this closes was opened by the BFAST curl wiring and by nothing else. Until
     the family registered arms, ``plan_step`` left both curl slots unselected on a
     BFAST run and the array path stepped everything; the honest measurement then was
     the per-sub-step route, which is what :func:`leg_seeded_long` and
@@ -955,12 +955,12 @@ def leg_composed_long(payload: Dict[str, Any], out: str) -> None:
     auxiliaries crossing sub-step boundaries in DEVICE memory. That composition had no
     byte comparison anywhere in this family's trio.
 
-    SEEDED AND DRIVEN, for the reason the other legs are: a seeded lattice makes
+    Seeded and driven, for the reason the other legs are: a seeded lattice makes
     ``-2*state`` live from step 1, and a driven run from rest carries the values a
     real simulation carries. The driven case takes the SOURCE-FREE control, because a
     run that was never excited agrees with itself trivially.
 
-    THE CENSUS IS THE SAME CENSUS and the refusal rule is the same rule: a band word
+    The census is the same census and the refusal rule is the same rule: a band word
     anywhere ends the claim for that case at that step and is recorded as REFUSED; a
     divergence with a CLEAN census raises, because on this composition as on the other
     there is no configuration in which the device may leave ``stepping.py``.
@@ -982,7 +982,7 @@ def leg_composed_long(payload: Dict[str, Any], out: str) -> None:
                          BFAST_KS[0][1], DRIVEN_STEPS, seeded=False, driven=True,
                          rows=rows, started=started, composed=True)
 
-    # THE SOURCE-FREE CONTROL, on the COMPOSED route. Same argument as the driven
+    # The source-free control, on the composed route. Same argument as the driven
     # leg's: from rest with no drive the stepper is linear and homogeneous, so every
     # volume must stay identically zero — and the constitutive kernel is now in the
     # loop, so this control covers it too.
@@ -1177,11 +1177,11 @@ def leg_arming(payload: Dict[str, Any], out: str) -> None:
 def leg_attribution(payload: Dict[str, Any], out: str) -> None:
     """Is a precondition breach a BFAST property, or the absorber recurrence's?
 
-    THE QUESTION THE SEEDED LEG RAISES AND CANNOT ANSWER. If a long seeded run
+    The question the seeded leg raises and cannot answer. If a long seeded run
     reaches the band, the next question is whether the BFAST tail put it there — the
     tail is a CANCELLATION (``advance = total - 2*state``) and cancellations are how
     small numbers are manufactured — or whether the split-field PML recurrence gets
-    there on its own, in which case the finding belongs to the CERTIFIED tranche-1
+    there on its own, in which case the finding belongs to the CERTIFIED plain PML
     curl and this family merely happened to be the one looking.
 
     The control is the same lattice, the same seed, the same boundary triple, the
@@ -1198,7 +1198,7 @@ def leg_attribution(payload: Dict[str, Any], out: str) -> None:
                           use_bfast=False)
     payload["attribution_summary"] = summary
     save(payload, out)
-    log(f"[attribution] the CERTIFIED tranche-1 curl on the same seeded lattice: "
+    log(f"[attribution] the CERTIFIED plain PML curl on the same seeded lattice: "
         f"{summary['verdict']}")
 
 
@@ -1288,7 +1288,7 @@ def main() -> int:
         leg(payload, arguments.out)
         executed.append(leg_name)
 
-    # THE SECOND, INDEPENDENT READ OF THE OUTCOME, from the rows that were WRITTEN
+    # The second, independent read of the outcome, from the rows that were WRITTEN
     # rather than from having reached this line. A REFUSED row (the census fired) is
     # counted separately from a DISAGREEING one (the bytes parted with a clean
     # census): the first bounds the claim, the second would be a defect.
@@ -1322,7 +1322,7 @@ def main() -> int:
         "passed": passed, "rows_compared": compared,
         "disagreeing_rows": problems, "refused_rows": refusals,
         "legs_run": executed,
-        "claim": ("BOTH SHIPPED ROUTES are byte-identical to stepping.py per "
+        "claim": ("Both shipped routes are byte-identical to stepping.py per "
                   "COMPLETE driver step over the full stored inventory, under a "
                   "CHECKED subnormal-free precondition: the per-sub-step route "
                   "(plan_bfast_pml_curl on live Fields/PML objects, constitutive "

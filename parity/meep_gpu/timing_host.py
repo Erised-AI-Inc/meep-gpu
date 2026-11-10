@@ -5,7 +5,7 @@ sysfs tree, ``vm_stat``, ``nvidia-smi`` CSV, a launcher's ``--version``) and ret
 numbers, and a thin reader that fetches the text on this host. The tests feed the
 parsers synthetic text; the ladder calls the readers.
 
-THE CPU-QUIET GATE, AND THE DEFECT IT REPLACES. The 2026-09-28 ladder's ``busy()``
+The CPU-quiet gate, and the defect it replaces. The 2026-09-28 ladder's ``busy()``
 read the aggregate ``cpu`` line of ``/proc/stat`` and multiplied the busy fraction by
 ``$(nproc)``. ``nproc`` honours ``OMP_NUM_THREADS``, which the ladder had set to 1, so
 the reading was at most 1.0 against a threshold of 10 and the MEEP rows' gate could
@@ -61,7 +61,7 @@ DEVICE_NEIGHBOURS = re.compile(
 
 #: macOS background work that moves a timing, matched against ``ps``'s command name:
 #: Spotlight indexing, backups, software update, photo and media analysis, XProtect.
-#: The Mac quiet gate of record (``night3_uniform.sh``) waited on the same names.
+#: The quiet gate of the 2026-09-25 Mac timing ladder waited on the same names.
 DARWIN_DAEMONS = re.compile(
     r"(?:^|/)(?:mds_stores|mdworker\w*|spotlightknowledged|backupd|softwareupdate\w*|"
     r"photoanalysisd|mediaanalysisd|XProtect\w*)(?:\s|$)")
@@ -463,7 +463,7 @@ def topology_linux(sys_root: str = "/sys", allowed: Optional[Iterable[int]] = No
         numa[os.path.basename(os.path.dirname(path))] = (read_file(path) or "").strip()
     record["numa_cpulists"] = numa
     record["online_cpus"] = len(online) if online is not None else None
-    # NARROWER THAN THE HOST: this process's affinity holds fewer CPUs than are
+    # Narrower than the host: this process's affinity holds fewer CPUs than are
     # online (a Slurm job's cpuset, a taskset). A rank's "bound" flag is then judged
     # against this scope, not against os.cpu_count().
     record["restricted_by_affinity"] = bool(
@@ -585,8 +585,12 @@ SLURM_VARIABLES = ("SLURM_JOB_ID", "SLURMD_NODENAME", "SLURM_CPUS_ON_NODE", "SLU
 
 
 def slurm_facts(environ: Optional[Mapping[str, str]] = None) -> Dict[str, Optional[str]]:
+    """The allocation's variables as a record writes them (``neutral_ids.environment``):
+    a node name as the machine id, a GPU UUID as its card id. The refusals read the raw
+    environment (:func:`slurm_refusals`), never this."""
+    import neutral_ids  # noqa: PLC0415
     environ = os.environ if environ is None else environ
-    return {name: environ.get(name) for name in SLURM_VARIABLES}
+    return neutral_ids.environment({name: environ.get(name) for name in SLURM_VARIABLES})
 
 
 def first_node_count(text: Optional[str]) -> Optional[int]:
@@ -681,12 +685,12 @@ BINDING_LABELS = {
 #: hardware threads in the order ``bound-hwthread`` ranks take them
 #: (:func:`hwthread_pe_list`).
 #:
-#: THE OPEN MPI ``bound-hwthread`` TEMPLATE PLACES EACH RANK BY NAME. Every mapping
+#: The Open MPI ``bound-hwthread`` template places each rank by name. Every mapping
 #: policy Open MPI 5.0.8 offers fills a mapped object's hardware threads in order
 #: (ranking ``FILL``): ``--map-by package`` (the 2026-09-28 string), ``core``, ``ppr``,
 #: ``node:span`` all put 64 ranks on 32 of a 2 x 24 x 2 host's 48 cores, two to a
 #: core, while 16 cores idled -- measured with ``--display map --do-not-launch`` on the
-#: GPU host, and the CERT-8 ladder struck its 64-rank rows for it. An ORDERED
+#: GPU host, and the 1.0 timing ladder struck its 64-rank rows for it. An ORDERED
 #: ``pe-list`` gives rank r the r-th listed hardware thread, in hwloc's LOGICAL
 #: numbering (what the pe-list reads); listing every core's first thread, alternating
 #: packages, before any second thread put 64 ranks on 48 cores (32 / 32 by package)
@@ -724,6 +728,17 @@ FLAG_TEMPLATES: Dict[str, Dict[str, str]] = {
         "bound-pe": "--cpus-per-task={cpus_per_task} --cpu-bind=cores --ntasks-per-core=1 "
                     "--ntasks-per-socket={per_socket} --distribution=block:block",
     },
+    # MPICH's Hydra ``mpiexec`` (conda-forge's MPI build of pymeep, a context leg).
+    # Measured on the GPU host (2 sockets, 48 cores, 96 hardware threads; MPICH 4.3.2):
+    # ``-bind-to core -map-by socket`` puts each rank on one whole core, alternating the
+    # packages, as Open MPI's bound mode does; ``-bind-to core:T`` gives each rank T
+    # whole cores. No hardware-thread placement is known for it.
+    "mpich": {
+        "bound": "-bind-to core -map-by socket",
+        "unbound": "-bind-to none",
+        "over": "-bind-to none",
+        "bound-pe": "-bind-to core:{threads} -map-by socket",
+    },
 }
 
 #: The modes in which a rank is pinned to a fixed set of CPUs.
@@ -749,6 +764,15 @@ def binding_mode_for(ranks: int, asked: str, physical_cores: int, threads: int =
 #: The label of a macOS row above the performance cores: its ranks run on the
 #: efficiency cores too, which is not the same configuration as the rows below it.
 DARWIN_OVER_LABEL = "unbound-ecores"
+#: The launcher flags of a macOS row, per MPI implementation (macOS has only the unbound
+#: modes). conda-forge's MPICH (ch4:ofi) picks libfabric's ``sockets`` provider on macOS,
+#: whose two helper threads per process spin at a full core each, so 8 ranks oversubscribe
+#: 10 cores and a step stalls ~75 ms. ``udp`` (udp;ofi_rxd) has no such thread and was the
+#: fastest measured on an Apple M1 Max; ``tcp`` is the standard alternative.
+DARWIN_FLAGS: Dict[str, str] = {
+    "openmpi": FLAG_TEMPLATES["openmpi"]["unbound"],
+    "mpich": "-genv FI_PROVIDER udp " + FLAG_TEMPLATES["mpich"]["unbound"],
+}
 
 
 def hwthread_pe_list(sockets: int, cores_per_socket: int, threads_per_core: int) -> str:
@@ -797,14 +821,17 @@ def binding_flags(implementation: str, mode: str, threads: int = 1,
         raise SystemExit(f"REFUSING: binding mode {mode!r} on macOS: Open MPI cannot bind "
                          "ranks to cores there; use --binding unbound")
     if platform == "darwin":
-        return FLAG_TEMPLATES["openmpi"]["unbound"], (
+        return DARWIN_FLAGS.get(implementation, FLAG_TEMPLATES["openmpi"]["unbound"]), (
             DARWIN_OVER_LABEL if mode == "over" else BINDING_LABELS["unbound"])
     templates = FLAG_TEMPLATES.get(implementation)
     if templates is None:
         raise SystemExit(f"REFUSING: the MPI launcher is {implementation!r} and no flag "
                          f"template is known for it; give the flags for mode {mode!r} "
                          "explicitly (--flags-bound, --flags-unbound, --flags-over, ...)")
-    template = templates[mode]
+    template = templates.get(mode)
+    if template is None:
+        raise SystemExit(f"REFUSING: no {implementation} flag template is known for mode "
+                         f"{mode!r}; give it explicitly (--flags-{mode})")
     if "{per_socket}" in template and values["per_socket"] is None:
         raise SystemExit(f"REFUSING: the {implementation} template of mode {mode!r} "
                          "balances ranks across sockets and the socket count is unknown; "
@@ -841,10 +868,32 @@ def binding_report_lines(text: str) -> List[str]:
     return out
 
 
-#: The one line each rank of ``--launcher-probe`` prints: ``AFFINITY <host> <pid> [cpus]``.
-AFFINITY_PROBE = ("import os, socket; a = sorted(os.sched_getaffinity(0)) if "
+#: The launcher's host-and-pid prefix of a binding line: Open MPI's ``[host:pid]`` before
+#: ``MCW rank N bound to`` / ``Rank N bound to``; Slurm's ``- host, task`` and the task's
+#: ``[pid]`` before its mask.
+_OPENMPI_PREFIX = re.compile(r"^(\s*)\[[^\]\s]*:\d+\]\s*")
+_SLURM_HOST = re.compile(r"(cpu[-_]bind\S*\s+-\s+)\S+?,\s*(task\b)")
+_SLURM_PID = re.compile(r"(task\s+\d+\s+\d+)\s+\[\d+\]")
+
+
+def recorded_binding_line(line: str) -> str:
+    """One launcher binding line as a record writes it: the CPUs, cores and ranks kept,
+    the host name and the pid the launcher prints with them dropped, and what is left
+    through ``neutral_ids.text``. :func:`binding_report_lines` reads either spelling."""
+    import neutral_ids  # noqa: PLC0415
+    out = _OPENMPI_PREFIX.sub(r"\1", str(line))
+    out = _SLURM_HOST.sub(r"\1\2", out)
+    out = _SLURM_PID.sub(r"\1", out)
+    return neutral_ids.text(out)
+
+
+#: The one line each rank of ``--launcher-probe`` prints: ``AFFINITY rank 0 [cpus]``.
+#: The two middle slots once held the rank's host name and pid; a probe's output is
+#: kept in the ladder's log, which leaves the machine, so they hold fixed tokens now
+#: (:func:`parse_affinity_lines` reads both spellings).
+AFFINITY_PROBE = ("import os; a = sorted(os.sched_getaffinity(0)) if "
                   "hasattr(os, 'sched_getaffinity') else None; "
-                  "print('AFFINITY', socket.gethostname(), os.getpid(), a, flush=True)")
+                  "print('AFFINITY', 'rank', 0, a, flush=True)")
 
 
 def parse_affinity_lines(text: str) -> List[Optional[List[int]]]:
@@ -1028,6 +1077,113 @@ def as_uuid(device: Optional[str], uuids: Mapping[str, str]) -> Optional[str]:
     return device if device.startswith("GPU-") else uuids.get(device)
 
 
+# ---------------------------------------------------------------------------
+# What a record writes about the devices and the processes on them
+# ---------------------------------------------------------------------------
+#
+# The checks above compare raw values in process: a UUID with a UUID, a pid with a pid,
+# a uid with a uid. A record leaves the machine, so it writes none of them: a GPU UUID
+# as its card id (``neutral_ids.card_id``), a process as ``own`` or ``other`` and its
+# memory, never its pid. Every writer of the box tables spells them here, so the readers
+# (``timing_records.pinned_foreign``, ``cut_timing_record._box_foreign``,
+# ``build_fused_timing_report``) join one spelling within a row.
+
+#: The owner column of a recorded compute-apps line: this process, or any other.
+OWN, OTHER = "own", "other"
+
+
+def vocabulary_collisions(words: Iterable[Any] = ()) -> List[str]:
+    """The words of this run (``words``: its routes, tables, cases and builds) that equal one
+    of this machine's host names as ``neutral_ids.text`` would rewrite them (case-sensitive,
+    whole token). ``neutral_ids`` never rewrites a host name equal to one of the words every
+    record carries (``neutral_ids.RECORD_WORDS``); a run's own names are checked here, since
+    a rewritten case or route name would make a reader miss its own rows. Empty is the
+    pass; a caller refuses otherwise, before anything is written. The caller's message names
+    no host: the words returned ARE host names."""
+    import neutral_ids  # noqa: PLC0415
+    vocabulary = {str(word) for word in words if word}
+    return sorted(vocabulary & set(neutral_ids.host_names()))
+
+
+#: The refusal a writer gives on a collision (it names no host).
+VOCABULARY_REFUSAL = ("a host name of this machine equals a word the records carry (a "
+                      "kernel table, route, case, build or leg name): every record "
+                      "writes this machine's host names as its machine id, so that word "
+                      "would be rewritten and its readers would miss their own rows; "
+                      "run on a host named otherwise")
+
+
+def recorded_device(device: Any) -> Any:
+    """A device name as a record writes it: a GPU UUID as its card id, an index as is."""
+    import neutral_ids  # noqa: PLC0415
+    if not isinstance(device, str):
+        return device
+    cell = device.strip()
+    if cell.startswith(("GPU-", "MIG-")) and "," not in cell:
+        return neutral_ids.card_id(cell)
+    return neutral_ids.text(device)
+
+
+def recorded_gpus(text: Any) -> Any:
+    """``nvidia-smi --query-gpu=index,uuid,...`` text with every UUID as its card id: cell
+    by cell, by the rule :func:`recorded_device` applies to a pin and to an app's device,
+    so the three join within a row."""
+    if not isinstance(text, str):
+        return text
+    return "\n".join(", ".join(recorded_device(cell.strip()) for cell in line.split(","))
+                     if "," in line else recorded_device(line)
+                     for line in text.splitlines())
+
+
+def recorded_compute_apps(text: Any, own_pid: Optional[int] = None) -> Any:
+    """``nvidia-smi --query-compute-apps=gpu_uuid,pid,used_memory`` text as a record
+    writes it: ``<card id>, own|other, <used memory>`` per line. The pid is compared with
+    ``own_pid`` here, in process, and never written; a line that is not an app (an
+    error the probe recorded) is written through ``neutral_ids.text``."""
+    import neutral_ids  # noqa: PLC0415
+    if not isinstance(text, str):
+        return text
+    out = []
+    for line in text.splitlines():
+        parts = [part.strip() for part in line.split(",")]
+        if len(parts) >= 2 and parts[1].isdigit():
+            owner = OWN if own_pid is not None and int(parts[1]) == int(own_pid) else OTHER
+            out.append(", ".join([recorded_device(parts[0]), owner]
+                                 + [neutral_ids.text(part) for part in parts[2:]]))
+        else:
+            out.append(neutral_ids.text(line))
+    return "\n".join(out)
+
+
+def recorded_foreign_app(line: str) -> str:
+    """One raw compute-apps line of a foreign process as ``<card id>, <used memory>``:
+    its device, to narrow by, and its memory; neither its pid nor its UUID."""
+    import neutral_ids  # noqa: PLC0415
+    parts = [part.strip() for part in str(line).split(",")]
+    memory = ", ".join(neutral_ids.text(part) for part in parts[2:]) or "unknown"
+    return f"{recorded_device(parts[0])}, {memory}"
+
+
+def recorded_process(line: str, uid: Optional[int] = None) -> str:
+    """One ``<pid> <ppid> <uid> <command>`` line (:func:`foreign_device_processes`) as a
+    record writes it: whose account it is (``own``: ``uid``'s), its program and the harness
+    script :data:`DEVICE_NEIGHBOURS` matched (``neutral_ids.process_label``). Neither pid,
+    uid nor any argument is written."""
+    import neutral_ids  # noqa: PLC0415
+    parts = str(line).split(None, 3)
+    if len(parts) < 4 or not parts[0].isdigit():
+        return neutral_ids.process_label(str(line))
+    owner = OWN if uid is not None and parts[2] == str(uid) else OTHER
+    matched = DEVICE_NEIGHBOURS.search(parts[3])
+    return f"{owner} {neutral_ids.process_label(parts[3], matched and matched.group())}"
+
+
+def recorded_app(app: Mapping[str, Any]) -> Dict[str, Any]:
+    """One :func:`parse_compute_apps` entry as a record writes it: its card and memory."""
+    return {"gpu": recorded_device(app.get("gpu_uuid")),
+            "used_memory": app.get("used_memory")}
+
+
 def compute_apps(gpu: Optional[str] = None) -> Optional[List[Dict[str, Any]]]:
     """Compute processes on every GPU, or on ``gpu``; ``None`` when unreadable."""
     if not nvidia_smi_available():
@@ -1099,7 +1255,8 @@ def device_state(gpu: Optional[str], uid: Optional[int],
                     "device_processes": None, "why": "ps is unreadable"}
         mine = [line for line in found if line.split()[2:3] == [str(uid)]]
         return {"device_free": not found, "account_gpu_processes": len(mine),
-                "device_processes": found, "how": "ps scan for Metal harness processes"}
+                "device_processes": [recorded_process(line, uid) for line in found],
+                "how": "ps scan for Metal harness processes"}
     every = compute_apps(None)
     if every is None:
         return {"device_free": None, "account_gpu_processes": None,
@@ -1108,7 +1265,9 @@ def device_state(gpu: Optional[str], uid: Optional[int],
     return {"device_free": pinned is not None and len(pinned) == 0,
             "account_gpu_processes": count_account_processes(
                 [app["pid"] for app in every], uid),
-            "device_processes": pinned, "how": "nvidia-smi compute apps"}
+            "device_processes": (None if pinned is None
+                                 else [recorded_app(app) for app in pinned]),
+            "how": "nvidia-smi compute apps"}
 
 
 def gpu_brief(gpu: Optional[str]) -> Tuple[str, str]:
@@ -1248,8 +1407,9 @@ def parse_ps_cpu(text: str) -> List[Tuple[int, float, str]]:
 def busy_daemons(rows: Iterable[Tuple[int, float, str]],
                  pattern: "re.Pattern[str]" = DARWIN_DAEMONS,
                  threshold: float = DARWIN_DAEMON_CPU_MAX) -> List[str]:
-    """The background daemons above ``threshold`` per cent CPU, as ``pid command cpu%``."""
-    return [f"{pid} {os.path.basename(command)[:80]} {cpu:.0f}%" for pid, cpu, command in rows
+    """The background daemons above ``threshold`` per cent CPU, as ``command cpu%``: a
+    reading is recorded, and a record writes no pid of another process."""
+    return [f"{os.path.basename(command)[:80]} {cpu:.0f}%" for _pid, cpu, command in rows
             if cpu > threshold and pattern.search(command)]
 
 
@@ -1341,15 +1501,491 @@ def gpu_state(gpu: Optional[str], platform: Optional[str] = None) -> Dict[str, A
     fields = gpu_query_fields()
     text = run_text(["nvidia-smi", f"--id={gpu}", "--query-gpu=" + ",".join(fields),
                      "--format=csv,noheader"], timeout=30)
+    import neutral_ids  # noqa: PLC0415
     rows = parse_gpu_csv(fields, text or "")
-    return {"utc": utc(), "readable": bool(rows), "fields": fields,
-            "state": rows[0] if rows else None,
-            "raw": None if rows else (text or "")[-400:]}
+    state = dict(rows[0]) if rows else None
+    if state is not None and "uuid" in state:
+        state["uuid"] = recorded_device(state["uuid"])
+    return {"utc": utc(), "readable": bool(rows), "fields": fields, "state": state,
+            "raw": None if rows else neutral_ids.text((text or "")[-400:])}
 
 
 def gpu_trace_command(gpu: str, every_ms: int = 1000) -> List[str]:
-    return ["nvidia-smi", f"--id={gpu}", "--query-gpu=timestamp," + ",".join(gpu_query_fields()),
+    """The pinned GPU's trace, which ``nvidia-smi`` writes straight to the trace file: so
+    without the ``uuid`` column (``--id`` names the device; a record writes no UUID)."""
+    fields = [field for field in gpu_query_fields() if field != "uuid"]
+    return ["nvidia-smi", f"--id={gpu}", "--query-gpu=timestamp," + ",".join(fields),
             "--format=csv,noheader", f"-lms={every_ms}"]
+
+
+# ---------------------------------------------------------------------------
+# The Windows side of a WSL2 host
+# ---------------------------------------------------------------------------
+#
+# Under WSL2 every reader above sees the Linux VM only: ``/proc`` holds the VM's load,
+# and ``nvidia-smi`` inside the VM lists no process at all, so the load of Windows, the
+# desktop's use of the card and the card's power state and clocks are invisible to the
+# gate. On a desktop measured this way (an RTX 3090 driving the Windows desktop) two of
+# three slow passes coincided with the card dropping from P2 to P3, which no reading of
+# the VM showed. These readers ask Windows itself, through WSL interop: its
+# ``nvidia-smi.exe`` for the card's clocks, P-state, clock-event reasons, power and
+# temperature, and a PowerShell counter sample for its CPU load. Each is read the same way
+# as the readers above: a pure parser and a thin reader. The rule that uses them is
+# :func:`windows_reasons`; a timing driver applies it only where :func:`wsl_host` says
+# the host is WSL2, and on any other host it is skipped by name.
+
+#: A kernel Microsoft built for WSL names itself in its release string or its version
+#: banner (``...-microsoft-standard-WSL2``). ``rounds/1.0/display_card.py`` asks the
+#: release string the same question and also wants the paravirtual GPU device, because it
+#: is about how the card is reached; the timing gate takes any Microsoft kernel as WSL2,
+#: so a host that answers only half is held to the Windows-side rule, never let through.
+WSL_KERNEL_MARK = "microsoft"
+OSRELEASE_FILE = "/proc/sys/kernel/osrelease"
+PROC_VERSION_FILE = "/proc/version"
+
+#: Where the Windows programs are when the VM's ``PATH`` does not reach Windows (a
+#: driver started under ``env -i``, or ``appendWindowsPath`` off): ``C:`` is mounted at
+#: ``/mnt/c`` by default. ``shutil.which`` is asked first.
+WINDOWS_PROGRAMS = {
+    "nvidia-smi.exe": "/mnt/c/Windows/System32/nvidia-smi.exe",
+    "powershell.exe": "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe",
+}
+
+#: The card as Windows' ``nvidia-smi.exe`` reads it, in this order.
+WINDOWS_GPU_FIELDS = ("clocks.gr", "clocks.mem", "pstate", "clocks_event_reasons.active",
+                      "power.draw", "temperature.gpu")
+
+#: NVML's clock-event reasons (``nvmlClocksEventReason*``), by bit. A bit not listed
+#: here is named by its value.
+CLOCK_EVENT_REASONS = ((0x1, "gpu_idle"), (0x2, "applications_clocks_setting"),
+                       (0x4, "sw_power_cap"), (0x8, "hw_slowdown"), (0x10, "sync_boost"),
+                       (0x20, "sw_thermal_slowdown"), (0x40, "hw_thermal_slowdown"),
+                       (0x80, "hw_power_brake_slowdown"), (0x100, "display_clock_setting"))
+#: The one reason the gate admits: nothing is running on the card.
+GPU_IDLE_REASON = 0x1
+
+#: Windows' CPU load: the whole machine (``Processor(_Total)``) and the WSL VM's own
+#: process (``vmmem``, ``vmmemWSL``), in one counter sample of two readings a second
+#: apart. A process counter is in percent of ONE logical CPU. The same run reads the CPU
+#: affinity mask of the VM's process (``vmmemWSL``) and how many there are. Only numbers
+#: are printed: a counter path carries the Windows computer name, and an error is named
+#: by its type.
+WINDOWS_LOAD_SCRIPT = r"""$ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
+try {
+  $n = [Environment]::ProcessorCount
+  "cpus $n"
+  try {
+    $q = @(Get-Process -Name vmmemWSL)
+    "affinity {0} {1}" -f [int64]$q[0].ProcessorAffinity, $q.Count
+  } catch { "affinity error $($_.Exception.GetType().Name)" }
+  $s = Get-Counter -Counter '\Processor(_Total)\% Processor Time', '\Process(vmmem*)\% Processor Time' -SampleInterval 1 -MaxSamples 2
+  foreach ($x in $s) {
+    $t = 'none'; $v = 0.0; $k = 0
+    foreach ($c in $x.CounterSamples) {
+      if ($c.Path -like '*\processor(_total)\*') { $t = $c.CookedValue } else { $v += $c.CookedValue; $k += 1 }
+    }
+    "sample $t $v $k"
+  }
+} catch { "error $($_.Exception.GetType().Name)"; exit 3 }
+"""
+
+
+#: Sets the CPU affinity mask of the WSL VM's process to ``{mask}`` (a decimal integer)
+#: and reads it back: the mask before, whether the set took, and the mask after. Setting
+#: it needs an administrator token: the process belongs to the VM's virtual account, so
+#: from an unelevated context the set is denied (Win32 error 5) and the read gives 0.
+#: An error is named by its innermost exception type and, for a Win32 error, its code.
+WINDOWS_AFFINITY_SET_SCRIPT = r"""$ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
+function Named($e) {
+  $x = $e.Exception
+  while ($x.InnerException) { $x = $x.InnerException }
+  $c = ''
+  if ($x -is [System.ComponentModel.Win32Exception]) { $c = " $($x.NativeErrorCode)" }
+  return "$($x.GetType().Name)$c"
+}
+try { $p = @(Get-Process -Name vmmemWSL) } catch { "error $(Named $_)"; exit 3 }
+"processes $($p.Count)"
+if ($p.Count -ne 1) { exit 3 }
+try { "before {0}" -f [int64]$p[0].ProcessorAffinity } catch { "before error $(Named $_)" }
+try { $p[0].ProcessorAffinity = [IntPtr]{mask}; "set ok" } catch { "set error $(Named $_)" }
+try { $p[0].Refresh(); "read {0}" -f [int64]$p[0].ProcessorAffinity } catch { "read error $(Named $_)" }
+"""
+
+#: Win32 error codes a set can name.
+WIN32_ERRORS = {5: "access denied: the VM's process belongs to its virtual account, so the "
+                   "mask is set only from an elevated context (an administrator token)"}
+
+
+def is_wsl_kernel(osrelease: Optional[str], version: Optional[str]) -> bool:
+    """True when the kernel's release string or version banner names Microsoft."""
+    return any(WSL_KERNEL_MARK in (text or "").lower() for text in (osrelease, version))
+
+
+def wsl_host(platform: Optional[str] = None, osrelease: Optional[str] = None,
+             version: Optional[str] = None) -> Dict[str, Any]:
+    """Whether this host is Linux under WSL2, and why, from ``/proc``."""
+    platform = platform or sys.platform
+    if not platform.startswith("linux"):
+        return {"wsl2": False, "why": f"not Linux ({platform})"}
+    osrelease = read_file(OSRELEASE_FILE) if osrelease is None else osrelease
+    version = read_file(PROC_VERSION_FILE) if version is None else version
+    if is_wsl_kernel(osrelease, version):
+        return {"wsl2": True, "why": "the kernel is a Microsoft build for WSL"}
+    return {"wsl2": False, "why": "native Linux: the kernel is not a Microsoft build"}
+
+
+def windows_program(name: str, which: Callable[[str], Optional[str]] = shutil.which,
+                    executable: Callable[[str], bool] = (
+                        lambda path: os.access(path, os.X_OK))) -> Optional[str]:
+    """Where a Windows program is reached from the VM, or ``None``."""
+    found = which(name)
+    if found:
+        return found
+    fallback = WINDOWS_PROGRAMS.get(name)
+    return fallback if fallback and executable(fallback) else None
+
+
+def run_windows(command: Sequence[str], timeout: float = 30.0) -> Tuple[Optional[str], str]:
+    """The stdout of a Windows program run through WSL interop, and why it failed ("" when
+    it did not). Its stdin is closed: a Windows program reads the stdin it inherits, so one
+    started from a script fed on stdin would read the rest of the script."""
+    try:
+        done = subprocess.run(list(command), stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                              stderr=subprocess.DEVNULL, timeout=timeout, check=False)
+    except subprocess.TimeoutExpired:
+        return None, f"no answer in {timeout:g} s"
+    except OSError as error:
+        return None, f"could not be started ({error.strerror or type(error).__name__})"
+    text = done.stdout.decode("utf-8", errors="replace")
+    return text, "" if done.returncode == 0 else f"exit status {done.returncode}"
+
+
+def reason_names(mask: int) -> List[str]:
+    """The names of the bits set in a clock-event reason mask."""
+    names = [name for bit, name in CLOCK_EVENT_REASONS if mask & bit]
+    rest = mask & ~sum(bit for bit, _name in CLOCK_EVENT_REASONS)
+    bit = 1
+    while rest:
+        if rest & bit:
+            names.append(f"bit {bit:#x}")
+            rest &= ~bit
+        bit <<= 1
+    return names
+
+
+def _typed(text: str, kind: Callable[[str], Any]) -> Any:
+    try:
+        return kind(text)
+    except ValueError:
+        return None
+
+
+def parse_windows_gpu(text: str) -> List[Dict[str, Any]]:
+    """``nvidia-smi.exe --query-gpu=<WINDOWS_GPU_FIELDS> --format=csv,noheader,nounits``
+    rows (CRLF or LF), one per card. A value that does not parse reads ``None``."""
+    rows = []
+    for line in (text or "").splitlines():
+        cells = [cell.strip() for cell in line.split(",")]
+        if len(cells) != len(WINDOWS_GPU_FIELDS):
+            continue
+        graphics, memory_clock, pstate, reasons, power, temperature = cells
+        mask = _typed(reasons, lambda value: int(value, 16)) if reasons.startswith("0x") else None
+        rows.append({
+            "graphics_mhz": _typed(graphics, int), "memory_mhz": _typed(memory_clock, int),
+            "pstate": pstate if re.fullmatch(r"P[0-9]{1,2}", pstate) else None,
+            "reasons": None if mask is None else f"{mask:#x}",
+            "reason_names": None if mask is None else reason_names(mask),
+            "power_w": _typed(power, float), "temperature_c": _typed(temperature, int)})
+    return rows
+
+
+def parse_windows_load(text: str) -> Dict[str, Any]:
+    """The :data:`WINDOWS_LOAD_SCRIPT` output. Busy logical CPUs from the LAST sample (the
+    first can carry no previous raw value for the VM's process), for the whole machine,
+    the WSL VM and the rest of Windows. ``readable`` False with ``why`` otherwise."""
+    cpus, samples, error = None, [], None
+    for line in (text or "").splitlines():
+        parts = line.split()
+        if len(parts) == 2 and parts[0] == "cpus":
+            cpus = _typed(parts[1], int)
+        elif len(parts) == 4 and parts[0] == "sample":
+            samples.append((_typed(parts[1], float), _typed(parts[2], float),
+                            _typed(parts[3], int)))
+        elif len(parts) >= 2 and parts[0] == "error":
+            error = parts[1]
+    if error:
+        return {"readable": False, "why": f"the counter sample failed ({error})"}
+    if not cpus or not samples:
+        return {"readable": False, "why": "no counter sample parsed"}
+    total, vm, instances = samples[-1]
+    if total is None or vm is None:
+        return {"readable": False, "why": "the counter sample is incomplete"}
+    if not instances:
+        return {"readable": False, "why": "no process of the WSL VM in the counters"}
+    busy = total / 100.0 * cpus
+    vm_busy = vm / 100.0
+    return {"readable": True, "logical_cpus": cpus, "total_percent": round(total, 2),
+            "busy_cpus": round(busy, 2), "vm_busy_cpus": round(vm_busy, 2),
+            "outside_vm_busy_cpus": round(max(0.0, busy - vm_busy), 2),
+            "samples": [[None if t is None else round(t, 2), None if v is None else round(v, 2)]
+                        for t, v, _k in samples],
+            "how": "Get-Counter Processor(_Total) and Process(vmmem*) % Processor Time, "
+                   "two samples 1 s apart, the last one read"}
+
+
+def parse_affinity_mask(text: Any) -> int:
+    """A CPU affinity mask as declared: hexadecimal (``0x999988``) or decimal, above 0."""
+    value = str(text).strip()
+    try:
+        mask = int(value, 16) if value.lower().startswith("0x") else int(value)
+    except ValueError:
+        mask = 0
+    if mask <= 0:
+        raise ValueError(f"an affinity mask is a positive integer, hexadecimal as 0x999988 "
+                         f"or decimal, not {text!r}")
+    return mask
+
+
+def parse_vm_affinity(text: str) -> Dict[str, Any]:
+    """The ``affinity`` line of :data:`WINDOWS_LOAD_SCRIPT`: the WSL VM process's mask, or
+    why it was not read. One process only: a mask names one VM."""
+    for line in (text or "").splitlines():
+        parts = line.split()
+        if parts[:2] == ["affinity", "error"]:
+            return {"readable": False,
+                    "why": f"the VM process's mask could not be read ({' '.join(parts[2:])})"}
+        if len(parts) == 3 and parts[0] == "affinity":
+            mask, count = _typed(parts[1], int), _typed(parts[2], int)
+            if mask is None or count is None:
+                break
+            if count != 1:
+                return {"readable": False, "processes": count,
+                        "why": f"{count} WSL VM processes: a mask names one VM"}
+            return {"readable": True, "mask": f"{mask:#x}", "processes": 1}
+    return {"readable": False, "why": "no affinity line"}
+
+
+def parse_vm_affinity_set(text: str) -> Dict[str, Any]:
+    """The output of :data:`WINDOWS_AFFINITY_SET_SCRIPT`: ``before``, ``set`` and
+    ``read_back`` as written in a record (masks in hexadecimal), and ``why`` when the set
+    did not take or the read failed."""
+    out: Dict[str, Any] = {"processes": None, "before": None, "set": None,
+                           "read_back": None, "why": None}
+    for line in (text or "").splitlines():
+        parts = line.split()
+        if len(parts) >= 2 and parts[0] == "error":
+            out["why"] = f"the VM process could not be found ({' '.join(parts[1:])})"
+        elif len(parts) == 2 and parts[0] == "processes":
+            out["processes"] = _typed(parts[1], int)
+        elif len(parts) >= 2 and parts[0] in ("before", "read"):
+            key = "before" if parts[0] == "before" else "read_back"
+            value = _typed(parts[1], int) if parts[1] != "error" else None
+            out[key] = f"{value:#x}" if value is not None else "error " + " ".join(parts[2:])
+        elif len(parts) >= 2 and parts[0] == "set":
+            if parts[1] == "ok":
+                out["set"] = "ok"
+            else:
+                code = _typed(parts[-1], int) if len(parts) > 3 else None
+                out["set"] = " ".join(parts[1:])
+                out["why"] = (f"the set was refused: {WIN32_ERRORS[code]}" if code in WIN32_ERRORS
+                              else f"the set was refused ({' '.join(parts[2:])})")
+    if out["processes"] is not None and out["processes"] != 1 and not out["why"]:
+        out["why"] = f"{out['processes']} WSL VM processes: a mask names one VM"
+    return out
+
+
+def set_vm_affinity(mask: int, runner: Callable[..., Tuple[Optional[str], str]] = run_windows,
+                    program: Callable[[str], Optional[str]] = windows_program
+                    ) -> Dict[str, Any]:
+    """Set the WSL VM process's CPU affinity to ``mask`` through interop and read it
+    back. ``ok`` only when the read-back equals ``mask``."""
+    powershell = program("powershell.exe")
+    if powershell is None:
+        return {"ok": False, "declared": f"{mask:#x}", "before": None, "set": None,
+                "read_back": None, "why": "powershell.exe not found (WSL interop off, or "
+                                          "Windows not mounted where the VM looks)"}
+    import base64  # noqa: PLC0415
+    script = WINDOWS_AFFINITY_SET_SCRIPT.replace("{mask}", str(int(mask)))
+    encoded = base64.b64encode(script.encode("utf-16-le")).decode("ascii")
+    text, why = runner([powershell, "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded])
+    out = dict(parse_vm_affinity_set(text or ""), declared=f"{mask:#x}")
+    if out["why"] is None and why and out["read_back"] is None:
+        out["why"] = f"powershell.exe: {why}"
+    out["ok"] = out["read_back"] == f"{mask:#x}"
+    if not out["ok"] and out["why"] is None:
+        out["why"] = f"the mask read back {out['read_back']}, not {mask:#x}"
+    return out
+
+
+def windows_load_command(powershell: str) -> List[str]:
+    import base64  # noqa: PLC0415
+    encoded = base64.b64encode(WINDOWS_LOAD_SCRIPT.encode("utf-16-le")).decode("ascii")
+    return [powershell, "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded]
+
+
+def windows_reading(gpu_uuid: Optional[str] = None,
+                    runner: Callable[..., Tuple[Optional[str], str]] = run_windows,
+                    program: Callable[[str], Optional[str]] = windows_program
+                    ) -> Dict[str, Any]:
+    """One reading of the Windows side: the card (``gpu``), Windows' CPU load (``cpu``)
+    and what could not be read (``unreadable``, each named). ``gpu_uuid`` picks the pinned
+    card (a UUID is the same on both sides; it is used, never recorded); without one,
+    Windows must list exactly one card."""
+    started = time.time()
+    out: Dict[str, Any] = {"utc": utc(), "gpu": None, "cpu": None, "vm_affinity": None,
+                           "unreadable": []}
+    smi = program("nvidia-smi.exe")
+    if smi is None:
+        out["unreadable"].append("nvidia-smi.exe not found (WSL interop off, or Windows "
+                                 "not mounted where the VM looks)")
+    else:
+        command = [smi] + ([f"--id={gpu_uuid}"] if gpu_uuid else []) + [
+            "--query-gpu=" + ",".join(WINDOWS_GPU_FIELDS), "--format=csv,noheader,nounits"]
+        text, why = runner(command)
+        rows = parse_windows_gpu(text or "")
+        if why:
+            out["unreadable"].append(f"nvidia-smi.exe: {why}")
+        elif len(rows) != 1:
+            out["unreadable"].append(f"nvidia-smi.exe: {len(rows)} cards read and none "
+                                     "pinned" if rows else "nvidia-smi.exe: no card read")
+        elif any(rows[0][key] is None for key in ("graphics_mhz", "memory_mhz", "reasons")):
+            out["unreadable"].append("nvidia-smi.exe: the clocks or the clock-event "
+                                     "reasons did not parse")
+        else:
+            out["gpu"] = rows[0]
+    powershell = program("powershell.exe")
+    if powershell is None:
+        out["unreadable"].append("powershell.exe not found (WSL interop off, or Windows "
+                                 "not mounted where the VM looks)")
+    else:
+        text, why = runner(windows_load_command(powershell))
+        load = parse_windows_load(text or "")
+        out["vm_affinity"] = parse_vm_affinity(text or "")
+        if load.get("readable"):
+            out["cpu"] = load
+        else:
+            out["unreadable"].append(f"Windows CPU load: {why or load.get('why')}")
+    out["seconds"] = round(time.time() - started, 2)
+    return out
+
+
+@dataclasses.dataclass
+class WindowsRule:
+    """The Windows-side rule of a WSL2 timing host. ``lock_*``: the clocks the card is
+    locked at (``nvidia-smi -lgc``/``-lmc`` on Windows), ``None`` when no lock is
+    declared. ``cpu_max``: busy logical CPUs of Windows OUTSIDE the WSL VM, below which
+    Windows is quiet; ``None`` takes 10 % of Windows' logical CPUs (:func:`default_cpu_max`).
+    The VM's own load is not counted: it is the run's own, and the VM's readers gate it.
+    ``vm_affinity``: the CPU affinity mask the WSL VM's process must hold (the session
+    sets it); ``None`` when no mask is declared, and the mask is then recorded only."""
+    lock_graphics_mhz: Optional[int] = None
+    lock_memory_mhz: Optional[int] = None
+    cpu_max: Optional[float] = None
+    vm_affinity: Optional[int] = None
+
+    @property
+    def locked(self) -> bool:
+        return self.lock_graphics_mhz is not None
+
+    def describe(self) -> Dict[str, Any]:
+        return {"lock": ({"graphics_mhz": self.lock_graphics_mhz,
+                          "memory_mhz": self.lock_memory_mhz} if self.locked else None),
+                "cpu_max_outside_vm": (self.cpu_max if self.cpu_max is not None
+                                       else "10 % of Windows' logical CPUs"),
+                "vm_affinity": (None if self.vm_affinity is None
+                                else f"{self.vm_affinity:#x}"),
+                "rules": [
+                    ("the card at the declared clock lock at every reading" if self.locked
+                     else "no lock declared: the clocks unchanged across the quiet "
+                          "window's readings, recorded and not gated while a unit runs"),
+                    "no clock-event reason but gpu_idle at any reading",
+                    "Windows' busy logical CPUs outside the WSL VM below cpu_max_outside_vm",
+                    ("the WSL VM's CPU affinity equal to the declared mask at every reading"
+                     if self.vm_affinity is not None
+                     else "no VM affinity mask declared: the VM's mask recorded, not gated"),
+                    "a Windows value that cannot be read is not quiet"]}
+
+
+def parse_clock_lock(text: str) -> Tuple[int, int]:
+    """``GRAPHICS,MEMORY`` in MHz (``1695,9501``), as a declared lock is given."""
+    parts = [part.strip() for part in str(text).split(",")]
+    if len(parts) != 2 or not all(part.isdigit() and int(part) > 0 for part in parts):
+        raise ValueError(f"a clock lock is GRAPHICS,MEMORY in MHz (e.g. 1695,9501), "
+                         f"not {text!r}")
+    return int(parts[0]), int(parts[1])
+
+
+def windows_cpu_max(rule: WindowsRule, logical_cpus: Optional[int]) -> float:
+    return float(rule.cpu_max if rule.cpu_max is not None else default_cpu_max(logical_cpus))
+
+
+def windows_reasons(rule: WindowsRule, observed: Mapping[str, Any],
+                    previous: Optional[Mapping[str, Any]] = None) -> List[str]:
+    """Why a Windows-side reading is not quiet, each named. ``previous``, given for a
+    reading of the quiet window, is the reading before it: with no lock declared the
+    card's clocks may not move between the two."""
+    reasons = [f"Windows side unreadable: {why}" for why in observed.get("unreadable") or ()]
+    gpu = observed.get("gpu")
+    if gpu:
+        clocks = (gpu.get("graphics_mhz"), gpu.get("memory_mhz"))
+        if rule.locked:
+            if clocks != (rule.lock_graphics_mhz, rule.lock_memory_mhz):
+                reasons.append(f"the card left the declared clock lock: graphics "
+                               f"{clocks[0]} MHz, memory {clocks[1]} MHz, against "
+                               f"{rule.lock_graphics_mhz} / {rule.lock_memory_mhz}")
+        elif previous and previous.get("gpu"):
+            before = (previous["gpu"].get("graphics_mhz"), previous["gpu"].get("memory_mhz"))
+            if before != clocks:
+                reasons.append(f"the card's clocks moved with no lock declared: graphics "
+                               f"{before[0]} -> {clocks[0]} MHz, memory {before[1]} -> "
+                               f"{clocks[1]} MHz")
+        mask = int(str(gpu.get("reasons")), 16)
+        other = mask & ~GPU_IDLE_REASON
+        if other:
+            reasons.append(f"a clock-event reason other than gpu_idle: {gpu.get('reasons')} "
+                           f"({', '.join(reason_names(other))})")
+    if rule.vm_affinity is not None and not observed.get("unreadable"):
+        affinity = observed.get("vm_affinity") or {}
+        if not affinity.get("readable"):
+            reasons.append(f"the WSL VM's CPU affinity unreadable: "
+                           f"{affinity.get('why', 'not read')}")
+        elif int(str(affinity.get("mask")), 16) != rule.vm_affinity:
+            reasons.append(f"the WSL VM's CPU affinity is {affinity.get('mask')}, not the "
+                           f"declared {rule.vm_affinity:#x}")
+    cpu = observed.get("cpu")
+    if cpu:
+        limit = windows_cpu_max(rule, cpu.get("logical_cpus"))
+        busy = cpu.get("outside_vm_busy_cpus")
+        if not float(busy) < limit:
+            reasons.append(f"Windows busy outside the WSL VM: {busy} logical CPUs >= "
+                           f"{limit:g}")
+    return reasons
+
+
+def windows_summary(readings: Sequence[Mapping[str, Any]]) -> Dict[str, Any]:
+    """What a unit's Windows-side readings saw, in a few values: the clocks, P-states and
+    reasons met, the most Windows was busy outside the VM, power and temperature."""
+    gpus = [r["gpu"] for r in readings if r.get("gpu")]
+    cpus = [r["cpu"] for r in readings if r.get("cpu")]
+
+    def seen(rows: Sequence[Mapping[str, Any]], key: str) -> List[Any]:
+        return sorted({row.get(key) for row in rows if row.get(key) is not None})
+
+    def most(rows: Sequence[Mapping[str, Any]], key: str) -> Any:
+        values = [row.get(key) for row in rows if row.get(key) is not None]
+        return max(values) if values else None
+
+    return {"readings": len(readings),
+            "unreadable": sum(1 for r in readings if r.get("unreadable")),
+            "graphics_mhz": seen(gpus, "graphics_mhz"), "memory_mhz": seen(gpus, "memory_mhz"),
+            "pstates": seen(gpus, "pstate"), "reasons": seen(gpus, "reasons"),
+            "power_w_max": most(gpus, "power_w"), "temperature_c_max": most(gpus, "temperature_c"),
+            "outside_vm_busy_cpus_max": most(cpus, "outside_vm_busy_cpus"),
+            "busy_cpus_max": most(cpus, "busy_cpus"),
+            "vm_affinity": seen([r["vm_affinity"] for r in readings
+                                 if (r.get("vm_affinity") or {}).get("readable")], "mask")}
 
 
 # ---------------------------------------------------------------------------
@@ -1388,9 +2024,9 @@ def default_cpu_max(logical_cpus_in_scope: Optional[int]) -> int:
     return max(1, int(round(0.10 * float(logical_cpus_in_scope or 0))))
 
 
-#: THE macOS CPU GATE IS CALIBRATED AT THE LADDER'S START (CERT-8 F6). A laptop with its
-#: owner's session open idles at 1.2-2.0 busy CPUs of 10, so the 10 % default (1 CPU)
-#: could never open on the 1.0 round's Mac. The rule is the one that round fixed before
+#: The macOS CPU gate is calibrated at the ladder's start. A laptop with its user's
+#: desktop session open idles at 1.2-2.0 busy CPUs of 10, so the 10 % default (1 CPU)
+#: could never open on the 1.0 timing run's Mac. The rule is the one that run fixed before
 #: its first row: take :data:`CPU_CALIBRATION_READINGS` busy readings
 #: :data:`CPU_CALIBRATION_EVERY_S` apart; if their 80th percentile is below the default
 #: the default stands, otherwise the gate opens below :data:`CPU_CALIBRATION_CEILING`
@@ -1596,15 +2232,15 @@ _UUID_INDEX: Dict[str, str] = {}
 def box_label(gpu: Optional[str]) -> str:
     """The pinned GPU as the box string keys it: its INDEX (``gpu0=``), as on
     2026-09-28 and as ``audit_timing_validity.py`` parses it, also when the ladder pins
-    it by UUID (``--gpu auto`` resolves to one). The UUID itself when no index is
-    listed for it."""
+    it by UUID (``--gpu auto`` resolves to one). Its card id when no index is listed for
+    it: the box string is logged, and a log leaves the machine."""
     if gpu is None or not str(gpu).startswith("GPU-"):
         return str(gpu)
     if gpu not in _UUID_INDEX:
         found = {uuid: index for index, uuid in (gpu_uuids() or {}).items()}
         if gpu in found:
             _UUID_INDEX[gpu] = found[gpu]
-    return _UUID_INDEX.get(gpu, str(gpu))
+    return _UUID_INDEX.get(gpu, recorded_device(str(gpu)))
 
 
 def box_keys(text: str) -> List[str]:

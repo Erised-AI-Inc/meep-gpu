@@ -1,11 +1,11 @@
 """The Metal complex/Bloch kernels inside a REAL ``FdtdDriver.step()``, for a budget.
 
-WHAT THIS MEASURES THAT THE GATE AND THE COMPOSITION PROBE DO NOT.
+What this measures that the gate and the composition probe do not.
 
 ``gate_metal_complex.py`` certifies four sub-steps in ISOLATION, from a seeded
 state, against ``stepping.py``. ``probe_metal_complex_composition.py`` runs the four
 back to back on one residency and measures the mirror, the seam refusal and the
-zero-init signed-zero class. NEITHER OF THEM HAS EVER RUN ``driver.step()``, and
+zero-init signed-zero class. Neither of them has ever run ``driver.step()``, and
 neither compares PER STEP: both take one comparison at the end of four cycles. That
 leaves five things unmeasured, and each is a place a certified kernel can still
 produce a wrong RUN:
@@ -28,21 +28,21 @@ produce a wrong RUN:
 4. **The budget.** One step cannot show a defect that accumulates. The auxiliaries
    (``fu_*``, ``f_w_*``) are STATE, so a kernel that is right on launch 1 and wrong
    forever after only diverges over a budget.
-5. **That the device path RAN AT ALL.** Every number below would be produced,
+5. **That the device path ran at all.** Every number below would be produced,
    unchanged and green, by a probe whose shim answered ``False`` to every slot and
-   let the array path do all the work — because THE ORACLE IS THE ARRAY PATH. The
+   let the array path do all the work — because the oracle is the array path. The
    dispatch counters, the plans' own launch counters and the driver-level armed
    mutations are what separate "the Metal kernels reproduce the array path" from
    "the array path reproduces itself".
 
-THE INTERMEDIATE CENSUS IS TAKEN AT THE SEAM, which is this probe's one improvement
+The intermediate census is taken at the seam, which is this probe's one improvement
 on the pattern it was ported from. The shim is called with the live ``Fields`` object
 IMMEDIATELY BEFORE each plan launches, so the operands reconstructed there are the
 exact arrays the kernel is about to read — the source deposits included. A census
 that reconstructed from a post-step snapshot would be reconstructing from operands
 the seam had already moved.
 
-THE COMPOSITION IS THE DECLARED-SYNC ONE and no mirror is held across an array pass:
+The composition is the declared-sync one and no mirror is held across an array pass:
 the composition probe's residency leg measured which slots must be synced (the wall
 passes on a metallic axis, and both source fills), so a probe that held mirrors
 across a real driver step would be measuring a composition its own family refused.
@@ -50,11 +50,11 @@ Each dispatched slot syncs in, launches and syncs out. That costs the round trip
 residency layer exists to avoid; this probe measures CORRECTNESS and the throughput
 question belongs to a bench.
 
-MEASURED WHILE WRITING THIS, and recorded because it decided the case matrix rather
+Measured while writing this, and recorded because it decided the case matrix rather
 than being an aside: ``driver.setup_pml``'s docstring (driver.py:2160-2168) states
 that "a nonzero ``k_point`` component is refused on an axis that carries an
-absorber" and that ``k_point=(0.3, 0, 0)`` with a scalar PML "still raises". NO SUCH
-REFUSAL EXISTS IN THE CODE. Measured on this host: that exact pairing builds with
+absorber" and that ``k_point=(0.3, 0, 0)`` with a scalar PML "still raises". No such
+refusal exists in the code. Measured on this host: that exact pairing builds with
 ``pml.is_active = True``, in the scalar, per-axis and z-only spellings alike. The
 case matrix therefore reuses the gate's OWN configurations unchanged — PML on a
 phased axis included, which is the pairing ``stepping._bloch_phases`` admits — so
@@ -64,7 +64,7 @@ here edits ``driver.py``.
 
 STATED WEAKNESSES, because the artifact inherits them:
 
-* there is NO PTX-EQUIVALENT AUDIT on this executor (``compile_shader`` exposes no
+* there is no PTX-equivalent audit on this executor (``compile_shader`` exposes no
   disassembly), so the mutation leg and the launch counters are the only arbiters
   that the device did what the source says;
 * the subnormal census reads STORED state plus the operands and intermediates
@@ -109,7 +109,7 @@ from meep_gpu.metal_kernels import device, preconditions, shaders, subnormal  # 
 
 log, save, differing = kit.log, kit.save, kit.differing
 
-#: THE STEP BUDGET, STATED. 24 steps at courant 0.35 on a resolution-10 grid is
+#: The step budget, stated. 24 steps at courant 0.35 on a resolution-10 grid is
 #: dt = 0.035, so the f = 1.0 gaussian's carrier turns over roughly every 28 steps:
 #: the budget spans the pulse leaving its launch cell, crossing the interior and
 #: entering the absorber, which is the span over which a stale-auxiliary defect
@@ -155,7 +155,7 @@ SECOND_COURANT = 0.5
 def cases() -> Tuple[Dict[str, Any], ...]:
     """(name, cell, boundaries, k, courant) rows built from :data:`gate.CONFIGS`.
 
-    READ FROM THE GATE rather than transcribed. A case added to the gate's matrix
+    Read from the gate rather than transcribed. A case added to the gate's matrix
     joins this probe automatically; a transcribed copy is how a driver leg quietly
     stops covering what the gate certifies.
     """
@@ -172,7 +172,7 @@ def cases() -> Tuple[Dict[str, Any], ...]:
 
 CASES = cases()
 
-#: A gaussian pulse on each source family. BOTH SEAMS ARE EXERCISED: the magnetic
+#: A gaussian pulse on each source family. Both seams are exercised: the magnetic
 #: current lands between `step_B` and `update_H` and the electric one between
 #: `step_D` and `update_E` (driver.py:3282-3305, MEEP step.cpp:64-100), so a probe
 #: carrying only one would leave half the interleave unmeasured. Both centres sit
@@ -194,13 +194,13 @@ SOURCES = (
 def inventory(fields: Any, shape: Sequence[int]) -> Tuple[str, ...]:
     """Every ndarray the Fields object holds at grid shape, by name.
 
-    ENUMERATED, NOT TRANSCRIBED. ``gate.STATE`` is a hand-written list of the 24
+    Enumerated, not transcribed. ``gate.STATE`` is a hand-written list of the 24
     volumes a complex step reads or writes; this reads the object. The material
     volumes are compared too, and they are the reason to enumerate: nothing in a
     curl should write epsilon, so a kernel that scribbles past its target lands
     there, and a transcribed list would be exactly the list that cannot see it.
 
-    BOTH STORAGE SHAPES ARE READ. ``Fields`` carries an instance ``__dict__`` today
+    Both storage shapes are read. ``Fields`` carries an instance ``__dict__`` today
     and the slotted spelling is what a memory-conscious refactor would reach for;
     reading only one and finding nothing is how a "full inventory" silently becomes
     an empty one, which is what the caller's floor below refuses.
@@ -293,14 +293,14 @@ def build_driver(case: Dict[str, Any], sourced: bool = True,
 class MetalShim:
     """A ``FastPathPlan``-shaped object that runs this family's Metal plans.
 
-    THE SEAM IS THE ENGINE'S OWN and nothing about dispatch is changed to use it:
+    The seam is the engine's own and nothing about dispatch is changed to use it:
     ``driver.step`` reads ``self._fast_path`` once per step and consults
     ``fast.dispatch(slot, fields)`` at four identical sites (driver.py:3281-3305).
     This object answers that call. The shipped planner is untouched, this family
     stays unwired, and the probe is a MEASUREMENT of what wiring it would produce —
     the only honest way to run it before the wiring exists.
 
-    EVERY DISPATCH IS COUNTED and the counts are asserted against the budget. Both
+    Every dispatch is counted and the counts are asserted against the budget. Both
     halves are recorded: ``dispatched`` (True — the device ran the sub-step) and
     ``declined`` (False — the array path did). A shim that quietly declined
     everything would still produce a green byte comparison, because the oracle IS
@@ -413,7 +413,7 @@ def leg_wiring(payload: Dict[str, Any], out: str) -> None:
     ever answers yes, this probe's oracle would be comparing a kernel against a
     kernel and every row below would be meaningless.
 
-    THE REFUSAL REASON IS RECORDED, NOT INFERRED. On THIS host the shipped planner
+    The refusal reason is recorded, not inferred. On THIS host the shipped planner
     refuses first because the backend is not CuPy — the Triton dispatch route has no
     MPS arm — which is a fact about the HOST and not about this family. Reading
     "plan=None" as "the family is unwired" would be reading a strictly weaker
@@ -479,7 +479,7 @@ def assert_dispatch_accounting(row: Dict[str, Any], shim: MetalShim, budget: int
                                context: str) -> None:
     """Every device slot was taken by the DEVICE on every step of the budget.
 
-    THIS IS THE GUARD THE WHOLE PROBE RESTS ON, and it is factored out so leg
+    This is the guard the whole probe rests on, and it is factored out so leg
     ``dispatch_accounting`` can prove it FIRES by running the same code against a
     shim that declines a slot. The oracle IS the array path, so a slot that quietly
     fell back would still compare byte-IDENTICAL: without this check a green row and
@@ -576,7 +576,7 @@ def leg_driver_steps(payload: Dict[str, Any], out: str) -> None:
                 f"{context}: took {row['steps_taken']} steps against a stated "
                 f"budget of {STEP_BUDGET}")
             kit.assert_moved(moved_total, f"{context} over {STEP_BUDGET} steps")
-            # THE DISPATCH ACCOUNTING, which is what makes the comparison mean
+            # The dispatch accounting, which is what makes the comparison mean
             # anything: every device slot must have been taken by the device on
             # every step of the budget, and the plans' own launch counters must
             # agree with the shim's.
@@ -606,7 +606,7 @@ def leg_driver_steps(payload: Dict[str, Any], out: str) -> None:
 def leg_source_control(payload: Dict[str, Any], out: str) -> None:
     """The sourced run is compared to a SOURCE-FREE one, on both paths.
 
-    THE CONTROL IS THE POINT. From the driver's own zeros a source-free run is
+    The control is the point. From the driver's own zeros a source-free run is
     identically zero forever — the curl of zero is zero and the constitutive read is
     a fixed point — so if the sourced run moved, the SOURCES moved it, and the
     interleave the device sub-steps ran between is real work rather than a fill of
@@ -639,7 +639,7 @@ def leg_source_control(payload: Dict[str, Any], out: str) -> None:
         quiet_array = snapshot(control_array.fields, names)
 
         injected = sum(differing(sourced[n], quiet[n]) for n in names)
-        # THE MATERIAL VOLUMES ARE NONZERO BY CONSTRUCTION and are excluded from the
+        # The material volumes are nonzero by construction and are excluded from the
         # quiescence count BY NAME rather than by a threshold: eps and inv_eps are
         # what `set_isotropic_epsilon_volume` wrote, nothing steps them, and
         # counting them would fail this leg for a reason with nothing to do with the
@@ -709,16 +709,16 @@ CENSUS_SCALES = (("physical", 1.0, True), ("subnormal_band", 1e-38, False))
 
 
 class SeamCensus:
-    """Reconstructs the kernel's operands and intermediates AT THE DISPATCH SEAM.
+    """Reconstructs the kernel's operands and intermediates at the dispatch seam.
 
-    THE OPERANDS ARE EXACT. The shim calls this with the live ``Fields`` object
+    The operands are exact. The shim calls this with the live ``Fields`` object
     immediately before the plan launches, so the arrays read here are the arrays the
     kernel is about to read — the source deposits and the wall clears already
     applied. That is the whole reason the census lives on the shim rather than on a
     post-step snapshot, which would reconstruct from operands the seam had moved.
 
-    THE INTERMEDIATES ARE RECONSTRUCTED ON THE HOST, which is WEAKER THAN A REGISTER
-    READ and is stated as such. ``compile_shader`` exposes no way to read a kernel's
+    The intermediates are reconstructed on the host, which is weaker than a register
+    read and is stated as such. ``compile_shader`` exposes no way to read a kernel's
     registers, so the same expressions are formed in the same operand order on the
     host and censused: the curl's ``dtdx * ((sf - f) + (s - ss))`` and the
     constitutive's ``kps * fw`` / ``kms * fw_previous``. Neither is ever stored
@@ -890,8 +890,8 @@ DRIVER_MUTATIONS: Dict[str, Dict[str, Any]] = {
                "inventory carries the Metal kernel's output rather than the array "
                "path's",
         "curl_sub_steps": ("step_B", "step_D"),
-        # INVERTED (KERNELS.md §7.1): the package's previous pairwise grouping planted
-        # in place of MEEP's left-to-right bracket.
+        # INVERTED (must be caught; docs/development/certification.md): the package's
+        # previous pairwise grouping planted in place of MEEP's left-to-right bracket.
         "apply": lambda s: kit.needle(s, "((c_y - c_dy) + b_dz) - b_z",
                                       "(c_y - c_dy) + (b_dz - b_z)"),
     },
@@ -923,7 +923,8 @@ DRIVER_MUTATIONS: Dict[str, Dict[str, Any]] = {
                "audit found it certified with no census; a driver-level arm is what "
                "shows the device reaches those bytes too",
         "sides": ("H", "E"),
-        # INVERTED (KERNELS.md §7.1): the package's previous accumulation grouping.
+        # INVERTED (must be caught; docs/development/certification.md): the package's
+        # previous accumulation grouping.
         "apply": lambda s: kit.needle(
             s,
             "if (dw0) { a0 = f0[ii] + (c_mul_coefficient_left(kp_0, src0) - "
@@ -932,7 +933,7 @@ DRIVER_MUTATIONS: Dict[str, Dict[str, Any]] = {
             "c_mul_coefficient_left(km_0, prev0); }"),
     },
     "d5_comment_only_is_not_a_defect": {
-        # THE MUST-NOT-CATCH ROW. Without it, "every mutation was caught" is equally
+        # The must-not-catch row. Without it, "every mutation was caught" is equally
         # consistent with a comparison that reports divergence for any recompile at
         # all — a leg detecting recompilation rather than defects.
         "must_catch": False,
@@ -1003,7 +1004,7 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
                                    getattr(oracle_driver.fields, n))
                          for n in names))
         launches = sum(counter.launches for counter in counters)
-        # ONE DRIVER RUN IS ONE CASE, and the count says so. The gate's rows are per
+        # One driver run is one case, and the count says so. The gate's rows are per
         # sub-step because it launches them in isolation; here every mutated slot
         # runs inside the SAME driver run and the comparison is one verdict over one
         # final inventory, so `ran` is 1 and the number of slots carrying the needle
@@ -1087,7 +1088,7 @@ def main() -> int:
         "gate_metal_complex.py": os.path.join(HERE, "gate_metal_complex.py"),
         "metal_gate_kit.py": os.path.join(HERE, "metal_gate_kit.py"),
         "probe_metal_complex_driver_step.py": os.path.abspath(__file__),
-        # ITS OWN FILE NAME. This probe shares a results directory with the gate and
+        # Its own file name. This probe shares a results directory with the gate and
         # the composition probe, and `kit.provenance`'s default name is what one
         # caller used to overwrite another's record wholesale — the evidence-
         # destroying collision the kit's `name` parameter exists for.
@@ -1130,7 +1131,7 @@ def main() -> int:
             "three. (1) NO PTX-EQUIVALENT AUDIT exists on this executor: "
             "compile_shader exposes no disassembly, so the mutation leg and the "
             "launch counters are the only arbiters that the device did what the "
-            "source says. (2) THE SUBNORMAL CENSUS IS RECONSTRUCTED, NOT READ: the "
+            "source says. (2) The subnormal census is reconstructed, not read: the "
             "operands are exact (read at the dispatch seam, after the source fills "
             "and wall clears, before the launch) but the kernel's unstored "
             "intermediates are re-formed on the HOST in the same operand order, "

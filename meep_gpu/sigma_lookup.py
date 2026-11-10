@@ -1,6 +1,6 @@
 """Verify a per-point susceptibility sigma against MEEP's own ``get_chi1inv``.
 
-THE DECLARED-GEOMETRY PATH, second half. The first half is a *lookup*: MEEP never
+The declared-geometry path, second half. The first half is a *lookup*: MEEP never
 subpixel-averages sigma (``Subpixel_Smoothing.md:153``; ``geom_epsilon::sigma_row``,
 meepgeom.cpp:1655, point-samples the geometry tree and returns
 ``susc.sigma_diag`` verbatim), so the sigma at a Yee point is simply the declared
@@ -8,7 +8,7 @@ sigma of the medium containing that point. Reproducing that lookup in Python is
 easy. Being *sure* it agrees with the structure MEEP actually built is not, and
 this module is the part that makes it a READ rather than a reimplementation.
 
-WHAT IS CHECKED, and why it subsumes the hazards. MEEP evaluates, at every point
+What is checked, and why it subsumes the hazards. MEEP evaluates, at every point
 and every nonzero frequency (``structure_chunk::get_chi1inv_at_pt``,
 monitor.cpp:263-352)::
 
@@ -46,7 +46,7 @@ front by ``from_meep._meep_reads_here`` — not because the check would miss the
 but because a cell that has to fall back to the inversion for a plane of edge
 points is a cell the lookup should simply have got right.
 
-WHAT THE CHECK CANNOT SEE, stated rather than hoped. Two poles that are
+What the check cannot see, stated rather than hoped. Two poles that are
 indistinguishable over the sampled band make an error in one cancellable by an
 error in the other; that is the same degeneracy :mod:`~.sigma_recovery` refuses,
 measured the same way (the condition number of the same matrix over the same

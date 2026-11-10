@@ -9,8 +9,8 @@ sub-lattice along ``axis`` is ``half`` belongs to a chunk that carries ``axis``'
 exactly when ``(a0 <= r < a1) || (b0 <= r < b1)`` (``chunk_map.membership_from_record``,
 the host twin of the decode below).
 
-THIS MODULE IS THE ONE SPELLING OF THAT DECODE ON THIS TABLE (bit_parity_0_10 DESIGN.md
-D6, D10). A kernel's text carries the block as a literal, directly after its index decode
+This module is the one spelling of that decode on this table (one emitter per table,
+since 1.0). A kernel's text carries the block as a literal, directly after its index decode
 (``int i = idx / (ny * nz);``), and the kernel's own tests require that literal to equal
 :func:`bounds_block` for the kernel's entries byte for byte. A fused product that welds
 two kernels emits ONE block over the union of their entries, so the names below are
@@ -24,7 +24,7 @@ tagged by sub-lattice and never collide:
   the axis is not invariant, so a curl partner differenced along it is present:
   fields.cpp:428-453, ``stepping.curl_presence``).
 
-WHICH ENTRIES A KERNEL READS is the region plan's rule (``chunk_map.RegionPlan``): a curl
+Which entries a kernel reads is the region plan's rule (``chunk_map.RegionPlan``): a curl
 component reads its dsigu axis and a constitutive component its own axis, each on the
 component's own Yee sub-lattice along that axis (``fields.IYEE_SHIFTS``). So the B curl
 reads the half-integer record, the D curl and ``update_H`` the integer one, and
@@ -58,7 +58,7 @@ Entry = Tuple[bool, int]
 
 #: The block's opening comment. Comment lines only: no anchor reads them.
 _COMMENT = (
-    "// THE CHUNK RECORD (chunk_map.chunk_bounds_record): row r of this lattice and axis",
+    "// The chunk record (chunk_map.chunk_bounds_record): row r of this lattice and axis",
     "// lies in a chunk that carries the axis's layer iff (a0 <= r < a1) || (b0 <= r < b1).",
 )
 
@@ -199,7 +199,7 @@ def strip_bounds_block(code: str, kernel_or_body: str, entries: Iterable[Entry],
     """``code`` with the block for ``entries`` removed from after its index decode.
 
     The inverse of :func:`insert_bounds_block`, for a fused product that lifts two
-    kernels' bodies and emits ONE block over the union of their entries (DESIGN.md D10):
+    kernels' bodies and emits ONE block over the union of their entries:
     each lifted body's own block is removed here, and refused by name unless it is
     exactly the block :func:`bounds_block` emits for that body's entries, directly after
     its decode and its blank line. ``kernel_or_body`` names the text in the refusal.

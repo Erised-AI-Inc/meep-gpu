@@ -2,7 +2,7 @@
 cylindrical ``step_D`` sub-step -- the radial scan over the NEW Hp and the curl --
 over the rotated field.
 
-THE FOURTH SEAM ON A CYLINDRICAL ROW. The driver runs
+The fourth seam on a cylindrical row. The driver runs
 
     ``update_H`` -> the magnetic ``f_minus_p`` restore -> ``step_D``
 
@@ -14,7 +14,7 @@ every row of a radial column -- and the one-launch weld the Cartesian product
 :mod:`.fused_hd_pair` ships cannot be written here at all.
 
 =============================================================================
-THE SHAPE: THREE LAUNCHES OWNING BOTH SLOTS
+The shape: three launches owning both slots
 =============================================================================
 
 Per timestep, on an admitted row:
@@ -43,7 +43,7 @@ launches the one whose sources are this launch's scratch. Both are allocation-fr
 step, as the certified plan is.
 
 =============================================================================
-THE LAUNCH ALGEBRA, AND WHY THIS PRODUCT SAVES NO LAUNCH
+The launch algebra, and why this product saves no launch
 =============================================================================
 
 Under MEEP's per-chunk radial sum the D side's own baseline is three launches --
@@ -53,17 +53,17 @@ into launch 1 and saved four launches against a seven-launch baseline (the prefi
 multiply, row-0 fill, subtract, divide and ``cumsum``); the column-serial scan removed
 those elementwise passes, and the saving went with them. This product therefore
 performs the seam in THREE launches against THREE. It is kept, not dispatched, for the
-form alignment its gate measures. A two-launch shape (``update_H`` row by row inside
-the column-serial scan) exists and is a design ruling, not this module's to make.
+agreement with MEEP's forms its gate measures. A two-launch shape (``update_H`` row
+by row inside the column-serial scan) exists and is a design decision, not this module's.
 
-WHY THE SCAN READS THE SCRATCH AND NOTHING ELSE. ``update_H`` is POINTWISE, so the
+Why the scan reads the scratch and nothing else. ``update_H`` is POINTWISE, so the
 scratch ``Hy`` is the field ``update_H`` writes, at every cell, before the scan runs:
 the scan reads exactly what the array path's ``step_D`` reads. Reading the PRE-LAUNCH
 ``Hy`` instead would sum the PREVIOUS step's field (the armed host mutation
 ``m_scan_reads_the_pre_launch_Hy``).
 
 =============================================================================
-WHAT SITS IN THE SEAM, AND THE ROWS THIS PRODUCT REFUSES
+What sits in the seam, and the rows this product refuses
 =============================================================================
 
 :data:`CARRIES_DEPOSIT_REPAIR` is False and it is a FACT about the driver: nothing is
@@ -72,7 +72,7 @@ injected between the two consults. :data:`HOISTS_THE_WITHDRAW` is False for the 
 NAME.
 
 =============================================================================
-IT IS NOT INSTALLED
+It is not installed
 =============================================================================
 
 :data:`INSTALLABLE` is False and :data:`INSTALLABLE_REASON` carries both halves: the
@@ -80,7 +80,7 @@ label boundary the Cartesian product names, and the launch algebra above -- thre
 launches against three, so displacing either released neighbouring cylindrical pair
 LOSES a launch.
 
-SERVED ON A FUSION BOARD IS PREDICATE ADMISSION, by that board's own definition. No
+Served on a fusion board is predicate admission, by that board's own definition. No
 timing exists for this shape and none is licensed by anything in this module.
 
 Import contract: importable WITHOUT Triton -- the predicate, the lift checks and the
@@ -109,7 +109,7 @@ FAMILY = "cylindrical_real_fused_hd_pair"
 SLOT = "update_H"
 
 #: The driver call sites ONE run of this plan performs, in driver order. Nothing
-#: between them is carried: the electric withdraw is declined this round.
+#: between them is carried: the electric withdraw is declined as shipped.
 REPLACES: Tuple[str, ...] = ("update_H", "step_D")
 
 #: The seam name ``launch.CERTIFIED_FUSED_PAIR_SEAMS`` files this row under.
@@ -158,15 +158,15 @@ KERNEL_LAUNCHES_PER_RUN = 3
 CARRIES_DEPOSIT_REPAIR = False
 REPAIR_PATHS: Tuple[str, ...] = ()
 
-#: The seam's electric withdraw is NOT performed by this product this round.
+#: The seam's electric withdraw is NOT performed by this product as shipped.
 HOISTS_THE_WITHDRAW = False
 
 #: May the composer install this product? NO, for the two reasons below.
 INSTALLABLE = False
 
 INSTALLABLE_REASON = (
-    "THE COMPOSER IS OFFERED THIS PRODUCT AND REFUSES IT BY THIS FLAG, and that is "
-    "the first half of the reason: since the 2026-09-07 wiring round it is routed "
+    "The composer is offered this product and refuses it by this flag, and that is "
+    "the first half of the reason: since the 2026-09-07 wiring change it is routed "
     "(launch.CERTIFIED_FUSED_PRODUCTS, CERTIFIED_FUSED_PAIR_ARMS, SUPPORT_MODULES), "
     "its label is declared in the DISPATCHER'S own tables outside this package, by "
     "the one-way rule it keeps (the constituent map, and the pending-gate map that "
@@ -174,7 +174,7 @@ INSTALLABLE_REASON = (
     "parity/meep_gpu/dispatch_reachability.PRODUCT_ARM_LABELS -- so "
     "launch._declared_uninstallable records this refusal "
     "by name on every row BEFORE the predicate is asked, and no composer writes the "
-    "label into a slot. THE SECOND HALF IS THE ARBITRATION, and under MEEP's "
+    "label into a slot. The second half is the arbitration, and under MEEP's "
     "per-chunk radial sum it does not favour this product: the D-side seam costs "
     "THREE device launches on the singles route (update_H 1; the column-serial "
     "radial scan 1; step_D 1) and this product performs it in THREE (launch 1, the "
@@ -185,7 +185,7 @@ INSTALLABLE_REASON = (
     "per arrangement are recorded by "
     "parity/meep_gpu/gate_triton_cylindrical_real_fused_hd_pair.py's launch_structure "
     "leg. A two-launch shape (update_H row by row inside the column-serial scan) is "
-    "a design ruling outside this module, not a flag edit")
+    "a design decision outside this module, not a flag edit")
 
 __all__ = [
     "ARMS", "BACKWARD", "CARRIES_DEPOSIT_REPAIR", "CONSTITUTIVE_SIDE",
@@ -256,7 +256,7 @@ except ImportError as _exc:  # pragma: no cover - the laptop path
 
 if triton is not None:  # pragma: no cover - device code, certified by the gate
 
-    # THE CERTIFIED CONSTITUTIVE, imported as a device function rather than copied:
+    # The certified constitutive, imported as a device function rather than copied:
     # `_h_cell` is `kernels.constitutive_step`'s side-H body as a function of a cell
     # (its lift is machine-checked in fused_hd_pair and re-checked by this family's
     # gate). A second copy would be a second place for the lift to drift.
@@ -331,8 +331,8 @@ def cylindrical_real_fused_hd_pair_coverage(fields: Any, pml: Any,
     (:func:`.cylindrical_triton.cylindrical_constitutive_coverage` for side H, then
     :func:`.cylindrical_triton.cylindrical_curl_coverage`) plus the seam clauses.
     Nothing is weakened: a configuration either half refuses is refused here with that
-    half's reasons, prefixed so a reader can tell which side said it. THE ORDER IS THE
-    DRIVER'S: the constitutive half runs first and speaks first.
+    half's reasons, prefixed so a reader can tell which side said it. The order is the
+    driver's: the constitutive half runs first and speaks first.
     """
     grid = getattr(fields, "grid", None)
     if grid is None:
@@ -347,8 +347,8 @@ def cylindrical_real_fused_hd_pair_coverage(fields: Any, pml: Any,
     if not curl.covered:
         reasons.extend(f"cylindrical curl half: {reason}" for reason in curl.reasons)
 
-    # THE SEAM'S ONE PASS -- the electric integrated-source withdraw. IGNORANCE IS
-    # NEVER AN EMPTY SET: `Fields` does not hold the source list.
+    # The seam's one pass -- the electric integrated-source withdraw. Ignorance is
+    # never an empty set: `Fields` does not hold the source list.
     reasons.extend(_withdraw_hoist.seam_withdraw_reasons(
         fields, sources,
         undeclared=(
@@ -364,7 +364,7 @@ def cylindrical_real_fused_hd_pair_coverage(fields: Any, pml: Any,
         hoists_the_withdraw=HOISTS_THE_WITHDRAW,
         span=REPLACES))
 
-    # THE ROTATION IS THE PRODUCT'S OWN INVARIANT.
+    # The rotation is the product's own invariant.
     for name in ROTATED:
         if getattr(fields, name, None) is None:
             reasons.append(
@@ -401,8 +401,8 @@ def _address(array: Any) -> Optional[int]:
 class CylindricalRealFusedHdPairPlan(_cartesian.StartsH, ScratchWeldPairPlan):
     """Launch 1 into scratch, then the certified cylindrical ``step_D`` plan over it.
 
-    THE SIX ROTATING VOLUMES ARE RESOLVED PER RUN, never cached. The certified curl
-    plan binds its sources at plan time, so it is built ONCE OVER EACH of the two
+    The six rotating volumes are resolved per run, never cached. The certified curl
+    plan binds its sources at plan time, so it is built once over each of the two
     allocations the rotation alternates between, and :meth:`_launch` runs the one
     whose ``Hy`` is this run's scratch. ``__init__`` REFUSES ALIASING between anything
     a run writes (the six twins, ``D``, ``fu_D``, the two scan outputs) and anything

@@ -12,8 +12,8 @@ point: the register reuse this product exists for is invisible to any host-side
 assertion, and a store hoisted above a history load would still produce a plausible
 field on the one lattice a numerical test happens to run.
 
-WHY ``CHAIN_MAX_POLES``' REASON LIVES HERE AND NOT BESIDE THE CONSTANT.
-``fused_dispersive_chain.py`` is bound BY RAW SHA256 in
+Why ``CHAIN_MAX_POLES``' reason lives here and not beside the constant.
+``fused_dispersive_chain.py`` is bound by raw sha256 in
 ``triton_kernels/fingerprints.json`` under ``triton_fused_dispersive_chain_device_
 gate``, and the 2026-08-20 closed fusion matrix RAISES on any drift — a prose edit
 to that module would make a standing board unreproducible until its device gate is
@@ -152,7 +152,7 @@ def _cap_fires(states: int) -> bool:
 
 
 def test_the_pole_cap_is_INHERITED_behind_the_single_susceptibility_clause():
-    """THE NAME OF THIS TEST USED TO BE A CLAIM ITS BODY DID NOT MEASURE.
+    """The name of this test used to be a claim its body did not measure.
 
     It asserted that SOME reason mentioning "susceptibilit" appeared at three
     states — which is the ``_single_state`` clause (:380-386) answering, not the
@@ -420,7 +420,7 @@ def test_the_device_gate_is_present_and_named_by_the_module():
 def test_every_artifact_write_is_provenance_stamped_and_policy_re_read():
     """The gate's verdict must be bindable to the bytes that produced it.
 
-    WHAT THIS CATCHES, and it is not hypothetical: the 2026-08-14 device run of
+    What this catches, and it is not hypothetical: the 2026-08-14 device run of
     this gate PASSED — 3/3 cases, 36/36 complete steps, 7 mutations caught — and
     its artifact recorded ZERO source digests. ``source_sha256`` was absent from
     the payload entirely, so a green verdict could not be attached to any tree,
@@ -444,8 +444,8 @@ def test_every_artifact_write_is_provenance_stamped_and_policy_re_read():
     save = next(node for node in tree.body
                 if isinstance(node, ast.FunctionDef) and node.name == "save")
 
-    # READ OFF THE AST, NOT OFF THE TEXT. The first spelling of this test matched
-    # substrings of ``ast.unparse(save)``, which INCLUDES THE DOCSTRING — and the
+    # Read off the AST, not off the text. The first spelling of this test matched
+    # substrings of ``ast.unparse(save)``, which includes the docstring — and the
     # docstring names both ``gate_provenance`` and ``stamp``. Measured against a
     # mutant with the import and the call deleted: the text check still read
     # True/True. A contract a comment can satisfy measures the comment.

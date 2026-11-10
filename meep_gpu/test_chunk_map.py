@@ -80,7 +80,7 @@ def _rule_before_the_move(n_cells, faces, half_integer, wraps):
     return inside
 
 
-def _12x12():  # The absorber-placement evidence packet's cell.
+def _12x12():  # The measured cell: 12x12 um, res 20, PML(2) on x and y.
     grid = Grid(resolution=20.0, cell_size=(12.0, 12.0, 0.0), dimensions=2)
     return grid, PML(grid, thickness={"x": 40, "y": 40})
 
@@ -94,12 +94,12 @@ def test_one_rank_owns_one_integer_plane_past_the_inner_edge():
     MEEP's per-side effort volume is `int(cells + 1.5)` array cells from the wall and
     chunk selection reads sigsize per CHUNK (step_db.cpp:56-59), so the boundary
     cells whose own sigma is exactly zero still step the both-active branch.
-    Measured discriminators on the 12x12 evidence-packet cell (CW Ez at x = -5,
+    Measured discriminators on the 12x12 cell of ``_12x12`` (CW Ez at x = -5,
     against CPU MEEP): deposits at y = -4.0 (cell 40) and y = -3.975 (cells 40+41)
     are both-active — stepping either with the dsig-only form reads 2.3e-01 … 4.6e-01
     where the recurrence reads ~7e-07 — while y = -3.9 (cell 42) runs dsig-only
-    (4.9583e-01 under the recurrence, 5.6135e-07 dsig-only; the absorber-placement
-    evidence packet §1.5-1.6). Integer samples: a chunk spanning doubled
+    (4.9583e-01 under the recurrence, 5.6135e-07 dsig-only).
+    Integer samples: a chunk spanning doubled
     [c0, c1] owns c0+2..c1, so the low chunk owns cells 1..span and the boundary
     plane belongs to it, not to the interior neighbour; half-integer samples are
     c0+1..c1-1, cells 0..span-1.
@@ -250,7 +250,7 @@ def _case_a_division(split_y=None, split_x_range=None):
 def test_a_recorded_division_reads_every_row_from_its_owner():
     """MEEP's default division equals the one-rank rule; a split inside the effort volume moves its rows.
 
-    The split is phase 0's ``layouty`` (an explicit y cut at doubled -160 across the
+    The split is the measured ``layouty`` case (an explicit y cut at doubled -160 across the
     whole cell): MEEP's own words change with it (54,514 value-differing words against
     the default from step 100), and a map derived from the division restored 0. The
     rows it moves are the sliver's: half-integer row 20 (doubled -159) and integer row

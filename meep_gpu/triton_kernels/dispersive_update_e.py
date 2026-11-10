@@ -3,7 +3,7 @@
 One kernel, one coverage predicate, one plan, in one file, because that is the whole
 of what this sub-step needs and none of it belongs in the shared modules yet.
 
-WHAT IT REPLACES. ``stepping.update_E`` (stepping.py:926) with an active PML and at
+What it replaces. ``stepping.update_E`` (stepping.py:926) with an active PML and at
 least one registered susceptibility. Per component ``c`` the array path runs::
 
     source       = fields.displacement_minus_polarization(c)      # :981
@@ -33,24 +33,24 @@ step_update_EDHB, step_generic.cpp:689, :697, and update_eh.cpp:162-170). The re
 half-integer line on the component's own axis picks the form per cell, read through
 :func:`.forms.constitutive_form`.
 
-THREE THINGS DECIDE BIT-IDENTITY, and each is pinned by a MEASURED control rather
+Three things decide bit-identity, and each is pinned by a measured control rather
 than by argument (recon, 30 real Grid/Fields/PML cases on NumPy; the counts below
 are that run's):
 
-1. **THE SUM OF P CANNOT BE PRE-ACCUMULATED.** ``(D - P0) - P1`` and
+1. **The sum of P cannot be pre-accumulated.** ``(D - P0) - P1`` and
    ``D - (P0 + P1)`` are different float32 numbers — caught 20/20 on the two-pole
    cases, 0/10 at one pole, which is the right split for a multi-pole-only defect.
    The natural design (accumulate one "sum of P" volume, hand the kernel one extra
    input) is therefore WRONG, and it would also cost the extra full-volume pass this
    kernel exists to delete. Anyone reading only the docstring sentence "E = (D - sum
    P) * inv_eps" will write it; this paragraph is here so they do not.
-2. **THE POLE ORDER IS LOAD-BEARING**, and the pole SET IS PER COMPONENT.
+2. **The pole order is load-bearing**, and the pole set is per component.
    ``((D-P1)-P0)`` was caught 20/20 at two poles. ``PolarizationState._driven``
    (dispersion.py:640-642) drops any component whose sigma is identically zero, so
    Ex, Ey and Ez can each see a different subset in a different order; a plan that
    caches one pole list for all three components is wrong on any anisotropic-sigma
    material, and wrong SILENTLY — the field stays smooth and plausible.
-3. **THE ACCUMULATION IS ONE ADD OF THE DIFFERENCE.** MEEP's ``f[i] += X - Y;``
+3. **The accumulation is one add of the difference.** MEEP's ``f[i] += X - Y;``
    forms the right-hand side first, so the word is ``E + ((kps*src) - (kms*prev))``;
    the package's previous two separate accumulations ``(E + kps*src) - kms*prev`` are
    a different float32 number on most PML cells (that inversion is the gate's
@@ -64,7 +64,7 @@ commutative to the bit. The array path's operand order is kept for transcription
 discipline, and a gate leg that reports it "caught" is comparing something other
 than bytes.
 
-WHAT IT DOES NOT DO. ``update_E`` CONSUMES P and does not advance it — measured, P
+What it does not do. ``update_E`` CONSUMES P and does not advance it — measured, P
 untouched on 30/30 recon cases. ``update_P`` runs afterwards and reads ``f_w_E``
 through ``Fields.drive_field`` (fields.py:1140-1162), which under PML returns
 ``f_w_<c>`` and NOT the stored E. So this kernel's ``f_w`` store is precisely the
@@ -74,16 +74,16 @@ through global memory, and nothing about ``AdeUpdatePPlan`` changes.
 Sigma never enters here. It belongs to the ADE recurrence; do not add a clause for
 it to the predicate below.
 
-SUBNORMALS ARE THIS SUB-STEP'S OWN HAZARD, AND THE FLUSHING SIDE IS THE ARRAY PATH.
+Subnormals are this sub-step's own hazard, and the flushing side is the array path.
 ``D - sum P`` is a CANCELLATION between two nearly equal float32 volumes and is the
 only one of its kind in the step; ``(D - sum P) * inv_eps`` then underflows wherever
 the field is small. On the benchmark's own configuration (``2d_dispersive``, res 20,
 NumPy) the first subnormal in ``f_w_Ez`` — the array this kernel writes — appears at
-step 42, against the plan's measured Triton/CuPy divergence at step 40; the plain-PML
-control lands at 66 against a measured 67 (plan §16). The onset step IS the
+step 42, against the measured Triton/CuPy divergence at step 40; the plain-PML
+control lands at 66 against a measured 67 (both 2026-08-10). The onset step IS the
 divergence step.
 
-WHICH SIDE LEAVES IEEE WAS AN OPEN QUESTION AND IS NOW MEASURED, per operation, with
+Which side leaves IEEE was an open question and is now measured, per operation, with
 NumPy as the neutral reference (``results/.../logs/ftz_side.log``):
 
     subnormal results out of 256   numpy   cupy   triton
@@ -94,7 +94,7 @@ NumPy as the neutral reference (``results/.../logs/ftz_side.log``):
 **CuPy flushes float32 subnormals to zero; Triton and NumPy keep them.** So on this
 sub-step the kernel is the IEEE-correct side and the array path is not, and the byte
 gate's cancellation-class failures are the ARRAY PATH's departure, not a kernel
-defect. That settles which of plan §16's three ways out is the real one — (a), make
+defect. That settles which of the three proposed fixes is the real one — (a), make
 the array path stop flushing — and it does so without a claim about the kernels.
 
 The gate's verdict is therefore reported in TWO parts and never merged: 300/300
@@ -102,7 +102,7 @@ bit-identical on the ``uniform`` class (normal numbers, guarded) against 0/300
 unguarded, and 32/300 on the deliberately-seeded ``cancellation`` class. The
 unqualified words "bit-identical about a run" must not be used here.
 
-NOTHING HERE IS WIRED. ``plan_step`` does not know about this module, ``__init__``
+Nothing here is wired. ``plan_step`` does not know about this module, ``__init__``
 does not export it, and the engine's step path is untouched — integration waits for
 the shared files to be free. See the module's ``INTEGRATION`` note at the bottom.
 """
@@ -139,7 +139,7 @@ HALF_INTEGER = True
 # The kernel
 # ---------------------------------------------------------------------------
 #
-# TRITON IS IMPORTED CONDITIONALLY AND THE KERNEL IS DEFINED CONDITIONALLY.
+# Triton is imported conditionally and the kernel is defined conditionally.
 # `kernels.py` can import Triton at module scope because nothing imports it unless
 # a plan is being launched; this module is different — the coverage predicate below
 # is imported by tests that run on the laptop that is the merge bar, where Triton
@@ -208,7 +208,7 @@ if triton is not None:
         never read; a device array of pointers would move the count out of the
         compiled specialization, which is where the bit-exact unrolled order lives.
 
-        THE POLES ARE NOT PRE-SUMMED, and that is the whole design. See the module
+        The poles are not pre-summed, and that is the whole design. See the module
         docstring, control 1: ``D - (P0 + P1)`` is a different float32 number and was
         caught 20/20 at two poles.
         """
@@ -352,7 +352,7 @@ SHARED_CLAUSES: Tuple[str, ...] = (
 def dispersive_constitutive_coverage(fields: Any, pml: Any) -> "_coverage.Coverage":
     """May the Triton dispersive kernel step ``update_E`` for this (fields, pml) pair?
 
-    POSITIVE CLAUSES ONLY. Every requirement is named and checked; a failing clause
+    Positive clauses only. Every requirement is named and checked; a failing clause
     appends its reason and the scan continues, so a refusal reports everything that
     disqualified the run rather than the first thing.
 
@@ -371,8 +371,8 @@ def dispersive_constitutive_coverage(fields: Any, pml: Any) -> "_coverage.Covera
        would be wrong in the auxiliary even where it looked right in ``E``.
        (``_grid_reasons`` already requires it; the clause is repeated by name because
        the REASON is specific to this sub-step.)
-    b. **stored E.** Same invariant §13.1 turns on: ``update_E`` writes an array, it
-       does not serve ``D*inv_eps`` on demand.
+    b. **stored E.** The invariant the curl's dispersion admission rests on:
+       ``update_E`` writes an array, it does not serve ``D*inv_eps`` on demand.
     c. **no off-diagonal chi1inv.** The row product reads the OTHER components'
        volumes at neighbouring cells and the sub-step stops being element-wise
        (stepping.py:972-979).
@@ -390,7 +390,7 @@ def dispersive_constitutive_coverage(fields: Any, pml: Any) -> "_coverage.Covera
        which is how a wrong answer gets chosen at random. The two are DISJOINT by
        construction and a test pins it.
 
-    SIGMA IS NOT CHECKED HERE and must not be: it enters ``update_P``, never this
+    Sigma is not checked here and must not be: it enters ``update_P``, never this
     sub-step. :func:`coverage.ade_update_p_coverage` is where it belongs.
     """
     grid = getattr(fields, "grid", None)
@@ -502,9 +502,9 @@ def poles_per_component(fields: Any) -> Dict[str, Tuple[Any, ...]]:
 # ---------------------------------------------------------------------------
 
 class LivePoleBinding:
-    """The engine route's pole source: ``state.P[c]``, RESOLVED PER LAUNCH.
+    """The engine route's pole source: ``state.P[c]``, resolved per launch.
 
-    THIS CLASS EXISTS TO SAY WHY THAT IS NOT A CHOICE.
+    This class exists to say why that is not a choice.
     ``PolarizationState.update`` rotates ``P`` / ``P_prev`` / ``_scratch`` for every
     component on every step (dispersion.py:687-691): this step's result lands in
     ``_scratch``, ``_scratch`` takes over the array that held ``P_prev``, and
@@ -628,7 +628,7 @@ class DispersiveConstitutivePlan:
         """Launch the sub-step, in place. Same ``guard`` contract as the other plans.
 
         ``guard=None`` takes the shipped constant; the gate passes True/False
-        explicitly so the contraction guard's effect is MEASURED rather than assumed.
+        explicitly so the contraction guard's effect is measured rather than assumed.
         """
         from .kernels import ENABLE_FP_FUSION  # noqa: PLC0415
 
@@ -716,7 +716,7 @@ def plan_dispersive_constitutive_from_arrays(arrays: Dict[str, Any],
 
     ``kernel=`` IS LOAD-BEARING and is not decoration: the mutation leg routes a
     mutated kernel through it, and a builder that drops it launches the SHIPPED
-    kernel and reports a pass for a defect it never introduced (plan §13.4, measured
+    kernel and reports a pass for a defect it never introduced (measured
     at 4/4 real defects reported as 120/120 identical).
 
     ``chunk_bounds`` is REQUIRED and has no default, as in ``launch.plan_from_arrays``.
@@ -738,7 +738,7 @@ def plan_dispersive_constitutive_from_arrays(arrays: Dict[str, Any],
 
 
 # ---------------------------------------------------------------------------
-# INTEGRATION — what the later round has to do, and nothing more
+# Integration — what a later change has to do, and nothing more
 # ---------------------------------------------------------------------------
 #
 # Four additive edits, once the shared files are free (they are owned by the
@@ -748,8 +748,8 @@ def plan_dispersive_constitutive_from_arrays(arrays: Dict[str, Any],
 #                module's, not a second copy), and NARROW the clause at :339-343 so
 #                `constitutive_coverage(side="E")` refuses a polarization "HERE, and
 #                names this predicate" rather than refusing it flatly. The two must
-#                be disjoint and the file must SAY so, which is the per-sub-step rule
-#                §13.1 established.
+#                be disjoint and the file must SAY so: coverage is a set per sub-step,
+#                not per run.
 #   launch.py    `plan_step` gains ONE branch: where `constitutive_coverage(...,"E")`
 #                refuses and `dispersive_constitutive_coverage` admits, install
 #                `plan_dispersive_constitutive(fields, pml, block)` in the
@@ -760,5 +760,5 @@ def plan_dispersive_constitutive_from_arrays(arrays: Dict[str, Any],
 #                re-cut against the bytes the gate certified.
 #
 # Nothing in `stepping.py` changes and no dispatch is wired: the engine's fast-path
-# hook still returns None on every branch. The §14.1 whole-step rows are the
+# hook still returns None on every branch. The 2026-08-10 whole-step rows are the
 # regression test that the wiring changed nothing on the non-dispersive cases.

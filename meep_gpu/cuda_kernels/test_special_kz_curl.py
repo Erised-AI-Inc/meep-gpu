@@ -1,7 +1,7 @@
 """The special_kz (``grid.beta``) curl family: its predicate, its coefficient, its
 device text, and a behavioural leg that actually steps a grid.
 
-WHAT IS PINNED HERE AND WHAT IS NOT. The BYTE-IDENTITY VERDICT needs a device and
+What is pinned here and what is not. The BYTE-IDENTITY VERDICT needs a device and
 lives in ``parity/meep_gpu/gate_cuda_special_kz.py``. What this file pins is the
 half of the family's silent-failure surface a laptop can reach:
 
@@ -88,7 +88,7 @@ def test_admits_a_real_beta_run_at_every_sub_step(xp):
     """The configuration the corpus actually has: real storage, active PML, beta.
 
     Both curl sub-steps AND both constitutive sides, because they are separate
-    questions with separate answers -- the Metal track's tranche 6 ended with one
+    questions with separate answers -- an earlier stage of the Metal table ended with one
     row's two curls served and its two constitutive sides open.
     """
     fields, layer, grid = build(xp)
@@ -153,7 +153,7 @@ def test_refuses_off_diagonal_epsilon_family_wide(xp):
     fields._chi1inv_offdiagonal = {"Ex": {"Ey": row}}
     assert fields.has_offdiagonal_epsilon
 
-    # THE ORACLE REFUSES THIS RUN, measured rather than quoted: the array path's
+    # The oracle refuses this run, measured rather than quoted: the array path's
     # own beta term raises inside the first curl, so there is no such run to step.
     with pytest.raises(ValueError, match="needs complex fields"):
         stepping._special_kz_beta_term(
@@ -215,7 +215,7 @@ def test_the_fold_is_admitted_at_both_terminations(xp):
     termination (``TestSpecialKz.test_eigsrc_kz_1_real_imag``, stored 212 > owned
     211). The certified pair carries both fold masks since 2026-08-20 and the beta
     term reuses a CENTRE register the fold never touches, so admission is inherited
-    -- and the composition is MEASURED by the gate's folded arm, not argued here.
+    -- and the composition is measured by the gate's folded arm, not argued here.
     """
     for boundaries, phase in ((("periodic", "periodic", "periodic"), 1),
                               (("periodic", "metallic", "periodic"), 1),
@@ -239,7 +239,7 @@ def test_refuses_a_sub_step_name_it_does_not_serve(xp):
 
 
 def test_an_unreadable_grid_is_refused_not_admitted(xp):
-    """FAIL CLOSED. A raise escaping a predicate is a CRASHED RUN where a "no" was
+    """Fail closed. A raise escaping a predicate is a CRASHED RUN where a "no" was
     the correct answer."""
     fields, layer, grid = build(xp)
 
@@ -352,7 +352,7 @@ _PASS_LINE_PATTERNS = (
 
 @pytest.mark.parametrize("side", ["B", "D"])
 def test_kernel_is_the_certified_kernel_plus_exactly_the_beta_lines(side):
-    """THE ANTI-DRIFT TEST, and the reason this family is safe to read at all.
+    """The anti-drift test, and the reason this family is safe to read at all.
 
     Strip the comments and the fold ladder helper, delete the two beta passes and the
     two extra scalar parameters, rename the entry point -- and what is left must be
@@ -450,7 +450,7 @@ def gate():
 def test_the_transcribed_tree_steps_a_beta_grid_identically(gate, label, sub_step):
     """The device tree, in float32, against ``stepping`` itself -- uint32 words.
 
-    COMPILES NOTHING AND CERTIFIES NOTHING; the byte verdict is the device gate's.
+    Compiles nothing and certifies nothing; the byte verdict is the device gate's.
     What this settles at the merge bar is that the beta term's OPERAND, SIGN,
     SCALE and POSITION reproduce the array path on a real grid, folded and not.
     The case carries its own non-vacuity floors: the array path must have moved,
@@ -483,7 +483,7 @@ def test_a_planted_coefficient_defect_diverges(gate, mutation):
 @pytest.mark.parametrize("mutation", ["record_bound_off_by_one",
                                       "record_lattices_swapped"])
 def test_a_corrupted_chunk_record_diverges(gate, mutation):
-    """KERNELS.md section 7.2: the record the launch binds, corrupted while the
+    """The per-chunk form battery: the record the launch binds, corrupted while the
     oracle's division is untouched, must move a word -- the per-cell forms are chosen
     by the record and nothing else."""
     spec = next(s for s in gate.BETA_SPECS if s["label"] == "plain_metallic_xy")

@@ -1,6 +1,6 @@
 """The COMPLEX-BETA hand-CUDA fused pair on the D/E seam: the folded electric weld plus the beta insert.
 
-THE BOARD'S CELL: ``D_to_E (cuda_complex_beta/complex beta, cuda_complex_beta/
+The board's cell: ``D_to_E (cuda_complex_beta/complex beta, cuda_complex_beta/
 complex beta)`` -- 4 seam-instances of demand, 0 clearing the source seam
 before this product existed (``tests:TestEigCoeffs.test_binary_grating_special_
 kz_0_13_2``/``_1_17_7`` and ``tests:TestSpecialKz.test_eigsrc_kz_0_complex``,
@@ -8,13 +8,13 @@ all FOLDED; ``tests:TestSpecialKz.test_special_kz``, unfolded -- every one
 declares an ELECTRIC deposit inside this seam, ``eigsrc_kz_0_complex`` through
 its lifted eigenmode sheets). What this module is worth is the BRACKET
 (:data:`CARRIES_DEPOSIT_REPAIR`) plus the CARRY: it is the ELECTRIC TWIN of
-the 2026-09-02 :mod:`.complex_beta_fused_magnetic_pair`, landed in the residue
-round that priced it (fusion-residue audit §1.3: 12 electric-twin instances),
+the 2026-09-02 :mod:`.complex_beta_fused_magnetic_pair`, built the same day
+(an audit of the products earlier judged unbuildable counted 12 electric-twin instances),
 with the Metal electric twins as the CARRIES=True shape precedent.
 
-ONE LAUNCH PERFORMS THE SAME FIVE DRIVER PASSES as
-:mod:`.complex_folded_fused_electric_pair`, THROUGH THE SAME SHARED D-SIDE
-COMPLEX CARRY (:mod:`.complex_electric_fill_carry`), and that sharing is exact
+One launch performs the same five driver passes as
+:mod:`.complex_folded_fused_electric_pair`, through the same shared D-side
+complex carry (:mod:`.complex_electric_fill_carry`), and that sharing is exact
 rather than analogous: ``complex_beta_kernels.beta_source`` IS
 ``complex_folded_kernels.folded_source`` with MEEP's beta pass inserted after the curl
 of targets 0 and 1 (``folded_pass.complex_beta_insert``), and the pass touches no fill,
@@ -23,13 +23,13 @@ on is byte-identical across the two families. The pass rides through the capture
 targets 0 and 1's registers are the values the LADDER returns (``cfold_apply_reg``),
 because the fills and ``update_E`` read D after both passes.
 
-WHAT IS DIFFERENT, AND ONLY THIS: the curl body carries the two beta passes and the
+What is different, and only this: the curl body carries the two beta passes and the
 signature carries the two host-rounded beta coefficients (``bp``/``bm``, real float32
 words, the D side's own sign table -- ``beta_curl_coefficients(..., MAGNETIC['step_D'])``);
 the predicate conjoins the BETA family's two certified predicates, whose beta clause
 keeps this product disjoint from the folded electric pair and from every real-storage
-product. The chunk record ``cb`` is decoded ONCE for both halves (bit_parity_0_10
-DESIGN.md D10).
+product. The chunk record ``cb`` is decoded ONCE for both halves: one decode of
+the record per kernel.
 """
 
 from __future__ import annotations
@@ -119,7 +119,7 @@ except ImportError:  # loaded by path, outside the package
 
 
 # =============================================================================
-# THE PARTITION -- EMPTY ON THE CERTIFIED SIDE UNTIL A GATE MOVES IT
+# The partition -- empty on the certified side until a gate moves it
 # =============================================================================
 
 #: Byte-identical with a gate verdict AND a record behind it.
@@ -135,10 +135,10 @@ CERTIFIED_KERNELS = (
 #: EMPTY since 2026-09-02; what emptied it was the run above, not an argument.
 UNCERTIFIED_KERNELS = {}
 
-#: TRUE, MEASURED OFF THE CELL: all four rows declare an ELECTRIC deposit
+#: True, measured off the cell: all four rows declare an ELECTRIC deposit
 #: between ``step_D`` and ``update_E`` (three plain Sources, and
 #: ``eigsrc_kz_0_complex``'s lifted eigenmode SHEETS, which publish point
-#: indices -- the premise re-measured in the residue round). Without the
+#: indices -- the premise re-measured on 2026-09-02). Without the
 #: bracket this product would serve ZERO rows and with it the whole cell. The
 #: wiring is ``fused_pairs._install_fused_pair``'s; ``repairable()`` decides
 #: per run, and the fold clauses in ``_folded_seam_reasons`` are LIVE on the
@@ -232,7 +232,7 @@ def _split_emitted(source: str, name: str) -> Tuple[str, str]:
 #: ONCE.
 _SIGNATURE = r'''
 extern "C" __global__ void fused_electric_pair_pml_complex_beta(
-    // THE SHARED VOLUME, BOUND ONCE, as the float32 word view of complex64 D.
+    // The shared volume, bound once, as the float32 word view of complex64 D.
     float* __restrict__ f0, float* __restrict__ f1, float* __restrict__ f2,
     float* __restrict__ u0, float* __restrict__ u1, float* __restrict__ u2,
     // H, the curl's operands.
@@ -251,7 +251,7 @@ extern "C" __global__ void fused_electric_pair_pml_complex_beta(
     const float* __restrict__ kms_y, const float* __restrict__ sinv_y,
     const float* __restrict__ kms_z, const float* __restrict__ sinv_z,
     // The E constitutive's HALF-INTEGER coefficients, its kms renamed
-    // kms_half_*. THE PAIRING IS THE MIRROR IMAGE OF THE B/H SEAM'S.
+    // kms_half_*. The pairing is the mirror image of the B/H seam's.
     const float* __restrict__ kps_x, const float* __restrict__ kms_half_x,
     const float* __restrict__ kps_y, const float* __restrict__ kms_half_y,
     const float* __restrict__ kps_z, const float* __restrict__ kms_half_z,
@@ -261,7 +261,7 @@ extern "C" __global__ void fused_electric_pair_pml_complex_beta(
     int ph_x, int ph_y, int ph_z,
     float pxr, float pxi, float pyr, float pyi, float pzr, float pzi,
     // The two host-rounded beta coefficients, one per call-site sign, float32
-    // words. THE D SIDE'S OWN SIGN TABLE (beta_curl_coefficients(...,
+    // words. The D side's own sign table (beta_curl_coefficients(...,
     // MAGNETIC['step_D'])).
     float bp, float bm,
     // zero_metal_D's walled-axis flags.
@@ -270,7 +270,7 @@ extern "C" __global__ void fused_electric_pair_pml_complex_beta(
     int near_x, int near_y, int near_z,
     int reflect_x, int reflect_y, int reflect_z,
     float phase_x, float phase_y, float phase_z,
-    // THE CHUNK RECORD (chunk_map.chunk_bounds_record), int32[25], decoded once.
+    // The chunk record (chunk_map.chunk_bounds_record), int32[25], decoded once.
     const int* __restrict__ cb
 ) {
 '''
@@ -295,7 +295,7 @@ def complex_beta_fused_electric_pair_prelude() -> str:
 
 def union_bounds_block() -> str:
     """The fused kernel's ONE chunk-record block -- the folded electric weld's own
-    (the beta curl is the folded curl plus the beta passes; DESIGN.md D10)."""
+    (the beta curl is the folded curl plus the beta passes)."""
     from . import complex_folded_fused_electric_pair as _folded_pair  # noqa: PLC0415
 
     return _folded_pair.union_bounds_block()
@@ -414,7 +414,7 @@ def covers_complex_beta_fused_electric_pair(
     route, the source slot (carried) and the shared D-side complex fill
     clauses.
 
-    DISJOINT FROM EVERY SEAM SIBLING: the beta clause partitions it from the
+    Disjoint from every seam sibling: the beta clause partitions it from the
     folded and plain complex electric pairs (both inherit the certified complex
     predicate's beta refusal), complex64 storage from the real products, and
     the Dcyl refusal (inherited) from the cylindrical ones.
@@ -428,7 +428,7 @@ def covers_complex_beta_fused_electric_pair(
     if not covered:
         return False, f"constitutive half: {reason}"
 
-    # THE INJECTION ROUTE, REFUSED BY NAME -- the complex electric pair's own
+    # The injection route, refused by name -- the complex electric pair's own
     # clause; the complex halves admit a conductivity by name, so it cannot be
     # inherited from a half.
     if getattr(fields, "has_conductivity", False):
@@ -438,7 +438,7 @@ def covers_complex_beta_fused_electric_pair(
                        "which rescales the increment by condinv; the deposit "
                        "repair has no verdict on that route")
 
-    # THE SOURCE SEAM, CARRIED RATHER THAN REFUSED (CARRIES_DEPOSIT_REPAIR).
+    # The source seam, carried rather than refused (CARRIES_DEPOSIT_REPAIR).
     seam = _deposit_repair.seam_source_reasons(
         fields, sources, 'D',
         undeclared=(
@@ -455,8 +455,8 @@ def covers_complex_beta_fused_electric_pair(
     if fill is not None:
         return False, fill
 
-    # THE THREE INVERSE-PERMITTIVITY VOLUMES MUST BE ASKABLE AND MATCH THE
-    # SHAPE THIS LAUNCH WALKS.
+    # The three inverse-permittivity volumes must be askable and match the
+    # shape this launch walks.
     try:
         extents = tuple(int(n) for n in fields.Dx.shape)
     except Exception as exc:  # noqa: BLE001
@@ -621,7 +621,7 @@ def run_complex_beta_fused_electric_pair(
     codes, refusal = _folded.folded_complex_boundary_codes(grid)
     if refusal is not None:
         return {"launched": False, "reason": refusal}
-    # THE BACKWARD PHASE TABLE: `True` is the step_D sub-step's own conjugation.
+    # The backward phase table: `True` is the step_D sub-step's own conjugation.
     flags, values = bloch_phase_arguments(grid, True)
     return launch_complex_beta_fused_electric_pair(
         fields, tables, codes, flags, values, beta_coefficients(grid),

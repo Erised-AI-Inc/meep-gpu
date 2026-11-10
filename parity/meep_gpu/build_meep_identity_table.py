@@ -4,9 +4,9 @@
 
     python parity/meep_gpu/build_meep_identity_table.py --archive DIR --manifest FILE
         [--context-l2 ROWS.jsonl] [--set mac_keep ...] --out-md FILE [--out-json FILE]
-        [--title TEXT] [--provenance TEXT]
+        [--title TEXT] [--provenance TEXT] [--evidence ROW=TEXT ...]
 
-WHAT THE TABLE SAYS. Table 2 used to report one relative L2 per corpus row: the lifted
+What the table says. Table 2 used to report one relative L2 per corpus row: the lifted
 array path against MEEP, stepped on the same simulation. It now reports words: for every
 row and every reference (a host and a subnormal mode) the number of compared stored words
 (W) and ``get_array`` words (V), and how many of each differ from MEEP's at every compared
@@ -33,13 +33,24 @@ host's MEEP is still the reference its own row is judged against.
 
 Nothing is transcribed: every count comes from the records, and a row a record lacks is
 printed as not run, with the record's reason.
+
+A reason that cites private evidence. A record's free-text reason (an exclusion, a
+refusal, a problem) may cite the certification round's own evidence by its path, which never ships.
+The table writes such a reason with each parenthesis that holds a citation replaced by a
+neutral description (:func:`neutral_reason`): :data:`EVIDENCE`, or what that evidence
+measured as the caller states it for the row (``--evidence ROW=TEXT``). A citation is
+what the hygiene guard (``tools/ci/check_hygiene.py``) refuses as a private evidence
+path, read by the guard's own rules. The ``--out-json`` table keeps each row's record
+as the record has it.
 """
 
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import os
+import re
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -52,6 +63,50 @@ if ROOT not in sys.path:
 SCHEMA = "meep_gpu.meep_identity_table"
 VERSION = 1
 ARCHIVE_FILE = "meep_identity_tier_b.json"
+#: What a reason's citation of a certification round's private evidence is written as, by default.
+EVIDENCE = "evidence in the certification round's records, not shipped"
+_PARENTHESIS = re.compile(r"\([^()]*\)")
+_GUARD: List[Any] = []
+
+
+def _guard() -> Any:
+    """The hygiene guard, ``tools/ci/check_hygiene.py``, loaded once from this tree."""
+    if not _GUARD:
+        path = os.path.join(ROOT, "tools", "ci", "check_hygiene.py")
+        spec = importlib.util.spec_from_file_location("_meep_identity_table_hygiene", path)
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = module
+        spec.loader.exec_module(module)
+        _GUARD.append(module)
+    return _GUARD[0]
+
+
+def evidence_spans(text: str) -> List[Tuple[int, int]]:
+    """Where ``text`` cites a certification round's private evidence, by the guard's own rules."""
+    guard = _guard()
+    rules = guard.Rules(salt="")
+    spans = [(start, end) for start, end, klass, _rule in guard.scan_text(rules, text, {})
+             if klass == guard.PRIVATE]
+    return sorted(spans + [(start, end) for start, end, _k, _r in guard.scan_home_relative(text)])
+
+
+def neutral_reason(text: str, description: str = EVIDENCE) -> str:
+    """``text`` with every parenthesis that cites private evidence written as
+    ``(description)``, and a citation outside any parenthesis as ``description``."""
+    spans = evidence_spans(text)
+    if not spans:
+        return text
+    pieces, last = [], 0
+    for match in _PARENTHESIS.finditer(text):
+        if any(match.start() <= start < match.end() for start, _end in spans):
+            pieces += [text[last:match.start()], f"({description})"]
+            last = match.end()
+    out = "".join(pieces) + text[last:]
+    for start, end in sorted(evidence_spans(out), reverse=True):
+        token_start = out.rfind(" ", 0, start) + 1
+        token_end = min([i for i in (out.find(" ", end), len(out)) if i >= 0])
+        out = out[:token_start] + description + out[token_end:]
+    return out
 
 
 def _n(value: Any) -> str:
@@ -149,7 +204,13 @@ def source_class(facts: Dict[str, Any]) -> str:
 
 
 def build(archive: Path, manifest: Dict[str, Any], set_names: List[str],
-          context: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
+          context: Dict[str, Dict[str, Any]],
+          evidence: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
+    evidence = evidence or {}
+
+    def reason(label: str, text: str) -> str:
+        return neutral_reason(text, evidence.get(label, EVIDENCE))
+
     record = json.loads((archive / ARCHIVE_FILE).read_text(encoding="utf-8"))
     sets = record["sets"]
     names = set_names or sorted(sets)
@@ -169,7 +230,7 @@ def build(archive: Path, manifest: Dict[str, Any], set_names: List[str],
             row = sets[name]["rows"].get(label)
             entry["sets"][name] = row
             if row and row.get("excluded"):
-                entry["excluded"] = row["excluded"]
+                entry["excluded"] = reason(label, row["excluded"])
         ctx = context.get(label) or {}
         entry["context_l2"] = ctx.get("parity_rel_l2")
         entry["context_error"] = ctx.get("error")
@@ -203,16 +264,19 @@ def build(archive: Path, manifest: Dict[str, Any], set_names: List[str],
                 counts["refused"].append((entry["label"], "no record"))
                 continue
             if row.get("excluded"):
-                counts["excluded"].append((entry["label"], row["excluded"], row["status"]))
+                counts["excluded"].append((entry["label"], reason(entry["label"], row["excluded"]),
+                                           row["status"]))
                 continue
             if row["status"] == "holds":
                 counts[entry["kind"]]["holds"] += 1
                 counts["stored_words_held"] += int(row["stored"]["words"])
                 counts["reader_words_held"] += int(row["reader"]["words"])
             elif row["status"] == "refused":
-                counts["refused"].append((entry["label"], short_reason((row.get("problems") or ["?"])[0], 200)))
+                counts["refused"].append((entry["label"], short_reason(
+                    reason(entry["label"], (row.get("problems") or ["?"])[0]), 200)))
             else:
-                counts[row["status"]].append((entry["label"], (row.get("problems") or ["?"])[0][:300]))
+                counts[row["status"]].append((entry["label"], reason(
+                    entry["label"], (row.get("problems") or ["?"])[0])[:300]))
         summary[name] = counts
     l0 = {}
     for entry in table:
@@ -354,9 +418,19 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--out-json", dest="out_json")
     parser.add_argument("--title", default="Table 2: MEEP identity on the corpus")
     parser.add_argument("--provenance", default="")
+    parser.add_argument("--evidence", action="append", default=[], metavar="ROW=TEXT",
+                        help="what the private evidence a row's reason cites measured, "
+                             "written in place of the citation")
     arguments = parser.parse_args(argv)
+    evidence = {}
+    for item in arguments.evidence:
+        label, sep, text = item.partition("=")
+        if not sep or not label or not text.strip():
+            parser.error(f"--evidence takes ROW=TEXT, not {item!r}")
+        evidence[label] = text.strip()
     manifest = json.loads(Path(arguments.manifest).read_text(encoding="utf-8"))
-    table = build(Path(arguments.archive), manifest, arguments.sets, read_context(arguments.context_l2))
+    table = build(Path(arguments.archive), manifest, arguments.sets, read_context(arguments.context_l2),
+                  evidence)
     Path(arguments.out_md).write_text(render(table, arguments.title, arguments.provenance), encoding="utf-8")
     if arguments.out_json:
         Path(arguments.out_json).write_text(json.dumps(table, indent=1, sort_keys=True, default=str) + "\n",

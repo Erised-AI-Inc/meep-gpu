@@ -8,8 +8,8 @@ failure:
 
 1. ``shipped_options`` — the option tuple CuPy ACTUALLY hands NVRTC for a
    ``cp.RawKernel`` built with ``step_curl_kernels._COMPILE_OPTIONS``. Captured by
-   wrapping ``cupy.cuda.compiler.compile_using_nvrtc`` (the seam
-   ``subnormal_policy`` strips at) and calling through. Also reads each compiled
+   wrapping CuPy's NVRTC front end (:func:`nvrtc_front_end`: ``compile_using_nvrtc``
+   on CuPy 13, the seam ``subnormal_policy`` strips at) and calling through. Also reads each compiled
    kernel's ``num_regs`` / ``local_size_bytes`` / ``shared_size_bytes``, which is
    the direct counterpart of Triton's ``n_regs`` / ``n_spills`` / ``shared``.
 2. ``cuda_ptx`` — real PTX for all fourteen registered kernels under four option
@@ -29,7 +29,7 @@ failure:
    live module rather than asserted here) and CuPy's source-keyed disk cache.
 6. ``occupancy`` — the launch geometry each track picks, side by side.
 
-NOTHING HERE MUTATES THE TREE. It imports ``meep_gpu`` read-only.
+Nothing here mutates the tree. It imports ``meep_gpu`` read-only.
 
 Usage (compile-only sections need a VISIBLE device to read the architecture off but
 no FREE one; sections 1, 3-run and 4 need it free)::
@@ -203,6 +203,26 @@ def _cupy_include() -> str:
 # section 1 — what CuPy actually passes, and what the compiled kernel costs
 # ---------------------------------------------------------------------------
 
+def nvrtc_front_end(cupy_compiler: Any) -> str:
+    """The NVRTC compiler front end CuPy's compile path calls, by name.
+
+    Read off the compile path's own code by ``meep_gpu.backends.compiler_front_ends``,
+    the seam the package's compile guard and ``keep`` strip install at:
+    ``compile_using_nvrtc`` on CuPy 13, ``_compile_using_nvrtc_no_warning`` on CuPy 14
+    (whose public ``compile_using_nvrtc`` hands over to it). A spy set on any other
+    name installs and is never called, so a seam that cannot be located is a refusal.
+    """
+    from meep_gpu import backends  # noqa: PLC0415
+
+    front_ends, problem = backends.compiler_front_ends(cupy_compiler)
+    nvrtc = [name for name in front_ends if "nvrtc" in name]
+    if problem or len(nvrtc) != 1:
+        raise RuntimeError(
+            "the NVRTC front end of CuPy's compile path cannot be located: "
+            + (problem or f"the front ends read are {list(front_ends)}"))
+    return nvrtc[0]
+
+
 def section_shipped_options(results: Dict[str, Any]) -> None:
     import cupy as cp  # noqa: PLC0415
     from cupy.cuda import compiler as cupy_compiler  # noqa: PLC0415
@@ -210,7 +230,8 @@ def section_shipped_options(results: Dict[str, Any]) -> None:
     from meep_gpu.cuda_kernels import step_curl_kernels as sck  # noqa: PLC0415
 
     captured: List[Dict[str, Any]] = []
-    original = cupy_compiler.compile_using_nvrtc
+    seam = nvrtc_front_end(cupy_compiler)
+    original = getattr(cupy_compiler, seam)
 
     def spy(source, options=(), *args, **kwargs):
         captured.append({
@@ -223,10 +244,10 @@ def section_shipped_options(results: Dict[str, Any]) -> None:
     out: Dict[str, Any] = {
         "module_compile_options": list(sck._COMPILE_OPTIONS),
         "cupy_version": cp.__version__,
-        "seam": "cupy.cuda.compiler.compile_using_nvrtc",
+        "seam": f"cupy.cuda.compiler.{seam}",
         "kernels": {},
     }
-    cupy_compiler.compile_using_nvrtc = spy
+    setattr(cupy_compiler, seam, spy)
     try:
         for name, is_complex, _attr, entry in CUDA_KERNELS:
             before = len(captured)
@@ -252,7 +273,7 @@ def section_shipped_options(results: Dict[str, Any]) -> None:
                 f"smem={record.get('shared_size_bytes')} "
                 f"nvrtc_calls={len(record['nvrtc_calls'])}")
     finally:
-        cupy_compiler.compile_using_nvrtc = original
+        setattr(cupy_compiler, seam, original)
 
     tuples = [tuple(c["options"]) for c in captured]
     out["distinct_option_tuples"] = [list(t) for t in sorted(set(tuples))]
@@ -292,7 +313,7 @@ def section_cuda_ptx(results: Dict[str, Any], ptx_dir: Optional[str]) -> None:
         if shipped is None:
             shipped = tuples[0]
 
-    # READ FROM THE DEVICE, ONCE, AND RECORDED AS WHAT WAS COMPILED. An unreadable
+    # Read from the device, once, and recorded as what was compiled. An unreadable
     # device raises out of this section and ``main`` records it under
     # ``section_errors``: a census of an architecture this run never opened is a
     # false result, not a partial one.
@@ -375,7 +396,7 @@ def section_micro_ops(results: Dict[str, Any], ptx_dir: Optional[str]) -> None:
     import cupy as cp  # noqa: PLC0415
 
     shipped = results.get("cuda_ptx", {}).get("shipped_tuple")
-    # THIS SECTION'S OWN READ, not ``cuda_ptx``'s. It runs independently
+    # This section's own read, not ``cuda_ptx``'s. It runs independently
     # (``--sections micro_ops``), and a section that recorded the architecture of a
     # section that did not run would be recording a guess.
     arch = ptx_arch()
@@ -415,13 +436,14 @@ def section_micro_ops(results: Dict[str, Any], ptx_dir: Optional[str]) -> None:
     # installed at the seam ``subnormal_policy`` uses (= the ``keep`` policy).
     from cupy.cuda import compiler as cupy_compiler  # noqa: PLC0415
 
-    original_compile = cupy_compiler.compile_using_nvrtc
+    seam = nvrtc_front_end(cupy_compiler)
+    original_compile = getattr(cupy_compiler, seam)
 
     def stripped(source, options=(), *args, **kwargs):
         filtered = tuple(o for o in tuple(options) if o not in ("-ftz=true", "--ftz=true"))
         return original_compile(source, filtered, *args, **kwargs)
 
-    # THE THIRD LEG IS THE POINT. CuPy's cache key is computed ABOVE the seam the
+    # The third leg is the point. CuPy's cache key is computed ABOVE the seam the
     # strip installs at, so the identical-source leg is served leg 1's flushed
     # cubin even with the strip active and the in-process memo cleared — the
     # ``keep`` policy's mandatory policy-suffixed CUPY_CACHE_DIR exists for exactly
@@ -435,7 +457,7 @@ def section_micro_ops(results: Dict[str, Any], ptx_dir: Optional[str]) -> None:
     )
     try:
         for label, options, strip, suffix in device_legs:
-            cupy_compiler.compile_using_nvrtc = stripped if strip else original_compile
+            setattr(cupy_compiler, seam, stripped if strip else original_compile)
             cp.clear_memo()
             guard = tuple(options) + (("+strip -ftz=true",) if strip else ())
             module = cp.RawModule(code=_MICRO_SOURCE + suffix, options=tuple(options))
@@ -470,7 +492,7 @@ def section_micro_ops(results: Dict[str, Any], ptx_dir: Optional[str]) -> None:
         out["device"]["error"] = f"{type(exc).__name__}: {exc}"[:400]
         log(f"[micro-run] FAILED {type(exc).__name__}: {exc}")
     finally:
-        cupy_compiler.compile_using_nvrtc = original_compile
+        setattr(cupy_compiler, seam, original_compile)
         cp.clear_memo()
 
     # The array path's own negation, for the same needles: this is what a hand-CUDA
@@ -673,6 +695,7 @@ extern "C" __global__ void stale_probe_renamed(float* out, int n) {
 
 
 def section_cache(results: Dict[str, Any]) -> None:
+    import neutral_ids  # noqa: PLC0415
     import cupy as cp  # noqa: PLC0415
 
     from meep_gpu.cuda_kernels import step_curl_kernels as sck  # noqa: PLC0415
@@ -691,7 +714,7 @@ def section_cache(results: Dict[str, Any]) -> None:
             "same_name_body_1": run(_STALE_A, "stale_probe"),
             "same_name_body_2": run(_STALE_B, "stale_probe"),
             "renamed_same_body": run(_STALE_C, "stale_probe_renamed"),
-            "cache_dir": os.environ.get("CUPY_CACHE_DIR", "<unset>"),
+            "cache_dir": neutral_ids.path(os.environ.get("CUPY_CACHE_DIR", "<unset>")),
         }
         got = out["cupy_disk_cache_is_source_keyed"]
         got["stale_binary_served"] = bool(got["same_name_body_1"] == got["same_name_body_2"])
@@ -701,9 +724,9 @@ def section_cache(results: Dict[str, Any]) -> None:
     # The kernel module's own memo: does a source edit WITHOUT a clear get served
     # the old binary? The key is read out of the live module rather than asserted
     # here — it was ``(name, is_complex)`` until 2026-08-15 and is now
-    # ``(name, is_complex, options, policy, source)`` (disposition §1.2), and a
-    # hardcoded label would have this artifact carry the pre-fix key beside a
-    # post-fix measurement. Under the new key ``served_stale`` is False by
+    # ``(name, is_complex, options, policy, source)``, so a policy change is a new
+    # entry, and a hardcoded label would have this artifact carry the pre-fix key
+    # beside a post-fix measurement. Under the new key ``served_stale`` is False by
     # construction; under the old one it was True. Both are recorded the same way.
     try:
         sck._clear_kernel_cache()

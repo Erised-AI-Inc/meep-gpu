@@ -38,7 +38,7 @@ store hoisted above the earlier arms' loads — a host model of the reordering, 
 worst absolute difference of 4.0e-01 on values of order 1e-1.  A hoist would not
 perturb the answer, it would destroy it.
 
-WHY IT IS CORRECT HERE.  Every arm loads and stores at the SAME ``idx`` and under
+Why it is correct here.  Every arm loads and stores at the SAME ``idx`` and under
 the same ``live`` mask (both computed once, above the arms).  The aliasing pair is
 therefore index-identical, which confines it to a single lane: it is a write-after-
 read on one address by one thread, never a cross-program-instance race.  Distinct
@@ -49,7 +49,7 @@ This is the benign alias class, and it is a different animal from the one
 — those kernels re-read their inputs at NEIGHBOUR offsets, so an alias there makes
 the answer depend on block schedule.
 
-WHAT THAT SAFETY RESTS ON — AN OBSERVATION, NOT A GUARANTEE.  Say it plainly: no
+What that safety rests on — an observation, not a guarantee.  Say it plainly: no
 document promises this.  Two links in the argument are measured properties of one
 toolchain rather than contracts.
 
@@ -74,7 +74,7 @@ toolchain rather than contracts.
     order=[0]}>`` for every load and store with no ``convert_layout`` anywhere.
     That is an observation on a neighbouring kernel, not a rule.
 
-WHAT WAS ACTUALLY MEASURED.  ``parity/meep_gpu/results/triton_fused_ade_state_
+What was actually measured.  ``parity/meep_gpu/results/triton_fused_ade_state_
 2026-08-11/`` — 3/3 cases, 36/36 complete steps bit-identical against BOTH the array
 path and a separate per-component Triton ADE (three launches, so the oracle itself
 carries no intra-launch alias).  Triton 3.1.0, CuPy 13.5.1, NVIDIA RTX A6000,
@@ -85,7 +85,7 @@ one architecture, one block size, one layout.
 pins the chain by asserting ``(args[0], args[5], args[10]) == (S, B_Ex, B_Ey)``,
 which IS this aliasing — but it pins it as a rotation, and never names it a hazard.
 
-WHAT WOULD BREAK IT.
+What would break it.
 
   * A Triton release that marks kernel pointer arguments ``noalias``.  It would be
     a legitimate optimization under a language contract that forbids aliasing

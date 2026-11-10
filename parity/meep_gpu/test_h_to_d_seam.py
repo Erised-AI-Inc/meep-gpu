@@ -223,7 +223,7 @@ def test_a_product_spanning_the_seam_stops_the_walk_until_the_board_files_its_ro
 
 # --- the served branch, driven on a synthetic product ---------------------------------
 #
-# NO PRODUCT SPANS update_H+step_D IN THE TREE, so no board can drive this branch and
+# No product spans update_H+step_D in the tree, so no board can drive this branch and
 # a rule nothing drives is a rule nothing has shown can fire. The fixture below is the
 # smallest thing that stands in for one: three rows, a named spanning product, and the
 # board's own per-row verdict. It lives here and not under ``results/`` — a synthetic
@@ -368,7 +368,7 @@ def test_a_served_row_whose_update_H_launches_nothing_is_a_contradiction(monkeyp
 
 # --- the third answer: a credit withheld, on the same synthetic product ----------------
 #
-# THE TRITON TABLE (CREDIT_WITHHELD_STALE_BINDING) IS EMPTY, so no board can drive this
+# The Triton table (CREDIT_WITHHELD_STALE_BINDING) is empty, so no board can drive this
 # branch either. What it stands in for: a product whose predicate ADMITS the row and
 # whose release binding is stale, so the board will not CREDIT it. That verdict has to
 # be a third per-row answer beside served_by = name / None — `served_by: None` would say
@@ -485,7 +485,7 @@ def test_a_withheld_credit_on_a_withdraw_row_keeps_its_licence_and_its_measureme
                                  "metal_kernels", served_by=PRODUCT,
                                  credit_withheld=REASON)
     assert clean[1] == detail[1]
-    # AND THE LICENCE IS STILL OWED. The refusal stays keyed on `served_by`, and
+    # And the licence is still owed. The refusal stays keyed on `served_by`, and
     # withholding does not bypass it: the row becomes served the moment the table
     # entry is deleted, so better it fails now than then.
     with pytest.raises(SystemExit, match="served_over_the_withdraw") as raised:
@@ -526,7 +526,7 @@ def test_a_withheld_row_whose_update_H_launches_nothing_is_a_contradiction(monke
 
 
 def test_a_none_or_absent_credit_withheld_is_credited(monkeypatch):
-    # THE NO-MOVE PROOF IN MINIATURE: an explicit None and an absent key price
+    # The no-move proof in miniature: an explicit None and an absent key price
     # identically, and identically to the credited run on every pre-existing key —
     # which is what keeps the rule a no-op on every board while the table is empty.
     _t0, absent = _priced(monkeypatch, _entries())
@@ -615,6 +615,47 @@ def test_a_withdraw_instance_off_the_seam_or_without_its_sources_is_refused():
                      ("b", "buildable_not_built", {})])
     with pytest.raises(SystemExit, match="name no integrated electric source"):
         taxonomy.finish(served_expected=4, served_expected_source="test")
+
+
+# --- the driver's command line --------------------------------------------------------
+
+
+def test_the_interpreter_remap_reaches_the_census_driver_on_every_leg(tmp_path, monkeypatch):
+    """A host without a lift record's interpreter cuts the probe with the census
+    driver's own remap; without it the driver refuses those rows by name."""
+    commands = []
+
+    def fake_run(command, **_kw):
+        commands.append([str(part) for part in command])
+        # the legs succeed; the parameterised-row match stops the run before the join
+        failed = any(str(part).endswith("match_param_rows.py") for part in command)
+        return type("Done", (), {"returncode": 3 if failed else 0})()
+
+    monkeypatch.setattr(probe.subprocess, "run", fake_run)
+    rc = probe.main(["--out", str(tmp_path), "--leg", "examples", "--leg", "tests",
+                     "--interpreter", "/recorded/a/python=/here/python",
+                     "--interpreter", "/recorded/b/python=/here/python"])
+    assert rc == 3
+    legs = [c for c in commands if c[2].endswith("measure_predicate_coverage.py")]
+    assert [c[c.index("--leg") + 1] for c in legs] == ["examples", "tests"]
+    for command in legs:
+        pairs = [command[i + 1] for i, part in enumerate(command) if part == "--interpreter"]
+        assert pairs == ["/recorded/a/python=/here/python",
+                         "/recorded/b/python=/here/python"], command
+    log = (tmp_path / "probe.log").read_text()
+    assert "--interpreter /recorded/a/python=/here/python" in log
+    # Without the option the driver is given none, as before.
+    commands.clear()
+    probe.main(["--out", str(tmp_path / "plain"), "--leg", "examples"])
+    assert "--interpreter" not in commands[0]
+
+
+def test_a_malformed_interpreter_remap_is_refused_before_any_leg(tmp_path, monkeypatch):
+    monkeypatch.setattr(probe.subprocess, "run", lambda *a, **k: pytest.fail("ran a leg"))
+    for bad in ("/recorded/python", "=/here/python", "/recorded/python="):
+        with pytest.raises(SystemExit) as caught:
+            probe.main(["--out", str(tmp_path), "--interpreter", bad])
+        assert caught.value.code == 2
 
 
 # --- the artifact --------------------------------------------------------------------

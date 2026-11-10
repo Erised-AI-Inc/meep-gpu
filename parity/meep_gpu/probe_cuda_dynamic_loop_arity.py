@@ -2,7 +2,7 @@
 
 Subject and rationale: :mod:`cuda_dynamic_loop_arity`. This file is the runner.
 
-WHAT IT MEASURES, in the order it measures it:
+What it measures, in the order it measures it:
 
 1. ``ptx``            - NVRTC PTX for every variant at every swept arity, with a
                         census: does the dynamic kernel really contain a LOOP
@@ -13,8 +13,8 @@ WHAT IT MEASURES, in the order it measures it:
                         device to read the architecture off (``ptx_arch``) -- still
                         no FREE device and no CUDA context.
 
-                        ONE CAVEAT, MEASURED RATHER THAN ASSUMED, AND IT LIMITS
-                        WHAT THIS SECTION LICENSES. This section compiles under
+                        One caveat, measured rather than assumed, and it limits
+                        what this section licenses. This section compiles under
                         OUR option tuple alone. ``cupy.RawKernel`` -- the path
                         section 2 launches through -- appends more, and the
                         addition that matters is ``-ftz=true``. Measured on
@@ -44,7 +44,7 @@ WHAT IT MEASURES, in the order it measures it:
                         the same host arrays. A verdict from one launch cannot
                         distinguish "identical" from "identical this once".
 
-EVERY LEG CARRIES ITS OWN FLOORS AND WILL FAIL RATHER THAN PASS VACUOUSLY:
+Every leg carries its own floors and will fail rather than pass vacuously:
 
 * ``moved_fraction`` >= ``MOVED_WORD_FLOOR`` for every launch of every variant.
   Zero-init is a fixed point of this sub-step, so two kernels that wrote nothing
@@ -185,7 +185,7 @@ def ptx_census(text: str) -> Dict[str, Any]:
             backward += 1
         else:
             forward += 1
-    # THE ROUNDING MODE IS IN THE OPCODE and the first cut of this census forgot
+    # The rounding mode is in the opcode and the first cut of this census forgot
     # it: NVRTC emits `sub.rn.f32`, not `sub.f32`, so `\bsub\.f32\b` matched
     # nothing and the leg reported zero float arithmetic in a kernel full of it.
     # A census that reads zero for everything looks exactly like a census of a
@@ -244,7 +244,7 @@ def section_ptx(results: Dict[str, Any], ptx_dir: Optional[str],
             "the association-order question, which is what this gate measures."),
         "census": {}, "errors": [], "failures": []}
 
-    # THE ARCHITECTURE IS READ ONCE, HERE, AND RECORDED AS WHAT WAS COMPILED. A
+    # The architecture is read once, here, and recorded as what was compiled. A
     # failure is an ERROR row rather than a raised exception because this module's
     # ``main`` runs the byte verdict after this section and writes the artifact at
     # the end: losing a completed device leg to an unreadable identity would be the
@@ -258,7 +258,7 @@ def section_ptx(results: Dict[str, Any], ptx_dir: Optional[str],
             f"({type(error).__name__}: {error}); a census compiled under a typed "
             f"architecture would describe a card this run never opened")
         out["ok"] = False
-        log(f"   PTX ARCH UNREADABLE: {type(error).__name__}: {error}")
+        log(f"   PTX arch unreadable: {type(error).__name__}: {error}")
         results["ptx"] = out
         return
     out["arch"] = arch
@@ -325,7 +325,7 @@ def section_ptx(results: Dict[str, Any], ptx_dir: Optional[str],
 def _device_state(case: Dict[str, Any]) -> Dict[str, Any]:
     """One fresh device copy of a case's host arrays.
 
-    FRESH PER LAUNCH, always. The sub-step is in place -- it overwrites E and
+    Fresh per launch, always. The sub-step is in place -- it overwrites E and
     f_w_E -- so a second launch on the first launch's buffers would be measuring
     a different input. That is the "stale cached pointer" false-pass class this
     project has hit before.
@@ -399,7 +399,7 @@ def launch(variant: str, case: Dict[str, Any], device: Dict[str, Any]) -> None:
         args = fields + poles + (device["trips"],
                                  shape[0], shape[1], shape[2]) + tables + (device["cb"],)
     else:
-        # A DEVICE ARRAY OF POINTERS per component. This is the indirection a
+        # A device array of pointers per component. This is the indirection a
         # runtime arity forces; eight named arguments cannot be indexed by p.
         tables_of_pointers = []
         for prefix in ("Px", "Py", "Pz"):

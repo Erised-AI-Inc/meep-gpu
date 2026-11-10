@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""ONE TAXONOMY FOR THE THREE FUSION BOARDS — the shared bucket names, the three
+"""One taxonomy for the three fusion boards — the shared bucket names, the three
 tiers, and the floors that make both refusable.
 
-WHY THIS FILE EXISTS. Metal, Triton and CUDA price the SAME seam-instances (597 since
+Why this file exists. Metal, Triton and CUDA price the SAME seam-instances (597 since
 the H->D seam was priced on 2026-09-04; 403 from the 2026-09-03 basis extension to
 then, 387 before it) and until 2026-09-02 priced them under
 three different bucket vocabularies, three different ceiling definitions and two
@@ -14,14 +14,14 @@ compared or summed honestly. The release decision was to reconcile them to one
 taxonomy and to introduce a denominator that counts the seams actually DESIRABLE to
 fuse rather than seams writ large.
 
-THIS MODULE IS THE ONE PLACE THE VOCABULARY LIVES. A board classifies its own
+This module is the one place the vocabulary lives. A board classifies its own
 instances — it is the only thing that can, since the evidence is per-backend — and
 hands each one to :meth:`Taxonomy.add` under one of the eight names below, WITH the
 board's own prose kept as the sub-reason. Three boards importing one name list is
 what stops a fourth vocabulary from growing back: a bucket name not in
 :data:`BUCKETS` raises here rather than appearing in a headline.
 
-THE SUB-REASON IS NOT DECORATION. The "why" text on these boards is the most
+The sub-reason is not decoration. The "why" text on these boards is the most
 valuable thing on them — it is where the measurement lives ("MEASURED by
 perturbation on the array path", "the constitutive arm is a STENCIL over the curl
 arm's in-place output", "the composer selects no arm at update_E"). A
@@ -30,7 +30,7 @@ dressed as a gain. So every instance carries its board's own sentence into the
 report, counted, under the reconciled bucket.
 
 --------------------------------------------------------------------------------
-THE FOUR SEAMS
+The four seams
 --------------------------------------------------------------------------------
 
 The driver's timestep (``driver.py``, ``step()``) has four boundaries a fused launch
@@ -44,14 +44,14 @@ could cross, and every one is priced on every row that has it:
           seam exists only on a row carrying a susceptibility.
 ``H->D``  update_H -> step_D, the magnetic constitutive into the ELECTRIC CURL — the
           boundary that closes the loop and that no board priced until 2026-09-04
-          (the fusion-residue audit's §2 "never priced" finding). Exactly ONE pass
+          (an audit of the boards found it had never been priced). Exactly ONE pass
           sits inside it, and only where H is stored: the integrated magnetic
           sources' ``f_minus_p`` restore (``sources.f_minus_p_end``), which writes B
           alone and which the curl does not read. No injection, no fill of D, no wall
           clear, and no withdraw: an integrated source enters at the constitutive
           update through ``f_minus_p``. It is read off ``driver.py`` at cut time by
           ``h_to_d_seam.driver_seam_fact`` and refused if anything else appears
-          there. Whether a withdraw stands there is MEASURED on the lifted row by
+          there. Whether a withdraw stands there is measured on the lifted row by
           ``probe_h_to_d_seam.py`` (an integrated electric source owning at least one
           deposit point and carrying a working ``withdraw``, which the driver ran
           here before ``f_minus_p``), never read off a source's name.
@@ -61,7 +61,8 @@ is priced by the same three boards from ``h_to_d_seam.py``, one rule for three
 backends, off the same census rows.
 
 --------------------------------------------------------------------------------
-THE EIGHT BUCKETS (release decision R1), in PRECEDENCE order
+The eight buckets, in PRECEDENCE order (one shared list since 2026-09-02;
+``withdraw_seam`` added 2026-09-04 with the H->D seam)
 --------------------------------------------------------------------------------
 
 ``not_fusion_surface``
@@ -85,7 +86,7 @@ THE EIGHT BUCKETS (release decision R1), in PRECEDENCE order
     withdraw touches D only and reads nothing ``update_H`` writes, so a fused
     launch running AFTER it, or carrying it, is plausibly order-free — but "plausibly"
     is not a measurement, and this package claims byte identity only from a device
-    gate. Until the device probe the audit asked for exists (a fused
+    gate. Until a device probe exists (a fused
     update_H+step_D launch byte-compared against the array path on a row with an
     integrated electric source), these instances are priced as not attainable, named
     for what sits in them. Every instance MUST carry the count of integrated electric
@@ -93,9 +94,9 @@ THE EIGHT BUCKETS (release decision R1), in PRECEDENCE order
     :meth:`Taxonomy.finish`.
 
 ``missing_half``
-    A KERNEL COVERAGE GAP, not a fusion refusal: no single certified arm admits one
+    A kernel coverage gap, not a fusion refusal: no single certified arm admits one
     of the seam's two slots, so the pair cannot be built because a HALF is absent.
-    Every instance in this bucket MUST NAME THE MISSING KERNEL — a board that files
+    Every instance in this bucket must name the missing kernel — a board that files
     an instance here without one raises in :meth:`Taxonomy.finish`.
 
 ``structurally_unweldable``
@@ -113,7 +114,7 @@ THE EIGHT BUCKETS (release decision R1), in PRECEDENCE order
 ``buildable_not_built``
     Every precondition met, nobody built it.
 
-PRECEDENCE (release decision R4). An instance is counted ONCE, in its most fundamental
+PRECEDENCE (reconciled 2026-09-02). An instance is counted ONCE, in its most fundamental
 bucket, and the ladder above is that order. ``withdraw_seam`` sits where the source
 seam sits, ahead of ``missing_half``: like the source seam it is a fact about the
 SEAM-INSTANCE (the same on every backend), and a coverage gap beneath it would be
@@ -129,7 +130,7 @@ module must surface rather than absorb, which is exactly what the served floor i
 board's H->D served total is derived from the very walk that files these instances —
 so ``h_to_d_seam.price`` raises there instead, on the same argument.
 
-AND ``served`` OUTRANKS ``withdraw_seam``, WHICH IS NOT FREE. A product whose
+And ``served`` outranks ``withdraw_seam``, which is not free. A product whose
 predicate admits one of the withdraw rows takes that instance out of the bucket whose
 whole content is "a pass the driver runs between the halves that no launch has been
 measured across" AND out of the subtraction ``ATTAINABLE`` makes for it — so the
@@ -140,7 +141,7 @@ that does not NAME the device measurement licensing it, and the instance carries
 integrated-source count into the served bucket rather than losing it.
 
 --------------------------------------------------------------------------------
-THE THREE TIERS (release decision R2) — each printed WITH ITS DENOMINATOR NAMED
+The three tiers (reconciled 2026-09-02) — each printed with its denominator named
 --------------------------------------------------------------------------------
 
 ``PRICED``      the corpus fact: rows x 2 curl->constitutive seams + rows x 1
@@ -168,19 +169,19 @@ THE THREE TIERS (release decision R2) — each printed WITH ITS DENOMINATOR NAME
                 been measured across — and it comes back the day the device probe
                 releases it.
 
-                IT DOES NOT SUBTRACT ``structurally_unweldable``, and that was a
+                It does not subtract ``structurally_unweldable``, and that was a
                 real defect in this tier's first definition, caught by the
                 2026-09-02 adversarial pass. "Structurally unweldable" is a fact
-                about a BACKEND AND A WELD SHAPE, not about the seam: every
+                about a backend and a weld shape, not about the seam: every
                 instance filed under it is SERVED TODAY by a shipped, gate-passing
                 product on a sibling backend, and the boards' own sub-reasons say
                 so. Subtracting it made Metal's headline read TO_DO 0 — "nothing
                 left to do" — while Metal's own prose named the buildable shape and
                 credited CUDA with building it. The only refusal that is genuinely
-                instance-intrinsic is the source seam, which R3 proved identical
-                across all three backends (24 instances, the same 24, on the 186-row
-                basis; 25 since the 2026-09-03 basis extension added coupler.py's D->E
-                seam, again the same 25 on every backend). So
+                instance-intrinsic is the source seam, which one shared source-seam rule
+                proved identical across all three backends (24 instances, the same 24,
+                on the 186-row basis; 25 since the 2026-09-03 basis extension added
+                coupler.py's D->E seam, again the same 25 on every backend). So
                 ATTAINABLE is backend-independent by construction, and ``served``
                 and ``TO_DO`` are left as the only backend-dependent numbers —
                 which is what a reconciliation should produce.
@@ -223,8 +224,8 @@ from typing import Any, Dict, List, Optional, Sequence
 __all__ = ["BUCKETS", "PER_ROW_SEAMS", "SERVED_HEADLINE_KEYS", "Taxonomy",
            "canonical_seam", "credit_withheld_sub_reason", "headline_agreement"]
 
-#: The eight reconciled bucket names, in PRECEDENCE order (release decision R1 + R4;
-#: ``withdraw_seam`` added 2026-09-04 with the H->D seam). A board files each
+#: The eight reconciled bucket names, in PRECEDENCE order (list and order reconciled
+#: 2026-09-02; ``withdraw_seam`` added 2026-09-04 with the H->D seam). A board files each
 #: instance under exactly one of these. The order here IS the precedence: a
 #: classifier walks it top to bottom and stops at the first match.
 BUCKETS: Sequence[str] = (
@@ -238,7 +239,7 @@ BUCKETS: Sequence[str] = (
     "buildable_not_built",
 )
 
-#: THE SEAM NAMES, CANONICALISED. The Metal and CUDA boards spell the seams
+#: The seam names, canonicalised. The Metal and CUDA boards spell the seams
 #: ``B_to_H``/``D_to_E``/``E_to_P`` and the Triton board spells them
 #: ``B->H``/``D->E``/``E->P``. Two spellings is enough to stop a join dead, and the
 #: whole value of this taxonomy is that the three boards can be joined at instance
@@ -258,7 +259,7 @@ def canonical_seam(seam: str) -> str:
 
 
 def credit_withheld_sub_reason(product: str) -> str:
-    """THE ONE WITHHELD SENTENCE.
+    """The one withheld sentence.
 
     Filed under ``buildable_not_built`` by the Triton three-seam walk (a product whose
     predicate admits the row but whose release binding is stale — the board will not
@@ -278,7 +279,7 @@ def credit_withheld_sub_reason(product: str) -> str:
             f"is missing; a re-gate against the shipped bytes is")
 
 
-#: THE KEYS UNDER WHICH A BOARD PUBLISHES ITS SERVED TOTAL, and the reason this
+#: The keys under which a board publishes its served total, and the reason this
 #: tuple exists is the 2026-09-06 H->D landing: every board summed its served bucket
 #: over four seams while its headline keys were still totalled by the three-seam
 #: walk, so ``fusion_matrix_metal_2026-09-06_hd`` read ``served_by_predicate: 358``
@@ -291,8 +292,8 @@ def credit_withheld_sub_reason(product: str) -> str:
 #: different fact and lives under a key that is not in this tuple
 #: (``served_three_seam_ledger``).
 #:
-#: A NAME ADDED TO A BOARD'S HEADLINE FOR ITS SERVED TOTAL GOES HERE IN THE SAME
-#: CHANGE. The walk cannot see a key it was not told about; that is how the split
+#: A name added to a board's headline for its served total goes here in the same
+#: change. The walk cannot see a key it was not told about; that is how the split
 #: this floor closes came to exist.
 SERVED_HEADLINE_KEYS: Sequence[str] = (
     "served_by_predicate",            # the Metal board's headline
@@ -379,7 +380,7 @@ def headline_agreement(result: Dict[str, Any], block: Dict[str, Any],
 def denominator_justification(rows: int, susceptibility_rows: int) -> str:
     """The PRICED sentence, derived from the census's own counts.
 
-    ONE HOME, DERIVED. Until 2026-09-03 this sentence was transcribed into each of the
+    One home, derived. Until 2026-09-03 this sentence was transcribed into each of the
     three boards with ``186`` and ``387`` spelled by hand, so a census with a different
     row count would have computed one denominator and written a justification naming
     another into the same artifact. Since 2026-09-04 it derives the fourth seam the
@@ -396,7 +397,7 @@ def denominator_justification(rows: int, susceptibility_rows: int) -> str:
         f"between consecutive sub-steps. B->H and D->E are bounded by the two source "
         f"injections that cannot be crossed inside one launch; H->D holds only the "
         f"integrated electric sources' withdraw (present on a row only where such a "
-        f"source owns a deposit point, MEASURED by probe_h_to_d_seam.py); E->P holds "
+        f"source owns a deposit point, measured by probe_h_to_d_seam.py); E->P holds "
         f"nothing and is counted only where an update_P pass exists, the same way the "
         f"{slots}-slot denominator adds {susceptibility_rows} rather than {rows} for "
         f"that sub-step. {priced} is NOT a partition of {slots} and is not meant to be.")
@@ -419,7 +420,7 @@ BUCKET_MEANING: Dict[str, str] = {
         "point, so the driver's withdraw pass runs between update_H and step_D "
         "(returning the standing dipole to D before the curl reads it). A fused "
         "update_H+step_D launch has not been byte-measured across or after that "
-        "pass on any backend — the device probe the audit asked for — so the "
+        "pass on any backend — that needs a device probe — so the "
         "instance is priced as not attainable, named for what sits in it"),
     "missing_half": (
         "A KERNEL COVERAGE GAP, NOT A FUSION REFUSAL: no certified arm admits one of "
@@ -458,14 +459,14 @@ class Taxonomy:
         #: seam -> the number of instances the board prices at that seam, used by
         #: the per-seam floor and to derive the PRICED sentence.
         self.seam_instances = {canonical_seam(k): v for k, v in seam_instances.items()}
-        # THE PRICED FLOOR: the denominator the board hands in must be the one its
+        # The priced floor: the denominator the board hands in must be the one its
         # own rows imply. A board whose universe drifted from its census would
         # otherwise print a correct-looking sentence beside a number it does not
         # explain.
         susceptibility_rows = int(self.seam_instances.get("E_to_P", 0))
-        # THE FOURTH SEAM IS NOT OPTIONAL. A board that hands in B->H and D->E alone
+        # The fourth seam is not optional. A board that hands in B->H and D->E alone
         # is pricing the three-seam denominator every board carried through
-        # 2026-09-03 — the one the fusion-residue audit's §2 found left the
+        # 2026-09-03 — the one an audit of the boards found left the
         # update_H -> step_D boundary unpriced — and it is refused here by name
         # rather than accepted with a smaller floor.
         absent = [seam for seam in PER_ROW_SEAMS if seam not in self.seam_instances]
@@ -499,7 +500,7 @@ class Taxonomy:
             detail: Optional[Dict[str, Any]] = None) -> None:
         """File one seam-instance.
 
-        ``sub_reason`` is THE BOARD'S OWN SENTENCE, carried verbatim. It is not a
+        ``sub_reason`` is the board's own sentence, carried verbatim. It is not a
         label this module knows about and never a paraphrase: the reconciliation
         renames the bucket and keeps the measurement.
         """
@@ -530,7 +531,7 @@ class Taxonomy:
         counts = collections.Counter(r["bucket"] for r in self._rows)
         total = sum(counts.values())
 
-        # FLOOR 1 — THE DECOMPOSITION MUST ADD UP.
+        # FLOOR 1 — the decomposition must add up.
         if total != self.priced:
             raise SystemExit(
                 f"{self.backend}: the reconciled buckets total {total} against "
@@ -555,7 +556,7 @@ class Taxonomy:
                 f"does not price. The taxonomy and the census disagree about the "
                 f"corpus.")
 
-        # FLOOR 2 — SERVED MAY NOT MOVE BY RELABELLING.
+        # FLOOR 2 — served may not move by relabelling.
         if counts["served"] != served_expected:
             raise SystemExit(
                 f"{self.backend}: the reconciled taxonomy files "
@@ -566,7 +567,7 @@ class Taxonomy:
                 f"claiming an instance a shipped predicate admits, which means that "
                 f"bucket's premise has stopped being true.")
 
-        # FLOOR 3 — missing_half MUST NAME THE MISSING KERNEL.
+        # FLOOR 3 — missing_half must name the missing kernel.
         unnamed = [r for r in self._rows if r["bucket"] == "missing_half"
                    and not r["detail"].get("missing_kernel")]
         if unnamed:
@@ -598,7 +599,7 @@ class Taxonomy:
                 f"{self.backend}: {len(unnamed_withdraw)} withdraw_seam instance(s) "
                 f"name no integrated electric source (first: "
                 f"{unnamed_withdraw[0]['row']}). The bucket's whole content is the "
-                f"MEASURED presence of the withdraw on the lifted row; without the "
+                f"measured presence of the withdraw on the lifted row; without the "
                 f"count it is a label read off a name.")
 
         # FLOOR 4 — platform_specific must carry a stated question, even at zero.
@@ -637,7 +638,7 @@ class Taxonomy:
                 "an instance is counted ONCE, in its most fundamental bucket; the "
                 "order of bucket_names IS the precedence. not_fusion_surface "
                 "outranks source_seam_unbracketable: where there is nothing to weld "
-                "the deposit in the seam is irrelevant (release decision R4)"),
+                "the deposit in the seam is irrelevant"),
             "buckets": {bucket: counts[bucket] for bucket in BUCKETS},
             "sub_reasons": sub_reasons,
             "per_seam": {
@@ -645,7 +646,7 @@ class Taxonomy:
                        if per_seam[(seam, bucket)]}
                 for seam in sorted(seam_totals)},
             "platform_specific_question": self.platform_note,
-            # THE ROWS THEMSELVES, for EVERY bucket. Counts alone made the three
+            # The rows themselves, for EVERY bucket. Counts alone made the three
             # boards look reconciled without anyone being able to check it: "19
             # not_fusion_surface" on three boards is consistent with three DIFFERENT
             # sets of 19. These lists are what turn the reconciliation into
@@ -752,7 +753,7 @@ class Taxonomy:
         counts = block["buckets"]
         emit("")
         emit("=" * 78)
-        emit(f"THE RECONCILED TAXONOMY (R1) — {self.backend}   "
+        emit(f"THE RECONCILED TAXONOMY — {self.backend}   "
              f"denominator {self.priced} PRICED seam-instances")
         emit("=" * 78)
         emit("  one name list on all three boards; each board's own prose kept "
@@ -763,7 +764,7 @@ class Taxonomy:
             for reason, n in block["sub_reasons"][bucket].items():
                 emit(f"        {n:4d}  {reason}")
             if bucket == "platform_specific" and not counts[bucket]:
-                emit(f"        (zero, MEASURED not assumed) "
+                emit(f"        (zero, measured not assumed) "
                      f"{self.platform_specific_line()}")
         emit(f"\n  BUCKET FLOOR: the {len(BUCKETS)} buckets total "
              f"{sum(counts.values())} == the {self.priced} PRICED seam-instances")
@@ -773,7 +774,7 @@ class Taxonomy:
 
         emit("")
         emit("=" * 78)
-        emit(f"THE THREE TIERS (R2) — {self.backend}   every tier with its "
+        emit(f"THE THREE TIERS — {self.backend}   every tier with its "
              f"denominator NAMED")
         emit("=" * 78)
         for name in ("PRICED", "FUSABLE", "ATTAINABLE", "COVERAGE", "TO_DO"):

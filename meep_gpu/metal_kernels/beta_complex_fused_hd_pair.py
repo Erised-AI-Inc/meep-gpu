@@ -1,8 +1,8 @@
 """The COMPLEX BLOCH-BETA H->D weld: complex ``update_H`` into the special-kz complex
 ``step_D``, in BOTH the unfolded and the folded variant.
 
-ONE PRODUCT, TWO CELLS, and that shape is a MEASUREMENT rather than a preference --
-see *ONE PRODUCT OR TWO* below. ``h_to_d_seam.instances`` files **4** rows across the
+One product, two cells, and that shape is a MEASUREMENT rather than a preference --
+see *one product or two* below. ``h_to_d_seam.instances`` files **4** rows across the
 two Metal arm pairs this module serves, all four ``buildable_not_built`` and not one
 carrying a standing in-seam withdraw:
 
@@ -19,7 +19,7 @@ folded ones the same way. This module is the product on the beta side of that
 inversion.
 
 =============================================================================
-BETA IS A CURL-ONLY TERM, AND THAT IS WHAT MAKES THIS SEAM WELDABLE AT ALL
+Beta is a curl-only term, and that is what makes this seam weldable at all
 =============================================================================
 
 ``stepping._special_kz_beta_term`` (S:727-784) enters ONLY the two curls (S:356-363,
@@ -37,13 +37,13 @@ as a function of an arbitrary cell, with the seven declared
 :data:`.complex_fused_hd_pair.CONSTITUTIVE_LIFT_EDITS` -- and this module IMPORTS the
 lift rather than owning a copy. The beta words never reach it.
 
-**AND THAT IS AN ASSERTION, NOT A COMMENT.** :func:`certified_h_cell` re-derives the
+**And that is an assertion, not a comment.** :func:`certified_h_cell` re-derives the
 lift and requires that the emitted ``h_cell`` body contain none of the four beta
 identifiers; a future beta-dependent constitutive would fail the build here rather
 than silently step a beta run with a beta-free ``H``.
 
 =============================================================================
-THE SHAPE, AND THE FOUR BETA WORDS COST ZERO BINDINGS
+The shape, and the four beta words cost zero bindings
 =============================================================================
 
 The weld is the released siblings' exactly: the certified ``update_H`` recomputed at
@@ -65,7 +65,7 @@ plus one ``constant Params&`` = **31 = :data:`.device.MAX_BUFFER_BINDINGS`**, no
 headroom, so :data:`PACKED_BINDINGS` is pinned as an EQUALITY and the gate compiles
 one pointer past the shipped shape and requires the failure.
 
-**THE FOUR BETA WORDS RIDE IN THE PACKED RECORD AND COST NOTHING.** The certified
+**The four beta words ride in the packed record and cost nothing.** The certified
 complex beta curl binds them as four ``constant float&`` at buffers 26-29 and sits at
 30 of 31 with no room for a weld; this kernel packs every non-pointer argument into
 ONE ``constant Params&``, which is what turns "the beta curl has no headroom" into
@@ -73,7 +73,7 @@ ONE ``constant Params&``, which is what turns "the beta curl has no headroom" in
 use for their scalars, extended by two ``float2`` members -- and it is the single
 reason this cell is weldable rather than over the ceiling.
 
-**THE PACKED RECORD IS 64 BYTES AND THAT WAS MEASURED, NOT COMPUTED.** Five
+**The packed record is 64 bytes and that was measured, not computed.** Five
 ``float2`` members then five scalars is 60 bytes of payload, and Metal rounds the
 struct up to its 8-byte alignment: ``sizeof(Params)`` read back off a launched probe
 on this host is **64**. The host record therefore declares ``itemsize`` 64 explicitly
@@ -83,23 +83,23 @@ on this host is **64**. The host record therefore declares ``itemsize`` 64 expli
 record puts every phase one word early and reads back as a plausible complex number
 rather than as garbage.
 
-**THE COEFFICIENTS STAY float32 UNDER COMPLEX STORAGE** -- nine coefficient buffers,
+**The coefficients stay float32 under complex storage** -- nine coefficient buffers,
 not eighteen (stepping.py:41-50). Had they widened with the fields this signature
 would need 39 pointers.
 
-**THE SHARED COEFFICIENT GROUP IS LOAD-BEARING.** Both halves sit on the same Yee
+**The shared coefficient GROUP is load-bearing.** Both halves sit on the same Yee
 sub-lattice (``SUB_STEPS['step_D']['suffix'] == ''`` and
 ``CONSTITUTIVE_SIDES['H']['half_integer'] is False``), so the curl's ``kms_x/_y/_z``
-and the constitutive's ``km0/km1/km2`` ARE THE SAME THREE VOLUMES and are bound once.
+and the constitutive's ``km0/km1/km2`` are the same three volumes and are bound once.
 Unshared the signature is 34 and does not compile. Bind the HALF-INTEGER set by
 mistake instead and nothing fails: a smooth, converged, half-cell-wrong absorber
 profile -- which is why that is a gate mutation and not a comment.
 
 =============================================================================
-WHAT THE TWO VARIANTS CHANGE, AND WHAT THEY DO NOT
+What the two variants change, and what they do not
 =============================================================================
 
-ONE TRANSFORM, TWO DEVICE STRINGS. :func:`beta_complex_curl_source` selects the
+One transform, two device strings. :func:`beta_complex_curl_source` selects the
 emitter and nothing else:
 
 * ``plain``  -> :func:`.special_kz.beta_bloch_curl_source`
@@ -114,13 +114,13 @@ magnetic load lines are the same lines: the three own-cell loads
 (:func:`.complex_fused_hd_pair.offset_coordinates`). :func:`resolve_variant` reads the
 fold off the grid, so a row never chooses between them.
 
-THE GHOST SPELLING IS PARSED, NOT ASSUMED. The certified complex curl the beta source
+The ghost spelling is parsed, not assumed. The certified complex curl the beta source
 is derived from serves :data:`.templates.COMPLEX_ZERO` past a wall (the plain complex
 product's ``_GHOST``). The lift requires the emitted line to end in that spelling and
 RAISES otherwise, so a parent that changed it fails the build instead of leaving a tap
 redirected past a different ghost.
 
-THE BLOCH PHASE AND THE BETA TERM ARE BOTH OUTSIDE THE REDIRECT, and for two different
+The Bloch phase and the beta term are both outside the redirect, and for two different
 reasons. The phase rotates the SHIFTED operands after the gather
 (``special_kz._phase_lines``), so redirecting the LOAD leaves it standing character
 for character. The beta term multiplies the UNSHIFTED CENTRE registers ``a`` and ``b``
@@ -132,7 +132,7 @@ at the thread's own cell, which is what the array path's ``step_D`` consumes, an
 substitution is a rename of the load rather than a change to the term.
 
 =============================================================================
-WHERE THE CODES AND THE COEFFICIENTS COME FROM
+Where the codes and the coefficients come from
 =============================================================================
 
 ``codes`` on the ``folded`` variant MUST come from
@@ -157,7 +157,7 @@ that side have one home there. The two beta words are real (``part_products``'
 quarter turn by one realnum per sign) and ride in ``Params`` beside the chunk record.
 
 =============================================================================
-WHAT SITS IN THE SEAM, AND WHAT THIS PRODUCT REFUSES
+What sits in the seam, and what this product refuses
 =============================================================================
 
 :data:`CARRIES_DEPOSIT_REPAIR` is False and it is a FACT about the driver rather than
@@ -182,7 +182,7 @@ conductive, a live susceptibility, an off-diagonal epsilon row, an inactive abso
 and a Bloch phase on a mirror axis.
 
 =============================================================================
-IT IS NOT INSTALLED, AND THE REASON IS ARBITRATION RATHER THAN ARITHMETIC
+It is not installed, and the reason is arbitration rather than arithmetic
 =============================================================================
 
 :data:`INSTALLABLE` is False, and :data:`INSTALLABLE_REASON` carries the MEASUREMENT
@@ -195,18 +195,18 @@ carry Metal products on both variants -- ``beta_complex_fused_magnetic_pair`` /
 ``beta_complex_fused_electric_pair`` / ``folded_beta_complex_fused_pair`` on
 ``step_D``/``update_E``.
 
-**NO TIMING EXISTS FOR THIS SHAPE AND NONE IS LICENSED BY ANYTHING IN THIS MODULE.**
-A second Metal lane was running on this GPU throughout this family's gate campaign, so
+**No timing exists for this shape and none is licensed by anything in this module.**
+Another Metal workload was running on this GPU throughout this family's gate campaign, so
 no wall-clock number taken in that window would mean anything even if one had been
 taken.
 
-WHAT THE FAMILY'S CREDITED INSTANCES MEAN: the board's 4 instances are **served by
+What the family's credited instances mean: the board's 4 instances are **served by
 predicate admission** and nothing more; the product **installs on zero rows**; it
 **executes nowhere** outside its own gate and tests; and it licenses **no timing claim
 and no dispatch claim**.
 
 =============================================================================
-ONE PRODUCT OR TWO -- WHAT WAS MEASURED
+One product or two -- what was measured
 =============================================================================
 
 The two cells are ONE product because everything a product IS is identical across
@@ -235,10 +235,10 @@ one of the 21 field volumes, the ``Params`` record, the ``h_cell`` lift, the hel
 block and three of the four refuted signatures -- there is no shared transform left to
 parameterise. The tree already splits every other beta seam that way
 (``beta_fused_electric_pair`` vs ``beta_complex_fused_electric_pair``,
-``folded_beta_real_fused_pair`` vs ``folded_beta_complex_fused_pair``), and this round
+``folded_beta_real_fused_pair`` vs ``folded_beta_complex_fused_pair``), and this product
 did not invent a third rule.
 
-NO TORCH AT MODULE LEVEL, as everywhere in this package.
+No torch at module level, as everywhere in this package.
 """
 
 # Derived from MEEP (https://github.com/NanoComp/meep).
@@ -321,7 +321,7 @@ INSTALLABLE_REASON = (
     "its own gate and tests; and the weld licenses no timing claim and no dispatch "
     "claim")
 
-#: WHAT A RELEASE STILL OWES. Empty means "this family holds a released device gate
+#: What a release still owes. Empty means "this family holds a released device gate
 #: bound in ``fingerprints.json``"; non-empty means it does not, and the string is
 #: the debt.
 #:
@@ -336,7 +336,7 @@ INSTALLABLE_REASON = (
 #: have moved -- so the emptying lands FIRST and the gate measures the emptied tree.
 WELD_OWED: str = ""
 
-#: WHAT THE GATE MEASURED, KEPT. The pre-weld declaration is not deleted with the
+#: What the gate measured, kept. The pre-weld declaration is not deleted with the
 #: weld: it is the one-line record of which artifact this family's release rests on,
 #: and a reader who finds an empty ``WELD_OWED`` should still be able to find that
 #: without opening the board. VERBATIM, including the ``_2026-09-07`` stamp it names
@@ -437,7 +437,7 @@ split_plane_pair_signature = _plain.split_plane_pair_signature
 def certified_h_cell(contract: str = shaders.CONTRACT_OFF) -> str:
     """:func:`.complex_fused_hd_pair.h_cell_function`, with the beta-free assertion.
 
-    THE BODY IS IMPORTED AND UNMODIFIED. What this wrapper adds is the check that
+    The body is imported and unmodified. What this wrapper adds is the check that
     makes "beta is a curl-only term" a build-time property of this product rather than
     a sentence in a docstring: the emitted ``h_cell`` must contain none of
     :data:`BETA_IDENTIFIERS`. A future beta-dependent constitutive would then fail here
@@ -465,7 +465,7 @@ def beta_complex_curl_source(variant: str, codes: Sequence[int],
                              contract: str = shaders.CONTRACT_OFF) -> str:
     """The certified beta complex ``step_D`` curl for one variant.
 
-    ONE TRANSFORM, TWO DEVICE STRINGS, and the selection is the whole of what the
+    One transform, two device strings, and the selection is the whole of what the
     variant means: ``plain`` is :func:`.special_kz.beta_bloch_curl_source` and
     ``folded`` is :func:`.folded_beta.folded_beta_bloch_curl_source`, which is that
     same parent template with ``__TOP_MASK__`` inserted after the cell-0 mask anchor.
@@ -490,17 +490,17 @@ def welded_curl_tail(variant: str, codes: Sequence[int], phased: Sequence[int],
                      ) -> Tuple[str, str]:
     """``(prologue, body)`` of the beta complex ``step_D`` curl, H reads redirected.
 
-    THE TABLES ARE THE PLAIN COMPLEX PRODUCT'S, imported: the three own-cell load
+    The tables are the plain complex product's, imported: the three own-cell load
     edits, the six shifted taps and the index parse. The certified beta complex
     template's nine magnetic load lines are character-identical to the non-beta
     complex curl's, which is the fact that lets one set of tables serve both -- and a
     needle that stopped matching RAISES here rather than emitting a kernel that reads
     the wrong volume.
 
-    THE GHOST IS THE CERTIFIED COMPLEX CURL'S OWN SPELLING (``templates.COMPLEX_ZERO``,
+    The ghost is the certified complex curl's own spelling (``templates.COMPLEX_ZERO``,
     the plain complex weld's), parsed and required on every redirected tap.
 
-    WHAT IS NOT TOUCHED, and each for its own reason: the ghost ternary's GUARD and
+    What is not touched, and each for its own reason: the ghost ternary's GUARD and
     OFFSET are parsed out of the emitter's own line rather than retyped; MEEP's Bloch
     connection acts on the centre registers as read across a wrap and is never seen
     here; the BETA pass multiplies the unshifted centre registers ``a`` and ``b``,
@@ -537,7 +537,7 @@ def welded_curl_tail(variant: str, codes: Sequence[int], phased: Sequence[int],
                 f"the beta complex curl declares {var} {len(matches)} times; this "
                 f"weld redirects exactly one magnetic load per shifted tap")
         old = matches[0]
-        # THE GUARD AND THE OFFSET ARE BOTH PARSED FROM THE EMITTER'S OWN LINE.
+        # The guard and the offset are both parsed from the emitter's own line.
         head, rest = old.split(" ? ", 1)
         expected = f"g{target}["
         if not rest.startswith(expected) or not rest.endswith(f" : {_GHOST};\n"):
@@ -573,7 +573,7 @@ __HELPERS__
 
 __RECORD_STRUCT__
 
-// THE THREE float2 MEMBERS COME FIRST. Metal aligns float2 to 8 bytes, so with the
+// The three float2 members come first. Metal aligns float2 to 8 bytes, so with the
 // scalars first this struct needs internal padding and the natural host record puts
 // every phase one word early — it then reads back as a plausible complex number
 // rather than as garbage. Phases first, then the scalars, the two beta words and the
@@ -621,13 +621,13 @@ kernel void beta_complex_fused_hd_pair_step(
     constant Params&     prm     [[buffer(30)]],
     uint idx [[thread_position_in_grid]])
 {
-    // THE TWELVE PACKED ARGUMENTS ARE UNPACKED INTO THE CERTIFIED BODIES' OWN NAMES,
+    // The twelve packed arguments are unpacked into the certified bodies' own names,
     // once, before any lifted text runs. Everything below this line is then
     // character-for-character what `special_kz.beta_bloch_curl_source` (or its folded
     // derivative) and `complex_fields.bloch_constitutive_source` emit, with the
     // declared lift edits and the redirected magnetic reads.
     //
-    // THE BETA WORDS ARE READ HERE AND NOWHERE ELSE. The certified curl binds them as
+    // The beta words are read here and nowhere else. The certified curl binds them as
     // two `constant float&`; packed, they cost nothing, which is the only reason this
     // cell fits inside the 31-binding ceiling at all.
     uint nx = prm.nx, ny = prm.ny, nz = prm.nz, n_elem = prm.n_elem;
@@ -648,7 +648,7 @@ __PROLOGUE__
 
     // --- the beta complex step_D curl (stepping.step_D / _apply_pml_update:1905) --
     // D and fu_D update IN PLACE and that is safe by construction: the curl reads and
-    // writes them at the THREAD'S OWN CELL only (`f0[ii]`, `u0[ii]`), so no thread
+    // writes them at the thread's own cell only (`f0[ii]`, `u0[ii]`), so no thread
     // reads a displacement another thread wrote.
 __CURL__
 }
@@ -665,7 +665,7 @@ def beta_complex_fused_hd_pair_source(
     and nothing else, so specialisation by substitution is what keeps the emitted
     arithmetic identical to the bodies this lifts.
 
-    THE WALL CLEAR IS NOT CARRIED and must not be: ``zero_metal_B`` runs one seam
+    The wall clear is not carried and must not be: ``zero_metal_B`` runs one seam
     EARLIER and ``zero_metal_D`` one seam LATER, so a mask here would be a pass the
     driver runs again. On the ``folded`` variant NO FILL is carried either, for the
     same reason and with a stronger premise: all six fold passes sit outside the span.
@@ -851,7 +851,7 @@ def _PHASE_RESOLVER(grid: Any, kinds: Sequence[str]) -> Tuple[int, ...]:
 def resolve_variant(grid: Any) -> Optional[str]:
     """``"folded"`` when any axis carries a mirror plane, ``"plain"`` otherwise.
 
-    THE FOLD IS READ OFF THE GRID, which is what makes this one product rather than
+    The fold is read off the grid, which is what makes this one product rather than
     two overlapping ones: a row cannot be admitted by both variants, so no composer
     order decides which kernel steps it. ``None`` when the grid cannot answer -- a
     predicate that guessed here would be the over-covering refusal the package's
@@ -876,8 +876,8 @@ def resolve_codes(variant: str, grid: Any, pml: Any) -> Optional[Tuple[int, ...]
     ``1 if kind == "metallic" else 0``, which is exactly what
     :func:`.special_kz.plan_beta_bloch_pml_curl` builds.
 
-    USING THE PLAIN EXPRESSION ON A FOLDED GRID IS THE ONE THING THIS FAMILY CAN GET
-    WRONG SILENTLY: ``_boundary_kinds`` reports ``"mirror"``, which it maps to
+    Using the plain expression on a folded grid is the one thing this family can get
+    wrong silently: ``_boundary_kinds`` reports ``"mirror"``, which it maps to
     0 = PERIODIC, so the backward ghost becomes a WRAP to the far plane and the cell-0
     mask is not widened. Both 0 and 1 are valid codes, so neither the emitter nor the
     compiler can catch it. It is a gate mutation.
@@ -908,12 +908,12 @@ def metal_beta_complex_fused_hd_pair_coverage(
     clause, the BFAST clause, the off-diagonal clause, the polarization clause and
     the fold clause INHERITED rather than restated.
 
-    THE VARIANT IS RESOLVED FIRST AND THE OTHER ONE IS NEVER ASKED. Asking both and
+    The variant is resolved first and the other one is never asked. Asking both and
     taking the disjunction would admit a row on a predicate whose kernel the plan
     would not build; resolving from the grid means the predicate and the plan reach
     the same emitter by construction.
 
-    THE ORDER IS THE DRIVER'S. The constitutive half is asked FIRST because it runs
+    The order is the driver's. The constitutive half is asked FIRST because it runs
     first (driver.py:3311), so the first refusal a reader sees names the half the
     driver would have reached first.
     """
@@ -942,10 +942,10 @@ def metal_beta_complex_fused_hd_pair_coverage(
         reasons.extend(f"{variant} beta complex curl half: {reason}"
                        for reason in curl.reasons)
 
-    # THE SEAM'S ONE PASS. Nothing is INJECTED between the two consults, so
+    # The seam's one pass. Nothing is INJECTED between the two consults, so
     # `deposit_repair` is not consulted at all. What IS between them is the electric
     # integrated-source withdraw (driver.py:3313-3314), and `withdraw_hoist` owns it.
-    # IGNORANCE IS NEVER AN EMPTY SET: `Fields` does not hold the source list.
+    # Ignorance is never an empty set: `Fields` does not hold the source list.
     reasons.extend(_withdraw_hoist.seam_withdraw_reasons(
         fields, sources,
         undeclared=(
@@ -961,7 +961,7 @@ def metal_beta_complex_fused_hd_pair_coverage(
         hoists_the_withdraw=HOISTS_THE_WITHDRAW,
         span=REPLACES))
 
-    # THE CODES MUST RESOLVE. On the folded variant `folded_axis_kinds` returns None
+    # The codes must resolve. On the folded variant `folded_axis_kinds` returns None
     # when its two independent routes to the MIRROR_METALLIC / MIRROR_PERIODIC split
     # disagree, and a plan built on a guessed split is a plane of wrong values.
     if resolve_codes(variant, grid, pml) is None:
@@ -971,7 +971,7 @@ def metal_beta_complex_fused_hd_pair_coverage(
             "MIRROR_METALLIC/MIRROR_PERIODIC split is a plane of wrong values rather "
             "than a crash")
 
-    # THE ROTATION IS THE PRODUCT'S OWN INVARIANT. The plan swaps the ENGINE's
+    # The rotation is the product's own invariant. The plan swaps the ENGINE's
     # references for the six volumes in ROTATED_NAMES after each launch.
     for name in ROTATED_NAMES:
         if getattr(fields, name, None) is None:
@@ -979,7 +979,7 @@ def metal_beta_complex_fused_hd_pair_coverage(
                 f"{name} is not allocated; this weld rotates it against a plan-owned "
                 f"scratch twin after every launch")
 
-    # THE RUN'S FIRST update_H, on the composer's rule for the base constitutive kernel
+    # The run's first update_H, on the composer's rule for the base constitutive kernel
     # this half lifts (launch.h_start_reasons): the array path starts H and f_w from B
     # on the dsigw cells at that update and this weld does not.
     from .launch import h_start_reasons  # noqa: PLC0415 - launch imports this family's peers
@@ -995,7 +995,7 @@ def metal_beta_complex_fused_hd_pair_coverage(
 class MetalBetaComplexFusedHdPairPlan(_weld.ScratchWeldPairPlan):
     """The shared scratch-weld plan, carrying the facts that specialise it.
 
-    THE ROTATION IS NOT REIMPLEMENTED. ``run`` and ``_resolve`` are the base's. What
+    The rotation is not reimplemented. ``run`` and ``_resolve`` are the base's. What
     the subclass adds is the specialisation a harness must not re-derive: the variant
     the source was emitted for, the per-axis phase flags, the rounded and conjugated
     phase values and the two rounded beta word pairs. Re-deriving any of them at a call
@@ -1018,7 +1018,7 @@ class MetalBetaComplexFusedHdPairPlan(_weld.ScratchWeldPairPlan):
 def params_record_dtype() -> Any:
     """The host record's dtype -- THE THREE ``float2`` MEMBERS FIRST, itemsize 152.
 
-    ONE HOME FOR THE LAYOUT, because getting it wrong is a silent wrong answer rather
+    One home for the layout, because getting it wrong is a silent wrong answer rather
     than a crash. The offsets are stated EXPLICITLY, so the record cannot drift into
     agreeing with Metal only by accident: three connection words, five scalars, the
     two beta words and the chunk record at offset 52, padded to Metal's 8-byte struct
@@ -1043,7 +1043,7 @@ def _params_tensor(shape: Sequence[int], dtdx: float,
     """The five scalars, three connection words, two beta words and the chunk record
     (checked against the shape first) as one 152-byte record.
 
-    PLAN-OWNED AND OUTSIDE THE RESIDENCY REGISTRY, for the reason every fused pair's
+    Plan-owned and outside the residency registry, for the reason every fused pair's
     ``_params_tensor`` gives: :meth:`.Residency.mirror` binds float32 and complex64
     volumes and refuses anything else BY NAME, because a wider element silently
     reinterprets. This record is neither, so it is built here, once, at plan time.
@@ -1086,7 +1086,7 @@ def plan_metal_beta_complex_fused_hd_pair(
     a configuration this kernel does not carry must fall back to the array path, never
     raise into a caller that would otherwise have stepped correctly.
 
-    THREE MUTATION SEAMS, each named because dropping one silently DISARMS a gate leg
+    Three mutation seams, each named because dropping one silently DISARMS a gate leg
     rather than slowing it: ``functions`` hands in a deliberately broken compiled
     source; ``codes`` hands in the PERIODIC/METALLIC triple on a folded grid, the one
     structural defect this family can make silently; ``beta_words`` hands in a pair
@@ -1109,8 +1109,8 @@ def plan_metal_beta_complex_fused_hd_pair(
             return None
     codes = tuple(int(code) for code in codes)
 
-    # THE CONNECTION COMES FROM `_boundary_kinds` ON BOTH VARIANTS, NOT FROM THE
-    # FOLDED CODES: a folded axis is refused a phase by the folded family's own
+    # The connection comes from `_boundary_kinds` on both variants, not from the
+    # folded codes: a folded axis is refused a phase by the folded family's own
     # clause, so the two agree on every admitted run, and reading it through
     # `complex_fields`' own host decisions keeps it in one place. backward=True: this
     # is the D seam.
@@ -1139,7 +1139,7 @@ def plan_metal_beta_complex_fused_hd_pair(
         volumes.append(name)
         return residency.mirror(name, host, constant=True)
 
-    # THE ROTATING GROUP FIRST, in ROTATED_NAMES order: every scratch, then every
+    # The rotating GROUP first, in ROTATED_NAMES order: every scratch, then every
     # pre-launch buffer. `ScratchWeldPairPlan.run` splices exactly those two groups
     # ahead of `static_args`, so this order IS the signature's. The twin MUST be
     # mirrored as complex64: the mirror's default resolution is float32, which on a
@@ -1161,7 +1161,7 @@ def plan_metal_beta_complex_fused_hd_pair(
     auxiliary = [bind_complex("fu_" + name, getattr(fields, "fu_" + name))
                  for name in SUB_STEPS["step_D"]["targets"]]
 
-    # ONE SUB-LATTICE, TWO HALVES. Both suffixes are READ FROM THE SHIPPED TABLES and
+    # One sub-lattice, two halves. Both suffixes are read from the shipped tables and
     # their equality is ASSERTED rather than assumed: it is the whole premise of the
     # 30-pointer signature, and if either table moved, sharing the group would bind
     # one half's coefficients to the other half's lattice -- a converged, smooth,
@@ -1239,12 +1239,12 @@ def _arm_plan(context: Any, slot: str) -> Optional["_weld.ScratchWeldPairPlan"]:
 def register_arms() -> Tuple[Any, ...]:
     """One row on ``update_H``, ``wired=False``, GATED on beta.
 
-    ONE ROW FOR TWO CELLS, which is what "one product" means at the arm table: the
+    One row for two cells, which is what "one product" means at the arm table: the
     variant is resolved inside the predicate from the grid, so the row's verdict is
     the resolved variant's and no composer order decides which kernel a folded beta
     row gets.
 
-    REGISTERED SO IT IS ENUMERABLE, NOT SO IT IS SELECTABLE. ``arms.arms_for`` skips
+    Registered so it is enumerable, not so it is selectable. ``arms.arms_for`` skips
     an unwired row so ``plan_step`` cannot select it, while ``arms.registered`` still
     returns it -- which is what lets a composition sweep measure disjointness against
     this predicate instead of assuming it, and what lets

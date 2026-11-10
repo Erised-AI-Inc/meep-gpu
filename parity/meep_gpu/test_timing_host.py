@@ -9,6 +9,7 @@ same whatever the thread environment says.
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import sys
@@ -19,9 +20,40 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
+import neutral_ids  # noqa: E402
 import timing_host as th  # noqa: E402
 
 FIXTURES = os.path.join(HERE, "fixtures", "timing")
+
+#: A machine no test here runs on: nothing a reader writes may carry any of it.
+HOST = "gpu-node-17.cluster.example.edu"
+LOGIN = "fixtureuser"
+HOME = "/" + "ho" + "me" + "/fixtureuser"   # from pieces: a full home path is a hygiene-guard hit
+UUID_A = "GPU-3f1c2a9e-5b7d-4e21-9a0c-6d8e2f4b1a37"
+UUID_B = "GPU-9b2e7c41-0d6a-4f83-b5e9-1c7a3d8f6e02"
+FOREIGN_PID = 271828
+OTHER_UID = 1777
+
+
+@pytest.fixture
+def machine(monkeypatch):
+    """This process as the fixture machine: its host names, login and home."""
+    monkeypatch.setattr(neutral_ids.socket, "gethostname", lambda: HOST)
+    monkeypatch.setattr(neutral_ids, "_node", lambda: HOST)
+    monkeypatch.setattr(neutral_ids.getpass, "getuser", lambda: LOGIN)
+    monkeypatch.setenv("HOME", HOME)
+    neutral_ids.reset()
+    yield neutral_ids
+    neutral_ids.reset()
+
+
+def assert_neutral(record, *tokens):
+    """``record`` names nothing of the fixture machine, by residue and by token."""
+    assert neutral_ids.residue(record) == []
+    text = json.dumps(record, sort_keys=True, default=str)
+    for token in (HOST, HOST.split(".")[0], LOGIN, HOME, UUID_A, UUID_B,
+                  str(FOREIGN_PID)) + tokens:
+        assert str(token) not in text, (token, text[:400])
 
 
 def fixture(name: str) -> str:
@@ -199,9 +231,22 @@ def test_flag_templates_and_refusals():
     with pytest.raises(SystemExit, match="Open MPI cannot bind"):
         th.binding_flags("openmpi", "bound", platform="darwin")
     with pytest.raises(SystemExit, match="no flag template"):
-        th.binding_flags("mpich", "bound")
-    assert th.binding_flags("mpich", "bound", explicit={"bound": "-bind-to core"})[0] == \
+        th.binding_flags("intelmpi", "bound")
+    assert th.binding_flags("intelmpi", "bound", explicit={"bound": "-bind-to core"})[0] == \
         "-bind-to core"
+    # MPICH's Hydra mpiexec (conda-forge's MPI pymeep, a context leg): measured templates on
+    # Linux; on macOS the libfabric provider is named, since the default (sockets) spins two
+    # helper threads per rank (measured on an Apple M1 Max); no hardware-thread template.
+    assert th.binding_flags("mpich", "bound")[0] == "-bind-to core -map-by socket"
+    assert th.binding_flags("mpich", "bound-pe", 2)[0] == "-bind-to core:2 -map-by socket"
+    assert th.binding_flags("mpich", "unbound")[0] == "-bind-to none"
+    with pytest.raises(SystemExit, match="no mpich flag template is known for mode"):
+        th.binding_flags("mpich", "bound-hwthread", ranks=64, sockets=2, threads_per_core=2)
+    assert th.binding_flags("mpich", "unbound", platform="darwin")[0] == \
+        "-genv FI_PROVIDER udp -bind-to none"
+    assert th.binding_flags("mpich", "over", platform="darwin") == (
+        "-genv FI_PROVIDER udp -bind-to none", "unbound-ecores")
+    assert th.with_report("mpich", "-bind-to none") == "-bind-to none"
     assert th.with_report("openmpi", "--bind-to none") == "--bind-to none --report-bindings"
     assert th.with_report("srun", "--cpu-bind=cores --distribution=block:block") == \
         "--cpu-bind=verbose,cores --distribution=block:block"
@@ -344,8 +389,8 @@ def test_default_thresholds():
 
 
 def test_the_calibrated_cpu_gate_opens_above_a_laptops_idle_floor():
-    """CERT-8 F6: the 1.0 round's Mac idled at 1.2-2.0 busy CPUs of 10 with no work of
-    ours, so the 10 % default (1) could never open. Calibrated by the rule that round
+    """In the 1.0 timing run the Mac idled at 1.2-2.0 busy CPUs of 10 with no work of
+    ours, so the 10 % default (1) could never open. Calibrated by the rule that run
     fixed in advance, the same box gets 2.5; a quiet box keeps the default."""
     floor = [1.2, 1.5, 1.9, 2.0, 1.4, 1.7] * 3
     assert min(floor) >= th.default_cpu_max(10)        # the default never opens here
@@ -353,7 +398,7 @@ def test_the_calibrated_cpu_gate_opens_above_a_laptops_idle_floor():
     assert found["value"] == 2.5 and found["p80"] == pytest.approx(1.9)
     assert "warning" not in found
     assert th.calibrated_cpu_max([0.3, 0.5, 0.8] * 6, 10)["value"] == 1.0
-    busy = th.calibrated_cpu_max([2.5, 2.7, 3.0] * 6, 10)  # the round's foreign process
+    busy = th.calibrated_cpu_max([2.5, 2.7, 3.0] * 6, 10)  # the timing run's foreign process
     assert busy["value"] == 2.5 and "wait at the gate" in busy["warning"]
     assert th.calibrated_cpu_max([None] * 18, 10)["value"] == 1.0
     assert th.percentile([1, 2, 3, 4, 5], 0.8) == pytest.approx(4.2)
@@ -418,9 +463,9 @@ def _hwloc_placement(flags, ranks, sockets, cores_per_socket, threads_per_core):
 
 @pytest.mark.parametrize("ranks", [4, 48, 64, 96])
 def test_bound_hwthread_takes_every_core_before_any_second_thread(ranks):
-    """CERT-8 H3: the 2026-09-28 template (``--map-by package --bind-to hwthread``) put
-    64 ranks on 32 of the GPU host's 48 cores. The template now names each rank's
-    hardware thread; on a 2 x 24 x 2 host, N ranks use min(N, 48) cores, balanced."""
+    """Found in the 1.0 timing run: the 2026-09-28 template (``--map-by package --bind-to
+    hwthread``) put 64 ranks on 32 of the GPU host's 48 cores. The template now names each
+    rank's hardware thread; on a 2 x 24 x 2 host, N ranks use min(N, 48) cores, balanced."""
     flags, label = th.binding_flags("openmpi", "bound-hwthread", ranks=ranks, sockets=2,
                                     threads_per_core=2, physical_cores=48)
     assert label == "bound-hwthread"
@@ -511,6 +556,8 @@ def test_darwin_daemon_and_ioreg_parsers():
                            "mds_stores\n 78  90.0 /usr/bin/python3\n 79 12.0 mdworker_shared\n")
     found = th.busy_daemons(rows)
     assert len(found) == 2 and "mds_stores" in found[0] and "mdworker_shared" in found[1]
+    # a reading is recorded: the daemon by name and share, never its pid
+    assert found == ["mds_stores 55%", "mdworker_shared 12%"]
     text = ('  "PerformanceStatistics" = {"Alloc system memory"=12658720768,'
             '"Renderer Utilization %"=19,"Device Utilization %"=20,'
             '"In use system memory"=326942720}\n  "model" = "Apple M1 Max"\n'
@@ -550,5 +597,373 @@ def test_a_gpu_pinned_by_uuid_is_keyed_by_its_index_in_the_box(monkeypatch):
     th._UUID_INDEX.clear()
     assert th.box_label("GPU-dddd") == "3"
     assert th.box_label("2") == "2"
-    assert th.box_label("GPU-ffff") == "GPU-ffff"
+    # no index listed: the box string is logged, so the card id, never the UUID
+    assert th.box_label("GPU-ffff") == neutral_ids.card_id("GPU-ffff")
     th._UUID_INDEX.clear()
+
+
+# ---------------------------------------------------------------------------
+# What a record writes about the machine (neutral_ids)
+# ---------------------------------------------------------------------------
+
+def test_the_affinity_probe_prints_neither_the_host_nor_the_pid(machine, monkeypatch,
+                                                                 capsys):
+    """Each rank's probe line lands in the ladder's log, which leaves the machine."""
+    monkeypatch.setattr(os, "getpid", lambda: FOREIGN_PID)
+    exec(compile(th.AFFINITY_PROBE, "<affinity probe>", "exec"), {})  # noqa: S102
+    out = capsys.readouterr().out
+    assert out.startswith("AFFINITY ")
+    assert HOST not in out and HOST.split(".")[0] not in out and str(FOREIGN_PID) not in out
+    assert len(th.parse_affinity_lines(out)) == 1
+    # both spellings parse: the one older logs hold, and the one written now
+    assert th.parse_affinity_lines("AFFINITY node1 101 [0]\nAFFINITY rank 0 [2, 3]\n") == [
+        [0], [2, 3]]
+
+
+def test_the_compute_apps_are_recorded_by_card_and_owner(machine):
+    text = (f"{UUID_A}, {os.getpid()}, 300 MiB\n{UUID_A}, {FOREIGN_PID}, 5000 MiB\n"
+            f"{UUID_B}, 99, 10 MiB")
+    recorded = th.recorded_compute_apps(text, os.getpid())
+    card_a, card_b = neutral_ids.card_id(UUID_A), neutral_ids.card_id(UUID_B)
+    assert recorded.splitlines() == [f"{card_a}, own, 300 MiB", f"{card_a}, other, 5000 MiB",
+                                     f"{card_b}, other, 10 MiB"]
+    assert_neutral(recorded, str(os.getpid()))
+    assert th.recorded_gpus(f"0, {UUID_A}, 3 MiB, 0 %") == f"0, {card_a}, 3 MiB, 0 %"
+    assert th.recorded_device(UUID_A) == card_a and th.recorded_device("3") == "3"
+    assert th.recorded_foreign_app(f"{UUID_A}, {FOREIGN_PID}, 5000 MiB") == (
+        f"{card_a}, 5000 MiB")
+
+
+def test_a_binding_line_keeps_its_cores_and_drops_host_and_pid(machine):
+    lines = [f"[{HOST.split('.')[0]}:{FOREIGN_PID}] MCW rank 0 bound to socket 0[core 0[hwt "
+             "0]]: [B/././.]",
+             f"[{HOST}:{FOREIGN_PID}] Rank 3 bound to package[0][core:3]",
+             f"cpu-bind=MASK - {HOST.split('.')[0]}, task  1  1 [{FOREIGN_PID}]: mask 0x2 set"]
+    recorded = [th.recorded_binding_line(line) for line in lines]
+    assert recorded == ["MCW rank 0 bound to socket 0[core 0[hwt 0]]: [B/././.]",
+                        "Rank 3 bound to package[0][core:3]",
+                        "cpu-bind=MASK - task  1  1: mask 0x2 set"]
+    assert_neutral(recorded)
+    assert th.binding_report_lines("\n".join(recorded)) == recorded[1:]
+
+
+def test_the_device_state_records_no_pid_or_uuid_and_keeps_its_verdicts(machine,
+                                                                         monkeypatch):
+    """The gate compares pids, uids and UUIDs in process; what it reports is recorded."""
+    apps = {None: [{"gpu_uuid": UUID_A, "pid": FOREIGN_PID, "used_memory": "5000 MiB"},
+                   {"gpu_uuid": UUID_B, "pid": 4242, "used_memory": "10 MiB"}],
+            "0": [{"gpu_uuid": UUID_A, "pid": FOREIGN_PID, "used_memory": "5000 MiB"}]}
+    monkeypatch.setattr(th, "compute_apps", lambda gpu: apps[gpu])
+    monkeypatch.setattr(th.count_account_processes, "__defaults__",
+                        (lambda pid: 501 if pid == 4242 else OTHER_UID,))
+    state = th.device_state("0", 501, "linux")
+    assert state["device_free"] is False and state["account_gpu_processes"] == 1
+    assert state["device_processes"] == [{"gpu": neutral_ids.card_id(UUID_A),
+                                          "used_memory": "5000 MiB"}]
+    assert_neutral(state)
+    ok, reasons = th.verdict(th.GateConfig("linux", "0", 501, 9.0, 1.0, 0, None),
+                             {"cpu": 0.0, "memory": {"available_gib": 99.0},
+                              "device": state})
+    assert not ok and any(r.startswith("device busy") for r in reasons)
+    assert_neutral(reasons)
+    ps = [f"{FOREIGN_PID} 1 {OTHER_UID} python -u {HOME}/runs/x/parity/meep_gpu/"
+          "gate_metal_bfast.py --out y",
+          f"300 1 501 python -u {HOME}/runs/x/bench_fused_products.py --out z"]
+    monkeypatch.setattr(th, "metal_neighbours", lambda: list(ps))
+    darwin = th.device_state(None, 501, "darwin")
+    assert darwin["device_free"] is False and darwin["account_gpu_processes"] == 1
+    assert darwin["device_processes"] == ["other python gate_metal_bfast.py",
+                                          "own python bench_fused_products.py"]
+    assert_neutral(darwin, f"{FOREIGN_PID} 1")
+
+
+def test_the_gpu_state_and_its_trace_write_no_uuid(machine, monkeypatch):
+    fields = th.nvidia_query_fields("clocks_event_reasons.active")
+    monkeypatch.setattr(th, "nvidia_smi_available", lambda: True)
+    monkeypatch.setattr(th, "gpu_query_fields", lambda: list(fields))
+    row = ", ".join(UUID_A if f == "uuid" else ("0" if f == "index" else "1")
+                    for f in fields)
+    monkeypatch.setattr(th, "run_text", lambda *a, **k: row + "\n")
+    state = th.gpu_state("0", "linux")
+    assert state["readable"] and state["state"]["uuid"] == neutral_ids.card_id(UUID_A)
+    assert_neutral(state)
+    monkeypatch.setattr(th, "run_text", lambda *a, **k: f"garbled {UUID_A}")
+    assert_neutral(th.gpu_state("0", "linux"))
+    command = th.gpu_trace_command("0", 500)
+    query = next(part for part in command if part.startswith("--query-gpu="))
+    assert "uuid" not in query.split("=", 1)[1].split(",")
+    assert "clocks.sm" in query
+
+
+def test_the_allocation_facts_write_the_machine_id(machine):
+    environ = {"SLURM_JOB_ID": "991", "SLURMD_NODENAME": HOST.split(".")[0],
+               "SLURM_JOB_NODELIST": HOST.split(".")[0], "CUDA_VISIBLE_DEVICES": UUID_A}
+    facts = th.slurm_facts(environ)
+    assert facts["SLURM_JOB_ID"] == "991"
+    assert facts["SLURMD_NODENAME"] == neutral_ids.machine_id()
+    assert facts["CUDA_VISIBLE_DEVICES"] == neutral_ids.card_id(UUID_A)
+    assert_neutral(facts)
+
+
+def test_a_host_named_like_a_word_the_records_carry_is_refused(machine, monkeypatch):
+    """A host named like a word every record carries (``metal``) is never rewritten
+    (``neutral_ids.RECORD_WORDS``), so its records keep their tables; a host named like one
+    of this run's own words (a case, ``pml_3d``) is refused by name of the rule, not the host."""
+    assert th.vocabulary_collisions(["pml_3d", "triton"]) == []
+    monkeypatch.setattr(neutral_ids.socket, "gethostname", lambda: "metal.lab.example.edu")
+    monkeypatch.setattr(neutral_ids, "_node", lambda: "metal.lab.example.edu")
+    neutral_ids.reset()
+    assert th.vocabulary_collisions(["metal"]) == []
+    assert neutral_ids.text('"drive_table": "metal"') == '"drive_table": "metal"'
+    assert "metal.lab.example.edu" not in neutral_ids.text("on metal.lab.example.edu")
+    monkeypatch.setattr(neutral_ids, "_node", lambda: "pml_3d")
+    monkeypatch.setattr(neutral_ids.socket, "gethostname", lambda: "pml_3d")
+    neutral_ids.reset()
+    assert th.vocabulary_collisions(["pml_3d"]) == ["pml_3d"]
+    assert "metal" not in th.VOCABULARY_REFUSAL and "pml_3d" not in th.VOCABULARY_REFUSAL
+
+
+# ---------------------------------------------------------------------------
+# The Windows side of a WSL2 host
+# ---------------------------------------------------------------------------
+
+#: What the lab desktop's Windows side read with the card locked at 1695 / 9501 MHz: the
+#: card at rest reports P2 and the gpu_idle reason at its lock (CRLF, as Windows writes it).
+WIN_GPU_AT_LOCK = "1695, 9501, P2, 0x0000000000000001, 117.75, 55\r\n"
+#: The load sample: 24 logical CPUs, the VM process's affinity mask (all 24, one process),
+#: the whole machine 5.1 % busy on the last sample, the VM's process 7.8 % of one CPU (its
+#: first sample has no previous raw value: 0).
+WIN_LOAD_QUIET = ("cpus 24\r\naffinity 16777215 1\r\nsample 7.60718225393715 0 1\r\n"
+                  "sample 5.11984364517136 7.78237830477138 1\r\n")
+
+
+def test_wsl2_is_read_from_a_microsoft_kernel_and_nothing_else():
+    """The release string or the version banner naming Microsoft is WSL2; a native Linux
+    kernel (a cloud build included), macOS and an unreadable /proc are not WSL2 hosts and
+    each says why."""
+    assert th.wsl_host("linux", "6.18.54.1-microsoft-standard-WSL2\n", "")["wsl2"] is True
+    assert th.wsl_host("linux", "", "Linux version 5.15.153.1-microsoft-standard-WSL2 "
+                                    "(root@builder) #1 SMP")["wsl2"] is True
+    assert th.wsl_host("linux", "4.4.0-19041-Microsoft", "")["wsl2"] is True
+    native = th.wsl_host("linux", "6.5.0-1025-azure\n", "Linux version 6.5.0-1025-azure")
+    assert native == {"wsl2": False, "why": "native Linux: the kernel is not a Microsoft build"}
+    assert th.wsl_host("darwin") == {"wsl2": False, "why": "not Linux (darwin)"}
+    assert th.wsl_host("linux", "", "")["wsl2"] is False
+
+
+def test_the_windows_card_and_load_parse_and_name_their_reasons():
+    gpu = th.parse_windows_gpu(WIN_GPU_AT_LOCK)
+    assert gpu == [{"graphics_mhz": 1695, "memory_mhz": 9501, "pstate": "P2",
+                    "reasons": "0x1", "reason_names": ["gpu_idle"], "power_w": 117.75,
+                    "temperature_c": 55}]
+    assert th.reason_names(0x405) == ["gpu_idle", "sw_power_cap", "bit 0x400"]
+    assert th.parse_windows_gpu("[N/A], 9501, P2, [N/A], 1, 2")[0]["graphics_mhz"] is None
+    load = th.parse_windows_load(WIN_LOAD_QUIET)
+    assert load["readable"] and load["logical_cpus"] == 24
+    assert load["busy_cpus"] == pytest.approx(5.12 * 0.24, abs=0.01)
+    assert load["vm_busy_cpus"] == pytest.approx(0.08)
+    assert load["outside_vm_busy_cpus"] == pytest.approx(1.23 - 0.08, abs=0.01)
+    assert th.parse_windows_load("error InvalidOperationException\n") == {
+        "readable": False, "why": "the counter sample failed (InvalidOperationException)"}
+    assert th.parse_windows_load("cpus 24\nsample 3.0 0 0\n")["why"] == (
+        "no process of the WSL VM in the counters")
+    assert th.parse_windows_load("")["readable"] is False
+
+
+def _runner(gpu=WIN_GPU_AT_LOCK, load=WIN_LOAD_QUIET, calls=None):
+    def run(command):
+        if calls is not None:
+            calls.append(list(command))
+        return (gpu, "") if "nvidia-smi" in command[0] else (load, "")
+    return run
+
+
+def test_a_windows_reading_pins_the_card_and_records_no_name(machine):
+    """The pinned card's UUID picks the Windows card and is never recorded; the load
+    script prints numbers only (a counter path carries the Windows computer name)."""
+    calls = []
+    reading = th.windows_reading(UUID_A, runner=_runner(calls=calls),
+                                 program=lambda name: f"{HOME}/bin/{name}")
+    assert reading["unreadable"] == [] and reading["gpu"]["graphics_mhz"] == 1695
+    assert reading["cpu"]["outside_vm_busy_cpus"] == pytest.approx(1.15, abs=0.01)
+    assert f"--id={UUID_A}" in calls[0]
+    assert calls[1][1:4] == ["-NoProfile", "-NonInteractive", "-EncodedCommand"]
+    printed = set(re.findall(r'"(\w+) [\${]', th.WINDOWS_LOAD_SCRIPT))
+    assert printed == {"cpus", "sample", "error", "affinity"}, \
+        "numbers only: no counter path or process name is printed"
+    assert reading["vm_affinity"] == {"readable": True, "mask": "0xffffff", "processes": 1}
+    assert_neutral(reading)
+    two = th.windows_reading(None, runner=_runner(gpu=WIN_GPU_AT_LOCK * 2),
+                             program=lambda name: name)
+    assert two["gpu"] is None and two["unreadable"] == [
+        "nvidia-smi.exe: 2 cards read and none pinned"]
+
+
+def test_without_interop_the_windows_side_reads_unreadable_by_name(monkeypatch):
+    """No Windows program reachable (interop off, nothing on PATH or under /mnt/c), one
+    that cannot be started, or one that does not answer: each is named, never empty."""
+    none = th.windows_reading(program=lambda name: None)
+    assert none["gpu"] is None and none["cpu"] is None and len(none["unreadable"]) == 2
+    assert none["unreadable"][0].startswith("nvidia-smi.exe not found")
+    assert none["unreadable"][1].startswith("powershell.exe not found")
+    assert th.windows_program("nvidia-smi.exe", which=lambda n: None,
+                              executable=lambda p: False) is None
+    assert th.windows_program("nvidia-smi.exe", which=lambda n: None,
+                              executable=lambda p: True) == th.WINDOWS_PROGRAMS["nvidia-smi.exe"]
+    failed = th.windows_reading(program=lambda name: name,
+                                runner=lambda command: (None, "could not be started "
+                                                              "(Exec format error)"))
+    assert failed["unreadable"] == [
+        "nvidia-smi.exe: could not be started (Exec format error)",
+        "Windows CPU load: could not be started (Exec format error)"]
+    rule = th.WindowsRule(1695, 9501)
+    assert th.windows_reasons(rule, failed)[0].startswith("Windows side unreadable: ")
+
+
+def test_run_windows_closes_the_childs_stdin(tmp_path):
+    """A Windows program reads the stdin it inherits: a driver fed on stdin would lose the
+    rest of its script to the first nvidia-smi.exe it starts. Here this process's stdin
+    holds the rest of a script, and the child must read none of it."""
+    read_end, write_end = os.pipe()
+    os.write(write_end, b"the rest of the script\n")
+    os.close(write_end)
+    saved = os.dup(0)
+    os.dup2(read_end, 0)
+    try:
+        text, why = th.run_windows([sys.executable, "-c",
+                                    "import sys; print(repr(sys.stdin.read()))"])
+    finally:
+        os.dup2(saved, 0)
+        os.close(saved)
+        os.close(read_end)
+    assert why == "" and text.strip() == "''"
+    assert th.run_windows([str(tmp_path / "absent.exe")])[1].startswith("could not be started")
+
+
+def _observed(gpu=WIN_GPU_AT_LOCK, load=WIN_LOAD_QUIET):
+    return {"gpu": th.parse_windows_gpu(gpu)[0], "cpu": th.parse_windows_load(load),
+            "vm_affinity": th.parse_vm_affinity(load), "unreadable": []}
+
+
+def test_the_windows_rule_holds_the_lock_the_reasons_and_the_load():
+    rule = th.WindowsRule(1695, 9501)
+    assert th.windows_reasons(rule, _observed()) == []
+    off = _observed("1485, 5001, P3, 0x0000000000000001, 90.0, 55")
+    assert th.windows_reasons(rule, off) == [
+        "the card left the declared clock lock: graphics 1485 MHz, memory 5001 MHz, "
+        "against 1695 / 9501"]
+    memory_only = _observed("1695, 5001, P3, 0x0000000000000001, 90.0, 55")
+    assert th.windows_reasons(rule, memory_only) == [
+        "the card left the declared clock lock: graphics 1695 MHz, memory 5001 MHz, "
+        "against 1695 / 9501"], "the memory clock is half the lock"
+    capped = _observed("1695, 9501, P2, 0x0000000000000004, 350.0, 70")
+    assert th.windows_reasons(rule, capped) == [
+        "a clock-event reason other than gpu_idle: 0x4 (sw_power_cap)"]
+    assert th.windows_reasons(rule, _observed("1695, 9501, P2, 0x0000000000000000, 1, 2")) == []
+    busy = _observed(load="cpus 24\nsample 30.0 0 1\nsample 25.0 100.0 1\n")
+    assert th.windows_reasons(rule, busy) == [
+        "Windows busy outside the WSL VM: 5.0 logical CPUs >= 2"]
+    # the VM's own load is the run's: 100 % of 24 CPUs, all of it the VM, is quiet
+    own = _observed(load="cpus 24\nsample 100.0 0 1\nsample 100.0 2400.0 1\n")
+    assert th.windows_reasons(rule, own) == []
+    assert th.windows_reasons(th.WindowsRule(1695, 9501, cpu_max=6.0), busy) == []
+
+
+def test_with_no_lock_declared_the_clocks_may_not_move_between_window_readings():
+    rule = th.WindowsRule()
+    rest = _observed("210, 405, P8, 0x0000000000000001, 20.0, 40")
+    assert th.windows_reasons(rule, rest, previous=rest) == []
+    woke = _observed("1965, 9751, P0, 0x0000000000000000, 300.0, 60")
+    assert th.windows_reasons(rule, woke, previous=rest) == [
+        "the card's clocks moved with no lock declared: graphics 210 -> 1965 MHz, "
+        "memory 405 -> 9751 MHz"]
+    assert th.windows_reasons(rule, woke) == [], "no clock rule without a lock or a window"
+    assert th.parse_clock_lock(" 1695, 9501") == (1695, 9501)
+    for bad in ("1695", "1695,", "1695;9501", "a,b", "0,9501"):
+        with pytest.raises(ValueError, match="GRAPHICS,MEMORY"):
+            th.parse_clock_lock(bad)
+
+
+def test_a_units_windows_readings_are_summarised():
+    gone = dict(_observed("1485, 5001, P3, 0x0000000000000001, 90.0, 58"))
+    summary = th.windows_summary([_observed(), gone, {"gpu": None, "cpu": None,
+                                                      "unreadable": ["x"]}])
+    assert summary == {"readings": 3, "unreadable": 1, "graphics_mhz": [1485, 1695],
+                       "memory_mhz": [5001, 9501], "pstates": ["P2", "P3"],
+                       "reasons": ["0x1"], "power_w_max": 117.75, "temperature_c_max": 58,
+                       "outside_vm_busy_cpus_max": 1.15, "busy_cpus_max": 1.23,
+                       "vm_affinity": ["0xffffff"]}
+
+
+# ---------------------------------------------------------------------------
+# The WSL VM's CPU affinity mask
+# ---------------------------------------------------------------------------
+
+#: What the set script printed where the mask took (an elevated context) and where it was
+#: denied (a restricted token: the read gives 0, the set fails with Win32 error 5).
+SET_TOOK = "processes 1\r\nbefore 16777215\r\nset ok\r\nread 10066312\r\n"
+SET_DENIED = "processes 1\r\nbefore 0\r\nset error Win32Exception 5\r\nread 0\r\n"
+
+
+def test_an_affinity_mask_is_declared_in_hex_or_decimal():
+    assert th.parse_affinity_mask("0x999988") == 0x999988 == th.parse_affinity_mask("10066312")
+    assert th.parse_affinity_mask(" 0XFFFFFF ") == 0xFFFFFF
+    for bad in ("", "0", "0x0", "-5", "lots", "0xZZ"):
+        with pytest.raises(ValueError, match="affinity mask"):
+            th.parse_affinity_mask(bad)
+
+
+def test_the_vm_mask_is_read_with_the_load_and_one_vm_only():
+    assert th.parse_vm_affinity("cpus 24\naffinity 10066312 1\n") == {
+        "readable": True, "mask": "0x999988", "processes": 1}
+    assert th.parse_vm_affinity("affinity 16777215 2\n")["why"] == (
+        "2 WSL VM processes: a mask names one VM")
+    assert th.parse_vm_affinity("affinity error ProcessCommandException\n")["why"] == (
+        "the VM process's mask could not be read (ProcessCommandException)")
+    assert th.parse_vm_affinity("cpus 24\n") == {"readable": False, "why": "no affinity line"}
+    assert "Get-Process -Name vmmemWSL" in th.WINDOWS_LOAD_SCRIPT
+
+
+def test_the_mask_is_set_and_read_back_or_refused_by_name():
+    calls = []
+
+    def runner(command, text=SET_TOOK):
+        calls.append(command)
+        return text, ""
+
+    done = th.set_vm_affinity(0x999988, runner=runner, program=lambda name: name)
+    assert done == {"ok": True, "declared": "0x999988", "processes": 1, "before": "0xffffff",
+                    "set": "ok", "read_back": "0x999988", "why": None}
+    import base64
+    script = base64.b64decode(calls[0][-1]).decode("utf-16-le")
+    assert calls[0][:4] == ["powershell.exe", "-NoProfile", "-NonInteractive", "-EncodedCommand"]
+    assert "ProcessorAffinity = [IntPtr]10066312;" in script and "{mask}" not in script
+    denied = th.set_vm_affinity(0x999988, runner=lambda c: (SET_DENIED, ""),
+                                program=lambda name: name)
+    assert denied["ok"] is False and denied["read_back"] == "0x0"
+    assert denied["set"] == "error Win32Exception 5"
+    assert denied["why"].startswith("the set was refused: access denied") and \
+        "elevated context" in denied["why"]
+    other = th.set_vm_affinity(0x999988, runner=lambda c: (SET_TOOK.replace("10066312", "16777215"), ""),
+                               program=lambda name: name)
+    assert other["ok"] is False and other["why"] == "the mask read back 0xffffff, not 0x999988"
+    two = th.set_vm_affinity(0x999988, runner=lambda c: ("processes 2\n", "exit status 3"),
+                             program=lambda name: name)
+    assert two["ok"] is False and two["why"] == "2 WSL VM processes: a mask names one VM"
+    absent = th.set_vm_affinity(0x999988, program=lambda name: None)
+    assert absent["ok"] is False and absent["why"].startswith("powershell.exe not found")
+
+
+def test_a_declared_mask_is_required_at_every_reading_and_recorded_otherwise():
+    masked = th.WindowsRule(1695, 9501, vm_affinity=0x999988)
+    held = _observed(load=WIN_LOAD_QUIET.replace("16777215", "10066312"))
+    assert th.windows_reasons(masked, held) == []
+    assert th.windows_reasons(masked, _observed()) == [
+        "the WSL VM's CPU affinity is 0xffffff, not the declared 0x999988"]
+    lost = _observed(load=WIN_LOAD_QUIET.replace("affinity 16777215 1", "affinity error X"))
+    assert th.windows_reasons(masked, lost) == [
+        "the WSL VM's CPU affinity unreadable: the VM process's mask could not be read (X)"]
+    assert th.windows_reasons(th.WindowsRule(1695, 9501), _observed()) == [], \
+        "no mask declared: the mask is recorded, never gated"
+    assert masked.describe()["vm_affinity"] == "0x999988"
+    assert th.WindowsRule().describe()["vm_affinity"] is None

@@ -1,6 +1,6 @@
 """SEVERAL read-only coefficient VECTORS in ONE Metal buffer, addressed by offset.
 
-WHY THIS EXISTS, and it is a platform fact rather than a taste. A Metal kernel may
+Why this exists, and it is a platform fact rather than a taste. A Metal kernel may
 bind at most 31 buffers (:data:`.device.MAX_BUFFER_BINDINGS`, measured on this
 toolchain: attribute index 31 is the compile error ``'buffer' attribute parameter is
 out of bounds``). Two shipped families already buy slots back by packing SCALARS into
@@ -9,7 +9,7 @@ bindings into one to get 32 down to 30, and :mod:`.nonlinear_update_e` six chi s
 into one, recording that six separate ones "would have been 34 bindings and would not
 have compiled at all".
 
-THIS MODULE IS THE ARRAY VERSION OF THAT MOVE AND IT IS A NEW STEP, not a repeat.
+This module is the array version of that move and it is a new step, not a repeat.
 A scalar pack costs nothing because the struct exists anyway; an ARRAY pack has to
 answer two questions a scalar pack never raises — where each vector starts, and who
 may write the buffer — and this module answers both by construction:
@@ -23,7 +23,7 @@ may write the buffer — and this module answers both by construction:
   binding, because a wrong offset into a mixed pack would let a scan corrupt a PML
   coefficient vector silently and permanently (nothing re-uploads a constant mirror).
 
-WHY IT COSTS NOTHING ON THIS BACKEND, and this is the fact that makes packing cheap
+Why it costs nothing on this backend, and this is the fact that makes packing cheap
 here and expensive elsewhere. Every Metal device buffer in this package is a
 :class:`.device.Mirror` the package allocates itself — ``Residency.mirror`` flattens
 the host array and copies it to MPS once, at plan build. There is no driver-owned
@@ -33,7 +33,7 @@ tensor instead of six. ``device.py``'s own docstring records that this residency
 layer has no Triton counterpart, which is why the CuPy/Triton track never had to
 answer the question.
 
-THE BODY TEXT IS NOT FORKED. :func:`prologue` re-creates each vector's own NAME as a
+The body text is not forked. :func:`prologue` re-creates each vector's own NAME as a
 ``device const float*`` into the pack, once, before any lifted text runs — so a
 certified body that reads ``kmx[i]`` goes on reading ``kmx[i]``, character for
 character, and the lift stays a lift. That is the same discipline the fused pairs

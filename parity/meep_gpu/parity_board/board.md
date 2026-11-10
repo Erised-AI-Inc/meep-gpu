@@ -1,23 +1,23 @@
 # Bit-parity coverage board
 
-Built by `parity/meep_gpu/build_parity_board.py` at 2026-10-16T23:20:32Z on subject `41da12d02fcae9e7` (1163 files). Generated: do not edit; re-run `build`.
+Built by `parity/meep_gpu/build_parity_board.py` at 2026-10-22T09:32:06Z on subject `8eb67fef3f63ab63` (1190 files). Generated: do not edit; re-run `build`.
 
 Live array-path oracle: `array_path_oracle/real-v6` `1ab516279d74002a` (20 fixture cases).
-Test outcomes: recorded 2026-10-16T23:19:57Z on Darwin arm64, 216 test files run; carved from one integration's suites: the CUDA and Triton test files' cases of its package suite (CPU-only shim, Apple GPU hidden, SUITE_ENFORCE_SKIPS=0) and the Metal test files' cases of its device run (Apple GPU, no shim), on this tree's outcome subject; every marker; MEEP_GPU_DISPATCH=0.
+Test outcomes: recorded 2026-10-22T09:31:34Z on Darwin arm64, 218 test files run; carved from one integration's suites: the CUDA and Triton test files' cases of its package suite (CPU-only shim, Apple GPU hidden, SUITE_ENFORCE_SKIPS=0) and the Metal test files' cases of its device run (Apple GPU, no shim), on this tree's outcome subject; every marker; MEEP_GPU_DISPATCH=0.
 
-Each count is N / D: D is the rows the column applies to and could measure; refused rows are counted beside it, never as a gap and never as a pass. Baselines (owner ruling R13): keep and flush on CUDA, Triton and the array path; flush only on Metal.
+Each count is N / D: D is the rows the column applies to and could measure; refused rows are counted beside it, never as a gap and never as a pass. Baselines: keep and flush on CUDA, Triton and the array path; flush only on Metal, whose GPU flushes natively.
 
 Columns (a) and (b) read the device text each module's builder EMITS (`parity_board_emit.py`: the CUDA source `cp.RawKernel` is handed, the Metal MSL after template splicing, the Triton `@jit` program with its helpers inlined), with no device. A module with no emit route is read off its own source text instead, and its cell says so.
 
-Column (d-dev) is DEVELOPMENT EVIDENCE, NOT CERTIFICATION: an integrator's re-run of a lane's device legs (`record_dev_evidence.py`), counted only while its subject (the module's bytes, its emitted text, the array path) is the live one. Columns (d) and (e) never read it.
+Column (d-dev) is development evidence, not certification: an integrator's re-run of a module's device legs (`record_dev_evidence.py`), counted only while its subject (the module's bytes, its emitted text, the array path) is the live one. Columns (d) and (e) never read it.
 
 ## Summary
 
 | Table | Rows | (a) B select | (b) MEEP-order A | (c) host identical | (d) device keep | (d) device flush | (d-dev) keep, NOT certification | (d-dev) flush, NOT certification | (e) CERTIFIED keep | (e) CERTIFIED flush |
 |---|---|---|---|---|---|---|---|---|---|---|
-| CUDA | 75 | 55 / 55 (+1 refused) | 57 / 57 (+8 refused) | 18 / 18 (+47 refused) | 53 / 53 (+12 refused) | 53 / 53 (+12 refused) | 4 / 4 (+61 refused) | 0 / 0 (+65 refused) | 53 / 53 (+12 refused) | 53 / 53 (+12 refused) |
-| Triton | 73 | 55 / 56 (+2 refused) | 61 / 61 (+7 refused) | 27 / 29 (+39 refused) | 53 / 56 (+12 refused) | 0 / 56 (+12 refused) | 2 / 2 (+66 refused) | 0 / 0 (+68 refused) | 53 / 56 (+12 refused) | 0 / 56 (+12 refused) |
-| Metal | 92 | 60 / 60 (+4 refused) | 68 / 68 (+9 refused) | 29 / 29 (+48 refused) | n/a (R13) | 74 / 74 (+3 refused) | n/a (R13) | 3 / 3 (+74 refused) | n/a (R13) | 74 / 74 (+3 refused) |
+| CUDA | 75 | 55 / 55 (+1 refused) | 57 / 57 (+8 refused) | 18 / 18 (+47 refused) | 0 / 53 (+12 refused) | 0 / 53 (+12 refused) | 0 / 0 (+65 refused) | 0 / 0 (+65 refused) | 0 / 53 (+12 refused) | 0 / 53 (+12 refused) |
+| Triton | 73 | 55 / 56 (+2 refused) | 61 / 61 (+7 refused) | 27 / 29 (+39 refused) | 3 / 56 (+12 refused) | 3 / 56 (+12 refused) | 0 / 0 (+68 refused) | 0 / 0 (+68 refused) | 0 / 56 (+12 refused) | 0 / 56 (+12 refused) |
+| Metal | 92 | 60 / 60 (+4 refused) | 68 / 68 (+9 refused) | 29 / 29 (+48 refused) | n/a (flush only) | 6 / 74 (+3 refused) | n/a (flush only) | 0 / 0 (+77 refused) | n/a (flush only) | 0 / 74 (+3 refused) |
 
 Witness of (a) and (b), per table (rows with a device form): CUDA 61 emitted, 4 source text; Triton 67 emitted, 1 source text; Metal 75 emitted, 2 source text.
 
@@ -31,8 +31,8 @@ Why (e) reads what it reads:
 
 ## Array path against MEEP
 
-- keep: 8 minted cases (a, b, c, c_prime, ex.absorber-1d, ex.material-dispersion, t.test_holey_wvg_bands.TestHoleyWvgBands.test_fields_at_kx, t.test_ring_cyl.TestRingCyl.test_ring_cyl); reference MEEP 1.33.0 on Darwin arm64, contraction off, OMP 1.
-- flush: 8 minted cases (a, b, c, c_prime, ex.absorber-1d, ex.material-dispersion, t.test_holey_wvg_bands.TestHoleyWvgBands.test_fields_at_kx, t.test_ring_cyl.TestRingCyl.test_ring_cyl); reference MEEP 1.33.0 on Linux x86_64, contraction off, OMP 1.
+- keep: 8 minted cases (a, b, c, c_prime, ex.absorber-1d, ex.material-dispersion, t.test_holey_wvg_bands.TestHoleyWvgBands.test_fields_at_kx, t.test_ring_cyl.TestRingCyl.test_ring_cyl); reference MEEP 1.35.0 on Darwin arm64, contraction off, OMP 1.
+- flush: 8 minted cases (a, b, c, c_prime, ex.absorber-1d, ex.material-dispersion, t.test_holey_wvg_bands.TestHoleyWvgBands.test_fields_at_kx, t.test_ring_cyl.TestRingCyl.test_ring_cyl); reference MEEP 1.35.0 on Linux x86_64, contraction off, OMP 1.
 
 | Family | WPs | keep | flush |
 |---|---|---|---|
@@ -85,6 +85,8 @@ Refused cells, by reason:
 - host_identical: refused, none of its test files runs the emitted device text through the host interpreter (test_root_chunk_forms): test_special_kz_fused_hd_pair.py measure no arithmetic of it: 1 (special_kz_fused_hd_pair)
 - device_identical:keep: refused, no ledger entry pins the module's file (its device text may be pinned by digest elsewhere; the board does not attribute that): 12 (complex_beta_fused_hd_pair, complex_electric_fill_carry, complex_emitter, complex_fill_carry, complex_offdiag_update_e, conductive_bfast_fused_hd_pair, cylindrical_prefix, dispersive_fused_electric_pair, no_pml_complex_fused_electric_pair, no_pml_constitutive, no_pml_dispersive_fused_electric_pair, special_kz_fused_hd_pair)
 - device_identical:flush: refused, no ledger entry pins the module's file (its device text may be pinned by digest elsewhere; the board does not attribute that): 12 (complex_beta_fused_hd_pair, complex_electric_fill_carry, complex_emitter, complex_fill_carry, complex_offdiag_update_e, conductive_bfast_fused_hd_pair, cylindrical_prefix, dispersive_fused_electric_pair, no_pml_complex_fused_electric_pair, no_pml_constitutive, no_pml_dispersive_fused_electric_pair, special_kz_fused_hd_pair)
+- dev_evidence:keep: refused, 1 record(s) on another subject (x4b_device_smoke box3d default composition 2026-10-10: the module's bytes, its emitted device text moved since): 2 (fused_electric_pair, fused_magnetic_pair)
+- dev_evidence:keep: refused, 1 record(s) on another subject (x4b_device_smoke box3d singles (MEEP_GPU_FUSE_ARMS=0) 2026-10-10: the module's bytes, its emitted device text moved since): 2 (constitutive_kernels, step_curl_kernels)
 - dev_evidence:keep: refused, no development evidence recorded on this subject: 61 (ade_kernels, bfast_curl, bfast_fused_electric_pair, bfast_fused_magnetic_pair, complex_beta_fused_electric_pair, complex_beta_fused_hd_pair, complex_beta_fused_magnetic_pair, complex_beta_kernels, complex_electric_fill_carry, complex_emitter, complex_fill_carry, complex_folded_fused_electric_pair, ...)
 - dev_evidence:flush: refused, no development evidence recorded on this subject: 65 (ade_kernels, bfast_curl, bfast_fused_electric_pair, bfast_fused_magnetic_pair, complex_beta_fused_electric_pair, complex_beta_fused_hd_pair, complex_beta_fused_magnetic_pair, complex_beta_kernels, complex_electric_fill_carry, complex_emitter, complex_fill_carry, complex_folded_fused_electric_pair, ...)
 - certified:keep: refused, no ledger entry pins the module's file (its device text may be pinned by digest elsewhere; the board does not attribute that): 12 (complex_beta_fused_hd_pair, complex_electric_fill_carry, complex_emitter, complex_fill_carry, complex_offdiag_update_e, conductive_bfast_fused_hd_pair, cylindrical_prefix, dispersive_fused_electric_pair, no_pml_complex_fused_electric_pair, no_pml_constitutive, no_pml_dispersive_fused_electric_pair, special_kz_fused_hd_pair)
@@ -99,71 +101,71 @@ Modules of the table directory that no step list names: bloch_connection, bounds
 | C0 | `registry` | host | - | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a |  |
 | C0 | `arms` | host | - | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a |  |
 | C0 | `fastpath_cuda` | host | - | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a |  |
-| C1 | `step_curl_kernels` | kernel | emitted | yes | yes | yes | yes | yes | yes | refused | yes | yes |  |
-| C1 | `constitutive_kernels` | kernel | emitted | yes | yes | yes | yes | yes | yes | refused | yes | yes |  |
-| C1 | `nonlinear_constitutive` | kernel | emitted | yes | yes | yes | yes | yes | refused | refused | yes | yes |  |
-| C1 | `own_cell_hoist` | kernel | emitted | yes | yes | yes | yes | yes | refused | refused | yes | yes |  |
-| C2 | `fused_magnetic_pair` | kernel | emitted | yes | yes | yes | yes | yes | yes | refused | yes | yes |  |
-| C2 | `fused_electric_pair` | kernel | emitted | yes | yes | yes | yes | yes | yes | refused | yes | yes |  |
-| C2 | `fused_hd_pair` | kernel | emitted | yes | yes | refused | yes | yes | refused | refused | yes | yes |  |
-| C3 | `conductive_kernels` | kernel | emitted | yes | yes | refused | yes | yes | refused | refused | yes | yes |  |
-| C3 | `conductive_fused_electric_pair` | kernel | emitted | yes | yes | refused | yes | yes | refused | refused | yes | yes |  |
-| C4 | `offdiag_emitter` | kernel | emitted | yes | yes | refused | yes | yes | refused | refused | yes | yes |  |
-| C4 | `offdiag_constitutive_kernels` | kernel | emitted | yes | yes | refused | yes | yes | refused | refused | yes | yes |  |
-| C4 | `folded_offdiag_kernels` | kernel | emitted | yes | yes | refused | yes | yes | refused | refused | yes | yes |  |
-| C4 | `offdiag_fused_electric_pair` | kernel | emitted | yes | yes | refused | yes | yes | refused | refused | yes | yes |  |
-| C4 | `offdiag_stencil_weld` | kernel | emitted | yes | refused | refused | yes | yes | refused | refused | yes | yes |  |
-| C4 | `folded_offdiag_fused_electric_pair` | kernel | emitted | yes | yes | refused | yes | yes | refused | refused | yes | yes |  |
-| C5 | `ade_kernels` | kernel | emitted | yes | refused | yes | yes | yes | refused | refused | yes | yes |  |
-| C5 | `dispersive_kernels` | kernel | emitted | yes | yes | yes | yes | yes | refused | refused | yes | yes |  |
+| C1 | `step_curl_kernels` | kernel | emitted | yes | yes | yes | no | no | refused | refused | no | no | device: bit_identity_gate: the module's bytes moved since its run |
+| C1 | `constitutive_kernels` | kernel | emitted | yes | yes | yes | no | no | refused | refused | no | no | device: 3 pinning entries, none passes: constitutive_2026-08-15: the module's bytes moved since its run |
+| C1 | `nonlinear_constitutive` | kernel | emitted | yes | yes | yes | no | no | refused | refused | no | no | device: cuda_nonlinear_2026-08-21: the module's bytes moved since its run |
+| C1 | `own_cell_hoist` | kernel | emitted | yes | yes | yes | no | no | refused | refused | no | no | device: offdiag_2026-08-16: the module's bytes moved since its run |
+| C2 | `fused_magnetic_pair` | kernel | emitted | yes | yes | yes | no | no | refused | refused | no | no | device: 3 pinning entries, none passes: cuda_fused_magnetic_pair_2026-08-27: the module's bytes moved since its run |
+| C2 | `fused_electric_pair` | kernel | emitted | yes | yes | yes | no | no | refused | refused | no | no | device: cuda_fused_electric_pair_2026-08-31_fillcarry_r3: the module's bytes moved since its run |
+| C2 | `fused_hd_pair` | kernel | emitted | yes | yes | refused | no | no | refused | refused | no | no | device: cuda_fused_hd_pair_2026-09-06: the module's bytes moved since its run |
+| C3 | `conductive_kernels` | kernel | emitted | yes | yes | refused | no | no | refused | refused | no | no | device: cuda_conductive_2026-08-21: the module's bytes moved since its run |
+| C3 | `conductive_fused_electric_pair` | kernel | emitted | yes | yes | refused | no | no | refused | refused | no | no | device: cuda_conductive_fused_electric_pair_2026-09-02b: the module's bytes moved since its run |
+| C4 | `offdiag_emitter` | kernel | emitted | yes | yes | refused | no | no | refused | refused | no | no | device: offdiag_2026-08-16: the module's bytes moved since its run |
+| C4 | `offdiag_constitutive_kernels` | kernel | emitted | yes | yes | refused | no | no | refused | refused | no | no | device: offdiag_2026-08-16: the module's bytes moved since its run |
+| C4 | `folded_offdiag_kernels` | kernel | emitted | yes | yes | refused | no | no | refused | refused | no | no | device: cuda_folded_offdiag_2026-08-21: the module's bytes moved since its run |
+| C4 | `offdiag_fused_electric_pair` | kernel | emitted | yes | yes | refused | no | no | refused | refused | no | no | device: cuda_offdiag_stencil_welds_2026-09-02: the module's bytes moved since its run |
+| C4 | `offdiag_stencil_weld` | kernel | emitted | yes | refused | refused | no | no | refused | refused | no | no | device: cuda_offdiag_stencil_welds_2026-09-02: the module's bytes moved since its run |
+| C4 | `folded_offdiag_fused_electric_pair` | kernel | emitted | yes | yes | refused | no | no | refused | refused | no | no | device: cuda_offdiag_stencil_welds_2026-09-02: the module's bytes moved since its run |
+| C5 | `ade_kernels` | kernel | emitted | yes | refused | yes | no | no | refused | refused | no | no | device: ade_2026-08-19: the module's bytes moved since its run |
+| C5 | `dispersive_kernels` | kernel | emitted | yes | yes | yes | no | no | refused | refused | no | no | device: cuda_dispersive_2026-08-27: the module's bytes moved since its run |
 | C5 | `dispersive_fused_electric_pair` | kernel | emitted | yes | yes | refused | refused | refused | refused | refused | refused | refused |  |
-| C5 | `fused_polarization_pair` | kernel | emitted | yes | yes | yes | yes | yes | refused | refused | yes | yes |  |
-| C5 | `three_slot_dispersive_weld` | kernel | emitted | yes | refused | yes | yes | yes | refused | refused | yes | yes |  |
-| C5 | `dispersive_offdiag_update_e` | kernel | emitted | yes | yes | refused | yes | yes | refused | refused | yes | yes |  |
-| C5 | `dispersive_offdiag_fused_polarization_pair` | kernel | emitted | yes | yes | refused | yes | yes | refused | refused | yes | yes |  |
+| C5 | `fused_polarization_pair` | kernel | emitted | yes | yes | yes | no | no | refused | refused | no | no | device: 2 pinning entries, none passes: cuda_fused_polarization_pair_2026-09-01: the module's bytes moved since its run |
+| C5 | `three_slot_dispersive_weld` | kernel | emitted | yes | refused | yes | no | no | refused | refused | no | no | device: cuda_three_slot_dispersive_weld_2026-09-11_regate: the module's bytes moved since its run |
+| C5 | `dispersive_offdiag_update_e` | kernel | emitted | yes | yes | refused | no | no | refused | refused | no | no | device: cuda_dispersive_offdiag_2026-08-20: the module's bytes moved since its run |
+| C5 | `dispersive_offdiag_fused_polarization_pair` | kernel | emitted | yes | yes | refused | no | no | refused | refused | no | no | device: cuda_dispersive_offdiag_polarization_pair_2026-09-02: the module's bytes moved since its run |
 | C6 | `complex_emitter` | kernel | emitted | yes | yes | yes | refused | refused | refused | refused | refused | refused |  |
-| C6 | `complex_pml_kernels` | kernel | emitted | yes | yes | yes | yes | yes | refused | refused | yes | yes |  |
+| C6 | `complex_pml_kernels` | kernel | emitted | yes | yes | yes | no | no | refused | refused | no | no | device: complex_pml_2026-08-26: the module's bytes moved since its run |
 | C6 | `complex_fill_carry` | kernel | source text | yes | refused | refused | refused | refused | refused | refused | refused | refused |  |
 | C6 | `complex_electric_fill_carry` | kernel | source text | yes | refused | refused | refused | refused | refused | refused | refused | refused |  |
-| C6 | `complex_folded_kernels` | kernel | emitted | yes | yes | refused | yes | yes | refused | refused | yes | yes |  |
-| C6 | `complex_no_pml_kernels` | a_only | emitted | n/a | yes | refused | yes | yes | refused | refused | yes | yes |  |
-| C6 | `complex_fused_magnetic_pair` | kernel | emitted | yes | yes | refused | yes | yes | refused | refused | yes | yes |  |
-| C6 | `complex_fused_electric_pair` | kernel | emitted | yes | yes | refused | yes | yes | refused | refused | yes | yes |  |
-| C6 | `complex_fused_hd_pair` | kernel | emitted | yes | yes | refused | yes | yes | refused | refused | yes | yes |  |
-| C6 | `complex_folded_fused_magnetic_pair` | kernel | emitted | yes | yes | refused | yes | yes | refused | refused | yes | yes |  |
-| C6 | `complex_folded_fused_electric_pair` | kernel | emitted | yes | yes | refused | yes | yes | refused | refused | yes | yes |  |
+| C6 | `complex_folded_kernels` | kernel | emitted | yes | yes | refused | no | no | refused | refused | no | no | device: cuda_complex_folded_2026-09-01: the module's bytes moved since its run |
+| C6 | `complex_no_pml_kernels` | a_only | emitted | n/a | yes | refused | no | no | refused | refused | no | no | device: cuda_complex_no_pml_2026-08-27: the module's bytes moved since its run |
+| C6 | `complex_fused_magnetic_pair` | kernel | emitted | yes | yes | refused | no | no | refused | refused | no | no | device: cuda_complex_fused_magnetic_pair_2026-09-11_regate: the module's bytes moved since its run |
+| C6 | `complex_fused_electric_pair` | kernel | emitted | yes | yes | refused | no | no | refused | refused | no | no | device: cuda_complex_fused_electric_pair_2026-09-11_regate: the module's bytes moved since its run |
+| C6 | `complex_fused_hd_pair` | kernel | emitted | yes | yes | refused | no | no | refused | refused | no | no | device: cuda_complex_fused_hd_pair_2026-09-07: the module's bytes moved since its run |
+| C6 | `complex_folded_fused_magnetic_pair` | kernel | emitted | yes | yes | refused | no | no | refused | refused | no | no | device: cuda_complex_folded_fused_magnetic_pair_2026-09-02: the module's bytes moved since its run |
+| C6 | `complex_folded_fused_electric_pair` | kernel | emitted | yes | yes | refused | no | no | refused | refused | no | no | device: cuda_complex_folded_fused_electric_pair_2026-09-02: the module's bytes moved since its run |
 | C6 | `complex_offdiag_update_e` | kernel | emitted | yes | yes | refused | refused | refused | refused | refused | refused | refused |  |
-| C6 | `complex_offdiag_stencil_weld` | kernel | emitted | yes | yes | refused | yes | yes | refused | refused | yes | yes |  |
-| C6 | `folded_complex_offdiag_fused_electric_pair` | kernel | emitted | yes | yes | refused | yes | yes | refused | refused | yes | yes |  |
-| C7 | `bfast_curl` | kernel | emitted | yes | yes | yes | yes | yes | refused | refused | yes | yes |  |
-| C7 | `special_kz_curl` | kernel | emitted | yes | yes | yes | yes | yes | refused | refused | yes | yes |  |
-| C7 | `complex_beta_kernels` | kernel | emitted | yes | yes | yes | yes | yes | refused | refused | yes | yes |  |
-| C7 | `bfast_fused_electric_pair` | kernel | emitted | yes | yes | refused | yes | yes | refused | refused | yes | yes |  |
-| C7 | `bfast_fused_magnetic_pair` | kernel | emitted | yes | yes | refused | yes | yes | refused | refused | yes | yes |  |
-| C7 | `special_kz_fused_electric_pair` | kernel | emitted | yes | yes | refused | yes | yes | refused | refused | yes | yes |  |
+| C6 | `complex_offdiag_stencil_weld` | kernel | emitted | yes | yes | refused | no | no | refused | refused | no | no | device: cuda_complex_offdiag_stencil_welds_2026-09-17: the module's bytes moved since its run |
+| C6 | `folded_complex_offdiag_fused_electric_pair` | kernel | emitted | yes | yes | refused | no | no | refused | refused | no | no | device: cuda_complex_offdiag_stencil_welds_2026-09-17: the module's bytes moved since its run |
+| C7 | `bfast_curl` | kernel | emitted | yes | yes | yes | no | no | refused | refused | no | no | device: cuda_bfast_2026-08-21: the module's bytes moved since its run |
+| C7 | `special_kz_curl` | kernel | emitted | yes | yes | yes | no | no | refused | refused | no | no | device: cuda_special_kz_2026-08-21: the module's bytes moved since its run |
+| C7 | `complex_beta_kernels` | kernel | emitted | yes | yes | yes | no | no | refused | refused | no | no | device: cuda_complex_beta_2026-09-01: the module's bytes moved since its run |
+| C7 | `bfast_fused_electric_pair` | kernel | emitted | yes | yes | refused | no | no | refused | refused | no | no | device: cuda_bfast_fused_electric_pair_2026-09-02: the module's bytes moved since its run |
+| C7 | `bfast_fused_magnetic_pair` | kernel | emitted | yes | yes | refused | no | no | refused | refused | no | no | device: cuda_bfast_fused_magnetic_pair_2026-09-02: the module's bytes moved since its run |
+| C7 | `special_kz_fused_electric_pair` | kernel | emitted | yes | yes | refused | no | no | refused | refused | no | no | device: cuda_special_kz_fused_electric_pair_2026-09-02: the module's bytes moved since its run |
 | C7 | `special_kz_fused_hd_pair` | kernel | emitted | yes | yes | refused | refused | refused | refused | refused | refused | refused |  |
-| C7 | `special_kz_fused_magnetic_pair` | kernel | emitted | yes | yes | refused | yes | yes | refused | refused | yes | yes |  |
-| C7 | `complex_beta_fused_electric_pair` | kernel | emitted | yes | yes | refused | yes | yes | refused | refused | yes | yes |  |
+| C7 | `special_kz_fused_magnetic_pair` | kernel | emitted | yes | yes | refused | no | no | refused | refused | no | no | device: 2 pinning entries, none passes: cuda_special_kz_fused_magnetic_pair_2026-09-02: the module's bytes moved since its run |
+| C7 | `complex_beta_fused_electric_pair` | kernel | emitted | yes | yes | refused | no | no | refused | refused | no | no | device: cuda_complex_beta_fused_electric_pair_2026-09-02: the module's bytes moved since its run |
 | C7 | `complex_beta_fused_hd_pair` | kernel | emitted | yes | yes | refused | refused | refused | refused | refused | refused | refused |  |
-| C7 | `complex_beta_fused_magnetic_pair` | kernel | emitted | yes | yes | refused | yes | yes | refused | refused | yes | yes |  |
+| C7 | `complex_beta_fused_magnetic_pair` | kernel | emitted | yes | yes | refused | no | no | refused | refused | no | no | device: cuda_complex_beta_fused_magnetic_pair_2026-09-02: the module's bytes moved since its run |
 | C7 | `conductive_bfast_fused_hd_pair` | kernel | emitted | yes | yes | refused | refused | refused | refused | refused | refused | refused |  |
 | C8 | `cylindrical_prefix` | kernel | source text | refused | refused | yes | refused | refused | refused | refused | refused | refused |  |
-| C8 | `cylindrical_kernels` | kernel | emitted | yes | yes | yes | yes | yes | refused | refused | yes | yes |  |
-| C8 | `cylindrical_real_fused_electric_pair` | kernel | emitted | yes | yes | refused | yes | yes | refused | refused | yes | yes |  |
-| C8 | `cylindrical_real_fused_hd_pair` | kernel | emitted | yes | yes | refused | yes | yes | refused | refused | yes | yes |  |
-| C8 | `cylindrical_real_fused_magnetic_pair` | kernel | emitted | yes | yes | refused | yes | yes | refused | refused | yes | yes |  |
-| C8 | `cylindrical_complex_kernels` | kernel | emitted | yes | yes | yes | yes | yes | refused | refused | yes | yes |  |
-| C8 | `cylindrical_fused_electric_pair` | kernel | emitted | yes | yes | refused | yes | yes | refused | refused | yes | yes |  |
-| C8 | `cylindrical_fused_hd_pair` | kernel | emitted | yes | yes | refused | yes | yes | refused | refused | yes | yes |  |
-| C8 | `cylindrical_fused_magnetic_pair` | kernel | emitted | yes | yes | refused | yes | yes | refused | refused | yes | yes |  |
-| C9 | `complex_no_pml_fused_polarization_pair` | a_only | emitted | n/a | yes | refused | yes | yes | refused | refused | yes | yes |  |
-| C9 | `complex_no_pml_offdiag_fused_electric_pair` | a_only | emitted | n/a | yes | refused | yes | yes | refused | refused | yes | yes |  |
-| C9 | `complex_no_pml_three_slot_dispersive_weld` | a_only | emitted | n/a | yes | refused | yes | yes | refused | refused | yes | yes |  |
+| C8 | `cylindrical_kernels` | kernel | emitted | yes | yes | yes | no | no | refused | refused | no | no | device: cuda_cylindrical_real_2026-08-27: the module's bytes moved since its run |
+| C8 | `cylindrical_real_fused_electric_pair` | kernel | emitted | yes | yes | refused | no | no | refused | refused | no | no | device: cuda_cylindrical_real_fused_electric_pair_2026-09-02: the module's bytes moved since its run |
+| C8 | `cylindrical_real_fused_hd_pair` | kernel | emitted | yes | yes | refused | no | no | refused | refused | no | no | device: cuda_cylindrical_real_fused_hd_pair_2026-09-07: the module's bytes moved since its run |
+| C8 | `cylindrical_real_fused_magnetic_pair` | kernel | emitted | yes | yes | refused | no | no | refused | refused | no | no | device: cuda_cylindrical_real_fused_magnetic_pair_2026-09-02: the module's bytes moved since its run |
+| C8 | `cylindrical_complex_kernels` | kernel | emitted | yes | yes | yes | no | no | refused | refused | no | no | device: cuda_cylindrical_complex_2026-08-27: the module's bytes moved since its run |
+| C8 | `cylindrical_fused_electric_pair` | kernel | emitted | yes | yes | refused | no | no | refused | refused | no | no | device: cuda_cylindrical_fused_electric_pair_2026-09-13_cyl: the module's bytes moved since its run |
+| C8 | `cylindrical_fused_hd_pair` | kernel | emitted | yes | yes | refused | no | no | refused | refused | no | no | device: cuda_cylindrical_fused_hd_pair_2026-09-07: the module's bytes moved since its run |
+| C8 | `cylindrical_fused_magnetic_pair` | kernel | emitted | yes | yes | refused | no | no | refused | refused | no | no | device: cuda_cylindrical_fused_magnetic_pair_2026-09-13_cyl: the module's bytes moved since its run |
+| C9 | `complex_no_pml_fused_polarization_pair` | a_only | emitted | n/a | yes | refused | no | no | refused | refused | no | no | device: 2 pinning entries, none passes: cuda_complex_no_pml_fused_polarization_pair_2026-09-02: the module's bytes moved since its run |
+| C9 | `complex_no_pml_offdiag_fused_electric_pair` | a_only | emitted | n/a | yes | refused | no | no | refused | refused | no | no | device: cuda_complex_offdiag_stencil_welds_2026-09-17: the module's bytes moved since its run |
+| C9 | `complex_no_pml_three_slot_dispersive_weld` | a_only | emitted | n/a | yes | refused | no | no | refused | refused | no | no | device: cuda_complex_no_pml_three_slot_dispersive_weld_2026-09-04: the module's bytes moved since its run |
 | C9 | `no_pml_complex_fused_electric_pair` | a_only | emitted | n/a | yes | refused | refused | refused | refused | refused | refused | refused |  |
 | C9 | `no_pml_constitutive` | a_only | source text | n/a | refused | refused | refused | refused | refused | refused | refused | refused |  |
-| C9 | `no_pml_curl` | a_only | emitted | n/a | yes | refused | yes | yes | refused | refused | yes | yes |  |
+| C9 | `no_pml_curl` | a_only | emitted | n/a | yes | refused | no | no | refused | refused | no | no | device: cuda_no_pml_curl_2026-08-21: the module's bytes moved since its run |
 | C9 | `no_pml_dispersive_fused_electric_pair` | a_only | emitted | n/a | yes | refused | refused | refused | refused | refused | refused | refused |  |
-| C9 | `no_pml_three_slot_dispersive_weld` | a_only | emitted | n/a | refused | refused | yes | yes | refused | refused | yes | yes |  |
+| C9 | `no_pml_three_slot_dispersive_weld` | a_only | emitted | n/a | refused | refused | no | no | refused | refused | no | no | device: cuda_three_slot_dispersive_weld_2026-09-11_regate: the module's bytes moved since its run |
 | UNCHANGED | `in_seam_passes` | unchanged | - | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a |  |
 | UNCHANGED | `compile_cache` | unchanged | - | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a |  |
 | UNCHANGED | `__init__` | unchanged | - | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a |  |
@@ -214,6 +216,7 @@ Refused cells, by reason:
 - host_identical: refused, none of its test files compares the arithmetic with meep_gpu.stepping: test_triton_offdiag_fused_electric_pair.py measure no arithmetic of it: 1 (offdiag_fused_electric_pair)
 - device_identical:keep: refused, no ledger entry pins the module's file (its device text may be pinned by digest elsewhere; the board does not attribute that): 12 (beta_complex_fused_hd_pair, beta_real_fused_hd_pair, bfast_curl, complex_fused_hd_pair, conductive_bfast_fused_hd_pair, cylindrical_fused_hd_pair, cylindrical_real_fused_hd_pair, folded_complex_fused_hd_pair, folded_fused_hd_pair, fused_hd_pair, nonlinear_fused_hd_pair, nonlinear_update_e)
 - device_identical:flush: refused, no ledger entry pins the module's file (its device text may be pinned by digest elsewhere; the board does not attribute that): 12 (beta_complex_fused_hd_pair, beta_real_fused_hd_pair, bfast_curl, complex_fused_hd_pair, conductive_bfast_fused_hd_pair, cylindrical_fused_hd_pair, cylindrical_real_fused_hd_pair, folded_complex_fused_hd_pair, folded_fused_hd_pair, fused_hd_pair, nonlinear_fused_hd_pair, nonlinear_update_e)
+- dev_evidence:keep: refused, 2 record(s) on another subject (x4b_device_smoke box3d default composition 2026-10-10: the module's bytes, its emitted device text moved since): 2 (forms, kernels)
 - dev_evidence:keep: refused, no development evidence recorded on this subject: 66 (beta_complex_fused_hd_pair, beta_fused_electric_pair, beta_fused_magnetic_pair, beta_real_fused_hd_pair, bfast_curl, bfast_fused_electric_pair, bfast_fused_magnetic_pair, complex_ade, complex_beta_fused_electric_pair, complex_beta_fused_magnetic_pair, complex_conductive_fused_pair, complex_fields, ...)
 - dev_evidence:flush: refused, no development evidence recorded on this subject: 68 (beta_complex_fused_hd_pair, beta_fused_electric_pair, beta_fused_magnetic_pair, beta_real_fused_hd_pair, bfast_curl, bfast_fused_electric_pair, bfast_fused_magnetic_pair, complex_ade, complex_beta_fused_electric_pair, complex_beta_fused_magnetic_pair, complex_conductive_fused_pair, complex_fields, ...)
 - certified:keep: refused, no ledger entry pins the module's file (its device text may be pinned by digest elsewhere; the board does not attribute that): 12 (beta_complex_fused_hd_pair, beta_real_fused_hd_pair, bfast_curl, complex_fused_hd_pair, conductive_bfast_fused_hd_pair, cylindrical_fused_hd_pair, cylindrical_real_fused_hd_pair, folded_complex_fused_hd_pair, folded_fused_hd_pair, fused_hd_pair, nonlinear_fused_hd_pair, nonlinear_update_e)
@@ -226,64 +229,64 @@ Refused cells, by reason:
 | T0 | `__init__` | host | - | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a |  |
 | T0 | `offdiag_scratch_weld` | host | - | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a |  |
 | T0 | `folded_dispersive_update_e` | host | - | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a |  |
-| T1 | `kernels` | kernel | emitted | yes | yes | no | yes | no | yes | refused | yes | no | host_i: 1 id(s) listed as pending under kernel lanes (KM1, KM8, KT1, KT10, KT2, KT3, KT4, KT5, KT6, KT7, KT8, KT9; 1 name its own lane KT1) |
-| T1 | `forms` | kernel | emitted | yes | yes | refused | no | no | yes | refused | no | no | device: bit_identity_gate: status None |
-| T2 | `conductivity` | kernel | emitted | yes | yes | yes | yes | no | refused | refused | yes | no | device: 2 pinning entries, none passes: bit_identity_gate: status None; no live run under flush |
-| T2 | `conductive_fused_electric_pair` | kernel | emitted | yes | yes | refused | yes | no | refused | refused | yes | no | device: triton_conductive_fused_electric_pair_device_gate: no live run under flush |
-| T3 | `symmetry` | kernel | emitted | yes | yes | yes | yes | no | refused | refused | yes | no | device: 6 pinning entries, none passes: bit_identity_gate: status None; no live run under flush |
-| T3 | `folded_fused_pair` | kernel | emitted | yes | yes | yes | yes | no | refused | refused | yes | no | device: 2 pinning entries, none passes: triton_folded_deposit_closure_device_gate: no live run under flush |
-| T3 | `folded_fused_magnetic_pair` | kernel | emitted | yes | yes | yes | yes | no | refused | refused | yes | no | device: 3 pinning entries, none passes: triton_folded_deposit_closure_device_gate: no live run under flush |
-| T4 | `offdiag_update_e` | kernel | emitted | yes | yes | yes | no | no | refused | refused | no | no | device: bit_identity_gate: status None |
-| T4 | `offdiag_fused_electric_pair` | kernel | emitted | yes | yes | refused | yes | no | refused | refused | yes | no | device: triton_offdiag_fused_electric_pair_device_gate: no live run under flush |
-| T4 | `folded_offdiag_update_e` | kernel | emitted | yes | yes | yes | yes | no | refused | refused | yes | no | device: triton_folded_offdiag_device_gate: no live run under flush |
-| T4 | `folded_offdiag_fused_electric_pair` | kernel | emitted | yes | yes | yes | yes | no | refused | refused | yes | no | device: triton_folded_offdiag_fused_electric_pair_device_gate: no live run under flush |
-| T5 | `complex_fields` | kernel | emitted | yes | yes | refused | yes | no | refused | refused | yes | no | device: 6 pinning entries, none passes: triton_complex_device_gate: no live run under flush |
-| T5 | `complex_fused_magnetic_pair` | kernel | emitted | yes | yes | refused | yes | no | refused | refused | yes | no | device: 2 pinning entries, none passes: triton_complex_fused_magnetic_pair_device_gate: no live run under flush |
-| T5 | `complex_fused_electric_pair` | kernel | emitted | yes | yes | yes | yes | no | refused | refused | yes | no | device: triton_complex_fused_electric_pair_device_gate: no live run under flush |
-| T5 | `complex_offdiag_update_e` | kernel | emitted | yes | yes | yes | yes | no | refused | refused | yes | no | device: triton_complex_offdiag_device_gate: no live run under flush |
-| T5 | `folded_complex` | kernel | emitted | yes | yes | yes | yes | no | refused | refused | yes | no | device: triton_folded_complex_device_gate: no live run under flush |
-| T5 | `folded_complex_fused_pair` | kernel | emitted | yes | yes | refused | yes | no | refused | refused | yes | no | device: triton_folded_complex_fused_pair_device_gate: no live run under flush |
-| T5 | `folded_complex_fused_magnetic_pair` | kernel | emitted | yes | yes | yes | yes | no | refused | refused | yes | no | device: triton_folded_complex_fused_magnetic_pair_device_gate: no live run under flush |
-| T6 | `dispersive_update_e` | kernel | emitted | yes | yes | yes | yes | no | refused | refused | yes | no | device: 3 pinning entries, none passes: bit_identity_gate: status None; no live run under flush |
-| T6 | `dispersive_fused_pair` | kernel | emitted | yes | yes | refused | yes | no | refused | refused | yes | no | device: 4 pinning entries, none passes: triton_dispersive_fused_pair_device_gate: no live run under flush |
-| T6 | `fused_ade_chain` | kernel | emitted | yes | yes | refused | yes | no | refused | refused | yes | no | device: triton_fused_ade_chain_device_gate: no live run under flush |
-| T6 | `fused_ade_state` | kernel | emitted | no | refused | no | yes | no | refused | refused | yes | no | b_sele: spells a PML form and reads no chunk record (1 of 1 kernel units, e.g. fused_ade_state) |
-| T6 | `fused_dispersive_chain` | kernel | emitted | yes | yes | refused | yes | no | refused | refused | yes | no | device: triton_fused_dispersive_chain_device_gate: no live run under flush |
-| T6 | `folded_dispersive_fused_pair` | kernel | emitted | yes | yes | refused | yes | no | refused | refused | yes | no | device: triton_folded_dispersive_fused_pair_device_gate: no live run under flush |
-| T6 | `complex_ade` | kernel | emitted | refused | refused | refused | yes | no | refused | refused | yes | no | device: 2 pinning entries, none passes: triton_complex_ade_device_gate: no live run under flush |
-| T6 | `complex_fused_ade_chain` | kernel | emitted | refused | refused | refused | yes | no | refused | refused | yes | no | device: triton_complex_fused_ade_chain_device_gate: no live run under flush |
-| T6 | `folded_offdiag_dispersive_update_e` | kernel | emitted | yes | yes | yes | yes | no | refused | refused | yes | no | device: triton_folded_offdiag_dispersive_device_gate: no live run under flush |
-| T6 | `folded_offdiag_fused_ade_chain` | kernel | emitted | yes | yes | refused | yes | no | refused | refused | yes | no | device: triton_folded_offdiag_fused_ade_chain_device_gate: no live run under flush |
-| T7 | `special_kz` | kernel | emitted | yes | yes | yes | yes | no | refused | refused | yes | no | device: triton_folded_complex_device_gate: no live run under flush |
+| T1 | `kernels` | kernel | emitted | yes | yes | no | no | no | refused | refused | no | no | host_i: 1 id(s) listed as pending under kernel lanes (KM1, KM8, KT1, KT10, KT2, KT3, KT4, KT5, KT6, KT7, KT8, KT9; 1 name its own lane KT1) |
+| T1 | `forms` | kernel | emitted | yes | yes | refused | no | no | refused | refused | no | no | device: bit_identity_gate: status None; the module's bytes moved since its run |
+| T2 | `conductivity` | kernel | emitted | yes | yes | yes | no | no | refused | refused | no | no | device: 2 pinning entries, none passes: bit_identity_gate: status None; the module's bytes moved since its run |
+| T2 | `conductive_fused_electric_pair` | kernel | emitted | yes | yes | refused | no | no | refused | refused | no | no | device: triton_conductive_fused_electric_pair_device_gate: the module's bytes moved since its run |
+| T3 | `symmetry` | kernel | emitted | yes | yes | yes | no | no | refused | refused | no | no | device: 6 pinning entries, none passes: bit_identity_gate: status None; the module's bytes moved since its run |
+| T3 | `folded_fused_pair` | kernel | emitted | yes | yes | yes | no | no | refused | refused | no | no | device: 2 pinning entries, none passes: triton_folded_deposit_closure_device_gate: the module's bytes moved since its run |
+| T3 | `folded_fused_magnetic_pair` | kernel | emitted | yes | yes | yes | no | no | refused | refused | no | no | device: 3 pinning entries, none passes: triton_folded_deposit_closure_device_gate: the module's bytes moved since its run |
+| T4 | `offdiag_update_e` | kernel | emitted | yes | yes | yes | no | no | refused | refused | no | no | device: bit_identity_gate: status None; the module's bytes moved since its run |
+| T4 | `offdiag_fused_electric_pair` | kernel | emitted | yes | yes | refused | no | no | refused | refused | no | no | device: triton_offdiag_fused_electric_pair_device_gate: the module's bytes moved since its run |
+| T4 | `folded_offdiag_update_e` | kernel | emitted | yes | yes | yes | no | no | refused | refused | no | no | device: triton_folded_offdiag_device_gate: the module's bytes moved since its run |
+| T4 | `folded_offdiag_fused_electric_pair` | kernel | emitted | yes | yes | yes | no | no | refused | refused | no | no | device: triton_folded_offdiag_fused_electric_pair_device_gate: the module's bytes moved since its run |
+| T5 | `complex_fields` | kernel | emitted | yes | yes | refused | no | no | refused | refused | no | no | device: 6 pinning entries, none passes: triton_complex_device_gate: the module's bytes moved since its run |
+| T5 | `complex_fused_magnetic_pair` | kernel | emitted | yes | yes | refused | no | no | refused | refused | no | no | device: 2 pinning entries, none passes: triton_complex_fused_magnetic_pair_device_gate: the module's bytes moved since its run |
+| T5 | `complex_fused_electric_pair` | kernel | emitted | yes | yes | yes | no | no | refused | refused | no | no | device: triton_complex_fused_electric_pair_device_gate: the module's bytes moved since its run |
+| T5 | `complex_offdiag_update_e` | kernel | emitted | yes | yes | yes | yes | yes | refused | refused | no | no | certif: triton_complex_offdiag_device_gate: 2 of 3 pinned files moved (['meep_gpu/triton_kernels/launch.py', 'parity/meep_gpu/gate_triton_co |
+| T5 | `folded_complex` | kernel | emitted | yes | yes | yes | no | no | refused | refused | no | no | device: triton_folded_complex_device_gate: the module's bytes moved since its run |
+| T5 | `folded_complex_fused_pair` | kernel | emitted | yes | yes | refused | no | no | refused | refused | no | no | device: triton_folded_complex_fused_pair_device_gate: the module's bytes moved since its run |
+| T5 | `folded_complex_fused_magnetic_pair` | kernel | emitted | yes | yes | yes | no | no | refused | refused | no | no | device: triton_folded_complex_fused_magnetic_pair_device_gate: the module's bytes moved since its run |
+| T6 | `dispersive_update_e` | kernel | emitted | yes | yes | yes | no | no | refused | refused | no | no | device: 3 pinning entries, none passes: bit_identity_gate: status None; the module's bytes moved since its run |
+| T6 | `dispersive_fused_pair` | kernel | emitted | yes | yes | refused | no | no | refused | refused | no | no | device: 4 pinning entries, none passes: triton_dispersive_fused_pair_device_gate: the module's bytes moved since its run |
+| T6 | `fused_ade_chain` | kernel | emitted | yes | yes | refused | no | no | refused | refused | no | no | device: triton_fused_ade_chain_device_gate: the module's bytes moved since its run |
+| T6 | `fused_ade_state` | kernel | emitted | no | refused | no | no | no | refused | refused | no | no | b_sele: spells a PML form and reads no chunk record (1 of 1 kernel units, e.g. fused_ade_state) |
+| T6 | `fused_dispersive_chain` | kernel | emitted | yes | yes | refused | no | no | refused | refused | no | no | device: triton_fused_dispersive_chain_device_gate: the module's bytes moved since its run |
+| T6 | `folded_dispersive_fused_pair` | kernel | emitted | yes | yes | refused | no | no | refused | refused | no | no | device: triton_folded_dispersive_fused_pair_device_gate: the module's bytes moved since its run |
+| T6 | `complex_ade` | kernel | emitted | refused | refused | refused | no | no | refused | refused | no | no | device: 2 pinning entries, none passes: triton_complex_ade_device_gate: the module's bytes moved since its run |
+| T6 | `complex_fused_ade_chain` | kernel | emitted | refused | refused | refused | no | no | refused | refused | no | no | device: triton_complex_fused_ade_chain_device_gate: the module's bytes moved since its run |
+| T6 | `folded_offdiag_dispersive_update_e` | kernel | emitted | yes | yes | yes | yes | yes | refused | refused | no | no | certif: triton_folded_offdiag_dispersive_device_gate: 3 of 4 pinned files moved (['meep_gpu/triton_kernels/folded_dispersive_update_e.py', ' |
+| T6 | `folded_offdiag_fused_ade_chain` | kernel | emitted | yes | yes | refused | no | no | refused | refused | no | no | device: triton_folded_offdiag_fused_ade_chain_device_gate: the module's bytes moved since its run |
+| T7 | `special_kz` | kernel | emitted | yes | yes | yes | no | no | refused | refused | no | no | device: triton_folded_complex_device_gate: the module's bytes moved since its run |
 | T7 | `bfast_curl` | kernel | emitted | yes | yes | yes | refused | refused | refused | refused | refused | refused |  |
-| T7 | `beta_fused_electric_pair` | kernel | emitted | yes | yes | refused | yes | no | refused | refused | yes | no | device: triton_beta_fused_electric_pair_device_gate: no live run under flush |
-| T7 | `beta_fused_magnetic_pair` | kernel | emitted | yes | yes | refused | yes | no | refused | refused | yes | no | device: triton_beta_fused_magnetic_pair_device_gate: no live run under flush |
-| T7 | `bfast_fused_electric_pair` | kernel | emitted | yes | yes | refused | yes | no | refused | refused | yes | no | device: triton_bfast_fused_electric_pair_device_gate: no live run under flush |
-| T7 | `bfast_fused_magnetic_pair` | kernel | emitted | yes | yes | refused | yes | no | refused | refused | yes | no | device: triton_bfast_fused_magnetic_pair_device_gate: no live run under flush |
-| T7 | `complex_beta_fused_electric_pair` | kernel | emitted | yes | yes | refused | yes | no | refused | refused | yes | no | device: triton_complex_beta_fused_electric_pair_device_gate: no live run under flush |
-| T7 | `complex_beta_fused_magnetic_pair` | kernel | emitted | yes | yes | refused | yes | no | refused | refused | yes | no | device: triton_complex_beta_fused_magnetic_pair_device_gate: no live run under flush |
-| T7 | `folded_beta_fused_electric_pair` | kernel | emitted | yes | yes | refused | yes | no | refused | refused | yes | no | device: triton_folded_beta_fused_electric_pair_device_gate: no live run under flush |
-| T7 | `folded_beta_fused_magnetic_pair` | kernel | emitted | yes | yes | refused | yes | no | refused | refused | yes | no | device: triton_folded_beta_fused_magnetic_pair_device_gate: no live run under flush |
-| T7 | `folded_beta_complex_fused_pair` | kernel | emitted | yes | yes | refused | yes | no | refused | refused | yes | no | device: triton_folded_beta_complex_fused_pair_device_gate: no live run under flush |
-| T7 | `folded_beta_complex_fused_magnetic_pair` | kernel | emitted | yes | yes | refused | yes | no | refused | refused | yes | no | device: triton_folded_beta_complex_fused_magnetic_pair_device_gate: no live run under flush |
-| T8 | `cylindrical_triton` | kernel | emitted | yes | yes | yes | yes | no | refused | refused | yes | no | device: 2 pinning entries, none passes: triton_cylindrical_device_gate: the module's bytes moved since its run; no live run under flush |
-| T8 | `cylindrical_complex` | kernel | emitted | yes | yes | yes | yes | no | refused | refused | yes | no | device: triton_cylindrical_complex_device_gate: no live run under flush |
-| T8 | `cylindrical_real_fused_electric_pair` | kernel | emitted | yes | yes | refused | yes | no | refused | refused | yes | no | device: triton_cylindrical_real_fused_electric_pair_device_gate: no live run under flush |
-| T8 | `cylindrical_real_fused_magnetic_pair` | kernel | emitted | yes | yes | refused | yes | no | refused | refused | yes | no | device: triton_cylindrical_real_fused_magnetic_pair_device_gate: no live run under flush |
-| T8 | `cylindrical_fused_electric_pair` | kernel | emitted | yes | yes | refused | yes | no | refused | refused | yes | no | device: triton_cylindrical_fused_electric_pair_device_gate: no live run under flush |
-| T8 | `cylindrical_fused_magnetic_pair` | kernel | emitted | yes | yes | refused | yes | no | refused | refused | yes | no | device: triton_cylindrical_fused_magnetic_pair_device_gate: no live run under flush |
+| T7 | `beta_fused_electric_pair` | kernel | emitted | yes | yes | refused | no | no | refused | refused | no | no | device: triton_beta_fused_electric_pair_device_gate: the module's bytes moved since its run |
+| T7 | `beta_fused_magnetic_pair` | kernel | emitted | yes | yes | refused | no | no | refused | refused | no | no | device: triton_beta_fused_magnetic_pair_device_gate: the module's bytes moved since its run |
+| T7 | `bfast_fused_electric_pair` | kernel | emitted | yes | yes | refused | no | no | refused | refused | no | no | device: triton_bfast_fused_electric_pair_device_gate: the module's bytes moved since its run |
+| T7 | `bfast_fused_magnetic_pair` | kernel | emitted | yes | yes | refused | no | no | refused | refused | no | no | device: triton_bfast_fused_magnetic_pair_device_gate: the module's bytes moved since its run |
+| T7 | `complex_beta_fused_electric_pair` | kernel | emitted | yes | yes | refused | no | no | refused | refused | no | no | device: triton_complex_beta_fused_electric_pair_device_gate: the module's bytes moved since its run |
+| T7 | `complex_beta_fused_magnetic_pair` | kernel | emitted | yes | yes | refused | no | no | refused | refused | no | no | device: triton_complex_beta_fused_magnetic_pair_device_gate: the module's bytes moved since its run |
+| T7 | `folded_beta_fused_electric_pair` | kernel | emitted | yes | yes | refused | no | no | refused | refused | no | no | device: triton_folded_beta_fused_electric_pair_device_gate: the module's bytes moved since its run |
+| T7 | `folded_beta_fused_magnetic_pair` | kernel | emitted | yes | yes | refused | no | no | refused | refused | no | no | device: triton_folded_beta_fused_magnetic_pair_device_gate: the module's bytes moved since its run |
+| T7 | `folded_beta_complex_fused_pair` | kernel | emitted | yes | yes | refused | no | no | refused | refused | no | no | device: triton_folded_beta_complex_fused_pair_device_gate: the module's bytes moved since its run |
+| T7 | `folded_beta_complex_fused_magnetic_pair` | kernel | emitted | yes | yes | refused | no | no | refused | refused | no | no | device: triton_folded_beta_complex_fused_magnetic_pair_device_gate: the module's bytes moved since its run |
+| T8 | `cylindrical_triton` | kernel | emitted | yes | yes | yes | no | no | refused | refused | no | no | device: 2 pinning entries, none passes: triton_cylindrical_device_gate: the module's bytes moved since its run; no live run under keep |
+| T8 | `cylindrical_complex` | kernel | emitted | yes | yes | yes | no | no | refused | refused | no | no | device: triton_cylindrical_complex_device_gate: the module's bytes moved since its run |
+| T8 | `cylindrical_real_fused_electric_pair` | kernel | emitted | yes | yes | refused | no | no | refused | refused | no | no | device: triton_cylindrical_real_fused_electric_pair_device_gate: the module's bytes moved since its run |
+| T8 | `cylindrical_real_fused_magnetic_pair` | kernel | emitted | yes | yes | refused | no | no | refused | refused | no | no | device: triton_cylindrical_real_fused_magnetic_pair_device_gate: the module's bytes moved since its run |
+| T8 | `cylindrical_fused_electric_pair` | kernel | emitted | yes | yes | refused | no | no | refused | refused | no | no | device: triton_cylindrical_fused_electric_pair_device_gate: the module's bytes moved since its run |
+| T8 | `cylindrical_fused_magnetic_pair` | kernel | emitted | yes | yes | refused | no | no | refused | refused | no | no | device: triton_cylindrical_fused_magnetic_pair_device_gate: the module's bytes moved since its run |
 | T9 | `nonlinear_update_e` | kernel | emitted | yes | yes | yes | refused | refused | refused | refused | refused | refused |  |
-| T9 | `nonlinear_fused_magnetic_pair` | kernel | emitted | yes | yes | refused | yes | no | refused | refused | yes | no | device: triton_nonlinear_fused_magnetic_pair_device_gate: no live run under flush |
-| T10 | `no_pml` | a_only | emitted | n/a | yes | refused | no | no | refused | refused | no | no | device: 2 pinning entries, none passes: bit_identity_gate: status None |
-| T10 | `no_pml_ade` | a_only | emitted | n/a | refused | yes | yes | no | refused | refused | yes | no | device: triton_fused_ade_chain_device_gate: no live run under flush |
-| T10 | `no_pml_conductive` | a_only | emitted | n/a | yes | yes | yes | no | refused | refused | yes | no | device: triton_no_pml_conductive_device_gate: no live run under flush |
-| T10 | `no_pml_constitutive` | a_only | source text | n/a | refused | yes | yes | no | refused | refused | yes | no | device: triton_no_pml_constitutive_device_gate: no live run under flush |
-| T10 | `no_pml_fused_electric_pair` | a_only | emitted | n/a | yes | yes | yes | no | refused | refused | yes | no | device: triton_no_pml_fused_electric_pair_device_gate: no live run under flush |
-| T10 | `no_pml_stored_e` | a_only | emitted | n/a | refused | yes | yes | no | refused | refused | yes | no | device: 2 pinning entries, none passes: triton_fused_ade_chain_device_gate: no live run under flush |
-| T10 | `complex_no_pml_curl` | a_only | emitted | n/a | yes | yes | yes | no | refused | refused | yes | no | device: triton_complex_no_pml_curl_device_gate: no live run under flush |
-| T10 | `complex_no_pml_conductive` | a_only | emitted | n/a | yes | yes | yes | no | refused | refused | yes | no | device: triton_complex_no_pml_conductive_device_gate: no live run under flush |
-| T10 | `complex_no_pml_stored_e` | a_only | emitted | n/a | refused | yes | yes | no | refused | refused | yes | no | device: 2 pinning entries, none passes: triton_complex_fused_ade_chain_device_gate: no live run under flush |
-| T10 | `complex_conductive_fused_pair` | a_only | emitted | n/a | yes | refused | yes | no | refused | refused | yes | no | device: triton_complex_conductive_fused_pair_device_gate: no live run under flush |
+| T9 | `nonlinear_fused_magnetic_pair` | kernel | emitted | yes | yes | refused | no | no | refused | refused | no | no | device: triton_nonlinear_fused_magnetic_pair_device_gate: the module's bytes moved since its run |
+| T10 | `no_pml` | a_only | emitted | n/a | yes | refused | no | no | refused | refused | no | no | device: 2 pinning entries, none passes: bit_identity_gate: status None; the module's bytes moved since its run |
+| T10 | `no_pml_ade` | a_only | emitted | n/a | refused | yes | no | no | refused | refused | no | no | device: triton_fused_ade_chain_device_gate: the module's bytes moved since its run |
+| T10 | `no_pml_conductive` | a_only | emitted | n/a | yes | yes | no | no | refused | refused | no | no | device: triton_no_pml_conductive_device_gate: the module's bytes moved since its run |
+| T10 | `no_pml_constitutive` | a_only | source text | n/a | refused | yes | no | no | refused | refused | no | no | device: triton_no_pml_constitutive_device_gate: the module's bytes moved since its run |
+| T10 | `no_pml_fused_electric_pair` | a_only | emitted | n/a | yes | yes | no | no | refused | refused | no | no | device: triton_no_pml_fused_electric_pair_device_gate: the module's bytes moved since its run |
+| T10 | `no_pml_stored_e` | a_only | emitted | n/a | refused | yes | no | no | refused | refused | no | no | device: 2 pinning entries, none passes: triton_fused_ade_chain_device_gate: the module's bytes moved since its run |
+| T10 | `complex_no_pml_curl` | a_only | emitted | n/a | yes | yes | no | no | refused | refused | no | no | device: triton_complex_no_pml_curl_device_gate: the module's bytes moved since its run |
+| T10 | `complex_no_pml_conductive` | a_only | emitted | n/a | yes | yes | no | no | refused | refused | no | no | device: triton_complex_no_pml_conductive_device_gate: the module's bytes moved since its run |
+| T10 | `complex_no_pml_stored_e` | a_only | emitted | n/a | refused | yes | yes | yes | refused | refused | no | no | certif: 2 pinning entries, none passes: triton_complex_fused_ade_chain_device_gate: 8 of 10 pinned files moved (['meep_gpu/fields.py', 'meep |
+| T10 | `complex_conductive_fused_pair` | a_only | emitted | n/a | yes | refused | no | no | refused | refused | no | no | device: triton_complex_conductive_fused_pair_device_gate: the module's bytes moved since its run |
 | T11 | `fused_hd_pair` | kernel | emitted | yes | yes | refused | refused | refused | refused | refused | refused | refused |  |
 | T11 | `beta_real_fused_hd_pair` | kernel | emitted | yes | yes | refused | refused | refused | refused | refused | refused | refused |  |
 | T11 | `beta_complex_fused_hd_pair` | kernel | emitted | yes | yes | refused | refused | refused | refused | refused | refused | refused |  |
@@ -329,6 +332,8 @@ Refused cells, by reason:
 - host_identical: refused, none of its test files compares the arithmetic with meep_gpu.stepping: test_metal_no_pml_curl.py measure no arithmetic of it: 1 (no_pml_curl)
 - host_identical: refused, none of its test files compares the arithmetic with meep_gpu.stepping: test_metal_residue_fused_pairs.py measure no arithmetic of it: 3 (beta_complex_fused_electric_pair, beta_complex_fused_magnetic_pair, bfast_fused_electric_pair)
 - device_identical:flush: refused, no ledger entry pins the module's file (its device text may be pinned by digest elsewhere; the board does not attribute that): 3 (bfast_curl, complex_dispersive_spine, folded_offdiag_dispersive_update_e)
+- dev_evidence:flush: refused, 1 record(s) on another subject (x4b_device_smoke box3d default composition 2026-10-10: the module's bytes, its emitted device text moved since): 2 (fused_electric_pair, fused_magnetic_pair)
+- dev_evidence:flush: refused, 1 record(s) on another subject (x4b_device_smoke box3d singles (MEEP_GPU_FUSE_ARMS=0) 2026-10-10: the module's bytes moved since): 1 (shaders)
 - dev_evidence:flush: refused, no development evidence recorded on this subject: 74 (ade_update_p, beta_complex_fused_electric_pair, beta_complex_fused_hd_pair, beta_complex_fused_magnetic_pair, beta_fused_electric_pair, beta_fused_magnetic_pair, beta_real_fused_hd_pair, bfast_curl, bfast_fused_electric_pair, bfast_fused_hd_pair, bfast_fused_magnetic_pair, complex_conductive_fused_pair, ...)
 - certified:flush: refused, no ledger entry pins the module's file (its device text may be pinned by digest elsewhere; the board does not attribute that): 3 (bfast_curl, complex_dispersive_spine, folded_offdiag_dispersive_update_e)
 
@@ -351,80 +356,80 @@ Modules of the table directory that no step list names: folded_pass.
 | M0 | `preconditions` | host | - | n/a | n/a | n/a | n/a | n/a | n/a |  |
 | M0 | `registry` | host | - | n/a | n/a | n/a | n/a | n/a | n/a |  |
 | M0 | `subnormal` | host | - | n/a | n/a | n/a | n/a | n/a | n/a |  |
-| M1 | `shaders` | kernel | emitted | yes | yes | refused | yes | yes | yes |  |
-| M1 | `symmetry` | kernel | emitted | yes | yes | yes | yes | refused | yes |  |
-| M1 | `nonlinear_update_e` | kernel | emitted | yes | yes | yes | yes | refused | yes |  |
-| M2 | `fused_magnetic_pair` | kernel | emitted | yes | yes | refused | yes | yes | yes |  |
-| M2 | `fused_electric_pair` | kernel | emitted | yes | yes | refused | yes | yes | yes |  |
-| M2 | `fused_dispersive_pair` | kernel | emitted | yes | yes | refused | yes | refused | yes |  |
-| M2 | `nonlinear_fused_magnetic_pair` | kernel | emitted | yes | yes | refused | yes | refused | yes |  |
-| M2 | `fused_ade_chain` | kernel | emitted | yes | yes | refused | yes | refused | yes |  |
-| M3 | `fused_hd_pair` | kernel | emitted | yes | yes | refused | yes | refused | yes |  |
-| M3 | `folded_fused_hd_pair` | kernel | emitted | yes | yes | yes | yes | refused | yes |  |
-| M4 | `conductive_pml` | kernel | emitted | yes | yes | yes | yes | refused | yes |  |
-| M4 | `conductive_fused_electric_pair` | kernel | emitted | yes | yes | refused | yes | refused | yes |  |
-| M4 | `conductive_fused_hd_pair` | kernel | emitted | yes | yes | refused | yes | refused | yes |  |
-| M5 | `templates` | kernel | emitted | refused | refused | refused | yes | refused | yes |  |
-| M5 | `complex_fields` | kernel | emitted | yes | yes | refused | yes | refused | yes |  |
-| M5 | `complex_fused_magnetic_pair` | kernel | emitted | yes | yes | refused | yes | refused | yes |  |
-| M5 | `complex_fused_electric_pair` | kernel | emitted | yes | yes | refused | yes | refused | yes |  |
-| M5 | `complex_fused_hd_pair` | kernel | emitted | yes | yes | yes | yes | refused | yes |  |
-| M5 | `complex_conductive_pml` | kernel | emitted | yes | yes | yes | yes | refused | yes |  |
-| M5 | `folded_complex` | kernel | emitted | yes | yes | yes | yes | refused | yes |  |
-| M5 | `folded_complex_fused_hd_pair` | kernel | emitted | yes | yes | refused | yes | refused | yes |  |
-| M5 | `folded_complex_fused_magnetic_pair` | kernel | emitted | yes | yes | refused | yes | refused | yes |  |
-| M5 | `folded_complex_fused_pair` | kernel | emitted | yes | yes | refused | yes | refused | yes |  |
-| M6 | `folded_fused_pair` | kernel | emitted | yes | yes | refused | yes | refused | yes |  |
-| M6 | `folded_fused_magnetic_pair` | kernel | emitted | yes | yes | refused | yes | refused | yes |  |
-| M6 | `folded_fused_dispersive_pair` | kernel | emitted | yes | yes | refused | yes | refused | yes |  |
-| M7 | `offdiag_update_e` | kernel | emitted | yes | yes | yes | yes | refused | yes |  |
-| M7 | `folded_offdiag_update_e` | kernel | emitted | yes | yes | refused | yes | refused | yes |  |
-| M7 | `offdiag_fused_electric_pair` | kernel | emitted | yes | yes | refused | yes | refused | yes |  |
-| M7 | `folded_offdiag_fused_electric_pair` | kernel | emitted | yes | yes | refused | yes | refused | yes |  |
-| M7 | `complex_folded_offdiag_update_e` | kernel | emitted | yes | yes | refused | yes | refused | yes |  |
-| M7 | `folded_complex_offdiag_fused_electric_pair` | kernel | emitted | yes | yes | refused | yes | refused | yes |  |
-| M7 | `offdiag_weld_common` | kernel | source text | refused | refused | refused | yes | refused | yes |  |
-| M8 | `dispersive_update_e` | kernel | emitted | yes | yes | yes | yes | refused | yes |  |
-| M8 | `folded_dispersive_update_e` | kernel | emitted | yes | yes | yes | yes | refused | yes |  |
+| M1 | `shaders` | kernel | emitted | yes | yes | refused | no | refused | no | device: 5 pinning entries, none passes: metal_complex_conductive_fused_pair_device_gate: the module's bytes moved since its run |
+| M1 | `symmetry` | kernel | emitted | yes | yes | yes | no | refused | no | device: 2 pinning entries, none passes: metal_offdiag_stencil_welds_device_gate: the module's bytes moved since its run |
+| M1 | `nonlinear_update_e` | kernel | emitted | yes | yes | yes | no | refused | no | device: metal_fused_hd_pair_nonlinear_device_gate: the module's bytes moved since its run |
+| M2 | `fused_magnetic_pair` | kernel | emitted | yes | yes | refused | no | refused | no | device: 3 pinning entries, none passes: metal_below_the_cut_fused_pairs_device_gate: the module's bytes moved since its run |
+| M2 | `fused_electric_pair` | kernel | emitted | yes | yes | refused | no | refused | no | device: metal_fused_electric_pair_device_gate: the module's bytes moved since its run |
+| M2 | `fused_dispersive_pair` | kernel | emitted | yes | yes | refused | no | refused | no | device: metal_fused_dispersive_pair_device_gate: the module's bytes moved since its run |
+| M2 | `nonlinear_fused_magnetic_pair` | kernel | emitted | yes | yes | refused | no | refused | no | device: metal_below_the_cut_fused_pairs_device_gate: the module's bytes moved since its run |
+| M2 | `fused_ade_chain` | kernel | emitted | yes | yes | refused | no | refused | no | device: 2 pinning entries, none passes: metal_complex_fused_ade_chain_device_gate: the module's bytes moved since its run |
+| M3 | `fused_hd_pair` | kernel | emitted | yes | yes | refused | no | refused | no | device: 2 pinning entries, none passes: metal_fused_hd_pair_device_gate: the module's bytes moved since its run |
+| M3 | `folded_fused_hd_pair` | kernel | emitted | yes | yes | yes | no | refused | no | device: metal_folded_fused_hd_pair_device_gate: the module's bytes moved since its run |
+| M4 | `conductive_pml` | kernel | emitted | yes | yes | yes | no | refused | no | device: metal_conductive_pml_device_gate: the module's bytes moved since its run |
+| M4 | `conductive_fused_electric_pair` | kernel | emitted | yes | yes | refused | no | refused | no | device: metal_residue_fused_pairs_device_gate: the module's bytes moved since its run |
+| M4 | `conductive_fused_hd_pair` | kernel | emitted | yes | yes | refused | no | refused | no | device: metal_conductive_fused_hd_pair_device_gate: the module's bytes moved since its run |
+| M5 | `templates` | kernel | emitted | refused | refused | refused | no | refused | no | device: 5 pinning entries, none passes: metal_complex_conductive_fused_pair_device_gate: the module's bytes moved since its run |
+| M5 | `complex_fields` | kernel | emitted | yes | yes | refused | no | refused | no | device: 3 pinning entries, none passes: metal_complex_conductive_fused_pair_device_gate: the module's bytes moved since its run |
+| M5 | `complex_fused_magnetic_pair` | kernel | emitted | yes | yes | refused | no | refused | no | device: 3 pinning entries, none passes: metal_complex_fused_magnetic_pair_device_gate: the module's bytes moved since its run |
+| M5 | `complex_fused_electric_pair` | kernel | emitted | yes | yes | refused | no | refused | no | device: metal_tranche7_fused_pairs_device_gate: the module's bytes moved since its run |
+| M5 | `complex_fused_hd_pair` | kernel | emitted | yes | yes | yes | no | refused | no | device: metal_complex_fused_hd_pair_device_gate: the module's bytes moved since its run |
+| M5 | `complex_conductive_pml` | kernel | emitted | yes | yes | yes | no | refused | no | device: metal_complex_conductive_pml_device_gate: the module's bytes moved since its run |
+| M5 | `folded_complex` | kernel | emitted | yes | yes | yes | no | refused | no | device: 3 pinning entries, none passes: metal_folded_complex_device_gate: the module's bytes moved since its run |
+| M5 | `folded_complex_fused_hd_pair` | kernel | emitted | yes | yes | refused | no | refused | no | device: metal_folded_complex_fused_hd_pair_device_gate: the module's bytes moved since its run |
+| M5 | `folded_complex_fused_magnetic_pair` | kernel | emitted | yes | yes | refused | no | refused | no | device: 2 pinning entries, none passes: metal_folded_beta_complex_fused_magnetic_pair_device_gate: the module's bytes moved since its run |
+| M5 | `folded_complex_fused_pair` | kernel | emitted | yes | yes | refused | no | refused | no | device: metal_tranche7_fused_pairs_device_gate: the module's bytes moved since its run |
+| M6 | `folded_fused_pair` | kernel | emitted | yes | yes | refused | no | refused | no | device: metal_folded_fused_pair_device_gate: the module's bytes moved since its run |
+| M6 | `folded_fused_magnetic_pair` | kernel | emitted | yes | yes | refused | no | refused | no | device: metal_folded_fused_magnetic_pair_device_gate: the module's bytes moved since its run |
+| M6 | `folded_fused_dispersive_pair` | kernel | emitted | yes | yes | refused | no | refused | no | device: metal_tranche7_fused_pairs_device_gate: the module's bytes moved since its run |
+| M7 | `offdiag_update_e` | kernel | emitted | yes | yes | yes | no | refused | no | device: metal_offdiag_stencil_welds_device_gate: the module's bytes moved since its run |
+| M7 | `folded_offdiag_update_e` | kernel | emitted | yes | yes | refused | no | refused | no | device: metal_offdiag_stencil_welds_device_gate: the module's bytes moved since its run |
+| M7 | `offdiag_fused_electric_pair` | kernel | emitted | yes | yes | refused | no | refused | no | device: metal_offdiag_stencil_welds_device_gate: the module's bytes moved since its run |
+| M7 | `folded_offdiag_fused_electric_pair` | kernel | emitted | yes | yes | refused | no | refused | no | device: metal_offdiag_stencil_welds_device_gate: the module's bytes moved since its run |
+| M7 | `complex_folded_offdiag_update_e` | kernel | emitted | yes | yes | refused | no | refused | no | device: metal_offdiag_stencil_welds_device_gate: the module's bytes moved since its run |
+| M7 | `folded_complex_offdiag_fused_electric_pair` | kernel | emitted | yes | yes | refused | no | refused | no | device: metal_offdiag_stencil_welds_device_gate: the module's bytes moved since its run |
+| M7 | `offdiag_weld_common` | kernel | source text | refused | refused | refused | no | refused | no | device: 2 pinning entries, none passes: metal_fused_hd_pair_device_gate: the module's bytes moved since its run |
+| M8 | `dispersive_update_e` | kernel | emitted | yes | yes | yes | yes | refused | no | certif: 2 pinning entries, none passes: metal_dispersive_update_e_device_gate: 2 of 3 pinned files moved (['meep_gpu/metal_kernels/launch.py |
+| M8 | `folded_dispersive_update_e` | kernel | emitted | yes | yes | yes | yes | refused | no | certif: 2 pinning entries, none passes: metal_folded_dispersive_update_e_device_gate: 2 of 3 pinned files moved (['meep_gpu/metal_kernels/la |
 | M8 | `folded_offdiag_dispersive_update_e` | kernel | emitted | yes | yes | yes | refused | refused | refused |  |
-| M8 | `complex_dispersive_update_e` | kernel | emitted | yes | yes | yes | yes | refused | yes |  |
+| M8 | `complex_dispersive_update_e` | kernel | emitted | yes | yes | yes | yes | refused | no | certif: metal_complex_dispersive_update_e_device_gate: 2 of 3 pinned files moved (['meep_gpu/metal_kernels/launch.py', 'parity/meep_gpu/gate |
 | M8 | `complex_dispersive_spine` | kernel | emitted | yes | yes | refused | refused | refused | refused |  |
-| M8 | `ade_update_p` | kernel | emitted | refused | refused | yes | yes | refused | yes |  |
+| M8 | `ade_update_p` | kernel | emitted | refused | refused | yes | no | refused | no | device: 4 pinning entries, none passes: metal_ade_update_p_device_gate: the module's bytes moved since its run |
 | M9 | `bfast_curl` | kernel | emitted | yes | yes | yes | refused | refused | refused |  |
-| M9 | `bfast_fused_electric_pair` | kernel | emitted | yes | yes | refused | yes | refused | yes |  |
-| M9 | `bfast_fused_magnetic_pair` | kernel | emitted | yes | yes | refused | yes | refused | yes |  |
-| M9 | `bfast_fused_hd_pair` | kernel | emitted | yes | yes | refused | yes | refused | yes |  |
-| M9 | `special_kz` | kernel | emitted | yes | yes | yes | yes | refused | yes |  |
-| M9 | `folded_beta` | kernel | emitted | yes | yes | yes | yes | refused | yes |  |
-| M9 | `beta_fused_electric_pair` | kernel | emitted | yes | yes | refused | yes | refused | yes |  |
-| M9 | `beta_fused_magnetic_pair` | kernel | emitted | yes | yes | refused | yes | refused | yes |  |
-| M9 | `beta_real_fused_hd_pair` | kernel | emitted | yes | yes | refused | yes | refused | yes |  |
-| M9 | `beta_complex_fused_electric_pair` | kernel | emitted | yes | yes | refused | yes | refused | yes |  |
-| M9 | `beta_complex_fused_magnetic_pair` | kernel | emitted | yes | yes | refused | yes | refused | yes |  |
-| M9 | `beta_complex_fused_hd_pair` | kernel | emitted | yes | yes | refused | yes | refused | yes |  |
-| M9 | `folded_beta_real_fused_pair` | kernel | emitted | yes | yes | refused | yes | refused | yes |  |
-| M9 | `folded_beta_real_fused_magnetic_pair` | kernel | emitted | yes | yes | refused | yes | refused | yes |  |
-| M9 | `folded_beta_complex_fused_pair` | kernel | emitted | yes | yes | refused | yes | refused | yes |  |
-| M9 | `folded_beta_complex_fused_magnetic_pair` | kernel | emitted | yes | yes | refused | yes | refused | yes |  |
-| M10 | `cylindrical_real` | kernel | emitted | yes | yes | yes | yes | refused | yes |  |
-| M10 | `cylindrical_complex_scan` | kernel | emitted | refused | refused | yes | yes | refused | yes |  |
-| M10 | `cylindrical_complex` | kernel | emitted | yes | yes | yes | yes | refused | yes |  |
-| M10 | `cylindrical_real_fused_magnetic_pair` | kernel | emitted | yes | yes | yes | yes | refused | yes |  |
-| M10 | `cylindrical_real_fused_electric_pair` | kernel | emitted | yes | yes | yes | yes | refused | yes |  |
-| M10 | `cylindrical_real_fused_hd_pair` | kernel | emitted | yes | yes | refused | yes | refused | yes |  |
-| M10 | `cylindrical_fused_magnetic_pair` | kernel | emitted | yes | yes | refused | yes | refused | yes |  |
-| M10 | `cylindrical_fused_electric_pair` | kernel | emitted | yes | yes | refused | yes | refused | yes |  |
-| M10 | `cylindrical_complex_fused_hd_pair` | kernel | emitted | yes | yes | yes | yes | refused | yes |  |
-| M12 | `complex_conductive_fused_pair` | a_only | emitted | n/a | yes | refused | yes | refused | yes |  |
-| M12 | `complex_fused_ade_chain` | a_only | emitted | n/a | refused | refused | yes | refused | yes |  |
-| M12 | `complex_no_pml_conductive` | a_only | emitted | n/a | yes | yes | yes | refused | yes |  |
-| M12 | `complex_no_pml_curl` | a_only | emitted | n/a | yes | yes | yes | refused | yes |  |
-| M12 | `complex_no_pml_offdiag_fused_electric_pair` | a_only | emitted | n/a | yes | refused | yes | refused | yes |  |
-| M12 | `complex_no_pml_offdiag_update_e` | a_only | emitted | n/a | refused | yes | yes | refused | yes |  |
-| M12 | `complex_no_pml_stored_e` | a_only | emitted | n/a | refused | yes | yes | refused | yes |  |
-| M12 | `no_pml_conductive` | a_only | emitted | n/a | yes | yes | yes | refused | yes |  |
-| M12 | `no_pml_conductive_fused_electric_pair` | a_only | emitted | n/a | yes | refused | yes | refused | yes |  |
-| M12 | `no_pml_constitutive` | a_only | source text | n/a | refused | yes | yes | refused | yes |  |
-| M12 | `no_pml_curl` | a_only | emitted | n/a | yes | refused | yes | refused | yes |  |
-| M12 | `no_pml_fused_electric_pair` | a_only | emitted | n/a | yes | refused | yes | refused | yes |  |
-| M12 | `no_pml_stored_e` | a_only | emitted | n/a | refused | yes | yes | refused | yes |  |
+| M9 | `bfast_fused_electric_pair` | kernel | emitted | yes | yes | refused | no | refused | no | device: metal_residue_fused_pairs_device_gate: the module's bytes moved since its run |
+| M9 | `bfast_fused_magnetic_pair` | kernel | emitted | yes | yes | refused | no | refused | no | device: metal_below_the_cut_fused_pairs_device_gate: the module's bytes moved since its run |
+| M9 | `bfast_fused_hd_pair` | kernel | emitted | yes | yes | refused | no | refused | no | device: metal_bfast_fused_hd_pair_device_gate: the module's bytes moved since its run |
+| M9 | `special_kz` | kernel | emitted | yes | yes | yes | no | refused | no | device: 2 pinning entries, none passes: metal_folded_beta_complex_fused_magnetic_pair_device_gate: the module's bytes moved since its run |
+| M9 | `folded_beta` | kernel | emitted | yes | yes | yes | no | refused | no | device: 2 pinning entries, none passes: metal_folded_beta_complex_fused_magnetic_pair_device_gate: the module's bytes moved since its run |
+| M9 | `beta_fused_electric_pair` | kernel | emitted | yes | yes | refused | no | refused | no | device: metal_tranche7_fused_pairs_device_gate: the module's bytes moved since its run |
+| M9 | `beta_fused_magnetic_pair` | kernel | emitted | yes | yes | refused | no | refused | no | device: metal_below_the_cut_fused_pairs_device_gate: the module's bytes moved since its run |
+| M9 | `beta_real_fused_hd_pair` | kernel | emitted | yes | yes | refused | no | refused | no | device: metal_beta_real_fused_hd_pair_device_gate: the module's bytes moved since its run |
+| M9 | `beta_complex_fused_electric_pair` | kernel | emitted | yes | yes | refused | no | refused | no | device: metal_residue_fused_pairs_device_gate: the module's bytes moved since its run |
+| M9 | `beta_complex_fused_magnetic_pair` | kernel | emitted | yes | yes | refused | no | refused | no | device: metal_residue_fused_pairs_device_gate: the module's bytes moved since its run |
+| M9 | `beta_complex_fused_hd_pair` | kernel | emitted | yes | yes | refused | no | refused | no | device: metal_beta_complex_fused_hd_pair_device_gate: the module's bytes moved since its run |
+| M9 | `folded_beta_real_fused_pair` | kernel | emitted | yes | yes | refused | no | refused | no | device: metal_tranche7_fused_pairs_device_gate: the module's bytes moved since its run |
+| M9 | `folded_beta_real_fused_magnetic_pair` | kernel | emitted | yes | yes | refused | no | refused | no | device: metal_tranche7_fused_pairs_device_gate: the module's bytes moved since its run |
+| M9 | `folded_beta_complex_fused_pair` | kernel | emitted | yes | yes | refused | no | refused | no | device: metal_tranche7_fused_pairs_device_gate: the module's bytes moved since its run |
+| M9 | `folded_beta_complex_fused_magnetic_pair` | kernel | emitted | yes | yes | refused | no | refused | no | device: metal_folded_beta_complex_fused_magnetic_pair_device_gate: the module's bytes moved since its run |
+| M10 | `cylindrical_real` | kernel | emitted | yes | yes | yes | no | refused | no | device: 2 pinning entries, none passes: metal_cylindrical_real_device_gate: the module's bytes moved since its run |
+| M10 | `cylindrical_complex_scan` | kernel | emitted | refused | refused | yes | no | refused | no | device: metal_cylindrical_complex_scan_device_gate: the module's bytes moved since its run |
+| M10 | `cylindrical_complex` | kernel | emitted | yes | yes | yes | no | refused | no | device: 2 pinning entries, none passes: metal_cylindrical_complex_device_gate: the module's bytes moved since its run |
+| M10 | `cylindrical_real_fused_magnetic_pair` | kernel | emitted | yes | yes | yes | no | refused | no | device: metal_cylindrical_real_fused_magnetic_pair_device_gate: the module's bytes moved since its run |
+| M10 | `cylindrical_real_fused_electric_pair` | kernel | emitted | yes | yes | yes | no | refused | no | device: metal_cylindrical_real_fused_electric_pair_device_gate: the module's bytes moved since its run |
+| M10 | `cylindrical_real_fused_hd_pair` | kernel | emitted | yes | yes | refused | no | refused | no | device: metal_cylindrical_real_fused_hd_pair_device_gate: the module's bytes moved since its run |
+| M10 | `cylindrical_fused_magnetic_pair` | kernel | emitted | yes | yes | refused | no | refused | no | device: metal_cylindrical_fused_magnetic_pair_device_gate: the module's bytes moved since its run |
+| M10 | `cylindrical_fused_electric_pair` | kernel | emitted | yes | yes | refused | no | refused | no | device: metal_cylindrical_fused_electric_pair_device_gate: the module's bytes moved since its run |
+| M10 | `cylindrical_complex_fused_hd_pair` | kernel | emitted | yes | yes | yes | no | refused | no | device: metal_cylindrical_complex_fused_hd_pair_device_gate: the module's bytes moved since its run |
+| M12 | `complex_conductive_fused_pair` | a_only | emitted | n/a | yes | refused | no | refused | no | device: metal_complex_conductive_fused_pair_device_gate: the module's bytes moved since its run |
+| M12 | `complex_fused_ade_chain` | a_only | emitted | n/a | refused | refused | no | refused | no | device: metal_complex_fused_ade_chain_device_gate: the module's bytes moved since its run |
+| M12 | `complex_no_pml_conductive` | a_only | emitted | n/a | yes | yes | no | refused | no | device: 2 pinning entries, none passes: metal_complex_conductive_fused_pair_device_gate: the module's bytes moved since its run |
+| M12 | `complex_no_pml_curl` | a_only | emitted | n/a | yes | yes | yes | refused | no | certif: 2 pinning entries, none passes: metal_complex_no_pml_curl_device_gate: 2 of 3 pinned files moved (['meep_gpu/metal_kernels/launch.py |
+| M12 | `complex_no_pml_offdiag_fused_electric_pair` | a_only | emitted | n/a | yes | refused | no | refused | no | device: metal_offdiag_stencil_welds_device_gate: the module's bytes moved since its run |
+| M12 | `complex_no_pml_offdiag_update_e` | a_only | emitted | n/a | refused | yes | no | refused | no | device: 2 pinning entries, none passes: metal_complex_no_pml_offdiag_update_e_device_gate: the module's bytes moved since its run |
+| M12 | `complex_no_pml_stored_e` | a_only | emitted | n/a | refused | yes | yes | refused | no | certif: 3 pinning entries, none passes: metal_complex_conductive_fused_pair_device_gate: 36 of 39 pinned files moved (['meep_gpu/__init__.py |
+| M12 | `no_pml_conductive` | a_only | emitted | n/a | yes | yes | no | refused | no | device: metal_no_pml_conductive_device_gate: the module's bytes moved since its run |
+| M12 | `no_pml_conductive_fused_electric_pair` | a_only | emitted | n/a | yes | refused | no | refused | no | device: metal_no_pml_fused_electric_pairs_device_gate: the module's bytes moved since its run |
+| M12 | `no_pml_constitutive` | a_only | source text | n/a | refused | yes | no | refused | no | device: 4 pinning entries, none passes: metal_complex_conductive_fused_pair_device_gate: the module's bytes moved since its run |
+| M12 | `no_pml_curl` | a_only | emitted | n/a | yes | refused | no | refused | no | device: metal_no_pml_curl_device_gate: the module's bytes moved since its run |
+| M12 | `no_pml_fused_electric_pair` | a_only | emitted | n/a | yes | refused | no | refused | no | device: metal_no_pml_fused_electric_pairs_device_gate: the module's bytes moved since its run |
+| M12 | `no_pml_stored_e` | a_only | emitted | n/a | refused | yes | yes | refused | no | certif: 2 pinning entries, none passes: metal_fused_ade_chain_device_gate: 3 of 6 pinned files moved (['meep_gpu/metal_kernels/ade_update_p. |

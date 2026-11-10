@@ -1,21 +1,21 @@
 """Complex ``update_E`` welded to complex ``update_P`` — the Triton E->P product
 for complex64 storage.
 
-THE COMPLEX64 SIBLING of :mod:`.fused_ade_chain`, in exactly the relation
+The complex64 sibling of :mod:`.fused_ade_chain`, in exactly the relation
 :mod:`.complex_no_pml_stored_e` has to :mod:`.no_pml_stored_e`: a separate family,
 a separate predicate, the same seam, the same launch shape. It claims the ONE
 E->P cell that module refuses BY NAME — "**real float32 only.** The four
 ``TestLoadDump.*_3d`` rows are complex64; their E half is
 ``complex_no_pml_stored_e`` and their ADE half ``complex_ade``, a different
 signature and a different arm. Refused, exactly as the Metal family declines
-them" (fused_ade_chain.py, "SCOPE, AND WHY EACH BOUND IS A REFUSAL BY NAME").
+them" (fused_ade_chain.py, "Scope, and why each bound is a refusal by name").
 
 The Metal twin (``metal_kernels/complex_fused_ade_chain.py``) claims the same
 cell for the same four rows, and the two backends' reach at this seam is then
 equal.
 
 ===========================================================================
-THE SEAM CARRIES NOTHING THE RECURRENCE READS, AND THAT IS WHY THIS PRODUCT EXISTS
+The seam carries nothing the recurrence reads, and that is why this product exists
 ===========================================================================
 
 ``FdtdDriver.step`` runs::
@@ -38,12 +38,12 @@ fusion matrices record ``E->P: 15 instances, 0 blocked by the source seam,
 CEILING 15``.
 
 ===========================================================================
-WHAT IT IS WORTH, AND THE FOUR ROWS BY NAME
+What it is worth, and the four rows by name
 ===========================================================================
 
-FOUR SEAM-INSTANCES OF THE 387. The rows are
+Four seam-instances of the 387. The rows are
 ``tests:TestLoadDump.test_load_dump_{structure,structure_sharded,chunk_layout_file,
-chunk_layout_sim}_3d`` and their configuration is READ FROM THE CENSUS rather
+chunk_layout_sim}_3d`` and their configuration is read from the census rather
 than assumed here (``results/predicate_coverage_2026-08-21_eop_chain/``, the same
 walk that measured :mod:`.fused_ade_chain`'s ten): ``force_complex_fields=True``,
 ``pml_active=False``, ONE registered lorentzian susceptibility driving all three
@@ -53,7 +53,7 @@ of ``Ex``/``Ey``/``Ez``, no fold, no off-diagonal ``chi1inv``, no ``chi2``/
 :mod:`.complex_ade` was built for; this product is their seam and nothing wider.
 
 ===========================================================================
-WHAT IS FUSED, AND IT IS EXACTLY TWO LOADS PER COMPONENT PER CELL
+What is fused, and it is exactly two loads per component per cell
 ===========================================================================
 
 * **the drive.** ``complex_ade_update_p``'s drive is
@@ -76,15 +76,15 @@ EXPECTED, not evidence that it holds; the device gate is what decides it, per
 COMPLETE seam step, against both the array path and the two certified sub-step
 products dispatched beside it.
 
-EVERY OTHER LINE IS TRANSCRIBED FROM THE BODY IT REPLACES, and the transcription
-is CHECKED BY PARSING both sources rather than restated as data here — a second
+Every other line is transcribed from the body it replaces, and the transcription
+is checked by parsing both sources rather than restated as data here — a second
 copy of "the load-bearing lines" is one more place to drift.
 ``test_triton_complex_fused_ade_chain`` reads the certified kernels' own text with
 ``ast`` and requires each arithmetic line to appear in this kernel modulo the
 documented renames, and the device gate re-runs that check beside the bytes.
 
 ===========================================================================
-THE ROTATION, AND WHY THE SHAPE IS ONE SCRATCH PER DRIVEN COMPONENT
+The rotation, and why the shape is one scratch per driven component
 ===========================================================================
 
 ``complex_ade_update_p`` launches once per DRIVEN COMPONENT and the host rotates
@@ -131,7 +131,7 @@ gate RE-WALKS that orbit for this product's own buffer set rather than citing th
 table, and :meth:`ComplexFusedAdeChainPlan.run` ASSERTS the read/write
 disjointness before EVERY launch rather than trusting either.
 
-WHAT IT COSTS: ``K * (d - 1)`` extra complex64 field volumes — the reference
+What it costs: ``K * (d - 1)`` extra complex64 field volumes — the reference
 allocates one scratch per susceptibility and this allocates one per driven
 component. Over the four rows this serves that is ``+2`` complex volumes each
 (K = 1, d = 3), i.e. four float32 field volumes' worth. The cost is MEMORY ONLY:
@@ -139,7 +139,7 @@ no extra launch, no extra arithmetic, and the values left in ``P`` and ``P_prev`
 after the rotation are the reference's, which is what the byte gate compares.
 ``extra_scratch_volumes`` on the plan reports the number the run actually paid.
 
-THE RETIRED SCRATCH IS THE ONE THING THAT DOES *NOT* MATCH THE REFERENCE, and it
+The retired scratch is the one thing that does *NOT* match the reference, and it
 is named here rather than discovered by a comparator. After a step the reference's
 single ``_scratch`` holds the retired ``P_prev`` of the LAST driven component;
 this plan's per-component scratches hold the retired ``P_prev`` of EACH. They are
@@ -148,7 +148,7 @@ anything from it. The gate compares ``P`` and ``P_prev`` per (susceptibility,
 component) plus the last component's scratch, and says so.
 
 ===========================================================================
-SCOPE, AND WHY EACH BOUND IS A REFUSAL BY NAME
+Scope, and why each bound is a refusal by name
 ===========================================================================
 
 * **ONE ARM, and it is not a choice.** The complex ADE half REQUIRES the inert
@@ -197,7 +197,7 @@ shown to FLIP against a planted defect. Readable entries:
 ``results/triton_complex_fused_ade_chain_2026-08-21/``. This is a correctness
 result, not a throughput claim.
 
-A MEASURED NULL IS THIS PRODUCT'S OWN CLAIM, scored on a case that COULD have
+A measured null is this product's own claim, scored on a case that COULD have
 seen it. Reversing the operand orientation (``_mul_field_left`` ->
 ``_mul_coefficient_left``) compiled to different PTX and changed NO byte, on the
 physical band AND on the subnormal band with the census live (11 and 7 subnormal
@@ -205,7 +205,7 @@ words in the reference). The reason is structural: every complex multiply in thi
 kernel has a REAL operand and is formed one float32 product per part, and IEEE
 multiplication is commutative.
 
-ONE SUBNORMAL POLICY, AND THE BOUND IS INHERITED. Every complex Triton family on
+One subnormal policy, and the bound is inherited. Every complex Triton family on
 this board is certified keep-only, including BOTH of this product's halves
 (``triton_complex_ade_device_gate``: "keep";
 ``triton_complex_no_pml_stored_e_device_gate``: "keep"). A fused product cannot be
@@ -354,7 +354,7 @@ if triton is not None:  # pragma: no cover - device code, certified by the byte 
         """Complex ``update_E`` welded to complex ``update_P``: both driver passes,
         ONE grid, complex64 addressed as interleaved float32 word pairs.
 
-        THE E HALF IS ``complex_no_pml_stored_e.complex_stored_e_step``
+        The E half is ``complex_no_pml_stored_e.complex_stored_e_step``
         (complex_no_pml_stored_e.py:132-170), with ``_subtract_complex_poles``
         (:96-129) INLINED. Inlining is not a rewrite: the eight ``if NP > n``
         guards, the load order and the subtraction order are that helper's, and the
@@ -362,7 +362,7 @@ if triton is not None:  # pragma: no cover - device code, certified by the byte 
         subtracted instead of being subtracted anonymously. Naming it is the whole
         point — that register IS ``complex_ade_update_p``'s ``p_now``.
 
-        THE ADE HALF IS ``complex_ade.complex_ade_update_p``, its body verbatim --
+        The ADE half is ``complex_ade.complex_ade_update_p``, its body verbatim --
         MEEP's expression per part on the four realnum words -- with exactly two
         loads replaced by registers this kernel already holds:
 
@@ -380,8 +380,8 @@ if triton is not None:  # pragma: no cover - device code, certified by the byte 
         measures it per complete seam step against both the array path and the two
         separate certified products.
 
-        THE ARMS ARE ORDER-INDEPENDENT AND NOTHING IS HOISTED. Every ADE arm writes
-        ``p_out_{L}0``, which is that susceptibility's scratch FOR THAT COMPONENT —
+        The arms are order-independent and nothing is hoisted. Every ADE arm writes
+        ``p_out_{L}0``, which is that susceptibility's scratch for that component —
         one per driven component rather than one shared per susceptibility. The
         launch's write set is therefore disjoint from its read set at every
         position of the rotation's orbit. ``fused_dispersive_chain`` must hoist
@@ -601,7 +601,7 @@ def complex_fused_ade_chain_kernel() -> Any:
 def complex_fused_ade_chain_coverage(fields: Any, pml: Any) -> Coverage:
     """May ONE launch span complex ``update_E`` -> complex ``update_P`` here?
 
-    THERE IS NO SOURCE CLAUSE, AND THE ABSENCE IS DELIBERATE. Every other fused
+    There is no source clause, and the absence is deliberate. Every other fused
     product on this backend must be told the source inventory, because the driver
     injects INSIDE its seam and ignorance is not an empty set. This seam has no
     injection in it at all — ``driver.step`` runs ``update_E``, then the electric
@@ -642,7 +642,7 @@ def complex_fused_ade_chain_coverage(fields: Any, pml: Any) -> Coverage:
             if not verdict.covered:
                 reasons.extend(f"ADE half {index}.{component}: {reason}"
                                for reason in verdict.reasons)
-        # THE TWO HALVES MUST AGREE ABOUT WHICH COMPONENTS THIS STATE DRIVES.
+        # The two halves must agree about which components this state drives.
         # The E chain subtracts wherever the pole partition lists this state and
         # the ADE half advances wherever `driven()` names it; the two are one
         # attribute in the reference (dispersion.py:652-656) and a disagreement
@@ -675,7 +675,7 @@ def complex_fused_ade_chain_coverage(fields: Any, pml: Any) -> Coverage:
                     f"the state's own P; the register the ADE arm reuses would be "
                     f"a different array")
 
-    # THE SEAM'S OWN CONDITION, named rather than inherited: the register this
+    # The seam's own condition, named rather than inherited: the register this
     # kernel hands the recurrence is what its E half stored, so `drive_field` must
     # return THAT array. The complex ADE half already asserts the stored-E identity
     # from its own side (complex_ade.py:184-215); this restates the requirement
@@ -707,7 +707,7 @@ class ComplexFusedAdeChainPlan:
     arbiter asserts the exact per-cycle launch count on every filled slot, and that
     assertion is what stops a slot passing by not executing.
 
-    THE ROTATION IS PERFORMED HERE, AFTER THE LAUNCH, and it is
+    The rotation is performed here, after the launch, and it is
     ``dispersion.PolarizationState.update``'s (dispersion.py:687-691) over a
     DIFFERENT buffer set: one scratch per driven component rather than one shared
     per susceptibility. The three-cycle each (susceptibility, component) walks is
@@ -716,14 +716,14 @@ class ComplexFusedAdeChainPlan:
     docstring for the orbit enumeration that licenses the shape and for why that
     enumeration transfers to complex64 unchanged.
 
-    THE POINTERS ARE RESOLVED PER LAUNCH, DELIBERATELY. The rotation moves which
+    The pointers are resolved per launch, deliberately. The rotation moves which
     allocation holds ``P``, ``P_prev`` and each scratch on every step, so a plan
     that cached them would be stale after the FIRST step — and stale in a way that
     still computes, giving a smooth wrong field. The ORDER is cached (it is fixed
     for the run) and re-checked every call by the E arm's own
     ``LiveComplexPoleBinding``.
 
-    THIS PLAN OWNS THE ROTATION FOR THE RUN. ``PolarizationState.update`` rotates a
+    This plan owns the rotation for the run. ``PolarizationState.update`` rotates a
     single shared ``_scratch``; interleaving it with this plan would hand one
     component's launch a buffer another slot already owns. ``_scratch`` is kept
     pointing at the FIRST driven component's scratch so the engine object is never
@@ -765,7 +765,7 @@ class ComplexFusedAdeChainPlan:
         targets = [getattr(fields, name) for name in components]
         sources = [getattr(fields, term[1]) for term in E_TERMS]
         inverse = [fields.inverse_epsilon_for(name) for name in components]
-        # COMPLEX VOLUMES GO IN AS THEIR FLOAT32 WORD VIEW and the inverse epsilon
+        # Complex volumes go in as their float32 word view and the inverse epsilon
         # does NOT — that asymmetry is the certified E plan's own
         # (complex_no_pml_stored_e.py:359-362) and the kernel indexes the two
         # differently (`word` versus `idx`).
@@ -789,7 +789,7 @@ class ComplexFusedAdeChainPlan:
         self._index_of = {id(state): index
                           for index, state in enumerate(self._states)}
 
-        # ONE SCRATCH PER DRIVEN COMPONENT — the shape, allocated. The FIRST driven
+        # One scratch per driven component — the shape, allocated. The FIRST driven
         # component takes the susceptibility's own ``_scratch`` and the rest are
         # new, so the extra is ``K * (d - 1)`` volumes and not ``K * d``.
         xp = fields.grid.xp
@@ -873,7 +873,7 @@ class ComplexFusedAdeChainPlan:
     def _check_aliasing(self, chain: Sequence[Sequence[Tuple[Any, ...]]]) -> None:
         """No ADE output is an array this launch reads, and no two share one.
 
-        THE ALIAS CHECK IS NOT DECORATION. The whole licence for this shape is that
+        The alias check is not decoration. The whole licence for this shape is that
         the launch never writes a buffer it reads, and the rotation moves those
         identities every step. The check is O(poles) integer comparisons over lists
         resolved for the launch anyway, and it is what turns the orbit enumeration
@@ -978,7 +978,7 @@ class ComplexFusedAdeChainPlan:
         plan that rotated first and then raised would leave the engine holding a P
         history that never happened.
 
-        THE FUSION GUARD IS THE SHARED SPELLING, not the deferred one the two
+        The fusion guard is the shared spelling, not the deferred one the two
         certified halves use. Their exemption exists because their own laptop tests
         call ``run(guard=False)`` on a host with no Triton, so importing
         ``kernels`` there would raise; nothing in this family's suite calls ``run``
@@ -1044,7 +1044,7 @@ def plan_complex_fused_ade_chain(fields: Any, pml: Any,
 # ``launch.plan_step`` does not import this module and ``launch.FAMILY_MODULES``
 # does not name it, so nothing about any existing arm's behaviour changes and a
 # default run still steps this seam on the array path. The product exists to be
-# MEASURED: ``parity/meep_gpu/gate_triton_complex_fused_ade_chain.py`` is its byte
+# measured: ``parity/meep_gpu/gate_triton_complex_fused_ade_chain.py`` is its byte
 # gate. Composition is a separate change with its own disjointness argument,
 # because this product spans TWO slots and the planner's arm table assigns at most
 # one arm per slot.

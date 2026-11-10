@@ -21,7 +21,7 @@ k = 0, at the conjugate wavevector, and against a magnitude-only comparison all
 have to fail.
 
 Mirror symmetry is held to a harder standard than either: a folded run must
-reproduce the unfolded full-domain run BIT FOR BIT, on every axis (X, Y and Z),
+reproduce the unfolded full-domain run bit for bit, on every axis (X, Y and Z),
 for both declared phases (even and odd), wherever the arithmetic is exact (integer
 seeds), and to within a measured rounding bound in combination with odd cell counts,
 an absorber, a Bloch phase, a susceptibility and a chi3, because MEEP's curl bracket
@@ -685,7 +685,7 @@ def test_an_absorber_that_disagrees_with_the_grid_about_a_fold_is_refused():
     conductivity on the plane itself — and neither shows as anything but a
     slightly damped, entirely plausible field.
 
-    THE TRIPWIRE HAS FIRED AND BEEN CLEARED. This test used to assert that a real
+    The tripwire has fired and been cleared. This test used to assert that a real
     ``PML`` on a folded Z believed z wrapped — "the case being guarded" — because
     ``PML.axis_wraps`` and ``_resolve_mirror_faces`` enumerated X and Y while
     ``Grid`` folded all three. Its own note said it would "start passing for the
@@ -918,7 +918,7 @@ def test_shift_stencils_apply_the_documented_ghost_values():
     # A perfect conductor has no field beyond it, so BOTH ghosts are zero — no
     # reflection, no wrap, and no dependence on the component's parity.
     #
-    # THE FIELD IS OFFSET so its cell 0 is nonzero, and that is the whole point of this
+    # The field is offset so its cell 0 is nonzero, and that is the whole point of this
     # block. ``arange(5)`` has ``field[0] == 0``, which makes the metallic far ghost and
     # the PERIODIC wrap agree by coincidence — a mutation that deleted the metallic
     # branch of ``_shift_up`` entirely then survived not only this assertion but the
@@ -1105,7 +1105,7 @@ def stored_ladder(grid: Grid, axis: int, iyee_shift: int):
 
 
 def test_bloch_shifts_are_plain_rolls_and_the_same_index_reads_carry_the_phase():
-    # THE STORED WINDOW (stepping._bloch_ghost_operand): on a phased axis a Yee-shift-0
+    # The stored window (stepping._bloch_ghost_operand): on a phased axis a Yee-shift-0
     # component's stored cell 0 is MEEP's owned top point lc + 2N, so the read one stored
     # cell over is always an owned word and the shifts are plain rolls; the reads that
     # leave the window are the same-index ones across the half cell on plane 0: below it
@@ -1969,13 +1969,13 @@ def test_real_mode_never_promotes_a_field_array_to_complex():
 # support existed, over a configuration whose every operation is float32 +, - and *
 # (no libm call, no source waveform, no PML grading), so it is reproducible on any
 # IEEE-754 platform rather than only on the machine that recorded it. If this digest
-# ever has to move, the move must be justified by a MEASURED improvement against CPU
-# MEEP — every accuracy floor in the parity matrix was recorded in complex mode.
+# ever has to move, the move must be justified by a measured improvement against CPU
+# MEEP — every CPU-MEEP accuracy floor recorded before real-field support was in complex mode.
 #
 # Moved 2026-10-06, re-derived by running this test's own procedure: the curl takes
 # MEEP's left-to-right bracket and its absent-partner forms, and the PML constitutive
 # forms MEEP's right-hand side first. Against MEEP 1.33.0 single precision built
-# without contraction, at one rank on arm64 (MEASURED 2026-10-05), these two groupings
+# without contraction, at one rank on arm64 (measured 2026-10-05), these two groupings
 # with the source-envelope order lower the value-differing stored words summed over the
 # full-run checkpoints by 2.0-3.6 % on three cases, and with the per-chunk region forms
 # and the double-precision deposit that follow them reach 0 on four. The floors were
@@ -1984,9 +1984,9 @@ def test_real_mode_never_promotes_a_field_array_to_complex():
 #
 # Moved again 2026-10-08, re-derived by running this test's own procedure: the
 # polarization update takes MEEP's four float32 constants and its grouping
-# (susceptibility.cpp:191-195, :251-256; bit_parity_0_10 WP AP6f). Against MEEP 1.33.0
-# single precision built without contraction, at one rank on arm64 (MEASURED 2026-10-08),
-# phase 0's eight dispersive lifts then read 0 differing stored words of 15,453,504 at
+# (susceptibility.cpp:191-195, :251-256). Against MEEP 1.33.0
+# single precision built without contraction, at one rank on arm64 (measured 2026-10-08),
+# eight dispersive lift cases then read 0 differing stored words of 15,453,504 at
 # every step to 20 and at the checkpoints to 400, against 3,056,502 before.
 _COMPLEX_CORE_DIGEST = "b1868fbc60459d720a5899dcb8171c70b7d45f9ff454dd9fab2bfd4e86ee3a64"
 
@@ -2074,11 +2074,11 @@ def test_the_byte_pin_can_actually_see_a_change():
 # Mirror symmetry: folded quadrant vs full domain, on every axis and both phases
 # ---------------------------------------------------------------------------
 #
-# THE DECISIVE TEST. A folded run is a claim that half (or a quarter, or an
+# The decisive test. A folded run is a claim that half (or a quarter, or an
 # eighth) of the domain can be reconstructed rather than stepped. The only way to
 # check that claim without a second implementation is to step BOTH and demand they
 # agree — and, because every kernel here is +, - and * on float32/complex64 with
-# real coefficients, they must agree BIT FOR BIT rather than to a tolerance. Any
+# real coefficients, they must agree bit for bit rather than to a tolerance. Any
 # tolerance would hide exactly the failures worth catching: a parity applied to the
 # wrong component, a ghost read from the wrong cell, a mask on the wrong axis, all
 # of which move the answer by a few percent and leave a perfectly smooth field.
@@ -2290,17 +2290,17 @@ def _folded_pair(planes, cell_size, resolution, complex_fields, k_point, pml_req
 #: bit for bit only where the arithmetic is exact (the integer-seeded linear fold above).
 #: Where a PML, a Bloch phase, a susceptibility or a chi3 rounds, the full domain's two
 #: halves differ by rounding, and the folded run differs from its quadrant by the same.
-#: MEASURED 2026-10-06 on the 9 combination and 5 chi3 cases below: at most 8.3 and 3.0
+#: Measured 2026-10-06 on the 9 combination and 5 chi3 cases below: at most 8.3 and 3.0
 #: units of 2**-24 of the component's peak; the 9 combination cases folded with the wrong
 #: plane phase move by at least 2.9e7 units. The bound sits 7.7x above the rounding and
 #: 4.5e5x below a wrong parity. A folded run's word-for-word claim is against MEEP's
-#: folded run (INFERRED: MEEP's full-domain run has the same rounding asymmetry, since it
+#: folded run (inferred: MEEP's full-domain run has the same rounding asymmetry, since it
 #: evaluates the same bracket at the image cell). The driver-level fold and mirror tests
 #: in test_driver_integration.py, test_driver_vs_meep.py, test_tensor_epsilon.py and
 #: test_dft.py import this bound, each against the scale it already used (the run's peak
 #: over the primary components, a component's own peak, a relative L2 norm, or the flux),
 #: and each records its measured excess; the largest is 15.3 units, a 40-step folded PML
-#: run with its far face live (MEASURED 2026-10-06).
+#: run with its far face live (measured 2026-10-06).
 FOLD_ROUNDING_BOUND = 64
 
 
@@ -2450,7 +2450,7 @@ def test_the_fold_rounding_bound_rejects_a_wrong_mirror_phase(case):
 
 # Moved 2026-10-06 with the curl bracket and the PML constitutive grouping (the note
 # above _COMPLEX_CORE_DIGEST), and again 2026-10-07 with the PML forms chosen per
-# structure chunk (bit_parity_0_10 WP AP4: the dsig-only curl outside the dsigu chunks,
+# structure chunk (the dsig-only curl outside the dsigu chunks,
 # H = B and E = (D - P) * chi1inv outside the dsigw chunks, MEEP's start of H); each
 # value re-derived by this test's own procedure.
 _EVEN_XY_FOLD_DIGEST = "e85e1edc7c4903768e610cd00758f84e49e16b4931e5648d099418bf465ba23d"
@@ -2459,10 +2459,10 @@ _EVEN_XY_FOLD_DIGEST = "e85e1edc7c4903768e610cd00758f84e49e16b4931e5648d099418bf
 # double-precision store): word-identical to MEEP 1.33.0 single precision built without
 # contraction on MEEP's own injected words, 0 differing words of every get_array,
 # stored-centre, sub-volume and point read on 11 cases at the reader legs' steps,
-# folded and odd-count cases included (bit_parity_0_10 WP AP2 acceptance).
+# folded and odd-count cases included (the readback change's acceptance check).
 # The readback reads the stepped words above, so its digest also moved with them; this
 # value is re-derived by this test's own procedure on the tree carrying both changes, and
-# again 2026-10-07 with the per-chunk PML forms (WP AP4), which moved the stepped words
+# again 2026-10-07 with the per-chunk PML forms, which moved the stepped words
 # and not the readback code.
 _EVEN_XY_READBACK_DIGEST = "45efa30e0e81c02de751f897b263abcdc924de54c959333bef6d3b13e8ecd08c"
 
@@ -2736,9 +2736,9 @@ def test_the_transverse_sum_associates_left_to_right_as_meep_does():
     periodic indices and numpy.float32 scalars, one rounding per addition, left to right.
     The positive control is the pairing the array path used before, ``(g[i] + g[i-s1]) +
     (g[i+s] + g[i+(s-s1)])``: the same sum in exact arithmetic, and it must differ in some
-    word on this seed, or the comparison could not see the association at all. Phase-0
-    leg P0-h measured the pairing at 79,850 to 2,056,001 stored words off MEEP 1.33.0 on
-    three of its four unfolded nonlinear cases, and this order at none.
+    word on this seed, or the comparison could not see the association at all. Against MEEP
+    1.33.0 the pairing measured 79,850 to 2,056,001 stored words off on three of the four
+    unfolded nonlinear cases, and this order none.
     """
     fields = _nonlinear_fields(chi3=1e-3, cell_size=(0.5, 0.7, 0.4), complex_fields=False)
     generator = numpy.random.default_rng(20261007)
@@ -2778,7 +2778,7 @@ def test_dsqr_is_formed_in_double_and_rounded_once_as_meeps_c_does():
     addition after it are double ones, and calc_nonlinear_u's ``realnum`` parameter rounds
     once (step_generic.cpp:542, :646-654). Against the all-float32 form the two can differ
     only where the exact ``0.0625*t`` lies below float32's normal range, where the float32
-    product drops bits before the addition (phase-0 leg P0-h: 12,568,559 of 396,821,530
+    product drops bits before the addition (a host check over synthetic operand bands: 12,568,559 of 396,821,530
     operand pairs, 0 outside that band). Both bands are checked: operands at those scales
     must reproduce the double form and differ from the float32 one somewhere (or the test
     is blind), and field-scale operands must give the same word either way.
@@ -2854,8 +2854,8 @@ def test_a_folded_nonlinear_update_writes_each_e_ghost_as_its_image(monkeypatch)
     (step.cpp:105-121). The array path evaluates the whole stored volume, which is the
     image while the update is pointwise -- the linear run below shows it is, with no write.
     The nonlinear Dsqr reads the transverse partners' neighbours, so at a ghost it is not:
-    the control removes the write and must see a ghost that is not its image (phase-0 leg
-    P0-h: without the write the folded nonlinear case leaves MEEP at ghost E words from
+    the control removes the write and must see a ghost that is not its image (measured
+    against MEEP 1.33.0: without the write the folded nonlinear case leaves MEEP at ghost E words from
     step 68 and owned words from step 90). ``f_w`` is imaged only on the accumulation's
     cells: a sentinel in every other ``f_w`` word survives.
     """
@@ -3276,7 +3276,7 @@ def test_zero_metal_leaves_a_folded_metallic_axis_alone_because_its_cell_zero_is
 def test_a_metallic_wall_stays_exactly_zero_through_a_run_that_drives_it():
     """A driven run leaves every wall sample at exactly zero, and a seeded one is wiped.
 
-    THE WIPE IS REACHED THROUGH ``set_field``, not through a source, and that is
+    The wipe is reached through ``set_field``, not through a source, and that is
     measured rather than assumed. A source ASKED FOR on the wall never lands there:
     ``sources._build_source_points`` clips a non-wrapping axis to MEEP's own owned
     range (``little_owned_corner0(c) = little_corner + 2 - iyee_shift(c)``, i.e. the
@@ -3441,15 +3441,15 @@ def test_a_metallic_run_is_byte_identical_to_the_same_run_spelled_with_pairs(cel
 #
 # Moved 2026-10-06, all ten, with the curl bracket and the PML constitutive grouping
 # (the note above _COMPLEX_CORE_DIGEST), re-derived by this test's own procedure. The
-# three PML cases moved again 2026-10-07 with the PML forms chosen per structure chunk
-# (bit_parity_0_10 WP AP4), re-derived the same way; the seven without a layer did not
+# three PML cases moved again 2026-10-07 with the PML forms chosen per structure chunk,
+# re-derived the same way; the seven without a layer did not
 # move. All ten moved again 2026-10-07 with the double-precision source deposit
-# (bit_parity_0_10 WP AP5: each case drives a CW point source, whose deposit is now
+# (each case drives a CW point source, whose deposit is now
 # MEEP's float(double(f) - real((amp * current) * dt))), re-derived by this test's own
 # procedure (two runs, equal). The floors in `driver.py`'s docstrings were measured on
 # the previous bytes and are re-measured with the corpus comparison of these changes.
-# Five moved again 2026-10-07 with complex storage formed part by part (bit_parity_0_10
-# WP AP6a), re-derived by this test's own procedure (two runs, equal): the three Bloch
+# Five moved again 2026-10-07 with complex storage formed part by part,
+# re-derived by this test's own procedure (two runs, equal): the three Bloch
 # cases because a phased axis now stores MEEP's owned window (stored cell 0 of a
 # Yee-shift-0 component is lc + 2N, so its words change by design) and forms the
 # connection in MEEP's float form; the two mirror cases in signed zeros only (600 of
@@ -3457,7 +3457,7 @@ def test_a_metallic_run_is_byte_identical_to_the_same_run_spelled_with_pairs(cel
 # exact negation per part instead of a complex product by (-1 + 0j). The five other
 # complex cases did not move: the part-wise products equal NumPy's on their words.
 # "dispersive" moved again 2026-10-08 with the polarization update in MEEP's float32
-# constants and grouping (bit_parity_0_10 WP AP6f), re-derived by this test's own procedure
+# constants and grouping, re-derived by this test's own procedure
 # (two runs, equal); the nine cases without a susceptibility did not move.
 _PERIODIC_BYTE_PINS = {
     "plain_periodic": "be7d20a067d593a9",

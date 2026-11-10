@@ -23,7 +23,7 @@ production path: the mangled symbol it looks up is libc++-specific (a libstdc++ 
 spells ``std::complex<double>`` differently) and a per-point round trip through the
 C++ ABI costs ~1e5 calls per sheet on a 3-D plane.
 
-TWO THINGS HERE ARE NOT THE PHYSICS, AND ARE DELIBERATE.
+Two things here are not the physics, and are deliberate.
 
 1. ``gb_Hx`` is zero. sources.cpp:691 and :716 read ``EH[1]`` — the caller's OUTPUT
    buffer — before anything has been written to it, so the value is whatever was on

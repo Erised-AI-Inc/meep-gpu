@@ -1,6 +1,6 @@
 """Does the CONDUCTIVE x ORDINARY D/E pair's closed form reproduce the driver's seam?
 
-THE CLAIM THIS PROBE STATES AND MEASURES. One launch per cell can perform
+The claim this probe states and measures. One launch per cell can perform
 
     step_D (driver.py:3306, the three-history CONDUCTIVE-PML recurrence)
     -> zero_metal_D (:3310)
@@ -9,7 +9,7 @@ THE CLAIM THIS PROBE STATES AND MEASURES. One launch per cell can perform
 with the stepped displacement carried in a REGISTER between the three passes, and the
 in-seam electric deposit carried across the launch by the split-field repair.
 
-THE CELL IS ``D_to_E (cuda_conductive/conductive, cuda_constitutive/ordinary)`` and it
+The cell is ``D_to_E (cuda_conductive/conductive, cuda_constitutive/ordinary)`` and it
 owns exactly one corpus row: ``tests:TestAdjointSolver.test_damping`` -- an ACTIVE
 absorber, a conductivity on every D component, no susceptibility, METALLIC on x and y,
 and both a ``D`` and a ``B`` source (the stamped census,
@@ -17,7 +17,7 @@ and both a ``D`` and a ``B`` source (the stamped census,
 has called THE SIGNED-ZERO ROW.
 
 =============================================================================
-WHY IT WAS CALLED THAT, AND WHAT THIS PROBE RE-MEASURES RATHER THAN INHERITS
+Why it was called that, and what this probe re-measures rather than inherits
 =============================================================================
 
 The driver scales an injected current by ``condinv`` (MEEP step.cpp:294-317). It USED
@@ -30,14 +30,14 @@ launch that computed E from pre-rewrite values diverged in words the repair coul
 reach -- which is why the fused electric pairs on three backends refused conductive
 rows by name.
 
-THE DRIVER NO LONGER DOES THAT. The ``condinv`` scale is inside each source's own
+The driver no longer does that. The ``condinv`` scale is inside each source's own
 double-precision deposit at its own cells (``sources._deposit``), and the driver has no
-pass over the component. THAT FACT IS VERIFIED HERE ON THE LIVE TREE rather than taken
+pass over the component. That fact is verified here on the live tree rather than taken
 on trust: :func:`rescale_leg` drives the shipped injection and MEASURES that the
 non-deposit words are untouched -- and replays the retired whole-volume passes around
 it as a CONTROL that must diverge.
 
-THE CLASSIFIER ADMITS BOTH CLASSES, and that is deliberate. The published CuPy finding
+The classifier admits both classes, and that is deliberate. The published CuPy finding
 (RTX A6000, 2026-09-01) was that the dense passes destroyed 54 signed-zero AND 68
 subnormal words of 588. A classifier that only knew about signed zeros would score the
 subnormal half as "other" and report a divergence it could not explain. On NumPy the
@@ -46,7 +46,7 @@ recorded ``predicted_null`` WITH that reason rather than silently absent, and th
 signed-zero class is the one that arms here.
 
 =============================================================================
-WHAT IS COMPARED
+What is compared
 =============================================================================
 
 Raw uint32 WORDS of every stored volume the seam writes -- ``Dx/Dy/Dz``,
@@ -55,12 +55,12 @@ Raw uint32 WORDS of every stored volume the seam writes -- ``Dx/Dy/Dz``,
 state, over COMPLETE driver steps. Never ``allclose``: ``-0.0 == 0.0`` lies, and the
 sign of zero is the entire subject of this file.
 
-THE AUXILIARIES START NON-ZERO for the reason every leg on this track gives: a zero
+The auxiliaries start non-zero for the reason every leg on this track gives: a zero
 ``fu`` makes ``fu * kms`` exactly zero on the first pass whatever ``kms`` is, which
 would hide a mis-indexed coefficient. ``f_cond`` starts non-zero for the same reason --
 it is the third history of the conductive recurrence and zero is its fixed point.
 
-THE ARMED MUTATIONS, each a port a reasonable person would write:
+The armed mutations, each a port a reasonable person would write:
 
   subtract_before_clear  the constitutive consumes the PRE-clear register
   store_before_clear     the store writes the PRE-clear register
@@ -69,10 +69,10 @@ THE ARMED MUTATIONS, each a port a reasonable person would write:
   inv_eps_shared         all three components multiply component x's inverse epsilon
   coefficients_integer   the INTEGER sigma sub-lattice instead of the half-integer one
 
-AND THE DEPOSIT AND RESCALE LEGS:
+And the deposit and rescale legs:
 
   bracketed              save -> launch on an UNINJECTED D -> inject -> clear -> repair
-  unbracketed            the same without the repair -- A NULL CONTROL THAT MUST DIVERGE
+  unbracketed            the same without the repair -- a null control that must diverge
   sparse_rescale         the SHIPPED injection: non-deposit words must be UNTOUCHED
   dense_rescale_control  the RETIRED whole-volume passes -- MUST diverge, and every
                          differing word must classify as signed-zero or subnormal
@@ -137,7 +137,7 @@ _NULL_REASONS: Dict[str, str] = {
         "sigma sub-lattices on any axis this run resolves",
 }
 
-#: Configurations. THE FIRST IS THE CORPUS SHAPE this cell owns, read off the stamped
+#: Configurations. The first is the corpus shape this cell owns, read off the stamped
 #: census: TestAdjointSolver.test_damping is 2-D, METALLIC on x and y, periodic on z,
 #: an ACTIVE absorber, a conductivity and NO susceptibility. The rest arm what it
 #: cannot.
@@ -161,7 +161,7 @@ CASES: Tuple[Dict[str, Any], ...] = (
             "shows they are measuring the wall and not something else"},
     {"label": "wall_z_thin_pml", "cell": (0.0, 0.0, 1.5), "resolution": 10.0,
      "boundaries": {"x": "periodic", "y": "periodic", "z": "metallic"},
-     # THE ABSORBER GOES ON THE ONE RESOLVED AXIS. x and y are single cells here and
+     # The absorber goes on the one resolved axis. x and y are single cells here and
      # a layer cannot fit on either.
      "pml": ((0, 0), (0, 0), (1, 1)), "conductivity": 0.25,
      "why": "1-D with a wall and a thin absorber: the smallest shape that still "
@@ -235,7 +235,7 @@ def build(case: Dict[str, Any], zero_curl: bool = False,
         for name in _TARGETS:
             array = getattr(fields, name)
             flat = array.reshape(-1)
-            # FOUR WORD CLASSES IN ROTATION so every one of them is present at cells
+            # Four word classes in rotation so every one of them is present at cells
             # the deposit does NOT name: -0.0, +0.0, the smallest subnormal, and a
             # normal value. The classifier has to sort all four.
             classes = np.array([-0.0, 0.0, np.float32(1e-45), 0.37],
@@ -256,7 +256,7 @@ def classify(before: np.ndarray, after: np.ndarray) -> Dict[str, int]:
                      is what the retired whole-volume passes produce; ``+0.0 -> -0.0``
                      is admitted too rather than assumed impossible.
     ``subnormal``    a subnormal word that became zero, or a zero that came from one.
-                     UNREACHABLE ON NUMPY -- the host does not flush subnormals -- and
+                     Unreachable on NumPy -- the host does not flush subnormals -- and
                      recorded as such rather than left to look absent.
     ``other``        anything else, which is a divergence this file cannot explain and
                      is what makes a leg fail rather than pass.
@@ -288,8 +288,8 @@ def classify(before: np.ndarray, after: np.ndarray) -> Dict[str, int]:
 # ---------------------------------------------------------------------------
 
 def _clear_mask(fields: Any, target: str) -> Any:
-    """The cells ``zero_metal_D`` holds at zero for one D component, READ FROM THE
-    SHIPPED PASS rather than transcribed (see the Group B probe's note)."""
+    """The cells ``zero_metal_D`` holds at zero for one D component, read from the
+    shipped pass rather than transcribed (see the Group B probe's note)."""
     probe = Fields(grid=fields.grid)
     for name in _TARGETS:
         getattr(probe, name)[...] = np.float32(1.0)
@@ -374,7 +374,7 @@ def measure(case: Dict[str, Any], steps: int) -> Dict[str, Any]:
         "f_cond_allocated": bool(getattr(fields, "f_cond_Dx", None) is not None),
         "steps": steps,
     }
-    # THE SUB-STEP THIS PROBE CLAIMS TO MEASURE, CHECKED RATHER THAN ASSUMED. Without
+    # The sub-step this probe claims to measure, checked rather than assumed. Without
     # an ACTIVE layer, an allocated f_cond and an empty pole chain this is a different
     # cell entirely and every number below would describe the wrong recurrence.
     if (not result["pml_is_active"] or not result["f_cond_allocated"]
@@ -545,7 +545,7 @@ def deposit_legs(case: Dict[str, Any], masks: Dict[str, Any],
                  coefficients: Dict[str, Any], steps: int = 3) -> Dict[str, Any]:
     """``bracketed`` / ``unbracketed`` against the driver's own order.
 
-    ``unbracketed`` IS A NULL CONTROL THAT MUST DIVERGE: without the repair the fused
+    ``unbracketed`` is a null control that must diverge: without the repair the fused
     launch's constitutive half consumed a pre-injection displacement.
     """
     out: Dict[str, Any] = {}
@@ -580,15 +580,15 @@ def deposit_legs(case: Dict[str, Any], masks: Dict[str, Any],
 
 
 def rescale_leg(case: Dict[str, Any], steps: int = 1) -> Dict[str, Any]:
-    """THE CHARTER'S OWN QUESTION, re-measured on the live tree.
+    """This probe's own question, re-measured on the live tree.
 
     Two measurements, both on a fixture seeded with all four word classes and an
     exactly-zero curl so the classes survive ``step_D``:
 
     ``sparse_untouched``  the SHIPPED injection is driven and the non-deposit words
                           of every D component are compared before and after. They
-                          must be UNTOUCHED -- that is the fact the charter told this
-                          lane to verify rather than assume.
+                          must be UNTOUCHED -- that is the fact this probe exists to
+                          verify rather than assume.
     ``dense_diverges``    the RETIRED whole-volume passes are replayed as a control
                           through the same fused route. It MUST diverge, and every
                           differing word must classify as signed-zero or subnormal.
@@ -630,7 +630,7 @@ def rescale_leg(case: Dict[str, Any], steps: int = 1) -> Dict[str, Any]:
     dt = float(ref_grid.dt)
     for step in range(steps):
         when = (step + 0.5) * dt
-        # THE REFERENCE TAKES THE SHIPPED SPARSE INJECTION -- it is the array path as
+        # The reference takes the shipped sparse injection -- it is the array path as
         # the tree ships it today. The engine replays the RETIRED dense passes on the
         # fused route, which is the composition whose word rewrites this leg is about.
         _driver_order(reference, ref_pml, ref_sources, when, dense=False)
@@ -647,7 +647,7 @@ def rescale_leg(case: Dict[str, Any], steps: int = 1) -> Dict[str, Any]:
     out["dense_control_classes"] = counts
     out["dense_diverges"] = total > 0
     out["dense_is_fully_classified"] = counts["other"] == 0 and total > 0
-    # THE SUBNORMAL CLASS IS UNREACHABLE ON THIS HOST and is recorded as such rather
+    # The subnormal class is unreachable on this host and is recorded as such rather
     # than left to look absent: NumPy does not flush subnormals, so only a device run
     # can arm it. The published CuPy measurement (RTX A6000, 2026-09-01) is 68
     # subnormal beside 54 signed-zero words of 588.

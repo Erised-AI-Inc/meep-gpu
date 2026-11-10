@@ -1,12 +1,12 @@
 """Byte gate for the Metal Dcyl m = 0 fused H->D pair: ``update_H`` + the radial
 difference in one launch, the certified ``step_D`` curl in the other.
 
-THE CLAIM THIS GATE IS ALLOWED TO SUPPORT: for every configuration
+The claim this gate is allowed to support: for every configuration
 :func:`~meep_gpu.metal_kernels.cylindrical_real_fused_hd_pair.metal_cylindrical_real_fused_hd_pair_coverage`
 admits, the plan's two launches -- ``cyl_real_hd_constitutive_prefix`` (the pointwise
 ``update_H`` into scratch plus the column-leader radial scan over the RECOMPUTED ``Hy``)
 then the certified ``cyl_pml_curl_step`` for ``step_D`` over the rotated ``H`` -- leave the
-engine in a state that is BIT-IDENTICAL, PER COMPLETE DRIVER STEP, to
+engine in a state that is bit-identical, per complete driver step, to
 
   * the NumPy array path under ``FdtdDriver.step``'s own loop,
   * the two SEPARATELY CERTIFIED Metal products it replaces -- the ``cylindrical m=0``
@@ -17,7 +17,7 @@ engine in a state that is BIT-IDENTICAL, PER COMPLETE DRIVER STEP, to
 
 over every stored volume, compared as uint32 words. ``allclose`` appears nowhere.
 
-THE QUESTION THIS SEAM TURNS ON, and the leg that answers it: the radial sum's source
+The question this seam turns on, and the leg that answers it: the radial sum's source
 is what the seam's first half WRITES. Launch 1 never reads its own output -- the column
 leader RECOMPUTES ``Hy`` row by row from the pre-launch state -- and leg
 ``recompute_identity`` measures that the radial difference so formed (MEEP's
@@ -69,11 +69,11 @@ THE LEGS
                           census's own child and driven through the same six
                           arrangements
 
-WHAT THE GATE REFUSES TO INFER
+What the gate refuses to infer
 
 * **A no-op agreeing with a no-op is trivially identical.** Every compared volume must
   MOVE during a synthetic case; a lifted row must move the seam's own outputs.
-* **A DECLARED NULL MUST BE CONFIRMED**, and each has a live sibling: the commuted weight
+* **A declared null must be confirmed**, and each has a live sibling: the commuted weight
   multiply and accumulator (float32 multiply and add are commutative to the bit) beside
   the quotient divided in the kernel, which is not; Dz's curl keeping the phi pair as a
   zero term (an exact +0.0 on the one-cell invariant axis) beside Dy's live pair in the
@@ -148,7 +148,7 @@ from meep_gpu.triton_kernels.launch import STEP_ORDER  # noqa: E402
 SUBJECT_PACKAGE = "metal_kernels"
 
 #: The budget every synthetic case runs -- the cylindrical siblings' twelve. The
-#: comparison is per COMPLETE DRIVER STEP and the state this weld carries between
+#: comparison is per complete driver step and the state this weld carries between
 #: steps (the rotated ``H``/``f_w_H`` pair, the in-place ``fu_D``, the radial
 #: difference) compounds.
 STEPS = 12
@@ -174,7 +174,7 @@ EXIT_INCOMPLETE = 75
 #:   THE z DECLARATION   a metallic z puts ``zero_metal_B``/``zero_metal_D`` in the
 #:                       live set (they stay on the array path here; neither is inside
 #:                       this seam); a periodic z drops them. Both are walked.
-#:   THE COURANT NUMBER  three of the five are NOT powers of two, which is the family
+#:   The Courant number  three of the five are NOT powers of two, which is the family
 #:                       of non-representable multiplicands the association defects
 #:                       need in order to be visible at all.
 #:   THE SHAPE           square, tall-and-thin, short-and-wide (the scan's column count
@@ -182,7 +182,7 @@ EXIT_INCOMPLETE = 75
 #:                       (16, 1, 20) row, and a 120 x 120 grid at the corpus rows'
 #:                       scale -- the one on which the scratch-read race is caught.
 #:
-#: EVERY COURANT IS A FLOAT32 WORD: the m = 0 D side's axis rule is MEEP's double
+#: Every Courant is a float32 word: the m = 0 D side's axis rule is MEEP's double
 #: product ``4 * Courant * Hp[r=0]`` rounded once, which this backend forms in float32
 #: only for such a word, and any other Courant is refused by name.
 
@@ -256,7 +256,7 @@ _RESET_VOLUMES: Optional[Tuple[str, ...]] = None
 def reset_declared_volumes() -> Tuple[str, ...]:
     """Every array ``Fields.reset`` zeroes, read out of ``fields.py``'s own text.
 
-    DERIVED, NOT TRANSCRIBED: a volume added to the engine joins the comparison
+    Derived, not transcribed: a volume added to the engine joins the comparison
     without an edit here. Private scratch is dropped by the leading-underscore rule.
     """
     global _RESET_VOLUMES  # noqa: PLW0603 - read once from disk, then held
@@ -364,7 +364,7 @@ def build_driver(label: str, seed: int, value_class: str = values.UNIFORM,
     -- the consult order, the withdraw loop, the wall clears -- so the walk is
     ``FdtdDriver.step``'s own and never a second model of what a step is.
 
-    THE SEED COVERS ``fu_*`` AND ``f_w_*`` AS WELL AS THE TWELVE FIELD VOLUMES. Zero
+    The seed covers ``fu_*`` AND ``f_w_*`` as well as the twelve field volumes. Zero
     init is a fixed point of the constitutive sub-step and a near-fixed-point of the
     split-field recurrence, so the auxiliaries carry physical-band values from step
     zero and the vacuity floor has something to measure.
@@ -396,7 +396,7 @@ def build_driver(label: str, seed: int, value_class: str = values.UNIFORM,
                           * scale).astype(array.dtype)
     else:
         raise ValueError(f"unknown value class {value_class!r}")
-    # A SEEDED STATE IS A MID-RUN ONE: H was started from B long ago, so
+    # A seeded state is a mid-run one: H was started from B long ago, so
     # ``stepping.separate_h_from_b`` must not run again on it -- the array path would
     # copy B into H and f_w on the dsigw cells at the first update_H and no kernel
     # does. The composition matrix's seeds carry the same flag; the run's first
@@ -472,10 +472,10 @@ def declaring(plan: Any) -> Any:
 class Shim:
     """A ``FastPathPlan``-shaped object that runs this gate's plans inside the driver.
 
-    THE SEAM IS THE ENGINE'S OWN: ``driver.step`` reads ``self._fast_path`` once per
+    The seam is the engine's own: ``driver.step`` reads ``self._fast_path`` once per
     step and consults ``fast.dispatch(slot, fields)``. The by-name sync channel is
-    refused for any plan whose span leaves the magnetic half-step's slots. EVERY
-    ANSWER IS COUNTED: a shim that quietly declined everything would still produce a
+    refused for any plan whose span leaves the magnetic half-step's slots. Every
+    answer is counted: a shim that quietly declined everything would still produce a
     green byte comparison, because the oracle IS the array path.
     """
 
@@ -683,7 +683,7 @@ def _composed(driver: Any, fuse: bool,
               residency: Optional[Residency] = None) -> Tuple[Any, Residency]:
     """``plan_step`` on this driver, on ``residency`` or on a fresh one.
 
-    ONE ARRANGEMENT IS ONE RESIDENCY: every plan touching a volume must bind the SAME
+    One arrangement is one residency: every plan touching a volume must bind the SAME
     device tensor, or two registries launch against two buffers for one host array.
     """
     residency = Residency() if residency is None else residency
@@ -808,7 +808,7 @@ def drive(driver: Any, arrangements: Mapping[str, Arrangement], steps: int,
     after it, with the subject's rotation settled so every other arrangement's mirrors
     stay bound to the arrays the engine names.
 
-    THE PRECONDITION IS TAKEN PER STEP, BEFORE THE COMPARISON. Byte identity on this
+    The precondition is taken per step, before the comparison. Byte identity on this
     backend is claimed subject to the oracle's state staying out of the float32
     denormal band -- MPS flushes natively and NumPy does not -- so a banded step is
     counted, named and NOT compared, and nothing past it is measurable. Two halves:
@@ -957,7 +957,7 @@ def drive(driver: Any, arrangements: Mapping[str, Arrangement], steps: int,
 
 
 def floor_violations(moved: Mapping[str, int], pml: Any) -> List[str]:
-    """The vacuity floor under the auxiliary contract (KERNELS.md §1, C2).
+    """The vacuity floor under the auxiliary contract (docs/design/floating-point.md#auxiliary-contract).
 
     ``f_w_{H,E}c`` is touched only where c's own axis (its dsigw) carries a layer and
     ``fu_{B,D}c`` only where its dsigu axis, ``(c + 2) % 3``, does, by the array path
@@ -1345,7 +1345,7 @@ def leg_refusal() -> Dict[str, Any]:
     cart_verdict = family.metal_cylindrical_real_fused_hd_pair_coverage(
         cart_driver.fields, cart_driver.pml, (), Residency())
     cart_named = [r for r in cart_verdict.reasons if "cylindrical" in r]
-    # THE RUN'S FIRST update_H, which this pair's H half takes: refused by name while
+    # The run's first update_H, which this pair's H half takes: refused by name while
     # B, its auxiliary or E holds a word other than +0 (launch.h_start_reasons).
     first = build_driver(REFUSAL_CASE, 91000)
     first.fields.h_separated = False
@@ -1408,7 +1408,7 @@ def _registered_rows() -> List[Any]:
 def _absorb_row_in_process(installable: bool):
     """Hold the absorb row present and ``INSTALLABLE`` at ``installable``, then put both back.
 
-    IN-PROCESS AND RESTORED: ``launch.py`` is not edited. This is the only way to
+    In-process and restored: ``launch.py`` is not edited. This is the only way to
     measure what the composer WOULD do with the row, which is the arbitration verdict
     :data:`family.INSTALLABLE_REASON` carries.
     """
@@ -1462,7 +1462,7 @@ def leg_arbitration() -> Dict[str, Any]:
                        and with_row["refusal"][0].startswith(
                            f"{family.FAMILY} declares INSTALLABLE = False: ")
                        and unflagged["refusal"]
-                       # EITHER SEAM'S INCUMBENT, and 2026-09-17 is when that stopped
+                       # Either seam's incumbent, and 2026-09-17 is when that stopped
                        # being a pedantic allowance. This clause read
                        # `step_D was selected by the {incumbent!r} arm` and nothing
                        # else, which was exact while the B->H seam of a Dcyl m = 0 run
@@ -1470,7 +1470,7 @@ def leg_arbitration() -> Dict[str, Any]:
                        # PAIR this product collided with was the D->E one, so step_D
                        # was the only slot that could refuse it.
                        #
-                       # The all-paths batch gave `cylindrical_real_fused_magnetic_pair`
+                       # A later change gave `cylindrical_real_fused_magnetic_pair`
                        # a launch.FUSED_PAIR_ARMS row, so update_H now carries a fused
                        # pair too, and the composer's FIRST refusal moved to it:
                        #     "update_H was selected by the 'cylindrical m=0 fused
@@ -1650,10 +1650,10 @@ _SCAN_ROW0 = f"float w_prev = h_cell(0, j, k, {_TAIL}).a1 * weights[0];"
 #: ``schedule_dependent`` is recorded and does not decide the verdict -- its must-catch
 #: twin is armed on RACE_CASE below.
 MUTATION_EXPECTATION: Dict[str, str] = {
-    # THE TWO IN-PLACE CONTROLS ARE NULLS UNDER MEEP'S FORMS. The leader's recompute
+    # The two in-place controls are nulls under MEEP's forms. The leader's recompute
     # reads only Hy (``h_cell(...).a1``), and Hy's dsigw axis is phi, which carries no
     # layer on a Dcyl grid: Hy takes the plain form ``a1 = src1`` everywhere and reads
-    # neither its old word nor f_w_Hy (KERNELS.md §1, C2). Every other thread reads its
+    # neither its old word nor f_w_Hy (the auxiliary contract). Every other thread reads its
     # own cell only, so a buffer written where it is read changes no word.
     "in_place_H": "null",
     "in_place_fw": "null",
@@ -1706,7 +1706,7 @@ def constitutive_mutations() -> Dict[str, str]:
         "constitutive_coefficients_exchanged":
             needle(base, "a0 = hi0[ii] + ((kp_0 * src0) - (km_0 * prev0));",
                    "a0 = hi0[ii] + ((km_0 * src0) - (kp_0 * prev0));"),
-        # INVERTED (KERNELS.md §7.1): the package's previous constitutive grouping.
+        # INVERTED (docs/development/certification.md#inverted-grouping-mutations): the package's previous constitutive grouping.
         "constitutive_previous_package_grouping":
             needle(base, "a0 = hi0[ii] + ((kp_0 * src0) - (km_0 * prev0));",
                    "a0 = (hi0[ii] + (kp_0 * src0)) - (km_0 * prev0);"),
@@ -1733,12 +1733,12 @@ def curl_mutations(codes: Sequence[int]) -> Dict[str, str]:
             needle(base, dz, "    float curl2 = dtdx * (((b_x - b) + a) - a_y);"),
         "dz_radial_term_negated":
             needle(base, dz, "    float curl2 = (-dtdx) * rad[ii];"),
-        # DECLARED NULL (KERNELS.md Appendix A, the invariant-axis class): Dz's phi
+        # DECLARED NULL (certification.md#inverted-grouping-mutations, the invariant-axis class): Dz's phi
         # pair kept as a zero term, an exact +0.0 on the one-cell invariant axis;
         # differs only in the sign of a zero radial term.
         "dz_curl_keeps_the_invariant_phi_pair":
             needle(base, dz, "    float curl2 = dtdx * (rad[ii] + (a - a_y));"),
-        # INVERTED (KERNELS.md §7.1): the package's previous pairwise grouping on Dy's
+        # INVERTED (certification.md#inverted-grouping-mutations): the package's previous pairwise grouping on Dy's
         # live (z, r) pair.
         "dy_curl_previous_package_grouping_on_a_live_pair":
             needle(base, "dtdx * (((a_z - a) + c) - c_x)",
@@ -2028,7 +2028,7 @@ def lift_basis(results: Path) -> Tuple[List[dict], Dict[str, Any]]:
                 "label": label, "leg": record.get("leg", leg), "row": record["row"],
                 "case": record.get("case") or record["row"],
                 "module": record.get("module") or seam_row.get("module"),
-                # WHERE THE CHILD RUNS: this gate's interpreter. The path the census
+                # Where the child runs: this gate's interpreter. The path the census
                 # recorded is kept as recorded_interpreter and never launched.
                 **lift_host.row_fields(record, seam_row),
                 "grid_cells": record.get("grid_cells"),
@@ -2081,7 +2081,7 @@ def leg_lift(out_dir: Path, steps: int, timeout: float, resume: bool) -> Dict[st
             if not link.exists():
                 with contextlib.suppress(OSError):
                     link.symlink_to(entry)
-    # THE CENSUS'S OWN SHIM, for the modules that decorate with `parameterized`.
+    # The census's own shim, for the modules that decorate with `parameterized`.
     shim_path = Path(census.__file__).resolve().parent / "shim"
     needs_shim: set = set()
     for row in rows:
@@ -2092,7 +2092,7 @@ def leg_lift(out_dir: Path, steps: int, timeout: float, resume: bool) -> Dict[st
         if module_file.is_file() and "import parameterized" in module_file.read_text(
                 encoding="utf-8", errors="replace"):
             needs_shim.add(module_name)
-    # WHAT THIS HOST CANNOT LIFT, asked once before any child: the needs the rows
+    # What this host cannot lift, asked once before any child: the needs the rows
     # declare, probed under this interpreter (lift_host).
     host = lift_host.host_check(rows, environment, work)
     if host["unreadable"]:
@@ -2170,8 +2170,19 @@ def leg_lift(out_dir: Path, steps: int, timeout: float, resume: bool) -> Dict[st
     blocks = {r["label"]: (r.get("metal_cylindrical_real_fused_hd_pair_gate") or {})
               for r in measured}
     admitted = sorted(label for label, b in blocks.items() if b.get("predicate_admits"))
+    # A row the identity corpus's manifest retires that reached no predicate verdict is
+    # refused by name with the manifest's reason, never scored as unmeasured
+    # (``lift_host.corpus_refusals``), and is out of the denominator like a row unlifted on
+    # this host.
+    corpus = lift_host.corpus_refusals(HERE / "results", [
+        record for record in measured
+        if "predicate_admits" not in blocks[record["label"]]
+        and record["label"] not in unlifted])
+    refused_by_the_corpus = corpus["refused"]
+    counted_out = len(unlifted) + len(refused_by_the_corpus)
     unmeasured = sorted(label for label, b in blocks.items()
-                        if "predicate_admits" not in b and label not in unlifted)
+                        if "predicate_admits" not in b and label not in unlifted
+                        and label not in refused_by_the_corpus)
     driven = sorted(label for label in admitted if blocks[label].get("driven"))
     identical = sorted(label for label in driven if blocks[label].get("bit_identical"))
     cleared = sorted(label for label in identical
@@ -2183,10 +2194,10 @@ def leg_lift(out_dir: Path, steps: int, timeout: float, resume: bool) -> Dict[st
     composer_refuses = all(blocks[label].get("composer_refuses_this_product")
                            for label in admitted)
     return {
-        # AT LEAST ONE ROW IS ASKED: a cell whose every row is unlifted on this host
+        # At least one row is asked: a cell whose every row is unlifted on this host
         # measured nothing, and "no row disagreed" over no rows is not a pass.
-        "passed": bool(len(rows) > len(unlifted) and not unmeasured
-                       and len(admitted) == len(rows) - len(unlifted)
+        "passed": bool(len(rows) > counted_out and not unmeasured
+                       and len(admitted) == len(rows) - counted_out
                        and len(driven) == len(admitted) and not diverged
                        and len(cleared) == len(driven) and composer_refuses),
         "facts": facts,
@@ -2194,7 +2205,9 @@ def leg_lift(out_dir: Path, steps: int, timeout: float, resume: bool) -> Dict[st
         "rows": [r["label"] for r in rows],
         "unmeasured": unmeasured,
         "unlifted_on_this_host": unlifted,
-        "rows_the_engine_was_asked_about": len(blocks) - len(unlifted),
+        "refused_by_the_corpus_manifest": refused_by_the_corpus,
+        "corpus_manifest": corpus["basis"],
+        "rows_the_engine_was_asked_about": len(blocks) - counted_out,
         "host_capabilities": host,
         "admitted": admitted,
         "driven": driven,
@@ -2232,7 +2245,12 @@ def leg_lift(out_dir: Path, steps: int, timeout: float, resume: bool) -> Dict[st
 # ---------------------------------------------------------------------------
 
 def emit(handle: Any, row: Dict[str, Any]) -> None:
-    handle.write(json.dumps(row, sort_keys=True, default=str) + "\n")
+    """One row of ``gate.jsonl``, as ``neutral_ids`` spells it: the row file leaves the
+    machine with the gate's artifact (which ``gate_provenance.stamp`` writes neutrally), so a
+    row names no account and no local path either (the lift leg's corpus root, say)."""
+    import neutral_ids  # noqa: PLC0415
+
+    handle.write(json.dumps(neutral_ids.value(row), sort_keys=True, default=str) + "\n")
     handle.flush()
     os.fsync(handle.fileno())
     log(f"{row['index']}/{row['total']} [{row['leg']}] {row['label']}: "

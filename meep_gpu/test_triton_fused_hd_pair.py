@@ -1,6 +1,6 @@
 """Laptop contracts for the Triton H->D weld: ``update_H`` welded into ``step_D``.
 
-WHAT THIS SUITE IS FOR. The device gate
+What this suite is for. The device gate
 (``parity/meep_gpu/gate_triton_fused_hd_pair.py``) is what certifies the bytes; this
 suite is the merge bar, and it holds the things that would otherwise only be true on a
 machine nobody runs on the way in:
@@ -13,7 +13,7 @@ machine nobody runs on the way in:
   falsity is a fact about the driver, and the one whose falsity is a measured verdict;
 * the composer's two brakes, DRIVEN against an injected row rather than argued;
 * the reason this product is not routed through the certified-product loop, read off
-  the tree so that a later round which lands the missing label finds this test red
+  the tree so that a later change which lands the missing label finds this test red
   instead of finding a stale sentence.
 """
 
@@ -213,14 +213,14 @@ def test_the_two_flags_and_the_wiring_move_together(product):
     assert product.INSTALLABLE is False
     assert product.HOISTS_THE_WITHDRAW is False
     assert "4 - (installed pairs)" in product.INSTALLABLE_REASON
-    # THE REASON POINTS AT A MEASUREMENT AND DOES NOT COPY ITS NUMBERS. Numbers belong
+    # The reason points at a measurement and does not copy its numbers. Numbers belong
     # in the record; a declaration points at the record. It also names the FIRST half
     # -- the label boundary -- because that is what actually keeps the product out of
     # the composer, and a reason that named only the arbitration would be false on the
     # rows where neither neighbouring pair installs.
     assert "arbitration_over_the_driven_rows" in product.INSTALLABLE_REASON
     assert "GAIN where NEITHER does" in product.INSTALLABLE_REASON
-    # AND IT DOES NOT NAME THE DISPATCHER, which is the one-way rule
+    # And it does not name the dispatcher, which is the one-way rule
     # ``test_triton_kernels.test_the_dependency_between_dispatch_and_this_package_runs_ONE_WAY``
     # enforces TEXTUALLY over every file in this package: nothing here may know a
     # dispatcher exists, prose included. The exact table names live on the parity side
@@ -339,7 +339,7 @@ def test_the_cut_refuses_a_missing_or_crossed_anchor(product):
 def test_the_restated_block_size_is_the_certified_modules_own(product):
     """``DEFAULT_BLOCK`` is restated because ``kernels`` needs Triton to import.
 
-    PINNED AGAINST THE SOURCE rather than trusted: a restated constant that drifted
+    Pinned against the source rather than trusted: a restated constant that drifted
     would change the dispatch shape of every launch this family makes while every
     other check here stayed green.
     """
@@ -374,7 +374,7 @@ def test_the_shared_coefficient_group_rests_on_an_asserted_premise(product):
 # ---------------------------------------------------------------------------
 
 def test_an_undeclared_source_list_is_refused_by_name(product):
-    """IGNORANCE IS NEVER AN EMPTY SET. ``Fields`` does not hold the source list."""
+    """Ignorance is never an empty set. ``Fields`` does not hold the source list."""
     fields, pml = build()
     reasons = _reasons(product.fused_hd_pair_coverage(fields, pml, None))
     assert any("was not declared" in reason for reason in reasons), reasons
@@ -437,7 +437,7 @@ def test_a_fold_is_refused_naming_the_second_product(product):
 
 
 def test_an_inactive_absorber_is_named_by_the_constitutive_half_first(product):
-    """THE ORDER IS THE DRIVER'S: ``update_H`` runs first, so it speaks first.
+    """The order is the driver's: ``update_H`` runs first, so it speaks first.
 
     The null ``update_H`` is the single largest non-fusion reason on the H->D board and
     it belongs to the constitutive side; a predicate that reported the curl's refusal
@@ -489,7 +489,7 @@ def test_the_composer_is_not_offered_this_product_and_the_reason_is_a_file_bound
     composer-only fact: every label ``plan_step`` can write must also appear in
     ``fastpath.FUSED_ARM_CONSTITUENTS`` and in ``PENDING_DEVICE_GATE_ARMS`` until a
     ledger entry exists. Both live in ``meep_gpu/fastpath.py``. This test is what makes
-    a later round that lands those lines find a red test here instead of a stale
+    a later change that lands those lines find a red test here instead of a stale
     sentence in a docstring.
     """
     from .triton_kernels import launch as launch_module
@@ -664,7 +664,7 @@ def test_the_gates_host_legs_pass_here(gate):
 def test_the_purity_ledger_is_not_vacuous(gate):
     """Of the curl's valid foreign taps, how many land on a cell ``update_H`` moved.
 
-    THE LEDGER THIS SHAPE UNIQUELY OWES. If the count were near zero the recompute and
+    The ledger this shape uniquely owes. If the count were near zero the recompute and
     the stale read would agree by accident and the gate's byte identity would license
     nothing about the read-after-write hazard. It is run here on one fixture so a
     change that made it vacuous fails at the merge bar.
@@ -687,7 +687,7 @@ def test_every_mutation_needle_resolves_exactly_once(gate, product):
         assert spec["why"], tag
         assert spec["case"] in dict(gate.CASES), tag
     assert source.count(gate.BYTE_NEUTRAL["old"]) == 1
-    # THE PREDICTED NULLS ARE RECORDED WITH THEIR REASON, never dropped.
+    # The predicted nulls are recorded with their reason, never dropped.
     nulls = [tag for tag, spec in gate.MUTATIONS.items()
              if spec.get("expected_override") == "NULL"]
     assert nulls, "a mutation set with no predicted null has not been thought about"
@@ -725,14 +725,14 @@ def test_the_seam_claim_is_a_conjunction_of_four_measured_comparisons(gate):
     The claim this gate makes is about THIS SEAM, and the four clauses are what make
     it separable from the arithmetic of the two sub-steps the weld does not own:
 
-      * the weld AT ITS SEAM equals the two certified singles it replaces, word for
+      * the weld at its seam equals the two certified singles it replaces, word for
         word -- one launch against two, on the same driver and the same seed;
       * the weld equals the UNFUSED composition word for word -- same four slots,
         differing only at this seam;
       * the weld equals the composition the composer installs today, word for word.
 
-    THE CLAUSES ARE PAIRWISE SO A FAILURE CAN BE ATTRIBUTED, NOT SO A ROW CAN PASS
-    WITHOUT THE ARRAY PATH. Asking "is the weld the code it replaces" separates a
+    The clauses are pairwise so a failure can be attributed, not so a row can pass
+    without the array path. Asking "is the weld the code it replaces" separates a
     defect of this seam from a defect of a sub-step the weld does not own; both are
     reported, and only the first is this product's -- but attribution is not a pass.
     Every arrangement must equal the CuPy array path over the full budget, on the
@@ -761,7 +761,7 @@ def test_the_seam_claim_is_a_conjunction_of_four_measured_comparisons(gate):
     # themselves disagree is named rather than absorbed.
     assert "the_certified_singles_agree_with_the_array_path" in source
     assert "the_seam_alone_agrees_with_the_array_path" in source
-    # ONE BAR EVERYWHERE: bit identity to the array path over the full budget, and no
+    # One bar everywhere: bit identity to the array path over the full budget, and no
     # band-bounded exception left in the source to widen it again.
     assert 'and result["bit_identical"]' in source
     assert "subnormal_precondition" not in source
@@ -771,7 +771,7 @@ def test_the_seam_claim_is_a_conjunction_of_four_measured_comparisons(gate):
 
 
 def test_every_exclusion_from_the_lift_is_a_measurement_not_a_list(gate):
-    """The three ways a corpus row leaves this leg's denominator, each MEASURED.
+    """The three ways a corpus row leaves this leg's denominator, each measured.
 
     A gate that dropped a row by name would be a gate whose coverage a later edit
     could quietly narrow. Each exclusion here rests on something the run establishes:
@@ -796,7 +796,7 @@ def test_every_exclusion_from_the_lift_is_a_measurement_not_a_list(gate):
     assert "wipe_private=True" in child
     drive_source = _inspect.getsource(gate.drive)
     assert "arrangement.wipe_private" in drive_source
-    # THE RULE IS THE UNDERSCORE, not a name (this package's own precedent), and a
+    # The rule is the underscore, not a name (this package's own precedent), and a
     # private divergence is REPORTED rather than dropped.
     assert gate._is_private("_fmp_scratch") and not gate._is_private("Dx")
     assert "private_volumes_that_differ" in drive_source
@@ -806,7 +806,7 @@ def test_every_exclusion_from_the_lift_is_a_measurement_not_a_list(gate):
     assert "refused_expected_from_the_row_sources" in leg
     # The denominator is stated, not implied.
     assert "the_denominator" in leg
-    # AND THE VERDICT RECONCILES THE THREE EXCLUSIONS WITH THE CELL, as SET equalities
+    # And the verdict reconciles the three exclusions with the cell, as SET equalities
     # rather than counts: every admitted row is driven or refused by measurement, and
     # admitted + refused + unliftable is the cell.
     assert "set(driven) | set(non_deterministic) == set(admitted)" in leg

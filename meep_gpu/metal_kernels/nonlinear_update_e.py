@@ -6,7 +6,7 @@ corners of each transverse sum added left to right
 the addition after it in binary64, rounded once (``stepping._nonlinear_dsqr``), then the
 Pade factor in float32, and the constitutive form selected per structure chunk from the
 chunk record (``stepping._apply_constitutive_regions``). The Apple GPU has no float64,
-so the binary64 steps of ``Dsqr`` run in software (:mod:`.softfp64`, ruling R7: soft-fp64
+so the binary64 steps of ``Dsqr`` run in software (:mod:`.softfp64`: soft-fp64
 rather than refusal). The three spine arms below (``step_B``, ``step_D``, ``update_H``)
 launch the base kernels of :mod:`.shaders`, which bind the same record.
 
@@ -16,7 +16,7 @@ deliberately copied rather than reinvented: same slot, same half-integer tail, s
 two-way ghost block, same alias refusals, same plan/from_arrays pair. What differs
 is the SOURCE term, and only that.
 
-WHAT IT REPLACES. ``stepping.update_E`` (stepping.py:954) with an active PML and
+What it replaces. ``stepping.update_E`` (stepping.py:954) with an active PML and
 ``fields.has_nonlinearity`` True — the ``if nonlinear:`` branch (stepping.py:
 999-1000) reaching ``_nonlinear_constitutive`` (:1080). With no poles admitted,
 ``displacement_minus_polarization_volumes`` aliases each source to its D primary
@@ -40,17 +40,17 @@ and, when the component is LINEAR in a partly nonlinear run, ``src = gs * us`` �
 MEEP's ``else if (u)`` branch, which is the certified plain constitutive kernel's
 component body verbatim.
 
-THIS IS THE FIRST METAL FAMILY IN THIS PACKAGE THAT DIVIDES, and that is not a
+This is the first Metal family in this package that divides, and that is not a
 remark. ``shaders.py``'s transcription rule 4 states the certified pair's position
 plainly — "Neither body divides, calls ``sqrt``, or takes a min or a max, which is
 why this pair is the lowest-risk one to certify first" — so the Pade quotient walks
-off the end of every measurement this package had. It was therefore MEASURED before
+off the end of every measurement this package had. It was therefore measured before
 this file was written, not after: see :func:`~parity.meep_gpu` probe
 ``probe_metal_divide_and_negation.py`` and the numbers in point 1 below.
 
-THE THINGS THAT DECIDE BIT-IDENTITY, each held by measurement rather than assumed:
+The things that decide bit-identity, each held by measurement rather than assumed:
 
-1. **THE DIVISION IS THE PLAIN ``/`` — MEASURED ON THIS HOST, NOT INHERITED.** The
+1. **The division is the plain ``/`` — measured on this host, not inherited.** The
    sibling Triton track carries ``tl.math.div_rn`` because Triton's plain ``/``
    lowers to ``div.full.f32`` (~2 ulp) and every nonlinear sweep case diverged
    there. **That reason does not reproduce here.** Measured 2026-08-16 (arm64,
@@ -65,7 +65,7 @@ THE THINGS THAT DECIDE BIT-IDENTITY, each held by measurement rather than assume
    plain operator and is a recorded null. Porting Triton's workaround on faith
    would have been the mistake here, exactly as porting its negation idiom would.
 
-2. **THE ONLY DIVERGENCE THE DIVIDE SHOWS IS THE SUBNORMAL FLUSH, and it is the
+2. **The only divergence the divide shows is the subnormal flush, and it is the
    PLATFORM'S, not the operator's.** On the special-value table 16 lanes differ;
    all 16 have a SUBNORMAL IEEE result and the device produced the correctly-signed
    zero. ``multiply`` — an operation four certified families already ship — shows
@@ -75,21 +75,21 @@ THE THINGS THAT DECIDE BIT-IDENTITY, each held by measurement rather than assume
    and every claim here rides on the CHECKED subnormal-free precondition in
    :mod:`.subnormal`, never on a tolerance.
 
-3. **THE PADE GROUPINGS ARE THE TRANSCRIBED ONES**, and each paren is load-bearing
+3. **The Pade groupings are the transcribed ones**, and each paren is load-bearing
    in the way ``shaders.py`` rule 2 describes: ``(gs*chi2)*(us*us)``,
    ``(Dsqr*chi3)*((us*us)*us)``, ``((1 + c2) + 2*c3) / ((1 + 2*c2) + 3*c3)``, then
    ``(gs*us)*u`` — Python's left-to-right association in ``calc_nonlinear_u``
    (stepping.py:1054-1056) and the row-then-scale order of ``_nonlinear_constitutive``
    (:1107-1109). Flattening any of them is a different float32 number.
 
-4. **THE FOUR CORNERS ARE ADDED LEFT TO RIGHT, IN MEEP'S ORDER.**
+4. **The four corners are added left to right, in MEEP's order.**
    ``_nonlinear_transverse_sums`` forms ``((g[i] + g[i+s]) + g[i-s1]) + g[i+(s-s1)]``,
    MEEP's own sum (step_generic.cpp:646-648), each addition one float32 rounding. The
    package's previous association, the pair ``(g[i] + g[i-s1]) + (g[i+s] +
    g[i+(s-s1)])``, is the same sum in exact arithmetic and a different word; it is the
    gate's must-catch mutation ``four_corner_pair_association``.
 
-5. **THE TWO SHIFTS GO IN OPPOSITE DIRECTIONS** — half a cell DOWN the partner's
+5. **The two shifts go in opposite directions** — half a cell DOWN the partner's
    axis on the raw partner volume, then the formed pair half a cell UP the
    component's OWN axis (stepping.py:1160-1171). Taking both the same way is the
    half-cell registration error that survives every scalar test. Per-axis ghost
@@ -98,8 +98,8 @@ THE THINGS THAT DECIDE BIT-IDENTITY, each held by measurement rather than assume
    load site — the partner-axis flag is index-invariant along the own axis, so
    evaluating it at ``i`` and at ``i+s`` is the same flag.
 
-6. **0.0625 SCALES THE TRANSVERSE SUM OF SQUARES IN BINARY64, AND THE SUM ROUNDS
-   ONCE.** ``0.0625 = (1/4)^2`` turns each UNNORMALIZED four-point sum back into a
+6. **0.0625 scales the transverse sum of squares in binary64, and the sum rounds
+   once.** ``0.0625 = (1/4)^2`` turns each UNNORMALIZED four-point sum back into a
    mean before it is squared. MEEP writes it as a double literal, so ``gs*gs`` and
    ``g1s*g1s + g2s*g2s`` are float32 operations, rounded, then widened; the scale and
    the addition after it are binary64 operations and ``Dsqr`` rounds once to float32
@@ -110,15 +110,15 @@ THE THINGS THAT DECIDE BIT-IDENTITY, each held by measurement rather than assume
    where the exact ``0.0625 * t`` lies below float32's smallest normal (the float32
    form flushes or rounds that term; the binary64 one keeps it), and from there it
    reaches a stored word where ``chi3 * |chi1inv|^3`` is large enough for ``c3`` to
-   carry the change into the ``1 + ...`` sums: MEASURED in a host model under the
+   carry the change into the ``1 + ...`` sums: measured in a host model under the
    flush policy, with ``|D| ~ 2**-55 .. 2**-60``, transverse sums near ``2**-62`` and
    ``chi3 * |chi1inv|^3 = 9e28`` (under :data:`CHI_MAGNITUDE_CEILING`), 14,867 to
    42,776 of 2,000,000 ``src`` words differ between the two forms. The gate's ``dsqr``
    leg measures the helper itself on that band, and its ``dsqr_band`` class carries
    the ``dsqr_in_float32`` mutation through the shipped kernel to E.
 
-7. **A VOLUME INVERSE EPSILON IS REQUIRED, AND THAT IS A NUMERICAL CLAUSE RATHER
-   THAN A CONVENIENCE.** With a PYTHON-FLOAT ``us`` NumPy evaluates
+7. **A volume inverse epsilon is required, and that is a numerical clause rather
+   than a convenience.** With a PYTHON-FLOAT ``us`` NumPy evaluates
    ``(chi1inv * chi1inv)`` in DOUBLE and rounds once when the product meets the
    float32 array, which is a different word from the float32 power this kernel
    forms: measured on this host, **51,218 differing words of 65,536**. The Triton
@@ -130,7 +130,7 @@ THE THINGS THAT DECIDE BIT-IDENTITY, each held by measurement rather than assume
    weak scalar rounded ONCE to float32 under NEP 50, measured 0 differing words
    over seven scalars spanning 1e-30 to 3.4e38.
 
-8. **THE TAIL IS THE BASE CONSTITUTIVE KERNEL'S, PER CHUNK.** Each component reads
+8. **The tail is the base constitutive kernel's, per chunk.** Each component reads
    its own axis's half-integer membership from the chunk record
    (:func:`.shaders.constitutive_bounds_block`). On a member cell ``prev`` is read
    BEFORE ``f_w`` is written and the accumulation is MEEP's ``f + ((kps*src) -
@@ -144,7 +144,7 @@ THE THINGS THAT DECIDE BIT-IDENTITY, each held by measurement rather than assume
 
 NO ``min``/``max`` BUILTIN and NO NEGATION anywhere in this body — the Pade factor
 is built from multiplies, adds and one divide, and the tail subtracts rather than
-negates. The package's ``-x`` rule was re-measured this round anyway (0 differing
+negates. The package's ``-x`` rule was re-measured for this family anyway (0 differing
 on random, exhaustive-special and subnormal-band classes; ``0.0f - x`` diverges,
 ``x * -1.0f`` also exact) and is recorded in the probe artifact; this family simply
 has no site that depends on it.
@@ -158,7 +158,7 @@ caller that leaves ``reflect_row`` unset and keeps the zero face (:1741-1744), a
 the driver refuses a nonlinearity on a live-faced periodic fold rather than serve
 that zero as an answer. This family refuses every fold anyway.
 
-THE POLE GUARD IS NOT A PREDICATE CLAUSE. ``nonlinear_margin`` (stepping.py:1344)
+The pole guard is not a predicate clause. ``nonlinear_margin`` (stepping.py:1344)
 is sampled OUTSIDE the step loop by the driver's ``_NonlinearityGuard`` and is
 unchanged by this kernel. What IS a predicate clause is the MAGNITUDE refusal —
 see clause (g) in :func:`nonlinear_constitutive_coverage`, which is a coverage
@@ -196,7 +196,7 @@ E_TERMS: Tuple[Tuple[str, str, int], ...] = (
 #: The transverse partners of each component, in MEEP's ``cycle_direction`` order
 #: X -> Y -> Z (vec.hpp:586; stepping.py:1183-1185): own axis + 1 first, own axis
 #: + 2 second. Ez therefore takes the Dx partner volume then the Dy one. The order
-#: BINDS PARTNERS TO SUM SLOTS and a test pins it against ``stepping``'s own
+#: binds partners to sum slots and a test pins it against ``stepping``'s own
 #: ``(own_axis + offset) % 3``, because mispairing them is a smooth wrong answer.
 TRANSVERSE_PARTNERS: Tuple[Tuple[int, int], ...] = ((1, 2), (2, 0), (0, 1))
 
@@ -209,7 +209,7 @@ HALF_INTEGER = True
 #: be discovered by a future edit: 25 buffers + 4 scalars + the chunk record = 30,
 #: one of headroom.
 #:
-#: THE PACKED SCALAR BUFFER EXISTS BECAUSE OF THIS CEILING, and it is the design
+#: The packed scalar buffer exists because of this ceiling, and it is the design
 #: decision the limit FORCED rather than informed. Six separate ``constant float&``
 #: chi scalars — the shape the Triton kernel uses, where the ABI has no such limit
 #: — would have been 24 + 6 + 4 = 34 bindings and would not have compiled at all.
@@ -230,9 +230,9 @@ SIDE = "E"
 BOUNDARY_CODES: Dict[str, int] = {"periodic": templates.PERIODIC,
                                   "metallic": templates.METALLIC}
 
-#: THE MAGNITUDE CEILING, and it is a COVERAGE REFUSAL rather than a tolerance.
+#: The magnitude ceiling, and it is a COVERAGE REFUSAL rather than a tolerance.
 #:
-#: THE SCIENCE IS SETTLED AND IS NOT RE-DERIVED HERE. Measured over five real
+#: The science is settled and is not re-derived here. Measured over five real
 #: lifted rows at 20,000 steps each, 218,841,786 state words: the Pade tree DOES
 #: reach the subnormal band hard (1,031,503 subnormal words on one row, 792,830 of
 #: them named intermediates) and it is PROVABLY INVISIBLE — flushing what the tree
@@ -243,8 +243,8 @@ BOUNDARY_CODES: Dict[str, int] = {"periodic": templates.PERIODIC,
 #: ``1.18e-38 * chi3 * |chi1inv|^3`` while half an ulp at 1.0 is 5.96e-8, so the
 #: crossing sits at ``chi3 * |chi1inv|^3 = 1e31`` — which a needle leg located.
 #:
-#: This constant is TWO DECADES UNDER that crossing. Above it the plan REFUSES BY
-#: NAME rather than stepping a configuration whose flush could become visible.
+#: This constant is two decades under that crossing. Above it the plan refuses by
+#: name rather than stepping a configuration whose flush could become visible.
 CHI_MAGNITUDE_CEILING = 1e29
 
 
@@ -449,7 +449,7 @@ def _four_point_sum(component: int, partner_axis: int, tag: str) -> str:
     addition is one float32 rounding, in that order; the corner ``g[i+(s-s1)]`` is the
     down-shifted partner shifted up, one stored word.
 
-    THE CORNER TAKES BOTH AXES' RULES. ``shift_up`` is applied to the ALREADY
+    The corner takes both axes' rules. ``shift_up`` is applied to the ALREADY
     SHIFTED partner, so the partner-axis down-flag is evaluated at ``i+s`` rather than
     at ``i`` — and those are the same flag, because a shift along the OWN axis does
     not move the partner-axis coordinate. That is why ANDing the two flags at the
@@ -478,7 +478,7 @@ def _component_source(component: int, nonlinear: Sequence[int],
                       chi3_volume: Sequence[int]) -> str:
     """The whole ``src{c}`` block for one component, on the arm its chi selects.
 
-    THE LINEAR ARM IS THE CERTIFIED PLAIN BODY VERBATIM — ``gs * us``, MEEP's
+    The linear arm is the certified plain body verbatim — ``gs * us``, MEEP's
     ``else if (u)`` branch (stepping.py:1100-1102). That is what makes a partly
     nonlinear run's linear components byte-identical to the ordinary constitutive
     kernel rather than merely close to it, and it is why the per-component split
@@ -526,7 +526,7 @@ def _component_source(component: int, nonlinear: Sequence[int],
                  f" + 2.0f * c3_{component};")
     lines.append(f"    float den{component} = (1.0f + 2.0f * c2_{component})"
                  f" + 3.0f * c3_{component};")
-    # THE PLAIN OPERATOR, measured IEEE round-to-nearest on this host (docstring
+    # The plain operator, measured IEEE round-to-nearest on this host (docstring
     # point 1). `fast::divide` diverges by up to 2 ulp and is the must-catch
     # mutation; Triton's div_rn workaround exists for a reason that does not
     # reproduce here and is deliberately NOT ported.
@@ -728,7 +728,7 @@ def chi_volume_arms(fields: Any) -> Tuple[Tuple[int, ...], Tuple[int, ...]]:
 def _magnitude(chi: Any, inverse_epsilon: Any, power: int) -> Optional[float]:
     """``max |chi| * |chi1inv|^power`` over the grid, in float64, or None.
 
-    IN FLOAT64 DELIBERATELY. The quantity being bounded is allowed to be up to
+    In float64 deliberately. The quantity being bounded is allowed to be up to
     1e29, and ``chi3 * |chi1inv|^3`` at the ceiling would OVERFLOW float32 while
     being computed — a check that overflows to ``inf`` and then refuses everything
     is not the clause, it is a different clause with the same name.
@@ -782,13 +782,13 @@ def _nonlinear_grid_reasons(fields: Any, pml: Any, grid: Any) -> List[str]:
     on (stepping.py:989, :999), so a run that reaches the Pade body reaches this
     predicate.
 
-    EVERY OTHER CLAUSE IS UN-INVERTED AND IS WHAT KEEPS THE UNCARRIED ROWS
-    UNCARRIED, deliberately and by name:
+    Every other clause is un-inverted and is what keeps the uncarried rows
+    uncarried, deliberately and by name:
 
     * clause 2 (real storage) KEPT — the DOCMP split (stepping.py:1084-1091) runs
       the whole nonlinear update once per Cartesian part with ``u`` built from real
       parts only, which is a second body and not a dtype change. ``nonlinear_complex``
-      stays uncarried WITH A REASON on this side;
+      stays uncarried with a reason on this side;
     * clause 5 (no fold) KEPT — ``fold_real_2d_nonlinear`` stays uncarried, and the
       fold interacts with this family specifically rather than generically:
       ``Fields._require_chi2_respects_the_mirror_planes`` (fields.py:887) refuses a
@@ -802,8 +802,8 @@ def _nonlinear_grid_reasons(fields: Any, pml: Any, grid: Any) -> List[str]:
     # 1. The Metal backend, and the host array module the mirrors copy from.
     #    IMPORTED from this package's own coverage module: one backend clause for
     #    the whole package, so a family cannot quietly admit a run on a host whose
-    #    subnormal policy the MPS executor refuses. THAT CLAUSE IS LOAD-BEARING
-    #    HERE IN A WAY IT IS NOT ELSEWHERE — see clause (g) below for why this
+    #    subnormal policy the MPS executor refuses. That clause is load-bearing
+    #    here in a way it is not elsewhere — see clause (g) below for why this
     #    family's flush exposure is bounded by a magnitude ceiling rather than by
     #    the policy alone.
     reasons.extend(_metal_backend_reasons(grid))
@@ -818,8 +818,8 @@ def _nonlinear_grid_reasons(fields: Any, pml: Any, grid: Any) -> List[str]:
                        "stepping.py:1084-1091), which is a second kernel body "
                        "rather than a wider dtype — no product carries it")
 
-    # 3. An absorber that actually absorbs. WITHOUT ONE update_E IS A DIFFERENT
-    #    SUB-STEP — `field[...] = constitutive` (stepping.py:1019-1022) with no
+    # 3. An absorber that actually absorbs. Without one update_E is a different
+    #    sub-step — `field[...] = constitutive` (stepping.py:1019-1022) with no
     #    dsigw accumulation and no f_w at all — so this is not merely an
     #    optimisation boundary.
     if pml is None or not getattr(pml, "is_active", False):
@@ -862,7 +862,7 @@ def _nonlinear_grid_reasons(fields: Any, pml: Any, grid: Any) -> List[str]:
     if any(float(component) != 0.0 for component in k_point):
         reasons.append(f"k_point {tuple(k_point)!r} is not exactly zero")
 
-    # 10. INVERTED. THE ONE CLAUSE THIS FAMILY ANSWERS THE OTHER WAY.
+    # 10. INVERTED. The one clause this family answers the other way.
     if not getattr(fields, "has_nonlinearity", False):
         reasons.append(
             "no chi2/chi3 is installed: a linear run is bit-identically the "
@@ -886,7 +886,7 @@ def _nonlinear_grid_reasons(fields: Any, pml: Any, grid: Any) -> List[str]:
 def _chi_reasons(fields: Any, shape: Sequence[int]) -> List[str]:
     """Every live chi2/chi3 must be a finite scalar or a real f32 grid volume.
 
-    AND MUST NOT ALIAS A WRITTEN VOLUME. This is the off-diagonal family's measured
+    And must not alias a written volume. This is the off-diagonal family's measured
     hazard 2, and it applies here for exactly the same mechanism: the residency
     registry keys mirrors by NAME, so one host array registered as ``Dz``
     (non-constant, because ``step_D`` writes it) and again as ``chi3:Ez``
@@ -919,7 +919,7 @@ def _chi_reasons(fields: Any, shape: Sequence[int]) -> List[str]:
                                 chi_pair_for(fields, component)):
             name = f"{label}[{component}]"
             if not _is_volume(value):
-                # THE SCALAR ARM, admitted because a Python float meeting a
+                # The scalar arm, admitted because a Python float meeting a
                 # float32 array is a weak scalar rounded ONCE to float32 under
                 # NEP 50 — measured 0 differing words over seven scalars spanning
                 # 1e-30 to 3.4e38 (probe_metal_divide_and_negation, leg
@@ -962,7 +962,7 @@ def _chi_reasons(fields: Any, shape: Sequence[int]) -> List[str]:
 def _magnitude_reasons(fields: Any) -> List[str]:
     """Clause (g): the plan-time magnitude ceiling on the INSTALLED volumes.
 
-    A COVERAGE REFUSAL, NOT A TOLERANCE, and the distinction is the whole point: a
+    A coverage refusal, not a tolerance, and the distinction is the whole point: a
     tolerance would let a run proceed and be judged afterwards, while this refuses
     the configuration by name and leaves the slot on the array path, where the
     engine's own float64-free arithmetic is the arbiter.
@@ -971,7 +971,7 @@ def _magnitude_reasons(fields: Any) -> List[str]:
     here and the 20,000-step census is NOT re-run: the crossing was located at
     ``chi3 * |chi1inv|^3 = 1e31`` and this clause sits two decades under it.
 
-    THE QUANTITY IS PER-CELL, not a product of two independent maxima. ``chi`` and
+    The quantity is per-cell, not a product of two independent maxima. ``chi`` and
     ``chi1inv`` live on the same grid, so ``max_i(|chi_i| * |chi1inv_i|^p)`` is both
     the right question and strictly tighter than ``max|chi| * max|chi1inv|^p``; the
     looser form would refuse runs whose large chi and large epsilon are nowhere
@@ -1015,23 +1015,23 @@ def nonlinear_constitutive_coverage(fields: Any, pml: Any,
                                     ) -> "_coverage.Coverage":
     """May the Metal Pade kernel step ``update_E`` for this pair?
 
-    POSITIVE CLAUSES ONLY; a failing clause appends its reason and the scan
+    Positive clauses only; a failing clause appends its reason and the scan
     continues. The grid clauses are :func:`_nonlinear_grid_reasons`' — the shared
     list with clause 10 INVERTED and every other clause kept, spelled out there
     with the reason each one stays.
 
-    THE E-SIDE CLAUSES:
+    The E-side clauses:
 
     a. **no registered polarization.** With poles the source is ``D - sum P``
        formed in per-component scratch buffers (fields.py:1107-1138) and both the
        Pade factor and its transverse sums would read THOSE, not D. That is the
        fused dispersive+nonlinear leg, and nothing on this backend carries it.
-    b. **no off-diagonal chi1inv row.** MEEP's MOST GENERAL CASE scales the WHOLE
+    b. **no off-diagonal chi1inv row.** MEEP's most general case scales the WHOLE
        row product by the Pade factor — ``fw = (gs*us + OFFDIAG + OFFDIAG) * u``
        (stepping.py:1095-1099) — so the two features do not compose by being
        admitted together; they need a third kernel body. ``offdiag_update_e``
        refuses a nonlinearity through the shared clause 10, so a run carrying both
-       is uncovered WITH A REASON FROM BOTH SIDES rather than silently.
+       is uncovered with a reason from both sides rather than silently.
     c. **at least one component actually nonlinear**, counted over
        :func:`nonlinear_components` — deliberately not the bare
        ``has_nonlinearity`` flag alone, for the same reason the off-diagonal family
@@ -1050,7 +1050,7 @@ def nonlinear_constitutive_coverage(fields: Any, pml: Any,
     Conductivity is NOT a clause, deliberately: it changes the CURL sub-steps only,
     never the constitutive one.
 
-    WHAT THIS FAMILY DELIBERATELY DOES NOT CLAIM, stated because a silent omission
+    What this family deliberately does not claim, stated because a silent omission
     and a decision look the same from outside. A nonlinear run's ``step_B``,
     ``step_D`` and ``update_H`` slots are refused by the SHARED clause 10, which
     calls chi2/chi3 uncarried on every sub-step. Those three are arguably
@@ -1061,7 +1061,7 @@ def nonlinear_constitutive_coverage(fields: Any, pml: Any,
     Widening it is a change to nine families' predicates and to a cross-port pin,
     which is a separate measured change and not a side effect of this one. The
     slots stay refused, with a reason, and the over-breadth is FILED rather than
-    fixed here — the same disposition the round took when Metal's admitted set was
+    fixed here — the same handling as when Metal's admitted set was
     found to exceed Triton's by nine slots.
     """
     grid = getattr(fields, "grid", None)
@@ -1138,11 +1138,11 @@ class MetalNonlinearConstitutivePlan(KernelPlan):
     swap is the silent half-cell absorber error every constitutive family's gate
     carries a mutation for, and this one carries it too.
 
-    THE SIX CHI VOLUME SLOTS ARE BOUND IN COMPONENT ORDER, chi2 then chi3; a slot
+    The six chi volume slots are bound in component order, chi2 then chi3; a slot
     on a linear component, or on one whose coefficient is a scalar, is bound to
     that component's own D mirror and never read (the specialisation is what stops
-    the read, the buffer still has to bind). THE PACKED SCALAR BUFFER IS ALWAYS
-    BOUND, at full length, whether or not any arm reads it — a signature whose
+    the read, the buffer still has to bind). The packed scalar buffer is always
+    bound, at full length, whether or not any arm reads it — a signature whose
     ARGUMENT COUNT depended on the specialisation would make the argument tuple
     specialisation-dependent too, which is one more place a mispairing can hide.
 
@@ -1153,7 +1153,7 @@ class MetalNonlinearConstitutivePlan(KernelPlan):
     make the result depend on thread schedule — a wrong answer that varies run to
     run. An all-linear specialisation is refused toward the certified plain kernel.
 
-    THE CHUNK RECORD BINDS LAST (:data:`CHUNK_RECORD_BUFFER`), keyword-only and with
+    The chunk record binds last (:data:`CHUNK_RECORD_BUFFER`), keyword-only and with
     no default, as every base plan takes it (``launch.ConstitutivePlan``): it is the
     division the array path selects each cell's constitutive form by, checked against
     the plan's shape (:func:`.chunk_bounds.plan_words`) and refused by name when
@@ -1224,7 +1224,7 @@ class MetalNonlinearConstitutivePlan(KernelPlan):
         different bases pass unseen, which is the certified plans' shared and
         accepted limitation.
 
-        READ-ONLY INPUTS MAY ALIAS EACH OTHER FREELY — three aliased
+        Read-only inputs may alias each other freely — three aliased
         inverse-epsilon volumes are the isotropic install, and one chi array
         installed on two components is a legal medium — because those are CONSTANT
         mirrors of one host array and nothing writes them. What they may NOT alias
@@ -1278,7 +1278,7 @@ class MetalNonlinearConstitutivePlan(KernelPlan):
 def chi_scalars_tensor(values: Sequence[float], residency: Any) -> Any:
     """The packed six-float scalar buffer as a device mirror.
 
-    MIRRORED BY VALUE-DERIVED NAME, not by a fixed one. Two plans in one
+    Mirrored by value-derived name, not by a fixed one. Two plans in one
     composition may carry different scalar chi sets — a two-medium run is ordinary
     — and the residency registry refuses one name bound to two host arrays, so a
     fixed name would turn a legal second plan into a raise. The name embeds the
@@ -1363,7 +1363,7 @@ def plan_nonlinear_constitutive(fields: Any, pml: Any, residency: Any = None,
     mirrored_inv = [residency.mirror("inv_eps_" + n, a, constant=True)
                     for n, a in zip(targets, host_inv)]
 
-    # A DEAD CHI SLOT BINDS THE COMPONENT'S OWN D MIRROR. The specialisation is
+    # A dead chi slot binds the component's own D mirror. The specialisation is
     # what stops the read; the buffer argument still has to bind, and binding the
     # D mirror rather than a fresh allocation keeps the plan allocation-free.
     def _chi_slot(index: int, half: int, flag: int) -> Any:
@@ -1410,7 +1410,7 @@ def plan_nonlinear_constitutive_from_arrays(
     runs here: the caller is a harness that constructed the configuration on
     purpose, including the deliberately wrong ones.
 
-    ``functions=`` IS LOAD-BEARING: the mutation legs route a mutated kernel
+    ``functions=`` is load-bearing: the mutation legs route a mutated kernel
     through it, and a builder that drops it launches the SHIPPED kernel and reports
     a pass for a defect it never introduced. ``chunk_bounds`` is required, with no
     default: the harness hands over the record of the division its reference steps

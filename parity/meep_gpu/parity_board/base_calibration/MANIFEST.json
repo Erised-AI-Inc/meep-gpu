@@ -1,5 +1,5 @@
 {
- "about": "Emitted device texts of BASE fa59c2f33c478c7667a173d699b50b8980098471, cut by parity_board_emit.py with no device. The board's witnesses must read 0 chunk-record reads and 0 MEEP-order sites on them, and find the 0.9.2 grouping (the calibration the whole-BASE run measured on every table).",
+ "about": "Emitted device texts of BASE fa59c2f33c478c7667a173d699b50b8980098471, cut by parity_board_emit.py with no device. The board's witnesses must read 0 chunk-record reads and 0 MEEP-order sites on them, and find the 0.9.2 grouping (the calibration the whole-BASE run measured on every table). Comments in some copies were later reworded (capitals lowercased; in one copy a section reference replaced by the fact it cited); no code changed, and the digests below are those of the copies as they stand.",
  "base": "fa59c2f33c478c7667a173d699b50b8980098471",
  "texts": [
   {
@@ -31,7 +31,7 @@
    "file": "metal_constitutive_step_H.metal",
    "module": "shaders",
    "route": "enumerate_sources(): label constitutive_step/H",
-   "sha256": "d19e6dca4b140caa2abe76b1e52ff61597c077df587bcfb53aac5bfbd202240b",
+   "sha256": "29b2b56ae2fc0ff42f816da732d7aa611ca48bdd4d127cc95b3a8638b7063857",
    "table": "metal"
   },
   {
@@ -43,11 +43,11 @@
    "table": "triton"
   },
   {
-   "chars": 5690,
+   "chars": 5714,
    "file": "triton_constitutive_step.py.txt",
    "module": "kernels",
    "route": "the @jit program constitutive_step with its helpers inlined, as written in the source",
-   "sha256": "02541210d78c316210cc82f953dae100d27784fc0104a3ef6447189e0ea26849",
+   "sha256": "93d1a37b6c9f845cf1eaf57a0b3ce698186c18d6b0ed89ae327fcfa2d51c85fe",
    "table": "triton"
   }
  ]

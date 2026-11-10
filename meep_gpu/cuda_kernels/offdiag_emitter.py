@@ -1,6 +1,6 @@
 """The off-diagonal ``update_E`` device source, emitted — with no CuPy in sight.
 
-WHY THE EMITTER IS A MODULE OF ITS OWN, and not a few functions inside
+Why the emitter is a module of its own, and not a few functions inside
 ``offdiag_constitutive_kernels``. That module holds ``cp.RawKernel`` objects and
 therefore imports ``cupy`` at scope, so nothing in it can be imported — let alone
 exercised — on a machine without a GPU. The certified siblings live with that
@@ -11,17 +11,17 @@ check is a FUNCTION, and a function has to be imported to be called.
 
 So the emitter goes where ``coverage.py`` and ``compile_cache.py`` already are:
 in a stdlib-only sibling, on the package's own rule that the parts of this track
-whose failure mode is a SILENT WRONG ANSWER rather than a crash are the parts that
+whose failure mode is a silent wrong answer rather than a crash are the parts that
 must be exercisable at the merge bar. Emitting ``dj`` where ``dk`` belongs is a
 half-cell registration error — smooth, converged, plausible and wrong — and it is
 caught here on a laptop in a tenth of a second rather than in a device slot.
 
-NOTHING HERE IMPORTS CUPY OR NUMPY. The transcribed tables come from ``coverage``,
+Nothing here imports CuPy or NumPy. The transcribed tables come from ``coverage``,
 which imports nothing either. The presence words the kernel reads are BUILT on the
 host by ``offdiag_presence`` (NumPy); this module only spells how the device reads
 them.
 
-WHAT IS SPECIALIZED AND WHAT IS NOT — the whole design decision of this family, in
+What is specialized and what is not — the whole design decision of this family, in
 one paragraph. The sibling Triton kernel carries TWELVE compile-time axes (six row
 flags, three boundary codes, three wall flags), a static product of 4,096 kernels
 of which the 186-row corpus drives seven. This emitter splits them by what they do
@@ -40,19 +40,19 @@ to the ARITHMETIC:
 
 Of the 63 live row masks the corpus asks for TWO.
 
-WHY THE ARITY AXIS STAYED COMPILE-TIME, with both facts stated. The ZERO-PADDING
+Why the arity axis stayed compile-time, with both facts stated. The ZERO-PADDING
 fold — bind a dead slot to an all-zero coefficient so a dropped term contributes
 ``+0.0`` — is measurably NOT bit-identical: ``x + 0.0`` turns ``-0.0`` into
 ``+0.0``, and a ``-0.0`` row is reachable. ``test_offdiag_constitutive_pml_real.py``
-carries that witness. A DYNAMIC LOOP is a different fold and IS licensed: the
-design notes (cuda-kernel-triton-transfer-assessment) §3.2 measured a
+carries that witness. A DYNAMIC LOOP is a different fold and IS licensed: a
+2026-08-16 device measurement on an RTX A6000 found a
 runtime-bounded loop bit-identical to the unrolled form at every arity 0-8
 (156/156 cases, zero differing words, max ULP 0), because NVCC leaves the
 arithmetic a strictly serial dependence chain on one accumulator. This family's
 row accumulation is such a chain, so the axis COULD go runtime; it has not been
 taken. It would buy one compiled source on this corpus instead of two.
 
-THE ROW IS MEEP'S, IN DOUBLE (0.10). MEEP's ``step_update_EDHB`` forms
+The row is MEEP's, in double (0.10). MEEP's ``step_update_EDHB`` forms
 ``fw[i] = gs*us + OFFDIAG(u1, g1, s1) + OFFDIAG(u2, g2, s2)`` where each OFFDIAG
 is ``0.25*(...)`` with ``0.25`` a DOUBLE literal (step_generic.cpp:580-583, :611):
 the pair sums, the two products and their sum round to float32, the scale and the
@@ -121,7 +121,7 @@ RECORD_ENTRIES: Tuple[Tuple[bool, int], ...] = tuple(
 #: emits it (``test_offdiag_constitutive_pml_real.py`` pins the two equal); written
 #: out here because this module imports nothing that pulls in NumPy.
 RECORD_BLOCK = (
-    "    // THE CHUNK RECORD (chunk_map.chunk_bounds_record): row r of this lattice and axis\n"
+    "    // The chunk record (chunk_map.chunk_bounds_record): row r of this lattice and axis\n"
     "    // lies in a chunk that carries the axis's layer iff (a0 <= r < a1) || (b0 <= r < b1).\n"
     "    const int cbi_x_a0 = cb[0], cbi_x_a1 = cb[1], cbi_x_b0 = cb[2], cbi_x_b1 = cb[3];\n"
     "    const int in_i_x = (i >= cbi_x_a0 && i < cbi_x_a1) || (i >= cbi_x_b0 && i < cbi_x_b1);\n"
@@ -141,7 +141,7 @@ RECORD_BLOCK = (
 #: cell belongs to, each axis read on the component's own sub-lattice there (half-integer
 #: on its own axis, integer on the other two) at the row ``chunk_row`` resolves.
 CHUNK_LINES = (
-    "    // THE CHUNK EACH COMPONENT'S CELL BELONGS TO, as the code lx + 3*ly + 9*lz of its\n"
+    "    // The chunk each component's cell belongs to, as the code lx + 3*ly + 9*lz of its\n"
     "    // three record labels (chunk_coverage.chunk_owner_label), each axis on the\n"
     "    // component's own Yee sub-lattice there. A presence word is indexed by it.\n"
     "    const int wi = chunk_row(i, bc_x == BC_METALLIC);\n"
@@ -159,36 +159,36 @@ CHUNK_LINES = (
 
 
 # =============================================================================
-# THE DEVICE CODE
+# The device code
 # =============================================================================
 #
-# NINE THINGS DECIDE BIT-IDENTITY HERE, and every one of them is a SILENT wrong
+# Nine things decide bit-identity here, and every one of them is a SILENT wrong
 # answer: a smooth, converged, plausible field with the wrong tensor in it.
 #
-# 1. THE TAIL IS MEEP'S PER-CHUNK CONSTITUTIVE FORM (``stepping.
+# 1. The tail is MEEP's per-chunk constitutive form (``stepping.
 #    _apply_constitutive_regions``): on a cell whose chunk carries the component's
 #    own layer the accumulation ``f + ((kps*src) - (kms*prev))`` with ``fw = src``;
 #    elsewhere ``f = src`` and ``fw`` untouched. ``constitutive_apply`` below is
 #    character-for-character the certified sibling's, and a test welds the two.
-# 2. THE COEFFICIENT INDEX IS THE COMPONENT'S OWN AXIS -- MEEP's ``dsigw``, not
+# 2. The coefficient index is the component's own axis -- MEEP's ``dsigw``, not
 #    the dsig/dsigu cycle the curl recurrence uses.
-# 3. ``prev`` IS READ BEFORE ``fw`` IS WRITTEN.
-# 4. THE COEFFICIENT MULTIPLY SITS BETWEEN THE TWO SHIFTS -- see ``offdiag_term``.
-# 5. THE TWO SHIFTS GO IN OPPOSITE DIRECTIONS: half a cell DOWN the partner's axis
+# 3. ``prev`` is read before ``fw`` is written.
+# 4. The coefficient multiply sits between the two shifts -- see ``offdiag_term``.
+# 5. The two shifts go in opposite directions: half a cell DOWN the partner's axis
 #    on the raw partner volume, then the already-multiplied product half a cell UP
 #    this component's own axis.
-# 6. THE WALL MASK ZEROES EACH TERM'S FLOAT32 SUM, before its scale
+# 6. The wall mask zeroes each term's float32 sum, before its scale
 #    (``stepping._mask_metallic_wall_coupling`` inside the partner loop), and asks
 #    the grid's DECLARATION (``is_metallic and not is_mirrored``), which is a
 #    different question from the resolved ghost rule -- hence ``wm_*`` beside
 #    ``bc_*`` rather than derived from it.
-# 7. A COMPONENT WITH NO SURVIVING ROW KEEPS THE PURE DIAGONAL ARITHMETIC:
+# 7. A component with no surviving row keeps the pure diagonal arithmetic:
 #    ``_offdiagonal_terms`` returns None and ``update_E`` then forms ``gs*us`` in
 #    float32 and never a double row.
-# 8. THE SCALE AND THE ROW SUM ARE DOUBLE: ``0.25 * (double)sum`` is exact, the row
+# 8. The scale and the row sum are double: ``0.25 * (double)sum`` is exact, the row
 #    starts at ``(double)(gs * us)`` (one float32 product, widened), the terms are
 #    added left to right in partner order, and ``(float)row`` rounds once.
-# 9. A TERM IS ADDED ONLY WHERE THE CELL'S CHUNK KEEPS THE ROW'S ARRAY: MEEP drops
+# 9. A term is added only where the cell's chunk keeps the row's array: MEEP drops
 #    the term in a chunk that deleted it, which differs from adding a zero exactly
 #    when the row so far is -0.
 
@@ -201,7 +201,7 @@ PRELUDE = r'''
 // exact zero. MIRROR and CYL_AXIS are refused by covers_real_pml_offdiag_constitutive,
 // and real storage cannot carry a Bloch phase, so those branches have no code here.
 //
-// WHY A COORDINATE AND NOT A VALUE, where the certified curl's shift_up returns a
+// Why a coordinate and not a value, where the certified curl's shift_up returns a
 // float: this stencil needs the SAME shifted position three times over -- the partner
 // volume at the shifted node, the partner volume at the CORNER (up this component's
 // axis and down the partner's), and the COEFFICIENT at the shifted node, because the
@@ -241,26 +241,26 @@ __device__ __forceinline__ float ghosted(const float* g, int index) {
 //
 //     OFFDIAG(u, g, sx) = 0.25*((g[i] + g[i-sx])*u[i] + (g[i+s] + g[(i+s)-sx])*u[i+s])
 //
-// THIS RETURNS THE FLOAT32 SUM INSIDE THE SCALE. The pair sums, the two products and
+// This returns the float32 sum inside the scale. The pair sums, the two products and
 // their sum are realnum (float32) operations; 0.25 is a double literal, so the scale
 // and everything after it is double, and the caller applies the wall mask to this sum
 // and then scales it in double.
 //
-// THE COEFFICIENT MULTIPLY SITS BETWEEN THE TWO SHIFTS. u[i] multiplies the two-point
-// partner average AT ITS OWN NODE and u[i+s] the average at the next node up this
+// The coefficient multiply sits between the two shifts. u[i] multiplies the two-point
+// partner average at its own node and u[i+s] the average at the next node up this
 // component's axis, because MEEP registers the off-diagonal entry at the component's
 // Yee site minus half a cell along its own axis -- the integer node
 // (anisotropic_averaging.cpp:248-257, `here - shift1`). Hoisting to a plain four-point
 // average times u[i] is the same ALGEBRA only for a uniform coefficient, and a
 // different float32 number even then: a*u + b*u and (a+b)*u do not round alike.
 //
-// LOADING u AT THE COMPOSED UP INDEX IS THE SAME BITS AS SHIFTING THE FORMED PRODUCT.
+// LOADING u at the composed up index is the same bits as shifting the formed product.
 // A shift is data movement; the coefficient wraps plainly on a periodic axis (it is
 // periodic and phase-free), and on a metallic far face both the pair and the
 // coefficient read the -1 ghost, so the product is an exact +0.0 -- which is
 // precisely what the array path's _shift_up writes into that plane.
 //
-// NO UNARY MINUS ANYWHERE ON THIS PATH. CUDA lowers -x to neg.f32 rather than to
+// No unary minus anywhere on this path. CUDA lowers -x to neg.f32 rather than to
 // 0.0f - x, so it does NOT canonicalize signed zeros the way the sibling track's
 // platform does. That track's negation idiom must not be ported here, and this body
 // is written so the answer never matters.
@@ -299,7 +299,7 @@ __device__ __forceinline__ int chunk_keeps(int kept, int c) {
 }
 
 // stepping._apply_constitutive_regions, MEEP's step_update_EDHB per structure chunk.
-// CHARACTER FOR CHARACTER the certified sibling's constitutive_apply
+// Character for character the certified sibling's constitutive_apply
 // (constitutive_kernels.py); a test welds the two texts so the tail cannot drift
 // between the two families that share it.
 __device__ __forceinline__ void constitutive_apply(
@@ -313,14 +313,14 @@ __device__ __forceinline__ void constitutive_apply(
 }
 '''
 
-# THE SIGNATURE CARRIES ONLY THE LIVE ROW COEFFICIENTS AND THEIR PRESENCE WORDS. The
+# The signature carries only the live row coefficients and their presence words. The
 # sibling track binds all six pointers and points the dead ones at the component's
 # own D volume, on the argument that a specialized branch stops the read. That works,
 # and it leaves a pointer bound to an array it must never touch -- a shape a later
 # edit can read by accident, and one that makes __restrict__ on the D arguments a
 # promise the caller cannot keep. Emitting only the live parameters removes both.
 #
-# WHICH POINTERS CARRY __restrict__, AND WHY THE READ-ONLY ONES DO NOT. The six
+# Which pointers carry __restrict__, and why the read-only ones do not. The six
 # outputs are pairwise distinct and disjoint from every input -- the predicate's
 # alias clause and the launcher's check are what make that true -- so they carry
 # the promise, as do the six PML coefficient vectors, which no field can alias, and
@@ -450,8 +450,8 @@ def _wall_mask_lines(component: int, offset: int) -> List[str]:
 def _component_source(component: int, row_mask: Sequence[int]) -> str:
     """One component's whole block, on the arm its two row slots select.
 
-    Four arms: none, offset-1 only, offset-2 only, both. THE NONE ARM IS THE
-    CERTIFIED PLAIN CONSTITUTIVE KERNEL'S COMPONENT BODY — ``src = D * inv_eps`` in
+    Four arms: none, offset-1 only, offset-2 only, both. The none arm is the
+    certified plain constitutive kernel's component body — ``src = D * inv_eps`` in
     float32 and the same tail — because ``_offdiagonal_terms`` returns None for a
     component with no surviving row and ``update_E`` then never forms a double row.
     """
@@ -553,7 +553,7 @@ def shipped_kernel_names(source: str) -> Any:
 def offdiag_launch_source(row_mask: Sequence[int]) -> str:
     """The text NVRTC compiles for the single: :func:`offdiag_source` in the register view.
 
-    TWO TEXTS PER ROW MASK, ONE CERTIFIED. :func:`offdiag_source` is the certified
+    Two texts per row mask, one certified. :func:`offdiag_source` is the certified
     statement form: the text the fused products lift, the NumPy evaluator executes and
     :func:`corpus_digest` hashes. This is the same text through the port rule,
     ``own_cell_hoist.hoisted_kernel_code``: every own-cell word loaded into a register
@@ -567,7 +567,7 @@ def offdiag_launch_source(row_mask: Sequence[int]) -> str:
 
     mask = normalized_row_mask(row_mask)
     certified = offdiag_source(mask)
-    # ONE DERIVATION PER CERTIFIED TEXT, NOT PER LAUNCH. The forward, its inverse and the
+    # One derivation per certified text, not per launch. The forward, its inverse and the
     # hazard check cost about 0.9 ms of host time a call, and ``_get_kernel`` asks for this
     # text on every launch (it rebuilds its key per call). Keyed on the certified text
     # itself, so a harness that rewrites that text is never served another text's hoist;

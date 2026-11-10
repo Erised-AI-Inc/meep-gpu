@@ -1,9 +1,9 @@
-"""Byte gate for Phase B — the fold under COMPLEX storage and under ``grid.beta``.
+"""Byte gate for the folded family — the fold under COMPLEX storage and under ``grid.beta``.
 
-WHAT THIS MEASURES, and why each leg is not optional.
+What this measures, and why each leg is not optional.
 
 The four kernels of ``meep_gpu/triton_kernels/folded_complex.py`` are compared
-against a reference transcribed from ``stepping.py`` by hand, WORD FOR WORD as
+against a reference transcribed from ``stepping.py`` by hand, word for word as
 uint32 — never ``allclose``. The reference itself is pinned against the array
 path on NumPy by ``validate_folded_complex_reference_vs_stepping.py`` BEFORE any
 device run, which is what stops "bit-identical" from meaning "the kernel
@@ -42,11 +42,11 @@ LEGS
   recorded and NOT failed, and the whole 12 x 2 x 4 census matrix was measured
   rather than argued (see :func:`blind_fill_cells`): ``engineered_rows`` reads
   70..1664 everywhere and carries the folded METALLIC phase = +1 cells with
-  ``engineered_rows_post_step`` (41..1397 everywhere since the per-part
-  alignment), where ``zero_init_absorber`` reads 0 for a stated reason (near
-  coefficient ``+1``, no far fill), and ``live_post_step`` reads 0 on every row
-  but one (1 word) — that family is the realistic-state arm, not a signed-zero
-  arm. The grid list includes a MIXED-PHASE two-folded-axis row.
+  ``engineered_rows_post_step`` (41..1397 everywhere since every product is formed
+  per stored part, MEEP's form), where ``zero_init_absorber`` reads 0 for a stated
+  reason (near coefficient ``+1``, no far fill), and ``live_post_step`` reads 0 on
+  every row but one (1 word) — that family is the realistic-state arm, not a
+  signed-zero arm. The grid list includes a MIXED-PHASE two-folded-axis row.
 * ``zero_init``  — the ZERO-INIT NEGATIVE-COEFFICIENT-ABSORBER case: an in-run
   signed-zero census AND a byte comparison of both curl sub-steps and both ghost
   fills on the resulting quiet state. A census of 0 FAILS the case as VACUOUS,
@@ -65,10 +65,10 @@ LEGS
   with its structural reason, or re-aimed at a state where the defect is
   byte-visible — never deleted, and never silently flipped to "predicted
   not-caught"; divergence from one is a NULL-INVALIDATED failure, because it
-  falsifies the recorded reason. Since the per-part alignment the two such
-  records are host ones: ``fuse_fill_passes`` and ``reverse_axis_order``, because
-  a fill that multiplies each part by +-1.0 commutes bitwise
-  (:data:`HOST_MUTATION_NULLS`). The imaginary coefficient word the retired
+  falsifies the recorded reason. Since every product became per stored part (MEEP's
+  form) the two such records are host ones: ``fuse_fill_passes`` and
+  ``reverse_axis_order``, because a fill that multiplies each part by +-1.0 commutes
+  bitwise (:data:`HOST_MUTATION_NULLS`). The imaginary coefficient word the retired
   ``synthesize_zero_imag`` and its host twin were about no longer exists: the fill
   takes one real word per plane. Every source
   mutant is LAUNCH-COUNTED with explicit DISARMED (the mutant never ran) and
@@ -258,7 +258,7 @@ def shipped_fusion_default() -> bool:
 
 
 def write_provenance(results_dir: str) -> str:
-    """This tranche binds its own provenance — ``fingerprints.json`` carries no
+    """This family binds its own provenance — ``fingerprints.json`` carries no
     entry for it, and its AS-READ hash is recorded so a concurrent edit shows."""
     return gate.write_provenance(results_dir, extra={
         "tranche": "folded_complex (Phase B)",
@@ -284,7 +284,7 @@ def write_provenance(results_dir: str) -> str:
 # The in-file FOLDED COMPLEX reference — stepping.py transcribed
 # ---------------------------------------------------------------------------
 #
-# The aligned forms (bit_parity 0.10): every product is one per stored part
+# MEEP's per-chunk forms, as adopted in 1.0: every product is one per stored part
 # (``part_products``), the curl is MEEP's left-to-right stencil with the record's
 # partner presence, each cell takes the split-field recurrence or the dsig-only form
 # by its chunk's membership (the chunk record), the Bloch phase of an UNFOLDED axis
@@ -549,7 +549,7 @@ def make_state(xp, shape, rng, names, complex_storage: bool) -> Dict[str, Any]:
 
 
 #: The (real, imag) word pairs the fill's THREE needle classes actually live in,
-#: MEASURED on this laptop over the engineered word set rather than sampled by a
+#: measured on this laptop over the engineered word set rather than sampled by a
 #: diagonal. The diagonal pairing that stood here until 2026-08-12
 #: (``words[i % 8]`` / ``words[(i + 3) % 8]``) hit 0 of the 8 plane-wise/identity
 #: pairs at mirror phase +1 and 1 of 8 at phase -1, and 0 of the 8 commute pairs
@@ -577,7 +577,7 @@ def make_state(xp, shape, rng, names, complex_storage: bool) -> Dict[str, Any]:
 #: both unspecified — §6.2.1 (a NaN's sign bit is not interpreted), §6.2.3 (payload
 #: propagation is a *should*, not a *shall*), §7.2 (an invalid operation such as
 #: ``inf - inf`` delivers a quiet NaN whose payload the standard does not fix).
-#: This is not theoretical, and it is MEASURED rather than argued. The shipped
+#: This is not theoretical, and it is measured rather than argued. The shipped
 #: ``3.4e38`` pairs overflowed the curl; both platforms then produced the SAME NaN
 #: population — 709387 word positions across the validator's 17 cases, on
 #: hash-identical sources — but 1414 of those positions disagreed in sign or
@@ -588,7 +588,7 @@ def make_state(xp, shape, rng, names, complex_storage: bool) -> Dict[str, Any]:
 #: was testing a state the engine never usefully occupies.
 #:
 #: THE BOUND. Let ``S`` bound ``|re|`` and ``|im|`` of every state word entering a
-#: curl sub-step. With the coefficient extremes MEASURED over the reference
+#: curl sub-step. With the coefficient extremes measured over the reference
 #: validator's 17 grids — ``max|kms| = 1.2666072845458984``, ``max|sinv| = 1.0``,
 #: ``max|kps| = 3.2666072845458984``, ``dt/dx = 0.35``, ``|2 pi beta dt| <=
 #: 0.15065093735589932`` — each stage multiplies ``S`` by at most::
@@ -608,7 +608,7 @@ def make_state(xp, shape, rng, names, complex_storage: bool) -> Dict[str, Any]:
 #:     FLT_MAX / G = 2.714e29
 #:
 #: That is a worst case: it puts every operand at ``S`` with the worst sign at all
-#: twelve sub-steps. The MEASURED peak through the same path at this needle is
+#: twelve sub-steps. The measured peak through the same path at this needle is
 #: 7.708e29 — an amplification of 7.708, not 1.25e9, and 4.4e8 short of FLT_MAX —
 #: with 0 non-finite words in 6925824 inspected and 0 RuntimeWarnings raised.
 #:
@@ -686,7 +686,7 @@ def signed_zero_census(xp, arrays: Dict[str, Any]) -> int:
     """Count ``0x80000000`` words across the given volumes.
 
     A census of ZERO means the case is VACUOUS, not that it passed: the class the
-    tranche's needles live in was never reached.
+    family's needles live in was never reached.
     """
     total = 0
     for array in arrays.values():
@@ -880,7 +880,7 @@ def _summarize(cases: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
     ``kernels.ENABLE_FP_FUSION`` is False — so ``guard=False`` is the SHIPPED
     configuration and ``guard=True`` is fusion ON. The asserted set is therefore
     the ``guard is False`` rows, which is what ``gate_triton_complex.py:1114`` and
-    ``gate_triton_special_kz.py:683`` also spell; the fusion-ON rows are MEASURED
+    ``gate_triton_special_kz.py:683`` also spell; the fusion-ON rows are measured
     and never asserted, because with fp fusion enabled the compiler may contract
     either grouping (gate_triton_complex.py:1401). Until 2026-08-12 this file had
     the test inverted and asserted the fusion-ON rows only, so every row in the
@@ -967,7 +967,7 @@ FILL_GRIDS: Tuple[Dict[str, Any], ...] = (
     # The MIXED-PHASE two-folded-axis grid. Without it `reverse_axis_order` is a
     # null BY CONSTRUCTION: with one declared phase per grid the two planes carry
     # the SAME coefficient on every component, and `c (x) (c (x) z)` commutes
-    # bit-exactly. MEASURED: 0/128 diverging words at (+1,+1) and at (-1,-1),
+    # bit-exactly. Measured: 0/128 diverging words at (+1,+1) and at (-1,-1),
     # 8/128 at (+1,-1) — so the commute question only exists on this row.
     {"axis": "XY", "boundaries": "periodic", "phase": (1, -1),
      "cell": (2.0, 2.1, 1.2)},
@@ -1033,7 +1033,7 @@ def _drive_array_path(fields, pml, steps: int) -> None:
 def seed_fill_state(fields, grid, names, family: str, pml) -> Dict[str, Any]:
     """One of the FOUR state families, written into ``fields`` in place.
 
-    ``zero_init_absorber`` ZEROES AND THEN STEPS. Zeroing alone is not the case
+    ``zero_init_absorber`` zeroes and then steps. Zeroing alone is not the case
     its name promises: on an all-``+0.0`` state at mirror phase +1 the full
     product and the plane-wise form both return ``(+0.0, +0.0)``
     (``re = (+1)(+0.0) - (+0.0)(+0.0) = +0.0``), so every phase = +1 grid was
@@ -1280,7 +1280,7 @@ def order_is_discriminating(entries: Sequence[Dict[str, Any]]) -> int:
     That composition is bit-exactly equal when ``c_a == c_b``, so a two-folded-axis
     grid carrying ONE declared phase is a provable no-op however many entries it
     has. This is the arming test ``reverse_axis_order`` needs, and "the list
-    changed" is NOT it: MEASURED on this laptop over the gate's own fill matrix,
+    changed" is NOT it: measured on this laptop over the gate's own fill matrix,
     ``FILL_GRIDS[10]`` (XY, phase +1 on both planes) reverses a TWO-element list —
     ``armed = 1`` — and diverges in 0 words in all 8 of its (family, state) cells,
     while the mixed-phase ``FILL_GRIDS[11]`` diverges in 5 words of ``Bz`` /
@@ -1299,7 +1299,7 @@ def value_change_is_discriminating(before: Sequence[Dict[str, Any]],
 
     ``far_words`` and ``reflect_row`` are DEAD on a folded METALLIC axis: the
     entry's ``far`` is 0, the kernel compiles the whole far arm away
-    (folded_complex.py:862), and rewriting them cannot move a byte. MEASURED over
+    (folded_complex.py:862), and rewriting them cannot move a byte. Measured over
     the gate's own fill matrix: ``far_fill_uses_plus_phase`` changes the entry
     list on all 96 rows and can only differ on the 64 folded-PERIODIC ones — the
     32 metallic rows were armed and empty, the same shape of hole
@@ -1390,7 +1390,7 @@ ZERO_INIT_SPEC = {"axis": "Y", "boundaries": "periodic", "phase": 1,
                   "cell": (2.0, 2.1, 0.0)}
 ZERO_INIT_STEPS = 4
 #: Laptop expectation to beat on the odd-count periodic +1 configuration.
-#: MEASURED on this laptop 2026-10-08 by executing this leg's own build on NumPy
+#: Measured on this laptop 2026-10-08 by executing this leg's own build on NumPy
 #: (shape (20,13,1), stored [20,13,1], owned [20,12,1], reflect row 10;
 #: kms_min x/y = -0.5110714, kms_h_min x/y = -0.0493551 — the absorber's deepest
 #: coefficient is genuinely negative), on the per-part array path: a negative
@@ -1672,7 +1672,7 @@ def compile_mutated(source: str, kernel_name: str):
     ``inspect``, so exec'd text raises at first launch). The constexpr codes are
     re-declared in the header because a ``@triton.jit`` body may not read a plain
     module global, and the shared forms and record offsets are imported, as the
-    module imports them. THE MODULE NAME MUST NOT START WITH ``triton``: Triton's
+    module imports them. The module name must not start with ``triton``: Triton's
     dependency finder leaves every callee whose ``__module__`` starts with its
     package name out of the kernel's cache key (gate_triton_complex.compile_mutated
     states the measured defect)."""
@@ -1737,7 +1737,7 @@ _FILL_IM = re.compile(
 
 
 def mutate_full_complex_parity_fill(source: str) -> Tuple[str, int]:
-    """m1, THE headline needle, INVERTED (Appendix A): the fill's per-part product
+    """m1, THE headline needle, INVERTED: the fill's per-part product
     becomes the previous FULL complex product with the coefficient promoted to
     ``(c, 0)`` — ``(c*re) - (0*im)`` and ``(c*im) + (0*re)``. Byte-wrong on signed
     zeros only, which FILL_NEEDLE_PAIRS plants."""
@@ -1788,7 +1788,7 @@ def _needles(*pairs: Tuple[str, str]) -> Callable[[str], Tuple[str, int]]:
     return transform
 
 
-#: K1's chunk-form battery (Appendix A inversions and the record's own clauses),
+#: K1's chunk-form battery (the inverted groupings and the record's own clauses),
 #: the needles the complex gate validated, re-pointed at the folded body.
 mutate_pairwise_stencil = _needles(
     ("curl0_re = curl_stencil(c_y_re, c0_re, b0_re, b_z_re, dtdx, py, pz)",
@@ -1908,7 +1908,7 @@ for _which, (_anchor, _entry, _complex) in _BETA_ANCHORS.items():
 #: 1. HERE — a predicted null that DIVERGES is a ``NULL-INVALIDATED`` failure,
 #:    never a quiet CAUGHT. Divergence means the recorded reason is false, so the
 #:    artifact is asserting something untrue about its own coverage table.
-#: 2. ON THE LAPTOP — ``premise_test`` names a test that asserts the structural
+#: 2. On the laptop — ``premise_test`` names a test that asserts the structural
 #:    property DIRECTLY. If the premise ever stops holding, that test fails on a
 #:    machine with no GPU, instead of a dead mutation sitting in the table
 #:    claiming coverage it cannot deliver until someone next schedules a device
@@ -1928,7 +1928,7 @@ HOST_MUTATIONS: Dict[str, Optional[bool]] = {
     # The two-pass split's OWN needle. The module states the split is
     # load-bearing under complex storage and cites a measured 1-word By
     # divergence; nothing in the gate exercised it. `_launch_pass(1, 1)` is the
-    # fused per-axis form. MEASURED on the laptop from the gate's own state
+    # fused per-axis form. Measured on the laptop from the gate's own state
     # families, over the whole fill matrix: 5 words of By / 5 of Dx on
     # `engineered_rows` and 3 / 4 on `engineered_rows_post_step`, on the
     # two-folded-axis grids; 0 on every one-axis grid and 0 on
@@ -1939,7 +1939,7 @@ HOST_MUTATIONS: Dict[str, Optional[bool]] = {
     "fuse_fill_passes": True,
     # A MEASUREMENT, not a null — but ONLY on the MIXED-PHASE two-folded-axis
     # grid, and the leg is judged on `discriminating_rows` for that reason.
-    # MEASURED on the laptop over the gate's own fill matrix: FILL_GRIDS[10] (XY,
+    # Measured on the laptop over the gate's own fill matrix: FILL_GRIDS[10] (XY,
     # phase +1 on both planes) is ARMED on all 8 of its (family, state) cells and
     # diverges in 0 words on every one of them — reversing a list is not the same
     # as being able to change a byte. FILL_GRIDS[11] (phase +1 on X, -1 on Y) is
@@ -1952,7 +1952,7 @@ HOST_MUTATIONS: Dict[str, Optional[bool]] = {
     "phase_on_folded_axis": None,
 }
 
-#: Host mutations RECORDED AS STRUCTURAL NULLS since the per-part alignment: name ->
+#: Host mutations recorded as structural nulls since products became per part: name ->
 #: the reason. Judged as nulls (zero diverging words is the verdict; any divergence
 #: invalidates the record) after the arming check, never skipped.
 HOST_MUTATION_NULLS: Dict[str, str] = {
@@ -2004,7 +2004,7 @@ REVERSE_AXIS_ORDER_NOTE = (
     "two-folded-axis grid, which is why the leg is judged on "
     "discriminating_rows and NOT on armed_rows: with one declared phase per grid "
     "the two planes carry the SAME coefficient, the composition commutes "
-    "bit-exactly, and reversing the list is armed and empty at once. MEASURED on "
+    "bit-exactly, and reversing the list is armed and empty at once. Measured on "
     "the laptop over the gate's own fill matrix — FILL_GRIDS[10] (XY, phase +1 "
     "on both planes) armed on 8 of 8 (family, state) cells and 0 diverging words "
     "on every one of them; FILL_GRIDS[11] (+1 on X, -1 on Y) 5 words of Bz / 5 "
@@ -2033,7 +2033,7 @@ def host_mutation_verdict(name: str, predicted: Optional[bool],
     1. ``armed_rows == 0`` — the entry list never changed. The host twin of a
        source mutation's ``hits == 0``.
     2. ``discriminating_rows == 0`` — it changed, and no changed row CAN store a
-       byte the shipped plan does not. ARMED IS NOT ARMING: reversing the two
+       byte the shipped plan does not. Armed is not arming: reversing the two
        entries of a SAME-PHASE two-folded-axis grid is armed and is a provable
        no-op (measured 0 diverging words on all eight of ``FILL_GRIDS[10]``'s
        (family, state) cells).
@@ -2042,7 +2042,7 @@ def host_mutation_verdict(name: str, predicted: Optional[bool],
        ``reverse_axis_order`` did not have: it reached ``verdict: MEASURED``
        before any divergence check, so a run in which nothing was varied recorded
        a measurement with a coverage note behind it.
-    4. only then is a ``predicted is None`` leg a MEASURED record.
+    4. only then is a ``predicted is None`` leg a measured record.
     """
     armed = summary.get("armed_rows")
     discriminating = summary.get("discriminating_rows")
@@ -2265,7 +2265,7 @@ def run_mutation_curl(counting, which: str,
     and ``run_fill``'s ``plan.run()`` use, so the two mutation families' verdicts
     are comparable.
 
-    THE (shape, config) PRODUCT IS NOT RECTANGULAR, and the rows it omits are
+    The (shape, config) product is not rectangular, and the rows it omits are
     omitted because the ARRAY PATH cannot build them, not because they are
     uninteresting: :func:`viable` refuses a fold on an axis with four cells or
     fewer, since the near ghost reads cell 2 and the far ghost needs a reflect
@@ -2330,10 +2330,10 @@ def run_phase_on_folded_axis() -> Dict[str, Any]:
     """Ask for a connection (``CN=1``) on a FOLDED axis — the configuration the
     predicate refuses — and require the plan to refuse it by name.
 
-    Since the alignment the connection lands on the unshifted operand's plane 0,
-    which on a folded axis is a stored, stepped plane, so a launched connection
-    there would move words the array path never connects; the folded curl plan
-    refuses it at construction, and that refusal is the verdict.
+    Since the alignment with MEEP (docs/design/floating-point.md#alignment-with-meep) the
+    connection lands on the unshifted operand's plane 0, which on a folded axis is a stored,
+    stepped plane, so a launched connection there would move words the array path never
+    connects; the folded curl plan refuses it at construction, and that refusal is the verdict.
     """
     cases: List[Dict[str, Any]] = []
     rng = np.random.default_rng(SEED + 909)
@@ -2632,7 +2632,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         # is claimed for fusion OFF and for nothing else: with fp fusion enabled
         # the compiler may contract either grouping, which is why the fusion-ON
         # rows are recorded and never asserted — the same split both certified
-        # sibling tranches use (gate_triton_complex.py:1114,
+        # sibling kernel families use (gate_triton_complex.py:1114,
         # gate_triton_special_kz.py:683).
         "fusion_configuration": {
             "shipped": "enable_fp_fusion=False (kernels.ENABLE_FP_FUSION)",
@@ -2803,7 +2803,7 @@ def build_summary(results: Dict[str, Any]) -> Dict[str, Any]:
     mutations = results.get("mutations", {})
     verdicts = {name: record.get("verdict") for name, record in mutations.items()}
     summary["mutations"] = verdicts
-    # Keyed off the LEG HAVING RUN, not off the records being non-empty: a
+    # Keyed off the leg having run, not off the records being non-empty: a
     # mutation leg that ran and produced nothing must still be caught by the
     # declared-null check below, and a laptop run that skipped the leg entirely
     # (no key at all) must not manufacture a failure about a device measurement

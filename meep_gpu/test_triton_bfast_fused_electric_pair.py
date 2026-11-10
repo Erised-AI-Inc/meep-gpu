@@ -11,7 +11,7 @@ Everything here runs on the NumPy merge-bar machine. The load-bearing ones are t
   so :data:`~.bfast_fused_electric_pair.CARRIES_DEPOSIT_REPAIR` at False takes the
   product from one seam-instance to zero. Asserted DIRECTLY, by flipping the flag
   and re-asking the predicate;
-* the SEAM FLAG ON THE COEFFICIENTS — unlike the beta family, whose ``magnetic=``
+* the seam flag on the coefficients — unlike the beta family, whose ``magnetic=``
   argument is inert on real storage, BFAST reads a different term table AND negates
   both coefficients on the D side. A builder that copied its twin's ``magnetic=True``
   would hand this product the wrong six words, and the two answers are compared
@@ -88,7 +88,7 @@ def _statements(text: str) -> List[str]:
 def _shipped_body(path: pathlib.Path, name: str) -> List[str]:
     """One shipped kernel's BODY as a list of top-level STATEMENT sources.
 
-    THE GRAIN IS STATEMENTS, NOT LINES, and that is forced rather than chosen: the
+    The grain is statements, not lines, and that is forced rather than chosen: the
     BFAST tail contains LINES that also appear elsewhere in both bodies — ``if BCY
     == METALLIC:`` guards both the advance mask and the curl mask — so subtracting
     the tail by text leaves orphaned guard headers and the equality fails on a body
@@ -473,7 +473,7 @@ def test_the_plan_refuses_rather_than_raises_on_a_numpy_host(product):
 def test_the_bfast_coefficients_DIFFER_between_the_two_seams():
     """``bfast_curl_coefficients(magnetic=...)`` IS seam-dependent here.
 
-    THE OPPOSITE OF THE BETA FAMILY, and that asymmetry is why this is a test rather
+    The opposite of the beta family, and that asymmetry is why this is a test rather
     than a comment. The D side reads ``BFAST_TERMS['step_D']`` and NEGATES both
     coefficients in host float64 (bfast_curl.py:343-351), so a builder that copied
     its twin's ``magnetic=True`` would hand this product six wrong words — where the
@@ -499,24 +499,24 @@ def test_the_bfast_coefficients_DIFFER_between_the_two_seams():
 # ---------------------------------------------------------------------------
 
 def test_the_composer_routes_this_product_and_the_driver_seam_released_it():
-    """ROUTED 2026-09-02 by the installer wave, RELEASED 2026-09-13 — both halves.
+    """ROUTED 2026-09-02 by the installer change, RELEASED 2026-09-13 — both halves.
 
     This test replaces the deferral it used to make. Until 2026-09-02 it asserted
     that ``launch.py`` and ``fastpath.py`` named this module NOWHERE, which was the
-    seam that kept a certified-but-unrouted product deferred. The wave routed it:
+    seam that kept a certified-but-unrouted product deferred. The 2026-09-02 change routed it:
     ``launch.CERTIFIED_FUSED_PRODUCTS`` holds its row and
     ``_install_certified_fused_products`` builds it through the shared
     ``_install_fused_pair``, taking both slots only when ``_pair_may_absorb`` finds
     the arm table has already given them to the arms this kernel implements.
 
-    WIRING WAS NOT RELEASING, and this is the file where that sentence ended. It
+    Wiring was not releasing, and this is the file where that sentence ended. It
     was named ``..._and_dispatch_still_refuses_it`` for as long as the label sat
-    outside ``fastpath.RELEASED_FUSED_ARMS``; on 2026-09-13 the Phase B batch
+    outside ``fastpath.RELEASED_FUSED_ARMS``; on 2026-09-13 the release campaign
     ``dispatch_fused_route_2026-09-13_phaseB`` drove it through the driver's own
     consults on ``bfast_1d`` — the corpus case this product's D seam was selected
     for — so the release names that case and the pending rung no longer holds it.
 
-    THE PARTITION IS STILL EXACTLY ONE OF TWO, in the other direction: the label
+    The partition is still exactly one of two, in the other direction: the label
     is in ``ARM_CERTIFICATION`` (its ledger entry was cut by ``seed_triton_welds.py``
     from the 2026-09-12 identity fleet) and out of ``PENDING_DEVICE_GATE_ARMS``.
     Both are asserted rather than one, because a label released while still pending

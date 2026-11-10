@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Native MPS gate for complex/Bloch no-PML tensor-row ``update_E``.
 
-RULING R7: SOFTWARE BINARY64. The kernel forms the array path's double row per part
+SOFTWARE BINARY64 (docs/design/floating-point.md#double-precision-on-the-metal-table). The kernel forms the array path's double row per part
 (``stepping._offdiagonal_terms``, ``_rounded_row``) through ``metal_kernels.softfp64``,
 connects a Bloch phase on the same-index operands' plane 0 as the array path does
 (``stepping._bloch_ghost_operand``: a copy, a per-part negation or the unfused
@@ -16,10 +16,10 @@ the no-absorber division. The gate runs:
   plan), unmutated, through the same seam the mutants take: 0 words;
 * ``mutation``: on those states, each must be caught -- the first term dropped, the
   partner connection dropped, the own-axis connection dropped, the partner connection
-  on the shifted read (the pre-alignment placement), the float32 row (ruling R7's
-  mutation, the pre-R7 spelling), and on the negated case the negation spelled as a
+  on the shifted read (the package's previous placement), the float32 row (the kernel's
+  spelling before software binary64), and on the negated case the negation spelled as a
   product by the placeholder word the plan binds;
-* ``engine``: every case admitted with no ruling clause, the arm wired, the builder's
+* ``engine``: every case admitted with no clause refusing the binary64 row, the arm wired, the builder's
   presence words all-kept (a no-absorber run is one chunk unless a division is
   installed; the words' per-chunk rule is the real family's and is gated there).
 """
@@ -200,14 +200,14 @@ def _mutants(phased_base: str, negated_base: str) -> Dict[str, Tuple[str, Mappin
             phased_base,
             "    near_product_00 = (i == 0) ? c_mul(near_product_00, upx) : "
             "near_product_00;\n", ""),
-        # The pre-alignment placement: the phase on the shifted read instead.
+        # The package's previous placement: the phase on the shifted read instead.
         "partner_connection_on_the_shifted_read": _needle(
             phased_base,
             "    home_00 = (j == 0) ? c_mul(home_00, dpy) : home_00;\n"
             "    float2 down_00 = dvy ? g1[i * nyz + dj * nzi + k] : float2(0.0f, 0.0f);",
             "    float2 down_00 = dvy ? g1[i * nyz + dj * nzi + k] : float2(0.0f, 0.0f);\n"
             "    down_00 = (j == 0) ? c_mul(down_00, dpy) : down_00;"),
-        # RULING R7's mutation, per part: component 0's row in float32.
+        # The pre-binary64 spelling, per part: component 0's row in float32.
         "float32_row": _needle(
             phased_base, _ROW0,
             "    float2 src0 = od_d0 + (c_mul_coefficient_left(0.25f, sum_00) + "
@@ -228,8 +228,8 @@ def _mutants(phased_base: str, negated_base: str) -> Dict[str, Tuple[str, Mappin
 
 
 def leg_engine(products) -> Dict[str, Any]:
-    """Every case admitted with no ruling clause; the arm wired; the builder's words
-    all-kept and ``offdiag_update_e.presence_for``'s."""
+    """Every case admitted with no clause refusing the binary64 row; the arm wired;
+    the builder's words all-kept and ``offdiag_update_e.presence_for``'s."""
     arm = next(spec for spec in arms.registered(family.SLOT)
                if spec.family == family.FAMILY)
     rows = []
@@ -264,6 +264,8 @@ def _emit(handle: Any, row: Dict[str, Any]) -> None:
 
 
 def main() -> int:
+    from metal_closed_table import close_table  # noqa: PLC0415
+    close_table()
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--cycles", type=int, default=4)

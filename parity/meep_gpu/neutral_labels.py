@@ -1,13 +1,13 @@
 """The neutral labels a certification record carries for the machine a gate ran on.
 
-A gate stamps its machine: its host name (``platform.node()``, ``socket.gethostname()``)
-and the environment it ran under, home paths included. Those raw stamps are evidence:
-they stay in the run's own artifact under ``parity/meep_gpu/results/``, which never
-ships. A ledger or a certification record is shipped, and dispatch reads it at run
-time, so a host name, an account name or a home path written into one cannot be
-scrubbed at export. Every tool that copies a gate's machine stamp or environment into
-a ledger therefore writes it through this module, and ``tools/ci/check_hygiene.py``
-fails a ledger that still holds one.
+A gate stamps its machine as the machine's anonymous id (``neutral_ids.machine_id``),
+and its paths under their labels (``neutral_ids.py``): a run's artifact leaves the
+machine with its results, so it names no machine, account or local path. A ledger or a
+certification record is shipped, and dispatch reads it at run time; every tool that
+copies a gate's machine stamp or environment into a ledger writes it through THIS module
+(the stamp becomes the one label below, whatever spelling a run wrote, an older run's
+raw host name included), and ``tools/ci/check_hygiene.py`` fails a ledger that still
+holds a machine stamp.
 
 THE SPELLINGS are the ones 0.9.2 shipped, so a record cut by a tool and a record the
 0.9.2 export neutralised read alike:
@@ -17,11 +17,12 @@ THE SPELLINGS are the ones 0.9.2 shipped, so a record cut by a tool and a record
   machine the artifact stamped"), before a device line (:func:`host_line`, the Triton
   welds), or before where the stamp was read (:func:`machine_stamped`, the CUDA welds).
 * :data:`STAGING_ROOT`, ``<staging-root>``: the prefix of a recorded path under the
-  directory a round was staged in (:func:`neutral_environment`).
+  directory a certification round was staged in (:func:`neutral_environment`), and of a run directory
+  a record wrote home-relative under the staging root (:func:`neutral_home_relative`).
 
-WHAT IS STILL CHECKED. A tool still reads the raw host names and compares them: two
+What is still checked. A tool still reads the stamped machine ids and compares them: two
 legs that stamp different machines, or a device stamp that names another machine than
-its artifact, are refused as before. Only what is WRITTEN is the label, and a run that
+its artifact, are refused as before (one machine gives one id). Only what is WRITTEN is the label, and a run that
 stamps no machine at all still writes none: the label stands for one measured machine.
 
 Standard library only: the bind tools import it before anything else.
@@ -35,6 +36,9 @@ from typing import Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 GPU_HOST = "the GPU host"
 STAGING_ROOT = "<staging-root>"
+#: The staging root the drivers default to under a home directory
+#: (``MGPU_SITE_STAGING_ROOT``, ``parity/meep_gpu/README.md``).
+DEFAULT_HOME_STAGING_ROOT = "meep_gpu_validation"
 
 #: The roots under which a path names an account or a machine's temporary space, from
 #: neutral pieces (the guard's own rule, ``tools/ci/check_hygiene.py``).
@@ -42,6 +46,10 @@ _HOME_ROOTS = ("ho" + "me", "Us" + "ers")
 _LOCAL_PATH = re.compile(r"(?<![A-Za-z0-9._~-])/(?:" + "|".join(_HOME_ROOTS)
                          + r")/(?!user(?:/|$))[A-Za-z0-9._-]+"
                          + r"|(?<![A-Za-z0-9._~-])/priv" + r"ate/(?:var|tmp)/[A-Za-z0-9._-]")
+
+
+#: A home-relative path, ``~/<directory>...``: where a run lay on the machine that ran it.
+_HOME_RELATIVE = re.compile(r"(?<![A-Za-z0-9._$/~-])~/(?P<root>[A-Za-z0-9._-]+)(?=/|$|[\s)\],;:])")
 
 
 class LabelRefusal(ValueError):
@@ -86,7 +94,7 @@ def local_paths(text: str) -> List[str]:
 
 def common_root(paths: Sequence[str]) -> Optional[str]:
     """The deepest directory every one of ``paths`` lies under, when that directory is
-    itself under a home root: the staging root of a round whose caches, stub and clone a
+    itself under a home root: the staging root of a certification round whose caches, stub and clone a
     driver laid out side by side. ``None`` for fewer than two paths or no shared root."""
     absolute = [os.path.normpath(p) for p in paths if p.startswith("/")]
     if len(absolute) < 2:
@@ -109,6 +117,19 @@ def neutral_path(value: str, staging_root: Optional[str]) -> str:
     if value.startswith(root + "/"):
         return STAGING_ROOT + value[len(root):]
     return value
+
+
+def home_relative_paths(text: str) -> List[str]:
+    """The home-relative paths ``text`` still holds, by their first directory."""
+    return [match.group() for match in _HOME_RELATIVE.finditer(text)]
+
+
+def neutral_home_relative(text: str, root: str = DEFAULT_HOME_STAGING_ROOT) -> str:
+    """``text`` with every home-relative path under ``~/<root>`` written under
+    :data:`STAGING_ROOT`: ``~/<root>/<campaign>/x`` becomes ``<staging-root>/<campaign>/x``.
+    A home-relative path under any other directory is left for the caller to refuse."""
+    return _HOME_RELATIVE.sub(
+        lambda match: STAGING_ROOT if match.group("root") == root else match.group(), text)
 
 
 def neutral_environment(environment: Mapping[str, object], staging_root: Optional[str] = None

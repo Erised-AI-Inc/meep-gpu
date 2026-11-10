@@ -237,7 +237,7 @@ def _environment(tmp_path: Path, record: bool = True, root_files=None) -> tuple:
     return str(python), corpus
 
 
-#: The corpus sibling the reference build keeps beside python/ (build_meep_133_record.py).
+#: The corpus sibling the reference build keeps beside python/ (build_meep_reference_record.py).
 SIBLING = "tests/cyl-ellipsoid-eps-ref.h5"
 
 
@@ -312,4 +312,6 @@ def test_the_gate_stage_hands_every_lane_the_corpus_it_verified(tmp_path, monkey
     argv = round_driver.lane_argv(args, tmp_path / "plan.json", tmp_path / "lane",
                                   tmp_path / "results", {})
     assert argv[argv.index("--corpus-root") + 1] == str(corpus.resolve())
-    assert f"MEEP corpus: {corpus.resolve()}" in (tmp_path / "round.log").read_text()
+    # The round's log goes back with the results: the corpus root under its label.
+    assert (f"MEEP corpus: {round_driver.N.text(str(corpus.resolve()))}"
+            in (tmp_path / "round.log").read_text())

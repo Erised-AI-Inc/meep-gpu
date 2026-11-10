@@ -6,7 +6,7 @@ of them reproduces the driver's order when consulted the way ``FdtdDriver.step``
 and that a product which has not declared ``CARRIES_DEPOSIT_REPAIR`` still refuses every
 in-seam deposit, so none of this can reach a run before it is wired.
 
-WHO HAS DECLARED IT: :data:`WIRED_FOR_THE_REPAIR` below, and the allowlist test beside
+Who has declared it: :data:`WIRED_FOR_THE_REPAIR` below, and the allowlist test beside
 it is what keeps that set equal to the set of products ``_install_fused_pair`` actually
 brackets.
 """
@@ -110,7 +110,7 @@ def test_a_source_on_the_other_side_of_the_step_is_not_this_seam(pair, component
                          ids=[c[0] for c in SEAM_CASES])
 def test_the_two_slots_consulted_as_the_driver_consults_them_match_the_array_path(
         pair, component, curl_name, update_name):
-    """THE ONE THAT MATTERS: the protocol, driven the way ``FdtdDriver.step`` drives it."""
+    """The one that matters: the protocol, driven the way ``FdtdDriver.step`` drives it."""
     grid_a, fields_a, pml_a = _build()
     grid_b, fields_b, pml_b = _build()
     src_a = [_source(grid_a, pair, component)]
@@ -242,7 +242,7 @@ def test_the_protocol_taken_through_dispatch_still_matches_the_array_path(
 #:   refused at the absorb table before its predicate is asked. That table, not this
 #:   allowlist, is what makes the Metal membership a fact.
 #:
-#: INSTALLABLE IS NOT THE SAME SET AS REPAIRED, since 2026-08-27. Routing a family
+#: INSTALLABLE is not the same set as repaired, since 2026-08-27. Routing a family
 #: and letting it carry the repair are two decisions, and the folded pairs are where
 #: they came apart: both folded families gained an absorb row (Metal) and a routing
 #: branch (Triton) so a CLEAN folded seam can fuse, and neither may declare the
@@ -250,8 +250,8 @@ def test_the_protocol_taken_through_dispatch_still_matches_the_array_path(
 #:
 #: * ``cuda_kernels/fused_magnetic_pair.py`` is installed by the seam loop in
 #:   ``cuda_kernels/fused_pairs.install_fused_pairs``, bounded by that module's own
-#:   ``FUSED_PAIR_ARMS``, and reached from ``arms.plan_step(fuse=True)``. THE THIRD
-#:   COMPOSER, added 2026-08-28. Its block finds candidates in its own
+#:   ``FUSED_PAIR_ARMS``, and reached from ``arms.plan_step(fuse=True)``. The third
+#:   composer, added 2026-08-28. Its block finds candidates in its own
 #:   ``FUSED_PRODUCTS`` table rather than by walking the arm table, because every
 #:   hand-CUDA family module imports CuPy at module scope and the census that
 #:   establishes what this composition covers is backend-free
@@ -263,7 +263,7 @@ def test_the_protocol_taken_through_dispatch_still_matches_the_array_path(
 #: a launch nothing repairs, which is the exact failure ``deposit_repair`` exists to
 #: prevent, so they stay False until their own installer lands.
 #:
-#: TWO MORE METAL FAMILIES, 2026-08-28. ``metal_kernels/complex_fused_magnetic_pair.py``
+#: Two more Metal families, 2026-08-28. ``metal_kernels/complex_fused_magnetic_pair.py``
 #: and ``metal_kernels/fused_dispersive_pair.py`` each gained a ``FUSED_PAIR_ARMS`` row
 #: — read off the arm table the same way the other Metal rows were, and recorded in the
 #: ``cart_pml_complex_forced`` and ``cart_pml_dispersive`` rows of
@@ -273,7 +273,7 @@ def test_the_protocol_taken_through_dispatch_still_matches_the_array_path(
 #: a diverging null control in ``test_deposit_repair.py``'s ``COMPLEX_CASES`` and
 #: ``DISPERSIVE_CASES``. Both are UNFOLDED families — each refuses a mirrored axis by
 #: name — so the fold boundary below does not reach them.
-#: THE TWO METAL FOLDED FAMILIES, 2026-08-28. They are the first products to carry a
+#: The two Metal folded families, 2026-08-28. They are the first products to carry a
 #: deposit across a FOLDED seam, and what let them is not a table row but
 #: ``deposit_repair.repair_cells``: the saved and restored set became the CLOSURE of the
 #: cells ``fill_symmetry_bc_*`` and ``fill_folded_far_ghosts_*`` image each deposit point
@@ -283,7 +283,7 @@ def test_the_protocol_taken_through_dispatch_still_matches_the_array_path(
 #: reflect row byte-exactly, and the same cases with the closure cut back to the deposit
 #: index diverge, at those cells. Their Triton twins keep the flag at False: the closure
 #: is shared, but nothing has re-cut those products' gates on a device.
-#: THE PLAIN METAL D/E PAIR, 2026-08-28. `metal_kernels/fused_electric_pair.py` is the
+#: The plain Metal D/E pair, 2026-08-28. `metal_kernels/fused_electric_pair.py` is the
 #: D-side twin of `fused_magnetic_pair.py` -- `step_D` welded into the ORDINARY
 #: `update_E`, all three components in one launch -- and on THAT seam the repair is not
 #: a widening but the product itself: every one of the 26 corpus rows the cell reaches
@@ -305,8 +305,8 @@ WIRED_FOR_THE_REPAIR = frozenset({
     "triton_kernels/folded_fused_magnetic_pair.py",
     "triton_kernels/folded_fused_pair.py",
     "triton_kernels/complex_fused_magnetic_pair.py",
-    # 2026-08-30, THE TRITON D->E COMPLEX PAIR, landed by the Triton track while this
-    # round was closing the Metal one. UNROUTED like its magnetic twin above --
+    # 2026-08-30, the Triton D->E complex pair, landed by the Triton track while the
+    # Metal change was closing. UNROUTED like its magnetic twin above --
     # `triton_kernels/launch.py` imports no such module and names no
     # `plan_complex_fused_electric_pair` -- so it is asserted through
     # `DECLARED_BUT_NOT_ROUTED` rather than by the installer call count, which stays
@@ -321,7 +321,7 @@ WIRED_FOR_THE_REPAIR = frozenset({
     # pass every other leg and serve nothing at all. Asserted through
     # `DECLARED_BUT_NOT_ROUTED`, which keeps the installer call count at 3.
     "triton_kernels/cylindrical_fused_electric_pair.py",
-    # 2026-08-31, THE TRITON FOLDED DISPERSIVE D->E PAIR. Same position as the two
+    # 2026-08-31, the Triton folded dispersive D->E pair. Same position as the two
     # D->E entries above -- declared, built, UNROUTED -- and, like the Dcyl one, the
     # flag IS the product here rather than one clause of it: all four corpus rows of
     # its board cell declare an electric source in the seam, so the same module with
@@ -341,7 +341,7 @@ WIRED_FOR_THE_REPAIR = frozenset({
     # declares the flag False, because the same three rows are electric-only and
     # so its magnetic seam is empty without any repair.
     "triton_kernels/cylindrical_real_fused_electric_pair.py",
-    # 2026-08-31, THE TRITON FOLDED COMPLEX D->E PAIR. Same position as the four
+    # 2026-08-31, the Triton folded complex D->E pair. Same position as the four
     # D->E entries above -- declared, built, UNROUTED -- and the flag is the product
     # here too: BOTH corpus rows of its board cell
     # (`TestEigCoeffs.test_binary_grating_special_kz_2_21_2` and
@@ -353,7 +353,7 @@ WIRED_FOR_THE_REPAIR = frozenset({
     # its seam is empty without any repair. Asserted through
     # `DECLARED_BUT_NOT_ROUTED`, which keeps the installer call count at 3.
     "triton_kernels/folded_complex_fused_pair.py",
-    # 2026-08-31, THE TRITON REAL-BETA D->E PAIR. Same position as the five D->E
+    # 2026-08-31, the Triton real-beta D->E PAIR. Same position as the five D->E
     # entries above -- declared, built, UNROUTED -- and the flag is the product here
     # too: the cell's single corpus row (``examples:refl-angular-kz2d.py``) declares
     # an ELECTRIC source, so the same module with the flag at False would compile,
@@ -361,21 +361,21 @@ WIRED_FOR_THE_REPAIR = frozenset({
     # (``beta_fused_magnetic_pair``) is not in this set: it declares the flag False,
     # because on the B->H seam that same row is electric-only.
     "triton_kernels/beta_fused_electric_pair.py",
-    # 2026-08-31, THE TRITON BFAST D->E PAIR. Same position as the six D->E entries
+    # 2026-08-31, the Triton BFAST D->E pair. Same position as the six D->E entries
     # above -- declared, built, UNROUTED -- and the flag is the product here too:
     # the cell's single corpus row
     # (``tests:TestReflectanceAngular.test_reflectance_angular_2_35_7``) declares an
     # ELECTRIC source. Its MAGNETIC twin declares the flag False, because on the
     # B->H seam that same row is electric-only.
     "triton_kernels/bfast_fused_electric_pair.py",
-    # 2026-08-31, THE TRITON CONDUCTIVE PML D->E PAIR. Same position as the seven
+    # 2026-08-31, the Triton conductive PML D->E pair. Same position as the seven
     # D->E entries above -- declared, built, UNROUTED -- and the flag is the product
     # here too: the cell's single corpus row
     # (``tests:TestAdjointSolver.test_damping``) declares TWO sources, one of them
     # ELECTRIC. It has no magnetic twin; the conductive B->H cell is served by the
     # ordinary pair.
     "triton_kernels/conductive_fused_electric_pair.py",
-    # 2026-08-31, THE TRITON FOLDED COMPLEX B->H CLAUSE DISCHARGE. Not a new module:
+    # 2026-08-31, the Triton folded complex B->H clause discharge. Not a new module:
     # the family already shipped a product and already consulted the seam clause
     # through this flag, and the plainrepair7 board recorded its one refused
     # instance (tests:TestHoleyWvgBands.test_fields_at_kx) as "a product exists and
@@ -385,7 +385,7 @@ WIRED_FOR_THE_REPAIR = frozenset({
     # folded_complex_fused_magnetic_pair discharge of 2026-08-30, one backend over.
     # UNROUTED, so it is asserted through `DECLARED_BUT_NOT_ROUTED`.
     "triton_kernels/folded_complex_fused_magnetic_pair.py",
-    # 2026-08-31, THE TWO TRITON FOLDED-BETA PAIRS — the last two "not built" cells
+    # 2026-08-31, the two Triton folded-beta pairs — the last two "not built" cells
     # on the plainrepair7 board. On BOTH the flag is the product: their single
     # corpus row (tests:TestSpecialKz.test_eigsrc_kz_1_real_imag) declares two
     # electric AND two magnetic sources, one pair in each product's own seam, so
@@ -393,8 +393,8 @@ WIRED_FOR_THE_REPAIR = frozenset({
     # serve nothing. Both UNROUTED, asserted through `DECLARED_BUT_NOT_ROUTED`.
     "triton_kernels/folded_beta_fused_electric_pair.py",
     "triton_kernels/folded_beta_fused_magnetic_pair.py",
-    # 2026-09-01, THE TWO TRITON COMPLEX-BETA PAIRS — the unfolded half of the
-    # no-admitting-arm residue. On the ELECTRIC one the flag is the product: the
+    # 2026-09-01, the two Triton complex-beta pairs — the unfolded half of the
+    # cells that previously had no admitting arm. On the ELECTRIC one the flag is the product: the
     # cell's single corpus row (tests:TestSpecialKz.test_special_kz) declares one
     # electric source in that product's own seam, so the module with the flag at
     # False would compile, pass every other leg and serve nothing. The MAGNETIC
@@ -403,8 +403,8 @@ WIRED_FOR_THE_REPAIR = frozenset({
     # bracket). Both UNROUTED, asserted through `DECLARED_BUT_NOT_ROUTED`.
     "triton_kernels/complex_beta_fused_electric_pair.py",
     "triton_kernels/complex_beta_fused_magnetic_pair.py",
-    # 2026-09-02, THE TWO TRITON FOLDED COMPLEX-BETA PAIRS — the folded half of
-    # the same residue (K3b's curl riding the certified folded complex weld). On
+    # 2026-09-02, the two Triton folded complex-beta pairs — the folded half of
+    # the same cells (a curl riding the certified folded complex weld). On
     # the ELECTRIC one the flag is the whole cell: all THREE corpus rows (the two
     # binary gratings and test_eigsrc_kz_0_complex) declare an electric source in
     # that seam, so the flag at False serves nothing. On the MAGNETIC one it buys
@@ -420,8 +420,8 @@ WIRED_FOR_THE_REPAIR = frozenset({
     "metal_kernels/folded_fused_magnetic_pair.py",
     "metal_kernels/folded_fused_pair.py",
     "metal_kernels/fused_electric_pair.py",
-    # 2026-08-30, THE SEVEN NEW METAL PRODUCTS. Each one is a family whose module did
-    # not exist before this round; each landed its `launch.FUSED_PAIR_ARMS` row in the
+    # 2026-08-30, the seven new Metal products. Each one is a family whose module did
+    # not exist before that change; each landed its `launch.FUSED_PAIR_ARMS` row in the
     # same edit as its flag, which is the only thing that lets the seam loop reach
     # `_install_fused_pair` for it (a family with no row is refused by name, "has no
     # absorb declaration", on every configuration). The arm-table equality below is
@@ -433,7 +433,7 @@ WIRED_FOR_THE_REPAIR = frozenset({
     "metal_kernels/folded_beta_real_fused_magnetic_pair.py",
     "metal_kernels/folded_beta_real_fused_pair.py",
     "metal_kernels/folded_fused_dispersive_pair.py",
-    # 2026-08-30, THE TWO CLAUSE DISCHARGES. Not new modules: both families already
+    # 2026-08-30, the two clause discharges. Not new modules: both families already
     # shipped a product and already consulted the seam clause, and both were held at
     # False by the ABSENCE of an absorb row rather than by anything about their
     # arithmetic -- the board recorded each as `product_exists_but_refuses` on its
@@ -442,13 +442,13 @@ WIRED_FOR_THE_REPAIR = frozenset({
     "metal_kernels/folded_complex_fused_magnetic_pair.py",
     "metal_kernels/folded_beta_complex_fused_magnetic_pair.py",
     "cuda_kernels/fused_magnetic_pair.py",
-    # 2026-08-30, THE TWO NEW CUDA PRODUCTS, each with its row in that track's own
+    # 2026-08-30, the two new CUDA products, each with its row in that track's own
     # `fused_pairs.FUSED_PAIR_ARMS` and an entry in `FUSED_PRODUCTS` pointing at the
     # module named here. Both are gated on the GPU host with all four legs released,
     # bit-identity per complete driver step, so the flag stands on an artifact.
     "cuda_kernels/complex_fused_magnetic_pair.py",
     "cuda_kernels/cylindrical_fused_magnetic_pair.py",
-    # 2026-09-02, THE FOLDED-COMPLEX CUDA B/H WELD -- the only one of the five
+    # 2026-09-02, the folded-complex CUDA B/H weld -- the only one of the five
     # residual magnetic products whose flag is LOAD-BEARING on its own cell:
     # four of its five rows are electric-only sourced, and the fifth
     # (TestHoleyWvgBands.test_fields_at_kx) deposits a plain point B Source
@@ -461,7 +461,7 @@ WIRED_FOR_THE_REPAIR = frozenset({
     # is beyond any value of the flag); they are in
     # ROUTED_WITHOUT_THE_REPAIR below.
     "cuda_kernels/complex_folded_fused_magnetic_pair.py",
-    # 2026-08-30, THE FIRST CUDA PRODUCT ON THE ELECTRIC SEAM, and the one entry here
+    # 2026-08-30, the first CUDA product on the electric seam, and the one entry here
     # for which the flag is the whole product rather than one clause of it: 75 of the
     # 79 corpus rows on its board cell carry an electric deposit inside the seam, so
     # without the bracket it would serve four. It has its row in that track's
@@ -471,9 +471,9 @@ WIRED_FOR_THE_REPAIR = frozenset({
     # repaired) and both unbracketed null controls diverging, so the flag stands on an
     # artifact rather than on a declaration.
     "cuda_kernels/fused_electric_pair.py",
-    # 2026-08-31, THE Dcyl m = 0 D->E PAIR ON METAL, and the first product on
+    # 2026-08-31, the Dcyl m = 0 D->E pair on Metal, and the first product on
     # this board recovered from the BINDING ceiling rather than from a clause.
-    # Its cell was refused as UNFUSABLE ON METAL -- 31 pointers against a 30
+    # Its cell was refused as unfusable on Metal -- 31 pointers against a 30
     # pointer ceiling, over by exactly one -- and what cleared it is
     # `metal_kernels/coefficient_pack.py`: the curl half's six read-only PML
     # coefficient vectors became ONE buffer with six element offsets in the
@@ -487,7 +487,7 @@ WIRED_FOR_THE_REPAIR = frozenset({
     # `_install_fused_pairs` reaches it and brackets it, measured in its gate's
     # `deposit` leg with a diverging unbracketed null control beside it.
     "metal_kernels/cylindrical_real_fused_electric_pair.py",
-    # 2026-08-31, THE Dcyl |m| >= 1 COMPLEX D->E PAIR ON METAL, and the LARGEST
+    # 2026-08-31, the Dcyl |m| >= 1 complex D->E pair on Metal, and the largest
     # cell on that board — 16 seam-instances. Recovered from the binding ceiling
     # by the same pack as the m = 0 row above: 33 pointers unpacked against a
     # 30-pointer ceiling, over by THREE, and 28 with the curl half's six PML
@@ -497,7 +497,7 @@ WIRED_FOR_THE_REPAIR = frozenset({
     # ("cylindrical complex", "cylindrical complex"), read off `plan_step(...,
     # fuse=False)` on the Dcyl |m| = 1 and |m| = 2 matrix rows.
     "metal_kernels/cylindrical_fused_electric_pair.py",
-    # 2026-09-01, THE TWO METAL PRODUCTS ON THE SECOND REPAIR PATH — the last
+    # 2026-09-01, the two Metal products on the second repair path — the last
     # buildable cells of the 2026-08-31_plainrepair Metal board. Both declare the
     # flag AND `REPAIR_PATHS = (deposit_repair.PLAIN_PATH,)`, because both halves
     # refuse an active absorber and the recurrence their seam inverts is therefore
@@ -525,7 +525,7 @@ WIRED_FOR_THE_REPAIR = frozenset({
     # dense fallback, which no in-tree source class is.
     "metal_kernels/no_pml_fused_electric_pair.py",
     "metal_kernels/no_pml_conductive_fused_electric_pair.py",
-    # 2026-09-01, THE THREE ELECTRIC WELDS OF THE METAL RESIDUE ROUND. Each landed
+    # 2026-09-01, the three Metal electric welds closing the remaining gaps. Each landed
     # its `launch.FUSED_PAIR_ARMS` row in the same edit as its flag, so the seam
     # loop reaches `_install_fused_pair` for all three. On each the flag is the
     # product: the BFAST cell's one row (TestReflectanceAngular) and the
@@ -543,7 +543,7 @@ WIRED_FOR_THE_REPAIR = frozenset({
     "metal_kernels/bfast_fused_electric_pair.py",
     "metal_kernels/conductive_fused_electric_pair.py",
     "metal_kernels/beta_complex_fused_electric_pair.py",
-    # 2026-08-31, THE TWO CUDA COMPLEX D->E PAIRS, which make that track's `step_D`
+    # 2026-08-31, the two CUDA complex D->E pairs, which make that track's `step_D`
     # a three-candidate seam the way its `step_B` already is. Each is ROUTED --
     # a row in `cuda_kernels/fused_pairs.FUSED_PAIR_ARMS` keyed by the module's own
     # `FAMILY` (`cuda_complex_fused_electric_pair`, `cuda_cylindrical_fused_electric_pair`)
@@ -561,7 +561,7 @@ WIRED_FOR_THE_REPAIR = frozenset({
     # rather than on a declaration.
     "cuda_kernels/complex_fused_electric_pair.py",
     "cuda_kernels/cylindrical_fused_electric_pair.py",
-    # 2026-08-31, THE FIRST PRODUCT ON THE SECOND REPAIR PATH.
+    # 2026-08-31, the first product on the second repair path.
     # `triton_kernels/no_pml_fused_electric_pair.py` declares the flag AND
     # `REPAIR_PATHS = (deposit_repair.PLAIN_PATH,)`, because both halves refuse an
     # active absorber and the recurrence its seam inverts is therefore `update_E`'s
@@ -572,9 +572,9 @@ WIRED_FOR_THE_REPAIR = frozenset({
     # `(SPLIT_FIELD_PATH,)` would be refused on every row it serves rather than
     # mis-repairing one. UNROUTED, like the nine below.
     "triton_kernels/no_pml_fused_electric_pair.py",
-    # 2026-09-02, THE TWO CUDA FLAG FLIPS OF THE RESIDUE ROUND. Both stood at
+    # 2026-09-02, the two CUDA flag flips closing the remaining gaps. Both stood at
     # False on the premise that their cells' B-sourced rows "deposit through an
-    # EigenModeSource, which publishes no point index" -- RE-MEASURED FALSE of
+    # EigenModeSource, which publishes no point index" -- re-measured False of
     # the live tree (the lift synthesises VolumeSource equivalent-current
     # sheets, and every source class publishes _point_ix/_point_iy/_point_iz at
     # setup; a sheet with the lift's amp_func shape returns index ARRAYS from
@@ -586,8 +586,8 @@ WIRED_FOR_THE_REPAIR = frozenset({
     # premise fell with the flag.
     "cuda_kernels/complex_beta_fused_magnetic_pair.py",
     "cuda_kernels/special_kz_fused_magnetic_pair.py",
-    # 2026-09-02, THE FIVE CUDA ELECTRIC TWINS of the residue round (the
-    # fusion-residue audit's 12 electric-twin instances). On EVERY one the flag
+    # 2026-09-02, the five CUDA electric twins closing the remaining gaps (12
+    # electric-twin seam-instances between them). On EVERY one the flag
     # is the product rather than one clause of it: every row of every twin's
     # board cell declares an ELECTRIC source inside the D seam (measured off
     # the residualwelds census -- 4 complex-beta rows, 2 folded-complex, 3
@@ -602,7 +602,7 @@ WIRED_FOR_THE_REPAIR = frozenset({
     "cuda_kernels/cylindrical_real_fused_electric_pair.py",
     "cuda_kernels/special_kz_fused_electric_pair.py",
     "cuda_kernels/bfast_fused_electric_pair.py",
-    # 2026-09-02, THE CUDA DISPERSIVE D->E PAIR, and the entry on this list whose
+    # 2026-09-02, the CUDA dispersive D->E pair, and the entry on this list whose
     # cell is the largest: `D_to_E (cuda_curl/PML, cuda_dispersive/dispersive)`
     # carries 7 corpus rows and ALL SEVEN declare an electric deposit inside the
     # seam (`source_field_types == ['D']` on six, ten D sources on
@@ -613,7 +613,7 @@ WIRED_FOR_THE_REPAIR = frozenset({
     # and FUSED_PRODUCTS entry (`curl_slot: "step_D"`), landed in the same edit as
     # the flag.
     #
-    # WHAT ITS BRACKET HAS TO RECONSTRUCT IS NEW ON THIS LIST: a DISPERSIVE
+    # What its bracket has to reconstruct is new on this list: a DISPERSIVE
     # update_E. `deposit_repair.apply` recomputes `fw_fresh` through
     # `Fields.displacement_minus_polarization`, which IS this half's source, and it
     # is entitled to the pole arrays it reads because `update_P` runs after
@@ -621,7 +621,7 @@ WIRED_FOR_THE_REPAIR = frozenset({
     # entitlement in `test_deposit_repair.py`'s DISPERSIVE_CASES; this product
     # inherits the clause rather than a second copy of it.
     "cuda_kernels/dispersive_fused_electric_pair.py",
-    # 2026-09-02, THE TWO CONDUCTIVE-CURL D->E PAIRS, which close the last
+    # 2026-09-02, the two conductive-curl D->E PAIRS, which close the last
     # POINTWISE-BUILDABLE cells this board had on that seam. All four of their
     # corpus rows declare an electric deposit inside the seam, so on both the flag
     # is the entire product: at False either module would compile, gate green on
@@ -630,8 +630,8 @@ WIRED_FOR_THE_REPAIR = frozenset({
     # in the same edit as the flag; the no-absorber one additionally declares the
     # SECOND cell it occupies in FUSED_PAIR_EXTRA_ARMS.
     #
-    # WHAT THE FIRST ONE'S BRACKET HAS TO RECONSTRUCT IS NEW ON THIS LIST, AND IT IS
-    # NOT THE SPLIT-FIELD RECURRENCE. Its layer is INERT, so `update_E` takes the
+    # What the first one's bracket has to reconstruct is new on this list, and it is
+    # not the split-field recurrence. Its layer is INERT, so `update_E` takes the
     # pure overwrite at stepping.py:1019-1022 and the repair that inverts it is
     # `deposit_repair.PLAIN_PATH`. It is the first module on this list to declare a
     # non-default `REPAIR_PATHS`, and the declaration is load-bearing rather than
@@ -642,7 +642,7 @@ WIRED_FOR_THE_REPAIR = frozenset({
     # (`parity/meep_gpu/probe_cuda_no_pml_dispersive_electric_pair.py`'s
     # `split_field_declared` leg).
     "cuda_kernels/no_pml_dispersive_fused_electric_pair.py",
-    # THE SECOND IS THE SIGNED-ZERO ROW, and its flag was unreachable rather than
+    # The second is the signed-zero row, and its flag was unreachable rather than
     # merely unset until 2026-09-01: the driver rescaled its condinv injection over
     # the WHOLE volume, rewriting -0.0 to +0.0 at cells no deposit closure can name,
     # so no bracket could have made it byte-identical. The driver now replays that
@@ -652,29 +652,29 @@ WIRED_FOR_THE_REPAIR = frozenset({
     # non-deposit word untouched on 4 of 4 configurations, and the retired
     # whole-volume control diverges on all four in the signed-zero class alone.
     "cuda_kernels/conductive_fused_electric_pair.py",
-    # 2026-09-02, THE TWO THREE-SLOT WELDS, and the first entries on this list
+    # 2026-09-02, the two three-slot welds, and the first entries on this list
     # whose product owns THREE driver slots. Every one of their ten corpus rows
     # carries an electric deposit inside the `step_D` -> `update_E` span, so on
     # both the flag is the entire product; both are ROUTED through their own
     # `FUSED_PAIR_ARMS` row and `FUSED_PRODUCTS` entry (`curl_slot: "step_D"`,
     # plus a `slots` key naming all three), landed in the same edit as the flag.
     #
-    # WHAT IS NEW HERE IS NOT THE BRACKET BUT WHAT SITS AFTER IT. On every other
+    # What is new here is not the bracket but what sits after it. On every other
     # entry the product's device work is finished by the time
     # `TrailingRepairPlan.run` calls `deposit_repair.apply`. These two launch
-    # AGAIN afterwards, in `update_P`, and the ORDER IS LOAD-BEARING: `apply`
+    # AGAIN afterwards, in `update_P`, and the order is load-bearing: `apply`
     # recomputes the constitutive product through
     # `Fields.displacement_minus_polarization` on both of its paths
-    # (deposit_repair.py:781-782, :922-923), which subtracts `state.P[c]` AS IT
-    # STANDS (fields.py:1096-1105) -- so the repair is correct only while P is
+    # (deposit_repair.py:781-782, :922-923), which subtracts `state.P[c]` as it
+    # stands (fields.py:1096-1105) -- so the repair is correct only while P is
     # still P^n. `fused_pairs._install_fused_triple` is the one place that order
     # is written, which is why the third slot is filled there beside the bracket
     # rather than by a caller free to order the two differently. Measured:
     # `parity/meep_gpu/probe_cuda_three_slot_weld.py`'s `repair_after_p` and
     # `p_inside_the_launch` orderings each diverge on 6 of 7 configurations.
     #
-    # THE PML ONE DECLARES THE SPLIT-FIELD REPAIR AND THE NO-ABSORBER ONE THE
-    # PLAIN ONE, each inherited from the D->E half it welds rather than
+    # The PML one declares the split-field repair and the no-absorber one the
+    # plain one, each inherited from the D->E half it welds rather than
     # re-decided, which is why they are two modules: `_repair_paths_of` reads
     # that declaration off the MODULE and one module cannot carry two answers.
     "cuda_kernels/three_slot_dispersive_weld.py",
@@ -701,7 +701,7 @@ WIRED_FOR_THE_REPAIR = frozenset({
 #: — ``plan_<stem>`` PRESENT in ``launch.py``, by
 #: :func:`test_every_triton_routed_module_has_decided_about_the_bracket` below.
 #:
-#: THE SET IS KEPT RATHER THAN DELETED because the direction it guards is real and
+#: The set is kept rather than deleted because the direction it guards is real and
 #: is not the same as the routed set's: a module that claims the repair and is
 #: reached by no installer runs unbracketed the day something starts building it.
 #: A future declared-but-unrouted module belongs here, and the loop that reads it
@@ -726,7 +726,7 @@ DECLARED_BUT_NOT_ROUTED = frozenset()
 #: ``REPAIR_PATHS`` declaration in the same edit, and the installer reads the
 #: declaration off the built plan (``getattr(pair, "repair_paths", ...)``), so
 #: the row is what lets the seam loop bracket them with the repair each actually
-#: inverts. THREE FAMILIES THE LOOP REACHES ARE DELIBERATELY ABSENT
+#: inverts. Three families the loop reaches are deliberately absent
 #: -- ``beta_fused_magnetic_pair``, ``bfast_fused_magnetic_pair`` and
 #: ``nonlinear_fused_magnetic_pair`` (there were six until 2026-09-17; the
 #: 37 -> 40 entry below names the three that left and why these three stay).
@@ -740,7 +740,7 @@ DECLARED_BUT_NOT_ROUTED = frozenset()
 #: different questions, and the composer is what settles it. `FUSED_PAIR_ARMS.get(
 #: spec.family)` returning None REFUSES the family outright before its predicate is
 #: asked (``metal_kernels/launch.py:1025-1031``), so the row is what makes a family
-#: INSTALLABLE AT ALL; the flag only says whether the seam loop brackets a deposit
+#: INSTALLABLE at all; the flag only says whether the seam loop brackets a deposit
 #: around it. For these four the flag is FORCED False -- ``deposit_repair.repairable``
 #: refuses an off-diagonal chi1inv BY NAME, since a point repair recomputes E at the
 #: deposit cell from that cell's own displacement while this constitutive reads its
@@ -757,14 +757,14 @@ DECLARED_BUT_NOT_ROUTED = frozenset()
 #: seam loop ASK the product; the product declares ``INSTALLABLE = False`` on the
 #: measured composition verdict, and ``_pair_may_absorb`` refuses it on every corpus
 #: row its primary arm reaches even without that flag.
-#: 32 -> 37 ON 2026-09-08 with the five H->D rows the wiring round landed. Each is the
+#: 32 -> 37 ON 2026-09-08 with the five H->D rows the 2026-09-08 wiring change landed. Each is the
 #: same shape as the three 2026-09-07 ones already here: a two-slot span over
 #: ``update_H``/``step_D``, ``CARRIES_DEPOSIT_REPAIR = False`` because nothing is
 #: injected between those two consults, and ``INSTALLABLE = False`` on a composition
 #: verdict measured through the shipped composer -- so all five are
 #: ``ROUTED_WITHOUT_THE_REPAIR`` entries too, and the row is only what lets the seam
 #: loop ASK them.
-#: 37 -> 40 ON 2026-09-17 with the three B->H and D->E rows the all-paths round
+#: 37 -> 40 ON 2026-09-17 with the three B->H and D->E rows the 2026-09-17 all-paths change
 #: routed (``metal_kernels/launch.py:1234-1246``): ``complex_conductive_fused_pair``,
 #: ``cylindrical_complex_fused_magnetic_pair`` and
 #: ``cylindrical_real_fused_magnetic_pair``. Each was CERTIFIED and carried a released
@@ -776,7 +776,7 @@ DECLARED_BUT_NOT_ROUTED = frozenset()
 #: and passes that flag to ``deposit_repair.seam_source_reasons`` (:589, :539, :721),
 #: so an in-seam deposit is refused BY NAME rather than run unbracketed -- the
 #: 2026-09-02 "installable, deliberately unbracketed" pairing, and so all three are
-#: :data:`ROUTED_WITHOUT_THE_REPAIR` entries too. THE STEM TRAP A SECOND TIME:
+#: :data:`ROUTED_WITHOUT_THE_REPAIR` entries too. The stem trap a second time:
 #: ``cylindrical_complex_fused_magnetic_pair`` lives in
 #: ``cylindrical_fused_magnetic_pair.py``, exactly as its electric twin does, and the
 #: routed set is keyed by that MODULE path. The other three magnetic welds stay out
@@ -784,7 +784,7 @@ DECLARED_BUT_NOT_ROUTED = frozenset()
 #: they are the whole real population ``UNDECLARED_WELDS`` in
 #: ``test_metal_fused_pair_deposit_wiring.py`` sweeps for a by-name refusal.
 METAL_ABSORB_DECLARATIONS = ("beta_complex_fused_electric_pair",
-                             # 2026-09-08, THE TWO BETA H->D ROWS: one product per
+                             # 2026-09-08, the two beta H->D rows: one product per
                              # storage, each covering a SECOND cell through a
                              # FUSED_PAIR_EXTRA_ARMS row (the folded variant), so one
                              # row here bounds two cells. INSTALLABLE = False on a
@@ -803,13 +803,13 @@ METAL_ABSORB_DECLARATIONS = ("beta_complex_fused_electric_pair",
                              # carries no absorb row at all), so the span is a TIE
                              # rather than a loss -- resolved for the incumbent.
                              "bfast_fused_hd_pair",
-                             # 2026-09-17, THE COMPLEX CONDUCTIVE D->E ROW, routed by
-                             # the all-paths round: CARRIES_DEPOSIT_REPAIR = False and
+                             # 2026-09-17, the complex conductive D->E row, routed by
+                             # the all-paths change: CARRIES_DEPOSIT_REPAIR = False and
                              # its source clause refuses an in-seam electric deposit
                              # by name, so a ROUTED_WITHOUT_THE_REPAIR entry.
                              "complex_conductive_fused_pair",
                              "complex_fused_electric_pair",
-                             # 2026-09-07, THE CARTESIAN COMPLEX/BLOCH H->D ROW: one
+                             # 2026-09-07, the Cartesian complex/Bloch H->D row: one
                              # dispatch owning update_H and step_D on the complex
                              # cell; INSTALLABLE = False on a measured arbitration
                              # (both neighbouring released pairs install on 17 of 17
@@ -826,14 +826,14 @@ METAL_ABSORB_DECLARATIONS = ("beta_complex_fused_electric_pair",
                              # and installing it is a LOSS wherever both serve.
                              "conductive_fused_hd_pair",
                              "cylindrical_complex_fused_electric_pair",
-                             # 2026-09-07, THE TWO CYLINDRICAL H->D ROWS: two-launch
+                             # 2026-09-07, the two cylindrical H->D rows: two-launch
                              # products owning update_H and step_D on the Dcyl complex
                              # and m=0 real cells; INSTALLABLE = False for the measured
                              # composition TIE with the released D->E pair, so both are
                              # ROUTED_WITHOUT_THE_REPAIR entries like fused_hd_pair.
                              "cylindrical_complex_fused_hd_pair",
-                             # 2026-09-17, THE TWO DCYL B->H ROWS, routed by the
-                             # all-paths round and each the magnetic twin of a Dcyl
+                             # 2026-09-17, the two Dcyl B->H rows, routed by the
+                             # all-paths change and each the magnetic twin of a Dcyl
                              # D->E row here: CARRIES_DEPOSIT_REPAIR = False with an
                              # in-seam magnetic source refused by name, so both are
                              # ROUTED_WITHOUT_THE_REPAIR entries (the complex one
@@ -846,7 +846,7 @@ METAL_ABSORB_DECLARATIONS = ("beta_complex_fused_electric_pair",
                              "folded_beta_complex_fused_pair",
                              "folded_beta_real_fused_magnetic_pair",
                              "folded_beta_real_fused_pair",
-                             # 2026-09-08, THE FOLDED COMPLEX H->D ROW: both of this
+                             # 2026-09-08, the folded complex H->D row: both of this
                              # cell's neighbouring seams carry released Metal products
                              # (folded_complex_fused_magnetic_pair and
                              # folded_complex_fused_pair), so the span is a strict LOSS
@@ -893,12 +893,12 @@ METAL_ABSORB_DECLARATIONS = ("beta_complex_fused_electric_pair",
 #: ``cuda_cylindrical_fused_magnetic_pair`` on the ``cuda_cyl_complex`` family's
 #: ``cylindrical complex`` curl arm with that same complex constitutive. Both are
 #: also rows in ``FUSED_PRODUCTS``, which the equality below holds equal to this one.
-#: 3 -> 4 LATER THE SAME DAY with ``cuda_fused_electric_pair``, the first product on
+#: 3 -> 4 later the same day with ``cuda_fused_electric_pair``, the first product on
 #: that track's ``step_D``/``update_E`` seam. Its arms are read from its predicate the
 #: same way — ``covers_fused_electric_pair`` opens on ``covers_real_pml_curl(...,
 #: "step_D")`` and ``covers_real_pml_constitutive(..., "E")``, which are the ``PML``
-#: curl arm's and the ``ordinary`` constitutive arm's own predicates. IT NAMES THE SAME
-#: TWO ARM LABELS AS THE FIRST ROW AND THAT IS NOT AN AMBIGUITY: the two are keyed on
+#: curl arm's and the ``ordinary`` constitutive arm's own predicates. It names the same
+#: two arm labels as the first row and that is not an ambiguity: the two are keyed on
 #: different ``curl_slot`` values and ``install_fused_pairs`` decides one seam at a
 #: time, which the CUDA suite asserts directly.
 #:
@@ -909,8 +909,8 @@ METAL_ABSORB_DECLARATIONS = ("beta_complex_fused_electric_pair",
 #: ``cuda_complex`` family's ``complex`` arm — and
 #: ``covers_cylindrical_fused_electric_pair`` on
 #: ``covers_pml_cylindrical_complex_curl(..., "step_D")``, the ``cuda_cyl_complex``
-#: family's ``cylindrical complex`` arm, with that same complex constitutive. EACH
-#: SHARES ITS LABEL PAIR WITH ITS MAGNETIC TWIN and that is not an ambiguity for the
+#: family's ``cylindrical complex`` arm, with that same complex constitutive. Each
+#: shares its label pair with its magnetic twin and that is not an ambiguity for the
 #: reason the real electric row already carries: the twins are keyed on different
 #: ``curl_slot`` values and ``install_fused_pairs`` decides one seam at a time.
 #: The names here are each module's own ``FAMILY``, not its stem — the Dcyl module
@@ -921,8 +921,8 @@ METAL_ABSORB_DECLARATIONS = ("beta_complex_fused_electric_pair",
 #: read off its predicate the same way: ``covers_no_pml_complex_fused_electric_pair``
 #: opens on ``complex_no_pml_kernels.covers_complex_no_pml_curl(..., "step_D")`` and
 #: ``covers_complex_no_pml_stored_e``, which ARE the ``cuda_complex_no_pml`` family's
-#: ``complex no-PML curl`` and ``complex no-PML stored E`` arms. IT IS THE FIRST CUDA
-#: ROW WHOSE MODULE DECLARES THE FLAG FALSE, so it is the first member of
+#: ``complex no-PML curl`` and ``complex no-PML stored E`` arms. It is the first CUDA
+#: row whose module declares the flag False, so it is the first member of
 #: :data:`ROUTED_WITHOUT_THE_REPAIR` on this track rather than of
 #: :data:`WIRED_FOR_THE_REPAIR` — routable and deliberately unbracketed, which is the
 #: distinction that set exists to carry.
@@ -937,7 +937,7 @@ CUDA_ABSORB_DECLARATIONS = (
                             "cuda_bfast_fused_electric_pair",
                             "cuda_bfast_fused_magnetic_pair",
                             "cuda_complex_beta_fused_electric_pair",
-                            # 2026-09-07, THE COMPLEX BETA H->D WELD. Its row here
+                            # 2026-09-07, the complex beta H->D weld. Its row here
                             # is what lets the seam loop REACH and NAME it; the flag
                             # is False because nothing is injected between the
                             # update_H and step_D consults, so it joins
@@ -948,7 +948,7 @@ CUDA_ABSORB_DECLARATIONS = (
                             "cuda_complex_folded_fused_electric_pair",
                             "cuda_complex_folded_fused_magnetic_pair",
                             "cuda_complex_fused_electric_pair",
-                            # 2026-09-07, THE CARTESIAN COMPLEX H->D WELD -- the
+                            # 2026-09-07, the Cartesian complex H->D weld -- the
                             # fourth row on this table for the fourth seam, and one
                             # product over TWO board cells (the plain complex curl
                             # and the folded one, selected from the grid). Its row
@@ -961,14 +961,14 @@ CUDA_ABSORB_DECLARATIONS = (
                             "cuda_complex_fused_hd_pair",
                             "cuda_complex_fused_magnetic_pair",
                             "cuda_complex_no_pml_fused_polarization_pair",
-                            # 2026-09-02, THE TWO COMPLEX STENCIL WELDS -- the last
+                            # 2026-09-02, the two complex stencil welds -- the last
                             # two cells the hand-CUDA board recorded UNBUILDABLE.
                             # Both declare CARRIES_DEPOSIT_REPAIR=False (an
                             # off-diagonal chi1inv row is refused by name), so
                             # their rows here are what lets the seam loop reach
                             # them at all rather than what lets it bracket them.
                             "cuda_complex_no_pml_offdiag_fused_electric_pair",
-                            # 2026-09-08, THE CONDUCTIVE/BFAST H->D WELD -- ONE
+                            # 2026-09-08, the conductive/BFAST H->D weld -- one
                             # product on TWO cells, its second reached through a
                             # FUSED_PAIR_EXTRA_ARMS row (('BFAST', 'BFAST')) beside
                             # the primary ('ordinary', 'conductive') one. Its row
@@ -984,7 +984,7 @@ CUDA_ABSORB_DECLARATIONS = (
                             # sparsely at the published deposit indices.
                             "cuda_conductive_fused_electric_pair",
                             "cuda_cylindrical_fused_electric_pair",
-                            # 2026-09-07, THE TWO CYLINDRICAL H->D WELDS (complex
+                            # 2026-09-07, the two cylindrical H->D welds (complex
                             # any-m and real m = 0), the second and third rows on
                             # this table the composer refuses on EVERY
                             # configuration (INSTALLABLE False, the cylindrical
@@ -1029,11 +1029,11 @@ CUDA_ABSORB_DECLARATIONS = (
                             "cuda_no_pml_fused_polarization_pair",
                             "cuda_offdiag_fused_electric_pair",
                             "cuda_special_kz_fused_electric_pair",
-                            # 2026-09-07, THE REAL BETA H->D WELD -- same shape,
+                            # 2026-09-07, the real beta H->D weld -- same shape,
                             # same flag, same ROUTED_WITHOUT_THE_REPAIR entry.
                             "cuda_special_kz_fused_hd_pair",
                             "cuda_special_kz_fused_magnetic_pair",
-                            # 2026-09-02, THE TWO THREE-SLOT WELDS. Their rows
+                            # 2026-09-02, the two three-slot welds. Their rows
                             # here are the first on this table of length THREE
                             # rather than two -- the value is still "the arm
                             # each slot the product absorbs implements", in the
@@ -1055,7 +1055,7 @@ CUDA_ABSORB_DECLARATIONS = (
 #: with the reason. Kept as a named list rather than a hole in an equality, so a
 #: third family arriving in this position is a decision somebody has to write down.
 #:
-#: THE FOLD BOUNDARY, 2026-08-27, RETIRED FOR METAL ON 2026-08-28. A folded seam also
+#: The fold boundary, 2026-08-27, retired for Metal on 2026-08-28. A folded seam also
 #: runs ``fill_symmetry_bc_*`` and ``fill_folded_far_ghosts_*``, and the driver runs them
 #: AFTER the injection (driver.py:3293-3295, :3308-3311). The near fill writes cell 0
 #: from cell 2 (stepping.py:1450-1450), while ``deposit_repair.apply`` used to write only
@@ -1063,15 +1063,15 @@ CUDA_ABSORB_DECLARATIONS = (
 #: ghost cell describing the pre-injection field. ``deposit_repair.repair_cells`` closed
 #: that, and the two METAL folded families flipped in the same edit.
 #:
-#: THE TWO TRITON TWINS USED TO STAY HERE, and not because the closure is
+#: The two Triton twins used to stay here, and not because the closure is
 #: backend-specific — it is the one shared module both tracks reach. What they lacked
 #: was a re-cut gate: every Triton fused product's arithmetic is certified on a device
-#: that round could not run, so flipping them would have been a claim no artifact
-#: stood behind. THAT WAS DISCHARGED ON 2026-08-30 by re-running the gates, which is
+#: that change had no access to, so flipping them would have been a claim no artifact
+#: stood behind. That was discharged on 2026-08-30 by re-running the gates, which is
 #: the only thing that could discharge it — not by deciding the flip was safe. Both
 #: moved to :data:`WIRED_FOR_THE_REPAIR`.
 #:
-#: THE SET STOPPED BEING EMPTY ON 2026-08-31, on the CUDA track, and the entry is a
+#: The set stopped being empty on 2026-08-31, on the CUDA track, and the entry is a
 #: MEASUREMENT rather than a caution. ``cuda_kernels/no_pml_complex_fused_electric_pair.py``
 #: is installable — it has a ``FUSED_PAIR_ARMS`` row and a ``FUSED_PRODUCTS`` row, so
 #: ``fused_pairs.install_fused_pairs`` can reach ``_install_fused_pair`` with it — and
@@ -1082,26 +1082,26 @@ CUDA_ABSORB_DECLARATIONS = (
 #: is the direction that would be a defect. So the installer always takes its
 #: ``NoopPlan`` branch on this family, and that is what the entry records.
 #:
-#: THE CONTRAST WITH ITS PML SIBLINGS IS THE POINT: on
+#: The contrast with its PML siblings is the point: on
 #: ``cuda_kernels/complex_fused_electric_pair.py``'s cell 15 of 16 rows declare an
 #: ELECTRIC source, so there the flag IS the product. Two products, one seam, opposite
 #: answers, each read off its own cell rather than off the other's.
 ROUTED_WITHOUT_THE_REPAIR: frozenset = frozenset({
     "cuda_kernels/no_pml_complex_fused_electric_pair.py",
-    # THE TWO RESIDUAL MAGNETIC WELDS THAT MEASURED FALSE AND STAYED THERE,
+    # The two residual magnetic welds that measured False and stayed there,
     # each off its own cell: every row on both cells declares
     # source_field_types == ['D'] -- the magnetic seam is empty -- so True
     # would buy zero rows while claiming a bracket nothing needs. (The beta and
     # special_kz siblings LEFT this set on 2026-09-02: their False rested on the
-    # "EigenModeSource publishes no point index" premise the residue audit
-    # re-measured false, and both now sit in WIRED_FOR_THE_REPAIR above.)
+    # "EigenModeSource publishes no point index" premise that a 2026-09-02
+    # re-measurement showed false, and both now sit in WIRED_FOR_THE_REPAIR above.)
     "cuda_kernels/cylindrical_real_fused_magnetic_pair.py",
     "cuda_kernels/bfast_fused_magnetic_pair.py",
-    # THE COMPLEX NO-ABSORBER E->P PAIR, 2026-09-02: like its two REAL siblings
+    # The complex no-absorber E->P PAIR, 2026-09-02: like its two REAL siblings
     # its seam (update_E -> update_P) carries NO driver injection at all, so
     # there is no deposit to bracket and the module declares the flag False.
     "cuda_kernels/complex_no_pml_fused_polarization_pair.py",
-    # THE COMPLEX NO-ABSORBER THREE-SLOT WELD, 2026-09-04: the conjunction of the
+    # The complex no-absorber three-slot weld, 2026-09-04: the conjunction of the
     # two entries above, on the same four TestLoadDump 3-D rows (magnetic source
     # only, so the D seam is empty on 4 of 4). Routable through its own
     # FUSED_PAIR_ARMS and FUSED_PRODUCTS rows, and False is the product's whole
@@ -1115,7 +1115,7 @@ ROUTED_WITHOUT_THE_REPAIR: frozenset = frozenset({
     # CARRIES_DEPOSIT_REPAIR = False (fused_polarization_pair.py:213). Routable and
     # deliberately unbracketed, which is exactly what this set exists to carry.
     "cuda_kernels/fused_polarization_pair.py",
-    # THE TWO STENCIL WELDS, 2026-09-02, and the first entries in this set whose
+    # The two stencil welds, 2026-09-02, and the first entries in this set whose
     # False is a MEASUREMENT of the repair rather than of the seam. Both cells'
     # rows carry an off-diagonal chi1inv row -- the constitutive arms REQUIRE one
     # -- and `deposit_repair.repairable` refuses exactly that by name
@@ -1130,11 +1130,11 @@ ROUTED_WITHOUT_THE_REPAIR: frozenset = frozenset({
     # CARRIES_DEPOSIT_REPAIR False is a fact about driver.py rather than a decision.
     # What DOES sit between its two consults is the electric integrated-source
     # withdraw, which meep_gpu/withdraw_hoist.py owns; the product declines to hoist
-    # it in this round (HOISTS_THE_WITHDRAW False, because INSTALLABLE False makes
+    # it here (HOISTS_THE_WITHDRAW False, because INSTALLABLE False makes
     # _install_fused_pair's hoist branch unreachable for it) and its predicate
     # therefore refuses every row carrying one BY NAME.
     "cuda_kernels/fused_hd_pair.py",
-    # ITS TWO CYLINDRICAL SIBLINGS, 2026-09-07: the same seam, the same absence of
+    # Its two cylindrical siblings, 2026-09-07: the same seam, the same absence of
     # any injection between the two consults, the same declined hoist
     # (HOISTS_THE_WITHDRAW False) and the same INSTALLABLE False -- so the same
     # reading, one Dcyl grid over. Each predicate refuses a row carrying a standing
@@ -1142,7 +1142,7 @@ ROUTED_WITHOUT_THE_REPAIR: frozenset = frozenset({
     # results/cuda_cylindrical_{real_,}fused_hd_pair_2026-09-07).
     "cuda_kernels/cylindrical_real_fused_hd_pair.py",
     "cuda_kernels/cylindrical_fused_hd_pair.py",
-    # ITS CARTESIAN COMPLEX SIBLING, 2026-09-07: the same seam and the same reading
+    # Its Cartesian complex sibling, 2026-09-07: the same seam and the same reading
     # over complex64 storage, in ONE launch and TWO variants (the plain complex curl
     # and the folded one, selected from the grid). Nothing is injected between the two
     # consults, so CARRIES_DEPOSIT_REPAIR False is again a fact about driver.py; the
@@ -1152,7 +1152,7 @@ ROUTED_WITHOUT_THE_REPAIR: frozenset = frozenset({
     # withdraw leg, results/cuda_complex_fused_hd_pair_2026-09-07). INSTALLABLE False
     # on the measured composition verdict, so the installer is not reached today.
     "cuda_kernels/complex_fused_hd_pair.py",
-    # THE TWO BETA H->D WELDS, 2026-09-07. Same seam, same reason: nothing is
+    # The two beta H->D welds, 2026-09-07. Same seam, same reason: nothing is
     # INJECTED between the update_H and step_D consults -- the electric injection is
     # one seam later and the magnetic one is one seam earlier -- so there is no
     # deposit to bracket and CARRIES_DEPOSIT_REPAIR is a FACT about the driver rather
@@ -1161,7 +1161,7 @@ ROUTED_WITHOUT_THE_REPAIR: frozenset = frozenset({
     # INSTALLABLE and refuse the withdraw rows BY NAME.
     "cuda_kernels/special_kz_fused_hd_pair.py",
     "cuda_kernels/complex_beta_fused_hd_pair.py",
-    # ITS CONDUCTIVE/BFAST SIBLING, 2026-09-07: ONE product on the last TWO H->D
+    # Its conductive/BFAST sibling, 2026-09-07: one product on the last TWO H->D
     # cells, and the same reading a third time. Nothing is injected between the two
     # consults on either variant, so CARRIES_DEPOSIT_REPAIR False is a fact about
     # driver.py; the electric integrated-source withdraw that DOES sit there is
@@ -1169,14 +1169,14 @@ ROUTED_WITHOUT_THE_REPAIR: frozenset = frozenset({
     # because INSTALLABLE False makes _install_fused_pair's hoist branch unreachable)
     # and its predicate refuses every row carrying a standing one BY NAME (measured in
     # the gate's withdraw leg on BOTH variants,
-    # results/cuda_conductive_bfast_fused_hd_pair_2026-09-07). WHAT THAT REFUSAL COSTS
-    # ON THESE TWO CELLS IS ZERO, and it is measured rather than assumed: both corpus
+    # results/cuda_conductive_bfast_fused_hd_pair_2026-09-07). What that refusal costs
+    # on these two cells is zero, and it is measured rather than assumed: both corpus
     # rows record withdraw_in_seam false and
     # n_electric_withdraws_that_do_work 0 (h_to_d_seam_2026-09-04).
     "cuda_kernels/conductive_bfast_fused_hd_pair.py",
     "cuda_kernels/offdiag_fused_electric_pair.py",
     "cuda_kernels/folded_offdiag_fused_electric_pair.py",
-    # THEIR TWO COMPLEX64 TWINS, 2026-09-02, closing the LAST two cells this board
+    # Their two complex64 twins, 2026-09-02, closing the LAST two cells this board
     # recorded UNBUILDABLE. The measurement is identical and is a property of the
     # REPAIR rather than of the storage width: `deposit_repair.repairable` refuses
     # an off-diagonal chi1inv row by name, and both cells' constitutive arms
@@ -1188,7 +1188,7 @@ ROUTED_WITHOUT_THE_REPAIR: frozenset = frozenset({
     # above it, its seam carries NO driver injection at all, so FUSED_PAIR_SEAMS
     # gives it None and the installer reads the seam as unconditionally empty.
     "cuda_kernels/dispersive_offdiag_fused_polarization_pair.py",
-    # THE METAL COMPLEX-BETA MAGNETIC WELD, 2026-09-01, the first METAL entry in
+    # The Metal complex-beta magnetic weld, 2026-09-01, the first METAL entry in
     # this set and the same measurement one backend over: it is installable (its
     # FUSED_PAIR_ARMS row landed with it, so the seam loop reaches
     # _install_fused_pair) and its one corpus row
@@ -1199,7 +1199,7 @@ ROUTED_WITHOUT_THE_REPAIR: frozenset = frozenset({
     # True on the same row's D seam, two products, one row, opposite answers,
     # each read off its own seam.
     "metal_kernels/beta_complex_fused_magnetic_pair.py",
-    # THE FOUR METAL OFF-DIAGONAL SCRATCH WELDS, 2026-09-02. Routable (each holds a
+    # The four Metal off-diagonal scratch welds, 2026-09-02. Routable (each holds a
     # METAL_ABSORB_DECLARATIONS row above) and deliberately unbracketed: the flag is
     # forced False by deposit_repair.repairable's by-name refusal of an off-diagonal
     # chi1inv, so 24 rows carrying an in-seam electric source on these cells are
@@ -1218,7 +1218,7 @@ ROUTED_WITHOUT_THE_REPAIR: frozenset = frozenset({
     # rather than to either repair plan. It also declares INSTALLABLE = False on the
     # measured composition verdict, so the installer is not reached at all today.
     "metal_kernels/fused_hd_pair.py",
-    # THE TWO CYLINDRICAL H->D PRODUCTS, 2026-09-07, on the same seam and under the
+    # The two cylindrical H->D products, 2026-09-07, on the same seam and under the
     # same contract as the entry above: two launches owning update_H and step_D on
     # the Dcyl m=0 real and complex cells, nothing injected between the consults
     # (the electric withdraw is `withdraw_hoist`'s and both refuse a standing one by
@@ -1227,7 +1227,7 @@ ROUTED_WITHOUT_THE_REPAIR: frozenset = frozenset({
     # pair, so the installer is not reached today.
     "metal_kernels/cylindrical_real_fused_hd_pair.py",
     "metal_kernels/cylindrical_complex_fused_hd_pair.py",
-    # THE FOLDED AND THE CARTESIAN COMPLEX/BLOCH H->D PRODUCTS, 2026-09-07, on the
+    # The folded and the Cartesian complex/Bloch H->D products, 2026-09-07, on the
     # same seam and under the same contract as the four entries above. Each is ONE
     # dispatch owning update_H and step_D -- on the fold (78 rows, the largest cell
     # on this backend) and on the complex cell (17 rows) -- with nothing injected
@@ -1241,7 +1241,7 @@ ROUTED_WITHOUT_THE_REPAIR: frozenset = frozenset({
     # so the installer is not reached on either today.
     "metal_kernels/folded_fused_hd_pair.py",
     "metal_kernels/complex_fused_hd_pair.py",
-    # THE SEAM'S LAST TWO SMALL CELLS, 2026-09-07, and the SAME reading a fourth and
+    # The seam's last two small cells, 2026-09-07, and the SAME reading a fourth and
     # fifth time: nothing is injected between the update_H and step_D consults, so
     # there is no deposit for a bracket to carry and CARRIES_DEPOSIT_REPAIR False is
     # a fact about driver.py rather than a decision. Each is routed by its own
@@ -1252,7 +1252,7 @@ ROUTED_WITHOUT_THE_REPAIR: frozenset = frozenset({
     # results/metal_{conductive,bfast}_fused_hd_pair_2026-09-07/flush.
     "metal_kernels/conductive_fused_hd_pair.py",
     "metal_kernels/bfast_fused_hd_pair.py",
-    # THE SEAM'S THREE REMAINING METAL CELLS, 2026-09-08, and the SAME reading a
+    # The seam's three remaining Metal cells, 2026-09-08, and the SAME reading a
     # sixth, seventh and eighth time: nothing is injected between the update_H and
     # step_D consults, so CARRIES_DEPOSIT_REPAIR False is a fact about driver.py
     # rather than a decision about these families (beta_complex_fused_hd_pair.py:297,
@@ -1264,12 +1264,12 @@ ROUTED_WITHOUT_THE_REPAIR: frozenset = frozenset({
     # INSTALLABLE = False on the arbitration its gate measured through the shipped
     # composer: both neighbouring seams carry Metal products on every variant, so the
     # span is a LOSS where both install and a TIE the released B->H incumbent wins
-    # where one does. THE TWO BETA ENTRIES EACH COVER TWO CELLS through one
+    # where one does. The two beta entries each cover two cells through one
     # FUSED_PAIR_ARMS row plus one FUSED_PAIR_EXTRA_ARMS row.
     "metal_kernels/beta_complex_fused_hd_pair.py",
     "metal_kernels/beta_real_fused_hd_pair.py",
     "metal_kernels/folded_complex_fused_hd_pair.py",
-    # THE THREE METAL FAMILIES THE ALL-PATHS ROUND ROUTED, 2026-09-17. Each was
+    # The three Metal families routed on 2026-09-17. Each was
     # CERTIFIED with a released weld and no `launch.FUSED_PAIR_ARMS` row, so the seam
     # loop could never ask it; the rows landed at metal_kernels/launch.py:1234-1246
     # and these entries are their other half. The flag was already False in each
@@ -1287,14 +1287,14 @@ ROUTED_WITHOUT_THE_REPAIR: frozenset = frozenset({
     # the pre-move :3283-3284 and :3294-3299.)
     # All three pass the flag to `deposit_repair.seam_source_reasons` (:721, :539,
     # :589), which refuses an in-seam deposit BY NAME and refuses an undeclared source
-    # list rather than inferring an empty one. KEYED BY MODULE PATH: family
+    # list rather than inferring an empty one. Keyed by module path: family
     # `cylindrical_complex_fused_magnetic_pair` lives in
     # `cylindrical_fused_magnetic_pair.py`, the stem trap its electric twin set.
     "metal_kernels/complex_conductive_fused_pair.py",
     "metal_kernels/cylindrical_fused_magnetic_pair.py",
     "metal_kernels/cylindrical_real_fused_magnetic_pair.py",
     # ---------------------------------------------------------------------
-    # THE SIX TRITON MODULES THE INSTALLER WAVE MADE ROUTABLE, 2026-09-02.
+    # The six Triton modules the installer wave made routable, 2026-09-02.
     # ---------------------------------------------------------------------
     # Each holds a row in ``triton_kernels/launch.CERTIFIED_FUSED_PAIR_ARMS``, so
     # the seam loop can install it; each ships ``CARRIES_DEPOSIT_REPAIR = False``,
@@ -1310,7 +1310,7 @@ ROUTED_WITHOUT_THE_REPAIR: frozenset = frozenset({
     "triton_kernels/cylindrical_fused_magnetic_pair.py",
     "triton_kernels/cylindrical_real_fused_magnetic_pair.py",
     "triton_kernels/nonlinear_fused_magnetic_pair.py",
-    # THE TWO TRITON CYLINDRICAL H->D PRODUCTS, 2026-09-07, on the same seam and
+    # The two Triton cylindrical H->D products, 2026-09-07, on the same seam and
     # under the same contract as the two Metal entries above: two launches and one
     # array-module scan owning update_H and step_D on the Dcyl m=0 real and complex
     # cells, nothing injected between the consults (the electric withdraw is
@@ -1322,7 +1322,7 @@ ROUTED_WITHOUT_THE_REPAIR: frozenset = frozenset({
     # reaches the installer.
     "triton_kernels/cylindrical_real_fused_hd_pair.py",
     "triton_kernels/cylindrical_fused_hd_pair.py",
-    # THE TRITON CARTESIAN COMPLEX H->D PRODUCT, 2026-09-08, on the same seam and
+    # The Triton Cartesian complex H->D product, 2026-09-08, on the same seam and
     # under the same contract as the two entries above, one grid over: its rows in
     # `launch.CERTIFIED_FUSED_PRODUCTS` and `CERTIFIED_FUSED_PAIR_ARMS`
     # (`('complex', 'complex PML')`) landed with this entry, so the seam loop reaches
@@ -1336,7 +1336,7 @@ ROUTED_WITHOUT_THE_REPAIR: frozenset = frozenset({
     # 2026-09-07/keep/gate.json, `arbitration_over_the_driven_rows`), so
     # `_declared_uninstallable` refuses it before the installer is reached.
     "triton_kernels/complex_fused_hd_pair.py",
-    # THE TWO TRITON OFF-DIAGONAL SCRATCH WELDS, routed by their
+    # The two Triton off-diagonal scratch welds, routed by their
     # `launch.CERTIFIED_FUSED_PRODUCTS` rows once `ScratchWeldPairPlan.warm()` stopped
     # driving the rotation at plan time, and unbracketed for the same measured reason as
     # their CUDA and Metal twins above: `deposit_repair.repairable` refuses an
@@ -1349,14 +1349,14 @@ ROUTED_WITHOUT_THE_REPAIR: frozenset = frozenset({
 
 
 def test_only_the_wired_products_have_declared_that_they_carry_the_repair():
-    """THE GATE ON ALL OF THE ABOVE. A product may claim the repair only once something
+    """The gate on all of the above. A product may claim the repair only once something
     actually brackets its launch. This test is what makes a stray flip loud.
 
-    IT IS AN ALLOWLIST, NOT A COUNT. Naming the two wired modules means a flip anywhere
+    It is an allowlist, not a count. Naming the two wired modules means a flip anywhere
     else fails here with the module that did it, and it means DROPPING the flip on a
     wired product fails here too -- so neither direction can drift silently.
 
-    READ FROM SOURCE, NOT BY IMPORT: several of these modules import Triton or Metal at
+    Read from source, not by import: several of these modules import Triton or Metal at
     module scope, so an importing version of this test would skip exactly the hosts where
     a stray flip is most likely to go unnoticed.
     """
@@ -1413,7 +1413,7 @@ def test_every_wired_product_is_installed_through_the_one_installer():
     for module_path in WIRED_FOR_THE_REPAIR:
         text = (here / module_path).read_text(encoding="utf-8")
         assert "CARRIES_DEPOSIT_REPAIR = True" in text, module_path
-    # A DECLARED-BUT-UNROUTED MODULE IS PINNED AS UNROUTED, not waved through. The
+    # A declared-but-unrouted module is pinned as unrouted, not waved through. The
     # danger it carries is the opposite of the usual one: it claims a bracket, and
     # if a composer started building it without going through `_install_fused_pair`
     # the claim would become false silently. So the absence of a builder is asserted
@@ -1444,7 +1444,7 @@ def test_every_wired_product_is_installed_through_the_one_installer():
     assert len(metal_installs) == 1, (
         f"{len(metal_installs)} calls to the Metal _install_fused_pair; the seam loop "
         f"in `_install_fused_pairs` is the one caller")
-    # AND THE LOOP'S REACH, which is what a call count cannot show. The Metal installer
+    # And the loop's reach, which is what a call count cannot show. The Metal installer
     # is called once from inside a loop over every registered weld, so "one call" says
     # nothing about WHICH families can arrive there. `FUSED_PAIR_ARMS` is the bound:
     # a family with no row is refused before its predicate is asked, so the wired Metal
@@ -1456,7 +1456,7 @@ def test_every_wired_product_is_installed_through_the_one_installer():
         f"{sorted(metal_launch.FUSED_PAIR_ARMS)}; a family gaining a row there gains "
         f"the ability to be bracketed, and a family losing one loses it while its flag "
         f"stays True")
-    # THE FAMILY NAME, READ FROM THE MODULE, NOT THE MODULE STEM. `FUSED_PAIR_ARMS`
+    # The family name, read from the module, not the module stem. `FUSED_PAIR_ARMS`
     # is keyed by `FAMILY`, and the two DIVERGE on the Dcyl complex products: module
     # `cylindrical_fused_electric_pair.py`, family
     # `cylindrical_complex_fused_electric_pair`. Keyed by the stem, such a module
@@ -1476,14 +1476,14 @@ def test_every_wired_product_is_installed_through_the_one_installer():
 
     metal_wired = {_family_of_module(path) for path in WIRED_FOR_THE_REPAIR
                    if path.startswith("metal_kernels/")}
-    # THE DIRECTION THAT IS A DEFECT stays exact: a module declaring the repair that
+    # The direction that is a defect stays exact: a module declaring the repair that
     # the seam loop cannot install would run unbracketed. The other direction — a
     # routable family that deliberately does not carry the repair — is enumerated
     # rather than tolerated, so it cannot grow a family nobody decided about.
     assert metal_wired <= set(METAL_ABSORB_DECLARATIONS), (
         f"the Metal modules declaring the repair are {sorted(metal_wired)} but the "
         f"families the seam loop can install are {sorted(METAL_ABSORB_DECLARATIONS)}")
-    # THE REVERSE MAP goes family -> module by ASKING each module, for the same
+    # The reverse map goes family -> module by ASKING each module, for the same
     # reason: `metal_kernels/{family}.py` is the right path for 38 of the 40 absorb
     # families and the wrong one for the two Dcyl complex pairs -- the electric one,
     # and since 2026-09-17 its magnetic twin (measured 2026-09-19).
@@ -1502,7 +1502,7 @@ def test_every_wired_product_is_installed_through_the_one_installer():
         text = (here / module_path).read_text(encoding="utf-8")
         assert "CARRIES_DEPOSIT_REPAIR = False" in text, module_path
 
-    # THE THIRD COMPOSER, 2026-08-28. Read exactly as the Metal one is: a call count
+    # The third composer, 2026-08-28. Read exactly as the Metal one is: a call count
     # bounds the copies of the protocol, and the product table bounds which families
     # can arrive at it. The CUDA block loops over its OWN table rather than over the
     # arm table (every hand-CUDA family module imports CuPy at module scope, so an
@@ -1515,7 +1515,7 @@ def test_every_wired_product_is_installed_through_the_one_installer():
     assert len(cuda_installs) == 1, (
         f"{len(cuda_installs)} calls to the CUDA _install_fused_pair; the seam loop "
         f"in `install_fused_pairs` is the one caller")
-    # THE THREE-SLOT INSTALLER, 2026-09-02, bounded the same way and for the same
+    # The three-slot installer, 2026-09-02, bounded the same way and for the same
     # reason. It is a SECOND constructor of the two repair plans, which is exactly
     # what the count above exists to keep rare: it wraps the LEADING half of a
     # three-slot product and then writes the trailing half into `update_P`, and
@@ -1547,7 +1547,7 @@ def test_every_wired_product_is_installed_through_the_one_installer():
     # spot-check would leave six rows free to point at a module that decided nothing,
     # which is the one direction that puts an unbracketed launch on a live seam.
     #
-    # THE PARTITION IS EXACT IN BOTH DIRECTIONS since 2026-08-31, and the split is the
+    # The partition is exact in both directions since 2026-08-31, and the split is the
     # SAME one the Metal branch above already makes: a routable family either carries
     # the repair (`WIRED_FOR_THE_REPAIR`) or deliberately does not
     # (`ROUTED_WITHOUT_THE_REPAIR`), and a family in NEITHER set is a module nobody
@@ -1575,7 +1575,7 @@ def test_every_wired_product_is_installed_through_the_one_installer():
 def _executable_text(path) -> str:
     """A module's source with comments and docstrings removed.
 
-    THE PACKAGE ALREADY WROTE THIS RULE DOWN -- `test_triton_kernels.code_of` and the
+    The package already wrote this rule down -- `test_triton_kernels.code_of` and the
     two cylindrical pair tests each carry it, over the shared primitive
     `code_identity.strip_docstrings` -- because the prose in these modules NAMES the
     things they must not touch, so an ownership check that greps the RAW file fires on
@@ -1599,7 +1599,7 @@ def test_every_fused_pair_predicate_carries_the_flag_the_gate_reads():
     for path in sorted(here.rglob("*.py")):
         if path.name.startswith("test_"):
             continue
-        # EXECUTABLE TEXT, NOT THE RAW FILE, for the reason `_executable_text` above
+        # Executable text, not the raw file, for the reason `_executable_text` above
         # gives and this test measured on 2026-09-21: `dispatch_preference.py` NAMES
         # `deposit_repair.seam_source_reasons(..., 'B'/'D')` in its docstring, to say
         # what the eventual wiring site in `fastpath.py` will call -- it consults
@@ -1640,28 +1640,28 @@ def test_every_fused_pair_predicate_carries_the_flag_the_gate_reads():
     #            folded_beta_real_fused_magnetic_pair, folded_beta_real_fused_pair,
     #            folded_fused_dispersive_pair -- and two CUDA,
     #            complex_fused_magnetic_pair and cylindrical_fused_magnetic_pair.
-    #            THE SAME ROUND'S TWO CLAUSE DISCHARGES ARE NOT HERE and must not be:
+    #            That change's two clause discharges are not here and must not be:
     #            folded_complex_fused_magnetic_pair and
     #            folded_beta_complex_fused_magnetic_pair were already consulting the
     #            clause with False and only flipped the constant they pass, so they
-    #            moved the wired set without moving this count. A round that grew both
+    #            moved the wired set without moving this count. A change that grew both
     #            by the same number would have been the tell that a discharge was
     #            miscounted as a product.
     #
-    #   +1 = 37  2026-08-30, and NOT this round's work: the TRITON track landed
+    #   +1 = 37  2026-08-30, and NOT the Metal change's work: the TRITON track landed
     #            `triton_kernels/complex_fused_electric_pair.py`, the D->E complex
-    #            pair, while the Metal round above was closing. It is a new product
+    #            pair, while the Metal change above was closing. It is a new product
     #            asking the clause in its own predicate, so it counts here; it is
     #            UNROUTED, so it is asserted through DECLARED_BUT_NOT_ROUTED rather
-    #            than by an installer call. EXPECT THIS COUNT TO KEEP MOVING while
+    #            than by an installer call. Expect this count to keep moving while
     #            that track lands the rest of its D->E families -- each landing is
     #            one more consumer, and this assertion going red is the designed
-    #            signal that it did, not a defect in either round.
+    #            signal that it did, not a defect in either change.
     #
     #   +4 = 41  2026-08-30, and they arrive from TWO tracks at once, which is why
     #            they are named per track rather than counted together:
     #
-    #            TRITON, this round's fusion work --
+    #            TRITON, that track's own fusion work --
     #              triton_kernels/cylindrical_fused_electric_pair.py, the Dcyl D->E
     #                weld (the board's largest single cell, 16 seam-instances), which
     #                asks the clause with CARRIES_DEPOSIT_REPAIR True; and
@@ -1673,7 +1673,7 @@ def test_every_fused_pair_predicate_carries_the_flag_the_gate_reads():
     #            CUDA, landed concurrently by that track --
     #              cuda_kernels/fused_electric_pair.py and cuda_kernels/fused_pairs.py.
     #
-    #            WHAT THIS COUNT ASSERTS IS A TREE FACT AND NOTHING MORE: that a
+    #            What this count asserts is a tree fact and nothing more: that a
     #            predicate consults the shared clause and declares the flag the gate
     #            reads. It is NOT a statement that a family is wired, bracketed or
     #            gated -- those are `WIRED_FOR_THE_REPAIR`, the installer call count
@@ -1732,8 +1732,8 @@ def test_every_fused_pair_predicate_carries_the_flag_the_gate_reads():
     # that make that track's `step_D` a three-candidate seam. Each is a NEW PRODUCT
     # asking the clause in its own predicate with `carries_repair=CARRIES_DEPOSIT_REPAIR`
     # -- read back from the call itself, not from the module's stem -- so each counts
-    # here exactly once. THE COUNT GREW BY TWO WHILE `cuda_kernels/fused_pairs.py`
-    # STAYED PUT, which is the arithmetic tell that this round added products and not
+    # here exactly once. The count grew by two while `cuda_kernels/fused_pairs.py`
+    # stayed put, which is the arithmetic tell that this change added products and not
     # an installer: that file is the CUDA block's composer and has been a consumer
     # since its own electric row landed.
     # +1 = 52 on 2026-08-31: triton_kernels/no_pml_fused_electric_pair.py, the
@@ -1754,11 +1754,11 @@ def test_every_fused_pair_predicate_carries_the_flag_the_gate_reads():
     # the D seam is empty on every row it serves. Its two CUDA electric siblings on the
     # count above answer the opposite way on their own cells, which is what makes each
     # a measurement rather than a convention.
-    # +2 = 55, owed by the 2026-08-31 folded-beta round and recorded here on
+    # +2 = 55, owed by the 2026-08-31 folded-beta change and recorded here on
     # 2026-09-01: triton_kernels/folded_beta_fused_electric_pair.py and
     # triton_kernels/folded_beta_fused_magnetic_pair.py. Both are NEW MODULES of
-    # that round — their `WIRED_FOR_THE_REPAIR` and `DECLARED_BUT_NOT_ROUTED`
-    # entries landed with them (see "THE TWO TRITON FOLDED-BETA PAIRS" above) but
+    # that change — their `WIRED_FOR_THE_REPAIR` and `DECLARED_BUT_NOT_ROUTED`
+    # entries landed with them (see "the two Triton folded-beta pairs" above) but
     # neither count ledger gained its increment, so this count read 2 stale from
     # that evening until this entry. Each asks the clause once in its own
     # predicate; the electric one answers 'D' and the magnetic one 'B', the same
@@ -1790,7 +1790,7 @@ def test_every_fused_pair_predicate_carries_the_flag_the_gate_reads():
     # B-sourced rows deposit through EigenModeSource, which publishes no point
     # index). cuda_kernels/complex_fill_carry.py holds no seam_source_reasons
     # call and correctly does not count.
-    # +4 = 66 on 2026-09-01: the four METAL RESIDUE welds, all NEW PRODUCTS each
+    # +4 = 66 on 2026-09-01: the four Metal welds closing the remaining gaps, all NEW PRODUCTS each
     # asking the clause once in its own predicate —
     # metal_kernels/bfast_fused_electric_pair.py,
     # metal_kernels/conductive_fused_electric_pair.py and
@@ -1808,7 +1808,7 @@ def test_every_fused_pair_predicate_carries_the_flag_the_gate_reads():
     # electric-sourced in that seam) and
     # triton_kernels/complex_beta_fused_magnetic_pair.py answers 'B' (flag True
     # in its siblings' shape; the same row's B seam is empty).
-    # +5 = 73 on 2026-09-02: the five CUDA ELECTRIC TWINS of the residue round,
+    # +5 = 73 on 2026-09-02: the five CUDA electric twins closing the remaining gaps,
     # all NEW PRODUCTS each asking the clause once in its own predicate and
     # every one answering 'D' with the flag True --
     # cuda_kernels/complex_beta_fused_electric_pair.py,
@@ -1817,11 +1817,11 @@ def test_every_fused_pair_predicate_carries_the_flag_the_gate_reads():
     # cuda_kernels/special_kz_fused_electric_pair.py and
     # cuda_kernels/bfast_fused_electric_pair.py. On every one the flag is the
     # product: every row of every twin's board cell declares an ELECTRIC source
-    # inside the D seam (measured off the residualwelds census). The SAME
-    # ROUND'S TWO CUDA FLAG FLIPS (complex_beta and special_kz magnetic pairs)
+    # inside the D seam (measured off the residualwelds census). The same
+    # change's two CUDA flag flips (complex_beta and special_kz magnetic pairs)
     # are deliberately NOT on this count: both were already consulting the
     # clause with False and only flipped the constant they pass, the same
-    # discharge shape as Metal's 2026-08-30 pair. The round's other two new
+    # discharge shape as Metal's 2026-08-30 pair. That change's other two new
     # modules hold no seam_source_reasons call and correctly do not count:
     # cuda_kernels/complex_electric_fill_carry.py is a carry, and
     # cuda_kernels/complex_no_pml_fused_polarization_pair.py sits on the E->P
@@ -1829,9 +1829,9 @@ def test_every_fused_pair_predicate_carries_the_flag_the_gate_reads():
     # 73 -> 75 on 2026-09-02: the two Triton FOLDED complex-beta pairs
     # (triton_kernels/folded_beta_complex_fused_pair.py and its magnetic twin),
     # each consulting the clause with CARRIES_DEPOSIT_REPAIR=True from the first
-    # cut — the folded half of the no-admitting-arm residue (audit §1.4).
-    # 75 -> 83 on 2026-09-02, THE STENCIL ROUND, and the eight are three lanes'
-    # welds on the same two off-diagonal D_to_E cells, landed into one tree:
+    # cut — the folded half of the cells that previously had no admitting arm.
+    # 75 -> 83 on 2026-09-02, the off-diagonal stencil welds: the eight are three
+    # backends' welds on the same two off-diagonal D_to_E cells, landed into one tree:
     # cuda_kernels/{offdiag,folded_offdiag}_fused_electric_pair.py,
     # metal_kernels/{offdiag,folded_offdiag,complex_no_pml_offdiag,
     # folded_complex_offdiag}_fused_electric_pair.py and
@@ -1842,7 +1842,7 @@ def test_every_fused_pair_predicate_carries_the_flag_the_gate_reads():
     # and every row of both cells has one installed because the constitutive arm
     # REQUIRES it. So these products consult the clause exactly to refuse every
     # electric deposit, which is what puts them on this count.
-    # 83 -> 85 on 2026-09-02, THE CONDUCTIVE-CURL ROUND: the two CUDA welds that
+    # 83 -> 85 on 2026-09-02, the conductive-curl change: the two CUDA welds that
     # close the last POINTWISE-BUILDABLE D_to_E cells on that board --
     # cuda_kernels/no_pml_dispersive_fused_electric_pair.py and
     # cuda_kernels/conductive_fused_electric_pair.py. Both consult the clause with
@@ -1850,7 +1850,7 @@ def test_every_fused_pair_predicate_carries_the_flag_the_gate_reads():
     # four of their corpus rows declare an electric deposit inside the seam, so at
     # False either module would gate green and serve ZERO.
     #
-    # THE FIRST OF THEM IS THE ONLY CONSUMER IN THIS COUNT THAT PASSES A NON-DEFAULT
+    # The first of them is the only consumer in this count that passes a non-default
     # `repair_paths`. Its layer is inert, so `update_E` takes the pure overwrite at
     # stepping.py:1019-1022 and the recurrence its bracket inverts is
     # `deposit_repair.PLAIN_PATH`, not the split-field one every other consumer here
@@ -1858,13 +1858,13 @@ def test_every_fused_pair_predicate_carries_the_flag_the_gate_reads():
     # than assume them: `repairable` refuses BY NAME any configuration whose
     # recurrence is not among the caller's declared set, so the alternative to
     # passing it is a refusal of every row the product exists for.
-    # 85 -> 87 on 2026-09-02, THE COMPLEX STENCIL ROUND: the two CUDA welds that
+    # 85 -> 87 on 2026-09-02, the complex stencil change: the two CUDA welds that
     # close the LAST two cells the hand-CUDA board recorded UNBUILDABLE --
     # cuda_kernels/folded_complex_offdiag_fused_electric_pair.py and
     # cuda_kernels/complex_no_pml_offdiag_fused_electric_pair.py. They are the
-    # COMPLEX64 twins of the two CUDA entries the stencil round added above, and
+    # COMPLEX64 twins of the two CUDA entries the stencil change added above, and
     # like those they consult the clause with CARRIES_DEPOSIT_REPAIR=FALSE for the
-    # same MEASURED reason rather than by default: `deposit_repair.repairable`
+    # same measured reason rather than by default: `deposit_repair.repairable`
     # refuses an off-diagonal chi1inv row BY NAME, and every row of both cells has
     # one installed because the constitutive arm REQUIRES it. So they consult the
     # clause exactly to refuse every electric deposit, which is what puts them on
@@ -1880,7 +1880,7 @@ def test_every_fused_pair_predicate_carries_the_flag_the_gate_reads():
     #            to "the family's own coverage predicate ... Checking it twice would let
     #            the two answers disagree" (fused_pairs.py:85-90). It declares the flag,
     #            so it never showed up as MISSING -- it inflated the count only, which is
-    #            how a false consumer hides. The same round's `dispatch_preference.py`
+    #            how a false consumer hides. The same change's `dispatch_preference.py`
     #            would have been an 88th of the same kind: it names the clause to say
     #            what the eventual wiring site will call, holds no product and consults
     #            nothing, and a raw grep demanded a fused-pair flag from an arbitration
@@ -1991,7 +1991,7 @@ def test_no_site_hard_codes_the_flag_instead_of_reading_its_module_constant():
 def test_each_predicate_asks_about_the_seam_its_own_refusal_names():
     """The seam argument and the refusal prose are two statements of the same fact.
 
-    CAUGHT A REAL BUG. The twenty-one clauses were delegated mechanically, with the seam
+    Caught a real bug. The twenty-one clauses were delegated mechanically, with the seam
     inferred from each site's `== / != MAGNETIC_FIELD_TYPE` test.
     `metal_kernels/complex_conductive_fused_pair.py` spells that condition differently and
     was assigned seam 'B' while its refusal says "is electric ... BETWEEN step_D and
@@ -2048,8 +2048,8 @@ def test_each_predicate_asks_about_the_seam_its_own_refusal_names():
     # and whose seam is 'D' -- the polarity this scan exists to keep honest, and the
     # first D-side unfolded product to state it.
     # +9 = 35 ON 2026-08-30: the same nine new products the consumer count above gained,
-    # every one of them stating its polarity in prose and checked here. SIX OF THE NINE
-    # ARE D-SIDE -- beta_fused_electric_pair, complex_fused_electric_pair,
+    # every one of them stating its polarity in prose and checked here. Six of the nine
+    # are D-side -- beta_fused_electric_pair, complex_fused_electric_pair,
     # folded_complex_fused_pair, folded_beta_complex_fused_pair,
     # folded_beta_real_fused_pair and folded_fused_dispersive_pair, against three B-side
     # (folded_beta_real_fused_magnetic_pair and the two CUDA products). That is the
@@ -2057,7 +2057,7 @@ def test_each_predicate_asks_about_the_seam_its_own_refusal_names():
     # came from: a D-seam product mis-assigned 'B' refuses the magnetic source it should
     # admit and ADMITS the electric one it must repair. All six were read back from the
     # `seam_source_reasons` call itself and answer 'D'.
-    # THIS COUNT TRAILS THE CONSUMER COUNT BY ONE and always has:
+    # This count trails the consumer count by one and always has:
     # triton_kernels/coverage.py is parameterised by `pair` and leaves via the
     # `pair is None` branch above, so 37 consumers give 36 prose-bearing sites.
     # +1 = 36 on 2026-08-30 with the Triton D->E complex pair named above; it states
@@ -2066,7 +2066,7 @@ def test_each_predicate_asks_about_the_seam_its_own_refusal_names():
     # +3 = 39 on 2026-08-30, and the arithmetic is the tell that the pairing held:
     # the consumer count above gained FOUR and this one gains THREE, because
     # cuda_kernels/fused_pairs.py is the CUDA block's installer rather than a
-    # predicate and states no refusal prose of its own. ALL THREE ARE D-SIDE --
+    # predicate and states no refusal prose of its own. All three are D-side --
     # triton cylindrical_fused_electric_pair, triton complex_conductive_fused_pair
     # and cuda fused_electric_pair -- and D is the side this scan's docstring bug
     # came from: a D-seam product mis-assigned 'B' refuses the magnetic source it
@@ -2119,7 +2119,7 @@ def test_each_predicate_asks_about_the_seam_its_own_refusal_names():
         # track as well as on Metal and Triton -- and that pairing is what this scan
         # is sharpest on, because a D-seam product mis-assigned 'B' (the bug in the
         # docstring above) fails here by name.
-        # THIS COUNT AND THE CONSUMER COUNT ABOVE BOTH GAINED TWO, which is the
+        # This count and the consumer count above both gained two, which is the
         # arithmetic tell that neither new module is `pair`-parameterised: a consumer
         # that leaves through the `pair is None` branch adds to that count and not to
         # this one, as triton_kernels/coverage.py and cuda_kernels/fused_pairs.py
@@ -2131,7 +2131,7 @@ def test_each_predicate_asks_about_the_seam_its_own_refusal_names():
     # It has no magnetic twin: on the plain branch `update_H` returns without touching
     # H (stepping.py:944-945), so there is no magnetic constitutive to weld to and
     # `deposit_repair.PLAIN_PATH_SEAMS` names 'D' alone.
-    # THIS COUNT AND THE CONSUMER COUNT ABOVE BOTH GAINED ONE, which is the arithmetic
+    # This count and the consumer count above both gained one, which is the arithmetic
     # tell that the new module is not `pair`-parameterised.
     # +1 = 51 on 2026-08-31: cuda_kernels/no_pml_complex_fused_electric_pair.py.
     # D-SIDE, read back from its own `seam_source_reasons` call, which answers 'D'
@@ -2139,11 +2139,11 @@ def test_each_predicate_asks_about_the_seam_its_own_refusal_names():
     # update_E (driver.py:3305/:3308)". It has no magnetic twin on this track: with no
     # absorber `update_H` returns without touching H (stepping.py:944-945), so the B
     # seam's constitutive half is the `cuda_no_pml` NULL arm and there is no
-    # constitutive launch to weld a curl to -- the board reports that cell "NOT A
-    # FUSION CANDIDATE" for exactly that reason.
-    # THIS COUNT AND THE CONSUMER COUNT ABOVE BOTH GAINED ONE, which is the arithmetic
+    # constitutive launch to weld a curl to -- the board reports that cell "not a
+    # fusion candidate" for exactly that reason.
+    # This count and the consumer count above both gained one, which is the arithmetic
     # tell that the new module is not `pair`-parameterised.
-    # +2 = 53, owed by the 2026-08-31 folded-beta round and recorded here on
+    # +2 = 53, owed by the 2026-08-31 folded-beta change and recorded here on
     # 2026-09-01: triton_kernels/folded_beta_fused_electric_pair.py (D-SIDE) and
     # triton_kernels/folded_beta_fused_magnetic_pair.py (B-SIDE), the same two
     # modules the consumer count's stale-entry note names — their prose was read
@@ -2159,14 +2159,14 @@ def test_each_predicate_asks_about_the_seam_its_own_refusal_names():
     # the reason the Triton entry at 50 records: on the plain branch `update_H`
     # returns without touching H (stepping.py:944-945), so there is no magnetic
     # constitutive to weld to and `deposit_repair.PLAIN_PATH_SEAMS` names 'D'
-    # alone. THIS COUNT AND THE CONSUMER COUNT ABOVE BOTH GAINED TWO, the
+    # alone. This count and the consumer count above both gained two, the
     # arithmetic tell that neither new module is `pair`-parameterised.
     # +5 = 60 on 2026-09-02: the five residual CUDA magnetic welds. ALL B-SIDE,
     # each read back from its own `seam_source_reasons` call answering 'B'
     # against prose reading "is magnetic: the driver injects it BETWEEN step_B
     # and update_H". This count and the consumer count above both gained five,
     # the arithmetic tell that none of the new modules is `pair`-parameterised.
-    # +4 = 64 on 2026-09-01: the four METAL RESIDUE welds. Three D-SIDE
+    # +4 = 64 on 2026-09-01: the four Metal welds closing the remaining gaps. Three D-SIDE
     # (metal_kernels/bfast_fused_electric_pair.py,
     # metal_kernels/conductive_fused_electric_pair.py — whose prose adds "and on
     # a conductive row through _inject_electric_through_conductivity" —
@@ -2181,7 +2181,7 @@ def test_each_predicate_asks_about_the_seam_its_own_refusal_names():
     # the driver injects it BETWEEN step_B and update_H"). This count and the
     # consumer count above both gained two, the arithmetic tell that neither new
     # module is `pair`-parameterised.
-    # +5 = 71 on 2026-09-02: the five CUDA ELECTRIC TWINS of the residue round.
+    # +5 = 71 on 2026-09-02: the five CUDA electric twins closing the remaining gaps.
     # ALL D-SIDE, each read back from its own `seam_source_reasons` call
     # answering 'D' against prose reading "is electric: the driver injects it
     # BETWEEN step_D and update_E". This count and the consumer count above
@@ -2190,18 +2190,18 @@ def test_each_predicate_asks_about_the_seam_its_own_refusal_names():
     # +2 = 73 on 2026-09-02: the two TRITON FOLDED COMPLEX-BETA welds, one
     # D-side and one B-side, each with its beta-less twin's prose. Both counts
     # gained two, the arithmetic tell that neither is `pair`-parameterised.
-    # +6 = 79 on 2026-09-02, THE STENCIL ROUND. Six of the eight new consumers
+    # +6 = 79 on 2026-09-02, the stencil change. Six of the eight new consumers
     # above carry the prose (the two whose modules hold the clause but not a
     # per-module refusal string are counted by the consumer walk alone), all
     # D-SIDE, each reading "is electric: the driver injects it BETWEEN step_D and
     # update_E" with the off-diagonal repair refusal named beside it. Both counts
     # moving together is the arithmetic tell that none of the new modules is
     # `pair`-parameterised.
-        # +2 = 81 on 2026-09-02, THE COMPLEX STENCIL ROUND: the two CUDA welds on
+        # +2 = 81 on 2026-09-02, the complex stencil change: the two CUDA welds on
         # the last two UNBUILDABLE cells, both D-SIDE and each reading "is
         # electric: the driver injects it BETWEEN step_D and update_E" with the
         # off-diagonal repair refusal named beside it -- the complex64 twins of
-        # the two CUDA entries the stencil round added. Both counts moving
+        # the two CUDA entries the stencil change added. Both counts moving
         # together is the arithmetic tell that neither is `pair`-parameterised.
     assert len(checked) == 81, f"expected 81 prose-bearing sites, found {len(checked)}: {sorted(checked)}"
 
@@ -2364,7 +2364,7 @@ def _repair_pair(fields, policy, pair, curl, update):
 @pytest.mark.parametrize("pair,curl,update", REPAIR_SEAMS)
 def test_a_lapse_between_a_deposit_repair_pairs_consults_cannot_split_it(
         pair, curl, update, stubbed_repair_io):
-    """THE SAME DOUBLE-APPLY, on the shape most of the released pairs actually are.
+    """The same double-apply, on the shape most of the released pairs actually are.
 
     The sentinel shape has been covered since the clause was written. This one was not,
     while the clause's own comment said it was: in the repair shape BOTH slots carry
@@ -2422,7 +2422,7 @@ def _sentinel_pair(fields, policy, _pair, curl, update):
 @pytest.mark.parametrize("pair,curl,update", REPAIR_SEAMS)
 def test_a_step_that_never_reaches_the_absorbed_consult_cannot_poison_the_next(
         build, pair, curl, update, stubbed_repair_io):
-    """A COMMITMENT MUST NOT OUTLIVE ITS STEP, and a leaked one SKIPS a sub-step.
+    """A commitment must not outlive its step, and a leaked one SKIPS a sub-step.
 
     The commitment used to be released only by the absorbed consult that consumed it, so
     a step that reached the leading consult and not the absorbed one — an exception
@@ -2449,7 +2449,7 @@ def test_a_step_that_never_reaches_the_absorbed_consult_cannot_poison_the_next(
 
 
 def test_adding_a_source_after_the_freeze_replans():
-    """THE SOURCE LIST IS A PLAN INPUT, so it must invalidate like the material ones.
+    """The source list is a plan input, so it must invalidate like the material ones.
 
     Harmless until 2026-08-23: `plan_fast_path` never saw the source list, so a source
     added after the configuration froze could not stale a plan. It is an input now — the
@@ -2491,7 +2491,7 @@ def test_adding_a_source_after_the_freeze_replans():
 
 
 def test_every_triton_routed_module_has_decided_about_the_bracket():
-    """THE TRITON PARTITION, exact in both directions, as Metal's and CUDA's are.
+    """The Triton partition, exact in both directions, as Metal's and CUDA's are.
 
     Until the 2026-09-02 installer wave the Triton composer's reach was bounded by
     a CALL COUNT alone: three hand-written branches, three calls, and a reader

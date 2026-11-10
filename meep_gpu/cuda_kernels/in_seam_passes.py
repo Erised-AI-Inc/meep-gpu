@@ -1,6 +1,6 @@
 """Raw-CUDA device code for the three in-seam passes: the wall wipe and two ghost fills.
 
-WHAT WAS MISSING. Between a curl and the constitutive update that closes it, the
+What was missing. Between a curl and the constitutive update that closes it, the
 driver runs three passes (driver.py:3284-3286 on the B side, :3300-3302 on the
 D side)::
 
@@ -30,7 +30,7 @@ device code a CUDA sub-step returns to the host between the curl and the
 constitutive BY CONSTRUCTION, and there is nothing for a fused pair to absorb.
 
 =============================================================================
-THIS IS NOT A FUSED PRODUCT AND MUST NOT BE READ AS ONE
+This is not a fused product and must not be read as one
 =============================================================================
 
 Nothing here fuses. Each pass is its own launch, gated on its own, against the
@@ -44,7 +44,7 @@ directions). Certification here is a statement about six kernels, not about any
 run.
 
 =============================================================================
-WHAT IS TRANSCRIBED, AND FROM WHERE
+What is transcribed, and from where
 =============================================================================
 
 Every rule below cites ``../stepping.py`` by name and line, read off the file on
@@ -71,28 +71,28 @@ The predicate and every per-axis derivation live in the CUPY-FREE sibling
 laptop; this module is the device text and the launch.
 
 =============================================================================
-THE FOUR THINGS THAT DECIDE BIT-IDENTITY HERE
+The four things that decide bit-identity here
 =============================================================================
 
-1. THE PARITY IS A MULTIPLY BY EXACTLY +/-1.0f, AND IT IS A MULTIPLY.
+1. The parity is a multiply by exactly +/-1.0f, and it is a multiply.
    The array path writes ``phase * field[...]`` with ``phase`` a Python int
    (stepping.py:1497, :1585); under NumPy/CuPy weak promotion that is a float32
    elementwise MULTIPLY, not a copy and not a sign flip.
 
-   A COPY IS NOT THE SAME BYTES UNDER THE FLUSH POLICY, which is why the
+   A copy is not the same bytes under the flush policy, which is why the
    ``phase == +1`` case is NOT special-cased into an assignment. Under
    ``"flush"`` CuPy compiles with ``-ftz=true`` (subnormal_policy.py header),
    so ``1.0f * x`` FLUSHES a subnormal operand to zero on both paths; a copy
    would preserve it and diverge on exactly the values the policy exists to
    decide. The gate arms this as ``copy_instead_of_multiply``, whose verdict is
-   EXPECTED TO DIFFER BY POLICY and is reported as a measurement rather than
+   expected to differ by policy and is reported as a measurement rather than
    scored as a clause.
 
    Negation is likewise spelled ``-phase`` on the SCALAR, once, and the parity
    then multiplies -- never ``-(phase * x)``, which would put a ``neg.f32``
    after an operation the array path has no counterpart for.
 
-2. THE AXES ARE APPLIED IN X, Y, Z ORDER, ONE LAUNCH EACH, FOR THE TWO FILLS.
+2. The axes are applied in X, Y, Z order, one launch each, for the two fills.
    ``_fill_symmetry_ghost_cells`` walks ``for term ... for axis in range(3)``,
    so a component unowned on two planes has its corner written twice and carries
    the PRODUCT of both parities -- the doubly mirrored value MEEP's
@@ -100,11 +100,11 @@ THE FOUR THINGS THAT DECIDE BIT-IDENTITY HERE
    inside one launch, so ``in_seam_coverage.plan`` returns a list and
    :func:`run_pass` walks it. The gate plants ``reverse_axis_order``.
 
-   ZERO_METAL IS ONE LAUNCH FOR ALL THREE AXES, and that is a different fact
+   ZERO_METAL is one launch for all three axes, and that is a different fact
    rather than a laxer one: its write is the constant ``+0.0f`` and it reads
    nothing, so two axes' planes commute exactly.
 
-3. THE THREE PASSES ARE THREE LAUNCHES AND MUST NOT BE MERGED. They are not
+3. The three passes are three launches and must not be merged. They are not
    independent: on a grid with a mirrored X and a metallic Y, ``Dz`` is
    near-filled on X (plane ``Dz[0, :, :]``) and wall-wiped on Y (plane
    ``Dz[:, 0, :]``), and the two planes SHARE the edge ``Dz[0, 0, :]``. The
@@ -112,7 +112,7 @@ THE FOUR THINGS THAT DECIDE BIT-IDENTITY HERE
    One launch doing both is a race on that edge. The gate's fixture carries
    exactly that configuration.
 
-4. THE FAR FILL'S IMAGE ROW IS DERIVED, NEVER BAKED. ``n_full - stored + 2`` is
+4. The far fill's image row is derived, never baked. ``n_full - stored + 2`` is
    ``stored - 2`` at an even full count and ``stored - 3`` at an odd one, because
    ``big_corner`` IS the second mirror at an even count and sits one half-cell
    above it at an odd one. The fixed ``n - 2`` reflects about the window top
@@ -121,7 +121,7 @@ THE FOUR THINGS THAT DECIDE BIT-IDENTITY HERE
    ``reflect_row_n_minus_two`` and carries both parities.
 
 =============================================================================
-THE B/D INVERSION, TRANSCRIBED AFRESH ON BOTH SIDES
+The B/D inversion, transcribed afresh on both sides
 =============================================================================
 
 ``IYEE_SHIFTS`` (fields.py:214-219) makes the two families exact opposites::
@@ -131,21 +131,21 @@ THE B/D INVERSION, TRANSCRIBED AFRESH ON BOTH SIDES
 
 so on one folded axis ``a`` the near fill (``shifts[a] == 0``) reaches ONE B
 component and TWO D components, and the far fill (``shifts[a] == 1``) reaches
-TWO B components and ONE D component. THE D SIDE IS NOT THE B SIDE MIRRORED and
+TWO B components and ONE D component. The D side is not the B side mirrored and
 was written from the table, not from the B kernel: the fusion track measured
 this inversion this week and it is precisely where an argument by analogy is
 plausible and wrong.
 
 =============================================================================
-PLATFORM FACTS THIS FILE DEPENDS ON (CUDA path)
+Platform facts this file depends on (CUDA path)
 =============================================================================
 
-* ``--fmad=false`` is carried for CONSISTENCY WITH THE TRACK, not because these
+* ``--fmad=false`` is carried for consistency with the track, not because these
   kernels contract anything: there is no ``a*b + c`` anywhere below -- every
   device expression is a single multiply or a store. The gate's unguarded
   control is therefore EXPECTED to be identical here, and the record says so
   rather than implying the guard bought something.
-* THE DEVICE STRINGS ARE PURE ASCII, a compile requirement rather than a style
+* The device strings are pure ASCII, a compile requirement rather than a style
   rule: ``cupy.cuda.compiler.compile_using_nvrtc`` writes the source with a bare
   ``open(..., 'w')``, so the bytes go through the interpreter's LOCALE encoding
   -- ASCII under C/POSIX, which is what a non-interactive shell on the
@@ -154,11 +154,11 @@ PLATFORM FACTS THIS FILE DEPENDS ON (CUDA path)
   performs the encode.
 * DIVISION: the index decomposition divides on INTEGERS (``t / nz``), never on
   floats, so the ``div.rn.f32`` / ptxas-FTZ exception on record does not apply.
-* SIGNED ZERO: CUDA does not canonicalize it. ``-phase`` on the host-supplied
+* Signed zero: CUDA does not canonicalize it. ``-phase`` on the host-supplied
   scalar is exact for +/-1.0f and nothing below relies on the answer for zero.
 
 =============================================================================
-A KERNEL WITH A GATE VERDICT MOVES SETS
+A kernel with a gate verdict moves sets
 =============================================================================
 
 ``CERTIFIED_KERNELS`` needs a record block in ``certification.json``;
@@ -236,10 +236,10 @@ UNCERTIFIED_KERNELS = {}
 
 
 # =============================================================================
-# THE DEVICE CODE
+# The device code
 # =============================================================================
 #
-# THE PLANE DECOMPOSITION, ONCE. Every kernel below addresses ONE FACE of a
+# The plane decomposition, once. Every kernel below addresses ONE FACE of a
 # C-contiguous (nx, ny, nz) volume. For axis `a` the face holds every cell whose
 # `a` coordinate is fixed, and one thread owns one cell of it:
 #
@@ -252,7 +252,7 @@ UNCERTIFIED_KERNELS = {}
 # The divisions are INTEGER divisions on the thread index; nothing here divides a
 # float.
 #
-# WHY THE AXIS IS A RUNTIME ARGUMENT and not a compile-time constant: one device
+# Why the axis is a runtime argument and not a compile-time constant: one device
 # string per (pass, family) rather than three, so one digest covers every fold
 # orientation and the certification record cannot end up pinning a per-axis
 # variant nobody ran. The branch is uniform across the whole launch.
@@ -294,20 +294,20 @@ __device__ __forceinline__ int face_geometry(
 #             if shifts[axis] == 0:
 #                 array[_face(axis, 0)] = 0
 #
-# STORED CELL 0 IS THE LOW WALL. The HIGH wall is MEEP's slot N, which this
+# Stored cell 0 is the low wall. The HIGH wall is MEEP's slot N, which this
 # engine does not store: `_shift_up` supplies it as the zero ghost, so the pair
 # of walls is complete without the extra plane and this kernel writes ONE face
 # per walled axis.
 #
-# THE WALLED SET EXCLUDES A FOLDED METALLIC AXIS and the host decides that
+# The walled set excludes a folded metallic axis and the host decides that
 # (`in_seam_coverage.zero_metal_axes`). Writing a wall there does not impose a
 # boundary, it destroys the fold: 1.28e+00 complex relative L2 against CPU MEEP
 # with the fold's ghost zeroed, against 2.0e-07 with the skip in place.
 #
-# THE VALUE IS `+0.0f`. The array path assigns the Python int 0 into a float32
+# The value is `+0.0f`. The array path assigns the Python int 0 into a float32
 # array, which is +0.0 and never -0.0; the gate plants `write_negative_zero`.
 #
-# ONE LAUNCH, THREE AXES, and the three flags are runtime ints. A store of a
+# One launch, three axes, and the three flags are runtime ints. A store of a
 # constant reads nothing, so a cell on two walled faces is written zero twice in
 # either order.
 
@@ -380,12 +380,12 @@ extern "C" __global__ void zero_metal_D(
 # where the component's Yee shift on the axis is 0. The source row is
 # MIRROR_SOURCE_INDEX = 2 (stepping.py:160).
 #
-# THE PARITY IS `+phase` AND NOTHING ELSE ON THIS PASS. mirror_parity(c, a, ph)
+# The parity is `+phase` and nothing else on this pass. mirror_parity(c, a, ph)
 # == ph * (1 - 2*iyee[c][a]) -- measured over all 72 component/axis/phase
 # combinations against fields.mirror_parity -- and this pass only ever touches
 # shift-0 components, so the factor is the plane's declared phase itself.
 #
-# ONE LAUNCH PER FOLDED AXIS, X then Y then Z. The corner of a doubly unowned
+# One launch per folded axis, X then Y then Z. The corner of a doubly unowned
 # component carries the PRODUCT of both parities because the second axis's fill
 # reads a plane the first already wrote, and that is only reproducible if the
 # axes are ordered.
@@ -446,23 +446,23 @@ extern "C" __global__ void fill_symmetry_D(
 #             if shifts[axis] != 1: continue
 #             field[_face(axis, -1)] = mirror_parity(target, axis, phase) * field[_face(axis, reflect_row)]
 #
-# WHERE THE PASS RUNS AT ALL: only on a FOLDED PERIODIC axis, at either full-count
+# Where the pass runs at all: only on a FOLDED PERIODIC axis, at either full-count
 # parity. That is `stepping._stored_past_owned` (:1454-1469) -- the one place
 # `Grid.stored_cells` exceeds `Grid.owned_cells`, because the stored array carries
 # MEEP's big_corner plane AND the shift-1 slot half a cell past it (update_ntot's
 # num + 1, vec.cpp:293-296) that connect_the_chunks fills. A folded METALLIC axis
 # has no such slot and keeps its unstored zero ghost.
 #
-# THE PARITY IS `-phase` ON THIS PASS. Only shift-1 components are touched, so
+# The parity is `-phase` on this pass. Only shift-1 components are touched, so
 # mirror_parity = phase * (1 - 2*1) = -phase. Spelled as a negation of the SCALAR,
 # once, and then multiplied -- never as a negation of the product.
 #
-# THE IMAGE ROW IS `n_full - stored + 2`, DERIVED ON THE HOST
+# The image row is `n_full - stored + 2`, derived on the host
 # (`stepping._far_reflect_rows`, :1661-1692), and it is `stored - 2` at an even
 # full count and `stored - 3` at an odd one. Both parities are swept; the fixed
 # `n - 2` is planted as a mutation.
 #
-# THE COMPONENT SETS ARE THE NEAR FILL'S, EXCHANGED BETWEEN THE FAMILIES, and
+# The component sets are the near fill's, exchanged between the families, and
 # that is the fusion track's measured warning: on the D side the near fill reaches
 # two components and the far one, and on the B side it is the other way round.
 # Written from IYEE_SHIFTS on each side rather than mirrored from the other.
@@ -518,7 +518,7 @@ extern "C" __global__ void fill_folded_far_D(
 '''
 
 # NVRTC compile options. ``--fmad=false`` is carried for consistency with every
-# other kernel on this track; NOTHING BELOW CONTRACTS -- there is no ``a*b + c``
+# other kernel on this track; nothing below contracts -- there is no ``a*b + c``
 # in any of the six device strings -- so the gate's unguarded control is expected
 # to be identical here and the record says so rather than implying the guard
 # bought an answer. Spelled here rather than imported so that loading this file by
@@ -553,7 +553,7 @@ KERNEL_FOR: Dict[Tuple[str, str], str] = {
 
 
 def _code_map() -> Dict[str, str]:
-    """The six device strings, READ FRESH ON EVERY CALL.
+    """The six device strings, read fresh on every call.
 
     That is load-bearing for the same reason it is in the sibling modules: the
     source is part of the compile memo key, so the map has to be read before a
@@ -639,7 +639,7 @@ def launch_fill_symmetry(fields: "Fields", family: str, axis: int,
                          phase: int) -> Dict[str, Any]:
     """``stepping.fill_symmetry_bc_B``/``_D`` for ONE folded axis.
 
-    ONE AXIS PER CALL because the array path's corner carries the product of both
+    One axis per call because the array path's corner carries the product of both
     parities and only an ordered walk reproduces it. :func:`run_pass` walks
     ``in_seam_coverage.plan``, which is that order.
     """
@@ -691,18 +691,18 @@ def run_pass(pass_name: str, fields: "Fields", family: str, *,
              launches: Optional[Sequence[Dict[str, Any]]] = None) -> Tuple[Dict[str, Any], ...]:
     """Run one whole in-seam pass on one family, in the array path's own order.
 
-    SUPPLY ``grid`` AND THE LAUNCH LIST IS DERIVED HERE, by ``in_seam_coverage.plan``
+    Supply ``grid`` and the launch list is derived here, by ``in_seam_coverage.plan``
     -- the same function the predicate's derivations come from, so the launcher and
     the predicate cannot disagree about which axes a pass visits, what parity each
     carries, or which row the far ghost images.
 
-    ``launches`` IS THE GATE'S DOOR and is keyword-only and named for what it is:
+    ``launches`` is the gate's door and is keyword-only and named for what it is:
     the gate feeds DELIBERATELY WRONG plans (a reversed axis order, a baked
     ``n - 2`` image row, a flipped parity), and a launcher that could not be handed
     its own plan could not arm those mutations. Passing both, or neither, is
     refused: a caller with a grid AND a plan has two answers to one question.
 
-    THE THREE PASSES ARE NEVER MERGED HERE. They share planes -- a near fill on a
+    The three passes are never merged here. They share planes -- a near fill on a
     mirrored X and a wall wipe on a metallic Y meet on one edge of ``Dz`` -- and
     the driver's order (fill, wipe, far fill) is what decides that edge.
     """

@@ -14,7 +14,7 @@ ONE kernel, one predicate, two plan builders. The kernel is
   evaluates every form over the whole volume and selects with ``copyto``, where
   this kernel evaluates them per cell and stores once.
 
-THE FORMS ARE CHOSEN PER STRUCTURE CHUNK, from THREE per-chunk facts, as MEEP chooses
+The forms are chosen per structure chunk, from THREE per-chunk facts, as MEEP chooses
 them (``step_generic.cpp::step_curl``, step_db.cpp:56-59, structure.cpp:883-900): does
 the cell's chunk carry the dsig layer, does it carry the dsigu layer, and does it
 keep a conductivity array for the component. The first two are lines of the run's
@@ -43,25 +43,25 @@ this order (``stepping._apply_conductive_pml_update``)::
                                         dsigu cells, ``((f*km1) - X) * si1`` elsewhere
 
 The increment ``(c' - c)`` is formed FIRST and then added: MEEP's grouping
-(step_generic.cpp:167, :209). ``((u*km1) + c') - c`` is a different float32 number
-and is what this kernel carried before the alignment. "kept" is the auxiliary
-contract: ``u`` is read and written on dsigu cells only and ``c`` on the dsig cells
-of conductive chunks only; everywhere else neither is loaded nor stored. ``cf`` and
-``ci`` are FULL VOLUMES of ``grid.shape``, per component (``condfac = 1 -
+(step_generic.cpp:167, :209). ``((u*km1) + c') - c`` is a different float32 number and
+is what this kernel carried before it took MEEP's association order. "kept" is the
+auxiliary contract: ``u`` is read and written on dsigu cells only and ``c`` on the
+dsig cells of conductive chunks only; everywhere else neither is loaded nor stored.
+``cf`` and ``ci`` are FULL VOLUMES of ``grid.shape``, per component (``condfac = 1 -
 sigma*dt/2``, ``condinv = 1/(1 + sigma*dt/2)``, MEEP structure.cpp:693-706).
 
-THE SELECTS ARE OUTPUT SELECTS. Every form is evaluated on whatever the masked loads
+The selects are output selects. Every form is evaluated on whatever the masked loads
 delivered and ``tl.where`` chooses a word; nothing a discarded form computes feeds a
 retained one, and a discarded form never reaches a store. The form a cell takes is
 membership, never coefficient identity: a cell inside a chunk whose own sigma is
 exactly zero (coefficients exactly 1) still takes its chunk's form, which is where
 the two differ.
 
-DO NOT REGROUP THE PARENTHESES ABOVE, and do not let a multiply contract into an FMA.
+Do not regroup the parentheses above, and do not let a multiply contract into an FMA.
 ``ENABLE_FP_FUSION`` is spelled once for the whole package, in :mod:`kernels`, and
 this file's single launch site passes it.
 
-PER-COMPONENT CONDUCTIVITY IS A CONSTEXPR. ``_apply_curl`` reads
+Per-component conductivity is a constexpr. ``_apply_curl`` reads
 ``fields.condfac_for(term.target)`` PER COMPONENT, and a ``D_conductivity_diag`` with
 a zero entry, or a material sigma on one component only, leaves a component lossless
 beside two lossy ones. ``COND0``/``COND1``/``COND2`` carry that per component: where
@@ -71,22 +71,22 @@ partially conductive launch is identical on its lossless components by construct
 Both the predicate and the constexpr read :func:`conductive_targets`, so the check
 and the compile-time choice cannot disagree.
 
-WHAT ELSE IS TRANSCRIBED. The curl, the ghost rule and the ownership mask are
+What else is transcribed. The curl, the ghost rule and the ownership mask are
 :func:`.kernels.pml_curl_step`'s: conductivity enters ``_apply_curl`` only after the
 curl is formed, so this kernel's head is that kernel's head line for line, stencil
 through :func:`.forms.curl_stencil` and the record's presence word included, and
 ``test_triton_conductivity`` diffs the two textually.
 
-WHAT THE GATE MEASURES (``parity/meep_gpu/gate_triton_conductivity.py``): its
+What the gate measures (``parity/meep_gpu/gate_triton_conductivity.py``): its
 reference against ``stepping._apply_conductive_pml_update`` itself, bytewise on NumPy
 (the ``validate`` leg, at the merge bar through ``test_triton_conductivity``); the
 single-launch sweep over shapes x boundary sets x dtdx {0.5, 0.35} x {step_B, step_D}
 x conductivity pattern x chunk division x conductive-chunk volume, comparing the
 target, its ``fu`` and its ``f_cond`` as bytes; the multi-step, decay and control
-legs; and the source mutations, with the inversions of KERNELS.md section 7.1 and the
-B battery of section 7.2. The 2026-08-10 / 2026-08-19 device record
+legs; and the source mutations, including the inverted grouping mutations and the
+per-chunk form battery (docs/development/certification.md#chunk-form-battery). The 2026-08-10 / 2026-08-19 device record
 (``results/triton_conductivity_2026-08-10/``) measured the forms this kernel carried
-before the alignment; this body has not been re-gated on a device beyond lane smoke.
+before taking MEEP's forms; this body has not been re-gated on a device beyond a smoke run.
 
 Dispatch is governed by ``fastpath`` and the subnormal policy as for every Triton
 kernel. Every one of the conductive forms multiplies by ``condfac*condinv < 1`` every
@@ -130,7 +130,7 @@ DSIG_AXES: Tuple[Tuple[int, int], ...] = ((1, 2), (2, 0), (0, 1))
 def conductive_targets(fields: Any, sub_step: str) -> Tuple[bool, bool, bool]:
     """Which of this sub-step's three targets carry a conductivity.
 
-    THE SINGLE PLACE THAT DECIDES IT. Both :func:`conductive_pml_curl_coverage`
+    The single place that decides it. Both :func:`conductive_pml_curl_coverage`
     and the ``COND0``/``COND1``/``COND2`` constexprs read this function, so the
     clause and the compile-time choice cannot disagree. Getting them out of step
     is the over-covering failure the module docstring names: a lossless component
@@ -212,7 +212,7 @@ if triton is not None:  # pragma: no cover - device code, gated by the shared ga
         component's conductive-chunk volume), and there the lossless pair is selected
         instead, as the array path selects it.
 
-        THE STORE MASKS ARE THE AUXILIARY CONTRACT. ``u`` is loaded and stored only
+        The store masks are the auxiliary contract. ``u`` is loaded and stored only
         where ``du``, ``c`` only where ``ds`` in a conductive chunk; ``f`` is stored on
         every live cell. ``live`` is ANDed into every mask: past the end of the array
         a membership test still answers, and a store without ``live`` writes past
@@ -233,7 +233,7 @@ if triton is not None:  # pragma: no cover - device code, gated by the shared ga
             cf = tl.load(cf_ptr + idx, mask=live, other=0.0)
             ci = tl.load(ci_ptr + idx, mask=live, other=0.0)
 
-            # The conductive forms. DO NOT REGROUP THESE PARENTHESES: the increment
+            # The conductive forms. Do not regroup these parentheses: the increment
             # (c_new - c) is formed before it is added (MEEP's grouping).
             c_new = ((c * cf) - curl) * ci                     # dsig cells
             increment = c_new - c
@@ -440,7 +440,7 @@ def _shared_grid_reasons(fields: Any, pml: Any, grid: Any) -> List[str]:
                 reasons.append(f"axis {axis} boundary {kind!r} is outside {COVERED_BOUNDARIES}")
 
     # 5. No mirror plane anywhere: a fold changes the ghost rule, adds a parity
-    #    mask at cell 0 and CHANGES THE STORED EXTENT, which moves every cell's
+    #    mask at cell 0 and changes the stored extent, which moves every cell's
     #    coefficient index. The folded kernel is `symmetry.pml_curl_step_folded`
     #    and it carries no conductivity, so the intersection is nobody's yet.
     if _call(grid, "has_symmetry", default=False):
@@ -571,7 +571,7 @@ def conductive_pml_curl_coverage(fields: Any, pml: Any, sub_step: str) -> Covera
                                f"conductive (Fields._ensure_conductive_pml_storage)")
             elif len(shape) == 3:
                 reasons.extend(_volume_reasons(f"f_cond_{target}", history, shape))
-            # WHICH CHUNKS KEEP IT is the forms' third test, and it is read from the
+            # Which chunks keep it is the forms' third test, and it is read from the
             # component's own conductivity volume (Fields.conductivity_for, MEEP's
             # s->conductivity[c][d]); a component whose volume cannot be read cannot
             # have that test answered.
@@ -615,7 +615,7 @@ class ConductivePmlCurlPlan:
     ``None`` when every chunk keeps it; a volume is bound as ``uint8`` and its
     target's ``CMASK`` is 1. It is meaningful only for a conductive target.
 
-    A LOSSLESS COMPONENT BINDS ITS OWN TARGET AS THE PLACEHOLDER for the three
+    A lossless component binds its own target as the placeholder for the three
     conductive slots, and every component without a conductive-chunk volume does
     for the fourth, never a null. The loads sit behind a ``tl.constexpr`` branch and
     are compiled away, but a pointer argument still has to type, and passing
@@ -678,7 +678,7 @@ class ConductivePmlCurlPlan:
         # An override for exactly one caller: the gate's source-mutation leg,
         # which compiles a deliberately broken copy of this kernel. Dropping it is
         # not a slowdown, it is a DISARMING — every mutation leg would then launch
-        # the shipped kernel and report the defect as uncaught (§13.4's family).
+        # the shipped kernel and report the defect as uncaught.
         self._kernel = kernel
 
     def run(self, guard: Optional[bool] = None) -> None:

@@ -38,7 +38,7 @@ def _live_probe_is_welded(record, weld_name, repo_key, path):
     executed?" — and it is answered by the weld, which is the record that carries
     a status, a policy and an artifact digest.
 
-    A MISSING WELD IS A NAMED FAILURE, never a skip. The probe was re-cut on
+    A missing weld is a named failure, never a skip. The probe was re-cut on
     device on 2026-08-19 and the weld entry is pending application to
     fingerprints.json; until it lands this test says so, with the digest to apply.
     A skip here would let the tree sit indefinitely with a probe no record covers,
@@ -99,7 +99,7 @@ def test_the_module_is_importable_without_triton_and_refused_before_launch():
 )
 def test_only_electric_injection_occupies_the_dispersive_D_E_seam(
         monkeypatch, sources, refused):
-    """WHICH FAMILY LANDS IN THIS SEAM, asked with the deposit repair not declared.
+    """Which family lands in this seam, asked with the deposit repair not declared.
 
     The seam assignment and what the product does about it are two facts. This one is
     the assignment, and it is unchanged by the flip: a magnetic source is injected in
@@ -258,7 +258,7 @@ def test_the_cuda_gate_has_multi_pole_metallic_and_second_oracle_cases():
         "two_pole_electric_source",
     ]
     assert sum(case[3] for case in probe.CASES) == 48
-    # THE DEPOSIT CASE IS THE ONE THAT EARNS THE DECLARATION, so it is pinned by shape
+    # The deposit case is the one that earns the declaration, so it is pinned by shape
     # and not merely by name: exactly one case declares a source, it is electric, and it
     # runs on a metallic axis so the inline wall clear is live in the same seam.
     with_sources = [case for case in probe.CASES if case[4]]
@@ -292,7 +292,7 @@ def test_the_fused_dispersive_record_is_welded_to_every_live_dependency():
     assert specialized["kernel"] == "fused_curl_dispersive_E"
     module_path = pathlib.Path(module.__file__)
     live = hashlib.sha256(module_path.read_bytes()).hexdigest()
-    # ONE HOME FOR THE RULE (device_identity.py:209). This entry pins a
+    # One home for the rule (device_identity.py:209). This entry pins a
     # specialized kernel module, and what a kernel computes is its ``@triton.jit``
     # body plus the constants that body reads — so an edit the shared rule proves
     # leaves those alone leaves the record describing the shipped kernel. The
@@ -306,8 +306,8 @@ def test_the_fused_dispersive_record_is_welded_to_every_live_dependency():
 
     gate = record["dispersive_fused_pair_gate"]
     assert record["current_host_gate"] in record
-    # 36/36 -> 48/48 ON 2026-08-30, and the number moved because the GATE GAINED A
-    # CASE, not because this pin was loosened. The 2026-08-11 run measured three
+    # 36/36 -> 48/48 ON 2026-08-30, and the number moved because the gate gained a
+    # case, not because this pin was loosened. The 2026-08-11 run measured three
     # pole products at 12 complete steps each; the 2026-08-30 re-run measures four,
     # adding ``two_pole_electric_source`` -- the IN-SEAM DEPOSIT case, which is the
     # whole reason the family was re-gated once ``deposit_repair`` started carrying
@@ -344,7 +344,7 @@ def test_the_fused_dispersive_record_is_welded_to_every_live_dependency():
     # central dependency closure in test_triton_kernels.
     for name in live:
         assert len(gate["source_sha256"][name]) == 64, name
-    # THE LIVE-PROBE PIN MOVED, and the historical entry is left alone.
+    # The live-probe pin moved, and the historical entry is left alone.
     #
     # It used to read ``gate["probe_sha256"] == sha256(PROBE)`` — the 2026-08-11
     # Slurm job's probe digest compared against whatever is on disk today. That
@@ -369,7 +369,7 @@ def test_the_fused_dispersive_record_is_welded_to_every_live_dependency():
 
 
 # ---------------------------------------------------------------------------
-# The per-chunk forms (bit_parity_0_10 WP KT6), read off the parse tree
+# The per-chunk forms of the Triton dispersive kernels, read off the parse tree
 # ---------------------------------------------------------------------------
 
 def _kt6_function(path, name):
@@ -398,7 +398,7 @@ def _kt6_masks(function, method, pointer):
 
 def test_the_curl_half_is_the_root_fused_D_bodys_statement_for_statement():
     """Everything through the six curl stores is ``kernels.fused_curl_constitutive_D``'s
-    (KT1): the record's presence word and ``forms.curl_stencil``, the recurrence on the
+    (the root kernel): the record's presence word and ``forms.curl_stencil``, the recurrence on the
     dsigu cells through ``forms.curl_form``, ``fu`` read and written there only."""
     import ast as _ast
 

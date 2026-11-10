@@ -16,7 +16,9 @@ are pure: no MEEP, no GPU, no conda, no network.
   of the same build, the documented hdf5 exception (that build and no other), a pip-only
   install, a PyPI package replaced by a conda build, a pip install over a conda build,
   a wheel's build tag, the host floor, the marker of a solved build;
-* MEEP judged against the build the reference names (version, precision, MPI);
+* MEEP judged against the build the reference names (version, precision, MPI), which is
+  the release the build scripts name in one place each (``MEEP_VERSION`` and the tarball's
+  SHA-256), asserted at step 8 and written into the record;
 * the verdict line, and ``--require-reference`` as an exit status, through the tool's
   command line on a synthetic prefix and through check_install's step 7, which also
   fails on a MEEP that is not the reference's;
@@ -24,17 +26,21 @@ are pure: no MEEP, no GPU, no conda, no network.
   configure MEEP, and their step 1b, run against a stand-in conda, accepts the lock and
   refuses one changed line or a conda that fails; they clear the calling environment and
   refuse the retired knobs by name;
-* the corpus-only packages (``corpus_only``): pinned in every pip lock or held by every
-  conda lock and judged by no numerics set; reported apart and never counted in the
+* the corpus-only packages (``corpus_only``): pinned in the pip lock or held by the conda
+  lock of every platform they apply on (an entry may name its ``platforms``) and judged by
+  no numerics set; reported apart and never counted in the
   verdict, so an environment without them is judged on its numerics exactly as one with
   them; the stand-in held only with its pinned files; ffmpeg held only as the
   imageio-ffmpeg pin's executable; ``--require-pip-lock`` requires the pip lock's pins and
   the stand-in, exactly; the build scripts install them and check that, and step 7b links
   the pin's ffmpeg;
 * the lock re-cut (``environments/locks/recut_locks.py``): the committed locks are what
-  their inputs make, an addition moves no locked package, and a solve that moves, drops or
-  adds one is refused by name; ``additions.json`` names only what the locks hold;
-* the build record helper (``parity/meep_gpu/build_meep_133_record.py``): the corpus kept
+  their inputs make, an addition moves no locked package, a replacement or removal carrying its ``ruling``
+  changes exactly the line it names, and a solve that moves, drops or adds one, or keeps a
+  removed one, is refused by name; ``additions.json`` names only what the locks hold;
+* the build's MEEP and NumPy threads (``MEEP_GPU_BUILD_THREADS``): bounded, and refused
+  unless a positive integer;
+* the build record helper (``parity/meep_gpu/build_meep_reference_record.py``): the corpus kept
   and listed, the tarball unpacked inside its directory, the load commands, the ffmpeg
   link, the programs on the reference PATH and the record it writes;
 * the stand-in's builder (``parity/meep_gpu/rounds/1.0/build_pymiescatt_standin.py``): its
@@ -65,10 +71,10 @@ TOOL_PATH = ROOT / "tools" / "compare_reference_environment.py"
 CHECK_PATH = ROOT / "tools" / "check_install.py"
 BUILDER_PATH = ROOT / "parity" / "meep_gpu" / "rounds" / "1.0" / "build_pymiescatt_standin.py"
 RECUT_PATH = LOCK_DIR / "recut_locks.py"
-RECORD_PATH = ROOT / "parity" / "meep_gpu" / "build_meep_133_record.py"
+RECORD_PATH = ROOT / "parity" / "meep_gpu" / "build_meep_reference_record.py"
 SCRIPTS = {
-    "osx-arm64": ROOT / "parity" / "meep_gpu" / "build_meep_133_macos.sh",
-    "linux-64": ROOT / "parity" / "meep_gpu" / "build_meep_133_linux.sh",
+    "osx-arm64": ROOT / "parity" / "meep_gpu" / "build_meep_reference_macos.sh",
+    "linux-64": ROOT / "parity" / "meep_gpu" / "build_meep_reference_linux.sh",
 }
 #: How each script's step 7 installs the pip lock. The Linux script installs it one pin
 #: at a time from the parts the build record helper splits it into, so pip holds one wheel
@@ -93,7 +99,7 @@ tool = _load("reference_environment_under_test", TOOL_PATH)
 check_install = _load("check_install_under_test", CHECK_PATH)
 builder = _load("pymiescatt_standin_builder_under_test", BUILDER_PATH)
 recut = _load("recut_locks_under_test", RECUT_PATH)
-record = _load("build_meep_133_record_under_test", RECORD_PATH)
+record = _load("build_meep_reference_record_under_test", RECORD_PATH)
 
 NUMERICS = json.loads((LOCK_DIR / tool.NUMERICS_FILE).read_text(encoding="utf-8"))
 PLATFORMS = sorted(NUMERICS["platforms"])
@@ -135,10 +141,10 @@ def test_every_file_in_the_lock_directory_is_free_of_private_details():
 
 #: The files around the locks that a user reads or runs.
 DESCRIBING_FILES = [
-    "parity/meep_gpu/build_meep_133_macos.sh", "parity/meep_gpu/build_meep_133_linux.sh",
-    "parity/meep_gpu/build_meep_133_native.sh", "tools/compare_reference_environment.py",
+    "parity/meep_gpu/build_meep_reference_macos.sh", "parity/meep_gpu/build_meep_reference_linux.sh",
+    "parity/meep_gpu/build_meep_reference_native.sh", "tools/compare_reference_environment.py",
     "tools/check_install.py", "parity/meep_gpu/test_reference_environment.py",
-    "parity/meep_gpu/build_meep_133_record.py", "tools/fma_census.py",
+    "parity/meep_gpu/build_meep_reference_record.py", "tools/fma_census.py",
     "parity/meep_gpu/meep_identity_smoke.py", "parity/meep_gpu/meep_identity_smoke.json",
     "parity/meep_gpu/test_identity_reference.py",
     "parity/meep_gpu/rounds/1.0/build_pymiescatt_standin.py",
@@ -223,19 +229,53 @@ def test_every_pip_lock_pins_the_corpus_packages_and_no_numerics_set_names_them(
     reference = tool.load_reference(platform_tag, str(LOCK_DIR))
     judged = {name for name, _group in tool.judged_names(reference["spec"])}
     judged |= {tool.normalize(name) for name in reference["spec"]["pypi"]}
-    for name, entry in CORPUS_ONLY["pypi"].items():
+    for name, entry in reference["corpus"]["pypi"].items():
         pin = reference["pip"][tool.normalize(name)]
         assert len(pin["sha256"]) == 1, (platform_tag, name)
         assert entry["rows"], name
         assert name not in judged and tool.normalize(name) not in judged, name
-    for name, entry in CORPUS_ONLY["conda"].items():
+    for name, entry in reference["corpus"]["conda"].items():
         assert name in reference["conda"], (platform_tag, name)
         assert entry["rows"], name
         assert name not in judged, name
+    for kind in ("pypi", "conda"):
+        for name, entry in CORPUS_ONLY[kind].items():
+            assert set(entry.get("platforms") or PLATFORMS) <= set(PLATFORMS), name
+            assert (name in reference["corpus"][kind]) == (
+                platform_tag in (entry.get("platforms") or PLATFORMS)), (platform_tag, name)
     standin = CORPUS_ONLY["standin"]
     assert tool.normalize(standin["name"]) not in reference["pip"]
     assert standin["name"] not in judged
     assert reference["corpus"] is not None and reference["corpus"]["standin"] == standin
+
+
+@pytest.mark.parametrize("platform_tag", PLATFORMS)
+def test_the_gds_and_mesh_packages_of_the_meep_1_35_corpus_are_pins_of_both_pip_locks(
+        platform_tag):
+    """gdstk and trimesh are pinned by each pip lock, re-cut for MEEP 1.35.0, and gdspy, which
+    no 1.35.0 corpus script imports, is in no lock and no corpus entry."""
+    reference = tool.load_reference(platform_tag, str(LOCK_DIR))
+    assert sorted(reference["corpus"]["pypi"]) == ["gdstk", "imageio-ffmpeg", "nlopt",
+                                                   "shapely", "trimesh"]
+    assert reference["corpus"]["conda"] == {} and "gdspy" not in reference["conda"]
+    assert (reference["pip"]["gdstk"]["version"],
+            reference["pip"]["trimesh"]["version"]) == ("1.0.1", "5.1.1")
+    assert "gdspy" not in CORPUS_ONLY["conda"]
+    assert CORPUS_ONLY["pypi"]["gdstk"]["rows"] == ["ex.coupler", "ex.ring_gds"]
+    assert CORPUS_ONLY["pypi"]["trimesh"]["rows"] == ["t.test_mesh.TestMesh.test_from_file"]
+
+
+def test_a_corpus_entry_that_names_its_platforms_applies_on_those_only():
+    numerics = {"corpus_only": {
+        "pypi": {"a": {"rows": ["ex.a"]}, "b": {"rows": ["ex.b"], "platforms": ["osx-arm64"]}},
+        "conda": {"c": {"rows": ["ex.c"], "platforms": ["linux-64"]}},
+        "standin": {"name": "S"}}}
+    mac = tool.corpus_of(numerics, "osx-arm64")
+    linux = tool.corpus_of(numerics, "linux-64")
+    assert (sorted(mac["pypi"]), sorted(mac["conda"])) == (["a", "b"], [])
+    assert (sorted(linux["pypi"]), sorted(linux["conda"])) == (["a"], ["c"])
+    assert mac["standin"] == linux["standin"] == {"name": "S"}
+    assert sorted(numerics["corpus_only"]["pypi"]) == ["a", "b"]     # the input is not changed
 
 
 def test_the_corpus_pins_are_the_wheels_the_corpus_legs_measured():
@@ -274,7 +314,6 @@ def test_the_stand_in_is_pinned_by_its_sdist_its_patch_and_its_files():
     ffmpeg = CORPUS_ONLY["pypi"]["imageio-ffmpeg"]
     assert ffmpeg["rows"] == ["t.test_visualization.TestVisualization.test_animation_output"]
     assert ffmpeg["links"] == {"ffmpeg": "imageio_ffmpeg/binaries"}
-    assert CORPUS_ONLY["conda"]["gdspy"]["rows"] == ["ex.ring_gds"]
     assert "host_tools" not in CORPUS_ONLY
 
 
@@ -289,16 +328,53 @@ def test_a_numerics_file_with_the_retired_host_tools_entry_is_refused_by_name(tm
     assert result["kind"] == tool.NOT_COMPARED and "host_tools is retired" in result["verdict"]
 
 
+def script_release(platform_tag: str):
+    """``(MEEP_VERSION, MEEP_SHA256)`` as the platform's build script names them, once."""
+    text = SCRIPTS[platform_tag].read_text(encoding="utf-8")
+    versions = re.findall(r"^MEEP_VERSION=(\S+)$", text, re.M)
+    digests = re.findall(r"^MEEP_SHA256=([0-9a-f]{64})$", text, re.M)
+    assert len(versions) == 1 and len(digests) == 1, platform_tag
+    return versions[0], digests[0]
+
+
 @pytest.mark.parametrize("platform_tag", PLATFORMS)
-def test_libgdsii_is_judged_with_what_meep_links_and_meep_is_built_with_it(platform_tag):
+def test_the_reference_names_the_scripts_meep_and_judges_libgdsii_where_the_lock_holds_it(
+        platform_tag):
+    """MEEP 1.35.0 names no libGDSII (deprecated, #3245), and MEEP's configure links it
+    whenever it finds it: libgdsii is judged exactly where a lock still holds it, and since
+    the MEEP 1.35.0 re-cut no lock does."""
     spec = NUMERICS["platforms"][platform_tag]
-    assert "libgdsii" in spec["conda"]["meep_links"]
-    assert spec["meep"] == {"version": "1.33.0", "single_precision": True, "mpi": True,
-                            "gdsii": True}
+    assert spec["meep"] == {"version": script_release(platform_tag)[0],
+                            "single_precision": True, "mpi": True}
     reference = tool.load_reference(platform_tag, str(LOCK_DIR))
-    assert reference["conda"]["libgdsii"]["version"] == "0.21"
+    held = "libgdsii" in reference["conda"]
+    assert ("libgdsii" in spec["conda"]["meep_links"]) == held
+    assert not held
     total = len(tool.judged_names(reference["spec"])) + len(reference["spec"]["pypi"])
-    assert total == {"osx-arm64": 30, "linux-64": 37}[platform_tag]
+    assert total == {"osx-arm64": 29, "linux-64": 36}[platform_tag]
+
+
+def test_both_scripts_build_one_meep_release_named_once():
+    """The release lives in one place per script: MEEP_VERSION and the tarball's SHA-256.
+    Step 8's version assertion and the record read MEEP_VERSION; no other code line of a
+    script, and no line of the record helper, names a MEEP version."""
+    assert script_release("osx-arm64") == script_release("linux-64") == (
+        "1.35.0", "4334a0c0d7dc302595e17519e35d93c64cdbb4d2944f2e9ae3ddf500265639a0")
+    for platform_tag in SCRIPTS:
+        version, _digest = script_release(platform_tag)
+        text = SCRIPTS[platform_tag].read_text(encoding="utf-8")
+        code = [line for line in text.splitlines() if not line.lstrip().startswith("#")]
+        assert [line for line in code if re.search(r"\b1\.3[0-9]\.[0-9]\b", line)] == [
+            f"MEEP_VERSION={version}"], platform_tag
+        eight = text[text.index('say "8.'):text.index('say "9.')]
+        assert 'MEEP_VERSION="$MEEP_VERSION" PYTHONPATH="$REPO_ROOT"' in eight
+        assert '("MEEP version", mp.__version__, os.environ["MEEP_VERSION"])' in eight
+        last = text[text.rindex('say "12.'):text.rindex('say "DONE"')]
+        assert '--meep-version "$MEEP_VERSION"' in last
+        assert '--tarball-sha256 "$MEEP_SHA256"' in last
+    helper = RECORD_PATH.read_text(encoding="utf-8")
+    assert not re.search(r"\b1\.3[0-9]\.[0-9]\b", helper)
+    assert '"version": arguments.meep_version' in helper
 
 
 # --------------------------------------------------------------------------
@@ -570,11 +646,11 @@ def test_the_certified_mac_environment_as_the_lock_records_it_matches():
         "torch": {"name": "torch", "version": "2.10.0", "installer": "pip", "build_tag": "2"},
         "numpy": {"name": "numpy", "version": "2.4.3", "installer": "conda"}})
     result = tool.compare(ref, env)
-    assert result["total"] == 30
-    assert result["counts"][tool.SAME] == 29 and result["counts"][tool.BY_DESIGN] == 1
+    assert result["total"] == 29
+    assert result["counts"][tool.SAME] == 28 and result["counts"][tool.BY_DESIGN] == 1
     assert tool.passes(result)
-    assert result["meep_reference"] == {"version": "1.33.0", "single_precision": True,
-                                        "mpi": True, "gdsii": True}
+    assert result["meep_reference"] == {"version": "1.35.0", "single_precision": True,
+                                        "mpi": True}
 
 
 @pytest.mark.parametrize("build_tag, status", [
@@ -1226,7 +1302,10 @@ def test_the_build_keeps_the_corpus_before_it_builds_and_records_it_last(platfor
     two = text[text.index('say "2.'):text.index('say "3.')]
     assert two.index("fetch_tarball ") < two.index("helper extract") < two.index("helper keep-corpus")
     assert 'CORPUS_ROOT="$RECORD_DIR/meep-${MEEP_VERSION}/python"' in text
-    assert "ac_cv_lib_GDSII_libGDSIIExists=yes" in text[text.index('say "4.'):text.index('say "5.')]
+    four = text[text.index('say "4.'):text.index('say "5.')]
+    assert "HAVE_MAKE_MESH_WITH_CENTER 1" in four and "config.h" in four
+    code = "\n".join(line for line in text.splitlines() if not line.lstrip().startswith("#"))
+    assert "GDSII" not in code and "coupler.gds" not in code
     assert 'CORPUS_SIBLINGS="$RECORD_DIR/corpus_siblings_sha256.txt"' in text
     assert ('helper keep-corpus "$BUILD_ROOT/meep-${MEEP_VERSION}/python" "$CORPUS_ROOT" '
             '"$CORPUS_LIST" \\\n  "$CORPUS_SIBLINGS"') in two
@@ -1314,6 +1393,32 @@ def test_step_7_installs_the_pip_lock_and_the_stand_in_and_requires_exactly_them
     positions = [seven.index(needle) for needle in order]
     assert positions == sorted(positions), positions
     assert text.index('say "7b.') < text.index('say "8.')
+
+
+@pytest.mark.parametrize("platform_tag", sorted(SCRIPTS))
+def test_step_7_reads_a_local_sdist_only_through_the_builders_checked_option(platform_tag):
+    """PYMIESCATT_SDIST passes through the cleared environment and reaches --sdist, which
+    refuses any copy without the pinned SHA-256; unset, the builder fetches."""
+    text = SCRIPTS[platform_tag].read_text(encoding="utf-8")
+    assert "PYMIESCATT_SDIST" in text[text.index("PASS_THROUGH=("):text.index("RETIRED=(")]
+    seven = text[text.index('say "7.'):text.index('say "7b.')]
+    assert '${PYMIESCATT_SDIST:+--sdist "$PYMIESCATT_SDIST"}' in seven
+    assert seven.count("PYMIESCATT_SDIST") == 2
+
+
+@pytest.mark.parametrize("value, words", [
+    ("relative/PyMieScatt-1.8.1.1.tar.gz", "REFUSING: PYMIESCATT_SDIST must be an absolute path"),
+    ("/no/such/PyMieScatt-1.8.1.1.tar.gz", "REFUSING: PYMIESCATT_SDIST is not a file"),
+])
+@pytest.mark.parametrize("platform_tag", sorted(SCRIPTS))
+def test_a_local_sdist_that_cannot_be_read_is_refused_before_anything_runs(tmp_path, platform_tag,
+                                                                           value, words):
+    env = {"PATH": "/usr/bin:/bin", "HOME": str(tmp_path), "PYMIESCATT_SDIST": value,
+           "CONDA_ROOT": str(tmp_path / "conda")}
+    done = run_script(platform_tag, env)
+    assert done.returncode == 2, done.stdout + done.stderr
+    assert words in done.stdout
+    assert not (tmp_path / "conda").exists()
 
 
 def pip_lock_lines(platform_tag: str):
@@ -1433,41 +1538,12 @@ def test_the_linux_script_finds_libmeep_and_meep_once_beside_a_linked_python_dir
                                         str(meep / "_meep.so.37.0.0")]
 
 
-def test_the_linux_script_reads_the_gdsii_layers_as_plain_integers(tmp_path):
-    """Step 8's GDSII check against a stand-in MEEP returning what MEEP 1.33.0 returns: an
-    int32 array, whose elements NumPy 2 prints as np.int32(0) inside a list."""
-    numpy = pytest.importorskip("numpy")
-    assert int(numpy.__version__.split(".")[0]) >= 2
-    text = SCRIPTS["linux-64"].read_text(encoding="utf-8")
-    eight = text[text.index('say "8.'):text.index('say "9.')].splitlines()
-    read = next(line for line in eight if line.startswith('GDSII="$('))
-    judge = next(line for line in eight if line.startswith('[ "$GDSII" = '))
-    fake = tmp_path / "site" / "meep"
-    fake.mkdir(parents=True)
-    (fake / "__init__.py").write_text(
-        "import numpy\n"
-        "def verbosity(level):\n    pass\n"
-        "def get_GDSII_layers(name):\n"
-        "    assert name == 'coupler.gds'\n"
-        "    return numpy.array([0, 1, 2, 3, 4, 5, 31, 32], dtype=numpy.int32)\n",
-        encoding="utf-8")
-    (tmp_path / "corpus" / "examples").mkdir(parents=True)
-    program = "\n".join([
-        "set -euo pipefail", f'CORPUS_ROOT="{tmp_path / "corpus"}"',
-        f'py() {{ PYTHONPATH="{tmp_path / "site"}" "{sys.executable}" -s "$@"; }}',
-        read, judge, 'echo "judged: $GDSII"'])
-    done = subprocess.run(["bash", "-c", program], capture_output=True, text=True,
-                          timeout=120, check=False)
-    assert done.returncode == 0, done.stdout + done.stderr
-    assert "judged: LAYERS [0, 1, 2, 3, 4, 5, 31, 32]" in done.stdout
-
-
 #: Stand-ins for step 8's first assertions on Linux. CuPy's NVRTC version call raises what
 #: CuPy 13.5.1 raises when every device is hidden (CUDA_VISIBLE_DEVICES empty); ctypes
 #: stands for NVRTC itself: CDLL records the library it is asked for, and nvrtcVersion
 #: answers 11.8 with the status in FAKE_NVRTC_STATUS ("missing": the library is absent).
 LINUX_STEP_8_STAND_INS = {
-    "meep/__init__.py": "__version__ = '1.33.0'\n"
+    "meep/__init__.py": "__version__ = '1.35.0'\n"
                         "def is_single_precision():\n    return True\n"
                         "def get_realnum_size():\n    return 4\n"
                         "def with_mpi():\n    return True\n",
@@ -1503,11 +1579,12 @@ def test_the_linux_script_reads_nvrtcs_version_with_every_device_hidden(tmp_path
     """Step 8's first assertions, run as the script runs them, against stand-ins: NVRTC's
     version comes from NVRTC's own call on <prefix>/lib/libnvrtc.so.11.2 (the library CuPy's
     CUDA 11 build opens), never from CuPy's call, which asks the CUDA runtime first and with
-    every device hidden fails (MEASURED on the GPU host: cudaErrorNoDevice); a status other
+    every device hidden fails (measured on the GPU host: cudaErrorNoDevice); a status other
     than 0, or no library, refuses the build by name."""
     text = SCRIPTS["linux-64"].read_text(encoding="utf-8")
     eight = text[text.index('say "8.'):text.index('say "9.')]
-    block = eight[eight.index('PYTHONPATH="$REPO_ROOT" py - <<\'PYEOF\''):]
+    block = eight[eight.index('MEEP_VERSION="$MEEP_VERSION" PYTHONPATH="$REPO_ROOT" py - '
+                              '<<\'PYEOF\''):]
     block = block[:block.index("\nPYEOF\n") + len("\nPYEOF\n")]
     site = tmp_path / "site"
     for name, source in LINUX_STEP_8_STAND_INS.items():
@@ -1515,7 +1592,8 @@ def test_the_linux_script_reads_nvrtcs_version_with_every_device_hidden(tmp_path
         (site / name).write_text(source, encoding="utf-8")
     asked = tmp_path / "asked.txt"
     program = "\n".join([
-        "set -euo pipefail", f'REPO_ROOT="{tmp_path / "repo"}"',
+        "set -euo pipefail", f"MEEP_VERSION={script_release('linux-64')[0]}",
+        f'REPO_ROOT="{tmp_path / "repo"}"',
         f'py() {{ PYTHONPATH="{site}" FAKE_NVRTC_STATUS={status} FAKE_NVRTC_ASKED="{asked}" '
         f'"{sys.executable}" -s "$@"; }}',
         block, 'echo "step 8 assertions passed"'])
@@ -1581,6 +1659,41 @@ HOST_SCRIPT = {"Darwin/arm64": "osx-arm64", "Linux/x86_64": "linux-64"}.get(
 
 
 @pytest.mark.parametrize("platform_tag", sorted(SCRIPTS))
+def test_the_build_bounds_the_threads_of_its_meep_and_numpy_processes(platform_tag):
+    """MEEP_GPU_BUILD_THREADS passes through the cleared environment and becomes
+    OMP_NUM_THREADS before anything is installed; unset, it is the smaller of 8 and the
+    host's CPU count."""
+    text = SCRIPTS[platform_tag].read_text(encoding="utf-8")
+    passing = text.split("PASS_THROUGH=(", 1)[1].split(")", 1)[0].split()
+    assert "MEEP_GPU_BUILD_THREADS" in passing
+    assert 'THREADS="${MEEP_GPU_BUILD_THREADS:-$(( CPUS < 8 ? CPUS : 8 ))}"' in text
+    assert 'OMP_NUM_THREADS="$THREADS"' in text[:text.index('say "1. ')]
+    counting = {"osx-arm64": 'CPUS="$(sysctl -n hw.ncpu 2>/dev/null || echo 1)"',
+                "linux-64": 'CPUS="$(nproc 2>/dev/null || echo 1)"'}[platform_tag]
+    assert counting in text
+
+
+@pytest.mark.parametrize("value, status, words", [
+    ("3", 0, "threads      3 (OMP_NUM_THREADS"),
+    ("0", 2, "REFUSING: MEEP_GPU_BUILD_THREADS must be a positive integer, not '0'"),
+    ("x", 2, "REFUSING: MEEP_GPU_BUILD_THREADS must be a positive integer, not 'x'"),
+])
+def test_the_thread_bound_is_planned_or_refused_by_name(tmp_path, value, status, words):
+    if HOST_SCRIPT is None:
+        pytest.skip("no build script for this host")
+    conda = tmp_path / "conda" / "bin" / "conda"
+    conda.parent.mkdir(parents=True)
+    conda.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    conda.chmod(0o755)
+    env = {"PATH": "/usr/bin:/bin", "HOME": str(tmp_path), "DRY_RUN": "1",
+           "CONDA_ROOT": str(tmp_path / "conda"), "MEEP_ENV_NAME": "meep-gpu-ref-test",
+           "MEEP_GPU_BUILD_THREADS": value}
+    done = run_script(HOST_SCRIPT, env)
+    assert done.returncode == status, done.stdout + done.stderr
+    assert words in done.stdout, done.stdout
+
+
+@pytest.mark.parametrize("platform_tag", sorted(SCRIPTS))
 def test_the_build_clears_the_calling_environment_and_plans(tmp_path, platform_tag):
     """The plan in a cleared environment (DRY_RUN): on this host's platform the caller's
     flags are dropped and the identity flags planned; on the other, step 0 refuses."""
@@ -1630,6 +1743,15 @@ def test_every_addition_is_in_its_lock_and_named_where_its_role_says(platform_ta
             assert item["name"] in numerics["conda"]["meep_links"]
         if item["role"] == "corpus_only":
             assert item["name"] in CORPUS_ONLY["conda"]
+    for item in spec["conda"]:
+        if item.get("replaces"):
+            assert item["ruling"] and sorted(item["replaces"]) == ["build", "version"], item
+            assert (item["replaces"]["version"], item["replaces"]["build"]) != (
+                item["version"], item["build"]), item
+    for item in spec.get("removed") or ():
+        assert item["ruling"] and item["why"], item
+        assert item["name"] not in reference["conda"], item
+        assert item["name"] not in {other["name"] for other in spec["conda"]}, item
     for item in spec["pypi"]:
         pin = reference["pip"][tool.normalize(item["name"])]
         assert pin["version"] == item["version"] and len(pin["sha256"]) == 1
@@ -1705,6 +1827,90 @@ def test_a_solve_that_is_not_the_lock_plus_its_additions_is_refused_by_name(chan
     solve = {"success": False} if change == "failed" else solve_of(linked)
     with pytest.raises(recut.Refused, match=re.escape(words)):
         recut.judge_solve(entries, spec["conda"], solve)
+
+
+def ruled_lock():
+    """A lock of three packages, a replacement of b and a removal of c, as recut reads them."""
+    text = "\n".join(["# prose", "# platform: osx-arm64", "@EXPLICIT",
+                      url("a", "1", "h0_0", "a" * 32), url("b", "2", "h1_0", "b" * 32),
+                      url("c", "3", "h2_0", "c" * 32)]) + "\n"
+    additions = [{"name": "b", "version": "4", "build": "h3_0", "role": "meep_links",
+                  "replaces": {"version": "2", "build": "h1_0"}, "ruling": "R0"}]
+    removed = [{"name": "c", "version": "3", "build": "h2_0", "ruling": "R0", "why": "unused"}]
+    return text, additions, removed
+
+
+def ruled_solve(names_builds):
+    entries = [{"name": name, "version": version, "build": build, "md5": md5 * 32,
+                "url": url(name, version, build).split("#")[0]}
+               for name, version, build, md5 in names_builds]
+    return solve_of(entries)
+
+
+@pytest.mark.parametrize("platform_tag", PLATFORMS)
+def test_both_locks_carry_the_meep_1_35_ruled_changes(platform_tag):
+    """The MEEP 1.35.0 change on each lock: libctl 4.7.1 (make_mesh_with_center) replaces the certified
+    environment's libctl 4.5.1, and libgdsii and gdspy are taken out."""
+    spec = ADDITIONS["platforms"][platform_tag]
+    reference = tool.load_reference(platform_tag, str(LOCK_DIR))
+    libctl = [item for item in spec["conda"] if item["name"] == "libctl"]
+    assert [(item["version"], item["replaces"]["version"], item["ruling"])
+            for item in libctl] == [("4.7.1", "4.5.1", "R31")]
+    assert reference["conda"]["libctl"]["version"] == "4.7.1"
+    assert sorted(item["name"] for item in spec["removed"]) == ["gdspy", "libgdsii"]
+    assert {item["ruling"] for item in spec["removed"]} == {"R31"}
+    assert not {"gdspy", "libgdsii"} & set(reference["conda"])
+
+
+def test_a_ruled_replacement_and_removal_change_exactly_the_lines_they_name():
+    text, additions, removed = ruled_lock()
+    prose, entries = recut.read_conda_lock(text)
+    kept = recut.apply_ruled_changes(entries, additions, removed)
+    assert [entry["name"] for entry in kept] == ["a", "b"]
+    assert recut.pins_of(kept, additions) == ["a==1=h0_0", "b==4=h3_0"]
+    solve = ruled_solve([("a", "1", "h0_0", "a"), ("b", "4", "h3_0", "d")])
+    base, added = recut.judge_solve(kept, additions, solve, removed)
+    assert [entry["name"] for entry in base] == ["a"]
+    assert [entry["line"] for entry in added] == [url("b", "4", "h3_0", "d" * 32)]
+    ruled = recut.ruled_text(additions, removed)
+    assert ruled == ("additions.json replaces b 2=h1_0 by 4=h3_0 (R0); removes c 3=h2_0 (R0).")
+    rendered = recut.render_conda("osx-arm64", prose, base, added, {}, ruled)
+    assert [line for line in rendered.splitlines() if line.startswith("https://")] == [
+        url("a", "1", "h0_0", "a" * 32), url("b", "4", "h3_0", "d" * 32)]
+    assert "# additions.json replaces b 2=h1_0 by 4=h3_0 (R0); removes c 3=h2_0 (R0)." in rendered
+    # run again on what it wrote: the same lock, byte for byte
+    _prose, again = recut.read_conda_lock(rendered)
+    again_kept = recut.apply_ruled_changes(again, additions, removed)
+    assert recut.pins_of(again_kept, additions) == ["a==1=h0_0", "b==4=h3_0"]
+    base2, added2 = recut.judge_solve(again_kept, additions, solve, removed)
+    assert recut.render_conda("osx-arm64", prose, base2, added2, {}, ruled) == rendered
+
+
+@pytest.mark.parametrize("change, words", [
+    ("replaced at another build", "replaces b 2=h1_0 by 4=h3_0, and the lock holds 2=h9_0"),
+    ("removed at another build", "removes c 3=h2_0, and the lock holds 3=h9_0"),
+])
+def test_a_ruled_change_of_a_build_the_lock_does_not_hold_is_refused(change, words):
+    text, additions, removed = ruled_lock()
+    if change == "replaced at another build":
+        text = text.replace("b-2-h1_0", "b-2-h9_0")
+    else:
+        text = text.replace("c-3-h2_0", "c-3-h9_0")
+    _prose, entries = recut.read_conda_lock(text)
+    with pytest.raises(recut.Refused, match=re.escape(words)):
+        recut.apply_ruled_changes(entries, additions, removed)
+
+
+def test_a_solve_that_keeps_a_removed_package_is_refused_by_name():
+    text, additions, removed = ruled_lock()
+    _prose, entries = recut.read_conda_lock(text)
+    kept = recut.apply_ruled_changes(entries, additions, removed)
+    solve = ruled_solve([("a", "1", "h0_0", "a"), ("b", "4", "h3_0", "d"),
+                         ("c", "3", "h2_0", "c")])
+    with pytest.raises(recut.Refused,
+                       match=re.escape("c 3=h2_0 is removed by additions.json and is still in "
+                                       "the solve")):
+        recut.judge_solve(kept, additions, solve, removed)
 
 
 def test_the_solve_runs_with_an_empty_package_cache_of_its_own(monkeypatch, tmp_path):
@@ -1925,33 +2131,49 @@ def test_the_mac_script_finds_libmeep_and_meep_once_beside_a_linked_python_direc
     assert done.stdout.splitlines() == [str(lib / "libmeep.37.dylib"), str(meep / "_meep.37.so")]
 
 
-def test_the_mac_script_reads_the_gdsii_layers_as_plain_integers(tmp_path):
-    """Step 8's GDSII check against a stand-in MEEP returning what MEEP 1.33.0 returns: an
-    int32 array, whose elements NumPy 2 prints as np.int32(0) inside a list."""
-    numpy = pytest.importorskip("numpy")
-    assert int(numpy.__version__.split(".")[0]) >= 2
+#: Stand-ins for step 8's first assertions on a Mac: MEEP reports the version in
+#: FAKE_MEEP_VERSION, and PyTorch, NumPy and MPS answer as the lock's.
+MAC_STEP_8_STAND_INS = {
+    "meep/__init__.py": "import os\n__version__ = os.environ['FAKE_MEEP_VERSION']\n"
+                        "def is_single_precision():\n    return True\n"
+                        "def get_realnum_size():\n    return 4\n"
+                        "def with_mpi():\n    return True\n",
+    "numpy/__init__.py": "__version__ = '2.4.3'\n",
+    "torch/__init__.py": "__version__ = '2.10.0'\nfrom torch import backends\n",
+    "torch/backends/__init__.py": "from torch.backends import mps\n",
+    "torch/backends/mps.py": "def is_available():\n    return True\n",
+}
+
+
+@pytest.mark.parametrize("found, ok", [("1.35.0", True), ("1.33.0", False)])
+def test_the_mac_script_asserts_the_meep_version_it_names(tmp_path, found, ok):
+    """Step 8's first assertions, run as the script runs them, against stand-ins: the MEEP
+    version asserted is MEEP_VERSION's, and another one refuses the build by name."""
     text = SCRIPTS["osx-arm64"].read_text(encoding="utf-8")
-    eight = text[text.index('say "8.'):text.index('say "9.')].splitlines()
-    read = next(line for line in eight if line.startswith('GDSII="$('))
-    judge = next(line for line in eight if line.startswith('[ "$GDSII" = '))
-    fake = tmp_path / "site" / "meep"
-    fake.mkdir(parents=True)
-    (fake / "__init__.py").write_text(
-        "import numpy\n"
-        "def verbosity(level):\n    pass\n"
-        "def get_GDSII_layers(name):\n"
-        "    assert name == 'coupler.gds'\n"
-        "    return numpy.array([0, 1, 2, 3, 4, 5, 31, 32], dtype=numpy.int32)\n",
-        encoding="utf-8")
-    (tmp_path / "corpus" / "examples").mkdir(parents=True)
+    eight = text[text.index('say "8.'):text.index('say "9.')]
+    block = eight[eight.index('MEEP_VERSION="$MEEP_VERSION" PYTHONPATH="$REPO_ROOT"'):]
+    block = block[:block.index("\nPYEOF\n") + len("\nPYEOF\n")]
+    site = tmp_path / "site"
+    for name, source in MAC_STEP_8_STAND_INS.items():
+        (site / name).parent.mkdir(parents=True, exist_ok=True)
+        (site / name).write_text(source, encoding="utf-8")
     program = "\n".join([
-        "set -euo pipefail", f'CORPUS_ROOT="{tmp_path / "corpus"}"',
-        f'py() {{ PYTHONPATH="{tmp_path / "site"}" "{sys.executable}" -s "$@"; }}',
-        read, judge, 'echo "judged: $GDSII"'])
+        "set -euo pipefail", f"MEEP_VERSION={script_release('osx-arm64')[0]}",
+        f'REPO_ROOT="{tmp_path / "repo"}"',
+        f'py() {{ PYTHONPATH="{site}" FAKE_MEEP_VERSION={found} "{sys.executable}" -s "$@"; }}',
+        block, 'echo "step 8 assertions passed"'])
     done = subprocess.run(["bash", "-c", program], capture_output=True, text=True,
-                          timeout=120, check=False)
-    assert done.returncode == 0, done.stdout + done.stderr
-    assert "judged: LAYERS [0, 1, 2, 3, 4, 5, 31, 32]" in done.stdout
+                          timeout=120, check=False, cwd=tmp_path)
+    output = done.stdout + done.stderr
+    row = next(line for line in done.stdout.splitlines() if "MEEP version" in line)
+    if ok:
+        assert done.returncode == 0, output
+        assert row.split()[2:] == ["1.35.0", "ok"], output
+        assert "step 8 assertions passed" in done.stdout
+    else:
+        assert done.returncode == 1, output
+        assert row.split()[2:] == ["1.33.0", "EXPECTED", "1.35.0"], output
+        assert "FAILED: ['MEEP version']" in done.stdout
 
 
 def test_an_ffmpeg_that_loads_a_library_outside_the_system_is_refused(tmp_path, monkeypatch):
@@ -2003,12 +2225,14 @@ def test_the_manifest_names_what_the_record_directory_holds(tmp_path):
         encoding="utf-8")
     (record_dir / "meep-gpu-ref-osx-arm64.conda.txt").write_text("x", encoding="utf-8")
     arguments = types.SimpleNamespace(
-        platform="osx-arm64", role="reference", tarball_url="https://example.invalid/m.tgz",
-        tarball_sha256="2" * 64, cflags="-O2", cxxflags="-O2", configure="./configure",
-        corpus_root="share/meep-gpu-build/meep-1.33.0/python", corpus_list=str(listing),
+        platform="osx-arm64", role="reference", meep_version="1.35.0",
+        tarball_url="https://example.invalid/m.tgz", tarball_sha256="2" * 64, cflags="-O2",
+        cxxflags="-O2", configure="./configure",
+        corpus_root="share/meep-gpu-build/meep-1.35.0/python", corpus_list=str(listing),
         corpus_siblings=str(siblings))
     document = record.manifest(str(record_dir), arguments)
     assert document["schema"] == "meep-gpu/reference-build/1"
+    assert (document["meep"]["version"], document["meep"]["tarball_sha256"]) == ("1.35.0", "2" * 64)
     assert document["corpus"]["files"] == 1
     assert document["corpus"]["list"] == "corpus_sha256.txt"
     assert document["corpus"]["siblings"] == [{"path": "tests/cyl-ellipsoid-eps-ref.h5",

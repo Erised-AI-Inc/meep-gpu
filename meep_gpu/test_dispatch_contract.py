@@ -10,7 +10,7 @@ make a partial accelerator safe to wire into a driver:
   composition probe certified (completeness, C3, and the null drop, C4);
 * which of the two happened is legible from the run artifact alone (T2).
 
-NOTHING HERE LAUNCHES A KERNEL. These run on the NumPy laptop, where the real
+Nothing here launches a kernel. These run on the NumPy laptop, where the real
 composer refuses every kernel arm at ``coverage._grid_reasons`` clause 1 — which
 is itself one of the cases below. The dispatch DECISIONS are exercised against
 plan objects that count their launches, so the seam is measured without a device;
@@ -18,7 +18,7 @@ the numerical certifications the seam rides on are the device gates recorded in
 ``triton_kernels/fingerprints.json``, and the composition contracts are
 ``test_triton_planner_composition``'s.
 
-WHAT IS DELIBERATELY NOT HERE: any fused-vs-array numerical comparison through
+What is deliberately not here: any fused-vs-array numerical comparison through
 the real driver seam. That is the driver-route gate (two drivers from one
 builder, byte-compared as uint32 after every complete ``step()``), it needs a
 GPU, and its end-to-end ship leg is the licence ``fastpath.DISPATCH_BY_DEFAULT``
@@ -101,15 +101,33 @@ def _opted_in(monkeypatch):
     monkeypatch.delenv(fastpath.WARM_SWITCH, raising=False)
 
 
-#: THE ARCHITECTURE THE SHIPPED TRITON LEDGER HAS LIVE RUNS FOR, and the one every
+#: The architecture the shipped Triton ledger has live runs for, and the one every
 #: test below that asks for a RUN fact asks on. Each weld keeps one record per compute
 #: capability under ``fastpath.RUNS``, so a lookup that names no capability quotes no
 #: host, no ``recorded_utc`` and no per-family budget at all — deliberately, because
 #: quoting one card's run beside a plan on another is the mismatch the container closes.
 #: Spelled as the literal the ledger is keyed by rather than derived from
-#: :func:`fastpath.capability_admission`, so a round that certifies a SECOND
+#: :func:`fastpath.capability_admission`, so a certification that covers a SECOND
 #: architecture does not silently move which run these assertions read.
 CERTIFIED_CAPABILITY = "8.6"
+
+#: A run record's host as the bind writes it: the neutral host label, the NVIDIA card the run's
+#: environment named, the compute capability, and the CuPy and Triton it ran beside.
+RUN_HOST = re.compile(r"the GPU host: NVIDIA (?P<card>[^,;()]+), cc (?P<cc>\d+\.\d+); "
+                      r"CuPy (?P<cupy>\S+); Triton (?P<triton>\S+) \(GPU \d+\)")
+
+
+def assert_the_host_is_a_real_card(host, run, capability=CERTIFIED_CAPABILITY):
+    """``host`` is the one ``run`` (the bound run record) carries, and it names a real card of
+    ``capability`` beside a CuPy that capability's certified stack lists, never a placeholder:
+    what the quoted run ran on is read from the ledger, not typed here."""
+    assert host and host == run["host"], (host, run.get("host"))
+    match = RUN_HOST.fullmatch(host)
+    assert match and match["cc"] == capability and match["card"].strip(), host
+    assert match["cupy"] in fastpath.certified_nvidia_stack(capability)["cupy"], host
+    for field in ("cupy", "triton"):
+        if f"{field}_version" in run:
+            assert match[field] == run[f"{field}_version"], (field, host, run)
 
 
 class StubBackend(types.SimpleNamespace):
@@ -129,8 +147,8 @@ def numpy_backed_cupy_alias():
     The ladder's backend rung reads ``grid.xp.__name__``, so a driver that must
     reach the rungs BELOW it needs a backend that answers "cupy" and still steps
     the array path correctly. A ``SimpleNamespace`` cannot: the real sub-step calls
-    would fail on it. This is the same module-typed alias the audit drove the
-    driver seam with.
+    would fail on it. An earlier review drove the driver seam with this same
+    module-typed alias.
     """
     module = types.ModuleType("cupy")
     module.__dict__.update(np.__dict__)
@@ -139,10 +157,36 @@ def numpy_backed_cupy_alias():
     return module
 
 
-def stub_triton(monkeypatch, version="3.1.0"):
+#: What the stand-in NVIDIA host's stack reads, axis by axis: the values compute
+#: capability 8.6 was certified on (``fastpath.certified_nvidia_stack("8.6")``), the
+#: capability the stand-in device reports, so a test about something else reads a
+#: certified stack and only a test that asks for another value gets one.
+def certified_stack_identity(**overrides):
+    identity = {axis: values[0]
+                for axis, values in fastpath.certified_nvidia_stack("8.6").items()
+                if axis != "meep"}
+    identity.update(overrides)
+    return identity
+
+
+def stand_in_stack(monkeypatch, **overrides):
+    """Make rung 4c read ``certified_stack_identity(**overrides)`` on this process.
+
+    The stack is read off the process, not off the grid (the host's OS and NumPy are
+    the test host's own), so a stand-in NVIDIA host on a laptop would otherwise read
+    an uncertified stack and every certified verdict below would move for a reason no
+    test here is about. ``meep=...`` adds the MEEP axis, which is read only when MEEP
+    is imported.
+    """
+    identity = certified_stack_identity(**overrides)
+    monkeypatch.setattr(fastpath, "_nvidia_stack_identity", lambda xp: dict(identity))
+    return identity
+
+
+def stub_triton(monkeypatch, version="3.1.0", probe=None, stack=True):
     """A Triton the policy gate can actually be driven onto.
 
-    IT USED TO BE A BARE ``types.ModuleType``, and that was enough only because
+    It used to be a bare ``types.ModuleType``, and that was enough only because
     the gate decided governance with ``find_spec`` and read its ``ValueError`` on
     a spec-less module as "this executor is absent" — so every test in this file
     ran with ``governed_executors == ['host']`` and a Triton that was present,
@@ -154,11 +198,26 @@ def stub_triton(monkeypatch, version="3.1.0"):
     from meep_gpu.test_dispatch_policy_uniformity import governable_triton
 
     governable_triton(monkeypatch, version)
-    return sys.modules["triton"]
+    module = sys.modules["triton"]
+    # A compiler the health probe can be pointed at (rung 4). ``jit`` is what the probe
+    # checks before it runs, and the launch itself is the seam: ``probe`` stands in for
+    # it (None is a probe that compiles and launches cleanly; a callable that raises is
+    # a Triton that imports and cannot launch). The verdict cache is per process, so it
+    # is replaced per test.
+    module.jit = lambda function: function
+    monkeypatch.setattr(fastpath, "_TRITON_HEALTH", {})
+    monkeypatch.setattr(fastpath, "_triton_probe_launch",
+                        probe if probe is not None else (lambda xp: None))
+    if stack:
+        stand_in_stack(monkeypatch)
+    return module
 
 
-def block_triton(monkeypatch):
-    """Make ``import triton`` fail the way a host without it does."""
+def block_triton(monkeypatch, stack=True):
+    """Make ``import triton`` fail the way a host without it does (the stack it reads is
+    the certified one, as :func:`stub_triton`'s is)."""
+    if stack:
+        stand_in_stack(monkeypatch)
     monkeypatch.delitem(sys.modules, "triton", raising=False)
     real_import = __builtins__["__import__"] if isinstance(__builtins__, dict) else __builtins__.__import__
 
@@ -270,7 +329,7 @@ def inactive_envelope_pml():
     ``pml_active`` False.
 
     It exists because ``pml_active`` left the SHARED envelope in the 2026-09-14
-    target round and became a per-arm row: before that move no released arm could
+    release and became a per-arm row: before that move no released arm could
     be measured on an absorber-free grid, so every shape here could carry the one
     active PML. ``fused pair D (no-PML stored E)`` is the first arm released on the
     other value of that axis, and a denominator that could not express it would
@@ -282,7 +341,7 @@ def inactive_envelope_pml():
 def folded_envelope_grid():
     """The gate's ``folded_2d`` shape: the same 2-D PML grid with a Y mirror.
 
-    THE FOLDED ARMS ARE RELEASED ON A DIFFERENT SHAPE FROM THE ORDINARY ONES, which
+    The folded arms are released on a different shape from the ordinary ones, which
     is the whole content of ``FUSED_RELEASE_ARM_AXES``, so measuring them needs a
     second triple. ``_fold_description`` reads the fold off ``is_mirrored``, exactly
     as rung (6b) does.
@@ -332,8 +391,8 @@ def folded_dispersive_envelope_fields():
     folded dispersive product from ``fused pair D (folded)``, which pins
     ``susceptibilities`` at 0 precisely because this case gives its D seam away.
 
-    ONE POLE AND NOT FIVE, and the count is load-bearing in both directions since
-    the re-attribution round: ``fused pair D (folded dispersive)`` is released on
+    One pole and not five, and the count is load-bearing in both directions since
+    the 2026-09-14 re-drive: ``fused pair D (folded dispersive)`` is released on
     this shape with its own row pinned at 1, while the route gate's Triton envelope
     witness is the same fold at FIVE poles, which every folded row refuses.
     """
@@ -419,7 +478,7 @@ def complex_no_pml_3d_envelope_grid():
 def complex_conductive_envelope_fields():
     """``complex_no_pml_3d``'s fields: complex storage, a conductivity, ONE pole.
 
-    ALL THREE ARE LOAD-BEARING. ``fused pair D (complex conductive no-PML)`` pins
+    All three are load-bearing. ``fused pair D (complex conductive no-PML)`` pins
     ``complex_storage`` True, ``conductivity`` True and ``susceptibilities`` 1, so
     dropping any one of them measures a refusal where the parametrised release test
     is asking about the release. The pole count is the case's one Lorentzian.
@@ -445,11 +504,11 @@ def plan_inside_the_released_envelope(monkeypatch, plan, folded=False,
 
     ``folded`` is the shorthand for the fold pair's grid and stays; ``grid`` and
     ``fields`` are what the 2026-09-11 arms need, because all three of the arms
-    that round released are released on a shape that differs from the certified
+    that release added are released on a shape that differs from the certified
     triple in something other than the fold (a Dcyl grid, a conductivity). The
-    fourth shape that round drove, a folded DISPERSIVE grid, needs BOTH — the fold
+    fourth shape that release drove, a folded DISPERSIVE grid, needs BOTH — the fold
     on the grid and the single Lorentz pole on the fields — and it is measured for
-    a DISPATCH again: the arm it releases spent one round in
+    a DISPATCH again: the arm it releases spent 2026-09-11 to 2026-09-14 in
     ``PENDING_DEVICE_GATE_ARMS`` on a route-gate divergence at
     ``synchronize_magnetic_fields`` that was re-attributed to the subnormal-policy
     install ordering, and the shape now admits the folded magnetic pair beside the
@@ -496,7 +555,7 @@ def test_the_kill_switch_beats_the_enable(monkeypatch):
 
 @pytest.mark.parametrize("retired", sorted(fastpath.LEGACY_SWITCH_NAMES))
 def test_the_kill_switch_outranks_a_retired_switch_name(monkeypatch, retired):
-    """RUNG 1 IS FIRST, INCLUDING BEFORE THE RETIRED-NAME RULE.
+    """RUNG 1 is first, including before the retired-name rule.
 
     ``_base_record`` reports the enable's effective value on every record, and it is
     built before the ladder is entered. Asking the RAISING reader for it put the
@@ -615,7 +674,7 @@ def test_the_enable_set_to_zero_names_itself(monkeypatch):
 def _no_metal_hardware(monkeypatch) -> None:
     """Answer the candidate-table rung as a machine with no MPS device would.
 
-    THE TWO REFUSALS BELOW ARE ABOUT THE BACKEND AND NOT ABOUT THE HARDWARE, and on
+    The two refusals below are about the backend and not about the hardware, and on
     a Mac those are different facts. Rung 3 picks the CANDIDATE SET from the
     hardware — a NumPy engine with an MPS device takes the Metal table — so on this
     laptop a NumPy backend is admitted rather than refused, and a test asserting the
@@ -623,7 +682,7 @@ def _no_metal_hardware(monkeypatch) -> None:
     what makes these two tests about the ladder's own clause on every machine.
 
     A no-op while ``metal_hardware_present`` has not landed, so the two tests keep
-    measuring exactly what they measured before the dispatch batch.
+    measuring exactly what they measured before the Metal dispatch change.
     """
     if hasattr(fastpath, "metal_hardware_present"):
         monkeypatch.setattr(fastpath, "metal_hardware_present", lambda: False)
@@ -675,7 +734,7 @@ def test_triton_absent_drops_that_table_and_keeps_the_other(monkeypatch):
     only one left. The refusal is now per table and the plan is refused only when
     the candidate set empties.
 
-    THE OTHER DIRECTION IS THE TEST BELOW, and it is a separate one rather than a
+    The other direction is the test below, and it is a separate one rather than a
     second half: a ``monkeypatch`` set for the first half is still in force for the
     second, and undoing it here would also undo the autouse fixtures that set the
     enable — so the "both tables blocked" leg would be measured twice and read as a
@@ -715,13 +774,15 @@ def test_an_uncertified_triton_version_drops_that_table_by_name(monkeypatch):
     validated = fastpath.validated_triton_versions()
     assert validated, "fingerprints.json must record which Triton the gates ran on"
     block_cuda(monkeypatch)
+    # Older than the release the kernels were written against (a later one is admitted
+    # uncertified, ``test_uncertified_opt_in``).
     plan = plan_on_a_cupy_host(monkeypatch, step_plan({"step_B": CountingPlan("b")},
                                                       {"step_B": "PML"}),
-                               version="9.9.9-unreleased")
+                               version="3.0.0")
     assert plan is None
     record = fastpath.last_dispatch_report()
-    assert "9.9.9-unreleased" in record["refused_because"]
-    assert "9.9.9-unreleased" in record["tables"]["triton"]["refused_because"]
+    assert "3.0.0" in record["refused_because"]
+    assert "3.0.0" in record["tables"]["triton"]["refused_because"]
     assert list(validated) == record["environment"]["validated_triton_versions"]
 
 
@@ -813,7 +874,7 @@ def test_plan_fast_path_never_raises_even_when_the_composer_does(monkeypatch):
 def test_a_filled_slot_the_seam_cannot_run_refuses_the_whole_plan(monkeypatch):
     """C3. Running the remainder would be a composition no gate ever certified.
 
-    ``fill_B`` USED TO BE THIS TEST'S SUBJECT and stopped being it on 2026-09-02,
+    ``fill_B`` used to be this test's subject and stopped being it on 2026-09-02,
     when the two driver consults put ``fill_B``/``fill_D`` into ``DRIVER_SLOTS``.
     What C3 pins is the RULE, not the slot that happened to trip it, so the case is
     armed with a slot no consult stands in front of — which is what the composer
@@ -849,7 +910,7 @@ def test_every_slot_the_composer_can_fill_now_has_a_driver_consult():
 
 
 def test_a_folded_run_that_fills_both_fill_slots_now_dispatches(monkeypatch):
-    """THE MOVE ITSELF. This exact composition refused at rung 6 until 2026-09-02.
+    """The move itself. This exact composition refused at rung 6 until 2026-09-02.
 
     ``folded_2d`` in the driver-route gate selected ``fused pair B (folded)`` at
     ``step_B``/``update_H``, the mirror-fill arm won ``fill_B``/``fill_D``, and the
@@ -871,7 +932,7 @@ def test_a_folded_run_that_fills_both_fill_slots_now_dispatches(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# The vocabulary: MEASURED against the composer, not shared with it
+# The vocabulary: measured against the composer, not shared with it
 # ---------------------------------------------------------------------------
 #
 # The kernel package must not know a dispatcher exists — every file in it is
@@ -936,7 +997,7 @@ def test_a_pending_device_gate_refuses_the_whole_step_before_warming(monkeypatch
 def _recut_tool():
     """``parity/meep_gpu/recut_driver_dispatch_record.py``: the licence's constants.
 
-    IMPORTED, NEVER RESTATED. The dispatched floor and the environment rule are
+    Imported, never restated. The dispatched floor and the environment rule are
     decided by the tool that transcribes the licence, by the go/no-go driver and by
     the weld below, and three sites that each typed their own floor disagreed —
     one dispatched case transcribed and read GO while this test asked for seven.
@@ -1025,9 +1086,9 @@ def _assert_one_licence_holds(record, package, wanted) -> None:
         "recut_driver_dispatch_record.py --end-to-end")
     assert licence["gate"] == recut.LICENCE_GATE, licence.get("gate")
     assert licence["run"] and licence["recorded_utc"] and licence["host"], licence
-    # THE LICENCE IS THE ROUND'S BY NAME (``route_stamps.licence_campaign``): the slot's
+    # The licence is the certification run's by name (``route_stamps.licence_campaign``): the slot's
     # bytes can be unchanged across a re-route, so only the directory its ship leg ran
-    # in tells this round's licence from another's.
+    # in tells this run's licence from another's.
     refused = route_stamps.licence_refusal(
         "triton", recut._licence_directory(licence),  # noqa: SLF001
         recut._device_suffix(wanted))  # noqa: SLF001
@@ -1095,7 +1156,7 @@ def _assert_one_licence_holds(record, package, wanted) -> None:
         assert capability in certified[table], (
             f"the licence ran on compute capability {capability}, which the {table} "
             f"table's ledger does not certify ({sorted(certified[table])})")
-    # THE BYTES ARE PINNED BY THE SLOT, NOT BY THE LICENCE. The transcription proves
+    # The bytes are pinned by the slot, not by the licence. The transcription proves
     # the ship leg ran every file the record binds and then writes NO digest map into
     # the block (``recut_driver_dispatch_record.transcribe_end_to_end``): the licence
     # sits in ``runs[<capability>]``, whose ``bound_sha256`` is the digest of the
@@ -1125,7 +1186,7 @@ def _assert_one_licence_holds(record, package, wanted) -> None:
 def _assert_each_admitted_capability_names_its_route_campaign(record, table, stamp):
     """``runs[<capability>].released_fused_arms`` names THAT capability's route campaign.
 
-    WHICH CAMPAIGN DROVE THE ARMS IS A FACT ABOUT ONE RUN. The recut moves ``gate``,
+    Which campaign drove the arms is a fact about one run. The recut moves ``gate``,
     ``artifact`` and ``what_was_measured``
     (:data:`recut_driver_dispatch_record.RELEASED_RUN_SUBKEYS`) out of
     ``exclusions.released_fused_arms`` into the route run's slot, and refuses a
@@ -1138,10 +1199,11 @@ def _assert_each_admitted_capability_names_its_route_campaign(record, table, sta
     it; and the entry level must have shed the three subkeys, because a ``gate``
     left there is a second answer to which campaign drove the release.
 
-    AND EVERY LIVE ROUTE RUN READS PASS, in the words the three weld contracts use
+    And every live route run reads PASS, in the words the three weld contracts use
     (``weld_record_walk.route_run_problems``): a live run that did not release
-    licenses nothing it filed. AND NO ROUTE-RUN FIELD SITS BESIDE THE DIGESTS, read
-    against ``fastpath.DISPATCH_RUN_FIELDS``, which names ``status``, as the Metal
+    licenses nothing it filed. And no route-run field sits beside the digests, read
+    against the tool's ``NVIDIA_ROUTE_RUN_FIELDS`` (``fastpath.DISPATCH_RUN_FIELDS``,
+    which names ``status``, and each run's statement of the default), as the Metal
     record is held to in
     ``test_the_metal_record_is_welded_to_the_live_sources_when_it_exists``. Those
     contracts also hold the record to the tree; this test compares the tree its own
@@ -1176,8 +1238,21 @@ def _assert_each_admitted_capability_names_its_route_campaign(record, table, sta
         assert moved["what_was_measured"], capability
     problems = walk.route_run_problems(record, live)
     assert not problems, f"the {table} driver_dispatch record: {problems}"
-    shape = fastpath.retired_shape_reasons(record, run_fields=fastpath.DISPATCH_RUN_FIELDS)
+    shape = fastpath.retired_shape_reasons(record, run_fields=recut.NVIDIA_ROUTE_RUN_FIELDS)
     assert not shape, f"the {table} driver_dispatch record: {shape}"
+
+
+@pytest.mark.parametrize("contract", ["test_triton_weld_contract", "test_cuda_weld_contract"])
+def test_the_nvidia_weld_contracts_read_the_route_run_fields_the_cut_writes(contract):
+    """The two NVIDIA weld contracts hold their route records to their own
+    ``ROUTE_RUN_FIELDS``, so they need no harness to run; the record-cut tool writes
+    ``NVIDIA_ROUTE_RUN_FIELDS``. The two lists are one list: a field the tool files in a
+    run that a contract did not refuse beside the digests is the gap this closes."""
+    import importlib
+
+    module = importlib.import_module(f"meep_gpu.{contract}")
+    assert module.ROUTE_RUN_FIELDS == _recut_tool().NVIDIA_ROUTE_RUN_FIELDS, (
+        contract, module.ROUTE_RUN_FIELDS)
 
 
 def test_the_recorded_dispatch_shape_matches_the_wiring_it_describes():
@@ -1199,11 +1274,11 @@ def test_the_recorded_dispatch_shape_matches_the_wiring_it_describes():
     assert tuple(record["runnable_slots"]) == fastpath.DRIVER_SLOTS
     assert set(record["unrunnable_slots"]) - {"consequence"} == (
         set(launch_module.STEP_ORDER) - set(fastpath.DRIVER_SLOTS))
-    # THE TRIPWIRE FIRED, and this is what replaced it. It used to assert the
+    # The tripwire fired, and this is what replaced it. It used to assert the
     # driver-route gate had status "NOT RUN"; the gate ran on 2026-08-15, and what
     # has to hold now is that its RESULT and the shipped default agree with each
     # other. It passed under a uniform subnormal policy and failed as shipped, so
-    # the default was to stay False until a round closed the executor policy split
+    # the default was to stay False until a change closed the executor policy split
     # AND re-ran the ship leg on the shipping bytes (not yet run); the licence block
     # below is where that run is transcribed, and the two move in one change or fail.
     gate = record["driver_route_gate_2026-08-15"]
@@ -1221,7 +1296,7 @@ def test_the_recorded_dispatch_shape_matches_the_wiring_it_describes():
         assert entry["comparator_control_fired"], name
         assert all(entry["slot_dispatches"].values()), name
         assert all(entry["programs_per_dispatch"].values()), name
-    # THE DEFAULT IS BOUND TO ITS LICENCE, in one change. Until 2026-09-27 this
+    # The default is bound to its licence, in one change. Until 2026-09-27 this
     # asserted ``dispatch_by_default is False``, with the measurement that would
     # license the flip in its message: gate_dispatch_end_to_end's ship leg on the
     # shipping bytes, the harness installing NOTHING and the enable left unset,
@@ -1231,7 +1306,7 @@ def test_the_recorded_dispatch_shape_matches_the_wiring_it_describes():
     # cut on other bytes, fails here.
     assert record["dispatch_by_default"] is True
     _assert_the_licence_holds(record, package)
-    # THE FUSED RELEASE, welded to the record the same way the default is. The
+    # The fused release, welded to the record the same way the default is. The
     # record's ``exclusions.fused_arms`` used to say the composer is called with
     # ``fuse=False`` unconditionally; that stopped being true on 2026-08-29 and a
     # wiring record that still said it would be describing a seam that no longer
@@ -1306,7 +1381,7 @@ def test_the_dispatch_by_default_licence_is_the_artifact_it_names():
     dropped — keeps every field well-formed and changes nothing on disk, so only the
     digest can see it. The null control's artifact is held to the same rule.
 
-    THE RESULTS TREE IS GITIGNORED, so a clone has no artifacts and this skips on
+    The results tree is gitignored, so a clone has no artifacts and this skips on
     the TREE's absence, never on the artifact's: a checkout that has results but not
     the run the licence names must fail.
     """
@@ -1351,7 +1426,7 @@ def test_the_dispatch_by_default_licence_is_the_artifact_it_names():
         assert live == recorded, (
             f"the {what} artifact {spelled} hashes to {live[:12]} and the licence "
             f"recorded {recorded[:12]}: the block was not cut from these bytes")
-    # AND THE BYTES THE RUN EXECUTED ARE THE BYTES THE RECORD BINDS. The licence
+    # And the bytes the run executed are the bytes the record binds. The licence
     # carries no digest map (see :func:`_assert_one_licence_holds`), so the third leg
     # of "artifact, record, tree" is read here, from the artifact the digest above
     # just proved is the one transcribed: every file the record binds, as the ship
@@ -1406,9 +1481,9 @@ def test_the_cuda_record_states_the_default_the_code_ships():
 
 
 def test_the_cited_driver_route_gate_ran_the_bytes_the_record_binds():
-    """THE THREE DIGESTS HAVE TO BE ONE DIGEST: artifact, record, tree.
+    """The three digests have to be one digest: artifact, record, tree.
 
-    THE DEFECT THIS EXISTS FOR, measured 2026-08-29 and not hypothetical. Three
+    The defect this exists for, measured 2026-08-29 and not hypothetical. Three
     different sha256s for ``meep_gpu/fastpath.py`` were live at once: 87f740ee
     shipped, ``fingerprints.json['driver_dispatch']['source_sha256']`` recorded
     06cdbf37, and all four legs of the gate this file cites as its release
@@ -1423,7 +1498,7 @@ def test_the_cited_driver_route_gate_ran_the_bytes_the_record_binds():
     citation is fixed by RE-RUNNING the gate against the current bytes; there is
     no digest here to edit, because every digest is read rather than written.
 
-    THE RESULTS TREE IS GITIGNORED, so a clone has no artifacts and this skips.
+    The results tree is gitignored, so a clone has no artifacts and this skips.
     It skips on the TREE's absence, never on the artifact's: a checkout that has
     results but not the run the release names is exactly the state the defect
     left behind, and it must fail rather than skip.
@@ -1437,7 +1512,7 @@ def test_the_cited_driver_route_gate_ran_the_bytes_the_record_binds():
     if not results.is_dir():
         pytest.skip("parity/meep_gpu/results is gitignored and absent here")
 
-    # ONE ROUTE CAMPAIGN PER ADMITTED CAPABILITY. The release constant is a STAMP; the
+    # One route campaign per admitted capability. The release constant is a STAMP; the
     # campaign a capability's record cites is ``fastpath.route_campaign(stamp, cc)``
     # (``<stamp>_cc86``), the directory the recut refuses to file under any other
     # name, and the one the record's own slot names. Every capability the table
@@ -1475,7 +1550,7 @@ def test_the_cited_driver_route_gate_ran_the_bytes_the_record_binds():
                     f"{leg.parent.name} ran {name} at {ran.get(name)}, the record binds "
                     f"{digest}, the tree ships {live}. Re-run the gate against the "
                     f"bytes that ship; do not type a digest in.")
-        # AND THE CASE LIST IS THE RUN'S OWN. RELEASED_FUSED_ARMS names the cases each
+        # And the case list is the run's own. RELEASED_FUSED_ARMS names the cases each
         # arm was driven on; a case no leg drove would be provenance for a measurement
         # nobody took. The record's driven_on_cases is checked against the constant
         # above; this checks the ARTIFACT, which is the thing that did the driving.
@@ -1509,7 +1584,7 @@ def test_every_recorded_certification_points_at_a_readable_record():
     into ``fingerprints.json`` now, so the exemption is gone and the assertion is
     what stops it coming back.
 
-    ASKED ON ONE ARCHITECTURE, because that is where a run record now lives: the
+    Asked on one architecture, because that is where a run record now lives: the
     three facts are the certifying RUN's, and the run is the one keyed by
     :data:`CERTIFIED_CAPABILITY`. ``capabilities_live`` is asserted beside them so a
     weld whose record stopped binding the shipped bytes cannot answer here by
@@ -1529,7 +1604,7 @@ def test_every_recorded_certification_points_at_a_readable_record():
 def test_the_no_absorber_arms_are_device_certified_and_no_longer_pending():
     """The three no-absorber arms are certified by live runs of their own gates.
 
-    THE BUDGET IS READ FROM THE RUN'S ARTIFACT, because a re-bind does not carry it.
+    The budget is read from the run's artifact, because a re-bind does not carry it.
     The ``step_budget`` sentence ("8 launches per row; ...") was hand-curated from the
     2026-08-19 run, and ``rebind_triton_welds.py`` carries a curated run field only
     while the record it replaces still binds the bytes: a run on moved bytes drops it
@@ -1552,7 +1627,6 @@ def test_the_no_absorber_arms_are_device_certified_and_no_longer_pending():
         entry = fastpath._certification_for(arm, capability=CERTIFIED_CAPABILITY)
         assert entry["gate"] == gate
         assert entry["capability"] == CERTIFIED_CAPABILITY
-        assert "A6000" in entry["host"]
         # NOT a fixed date. The intent is "certified no EARLIER than the
         # no-absorber closure", i.e. a weld may never silently revert to an
         # older run — but a legitimate RE-certification must not fail here.
@@ -1562,6 +1636,7 @@ def test_the_no_absorber_arms_are_device_certified_and_no_longer_pending():
         assert entry["recorded_utc"] >= "2026-08-17T", entry["recorded_utc"]
         assert entry["recorded_utc"].endswith("Z"), "ISO-8601 UTC expected"
         run = fastpath._fingerprints("triton")[gate][fastpath.RUNS][CERTIFIED_CAPABILITY]
+        assert_the_host_is_a_real_card(entry["host"], run)
         if "step_budget" in run:
             assert "8 launches per" in run["step_budget"], (arm, run["step_budget"])
         runs[arm] = run
@@ -1585,7 +1660,7 @@ def test_the_no_absorber_arms_are_device_certified_and_no_longer_pending():
 
 
 def test_the_residual_closure_arms_are_explicitly_fail_closed_until_recertified():
-    """THE SUB-STEP ARMS half of the pending map, kept exact.
+    """The sub-step arms half of the pending map, kept exact.
 
     The map gained a SECOND population on 2026-09-02 — the installer wave's fused
     LABELS, which are pending for a different reason (their gate released, and no
@@ -1593,7 +1668,7 @@ def test_the_residual_closure_arms_are_explicitly_fail_closed_until_recertified(
     are told apart by ``arm_is_fused``, so neither can grow into the other's
     allowlist unnoticed.
     """
-    # THREE LEFT THIS SET ON 2026-09-14, BY A RELEASE DECISION RATHER THAN A NEW RUN.
+    # Three left this set on 2026-09-14, by a release decision rather than a new run.
     # `complex ADE update_P`, `complex conductive no-PML curl` and
     # `complex no-PML stored E` were held here on a reason that had gone stale: all
     # three family gates DID run and release on 2026-09-13 and are in
@@ -1602,21 +1677,21 @@ def test_the_residual_closure_arms_are_explicitly_fail_closed_until_recertified(
     # triton_complex_no_pml_stored_e_device_gate, recorded 2026-09-13T07:53:3xZ on
     # the GPU host). What the table's own rule additionally asks for -- "the central
     # planner and driver seam must also be recertified against the bytes that
-    # contain the arm" -- was ruled satisfied on the grounds that the
+    # contain the arm" -- was judged satisfied on the grounds that the
     # driver half is re-cut from the route run, and that the only planner record
     # (planner_integration_recert_2026-08-14) is hand-authored, predates these
-    # gates, and carries a `dispatch` field that is itself stale. THE ARMS THEREFORE
-    # MOVE TO ARM_CERTIFICATION, and the disjointness assertion below now covers the
+    # gates, and carries a `dispatch` field that is itself stale. The arms therefore
+    # move to ARM_CERTIFICATION, and the disjointness assertion below now covers the
     # three that remain -- which is what keeps this test honest about the three it
     # no longer names.
     #
-    # A FOURTH LEFT ON 2026-09-15, ON THE SAME RULING EXTENDED BY NAME:
+    # A fourth left on 2026-09-15, on the same decision extended by name:
     # `complex folded off-diagonal`, the update_E arm (not `folded complex
     # off-diagonal`, the update_H admission, which was never here). Its family gate
     # is triton_complex_offdiag_device_gate (batch_D, 2026-09-13: 5 of 5 products
     # IDENTICAL, 5 of 5 mutations DIVERGENT), and the lift was conditioned on that
     # gate being re-run under a recorded keep policy and the key rebound in the same
-    # batch -- which the test below holds the ledger to. Two remain here.
+    # change -- which the test below holds the ledger to. Two remain here.
     expected = {
         "complex no-PML off-diagonal",
         "folded off-diagonal dispersive",
@@ -1629,22 +1704,22 @@ def test_the_residual_closure_arms_are_explicitly_fail_closed_until_recertified(
 
 
 def test_the_complex_folded_offdiag_arm_is_certified_on_a_rebound_weld():
-    """The 2026-09-15 lift, held to the two conditions it was ruled on.
+    """The 2026-09-15 lift, held to the two conditions it was decided on.
 
-    ``complex folded off-diagonal`` (update_E) left PENDING_DEVICE_GATE_ARMS on an
+    ``complex folded off-diagonal`` (update_E) left PENDING_DEVICE_GATE_ARMS on a
     release decision whose licence was conditional: its ledger entry's launch.py pins had
     drifted and its ``subnormal_policy`` read "see artifact". The lift therefore
     counts only once ``gate_triton_complex_offdiag.py`` has been re-run with its
     policy stamp and ``rebind_triton_welds.py`` has rebound the key from that run.
-    ``recorded_utc`` is when the rebind cut the entry, so a floor at the ruling date
+    ``recorded_utc`` is when the rebind cut the entry, so a floor at the decision date
     says the rebind happened; a policy that names ``keep`` says the stamp reached the
     ledger. Both are red between the source edit and the rebind, by design.
 
-    THE NEAR-HOMONYM IS PINNED BESIDE IT. ``folded complex off-diagonal`` is the
+    The near-homonym is pinned beside it. ``folded complex off-diagonal`` is the
     update_H admission mapped to the complex family since 2026-08-16; a lift that
     edited that label instead would leave this arm pending and pass review by eye.
 
-    BOTH CONDITIONS ARE THE RUN'S, so both are read out of the run record for
+    Both conditions are the run's, so both are read out of the run record for
     :data:`CERTIFIED_CAPABILITY` rather than off the entry: the rebind writes one
     record per architecture under ``fastpath.RUNS``, and it is that record's date and
     policy stamp that say the re-run happened on the card this arm dispatches on.
@@ -1670,7 +1745,7 @@ def test_the_complex_folded_offdiag_arm_is_certified_on_a_rebound_weld():
     run = entry[fastpath.RUNS][CERTIFIED_CAPABILITY]
     assert run["recorded_utc"] >= "2026-09-15T", (
         f"triton_complex_offdiag_device_gate was recorded {run['recorded_utc']}, "
-        "before the ruling that lifted its arm; re-run gate_triton_complex_offdiag.py "
+        "before the 2026-09-15 decision that lifted its arm; re-run gate_triton_complex_offdiag.py "
         "and rebind with parity/meep_gpu/rebind_triton_welds.py")
     assert re.search(r"\bkeep\b", str(run["subnormal_policy"])), (
         f"triton_complex_offdiag_device_gate names no policy "
@@ -1681,12 +1756,12 @@ def test_every_pending_fused_label_is_one_the_composer_installs():
     """THE FUSED half, and it is a partition rather than a list.
 
     A fused label is pending here for ONE reason again, which is where this
-    docstring started and where the re-attribution round returns it: the composer
+    docstring started and where the 2026-09-14 re-drive returns it: the composer
     can select the label and no ``fingerprints.json`` entry has been cut from the
     gate that released it, so a dispatched run could not name the record that
     certified its bytes.
 
-    THE SECOND REASON LASTED FROM 2026-09-11 TO THE RE-ATTRIBUTION ROUND and is
+    The second reason lasted from 2026-09-11 to the 2026-09-14 re-drive and is
     worth keeping in the record. ``fused pair D (folded dispersive)`` was pending on
     a MEASUREMENT rather than on a missing entry: its case drove, dispatching the
     arm at 7 of 7 slots with every ``step()`` checkpoint reading fused==array to
@@ -1726,14 +1801,14 @@ def test_every_pending_fused_label_is_one_the_composer_installs():
     # the same campaign's preflight measured its route-gate divergence at
     # `synchronize_magnetic_fields`, so it is held on this rung for a reason no
     # ledger entry answers.
-    # 21 / 26 -> 6 / 26 ON 2026-09-13 (phase B): fifteen labels LEFT this map for
+    # 21 / 26 -> 6 / 26 ON 2026-09-13: fifteen labels LEFT this map for
     # ARM_CERTIFICATION when the 2026-09-12 identity fleet's artifacts -- the probes
     # recording the device identity and the provenance stamp the weld contract
     # requires -- were seeded by seed_triton_welds.py and the route cases each
     # needed were driven on the GPU host. The six that stayed: the held folded
     # dispersive D pair, the two no-absorber D pairs, and the three uninstallable
     # H->D products.
-    # 6 / 26 -> 5 / 26 ON THE RE-ATTRIBUTION ROUND: `fused pair D (folded
+    # 6 / 26 -> 5 / 26 on the 2026-09-14 re-drive: `fused pair D (folded
     # dispersive)` left for ARM_CERTIFICATION, and it is the one row that ever left
     # this map without a ledger entry being cut for it -- its entry
     # (`triton_folded_dispersive_fused_pair_device_gate`, PASS) had been cut on
@@ -1741,7 +1816,7 @@ def test_every_pending_fused_label_is_one_the_composer_installs():
     # the subnormal-policy install ordering instead. The four that stay are the
     # complex no-absorber D pair, whose own pair weld has not been cut, and the
     # three uninstallable H->D products; `fused pair D (no-PML stored E)` left in
-    # the target round, on the ledger entry its pending row said was missing.
+    # the 2026-09-14 release, on the ledger entry its pending row said was missing.
     # 4 / 26 -> 3 / 26 ON 2026-09-15: the complex no-absorber D pair left for
     # ARM_CERTIFICATION with its release on `complex_no_pml_3d`; its pair weld is
     # cut by seed_triton_welds.py from the pair gate re-run after that edit. The
@@ -1751,23 +1826,23 @@ def test_every_pending_fused_label_is_one_the_composer_installs():
     # labels went straight to ARM_CERTIFICATION, so the installed side grows by two
     # and the pending side does not move.
     assert len(pending) == 3 and len(installed) == 28
-    # AND THE RELEASED HALF, WHICH USED TO BE "NONE OF THEM".
+    # And the released half, which used to be "none of them".
     #
     # This line read `assert not (installed & set(RELEASED_FUSED_ARMS))` from the
     # 2026-09-02 wiring wave until 2026-09-11, and what it was defending is worth
-    # keeping rather than deleting: a wiring round must not be able to release a
+    # keeping rather than deleting: a wiring change must not be able to release a
     # product by adding a row to the composer's table. The intent is UNCHANGED and
     # the assertion is now the enumeration that says it — releasing three products
     # is a campaign, and a fourth appearing here without one fails on this line.
     #
-    # THREE AND NOT FOUR ON 2026-09-11. The campaign drove a fourth product,
+    # Three and not four on 2026-09-11. The campaign drove a fourth product,
     # `fused pair D (folded dispersive)`, and its preflight refused it: the route
     # gate's second consult site, `synchronize_magnetic_fields`, read
     # fused_vs_array False AND unfused_vs_array False on a leg installing no fused
     # product, which was read at the time as the seam's divergence rather than the
     # kernel's. It stayed in PENDING_DEVICE_GATE_ARMS and out of this set.
     #
-    # AND IT IS THE NINETEENTH NOW. Re-driven three times in fresh processes over
+    # And it is the nineteenth now. Re-driven three times in fresh processes over
     # the full 1600-step ladder, that site reads PASS with both comparisons
     # byte-clean and the armed nulls firing; the signature belonged to the lazy
     # subnormal-policy install (the ARRAY leg flushing subnormals the dispatch legs
@@ -1778,20 +1853,20 @@ def test_every_pending_fused_label_is_one_the_composer_installs():
     # The second half is the invariant that used to be implied by the first: a
     # label may not be released and pending at once, which would be a plan claiming
     # a certification the pending rung says it lacks.
-    # EIGHTEEN SINCE PHASE B (2026-09-13): the three above plus the fifteen labels
+    # Eighteen since 2026-09-13: the three above plus the fifteen labels
     # `dispatch_fused_route_2026-09-13_phaseB` drove on their seeded welds.
-    # TWENTY-TWO AFTER THE TARGET AND RE-ATTRIBUTION ROUNDS: `fused pair D (no-PML
-    # stored E)`, released by the target round on `absorber_1d` and
+    # Twenty-two after the 2026-09-14 release and re-drive: `fused pair D (no-PML
+    # stored E)`, released 2026-09-14 on `absorber_1d` and
     # `material_dispersion_0d` against a ledger entry that already existed, and
     # `fused pair D (folded dispersive)`, released here. Both rows say in
     # RELEASED_FUSED_ARMS which half of their evidence the succeeding route
     # campaign still owes; this enumeration is about the released SET and not about
     # what each row banked.
     # TWENTY-THREE ON 2026-09-15: `fused pair D (complex conductive no-PML)`, released
-    # on `complex_no_pml_3d` in the same batch as its ARM_CERTIFICATION row.
+    # on `complex_no_pml_3d` in the same change as its ARM_CERTIFICATION row.
     # TWENTY-FIVE ON 2026-09-17: `fused pair D (off-diagonal)` and `fused pair D
     # (folded off-diagonal)`, the two scratch-output welds, routed and released in
-    # one batch on `offdiag_magnetic_2d` / `folded_offdiag_magnetic_2d`. Their drive
+    # one change on `offdiag_magnetic_2d` / `folded_offdiag_magnetic_2d`. Their drive
     # with the weld installed is what the Triton route campaign owed.
     assert (installed & set(fastpath.RELEASED_FUSED_ARMS)) == {
         "fused pair D (off-diagonal)", "fused pair D (folded off-diagonal)",
@@ -1813,7 +1888,7 @@ def test_every_pending_fused_label_is_one_the_composer_installs():
 def test_the_no_absorber_gate_records_are_welded_to_the_live_sources():
     """Every entry that PINS bytes, not every entry that also says ``status``.
 
-    ENUMERATED, NOT LISTED. This test named three gates by hand, and the six
+    Enumerated, not listed. This test named three gates by hand, and the six
     welds added on 2026-08-19 were therefore ORPHANS: they recorded a
     source_sha256 that nothing recomputed, so editing a welded kernel left the
     record asserting a device result about bytes that no longer shipped — the
@@ -1821,7 +1896,7 @@ def test_the_no_absorber_gate_records_are_welded_to_the_live_sources():
     hand-maintained list is a second place to forget a weld; the record IS the
     list.
 
-    ENUMERATING IT WAS NOT ENOUGH, and that is the 2026-08-30 correction. The
+    Enumerating it was not enough, and that is the 2026-08-30 correction. The
     enumeration still carried a filter — ``status == "PASS"`` — and the record
     holds ten entries with a complete device-gate record and no ``status`` key at
     all. They were exactly as unchecked as the six orphans had been, on 88 more
@@ -1835,16 +1910,16 @@ def test_the_no_absorber_gate_records_are_welded_to_the_live_sources():
     BARE BASENAME, and two spellings of "where does this pin point" is two places
     to disagree about which file a digest describes.
 
-    IT WAS RED FROM 2026-08-30 TO 2026-08-31, ON ONE ENTRY —
-    ``dispersive_composition_gate``'s ``__init__.py`` — AND THAT IT WAS RED HERE
-    WAS INFORMATIVE. This test carries the ``weld_survives_edit`` allowance and the
+    It was red from 2026-08-30 to 2026-08-31, on one entry —
+    ``dispersive_composition_gate``'s ``__init__.py`` — and that it was red here
+    was informative. This test carries the ``weld_survives_edit`` allowance and the
     weld contract deliberately does not, so the two can disagree: a comment-only
     edit is drift there and harmless here. That one failed in BOTH, which is the
     allowance saying, on its own terms, that the change reached executable code.
     ``triton_kernels/__init__.py`` had moved from ``33d9ae4ecaca`` to
     ``017f710e0002`` since that gate's 2026-08-11 run.
 
-    IT WAS NOT CLEARABLE BY A REBIND, and what actually cleared it is written
+    It was not clearable by a rebind, and what actually cleared it is written
     where the drift is measured: ``test_triton_weld_contract.py::
     test_the_triton_welds_are_bound_to_the_live_sources``. In short — the gate DID
     re-run on 2026-08-30, and ``probe_triton_engine_route.py`` wrote a payload with
@@ -1859,7 +1934,7 @@ def test_the_no_absorber_gate_records_are_welded_to_the_live_sources():
     the GPU host and released, and ``recut_composition_records.py`` bound the entry
     with both moved counters declared in ``CLAIM_RECUTS``.
 
-    THIS TEST IS THEREFORE GREEN AND THE WELD CONTRACT IS NOT: that one still
+    This test is therefore green and the weld contract is not: that one still
     reports 2 of 314 raw-tier digests in drift, both on ``bit_identity_gate``,
     whose two pins are HARNESS files and which no binder in the tree can reach.
     The two tests disagreeing here is not a bug in either — this one walks the
@@ -1945,7 +2020,7 @@ def test_a_fused_arm_refuses_the_whole_plan(monkeypatch, label):
     an arm IS opted into. It now measures the refusal AND the admission, so a
     widening of clause (8) fails here rather than showing up on a device.
 
-    THE GRID IS THE THIRD DIRECTION and it is why this leg still measures a
+    The grid is the third direction and it is why this leg still measures a
     refusal for every one of the six labels. ``cupy_like_grid`` carries no shape
     at all, so it is outside :data:`fastpath.FUSED_RELEASE_ENVELOPE` and the
     release does not reach it — including for the three arms that ARE released.
@@ -1993,16 +2068,16 @@ def test_a_second_fused_arm_riding_along_refuses_the_whole_step(monkeypatch):
     assert plan is None
     refusal = fastpath.last_dispatch_report()["refused_because"]
     assert "Not admitted: fused pair D" in refusal, refusal
-    # AND THE REASON IS NAMED, not merely the label. ``fused pair D`` IS a
+    # And the reason is named, not merely the label. ``fused pair D`` IS a
     # released arm, so a reader who sees it refused has to be told that what is
     # missing is the CONFIGURATION and not the arm — otherwise the refusal reads
     # as a contradiction of the release list two lines above it in the record.
     assert fastpath.ROUTE_RECORD in refusal, refusal
-    # WHERE THE AXIS IS NAMED MOVED IN THE 2026-09-14 TARGET ROUND, so the assertion
+    # Where the axis is named moved in the 2026-09-14 release, so the assertion
     # moves with it rather than being dropped. The refusal STRING quotes the SHARED
     # half of the release only (fastpath's "... is released only for the
     # configuration that gate drove, and this one is outside it: ..." clause), and
-    # that half is now EMPTY: ``pml_active`` was its last row and the round put it on
+    # that half is now EMPTY: ``pml_active`` was its last row and that release put it on
     # all twenty-seven arms individually, because ``fused pair D (no-PML stored E)``
     # is released on two absorber-free cells and one shared row cannot say True and
     # False at once. So on a shape that READS there is nothing left for the string to
@@ -2013,7 +2088,7 @@ def test_a_second_fused_arm_riding_along_refuses_the_whole_step(monkeypatch):
     why = fastpath.last_dispatch_report()["fusion"]["outside_this_arms_own_cases"]
     assert any("pml_active=False" in reason for reason in why["fused pair D"]), why
 
-    # AND THE STRING'S OWN CLAUSE IS STILL MEASURED, on the one configuration that
+    # And the string's own clause is still measured, on the one configuration that
     # still fires the shared half: a run shape that will not read. That branch is
     # what an empty ``FUSED_RELEASE_ENVELOPE`` leaves it — a refusal about the
     # RECORD rather than about the configuration — and it is the half a reader of
@@ -2031,7 +2106,7 @@ def test_a_second_fused_arm_riding_along_refuses_the_whole_step(monkeypatch):
     assert "Not admitted: fused pair D" in refusal, refusal
     assert "outside it" in refusal and "the run shape did not read" in refusal, refusal
 
-    # THE OTHER DIRECTION, on the configuration the gate drove: an unreleased
+    # The other direction, on the configuration the gate drove: an unreleased
     # label riding along still refuses the whole step even though both released
     # arms in the same plan would have dispatched on their own.
     monkeypatch.delenv(fastpath.FUSE_ARMS_SWITCH, raising=False)
@@ -2068,7 +2143,7 @@ def test_the_composer_is_asked_for_an_unfused_plan(monkeypatch):
     fastpath.plan_fast_path(object(), object(), cupy_like_grid())
     assert calls[-1]["fuse"] is False and calls[-1]["fuse_ade"] is True
 
-    # THE RELEASE ASKS TOO, and this is the half that would silently do nothing if
+    # The release asks too, and this is the half that would silently do nothing if
     # the release were consulted only when judging the answer: on the
     # configuration the gate drove, an unset switch asks for the fused
     # composition. ``fuse_ade`` stays False because ``fused ADE state`` is not
@@ -2090,7 +2165,7 @@ def test_the_real_composer_accepts_every_argument_the_dispatcher_passes(monkeypa
     does not name is a ``TypeError`` that ``plan_fast_path`` catches and reports as
     a one-line "internal error" inside a refusal.
 
-    MEASURED, 2026-09-02, which is why this test exists rather than a comment: a
+    Measured, 2026-09-02, which is why this test exists rather than a comment: a
     driver-route campaign on the GPU host reported ``DID-NOT-FUSE`` on all four of its
     cases and ``ENVELOPE-DID-NOT-HOLD``, because ``fuse_labels`` had been added to
     ``launch.plan_step`` and to the dispatcher and not to the wrapper between them.
@@ -2117,7 +2192,7 @@ def test_the_real_composer_accepts_every_argument_the_dispatcher_passes(monkeypa
             "plan_fast_path passes; the TypeError would surface as an 'internal "
             "error' refusal and every case would read DID-NOT-FUSE")
 
-    # AND THE WRAPPER MUST FORWARD IT, not merely accept it. A positional forward
+    # And the wrapper must forward it, not merely accept it. A positional forward
     # that dropped the new argument would pass the signature check above and
     # silently install every fused product the table can build.
     seen = {}
@@ -2133,7 +2208,7 @@ def test_the_real_composer_accepts_every_argument_the_dispatcher_passes(monkeypa
 
 
 def test_the_composer_is_not_asked_to_fuse_outside_the_released_envelope(monkeypatch):
-    """THE ORDER IS THE CONTRACT: the envelope gates the REQUEST, not the answer.
+    """The order is the contract: the envelope gates the REQUEST, not the answer.
 
     Asking the composer to fuse on a configuration the release does not cover and
     then refusing the result at clause (8) would turn a run that dispatches its
@@ -2148,21 +2223,21 @@ def test_the_composer_is_not_asked_to_fuse_outside_the_released_envelope(monkeyp
     stub_triton(monkeypatch)
     monkeypatch.delenv(fastpath.FUSE_ARMS_SWITCH, raising=False)
 
-    # THE SHARED TABLE IS EMPTY SINCE THE 2026-09-14 TARGET ROUND, and this block is
+    # The shared table is empty since the 2026-09-14 release, and this block is
     # what that move rewrote. It used to open with the shared half: one axis here
     # refused EVERY released arm, so the composer was asked for nothing fused at all.
     #
-    # ``cylindrical`` LEFT THIS DICT ON 2026-09-11 and is measured per-arm below.
+    # ``cylindrical`` left this dict on 2026-09-11 and is measured per-arm below.
     # It could not stay: a shared row that refuses every arm is exactly what the
     # two Dcyl products require the OPPOSITE of, and leaving it here would have
     # asserted that a cylindrical grid empties the request — which is now the
     # measurement of one shape where two arms dispatch.
     #
-    # ``pml_active`` WAS THE LAST ROW IN IT AND LEFT ON THE SAME RULE, which empties
+    # ``pml_active`` was the last row in it and left on the same rule, which empties
     # :data:`fastpath.FUSED_RELEASE_ENVELOPE` outright: ``fused pair D (no-PML stored
     # E)`` is released on absorber_1d and material_dispersion_0d — cells with no
     # split-field PML at all — so the shared row would have had to say True and
-    # False at once. SO NO AXIS EMPTIES THE FUSION REQUEST BY ITSELF ANY MORE, and
+    # False at once. So no axis empties the fusion request by itself any more, and
     # asserting that one did would now be asserting something false. The two halves
     # of what this block used to say are both still measured, one axis over and one
     # shape over: ``pml_active`` joins the moved axes below, where an axis is
@@ -2171,20 +2246,20 @@ def test_the_composer_is_not_asked_to_fuse_outside_the_released_envelope(monkeyp
     # fold, the one shape in this file that admits nothing at all.
     assert fastpath.FUSED_RELEASE_ENVELOPE == (), (
         "a shared row is back; it needs its own emptied-request measurement here")
-    # THE SEVEN AXES THAT LEFT THE SHARED TABLE (six on 2026-09-13, ``pml_active``
-    # in the target round) are per-arm, so each is measured for what it leaves
+    # The seven axes that left the shared table (six on 2026-09-13, ``pml_active``
+    # on 2026-09-14) are per-arm, so each is measured for what it leaves
     # admitted -- asked of the shipped predicate, never assumed -- and every released
     # arm it refuses must NAME the axis. Three of them (beta, complex storage and
     # now pml_active) carry a released product on this stub's 2-D grid, so the
     # composer IS asked there; the other four leave nothing admitted on it (BFAST is
     # released at 3-D and the nonlinear pair at 1-D, off-diagonal on nothing).
-    # EVERY EXPECTATION HERE IS WRITTEN OUT BY HAND, and that is the whole value of
+    # Every expectation here is written out by hand, and that is the whole value of
     # this loop rather than an inconvenience. An earlier repair of this test read
     # ``expected`` off ``arms_released_on`` — the function under test — and then
     # asserted the composer agreed with it. That version stays green under the exact
     # regression the loop exists to catch: widen an arm until it admits the BFAST
     # shape and the derived expectation widens with it, so nothing reddens. The
-    # values below were MEASURED on 2026-09-14 and are pinned as constants, so a row
+    # values below were measured on 2026-09-14 and are pinned as constants, so a row
     # that quietly widens lands here as a mismatch instead of being ratified.
     #
     # Four axes still leave NOTHING admitted, which is the emptied-request contract
@@ -2199,16 +2274,16 @@ def test_the_composer_is_not_asked_to_fuse_outside_the_released_envelope(monkeyp
                             ["fused pair B (complex beta)", "fused pair B (complex)",
                              "fused pair D (complex beta)", "fused pair D (complex)"]),
         "nonlinearity": ("fields", "has_nonlinearity", True, []),
-        # OFF-DIAGONAL ADMITS THE ORDINARY MAGNETIC PAIR SINCE THE TARGET ROUND: the B
+        # Off-diagonal admits the ordinary magnetic pair since the 2026-09-14 release: the B
         # seam never receives ``chi1inv`` (its constitutive side is H), so an
         # off-diagonal epsilon cannot reach its arithmetic, while the ordinary
         # electric pair that does read the tensor is still refused here by name.
-        # SINCE 2026-09-15 IT ALSO ADMITS THE SCRATCH-OUTPUT WELD on the D seam, the
+        # SINCE 2026-09-15 it also admits the scratch-output weld on the D seam, the
         # product whose constitutive half IS the off-diagonal arm; its folded twin
         # stays out on this unfolded stub, refused on the fold axis.
         "off_diagonal_epsilon": ("fields", "has_offdiagonal_epsilon", True,
                                  ["fused pair B", "fused pair D (off-diagonal)"]),
-        # THE TARGET ROUND'S OWN MOVE, and the first axis here whose value lives on
+        # The 2026-09-14 release's own move, and the first axis here whose value lives on
         # the PML rather than on the grid or the fields — which is why the loop
         # builds all three objects and dispatches on the row's ``home``.
         "pml_active": ("pml", "is_active", False,
@@ -2231,13 +2306,13 @@ def test_the_composer_is_not_asked_to_fuse_outside_the_released_envelope(monkeyp
                    for why in fusion["outside_this_arms_own_cases"].values()), axis
     assert arms_released_on(grid=dict_grid(certified_envelope_grid(), beta=0.4)) == [
         "fused pair B (real beta)", "fused pair D (real beta)"]
-    # AND THE ABSENT ABSORBER LEAVES EXACTLY THE ONE ARM RELEASED ON IT, named here
+    # And the absent absorber leaves exactly the one arm released on it, named here
     # the way the beta and complex lines name theirs. This is the assertion the
     # emptied shared row used to make, inverted: the axis that used to refuse all
     # twenty-seven now admits precisely the arm whose own cases drove it, and the
     # offer the composer is handed carries that label and no other.
     #
-    # THE CALL IS RE-ISSUED RATHER THAN READ OFF THE LOOP'S LAST ITERATION, so that
+    # The call is re-issued rather than read off the loop's last iteration, so that
     # an eighth axis appended to ``moved`` cannot silently retarget the three
     # assertions below at a different configuration while they go on passing.
     assert arms_released_on(pml=inactive_envelope_pml()) == [
@@ -2246,8 +2321,8 @@ def test_the_composer_is_not_asked_to_fuse_outside_the_released_envelope(monkeyp
                             certified_envelope_grid())
     assert calls[-1]["fuse_labels"] == ("fused pair D (no-PML stored E)",), calls[-1]
     # Every OTHER released arm refuses, which is the per-arm half carrying what the
-    # shared row said before the move. SINCE 2026-09-15 ONE OF THEM REFUSES ON A
-    # DIFFERENT AXIS: ``fused pair D (complex conductive no-PML)`` also pins
+    # shared row said before the move. Since 2026-09-15 one of them refuses on a
+    # different axis: ``fused pair D (complex conductive no-PML)`` also pins
     # ``pml_active`` False, so this absorber-free shape agrees with it there and it is
     # refused on the axes this real 2-D stub does not carry -- asserted by name for
     # ``complex_storage`` below. Every remaining arm names ``pml_active``.
@@ -2269,14 +2344,14 @@ def test_the_composer_is_not_asked_to_fuse_outside_the_released_envelope(monkeyp
                                                force_complex_fields=True)) == [
         "fused pair B (complex beta)", "fused pair B (complex)",
         "fused pair D (complex beta)", "fused pair D (complex)"]
-    # THE PER-ARM TABLE, 2026-09-02. ``dimensions=3`` and the FOLD no longer refuse
+    # The per-arm table, 2026-09-02. ``dimensions=3`` and the FOLD no longer refuse
     # every arm from one shared row — the folded pairs REQUIRE a fold and the
     # ordinary pairs refuse one — so each is measured for what it leaves admitted
     # rather than for emptying the request. A fold refuses the unfolded arms and
-    # admits the folded ones, which is the release the 09-11 round added and is why
+    # admits the folded ones, which is what the 09-11 release added and is why
     # the composer is still asked.
     #
-    # 3-D STOPPED BEING AN EMPTY SHAPE IN THE 2026-09-14 TARGET ROUND, so the
+    # 3-D stopped being an empty shape in the 2026-09-14 release, so the
     # assertion that it refuses every arm had to go: ``fused pair B`` and ``fused
     # pair D`` each widened their ``dimensions`` row to {1, 2, 3} when
     # pml_3d_diagonal lifted off-device to a (40, 40, 40) diagonal PML cell. The
@@ -2302,11 +2377,11 @@ def test_the_composer_is_not_asked_to_fuse_outside_the_released_envelope(monkeyp
     assert fusion["released_here"] == expected
     per_arm = fusion["outside_this_arms_own_cases"]
     assert set(per_arm) == set(fastpath.RELEASED_FUSED_ARMS) - set(expected)
-    # WHICH ARMS STOP NAMING THE AXIS IS THE WIDENING ITSELF, written out rather
+    # Which arms stop naming the axis is the widening itself, written out rather
     # than derived: an arm is absent from this set exactly when its own row pins
     # ``dimensions`` at a value 3 is not. A row silently widened to admit 3-D would
     # land here as an arm that stopped naming it, which is what this set is for.
-    # ``fused pair D (complex conductive no-PML)`` JOINED IT ON 2026-09-15: like the
+    # ``fused pair D (complex conductive no-PML)`` joined it on 2026-09-15: like the
     # BFAST pair it REQUIRES 3-D (complex_no_pml_3d is its one case), so this stub
     # agrees with it on the axis and it is refused on its own axes instead, asserted
     # by name below.
@@ -2332,14 +2407,14 @@ def test_the_composer_is_not_asked_to_fuse_outside_the_released_envelope(monkeyp
                             folded_envelope_grid())
     assert calls[-1]["fuse"] is True, "a fold is what the folded pairs are released on"
     fusion = fastpath.last_dispatch_report()["fusion"]
-    # TWO LABELS AND NOT THREE ON THIS GRID, and since the re-attribution round the
+    # Two labels and not three on this grid, and since the 2026-09-14 re-drive the
     # third is refused on an AXIS rather than absent from the table. ``fused pair D
     # (folded dispersive)`` is released again — its hold was a divergence
     # re-attributed to the subnormal-policy install ordering — and its row pins
     # ``susceptibilities`` at 1, so on this zero-pole fold it is refused per-arm
     # like any other released label whose shape does not match. The folded
     # dispersive grid further down is where it is admitted.
-    # SINCE PHASE B the folded REAL BETA pairs are offered here too: like every
+    # Since 2026-09-13 the folded real beta pairs are offered here too: like every
     # beta product's row (and the CUDA special_kz rows before them) theirs carries
     # no ``beta`` pin -- the arm IS the beta product and its predicate requires
     # beta != 0 -- so on a plain fold the release offers them and the composer's
@@ -2353,11 +2428,11 @@ def test_the_composer_is_not_asked_to_fuse_outside_the_released_envelope(monkeyp
                for arm, why in fusion["outside_this_arms_own_cases"].items()
                if "folded" not in arm), fusion["outside_this_arms_own_cases"]
 
-    # AND THE AXES ``fused pair B``'s OWN CASES DROVE BOTH VALUES OF STAY UNPINNED
-    # FOR IT: conductive_2d carried a conductivity and dispersive_2d a
+    # And the axes ``fused pair B``'s own cases drove both values of stay unpinned
+    # for it: conductive_2d carried a conductivity and dispersive_2d a
     # susceptibility. Pinning either would refuse two of the five cases that drove
     # it. Its SIBLING ``fused pair D`` is pinned on both — its own cases drove
-    # neither — which is the narrowing this round made, so the same grid admits one
+    # neither — which is the narrowing the per-arm rows made, so the same grid admits one
     # arm and not the other and the request is still made.
     fields = certified_envelope_fields()
     fields.has_conductivity = True
@@ -2369,7 +2444,7 @@ def test_the_composer_is_not_asked_to_fuse_outside_the_released_envelope(monkeyp
     assert fusion["released_here"] == ["fused pair B"]
     assert "fused pair D" in fusion["outside_this_arms_own_cases"]
 
-    # THE OFFER IS WHAT THE COMPOSER IS HANDED, not just the boolean. A product the
+    # The offer is what the composer is handed, not just the boolean. A product the
     # ladder cannot admit occupies BOTH slots of its seam, so a composer that
     # installed it would force clause (8) to reject the arms underneath it too.
     assert calls[-1]["fuse_labels"] == ("fused pair B",), calls[-1]
@@ -2378,7 +2453,7 @@ def test_the_composer_is_not_asked_to_fuse_outside_the_released_envelope(monkeyp
     # shape ADMITS, what it leaves refused, and the offer the composer is actually
     # handed. Each of the three is a shape on which the shared table used to answer
     # for every arm at once and now cannot. All three carry released arms since the
-    # re-attribution round: the folded dispersive grid carried none while the
+    # 2026-09-14 re-drive: the folded dispersive grid carried none while the
     # product that takes its D seam was held at the route gate's second consult
     # site, and now carries two.
 
@@ -2403,7 +2478,7 @@ def test_the_composer_is_not_asked_to_fuse_outside_the_released_envelope(monkeyp
 
     # A conductive grid. ``fused pair B`` was already admitted here — its own case
     # list drove both values of the axis — and the D seam, which was refused
-    # outright before this round, now carries the conductive product.
+    # outright before the 2026-09-11 release, now carries the conductive product.
     fastpath.plan_fast_path(conductive_envelope_fields(), certified_envelope_pml(),
                             certified_envelope_grid())
     assert calls[-1]["fuse"] is True
@@ -2413,10 +2488,10 @@ def test_the_composer_is_not_asked_to_fuse_outside_the_released_envelope(monkeyp
     assert calls[-1]["fuse_labels"] == ("fused pair B",
                                         "fused pair D (conductive)"), calls[-1]
 
-    # A folded dispersive grid, AND BOTH SEAMS ARE SERVED HERE. The pole is what
+    # A folded dispersive grid, and both seams are served here. The pole is what
     # separates the two folded D-seam products — ``fused pair D (folded)`` pins
     # ``susceptibilities`` at 0 precisely because this case gives its D seam to the
-    # dispersive one — and since the re-attribution round the dispersive one is
+    # dispersive one — and since the 2026-09-14 re-drive the dispersive one is
     # released to take it: the hold at ``synchronize_magnetic_fields`` was a
     # divergence of the ARRAY comparison leg under a lazily installed subnormal
     # policy, not of this seam, and three fresh-process re-drives read the site
@@ -2424,7 +2499,7 @@ def test_the_composer_is_not_asked_to_fuse_outside_the_released_envelope(monkeyp
     # pair is refused here) beside the product that does run, and the offer the
     # composer is handed carries both labels rather than one.
     #
-    # THE ONE POLE IS LOAD-BEARING IN BOTH DIRECTIONS: the dispersive product's own
+    # The one pole is load-bearing in both directions: the dispersive product's own
     # row pins ``susceptibilities`` at 1, so this fixture is inside it and the
     # five-pole fold the route gate uses as its envelope witness is not.
     fastpath.plan_fast_path(folded_dispersive_envelope_fields(),
@@ -2442,7 +2517,7 @@ def test_the_composer_is_not_asked_to_fuse_outside_the_released_envelope(monkeyp
     assert calls[-1]["fuse_labels"] == ("fused pair B (folded)",
                                         "fused pair D (folded dispersive)"), calls[-1]
 
-    # AND THE SAME FOLD AT FIVE POLES ADMITS NOTHING, which is the guard that keeps
+    # And the same fold at five poles admits nothing, which is the guard that keeps
     # the route gate's Triton ENVELOPE WITNESS (``folded_dispersive5_2d``) a witness.
     # All three folded rows have to refuse it: the two folded pairs on 0/{0,1} and
     # the dispersive product on 1. If any of them is widened to five, the release
@@ -2458,8 +2533,8 @@ def test_the_composer_is_not_asked_to_fuse_outside_the_released_envelope(monkeyp
                 "fused pair D (folded dispersive)"):
         why = fusion["outside_this_arms_own_cases"][arm]
         assert any("susceptibilities=5" in reason for reason in why), (arm, why)
-    # AND THIS IS WHERE THE REQUEST EMPTIES, which is the half of this test the
-    # shared table used to carry and the 2026-09-14 target round took off it. Not
+    # And this is where the request empties, which is the half of this test the
+    # shared table used to carry and the 2026-09-14 release took off it. Not
     # one axis but every arm's own row refusing at once is what leaves the composer
     # asked for exactly the composition an un-released configuration is asked for
     # today — no ``fuse``, and no label offered for it to install. It is asserted on
@@ -2474,7 +2549,7 @@ def test_the_composer_is_not_asked_to_fuse_outside_the_released_envelope(monkeyp
         fastpath.RELEASED_FUSED_ARMS)
 
 
-#: THE SHAPE EACH LABEL IS MEASURED ON, as a pair of factories so every test gets
+#: The shape each label is measured on, as a pair of factories so every test gets
 #: its own objects. This map is the 2026-09-11 replacement for the ``"(folded)" in
 #: label`` sniff below it: with eight released arms across five distinct shapes,
 #: deriving the shape from the label's SPELLING stopped being possible — the
@@ -2484,15 +2559,15 @@ def test_the_composer_is_not_asked_to_fuse_outside_the_released_envelope(monkeyp
 #: quietly: the test's own "the shape has to be the arm's own" assertion below
 #: reports it as a case list and a shape that drifted apart.
 SHAPE_FOR_LABEL = {
-    # A VALUE MAY CARRY A THIRD BUILDER, the PML, and only the arms released on an
+    # A value may carry a third builder, the PML, and only the arms released on an
     # absorber-free grid use it. Two elements means "the certified active PML",
-    # which is what every arm released before the 2026-09-14 target round carries.
+    # which is what every arm released before the 2026-09-14 release carries.
     "fused pair B": (certified_envelope_grid, certified_envelope_fields),
     "fused pair D": (certified_envelope_grid, certified_envelope_fields),
     "dispersive fused pair": (certified_envelope_grid, certified_envelope_fields),
     "fused pair B (folded)": (folded_envelope_grid, certified_envelope_fields),
     "fused pair D (folded)": (folded_envelope_grid, certified_envelope_fields),
-    # RELEASED AGAIN SINCE THE RE-ATTRIBUTION ROUND, on the same shape it always
+    # Released again since the 2026-09-14 re-drive, on the same shape it always
     # carried: the fold and the ONE-pole fields its case drove. It was the one row
     # here a campaign put back — held while the route gate's second consult site was
     # read as diverging from the array path on this very shape with fusion off as
@@ -2502,14 +2577,14 @@ SHAPE_FOR_LABEL = {
     # refusal where the release is what this parametrisation is asking about.
     "fused pair D (folded dispersive)": (folded_envelope_grid,
                                          folded_dispersive_envelope_fields),
-    # THE FIRST ARM RELEASED ON AN ABSORBER-FREE GRID (2026-09-14 target round,
+    # The first arm released on an absorber-free grid (2026-09-14 release,
     # when ``pml_active`` moved off the shared envelope onto per-arm rows). Its
     # row pins ``pml_active`` False, so it is measured against the inactive PML;
     # against the certified one it would read as outside its own envelope.
     "fused pair D (no-PML stored E)": (certified_envelope_grid,
                                        certified_envelope_fields,
                                        inactive_envelope_pml),
-    # THE SECOND ARM RELEASED ON AN ABSORBER-FREE GRID (2026-09-15), and the first
+    # The second arm released on an absorber-free grid (2026-09-15), and the first
     # on a complex one: its row pins ``pml_active`` False beside ``complex_storage``
     # True, ``conductivity`` True, ``susceptibilities`` 1 and ``dimensions`` 3, so it
     # is measured on its own case's grid and fields against the inactive PML.
@@ -2522,12 +2597,12 @@ SHAPE_FOR_LABEL = {
                                    certified_envelope_fields),
     "fused pair D (cylindrical)": (cylindrical_envelope_grid,
                                    certified_envelope_fields),
-    # THE SCRATCH-OUTPUT OFF-DIAGONAL WELDS (2026-09-15), on the shapes
+    # The scratch-output off-diagonal welds (2026-09-15), on the shapes
     # offdiag_magnetic_2d and folded_offdiag_magnetic_2d lifted.
     "fused pair D (off-diagonal)": (certified_envelope_grid, offdiag_envelope_fields),
     "fused pair D (folded off-diagonal)": (folded_envelope_grid,
                                            offdiag_envelope_fields),
-    # THE PHASE B ARMS (2026-09-13), each on the shape its own route case lifted.
+    # The 2026-09-13 arms, each on the shape its own route case lifted.
     "fused pair B (real beta)": (beta_envelope_grid, certified_envelope_fields),
     "fused pair D (real beta)": (beta_envelope_grid, certified_envelope_fields),
     "fused pair B (folded real beta)": (folded_beta_envelope_grid,
@@ -2570,7 +2645,7 @@ def test_a_released_fused_arm_dispatches_only_inside_the_envelope(monkeypatch, l
     a configuration problem, and the refusal for a released label outside the
     envelope must.
 
-    ``fused pair D (folded dispersive)`` MOVED SIDES ON THE RE-ATTRIBUTION ROUND,
+    ``fused pair D (folded dispersive)`` moved sides with the 2026-09-14 re-drive,
     and it is worth saying which measurement moved it. It was unreleased on a
     MEASUREMENT rather than for want of a run: the gate DID drive it — 7 of 7 slots
     dispatched, every ``step()`` checkpoint fused==array — and its second consult
@@ -2582,19 +2657,19 @@ def test_a_released_fused_arm_dispatches_only_inside_the_envelope(monkeypatch, l
     dispatch legs keep. So the label is on the dispatching side now and ``fused ADE
     state`` is alone on the refusing one.
 
-    EACH ARM IS DRIVEN ON THE SHAPE ITS OWN CASES RAN, which is the 2026-09-02
+    Each arm is driven on the shape its own cases ran, which is the 2026-09-02
     change: a folded label on the unfolded grid is refused by
     ``FUSED_RELEASE_ARM_AXES`` and would have measured that refusal rather than the
     release. ``released_here`` is asked of the shipped predicate for the shape in
     hand rather than compared against the whole table, so a narrowing shows up here
     as a moved list rather than as a test nobody re-read.
 
-    THE SHAPE NOW COMES FROM ``SHAPE_FOR_LABEL`` rather than from the label's text
+    The shape now comes from ``SHAPE_FOR_LABEL`` rather than from the label's text
     (2026-09-11): four of these ten labels are separated from a sibling by a FIELD
     or a grid flag, which no spelling of the label can carry.
     """
     monkeypatch.delenv(fastpath.FUSE_ARMS_SWITCH, raising=False)
-    # THE MAP IS A DENOMINATOR, not a convenience: a released arm with no shape
+    # The map is a denominator, not a convenience: a released arm with no shape
     # here would simply not be measured, which is the one way this file can be
     # green about a release nobody drove.
     assert set(fastpath.RELEASED_FUSED_ARMS) <= set(SHAPE_FOR_LABEL), sorted(
@@ -2608,7 +2683,7 @@ def test_a_released_fused_arm_dispatches_only_inside_the_envelope(monkeypatch, l
     plans = {"step_B": CountingPlan("b")}
     selected = {"step_B": label}
     if folded:
-        # RUNG (6b) IS NOT BEING WORKED AROUND, it is being SATISFIED: a folded
+        # RUNG (6b) is not being worked around, it is being SATISFIED: a folded
         # composition that leaves the ghost fills on the array path is exactly what
         # that rung refuses, and the gate's folded cases carry the mirror-fill
         # kernel in both slots. A stub without them would measure 6b, not the
@@ -2622,7 +2697,7 @@ def test_a_released_fused_arm_dispatches_only_inside_the_envelope(monkeypatch, l
     admitted_here = arms_released_on(grid=grid, fields=fields, pml=pml)
     assert record["fusion"]["released_here"] == admitted_here
     assert record["fusion"]["outside_the_released_envelope"] == []
-    # THE SHAPE HAS TO BE THE ARM'S OWN, or the branch below measures the wrong
+    # The shape has to be the arm's own, or the branch below measures the wrong
     # refusal: an arm absent from what this shape admits is not evidence about the
     # release, it is evidence the case list and the shape drifted apart.
     assert (label in admitted_here) == (label in fastpath.RELEASED_FUSED_ARMS), (
@@ -2648,13 +2723,13 @@ def test_a_released_fused_arm_dispatches_only_inside_the_envelope(monkeypatch, l
 @pytest.mark.parametrize("label,needle", [
     ("fused pair B (folded)", "folded is absent"),
     ("fused pair D (folded)", "folded is absent"),
-    # THE 2026-09-11 ARMS, on the same Cartesian unfolded grid. The two Dcyl
-    # products are refused on the axis that LEFT the shared envelope this round,
+    # The 2026-09-11 arms, on the same Cartesian unfolded grid. The two Dcyl
+    # products are refused on the axis that LEFT the shared envelope in that release,
     # which is the assertion that would silently pass if `cylindrical` had been
     # left there.
     #
-    # `fused pair D (folded dispersive)` IS A ROW HERE SINCE THE RE-ATTRIBUTION
-    # ROUND, and until then it could not be: the campaign's preflight had held it
+    # `fused pair D (folded dispersive)` is a row here since the 2026-09-14
+    # re-drive, and until then it could not be: the campaign's preflight had held it
     # back at the route gate's second consult site (`synchronize_magnetic_fields`
     # read fused_vs_array False and unfused_vs_array False on a leg installing no
     # fused product), so it was refused by NAME at clause (8) and the per-arm table
@@ -2665,7 +2740,7 @@ def test_a_released_fused_arm_dispatches_only_inside_the_envelope(monkeypatch, l
     ("fused pair D (folded dispersive)", "folded is absent"),
     ("fused pair B (cylindrical)", "cylindrical=False, not True"),
     ("fused pair D (cylindrical)", "cylindrical=False, not True"),
-    # THE PHASE B ARMS (2026-09-13), refused on the plain grid by the axis that left
+    # The 2026-09-13 arms, refused on the plain grid by the axis that left
     # the shared envelope for them: storage, the BFAST flag, the nonlinearity flag.
     ("fused pair B (complex)", "complex_storage=False, not True"),
     ("fused pair D (complex)", "complex_storage=False, not True"),
@@ -2683,7 +2758,7 @@ def test_an_arm_is_refused_on_the_plain_grid_its_cases_never_ran(
     The per-arm table is what holds both halves, and this is the half that would
     silently pass if the folded arms were released on the shared table instead.
 
-    ``cylindrical`` MADE THE SAME MOVE ON 2026-09-11 and is measured here on the
+    ``cylindrical`` made the same move on 2026-09-11 and is measured here on the
     same terms, which is why this test is no longer named for the fold: the shared
     row said "no arm runs on a Dcyl grid" and two arms now do, so the row had to
     become per-arm and the ordinary pairs' refusal on that grid — and these two
@@ -2708,8 +2783,8 @@ def test_the_opt_in_still_reaches_past_the_release_and_says_so(monkeypatch):
     composition. Both halves measured: it dispatches, and it is stamped.
     """
     monkeypatch.setenv(fastpath.FUSE_ARMS_SWITCH, "fused pair B")
-    # THE SHAPE MOVED IN THE 2026-09-14 TARGET ROUND AND THE ASSERTIONS DID NOT.
-    # This test drove a 3-D grid as its "past the release" shape; the round widened
+    # The shape moved in the 2026-09-14 release and the assertions did not.
+    # This test drove a 3-D grid as its "past the release" shape; that release widened
     # ``fused pair B``'s ``dimensions`` row to {1, 2, 3} when pml_3d_diagonal lifted
     # off-device, so 3-D is INSIDE that arm's envelope now and an opt-in there would
     # reach past nothing — the stamp this test exists for would correctly be absent
@@ -2733,8 +2808,8 @@ def test_the_opt_in_still_reaches_past_the_release_and_says_so(monkeypatch):
     assert stamp["arms"] == ["fused pair B"]
     assert stamp["reached_by"] == fastpath.FUSE_ARMS_SWITCH
     assert any("nonlinearity=True" in reason for reason in stamp["reasons"]), stamp
-    # AND THE STAMP NAMES THE ARM'S OWN ROW, not the shared table, which is the half
-    # that would have silently stopped working when the target round emptied
+    # And the stamp names the arm's own row, not the shared table, which is the half
+    # that would have silently stopped working when the 2026-09-14 release emptied
     # ``FUSED_RELEASE_ENVELOPE``: the stamp reads BOTH halves of the release, and
     # with the shared half empty the per-arm half is the whole of what marks this
     # artifact as something other than the released composition.
@@ -2744,7 +2819,7 @@ def test_the_opt_in_still_reaches_past_the_release_and_says_so(monkeypatch):
 def test_the_fusion_veto_takes_the_release_back_and_leaves_dispatch_running(monkeypatch):
     """``MEEP_GPU_FUSE_ARMS=0``, both directions, on the configuration that fuses.
 
-    WHY THE VETO IS PRODUCT CODE AND NOT A GATE FLAG. Before the release, "dispatch
+    Why the veto is product code and not a gate flag. Before the release, "dispatch
     the separate arms, do not fuse" was what an unset switch meant; after it, that
     same unset switch is the fused composition, so the configuration that isolates
     a fusion defect from a sub-step defect stopped being reachable. It is also the
@@ -2757,7 +2832,7 @@ def test_the_fusion_veto_takes_the_release_back_and_leaves_dispatch_running(monk
     vetoes nothing: with the token the composer is asked ``fuse=False`` and the
     separate arm still dispatches; without it, on the same grid, ``fuse=True``.
 
-    AND THE RECORD MUST KEEP THE TWO FACTS APART. ``released_here`` is a statement
+    And the record must keep the two facts apart. ``released_here`` is a statement
     about the CONFIGURATION and does not move; ``admitted`` is what this run will
     take and empties. An artifact that collapsed them would read "the release does
     not cover this shape", which is a different and false thing.
@@ -2784,7 +2859,7 @@ def test_the_fusion_veto_takes_the_release_back_and_leaves_dispatch_running(monk
     assert calls[-1]["fuse"] is True
     assert fastpath.last_dispatch_report()["fusion"]["vetoed"] is False
 
-    # A VETO A LABEL CAN OVERRIDE IS NOT A VETO. The ambiguous value answers to the
+    # A veto a label can override is not a veto. The ambiguous value answers to the
     # safe branch, and the label it names is still reported as asked for.
     monkeypatch.setenv(fastpath.FUSE_ARMS_SWITCH,
                        f"{fastpath.FUSE_ARMS_VETO},fused pair B")
@@ -2843,7 +2918,7 @@ def test_the_veto_still_refuses_a_fused_label_by_name(monkeypatch):
 def test_the_fusion_opt_in_is_recorded_on_a_run_that_never_asked(monkeypatch):
     """A reader must be able to tell "asked for nothing" from "asked and refused".
 
-    THREE STATES NOW, not two, and the third is the one 2026-08-29 added: a run
+    Three states now, not two, and the third is the one 2026-08-29 added: a run
     that asked for nothing and was GIVEN the release, versus one that asked for
     nothing and is outside it. An absent key would collapse them.
     """
@@ -2859,7 +2934,7 @@ def test_the_fusion_opt_in_is_recorded_on_a_run_that_never_asked(monkeypatch):
     assert block["released_by_the_gate"] == sorted(fastpath.RELEASED_FUSED_ARMS)
     # Outside the envelope: released_here is empty AND says which axes said so.
     assert block["released_here"] == [] and block["admitted"] == []
-    # WHICH KEY CARRIES "WHICH AXES" MOVED IN THE 2026-09-14 TARGET ROUND, and the
+    # Which key carries "WHICH AXES" moved in the 2026-09-14 release, and the
     # three states this test is about did not. ``pml_active`` was the last row in
     # :data:`fastpath.FUSED_RELEASE_ENVELOPE` and is now per-arm, so the shared half
     # is EMPTY on every shape that reads and ``outside_the_released_envelope`` fires
@@ -2867,7 +2942,7 @@ def test_the_fusion_opt_in_is_recorded_on_a_run_that_never_asked(monkeypatch):
     # about the configuration. Asserting it truthy here would now be asserting that
     # this stub's shape did not read, which is a different and false fact.
     #
-    # SO THE STATE IS READ OFF TWO KEYS INSTEAD OF ONE, and the distinction the
+    # So the state is read off two keys instead of one, and the distinction the
     # docstring is about is pinned harder than it was: the key is PRESENT and an
     # empty LIST — "measured, and the shared half had nothing to say" — which is a
     # different value from the ``"the run shape was not reached"`` string that
@@ -2877,11 +2952,11 @@ def test_the_fusion_opt_in_is_recorded_on_a_run_that_never_asked(monkeypatch):
     assert block["outside_the_released_envelope"] == [], block
     why = block["outside_this_arms_own_cases"]
     assert set(why) == set(fastpath.RELEASED_FUSED_ARMS), why
-    # BOTH AXES, EACH OVER THE DENOMINATOR IT ACTUALLY COVERS, rather than one
+    # Both axes, each over the denominator it actually covers, rather than one
     # either/or that would be carried by the first and say nothing about the
     # second: this stub names neither ``dimensions`` nor an absorber, so every arm
     # reports the unread dimensionality, and all but the arms released WITHOUT an
-    # absorber report the axis the target round moved here. TWO SUCH ARMS SINCE
+    # absorber report the axis the 2026-09-14 release moved here. Two such arms since
     # 2026-09-15: ``fused pair D (complex conductive no-PML)`` pins ``pml_active``
     # False beside ``fused pair D (no-PML stored E)``, and both are written out.
     assert all(any("dimensions did not read" in reason for reason in reasons)
@@ -2931,7 +3006,7 @@ def test_every_released_arm_carries_a_certification_and_a_case(monkeypatch):
     BYTES; ``RELEASED_FUSED_ARMS`` maps it to the seam gate's cases that drove it
     through the driver. Both are required, and neither substitutes for the other.
 
-    The gate must resolve ON THE ARCHITECTURE THE ARM DISPATCHES ON, which is what
+    The gate must resolve on the architecture the arm dispatches on, which is what
     ``capability=`` asks: a released arm whose weld has a run for some other card is
     the same over-claim one step in.
     """
@@ -2947,7 +3022,7 @@ def test_every_released_arm_carries_a_certification_and_a_case(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# The warm pass (S4): compilation as a plan-time event
+# The warm pass: compilation as a plan-time event
 # ---------------------------------------------------------------------------
 
 
@@ -2974,7 +3049,7 @@ def test_a_slot_whose_kernel_will_not_compile_unfills_and_the_rest_dispatches(mo
 
 @pytest.mark.parametrize("broken", ["step_B", "update_H"])
 def test_half_a_fused_pair_surviving_the_warm_pass_refuses_the_whole_plan(monkeypatch, broken):
-    """A PAIR UNFILLS AS A UNIT. The test above is right for independent slots and wrong
+    """A pair unfills as a unit. The test above is right for independent slots and wrong
     for a pair, in one of two ways depending on which half is left standing:
 
     * the LEADING half dropped — the driver runs the array curl, then the absorbed slot
@@ -3034,13 +3109,13 @@ def _one_hop_identity(entry):
 def test_the_transitive_absorb_walk_groups_every_shipped_triton_shape_AS_ONE_HOP_DID():
     """``_pair_identity`` follows ``absorbed_by`` to the end now. Nothing moved here.
 
-    THE WALK WAS MADE TRANSITIVE FOR A SHAPE NO TRITON INSTALLER WRITES: a hand-CUDA
+    The walk was made transitive for a shape no Triton installer writes: a hand-CUDA
     three-slot weld puts a half-plan in ``update_P`` that names the weld's LEADING
     half, which names the weld — two hops, and a single-hop answer would have put one
     product in two identities, which ``_split_pairs`` reads as half a pair and the
     merge reads as two units to adopt separately.
 
-    THE COST OF THAT CHANGE IS THE THING TO PIN, because it is paid on the Triton
+    The cost of that change is the thing to pin, because it is paid on the Triton
     table whether or not a second table is present, and it is paid silently: a moved
     grouping does not raise, it re-partitions the plan and the first visible symptom
     is a released pair refused as split (or, worse, adopted in halves). So every
@@ -3103,7 +3178,7 @@ def test_the_absorb_walk_terminates_on_a_malformed_chain_rather_than_hanging():
 @pytest.mark.parametrize("broken", ["fill_B", "fill_D"])
 def test_a_fill_slot_lost_at_the_warm_pass_takes_the_whole_folded_plan_down(
         monkeypatch, broken):
-    """C3b IS JUDGED TWICE, and this is the second time.
+    """C3b is judged twice, and this is the second time.
 
     Rung 6b runs before anything compiles; the warm pass then unfills per slot. A
     folded run whose fill slot lost its kernel THERE would dispatch its curls with
@@ -3363,7 +3438,7 @@ def test_an_exception_out_of_a_dispatched_run_propagates(monkeypatch):
 
 
 def test_the_artifact_answers_all_four_questions(monkeypatch):
-    """Question 3 IS A PER-ARCHITECTURE QUESTION, so this drives a grid whose device
+    """Question 3 is a per-architecture question, so this drives a grid whose device
     reads: a weld keeps one run record per compute capability, and a plan on a host
     whose card cannot be read quotes no run at all rather than guessing one. The
     unreadable-device case is its own test (``test_an_unreadable_device_is_recorded_
@@ -3394,7 +3469,7 @@ def test_the_artifact_answers_all_four_questions(monkeypatch):
 
 
 def test_every_array_slot_carries_a_named_reason(monkeypatch):
-    """R4's whole mitigation: a missing speedup must never read as a bug."""
+    """Why every fallback is named: a missing speedup must never read as a bug."""
     plan = plan_on_a_cupy_host(monkeypatch, step_plan(
         {"step_B": CountingPlan("b")}, {"step_B": "PML"}))
     for slot, entry in plan.report()["slots"].items():
@@ -3720,7 +3795,7 @@ def test_a_fill_consult_answers_false_for_a_fields_the_plan_was_not_built_from(
 
 
 def test_the_far_ghost_pass_and_the_wall_clear_commute():
-    """THE ONE REORDERING A FUSED FILL PLAN FORCES, measured on the array path.
+    """The one reordering a fused fill plan forces, measured on the array path.
 
     A fused fill plan writes the far ghost planes inside the near launch, so on that
     shape the far pass moves from AFTER ``zero_metal_*`` to BEFORE it. The argument
@@ -3732,7 +3807,7 @@ def test_the_far_ghost_pass_and_the_wall_clear_commute():
     An argument is not a measurement, so this is the measurement, on a grid built to
     make the two passes overlap: a metallic X wall and a folded periodic Y axis.
 
-    THE CONTROL IS THE SHAPE, not a second assertion: if the case were built without
+    The control is the shape, not a second assertion: if the case were built without
     a wall or without a fold one of the passes would write nothing and the two orders
     would agree vacuously, so both passes are checked to have MOVED bytes first.
     """
@@ -3859,7 +3934,7 @@ class LapsingPolicy:
 
 
 def test_a_step_that_aborts_between_a_pairs_consults_cannot_skip_the_next_ones(monkeypatch):
-    """THROUGH THE SHIPPED ``step()``: a leaked commitment SKIPS a sub-step entirely.
+    """Through the shipped ``step()``: a leaked commitment SKIPS a sub-step entirely.
 
     A fused pair's leading consult performs both halves and hands the absorbed consult a
     permission to dispatch regardless of the policy licence — refusing it after the
@@ -3931,7 +4006,7 @@ def test_an_emptied_launch_grid_reports_zero_programs(monkeypatch):
                         {"step_B": "PML", "step_D": "PML"})
     driver.step()
     counters = plan.launch_counters
-    # THE WHOLE ENTRY, not three keys of it, so a counter added later has to be
+    # The whole entry, not three keys of it, so a counter added later has to be
     # SEEN here rather than sliding past a subset comparison. ``plan_launches`` is
     # the second table's witness (a Metal KernelPlan spells no launch grid, so its
     # ``programs_per_dispatch`` is None by construction) and it is None on a Triton
@@ -4044,7 +4119,7 @@ def test_a_refused_run_still_serves_a_report_naming_the_reason(monkeypatch, gpu,
 def test_the_kill_switch_disables_dispatch_rather_than_hiding_it(monkeypatch):
     """From the env var, on a driver that would otherwise have dispatched.
 
-    IT HAS TO BE THE OPERATIVE RUNG. This test used to drive a NumPy driver, which
+    It has to be the operative rung. This test used to drive a NumPy driver, which
     the ladder refuses one rung LOWER ("backend is not CuPy"), so all three of its
     assertions held whether or not the kill switch existed — mutating
     ``fused_dispatch_enabled`` to ``lambda: True`` failed four other tests and left
@@ -4139,7 +4214,7 @@ def test_the_fold_refusal_does_not_depend_on_which_arms_won(monkeypatch):
                                                ("fill_D", "fill_B")])
 def test_a_fold_with_only_one_fill_covered_still_refuses_the_whole_plan(
         monkeypatch, covered, uncovered):
-    """HALF A FILL SEAM IS THE HOLE, and both halves are driven.
+    """Half a fill seam is the hole, and both halves are driven.
 
     The narrowing is "BOTH fill slots carry a kernel", not "a fill slot does". A
     rule written as ``any`` rather than ``all`` passes this file's other fold cases
@@ -4192,7 +4267,15 @@ class StubDeviceBackend(types.SimpleNamespace):
     pass
 
 
-def cupy_like_grid_with_device(capability=(8, 6), name=b"NVIDIA RTX A6000"):
+#: The architectures NVRTC 11.8 lists (``nvrtcGetSupportedArchs``): the NVRTC of the
+#: certified stack, and what the stand-in CuPy's NVRTC reports unless a test asks for
+#: another. NVRTC 12.8 adds 100, 101 and 120.
+NVRTC_118_ARCHS = (35, 37, 50, 52, 53, 60, 61, 62, 70, 72, 75, 80, 86, 87, 89, 90)
+NVRTC_128_ARCHS = (50, 52, 53, 60, 61, 62, 70, 72, 75, 80, 86, 87, 89, 90, 100, 101, 120)
+
+
+def cupy_like_grid_with_device(capability=(8, 6), name=b"NVIDIA RTX A6000",
+                               nvrtc=(11, 8), nvrtc_archs=NVRTC_118_ARCHS):
     grid = cupy_like_grid()
     runtime = types.SimpleNamespace(
         getDevice=lambda: 0,
@@ -4201,21 +4284,51 @@ def cupy_like_grid_with_device(capability=(8, 6), name=b"NVIDIA RTX A6000"):
         runtimeGetVersion=lambda: 11080,
         driverGetVersion=lambda: 12030,
     )
-    grid.xp.cuda = types.SimpleNamespace(runtime=runtime)
+    # The NVRTC the hand-CUDA table's self-check reads (``fastpath_cuda.nvrtc_target``):
+    # its version and the architectures it lists. ``nvrtc=None`` is a CuPy whose NVRTC
+    # will not answer.
+    if nvrtc is None:
+        grid.xp.cuda = types.SimpleNamespace(runtime=runtime)
+        return grid
+    compiler = types.SimpleNamespace(getVersion=lambda: tuple(nvrtc),
+                                     getSupportedArchs=lambda: tuple(nvrtc_archs))
+    grid.xp.cuda = types.SimpleNamespace(runtime=runtime, nvrtc=compiler)
     return grid
 
 
 #: Compute capabilities that stand in for a SUPPORTED device no cited gate ran on, in
 #: order of preference. A test takes the first ones that NEITHER NVIDIA table
-#: certifies and both support (:func:`supported_uncertified_capabilities`), so a round
-#: that certifies another architecture (9.0 is the next) leaves the stand-ins
+#: certifies and both support (:func:`supported_uncertified_capabilities`), so a certification
+#: that covers another architecture (9.0 is the next) leaves the stand-ins
 #: uncertified instead of turning them into certified devices under the tests that
 #: read them.
 SUPPORTED_UNCERTIFIED_CANDIDATES = ((8, 9), (7, 5), (8, 0), (7, 0))
 
-#: Compute capabilities outside the range either NVIDIA table supports, in order of
-#: preference: one below the floor and two above the ceiling.
-UNSUPPORTED_CANDIDATES = ((6, 1), (10, 0), (12, 0))
+#: Compute capabilities the stand-in CuPy's NVRTC (11.8) cannot target, in order of
+#: preference: two Blackwell devices above it and one below it. Support is a self-check
+#: since 1.0.1, so these are unsupported only by that NVRTC: with an NVRTC that lists
+#: them (``NVRTC_128_ARCHS`` for the first two) they are supported.
+UNSUPPORTED_CANDIDATES = ((10, 0), (12, 0), (3, 0))
+
+
+def _nvrtc_supports(capability, archs=NVRTC_118_ARCHS):
+    from meep_gpu import fastpath_cuda
+
+    grid = cupy_like_grid_with_device(capability=capability, nvrtc_archs=archs)
+    return fastpath_cuda.nvrtc_target(grid.xp, capability)["supported"]
+
+
+def failing_triton_probe(capabilities, message="ptxas fatal: Value 'sm_100' is not "
+                                                "defined for option 'gpu-name'"):
+    """A health-probe launch that raises on the named compute capabilities, as Triton
+    3.1's bundled ptxas does on a device newer than it knows."""
+    spelled = {f"{c[0]}.{c[1]}" for c in capabilities}
+
+    def probe(xp):
+        properties = xp.cuda.runtime.getDeviceProperties(xp.cuda.runtime.getDevice())
+        if f"{properties['major']}.{properties['minor']}" in spelled:
+            raise RuntimeError(message)
+    return probe
 
 
 def _certified_anywhere():
@@ -4230,13 +4343,14 @@ def supported_uncertified_capabilities(count=1):
 
     Fails rather than returning fewer: an empty parametrization is a skip, and a test
     that silently ran on nothing would read as a pass. Supported is read from the
-    package (:func:`fastpath.capability_supported`), never typed here.
+    package (the hand-CUDA table's self-check, ``fastpath_cuda.nvrtc_target``, on the
+    stand-in NVRTC; the Triton table's is the stand-in health probe, which passes),
+    never typed here.
     """
     certified = _certified_anywhere()
     chosen = [capability for capability in SUPPORTED_UNCERTIFIED_CANDIDATES
               if f"{capability[0]}.{capability[1]}" not in certified
-              and all(fastpath.capability_supported(capability, table) is True
-                      for table in ("triton", fastpath.CUDA_TABLE))]
+              and _nvrtc_supports(capability) is True]
     assert len(chosen) >= count, (
         f"only {len(chosen)} of {SUPPORTED_UNCERTIFIED_CANDIDATES} are supported and "
         f"uncertified (certified: {sorted(certified)}); add a candidate")
@@ -4244,10 +4358,11 @@ def supported_uncertified_capabilities(count=1):
 
 
 def unsupported_capabilities(count=1):
-    """The first ``count`` candidates NEITHER table supports (so neither certifies)."""
+    """The first ``count`` candidates the stand-in NVRTC cannot target (so neither table
+    certifies them); a test that wants the Triton table to fail on them too passes
+    :func:`failing_triton_probe` to :func:`stub_triton`."""
     chosen = [capability for capability in UNSUPPORTED_CANDIDATES
-              if all(fastpath.capability_supported(capability, table) is False
-                     for table in ("triton", fastpath.CUDA_TABLE))]
+              if _nvrtc_supports(capability) is False]
     assert len(chosen) >= count, (
         f"only {len(chosen)} of {UNSUPPORTED_CANDIDATES} are unsupported; add a "
         "candidate")
@@ -4255,10 +4370,10 @@ def unsupported_capabilities(count=1):
 
 
 def test_the_recorded_gates_name_the_architecture_they_ran_on():
-    """DERIVED FROM THE LEDGER ON DISK, not compared against a typed tuple.
+    """Derived from the ledger on disk, not compared against a typed tuple.
 
     The list used to be one hand-written key, and asserting ``("8.6",)`` here was the
-    same defect one layer up: a round that certified a second architecture would have
+    same defect one layer up: a certification of a second architecture would have
     to come and edit this line, so the line said what it had always said. The
     expectation is re-derived instead — the intersection, over the gates the arms
     cite, of the capabilities whose run record still binds the entry's bytes — read
@@ -4295,20 +4410,23 @@ def test_the_capability_spellings_normalize_to_one(value, expected):
 
 def test_a_device_the_gates_never_ran_on_is_refused_by_name_when_it_is_unsupported(
         monkeypatch):
-    """Triton generates PTX for an ARCH, so a bit-identity claim is arch-scoped; a
-    device outside the supported range is refused by name, with the way past it."""
-    stub_triton(monkeypatch)
+    """Both tables generate code for an arch, so a bit-identity claim is arch-scoped; a
+    device neither table can run on -- the NVRTC cannot target it, the Triton health
+    probe cannot launch on it -- is refused by name, with the way past it."""
+    (capability,) = unsupported_capabilities(1)
+    stub_triton(monkeypatch, probe=failing_triton_probe([capability]))
     install_composer(monkeypatch, step_plan({"step_B": CountingPlan("b")},
                                             {"step_B": "PML"}))
-    (capability,) = unsupported_capabilities(1)
     grid = cupy_like_grid_with_device(capability=capability, name=b"another device")
     assert fastpath.plan_fast_path(object(), object(), grid) is None
     record = fastpath.last_dispatch_report()
     spelled = f"{capability[0]}.{capability[1]}"
     assert spelled in record["refused_because"]
-    assert "outside the compute capabilities that table supports" in \
-        record["refused_because"]
-    assert record["refused_because"].endswith(fastpath.UNSUPPORTED_HINT)
+    cuda = record["tables"][fastpath.CUDA_TABLE]["refused_because"]
+    assert "outside what that table can run on: the NVRTC 11.8 of this CuPy" in cuda
+    assert cuda.endswith(fastpath.UNSUPPORTED_HINT)
+    assert "cannot compile and launch a kernel" in \
+        record["tables"]["triton"]["refused_because"]
     assert record["environment"]["device"]["name"] == "another device"
     assert record["environment"]["device_supported"] is False
 
@@ -4385,7 +4503,7 @@ def _family_recert_run(capability=CERTIFIED_CAPABILITY):
 def _family_recut_tool():
     """``parity/meep_gpu/recut_composition_records.py``: the family re-cut's own rules.
 
-    IMPORTED, NEVER RESTATED, for the reason :func:`_recut_tool` gives: where a family
+    Imported, never restated, for the reason :func:`_recut_tool` gives: where a family
     gate's artifact states its step budget, the sentence a block carries when it states
     none, where the campaign row lives and how a gate's release is read are decided by
     the tool that writes the family blocks, and a second spelling here would be a second
@@ -4506,7 +4624,7 @@ def test_the_nine_families_certified_this_round_carry_real_provenance(monkeypatc
     field), so the per-family ``run_id`` and ``rc`` are reached only by naming the
     architecture — which is the point: a run id is a statement about one run.
 
-    RE-CUT FROM THE ROUND'S OWN ARTIFACTS, NOT TRANSCRIBED. Until the 2026-10-03 round
+    Re-cut from the certification run's own artifacts, not transcribed. Until the 2026-10-03 run
     the blocks were the 2026-08-14 launcher's transcription and this test pinned its
     literals (that date, ``recert_<family>_*`` run ids). ``recut_composition_records.py
     --family-recert`` rebuilds every block from a fleet campaign, so what is pinned is
@@ -4520,7 +4638,7 @@ def test_the_nine_families_certified_this_round_carry_real_provenance(monkeypatc
     assert entry["gate"] == fastpath.FAMILY_RECERT_GATE
     assert entry["capability"] == CERTIFIED_CAPABILITY
     assert entry["recorded_utc"] == run["recorded_utc"]
-    assert entry["host"] == run["host"] and "A6000" in entry["host"]
+    assert_the_host_is_a_real_card(entry["host"], run)
     assert entry["run_id"] == run["families"]["nonlinear"]["run_id"]
     assert entry["rc"] == 0
     families = run["families"]
@@ -4541,7 +4659,7 @@ def test_each_family_is_credited_with_its_own_step_budget_not_the_campaigns(monk
     sentence instead and the set below would collapse to a single element — the very
     shape this test refuses, arrived at from the other direction.
 
-    WHAT A BUDGET IS NOW. The family re-cut copies the budget each gate's artifact
+    What a budget is now. The family re-cut copies the budget each gate's artifact
     STATES, as the artifact states it (a block such as ``{"engine": 4, "reference":
     4}``), and writes its "not stated" sentence where the artifact states none. So the
     credit is checked against each family's OWN artifact rather than against
@@ -4604,7 +4722,7 @@ def test_the_family_modules_drift_declaration_matches_the_shipped_bytes():
     asserted; the digest beside each name is the value at declaration time, not a
     pin, because a declared file may keep moving while its recut is pending.
 
-    THE TWO HALVES SIT AT DIFFERENT LEVELS and that is what the comparison is
+    The two halves sit at different levels and that is what the comparison is
     between: the nine families' ``source_sha256_at_recert`` maps belong to the RUN
     that measured them (``families`` is a run field, under ``fastpath.RUNS``), while
     the drift DECLARATION is a statement about the tree and stays on the entry. So
@@ -4685,7 +4803,7 @@ def test_update_P_alone_records_the_shape_its_gate_never_composed(monkeypatch):
     record = plan.report()
     assert record["run_shape"]["cylindrical"] is True
     assert record["run_shape"]["m"] == 0
-    # THE TWO FILL SLOTS ARE ARRAY SLOTS HERE, and that is the true answer rather
+    # The two fill slots are array slots here, and that is the true answer rather
     # than a widened expectation: this run dispatches ``update_P`` alone, so the
     # driver's ``fill_symmetry_bc_*``/``fill_folded_far_ghosts_*`` passes really do
     # run on the array path. They joined the list when they joined ``DRIVER_SLOTS``
@@ -4794,7 +4912,7 @@ def test_the_warm_switch_records_that_it_widens_the_dispatch_set(monkeypatch):
 # The SECOND kernel table: the candidate-table rung and the Metal record welds
 # ---------------------------------------------------------------------------
 #
-# WHY THESE LIVE HERE RATHER THAN IN test_metal_dispatch. That file holds the Metal
+# Why these live here rather than in test_metal_dispatch. That file holds the Metal
 # ladder's own rungs; this one holds the CONTRACT the two tables share — which
 # backend reaches which table, and whether a record that says a table dispatches is
 # welded to the bytes that dispatched. A reader asking "what does the dispatch seam
@@ -4812,11 +4930,11 @@ def _requires_the_metal_table() -> None:
             "fastpath_metal_dispatch_batch",
             "fastpath.candidate_tables has not landed; the rung-3 branch that "
             "routes a NumPy engine with an MPS device to the Metal table is a "
-            "separate edit batch on this file")
+            "separate change to this file")
 
 
 def test_a_numpy_engine_with_an_mps_device_takes_the_metal_table(monkeypatch):
-    """HARDWARE PICKS THE CANDIDATE SET; a preference selects WITHIN it.
+    """Hardware picks the candidate set; a preference selects WITHIN it.
 
     The rung is not "which table do we like" — it is "which tables could possibly
     run here", answered from the engine's array module and the device that is
@@ -4842,11 +4960,11 @@ def test_a_numpy_engine_with_no_device_has_no_candidate_table(monkeypatch):
 
 
 def test_the_precedence_constant_is_triton_first_on_cupy():
-    """A CuPy engine's candidate set is an ORDER, and the order is the ruling.
+    """A CuPy engine's candidate set is an ORDER, and the order is a decision.
 
     Triton is the release-gated incumbent and hand-CUDA fills its refusals in a
     later phase; the constant is what records which one a host that could run both
-    takes, so flipping it after a timing round is a one-line edit rather than a
+    takes, so flipping it after a timing run is a one-line edit rather than a
     search.
     """
     _requires_the_metal_table()
@@ -4871,7 +4989,7 @@ def test_a_preference_outside_the_candidate_set_refuses_by_name(monkeypatch):
 def test_the_metal_arm_certification_rows_all_resolve(monkeypatch):
     """The Metal twin of ``test_every_recorded_certification_points_at_a_readable_record``.
 
-    THE ANTI-FORGERY CHECK, and it does not wait for the dispatch batch because the
+    The anti-forgery check, and it does not wait for the Metal dispatch change because the
     table it checks already ships: ``metal_dispatch.ARM_CERTIFICATION`` names a
     ledger key per arm, and a key that resolves to nothing is a record forgery that
     is invisible in an artifact — the arm names a gate, the gate names nothing.
@@ -4885,7 +5003,7 @@ def test_the_metal_arm_certification_rows_all_resolve(monkeypatch):
 def test_the_metal_record_is_welded_to_the_live_sources_when_it_exists():
     """The Metal ``driver_dispatch`` block, held to the same rule as the Triton one.
 
-    THE RULE IS "IF IT EXISTS IT IS WELDED", not "it exists". The block is cut by
+    The rule is "if it exists it is welded", not "it exists". The block is cut by
     ``parity/meep_gpu/recut_driver_dispatch_record.py --backend metal`` from a
     released campaign, and before that campaign has run there is nothing to weld —
     so its ABSENCE is the honest pre-campaign state and is asserted as such, while
@@ -4899,7 +5017,7 @@ def test_the_metal_record_is_welded_to_the_live_sources_when_it_exists():
     source edit; a record whose ``gate`` and whose module's constant disagree is a
     record cut after the fact.
 
-    AND EVERY LIVE ROUTE RUN READS PASS, in the words the three weld contracts use
+    And every live route run reads PASS, in the words the three weld contracts use
     (``weld_record_walk.route_run_problems``), as the NVIDIA records are held to in
     ``_assert_each_admitted_capability_names_its_route_campaign``.
     """
@@ -4915,12 +5033,12 @@ def test_the_metal_record_is_welded_to_the_live_sources_when_it_exists():
     record = ledger.get("driver_dispatch")
     stamp = route_stamps.route_gate("metal")
     if record is None:
-        # THE PRE-CAMPAIGN BRANCH, AND IT NOW ASSERTS SOMETHING. It read
+        # The pre-campaign branch, and it now asserts something. It read
         # ``assert <expr> or True`` until 2026-09-11 -- a tautology, in a branch whose
         # docstring says the absence "is asserted as such". What is actually worth
         # refusing is not the absence but the PAIR: a campaign that RELEASED and a
         # ledger with no block is a record that is owed, which is the state a cut
-        # forgotten at the end of a long round leaves behind and the one this test is
+        # forgotten at the end of a long certification run leaves behind and the one this test is
         # positioned to see.
         results = package.parent / "parity" / "meep_gpu" / "results"
         for summary in sorted(results.glob(f"{stamp}_applegpu_*/campaign.txt")):
@@ -4944,7 +5062,7 @@ def test_the_metal_record_is_welded_to_the_live_sources_when_it_exists():
             f"{name} changed since the Metal dispatch record was cut. Re-run the "
             f"campaign and re-cut with recut_driver_dispatch_record.py "
             f"--backend metal; do not type a digest in.")
-    # ONE ROUTE RUN PER GPU ARCHITECTURE, as the NVIDIA records keep one per compute
+    # One route run per GPU architecture, as the NVIDIA records keep one per compute
     # capability (_assert_each_admitted_capability_names_its_route_campaign): the
     # run's subkeys have left the entry level, and every architecture the cited welds
     # certify has a live route run naming that architecture's campaign.
@@ -4976,7 +5094,7 @@ def test_the_metal_record_is_welded_to_the_live_sources_when_it_exists():
 
 
 # ---------------------------------------------------------------------------
-# THE SECOND NVIDIA TABLE: candidacy, precedence, arbitration, and the merge
+# The second NVIDIA table: candidacy, precedence, arbitration, and the merge
 # ---------------------------------------------------------------------------
 #
 # The ladder composes the hand-CUDA table after Triton on a CuPy engine and merges
@@ -5106,7 +5224,7 @@ def test_the_default_precedence_leaves_a_contested_seam_with_the_incumbent(monke
 def test_the_preference_flips_the_order_and_the_cuda_unit_takes_the_seam(monkeypatch):
     """INCUMBENT-YIELDED: the same two composers, the switch the campaign drives.
 
-    ON THE CONFIGURATION THE CUDA RELEASE ADMITS, not on the bare stub grid: the
+    On the configuration the CUDA release admits, not on the bare stub grid: the
     release is what decides whether the composer is OFFERED the label at all, so a
     shapeless grid would measure the envelope rather than the arbitration.
     """
@@ -5124,7 +5242,7 @@ def test_the_preference_flips_the_order_and_the_cuda_unit_takes_the_seam(monkeyp
     assert plan.arms["update_E"] == "cuda:fused electric pair"
     assert plan.backends["step_D"] == "cuda"
     assert record["composition"]["tables_dispatched"] == ["cuda"]
-    # AND THE FAMILY CITES THE CUDA LEDGER, not the Triton one. A CUDA label looked
+    # And the family cites the CUDA ledger, not the Triton one. A CUDA label looked
     # up in the Triton ledger resolves to nothing and would reach a user's artifact
     # as a family name beside a dead key.
     entry = record["families"]["cuda:fused electric pair"]

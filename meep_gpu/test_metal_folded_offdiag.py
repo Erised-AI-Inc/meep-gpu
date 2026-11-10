@@ -5,7 +5,7 @@ backend, which is what makes it cheap and what makes it dangerous: the two halve
 are byte-identical alone, and whether they remain so together is the question. The
 tests are organised around that.
 
-**1. THE STRUCTURAL REDUCTION, CHECKED BY CHARACTER.** The claim the family rests on
+**1. The structural reduction, checked by character.** The claim the family rests on
 is that it emits the CERTIFIED off-diagonal source everywhere the fold does not
 reach, and its own body only where it does. On the Triton track the analogous claim
 needed a PTX read to settle; ``torch.mps.compile_shader`` exposes no disassembly at
@@ -16,20 +16,20 @@ directions are pinned: an unfolded code triple must produce a string EQUAL to
 ``-phase == +1``) must produce the certified COMPONENT blocks; and an EVEN plane
 must differ in exactly the two named blocks and nowhere else.
 
-**2. THE SIGN, DERIVED FROM ``fields.mirror_parity`` ITSELF** rather than from a
+**2. The sign, derived from ``fields.mirror_parity`` itself** rather than from a
 second reading of the Yee table, and the SPELLING required to be the measured one.
 ``-x`` for the negated lane and a plain copy for the un-negated one; ``0.0f - x``
 and any runtime weight are mutations, not comments.
 
-**3. THE FOLD'S OWN HAZARDS**, which the certified off-diagonal suite cannot see:
+**3. The fold's own hazards**, which the certified off-diagonal suite cannot see:
 
-* THE MIRROR PLANE IS WRITTEN BY ONE PASS AND READ BY THE NEXT, so a fold bug can be
+* The mirror plane is written by one pass and read by the next, so a fold bug can be
   byte-perfect per sub-step and wrong per step. The whole-step leg composes the
   folded curls, both mirror fills and THIS ``update_E`` through the driver's five
-  passes per half and reports the FIRST DIVERGENT STEP;
-* THE TWO TERMINATIONS ARE DIFFERENT GRIDS even though they compile the same body
+  passes per half and reports the first divergent step;
+* The two terminations are different grids even though they compile the same body
   here, and that equality is a NULL CONTROL rather than an assumption;
-* REACHABILITY IS SHARP AT SLOT LEVEL, NOT ROW LEVEL. A row can be live through its
+* Reachability is sharp at slot level, not row level. A row can be live through its
   other slot and never touch the fold, and the emitter reduces to the certified body
   in exactly that case.
 
@@ -126,7 +126,7 @@ def build(axes="Y", phases=(1,), boundaries=None, dims=2, extent=2.0,
     SECOND TIME rather than deep-copying — ``Grid`` holds the array module itself
     and a deepcopy raises.
 
-    A SEEDED STATE IS A MID-RUN ONE, so it carries ``Fields.h_separated``, as
+    A seeded state is a mid-run one, so it carries ``Fields.h_separated``, as
     ``metal_composition_matrix``'s does: MEEP's start of H and ``f_w`` from B
     (``stepping.separate_h_from_b``, run by the array path's first ``update_H``) is
     long past, and the certified constitutive kernel the folded arm re-admits on
@@ -213,7 +213,7 @@ def _shipped_specialisation(fields, pml):
 
 @pytest.mark.parametrize("codes", tuple(itertools.product((P, M), repeat=3)))
 def test_an_unfolded_triple_emits_the_certified_source_character_for_character(codes):
-    """THE WHOLE REDUCTION CLAIM, over every unfolded code triple and every row mask.
+    """The whole reduction claim, over every unfolded code triple and every row mask.
 
     With no mirror code the folded emitter must return
     ``offdiag_update_e.offdiag_source``'s string EXACTLY — not a similar one. This
@@ -230,7 +230,7 @@ def test_an_unfolded_triple_emits_the_certified_source_character_for_character(c
 
 @pytest.mark.parametrize("mirror", (MM, MP))
 def test_an_odd_mirror_plane_emits_the_certified_component_blocks(mirror):
-    """THE POLARITY INVERTS THE READING A READER ARRIVES WITH, so it is pinned.
+    """The polarity inverts the reading a reader arrives with, so it is pinned.
 
     The ghost weight is ``-phase``. An ODD plane (``phase = -1``) therefore weighs
     ``+1``, the ghost lane needs no sign at all, and every component block is the
@@ -260,7 +260,7 @@ def test_an_odd_mirror_plane_emits_the_certified_component_blocks(mirror):
 
 
 def test_an_even_plane_negates_only_the_terms_whose_partner_axis_is_folded():
-    """REACHABILITY IS SHARP AT SLOT LEVEL, and the emitter is what makes it so.
+    """Reachability is sharp at slot level, and the emitter is what makes it so.
 
     A fold on axis ``a`` is byte-visible iff some LIVE row slot takes ``E_a`` as its
     PARTNER. With every slot live and a fold on Y, exactly the two terms whose
@@ -279,7 +279,7 @@ def test_an_even_plane_negates_only_the_terms_whose_partner_axis_is_folded():
 
 
 def test_a_component_whose_live_slot_misses_the_fold_is_the_certified_block():
-    """THE MEASURED COUNTEREXAMPLE TO A ROW-LEVEL READING.
+    """The measured counterexample to a row-level reading.
 
     Fold X with the single live slot ``Ey <- Ez``: the live row is NOT ``Ex``, so a
     row-level test answers "reachable" — but the fold is in neither role for that
@@ -297,7 +297,7 @@ def test_a_component_whose_live_slot_misses_the_fold_is_the_certified_block():
 
 
 def test_the_folded_kernel_binds_exactly_what_the_certified_kernel_binds():
-    """THE FOLD ADDS NO ARGUMENT, and that is a consequence of two facts rather than
+    """The fold adds no argument, and that is a consequence of two facts rather than
     a coincidence: the own-axis up shift is not parity-weighted (so no reflect row)
     and the parity is a SOURCE specialisation on this backend (so no ghost weight).
     The Triton twin passes three runtime ``gw*`` scalars for the second reason alone.
@@ -335,7 +335,7 @@ def test_an_unfolded_axis_ghost_block_is_the_certified_emitters_output(code):
 
 @pytest.mark.parametrize("mirror", (MM, MP))
 def test_both_mirror_terminations_emit_the_same_ghost_block(mirror):
-    """A PREDICTED NULL WITH A DERIVATION, carried as a control rather than collapsed.
+    """A predicted null with a derivation, carried as a control rather than collapsed.
 
     ``update_E`` has no ownership mask and, because ``_offdiagonal_terms`` calls
     ``_shift_up`` without ``component``/``reflect_row``, no reflect row either — so
@@ -442,7 +442,7 @@ def test_an_all_dead_row_mask_is_refused_toward_the_folded_diagonal_family():
 
 
 def test_the_wall_declaration_and_the_boundary_code_come_apart_on_a_fold():
-    """WITHIN THE CERTIFIED FAMILY'S ADMITTED SPACE the two are LOCKED
+    """Within the certified family's admitted space the two are LOCKED
     (``walls[a] == (codes[a] == METALLIC)``, measured there); a fold is exactly the
     configuration that breaks the lock, which is why the plan carries them
     separately rather than deriving one from the other."""
@@ -515,7 +515,7 @@ def _verdict(fields, pml, residency=None):
 
 @requires_mps
 def test_the_routing_verdict_requires_a_fold_and_the_wide_one_does_not(monkeypatch):
-    """THE FIRST INVERSION, against ``offdiag_update_e``, and the reason the two
+    """The first inversion, against ``offdiag_update_e``, and the reason the two
     verdicts are separate functions.
 
     The WIDE verdict admits an unfolded grid so a gate can prove the reduction to the
@@ -549,7 +549,7 @@ def test_the_certified_offdiag_predicate_refuses_the_fold_by_name(monkeypatch):
 
 @requires_mps
 def test_the_folded_diagonal_predicate_refuses_a_live_row_by_name(monkeypatch):
-    """THE SECOND INVERSION, against ``symmetry.folded_constitutive_coverage``.
+    """The second inversion, against ``symmetry.folded_constitutive_coverage``.
 
     That predicate gates the ELEMENT-WISE constitutive body and refuses an
     off-diagonal row because the row product reads neighbours; this one requires a
@@ -605,7 +605,7 @@ def test_every_family_this_one_does_not_carry_is_refused_by_name(monkeypatch,
 
 @requires_mps
 def test_cylindrical_is_refused_twice(monkeypatch):
-    """A THREE-WAY HAZARD, not a two-way one. ``_boundary_kinds`` puts ``is_axis``
+    """A three-way hazard, not a two-way one. ``_boundary_kinds`` puts ``is_axis``
     AHEAD of ``is_mirrored``, so a folded r axis would report CYL_AXIS and the fold
     would vanish silently; and ``_mirror_phases`` puts ``(-1)**grid.m`` into the SAME
     SLOT the mirror phase occupies. The grid flag alone is not the inversion."""
@@ -618,7 +618,7 @@ def test_cylindrical_is_refused_twice(monkeypatch):
 
 @requires_mps
 def test_an_inactive_absorber_is_refused_toward_the_null_family(monkeypatch):
-    """A SECOND, INDEPENDENT SEPARATION on this slot: ``no_pml_constitutive``
+    """A second, independent separation on this slot: ``no_pml_constitutive``
     requires an INACTIVE absorber and this family an ACTIVE one."""
     monkeypatch.setenv(subnormal.POLICY_ENV, subnormal.FLUSH)
     fields, pml = matrix.folded_no_pml()
@@ -713,7 +713,7 @@ BYTE_CASES = (
 @pytest.mark.parametrize("label,kwargs", BYTE_CASES, ids=[c[0] for c in BYTE_CASES])
 def test_the_sub_step_reproduces_stepping_update_E_byte_for_byte(monkeypatch,
                                                                  label, kwargs):
-    """THE FAMILY'S CENTRAL CLAIM, over both terminations, both parities, one and
+    """The family's central claim, over both terminations, both parities, one and
     three folded axes, both full-count parities, 2-D and 3-D, and a row set whose
     live slot misses the fold entirely.
 
@@ -751,7 +751,7 @@ def test_asking_for_an_unbuilt_contract_variant_raises(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# 6. THE WHOLE STEP — the real arbiter
+# 6. The whole step — the real arbiter
 # ---------------------------------------------------------------------------
 
 WHOLE_STEP_CASES = (
@@ -776,7 +776,7 @@ _TO_FIRST_UPDATE_H = (
 @pytest.mark.parametrize("label,kwargs", WHOLE_STEP_CASES,
                          ids=[c[0] for c in WHOLE_STEP_CASES])
 def test_the_whole_step_fixture_is_a_mid_run_state(label, kwargs):
-    """THE WHOLE-STEP LEG COMPARES A KERNEL THAT NEVER STARTS H, SO ITS STATE IS MID-RUN.
+    """The whole-step leg compares a kernel that never starts H, so its state is mid-run.
 
     The array path's first ``update_H`` on a run starts H and ``f_w`` from B on the
     dsigw cells (``stepping.separate_h_from_b``, MEEP's update_eh.cpp:165-177) and
@@ -784,7 +784,7 @@ def test_the_whole_step_fixture_is_a_mid_run_state(label, kwargs):
     builds steps the forms alone (``ConstitutivePlan.starts_h_from_b`` is False), and
     the composer refuses it a run's real first ``update_H`` (``launch.h_start_reasons``).
     A fixture that does not carry ``Fields.h_separated`` therefore compares the start
-    with no start: MEASURED on the array path alone, as built without the flag against
+    with no start: measured on the array path alone, as built without the flag against
     the same state with it, 2d_fold_Y_even_periodic moves Hx 72 and Hy 32 words at the
     first ``update_H`` (B and ``f_w_H*`` equal) and reaches Dz 92, Hx 72, Hy 32 and
     fu_Dz 32 before ``update_E`` -- word for word the step-0 divergence the whole-step
@@ -816,7 +816,7 @@ def test_the_whole_step_fixture_is_a_mid_run_state(label, kwargs):
                          ids=[c[0] for c in WHOLE_STEP_CASES])
 def test_a_complete_step_composes_with_the_folded_curls_and_fills(monkeypatch,
                                                                   label, kwargs):
-    """SIX GREEN SUB-STEP COMPARISONS SAY NOTHING ABOUT THE OBJECT THE ENGINE RUNS.
+    """Six green sub-step comparisons say nothing about the object the engine runs.
 
     Three failure classes live only in a complete step — a stale mirror, a seam, and
     an accumulating auxiliary (``fu_*``, ``f_w_*`` are STATE, and a kernel right for
@@ -824,8 +824,8 @@ def test_a_complete_step_composes_with_the_folded_curls_and_fills(monkeypatch,
     fold adds a fourth: the mirror plane is WRITTEN by one pass and READ by the next,
     so a fold bug can be byte-perfect per sub-step and wrong per step.
 
-    Compared per COMPLETE STEP over a stated budget, reporting the FIRST DIVERGENT
-    STEP; per-slot launch counters prove each slot actually ran, so no slot can pass
+    Compared per COMPLETE STEP over a stated budget, reporting the first divergent
+    step; per-slot launch counters prove each slot actually ran, so no slot can pass
     by not executing. Measured on this host 2026-08-16: 0 differing words at every
     step of 6, on every case. The state is a mid-run one (:func:`build`); measured
     2026-10-09 on the Apple GPU, compared after every pass, the folded curls, both
@@ -890,7 +890,7 @@ def test_a_complete_step_composes_with_the_folded_curls_and_fills(monkeypatch,
         if total and first_divergent is None:
             first_divergent = (step, {k: v for k, v in per_name.items() if v})
 
-    assert first_divergent is None, (label, "FIRST DIVERGENT STEP", first_divergent,
+    assert first_divergent is None, (label, "first divergent step", first_divergent,
                                      "per-step differing words", per_step)
     moved = sum(_differing(np.zeros_like(getattr(reference_fields, name)),
                            getattr(reference_fields, name))
@@ -902,14 +902,14 @@ def test_a_complete_step_composes_with_the_folded_curls_and_fills(monkeypatch,
 
 
 # ---------------------------------------------------------------------------
-# 6b. THE PRECONDITION IS A WINDOW, NOT A SCALAR
+# 6b. The precondition is a window, not a scalar
 # ---------------------------------------------------------------------------
 
 def _census_step(fields, weights, codes, step):
     """One step's census over the operands this sub-step reads, ITS RESULTS, and the
     fold's OWN intermediate — the ghost-weighted pair on the mirror plane.
 
-    THE FOLD PUTS A DEEP-PML PLANE ON THE FAR FACE, which is exactly where tiny
+    The fold puts a deep-PML plane on the far face, which is exactly where tiny
     magnitudes live, and the ghost lane READS stored row ``MIRROR_SOURCE_INDEX`` and
     WRITES the fold plane. A whole-volume aggregate cannot be moved by a 1e-40
     boundary plane, so the intermediate is censused on THOSE PLANES specifically.
@@ -952,9 +952,9 @@ def _census_step(fields, weights, codes, step):
                          ids=("physical", "small_normal", "scaled_control"))
 def test_the_subnormal_precondition_reports_a_window_not_a_count(monkeypatch,
                                                                  scale, fires):
-    """THE PRECONDITION IS A RUN-AND-WINDOW FACT, so the leg reports the WINDOW.
+    """The precondition is a run-and-window fact, so the leg reports the WINDOW.
 
-    Band entry is not a family property: on the chi3 round a Q~20 narrow-band
+    Band entry is not a family property: on one chi3 run a Q~20 narrow-band
     Gaussian turn-on swept ~40 decades and dragged the leading edge through the whole
     band from step 55 to step 3,726, then ran clean for 16,274 steps. So "this leg
     censused zero" licenses nothing about a run with a narrow-band source, and the
@@ -1099,7 +1099,7 @@ def test_the_byte_leg_catches_the_defects_it_claims_to(monkeypatch, label, mutat
     wall-masked 32, own-axis up wrap 32 (with a live ``Ey`` row) and 0 (without one),
     ``0.0f - x`` 0 on normals.
 
-    THE TWO NULLS ARE NAMED RATHER THAN OMITTED. The up-wrap pair is the same mutant
+    The two nulls are named rather than omitted. The up-wrap pair is the same mutant
     on two row sets and is what makes the catch a discriminating measurement instead
     of a coincidence; the ``0.0f - x`` null is what the value-class leg then
     resolves.
@@ -1134,7 +1134,7 @@ def test_the_byte_leg_catches_the_defects_it_claims_to(monkeypatch, label, mutat
 ))
 def test_the_refuted_spelling_is_refused_on_evidence_and_the_evidence_names_its_class(
         monkeypatch, label, plant, caught):
-    """WHY ``0.0f - x`` IS A MUTATION AND NOT A COMMENT, and what its reach actually is.
+    """Why ``0.0f - x`` is a mutation and not a comment, and what its reach actually is.
 
     Measured on this host 2026-08-16 in this family's own term shape: on the GHOST
     VALUE alone ``0.0f - x`` misses 12 of 30 words (10 of 10 subnormals AND 2 of 4
@@ -1144,7 +1144,7 @@ def test_the_refuted_spelling_is_refused_on_evidence_and_the_evidence_names_its_
     So the divergence needs the value to survive to the output, and the three rows
     here are that reach: a zeroed ghost plane alone is a NULL (the pair sum
     ``+0.0 + -0.0`` is ``+0.0`` either way), an engineered signed-zero lattice is
-    CAUGHT in 5 words UNDER THE SUBNORMAL-FREE PRECONDITION, and a subnormal ghost
+    CAUGHT in 5 words under the subnormal-free precondition, and a subnormal ghost
     plane is caught in 32. The middle row is why the spelling is refused rather than
     left to the precondition.
     """
@@ -1247,7 +1247,7 @@ def test_the_family_is_in_the_registry_module_and_holds_exactly_one_arm():
 
 @requires_mps
 def test_the_gate_asks_for_both_halves(monkeypatch):
-    """THIS FAMILY IS AN INTERSECTION, so the gate asks BOTH questions: on an
+    """This family is an intersection, so the gate asks BOTH questions: on an
     unfolded run with rows the certified arm speaks, and on a folded run without rows
     the folded constitutive arm does. In neither case does a reader want this
     family's full refusal list beside theirs."""

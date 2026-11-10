@@ -1,21 +1,21 @@
 """``grid.beta`` under complex64 storage: its coefficient, its deltas, its predicate.
 
-WHAT IS PINNED HERE AND WHAT IS NOT. The BYTE-IDENTITY VERDICT needs a device and
+What is pinned here and what is not. The BYTE-IDENTITY VERDICT needs a device and
 lives in ``parity/meep_gpu/gate_cuda_complex_beta.py``. What a laptop can reach --
 and every one of these is a plausible, smooth, WRONG field if it leaks -- is:
 
-* THE COEFFICIENT, against ``stepping._special_kz_beta_term``'s own arithmetic on a
+* The coefficient, against ``stepping._special_kz_beta_term``'s own arithmetic on a
   real ``Grid``/``Fields`` pair, not against a restatement of it: one real float32
   word per call site, the D side's negated in double before its one rounding, and the
   increment ``-quarter_turn(c, g)`` formed part by part.
-* THE DELTAS, line by line against the FOLDED complex source this family transforms,
+* The deltas, line by line against the FOLDED complex source this family transforms,
   so "the fold plus MEEP's beta pass after targets 0 and 1" is a claim a diff checks.
-* THE PREDICATE, whose admissions must partition against the certified complex pair
+* The predicate, whose admissions must partition against the certified complex pair
   AND against ``complex_folded_kernels`` -- twelve of this family's sixteen census
   slots are folded, so the two are one wrong clause away from claiming the same
   rows.
 
-THE BEHAVIOUR -- the emitted text executed against ``stepping.step_B`` / ``step_D`` as
+The behaviour -- the emitted text executed against ``stepping.step_B`` / ``step_D`` as
 uint32 words on beta grids folded and unfolded, with planted defects each shown to
 diverge -- is ``test_fold_complex_chunk_forms.py``'s: it runs the shipped device text
 itself through the complex interpreter rather than a transcription of it.
@@ -83,7 +83,7 @@ def build_beta(spec, courant=0.5):
 
 
 # ---------------------------------------------------------------------------
-# THE COEFFICIENT
+# The coefficient
 # ---------------------------------------------------------------------------
 
 def _beta_increment(word, partner):
@@ -163,7 +163,7 @@ def test_the_sub_steps_and_the_call_sites_are_exact_negatives():
 
 
 # ---------------------------------------------------------------------------
-# THE DELTAS
+# The deltas
 # ---------------------------------------------------------------------------
 
 #: The lines one beta pass adds after its target's ``pml_apply`` call
@@ -281,7 +281,7 @@ def test_the_signature_carries_two_beta_words_before_the_chunk_record():
 
 
 # ---------------------------------------------------------------------------
-# THE PREDICATE
+# The predicate
 # ---------------------------------------------------------------------------
 
 def _ask(predicate, fields, layer, grid, key):
@@ -292,7 +292,7 @@ def _ask(predicate, fields, layer, grid, key):
 def test_the_three_complex_families_partition_a_beta_row(spec):
     """Exactly one arm may serve each slot of a beta row -- folded or not.
 
-    TWELVE OF THIS FAMILY'S SIXTEEN CENSUS SLOTS ARE ALSO FOLDED, so the beta family
+    Twelve of this family's sixteen census slots are also folded, so the beta family
     and the folded family are one wrong clause away from claiming the same rows,
     which the union census reports as a FINDING rather than as coverage.
     """
@@ -410,7 +410,7 @@ def test_a_cylindrical_or_three_dimensional_beta_grid_is_refused_by_name():
 def test_the_admission_record_claims_nothing_it_has_not_measured():
     """A family record that says "passed" before its gate ran is worse than none.
 
-    RELEASED ON DEVICE 2026-09-01, and the pins below moved WITH the release --
+    Released on device 2026-09-01, and the pins below moved WITH the release --
     the two-part-edit discipline this test exists for. Until that run this test
     pinned ``released`` False and empty ``artifacts``; now it pins the device
     leg's own numbers, the REPORTED platform finding, and the partition move
@@ -427,11 +427,11 @@ def test_the_admission_record_claims_nothing_it_has_not_measured():
     assert record["gate"].endswith("gate_cuda_complex_beta.py")
     assert any("special_kz_curl" in line
                for line in record["what_it_does_not_license"])
-    # THE PARTITION MOVED WITH THE RELEASE, or "certified" is a word someone typed.
+    # The partition moved with the release, or "certified" is a word someone typed.
     assert beta_family.CERTIFIED_KERNELS == ("step_B_pml_complex_beta",
                                              "step_D_pml_complex_beta")
     assert beta_family.UNCERTIFIED_KERNELS == {}
-    # THE DEVICE LEG'S NUMBERS MUST BE INTERNALLY CONSISTENT.
+    # The device leg's numbers must be internally consistent.
     device = record["device_leg"]
     assert (device["folded_cases"] + device["unfolded_cases"]
             == device["curl_cases_scored"]
@@ -444,7 +444,7 @@ def test_the_admission_record_claims_nothing_it_has_not_measured():
     assert (device["mutation_legs_caught"] + device["mutation_legs_null_confirmed"]
             + device["mutation_legs_reported"] == device["mutation_legs"])
     assert device["policies"] == ("ieee_keep_ftz_stripped", "meep_x86_flush")
-    # THE ONE UNCATCHABLE LEG MUST STAY VISIBLE IN EVERY PLACE THAT SPEAKS OF IT.
+    # The one uncatchable leg must stay visible in every place that speaks of it.
     # On device it is REPORTED -- the leg's own contract calls an all-legs-uncaught
     # outcome a platform finding, and the reason (mul_imag_coefficient_left reads
     # the imaginary word alone) is recorded beside the verdict, not argued.
@@ -455,7 +455,7 @@ def test_the_admission_record_claims_nothing_it_has_not_measured():
                for line in record["what_it_does_not_license"]), (
         "the finding has to reach the does-not-license list in its measured form: "
         "nothing may cite the pass-through as load-bearing")
-    # THE HOST LEG STAYS, as the transcription record it always was.
+    # The host leg stays, as the transcription record it always was.
     host = record["host_leg"]
     assert host["artifact"].endswith("gate.json")
     assert (host["folded_cases"] + host["unfolded_cases"]

@@ -1,6 +1,6 @@
 """The two mirror fills carried through a COMPLEX fused magnetic seam -- shared emitters.
 
-WHAT THIS IS. ``fused_magnetic_pair`` carries ``fill_symmetry_bc_B`` and
+What this is. ``fused_magnetic_pair`` carries ``fill_symmetry_bc_B`` and
 ``fill_folded_far_ghosts_B`` through the OWNERSHIP INVERSION -- the source thread
 writes every imaged ghost from a live register, the destination thread is carved
 out -- in real float32 arithmetic. This module is that same machinery under
@@ -11,18 +11,18 @@ certified curl sources genuinely share the fold spelling
 (``complex_beta_kernels.beta_source`` is ``complex_folded_kernels.folded_source``
 plus the beta insert, which never touches a fill), so one carry serves both.
 
-NOTHING HERE IMPORTS CUPY OR NUMPY AT MODULE SCOPE: the emitters splice strings
+Nothing here imports CuPy or NumPy at module scope: the emitters splice strings
 and the clauses read a grid, and both must run on the census laptop.
 
 =============================================================================
-WHAT CHANGES UNDER COMPLEX STORAGE, AND WHAT WAS MEASURED BEFORE IT WAS SPELLED
+What changes under complex storage, and what was measured before it was spelled
 =============================================================================
 
-1. **THE PARITY MULTIPLY IS A FULL COMPLEX PRODUCT, NEVER A SCALE.** The array
+1. **The parity multiply is a full complex product, never a scale.** The array
    path computes ``phase * plane`` with ``phase`` a Python int and ``plane``
    complex64 on the engine backend (stepping.py:1451, :1529-1532); the backend
    promotes the scalar and runs its complex multiply loop, whose zero cross terms
-   carry the field's other word's SIGN into an addend. MEASURED on the GPU host
+   carry the field's other word's SIGN into an addend. Measured on the GPU host
    (2026-09-01, one RTX A6000, CuPy 13.5.1): over 4108 complex words including
    signed zeros and subnormals, ``mul_coefficient_left(+-1, z)`` matched CuPy's
    ``parity * z`` on every word under both arms, while the plain two-word scale
@@ -30,9 +30,9 @@ WHAT CHANGES UNDER COMPLEX STORAGE, AND WHAT WAS MEASURED BEFORE IT WAS SPELLED
    applied through the certified ``mul_coefficient_left`` -- the coefficient is
    the LEFT operand, exactly as ``np.multiply(phase, plane)`` binds it.
 
-2. **THE CHAIN ORDER IS REAL AND IS THE DRIVER'S.** A corner ghost carries the
+2. **The chain order is real and is the driver's.** A corner ghost carries the
    COMPOSITION of the passes that imaged it, one multiply per pass -- never the
-   pre-multiplied parity product. MEASURED in the same probe:
+   pre-multiplied parity product. Measured in the same probe:
    ``(-1) * ((-1) * z)`` differs from ``(+1) * z`` in 4 of 8216 words. The order
    is transcribed from the driver: ``fill_symmetry_bc_B`` (driver.py:3294) runs to
    completion before ``fill_folded_far_ghosts_B`` (:3296), and the far pass loops
@@ -42,7 +42,7 @@ WHAT CHANGES UNDER COMPLEX STORAGE, AND WHAT WAS MEASURED BEFORE IT WAS SPELLED
    measured and transcribed (``metal_kernels/folded_complex_fused_magnetic_pair.
    parity_chain``, ``results/complex_parity_chain_order_2026-08-21/``).
 
-3. **THE OWNERSHIP RULE IS UNCHANGED.** Every step of
+3. **The ownership rule is unchanged.** Every step of
    ``fused_magnetic_pair.carried_destinations``' argument is an INDEX fact -- it
    mentions no dtype -- and the closed form transfers to word pairs unchanged
    (``results/metal_folded_far_carry_2026-08-20/ownership.json`` is where it was
@@ -51,7 +51,7 @@ WHAT CHANGES UNDER COMPLEX STORAGE, AND WHAT WAS MEASURED BEFORE IT WAS SPELLED
    fill images along the very axis ``update_H`` indexes that component on; a far
    ghost takes the source thread's own entry unchanged.
 
-4. **THE FILL PREDICATES ARE RESTATED MINUS ONE CLAUSE.** ``in_seam_coverage``'s
+4. **The fill predicates are restated minus one clause.** ``in_seam_coverage``'s
    ``covers_fill_symmetry`` / ``covers_fill_folded_far`` refuse complex64 storage
    by name, because the certified STAND-ALONE fill kernels index float32. The
    PLANNERS (``mirror_fill_phases``, ``folded_far_rows``, ``zero_metal_axes``,
@@ -62,7 +62,7 @@ WHAT CHANGES UNDER COMPLEX STORAGE, AND WHAT WAS MEASURED BEFORE IT WAS SPELLED
    shape that disagrees with the launched array, a folded axis too short to hold
    the near source row).
 
-WHAT THIS MODULE DOES NOT DECIDE: which configurations a product admits. Each
+What this module does not decide: which configurations a product admits. Each
 product's own predicate conjoins its two certified halves' predicates and THEN
 asks :func:`complex_fill_reasons`; this module never answers for a curl.
 """
@@ -139,11 +139,11 @@ _PML_APPLY_PARAMETERS = (
     "    float kms, float sinv, float kms_u, float sinv_u, int dsigu\n)")
 _PML_APPLY_PARAMETERS_OWNED = (
     "    float kms, float sinv, float kms_u, float sinv_u, int dsigu, int owned\n)")
-#: The helper's one load of the field (DESIGN.md D11): the ownership guard goes
+#: The helper's one load of the field: the ownership guard goes
 #: directly in front of it, below the ``fu`` stage.
 _PML_APPLY_FCUR = "    cf fcur = cf_load(f, idx);\n"
 _PML_APPLY_FCUR_OWNED = (
-    "    // THE OWNERSHIP GUARD. On a cell a fill images, the SOURCE thread\n"
+    "    // The ownership guard. On a cell a fill images, the SOURCE thread\n"
     "    // writes f -- so this thread must not read f[idx] either: that word is\n"
     "    // written by another block in this same launch and an ordinary CUDA\n"
     "    // launch has no grid-wide barrier at which the load would be defined.\n"
@@ -156,7 +156,7 @@ _PML_APPLY_FCUR_OWNED = (
 _PML_APPLY_STORE = "    cf_store(f, idx, value);\n"
 _PML_APPLY_STORE_REG = (
     "    cf_store(f, idx, value);\n"
-    "    // THE ONE EDIT TO THIS HELPER'S ARITHMETIC: none. Both forms and the store\n"
+    "    // The one edit to this helper's arithmetic: none. Both forms and the store\n"
     "    // are the certified ones; the value is additionally RETURNED so the\n"
     "    // constitutive half can read it from a register instead of reloading the\n"
     "    // word pair from global memory.\n"
@@ -234,7 +234,7 @@ def parity_chain(near: Sequence[int], subset: Sequence[int], carries_near: bool
                  ) -> Tuple[Tuple[int, str], ...]:
     """The ORDERED ``(axis, pass)`` applications one ghost's value carries.
 
-    THE ORDER IS THE DRIVER'S AND IS TRANSCRIBED, NEVER CHOSEN: the near pass runs
+    The order is the driver's and is transcribed, never chosen: the near pass runs
     to completion first (driver.py:3294 before :3296) and the far pass loops its
     axes ascending (stepping.py:1567, :1575), each pass reading the plane the one
     before wrote. Back-substituting a corner therefore gives
@@ -269,8 +269,8 @@ def parity_chain(near: Sequence[int], subset: Sequence[int], carries_near: bool
 def ownership_declarations() -> str:
     """``own_0``/``own_1``/``own_2`` -- is this thread's own cell imaged by a fill?
 
-    THE ONE PLACE THE INVERSION IS DECIDED; every other emitter here reads these
-    three flags. A cell either fill writes is OWNED BY ITS SOURCE THREAD: the
+    The one place the inversion is decided; every other emitter here reads these
+    three flags. A cell either fill writes is owned by its source thread: the
     thread standing on it computes the curl and stores ``fu`` (which the fills
     never touch) and then stops -- it never loads or stores B at its own cell and
     never touches H or f_w_H there, so no load it issues can land on a word
@@ -337,12 +337,12 @@ def fill_carry_blocks(target: int, indent: str = "        ") -> List[str]:
     One block per destination in :func:`carried_destinations`, guarded on the
     flags that say THIS thread is that destination's source -- stored
     :data:`NEAR_SOURCE_INDEX` on the near axis, the runtime reflect row on each
-    far axis. EVERY BLOCK IS EMITTED INSIDE the component's ownership guard by
+    far axis. Every block is emitted inside the component's ownership guard by
     :func:`constitutive_body_with_carry`, because with two fills live a thread
     can be the source of one and the destination of the other, and unguarded it
     would write a ghost from a register that was never formed.
 
-    THE VALUE IS THE PARITY CHAIN APPLIED TO ``b{target}``, one certified
+    The value is the parity chain applied to ``b{target}``, one certified
     ``mul_coefficient_left`` per pass in :func:`parity_chain`'s order -- never the
     pre-multiplied product, which moves bytes under complex storage (the module
     docstring's measured probe). ``b{target}`` is read AFTER the wall clear, so a
@@ -395,7 +395,7 @@ def fill_carry_blocks(target: int, indent: str = "        ") -> List[str]:
                 f"imaged from {NEAR_SOURCE_INDEX}, weight {_PHASE[axis]} "
                 f"(stepping._fill_symmetry_ghost_cells:1440-1447)")
         coefficient = "0" if carries_near else _COORDINATE[target]
-        # THE MEMBERSHIP ROW IS THE COEFFICIENT'S ROW (KERNELS.md section 3.3): stored
+        # The membership row is the coefficient's row (keyed at the destination): stored
         # row 0 of the component's own axis for a near image, this thread's own row
         # (its own flag) for a pure far one. update_H steps the ghost with that row's
         # own dsigw form.
@@ -409,7 +409,7 @@ def fill_carry_blocks(target: int, indent: str = "        ") -> List[str]:
         first_axis, first_pass = chain[0]
         first = (_PHASE[first_axis] if first_pass == "near"
                  else f"({_PHASE[first_axis]} * -1.0f)")
-        lines.append(f"{inner}// THE PARITY CHAIN, one part-wise product per pass "
+        lines.append(f"{inner}// The parity chain, one part-wise product per pass "
                      f"(host_writes.copy_face's")
         lines.append(f"{inner}// part_products.scale), in the driver's own "
                      f"composition order (near")
@@ -491,7 +491,7 @@ def captured_curl_body(body: str, name: str, bounds: Any = None) -> str:
 
     ``bounds`` is ``(curl entries, curl presence, union block)``: when given, the curl
     body's own chunk-record block is removed and the product's ONE block over the union
-    of both halves' entries is emitted directly after the decode (DESIGN.md D10).
+    of both halves' entries is emitted directly after the decode.
     """
     if _DECODE_END not in body:
         raise AssertionError(
@@ -499,7 +499,7 @@ def captured_curl_body(body: str, name: str, bounds: Any = None) -> str:
             f"the carried registers have nowhere to be declared")
     union = ""
     if bounds is not None:
-        # ONE DECODE OF THE CHUNK RECORD PER KERNEL (DESIGN.md D10): the curl body's
+        # One decode of the chunk record per kernel: the curl body's
         # own block is removed (refused unless it is exactly the emitter's block for
         # the curl's entries) and the product's union block takes its place.
         curl_entries, curl_presence, union = bounds
@@ -653,7 +653,7 @@ def fills_plan(grid: Any) -> Dict[str, Tuple[Any, ...]]:
 def complex_fill_reasons(fields: Any, grid: Any) -> Optional[str]:
     """Every reason this carry cannot serve the two fills on this run, or None.
 
-    THE COMPLEX RESTATEMENT of ``in_seam_coverage.covers_fill_symmetry`` /
+    The complex restatement of ``in_seam_coverage.covers_fill_symmetry`` /
     ``covers_fill_folded_far`` -- their clauses minus the one this seam exists to
     change (those predicates refuse complex64 storage because the STAND-ALONE fill
     kernels index float32; this carry is the complex spelling) -- plus the three
@@ -719,7 +719,7 @@ def complex_fill_reasons(fields: Any, grid: Any) -> Optional[str]:
             return (f"axis {axis}'s far ghost would image stored row {row} of "
                     f"{stored[axis]}; the image row must be inside the array and "
                     f"below the slot being written")
-    # THE THREE CLAUSES THE CARRY ADDS, from the real pair's own list: each is a
+    # The three clauses the carry adds, from the real pair's own list: each is a
     # fact the stand-alone passes never had to ask, because each launched over a
     # plane of its own AFTER the curl had finished.
     for name in ("has_metallic", "is_metallic", "is_mirrored"):

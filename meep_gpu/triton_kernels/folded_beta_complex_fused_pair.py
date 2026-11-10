@@ -15,16 +15,16 @@ shipped Triton weld can stand in for: :mod:`.folded_complex_fused_pair` refuses
 ``grid.beta`` through its curl half (K1's clause set requires beta = 0),
 :mod:`.folded_beta_fused_electric_pair` is the REAL-storage beta fold and refuses
 complex64 by name, and :mod:`.complex_beta_fused_electric_pair` refuses a mirror
-plane. THE SIBLING IS :mod:`..metal_kernels.folded_beta_complex_fused_pair`, which
+plane. The sibling is :mod:`..metal_kernels.folded_beta_complex_fused_pair`, which
 serves the same rows on Metal today — the proof the weld shape is portable — and each
 region here is transcribed from THIS backend's certified bodies, never from the
 sibling's MSL.
 
 ===========================================================================
-WHAT IT IS WORTH: +3 SEAM-INSTANCES OF 387
+What it is worth: +3 seam-instances of 387
 ===========================================================================
 
-MEASURED, from ``results/fusion_matrix_triton_2026-09-01_foldedbeta``: three
+Measured, from ``results/fusion_matrix_triton_2026-09-01_foldedbeta``: three
 reachable D->E seam-instances sit in this cell, scored "reachable; a slot has NO
 admitting arm (array path)" with ``curl_admitters: []``::
 
@@ -33,14 +33,14 @@ admitting arm (array path)" with ``curl_admitters: []``::
     tests:TestSpecialKz.test_eigsrc_kz_0_complex                fill_D + far ghosts, electric in-seam sources
 
 All three fold axis y, keep complex64 storage, and declare beta != 0; the two binary
-gratings additionally ride an in-plane Bloch kx on the unfolded x axis. ALL THREE
-DECLARE AN ELECTRIC SOURCE (``source_field_types`` carries ``'D'``), so under the
+gratings additionally ride an in-plane Bloch kx on the unfolded x axis. All three
+declare an electric source (``source_field_types`` carries ``'D'``), so under the
 source clause with :data:`CARRIES_DEPOSIT_REPAIR` at False this arm would admit
 NOTHING — the flag is the product, exactly as it was for the beta-less twin's two
 rows.
 
 ===========================================================================
-EVERYTHING ELSE IS THE BETA-LESS TWIN'S, BY CONSTRUCTION
+Everything else is the beta-less twin's, by construction
 ===========================================================================
 
 The five passes in the seam, the D-side fill geometry and its exact inverse relation
@@ -117,7 +117,7 @@ from .. import deposit_repair as _deposit_repair
 #: (``folded_beta_complex_fused_pair``) declares it True on the same rows, which is
 #: the independent check.
 #:
-#: THE FLAG IS NOT THE WHOLE CLAIM. It only reaches ``deposit_repair.repairable``,
+#: The flag is not the whole claim. It only reaches ``deposit_repair.repairable``,
 #: which goes on refusing BY NAME every seam the repair cannot invert -- an
 #: off-diagonal constitutive (a stencil over the curl's own in-place output), a
 #: nonlinear one, a cylindrical r = 0 axis, a fold too short to hold the near fill's
@@ -143,8 +143,8 @@ CONSTITUTIVE_SIDE = "E"
 
 #: The FIVE driver call sites ONE launch of this plan performs, in driver order
 #: (driver.py:3292-3304). Declared, never inferred from the slot name. All five do
-#: work on both corpus rows of this cell, which fold a PERIODIC axis. THE INJECTION
-#: IS NOT ONE OF THE FIVE: it is carried by the deposit repair bracket around the
+#: work on both corpus rows of this cell, which fold a PERIODIC axis. The injection
+#: is not one of the five: it is carried by the deposit repair bracket around the
 #: launch, not by the launch.
 REPLACES: Tuple[str, ...] = ("step_D", "fill_D", "zero_metal_D",
                              "fill_folded_far_ghosts_D", "update_E")
@@ -201,8 +201,8 @@ MULTIPLY_HELPERS: Tuple[str, ...] = ("_connect",)
 
 #: What has and has not been executed on a device. Edited only by a released gate.
 DEVICE_STATUS: str = (
-    "NOT YET RUN. This module was created 2026-09-02 (the fusion-residue round, "
-    "audit §1.4) and no device has executed it; its gate is "
+    "NOT YET RUN. This module was created 2026-09-02 (for cells that previously had no "
+    "admitting arm) and no device has executed it; its gate is "
     "parity/meep_gpu/probe_triton_folded_beta_complex_fused_pair.py, and only that "
     "gate's released artifact may edit this constant. Until it runs, this module "
     "licenses NOTHING: the predicate answers on the laptop, the plan builder "
@@ -234,7 +234,7 @@ def carried_destinations(near: Sequence[int], far: Sequence[int]
                          ) -> Tuple[Tuple[Tuple[int, ...], Tuple[int, ...]], ...]:
     """Every ghost cell ONE source lane owns, as ``(near axes, far axes)``.
 
-    THE OWNERSHIP RULE. The driver runs the near fill, the wall clear and the far fill
+    The ownership rule. The driver runs the near fill, the wall clear and the far fill
     in that order (driver.py:3300-3302), and the near fill loops its axes in ascending
     order, so a cell the fills leave at stored 0 of SEVERAL near axes and at the top of
     the far one is written more than once. Back-substituting every pass gives ONE
@@ -242,7 +242,7 @@ def carried_destinations(near: Sequence[int], far: Sequence[int]
     on each near axis and at the reflect row on the far one — so one lane computes the
     displacement every one of those ghosts carries and writes them all.
 
-    THE D SHAPE IS THE INVERSE OF THE B ONE: up to TWO near axes and at most ONE far
+    The D shape is the inverse of the B one: up to TWO near axes and at most ONE far
     axis, against the magnetic twin's one near and up to two far. With both near axes
     and the far axis folded a component owns SEVEN ghosts.
 
@@ -268,7 +268,7 @@ def parity_chain(near_subset: Sequence[int], far_subset: Sequence[int]
                  ) -> Tuple[Tuple[int, str], ...]:
     """The ORDERED ``(axis, pass)`` parity applications one ghost's value carries.
 
-    THE ORDER IS THE DRIVER'S AND IS TRANSCRIBED, NEVER CHOSEN. Each pass reads the
+    The order is the driver's and is transcribed, never chosen. Each pass reads the
     plane the previous one wrote, so back-substituting a corner gives
 
         c_far[f] (x) ( CLEAR ( c_near[a2] (x) ( c_near[a1] (x) v ) ) ),  a1 < a2
@@ -277,7 +277,7 @@ def parity_chain(near_subset: Sequence[int], far_subset: Sequence[int]
     loops its axes in x, y, z order, stepping.py:1441-1447), then the wall clear
     (:3301, and see :data:`CLEAR_AFTER_NEAR`), then the far axis.
 
-    THE CLEAR IS NOT IN THE RETURNED CHAIN, because it is not a parity: it is a
+    The clear is not in the returned chain, because it is not a parity: it is a
     ``where`` on the value between the two groups. :data:`CLEAR_AFTER_NEAR` states
     where it lands and the host suite asserts the kernel emits it there. A FAR-ONLY
     ghost takes no clear of its own -- the value it images is the owned register,
@@ -993,7 +993,7 @@ def folded_beta_complex_fused_pair_coverage(fields: Any, pml: Any,
     :func:`.folded_complex_fused_magnetic_pair.folded_complex_fused_magnetic_pair_coverage`
     and :func:`.folded_fused_pair.folded_fused_pair_coverage` use.
 
-    ONE ADMISSION ONLY, unlike the magnetic twin. That family admits the off-diagonal
+    One admission only, unlike the magnetic twin. That family admits the off-diagonal
     label as well, because on B->H the two arms are the same kernel; on THIS seam the
     off-diagonal ``update_E`` is a stencil over the D volumes ``step_D`` writes in
     place and belongs to a different product entirely, so the row is refused by name.
@@ -1015,7 +1015,7 @@ def folded_beta_complex_fused_pair_coverage(fields: Any, pml: Any,
         reasons.extend(f"folded complex fill half: {reason}"
                        for reason in fill.reasons)
 
-    # THE STENCIL, RESTATED BY NAME. The eighteen structurally unfusable D->E
+    # The stencil, restated by name. The eighteen structurally unfusable D->E
     # seam-instances on the Triton board are the OFF-DIAGONAL constitutive reading
     # partner D volumes at four indices (stepping.py:1235-1253) while step_D writes
     # them in place, with no grid-wide barrier inside one launch. The E half refuses
@@ -1034,12 +1034,12 @@ def folded_beta_complex_fused_pair_coverage(fields: Any, pml: Any,
         return Coverage(False,
                         tuple(dict.fromkeys(reasons + ["fields carries no grid"])))
 
-    # THE SOURCE SEAM, and on this cell it is the clause that decides everything. An
+    # The source seam, and on this cell it is the clause that decides everything. An
     # ELECTRIC source is injected BETWEEN the two halves (driver.py:3294-3299), so a
     # fused pair would consume a pre-injection D. BOTH corpus rows of this cell
     # declare exactly that, so with CARRIES_DEPOSIT_REPAIR False the arm would admit
     # NOTHING; it is True, and the plan below brackets its launch with the repair.
-    # IGNORANCE IS NEVER AN EMPTY SET: `Fields` does not hold the source list, so an
+    # Ignorance is never an empty set: `Fields` does not hold the source list, so an
     # undeclared `sources` is itself a REFUSAL. A MAGNETIC source is injected in the
     # B/H half and does not disqualify this pair.
     reasons.extend(_deposit_repair.seam_source_reasons(
@@ -1060,7 +1060,7 @@ def folded_beta_complex_fused_pair_coverage(fields: Any, pml: Any,
     reasons.extend(code_reasons)
 
     if codes is not None:
-        # THE FAR CARRY'S OWNERSHIP MOVE. `fill_folded_far_ghosts_D` (driver.py:3302)
+        # The far carry's ownership move. `fill_folded_far_ghosts_D` (driver.py:3302)
         # images the top stored slot from stepping._far_reflect_rows' row, and the
         # lane that owns that destination is the one AT the reflect row — so a row
         # outside the allocation is an out-of-range write from a lane that owns
@@ -1109,7 +1109,7 @@ def folded_beta_complex_fused_pair_coverage(fields: Any, pml: Any,
                     f"plane IS the near fill's read plane "
                     f"(cell {MIRROR_SOURCE_INDEX})")
 
-        # THE NEAR FILL IMAGES STORED CELL 2 FROM THAT CELL'S OWN LANE. The folded
+        # The near fill images stored cell 2 from that cell's own lane. The folded
         # complex curl predicate already refuses a folded axis storing two cells or
         # fewer; restated because THIS family writes the destination from a different
         # lane and a missing source plane is an out-of-range write, not a soft error.
@@ -1124,7 +1124,7 @@ def folded_beta_complex_fused_pair_coverage(fields: Any, pml: Any,
                         f"{MIRROR_SOURCE_INDEX} and this kernel images it from that "
                         f"cell's own lane")
 
-        # THE WALL CLEAR AND THE FILLS MUST NOT MEET. On this family the clear's rows
+        # The wall clear and the fills must not meet. On this family the clear's rows
         # ARE the near fill's axes — both are the component's shift-0 axes — and
         # `_zero_metal` skips a folded axis (:2237-2239), which is the ONLY thing
         # keeping them apart. CHECKED rather than inferred: an overlap would be a
@@ -1139,7 +1139,7 @@ def folded_beta_complex_fused_pair_coverage(fields: Any, pml: Any,
                     f"passes have drifted and the carry's disjointness no longer "
                     f"holds")
 
-        # THE PARITY WORDS THE KERNEL WILL BE PASSED must be readable on every folded
+        # The parity words the kernel will be passed must be readable on every folded
         # axis. `folded_axis_kinds` already refuses a folded axis whose phase is not
         # +-1; this re-derives the WORDS through the builder's own function so a pair
         # that came back (0.0, 0.0) on a folded axis is caught here and not on the
@@ -1162,7 +1162,7 @@ def folded_beta_complex_fused_pair_coverage(fields: Any, pml: Any,
             reasons.append(
                 f"grid does not expose {name}; zero_metal_D cannot be carried inline")
 
-    # THE INVERSE-EPSILON VOLUMES ARE READ BY THE KERNEL at every owned cell AND at
+    # The inverse-epsilon volumes are read by the kernel at every owned cell AND at
     # every ghost, so `Fields` must be able to hand one over per E component. An
     # absent accessor would be a TypeError inside the builder rather than a refusal,
     # which is the wrong way for an uncovered configuration to fail. The MAGNETIC
@@ -1228,7 +1228,7 @@ class FoldedBetaComplexFusedPairPlan:
             raise ValueError(
                 f"the parity table is six (re, im) pairs — near x/y/z then far "
                 f"x/y/z — got {len(self.parity)}")
-        # DERIVED FROM `bc`, NEVER TAKEN AS AN ARGUMENT. The kernel branches its curl
+        # Derived from `bc`, never taken as an argument. The kernel branches its curl
         # half on the four codes and its two carries on these booleans; if they could
         # be passed independently they could disagree, and a kernel that masked the
         # top plane on one axis set and imaged the far ghost on another is a plane of
@@ -1298,7 +1298,7 @@ class FoldedBetaComplexFusedPairPlan:
         self._inverse_epsilon = tuple(CupyPointer(a) for a in inverse_epsilon)
         self._e_coefficients = tuple(
             CupyPointer(_flat(a)) for a in e_coefficients)
-        # THE INT32 WORD BOUND. The kernel addresses words as ``2 * idx`` in int32,
+        # The int32 word bound. The kernel addresses words as ``2 * idx`` in int32,
         # so the complex cell count must leave room for the doubling — the same
         # halving the complex predicates apply. Refused here as well because the
         # from-arrays route runs no predicate at all.

@@ -2,11 +2,11 @@
 
 ONE CUDA kernel welding ``stepping.update_H`` into the special_kz ``stepping.step_D``
 under COMPLEX64 storage on a ``grid.beta != 0`` run, measured BIT-IDENTICAL as uint32
-words per COMPLETE DRIVER STEP against FOUR independent arrangements of the seam,
+words per complete driver step against FOUR independent arrangements of the seam,
 under both float32 subnormal policies, on synthetic fixtures and on the four lifted
 corpus rows of its cell.
 
-THE CELL, AND WHY IT IS ONE TEXT
+The cell, and why it is one text
 =============================================================================
 ``results/fusion_matrix_cuda_2026-09-07_wired/fusion_matrix_cuda.json``,
 ``h_to_d_seam.instances`` filtered to ``buildable_not_built``:
@@ -23,7 +23,7 @@ released complex H->D product needed two variants; this one needs none, and the
 fixtures below still carry both folded and unfolded grids because the RUNTIME CODES
 differ even where the text does not.
 
-THE FOUR REFERENCES, and what each one rules out
+The four references, and what each one rules out
 =============================================================================
 ``array``               ``stepping``'s own ten passes. THE ORACLE.
 ``singles``             the certified ``step_D_pml_complex_beta`` and the certified
@@ -39,42 +39,42 @@ THE FOUR REFERENCES, and what each one rules out
 
 Plus ``weld_composed`` on the launch-structure leg only.
 
-WHAT THIS SEAM ADDS THAT NO SIBLING H->D GATE CAN MEASURE
+What this seam adds that no sibling H->D gate can measure
 =============================================================================
-THE BETA PARTNER. ``stepping._special_kz_beta_term`` consumes the SAME-CELL magnetic
+The beta partner. ``stepping._special_kz_beta_term`` consumes the SAME-CELL magnetic
 snapshot, which the array path takes AFTER ``update_H``; welded, that snapshot must be
 this launch's own ``own_h[...]`` register. ``beta_partner_reads_stale_h`` is the armed
 defect and it puts target 0's beta pass one sub-step behind and nothing else.
 
-WHAT THE ARITHMETIC LEGS ADD THAT A WHOLE-STEP IDENTITY CANNOT
+What the arithmetic legs add that a whole-step identity cannot
 =============================================================================
 The family's real-by-complex product is PART-WISE (``part_products.scale``: one float32
 product per part). The full complex product
-against ``(c + 0j)`` the family carried before differs from it on the SIGN OF A ZERO
+against ``(c + 0j)`` the family carried before differs from it on the sign of a zero
 only -- a class a random battery does not reach. The ``spelling`` leg is the released
 complex H->D gate's (``gate_cuda_complex_fused_hd_pair.leg_spelling``: the family's
 multiply against the array path's product on a signed-zero class beside the ordinary
 ones), and the mutation battery arms the old full product as a device defect on a
 PLANTED row-0 tiny-normal fixture, where it bites under ``flush``.
 
-**THIS FAMILY PERFORMS NO DIVISION** and the ``spelling`` leg records that as a
+**This family performs no division** and the ``spelling`` leg records that as a
 measured absence rather than omitting it: the reciprocal the recurrence needs is
 ``sinv``, computed host-side by ``PML``. The absence is asserted against the emitted
 text, with a planted divide as the control.
 
-THE BETA COEFFICIENT IS ONE REAL WORD PER CALL SITE. The beta pass forms
+The beta coefficient is one real word per call site. The beta pass forms
 ``-quarter_turn(c, g)`` part by part from a host-rounded float32 coefficient, so no
 complex coefficient -- and no signed-zero real word -- exists anywhere to be right
 about.
 
-NOT WIRED, AND THE ARBITRATION LEG SAYS SO IN BOTH ARRANGEMENTS
+Not wired, and the arbitration leg says so in both arrangements
 =============================================================================
 The family is not in ``fused_pairs.FUSED_PRODUCTS`` / ``registry`` / ``arms`` yet.
 The ``arbitration`` leg measures the composer AS SHIPPED and again WITH the wiring
 rows patched in-process, and it ASSERTS the substantive claims only -- refused BY
 NAME, the refusal names ``INSTALLABLE = False``, the selection unchanged, both
 released neighbours keeping their slots -- while RECORDING the positional ones, which
-a wiring round inverts by design.
+a wiring change inverts by design.
 """
 
 # Derived from MEEP (https://github.com/NanoComp/meep).
@@ -139,7 +139,7 @@ PLANT_MAGNITUDE = np.float32(1.5e-38)
 #: periodic grid (the ONLY specialisation on which the shifted tap's PERIODIC WRAP is
 #: observable), a live Bloch phase on an UNFOLDED axis, and both signs of beta.
 #:
-#: A PHASE ON A FOLDED AXIS IS NOT FIXTURED. ``complex_folded_kernels._fold_reasons``
+#: A phase on a folded axis is not fixtured. ``complex_folded_kernels._fold_reasons``
 #: refuses that configuration by name and ``complex_beta_kernels`` inherits the
 #: refusal; the folded fixtures below phase unfolded axes only, which is what the four
 #: corpus rows carry. The invariant z axis is forced periodic by ``Grid`` at
@@ -151,7 +151,7 @@ SPECS: Tuple[Dict[str, Any], ...] = (
     {"label": "periodic_kx", "cell": (1.6, 1.7, 0.0), "beta": CORPUS_BETAS[1],
      "boundaries": ("periodic", "periodic", "periodic"), "symmetry": (),
      "k_point": (0.3, 0.0, 0.0)},
-    # THE BRILLOUIN EDGE, where ``Grid._axis_bloch_phase`` returns EXACTLY -1+0j: the
+    # The Brillouin edge, where ``Grid._axis_bloch_phase`` returns EXACTLY -1+0j: the
     # rotation is then a sign flip with an exact zero imaginary part, which is where a
     # dropped zero cross term hides.
     {"label": "brillouin_edge_kx", "cell": (1.6, 1.7, 0.0), "beta": CORPUS_BETAS[2],
@@ -209,7 +209,7 @@ def _inherited(name: str) -> Dict[str, Any]:
 
 
 DEVICE_MUTATIONS: Dict[str, Dict[str, Any]] = {
-    # ---- THE BETA CLAUSES: this seam's own ----
+    # ---- the beta clauses: this seam's own ----
     "beta_partner_reads_stale_h": {
         "old": "        cf inc_beta = owned_cell ? beta_increment(bp, f_2) : cf_zero();",
         "new": ("        cf inc_beta = owned_cell ? beta_increment(bp, "
@@ -271,7 +271,7 @@ DEVICE_MUTATIONS: Dict[str, Dict[str, Any]] = {
         "live_on": "every fixture",
     },
     "beta_on_an_unowned_cell": {
-        # THE COMPOSITION NEEDLE the certified single's own gate carries, re-armed on
+        # The composition needle the certified single's own gate carries, re-armed on
         # the weld: the increment formed on every cell. TARGET 1 (Dy), NOT TARGET 0:
         # under MEEP's per-chunk forms the beta pass is a ladder of its own on the
         # stored word, so an unowned cell's increment survives a complete driver step
@@ -289,14 +289,14 @@ DEVICE_MUTATIONS: Dict[str, Dict[str, Any]] = {
                 "reaches fu_Dy in the x layer"),
         "live_on": "fold_y_odd_kx (a periodic-terminated y fold with an x layer)",
     },
-    # ---- THE WELD CLAUSES (the released complex H->D gate's) ----
+    # ---- the weld clauses (the released complex H->D gate's) ----
     **{name: _inherited(name) for name in _INHERITED_WELD_CLAUSES},
     "auxiliary_load_unguarded": {
         **_inherited("auxiliary_load_unguarded"),
-        "predicted_null": ("a DECLARED NULL (KERNELS.md section 7.2): the loaded word "
-                           "feeds only the forms of the cells whose chunk carries the "
-                           "layer, so no stored word changes; the static needle in the "
-                           "module's own test pins the guard"),
+        "predicted_null": ("a DECLARED NULL (per-chunk form battery): the loaded word feeds "
+                           "only the forms of the cells whose chunk carries the layer, so "
+                           "no stored word changes; the static needle in the module's own "
+                           "test pins the guard. See docs/development/certification.md."),
     },
     "the_periodic_wrap_reads_the_near_row": {
         "old": ("    if (bc == BC_METALLIC || bc == BC_MIRROR_PERIODIC) return cf_zero();\n"
@@ -309,7 +309,7 @@ DEVICE_MUTATIONS: Dict[str, Dict[str, Any]] = {
         "live_on": "every fixture (their x axis wraps)",
     },
     "the_ghost_serves_the_clamped_cells_constitutive": {
-        # ANCHORED ON THE RECOMPUTE'S OWN GHOST, with the wrap line carried along: the
+        # Anchored on the recompute's own ghost, with the wrap line carried along: the
         # certified ``cshift_up`` and ``cshift_dn`` ride along in the lifted prelude and
         # spell the ghost line identically.
         "old": ("    if (bc == BC_METALLIC || bc == BC_MIRROR_PERIODIC) return cf_zero();\n"
@@ -385,7 +385,7 @@ class ComplexBetaAdapter(kit.Adapter):
     def plant(self, fields, grid, value_class: str) -> Dict[str, Any]:
         """Plant the tiny-normal row-0 class on EVERY stored volume.
 
-        WHERE THE PLANT HAS TO GO IS A MEASUREMENT, not a guess, and the released
+        Where the plant has to go is a measurement, not a guess, and the released
         complex H->D gate got it wrong on its first cut: planting only the MAGNETIC
         volumes left ``naive_four_product_multiply`` uncaught under ``flush``, because
         ``mul_field_left`` is called by ``pml_apply`` on ``D``, ``fu_D`` and the curl,
@@ -519,7 +519,7 @@ class ComplexBetaAdapter(kit.Adapter):
     def leg_transcription(self) -> Dict[str, Any]:
         """Is every welded byte the certified family's, and does the lift INVERT?
 
-        ONE TEXT AND TWO BYTE EQUALITIES. The equalities are the strongest thing this
+        One text and two byte equalities. The equalities are the strongest thing this
         leg has and they are NEW measurements rather than restatements: this family's
         curl transform applied to the CERTIFIED PLAIN complex ``step_D`` text returns
         exactly what ``complex_fused_hd_pair.curl_pieces("plain")`` returns, and applied
@@ -556,7 +556,7 @@ class ComplexBetaAdapter(kit.Adapter):
                 "if (ia > 0) return resolve_H(comp, idx - stride, weld);" in source,
             "cshift_dn_recompute_keeps_the_wrap_arithmetic":
                 "resolve_H(comp, idx + (na - 1) * stride, weld)" in source,
-            # THE STORED WINDOW: a shifted tap is a plain wrap and carries no
+            # The stored window: a shifted tap is a plain wrap and carries no
             # connection; the connection rides on the operand read at the cell
             # itself, which here is the own-cell register.
             "cshift_dn_recompute_carries_no_connection":
@@ -569,12 +569,12 @@ class ComplexBetaAdapter(kit.Adapter):
                  "return cf_zero();") in source,
             "no_magnetic_pointer_survives_in_the_curl_half":
                 "cshift_dn(g" not in source,
-            # MINUS THE DECLARATION: the helper's own signature spells its name
+            # Minus the declaration: the helper's own signature spells its name
             # too, and a count that included it would report seven taps and pass a
             # weld that had lost one.
             "shifted_taps": source.count("cshift_dn_recompute(") - 1,
             "own_cell_registers": source.count("own_h["),
-            # THE FOLDED DELTAS, which this family inherits whole because its text
+            # The folded deltas, which this family inherits whole because its text
             # IS the folded one with an insert.
             "the_third_boundary_code_is_defined":
                 "#define BC_MIRROR_PERIODIC 2" in source,
@@ -582,7 +582,7 @@ class ComplexBetaAdapter(kit.Adapter):
                 "bc == BC_METALLIC || bc == BC_MIRROR_PERIODIC" in source,
             "the_mask_splits_by_termination":
                 source.count("BC_MIRROR_PERIODIC && ") >= 6,
-            # THE BETA DELTAS: MEEP's pass, after each component's curl.
+            # The beta deltas: MEEP's pass, after each component's curl.
             "the_two_beta_increments_are_present":
                 source.count("cf inc_beta = owned_cell ? beta_increment(b")
                 == family.BETA_INSERT_LINES,
@@ -758,13 +758,13 @@ class ComplexBetaAdapter(kit.Adapter):
     def leg_spelling(self) -> Dict[str, Any]:
         """A real coefficient times a complex field, and the divide this family lacks.
 
-        THE MULTIPLY IS THE RELEASED COMPLEX H->D GATE'S LEG
+        The multiply is the released complex H->D gate's leg
         (``gate_cuda_complex_fused_hd_pair.leg_spelling``): this weld lifts the same
         ``mul_field_left`` / ``mul_coefficient_left`` from the same emitter, measured
         against the array path's product (``part_products.scale``), with the earlier
         full complex products required to bite somewhere.
 
-        THE DIVIDE IS RECORDED AS AN ABSENCE WITH A CONTROL THAT BITES. This family has
+        The divide is recorded as an absence with a control that bites. This family has
         no division site; the assertion is armed by planting one and requiring the
         family's own emitter to refuse it.
         """
@@ -835,7 +835,7 @@ class ComplexBetaAdapter(kit.Adapter):
             phased = next((case for case in self.specs if any(case["k_point"])), spec)
             fields, grid, pml, dtdx, _plant = self.build(
                 phased, "uniform", kit.case_rng(self.seed, "phase"))
-            # THE OTHER DIRECTION'S CONNECTION (the forward curl's) where the D curl's
+            # The other direction's connection (the forward curl's) where the D curl's
             # belongs: the classic sign error, in which every magnitude stays plausible
             # and only the phase moves.
             flags, values = complex_pml_kernels.bloch_phase_arguments(grid, False)
@@ -862,8 +862,8 @@ class ComplexBetaAdapter(kit.Adapter):
                             "over in the wrong order. Only the HOST transcription can "
                             "be wrong here, which is why this is a host mutation")}
         if name in ("record_bound_off_by_one", "record_lattices_swapped"):
-            # KERNELS.md section 7.2: the chunk record the WELD binds, corrupted (the
-            # oracle's division is untouched); the released complex H->D gate's.
+            # Per-chunk form battery record mutations: the chunk record the WELD binds,
+            # corrupted (the oracle's division is untouched); the released complex H->D gate's.
             fields, grid, pml, dtdx, _plant = self.build(
                 spec, "uniform", kit.case_rng(self.seed, "record"))
             bound = cx_hd.mutated_record(name, grid, pml)
@@ -914,7 +914,7 @@ class ComplexBetaAdapter(kit.Adapter):
 
 
 LICENCES_WHAT = (
-    "ONE CUDA kernel measured byte-identical, per COMPLETE DRIVER STEP and as uint32 "
+    "ONE CUDA kernel measured byte-identical, per complete driver step and as uint32 "
     "words over every stored volume, to four independent arrangements of the "
     "update_H -> step_D seam on a COMPLEX64 special_kz (grid.beta != 0) run, at every "
     "block size and at three seed scales, on the fixtures and corpus rows this record "

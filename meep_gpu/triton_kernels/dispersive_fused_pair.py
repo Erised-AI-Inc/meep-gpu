@@ -34,7 +34,7 @@ from .. import deposit_repair as _deposit_repair
 #: before the launch, and a ``TrailingRepairPlan`` in the ``update_E`` slot recomputes
 #: them once the driver has injected, filled symmetry and cleared walls.
 #:
-#: THE PRECONDITION THIS PRODUCT MEETS is that its pole-aware constitutive half is
+#: The precondition this product meets is that its pole-aware constitutive half is
 #: POINTWISE. ``E = (D - sum_n P_n) * inv_eps`` reads D, every driving P and the inverse
 #: epsilon at the SAME cell (``stepping.py:983-986``, ``fields.py:1079-1105``); the
 #: subtraction order the kernel fuses is the array path's own, which is what the
@@ -43,7 +43,7 @@ from .. import deposit_repair as _deposit_repair
 #: ``update_P`` runs AFTER ``update_E`` (``driver.py:3313``), so the polarization arrays
 #: it reads at the repair are the ones the launch read, unchanged.
 #:
-#: IT IS NOT A HINT. A product that passes True without those wrappers computes the
+#: It is not a hint. A product that passes True without those wrappers computes the
 #: constitutive half against a pre-injection field and reports success, which is the
 #: exact failure ``deposit_repair`` exists to prevent. Flag and wiring move together.
 CARRIES_DEPOSIT_REPAIR = True

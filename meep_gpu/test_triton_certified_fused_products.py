@@ -1,4 +1,4 @@
-"""THE INSTALLER WAVE, 2026-09-02: twenty-three certified products, routed and refused.
+"""The 2026-09-02 installer change: twenty-three certified products, routed and refused.
 
 WHAT CHANGED. Thirty products on the Triton fusion board held a device gate and a
 shipped predicate and were reached by no composer at all: ``launch.py`` imported
@@ -18,38 +18,38 @@ welds were routed on 2026-09-15, once their shared plan base gained a ``warm`` t
 never rotates, and :func:`test_the_two_scratch_output_welds_warm_without_rotating`
 pins that mechanism in its new direction.
 
-WHAT THIS FILE ASSERTS, and the order is the order a reader should want it in:
+What this file asserts, and the order is the order a reader should want it in:
 
-1. THE TABLE IS MEASURED, NOT TRANSCRIBED. Every ``CERTIFIED_FUSED_PAIR_ARMS`` row
+1. The table is measured, not transcribed. Every ``CERTIFIED_FUSED_PAIR_ARMS`` row
    is compared against the fusion board's independently written ``PRODUCTS[...]
    ["cell"]``, which is derived from the coverage conjunction each module opens
    with, citation included. Two files, one fact, and a disagreement is a failure
    here rather than an over-covering dispatch on a device.
-2. EVERY PRODUCT REALLY INSTALLS, through ``plan_step`` rather than by calling the
+2. Every product really installs, through ``plan_step`` rather than by calling the
    installer — one parametrised case per product, on the configuration that makes
    its two arms win, asserting BOTH slots and the label in both.
-3. RELEASING IS A CAMPAIGN, NOT A WIRING ROW. As of the 2026-09-13 Phase B batch
+3. Releasing is a campaign, not a wiring row. As of the 2026-09-13 release campaign
    twenty of the twenty-six product labels are in ``fastpath.RELEASED_FUSED_ARMS``,
    each let through clause (8) by a driver-route gate rather than by a row added to
    the composer's table, and the remaining six are still refused there by name. A
    released label is admitted at clause (8) only on a shape its release axes cover —
    on the driver-route configuration that is exactly the two real-beta pairs — and
    the set is pinned in both directions, because a product reaching that list without
-   a campaign would be the worst outcome available to this wave.
-4. THE FAIL-CLOSED CLAUSES STILL STAND IN FRONT: the arm-absorb clause, the
+   a campaign would be the worst outcome available to this change.
+4. The fail-closed clauses still stand in front: the arm-absorb clause, the
    ambiguity rule, a raising predicate, a raising builder, a builder returning None.
-5. THE TWO ORDERING FACTS THIS WAVE DEPENDS ON — the off-diagonal veto runs BEFORE
+5. The two ordering facts this change depends on — the off-diagonal veto runs BEFORE
    the loop (so a slot it pops is refused by name instead of being absorbed, and so
    a future off-diagonal product is not torn out for "having no row-product term"),
    and the incumbent pairs install BEFORE it (so a slot they took is refused by
    name rather than overwritten).
-6. THE HOLE THE WAVE OPENED, CLOSED. A fused product writes ONE label into BOTH
+6. The hole the change opened, closed. A fused product writes ONE label into BOTH
    slots, so the arms it substitutes vanish from ``selected`` and the pending-gate
    rung stopped being able to see them — and ``complex_conductive_fused_pair``
    absorbs two arms that are BOTH pending. ``fastpath.FUSED_ARM_CONSTITUENTS`` is
    the see-through and this file measures that the refusal survives the absorb.
 
-NOTHING HERE LAUNCHES A KERNEL. The merge-bar host has no Triton, so the product
+Nothing here launches a kernel. The merge-bar host has no Triton, so the product
 builders are stubbed at the one seam the composer reaches them through
 (``launch._certified_fused_product_modules``) — the same technique
 ``test_folded_fused_pair_routing`` uses for the two folded pairs, and for the same
@@ -113,7 +113,7 @@ SEAMS = launch_module.CERTIFIED_FUSED_PAIR_SEAMS
 
 #: The configuration that turns ON both of a product's arm gates, per product.
 #:
-#: WRITTEN OUT RATHER THAN DERIVED FROM THE LABEL, because deriving it would make
+#: Written out rather than derived from the label, because deriving it would make
 #: this table a second copy of ``plan_step``'s gate expressions and a test that
 #: re-implements what it measures measures nothing. Each entry is the smallest
 #: fields double whose gates admit the pair, plus the layer: ``None`` for the two
@@ -132,7 +132,7 @@ CONFIGURATIONS = {
     "cylindrical_real_fused_hd_pair": (dict(cylindrical=True), True),
     "cylindrical_fused_hd_pair": (
         dict(cylindrical=True, force_complex_fields=True), True),
-    # THE CARTESIAN COMPLEX H->D PRODUCT, routed by the 2026-09-07 wiring round. Its
+    # The Cartesian complex H->D product, routed by the 2026-09-07 wiring change. Its
     # shape is the two cylindrical H->D rows' exactly -- a certified product the
     # composer reaches and then refuses on its own INSTALLABLE = False -- so it takes
     # the same live_layer True and belongs in the uninstallable set below.
@@ -273,7 +273,7 @@ def test_every_routed_product_is_a_product_the_board_scores():
 
 @pytest.mark.parametrize("name", sorted(PRODUCTS))
 def test_the_absorb_row_is_the_board_cell_for_the_same_product(name):
-    """THE ROUTING FACT AND THE REPORTING FACT ARE THE SAME FACT.
+    """The routing fact and the reporting fact are the same fact.
 
     ``_pair_may_absorb`` lets a pair take two slots only when the arm table gave
     them to the arms its kernel implements, and the board derives the same pair
@@ -308,7 +308,7 @@ def test_the_two_extra_arm_rows_are_the_boards_second_cells():
 
 
 def test_the_four_chain_products_are_deliberately_not_in_the_table():
-    """THE E->P SEAM IS NOT THIS LOOP'S, and the absence is a decision.
+    """The E->P seam is not this loop's, and the absence is a decision.
 
     ``fused_ade_chain``, ``complex_fused_ade_chain``, ``fused_dispersive_chain``
     and ``folded_offdiag_fused_ade_chain`` replace ``update_E`` -> ``update_P``:
@@ -319,8 +319,8 @@ def test_the_four_chain_products_are_deliberately_not_in_the_table():
     reachability join reports them as certified and not installed rather than as
     installed and unreleased.
 
-    THE FOURTH is the folded off-diagonal dispersive body's chain, added with the
-    round that built it. Its builder takes no arm at all — one body, one admission
+    THE FOURTH is the folded off-diagonal dispersive body's chain, added when it
+    was built. Its builder takes no arm at all — one body, one admission
     — so only the SLOT PROTOCOL objection applies to it, which is the one that
     was never about the arm argument in the first place.
     """
@@ -356,7 +356,7 @@ def test_the_table_the_seams_and_the_declared_imports_agree():
 def test_every_label_is_unique_recognised_as_fused_and_accounted_for():
     """The properties a label needs before it may reach a driver slot.
 
-    "ACCOUNTED FOR" IS A PARTITION, NOT A SINGLE MAP, and the split is this wave's
+    "ACCOUNTED FOR" IS A PARTITION, NOT A SINGLE MAP, and the split is this change's
     honest half. A row in ``ARM_CERTIFICATION`` is a promise that the lookup
     RESOLVES — ``test_every_recorded_certification_points_at_a_readable_record``
     holds every row to a readable ``fingerprints.json`` record with no exemption —
@@ -387,24 +387,24 @@ def test_every_label_is_unique_recognised_as_fused_and_accounted_for():
     # `dispatch_fused_route_2026-09-11_realarms` released them and
     # seed_triton_welds.py cut their ledger entries from that campaign's fleet
     # (`conductive_fused_electric_pair`, `cylindrical_real_fused_electric_pair`).
-    # The third arm released that round, `fused pair B (cylindrical)`, was ALREADY
+    # The third arm that campaign released, `fused pair B (cylindrical)`, was ALREADY
     # on this side of the partition — its ledger entry was cut on 2026-08-20 —
     # which is why five and not six.
     #
-    # `folded_dispersive_fused_pair` DID NOT CROSS, though the same campaign drove
+    # `folded_dispersive_fused_pair` did not cross, though the same campaign drove
     # it: its preflight held it at the route gate's second consult site, where
     # `synchronize_magnetic_fields` read fused_vs_array False and unfused_vs_array
     # False on a leg installing no fused product. A ledger entry certifies BYTES
     # and the divergence is the seam's, so cutting one would not have moved it.
     #
-    # 5 -> 20 ON 2026-09-13: the Phase B batch (`dispatch_fused_route_2026-09-13_phaseB`)
+    # 5 -> 20 ON 2026-09-13: the release campaign (`dispatch_fused_route_2026-09-13_phaseB`)
     # released fifteen more Triton arms — the real/complex/folded beta pairs, the BFAST
     # pairs, the nonlinear B pair, the complex pairs, the folded complex pairs and the
     # cylindrical complex pairs — and seed_triton_welds.py cut a ledger entry for each
     # from the 2026-09-12 identity fleet, so each crossed to the certified side.
-    # 20 -> 22 ON 2026-09-14: the target round released `fused pair D (no-PML stored E)`
+    # 20 -> 22 ON 2026-09-14: `fused pair D (no-PML stored E)` was released
     # (its weld had existed since the 2026-09-13 identity fleet; the pending text was
-    # stale) and the re-attribution round released `fused pair D (folded dispersive)`
+    # stale) and `fused pair D (folded dispersive)` was released
     # after the 2026-09-11 synchronize_magnetic_fields hold was traced to the lazy
     # subnormal-policy install rather than to the seam. Both carry a PASS weld.
     # 22 -> 23 ON 2026-09-15: `fused pair D (complex conductive no-PML)` moves when its
@@ -415,19 +415,19 @@ def test_every_label_is_unique_recognised_as_fused_and_accounted_for():
     # and their labels go straight to the certified side, keyed to the ledger entries
     # seed_triton_welds.py cuts from the stencil gate re-run on the routing bytes.
     # Until that seed runs the `recorded_utc` lookup below is red on those two labels
-    # BY NAME -- the window the 2026-09-11 wave ran through, and no pending hold.
+    # BY NAME -- the window the 2026-09-11 campaign ran through, and no pending hold.
     assert len(certified) == 25, sorted(certified)
     # 20 -> 22 ON 2026-09-07: the two cylindrical H->D products' labels, routed and
     # pending a ledger entry; each pending reason also names the INSTALLABLE = False
     # the product declares, which is what keeps the label out of every slot today.
-    # 23 since the 2026-09-07 wiring round routed `complex_fused_hd_pair`, whose
+    # 23 since the 2026-09-07 wiring change routed `complex_fused_hd_pair`, whose
     # label `fused pair H->D (complex)` is PENDING for the reason its own module
     # gives: INSTALLABLE = False, so the composer refuses it on every row.
     # 23 -> 21 ON 2026-09-11, the same two crossing the other way; the product
     # table did not move, so the denominator is still twenty-six. It is 21 and not
     # 20 because the campaign's fourth candidate, `fused pair D (folded
     # dispersive)`, stayed on this side — see the note on the certified count.
-    # 21 -> 6 ON 2026-09-13: the fifteen arms the Phase B batch released left the
+    # 21 -> 6 ON 2026-09-13: the fifteen arms the 2026-09-13 campaign released left the
     # pending side, so the six that remain are `folded_dispersive_fused_pair` (held
     # for its own reason, below), the two no-absorber D products
     # (`complex_conductive_fused_pair`, `no_pml_fused_electric_pair`) and the three
@@ -435,14 +435,14 @@ def test_every_label_is_unique_recognised_as_fused_and_accounted_for():
     # denominator is still twenty-six.
     # 6 -> 4 ON 2026-09-14: the no-PML stored E and folded dispersive arms left pending
     # (see the certified-count note above); what remains is the complex conductive
-    # no-PML pair, whose PAIR weld the target fleet seeds, and the three H->D spans.
+    # no-PML pair, whose PAIR weld the pair gate re-run seeds, and the three H->D spans.
     # 4 -> 3 ON 2026-09-15: the complex conductive no-PML pair left for
     # ARM_CERTIFICATION (see the certified-count note above); the three H->D spans
     # remain, each held by its missing ledger entry and its product's
     # INSTALLABLE = False.
     assert len(pending) == 3, len(pending)
     # ...and each certified row really resolves, which is what the other map's
-    # rows are held out of for. RESOLVING IS PER ARCHITECTURE since the welds keep
+    # rows are held out of for. Resolving is per architecture since the welds keep
     # one run record per compute capability: the question is whether the gate has a
     # live run on the card the label would dispatch on, so the lookup names it. Asked
     # without a capability, every row would come back with its run fields withheld
@@ -453,17 +453,17 @@ def test_every_label_is_unique_recognised_as_fused_and_accounted_for():
     # ...while each pending reason names the artifact the release was cut from, so
     # the run that must be repeated to lift it is identified, not searched for.
     #
-    # THE LABEL THIS BLOCK USED TO HOLD BACK IS RELEASED, AND THE HOLD WAS WRONG.
+    # The label this block used to hold back is released, and the hold was wrong.
     # Until 2026-09-14 `fused pair D (folded dispersive)` sat in the pending table
     # on the claim that the route gate's second consult site diverged from the
     # array path with fusion off as well as on, and this test asserted that reason
-    # by name. The re-drive on the GPU host found the seam clean at 7/7 slots over the
-    # full ladder and traced the 2026-09-11 signature to the LAZY subnormal-policy
-    # install (a divergence carried INTO the site, not produced by it) -- see
-    # the design notes (meep-gpu-dispatch-expansion-plan) section 11. The guard is
-    # therefore inverted rather than deleted: the label is CERTIFIED, its record
-    # is readable, and NO pending reason may still cite that consult site, because
-    # a hold written against a retired diagnosis would blend in as a ledger wait.
+    # by name. The re-drive on the GPU host found the seam clean at 7/7
+    # slots over the full ladder and traced the 2026-09-11 signature to
+    # the LAZY subnormal-policy install (a divergence carried INTO the
+    # site, not produced by it). The guard is therefore inverted rather
+    # than deleted: the label is CERTIFIED, its record is readable, and NO
+    # pending reason may still cite that consult site, because a hold
+    # written against a retired diagnosis would blend in as a ledger wait.
     released_after_reattribution = "fused pair D (folded dispersive)"
     assert released_after_reattribution in certified, released_after_reattribution
     assert released_after_reattribution not in pending
@@ -514,10 +514,10 @@ def test_the_incumbent_pairs_are_in_the_constituent_map_too():
 
 
 def test_the_constituent_map_is_total_over_the_labels_the_composer_can_write():
-    """A LABEL MISSING FROM IT IS REFUSED BY NAME, so the map has to be total.
+    """A label missing from it is refused by name, so the map has to be total.
 
     The composer's fused vocabulary is four tables: the ordinary pairs, the two
-    folded pairs, this wave's twenty-five, and the ``fuse_ade`` block's one. Read
+    folded pairs, this change's twenty-five, and the ``fuse_ade`` block's one. Read
     off ``launch.py``'s source for the last, because it is written inline at the
     slot rather than declared in a table, and a scan that only read the tables
     would call the map total while one label went unnamed.
@@ -541,7 +541,7 @@ def test_the_constituent_map_is_total_over_the_labels_the_composer_can_write():
 
 @pytest.mark.parametrize("name", sorted(PRODUCTS))
 def test_each_certified_product_takes_both_slots_and_names_itself(monkeypatch, name):
-    """THE FAIL-CLOSED HALF OF THE TWO-SLOT CONTRACT, per product.
+    """The fail-closed half of the two-slot contract, per product.
 
     ``FastPath.dispatch`` contracts that True means the whole sub-step ran, so a
     pair owning ``step_D`` and ``update_E`` must appear in BOTH — otherwise a
@@ -682,7 +682,7 @@ def test_fusion_off_consults_no_certified_product(monkeypatch):
 
 @pytest.mark.parametrize("name", sorted(PRODUCTS))
 def test_a_product_may_not_absorb_slots_a_different_arm_won(monkeypatch, name):
-    """THE CLAUSE THAT MAKES THE WHOLE TABLE SAFE.
+    """The clause that makes the whole table safe.
 
     The predicate admits, the builder is willing, and the arm table gave the slots
     to somebody else — so the pair does NOT take them, and the reason names the arm
@@ -708,7 +708,7 @@ def test_a_product_may_not_absorb_slots_a_different_arm_won(monkeypatch, name):
 
 
 def test_a_second_admitting_product_on_one_seam_leaves_it_unfused(monkeypatch):
-    """TWO ADMITTERS ON ONE SEAM IS AN AMBIGUITY, NOT A PICK — clause (b)'s rule,
+    """Two admitters on one seam is an ambiguity, not a pick — clause (b)'s rule,
     one level up. Both products are refused with a reason naming both; neither is
     chosen by table order, and the arm table's own plans are what run."""
     first, second = "complex_fused_electric_pair", "cylindrical_fused_electric_pair"
@@ -733,7 +733,7 @@ def test_a_second_admitting_product_on_one_seam_leaves_it_unfused(monkeypatch):
 
 
 def test_an_ambiguity_on_one_seam_does_not_disturb_the_other(monkeypatch):
-    """The loop decides ONE SEAM AT A TIME, which is what lets a magnetic and an
+    """The loop decides one seam at a time, which is what lets a magnetic and an
     electric product share an arm pair without ever being ambiguous."""
     b_name, d_first = "complex_fused_magnetic_pair", "complex_fused_electric_pair"
     d_second = "cylindrical_fused_electric_pair"
@@ -774,11 +774,11 @@ def test_an_extra_arm_row_absorbs_its_second_cell(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# 4. The two ordering facts the wave depends on
+# 4. The two ordering facts the change depends on
 # ---------------------------------------------------------------------------
 
 def test_the_two_scratch_output_welds_warm_without_rotating():
-    """THE EXCLUSION THIS TEST USED TO PIN, INVERTED, WITH THE SAME MECHANISM.
+    """The exclusion this test used to pin, inverted, with the same mechanism.
 
     Until 2026-09-15 this was ``test_the_two_scratch_output_welds_are_deliberately_
     not_wired``. It read off the tree every step of why
@@ -836,7 +836,7 @@ def test_the_two_scratch_output_welds_warm_without_rotating():
 
 
 def test_a_vetoed_update_E_leaves_every_candidate_refused(monkeypatch):
-    """AND THE FAIL-CLOSED HALF OF THAT ORDERING. When the veto DOES fire it pops
+    """And the fail-closed half of that ordering. When the veto DOES fire it pops
     ``selected['update_E']``, so the loop that runs next finds the slot unselected
     and refuses every candidate by name. There is no configuration on which this
     loop installs a product the veto would have refused."""
@@ -856,7 +856,7 @@ def test_a_vetoed_update_E_leaves_every_candidate_refused(monkeypatch):
 
 def test_an_incumbent_pair_that_took_a_slot_refuses_the_certified_one_by_name(
         monkeypatch):
-    """THE CROSS-BLOCK PRECEDENCE RULE, and it is not a table order.
+    """The cross-block precedence rule, and it is not a table order.
 
     The incumbent hand-written blocks install first; this loop reads the LIVE
     ``selected``, so a slot an incumbent absorbed carries a fused label and
@@ -880,7 +880,7 @@ def test_an_incumbent_pair_that_took_a_slot_refuses_the_certified_one_by_name(
 
 
 # ---------------------------------------------------------------------------
-# 5. WIRING IS NOT RELEASING
+# 5. Wiring is not releasing
 # ---------------------------------------------------------------------------
 
 def test_only_the_released_product_labels_are_released(monkeypatch):
@@ -888,17 +888,17 @@ def test_only_the_released_product_labels_are_released(monkeypatch):
     memory of it — an ENUMERATION, so a label reaching ``RELEASED_FUSED_ARMS``
     without a campaign fails on this line rather than dispatching quietly.
 
-    THIS TEST WAS ``test_no_certified_product_label_is_released`` UNTIL 2026-09-11,
-    then ``..._only_the_three_...`` until the 2026-09-13 Phase B batch. A product's
+    This test was ``test_no_certified_product_label_is_released`` UNTIL 2026-09-11,
+    then ``..._only_the_three_...`` until the 2026-09-13 release campaign. A product's
     label reaches ``RELEASED_FUSED_ARMS`` by a CAMPAIGN, never by a row added to the
-    composer's table, which is why the assertion is a set: after Phase B twenty of
+    composer's table, which is why the assertion is a set: after that campaign twenty of
     the twenty-six product labels are released, and the six that are not are
     ``folded_dispersive_fused_pair`` (held at the route gate's SECOND consult site,
     where ``synchronize_magnetic_fields`` diverges from the array path whether or not
     anything is fused), the two no-absorber D products, and the three H->D products
     (``INSTALLABLE = False``).
 
-    THE SECOND HALF NOW ADMITS TWO. On the Cartesian, lossless, unfolded, non-
+    The second half now admits two. On the Cartesian, lossless, unfolded, non-
     cylindrical shape the 2026-08-30 gate drove, the two real-beta pairs ARE
     admitted: their rows in ``FUSED_RELEASE_ARM_AXES`` do not constrain the kz/beta
     axis — a real-beta run is a 2-D Cartesian lossless grid like this envelope — so
@@ -917,7 +917,7 @@ def test_only_the_released_product_labels_are_released(monkeypatch):
         "fused pair D (cylindrical)", "fused pair D (folded complex beta)",
         "fused pair D (folded complex)", "fused pair D (folded real beta)",
         "fused pair D (real beta)",
-        # RELEASED 2026-09-14 by the re-attribution round (see the certified-count note above).
+        # RELEASED 2026-09-14 (see the certified-count note above).
         "fused pair D (folded dispersive)",
         "fused pair D (no-PML stored E)",
         # RELEASED 2026-09-15 on complex_no_pml_3d (see the certified-count note above).
@@ -936,10 +936,10 @@ def test_only_the_released_product_labels_are_released(monkeypatch):
 @pytest.mark.parametrize("name", sorted(PRODUCTS))
 def test_a_plan_carrying_a_certified_label_is_refused_at_the_fusion_clause(
         monkeypatch, name):
-    """EVEN INSIDE THE RELEASED ENVELOPE, the configuration below is the one the
+    """Even inside the released envelope, the configuration below is the one the
     driver-route gate drove, so nothing about the SHAPE refuses a product here —
-    only its release status does. Since the 2026-09-13 Phase B batch the two
-    real-beta pairs are released FOR THIS SHAPE and are ADMITTED past clause (8) and
+    only its release status does. Since the 2026-09-13 release campaign the two
+    real-beta pairs are released for this shape and are ADMITTED past clause (8) and
     every rung below it (the plan then fails to build on this Triton-less host, a
     different refusal); the other twenty-four are still refused at clause (8) by
     name, because their release axes are not this shape's or because they are not
@@ -962,7 +962,7 @@ def test_a_plan_carrying_a_certified_label_is_refused_at_the_fusion_clause(
     assert plan is None
     refused = fastpath.last_dispatch_report()["refused_because"]
     if admitted_for_shape:
-        # RELEASED FOR THIS SHAPE (the two real-beta pairs): dispatch ADMITS the
+        # Released for this shape (the two real-beta pairs): dispatch ADMITS the
         # label past clause (8) and every rung below it, so it is NOT refused there
         # by name. On this Triton-less host the plan then fails to build — the
         # refusal that proves the release clause was cleared and the build reached.
@@ -978,14 +978,14 @@ def test_the_complex_conductive_pair_is_certified_and_released_on_its_own_shape(
         monkeypatch):
     """REWRITTEN AGAIN 2026-09-15, when the pair left ``PENDING_DEVICE_GATE_ARMS``.
 
-    WHAT IT TESTED UNTIL THEN. After the 2026-09-14 release decision certified both
+    What it tested until then. After the 2026-09-14 release decision certified both
     constituents, the pair was still pending on its OWN account -- its gate had
     released and no ``fingerprints.json`` entry had been cut from it -- so an
-    opted-in run had to be refused by that reason. The 2026-09-15 batch moves the
+    opted-in run had to be refused by that reason. The 2026-09-15 release change moves the
     label into ``ARM_CERTIFICATION`` and releases it on ``complex_no_pml_3d``, which
     removes that refusal.
 
-    WHAT IT TESTS NOW is the release that replaced it, in both directions and with
+    What it tests now is the release that replaced it, in both directions and with
     the switch UNSET: the partition moved whole (both constituents and the pair
     certified, nothing pending, the lookup naming the key
     ``seed_triton_welds.ledger_key`` derives from the driver's gate directory); on
@@ -993,7 +993,7 @@ def test_the_complex_conductive_pair_is_certified_and_released_on_its_own_shape(
     clause (8) and the pending rung, so the plan reaches the build; and on the
     certified PML envelope the release still refuses it by name.
 
-    THE LOOK-STRAIGHT-PAST HAZARD STILL HAS NO INSTANCE, as the 2026-09-14 rewrite
+    The look-straight-past hazard still has no instance, as the 2026-09-14 rewrite
     recorded: no label in ``FUSED_ARM_CONSTITUENTS`` has a pending constituent, and
     ``test_a_fused_label_the_constituent_map_cannot_name_refuses_the_whole_plan`` is
     the rung's coverage until one arrives.
@@ -1038,7 +1038,7 @@ def test_the_complex_conductive_pair_is_certified_and_released_on_its_own_shape(
 
 def test_a_fused_label_the_constituent_map_cannot_name_refuses_the_whole_plan(
         monkeypatch):
-    """FAIL-CLOSED ON AN UNNAMED ABSORB. A future product wired without a
+    """Fail-closed on an unnamed absorb. A future product wired without a
     constituent row would otherwise reach every rung below with two arms nothing
     can see; it is refused by name instead, which is the direction that costs a
     coverage gap rather than a wrong number."""
@@ -1077,7 +1077,7 @@ def test_the_composer_holds_every_products_own_predicate_and_builder():
 
 
 def test_a_real_grid_reaches_every_product_predicate():
-    """WHAT STANDS BETWEEN THIS LAPTOP AND EACH OF THESE FUSED STEPS, itemised.
+    """What stands between this laptop and each of these fused steps, itemised.
 
     Before this change the answer for all twenty-five was "the planner". After it,
     every one of them is CONSULTED on a real grid and reports its own reason — and
@@ -1098,7 +1098,7 @@ def test_a_real_grid_reaches_every_product_predicate():
     for name in PRODUCTS:
         reasons = plan.reasons[f"fused_pair_{name}"]
         assert reasons, name
-    # 22 OF THE 25 GET AS FAR AS THEIR OWN BACKEND CLAUSE on this one grid (22 of
+    # 22 of the 25 get as far as their own backend clause on this one grid (22 of
     # 23 until 2026-09-07, when the two cylindrical H->D products were routed and
     # are refused BEFORE their predicate by their own INSTALLABLE = False) — the
     # half that says "array module is 'numpy', not cupy", which is the LAST clause
@@ -1135,7 +1135,7 @@ def test_a_real_grid_reaches_every_product_predicate():
 # ---------------------------------------------------------------------------
 
 def test_the_join_is_total_over_the_boards_products():
-    """THE RECORDED JOIN GAP, closed, and measured in both directions.
+    """The recorded join gap, closed, and measured in both directions.
 
     ``parity/meep_gpu/dispatch_reachability.PRODUCT_ARM_LABELS`` maps a board
     PRODUCT to the arm label ``TritonStepPlan.selected`` writes for it. Until
@@ -1189,7 +1189,7 @@ def test_the_three_buckets_split_a_synthetic_board_exactly():
     """
     import dispatch_reachability as reach  # noqa: PLC0415
 
-    # NOT `next(iter(PRODUCTS))` since the 2026-09-13 Phase B batch: the first
+    # NOT `next(iter(PRODUCTS))` since the 2026-09-13 release campaign: the first
     # product's label (`fused pair B (complex)`) is released now, so on an empty
     # config it lands in `refused_by_envelope` rather than in the unreleased bucket
     # this row exists to exercise. Pick an installed product whose label is still
@@ -1214,7 +1214,7 @@ def test_the_three_buckets_split_a_synthetic_board_exactly():
 
 
 def test_the_h_to_d_seam_row_is_last_because_placed_first_it_would_displace_a_product():
-    """KEY ORDER IS LOAD-BEARING, pinned here as it is on the other two backends.
+    """Key order is load-bearing, pinned here as it is on the other two backends.
 
     ``_install_fused_pairs`` walks ``CERTIFIED_FUSED_PAIR_SEAMS.items()`` in dict
     order against the live ``selected``. Placed before ``step_B``, the H->D seam
@@ -1238,7 +1238,7 @@ def test_the_h_to_d_seam_row_is_last_because_placed_first_it_would_displace_a_pr
 # table, the later half of ``_neighbouring_seam_claimant`` ALONE refused the released
 # B->H pair on every row an admitting H->D product reached -- a stand-in with no
 # absorb declaration, which can never install, still cost the incumbent its seam.
-# The guard (R1) asks the question only of a span whose two END slots both have
+# The end-edge guard asks the question only of a span whose two END slots both have
 # degree >= 2 in the seam table. This composer has the same three rows; no H->D
 # product is in its table yet, so every test below drives a stand-in through the
 # real seam loop and asserts who INSTALLS beside who is withheld.
@@ -1276,7 +1276,7 @@ def _stand_in_module(verdict=ADMITTED, installable=None):
 
 
 def test_slot_degrees_are_read_off_the_table_and_name_the_end_edges():
-    """THE GUARD IS DERIVED, NOT SPELLED. This is what fails the day a fifth seam row
+    """The guard is derived, not spelled. This is what fails the day a fifth seam row
     is priced without thinking about position."""
     degrees = launch_module._slot_degrees(SEAMS)
     assert degrees == {"step_B": 1, "update_H": 2, "step_D": 2, "update_E": 1}, degrees
@@ -1332,7 +1332,7 @@ def test_an_end_edge_span_is_never_asked_even_when_an_interior_claimant_admits(
 
 def test_a_registered_admitting_uninstallable_h_to_d_stand_in_does_not_cost_the_b_to_h_product_its_seam(
         monkeypatch):
-    """ARRANGEMENT F OF THE TIE MEASUREMENT, ON THIS COMPOSER, FROM BOTH SIDES.
+    """Arrangement F of the tie measurement, on this composer, from both sides.
 
     Shipped (no stand-in): the B->H product holds ``step_B``/``update_H`` and the D->E
     product ``step_D``/``update_E``. With an admitting stand-in that has no absorb row:
@@ -1381,13 +1381,13 @@ def test_the_interior_h_to_d_span_still_yields_to_a_d_to_e_claimant(monkeypatch)
     d_label = PRODUCTS["complex_fused_electric_pair"]["label"]
     assert plan.selected["step_D"] == plan.selected["update_E"] == d_label
     assert plan.selected["update_H"] == "complex", plan.selected
-    # THE OUTCOME IS THE CLAIM; THE MECHANISM IS WHICHEVER FIRES FIRST. On this
+    # The outcome is the claim; the mechanism is whichever fires first. On this
     # fixture the D->E product installs before the stand-in (the composer walks the
     # product table in order), so by the time the stand-in is asked, ``step_D`` is
     # already held and ``_pair_may_absorb`` refuses it on the arm label — the
     # neighbour rule is never consulted. Asserting the neighbour rule's wording here
     # pinned an accident of install order rather than the behaviour, and went red the
-    # moment R1 landed. What must hold is that the interior span does not take a slot
+    # moment the end-edge rule landed. What must hold is that the interior span does not take a slot
     # from an installed product, by whichever refusal reaches it first.
     reason = plan.reasons[f"fused_pair_{STAND_IN}"][0]
     assert STAND_IN not in plan.selected.values(), plan.selected
@@ -1396,7 +1396,7 @@ def test_the_interior_h_to_d_span_still_yields_to_a_d_to_e_claimant(monkeypatch)
 
 
 def test_the_interior_span_is_the_only_one_the_neighbour_rule_yields(monkeypatch):
-    """R1 AT FUNCTION LEVEL, which is where the rule can be read without an install
+    """The end-edge rule at function level, where the rule can be read without an install
     order in the way: a span yields only when BOTH its slots are interior to the
     driver's slot path. Over ``step_B -- update_H -- step_D -- update_E`` the maximum
     matching is the two END edges, so an end-edge span must never yield and the

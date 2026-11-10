@@ -1,13 +1,13 @@
 """Laptop tests for the conductive/BFAST H->D weld.
 
-WHAT THESE CAN AND CANNOT SAY. There is no CuPy here, so nothing below launches a
+What these can and cannot say. There is no CuPy here, so nothing below launches a
 kernel or claims a byte: the device verdict is
 ``parity/meep_gpu/gate_cuda_conductive_bfast_fused_hd_pair.py``'s. What IS checkable
 without a device is the whole emitter -- every certified string this product splices is
 read with :mod:`ast` rather than imported -- plus the predicate, the variant resolution
 and the launch-argument ORDER, which is the one thing a source digest cannot catch.
 
-THE ORDER TEST IS THE POINT OF THIS FILE. A weld whose emitted signature and whose
+The order test is the point of this file. A weld whose emitted signature and whose
 launcher disagree about argument seventeen compiles, launches, and is wrong in a way no
 transcription check and no digest can see. Here the emitted parameter list is PARSED and
 compared name by name against what :func:`_launch_arguments` binds, per variant, with
@@ -45,7 +45,7 @@ def _source(variant: str, cond) -> str:
 def _parameter_names(variant: str, cond) -> List[str]:
     """The emitted kernel's parameter names, in declaration order.
 
-    PARSED OUT OF THE EMITTED TEXT, comments stripped, so this list is what NVRTC will
+    Parsed out of the emitted text, comments stripped, so this list is what NVRTC will
     bind and not a second copy of the launcher's opinion about it.
     """
     source = _source(variant, cond)
@@ -174,7 +174,7 @@ def test_the_bfast_pass_survives_whole():
     assert body.count("fold_apply(D") == 3
     for axis in "xyz":
         assert f"bfast_pass(fb_D{axis}, idx, sf, f1, ss, f2, " in body
-    # THE OWNERSHIP FLAG IS THE CURL'S MASK, re-spelled: one owned_cell line per
+    # The ownership flag is the curl's mask, re-spelled: one owned_cell line per
     # curl mask line, so neither copy was dropped by the lift.
     assert body.count("owned_cell = 0;") == body.count("curl = 0.0f;")
     # The state is written on owned cells only, the prelude's own BFAST helper.
@@ -190,7 +190,7 @@ def test_the_two_variants_emit_two_distinct_device_strings():
 def test_the_lifted_constitutive_half_is_read_not_copied():
     """Every certified string comes out of the owning module's own source.
 
-    A COPY WOULD PASS EVERY OTHER TEST IN THIS FILE and would fork the moment the
+    A copy would pass every other test in this file and would fork the moment the
     certified text changed. This checks the route rather than the result: the lifted
     prelude must be the certified one with EXACTLY the four declared substitutions
     applied, so re-applying them to the file's own literal reproduces it.
@@ -240,7 +240,7 @@ def test_the_certified_curl_text_refuses_the_wrong_mask_argument():
 def test_the_launcher_binds_the_emitted_signature_slot_for_slot(variant, cond):
     """Argument N of the launch is parameter N of the emitted kernel.
 
-    THE ONE DEFECT NO SOURCE DIGEST CAN SEE. Both the parameter list and the argument
+    The one defect no source digest can see. Both the parameter list and the argument
     tuple are derived here -- the first parsed out of the emitted text, the second
     produced by the shipped :func:`_launch_arguments` against a fields object whose
     every volume is a labelled placeholder -- and compared name by name.
@@ -275,7 +275,7 @@ def test_the_launcher_binds_the_emitted_signature_slot_for_slot(variant, cond):
                                 else f"<{component}>")
                     break
             else:
-                # THE BFAST STATE IS SPELLED DIFFERENTLY EITHER SIDE and deliberately:
+                # The BFAST state is spelled differently either side and deliberately:
                 # the certified signature names it ``fb_D*`` and the engine attribute
                 # is ``f_bfast_D*``. The translation is the certified family's own
                 # table, read here rather than assumed.
@@ -297,7 +297,7 @@ def test_a_swapped_argument_is_caught_by_that_comparison(variant, cond):
     fields = _stub_fields(variant, cond)
     state = _stub_state(variant, cond)
     arguments = list(family._launch_arguments(fields, state))  # noqa: SLF001
-    # SWAP THE FIRST TWO POINTERS. If the comparison above were vacuous this would
+    # Swap the first two pointers. If the comparison above were vacuous this would
     # still line up.
     arguments[0], arguments[1] = arguments[1], arguments[0]
     mismatched = [index for index, (name, value) in enumerate(zip(names, arguments))
@@ -349,7 +349,7 @@ def test_the_variants_conductive_mask_is_the_certified_families_own_reader():
 def test_the_seam_clause_treats_an_undeclared_source_list_as_ignorance():
     """``None`` is not ``()``, and the clause the predicate delegates to says so.
 
-    ASKED AT THE CLAUSE rather than through the predicate: on a laptop the two
+    Asked at the clause rather than through the predicate: on a laptop the two
     certified halves refuse first, for the CuPy-backend clause, so a whole-predicate
     call here would report a refusal that says nothing about this seam. The clause
     itself is what the predicate passes its own flag and span to, and it is

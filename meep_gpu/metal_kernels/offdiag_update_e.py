@@ -1,6 +1,6 @@
 """The TENSOR (off-diagonal epsilon) electric constitutive sub-step, on Metal.
 
-**THE ROW IS MEEP'S DOUBLE ROW, IN SOFTWARE BINARY64 (ruling R7).** The array path
+**The row is MEEP's double row, in software binary64 (docs/design/floating-point.md#double-precision-on-the-metal-table).** The array path
 forms MEEP's row ``gs*us + OFFDIAG(u1, g1, s1) + OFFDIAG(u2, g2, s2)`` with each
 OFFDIAG's float32 pair sum scaled by the double literal ``0.25`` and the row summed
 left to right in float64, rounded once by the store, and a term added only in the
@@ -15,7 +15,7 @@ flush-only and the array path it equals steps with the host flushing
 (:mod:`.softfp64`). A component with no live row keeps the float32 ``gs*us``: the
 array path forms no double row there (docstring point 6).
 
-**PRESENCE IS PER CHUNK (KERNELS.md §2).** MEEP drops an OFFDIAG term in every chunk
+**Presence is per chunk (docs/development/kernel-tables.md#record-layout).** MEEP drops an OFFDIAG term in every chunk
 that deleted its ``chi1inv`` array, which differs from adding ``+0`` only when the row
 so far is ``-0``. The kernel binds one 27-bit word per row slot
 (:data:`PRESENCE_STRUCT`, last, at :data:`PRESENCE_BUFFER`) and indexes it with the
@@ -28,7 +28,7 @@ back to it on every stored cell, or refused by name (:func:`presence_words`,
 :class:`PresenceRefusal`). A row no chunk deletes is the all-kept word, which needs no
 chunk naming.
 
-**THE PML TAIL IS THE ARRAY PATH'S PER-CHUNK SELECT.** The kernel binds the chunk
+**The PML tail is the array path's per-chunk select.** The kernel binds the chunk
 record (:data:`RECORD_BUFFER`) and its tail is the base constitutive kernel's own
 (:mod:`.shaders`, ``stepping._apply_constitutive_regions``), character for
 character: on a cell whose chunk carries the component's own (``dsigw``) layer,
@@ -42,7 +42,7 @@ from the certified constitutive kernel is the OFFDIAG row coupling (a coefficien
 multiply sitting BETWEEN two shifts) and the metallic wall-coupling mask, and none
 of it belongs in the shared modules yet.
 
-WHAT IT REPLACES. ``stepping.update_E`` (stepping.py:954) with an active PML,
+What it replaces. ``stepping.update_E`` (stepping.py:954) with an active PML,
 ``fields.has_offdiagonal_epsilon`` True (fields.py:1313-1315) and NOT
 ``fields.has_nonlinearity`` — the ``elif offdiagonal:`` branch (stepping.py:
 1001-1008). With no poles admitted, ``displacement_minus_polarization_volumes``
@@ -62,17 +62,17 @@ alive at once because the coupling reads the OTHER components' volumes
                     E_c = E_c + ((kps_a_h * constitutive) - (kms_a_h * prev))
     elsewhere:      E_c = constitutive
 
-THIS IS THE FIRST METAL FAMILY WHOSE STENCIL READS NEIGHBOURS THROUGH A
-TRANSVERSE YEE AVERAGE. The certified constitutive sub-step is element-wise; this
+This is the first Metal family whose stencil reads neighbours through a
+transverse Yee average. The certified constitutive sub-step is element-wise; this
 one is not, which is exactly why ``coverage.constitutive_coverage(side="E")``
 refuses every off-diagonal run at that sub-step (coverage.py's own clause) and why
 that refusal STAYS — it is the DISJOINTNESS SEAM between the two families, not a
 stale refusal.
 
-THE THINGS THAT DECIDE BIT-IDENTITY, each held by the gate rather than assumed:
+The things that decide bit-identity, each held by the gate rather than assumed:
 
-1. **THE COEFFICIENT MULTIPLY SITS BETWEEN THE TWO SHIFTS** (stepping.py:
-   1243-1249): ``u[i]`` multiplies the two-point partner average AT ITS OWN NODE
+1. **The coefficient multiply sits between the two shifts** (stepping.py:
+   1243-1249): ``u[i]`` multiplies the two-point partner average at its own node
    and ``u[i+s]`` the average at the next node up — MEEP registers the off-diagonal
    entry at the component's Yee site minus half a cell along its own axis, the
    integer node (anisotropic_averaging.cpp:248-257, ``here - shift1``). A plain
@@ -81,10 +81,10 @@ THE THINGS THAT DECIDE BIT-IDENTITY, each held by the gate rather than assumed:
    (``a*u + b*u`` vs ``(a+b)*u``) is not a bitwise identity in f32. The gate's
    spatially varying coefficient cases are what make the REGISTRATION — not merely
    the rounding — byte-visible; its m1 mutation is the hoist, and the UNIFORM-row
-   arm of that mutation at 2**-16 amplitude is THE ALLCLOSE-BLINDNESS CONTROL:
+   arm of that mutation at 2**-16 amplitude is the allclose-blindness control:
    bytes fail, ``allclose`` passes. That case is the sharpest justification of byte
    gating anywhere in this project and it is carried here deliberately.
-2. **THE TWO SHIFTS GO IN OPPOSITE DIRECTIONS** — half a cell DOWN the partner's
+2. **The two shifts go in opposite directions** — half a cell DOWN the partner's
    axis on the raw partner volume (``g[i-sx]``), then the already-multiplied
    product half a cell UP the component's own axis (``(pair*u)[i+s]``, which is
    where the corner ``g[(i+s)-sx]`` arises). Per-axis ghost rules compose
@@ -92,13 +92,13 @@ THE THINGS THAT DECIDE BIT-IDENTITY, each held by the gate rather than assumed:
    and down validity flags separate and the corner ANDs them at the load site.
    Taking both shifts the same way is the half-cell registration error; the gate's
    m2 mutation is exactly it.
-3. **0.25 SCALES EACH TERM'S PAIR SUM, IN DOUBLE** (``_offdiagonal_terms``:
+3. **0.25 scales each term's pair sum, in double** (``_offdiagonal_terms``:
    ``0.25 * summed.astype(float64)``). The float32 side forms only the pair sum
    ``(near*u[i]) + (far*u[i+s])``; the quarter is ``sd_scale_pow2(widen(sum), -2)``,
    exact in binary64 for every float32 input. A float32 ``0.25f * sum`` is NOT the
    same word: it flushes a sum below ``4 * 2**-126`` that the double scale keeps,
    and it rounds the term to float32 before the double add.
-4. **THE METALLIC WALL-COUPLING MASK** (``_mask_metallic_wall_coupling``,
+4. **The metallic wall-coupling mask** (``_mask_metallic_wall_coupling``,
    stepping.py:1256-1283): EACH TERM'S float32 pair sum is zeroed at FACE 0 of every
    metallic non-mirrored axis on which the component's Yee shift is 0, BEFORE its
    scale; a masked term that is kept still adds ``+0`` in double.
@@ -110,8 +110,8 @@ THE THINGS THAT DECIDE BIT-IDENTITY, each held by the gate rather than assumed:
    NOT the resolved ghost codes — which is why :data:`MetalOffdiagPlan.wall_axes`
    is carried separately from ``boundary_codes``, exactly as the fused pairs keep
    ``ZM_*`` separate from ``BC*``. m6 (dropped) and m7 (over-applied) hold both
-   directions. **WITHIN THIS FAMILY'S ADMITTED SPACE THE TWO ARE LOCKED, AND THAT
-   IS MEASURED RATHER THAN LEFT IMPLIED** (``test_metal_offdiag``'s lock test,
+   directions. **Within this family's admitted space the two are locked, and that
+   is measured rather than left implied** (``test_metal_offdiag``'s lock test,
    all eight boundary triples): mirrors are refused by the predicate, so
    ``walls[a] == (codes[a] == METALLIC)`` on every grid ``plan_offdiag_constitutive``
    will build for. The separation is therefore FUTURE-PROOFING, not a live degree
@@ -119,23 +119,23 @@ THE THINGS THAT DECIDE BIT-IDENTITY, each held by the gate rather than assumed:
    when conflating the two would zero a plane MEEP steps. The independent pairs
    are reachable only through ``plan_offdiag_constitutive_from_arrays``, which is
    how m6/m7 exercise them.
-5. **THE ROW SUM IS DIAGONAL-FIRST, LEFT TO RIGHT, IN DOUBLE**:
+5. **The row sum is diagonal-first, left to right, in double**:
    ``((widen(D_c * us_c) + term1) + term2)``, offset 1 then offset 2 (MEEP's
    ``cycle_direction`` order). Grouping the two terms first
    (``widen(gs*us) + (term1 + term2)``) is a different double rounding and is a
    must-catch mutation; commuting one addition is a bitwise null.
-6. **A COMPONENT WITH NO SURVIVING ROW KEEPS THE PURE DIAGONAL ARITHMETIC** —
+6. **A component with no surviving row keeps the pure diagonal arithmetic** —
    ``_offdiagonal_terms`` returns ``None`` and the caller never forms a ``+ 0``
    copy (stepping.py:1222-1227). The row-mask specialisation compiles that arm to
    the certified constitutive kernel's component body verbatim, and the gate's
    identity leg pins the rows-all-dropped build byte-identical to the certified
    kernel on the same seeds.
-7. **``prev`` IS READ BEFORE ``f_w`` IS WRITTEN**, and the tail keeps the two
+7. **``prev`` is read before ``f_w`` is written**, and the tail keeps the two
    separate accumulations of ``_apply_constitutive_pml`` (stepping.py:2112-2143) —
    byte-for-byte the certified family's recurrence, under the same file-scope
    contraction directive.
 
-NO DIVISION ANYWHERE, so the ``fast::divide`` hazard (2471 mismatches, measured on
+No division anywhere, so the ``fast::divide`` hazard (2471 mismatches, measured on
 this host) cannot arise in this family. No ``min``/``max`` builtin either. The only
 negation is the one inside the shifted-index arithmetic, which is integer.
 
@@ -149,21 +149,21 @@ BEFORE the row sum — a metallic partner axis is always a Yee-shift-0 transvers
 axis of the component, so the mask covers exactly that plane. Mirrors, where the
 mask abstains, are refused by this family's predicate.
 
-ON A REDUCED (n = 1) AXIS the wrap returns the same plane and the partner pair is
+On a reduced (n = 1) axis the wrap returns the same plane and the partner pair is
 ``2*g`` — NOT the curl's exact zero — matching MEEP's stride(d)=0 double-read. A
 sweep case pins it.
 
-STALE DOCSTRING HAZARD (code wins, and the refusals leg measures it):
+Stale docstring hazard (code wins, and the refusals leg measures it):
 stepping.py:1219-1220 claims "a folded axis never reaches this function:
 ``Fields.set_epsilon_volumes`` refuses the combination at install", and
 fields.py:1237-1241 repeats it — but ``_validated_offdiagonal_rows``
 (fields.py:1262-1310) installs rows UNCHANGED on folded grids. This family refuses
-folds anyway (the shared extent/coefficient-index clause), so the refusal is THIS
-KERNEL FAMILY'S, not the engine's, and the gate's refusals leg shows the predicate
+folds anyway (the shared extent/coefficient-index clause), so the refusal is this
+kernel family's, not the engine's, and the gate's refusals leg shows the predicate
 refusing a folded run that ``stepping`` demonstrably steps. The doc fix belongs in
 those files.
 
-THE ARM IS WIRED. ``plan_step`` composes this family (as of tranche 2, after the
+The arm is wired. ``plan_step`` composes this family (after the
 composition sweep measured the co-admission question over a constructed
 configuration matrix); ``fastpath.plan_fast_path`` still returns ``None``
 on every branch, which is the separate decision a benchmark informs. The sweep
@@ -200,7 +200,7 @@ E_TERMS: Tuple[Tuple[str, str, int], ...] = (
 #: The coupling partners of each component, in MEEP's ``cycle_direction`` order
 #: X -> Y -> Z (vec.hpp:586; stepping.py:1235-1237): own axis + 1 first, own axis
 #: + 2 second. Ez therefore takes the Ex-partner volume then the Ey-partner volume.
-#: The order BINDS COEFFICIENTS TO PARTNERS — the plan fills the six row slots by
+#: The order binds coefficients to partners — the plan fills the six row slots by
 #: this table, and the gate's m3 mutation mispairs them.
 TRANSVERSE_PARTNERS: Tuple[Tuple[int, int], ...] = ((1, 2), (2, 0), (0, 1))
 
@@ -438,7 +438,7 @@ def _term(component: int, partner_axis: int, coefficient: str,
 
         summed = (g[i] + g[i-sx])*u[i] + (g[i+s] + g[(i+s)-sx])*u[i+s]
 
-    THE COEFFICIENT MULTIPLY SITS BETWEEN THE SHIFTS. The near pair takes ``u`` at
+    The coefficient multiply sits between the shifts. The near pair takes ``u`` at
     its own node; the far pair — the shifted PRODUCT's value — takes ``u`` at the
     next node up the component's OWN axis. Loading ``u`` at the composed up index
     is the same bits as shifting the formed product: a shift is data movement, the
@@ -630,7 +630,7 @@ def presence_block(row_mask: Sequence[int], codes: Sequence[int]) -> str:
     """
     row_mask = tuple(int(flag) for flag in row_mask)
     codes = tuple(int(code) for code in codes)
-    lines = ["    // --- the off-diagonal presence (KERNELS.md §2): bit `code` of each live",
+    lines = ["    // --- the off-diagonal presence: bit `code` of each live",
              "    // slot's word, `code` the cell's chunk lx + 3*ly + 9*lz read off the",
              "    // chunk record on the component's own Yee sub-lattice per axis.",
              "    // MEEP drops the term in a chunk that deleted the chi1inv array."]
@@ -954,7 +954,7 @@ def specialisations() -> Tuple[Tuple[Tuple[int, ...], Tuple[int, ...],
     which is the property a per-source list was providing; the per-source hashes
     the gate actually launches are recorded beside it in the gate's own artifact.
 
-    THE ENUMERATION IS DELIBERATELY WIDER THAN THE REACHABLE SET, and the artifact
+    The enumeration is deliberately wider than the reachable set, and the artifact
     should not be read as claiming otherwise: within this family's coverage
     ``walls`` is LOCKED to ``codes`` (module docstring point 4, measured), so
     ``plan_offdiag_constitutive`` can only ever emit the 63 x 8 diagonal subset —
@@ -1049,12 +1049,12 @@ def _alias_reasons(label: str, value: Any, outputs: Dict[int, str],
                    sources: Dict[int, str]) -> List[str]:
     """Why one READ-ONLY input volume may not be the array it aliases.
 
-    TWO DISTINCT HAZARDS, and only the first was refused before 2026-08-15:
+    Two distinct hazards, and only the first was refused before 2026-08-15:
 
     1. **it aliases an OUTPUT** (E or f_w). The coupling re-reads the partner D
        volumes at neighbour offsets while the outputs are written, so the answer
        would depend on thread schedule.
-    2. **it aliases a SOURCE** (Dx/Dy/Dz) — MEASURED, and fatal in composition
+    2. **it aliases a SOURCE** (Dx/Dy/Dz) — measured, and fatal in composition
        rather than in this sub-step. The residency registry keys mirrors by NAME,
        so one host array registered as ``Dx`` (non-constant, because ``step_D``
        writes it) and again as ``chi1inv_offdiag:Ex:Ey`` (constant, because nothing
@@ -1070,7 +1070,7 @@ def _alias_reasons(label: str, value: Any, outputs: Dict[int, str],
     Hazard 2 is refused HERE, in the family, rather than in
     :class:`~.device.Residency`. The general rule — one host array may not carry
     both a constant and a non-constant mirror — belongs in the spine and would bind
-    six other families whose gates this round does not own; it is recorded as a
+    six other families whose gates this family does not own; it is recorded as a
     measured recommendation instead of taken unilaterally.
 
     Inputs may still alias EACH OTHER freely: three aliased inverse-epsilon volumes
@@ -1116,7 +1116,7 @@ def _row_reasons(fields: Any, shape: Sequence[int]) -> List[str]:
     """Every surviving row volume must be a real f32 C-contiguous grid volume that
     aliases neither this sub-step's outputs nor its sources.
 
-    THE INSTALLER DOES NOT NORMALIZE ALL OF THIS AWAY, and this docstring said it
+    The installer does not normalize all of this away, and this docstring said it
     did. ``_validated_offdiagonal_rows`` (fields.py:1262-1310) casts to float32,
     refuses complex and a shape mismatch, refuses non-finite values and drops an
     identically zero row — but it casts with ``astype(..., copy=False)``
@@ -1130,7 +1130,7 @@ def _row_reasons(fields: Any, shape: Sequence[int]) -> List[str]:
     door and the rest are for a row planted past it; either way the package's rule
     is that such a row is refused by name rather than stepped.
 
-    THE ALIAS CLAUSES ARE BEYOND THE INSTALLER'S REACH ENTIRELY — it keeps the
+    The alias clauses are beyond the installer's reach entirely — it keeps the
     caller's array without copying — and the plan builder refuses both with a
     raise, so the predicate must refuse them FIRST to keep the builder's
     None-means-refused contract: a covered verdict must never meet a ValueError.
@@ -1158,7 +1158,7 @@ def _row_reasons(fields: Any, shape: Sequence[int]) -> List[str]:
         if not _is_volume(value):
             out.append(f"{label} is not a volume")
             continue
-        # FAIL-CLOSED, and this line USED TO RAISE. It read
+        # Fail-closed, and this line used to raise. It read
         # ``str(getattr(value, "dtype", ""))[0]``, which is an IndexError on any
         # volume-shaped object that answers no dtype — measured, 2026-08-15:
         # ``IndexError: string index out of range`` out of the PREDICATE. Every
@@ -1189,7 +1189,7 @@ def offdiag_constitutive_coverage(fields: Any, pml: Any,
                                   chunk_bounds: Any = None) -> "_coverage.Coverage":
     """May the Metal off-diagonal kernel step ``update_E`` for this pair?
 
-    POSITIVE CLAUSES ONLY; a failing clause appends its reason and the scan
+    Positive clauses only; a failing clause appends its reason and the scan
     continues. The grid clauses are ``coverage._grid_reasons``' — this module's
     Metal ones, called DIRECTLY and not restated — because this predicate inverts
     NO shared clause: chi2/chi3 stays refused (the row-product-times-Pade
@@ -1392,12 +1392,12 @@ class MetalOffdiagConstitutivePlan(KernelPlan):
         with different bases pass unseen, which is the certified plans' shared and
         accepted limitation.
 
-        READ-ONLY INPUTS MAY ALIAS EACH OTHER FREELY — three aliased
+        Read-only inputs may alias each other freely — three aliased
         inverse-epsilon volumes are the isotropic install, and one coefficient
         array installed on two row slots is a legal tensor — because those are
         CONSTANT mirrors of one host array and nothing writes them. What they may
         NOT alias is a volume this plan mirrors as WRITTEN: an OUTPUT (E, f_w) or
-        a SOURCE (D). The source case is MEASURED and is invisible to a single
+        a SOURCE (D). The source case is measured and is invisible to a single
         sub-step, which is why it went unrefused until 2026-08-15; see
         :func:`_alias_reasons`. ``sources`` counts as a write-side name here even
         though this kernel only reads it, because ``step_D`` writes it in the
@@ -1535,7 +1535,7 @@ def plan_offdiag_constitutive_from_arrays(
     installer does). No coverage predicate runs here: the caller is a harness that
     constructed the configuration on purpose, including the deliberately wrong ones.
 
-    ``functions=`` IS LOAD-BEARING: the mutation legs route a mutated kernel
+    ``functions=`` is load-bearing: the mutation legs route a mutated kernel
     through it, and a builder that drops it launches the SHIPPED kernel and reports
     a pass for a defect it never introduced.
 
@@ -1610,10 +1610,10 @@ ARM = arms.register(
     family=FAMILY, slot=SLOT, label="offdiag",
     coverage=_arm_coverage, plan=_arm_plan,
     prefix="offdiag: ", noun="off-diagonal constitutive",
-    # Wired as of tranche 2 (and again under ruling R7's software-binary64 row), this
+    # Wired (now with the software-binary64 row), this
     # is the one arm whose disjointness is NOT settled by an inverted clause. `coverage.constitutive_coverage(side="E")`
     # refuses on the FLAG (`has_offdiagonal_epsilon`) while this predicate requires
-    # a LIVE ROW SLOT, and the two agree only because the installer drops a
+    # a live row slot, and the two agree only because the installer drops a
     # zero row and the flag is a read-only property over the very dict the row
     # accessor reads. That coupling is an engine fact, not a composition fact, so
     # the composition sweep does two things rather than assume it: it runs the

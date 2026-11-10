@@ -1,7 +1,7 @@
 """The ``update_H -> step_D`` seam's source pass, for a product that fuses the seam.
 
 ===========================================================================
-WHAT STANDS IN THE SEAM NOW: NO WITHDRAW, AND ONE RESTORE THAT WRITES ONLY B
+What stands in the seam now: no withdraw, and one restore that writes only B
 ===========================================================================
 
 An integrated source no longer stands a dipole in D or B. MEEP subtracts the dipole
@@ -30,10 +30,10 @@ The 2026-09-04 licence below is kept as the record it was: it measured the hoist
 pass that has since been removed, and licenses nothing about the restore.
 
 ===========================================================================
-THE 2026-09-04 DESIGN (HISTORY): HOISTING THE ELECTRIC WITHDRAW OVER ``update_H``
+The 2026-09-04 design (history): hoisting the electric withdraw over ``update_H``
 ===========================================================================
 
-WHY THIS IS A SIBLING OF ``deposit_repair`` AND NOT A BRANCH OF IT. The two modules
+Why this is a sibling of ``deposit_repair`` and not a branch of it. The two modules
 answer the same-shaped question about two opposite passes, and the difference is not a
 detail of wording:
 
@@ -64,7 +64,7 @@ them here would refuse rows the campaign below measured byte-identical, on groun
 have nothing to do with this pass.
 
 ===========================================================================
-THE MEASURED LICENCE, AND IT IS NARROW
+The measured licence, and it is narrow
 ===========================================================================
 
 ``parity/meep_gpu/results/h_to_d_withdraw_order_2026-09-04/`` (probe
@@ -85,8 +85,8 @@ every susceptibility's ``P`` / ``P_prev``):
 * ``after_step_D`` -- the withdraw moved to after the curl, still before the injection
   slot -- diverges at step 2 on all 7 rows.
 
-WHAT THAT LICENSES: the ARRAY PATH, and the placement :data:`BEFORE_UPDATE_H` and no
-other. WHAT IT DOES NOT: any device, any kernel, and any other placement. It says nothing
+What that licenses: the array path, and the placement :data:`BEFORE_UPDATE_H` and no
+other. What it does not: any device, any kernel, and any other placement. It says nothing
 about whether a backend's fused ``update_H + step_D`` launch is bit-identical to the two
 array-path halves, and nothing about the MAGNETIC withdraw, which the driver runs over
 ``step_B`` in a different seam (``driver.py:3289-3290``) and which this campaign never
@@ -94,7 +94,7 @@ moved. Those refusals are :data:`PLACEMENT_REFUSALS` and the magnetic clause bel
 by name.
 
 ===========================================================================
-THE MECHANISM, WHICH A BYTE COMPARISON CANNOT GIVE
+The mechanism, which a byte comparison cannot give
 ===========================================================================
 
 ``VolumeSource.withdraw`` (``sources.py:2092-2121``) reads ``envelope.is_integrated``,
@@ -114,7 +114,7 @@ be" is not a measurement, which is why the campaign above exists rather than thi
 paragraph standing alone.
 
 ===========================================================================
-WHY THE HOIST NEEDS NO DRIVER EDIT, AND WHAT THAT RESTS ON
+Why the hoist needs no driver edit, and what that rests on
 ===========================================================================
 
 ``withdraw`` is IDEMPOTENT within a step: it returns immediately when
@@ -134,7 +134,7 @@ consecutive withdraws against one injected offset, byte-compared -- rather than 
 it, so a change to that body fails a test instead of silently widening this licence.
 
 ===========================================================================
-THE CONFIGURATION TEST IS NOT THE PER-STEP TEST
+The configuration test is not the per-step test
 ===========================================================================
 
 Whether a withdraw stands in this seam is a property of the RUN's configuration --
@@ -182,7 +182,7 @@ SEAM_PASS: Dict[str, Any] = {
 #: campaign never moved. See :func:`_span_reasons`.
 SEAM_SPAN: Tuple[str, str] = ("update_H", "step_D")
 
-#: THE ONE MEASURED PLACEMENT: the withdraw runs immediately before the ``update_H``
+#: The one measured placement: the withdraw runs immediately before the ``update_H``
 #: consult, so the fused launch and then the driver's now-no-op loop follow it.
 BEFORE_UPDATE_H = "before_update_H"
 
@@ -299,7 +299,7 @@ def _withdraw_does_work(source: Any) -> bool:
 def standing_withdraws(sources: Any) -> Tuple[Tuple[int, Any], ...]:
     """The electric sources whose withdraw does work, with their index in ``sources``.
 
-    THE INDEX IS THE CALLER'S, not the subset's -- the ``deposit_repair._in_seam_indexed``
+    The index is the caller's, not the subset's -- the ``deposit_repair._in_seam_indexed``
     lesson: "source 1" has to name the second source the RUN declared, or a diagnostic on
     a mixed run points at the wrong source.
 
@@ -370,7 +370,7 @@ def _span_reasons(span: Any) -> Tuple[str, ...]:
 def _idempotence_reasons(index: int, source: Any) -> Tuple[str, ...]:
     """Why a SECOND call to this source's ``withdraw`` cannot be shown to be a no-op.
 
-    THE WHOLE HOIST RESTS ON THIS. The product calls ``withdraw`` before its launch and
+    The whole hoist rests on this. The product calls ``withdraw`` before its launch and
     the driver's unconditional loop calls it again inside the seam; if the second call
     did work, the hoisted order would subtract the offset twice and the campaign's
     measurement would not describe it. The early return at ``sources.py:2116-2117`` and
@@ -440,7 +440,7 @@ def _declaration_reasons(sources: Any, hoisted: Sequence[Any],
                          standing: Tuple[Tuple[int, Any], ...]) -> Tuple[str, ...]:
     """Why the caller's declared hoist list is not the set the campaign moved.
 
-    TWO NULL CONTROLS LIVE HERE. ``hoisted_drop_first`` dropped one working withdraw and
+    Two null controls live here. ``hoisted_drop_first`` dropped one working withdraw and
     diverged at step 2 on all 7 rows, so a declaration missing any standing withdraw is
     refused; and the campaign moved the ELECTRIC list only, so a magnetic source in the
     declaration is refused by name rather than quietly hoisted over a seam it does not
@@ -557,14 +557,14 @@ def seam_withdraw_reasons(fields: Any, sources: Any, *,
                           placement: str = BEFORE_UPDATE_H) -> Tuple[str, ...]:
     """Why this run's withdraw bars a fused ``update_H + step_D``, or ``()`` if it does not.
 
-    THE SHAPE IS ``deposit_repair.seam_source_reasons``', and deliberately so: the
+    The shape is ``deposit_repair.seam_source_reasons``', and deliberately so: the
     decision lives here and the PROSE stays at the site. ``undeclared`` is the site's own
     no-source-list text and ``refusal(index, source)`` returns its own in-seam text,
     because those strings are pinned by that product's gate and its tests.
 
     ``hoists_the_withdraw`` is the product's own declaration that its leading slot runs
-    :func:`hoist` -- the ``CARRIES_DEPOSIT_REPAIR`` contract's shape, and IT IS NOT A
-    HINT for the same reason. A product that passes True without wiring
+    :func:`hoist` -- the ``CARRIES_DEPOSIT_REPAIR`` contract's shape, and it is not a
+    hint for the same reason. A product that passes True without wiring
     :class:`LeadingWithdrawPlan` lets the fused launch read a D still holding the
     previous step's standing dipole and reports success, which is the failure this module
     exists to prevent. The wiring and the flag change together or not at all.
@@ -594,7 +594,7 @@ class LeadingWithdrawPlan:
     ``step_D``. The hoist happens here rather than at plan-build time because it writes
     the field as of THIS step, and a plan is built once per configuration freeze.
 
-    THERE IS NO TRAILING PLAN, AND THAT IS THE POINT. The deposit repair needs its second
+    There is no trailing plan, and that is the point. The deposit repair needs its second
     slot because something was injected after its launch and has to be reconstructed;
     nothing is injected in this seam, and the pass this module moves is undone by
     nobody -- the driver's own loop runs after the launch and no-ops
@@ -618,7 +618,7 @@ class LeadingWithdrawPlan:
         self.withdrawn = 0
 
     def run(self, *args: Any, **kwargs: Any) -> None:
-        # THE REFUSAL IS INSIDE hoist, before its first write: this is the last moment a
+        # The refusal is inside hoist, before its first write: this is the last moment a
         # configuration outside the licence can be refused BEFORE the fused launch reads
         # a D that still holds the previous step's standing dipole.
         self.withdrawn = hoist(self._fields, self._sources,

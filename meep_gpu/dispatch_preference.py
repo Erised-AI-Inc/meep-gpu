@@ -1,23 +1,30 @@
 """Measured cost as a slot arbiter: the timing record's format, and the consult that reads it.
 
-Plan of record: ``the design notes (meep-gpu-dispatch-preference-plan)`` (Design 1-7).
+In one line: a recorded measurement may withhold a slower fused product, and nothing else.
 Today a fused product wins a slot on SHAPE, never on speed: a longer span displaces
 the products it contains wherever it is admitted, with no size gate. This module is
 the instrument that lets a MEASUREMENT veto that -- and only veto it.
 
-UNWIRED. Nothing in the dispatch path imports this module; the wiring is a small
-edit in its own re-certification round, because every route gate's ``selected`` map
-can move with it. Until then this file changes nothing about any run.
+WIRED in 1.0.1 (the measured-cost preference), and priced by size where a record
+carries a cost model (:func:`consult_cost`). ``fastpath``'s composer rung (5) and
+``metal_dispatch``'s (5M) consult it once per fused candidate the shape rule
+installed, through ``fastpath._apply_preference``: a candidate the record measured
+slower than its certified singles is withheld from that table's offer, the slot
+composes again with the product left out, and the veto stands only if the singles
+the record priced are what took the slots. Every route gate's ``selected`` map can
+move with it, so the record's digest is written into the dispatch record beside the
+``selected`` map (``preference.records``), and ``MEEP_GPU_PREFER=span`` reproduces
+the shape rule byte for byte.
 
 =============================================================================
-WHAT IS DECIDED HERE, AND WHAT NEVER IS
+What is decided here, and what never is
 =============================================================================
 
 ARBITRATION ONLY. The record may change WHO holds a slot. It can never change what a
 kernel computes: a vetoed candidate leaves the products it would have displaced in
 their slots, and those are certified products running their own certified arithmetic.
 
-A VETO FIRST, NOT A RANKING. One direction, failing closed (plan section 3):
+A veto first, not a ranking. One direction, failing closed:
 
     A candidate may not displace the products it supersedes when the record says it
     is SLOWER than them on this shape class, by more than the recorded spreads. With
@@ -30,7 +37,7 @@ or ``not_vetoed``, and both mean the same thing to the caller: install as today.
 THE RECORD
 =============================================================================
 
-One JSON document per kernel table PER COMPUTE CAPABILITY, cut by
+One JSON document per kernel table per card, cut by
 ``parity/meep_gpu/cut_timing_record.py`` from timing rows and never written by hand
 (it carries a digest of its own body, and a record whose digest does not match
 REFUSES). :func:`record_path` spells where it lives --
@@ -42,7 +49,15 @@ veto. So the architecture is in the file name (a reader sees from a directory li
 which architectures have been timed and which have not), a new architecture's record
 is ADDED beside the others and never replaces one, :func:`validate` refuses a record
 whose rows do not name exactly one of them, and :func:`consult` answers ``no_record``
-when the device it is asked about is not that one. Its ``keys`` map is::
+when the device it is asked about is not that one.
+
+The rows ran on one CARD, and the card is in the name too where it is not the
+architecture's representative (the section "One record per card" below): the bare name
+above is the architecture's REPRESENTATIVE, read by every card of the architecture that
+has no record of its own, and ``timing_cc86-nvidia_geforce_rtx_3090.json`` (the
+architecture, ``-``, the card's slug, :func:`card_slug`) is that one card's own record,
+read by that card alone. :func:`load_record` refuses a card-named file whose rows name
+another card (``record_named_for_another_card``). Its ``keys`` map is::
 
     key   = product | storage | dimensions | susceptibilities | bracketed/clean | lo-hi
     value = measured fused ms/step, the same-table baseline ms/step, their ratio, the
@@ -59,7 +74,7 @@ when the device it is asked about is not that one. Its ``keys`` map is::
   ``min_rows`` rows measured. Bands are data in the record. Nothing is extrapolated:
   below the smallest such size, above the largest, and inside a gap where the verdict
   changes between two measured sizes, the answer is ``no_record``.
-  A BAND'S INTERIOR IS INTERPOLATED. Its edges are measured; a size between them need
+  A band's interior is interpolated. Its edges are measured; a size between them need
   not have been run at all, and the key's verdict is applied to it. That is why an
   edge must be corroborated: a single session sets no band boundary, because the
   window spreads beside a row price only that session's own noise and not the spread
@@ -69,10 +84,16 @@ when the device it is asked about is not that one. Its ``keys`` map is::
   window spreads allow (:func:`least_margin`); the pooled medians and extremes beside
   it are for reading. A key with too few rows is written ``unmeasured`` with the reason.
 
+A ``/3`` record (:data:`SCHEMA_COSTS`) carries all of that and a COST MODEL as well:
+per product class, the fused and the baseline ms/step at each size it measured, which
+:func:`consult_cost` reads at the run's own cell count (the last section of this
+module). Its points are recomputed from the record's own measurements when it is read.
+A ``/2`` record is read exactly as it always was.
+
 The record also names the deposit-repair ROUTE its rows ran (``route``) -- the digest
 of ``deposit_repair.py`` AND what the bracket did per step: the index, the repairs per
-bracketed step, whether any source was restricted, whether any fell back. ONE DIGEST
-CARRIES MORE THAN ONE ROUTE (the corpus has ``e4f88c1e`` running 3-per-step full and
+bracketed step, whether any source was restricted, whether any fell back. One digest
+carries more than one route (the corpus has ``e4f88c1e`` running 3-per-step full and
 1-per-step restricted), and the bracket's price is most of what a bracketed key
 measures, so comparing the digest alone would let a record cut on one route veto on a
 tree running the other, a factor-of-three error in the very quantity being vetoed on.
@@ -91,16 +112,16 @@ did not cannot be compared -- it is listed in ``allowed_unpinned`` and named in 
 verdict as not compared, never pooled as though "not recorded" were a digest.
 
 =============================================================================
-THE ENVIRONMENT-VARIABLE CONTRACT
+The environment-variable contract
 =============================================================================
 
-This module reads NO environment variable (``the development notes``: only ``fastpath.py``
+This module reads NO environment variable (only ``fastpath.py``
 and ``subnormal_policy.py`` do). The mode and the record path are ARGUMENTS. In mode
 ``span`` the consult returns before touching its record or any file, so it reproduces
 today's behaviour exactly and cannot fail.
 
 =============================================================================
-WHAT A WIRING STEP MUST ASSUME, STATED SO IT CAN BE ARGUED WITH
+What a wiring step must assume, stated so it can be argued with
 =============================================================================
 
 A key prices a whole PLAN -- (B_singles + D_singles) / (B_fused + D_fused), attributed
@@ -109,37 +130,126 @@ four assumptions that no row of the corpus establishes:
 
 1. ADDITIVITY: a plan's per-step cost is its slots' costs plus a bracket attached to the
    SOURCE's seam.
-2. THE BRACKET VANISHES with the veto: the post-veto plan (the partner still fused, the
+2. The bracket vanishes with the veto: the post-veto plan (the partner still fused, the
    vetoed product back on single arms) was never timed and no row of that shape exists.
-3. THE VERDICT TRANSFERS ACROSS COMPOSITIONS: a key has no co-fused axis, so a number
+3. The verdict transfers across compositions: a key has no co-fused axis, so a number
    measured beside a fused partner is applied to a run where that partner is not
    admitted. The measurements list their ``co_fused`` partners so the residue is at
    least visible: a partner that WINS dilutes the loss (an under-veto, safe), one that
    LOSES inflates it (a false veto, unsafe), and near a crossover the partner's few
    percent is the decision.
-4. ``bracketed`` IS COMPUTED AT ARBITRATION exactly as the bench computed it. That one
+4. ``bracketed`` is computed at arbitration exactly as the bench computed it. That one
    is feasible today: the call site holds ``context.sources`` / ``context.grid`` and
    ``deposit_repair.seam_source_reasons(..., 'B'/'D')`` answers the same question.
 
 The veto direction survives 1-3 (they move the ratio toward a weaker veto or admit a
-partner's few percent); a RANKING would not, which is why plan section 3 defers it.
+partner's few percent); a RANKING would not, which is why a ranking is deferred.
 
 =============================================================================
-WHAT THE WIRING SITE MUST DO WITH A RECORD IT CANNOT READ
+What the wiring site must do with a record it cannot read
 =============================================================================
 
-DECIDED, SO THAT THE WIRING DOES NOT HAVE TO: a record that is present and invalid is
+Decided, so that the wiring does not have to: a record that is present and invalid is
 a fault, and :func:`consult_path` RAISES :class:`RecordRefused` on it rather than
 papering it over as an absence. That raise is for TOOLS -- a gate, a cutter, a report.
 The dispatch path must not take a plan-time exception from a file: it loads the record
 ONCE, at the top of a run, inside a ``try`` that catches :class:`RecordRefused`, prints
 the refusal beside the ``selected`` map and carries ``None`` from there on, which every
 consult answers ``no_record`` (today's behaviour). One read, one place to fail, and a
-loud one. ``the development notes`` states the same rule beside the flag.
+loud one.
 
-WHICH file it loads is decided the same way: :func:`record_path` for the LIVE device's
-capability. A host whose architecture has never been timed therefore reads no record at
-all -- today's behaviour -- instead of reading another architecture's.
+WHICH file it loads is decided the same way, off the LIVE device: :func:`record_path`
+for its architecture and its card (the name the run's ``environment.device.name``
+records) when that card has a record of its own, else the architecture's representative
+at the bare name. A card's own record that answers ``no_record`` for a barrier (another
+route, another emitter) is the answer: the run does not fall through to the
+representative, which was cut on another card. A host whose architecture has never
+been timed reads no record at all -- it is never priced off another architecture's
+ratios, key by key.
+
+=============================================================================
+The portable prior: an architecture with no record (fast by default, measured cost)
+=============================================================================
+
+"No record, so the shape rule" would make speed depend on whether a timing run has
+reached this architecture: an uncertified GPU, a new compute capability, a new Apple
+GPU family, would keep a fused product that each timed architecture of its vendor
+measured slower than its singles. That must never happen. So a table with no record of
+its own for the live architecture is arbitrated by :func:`portable_prior` instead,
+consulted through :func:`consult_prior`, and the dispatch record and the run's NOTE
+line say so. So is a product the live architecture's record is SILENT on -- no key
+for its class, a key with too few rows, a size outside the bands -- because there the
+architecture is in the same position (``fastpath.PRIOR_FILLS_RECORD_SILENCE``); a
+measured verdict, VETO or keep, always wins over the prior.
+
+THE RULE (:data:`PRIOR_RULE`). A fused product whose seam carries the deposit-repair
+bracket, on a grid of at most ``bracketed_veto_up_to_cells`` cells, takes its certified
+singles; every other candidate keeps the shape rule. The ceiling is DATA, derived per
+architecture from every shipped record of that architecture (every table of its vendor,
+every card) that holds on the live tree (the deposit-repair digest and that record's own
+emitters) and measures at least one key: the largest upper edge of a measured bracketed
+VETO band that lies below every measured bracketed keep band of that architecture. A
+keep never transfers -- a keep IS the shape rule -- and a clean key never transfers,
+because a clean product's verdict is the kernels' and the kernels are the
+architecture's.
+
+PER VENDOR, NEVER ACROSS VENDORS (:data:`VENDOR_BY_TABLE`). The Triton and the
+hand-written CUDA tables read a prior derived from NVIDIA records only, and the Metal
+table one derived from Apple records only. A crossover is a ratio of host work to kernel
+work on one vendor's stack -- its driver, its launch path, its memory -- so an NVIDIA
+crossover is no measurement of an Apple GPU, nor the reverse. A vendor none of whose
+records holds on the live tree has no prior: its tables keep the shape rule, and
+``why_none`` says why. The prior is derived for every vendor and architecture at once
+(``by_vendor[vendor]["by_architecture"]``), and each verdict it gives names its vendor,
+the live architecture, the architecture its ceiling came from and the records of that
+architecture, so a dispatch record says whose measurements arbitrated it.
+
+FROM THE NEAREST TIMED ARCHITECTURE (:func:`nearest_architecture`). A table whose live
+architecture has no record of its own reads the prior of its vendor's nearest TIMED
+architecture -- one with a record that holds on the tree and measures a key -- never the
+vendor's records pooled: for an NVIDIA card the nearest compute capability, read as the
+number ``major * 10 + minor`` (8.6 is 86), the lower one winning a tie; for an Apple GPU
+the closest chip generation, read off the GPU family's spelling ``applegpu_g<generation>
+<variant>`` (``applegpu_g13s`` is generation 13), the architecture itself first, then the
+smallest difference in generation, then the lower generation, then the first spelling in
+order. A live architecture or a timed one whose spelling the rule cannot read is not
+guessed at: the table answers ``no_record`` naming it (``live_architecture_unparsed``,
+``prior_architecture_unparsed``) and keeps the shape rule. The nearest timed
+architecture's prior is the answer even when it holds no ceiling (its records measured
+no bracketed veto below their keeps): a farther architecture is not asked instead. A
+product the live architecture's own record is silent on reads the same rule, which
+finds that architecture itself when its records measure a key. Only the bracketed
+veto crosses architectures, never a whole record, and never across vendors.
+
+A RELEASE SHIPS A TIMED RECORD OF EACH VENDOR (:func:`timed_vendors`). Every release
+ships at least one timed NVIDIA record and one timed Apple record: a record that loads,
+holds on the tree it ships in (:func:`barrier_refusal`, the very test the prior uses a
+record by) and measures at least one key. A record that prices nothing, or that would
+answer ``no_record`` on its own architecture, arbitrates no GPU of its vendor, so it does
+not count. :func:`timed_vendors` is the one home of that rule: the package test and the
+public export both ask it, the export of the exported tree's own copy.
+
+Why a bracketed veto transfers and nothing else does. What a bracketed key prices is
+mostly the bracket: ``LeadingRepairPlan.save`` before the fused launch and
+``TrailingRepairPlan.apply`` after it, host-issued gathers and scatters around the
+source's seam. Measured on the recorded architecture it is flat: the two-pair fused
+step reads 0.74-0.88 ms/step from 24,000 to 2,400,000 cells on both NVIDIA tables while
+the singles it replaced grow with the grid, so the fused product loses by a FIXED
+per-step host cost until the kernels' own saving outgrows it. That cost is the host's,
+not the GPU's, which is why it transfers between architectures that one vendor's stack
+drives, and only between those. Below the smallest measured size the fixed cost only weighs more: in the
+2026-10-16 records every bracketed row at or below 2,400,000 cells reads below 1, 70 of
+70 on the two NVIDIA tables from 250 cells up (0.42-0.81x), and every bracketed row at
+5,400,000 cells reads above 1 (8 of 8, 1.02-1.04x).
+
+What it costs when it is wrong, which is why it is a prior and not a measurement. A
+GPU slower than the recorded one has its crossover lower, so between that crossover
+and the ceiling the prior keeps singles that would have lost by at most the fused
+product's asymptotic gain (1.02-1.04x at 5,400,000 cells, the measured keeps). A
+GPU faster than the recorded one has its crossover higher, and above the ceiling the
+shape rule stands where singles may still win. Against that, the shape rule it
+replaces loses 1.4-2.4x on every bracketed two-pair plan below the band. The rule is
+asymmetric on purpose, in the direction the measurements give.
 """
 
 from __future__ import annotations
@@ -148,6 +258,7 @@ import hashlib
 import json
 import os
 import re
+import statistics
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Mapping, NamedTuple, Optional, Sequence, Tuple
 
@@ -156,6 +267,15 @@ from typing import Any, Dict, List, Mapping, NamedTuple, Optional, Sequence, Tup
 #: record compared the repair digest alone and named no emitter, so it is refused
 #: rather than read with its guards missing.
 SCHEMA = "meep_gpu.dispatch_preference.timing/2"
+
+#: The record format that also carries a size-aware COST MODEL (:func:`consult_cost`):
+#: everything ``/2`` carries, plus per-size cost points for every product class it
+#: measured (``costs``), recomputed from the record's own measurements when it is read.
+#: A ``/2`` record is read exactly as before; only a ``/3`` record is priced by size.
+SCHEMA_COSTS = "meep_gpu.dispatch_preference.timing/3"
+
+#: Every stamp this reader accepts.
+READABLE_SCHEMAS = (SCHEMA, SCHEMA_COSTS)
 
 #: ``measured`` consults the record; ``span`` is today's rule and consults nothing.
 MODES = ("measured", "span")
@@ -191,7 +311,7 @@ ROUTE_INDEXES = ("linear", "3-tuple", "mixed", "never-ran")
 #: install and the span arbitration this record is to be wired into -- and is a
 #: barrier on every table.
 #:
-#: WHAT THIS CANNOT COVER, AND WHY IT IS NOT SPELLED HERE: a product's OWN device text
+#: What this cannot cover, and why it is not spelled here: a product's OWN device text
 #: comes from a per-product module (``cuda_kernels/fused_electric_pair.py``, the
 #: ``triton_kernels/*.py`` emitters, the Metal kernel sources), and no timing row pins
 #: one. A record therefore cannot say which per-product kernel text it timed; adding
@@ -259,7 +379,7 @@ class ShapeClass(NamedTuple):
 def cells_of(grid_shape: Sequence[int]) -> int:
     """The cell count of a grid shape: the product of its extents.
 
-    THE ONE PLACE IT IS COMPUTED. The cutter bands rows on this number and the consult
+    The one place it is computed. The cutter bands rows on this number and the consult
     looks a run up by it, so both call this function rather than multiplying twice.
     """
     try:
@@ -370,7 +490,7 @@ def slower_beyond_spread(ratio: float, fused_spread: float,
 def least_margin(measurements: Sequence[Mapping[str, Any]]) -> float:
     """A key's margin: the SMALLEST any of its rows shows, each against its own spreads.
 
-    A KEY VETOES ONLY WHEN EVERY ROW IN IT DOES. Pooled extremes are the wrong
+    A key vetoes only when every row in it does. Pooled extremes are the wrong
     instrument: the most favourable ratio of one row set against the noisiest spread
     of another describes no measurement that was taken, and on a band that pools a
     3x loss at 24,000 cells with a near-tie at 2,400,000 it would clear the whole band.
@@ -454,7 +574,7 @@ def route_facts_missing(route: Any) -> List[str]:
 def route_id(route: Mapping[str, Any]) -> str:
     """One deposit-repair program, as a refusal and a record both spell it.
 
-    THE ONE SPELLING. The cutter names a route with it, the record carries it, and the
+    The one spelling. The cutter names a route with it, the record carries it, and the
     consult compares it, so a program cannot be written one way and asked another.
     """
     missing = route_facts_missing(route)
@@ -501,7 +621,7 @@ def compared_emitters(record: Mapping[str, Any]) -> Dict[str, str]:
 def live_subject_sha256(table: str, root: Optional[str] = None) -> Dict[str, str]:
     """The barrier sources of ``table`` as they stand in the tree, by file digest.
 
-    A FILE READ, NOT AN IMPORT, like :func:`repair_route_sha256`: asking which record
+    A file read, not an import, like :func:`repair_route_sha256`: asking which record
     applies must not pull a kernel table into the process.
     """
     if table not in TABLES:
@@ -515,7 +635,7 @@ def live_subject_sha256(table: str, root: Optional[str] = None) -> Dict[str, str
 def repair_route_sha256(path: Optional[str] = None) -> str:
     """The live deposit-repair route: the digest of ``deposit_repair.py`` as it stands.
 
-    A FILE READ, NOT AN IMPORT, so asking does not pull the dispatch path into a
+    A file read, not an import, so asking does not pull the dispatch path into a
     process that only wants to know which record applies. The default is the module
     beside this one, which is the file every timing row digests under
     ``provenance.sha256.deposit_repair``.
@@ -552,6 +672,14 @@ APPLE_FAMILY = re.compile(r"^applegpu_[a-z0-9_]+$")
 #: under the other's architecture.
 ARCHITECTURE_BY_TABLE = {"triton": CAPABILITY, "cuda": CAPABILITY, "metal": APPLE_FAMILY}
 
+#: Whose GPUs run each table: the vendor a table's portable prior is derived for, from that
+#: vendor's records alone (the module docstring, "The portable prior"). It follows the
+#: architecture spelling above: a compute capability is NVIDIA's, an Apple GPU family Apple's.
+VENDOR_BY_TABLE = {"triton": "nvidia", "cuda": "nvidia", "metal": "apple"}
+
+#: Every vendor, in the order the prior lists them.
+VENDORS = tuple(sorted(set(VENDOR_BY_TABLE.values())))
+
 
 def architecture_refusal(table: str, architecture: Any) -> Optional[str]:
     """Why ``architecture`` cannot name a record of ``table``, or None when it can."""
@@ -579,7 +707,7 @@ def record_capabilities(record: Any) -> Tuple[str, ...]:
     hosts = record.get("host") if isinstance(record, Mapping) else None
     if not isinstance(hosts, (list, tuple)):
         return ()
-    # AN UNREADABLE ROW IS KEPT, NOT DROPPED. Dropping it would let a record carrying
+    # An unreadable row is kept, not dropped. Dropping it would let a record carrying
     # one good capability beside one unstamped host read as a single-architecture
     # record, which is exactly the case :func:`validate` exists to refuse: it counts
     # these, so the sentinel is what makes the count wrong and the refusal fire.
@@ -591,30 +719,222 @@ def record_capabilities(record: Any) -> Tuple[str, ...]:
     return tuple(sorted(seen))
 
 
-def record_path(table: str, capability: str, root: Optional[str] = None) -> str:
-    """Where ``table``'s record for ONE compute capability lives. The one spelling.
+def record_path(table: str, architecture: str, card: Any = None,
+                root: Optional[str] = None) -> str:
+    """Where ``table``'s record for ONE architecture lives, and for one card. The one spelling.
 
     The cutter writes this path and the consult looks it up, so a record cannot be
     cut under a name nothing reads -- or, worse, under a name that is read for another
-    architecture. The report lands beside it, ``.json`` replaced by ``.report.txt``.
+    architecture or another card. The report lands beside it, ``.json`` replaced by
+    ``.report.txt``.
 
     ``root`` defaults to the package directory, beside the kernel tables, which is
     where the shipped records are. An NVIDIA table's record is named for its compute
     capability (``timing_cc86.json``) and the Metal table's for its Apple GPU family
     (``timing_applegpu_g13s.json``); a value in the other table's spelling, or in
-    neither, is refused by name (:func:`architecture_refusal`). ONE FILE PER
-    ARCHITECTURE: a second architecture's record lands beside the first, never in it.
+    neither, is refused by name (:func:`architecture_refusal`). That bare name is the
+    architecture's REPRESENTATIVE. With ``card`` (a device name as a run records it, or
+    its slug), the name is that card's own record beside it:
+    ``timing_cc86-nvidia_geforce_rtx_3090.json`` (:func:`card_slug`; a name that leaves
+    no slug is refused, ``unnamed_card``). A second architecture's record lands beside
+    the first, never in it, and so does a second card's.
     """
     if table not in TABLES:
         raise ConsultRefused("unknown_table", f"{table!r} is not one of {TABLES}")
-    refusal = architecture_refusal(table, capability)
+    refusal = architecture_refusal(table, architecture)
     if refusal is not None:
         raise ConsultRefused("unreadable_capability", refusal)
     if root is None:
         root = os.path.dirname(os.path.abspath(__file__))
-    name = (str(capability) if table == "metal"
-            else f"cc{str(capability).replace('.', '')}")
+    name = (str(architecture) if table == "metal"
+            else f"cc{str(architecture).replace('.', '')}")
+    if card is not None:
+        name += CARD_SEPARATOR + card_slug(card)
     return os.path.join(root, f"{table}_kernels", f"timing_{name}.json")
+
+
+# ---------------------------------------------------------------------------
+# One record per card: the names a record is read and written under
+# ---------------------------------------------------------------------------
+#
+# A record's rows ran on one card, and its ratios are that card's. The card is the
+# exact device name the rows stamp (``host[].device``), the name a run's dispatch record
+# carries as ``environment.device.name``. Its SLUG is that name in lower case with every
+# run of characters outside ``[a-z0-9]`` one ``_`` and none at either end:
+# ``NVIDIA GeForce RTX 3090`` is ``nvidia_geforce_rtx_3090``. Cards match by slug, never
+# by prefix or family: an RTX 3090 Ti is not an RTX 3090. A card's own record is named
+# ``timing_<architecture>-<slug>.json``; the bare ``timing_<architecture>.json`` is the
+# architecture's representative, cut on whichever card its ``host[]`` names. Neither a
+# slug nor an architecture's spelling contains ``-``, so a name reads back one way
+# (:func:`record_name_parts`), and every ``timing_*.json`` glob finds both.
+
+#: What separates a card record's slug from its architecture in a file name.
+CARD_SEPARATOR = "-"
+#: The shape of a slug.
+CARD_SLUG = re.compile(r"^[a-z0-9]+(_[a-z0-9]+)*$")
+#: The runs of characters a slug does not keep.
+_NOT_IN_A_SLUG = re.compile(r"[^a-z0-9]+")
+#: A record's file name: an architecture, and a card's slug when it is a card's own.
+_RECORD_NAME = re.compile(r"^timing_(?P<architecture>[a-z0-9_]+)(?:" + CARD_SEPARATOR
+                          + r"(?P<slug>[a-z0-9]+(?:_[a-z0-9]+)*))?\.json$")
+#: An NVIDIA architecture as a file name spells it: ``cc86`` is compute capability 8.6.
+_NVIDIA_SPELLING = re.compile(r"^cc(?P<major>[1-9][0-9]*)(?P<minor>[0-9])$")
+
+
+def card_slug(name: Any) -> str:
+    """A card's part of a file name: ``NVIDIA GeForce RTX 3090`` -> ``nvidia_geforce_rtx_3090``.
+
+    Lower case; every maximal run of characters outside ``[a-z0-9]`` one ``_``; none at
+    either end. Deterministic and idempotent, so the rows' stamp (``host[].device``) and
+    a run's ``environment.device.name`` of one card give one spelling. A name that leaves
+    nothing names no card and is refused (``unnamed_card``).
+    """
+    text = "" if name is None else str(name)
+    slug = _NOT_IN_A_SLUG.sub("_", text.lower()).strip("_")
+    if not slug:
+        raise RecordRefused("unnamed_card",
+                            f"the device name {name!r} names no card, and a record is the "
+                            "evidence of one named card")
+    return slug
+
+
+def record_devices(record: Any) -> Tuple[str, ...]:
+    """The exact device names a record's admitted rows were timed on, sorted.
+
+    Read off ``host``, as :func:`record_capabilities` reads the architecture; a row that
+    stamps no name is kept as ``""`` rather than dropped, so a record with one named and
+    one unnamed device does not read as one card's.
+    """
+    hosts = record.get("host") if isinstance(record, Mapping) else None
+    if not isinstance(hosts, (list, tuple)):
+        return ()
+    return tuple(sorted({str((host.get("device") if isinstance(host, Mapping) else None)
+                             or "") for host in hosts}))
+
+
+def record_name_parts(path: str) -> Optional[Tuple[str, Optional[str]]]:
+    """``(architecture, slug)`` a record's file name says, or None for no record's name.
+
+    The architecture comes back as the rows stamp it (``8.6``, ``applegpu_g13s``); the
+    slug is None for an architecture's representative. A name is read back only when
+    :func:`record_path` spells that architecture the same way, so this is the inverse of
+    the one spelling and never a second one.
+    """
+    match = _RECORD_NAME.match(os.path.basename(path))
+    if match is None:
+        return None
+    spelled = match.group("architecture")
+    nvidia = _NVIDIA_SPELLING.match(spelled)
+    table, architecture = (("triton", f"{nvidia.group('major')}.{nvidia.group('minor')}")
+                           if nvidia else ("metal", spelled))
+    try:
+        if os.path.basename(record_path(table, architecture, root="")) != (
+                f"timing_{spelled}.json"):
+            return None
+    except ConsultRefused:
+        return None
+    return architecture, match.group("slug")
+
+
+def _name_refusal(path: str, record: Mapping[str, Any]) -> Optional[str]:
+    """Why the card in ``path``'s name is not the card ``record`` was cut on, or None.
+
+    Only a card's own name says whose rows are in the file; the representative's bare
+    name holds any one card's record, and a name of no record (a candidate in a staging
+    directory, say) says nothing to disagree with.
+    """
+    parts = record_name_parts(path)
+    if parts is None or parts[1] is None:
+        return None
+    devices = record_devices(record)
+    slugs = []
+    for device in devices:
+        try:
+            slugs.append(card_slug(device))
+        except RecordRefused:
+            slugs.append("<no card>")
+    if slugs == [parts[1]]:
+        return None
+    return (f"{os.path.basename(path)} is named for the card {parts[1]} and its rows were "
+            f"timed on {list(devices)}: a card's own record is read by that card alone, "
+            "so its name must be the card its rows ran on")
+
+
+# ---------------------------------------------------------------------------
+# How near two architectures of one vendor are
+# ---------------------------------------------------------------------------
+
+#: The Apple GPU family as the distance rule reads it: ``applegpu_g13s`` is chip
+#: generation 13, variant ``s``. The spelling Metal reports for a device
+#: (``MTLDevice.architecture.name``) and every Metal row and record stamps; a family
+#: :data:`APPLE_FAMILY` admits in another shape names a record, but no generation, so
+#: no distance is read off it.
+APPLE_GENERATION = re.compile(r"^applegpu_g(?P<generation>[1-9][0-9]*)(?P<variant>[a-z])$")
+
+#: What the nearest timed architecture is nearest BY, per vendor, as a verdict names it.
+NEAREST_BASIS = {"nvidia": "nearest compute capability", "apple": "closest chip generation"}
+
+#: The basis a verdict names when the prior came from the live architecture itself.
+OWN_ARCHITECTURE = "own architecture"
+
+
+def architecture_number(vendor: str, architecture: Any) -> Optional[int]:
+    """The number the nearest rule measures ``architecture``'s distance in, or None.
+
+    NVIDIA: the compute capability ``major * 10 + minor`` (``8.6`` is 86, ``9.0`` is 90),
+    from the one spelling :data:`CAPABILITY` admits. Apple: the chip generation
+    (``applegpu_g13s`` is 13, :data:`APPLE_GENERATION`). None for any other spelling, for
+    no architecture at all and for a vendor of neither: a distance the rule cannot read
+    is never guessed.
+    """
+    text = "" if architecture is None else str(architecture)
+    if vendor == "nvidia":
+        if not CAPABILITY.match(text):
+            return None
+        major, minor = text.split(".")
+        return int(major) * 10 + int(minor)
+    if vendor == "apple":
+        match = APPLE_GENERATION.match(text)
+        return None if match is None else int(match.group("generation"))
+    return None
+
+
+def nearest_architecture(vendor: str, live: Any, timed: Sequence[str]
+                         ) -> Optional[Tuple[str, str, int]]:
+    """``(architecture, basis, distance)``: the timed architecture nearest ``live``.
+
+    ``timed`` are the vendor's timed architectures, as their records stamp them. The
+    order: the live architecture itself; then the smallest distance in
+    :func:`architecture_number`; then the lower number (on NVIDIA the lower compute
+    capability wins a tie, on Apple the lower generation); then the first spelling in
+    order (two Apple families of one generation). None when ``timed`` is empty. A live
+    spelling, or a timed one, whose distance cannot be read is refused by name
+    (:class:`ConsultRefused`, ``live_architecture_unparsed`` or
+    ``prior_architecture_unparsed``): which architecture is nearest is never guessed.
+    """
+    if vendor not in NEAREST_BASIS:
+        raise ConsultRefused("unknown_vendor", f"{vendor!r} is not one of {VENDORS}")
+    if not timed:
+        return None
+    here = architecture_number(vendor, live)
+    if here is None:
+        raise ConsultRefused("live_architecture_unparsed", (
+            f"the device's architecture {live!r} is not a {vendor} architecture the "
+            f"nearest rule can read a distance from, so which timed architecture is "
+            f"nearest is not known"))
+    unread = sorted(str(item) for item in timed if architecture_number(vendor, item) is None)
+    if unread:
+        raise ConsultRefused("prior_architecture_unparsed", (
+            f"the timed {vendor} architecture(s) {unread} cannot be read for a distance, "
+            f"so which timed architecture is nearest {live} is not known"))
+
+    def order(item: str) -> Tuple[bool, int, int, str]:
+        number = architecture_number(vendor, item)
+        return (str(item) != str(live), abs(number - here), number, str(item))
+
+    best = min((str(item) for item in timed), key=order)
+    basis = OWN_ARCHITECTURE if best == str(live) else NEAREST_BASIS[vendor]
+    return best, basis, abs(architecture_number(vendor, best) - here)
 
 
 # ---------------------------------------------------------------------------
@@ -701,10 +1021,11 @@ def validate(record: Any, expect_table: Optional[str] = None) -> None:
     """Refuse, by name, a record that may not be consulted. Returns nothing."""
     if not isinstance(record, Mapping):
         raise _malformed(f"the record is a {type(record).__name__}, not an object")
-    if record.get("schema") != SCHEMA:
+    if record.get("schema") not in READABLE_SCHEMAS:
         raise RecordRefused("unsupported_schema",
                             f"the record is stamped {record.get('schema')!r}; this "
-                            f"reader accepts {SCHEMA!r} and nothing else")
+                            f"reader accepts {' and '.join(map(repr, READABLE_SCHEMAS))} "
+                            "and nothing else")
     if record.get(DIGEST_FIELD) != record_digest(record):
         raise RecordRefused("record_digest_mismatch",
                             f"{DIGEST_FIELD} is {record.get(DIGEST_FIELD)!r} and the "
@@ -721,7 +1042,7 @@ def validate(record: Any, expect_table: Optional[str] = None) -> None:
         raise RecordRefused(
             "host_names_no_single_capability",
             f"the admitted rows name {list(capabilities)} as the compute capability "
-            f"they ran on, and ONE RECORD PRICES ONE ARCHITECTURE: a record naming "
+            f"they ran on, and one record prices one architecture: a record naming "
             f"none cannot say which architecture its ratios describe, and one naming "
             f"two pooled two architectures' kernels into a single number -- the number "
             f"a veto is read off")
@@ -761,7 +1082,7 @@ def validate(record: Any, expect_table: Optional[str] = None) -> None:
         for (_lo, hi, first), (lo, _hi, second) in zip(held, held[1:]):
             if lo <= hi:
                 raise _malformed(f"bands overlap: {first!r} and {second!r}")
-    # A RECORD CUT FROM PART OF A CAMPAIGN NAMES WHAT IT LACKS (``missing``, optional):
+    # A record cut from part of a campaign names what it lacks (``missing``, optional):
     # each released (product, case) that no admitted row timed, with the reason. The
     # consult never reads it -- an absent key already answers ``no_record`` -- so it
     # is checked only for shape, and a record that names nothing missing omits it.
@@ -775,6 +1096,7 @@ def validate(record: Any, expect_table: Optional[str] = None) -> None:
                                for name in ("product", "case", "reason"))):
                 raise _malformed(f"missing names {item!r}, not a product, a case and "
                                  "a reason")
+    _validate_costs(record)
     if expect_table is not None and record["table"] != expect_table:
         raise RecordRefused("wrong_table",
                             f"the record was cut for the {record['table']!r} table and "
@@ -782,13 +1104,22 @@ def validate(record: Any, expect_table: Optional[str] = None) -> None:
 
 
 def load_record(path: str, expect_table: Optional[str] = None) -> Dict[str, Any]:
-    """Read and validate one record. Every failure is a named refusal."""
+    """Read and validate one record. Every failure is a named refusal.
+
+    A file named as one card's own record (``timing_<architecture>-<slug>.json``) whose
+    rows were timed on another card, or on more than one, is refused
+    (``record_named_for_another_card``): that card alone reads the file, so a name that
+    disagrees with its content would price one card off another's rows.
+    """
     try:
         with open(path, encoding="utf-8") as handle:
             record = json.load(handle)
     except (OSError, ValueError) as exc:
         raise RecordRefused("unreadable_record", f"{path}: {exc}") from exc
     validate(record, expect_table=expect_table)
+    why = _name_refusal(path, record)
+    if why is not None:
+        raise RecordRefused("record_named_for_another_card", why)
     return record
 
 
@@ -866,13 +1197,14 @@ def _entry_evidence(record: Mapping[str, Any], entry: Mapping[str, Any],
 
 def consult(record: Optional[Mapping[str, Any]], *, table: str,
             capability: Optional[str], candidate: str,
-            displaces: Sequence[str], run_shape: Mapping[str, Any], bracketed: bool,
+            displaces: Optional[Sequence[str]], run_shape: Mapping[str, Any],
+            bracketed: bool,
             mode: str, repair_route: Optional[Mapping[str, Any]],
             subject_sha256: Optional[Mapping[str, str]],
             cells: Optional[int] = None, validated: bool = False) -> Verdict:
     """May ``candidate`` take the slots of the products in ``displaces`` on this run?
 
-    THE ARGUMENTS ARE WHAT THE TWO ARBITRATION SITES ALREADY HOLD. A fused pair about
+    The arguments are what the two arbitration sites already hold. A fused pair about
     to absorb its seam knows its own label and the two arms the arm table selected
     (``_pair_may_absorb``'s ``arms``); a longer span about to supersede a shorter
     product knows both labels (``_superseded_by_a_longer_span``'s candidates). The
@@ -899,9 +1231,17 @@ def consult(record: Optional[Mapping[str, Any]], *, table: str,
     The record is validated on every call unless ``validated`` says the caller holds it
     straight from :func:`load_record` -- a plan asks once per candidate, and re-digesting
     the whole record each time buys nothing the load did not already establish.
+
+    ``displaces`` is ``None`` only on the composer's first ask, before the slots have
+    been composed without the candidate, when what would take them is not yet known:
+    the baseline comparison is then skipped and the evidence says so
+    (``displaces_checked: False``). Such a verdict is a CANDIDATE veto and never a
+    decision -- the composer withholds the product, composes again, and asks once more
+    with the arms that took the slots, which is the only answer it acts on.
     """
     candidate = str(candidate)
-    displaced = tuple(str(arm) for arm in displaces)
+    displaced = (() if displaces is None
+                 else tuple(str(arm) for arm in displaces))
 
     def answer(outcome: str, reason: str, key: Optional[str] = None,
                evidence: Optional[Dict[str, Any]] = None) -> Verdict:
@@ -921,7 +1261,7 @@ def consult(record: Optional[Mapping[str, Any]], *, table: str,
     if record["table"] != table:
         return answer("no_record", "record_is_for_another_table",
                       evidence={"record_table": record["table"]})
-    # THE ARCHITECTURE IS A BARRIER, like the repair route and the emitters below it:
+    # The architecture is a barrier, like the repair route and the emitters below it:
     # the ratio a record carries was measured on one card's instruction set and
     # occupancy, and applying it to another is a false veto waiting to happen. An
     # unread device is treated as the mismatch it might be.
@@ -936,7 +1276,7 @@ def consult(record: Optional[Mapping[str, Any]], *, table: str,
                                 "live_capability": str(capability),
                                 "record_sha256": record.get(DIGEST_FIELD)})
     recorded = record["route"]
-    # A BRACKETED KEY IS ASKED FOR THE WHOLE PROGRAM, A CLEAN ONE FOR THE DIGEST.
+    # A bracketed key is asked for the whole program, a clean one for the digest.
     # Most of a bracketed number IS the bracket, and one digest runs more than one
     # bracket; a clean key's rows carried no bracket at all (the cutter prices a clean
     # product only from plans in which it is the sole fused product), so what the
@@ -997,7 +1337,8 @@ def consult(record: Optional[Mapping[str, Any]], *, table: str,
     if entry["status"] != "measured":
         evidence["unmeasured_because"] = entry.get("reason")
         return answer("no_record", "key_unmeasured", key, evidence)
-    if sorted(entry["displaces"]) != sorted(displaced):
+    evidence["displaces_checked"] = displaces is not None
+    if displaces is not None and sorted(entry["displaces"]) != sorted(displaced):
         return answer("no_record", "baseline_is_not_what_the_candidate_displaces",
                       key, evidence)
     if entry["veto_margin"] > 0.0:
@@ -1019,3 +1360,625 @@ def consult_path(path: Optional[str], **question: Any) -> Verdict:
     if question.get("mode") == "span" or path is None or not os.path.exists(path):
         return consult(None, **question)
     return consult(load_record(path), validated=True, **question)
+
+
+# ---------------------------------------------------------------------------
+# The portable prior: an architecture with no record of its own
+# ---------------------------------------------------------------------------
+
+#: The prior's one rule, as the dispatch record and the NOTE line name it.
+PRIOR_RULE = "bracketed_seam_at_or_below_the_recorded_crossover"
+
+
+def record_files(root: Optional[str] = None) -> List[str]:
+    """Every shipped record under ``root``: ``<table>_kernels/timing_*.json``, sorted.
+
+    Representatives and cards' own records alike. The prior is derived from all of them,
+    per architecture: an architecture's prior pools every table and card of that
+    architecture, because what it carries across is the bracket, which is neither a
+    table's nor a card's; a table reads the prior of its vendor's nearest timed
+    architecture, never a pool of several architectures and never another vendor's.
+    """
+    if root is None:
+        root = os.path.dirname(os.path.abspath(__file__))
+    found = []
+    for table in TABLES:
+        folder = os.path.join(root, f"{table}_kernels")
+        try:
+            names = os.listdir(folder)
+        except OSError:
+            continue
+        found.extend(os.path.join(folder, name) for name in names
+                     if name.startswith("timing_") and name.endswith(".json"))
+    return sorted(found)
+
+
+def _record_bands(record: Mapping[str, Any]) -> Tuple[List[List[int]], List[List[int]]]:
+    """``(veto bands, keep bands)`` of a record's measured bracketed keys, sorted."""
+    vetoes: List[List[int]] = []
+    keeps: List[List[int]] = []
+    for entry in (record.get("keys") or {}).values():
+        if entry.get("status") != "measured" or entry.get("bracketed") is not True:
+            continue
+        band = [int(entry["band"]["lo_cells"]), int(entry["band"]["hi_cells"])]
+        (vetoes if float(entry["veto_margin"]) > 0.0 else keeps).append(band)
+    return sorted(vetoes), sorted(keeps)
+
+
+def barrier_refusal(record: Mapping[str, Any], *, repair_route_sha256: Optional[str],
+                    subject_sha256_by_table: Mapping[str, Mapping[str, str]]
+                    ) -> Optional[str]:
+    """Why ``record`` does not hold on the live tree, or None when it does.
+
+    A record holds where its own barriers do: the deposit-repair digest it was cut on is
+    the live one (``repair_route_sha256``; ``None``, a digest that could not be read,
+    holds nothing), and every emitter digest its table compares (:func:`compared_emitters`)
+    is the live one in ``subject_sha256_by_table[table]``. A record that does not hold
+    would answer ``no_record`` on its own architecture. :func:`portable_prior` uses a
+    record and :func:`timed_vendors` counts one only where this answers None and the
+    record measures a key (:func:`timing_refusal`).
+    """
+    if repair_route_sha256 is None or (
+            record["route"]["deposit_repair_sha256"] != repair_route_sha256):
+        return (f"cut on deposit-repair route {record['route']['id']}; the live "
+                f"deposit_repair.py digests to {str(repair_route_sha256)[:12]}")
+    live = subject_sha256_by_table.get(str(record.get("table"))) or {}
+    moved = sorted(source for source, digest in compared_emitters(record).items()
+                   if live.get(source) != digest)
+    if moved:
+        return f"its emitters {', '.join(moved)} moved since it was cut"
+    return None
+
+
+def timing_refusal(record: Mapping[str, Any], *, repair_route_sha256: Optional[str],
+                   subject_sha256_by_table: Mapping[str, Mapping[str, str]]
+                   ) -> Optional[str]:
+    """Why ``record`` does not TIME its architecture on the live tree, or None when it does.
+
+    A record times its architecture when it holds there (:func:`barrier_refusal`) and
+    measures at least one key: one that prices nothing arbitrates no GPU. The one test
+    both :func:`portable_prior` (which architectures are timed, and from which records)
+    and :func:`timed_vendors` (what a release ships) read.
+    """
+    why = barrier_refusal(record, repair_route_sha256=repair_route_sha256,
+                          subject_sha256_by_table=subject_sha256_by_table)
+    if why is None and not any(entry.get("status") == "measured"
+                               for entry in (record.get("keys") or {}).values()):
+        why = "it measures no key"
+    return why
+
+
+def portable_prior(records: Sequence[Tuple[str, Mapping[str, Any]]], *,
+                   repair_route_sha256: Optional[str],
+                   subject_sha256_by_table: Mapping[str, Mapping[str, str]],
+                   refused: Sequence[Tuple[str, str]] = ()) -> Dict[str, Any]:
+    """The priors an architecture with no record of its own reads, one per timed architecture.
+
+    ``records`` are ``(path, record)`` pairs already through :func:`load_record`;
+    ``refused`` names the files that were not, with why. A record is USED only where it
+    times its architecture on the live tree (:func:`timing_refusal`: the deposit-repair
+    digest ``repair_route_sha256`` and the emitter digests its own table compares,
+    ``subject_sha256_by_table[table]``, hold, and it measures a key), because a record
+    that would answer ``no_record`` on its own architecture must not price another one.
+
+    ``by_vendor[vendor]["by_architecture"][architecture]`` is the prior of one timed
+    architecture of :data:`VENDORS`, over that architecture's records used (every table of
+    the vendor, every card): ``bracketed_veto_up_to_cells`` is the largest upper edge of a
+    measured bracketed VETO band that lies below the lowest edge of every measured
+    bracketed keep band; ``None`` when none has such a band, and that prior then vetoes
+    nothing (``why_none`` says so). ``by_vendor[vendor]["why_none"]`` says why a vendor has
+    no timed architecture at all. No number is stated across architectures or vendors:
+    which architecture's prior a table reads is :func:`consult_prior`'s, by
+    :func:`nearest_architecture`. The top-level ``derived_from`` lists every record used,
+    each naming its ``vendor`` and ``architecture``, and ``not_used`` every record that
+    was not, with why.
+    """
+    used: List[Dict[str, Any]] = []
+    not_used: List[Dict[str, Any]] = [{"path": path, "why": why}
+                                      for path, why in refused]
+    for path, record in records:
+        table = record.get("table")
+        why = timing_refusal(record, repair_route_sha256=repair_route_sha256,
+                             subject_sha256_by_table=subject_sha256_by_table)
+        if why is not None:
+            not_used.append({"path": path, "why": why})
+            continue
+        vetoes, keeps = _record_bands(record)
+        used.append({"path": path, "table": table,
+                     "vendor": VENDOR_BY_TABLE[str(table)],
+                     "architecture": list(record_capabilities(record)),
+                     "record_sha256": record.get(DIGEST_FIELD),
+                     "veto_bands": vetoes, "keep_bands": keeps})
+    by_vendor: Dict[str, Dict[str, Any]] = {}
+    for vendor in VENDORS:
+        own = [item for item in used if item["vendor"] == vendor]
+        by_architecture: Dict[str, Dict[str, Any]] = {}
+        for architecture in sorted({item["architecture"][0] for item in own}):
+            sources = [item for item in own if item["architecture"][0] == architecture]
+            keep_los = [lo for item in sources for lo, _hi in item["keep_bands"]]
+            veto_his = [hi for item in sources for _lo, hi in item["veto_bands"]]
+            floor = min(keep_los) if keep_los else None
+            below = [hi for hi in veto_his if floor is None or hi < floor]
+            ceiling = max(below) if below else None
+            by_architecture[architecture] = {
+                "bracketed_veto_up_to_cells": ceiling,
+                "lowest_bracketed_keep_cells": floor, "derived_from": sources,
+                "why_none": None if ceiling is not None else (
+                    f"no {vendor} record of {architecture} used measures a bracketed "
+                    f"veto below its keeps")}
+        by_vendor[vendor] = {
+            "tables": sorted(name for name, owner in VENDOR_BY_TABLE.items()
+                             if owner == vendor),
+            "by_architecture": by_architecture,
+            "why_none": None if by_architecture else (
+                f"no shipped {vendor} record holds on this tree and measures a key")}
+    return {"rule": PRIOR_RULE, "by_vendor": by_vendor, "derived_from": used,
+            "not_used": not_used}
+
+
+def timed_vendors(root: Optional[str] = None) -> Dict[str, Dict[str, Any]]:
+    """Which vendors the package under ``root`` ships a TIMED record for, and why not.
+
+    A record is timed for its table's vendor (:data:`VENDOR_BY_TABLE`) when it loads as
+    its own table's record (:func:`load_record`) and times its architecture on the tree
+    under ``root`` (:func:`timing_refusal` against that tree's ``deposit_repair.py`` and
+    emitters: it holds there and carries at least one measured key, the test
+    :func:`portable_prior` uses a record by). A release ships at least one timed record of
+    every vendor of :data:`VENDORS` (the module docstring, "A release ships a timed record
+    of each vendor").
+
+    ``root`` is a package directory laid out as this one (``deposit_repair.py`` and the
+    ``<table>_kernels/`` folders); it defaults to this module's own. Every digest is a
+    file read under ``root``: nothing is imported. Returns, for every vendor,
+    ``{"records": [the timed files, relative to root], "not_timed": [{"path", "why"}],
+    "why_none": None, or why the vendor has no timed record}``.
+    """
+    if root is None:
+        root = os.path.dirname(os.path.abspath(__file__))
+    try:
+        live_route: Optional[str] = repair_route_sha256(
+            os.path.join(root, "deposit_repair.py"))
+    except OSError:
+        live_route = None
+    subjects: Dict[str, Dict[str, str]] = {}
+    for table in TABLES:
+        try:
+            subjects[table] = live_subject_sha256(table, root)
+        except OSError:
+            subjects[table] = {}
+    out: Dict[str, Dict[str, Any]] = {vendor: {"records": [], "not_timed": [],
+                                               "why_none": None} for vendor in VENDORS}
+    for path in record_files(root):
+        name = os.path.relpath(path, root).replace(os.sep, "/")
+        table = os.path.basename(os.path.dirname(path))[:-len("_kernels")]
+        block = out[VENDOR_BY_TABLE[table]]
+        try:
+            record = load_record(path, expect_table=table)
+        except RecordRefused as exc:
+            block["not_timed"].append({"path": name, "why": f"refused: {exc}"})
+            continue
+        why = timing_refusal(record, repair_route_sha256=live_route,
+                             subject_sha256_by_table=subjects)
+        if why is not None:
+            block["not_timed"].append({"path": name, "why": why})
+            continue
+        block["records"].append(name)
+    for vendor, block in out.items():
+        if block["records"]:
+            continue
+        block["why_none"] = (
+            f"no {vendor} record ships" if not block["not_timed"] else
+            f"no {vendor} record is timed: " + "; ".join(
+                f"{item['path']}: {item['why']}" for item in block["not_timed"]))
+    return out
+
+
+def consult_prior(prior: Optional[Mapping[str, Any]], *, table: str, architecture: Any,
+                  candidate: str, bracketed: bool, cells: int, mode: str) -> Verdict:
+    """May ``candidate`` keep its slots on an architecture with no record of its own?
+
+    The same one-directional answer :func:`consult` gives -- ``vetoed`` is the only
+    outcome that changes a plan -- and the reason names the prior, so a dispatch record
+    never reads a prior's veto as a measurement of this card. ``displaces`` is not asked:
+    the prior is product-agnostic, and the composer confirms on the second composition
+    that the slots went to certified singles, never to the array path or to another
+    fused product.
+
+    The prior asked is that of the timed architecture of ``table``'s vendor
+    (:data:`VENDOR_BY_TABLE`) NEAREST the live ``architecture``
+    (:func:`nearest_architecture`), never a pool of several architectures and never
+    another vendor's: the evidence names the
+    ``vendor``, the ``live_architecture``, the ``prior_architecture`` its ceiling came
+    from, the ``basis`` (``own architecture``, the nearest compute capability, the
+    closest chip generation), the ``distance`` and that architecture's records
+    (``derived_from``). A vendor with no timed architecture answers ``no_prior``, and so
+    does a nearest architecture whose records measure no bracketed veto below their keeps
+    (a farther one is not asked instead). A live or timed spelling whose distance cannot
+    be read answers ``live_architecture_unparsed`` or ``prior_architecture_unparsed``.
+    Every one of these keeps the shape rule. A prior that carries no per-vendor block was
+    not derived by :func:`portable_prior` and is refused by name.
+    """
+    if mode not in MODES:
+        raise ConsultRefused("unknown_mode", f"mode is {mode!r}, not one of {MODES}")
+
+    def answer(outcome: str, reason: str, evidence: Optional[Dict[str, Any]] = None
+               ) -> Verdict:
+        return Verdict(outcome=outcome, reason=reason, mode=mode, table=str(table),
+                       candidate=str(candidate), displaces=(), key=None,
+                       evidence=dict(evidence or {}, rule=PRIOR_RULE))
+
+    if mode == "span":
+        return answer("no_record", "span_mode_record_not_consulted")
+    if not isinstance(bracketed, bool):
+        raise ConsultRefused("unreadable_run_shape",
+                             f"bracketed is {bracketed!r}, not a bool")
+    vendor = VENDOR_BY_TABLE.get(str(table))
+    if vendor is None:
+        raise ConsultRefused("unknown_table", f"{table!r} is not one of {TABLES}")
+    own: Optional[Mapping[str, Any]] = None
+    if prior is not None:
+        by_vendor = prior.get("by_vendor")
+        if not isinstance(by_vendor, Mapping):
+            raise ConsultRefused("unreadable_prior", (
+                "the prior carries no per-vendor block (by_vendor), so it was not "
+                "derived by portable_prior and names no vendor's records"))
+        own = by_vendor.get(vendor)
+        if own is not None and not isinstance(own.get("by_architecture"), Mapping):
+            raise ConsultRefused("unreadable_prior", (
+                f"the prior's {vendor} block carries no per-architecture block "
+                "(by_architecture), so it was not derived by portable_prior"))
+    timed = sorted((own or {}).get("by_architecture") or {})
+    evidence: Dict[str, Any] = {
+        "cells": int(cells), "bracketed": bracketed, "vendor": vendor,
+        "live_architecture": architecture, "prior_architecture": None, "basis": None,
+        "distance": None, "bracketed_veto_up_to_cells": None, "derived_from": []}
+    if not timed:
+        evidence["why_none"] = ((own or {}).get("why_none")
+                                or ("no prior supplied" if prior is None
+                                    else f"the prior holds no {vendor} block"))
+        return answer("no_record", "no_prior", evidence)
+    try:
+        nearest = nearest_architecture(vendor, architecture, timed)
+    except ConsultRefused as exc:
+        evidence["why_none"] = exc.detail
+        return answer("no_record", exc.code, evidence)
+    chosen, basis, distance = nearest
+    block = own["by_architecture"][chosen]
+    ceiling = block.get("bracketed_veto_up_to_cells")
+    evidence.update(
+        prior_architecture=chosen, basis=basis, distance=distance,
+        bracketed_veto_up_to_cells=ceiling,
+        derived_from=[{name: item[name] for name in
+                       ("path", "table", "architecture", "record_sha256")}
+                      for item in block.get("derived_from") or ()])
+    if ceiling is None:
+        evidence["why_none"] = block.get("why_none")
+        return answer("no_record", "no_prior", evidence)
+    if not bracketed:
+        return answer("no_record", "prior_says_nothing_about_a_clean_seam", evidence)
+    if int(cells) > int(ceiling):
+        return answer("no_record", "prior_above_the_recorded_crossover", evidence)
+    return answer("vetoed", "prior_bracketed_seam_at_or_below_the_recorded_crossover",
+                  evidence)
+
+
+# ---------------------------------------------------------------------------
+# The cost model: a product priced at the run's own size (schema /3)
+# ---------------------------------------------------------------------------
+#
+# A band key answers for a run of cells by the verdict its measured sizes share, and a
+# size between two bands whose verdicts differ is silence. A ``/3`` record also carries,
+# per product class, the cost of the fused product and of the certified singles it
+# displaces AT EACH MEASURED SIZE (``costs``), and the consult reads them at the run's
+# own cell count: the product gives way to its singles exactly when, at that size, it
+# is predicted slower than they are by more than the two legs' spreads allow -- the
+# rule a key's rows are held to, applied at the size the run has. Every product class
+# the record measured is priced this way, clean seams as well as bracketed ones.
+#
+# What it predicts with, stated so it can be argued with:
+#
+# * the curve is the measured points and straight lines between them in the cell
+#   count (per-step time is a floor up to a knee and a bandwidth line after it, and a
+#   line between two measured sizes follows both); exact at a measured size, and
+#   nothing outside the smallest and largest measured size, where the band keys and
+#   the portable prior answer as for a ``/2`` record;
+# * the verdict is read off the MARGIN's line, each point carrying the least margin of
+#   its own rows, so the verdict is continuous at every measured size and two points
+#   that agree give their verdict everywhere between them (the medians on the same
+#   line are evidence);
+# * a point is a size at least ``min_rows`` rows measured (the band edge rule);
+# * the four assumptions the band keys already make (the module docstring), the
+#   first of them additivity: a plan's cost is its slots' costs, so withholding each
+#   product predicted slower than its singles is the fastest predicted combination
+#   wherever the products hold disjoint slots. Where withholding one hands its slots
+#   to another FUSED product, the composer asks that product by its own table at this
+#   size and, when it is predicted slower than its own singles too, withholds both,
+#   which needs no price of one fused product against another. Where that product is
+#   kept, no record prices one against the other, and the composer keeps the shape
+#   rule's plan, as it does for a band veto.
+#
+# The points are DATA, recomputed from the record's own measurements every time it is
+# read, so a record cannot state a curve its rows do not give.
+
+#: How the points are read between measured sizes. A record names the rule it was cut
+#: for; another name is refused, so a later rule is a new name, never a silent change.
+COST_RULE = "margin_piecewise_linear_in_cells_between_measured_sizes"
+
+#: The cost consult's answers that mean the record has no price for this product at
+#: this size. The band keys are asked then, exactly as for a ``/2`` record.
+COST_SILENCE = ("no_cost_curve_for_the_class", "outside_the_cost_points")
+
+#: The :func:`consult` answers that mean the record cannot be applied to this run at
+#: all. The cost consult answers each of them exactly as :func:`consult` does.
+BARRIER_REASONS = ("span_mode_record_not_consulted", "no_record_supplied",
+                   "record_is_for_another_table", "capability_unread",
+                   "record_is_for_another_capability", "live_repair_route_not_stated",
+                   "record_is_for_another_repair_route", "live_emitters_not_stated",
+                   "record_is_for_another_emitter")
+
+#: The fields of one cost point.
+POINT_FIELDS = ("cells", "rows", "fused_ms_per_step", "baseline_ms_per_step",
+                "fused_spread", "baseline_spread", "veto_margin",
+                "slower_beyond_spread")
+
+#: What ``rules.costs`` says in a record :func:`add_costs` stamped from a cut.
+COST_RULE_TEXT = (
+    "per product class with a measured key, one cost point per size at least min_rows "
+    "rows measured (median fused and baseline ms/step, largest window spread per leg, "
+    "and the least margin of that size's rows, the veto rule of a key); the consult "
+    "reads a point's own margin at a measured size and, strictly between two measured "
+    "sizes, the margin on the straight line between those two points' margins; never "
+    "outside them")
+
+
+def carries_costs(record: Any) -> bool:
+    """Whether ``record`` is stamped with the cost model (``/3``)."""
+    return isinstance(record, Mapping) and record.get("schema") == SCHEMA_COSTS
+
+
+def _round6(value: float) -> float:
+    return round(float(value), MARGIN_DECIMALS)
+
+
+def cost_points(measurements: Sequence[Mapping[str, Any]],
+                min_rows: int) -> List[Dict[str, Any]]:
+    """One point per measured size with at least ``min_rows`` rows, sorted by cells.
+
+    A point is the median fused and baseline ms/step of that size's rows, the largest
+    window spread any of them showed on each leg, and the LEAST margin of its rows
+    (:func:`least_margin`): the numbers a key states, per size, so at a measured size
+    the curve and a key over that size give one verdict. A size fewer rows measured
+    sets no point, for the reason it sets no band edge: one session prices only its
+    own noise.
+    """
+    by_size: Dict[int, List[Mapping[str, Any]]] = {}
+    for row in measurements:
+        by_size.setdefault(int(row["cells"]), []).append(row)
+    points = []
+    for cells in sorted(by_size):
+        rows = by_size[cells]
+        if len(rows) < int(min_rows):
+            continue
+        points.append({
+            "cells": cells, "rows": len(rows),
+            "fused_ms_per_step": _round6(statistics.median(
+                float(row["fused_ms_per_step"]) for row in rows)),
+            "baseline_ms_per_step": _round6(statistics.median(
+                float(row["baseline_ms_per_step"]) for row in rows)),
+            "fused_spread": _round6(max(float(row["fused_spread"]) for row in rows)),
+            "baseline_spread": _round6(max(float(row["baseline_spread"])
+                                           for row in rows)),
+            "veto_margin": least_margin(rows),
+            "slower_beyond_spread": least_margin(rows) > 0.0,
+        })
+    return points
+
+
+def build_costs(keys: Mapping[str, Mapping[str, Any]],
+                min_rows: int) -> Dict[str, Dict[str, Any]]:
+    """The ``costs`` block of a ``/3`` record, from its own keys. The one spelling.
+
+    One curve per product class (a key without its band), pooled over the class's
+    keys. A class is priced only when at least one of its keys is ``measured`` and all
+    of them name the same slots and the same displaced singles (the cutter writes a
+    class whose rows disagree on what the product displaces as one unmeasured key), and
+    only at its sizes with ``min_rows`` rows.
+    """
+    classes: Dict[str, List[Mapping[str, Any]]] = {}
+    for key in sorted(keys):
+        classes.setdefault(key.rsplit("|", 1)[0], []).append(keys[key])
+    costs: Dict[str, Dict[str, Any]] = {}
+    for name in sorted(classes):
+        entries = classes[name]
+        if not any(entry.get("status") == "measured" for entry in entries):
+            continue
+        displaced = {tuple(entry.get("displaces") or ()) for entry in entries}
+        slots = {tuple(entry.get("slots") or ()) for entry in entries}
+        if len(displaced) != 1 or len(slots) != 1:
+            continue
+        points = cost_points([row for entry in entries
+                              for row in entry.get("measurements") or ()], min_rows)
+        if not points:
+            continue
+        first = entries[0]
+        costs[name] = {
+            "product": first["product"], "storage": first["storage"],
+            "dimensions": first["dimensions"],
+            "susceptibilities": first["susceptibilities"],
+            "bracketed": first["bracketed"], "slots": list(next(iter(slots))),
+            "displaces": list(next(iter(displaced))), "points": points}
+    return costs
+
+
+def _validate_costs(record: Mapping[str, Any]) -> None:
+    """A ``/3`` record's cost model, recomputed; a ``/2`` record carries none."""
+    if not carries_costs(record):
+        stray = [name for name in ("costs", "cost_model") if name in record]
+        if stray:
+            raise _malformed(f"the record is stamped {record.get('schema')!r} and carries "
+                             f"{stray}: a cost model is read only from a "
+                             f"{SCHEMA_COSTS!r} record")
+        return
+    min_rows = (record.get("rules") or {}).get("min_rows_per_key")
+    if isinstance(min_rows, bool) or not isinstance(min_rows, int) or min_rows < 1:
+        raise _malformed(f"rules.min_rows_per_key is {min_rows!r}; a cost point is a "
+                         "size at least that many rows measured")
+    wanted = {"rule": COST_RULE, "min_rows_per_point": min_rows}
+    if record.get("cost_model") != wanted:
+        raise RecordRefused("unsupported_cost_model",
+                            f"cost_model is {record.get('cost_model')!r}; this reader "
+                            f"prices {wanted!r} and nothing else")
+    costs = record.get("costs")
+    if not isinstance(costs, Mapping):
+        raise _malformed("costs is not an object")
+    for name, entry in costs.items():
+        points = entry.get("points") if isinstance(entry, Mapping) else None
+        if not isinstance(points, list) or not points:
+            raise _malformed(f"costs {name!r} names no points")
+        for point in points:
+            for field_name in ("fused_ms_per_step", "baseline_ms_per_step"):
+                value = point.get(field_name) if isinstance(point, Mapping) else None
+                if (isinstance(value, bool) or not isinstance(value, (int, float))
+                        or not value > 0 or value == float("inf")):
+                    raise _malformed(f"costs {name!r}: a point's {field_name} is "
+                                     f"{value!r}")
+    try:
+        again = build_costs(record["keys"], min_rows)
+    except (KeyError, TypeError, ValueError) as exc:
+        # a /2 key validates without the per-row sizes and times a curve reads
+        raise _malformed(f"a measurement cannot price a cost point: {exc!r}") from exc
+    if _canonical({"costs": costs}) != _canonical({"costs": again}):
+        differs = sorted(name for name in set(costs) | set(again)
+                         if costs.get(name) != again.get(name))
+        raise _malformed(f"costs is not what the record's own measurements give "
+                         f"(classes {differs}): a record cannot state a curve its rows "
+                         "do not give")
+
+
+def add_costs(record: Mapping[str, Any]) -> Dict[str, Any]:
+    """``record`` stamped ``/3`` with the cost model its own measurements give, sealed.
+
+    The one way a ``/3`` record is made: ``parity/meep_gpu/cut_timing_record.py`` calls
+    it on what it cut. A record that names its cut (``cut``) is stamped as the cutter
+    stamps one (``cut.costs`` and ``rules.costs``), so a ``/2`` record re-stamped here is
+    byte for byte the record its rows cut with ``--costs``, and ``--check`` recomputes it.
+    """
+    body = {name: value for name, value in record.items()
+            if name not in (DIGEST_FIELD, "costs", "cost_model")}
+    if isinstance(body.get("cut"), Mapping):
+        body["cut"] = dict(body["cut"], costs=True)
+        body["rules"] = dict(body.get("rules") or {}, costs=COST_RULE_TEXT)
+    min_rows = (body.get("rules") or {}).get("min_rows_per_key")
+    body["schema"] = SCHEMA_COSTS
+    body["cost_model"] = {"rule": COST_RULE, "min_rows_per_point": min_rows}
+    body["costs"] = build_costs(body.get("keys") or {}, int(min_rows or 0) or 1)
+    sealed = seal(body)
+    validate(sealed)
+    return sealed
+
+
+def predict_cost(entry: Mapping[str, Any], cells: int) -> Optional[Dict[str, Any]]:
+    """A class's cost at ``cells``, read off its points by :data:`COST_RULE`, or None.
+
+    None below the smallest and above the largest measured size. At a measured size
+    the point's own margin answers (the least margin of its rows, as a key's does).
+    Strictly between two, the MARGIN is the straight line between the two points'
+    margins, so the curve is continuous at every measured size: two neighbours that
+    agree give their verdict everywhere between them, as a band holding both does,
+    and two that disagree give the crossover. The fused and baseline ms/step, their
+    ratio and the spreads on the same line are evidence for reading; the verdict is
+    the margin's. (A margin recomputed from the interpolated medians would be another
+    statistic than the least row margin a point carries, and could veto one cell away
+    from a size whose rows keep.)
+    """
+    points = list(entry.get("points") or ())
+    cells = int(cells)
+    if not points or cells < points[0]["cells"] or cells > points[-1]["cells"]:
+        return None
+    exact = [point for point in points if point["cells"] == cells]
+    if exact:
+        point = exact[0]
+        return {"cells": cells, "between": [cells, cells], "weight": 0.0,
+                "fused_ms_per_step": point["fused_ms_per_step"],
+                "baseline_ms_per_step": point["baseline_ms_per_step"],
+                "ratio": _round6(point["baseline_ms_per_step"]
+                                 / point["fused_ms_per_step"]),
+                "fused_spread": point["fused_spread"],
+                "baseline_spread": point["baseline_spread"],
+                "veto_margin": point["veto_margin"]}
+    low = max((point for point in points if point["cells"] < cells),
+              key=lambda point: point["cells"])
+    high = min((point for point in points if point["cells"] > cells),
+               key=lambda point: point["cells"])
+    weight = (cells - low["cells"]) / float(high["cells"] - low["cells"])
+
+    def at(name: str) -> float:
+        return float(low[name]) + weight * (float(high[name]) - float(low[name]))
+
+    fused, baseline = at("fused_ms_per_step"), at("baseline_ms_per_step")
+    return {"cells": cells, "between": [low["cells"], high["cells"]],
+            "weight": _round6(weight), "fused_ms_per_step": _round6(fused),
+            "baseline_ms_per_step": _round6(baseline), "ratio": _round6(baseline / fused),
+            "fused_spread": _round6(at("fused_spread")),
+            "baseline_spread": _round6(at("baseline_spread")),
+            "veto_margin": _round6(at("veto_margin"))}
+
+
+def consult_cost(record: Optional[Mapping[str, Any]], *, table: str,
+                 capability: Optional[str], candidate: str,
+                 displaces: Optional[Sequence[str]], run_shape: Mapping[str, Any],
+                 bracketed: bool, mode: str, repair_route: Optional[Mapping[str, Any]],
+                 subject_sha256: Optional[Mapping[str, str]],
+                 cells: Optional[int] = None, validated: bool = False) -> Verdict:
+    """May ``candidate`` take the slots of ``displaces`` at THIS run's size?
+
+    The question :func:`consult` is asked, answered from the record's cost points
+    instead of its bands. The record's barriers (the table, the architecture, the
+    deposit-repair route, the emitters) are :func:`consult`'s own: it is asked first and
+    any of :data:`BARRIER_REASONS` is returned as it answered. Past them, a record that
+    is not ``/3``, a class with no curve and a size outside the curve are
+    :data:`COST_SILENCE` (``no_record``); otherwise ``vetoed`` when the margin
+    :func:`predict_cost` reads at this size is positive (the product is predicted slower
+    than its singles beyond the spreads), else ``not_vetoed``. ``displaces`` is checked as :func:`consult` checks it, against what
+    the curve priced.
+    """
+    gate = consult(record, table=table, capability=capability, candidate=candidate,
+                   displaces=displaces, run_shape=run_shape, bracketed=bracketed,
+                   mode=mode, repair_route=repair_route, subject_sha256=subject_sha256,
+                   cells=cells, validated=validated)
+    if gate.outcome == "no_record" and gate.reason in BARRIER_REASONS:
+        return gate
+    shape = shape_class(run_shape, bracketed=bracketed, cells=cells)
+    displaced = (() if displaces is None else tuple(str(arm) for arm in displaces))
+    wanted = class_string(candidate, shape.storage, shape.dimensions,
+                          shape.susceptibilities, shape.bracketed)
+
+    def answer(outcome: str, reason: str, evidence: Dict[str, Any]) -> Verdict:
+        return Verdict(outcome=outcome, reason=reason, mode=mode, table=str(table),
+                       candidate=str(candidate), displaces=displaced, key=wanted,
+                       evidence=dict(evidence, cost_model=COST_RULE,
+                                     record_sha256=(record or {}).get(DIGEST_FIELD)))
+
+    if not carries_costs(record):
+        return answer("no_record", "no_cost_curve_for_the_class",
+                      {"class": wanted, "cells": shape.cells,
+                       "why": f"the record is stamped {(record or {}).get('schema')!r}"})
+    entry = (record.get("costs") or {}).get(wanted)
+    if entry is None:
+        return answer("no_record", "no_cost_curve_for_the_class",
+                      {"class": wanted, "cells": shape.cells})
+    predicted = predict_cost(entry, shape.cells)
+    evidence: Dict[str, Any] = {
+        "class": wanted, "cells": shape.cells,
+        "measured_sizes": [point["cells"] for point in entry["points"]],
+        "displaces_measured": list(entry["displaces"])}
+    if predicted is None:
+        return answer("no_record", "outside_the_cost_points", evidence)
+    evidence["predicted"] = predicted
+    evidence["displaces_checked"] = displaces is not None
+    if displaces is not None and sorted(entry["displaces"]) != sorted(displaced):
+        return answer("no_record", "baseline_is_not_what_the_candidate_displaces",
+                      evidence)
+    if predicted["veto_margin"] > 0.0:
+        return answer("vetoed", "predicted_slower_beyond_spread", evidence)
+    return answer("not_vetoed", "predicted_not_slower_beyond_spread", evidence)

@@ -1,9 +1,9 @@
 """The Dcyl m = 0 ELECTRIC seam in one launch: ``step_D`` welded into ``update_E``.
 
-THE ELECTRIC TWIN of :mod:`.cylindrical_real_fused_magnetic_pair`, over the same two
+The electric twin of :mod:`.cylindrical_real_fused_magnetic_pair`, over the same two
 shipped bodies on the other seam.
 
-EVERY ARITHMETIC LINE BELOW IS A VERBATIM COPY of a shipped body:
+Every arithmetic line below is a verbatim copy of a shipped body:
 
 * the curl half is :func:`.cylindrical_triton.cyl_pml_curl_step`'s body taken through
   its ``BACKWARD == 1`` arms up to its stores -- Dz's ``dtdx`` times the backward radial
@@ -16,10 +16,10 @@ EVERY ARITHMETIC LINE BELOW IS A VERBATIM COPY of a shipped body:
   source load replaced by the register the curl half computed, D on the left of the
   inverse-epsilon multiply.
 
-THE RADIAL SCAN IS UPSTREAM OF THE SEAM: the plan launches
+The radial scan is upstream of the seam: the plan launches
 :func:`.cylindrical_triton.cyl_radial_difference`, then this kernel.
 
-THE FIVE PASSES IN THE SEAM. ``step_D -> electric sources -> fill_symmetry_bc_D ->
+The five passes in the seam. ``step_D -> electric sources -> fill_symmetry_bc_D ->
 zero_metal_D -> fill_folded_far_ghosts_D -> update_E``:
 
 * **the electric sources -- CARRIED through the shipped deposit repair.** The injection
@@ -33,10 +33,10 @@ zero_metal_D -> fill_folded_far_ghosts_D -> update_E``:
 * **``zero_metal_D`` -- CARRIED INLINE** through :func:`.coverage.zero_metal_axes`,
   after the m = 0 axis rules and before both the store and the constitutive read.
 
-``BACKWARD`` IS CARRIED AND BOUND TO 1.
+``BACKWARD`` is carried and bound to 1.
 
 DEVICE STATUS. The weld released on 2026-08-31 measured the previous forms and does not
-license this text; certification is owed at the combined device round.
+license this text; certification is owed to a later combined device run.
 """
 # Derived from MEEP (https://github.com/NanoComp/meep).
 # Copyright (C) 2005-2025 Massachusetts Institute of Technology and MEEP contributors.
@@ -69,7 +69,7 @@ from .. import deposit_repair as _deposit_repair
 #: module builds -- that the leading slot saves and the trailing slot restores -- and
 #: is only ever changed in the same edit as that wiring.
 #:
-#: THE FLAG IS NOT THE WHOLE CLAIM. It only reaches ``deposit_repair.repairable``,
+#: The flag is not the whole claim. It only reaches ``deposit_repair.repairable``,
 #: which goes on refusing BY NAME every seam the repair cannot invert -- an
 #: off-diagonal constitutive, a nonlinear one, a FOLD whose fill map it cannot read
 #: (including the cylindrical r = 0 axis under a mirror plane), and an absorber whose
@@ -99,7 +99,7 @@ BACKWARD = 1
 #: (driver.py:3292-3304). THREE, not five: ``fill_symmetry_bc_D`` and
 #: ``fill_folded_far_ghosts_D`` both return before touching a cell unless
 #: ``grid.has_symmetry()`` (stepping.py:1481-1483, :1565-1566), and the predicate
-#: refuses a mirror plane on every axis. THE INJECTION IS NOT ONE OF THE THREE: it is
+#: refuses a mirror plane on every axis. The injection is not one of the three: it is
 #: carried by the deposit repair bracket around the launch, not by the launch.
 REPLACES: Tuple[str, ...] = ("step_D", "zero_metal_D", "update_E")
 
@@ -367,12 +367,12 @@ def cylindrical_real_fused_electric_pair_coverage(fields: Any, pml: Any,
         return Coverage(False,
                         tuple(dict.fromkeys(reasons + ["fields carries no grid"])))
 
-    # THE SOURCE SEAM, and on this cell it is the clause that decides everything. An
+    # The source seam, and on this cell it is the clause that decides everything. An
     # ELECTRIC source is injected BETWEEN the two halves (driver.py:3294-3299), so a
     # fused pair would consume a pre-injection D. All three corpus rows of this cell
     # declare exactly that, so with CARRIES_DEPOSIT_REPAIR False the arm would admit
     # NOTHING; it is True, and the plan below brackets its launch with the repair.
-    # IGNORANCE IS NEVER AN EMPTY SET: `Fields` does not hold the source list, so an
+    # Ignorance is never an empty set: `Fields` does not hold the source list, so an
     # undeclared `sources` is itself a REFUSAL. A MAGNETIC source is injected in the
     # B/H half and does not disqualify this pair.
     reasons.extend(_deposit_repair.seam_source_reasons(
@@ -388,7 +388,7 @@ def cylindrical_real_fused_electric_pair_coverage(fields: Any, pml: Any,
             f"closes"),
         carries_repair=CARRIES_DEPOSIT_REPAIR))
 
-    # THE TWO FILL PASSES MUST BE INERT, not merely absent from this kernel.
+    # The two fill passes must be inert, not merely absent from this kernel.
     # `_fill_symmetry_ghost_cells` (:1437-1439) and `_fill_folded_far_ghosts`
     # (:1516-1517) both return before touching a cell unless `grid.has_symmetry()`.
     # The cylindrical curl predicate already refuses a mirror plane; RESTATED here
@@ -419,7 +419,7 @@ def cylindrical_real_fused_electric_pair_coverage(fields: Any, pml: Any,
             reasons.append(
                 f"grid does not expose {name}; zero_metal_D cannot be carried inline")
 
-    # THE INVERSE-EPSILON VOLUMES ARE READ BY THE KERNEL, so `Fields` must be able to
+    # The inverse-epsilon volumes are read by the kernel, so `Fields` must be able to
     # hand one over per E component. An absent accessor would be a TypeError inside
     # the builder rather than a refusal, which is the wrong way for an uncovered
     # configuration to fail. The magnetic twin needs no such clause: its constitutive

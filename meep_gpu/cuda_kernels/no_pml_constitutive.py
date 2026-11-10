@@ -1,7 +1,7 @@
 """The hand-CUDA NO-PML constitutive arm: a predicate over a sub-step that does nothing.
 
-THE FINDING FIRST, BECAUSE IT IS WHAT THIS FILE IS. This family needs NO CUDA
-KERNEL. Not a smaller one, not an emitted one, not a restated predicate over an
+The finding first, because it is what this file is. This family needs no CUDA
+kernel. Not a smaller one, not an emitted one, not a restated predicate over an
 already-certified body -- none at all. Without an absorber ``stepping.update_H``
 returns before its first statement and ``stepping.update_E`` returns before its
 first statement whenever E is not stored, so the sub-step's whole product is a
@@ -11,7 +11,7 @@ be wrong about. The thing that certifies it is not a bit-identity sweep against 
 kernel but an IDENTITY measurement against the array path's own call: every live
 device word unchanged across it.
 
-WHY IT IS STILL A PREDICATE, AND WHY IT MUST BE EXPLICIT. In a fail-closed composer
+Why it is still a predicate, and why it must be explicit. In a fail-closed composer
 an UNSELECTED slot and an EMPTY slot must not look alike. A slot nobody claimed
 means "the array path runs here"; a slot this arm claims means "the array path would
 have run here AND performed no operation". Both leave the same bytes behind, and
@@ -21,7 +21,7 @@ is the same shape of inference this package refuses everywhere else -- and the
 inference is WRONG the moment a future ``update_E`` grows a term, because nothing
 would have refused it.
 
-WHAT MAKES THE ARM UNSAFE IS THEREFORE NOT ARITHMETIC BUT ADMISSION. A null that
+What makes the arm unsafe is therefore not arithmetic but admission. A null that
 admits one configuration on which the array path DOES move is silent corruption:
 the composer would skip a sub-step that had work to do and no byte would ever
 disagree with a wrong answer, because the wrong answer is "the previous value". So
@@ -29,7 +29,7 @@ every clause below is a refusal of a configuration in which ``stepping`` gets pa
 its ``return``, and the device leg's whole job is to measure that the admitted set
 really moves nothing.
 
-WHAT ``stepping`` DOES WITHOUT AN ABSORBER, transcribed with its lines
+What ``stepping`` does without an absorber, transcribed with its lines
 ---------------------------------------------------------------------
 ``stepping.update_H`` (stepping.py:986-1010)::
 
@@ -65,12 +65,12 @@ shared question -- ``pml.is_active`` -- is what makes this arm's admitted set th
 exact COMPLEMENT of :func:`coverage.covers_real_pml_constitutive`'s rather than an
 approximation of it, and the suite measures the partition rather than asserting it.
 
-THE TWO ARMS OF THE NO-PML ELECTRIC SUB-STEP
+The two arms of the no-PML electric sub-step
 --------------------------------------------
 * **Arm N (NULL) -- this file.** ``update_H`` on any inert layer, and ``update_E``
   on an inert layer with ``fields.stores_E`` False. Zero kernels, zero launches,
   zero NVRTC compiles.
-* **Arm S (STORE) -- NOT BUILT IN THIS PACKAGE, and refused here by name.**
+* **Arm S (STORE) -- not built in this package, and refused here by name.**
   ``update_E`` on an inert layer with ``stores_E`` True is ``E[...] = (D - sum P) *
   inv_eps`` (stepping.py:1085), a real pointwise store with a real product. It is a
   DIFFERENT kernel from the certified ``update_E_pml_real``, which accumulates
@@ -81,7 +81,7 @@ THE TWO ARMS OF THE NO-PML ELECTRIC SUB-STEP
   track built it as its own module; the hand-CUDA track has not. See
   :data:`STORED_E_ARM_STATUS`.
 
-WHAT THIS PREDICATE DELIBERATELY DOES **NOT** REFUSE
+What this predicate deliberately does **not** refuse
 ----------------------------------------------------
 Every other predicate in this package refuses the fold beyond two planes, the
 cylindrical axis, complex storage, a Bloch phase, beta, BFAST, a non-float32 dtype,
@@ -93,7 +93,7 @@ takes no pointer, and reads no coefficient. Carrying those clauses here would re
 configurations on a hazard that provably cannot exist, and this package's rule is
 that a refusal must be TRUE where it fires.
 
-They are therefore ABSENT BY NAME, and the claim is MEASURED rather than argued: the
+They are therefore absent by name, and the claim is measured rather than argued: the
 gate's ``breadth`` leg admits AND byte-checks a folded, a cylindrical, a complex, a
 Bloch, a BFAST, a beta, a conductive and a metallic-walled grid -- eight cases, each
 required to move zero words over three complete cycles with a non-vacuous census.
@@ -103,7 +103,7 @@ OWED rather than done. Nothing in this file may be read as a device verdict whil
 that field is None -- ``test_confirmation_record_is_all_or_nothing`` is what keeps
 the two states from blurring.
 
-**THE BACKEND CLAUSE IS ABSENT TOO, AND THAT IS THE ONE ABSENCE A CALLER CAN SEE.**
+**The backend clause is absent too, and that is the one absence a caller can see.**
 Every other predicate here opens with ``backend is not CuPy`` because a kernel
 launches against device pointers. This arm launches nothing, so it is correct -- and
 covered -- on NumPy, and a refusal naming CuPy would be false where it fired. The
@@ -119,7 +119,7 @@ and was until recently, is that ``plan_fast_path`` returns ``None`` on every bra
 it dispatches certified TRITON kernels. That is a fact about the sibling track and
 changes nothing here.)
 
-HOW THIS DIFFERS FROM THE TRITON SIBLING, deliberately, in three places
+How this differs from the Triton sibling, deliberately, in three places
 ----------------------------------------------------------------------
 1. **One reason, not all of them.** ``triton_kernels.no_pml_constitutive`` returns a
    ``Coverage`` carrying every refusal; this package's convention is
@@ -135,7 +135,7 @@ HOW THIS DIFFERS FROM THE TRITON SIBLING, deliberately, in three places
    array path returns at :1044-1045 whatever the nonlinearity is), which is why this is a
    difference in conservatism and not a defect found in the sibling.
 3. **It takes ``grid``**, for signature parity with every other predicate here, and
-   READS NOTHING OFF IT beyond its presence. A run with no grid is not a run this
+   reads nothing off it beyond its presence. A run with no grid is not a run this
    arm can answer for; everything else about the grid is one of the absent clauses
    above. ``test_no_pml_constitutive.py`` pins that by admitting a grid stand-in
    whose every attribute access raises.
@@ -205,12 +205,12 @@ NULL_CONSTITUTIVE_SIDES: Dict[str, Dict[str, Any]] = {
 NULL_ELECTRIC_COMPONENTS: Tuple[str, ...] = ("Ex", "Ey", "Ez")
 NULL_MAGNETIC_COMPONENTS: Tuple[str, ...] = ("Hx", "Hy", "Hz")
 
-#: EVERY CLAUSE, WITH WHAT THE REAL ``stepping`` SUB-STEP MOVED ON ITS OWN NEEDLE.
+#: Every clause, with what the real ``stepping`` sub-step moved on its own needle.
 #:
 #: This table exists because "conservative", "shadowed" and "load-bearing" are three
 #: different facts about a refusal and none of them can be read off the source.
 #: ``moved_words`` is the number of uint32 words the array path's OWN call changed on
-#: a seeded ``Fields`` built the way ``needle`` says -- MEASURED on this laptop
+#: a seeded ``Fields`` built the way ``needle`` says -- measured on this laptop
 #: (NumPy float32, 8x8x8 periodic grid, uniform + a signed-zero plane + dense
 #: subnormals, 2026-08-20) -- and ``role`` is what that number makes the clause.
 #: ``total_words`` is the denominator over the array set the suite compares (every
@@ -231,7 +231,7 @@ NULL_MAGNETIC_COMPONENTS: Tuple[str, ...] = ("Hx", "Hy", "Hz")
 #:                        the shadow is load-bearing, and deleting the clause would
 #:                        be safe only for as long as the shadow holds.
 #:
-#: THE SUITE RE-MEASURES EVERY ROW rather than trusting this table, and a row whose
+#: The suite re-measures every row rather than trusting this table, and a row whose
 #: measurement stops agreeing fails there. Recording the number instead of the
 #: adjective is what makes that possible.
 CLAUSE_EVIDENCE: Dict[str, Dict[str, Any]] = {
@@ -270,7 +270,7 @@ CLAUSE_EVIDENCE: Dict[str, Dict[str, Any]] = {
         "needle": "a Fields proxy whose stores_E property raises",
         "moved_words": {"E": "array path raises"},
         "why": "stepping.py:1044 branches on exactly that attribute; the sibling "
-               "track MEASURED a proxy that could not answer it being covered with "
+               "track measured a proxy that could not answer it being covered with "
                "no reasons while the run underneath wrote 4618 words",
     },
     "driven_polarization": {
@@ -312,7 +312,7 @@ CLAUSE_EVIDENCE: Dict[str, Dict[str, Any]] = {
                   "refuses first",
         "moved_words": {"E": 1450},
         "total_words": {"E": 4608},
-        "why": "THE SHADOW IS LOAD-BEARING and that is the whole reason the number "
+        "why": "The shadow is load-bearing and that is the whole reason the number "
                "is here: on the real route update_E moves 1450 words, so a null "
                "that reached this configuration would be WRONG rather than merely "
                "unbuilt-for. The row product reads the other components' volumes "
@@ -341,8 +341,8 @@ CLAUSE_EVIDENCE: Dict[str, Dict[str, Any]] = {
         "why": "get_H would serve a stored H that update_H never writes "
                "(fields.py:695-702, :1189-1191), and the curl families refuse the "
                "configuration, so supplying half a step here would hand the "
-               "package's own unsafe configuration a partial substitution. ON THE E "
-               "SIDE IT IS NOT CONSERVATIVE AND NOT REACHED: enable_pml_storage "
+               "package's own unsafe configuration a partial substitution. On the E "
+               "side it is not conservative and not reached: enable_pml_storage "
                "calls enable_field_storage (fields.py:700), so stores_E refuses "
                "first -- and the array path moves 1287 words there, so the shadow "
                "is load-bearing on that side too",
@@ -362,7 +362,7 @@ CLAUSE_EVIDENCE: Dict[str, Dict[str, Any]] = {
 #: consumes it. It is here so the next reader does not have to re-derive the product
 #: from ``stepping`` to find out why ``stores_E`` True is refused by name.
 #:
-#: PARTLY BUILT FOR THE HAND-CUDA TRACK SINCE 2026-08-26, and the split is the
+#: Partly built for the hand-CUDA track since 2026-08-26, and the split is the
 #: point. Two kernels in this package now STORE E with no layer:
 #: ``dispersive_kernels.update_E_no_pml_real_dispersive`` (real storage, and it
 #: REFUSES ``stores_E`` without a polarization -- dispersive_kernels.py:1096-1102)
@@ -395,7 +395,7 @@ STORED_E_ARM_STATUS: Dict[str, Any] = {
         "f_w_* is not allocated at all"),
 }
 
-#: WHAT THIS ARM IS WORTH, MEASURED, AND WHY THE NUMBER IS AN UPPER BOUND.
+#: What this arm is worth, measured, and why the number is an upper bound.
 #:
 #: A DELTA, never a project total: 19 slots this arm admits that NO shipped CUDA
 #: predicate admits today, out of 410 constitutive slots in the record. Re-derived by
@@ -404,7 +404,7 @@ STORED_E_ARM_STATUS: Dict[str, Any] = {
 #: record's per-row ``configuration`` blocks, after reproducing 250 of 250 recorded
 #: verdicts and 250 of 250 recorded first-refusal strings.
 #:
-#: THE SPLIT IS THE INTERESTING PART, and it is not 14 rows times two sub-steps.
+#: The split is the interesting part, and it is not 14 rows times two sub-steps.
 #: ``update_H`` is admitted on ALL 14 no-PML rows -- including the six that force
 #: complex storage, because this arm has no storage clause: it reads no array, so
 #: there is nothing for a dtype to be wrong about, and the array path's ``return`` at
@@ -412,7 +412,7 @@ STORED_E_ARM_STATUS: Dict[str, Any] = {
 #: ``stores_E`` False; the other 9 are the STORE arm (:data:`STORED_E_ARM_STATUS`),
 #: which this package has not built.
 #:
-#: IT BUYS SUB-STEPS AND NOT WHOLE STEPS, and the replay measures that rather than
+#: It buys sub-steps and not whole steps, and the replay measures that rather than
 #: leaving it to be inferred: ZERO of the 14 rows is covered at every sub-step,
 #: because every CUDA curl predicate requires an active layer. The two distinct curl
 #: refusals on these rows are "no active PML layer" and "complex64 storage". The
@@ -459,21 +459,21 @@ NULL_CONSTITUTIVE_REACH: Dict[str, Any] = {
                    "slots_excluded_retired_fold_refusal": 160},
 }
 
-#: WHAT THE DEVICE RUN MEASURED. Read out of the artifacts the gate wrote; a claim
+#: What the device run measured. Read out of the artifacts the gate wrote; a claim
 #: in this file that is not in one of them is a claim nobody measured.
 #:
 #: CUT 2026-08-20 on the GPU host, GPU 5, an RTX A6000 verified physically empty before
 #: the run and reported again after it. BOTH float32 subnormal policies RELEASED --
 #: every leg, both policies, all_ok true.
 #:
-#: THE HEADLINE NUMBER IS A ZERO, and it is the only zero this arm can be judged on:
+#: The headline number is a zero, and it is the only zero this arm can be judged on:
 #: 0 differing uint32 words out of 127,398 compared per policy, across 15 admitted
 #: configurations, each run for three complete ``update_H``+``update_E`` cycles and
 #: compared against its ORIGINAL snapshot every cycle. Its control is the other
 #: half: on the four refused configurations the array path moved thousands of words
 #: (up to 9,231 on an active layer) and the predicate refused every one.
 #:
-#: WHAT THE FLUSH POLICY MEASURED THAT KEEP COULD NOT, and it is a finding rather
+#: What the flush policy measured that keep could not, and it is a finding rather
 #: than a formality. The gate's first cut demanded ``subnormal_words > 0`` on every
 #: case and FAILED 15 of 15 under flush -- with every identity comparison already
 #: reporting zero differing words. The cause is not the arm: installing the flush
@@ -485,7 +485,7 @@ NULL_CONSTITUTIVE_REACH: Dict[str, Any] = {
 #: STRICTER one -- ``subnormal_words == 0`` is a positive measurement that the
 #: policy reached the seeded data -- and it is the gate's ``CENSUS_CONTRACT``.
 #:
-#: AND THE COMPILE COUNTERS READ A TRUE NUMBER, which is the other trap the sibling
+#: And the compile counters read a true number, which is the other trap the sibling
 #: gate documented: under keep the stamp records 37 NVRTC compiles with all 37
 #: stripped of ``-ftz=true``. Not one of them belongs to this family -- it has no
 #: device source -- they are the harness's own CuPy work. A stamp reading zero here
@@ -568,10 +568,10 @@ def _drives(state: Any, component: str) -> Any:
     where its siblings refuse becomes a crashed run the moment a planner consults
     it -- ``covers_real_pml_ade_component`` already catches ``drives()`` raising for
     the same reason (``coverage.covers_real_pml_ade_component``, whose ``drives()``
-    call is wrapped in a try/except with the comment "A RAISE IS NOT A REFUSAL
-    unless it is caught here"). COVERAGE.PY IS CITED BY NAME AND NOT BY LINE
-    THROUGHOUT THIS FILE: it is under active edit by other work and its line numbers
-    move between rounds, so a line citation there would be a citation that rots. The
+    call is wrapped in a try/except whose comment says a raise is not a refusal
+    unless it is caught there). ``coverage.py`` is cited by name and not by line
+    throughout this file: its line numbers change whenever it is edited, so a line
+    citation there would go stale. The
     ENGINE's files -- stepping, fields, driver, pml -- are cited by line, and the
     suite reads the two load-bearing ones back out of the file.
     """
@@ -621,7 +621,7 @@ def covers_no_pml_null_constitutive(fields: Any, pml: Any, grid: Any,
             f"side must be one of {sorted(NULL_CONSTITUTIVE_SIDES)}, got {side!r}")
     spec = NULL_CONSTITUTIVE_SIDES[side]
 
-    # THE ONLY THING THE GRID IS READ FOR. Not its backend, not its shape, not its
+    # The only thing the grid is read for. Not its backend, not its shape, not its
     # boundaries -- its existence. A ``Fields`` with no grid has no arrays and is not
     # a run either sub-step could be called on.
     if grid is None:

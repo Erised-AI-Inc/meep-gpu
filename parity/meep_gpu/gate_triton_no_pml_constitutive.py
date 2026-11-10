@@ -1,6 +1,6 @@
 """Byte gate for the NO-PML CONSTITUTIVE family (``triton_kernels.no_pml_constitutive``).
 
-THIS FAMILY SHIPS NO KERNEL, so this gate is shaped differently from the five
+This family ships no kernel, so this gate is shaped differently from the five
 certified ones and the difference is the point rather than a shortcut. There is no
 kernel-vs-reference sweep because there is no kernel; the certifying leg is an
 IDENTITY leg — ``stepping.update_H`` / ``stepping.update_E`` called on a fully seeded
@@ -39,7 +39,7 @@ Legs (``--legs``, default all):
                 is by construction (both sides ask ``pml.is_active``) and is measured
                 rather than asserted.
 * ``mutations`` armed, run-counted, DISARMED / NEEDLE-MISSED are failures. Mutants are
-                COMPILED FROM A TEXT EDIT of the shipped module into a fresh module
+                compiled from a text edit of the shipped module into a fresh module
                 object with its own sha256, so a mutation that silently ran the
                 shipped code is impossible (there is no kernel cache to serve a stale
                 binary here, but the equivalent hazard — importing the shipped
@@ -55,7 +55,7 @@ Legs (``--legs``, default all):
                 run — that is what proves the driven case's arrays were not a
                 plausible-looking wall of zeros.
 
-DISCIPLINE, AND WHERE EACH CLAUSE LANDS ON A FAMILY THAT COMPUTES NOTHING:
+Discipline, and where each clause lands on a family that computes nothing:
 
 * uint32 byte compare only, never ``allclose`` — as everywhere.
 * a NON-POWER-OF-TWO Courant in every sweep — carried, and recorded as a PREDICTED
@@ -80,7 +80,7 @@ DISCIPLINE, AND WHERE EACH CLAUSE LANDS ON A FAMILY THAT COMPUTES NOTHING:
 * flux/DFT sample count — NOT APPLICABLE, no monitor is in this family's path. The
   engine leg asserts ``driver.step_count`` instead, which is the same guarantee for
   the thing this leg actually counts.
-* MULTIPLE FULL CYCLES, not one call: every identity case runs ``IDENTITY_CYCLES``
+* Multiple full cycles, not one call: every identity case runs ``IDENTITY_CYCLES``
   complete ``update_H``+``update_E`` cycles and compares against the ORIGINAL
   snapshot each time, because a sub-step that wrote back exactly what it read would
   pass a single-call identity test and drift on the second. The whole-step form of
@@ -95,14 +95,14 @@ DISCIPLINE, AND WHERE EACH CLAUSE LANDS ON A FAMILY THAT COMPUTES NOTHING:
   vacuous partition leg, a missing power-of-two Courant control, a byte-visible
   mutation that flipped a verdict but never ran a plan. The laptop suite
   mutation-tests that function itself.
-* THE LEG SET IS PART OF THE CONTRACT. Every check is guarded on "is this leg
+* The leg set is part of the contract. Every check is guarded on "is this leg
   present", so an artifact cut with ``--legs identity`` used to record
   ``contract: passed`` and ``all_ok: true`` with no controls leg, no mutation
   battery, no engine leg and no negative control. ``validate_payload`` now requires
   all six on the named backend, so a partial run exits non-zero and says which legs
   are missing. ``--legs`` remains useful for debugging; it just cannot mint a green
   artifact.
-* IDENTITY AND BREADTH MEET THE SAME PER-CASE CONTRACT, through one function. The
+* Identity and breadth meet the same per-case contract, through one function. The
   breadth leg — where this family's one distinguishing claim lives — used to be
   checked on two counters and a ``covered`` flag, and passed with a case that moved
   7 words, an all-zero census, one cycle, zero plan runs, or the leg stripped to its
@@ -267,7 +267,7 @@ def polarization_arrays(fields: Any) -> Dict[str, Any]:
     Included in every snapshot so that ``update_E`` CONSUMING a polarization without
     advancing it (``stepping.update_E``'s docstring, stepping.py:969-973; measured
     30/30 by ``dispersive_update_e`` on the PML path) is pinned wherever those arrays
-    exist. WHERE THEY EXIST IS THE CONTROLS LEG, not the identity leg, and the
+    exist. Where they exist is the controls leg, not the identity leg, and the
     difference is structural rather than incidental: a driven polarization switches
     ``stores_E`` on, which the predicate refuses, so the covered arm cannot hold one.
     The identity leg's one susceptibility case registers a ZERO-SIGMA state, whose
@@ -367,7 +367,7 @@ def seed_arrays(fields: Any, rng: np.random.Generator) -> None:
     through both the covered arm (which touches nothing) and the control arm (whose
     largest product is a bounded PML coefficient times a value of magnitude <= 1).
 
-    THE STRIDED PLANT IS NOT ENOUGH ON A SMALL GRID, and that is measured rather than
+    The strided plant is not enough on a small grid, and that is measured rather than
     anticipated: the first run of this gate FAILED ``plain_1voxel`` as VACUOUS —
     ``host[3::11]`` and ``host[5::23]`` both miss a one-element array, so a 1x1x1
     case carried 0 signed zeros and 0 subnormals and its "no bytes moved" verdict
@@ -423,7 +423,7 @@ def build(spec: Dict[str, Any], xp: Any) -> FdtdDriver:
     questions, so the objects have to be the real ones or the questions are not the
     real questions.
 
-    THE DEVICE PATH GOES THROUGH ``prefer_gpu``, and that is a repair rather than a
+    The device path goes through ``prefer_gpu``, and that is a repair rather than a
     style choice. This function used to build a host driver and then reassign
     ``fdtd.fields.grid.xp = xp`` afterwards — which allocates every array on the
     HOST first (``FdtdDriver.__init__`` resolves its module at driver.py:943 and
@@ -483,7 +483,7 @@ def build(spec: Dict[str, Any], xp: Any) -> FdtdDriver:
     if spec.get("pml"):
         fdtd.setup_pml(spec["pml"])
     if spec.get("inert_pml") is not None:
-        # AN INERT LAYER OBJECT, and it has to be built directly. This is the family's
+        # An inert layer object, and it has to be built directly. This is the family's
         # load-bearing partition test — ``pml is not None and pml.is_active`` False,
         # the case pml.py:427-434 exists to name — and it was previously spelled
         # ``{"pml": 0.0}``, which is FALSY, so ``setup_pml`` was never called and the
@@ -597,7 +597,7 @@ def one_identity_case(spec: Dict[str, Any], xp: Any,
         "np2_courant": bool(spec.get("courant", COURANT_NP2) != COURANT_P2),
         "stores_E": bool(fields.stores_E),
         # BOTH halves of the partition test are recorded, not just the second: an
-        # INERT LAYER PRESENT and NO LAYER AT ALL are different configurations that
+        # Inert layer present and no layer at all are different configurations that
         # reach the same ``stepping`` return, and the row that claims the first has
         # to be able to prove a layer was there.
         "pml_object_present": bool(pml is not None),
@@ -615,7 +615,7 @@ def one_identity_case(spec: Dict[str, Any], xp: Any,
     entry["census_before"] = census(fields)
     entry["seed_conditions"] = flush_vacuity.seed_conditions()
     before = snapshot(fields)
-    # HONEST ACCOUNTING OF WHAT WAS COMPARED. The gate used to claim in its own
+    # Honest accounting of what was compared. The gate used to claim in its own
     # docstring that P/P_prev are byte-compared on this leg, "which pins update_E
     # consumes P and does not advance it on this path as well". No identity case ever
     # puts one in the set and on the covered arm none can: a DRIVEN polarization
@@ -625,7 +625,7 @@ def one_identity_case(spec: Dict[str, Any], xp: Any,
     # lives, and the CONTROLS leg is where it is measured.
     entry["polarization_arrays_compared"] = len(polarization_arrays(fields))
     entry["field_arrays_compared"] = len(before) - entry["polarization_arrays_compared"]
-    # MULTIPLE FULL CYCLES, not one call. A single call cannot tell "writes nothing"
+    # Multiple full cycles, not one call. A single call cannot tell "writes nothing"
     # apart from "writes back what it read at cycle 1 and would drift at cycle 2", and
     # a null that is only idempotent is still not a null. Compared against the
     # ORIGINAL snapshot every cycle, so a drift that cancels between two cycles is
@@ -652,7 +652,7 @@ def one_identity_case(spec: Dict[str, Any], xp: Any,
     entry["plan_runs"] = {name: p.runs for name, p in plan.plans.items()}
     entry["census_after"] = census(fields)
 
-    # UNDER FLUSH THE SEEDED SUBNORMAL PLANE CANNOT SURVIVE (the host flushes the
+    # Under flush the seeded subnormal plane cannot survive (the host flushes the
     # plant itself), which flush_vacuity MEASURES rather than assumes: the installed
     # policy, the host FPU when seeded, and this census. Then the subnormal clause is
     # not applicable; the nonzero and signed-zero clauses stand under both policies.
@@ -743,7 +743,7 @@ def run_controls(results: Dict[str, Any], out_path: str, xp: Any,
                     for side in ("H", "E")}
         entry["covered"] = {side: bool(v.covered) for side, v in verdicts.items()}
         entry["reasons"] = {side: list(v.reasons) for side, v in verdicts.items()}
-        # THE POLARIZATION PIN LIVES HERE, and only here. P/P_prev exist on a driven
+        # The polarization pin lives here, and only here. P/P_prev exist on a driven
         # run, and a driven run is exactly the arm this family refuses — so the
         # identity leg cannot carry the pin its docstring once claimed for it. On the
         # dispersive controls the arrays ARE in the comparison set, and what the leg
@@ -836,7 +836,7 @@ SIBLING_CONSTITUTIVE_PREDICATES: Tuple[Dict[str, str], ...] = (
      "name": "offdiag_constitutive_coverage", "sides": "E"},
     {"label": "folded_offdiag", "module": "meep_gpu.triton_kernels.folded_offdiag_update_e",
      "name": "folded_offdiag_constitutive_coverage", "sides": "E"},
-    # The three ADMISSIONS the residual-group closure round added (2026-08-14).
+    # The three ADMISSIONS the residual-group closure added (2026-08-14).
     # None of them plans a new kernel — each restates a shipped clause set with
     # one over-broad clause inverted so a CERTIFIED body may step a configuration
     # it was refused for. They are listed here for the same reason the others are:
@@ -950,7 +950,7 @@ def run_overlap(results: Dict[str, Any], out_path: str, xp: Any,
                     continue
                 if verdict.covered:
                     admitted.append(label)
-                # MODULO THE BACKEND CLAUSE, and this is what makes the leg mean
+                # Modulo the backend clause, and this is what makes the leg mean
                 # something on a laptop. Every kernel predicate opens with "array
                 # module is not cupy"; on a NumPy host that one clause refuses all of
                 # them, so a raw overlap check would pass vacuously. Dropping exactly
@@ -1013,10 +1013,10 @@ def run_overlap(results: Dict[str, Any], out_path: str, xp: Any,
 # ---------------------------------------------------------------------------
 
 def shipped_source() -> str:
-    """The shipped module's text, read as UTF-8 REGARDLESS OF THE PROCESS LOCALE.
+    """The shipped module's text, read as UTF-8 regardless of the process locale.
 
     ``encoding="utf-8"`` is not tidiness here; without it this function cannot run on
-    a CUDA host at all, and the whole mutation battery goes with it. MEASURED on
+    a CUDA host at all, and the whole mutation battery goes with it. Measured on
     the GPU host, 2026-08-13: ``locale.getpreferredencoding(False)`` is ``UTF-8`` at
     interpreter start, still ``UTF-8`` after ``import cupy`` — and
     ``ANSI_X3.4-1968`` after the FIRST device allocation, because CUDA context
@@ -1107,7 +1107,7 @@ def mutate_drop_stores_e_clause(source: str) -> Tuple[str, int]:
 def mutate_plan_run_writes(source: str) -> Tuple[str, int]:
     """m3 — the plan must genuinely do nothing. Here it CLEARS a B component.
 
-    THIS MUTANT REALLY WRITES, and that is a repair. The previous m3 injected a method
+    This mutant really writes, and that is a repair. The previous m3 injected a method
     whose body was ``pass`` and recorded its "flip" as ``hasattr(plan,
     '_mutant_side_effect') and not hasattr(shipped, ...)`` — a statement about the edit
     the gate had just made, true by construction, with no float compared anywhere
@@ -1358,7 +1358,7 @@ def run_mutations(results: Dict[str, Any], out_path: str, xp: Any,
                 if shipped_v != mutant_v:
                     flipped.append(f"inert_layer_with_pml_storage@{side}")
         elif mutation["name"] == "m3_plan_run_writes":
-            # THE MUTANT MODULE IS DRIVEN THROUGH THE IDENTITY LEG ITSELF, which is
+            # The mutant module is driven through the identity leg itself, which is
             # what ``one_identity_case``'s ``module`` parameter was written for and
             # never used for. The identity snapshot is taken AFTER ``plan.run()``, so a
             # plan that writes is caught by the same uint32 comparison that certifies
@@ -1467,7 +1467,7 @@ class _Substitution:
     module's globals — patching ``stepping``'s would leave the driver holding the
     originals and the leg would silently measure nothing.
 
-    THE PATCH IS PER STEP CALL, not per case, and that is a fix rather than a
+    The patch is per step call, not per case, and that is a fix rather than a
     refinement. The first run of this leg patched the globals around BOTH drivers'
     step calls, so the "reference" driver ran the null too: the comparison was a null
     against a null and reported 0 differing words on every case. The call counter
@@ -1548,7 +1548,7 @@ def run_engine(results: Dict[str, Any], out_path: str, xp: Any,
             cases.append(entry)
             continue
         swap = _Substitution(substituted.fields, plan.plans)
-        # THE SURROUNDING STEP MUST STILL HAVE DONE WORK. For a family whose whole
+        # The surrounding step must still have done work. For a family whose whole
         # product is a no-op, "the two drivers agree bit for bit" is satisfied just as
         # well by a step that moved nothing at all — a build that failed to seed, a
         # spec whose source never fired, a metallic case zeroed everywhere. Then the
@@ -1632,7 +1632,7 @@ def run_engine(results: Dict[str, Any], out_path: str, xp: Any,
             "note": ("same seed, same steps, one with an Ez gaussian source and one "
                      "without: the two states MUST differ, or the driven leg proved "
                      "nothing about a run that carries a source")}
-    # THE LEG'S OWN NEGATIVE CONTROL. Everything above reports "identical", which is
+    # The leg's own negative control. Everything above reports "identical", which is
     # what a harness that never ran also reports. So: force the null into a driver
     # whose layer IS active — the substitution the predicate exists to forbid, built
     # by calling NullConstitutivePlan directly and bypassing coverage — and require
@@ -1713,7 +1713,7 @@ def _check_identity_shaped_leg(label: str, block: Dict[str, Any],
         if not comparison.get("bit_identical"):
             failures.append(f"{label} case {name} moved bytes: "
                             f"{comparison.get('differing_words')}")
-        # THE COMPARISON MUST HAVE COMPARED SOMETHING. "0 differing words of 0" is the
+        # The comparison must have compared something. "0 differing words of 0" is the
         # identity leg's analogue of a flux case that compared two empty buffers, and
         # it passed this contract until now.
         if int(comparison.get("arrays_compared", 0)) <= 0:
@@ -1834,7 +1834,7 @@ def validate_payload(payload: Dict[str, Any],
         for side, count in bit.items():
             if count <= 0:
                 failures.append(f"no control bit on the {side} side at all")
-        # THE POLARIZATION PIN. The identity leg cannot carry it (a driven polarization
+        # The polarization pin. The identity leg cannot carry it (a driven polarization
         # switches stores_E on and the predicate refuses), so it has to be measured
         # here or nowhere — and "nowhere" is what the gate's docstring used to claim
         # was "this path as well".
@@ -1916,7 +1916,7 @@ def validate_payload(payload: Dict[str, Any],
                 failures.append(f"engine case {case.get('name')}: step/call counts "
                                 f"disagree {case.get('substitution_calls')} "
                                 f"{case.get('step_count')}")
-            # THE RAW NUMBERS, not the gate's own boolean. The leg's whole discipline
+            # The raw numbers, not the gate's own boolean. The leg's whole discipline
             # is "one substitution call per step per side, no patch leak onto the
             # reference driver" — the defect its docstring records is 48 calls for 24
             # steps — and the contract used to read a summary flag while a payload with
@@ -1941,7 +1941,7 @@ def validate_payload(payload: Dict[str, Any],
                 failures.append(f"engine case {case.get('name')}: the substitution "
                                 f"leaked onto {case.get('substitution_leaks')} other "
                                 "driver call(s)")
-            # THE STEP MUST HAVE DONE WORK. For a null family this is the difference
+            # The step must have done work. For a null family this is the difference
             # between a byte claim and the emptiest possible pass: two drivers that
             # both moved nothing agree perfectly. Absent counts as a failure rather
             # than as "not checked" — a case that stopped recording this number is a
@@ -1983,13 +1983,14 @@ def validate_payload(payload: Dict[str, Any],
 # ---------------------------------------------------------------------------
 
 def provenance(xp: Any, backend: str) -> Dict[str, Any]:
+    import neutral_ids  # noqa: PLC0415
     import platform  # noqa: PLC0415
 
     record: Dict[str, Any] = {
         "family": "no-PML constitutive (update_H / update_E with an inert layer)",
         "ships_a_kernel": False,
         "backend": backend,
-        "python": sys.executable,
+        "python": neutral_ids.path(sys.executable),
         "platform": platform.platform(),
         "numpy": np.__version__,
         "cupy": getattr(cp, "__version__", None),
@@ -2003,7 +2004,7 @@ def provenance(xp: Any, backend: str) -> Dict[str, Any]:
                                    "records step_budget 66 for the no-PML curl and "
                                    "this gate does not raise it",
         },
-        # DERIVED FROM THE RUN, not asserted about it. This was a frozen string —
+        # Derived from the run, not asserted about it. This was a frozen string —
         # "NOT CLAIMED ON A DEVICE. No device leg has been run." — emitted by every
         # artifact including the ones a device leg wrote, so the first green CuPy run
         # produced a record denying its own existence. What a null family can claim is
@@ -2095,7 +2096,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         log(f"=== leg {leg} ({args.backend}) ===")
         runners[leg](results, out_path, xp, args.backend)
 
-    # RE-STAMP THE POLICY, because the startup stamp cannot have measured anything.
+    # Re-stamp the policy, because the startup stamp cannot have measured anything.
     # ``policy_stamp`` reads live counters off the installed strip, and it was called
     # BEFORE the first leg — so ``nvrtc_calls`` and ``ftz_removed`` were snapshotted at
     # zero and frozen there. The artifact then read as "no compile happened on any

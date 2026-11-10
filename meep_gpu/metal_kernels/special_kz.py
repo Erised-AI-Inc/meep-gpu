@@ -1,30 +1,30 @@
 """Special-kz (``grid.beta``) PML curl on Metal — the real and Bloch arms.
 
-WIRED AS OF TRANCHE 2 — six registered arms, and ``arms.register`` is called at the
+Wired as of the second Metal certification — six registered arms, and ``arms.register`` is called at the
 bottom of this module. ``fastpath.plan_fast_path`` still returns ``None`` on every
 branch and this module does not touch it; composition and dispatch are different
 decisions and only the first has moved. Callers are ``plan_step``, the byte gate
 (``parity/meep_gpu/gate_metal_special_kz.py``), the composition probes and the
 laptop tests.
 
-REGISTERING NOTHING WAS THE ONE SHAPE THAT COST SOMETHING, and this module used to
+Registering nothing was the one shape that cost something, and this module used to
 be the example. An arm absent from the registry cannot be swept by any other
 family's composition probe — only by one that names this module — so the family
 most likely to collide with :mod:`.complex_fields` was precisely the family a
-registry-driven sweep could not see. The tranche-2 disjointness sweep reaches every
+registry-driven sweep could not see. The second Metal certification's disjointness sweep reaches every
 arm through :func:`.arms.registered`, which is why every family now registers.
 
-THE SAFETY ARGUMENT IS UNCHANGED AND IS NOW MEASURED THROUGH THE TABLE: every
+The safety argument is unchanged and is now measured through the table: every
 shipped real-field Metal predicate reaches ``coverage._grid_reasons``, whose clause
 12 refuses a ``beta != 0`` run BY NAME, and ``complex_fields``' clause 8 refuses it
 by name too. The predicates below invert that clause (they REQUIRE beta nonzero),
 so no admitted overlap can exist in either direction. The sweep constructs the
 configurations and calls the predicates rather than resting on this paragraph.
 
-WHAT BETA IS (grid.py ``_resolve_beta``; ``stepping._special_kz_beta_term``). A 2-D
+What beta is (grid.py ``_resolve_beta``; ``stepping._special_kz_beta_term``). A 2-D
 run carries ``exp(i*2*pi*beta*z)`` analytically, so ``d/dz`` on the invariant axis is
 the EXACT factor ``i*2*pi*beta`` — an ``i*beta*zhat x`` cross product (MEEP
-step_db.cpp:148-176). MEEP adds it as A PASS OF ITS OWN after every component's curl
+step_db.cpp:148-176). MEEP adds it as a pass of its own after every component's curl
 (step_db.cpp:161-175), through the additive ladder the pass ends in
 (step_generic.cpp:255-333), and the array path does the same
 (``stepping.step_B``/``step_D`` call ``_apply_folded_increment`` after the component
@@ -63,7 +63,7 @@ its absent-partner forms, the ownership mask and the Bloch connection are the
 certified emitters' text, and the only text this module can be blamed for is the
 pass (:func:`beta_pass`).
 
-THE METAL FACTS THIS FAMILY APPLIES, each measured on this host:
+The Metal facts this family applies, each measured on this host:
 
 1. **Contraction is a SOURCE property here, not a launch keyword.** The pass's
    multiply-subtract shapes (``v - (sinv_u * df)``) are exactly what a compiler
@@ -102,7 +102,7 @@ CHOICES the array path does not force (the gate holds every one):
    the product that composes them).
 6. A conductivity on the curl targets is refused by name: these kernels transcribe
    the lossless forms only.
-7. BOTH LAYOUT CLAUSES FAIL CLOSED, on both arms (:func:`_complex_layout_reasons`,
+7. Both layout clauses fail closed, on both arms (:func:`_complex_layout_reasons`,
    and ``_layout_reasons`` on the real arm).
 """
 
@@ -187,11 +187,11 @@ def beta_curl_coefficients(beta: float, dt: float, magnetic: bool,
     ``constant float&`` arrives correctly rounded (the Metal scalar ABI is clean;
     measured), so the words the kernel receives are the array path's.
 
-    ``beta`` AND ``dt`` ARE USED AS GIVEN — no ``float()`` normalisation. The
+    ``beta`` AND ``dt`` are used as given — no ``float()`` normalisation. The
     expression is the array path's, evaluated on the objects the array path evaluates
     it on, so its intermediate PRECISION is whatever the caller's types make it. Under
     NEP 50 a numpy-typed operand rounds the chain EARLIER than a Python float does.
-    MEASURED 2026-08-15 on this host: with ``beta``/``dt`` as ``numpy.float32``,
+    Measured 2026-08-15 on this host: with ``beta``/``dt`` as ``numpy.float32``,
     14,926 of 40,000 random draws produced a different float32 coefficient word. The
     path is live — ``Grid._resolve_beta`` coerces ``beta`` to a Python float but
     NOTHING coerces ``dt``. Pinned by
@@ -421,7 +421,7 @@ def _beta_real_grid_reasons(fields: Any, pml: Any, grid: Any) -> List[str]:
     # 3. An absorber that actually absorbs (split-field family only).
     if pml is None or not getattr(pml, "is_active", False):
         reasons.append("no active PML layer (this product implements the "
-                       "split-field path only; no-PML beta is out of tranche)")
+                       "split-field path only; no-PML beta is outside its scope)")
 
     # 4. Only the two ghost rules the curl writes.
     kinds = _boundary_kinds(grid, pml if (pml is not None
@@ -548,7 +548,7 @@ def beta_pml_curl_coverage(fields: Any, pml: Any, sub_step: str,
 
     # 13/14. The NAMED SUB-STEP's nine arrays and their layout. Deliberately
     #        narrower than the certified predicate's 18-volume set, matching the
-    #        per-sub-step scoping the Triton beta tranche records: every pointer
+    #        per-sub-step scoping the Triton beta kernels record: every pointer
     #        the launched kernel touches is still checked, and the engine route
     #        allocates all 18 together so no engine-built configuration changes
     #        verdict.
@@ -576,7 +576,7 @@ def _complex_layout_reasons(fields: Any, shape: Sequence[int],
     module's clause list is about a CuPy array; the questions are the same and the
     dtype answer is the only one that differs from :func:`_layout_reasons`.
 
-    IT FAILS CLOSED ON BOTH READS, and both were MEASURED admitting before they did:
+    It fails closed on both reads, and both were measured admitting before they did:
 
     * a ``grid.shape`` that is not a triple. The kernel decodes ``i/j/k`` and
       :class:`BetaBlochPmlCurlPlan` multiplies ``shape[0..2]``, so a two-axis shape
@@ -799,15 +799,15 @@ def beta_run_complex_constitutive_coverage(fields: Any, pml: Any, side: str,
                                            residency: Any = None) -> Coverage:
     """May the CERTIFIED COMPLEX constitutive kernel step an UNFOLDED beta run?
 
-    THIS WAS AN UNCONDITIONAL REFUSAL UNTIL 2026-08-19, and the refusal was correct
+    This was an unconditional refusal until 2026-08-19, and the refusal was correct
     for as long as nobody had restated the predicate: ``complex_fields``' clause 8
     refuses ``grid.beta`` BY NAME so a complex beta run lands here rather than being
     taken there silently, and :mod:`.folded_beta` restated it only for a FOLDED beta
     run. The unfolded case had no product, so an unfolded complex beta run took its
     curls on the device and its constitutive pair on the array path.
 
-    IT IS NOW THE SAME ONE-CLAUSE RESTATEMENT :func:`beta_run_constitutive_coverage`
-    IS ON THE REAL ARM, and the reason it costs no kernel is MEASURED rather than
+    It is now the same one-clause restatement :func:`beta_run_constitutive_coverage`
+    is on the real arm, and the reason it costs no kernel is measured rather than
     argued. ``update_H``/``update_E`` read nothing beta-dependent —
     ``_apply_constitutive_pml`` (stepping.py:2112) never sees ``grid.beta``, which
     enters only the two curls (stepping.py:384-391, :467-474). Measured on this
@@ -1257,19 +1257,19 @@ def plan_beta_run_complex_constitutive(
 
 
 # ---------------------------------------------------------------------------
-# WIRING — six registered arms, as of tranche 2
+# WIRING — six registered arms, as of the second Metal certification
 # ---------------------------------------------------------------------------
 #
-# THIS MODULE USED TO REGISTER NOTHING, exposing `ARMS` as a plain tuple instead so
+# This module used to register nothing, exposing `ARMS` as a plain tuple instead so
 # a probe that imported it BY NAME could sweep the rows without `plan_step` being
 # able to select one. That cost was stated at the time and it was real:
 # `arms.registered()` could not see this family at all, so a stranger's sweep —
-# including the disjointness sweep this tranche runs — would have missed exactly the
+# including the second Metal certification's disjointness sweep — would have missed exactly the
 # pair most likely to collide, this module's complex curl against
 # `complex_fields`' complex curl. The rows are registered now, and the sweep that
 # checks them for co-admission reaches them through the table like every other row.
 #
-# WHAT SEPARATES THEM, by name and in both directions:
+# What separates them, by name and in both directions:
 #
 #   * from the shipped real kernels — `coverage._grid_reasons` clause 12 refuses
 #     `beta != 0`, and clause 12 here is INVERTED (beta must be nonzero);
@@ -1280,7 +1280,7 @@ def plan_beta_run_complex_constitutive(
 #     `grid.beta` BY NAME, which is what keeps refl-angular-kz2d.py and
 #     parallel-wvgs-force.py here rather than silently there.
 #
-# THE ASYMMETRY IS GONE, AND IT WAS CLOSED THE WAY IT WAS NAMED. Both constitutive
+# The asymmetry is gone, and it was closed the way it was named. Both constitutive
 # companions are now the CERTIFIED kernel under a restated predicate — the real arm
 # borrows `launch.ConstitutivePlan` (`beta_run_constitutive_coverage` /
 # `plan_beta_run_constitutive`), the complex arm borrows
@@ -1292,7 +1292,7 @@ def plan_beta_run_complex_constitutive(
 # registered anyway so `plan_step` could say WHY `update_H` was on the array path.
 # What closed it is one clause, not a kernel: the constitutive sub-steps read
 # nothing beta-dependent (`_apply_constitutive_pml`, S:2065 — beta enters only the
-# curls at S:356-363 and :438-445), MEASURED on this host as 7,319 words moved by
+# curls at S:356-363 and :438-445), measured on this host as 7,319 words moved by
 # the pair and ZERO differing between the corpus row's beta and beta = 0, with the
 # certified complex kernel then reproducing `stepping.py` over four cycles of both
 # sides with the predicate bypassed. The last unadmitted slot pair in the Metal

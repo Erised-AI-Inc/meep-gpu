@@ -1,6 +1,6 @@
 """Raw-CUDA Lorentz/Drude polarization recurrence -- the ``update_P`` sub-step.
 
-THE ONLY STRUCTURAL ZERO ON THE BOARD, AND WHY IT WAS ONE. The 2026-08-16
+The only structural zero on the board, and why it was one. The 2026-08-16
 predicate census measured the hand-CUDA track at 180 of 759 slots across three
 certified families, and its per-sub-step table reads::
 
@@ -8,7 +8,7 @@ certified families, and its per-sub-step table reads::
     step_D       45 / 186  admitted
     update_H     46 / 186  admitted
     update_E     27 / 186  admitted
-    update_P      0 /  15  admitted   <- NO CUDA KERNEL, NO PREDICATE
+    update_P      0 /  15  admitted   <- no CUDA kernel, no predicate
 
 (``parity/meep_gpu/results/cuda_predicate_coverage_2026-08-16_offdiag/
 analysis.txt``.) Every other zero in that table is a refusal with a clause behind
@@ -17,17 +17,17 @@ fail-closed track -- no written refusal for the configurations a kernel would
 silently mis-serve. This module and ``coverage.covers_real_pml_ade_update_p``
 close both halves.
 
-WHERE THAT LEFT THE TABLE, re-derived from the same record on 2026-08-19 by
+Where that left the table, re-derived from the same record on 2026-08-19 by
 running the shipped predicates over its per-row ``configuration`` blocks:
 ``update_P`` now admits 8 of those 15 rows -- 5 of them on the mirror clause
 (:data:`coverage.ADE_MIRROR_ADMISSION`), which is a PROJECTION and not part of
-what this family's gate ran. In the same round the constitutive pair's fold
+what this family's gate ran. At the same time the constitutive pair's fold
 refusal was measured and withdrawn, taking ``update_H`` from 46 to 122 and
 ``update_E`` from 27 to 79. The track reads 308 of 759 slots over the three
 byte-gated families, or 316 counting this one.
 
 =============================================================================
-WHAT IS TRANSCRIBED, AND FROM WHERE
+What is transcribed, and from where
 =============================================================================
 
 The source of truth is MEEP's isotropic recurrence (susceptibility.cpp:251-256),
@@ -50,26 +50,26 @@ stored ``E<c>`` elsewhere, selected in the kernel from the run's chunk record
 (:func:`drive_pair` binds the two arrays; without a layer both are the stored E).
 
 =============================================================================
-FOUR THINGS DECIDE BIT-IDENTITY HERE
+Four things decide bit-identity here
 =============================================================================
 
-1. THE GROUPING IS MEEP'S. The bracket is left-associated --
+1. The grouping is MEEP's. The bracket is left-associated --
    ``((p*two_minus_od) - (gamma1*q)) + (omega0dtsqr*(s*w))`` -- and ``gamma1inv``
    multiplies the whole bracket last. float32 addition is not associative, and the
    0.9.2 three-constant form (``gamma1inv`` folded into each term) is a different
    number on most cells.
 
-2. THE DRIVE PRODUCT IS ``s * w`` FIRST, THEN ``omega0dtsqr *`` THAT, as MEEP writes
+2. The drive product is ``s * w`` first, then ``omega0dtsqr *`` that, as MEEP writes
    ``omega0dtsqr * (s[i] * w[i])``. Reassociating to ``(omega0dtsqr * s) * w`` is a
    different float32 number wherever the intermediate rounds.
 
 3. NO FMA. ``--fmad=false`` is CORRECTNESS here, not tuning: every product in the
-   line sits next to an addition that could absorb it. The option tuple is SPELLED
-   IN THIS FILE rather than imported, because a bit-identity probe loads these
+   line sits next to an addition that could absorb it. The option tuple is spelled
+   in this file rather than imported, because a bit-identity probe loads these
    modules BY PATH, outside the package, where an import could pick up a different
    tuple than the one a gate compiled.
 
-4. ``p_out`` IS A THIRD BUFFER, NEVER ``p_now``. The array path writes the scratch
+4. ``p_out`` is a third buffer, never ``p_now``. The array path writes the scratch
    and rotates the names afterwards; it never updates P in place. Writing in place
    would destroy ``P^n`` before the NEXT step reads it as ``P^(n-1)`` -- a
    second-order recurrence silently reduced to first order, which is stable, smooth
@@ -77,7 +77,7 @@ FOUR THINGS DECIDE BIT-IDENTITY HERE
    reimplemented.
 
 =============================================================================
-THE TWO SPECIALIZATIONS, AND WHY THE AXIS IS COMPILE-TIME
+The two specializations, and why the axis is compile-time
 =============================================================================
 
 ``sigma`` is a uniform scalar in most runs and a full volume in a graded one.
@@ -91,7 +91,7 @@ scalar where the signature declares a pointer, or the reverse: a wrong answer
 rather than a crash, and the sibling gate's mutation m13 is exactly it.
 
 =============================================================================
-WHAT THE PREDICATE ADMITS THAT ITS SIBLINGS REFUSE
+What the predicate admits that its siblings refuse
 =============================================================================
 
 A MIRROR FOLD, worth 5 of the corpus's 15 ``update_P`` rows. This sub-step reads
@@ -102,13 +102,13 @@ docstring (stepping.py:1398-1403): "Needs no boundary pass of any kind ... Under
 mirror symmetry it therefore runs over the WHOLE stored array with no ownership
 mask". ``coverage.ADE_MIRROR_ADMISSION`` carries the count and names the rows.
 
-A CYLINDRICAL AXIS IS STILL REFUSED, on the same line, and the asymmetry is
+A cylindrical axis is still refused, on the same line, and the asymmetry is
 deliberate: the mirror clause has 5 corpus rows behind it and Dcyl has 0, so
 admitting the fold moves a measured number and admitting Dcyl would rest on the
 argument alone.
 
 =============================================================================
-PLATFORM FACTS THIS FILE DEPENDS ON (CUDA path, adjudicated 2026-08-15/16)
+Platform facts this file depends on (CUDA path, adjudicated 2026-08-15/16)
 =============================================================================
 
 * SIGNED ZERO: CUDA lowers ``-x`` to ``neg.f32`` and does NOT canonicalize signed
@@ -118,7 +118,7 @@ PLATFORM FACTS THIS FILE DEPENDS ON (CUDA path, adjudicated 2026-08-15/16)
 * DIVISION: none. The one PTX exception on record -- ptxas expanding
   ``div.rn.f32`` into a sequence whose range checks carry ``.FTZ`` in SASS
   regardless of the PTX modifier -- cannot arise in a divide-free family.
-* THE DEVICE STRINGS ARE PURE ASCII, a compile requirement rather than a style
+* The device strings are pure ASCII, a compile requirement rather than a style
   rule: ``cupy.cuda.compiler.compile_using_nvrtc`` writes the source through a
   bare ``open(..., 'w')`` (compiler.py:368), so the bytes go through the
   interpreter's LOCALE encoding -- ASCII under C/POSIX, which is what a
@@ -126,7 +126,7 @@ PLATFORM FACTS THIS FILE DEPENDS ON (CUDA path, adjudicated 2026-08-15/16)
   killed a sibling kernel at its first launch on 2026-08-15.
 
 =============================================================================
-CERTIFIED 2026-08-19 ON THE 0.9.2 BYTES. THE 0.10 FORM IS OWED ITS RE-GATE.
+CERTIFIED 2026-08-19 on the 0.9.2 bytes. The 1.0 form is owed its re-gate.
 =============================================================================
 
 The record below is the verdict on the three-constant form and the whole-grid
@@ -157,14 +157,14 @@ The verdict is ``certification.json`` block ``ade_2026-08-19``, cut by
   and ``f_w`` genuinely coincide -- binding the stored E instead of ``f_w`` is
   "the single most likely silent wrong answer in dispersion"
   (fields.py:1149-1156), and this is the one leg a no-PML test can never supply;
-* three mutations that MUST BE UNCAUGHT (``n1``-``n3``: the two commutations and
+* three mutations that must be uncaught (``n1``-``n3``: the two commutations and
   the load reorder) came back uncaught, so the battery is not a comparator that
   has degenerated into failing everything;
 * the subnormal band is non-vacuous by count: 1 427 880 subnormal operands of
   3 046 432 under the band value class.
 
-WHAT THE VERDICT DOES NOT COVER, counted off the payloads rather than recalled.
-THE MIRROR ADMISSION IS ONLY THINLY MEASURED. Of the 242 guarded cases per
+What the verdict does not cover, counted off the payloads rather than recalled.
+The mirror admission is only thinly measured. Of the 242 guarded cases per
 policy, exactly TWO are folded (``foldX_16x16x8``: one X plane, periodic
 termination, stored 10x16x8, lorentzian, two states driving three components,
 uniform value class, Courant 0.5, one per sigma form). Both are bit-identical
@@ -255,7 +255,7 @@ CERTIFIED_KERNELS = ("update_P_pml_real", "update_P_pml_real_uniform")
 UNCERTIFIED_KERNELS = {}
 
 # =============================================================================
-# THE DEVICE CODE
+# The device code
 # =============================================================================
 #
 # The two strings differ in ONE parameter declaration and ONE load. They are
@@ -278,19 +278,19 @@ _ADE_UPDATE_P_PROLOGUE = r'''
 // MEEP's realnum words, formed on the host (Susceptibility.realnum_constants,
 // susceptibility.cpp:191-195) and passed as float32 scalars.
 //
-// `w` IS MEEP'S DRIVE PER CHUNK (update_pols.cpp:44, `w = f_w ? f_w : f`):
+// `w` is MEEP's drive per chunk (update_pols.cpp:44, `w = f_w ? f_w : f`):
 // f_w_<c> on the cells whose structure chunk carries the component's own (dsigw)
 // layer, and the stored E<c> everywhere else, which there IS the constitutive
 // product (Fields.drive_field). The kernel reads the run's chunk record and loads
 // exactly one of the two arrays per cell. The flag is the half-integer record entry
 // on the component's own axis, the one update_E keys its two forms on.
 //
-// NO OWNERSHIP MASK AND NO GHOST RULE, transcribed rather than forgotten:
+// No ownership mask and no ghost rule, transcribed rather than forgotten:
 // stepping.update_P reads no neighbour and writes every cell of the stored array,
 // folded extent included. A ghost row's flag is its image row's (the record is the
 // ghost-adjusted membership line), which is the cell drive_field composes there.
 //
-// p_out IS A THIRD BUFFER. The caller rotates it into the P slot after the
+// p_out is a third buffer. The caller rotates it into the P slot after the
 // launch; writing p_now in place would destroy P^n before the next step reads it
 // as P^(n-1), turning a second-order recurrence into a first-order one that
 // still converges.
@@ -316,7 +316,7 @@ extern "C" __global__ void update_P_pml_real(
     int j = (idx / nz) % ny;
     int i = idx / (ny * nz);
 
-    // THE CHUNK RECORD (chunk_map.chunk_bounds_record): row r of this lattice and axis
+    // The chunk record (chunk_map.chunk_bounds_record): row r of this lattice and axis
     // lies in a chunk that carries the axis's layer iff (a0 <= r < a1) || (b0 <= r < b1).
     const int cbh_x_a0 = cb[12], cbh_x_a1 = cb[13], cbh_x_b0 = cb[14], cbh_x_b1 = cb[15];
     const int in_h_x = (i >= cbh_x_a0 && i < cbh_x_a1) || (i >= cbh_x_b0 && i < cbh_x_b1);
@@ -355,7 +355,7 @@ extern "C" __global__ void update_P_pml_real_uniform(
     int j = (idx / nz) % ny;
     int i = idx / (ny * nz);
 
-    // THE CHUNK RECORD (chunk_map.chunk_bounds_record): row r of this lattice and axis
+    // The chunk record (chunk_map.chunk_bounds_record): row r of this lattice and axis
     // lies in a chunk that carries the axis's layer iff (a0 <= r < a1) || (b0 <= r < b1).
     const int cbh_x_a0 = cb[12], cbh_x_a1 = cb[13], cbh_x_b0 = cb[14], cbh_x_b1 = cb[15];
     const int in_h_x = (i >= cbh_x_a0 && i < cbh_x_a1) || (i >= cbh_x_b0 && i < cbh_x_b1);
@@ -398,7 +398,7 @@ def _clear_kernel_cache() -> int:
 def _get_kernel(sigma_is_volume: bool):
     """Compile on first use, memoized on (name, options, policy, source).
 
-    THE CODE MAP IS REBUILT PER CALL AND THAT IS LOAD-BEARING, for the reason
+    The code map is rebuilt per call and that is load-bearing, for the reason
     every sibling rebuilds its own: the source is part of the memo key, so the
     map has to be read before there is a key to miss on, and the bit-identity
     probe mutates kernels by assigning over the module-level source string. A map
@@ -495,30 +495,30 @@ def update_P_fused_pml_real(fields: 'Fields', pml: 'PML' = None, *,
                             chunk_bounds, drives=None) -> int:
     """``stepping.update_P``, one launch per driven component. Returns the count.
 
-    THE ROTATION IS THE POINT OF THIS FUNCTION, and it is transcribed from
+    The rotation is the point of this function, and it is transcribed from
     ``dispersion.PolarizationState.update`` rather than reimplemented::
 
         state.P[component]      = scratch     # this step's result
         state.P_prev[component] = p           # what P held
         state._scratch          = p_prev      # the retired history
 
-    POINTERS ARE RESOLVED IMMEDIATELY BEFORE EACH LAUNCH, deliberately. The three
+    Pointers are resolved immediately before each launch, deliberately. The three
     buffers rotate PER COMPONENT inside one call, and the retired history becomes
     the NEXT component's scratch. A launcher that read ``P``/``P_prev``/
     ``_scratch`` once and reused the views would be stale from the second component
     of the first step, and stale in a way that still computes: it would advance one
     buffer twice and freeze another. A single-launch comparison cannot see that.
 
-    THE ROTATION HAPPENS ONLY AFTER THE LAUNCH RETURNS, so a raised launch leaves
+    The rotation happens only after the launch returns, so a raised launch leaves
     the state exactly as it found it rather than half-advanced.
 
-    ``pml`` SAYS WHICH TWO ARRAYS THE DRIVE IS SELECTED FROM (:func:`drive_pair`):
+    ``pml`` says which two arrays the drive is selected from (:func:`drive_pair`):
     the array path's ``stepping.update_P`` deletes it, because the absorber reaches
     the polarization through W alone, and W is ``f_w`` only on the cells whose chunk
     carries the component's layer. ``chunk_bounds`` is the run's chunk record on the
     device (:func:`chunk_record_argument`), from which the kernel decides those cells.
 
-    ``drives`` IS THE GATE'S DOOR and stays, keyword-only: a ``component -> (drive_w,
+    ``drives`` is the gate's door and stays, keyword-only: a ``component -> (drive_w,
     drive_e)`` callable, defaulting to :func:`drive_pair`. A byte gate's control legs
     bind ``f_w`` on every cell (the select removed) or the stored E on every cell,
     each of which must DIVERGE on a case with cells on both sides of a chunk boundary.
@@ -570,7 +570,7 @@ def _require_no_aliasing(p_out, p_now, p_prev, drive_w, drive_e, sigma,
                          component: str) -> None:
     """The output distinct from every input this launch reads.
 
-    THE PREDICATE ALREADY CHECKED THIS and it is checked again at the launch,
+    The predicate already checked this and it is checked again at the launch,
     because the two are answering about different moments. The predicate answers
     about the state as it stood when a planner asked; the rotation moves three
     names between every launch, so what it certified is one permutation and this

@@ -1,6 +1,6 @@
 """What each backend's DEVICE SOURCE is, and how to hash it without a device.
 
-WHY THIS EXISTS. A weld binds a gate's PASS verdict to the sha256 of the Python files the
+Why this exists. A weld binds a gate's PASS verdict to the sha256 of the Python files the
 gate imported. That is a sound rule and a blunt one: it cannot tell a rewritten docstring
 from a changed coefficient, so both cost a device re-run. Measured 2026-08-22, five prose
 mentions in three modules drifted 76 of 70 welds across two tracks.
@@ -13,7 +13,7 @@ Under that rule ANY edit is free provided the device text is untouched, and any 
 the device text is refused. This module gives the same rule the other two spellings it
 needs.
 
-THE THREE SPELLINGS OF "DEVICE SOURCE", and why they differ for real reasons:
+The three spellings of "DEVICE SOURCE", and why they differ for real reasons:
 
 * **CUDA** -- module-level string literals named ``*_kernel_code`` (plus the preludes they
   are concatenated with). Hashing them is EXACT: that text is what the compiler receives.
@@ -27,7 +27,7 @@ THE THREE SPELLINGS OF "DEVICE SOURCE", and why they differ for real reasons:
   constants the function reads, because a ``tl.constexpr`` default or a shared coefficient
   table reaches the compiled kernel exactly as the body does.
 
-WHAT IS DELIBERATELY NOT USED FOR TRITON: the compiled PTX. It is obtainable --
+What is deliberately not used for Triton: the compiled PTX. It is obtainable --
 ``CompiledKernel.asm['ptx']``, which ``parity/meep_gpu/probe_ftz_ptx_census.py`` reads --
 and it is the wrong thing to pin. PTX is compiler OUTPUT: arch-specific (that probe records
 ``-arch=compute_86`` against ``sm_86`` on one host) and Triton-version-specific, so a
@@ -35,12 +35,12 @@ toolchain bump would drift every digest without a line of the package changing. 
 needs the Triton toolchain, so the check could not run on a laptop. CUDA and Metal pin what
 goes INTO the compiler; Triton must do the same.
 
-FAIL CLOSED, ALWAYS. Where a file's device source cannot be established -- a Metal module
-with no ``corpus_digest``, an unparsable file -- this returns nothing rather than something
-weaker, and the caller keeps the strict byte rule. A silent degrade would turn the weld
-into an honour system, which is the failure the welds exist to prevent.
+Fail closed, always. Where a file's device source cannot be established -- a Metal module
+with an emitter its corpus sweep cannot reach, an unparsable file -- this returns nothing
+rather than something weaker, and the caller keeps the strict byte rule. A silent degrade
+would turn the weld into an honour system, which is the failure the welds exist to prevent.
 
-THE PRINCIPLED TIER. A file that CONTAINS device source is pinned by it, and any host-side
+The principled tier. A file that CONTAINS device source is pinned by it, and any host-side
 edit to that file is free. A file that contains NONE -- ``launch.py``, ``driver.py`` -- can
 reach the device only through host logic, so only comments and docstrings are free there
 (:mod:`meep_gpu.code_identity`). That is not a fallback; it is the correct rule for each.
@@ -93,7 +93,7 @@ def _is_jit(node: ast.AST) -> bool:
 def triton_kernel_digests(source: str) -> Dict[str, str]:
     """One digest per ``@triton.jit`` kernel: its body, plus the constants it reads.
 
-    THE CONSTANTS ARE NOT OPTIONAL. A kernel that reads a module-level coefficient table
+    The constants are not optional. A kernel that reads a module-level coefficient table
     or a ``tl.constexpr`` default compiles that value into the program, so a digest over
     the function body alone would call a changed coefficient "unchanged" and release a
     weld on arithmetic nobody ran. Captured ONE level deep, which is the depth the shipped
@@ -133,7 +133,7 @@ def cuda_kernel_digests(source: str) -> Dict[str, str]:
         name = node.targets[0].id
         if not (name.endswith("_code") or name.endswith("PRELUDE")):
             continue
-        # CONCATENATIONS ARE EVALUATED, not skipped. The shipped kernels are spelled
+        # Concatenations are evaluated, not skipped. The shipped kernels are spelled
         # ``_REAL_PML_PRELUDE + r"""..."""``, so a reader that accepted only a bare
         # literal would find 3 of the 14 and silently call the other 11 "no device
         # source" -- releasing every weld that touched them. Evaluated in file order
@@ -154,11 +154,11 @@ def cuda_kernel_digests(source: str) -> Dict[str, str]:
 
 
 def metal_shader_digests(module_path: Union[str, Path]) -> Optional[Dict[str, str]]:
-    """The module's own ``corpus_digest()``, if it publishes one.
+    """The module's own ``corpus_digest()``, or one derived from all of its emitters.
 
-    Returns ``None`` when the module does not, rather than substituting something weaker.
-    Importing is required because the emitted text is what is being hashed, and only the
-    module can enumerate its own specialisations.
+    Returns ``None`` when neither exists, or when any public emitter cannot be swept,
+    rather than substituting something weaker. Importing is required because the emitted
+    text is what is being hashed, and only the module can enumerate its specialisations.
     """
     path = Path(module_path)
     package = f"meep_gpu.metal_kernels.{path.stem}"
@@ -179,7 +179,7 @@ def metal_shader_digests(module_path: Union[str, Path]) -> Optional[Dict[str, st
             return {"corpus": result}
         return None
 
-    # NO PUBLISHED DIGEST: derive one from the module's own emitters, from OUTSIDE the
+    # No published digest: derive one from the module's own emitters, from OUTSIDE the
     # module. Three of forty-one Metal modules published a corpus_digest, which left 40
     # welds unable to pin device source. The obvious repair -- adding corpus_digest to
     # each module -- is self-defeating: editing a kernel module drifts every weld that
@@ -199,7 +199,7 @@ def metal_shader_digests(module_path: Union[str, Path]) -> Optional[Dict[str, st
         try:
             result = _corpus.corpus_digest_for(getattr(module, name), **overrides)
         except Exception:      # noqa: BLE001 - unknown domain, or a corpus that is empty
-            continue           # FAIL CLOSED: this emitter simply is not pinned
+            return None        # fail closed: a digest that skips an emitter pins none of it
         out[name] = str(result["sha256"])
     return out or None
 
@@ -232,13 +232,13 @@ def device_digests(path: Union[str, Path]) -> Tuple[str, Dict[str, str]]:
 def weld_survives_edit(path: Union[str, Path], entry: dict, name: str) -> bool:
     """May a weld keep its PASS although ``name`` no longer hashes to what it recorded?
 
-    ONE HOME FOR THE RULE. Every drift clause in the suite calls this rather than carrying
+    One home for the rule. Every drift clause in the suite calls this rather than carrying
     its own copy, because a rule spelled in twenty places is twenty places to disagree --
     and the disagreement that matters is the one that silently ADMITS an edit.
 
     Two tiers, and which applies is decided by the file, not by the caller:
 
-    * the file CARRIES DEVICE SOURCE and the weld pinned it -- then the device source is
+    * the file carries device source and the weld pinned it -- then the device source is
       the whole question. Any host-side edit is free; any edit reaching the compiled
       program is refused. This is the CUDA track's long-standing rule.
     * the file carries NONE -- then only comments and docstrings are free, because

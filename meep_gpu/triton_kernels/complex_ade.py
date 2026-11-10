@@ -88,7 +88,7 @@ def complex_ade_update_p(
     """One complex64 Lorentz/Drude recurrence, addressed as float32 words.
 
     :func:`kernels.ade_update_p`'s expression, MEEP's isotropic ``update_P``
-    (susceptibility.cpp:251-256) on the four realnum words, stepped PART BY PART:
+    (susceptibility.cpp:251-256) on the four realnum words, stepped part by part:
     MEEP's ``DOCMP2`` loop runs the real recurrence once per stored part, and the
     array path's ``PolarizationState.update`` forms every product through
     ``part_products.scale``. Per part::

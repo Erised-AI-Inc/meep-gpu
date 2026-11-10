@@ -6,14 +6,14 @@ rewritten on 2026-08-19: it named three gates by hand, so six welds added the sa
 day recorded a source_sha256 that nothing recomputed. A hand-maintained list is a
 second place to forget a weld; the record IS the list.
 
-WHY THIS BECAME POSSIBLE. A weld needs two things from a gate - which bytes ran,
+Why this became possible. A weld needs two things from a gate - which bytes ran,
 and whether it passed. Neither was mechanically available on this track until
 2026-08-19: the 30 gates now stamp imported_source_sha256 through gate_provenance,
 and their verdicts are readable through read_verdict, which understands the ten
 different spellings the fleet uses. The artifacts themselves share NO common
 top-level key, so nothing gate-specific could ever have been required.
 
-THE WALK, added 2026-08-30 (third round), and it is why this file grew. Until
+The walk, added 2026-08-30 (the day's third pass), and it is why this file grew. Until
 today the enumerator here read `entry["source_sha256"]` for each top-level entry
 and nothing else, so it compared 259 of the record's 694 digests and reported that
 as "every Metal weld is bound to the live sources". The 435 it did not look at:
@@ -35,10 +35,10 @@ depth - and every 64-hex digest it finds is either CHECKED against this tree in 
 named tier or EXCLUDED BY A NAMED RULE carrying its reason. A digest matching
 neither is UNCLASSIFIED, which fails.
 
-THE FOURTH ROUND, 2026-08-30, took the two "excluded, and the exclusion says
+The fourth 2026-08-30 pass took the two "excluded, and the exclusion says
 WHERE" lines above at their word and checked them. An exclusion is a DECISION NOT
 TO COMPARE and rests on a reason; a reason that points at another test is a
-CITATION, and until this round nothing established that the cited test made the
+CITATION, and until this pass nothing established that the cited test made the
 claim the citation advertised. It did not, on the other track: Triton's
 `host_sha256` deferred to a test that recomputes each digest and then calls
 `device_identity.weld_survives_edit` on a mismatch - the allowance both weld
@@ -55,7 +55,7 @@ contracts refuse by name. So:
     requires the delegate to exist, to compare the whole dict, and to admit no
     allowance call.
 
-Measured 2026-08-30, fourth round:
+Measured 2026-08-30, in the fourth pass:
 
     discovered 694   checked 614   excluded  80   unclassified 0   drifted 0
 
@@ -87,7 +87,7 @@ REPO = PACKAGE.parent
 
 #: Entries that own NO checked digest, excluded BY NAME with the reason. There is
 #: no predicate that quietly drops an entry - see the rule below.
-#: EMPTY FROM 2026-08-30 (fourth round) until the per-architecture migration, and
+#: EMPTY FROM 2026-08-30 (the fourth pass) until the per-architecture migration, and
 #: kept rather than deleted. Its one member then, `metal_kernels`, moved to
 #: NOT_A_DEVICE_GATE when its 56 host digests stopped being deferred and became
 #: checked here. The dict stayed because the RULE stays - an entry that pins
@@ -130,7 +130,7 @@ NOT_A_DEVICE_GATE = {
         "none",
 }
 
-#: Measured 2026-08-30. THE DENOMINATOR IS PART OF THE CHECK: these fail when
+#: Measured 2026-08-30. The denominator is part of the check: these fail when
 #: coverage SHRINKS, so an entry cannot leave the strict comparison by dropping a
 #: key. That is exactly how the Triton track lost ten entries and 88 pinned pairs
 #: - 31 of them live drifts - to a `status == "PASS"` filter for eleven days.
@@ -142,7 +142,7 @@ PIN_FLOOR = 315
 #: THE TOTAL, and the tier floors under it. DISCOVERED is the one the other
 #: floors cannot substitute for: a digest that stops being FOUND also stops being
 #: counted by every floor derived from the walk, so only the total can report it.
-#: Measured 2026-08-30 (third round) by recursing the record.
+#: Measured 2026-08-30 (third pass) by recursing the record.
 DISCOVERED_FLOOR = 694
 CHECKED_FLOOR = 614          # 558 + the 56 host digests, promoted 2026-08-30
 RAW_TIER_FLOOR = 315         # 259 source-map + 56 host-side
@@ -160,6 +160,9 @@ EXPECTED_RULES = {
     "artifact_or_log_digest": 44,
     walk.TIER_DEVICE + ":device_kernel_digest": 40,
     "generated_kernel_source_slot": 36,
+    # The timing-record pins of driver_dispatch.runs[<architecture>].dispatch_preference.
+    # shipped_records, one statement per run: 3 for applegpu_g13s and 3 for applegpu_g16g.
+    walk.TIER_RAW + ":parent_key_named_pin": 6,
     # ARRIVED 2026-09-12, on the FIRST recut this record has ever had. The recut
     # writes `driver_dispatch._source_sha256_recut_log`, a from/to pair per file
     # whose digest moved, and the walk already had a rule and a written reason for
@@ -167,7 +170,7 @@ EXPECTED_RULES = {
     # every pair is stale by construction, because a log that had to match the tree
     # could not record a change. So it is EXCLUDED from the checked set, not pinned.
     #
-    # THE FLOOR IS 2 AND NOT TODAY'S 4, which is the one judgement here. Every other
+    # The floor is 2 and not today's 4, which is the one judgement here. Every other
     # floor in this dict counts COVERAGE, and shrinking coverage is the failure they
     # exist to catch. This one counts how many files the LAST recut happened to move
     # — today two, hence four digests — which is not a coverage property at all. A
@@ -201,7 +204,7 @@ def _record():
 def _census(record=None):
     """EVERY digest in the record, classified. The denominator, structurally derived.
 
-    THE ONE ENUMERATOR. Nothing in this file walks a shape any more - no
+    The one enumerator. Nothing in this file walks a shape any more - no
     `record.items()` loop that assumes a top level, no `entry["source_sha256"]`
     that assumes a key. What the record holds is what gets classified, and a
     digest the classifier has no rule for is UNCLASSIFIED: a failure, not silence.
@@ -220,7 +223,7 @@ def _of_tier(found, tier):
 def _resolve(name, root=REPO):
     """A pinned path, under both spellings this record uses.
 
-    ELEVEN OF THE DEVICE PINS ARE ABSOLUTE - `<repo>/meep_gpu/
+    Eleven of the device pins are absolute - `<repo>/meep_gpu/
     metal_kernels/shaders.py` and friends, written by whichever machine minted the
     weld. That is a portability defect in the record (a clean checkout elsewhere
     would report eleven MISSING lines, a red for the wrong reason), and it is
@@ -280,9 +283,9 @@ def _device_digests_of(path):
 
 
 def _drifted(found, root=REPO):
-    """Every CHECKED digest the tree does not support, ACROSS ALL THREE TIERS.
+    """Every CHECKED digest the tree does not support, across all three tiers.
 
-    THE RULE IS THE RAW BYTES in the raw tier, WITH NO ALLOWANCE, and there is
+    The rule is the raw bytes in the raw tier, with no allowance, and there is
     deliberately no fall-through to a laxer digest. A weld says "this gate ran
     THESE bytes on a device"; anything that decides an edit is harmless is a
     judgement made on the host about a claim only the device can settle, and a
@@ -323,7 +326,7 @@ def _measured_drift(name, entry, root=REPO):
 def _pinned(record=None):
     """Every top-level entry owning at least one CHECKED digest.
 
-    AN ENTRY IS CHECKED IF IT PINS A FILE DIGEST - anywhere in it, in any tier.
+    An entry is checked if it pins a file digest - anywhere in it, in any tier.
     Not whether it passed, not whether it carries a `status` key, and no longer
     whether that digest happens to sit under a top-level `source_sha256`. A
     recorded digest is a claim about this tree and can be checked against this
@@ -352,13 +355,13 @@ def _welds():
 def test_every_discovered_digest_is_checked_or_excluded_by_a_named_rule():
     """THE WALK. Every digest in the record, wherever it lives, has a fate.
 
-    THE TEST THAT REMOVES THE CLASS. The round before it removed a status filter
+    The test that removes the class. The pass before it removed a status filter
     and left a shape filter: an enumerator that knew about top-level entries and
     one key. Here the record is RECURSED - dicts and lists, at any depth - and
     each digest is either CHECKED in a named tier or EXCLUDED BY A NAMED RULE
     carrying its reason. There is no third outcome.
 
-    THE TOTAL IS ASSERTED, not only the checked count: a digest that stops being
+    The total is asserted, not only the checked count: a digest that stops being
     DISCOVERED is the failure no count of what is checked can see.
     """
     found = _census()
@@ -410,7 +413,7 @@ def test_every_record_entry_is_checked_or_excluded_by_name():
     assert not stale, f"the exclusion list names entries the record lacks: {stale}"
     assert not sorted(checked & set(NOT_A_GATE_RECORD)), (
         "an entry that pins bytes is checked; delete the exclusion, not the coverage")
-    # THE SECOND EXCLUSION LIST, held to the same rule, in both directions. An
+    # The second exclusion list, held to the same rule, in both directions. An
     # entry named here must EXIST and must be CHECKED - a name that has stopped
     # matching an entry, or that quietly moved out of the checked set, is a place
     # the next omission hides.
@@ -424,7 +427,7 @@ def test_every_record_entry_is_checked_or_excluded_by_name():
 
 
 def test_no_exclusion_on_this_record_rests_on_an_unevaluated_premise(tmp_path):
-    """AN EXCLUSION IS ONLY AS GOOD AS ITS PREMISE - the fifth sub-form.
+    """An exclusion is only as good as its premise - the fifth sub-form.
 
     BOTH DIRECTIONS, and on this record the first is a NEGATIVE result worth
     asserting: no digest here is excluded on a claim about the checkout, so the
@@ -452,7 +455,7 @@ def test_no_exclusion_on_this_record_rests_on_an_unevaluated_premise(tmp_path):
 
 
 def test_the_generated_slot_delegation_is_real_and_admits_no_allowance():
-    """THE ONE EXCLUSION HERE THAT STILL CITES ANOTHER TEST, and it is asserted.
+    """The one exclusion here that still cites another test, and it is asserted.
 
     36 `kernel_source_sha256` slots are digests of GENERATED shader source
     strings keyed by slot name. Nothing in this checkout is their subject, so
@@ -478,7 +481,7 @@ def test_the_generated_slot_delegation_is_real_and_admits_no_allowance():
         f"exclusions delegating their comparison: {delegating} - each one needs "
         f"its citation asserted here, or its digests checked")
 
-    # THE CITATION IS READ FROM THE REGISTER, not restated here, so the delegate
+    # The citation is read from the register, not restated here, so the delegate
     # this test drives is by construction the one the exclusion names.
     filename, function = walk.DELEGATED_COVERAGE[
         "generated_kernel_source_slot"].split("::")
@@ -506,7 +509,7 @@ def test_the_generated_slot_delegation_is_real_and_admits_no_allowance():
 
 
 # ---------------------------------------------------------------------------
-# THE THREE TIERS
+# The three tiers
 # ---------------------------------------------------------------------------
 
 
@@ -542,13 +545,13 @@ def test_the_metal_welds_are_bound_to_the_live_sources():
 def test_the_metal_code_tier_recomputes_against_the_tree():
     """259 ``code_sha256`` pins, read by NOTHING at the merge bar until today.
 
-    WHY THIS TIER IS THE DANGEROUS ONE TO LEAVE UNCHECKED. `code_sha256` is the
+    Why this tier is the dangerous one to leave unchecked. `code_sha256` is the
     digest that licenses a weld to stand after a comment-only edit - the one field
     whose whole job is to say "the raw bytes moved and it did not matter". An
     unchecked field with that job is how a stale record keeps looking current.
 
     THE RULE, and it is a rule rather than a skip: a `code_sha256` is compared to
-    `code_identity.code_digest` OF THE LIVE FILE, never to the file's source
+    `code_identity.code_digest` of the live file, never to the file's source
     digest. The two tiers MAY legitimately disagree, and exactly one thing makes
     that so - a comment or docstring edit since the gate ran, which is the entire
     clause code_identity licenses. Every other disagreement is a defect: a code
@@ -582,12 +585,12 @@ def test_no_entry_backfills_a_code_digest_beside_a_stale_source_digest():
     green code pin beside a red source pin and reads the green one as the reason
     the red one is fine.
 
-    Until 2026-08-30 (fourth round) only the CUDA contract enforced this, over its
+    Until 2026-08-30 (the fourth pass) only the CUDA contract enforced this, over its
     39 pins. A rule universal in its statement and partial in its coverage is the
     same shape as every other defect removed here, so it is brought across: 259
     pins here, 183 on the Triton side.
 
-    MEASURED: 0 offenders, and 0 source pins drifted - so the green says nothing
+    Measured: 0 offenders, and 0 source pins drifted - so the green says nothing
     on its own, which is what the planted control is for.
     """
     found = _census()
@@ -651,7 +654,7 @@ def test_the_metal_device_tier_recomputes_against_the_tree():
 
 
 # ---------------------------------------------------------------------------
-# THE ARMED CONTROLS
+# The armed controls
 # ---------------------------------------------------------------------------
 
 
@@ -663,7 +666,7 @@ def _plant(root, rel, text):
 
 
 def test_the_drift_check_refuses_a_planted_digest(tmp_path):
-    """THE ARMED CONTROL. This record is green in all three tiers, so without a
+    """The armed control. This record is green in all three tiers, so without a
     control its greens are indistinguishable from a comparison that never ran.
 
     Driven through the WALK rather than a hand-built pin list, so the classifier
@@ -692,21 +695,21 @@ def test_the_drift_check_refuses_a_planted_digest(tmp_path):
         (f"g.runs[0].source_sha256.{rel}", rel,
          f"recorded {wrong[:12]} live {raw_now[:12]}")]
 
-    # A MISSING FILE IS REPORTED, not skipped.
+    # A missing file is reported, not skipped.
     assert _drifted(_census({"g": {"source_sha256": {"meep_gpu/nope.py": raw_now}}})) == [
         ("g.source_sha256.meep_gpu/nope.py", "meep_gpu/nope.py",
          "MISSING FROM THE TREE")]
 
 
 def test_the_code_tier_is_the_clause_code_identity_licenses(tmp_path):
-    """THE ARMED CONTROL FOR THE CODE TIER, in both directions, on a real file.
+    """The armed control for the code tier, in both directions, on a real file.
 
       1. A COMMENT-ONLY EDIT: the raw digest MOVES and the code digest HOLDS.
          This is the whole clause code_identity licenses and the only reason the
          two tiers are allowed to disagree.
       2. A REAL CODE EDIT: both move. The licence does not stretch to it.
       3. A PLANTED CODE DIGEST on an unedited file: reported.
-      4. A CODE DIGEST ON A FILE WITH NO CODE IDENTITY: reported, never skipped.
+      4. A code digest on a file with no code identity: reported, never skipped.
     """
     victim = PACKAGE / "metal_kernels" / "shaders.py"
     rel = victim.relative_to(REPO).as_posix()
@@ -741,7 +744,7 @@ def test_the_code_tier_is_the_clause_code_identity_licenses(tmp_path):
 
 
 def test_the_walker_finds_a_digest_planted_at_a_new_nesting_depth():
-    """THE ARMED CONTROL FOR THE WALK ITSELF. Plant one deeper than anything real.
+    """The armed control for the walk itself. Plant one deeper than anything real.
 
     Without this, a walker that stopped at depth 4 would report zero unclassified
     digests and a perfectly stable discovered count, because this record's deepest
@@ -768,7 +771,7 @@ def test_the_walker_finds_a_digest_planted_at_a_new_nesting_depth():
 
 
 # ---------------------------------------------------------------------------
-# THE ROUTE RECORD: checked through its runs, not as a weld
+# The route record: checked through its runs, not as a weld
 # ---------------------------------------------------------------------------
 #
 # The same rule, in the same words, as the other two weld contracts. What differs
@@ -848,12 +851,13 @@ def test_the_dispatch_record_rule_refuses_what_its_route_runs_do_not_support():
     been watched refusing what it is meant to refuse.
 
     The control first: a copy of the record re-pinned to the tree, holding one live
-    run that reads PASS, is accepted, so the rule can pass. Then four plants on that
+    run that reads PASS, is accepted, so the rule can pass. Then five plants on that
     control, each refused by its own clause and by nothing else: an entry-level
-    ``status`` (d), an emptied ``runs`` (a), a run that reads PASS but binds bytes
-    other than the record's, so that no run is live (a), and the live run reading
-    FAIL (b). The stale run is what holds liveness to ``fastpath.live_capabilities``:
-    a check that read every recorded run as live would accept it."""
+    ``status`` (d), an entry-level statement of the default, the one every cut used to
+    rewrite (d), an emptied ``runs`` (a), a run that reads PASS but binds bytes other
+    than the record's, so that no run is live (a), and the live run reading FAIL (b).
+    The stale run is what holds liveness to ``fastpath.live_capabilities``: a check
+    that read every recorded run as live would accept it."""
     record = _record()
     source = {name: _tree_digest(name)
               for name in record[DISPATCH_RECORD]["source_sha256"]}
@@ -871,6 +875,9 @@ def test_the_dispatch_record_rule_refuses_what_its_route_runs_do_not_support():
     stated = problems_with(status="PASS")
     assert len(stated) == 1 and "beside the digests" in stated[0], stated
     assert "'status'" in stated[0], stated
+    shared = problems_with(dispatch_preference={"run": "a route campaign"})
+    assert len(shared) == 1 and "beside the digests" in shared[0], shared
+    assert "'dispatch_preference'" in shared[0], shared
     emptied = problems_with(**{fastpath.RUNS: {}})
     assert len(emptied) == 1 and emptied[0].startswith("no live run"), emptied
     other_bytes = "0" * 64
@@ -885,14 +892,14 @@ def test_the_dispatch_record_rule_refuses_what_its_route_runs_do_not_support():
 
 
 # ---------------------------------------------------------------------------
-# WHAT A WELD MUST CARRY
+# What a weld must carry
 # ---------------------------------------------------------------------------
 
 
 def _declares_a_weld_is_owed():
     """Families whose own module declares ``WELD_OWED`` non-empty, by name and reason.
 
-    READ OUT OF THE SOURCE, not by import: this file runs on hosts with no Metal
+    Read out of the source, not by import: this file runs on hosts with no Metal
     frontend, and a partition that could only be evaluated on a Mac would be a
     partition nobody checks. The declaration is the Metal spelling of the CUDA
     track's ``UNCERTIFIED_KERNELS`` - a family may stand unwelded only by SAYING
@@ -926,7 +933,7 @@ def test_every_metal_family_is_welded():
     test used to pin its ABSENCE; pinning the absence of a product is exactly the shape
     that goes red when the gap closes, so it now pins the completeness instead.
 
-    THE ONE EXEMPTION IS A DECLARATION, ADDED 2026-09-05, AND IT IS A PARTITION.
+    The one exemption is a declaration, added 2026-09-05, and it is a partition.
     ``fused_hd_pair``'s gate runs to completion and does not release, so the family
     must NOT be welded - and until this change the only way to say so was to leave the
     test red, which makes an honest refusal indistinguishable from a forgotten weld.
@@ -967,7 +974,7 @@ def test_every_metal_weld_carries_its_metadata(field):
     """The gap the CUDA comparison identified in certification.json - 0 of 4 blocks
     carried recorded_utc - is not reintroduced here.
 
-    ASKED OF EVERY LIVE RUN, because these describe one run of the gate and live in
+    Asked of every live run, because these describe one run of the gate and live in
     ``runs[<architecture>]`` (``metal_runs.RUN_FIELDS``), not beside the digests. A
     weld with no live run fails the test below rather than passing this one vacuously.
     """
@@ -981,7 +988,7 @@ def test_every_metal_weld_carries_its_metadata(field):
 def test_every_metal_weld_has_a_live_run_in_the_per_architecture_shape():
     """Every weld holds its runs under ``runs[<GPU architecture>]``, and at least one is live.
 
-    THE SHAPE IS REFUSED BY NAME (``metal_runs.shape_reasons``): no run field beside
+    The shape is refused by name (``metal_runs.shape_reasons``): no run field beside
     the digests, every key an ``applegpu_*`` architecture, every run carrying its
     ``bound_sha256`` and nothing that describes bytes, and every run's host line naming
     the architecture it is keyed by and the torch and frontend it records. A run is
@@ -1023,14 +1030,14 @@ def test_the_migration_note_states_no_digest():
 
 
 # ---------------------------------------------------------------------------
-# THE ARRAY PATH THE WELDS WERE CERTIFIED AGAINST
+# The array path the welds were certified against
 # ---------------------------------------------------------------------------
 
 
 def test_the_metal_ledger_records_the_live_array_path_oracle():
     """Every Metal weld records the array-path behaviour it was certified against.
 
-    THE GAP THIS CLOSES. A Metal gate passes when the kernel returns the array
+    The gap this closes. A Metal gate passes when the kernel returns the array
     path's words, but the welds bind the KERNEL bytes and almost none of them bind an
     array-path module, so an arithmetic change to ``stepping`` and its siblings would
     leave every byte tier above green while every gate run against the new array path

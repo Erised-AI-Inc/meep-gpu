@@ -1,19 +1,19 @@
 """ARM S — ``update_E`` with STORED E and no absorber: a pointwise store.
 
 Closes residual group (F) and the ``update_E`` third of residual group (H) — 3 of
-the 9 slots the no-absorber trio is about. The closure round measured the
+the 9 slots the no-absorber trio is about. The residual closure measured the
 configuration DIVERGENT against every built body at 1536 of 7680 words
 (``F_stored_e_arm_update_E``,
 ``results/residual_closure_2026-08-15/device/bodies/bodies.json``); this is the
 body that was missing.
 
-``no_pml_constitutive`` SPECIFIED THIS ARM AND DECLINED TO BUILD IT. That decision
+``no_pml_constitutive`` specified this arm and declined to build it. That decision
 rested on a demand figure that has since gone stale, and the record there is
 corrected in the same change that builds this file — see
 ``no_pml_constitutive.STORED_E_ARM``. The transcription below is that record's
 ``compose_from`` carried out.
 
-WHAT THE ARRAY PATH DOES
+What the array path does
 ------------------------
 ``stepping.update_E`` (stepping.py:926-993) with an INERT layer and ``stores_E``::
 
@@ -35,31 +35,31 @@ and ``Fields.displacement_minus_polarization`` (fields.py:1079-1105) is::
 
 so the contract this file transcribes, per component, is exactly::
 
-    s   = ((D_c - P_0[c]) - P_1[c]) - ...     LEFT TO RIGHT, polarizations order
+    s   = ((D_c - P_0[c]) - P_1[c]) - ...     left to right, polarizations order
     E_c = s * inv_eps_c                        D-minus-P on the LEFT, stored
 
-THREE THINGS DECIDE BIT-IDENTITY AND ALL THREE ARE INHERITED
+Three things decide bit-identity and all three are inherited
 ------------------------------------------------------------
 They are ``dispersive_update_e``'s, measured there on 30 real Grid/Fields/PML
 cases, and they are inherited because the SOURCE half of the two sub-steps is the
 same source half:
 
-1. **THE SUM OF P CANNOT BE PRE-ACCUMULATED.** ``(D - P0) - P1`` and
+1. **The sum of P cannot be pre-accumulated.** ``(D - P0) - P1`` and
    ``D - (P0 + P1)`` are different float32 numbers — caught 20/20 at two poles,
    0/10 at one, which is the right split for a multi-pole-only defect. Anyone
    reading only the sentence "E = (D - sum P) * inv_eps" will write the wrong one.
-2. **THE POLE ORDER IS LOAD-BEARING AND THE POLE SET IS PER COMPONENT.**
+2. **The pole order is load-bearing and the pole set is per component.**
    ``PolarizationState._driven`` (dispersion.py:640-642) drops any component whose
    sigma is identically zero, so Ex, Ey and Ez can each see a different subset in a
    different order. Reversing it was caught 20/20.
-3. **THE OPERAND ORDER IS KEPT** — ``s * inv_eps``, D-minus-P on the left, as
+3. **The operand order is kept** — ``s * inv_eps``, D-minus-P on the left, as
    stepping.py:1011-1013 writes it. This one is a NULL and is recorded as such:
    float32 multiplication is bitwise commutative and the swap was caught 0/30. It
    is kept for transcription discipline, and a gate leg reporting it "caught" is
    comparing something other than bytes.
 
-WHAT IS DELETED RELATIVE TO ``dispersive_update_e``, AND WHY EACH DELETION IS
-FORCED RATHER THAN CHOSEN
+What is deleted relative to ``dispersive_update_e``, and why each deletion is
+forced rather than chosen
 ---------------------------------------------------------------------------
 * **The ``f_w`` store.** Without an absorber ``Fields.drive_field`` returns the
   STORED E, not ``f_w`` (fields.py:1160-1162), and ``f_w_*`` is not allocated at
@@ -71,7 +71,7 @@ FORCED RATHER THAN CHOSEN
 * **The split-field tail.** ``(E + kps*src) - kms*prev`` becomes ``E = src``. There
   are no ``kps``/``kms`` tables on an inert layer to read.
 
-**THIS IS NOT ``kernels.constitutive_step`` UNDER A RESTATED PREDICATE**, and that
+**This is not ``kernels.constitutive_step`` under a restated predicate**, and that
 was measured rather than assumed (``no_pml_constitutive.STORED_E_ARM``). The
 certified body ACCUMULATES and also writes ``f_w``::
 
@@ -82,7 +82,7 @@ Binding ``kps = 1``, ``kms = 0`` and a zeroed ``f`` does not recover ``f[i] = sr
 away, and ``kms * prev`` is ``0.0 * prev``, which is NaN for a non-finite ``prev``.
 ``f`` is not zero in a real run either — it holds the previous step's E.
 
-THE DEGENERATE CASE IS ADMITTED ON PURPOSE. With no pole driving a component the
+The degenerate case is admitted on purpose. With no pole driving a component the
 array path returns the D array ITSELF from ``displacement_minus_polarization``
 (fields.py:1097-1098) and stores ``D * inv_eps``; the kernel's constexpr chain
 compiles to zero subtractions and stores the same product. A run with ``stores_E``
@@ -102,7 +102,7 @@ one-pole reversal control stayed identical. The readable provenance entry is
 ``triton_no_pml_stored_e_device_gate`` in ``fingerprints.json``. This is a
 correctness result, not a throughput claim.
 
-SUBNORMALS ARE THIS SUB-STEP'S OWN HAZARD and the finding transfers whole from
+Subnormals are this sub-step's own hazard and the finding transfers whole from
 ``dispersive_update_e``: ``D - sum P`` is a CANCELLATION between two nearly equal
 float32 volumes and ``(D - sum P) * inv_eps`` then underflows wherever the field is
 small. Measured there, per operation, with NumPy as the neutral reference: **CuPy
@@ -151,7 +151,7 @@ MAX_POLES = 8
 #: The components this sub-step writes, in the order ``stepping.E_CONSTITUTIVE_TERMS``
 #: (stepping.py:228) iterates them, paired with the D volume each one reads.
 #:
-#: NO AXIS COLUMN, and its absence is the point. ``dispersive_update_e.E_TERMS``
+#: No axis column, and its absence is the point. ``dispersive_update_e.E_TERMS``
 #: carries one because the PML tail indexes a per-axis coefficient table; there is
 #: no coefficient on this path, so a third column here would be a field nothing
 #: reads and the first reader to trust it would index the wrong thing.
@@ -218,7 +218,7 @@ if triton is not None:  # pragma: no cover - device code, certified by the byte 
         device array of pointers would move the count out of the compiled
         specialization, which is where the bit-exact unrolled order lives.
 
-        THE POLES ARE NOT PRE-SUMMED, and that is the whole design. ``D - (P0 + P1)``
+        The poles are not pre-summed, and that is the whole design. ``D - (P0 + P1)``
         is a different float32 number and was caught 20/20 at two poles.
 
         NO ``nx``/``ny``/``nz``. This sub-step is element-wise with no stencil, no
@@ -310,11 +310,11 @@ def stored_e_constitutive_kernel() -> Any:
 def stored_e_constitutive_coverage(fields: Any, pml: Any) -> "_coverage.Coverage":
     """May Arm S step ``update_E`` for this ``(fields, pml)`` pair?
 
-    POSITIVE CLAUSES ONLY. Every requirement is named and checked; a failing clause
+    Positive clauses only. Every requirement is named and checked; a failing clause
     appends its reason and the scan continues, so a refusal reports everything that
     disqualified the run rather than the first thing.
 
-    TWO INVERTED CLAUSES CARRY THE WHOLE DISJOINTNESS, and they invert two
+    Two inverted clauses carry the whole disjointness, and they invert two
     DIFFERENT incumbents, which is why neither one alone would do:
 
     a. **the layer must be INERT.** ``coverage._grid_reasons`` clause 3 requires an
@@ -357,7 +357,7 @@ def stored_e_constitutive_coverage(fields: Any, pml: Any) -> "_coverage.Coverage
       (dispersion.py:687-691), so a malformed ``P_prev`` becomes this kernel's
       ``P`` one step later.
 
-    SIGMA IS NOT CHECKED HERE and must not be: it enters ``update_P``, never this
+    Sigma is not checked here and must not be: it enters ``update_P``, never this
     sub-step. ``no_pml_ade.no_pml_ade_update_p_coverage`` is where it belongs.
 
     NO ``f_w`` CLAUSE, in either direction. The incumbent ``dispersive`` arm's
@@ -385,7 +385,7 @@ def stored_e_constitutive_coverage(fields: Any, pml: Any) -> "_coverage.Coverage
     # nonzero k_point puts the run here (the array path itself raises on real
     # storage with a phase, stepping.py:1893-1908)".
     #
-    # MEASURED 2026-08-17, before the fix: at force_complex_fields=False with
+    # Measured 2026-08-17, before the fix: at force_complex_fields=False with
     # has_bloch=True this clause stayed silent and the family ADMITTED — a
     # float32 body over complex64 volumes, which is a wrong answer rather than a
     # missing one. The complex sibling requires force_complex_fields=True and so
@@ -399,14 +399,14 @@ def stored_e_constitutive_coverage(fields: Any, pml: Any) -> "_coverage.Coverage
             "this body is float32 while Ex/Dx/P are complex64 there — an unbuilt "
             "kernel, not a rounding gap")
 
-    # (a) THE FIRST INVERTED CLAUSE: the layer must be inert.
+    # (a) The first inverted clause: the layer must be inert.
     if pml is not None and getattr(pml, "is_active", False):
         reasons.append(
             "an active PML layer is installed: under one update_E writes "
             "(E + kps*src) - kms*prev and stores f_w (stepping.py:1014-1018), which "
             "is dispersive_update_e's product, not this one's")
 
-    # (a2) ...and ``Fields`` must not be in PML STORAGE MODE either.
+    # (a2) ...and ``Fields`` must not be in PML storage mode either.
     #      ``enable_pml_storage`` is a one-way switch (fields.py:678-721) that sets
     #      ``_pml_active`` — the flag ``drive_field`` branches on. A ``Fields``
     #      switched on beside an inert layer would have update_P read ``f_w``, which
@@ -419,7 +419,7 @@ def stored_e_constitutive_coverage(fields: Any, pml: Any) -> "_coverage.Coverage
             "would hand update_P an f_w this sub-step never writes "
             "(fields.py:1160-1162) — a frozen drive field")
 
-    # (b) THE SECOND INVERTED CLAUSE: E must be stored.
+    # (b) The second inverted clause: E must be stored.
     if not getattr(fields, "stores_E", False):
         reasons.append(
             "E is recomputed from D rather than stored: update_E returns at "
@@ -538,7 +538,7 @@ def poles_per_component(fields: Any) -> Dict[str, Tuple[Any, ...]]:
 
 
 class LivePoleBinding:
-    """The engine route's pole source: ``state.P[c]``, RESOLVED PER LAUNCH.
+    """The engine route's pole source: ``state.P[c]``, resolved per launch.
 
     ``PolarizationState.update`` rotates ``P``/``P_prev``/``_scratch`` for every
     component on every step (dispersion.py:687-691): this step's result lands in
@@ -613,7 +613,7 @@ class StoredEConstitutivePlan:
     deliberately NOT resolved ahead of the loop is the pole POINTERS — see
     :class:`LivePoleBinding`.
 
-    NO ``f_w`` SLOTS AND NO COEFFICIENT SLOTS, and the absence is structural rather
+    NO ``f_w`` slots and no coefficient slots, and the absence is structural rather
     than defaulted: a plan that carried them would let a caller bind an active
     layer's tables to a kernel that ignores them, which is a silent half-step.
     """
@@ -646,7 +646,7 @@ class StoredEConstitutivePlan:
         """Launch the sub-step, in place. Same ``guard`` contract as the other plans.
 
         ``guard=None`` takes the shipped constant; the gate passes True/False
-        explicitly so the contraction guard's effect is MEASURED rather than assumed.
+        explicitly so the contraction guard's effect is measured rather than assumed.
         It matters here even though the tail is a bare store: ``s * inv_eps`` with
         ``s`` a chain of subtractions is a subtract feeding a multiply, which is the
         shape LLVM contracts into ``fma.rn.f32`` when the consumer is one.
@@ -739,7 +739,7 @@ def explain_stored_e(fields: Any, pml: Any) -> "_coverage.Coverage":
 
 
 # ---------------------------------------------------------------------------
-# WIRING AND DEVICE CERTIFICATION — COMPLETE
+# Wiring and device certification — complete
 # ---------------------------------------------------------------------------
 #
 # ``launch.plan_step`` now places this arm immediately before ``no-PML null`` in
@@ -752,7 +752,7 @@ def explain_stored_e(fields: Any, pml: Any) -> "_coverage.Coverage":
 # ``triton_no_pml_stored_e_device_gate`` and licenses opted-in fast-path
 # dispatch.
 #
-# AND ONE DELETION THAT IS NOT OPTIONAL. ``no_pml_constitutive.STORED_E_ARM`` is
+# And one deletion that is not optional. ``no_pml_constitutive.STORED_E_ARM`` is
 # the record of the decision NOT to build this arm. It is corrected in the same
 # change that adds this file — ``built`` is True and ``measured_demand`` states
 # what the arm now buys — because a record that says "not built" beside a built

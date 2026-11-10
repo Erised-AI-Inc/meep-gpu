@@ -1,6 +1,6 @@
 """Byte gate for the Metal NO-PML CONSTITUTIVE family.
 
-THIS FAMILY SHIPS NO KERNEL, so this gate is shaped differently from the certified
+This family ships no kernel, so this gate is shaped differently from the certified
 PML one and the difference is the point rather than a shortcut. There is no
 kernel-vs-reference sweep because there is no kernel; there is no contraction-guard
 leg because there is no source to build in two modes; there is no launch counter
@@ -9,7 +9,7 @@ because there is no launch. The certifying leg is an IDENTITY leg — ``stepping
 EVERY live array byte-unchanged — and its control is the same assertion on
 configurations the predicate refuses, where it must FAIL.
 
-**A NULL AGREEING WITH A NO-OP IS TRIVIALLY IDENTICAL.** That is this family's
+**A null agreeing with a no-op is trivially identical.** That is this family's
 characteristic failure and every leg here is built around it. On the Triton track
 the pass condition "the step MOVED STATE" caught a live row that had been
 certifying two frozen states. So: every identity case carries a nonzero-word floor
@@ -30,19 +30,19 @@ THE LEGS:
                 METAL_NON_CLAUSES
   over_coverage the OTHER direction: every volume poisoned and the sub-step proved
                 to touch none (with three refused configurations as the controls
-                that MUST trip it), the cited return sites READ OUT OF stepping.py,
+                that MUST trip it), the cited return sites read out of stepping.py,
                 every sibling clause on every admitted configuration mapped to a
                 declared non-clause key (unmapped FAILS), and the arm gate proved
                 both to change no verdict and to actually be there
   overlap       no two registered arms admit one slot on any configuration
-  residency     THE METAL LEG: the measured false refusal and its fix, with the
+  residency     the Metal leg: the measured false refusal and its fix, with the
                 unallocated demanded set COUNTED per side
   precondition  the subnormal census, and why its shape differs on this family
   mutations     armed, run-counted, three-valued, mutant-module sha256 asserted,
-                and each row carries what its probe MEASURED
+                and each row carries what its probe measured
   engine        the substitution across N whole steps, with a source-free control
 
-WHAT THE 2026-08-15 AUDIT CHANGED, because a gate that quietly grew teeth is worse
+What the 2026-08-15 audit changed, because a gate that quietly grew teeth is worse
 than one that never had them:
 
 * the breadth leg asserted only ``not sibling.covered``. Measured: every grid in
@@ -66,7 +66,7 @@ than one that never had them:
   reason claimed a residency refusal its probe never computed. Both probes now
   measure what their rows claim.
 
-WHAT THE SECOND 2026-08-15 AUDIT PASS ADDED, and both are holes rather than polish:
+What the second 2026-08-15 audit pass added, and both are holes rather than polish:
 
 * **the slot->side table was a byte-visible ARMING HOLE.** ``NULL_SLOTS`` was a
   second literal beside the imported ``NULL_SIDES``. Measured with the two entries
@@ -90,12 +90,12 @@ WHAT THE SECOND 2026-08-15 AUDIT PASS ADDED, and both are holes rather than poli
   where ``launch.live_sub_steps`` derives six entries. No verdict moved — which is
   why it was invisible — and the artifact now states the derived set.
 
-WHAT IS METAL-SPECIFIC HERE, and it is the reason this gate exists beside the
+What is Metal-specific here, and it is the reason this gate exists beside the
 Triton family's rather than being satisfied by it:
 
-* **the residency leg.** Tranche 1 composed this family through
-  ``launch.plan_step`` and its residency verdict REFUSED the one configuration the
-  family exists for, demanding mirrors of ``Hx`` and ``f_w_Hx`` — arrays a no-PML
+* **the residency leg.** The first Metal certification composed this family
+  through ``launch.plan_step`` and its residency verdict REFUSED the one configuration
+  the family exists for, demanding mirrors of ``Hx`` and ``f_w_Hx`` — arrays a no-PML
   run does not allocate. Recorded as ``residency_covered: false`` on the
   ``no_pml_no_storage`` row of ``results/metal_pml_2026-08-14/gate.json``, which
   passed because leg 8 recorded the field without asserting it. This leg asserts
@@ -117,14 +117,14 @@ PREDICTED NULLS, recorded WITH reasons rather than dropped:
   the ``controls`` leg and the record says so there;
 * the CONTRACTION GUARD is not measured: there is no source, so there is no
   variant of one, and ``variants`` is asserted EMPTY rather than compared;
-* FLUX/DFT SAMPLE COUNTS are not applicable — no monitor is in this family's path.
+* flux/DFT sample counts are not applicable — no monitor is in this family's path.
   The engine leg asserts its own step count instead, which is the same guarantee
   for the thing it actually counts;
 * the STEP BUDGET on the covered arm is unbounded because nothing rounds. This gate
   does not raise the composed whole-step budget and does not claim to.
 
-STATED WEAKNESS, inherited and restated because it applies here too: there is NO
-PTX-EQUIVALENT AUDIT on this executor. ``compile_shader`` exposes no disassembly.
+STATED WEAKNESS, inherited and restated because it applies here too: there is no
+PTX-equivalent audit on this executor. ``compile_shader`` exposes no disassembly.
 It bites less on this family than on any other — nothing is compiled — but the
 claim's shape is the same and the artifact says so.
 
@@ -185,7 +185,7 @@ from meep_gpu.pml import PML  # noqa: E402
 # the same tree, so its scaffolding is pinned in the file whose sha256 the
 # artifact records. The duplication is ~60 lines and is stated rather than hidden.
 #
-# THE VACUITY DISCIPLINE IS NOT IN THESE HELPERS. They make the checks one call;
+# The vacuity discipline is not in these helpers. They make the checks one call;
 # they cannot make them happen. Every leg below still floors its own census.
 
 def log(message: str) -> None:
@@ -303,7 +303,7 @@ def assert_mutation(label: str, verdict: str, caught: int, ran: int,
 class ModuleMutator:
     """Compile a text-edited copy of a module into a FRESH module object.
 
-    THE MUTATION SEAM FOR A FAMILY THAT SHIPS NO KERNEL. A kernel family plants
+    The mutation seam for a family that ships no kernel. A kernel family plants
     its defect in a shader source; a family whose whole product is a PREDICATE has
     to plant it in Python, and the hazard is the mirror image of a stale kernel
     cache — importing the shipped module under the mutant's name, so the "mutant"
@@ -383,7 +383,7 @@ CANNOT_CERTIFY = 75
 def run_legs(legs, payload: Dict[str, Any], out: str, wanted, required) -> int:
     """Run the requested legs, write the summary, return the exit code.
 
-    THE LEG SET IS PART OF THE CONTRACT. ``--legs`` is for debugging and must not
+    The leg set is part of the contract. ``--legs`` is for debugging and must not
     be able to mint a green artifact: a run that skipped a required leg records
     ``status: partial`` and exits :data:`CANNOT_CERTIFY`, naming what is missing.
     """
@@ -444,7 +444,7 @@ def build(cell=(1.2, 1.0, 0.9), boundaries="periodic", courant=COURANT_NP2,
           poles=()):
     """A real Grid/Fields/PML triple, seeded in three deliberate classes.
 
-    ``layer=False`` builds a run with NO ``PML`` OBJECT AT ALL. An inert layer and
+    ``layer=False`` builds a run with NO ``PML`` object at all. An inert layer and
     an absent one are DIFFERENT configurations reaching the same ``stepping``
     return, and every row records which it was rather than conflating them.
 
@@ -519,7 +519,7 @@ class QuietLorentzianPole(UnrecognisedPole):
     ``UnrecognisedPole`` trips clause 9b (the KIND) and the E-side registration
     clause at once, so it cannot show which one is being measured. This one is
     ``lorentzian``: 9b is silent, and the only thing left for the sibling to refuse
-    is that a polarization is REGISTERED AT ALL. That is the clause this family
+    is that a polarization is registered at all. That is the clause this family
     deliberately does not carry — it asks ``driven()`` instead, because a pole whose
     sigma is identically zero drives nothing and does not switch storage on
     (driver.py:1542-1547), so ``stepping.update_E`` really does return at :954 with a
@@ -613,7 +613,7 @@ IDENTITY_CASES: Tuple[Dict[str, Any], ...] = (
     {"name": "one_cell_z", "kwargs": dict(cell=(1.2, 1.0, 0.0), dimensions=2)},
 )
 
-#: Admitted HERE and refused by a Metal KERNEL predicate NAMING THE CLAUSE this
+#: Admitted HERE and refused by a Metal KERNEL predicate naming the clause this
 #: family drops. Both halves are pass conditions, and the second half is the one
 #: that was missing: asserting only ``not sibling.covered`` was VACUOUS, because
 #: every grid in this sweep has an inactive absorber and is therefore already
@@ -689,7 +689,7 @@ BREADTH_CASES: Tuple[Dict[str, Any], ...] = (
      "sibling": ("constitutive", "H"),
      "sibling_clause": "chi2/chi3 is installed",
      "refused_elsewhere": ("coverage._grid_reasons clause 10, on EVERY sub-step. "
-                           "THE ONE SIDED ROW: the null admits H (update_H returns "
+                           "The one sided row: the null admits H (update_H returns "
                            "at :916-917 whatever is installed) and REFUSES E, "
                            "conservatively — CONSERVATIVE_CLAUSES["
                            "'chi2_chi3_installed_without_stored_e']"),
@@ -710,7 +710,7 @@ BREADTH_CASES: Tuple[Dict[str, Any], ...] = (
      "sibling": ("constitutive", "E"),
      "sibling_clause": "a susceptibility is registered",
      "refused_elsewhere": ("coverage.constitutive_coverage's E-side registration "
-                           "clause. THIS FAMILY ASKS driven() INSTEAD: a pole whose "
+                           "clause. This family asks driven() INSTEAD: a pole whose "
                            "sigma is identically zero drives nothing, does not "
                            "switch storage on (driver.py:1542-1547) and reaches the "
                            "return at stepping.py:1274-1275, so refusing on registration "
@@ -752,7 +752,7 @@ NON_CLAUSE_CHECKS: Dict[str, str] = {
 #: unmeasurable from inside a process that has already imported torch to stamp its
 #: own environment record — which this gate does, at ``environment()``.
 #:
-#: THE VERDICT IS A JSON LINE, PARSED EXACTLY, and that is not fussiness: the first
+#: The verdict is a JSON line, parsed exactly, and that is not fussiness: the first
 #: version of this check read ``"torch_imported=False" not in stdout``, and a probe
 #: that armed it by appending a second print — leaving BOTH answers in the stream —
 #: passed. A substring test over a whole stdout is satisfied by any line that says
@@ -799,7 +799,7 @@ SIDE_SLOT = {"H": "update_H", "E": "update_E"}
 
 
 def side_call(side: str, fields: Any, pml: Any) -> None:
-    """Run the oracle for one side, resolved AT CALL TIME.
+    """Run the oracle for one side, resolved at call time.
 
     THIS WAS ``SIDE_CALL = {"H": stepping.update_H, ...}`` — a dict of function
     OBJECTS captured at import. Every other oracle call site in this gate (ten of
@@ -810,7 +810,7 @@ def side_call(side: str, fields: Any, pml: Any) -> None:
     prove the identity leg is not vacuous, so binding the two legs to potentially
     DIFFERENT function objects breaks the join those two halves are supposed to make.
 
-    MEASURED 2026-08-15 rather than argued, by ``probe_metal_no_pml_gate_arming.py``
+    Measured 2026-08-15 rather than argued, by ``probe_metal_no_pml_gate_arming.py``
     injection ``f5_control_goes_quiet``: with ``stepping.update_H`` replaced by a
     no-op, this leg still reported ``moved={'H': 5176, 'E': 5215}`` and PASSED — a
     word count produced by a function that was no longer the oracle. The gate went
@@ -831,7 +831,7 @@ def side_call(side: str, fields: Any, pml: Any) -> None:
 def leg_identity(payload: Dict[str, Any], out: str) -> None:
     """The covered arm: admit, run the NULL PLAN N cycles, byte-compare, census.
 
-    THE FLOORS ARE PASS CONDITIONS, NOT STATISTICS. A zero-init ``Fields``
+    The floors are pass conditions, not statistics. A zero-init ``Fields``
     satisfies "no bytes moved" trivially, so each case must prove it constructed
     the classes it claims: nonzero words, negative zeros, and subnormal words.
 
@@ -851,7 +851,7 @@ def leg_identity(payload: Dict[str, Any], out: str) -> None:
         census = census_of(before)
         zeros = negative_zeros_of(before)
 
-        # COMPARED AFTER EVERY CYCLE, not only after the last. Keeping the final
+        # Compared after every cycle, not only after the last. Keeping the final
         # comparison alone would let a defect that moved bytes on cycle 1 and moved
         # them back on cycle 4 pass; the budget is the claim's extent, so every
         # point inside it is a pass condition.
@@ -936,7 +936,7 @@ def leg_controls(payload: Dict[str, Any], out: str) -> None:
     rows: List[Dict[str, Any]] = []
     started = time.time()
 
-    # NO IMPORT-TIME SNAPSHOT OF THE ORACLE MAY SURVIVE IN THIS MODULE. Comparing
+    # No import-time snapshot of the oracle may survive in this module. Comparing
     # ``getattr(stepping, name)`` to ``stepping.update_H`` would be a TAUTOLOGY —
     # both resolve at the same instant — so the check that means something is
     # structural: scan this gate's own globals for any callable that IS one of
@@ -1010,7 +1010,7 @@ def _sibling_verdict(kind: str, argument: str, fields: Any, pml: Any) -> Any:
 def _no_torch_subprocess() -> Dict[str, Any]:
     """Run the whole covered path in a fresh interpreter; did it import torch?
 
-    EXACTLY ONE MARKED LINE IS ACCEPTED, and zero or two is a failure rather than a
+    Exactly one marked line is accepted, and zero or two is a failure rather than a
     parse to be recovered from. A stream carrying two answers is a stream in which
     the assertion below can be satisfied by whichever one it happens to find first.
     """
@@ -1034,7 +1034,7 @@ def _no_torch_subprocess() -> Dict[str, Any]:
             "stderr": completed.stderr.strip()[-2000:],
             "marked_lines": len(marked),
             "verdict": verdict,
-            # UNPARSEABLE IS A FAILURE, not an unknown: `None` here reads as
+            # Unparseable is a failure, not an unknown: `None` here reads as
             # "torch was imported" so a broken harness cannot mint a pass.
             "torch_imported": True if verdict is None else bool(
                 verdict.get("torch_imported", True)),
@@ -1046,22 +1046,22 @@ def leg_breadth(payload: Dict[str, Any], out: str) -> None:
 
     Admitted on a fold, complex storage, a Bloch phase, beta, BFAST, a cylindrical
     axis, a conductivity and a non-contiguous volume — and byte-identical on each —
-    while a Metal KERNEL predicate REFUSES each one NAMING THE CLAUSE this family
+    while a Metal KERNEL predicate REFUSES each one naming the clause this family
     drops.
 
-    THE NAMED-CLAUSE HALF IS WHAT MAKES THE LEG NON-VACUOUS, and it was not here.
+    The named-clause half is what makes the leg non-vacuous, and it was not here.
     Asserting ``not sibling.covered`` is satisfied on every one of these grids by
     ``_grid_reasons`` clause 3 alone — they all have an inactive absorber — so the
     old assertion would have held even if the fold, Bloch and BFAST clauses had all
     been deleted from the sibling. :data:`UNIVERSAL_SIBLING_CLAUSE` is subtracted
     and the named clause is looked for in what remains.
 
-    THE ``metallic_walls`` ROW IS THE CONTROL for that assertion: metallic is inside
+    The ``metallic_walls`` row is the control for that assertion: metallic is inside
     ``COVERED_BOUNDARIES``, so it exercises no omitted clause, and the leg asserts
     its residual carries NO grid-feature clause. Without it "the named clause was
     found" could be a marker that matches everything.
 
-    THE TOTALITY ASSERTION closes the table's own rule: every
+    The totality assertion closes the table's own rule: every
     :data:`family.METAL_NON_CLAUSES` key must be exercised by a case here or named
     in :data:`NON_CLAUSE_CHECKS`, and the three checks in that mapping RUN.
     """
@@ -1069,7 +1069,7 @@ def leg_breadth(payload: Dict[str, Any], out: str) -> None:
     started = time.time()
     for index, case in enumerate(BREADTH_CASES, start=1):
         _, fields, pml = build(**case["kwargs"])
-        # THE SIDES THIS ROW CLAIMS, declared, because one row legitimately claims
+        # The sides this row claims, declared, because one row legitimately claims
         # only ONE. `chi3_h_side_only` admits H and is REFUSED on E, and a leg that
         # demanded both would either have to drop the row or weaken the assertion
         # for every other row. Declared per row, asserted per row, and the refused
@@ -1233,7 +1233,7 @@ def leg_breadth(payload: Dict[str, Any], out: str) -> None:
         f"METAL_NON_CLAUSES entries {orphans} have no case in this leg and no "
         f"named check: the table's own rule is that an entry with no case is a "
         f"claim nothing measured")
-    # AND THE OTHER DIRECTION OF THE SAME JOIN: a case or check naming a key the
+    # And the other direction of the same join: a case or check naming a key the
     # table does not carry is a case measuring a claim nobody made. Without it,
     # deleting an entry leaves both this assertion and `orphans` satisfied.
     unknown = sorted(covered_entries - set(family.METAL_NON_CLAUSES))
@@ -1281,7 +1281,7 @@ def leg_breadth(payload: Dict[str, Any], out: str) -> None:
 #
 # `leg_breadth` asserts table -> case: every METAL_NON_CLAUSES key has a home. That
 # cannot find an omission, because an omitted entry has no key to be orphaned.
-# MEASURED 2026-08-15 by running the missing direction by hand: the siblings fire
+# Measured 2026-08-15 by running the missing direction by hand: the siblings fire
 # FOURTEEN distinct clause families on configurations this family ADMITS and the
 # table named ELEVEN. `chi2/chi3 is installed` (H side), `<volume> is not allocated`
 # and `kind 'sellmeier' is outside (...)` had no entry at all.
@@ -1307,7 +1307,7 @@ CLAUSE_MARKERS: Dict[str, str] = {
     "conductivity is installed but condfac_for": "conductivity",
     "a mirror plane is active": "fold",
     "is folded by a mirror plane": "fold",
-    # SUBSUMED, NOT OMITTED, and mapped by name rather than given an entry.
+    # Subsumed, not omitted, and mapped by name rather than given an entry.
     # COVERED_BOUNDARIES is ('periodic','metallic') and the only other kinds
     # stepping._boundary_kinds can return are 'mirror' and 'axis'
     # (stepping.py:3067-3071), so the ghost clause never fires without the fold or
@@ -1322,7 +1322,7 @@ CLAUSE_MARKERS: Dict[str, str] = {
     "special_kz beta=": "beta",
     "residency": "residency_declaration",
     "is outside ('lorentzian', 'drude')": "susceptibility_kind",
-    # FOUND BY THIS LEG on the cut that introduced it. The sibling refuses on
+    # Found by this leg on the cut that introduced it. The sibling refuses on
     # REGISTRATION; this family asks driven(), because a pole whose sigma is
     # identically zero drives nothing, does not switch storage on
     # (driver.py:1542-1547) and really does reach the return at stepping.py:1274-1275.
@@ -1358,7 +1358,7 @@ POISON_VOLUMES = STATE + ("scratch",)
 class PoisonedVolume:
     """Not ``None`` — so an allocation check passes — and unusable as an array.
 
-    THE MEASUREMENT THE WHOLE NON-CLAUSE TABLE RESTS ON. "A sub-step that returns
+    The measurement the whole non-clause table rests on. "A sub-step that returns
     before its first statement reads no pointer, forms no index and rounds no
     float" was a READING of stepping.py:1229-1230 / :1274-1275 and nothing executed it.
     Rebinding every allocated volume to this object and calling the real sub-step
@@ -1430,7 +1430,7 @@ SWEEP_CASES: Tuple[Tuple[str, Dict[str, Any]], ...] = tuple(
 def _map_reason(reason: str) -> Optional[str]:
     """Which METAL_NON_CLAUSES key explains dropping this sibling clause, if any.
 
-    LONGEST MARKER FIRST, so a specific marker wins over a generic one. STATED
+    Longest marker first, so a specific marker wins over a generic one. STATED
     BOUND: this is substring matching, so a NEW sibling clause that happens to
     contain an existing marker would be mapped rather than flagged. What the leg
     catches is therefore an unrecorded clause that shares no wording with a
@@ -1506,12 +1506,12 @@ def leg_over_coverage(payload: Dict[str, Any], out: str) -> None:
                 f"Every entry in METAL_NON_CLAUSES rests on it not doing that")
             assert verdict.covered, (label, verdict.reasons)
 
-    # ---- 1b. the CITED return sites, READ OUT OF stepping.py -------------
+    # ---- 1b. the CITED return sites, read out of stepping.py -------------
     #
     # The artifact stamps `family.return_sites` (``NULL_SIDES[side]["return_site"]``)
-    # and nothing checked them. This round has already found TWO stale citations in
-    # this tranche (driver.py:3212-3225 pointing into a docstring, and the same one
-    # corrected once already in the family module), and the 0.10 array path moved
+    # and nothing checked them. TWO stale citations had already been found for this
+    # family (driver.py:3212-3225 pointing into a docstring, and the same one
+    # corrected once already in the family module), and the 1.0 array path moved
     # both sites again, so a cited line number that no leg reads is exactly the class
     # of claim that rots. Read the cited span out of the oracle and require it to be
     # an ASCENDING range that OPENS on the no-PML guard (``if not ...``) and ENDS in a
@@ -1541,7 +1541,7 @@ def leg_over_coverage(payload: Dict[str, Any], out: str) -> None:
         assert cited[-1].strip().startswith("return"), (
             f"{site} is cited as {spec['sub_step']}'s no-PML return and its last "
             f"line is {cited[-1].strip()!r}. A citation no leg reads is how "
-            f"driver.py:3212-3225 survived a round pointing into a docstring")
+            f"driver.py:3212-3225 survived for a time pointing into a docstring")
         assert enclosing == f"def {spec['sub_step']}" or enclosing.startswith(
             f"def {spec['sub_step']}("), (
             f"{site} is inside {enclosing.split('(')[0]!r}, not "
@@ -1549,7 +1549,7 @@ def leg_over_coverage(payload: Dict[str, Any], out: str) -> None:
     payload["legs"]["over_coverage_citations"] = citation_rows
     save(payload, out)
 
-    # THE CONTROLS ARE A PASS CONDITION OF THEIR OWN, not a row count. Without them
+    # The controls are a pass condition of their own, not a row count. Without them
     # the four covered rows are a tautology: a poison nothing can trip returns clean
     # everywhere. A leg that ran with its controls removed measured nothing.
     controls_raised = sum(1 for row in poison_rows
@@ -1721,9 +1721,9 @@ OVERLAP_CASES = (
 def leg_overlap(payload: Dict[str, Any], out: str) -> None:
     """Every registered arm's verdict on every configuration; at most one admits.
 
-    THE PARTITION IS BY CONSTRUCTION — the null's clause 2 and every kernel
+    The partition is by construction — the null's clause 2 and every kernel
     predicate's clause 3 are the same call to ``pml.is_active`` — and it is
-    MEASURED rather than asserted, because "by construction" is exactly the kind of
+    measured rather than asserted, because "by construction" is exactly the kind of
     claim that stops being true when a clause moves.
 
     The row also records where NOTHING admits, which is a real and correct answer
@@ -1776,7 +1776,7 @@ def leg_overlap(payload: Dict[str, Any], out: str) -> None:
 # ---------------------------------------------------------------------------
 
 def leg_residency(payload: Dict[str, Any], out: str) -> None:
-    """THE MEASURED DEFECT AND ITS FIX, asserted in both directions.
+    """The measured defect and its fix, asserted in both directions.
 
     Recorded in ``results/metal_pml_2026-08-14/gate.json`` as
     ``residency_covered: false`` on the ``no_pml_no_storage`` row — the one
@@ -1785,9 +1785,9 @@ def leg_residency(payload: Dict[str, Any], out: str) -> None:
 
     Three rows, and all three are pass conditions:
 
-    1. ``planned`` — the tranche-1 declaration. MUST REFUSE, naming volumes a
-       no-PML run does not allocate. If this stops refusing, the fix stopped
-       being necessary and the leg should be re-derived rather than deleted;
+    1. ``planned`` — the first Metal certification's declaration. MUST REFUSE,
+       naming volumes a no-PML run does not allocate. If this stops refusing, the
+       fix stopped being necessary and the leg should be re-derived rather than deleted;
     2. ``null`` — the fix. MUST HOLD;
     3. ``composed`` — the same question through ``launch.plan_step``, which is the
        path the engine would take. MUST HOLD, and the slots must actually be
@@ -1798,7 +1798,7 @@ def leg_residency(payload: Dict[str, Any], out: str) -> None:
 
     planned = metal_coverage.residency_coverage(
         mirrored=(), planned=("update_H", "update_E"), live=LIVE_STEP)
-    # COUNTED, NOT SAMPLED. This used to probe three hand-picked names ("Hx",
+    # Counted, not sampled. This used to probe three hand-picked names ("Hx",
     # "f_w_Hx", "f_w_Ex") and record whichever of them happened to be None, while
     # three files stated the count as FOUR of nine per side. Measured over the whole
     # demanded set: SIX of nine, both sides. A number nobody counts is a number that
@@ -1814,7 +1814,7 @@ def leg_residency(payload: Dict[str, Any], out: str) -> None:
     unallocated = sorted({name for spec in per_side.values()
                           for name in spec["unallocated"]})
     rows.append({
-        "declaration": "planned (tranche 1)", "covered": bool(planned.covered),
+        "declaration": "planned (first Metal certification)", "covered": bool(planned.covered),
         "reasons": list(planned.reasons),
         "volumes_demanded_but_not_allocated": unallocated,
         "per_side": per_side,
@@ -1871,9 +1871,9 @@ def leg_residency(payload: Dict[str, Any], out: str) -> None:
     save(payload, out)
 
     assert not planned.covered, (
-        "the tranche-1 declaration NO LONGER REFUSES. That is not a pass: this "
-        "leg pins the defect the null declaration exists to fix, and if the "
-        "refusal is gone the model changed underneath it")
+        "the first Metal certification's declaration no longer refuses. That is "
+        "not a pass: this leg pins the defect the null declaration exists to fix, "
+        "and if the refusal is gone the model changed underneath it")
     assert unallocated, (
         "no demanded volume was unallocated, so the sharpest half of the finding "
         "— that the refusal named arrays that do not exist — was not reproduced")
@@ -1909,9 +1909,9 @@ def leg_precondition(payload: Dict[str, Any], out: str) -> None:
     subnormal-free precondition: no operand, result or intermediate may land in
     the band, because the MPS executor flushes natively and cannot be told not to.
 
-    THIS FAMILY HAS NO OPERAND, NO RESULT AND NO INTERMEDIATE. The sub-step returns
+    This family has no operand, no result and no intermediate. The sub-step returns
     at stepping.py:1229-1230 / :1274-1275 before reading an array, so the window over
-    them is EMPTY BY CONSTRUCTION — and an empty window is VACUOUS, not clean, which
+    them is empty by construction — and an empty window is VACUOUS, not clean, which
     is exactly what ``SubnormalWindow`` refuses to call a pass. So the verdict is
     NOT ``assert_clean_or_refuse``; the honest shape is recorded instead:
 
@@ -1990,7 +1990,7 @@ def leg_precondition(payload: Dict[str, Any], out: str) -> None:
 
 #: ``must_catch``: True must flip a verdict | None record only | False must not.
 #:
-#: EVERY MUTANT IS A MODULE, not a shader — this family compiles nothing. The
+#: Every mutant is a module, not a shader — this family compiles nothing. The
 #: hazard is the mirror image of a stale kernel cache (importing the shipped
 #: predicate under the mutant's name) and is closed the same way: the mutant's
 #: source sha256 must DIFFER from the shipped one, asserted before the row counts.
@@ -2061,7 +2061,7 @@ MUTATIONS: Dict[str, Dict[str, Any]] = {
 }
 
 
-#: What each mutation probe MEASURED, filled in by :func:`_probe_mutant` so a row
+#: What each mutation probe measured, filled in by :func:`_probe_mutant` so a row
 #: classified ``byte_visible`` carries the words it would have cost rather than a
 #: label. Keyed by mutation name; read by :func:`leg_mutations` into the row.
 _PROBE_EVIDENCE: Dict[str, Any] = {}
@@ -2071,7 +2071,7 @@ def _probe_mutant(module: Any, kind: str, kwargs: Dict[str, Any]) -> bool:
     """Run one mutant against the shipped answer. True when the defect was CAUGHT."""
     _, fields, pml = build(**kwargs)
     if kind == "active":
-        # THE SHIPPED PREDICATE REFUSES; A MUTANT THAT ADMITS IS CAUGHT — and the
+        # The shipped predicate refuses; a mutant that admits is caught — and the
         # row calls itself `byte_visible`, so the probe MEASURES the bytes rather
         # than leaving the classification to the label. On the configuration the
         # mutant admits, the array path's update_H really does run the dsigw
@@ -2101,7 +2101,7 @@ def _probe_mutant(module: Any, kind: str, kwargs: Dict[str, Any]) -> bool:
         if plan is None:
             _PROBE_EVIDENCE["residency"] = {"plan": None}
             return True
-        # CARRIED THROUGH THE VERDICT, not read off the attribute. The row's `why`
+        # Carried through the verdict, not read off the attribute. The row's `why`
         # claims the mutation "restores the tranche-1 false refusal"; reading
         # `performs_device_work` proves only that the flag moved. So the flag is
         # routed through exactly the split `launch.plan_step` performs, and the
@@ -2190,7 +2190,7 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
         row = {"mutation": label, "verdict": verdict, "kind": entry["kind"],
                "must_catch": entry["must_catch"], "why": entry["why"],
                "ran": ran, "caught": caught, "runs_counted": launches,
-               # WHAT THE PROBE MEASURED, not only what it concluded. A row that
+               # What the probe measured, not only what it concluded. A row that
                # calls itself `byte_visible` while its probe read a boolean is a
                # classification nothing supports; the `byte_visible` row now carries
                # the words the defect would have deleted, and the residency row
@@ -2219,7 +2219,7 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
         "note": ("a null family's predicate guards two different things and only "
                  "one of them moves floats; the split is recorded so a caught row "
                  "cannot claim a numerical defect it never had — and the "
-                 "byte_visible rows now carry the MEASURED word count rather than "
+                 "byte_visible rows now carry the measured word count rather than "
                  "resting on the label")}
     save(payload, out)
     for row in byte_visible:
@@ -2234,13 +2234,13 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
 # ---------------------------------------------------------------------------
 
 def leg_engine(payload: Dict[str, Any], out: str) -> None:
-    """The substitution across N WHOLE STEPS, with a source-free control.
+    """The substitution across N whole steps, with a source-free control.
 
     Two runs from one seed: one stepped entirely by the array path, one with
     ``update_H``/``update_E`` replaced by the null plans. Every live array is
     byte-compared after EVERY step, not only at the end.
 
-    THE SOURCE IS PROVEN NON-VACUOUS AGAINST A SOURCE-FREE CONTROL. Without a
+    The source is proven non-vacuous against a source-free control. Without a
     source a periodic no-PML run from a seeded state still evolves, but the run
     that is DRIVEN must differ from the one that is not — otherwise the injection
     did nothing and the "24 steps, bit-identical" claim is about a state that
@@ -2266,7 +2266,7 @@ def leg_engine(payload: Dict[str, Any], out: str) -> None:
                 # (driver.py:3283-3284, between the step_B call at :3282 and the
                 # update_H call at :3289).
                 #
-                # THE CITATION WAS driver.py:3212-3225 FOR A ROUND, and those lines
+                # The citation was driver.py:3212-3225 for one run, and those lines
                 # are inside FdtdDriver.step's own DOCSTRING — the paragraph about
                 # MEEP's two source slots — not its body. The family module had
                 # already caught and corrected the same stale citation on
@@ -2319,7 +2319,7 @@ def leg_engine(payload: Dict[str, Any], out: str) -> None:
         assert not diff, (driven, diff)
         assert len(digests_a) == ENGINE_STEPS
 
-    # THE SOURCE IS PROVEN AGAINST ITS OWN CONTROL BY COMPARING THE STATES, not by
+    # The source is proven against its own control by comparing the states, not by
     # comparing how many words each run moved. The word COUNT saturates: after 24
     # steps of a periodic no-PML run essentially every word already differs from
     # the seed in both runs (measured: 6480 of 6480 either way), so a count
@@ -2390,7 +2390,7 @@ def main() -> int:
             API_ROOT, "meep_gpu", "metal_kernels", "arms.py"),
         "triton_kernels/no_pml_constitutive.py": os.path.join(
             API_ROOT, "meep_gpu", "triton_kernels", "no_pml_constitutive.py"),
-        # RECORDED, NOT IMPORTED, and the label says so. Hashing a file this gate
+        # Recorded, not imported, and the label says so. Hashing a file this gate
         # does not read would otherwise read as "the kit is an input to what was
         # certified" — which contradicts the whole reason for the self-containment
         # above. It is kept because the ~60 duplicated lines are a stated debt, and

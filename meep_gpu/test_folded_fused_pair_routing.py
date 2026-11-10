@@ -1,6 +1,6 @@
 """The folded grid's two fused pairs, ROUTED — one file, both tracks, 2026-08-27.
 
-WHAT CHANGED. Until this round ``fuse=True`` on a folded grid was answered by a
+What changed. Until 2026-08-27 ``fuse=True`` on a folded grid was answered by a
 BLANKET refusal on both composers. Triton returned "folded composition keeps the
 source-adjacent mirror-fill seam explicit; cross-sub-step fusion for this product is
 not implemented" for both pairs (``triton_kernels/launch.py``), and Metal returned
@@ -13,7 +13,7 @@ about those products, and it is what kept the largest measured fusion family off
 both boards: 54 B->H seam-instances and 4 D->E, the top row of
 ``results/fusion_matrix_metal_2026-08-27_recut``.
 
-WHAT IS ASSERTED HERE, in the order the composers reach it:
+What is asserted here, in the order the composers reach it:
 
 1. the refusals that were NOT implemented are still there, byte-for-byte
    (cylindrical, specialized-family, folded dispersive D/E) — a blanket refusal
@@ -28,7 +28,7 @@ WHAT IS ASSERTED HERE, in the order the composers reach it:
 5. BOTH TRITON families carry the deposit repair as of 2026-08-30, as both METAL
    families have since 2026-08-28, and both directions of each are measured here.
 
-WHY (5) WAS A BOUNDARY, AND WHAT RETIRED IT. On a folded row the seam also carries
+Why (5) was a boundary, and what retired it. On a folded row the seam also carries
 ``fill_symmetry_bc_*`` and ``fill_folded_far_ghosts_*``, and they run AFTER the
 injection (driver.py:3293-3295, :3308-3311). The near fill writes cell 0 from cell 2
 (stepping.py:1450-1451), so a deposit landing on an imaged cell changes the ghost the
@@ -38,19 +38,19 @@ the kernel fills BEFORE the injection, because there is no injection inside a la
 
 ``deposit_repair.repair_cells`` closed that on 2026-08-28 by saving and restoring the
 CLOSURE of the cells those two fills image each deposit point into, and the two Metal
-folded families flipped in the same edit. THE TRITON TWINS DID NOT, and the reason
+folded families flipped in the same edit. The Triton twins did not, and the reason
 given was: the closure is shared, but every Triton fused product's arithmetic is
-certified on a device that round could not run, and a flag flipped ahead of its gate
+certified on a device the 2026-08-28 change had no access to, and a flag flipped ahead of its gate
 is a claim no artifact stands behind.
 
-THAT REASON WAS DISCHARGED ON 2026-08-30 THE ONLY WAY IT COULD BE -- by running the
+That reason was discharged on 2026-08-30 the only way it could be -- by running the
 gates, not by deciding the flag was fine. The three Triton families flipped and their
 device gates were re-run on the GPU host against the flipped bytes; the weld tests that
 bind each module's identity to the run that measured it are what would have caught a
 flip that outran its gate, and they are green against the new records rather than
 against the old ones.
 
-WHAT MAKES THE CLEAN SEAM SAFE, AND THE CARRIED ONE TOO. The driver runs the three
+What makes the clean seam safe, and the carried one too. The driver runs the three
 fill/clear passes unconditionally -- driver.py:3293-3295 and :3308-3311 are plain calls
 with no ``fast.dispatch`` consult -- so a routed pair has them run a second time on the
 host after its launch. All three are idempotent images of cells the pair did not
@@ -227,7 +227,7 @@ def test_the_composer_holds_the_two_families_own_predicates_and_builders():
 
 
 def test_a_real_folded_grid_reaches_the_pair_predicate_and_only_the_host_refuses():
-    """WHAT STANDS BETWEEN THIS LAPTOP AND A FUSED FOLDED STEP, itemised.
+    """What stands between this laptop and a fused folded step, itemised.
 
     Before this change the answer was "the planner". After it, the only reasons the
     composer reports on a real folded grid are the families' own backend clause —
@@ -246,7 +246,7 @@ def test_a_real_folded_grid_reaches_the_pair_predicate_and_only_the_host_refuses
 # ---------------------------------------------------------------------------
 
 def test_a_clean_folded_seam_fills_both_slots_with_the_cheap_sentinel(monkeypatch):
-    """THE FAIL-CLOSED HALF OF THE TWO-SLOT CONTRACT.
+    """The fail-closed half of the two-slot contract.
 
     ``FastPath.dispatch`` contracts that True means the whole sub-step ran, so a
     pair that owns ``step_B`` and ``update_H`` must appear in both — otherwise a
@@ -362,7 +362,7 @@ def test_the_folded_pair_may_not_substitute_a_product_another_arm_won(monkeypatc
 
 
 def test_the_arms_the_two_folded_pairs_absorb_are_the_arms_their_predicates_are():
-    """THE ROW IS READ, NOT GUESSED — asserted against the family predicates' own
+    """The row is read, not guessed — asserted against the family predicates' own
     bodies, which is the only thing that makes the mapping a measurement."""
     import inspect
 
@@ -404,7 +404,7 @@ def _folded_electric_deposit(fields):
 @pytest.mark.parametrize("module", [triton_b, triton_d])
 def test_both_triton_folded_families_declare_the_deposit_repair_and_gate_it_on_the_flag(
         module):
-    """THE FOLD BOUNDARY RETIRED ON THE TRITON SIDE TOO, 2026-08-30.
+    """The fold boundary retired on the Triton side too, 2026-08-30.
 
     This test used to assert the opposite (``is False``), and it is INVERTED rather
     than relaxed: the same two facts are still pinned, with the value flipped and
@@ -413,7 +413,7 @@ def test_both_triton_folded_families_declare_the_deposit_repair_and_gate_it_on_t
     the cells the post-injection fills image a deposit into, which is the premise
     the ``False`` rested on.
 
-    THE SECOND ASSERTION IS THE ONE THAT MATTERS. A ``True`` flag that is never
+    The second assertion is the one that matters. A ``True`` flag that is never
     passed to the seam clause is a product claiming a carry it does not perform,
     which is strictly worse than the refusal it replaced.
     """
@@ -460,7 +460,7 @@ def test_the_flag_is_what_decides_an_in_seam_deposit_on_each_folded_seam():
 ])
 def test_holding_a_triton_folded_flag_False_puts_the_seam_refusal_straight_back(
         monkeypatch, module, other, pair, kind):
-    """THE OTHER DIRECTION, on the same deposit and through the SHARED helper.
+    """The other direction, on the same deposit and through the SHARED helper.
 
     The refusal prose the boundary shipped with is still what the False branch
     returns, so the admission above is the flag's doing and not a clause that
@@ -489,7 +489,7 @@ def test_holding_a_triton_folded_flag_False_puts_the_seam_refusal_straight_back(
 
 def test_a_folded_deposit_IS_bracketed_now_and_the_clean_seam_still_is_not(
         monkeypatch):
-    """THE CLAIM THE RETIREMENT RESTS ON, asserted at the composer's output.
+    """The claim the retirement rests on, asserted at the composer's output.
 
     ``_install_fused_pair`` brackets a pair with the repair whenever the seam holds
     a deposit. Until 2026-08-30 a folded pair could never get there with one,
@@ -540,7 +540,7 @@ def test_the_repair_helper_is_not_reached_while_a_folded_flag_is_held_False(
 
 
 def test_the_module_docstring_states_the_carry_rather_than_assuming_it():
-    """A boundary nobody wrote down is a boundary the next round routes around.
+    """A boundary nobody wrote down is a boundary the next change routes around.
 
     The prose moved with the flag on 2026-08-30 — the blocks at ``FOLDED_FUSED_PAIRS``
     and ``_install_folded_fused_pairs`` said the fold boundary rested on the flag
@@ -633,7 +633,7 @@ def _folded_magnetic_source():
 
 
 def test_a_metal_magnetic_deposit_is_BRACKETED_on_its_seam_and_the_other_stays_fused():
-    """THE FOLD BOUNDARY RETIRED, on the case that discriminates.
+    """The fold boundary retired, on the case that discriminates.
 
     ``CARRIES_DEPOSIT_REPAIR`` became True on both Metal folded families on
     2026-08-28, once ``deposit_repair.repair_cells`` extended the saved and restored
@@ -662,7 +662,7 @@ def test_a_metal_magnetic_deposit_is_BRACKETED_on_its_seam_and_the_other_stays_f
 
 
 def test_holding_the_metal_flag_False_puts_the_seam_refusal_straight_back(monkeypatch):
-    """THE OTHER DIRECTION, on the same deposit. The refusal prose the boundary shipped
+    """The other direction, on the same deposit. The refusal prose the boundary shipped
     with is still what the False branch returns, so the bracket above is the flag's
     doing and not a clause that quietly went away."""
     from meep_gpu.metal_kernels import (  # noqa: PLC0415
@@ -691,8 +691,8 @@ def test_the_routed_metal_families_declare_the_repair_and_gate_it_on_the_flag(
     assert "carries_repair=CARRIES_DEPOSIT_REPAIR" in source
 
 
-#: The ten Metal welds the 2026-08-27 folded-routing round left unrouted. THE
-#: POPULATION IS THE SNAPSHOT AND DOES NOT MOVE WHEN A FAMILY IS ROUTED — what moves
+#: The ten Metal welds the 2026-08-27 folded-routing change left unrouted. The
+#: population is the snapshot and does not move when a family is routed — what moves
 #: is how it splits, which is why the floor below is on the sum rather than on the
 #: refused half. A family LEAVING this tuple would mean a weld disappeared, which is a
 #: different event from a weld being routed and must not read the same.
@@ -706,14 +706,14 @@ METAL_UNROUTED_AFTER_THE_2026_08_27_ROUND = (
     "fused_dispersive_pair",
 )
 
-#: Which of them a LATER round routed, with the round that did it. Enumerated by name
+#: Which of them a LATER change routed, with the change that did it. Enumerated by name
 #: so the shrink above is a decision somebody wrote down rather than a count that
-#: quietly moved. 2026-08-28, the deposit-carry round: both gained a
+#: quietly moved. 2026-08-28, the deposit-carry change: both gained a
 #: ``FUSED_PAIR_ARMS`` row read off the arm table and flipped
 #: ``CARRIES_DEPOSIT_REPAIR`` in the same edit. Both are UNFOLDED — each refuses a
 #: mirrored axis by name — so neither is inside the fold boundary this file is about.
 #:
-#: 2026-08-30, the fusion-board round: the TWO FOLDED COMPLEX magnetic welds joined
+#: 2026-08-30, the fusion-board change: the two folded complex magnetic welds joined
 #: them, by the same two-part edit — a ``FUSED_PAIR_ARMS`` row read off the arm table
 #: (``fold_complex_2d`` returns ``'folded complex'`` on all four arithmetic slots,
 #: ``fold_complex_2d_beta`` returns ``'folded beta complex'``) and
@@ -723,7 +723,7 @@ METAL_UNROUTED_AFTER_THE_2026_08_27_ROUND = (
 #: which is the same machinery that let ``folded_fused_magnetic_pair`` and
 #: ``folded_fused_pair`` route on 2026-08-28, and is why routing them is not a claim
 #: about the fold boundary this file is about.
-#: 2026-09-17, the all-paths round: THREE MORE, and the reason they were unrouted for
+#: 2026-09-17, the all-paths change: THREE MORE, and the reason they were unrouted for
 #: three weeks is the one this population exists to make visible — each was certified
 #: and welded while holding no absorb row, so the seam loop never asked it. The two
 #: Dcyl magnetic pairs and the complex conductive D/E weld each gained a
@@ -736,7 +736,7 @@ METAL_UNROUTED_AFTER_THE_2026_08_27_ROUND = (
 #: is the difference from the 2026-08-28 and 2026-08-30 entries above, where the row
 #: and the flag moved in one edit.
 #:
-#: THE OTHER THREE OF THE TEN STAY UNROUTED DELIBERATELY. ``beta_fused_magnetic_pair``,
+#: The other three of the ten stay unrouted deliberately. ``beta_fused_magnetic_pair``,
 #: ``bfast_fused_magnetic_pair`` and ``nonlinear_fused_magnetic_pair`` were measured
 #: winning their slots with rows present (the 2026-09-17 dry run: ``bfast_1d``
 #: selected both BFAST pairs, ``special_kz_2d`` the beta magnetic pair) and the rows
@@ -757,7 +757,7 @@ METAL_ROUTED_BY_A_LATER_ROUND = ("complex_fused_magnetic_pair",
 def test_the_metal_welds_this_round_did_not_route_are_still_refused_by_name():
     """The blanket refusal is retired for the routed families and kept for the rest.
 
-    TWO families as of this round's own edit, four as of 2026-08-28, six as of
+    TWO families as of the 2026-08-27 edit, four as of 2026-08-28, six as of
     2026-08-30. The split is
     asserted against the shipped absorb table rather than typed, so a family routed
     without being named in :data:`METAL_ROUTED_BY_A_LATER_ROUND` fails here.
@@ -786,7 +786,7 @@ def test_the_metal_welds_this_round_did_not_route_are_still_refused_by_name():
 # ---------------------------------------------------------------------------
 
 def test_the_routed_labels_still_trip_the_fastpath_fused_refusal():
-    """THE HOLE THIS ROUND COULD HAVE PUNCHED, closed by the label and pinned here.
+    """The hole the 2026-08-27 routing could have punched, closed by the label and pinned here.
 
     ``fastpath.plan_fast_path`` clause (8) (fastpath.py:2084-2091) refuses the
     WHOLE dispatch when any slot's label satisfies ``arm_is_fused``, so that a
@@ -795,7 +795,7 @@ def test_the_routed_labels_still_trip_the_fastpath_fused_refusal():
     ``FUSED_ARM_PREFIXES = ("fused pair",)`` (fastpath.py:205-213) — it knows
     nothing about families, only about how a label starts.
 
-    Before this round the folded seam was blanket-refused, so no label of this
+    Before 2026-08-27 the folded seam was blanket-refused, so no label of this
     shape could exist and the prefix could not be evaded. Routing the two families
     creates two NEW labels, and a label reading ``folded fused pair B`` would sail
     past clause (8) while filling ``step_B`` and ``update_H`` — the guard silent at

@@ -1,7 +1,7 @@
 """The FOLDED BETA COMPLEX fused D/E pair: a folded ``special_kz`` Bloch ``step_D``
 welded into ``update_E``.
 
-:mod:`.folded_complex_fused_pair` WITH MEEP'S BETA PASS CARRIED IN, and the pass is
+:mod:`.folded_complex_fused_pair` with MEEP's beta pass carried in, and the pass is
 the whole module -- the D-side mirror of what :mod:`.folded_beta_complex_fused_magnetic_pair`
 is to :mod:`.folded_complex_fused_magnetic_pair` on the other seam. The source is the
 certified weld's own output (:func:`.folded_complex_fused_pair.folded_complex_fused_pair_source`)
@@ -20,7 +20,7 @@ product" as the owner); :mod:`.beta_fused_electric_pair` refuses a fold by name 
 real-storage besides. This module is the product they name.
 
 ===========================================================================
-WHAT IT REACHES
+What it reaches
 ===========================================================================
 
 THREE corpus rows, and unlike its magnetic twin ALL THREE are reachable:
@@ -29,15 +29,15 @@ THREE corpus rows, and unlike its magnetic twin ALL THREE are reachable:
 * ``tests:TestEigCoeffs.test_binary_grating_special_kz_1_17_7``
 * ``tests:TestSpecialKz.test_eigsrc_kz_0_complex``
 
-The magnetic twin's docstring records that third row as UNREACHABLE ON ANY BACKEND
+The magnetic twin's docstring records that third row as unreachable on any backend
 because it deposits a MAGNETIC source inside the B/H seam. On THIS seam the deposit is
 electric and is CARRIED (see :data:`CARRIES_DEPOSIT_REPAIR`), so the row is in scope
-here. **THE ROW COUNT IS NOT RE-DERIVED IN THIS MODULE AND IT CLAIMS NO CELL MOVE** --
+here. **The row count is not re-derived in this module and it claims no cell move** --
 that is a matrix run, and this module asserts only its predicate and its binding
 arithmetic, both measured on every build.
 
 ===========================================================================
-THE SIGNATURE — 30 pointers plus one packed struct, EXACTLY ON THE CEILING
+The signature — 30 pointers plus one packed struct, exactly on the ceiling
 ===========================================================================
 
 :data:`PACKED_BINDINGS` is IMPORTED from :mod:`.folded_complex_fused_pair` rather than
@@ -55,7 +55,7 @@ D side's negation in the word; the quarter turn is the pass's own spelling. That
 not a default: the two seams take OPPOSITE signs, and a weld that reused the magnetic
 pair's words would run a correctly-shaped, converged, wrong dispersion.
 
-NOT WIRED AS AN ARM: ``plan_step`` assigns at most one arm per slot and this product
+Not wired as an arm: ``plan_step`` assigns at most one arm per slot and this product
 spans five. It registers ``wired=False`` and reaches its two slots through
 ``launch.FUSED_PAIR_ARMS``.
 """
@@ -86,7 +86,7 @@ from .. import deposit_repair as _deposit_repair
 #: about the PLAN this module builds -- that the leading slot saves and the trailing
 #: slot restores -- and is only ever changed in the same edit as that wiring.
 #:
-#: TRUE FROM THIS FAMILY'S FIRST COMMIT, in the same edit as its
+#: True from this family's first commit, in the same edit as its
 #: ``launch.FUSED_PAIR_ARMS`` row, and it is what makes the cell worth THREE rows
 #: rather than none: every corpus row here carries an electric source inside the seam.
 #: The machinery is ``deposit_repair.repair_cells``' image closure over a FOLDED seam
@@ -209,12 +209,12 @@ def metal_folded_beta_complex_fused_pair_coverage(
         reasons.extend(f"folded beta complex constitutive half: {reason}"
                        for reason in electric.reasons)
 
-    # THE PARITY ARM IS THIS PRODUCT'S OWN QUESTION and neither half asks it: the two
+    # The parity arm is this product's own question and neither half asks it: the two
     # halves are folded_beta's, which never emits a mirror-parity product because that
     # family registers NO fill arm. The fill arithmetic this weld carries inline is
     # folded_complex's, so folded_complex's artifact is required too.
 
-    # THE SOURCE SEAM. An ELECTRIC source is injected BETWEEN the two halves
+    # The source seam. An ELECTRIC source is injected BETWEEN the two halves
     # (driver.py:3294-3299), so a fused pair would consume a pre-injection D unless the
     # deposit repair brackets the launch -- which for this family it does.
     reasons.extend(_deposit_repair.seam_source_reasons(
@@ -335,7 +335,7 @@ def params_record_dtype() -> Any:
 
 
 def beta_words(grid: Any) -> Tuple[float, float]:
-    """``(beta_plus, beta_minus)`` -- the CURL ARM'S OWN words, called.
+    """``(beta_plus, beta_minus)`` -- the curl arm's own words, called.
 
     :func:`.special_kz.beta_curl_coefficients` is the array path's coefficient
     evaluated on the objects the array path evaluates it on, so the words this kernel
@@ -481,7 +481,7 @@ def _arm_plan(context: Any,
 def register_arms() -> Tuple[Any, ...]:
     """One row on ``step_D``, ``wired=False``.
 
-    THE FLAG IS EVERY OTHER FUSED PAIR'S. ``plan_step`` assigns at most one arm per
+    The flag is every other fused pair's. ``plan_step`` assigns at most one arm per
     slot and this product spans five. Registering unwired keeps it ENUMERABLE for the
     disjointness sweep while ``arms.arms_for`` skips it, so no existing arm's selection
     changes. It reaches its two slots through ``launch.FUSED_PAIR_ARMS``.

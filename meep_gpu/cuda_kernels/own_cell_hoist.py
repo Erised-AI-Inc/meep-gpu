@@ -1,6 +1,6 @@
 """The own-cell hoist of the certified real-PML singles, and the one inverse every lifter reads.
 
-WHAT THE HOIST IS -- THE REGISTER VIEW. A hoisted single loads every word its thread
+What the hoist is -- the register view. A hoisted single loads every word its thread
 reads at ``idx`` into registers in one block after the index decode, calls its CERTIFIED
 helper UNCHANGED on those registers (``constitutive_apply(&h_x, &w_x, 0, src_x, ...)``,
 ``pml_apply(&b_x, &fu_x, 0, curl, ...)``: the helper's ``f``/``fw`` are one-element views
@@ -13,17 +13,17 @@ The inverse below refuses unless the helper reads each own-cell word before it s
 (so a load issued ahead of the helper reads the same word) and stores them in the
 write-back's order.
 
-WHY THIS FILE EXISTS. The fused products LIFT the certified singles' statements --
+Why this file exists. The fused products LIFT the certified singles' statements --
 ``constitutive_apply(Hx, f_w_Hx, idx, Bx[idx], kps_x[i], kms_x[i]);`` and friends -- and
 their own device text keeps that form. They read the certified text through
-:func:`unhoisted_kernel_code`, which returns the shipped statement form BYTE FOR BYTE, so a
+:func:`unhoisted_kernel_code`, which returns the shipped statement form byte for byte, so a
 hoist in a single moves no product's device text.
 
-THE INVERSE IS ANCHORED, NOT A POST-PASS: one load block right after the decode whose
+The inverse is anchored, not a post-pass: one load block right after the decode whose
 statements are exactly the expected ones in order, one write-back block right before the
 closing brace, one call line per component, each exactly once, each refusing by name.
 
-AN EMITTED SINGLE: THE OFF-DIAGONAL ``update_E`` (``update_E_pml_real_offdiag``,
+An emitted single: the off-diagonal ``update_E`` (``update_E_pml_real_offdiag``,
 'cuda:off-diagonal'). Its text is not a constant to spell by hand: ``offdiag_emitter``
 emits one certified statement-form text per row mask, and the lifters, the NumPy
 evaluator and the emitter's corpus digest all read that text. :func:`hoisted_kernel_code`
@@ -38,7 +38,7 @@ NOT in the table: they have emitters of their own (``folded_offdiag_kernels``,
 ``dispersive_offdiag_update_e``) and entry points of their own, and the rule refuses them
 by name.
 
-THE FORM IS CHOSEN PER STRUCTURE CHUNK (bit_parity_0_10, 0.10). Each certified helper takes
+The form is chosen per structure chunk (0.10). Each certified helper takes
 the cell's membership flag as its last parameter (``dsigw`` for ``constitutive_apply``,
 ``dsigu`` for ``pml_apply``) and reads and writes its auxiliary only where the flag holds;
 ``constitutive_apply`` reads the old field only there too. The register view keeps that
@@ -50,7 +50,7 @@ and each row names the flag its components read. A text whose helper takes no fl
 stepped to the per-chunk forms, and the rule refuses it by name rather than guarding its
 loads on a flag it does not define.
 
-CUPY-FREE BY CONSTRUCTION: ``conductive_bfast_fused_hd_pair`` reads the certified text by
+CuPy-free by construction: ``conductive_bfast_fused_hd_pair`` reads the certified text by
 parsing ``constitutive_kernels.py`` rather than importing it, so the inverse lives where
 both kinds of lifter can reach it.
 """

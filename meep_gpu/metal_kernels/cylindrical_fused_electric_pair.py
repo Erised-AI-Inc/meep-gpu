@@ -1,13 +1,13 @@
 """The Dcyl complex-storage ELECTRIC seam in one dispatch: ``step_D`` welded into
 ``update_E`` — m = 0 and |m| >= 1 since 2026-09-04, |m| >= 1 before.
 
-THE ELECTRIC TWIN of :mod:`.cylindrical_fused_magnetic_pair`, over the SAME two
+The electric twin of :mod:`.cylindrical_fused_magnetic_pair`, over the SAME two
 certified halves on the other seam, and the Metal sibling of
-:mod:`..triton_kernels.cylindrical_fused_electric_pair`. The source is SPLICED FROM
-THIS BACKEND'S OWN CERTIFIED EMITTERS rather than ported from the Triton text.
+:mod:`..triton_kernels.cylindrical_fused_electric_pair`. The source is spliced from
+this backend's own certified emitters rather than ported from the Triton text.
 
 ===========================================================================
-THE LARGEST CELL ON THE BOARD THAT NO PRODUCT COULD BE BUILT FOR
+The largest cell on the board that no product could be built for
 ===========================================================================
 
 ``parity/meep_gpu/results/fusion_matrix_metal_2026-08-30_lastcells`` ranks this cell
@@ -18,24 +18,24 @@ gap — and gives it a verdict no other large cell has::
         cylindrical_complex.curl 18p + complex_fields.bloch_constitutive_E 18p,
         sharing 3  ->  33 pointers, ceiling 30      UNFUSABLE ON METAL
 
-OVER BY THREE POINTERS AND BY NOTHING ELSE. Its magnetic twin sits at EXACTLY the
+Over by three pointers and by nothing else. Its magnetic twin sits at EXACTLY the
 ceiling — :data:`.cylindrical_fused_magnetic_pair.PACKED_BINDINGS` is 31 with zero
 headroom — because the H constitutive brings no inverse-permeability volume. On the E
 side the three inverse-epsilon volumes are real, and 30 + 3 = 33.
 
-WHAT MOVED IS THE SIGNATURE AND NOT THE CEILING. :data:`.device.MAX_BUFFER_BINDINGS`
+What moved is the signature and not the ceiling. :data:`.device.MAX_BUFFER_BINDINGS`
 is 31 and stays 31; the gate re-measures it by bisection rather than citing it. The
 curl half's six per-axis PML coefficient vectors ride in ONE buffer with six element
 offsets carried in the ``Params`` struct the eight non-pointer arguments already ride
 in — see :mod:`.coefficient_pack`. Six pointers become one, and the pair binds 28
 where the unpacked shape needs 33.
 
-THE SAME PACK CLEARS BOTH DCYL CELLS AND THAT IS THE POINT. Its m = 0 real sibling
+The same pack clears both Dcyl cells and that is the point. Its m = 0 real sibling
 (:mod:`.cylindrical_real_fused_electric_pair`) was over by ONE and this one by THREE;
 one technique, applied to the same group in both, clears both with margin. Packing is
 therefore a TOOL on this backend rather than a rescue for one cell.
 
-THE RADIAL DIFFERENCE IS DELIBERATELY NOT IN THE PACK. ``rad`` is the only member of
+The radial difference is deliberately not in the pack. ``rad`` is the only member of
 the curl half's read-only set the plan REFRESHES every step — the radial sum runs on
 the HOST here and its result is pushed back into that mirror — so folding it into the
 same allocation as the coefficients would put a per-step write into a buffer that also
@@ -44,19 +44,19 @@ silent absorber corruption. The pack is read-only by construction; the radial
 difference keeps its own binding.
 
 ===========================================================================
-ALL SIXTEEN ROWS DECLARE AN ELECTRIC SOURCE
+All sixteen rows declare an electric source
 ===========================================================================
 
 That is the fact that makes this cell the largest one on the board and the reason its
 MAGNETIC twin ships with :data:`CARRIES_DEPOSIT_REPAIR` at False: on the B/H seam
 those sixteen rows are empty, so the twin's clause costs it nothing. On THIS seam the
 same sixteen sources land BETWEEN the halves, so with the flag at False this product
-would compile, gate green on every other leg, and serve NOTHING AT ALL. The flag is
+would compile, gate green on every other leg, and serve nothing at all. The flag is
 declared in the same change as the wiring that licenses it — the ``FUSED_PAIR_ARMS``
 row in ``launch.py`` that lets ``_install_fused_pairs`` bracket the launch.
 
 ===========================================================================
-THE FIVE PASSES IN THE SEAM
+The five passes in the seam
 ===========================================================================
 
 The driver runs five passes between ``step_D`` and ``update_E``
@@ -68,7 +68,7 @@ The driver runs five passes between ``step_D`` and ``update_E``
 * **the electric sources — CARRIED, through the SHIPPED deposit repair**, with the
   leading slot saving the stateful arrays at the deposit points and the trailing slot
   recomputing them after the driver has injected, filled and cleared;
-* **``fill_symmetry_bc_D`` and ``fill_folded_far_ghosts_D`` — DEAD BY CONSTRUCTION.**
+* **``fill_symmetry_bc_D`` and ``fill_folded_far_ghosts_D`` — dead by construction.**
   ``Grid`` refuses a mirror plane on a Dcyl cell outright (grid.py:648-653) and both
   halves restate that refusal, so unlike the Cartesian twins there is no configuration
   on which this family could be handed a live fill. The predicate re-checks anyway;
@@ -80,7 +80,7 @@ The driver runs five passes between ``step_D`` and ``update_E``
   components on every walled run.
 
 ===========================================================================
-THE RADIAL SUM IS A HOST PASS, AND THE PAIR IS STILL ONE LAUNCH
+The radial sum is a host pass, and the pair is still one launch
 ===========================================================================
 
 The cylindrical COMPLEX curl reads a radial difference the HOST computes — MEEP's
@@ -91,19 +91,19 @@ does. ``launches_per_run`` stays 1 because the pre-pass is host work and residen
 traffic rather than a kernel launch; :attr:`prefix_syncs` counts it apart so a gate can
 assert it HAPPENED rather than trust that it did.
 
-NOT SELECTED AS AN ARM, but ROUTED BY THE ABSORB TABLE, exactly as its m = 0 sibling
+Not selected as an arm, but routed by the absorb table, exactly as its m = 0 sibling
 is: ``wired=False`` keeps it out of ``_select_slot`` while its ``FUSED_PAIR_ARMS`` row
 — ``("cylindrical complex", "cylindrical complex")``, read off ``plan_step(...,
 fuse=False)`` on the Dcyl |m| = 1 matrix row — lets ``_install_fused_pairs`` reach and
 bracket it. ``meep_gpu.fastpath.plan_fast_path`` still returns ``None`` on every
 branch.
 
-THE RELEASE RECORD BELOW DESCRIBES THE EARLIER SHAPE: a single radial prefix with a
+The release record below describes the earlier shape: a single radial prefix with a
 divided increment, the i*m/r term as a complex product and the axis scalars in Params.
-Since the array path steps MEEP's cylindrical forms (bit_parity_0_10 AP6c) this kernel
+Since the array path steps MEEP's cylindrical forms (1.0) this kernel
 reads the per-chunk radial difference, forms the i*m/r pass and the axis rules per part
 and carries the chunk record; the shipped bytes moved, the ledger entry still pins the
-released ones, and the certification round re-gates them.
+released ones, and the next certification re-gates them.
 
 DEVICE STATUS: **RELEASED 2026-08-31** on this host (Apple GPU via MPS, torch 2.10.0)
     under the ``flush`` subnormal policy the backend can honour, with the
@@ -117,7 +117,7 @@ DEVICE STATUS: **RELEASED 2026-08-31** on this host (Apple GPU via MPS, torch 2.
       ``m = 2``, ``m = 3`` and the ``accurate_fields_near_cylorigin`` row, on both z
       declarations, with the launch AND prefix-sync counters asserted per cycle; 6/6
       again on the complex +-0 lattice;
-    * **THE BINDING CEILING MEASURED FOUR WAYS**, which is what licenses the pack:
+    * **The binding ceiling measured four ways**, which is what licenses the pack:
       the 41-binding separate-scalar signature FAILS; the 34-binding UNPACKED-pointer
       signature FAILS with the platform's own ``'buffer' attribute parameter is out of
       bounds``; a synthetic 32-binding kernel FAILS; and the shipped 29-binding one
@@ -134,15 +134,15 @@ DEVICE STATUS: **RELEASED 2026-08-31** on this host (Apple GPU via MPS, torch 2.
       ``NoopPlan`` the False branch would leave there — DIVERGES at step 1 by 8 words
       (Ez 4, f_w_Ez 4);
     * **2/2 separate controls**: the array path, the two ALREADY CERTIFIED Metal
-      products, and this one, all three word-for-word equal at every step. THE FUSION,
-      MEASURED: 24 dispatches become 12 over twelve steps, the prefix pre-pass is paid
+      products, and this one, all three word-for-word equal at every step. The fusion,
+      measured: 24 dispatches become 12 over twelve steps, the prefix pre-pass is paid
       12 times on BOTH sides (so no reader can mistake the dispatch saving for a scan
       saving), and on a walled run the separate side leaves ``zero_metal_D`` on the
       HOST where this side carries it;
     * **25 armed defects, 23 caught and 2 CONFIRMED nulls**, plus a byte-neutral
       control that must NOT diverge and a disarm row on the shipped bytes.
 
-    THE TWO NULLS ARE ONE MEASUREMENT WITH A LIVE SIBLING EACH. ``kms_y`` and
+    The two nulls are one measurement with a live sibling each. ``kms_y`` and
     ``sinv_y`` are each ONE element on a Dcyl grid and both hold exactly ``1.0f`` —
     the phi axis carries no PML — so swapping their two pack offsets reads the same
     word. The SAME two offsets moved the other way, into a neighbouring vector, are
@@ -177,11 +177,11 @@ from .. import deposit_repair as _deposit_repair
 #: this module builds -- that the leading slot saves and the trailing slot restores --
 #: and is only ever changed in the same edit as that wiring.
 #:
-#: ITS MAGNETIC TWIN HOLDS THE FLAG AT FALSE and needs neither the flag nor a row:
+#: Its magnetic twin holds the flag at false and needs neither the flag nor a row:
 #: the same sixteen rows leave the B/H seam empty, so its clause costs it nothing.
 #: That asymmetry is the whole difference between the two seams on this cell.
 #:
-#: THE FLAG IS NOT THE WHOLE CLAIM. It only reaches ``deposit_repair.repairable``,
+#: The flag is not the whole claim. It only reaches ``deposit_repair.repairable``,
 #: which goes on refusing BY NAME every seam the repair cannot invert -- an
 #: off-diagonal constitutive, a nonlinear one, a FOLD whose fill map it cannot read,
 #: and an absorber whose split-field recurrence never ran. A Dcyl grid carries no
@@ -199,23 +199,23 @@ CURL_SUB_STEP = "step_D"
 CONSTITUTIVE_SIDE = "E"
 
 #: The driver passes ONE dispatch of this plan performs, in driver order
-#: (driver.py:3292-3304). THE INJECTION IS NOT ONE OF THEM: it is carried by the
+#: (driver.py:3292-3304). The injection is not one of them: it is carried by the
 #: repair bracket around the launch, not by the launch.
 REPLACES: Tuple[str, ...] = ("step_D", "zero_metal_D", "update_E")
 
-#: The curl half's per-axis PML coefficient vectors, IN PACK ORDER — the order the
+#: The curl half's per-axis PML coefficient vectors, in pack order — the order the
 #: certified curl emitter declares them in, so a reader comparing the packed
 #: signature to the unpacked one is comparing one line to six and nothing else.
 PACKED_VECTORS: Tuple[str, ...] = ("kmx", "sinvx", "kmy", "sinvy", "kmz", "sinvz")
 
-#: FOUR BINDING COUNTS, ALL FOUR COMPILED BY THE GATE rather than argued from here.
+#: Four binding counts, all four compiled by the gate rather than argued from here.
 #:
 #: * :data:`SEPARATE_SCALAR_BINDINGS` — 33 pointers with the nine non-pointer
 #:   arguments bound SEPARATELY, the way the certified 27-binding cylindrical curl
 #:   binds them. Eleven over (ten before 2026-09-04; the ``M_ZERO`` arm's
 #:   ``axis_coef`` is the ninth scalar).
 #: * :data:`UNPACKED_POINTER_BINDINGS` — 33 pointers plus ONE packed ``Params&``.
-#:   THIS IS THE NUMBER THAT MATTERS: it is the fused pair as every other D/E product
+#:   This is the number that matters: it is the fused pair as every other D/E product
 #:   on this backend builds it, and it is REFUSED — 34 bindings against a ceiling of
 #:   31, over by THREE. That refusal is what the board's ``UNFUSABLE ON METAL``
 #:   verdict recorded for this cell, and it is re-measured rather than cited.
@@ -328,8 +328,8 @@ kernel void cylindrical_fused_electric_pair_step(
     constant Params&     prm     [[buffer(28)]],
     uint idx [[thread_position_in_grid]])
 {
-    // THE EIGHT PACKED ARGUMENTS AND THE SIX PACKED VECTORS ARE UNPACKED INTO THE
-    // CERTIFIED BODIES' OWN NAMES, once, before any of the lifted text runs.
+    // The eight packed arguments and the six packed vectors are unpacked into the
+    // certified bodies' own names, once, before any of the lifted text runs.
     // Everything below this line is then character-for-character what
     // `cylindrical_complex.cylindrical_curl_source` and
     // `complex_fields.bloch_constitutive_source` emit, plus the wall clear and the
@@ -343,7 +343,7 @@ kernel void cylindrical_fused_electric_pair_step(
     // of this half's read-only set the plan REFRESHES every step, and it keeps its own
     // binding for that reason.
 __PACK_PROLOGUE__
-    // THE CHUNK RECORD rides in the same struct (no binding to spare), and this one
+    // The chunk record rides in the same struct (no binding to spare), and this one
     // line gives the lifted bounds blocks the `cb` they read.
 __RECORD_ALIAS__
 
@@ -441,8 +441,8 @@ def cylindrical_fused_electric_pair_source(
     # THE SEAM, and it is exactly three lines. The certified complex E body opens each
     # component with `float2 srcN = c_mul_field_left(gN[ii], eN[ii]);` — a RELOAD of
     # the complex displacement the curl just stored, scaled by the inverse
-    # permittivity. Fused, the reload becomes the live register and NOTHING ELSE
-    # MOVES: the inverse-epsilon factor stays on the right and D stays on the LEFT,
+    # permittivity. Fused, the reload becomes the live register and nothing else
+    # moves: the inverse-epsilon factor stays on the right and D stays on the LEFT,
     # which is what `c_mul_field_left` means and the order the array path writes
     # (stepping.py:1011-1013) — not a commutation this transcription may make.
     for target in range(3):
@@ -457,7 +457,7 @@ def cylindrical_fused_electric_pair_source(
             f"    // THE SEAM: the register step_D just wrote, not a reload of "
             f"D{'xyz'[target]}.\n"
             f"    float2 src{target} = c_mul_field_left(v{target}, e{target}[ii]);\n")
-    # THE CURL'S `g` IS H AND THE CONSTITUTIVE'S `g` WAS D. After the seam there must
+    # The curl's `g` is H and the constitutive's `g` WAS D. After the seam there must
     # be no `g` left in the electric half at all — one surviving read would take the
     # magnetic field as a displacement, which is a smooth, plausible, entirely wrong
     # answer rather than a crash.
@@ -470,8 +470,8 @@ def cylindrical_fused_electric_pair_source(
     body = "".join((
         curl,
         "\n    // --- update_E (stepping.update_E / _apply_constitutive_pml:2083) --\n"
-        "    // NO CYLINDRICAL BRANCH: update_E (:926-945) carries none, and the\n"
-        "    // cylindrical tranche MEASURED that (480/480 rows, 0 differing words).\n",
+        "    // No cylindrical branch: update_E (:926-945) carries none, and the\n"
+        "    // cylindrical certification measured that (480/480 rows, 0 differing words).\n",
         electric,
     ))
     return templates.substitute(_TEMPLATE, {
@@ -570,7 +570,7 @@ def _touching_body(guard: str, scale: str) -> List[str]:
 def refuted_unpacked_pointer_source(contract: str = shaders.CONTRACT_OFF) -> str:
     """The 34-binding signature this platform REFUSES — 33 pointers plus ``Params``.
 
-    THIS IS THE MEASUREMENT THE PACK EXISTS FOR. It is the fused pair built the way
+    This is the measurement the pack exists for. It is the fused pair built the way
     every other D/E product on this backend is built — the non-pointer arguments
     packed into one ``constant Params&``, every vector its own pointer — and it is
     over the ceiling by THREE bindings. Not shipped and not launchable: it exists so
@@ -699,12 +699,12 @@ def cylindrical_fused_electric_pair_coverage(
     if not electric.covered:
         reasons.extend(f"constitutive half: {reason}" for reason in electric.reasons)
 
-    # THE SOURCE SEAM. An ELECTRIC source is injected BETWEEN the two halves
+    # The source seam. An ELECTRIC source is injected BETWEEN the two halves
     # (driver.py:3294-3299), so a fused pair would consume a pre-injection D unless
     # the deposit repair brackets the launch — which for this family it does, and
     # which is the only reason the cell is worth anything at all: all sixteen corpus
     # rows carry one. A MAGNETIC source is injected in the B/H half and does NOT
-    # disqualify this pair. IGNORANCE IS NEVER AN EMPTY SET — `Fields` does not hold
+    # disqualify this pair. Ignorance is never an empty set — `Fields` does not hold
     # the source list, so an undeclared `sources` is a refusal and not an assumed ().
     reasons.extend(_deposit_repair.seam_source_reasons(
         fields, sources, 'D',
@@ -724,9 +724,9 @@ def cylindrical_fused_electric_pair_coverage(
         return Coverage(False,
                         tuple(dict.fromkeys(reasons + ["fields carries no grid"])))
 
-    # THE TWO SYMMETRY FILLS. `Grid` refuses a mirror plane on a Dcyl cell outright
+    # The two symmetry fills. `Grid` refuses a mirror plane on a Dcyl cell outright
     # (grid.py:648-653) and both halves restate that refusal, so on this family the
-    # fills are dead by construction rather than by clause. RE-CHECKED HERE ANYWAY,
+    # fills are dead by construction rather than by clause. Re-checked here anyway,
     # not inferred: this module's coverage may not be read off another module's guard.
     mirrored = getattr(grid, "is_mirrored", None)
     if callable(mirrored):
@@ -745,7 +745,7 @@ def cylindrical_fused_electric_pair_coverage(
             reasons.append(
                 f"grid does not expose {name}; zero_metal_D cannot be carried inline")
 
-    # THE WALL TABLE MUST BE THE Dcyl ONE. On a cylindrical grid `Grid` cannot report
+    # The wall table must be the Dcyl ONE. On a cylindrical grid `Grid` cannot report
     # r or phi as walled, and the emitted mask is a FUNCTION of this table — a clear
     # on the r = 0 row would overwrite the row the per-|m| rules own with a zero the
     # array path never writes. Refused by name rather than emitted.
@@ -771,7 +771,7 @@ class CylindricalFusedElectricPairPlan(KernelPlan):
     """ONE dispatch that performs three driver passes, complex D never leaving a
     register — plus the host radial-sum pre-pass of the cylindrical complex curl.
 
-    THE ONE DIVERGENCE FROM :class:`.plans.KernelPlan` is the certified cylindrical
+    The one divergence from :class:`.plans.KernelPlan` is the certified cylindrical
     curl plan's, unchanged: the radial difference is the array path's per-chunk
     sequential sum (``stepping.cylindrical_rderiv_difference``, called on the host), so
     :meth:`run` performs a pre-pass — ``sync_out`` of Hy, the sum, ``sync_in`` of the
@@ -855,7 +855,7 @@ class CylindricalFusedElectricPairPlan(KernelPlan):
 def params_record_dtype() -> Any:
     """The host record's dtype — eight scalars, six pack offsets, the chunk record.
 
-    ONE HOME FOR THE LAYOUT, because getting it wrong is a silent wrong answer rather
+    One home for the layout, because getting it wrong is a silent wrong answer rather
     than a crash. The pack offsets' field order is :data:`PACKED_VECTORS`', as the
     struct's is.
     """
@@ -876,7 +876,7 @@ def _params_tensor(shape: Sequence[int], dtdx: float, zero_row_count: int,
                    device: str, *, chunk_bounds: Any) -> Any:
     """The eight non-pointer arguments, the six pack offsets and the chunk record.
 
-    PLAN-OWNED AND OUTSIDE THE RESIDENCY REGISTRY: :meth:`.Residency.mirror` binds
+    Plan-owned and outside the residency registry: :meth:`.Residency.mirror` binds
     float32 and complex64 volumes only. Built once, at plan time.
     """
     import numpy as np  # noqa: PLC0415
@@ -950,14 +950,14 @@ def plan_cylindrical_fused_electric_pair(
         volumes.append(name)
         return residency.mirror(name, host, constant=True)
 
-    # THE ORDER HERE IS THE SIGNATURE'S ORDER and nothing else keeps them in step.
+    # The order here is the signature's order and nothing else keeps them in step.
     flux = [bind_complex(name, getattr(fields, name)) for name in spec["targets"]]
     auxiliary = [bind_complex("fu_" + name, getattr(fields, "fu_" + name))
                  for name in spec["targets"]]
     magnetic = [bind_complex(name, getattr(fields, name))
                 for name in spec["sources"]]
 
-    # THE RADIAL BUFFER IS THE PLAN'S OWN and is allocated once: the array path's sum
+    # The radial buffer is the plan's own and is allocated once: the array path's sum
     # returns a pooled or fresh array, so its result is COPIED into this buffer.
     radial_host = numpy.zeros(shape, dtype=numpy.complex64)
     radial_name = f"cylfusedE:radial:{CURL_SUB_STEP}"
@@ -970,11 +970,11 @@ def plan_cylindrical_fused_electric_pair(
         row = cylindrical_complex.imr_rinv_row(target, sign, m, grid.courant, shape[0])
         imr_rows.append(bind_real(f"cylfusedE:imr:{CURL_SUB_STEP}:{target}", row))
 
-    # THE D CURL TAKES THE INTEGER LATTICE and the E constitutive the HALF-INTEGER one
+    # The D curl takes the integer lattice and the E constitutive the HALF-INTEGER one
     # (SUB_STEPS['step_D']['suffix'] is ''; CONSTITUTIVE_SIDES['E']['half_integer'] is
     # True). That is the OPPOSITE pairing to the B/H twin, and the kernel cannot tell.
     #
-    # THE PACK IS THE CURL GROUP AND NOTHING ELSE. Six read-only vectors, one buffer,
+    # The pack is the curl group and nothing else. Six read-only vectors, one buffer,
     # six element offsets in Params.
     curl_pack, pack_layout = coefficient_pack.packed_mirror(
         residency, f"pml_pack:cyl_complex_curl:{CURL_SUB_STEP}", numpy,
@@ -1047,7 +1047,7 @@ def register_arms() -> Tuple[Any, ...]:
     ``plan_step`` assigns at most one arm per slot and this product spans three, so
     there is no slot it could claim through the arm table. Registering unwired keeps
     it ENUMERABLE for the disjointness sweep (``arms.registered``) while
-    ``arms.arms_for`` skips it. THE OTHER HALF IS THE ABSORB TABLE:
+    ``arms.arms_for`` skips it. The other half is the absorb table:
     ``launch._install_fused_pairs`` reaches this row precisely BECAUSE it is
     registered, and ``launch.FUSED_PAIR_ARMS[FAMILY]`` declares which arm each of the
     two slots implements — which is what lets the deposit repair bracket it.

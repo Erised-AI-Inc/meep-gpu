@@ -2,13 +2,13 @@
 substituted at every admitted slot, compared as words at checkpoints.
 
 =============================================================================
-WHAT THIS MEASURES THAT THE 26 GATES DO NOT
+What this measures that the 26 gates do not
 =============================================================================
 
 Every gate under ``parity/meep_gpu/`` builds its own synthetic ``Grid`` /
 ``Fields`` / ``PML`` triple, freezes it, launches ONE sub-step (or 60 of the same
 sub-step) and compares. That establishes the arithmetic. It does not establish
-the arithmetic IN THE ORDER AND STATE A RUN ACTUALLY PRODUCES, and the two are
+the arithmetic in the order and state a run actually produces, and the two are
 different claims:
 
 * a real run **ramps a source**, so the operands sweep from exactly zero through
@@ -27,13 +27,13 @@ of them at the kernels, steps both through the driver's own ``step()``, and
 compares the FULL field inventory as uint32 words at checkpoints.
 
 =============================================================================
-THE SUBSTITUTION SEAM, AND WHY IT IS NOT A PACKAGE EDIT
+The substitution seam, and why it is not a package edit
 =============================================================================
 
 ``meep_gpu`` must not import ``meep_gpu.cuda_kernels`` — ``test_package_boundary``
 fails the build on a module-level import — and ``fastpath.plan_fast_path`` carries
-no hand-CUDA branch at all (``coverage.py`` header: "THIS IS NOT WIRED TO
-DISPATCH"). There is therefore no dispatch consult a hand-CUDA plan can be handed.
+no hand-CUDA branch at all (``coverage.py`` header: "this is not wired to
+dispatch"). There is therefore no dispatch consult a hand-CUDA plan can be handed.
 
 The seam used here is the one the Triton whole-step leg already uses and
 documents (``probe_fused_kernel_bit_identity.install_triton_substeps``, :3278):
@@ -43,7 +43,7 @@ them through those names (driver.py:3281-3306), so rebinding the module
 attributes from outside redirects the step without editing one byte under
 ``meep_gpu/``. Nothing in the package is modified, and the undo is returned.
 
-**SCOPED TO ONE ``Fields``.** The module globals are shared by every driver in the
+**Scoped to one ``Fields``.** The module globals are shared by every driver in the
 process, so an unscoped patch would send the ORACLE's steps through the kernels
 too. The probe measured what that looks like: "the fused state was stepped twice
 per timestep and every array diverged at step 1, which reads exactly like a broken
@@ -51,7 +51,7 @@ kernel and is not one" (:3287-3291). Every wrapper here therefore checks
 ``fields is owner`` first and delegates otherwise.
 
 =============================================================================
-WHICH SLOT GETS WHICH KERNEL, AND WHO DECIDES
+Which slot gets which kernel, and who decides
 =============================================================================
 
 The SHIPPED predicate decides, per sub-step, per row — never this file:
@@ -59,7 +59,7 @@ The SHIPPED predicate decides, per sub-step, per row — never this file:
   ``step_B`` / ``step_D``  -> ``coverage.covers_real_pml_curl(f, pml, grid, ss)``
   ``update_H`` / ``update_E`` -> ``coverage.covers_real_pml_constitutive(...)``
   ``update_E`` (off-diagonal) -> ``coverage.covers_real_pml_offdiag_constitutive``
-  ``update_P``  -> NO CUDA KERNEL AND NO CUDA PREDICATE. Never substituted, and
+  ``update_P``  -> no CUDA kernel and no CUDA predicate. Never substituted, and
                    the record says so rather than leaving a silent hole.
 
 The two E-side predicates are measured DISJOINT over the corpus (coverage report,
@@ -72,7 +72,7 @@ carries the refusal reason. A row where NOTHING is admitted is still run: it is 
 inert control that shows the wrapper itself is transparent.
 
 =============================================================================
-THE TWO BACKENDS
+The two backends
 =============================================================================
 
 ``--backend cuda`` calls the SHIPPED launch wrappers
@@ -84,11 +84,11 @@ synchronizes. That leg CERTIFIES.
 ``--backend numpy`` calls the NumPy transcriptions the family gates already own
 and already validated — ``gate_cuda_folded_curl.run_kernel_numpy`` (which is the
 device tree's grouping, its three boundary codes and its mask set, transcribed) and
-``gate_cuda_folded_constitutive.run_kernel_numpy``. IT COMPILES NOTHING AND
-CERTIFIES NOTHING. What it settles is: does the substitution seam work on a real
+``gate_cuda_folded_constitutive.run_kernel_numpy``. It compiles nothing and
+certifies nothing. What it settles is: does the substitution seam work on a real
 lifted driver, does the predicate route the slots a real corpus row actually
 presents, does a long real run stay identical to the array path through the
-transcription, and CAN THIS HARNESS FAIL. All of that on a laptop, before a
+transcription, and can this harness fail. All of that on a laptop, before a
 contended device slot is spent.
 
 =============================================================================
@@ -109,7 +109,7 @@ a deliberately wrong reference still reports IDENTICAL):
   control and is reported as one; it is never counted as kernel evidence.
 
 =============================================================================
-THE PLANTED DEFECTS — a stress leg nobody has seen fail measures nothing
+The planted defects — a stress leg nobody has seen fail measures nothing
 =============================================================================
 
 ``--defect`` mutates the SUBSTITUTED leg only (never the oracle) and every one
@@ -181,7 +181,7 @@ SEED = 20260820
 #: MEEP's corpus. The same two roots the 2026-08-09 lift records and the
 #: 2026-08-20 predicate census used.
 #:
-#: RESOLVED, NOT HARDCODED. These were absolute paths under a specific laptop home
+#: Resolved, not hardcoded. These were absolute paths under a specific laptop home
 #: directory with no flag and no fallback, which made the leg unrunnable on the
 #: device host it exists to run on — the very machine whose MEEP checkout lives
 #: somewhere else entirely. The device leg is supposed to be a flag flip; a path
@@ -245,7 +245,7 @@ SUBJECT_EXTRA = ("meep_gpu/stepping.py", "meep_gpu/fields.py", "meep_gpu/pml.py"
 # THE ROWS
 # ---------------------------------------------------------------------------
 #
-# SEVEN, NOT 186, AND CHOSEN RATHER THAN SLICED. Each carries the reason it is in
+# Seven, not 186, and chosen rather than sliced. Each carries the reason it is in
 # the set; between them they present every boundary code the real-field curl pair
 # ships, both constitutive sides, the off-diagonal E-side family, 1-D/2-D/3-D
 # storage, a source that ramps and a source that is integrated, and one row where
@@ -265,7 +265,7 @@ ROWS: Tuple[Dict[str, Any], ...] = (
         "script": "straight-waveguide.py",
         "census": {"shape": [160, 80, 1], "kinds": ["metallic", "metallic", "periodic"],
                    "admits": ["step_B", "step_D", "update_H", "update_E"]},
-        "why": "THE BASE CERTIFIED FAMILY, unfolded. Both curl boundary codes that "
+        "why": "The base certified family, unfolded. Both curl boundary codes that "
                "existed before 2026-08-20 (BC_METALLIC on x and y, BC_PERIODIC on the "
                "invariant z) and both constitutive sides, on a 2-D run with a "
                "continuous source and a graded rasterized epsilon.",
@@ -277,7 +277,7 @@ ROWS: Tuple[Dict[str, Any], ...] = (
         "case": "TestIntegratedSource.test_integrated_source",
         "census": {"shape": [120, 120, 1], "kinds": ["periodic", "periodic", "periodic"],
                    "admits": ["step_B", "step_D", "update_H", "update_E"]},
-        "why": "THE RUN-ORDER FEATURE NO FIXTURE HAS. An integrated source WITHDRAWS "
+        "why": "The run-order feature no fixture has. An integrated source WITHDRAWS "
                "its standing offset immediately before the curl sub-step and reinjects "
                "the whole fresh dipole after it (driver.py:3277-3280, :3335) — so the "
                "substituted kernel is handed a D/B array that host code mutated between "
@@ -291,7 +291,7 @@ ROWS: Tuple[Dict[str, Any], ...] = (
         "case": "TestUserMaterials.test_epsilon_func",
         "census": {"shape": [51, 51, 1], "kinds": ["mirror", "mirror", "periodic"],
                    "admits": ["step_B", "step_D", "update_H", "update_E"]},
-        "why": "A FOLD ON TWO AXES AT ONCE, on a real row. MEASURED: both folds here "
+        "why": "A fold on two axes at once, on a real row. Measured: both folds here "
                "are METALLIC-terminated and resolve to BC_METALLIC, so this row is the "
                "folded-metallic arm and `folded_periodic_metasurface` is the "
                "folded-periodic one. What it adds over an unfolded row is the "
@@ -306,9 +306,9 @@ ROWS: Tuple[Dict[str, Any], ...] = (
         "script": "metasurface_lens.py",
         "census": {"shape": [390, 10, 1], "kinds": ["periodic", "mirror", "periodic"],
                    "admits": ["step_B", "step_D", "update_H", "update_E"]},
-        "why": "THE ONLY ARM THAT DRIVES BC_MIRROR_PERIODIC — the code added to the "
+        "why": "The only arm that drives BC_MIRROR_PERIODIC — the code added to the "
                "shipped kernels on 2026-08-20 and the whole subject of that re-cut. "
-               "MEASURED on this host: the shipped resolver returns codes (0, 2, 0) "
+               "Measured on this host: the shipped resolver returns codes (0, 2, 0) "
                "here, while BOTH mirror rows below resolve their folds to BC_METALLIC. "
                "Without this row the newest boundary arm is never launched by an "
                "end-to-end leg at all, and `mirror_as_metallic` — the defect that IS "
@@ -322,7 +322,7 @@ ROWS: Tuple[Dict[str, Any], ...] = (
         "case": "TestLoadDump.test_load_dump_fields_3d",
         "census": {"shape": [39, 18, 19], "kinds": ["metallic", "mirror", "mirror"],
                    "admits": ["step_B", "step_D", "update_H", "update_E"]},
-        "why": "THE ONLY GENUINELY 3-D ARM in the cheap band, and it mixes a metallic "
+        "why": "The only genuinely 3-D arm in the cheap band, and it mixes a metallic "
                "wall with TWO folds. Three live axes is where the kernel's "
                "i = idx/(ny*nz), j = (idx/nz)%ny, k = idx%nz decomposition can be "
                "wrong without being wrong on a 2-D row.",
@@ -349,7 +349,7 @@ ROWS: Tuple[Dict[str, Any], ...] = (
         "case": "TestAbsorber.test_absorber",
         "census": {"shape": [1, 1, 400], "kinds": ["periodic", "periodic", "metallic"],
                    "admits": []},
-        "why": "THE INERT CONTROL. No active PML layer (an absorber, not a PML) and five "
+        "why": "The inert control. No active PML layer (an absorber, not a PML) and five "
                "polarizations, so every predicate refuses and the wrappers delegate on "
                "every slot for every step. A divergence here is the HARNESS, not a "
                "kernel — the same role `replace_nothing` plays in the Triton whole-step "
@@ -401,8 +401,11 @@ _PROGRESS_PATH: Optional[str] = None
 
 
 def say(message: str) -> None:
-    """One flushed line, to stdout and to the progress file if one is configured."""
-    line = f"[{time.strftime('%H:%M:%S')}] {message}"
+    """One flushed line, to stdout and to the progress file if one is configured; written
+    neutrally (``neutral_ids.text``), since an error line can name a path."""
+    import neutral_ids  # noqa: PLC0415
+
+    line = f"[{time.strftime('%H:%M:%S')}] {neutral_ids.text(message)}"
     print(line, flush=True)
     if _PROGRESS_PATH:
         with open(_PROGRESS_PATH, "a", encoding="utf-8") as handle:
@@ -411,19 +414,29 @@ def say(message: str) -> None:
 
 
 def save(payload: Dict[str, Any], path: str) -> None:
-    """Atomic rewrite, provenance-stamped. Never a partial file on the disk."""
+    """Atomic rewrite, provenance-stamped. Never a partial file on the disk.
+
+    Written neutrally (``neutral_ids.value``): a row's capture record, its error and its
+    stderr tail can name the corpus directory, the interpreter or another path, and the
+    artifact leaves the machine. The corpus root itself is not written."""
+    import neutral_ids  # noqa: PLC0415
+
     gate_provenance.stamp(payload)
     temporary = f"{path}.tmp"
     with open(temporary, "w", encoding="utf-8") as handle:
-        json.dump(payload, handle, indent=2, sort_keys=True, default=str)
+        json.dump(neutral_ids.value(json.loads(json.dumps(payload, default=str))), handle,
+                  indent=2, sort_keys=True, default=str)
         handle.flush()
         os.fsync(handle.fileno())
     os.replace(temporary, path)
 
 
 def append_jsonl(path: str, row: Dict[str, Any]) -> None:
+    import neutral_ids  # noqa: PLC0415
+
     with open(path, "a", encoding="utf-8") as handle:
-        handle.write(json.dumps(row, default=str) + "\n")
+        handle.write(json.dumps(neutral_ids.value(json.loads(json.dumps(row, default=str))))
+                     + "\n")
         handle.flush()
 
 
@@ -661,7 +674,7 @@ def moved_words(before: Dict[str, np.ndarray],
 
 
 # ---------------------------------------------------------------------------
-# THE PLANTED DEFECTS
+# The planted defects
 # ---------------------------------------------------------------------------
 #
 # Applied to the SUBSTITUTED leg only, never to the oracle. Each names the real
@@ -670,7 +683,7 @@ def moved_words(before: Dict[str, np.ndarray],
 
 DEFECTS: Dict[str, str] = {
     "none":
-        "THE NULL CONTROL. The wrappers are installed on all five slots and route "
+        "The null control. The wrappers are installed on all five slots and route "
         "exactly as the predicate says. Must be NULL CONFIRMED (identical at every "
         "non-vacuous checkpoint). A leg whose null control diverges is measuring "
         "the harness.",
@@ -687,7 +700,7 @@ DEFECTS: Dict[str, str] = {
         "error in it.",
     "drop_fu_store":
         "The curl's split-field auxiliary is restored after the substituted launch, "
-        "i.e. the store is dropped. CORRECT FOR EXACTLY ONE LAUNCH and wrong "
+        "i.e. the store is dropped. Correct for exactly one launch and wrong "
         "forever after — the defect class a single-comparison gate is blind to and "
         "a checkpointed long run is built for.",
     "mirror_as_metallic":
@@ -819,7 +832,7 @@ class Substitution:
             "admitted": False, "raised": False, "predicate": None,
             "reason": "no CUDA kernel and no CUDA predicate for update_P"}
 
-        # THE DEFECT MAY CLAIM A SLOT THE PREDICATE REFUSED, and that is deliberate:
+        # The defect may claim a slot the predicate refused, and that is deliberate:
         # "the covered sub-step was dropped from the step entirely" has to fire whether
         # or not the slot is in the plan, or it aims at the refusal branch only and
         # never applies at all. The sibling track measured exactly that — an m10 leg
@@ -949,9 +962,9 @@ class Substitution:
             self._undo = None
 
     def armability(self, pristine: "Substitution") -> Dict[str, Any]:
-        """IS THIS DEFECT EVEN VISIBLE ON THIS ROW, from this row's own live state?
+        """Is this defect even visible on this row, from this row's own live state?
 
-        THE FLOOR THIS EXISTS FOR, and it was measured before it was written. The
+        The floor this exists for, and it was measured before it was written. The
         constitutive kps/kms swap came back UNCAUGHT on ``metasurface_lens.py`` over
         8000 steps, which reads exactly like a harness that cannot fail. It is not:
         the sub-step's component ``c`` reads AXIS ``c``'s coefficient vector, that
@@ -968,8 +981,8 @@ class Substitution:
         the two outputs are compared as words. Identical means the mutation changed
         nothing from THIS state.
 
-        **IT IS A PROPERTY OF THE STATE, NOT ONLY OF THE ROW, AND THAT WAS MEASURED
-        THE HARD WAY.** The first version of this probe ran ONCE, at the first
+        **It is a property of the state, not only of the row, and that was measured
+        the hard way.** The first version of this probe ran ONCE, at the first
         checkpoint, on the stated reasoning that the answer is fixed by which
         coefficient vectors the live components read. That reasoning is wrong and the
         harness's own record falsified it inside one run: ``swap_curl_sublattice`` on
@@ -1223,7 +1236,7 @@ def run_row(row: Dict[str, Any], backend: str, steps: int, every: int,
             }
             if not verdict["bit_identical"]:
                 entry["worst"] = dict(list(verdict["detail"].items())[:6])
-            # THE ARMABILITY FLOOR, taken at EVERY checkpoint. Not once: the answer
+            # The armability floor, taken at EVERY checkpoint. Not once: the answer
             # moves with the state (see Substitution.armability), and an early-only
             # probe manufactures the false "could not have been caught" the floor
             # exists to prevent.
@@ -1313,7 +1326,7 @@ def verdict(rows: Sequence[Dict[str, Any]], defect: str) -> Dict[str, Any]:
     failing everything.
     """
     def admitted(row: Dict[str, Any]) -> int:
-        # BY THE PREDICATE, not by the defect. A defect that claims a refused slot
+        # By the predicate, not by the defect. A defect that claims a refused slot
         # would otherwise promote the inert control into an evidential row and take
         # the one leg that can only be measuring the harness out of the record.
         plan = row.get("plan", {})
@@ -1344,7 +1357,7 @@ def verdict(rows: Sequence[Dict[str, Any]], defect: str) -> Dict[str, Any]:
                                  and non_vacuous > 0)
         out["release"] = bool(out["null_confirmed"])
     else:
-        # THREE OUTCOMES, NOT TWO. A row where the mutation provably changed no
+        # Three outcomes, not two. A row where the mutation provably changed no
         # output word from that row's own live state is INERT for this defect, and
         # scoring it UNCAUGHT would charge the harness for a property of the row.
         armed = [row for row in evidential if row.get("defect_armed") is not False]
@@ -1356,7 +1369,7 @@ def verdict(rows: Sequence[Dict[str, Any]], defect: str) -> Dict[str, Any]:
         out["armability_unmeasured_rows"] = [row["label"] for row in evidential
                                              if row.get("defect_armed") is None]
         out["caught"] = bool(out["caught_rows"])
-        # THE STRONGER STATEMENT, and the one worth quoting: every row on which the
+        # The stronger statement, and the one worth quoting: every row on which the
         # mutation could bite, bit.
         out["caught_on_every_armed_row"] = bool(armed) and not out["uncaught_rows"]
         out["first_divergence_steps"] = {
@@ -1373,6 +1386,7 @@ def verdict(rows: Sequence[Dict[str, Any]], defect: str) -> Dict[str, Any]:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
+    import neutral_ids  # noqa: PLC0415
     global _PROGRESS_PATH
 
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
@@ -1427,7 +1441,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "checkpoint_every": args.checkpoint_every,
         "rows_requested": list(labels),
         "started_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "argv": list(sys.argv),
+        "argv": neutral_ids.argv(sys.argv),
         "python": sys.version.split()[0],
         "subject_before": subject_digest(_API),
         "rows": [],
@@ -1480,6 +1494,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             status = "timeout"
             stderr_text = ((expired.stderr or b"").decode("utf-8", "replace")
                            if expired.stderr else "")
+        # Neutral before it is cut: a tail cut first can begin inside a path.
+        stderr_text = neutral_ids.text(stderr_text)
         if os.path.exists(per_row_path):
             row_record = json.load(open(per_row_path, encoding="utf-8"))
         else:

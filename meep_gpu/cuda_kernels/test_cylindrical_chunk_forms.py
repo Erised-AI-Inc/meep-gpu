@@ -1,9 +1,9 @@
 """The CUDA cylindrical family transcribes the array path's Dcyl forms, read off its text.
 
-WHAT THIS FILE SETTLES, ON A HOST WITH NO DEVICE. The column-serial radial scan
-(``cylindrical_prefix``, bit_parity_0_10 DESIGN.md D26), the real m = 0 curl pair
+What this file settles, on a host with no device. The column-serial radial scan
+(``cylindrical_prefix``), the real m = 0 curl pair
 (``cylindrical_kernels``) and the complex curl pair at every m class
-(``cylindrical_complex_kernels``) are each LAUNCHED THROUGH THEIR OWN LAUNCHERS (loaded with
+(``cylindrical_complex_kernels``) are each launched through their own launchers (loaded with
 NumPy wearing CuPy's name), whose compiled kernels are replaced by an interpreter that
 EXECUTES the emitted device text in float32 NumPy -- its helpers too, from their own
 text. Every array of the ``Fields`` is compared word for word (sign of zero included) with
@@ -18,7 +18,7 @@ near-axis branch, and planted signed zeros. Each case asserts that the sub-step 
 field (a vacuity floor). A battery of planted text defects -- each one rewrite of an
 emitted text -- must change a word.
 
-THE INTERPRETER is the complex lane's (``test_complex_chunk_forms.ComplexInterpreter``),
+The interpreter is the complex-storage suite's (``test_complex_chunk_forms.ComplexInterpreter``),
 extended here by a ``for`` loop with uniform bounds and the scan's one-lane-per-column
 launch. Anything else still raises.
 """

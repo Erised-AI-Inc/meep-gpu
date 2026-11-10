@@ -1,35 +1,40 @@
 """WHICH GPU produced this Triton artifact, recorded by the probe that ran on it.
 
-WHY THIS EXISTS. A Triton weld is a claim about generated PTX, so the machine, the
+Why this exists. A Triton weld is a claim about generated PTX, so the machine, the
 device and its compute capability are part of the claim — ``test_triton_weld_contract
 .py::test_every_triton_weld_names_a_validated_triton_and_capability`` binds every
 weld's ``host`` string to the record's ``validated_triton_versions`` and
 ``validated_compute_capabilities``. But a weld may only be CUT from what a run
 measured, never from what someone types, and measured 2026-09-09 across the fleet
 campaign the probes' own ``environment()`` blocks answer only part of it: the four
-probes re-gated this round record ``device``, ``cupy``, ``triton`` and
+probes re-gated in that campaign record ``device``, ``cupy``, ``triton`` and
 ``cuda_visible_devices`` and NO ``hostname``, while the conductive probe records the
 capability in CuPy's ``"86"`` spelling and the others in ``"8.6"``. So
 ``seed_triton_welds.py`` had to either refuse them or supply the missing half itself
 — and supplying it is the forgery that tool exists to avoid. This module closes the
 gap at the only honest end: the gate records the identity, the tools read it.
 
-WHY IT IS TRITON-SIDE AND NOT IN ``gate_provenance.stamp()``. The campaign log's
-2026-09-10 entry rules it: ``parity/meep_gpu/gate_provenance.py`` is pinned by 42 of
-42 Metal gate-bound manifests and by two Triton ledger welds
-(``triton_dispersive_fused_pair_device_gate`` and
-``triton_fused_ade_state_device_gate``), so an edit there moves every Metal weld for
-a Triton-only need. A separate module pinned by nothing costs one call site per
-probe instead.
+Why it is Triton-side and not in ``gate_provenance.stamp()``.
+``parity/meep_gpu/gate_provenance.py`` is pinned by 42 of 42 Metal gate-bound
+manifests (as of 2026-09-10, when this was decided) and by two Triton ledger
+welds (``triton_dispersive_fused_pair_device_gate`` and
+``triton_fused_ade_state_device_gate``), so an edit there moves every Metal weld
+for a Triton-only need. A separate module pinned by nothing costs one call site
+per probe instead.
 
-WHAT IT NEVER DOES. It never IMPORTS CuPy or Triton. It reads ``sys.modules`` —
+What it never does. It never IMPORTS CuPy or Triton. It reads ``sys.modules`` —
 which answers "did the process that is writing this artifact already have a device
 open?" and cannot itself open one, cannot allocate, cannot change a device's state
-and cannot fail on a laptop that has neither installed. Stdlib only (``os``,
-``socket``, ``sys``), for the same reason ``gate_provenance`` is: it must answer
-inside a gate that has already refused, and on the laptop that is the merge bar.
+and cannot fail on a laptop that has neither installed. Stdlib only (``os``, ``sys``
+and ``neutral_ids`` beside it, itself stdlib only), for the same reason
+``gate_provenance`` is: it must answer inside a gate that has already refused, and on
+the laptop that is the merge bar.
 
-THE SIX KEYS THE TOOLS READ. ``seed_triton_welds.py`` and
+The machine. ``hostname`` holds the machine's anonymous id (``neutral_ids.machine_id``),
+never its name: every reader compares two stamps for "the same machine", which the id
+answers, and the record leaves the machine.
+
+The six keys the tools read. ``seed_triton_welds.py`` and
 ``rebind_triton_welds._host_line`` compose one host spelling out of ``hostname``,
 ``device``, ``compute_capability``, ``cupy``, ``triton`` and
 ``cuda_visible_devices``; ``device_index`` is recorded beside them because
@@ -37,27 +42,27 @@ THE SIX KEYS THE TOOLS READ. ``seed_triton_welds.py`` and
 here without teaching those two to read it records a fact nothing consumes; dropping
 one makes a seeded weld refuse.
 
-WHY IT ALSO ANSWERS "WHICH CAPABILITY DID THIS RUN MEASURE?". A certification record
+Why it also answers "which capability did this run measure?". A certification record
 is now keyed by compute capability (one ``runs`` slot per capability), so every
 writer has to READ the capability off the run rather than type it, and refuse when
 the run does not say. :func:`run_capability` is that single reader: four sources in
 one order, agreement required, no guess. It is here rather than in a writer because
 five writers need the same answer and five copies of a precedence rule drift.
 
-WHY IT HAS A ``--write`` MODE AND WHAT THAT COSTS. Twelve of the thirty-seven cited
-fleet welds, every family gate and the composition probes stamp NO capability of
-their own — the multi-capability design's census of the 2026-09-25 fleet, not a
-count taken here — so a round that only ran those gates has no evidence of the
-architecture it ran on. ``--write DIR`` closes that by recording
-``DIR/device.json`` from the live host in the run's own environment, which
-:func:`run_capability` then reads as a source of last resort. It is the ONE place in
-this module that loads a device stack, and it loads it through
-``importlib.import_module`` INSIDE the ``--write`` path: the library functions above
-must still answer inside a gate that has already refused, so no import statement in
-this file may name ``cupy``, ``triton``, ``numpy`` or ``meep_gpu``. A separate
-process with the same ``CUDA_VISIBLE_DEVICES`` is weaker evidence than an in-process
-stamp, and the standing plan is to stamp each producer through :func:`record` at its
-next edit; this is what makes a round certifiable before that work lands.
+Why it has a ``--write`` mode and what that costs. Twelve of the thirty-seven cited
+fleet welds, every family gate and the composition probes stamp NO capability of their
+own — by a census of the 2026-09-25 fleet that was not recounted here — so a
+certification round that only ran those gates has no evidence of the
+architecture it ran on. ``--write DIR`` closes that by recording ``DIR/device.json``
+from the live host in the run's own environment, which :func:`run_capability` then
+reads as a source of last resort. It is the ONE place in this module that loads a
+device stack, and it loads it through ``importlib.import_module`` INSIDE the
+``--write`` path: the library functions above must still answer inside a gate that has
+already refused, so no import statement in this file may name ``cupy``, ``triton``,
+``numpy`` or ``meep_gpu``. A separate process with the same ``CUDA_VISIBLE_DEVICES``
+is weaker evidence than an in-process stamp, and the standing plan is to stamp each
+producer through :func:`record` at its next edit; this is what makes a certification
+round certifiable before that work lands.
 
 Usage, at the probe's own environment site::
 
@@ -75,7 +80,6 @@ from __future__ import annotations
 
 import json
 import os
-import socket
 import sys
 import time
 from typing import Any, Dict, Iterable, Optional, Sequence, Tuple
@@ -83,9 +87,19 @@ from typing import Any, Dict, Iterable, Optional, Sequence, Tuple
 #: What ``--write`` returns when it cannot record a capability. The same number
 #: ``drive_triton_weld_gates.EXIT_CANNOT_CERTIFY`` uses, deliberately: the driver
 #: propagates this child's refusal as its own, and two numbers for one outcome is
-#: how a campaign log stops being readable.
+#: how a run's log stops being readable.
 EXIT_CANNOT_RECORD = 75
 
+
+
+def _neutral_ids():
+    """The record spellings (``neutral_ids.py`` beside this file), by name or as a package
+    module, whichever way this file itself was imported."""
+    try:
+        import neutral_ids  # noqa: PLC0415
+    except ImportError:
+        from parity.meep_gpu import neutral_ids  # noqa: PLC0415
+    return neutral_ids
 
 def normalized_capability(value: Any) -> str:
     """``(8, 6)``, ``"86"``, ``"8.6"`` -> ``"8.6"``. One spelling, so a comparison means something.
@@ -124,8 +138,10 @@ def device_identity() -> Dict[str, Any]:
     written, because losing a completed gate run to an identity read would be the
     expensive failure.
     """
+    # The machine as its anonymous id (``neutral_ids.machine_id``): the readers compare
+    # two stamps for "the same machine", and the id answers that without naming it.
     out: Dict[str, Any] = {
-        "hostname": socket.gethostname(),
+        "hostname": _neutral_ids().machine_id(),
         "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
     }
 
@@ -161,7 +177,7 @@ def record(environment: Dict[str, Any]) -> Dict[str, Any]:
     Returns the same dict it was handed, so the call reads as one expression at the
     probe's existing assignment site.
     """
-    # HALF A MEASUREMENT IS NOT A MEASUREMENT. A probe whose own `environment()`
+    # Half A measurement is not a measurement. A probe whose own `environment()`
     # fell to its except branch records `cupy = "unavailable: ..."` and no device;
     # filling the device and the capability around that string would compose an
     # identity that reads as a complete one and is not. Where the probe reports its
@@ -246,7 +262,7 @@ def run_capability(payload: Dict[str, Any], dirs: Iterable[Any] = ()
     architecture no measurement names; the writers call this and SKIP the entry by
     the reason it returns.
 
-    FOUR SOURCES, ONE ORDER, AGREEMENT REQUIRED:
+    Four sources, one order, agreement required:
 
     1. ``environment.compute_capability|cc`` — the probe's own block, which
        :func:`record` normalises. The strongest: measured in the process that
@@ -259,11 +275,11 @@ def run_capability(payload: Dict[str, Any], dirs: Iterable[Any] = ()
        it as the self-stamp shape, so a probe that adopts it is not read as
        unmeasured.
     4. ``<dir>/device.json`` for each of ``dirs``, in the order given — the
-       ``--write`` record. Last because it comes from a SEPARATE process that
-       shared only ``CUDA_VISIBLE_DEVICES``; it is what makes a round whose gates
-       stamp nothing certifiable at all.
+       ``--write`` record. Last because it comes from a SEPARATE process that shared
+       only ``CUDA_VISIBLE_DEVICES``; it is what makes a certification round whose
+       gates stamp nothing certifiable at all.
 
-    EVERY SOURCE THAT ANSWERS MUST AGREE, and so must every hostname that is
+    Every source that answers must agree, and so must every hostname that is
     stated. One run happened on one machine on one architecture: two answers mean
     the directory pools artifacts from two runs, and binding either value would
     certify a card that never ran these bytes. An unreadable ``device.json`` is
@@ -311,7 +327,7 @@ def run_capability(payload: Dict[str, Any], dirs: Iterable[Any] = ()
             value = _stated(block, key)
             if value is not None and key not in identity:
                 identity[key] = value
-        # THE PLACEMENT CLAIM, ONE LEVEL DOWN. Some probes write the mask inside
+        # The placement claim, one level down. Some probes write the mask inside
         # their own ``env`` sub-block rather than beside the device keys (measured
         # across the 2026-09-09 fleet; ``rebind_triton_welds._host_line`` reads both),
         # and it is the part of a host line that makes "it ran alone on GPU 6"
@@ -369,7 +385,7 @@ def write_device_json(directory: Any) -> Tuple[Optional[Dict[str, Any]], Optiona
     written on a refusal: a device.json that names no capability is worse than none
     at all, because :func:`run_capability` would read it as a source that answered.
 
-    THE ONE PLACE THIS MODULE OPENS A DEVICE, and it does so through
+    The one place this module opens a device, and it does so through
     ``importlib.import_module`` rather than an ``import`` statement, because every
     other function here must answer inside a gate that has already refused — the
     module's own merge-bar test reads the import list off the AST and no entry in it
@@ -378,10 +394,10 @@ def write_device_json(directory: Any) -> Tuple[Optional[Dict[str, Any]], Optiona
     ``sys.modules`` exactly as it does inside a probe, so the CLI and the probes
     record one shape by construction rather than by two code paths agreeing.
 
-    A MISSING TRITON IS RECORDED, NOT REFUSED. A CUDA-table round has no Triton to
-    report, and the rule that a run's toolchain must be a validated one belongs at
-    the rebind, where the validated list lives. What this refuses is the one fact
-    the record is KEYED by: a capability it could not read.
+    A missing Triton is recorded, not refused. A run of the CUDA table alone has
+    no Triton to report, and the rule that a run's toolchain must be a validated
+    one belongs at the rebind, where the validated list lives. What this refuses
+    is the one fact the record is KEYED by: a capability it could not read.
     """
     import importlib  # noqa: PLC0415 - see above; the device stack loads here only
 
@@ -410,10 +426,10 @@ def write_device_json(directory: Any) -> Tuple[Optional[Dict[str, Any]], Optiona
     payload["recorded_utc"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
     path = os.path.join(str(directory), "device.json")
-    # A RUN ROOT RE-USED ON ANOTHER CARD IS THE HAZARD THIS WHOLE RECORD EXISTS TO
-    # CATCH. Re-recording the same device is a resumed campaign and is allowed; a
+    # A run root re-used on another card is the hazard this whole record exists to
+    # catch. Re-recording the same device is a resumed campaign and is allowed; a
     # file naming a different card or machine is evidence from another run, and
-    # replacing it would hand the round's gates a capability they did not run on.
+    # replacing it would hand that run's gates a capability they did not run on.
     if os.path.isfile(path):
         standing, standing_identity = run_capability({}, [str(directory)])
         if standing is None:

@@ -4,7 +4,7 @@ THE QUESTION, one per group: is the blocking clause over-broad (the body would h
 been byte-exact) or load-bearing (the body genuinely diverges)? Only measurement
 settles it — this project has been wrong in both directions.
 
-HOW A BODY IS PUT ON A CONFIGURATION IT IS REFUSED ON. The shipped ``plan_*``
+How a body is put on a configuration it is refused on. The shipped ``plan_*``
 builder is used, unmodified, with its OWN coverage function temporarily replaced by
 one that admits. That is deliberate and it is the only honest route: the builder is
 what resolves the target arrays, the auxiliaries, the sources, the inverse epsilon
@@ -27,7 +27,7 @@ CASE DISCIPLINE
   loop instead would count ``perturb``'s own writes as sub-step movement — the
   perturbation footprint strictly contains most sub-steps' — and a completely dead
   update would still report thousands of moved words.
-* **constitutive legs keep a +-0 lattice LIVE AT EVERY SUB-STEP.** Zero-init is a
+* **constitutive legs keep a +-0 lattice live at every sub-step.** Zero-init is a
   fixed point of the constitutive sub-step, and the signed zero is exactly what
   separates an accumulation from a store (``no_pml_constitutive.STORED_E_ARM``).
   ``perturb`` therefore holds the lattice cells fixed rather than adding to them
@@ -401,7 +401,7 @@ def build(xp, *, cell=(0.8, 0.8, 0.8), dimensions=3, boundaries="metallic",
         fields.enable_pml_storage()
     else:
         fields.enable_field_storage()
-    # A MIRRORED axis takes the HIGH FACE ONLY: cell 0 lies on the mirror plane,
+    # A MIRRORED axis takes the high face only: cell 0 lies on the mirror plane,
     # which is a boundary condition and not an absorber (pml.py:408 refuses the
     # low face by name). That is the engine's own rule, not a harness convenience.
     mirrored = tuple(bool(getattr(grid, "is_mirrored", lambda a: False)(axis))
@@ -461,7 +461,7 @@ def perturb(fields: Any, xp, cycle: int, amplitude: float = 0.15) -> None:
     catching. Moving every stored volume and every P between cycles is what makes a
     stale binding visible as a divergence instead of hiding as agreement.
 
-    THE ONE EXCEPTION IS THE +-0 LATTICE, and it is not a detail. ``-0.0 + x`` is
+    The one exception is the +-0 LATTICE, and it is not a detail. ``-0.0 + x`` is
     ``x``, so adding a delta over a whole D volume ERASES the signed-zero needle
     before the first sub-step runs. The lattice cells are RESTORED after the delta
     and everything else moves; :func:`signed_zero_census` is then taken per cycle
@@ -469,7 +469,7 @@ def perturb(fields: Any, xp, cycle: int, amplitude: float = 0.15) -> None:
     silently un-needled.
 
     PLATFORM FACT, measured on an RTX A6000 (cupy 13.5.1), not assumed: **CuPy's
-    boolean-mask assignment FROM A SCALAR does not preserve the sign of zero.**
+    boolean-mask assignment from a scalar does not preserve the sign of zero.**
     ``a[mask] = -0.0``, ``a[mask] = np.float32(-0.0)`` and ``a[mask] =
     cp.float32(-0.0)`` all leave ``+0.0`` on the device, while the identical
     spelling on NumPy leaves ``-0.0`` — so the needle is silently gone on exactly
@@ -571,7 +571,7 @@ def run_case(name: str, group: str, sub_step: str, prediction: str,
                 row["seconds"] = round(time.time() - started, 2)
                 return row
 
-        # THE VACUITY GATE, bracketed around the SUB-STEP and nothing else. Taken
+        # The vacuity gate, bracketed around the SUB-STEP and nothing else. Taken
         # around the whole loop it would count `perturb`'s own writes, whose
         # footprint contains most sub-steps' targets, and a dead update would still
         # report thousands of moved words. Both sides are measured: an array path
@@ -611,7 +611,7 @@ def run_case(name: str, group: str, sub_step: str, prediction: str,
     row["signed_zero_words_min"] = min(live_signed_zeros)
     row["substep_moved_per_cycle"] = substep_moved
     row["kernel_moved_per_cycle"] = kernel_moved
-    # THE SIGNED-ZERO FLOOR, enforced rather than reported. A constitutive sub-step
+    # The signed-zero floor, enforced rather than reported. A constitutive sub-step
     # has zero-init as a FIXED POINT, so on a leg whose needle has drained the
     # arithmetic under test is `0 = 0` on the lattice cells and the identity claim
     # is worth nothing there. Making it a VACUOUS verdict is what turned the

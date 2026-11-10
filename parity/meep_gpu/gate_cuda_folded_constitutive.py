@@ -1,6 +1,6 @@
 """Sub-step byte-identity gate for the SHIPPED CUDA constitutive pair ON A FOLD.
 
-THE CLAIM UNDER TEST, and it is a claim about a PREDICATE, not about a kernel.
+The claim under test, and it is a claim about a PREDICATE, not about a kernel.
 ``meep_gpu/cuda_kernels/constitutive_kernels.py`` ships two certified kernels,
 ``update_H_pml_real`` and ``update_E_pml_real``. This gate does not
 change one byte of either. It asks whether the refusal
@@ -12,7 +12,7 @@ change one byte of either. It asks whether the refusal
 -- is a refusal the arithmetic requires, or a refusal inherited from the CURL
 family that shares the predicate's shape.
 
-WHY THE READING SAYS IT IS NOT REQUIRED (all four facts read off the source, and
+Why the reading says it is not required (all four facts read off the source, and
 the last one measured on a laptop before this file was written):
 
 1. The sub-step reads NO NEIGHBOUR. ``stepping._apply_constitutive_pml``
@@ -26,7 +26,7 @@ the last one measured on a laptop before this file was written):
    symmetry, a mirror, a parity or a fold. The fold's repairs are separate
    passes the DRIVER runs (``fill_symmetry_bc_B``/``_D``,
    ``fill_folded_far_ghosts_B``/``_D``), outside this sub-step on both sides.
-3. THE EXTENT MOVES BOTH OPERANDS TOGETHER. ``PML._compute_coefficients``
+3. The extent moves both operands together. ``PML._compute_coefficients``
    (pml.py:693-695, :706-708) builds every kps/kms vector from ``self.grid.nx``,
    ``grid.ny``, ``grid.nz`` -- the STORED extent, which is what ``Grid``'s fold
    halves (grid.py:570-575). The field arrays are allocated on the same
@@ -43,26 +43,26 @@ the last one measured on a laptop before this file was written):
    assume it.
 
 =============================================================================
-WHY A SUB-STEP GATE AND NOT A WHOLE-STEP ONE
+Why a sub-step gate and not a whole-step one
 =============================================================================
 
-A WHOLE-STEP GATE CANNOT SEE A MASK. The driver's fold repairs overwrite exactly
+A whole-step gate cannot see a mask. The driver's fold repairs overwrite exactly
 the planes a missing mask would corrupt (the same fact ``symmetry.py`` records
-for the folded curl: "THE MASKS ARE INVISIBLE AT WHOLE-STEP GRANULARITY... a
+for the folded curl: "the masks are invisible at whole-step granularity... a
 whole-step in-session check therefore certifies a mask-less symmetry kernel as
 correct"). This sub-step is claimed to need no mask at all, and a whole-step
 check is precisely the instrument that cannot tell "needs none" from "is missing
 one". So every comparison here is ONE SUB-STEP from ONE frozen state.
 
 =============================================================================
-WHAT WOULD MAKE THIS GATE VACUOUS, AND THE FLOORS THAT REFUSE IT
+What would make this gate vacuous, and the floors that refuse it
 =============================================================================
 
 * ``oracle_moved`` -- the fraction of output words the array path changed from
   the frozen input. Zero-init is a fixed point of this recurrence; a case that
   moved nothing is refused, not passed.
-* ``folded_axis_absorbs`` -- ``max|kps-1|`` and ``max|kms-1|`` ON THE FOLDED
-  AXIS. If the folded axis's coefficient vector is the identity everywhere, a
+* ``folded_axis_absorbs`` -- ``max|kps-1|`` and ``max|kms-1|`` on the folded
+  axis. If the folded axis's coefficient vector is the identity everywhere, a
   coefficient-index error on that axis is invisible and the case is testing
   every axis except the one the fold touched. Measured on the laptop before this
   file: a folded Y periodic axis carries ``kms_y = [1...1, 0.1905, -2.238]``, so
@@ -70,16 +70,16 @@ WHAT WOULD MAKE THIS GATE VACUOUS, AND THE FLOORS THAT REFUSE IT
   (pml.py:387-415) drops the LOW face and keeps the high one, and a fixture that
   asked for no absorber there would silently lose the whole question.
 * ``stored_past_owned`` -- ``stored_cells - owned_cells`` on the folded axis.
-  A folded PERIODIC axis stores ONE SLOT PAST MEEP's owned window and a folded
+  A folded PERIODIC axis stores one slot past MEEP's owned window and a folded
   METALLIC one does not (grid.py:570-575), and that extra slot is where the
   deepest absorber coefficient lands. Both terminations are swept because they
   are structurally different arrays, and the field records which is which.
-* The mutation battery, including two that MUST BE UNCAUGHT. A battery of
+* The mutation battery, including two that must be uncaught. A battery of
   only-must-be-caught legs scores identically whether the comparator works or
   has degenerated into failing everything.
 
 =============================================================================
-THE FOLD-SPECIFIC MUTATION
+The fold-specific mutation
 =============================================================================
 
 ``reverse_folded_axis_coefficients`` is this gate's own, and it is the refusal
@@ -104,7 +104,7 @@ token because CuPy's disk-cache key is computed above the strip seam)::
 
 Laptop (no CUDA). The NumPy backend runs the SAME oracle, the same fixture, the
 same floors and the same HOST mutations against a transcription of the shipped
-device tree. IT COMPILES NOTHING AND CERTIFIES NOTHING -- what it settles is
+device tree. It compiles nothing and certifies nothing -- what it settles is
 whether the coefficient tables at the folded stored extent reproduce
 ``stepping`` at all, which is the reading's fourth fact, and whether the harness
 can fail::
@@ -200,7 +200,7 @@ def state_names(side: str) -> Tuple[str, ...]:
 # The case product
 # ---------------------------------------------------------------------------
 #
-# EVERY AXIS IS FOLDED SOMEWHERE IN THIS LIST, and both terminations appear on
+# Every axis is folded somewhere in this list, and both terminations appear on
 # each. ``PML._resolve_mirror_faces`` reads ``Grid.is_mirrored`` per axis, and
 # the note above it records that enumerating X and Y alone once left a folded Z
 # graded from BOTH walls -- so a sweep carrying one folded axis proves nothing
@@ -231,7 +231,7 @@ FOLD_SPECS: Tuple[Dict[str, Any], ...] = (
     {"label": "fold_Y_metallic_odd_plane", "axes": "Y", "phase": -1,
      "boundaries": ("periodic", "metallic", "periodic"), "cell": (8.0, 16.0, 12.0)},
 
-    # ODD FULL COUNT on the folded axis, both terminations.
+    # Odd full count on the folded axis, both terminations.
     {"label": "fold_Y_periodic_odd_count", "axes": "Y", "phase": 1,
      "boundaries": ("periodic", "periodic", "periodic"), "cell": (8.0, 17.0, 12.0)},
     {"label": "fold_Y_metallic_odd_count", "axes": "Y", "phase": 1,
@@ -249,13 +249,13 @@ FOLD_SPECS: Tuple[Dict[str, Any], ...] = (
     {"label": "fold_Z_metallic", "axes": "Z", "phase": -1,
      "boundaries": ("periodic", "periodic", "metallic"), "cell": (8.0, 12.0, 16.0)},
 
-    # TWO PLANES AT ONCE: the doubly-folded corner, one axis terminated each way.
+    # Two planes at once: the doubly-folded corner, one axis terminated each way.
     {"label": "fold_XY_mixed", "axes": "XY", "phase": 1,
      "boundaries": ("periodic", "metallic", "periodic"), "cell": (16.0, 16.0, 10.0)},
     {"label": "fold_XZ_mixed", "axes": "XZ", "phase": -1,
      "boundaries": ("metallic", "periodic", "periodic"), "cell": (16.0, 10.0, 16.0)},
 
-    # THREE PLANES AT ONCE, added 2026-08-20. Until this round
+    # Three planes at once, added 2026-08-20. Until then
     # :data:`CONSTITUTIVE_FOLD_ADMISSION` recorded ``folded_planes_swept = 2`` BY
     # CONSTRUCTION -- the number came from this tuple -- and the predicate quoted
     # it back as a refusal, so a three-plane fold was refused by the shape of the
@@ -263,14 +263,14 @@ FOLD_SPECS: Tuple[Dict[str, Any], ...] = (
     # triply-folded row (``TestLDOS.test_ldos_3D``, mirrored and metallic on all
     # three axes) and the refusal costs it two slots here and two on the curl.
     #
-    # ALL THREE TERMINATION ARMS, not only the corpus's all-metallic one: the
+    # All three termination arms, not only the corpus's all-metallic one: the
     # folded PERIODIC axis is the one that stores a slot past MEEP's owned window,
     # so three of them at once is the shape where the deepest coefficient of every
     # axis lands in an extra slot simultaneously, and a mixed arm is the only one
     # where the three axes' vectors have different lengths RELATIVE to their owned
     # windows.
     #
-    # THE EXTENTS ARE DELIBERATELY UNEQUAL (9, 10, 11 stored). A cube would let an
+    # The extents are deliberately unequal (9, 10, 11 stored). A cube would let an
     # index decomposition confuse i, j and k and stay bit-identical, which is what
     # ``fortran_order_index_decomposition`` and ``own_axis_to_x_for_all_three``
     # plant.
@@ -299,7 +299,7 @@ SIDES: Tuple[str, ...] = ("H", "E")
 
 #: ``--fmad=false`` is CORRECTNESS on this sub-step, not tuning: both
 #: accumulations and the E side's ``D*inv_eps`` are contraction candidates the
-#: array path rounds twice. The control is EXPECTED TO DIVERGE at the inexact
+#: array path rounds twice. The control is expected to diverge at the inexact
 #: courant; if it does not, the guard is decorative here and the record must say
 #: so rather than implying evidence it does not have.
 GUARD_SETS: Tuple[Tuple[str, Tuple[str, ...], bool], ...] = (
@@ -319,7 +319,7 @@ SOURCE_MUTATIONS_BY_SIDE: Dict[str, Tuple[str, ...]] = {
           "fortran_order_index_decomposition", "bind_Ez_inv_eps_for_all_three",
           "inv_eps_left", "commute_constitutive_scale"),
 }
-#: THIS GATE'S NEEDLE TABLE for both sides' defects: each one borrowed from the
+#: This gate's needle table for both sides' defects: each one borrowed from the
 #: probe's shared default until this gate's kernels need a spelling of their
 #: own, which is then an ``own=`` entry here and moves no other gate
 #: (``gate_needles.py``).
@@ -328,7 +328,7 @@ _ARMED: Tuple[str, ...] = tuple(dict.fromkeys(
 SHARED_NEEDLES = gate_needles.gate_table(
     "gate_cuda_folded_constitutive", probe.SOURCE_MUTATIONS, _ARMED)
 
-#: MUST BE UNCAUGHT, each paired with a leg editing the same expression that must
+#: Must be uncaught, each paired with a leg editing the same expression that must
 #: be caught (``drop_inverse_epsilon`` and ``regroup_constitutive``). A gate whose
 #: whole battery must be caught scores identically whether the comparator works or
 #: has degenerated into failing everything.
@@ -373,7 +373,7 @@ class _NumpyWearingCupysName:
 def build(xp, spec: Dict[str, Any], courant: float):
     """A frozen ``(fields, layer, grid)`` triple for one fold spec.
 
-    THE THICKNESS RULE IS THE SLICE'S OWN (``test_constitutive_pml_real.build``),
+    The thickness rule is the slice's own (``test_constitutive_pml_real.build``),
     not a new one: skip an axis too thin to hold a layer, and on a MIRRORED axis
     ask for the HIGH face only. ``PML._resolve_mirror_faces`` (pml.py:387-415)
     refuses a named low face on a folded axis outright -- cell 0 is the mirror
@@ -421,13 +421,13 @@ def install_epsilon(fields, grid, rng) -> None:
 def seed_state(fields, grid, side: str, value_class: str, rng) -> Dict[str, np.ndarray]:
     """Physical-band or subnormal-band values in every array the sub-step touches.
 
-    THE AUXILIARIES START NONZERO in both classes. A zero ``f_w`` makes
+    The auxiliaries start nonzero in both classes. A zero ``f_w`` makes
     ``kms * prev`` exactly zero on the first launch whatever ``kms`` holds, so a
     mis-indexed coefficient would only show from step two -- precisely what the
     multi-step leg exists to catch, and no reason to hide it from the single
     launch as well.
 
-    THE MATERIAL STAYS NORMAL under the band class: driving inverse epsilon into
+    The material stays normal under the band class: driving inverse epsilon into
     the band too would make every product underflow and the leg would measure the
     fixture rather than the policy's reach into this arithmetic.
     """
@@ -495,7 +495,7 @@ def wrong_sub_lattice_tables(side: str, layer) -> Dict[str, Any]:
 
 
 def reversed_folded_axis_tables(side: str, layer, grid) -> Dict[str, Any]:
-    """THE REFUSAL REASON, ARMED. The folded axis's profile read backwards.
+    """The refusal reason, armed. The folded axis's profile read backwards.
 
     "The fold changes the stored extent, and the extent is what turns a cell
     index into a coefficient index" is the predicate's stated reason for refusing
@@ -554,7 +554,7 @@ def run_kernel_cuda(side: str, fields, tables: Dict[str, Any]) -> None:
     from gate_chunk_records import region_plan_record  # noqa: PLC0415
     from meep_gpu.cuda_kernels import constitutive_kernels  # noqa: PLC0415
 
-    # The division of the region plan the oracle stepped with: since 0.10 the kernel
+    # The division of the region plan the oracle stepped with: since 1.0 the kernel
     # chooses each cell's form per structure chunk from its record.
     constitutive_kernels.update_fused_pml_real(
         side, fields, tables=tables, chunk_bounds=cp.asarray(region_plan_record(fields)))
@@ -586,7 +586,7 @@ def run_kernel_numpy(side: str, fields, tables: Dict[str, Any]) -> None:
     length here is ``tables[...]``'s length, i.e. the STORED extent, exactly as
     the device index is bounded by the stored shape.
 
-    THIS COMPILES NOTHING AND CERTIFIES NOTHING. It cannot see a defect the NVRTC
+    This compiles nothing and certifies nothing. It cannot see a defect the NVRTC
     contraction guard exists for, it does not exercise the subnormal policy, and
     it is not the shipped bytes. What it settles is (a) whether the tables at the
     folded extent reproduce ``stepping`` at all and (b) whether this harness can
@@ -697,7 +697,7 @@ def one_case(backend: str, spec: Dict[str, Any], side: str, courant: float,
              host_mutation: Optional[str] = None) -> Dict[str, Any]:
     """One frozen state, run twice: the array path, then the kernel.
 
-    THE ORACLE IS ``stepping`` ITSELF on real ``Grid``/``Fields``/``PML``
+    The oracle is ``stepping`` itself on real ``Grid``/``Fields``/``PML``
     objects. There is no second transcription on the oracle leg to drift: the
     kernel is compared against the thing it claims to reproduce, byte for byte,
     from ONE frozen state -- oracle runs, state is restored, kernel runs.
@@ -723,7 +723,7 @@ def one_case(backend: str, spec: Dict[str, Any], side: str, courant: float,
         "operand_census": operand_census(host),
     }
 
-    # THE PREDICATE'S CURRENT ANSWER, recorded rather than acted on. This gate
+    # The predicate's current answer, recorded rather than acted on. This gate
     # exists to decide whether that answer should change, so it must not be the
     # thing that gates the measurement -- but a record that did not carry it
     # could not show WHICH clause the run was taken against.
@@ -774,7 +774,7 @@ def one_case(backend: str, spec: Dict[str, Any], side: str, courant: float,
     # field right and ``f_w`` wrong is correct for exactly one launch and wrong
     # forever after.
     #
-    # ONE ``Fields`` OBJECT, RUN TWICE FROM THE SAME FROZEN STATE, rather than a
+    # One ``Fields`` object, run twice from the same frozen state, rather than a
     # second object built beside it. Two objects means two epsilon draws unless
     # the volumes are copied across, and a fixture that solved two different
     # problems would report a divergence that says nothing about the kernel.
@@ -953,7 +953,7 @@ def run_source_mutations(results: Dict[str, Any], out_path: str,
     originals = {side: getattr(constitutive_kernels, attribute)
                  for side, attribute in attribute_for.items()}
     out: Dict[str, Any] = {}
-    # FOLDED LEGS ONLY. Every one of these defects is already scored on unfolded
+    # Folded legs only. Every one of these defects is already scored on unfolded
     # grids by the certified record; what this gate adds is whether the same
     # battery still bites once the stored extent is halved.
     plan = [entry for entry in mutation_plan(product) if entry[0]["axes"]]
@@ -1063,7 +1063,7 @@ def summarize(results: Dict[str, Any]) -> Dict[str, Any]:
         reasons.append(f"folded terminations scored were {sorted(terminations)}, "
                        f"not both of periodic and metallic")
 
-    # THE PLANE COUNT IS MEASURED FROM WHAT RAN, never quoted from the case table.
+    # The plane count is measured from what ran, never quoted from the case table.
     # :data:`coverage.CONSTITUTIVE_FOLD_ADMISSION`'s ``folded_planes_swept`` may be
     # raised to this number and to no other -- the field it replaced was taken from
     # the spec tuple, which is how the predicate came to refuse a plane count on
@@ -1106,7 +1106,7 @@ def summarize(results: Dict[str, Any]) -> Dict[str, Any]:
         elif leg["verdict"] not in ("CAUGHT", "NULL CONFIRMED"):
             reasons.append(f"source mutation {key} is {leg['verdict']}")
 
-    # THE GUARD CONTROL, reported rather than gated on. ``--fmad=false`` is
+    # The guard control, reported rather than gated on. ``--fmad=false`` is
     # claimed to be CORRECTNESS on this sub-step; the unguarded leg is expected to
     # DIVERGE at the inexact courant, where a contracted and an uncontracted
     # expression round differently. If it does not, the guard is decorative here
@@ -1119,7 +1119,7 @@ def summarize(results: Dict[str, Any]) -> Dict[str, Any]:
     guard_control = {
         "scored_at_inexact_courant": len(control),
         "diverged": len(control_diverged),
-        # NOT MEASURED is its own reading. The NumPy backend has no compiler to
+        # "NOT MEASURED" is its own reading. The NumPy backend has no compiler to
         # guard, so it scores nothing here, and a run that scored nothing must
         # not read as a run that found nothing.
         "reading": ("NOT MEASURED on this run: no unguarded leg was scored at "
@@ -1141,7 +1141,7 @@ def summarize(results: Dict[str, Any]) -> Dict[str, Any]:
         "multi_step_identical": len(multi_ok),
         "multi_step_cases": len(multi_cases),
         "folded_terminations": sorted(terminations),
-        # THE CAP, MEASURED. The only number
+        # The cap, measured. The only number
         # ``CONSTITUTIVE_FOLD_ADMISSION["folded_planes_swept"]`` may be set from.
         "folded_planes_scored": plane_counts,
         "max_folded_planes_scored": max_planes,
@@ -1175,6 +1175,7 @@ def save(results: Dict[str, Any], out_path: str) -> None:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
+    import neutral_ids  # noqa: PLC0415
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--backend", choices=("cuda", "numpy"), default="cuda")
     parser.add_argument("--product", choices=("full", "reduced"), default="full")
@@ -1192,8 +1193,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     results: Dict[str, Any] = {
         "gate": "cuda_folded_constitutive",
         "started_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "host": os.uname().nodename,
-        "argv": list(argv if argv is not None else sys.argv[1:]),
+        "host": neutral_ids.machine_id(),
+        "argv": neutral_ids.argv(argv if argv is not None else sys.argv[1:]),
         "backend": args.backend,
         "product": args.product,
         "question": ("does covers_real_pml_constitutive's mirror-symmetry refusal "
@@ -1209,7 +1210,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             return 2
         if args.import_meep_for_host_policy:
             results["meep_host_import"] = probe.import_meep_for_host_policy()
-        # THE OBSERVER GOES IN BEFORE THE POLICY, and the order is the design:
+        # The observer goes in before the policy, and the order is the design:
         # under 'keep' the policy's strip wraps this, so it records the option
         # tuple NVRTC was really given (post-strip). Installed afterwards it
         # would sit outside the strip and record the pre-strip tuple -- the one

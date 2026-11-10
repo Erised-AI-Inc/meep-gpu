@@ -217,7 +217,7 @@ def _dispatch_enable_name() -> str:
     spelled = getattr(fastpath, "DISPATCH_ENABLE", _DISPATCH_ENABLE)
     if spelled != _DISPATCH_ENABLE:
         pytest.fail(
-            f"DISPATCH PIN IS STALE: fastpath.DISPATCH_ENABLE is {spelled!r} and "
+            f"Dispatch pin is stale: fastpath.DISPATCH_ENABLE is {spelled!r} and "
             f"meep_gpu/conftest.py pins {_DISPATCH_ENABLE!r}. Rename the pin "
             "(and parity/meep_gpu/conftest.py's) with the variable.")
     return _DISPATCH_ENABLE
@@ -234,7 +234,7 @@ def _dispatch_pinned_off():
     are set up before a test module's own autouse fixtures of the same scope, so
     ``test_dispatch_contract._opted_in`` and its siblings still win.
 
-    IT DOES NOT REQUEST ``monkeypatch``, and that is load-bearing. pytest orders a
+    It does not request ``monkeypatch``, and that is load-bearing. pytest orders a
     conftest's autouse fixtures by NAME, so this one is set up before
     :func:`_no_leaked_backend_stub`; asking for ``monkeypatch`` here would set
     monkeypatch up first too and tear it down LAST — after the stub guard had
@@ -336,7 +336,7 @@ def _no_leaked_subnormal_policy(request):
     correctly. Per-module teardown is the tightest boundary that leaves a module
     entirely alone and still refuses to let it decide what the NEXT file measures.
 
-    Both halves are required, and MEASURED 2026-08-15 to be required for
+    Both halves are required, and measured 2026-08-15 to be required for
     DIFFERENT reasons — neither is defence-in-depth for the other:
 
     * a successful install OUTRANKS the environment. After installing ``keep``,
@@ -377,7 +377,7 @@ def _no_leaked_subnormal_policy(request):
     # import, but a sibling's teardown may have run in between.
     wanted = (_COLLECTED_POLICY_ENV or _policy_environment()) \
         if _module_needs_flush(request.module) else _PRISTINE_POLICY_ENV
-    # THE DISPATCH PIN RIDES IN THE MODULE'S ENVIRONMENT, not beside it: the
+    # The dispatch pin rides in the module's environment, not beside it: the
     # variable carries the ``MEEP_GPU_`` prefix, so an environment applied without
     # it would delete it, and a module- or class-scoped fixture that steps an
     # array-path oracle is set up here, before any function-scoped pin could run.

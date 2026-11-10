@@ -5,7 +5,7 @@ Every witness of columns (a) and (b) is driven here through the REAL emit path
 over a planted package under ``tmp_path``: one module spelling MEEP's forms behind the
 chunk record, and the same module in the grouping the package shipped through 0.9.2.
 The calibration on BASE fa59c2f is pinned on emitted texts of that commit
-(``parity_board/base_calibration``); the whole-BASE run is the lane's measurement.
+(``parity_board/base_calibration``); the whole-BASE run is the measurement behind it.
 """
 
 from __future__ import annotations
@@ -477,8 +477,8 @@ def test_base_reads_no_record_and_no_meep_order_site(entry):
 
 
 def test_the_landed_roots_read_landed_through_their_emitters():
-    """The roots of the three tables (lanes KC1, KT1, KM1) read landed on their EMITTED
-    text: a witness that stopped seeing them would read every later lane as a gap."""
+    """The roots of the three tables (their first kernel steps) read landed on their EMITTED
+    text: a witness that stopped seeing them would read every later step as a gap."""
     for table, module in (("cuda", "step_curl_kernels"), ("cuda", "constitutive_kernels"),
                           ("triton", "kernels"), ("metal", "shaders")):
         record = emit.emitted_witnesses(ROOT, tables=(table,), modules=(module,))[table][module]

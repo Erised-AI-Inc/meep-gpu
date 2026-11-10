@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""ABSENT COMPONENTS ON THE DISPATCH ROUTE: perfect-conductor 2-D runs, dispatched, word for word.
+"""Absent components on the dispatch route: perfect-conductor 2-D runs, dispatched, word for word.
 
-WHAT THIS MEASURES. MEEP allocates no array for a field component nothing requires
+What this measures. MEEP allocates no array for a field component nothing requires
 (a 2-D run's other polarization: ``fields::_require_component``, fields.cpp:552-572),
 never steps it (``if (f[ec][cmp])``, update_eh.cpp:150) and reads it as 0.0
 (monitor.cpp:160-164). The lift records that set (``FdtdDriver.set_absent_components``)
@@ -31,7 +31,7 @@ cell whose inverse permittivity carries the sign bit, or on a plane a D fill wri
 the component (the two signatures of the defect this gate exists for), or anywhere else
 (a different defect).
 
-WHAT MAKES A PASS NON-VACUOUS, every clause a failure if false:
+What makes a pass non-vacuous, every clause a failure if false:
 
 * the dispatch leg's ``active_step_path`` reads ``"fused"`` and ``update_E`` is among its
   dispatched slots, with a consult count equal to the steps taken, so the slot whose
@@ -90,7 +90,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-# RESOLVED BY NAME, NEVER BY DEPTH, as the Metal route gate resolves it.
+# Resolved by name, never by depth, as the Metal route gate resolves it.
 _API = HERE
 while _API != os.path.dirname(_API) and not (
         os.path.isdir(os.path.join(_API, "meep_gpu"))
@@ -624,6 +624,7 @@ def plan_only_case(host: _Host, name: str, gpu_id: int, res: Optional[int]) -> D
 
 
 def main(argv: Optional[List[str]] = None) -> int:
+    import neutral_ids  # noqa: PLC0415
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--out", required=True, help="results directory (cases are appended)")
@@ -655,7 +656,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     provenance = {"gpu": gpu, "witnesses": host.witnesses,
                   "environment": e2e.environment_snapshot(),
                   "policy": e2e._policy_stamp(),  # noqa: SLF001
-                  "argv": sys.argv, "utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+                  "argv": neutral_ids.argv(sys.argv), "utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
     with open(os.path.join(arguments.out, "provenance.json"), "w", encoding="utf-8") as handle:
         json.dump(provenance, handle, indent=1, default=str)
     say(f"gpu={gpu} witnesses={host.witnesses} cases={names}")

@@ -2,23 +2,25 @@
 
 Written before the cutter. Synthetic ``rows.jsonl`` trees under ``tmp_path`` carry
 exactly the fields the cutter reads, in the two row spellings on disk: the fused-product
-bench's (one row per case, three legs inside it) and the repair Phase 0 harness's (one
+bench's (one row per case, three legs inside it) and the repair timing harness's (one
 row per LEG). Groups, in the repository's order for a new decision engine:
 
-* KNOWN VALUE -- medians, ratios and spreads of a hand-built tree, and the consult
+* Known value -- medians, ratios and spreads of a hand-built tree, and the consult
   vetoing exactly the product the tree measured slower;
-* DEGENERATE -- every floor, the same-table control, a verdict that is not a timing,
+* Degenerate -- every floor, the same-table control, a verdict that is not a timing,
   a host smoke row, a contended row (joined by device UUID, not by the row's own
   over-reporting field), a row with no digest, duplicate lines, too few rows, nothing
   admitted at all;
-* ONE RECORD, ONE PROGRAM -- rows on two deposit-repair digests, or on one digest with
+* One record, one program -- rows on two deposit-repair digests, or on one digest with
   differing restriction counters, REFUSE to pool; so do two fused-pair emitters;
-* SCALING -- bands are runs of measured sizes with one verdict, a verdict change
+* Scaling -- bands are runs of measured sizes with one verdict, a verdict change
   between two sizes is an explicit unmeasured gap, and nothing is extrapolated;
-* SHAPE / SERIALIZATION -- deterministic bytes, no wall clock, ``--check``, and the ONE
-  name a record may be written under: the one ``dispatch_preference.record_path`` gives
-  the compute capability its admitted rows stamp;
-* REALISTIC -- the shipped records recut byte-for-byte from the rows on disk, and,
+* Shape / serialization -- deterministic bytes, no wall clock, ``--check``, and the
+  names a record may be written under: the one ``dispatch_preference.record_path`` gives
+  the compute capability its admitted rows stamp, held by the architecture's
+  representative, or that name's card record beside it (``timing_cc86-<card>.json``),
+  each case of where a card's cut lands and what is refused by name, and ``--list``;
+* Realistic -- the shipped records recut byte-for-byte from the rows on disk, and,
   without the rows, what each shipped record must be to be consulted: cut for its table
   and architecture, every row read accounted for, every key answering the consult on the
   program the record names as its numbers say, band edges of at least the cutter's
@@ -50,7 +52,7 @@ PAIRS_SHA = "c3" * 32
 BENCH_SHA = "d4" * 32
 
 #: The compute capability every synthetic row below stamps, and so the one the cut
-#: record prices: ONE RECORD PRICES ONE ARCHITECTURE, the capability is read off the
+#: record prices: one record prices one architecture, the capability is read off the
 #: ROWS rather than typed on the command line, and it is what names the file
 #: (:func:`dp.record_path`). ``OTHER_CAPABILITY`` is a card no tree here was timed on.
 CAPABILITY = "8.6"
@@ -121,6 +123,9 @@ def bench_row(case="pml_2d", table="triton", grid=(200, 120, 1), fused_ms=1.4,
         "reportable": True, "prefer_gpu": True, "grid_shape": list(grid),
         "floors": {name: True for name in FLOORS},
         "box_before": box(), "box_after": box(),
+        # THE BENCH'S EXPORTED DISPATCH PREFERENCE: the shape rule, as it times every
+        # fused leg (``bench_fused_products.resolve_preference``).
+        "process_environment": {"MEEP_GPU_PREFER": "span"},
         "per_leg": {
             "fused": {"median_seconds_per_step": fused_ms / 1e3, "spread": fused_spread,
                       "steps_per_window": 1000, "windows": 6,
@@ -145,7 +150,7 @@ def bench_row(case="pml_2d", table="triton", grid=(200, 120, 1), fused_ms=1.4,
 def phase0_rows(case="pml_2d", table="triton", grid=(200, 120, 1), today_ms=1.4,
                 restricted_ms=0.9, singles_ms=0.5, sha=SHA_A,
                 utc="2026-09-19T23:13:06Z"):
-    """One Phase 0 point: five rows, one per leg, in the harness's own spelling."""
+    """One repair-harness point: five rows, one per leg, in the harness's own spelling."""
     out = []
     for leg, ms, verdict, per_step, applied in (
             ("today", today_ms, "TIMED", 3, 0),
@@ -157,7 +162,8 @@ def phase0_rows(case="pml_2d", table="triton", grid=(200, 120, 1), today_ms=1.4,
         slots = ("step_D", "update_E") if per_step else ()
         row = {key: template[key] for key in (
             "case", "drive_table", "utc", "reportable", "prefer_gpu", "grid_shape",
-            "floors", "box_before", "plans", "provenance", "substitution")}
+            "floors", "box_before", "plans", "provenance", "substitution",
+            "process_environment")}
         row["provenance"]["sha256"]["phase0_harness"] = "07" * 32
         row.update({
             "leg": leg, "verdict": verdict, "phase": "0.4", "res": 20,
@@ -369,7 +375,7 @@ def excluded_reasons(record):
     return sorted(item["reason"] for item in record["excluded"])
 
 
-#: The floors that gate under owner ruling R33: every recorded one but the window floor.
+#: The floors that gate under the between-pass gate: every recorded one but the window floor.
 GATING_FLOORS = tuple(name for name in FLOORS if name not in cut.WINDOW_FLOORS)
 
 
@@ -390,12 +396,12 @@ def test_a_row_failing_any_floor_is_not_admitted(tmp_path, floor):
 
 def test_the_window_floor_gates_nothing_under_r33_and_the_window_rule_still_reads_it(
         tmp_path, capsys):
-    """R33: a row the bench struck for its within-pass window spread alone (written
-    before the bench moved the spread out of its floors) is admitted, as is one that
-    carries no window floor at all (written after); its window spread stays in the
-    record. A record cut by the window rule, which every record before R33 was, still
-    refuses it, carries no ``gate`` stamp and its pre-R33 rules, and ``--check``
-    recomputes each record by its own rule."""
+    """The between-pass gate (since 2026-10-16): a row the bench struck for its within-pass
+    window spread alone (written before the bench moved the spread out of its floors) is
+    admitted, as is one that carries no window floor at all (written after); its window
+    spread stays in the record. A record cut by the window rule, which every record cut
+    before the rule changed on 2026-10-16 was, still refuses it, carries no ``gate`` stamp
+    and its earlier rules, and ``--check`` recomputes each record by its own rule."""
     jitter = bench_row(case="jitter", fused_spread=0.10)
     jitter["floors"]["spread_within_gate"] = False
     jitter["reportable"] = False
@@ -411,7 +417,8 @@ def test_the_window_floor_gates_nothing_under_r33_and_the_window_rule_still_read
     priced = {row["case"]: row for entry in entries(record) for row in entry["measurements"]}
     assert priced["jitter"]["fused_spread"] == pytest.approx(0.10), \
         "the window spread is recorded, never dropped"
-    old = cut_tree(tmp_path, gate=cut.WINDOW_GATE)
+    # A RECORD CUT BEFORE THE RULE CHANGED predates the preference rule too: neither stamp.
+    old = cut_tree(tmp_path, gate=cut.WINDOW_GATE, preference=None)
     assert "gate" not in old["cut"]
     assert {k: v for k, v in old["rules"].items() if k != "min_rows_per_key"} == cut.RULES
     assert sorted(excluded_reasons(old)) == ["floor failed: spread_within_gate",
@@ -426,7 +433,7 @@ def test_the_window_floor_gates_nothing_under_r33_and_the_window_rule_still_read
 
 def test_the_passes_of_a_point_enter_only_when_their_rates_agree_within_5_percent(
         tmp_path):
-    """R33, between passes: two rows of one case and grid shape are its passes. A 6 %
+    """The between-pass gate: two rows of one case and grid shape are its passes. A 6 %
     disagreement on the fused leg (or on the baseline) leaves every row of the point
     out by name; 1 % admits both; a point timed once has no between-pass spread."""
     write(tmp_path, "tree/rows.jsonl", [
@@ -442,7 +449,7 @@ def test_the_passes_of_a_point_enter_only_when_their_rates_agree_within_5_percen
     assert sorted(left_out) == ["base_wide", "wide"]
     assert len([item for item in record["excluded"] if item["case"] == "wide"]) == 2
     assert "between-pass spread" in left_out["wide"] and "fused" in left_out["wide"]
-    assert "R33" in left_out["wide"]
+    assert "(between-pass gate)" in left_out["wide"]
     assert "baseline" in left_out["base_wide"] and "fused" not in left_out["base_wide"]
     priced = sorted(row["case"] for entry in entries(record) for row in entry["measurements"])
     assert priced == ["close", "close", "once"]
@@ -450,7 +457,7 @@ def test_the_passes_of_a_point_enter_only_when_their_rates_agree_within_5_percen
 
 def test_a_drive_unit_and_a_sweep_point_of_one_grid_are_two_rows(tmp_path):
     """A DRIVE unit (six windows sized on a 2 s target) and a sweep point at the same
-    case and grid shape (four on 1.5 s) are two rows of the round, each with its own
+    case and grid shape (four on 1.5 s) are two rows of the campaign, each with its own
     passes, as their keys are: the 6 % between them strikes neither, while the sweep
     point's own two passes, 0.2 % apart, are its passes."""
     def clean(**options):
@@ -954,14 +961,14 @@ def test_one_noisy_row_does_not_clear_a_band_of_slower_rows(tmp_path):
 
 
 def test_a_band_edge_must_be_a_size_more_than_one_session_measured(tmp_path):
-    """A BAND'S EDGE IS ITS REACH, and one session cannot set it.
+    """A band's edge is its reach, and one session cannot set it.
 
     ``fused_spread`` and ``baseline_spread`` price the noise INSIDE a window; the
     spread BETWEEN sessions is not priced anywhere, and at neighbouring sizes the
     corpus shows it at a few parts in a thousand -- the size of the thinnest margins
     measured. So a size one row measured may not be a band edge: the band is trimmed
     to corroborated sizes and the remainder is written unmeasured, with its numbers,
-    so the next round sees what it owes.
+    so the next timing campaign sees what it owes.
     """
     write(tmp_path, "tree/rows.jsonl", [
         bench_row(case="lone_small", grid=(9760, 1, 1), fused_ms=1.5, base_ms=0.39),
@@ -1216,6 +1223,326 @@ def test_an_out_named_for_another_capability_is_refused_and_writes_nothing(
     assert dp.record_capabilities(written) == (CAPABILITY,)
 
 
+# ---------------------------------------------------------------------------
+# One record, one card: where a card's cut lands
+# ---------------------------------------------------------------------------
+
+#: The card every synthetic row stamps (``bench_row``), another card, and the names
+#: their records take in one table's directory.
+CARD = "EXAMPLE GPU"
+OTHER_CARD = "ANOTHER GPU"
+BARE = "timing_cc86.json"
+MINE = "timing_cc86-example_gpu.json"
+OTHERS = "timing_cc86-another_gpu.json"
+
+
+def card_rows(tmp_path, root, device=CARD, sha=SHA_A, pairs_sha=PAIRS_SHA, extra=False):
+    """Two bracketed rows of one point (and with ``extra`` a third), timed on ``device``."""
+    rows = [bench_row(case="pml_2d", fused_ms=1.40, base_ms=0.50, sha=sha,
+                      pairs_sha=pairs_sha),
+            bench_row(case="pml_2d_again", fused_ms=1.60, base_ms=0.52, sha=sha,
+                      pairs_sha=pairs_sha, utc="2026-09-19T14:00:00Z")]
+    if extra:
+        rows.append(bench_row(case="pml_2d_late", fused_ms=1.50, base_ms=0.51, sha=sha,
+                              pairs_sha=pairs_sha, utc="2026-09-19T15:00:00Z"))
+    for row in rows:
+        row["plans"]["fused"]["environment"]["device"]["name"] = device
+    write(tmp_path, f"{root}/rows.jsonl", rows)
+    return str(tmp_path / root)
+
+
+def cut_card(tmp_path, out, device=CARD, root=None, **rows):
+    """The command line, cutting ``device``'s rows to ``--out``."""
+    tree = card_rows(tmp_path, root or f"rows_{dp.card_slug(device)}", device, **rows)
+    return run(tmp_path, "--table", "triton", "--rows", tree, "--out", str(out),
+               "--no-account-for-release")
+
+
+def kernels(tmp_path, name="package"):
+    return tmp_path / name / "triton_kernels"
+
+
+def on_disk(directory):
+    return ({path.name: path.read_bytes() for path in sorted(directory.iterdir())}
+            if directory.exists() else {})
+
+
+def test_the_first_card_cut_for_an_architecture_lands_at_the_bare_name(tmp_path, capsys):
+    here = kernels(tmp_path)
+    assert cut_card(tmp_path, here / BARE) == cut.EXIT_OK
+    assert sorted(on_disk(here)) == [BARE, "timing_cc86.report.txt"]
+    written = dp.load_record(str(here / BARE), expect_table="triton")
+    assert cut.record_card(written) == CARD
+    assert cut.destination("triton", written, str(here)) == str(here / BARE)
+    said = capsys.readouterr().out
+    assert f"cut on {CARD}" in said and "is a card record" not in said
+
+
+def test_a_recut_of_the_card_at_the_bare_name_rewrites_it(tmp_path):
+    here = kernels(tmp_path)
+    assert cut_card(tmp_path, here / BARE) == cut.EXIT_OK
+    before = on_disk(here)
+    assert cut_card(tmp_path, here / BARE) == cut.EXIT_OK
+    assert on_disk(here) == before, "the same rows cut to the same bytes"
+    assert cut_card(tmp_path, here / BARE, extra=True) == cut.EXIT_OK
+    after = on_disk(here)
+    assert sorted(after) == sorted(before) and after[BARE] != before[BARE]
+    assert dp.load_record(str(here / BARE))["rows"]["admitted"] == 3
+
+
+def test_another_cards_cut_lands_beside_the_representative_and_replaces_nothing(
+        tmp_path, capsys):
+    here = kernels(tmp_path)
+    assert cut_card(tmp_path, here / BARE, device=OTHER_CARD) == cut.EXIT_OK
+    representative = (here / BARE).read_bytes()
+    capsys.readouterr()
+    assert cut_card(tmp_path, here / MINE) == cut.EXIT_OK
+    assert (here / BARE).read_bytes() == representative
+    assert sorted(on_disk(here)) == [MINE, "timing_cc86-example_gpu.report.txt", BARE,
+                                     "timing_cc86.report.txt"]
+    assert cut.record_card(dp.load_record(str(here / MINE))) == CARD
+    assert dp.record_path("triton", "8.6", root=str(tmp_path / "package")) == str(here / BARE)
+    # the report beside each names its card, and the card record checks like any other
+    assert ("card: EXAMPLE GPU (architecture 8.6)"
+            in (here / "timing_cc86-example_gpu.report.txt").read_text().splitlines())
+    assert ("card: ANOTHER GPU (architecture 8.6)"
+            in (here / "timing_cc86.report.txt").read_text().splitlines())
+    said = capsys.readouterr().out
+    assert (f"{MINE} is a card record: the dispatch path reads it for {CARD} alone, and "
+            f"every other card of architecture 8.6 reads {BARE}, the architecture's "
+            "representative\n" in said)
+    assert run(tmp_path, "--check", str(here / MINE)) == cut.EXIT_OK
+
+
+def test_a_recut_of_a_card_record_rewrites_it_in_place(tmp_path, capsys):
+    here = kernels(tmp_path)
+    cut_card(tmp_path, here / BARE, device=OTHER_CARD)
+    cut_card(tmp_path, here / MINE)
+    before = on_disk(here)
+    assert cut_card(tmp_path, here / MINE, extra=True) == cut.EXIT_OK
+    after = on_disk(here)
+    assert sorted(after) == sorted(before)
+    assert after[BARE] == before[BARE] and after[MINE] != before[MINE]
+    assert dp.load_record(str(here / MINE))["rows"]["admitted"] == 3
+    # with the representative retired, the card's own record is still where its re-cut
+    # goes: a cut never moves a card's record to the empty bare name
+    for name in (BARE, "timing_cc86.report.txt"):
+        (here / name).unlink()
+    capsys.readouterr()
+    assert cut_card(tmp_path, here / MINE) == cut.EXIT_OK
+    assert sorted(on_disk(here)) == [MINE, "timing_cc86-example_gpu.report.txt"]
+    assert (f"reads {BARE}, the architecture's representative, which is not in this "
+            "directory: here the architecture has no representative"
+            ) in capsys.readouterr().out
+    said = refused_by(tmp_path, capsys, here / BARE, "out_names_another_card")
+    assert f"is named {MINE} here" in said
+    assert ("A cut never moves a card's record: to make this card the representative, "
+            "retire the representative's record and report, and this card's own if it "
+            "has them, then cut again") in said
+    # changing the representative as documented: with the card's own record and report
+    # retired too, its cut lands at the bare name left empty
+    for name in (MINE, "timing_cc86-example_gpu.report.txt"):
+        (here / name).unlink()
+    capsys.readouterr()
+    assert cut_card(tmp_path, here / BARE) == cut.EXIT_OK
+    assert sorted(on_disk(here)) == [BARE, "timing_cc86.report.txt"]
+    assert "is a card record" not in capsys.readouterr().out
+
+
+def refused_by(tmp_path, capsys, out, code, **cut_options):
+    """Cut to ``out``, which must be refused by ``code``, with nothing on disk moved."""
+    here = pathlib.Path(out).parent
+    before = on_disk(here)
+    capsys.readouterr()
+    assert cut_card(tmp_path, out, **cut_options) == cut.EXIT_REFUSED
+    said = capsys.readouterr().out
+    assert f"REFUSED {code}" in said, said
+    assert on_disk(here) == before
+    return said
+
+
+def test_the_bare_name_held_by_another_card_is_refused_and_names_the_cards_own(
+        tmp_path, capsys):
+    here = kernels(tmp_path)
+    cut_card(tmp_path, here / BARE, device=OTHER_CARD)
+    said = refused_by(tmp_path, capsys, here / BARE, "existing_record_names_another_device")
+    assert MINE in said
+
+
+def test_another_cards_name_is_refused(tmp_path, capsys):
+    here = kernels(tmp_path)
+    cut_card(tmp_path, here / BARE, device=OTHER_CARD)
+    said = refused_by(tmp_path, capsys, here / OTHERS, "out_names_another_card")
+    assert MINE in said
+
+
+def test_the_cards_own_name_while_the_bare_name_is_empty_is_refused(tmp_path, capsys):
+    """The first card cut for an architecture represents it: the bare name is where it
+    goes, and the refusal says so."""
+    here = kernels(tmp_path)
+    said = refused_by(tmp_path, capsys, here / MINE, "out_names_another_card")
+    assert f"is named {BARE} here" in said
+    assert ("the bare name when it already holds this card's record, else the card's own "
+            "name when that file is there, else the bare name when it is empty, else the "
+            "card's own name beside it") in said
+
+
+def test_a_card_already_at_both_names_is_refused(tmp_path, capsys):
+    here = kernels(tmp_path)
+    cut_card(tmp_path, here / BARE)
+    (here / MINE).write_bytes((here / BARE).read_bytes())
+    refused_by(tmp_path, capsys, here / BARE, "card_has_two_records")
+    refused_by(tmp_path, capsys, here / MINE, "card_has_two_records")
+
+
+def test_a_slug_taken_by_another_exact_device_is_refused(tmp_path, capsys):
+    """``Example-GPU`` and ``EXAMPLE GPU`` share the slug ``example_gpu``: two cards, so
+    the second never writes over the first's file."""
+    here = kernels(tmp_path)
+    cut_card(tmp_path, here / BARE, device=OTHER_CARD)
+    assert cut_card(tmp_path, here / MINE, device="Example-GPU") == cut.EXIT_OK
+    refused_by(tmp_path, capsys, here / MINE, "existing_record_names_another_device")
+    # whatever --out names: with the representative retired, the bare name is refused by
+    # the same name, never pointed at the other device's file
+    for name in (BARE, "timing_cc86.report.txt"):
+        (here / name).unlink()
+    said = refused_by(tmp_path, capsys, here / BARE, "existing_record_names_another_device")
+    assert f"{MINE}, this card's own name, holds a record cut on 'Example-GPU'" in said
+
+
+def test_a_representative_of_another_exact_device_with_this_slug_is_refused(
+        tmp_path, capsys):
+    """``Example-GPU`` represents the architecture and ``EXAMPLE GPU`` has its slug: two
+    cards, so the second is refused at either name rather than placed beside the first
+    under the slug the first already answers to."""
+    here = kernels(tmp_path)
+    assert cut_card(tmp_path, here / BARE, device="Example-GPU") == cut.EXIT_OK
+    for out in (here / MINE, here / BARE):
+        said = refused_by(tmp_path, capsys, out, "existing_record_names_another_device")
+        assert "two exact names with the one slug example_gpu are two cards" in said
+
+
+def test_an_unreadable_file_at_the_destination_is_refused(tmp_path, capsys):
+    """A file that does not read as a record could be any card's, this one's included:
+    at the bare name or the card's own name it refuses the cut whatever ``--out``
+    names, so the card never lands beside it; at another name ``--out`` names, it
+    refuses that name."""
+    here = kernels(tmp_path)
+    here.mkdir(parents=True)
+    (here / MINE).write_text("not a record")
+    refused_by(tmp_path, capsys, here / MINE, "existing_record_unreadable")
+    refused_by(tmp_path, capsys, here / BARE, "existing_record_unreadable")
+    (here / MINE).unlink()
+    (here / BARE).write_text("not a record")
+    for out in (here / BARE, here / MINE):
+        refused_by(tmp_path, capsys, out, "existing_record_unreadable")
+    (here / BARE).unlink()
+    # the card's own name unreadable while the bare name holds this card's record
+    assert cut_card(tmp_path, here / BARE) == cut.EXIT_OK
+    (here / MINE).write_text("not a record")
+    for out in (here / BARE, here / MINE):
+        refused_by(tmp_path, capsys, out, "existing_record_unreadable")
+    (here / MINE).unlink()
+    (here / OTHERS).write_text("not a record")
+    refused_by(tmp_path, capsys, here / OTHERS, "existing_record_unreadable")
+
+
+def test_a_record_naming_two_devices_is_refused_at_either_name(tmp_path, capsys):
+    """Only a hand-made record names two devices (the cut refuses ``mixed_device``); it
+    is no one card's record, so a cut is placed neither over it nor beside it."""
+    here = kernels(tmp_path)
+    assert cut_card(tmp_path, here / BARE, device=OTHER_CARD) == cut.EXIT_OK
+    record = json.loads((here / BARE).read_text())
+    record["host"] = record["host"] + [dict(record["host"][0], device=CARD)]
+    (here / BARE).write_text(json.dumps(record))
+    for out in (here / BARE, here / MINE):
+        said = refused_by(tmp_path, capsys, out, "existing_record_names_another_device")
+        assert "more than one device" in said
+
+
+def test_rows_that_name_no_card_are_refused(tmp_path, capsys):
+    here = kernels(tmp_path)
+    for device in (None, "", " - "):
+        refused_by(tmp_path, capsys, here / BARE, "unnamed_card", device=device,
+                   root="unnamed")
+    # a record's card is the one exact name its host rows stamp: one card on two drivers
+    # is one card, two names are two cards, and no name is none
+    assert cut.record_card({"host": [{"device": CARD, "cuda_driver": 12030},
+                                     {"device": CARD, "cuda_driver": 13040}]}) == CARD
+    for hosts, code in (([{"device": CARD}, {"device": OTHER_CARD}], "mixed_device"),
+                        ([{"device": None}], "unnamed_card"), ([{}], "unnamed_card"),
+                        ([{"device": "--"}], "unnamed_card")):
+        with pytest.raises(cut.CutRefused) as refused:
+            cut.record_card({"host": hosts})
+        assert refused.value.code == code, hosts
+
+
+def test_the_list_names_each_records_role_card_digest_and_whether_it_holds(
+        tmp_path, capsys):
+    root = tmp_path / "staging"
+    here = kernels(tmp_path, "staging")
+    live_route = dp.repair_route_sha256()
+    live_pairs = dp.live_subject_sha256("triton")["fused_pairs"]
+    # the representative, cut on the live route and emitters; a card record on another
+    assert cut_card(tmp_path, here / BARE, device=OTHER_CARD, sha=live_route,
+                    pairs_sha=live_pairs) == cut.EXIT_OK
+    assert cut_card(tmp_path, here / MINE) == cut.EXIT_OK
+    # a name of another architecture holding this one's record is a name for neither
+    (here / "timing_cc89.json").write_bytes((here / MINE).read_bytes())
+    representative = dp.load_record(str(here / BARE))
+    mine = dp.load_record(str(here / MINE))
+    capsys.readouterr()
+    assert run(tmp_path, "--list", "--root", str(root)) == cut.EXIT_OK
+    lines = {line.split(": ", 1)[0]: line
+             for line in capsys.readouterr().out.splitlines()}
+    assert lines[f"triton_kernels/{BARE}"] == (
+        f"triton_kernels/{BARE}: table triton, architecture 8.6, representative, "
+        f"card {OTHER_CARD} (another_gpu), record_sha256 "
+        f"{representative[dp.DIGEST_FIELD][:12]}, recorded_utc "
+        f"{representative['recorded_utc']}, schema {dp.SCHEMA}, route holds: yes, "
+        f"emitters hold: yes")
+    assert lines[f"triton_kernels/{MINE}"] == (
+        f"triton_kernels/{MINE}: table triton, architecture 8.6, card record, "
+        f"card {CARD} (example_gpu), record_sha256 {mine[dp.DIGEST_FIELD][:12]}, "
+        f"recorded_utc {mine['recorded_utc']}, schema {dp.SCHEMA}, route holds: no "
+        f"({SHA_A[:12]} against the live {live_route[:12]}), emitters hold: no "
+        f"(fused_pairs moved)")
+    assert ", named for neither, card EXAMPLE GPU" in lines[
+        "triton_kernels/timing_cc89.json"]
+    # a file the reader refuses is named, and the listing says something was refused:
+    # one that is no record, and a card's own name holding another card's record
+    (here / "timing_cc90.json").write_text("{}")
+    (here / "timing_cc86-somebody_else.json").write_bytes((here / MINE).read_bytes())
+    assert run(tmp_path, "--list", "--root", str(root)) == cut.EXIT_REFUSED
+    said = capsys.readouterr().out
+    assert "triton_kernels/timing_cc90.json: REFUSED" in said
+    assert ("triton_kernels/timing_cc86-somebody_else.json: REFUSED "
+            "record_named_for_another_card") in said
+    # and an empty root says so
+    assert run(tmp_path, "--list", "--root", str(tmp_path / "empty")) == cut.EXIT_OK
+    assert "no timing record under" in capsys.readouterr().out
+
+
+def test_the_list_of_the_package_says_whether_each_shipped_record_holds(capsys):
+    """Consistency only, so the records that ship can change without editing this test:
+    each line's flags are what the live digests say of that record."""
+    package = os.path.dirname(os.path.abspath(dp.__file__))
+    assert cut.main(["--list"]) == cut.EXIT_OK
+    lines = {line.split(": ", 1)[0]: line for line in capsys.readouterr().out.splitlines()}
+    files = dp.record_files()
+    assert len(lines) == len(files)
+    for path in files:
+        record = dp.load_record(path)
+        line = lines[os.path.relpath(path, package).replace(os.sep, "/")]
+        route = record["route"]["deposit_repair_sha256"] == dp.repair_route_sha256()
+        live = dp.live_subject_sha256(record["table"])
+        emitters = all(live.get(source) == digest
+                       for source, digest in dp.compared_emitters(record).items())
+        assert f"route holds: {'yes' if route else 'no'}" in line, line
+        assert f"emitters hold: {'yes' if emitters else 'no'}" in line, line
+        assert f"card {cut.record_card(record)} " in line, line
+
+
 def test_the_admitted_rows_say_whether_their_device_was_probed_afterwards(tmp_path):
     """The record counts the rows admitted without an after-probe; each key's rows
     name themselves, so the ones at a band edge can be found."""
@@ -1227,6 +1554,186 @@ def test_the_admitted_rows_say_whether_their_device_was_probed_afterwards(tmp_pa
     probed = {row["case"]: row["after_probe"]
               for entry in record["keys"].values() for row in entry["measurements"]}
     assert probed == {"pml_2d": True, "unprobed": False}
+
+
+# ---------------------------------------------------------------------------
+# A Metal row: its neighbours are read from its host record
+# ---------------------------------------------------------------------------
+
+#: The Apple GPU family every synthetic Metal row below stamps, and so the one the cut
+#: Metal record prices and is named for.
+METAL_FAMILY = "applegpu_g13s"
+
+#: The canonical-JSON sha256 of the two NVIDIA rule sets as every shipped record states
+#: them: a Metal rule set is added beside them, and neither moves a byte.
+RULES_SHA256 = "7f5ef930ea0c28a5307b8ebbef187ea74c7a953e203869316268b76ba7bba537"
+RULES_R33_SHA256 = "ca72061effc2af29518aa267cc2d37e9e1b4c12a01b5e7989b9fdb8ee956a2cd"
+
+
+def host(foreign=(), unreadable=None, platform="darwin"):
+    """A Metal row's host record as the bench writes it (``bench_fused_products.
+    host_state``): the processes found driving the one Metal device, and the reads that
+    failed, by name."""
+    return {"utc": "2026-09-19T13:02:20Z", "platform": platform, "machine": "arm64",
+            "foreign_processes": list(foreign), "unreadable": dict(unreadable or {})}
+
+
+def metal_row(case="pml_2d", before=None, after=None, **options):
+    """A Metal bench row: the Metal table's device, digests and launch-rate floor, a host
+    record before and after, and the device probe a Mac writes, which identifies no
+    device (``nvidia-smi`` is absent there)."""
+    row = bench_row(case=case, table="metal", **options)
+    plan = json.loads(json.dumps(row["plans"]["fused"]))
+    plan["environment"] = {"backend": "numpy", "backend_version": None, "triton": None,
+                           "device": {"name": "EXAMPLE APPLE GPU",
+                                      "compute_capability": METAL_FAMILY}}
+    row["plans"] = {"fused": plan, "unfused": plan}
+    row["floors"]["windows_launched_at_the_proved_rate"] = True
+    row["provenance"]["sha256"].update({"metal_dispatch": "17" * 32,
+                                        "metal_launch": "28" * 32,
+                                        "metal_device": "39" * 32})
+    absent = "<FileNotFoundError: [Errno 2] No such file or directory: 'nvidia-smi'>"
+    for when in ("box_before", "box_after"):
+        row[when] = {"CUDA_VISIBLE_DEVICES": "<unset>", "gpus": absent,
+                     "compute_apps": absent, "pid": OWN_PID,
+                     "foreign_compute_apps_on_pinned_gpu": []}
+    row["host_before"] = host() if before is None else before
+    row["host_after"] = host() if after is None else after
+    return row
+
+
+def metal_tree(tmp_path, *rows):
+    """Two quiet Metal rows of one bracketed class, and ``rows`` beside them."""
+    write(tmp_path, "tree/metal/rows.jsonl", [
+        metal_row(case="pml_2d", fused_ms=1.40, base_ms=0.50),
+        metal_row(case="pml_2d_again", fused_ms=1.60, base_ms=0.52,
+                  utc="2026-09-19T14:00:00Z"), *rows])
+
+
+def test_a_metal_row_reads_its_neighbours_from_its_host_record(tmp_path):
+    """A Mac has one Metal device and no device probe: the bench's own host record lists
+    the processes driving it, and a row whose record lists none is a quiet-device
+    measurement. Read by the NVIDIA rule, the same row would be refused (its probe
+    identifies no device)."""
+    metal_tree(tmp_path)
+    record = cut_tree(tmp_path, table="metal")
+    assert record["rows"]["admitted"] == 2 and record["excluded"] == []
+    assert record["host"] == [{"backend": "numpy", "backend_version": None,
+                               "compute_capability": METAL_FAMILY, "cuda_driver": None,
+                               "cuda_runtime": None, "device": "EXAMPLE APPLE GPU",
+                               "triton": None}]
+    row = metal_row()
+    assert cut.contended(row) is None
+    assert cut._box_foreign(row["box_before"]) is None
+    assert cut.contended(dict(row, drive_table="triton")) == (
+        "contention cannot be read: box_before does not identify the device")
+
+
+def test_a_metal_row_with_a_foreign_metal_process_is_contended(tmp_path):
+    neighbour = "python -u parity/meep_gpu/gate_metal_pml.py"
+    metal_tree(tmp_path, metal_row(case="neighbour_before", before=host([neighbour])),
+               metal_row(case="neighbour_after", after=host([neighbour, neighbour])))
+    record = cut_tree(tmp_path, table="metal")
+    assert record["rows"]["admitted"] == 2
+    assert {item["case"]: item["reason"] for item in record["excluded"]} == {
+        "neighbour_before": "contended -- before: 1 foreign process(es) driving the Metal "
+                            "device",
+        "neighbour_after": "contended -- after: 2 foreign process(es) driving the Metal "
+                           "device"}
+
+
+def test_a_metal_row_with_no_host_reading_is_not_read(tmp_path):
+    """A row with no device reading is not read, never clean: no host record before, a
+    record with no list of neighbours, one whose read of them failed (the bench names it
+    under ``unreadable`` and leaves the list empty), one with no ``unreadable`` block, and
+    one taken off macOS, where the read never runs."""
+    no_before = metal_row(case="no_before")
+    no_before.pop("host_before")
+    no_list = metal_row(case="no_list")
+    no_list["host_before"].pop("foreign_processes")
+    no_block = metal_row(case="no_block")
+    no_block["host_after"].pop("unreadable")
+    rows = [no_before, no_list, no_block,
+            metal_row(case="unread", before=host(unreadable={
+                "neighbours": "FileNotFoundError: [Errno 2] No such file: 'ps'"})),
+            metal_row(case="off_macos", after=host(platform="linux"))]
+    metal_tree(tmp_path, *rows)
+    record = cut_tree(tmp_path, table="metal")
+    assert record["rows"]["admitted"] == 2
+    reasons = {item["case"]: item["reason"] for item in record["excluded"]}
+    assert reasons["no_before"] == "contention cannot be read: the row carries no host_before"
+    for case, when in (("no_list", "host_before"), ("no_block", "host_after"),
+                       ("unread", "host_before"), ("off_macos", "host_after")):
+        assert reasons[case] == (f"contention cannot be read: {when} does not record the "
+                                 "processes driving the Metal device"), (case, reasons)
+    # Another read that failed (the power source) is no reason to leave the row out
+    assert cut.contended(metal_row(before=host(unreadable={"power": "OSError: x"}))) is None
+
+
+def test_a_metal_row_with_no_after_reading_is_counted_or_refused_on_request(tmp_path):
+    """A Metal row with no host record after the case is admitted, counted and named in
+    its key, as an NVIDIA row with no after-probe is, and refused under
+    ``--require-box-after``. Its device probe after the case is no after-probe of a Mac."""
+    half = metal_row(case="half_probed")
+    half.pop("host_after")
+    assert isinstance(half["box_after"], dict)
+    write(tmp_path, "tree/metal/rows.jsonl", [metal_row(), half])
+    record = cut_tree(tmp_path, table="metal")
+    assert record["rows"]["admitted"] == 2
+    assert record["contention"]["admitted_without_an_after_probe"] == 1
+    probed = {row["case"]: row["after_probe"]
+              for entry in record["keys"].values() for row in entry["measurements"]}
+    assert probed == {"pml_2d": True, "half_probed": False}
+    strict = cut_tree(tmp_path, table="metal", require_box_after=True)
+    assert strict["rows"]["admitted"] == 1
+    assert excluded_reasons(strict) == ["the row carries no after-probe of its device"]
+
+
+def _canonical_sha256(document):
+    import hashlib  # noqa: PLC0415
+    return hashlib.sha256(json.dumps(document, sort_keys=True,
+                                     separators=(",", ":")).encode()).hexdigest()
+
+
+def test_a_metal_record_states_the_metal_admission_and_an_nvidia_record_the_uuid_rule(
+        tmp_path):
+    """A record states the rule set it was cut by. A Metal record states the Metal set:
+    the between-pass rule's, admission read from the host record, and no date; an NVIDIA
+    record states the between-pass set by device UUID, byte for byte as before (the two
+    NVIDIA sets are pinned by digest), so no shipped NVIDIA record moves."""
+    metal_tree(tmp_path)
+    metal = cut_tree(tmp_path, table="metal")
+    standard_tree(tmp_path)
+    nvidia = cut_tree(tmp_path, roots=("tree/triton",))
+    assert _canonical_sha256(cut.RULES) == RULES_SHA256
+    assert _canonical_sha256(cut.RULES_R33) == RULES_R33_SHA256
+    for record, rules in ((metal, cut.RULES_METAL), (nvidia, cut.RULES_R33)):
+        stated = {name: text for name, text in record["rules"].items()
+                  if name not in ("min_rows_per_key", "fused_leg_preference")}
+        assert stated == rules, record["table"]
+    assert "by UUID" in nvidia["rules"]["admission"]
+    assert "by UUID" not in metal["rules"]["admission"]
+    assert "host record" in metal["rules"]["admission"]
+    assert "windows_launched_at_the_proved_rate" in metal["rules"]["admission"]
+    assert set(cut.RULES_METAL) == set(cut.RULES_R33)
+    assert cut.RULES_METAL["between_pass"] == cut.RULES_R33["between_pass"].replace(
+        " (2026-10-16)", "")
+    import re  # noqa: PLC0415
+    assert not re.search(r"\d{4}-\d{2}-\d{2}", json.dumps(cut.RULES_METAL))
+    assert cut.rules_for("metal", cut.WINDOW_GATE) is cut.RULES
+    assert cut.rules_for("cuda", cut.BETWEEN_PASS_GATE) is cut.RULES_R33
+
+
+def test_a_cut_metal_record_recomputes_byte_for_byte(tmp_path, capsys):
+    metal_tree(tmp_path)
+    out = out_path(tmp_path, table="metal", capability=METAL_FAMILY)
+    assert out.name == f"timing_{METAL_FAMILY}.json"
+    assert run(tmp_path, "--table", "metal", "--rows", str(tmp_path / "tree"),
+               "--out", str(out), "--no-account-for-release") == cut.EXIT_OK
+    record = dp.load_record(str(out), expect_table="metal")
+    assert record["rules"]["admission"] == cut.RULES_METAL["admission"]
+    assert run(tmp_path, "--check", str(out)) == cut.EXIT_OK
+    assert "recomputes byte for byte" in capsys.readouterr().out
 
 
 # ---------------------------------------------------------------------------
@@ -1451,15 +1958,18 @@ def test_the_reasons_read_as_no_timing_are_the_ones_the_cutter_writes():
     failed = dict(row, floors=dict(row["floors"], bit_identical=False))
     assert not cut.admission_refusal(failed, "triton", False).startswith(_NOT_A_TIMING)
     jitter = dict(row, floors=dict(row["floors"], spread_within_gate=False))
-    assert cut.admission_refusal(jitter, "triton", False) is None, "R33"
+    assert cut.admission_refusal(jitter, "triton", False) is None, \
+        "the window floor gates nothing"
     assert not cut.admission_refusal(jitter, "triton", False, cut.WINDOW_GATE).startswith(
         _NOT_A_TIMING)
 
 
 def test_a_partial_set_names_its_missing_keys_and_still_cuts(tmp_path):
-    """H1: the 1.0 round's eleven ERROR rows left their products untimed and the record
-    failed the release check. Accounted for, the cut names each released (product, case)
-    it lacks, with the rows' own reason, and the reader takes the record."""
+    """The 1.0 timing run's eleven ERROR rows (the bench's ``thaw`` wrote into a
+    ``numpy.float32`` its state walk had frozen, and raised ``TypeError``) left their
+    products untimed and the record failed the release check. Accounted for, the cut names
+    each released (product, case) it lacks, with the rows' own reason, and the reader takes
+    the record."""
     write(tmp_path, "tree/rows.jsonl", [
         bench_row(case="pml_2d"), bench_row(case="pml_2d", utc="2026-09-19T14:00:00Z"),
         {"case": "absorber_1d", "drive_table": "triton", "verdict": "ERROR",
@@ -1566,12 +2076,12 @@ def test_every_shipped_key_answers_the_consult_as_its_numbers_say(table):
     to end. A record whose every answer is ``no_record`` behaves exactly like no file
     at all, so at least one answer is a verdict.
 
-    ON THE PROGRAM THE RECORD NAMES, NOT ON THE TREE. The consult is handed the
+    On the program the record names, not on the tree. The consult is handed the
     record's own repair route and emitter digests, so this asks whether the record can
     answer, not whether this tree still runs what it timed. When ``deposit_repair.py``
     or a fused-pair emitter has moved since the cut, every consult on the tree answers
     ``no_record`` (another repair route, another emitter) and the record vetoes nothing
-    there; that comparison is not made here, and belongs with the round that wires the
+    there; that comparison is not made here, and belongs with the change that wires the
     consult into dispatch (the module is unwired, and the gap between a change and the
     re-cut after it is the state its docstring expects).
     """
@@ -1654,7 +2164,7 @@ def test_every_product_the_table_releases_is_accounted_for_in_its_record(table):
     """
     record = dp.load_record(shipped(table), expect_table=table)
     released, constituents = _released(table)
-    # A RECORD CUT FROM PART OF A CAMPAIGN NAMES WHAT IT LACKS: a (product, case) the
+    # A record cut from part of a campaign names what it lacks: a (product, case) the
     # record names under ``missing``, with its reason, is accounted for by name.
     named = {(item["product"], item["case"]) for item in record.get("missing") or ()}
     released = {arm: [case for case in cases if (arm, case) not in named]
@@ -1689,3 +2199,32 @@ def test_the_shipped_record_recuts_byte_for_byte_from_the_rows_on_disk(table, ca
         pytest.skip("results/ is untracked and the timing rows are not on this host")
     assert cut.main(["--check", shipped(table)]) == cut.EXIT_OK
     assert "recomputes byte for byte" in capsys.readouterr().out
+
+
+def test_a_row_whose_box_tables_left_the_machine_is_read_as_before():
+    """Since the box leaves the machine the probe writes each device by its card id and
+    its own process as ``own`` (``timing_host.recorded_compute_apps``); the cutter's join
+    of the row's own tables reads the same neighbours off that spelling as off the raw
+    UUIDs and pid an older row carries, whichever way the device is pinned."""
+    import timing_host  # noqa: PLC0415
+
+    apps = (f"{PINNED_GPU}, {OWN_PID}, 1200 MiB\n{PINNED_GPU}, 999, 800 MiB\n"
+            f"{OTHER_GPU}, 998, 5000 MiB")
+
+    def recorded(pin, compute_apps):
+        return {"CUDA_VISIBLE_DEVICES": timing_host.recorded_device(pin),
+                "gpus": timing_host.recorded_gpus(GPUS),
+                "compute_apps": timing_host.recorded_compute_apps(compute_apps, OWN_PID),
+                "utc": "2026-09-19T13:02:20Z", "foreign_compute_apps_on_pinned_gpu": []}
+
+    for pin in ("0", PINNED_GPU):
+        raw = dict(box(apps), CUDA_VISIBLE_DEVICES=pin)
+        assert cut._box_foreign(raw) == [f"{PINNED_GPU}, 999, 800 MiB"]
+        new = recorded(pin, apps)
+        assert PINNED_GPU not in json.dumps(new) and "999" not in json.dumps(new)
+        assert len(cut._box_foreign(new)) == len(cut._box_foreign(raw)) == 1
+        alone = recorded(pin, f"{PINNED_GPU}, {OWN_PID}, 1200 MiB")
+        assert cut._box_foreign(alone) == [], "the row's own process is not a neighbour"
+        row = {"box_before": new, "box_after": alone}
+        assert cut.contended(row) == "contended -- before: 1 foreign process(es) on the " \
+                                     "row's device"

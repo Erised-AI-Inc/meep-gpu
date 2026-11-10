@@ -1,15 +1,15 @@
 """The Dcyl m = 0 magnetic seam in one dispatch: ``step_B`` welded into ``update_H``.
 
-THE METAL TWIN of :mod:`meep_gpu.triton_kernels.cylindrical_real_fused_magnetic_pair`.
+The Metal twin of :mod:`meep_gpu.triton_kernels.cylindrical_real_fused_magnetic_pair`.
 Same seam, same three carried driver passes, same two provably-inert ones; the source
-is SPLICED FROM THIS BACKEND'S OWN CERTIFIED EMITTERS rather than ported from the
+is spliced from this backend's own certified emitters rather than ported from the
 Triton text, so the two products are siblings and not a translation.
 
 Its sibling :mod:`.cylindrical_fused_magnetic_pair` takes the |m| >= 1 complex Dcyl
 arm; this file takes the m = 0 real one, and the two row sets are disjoint —
 measured on the Metal census, 3 rows against 16, intersection empty.
 
-EVERYTHING HERE IS LIFTED, not retyped:
+Everything here is lifted, not retyped:
 
 * the cylindrical B curl — :func:`.cylindrical_real.cylindrical_curl_source` with
   ``sub_step='step_B'``, whose body :func:`certified_cyl_curl_body` takes verbatim.
@@ -32,7 +32,7 @@ and the gate's ``transcription`` leg checks exactly that, because a construction
 hypothesis until something compares the strings.
 
 ===========================================================================
-WHAT IT IS WORTH — measured before it was built, on BOTH backends' censuses
+What it is worth — measured before it was built, on both backends' censuses
 ===========================================================================
 
 ``parity/meep_gpu/results/fusion_matrix_metal_2026-08-20`` ranks the cells the
@@ -49,14 +49,14 @@ Re-measured against the census this file prices against
     admit BOTH halves                                           3 rows
     ... and declare NO MAGNETIC source                          3 rows
 
-3 -> 3 -> 3 -> 3. NO CLAUSE IN THE LADDER CUTS ANYTHING, which is rare on this board:
+3 -> 3 -> 3 -> 3. No clause in the ladder cuts anything, which is rare on this board:
 the three rows (``tests:TestAdjointSolver.test_adjoint_solver_cyl_n2f_fields_0_0`` and
 ``_1_0``, ``tests:TestPMLCylindrical.test_pml_cyl_0_0_0``) all declare an ELECTRIC
 source only, so the magnetic seam is empty on every one. The TRITON census funnels to
 the SAME three rows through its own independently written predicates.
 
 ===========================================================================
-THE FIVE PASSES IN THE SEAM
+The five passes in the seam
 ===========================================================================
 
 The driver runs five passes between ``step_B`` and ``update_H``
@@ -65,7 +65,7 @@ The driver runs five passes between ``step_B`` and ``update_H``
     step_B -> magnetic sources -> fill_symmetry_bc_B -> zero_metal_B
            -> fill_folded_far_ghosts_B -> update_H
 
-* **the magnetic sources — REFUSED BY NAME.** ``driver.step`` injects them between
+* **the magnetic sources — refused by name.** ``driver.step`` injects them between
   the halves (driver.py:3283-3284), so a fused pair would consume a pre-injection
   ``B``. Ignorance is never an empty set: ``Fields`` does not hold the source list,
   so an undeclared ``sources`` is a REFUSAL and not an assumed ``()``. On this cell
@@ -81,8 +81,8 @@ The driver runs five passes between ``step_B`` and ``update_H``
   is priced against: all three declare a metallic z, so the ``Bz`` row fires on
   every one of them.
 
-  IT IS NOT UNIVERSAL ON THIS BACKEND, AND THAT IS A MEASURED DIVERGENCE FROM THE
-  TRITON TWIN. ``triton_kernels/cylindrical_triton.py`` pins the Dcyl declaration
+  It is not universal on this backend, and that is a measured divergence from the
+  Triton twin. ``triton_kernels/cylindrical_triton.py`` pins the Dcyl declaration
   to ``('axis', 'periodic', 'metallic')`` and refuses anything else by name;
   :mod:`.cylindrical_real` PARAMETERISES the z ghost rule and admits a PERIODIC z
   as well, with its own certified gate covering two such rows. Measured here:
@@ -118,22 +118,22 @@ brings 12 pointers and not the certified kernel's 18.
 
 34 separate bindings is a COMPILE ERROR — buffer attribute indices must be 0..30.
 Packing the six scalars into one ``constant Params&`` buys back five slots and lands
-at :data:`PACKED_BINDINGS` = 29. Both halves of that are MEASURED by the gate's
+at :data:`PACKED_BINDINGS` = 29. Both halves of that are measured by the gate's
 ``binding_ceiling`` leg: the 34-binding signature must FAIL and the packed one must
 COMPILE, LAUNCH and read every field back.
 
-``axis_coef`` RIDES IN THE STRUCT AND IS ZERO ON THIS SIDE. The certified curl binds
+``axis_coef`` rides in the struct and is zero on this side. The certified curl binds
 it for both sub-steps so the layout is one layout; the B-side body never reads it
 (the m = 0 D increment is the D side's). It is carried rather than dropped because
 dropping it would fork the lifted body, and the lift is the whole point.
 
 ===========================================================================
-THE RADIAL SUM IS UPSTREAM OF THE SEAM, and the fusion is the SECOND launch
+The radial sum is upstream of the seam, and the fusion is the second launch
 ===========================================================================
 
 The cylindrical curl reads the per-chunk radial difference (MEEP's ``f_rderiv_int``
 summed in each structure chunk, ``stepping.cylindrical_rderiv_difference``), and on
-THIS backend that sum runs ON THE DEVICE — a column-serial walk with the run's chunk
+THIS backend that sum runs on the device — a column-serial walk with the run's chunk
 starts reproduces the array path's sequential float32 order by construction
 (:mod:`.cylindrical_real`). That decision is unchanged here.
 
@@ -151,11 +151,11 @@ composer cannot select it, the disjointness sweep can still enumerate it, and no
 existing arm's behaviour changes. ``meep_gpu.fastpath.plan_fast_path`` still returns
 ``None`` on every branch.
 
-THE RELEASE RECORD BELOW DESCRIBES THE EARLIER SHAPE: a single radial prefix with a
+The release record below describes the earlier shape: a single radial prefix with a
 divided increment and no chunk record. Since the array path steps MEEP's cylindrical
-forms (bit_parity_0_10 AP6c) this kernel reads the per-chunk radial difference and
+forms (1.0) this kernel reads the per-chunk radial difference and
 carries the chunk record; the shipped bytes moved, the ledger entry still pins the
-released ones, and the certification round re-gates them.
+released ones, and the next certification re-gates them.
 
 DEVICE STATUS: **RELEASED 2026-08-20** on this host (Apple GPU via MPS, torch 2.10.0,
     metalfe-32023.850.10) under the ``flush`` subnormal policy the backend can honour,
@@ -166,8 +166,8 @@ DEVICE STATUS: **RELEASED 2026-08-20** on this host (Apple GPU via MPS, torch 2.
       of all 24 stored volumes to the array path, with the dispatch counts asserted
       per cycle (one scan, one fused dispatch);
     * **2/2 separate controls**: the array path, the two ALREADY CERTIFIED Metal
-      products, and this one, all three word-for-word equal at every step. THE
-      FUSION, MEASURED: three dispatches per step become two, and on a walled run the
+      products, and this one, all three word-for-word equal at every step. The
+      fusion, measured: three dispatches per step become two, and on a walled run the
       separate side leaves ``zero_metal_B`` on the HOST where this side carries it;
     * the BINDING CEILING measured both ways: the 34-binding separate-scalar
       signature FAILS to compile ("'buffer' attribute parameter is out of bounds"),
@@ -178,7 +178,7 @@ DEVICE STATUS: **RELEASED 2026-08-20** on this host (Apple GPU via MPS, torch 2.
     * **21 armed defects, 20 caught and 1 a CONFIRMED null**, plus a byte-neutral
       control that must NOT diverge and a disarm row on the shipped bytes.
 
-    THE ONE NULL IS A MEASUREMENT. Flattening ``dtdx * ((c_y - c) + (b - b_z))`` is a
+    The one null is a measurement. Flattening ``dtdx * ((c_y - c) + (b - b_z))`` is a
     different float32 number on a Cartesian grid; here ``c_y`` IS ``c`` — phi is the
     one-cell invariant axis — so the flattened form differs only where ``(b - b_z)``
     is ``-0.0``, and it came back 0 differing words. Its SIBLING on target 1, whose
@@ -190,7 +190,7 @@ DEVICE STATUS: **RELEASED 2026-08-20** on this host (Apple GPU via MPS, torch 2.
     is kept at ``..._2026-08-20/``; the ``b`` directory is the one whose digests match
     what shipped.
 
-    STILL NOT WIRED. A weld licenses the claim, not a dispatch: nothing in a default
+    Still not wired. A weld licenses the claim, not a dispatch: nothing in a default
     run reaches this plan.
 """
 
@@ -327,7 +327,7 @@ kernel void cyl_real_fused_magnetic_pair_step(
     constant Params&    prm     [[buffer(28)]],
     uint idx [[thread_position_in_grid]])
 {
-    // THE SIX SCALARS ARE UNPACKED INTO THE CERTIFIED BODIES' OWN NAMES, once,
+    // The six scalars are unpacked into the certified bodies' own names, once,
     // before any of the lifted text runs. Everything below this line is then
     // character-for-character what `cylindrical_real.cylindrical_curl_source` and
     // `shaders.constitutive_source` emit, plus the wall clear and the one seam
@@ -336,7 +336,7 @@ kernel void cyl_real_fused_magnetic_pair_step(
     float dtdx = prm.dtdx;
     float axis_coef = prm.axis_coef;
     (void)axis_coef;   // bound for one layout; the B-side body does not read it.
-    // THE CHUNK RECORD rides in the same struct (no binding to spare), and this one
+    // The chunk record rides in the same struct (no binding to spare), and this one
     // line gives the lifted bounds blocks the `cb` they read.
 __RECORD_ALIAS__
 
@@ -536,10 +536,10 @@ def metal_cylindrical_real_fused_magnetic_pair_coverage(
         reasons.extend(f"cylindrical constitutive half: {reason}"
                        for reason in magnetic.reasons)
 
-    # THE SOURCE SEAM. A MAGNETIC source is injected BETWEEN the two halves
+    # The source seam. A MAGNETIC source is injected BETWEEN the two halves
     # (driver.py:3283-3284), so a fused pair would consume a pre-injection B. An
     # ELECTRIC source is injected in the D/E half and does NOT disqualify this pair —
-    # and it is what all three corpus rows carry. IGNORANCE IS NEVER AN EMPTY SET:
+    # and it is what all three corpus rows carry. Ignorance is never an empty set:
     # `Fields` does not hold the source list, so a predicate that inferred "no
     # magnetic source" from not being told would be the over-covering refusal this
     # clause exists to prevent.
@@ -559,7 +559,7 @@ def metal_cylindrical_real_fused_magnetic_pair_coverage(
     if grid is None:
         return Coverage(False, tuple(dict.fromkeys(reasons + ["fields carries no grid"])))
 
-    # THE TWO FILL PASSES MUST BE INERT, not merely absent from this kernel. Both
+    # The two fill passes must be inert, not merely absent from this kernel. Both
     # halves already refuse a mirror plane; RESTATED here because this product's
     # REPLACES tuple names three passes and not five, and a reader must not have to
     # chase another predicate to learn why the other two are missing.
@@ -587,7 +587,7 @@ def metal_cylindrical_real_fused_magnetic_pair_coverage(
             reasons.append(
                 f"grid does not expose {name}; zero_metal_B cannot be carried inline")
 
-    # THE RUN'S FIRST update_H. The array path starts H and f_w from B on the dsigw
+    # The run's first update_H. The array path starts H and f_w from B on the dsigw
     # cells at that update (stepping.separate_h_from_b) and the lifted H body does
     # not, so this pair takes that update only where the start cannot change a word:
     # the base single's own clause (launch.h_start_reasons), asked with no source
@@ -605,15 +605,15 @@ def metal_cylindrical_real_fused_magnetic_pair_coverage(
 class MetalCylindricalRealFusedMagneticPairPlan:
     """The device radial scan, then ONE dispatch for three of the driver's passes.
 
-    DELIBERATELY A SIBLING OF :class:`.plans.KernelPlan` RATHER THAN A SUBCLASS, for
+    Deliberately a sibling of :class:`.plans.KernelPlan` rather than a subclass, for
     the reason :class:`.cylindrical_real.CylindricalRealCurlPlan` is one: the fused
     kernel READS the scan's output, so the two are ordered and cannot be one dispatch.
 
-    THE FUSION IS THE SECOND LAUNCH. Separate, this configuration is THREE dispatches
+    The fusion is the second launch. Separate, this configuration is THREE dispatches
     (scan, curl, constitutive); here it is TWO, and the flux density never leaves a
     register between the curl and the constitutive.
 
-    ``launches`` COUNTS KERNEL LAUNCHES, NOT ``run`` CALLS, and it is two per cycle.
+    ``launches`` counts kernel launches, not ``run`` CALLS, and it is two per cycle.
     :attr:`scan_launches` and :attr:`fused_launches` are carried apart so "the scan
     ran and the fused kernel did not" is distinguishable from "the plan ran once".
     """
@@ -703,7 +703,7 @@ class MetalCylindricalRealFusedMagneticPairPlan:
     def run(self, contract: Optional[str] = None) -> None:
         """The seam: scan, then the fused pair. In place.
 
-        THE ORDER IS THE CONTRACT. The fused kernel reads the radial difference the
+        The order is the contract. The fused kernel reads the radial difference the
         scan writes from THIS sub-step's Ep, so a scan run after the pair feeds it the
         previous timestep's derivative: a plausible wrong field rather than an error.
         """
@@ -734,7 +734,7 @@ def _params_tensor(shape: Sequence[int], dtdx: float, axis_coef: float,
                    device: str, *, chunk_bounds: Any) -> Any:
     """The six scalars and the chunk record as one 124-byte device record.
 
-    PLAN-OWNED AND OUTSIDE THE RESIDENCY REGISTRY, for the reason
+    Plan-owned and outside the residency registry, for the reason
     :func:`.fused_magnetic_pair._params_tensor` gives: :meth:`.Residency.mirror`
     binds float32 and complex64 volumes only. The record is
     :func:`.chunk_bounds.pack` of the validated ``int32[25]`` words, embedded after
@@ -804,12 +804,12 @@ def plan_metal_cylindrical_real_fused_magnetic_pair(
         volumes.append(name)
         return residency.mirror(name, host, constant=constant)
 
-    # THE ORDER HERE IS THE SIGNATURE'S ORDER and nothing else keeps them in step.
+    # The order here is the signature's order and nothing else keeps them in step.
     flux = [bind(name, getattr(fields, name)) for name in spec["targets"]]
     auxiliary = [bind("fu_" + name, getattr(fields, "fu_" + name))
                  for name in spec["targets"]]
     electric = [bind(name, getattr(fields, name)) for name in spec["sources"]]
-    # THE B CURL TAKES THE HALF-INTEGER LATTICE and the H constitutive the INTEGER
+    # The B curl takes the half-integer lattice and the H constitutive the INTEGER
     # one (SUB_STEPS['step_B']['suffix'] == '_h'; CONSTITUTIVE_SIDES['H']
     # ['half_integer'] is False). The kernel takes both and never asks which is
     # which, so a swap here is a silent half-cell error in the absorber profile.
@@ -838,7 +838,7 @@ def plan_metal_cylindrical_real_fused_magnetic_pair(
         lambda: prefix_row_vectors(CURL_SUB_STEP, shape[0])[1], constant=True)
 
     dtdx = grid.dt / grid.dx
-    # ZERO ON THIS SIDE: the m = 0 on-axis increment is the D side's rule. The slot
+    # Zero on this side: the m = 0 on-axis increment is the D side's rule. The slot
     # is bound so the lifted body needs no fork.
     axis_coef = 0.0
     pointers = (flux + auxiliary + electric + [radial] + curl_coefficients
@@ -885,7 +885,7 @@ def _arm_plan(context: Any, slot: str
 def register_arms() -> Tuple[Any, ...]:
     """One row on ``step_B``, ``wired=False``.
 
-    THE FLAG IS THE WHOLE COMPOSITION STORY. ``plan_step`` assigns at most one arm
+    The flag is the whole composition story. ``plan_step`` assigns at most one arm
     per slot and this product spans three, so there is no slot it could claim without
     a composition rule nothing has measured. Registering unwired keeps it ENUMERABLE
     for the disjointness sweep (``arms.registered``) while ``arms.arms_for`` skips

@@ -24,7 +24,7 @@ field families and replaced wholesale: `ContinuousEnvelope`, `GaussianEnvelope`
 and `CustomEnvelope` translate MEEP's `continuous_src_time`, `gaussian_src_time`
 and `custom_src_time`. Each carries MEEP's `is_integrated` flag.
 
-WHERE THE CURRENT COMES FROM. A lifted run forms every current and dipole through
+Where the current comes from. A lifted run forms every current and dipole through
 the MEEP simulation's OWN `src_time` object: the lift binds it to the source (or to
 a `VolumeSource`'s envelope) with `bind_meep_src_time`, and `dipole(t)` /
 `current(t, dt)` then return `src_time::dipole` / `src_time::current` (meep.hpp,
@@ -37,7 +37,7 @@ driver built without MEEP, in MEEP's operation order, and carry no claim of
 identity with MEEP's words. `current` is MEEP's forward difference
 `(dipole(t + dt) - dipole(t)) / dt` (meep.hpp:983-985), formed per part.
 
-THE DEPOSIT LIST IS MEEP'S `src_vol` LIST. MEEP splits each source into one piece
+The deposit list is MEEP's `src_vol` list. MEEP splits each source into one piece
 per (lattice shift, chunk) it touches and appends the piece to that chunk's list,
 unless an entry of the list has the same component, the same shared `src_time`
 instance and the same index vector, in which case the amplitudes are summed into it
@@ -85,7 +85,7 @@ the update, with the boundary passes run again so every ghost holds MEEP's D. An
 integrated source's `inject` deposits nothing. This replaces a standing offset that
 was subtracted into D/B in the injection slot and withdrawn before the next curl:
 `(f - d) + d` is not `f` in float32, and MEEP never rounds D through the dipole
-(phase 0 measured the offset form against MEEP's own formula at 137 of 280
+(measured before 1.0: the offset form against MEEP's own formula at 137 of 280
 point-steps where MEEP's formula holds at 280 of 280).
 
 Real-valued fields — MEEP's default — are injected into as well. MEEP's
@@ -333,7 +333,7 @@ def _axis_mirror_phase(grid: 'Grid', axis: int) -> Optional[int]:  # Declared ph
 def _validate_symmetry(grid: 'Grid', center: Tuple[float, float, float]) -> None:  # Sources must sit in the half a fold stores.
     """A source centre must lie in the half a folded axis STORES, not only on the plane.
 
-    THE RULE USED TO BE "ON THE PLANE", and that was stricter than MEEP by a whole
+    The rule used to be "on the plane", and that was stricter than MEEP by a whole
     class of run. MEEP adds sources with ``use_symmetry=false``
     (``add_volume_source``, sources.cpp:487) and says so in its own comment above
     ``src_vol_chunkloop``: only the untransformed chunks are deposited into,
@@ -349,7 +349,7 @@ def _validate_symmetry(grid: 'Grid', center: Tuple[float, float, float]) -> None
     ``solve-cw.py``, ``antenna_pec_ground_plane.py``, all with the source at
     +1.1 or +1.25 and none of them on a plane).
 
-    WHAT IS STILL REFUSED is the OTHER half, and there the refusal is worth more
+    What is still refused is the OTHER half, and there the refusal is worth more
     than it was: MEEP stores the upper half, so a source declared in the lower one
     intersects no stored chunk and is deposited NOWHERE. Measured on the same cell:
     the identical run with the source at x = -1.1 returns a field whose peak is
@@ -385,7 +385,7 @@ def _validate_symmetry_parity(grid: 'Grid', component: str,
                               ) -> None:
     """Refuse a source on a mirror plane that CANNOT carry the parity that plane demands.
 
-    WHAT MEEP DOES — the mechanism, from the source, because the docstring that
+    What MEEP does — the mechanism, from the source, because the docstring that
     stood here asserted a different one. MEEP neither forbids this nor cancels it.
     It CLIPS. ``fields::add_volume_source`` deposits with
     ``loop_in_chunks(..., /*use_symmetry=*/false)`` (sources.cpp:487, and the
@@ -409,7 +409,7 @@ def _validate_symmetry_parity(grid: 'Grid', component: str,
 
         J(mirror p) == mirror_parity(component, axis, phase) * J(p)
 
-    THE PREDICATE IS THE PROFILE, NOT THE CENTRE. This used to judge a source by its
+    The predicate is the profile, not the centre. This used to judge a source by its
     centre alone, which applied a plane-centred-dipole argument to an extended sheet
     and refused five of MEEP's own ``python/tests`` cases (``test_mode_coeffs``
     x3, ``test_special_kz`` x2, 38 MEEP-authored assertions) whose folded answers are
@@ -429,7 +429,7 @@ def _validate_symmetry_parity(grid: 'Grid', component: str,
     and are 57% and 283% wrong. What separates the pairs is that ``sin(pi x/4)`` is
     odd about x = 0 and the uniform profile is even.
 
-    WHAT THIS REFUSES is the two cases that provably cannot carry an odd parity,
+    What this refuses is the two cases that provably cannot carry an odd parity,
     both cheap to decide and both measured above:
 
     * ZERO EXTENT along the folded axis. The condition then constrains the source
@@ -445,7 +445,7 @@ def _validate_symmetry_parity(grid: 'Grid', component: str,
       even about every plane, so an odd parity is impossible by inspection — 0.569
       and 2.829 above.
 
-    WHAT THIS DOES NOT CHECK, stated plainly because the gap is real: an extended
+    What this does not check, stated plainly because the gap is real: an extended
     source WITH an ``amp_func`` is accepted without evaluating whether that profile
     carries the plane's parity. Deciding that per source is not enough, and the
     measurement says why. On the five rows above, the profile-parity residual
@@ -472,7 +472,7 @@ def _validate_symmetry_parity(grid: 'Grid', component: str,
     one source at +1.1 equals its unfolded run with the pair to 2.9e-07 and this
     engine reproduces the folded answer at 9.3e-07.
 
-    THE REFUSED SET IS READ FROM THE PLANE, not from MEEP's default.
+    The refused set is read from the plane, not from MEEP's default.
     ``mirror_parity`` multiplies every component's parity by the declared phase, so
     the two phases of one axis are exactly complementary:
 
@@ -509,7 +509,7 @@ def mirror_parity_offenders(component: str, phases, center, size,
     decides before MPB has run, so an ``mp.EigenModeSource``'s profile does not
     exist yet to be sampled.
 
-    WHY THIS IS A SEPARATE FUNCTION and not two copies of one rule. It used to be
+    Why this is a separate function and not two copies of one rule. It used to be
     two copies, and they disagreed the moment the driver's half was narrowed: the
     gate kept "on the plane AND the component is odd" while
     :func:`_validate_symmetry_parity` moved to "…AND the profile cannot carry it".
@@ -586,8 +586,8 @@ def _continuous_dipole(time: float, omega: float, amp_factor: complex, start_tim
     reproduces MEEP's default hard switch-on; a nonzero `width` suppresses the
     broadband switch-on transient over roughly `slowness` widths.
 
-    The bundle this module was ported from omitted the ramp entirely (port
-    reference §5.4); it is restored here as the canonical behavior.
+    The bundle this module was ported from omitted the ramp entirely
+    (MEEP applies it); it is restored here as the canonical behavior.
     """
     rtime = np.float32(time)  # MEEP: float rtime = float(time)
     if rtime < np.float32(start_time) or rtime > np.float32(end_time):
@@ -798,7 +798,7 @@ def _source_geometry(grid: 'Grid', component: str, center: Tuple[float, float, f
     :func:`_src_vol_pieces`; this function enumerates each shift's points over the whole
     window, which is the union of the chunks' owned ranges.
 
-    THE SHIFTS STAY SEPARATE. A request that reaches a periodic face is placed once per
+    The shifts stay separate. A request that reaches a periodic face is placed once per
     lattice shift, and each (shift, chunk) pair is its own ``src_vol`` (sources.cpp:311);
     two of them meet on one cell exactly at a periodic seam (the request's two ends, one
     lattice vector apart) and MEEP deposits each separately, rounding twice
@@ -806,14 +806,14 @@ def _source_geometry(grid: 'Grid', component: str, center: Tuple[float, float, f
     them. Summing the two amplitudes into one deposit, as this module did, rounds once:
     the one-ulp seam row of every full-width source across a periodic axis.
 
-    THE LOCATION IS MEEP'S. ``IVEC_LOOP_LOC`` forms ``(0.5 * is + i) * inva`` in the chunk
+    The location is MEEP's. ``IVEC_LOOP_LOC`` forms ``(0.5 * is + i) * inva`` in the chunk
     frame and ``src_vol_chunkloop`` then adds ``shift * (0.5 * inva)`` (vec.hpp:365-369,
     sources.cpp:270): two roundings on an image, where the source-frame form rounds once.
     An axis the dimension does not carry has no coordinate at all: the Python amplitude
     function receives 0 there (python/typemap_utils.cpp ``vec2py``), and the axis is one
     point of weight 1 (``s0c``'s ``vec(gv.dim, 1.0)``, loop_in_chunks.cpp:451).
 
-    THE PRODUCTS ARE MEEP'S. ``data.amp *= gv.a`` and ``IVEC_LOOP_WEIGHT * amp`` scale per
+    The products are MEEP's. ``data.amp *= gv.a`` and ``IVEC_LOOP_WEIGHT * amp`` scale per
     part; ``data->amp * conj(shift_phase)`` and the product with ``A`` are the C++
     ``complex<double>`` multiply, ``(ac - bd, ad + bc)`` with every product rounded
     (:func:`readback.cmul`), and the shift phase's power is the host C++ runtime's
@@ -821,7 +821,7 @@ def _source_geometry(grid: 'Grid', component: str, center: Tuple[float, float, f
     Apple silicon contracts it to a fused multiply-add (measured: 87,460 of 200,000
     random products differ from the separately rounded form).
 
-    EVERY OWNED POINT IS KEPT, its amplitude zero or not: MEEP's ``src_vol`` lists them all
+    Every owned point is kept, its amplitude zero or not: MEEP's ``src_vol`` lists them all
     and its deposit is not word-neutral on a stored ``-0`` (see :func:`_deposit`).
     """
     from . import readback  # noqa: PLC0415 - readback imports fields, which imports nothing from here
@@ -1066,7 +1066,7 @@ def _src_vol_pieces(geometry: _SourceGeometry, boxes: Any, grid: Any,
     lattice shift (the odometer order the geometry kept) and every chunk in index order,
     the request shifted into the chunk frame is clipped to the chunk's owned corners
     (:func:`_chunk_little_owned`, ``big_owned_corner = big_corner - iyee``), the boundary
-    weights are kept where the clipped ends meet the request's ends IN THE SOURCE FRAME
+    weights are kept where the clipped ends meet the request's ends in the source frame
     (``iscS += shifti`` precedes the comparisons) and the narrow-range minima are taken;
     each point's amplitude is ``(IVEC_LOOP_WEIGHT * amp) * A`` -- the weight nested as the
     macro nests it, ``w3 * (w2 * (1 * w1))`` over the yucky directions, scaling ``amp``
@@ -1374,15 +1374,15 @@ def _deposit(array: Any, ix: Any, iy: Any, iz: Any, amps: Any, factor: complex,
       ``real(A)`` subtracted once, rounded once to float32 (and the imaginary word
       against ``imag(A)``).
 
-    NEVER A COMPLEX UFUNC MULTIPLY. A complex128 multiply is one ufunc with two
+    Never a complex ufunc multiply. A complex128 multiply is one ufunc with two
     products and an add inside it, and a host that contracts it fuses them: NumPy on an
     x86 host with AVX-512 matches ``fma(ar, br, -(ai*bi))`` in 0 of 2,000,000 words
-    and the separately rounded form in 491,977 (phase-0 complex family,
-    ``numpy_cmul_check_gpu_host.txt``). MEEP's coff and portable builds round every
+    and the separately rounded form in 491,977 (1,000,000 random complex64
+    products, measured before 1.0). MEEP's coff and portable builds round every
     product. Real-by-real float64 multiplies and adds are one operation each and cannot
     fuse on any host.
 
-    ONE EARLY RETURN, ONLY WHERE IT IS AN IDENTITY. MEEP's loop has none
+    One early return, only where it is an identity. MEEP's loop has none
     (step.cpp:309-314), and a zero deposit is not word-neutral in general:
     ``(-0) - (-0) = +0``, so a stored ``-0`` meets a ``real(A)`` of ``-0`` (a negative
     real amplitude and a silent current) and becomes ``+0`` in MEEP. It is neutral
@@ -1417,12 +1417,12 @@ def _deposit(array: Any, ix: Any, iy: Any, iz: Any, amps: Any, factor: complex,
     so the multiply is exact there and reading the volume at every point is MEEP's
     per-chunk choice cell for cell.
 
-    THE REAL PART IS TAKEN UNCONDITIONALLY, INCLUDING WHEN THE PER-POINT AMPLITUDE
-    CARRIES PHASE. MEEP takes ``real(A)`` with no condition attached (step.cpp:307),
+    The real part is taken unconditionally, including when the per-point amplitude
+    carries phase. MEEP takes ``real(A)`` with no condition attached (step.cpp:307),
     and a run that refused a phased amplitude on real storage would not be stricter
     than MEEP, only a run MEEP completes and this one does not. A Gaussian beam's
     amplitude is complex BY CONSTRUCTION (wavefront curvature and the Gouy phase), and
-    every oblique eigenmode launch carries an in-plane phase ramp. MEASURED against CPU
+    every oblique eigenmode launch carries an in-plane phase ramp. Measured against CPU
     MEEP stepping the same ``mp.Simulation``, complex relative L2 over the whole
     volume, before the deposit moved to double:
 
@@ -1715,7 +1715,7 @@ def f_minus_p_begin(fields: 'Fields', sources: Any, field_type: str,
     consult; :func:`f_minus_p_end` undoes it. ``None`` when no integrated source of the
     family deposits (nothing was written).
 
-    NOT FOR A RUN WITH A LIVE POLARIZATION: MEEP subtracts P first and the dipole after
+    Not for a run with a live polarization: MEEP subtracts P first and the dipole after
     (update_eh.cpp:120-134), while the package's constitutive update subtracts P from
     the replaced word, ``(D - dipole) - P``. The words then differ from MEEP's in the
     last bit, as they did with the standing offset this replaces.
@@ -1795,7 +1795,7 @@ class _MeepSrcTimeBinding:
     ``src_time::dipole`` / ``src_time::current``, the values ``calc_sources`` caches
     for ``step_source`` and ``update_eh`` (step.cpp:278-283; meep.hpp:968-975). The
     carrier's words depend on the libm entry and the complex division the C++ build
-    landed on, which only MEEP's own object knows (phase 0, P0-d3: on Linux the
+    landed on, which only MEEP's own object knows (measured before 1.0: on Linux the
     package's ``math.cos`` / ``math.sin`` carrier misses 11 of 8,833 rows that glibc's
     ``sincos`` / ``cexp`` reproduce).
     """
@@ -2096,7 +2096,7 @@ class ContinuousSource(_MeepSrcTimeBinding):
         current is the unit waveform's. Carrying it in :meth:`dipole` instead, as this
         class once did, forms ``w * (amplitude * J)`` where MEEP forms
         ``(w * amplitude) * J``, which differs in the last bit of the double product
-        (phase 0: 119 of 800 rows of one CW source in the sources family).
+        (measured before 1.0: 119 of 800 rows of one CW source in the sources family).
         """
         indices = self._point_indices
         if not indices:
@@ -2306,7 +2306,7 @@ class GaussianPulsedSource(_MeepSrcTimeBinding):
 
     with `width = 1/fwidth`, `peak = start_time + cutoff*width`, and a hard cut
     at `|t - peak| > cutoff*width`. Both conventions differ from the bundle this
-    module was ported from (port reference §5.5), which used
+    module was ported from, which used
     `width = 1/(2*pi*fwidth)` and referenced the carrier phase to absolute time;
     the MEEP conventions above are now canonical and are verified bit-for-bit
     against meep 1.29.0.
@@ -2481,7 +2481,7 @@ class VolumeSource:
             )
         _validate_symmetry(self.grid, self.center)
         _validate_symmetry_parity(self.grid, self.component, self.center, self.size, self.amp_func)
-        # An is_integrated source runs UNDER MIRROR SYMMETRY too. Its f_minus_p words are
+        # An is_integrated source runs under mirror symmetry too. Its f_minus_p words are
         # written at the owned points and imaged into the ghost rows by the driver's own
         # fill passes (`f_minus_p_begin`), so the ghost E a pointwise constitutive update
         # produces is the parity image of the owned E, the value MEEP's E-side

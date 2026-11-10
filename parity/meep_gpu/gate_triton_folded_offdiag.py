@@ -3,48 +3,48 @@
 The module under test is ``meep_gpu/triton_kernels/folded_offdiag_update_e.py``
 — NOT wired into production dispatch (the engine's fast-path hook keeps
 returning None; nothing here changes that). This gate is the arbiter of the one
-thing that family adds to the certified off-diagonal kernel: THE MIRROR GHOST ON
-THE PARTNER-AXIS DOWN SHIFT, and the equally load-bearing claim that the own-axis
+thing that family adds to the certified off-diagonal kernel: the mirror ghost on
+the partner-axis down shift, and the equally load-bearing claim that the own-axis
 UP shift stays an exact zero on a fold.
 
-NO BYTE-IDENTITY CLAIM IS MADE UNTIL A DEVICE LEG COMPARES BYTES. A leg that was
+No byte-identity claim is made until a device leg compares bytes. A leg that was
 requested and did not compare — because there is no device, or because its
 device half is not written yet — never stamps ``passed``, and is NAMED in the
 status line (exit 75, the cannot-certify-here convention). That holds even when
 a sibling leg did compare.
 
-AND A LEG THAT DID COMPARE MUST ALSO HAVE CERTIFIED. ``compared`` is a COUNT and
+And a leg that did compare must also have certified. ``compared`` is a COUNT and
 ``certified`` is the OUTCOME, and the top-level verdict reads BOTH: every leg
 that ran a uint32 comparison must report every comparison identical, under the
 configuration named below, or the gate FAILS by name and exits 1. This is
 stated because the opposite was true here — the verdict read only the count, so
-a device round in which every compare failed still stamped ``passed: true``,
+a device run in which every compare failed still stamped ``passed: true``,
 printed ``[gate] passed`` and exited 0 (demonstrated on the laptop by stubbing
 the five device host halves to ``{compared: 156, identical: 0}``).
 
-EVERY DEVICE LEG IS SPLIT INTO A HOST HALF AND A DEVICE HALF, and the host half
+Every device leg is split into a host half and a device half, and the host half
 runs on a laptop. It is the case enumeration, the reference (through the
 transcription the ``reference`` leg pins against ``stepping.update_E``) and the
-NON-VACUITY assertions; it can FAIL, and it fails in the round that wrote the
+NON-VACUITY assertions; it can FAIL, and it fails on the host that writes the
 case rather than after spending device time on a green row that measured
-nothing. The device half is the launch and the uint32 compare. EVERY DEVICE HALF
-NOW EXISTS: ``DEVICE_HALF_TODO`` is empty and ``DEVICE_HALF_IMPLEMENTED`` is
-True on every leg. They were written in the device round rather than before it,
+nothing. The device half is the launch and the uint32 compare. Every device half
+now exists: ``DEVICE_HALF_TODO`` is empty and ``DEVICE_HALF_IMPLEMENTED`` is
+True on every leg. They were written once a device was available, not before,
 for the reason that list used to give — mutant loading, launch counting, build
 identity and real CuPy engine objects cannot be exercised at all without
 hardware, and a harness written blind is how a leg arrives green and vacuous.
-The round proved the point twice: the mutation and identity legs died on a
+Writing them on a device proved the point twice: the mutation and identity legs died on a
 ``UnicodeDecodeError`` under the measurement host's ASCII locale, and the
 two-builds check read a warm-cache HIT as a stale binary. Both are closed below,
 and both were found by an artifact rather than by reading.
 
 Legs, in order (``--legs`` selects a subset):
 
-* ``license``     — DEVICE, and the leg to read first: THE MEASUREMENT THAT
-  LICENSES A NEW KERNEL. The cheap alternative to this whole family was to
+* ``license``     — DEVICE, and the leg to read first: the measurement that
+  licenses a new kernel. The cheap alternative to this whole family was to
   restate ``coverage._grid_reasons`` clause 5 and let the CERTIFIED off-diagonal
   body serve folds unchanged, so the file that rejects that owes a measurement.
-  This leg launches the SHIPPED CERTIFIED KERNEL on all 16 real folded reference
+  This leg launches the shipped certified kernel on all 16 real folded reference
   configurations under BOTH readings of the fold (its alphabet has two values,
   so "admit the fold" forces a choice of arm and a single reading would invite
   "you handed it the wrong arm"), and compares every result against the
@@ -58,10 +58,10 @@ Legs, in order (``--legs`` selects a subset):
 * ``reference``   — the in-file transcription pinned against ``stepping.update_E``
   itself, on real ``Grid``/``Fields``/``PML`` objects with installed tensors and
   real mirror planes, byte for byte, over repeated sub-step calls (state chained
-  through ``f_w``), on 16 grids INCLUDING TWO WITH THREE SIMULTANEOUS MIRROR
-  PLANES. Runs on NumPy (the laptop merge bar) and again on CuPy when a
-  device is present; emits a per-call state sha256 chain. EVERY reference grid
-  additionally runs the SIX DISCRIMINATING CONTROLS below, so a reference that
+  through ``f_w``), on 16 grids including two with three simultaneous mirror
+  planes. Runs on NumPy (the laptop merge bar) and again on CuPy when a
+  device is present; emits a per-call state sha256 chain. Every reference grid
+  additionally runs the six discriminating controls below, so a reference that
   passed by accident (both sides wrong the same way) is impossible: each control
   is a different transcription of one ghost arm, and each must DIFFER.
 
@@ -83,7 +83,7 @@ Legs, in order (``--legs`` selects a subset):
   folded rows, whatever stepping.py:1219-1220 / fields.py:1237-1241 /
   driver.py:1202-1204 claim — this whole family exists because it does not), and
   the fold-classification refusals inherited from ``symmetry.folded_axis_kinds``.
-  EVERY CASE MUST BE BUILDABLE AND MUST MATCH ITS REASON BY NAME. Two clauses
+  Every case must be buildable and must match its reason by name. Two clauses
   had no witness and said nothing about it: the thin folded axis (a folded
   PERIODIC axis bottoms out at 3 stored cells at every cell size tried, so the
   condition is unreachable that way and the case recorded the backend clause
@@ -98,10 +98,10 @@ Legs, in order (``--legs`` selects a subset):
 * ``identity_host`` — the REACHABILITY claim, on NumPy, needing no device: on the
   same grid, the same coefficients and the same seeds, flipping ONLY the folded
   axis's ghost code between MIRROR and METALLIC must be
-    - byte-IDENTICAL when NO SURVIVING ROW SLOT takes ``E_a`` as its PARTNER for
+    - byte-IDENTICAL when no surviving row slot takes ``E_a`` as its PARTNER for
       the folded axis ``a``, and
     - byte-DIFFERENT as soon as one surviving slot does.
-  THE TEST IS AT SLOT LEVEL, and the difference from the coarser row-level
+  The test is at slot level, and the difference from the coarser row-level
   reading is a case, not a nicety: a single live slot ``Ey <- Ez`` on a folded X
   leaves a live row that is not ``Ex`` while the fold enters NEITHER role, and
   the bytes agree. The leg carries three such counterexamples (one per axis) and
@@ -131,16 +131,16 @@ Legs, in order (``--legs`` selects a subset):
   somewhere AND that its reference bytes differ from a coefficient-dropped
   (diagonal-engine) control, so no case can pass with the feature dark.
 
-  THE ZERO-INIT CLASS IS NOT A RANDOM SEED SET TO ZERO. Measured on the laptop:
+  The zero-init class is not a random seed set to zero. Measured on the laptop:
   with every array zero the mirror ghost's parity sign is ANNIHILATED by the
   ``values + ghost`` add (``+0.0 + -0.0 == +0.0``), the negative-zero census over
   E and f_w is 0, and a sign-flipped ghost is NOT byte-visible — a case built
   that way is VACUOUS and is recorded as such, never as coverage. The needle that
-  works is ZERO EVERYWHERE EXCEPT STORED ROW ``MIRROR_SOURCE_INDEX`` of the
+  works is zero everywhere except stored row ``MIRROR_SOURCE_INDEX`` of the
   folded axis, over a NEGATIVE-ZERO background, which makes the mirror ghost the
   ONLY path to a nonzero fold-plane E.
 
-  MEASURED BY THIS FILE'S OWN SWEEP, at ``SEED = 20260813`` on the shipped
+  Measured by this file's own sweep, at ``SEED = 20260813`` on the shipped
   enumeration, recorded per case as ``fold_plane_max_abs_E`` and
   ``negative_zero_census`` (fold plane max|E| / census):
 
@@ -158,8 +158,8 @@ Legs, in order (``--legs`` selects a subset):
 * ``subnormal``   — DEVICE. The cancellation class scaled into underflow,
   REPORTED SEPARATELY under the stamped policy, never merged.
 
-* ``identity``    — DEVICE, the compiled seam, three claims, each ASSERTED
-  BESIDE ITS OWN NEGATIVE CONTROL in the same configuration (all three are
+* ``identity``    — DEVICE, the compiled seam, three claims, each asserted
+  beside its own negative control in the same configuration (all three are
   equalities, and an equality with no control is satisfied by a kernel that
   wrote nothing):
   (i) with ZERO folded axes the kernel must be byte-identical to the certified
@@ -173,13 +173,13 @@ Legs, in order (``--legs`` selects a subset):
       sub-step having no ownership mask and no reflect row. Recorded WITH its
       reason and with PTX evidence that the two specializations really are two
       builds, so a null cannot be a stale-cache artifact.
-      THE TWO-BUILDS EVIDENCE IS MEASURED ON AN EMPTY CACHE, and its first
+      The two-builds evidence is measured on an empty cache, and its first
       spelling was wrong in a way the artifact caught. It counted NEW
       specializations on the SHIPPED kernel across the two launches and required
       one from each — but the sweep leg runs first and had already compiled 63
       specializations, one of them this exact MIRROR_PERIODIC signature, so the
       second launch added none and the check read "one binary served both codes"
-      when what happened was a cache HIT ON THE RIGHT ENTRY. What is measured
+      when what happened was a cache hit on the right entry. What is measured
       now is a FRESH renamed copy of the shipped source with an empty cache,
       launched once per code: two specialization keys must appear, the copy's
       results must equal the shipped kernel's (a faithful stand-in, not merely
@@ -187,8 +187,8 @@ Legs, in order (``--legs`` selects a subset):
       the null's positive evidence. Measured: 2 specializations, 2 distinct
       keys, PTX texts equal, and f10's mutant as the live control at 748 words.
 
-      THE HOST HALF OF (iii) IS A SOURCE AND PLAN MEASUREMENT, NOT A REFERENCE
-      DRIVE: ``reference_update_e`` takes KINDS and ``KIND_OF_CODE`` maps both
+      The host half of (iii) is a source and plan measurement, not a reference
+      drive: ``reference_update_e`` takes KINDS and ``KIND_OF_CODE`` maps both
       mirror codes to MIRROR, so driving it twice with the two codes hands it
       byte-identical arguments and the equality is an identity of inputs
       (verified by instrumenting both calls). What is measured instead is that
@@ -217,7 +217,7 @@ Legs, in order (``--legs`` selects a subset):
     f7  ghost weight applied to the WHOLE down lane rather than the ghost lane
     f8  mirror UP ghost served as the parity-weighted reflect row instead of 0
         (the array-path finding's opposite: this kernel must reproduce the ZERO)
-    f9  the wall mask STOPS ABSTAINING ON THE FOLDED AXIS'S LANE, and nothing
+    f9  the wall mask stops abstaining on the folded axis's lane, and nothing
         else: the constexpr forced on at the four call sites that carry that
         lane, which zeroes exactly what the ``mask_fold`` host analogue zeroes.
         (Its previous spelling dropped BOTH guards unconditionally and also
@@ -230,7 +230,7 @@ Legs, in order (``--legs`` selects a subset):
 
   plus the certified family's own m1/m2/m3/m9 re-run on a FOLDED case, because a
   fold changes which lanes are live and a mutation caught unfolded is not thereby
-  caught folded. EVERY PATCH DECLARES ITS SITE COUNT AND THE COUNT IS ENFORCED:
+  caught folded. Every patch declares its site count and the count is enforced:
   several patchers increment once per INDEPENDENT needle (m2 seven, m3 nine, f9
   four, f6 two), so ``hits > 0`` alone would read as armed while the mutant
   carried only part of the declared defect. A mismatch is an error, not a note.
@@ -254,8 +254,8 @@ SUBNORMAL POLICY — certification runs UNDER ``ieee_keep_ftz_stripped``. CuPy
 unconditionally appends ``-ftz=true`` to every NVRTC compile; this gate installs
 the demonstrated strip (``gate_triton_complex.install_ftz_strip``) BEFORE any
 CuPy compile, refuses to certify when the strip cannot be confirmed exercised,
-and stamps every artifact with the policy plus the in-run strip counters. THE
-STAMP IS TAKEN AFTER THE LEGS RUN (and after the licensing check, so
+and stamps every artifact with the policy plus the in-run strip counters. The
+stamp is taken after the legs run (and after the licensing check, so
 ``zero_compiles_explained`` is in it); the pre-leg stamp is kept beside it as
 ``subnormal_policy_at_start``. Stamping only at the start — which this file did
 — pinned ``nvrtc_calls = 0`` and ``ftz_removed = 0`` into every artifact by
@@ -269,7 +269,7 @@ offdiag tail plus a ghost-lane multiply, so it certifies fusion-off and the
 sweep's ``guard`` axis records the fusion-on outcome without merging it.
 ``synthetic.certified`` is therefore the GUARDED (fusion-off) rows alone —
 merging the two, as this file once did, made a byte-perfect kernel report
-``certified: false`` on this tranche's own measured expectation. The fusion axis
+``certified: false`` on this family's own measured expectation. The fusion axis
 additionally carries the certified family's NON-VACUITY CONTROL: if every
 fusion-on row was byte-identical, the guard axis measured nothing and the leg
 FAILS with ``fusion-control-never-diverged`` rather than quietly certifying a
@@ -937,9 +937,9 @@ REFERENCE_GRIDS: Tuple[Dict[str, Any], ...] = (
     dict(name="foldZ_metallic_even_uniform", fold="Z", phase=1,
          cell=(1.2, 1.2, 2.0), boundaries="metallic", courant=0.35,
          rows="uniform_full", seed_offset=13),
-    # THREE SIMULTANEOUS MIRROR PLANES. The predicate ADMITS this configuration
+    # Three simultaneous mirror planes. The predicate ADMITS this configuration
     # (measured: covered with the array-module clause spoofed), so a later
-    # plan_step round would route it — and until this grid existed nothing in
+    # plan_step change would route it — and until this grid existed nothing in
     # the gate, the validator or the laptop tests carried a case with more than
     # two folded axes. Every partner axis is then folded, so all six row slots
     # take a ghosted down shift at once.
@@ -1115,12 +1115,12 @@ def run_reference(results: Dict[str, Any], out_path: str, xp,
 
 #: (row form, plane phase, boundaries, DECLARED expectation, why).
 #:
-#: THE EXPECTATION IS DECLARED BY HAND, never computed from the predicate the
+#: The expectation is declared by hand, never computed from the predicate the
 #: leg arbitrates — a case whose expectation came from
 #: ``mirror_arm_is_reachable`` could only ever confirm that function against
 #: itself.
 #:
-#: THE FOURTH ROW IS THE COUNTEREXAMPLE THAT MAKES THE CLAIM SLOT-LEVEL. A
+#: The fourth row is the counterexample that makes the claim slot-level. A
 #: single slot ``E_{a+1} <- E_{a+2}`` leaves a live row that is not ``E_a``
 #: while NO live slot takes ``E_a`` as its partner, so the fold enters neither
 #: role and the bytes agree. A row-level reading of the reachability statement
@@ -1178,7 +1178,7 @@ IDENTITY_CASES: Tuple[Dict[str, Any], ...] = tuple(
 def run_identity_host(results: Dict[str, Any], out_path: str) -> Dict[str, Any]:
     """MIRROR vs METALLIC ghost code on the SAME grid, coefficients and seeds.
 
-    The reachability claim, measured: identical exactly when NO LIVE ROW SLOT
+    The reachability claim, measured: identical exactly when no live row slot
     takes the folded axis's component as its PARTNER. The negative half is what
     keeps the positive half from being vacuous, and the SLOT-LEVEL
     COUNTEREXAMPLE (a live row that is not ``E_a`` whose only surviving slot
@@ -1414,8 +1414,8 @@ def run_refusals(results: Dict[str, Any], out_path: str) -> Dict[str, Any]:
     # 9. A folded axis with too few stored cells for the ghost's stored row 2 —
     #    stepping._mirror_source raises below that.
     #
-    #    THE ROUTE MATTERS AND IS MEASURED. A folded PERIODIC axis BOTTOMS OUT AT
-    #    THREE stored cells: cell sizes 0.05 / 0.1 / 0.15 / 0.2 at resolution 10
+    #    The route matters and is measured. A folded PERIODIC axis bottoms out at
+    #    three stored cells: cell sizes 0.05 / 0.1 / 0.15 / 0.2 at resolution 10
     #    all give shape (3, 12, 12), so `stored_cells <= MIRROR_SOURCE_INDEX = 2`
     #    is UNREACHABLE that way and a case built on it records the backend
     #    clause alone — byte-indistinguishable from a pristine grid, i.e. a case
@@ -1442,7 +1442,7 @@ def run_refusals(results: Dict[str, Any], out_path: str) -> Dict[str, Any]:
             f"the folded axis, so the clause under test cannot fire")
     save(results, out_path)
 
-    # 10. Complex storage — folded complex + offdiag is Phase B's composed leg.
+    # 10. Complex storage — folded complex + offdiag belongs to a separate composed family.
     fields7, pml7 = build_reference_fields(np, base)
     fields7.force_complex_fields = True
     covered, reasons = _covered(fields7, pml7)
@@ -1455,7 +1455,7 @@ def run_refusals(results: Dict[str, Any], out_path: str) -> Dict[str, Any]:
     covered, reasons = _covered(fields8, pml8)
     record("row_aliases_output", covered, reasons, False, "aliases output")
 
-    # 12. Beta and BFAST — BUILT THROUGH THE GRID CONSTRUCTOR, never poked onto
+    # 12. Beta and BFAST — built through the grid constructor, never poked onto
     #     a built object. `bfast_active` is a read-only property over
     #     `bfast_scaled_k` (grid.py:745), so `object.__setattr__(grid,
     #     'bfast_active', True)` RAISES; the previous spelling caught that
@@ -1501,17 +1501,17 @@ def run_refusals(results: Dict[str, Any], out_path: str) -> Dict[str, Any]:
 # The device legs' fabric — enumeration, the HOST HALF, the device compare
 # ---------------------------------------------------------------------------
 #
-# WHY EVERY DEVICE LEG IS SPLIT IN TWO HALVES. This is a grouping choice; the
+# Why every device leg is split in two halves. This is a grouping choice; the
 # array path forces nothing here. Each leg below is written so that everything
 # EXCEPT the Triton launch and the uint32 compare runs on a laptop: the case
 # enumeration, the reference computed through the transcription the ``reference``
 # leg pinned against ``stepping.update_E``, and every case's NON-VACUITY
 # assertion. A case that cannot see what it was built to see therefore fails
-# HERE — on a host with no GPU, in the round that wrote it — instead of spending
+# HERE — on a host with no GPU, when the case is written — instead of spending
 # device time to report a green row that measured nothing. The device half is
 # one ``if`` away and consumes the same case objects.
 #
-# THE HOST HALF MAKES NO BYTE-IDENTITY CLAIM. It compares the reference against
+# The host half makes no byte-identity claim. It compares the reference against
 # CONTROLS, never against kernel bytes; ``certified`` stays False and the leg's
 # ``pass`` stays False until a device compares. That is the whole point of the
 # exit-75 convention this file already uses.
@@ -1534,9 +1534,9 @@ KIND_OF_CODE: Dict[int, str] = {
 
 SWEEP_SHAPES = ((16, 16, 16), (13, 17, 11), (1, 160, 160), (11, 13, 15))
 
-#: Real-layer coefficient tables are cut at these Courants. 0.35 and 0.3125 are
-#: NOT powers of two (the sweep mandate). dtdx does not enter THIS sub-step's
-#: arithmetic — the mandate lands here, in the tables the layer produces.
+#: Real-layer coefficient tables are cut at these Courants. 0.35 and 0.3125 are NOT powers
+#: of two, which the sweep requires (a power of two scales exactly and shows no rounding
+#: difference). dtdx does not enter THIS sub-step's arithmetic — the Courant lands in the tables the layer produces.
 LAYER_COURANTS = (0.5, 0.35, 0.3125)
 
 #: (label, per-axis boundary codes, per-axis declared mirror phase). Covers both
@@ -1560,7 +1560,7 @@ SWEEP_FOLDS: Tuple[Tuple[str, Tuple[int, int, int],
      (None, None, -1)),
     ("foldXY_two_planes", (C_MIRROR_PERIODIC, C_MIRROR_METALLIC, C_PERIODIC),
      (1, -1, None)),
-    # THREE PLANES AT ONCE — admitted by the predicate and, before this row, in
+    # Three planes at once — admitted by the predicate and, before this row, in
     # no case anywhere in the family. Every one of the six row slots then takes a
     # ghosted down shift, and the three ghost weights are not all equal (mixed
     # phases), so a kernel that shared one weight across axes is byte-visible.
@@ -1681,15 +1681,15 @@ def seed_zero_init_row2(state, axis: int, rng) -> None:
     ``MIRROR_SOURCE_INDEX`` of the folded axis, so the mirror ghost is the ONLY
     path to a nonzero fold-plane E.
 
-    TWO THINGS ARE MEASURED, NOT ASSUMED, AND THE BACKGROUND'S SIGN FOLLOWS
-    FROM THE SECOND:
+    Two things are measured, not assumed, and the background's sign follows
+    from the second:
 
     1. A plain all-zero seed is VACUOUS — with every array zero the ghost is
        the only nonzero term nowhere, the fold plane stays at zero and a
        sign-flipped ghost is invisible. Row ``MIRROR_SOURCE_INDEX`` alone fixes
        that: it makes the mirror ghost the sole path to a nonzero fold-plane E.
 
-    2. The BACKGROUND IS NEGATIVE ZERO, and that is load-bearing rather than
+    2. The background is negative zero, and that is load-bearing rather than
        decorative. Measured on this laptop with a ``+0.0`` background: the
        stored negative-zero census is 0 on all four folded configurations,
        because the row sum's ``diag + total`` add annihilates the ghost's parity
@@ -1788,7 +1788,7 @@ def _sweep_case(name: str, shape, fold: str, rows: str, *, inv_form="distinct",
 
 
 def sweep_cases() -> List[Dict[str, Any]]:
-    """The whole synthetic tranche, enumerated as data so a test can assert
+    """The whole synthetic sweep, enumerated as data so a test can assert
     what it covers without running it."""
     cases: List[Dict[str, Any]] = []
     offset = 0
@@ -2004,7 +2004,7 @@ def one_sweep_case(spec: Dict[str, Any], device_ok: bool,
             case["unary_minus_lowering_visible"] = any(
                 reference[n].tobytes() != lowered[n].tobytes()
                 for n in STATE_NAMES)
-            # RECORDED EITHER WAY (platform fact (b)); the mutation leg reads
+            # Recorded either way (platform fact (b)); the mutation leg reads
             # this field to decide whether f6 can be asserted or only recorded.
     if not np.all(np.isfinite(np.concatenate(
             [reference[n].ravel() for n in STATE_NAMES]))):
@@ -2014,7 +2014,7 @@ def one_sweep_case(spec: Dict[str, Any], device_ok: bool,
 
     if not device_ok:
         case["why_not_compared"] = (
-            "no CUDA device in this round: the host half ran (enumeration, "
+            "no CUDA device in this run: the host half ran (enumeration, "
             "reference, non-vacuity); NO byte-identity claim is made")
         return case
 
@@ -2069,15 +2069,15 @@ def certify_sweep(leg: Dict[str, Any]) -> Dict[str, Any]:
     """The sweep's VERDICT fields, from its counts. Separate from the loop so a
     laptop test can drive every outcome without a device.
 
-    CERTIFICATION IS THE FUSION-OFF ROWS ALONE. The certified configuration is
+    Certification is the fusion-off rows alone. The certified configuration is
     ``ENABLE_FP_FUSION = False`` (module docstring point F, and this file's own
     CONFIGURATION line); the sweep's ``guard`` axis RECORDS the fusion-on
     outcome and must never be merged into the verdict. Merging them made a
-    byte-perfect kernel report ``certified: false`` on this tranche's own
+    byte-perfect kernel report ``certified: false`` on this family's own
     measured expectation (offdiag 0/28 fusion-on rows identical, and this
     family's tail is that shape plus a ghost-lane multiply).
 
-    THE FUSION AXIS CARRIES THE CERTIFIED FAMILY'S NON-VACUITY CONTROL
+    The fusion axis carries the certified family's non-vacuity control
     (gate_triton_offdiag.py:1708-1710): if the fusion-on rows never diverged,
     the guard axis measured nothing and "we certify fusion-off" is a
     distinction this sweep did not observe.
@@ -2174,7 +2174,7 @@ def run_subnormal(results: Dict[str, Any], out_path: str,
                                "subnormal_words": subnormals,
                                "seed_conditions": conditions,
                                "compared": False}
-        # UNDER FLUSH THE CLASS CANNOT OCCUR (flush_vacuity, measured): the row is
+        # Under flush the class cannot occur (flush_vacuity, measured): the row is
         # then still COMPARED -- every executor must flush the underflowing products
         # alike -- and only the vacuity refusal is not applicable.
         not_applicable = flush_vacuity.subnormal_class_not_applicable(
@@ -2201,7 +2201,7 @@ def run_subnormal(results: Dict[str, Any], out_path: str,
                                       for name in STATE_NAMES})
             row["compared"] = True
         else:
-            row["why_not_compared"] = ("no CUDA device in this round; the "
+            row["why_not_compared"] = ("no CUDA device in this run; the "
                                        "class was seeded and counted only")
         leg["rows"].append(row)
         log(f"[subnormal] {label}: subnormal_words={subnormals} "
@@ -2315,7 +2315,7 @@ def mirror_codes_share_one_arm(source: Optional[str] = None) -> Dict[str, Any]:
 
     Fact 1 carries its own control: f10's mutant DOES spell a mirror code, so a
     check that could not see the difference is caught here rather than trusted.
-    THE BYTE CLAIM REMAINS THE DEVICE HALF'S, together with the PTX evidence
+    The byte claim remains the device half's, together with the PTX evidence
     that the two specializations are two builds (platform fact (c)).
     """
     shipped = _module_source(fomod) if source is None else source
@@ -2399,7 +2399,7 @@ def verbatim_else_arm() -> Dict[str, Any]:
 # DEVICE MACHINERY — the mutant's file, its launch count, and its build identity
 # ---------------------------------------------------------------------------
 #
-# Written in the device round rather than before it, for the reason
+# Written once a device was available rather than before, for the reason
 # DEVICE_HALF_TODO gave: none of it can be exercised at all without hardware,
 # and a harness written blind is how a leg arrives green and vacuous. Every
 # piece below is either exercised by a device leg here or is a PURE function the
@@ -2482,7 +2482,7 @@ def ptx_texts(kernel: Any) -> List[str]:
 
 
 def compile_mutant_module(source: str, label: str) -> Tuple[Any, Dict[str, str]]:
-    """Compile ONE mutated copy of the whole module from a REAL FILE ON DISK.
+    """Compile ONE mutated copy of the whole module from a real file on disk.
 
     Two mechanics, both forced by the platform rather than chosen:
 
@@ -2495,7 +2495,7 @@ def compile_mutant_module(source: str, label: str) -> Tuple[Any, Dict[str, str]]
       would have edited source outside the kernel block, which is the one thing
       a mutation harness may not do.
 
-    THE ENTRY POINT IS RENAMED (platform fact (c)): Triton's cache can serve a
+    The entry point is renamed (platform fact (c)): Triton's cache can serve a
     stale binary to a mutant that kept the shipped name, and a leg that measured
     the shipped bytes would report a NEEDLE-MISSED that is really a harness
     failure. The rename is a whole-identifier substitution, so the module's own
@@ -2691,7 +2691,7 @@ def identity_device_half(leg: Dict[str, Any], source: str) -> None:
             f"ndiff={verdict['differing_floats']}")
         return ok
 
-    # ---- (i) THE REDUCTION ROW: zero folded axes -> the certified kernel -----
+    # ---- (i) the reduction row: zero folded axes -> the certified kernel -----
     codes = (C_PERIODIC, C_METALLIC, C_PERIODIC)
     walls = sweep_wall_axes(codes)
     weights = sweep_ghost_weights(codes, (None, None, None))
@@ -2718,7 +2718,7 @@ def identity_device_half(leg: Dict[str, Any], source: str) -> None:
            "byte for byte, on the same seeds",
            folded_launches=ours.launches, certified_launches=theirs.launches)
 
-    # ---- (ii) THE UNREACHABLE ARM, and the row form that makes it live ------
+    # ---- (ii) the unreachable arm, and the row form that makes it live ------
     #
     # The walls stay the FOLDED grid's (WM_X = 0) in both drives, exactly as the
     # host leg does it, so the only thing flipped is the ghost arm: giving the
@@ -2756,7 +2756,7 @@ def identity_device_half(leg: Dict[str, Any], source: str) -> None:
                "unreachable fold this family reduces to it",
                row_form=rows_form, certified_launches=certified.launches)
 
-    # ---- (iii) THE PREDICTED NULL: the two mirror codes ---------------------
+    # ---- (iii) the predicted null: the two mirror codes ---------------------
     state, inv_eps, rows, flat = _identity_state(shape, "varying_full", 3)
     metallic_codes = (C_MIRROR_METALLIC, C_PERIODIC, C_PERIODIC)
     periodic_codes = (C_MIRROR_PERIODIC, C_PERIODIC, C_PERIODIC)
@@ -2772,15 +2772,15 @@ def identity_device_half(leg: Dict[str, Any], source: str) -> None:
                                        kernel=right_counter)
     launches += left_counter.launches + right_counter.launches
 
-    # TWO BUILDS, MEASURED ON A KERNEL WITH AN EMPTY CACHE.
+    # Two builds, measured on a kernel with an empty cache.
     #
-    # THIS CHECK'S FIRST SPELLING WAS WRONG AND THE ARTIFACT CAUGHT IT. It
+    # This check's first spelling was wrong and the artifact caught it. It
     # counted NEW specializations on the SHIPPED kernel across the two launches
     # and required one from each. But the sweep leg runs first and had already
     # compiled 63 specializations, one of them this exact MIRROR_PERIODIC
     # signature — so the second launch added 0 new entries and the check read
-    # "one binary served both codes" when what actually happened was a cache HIT
-    # ON THE RIGHT ENTRY. The claim and the measurement had drifted apart.
+    # "one binary served both codes" when what actually happened was a cache hit
+    # on the right entry. The claim and the measurement had drifted apart.
     #
     # What is measured instead: a FRESH renamed copy of the SHIPPED source, with
     # an empty cache, launched once per code. Two entries must appear — that is
@@ -2826,7 +2826,7 @@ def identity_device_half(leg: Dict[str, Any], source: str) -> None:
            mirror_metallic_launches=left_counter.launches,
            mirror_periodic_launches=right_counter.launches)
 
-    # THE ARMED CONTROL for (iii): f10's mutant gives the two codes different
+    # The armed control for (iii): f10's mutant gives the two codes different
     # behaviour, so a comparison that could not see such a difference is caught
     # here rather than trusted.
     mutated, hits = mutate_f10_two_mirror_codes_differ(source)
@@ -2861,10 +2861,10 @@ def identity_device_half(leg: Dict[str, Any], source: str) -> None:
     leg["compared"] = compared
     leg["identical"] = identical
     leg["launches"] = launches
-    # NAME THE FAILING CONJUNCT. Two of this leg's six comparisons are REQUIRED
+    # Name the failing conjunct. Two of this leg's six comparisons are REQUIRED
     # to differ, so a bare "identical 4 of 6" reads as a failure when it is the
-    # expected outcome; the r2 artifact said exactly that while the real fault
-    # was the two-builds check.
+    # expected outcome; an earlier device run's artifact said exactly that while
+    # the real fault was the two-builds check.
     leg["certification_detail"] = "; ".join(
         [f"{name} disagreed with its expectation"
          for name in claims
@@ -2938,7 +2938,7 @@ def run_identity(results: Dict[str, Any], out_path: str,
                 "the CERTIFIED family's, in its own file, on the same seeds"),
     }
 
-    # (iii) THE PREDICTED NULL: the two mirror codes.
+    # (iii) the predicted null: the two mirror codes.
     #
     # NOT a second reference drive. `reference_update_e` takes KINDS, and
     # `KIND_OF_CODE` maps both mirror codes to MIRROR, so driving it twice with
@@ -3117,16 +3117,16 @@ _F9_X_LANE_NEEDLES: Tuple[str, ...] = ("WM_X, WM_Z, P", "WM_X, WM_Y, P")
 
 def mutate_f9_wall_mask_stops_abstaining_on_the_fold(
         source: str) -> Tuple[str, int]:
-    """f9: THE ABSTENTION AT stepping.py:1282 DROPPED — and NOTHING ELSE.
+    """f9: the abstention at stepping.py:1282 dropped — and nothing else.
 
     ``_mask_metallic_wall_coupling`` asks ``is_metallic and not is_mirrored``,
     so a folded axis compiles to ``WM = 0``; this mutant forces the constexpr on
-    for the FOLDED AXIS'S LANE ONLY, at the call sites that carry it. On the
+    for the folded axis's lane only, at the call sites that carry it. On the
     declared needle (fold X) that zeroes ``at_x`` for Ey and Ez — exactly and
     only what the host analogue ``mask_fold=True`` does, since the reference's
     mask loop skips an axis whose Yee shift is nonzero and Ex's is 1 on x.
 
-    THE PREVIOUS SPELLING WAS NOT MINIMAL and its verdict did not mean what it
+    The previous spelling was not minimal and its verdict did not mean what it
     said: it replaced ``if WMA: ... if WMB: ...`` with two unconditional
     ``tl.where``, which on the same needle also zeroes ``at_y``/``at_z`` for Ex
     and ``at_z``/``at_y`` for Ey/Ez — planes on two PERIODIC axes the array path
@@ -3574,8 +3574,8 @@ def run_mutations(results: Dict[str, Any], out_path: str,
                   device_ok: bool) -> Dict[str, Any]:
     """Plant each defect in the shipped kernel's SOURCE and measure its needle.
 
-    HOST HALF, this round: every patch must apply the expected number of times
-    (a patch that applies zero times is DISARMED BY DRIFT and fails here), the
+    HOST HALF, this run: every patch must apply the expected number of times
+    (a patch that applies zero times is disarmed by drift and fails here), the
     patched source must still compile, and the defect's host ANALOGUE must move
     the reference's bytes on its needle — so a needle that could not have caught
     its mutation is found now rather than after a device run.
@@ -3629,13 +3629,13 @@ def run_mutations(results: Dict[str, Any], out_path: str,
         record["hits"] = hits
         record["source_differs"] = mutated != source
         if hits == 0 or not record["source_differs"]:
-            record["error"] = ("DISARMED BY DRIFT: the patch matched nothing "
+            record["error"] = ("Disarmed by drift: the patch matched nothing "
                                "in the shipped kernel source")
             leg["mutations"][name] = record
             log(f"[mutations] {name}: DISARMED (0 hits)")
             save(results, out_path)
             continue
-        # THE COUNT IS A VERDICT, NOT A NOTE. Several patchers here increment
+        # The count is a verdict, not a note. Several patchers here increment
         # once per INDEPENDENT needle (m2 has seven, f9 four, f6 two): if some
         # drifted and one still matched, `hits > 0` reads as armed while the
         # mutant carries a PARTIAL defect, and the device leg would certify a
@@ -3657,7 +3657,7 @@ def run_mutations(results: Dict[str, Any], out_path: str,
             record["compiles"] = False
             record["error"] = f"the mutant does not parse: {exc}"
             leg["mutations"][name] = record
-            log(f"[mutations] {name}: MUTANT DOES NOT PARSE")
+            log(f"[mutations] {name}: mutant does not parse")
             save(results, out_path)
             continue
 
@@ -3711,7 +3711,7 @@ def run_mutations(results: Dict[str, Any], out_path: str,
             record["why_not_compared"] = (
                 "the device half compiles the mutant from a real file, counts "
                 "launches and checks its build identity; no device in this "
-                "round")
+                "run")
         elif "error" not in record:
             mutation_device_half(record, name, entry, mutated, hits, needle,
                                  base, shipped_rows)
@@ -3729,7 +3729,7 @@ def run_mutations(results: Dict[str, Any], out_path: str,
     leg["launches"] = sum(int(record.get("launches") or 0)
                           for record in leg["mutations"].values())
     if device_ok:
-        # THE PER-NEEDLE PREAMBLE IS PART OF THE VERDICT. Every needle the leg
+        # The per-needle preamble is part of the verdict. Every needle the leg
         # measures on must first be one the SHIPPED kernel reproduces byte for
         # byte; on a needle where the shipped kernel already diverged, "the
         # mutant moved bytes" would be a statement about the configuration
@@ -3934,7 +3934,7 @@ def run_engine(results: Dict[str, Any], out_path: str,
     if not device_ok:
         leg["why_not_compared"] = (
             "the engine leg steps real CuPy folded grids against "
-            "stepping.update_E; no device in this round")
+            "stepping.update_E; no device in this run")
     else:
         engine_device_half(leg)
     leg["pass"] = bool(leg["host_half_pass"] and leg["compared"]
@@ -3949,7 +3949,7 @@ def run_engine(results: Dict[str, Any], out_path: str,
 # ---------------------------------------------------------------------------
 #
 # A new kernel has to earn its existence. The cheap alternative to this family
-# was never "write nothing": it was RESTATE THE PREDICATE over the CERTIFIED
+# was never "write nothing": it was restate the predicate over the CERTIFIED
 # off-diagonal body — drop `coverage._grid_reasons` clause 5's fold refusal and
 # let `offdiag_constitutive_step` serve folded grids unchanged. That is a real
 # proposal and it costs one line, so the file that rejects it owes a
@@ -3966,9 +3966,9 @@ def run_engine(results: Dict[str, Any], out_path: str,
 #
 # and the mirror ghost is neither: a parity-weighted copy of stored row 2.
 #
-# THE LEG IS TWO-SIDED. Divergence alone would not license anything — a kernel
+# The leg is two-sided. Divergence alone would not license anything — a kernel
 # that diverged everywhere, including where the fold cannot be seen, would be
-# evidence of a broken harness. So the expectation is PREDICTED PER CASE from
+# evidence of a broken harness. So the expectation is predicted per case from
 # the row slots (`fold_is_a_live_partner_axis`) and the leg fails if measurement
 # and prediction disagree anywhere: the certified body must diverge exactly on
 # the configurations where a live slot takes the folded axis as its partner, and
@@ -4084,7 +4084,7 @@ def run_license(results: Dict[str, Any], out_path: str,
     if not device_ok:
         leg["why_not_compared"] = (
             "the licensing claim is about the CERTIFIED KERNEL's bytes, not "
-            "about a transcription of it; no device in this round")
+            "about a transcription of it; no device in this run")
     else:
         license_device_half(leg)
     leg["pass"] = bool(leg["host_half_pass"] and leg["compared"]
@@ -4100,7 +4100,7 @@ def run_license(results: Dict[str, Any], out_path: str,
 
 
 def license_device_half(leg: Dict[str, Any]) -> None:
-    """The same question, of the SHIPPED CERTIFIED KERNEL, in bytes."""
+    """The same question, of the shipped certified kernel, in bytes."""
     compared = 0
     new_identical = 0
     for row in leg["cases"]:
@@ -4161,7 +4161,7 @@ def certify_license(leg: Dict[str, Any]) -> Dict[str, Any]:
     """The licensing leg's VERDICT, from its rows. PURE, so a laptop test can
     drive every outcome without a device.
 
-    THE CLAIM IS TWO-SIDED, and each conjunct closes a different way of being
+    The claim is two-sided, and each conjunct closes a different way of being
     wrong:
 
     * the NEW kernel is byte-identical on every configuration — otherwise this
@@ -4231,14 +4231,14 @@ DEVICE_LEG_HOST_HALVES: Dict[str, Callable[..., Dict[str, Any]]] = {
     "engine": run_engine,
 }
 
-#: WHICH DEVICE HALVES EXIST IN CODE TODAY. `synthetic` and `subnormal` build
+#: Which device halves exist in code today. `synthetic` and `subnormal` build
 #: the plan, launch it and compare uint32 words, so a device host runs them
 #: unchanged. The other three need machinery that cannot be exercised at all
 #: without a GPU — PTX extraction for the identity null and the stale-cache
 #: check, mutant module loading and launch counting for the mutations, real
 #: CuPy engine objects for the engine leg — and writing it blind is how a leg
 #: arrives green and vacuous. They run their HOST HALF here and declare the
-#: gap; a device round writes them against hardware it can measure.
+#: gap; a device run writes them against hardware it can measure.
 DEVICE_HALF_IMPLEMENTED: Dict[str, bool] = {
     "license": True,
     "synthetic": True,
@@ -4297,9 +4297,9 @@ def run_device_leg(results: Dict[str, Any], out_path: str, name: str,
     elif not leg.get("compared"):
         leg.setdefault("why_not_compared", why)
     else:
-        # A leg that DID compare must not carry a "why it did not" line: the
-        # r2 artifact stamped every green device leg with "the device half was
-        # not requested to certify in this round" beside its comparison counts.
+        # A leg that DID compare must not carry a "why it did not" line: an
+        # earlier device run stamped every green device leg with its
+        # not-requested reason beside its comparison counts.
         leg.pop("why_not_compared", None)
     leg["note"] = ("no byte-identity claim is made for this leg until "
                    "`compared` is true")
@@ -4387,7 +4387,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         leg = run_device_leg(
             results, out_path, name, ok,
             why if not ok else
-            "the device half was not requested to certify in this round")
+            "the device half was not requested to certify in this run")
         device_host_halves.append(name)
         if leg.get("compared"):
             device_ran.append(name)
@@ -4403,11 +4403,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                            for name in device_host_halves) \
         if device_host_halves else True
 
-    # THE BYTE VERDICT. Every leg that COMPARED must also have CERTIFIED, and
+    # The byte verdict. Every leg that COMPARED must also have CERTIFIED, and
     # the two are different questions: `compared` is a COUNT (how many uint32
     # comparisons ran) while `certified` is the OUTCOME (every one of them
     # identical, under the configuration this file certifies). Reading only the
-    # count is how a device round in which every compare FAILED still stamped
+    # count is how a device run in which every compare FAILED still stamped
     # `passed: true`, printed `[gate] passed` and exited 0 — demonstrated on the
     # laptop by stubbing the five host halves to {compared: 156, identical: 0}.
     # A leg that compared and did not certify is a FAILURE, named.
@@ -4431,7 +4431,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         note = leg.get("fusion_control_note")
         if note:
             byte_failures.append(f"{name}: {note}")
-    # A SWEEP ERROR ROW is a case that measured nothing — a failure, never an
+    # A sweep error row is a case that measured nothing — a failure, never an
     # exclusion from 'ran' (the certified family's rule, gate_triton_offdiag.py:
     # 1702-1707). `host_half_pass` already carries it for the sweep; named here
     # so the status line says which leg.
@@ -4446,7 +4446,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         if residual:
             results["subnormal_policy_residual"] = residual
             device_host_pass = False
-    # RE-STAMP AFTER THE LEGS. `policy_stamp` reads the strip's live counters,
+    # Re-stamp after the legs. `policy_stamp` reads the strip's live counters,
     # and those only move during the NVRTC compiles inside the device legs; the
     # stamp taken with the initial `results` literal is therefore always
     # nvrtc_calls=0 / ftz_removed=0, and `zero_compiles_explained` (written into

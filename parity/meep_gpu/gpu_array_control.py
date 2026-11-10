@@ -10,16 +10,17 @@ through the harness's own ``run_leg`` and times it with the harness's own
 not re-spelt -- with the launch witnesses installed. The case's builder is the one
 ``timing_cases.resolve`` returns, the same object the GPU and MEEP rows build from.
 
-HOW THE ARRAY PATH IS FORCED is an argument and is written into the row:
+How the array path is forced is an argument and is written into the row:
 
 * ``dispatch`` (default)  ``MEEP_GPU_DISPATCH=0``, the opt-out a user types now that
   dispatch is on by default; ``MEEP_GPU_FUSED`` and ``MEEP_GPU_FUSE_ARMS`` unset.
 * ``fused``               the harness's own ``ARRAY_ENV`` (the kill switch).
 
 FLOORS. The launch witnesses must be installed; the warm pass and every timed window
-must launch NOTHING; the frozen plan must name no dispatched table; the spread over
-windows must be within the harness's gate. A row failing any is
-``TIMED-NOT-REPORTABLE`` and says which.
+must launch NOTHING; the frozen plan must name no dispatched table. A row failing any is
+``TIMED-NOT-REPORTABLE`` and says which. The spread over windows is recorded beside the
+floors (``window_spread``, the harness's own block) and gates nothing (the between-pass gate):
+the control enters on the spread of its pass rates, which the table reads.
 
 Monitors stay ATTACHED, as the ladder's GPU rows have them. ``--smoke`` lifts the NumPy
 reference and exercises the plumbing only; such a row is marked and is never a timing.
@@ -45,6 +46,7 @@ HARNESS_MARKER = "bench_fused_products.py"
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
+    import neutral_ids  # noqa: PLC0415
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--harness-root", default=None, dest="harness_root")
     parser.add_argument("--case", default="pml_3d")
@@ -112,7 +114,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "box_before": harness.box_state(), "monitors_mode": "attached",
         "witnesses_installed": list(harness.WITNESSES),
         "smoke": bool(args.smoke), "prefer_gpu": bool(e2e.PREFER_GPU),
-        "argv": list(sys.argv[1:]) if argv is None else list(argv),
+        "argv": neutral_ids.argv(sys.argv[1:] if argv is None else argv),
         "provenance": stamp, "builder": builder_facts,
     }
     if not timing_cases.is_builtin(args.case):
@@ -170,11 +172,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             "warm_pass_launched_nothing": leg["warm_launches_per_step"] == 0.0,
             "windows_launched_nothing": launches == 0,
             "no_table_dispatched": not tables and not plan.get("dispatched_slots"),
-            "spread_within_gate": harness.spread(seconds) <= harness.SPREAD_GATE,
             "non_finite_zero": row["non_finite"] == 0,
             "moved_words_positive": row["moved_words"] > 0,
             "gpu_driver": not args.smoke,
         }
+        row["window_spread"] = harness.window_spread(row["per_leg"])
         row["reportable"] = all(row["floors"].values())
         row["verdict"] = "TIMED" if row["reportable"] else "TIMED-NOT-REPORTABLE"
         harness.say(f"{args.case}/array control: {row['verdict']} "

@@ -1,6 +1,6 @@
 """Two architectures gated on one commit leave the same ledger in either binding order.
 
-A round on a second architecture is gated on its own card, and the rebind that records
+A certification round on a second architecture is gated on its own card, and the rebind that records
 it runs later on a laptop. Whichever architecture is bound first, the other is bound
 onto the same bytes afterwards, and the ledger that results must not depend on which
 came first: a record that differs by binding order is a record whose content is an

@@ -74,6 +74,26 @@ EXPECTED_SLOTS = 759
 CORE_SLOTS = ("step_B", "step_D", "update_H", "update_E")
 
 
+def _neutral_ids():
+    """The record spellings of machine stamps: ``neutral_ids.py`` beside this file. Every
+    record this campaign writes (the raw child rows, rows.jsonl, campaign.json,
+    preflight.json, report.json, source_sha256.txt, the progress log) leaves the machine,
+    so the MEEP checkout, the ledgers, the corpus sources and the runtime sources are written
+    under their roots' labels (``<home>/...``, ``<staging-root>/...``), and a reader that
+    opens one resolves it back on this machine (:func:`_opened`)."""
+    try:
+        import neutral_ids  # noqa: PLC0415
+    except ImportError:  # imported as a package module, not from parity/meep_gpu
+        from parity.meep_gpu import neutral_ids  # noqa: PLC0415
+    return neutral_ids
+
+
+def _opened(recorded: str) -> Path:
+    """A path a record names, on this machine: its labels expanded (``neutral_ids.resolve``);
+    a path recorded before the labels comes back as it was."""
+    return Path(_neutral_ids().resolve(recorded))
+
+
 def sha256(path: Path) -> str:
     """Return the digest of an existing input or runtime source file."""
     return hashlib.sha256(path.read_bytes()).hexdigest()
@@ -83,7 +103,8 @@ def _atomic_json(path: Path, value: Mapping[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(path.name + ".tmp")
     with temporary.open("w", encoding="utf-8") as handle:
-        json.dump(value, handle, indent=2, sort_keys=True, default=str)
+        json.dump(_neutral_ids().value(json.loads(json.dumps(value, default=str))), handle,
+                  indent=2, sort_keys=True, default=str)
         handle.write("\n")
         handle.flush()
         os.fsync(handle.fileno())
@@ -100,10 +121,17 @@ def _atomic_text(path: Path, value: str) -> None:
     os.replace(temporary, path)
 
 
+def _rows_text(rows: Iterable[Mapping[str, Any]]) -> str:
+    """JSON lines, each row written neutrally (:func:`_neutral_ids`)."""
+    neutral = _neutral_ids()
+    return "".join(json.dumps(neutral.value(json.loads(json.dumps(row, default=str))),
+                              sort_keys=True, default=str) + "\n" for row in rows)
+
+
 def _append_jsonl(path: Path, value: Mapping[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(value, sort_keys=True, default=str) + "\n")
+        handle.write(_rows_text([value]))
         handle.flush()
         os.fsync(handle.fileno())
 
@@ -186,7 +214,7 @@ def mps_status() -> dict[str, Any]:
 
 def _progress(path: Path, identity: str, message: str, started: float) -> None:
     line = (f"[{time.strftime('%H:%M:%S')}] {identity:<58.58} "
-            f"+{time.time() - started:7.1f}s  {message}\n")
+            f"+{time.time() - started:7.1f}s  {_neutral_ids().text(message)}\n")
     print(line, end="", flush=True)
     with path.open("a", encoding="utf-8") as handle:
         handle.write(line)
@@ -465,7 +493,7 @@ def verify_runtime_sources(sources: Mapping[str, str], *, root: Path = API_ROOT)
     errors: list[str] = []
     root = root.resolve()
     for name, digest in sources.items():
-        path = Path(name)
+        path = _opened(name)  # recorded under its root's label; opened on this machine
         try:
             path.resolve().relative_to(root)
         except ValueError:
@@ -500,7 +528,7 @@ def verify_row_inputs(rows: Iterable[Mapping[str, Any]]) -> list[str]:
             if not isinstance(name, str) or not isinstance(digest, str):
                 errors.append(f"{row.get('leg')}::{row.get('row')} has malformed input digest")
                 continue
-            path = Path(name)
+            path = _opened(name)  # recorded under its root's label; opened on this machine
             if not path.is_file():
                 errors.append(f"input disappeared before campaign close: {name}")
             elif sha256(path) != digest:
@@ -525,7 +553,9 @@ def summarize_rows(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
 
 
 def _write_manifest(path: Path, sources: Mapping[str, str]) -> None:
-    _atomic_text(path, "".join(f"{digest}\t{name}\n" for name, digest in sources.items()))
+    neutral = _neutral_ids()
+    _atomic_text(path, "".join(f"{digest}\t{neutral.path(name)}\n"
+                               for name, digest in sources.items()))
 
 
 def _command_for_child(arguments: argparse.Namespace, *, mode: str,
@@ -557,9 +587,12 @@ def _run_child(command: Sequence[str], *, cwd: Path, environment: Mapping[str, s
         completed = subprocess.run(command, cwd=str(cwd), env=dict(environment),
                                    stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
                                    timeout=timeout, check=False)
-        return completed.returncode, (completed.stderr or b"").decode("utf-8", "replace")[-1600:]
+        # Neutral before it is cut: a tail cut first can begin inside a path, where no
+        # label is recognised any more; the tail lands in report.json's reasons.
+        return completed.returncode, _neutral_ids().text(
+            (completed.stderr or b"").decode("utf-8", "replace"))[-1600:]
     except subprocess.TimeoutExpired as exc:
-        text = (exc.stderr or b"").decode("utf-8", "replace")[-1600:]
+        text = _neutral_ids().text((exc.stderr or b"").decode("utf-8", "replace"))[-1600:]
         return 124, text
 
 
@@ -621,7 +654,7 @@ def run_campaign(arguments: argparse.Namespace) -> int:
         }
         _atomic_json(root / "preflight.json", report)
         print(f"[corpus preflight] released={not source_errors} "
-              f"sources={len(corpus_sources)} out={root}", flush=True)
+              f"sources={len(corpus_sources)} out={_neutral_ids().path(str(root))}", flush=True)
         return 0 if not source_errors else 75
     if source_errors:
         raise SystemExit("corpus source preflight failed:\n" + "\n".join(source_errors))
@@ -700,8 +733,7 @@ def run_campaign(arguments: argparse.Namespace) -> int:
         _progress(progress, "tests", f"{index}/{len(grouped)} {module_name}", started)
 
     all_rows.sort(key=lambda row: (str(row.get("leg")), str(row.get("module", "")), str(row.get("row"))))
-    _atomic_text(root / "rows.jsonl", "".join(
-        json.dumps(row, sort_keys=True, default=str) + "\n" for row in all_rows))
+    _atomic_text(root / "rows.jsonl", _rows_text(all_rows))
     sources, source_errors = merge_sources(all_rows)
     errors.extend(source_errors)
     errors.extend(verify_runtime_sources(sources))
@@ -727,7 +759,7 @@ def run_campaign(arguments: argparse.Namespace) -> int:
     _atomic_json(root / "report.json", report)
     print(f"[corpus] released={not errors} rows={census['rows']} "
           f"measured={census['measured_rows']} slots={census['slots']}/{EXPECTED_SLOTS} "
-          f"out={root}", flush=True)
+          f"out={_neutral_ids().path(str(root))}", flush=True)
     return 0 if not errors else 75
 
 

@@ -34,6 +34,60 @@ and 5.1 × 10^-4 on the three examples that compare with MEEP: 4 simulations on
 A lift from a double-precision MEEP prints one line on standard error saying
 so.
 
+## Alignment with MEEP's per-chunk arithmetic {#alignment-with-meep}
+
+Since release 1.0 the array path steps every update with the arithmetic MEEP's
+source uses for it, and every kernel table transcribes the array path. Comments, test
+names and records call this "the alignment"; the forms are "the aligned forms", the array
+path that carries them is "the aligned array path" or "the aligned oracle", and the same
+thing is called "MEEP-order" or "MEEP-ordered" (the readback's reader, a parity-board
+column). It has five parts:
+
+- **The form is chosen per structure chunk.** MEEP divides the grid into structure chunks
+  and decides per chunk, not per cell, which absorber form an update takes, whether a
+  conductivity or an off-diagonal inverse-permittivity array is kept, which field drives a
+  polarization, and where the cylindrical radial sum restarts. The array path reads that
+  division from <code>meep_gpu/chunk_map.py</code>, and every kernel table reads the same
+  division as data ([The per-chunk PML forms](#per-chunk-forms)).
+- **Each form is grouped as MEEP groups it.** Additions and subtractions associate as
+  MEEP's C writes them, term by term ([Fixed association order](#fixed-association-order)).
+- **Each operation has MEEP's precision.** Where MEEP forms a step in double on float32
+  fields (the source deposit's subtraction, the off-diagonal row, the nonlinear
+  <code>Dsqr</code>), the array path forms it in double and rounds once where MEEP rounds;
+  constants are formed as MEEP forms them, and no operation is contracted, as in a MEEP
+  built without contraction ([No multiply-add contraction](#no-multiply-add-contraction)).
+- **Separate passes stay separate.** An increment MEEP adds in a pass of its own
+  (special-kz beta, BFAST, the cylindrical <code>i*m/r</code> coupling) is added in its own
+  pass, in MEEP's order.
+- **Complex storage is stepped part by part.** MEEP forms no product of two complex numbers
+  while it steps, and neither does the array path
+  ([Complex storage is stepped part by part](#complex-storage-is-stepped-part-by-part)).
+
+Each part reaches the stored words: every alternative the sections below set out is the
+same quantity in exact arithmetic and a different float32 word on some cells. The sections
+give each form with MEEP's source lines.
+
+"Before the alignment" and "pre-alignment" mean the groupings the package used until 1.0:
+the pairwise curl stencil <code>dtdx * ((sf - f) + (s - ss))</code> in place of MEEP's
+<code>dtdx * (((sf - f) + s) - ss)</code>, and the constitutive accumulation
+<code>(f + kps*src) - kms*prev</code> in place of MEEP's
+<code>f + ((kps*src) - (kms*prev))</code>. They remain only as controls and as mutations
+the gates must catch
+([The grouping mutations are inverted](../development/certification.md#inverted-grouping-mutations));
+the hand reference <code>parity/meep_gpu/no_pml_ref.py</code> names the pairwise stencil
+<code>pairwise_order</code> and MEEP's <code>kernel_order</code>.
+
+Two statements rest on the alignment, and each is measured on its own:
+
+- **A dispatched kernel stores the array path's words.** This is the bit identity
+  certification measures, per family by its gate and over whole runs
+  ([What "bit-identical" is identity with](#what-bit-identical-is-identity-with)).
+- **The array path stores MEEP's words** when MEEP 1.35.0 is built in single precision
+  without contraction ([MEEP identity on the corpus](../development/meep-identity-corpus.md)).
+  The sections below state the cases each form was measured on for 1.0, against MEEP 1.33.0,
+  and their conditions. Against a double-precision or contracting MEEP the agreement is a
+  tolerance ([Agreement with MEEP is measured separately](#agreement-with-meep-is-measured-separately)).
+
 ## Fixed association order
 
 Floating-point addition is not associative, so a kernel that groups a sum
@@ -50,10 +104,10 @@ to the array path's grouping, term by term. Three examples:
 - The PML constitutive update forms MEEP's right-hand side first:
   <code>f + ((kps * fw) - (kms * fw_prev))</code>.
 
-  The kernel tables are re-transcribed to these two groupings and re-certified
-  against them; until then their gates and host transcription tests differ from
-  the array path by contract and are listed in
-  <code>tools/ci/pending_certification.txt</code>.
+  The three kernel tables transcribe these two groupings and were certified against
+  them in the 1.0 certification round. Each family gate plants the package's
+  previous grouping as a mutation it must catch
+  ([The grouping mutations are inverted](../development/certification.md#inverted-grouping-mutations)).
 - The PML form is the structure chunk's, as MEEP picks it (step_db.cpp:56-59,
   update_eh.cpp:162-163). A curl runs the split-field recurrence on the cells whose
   chunk carries its dsigu layer and <code>((kms * f) - curl) * sinv</code> on the
@@ -64,8 +118,9 @@ to the array path's grouping, term by term. Three examples:
   output selects, never a coefficient that makes one form imitate the other: a
   coefficient of 1 and 0 differs from the select on every signed zero. An auxiliary
   (<code>fu</code>, <code>f_w</code>, <code>f_cond</code>) is read and written only on
-  its own form's cells. The kernel tables still run the earlier whole-grid forms and
-  are listed the same way until their lanes re-transcribe these.
+  its own form's cells. [The per-chunk PML forms](#per-chunk-forms) sets out the forms
+  and what each reads and writes; every dispatched kernel selects them per cell from the
+  chunk record ([The chunk record](../development/kernel-tables.md#the-chunk-record)).
 - A conductivity under a PML takes MEEP's conductive forms only in the structure
   chunks that keep it. MEEP deletes a chunk's conductivity array when every sample it
   takes is zero (structure.cpp:883-900): the chunk's owned samples plus one more,
@@ -82,31 +137,142 @@ to the array path's grouping, term by term. Three examples:
   float32 with <code>dt2 = float32(dt) * 0.5</code> (step_generic.cpp:88), and
   <code>condinv = 1 / (1 + sigma * dt * 0.5)</code> in double from the float32 sigma
   word, rounded once (structure.cpp:699); the float32 spelling rounds twice and
-  differs. The kernel tables' conductive families still run the earlier forms and
-  are listed in <code>tools/ci/pending_certification.txt</code> until their lanes
-  re-transcribe these.
+  differs. The kernel tables' conductive families select the same forms per chunk
+  ([The chunk record](../development/kernel-tables.md#the-chunk-record)).
 - The dispersive polarization update is MEEP's isotropic expression,
   <code>gamma1inv * (((p * (2 - od)) - (gamma1 * pp)) + (od * (sigma * w)))</code>
   (susceptibility.cpp:251-256), on the four float32 constants MEEP forms
   (below, "The dispersive polarization update is MEEP's arithmetic"). The three-term
   form <code>((p * c_now) + (c_prev * q)) + (c_drive * (sigma * w))</code> with its
   constants folded in double is the same recurrence in exact arithmetic and a different
-  float32 number on most cells. The hand-written CUDA table's polarization kernels take
-  MEEP's expression and its per-chunk drive; the Triton and Metal tables' polarization
-  families still run the folded form and are listed the same way until their lanes
-  re-transcribe it.
+  float32 number on most cells. The polarization kernels of all three tables take
+  MEEP's expression and its per-chunk drive
+  ([The chunk record](../development/kernel-tables.md#the-chunk-record)).
 
 A compiler is free to rewrite an expression it is given, so the grouping is held
 by measurement and not by construction: each kernel family has a gate that
 compares its output with the array path bit for bit, and mutations of the
 grouping that the gate must catch. This is why a change of compiler version is
-treated as a correctness event. The two NVIDIA tables run on a toolchain
-version other than the certified one only inside the supported range (Triton
-3.1), and record such a run as not certified; outside it they are refused by
-name. The Metal table runs on any GPU architecture, PyTorch and Metal frontend
-(every Apple GPU is supported), and records a run outside the certified
-environment as not certified. <code>MEEP_GPU_HARDWARE=certified</code> refuses
-either by name instead.
+treated as a correctness event. The two NVIDIA tables run on a toolchain other than the
+certified one where it is supported (a Triton 3.1 or later that launched the health probe on the
+device, a CuPy whose NVRTC targets it), and record such a run as not certified; by default an
+unsupported one is refused by name on that table, a Triton failing the probe on every scope.
+The Metal table runs on any GPU architecture, PyTorch and Metal frontend (every
+Apple GPU is supported), and records a run outside the certified environment as not
+certified. <code>MEEP_GPU_HARDWARE=certified</code> refuses either by name instead.
+
+## The per-chunk PML forms {#per-chunk-forms}
+
+MEEP chooses the absorber form of every curl and constitutive update per structure
+chunk, not per cell. Its <code>dsig</code> and <code>dsigu</code> flags (step_db.cpp:56-59)
+and <code>dsigw</code> (update_eh.cpp:162-163) are set for a chunk exactly when that chunk
+allocated a conductivity profile along the axis, which MEEP decides from the chunk's own
+extent (structure.cpp:625-652). A chunk that carries a layer therefore also owns cells
+whose sigma is exactly zero, and they step the layer's form. The array path reads the
+division from <code>meep_gpu/chunk_map.py</code> (<code>ChunkLayout</code>, and the
+<code>RegionPlan</code> each sub-step dispatches on), and every kernel table reads the same
+division as data ([The chunk record](../development/kernel-tables.md#the-chunk-record)).
+
+The array path and the three kernel tables transcribe one contract: which form a cell
+steps, the operations of each form in order, and which arrays each form reads and
+writes. The array path is the reference the kernels are certified against, so a kernel
+that steps another form, or touches an array its form does not, is a defect its gate must
+catch ([The per-chunk form battery](../development/certification.md#chunk-form-battery)).
+
+### The forms and their operation order {#form-table}
+
+Every operation rounds to float32, with no contraction. <code>f</code> is the target and
+<code>fu</code>, <code>f_w</code> its auxiliaries; <code>kms</code> and <code>sinv</code>
+are the coefficients of the curl's dsig axis, <code>kms_u</code> and <code>sinv_u</code>
+those of its dsigu axis, and <code>kps</code> and <code>kms</code> in the constitutive
+update those of the component's own (dsigw) axis.
+
+| Update | Cells | Form | Reads | Writes |
+|---|---|---|---|---|
+| Curl (B or D), no conductivity | in a chunk that carries the component's dsigu layer | split-field recurrence: <code>n = ((fu * kms) - curl) * sinv</code>; <code>f = (((f * kms_u) + n) - fu) * sinv_u</code>; <code>fu = n</code> | <code>f</code>, <code>fu</code>, partners | <code>f</code>, <code>fu</code> |
+| | everywhere else | <code>((f * kms) - curl) * sinv</code> | <code>f</code>, partners | <code>f</code> |
+| Curl, with conductivity | per chunk, on its dsig and dsigu memberships, where the chunk keeps the conductivity | MEEP's four conductive forms (step_generic.cpp:86-250), with the <code>f_cond</code> increment formed first ([Fixed association order](#fixed-association-order)) | as MEEP | <code>f_cond</code> only on dsig cells |
+| Constitutive (H from B; E from <code>(D - P) * chi1inv</code>) | in a chunk that carries the component's own (dsigw) layer | accumulation: <code>f = f + ((kps * src) - (kms * f_w))</code>; <code>f_w = src</code> | <code>f</code>, <code>f_w</code>, the source's operands | <code>f</code>, <code>f_w</code> |
+| | everywhere else | <code>f = src</code> | the source's operands | <code>f</code> |
+| Curl stencil | every cell | <code>dtdx * (((g1s - g1) + g2) - g2s)</code>; with an absent partner <code>dtdx * (g1s - g1)</code> or <code>(-dtdx) * (g2s - g2)</code> | | |
+
+Without a conductivity the curl has two forms and needs one membership test, dsigu. MEEP
+has three branches there (recurrence, dsig only, plain), but its dsig-only and plain
+branches are one expression wherever the dsig coefficients are exactly
+<code>1.0f</code> ([The unit-coefficient precondition](#unit-coefficient-precondition)).
+With a conductivity the curl keeps MEEP's four forms and two tests, dsig and dsigu. The
+constitutive update has two forms. The folded increments and the cylindrical
+<code>i*m/r</code> pass add their own passes after the curl form, through the same
+memberships ([The folded increments are MEEP's separate passes](#the-folded-increments-are-meeps-separate-passes)).
+
+### The unit-coefficient precondition {#unit-coefficient-precondition}
+
+The second curl form stands for both of MEEP's non-recurrence branches only because the
+dsig coefficients are exactly <code>1.0f</code> on every owned cell outside the dsig
+chunk: there <code>((f * 1) - curl) * 1</code> is the word <code>f - curl</code>, signed
+zeros and subnormals included (measured: 0 of 6,000,000 random word pairs, over both
+operand orders, and 0 of 196 pairs of special words differ). The constitutive update relies on the same fact for its own
+coefficients. The region plan checks it once, when it is built
+(<code>chunk_map.check_unit_coefficients</code>): every PML coefficient, <code>kms</code>,
+<code>sinv</code> and <code>kps</code> on each axis and sub-lattice, is exactly
+<code>1.0</code> on every owned row outside its membership run, and a plan where one is not
+is refused by name, naming the coefficient and the row. Every route into a step reads that
+one plan, so a division that leaves a graded row outside every chunk carrying its layer is
+refused rather than stepped with the plain form.
+
+### The auxiliary contract {#auxiliary-contract}
+
+An auxiliary word outside its form's cells is never read or written after
+initialisation, by any path:
+
+- <code>fu_*</code> only on the cells whose chunk carries the component's dsigu layer;
+- <code>f_w_*</code> only on the cells whose chunk carries the component's own (dsigw)
+  layer;
+- <code>f_cond_*</code> only on the dsig cells of the conductive forms.
+
+Three consumers follow it. The deposit repair takes the constitutive split from the same
+region plan: the accumulation in the target's own layer chunks, and
+<code>f = fresh</code> with <code>f_w</code> left alone everywhere else. The polarization
+drive is MEEP's <code>w = f_w ? f_w : f</code> per chunk (update_pols.cpp:44):
+<code>Fields.drive_field</code> composes <code>f_w</code> on the accumulation's cells and
+the stored E elsewhere, so a kernel that reads the drive from memory selects between two
+arrays. The folded increments and the cylindrical <code>i*m/r</code> pass update
+<code>fu</code> under the same dsigu membership.
+
+The gates compare every auxiliary word with the array path's, so a kernel that writes one
+outside its cells differs and is caught. Because the plain forms touch no auxiliary, a
+kernel may skip that traffic on their cells; an auxiliary load outside the guard, with the
+store still guarded, changes no word and is pinned by a static check instead. On an axis
+that carries no layer (an invariant axis, phi on a cylindrical grid) the auxiliaries are
+inert on every route.
+
+### Plain forms are output selects {#output-selects-and-signed-zero}
+
+Each form is a select of the output, never the accumulating form given coefficients that
+make it imitate the plain one. <code>f = src</code> is not
+<code>0 + ((1 * src) - (0 * 0))</code>: that spelling turns every <code>src = -0</code>
+into <code>+0</code> (9,979 of 9,979 <code>-0</code> inputs). The second curl form spelled
+as the recurrence with <code>fu</code> read as 0 and unit coefficients differs from it at
+<code>f = -0</code>, <code>curl = +0</code> (1 of 36 pairs of special words). A random
+state never draws these words, so the gates plant them
+([Form coverage](../development/certification.md#form-coverage)).
+
+### Multiplication operand order is free {#operand-order}
+
+IEEE-754 multiplication is commutative on every non-NaN word, signed zero included, so
+<code>kms * f</code> and <code>f * kms</code> are the same word and a transcription may
+write either. The order of additions and subtractions is fixed by the forms above. A
+mutation that only commutes a product is therefore a declared null: it must not be caught.
+
+### Absent stencil partners {#partner-presence}
+
+A curl partner is absent when its derivative axis is invariant: z in a 2-D run, phi on a
+cylindrical grid. MEEP then takes its one-partner forms, <code>dtdx * (g1s - g1)</code> or
+<code>(-dtdx) * (g2s - g2)</code> (step_generic.cpp:72-76, :104-108), not the full bracket
+over a zero difference, because <code>(a + s) - s</code> rounds. Which axes are invariant
+is a property of the run (<code>Grid.is_invariant</code>), not of the stored extent: a
+3-D run that stores one cell on an axis still takes both partners there. The kernels read
+it from the chunk record's partner-presence word.
 
 ## No multiply-add contraction
 
@@ -130,8 +296,8 @@ The setting is load-bearing, not a precaution. With contraction left on:
 | Folded-grid β tail, real fields, Metal | 44 of 1,728 words differ from the array path; 0 of 1,728 with contraction off | recorded in the kernel module's source |
 
 These figures are read from the kernel modules, where each family records the
-control its gate ran. The gates behind them ran again in the 1.0 certification
-round, on this release's bytes, and released.
+control its gate ran. The gates behind them ran again in the 1.0.1 certification
+round, and released.
 
 ## Fast math on the Metal table
 
@@ -154,9 +320,9 @@ by name under <code>MEEP_GPU_HARDWARE=certified</code>.
 The Apple GPU has no float64, and three of MEEP's statements use a double on single-precision
 fields: the source deposit's subtraction, the off-diagonal row's <code>0.25</code> sum and
 the nonlinear <code>Dsqr</code>'s <code>0.0625</code> term (the sections below). The Metal
-table forms them in software binary64 (<code>metal_kernels/softfp64.py</code>, owner ruling
-R7): the value is carried as its 64-bit pattern and each operation (widening, a product
-with a power-of-two literal, an addition or subtraction, the store's narrowing) is integer
+table forms them in software binary64 (<code>metal_kernels/softfp64.py</code>) rather than
+refusing those rows to the array path: the value is carried as its 64-bit pattern and
+each operation (widening, a product with a power-of-two literal, an addition or subtraction, the store's narrowing) is integer
 arithmetic rounded to nearest even, so each result is the word the host's float64 unit
 returns. Subnormals, infinities and NaNs follow that unit too. Under the
 <code>flush</code> policy, the only one a Metal kernel runs under, an input subnormal reads
@@ -165,7 +331,7 @@ decided before rounding (arm64's rule; x86 decides after rounding, so the two di
 the band <code>[2^-126 (1 - 2^-25), 2^-126)</code>).
 
 Measured on one Apple M1 Max against NumPy float64 on the same host, with the FPU keeping
-and then flushing (bit_parity_0_10 WP SF64): 0 differing words in each of 4,000,000 triples
+and then flushing: 0 differing words in each of 4,000,000 triples
 per operand class and mode, over the off-diagonal row and the <code>Dsqr</code> form
 (seven classes: random exponents, deep cancellation, double ties, float ties, signed zeros,
 subnormals and the flush band) and the single operations (random bit patterns including
@@ -175,6 +341,14 @@ caught. The source deposit was the first statement to use it; the off-diagonal
 folded singles and the three stencil welds that lift them) uses it too, so that row
 steps on the GPU rather than on the array path, and so does the nonlinear
 <code>Dsqr</code> (<code>metal_kernels/nonlinear_update_e.py</code>).
+
+That choice was measured against the alternative, refusing the off-diagonal and nonlinear
+rows to the array path (one Apple M1 Max, 2026-10-08, a loaded host, not a timing of
+record): the software-binary64 off-diagonal row equals the array path in every word of
+5,308,416 and of 24,576,000 compared, where a float32 row differs in 1.6 to 1.7 % of
+them, and its <code>update_E</code> takes 2.3 to 2.9 times as long as the float32 kernel
+while running 37 to 54 times faster than the array path's <code>update_E</code> a
+refusal falls back to (110,592, 884,736 and 4,096,000 cells).
 
 ## The subnormal policy
 
@@ -227,13 +401,13 @@ that steps the array path: NumPy's elementwise operations run on it, and the MEE
 reference is defined at <code>OMP_NUM_THREADS=1</code>. A thread that was already
 running keeps its own state.
 
-Each kernel table declares the policy its certification was cut under, and
-dispatch installs that policy on every executor or refuses by name:
+Each kernel table declares a policy, which dispatch installs on every executor the
+step drives or refuses by name; an NVIDIA table instead keeps a caller's <code>flush</code>:
 
 | Kernel table | Certified under | Installed by dispatch | Kept when the caller installed it |
 |---|---|---|---|
-| Triton | <code>keep</code> and <code>flush</code> | <code>keep</code> | <code>keep</code>; <code>flush</code> per arm, on evidence |
-| Hand-written CUDA | <code>keep</code> and <code>flush</code> | <code>keep</code> | <code>keep</code>; <code>flush</code> per arm, on evidence |
+| Triton | <code>keep</code> and <code>flush</code> | <code>keep</code> | <code>keep</code>; <code>flush</code>, certified only when every dispatched arm has a run on this GPU's compute capability that released under it |
+| Hand-written CUDA | <code>keep</code> and <code>flush</code> | <code>keep</code> | <code>keep</code>; <code>flush</code>, certified only when every dispatched arm has a run on this GPU's compute capability that released under it |
 | Metal | <code>flush</code> only | <code>flush</code> | <code>flush</code> |
 
 Consequences a user can observe:
@@ -245,15 +419,15 @@ Consequences a user can observe:
 - **On an x86 NVIDIA host a dispatched run keeps subnormals where MEEP flushes
   them.** The run's arithmetic is IEEE 754 throughout; MEEP's on the same host is
   not. The dispatch record states that the run's own resolution was overridden.
-- **A caller can run the NVIDIA kernels under <code>flush</code>, arm by arm.**
-  Install <code>flush</code> before the first kernel compiles (with
+- **A caller can run the NVIDIA kernels under <code>flush</code>, certified arm by
+  arm.** Install <code>flush</code> before the first kernel compiles (with
   <code>CUPY_ACCELERATORS=''</code> set before CuPy is imported; for the host half,
-  MEEP imported, or on x86-64 Linux with glibc the package's own lever). Dispatch keeps that policy instead of refusing, but only
-  when every arm the plan dispatches has a run on this GPU's compute capability
-  that released under <code>flush</code>: the <code>certified_policies</code>
-  field of the arm's weld record, which the certification round's rebind tools
-  write from released flush legs. One arm without that evidence refuses the whole
-  plan by name, and the run takes the array path under the caller's policy.
+  MEEP imported, or on x86-64 Linux with glibc the package's own lever). Dispatch
+  keeps that policy instead of refusing. It is certified only when every dispatched
+  arm has a run on this GPU's compute capability that released under it, as the arm's
+  weld record states in <code>certified_policies</code>, a field written only from
+  released legs; otherwise the run is recorded <code>certified: False</code>, with a NOTE
+  line, and <code>MEEP_GPU_HARDWARE=certified</code> refuses it by name to the array path.
 - **The NumPy reference installs nothing.** A <code>prefer_gpu=False</code> run
   takes the host as it finds it.
 - **A policy installed after CuPy has compiled still reaches those kernels.**
@@ -325,16 +499,17 @@ It is not any of the following:
   certified under different subnormal policies, and no comparison between them
   is claimed.
 - **It is not a statement about an uncertified device, toolchain or environment.**
-  On the NVIDIA tables one outside the supported range (compute capability 7.0
-  to 9.0, Triton 3.1) is refused by name and takes the array path. On a
+  On the NVIDIA tables one that is not supported (a device the installed CuPy or Triton
+  cannot run the table on) is refused by name on that table by default (a Triton failing
+  the probe on every scope), and with no table left the run takes the array path. On a
   supported NVIDIA device or toolchain outside the certified one, and on an
   Apple GPU outside the certified environment, which are supported and not
   certified, the kernels run by default: the run's record says
   <code>certified: False</code>, one
   <code>meep_gpu: NOTE</code> line says the kernels are not certified there, and no
-  gate has measured the property on that environment.
-  <code>MEEP_GPU_HARDWARE=certified</code> refuses it by name to the array path
-  instead.
+  gate in this release's records has measured the property on that environment.
+  <code>MEEP_GPU_HARDWARE=certified</code> refuses it by name instead, and with no
+  certified table left the run takes the array path (on an Apple GPU, the host CPU).
 
 What the property gives a user: on a certified host, a dispatched run and the
 array path run under the subnormal policy the dispatched run reported give the
@@ -344,7 +519,14 @@ the float32 subnormal range can then differ in the last bits.
 
 ## Agreement with MEEP is measured separately
 
-Agreement with MEEP is a tolerance, not an identity. It was measured on the
+Against a certification round's reference MEEP, agreement is word for word. On the 223
+corpus simulations of 1.0.1 (MEEP 1.35.0, single precision, no contraction) the array path
+holds 221, 221, 220 and 220 on the four references, and the others are named exclusions
+([MEEP identity on the corpus](../development/meep-identity-corpus.md));
+[the direct corpus check](../development/certification.md#the-direct-corpus-check-against-meep-l3)
+makes the same comparison with kernels dispatched.
+
+Against stock MEEP, agreement is a tolerance, not an identity. It was measured on the
 package's NumPy array path against stock MEEP 1.33.0 in single precision, on the
 simulations MEEP's own scripts construct. The metric is the relative L2
 difference of the complex fields over the whole volume, all six components.
@@ -355,26 +537,26 @@ difference of the complex fields over the whole volume, all six components.
 | The 2 of 60 outside that band | One uses a random source and is not comparable. One was compared at a reduced resolution and reads 1.092 × 10^-4 there, and 5.19 × 10^-7 at a higher resolution | measured 2026-08-09 |
 | Test methods | 130 of 134 accepted simulations agree within 3.123 × 10^-7 to 9.893 × 10^-6 | measured 2026-08-09 |
 | MEEP's own test assertions, recomputed from this engine's fields | 366 of 366 assertions that pass on CPU MEEP are reproduced, with a band of 2: one harmonic-inversion case is not deterministic for MEEP either | measured 2026-08-09 |
-| Largest grid compared with MEEP | 338,688 cells | measured |
-| Simulations stepped through a kernel table and compared with MEEP | 0 of 194 | not measured |
+| Largest grid compared with MEEP | 338,688 cells | measured 2026-08-09 |
+| Simulations stepped through a kernel table and compared with MEEP | Word for word, against the reference MEEP 1.35.0, not this tolerance. NVIDIA: 220 of 220 planned rows on each of 4 legs, on commit <code>404d432d0b34</code> (2026-11-02), against the second Linux reference; against the primary Linux references, outside the 28 (`keep`) and 29 (`flush`) rows on which the two differ, each as expected. Metal: 220 of 220 planned rows against the Mac reference, on commit <code>62bc13a989cd</code> (2026-11-01) | measured |
 | Comparison with MEEP at the sizes of [the timed case](../guides/will-it-help.md) | none | not measured |
 
-These are dated statements about the engine of 2026-08-09; the stepping code has
-changed since, and a re-run on the published files is owed. 58 of the 60 example
-comparisons and 134 of the 134 test comparisons ran under a cap of 120,000
+The rows dated 2026-08-09 describe the engine of that date; the stepping code has
+changed since, and the word-for-word comparisons above are what 1.0.1 measures. 58 of the
+60 example comparisons and 134 of the 134 test comparisons ran under a cap of 120,000
 cells.
 
-The correctness of a dispatched run therefore rests on two links measured at
-different sizes: the kernels equal the array path, exactly, at up to 11,239,424
-cells; and the array path agrees with MEEP, within the band above, at up to
-338,688 cells.
+At sizes beyond the corpus, whose largest row is 217,605 cells, the correctness of a
+dispatched run rests on two links measured at different sizes: the kernels equal the
+array path, exactly, at up to 11,239,424 cells; and the array path agreed with MEEP,
+within the band above, at up to 338,688 cells on 2026-08-09.
 
 ## The readback is MEEP's arithmetic
 
 The readers, <code>GpuRunResult.get_array</code> (whole cell or a
 <code>center</code>/<code>size</code> volume),
 <code>FdtdDriver.get_field(component, cell_centered=True)</code> and
-<code>FdtdDriver.get_field_point</code>, form every value as MEEP 1.33.0 forms
+<code>FdtdDriver.get_field_point</code>, form every value as MEEP forms
 it, from the stored words of the cells MEEP owns (<code>meep_gpu/readback.py</code>):
 
 - The centred sum is MEEP's: <code>0.25 * (((a + b) + c) + d)</code> in float32 with
@@ -400,12 +582,12 @@ it, from the stored words of the cells MEEP owns (<code>meep_gpu/readback.py</co
   <code>fields::get_field</code>: MEEP's weights and their corrections, a sum in
   double in MEEP's order, <code>0.0</code> for a sample no chunk owns.
 
-Measured on MEEP's own words (injected into the package's arrays) and on the
-phase-0 prototype's stepped words, against MEEP 1.33.0 single precision built
-without contraction on Apple silicon, all twelve components: 0 differing words of
+Measured on MEEP's own words (injected into the package's arrays) and on the words a
+prototype of the MEEP-ordered array path stepped, against MEEP 1.33.0 single precision
+built without contraction on Apple silicon, all twelve components: 0 differing words of
 every whole-cell array, stored centre, volume and point read, on 15 Cartesian cases
-(folded, odd-count, periodic, one-cell, integrated-source) and 4 cylindrical ones
-(bit_parity_0_10 WP AP2). A Bloch axis was not in that count until the package
+(folded, odd-count, periodic, one-cell, integrated-source) and 4 cylindrical ones.
+A Bloch axis was not in that count until the package
 stored MEEP's owned window (next section but one); with it, the readers' words on
 seven stepped Bloch and complex cases are counted there.
 
@@ -450,7 +632,7 @@ one rounding back to float (step.cpp:295-317). The array path does the same
   is read back to the host.
 
 Measured against MEEP 1.33.0 single precision built without contraction, on Apple
-silicon, with the array path keeping subnormals (bit_parity_0_10 WP AP5): on the four
+silicon, with the array path keeping subnormals: on the four
 lifted simulations of the bit-identity probe, every stored word of the twelve components
 on every cell MEEP owns or stores as a wall equals MEEP's, sign of zero included, at
 every step 0 to 20 and at every checkpoint to Table 2's N; and so does every such word
@@ -465,7 +647,7 @@ What these cases do and do not reach:
 
 - They deposit through the Gaussian electric point source and the magnetic volume source
   on real storage, with no conductivity. The continuous and extended classes and the
-  integrated path are held to MEEP by the sources family's cases (next section); complex
+  integrated path are held to MEEP by the source cases of the next section; complex
   storage and the <code>condinv</code> scale are pinned against a scalar transcription of
   step.cpp (<code>test_source_deposit.py</code>), not yet against MEEP.
 - A change in the last bit of <code>real(A)</code> rarely reaches a stored float word: the
@@ -486,7 +668,7 @@ array path takes each from MEEP:
   carrier on every host: the C++ build folds a sine and cosine of one argument into one
   libm entry (<code>__sincos_stret</code> on Darwin, <code>sincos</code> or
   <code>cexp</code> in glibc), and libc++ and libgcc divide complex numbers differently.
-  Measured on Linux (bit_parity_0_10 phase 0, P0-d3), Python's <code>math.cos</code> /
+  Measured on Linux, Python's <code>math.cos</code> /
   <code>math.sin</code> miss 11 of 8,833 of MEEP's current and dipole rows where glibc's
   own entries miss none. The package's own waveforms serve a driver built without MEEP,
   with no claim of identity.
@@ -500,8 +682,8 @@ array path takes each from MEEP:
   cell is reached through the direct pass's edge weight and through the image of the
   request's other end, and is deposited twice and rounds twice, on the D deposit and in
   <code>f_minus_p</code> alike. Summing them and depositing once left the seam row 1 ulp
-  from MEEP on a mirror-folded periodic axis and on an unfolded one (bit_parity_0_10 WP
-  R4: 9 corpus rows of the folded case; WP RG: the unfolded and Bloch-phased rows).
+  from MEEP on a mirror-folded periodic axis and on an unfolded one (9 corpus rows of
+  the folded case, and the unfolded and Bloch-phased rows).
 - **The placement.** <code>sources._source_geometry</code> is MEEP's
   <code>add_volume_source</code> and <code>loop_in_chunks</code>: the shift odometer, each
   chunk's owned-corner clip, the boundary weights kept in the source frame and the
@@ -520,10 +702,10 @@ array path takes each from MEEP:
   reads the image of <code>f_minus_p</code> and every ghost then returns to MEEP's D.
 
 Measured against MEEP 1.33.0 single precision built without contraction, on Apple
-silicon (bit_parity_0_10 WP AP6g): the 14 cases of the phase-0 sources family, every
+silicon: 14 lifted source cases, every
 step 0 to 20 and the checkpoints to step 400, 0 differing words of 35,481,600 stored
 words compared, sign of zero included, with a planted one-ulp flip caught on each
-every-step leg. Three further cases reach what the family did not: integrated electric
+every-step leg. Three further cases reach what those 14 did not: integrated electric
 and magnetic sources beside a mirror plane (0 differing words), a merge across a
 four-chunk division (0), and integrated sources with no PML.
 
@@ -534,9 +716,9 @@ What this does not reach:
   H words at an integrated magnetic source's own cells read B's word where MEEP stores
   <code>B - dipole</code> (2 words per step on the measured case, no other word).
 - With a live polarization MEEP subtracts P before the dipole and the package after it.
-- A kernel table that owns <code>update_H</code> starts H from the B it reads; on the
-  first step that is B with the dipole subtracted at an integrated point inside H's own
-  layer, where MEEP starts from B.
+- An NVIDIA table that owns <code>update_H</code> starts H from the B it reads: B minus the
+  dipole at an integrated point inside H's own layer, where MEEP starts from B, and the run
+  differs from then on. The Metal table refuses that start by name, to the array path.
 
 ## The nonlinear update is MEEP's arithmetic
 
@@ -559,7 +741,7 @@ step_generic.cpp:542-655) is transcribed operation for operation by the array pa
   <code>Dsqr</code> reads neighbouring cells, so evaluating it there is not the image.
 
 Measured against MEEP 1.33.0 single precision built without contraction, on Apple
-silicon, with the array path keeping subnormals (bit_parity_0_10 WP AP6h): on five lifted
+silicon, with the array path keeping subnormals: on five lifted
 nonlinear simulations (2-D and 3-D, chi2 and chi3, PML and metallic walls, 1 to 27
 chunks, one folded on two mirror planes), every step 0 to 20 (0 to 100 on the folded one)
 and the checkpoints to Table 2's N and to step 1000, 0 of 37,055,472 stored words differ in
@@ -630,8 +812,8 @@ it finds none on the configurations its test steps, and catches a planted one. D
 and energy reductions are outside it, as they are outside the identity claim.
 
 Measured against MEEP 1.33.0 single precision built without contraction, with the array
-path keeping subnormals (bit_parity_0_10 WP AP6a), on the nine complex-family cases of
-phase 0 at every dump step (30 or 31 steps):
+path keeping subnormals, on nine complex-storage cases (k0, kedge, k1, k2, k3, f0, bz,
+bzp and bf) at every dump step (30 or 31 steps):
 
 - k0, kedge, k1, k2, k3 and f0 store MEEP's value in every word, on Apple silicon and on
   x86-64 Linux, and the two hosts' tables are equal row for row, signed-zero counts
@@ -639,7 +821,7 @@ phase 0 at every dump step (30 or 31 steps):
   differ. The only signed-zero differences are ghost cells, 196 to 1,012 words per case;
 - bz, bzp and bf need special-kz beta or BFAST as MEEP's separate passes after the
   curl; with those passes folded into the curl they differed by exactly the counts
-  phase 0 measured, and with the passes separate (below) they store MEEP's value in
+  measured on those cases beforehand, and with the passes separate (below) they store MEEP's value in
   every word;
 - the readers on k0, kedge, k1, k2, k3, f0 and a three-axis Bloch case, in lockstep with
   MEEP, give 0 value-differing words of every whole-cell array, stored centre and point
@@ -650,9 +832,8 @@ phase 0 at every dump step (30 or 31 steps):
 
 The hand-written CUDA table's complex families transcribe this arithmetic: one float32
 product per part, MEEP's unfused connection on plane 0 of the operand read at the cell,
-and no fused multiply-add (bit_parity_0_10 lane KC6). The Metal complex families do too
-(lane KM5), and so do the Triton complex kernels (the chunk record, in
-docs/development/kernel-tables.md). No table's complex families take an expansion
+and no fused multiply-add. The Metal complex families do too, and so do the Triton
+complex kernels ([The chunk record](../development/kernel-tables.md#the-chunk-record)). No table's complex families take an expansion
 record: the licence chain was retired in one change.
 
 ## The off-diagonal constitutive row is MEEP's double-precision sum, per chunk
@@ -691,8 +872,7 @@ permittivity keeps its reciprocal, because a float quotient rounded through doub
 correctly rounded float quotient.
 
 Measured against MEEP 1.33.0 single precision built without contraction, on Apple
-silicon, with the array path keeping subnormals (bit_parity_0_10 WP AP6e): on the eight
-off-diagonal lifts of phase 0 (2-D and 3-D, with and without a layer, a uniform rotated
+silicon, with the array path keeping subnormals: on eight off-diagonal lifts (2-D and 3-D, with and without a layer, a uniform rotated
 medium, an anisotropic block crossing into one PML chunk, a cylinder and a sphere whose
 smoothing writes the off-diagonal entries; one to 27 chunks), the array path is identical
 to MEEP at every compared step: every stored word of the twelve components equals MEEP's,
@@ -739,8 +919,8 @@ components untouched at their initial <code>+0</code>, and <code>Fields.get_E</c
 zeros for them. A source added later on such a component takes its whole class back out of
 the set, as <code>require_component</code> does.
 
-Measured against MEEP 1.33.0 single precision built without contraction (bit_parity_0_10
-lane REF): on metal-cavity-ldos.py, a 2-D cavity with an Ez source in an
+Measured against MEEP 1.33.0 single precision built without contraction: on
+metal-cavity-ldos.py, a 2-D cavity with an Ez source in an
 <code>mp.metal</code> shell, Ex and Ey read <code>-0</code> on every shell cell from step 1
 (31,950 of 7,477,200 compared stored words over the run, every one a sign of zero) before
 this change and equal MEEP's at every compared step after it.
@@ -771,13 +951,13 @@ clear that cannot be written exactly refuses the plan by name. The held-residenc
 door (<code>dft._raw_factors</code>) serves an absent derived component as zeros, as
 <code>Fields.component_factors</code> does.
 
-Measured with <code>parity/meep_gpu/gate_dispatch_absent_components.py</code> (bit_parity_0_10
-lane XAC; perfect-conductor cells under an absent polarization, the dispatched run against
+Measured with <code>parity/meep_gpu/gate_dispatch_absent_components.py</code>
+(perfect-conductor cells under an absent polarization, the dispatched run against
 the array path word for word): without the clear the absent words differ on the hand-CUDA,
 Triton and Metal tables alike (on the metal-cavity-ldos.py cell, 129 of 104,960 stored words
 at the last checkpoint, every one a <code>-0</code> on a shell cell); with it, 0 differing words
 on every case each table dispatches. The fill planes were measured on the shipped Metal route
-against the array path (bit_parity_0_10 lane FXHD, lifted corpus rows): without them,
+against the array path (lifted corpus rows): without them,
 <code>finite_grating.py</code> read 725 of 3,949,800 stored words differing per step, all
 <code>f_w_Ey</code> on the far ghost plane, and <code>TestGetPoint.test_get_point</code> 124 of
 92,256 (62 <code>f_w_Ex</code>, 62 <code>f_w_Ey</code>, the two far planes); with them, 0 on both
@@ -805,8 +985,8 @@ MEEP's plain one-partner branch the state is <code>k1*(g1s + g1)</code> with no
 one-partner component is zero.
 
 Measured against MEEP 1.33.0 single precision built without contraction, on Apple
-silicon, with the array path keeping subnormals (bit_parity_0_10 WP AP6b), at every dump
-step (0 to 20 and the checkpoints to 400): the nine complex-family cases above and three
+silicon, with the array path keeping subnormals, at every dump
+step (0 to 20 and the checkpoints to 400): the nine complex-storage cases above and three
 more, special-kz beta together with BFAST (<code>bzf</code>), special-kz beta in real
 storage (<code>bzr</code>) and BFAST with a nonzero k on the invariant axis
 (<code>bfz</code>, which multiplies only partners MEEP does not read, so it stores
@@ -842,8 +1022,7 @@ The array path forms the same words (<code>PolarizationState.update</code>):
   component's own layer and the stored E elsewhere.
 
 Measured against MEEP 1.33.0 single precision built without contraction, on Apple
-silicon, with the array path keeping subnormals (bit_parity_0_10 WP AP6f): on phase 0's
-eight dispersive lifts (a Lorentzian, a Drude term, both on one medium, a lossless
+silicon, with the array path keeping subnormals: on eight dispersive lifts (a Lorentzian, a Drude term, both on one medium, a lossless
 Lorentzian; TM and TE sources; 2-D and 3-D; uniform media and a block whose sigma the lift
 looks up in the declared geometry; 9 or 27 chunks, a layer on every face), the array path
 is identical to MEEP at every compared step: every stored word of the twelve components
@@ -860,15 +1039,9 @@ What these cases do and do not reach:
 - A susceptibility together with mirror symmetry, cylindrical coordinates, a nonlinear
   component, a conductivity or an off-diagonal <code>chi1inv</code> row is not yet compared
   with MEEP.
-- The Triton and Metal tables' polarization kernels still transcribe the folded form. Their
-  coverage checks find no <code>(c_now, c_prev, c_drive)</code> triple on the polarization
-  and refuse the <code>update_P</code> product by name, so a dispatched run steps the
-  polarization on the array path and its other slots dispatch as before (MEASURED on an RTX
-  A6000 under both NVIDIA tables before the CUDA table took MEEP's expression). The
-  hand-written CUDA table's polarization kernels take MEEP's four words and per-chunk drive;
-  their records are re-cut in the certification round. On an Apple GPU the held-residency guard then refuses the whole
-  configuration to the array path (MEASURED: 0 differing stored words against the NumPy
-  reference, with and without a layer, real and complex storage).
+- The kernel tables' polarization kernels are held to the array path by their own gates,
+  not compared with MEEP here. All three take MEEP's four words and its per-chunk drive
+  ([The chunk record](../development/kernel-tables.md#the-chunk-record)).
 
 ## The lifted susceptibility sigma is MEEP's float32 word
 
@@ -904,8 +1077,8 @@ every cell it can:
   tests, and other kinds take no gate.
 
 Every installed point is still checked against MEEP's own permittivity at several
-frequencies, and a cell that fails goes to the inversion. Measured (bit_parity_0_10 lane
-REF): on stochastic_emitter_reciprocity.py (a 9.2-wide periodic cell gridded 994 pixels at
+frequencies, and a cell that fails goes to the inversion. Measured: on
+stochastic_emitter_reciprocity.py (a 9.2-wide periodic cell gridded 994 pixels at
 resolution 108) the lookup used to decline on the rounded lattice and the inversion's words
 differed from MEEP's in five of the six Ag terms, which an Ez word in the subnormal range
 showed at step 1,387; on test_dump_load.py's 3-D cell (an aSi block across a periodic face of
@@ -945,8 +1118,8 @@ now takes both as MEEP writes them (<code>stepping.step_B</code>, <code>stepping
   float32 factor is the same word only where Courant is a float32 word (0.5 is; 0.3 is not).
 
 Measured against MEEP 1.33.0 single precision built without contraction, on Apple silicon,
-with the array path keeping subnormals (bit_parity_0_10 WP AP6c), at every step 0 to 300 and
-the checkpoints to 2,000: the four cylindrical cases of phase 0 (m = 0 real and m = 1
+with the array path keeping subnormals, at every step 0 to 300 and
+the checkpoints to 2,000: four cylindrical cases (m = 0 real and m = 1
 complex, each with and without a layer on the r-high and both z faces, whose division cuts
 r at row 14) and the plain m = 0 and layered m = 1 cases at Courant 0.3 store MEEP's word
 in every one of 35,827,200 compared words, signed zeros included, and the readers return
@@ -983,8 +1156,8 @@ seeded state, one on NumPy and one on CuPy with dispatch off, each takes
 capsule pins is compared as 32-bit words, the sign of zero included. It runs 20 cases under
 the keep policy.
 
-Measured on one RTX A6000 (x86-64 Linux, CuPy 13.5.1, NumPy 2.2.6; bit_parity_0_10 WP
-AP7), under keep and under flush, every CuPy driver refusing every kernel slot:
+Measured on one RTX A6000 (x86-64 Linux, CuPy 13.5.1, NumPy 2.2.6), under keep and
+under flush, every CuPy driver refusing every kernel slot:
 
 | Substrate | Steps | Differing / compared words, keep | flush |
 |---|---:|---:|---:|

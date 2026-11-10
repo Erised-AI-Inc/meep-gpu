@@ -1,7 +1,7 @@
 """Laptop tests for the FOLDED Metal H->D weld (folded ``update_H`` into folded
 ``step_D``).
 
-THE MERGE BAR, NOT THE CERTIFICATION. The byte claim owed by this family is a device
+The merge bar, not the certification. The byte claim owed by this family is a device
 gate that runs complete driver steps and compares uint32 words
 (``parity/meep_gpu/gate_metal_folded_fused_hd_pair.py``); these tests are what must stay
 green on every change, and they are chosen for the defects a byte gate would catch LATE,
@@ -29,10 +29,10 @@ on a configuration nobody sweeps, or not at all:
   likely to eat;
 * **the binding ceiling**, which is an EQUALITY here: 31 of 31, no headroom, and the
   fold adds no argument. A future edit that adds a volume discovers it in this file;
-* **the predicate's refusals**, every one answerable without a GPU, INCLUDING BOTH
-  DIRECTIONS of the inverted fold clause -- disjointness is a property of a pair of
+* **the predicate's refusals**, every one answerable without a GPU, including both
+  directions of the inverted fold clause -- disjointness is a property of a pair of
   predicates and neither one alone can carry it;
-* **the declarations.** This product is registered UNWIRED and gated on the fold, holds
+* **the declarations.** This product is registered unwired and gated on the fold, holds
   a ``FUSED_PAIR_ARMS`` absorb row (2026-09-07) so the seam loop can ask it, declares
   ``INSTALLABLE = False`` on a measured arbitration, and declares ``WELD_OWED`` EMPTY
   because its ledger entry has landed. Each of those is a claim a reader will act on;
@@ -42,7 +42,7 @@ on a configuration nobody sweeps, or not at all:
 Everything that needs a device is guarded and skipped, so this file is the merge bar on
 a host with no MPS as well as on this one.
 
-WHAT THIS FILE DOES NOT CLAIM. Nothing here is a byte-identity measurement and nothing
+What this file does not claim. Nothing here is a byte-identity measurement and nothing
 here licenses installing the product. The cell's own numbers -- 78 rows in the
 ``(folded -> folded)`` cell, of which this predicate reaches 75 and refuses 3 by name --
 come from ``parity/meep_gpu/results/h_to_d_seam_2026-09-04/h_to_d_seam.jsonl`` and are
@@ -93,7 +93,7 @@ def _torch_mps() -> bool:
 needs_mps = pytest.mark.skipif(not _torch_mps(),
                                reason="no MPS device on this host")
 
-#: THE SPECIALISATIONS THE STRING TESTS RUN OVER, and they are the corpus cell's own
+#: The specialisations the string tests run over, and they are the corpus cell's own
 #: seven boundary triples plus three the cell does not carry: the unfolded ``(P,P,P)``
 #: (where the emission must reduce to the plain product's), a single folded metallic
 #: axis and a single folded periodic one. The ghost rule and the two masks are exactly
@@ -195,12 +195,12 @@ def test_the_family_is_welded_and_holds_its_absorb_row():
 
 
 def test_the_module_is_imported_by_the_registry_and_says_so():
-    """REGISTERED IN A NORMAL RUN SINCE 2026-09-07, AND DECLARED.
+    """Registered in a normal run since 2026-09-07, and declared.
 
     ``registry.FAMILY_MODULES`` is what imports a family, so a module listed there
     contributes its arm to every composition's table -- ``wired=False``, so
     ``plan_step`` still cannot select it, and the seam loop reaches it through the
-    absorb row instead. That is the state this round ships, and a reader must not have
+    absorb row instead. That is the state shipped since 2026-09-07, and a reader must not have
     to discover it: the module says so and this test pins the pair, in both
     directions.
     """
@@ -232,7 +232,7 @@ def test_the_plan_takes_its_codes_from_folded_axis_kinds_and_not_from_boundary_k
     import inspect  # noqa: PLC0415
 
     body = inspect.getsource(folded.plan_metal_folded_fused_hd_pair)
-    # THE EXECUTABLE LINES ONLY. The docstring and the comments NAME the defect on
+    # The executable lines only. The docstring and the comments NAME the defect on
     # purpose -- that is where a reader learns what not to do -- so a text search over
     # the whole function would refuse the module for documenting itself.
     body = body.split('"""', 2)[-1]
@@ -245,7 +245,7 @@ def test_the_plan_takes_its_codes_from_folded_axis_kinds_and_not_from_boundary_k
 
 
 def test_the_two_code_sources_disagree_on_every_folded_axis():
-    """THE DEFECT IS REAL AND IS MEASURED HERE, not merely described.
+    """The defect is real and is measured here, not merely described.
 
     On a folded grid the two expressions produce DIFFERENT triples, and the difference
     is exactly the fold: ``folded_axis_kinds`` returns a MIRROR code where the plain
@@ -395,7 +395,7 @@ def test_every_recompute_lands_on_the_cell_the_certified_index_composed(codes):
 
 @pytest.mark.parametrize("codes", CODES)
 def test_the_folded_ghost_is_the_metallic_literal_and_not_a_mirror_read(codes):
-    """ON A FOLD THE GHOST IS AN EXACT ``0.0f``, and that is the whole legality claim.
+    """On a fold the ghost is an exact ``0.0f``, and that is the whole legality claim.
 
     ``_reduced_codes`` maps both mirror codes to METALLIC, so past a mirror plane the
     kernel serves a literal zero rather than the array path's ``parity * field[2]``
@@ -417,7 +417,7 @@ def test_the_folded_ghost_is_the_metallic_literal_and_not_a_mirror_read(codes):
 
 
 def test_the_unfolded_emission_reduces_to_the_plain_products_plus_one_dead_line():
-    """THE STRONGEST SINGLE STATEMENT ABOUT THE FOLD'S DEVICE-CODE DELTA.
+    """The strongest single statement about the fold's device-code delta.
 
     On ``(P, P, P)`` ``symmetry.folded_curl_source`` reduces to the certified curl, so
     this product's emission must reduce to :func:`.fused_hd_pair.fused_hd_pair_source`'s
@@ -509,7 +509,7 @@ def test_the_kernel_is_blind_to_the_mirror_parity():
 # ---------------------------------------------------------------------------
 
 def test_the_shipped_signature_is_the_platform_ceiling_exactly_on_a_folded_triple():
-    """31 of 31, no headroom, AND THE COUNT IS TAKEN ON A FOLD.
+    """31 of 31, no headroom, and the count is taken on a fold.
 
     Counting on the degenerate unfolded emission would miss a fold that had grown an
     argument, which is exactly the failure this constant exists to catch.
@@ -602,7 +602,7 @@ def _covered_case(axes="Y", phases=None, boundaries=None):
 
 @pytest.fixture()
 def flush_policy(monkeypatch):
-    """ONE CANONICAL POLICY, and it is a precondition rather than a default."""
+    """One canonical policy, and it is a precondition rather than a default."""
     monkeypatch.setenv("MEEP_GPU_SUBNORMAL_POLICY", "flush")
 
 
@@ -625,7 +625,7 @@ def test_the_predicate_admits_the_cell_this_product_was_built_for(
 
 @needs_mps
 def test_an_unfolded_grid_is_refused_naming_the_plain_product(flush_policy):
-    """HALF OF THE INVERTED CLAUSE. The other half is the next test."""
+    """Half of the inverted clause. The other half is the next test."""
     grid = Grid(resolution=10.0, cell_size=(1.2, 1.0, 0.9), boundaries="periodic",
                 dimensions=3, courant=0.35, k_point=(0.0, 0.0, 0.0), xp=np)
     verdict = folded.metal_folded_fused_hd_pair_coverage(
@@ -637,7 +637,7 @@ def test_an_unfolded_grid_is_refused_naming_the_plain_product(flush_policy):
 
 @needs_mps
 def test_the_plain_product_refuses_this_products_cell(flush_policy):
-    """THE OTHER HALF, and it is why disjointness cannot be a single module's claim.
+    """The other half, and it is why disjointness cannot be a single module's claim.
 
     Both predicates admitting one row would make the numerical method depend on
     composer order. The clause is inverted, so exactly one can ever answer.
@@ -671,7 +671,7 @@ def test_a_plan_built_with_no_residency_is_refused_by_both_halves():
 
 def test_the_constitutive_half_is_asked_first_so_the_null_update_H_names_itself(
         flush_policy):
-    """THE ORDER IS THE DRIVER'S (driver.py:3311 before :3315).
+    """The order is the driver's (driver.py:3311 before :3315).
 
     An inactive absorber makes ``update_H`` return before its first statement -- the
     single largest non-fusion reason on the board -- and that belongs to the
@@ -971,7 +971,7 @@ def _seam_record():
 
 
 def test_the_cell_is_seventy_eight_rows_of_which_three_carry_a_standing_withdraw():
-    """READ FROM THE RECORD, never restated. The numbers in the module docstring and
+    """Read from the record, never restated. The numbers in the module docstring and
     in ``INSTALLABLE_REASON`` are what a reader will act on, so they answer to the
     artifact rather than to each other."""
     rows = _seam_record()

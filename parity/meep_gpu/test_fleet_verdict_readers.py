@@ -1,6 +1,6 @@
 """Two verdicts the fleet's readers scored "not released" though each gate reached its own.
 
-MEASURED on the precert pass of 2026-10-09 (tree 8e6ccf99):
+Measured on the precert pass of 2026-10-09 (tree 8e6ccf99):
 
 * ``gate_triton_fused_offdiag_electric.py`` is a REFUTATION gate. It writes
   ``verdict["REFUSAL ESTABLISHED"]`` over ``verdict["clauses"]`` (10 / 10 true) and

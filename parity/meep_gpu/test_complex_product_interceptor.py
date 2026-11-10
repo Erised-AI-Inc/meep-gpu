@@ -1,6 +1,8 @@
 """The complex-product probe catches what it must, and the array path gives it nothing to catch.
 
-Two halves (``complex_product_interceptor``, DESIGN D16):
+Two halves (``complex_product_interceptor``; the array path forms every product on complex
+storage part by part: docs/design/floating-point.md, "Complex storage is stepped part by
+part"):
 
 * the probe itself: a planted ``real * complex64`` product is counted with its call site,
   additive complex arithmetic is traffic and not a violation, real arithmetic is neither,

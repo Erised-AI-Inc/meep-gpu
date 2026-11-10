@@ -438,7 +438,7 @@ def test_the_incumbent_magnetic_pair_is_answered_exactly_as_before(monkeypatch):
     assert _first_divergent_step(shipped, before) == (-1, {}), (
         "the new consult and the old one answered the incumbent differently")
     assert shipped_flux == array_flux == before_flux
-    # AND THE COMPARISON IS NOT VACUOUS. An identity claim over nothing is worth
+    # And the comparison is not vacuous. An identity claim over nothing is worth
     # nothing, so the denominator is asserted and reported: every stored volume on
     # the fields and the PML, at each of STEPS complete steps.
     arrays = len(array[0])
@@ -476,7 +476,7 @@ def test_the_incumbent_pair_still_dispatches_inside_the_half_step(monkeypatch):
 
 def test_a_product_spanning_into_the_electric_half_corrupts_D_without_the_channel(
         monkeypatch):
-    """THE DEFECT, EXECUTED. This is the citation, not the argument.
+    """The defect, executed. This is the citation, not the argument.
 
     The same ``update_H``/``step_D`` product on two legs that differ only in the name
     the half-step's fourth consult spells. Through the OLD name it advances ``D`` and

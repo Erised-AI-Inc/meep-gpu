@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """DEVICE byte gate: the Triton H->D weld on the CONDUCTIVE and BFAST curl tails.
 
-TWO BOARD CELLS, ONE FAMILY, TWO EMITTED KERNELS::
+Two board cells, one family, two emitted kernels::
 
     H_to_D  (ordinary  -> conductive PML)   1 instance  tests:TestAdjointSolver.test_damping
     H_to_D  (BFAST run -> BFAST PML)        1 instance  tests:TestReflectanceAngular.test_reflectance_angular_2_35_7
@@ -9,16 +9,16 @@ TWO BOARD CELLS, ONE FAMILY, TWO EMITTED KERNELS::
 Read off ``results/fusion_matrix_triton_2026-09-07_cyl/fusion_matrix.json``
 (``aggregate.h_to_d_seam.instances``, ``one_per_row`` true, denominator 597).
 
-WHAT IS BEING CERTIFIED. ``meep_gpu/triton_kernels/conductive_bfast_fused_hd_pair.py``
+What is being certified. ``meep_gpu/triton_kernels/conductive_bfast_fused_hd_pair.py``
 computes the certified ``update_H`` constitutive into launch-local SCRATCH, takes its
 own cell's magnetic field from registers, RECOMPUTES every one of the curl half's six
 foreign taps from pre-launch state through ``fused_hd_pair._h_cell``, steps
 ``D``/``fu_D`` (and the variant's own in-place state) in place, and rotates the
-``H``/``f_w_H`` references afterwards. The claim is per COMPLETE DRIVER STEP as uint32
+``H``/``f_w_H`` references afterwards. The claim is per complete driver step as uint32
 WORDS over every stored volume the engine allocates -- never ``allclose``, because
 ``-0.0 == 0.0`` lies.
 
-THE LEG SET, THE REFERENCE COUNTING AND WHAT IS RECORDED-RATHER-THAN-ASSERTED are the
+The leg set, the reference counting and what is recorded-rather-than-asserted are the
 shared kit's; see :mod:`triton_hd_tail_gate_kit`. In particular the arbitration leg
 does NOT assert that the composer refuses this product, because on this backend an
 unwired family is never OFFERED to the composer and that clause would invert the
@@ -93,7 +93,7 @@ class ConductiveBfastProduct(kit.Product):
         "meep_gpu/triton_kernels/launch.py",
         "meep_gpu/stepping.py",
         "meep_gpu/withdraw_hoist.py",
-        # THE DRIVER IS BOUND ON PURPOSE. This weld's whole REPLACES claim is about
+        # The driver is bound on purpose. This weld's whole REPLACES claim is about
         # WHICH passes run between update_H and step_D, and the reference this gate
         # compares against is that call order.
         "meep_gpu/driver.py",
@@ -116,14 +116,14 @@ class ConductiveBfastProduct(kit.Product):
         ("bfast_ppp", {"variant": "bfast", "boundaries": {}}),
         ("bfast_mmm", {"variant": "bfast",
                        "boundaries": {axis: "metallic" for axis in "xyz"}}),
-        # A CONDUCTIVITY ONLY SOME CHUNKS KEEP: sigma on the two low-x planes, which
+        # A conductivity only some chunks keep: sigma on the two low-x planes, which
         # lie inside the low-x layer's chunks, so every other chunk keeps none and the
         # certified curl's third test reads the conductive-chunk volume (CMASK 1) on
         # every conductive target.
         ("cond_partial", {"variant": "conductive",
                           "boundaries": {axis: "metallic" for axis in "xyz"},
                           "sigma_low_x_planes": 2}),
-        # THE RUN'S FIRST update_H on the mutation fixture's grid: unseparated, so
+        # The run's first update_H on the mutation fixture's grid: unseparated, so
         # every arrangement performs MEEP's start of H at step 1. Every fixture above
         # is seeded mid-run.
         ("cond_mmm_first_update", {"variant": "conductive",
@@ -210,9 +210,9 @@ class ConductiveBfastProduct(kit.Product):
             "target": "kernel", "expected": "CAUGHT", "hits": 2,
             "old": "        curl0 = curl_stencil(c_y, c, b, b_z, dtdx, py, pz)\n",
             "new": "        curl0 = dtdx * ((c_y - c) + (b - b_z))\n",
-            "why": "INVERTED (KERNELS.md 7.1): Dx's curl takes the PREVIOUS package "
-                   "grouping, the pairwise `(g1s - g1) + (g2 - g2s)`, in place of MEEP's "
-                   "left-to-right `((g1s - g1) + g2) - g2s` that forms.curl_stencil spells",
+            "why": "INVERTED (docs/development/certification.md#inverted-grouping-mutations): Dx's curl "
+                   "takes the PREVIOUS package grouping, the pairwise `(g1s - g1) + (g2 - g2s)`, in place "
+                   "of MEEP's left-to-right `((g1s - g1) + g2) - g2s` that forms.curl_stencil spells",
         },
         "b1_whole_grid_recurrence": {
             "target": "kernel", "expected": "CAUGHT", "hits": 2,
@@ -261,9 +261,9 @@ class ConductiveBfastProduct(kit.Product):
             "target": "kernel", "expected": "NULL", "hits": 1, "case": "bfast_mmm",
             "old": "        p0 = tl.load(u0 + idx, mask=live & du0, other=0.0)\n",
             "new": "        p0 = tl.load(u0 + idx, mask=live, other=0.0)\n",
-            "why": "PREDICTED NULL (KERNELS.md 7.2, the unconditional auxiliary load): off "
-                   "the dsigu chunk the selected form never consumes fu_Dx and its store "
-                   "stays masked; the guard is pinned by the lift",
+            "why": "PREDICTED NULL (the unguarded auxiliary load; "
+                   "docs/development/certification.md#chunk-form-battery): off the dsigu chunk the selected "
+                   "form never consumes fu_Dx and its store stays masked; the guard is pinned by the lift",
         },
         "c1_conductive_chunks_ignored": {
             "target": "kernel", "expected": "CAUGHT", "hits": 1,
@@ -333,7 +333,7 @@ class ConductiveBfastProduct(kit.Product):
     def configure(self, driver: Any, spec: Mapping[str, Any]) -> None:
         """Install the D conductivity the conductive variant needs.
 
-        THE BFAST FIXTURES INSTALL NONE, and that is forced rather than tidy:
+        The BFAST fixtures install none, and that is forced rather than tidy:
         ``bfast_pml_curl_coverage`` refuses a conductivity on its own targets by name,
         so a bfast fixture carrying one would be refused before any byte is compared.
         """
@@ -438,7 +438,7 @@ class ConductiveBfastProduct(kit.Product):
                     len(family.DECODE_END[variant])
                     - len(family.DECODE_END[variant].lstrip())),
             }
-        # THE CONSTITUTIVE LIFT IS THE PLAIN PRODUCT'S, re-checked here rather than
+        # The constitutive lift is the plain product's, re-checked here rather than
         # inherited: this family IMPORTS `_h_cell`/`_h_tap`, so a drift there is a
         # drift in this family's arithmetic.
         constitutive_equal = (_plain.certified_constitutive_tail()
@@ -483,7 +483,7 @@ class ConductiveBfastProduct(kit.Product):
             conditions (a callable ``withdraw``, ``is_integrated``, and at least one
             source point). The third is not decoration: a stand-in without it is
             ADMITTED, and the refusal leg would then be measuring nothing -- caught on
-            this lane's first device smoke, 2026-09-08."""
+            the H->D tail gates' first device smoke, 2026-09-08."""
 
             component = "Ez"
             is_integrated = True

@@ -1,6 +1,6 @@
 """Recover per-point susceptibility sigma from MEEP's public ``get_chi1inv`` API.
 
-THE FALLBACK PATH. MEEP keeps each susceptibility's per-point sigma in its
+The fallback path. MEEP keeps each susceptibility's per-point sigma in its
 structure chunks and has no public call that returns it at a point. This module
 recovers the same quantity from a stock MEEP of any version, so a structured
 dispersive cell lifts against whatever MEEP the caller already has installed.

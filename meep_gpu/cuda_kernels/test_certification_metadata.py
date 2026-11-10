@@ -1,13 +1,13 @@
 """Every CUDA certification block says WHEN it ran, WHERE, on WHICH BYTES, under WHICH POLICY.
 
-WHAT THIS FILE IS FOR. ``certification.json`` is stronger than a
+What this file is for. ``certification.json`` is stronger than a
 ``fingerprints.json`` weld on the axis that matters most: it pins the device
 source STRINGS the compiler is handed, evaluated from the syntax tree with no
 CuPy import, and it carries a certified/dead partition over all fourteen shipped
 kernels. ``test_certification_record.py`` enforces all of that. What it never
 asked for is the provenance of the verdicts themselves.
 
-MEASURED 2026-08-19, before this file existed, over the four blocks in the record
+Measured 2026-08-19, before this file existed, over the four blocks in the record
 that name a device:
 
     block                     when            where             which bytes  policy
@@ -26,12 +26,12 @@ orphans that nothing recomputed.
 So this file ports both lessons to the CUDA record, and adds the one the other two
 tracks do not have. Metal requires ``artifact_sha256`` to be PRESENT; nothing
 recomputes it. Here the artifact digest, the timestamp, the host and the policy are
-each checked AGAINST THE ARTIFACT wherever the directory is on the machine — which
+each checked against the artifact wherever the directory is on the machine — which
 is what catches a value transcribed from the wrong run, the failure
 ``gate_provenance.py`` was built after a weld took a digest from the wrong one of
 the GPU host's 67 staged trees.
 
-WHAT WAS FIXED IN THE RECORD RATHER THAN DECLARED. Three blocks gained
+What was fixed in the record rather than declared. Three blocks gained
 ``recorded_utc``, ``host`` and ``artifact_sha256``, and the constitutive block's
 ``"hostname": null`` became ``"host": "the GPU host"`` — every value read out of the
 artifacts in this checkout, none typed from memory. The null had a cause worth
@@ -40,14 +40,14 @@ off the gate payload, and NO CUDA gate payload has ever carried that key (measur
 on ``keep/cgate.json`` and on the 2026-08-09 ``gate.json`` — identical shape, both
 hostname-free). The host is stamped only in the probe's ``PROVENANCE.txt`` sidecar.
 
-WHAT IS DECLARED DEBT. One thing, and it is not one of the four facts:
+What is declared debt. One thing, and it is not one of the four facts:
 ``offdiag_2026-08-16``'s host exists only in a hand-written PROVENANCE.md, because
 that gate writes no sidecar and its payload carries the device without the
 hostname. It is carried in ``HOST_NOT_MACHINE_STAMPED`` — the host is REAL and
 recorded, it is the EVIDENCE CLASS that is weaker — and closing it means the gate
 stamping its own hostname and a re-cut.
 
-WHAT WAS DISCHARGED, 2026-08-20. ``METADATA_DEBT`` is now EMPTY, and
+What was discharged, 2026-08-20. ``METADATA_DEBT`` is now EMPTY, and
 ``DEBT_BUDGET`` is zero on all four facts. Its one entry said ``bit_identity_gate``
 could not record a subnormal policy because the 2026-08-09 run predated the policy
 machinery. The folded-PERIODIC top-plane branch then moved both certified curl
@@ -91,7 +91,7 @@ ARTIFACT_PREFIX = "parity/meep_gpu/results/"
 #: resolved in :func:`_fact`.
 REQUIRED = ("recorded_utc", "host", "artifact_sha256", "subnormal_policy")
 
-#: DECLARED DEBT: (block, fact) the record cannot carry, and why. Closing an entry
+#: Declared debt: (block, fact) the record cannot carry, and why. Closing an entry
 #: means a device run, never an edit to this dict.
 #:
 #: EMPTY since 2026-08-20. The single entry — ``bit_identity_gate`` owing a
@@ -102,7 +102,7 @@ REQUIRED = ("recorded_utc", "host", "artifact_sha256", "subnormal_policy")
 #: whose fact has arrived.
 METADATA_DEBT: dict[tuple[str, str], str] = {}
 
-#: Per fact, how many blocks may owe it. MAY ONLY GO DOWN. All four reached zero
+#: Per fact, how many blocks may owe it. May only go down. All four reached zero
 #: on 2026-08-20; the floor is where they stay.
 DEBT_BUDGET = {"recorded_utc": 0, "host": 0, "artifact_sha256": 0,
                "subnormal_policy": 0}
@@ -132,7 +132,7 @@ HOST_NOT_MACHINE_STAMPED = {
 #: The COUNT of the dict above rather than an allowance beside it — the test
 #: derives it, so it moves only when an entry is added or discharged.
 #:
-#: 1 -> 3 on 2026-08-28, and it is an EXPANSION OF THE RECORD rather than a
+#: 1 -> 3 on 2026-08-28, and it is an expansion of the record rather than a
 #: loosening of it. The two folded/dispersive off-diagonal verdicts were RELEASED
 #: on a device in August and had no block here at all, so nothing checked their
 #: timestamps, their policies or their artifact digests. Transcribing them brings
@@ -141,9 +141,9 @@ HOST_NOT_MACHINE_STAMPED = {
 #: the same way: the gate stamps its own hostname and the leg is re-cut.
 HOST_TRANSCRIPTION_BUDGET = 3
 
-#: THE RELEASE SPELLING OF A MACHINE'S NAME. The release export replaces the name of
-#: the machine a run stamped with this phrase, in every record it ships, and a bind
-#: of a new round applies the same rule before the record is committed. A record
+#: The release spelling of a machine's name. The release export replaces the name of
+#: the machine a run stamped with this phrase, in every record it ships, and binding
+#: a later certification run applies the same rule before the record is committed. A record
 #: holding it therefore says "the one machine the artifact stamped", and that is what
 #: :func:`test_the_recorded_host_is_the_one_the_artifact_stamped` checks: the artifact
 #: must stamp a hostname, and exactly one, because one placeholder cannot stand for two
@@ -269,8 +269,8 @@ def test_every_certification_block_records_its_provenance(fact):
 def test_the_declared_debt_still_describes_real_debt():
     """A cleared entry must be REMOVED, so the list cannot rot into fiction.
 
-    AND THE BUDGET IS DERIVED FROM THE LIST, not asserted beside it. MEASURED
-    2026-08-20 by mutation: with the budget merely commented "MAY ONLY GO DOWN",
+    And the budget is derived from the list, not asserted beside it. Measured
+    2026-08-20 by mutation: with the budget merely commented "May only go down",
     putting ``subnormal_policy`` back from 0 to 1 — undoing the reduction the
     re-cut earned — was caught by NOTHING. Every other clause here reads the debt
     LIST, and the budget passed at 1 because zero blocks owed the fact. So the two
@@ -329,31 +329,40 @@ def test_the_manifest_rule_is_written_where_someone_holding_the_artifact_can_use
 # failure mode on this project and not a hypothetical one.
 
 
-def _artifact_stamps(directory: pathlib.Path) -> dict:
+def _claimed_roots(directory: pathlib.Path, block=None):
+    """The directories a block's evidence lies under: its artifact directory, or the
+    subdirectories it records when it claims a named subset of a campaign
+    (``recorded_subdirectories``, ``record_cuda_regate.py --directories``)."""
+    names = (block or {}).get("recorded_subdirectories")
+    return [directory] if names is None else [directory / name for name in sorted(names)]
+
+
+def _artifact_stamps(directory: pathlib.Path, block=None) -> dict:
     """What the artifact itself says about when, where and under which policy.
 
     Read from BOTH homes because the CUDA fleet uses both: the probe's
     ``PROVENANCE.txt`` sidecar, and the gate payloads' own keys.
 
-    THE HOSTNAME HAS TWO SPELLINGS, and reading only one is how a machine-stamped
+    The hostname has two spellings, and reading only one is how a machine-stamped
     fact gets recorded as prose. The 2026-08-09 probe writes ``environment.hostname``
     into its sidecar; ``gate_cuda_ade.py`` and ``gate_cuda_folded_constitutive.py``
     stamp a TOP-LEVEL ``host`` in the payload and leave ``environment`` to the
-    device. MEASURED 2026-08-19 across every artifact directory the record names:
+    device. Measured 2026-08-19 across every artifact directory the record names:
     the four pre-existing ones carry NEITHER key in any payload (their hosts come
     from sidecars and prose), and the two added that day carry only the top-level
     one. So adding this read strengthens the check and cannot retire the
     ``HOST_NOT_MACHINE_STAMPED`` entry that is still real.
     """
     utcs, hosts, policies = set(), set(), set()
-    for path in sorted(directory.rglob("PROVENANCE.txt")):
+    roots = _claimed_roots(directory, block)
+    for path in sorted(p for root in roots for p in root.rglob("PROVENANCE.txt")):
         text = path.read_text(encoding="utf-8", errors="replace")
         for key, sink in (("started_utc", utcs), ("hostname", hosts),
                           ("subnormal_policy", policies)):
             match = re.search(rf"^{key}\s+(\S+)\s*$", text, re.M)
             if match:
                 sink.add(match.group(1))
-    for path in sorted(directory.rglob("*.json")):
+    for path in sorted(p for root in roots for p in root.rglob("*.json")):
         try:
             document = json.loads(path.read_text(encoding="utf-8"))
         except (ValueError, OSError):
@@ -379,11 +388,12 @@ def _artifact_stamps(directory: pathlib.Path) -> dict:
     return {"started_utc": utcs, "hostname": hosts, "subnormal_policy": policies}
 
 
-def _manifest(directory: pathlib.Path):
-    """(digest, {relative path: sha256}) by the rule stated in the record."""
+def _manifest(directory: pathlib.Path, block=None):
+    """(digest, {relative path: sha256}) by the rule stated in the record, over what
+    the block claims (:func:`_claimed_roots`), paths relative to ``directory``."""
     table = {path.relative_to(directory).as_posix():
              hashlib.sha256(path.read_bytes()).hexdigest()
-             for path in directory.rglob("*.json")}
+             for root in _claimed_roots(directory, block) for path in root.rglob("*.json")}
     lines = [f"{name} {digest}" for name, digest in sorted(table.items())]
     return hashlib.sha256("\n".join(lines).encode("utf-8")).hexdigest(), table
 
@@ -418,7 +428,7 @@ def test_the_recorded_time_is_a_stamp_the_artifact_actually_carries():
     """
     for name, (block, directory) in _require_artifacts().items():
         recorded = _fact(block, "recorded_utc")
-        stamps = _artifact_stamps(directory)["started_utc"]
+        stamps = _artifact_stamps(directory, block)["started_utc"]
         assert stamps, f"{name}: the artifact stamps no start time at all"
         assert recorded in stamps, (
             f"{name}: records {recorded!r}, which no leg in {directory.name} "
@@ -434,7 +444,7 @@ def test_the_recorded_host_is_the_one_the_artifact_stamped():
     must be declared in ``HOST_NOT_MACHINE_STAMPED``."""
     for name, (block, directory) in _require_artifacts().items():
         recorded = _fact(block, "host")
-        stamped = _artifact_stamps(directory)["hostname"]
+        stamped = _artifact_stamps(directory, block)["hostname"]
         if not stamped:
             assert name in HOST_NOT_MACHINE_STAMPED, (
                 f"{name}: nothing in {directory.name} stamps a hostname, so the "
@@ -465,7 +475,7 @@ def test_the_recorded_policies_are_the_ones_the_artifact_stamped():
     """
     for name, (block, directory) in _require_artifacts().items():
         recorded = _fact(block, "subnormal_policy")
-        stamped = _artifact_stamps(directory)["subnormal_policy"]
+        stamped = _artifact_stamps(directory, block)["subnormal_policy"]
         if recorded is None:
             assert (name, "subnormal_policy") in METADATA_DEBT, name
             assert not stamped, (
@@ -491,7 +501,7 @@ def test_the_recorded_artifact_digest_recomputes_over_the_directory():
     """
     for name, (block, directory) in _require_artifacts().items():
         recorded = _fact(block, "artifact_sha256")
-        live, table = _manifest(directory)
+        live, table = _manifest(directory, block)
         assert table, f"{name}: no verdict payloads under {directory}"
         assert live == recorded, (
             f"{name}: the artifact under {directory.name} no longer digests to the "

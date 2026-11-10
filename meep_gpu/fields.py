@@ -121,7 +121,7 @@ FIELD_COMPONENTS = VECTOR_COMPONENTS + PSEUDOVECTOR_COMPONENTS
 def mirror_parity(component: str, axis: int, phase: int = 1) -> int:
     """Sign a component picks up under one mirror plane — MEEP's ``symmetry::phase_shift``.
 
-    THE ONE DERIVATION. Everything mirror-parity in this engine — the ghost cell
+    The one derivation. Everything mirror-parity in this engine — the ghost cell
     the curl reads across the plane, the quadrant unfolding, the source-parity
     check — resolves through here, so an odd mirror or a Z mirror adds no second
     table to keep in step with the first.
@@ -190,17 +190,17 @@ def mirror_parity(component: str, axis: int, phase: int = 1) -> int:
 # exactly the table this module used to hardcode, now computed from the one
 # derivation so the two cannot disagree.
 #
-# NOTHING ON THE LIVE PATH READS IT. Every consumer — the ghost-cell fill, the
+# Nothing on the live path reads it. Every consumer — the ghost-cell fill, the
 # source-parity rule, the DFT/flux unfolding — resolves `mirror_parity` at the
 # plane's own declared phase, which is what makes an odd plane and a Z plane work
 # on CuPy exactly as they work on NumPy: the shared `grid.xp` array path is the
 # GPU path. The only readers left are the tests that pin this projection against
 # the derivation; the fused-kernel fill helpers that read it were deleted with the
-# rest of that file's in-file fallback (fused-plan Phase 0). The retained kernel
+# rest of that file's in-file fallback (before the fused kernels were built). The retained kernel
 # wrappers in `cuda_kernels/step_curl_kernels.py` still take the SAME even
 # projection through `get_symmetry_phase`'s default phase — which is why
 # `fastpath.plan_fast_path` keeps every folded run on the array path until the
-# wrappers thread the declared phase (fused-plan Phase 2).
+# wrappers thread the declared phase (when the mirror-symmetry kernels are wired).
 #
 # Keep it that way: this table cannot express phase = -1 or a Z plane, so wiring
 # the kernels in without generalizing them first would fold those cases with the
@@ -244,13 +244,13 @@ def require_even_xy_planes_only(grid) -> None:  # Refuse a plane SYMMETRY_PHASES
     both cases the run completes and returns a full, plausible field.
 
     No production code calls this since the fused-kernel fallback that did was
-    deleted (fused-plan Phase 0); it stands as the CONTRACT for the symmetry slices —
+    deleted (before the fused kernels were built); it stands as the CONTRACT for the symmetry slices —
     the retained kernel wrappers still bake the same even projection through
     ``get_symmetry_phase``'s default, so ``fastpath.plan_fast_path`` must keep folded
     runs on the array path until they thread the declared phase. The live CuPy path
     is the shared ``grid.xp`` array path, which resolves each plane's own phase
     through :func:`mirror_parity` and is general on all three axes. Generalize the
-    kernels the same way when wiring them in (fused-plan Phase 2), and delete this.
+    kernels the same way when wiring the mirror-symmetry kernels in, and delete this.
 
     Raises:
         NotImplementedError: naming every plane the table cannot carry.
@@ -302,7 +302,7 @@ def get_symmetry_phase(component: str, direction: str, phase: int = 1) -> int:  
 class StepScratch:
     """Reusable full-volume buffers for the step loop's temporaries.
 
-    THE MEASUREMENT THIS EXISTS FOR. On this machine a float32 elementwise pass over
+    The measurement this exists for. On this machine a float32 elementwise pass over
     a 640x640 array costs 132.7 us when it allocates its result and 52.7 us when it
     writes into an existing one — 60% of the cost is the allocation, because above
     roughly a megabyte the allocator hands back freshly mmap'd pages and the
@@ -316,7 +316,7 @@ class StepScratch:
     a memory-pool allocation, an extra kernel, and an extra full read-and-write of
     device memory.
 
-    THE INVARIANT CALLERS MUST HOLD. A buffer is owned by its ``tag`` for as long as
+    The invariant callers must hold. A buffer is owned by its ``tag`` for as long as
     the caller holds it, and two live temporaries must never share one. Tags are
     therefore assigned per ROLE, and a tag is reused across two roles only where their
     lifetimes provably cannot overlap — ``previous`` serves both the split-field PML
@@ -515,7 +515,7 @@ class Fields:
     # is lossless and takes the untouched arithmetic path, which is what keeps a
     # conductivity-free run's step_D and step_B bit-identical.
     #
-    # ONE SHARED VOLUME IS NOT ENOUGH for a graded sigma. MEEP samples Dx, Dy and Dz at
+    # One shared volume is not enough for a graded sigma. MEEP samples Dx, Dy and Dz at
     # three different points; emulating that with a single array by snapping the sample
     # position costs 1.51e-02 (node-snapped) to 1.07e-01 (centre-snapped) relative Linf
     # on a 2-D mp.Absorber case, against a parity band of 3e-07..6e-06. A UNIFORM sigma
@@ -554,6 +554,19 @@ class Fields:
     # it with the fields (``Fields.reset`` zeroes arrays only).
     h_separated: bool = field(default=False, repr=False)
 
+    # True while a read of an E the run does not store serves D's words. MEEP's E is D's
+    # storage until its first ``update_eh(E_stuff)`` allocates E as a copy of D
+    # (update_eh.cpp:165-170), so before the first step its E reads D's words: +0 on a
+    # fresh run, where ``D * inv_eps`` is -0 wherever ``inv_eps`` is negative (the
+    # -1e-20 of a perfect conductor). ``FdtdDriver`` sets it at construction and at
+    # ``reset`` and clears it when its first step begins and when a field is seeded
+    # (``set_field``: a seeded D is read through ``inv_eps``, as it always was). Only the
+    # read surfaces consult it (:meth:`get_component`, :meth:`component_factors`); the
+    # sub-steps read E through :meth:`get_E`, which it does not change. A bare
+    # ``Fields`` leaves it False; a capsule does not carry it, and its loader sets it from
+    # the carried step count.
+    e_reads_d: bool = field(default=False, repr=False)
+
     # True once E is stored rather than recomputed from D on demand. Implied by PML,
     # and independently by any susceptibility (MEEP update_eh.cpp:166-171).
     _stored_E: bool = field(default=False, repr=False)
@@ -568,7 +581,7 @@ class Fields:
     _fmp_scratch: Any = field(default=None, repr=False)
 
     # Per-component buffers for the same quantity, allocated only by a nonlinear run.
-    # The nonlinearity's Yee average needs all three D - sum P volumes ALIVE AT ONCE
+    # The nonlinearity's Yee average needs all three D - sum P volumes alive at once
     # (MEEP's ``dmp[dc][cmp]``, ``dmp[dc_1][cmp]``, ``dmp[dc_2][cmp]`` in
     # update_eh.cpp:143-146), which the single shared buffer above cannot serve.
     _fmp_scratch_by_component: Dict[str, Any] = field(default_factory=dict, repr=False)
@@ -916,7 +929,7 @@ class Fields:
     def _require_chi2_respects_the_mirror_planes(self, component: str, chi2: Any) -> None:
         """Refuse a chi2 on a component the fold forces to be ODD about a mirror plane.
 
-        A chi2 medium IS NOT CENTROSYMMETRIC — that is the textbook reason chi2
+        A chi2 medium is not centrosymmetric — that is the textbook reason chi2
         vanishes in a centrosymmetric crystal, and it is a statement about this
         engine's mirror planes too. The nonlinear factor carries
         ``c2 = D_c * chi2 * chi1inv^2``, which is LINEAR in D and therefore has D's
@@ -926,7 +939,7 @@ class Fields:
         reconstructed from a symmetry the material does not have.
 
         Measured on the fold-equivalence case: with chi3 alone a folded run
-        reproduces the full-domain run BIT FOR BIT on every axis and both phases;
+        reproduces the full-domain run bit for bit on every axis and both phases;
         adding a chi2 to the component the plane makes odd breaks it by 4.1e-02 in
         one step, and nothing about the resulting field looks wrong.
 
@@ -1042,7 +1055,11 @@ class Fields:
         With E stored — PML active, a susceptibility present, an instantaneous
         nonlinearity present, or any combination — this returns the stored array (a
         live reference). Otherwise it computes E = D * inv_eps into a freshly
-        allocated array, so the caller may mutate the result freely.
+        allocated array, so the caller may mutate the result freely. That product is
+        formed when it is read, in the reading thread's floating-point mode: under a
+        flush policy it is the word the step reads only when it is read in that mode.
+        The read surfaces serve D's words instead while :attr:`e_reads_d` is set, before
+        a lifted run's first step (:meth:`get_component`).
 
         The stored branch is not an optimisation: once a polarization advances at the
         end of the step, ``D * inv_eps`` is no longer the E of the step just
@@ -1134,6 +1151,8 @@ class Fields:
                 # read-only view, so a caller indexing one plane allocates nothing.
                 xp = self.grid.xp
                 return (xp.broadcast_to(xp.zeros((), dtype=displacement.dtype), displacement.shape),)
+            if self.e_reads_d:
+                return (displacement,)  # E is D's storage before the first step (e_reads_d).
             inverse = self.inverse_epsilon_for(name)
             if getattr(inverse, "shape", None) == displacement.shape:
                 return (displacement, inverse)
@@ -1334,7 +1353,7 @@ class Fields:
 
         With PML active this returns the stored H array.
 
-        WITHOUT PML THE RETURN VALUE IS THE B ARRAY ITSELF, NOT A COPY. mu = 1
+        Without PML the return value is the B array itself, not a copy. mu = 1
         makes H numerically identical to B, so no array is allocated — but any
         in-place mutation of the returned array corrupts the primary B field and
         therefore the whole simulation. Copy before writing, or write to the B
@@ -1586,6 +1605,8 @@ class Fields:
             ValueError: If the component name is not one of the twelve components.
         """
         if name in ('Ex', 'Ey', 'Ez'):
+            if self.e_reads_d and not self._stored_E and name not in self.absent_components:
+                return getattr(self, 'D' + name[1]).copy()  # D's words: e_reads_d.
             return self.get_E(name)
         if name in ('Hx', 'Hy', 'Hz'):
             return self.get_H(name)
@@ -1735,7 +1756,7 @@ class Fields:
         this total shrinks by less than half when ``force_complex_fields`` is False;
         :meth:`field_bytes_per_cell` is the part that halves exactly.
 
-        WHAT THIS DELIBERATELY EXCLUDES: the step loop's pooled temporaries
+        What this deliberately excludes: the step loop's pooled temporaries
         (:class:`StepScratch`, read with ``fields.scratch.bytes_held()``). They are
         allocated on the first STEP rather than here, so counting them would make this
         number change under a caller who only built the container; and they are

@@ -25,8 +25,9 @@ and three comparisons:
                              rounding level where they do not.
     reference against MEEP   relative difference against the example's stated band
                              (BANDS below). The bands were set from runs against a
-                             single-precision build of MEEP 1.33.0; with any other
-                             build the figure is reported and not judged.
+                             single-precision MEEP 1.33.0; any single-precision build
+                             is judged against them, and a double-precision build is
+                             reported and not judged.
 
 Exit status: 0 when every judged comparison holds, 1 otherwise.
 """
@@ -49,8 +50,8 @@ EXPECTED = HERE / "expected"
 #: Largest relative difference from MEEP that passes, per example: the L2 norm of
 #: the difference over the L2 norm of MEEP's own result, for the final field and for
 #: each flux spectrum. The engine and the MEEP build compared against both step
-#: single precision, and the two differ by a few parts in a million OF THE FIELD'S
-#: PEAK. The dispersive example ends after the pulse has left the cell, when the
+#: single precision, and the two differ by a few parts in a million of the field's
+#: peak. The dispersive example ends after the pulse has left the cell, when the
 #: field that remains is 0.3 % of its peak, so the same absolute difference is a
 #: larger fraction of what is left; its band is wider for that reason and no other.
 BANDS = {

@@ -1,17 +1,17 @@
 """The CUDA fold families run MEEP's folded increments as passes after the curl, read off
 their text.
 
-WHAT THIS FILE SETTLES, ON A HOST WITH NO DEVICE. The BFAST curl pair (``bfast_curl``) and
+What this file settles, on a host with no device. The BFAST curl pair (``bfast_curl``) and
 the real special_kz curl pair (``special_kz_curl``) add their terms as MEEP does
 (step_db.cpp:124-175): per component the certified curl form, then the BFAST pass, and the
 beta pass on the x and y components, each through its own additive ladder keyed on the
 chunk record (``stepping._apply_folded_increment``, ``_bfast_term``,
-``_special_kz_beta_term``; bit_parity_0_10 KERNELS.md section 6, step C7). Each kernel's
-device text is EXECUTED in float32 NumPy by the root lane's interpreter
-(``test_root_chunk_forms.Interpreter``) over a seeded full-volume state -- the BFAST state
-included, nonzero everywhere -- and every array of the ``Fields`` is compared word for
-word (sign of zero included) with the array path's own sub-step on a copy of the same
-state.
+``_special_kz_beta_term``; docs/design/floating-point.md, "The folded increments are
+MEEP's separate passes"). Each kernel's device text is EXECUTED in float32 NumPy by the
+root-kernel suite's interpreter (``test_root_chunk_forms.Interpreter``) over a seeded
+full-volume state -- the BFAST state included, nonzero everywhere -- and every array of
+the ``Fields`` is compared word for word (sign of zero included) with the array path's
+own sub-step on a copy of the same state.
 
 The cases cover a 3-D grid with both partners on every component, a 2-D grid with a
 nonzero k on the invariant axis (the class whose partner MEEP does not read), a one-axis
@@ -64,7 +64,7 @@ def _text(families, kernel: str) -> str:
 
 def _split_y_layout(driver: FdtdDriver) -> ChunkLayout:
     """The one-rank boxes with the low-y effort volume cut short of its edge (the root
-    lane's lifted division): the record differs from the one-rank one on the y line."""
+    suite's lifted division): the record differs from the one-rank one on the y line."""
     one_rank = ChunkLayout.one_rank(driver.grid, driver.pml)
     window = one_rank.frames[1].window
     low_edge = min(hi[1] for lo, hi in one_rank.boxes if lo[1] == window[0])

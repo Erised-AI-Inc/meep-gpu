@@ -6,7 +6,7 @@ so this file has two jobs: check its arithmetic against hand-computed closed for
 against CPU MEEP's own ``chi1inv``, and pin the four things about it that are true but
 surprising, each of which would otherwise read as a success.
 
-WHAT IT ACTUALLY IMPLEMENTS. MEEP's scheme, value for value:
+What it actually implements. MEEP's scheme, value for value:
 ``chi1inv_row[i] = n_d n_i (<1/eps> - 1/<eps>)`` plus ``1/<eps>`` on the diagonal
 (``anisotropic_averaging.cpp:200-207``), the 50-point degree-11 octahedral sphere rule
 for the normal at radius ``dx`` (``sphere-quad.cpp``, ``material_function::
@@ -15,7 +15,7 @@ The harmonic mean of eps is what the field component normal to the interface see
 the arithmetic mean is what the tangential ones see, and both branches are checked here
 against hand values.
 
-TWO FILL RULES, AND EVERY VALUE TEST RUNS ON BOTH. Where the two means come from is a
+Two fill rules, and every value test runs on both. Where the two means come from is a
 separate question from what is done with them. ``fill_rule="sampled"`` is MEEP's
 material-function fallback — midpoint sums over an ``s``-per-axis lattice, first order
 in ``1/s``. ``fill_rule="planar"`` (the default for a callable epsilon) is MEEP's

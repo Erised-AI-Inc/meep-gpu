@@ -1,6 +1,6 @@
 """The conductive PML ``step_D`` welded into the ORDINARY ``update_E``, both packed.
 
-THE SECOND of the two cells the 2026-09-01 board scored ``UNFUSABLE ON METAL`` that
+The second of the two cells the 2026-09-01 board scored ``UNFUSABLE ON METAL`` that
 the SHIPPED :mod:`.coefficient_pack` technique closes — and the widest pack in the
 tree: BOTH halves' coefficient vectors ride one buffer::
 
@@ -8,12 +8,12 @@ tree: BOTH halves' coefficient vectors ride one buffer::
         conductive_pml.curl 24p + shaders.constitutive_E 18p, sharing 3
         -> 39 pointers, ceiling 30      UNFUSABLE ON METAL   (over by 9)
 
-CROSS-BACKEND FACT, from the residue audit: the board's ``belongs to the CUDA
+A cross-backend fact: the board's ``belongs to the CUDA
 track`` position is unfulfilled — CUDA's same cell is priced POINTWISE-BUILDABLE
 and serves 0 (no conductive-curl electric pair with a deposit carry exists there)
 — so before this module NO backend served this instance.
 
-WHAT MOVED IS NOT THE CEILING. One pack holds the TWELVE disjointly-named
+What moved is not the ceiling. One pack holds the TWELVE disjointly-named
 read-only vectors of both halves — the curl's ``kmx``/``sinvx``/... and the
 constitutive's ``kp0``/``km0``/... — with twelve element offsets in ``Params``,
 saving eleven pointers: 39 -> 28, bound at :data:`PACKED_BINDINGS` = 29. The six
@@ -24,7 +24,7 @@ them would make the offsets a mixed-geometry table for no binding need — 29 is
 already two under the ceiling. The device-written ``f``/``u``/``c``/``w`` volumes
 rightly stay unpacked (the read-only rule), as does everything the repair writes.
 
-THE CURL HALF IS LIFTED WHOLE AND UNEDITED — decode, ghosts, loads, curl, mask,
+The curl half is lifted whole and unedited — decode, ghosts, loads, curl, mask,
 per-target four-branch conductive tails, every in-place store — and the wall clear
 plus the seam then work on a RELOAD: after the certified text stores each stepped
 D component, the weld re-reads its own cell (the same thread, the value it just
@@ -35,7 +35,7 @@ keeps the certified conductive tail text at ZERO edits, and the reload is the
 declared-equivalence pattern the shipped gates already measure ("seam reloads the
 flux it just stored").
 
-THE SEAM'S CLAUSES. The one corpus row declares an ELECTRIC source, so
+The seam's clauses. The one corpus row declares an ELECTRIC source, so
 :data:`CARRIES_DEPOSIT_REPAIR` is True (split-field path — the absorber is
 ACTIVE). The conductive whole-volume-rescale hazard that priced the no-PML
 conductive cell at 0 of 2 is consulted here through the SAME clause, imported from
@@ -43,7 +43,7 @@ conductive cell at 0 of 2 is consulted here through the SAME clause, imported fr
 sparse per-deposit-cell rescale landed that clause refuses only a scaled source
 that publishes no deposit table, which no in-tree electric source class is.
 
-THE CHUNK RECORD RIDES IN ``Params``. Both lifted halves select their forms per
+The chunk record rides in ``Params``. Both lifted halves select their forms per
 structure chunk (:mod:`.conductive_pml`, :mod:`.shaders`) and read the record through
 their anchored bounds blocks as ``cb.``. ``Params`` embeds ``ChunkBounds cb`` after the
 pack offsets and the kernel aliases it (:func:`.chunk_bounds.params_alias`) before any
@@ -51,12 +51,12 @@ lifted text, so the binding count does not move. One alias serves both halves: t
 curl reads the integer-lattice words (``cbi_*``) and the E constitutive the
 half-integer ones (``cbh_*``), so the two blocks declare disjoint locals.
 
-THE CONDUCTIVITY PRESENCE WORDS RIDE IN ``Params`` TOO, after ``cb``
+The conductivity presence words ride in ``Params`` TOO, after ``cb``
 (``ConductivePresence cw``, aliased by :func:`.conductive_pml.presence_params_alias`),
 so the lifted curl tails read ``cw.`` as the single's do and a chunk that keeps no
 conductivity steps the lossless forms here as there.
 
-NOT WIRED AS AN ARM; reached through ``launch.FUSED_PAIR_ARMS`` instead.
+Not wired as an arm; reached through ``launch.FUSED_PAIR_ARMS`` instead.
 """
 
 # Derived from MEEP (https://github.com/NanoComp/meep).
@@ -99,13 +99,13 @@ FAMILY = "conductive_fused_electric_pair"
 SLOT = "step_D"
 REPLACES: Tuple[str, ...] = ("step_D", "zero_metal_D", "update_E")
 
-#: BOTH halves' read-only per-axis coefficient vectors, IN PACK ORDER: the curl's
+#: BOTH halves' read-only per-axis coefficient vectors, in pack order: the curl's
 #: six, then the constitutive's six. Disjointly named, so one prologue re-creates
 #: all twelve under their certified names.
 PACKED_VECTORS: Tuple[str, ...] = ("kmx", "sinvx", "kmy", "sinvy", "kmz", "sinvz",
                                    "kp0", "km0", "kp1", "km1", "kp2", "km2")
 
-#: THREE BINDING COUNTS, ALL COMPILED BY THE GATE:
+#: Three binding counts, all compiled by the gate:
 #:
 #: * :data:`SEPARATE_SCALAR_BINDINGS` — 39 pointers + 5 separate scalars.
 #: * :data:`UNPACKED_POINTER_BINDINGS` — 39 pointers + one packed ``Params&``: the
@@ -193,8 +193,8 @@ kernel void conductive_fused_electric_pair_step(
     constant Params&    prm     [[buffer(28)]],
     uint idx [[thread_position_in_grid]])
 {
-    // THE FIVE SCALARS AND THE TWELVE PACKED VECTORS ARE UNPACKED INTO THE
-    // CERTIFIED BODIES' OWN NAMES, once, before any of the lifted text runs.
+    // The five scalars and the twelve packed vectors are unpacked into the
+    // certified bodies' own names, once, before any of the lifted text runs.
     // Everything below this line is then character-for-character what
     // `conductive_pml.conductive_pml_curl_source` and `shaders.constitutive_source`
     // emit, plus the wall clear on a reload and the one seam substitution.
@@ -264,7 +264,7 @@ def conductive_fused_electric_pair_source(
         zero_metal: Sequence[bool], contract: str = shaders.CONTRACT_OFF) -> str:
     """One specialised fused source: (boundaries, sigma flags, walls, contraction).
 
-    THE CURL TEXT IS UNEDITED; the weld appends a reload-mask-store epilogue and
+    The curl text is unedited; the weld appends a reload-mask-store epilogue and
     then the certified constitutive half with the three-line seam substitution
     reading the reloaded registers.
     """
@@ -316,7 +316,7 @@ def conductive_fused_electric_pair_source(
             f"    // THE SEAM: the register the wall clear just settled, not a "
             f"reload of D{'xyz'[target]}.\n"
             f"    float src{target} = v{target} * ie{target}[ii];\n")
-    # THE CURL'S `g` IS H AND THE CONSTITUTIVE'S `g` WAS D.
+    # The curl's `g` is H and the constitutive's `g` WAS D.
     for target in range(3):
         if f"g{target}[" in electric:
             raise AssertionError(
@@ -376,7 +376,7 @@ def _touching_body(written: Sequence[str], read: Sequence[str], guard: str,
 def refuted_unpacked_pointer_source(contract: str = shaders.CONTRACT_OFF) -> str:
     """The 40-binding signature this platform REFUSES — 39 pointers plus ``Params``.
 
-    THIS IS THE MEASUREMENT THE PACK EXISTS FOR: the shape the board's verdict
+    This is the measurement the pack exists for: the shape the board's verdict
     priced, over the ceiling by nine.
     """
     lines: List[str] = []
@@ -476,7 +476,7 @@ def metal_conductive_fused_electric_pair_coverage(
     if not electric.covered:
         reasons.extend(f"constitutive half: {reason}" for reason in electric.reasons)
 
-    # THE SOURCE SEAM. An ELECTRIC source is injected BETWEEN the two halves — on a
+    # The source seam. An ELECTRIC source is injected BETWEEN the two halves — on a
     # conductive run through _inject_electric_through_conductivity (driver.py:3306).
     reasons.extend(_deposit_repair.seam_source_reasons(
         fields, sources, 'D',
@@ -491,7 +491,7 @@ def metal_conductive_fused_electric_pair_coverage(
             f"(driver.py:3306)"),
         carries_repair=CARRIES_DEPOSIT_REPAIR))
 
-    # THE CONDUCTIVE INJECTION'S REMAINING HAZARD — imported from the no-PML
+    # The conductive injection's remaining hazard — imported from the no-PML
     # conductive sibling, one home: with the driver's sparse rescale, only a scaled
     # source that publishes NO deposit table still routes through the whole-volume
     # fallback, and only that case is refused.
@@ -502,7 +502,7 @@ def metal_conductive_fused_electric_pair_coverage(
         return Coverage(False,
                         tuple(dict.fromkeys(reasons + ["fields carries no grid"])))
 
-    # THE TWO FILLS, restated by NAME for THIS seam.
+    # The two fills, restated by NAME for THIS seam.
     for axis in range(3):
         mirrored = getattr(grid, "is_mirrored", None)
         if callable(mirrored) and bool(mirrored(axis)):
@@ -665,7 +665,7 @@ def plan_metal_conductive_fused_electric_pair(
         volumes.append(name)
         return residency.mirror(name, host, constant=constant)
 
-    # THE ORDER HERE IS THE SIGNATURE'S ORDER and nothing else keeps them in step.
+    # The order here is the signature's order and nothing else keeps them in step.
     # The dead history/conductivity slots of a LOSSLESS target alias the target
     # tensor, exactly as the certified conductive curl plan binds them
     # (conductive_pml.py:221-232): the lossless tail never touches c/cf/ci, so the
@@ -693,7 +693,7 @@ def plan_metal_conductive_fused_electric_pair(
     inverse_epsilon = [
         bind("inv_eps_" + name, fields.inverse_epsilon_for(name), constant=True)
         for name in ("Ex", "Ey", "Ez")]
-    # ONE PACK OVER BOTH HALVES' TWELVE VECTORS: the curl's integer-lattice
+    # One pack over both halves' twelve vectors: the curl's integer-lattice
     # kms/sinv and the constitutive's half-integer kps/kms, in PACKED_VECTORS
     # order. The two lattices stay distinguishable through the offsets, which are
     # generated from the same tuple the struct fields are.

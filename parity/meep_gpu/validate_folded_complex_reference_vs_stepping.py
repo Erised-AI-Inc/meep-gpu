@@ -1,7 +1,7 @@
 """Pin the FOLDED COMPLEX gate's REFERENCE against ``stepping.py``, on NumPy.
 
 The twin of ``validate_fold_reference_vs_stepping.py`` (which belongs to the
-symmetry tranche and is not edited here), for the fold under complex64 storage
+symmetry family's certification and is not edited here), for the fold under complex64 storage
 and under ``grid.beta``.
 
 The device gate (``gate_triton_folded_complex.py``) compares the KERNEL against a
@@ -19,16 +19,16 @@ test process by ``test_triton_folded_complex.py`` and would spread there.
 
     python -u validate_folded_complex_reference_vs_stepping.py
 
-TWO THINGS ARE PINNED, and the second is the one the whole tranche turns on:
+Two things are pinned, and the second is the one this family's whole certification turns on:
 
 1. the folded complex CURL sub-steps (``step_B`` / ``step_D``), with and without
    beta, in complex64 and — for the beta family — in real float32;
 2. the folded complex GHOST FILL, against ``stepping.fill_symmetry_bc_*`` plus
-   ``fill_folded_far_ghosts_*``. Since the per-part alignment the array path forms
+   ``fill_folded_far_ghosts_*``. Since taking MEEP's per-part arithmetic the array path forms
    ``parity * plane`` part by part (``host_writes.copy_face``,
    ``part_products.scale``); the reference must reproduce that byte for byte,
    including on the engineered signed-zero rows a full complex product would get
-   wrong.
+   wrong (see docs/design/floating-point.md#alignment-with-meep).
 
 The configuration list is chosen for what each row is the ONLY witness to: both
 terminations (a folded PERIODIC axis, a folded METALLIC one), both full-count
@@ -221,7 +221,7 @@ def _words(array) -> np.ndarray:
 
 
 # ---------------------------------------------------------------------------
-# THE COMPARATOR POLICY
+# The comparator policy
 # ---------------------------------------------------------------------------
 
 _EXPONENT = np.uint32(0xFF)
@@ -246,7 +246,7 @@ def compare_words(mine: np.ndarray, theirs: np.ndarray) -> Tuple[int, int, int]:
     too: ``+inf`` and ``-inf`` are fully specified encodings, and ``+inf`` against
     ``-inf`` is a mismatch.
 
-    THE ONE EXEMPTION is NaN against NaN, and it is not a weakening of the
+    The one exemption is NaN against NaN, and it is not a weakening of the
     arbiter — it is the removal of an assertion the standard never licensed.
     IEEE 754-2019:
 
@@ -260,7 +260,7 @@ def compare_words(mine: np.ndarray, theirs: np.ndarray) -> Tuple[int, int, int]:
       no equality relation between two NaNs to appeal to in the first place.
 
     So a raw-bit comparison across a NaN word does not measure the transcription;
-    it measures whichever quiet NaN the platform happened to synthesise. MEASURED,
+    it measures whichever quiet NaN the platform happened to synthesise. Measured,
     not argued: with the overflow fill needle in place BOTH platforms produced the
     same NaN population — 709387 word positions over these 17 cases, from
     hash-identical sources — but 1414 of them disagreed in sign or payload under
@@ -268,7 +268,7 @@ def compare_words(mine: np.ndarray, theirs: np.ndarray) -> Tuple[int, int, int]:
     on one and 17/17 on the other. First divergence: case 13, step_D, ``Dx`` word
     268, ``0x7fc00000`` (+qNaN) against ``0xffc00000`` (-qNaN).
 
-    THIS EXEMPTION IS NOT WHAT MAKES THE RUN PASS, and that distinction is the
+    This exemption is not what makes the run pass, and that distinction is the
     point. Four arms on numpy 2.2.6, the platform that failed::
 
         finite needle + this comparator   17/17   nan_words 0       exempt 0

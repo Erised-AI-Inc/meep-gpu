@@ -1,4 +1,4 @@
-"""The environments the 1.0 round's NVIDIA drivers give their children (host-only).
+"""The environments the 1.0 certification round's NVIDIA drivers give their children (host-only).
 
 ``run_lane.py`` starts every gate, fleet, route, toolchain and record child from the calling
 shell with every package switch removed by prefix and the round's own set on top, and every

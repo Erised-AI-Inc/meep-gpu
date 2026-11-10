@@ -3,14 +3,14 @@
 DEVICE STATUS: **RELEASED 2026-08-30** on the GPU host, RTX A6000 GPU 5, Triton 3.1.0 /
     CuPy 13.5.1, under BOTH subnormal policies —
     ``parity/meep_gpu/results/triton_folded_deposit_closure_2026-08-30/``.
-    11 armed cases counted and 1 case measured VACUOUS BY DESIGN, identically under
+    11 armed cases counted and 1 case measured vacuous by design, identically under
     ``keep`` (``ieee_keep_ftz_stripped``) and ``flush`` (``meep_x86_flush``): leg A
     bit-identical to the CuPy array path over every allocated volume after every
     complete ``driver.step()``, leg B (point-only repair) diverging on all 11 from
     step 1, leg C (no repair) diverging on all 12. One fused launch per step on
     every leg, counted through the plan's own kernel object.
 
-    THREE RUNS WERE NEEDED AND THE FIRST TWO FAILED HERE, not on arithmetic.
+    Three runs were needed and the first two failed here, not on arithmetic.
     ``backends.select_backend`` does not exist (the entry point is
     ``guard_kernel_compilation``); the product modules are not registered in
     ``sys.modules`` under their dotted names by the composer's own import path, so
@@ -20,7 +20,7 @@ DEVICE STATUS: **RELEASED 2026-08-30** on the GPU host, RTX A6000 GPU 5, Triton 
     reduction dispatch at import). All three are now carried by the probe and its
     runner rather than by whoever runs it next.
 
-WHY THIS GATE EXISTS. On 2026-08-30 three Triton products flipped
+Why this gate exists. On 2026-08-30 three Triton products flipped
 ``CARRIES_DEPOSIT_REPAIR`` False -> True — :mod:`~meep_gpu.triton_kernels.folded_fused_pair`,
 :mod:`~meep_gpu.triton_kernels.folded_fused_magnetic_pair` and
 :mod:`~meep_gpu.triton_kernels.complex_fused_magnetic_pair` — discharging 78 clause-refusals.
@@ -32,7 +32,7 @@ it is VACUOUS for the closure on three counts, each checked in this file's
   2. four of its six cases declare ``"sources": []``, so there is no deposit to repair;
   3. both source cases put the source at center ``(0, 0, 0)``, which lands on stored row 1
      of the folded axis — a row NO fill reads from — so ``repair_cells`` returns the
-     deposit and nothing else and a point-only repair is exact THERE BY CONSTRUCTION.
+     deposit and nothing else and a point-only repair is exact there by construction.
 
 The mechanism the flip actually rests on is the third one. ``deposit_repair.fill_image_rules``
 / ``repair_cells`` (deposit_repair.py:217-258) extend the saved and restored cell set to the
@@ -41,7 +41,7 @@ image a deposit into. A point-only repair leaves those images holding the consti
 result the fused launch computed from the PRE-INJECTION field. That is what this gate
 executes.
 
-THE CLAIM THIS GATE IS ALLOWED TO SUPPORT, per case:
+The claim this gate is allowed to support, per case:
 
     With a folded grid, a deposit ON a row a post-injection fill READS FROM, and the
     SHIPPED bracket (``launch._install_fused_pair`` -> ``LeadingRepairPlan`` /
@@ -50,7 +50,7 @@ THE CLAIM THIS GATE IS ALLOWED TO SUPPORT, per case:
     allocated volume BIT-IDENTICAL, as uint32, to the CuPy array path — and WITHOUT the
     image closure it does not.
 
-THE THREE LEGS, and rule 3 of the operating rules makes the second and third mandatory:
+The three legs (the second and third are armed controls: a zero counts only beside a control that moves words):
 
     A   fused + the shipped ``repair_cells``            -> expect 0 differing words
     B   fused + a POINT-ONLY ``repair_cells``           -> MUST DIVERGE
@@ -60,16 +60,16 @@ Leg B is the armed control for the CLOSURE; leg C is the armed control for the r
 a whole. A case whose leg B does not diverge cannot tell the closure from a point repair:
 it is reported ``vacuous_for_closure`` and is NOT counted toward the release. One case is
 deliberately built to be exactly that — :data:`ON_PLANE_CONTROL_CASE`, the placement the
-2026-08-30 evidence used — so the vacuity is a MEASURED row in this artifact rather than a
+2026-08-30 evidence used — so the vacuity is a measured row in this artifact rather than a
 claim about another probe.
 
-WHAT DISTINGUISHES A CASE THAT CAN DISCRIMINATE, decided by construction and re-checked
+What distinguishes a case that can discriminate, decided by construction and re-checked
 empirically. ``repair_cells`` on the INJECTED component's own constitutive source must
 return at least one cell that is not already a deposit point. Both numbers are recorded
 per case (``closure_extra_cells``), and a case claiming to be armed whose leg B then does
 not diverge is a finding, not a pass — the verdict reports it.
 
-WHAT THIS GATE DOES NOT LICENSE. Nothing about throughput. Nothing about
+What this gate does not license. Nothing about throughput. Nothing about
 ``fastpath.plan_fast_path``, which still returns ``None`` — the bracket is installed at
 the driver's consult points by this harness, exactly as every other Triton composition
 gate installs one. Nothing about the OFF-DIAGONAL, NONLINEAR or CYLINDRICAL r = 0 seams,
@@ -118,7 +118,7 @@ for _path in (HERE, API_ROOT):
 SEED = 20260830
 
 #: One dx at resolution 12 on the cells below, spelled once. Stored row ``r`` of a folded
-#: axis sits at ``(r - 1) * DX`` — MEASURED by scanning the source's own ``_point_iy``
+#: axis sits at ``(r - 1) * DX`` — measured by scanning the source's own ``_point_iy``
 #: (see :func:`deposit_rows`), never assumed: every case re-checks the row it landed on
 #: and :func:`arming_census` refuses a case whose deposit missed the imaged row.
 DX = 1.0 / 12.0
@@ -140,13 +140,13 @@ METALLIC_3D = ("metallic", "metallic", "metallic")
 
 #: name, cell, boundaries, mirrors, source declaration, seam, steps, why.
 #:
-#: EVERY REQUIRED PROPERTY IS CARRIED BY A NAMED CASE, not by a sweep that might happen
+#: Every required property is carried by a named case, not by a sweep that might happen
 #: to cover it: a fold on each of two axes and a two-fold pair; a deposit off the mirror
 #: plane AND on a row a fill reads from; both seams; a far ghost (folded PERIODIC) as well
 #: as near fills; an odd mirror phase; a 3-D fold, because a 2-D case cannot reach the z
 #: half of either kernel's carry; and the corpus-realistic SHEET spanning the folded axis.
 #:
-#: THE COMPONENT IS NOT FREE. Which fill images a deposit is decided by the DEPOSITED
+#: The component is not free. Which fill images a deposit is decided by the DEPOSITED
 #: component's Yee shifts, so on a Y fold ``Ez``/``Ex`` (shift 0 on y) reach the NEAR fill
 #: and ``Ey`` (shift 1) reaches the FAR one; ``Ey`` on a METALLIC fold reaches neither and
 #: would be a case that looks armed and is not. :func:`arming_census` is what enforces it.
@@ -280,7 +280,7 @@ def save(payload: Dict[str, Any], path: str) -> None:
     * ``canonical_verdict`` — this payload's ``verdict.released`` normalised into
       the one shape every reader in the fleet understands.
 
-    WHY IT IS HERE AND NOT ONLY AT THE END. ``rebind_triton_welds.py`` reads
+    Why it is here and not only at the end. ``rebind_triton_welds.py`` reads
     ``canonical_verdict`` (then ``release``) and takes each welded digest out of
     ``imported_source_sha256``; without both keys this gate's artifact cannot be
     bound into ``triton_kernels/fingerprints.json`` at all, so the deposit-closure
@@ -344,7 +344,7 @@ def build_driver(cell, boundaries, mirrors, declaration, xp, seed: int = SEED):
         values = np.ascontiguousarray(
             generator.uniform(-0.25, 0.25, size=shape).astype(np.float32))
         driver.set_field(name, xp.asarray(values) if xp is not None else values)
-    # THE AUXILIARIES TOO. Zero-init is a FIXED POINT of the constitutive recurrence
+    # The auxiliaries too. Zero-init is a fixed point of the constitutive recurrence
     # `field + kps*fresh - kms*fw_prev`, so a run that seeded only the primaries could
     # pass without exercising the `f_w` state the repair saves and restores.
     for name in ("f_w_Ex", "f_w_Ey", "f_w_Ez", "f_w_Hx", "f_w_Hy", "f_w_Hz"):
@@ -447,7 +447,7 @@ def deposit_rows(source) -> Dict[str, List[int]]:
 def arming_census(driver, seam: str, component: str) -> Dict[str, Any]:
     """How many cells the CLOSURE adds beyond the deposit, on the INJECTED component.
 
-    THE COMPONENT MATTERS AND THE OTHER TWO DO NOT. ``deposit_repair.save`` repairs all
+    The component matters and the other two do not. ``deposit_repair.save`` repairs all
     three constitutive targets at the deposit index, and two of them are cells the
     injection never changed — recomputing those is bit-identical either way (the module's
     own "over-covering is safe" note). So a census over all three would report a case as
@@ -507,7 +507,7 @@ def arming_census(driver, seam: str, component: str) -> Dict[str, Any]:
 class CountingKernel:
     """Owns the JIT kernel and counts every launch made through the plan's ``run``.
 
-    BYTES ALONE CANNOT PROVE THE FUSED PATH RAN: a silent fall-back to the array path is
+    Bytes alone cannot prove the fused path ran: a silent fall-back to the array path is
     byte-identical to the array path by construction. The count is what separates "the
     kernel reproduced the array path" from "the kernel never ran".
     """
@@ -548,7 +548,7 @@ class InertPlan:
 class DispatchAdapter:
     """The object the driver consults, holding one leg's plans.
 
-    THE DRIVER'S OWN CONSULT POINTS, not a monkeypatch of ``stepping``. ``FdtdDriver.step``
+    The driver's own consult points, not a monkeypatch of ``stepping``. ``FdtdDriver.step``
     asks ``fast.dispatch(name, fields)`` at five sites and calls the array function only
     when the answer is False (driver.py:3292-3315), so installing here exercises the
     engine's real substitution seam — including its contract that True means the WHOLE
@@ -588,7 +588,7 @@ def install_adapter(driver, plans) -> None:
 class HostFoldedPair:
     """The folded fused product's five passes, for a laptop leg with no Triton.
 
-    STANDS IN FOR THE KERNEL AT THE FIRST CONSULT ONLY, and only under ``--no-device``.
+    Stands in for the kernel at the first consult only, and only under ``--no-device``.
     It runs exactly the product's declared ``REPLACES`` list against the same
     pre-injection field one launch would, so what it changes is whether the arithmetic the
     repair brackets came from one launch or five array calls — which is precisely the
@@ -627,7 +627,7 @@ def build_leg_plans(driver, seam: str, leg: str, device: bool,
                     counters: Dict[str, CountingKernel]) -> Dict[str, Any]:
     """The SHIPPED bracket for one leg, or the host emulation of it.
 
-    THE BRACKET IS NOT REBUILT HERE. On the device the plans come from
+    The bracket is not rebuilt here. On the device the plans come from
     ``launch.plan_step(..., fuse=True)``, which routes through
     ``launch._install_folded_fused_pairs`` -> ``_install_fused_pair`` and therefore
     installs the shipped ``LeadingRepairPlan`` / ``TrailingRepairPlan``. A harness that
@@ -658,7 +658,7 @@ def build_leg_plans(driver, seam: str, leg: str, device: bool,
             raise AssertionError(
                 f"{seam} seam: the bracket wraps {type(inner).__name__}, not the "
                 f"{spec['plan_class']} this gate is about")
-        # IMPORTED BY NAME, not read out of ``sys.modules``: the composer reaches these
+        # Imported by name, not read out of ``sys.modules``: the composer reaches these
         # modules through ``launch._folded_fused_pair_entries``, and whether that leaves
         # them registered under their dotted name is an implementation detail this gate
         # must not depend on. It did not, and the first device run died on the KeyError.
@@ -785,7 +785,7 @@ def run_case(case, device: bool, xp) -> Dict[str, Any]:
                 else result["adapter"],
             }
 
-        # ARRAYS MUST MOVE. A no-op agreeing with a no-op is trivially identical, so a
+        # Arrays must move. A no-op agreeing with a no-op is trivially identical, so a
         # leg whose compared state never changed is not evidence of anything.
         row["arrays_ever_moved"] = len(moved_arrays(reference[0], reference[-1]))
         row["arrays_total"] = len(reference[0])
@@ -793,7 +793,7 @@ def run_case(case, device: bool, xp) -> Dict[str, Any]:
         row["leg_A_identical"] = row["leg_A"]["identical"]
         row["leg_B_diverged"] = not row["leg_B"]["identical"]
         row["leg_C_diverged"] = not row["leg_C"]["identical"]
-        # THE VACUITY VERDICT, and it is the whole point of the protocol. Withholding the
+        # The vacuity verdict, and it is the whole point of the protocol. Withholding the
         # closure must change the answer; where it does not, the case cannot tell a
         # working closure from a missing one and its leg-A pass is worth nothing.
         row["vacuous_for_closure"] = not row["leg_B_diverged"]
@@ -836,8 +836,8 @@ def run_case(case, device: bool, xp) -> Dict[str, Any]:
 def unfolded_product_leg() -> Dict[str, Any]:
     """Can ``complex_fused_magnetic_pair`` reach the image closure AT ALL?
 
-    THIS IS A MEASUREMENT ABOUT THE FLIP, not a gap in the gate. That module flipped
-    ``CARRIES_DEPOSIT_REPAIR`` in the same round, and its own predicate refuses
+    This is a measurement about the flip, not a gap in the gate. That module flipped
+    ``CARRIES_DEPOSIT_REPAIR`` in the same change, and its own predicate refuses
     ``grid.has_symmetry()`` and every ``is_mirrored`` axis by name — so every configuration
     it admits is unfolded, ``fill_image_rules`` there is empty, and ``repair_cells``
     returns the deposit and nothing more. Its flip rests on the POINT repair, which is
@@ -893,7 +893,7 @@ def unfolded_product_leg() -> Dict[str, Any]:
 def prior_evidence_leg() -> Dict[str, Any]:
     """Re-measure what ``probe_triton_symmetry_composition`` actually exercised.
 
-    THE THREE CLAIMS ARE READ OFF THAT FILE AND ITS OWN ENGINE OBJECTS, never quoted from
+    The three claims are read off that file and its own engine objects, never quoted from
     a review: how many of its cases declare a source, which routing flag its ``run_case``
     passes, and — for each case that does declare one — how many cells ``repair_cells``
     adds beyond the deposit. A gate that asserted the prior evidence was vacuous without
@@ -956,14 +956,15 @@ def prior_evidence_leg() -> Dict[str, Any]:
 
 
 def environment(xp: Any = None) -> Dict[str, Any]:
+    import neutral_ids  # noqa: PLC0415
     payload: Dict[str, Any] = {
         "python": sys.version.split()[0],
         "numpy": np.__version__,
-        "argv": list(sys.argv),
-        "hostname": os.uname().nodename,
+        "argv": neutral_ids.argv(sys.argv),
+        "hostname": neutral_ids.machine_id(),
         "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
-        "cupy_cache_dir": os.environ.get("CUPY_CACHE_DIR"),
-        "triton_cache_dir": os.environ.get("TRITON_CACHE_DIR"),
+        "cupy_cache_dir": neutral_ids.path(os.environ.get("CUPY_CACHE_DIR")),
+        "triton_cache_dir": neutral_ids.path(os.environ.get("TRITON_CACHE_DIR")),
     }
     try:
         import triton  # noqa: PLC0415
@@ -975,7 +976,7 @@ def environment(xp: Any = None) -> Dict[str, Any]:
         payload["cupy"] = xp.__version__
         properties = xp.cuda.runtime.getDeviceProperties(0)
         payload["device"] = properties["name"].decode()
-        # THE COMPUTE CAPABILITY, because a Triton weld is a claim about generated
+        # The compute capability, because a Triton weld is a claim about generated
         # PTX and Triton generates PTX for an ARCHITECTURE. fingerprints.json
         # declares validated_compute_capabilities for exactly that reason and
         # test_triton_weld_contract.py binds every weld's host string to it, so a
@@ -1010,7 +1011,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         from meep_gpu import backends, subnormal_policy  # noqa: PLC0415
 
         xp = cupy
-        # MEEP GOES IN FIRST, AND UNCONDITIONALLY — not only for the policy that needs it.
+        # MEEP goes in first, and unconditionally — not only for the policy that needs it.
         #
         # ``subnormal_policy._meep_module`` reads ``sys.modules`` and never imports MEEP
         # itself: the package's own boundary forbids it, and ``import meep`` initializes
@@ -1028,7 +1029,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             payload["meep_imported"] = getattr(_meep, "__version__", "unknown")
         except Exception as exc:  # noqa: BLE001
             payload["meep_imported"] = f"absent: {exc!r}"
-        # BEFORE THE FIRST DEVICE COMPILE, and strict: a process that asked to keep and
+        # Before the first device compile, and strict: a process that asked to keep and
         # quietly did not is a process whose bytes mean nothing, so this refuses at
         # startup rather than writing an artifact whose policy field is a wish.
         subnormal_policy.install_subnormal_policy(args.subnormal_policy, cupy=cupy,

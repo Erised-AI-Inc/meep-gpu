@@ -1,6 +1,6 @@
-"""THE DIVIDE GATE: is Metal's ``/`` IEEE round-to-nearest float32 on this host?
+"""The divide gate: is Metal's ``/`` IEEE round-to-nearest float32 on this host?
 
-WHY THIS EXISTS, AND WHY IT BLOCKS THE NONLINEAR FAMILY. Every Metal family
+Why this exists, and why it blocks the nonlinear family. Every Metal family
 shipped so far is division-free, and ``shaders.py``'s transcription rules say so in
 as many words: "Neither body divides, calls ``sqrt``, or takes a min or a max,
 which is why this pair is the lowest-risk one to certify first" (shaders.py:44-46).
@@ -10,8 +10,8 @@ The chi2/chi3 Pade factor is the FIRST quotient this package will emit::
 
 so the platform's division semantics stop being someone else's problem.
 
-THE SIBLING TRACK MEASURED THIS AND GOT A BAD ANSWER, WHICH IS THE REASON THIS
-PROBE IS NOT OPTIONAL. On Triton/NVPTX the plain ``/`` lowers to ``div.full.f32``
+The sibling track measured this and got a bad answer, which is the reason this
+probe is not optional. On Triton/NVPTX the plain ``/`` lowers to ``div.full.f32``
 (~2 ulp) and EVERY nonlinear sweep case diverged while the linear arm stayed
 byte-identical; ``tl.math.div_rn`` (``div.rn.ftz.f32``) fixed it
 (``triton_kernels/nonlinear_update_e.py``, docstring point 4). That is a fact about
@@ -20,14 +20,14 @@ transferred — not at all. Metal has THREE spellings (``/``, ``fast::divide``,
 ``precise::divide``) and which one the plain operator resolves to under
 ``torch.mps.compile_shader``'s default options is UNMEASURED on this host.
 
-WHAT THIS PROBE CANNOT DO, STATED RATHER THAN PAPERED OVER. ``compile_shader``
+What this probe cannot do, stated rather than papered over. ``compile_shader``
 exposes no AIR, no GPU ISA and no optimisation report (``metal_kernels/device.py:
-46-62``), so this cannot be settled the way the CUDA round settled its arity
+46-62``), so this cannot be settled the way the CUDA probe settled its arity
 question — by reading the generated code. Everything here is BEHAVIOURAL: it
 catches a wrong ANSWER, never a wrong INSTRUCTION. That is this backend's standing
 certification gap and it stays stated on every claim built on top of this one.
 
-THE FOUR LEGS:
+The four legs:
 
 1. ``divide`` — THE HEADLINE. ``a / b`` in a Metal kernel against
    ``numpy.float32`` division, over five operand classes, uint32 words. The
@@ -37,7 +37,7 @@ THE FOUR LEGS:
    it as named alternatives, so "the plain operator is the right spelling" is a
    measurement with a refuted twin rather than a preference.
 
-2. ``negation`` — ``-x`` vs ``0.0f - x`` vs ``x * -1.0f``, RE-MEASURED here rather
+2. ``negation`` — ``-x`` vs ``0.0f - x`` vs ``x * -1.0f``, RE-measured here rather
    than inherited from ``shaders.py``'s 2026-08-15 census or from Triton's
    canonicalization workaround. The nonlinear body has no negation site, so this
    leg's job is to confirm the package's recorded fact still holds on this
@@ -300,7 +300,7 @@ def _pair_grid(values: Sequence[float]) -> Tuple[np.ndarray, np.ndarray]:
 def binary_classes(seed: int) -> Dict[str, Tuple[np.ndarray, np.ndarray]]:
     """The operand pairs each binary variant is measured on.
 
-    ``pade_band`` IS THE CLASS THAT DECIDES THIS PROBE. Both operands are anchored
+    ``pade_band`` is the class that decides this probe. Both operands are anchored
     at 1.0 with a perturbation in the ulp-visible range, which is the shape
     ``calc_nonlinear_u`` actually divides: a quotient near 1 has almost no exponent
     range to hide an error in, so a 2-ulp divide shows up here as a word difference
@@ -324,7 +324,7 @@ def binary_classes(seed: int) -> Dict[str, Tuple[np.ndarray, np.ndarray]]:
     out["random_wide"] = ((mag_a * sign_a).astype(np.float32),
                           (mag_b * sign_b).astype(np.float32))
 
-    # NEAR THE POLE: the denominator approaches zero, so u leaves the [0.998, 1.0]
+    # Near the pole: the denominator approaches zero, so u leaves the [0.998, 1.0]
     # band the settled chi3 science measured and the quotient's exponent moves.
     # This is the class that makes a divergence in a large-u regime byte-visible.
     small = (np.float32(10.0) ** rng.uniform(-8.0, -2.0, LANES).astype(np.float32))
@@ -354,7 +354,7 @@ def unary_classes(seed: int) -> Dict[str, np.ndarray]:
     out["random_wide"] = (mag * sign).astype(np.float32)
     out["special_exhaustive"] = np.array(SPECIAL, dtype=np.float32)
     # The subnormal band, which this device FLUSHES and cannot be made not to. The
-    # class is here so the flush is MEASURED on the negation spellings rather than
+    # class is here so the flush is measured on the negation spellings rather than
     # assumed to be uniform across them: a spelling that flushed differently would
     # be a different operation, which is the whole point of the leg.
     out["subnormal_band"] = np.ldexp(
@@ -365,7 +365,7 @@ def unary_classes(seed: int) -> Dict[str, np.ndarray]:
 def pade_operands(seed: int) -> Dict[str, Dict[str, np.ndarray]]:
     """Operands for the end-to-end Pade leg, in the family's admitted domain.
 
-    THE MAGNITUDE CLAUSE IS RESPECTED HERE. The settled science puts the crossing
+    The magnitude clause is respected here. The settled science puts the crossing
     at ``chi3 * |chi1inv|^3 = 1e31`` and the family refuses above ``1e29``; these
     classes stay inside that, except ``near_clause_edge``, which sits just under it
     on purpose so the arithmetic at the admitted boundary is exercised rather than
@@ -514,7 +514,7 @@ def _finite_mask(*arrays: np.ndarray) -> np.ndarray:
 def classify(device: np.ndarray, expected: np.ndarray) -> Dict[str, Any]:
     """Split a comparison into FLUSH lanes and everything else.
 
-    THIS SPLIT IS THE WHOLE HONESTY OF THIS PROBE, and the first run of it was
+    This split is the whole honesty of this probe, and the first run of it was
     wrong without it. ``divide_plain`` reported 16 differing words on the special
     table and that read as a divide defect; every one of the sixteen turned out to
     be a lane whose IEEE result is SUBNORMAL, which this device flushes to a
@@ -600,7 +600,7 @@ def leg_divide(runner: Runner, payload: Dict[str, Any], out: str, jsonl: str,
                     f"flushed={verdict['flushed_to_signed_zero']:<4} "
                     f"ulp={verdict['max_ulp_normal']}")
 
-    # THE REFUTED SPELLING MUST ACTUALLY BE REFUTED. `fast::divide` is going to be
+    # The refuted spelling must actually be refuted. `fast::divide` is going to be
     # this family's must-catch source mutation, and a mutation that turns out to be
     # equivalent catches nothing — so the probe asserts here that the spelling
     # genuinely diverges rather than leaving the gate to discover it does not.
@@ -630,7 +630,7 @@ def leg_negation(runner: Runner, payload: Dict[str, Any], out: str, jsonl: str,
                 row.update(verdict)
                 assert moved == x.size, (
                     f"VACUOUS: {name}/{class_name} moved {moved} of {x.size}")
-                # `-x` IS THE PACKAGE'S RECORDED SPELLING and this leg re-measures
+                # `-x` is the package's recorded spelling and this leg re-measures
                 # it rather than inheriting it. It must be exact on EVERY class
                 # including the subnormal band, because a sign-bit flip is not an
                 # arithmetic operation and has no band to flush.
@@ -669,7 +669,7 @@ def leg_pade(runner: Runner, payload: Dict[str, Any], out: str, jsonl: str,
                 row.update(verdict)
                 assert moved == inputs[0].size, (
                     f"VACUOUS: {name}/{class_name} moved {moved}")
-                # THE SHIPPED CONFIGURATION IS (plain divide, contract off). That
+                # The shipped configuration is (plain divide, contract off). That
                 # is the only combination asserted. contract=fast is measured as a
                 # POSITIVE control on the pragma's necessity, not as a failure.
                 if (name == "pade_divide_plain" and contract == "off"
@@ -687,7 +687,7 @@ def leg_pade(runner: Runner, payload: Dict[str, Any], out: str, jsonl: str,
                     f"ulp={verdict['max_ulp_normal']} "
                     f"u=[{row['u_min']}, {row['u_max']}]")
 
-    # THE PRAGMA MUST BE LOAD-BEARING, MEASURED. `shaders.py` calls
+    # The pragma must be load-bearing, measured. `shaders.py` calls
     # `#pragma clang fp contract(off)` mandatory; on THIS expression that claim is
     # only worth something if turning it off actually changes the bytes. If the
     # two modes agreed everywhere, the pragma would be cargo on this family and

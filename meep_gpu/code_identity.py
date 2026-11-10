@@ -1,6 +1,6 @@
 """Is this edit capable of changing what executes?
 
-WHY THIS EXISTS. Every device gate welds its PASS verdict to the sha256 of the sources it
+Why this exists. Every device gate welds its PASS verdict to the sha256 of the sources it
 imported, and the rule those welds carry is *re-run the gate, do not edit this record*.
 That rule is right, and it has a cost that is easy to underestimate: measured 2026-08-22,
 renaming five environment switches touched five prose mentions in three modules --
@@ -12,7 +12,7 @@ A tax that large on a docstring fix does not make the tree safer. It makes doc c
 expensive, and an expensive correction is one that does not get made -- or worse, one that
 gets made by editing the record, which is the failure the welds exist to prevent.
 
-WHAT THIS IS, AND WHAT IT REFUSES TO BE. A comment and a docstring cannot change what a
+What this is, and what it refuses to be. A comment and a docstring cannot change what a
 kernel computes. Nothing else is granted that: a renamed variable, a reordered argument, a
 changed string literal all reach execution and must be re-earned on a device. So the
 question this module answers is deliberately narrow and mechanically decidable:
@@ -30,7 +30,7 @@ the result WITHOUT node attributes, so a docstring that grows by three lines doe
 shift every node below it out of identity. Field values -- names, operators, constants,
 argument order -- are all still compared.
 
-THE CLAUSE THIS LICENSES, and no other: a weld whose recorded ``source_sha256`` no longer
+The clause this licenses, and no other: a weld whose recorded ``source_sha256`` no longer
 matches the file MAY still stand if the weld also recorded a ``code_sha256`` and that is
 unchanged. Backfilling ``code_sha256`` is only honest for a weld whose ``source_sha256``
 still matches, because only then is the file on disk the bytes the gate actually ran.
@@ -55,7 +55,7 @@ def canonical_dump(node: object) -> str:
     """``ast.dump(node, annotate_fields=True, include_attributes=False)`` as Python 3.12
     prints it, on every interpreter.
 
-    WHY NOT ``ast.dump`` ITSELF. Its text is part of the interpreter, not of the source:
+    Why not ``ast.dump`` itself. Its text is part of the interpreter, not of the source:
     3.12 added ``type_params=[]`` to every function and class node, 3.10 and 3.11 have no
     such field, and 3.13 omits empty fields by default. Every recorded code and device
     digest was minted under 3.12, so hashing the interpreter's own dump makes a digest a
@@ -126,7 +126,7 @@ def code_digest(source: str) -> str:
     byte hash would make the clause that reads this quietly stricter instead of failing.
     """
     tree = strip_docstrings(ast.parse(source))
-    # include_attributes=False IS THE LOAD-BEARING ARGUMENT, and it was wrong first.
+    # include_attributes=False is the load-bearing argument, and it was wrong first.
     # With attributes ON, the dump carries lineno/col_offset, so ANY edit that changes a
     # line count shifts every node below it -- and a real docstring or comment edit
     # changes line counts almost by definition. Measured: a one-line docstring expanded

@@ -1,7 +1,7 @@
 """The NO-PML constitutive family: a predicate over a sub-step that does nothing.
 
-THE FINDING, STATED FIRST, BECAUSE IT IS THE WHOLE POINT OF THE FILE. This family
-needs NO NEW KERNEL, and on its load-bearing arm it needs no kernel AT ALL — not a
+The finding, stated first, because it is the whole point of the file. This family
+needs no new kernel, and on its load-bearing arm it needs no kernel AT ALL — not a
 restated predicate over an already-certified kernel body (which is what
 ``special_kz.beta_run_constitutive_coverage`` is), but a predicate over a sub-step
 whose array-path implementation is a bare ``return``. There is no arithmetic to
@@ -10,7 +10,7 @@ The gate leg that certifies it is an IDENTITY leg — every live array byte-unch
 across the array path's own call — and it runs to completion on a laptop with no
 CUDA, no Triton and no CuPy, because nothing here compiles or launches anything.
 
-WHAT ``stepping`` ACTUALLY DOES WITHOUT AN ABSORBER
+What ``stepping`` actually does without an absorber
 --------------------------------------------------
 ``stepping.update_H`` (stepping.py:1216-1240)::
 
@@ -44,7 +44,7 @@ the driver takes this path, exactly as ``no_pml.plain_curl_coverage`` clause 3 h
 for the curl. That shared test is what makes the two families' coverage sets a
 partition rather than an overlap.
 
-THE TWO ARMS
+The two arms
 ------------
 * **Arm N (NULL) — built here.** ``update_H`` on any inactive layer, and ``update_E``
   on an inactive layer with ``fields.stores_E`` False. Zero kernels, zero launches.
@@ -75,7 +75,7 @@ would be a new kernel — composed, not written from scratch, from
 write DELETED (without PML ``Fields.drive_field`` hands ``update_P`` the stored E,
 not ``f_w``, fields.py:1140-1162, and ``f_w_*`` is not even allocated).
 
-MEASURED DEMAND, AND WHERE IT LANDS
+Measured demand, and where it lands
 -----------------------------------
 ``results/predicate_coverage_2026-08-12`` measures 186 corpus rows. 14 carry no PML,
 and every one of the 14 loses BOTH constitutive sub-steps to
@@ -109,8 +109,8 @@ and every one of the 14 loses BOTH constitutive sub-steps to
   So the kernel would serve three rows, take none of them whole-step, and one of
   the three is a single voxel. That is why Arm S was specified and not built.
 
-  **THE THIRD BULLET STOPPED BEING TRUE ON 2026-08-16 AND WITH IT THE DECISION.**
-  ``no_pml_ade`` inverted exactly that ``f_w`` clause and the wiring round gave
+  **The third bullet stopped being true on 2026-08-16 and with it the decision.**
+  ``no_pml_ade`` inverted exactly that ``f_w`` clause and the wiring change gave
   ``update_P`` to exactly those three rows, so the sentence "all three additionally
   lose ``update_P``" is now false about all three. Re-measured against
   ``results/predicate_coverage_2026-08-16_wired_convention/``: Arm S takes
@@ -120,7 +120,7 @@ and every one of the 14 loses BOTH constitutive sub-steps to
   what the old count was and what invalidated it, because a demand figure that
   quietly changes value is how a costed decision outlives its cost.
 
-WHAT THIS PREDICATE DELIBERATELY DOES **NOT** REFUSE
+What this predicate deliberately does **not** refuse
 ----------------------------------------------------
 Every kernel predicate in this package refuses the fold, the cylindrical axis,
 complex storage, a Bloch phase, beta and BFAST. Those clauses exist because a kernel
@@ -136,7 +136,7 @@ cylindrical, a complex and a Bloch grid rather than leaving it as an argument.
 The refusals that remain are the ones a wrong answer could actually come through,
 and they are enumerated positively in :func:`null_constitutive_coverage`.
 
-AND THIS FILE CARRIED THE SAME DEFECT IT CITES, which is why the paragraph above
+And this file carried the same defect it cites, which is why the paragraph above
 now has a table behind it. Two things were repaired on 2026-08-13, both measured:
 
 * the chi2/chi3 refusal asserted that the nonlinearity "forces stored E
@@ -154,8 +154,8 @@ also stopped defaulting to the ADMITTING answer when the object cannot be read. 
 ``Fields`` proxy whose ``stores_E`` raised was covered with no reasons while the run
 underneath it wrote 4618 words; see :func:`_flag`.
 
-DISPATCH IS NOT WIRED — but the PLANNER now is, and this paragraph said otherwise
-for a round. ``fastpath.plan_fast_path`` still returns ``None`` on every branch and
+Dispatch is not wired — but the PLANNER now is, and this paragraph said otherwise
+for a while. ``fastpath.plan_fast_path`` still returns ``None`` on every branch and
 nothing here changes that, so no production step can reach this family.
 ``launch.plan_step`` DOES consult it: the ``no-PML null`` arm sits last in both
 constitutive tables behind the ``absorber_inactive`` gate, and ``__init__`` exports
@@ -181,7 +181,7 @@ THE RECORD, and what each artifact is for:
   already carrying a foreign process, and without it the isolation strips every GPU.
   The ``.slurm`` file beside it is kept as the record of that route.
 
-WHAT THE DEVICE LEG ADDED, AND WHAT IT DID NOT. It re-ran the whole gate under
+What the device leg added, and what it did not. It re-ran the whole gate under
 ``--backend cupy`` on real device arrays (6/6 legs, 0 differing words) and ran the
 composition probe's ``whole_step`` leg, which is the only leg in the family that needs
 a GPU: ``step_B``/``step_D`` on ``no_pml.plan_plain_curl`` beside these two nulls, so
@@ -189,7 +189,7 @@ all four heavy slots leave the array path at once. All 5 rows stayed bit-identic
 over 24 complete driver steps with all four slots substituted. It did NOT certify a
 kernel — there is none — and it did not raise the curl's step budget.
 
-THE DEVICE HOST ALSO EXPOSED TWO DEFECTS THE LAPTOP STRUCTURALLY COULD NOT, both now
+The device host also exposed two defects the laptop structurally could not, both now
 closed and pinned:
 
 * CUDA context initialisation calls ``setlocale`` and resets ``LC_CTYPE`` to ASCII
@@ -207,7 +207,7 @@ closed and pinned:
   stamp is now taken again after the legs, and the certified run reports 44 NVRTC
   compiles with all 44 stripped of ``-ftz=true``.
 
-AND A THIRD, WHICH IS THE ONE THAT MATTERED MOST, because it is this family's
+And a third, which is the one that mattered most, because it is this family's
 characteristic failure rather than a portability accident. A NULL certifies by
 agreeing with a no-op, so "the two drivers are bit-identical" is satisfied just as
 well by a run in which NOTHING MOVED. Neither byte-identity leg recorded whether the
@@ -277,8 +277,8 @@ NULL_SIDES: Dict[str, Dict[str, Any]] = {
 #: next reader does not have to re-derive the product from ``stepping`` to decide
 #: whether it is worth a kernel, and so the decision about it is auditable.
 #:
-#: THE DECISION IT ENCODED WAS REVERSED, AND BY A MEASUREMENT RATHER THAN A
-#: PREFERENCE. ``measured_demand`` used to end "ZERO additional whole-step rows. Not
+#: The decision it encoded was reversed, and by a measurement rather than a
+#: preference. ``measured_demand`` used to end "ZERO additional whole-step rows. Not
 #: built on that evidence", and the evidence stopped holding the day
 #: ``no_pml_ade``'s admission was wired: the three rows it counted as losing
 #: ``update_P`` no longer lose it. A stale demand figure is worse than none, because
@@ -616,7 +616,7 @@ def _storage_switch_reasons(fields: Any, pml: Any) -> List[str]:
     a configuration whose other half it has declared unsafe.
 
     It is NOT the only clause here that is unrequired by the arithmetic, and the
-    earlier claim that it was is one of the things this round repaired.
+    earlier claim that it was is one of the things a later revision repaired.
     :data:`CONSERVATIVE_CLAUSES` enumerates all four, each with the number of words
     the real ``stepping`` sub-step moved on its own needle — all four zero. This one
     is still written as its own function so that a future reader can delete it
@@ -686,7 +686,7 @@ def null_constitutive_coverage(fields: Any, pml: Any, side: str) -> Coverage:
 def stored_e_constitutive_reasons(fields: Any, pml: Any) -> Tuple[str, ...]:
     """Why Arm S refuses THIS configuration — now a real question with a real answer.
 
-    **THIS FUNCTION'S CONTRACT CHANGED ON 2026-08-16 AND THE CHANGE IS THE POINT.**
+    **This function's contract changed on 2026-08-16 and the change is the point.**
     It used to be a record rather than a predicate, and its docstring said "Always
     non-empty: the arm is not built". The arm IS built — ``no_pml_stored_e`` — so an
     unconditional refusal here would be a false statement about a live product, and
@@ -699,7 +699,7 @@ def stored_e_constitutive_reasons(fields: Any, pml: Any) -> Tuple[str, ...]:
     :data:`STORED_E_ARM`'s ``built`` flag instead, which is what it is for.
 
     Kept in THIS module rather than moved, for one reason: ``metal_kernels`` imports
-    it from here by name and that package is not this round's to edit. Its Metal
+    it from here by name and that package was not this change's to edit. Its Metal
     re-export inherits the corrected meaning along with the corrected record.
     """
     from .no_pml_stored_e import stored_e_constitutive_coverage  # noqa: PLC0415
@@ -834,7 +834,7 @@ def plan_null_constitutive_step(fields: Any, pml: Any,
 # WIRING — items 1 and 3 are DONE; 2, 4 and 5 stand as written
 # ---------------------------------------------------------------------------
 #
-# This block was written as a plan and read for a round as a statement of fact,
+# This block was written as a plan and read for a while as a statement of fact,
 # which it had stopped being. What follows is the seam as it now stands, item by
 # item, with the two that were performed marked as such.
 #
@@ -870,17 +870,17 @@ def plan_null_constitutive_step(fields: Any, pml: Any,
 #    and one function that used to hard-code a refusal
 #    (:func:`stored_e_constitutive_reasons`, which now delegates).
 #
-#    THE TWO ARMS ARE DISJOINT ON ONE ATTRIBUTE and it is the one stepping.py:1274
+#    The two arms are disjoint on one attribute and it is the one stepping.py:1274
 #    branches on: this family refuses ``stores_E`` True by name and Arm S requires
 #    it. An overlap is therefore impossible for the same reason item 2's is, and the
 #    ``update_E`` slot's inert-layer pair is meant to be read side by side in
 #    ``plan_step``'s table.
 #
-# 6. STILL NOT DONE, and it is not this module's to do: ``fastpath.plan_fast_path``
+# 6. Still not done, and it is not this module's to do: ``fastpath.plan_fast_path``
 #    returns ``None`` on every branch, so nothing a production step runs reaches
 #    the planner at all. The planner is called by tests, gates and the benchmark.
 #
-# 7. ONE CONSEQUENCE OF ITEM 1 A CALLER CAN SEE. This is the only family with no
+# 7. One consequence of item 1 a caller can see. This is the only family with no
 #    backend clause (see :func:`null_constitutive_coverage` — a product that
 #    launches nothing is correct on NumPy), so on a host with no CuPy
 #    ``plan_step(...).replaces`` now names ``update_H``/``update_E`` where it used

@@ -9,23 +9,23 @@ unadmitted on it: ``step_B``, ``step_D``, ``update_E``. Nobody has measured
 whether the blocking clauses are OVER-BROAD (a certified body would have been
 byte-exact) or LOAD-BEARING (a body genuinely diverges and a kernel is needed).
 
-WHY THIS FILE EXISTS RATHER THAN NEW CASES IN THE CLOSURE PROBE. Every primitive
+Why this file exists rather than new cases in the closure probe. Every primitive
 below — the uint32 whole-inventory comparison, the per-cycle bracketed vacuity
 gate, the signed-zero lattice and its restore, the every-volume perturbation,
 the complex seeding that writes BOTH halves — is IMPORTED from
 ``probe_residual_group_bodies``, unmodified. The 2026-08-15 adversarial audit
 found four defects in the superseded measurement, all four repaired there; the
-only way to be sure this round does not re-introduce one is to run the repaired
+only way to be sure this probe does not re-introduce one is to run the repaired
 code rather than a copy of it. This file contributes the CASES and nothing else.
 
-THE BINDING, STATED BEFORE THE RESULT
+The binding, stated before the result
 -------------------------------------
 No certified product covers a complex run with NO absorber. The complex family
 (``triton_kernels/complex_fields.py``) is split-field only, and the no-absorber
 family (``triton_kernels/no_pml.py``) is real float32 only and carries no Bloch
 phase — while both of (J)'s rows carry a nonzero k on a periodic wrap, which is
 what forces their complex storage in the first place. So the closest body is the
-complex one, and putting it on (J) requires a DEGENERATE NO-ABSORBER BINDING.
+complex one, and putting it on (J) requires a degenerate no-absorber binding.
 Two of its three parts are the shipped builder's own expressions; the third is a
 substitution and is named as such:
 
@@ -68,7 +68,7 @@ returns early), so measuring it would measure nothing. The body used instead is
 
 CONTROLS. A null result with no live control proves nothing; group (G) measured
 IDENTICAL over four cycles and was wrong. Three controls run beside the subjects,
-each of which MUST diverge or the round is void:
+each of which MUST diverge or the run is void:
 
 * ``PHASEOFF`` — the same body and bindings with ``PHX=PHY=PHZ=0``, which compiles
   the Bloch rotation away. Both (J) rows carry k != 0 on a periodic wrap, so this
@@ -350,7 +350,7 @@ def main(argv) -> int:
     results["cupy"] = cp.__version__
     results["device"] = cp.cuda.runtime.getDeviceProperties(0)["name"].decode()
 
-    # THE POLICY IS INSTALLED, NOT MERELY NAMED IN THE ENVIRONMENT, and it is
+    # The policy is installed, not merely named in the environment, and it is
     # installed HERE — before the first CuPy elementwise op or Triton kernel
     # compiles, because neither executor can recall bytes it has already written.
     # It has to be an INSTALL rather than a declaration: an env var declares a policy
@@ -362,7 +362,7 @@ def main(argv) -> int:
                   f"attained={results['subnormal_policy_stamp'].get('attained')}")
 
 
-    # (1) REACHABILITY, VERIFIED NOT INHERITED. Both row shapes must carry all four
+    # (1) Reachability, verified not inherited. Both row shapes must carry all four
     #     of (J)'s features simultaneously on the fixture itself.
     features: Dict[str, Any] = {}
     for tag, config in (("J3", J_3D), ("J2", J_2D)):
@@ -384,7 +384,7 @@ def main(argv) -> int:
         del fields, pml
     results["fixtures"] = features
 
-    # (2) THE BINDING'S PREMISE, on the engine's own recurrence, on this device.
+    # (2) The binding's premise, on the engine's own recurrence, on this device.
     shape = tuple(int(n) for n in features["J3"]["shape"])
     rng = np.random.default_rng(4242)
     field = cp.asarray((rng.uniform(-1, 1, shape)
@@ -447,7 +447,7 @@ def main(argv) -> int:
     live = [r for r in controls if r.get("verdict") == "DIVERGENT"]
     results["controls_total"] = len(controls)
     results["controls_diverged"] = len(live)
-    # THE ROUND'S OWN VALIDITY GATE. A null subject verdict beside a dead control
+    # The run's own validity gate. A null subject verdict beside a dead control
     # is not evidence; it is the group (G) failure repeated.
     results["round_valid"] = bool(controls) and len(live) == len(controls)
     results["surprises"] = [r["case"] for r in results["cases"]

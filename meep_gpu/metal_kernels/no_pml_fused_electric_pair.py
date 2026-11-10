@@ -1,6 +1,6 @@
 """The lossless no-PML ``step_D`` welded into stored-E ``update_E``, deposit carried.
 
-THE LOSSLESS SIBLING of :mod:`.no_pml_conductive_fused_electric_pair`, and the
+The lossless sibling of :mod:`.no_pml_conductive_fused_electric_pair`, and the
 second Metal product on :data:`meep_gpu.deposit_repair.PLAIN_PATH` — the repair
 that inverts ``update_E``'s plain overwrite (``stepping.py:1019-1022``) rather than
 the split-field recurrence. The two modules are one construction over the two
@@ -22,7 +22,7 @@ INSIDE this seam — which is why :data:`CARRIES_DEPOSIT_REPAIR` is the product
 rather than a refinement of it, and why this family serves 1 of its 1 seam-instance
 where its conductive sibling serves 0 of 2 (see that module's priced refusal).
 
-THE SEAM, PASS BY PASS — the conductive sibling's disposition, minus the rescale:
+The seam, pass by pass — the conductive sibling's treatment, minus the rescale:
 
 * **the electric injection — CARRIED, through the deposit repair**, saved and
   restored through :data:`REPAIR_PATHS` = the PLAIN path alone;
@@ -37,7 +37,7 @@ THE SEAM, PASS BY PASS — the conductive sibling's disposition, minus the resca
   regardless);
 * **the two fills — INERT**: both halves refuse a mirror plane, restated by name.
 
-EVERYTHING IS TRANSCRIBED: the curl half from
+Everything is transcribed: the curl half from
 :data:`.no_pml_curl._PLAIN_CURL_TEMPLATE`'s own decode, bounds block, ghost, load,
 curl and mask text, one target per dispatch, every emitted line asserted to be a
 line of the certified all-component emitter's own output; the constitutive half
@@ -59,7 +59,7 @@ PER COMPONENT for symmetry with the sibling and the certified stored-E family
 slots declared, the chunk record included); one dispatch per component IS the
 fusion.
 
-NOT WIRED, composed only through ``launch.FUSED_PAIR_ARMS``. MEASURED through
+NOT WIRED, composed only through ``launch.FUSED_PAIR_ARMS``. Measured through
 ``plan_step`` with ``fuse=False`` under ``MEEP_GPU_SUBNORMAL_POLICY=flush`` on
 ``metal_composition_matrix.real_stored_e_no_pml(with_polarization=True)``:
 ``step_D`` comes back ``'no-PML curl'`` and ``update_E`` ``'no-PML stored E'`` —
@@ -272,7 +272,7 @@ def _per_component_curl(codes: Sequence[int], axis: int,
             if line.strip().startswith(f"curl{axis} ")]
     lines.extend(mask or [f"    // no metallic axis masks curl{axis}"])
     lines.append("")
-    # THE LOSSLESS TAIL SPLIT, from LIFT_EDITS as data. The certified line must be
+    # The lossless tail split, from LIFT_EDITS as data. The certified line must be
     # a line of the certified emitter's own output before it is edited.
     old, new, _why = LIFT_EDITS[1]
     certified_tail = old.format(axis=axis)
@@ -377,7 +377,7 @@ def no_pml_fused_electric_pair_coverage(fields: Any, pml: Any, sources: Any = No
     if not electric.covered:
         reasons.extend(f"stored-E half: {reason}" for reason in electric.reasons)
 
-    # THE SOURCE SEAM, CARRIED — pml and repair_paths forwarded, as on the sibling.
+    # The source seam, carried — pml and repair_paths forwarded, as on the sibling.
     reasons.extend(_deposit_repair.seam_source_reasons(
         fields, sources, 'D',
         undeclared=(
@@ -391,7 +391,7 @@ def no_pml_fused_electric_pair_coverage(fields: Any, pml: Any, sources: Any = No
         pml=pml,
         repair_paths=REPAIR_PATHS))
 
-    # THE CONDUCTIVE RESCALE CLAUSE, consulted even though the lossless curl half
+    # The conductive rescale clause, consulted even though the lossless curl half
     # already refuses every D-target conductivity by name: one home for the clause,
     # and a drift in either fact surfaces as a refusal rather than an admission.
     reasons.extend(_scaled_conductive_injection_reasons(fields, sources))
@@ -485,7 +485,9 @@ class MetalNoPmlFusedElectricPairPlan:
                 raise KeyError(
                     f"this plan holds no {mode!r} variant (it was built with "
                     f"{self.variants})")
-            poles = tuple(state.P[entry.component] for state in entry.states)
+            # Resolving which array is current is not a read of its words: the plain dict
+            # subscript keeps a held mirror on the device (barrier.BarrierDict acquires).
+            poles = tuple(dict.__getitem__(state.P, entry.component) for state in entry.states)
             if len(poles) != entry.pole_count:
                 raise RuntimeError(
                     f"{entry.component} resolved {len(poles)} poles, not the "

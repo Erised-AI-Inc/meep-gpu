@@ -34,6 +34,31 @@ PASSING = ("released", "refusal_established")
 E2E_PASSING = ("PASS-DISPATCHED", "PASS-FELL-BACK")
 
 
+def neutral_ids():
+    """The record spellings of ``parity/meep_gpu/neutral_ids.py`` (machine ids, card ids,
+    paths under their labels), loaded by its path and shared with any importer that loaded
+    it first: the round's tools write every record and log line through it."""
+    if "neutral_ids" in sys.modules:
+        return sys.modules["neutral_ids"]
+    import importlib.util  # noqa: PLC0415 - only this loader needs it
+
+    spec = importlib.util.spec_from_file_location(
+        "neutral_ids", Path(__file__).resolve().parents[2] / "neutral_ids.py")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["neutral_ids"] = module
+    try:
+        spec.loader.exec_module(module)
+    except BaseException:
+        sys.modules.pop("neutral_ids", None)
+        raise
+    return module
+
+
+def _out(line: str) -> None:
+    """One line of this tool's report, written neutrally: it goes back with the round."""
+    print(neutral_ids().text(line), flush=True)
+
+
 def _load(path: Path) -> Optional[Any]:
     try:
         return json.loads(path.read_text(encoding="utf-8"))
@@ -132,7 +157,10 @@ def fleet_root(root: Path) -> List[Dict[str, Any]]:
             if not gate:
                 continue
             seen.add(gate)
-            artifact = Path(row.get("artifact") or root / gate / "gate.json")
+            # The fleet driver records the artifact relative to its campaign directory
+            # (drive_triton_weld_gates.campaign_relative); a row an older driver wrote
+            # holds an absolute path, which the join leaves as it is.
+            artifact = root / (row.get("artifact") or f"{gate}/gate.json")
             verdict = classify(artifact)
             rows.append({"gate": gate, "root": root.name, "elapsed_s": row.get("elapsed_s"),
                          "timed_out": row.get("timed_out"), "exit_code": row.get("exit_code"),
@@ -159,7 +187,7 @@ def _print_rows(rows: List[Dict[str, Any]]) -> int:
     good = [r for r in rows if is_pass(r["state"])]
     for row in rows:
         why = "; ".join(str(x) for x in (row.get("reasons") or [])[:2])[:200]
-        print(f"  {row['state']:<20} {row.get('root', ''):<44} {row['gate']:<48} {why}")
+        _out(f"  {row['state']:<20} {row.get('root', ''):<44} {row['gate']:<48} {why}")
     print(f"{len(good)} of {len(rows)} passing (released or refusal established)")
     return 0 if len(good) == len(rows) and rows else 1
 
@@ -170,7 +198,7 @@ def main(argv: List[str]) -> int:
         return 2
     what, rest = argv[0], argv[1:]
     if what == "artifact":
-        print(json.dumps(classify(Path(rest[0])), indent=1))
+        _out(json.dumps(classify(Path(rest[0])), indent=1))
         return 0 if is_pass(classify(Path(rest[0]))["state"]) else 1
     if what == "root":
         rows: List[Dict[str, Any]] = []
@@ -192,7 +220,7 @@ def main(argv: List[str]) -> int:
             print(f"{steps.parent.name}: {n} of {len(last)} steps passing")
             for row in last.values():
                 if not is_pass(row.get("state", "")):
-                    print(f"    {row['id']}: {row.get('state')} {str(row.get('reasons'))[:160]}")
+                    _out(f"    {row['id']}: {row.get('state')} {str(row.get('reasons'))[:160]}")
             total += len(last)
             good += n
         print(f"all lanes: {good} of {total} steps passing")

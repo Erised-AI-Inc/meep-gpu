@@ -1,13 +1,13 @@
 """The FOLDED dispersive pair: ``step_D`` -> both fills -> wall -> pole-aware ``update_E``.
 
-THE INTERSECTION THE TWO SHIPPED D-SIDE PAIRS LEAVE UNCOVERED, and the largest one
+The intersection the two shipped D-side pairs leave uncovered, and the largest one
 left on the folded side of the Metal fusion board: :mod:`.folded_fused_pair` welds
 the folded curl to the ORDINARY E half, and :mod:`.fused_dispersive_pair` welds the
 unfolded curl to the POLE-AWARE one. A folded grid carrying live electric poles is
 served by neither, and the corpus has four such instances — every one of them a
 ``TestLoadDump`` row with five poles and one Y mirror.
 
-EVERYTHING HERE IS TRANSCRIBED, and the three parts come from three already
+Everything here is transcribed, and the three parts come from three already
 certified places:
 
 * the folded D curl and BOTH mirror fills — :mod:`.folded_fused_pair`'s own
@@ -33,17 +33,17 @@ certified places:
   (kms*prev))`` with ``f_w = src`` on a cell whose chunk carries the component's own
   layer, and the output select ``e = src`` elsewhere, ``f_w`` untouched there.
 
-THE PML FORMS ARE CHOSEN PER STRUCTURE CHUNK, as :mod:`.folded_fused_pair` chooses
+The PML forms are chosen per structure chunk, as :mod:`.folded_fused_pair` chooses
 them and from the same chunk record, which rides in ``Params`` (no binding). Per
 component the kernel reads two record entries: the curl's dsigu axis on the integer
 lattice and the E half's own axis on the half-integer one. A far ghost evaluates the
 E half's flag at its destination (stored ``last``), beside the coordinate it reloads
 its pair at; a near ghost shares its owner's. The pole chain is the base array path's
-``D - P0 - P1 ...`` in pole order; the ADE form itself (F_DISPERSIVE) is not in this
-module.
+``D - P0 - P1 ...`` in pole order; the ADE form itself (MEEP's polarisation
+recurrence) is not in this module.
 
 ===========================================================================
-PER COMPONENT, AND THE POLE BUDGET IS WHY — not a platform refusal
+Per component, and the pole budget is why — not a platform refusal
 ===========================================================================
 
 :mod:`.folded_fused_pair` takes all three components in ONE launch at exactly 31
@@ -64,13 +64,13 @@ not a refusal. Per component the count is 24 pointers plus one packed
 seven under the ceiling, which is what pays for the three reflect rows riding
 inside ``Params`` — the far carry costs no binding here either.
 
-THE THREE H OPERANDS ARE ALL BOUND even though a given target differences only two
+The three H operands are all bound even though a given target differences only two
 of them. One buffer layout for all three specialisations is what lets the plan bind
 ``Hx``/``Hy``/``Hz`` once and hand the same three mirrors to every dispatch; the
 unused one is never read by a source specialised to that target.
 
 ===========================================================================
-THE SEAM, AND WHAT SITS INSIDE IT — measured from the driver, not assumed
+The seam, and what sits inside it — measured from the driver, not assumed
 ===========================================================================
 
 ``step_D`` -> ELECTRIC SOURCES -> ``fill_symmetry_bc_D`` -> ``zero_metal_D`` ->
@@ -90,7 +90,7 @@ THE SEAM, AND WHAT SITS INSIDE IT — measured from the driver, not assumed
   :func:`.folded_fused_pair.zero_metal_lines`, at the same point in the driver's
   order: after the near fill (:3300) and before the far one (:3302).
 
-NOT WIRED AS AN ARM: ``plan_step`` assigns at most one arm per slot and this
+Not wired as an arm: ``plan_step`` assigns at most one arm per slot and this
 product spans five. It registers ``wired=False`` and reaches its two slots through
 ``launch.FUSED_PAIR_ARMS``.
 """
@@ -149,24 +149,24 @@ from .. import deposit_repair as _deposit_repair
 #: about the PLAN this module builds -- that the leading slot saves and the trailing
 #: slot restores -- and is only ever changed in the same edit as that wiring.
 #:
-#: TRUE FROM THIS FAMILY'S FIRST COMMIT, in the same edit as its
+#: True from this family's first commit, in the same edit as its
 #: ``launch.FUSED_PAIR_ARMS`` row. Everything the claim needs was built and measured
 #: for :mod:`.folded_fused_pair` on 2026-08-28 and none of it is storage- or
 #: pole-specific:
 #:
-#: * THE FOLDED SEAM. ``deposit_repair.repair_cells`` (deposit_repair.py:217-258)
+#: * The folded seam. ``deposit_repair.repair_cells`` (deposit_repair.py:217-258)
 #:   hands ``save``/``apply`` the CLOSURE of the cells ``fill_symmetry_bc_D`` and
 #:   ``fill_folded_far_ghosts_D`` image each deposit point into -- the inverse of the
 #:   forward carry :func:`carried_destinations` implements here. A POINT repair is
 #:   measurably wrong on a folded seam and that measurement is in that module.
-#: * THE CONSTITUTIVE SHAPE. ``deposit_repair.apply`` recomputes
+#: * The constitutive shape. ``deposit_repair.apply`` recomputes
 #:   ``field + kps*fresh - kms*fw_prev``, which is EXACTLY the pole-aware E half's
 #:   accumulation (dispersive_update_e.py:78-82) -- the poles enter through ``fresh``,
 #:   as ``(D - sum P) * inv_eps``, and the repair recomputes that from the repaired D
 #:   like any other source. Measured rather than argued: ``repairable`` returns True
 #:   on ``metal_composition_matrix.dispersive(matrix.folded())`` with the layer
 #:   supplied, which is the call that runs the absorber clauses.
-#: * WHAT IS STILL REFUSED BY NAME, inherited: a source publishing no deposit index,
+#: * What is still refused by name, inherited: a source publishing no deposit index,
 #:   the cylindrical r = 0 axis, and a folded axis storing no more than
 #:   ``MIRROR_SOURCE_INDEX`` cells.
 CARRIES_DEPOSIT_REPAIR = True
@@ -207,7 +207,7 @@ if PACKED_BINDINGS > MAX_BUFFER_BINDINGS:  # pragma: no cover - a design invaria
         f"the folded fused dispersive pair binds {PACKED_BINDINGS} buffers and "
         f"Metal's ceiling on this toolchain is {MAX_BUFFER_BINDINGS}")
 
-#: THE POLE BUFFERS ARE ``q0..q7`` HERE AND ``p0..p7`` IN THE POINTWISE FAMILY, and
+#: The pole buffers are ``q0..q7`` here and ``p0..p7`` in the pointwise family, and
 #: the rename is forced rather than stylistic, exactly as it is in
 #: :mod:`.fused_dispersive_pair`: the curl body names its split-field previous value
 #: ``p{t}``, so fused, ``p0`` would mean two different things in one scope on the x
@@ -235,7 +235,7 @@ using namespace metal;
 
 __CONTRACT__
 
-// EIGHT SCALARS, ONE BINDING. The three reflect rows the far carry needs
+// Eight scalars, one binding. The three reflect rows the far carry needs
 // (stepping._far_reflect_rows:1661) ride inside this record rather than as three
 // more buffers, so carrying fill_folded_far_ghosts_D costs nothing against the
 // platform's 31-binding ceiling (device.py:72). The chunk record rides here too,
@@ -275,7 +275,7 @@ kernel void folded_fused_dispersive_pair_component(
     constant Params&    prm      [[buffer(24)]],
     uint idx [[thread_position_in_grid]])
 {
-    // THE EIGHT SCALARS ARE UNPACKED INTO THE TRANSCRIBED BODIES' OWN NAMES, once,
+    // The eight scalars are unpacked into the transcribed bodies' own names, once,
     // and the record is aliased as the `cb` the bounds block reads, before any of
     // the lifted text runs.
     uint nx = prm.nx, ny = prm.ny, nz = prm.nz, n_elem = prm.n_elem;
@@ -307,7 +307,7 @@ def _constitutive_block(target: int, index: str, value: str, indent: str,
     ``dw`` defaults to the owned cell's ``dw{target}``; a far ghost passes the flag
     it evaluates at its destination (:func:`_far_membership`).
 
-    THE POLE SUBTRACTION CHAIN IS LEFT-ASSOCIATED AND BOUNDED, in the pointwise
+    The pole subtraction chain is left-associated and bounded, in the pointwise
     family's own order: ``source = source - q0[..]`` then ``- q1[..]``, one
     statement each, because that is where the array path's float32 round points are
     (``fields.displacement_minus_polarization``). Flattening the chain into one
@@ -321,7 +321,7 @@ def _constitutive_block(target: int, index: str, value: str, indent: str,
     geometry forces on the ordinary folded pair, imported from it rather than
     re-derived.
 
-    THE POLES ARE READ AT THE DESTINATION INDEX, not at the source thread's. The
+    The poles are read at the destination index, not at the source thread's. The
     array path runs ``update_E`` over every stored cell AFTER the fills have written
     the ghost, so a ghost's E is formed from the ghost's own ``P`` -- and the fills
     write ``field`` alone (stepping.py:1497-1498), never ``P``. Reading ``q`` at the
@@ -380,7 +380,7 @@ def _carry_blocks(target: int, near: Sequence[int], far: Sequence[int],
                   pole_count: int, indent: str) -> List[str]:
     """Every imaged ghost this thread owns, then the pole-aware ``update_E`` at each.
 
-    THE GEOMETRY IS :mod:`.folded_fused_pair`'S, IMPORTED: which destinations exist
+    The geometry is :mod:`.folded_fused_pair`'s, imported: which destinations exist
     (:func:`.folded_fused_pair.carried_destinations`), the parity of each
     (:func:`.folded_fused_pair._component_parity`), where the wall clear sits
     relative to each fill (:func:`.folded_fused_pair.zero_metal_lines`) and which
@@ -388,7 +388,7 @@ def _carry_blocks(target: int, near: Sequence[int], far: Sequence[int],
     (:func:`.folded_fused_pair._far_coefficient_lines`). Only the CONSTITUTIVE
     BLOCK differs, and only by the pole chain.
 
-    THE TWO FILLS TAKE OPPOSITE ORDERS AROUND THE WALL CLEAR, unchanged from the
+    The two fills take opposite orders around the wall clear, unchanged from the
     ordinary folded pair because the driver's order is unchanged: the NEAR ghost is
     ``mask(parity * v)`` (the fill at :3300 precedes the clear at :3301) and the FAR
     ghost is ``parity * mask(v)`` with no clear line of its own (:3302 follows it),
@@ -457,7 +457,7 @@ def _carry_blocks(target: int, near: Sequence[int], far: Sequence[int],
             lines.append(f"{inner}float {tag}_v = "
                          f"{_parity_spelling(weight * far_weight, f'v{target}')};")
         lines.append(f"{inner}f{target}[{tag}_i] = {tag}_v;")
-        # THE DESTINATION'S OWN COORDINATE ON THE INDEXED AXIS, and it is the one
+        # The destination's own coordinate on the indexed axis, and it is the one
         # asymmetry the D geometry forces -- the exact inverse of the magnetic
         # twin's. ``dispersive_e_source`` indexes target ``t`` on axis ``t``
         # (stepping.E_CONSTITUTIVE_TERMS), :func:`far_fill_axes` returns axis ``t``
@@ -474,7 +474,7 @@ def _carry_blocks(target: int, near: Sequence[int], far: Sequence[int],
         # ordinary pair is the identical word.
         coordinate = _LAST[target] if carries_far else _COORDINATE[target]
         lines.append(f"{inner}int {tag}_coord = {coordinate};")
-        # THE MEMBERSHIP MOVES WITH THE COORDINATE, for the same reason: the E half
+        # The membership moves with the coordinate, for the same reason: the E half
         # selects its form on the component's own axis. A near ghost shares its
         # owner's flag; a far one evaluates its own at `last`.
         if carries_far:
@@ -581,7 +581,7 @@ def folded_fused_dispersive_pair_source(
     loads, curl = certified_target_curl(codes, target, contract)
     statements = certified_curl_statements(codes, contract)
     previous, stage, stepped = statements["recurrence"][target]
-    # THE TWO RECORD ENTRIES THIS COMPONENT READS: the curl's dsigu axis on the curl
+    # The two record entries this component reads: the curl's dsigu axis on the curl
     # side's lattice (shaders.CURL_CYCLE, CURL_HALF_INTEGER), and the E half's own
     # axis on its lattice (CONSTITUTIVE_HALF_INTEGER).
     curl_half = shaders.CURL_HALF_INTEGER[BACKWARD]
@@ -606,7 +606,7 @@ def folded_fused_dispersive_pair_source(
                                presence=(0, 1, 2)),
         "",
         "    // --- the ghost rule, per axis (stepping._shift_down) ----------------",
-        "    // BOTH MIRROR CODES TAKE THE METALLIC BRANCH through _reduced_codes;",
+        "    // Both mirror codes take the metallic branch through _reduced_codes;",
         "    // the ghost it serves is dead under the cell-0 mask (symmetry.py:36-49).",
         "    int si = i - 1, sj = j - 1, sk = k - 1;",
         "    bool vx = true, vy = true, vz = true;",
@@ -663,7 +663,7 @@ def folded_fused_dispersive_pair_source(
         previous,
         stage,
         "",
-        "    // `u` IS WRITTEN ON THE RECURRENCE'S CELLS BY EVERY THREAD, ghost cells",
+        "    // `u` is written on the recurrence's cells by every thread, ghost cells",
         "    // included: step_D updates fu there and the fills touch D only",
         "    // (stepping._write_mirror_ghost writes `field`, never `fu_field`).",
         statements["aux_stores"][target],
@@ -690,7 +690,7 @@ def folded_fused_dispersive_pair_source(
                 [f"stored cell 0 on {_COORDINATE[axis]} (near)" for axis in near]
                 + [f"the top plane on {_COORDINATE[axis]} (far)" for axis in far])
             + ",",
-            "    // so those cells are OWNED BY THEIR SOURCE THREADS. This one stops "
+            "    // so those cells are owned by their source threads. This one stops "
             "after fu:",
             "    // the array path's fill overwrites the displacement it would store, "
             "and",
@@ -790,10 +790,10 @@ def metal_folded_fused_dispersive_pair_coverage(
         return Coverage(False,
                         tuple(dict.fromkeys(reasons + ["fields carries no grid"])))
 
-    # THE SOURCE SEAM. An electric source is injected BETWEEN the two halves
+    # The source seam. An electric source is injected BETWEEN the two halves
     # (driver.py:3294-3299), so a fused pair would consume a pre-injection D unless
     # the deposit repair brackets the launch -- which for this family it does.
-    # IGNORANCE IS NEVER AN EMPTY SET: `Fields` does not hold the source list, so a
+    # Ignorance is never an empty set: `Fields` does not hold the source list, so a
     # predicate that inferred "no sources" from not being told would be the
     # over-covering refusal this clause exists to prevent.
     reasons.extend(_deposit_repair.seam_source_reasons(
@@ -811,12 +811,12 @@ def metal_folded_fused_dispersive_pair_coverage(
         grid, pml if (pml is not None and getattr(pml, "is_active", False)) else None)
     reasons.extend(code_reasons)
 
-    # THE FAR FILL IS CARRIED, not refused; these are the conditions its OWNERSHIP
+    # The far fill is carried, not refused; these are the conditions its OWNERSHIP
     # MOVE rests on, and the mirror parity must be readable on every folded axis.
     reasons.extend(_far_carry_reasons(grid, codes))
     reasons.extend(_mirror_phase_reasons(grid, codes))
 
-    # THE WALL CLEAR IS CARRIED INLINE, so the grid must be able to answer which
+    # The wall clear is carried inline, so the grid must be able to answer which
     # axes are walled. A grid that cannot would silently be treated as unwalled,
     # which is a plane of wrong values rather than a crash.
     for name in ("has_metallic", "is_metallic", "is_mirrored"):
@@ -833,7 +833,7 @@ def metal_folded_fused_dispersive_pair_coverage(
                     f"the near fill images stored cell {NEAR_SOURCE_INDEX} and this "
                     f"kernel images it from that cell's own thread")
 
-    # A POLE BUDGET THIS SOURCE CANNOT BAKE. The E half already refuses more than
+    # A pole budget this source cannot bake. The E half already refuses more than
     # MAX_POLES; restated because the count is a SOURCE specialisation here and a
     # component compiled for the wrong count would subtract the wrong number of
     # arrays rather than fail.
@@ -924,7 +924,7 @@ class MetalFoldedFusedDispersivePairPlan:
         pinned one, for the reason :class:`.plans.KernelPlan` gives: a guard argument
         that quietly did nothing would make the gate's most important leg vacuous.
 
-        THE POLE POINTERS ARE RESOLVED AT LAUNCH, NOT AT PLAN TIME. ``update_P``
+        The pole pointers are resolved at launch, not at plan time. ``update_P``
         rotates ``P``/``P_prev``/``_scratch`` after every recurrence, so the PHYSICAL
         array holding a component's current P changes between steps while the mirror
         registry does not.
@@ -938,12 +938,14 @@ class MetalFoldedFusedDispersivePairPlan:
                     f"this plan holds no {mode!r} variant (it was built with "
                     f"{self.variants}); build it with contract_variants={(mode,)} "
                     f"rather than launching the pinned one")
-            poles = tuple(state.P[entry.component] for state in entry.states)
+            # Resolving which array is current is not a read of its words: the plain dict
+            # subscript keeps a held mirror on the device (barrier.BarrierDict acquires).
+            poles = tuple(dict.__getitem__(state.P, entry.component) for state in entry.states)
             if len(poles) != entry.pole_count:
                 raise RuntimeError(
                     f"{entry.component} resolved {len(poles)} poles, not the "
                     f"compiled count {entry.pole_count}")
-            # THE UNUSED POLE SLOTS BIND THE INVERSE EPSILON, NOT THE DISPLACEMENT,
+            # The unused pole slots bind the inverse epsilon, not the displacement,
             # for `fused_dispersive_pair`'s reason: this kernel WRITES D, so padding
             # with it would alias a written buffer into a `device const float*` in
             # the same dispatch.
@@ -977,7 +979,7 @@ class MetalFoldedFusedDispersivePairPlan:
 def params_record_dtype() -> Any:
     """The host record's dtype -- five scalars, the three reflect rows, the chunk record.
 
-    ONE HOME FOR THE LAYOUT. Every member is four bytes and Metal's alignment for
+    One home for the layout. Every member is four bytes and Metal's alignment for
     ``uint``/``int``/``float`` and for the all-4-byte ``ChunkBounds`` struct is four,
     so the natural record IS the struct; the offsets are stated anyway so the
     agreement cannot become accidental: the record's 100 bytes at offset 32.
@@ -998,7 +1000,7 @@ def _params_tensor(shape: Sequence[int], dtdx: float,
                    device: str) -> Any:
     """The eight scalars and the chunk record as one 132-byte device record.
 
-    PLAN-OWNED AND OUTSIDE THE RESIDENCY REGISTRY, for the reason every packed pair
+    Plan-owned and outside the residency registry, for the reason every packed pair
     gives: :meth:`.Residency.mirror` binds float32 and complex64 volumes and refuses
     anything else BY NAME. Nothing on the launch path allocates.
 
@@ -1164,7 +1166,7 @@ def _arm_plan(context: Any,
 def register_arms() -> Tuple[Any, ...]:
     """One row on ``step_D``, ``wired=False``.
 
-    THE FLAG IS THE WHOLE COMPOSITION STORY, as it is on every other pair.
+    The flag is the whole composition story, as it is on every other pair.
     ``plan_step`` assigns at most one arm per slot and this product spans five, so
     there is no slot it could claim through the arm table. Registering unwired keeps
     it ENUMERABLE for the disjointness sweep (``arms.registered``) while
@@ -1172,7 +1174,7 @@ def register_arms() -> Tuple[Any, ...]:
     arm's selection changes -- including the ``folded`` curl arm and the ``folded
     dispersive PML E`` arm this pair's own predicate is built out of.
 
-    THE OTHER HALF IS THE ABSORB TABLE:
+    The other half is the absorb table:
     ``launch.FUSED_PAIR_ARMS["folded_fused_dispersive_pair"]`` declares which arm
     each of the two slots implements.
     """

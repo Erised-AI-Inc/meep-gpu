@@ -1,6 +1,6 @@
 """Byte gate for the Metal real-field PML curl and ``dsigw`` constitutive kernels.
 
-THE CLAIM THIS GATE MAKES, and the only one: **byte-identity to ``stepping.py`` on
+The claim this gate makes, and the only one: **byte-identity to ``stepping.py`` on
 this host, subject to a declared and CHECKED subnormal-free precondition.** Not a
 stated tolerance. The justification is a measured cliff rather than an argument —
 scaling the whole field state and re-running the same kernel gives identity at
@@ -11,7 +11,7 @@ plus a checked precondition is the only honest shape. Leg 6 is that check, and i
 is required to FIRE on the scaled control — a precondition never demonstrated to
 fire is decorative.
 
-THE ORACLE IS IN PROCESS. On the Triton track it lived on another box, so gates
+The oracle is in process. On the Triton track it lived on another box, so gates
 emitted per-step state hashes for offline comparison. Here ``stepping.step_B(fields,
 pml)`` and the Metal launch run in ONE process against ONE seed, on real
 ``Grid``/``Fields``/``PML`` objects. That collapses the reference/synthetic split
@@ -22,13 +22,13 @@ transcription against ``stepping.py`` over multiple full cycles BEFORE any Metal
 kernel is trusted, which is what stops "bit-identical" from meaning the kernel
 reproduced whatever the harness wrote twice.
 
-WHAT IS COMPARED: uint32 word equality on float32 storage, never ``allclose``. The
+What is compared: uint32 word equality on float32 storage, never ``allclose``. The
 compared arrays are the sub-step's TARGETS **and** its AUXILIARIES — ``fu_*`` for
 the curl, ``f_w_*`` for the constitutive. The auxiliaries are STATE, so a kernel
 that is right for one launch and wrong forever after only diverges in the
 multi-step leg; omitting them is how that defect hides.
 
-THE PML FORM IS CHOSEN PER STRUCTURE CHUNK, as MEEP chooses it and as the array
+The PML form is chosen per structure chunk, as MEEP chooses it and as the array
 path steps it (``stepping._apply_curl_regions`` / ``_apply_constitutive_regions``):
 the split-field recurrence on a cell whose chunk carries the target's dsigu layer
 and the dsig-only form elsewhere; the accumulation on a cell whose chunk carries
@@ -39,7 +39,7 @@ division the array path steps a driverless ``Fields`` with, and a two-run record
 with random coefficients on the synthetic leg (``two_run_record``) — and the
 in-gate transcription reads the same lines.
 
-THE TWELVE LEGS:
+The twelve legs:
 
   0  transcription  the in-gate NumPy reference vs ``stepping.py``, full cycles
   1  reference      the Metal kernels vs ``stepping.py``, real engine objects
@@ -68,13 +68,13 @@ reasons; armed mutations launch-counted with DISARMED / NEEDLE-MISSED / caught
 classification; the signed-zero census floored, because a census of 0 is VACUOUS
 and not a pass.
 
-OVERFLOW AND NaN NEEDLES ARE EXCLUDED, on this track as on the Triton one: NaN
+Overflow and NaN needles are excluded, on this track as on the Triton one: NaN
 sign and payload are IEEE-unspecified and every Metal op carries NaN-class
 residuals, so a needle there measures the toolchain's mood rather than the
 transcription.
 
 STATED WEAKNESS, recorded because it is a real difference from the Triton
-certification: there is NO PTX-EQUIVALENT AUDIT here. ``subnormal_policy`` can read
+certification: there is no PTX-equivalent audit here. ``subnormal_policy`` can read
 every generated instruction and refuse a compile on a policy violation;
 ``compile_shader`` exposes no disassembly, so the mutation legs and this gate are
 the only arbiters on this executor.
@@ -198,8 +198,8 @@ CONFIGS: Tuple[Tuple[str, Tuple[float, float, float], Any], ...] = (
     ("metallic_all", (1.1, 1.0, 0.9), "metallic"),
 )
 
-#: PINNED BY NAME, and an edit here silently disarms leg 5. The signed-zero OUTPUT
-#: class on the CURL is non-vacuous ONLY WITH A METALLIC AXIS: censused on
+#: Pinned by name, and an edit here silently disarms leg 5. The signed-zero OUTPUT
+#: class on the CURL is non-vacuous only with a metallic axis: censused on
 #: identical seeding (186 x -0.0 and 141 x +0.0 words in), periodic_all produced
 #: 0 x -0.0 on both sub-steps while metallic_xy produced 12 (step_B) and 21
 #: (step_D). The ownership mask writing exact zeros through the recurrence is what
@@ -258,7 +258,7 @@ def build(cell, boundaries, courant: float, seed: int, scale: float = 1.0,
             host.reshape(-1)[::17] = np.float32(-0.0)
             host.reshape(-1)[7::23] = np.float32(0.0)
         array[...] = host
-    # A SEEDED STATE IS A MID-RUN ONE: MEEP's start of H from B
+    # A seeded state is a mid-run one: MEEP's start of H from B
     # (stepping.separate_h_from_b) is long past, so the array path's first update_H
     # must not run it again — the kernels never do.
     fields.h_separated = True
@@ -513,7 +513,7 @@ def run_constitutive_on_device(state: Dict[str, Any], pml, side: str,
 def leg_transcription(payload: Dict[str, Any], out: str, cycles: int = 3) -> None:
     """The in-gate reference vs ``stepping.py`` itself, over multiple full cycles.
 
-    THIS RUNS FIRST AND NOTHING ELSE IS TRUSTED UNTIL IT PASSES. Without it,
+    This runs first and nothing else is trusted until it passes. Without it,
     "bit-identical" could mean the kernel faithfully reproduced whatever this file
     wrote, twice.
     """
@@ -668,19 +668,19 @@ def synthetic_coefficients(shape, seed: int, stems=("kms", "sinv")) -> Dict[str,
 
 
 def leg_synthetic(payload: Dict[str, Any], out: str) -> None:
-    """Odd shapes x boundary triples x dtdx x sub-step, plus THE GUARD LEG.
+    """Odd shapes x boundary triples x dtdx x sub-step, plus the guard leg.
 
     The guard leg compiles the SAME case twice, once with the contraction
     directive and once without, and asserts identical for the first and NON-
-    identical for the second. The guard's effect is MEASURED here; it is never
+    identical for the second. The guard's effect is measured here; it is never
     asserted from the pragma's presence.
 
-    MEASURED, AND IT IS TRITON FACT (d)'s METAL ANALOGUE: **the guard is not
+    Measured, and it is the Metal analogue of Triton's ``enable_fp_fusion`` FINDING: **the guard is not
     byte-uniform across kernel shapes.** On the DEGENERATE shapes — a single cell
     on two axes, with metallic walls that serve exact zeros past them — removing
     the contraction directive changes NO BIT on some sub-steps, because the
     surviving multiply-adds have an operand that makes ``fma`` and ``mul``+``add``
-    agree. Those cases are RECORDED AS VACUOUS FOR THE GUARD with their reason and
+    agree. Those cases are recorded as vacuous for the guard with their reason and
     counted; they are not silently passed and they are not asserted away. The
     guard IS required to be effective on every three-dimensional case — that is
     the shape the engine steps — and :data:`GUARD_REQUIRED_SHAPES` names them.
@@ -813,12 +813,12 @@ def leg_constitutive(payload: Dict[str, Any], out: str) -> None:
 # ---------------------------------------------------------------------------
 
 def leg_multi_step(payload: Dict[str, Any], out: str, cycles: int = 4) -> None:
-    """B -> H -> D -> E, ``cycles`` times, from one state, WITH THE WALL SEAM.
+    """B -> H -> D -> E, ``cycles`` times, from one state, with the wall seam.
 
     The auxiliaries are STATE. A kernel that is right for one launch and wrong
     forever after is identical in legs 1 and 3 and only diverges here.
 
-    ON A WALLED GRID THE SEAM IS REAL AND IS DRIVEN. ``zero_metal_B``/``_D`` clear
+    On a walled grid the seam is real and is driven. ``zero_metal_B``/``_D`` clear
     stored cell 0 between the curl and the constitutive sub-step (driver.py:3167 vs
     :3169) and they run on the ARRAY PATH, writing the host arrays the mirrors
     shadow. So this leg brackets them with an explicit ``sync_out``/``sync_in`` and
@@ -903,7 +903,7 @@ def leg_signed_zero(payload: Dict[str, Any], out: str) -> None:
 
     * the CURL is seeded to exact zeros. A real PML's leading ``kms`` is negative,
       so the recurrence produces ``-0.0`` out of ``+0.0`` — but ONLY where the
-      ownership mask writes exact zeros through it, i.e. ONLY WITH A METALLIC AXIS
+      ownership mask writes exact zeros through it, i.e. only with a metallic axis
       (measured: periodic_all censused 0 on both sub-steps). The metallic
       configurations are pinned in :data:`SIGNED_ZERO_CONFIGS` for exactly that
       reason, and the periodic result is recorded as a PREDICTED NULL with its
@@ -912,7 +912,7 @@ def leg_signed_zero(payload: Dict[str, Any], out: str) -> None:
       the source, the accumulation adds and subtracts the same zeros, and nothing
       moves. So it gets a ``+-0`` LATTICE instead, with its own vacuity floor.
 
-    A CENSUS OF ZERO IS VACUOUS, NOT PASSED. Every leg below carries a floor.
+    A census of zero is vacuous, not passed. Every leg below carries a floor.
     """
     rows: List[Dict[str, Any]] = []
     started = time.time()
@@ -1018,9 +1018,9 @@ def leg_precondition(payload: Dict[str, Any], out: str) -> None:
     given — measured, the 1e-38 output census (6432) is nearly double its input
     census (3233).
 
-    THE WINDOW IS REPORTED, NOT ONLY THE COUNT, and the window here is ONE STEP.
-    Band entry is a RUN-and-WINDOW fact rather than a family fact: measured on the
-    chi3 round, a Q~20 narrow-band Gaussian turn-on sweeps ~40 decades and drags
+    The window is reported, not only the count, and the window here is one step.
+    Band entry is a RUN-and-WINDOW fact rather than a family fact: measured on a
+    chi3 run, a Q~20 narrow-band Gaussian turn-on sweeps ~40 decades and drags
     the leading edge through the whole subnormal band — FIRST subnormal at step 55,
     LAST at step 3,726, then clean for 16,274 more steps, while a chi3=0 control
     with no nonlinear path at all reached the band in SIX field arrays. So a census
@@ -1130,10 +1130,10 @@ def _dsig_flags(source: str) -> str:
 #: ``must_catch``: True (must be caught) | None (record only) | False (must NOT be
 #: caught — a declared null, with its reason).
 #:
-#: THE GROUPING MUTATIONS ARE INVERTED (KERNELS.md §7.1). Before the alignment the
+#: The grouping mutations are inverted (docs/development/certification.md). Before the kernel tables took MEEP's operation order the
 #: shipped groupings were the package's and these mutations planted MEEP's; the
 #: shipped form now IS MEEP's, so each plants the PREVIOUS PACKAGE GROUPING and stays
-#: must-catch. The ``b*`` rows are the per-chunk form battery (KERNELS.md §7.2).
+#: must-catch. The ``b*`` rows are the per-chunk form battery described there.
 CURL_MUTATIONS: Dict[str, Dict[str, Any]] = {
     "m1_previous_curl_grouping": {
         "must_catch": True,
@@ -1295,7 +1295,7 @@ CONSTITUTIVE_MUTATIONS: Dict[str, Dict[str, Any]] = {
 }
 
 
-#: The record mutations (KERNELS.md §7.2): the kernel is right and the record it is
+#: The record mutations (form battery rows): the kernel is right and the record it is
 #: handed is not. Each is a function of the true record.
 def _bound_off_by_one(record: Any) -> Any:
     """Every non-empty low run one row longer: the boundary plane changes form."""
@@ -1481,7 +1481,7 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
            sum(c.launches for c in counters), caught, 1, True,
            "step_D stepped with the forward stencil")
 
-    # m10: A RESIDENCY MUTATION WITH NO TRITON ANALOGUE. An array-path seam writes
+    # m10: a residency mutation with no Triton analogue. An array-path seam writes
     # the HOST array between two device sub-steps and nothing syncs it in. The
     # defect is not that the device reads garbage — it is that the host write is
     # SILENTLY DISCARDED, and the second launch consumes the pre-seam value. So
@@ -1513,7 +1513,7 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
            "residency clause refuses this composition and this measures that the "
            "refusal is load-bearing")
 
-    # b3/b4: THE RECORD IS WRONG, the kernel is the shipped one. Both sub-step
+    # b3/b4: the record is wrong, the kernel is the shipped one. Both sub-step
     # families, against the oracle stepped on the true division.
     truth = layer_record(grid, pml)
     for label, (mutate, why) in RECORD_MUTATIONS.items():
@@ -1601,7 +1601,7 @@ def leg_engine(payload: Dict[str, Any], out: str) -> None:
                 assert plan.replaces == ("step_B", "update_H", "step_D", "update_E")
                 assert set(plan.selected.values()) == {"PML", "ordinary"}
             else:
-                # PREDICTED NULL, recorded with the reason that was MEASURED and
+                # Predicted null, recorded with the reason that was measured and
                 # not the one that was expected. The curl kernels refuse because
                 # they implement the split-field path only. The null family ALSO
                 # refuses here, and its reason is its own conservative clause 4:
@@ -1617,7 +1617,7 @@ def leg_engine(payload: Dict[str, Any], out: str) -> None:
                 assert "step_B" not in plan.replaces
                 assert not plan.replaces, plan.replaces
 
-    # THE NULL ARM, MADE NON-VACUOUS. Without this case the arm is consulted on
+    # The null arm, made non-vacuous. Without this case the arm is consulted on
     # every configuration above and admits on none of them, which certifies
     # nothing about it. Here the layer is inert AND no PML storage was switched
     # on, which is the configuration stepping.py:944-945 / :983-984 return from.
@@ -1654,7 +1654,7 @@ def leg_engine(payload: Dict[str, Any], out: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# LEG 9 — the form-coverage census (DESIGN.md D13)
+# LEG 9 — the form-coverage census (docs/development/certification.md)
 # ---------------------------------------------------------------------------
 
 def _form_counts(record: Any, shape: Sequence[int]) -> Dict[str, Dict[str, int]]:
@@ -1681,7 +1681,7 @@ def _form_counts(record: Any, shape: Sequence[int]) -> Dict[str, Dict[str, int]]
 def leg_forms(payload: Dict[str, Any], out: str) -> None:
     """Every gate case's FORM COVERAGE, recorded and floored.
 
-    The rule (DESIGN.md D13): a nonzero count for every (component x form) class,
+    The rule (docs/development/certification.md): a nonzero count for every (component x form) class,
     and in-run and out-of-run rows on each axis and on both Yee sub-lattices, with
     at least one wrapping axis among the cases. A gate whose cases never stepped one
     form certifies nothing about it — the per-chunk forms are exactly the place a
@@ -1893,6 +1893,9 @@ LEGS: Tuple[Tuple[str, Callable[[Dict[str, Any], str], None]], ...] = (
 
 
 def main() -> int:
+    from meep_gpu.metal_kernels import no_pml_curl  # noqa: PLC0415,F401 - the engine leg names it
+    from metal_closed_table import close_table  # noqa: PLC0415
+    close_table()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", required=True, help="artifact JSON path")
     parser.add_argument("--legs", default="", help="comma-separated leg subset")
@@ -1913,7 +1916,7 @@ def main() -> int:
             "metal_frontend": metal_launch.metal_frontend_version(),
             "time": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         },
-        # THE CLAIM IS ONLY AS GOOD AS THE PRECONDITION IT WAS CERTIFIED UNDER.
+        # The claim is only as good as the precondition it was certified under.
         "subnormal_policy": subnormal.mps_policy_report(),
         "provenance": provenance(out_dir),
         "fingerprints": metal_launch.compute_fingerprints()["metal_kernels"],

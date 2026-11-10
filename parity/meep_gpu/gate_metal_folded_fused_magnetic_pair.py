@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """Native MPS byte gate for the FOLDED fused magnetic kernel: ``step_B`` -> ``update_H``.
 
-WHAT IS BEING CERTIFIED, and it is not a sub-step. This product spans FOUR driver
+What is being certified, and it is not a sub-step. This product spans FOUR driver
 passes — ``step_B``, ``fill_symmetry_bc_B``, ``zero_metal_B`` and ``update_H`` — so a
 per-sub-step comparison could not see it at all: the whole claim is about the SEAM
 between them, and about a mirror fill carried INSIDE one dispatch whose source cell
-a different thread computes. The comparison is therefore per COMPLETE DRIVER STEP
+a different thread computes. The comparison is therefore per complete driver step
 over a stated budget, against an array-path oracle running the identical live pass
 list, with the first divergent step reported rather than a final pass/fail.
 
-THE SIX THINGS THIS GATE REFUSES TO LET PASS SILENTLY:
+The six things this gate refuses to let pass silently:
 
 1. **A silent fallback.** Bytes alone cannot prove the fused path ran: a plan that
    was never launched is byte-identical to the oracle BY CONSTRUCTION, because the
@@ -18,13 +18,13 @@ THE SIX THINGS THIS GATE REFUSES TO LET PASS SILENTLY:
    every case asserts every compared array MOVED from its seeded value.
 2. **A hollow pass.** The shader mutations and the host mutations are ARMED, and
    each must be CAUGHT: the transcription slips, the two INVERTED grouping rows (the
-   package's previous curl and constitutive groupings, KERNELS.md §7.1), and the
-   per-chunk B battery (§7.2) — the select removed, keyed on the wrong lattice or
+   package's previous curl and constitutive groupings; docs/development/certification.md),
+   and the per-chunk form battery — the select removed, keyed on the wrong lattice or
    axis, an auxiliary stored on a plain cell, and the chunk record one row wide or
    with its two lattices exchanged. Leg ``disarm`` reruns the identical case with the
    shipped bytes and no host patch and requires zero, so a mutation reported as
    caught cannot be a harness that diverges anyway.
-3. **A LINE NOTHING CAN SEE.** This family's one novel line is the imaged ghost's
+3. **A line nothing can see.** This family's one novel line is the imaged ghost's
    coefficient pair, read at stored index 0 rather than reused from the source
    thread at index 2 — the property :mod:`.folded_fused_pair` gets for free and this
    one does not. On a FOLDED axis the mirror plane carries no absorber
@@ -159,9 +159,9 @@ STATE_NAMES: Tuple[str, ...] = tuple(
 
 #: name -> (``metal_composition_matrix.folded`` keywords, explicit PML faces or None).
 #:
-#: BOTH FOLD TERMINATIONS RUN HERE, which is the change of 2026-08-20: the
+#: Both fold terminations run here, which is the change of 2026-08-20: the
 #: ``metallic`` rows are the ones this family shipped on, and the ``periodic`` rows
-#: are the ones the far carry adds. They are kept SIDE BY SIDE rather than replaced,
+#: are the ones the far carry adds. They are kept side by side rather than replaced,
 #: because a mutation caught on one termination is not caught on the other — the
 #: top-plane mask and the whole far carry are emitted only on MIRROR_PERIODIC, and
 #: the near carry's ``i != 0`` ownership is the only one a MIRROR_METALLIC row has.
@@ -246,7 +246,7 @@ CASES: Tuple[Tuple[str, Dict[str, Any], Optional[Any]], ...] = (
           depth=1.2), ((0, 4), (0, 4), (2, 2))),
 )
 
-#: The case the general mutations are armed on. TWO FOLDED PERIODIC AXES with MIXED
+#: The case the general mutations are armed on. Two folded periodic axes with MIXED
 #: parities, an ODD full count and a live ``z`` wall, so every line the shipped
 #: kernel can emit is present at once: both parity spellings, a near carry, two far
 #: carries, a composite near/far ghost, a composite far/far corner, the top-plane
@@ -256,13 +256,13 @@ CASES: Tuple[Tuple[str, Dict[str, Any], Optional[Any]], ...] = (
 #: defect as uncaught while measuring nothing.
 MUTATION_CASE = "xy_periodic_odd_wall_z_3d"
 
-#: THE THIRD CASE THE GENERAL MUTATIONS ARE ARMED ON, and the one this round adds.
+#: The third case the general mutations are armed on, added because the triple fold was never mutation-scored.
 #: THREE folded PERIODIC axes, so ONE source thread owns SEVEN ghost cells for each
 #: component — two single far planes, the near plane, three pairs and one TRIPLE —
 #: which is the largest composition ``carried_destinations`` can produce on this
 #: family and the geometry the whole far carry was restructured for.
 #:
-#: WHY IT NEEDED ITS OWN ROW. This case was byte-verified by the product leg from
+#: Why it needed its own row. This case was byte-verified by the product leg from
 #: the day the far carry landed and was never mutation-scored: the general set is
 #: armed on :data:`MUTATION_CASE`, whose geometry floor is ``max(owned) >= 3``. A
 #: path byte-verified but with no planted defect it is known to catch is weaker
@@ -275,7 +275,7 @@ TRIPLE_MUTATION_CASE = "xyz_periodic_odd_3d"
 
 #: The MIRROR_METALLIC case the general mutations are ALSO armed on. The termination
 #: changes which lines exist, so a mutation set scored on one alone would leave the
-#: other's kernel unmeasured — the shipped shape before this round.
+#: other's kernel unmeasured — the shipped shape before this case was added.
 METALLIC_MUTATION_CASE = "xy_mixed_wall_z_3d"
 
 #: The case leg ``moved_coefficient`` uses for its OBSERVABLE half. Same fold, same
@@ -385,7 +385,7 @@ def frozen(fields: Any) -> Dict[str, np.ndarray]:
 
 
 #: The auxiliary volumes the per-chunk forms leave untouched off their forms' cells
-#: (KERNELS.md §1, C2): ``fu_*`` off the recurrence's cells, ``f_w_*`` off the
+#: (the auxiliary contract): ``fu_*`` off the recurrence's cells, ``f_w_*`` off the
 #: accumulation's. On a configuration where a component's layer is absent (an invariant
 #: axis, an axis with no absorber) the ORACLE never moves that volume either.
 AUXILIARY_PREFIXES: Tuple[str, ...] = ("fu_", "f_w_")
@@ -522,7 +522,7 @@ def run_case(keywords: Mapping[str, Any], seed: int, steps: int,
     clean = all(row["reference_subnormals"] == 0 for row in per_step)
     launches_ok = (plan.runs == len(per_step)
                    and plan.launches == plan.launches_per_run * len(per_step))
-    # THE FLOOR, AND WHICH ONE DEPENDS ON THE VALUE CLASS. The uniform class must
+    # The floor, and which one depends on the value class. The uniform class must
     # move every compared array. The +-0 lattice answers to the SIGN floor instead:
     # the REFERENCE OUTPUT must carry BOTH bit patterns, which is what makes a
     # uint32 compare of a zero state discriminating rather than decorative. It is
@@ -580,7 +580,7 @@ def run_separate_control(keywords: Mapping[str, Any], seed: int, steps: int,
                          pml_faces: Optional[Any] = None) -> Dict[str, Any]:
     """The SEPARATE certified folded products beside the fused one, same state.
 
-    THIS IS THE LEG THAT MAKES "FUSION" A MEASUREMENT RATHER THAN A NAME. Three
+    This is the leg that makes "FUSION" a measurement rather than a name. Three
     engines from one seed: the array path, the two ALREADY CERTIFIED folded Metal
     products stepping the same seam as separate dispatches with the mirror fill and
     the wall clear left on the HOST between them, and the fused product. All three
@@ -677,7 +677,7 @@ def needle(source: str, old: str, new: str, occurrences: int = 1) -> str:
 
     A mutation that changed nothing would launch the shipped kernel and report the
     defect as uncaught, which is the one failure mode a mutation leg cannot see from
-    its own result. AN AMBIGUOUS NEEDLE IS THE SAME FAILURE WEARING A DISGUISE, and
+    its own result. An ambiguous needle is the same failure wearing a disguise, and
     it became reachable the moment the far carry started emitting several ghost
     blocks per component: a needle that matched two of them would edit an arbitrary
     one and the row's label would name a line the run did not touch. So the match
@@ -697,7 +697,7 @@ def needle(source: str, old: str, new: str, occurrences: int = 1) -> str:
 def shader_edit_anchors(periodic: bool) -> Dict[str, Tuple[str, str]]:
     """The source defects as ``name -> (old, new)``, each anchored ONCE.
 
-    SPLIT FROM :func:`shader_edits` SO ONE TABLE SERVES TWO CASES. The
+    Split from :func:`shader_edits` so one table serves two cases. The
     three-fold case (:data:`TRIPLE_MUTATION_CASE`) carries most of these rows
     and structurally cannot carry five of them, and a second hand-written copy
     of the anchors for that case would be a transcription that drifts. The
@@ -715,7 +715,7 @@ def shader_edit_anchors(periodic: bool) -> Dict[str, Tuple[str, str]]:
     which is the check that keeps a mutation from reporting UNCAUGHT because the
     line it edited is in a branch the case never enters.
 
-    THE MUTATION CASE'S GEOMETRY, and it is why each of these is reachable. Two
+    The mutation case's geometry, and it is why each of these is reachable. Two
     folded axes with phases (+1, -1) and z a live metallic wall:
 
       metallic termination  component 0 (Bx) images a NEAR ghost on x with parity
@@ -728,18 +728,18 @@ def shader_edit_anchors(periodic: bool) -> Dict[str, Tuple[str, str]]:
                             (x: -1, y: +1) and the corner carrying their product.
     """
     edits = {
-        # THE SEAM ITSELF: take the curl instead of the recurrence's output.
+        # The seam itself: take the curl instead of the recurrence's output.
         "seam_takes_pre_recurrence_curl":
             ("float o0_src = v0;", "float o0_src = curl0;"),
-        # THE NEAR FILL, DROPPED. The ghost cell then keeps last step's displacement
+        # The near fill, dropped. The ghost cell then keeps last step's displacement
         # and last step's H — what a fused pair that ignored `fill_symmetry_bc_B`
         # would produce on every folded grid.
         "near_fill_dropped":
             ("        if (i == 2) {", "        if (false) {"),
-        # THE PARITY, DROPPED on the odd plane. `-v1` is component 1's near ghost.
+        # The parity, dropped on the odd plane. `-v1` is component 1's near ghost.
         "near_fold_parity_dropped":
             ("float g1_n_v = -v1;", "float g1_n_v = v1;"),
-        # THE SOURCE ROW. MEEP's `little_owned_corner0` puts the image at stored cell
+        # The source row. MEEP's `little_owned_corner0` puts the image at stored cell
         # 2, never cell 1 (stepping._mirror_source, MIRROR_SOURCE_INDEX).
         "near_ghost_images_the_wrong_source_row":
             ("int g1_n_i = ii - 2 * nzi;", "int g1_n_i = ii - 1 * nzi;"),
@@ -747,10 +747,10 @@ def shader_edit_anchors(periodic: bool) -> Dict[str, Tuple[str, str]]:
         # side's off-diagonal pair).
         "ownership_mask_dropped":
             ("    curl0 = at_x ? 0.0f : curl0;\n", ""),
-        # THE WALL CLEAR on the owned cell.
+        # The wall clear on the owned cell.
         "zero_metal_dropped":
             ("v2 = at_z ? 0.0f : v2;\n", ""),
-        # INVERTED (KERNELS.md §7.1): the package's PREVIOUS pairwise curl grouping
+        # INVERTED: the package's PREVIOUS pairwise curl grouping
         # planted where MEEP's left-to-right bracket now ships.
         "curl_previous_grouping":
             ("dtdx * (((c_y - c) + b) - b_z)",
@@ -771,7 +771,7 @@ def shader_edit_anchors(periodic: bool) -> Dict[str, Tuple[str, str]]:
         "constitutive_accumulations_reversed":
             ("o0_acc = h0[ii] + ((kp_0 * o0_src) - (km_0 * o0_prev));",
              "o0_acc = h0[ii] + ((km_0 * o0_src) - (kp_0 * o0_prev));"),
-        # --- THE B BATTERY (KERNELS.md §7.2): the per-chunk select removed, keyed
+        # --- the per-chunk form battery: the select removed, keyed
         # on the wrong lattice or axis, and an auxiliary stored on a plain cell.
         # The random full-volume state carries both forms on every axis at step 1.
         "b1_curl_select_removed":
@@ -793,7 +793,7 @@ def shader_edit_anchors(periodic: bool) -> Dict[str, Tuple[str, str]]:
              "    const bool dw0 = in_h_x, dw1 = in_h_y, dw2 = in_h_z;"),
         "b7_fw_stored_on_a_plain_cell":
             ("if (dw0) { w0[ii] = o0_src; }", "w0[ii] = o0_src;"),
-        # THE NEAR GHOST'S OWN CONSTITUTIVE UPDATE, in three separable pieces: the
+        # The near ghost's own constitutive update, in three separable pieces: the
         # workspace copy, the H accumulation and the flux store. `update_H` reads the
         # ghost cell the fill just wrote, so all three are live work.
         "near_ghost_fw_store_dropped":
@@ -812,40 +812,40 @@ def shader_edit_anchors(periodic: bool) -> Dict[str, Tuple[str, str]]:
         return edits
 
     edits.update({
-        # THE OWNERSHIP CARVE-OUT, DROPPED, on a component that is a destination on
+        # The ownership carve-out, dropped, on a component that is a destination on
         # BOTH a near and a far plane. The destination thread then forms `v` from a
         # word the source thread writes and stores its own displacement over the
         # imaged ghost — the race the restructure exists to remove.
         "destination_thread_keeps_its_displacement":
             ("    if (!(i == 0 || last_y)) {", "    if (true) {"),
-        # THE FAR-ONLY CARVE-OUT: component 2 is a destination on two far planes and
+        # The far-only carve-out: component 2 is a destination on two far planes and
         # on no near one, which is the guard shape the near carry alone never makes.
         "far_destination_thread_keeps_its_displacement":
             ("    if (!(last_x || last_y)) {", "    if (true) {"),
-        # THE TOP-PLANE MASK. `_mask_non_owned_cells`' shift-1 arm; emitted only on
+        # The top-plane mask. `_mask_non_owned_cells`' shift-1 arm; emitted only on
         # a folded PERIODIC axis, and the block the shipped family used to retire by
         # refusing that termination outright.
         "top_plane_mask_dropped":
             ("    curl0 = last_y ? 0.0f : curl0;\n", ""),
-        # THE FAR CARRY'S THREE WRITES, separately.
+        # The far carry's three writes, separately.
         "far_ghost_flux_store_dropped":
             ("            f0[g0_j_i] = g0_j_v;\n", ""),
         "far_ghost_fw_store_dropped":
             ("if (dw0) { w0[g0_j_i] = g0_j_src; }", "// stale far ghost f_w_Hx"),
         "far_ghost_constitutive_dropped":
             ("            h0[g0_j_i] = g0_j_acc;\n", ""),
-        # THE FAR PARITY. `mirror_parity` is -phase for a shift-1 component, so
+        # The far parity. `mirror_parity` is -phase for a shift-1 component, so
         # component 2's x ghost is -1 where the plane declared +1 — the sign a carry
         # that reused the NEAR fill's `+phase` rule would get backwards.
         "far_fold_parity_dropped":
             ("float g2_i_v = -v2;", "float g2_i_v = v2;"),
-        # THE COMPOSITE NEAR/FAR GHOST: the cell at stored 0 on the near axis AND at
+        # The composite near/far ghost: the cell at stored 0 on the near axis AND at
         # the top plane on the far one. A carry that wrote each fill's plane and
         # stopped would leave this cell holding only the far image of an unfilled
         # row.
         "near_far_composite_dropped":
             ("            f0[g0_jn_i] = g0_jn_v;\n", ""),
-        # THE FAR/FAR CORNER, and the PRODUCT of two parities it carries. Neither
+        # The far/far corner, and the PRODUCT of two parities it carries. Neither
         # exists on this family until the far carry does: a B component is a NEAR
         # destination on one axis only.
         "far_corner_dropped":
@@ -897,25 +897,25 @@ TRIPLE_STRUCTURALLY_ABSENT: Dict[str, str] = {
 def triple_shader_edits(base: str) -> Dict[str, str]:
     """The defects that exist ONLY where one source thread owns SEVEN ghost cells.
 
-    WHY THIS SET EXISTS. ``xyz_periodic_odd_3d`` is byte-verified by the product
+    Why this set exists. ``xyz_periodic_odd_3d`` is byte-verified by the product
     leg and was never mutation-scored: the general set is armed on
     :data:`MUTATION_CASE`, whose geometry floor is ``max(owned) >= 3``. A path with
     no planted defect it is known to catch is weaker evidence than the rest of this
     file, and the seventh destination is not a bigger version of the third — it is
     a different line with a different closed form.
 
-    WHAT IS STRUCTURALLY NEW AT SEVEN, and every row below is one of these:
+    What is structurally new at seven, and every row below is one of these:
 
-      THE TRIPLE COMPOSITE   the cell at the top plane of BOTH far axes AND at
-                             stored 0 on the near one. Its parity is the PRODUCT OF
-                             THREE factors, which no two-fold grid can form, and
+      The triple composite   the cell at the top plane of BOTH far axes AND at
+                             stored 0 on the near one. Its parity is the product of
+                             three factors, which no two-fold grid can form, and
                              its index carries three displacement terms;
       THE THREE-CLAUSE       a component is a destination on a near plane and TWO
       CARVE-OUT              far planes, so its ownership guard has three clauses.
                              The two-clause form is exactly what a kernel
                              generalised from the two-fold case would emit, and it
                              is armed here as its own row;
-      THE SECOND MASK        a component with two far axes gets TWO top-plane mask
+      the second mask        a component with two far axes gets TWO top-plane mask
                              lines. The two-fold case emits one per component, so a
                              dropped second mask is invisible there.
 
@@ -924,7 +924,7 @@ def triple_shader_edits(base: str) -> Dict[str, str]:
     label would name a line the run did not touch.
     """
     return {
-        # --- THE SEVENTH DESTINATION'S THREE WRITES, separately. `update_H` reads
+        # --- the seventh destination's three writes, separately. `update_H` reads
         # the cell the fill wrote, so all three are live work at the triple corner.
         "triple_composite_flux_store_dropped":
             needle(base, "            f0[g0_jkn_i] = g0_jkn_v;\n", ""),
@@ -933,14 +933,14 @@ def triple_shader_edits(base: str) -> Dict[str, str]:
                    "// stale triple-composite ghost f_w_Hx"),
         "triple_composite_constitutive_dropped":
             needle(base, "            h0[g0_jkn_i] = g0_jkn_acc;\n", ""),
-        # --- THE PRODUCT OF THREE PARITIES. `carried_destinations` composes one
+        # --- the product of three parities. `carried_destinations` composes one
         # factor per far axis at the top plane and one for the near axis, so this
         # cell carries phase_y_far * phase_z_far * phase_x_near. Flipping the sign
         # is what dropping ANY ONE of the three factors looks like, and there is no
         # grid with fewer than three folded axes on which it is observable.
         "triple_composite_takes_two_of_three_parities":
             needle(base, "float g0_jkn_v = v0;", "float g0_jkn_v = -v0;"),
-        # --- THE THREE-TERM INDEX, with the near displacement dropped. The cell is
+        # --- the three-term index, with the near displacement dropped. The cell is
         # then the far/far CORNER, which another block already writes: the triple
         # ghost goes unwritten and the corner is written twice with different
         # values.
@@ -950,31 +950,31 @@ def triple_shader_edits(base: str) -> Dict[str, str]:
                    "+ ((nzi - 1) - reflect_z) * 1 - 2 * nyz;",
                    "int g0_jkn_i = ii + ((nyi - 1) - reflect_y) * nzi "
                    "+ ((nzi - 1) - reflect_z) * 1;"),
-        # --- THE TRIPLE GUARD, with the near clause dropped. The triple ghost is
+        # --- the triple guard, with the near clause dropped. The triple ghost is
         # then written by every thread along the far/far corner line rather than by
         # the one at stored 2 on the near axis: the race the ownership rule exists
         # to remove, planted at the one destination only this case has.
         "triple_composite_guard_drops_the_near_clause":
             needle(base, "if (j == reflect_y && k == reflect_z && i == 2) {",
                    "if (j == reflect_y && k == reflect_z) {"),
-        # --- THE THREE-CLAUSE OWNERSHIP CARVE-OUT, dropped outright.
+        # --- the three-clause ownership carve-out, dropped outright.
         "three_clause_carve_out_dropped":
             needle(base, "    if (!(i == 0 || last_y || last_z)) {",
                    "    if (true) {"),
-        # --- THE SAME CARVE-OUT, REDUCED TO THE TWO-FOLD CASE'S EXACT FORM. This
+        # --- the same carve-out, reduced to the two-fold case's exact form. This
         # is the defect a kernel generalised from two folded axes would carry, and
         # the reason this case had to be scored: on MUTATION_CASE the two-clause
         # guard IS the shipped text, so nothing there can catch it.
         "three_clause_carve_out_reduced_to_the_two_fold_form":
             needle(base, "    if (!(i == 0 || last_y || last_z)) {",
                    "    if (!(i == 0 || last_y)) {"),
-        # --- THE SECOND TOP-PLANE MASK. `_mask_non_owned_cells` emits one line per
+        # --- the second top-plane mask. `_mask_non_owned_cells` emits one line per
         # (target, folded periodic axis whose Yee shift is 1), so a component with
         # two far axes gets two. Dropping the first is the general set's row; this
         # drops the SECOND, which does not exist below three folded axes.
         "second_top_plane_mask_dropped":
             needle(base, "    curl0 = last_z ? 0.0f : curl0;\n", ""),
-        # NOTE ON WHAT IS NOT HERE. ``far_corner_takes_one_parity`` and the rest of
+        # Note on what is not here. ``far_corner_takes_one_parity`` and the rest of
         # the far/far corner rows are in the GENERAL table and still anchor on this
         # source, so :func:`carried_shader_edits` arms them and ``main`` asserts the
         # two sets are disjoint. Repeating one here would silently overwrite the
@@ -985,7 +985,7 @@ def triple_shader_edits(base: str) -> Dict[str, str]:
 def carried_shader_edits(base: str) -> Dict[str, str]:
     """The general periodic anchors, minus the rows this case cannot carry.
 
-    THE SAME TABLE THE TWO-FOLD CASE USES, applied to the three-fold source, so
+    The same table the two-fold case uses, applied to the three-fold source, so
     the seven-destination kernel is scored on the whole armed set and not only on
     its own new lines. The exemptions come from :data:`TRIPLE_STRUCTURALLY_ABSENT`
     and are cross-checked against the table in both directions: an exemption naming
@@ -1004,7 +1004,7 @@ def carried_shader_edits(base: str) -> Dict[str, str]:
             if name not in TRIPLE_STRUCTURALLY_ABSENT}
 
 
-#: THE ONE MUTATION WHOSE CATCH IS CONDITIONAL, and the condition is measured.
+#: The one mutation whose catch is conditional, and the condition is measured.
 #: Reusing the source thread's coefficient pair for the imaged NEAR ghost is exactly
 #: the shortcut :mod:`.folded_fused_pair` is entitled to and this family is not. It
 #: is observable only where the two entries differ; leg ``moved_coefficient``
@@ -1024,7 +1024,7 @@ MOVED_COEFFICIENT_EDITS: Dict[str, Tuple[Tuple[str, str], Tuple[str, ...]]] = {
         ("MUTATION_CASE", "DEEP_PERIODIC_CASE")),
 }
 
-#: THE SELECT KEYED AT THE SOURCE, ARMED (KERNELS.md §7.2's last row). The H half's
+#: The select keyed at the source, armed (the form battery's last row). The H half's
 #: membership is on the component's own axis, which the near fill moves, so the near
 #: ghost evaluates its flag at stored 0. Keying it at the source (stored 2) is a
 #: DIFFERENT form wherever the record's line differs between the two rows — which it
@@ -1043,10 +1043,10 @@ KEYED_AT_SOURCE_EDITS: Dict[str, Tuple[Tuple[str, str], Tuple[str, ...]]] = {
         ("MUTATION_CASE", "DEEP_CASE")),
 }
 
-#: THE ROWS THE PER-CHUNK FORMS MADE CONDITIONAL, scored by prediction rather than as
+#: The rows the per-chunk forms made conditional, scored by prediction rather than as
 #: must-catch. Each touches the NEAR ghost's H-half work, which runs only where the
 #: ghost's own chunk carries the component's layer (``f_w`` is untouched elsewhere,
-#: C2); on a folded axis the integer line at stored 0 is outside the high-face run on
+#: the auxiliary contract); on a folded axis the integer line at stored 0 is outside the high-face run on
 #: every fixture here, so the oracle never touches that word and the edit cannot
 #: change it. ``destination_thread_keeps_its_displacement`` is the metallic case's
 #: near-only carve-out: with the ghost on its plain form the source thread reads
@@ -1077,7 +1077,7 @@ def near_ghost_in_run(fields: Any, pml: Any, axis: int = 0) -> Dict[str, bool]:
             "source": bool(line[family.NEAR_SOURCE_INDEX])}
 
 
-#: THE MUTATION THAT MEASURES A LINE THIS FAMILY DELIBERATELY DOES NOT EMIT.
+#: The mutation that measures a line this family deliberately does not emit.
 #: A far ghost keeps its source thread's constitutive pair because it moves along an
 #: axis that is NOT the one ``update_H`` indexes on. That is a claim about
 #: ``fields.IYEE_SHIFTS`` and ``stepping.H_CONSTITUTIVE_TERMS``, not an observation,
@@ -1087,7 +1087,7 @@ def near_ghost_in_run(fields: Any, pml: Any, axis: int = 0) -> Dict[str, bool]:
 FAR_COEFFICIENT_EDIT = ("((kp_0 * g0_j_src) - (km_0 * g0_j_prev))",
                         "((kp0[0] * g0_j_src) - (km_0 * g0_j_prev))")
 
-#: THE DOCUMENTED TRAP IN ``_far_reflect_rows``, ARMED. Its docstring says in
+#: The documented trap in ``_far_reflect_rows``, ARMED. Its docstring says in
 #: capitals that the image row is NOT always ``n - 2``: both full-count parities put
 #: the ghost one half-cell above ``big_corner``, but ``big_corner`` IS the second
 #: mirror at an even count and one half-cell above it at an odd one, so the row is
@@ -1196,12 +1196,12 @@ def swapped_record(record: Any) -> np.ndarray:
 
 
 def record_bound_off_by_one(plan: Any, pml: Any, residency: Residency) -> None:
-    """HOST DEFECT (B battery): one run's upper bound one row too far."""
+    """HOST DEFECT (form battery): one run's upper bound one row too far."""
     _rebind_record(plan, widened_record(plan.chunk_bounds, plan.shape))
 
 
 def record_lattices_swapped(plan: Any, pml: Any, residency: Residency) -> None:
-    """HOST DEFECT (B battery): the integer and half-integer entries exchanged."""
+    """HOST DEFECT (form battery): the integer and half-integer entries exchanged."""
     _rebind_record(plan, swapped_record(plan.chunk_bounds))
 
 
@@ -1220,7 +1220,7 @@ HOST_MUTATIONS: Dict[str, Callable[[Any, Any, Residency], None]] = {
 def leg_subnormal_ladder(keywords: Mapping[str, Any], seed: int,
                          pml_faces: Optional[Any] = None, budget: int = 4,
                          ) -> Dict[str, Any]:
-    """THE EMPTY CENSUS, TURNED INTO A MEASUREMENT.
+    """The empty census, turned into a measurement.
 
     Every product row in this file reports ``reference_subnormals: 0`` and
     ``subnormal_free: true`` under policy ``flush``. Read alone that is a SILENCE:
@@ -1229,13 +1229,13 @@ def leg_subnormal_ladder(keywords: Mapping[str, Any], seed: int,
     is the difference — not a second byte comparison, which MPS cannot give, but
     the precondition FIRING.
 
-    THE ORACLE ALONE runs here, seeded at each rung of
+    The oracle alone runs here, seeded at each rung of
     :data:`metal_value_classes.PRECONDITION_SCALES` and stepped through the same
     live pass list, with the same census the product rows report taken after every
     step. Nothing is compared against the device and the artifact says so:
     ``banded_rows_were_byte_compared`` is False.
 
-    WHY THE BANDED RUNGS ARE NOT COMPARED, measured rather than asserted. On this
+    Why the banded rungs are not compared, measured rather than asserted. On this
     host the shipped kernel and the array path are byte-identical at 1e0, 1e-25 and
     1e-30 with an empty census, and at 1e-34 the census fires and the bytes diverge
     — three decades of headroom, then a CLIFF. MPS flushes float32 subnormals
@@ -1272,7 +1272,7 @@ def legal_specialisations() -> Tuple[Tuple[Tuple[int, ...], Tuple[int, ...],
                                            Tuple[bool, ...]], ...]:
     """Every ``(codes, phases, walls)`` triple a REAL GRID can hand this family.
 
-    THE LEGALITY RULE, READ OFF THE PREDICATES RATHER THAN LISTED. Three clauses,
+    The legality rule, read off the predicates rather than listed. Three clauses,
     each of which is a function in the package and not a convention here:
 
     * ``phases[a]`` is ``grid.mirror_phase(a) or 0``, so it is +1 or -1 exactly on
@@ -1325,7 +1325,7 @@ def leg_binding_ceiling() -> Dict[str, Any]:
     fold adds no argument — so the REFUTED source is imported from that module rather
     than re-spelled, and re-measured here on this tree.
 
-    THE SWEEP, AND WHY IT IS THE WHOLE SPACE. This leg used to compile and launch
+    The sweep, and why it is the whole space. This leg used to compile and launch
     ONE configuration and read back nine packed fields, and then the artifact said
     "28 bindings" as though that had been established for the family. It had been
     established for one kernel. A verifier said so, and the fix is the strong form:
@@ -1336,7 +1336,7 @@ def leg_binding_ceiling() -> Dict[str, Any]:
     this toolchain, which is exactly what the 32-binding half measures — so the
     claim "28 across the family" is now 208 compiled kernels rather than one.
 
-    THE LAUNCH HALF is widened too, over records rather than configurations: the
+    The launch half is widened too, over records rather than configurations: the
     packer is the same function for every specialisation, so what varies there is
     its INPUT. ``reflect`` carries a ``-1`` sentinel on an unfolded axis and a real
     row on a folded one, and a signed field read back through an unsigned struct
@@ -1495,7 +1495,7 @@ def leg_transcription(codes: Sequence[int]) -> Dict[str, Any]:
         head_ok = body.startswith(head) and bool(head.strip())
         transcription = family.constitutive_transcription(mode)
         statements = family.certified_curl_statements(codes, mode)
-        # THE LIFT IS THE CERTIFIED TEXT PLUS EXACTLY THE DECLARED EDITS: the `n`
+        # The lift is the certified text plus exactly the declared edits: the `n`
         # statement verbatim, and the `p`/`v` statements equal to the certified line
         # with its LIFT_EDITS fragment replaced.
         recurrence_ok = True
@@ -1569,8 +1569,8 @@ class _StubGrid:
         return self.shape[axis] - (1 if self._mirrored[axis] else 0)
 
 
-#: The deposit cases' fixtures and the component each drives. THE COMPONENT IS THE
-#: LEVER: which fill images a deposit is decided by the DEPOSITED component's Yee shift
+#: The deposit cases' fixtures and the component each drives. The component is the
+#: lever: which fill images a deposit is decided by the DEPOSITED component's Yee shift
 #: on the folded axis, and this family's shifts are the D family's SWAPPED -- on a Y
 #: fold ``Bx``/``By`` carry shift 0 and take the NEAR fill while ``Bz`` carries shift 1
 #: and takes the FAR ghost. A sweep that varied only the grid would run one of the two
@@ -1601,7 +1601,7 @@ def magnetic_source(grid: Any, component: str, centre: Sequence[float]) -> Any:
 def deposit_source(fields: Any, component: str) -> Any:
     """A real point source PLACED on every row a post-injection fill reads from.
 
-    NOT SEARCHED FOR BY DIVERGENCE, and not spelled: ``deposit_repair.fill_image_rules``
+    Not searched for by divergence, and not spelled: ``deposit_repair.fill_image_rules``
     names the row each live fill images on each axis, and this walks that axis until
     the source's own deposit index lands on it. A hand-written coordinate would stop
     being on the imaged row the moment an extent or a Yee table moved, and the case
@@ -1649,13 +1649,13 @@ def run_deposit_case(keywords: Mapping[str, Any], seed: int, steps: int,
                      component: str, faces: Optional[Any] = None,
                      repair: bool = True,
                      carry_images: bool = True) -> Dict[str, Any]:
-    """THE IN-SEAM DEPOSIT, on the device, in the DRIVER'S OWN ORDER.
+    """The in-seam deposit, on the device, in the driver's own order.
 
     Every other product leg in this file steps a seam with NO source in it, because
     until 2026-08-28 this family refused every one. It now declares
     ``CARRIES_DEPOSIT_REPAIR``, and a flag is not a measurement.
 
-    THE WALK IS THE DRIVER'S, NOT ``metal_step``'S. ``metal_step`` skips every pass in
+    The walk is the driver's, not ``metal_step``'S. ``metal_step`` skips every pass in
     ``REPLACES`` because the kernel carried them, which models a CLEAN seam. The driver
     runs the magnetic injection and the three fill/clear passes UNCONDITIONALLY between
     its two consults (driver.py:3292-3299), so on a seam carrying a deposit the
@@ -1746,7 +1746,7 @@ def run_deposit_case(keywords: Mapping[str, Any], seed: int, steps: int,
         launches_ok = (plan.runs == len(per_step)
                        and plan.launches == plan.launches_per_run * len(per_step))
         return {
-            # A CONTROL PASSES BY DIVERGING; reading one field for both directions
+            # A control passes by diverging; reading one field for both directions
             # would make "the control worked" and "the product worked" one sentence.
             "passed": bool(identical and clean and launches_ok
                            and movement_floor(still, reference_still)
@@ -1818,7 +1818,7 @@ def leg_carry() -> Dict[str, Any]:
     * the plan must report a far ghost on the components the Yee table says, and a
       reflect row that is ``stepping._far_reflect_rows``' own answer.
 
-    THE REFUSALS THAT REMAIN are measured beside it, because a product that stopped
+    The refusals that remain are measured beside it, because a product that stopped
     refusing everything would pass this leg by accident: a MAGNETIC source is
     injected inside the seam and an ELECTRIC one is not, an UNDECLARED source set is
     a refusal rather than an assumed empty one, and the reflect-row clauses the carry
@@ -1844,7 +1844,7 @@ def leg_carry() -> Dict[str, Any]:
     carried_deposit = family.metal_folded_fused_magnetic_pair_coverage(
         fields, pml, (deposit,), Residency())
     deposit_images = _image_cells(fields, deposit, "Hx")
-    # THE REFUSAL THAT SURVIVES IT. `_MagneticSource` declares a field type and nothing
+    # The refusal that survives it. `_MagneticSource` declares a field type and nothing
     # else, so it names no cells for the repair to save; a closure cannot carry what a
     # source will not name, and that is refused BY NAME rather than admitted on a flag.
     magnetic = family.metal_folded_fused_magnetic_pair_coverage(
@@ -1857,7 +1857,7 @@ def leg_carry() -> Dict[str, Any]:
         fields, pml, None, Residency())
     undeclared_named = [reason for reason in undeclared.reasons
                         if "was not declared" in reason]
-    # AND THE OTHER DIRECTION ON THE FLAG, so the admission cannot be a clause that
+    # And the other direction on the flag, so the admission cannot be a clause that
     # quietly went away: held False, the polarity refusal comes straight back.
     shipped = family.CARRIES_DEPOSIT_REPAIR
     try:
@@ -1995,7 +1995,7 @@ def leg_reflect_row(steps: int) -> Dict[str, Any]:
 
 
 def leg_far_coefficient(steps: int) -> Dict[str, Any]:
-    """The far ghost keeps its source thread's coefficient pair. MEASURED.
+    """The far ghost keeps its source thread's coefficient pair. Measured.
 
     The near ghost reloads ``kps``/``kms`` at stored index 0 because it moves the
     component along the axis ``update_H`` indexes on. The far ghost does NOT reload,
@@ -2064,7 +2064,7 @@ def leg_moved_coefficient(cases: Mapping[str, Tuple[Dict[str, Any], Optional[Any
                           steps: int) -> Dict[str, Any]:
     """PREDICT observability from the coefficients, then measure the catch.
 
-    THE LEG THIS FAMILY EXISTS TO HAVE. Its lines that :mod:`.folded_fused_pair`
+    The leg this family exists to have. Its lines that :mod:`.folded_fused_pair`
     does not carry are the ghost's own coefficient pair, and a mutation leg that
     simply armed the reuse would have reported it UNCAUGHT on every ordinary fixture
     and left a reader to guess whether the line is wrong or the fixture is blind. So
@@ -2072,9 +2072,9 @@ def leg_moved_coefficient(cases: Mapping[str, Tuple[Dict[str, Any], Optional[Any
     agreement: caught exactly where the two coefficient entries differ, not caught
     where they are the same word.
 
-    TWO EDITS RUN HERE. The pure NEAR ghost's reload is the one this family shipped
+    Two edits run here. The pure NEAR ghost's reload is the one this family shipped
     with. The COMPOSITE near/far ghost's is the far carry's own, and it landed here
-    rather than in the unconditional set for a MEASURED reason: armed on the
+    rather than in the unconditional set for a measured reason: armed on the
     mutation case it is bit-identical over twelve complete steps, because a folded
     axis carries no absorber at the mirror plane and the shared matrix's 2-cell
     high-face layer never reaches stored cell 2. :data:`DEEP_PERIODIC_CASE` is the
@@ -2101,7 +2101,7 @@ def leg_moved_coefficient(cases: Mapping[str, Tuple[Dict[str, Any], Optional[Any
             membership = near_ghost_in_run(fields, pml)
             source = family.folded_fused_magnetic_pair_source(codes, phases, walls)
             functions = compile_edits({label: needle(source, *edit)})[label]
-            # A RELOADED PAIR IS READ ONLY WHERE THE GHOST ACCUMULATES: the coefficient
+            # A reloaded pair is read only where the ghost accumulates: the coefficient
             # edits are observable where the two entries differ AND the destination's
             # own chunk carries the layer. The keyed edit is observable where the
             # record's line differs between the ghost and its source.
@@ -2154,12 +2154,12 @@ def _assert_mutation_geometry(label: str, codes, phases, walls, periodic: bool,
                               ) -> Dict[str, Any]:
     """Every line the mutation set edits must be a line THIS case emits.
 
-    THE DEAD-BRANCH TRAP, closed before the run rather than after. A mutation armed
+    The dead-branch trap, closed before the run rather than after. A mutation armed
     on a guard the scored case never enters reports UNCAUGHT while measuring
     nothing, so the geometry each row needs is asserted here — from the plan's own
     derivation of near and far axes, not from the keywords that built the grid.
 
-    ``min_owned`` is the FLOOR ON THE COMPOSITION, and raising it is the whole
+    ``min_owned`` is the floor on the composition, and raising it is the whole
     point of :data:`TRIPLE_MUTATION_CASE`. Three is what two folded periodic axes
     give (a near plane, a far plane and their composite); SEVEN is what three give,
     and the triple composite at the top of that lattice is a destination no lower
@@ -2237,7 +2237,7 @@ def main() -> int:
     bases: Dict[str, Tuple[Dict[str, Any], Optional[Any]]] = {}
     transcription_codes = None
     # (label, fold termination is periodic, a wall is required, ghost-cell floor).
-    # THE FLOOR IS THE THIRD ROW'S WHOLE REASON: 3 is what two folded periodic axes
+    # The floor is the third row's whole reason: 3 is what two folded periodic axes
     # compose and 7 is what three do, and the seventh destination is a line no
     # lower floor emits.
     mutation_cases = ((MUTATION_CASE, True, True, 3),
@@ -2304,7 +2304,7 @@ def main() -> int:
             rows.append(row)
             emit(handle, row)
 
-        # THE SECOND VALUE CLASS, on every product row. A +-0 lattice reaches the
+        # The second value class, on every product row. A +-0 lattice reaches the
         # mirror fill and the far carry the same way the physical band does, and
         # the sign it carries IS the parity these seven destinations compose — so
         # a class of zeros is not a weak case here, it is the one that isolates
@@ -2396,7 +2396,7 @@ def main() -> int:
                 rows.append(row)
                 emit(handle, row)
 
-        # THE EDITS THE THREE-FOLD CASE CANNOT ARM, scored NULL CONFIRMED with the
+        # The edits the three-fold case cannot arm, scored NULL CONFIRMED with the
         # structural reason and the anchor's own absence from the emitted text.
         # An edit missing from a table and an edit that could not be armed read
         # identically in an artifact, and only one of them is a measurement — so
@@ -2437,7 +2437,7 @@ def main() -> int:
             rows.append(row)
             emit(handle, row)
 
-        # THE DISARM CHECK, ONCE PER MUTATION CASE. The identical harness, the
+        # The disarm check, once per mutation case. The identical harness, the
         # identical case, the SHIPPED bytes and no host patch. A nonzero here would
         # mean every "caught" above is a harness that diverges on its own.
         for case_label in mutants:

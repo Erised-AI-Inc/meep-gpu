@@ -295,7 +295,7 @@ def _local_split_layout(grid, layer):
 
     The cut sits at the sigma edge, so the sliver ``(lo + 8, lo + 10]`` reaches no sigma
     and carries no y layer (``structure_chunk::use_pml``), the mechanism behind a forced
-    ``num_chunks`` division that is not separable (phase 0's P0-a).
+    ``num_chunks`` division that is not separable (measured before 1.0).
     """
     one = ChunkLayout.one_rank(grid, layer)
     frames = grid_frames(grid)
@@ -557,7 +557,7 @@ def test_the_first_update_H_starts_H_and_its_f_w_from_B_on_the_dsigw_cells():
 
     A magnetic current deposited inside the x layer before that first update leaves B
     nonzero on Hx's dsigw cells with ``kms != 1``; MEEP's step-1 H word there is
-    ``B + ((kps*B) - (kms*B))`` (phase 0's P0-f: 4 of 4 cells, where the zero start
+    ``B + ((kps*B) - (kms*B))`` (measured before 1.0: 4 of 4 cells, where the zero start
     ``0 + ((kps*B) - (kms*0))`` reproduces 0 of 4). This pins the package's own words to
     the copy start; the MEEP comparison itself is the first MEEP check's.
     """

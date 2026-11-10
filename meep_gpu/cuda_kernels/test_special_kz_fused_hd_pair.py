@@ -1,12 +1,12 @@
 """The REAL beta H->D weld, read on a host with no device.
 
-WHAT THIS FILE PINS is what a device gate cannot: that the TRANSFORM is the released
+What this file pins is what a device gate cannot: that the TRANSFORM is the released
 one, that the beta partner is the weld's own register, that the two measured absences
 are asserted rather than described, and that the module's declarations agree with each
 other. The byte identity itself is
 ``parity/meep_gpu/gate_special_kz_fused_hd_pair.py``'s and lives in its artifacts.
 
-THE CENTRAL CLAIM HERE IS AN EQUALITY, and it is the reason this product is small:
+The central claim here is an equality, and it is the reason this product is small:
 :func:`special_kz_fused_hd_pair.welded_curl_tail` applied to the CERTIFIED (beta-free)
 ``step_D_pml_real`` text returns exactly what the RELEASED
 ``fused_hd_pair.welded_curl_tail`` returns -- so the beta weld is the released, gated
@@ -31,7 +31,7 @@ from . import special_kz_fused_hd_pair as family
 HERE = pathlib.Path(__file__).parent
 
 
-#: THE CERTIFIED DEVICE TEXT IS A GENUINELY ABSENT RESOURCE ON A HOST WITHOUT CuPy,
+#: The certified device text is a genuinely absent resource on a host without CuPy,
 #: and it is declared as one rather than skipped quietly: ``step_curl_kernels`` and
 #: ``constitutive_kernels`` import CuPy at scope, so on a laptop there is no text to
 #: splice and the emitter's own guard raises by name. On the validation host these
@@ -62,7 +62,7 @@ def test_the_module_declares_the_seam_it_spans():
     from .. import withdraw_hoist
     assert family.SEAM == withdraw_hoist.SEAM
     # Nothing is INJECTED between the two consults, so there is no deposit to bracket;
-    # and the hoist is declined in this round, together with INSTALLABLE.
+    # and the hoist is declined in this product, together with INSTALLABLE.
     assert family.CARRIES_DEPOSIT_REPAIR is False
     assert family.HOISTS_THE_WITHDRAW is False
     assert family.INSTALLABLE is False
@@ -87,7 +87,7 @@ def test_the_declaration_is_a_literal_this_files_own_readers_can_see():
     """
     text = (HERE / "special_kz_fused_hd_pair.py").read_text(encoding="utf-8")
     assert f'extern "C" __global__ void {family.KERNEL_NAME}(' in text
-    # BOTH SYNTAX FORMS, as ``test_kernel_partition.partition_sets`` reads them: an
+    # Both syntax forms, as ``test_kernel_partition.partition_sets`` reads them: an
     # annotated assignment is an ``ast.AnnAssign``, and a reader that matched only
     # ``ast.Assign`` would miss ``CERTIFIED_KERNELS: Tuple[str, ...] = ()`` and report
     # half the partition as absent.
@@ -109,7 +109,7 @@ def test_the_declaration_is_a_literal_this_files_own_readers_can_see():
 
 @_emitter
 def test_the_transform_on_the_certified_text_is_the_released_transform():
-    """THE EQUALITY THIS PRODUCT RESTS ON, byte for byte.
+    """The equality this product rests on, byte for byte.
 
     Applied to the certified beta-FREE ``step_D_pml_real`` text, this family's curl
     transform must return exactly what the released real H->D weld's does. What the
@@ -150,7 +150,7 @@ def test_both_beta_partners_are_the_welds_own_register():
 
 def test_a_beta_partner_the_weld_did_not_redirect_is_refused():
     """The armed control for the clause above: it must BITE."""
-    # THE SHIFTED OPERAND, which is the risk special_kz_curl names: "the register
+    # The shifted operand, which is the risk special_kz_curl names: "the register
     # must be the UNSHIFTED centre, never an sf/ss shifted operand". Welded, ``ss`` is
     # a recompute rather than a weld register, so the pairing check must refuse it.
     corrupted = family._certified_curl_source().replace(  # noqa: SLF001
@@ -189,7 +189,7 @@ def test_a_body_that_lost_a_beta_increment_is_refused():
 
 @_emitter
 def test_the_certified_special_kz_body_is_the_certified_real_one_plus_the_insert():
-    """WHY ONE TRANSFORM SERVES BOTH, measured rather than asserted.
+    """Why one transform serves both, measured rather than asserted.
 
     The two ``step_D`` texts differ in the kernel NAME, two parameters, the fold ladder
     helper and MEEP's two beta passes (the ownership flag, the increment, the ladder)
@@ -289,7 +289,7 @@ def test_the_predicate_refuses_by_name(fields, grid, names):
 
 
 def test_an_undeclared_source_set_is_never_an_empty_one():
-    """IGNORANCE IS NOT AN ABSENCE. ``Fields`` does not hold the source list."""
+    """Ignorance is not an absence. ``Fields`` does not hold the source list."""
     from .. import withdraw_hoist
 
     reasons = withdraw_hoist.seam_withdraw_reasons(

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""THE TRITON FUSION MATRIX: which corpus seam-instances a fused product serves.
+"""The Triton fusion matrix: which corpus seam-instances a fused product serves.
 
 The two 2026-08-19 per-product censuses answered "how many rows would THIS ONE
 product admit". Neither answered the aggregate — what fraction of the corpus a
@@ -7,7 +7,7 @@ FUSED path can step on Triton — and neither enumerated the (curl arm,
 constitutive arm) cells the corpus actually drives, so neither could rank the
 missing products by demand. This does both.
 
-WHAT A SEAM-INSTANCE IS, AND WHY THE DENOMINATOR IS NOT 759
+What a seam-instance is, and why the denominator is not 759
 -----------------------------------------------------------
 The sub-step census counts SLOTS: rows x (step_B, step_D, update_H, update_E,
 update_P and the two fold-only fills) — 759 on the 186-row basis those censuses
@@ -33,7 +33,7 @@ row with no polarization state — so it is counted only on those rows.
 
 The E->P count is measured from the record rather than assumed, and printed.
 
-WHAT IS COUNTED AS "SERVED"
+What is counted as "SERVED"
 ---------------------------
 Three questions are asked per seam-instance and they are NOT the same question:
 
@@ -47,7 +47,7 @@ Three questions are asked per seam-instance and they are NOT the same question:
       ``dispersive_fused_pair``, and the two FOLDED pairs, which the folded branch
       installs through ``_install_folded_fused_pairs`` (launch.py:3033). The other
       nine live in modules ``launch.py`` never imports, so (b) can be true where
-      (c) is false. THIS COLUMN IS MEASURED, not declared: until 2026-08-29 it read
+      (c) is false. This column is measured, not declared: until 2026-08-29 it read
       a hardcoded flag that still said the two folded pairs were unreachable, two
       days after they were routed, and mis-scored 56 seam-instances.
       :func:`assert_the_wiring_column_is_measured` re-derives it from ``launch.py``'s
@@ -57,9 +57,9 @@ The headline number is (b), which is what the brief asked for. (a) and (c) are
 carried beside it because reporting only (b) would overstate what runs today and
 reporting only (c) would understate what has been built.
 
-WHERE THE NUMBERS COME FROM, AND THE FRESHNESS CHECK
+Where the numbers come from, and the freshness check
 ----------------------------------------------------
-NOT A RE-LIFT. Two standing records are read:
+Not a re-lift. Two standing records are read:
 
   * ``predicate_coverage_triton_2026-09-03_extended`` — the TRITON battery, and
     the DEFAULT (see :data:`CENSUS` for every move of the default since the 08-16
@@ -86,29 +86,29 @@ NOT A RE-LIFT. Two standing records are read:
     configurations are backend-independent (the eight rows added on 2026-09-03 have
     no twin in the 2026-08-20 record — ``row_sets_identical`` reads False and says
     so, and they are compared on nothing), so if the census's configurations still agree with the
-    2026-08-20 ones key-for-key, the four rounds of sub-step movement since did
+    2026-08-20 ones key-for-key, the changes to the sub-steps since did
     not move the corpus this derivation prices against. The comparison is printed.
 
-THE STALENESS AUDIT IS MEASURED, NOT ASSERTED. Every predicate function whose
+The staleness audit is measured, not asserted. Every predicate function whose
 verdict this derivation reads is AST-hashed (docstrings stripped) at the census's
 commit and in the worktree, and each is reported SAME or CHANGED. A CHANGED
 function is not silently trusted: it is named, with both digests, in the board's
 ``staleness_audit`` block.
 
-**COVERAGE IS READ OFF ``covered_modulo_backend``.** The census lifted on NumPy,
+**Coverage is read off ``covered_modulo_backend``.** The census lifted on NumPy,
 so every Triton predicate carries "array module is 'numpy', not cupy" and the raw
 ``covered`` column is 0 on every row for every family. That is a statement
 about the harness, not about any corpus row; the residual column is what the
 census computed for exactly this purpose.
 
-PROMOTED OUT OF ``results/`` ON 2026-08-28, and the promotion is the point
+Promoted out of ``results/`` on 2026-08-28, and the promotion is the point
 =========================================================================
 
 This file is ``results/fusion_matrix_triton_2026-08-21_foldedcomplex/fusion_matrix.py``
 moved to the canonical directory beside the gates. Twenty divergent copies of that
 name live under ``results/`` -- one per board cut -- and picking the newest by
 mtime lands on ``..._2026-08-21d/``, whose own ``REFUSED_TO_BUILD.md`` records that
-its script and its JSON came from two different rounds. The Metal board was promoted
+its script and its JSON came from two different cuts. The Metal board was promoted
 for exactly this reason (``build_fusion_matrix.py``:110-116) after a cut forked off a
 pre-carry ancestor and silently re-applied a retired clause. There is now one Triton
 board script, it takes its census and its output directory as arguments, and a cut is
@@ -146,7 +146,7 @@ HERE = Path(__file__).resolve().parent
 
 
 #: The package root, found BY NAME rather than by counting ``.parents[N]``. This
-#: script has now moved once (out of a results tranche, up two levels), and a
+#: script has now moved once (out of a results directory, up two levels), and a
 #: depth-based root follows a move silently: the promoted census driver's own
 #: comment records what that costs -- every child dies on import while the parent
 #: still writes a full-length, right-shaped record of unmeasured rows and exits 0.
@@ -172,10 +172,10 @@ REPO = next((candidate for candidate in (API, *API.parents)
 #: every verdict below is read off. Selectable so a fresh cut does not need a fresh
 #: copy of this file.
 #:
-#: THE DEFAULT MOVED 2026-08-29, and the reason is a trap that was paid for rather
+#: The default moved 2026-08-29, and the reason is a trap that was paid for rather
 #: than foreseen. It used to be ``predicate_coverage_2026-08-16_wired_convention`` —
 #: the record the 08-21 cuts were taken over — so an argument-free run silently
-#: BUILT A COMPLETE BOARD off a two-week-old battery: 119 served and 55 -> 17 served
+#: built a complete board off a two-week-old battery: 119 served and 55 -> 17 served
 #: in dispatch against the 08-28 battery's 170 and 55, on the same shipped code, with
 #: nothing in the output saying which battery it was. A default that quietly answers
 #: a different question is worse than one that refuses, and worse still now that the
@@ -187,12 +187,12 @@ REPO = next((candidate for candidate in (API, *API.parents)
 #: cut reads, so the board refused over it rather than report those products at
 #: ZERO without measuring them — the refusal working as designed, not a defect. The
 #: chain is foldedbeta -> 09-02_residue (four complex/folded-beta columns) ->
-#: 09-02_stencil (the two off-diagonal scratch-weld columns), each round adding the
+#: 09-02_stencil (the two off-diagonal scratch-weld columns), each census adding the
 #: columns its welds needed; _stencil is the head and the one the current boards are
 #: cut over. Older records stay selectable by name for reproducing an old cut.
 #:
-#: HEAD MOVED TO ``_2026-09-02_unified`` ON 2026-09-02, and the reason is a MEASURED
-#: reporting defect rather than a new round of columns. Every census up to ``_stencil``
+#: Head moved to ``_2026-09-02_unified`` on 2026-09-02, and the reason is a measured
+#: reporting defect rather than a new set of columns. Every census up to ``_stencil``
 #: was cut under ``complex_expansion_beta_extension_2026-09-01/probe_keep/probe.json``,
 #: which classifies FIVE multiply patterns. The shipped arm "complex folded
 #: off-diagonal" (``complex_offdiag_update_e.py``'s folded, active-PML tail — the file
@@ -200,7 +200,7 @@ REPO = next((candidate for candidate in (API, *API.parents)
 #: folded-complex off-diagonal row that arm refused with two clauses that are both
 #: about the ARTIFACT and neither about the configuration.
 #:
-#: THE BOARD THEN REPORTED IT AS ABSENT RATHER THAN AS UNLICENSED, because
+#: The board then reported it as absent rather than as unlicensed, because
 #: ``admitted()`` reads the census slot table verbatim and that table carries ONE
 #: artifact verdict per arm with no alternative-artifact variant — so three
 #: seam-instances read as "a slot has NO admitting arm", i.e. as a MISSING KERNEL, for
@@ -219,7 +219,7 @@ REPO = next((candidate for candidate in (API, *API.parents)
 #: all along. The swap buys honesty, not coverage, which is why it is recorded here
 #: rather than announced as a gain.
 #:
-#: HEAD MOVED TO ``_2026-09-03_extended`` ON 2026-09-03, and for the first time the
+#: Head moved to ``_2026-09-03_extended`` on 2026-09-03, and for the first time the
 #: CORPUS moved it rather than a column or an artifact: the basis grew from 186 to 194
 #: rows. Eight example scripts the 2026-08-09 corpus campaign accepted in its
 #: _blocked/_gdsii/_sigma legs had gone unpriced on every board because the census
@@ -239,7 +239,7 @@ REPO = next((candidate for candidate in (API, *API.parents)
 #: measured anyway; this board joined that record once
 #: (``fusion_matrix_triton_2026-09-03_extended``, superseded the same day).
 #:
-#: HEAD MOVED TO ``_2026-09-04_cylm0`` ON 2026-09-06 — the census EVERY Triton board
+#: Head moved to ``_2026-09-04_cylm0`` on 2026-09-06 — the census EVERY Triton board
 #: from ``fusion_matrix_triton_2026-09-04_m0`` on was cut over while this default still
 #: named ``_2026-09-03_extended``, so for two days an argument-free run answered a
 #: different question from the standing board. What separates the two records is the
@@ -254,7 +254,7 @@ REPO = next((candidate for candidate in (API, *API.parents)
 #: half where the shipped tree admits them. An argument-free cut over ``_cylm0``
 #: reproduces the standing board with zero instances changed
 #: (``fusion_matrix_triton_2026-09-06_consolidated`` against ``_2026-09-06_hd``).
-#: MOVES TOGETHER WITH :data:`METAL_CENSUS`, as before.
+#: Moves together with :data:`METAL_CENSUS`, as before.
 #: MOVED 2026-09-11 to the realarms cut. The `_cylm0` default predated the battery
 #: extension that scores `folded_offdiag_fused_ade_chain`, so an argument-free build
 #: refused BY NAME rather than reporting that product at zero without measuring it --
@@ -264,14 +264,14 @@ REPO = next((candidate for candidate in (API, *API.parents)
 #: sparse-transport pass moved `stepping.py`, seven of the 66 subjects, so no earlier
 #: census hashes to this tree. Cut LICENSED, which is two declarations: ``--run-policy
 #: keep`` (the licence re-check below reads the policy the census declared and refuses
-#: ``None`` by name) and ``--probe-artifact`` naming this round's own
+#: ``None`` by name) and ``--probe-artifact`` naming the 2026-09-23 fleet's own
 #: ``triton_fleet_2026-09-23_sparse/unified_expansion/gate.json`` (the census default
-#: is the artifact the 08-16 round rejected, under which the cylindrical-complex arms
+#: is the artifact rejected on 2026-08-16, under which the cylindrical-complex arms
 #: read unlicensed on every row -- three cuts that day reproduced exactly that before
 #: the flag was found). Over the complete corpus: 194 rows, 179 measured against the 170
 #: the 09-03 census could reach before the sibling fixtures and `parameterized` were
 #: restored.
-#: THE DEFAULT MOVED AGAIN 2026-09-24, to ``predicate_coverage_triton_2026-09-24_final2``:
+#: The default moved again 2026-09-24, to ``predicate_coverage_triton_2026-09-24_final2``:
 #: the NULL_SIDES citation fix moved `triton_kernels/no_pml_constitutive.py`, a subject, and
 #: this builder does not check its census's subject manifest, so the census was re-cut
 #: rather than relied on -- the same two licence flags (`--run-policy keep`, `--probe-artifact`
@@ -286,10 +286,12 @@ REPO = next((candidate for candidate in (API, *API.parents)
 #: the live tree recomputes). An argument-free cut on ``_final2`` reproduced the board with 0
 #: of 403 seam instances differing outside ``halves_read_from``; what it got wrong was the
 #: provenance -- its ``census`` and ``probe_artifact`` cited ``_final2`` and the 09-23 fleet
-#: (``round_2026-09-26_close_audit``, S4). Cut LICENSED, the same two flags: ``--run-policy
-#: keep`` and ``--probe-artifact`` the Round B fleet's
-#: ``triton_fleet_2026-09-25_roundb/unified_expansion/gate.json``. This builder still reads no
-#: ``subject_digests_*``, so the next subject edit leaves this default stale with no refusal.
+#: (recorded in ``round_2026-09-26_close_audit``). Cut LICENSED, the same two flags:
+#: ``--run-policy keep`` and ``--probe-artifact`` the 2026-09-25 fleet's
+#: ``triton_fleet_2026-09-25_roundb/unified_expansion/gate.json``. This builder read no
+#: subject stamp then, so a subject edit left this default stale with no refusal; it checks
+#: the census's stamp against the tree now (``census_subject.subject_pin`` in ``main``), so
+#: the next subject edit makes a stale default refuse by name.
 CENSUS = RESULTS / (os.environ.get("MEEP_GPU_TRITON_CENSUS")
                     or "predicate_coverage_triton_2026-09-25_roundb_licensed")
 #: The same run under an unlicensed probe. Read only to print the delta, so the
@@ -298,12 +300,12 @@ CENSUS_UNLICENSED = RESULTS / "predicate_coverage_2026-08-16_wired"
 #: The freshest complete corpus record. Configurations only — see the docstring.
 FRESH = RESULTS / "cuda_predicate_coverage_2026-08-20_final"
 
-#: The commit the Triton census ran at. ``31c9e18`` (the round that added the five
+#: The commit the Triton census ran at. ``31c9e18`` (the commit that added the five
 #: fused products) is the only ``triton_kernels`` commit after it.
 CENSUS_COMMIT = "47d6658"
 
 #: ``symmetry.MIRROR_SOURCE_INDEX`` -- the stored index the near fill images.
-#: READ, NOT SPELLED, and the two copies are required to agree rather than assumed
+#: Read, not spelled, and the two copies are required to agree rather than assumed
 #: to. This was the literal ``2`` until 2026-08-28; a board that spells the number
 #: keeps answering the old threshold after the engine moves and then ADMITS folds the
 #: shipped predicate refuses -- over-counting, the one direction that reads as
@@ -313,19 +315,22 @@ if str(API) not in sys.path:
 if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
 
-# SERVED IN DISPATCH, measured rather than asserted in a caveat string. See
+# Served in dispatch, measured rather than asserted in a caveat string. See
 # ``dispatch_reachability`` for why a sentence was the wrong shape for that answer.
 import dispatch_reachability as _reach  # noqa: E402
 
-# THE RECONCILED BUCKET NAMES AND THE THREE TIERS, shared with the Metal and CUDA
-# boards (release decision R1/R2, 2026-09-02). One name list in one file is what stops a
+# The reconciled bucket names and the three tiers, shared with the Metal and CUDA
+# boards (names and tiers both reconciled on 2026-09-02). One name list in one file is what stops a
 # fourth vocabulary growing back; the module also carries the floors that make the
 # decomposition and the served total REFUSABLE rather than merely printed.
 import dispatch_agreement  # FLOOR 8; see its docstring for why it is not in fusion_taxonomy
 import fusion_taxonomy  # noqa: E402
-# THE FOURTH SEAM, update_H -> step_D (2026-09-04): one pricing rule for the three
+# The fourth seam, update_H -> step_D (2026-09-04): one pricing rule for the three
 # boards, off the probe artifact and the driver's own text. See h_to_d_seam.py.
 import h_to_d_seam  # noqa: E402
+# The census's subject stamp against this tree (the check the CUDA board makes), shared with
+# the Metal board: see its docstring.
+import census_subject  # noqa: E402
 
 #: seam -> (curl slot, constitutive slot). Spelled once, so the missing-half bucket
 #: can NAME which of the two bodies is absent rather than saying "a slot".
@@ -353,7 +358,22 @@ if NEAR_SOURCE_INDEX != _SYMMETRY_NEAR_SOURCE_INDEX:
 
 
 def log(message: str = "") -> None:
-    print(message, flush=True)
+    """One log line, written neutrally (``neutral_ids.text``): no machine, account or path."""
+    import neutral_ids  # noqa: PLC0415
+
+    print(neutral_ids.text(message), flush=True)
+
+
+def _repo_named(path: Any) -> str:
+    """A directory the board was cut from, named relative to the checkout
+    (``parity/meep_gpu/results/<name>``): the board leaves the machine, and a reader at the
+    checkout's root (``cut_timing_record.py``'s preview) still finds the directory."""
+    import neutral_ids  # noqa: PLC0415
+
+    try:
+        return Path(path).resolve().relative_to(Path(API).resolve()).as_posix()
+    except ValueError:
+        return neutral_ids.path(str(path))
 
 
 # ---------------------------------------------------------------------------
@@ -477,12 +497,12 @@ PRODUCTS: Dict[str, Dict[str, Any]] = {
         "wired": True,
     },
     # ------------------------------------------------------------------ NEW
-    # THE 2026-09-02 SCRATCH-OUTPUT OFF-DIAGONAL WELDS. Both occupy cells this
-    # board scored, from 2026-08-20 until this round, as
+    # The 2026-09-02 scratch-output off-diagonal welds. Both occupy cells this
+    # board scored, from 2026-08-20 until these welds landed, as
     # "reachable; STRUCTURALLY UNFUSABLE — the constitutive arm is a STENCIL over
     # the curl arm's in-place output".
     #
-    # THAT VERDICT WAS TRUE OF WHAT IT MEASURED and is superseded rather than
+    # That verdict was true of what it measured and is superseded rather than
     # contradicted. `results/triton_fused_offdiag_electric_2026-08-20` measured a
     # ONE-ORDINARY-LAUNCH weld of the SHIPPED IN-PLACE halves: 42 of 60 subject
     # cases divergent at up to 6.58e-02, schedule-dependently. These two products
@@ -491,7 +511,7 @@ PRODUCTS: Dict[str, Dict[str, Any]] = {
     # stencil tap from pre-launch state, and the plan rotates the D/fu references
     # after the launch — so nothing written is ever read and there is no
     # cross-program hazard for a block schedule to expose.
-    # THE H->D SEAM'S FIRST PRODUCT, 2026-09-06, and the first entry on this board
+    # The H->D seam's first product, 2026-09-06, and the first entry on this board
     # whose seam is the fourth one. `fused_hd_pair.py:fused_hd_pair_coverage` conjoins
     # `coverage.constitutive_coverage(fields, pml, 'H')` (the "ordinary" arm,
     # launch.py's update_H slot) and `coverage.pml_curl_coverage(fields, pml,
@@ -501,7 +521,7 @@ PRODUCTS: Dict[str, Dict[str, Any]] = {
     # the slot protocol. Routing it through `_install_certified_fused_products` costs
     # a composer label, and on this backend a composer label must also appear in
     # `fastpath.FUSED_ARM_CONSTITUENTS` and `PENDING_DEVICE_GATE_ARMS`; both are in
-    # `meep_gpu/fastpath.py`, which the round that built this product does not own.
+    # `meep_gpu/fastpath.py`, which the change that built this product did not own.
     # The product additionally declares `INSTALLABLE = False` for a measured
     # arbitration verdict of its own, so routing it would change no plan on any row.
     "fused_hd_pair": {
@@ -510,7 +530,7 @@ PRODUCTS: Dict[str, Dict[str, Any]] = {
         "module": "fused_hd_pair.py",
         "wired": False,
     },
-    # THE CYLINDRICAL H->D SEAM, 2026-09-07 -- the two cells the 2026-09-05 board
+    # The cylindrical H->D seam, 2026-09-07 -- the two cells the 2026-09-05 board
     # filed `buildable_not_built` and the design pass before it had refused outright.
     # Both products are TWO launches and one array-module scan: launch 1 (the
     # `update_H` slot) is the certified constitutive at the program's own cell into
@@ -544,15 +564,15 @@ PRODUCTS: Dict[str, Dict[str, Any]] = {
     # `buildable_not_built` on `results/fusion_matrix_triton_2026-09-07_cyl`, every
     # one with `withdraw_in_seam: false`.
     #
-    # THE SHAPE IS `fused_hd_pair`'s ON ALL OF THEM: the certified `update_H`
+    # The shape is `fused_hd_pair`'s on all of them: the certified `update_H`
     # constitutive computed into launch-local WRITE-ONLY scratch at the thread's own
     # cell AND at every backward neighbour the curl taps, `D`/`fu_D` stepped in
     # place, and the H / f_w_H references rotated onto the scratch afterwards -- so
     # H, f_w_H and B are const for the whole dispatch and no thread observes another
     # thread's store.
     #
-    # A CELL SERVED BY A SECOND EMITTED KERNEL OR A WIDER ADMISSION IS SCORED UNDER
-    # ITS OWN NAME, the way `no_pml_fused_electric_pair_lossless` and
+    # A cell served by a second emitted kernel or a wider admission is scored under
+    # its own name, the way `no_pml_fused_electric_pair_lossless` and
     # `folded_complex_fused_magnetic_pair_offdiag` already are -- so "which product
     # serves this cell" stays answerable from the board.
     #
@@ -593,7 +613,7 @@ PRODUCTS: Dict[str, Dict[str, Any]] = {
     },
     "folded_complex_fused_hd_pair_offdiag": {
         "seam": "H->D",
-        # THE SAME LAUNCH, not a second kernel: the shipped off-diagonal builders
+        # The same launch, not a second kernel: the shipped off-diagonal builders
         # return K1's own plan class around K1's own kernel and change only the
         # admission.
         "cell": ("folded complex off-diagonal", "folded complex off-diagonal PML"),
@@ -618,7 +638,7 @@ PRODUCTS: Dict[str, Dict[str, Any]] = {
         "module": "beta_complex_fused_hd_pair.py",
         "wired": False,
     },
-    # ADMISSION ONLY, NO NEW KERNEL. `nonlinear_fused_hd_pair` adds one predicate,
+    # Admission only, no new kernel. `nonlinear_fused_hd_pair` adds one predicate,
     # one plan builder and one checkable identity; the kernel a covered configuration
     # launches is `fused_hd_pair.fused_constitutive_curl_H_to_D`, character for
     # character. What its gate certifies is that the SHIPPED weld, driven on a
@@ -644,7 +664,7 @@ PRODUCTS: Dict[str, Dict[str, Any]] = {
         "module": "complex_fused_hd_pair.py",
         "wired": True,
     },
-    # THE FOLDED H->D CELL, 2026-09-07 -- the largest cell this board carried
+    # The folded H->D cell, 2026-09-07 -- the largest cell this board carried
     # unbuilt: 78 seam-instances, 75 `buildable_not_built` and 3 `withdraw_seam`.
     # ONE launch: the certified folded `update_H` (which on this backend IS
     # `kernels.constitutive_step` over the folded stored extent, so the weld imports
@@ -661,7 +681,7 @@ PRODUCTS: Dict[str, Dict[str, Any]] = {
     # `symmetry.folded_composition_curl_coverage(fields, pml, 'step_D')` (the
     # "folded PML" arm), in the driver's order, plus the seam's withdraw clause.
     # `wired: False` for the plain product's reason: the label lives in
-    # `meep_gpu/fastpath.py`, which the round that built this does not own.
+    # `meep_gpu/fastpath.py`, which the change that built this did not own.
     "folded_fused_hd_pair": {
         "seam": "H->D",
         "cell": ("folded", "folded PML"),
@@ -676,7 +696,7 @@ PRODUCTS: Dict[str, Dict[str, Any]] = {
         "cell": ("PML", "off-diagonal"),
         "module": "offdiag_fused_electric_pair.py",
         # WIRED 2026-09-17. The file boundary the `wired: False` note above
-        # describes was crossed by this round: `launch.py` imports this module
+        # describes was crossed by the 2026-09-17 wiring: `launch.py` imports this module
         # (its import list, its cell map and its routing table all name it) and
         # its composer label sits in `fastpath.FUSED_ARM_CONSTITUENTS` with an
         # `ARM_CERTIFICATION` row beside it. The board cross-checks this column
@@ -691,7 +711,7 @@ PRODUCTS: Dict[str, Dict[str, Any]] = {
         # symmetry.folded_composition_curl_coverage('step_D') (the "folded PML"
         # arm, launch.py:2470) and
         # folded_offdiag_update_e.folded_offdiag_composition_coverage (the
-        # "folded off-diagonal" arm). THE COMPOSITION VARIANTS, not the
+        # "folded off-diagonal" arm). The composition variants, not the
         # standalone ones: those deliberately admit an unfolded grid so their own
         # gates can prove reduction, and using them here would make this product
         # and the unfolded weld both admit every unfolded off-diagonal run —
@@ -699,7 +719,7 @@ PRODUCTS: Dict[str, Dict[str, Any]] = {
         "cell": ("folded PML", "folded off-diagonal"),
         "module": "folded_offdiag_fused_electric_pair.py",
         # WIRED 2026-09-17. The file boundary the `wired: False` note above
-        # describes was crossed by this round: `launch.py` imports this module
+        # describes was crossed by the 2026-09-17 wiring: `launch.py` imports this module
         # (its import list, its cell map and its routing table all name it) and
         # its composer label sits in `fastpath.FUSED_ARM_CONSTITUENTS` with an
         # `ARM_CERTIFICATION` row beside it. The board cross-checks this column
@@ -720,7 +740,7 @@ PRODUCTS: Dict[str, Dict[str, Any]] = {
         "wired": True,
     },
     # ------------------------------------------------------------------ NEW
-    # The 2026-08-21 GAP-CELL round. Both are B->H welds on cells the 08-20 cut
+    # The 2026-08-21 gap-cell welds. Both are B->H welds on cells the 08-20 cut
     # ranked as "reachable; NO PRODUCT OCCUPIES THIS CELL — not built".
     "nonlinear_fused_magnetic_pair": {
         "seam": "B->H",
@@ -750,7 +770,7 @@ PRODUCTS: Dict[str, Dict[str, Any]] = {
         "module": "bfast_fused_magnetic_pair.py",
         "wired": True,
     },
-    # THE ELECTRIC TWIN, 2026-08-31. The same shape of story as the real-beta pair:
+    # The electric twin, 2026-08-31. The same shape of story as the real-beta pair:
     # the D->E cell was unreachable while an in-seam electric injection was a
     # structural bar, and `deposit_repair` (2026-08-28) is what carries it. The
     # 2026-08-31 board scores
@@ -789,7 +809,7 @@ PRODUCTS: Dict[str, Dict[str, Any]] = {
         "module": "beta_fused_magnetic_pair.py",
         "wired": True,
     },
-    # THE ELECTRIC TWIN, 2026-08-31, and a cell the MAGNETIC twin's docstring
+    # The electric twin, 2026-08-31, and a cell the MAGNETIC twin's docstring
     # explicitly wrote off:
     #
     #     The D/E partner cell is worth ZERO on this corpus (that row injects
@@ -821,7 +841,7 @@ PRODUCTS: Dict[str, Dict[str, Any]] = {
         "module": "beta_fused_electric_pair.py",
         "wired": True,
     },
-    # THE CONDUCTIVE PML D->E WELD, 2026-08-31 — the LAST buildable non-folded cell
+    # The conductive PML D->E weld, 2026-08-31 — the LAST buildable non-folded cell
     # on this seam. The 2026-08-31 board scores it at
     #
     #     ceiling  1  (rows 1)  D->E  conductive PML -> ordinary   NO PRODUCT
@@ -831,14 +851,14 @@ PRODUCTS: Dict[str, Dict[str, Any]] = {
     # `in_seam_source_blocks: false`. CARRIES_DEPOSIT_REPAIR is again the product
     # rather than a clause of it: at False the source clause refuses the only row.
     #
-    # ITS SIBLING IS `complex_conductive_fused_pair` AND THEY MAY NOT BE CONFLATED.
+    # Its sibling is `complex_conductive_fused_pair` and they may not be conflated.
     # That one carries `_apply_conductive_update` — the NO-PML path, case D alone,
     # no f_cond and no fu — and refuses an active layer. This one carries the PML
     # SPLIT-FIELD recurrence: four cases selected by two EXACT float comparisons,
     # with f_cond written only where `dsig` and fu only where `dsigu`.
     #
-    # AND IT SERVES ZERO OF THAT ONE ROW, which is why the cell stays a gap on this
-    # board with a product beside it. MEASURED, on the GPU host GPU 6, 2026-08-31, one
+    # And it serves zero of that one row, which is why the cell stays a gap on this
+    # board with a product beside it. Measured, on the GPU host GPU 6, 2026-08-31, one
     # complete driver step under the signed-zero value class, three routes:
     #
     #     is_integrated=True   identical over 3 steps, 3 deposits repaired
@@ -866,19 +886,19 @@ PRODUCTS: Dict[str, Dict[str, Any]] = {
     # measure. The day that driver line changes, the clause comes out and the cell
     # closes with no other edit.
     # ------------------------------------------------------- 2026-08-31 (this cut)
-    # THE NO-ABSORBER STORED-E D->E WELD, and the FIRST product on the SECOND deposit
+    # The no-absorber stored-E D->E weld, and the FIRST product on the SECOND deposit
     # repair. Every other fused product in this table inverts the split-field
     # constitutive recurrence when its seam carries a deposit; this configuration runs
     # `update_E`'s PLAIN overwrite instead (stepping.py:1019-1022), which has no `f_w`,
     # no coefficients and no previous value, so `deposit_repair.PLAIN_PATH` inverts it
     # and the module declares that path rather than the default.
     #
-    # TWO CELLS, ONE MODULE, and the split is the census's arm LABELS rather than
+    # Two cells, one module, and the split is the census's arm LABELS rather than
     # anything about the kernel: `conductive_plain_curl_step`'s per-component `COND`
     # constexpr compiles to `plain_curl_step`'s own line at zero, so the same kernel is
     # both arms. `fused_pair_B`/`fused_pair_D` set that precedent.
     #
-    # ITS CEILING IS 1 OF 3, NOT 3 OF 3, and the shortfall is NOT the deposit. The two
+    # Its ceiling is 1 of 3, not 3 of 3, and the shortfall is NOT the deposit. The two
     # conductive rows declare a NON-INTEGRATED electric source, which sends the driver
     # through `_inject_electric_through_conductivity`'s whole-volume rescale
     # (driver.py:3363-3370) at cells no deposit closure can name; the product refuses
@@ -896,7 +916,7 @@ PRODUCTS: Dict[str, Dict[str, Any]] = {
         "wired": True,
     },
     # ------------------------------------------------------- 2026-08-31 (this cut)
-    # THE TWO FOLDED-BETA WELDS — the last cells this board ranked "reachable; NO
+    # The two folded-beta welds — the last cells this board ranked "reachable; NO
     # PRODUCT OCCUPIES THIS CELL — not built", built from BUILDABLE_GAP_RECIPES'
     # own measured recipe. ONE corpus row drives both
     # (tests:TestSpecialKz.test_eigsrc_kz_1_real_imag: 2-D, beta = 0.2, Mirror(Y)
@@ -948,12 +968,12 @@ PRODUCTS: Dict[str, Dict[str, Any]] = {
         "wired": True,
     },
     # ------------------------------------------------------- 2026-08-21 (this cut)
-    # THE FOLDED COMPLEX B->H WELD — the intersection of the two shipped B/H pairs,
+    # The folded complex B->H weld — the intersection of the two shipped B/H pairs,
     # and the one cell on this seam where neither can stand in for the other.
     # `folded_fused_magnetic_pair` refuses complex storage; `complex_fused_magnetic_
     # pair` refuses a fold BY NAME.
     #
-    # TWO ENTRIES, ONE MODULE, and the split is the census's arm LABELS rather than
+    # Two entries, one module, and the split is the census's arm LABELS rather than
     # anything about the kernel. `folded_complex.py` registers a second family name
     # over the SAME kernel and the SAME plan class for a run carrying an
     # off-diagonal chi1inv row — `plan_folded_complex_offdiag_pml_curl` (:3101)
@@ -999,18 +1019,18 @@ PRODUCTS: Dict[str, Dict[str, Any]] = {
         "module": "fused_dispersive_chain.py:389",
         "wired": False,
     },
-    # --- THE TWO ADE CHAINS, PRICED 2026-08-30 --------------------------------
+    # --- The two ADE chains, priced 2026-08-30 --------------------------------
     # Both were BUILT and their gates RELEASED before this cut, and both were
     # reported at ZERO — `fused_ade_chain` under GATED_NOT_PRICED_HERE ("its
     # predicate reads live polarization objects the census block does not carry"),
     # `complex_fused_ade_chain` under LANDED_CONCURRENTLY_NOT_PRICED_HERE ("will
-    # not price another round's family from its docstring"). Both abstentions were
+    # not price another change's family from its docstring"). Both abstentions were
     # correct about a TRANSCRIBED ladder and are answered by not transcribing one:
     # the census now records what each shipped predicate returned on the real
     # lifted objects, exactly as it already did for `fused_pair_B/D` and
     # `dispersive_fused_pair_D`, and this board reads that verdict.
     #
-    # THE CELL COLUMN IS REPORTING, NOT ROUTING. A product is credited at this seam
+    # The cell column is reporting, not routing. A product is credited at this seam
     # because its OWN predicate admitted the row, never because a declared cell
     # matched — see the E->P branch below for why that distinction is the whole
     # point at a seam whose arm labels collapse two of one module's three arms.
@@ -1033,8 +1053,8 @@ PRODUCTS: Dict[str, Dict[str, Any]] = {
         "module": "complex_fused_ade_chain.py:658 complex_fused_ade_chain_coverage",
         "wired": False,
     },
-    # --- THE THIRD ADE CHAIN, PRICED WITH THE ROUND THAT BUILT IT -------------
-    # THE LAST BUILDABLE E->P CELL ON THIS BOARD. Before this product the seam
+    # --- The third ADE chain, priced with the change that built it -------------
+    # The last buildable E->P cell on this board. Before this product the seam
     # read 14 of 15 served, and the one instance left --
     # ``examples:absorbed_power_density.py`` -- was reported "reachable; NO
     # PRODUCT OCCUPIES THIS CELL -- not built": its E arm is the FOLDED
@@ -1043,10 +1063,10 @@ PRODUCTS: Dict[str, Dict[str, Any]] = {
     # on `dispersive`, the active layer on `no_pml`) and
     # `complex_fused_ade_chain` refuses on storage.
     #
-    # ONE LAUNCH, THREE COMPONENTS, ONE SCRATCH PER DRIVEN COMPONENT. The E half
+    # One launch, three components, one scratch per driven component. The E half
     # is folded_offdiag_dispersive_update_e's certified body, contiguous and
     # verbatim, and the ADE half is kernels.ade_update_p appended per (component,
-    # pole slot) under six declared renames. It is BOUND BY ITS GATE rather than
+    # pole slot) under six declared renames. It is bound by its gate rather than
     # by a fingerprint: the kernel EXECUTES JIT helpers out of BOTH folded
     # off-diagonal modules, which seed_triton_welds' curated set does not pin, and
     # the gate's own `source_sha256` does.
@@ -1059,7 +1079,7 @@ PRODUCTS: Dict[str, Dict[str, Any]] = {
         "wired": False,
     },
     # ------------------------------------------------- 2026-08-30 (this cut)
-    # THE COMPLEX D->E WELD — the largest single BUILDABLE gap the 2026-08-30
+    # The complex D->E weld — the largest single BUILDABLE gap the 2026-08-30
     # board reported, tied with the cylindrical complex D->E cell:
     #
     #     ceiling  16  (rows 16)  D->E  complex PML -> complex   NO FUSED PRODUCT
@@ -1098,14 +1118,14 @@ PRODUCTS: Dict[str, Dict[str, Any]] = {
     #     ceiling  16  (rows 16)  D->E  cylindrical complex PML
     #                             -> cylindrical complex        NO FUSED PRODUCT
     #
-    # IT IS A CELL ONLY THIS BACKEND CAN TAKE. The Metal board scores the same
+    # It is a cell only this backend can take. The Metal board scores the same
     # conjunction under "cannot be bound at any sharing" — its argument-table
     # ceiling is 31 bindings and this pair needs more — while Triton has no binding
     # ceiling at all.
     #
-    # ALL SIXTEEN Dcyl ROWS DECLARE AN ELECTRIC SOURCE ('D' on fourteen, ('D','D')
+    # All sixteen Dcyl rows declare an electric source ('D' on fourteen, ('D','D')
     # on cylinder_cross_section.py and zone_plate.py), so under the source clause as
-    # the MAGNETIC twin states it this arm would admit NOTHING AT ALL. The ceiling
+    # the MAGNETIC twin states it this arm would admit nothing at all. The ceiling
     # of 16 is the count with the deposit repair carried, which the module declares
     # in the same change as the wiring that brackets its launch.
     "cylindrical_fused_electric_pair": {
@@ -1119,7 +1139,7 @@ PRODUCTS: Dict[str, Dict[str, Any]] = {
         "module": "cylindrical_fused_electric_pair.py",
         "wired": True,
     },
-    # THE COMPLEX CONDUCTIVE no-PML D->E WELD — rank 2 among the buildable cells
+    # The complex conductive no-PML D->E weld — rank 2 among the buildable cells
     # after the two above:
     #
     #     ceiling   4  (rows 4)   D->E  complex conductive no-PML curl
@@ -1142,20 +1162,20 @@ PRODUCTS: Dict[str, Dict[str, Any]] = {
         "wired": True,
     },
     # ------------------------------------------------- 2026-08-31 (this cut)
-    # THE FOLDED DISPERSIVE D->E WELD — the LARGEST cell the 2026-08-31 board
+    # The folded dispersive D->E weld — the LARGEST cell the 2026-08-31 board
     # reported as "reachable; NO PRODUCT OCCUPIES THIS CELL — not built":
     #
     #     ceiling   4  (rows 4)   D->E  folded PML
     #                             -> folded dispersive          NO FUSED PRODUCT
     #
     # Its four rows are TestLoadDump.test_load_dump_{structure,structure_sharded,
-    # chunk_layout_file,chunk_layout_sim}_2d. A GENUINE NEW WELD rather than a port:
+    # chunk_layout_file,chunk_layout_sim}_2d. A genuine new weld rather than a port:
     # both halves were separately certified (`folded_composition_curl` at step_D and
     # `folded_dispersive_constitutive` at update_E) and no sibling on any backend
     # performs this conjunction.
     #
-    # ALL FOUR ROWS DECLARE AN ELECTRIC SOURCE, so under the source clause with
-    # CARRIES_DEPOSIT_REPAIR at False this arm would admit NOTHING AT ALL. The
+    # All four rows declare an electric source, so under the source clause with
+    # CARRIES_DEPOSIT_REPAIR at False this arm would admit nothing at all. The
     # ceiling of 4 is the count with the deposit repair carried, which the module
     # declares in the same change as the wiring that brackets its launch.
     #
@@ -1188,13 +1208,13 @@ PRODUCTS: Dict[str, Dict[str, Any]] = {
     #     ceiling   3  (rows 3)   D->E  cylindrical PML
     #                             -> cylindrical                NO FUSED PRODUCT
     #
-    # THE ELECTRIC TWIN of `cylindrical_real_fused_magnetic_pair`, over the SAME two
+    # The electric twin of `cylindrical_real_fused_magnetic_pair`, over the SAME two
     # certified halves on the other seam, and the SAME three rows —
     # TestAdjointSolver.test_adjoint_solver_cyl_n2f_fields_{0_0,1_0} and
     # TestPMLCylindrical.test_pml_cyl_0_0_0. The gate's corpus leg measures that
     # equality rather than inheriting it.
     #
-    # ALL THREE ROWS DECLARE AN ELECTRIC SOURCE, which is exactly why the MAGNETIC
+    # All three rows declare an electric source, which is exactly why the MAGNETIC
     # twin's seam clause costs it nothing and why this one's would cost it
     # everything: with CARRIES_DEPOSIT_REPAIR at False this arm admits ZERO. The
     # module declares the flag in the same change as the wiring that brackets its
@@ -1210,11 +1230,11 @@ PRODUCTS: Dict[str, Dict[str, Any]] = {
     # NULL CONTROLS with the bracket removed that both diverge on Ez, 13 mutations
     # (12 caught as declared, one null confirmed) and 4/4 refusals.
     #
-    # THE CUPY VERSION IS PART OF THE CLAIM: everything downstream of the radial
+    # The CuPy version is part of the claim: everything downstream of the radial
     # prefix scan is bit-identical only for a given `cupy.cumsum` summation order, so
     # a CuPy bump is a correctness event for this family and a silent one.
-    # THE FOUR ELECTRIC-PAIR ROWS ABOVE/BELOW WERE RE-POINTED 2026-08-31 to the
-    # retry3 re-runs: the plain-branch round edited meep_gpu/deposit_repair.py and
+    # The four electric-pair rows above/below were re-pointed 2026-08-31 to the
+    # retry3 re-runs: the plain-branch change edited meep_gpu/deposit_repair.py and
     # triton_kernels/launch.py AFTER their first artifacts were cut, and each retry3
     # artifact was verified released=True with 0 drift against the live tree before
     # its repoint.
@@ -1228,7 +1248,7 @@ PRODUCTS: Dict[str, Dict[str, Any]] = {
         "module": "cylindrical_real_fused_electric_pair.py",
         "wired": True,
     },
-    # THE FOLDED COMPLEX D->E WELD — the LARGEST remaining unbuilt cell on the
+    # The folded complex D->E weld — the LARGEST remaining unbuilt cell on the
     # 2026-08-31 board, at two seam-instances:
     #
     #     ceiling   2  (rows 2)   D->E  folded complex PML
@@ -1239,7 +1259,7 @@ PRODUCTS: Dict[str, Dict[str, Any]] = {
     # its MAGNETIC twin already serves on the other seam, measured in
     # results/fusion_matrix_triton_2026-08-31_folded_disp.
     #
-    # BOTH ROWS DECLARE AN ELECTRIC SOURCE, so with CARRIES_DEPOSIT_REPAIR at False
+    # Both rows declare an electric source, so with CARRIES_DEPOSIT_REPAIR at False
     # this arm admits ZERO. The module declares the flag in the same change as the
     # wiring that brackets its launch, and its magnetic twin keeps the flag at False
     # for the mirror-image reason: on the B seam those same two rows are
@@ -1262,14 +1282,14 @@ PRODUCTS: Dict[str, Dict[str, Any]] = {
         "module": "folded_complex_fused_pair.py",
         "wired": True,
     },
-    # THE TWO COMPLEX-BETA WELDS, 2026-09-01 — the unfolded half of the
-    # no-admitting-arm residue (audit §1.4). The 2026-09-01_foldedbeta board
+    # The two complex-beta welds, 2026-09-01 — the unfolded half of the seam-instances
+    # left unserved because no arm admitted them. The 2026-09-01_foldedbeta board
     # scored BOTH seam-instances of tests:TestSpecialKz.test_special_kz as
     # "reachable; a slot has NO admitting arm (array path)" with
     # ``curl_admitters: []``: the K2 curl arm refused because the census probe
-    # classified only the base four patterns and the beta tranche's fifth
+    # classified only the base four patterns and the complex-beta arms' fifth
     # (`c8_mul_c8_imaginary_coefficient_left`, special_kz.py:223) was unmeasured.
-    # THE REFUSAL WAS DISCHARGED BY MEASUREMENT, not by edit:
+    # The refusal was discharged by measurement, not by edit:
     # results/complex_expansion_beta_extension_2026-09-01/probe_keep classifies
     # the fifth pattern on the device (AMBIGUOUS_BOTH on all 16 corpus
     # coefficients, arms measured 0 words apart per entry, FMA_V2 diagnostic
@@ -1296,8 +1316,8 @@ PRODUCTS: Dict[str, Dict[str, Any]] = {
         "module": "complex_beta_fused_electric_pair.py",
         "wired": True,
     },
-    # THE TWO FOLDED COMPLEX-BETA WELDS, 2026-09-02 — the folded half of the
-    # no-admitting-arm residue (audit §1.4). The foldedbeta board scored all SIX
+    # The two folded complex-beta welds, 2026-09-02 — the folded half of the seam-instances
+    # left unserved because no arm admitted them. The foldedbeta board scored all SIX
     # seam-instances of the three folded beta rows (the two binary gratings and
     # test_eigsrc_kz_0_complex) as no-admitting-arm with ``curl_admitters: []``;
     # the same probe extension that unlocked the unfolded pair unlocks K3b
@@ -1383,7 +1403,7 @@ def folded_magnetic_clauses(row: dict) -> Dict[str, bool]:
         "constitutive_half": covered(row, "folded_constitutive@update_H"),
         # :584-590 the magnetic source seam (driver.py:3284)
         "no_magnetic_source": all(str(kind) != "B" for kind in types),
-        # THE CLAUSE THAT WAS HERE IS GONE, and it is the whole of this cut.
+        # The clause that was here is gone, and it is the whole of this cut.
         # `no_folded_periodic_axis` — `all(metallic[a] for a in folded)` — refused a
         # folded PERIODIC axis because `fill_folded_far_ghosts_B` (driver.py:3287)
         # runs inside the seam there and no product imaged the top stored slot. The
@@ -1391,10 +1411,10 @@ def folded_magnetic_clauses(row: dict) -> Dict[str, bool]:
         # (results/triton_folded_far_carry_2026-08-20/run_farcarry7/gate.json), so
         # the clause is retired rather than weakened.
         #
-        # WHAT REPLACED IT IS NOT EVALUABLE FROM THE CENSUS BLOCK and is declared in
+        # What replaced it is not evaluable from the census block and is declared in
         # NOT_EVALUABLE below: the far carry needs `0 <= n_full - stored + 2 <
         # stored - 1`, not 0, and `stored - 1 != 2`. The block carries `shape` but
-        # not `shape_full`. MEASURED INSTEAD over every folded PERIODIC extent Grid
+        # not `shape_full`. Measured INSTEAD over every folded PERIODIC extent Grid
         # will build (58 of them, cells 3..60): stored == ceil(n_full/2) + 2 and
         # reflect == floor(n_full/2), zero violations, minimum stored 4 — so all
         # three hold on every grid this engine can construct and the carry adds no
@@ -1408,7 +1428,7 @@ def folded_magnetic_clauses(row: dict) -> Dict[str, bool]:
 def folded_complex_magnetic_clauses(row: dict) -> Dict[str, bool]:
     """``folded_complex_fused_magnetic_pair_coverage``.
 
-    EITHER MATCHED ADMISSION. The two arm labels are DISJOINT by construction (each
+    Either matched admission. The two arm labels are DISJOINT by construction (each
     refuses the other's configuration by name), so ``plain or offdiag`` is a choice
     between two labels for one kernel rather than a widening; the shipped predicate
     takes them as a PAIR and so does this ladder.
@@ -1437,7 +1457,7 @@ def folded_complex_magnetic_clauses(row: dict) -> Dict[str, bool]:
         # axis storing two cells or fewer is an out-of-range read
         "fold_stores_the_source_row": all(int(shape[a]) > NEAR_SOURCE_INDEX
                                           for a in folded),
-        # THE WALL CLEAR AND THE FOLD MUST NOT MEET — and this is a DRIFT CHECK,
+        # The wall clear and the fold must not meet — and this is a drift check,
         # not a row filter. The shipped clause asks `coverage.zero_metal_axes`,
         # which is `has_metallic and is_metallic(axis) and NOT is_mirrored(axis)`
         # (coverage.py:423-428) — precisely `stepping._zero_metal`'s own question
@@ -1535,7 +1555,7 @@ def nonlinear_magnetic_clauses(row: dict) -> Dict[str, bool]:
     The predicate is the conjunction of the two shipped nonlinear SPINE arms plus
     ``coverage.fused_pair_coverage`` through a one-clause scope view, so the clause
     ladder here is: the two half predicates, the magnetic source seam, and the two
-    symmetry passes' inertness. THE SCOPE VIEW ADDS NO CLAUSE OF ITS OWN — it
+    symmetry passes' inertness. The scope view adds no clause of its own — it
     inverts ``coverage._grid_reasons`` clause 10 (coverage.py:195-196) and forwards
     everything else, and the two spine predicates already restate every one of
     those clauses in force, which is why this ladder can be read off the census's
@@ -1655,8 +1675,8 @@ def cylindrical_complex_magnetic_clauses(row: dict) -> Dict[str, bool]:
     halves (:738-741) and are therefore already inside ``curl_half`` here rather
     than restated as separate rungs.
 
-    THE 08-20c CUT DECLARED THE WALL CLAUSES NOT EVALUABLE AND THAT WAS TOO
-    CAUTIOUS, IN THE PRODUCT'S FAVOUR. ``zero_metal_axes`` is ``is_metallic(a) and
+    The 08-20c cut declared the wall clauses not evaluable and that was too
+    cautious, in the product's favour. ``zero_metal_axes`` is ``is_metallic(a) and
     not is_mirrored(a)`` (coverage.py:408-421) and the census configuration block
     records BOTH ``metallic`` and ``mirrored``, so the FORBIDDEN_WALL_AXES clause IS
     evaluable from the record and is evaluated below rather than deferred. The
@@ -1675,8 +1695,8 @@ def cylindrical_complex_magnetic_clauses(row: dict) -> Dict[str, bool]:
         # Dcyl-aware predicate: stepping.update_H (:907-925) carries NO cylindrical
         # branch, and the axis-zero passes are called from the CURL only.
         "constitutive_half": covered(row, "cylindrical_complex_constitutive@update_H"),
-        # :753-772 the MAGNETIC source seam (driver.py:3283-3284). MEASURED COST ON
-        # THIS CORPUS: ZERO — every cylindrical row declares electric sources only.
+        # :753-772 the MAGNETIC source seam (driver.py:3283-3284). Measured cost on
+        # this corpus: zero — every cylindrical row declares electric sources only.
         "no_magnetic_source": all(str(kind) != "B" for kind in types),
         # :774-792 both symmetry passes must stay inert: fill_symmetry_bc_B
         # (driver.py:3285) and fill_folded_far_ghosts_B (:3287) return at their
@@ -1695,7 +1715,7 @@ def cylindrical_complex_magnetic_clauses(row: dict) -> Dict[str, bool]:
 def in_seam_source(row: dict, seam: str) -> bool:
     """Does the driver inject a source INSIDE this seam on this row?
 
-    THE CEILING ON EVERY FUSED PRODUCT AT A SEAM, and it is a fact about the
+    The ceiling on every fused product at a seam, and it is a fact about the
     driver rather than about any product: the magnetic sources are injected at
     driver.py:3283-3284, between ``step_B`` and ``update_H``; the electric ones at
     :3294-3299, between ``step_D`` and ``update_E``. A launch spanning either
@@ -1706,7 +1726,7 @@ def in_seam_source(row: dict, seam: str) -> bool:
     complex_fused_magnetic_pair.py:625-631) are transcribing the driver, not
     choosing a scope.
 
-    ``E->P`` CARRIES NO IN-SEAM SOURCE AT ALL, and the 2026-08-20 cuts of this
+    ``E->P`` carries no in-seam source at all, and the 2026-08-20 cuts of this
     script said otherwise. CORRECTED HERE, from the driver rather than from a
     product. ``driver.step`` runs::
 
@@ -1719,7 +1739,7 @@ def in_seam_source(row: dict, seam: str) -> bool:
     far-ghost pass. The electric deposit at :3294-3299 lands BEFORE ``update_E``,
     so a launch spanning ``update_E -> update_P`` never straddles it.
 
-    WHAT THE EARLIER CUTS WERE ACTUALLY MEASURING, and why the number was not
+    What the earlier cuts were actually measuring, and why the number was not
     nonsense: the only Triton product they knew at this seam is
     ``fused_dispersive_chain``, which spans THREE sub-steps — ``step_D ->
     update_E -> update_P`` (fused_dispersive_chain.py:405, conjoining
@@ -1750,17 +1770,17 @@ def _folds(configuration: dict) -> List[int]:
 def _deposit_is_repairable(pair: str, configuration: dict) -> bool:
     """``deposit_repair.repairable``'s own refusals, read from the census block.
 
-    PORTED VERBATIM IN SUBSTANCE FROM THE METAL BOARD (build_fusion_matrix.py:562-595)
+    Ported verbatim in substance from the Metal board (build_fusion_matrix.py:562-595)
     because ``meep_gpu/deposit_repair.py`` is SHARED -- one module, both backends -- so
     a second, differently worded transcription of the same clauses is how two boards
     end up disagreeing about one predicate.
 
-    TWO REFUSALS ARE D-SIDE ONLY. An off-diagonal chi1inv row makes ``update_E`` a
+    Two refusals are D-side only. An off-diagonal chi1inv row makes ``update_E`` a
     stencil over the PARTNER components' volumes at shifted indices
     (stepping.py:1228-1251), so no repair over the deposit points can reconstruct it;
     an instantaneous chi2/chi3 is not the linear accumulation the repair inverts.
 
-    TWO ARE ABOUT THE FOLD and apply to either seam: the cylindrical r = 0 axis, whose
+    Two are about the fold and apply to either seam: the cylindrical r = 0 axis, whose
     below-axis ghost is the r_to_minus_r image rather than the near fill's
     cell 0 <- cell 2, and a folded axis storing no more than
     :data:`NEAR_SOURCE_INDEX` cells, where the row the near fill images does not exist.
@@ -1786,7 +1806,7 @@ def _deposit_is_repairable(pair: str, configuration: dict) -> bool:
 def in_seam_source_blocks(row: dict, seam: str) -> bool:
     """Does this seam's injection put the instance BEYOND ANY fused product?
 
-    THE CEILING CLAUSE, AND IT STOPPED BEING "is there a source" ON 2026-08-28.
+    The ceiling clause, and it stopped being "is there a source" on 2026-08-28.
     :func:`in_seam_source` is a fact about the driver and is unchanged. What changed
     is the consequence: ``deposit_repair`` lets a product save the two arrays at the
     sparse deposit points before the fused launch and recompute them after, so an
@@ -1802,12 +1822,12 @@ def in_seam_source_blocks(row: dict, seam: str) -> bool:
     both directions, so this sentence is a summary of that list and not a second copy
     of it.
 
-    THIS IS A CEILING, so it does NOT ask whether the product covering the cell
+    This is a ceiling, so it does NOT ask whether the product covering the cell
     carries the repair -- the ceiling is what SOME product could serve. Whether a
     particular product clears the seam is its shipped predicate's answer, which this
     board reads from the census rather than re-deriving.
 
-    MEASURED, NOT ASSUMED, and the measurement is why this function exists: on the
+    Measured, not assumed, and the measurement is why this function exists: on the
     fresh 2026-08-28 census the shipped seam predicates ADMIT 51 instances that carry
     an in-seam source (22 fused_pair_B, 26 fused_pair_D, 3 dispersive_fused_pair).
     Under the old clause every one of those was bucketed "blocked by the source
@@ -1849,7 +1869,7 @@ IN_LAUNCH_PRODUCTS = ("fused_pair_B", "fused_pair_D")
 def fusion_block_reached(row: dict, product: str) -> Tuple[bool, str]:
     """Which of ``plan_step``'s four ``fuse`` branches does this row take?
 
-    THE FOLD IS NOT A BLANKET REFUSAL ANY MORE, and this function asserted that it
+    The fold is not a blanket refusal any more, and this function asserted that it
     was until 2026-08-29 — it answered ``has_fold: launch.py refuses every pair by
     name`` for EVERY product on all 86 folded rows, which is the pre-2026-08-27
     answer. ``launch.py:3033`` now routes the fold to
@@ -1862,7 +1882,7 @@ def fusion_block_reached(row: dict, product: str) -> Tuple[bool, str]:
     superseded ``_veto`` and ``_seamgate`` runs before it) before rung (6) refused
     the plan for a different reason.
 
-    THE REFUSALS THAT SURVIVE ARE NARROWER, not gone: on a fold the two folded
+    The refusals that survive are narrower, not gone: on a fold the two folded
     products are reached and every other pair is refused BY NAME, which is what
     ``launch.py:3033-3043`` does.
     """
@@ -1887,7 +1907,7 @@ def fusion_block_reached(row: dict, product: str) -> Tuple[bool, str]:
 def launch_imported_modules() -> Tuple[str, ...]:
     """Every sibling ``triton_kernels`` module ``launch.py`` imports, from its AST.
 
-    WHY MEASURED AND NOT DECLARED. This column used to read a hardcoded
+    Why measured and not declared. This column used to read a hardcoded
     ``PRODUCTS[...]["wired"]`` flag whose refusal text was "not an arm: launch.py
     never imports the module". That sentence was TRUE when it was written and
     stopped being true on 2026-08-27, when the two folded pairs were routed — and a
@@ -1895,7 +1915,7 @@ def launch_imported_modules() -> Tuple[str, ...]:
     ``planner_reachable: 0`` for 56 seam-instances the planner reaches. A board
     column that pins a pre-flip answer keeps printing it after the flip.
 
-    AST, NOT A SUBSTRING SEARCH: every one of these module names appears in
+    AST, not a substring search: every one of these module names appears in
     ``launch.py``'s prose as well, and a grep would score a sentence saying a module
     is NOT reached as a reach. Function-body imports count — the family modules are
     imported lazily on purpose (``launch.py`` FAMILY_MODULES/SUPPORT_MODULES), so a
@@ -1954,7 +1974,7 @@ def assert_the_wiring_column_is_measured() -> Dict[str, Any]:
 def assert_the_chain_arms_do_not_overlap(record: List[dict]) -> Dict[str, Any]:
     """``fused_ade_chain``'s three arms must admit DISJOINT rows.
 
-    WHY THIS IS ASSERTED AND NOT ASSUMED. This board credits the family when ANY arm
+    Why this is asserted and not assumed. This board credits the family when ANY arm
     admits (:data:`E_TO_P_VERDICT_KEYS`). That is sound only because the caller names
     the arm — but if two arms admitted one row, "any" would be hiding a genuine
     question about WHICH launch serves it, and a reader would have no way to tell
@@ -2017,12 +2037,12 @@ def planner_reachable(row: dict, product: str) -> Tuple[bool, str]:
                        "(measured by assert_the_wiring_column_is_measured, which "
                        "reads launch.py's parse tree rather than a declaration)")
     if PRODUCTS[product]["seam"] == "E->P":
-        # REFUSED BY NAME rather than answered wrongly. The two slot names below are
+        # Refused by name rather than answered wrongly. The two slot names below are
         # a B->H / D->E mapping, and an E->P product owns update_E -> update_P; a
         # `wired` E->P product would otherwise be measured against the wrong pair of
         # slots and reported reachable or unreachable for a reason about a different
         # seam. Unreachable today for the flag above, so this rung is a guard on the
-        # next round rather than a live branch.
+        # next change rather than a live branch.
         return False, ("E->P reachability is not derivable from _pair_may_absorb: "
                        "that clause reads the curl/constitutive slot pair, and this "
                        "product owns update_E -> update_P")
@@ -2132,7 +2152,7 @@ AUDITED: Tuple[Tuple[str, str], ...] = (
     ("conductive_fused_electric_pair.py",
      "conductive_fused_electric_pair_coverage"),
     # ...and the NO-ABSORBER STORED-E weld's — added 2026-08-31 in the folded-beta
-    # round, closing a gap the interrupted plain-branch round left: its verdict has
+    # change, closing a gap the interrupted plain-branch change left: its verdict has
     # been read off the census since the plainrepair cut while its bytes were
     # audited by nothing, which is exactly the credit-resting-on-nothing this tuple
     # exists to refuse.
@@ -2148,7 +2168,7 @@ AUDITED: Tuple[Tuple[str, str], ...] = (
     ("folded_complex.py", "folded_beta_pml_curl_coverage"),
     ("folded_complex.py", "folded_beta_run_constitutive_coverage"),
     ("complex_fused_ade_chain.py", "complex_fused_ade_chain_coverage"),
-    # ...and the THIRD ADE chain's, with the round that built it: this cut reads
+    # ...and the THIRD ADE chain's, with the change that built it: this cut reads
     # its verdict off the census, and the E half it conjoins is already audited
     # two rows above (``folded_offdiag_dispersive_update_e``'s composed
     # admission, added with the folded dispersive D->E weld). A predicate whose
@@ -2160,7 +2180,7 @@ AUDITED: Tuple[Tuple[str, str], ...] = (
     # CARRIES_DEPOSIT_REPAIR is passed to, and `repairable` is what decides an
     # in-seam deposit once the flag lets it be asked — so 2026-08-30's flip moved
     # the answer for 77 seam-instances into these two bodies. They live in
-    # `deposit_repair.py`, one level up from `triton_kernels/`, which the audit
+    # `deposit_repair.py`, one level up from `triton_kernels/`, which the staleness audit
     # resolves by name.
     ("../deposit_repair.py", "seam_source_reasons"),
     ("../deposit_repair.py", "repairable"),
@@ -2184,7 +2204,7 @@ def _census_provenance() -> Dict[str, Any]:
 def staleness_audit() -> Dict[str, Any]:
     """Has any predicate this derivation reads MOVED since the census called it?
 
-    TWO SOURCES FOR "WHAT THE CENSUS CALLED", and the census picks which.
+    Two sources for "what the census called", and the census picks which.
 
     A census cut at a released commit is dated by that commit, and the comparison is
     ``git show <commit>:<module>`` against the worktree -- what every Triton board
@@ -2259,10 +2279,10 @@ def staleness_audit() -> Dict[str, Any]:
 # The freshness check
 # ---------------------------------------------------------------------------
 
-#: THE E->P SEAM IS SCORED FROM A DIFFERENT RECORD, AND HERE IS WHY.
+#: The E->P seam is scored from a different record, and here is why.
 #:
 #: `CENSUS` (2026-08-16) records `plan_step.slots` for step_B / step_D / update_E /
-#: update_H and FOR NOTHING ELSE. `update_P` is in STEP_ORDER (launch.py:1874-1877)
+#: update_H and for nothing else. `update_P` is in STEP_ORDER (launch.py:1874-1877)
 #: and plan_step resolves an ADE family for it (launch.py:2984-3048), but that
 #: census leg never walked the slot, so the record carries no column for either half
 #: of this seam on the no-PML side and no column at all for the P side. Scoring E->P
@@ -2281,7 +2301,7 @@ def staleness_audit() -> Dict[str, Any]:
 #: that measures it, the split stated rather than buried, and the row-level
 #: agreement between the two records asserted below rather than assumed.
 #:
-#: AMENDED 2026-09-04 — HALF OF THAT PREMISE EXPIRED. The premise above was written
+#: Amended 2026-09-04 — half of that premise expired. The premise above was written
 #: against the 2026-08-16 census, which carried NEITHER column. The censuses this
 #: board reads now (2026-09-03 and 2026-09-04) carry a full 21-arm `update_E` block
 #: on every row and STILL no `update_P` column, so only the P half is read from the
@@ -2375,13 +2395,13 @@ def licensed_vs_unlicensed() -> Dict[str, int]:
 # The matrix
 # ---------------------------------------------------------------------------
 
-#: The Metal battery. READ HERE FOR ONE COLUMN ONLY: ``plan_step.live``, the
+#: The Metal battery. Read here for one column only: ``plan_step.live``, the
 #: engine's own list of which driver passes run on a row. That is a DRIVER fact —
 #: ``driver.step`` calls the same passes whatever backend fills the slots — and this
 #: census does not record it, while the Metal one does, on the SAME rows (the join
 #: in ``build_matrix`` asserts the two row sets are identical).
 #:
-#: THE ALTERNATIVE WAS TO DERIVE IT AND THE DERIVATION IS WRONG. The two 2026-08-20
+#: The alternative was to derive it and the derivation is wrong. The two 2026-08-20
 #: carry cuts derived liveness from the boundary triple: near fill live iff some axis
 #: is mirrored. Measured against ``plan_step.live`` on these 186 rows that rule
 #: disagrees on ``fill_B`` on 32 rows and on ``fill_D`` on 85 — a near fill is also
@@ -2391,12 +2411,12 @@ def licensed_vs_unlicensed() -> Dict[str, int]:
 #: the derivation.
 #: Selectable for the same reason CENSUS is: this file is canonical now, and the
 #: liveness record is a DRIVER fact that a later Metal census re-measures on the same
-#: rows. THE DEFAULT MOVED 2026-09-03 from ``metal_coverage_tranche6_2026-08-19`` — the
-#: tranche every Triton board up to ``fusion_matrix_triton_2026-09-02_unified`` joined
+#: rows. The default moved 2026-09-03 from ``metal_coverage_tranche6_2026-08-19`` — the
+#: census every Triton board up to ``fusion_matrix_triton_2026-09-02_unified`` joined
 #: against — to ``metal_coverage_2026-09-03_complete``, the Metal census cut on the
 #: 194-row basis and the only liveness record holding the same rows as the default
 #: :data:`CENSUS`; the join below refuses any other pairing by name. The 08-19
-#: tranche stays selectable for reproducing a 186-row cut. Not
+#: census stays selectable for reproducing a 186-row cut. Not
 #: ``metal_coverage_2026-09-03_extended``: superseded the same day (its five
 #: gdsii/sigma rows were evaluated where torch was absent).
 #:
@@ -2457,7 +2477,7 @@ def _live_passes(metal_row: Optional[dict], seam: str) -> Tuple[str, ...]:
 
 def report_in_seam_liveness(record: List[dict], metal: Dict[str, dict]
                             ) -> Dict[str, Any]:
-    log("\n=== IN-SEAM PASS LIVENESS: THE ENGINE'S RECORD vs THE DERIVED RULE ===")
+    log("\n=== In-seam pass liveness: the engine's record vs the derived rule ===")
     log(f"  read from ../{METAL_CENSUS.name}/ plan_step.live — a DRIVER")
     log("  fact, and the record this census does not carry. The 2026-08-20 carry cuts")
     log("  DERIVED it from the boundary triple; both numbers are printed.")
@@ -2533,7 +2553,7 @@ def build_matrix(record: List[dict]) -> Tuple[List[dict], Dict[str, Any]]:
     log(f"  LIVENESS JOIN: {len(metal)} rows matched against "
         f"{METAL_CENSUS.name}, 0 configuration drift")
 
-    # A CENSUS THAT DOES NOT CARRY THESE KEYS SCORES SEVEN PRODUCTS AT ZERO, SILENTLY.
+    # A census that does not carry these keys scores seven products at zero, silently.
     #
     # `seam_covered` reads a missing key as False, which is the right default for a
     # verdict that was recorded as a refusal and the WRONG one for a verdict that was
@@ -2558,7 +2578,7 @@ def build_matrix(record: List[dict]) -> Tuple[List[dict], Dict[str, Any]]:
                  # `_lossless` twin are the same predicate under two arm labels, so the
                  # census carries one column and the shipped map above reads it twice.
                  "no_pml_fused_electric_pair_D",
-                 # THE TWO SCRATCH-OUTPUT OFF-DIAGONAL WELDS, 2026-09-02. Required
+                 # The two scratch-output off-diagonal welds, 2026-09-02. Required
                  # here, not merely read below: a census cut before the battery
                  # gained these two columns would price both cells at zero and
                  # print a headline, which is the failure this uniformity check
@@ -2573,7 +2593,7 @@ def build_matrix(record: List[dict]) -> Tuple[List[dict], Dict[str, Any]]:
                  "folded_beta_complex_fused_magnetic_pair_B",
                  "complex_fused_ade_chain"}
                 | {key for keys in E_TO_P_VERDICT_KEYS.values() for key in keys})
-    # THE RETIRED ``@unified_expansion`` KEYS ARE REFUSED BY NAME. They were the verdicts
+    # The retired ``@unified_expansion`` keys are refused by name. They were the verdicts
     # under the unified expansion record; with the licence deleted the battery asks each
     # predicate once, and a census still carrying them was cut by an older battery.
     retired = sorted({key for r in record for key in (r.get("seam") or {})
@@ -2622,8 +2642,8 @@ def build_matrix(record: List[dict]) -> Tuple[List[dict], Dict[str, Any]]:
         nonlinear_pair = nonlinear_magnetic_clauses(row)
         beta_pair = beta_magnetic_clauses(row)
         bfast_pair = bfast_magnetic_clauses(row)
-        # FOUR PRODUCTS MOVED FROM A TRANSCRIBED LADDER TO THEIR OWN SHIPPED VERDICT
-        # ON 2026-08-30, AND THE MOVE IS A BUG FIX, NOT A CONVENIENCE.
+        # Four products moved from a transcribed ladder to their own shipped verdict
+        # on 2026-08-30, and the move is a bug fix, not a convenience.
         #
         # A ladder here is a SECOND COPY of a predicate that lives in the product. It
         # cannot notice when the product changes, and one of them did not:
@@ -2635,7 +2655,7 @@ def build_matrix(record: List[dict]) -> Tuple[List[dict], Dict[str, Any]]:
         # not, so this board went on refusing rows the product admits. The census now
         # records the shipped verdict, so the board holds no copy to go stale.
         #
-        # THE LADDERS ARE KEPT AND ARE NOW A CROSS-CHECK, not a scorer. Every
+        # The ladders are kept and are now a cross-check, not a scorer. Every
         # disagreement between a ladder and the product it mirrors is collected per
         # row and reported (`ladder_vs_shipped` below). A ladder that agrees on all
         # census rows is evidence the transcription was right; one that disagrees names
@@ -2646,7 +2666,7 @@ def build_matrix(record: List[dict]) -> Tuple[List[dict], Dict[str, Any]]:
                 seam_covered(row, "folded_fused_magnetic_pair_B"),
             "complex_fused_magnetic_pair":
                 seam_covered(row, "complex_fused_magnetic_pair_B"),
-            # THE ELECTRIC TWIN, 2026-08-30. Read from the shipped predicate like its
+            # The electric twin, 2026-08-30. Read from the shipped predicate like its
             # sibling and under the SAME census probe: its PRODUCT_PROBE_PATTERNS is
             # the base four, so it needs no unified-record swap. There is NO ladder
             # for it and there never will be — the clause that decides 15 of its 16
@@ -2656,7 +2676,7 @@ def build_matrix(record: List[dict]) -> Tuple[List[dict], Dict[str, Any]]:
                 seam_covered(row, "complex_fused_electric_pair_D"),
             # THE Dcyl ELECTRIC TWIN and the COMPLEX CONDUCTIVE no-PML PAIR, both
             # 2026-08-30, both read from their shipped predicates under the census
-            # probe. NEITHER HAS A LADDER, and the reason is the same in both
+            # probe. Neither has a ladder, and the reason is the same in both
             # directions: the Dcyl one's source clause consults
             # `deposit_repair.repairable` on the live run (no configuration block
             # carries that, and all sixteen of its rows declare an electric source,
@@ -2667,7 +2687,7 @@ def build_matrix(record: List[dict]) -> Tuple[List[dict], Dict[str, Any]]:
                 seam_covered(row, "cylindrical_fused_electric_pair_D"),
             "complex_conductive_fused_pair":
                 seam_covered(row, "complex_conductive_fused_pair_D"),
-            # THE FOLDED DISPERSIVE D->E WELD, 2026-08-31, read from its shipped
+            # The folded dispersive D->E weld, 2026-08-31, read from its shipped
             # predicate under the census probe like every product above it. NO
             # LADDER, and there never will be one, for BOTH of the reasons the two
             # entries above give: the clause that decides all four of its rows
@@ -2677,7 +2697,7 @@ def build_matrix(record: List[dict]) -> Tuple[List[dict], Dict[str, Any]]:
             # zero), and its E half reads live polarization objects — the pole
             # partition and each state's `driven()` — the way `fused_ade_chain` does.
             #
-            # NO PROBE ARGUMENT: this family is REAL-STORAGE throughout, so it
+            # No probe argument: this family is REAL-STORAGE throughout, so it
             # launches no complex multiply and needs no expansion licence.
             "folded_dispersive_fused_pair":
                 seam_covered(row, "folded_dispersive_fused_pair_D"),
@@ -2697,41 +2717,41 @@ def build_matrix(record: List[dict]) -> Tuple[List[dict], Dict[str, Any]]:
             # asked once.
             "folded_complex_fused_magnetic_pair": seam_covered(
                 row, "folded_complex_fused_magnetic_pair_B"),
-            # THE ELECTRIC TWIN, 2026-08-31, read the same way. NO LADDER: the clause
+            # The electric twin, 2026-08-31, read the same way. No ladder: the clause
             # that decides both of its rows consults `deposit_repair.repairable` on the
             # live run, and both declare an electric source, so a transcription
             # guessing False would price the cell at zero.
             "folded_complex_fused_pair": seam_covered(
                 row, "folded_complex_fused_pair_D"),
-            # THE REAL-BETA ELECTRIC WELD, 2026-08-31. Read from its shipped
+            # The real-beta electric weld, 2026-08-31. Read from its shipped
             # predicate. NO LADDER, and its MAGNETIC twin above IS scored from one —
             # that asymmetry is the point: the clause that decides this cell's only
             # row consults `deposit_repair.repairable` on the live run, and the row
             # declares an electric source, so a transcription guessing False would
-            # price the cell at zero. NO PROBE ARGUMENT: real storage throughout.
+            # price the cell at zero. No probe argument: real storage throughout.
             "beta_fused_electric_pair":
                 seam_covered(row, "beta_fused_electric_pair_D"),
-            # THE BFAST ELECTRIC WELD, 2026-08-31. Read from its shipped predicate,
+            # The BFAST electric weld, 2026-08-31. Read from its shipped predicate,
             # for the reason the real-beta one is: the clause that decides its one
             # row consults `deposit_repair.repairable` on the live run. NO PROBE:
             # real storage throughout.
             "bfast_fused_electric_pair":
                 seam_covered(row, "bfast_fused_electric_pair_D"),
-            # THE CONDUCTIVE PML ELECTRIC WELD, 2026-08-31. Read from its shipped
+            # The conductive PML electric weld, 2026-08-31. Read from its shipped
             # predicate for the same reason as the two above -- the clause that
             # decides its one row consults `deposit_repair.repairable` on the live
             # run -- and for one more: its curl half's `conductive_targets` reads
             # `Fields.condfac_for` PER COMPONENT, which is not a census fact.
             "conductive_fused_electric_pair":
                 seam_covered(row, "conductive_fused_electric_pair_D"),
-            # THE NO-ABSORBER STORED-E ELECTRIC WELD, 2026-08-31. ONE predicate, TWO
+            # The no-absorber stored-E electric weld, 2026-08-31. ONE predicate, TWO
             # cells -- the same shape `folded_complex_fused_magnetic_pair` and its
             # `_offdiag` twin set, and for the same reason: the arm LABEL decides which
             # cell an instance lands in, and the verdict is the same object either way.
             # Here the two labels are `conductive no-PML` and `no-PML`, which the
             # kernel's per-component COND constexpr makes one body.
             #
-            # READ FROM THE SHIPPED PREDICATE and not from a census ladder, for the
+            # Read from the shipped predicate and not from a census ladder, for the
             # reason the three welds above are: the clause that decides all three of
             # its rows consults `deposit_repair.repairable` on the LIVE run -- and on
             # this family a second live clause does too, the one that reads each
@@ -2742,19 +2762,19 @@ def build_matrix(record: List[dict]) -> Tuple[List[dict], Dict[str, Any]]:
                 seam_covered(row, "no_pml_fused_electric_pair_D"),
             "no_pml_fused_electric_pair_lossless":
                 seam_covered(row, "no_pml_fused_electric_pair_D"),
-            # THE TWO FOLDED-BETA WELDS, 2026-08-31. Read from their shipped
+            # The two folded-beta welds, 2026-08-31. Read from their shipped
             # predicates for the reason every 08-31 weld is: the clause that
             # decides their single row consults `deposit_repair.repairable` on the
             # LIVE run — and here the repair's FOLD clauses read the grid's own
-            # fill map, which no configuration block carries. NO PROBE ARGUMENT:
+            # fill map, which no configuration block carries. No probe argument:
             # real storage throughout.
             "folded_beta_fused_electric_pair":
                 seam_covered(row, "folded_beta_fused_electric_pair_D"),
             "folded_beta_fused_magnetic_pair":
                 seam_covered(row, "folded_beta_fused_magnetic_pair_B"),
-            # THE TWO COMPLEX-BETA WELDS, 2026-09-01. Read from their shipped
+            # The two complex-beta welds, 2026-09-01. Read from their shipped
             # predicates' census verdicts (the census of record was cut under a probe
-            # record carrying the beta tranche's fifth pattern, first classified by the
+            # record carrying the complex-beta arms' fifth pattern, first classified by the
             # 2026-09-01 extension artifact, see the PRODUCTS entry; the predicates read
             # no probe since the expansion licence was deleted). NO LADDER: the
             # electric twin's deciding clause consults `deposit_repair.repairable`
@@ -2763,7 +2783,7 @@ def build_matrix(record: List[dict]) -> Tuple[List[dict], Dict[str, Any]]:
                 seam_covered(row, "complex_beta_fused_electric_pair_D"),
             "complex_beta_fused_magnetic_pair":
                 seam_covered(row, "complex_beta_fused_magnetic_pair_B"),
-            # THE TWO FOLDED COMPLEX-BETA WELDS, 2026-09-02, read from their shipped
+            # The two folded complex-beta welds, 2026-09-02, read from their shipped
             # predicates' census verdicts like the beta-less folded complex twins.
             # NO LADDER: the deciding clauses consult `deposit_repair.repairable` on
             # the live run.
@@ -2771,7 +2791,7 @@ def build_matrix(record: List[dict]) -> Tuple[List[dict], Dict[str, Any]]:
                 row, "folded_beta_complex_fused_pair_D"),
             "folded_beta_complex_fused_magnetic_pair": seam_covered(
                 row, "folded_beta_complex_fused_magnetic_pair_B"),
-            # THE TWO SCRATCH-OUTPUT OFF-DIAGONAL WELDS, 2026-09-02. Read from
+            # The two scratch-output off-diagonal welds, 2026-09-02. Read from
             # their shipped predicates and NOT from a census ladder, for two
             # reasons that are both live-run facts: the source clause consults
             # `deposit_repair.seam_source_reasons` on the LIVE source list (these
@@ -2854,8 +2874,8 @@ def build_matrix(record: List[dict]) -> Tuple[List[dict], Dict[str, Any]]:
             # 2026-08-31 plain-branch product answers for both the lossy and the
             # lossless no-PML D->E cell, and the arm label decides which cell an
             # instance lands in. Added when the KeyError at pricing showed the
-            # product had every wire EXCEPT this dict (the round that built it was
-            # killed by a spend limit between the census entry and this row).
+            # product had every wire EXCEPT this dict (the change that built it was
+            # interrupted between the census entry and this row).
             "no_pml_fused_electric_pair":
                 shipped["no_pml_fused_electric_pair"],
             "no_pml_fused_electric_pair_lossless":
@@ -2915,7 +2935,7 @@ def build_matrix(record: List[dict]) -> Tuple[List[dict], Dict[str, Any]]:
             instances.append(entry)
 
         if configuration["n_polarizations"] > 0:
-            # THE E->P CELL IS (update_E arm, update_P arm), CORRECTED HERE.
+            # The E->P cell is (update_E arm, update_P arm), corrected here.
             #
             # The 2026-08-20 cuts keyed this instance on ``(step_D arm, update_E
             # arm)`` — the D->E cell — because the only product they knew here,
@@ -2927,15 +2947,15 @@ def build_matrix(record: List[dict]) -> Tuple[List[dict], Dict[str, Any]]:
             # (metal_kernels/fused_ade_chain.py, three arms, 10/15 admitted).
             #
             # ``update_P`` IS a slot: launch.py:1874-1877 lists it in STEP_ORDER and
-            # :2984-3048 resolves an ADE family for it. THE CENSUS THIS SCRIPT READS
-            # DOES NOT RECORD IT — ``plan_step.slots`` carries only step_B, step_D,
+            # :2984-3048 resolves an ADE family for it. The census this script reads
+            # does not record it — ``plan_step.slots`` carries only step_B, step_D,
             # update_E, update_H (and the two fill slots where a fold has them), never
             # update_P, on every row — so ``arm(row, "update_P")`` is
             # None on every row and every E->P cell reads as half-on-the-array-path.
             # That is a STALE RECORD, reported as one below, not a property of the
             # engine; clearing it needs a census leg that walks the update_P slot.
             fresh_row = fresh_by_label[name]
-            # THE E HALF IS READ FROM THE LIVE TRITON CENSUS, THE P HALF FROM THE
+            # The E half is read from the live Triton census, the P half from the
             # CUDA BATTERY (2026-09-04). The note at :2117 gave ONE reason for BOTH
             # halves — the 2026-08-16 census carried neither column. Only the
             # update_P half of that is still true: `plan_step.slots` on the
@@ -2960,14 +2980,14 @@ def build_matrix(record: List[dict]) -> Tuple[List[dict], Dict[str, Any]]:
                                  == PRODUCTS[spanning]["cell"])
             product = spanning if spans_into_e_to_p else None
 
-            # THE TWO E->P-ONLY PRODUCTS, CONSULTED BY THEIR OWN VERDICT AND NOT BY
-            # A CELL MATCH. Until 2026-08-30 this branch knew exactly one product,
+            # The two E->P-only products, consulted by their own verdict and not by
+            # A cell match. Until 2026-08-30 this branch knew exactly one product,
             # the SPANNING one, and asked whether the row's D->E cell was that
             # product's; a matrix keyed that way cannot express an E->P-only product
             # at all, which is why the two ADE chains read zero for a week after
             # they were built and gated.
             #
-            # A CELL MATCH WOULD STILL BE WRONG HERE, so it is not what is used.
+            # A cell match would still be wrong here, so it is not what is used.
             # `fused_ade_chain` has THREE arms and the census's E-side arm labels
             # collapse two of them onto one cell ("dispersive", "ADE update_P"), so
             # "the cell owner admits" and "this product admits this row" are
@@ -2976,7 +2996,7 @@ def build_matrix(record: List[dict]) -> Tuple[List[dict], Dict[str, Any]]:
             # the board is asking. The cell is still reported, as description.
             e_to_p_admitters = [candidate for candidate in E_TO_P_PRODUCTS
                                 if admits[candidate]]
-            # A PRODUCT THAT ADMITS BEATS ONE THAT SPANS AND REFUSES, and getting
+            # A product that admits beats one that spans and refuses, and getting
             # that backwards cost three instances on the first cut of this branch.
             #
             # `fused_dispersive_chain` OCCUPIES this cell wherever the row's D->E
@@ -3008,7 +3028,7 @@ def build_matrix(record: List[dict]) -> Tuple[List[dict], Dict[str, Any]]:
                 "row": name, "seam": "E->P",
                 "curl_arm": e_arm, "constitutive_arm": p_arm,
                 "curl_admitters": list(admitted(row, "update_E")),
-                # THE OLD SOURCING, CARRIED AS A CONTROL rather than deleted. Over
+                # The old sourcing, carried as a control rather than deleted. Over
                 # the 15 E->P instances the CUDA battery agrees with the live census
                 # on 3 (the stochastic_emitter rows), disagrees on the LABEL only on
                 # 11, and disagreed on ADMISSION on 1 — absorbed_power_density.py —
@@ -3034,12 +3054,12 @@ def build_matrix(record: List[dict]) -> Tuple[List[dict], Dict[str, Any]]:
                 # Recorded per instance so the record split is a COLUMN and not a
                 # remark: the reader can count the rows each record contributes.
                 "update_P_slot_absent_from_the_census": not admitted(row, "update_P"),
-                # ONE KEY PER HALF SINCE 2026-09-04: the two halves are read from two
+                # One key per half since 2026-09-04: the two halves are read from two
                 # records and a single record name here would misattribute one of
                 # them.
                 "halves_read_from": {"update_E": CENSUS.name, "update_P": FRESH.name},
                 "poles": int(configuration["n_polarizations"]),
-                # WHICH RECORD CREDITED THIS INSTANCE. The spanning product is
+                # Which record credited this instance. The spanning product is
                 # scored from a transcribed ladder over the CUDA battery's E/P
                 # blocks; the two chains are scored from their own shipped verdict
                 # recorded in this census. A reader must be able to tell those apart
@@ -3060,13 +3080,13 @@ def build_matrix(record: List[dict]) -> Tuple[List[dict], Dict[str, Any]]:
             log(f"  row {index:3d}/{len(record)}  seam-instances {len(instances):3d}  "
                 f"served {served:3d}  [{name}]")
 
-    # THE TWO PROMISES THE E->P BRANCH MAKES, RE-EARNED ON THIS RECORD. Both raise.
+    # The two promises the E->P branch makes, re-earned on this record. Both raise.
     chain_arms = assert_the_chain_arms_do_not_overlap(record)
     e_to_p_pick = assert_at_most_one_e_to_p_product_admits(record, admits_by_row)
     log(f"  E->P: chain arms disjoint on {chain_arms['rows_checked']} rows; "
         f"at most one E->P product admits on {e_to_p_pick['rows_checked']} rows")
 
-    # THE CROSS-CHECK, REPORTED WHETHER IT AGREES OR NOT. A silent cross-check is
+    # The cross-check, reported whether it agrees or not. A silent cross-check is
     # not one: the count goes in the artifact on every cut, so "0 disagreements"
     # is a measurement someone made rather than an absence someone hopes for.
     log(f"  LADDER vs SHIPPED PREDICATE: {len(ladder_disagreements)} disagreement(s) "
@@ -3132,7 +3152,7 @@ def report(instances: List[dict], record: List[dict]) -> Dict[str, Any]:
     # whatever the last loop iteration had left behind, which was 0. The floor two
     # blocks down compares the log's number, so it did not catch it; the JSON did.
     served_total = b - withheld_instances
-    # SERVED IN DISPATCH — the other number, and until 2026-08-29 this board
+    # Served in dispatch — the other number, and until 2026-08-29 this board
     # asserted it was zero in a caveat string instead of asking. It is now the
     # shipped ladder's own answer, per served instance: the arm the product writes
     # must be one ``fastpath.RELEASED_FUSED_ARMS`` names AND the row must be inside
@@ -3149,7 +3169,7 @@ def report(instances: List[dict], record: List[dict]) -> Dict[str, Any]:
     # (line ~1297: `cell[1] == "no-PML null"`). Spelled once here rather than read
     # off `gaps`, which this block runs before.
     NULL_CONSTITUTIVE_ARM = "no-PML null"
-    # ------------------------------------------- THE FOURTH SEAM, update_H -> step_D
+    # ------------------------------------------- The fourth seam, update_H -> step_D
     # One instance per row (2026-09-04). The two halves are arms this board already
     # read off the census — update_H is B->H's constitutive half, step_D is D->E's
     # curl half, both by the one-admitter rule — and the null verdict is the same
@@ -3171,7 +3191,7 @@ def report(instances: List[dict], record: List[dict]) -> Dict[str, Any]:
         # while a spanning product exists is an ABSENCE that `h_to_d_seam.price`
         # refuses by name.
         #
-        # DERIVED THE WAY THE PREDICATE IS BUILT, not restated: `fused_hd_pair`'s
+        # Derived the way the predicate is built, not restated: `fused_hd_pair`'s
         # coverage is the conjunction of the two arms' own predicates on the two
         # slots, and those arms are what this board already read off the census by
         # the one-admitter rule -- so the cell membership IS the predicate's first
@@ -3190,7 +3210,7 @@ def report(instances: List[dict], record: List[dict]) -> Dict[str, Any]:
                 continue  # HOISTS_THE_WITHDRAW is False on every product here today
             served_by = candidate
             break
-        # THE THIRD ANSWER (2026-09-10). `served_by` stays the PREDICATE's verdict;
+        # The third answer (2026-09-10). `served_by` stays the PREDICATE's verdict;
         # what this board will not do is CREDIT a product whose release binding is
         # stale, and the reason is the table's own sentence. The membership test is
         # the same one every other site in this function applies to the table
@@ -3207,16 +3227,16 @@ def report(instances: List[dict], record: List[dict]) -> Dict[str, Any]:
                                "credit_withheld": credit_withheld})
     priced = denominator + len(h_to_d_entries)
 
-    # THE PRODUCT, NOT THE LABEL. ``served_in_dispatch`` does the product -> arm
+    # The product, not the label. ``served_in_dispatch`` does the product -> arm
     # label join itself since 2026-09-02, so that a certified product no composer
     # installs can be counted apart from a product the join has never heard of.
-    # AND EVERY SERVED INSTANCE, ON ALL FOUR SEAMS, since 2026-09-06: the H->D rows
+    # And every served instance, on all four seams, since 2026-09-06: the H->D rows
     # this board's own `served_by` verdict admits are served instances too, so they
     # are handed over with the three-seam ones and the measurement's `served_counted`
     # is the served headline rather than a three-seam subtotal beside it. The H->D
     # product is in dispatch_reachability.CERTIFIED_BUT_NOT_INSTALLED, so its rows
     # land in that bucket by name; `served_in_dispatch` itself does not move.
-    # THE CREDITED H->D ROWS ONLY, as for the three seams (2026-09-10): a withheld
+    # The credited H->D rows only, as for the three seams (2026-09-10): a withheld
     # H->D row is not served, `served_counted` is a SERVED_HEADLINE_KEY, and
     # headline_agreement would refuse the cut if it disagreed with the ledger.
     # The seam rides along; see build_fusion_matrix.py's note at the same call.
@@ -3234,7 +3254,7 @@ def report(instances: List[dict], record: List[dict]) -> Dict[str, Any]:
         f"({100.0 * a / denominator:.1f}%)")
     log(f"  (b) its shipped PREDICATE admits the row          : {b} / {denominator} "
         f"({100.0 * b / denominator:.1f}%)")
-    log(f"      of which the CREDIT IS WITHHELD (stale binding): {withheld_instances}")
+    log(f"      of which the credit is withheld (stale binding): {withheld_instances}")
     log(f"  SERVED - predicate admits AND the credit is bound : {served_total} / "
         f"{denominator} ({100.0 * served_total / denominator:.1f}%)   <-- THE NUMBER")
     log(f"  (c) plan_step can COMPOSE it                      : {c} / {denominator} "
@@ -3250,7 +3270,7 @@ def report(instances: List[dict], record: List[dict]) -> Dict[str, Any]:
     for axis, count in dispatch_reach["refused_by_envelope"].items():
         log(f"      refused, outside the envelope: {count:4d}  {axis}")
 
-    log("\n  SERVED BY SEAM - where every credited instance actually is:")
+    log("\n  Served by seam - where every credited instance actually is:")
     for seam in ("B->H", "D->E", "E->P"):
         here = [e for e in instances if e["seam"] == seam]
         credited = sum(1 for e in here if e["predicate_admits"]
@@ -3285,7 +3305,7 @@ def report(instances: List[dict], record: List[dict]) -> Dict[str, Any]:
         log(f"    {name:30s} cell reached {by_product[name]:4d}   "
             f"predicate admits {admits_by[name]:4d}   planner {reach_by[name]:4d}")
 
-    log("\n=== THE SOURCE SEAM: the ceiling on every product at a seam ===")
+    log("\n=== The source seam: the ceiling on every product at a seam ===")
     log("  driver.py:3283-3284 (magnetic) and :3294-3299 (electric) put real work")
     log("  between the curl and the constitutive. Until 2026-08-28 that alone put the")
     log("  instance beyond every fused product; deposit_repair now carries the deposit")
@@ -3312,7 +3332,7 @@ def report(instances: List[dict], record: List[dict]) -> Dict[str, Any]:
             f"({carried:4d} carried)   "
             f"CEILING {len(here) - blocked:4d}   "
             f"of which both arms admit: {paired:4d}")
-    # ------------------------------------------------- THE BUCKET DECOMPOSITION
+    # ------------------------------------------------- The bucket decomposition
     # Every one of the PRICED instances (403 on the 2026-09-03 basis, 387 before it)
     # lands in exactly ONE bucket and the buckets must total that count. The floor at
     # the end is not decoration: when the structural
@@ -3320,17 +3340,17 @@ def report(instances: List[dict], record: List[dict]) -> Dict[str, Any]:
     # 172 because the new verdict head matched no filter, and the run still printed
     # a headline. A decomposition that does not have to add up does not measure.
     #
-    # THE STENCIL BUCKET. `stepping._offdiagonal_terms` (stepping.py:1235-1253) reads
+    # The stencil bucket. `stepping._offdiagonal_terms` (stepping.py:1235-1253) reads
     # each partner component's D volume at four indices, and `step_D` writes those
     # volumes IN PLACE in the first half of the same launch; there is no grid-wide
     # barrier inside one launch on Triton. Its only two callers are inside `update_E`
     # (stepping.py:1006 and, via `_nonlinear_constitutive`, :1099), so this is a D->E
     # fact and NOT a B->H one — the B->H off-diagonal cell below is NOT in this
     # bucket, because `update_H` never calls the stencil. Measured on an RTX A6000 by
-    # the 2026-08-20 off-diagonal round, both float32 subnormal cuts, on a kernel
+    # the 2026-08-20 off-diagonal campaign, both float32 subnormal cuts, on a kernel
     # spliced verbatim out of the two shipped bodies.
     #
-    # DERIVED FROM THE CENSUS, NOT FROM AN ARM NAME: a D->E instance is in the bucket
+    # Derived from the census, not from an arm name: a D->E instance is in the bucket
     # when its row declares has_offdiagonal_epsilon.
     buckets: Dict[str, int] = collections.Counter()
     for entry in instances:
@@ -3366,7 +3386,7 @@ def report(instances: List[dict], record: List[dict]) -> Dict[str, Any]:
             f"the null-constitutive bucket filters nothing and is silently disabled. "
             f"Constitutive arms present: "
             f"{sorted({str(e['constitutive_arm']) for e in instances})}")
-    # A PREDICATE MAY ONLY CLEAR AN IN-SEAM SOURCE IF ITS MODULE SAYS IT CARRIES THE
+    # A predicate may only clear an in-seam source if its module says it carries the
     # REPAIR. The 51 instances this board now credits across a live injection are a
     # census verdict; this asks the SHIPPED FLAG the same question and requires the
     # two to agree. A census read against a different tree, or a product that learned
@@ -3395,7 +3415,7 @@ def report(instances: List[dict], record: List[dict]) -> Dict[str, Any]:
         f"{sorted(carrying)} admit an in-seam source and every one declares "
         f"CARRIES_DEPOSIT_REPAIR")
 
-    # THE TWO SERVED NUMBERS MUST BE ONE NUMBER. The aggregate counts `served`
+    # The two served numbers must be one number. The aggregate counts `served`
     # directly off the instances; the bucket table reaches "SERVED by a shipped
     # product" only after the structural branches above have had their turn. They
     # agreed on every census through 2026-08-21 and DISAGREED on the first fresh one
@@ -3420,17 +3440,17 @@ def report(instances: List[dict], record: List[dict]) -> Dict[str, Any]:
             f"{denominator}; some instance falls into none or into two, and the "
             f"decomposition does not measure. Buckets: {dict(buckets)}")
 
-    # ------------------------------------------------- THE RECONCILED TAXONOMY
-    # THE SAME EIGHT NAMES THE METAL AND CUDA BOARDS EMIT (release decision R1; the
+    # ------------------------------------------------- The reconciled taxonomy
+    # The same eight names the Metal and CUDA boards emit (one list since 2026-09-02; the
     # eighth, withdraw_seam, arrived with the H->D seam on 2026-09-04),
     # filed over the SAME instances the decomposition above walks. That
     # decomposition is kept unchanged and is not replaced -- it is this board's own
     # vocabulary, and its sentences are what the sub-reasons below carry. What the
     # taxonomy adds is a decomposition a reader can lay beside the sibling boards
-    # without translating three vocabularies, and the three tiers (R2) the headline
+    # without translating three vocabularies, and the three tiers the headline
     # now reads against.
     #
-    # THE PRECEDENCE DIFFERS FROM THE BLOCK ABOVE IN ONE PLACE AND IT IS R4's:
+    # The precedence differs from the block above in one place, the taxonomy's own:
     # `not_fusion_surface` is asked FIRST, ahead of the source seam, because an
     # instance whose constitutive half launches nothing has no weld for a deposit to
     # obstruct. The move it makes on this board is counted below rather than
@@ -3440,7 +3460,7 @@ def report(instances: List[dict], record: List[dict]) -> Dict[str, Any]:
         priced=priced,
         rows=len(record),
         platform_note=(
-            "TRITON HAS NO ANALOGUE OF METAL'S ARGUMENT-TABLE CEILING, and this "
+            "Triton has no analogue of Metal's argument-table ceiling, and this "
             "zero is measured rather than skipped: a Triton kernel takes its "
             "pointers as ordinary kernel arguments and the JIT imposes no "
             "MAX_BUFFER_BINDINGS-style cap, so no cell on this board is ever "
@@ -3481,7 +3501,7 @@ def report(instances: List[dict], record: List[dict]) -> Dict[str, Any]:
                          bool(configuration["has_symmetry"])))
                     if v)})
         elif entry["predicate_admits"]:
-            # THE STALE-BINDING REFUSAL, CARRIED THROUGH THE RENAME. The product IS
+            # The stale-binding refusal, carried through the rename. The product IS
             # built and its predicate DOES admit; what this board will not do is
             # CREDIT it, because the gate that certified it ran against bytes the
             # tree no longer ships. None of the eight names says "built but
@@ -3489,13 +3509,13 @@ def report(instances: List[dict], record: List[dict]) -> Dict[str, Any]:
             # sentence intact -- and the sentence is the part that stops a reader
             # going off to write a kernel that already exists.
             #
-            # THE SENTENCE'S ONE HOME IS fusion_taxonomy (2026-09-10), so the fourth
+            # The sentence's one home is fusion_taxonomy (2026-09-10), so the fourth
             # seam (`h_to_d_seam.classify`, handed `credit_withheld` per row below)
             # files the IDENTICAL key under `buildable_not_built` and the bucket's
             # sub_reasons carry one withheld spelling across all four seams. NOTE
             # THE RUNG: this walk files withheld BELOW `source_seam_unbracketable`
             # (a withheld product on a source-blocked row lands in that bucket
-            # above), while the fourth seam decides withheld AT THE SERVED RUNG,
+            # above), while the fourth seam decides withheld at the served rung,
             # above `withdraw_seam`, because a withdraw row's attainability was
             # measured by the product's own licensed gate. No board can reach the
             # divergent case today; "withholding moves nothing else" is a statement
@@ -3544,8 +3564,8 @@ def report(instances: List[dict], record: List[dict]) -> Dict[str, Any]:
                 "stepping._offdiagonal_terms (stepping.py:1235-1253) reads each "
                 "partner component's D volume at four indices and step_D writes "
                 "those volumes IN PLACE in the first half of the same launch, with "
-                "no grid-wide barrier inside one Triton launch. MEASURED on an RTX "
-                "A6000 by the 2026-08-20 off-diagonal round, both float32 subnormal "
+                "no grid-wide barrier inside one Triton launch. Measured on an RTX "
+                "A6000 by the 2026-08-20 off-diagonal campaign, both float32 subnormal "
                 "cuts, on a kernel spliced verbatim out of the two shipped bodies",
                 {"kind": "stencil"})
         elif entry["product"] is not None:
@@ -3572,7 +3592,7 @@ def report(instances: List[dict], record: List[dict]) -> Dict[str, Any]:
             if fusion_taxonomy.canonical_seam(spec["seam"]) == h_to_d_seam.SEAM])
     # `h_to_d_block["served"]` already excludes the withheld rows, so the served
     # floor below needs no arithmetic of its own for them.
-    log(f"      of which the CREDIT IS WITHHELD on H->D (stale binding): "
+    log(f"      of which the credit is withheld on H->D (stale binding): "
         f"{len(h_to_d_block['credit_withheld_rows'])}")
     taxonomy_block = taxonomy.finish(
         served_expected=served_total + h_to_d_block["served"],
@@ -3582,9 +3602,10 @@ def report(instances: List[dict], record: List[dict]) -> Dict[str, Any]:
             f"({h_to_d_block['served']} of {h_to_d_block['instances_priced']}; "
             f"{h_to_d_block['served_note']})"))
 
-    # THE TWO DECOMPOSITIONS MUST RECONCILE EXACTLY, and R4's precedence is the only
-    # licensed difference: an instance both null-constitutive and source-blocked is
-    # filed under the source seam above and under `not_fusion_surface` here.
+    # The two decompositions must reconcile exactly, and the taxonomy's precedence is
+    # the only licensed difference: an instance both null-constitutive and source-blocked
+    # is filed under the source seam above and under `not_fusion_surface` here (the
+    # block's key keeps its historical ``r4_`` prefix, which names this precedence move).
     _ledger_blocked = buckets["blocked by the source injection in the seam"]
     _ledger_null = buckets[
         "NOT A FUSION CANDIDATE — the constitutive sub-step launches nothing, so "
@@ -3600,21 +3621,21 @@ def report(instances: List[dict], record: List[dict]) -> Dict[str, Any]:
             f"the bucket table and the reconciled taxonomy do not reconcile: "
             f"{_ledger_null} null-constitutive and {_ledger_blocked} source-blocked "
             f"against {taxonomy_block['buckets']['not_fusion_surface']} and "
-            f"{taxonomy_block['buckets']['source_seam_unbracketable']}, with R4's "
+            f"{taxonomy_block['buckets']['source_seam_unbracketable']}, with the taxonomy's "
             f"precedence accounting for only {_moved} and the H->D seam's null "
             f"update_H for {_h_to_d_null}. One walk is reading a different corpus.")
     taxonomy_block["r4_precedence_move"] = {
         "instances_moved_from_source_seam_to_not_fusion_surface": _moved,
         "what_it_is": (
             "instances this board's own bucket table filed as blocked by the source "
-            "injection and whose constitutive sub-step launches NOTHING. Under R4 "
-            "an instance is counted in its most fundamental bucket: where there is "
-            "no second kernel to weld, the deposit obstructs nothing"),
+            "injection and whose constitutive sub-step launches NOTHING. Under the "
+            "taxonomy's precedence an instance is counted in its most fundamental "
+            "bucket: where there is no second kernel to weld, the deposit obstructs nothing"),
         "the_bucket_table_still_says": {"source_blocked": _ledger_blocked,
                                         "null_constitutive": _ledger_null},
     }
     taxonomy.report(log)
-    log(f"\n  R4 PRECEDENCE: {_moved} instance(s) move from "
+    log(f"\n  PRECEDENCE: {_moved} instance(s) move from "
         f"source_seam_unbracketable to not_fusion_surface on this board "
         f"(the bucket table's own order files them the other way)")
 
@@ -3633,9 +3654,9 @@ def report(instances: List[dict], record: List[dict]) -> Dict[str, Any]:
     # instances the Metal backend already serves there.
     e_to_p = [e for e in instances if e["seam"] == "E->P"]
     stale = [e for e in e_to_p if e["update_P_slot_absent_from_the_census"]]
-    log("\n=== E->P: WHAT BLOCKS THIS SEAM ON TRITON, MEASURED ===")
-    log("  (1) THE 2026-08-16 CENSUS CANNOT SEE THE update_P SLOT — SO THIS SEAM IS")
-    log("      READ FROM THE 2026-08-20 CUDA BATTERY INSTEAD.")
+    log("\n=== E->P: what blocks this seam on Triton, measured ===")
+    log("  (1) The 2026-08-16 census cannot see the update_P slot — so this seam is")
+    log("      read from the 2026-08-20 CUDA battery instead.")
     log(f"      {len(stale)} of {len(e_to_p)} E->P instances record NO admitting arm at")
     log("      update_P in the 08-16 record, whose plan_step.slots block carries only")
     log("      step_B / step_D / update_E / update_H on every row. update_P is in")
@@ -3647,12 +3668,12 @@ def report(instances: List[dict], record: List[dict]) -> Dict[str, Any]:
     log("      D->E stay on the 08-16 record because only it carries")
     log("      source_field_types, which those two seams need and this one does not.")
     both = sum(1 for e in e_to_p if e["curl_arm"] and e["constitutive_arm"])
-    log(f"      WITH BOTH HALVES READABLE: {both} of {len(e_to_p)} E->P instances have an")
+    log(f"      with both halves readable: {both} of {len(e_to_p)} E->P instances have an")
     log("      admitting arm on EACH side — a pair exists to fuse. NONE is served,")
     log("      because no Triton product occupies an (update_E, update_P) cell:")
     log("      fused_dispersive_chain spans step_D -> update_E -> update_P and is")
-    log("      scored at its own D->E cell. Those instances are REACHABLE, NOT BUILT.")
-    # THE GAP RANKING BELOW WILL UNDER-REPORT THIS SEAM, so the number is printed
+    log("      scored at its own D->E cell. Those instances are reachable, not built.")
+    # The gap ranking below will under-report this seam, so the number is printed
     # here instead of being left to be discovered. That ranking treats a cell as
     # owned when ANY instance in it names a product, and at E->P a cell can be
     # PARTLY owned: `fused_dispersive_chain` is keyed on its D->E cell, so within
@@ -3662,11 +3683,11 @@ def report(instances: List[dict], record: List[dict]) -> Dict[str, Any]:
     # by the very cell the instance is keyed on.)
     unowned = [e for e in e_to_p
                if e["curl_arm"] and e["constitutive_arm"] and not e["product"]]
-    log(f"      OF THOSE {both}, {len(unowned)} SIT IN NO PRODUCT'S CELL AT ALL:")
+    log(f"      Of those {both}, {len(unowned)} sit in no product's cell at all:")
     for e in sorted(unowned, key=lambda x: x["row"]):
         log(f"        {e['row'][:56]:56s} K={e['poles']} "
             f"{e['curl_arm']} -> {e['constitutive_arm']}")
-    log("      FOR SCALE, THE OTHER BACKEND: metal_kernels/fused_ade_chain.py serves")
+    log("      For scale, the other backend: metal_kernels/fused_ade_chain.py serves")
     log("      10 of these 15 today (../fusion_matrix_metal_2026-08-20_closed/, E_to_P")
     log(f"      10/15). It claims 10 rather than the {both} above because it declines the")
     log("      four complex-storage rows and the one off-diagonal row BY NAME. A")
@@ -3675,8 +3696,8 @@ def report(instances: List[dict], record: List[dict]) -> Dict[str, Any]:
     log("      built and gated 2026-08-30) and the last is the OFF-DIAGONAL row, which")
     log("      folded_offdiag_fused_ade_chain claims on this backend and which no Metal")
     log("      product does. That is the difference the two boards now report.")
-    log("  (2) THE ONE TRITON PRODUCT AT THIS SEAM IS BOUNDED AT ONE POLE PER")
-    log("      COMPONENT, AND THAT BOUND IS WORTH ZERO ROWS HERE.")
+    log("  (2) The one Triton product at this seam is bounded at one pole per")
+    log("      component, and that bound is worth zero rows here.")
     poles = collections.Counter(e["poles"] for e in e_to_p)
     log(f"      susceptibilities per E->P row, measured: {dict(sorted(poles.items()))}")
     single = sum(count for k, count in poles.items() if k == 1)
@@ -3685,7 +3706,7 @@ def report(instances: List[dict], record: List[dict]) -> Dict[str, Any]:
     log("      BY NAME (fused_dispersive_chain.py, the SCOPE block: the sub-step-share")
     log("      probe left update_P at 51.9% at K=6 with a 9.5-28.3pp within-run spread,")
     log("      so the precondition for multi-pole ADE fusion is bracketed, not cleared).")
-    # WHY THAT BOUND IS WORTH ZERO, MEASURED PER ROW rather than asserted. Every
+    # Why that bound is worth zero, measured per row rather than asserted. Every
     # K = 1 row must ALSO be shown to fail on a second, independent clause;
     # otherwise the sentence "its admitted count of 0 is structural" is a claim
     # with nothing behind it. The two clauses checked are the ones the K = 1 rows
@@ -3708,14 +3729,14 @@ def report(instances: List[dict], record: List[dict]) -> Dict[str, Any]:
     if survivors:
         log(f"      *** {len(survivors)} K=1 row(s) are refused by NOTHING ELSE: "
             f"{survivors} — the K bound alone is what costs them, and this cut's "
-            f"claim that the zero is structural DOES NOT HOLD.")
+            f"claim that the zero is structural does not hold.")
     else:
         log(f"      All {single} K=1 rows are refused by a SECOND, independent clause,")
         log("      so the admitted count of 0 is structural rather than incidental.")
     log("      A Triton product that serves this corpus at E->P must therefore carry")
     log("      K up to 6, which is a different kernel, not a widened predicate.")
 
-    log("\n=== THE CELLS THE CORPUS DRIVES, and whether a product covers them ===")
+    log("\n=== The cells the corpus drives, and whether a product covers them ===")
     log("  'ceiling' = instances at that cell whose in-seam source, if any, a"
         " deposit repair can carry; the most any")
     log("  product for that cell could ever serve.")
@@ -3727,7 +3748,7 @@ def report(instances: List[dict], record: List[dict]) -> Dict[str, Any]:
         for cell, count in counts.most_common():
             here = [e for e in instances
                     if e["seam"] == seam and (e["curl_arm"], e["constitutive_arm"]) == cell]
-            # ONE CELL CAN CARRY MORE THAN ONE PRODUCT ANSWER, and taking the first
+            # One cell can carry more than one product answer, and taking the first
             # instance's would report an ambiguity as a decision. It happens at
             # E->P: the CUDA battery's `cuda_dispersive` column does not separate
             # FOLDED dispersive from unfolded, so both land in one cell, while
@@ -3755,7 +3776,7 @@ def report(instances: List[dict], record: List[dict]) -> Dict[str, Any]:
                 "rows_driving_it": count, "ceiling_no_in_seam_source": ceiling,
                 "product": product, "seam_instances_the_product_admits": served,
                 "fusable": bool(cell[0] and cell[1]),
-                # THE NULL ARM LAUNCHES NOTHING. The array path's update_H returns
+                # The null arm launches nothing. The array path's update_H returns
                 # at stepping.py:944-945 under an inactive absorber and update_E at
                 # :983-984, which is what no_pml_constitutive.py:610-613 transcribes
                 # and what launch.py:2331-2338 says the arm is. A pair fusing a curl
@@ -3770,7 +3791,7 @@ def report(instances: List[dict], record: List[dict]) -> Dict[str, Any]:
                 # cannot advertise such a cell as an ordinary buildable gap, which
                 # is what the Metal ranking did for one of these until 2026-08-20.
                 #
-                # WHAT THIS FLAG DOES NOT SAY, SINCE 2026-09-02. It used to read
+                # What this flag does not say, since 2026-09-02. It used to read
                 # "is refused structurally on any backend", on the strength of
                 # `results/triton_fused_offdiag_electric_2026-08-20` — and that
                 # artifact measured a real, schedule-dependent race, in a weld of
@@ -3779,8 +3800,8 @@ def report(instances: List[dict], record: List[dict]) -> Dict[str, Any]:
                 # (`results/triton_offdiag_stencil_welds_2026-09-02`), because the
                 # curl half writes launch-local SCRATCH and the constitutive half
                 # re-derives every foreign tap from pre-launch state — so the
-                # in-place premise the refusal rested on is gone. THE FLAG IS A
-                # FACT ABOUT THE ROWS, and the ranking below only ever prints its
+                # in-place premise the refusal rested on is gone. The flag is a
+                # fact about the rows, and the ranking below only ever prints its
                 # refusal note for a cell with NO product, which is where the
                 # premise still holds.
                 "structurally_unfusable_stencil": bool(
@@ -3790,7 +3811,7 @@ def report(instances: List[dict], record: List[dict]) -> Dict[str, Any]:
                             for e in here if not e["in_seam_source_blocks"])),
             })
 
-    log("\n=== THE GAPS, RANKED BY WHAT THEY COULD ACTUALLY SERVE ===")
+    log("\n=== The gaps, ranked by what they could actually serve ===")
     log("  A gap is a (curl, constitutive) cell the corpus drives with NO fused")
     log("  product. It is ranked by CEILING, not by rows driving it: a cell whose")
     log("  rows all carry an UNREPAIRABLE in-seam source is worth ZERO however many")
@@ -3829,7 +3850,7 @@ def report(instances: List[dict], record: List[dict]) -> Dict[str, Any]:
         f"{sum(g['ceiling_no_in_seam_source'] for g in gaps)} "
         f"(rows driving them: {sum(g['rows_driving_it'] for g in gaps)})")
 
-    log("\n  BUILDABLE GAPS WITH A MEASURED RECIPE (the hand-off):")
+    log("\n  Buildable gaps with a measured recipe (the hand-off):")
     printed = 0
     for cell, recipe in BUILDABLE_GAP_RECIPES.items():
         matching = [g for g in gaps
@@ -3842,7 +3863,7 @@ def report(instances: List[dict], record: List[dict]) -> Dict[str, Any]:
     if not printed:
         log("    (none)")
 
-    log("\n  THE SHORTFALL WITHIN EXISTING PRODUCTS (cell reached, predicate refuses):")
+    log("\n  The shortfall within existing products (cell reached, predicate refuses):")
     for name in PRODUCTS:
         here = [e for e in instances if e["product"] == name]
         shortfall = [e for e in here if not e["predicate_admits"]]
@@ -3879,7 +3900,7 @@ def report(instances: List[dict], record: List[dict]) -> Dict[str, Any]:
             f"row sets identical: {set(prior['rows']) == mine}  "
             f"{'AGREE' if agree else '*** DISAGREE ***'}")
 
-    # THE KEY MUST CARRY THE NUMBER THE LOG PRINTED. It did not, once: the headline
+    # The key must carry the number the log printed. It did not, once: the headline
     # was bound to a bare `served`, a later loop in this same function rebound that
     # name, and the JSON shipped 0 while the log said 150 and the bucket floor above
     # passed. Recomputed here straight from the instances, so the key cannot drift
@@ -3897,7 +3918,7 @@ def report(instances: List[dict], record: List[dict]) -> Dict[str, Any]:
         "seam_ceiling": seam_ceiling,
         "total_ceiling": total_ceiling,
         "reachable_ceiling": reachable,
-        # THE RECONCILED DECOMPOSITION, in full and under the key the Metal and CUDA
+        # The reconciled decomposition, in full and under the key the Metal and CUDA
         # boards use. The bucket table above is unchanged and stays: this is the
         # translation, not a replacement, and every reconciled bucket carries this
         # board's own prose beneath it as the sub-reason.
@@ -3911,12 +3932,12 @@ def report(instances: List[dict], record: List[dict]) -> Dict[str, Any]:
         "denominator_parts": {"B->H": per_seam["B->H"], "D->E": per_seam["D->E"],
                               "E->P": per_seam["E->P"],
                               "H->D": h_to_d_block["instances_priced"]},
-        # THE FOURTH SEAM'S OWN BLOCK: what sits between the halves (located in
+        # The fourth seam's own block: what sits between the halves (located in
         # driver.py at cut time), the probe it was priced from, its buckets and its
         # instances. The bucket table and the ledger keys above stay three-seam.
         "h_to_d_seam": h_to_d_block,
         "a_product_exists_for_the_cell": a,
-        # THREE KEYS NOW. `predicate_admits` is what `served_by_a_fused_product`
+        # Three keys now. `predicate_admits` is what `served_by_a_fused_product`
         # counted in every cut through 2026-08-21, when every credited product's gate
         # still described the tree and the two numbers were equal; it is the
         # three-seam walk's admitted count. `served_three_seam_ledger` is that walk's
@@ -4018,7 +4039,7 @@ def funnels(record: List[dict]) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 UNFUSABLE: Tuple[Dict[str, str], ...] = (
-    # THE FIRST TWO ROWS USED TO SAY "CANNOT BE BUILT", AND THE CODE THEY CITE SAYS
+    # The first two rows used to say "CANNOT BE BUILT", and the code they cite says
     # THE OPPOSITE. coverage.py's clause 3 (:462-487) reads "a source from this
     # pair's field family is CARRIED, not refused": the product declares
     # CARRIES_DEPOSIT_REPAIR, _install_fused_pair brackets the launch with
@@ -4138,26 +4159,26 @@ def caveats(record: List[dict]) -> Tuple[str, ...]:
         # became a question the shipped repair answers. Two of its refusals need an
         # engine object, so every instance this board credits ACROSS a live injection is
         # an upper bound in exactly the sense the line above states.
-        "THE CARRIED DEPOSIT: each in-seam source publishes the index it writes — "
+        "The carried deposit: each in-seam source publishes the index it writes — "
         "`deposit_repair._deposit_index` reads `_point_ix/_point_iy/_point_iz` and "
         "`seam_source_reasons` refuses a source that returns None. All four source "
         "classes DECLARE those fields but each sets them to None when the row's indices "
         "are empty on this chunk, which needs a built source to observe; the census "
         "records `n_sources` and `source_field_types` and stops there.",
-        "THE CARRIED DEPOSIT: that `f_w_<component>` is allocated for all three of the "
+        "The carried deposit: that `f_w_<component>` is allocated for all three of the "
         "seam's constitutive targets — the third refusal in `deposit_repair.repairable` "
         "— needs the engine's field arrays and is not in the census block.",
-        "DERIVED, NOT RE-LIFTED. fused_pair_B/D and dispersive_fused_pair_D are the "
+        "Derived, not re-lifted. fused_pair_B/D and dispersive_fused_pair_D are the "
         "SHIPPED seam predicates called on the lifted object with the real source "
         "list, so those three are measured.",
-        # 2026-08-30. FOUR MORE PRODUCTS MOVED FROM A TRANSCRIBED LADDER TO THEIR OWN
+        # 2026-08-30. Four more products moved from a transcribed ladder to their own
         # SHIPPED VERDICT, and with them go the three per-product caveats that used to
         # stand here (folded_fused_magnetic_pair's mirror_phase readability and
         # wall/fold disjointness; complex_fused_magnetic_pair's accessor readability and
         # int32 word bound; folded_fused_pair's whole ladder). None of them was ever a
         # property of the products — each was a limit of asking a CONFIGURATION BLOCK a
         # question only the predicate can answer. The census now records the answer.
-        "MEASURED, NOT TRANSCRIBED (2026-08-30). folded_fused_pair, "
+        "Measured, not transcribed (2026-08-30). folded_fused_pair, "
         "folded_fused_magnetic_pair, complex_fused_magnetic_pair and "
         "folded_complex_fused_magnetic_pair are scored from the verdict their SHIPPED "
         "predicate returned on the lifted object with the real source list, recorded in "
@@ -4166,7 +4187,7 @@ def caveats(record: List[dict]) -> Tuple[str, ...]:
         "word-bound clauses earlier cuts had to declare unevaluable. The hand-written "
         "ladders are RETAINED and evaluated beside them as a cross-check; "
         "`ladder_vs_shipped` reports every row where the two disagree.",
-        "WHY THAT WAS A CORRECTION AND NOT A CONVENIENCE. `folded_electric_clauses` "
+        "Why that was a correction and not a convenience. `folded_electric_clauses` "
         "carried `no_folded_periodic_axis` — `all(metallic[a] for a in folded)` — which "
         "`folded_fused_pair_coverage` RETIRED on 2026-08-21 when the far carry landed "
         "inline (folded_fused_pair.py:1046-1110) under released gate "
@@ -4185,7 +4206,7 @@ def caveats(record: List[dict]) -> Tuple[str, ...]:
         "(the row must lie in [0, stored-1), must not be 0, and stored-1 must not be "
         "the near fill's source plane) read stepping._far_reflect_rows on a live Grid "
         "and are not evaluable from the census block, which carries `shape` and not "
-        "`shape_full`. The same measurement the D-side carry round made applies: over "
+        "`shape_full`. The same measurement the D-side carry campaign made applies: over "
         "every folded PERIODIC extent Grid will build, stored == ceil(n_full/2) + 2 and "
         "reflect == floor(n_full/2), zero violations. The PARITY WORD readability "
         "clause (that mirror_parity_coefficients returns a nonzero pair on every folded "
@@ -4203,7 +4224,7 @@ def caveats(record: List[dict]) -> Tuple[str, ...]:
         "accessors exist. Every engine-built Grid exposes all three.",
         "layout clauses (float32, C-contiguity, grid.shape) beyond what each half's "
         "own predicate already checks are not evaluable from the block.",
-        "THE ARM TABLE HAS GROWN SINCE THE CENSUS. plan_step today consults 18 curl "
+        "The arm table has grown since the census. plan_step today consults 18 curl "
         "arms and 21 update_E arms; the record has 15 and 16. The eight added are "
         "conductive no-PML, complex conductive no-PML curl, complex no-PML curl, "
         "complex folded off-diagonal, folded off-diagonal dispersive, complex no-PML "
@@ -4214,7 +4235,7 @@ def caveats(record: List[dict]) -> Tuple[str, ...]:
         "so the per-cell counts on those rows are the 2026-08-16 arm table's, not "
         "today's. No fused product's cell is among the added arms, so the served "
         "count is unaffected in the first direction; it could only fall in the second.",
-        "BUILDERS WERE NOT MEASURABLE. The census host has no Triton, so every "
+        "Builders were not measurable. The census host has no Triton, so every "
         f"builder raised and plan_step.selected is empty on {unselected} of {n} rows "
         f"(the remaining {n - unselected} carry only {', '.join(selected_arms)!r}, the "
         "null arm). The arm "
@@ -4224,12 +4245,12 @@ def caveats(record: List[dict]) -> Tuple[str, ...]:
         "NUMPY HOST. Every verdict is read off covered_modulo_backend, which "
         "discounts the one 'array module is numpy, not cupy' clause. On a CuPy host "
         "that clause passes; on this record it is a fact about the harness.",
-        f"THE CORPUS IS THE ENGINE-ACCEPTED {n} ({examples} example scripts + {tests} "
+        f"The corpus is the engine-accepted {n} ({examples} example scripts + {tests} "
         "python-test cases; 186 = 52 + 134 until 2026-09-03), not all of MEEP. A row "
         "the lift "
         "refuses never reaches a predicate and is outside every number here.",
-        "A SERVED SEAM-INSTANCE LICENSES A PREDICATE VERDICT, NOT A RUN. The two are "
-        "now reported side by side rather than one being asserted: SERVED IN DISPATCH "
+        "A served seam-instance licenses a predicate verdict, not a run. The two are "
+        "now reported side by side rather than one being asserted: served in dispatch "
         "is measured per instance against fastpath.RELEASED_FUSED_ARMS and "
         "FUSED_RELEASE_ENVELOPE (aggregate.served_in_dispatch_measurement), and it is "
         "itself an UPPER BOUND - the composer's specialized-family guard, "
@@ -4252,7 +4273,7 @@ NOT_A_SEAM_PRODUCT: Dict[str, str] = {
 }
 
 
-#: FUSED MODULES THE TREE SHIPS AND THIS CUT DOES NOT PRICE, named so the
+#: Fused modules the tree ships and this cut does not price, named so the
 #: completeness floor still bites for anything else. All three landed on this tree
 #: on 2026-08-20 while this cut was being built, against the 2026-08-16 census this
 #: walk scores; pricing another family's clause ladder from its module without its
@@ -4261,7 +4282,7 @@ NOT_A_SEAM_PRODUCT: Dict[str, str] = {
 #: they serve is counted here as a GAP, so the served total is a LOWER BOUND. It
 #: does not touch this cut's DELTA, which is measured against
 #: ``../fusion_matrix_triton_2026-08-20_closed/``.
-#: EMPTY IN THIS CUT, AND THE EMPTINESS IS THE POINT. The 2026-08-20 farcarry cut
+#: Empty in this cut, and the emptiness is the point. The 2026-08-20 farcarry cut
 #: carried three entries here (beta / bfast / nonlinear), landed while it was being
 #: built and scored as GAPS, which made its served total a LOWER BOUND. The
 #: 2026-08-21 gapcells cut priced all three. This cut merges both lineages, so the
@@ -4270,30 +4291,30 @@ NOT_A_SEAM_PRODUCT: Dict[str, str] = {
 NOT_PRICED_HERE: Dict[str, str] = {}
 
 
-#: CERTIFIED BUT NOT PRICED HERE — AND THE BOUND IS STATED RATHER THAN GUESSED.
+#: Certified but not priced here — and the bound is stated rather than guessed.
 #: This is NOT `NOT_A_SEAM_PRODUCT` (occupies no cell) and NOT the old
 #: `NOT_PRICED_HERE` (a stale bookkeeping lag over products this cut does price).
 #: The module below is a real E->P product, on a real cell, with a real released
 #: device gate. What this cut does not have is an ADMISSION CENSUS for it.
 #:
-#: THE HISTORY, BECAUSE IT IS THE EVIDENCE. `triton_kernels/fused_ade_chain.py`
+#: The history, because it is the evidence. `triton_kernels/fused_ade_chain.py`
 #: landed UNTRACKED at 2026-08-21T01:19:38, three minutes before this cut first
-#: ran, from a CONCURRENT round. At that moment it had no fingerprints entry and no
+#: ran, from a CONCURRENT change. At that moment it had no fingerprints entry and no
 #: results directory, so it was exempted as UNGATED and its credit withheld. At
-#: 01:55:50 — twelve minutes after the cut — that round finished: this script's own
+#: 01:55:50 — twelve minutes after the cut — that change finished: this script's own
 #: self-retiring guard then RAISED, naming
 #: `fingerprints keys ['triton_fused_ade_chain_device_gate']` and
 #: `results directories ['triton_fused_ade_chain_2026-08-21']`. The exemption could
 #: not outlive its reason, which is what it was written to guarantee.
 #:
-#: THE GATE IS REAL, VERIFIED HERE RATHER THAN ASSUMED: NVIDIA RTX A6000, Triton
+#: The gate is real, verified here rather than assumed: NVIDIA RTX A6000, Triton
 #: 3.1.0, 60 steps; `gate_keep.json` and `gate_flush.json` both PASS with
 #: `canonical_verdict.released = true`; `gate_planted.json` FLIPS to FAIL against
 #: `ade_association_flattened_everywhere`; 31 mutations, 9 product legs, 4 separate
 #: controls; the `triton_fused_ade_chain_device_gate` fingerprint records 9 sources
 #: with ZERO drift against this tree.
 #:
-#: WHY IT IS STILL NOT PRICED. Its predicate reads LIVE OBJECTS —
+#: Why it is still not priced. Its predicate reads live objects —
 #: `fields.polarizations`, `state.driven()`, `state.P`, `poles_per_component`
 #: (fused_ade_chain.py:838-897). None of those is in the census configuration block
 #: this walk scores, exactly like the clauses already listed for
@@ -4301,7 +4322,7 @@ NOT_PRICED_HERE: Dict[str, str] = {}
 #: a family's clause ladder from its module WITHOUT its own admission census is how
 #: a wrong number gets published with a floor's blessing.
 #:
-#: THE BOUND, DERIVED FROM THE CELL STRUCTURE, WHICH *IS* IN THE BLOCK.
+#: The bound, derived from the cell structure, which *IS* in the block.
 #: `ARMS = ('no_pml', 'dispersive', 'folded')` and complex64 is refused BY NAME.
 #: Triton's four E->P cells are: (dispersive x ADE) 7, (no-PML dispersive x no-PML
 #: ADE) 3, (complex no-PML x complex ADE) 4 — refused on storage — and one instance
@@ -4310,21 +4331,21 @@ NOT_PRICED_HERE: Dict[str, str] = {}
 #: REMOVE instances (this matrix is an upper bound by construction), so the true
 #: figure lies in [0, 10] and is not measured here.
 #:
-#: CONSEQUENCE, STATED NOT BURIED: Triton E->P is reported 0 of 15 and the Triton
+#: Consequence, stated not buried: Triton E->P is reported 0 of 15 and the Triton
 #: total of 115 is a FLOOR, short by at most 10. Closing it needs one admission
 #: census on a Triton host — not another matrix cut on this laptop.
-#: FUSED MODULES THAT LANDED ON THIS TREE FROM A SEPARATE CHANGE WHILE THIS CUT
-#: WAS BEING MADE, and which this cut does not price. NOT ``GATED_NOT_PRICED_HERE``:
+#: Fused modules that landed on this tree from a separate change while this cut
+#: was being made, and which this cut does not price. NOT ``GATED_NOT_PRICED_HERE``:
 #: that category ASSERTS a released gate and re-earns the assertion on every run.
 #: This one asserts nothing about the module's certification, because this cut has
-#: not looked and may not speak for another round's work.
+#: not looked and may not speak for another change's work.
 #:
-#: THE FLOOR STILL BITES. The entry must name a module the tree really ships (an
+#: The floor still bites. The entry must name a module the tree really ships (an
 #: exception that outlives its exception silences the floor), its instances are
 #: counted as GAPS, and the served total is therefore a LOWER BOUND by whatever it
 #: serves. What this cut refuses to do is publish a number for a family whose
 #: admission ladder it has not transcribed.
-#: BOTH ENTRIES WERE DISCHARGED ON 2026-08-30 AND THE DICTS ARE EMPTY. Neither was
+#: Both entries were discharged on 2026-08-30 and the dicts are empty. Neither was
 #: discharged by a decision: `complex_fused_ade_chain.py` abstained because this cut
 #: "has not transcribed its admission ladder", and `fused_ade_chain.py` because "its
 #: predicate reads live polarization objects the census block does not carry". Both
@@ -4333,17 +4354,17 @@ NOT_PRICED_HERE: Dict[str, str] = {}
 #: neither ladder has to be transcribed and no configuration block has to carry a
 #: live polarization object. See E_TO_P_VERDICT_KEYS.
 #:
-#: THE STRUCTURES STAY, EMPTY, ON PURPOSE. Their floors are what make the abstention
+#: The structures stay, empty, on purpose. Their floors are what make the abstention
 #: cost something: an entry names a module the tree really ships and its instances
 #: are counted as GAPS. Deleting the mechanism with the last entry would leave the
-#: next round's abstention free.
+#: next change's abstention free.
 LANDED_CONCURRENTLY_NOT_PRICED_HERE: Dict[str, str] = {}
 
 
 GATED_NOT_PRICED_HERE: Dict[str, str] = {}
 
 
-#: WHERE EACH PRODUCT'S RELEASE LIVES. This matrix credits 102 seam-instances on
+#: Where each product's release lives. This matrix credits 102 seam-instances on
 #: the strength of device gates that ran against particular bytes; if a module has
 #: moved since, the credit rests on nothing. Eight of the nine products' gates
 #: recorded their digests in ``triton_kernels/fingerprints.json`` under the
@@ -4352,16 +4373,16 @@ GATED_NOT_PRICED_HERE: Dict[str, str] = {}
 #: — are superseded records under a different, mixed path convention and are not
 #: read here.)
 #:
-#: THE NINTH IS DIFFERENT AND THE DIFFERENCE IS DELIBERATE.
+#: The ninth is different and the difference is deliberate.
 #: ``cylindrical_fused_magnetic_pair.py`` carries NO fingerprints.json entry, and
 #: says why in its own docstring: "this module's licensed bytes are a function of a
 #: PROBE-BOUND arm, so a checked-in hash would record a choice rather than a
 #: measurement". Its gate DID record a module digest and the tree no longer matches
-#: it. MEASURED RATHER THAN ASSUMED: the gated bytes were fetched from the staging
+#: it. Measured rather than assumed: the gated bytes were fetched from the staging
 #: copy the gate ran out of (the GPU host,
 #: <staging-root>/cylfuse/source/, sha 4ee180e4) and diffed
 #: against the tree (sha 9265e122). The whole difference is ONE hunk inside the
-#: module docstring, lines 190-215 — the DEVICE STATUS block the release round wrote
+#: module docstring, lines 190-215 — the DEVICE STATUS block the release change wrote
 #: — and the docstring-stripped ASTs are IDENTICAL. So the 16 seam-instances
 #: credited to it rest on bytes whose executable content is provably the certified
 #: ones. That equivalence is re-checked below on every run, against a copy of the
@@ -4376,14 +4397,14 @@ FINGERPRINT_BOUND: Dict[str, str] = {
     "folded_fused_pair": "triton_folded_fused_pair_device_gate",
     "cylindrical_real_fused_magnetic_pair":
         "triton_cylindrical_real_fused_magnetic_pair_device_gate",
-    # THE TWO E->P CHAINS, priced for the first time on 2026-08-30. Both were BUILT
+    # The two E->P chains, priced for the first time on 2026-08-30. Both were BUILT
     # and RELEASED before this cut and reported at zero for want of an admission
     # census; the census now records what their shipped predicates returned, so the
     # credit is real and owes a binding like every other. Neither gate is new — this
     # row is the board finally reading the record that already existed.
     "fused_ade_chain": "triton_fused_ade_chain_device_gate",
     "complex_fused_ade_chain": "triton_complex_fused_ade_chain_device_gate",
-    # THE COMPLEX D->E PAIR, welded 2026-08-30 from its own first device run. The
+    # The complex D->E pair, welded 2026-08-30 from its own first device run. The
     # entry was written from the proposal packet propose_triton_welds.py produced,
     # whose digests are the RUN's own imported_source_sha256 — so this row binds the
     # credit to bytes a device executed rather than to bytes a board hashed.
@@ -4396,10 +4417,10 @@ FINGERPRINT_BOUND: Dict[str, str] = {
 AST_BOUND: Dict[str, Tuple[str, str]] = {
     # BOTH paths are relative to parity/meep_gpu now. The copy used to be relative
     # to the board's own directory, which is precisely the coupling the promotion
-    # removes: the gated bytes belong to the tranche that fetched them, not to
+    # removes: the gated bytes belong to the campaign that fetched them, not to
     # whichever directory a later cut happens to write into.
     #
-    # RE-POINTED 2026-08-28 TO A FRESH DEVICE RUN, and the equivalence it re-checks
+    # Re-pointed 2026-08-28 to a fresh device run, and the equivalence it re-checks
     # is now an IDENTITY rather than a tolerance. The 08-20 pairing bound the tree
     # to bytes that differed from it inside the module docstring; that AST
     # equivalence held on 08-21 and had STOPPED holding by 08-28, which is what put
@@ -4411,39 +4432,39 @@ AST_BOUND: Dict[str, Tuple[str, str]] = {
     # The copy below is that file, so the digest branch and the docstring-stripped
     # AST branch both compare the module against its own certified bytes. Nothing
     # was edited to make them agree; the gate was re-run so that they do.
-    # EMPTY SINCE 2026-09-04, AND THE MODE IS KEPT DELIBERATELY. Its one member,
+    # Empty since 2026-09-04, and the mode is kept deliberately. Its one member,
     # ``cylindrical_fused_magnetic_pair``, moved to ``GATE_BOUND``: the m = 0 re-gate
     # recorded the module at the digest the tree ships, so its credit now rests on
     # byte IDENTITY and the AST equivalence would be the weaker of two available
     # claims. The mode itself is not retired, because the condition that created it
     # recurs by construction — this module carries no fingerprints.json entry by its
-    # own design, and a release round that stamps a DEVICE STATUS block into its
+    # own design, and a release change that stamps a DEVICE STATUS block into its
     # docstring after the gate has run puts the tree one docstring away from its
     # gated bytes again. A family may only be entered here with a copy of the gated
     # bytes to compare against.
 }
 
-#: THE 2026-08-21 GAP-CELL PRODUCTS, bound to their own gate ARTIFACT rather than
+#: The 2026-08-21 gap-cell products, bound to their own gate ARTIFACT rather than
 #: to a ``fingerprints.json`` entry. Nothing was written to ``fingerprints.json``
-#: this round — that file is a release ledger for the shipped kernel set, and a
+#: by this cut — that file is a release ledger for the shipped kernel set, and a
 #: matrix cut may not add to it — so the binding reads the gate's own
 #: ``source_sha256`` map, which records every file the run bound itself to, and
 #: re-hashes each against the tree.
 #:
-#: A FALSE ``released`` IS THE TRAP THIS BRANCH IS WRITTEN AGAINST. A stress or
+#: A FALSE ``released`` is the trap this branch is written against. A stress or
 #: host leg that writes ``released`` gets it copied into a canonical verdict, and
 #: the package's weld tooling then reads a laptop run as a passed device gate. So
 #: the branch below requires ALL THREE of ``device_status == 'RUN'``,
 #: ``release.released is True`` and ``passed is True``, and a
 #: ``--no-device`` artifact fails every one of them by construction.
-#: BUILDABLE GAP CELLS AND WHAT EACH ONE NEEDS -- the hand-off, so a cell nobody
+#: Buildable gap cells and what each one needs -- the hand-off, so a cell nobody
 #: built is distinguishable from a cell somebody measured and declined.
 #:
 #: A cell appears here only when BOTH its arms admit on a live object and the board
 #: scores the instance REACHABLE. The text is the measured recipe, not a wish: every
 #: line number in it was read, and every claim about a delta was taken as an exact
 #: statement-list difference between two shipped bodies rather than by eye.
-#: EMPTY AS OF 2026-08-31 (this cut): the two folded-beta recipes it held were
+#: Empty as of 2026-08-31 (this cut): the two folded-beta recipes it held were
 #: BUILT, to their own measured letter — ``folded_beta_fused_electric_pair.py``
 #: and ``folded_beta_fused_magnetic_pair.py``, each the named base kernel plus the
 #: exact three-line insert, each with the fold and seam clauses RE-SPELLED and an
@@ -4454,13 +4475,13 @@ AST_BOUND: Dict[str, Tuple[str, str]] = {
 BUILDABLE_GAP_RECIPES: Dict[Tuple[str, str, str], str] = {}
 
 
-#: RE-POINTED AGAIN 2026-09-02 (SEVENTH ROUND) TO
+#: Re-pointed again 2026-09-02 (the seventh such re-point) to
 #: ``results/triton_regate_2026-09-02_foldedrelease``, for the NINETEEN rows below
-#: (seventeen distinct artifacts) that the sixth round had pointed at
+#: (seventeen distinct artifacts) that the sixth re-point had pointed at
 #: ``results/triton_regate_2026-09-02_residue``.
 #:
-#: WHY, AND WHY IT IS A RE-POINT RATHER THAN A RE-RUN. The dispatch Phase 1 change
-#: (``fill_B``/``fill_D`` became driver consults) moved ``meep_gpu/driver.py``,
+#: Why, and why it is a re-point rather than a re-run. The dispatch change that made
+#: ``fill_B``/``fill_D`` driver consults moved ``meep_gpu/driver.py``,
 #: ``meep_gpu/fastpath.py``, ``meep_gpu/triton_kernels/launch.py`` and
 #: ``meep_gpu/triton_kernels/__init__.py`` AFTER the residue campaign ran, so every
 #: residue artifact credited bytes the tree no longer ships and
@@ -4478,39 +4499,39 @@ BUILDABLE_GAP_RECIPES: Dict[Tuple[str, str, str], str] = {}
 #: elsewhere. 55 of the campaign's 59 gate artifacts record their imported source
 #: hashes and 0 of them are stale against this checkout.
 #:
-#: THE TWO ROWS NOT RE-POINTED are the off-diagonal scratch-output welds
+#: The two rows not re-pointed are the off-diagonal scratch-output welds
 #: (``offdiag_fused_electric_pair``, ``folded_offdiag_fused_electric_pair``). The
 #: weld driver genuinely does not cut them — they have no gate in the campaign — so
 #: they were RE-RUN on device instead, and their entries are updated separately.
 #:
-#: The sixth round's record, which the above supersedes for those 19 rows:
+#: The sixth re-point's record, which the above supersedes for those 19 rows:
 #: RE-POINTED WHOLESALE 2026-09-02 TO ``results/triton_regate_2026-09-02_residue``,
-#: and this is the sixth round of the same repair rather than a new kind of one.
+#: and this is the sixth re-point of the same repair rather than a new kind of one.
 #: ``meep_gpu/driver.py`` — a file under EVERY Triton weld's ``source_sha256`` map —
 #: moved twice: first when ``_inject_electric_through_conductivity`` replaced its
 #: three whole-volume difference passes with a per-cell replay at the deposit
 #: indices the sources publish, and then when a docstring recorded the CuPy
-#: subnormal measurement that change also produced. MEASURED before this round
+#: subnormal measurement that change also produced. Measured before this re-point
 #: began: nineteen of the table's rows below (fifteen distinct artifacts) recorded
 #: a ``driver.py`` the tree no longer ships, so ``assert_every_credit_is_bound_to_
 #: released_bytes`` refused the cut — correctly, and on the FIRST product it
 #: reached rather than on all of them.
 #:
-#: THE SECOND EDIT WAS COMMENT-ONLY AND IT STILL COUNTS. That is the position this
+#: The second edit was comment-only and it still counts. That is the position this
 #: file has held since 2026-08-16 (``rebind_triton_welds.py``'s own docstring names
-#: the round where a comment-only edit kept twenty-one welds green while they
+#: the change where a comment-only edit kept twenty-one welds green while they
 #: described bytes that no longer shipped) and re-running is cheap: every gate below
 #: took between 40 s and 5 min on one device.
 #:
-#: THE CAMPAIGN. the GPU host, GPU 1, one process per gate, sequential, ``keep`` policy
+#: The campaign. The GPU host, GPU 1, one process per gate, sequential, ``keep`` policy
 #: through a private ``ftz_stripped`` CuPy cache per gate. GPU 1 rather than the
-#: round's nominal GPU 3 because 3 was NOT free — another process held memory and
+#: campaign's nominal GPU 3 because 3 was NOT free — another process held memory and
 #: compute on it through the whole window, and 0/1 were the physically
 #: empty devices (4 and 5 are forbidden). These artifacts carry no timing claim, so a
 #: shared device could not have changed a verdict; the placement is recorded because
-#: the lane's precondition was "verify free" and it did not hold.
+#: the campaign's precondition was "verify free" and it did not hold.
 #:
-#: FOUR ROWS ARE NEW PRODUCTS rather than re-points — the two complex-beta welds and
+#: Four rows are new products rather than re-points — the two complex-beta welds and
 #: the two folded complex-beta welds, whose FIRST device runs are in this campaign.
 #: The complex-beta pair had an earlier passing run (2026-09-01, GPU 3) that this
 #: table deliberately does NOT cite: it bound the pre-docstring ``driver.py`` and the
@@ -4526,7 +4547,7 @@ BUILDABLE_GAP_RECIPES: Dict[Tuple[str, str, str], str] = {}
 #: hd_pair and stencil-weld rows below have no 09-14 run and keep their 09-13 paths
 #: until they are re-gated.
 #:
-#: RE-GATED AND REPOINTED THE SAME DAY: ``triton_regate_offdiag.sh`` ran the ten
+#: Re-gated and repointed the same day: ``triton_regate_offdiag.sh`` ran the ten
 #: ``gate_triton_*_hd_pair.py`` scripts and both stencil-weld families against the live
 #: bytes, so every row that still named ``_2026-09-13_batch`` now names
 #: ``_2026-09-15_offdiag``; all twelve artifacts carry ``release.released`` true. TWO OF
@@ -4546,7 +4567,7 @@ def verdict_prose_policy_reasons(gate: Dict[str, Any]) -> List[str]:
     (``environment.subnormal_policy_stamps``), and every stamp must have resolved to the
     policy it is labelled with. A host-only run attains ``host`` alone; a stamp labelled
     ``flush`` that resolved ``keep`` is a run that did not cut what it names (the memoised
-    install of ``probe_triton_cylindrical_fused_magnetic_pair``'s two-cut loop, MEASURED on
+    install of ``probe_triton_cylindrical_fused_magnetic_pair``'s two-cut loop, measured on
     its released runs of 2026-09-04 .. 09-07). Empty when the stamps are sound.
     """
     stamps = ((gate.get("environment") or {}).get("subnormal_policy_stamps") or {})
@@ -4570,7 +4591,7 @@ def verdict_prose_policy_reasons(gate: Dict[str, Any]) -> List[str]:
     return reasons
 
 
-#: REPOINTED 2026-10-13 TO THE RUNS OF ROUND ``2026-10-13_10`` (tree ``73d04e99``), by
+#: REPOINTED 2026-10-13 to the runs of round ``2026-10-13_10`` (tree ``73d04e99``), by
 #: ``repoint_board_bindings.py triton`` from the measured binding table, never by hand:
 #: 39 of 39 entries moved from 14 root(s) to 14 root(s) of the round
 #: (triton_beta_complex_fused_hd_pair_2026-10-13_10,
@@ -4586,7 +4607,7 @@ def verdict_prose_policy_reasons(gate: Dict[str, Any]) -> List[str]:
 #: triton_offdiag_stencil_welds_2026-10-13_10), each to the one run of its gate there
 #: that the release-binding floor admits (a passed device release of the keep policy, the
 #: credited module recorded, 0 recorded files moved); 0 already named such a run.
-#: REPOINTED 2026-10-15 TO THE RUNS OF ROUND
+#: REPOINTED 2026-10-15 to the runs of round
 #: ``2026-10-15_10_cc86_c0,2026-10-15_10_cc86_c2,2026-10-15_10_cc86_c5,2026-10-15_10_cc86_c6,2026-10-15_10_cc86_c10,2026-10-15_10_cc86_c8,2026-10-15_10_cc86_c7,2026-10-15_10_cc86_c9,2026-10-15_10_cc86_c11,2026-10-15_10_cc86_c12``
 #: (tree ``213713d6``), by ``repoint_board_bindings.py triton`` from the measured binding
 #: table, never by hand: 39 of 39 entries moved from 14 root(s) to 21 root(s) of the
@@ -4610,6 +4631,30 @@ def verdict_prose_policy_reasons(gate: Dict[str, Any]) -> List[str]:
 #: there that the release-binding floor admits (a passed device release of the keep
 #: policy, the credited module recorded, 0 recorded files moved); 0 already named such a
 #: run.
+#: REPOINTED 2026-10-28 to the runs of round
+#: ``2026-10-18_101_cc86_c27,2026-10-18_101_cc86_c28,2026-10-18_101_cc86_c29,2026-10-18_101_cc86_c30,2026-10-18_101_cc86_c31,2026-10-18_101_cc86_c32,2026-10-18_101_cc86_c33,2026-10-18_101_cc86_c34,2026-10-18_101_cc86_c39,2026-10-18_101_cc86_c40,2026-10-18_101_cc86_c41``
+#: (tree ``0b92be19``), by ``repoint_board_bindings.py triton`` from the measured binding
+#: table, never by hand: 39 of 39 entries moved from 21 root(s) to 20 root(s) of the
+#: round (triton_beta_complex_fused_hd_pair_2026-10-18_101_cc86_c41,
+#: triton_beta_real_fused_hd_pair_2026-10-18_101_cc86_c39,
+#: triton_complex_fused_hd_pair_2026-10-18_101_cc86_c41,
+#: triton_conductive_bfast_fused_hd_pair_2026-10-18_101_cc86_c39,
+#: triton_cylindrical_fused_hd_pair_2026-10-18_101_cc86_c40,
+#: triton_cylindrical_real_fused_hd_pair_2026-10-18_101_cc86_c40,
+#: triton_fleet_2026-10-18_101_cc86_c32, triton_fleet_2026-10-18_101_cc86_c39,
+#: triton_fleet_2026-10-18_101_cc86_c39_env_probe, triton_fleet_2026-10-18_101_cc86_c40,
+#: triton_fleet_2026-10-18_101_cc86_c40_env_probe, triton_fleet_2026-10-18_101_cc86_c41,
+#: triton_fleet_2026-10-18_101_cc86_c41_env_probe,
+#: triton_fleet_2026-10-18_101_cc86_c41_t2_rest,
+#: triton_folded_complex_fused_hd_pair_2026-10-18_101_cc86_c41,
+#: triton_folded_fused_hd_pair_2026-10-18_101_cc86_c40,
+#: triton_fused_hd_pair_2026-10-18_101_cc86_c41,
+#: triton_nonlinear_fused_hd_pair_2026-10-18_101_cc86_c39,
+#: triton_offdiag_stencil_welds_2026-10-18_101_cc86_c40,
+#: triton_offdiag_stencil_welds_2026-10-18_101_cc86_c41), each to the one run of its gate
+#: there that the release-binding floor admits (a passed device release of the keep
+#: policy, the credited module recorded, 0 recorded files moved); 0 already named such a
+#: run.
 GATE_BOUND: Dict[str, str] = {
     # THE E->P CHAIN, released on its first device run (2026-09-11, the GPU host GPU 7,
     # cc 8.6): PASS, release.released true, no reasons. Bound to the gate ARTIFACT
@@ -4617,15 +4662,15 @@ GATE_BOUND: Dict[str, str] = {
     # the wider one -- it pins both E-half modules, the ADE kernel and the gate
     # script, and the board re-hashes every one of them on each cut.
     "folded_offdiag_fused_ade_chain":
-        "results/triton_fleet_2026-10-15_10_cc86_c12_t2_rest/folded_offdiag_fused_ade_chain/gate.json",
-    # THE THREE 08-21 GAP-CELL FAMILIES, RE-POINTED 2026-08-28 TO A FRESH DEVICE
-    # CAMPAIGN. Their 08-21 artifacts each drifted on FOUR of eleven files -- the
-    # three the 08-27 routing round rewrote under every Triton weld (``driver.py``,
+        "results/triton_fleet_2026-10-18_101_cc86_c41_t2_rest/folded_offdiag_fused_ade_chain/gate.json",
+    # The three 08-21 gap-cell families, RE-POINTED 2026-08-28 to a fresh device
+    # campaign. Their 08-21 artifacts each drifted on FOUR of eleven files -- the
+    # three the 08-27 routing change rewrote under every Triton weld (``driver.py``,
     # ``triton_kernels/coverage.py``, ``triton_kernels/launch.py``) plus, for two of
     # them, their OWN kernel -- which is what withheld their credit on the 08-28
     # board and made SERVED a floor short by 20.
     #
-    # THE CREDIT IS RE-EARNED BY RE-RUNNING, NOT BY EDITING A DIGEST. All three
+    # The credit is re-earned by re-running, not by editing a digest. All three
     # probes were run against THIS tree on the GPU host GPU 3 (verified physically
     # empty: 6 MiB, no compute process), one process each, sequential, under the
     # ``keep`` policy through a private ``ftz_stripped`` CuPy cache -- so every
@@ -4634,7 +4679,7 @@ GATE_BOUND: Dict[str, str] = {
     # ``device_status RUN``, ``passed``, ``release.released``, no planted defect,
     # and 11 of 11 recorded files match the tree with zero drift.
     #
-    # A FIRST PASS OF THIS CAMPAIGN FAILED ALL THREE AND IS KEPT, NOT HIDDEN
+    # A first pass of this campaign failed all three and is kept, not hidden
     # (``results/triton_gapcell_regate_2026-08-28/``). Every device leg, mutation
     # and refusal passed there too; what failed was the NO-DEVICE
     # ``corpus_admission`` leg, on one finding -- "the fusion matrix is absent:
@@ -4645,26 +4690,26 @@ GATE_BOUND: Dict[str, str] = {
     # repair; the leg was not touched, and it is the reason the first campaign
     # directory is superseded rather than deleted.
     #
-    # RE-POINTED 2026-08-30 TO A FRESH CAMPAIGN, for the same reason the 08-28 one
-    # was cut: a shared file under every Triton weld moved. This round it is
+    # RE-POINTED 2026-08-30 to a fresh campaign, for the same reason the 08-28 one
+    # was cut: a shared file under every Triton weld moved. This time it is
     # `triton_kernels/launch.py`, whose two absorb-table comment blocks stated that
     # the fold boundary rested on `CARRIES_DEPOSIT_REPAIR` being False on both
     # folded families — a premise the deposit carry retired. None of these three
     # families changed at all; each is re-gated because its gate PINS that file, and
     # a weld that pins a file it no longer matches credits bytes nothing measured.
     # All three released with zero drift against the tree.
-    # THE TWO SCRATCH-OUTPUT OFF-DIAGONAL WELDS, 2026-09-02, and this pair of
+    # The two scratch-output off-diagonal welds, 2026-09-02, and this pair of
     # entries is what moves the STENCIL bucket for the first time since it was
     # opened on 2026-08-20.
     #
-    # WHAT THE GATE MEASURED. the GPU host, RTX A6000, one family per verified-empty
+    # What the gate measured. The GPU host, RTX A6000, one family per verified-empty
     # GPU (0 and 1), `keep` policy through a private ftz_stripped CuPy cache and a
     # private Triton cache. Per COMPLETE driver step as uint32 over every stored
     # volume, against BOTH the CuPy array path AND the separately certified Triton
     # kernels the weld replaces; every case carries a non-vacuity floor (the words
     # the reference itself moved) and two independent launch counters.
     #
-    # WHY IT SUPERSEDES RATHER THAN CONTRADICTS
+    # Why it supersedes rather than contradicts
     # `results/triton_fused_offdiag_electric_2026-08-20`. That artifact measured a
     # ONE-ORDINARY-LAUNCH weld of the SHIPPED IN-PLACE halves and found 42 of 60
     # subject cases divergent, schedule-dependently. Its own PROVENANCE names what
@@ -4683,12 +4728,12 @@ GATE_BOUND: Dict[str, str] = {
     # wrote its payload without calling `gate_provenance.stamp`, so nothing recorded
     # which bytes the releasing process actually imported — the one fact the stamp
     # exists to fix, and the gap `test_gate_provenance` refuses at a budget of zero.
-    # Adding the stamp MOVES THE GATE SCRIPT, which that gate pins four times across
+    # Adding the stamp moves the gate script, which that gate pins four times across
     # its own two artifacts (`source_sha256` and `imported_source_sha256` in each),
     # so the pins had to be re-cut rather than tolerated: a weld that pins a file it
     # no longer matches credits bytes nothing measured. The re-run is the SAME gate
     # on the SAME two families, `keep` policy, one family per verified-empty GPU.
-    # THE NUMBERS IT HAD TO REPRODUCE, and did: S1 60/60 IDENTICAL against both the
+    # The numbers it had to reproduce, and did: S1 60/60 IDENTICAL against both the
     # array path and the certified singles, and S2 ZERO differing words at every
     # block size (64/128/256/512/1024) on both families — the same two numbers the
     # superseded 08-20 artifact's own instrument reports, unmoved by the edit, which
@@ -4696,32 +4741,32 @@ GATE_BOUND: Dict[str, str] = {
     # Nothing was edited to make anything match; the pointer is written BEFORE the
     # run, so no artifact here certifies bytes that no longer exist.
     "offdiag_fused_electric_pair":
-        "results/triton_offdiag_stencil_welds_2026-10-15_10_cc86_c9/offdiag_fused_electric_pair/gate.json",
+        "results/triton_offdiag_stencil_welds_2026-10-18_101_cc86_c40/offdiag_fused_electric_pair/gate.json",
     "folded_offdiag_fused_electric_pair":
-        "results/triton_offdiag_stencil_welds_2026-10-15_10_cc86_c5/folded_offdiag_fused_electric_pair/gate.json",
+        "results/triton_offdiag_stencil_welds_2026-10-18_101_cc86_c41/folded_offdiag_fused_electric_pair/gate.json",
     "bfast_fused_magnetic_pair":
         
-        "results/triton_fleet_2026-10-15_10_cc86_c8/bfast_fused_magnetic_pair/gate.json",
+        "results/triton_fleet_2026-10-18_101_cc86_c40/bfast_fused_magnetic_pair/gate.json",
     "nonlinear_fused_magnetic_pair":
         
-        "results/triton_fleet_2026-10-15_10_cc86_c8_env_probe/nonlinear_fused_magnetic_pair/gate.json",
+        "results/triton_fleet_2026-10-18_101_cc86_c40_env_probe/nonlinear_fused_magnetic_pair/gate.json",
     "beta_fused_magnetic_pair":
         
-        "results/triton_fleet_2026-10-15_10_cc86_c5/beta_fused_magnetic_pair/gate.json",
-    # ONE GATE, TWO PRICED CELLS. The arm label decides which cell an instance lands
+        "results/triton_fleet_2026-10-18_101_cc86_c40/beta_fused_magnetic_pair/gate.json",
+    # One gate, two priced cells. The arm label decides which cell an instance lands
     # in; the module, the kernel and the gate are the same object, so both entries
     # bind to the same artifact and both are checked against the tree.
     #
-    # RE-POINTED 2026-08-28 FROM THE 08-21 ARTIFACT, and re-pointed because the
-    # 08-21 one no longer describes the tree. The 2026-08-27 routing round rewrote
+    # RE-POINTED 2026-08-28 from the 08-21 artifact, and re-pointed because the
+    # 08-21 one no longer describes the tree. The 2026-08-27 routing change rewrote
     # launch.py, coverage.py and driver.py under every Triton weld; measured here,
-    # the 08-21 artifact drifts on six of its fourteen files. THE FIX IS NOT TO
-    # TOLERATE THAT DRIFT -- it is that the family was RE-GATED afterwards and the
+    # the 08-21 artifact drifts on six of its fourteen files. The fix is not to
+    # tolerate that drift -- it is that the family was RE-GATED afterwards and the
     # fresh artifact is released and matches the tree exactly (14 of 14 files,
     # device_status RUN, passed, release.released). This entry names the run that
     # certified the bytes that ship. Nothing was edited to make it match.
     #
-    # RE-POINTED AGAIN 2026-08-30, same rule, this round's cause: the deposit carry
+    # RE-POINTED AGAIN 2026-08-30, same rule, the cause this time: the deposit carry
     # flipped CARRIES_DEPOSIT_REPAIR on the three sibling Triton fused families and
     # moved both complex_fused_magnetic_pair.py and launch.py, which this gate pins.
     # The family itself changed only its DEVICE_STATUS pointer, and that pointer was
@@ -4729,7 +4774,7 @@ GATE_BOUND: Dict[str, str] = {
     # written afterwards certifies bytes that no longer exist. Re-run on the GPU host:
     # 50 device legs, 456 complete steps, 450 fused launches, released.
     #
-    # RE-POINTED 2026-09-01, and this round the FAMILY ITSELF changed:
+    # RE-POINTED 2026-09-01, and this time the FAMILY ITSELF changed:
     # CARRIES_DEPOSIT_REPAIR flipped False -> True on THIS module (2026-08-31),
     # discharging the plainrepair7 board's one clause-refusal on it
     # (tests:TestHoleyWvgBands.test_fields_at_kx, an in-seam magnetic
@@ -4742,7 +4787,7 @@ GATE_BOUND: Dict[str, str] = {
     # CONTROLS with the bracket removed that both diverge -- and RE-RUN on
     # the GPU host GPU 3 against the flipped bytes: 58 device legs, released,
     # 14 of 14 recorded files matching this tree.
-    # REPOINTED 2026-09-11 TO THE RE-GATE, and this row is a BOARD edit rather than a
+    # REPOINTED 2026-09-11 to the re-gate, and this row is a BOARD edit rather than a
     # device run because the run already happened. Editing the module's DEVICE_STATUS
     # pointer put the very gate that pins that module into drift -- the ordering trap
     # this family's own test states twice ("a run whose artifact pointer is edited
@@ -4753,44 +4798,44 @@ GATE_BOUND: Dict[str, str] = {
     # both test_triton_folded_complex_fused_magnetic_pair.py's GATE_ARTIFACT and
     # triton_kernels/folded_complex_fused_magnetic_pair.py's DEVICE_STATUS name; the
     # board was the one place left pointing at the superseded realarms_c leg.
-    # REPOINTED 2026-09-13 to the batch fleet (shard C), the run that re-measured the
-    # probe after it learned to record the device identity (phase A).
+    # REPOINTED 2026-09-13 to ``triton_fleet_2026-09-13_batch_C``, the run that re-measured
+    # the probe after it learned to record the device identity.
     "folded_complex_fused_magnetic_pair":
-        "results/triton_fleet_2026-10-15_10_cc86_c5_env_probe/probe_triton_folded_complex_fused_magnetic_pair/gate.json",
+        "results/triton_fleet_2026-10-18_101_cc86_c41_env_probe/probe_triton_folded_complex_fused_magnetic_pair/gate.json",
     "folded_complex_fused_magnetic_pair_offdiag":
-        # REPOINTED 2026-09-17 to this round's env-probe lane, and to the SAME
+        # REPOINTED 2026-09-17 to that day's env-probe run, and to the SAME
         # artifact its base row cites: the derivative shares the base family's
         # evidence, which is what the 2026-09-14 pair of values already did. The
-        # base moved to the env-probe lane rather than the base fleet lane, because
+        # base moved to the env-probe run rather than the base fleet run, because
         # this family's fleet run reads `released=False` without the licence, so a
         # stamp swap alone would have landed on the refused artifact.
-        # REPOINTED 2026-09-21 to this round's env-probe lane, by hand rather than by
+        # REPOINTED 2026-09-21 to that day's env-probe run, by hand rather than by
         # the repoint tool: that tool anchors on `"<family>": "<path>"` together, and
         # this row's comment sits between its key and its value, so the anchor does not
         # match and the row was left alone while its base row moved. The two must cite
         # ONE artifact -- the derivative has no evidence of its own -- and the 09-17
         # copy records a `deposit_repair.py` the tree no longer ships.
-        # REPOINTED 2026-09-23 to the sparse round's env-probe lane, by hand for the
+        # REPOINTED 2026-09-23 to the sparse re-gate's env-probe run, by hand for the
         # same reason (the literal is split across two lines, which the repoint tool's
         # single-string pattern does not see), to the SAME artifact its base row cites.
         # REPOINTED 2026-09-25 by hand, same reason, to the SAME artifact its base row
-        # cites: this round ran the gate in the licence-exported no-`--probe` lane
+        # cites: that day's re-gate ran the gate in the licence-exported no-`--probe` run
         # (`_env_noprobe`), released; its argv and measured expansion (FMA_V1, five
         # patterns, keep) equal the 09-23 env-probe run's, and a second run in the
         # env-probe environment (`triton_fleet_2026-09-25_roundb_env_probe_r3`, released)
         # reads the same -- kept as corroboration, not bound.
-        "results/triton_fleet_2026-10-15_10_cc86_c5_env_probe/probe_triton_folded_complex_fused_magnetic_pair/gate.json",
+        "results/triton_fleet_2026-10-18_101_cc86_c41_env_probe/probe_triton_folded_complex_fused_magnetic_pair/gate.json",
     # THE TWO 2026-08-30 D->E CELLS, bound to their OWN first device runs rather
     # than to a ``fingerprints.json`` entry. That file is a release ledger for the
     # shipped kernel set and a matrix cut may not add to it, so the binding reads
     # each gate's ``source_sha256`` map — every file the run bound itself to — and
     # re-hashes each against the tree. Both artifacts were produced by running the
-    # gates against THIS tree, after every edit in the round: a run whose pointer is
+    # gates against THIS tree, after every edit in that change: a run whose pointer is
     # written afterwards certifies bytes that no longer exist.
     # The subdirectory is the DRIVER's gate name (drive_triton_weld_gates.py:539,
     # ``out_root / gate.name``), not the probe's file name — the campaign was run
     # through that driver so the residency guard, the ftz-stripped cache and the
-    # policy install are the fleet's rather than this round's.
+    # policy install are the fleet's rather than this campaign's.
     # RE-POINTED 2026-09-04 TO THE m = 0 RE-GATE, and the re-gate is the rule rather
     # than a repair: the m = 0 complex cylindrical landing edited
     # cylindrical_complex.py and this module, so the 08-31 artifact's recorded
@@ -4799,11 +4844,11 @@ GATE_BOUND: Dict[str, str] = {
     # 2026-09-04T07:48:48Z) rather than the digests re-pointed by hand: released,
     # device_status RUN, passed, 34 of 34 recorded files matching this tree with
     # zero drift, verified before this repoint.
-    # REPOINTED 2026-09-13 to the batch fleet (shard A; the probe now records the
-    # device identity and the policy keys the ledger reads).
+    # REPOINTED 2026-09-13 to ``triton_fleet_2026-09-13_batch_A`` (the probe now records
+    # the device identity and the policy keys the ledger reads).
     "cylindrical_fused_electric_pair":
-        "results/triton_fleet_2026-10-15_10_cc86_c12/cylindrical_fused_electric_pair/gate.json",
-    # THE Dcyl MAGNETIC TWIN, MOVED HERE FROM ``AST_BOUND`` ON 2026-09-04 — a
+        "results/triton_fleet_2026-10-18_101_cc86_c39/cylindrical_fused_electric_pair/gate.json",
+    # The Dcyl magnetic twin, moved here from ``AST_BOUND`` on 2026-09-04 — a
     # STRICTLY STRONGER BINDING, not a relaxed one. Through 2026-09-03 this module
     # was bound by docstring-stripped AST equivalence against a copy of its gated
     # bytes, because its 08-28 gate recorded bytes that differed from the tree inside
@@ -4813,36 +4858,36 @@ GATE_BOUND: Dict[str, str] = {
     # the older verdict-prose shape, read by the second condition set in
     # ``assert_every_credit_is_bound_to_released_bytes``.
     "cylindrical_fused_magnetic_pair":
-        "results/triton_fleet_2026-10-15_10_cc86_c12/cylindrical_fused_magnetic_pair/gate.json",
-    # REPOINTED 2026-09-17. This round's fleet artifact carries NO `release`
+        "results/triton_fleet_2026-10-18_101_cc86_c32/cylindrical_fused_magnetic_pair/gate.json",
+    # REPOINTED 2026-09-17. That day's fleet artifact carries NO `release`
     # block -- its verdict is in `canonical_verdict` ({"released": true,
     # "read_from": "verdict(prose)"}), which is the shape composition and shape
     # gates write and the reason five fleet gates read `released=None` to a reader
     # that checks only `release.released`. The gate passed; only the key differs.
-    # REPOINTED 2026-09-17: route A released this product's arm, and that batch edited
+    # REPOINTED 2026-09-17: a change that day released this product's arm, and the same change edited
     # `probe_triton_complex_conductive_fused_pair.py` to stamp the device identity and the
     # policy block `seed_triton_welds.py` refuses to invent. The 2026-09-07 artifact
     # records the probe's OLD bytes, so the binding check refused it by name. This is the
     # run the ledger entry was seeded from. (Comment moved above the key 2026-09-19 so the
     # row is one anchorable key/value pair for repoint_triton_gate_bound.py.)
     "complex_conductive_fused_pair":
-        "results/triton_fleet_2026-10-15_10_cc86_c5/complex_conductive_fused_pair/gate.json",
-    # THE 2026-08-31 FOLDED DISPERSIVE CELL, bound to its OWN first device run for
+        "results/triton_fleet_2026-10-18_101_cc86_c39/complex_conductive_fused_pair/gate.json",
+    # The 2026-08-31 folded dispersive cell, bound to its OWN first device run for
     # the reason the two above are: `fingerprints.json` is a release ledger for the
     # shipped kernel set and a matrix cut may not add to it, so the binding reads the
     # gate's `source_sha256` map — every file the run bound itself to — and re-hashes
     # each against the tree. The artifact was produced by running the gate against
-    # THIS tree, after every edit in the round: a run whose pointer is written
+    # THIS tree, after every edit in that change: a run whose pointer is written
     # afterwards certifies bytes that no longer exist. 17 of 17 files match with zero
     # drift.
     # RE-POINTED to the 2026-08-31 retry3 RE-RUN, same rule as the electric cell
-    # below: the plain-branch round edited meep_gpu/deposit_repair.py AFTER the
+    # below: the plain-branch change edited meep_gpu/deposit_repair.py AFTER the
     # original artifact was cut, so its recorded digests stopped describing the tree
     # and this binding correctly refused the board. The re-run released against the
     # current bytes -- 33 recorded files, 0 drift, verified before this repoint.
     "folded_dispersive_fused_pair":
         
-        "results/triton_fleet_2026-10-15_10_cc86_c5/folded_dispersive_fused_pair/gate.json",
+        "results/triton_fleet_2026-10-18_101_cc86_c40/folded_dispersive_fused_pair/gate.json",
     # THE 2026-08-31 Dcyl m = 0 ELECTRIC CELL, bound the same way and for the same
     # reason. 13 of 13 recorded files match the tree with zero drift.
     # RE-POINTED to the RE-RUN, and the re-run is the rule rather than a repair: the
@@ -4853,7 +4898,7 @@ GATE_BOUND: Dict[str, str] = {
     # hand. 13 of 13 recorded files match the tree with zero drift.
     "cylindrical_real_fused_electric_pair":
         
-        "results/triton_fleet_2026-10-15_10_cc86_c8/cylindrical_real_fused_electric_pair/gate.json",
+        "results/triton_fleet_2026-10-18_101_cc86_c41/cylindrical_real_fused_electric_pair/gate.json",
     # THE 2026-08-31 REAL-BETA D->E CELL — a cell the MAGNETIC twin's own docstring
     # wrote off as worth zero before the deposit repair existed, and the first
     # Triton weld whose HAS_BETA reduction arm was measured DISCRIMINATING on all
@@ -4864,8 +4909,8 @@ GATE_BOUND: Dict[str, str] = {
     # host mutations caught, 5/5 refusals.
     "beta_fused_electric_pair":
         
-        "results/triton_fleet_2026-10-15_10_cc86_c12/beta_fused_electric_pair/gate.json",
-    # THE 2026-08-31 FOLDED COMPLEX D->E CELL — the largest cell left unbuilt on the
+        "results/triton_fleet_2026-10-18_101_cc86_c41/beta_fused_electric_pair/gate.json",
+    # The 2026-08-31 folded complex D->E cell — the largest cell left unbuilt on the
     # 08-31 board and the deepest carry any Triton weld performs: 63 device legs
     # (15 configurations x 3 value classes plus the carry, null-control and armed
     # families), 619 complete driver steps, 613 fused launches, 26 volumes compared
@@ -4873,7 +4918,7 @@ GATE_BOUND: Dict[str, str] = {
     # repairing 6 deposits each through the SHIPPED bracket, 4 null controls that
     # all diverge, 18/22 mutations caught with 2 confirmed nulls and 2 recorded
     # UNREACHED against a word-layer measurement, 5/5 refusals.
-    # RE-POINTED 2026-08-31 to the re-run: the plain-branch round edited
+    # RE-POINTED 2026-08-31 to the re-run: the plain-branch change edited
     # meep_gpu/deposit_repair.py after the 31f artifact was cut. The re-run needed
     # MEEP_GPU_COMPLEX_EXPANSION_PROBE (the folded_complex probe) and released with
     # 18 pins, 0 drift against the live tree, verified before this repoint.
@@ -4884,7 +4929,7 @@ GATE_BOUND: Dict[str, str] = {
     # released, 18 pins, 0 drift against this tree, verified before this repoint.
     "folded_complex_fused_pair":
         
-        "results/triton_fleet_2026-10-15_10_cc86_c8_env_probe/folded_complex_fused_pair/gate.json",
+        "results/triton_fleet_2026-10-18_101_cc86_c39_env_probe/folded_complex_fused_pair/gate.json",
     # THE 2026-08-31 BFAST D->E CELL — the third of the 08-31 electric cells, and the
     # one whose ARM is a single `if HAS_BFAST:` statement appended to the shipped
     # `kernels.fused_curl_constitutive_D`, so its transcription is checked at
@@ -4895,7 +4940,7 @@ GATE_BOUND: Dict[str, str] = {
     # deposits each through the SHIPPED bracket, 2 null controls that both diverge,
     # 19/19 kernel mutations and 4/4 host mutations caught, 5/5 refusals.
     #
-    # ITS REDUCTION ARM IS DISCRIMINATING ON ALL THREE VALUE CLASSES: at HAS_BFAST=0
+    # Its reduction arm is discriminating on all three value classes: at HAS_BFAST=0
     # the kernel is bit-identical to the shipped `fused_curl_constitutive_D` while
     # BOTH differ from the array path. That leg's floor is TWO-SIDED (the BFAST state
     # inert here, moving on the array path) because the absolute "every array moved"
@@ -4903,8 +4948,8 @@ GATE_BOUND: Dict[str, str] = {
     # correct kernel on run c; the run c artifact is kept beside this one.
     "bfast_fused_electric_pair":
         
-        "results/triton_fleet_2026-10-15_10_cc86_c8/bfast_fused_electric_pair/gate.json",
-    # THE 2026-08-31 CONDUCTIVE PML D->E CELL — released, and serving NOTHING. The
+        "results/triton_fleet_2026-10-18_101_cc86_c41/bfast_fused_electric_pair/gate.json",
+    # The 2026-08-31 conductive PML D->E cell — released, and serving NOTHING. The
     # binding is recorded anyway because the product is real and the artifact is what
     # says why the cell stays a gap: its one corpus row's electric source is not
     # integrated, and driver.py:3363-3370 rescales such an injection over the WHOLE
@@ -4915,8 +4960,8 @@ GATE_BOUND: Dict[str, str] = {
     # confirmed nulls re-measured every run, 5/5 host mutations, 7/7 refusals.
     "conductive_fused_electric_pair":
         
-        "results/triton_fleet_2026-10-15_10_cc86_c11/conductive_fused_electric_pair/gate.json",
-    # THE 2026-08-31 NO-ABSORBER STORED-E D->E CELLS — released, and the FIRST
+        "results/triton_fleet_2026-10-18_101_cc86_c41/conductive_fused_electric_pair/gate.json",
+    # The 2026-08-31 no-absorber stored-E D->E cells — released, and the FIRST
     # product on `deposit_repair.PLAIN_PATH`, the second repair. ONE artifact binds
     # BOTH cells because one kernel is both curl arms: `conductive_plain_curl_step`'s
     # per-component COND constexpr compiles to `plain_curl_step`'s own line at zero.
@@ -4930,7 +4975,7 @@ GATE_BOUND: Dict[str, str] = {
     # 8/10 kernel mutations caught with 2 declared NULL and each carrying the
     # measurement that established it; 4/4 host mutations; 5/5 refusals.
     #
-    # AND ITS PRICED REFUSAL IS IN THE ARTIFACT. Two of this cell's three corpus rows
+    # And its priced refusal is in the artifact. Two of this cell's three corpus rows
     # declare a NON-INTEGRATED electric source on a conductive run, which the product
     # refuses BY NAME; the gate runs that configuration anyway, with the bracket on,
     # and records it diverging at STEP 1 (Ez, 22 words, 0x80000000 against 0x00000000
@@ -4938,24 +4983,24 @@ GATE_BOUND: Dict[str, str] = {
     # compared only at the last step reads identical.
     "no_pml_fused_electric_pair":
         
-        "results/triton_fleet_2026-10-15_10_cc86_c0/no_pml_fused_electric_pair/gate.json",
+        "results/triton_fleet_2026-10-18_101_cc86_c40/no_pml_fused_electric_pair/gate.json",
     "no_pml_fused_electric_pair_lossless":
         
-        "results/triton_fleet_2026-10-15_10_cc86_c0/no_pml_fused_electric_pair/gate.json",
-    # THE TWO 2026-08-31 FOLDED-BETA CELLS — the last two "not built" instances on
+        "results/triton_fleet_2026-10-18_101_cc86_c40/no_pml_fused_electric_pair/gate.json",
+    # The two 2026-08-31 folded-beta cells — the last two "not built" instances on
     # the plainrepair7 board, bound to their OWN first device runs for the reason
     # every 08-31 weld is: `fingerprints.json` is a release ledger for the shipped
     # kernel set and a matrix cut may not add to it, so the binding reads each
     # gate's `source_sha256` map — every file the run bound itself to — and
     # re-hashes each against the tree. Both artifacts were produced by running the
-    # gates against THIS tree, after every edit in the round.
+    # gates against THIS tree, after every edit in that change.
     "folded_beta_fused_electric_pair":
         
-        "results/triton_fleet_2026-10-15_10_cc86_c8/folded_beta_fused_electric_pair/gate.json",
+        "results/triton_fleet_2026-10-18_101_cc86_c40/folded_beta_fused_electric_pair/gate.json",
     "folded_beta_fused_magnetic_pair":
         
-        "results/triton_fleet_2026-10-15_10_cc86_c5/folded_beta_fused_magnetic_pair/gate.json",
-    # THE TWO 2026-09-01 COMPLEX-BETA CELLS, bound to their OWN first device runs
+        "results/triton_fleet_2026-10-18_101_cc86_c39/folded_beta_fused_magnetic_pair/gate.json",
+    # The two 2026-09-01 complex-beta cells, bound to their OWN first device runs
     # for the reason every recent weld is: `fingerprints.json` is a release
     # ledger for the shipped kernel set and a matrix cut may not add to it, so
     # the binding reads each gate's `source_sha256` map — every file the run
@@ -4965,27 +5010,27 @@ GATE_BOUND: Dict[str, str] = {
     # (the probe whose fifth pattern is the whole reason these cells exist).
     "complex_beta_fused_magnetic_pair":
         
-        "results/triton_fleet_2026-10-15_10_cc86_c5_env_probe/complex_beta_fused_magnetic_pair/gate.json",
+        "results/triton_fleet_2026-10-18_101_cc86_c41_env_probe/complex_beta_fused_magnetic_pair/gate.json",
     "complex_beta_fused_electric_pair":
         
-        "results/triton_fleet_2026-10-15_10_cc86_c0_env_probe/complex_beta_fused_electric_pair/gate.json",
-    # THE TWO 2026-09-02 FOLDED COMPLEX-BETA CELLS, bound the same way and run
+        "results/triton_fleet_2026-10-18_101_cc86_c40_env_probe/complex_beta_fused_electric_pair/gate.json",
+    # The two 2026-09-02 folded complex-beta cells, bound the same way and run
     # on the GPU host GPU 3 under the `keep` policy through an ftz-stripped cache,
     # with MEEP_GPU_COMPLEX_EXPANSION_PROBE naming the SIX-pattern unified
     # record their predicates and gates require.
     "folded_beta_complex_fused_pair":
         
-        "results/triton_fleet_2026-10-15_10_cc86_c8_env_probe/folded_beta_complex_fused_pair/gate.json",
+        "results/triton_fleet_2026-10-18_101_cc86_c39_env_probe/folded_beta_complex_fused_pair/gate.json",
     "folded_beta_complex_fused_magnetic_pair":
         
-        "results/triton_fleet_2026-10-15_10_cc86_c5_env_probe/folded_beta_complex_fused_magnetic_pair/gate.json",
+        "results/triton_fleet_2026-10-18_101_cc86_c40_env_probe/folded_beta_complex_fused_magnetic_pair/gate.json",
     # THE H->D WELD, 2026-09-06, bound to its OWN first device run for the reason
     # every recent weld is: `fingerprints.json` is a release ledger for the shipped
     # kernel set and a matrix cut may not add to it, so the binding reads the gate's
     # `source_sha256` map -- every file the run bound itself to, the DRIVER and the
     # COMPOSER included -- and re-hashes each against the tree.
     #
-    # WHAT THE GATE MEASURED. the GPU host, RTX A6000, one verified-empty GPU per policy,
+    # What the gate measured. The GPU host, RTX A6000, one verified-empty GPU per policy,
     # BOTH canonical float32 subnormal policies (`keep` through a private
     # ftz_stripped CuPy cache, `flush` with MEEP imported for the host half). Per
     # COMPLETE driver step as uint32 over every stored volume, against FOUR
@@ -4994,11 +5039,11 @@ GATE_BOUND: Dict[str, str] = {
     # unfused -- plus `weld_seam_only`, the arrangement that isolates this seam from
     # its neighbours' own agreement with the array path.
     #
-    # THE KEEP ARTIFACT IS THE ONE BOUND. Both released; `keep` is bound because it
+    # The keep artifact is the one bound. Both released; `keep` is bound because it
     # is the policy under which subnormals are preserved on both sides, which is the
     # harder comparison.
     #
-    # RE-GATED 2026-09-07 UTC (`_p9b`); THE 2026-09-06 RUN IS SUPERSEDED. Its lift leg
+    # Re-gated 2026-09-07 UTC (`_p9b`); the 2026-09-06 run is superseded. Its lift leg
     # re-lifted each corpus row in a child interpreter that never installed the
     # subnormal policy -- native CuPy (flush) against native Triton (keep) under the
     # parent's stamp -- so on the `flush` leg the two certified singles disagreed with
@@ -5017,8 +5062,8 @@ GATE_BOUND: Dict[str, str] = {
     # instructions carrying `.ftz`; `flush` children: 12,062 of 12,062).
     "fused_hd_pair":
         
-        "results/triton_fused_hd_pair_2026-10-15_10_cc86_c7/keep/gate.json",
-    # THE TWO CYLINDRICAL H->D PRODUCTS, 2026-09-07, bound the same way to their own
+        "results/triton_fused_hd_pair_2026-10-18_101_cc86_c41/keep/gate.json",
+    # The two cylindrical H->D products, 2026-09-07, bound the same way to their own
     # first device runs (the GPU host GPU 1, RTX A6000, both policies from EMPTY CuPy and
     # Triton caches, the lift child installing the policy before its first compile).
     # The `keep` artifact is bound for the reason the template gives. The complex
@@ -5029,74 +5074,74 @@ GATE_BOUND: Dict[str, str] = {
     # in the artifact says which reading applies.
     "cylindrical_real_fused_hd_pair":
         
-        "results/triton_cylindrical_real_fused_hd_pair_2026-10-15_10_cc86_c9/keep/gate.json",
+        "results/triton_cylindrical_real_fused_hd_pair_2026-10-18_101_cc86_c40/keep/gate.json",
     "cylindrical_fused_hd_pair":
         
-        "results/triton_cylindrical_fused_hd_pair_2026-10-15_10_cc86_c0/keep/gate.json",
+        "results/triton_cylindrical_fused_hd_pair_2026-10-18_101_cc86_c40/keep/gate.json",
     # THE 2026-09-07 H->D TAIL, five products bound to their own first device runs
     # (the GPU host GPU 3 and GPU 6, RTX A6000, EMPTY policy-separated CuPy and Triton
     # caches, the lift child installing the policy before its first device compile).
     #
-    # A RE-GATE IS OWED BEFORE ANY OF THESE BINDINGS IS REAL. Every one of these
+    # A re-gate is owed before any of these bindings is real. Every one of these
     # gates PINS `meep_gpu/triton_kernels/launch.py` and `meep_gpu/fastpath.py` in
-    # its own `source_sha256` -- MEASURED, not assumed: the artifacts list both --
-    # and the sibling H->D rounds landing beside this one edit exactly those files.
+    # its own `source_sha256` -- measured, not assumed: the artifacts list both --
+    # and the sibling H->D welds landing beside this one edit exactly those files.
     # The artifacts say so themselves, in `what_a_release_here_does_not_move`.
     # Binding them without re-running is the drift these two tables exist to catch.
     #
-    # THE TWO COMPLEX FAMILIES ARE BOUND TO THEIR `keep` ARTIFACTS AND TO NOTHING
+    # The two complex families are bound to their `keep` artifacts and to nothing
     # ELSE. Every complex arm in this package was certified under `keep` only, so
-    # under `flush` the predicates these products conjoin refuse BY THAT CLAUSE and
+    # under `flush` the predicates these products conjoin refuse by that clause and
     # the `flush` record is a NAMED POLICY REFUSAL rather than a release -- kept
     # beside the keep record, released false, and not a binding.
     "conductive_bfast_fused_hd_pair":
-        "results/triton_conductive_bfast_fused_hd_pair_2026-10-15_10_cc86_c5/keep/gate.json",
+        "results/triton_conductive_bfast_fused_hd_pair_2026-10-18_101_cc86_c39/keep/gate.json",
     "conductive_bfast_fused_hd_pair_bfast":
-        "results/triton_conductive_bfast_fused_hd_pair_2026-10-15_10_cc86_c5/keep/gate.json",
+        "results/triton_conductive_bfast_fused_hd_pair_2026-10-18_101_cc86_c39/keep/gate.json",
     "beta_real_fused_hd_pair":
-        "results/triton_beta_real_fused_hd_pair_2026-10-15_10_cc86_c5/keep/gate.json",
+        "results/triton_beta_real_fused_hd_pair_2026-10-18_101_cc86_c39/keep/gate.json",
     "beta_real_fused_hd_pair_folded":
-        "results/triton_beta_real_fused_hd_pair_2026-10-15_10_cc86_c5/keep/gate.json",
+        "results/triton_beta_real_fused_hd_pair_2026-10-18_101_cc86_c39/keep/gate.json",
     "folded_complex_fused_hd_pair":
-        "results/triton_folded_complex_fused_hd_pair_2026-10-15_10_cc86_c5/keep/gate.json",
+        "results/triton_folded_complex_fused_hd_pair_2026-10-18_101_cc86_c41/keep/gate.json",
     "folded_complex_fused_hd_pair_offdiag":
-        "results/triton_folded_complex_fused_hd_pair_2026-10-15_10_cc86_c5/keep/gate.json",
+        "results/triton_folded_complex_fused_hd_pair_2026-10-18_101_cc86_c41/keep/gate.json",
     "beta_complex_fused_hd_pair":
-        "results/triton_beta_complex_fused_hd_pair_2026-10-15_10_cc86_c0/keep/gate.json",
+        "results/triton_beta_complex_fused_hd_pair_2026-10-18_101_cc86_c41/keep/gate.json",
     "beta_complex_fused_hd_pair_unfolded":
-        "results/triton_beta_complex_fused_hd_pair_2026-10-15_10_cc86_c0/keep/gate.json",
+        "results/triton_beta_complex_fused_hd_pair_2026-10-18_101_cc86_c41/keep/gate.json",
     "nonlinear_fused_hd_pair":
-        "results/triton_nonlinear_fused_hd_pair_2026-10-15_10_cc86_c7/keep/gate.json",
-    # THE KEEP ARTIFACT IS THE ONE BOUND, for the reason the two cylindrical rows
+        "results/triton_nonlinear_fused_hd_pair_2026-10-18_101_cc86_c39/keep/gate.json",
+    # The keep artifact is the one bound, for the reason the two cylindrical rows
     # give: the complex arms are certified under `keep` only, so under `flush` the
     # composer selects nothing complex on this seam and the record measures the
     # forced-arm arithmetic against the array path and the two certified singles
     # built the same way. `composer_reachable_under_this_policy` in the artifact
     # says which reading applies.
     "complex_fused_hd_pair":
-        "results/triton_complex_fused_hd_pair_2026-10-15_10_cc86_c5/keep/gate.json",
-    # THE FOLDED H->D PRODUCT, bound to its own first device run (the GPU host GPU 1,
+        "results/triton_complex_fused_hd_pair_2026-10-18_101_cc86_c41/keep/gate.json",
+    # The folded H->D product, bound to its own first device run (the GPU host GPU 1,
     # RTX A6000, both subnormal policies from EMPTY CuPy and Triton caches, the lift
     # child installing the policy before its first device compile). The `keep`
     # artifact is bound for the reason the template above gives.
     "folded_fused_hd_pair":
-        "results/triton_folded_fused_hd_pair_2026-10-15_10_cc86_c6/keep/gate.json",
+        "results/triton_folded_fused_hd_pair_2026-10-18_101_cc86_c40/keep/gate.json",
 }
 
 
-#: PRODUCTS WHOSE RELEASE BINDING WENT STALE AND WAS NEVER REBOUND -- credit
+#: Products whose release binding went stale and was never rebound -- credit
 #: WITHHELD, cells reported as gaps, and the headline stated as a floor.
 #:
-#: EMPTY AS OF 2026-08-28, AND EMPTIED BY A DEVICE CAMPAIGN RATHER THAN BY A
+#: Empty as of 2026-08-28, and emptied by a device campaign rather than by a
 #: JUDGEMENT. What it held, and what closed it, is kept here because the mechanism
 #: is worth more than the four entries were: this table is the only reason the
 #: defect was ever visible.
 #:
-#: WHAT IT HELD. The 2026-08-27 routing round rewrote ``triton_kernels/launch.py``,
+#: What it held. The 2026-08-27 routing change rewrote ``triton_kernels/launch.py``,
 #: ``triton_kernels/coverage.py`` and ``driver.py``, which every Triton weld pins,
 #: and it also rewrote three of the four modules themselves. Thirty ledger entries
 #: were re-gated and rebound over 08-27/08-28 (``rebind_triton_welds.py``,
-#: ``results/triton_fused_regate_2026-08-28/``); THESE FOUR WERE IN NONE OF THOSE
+#: ``results/triton_fused_regate_2026-08-28/``); these four were in none of those
 #: CAMPAIGNS. They carry no ``fingerprints.json`` key at all -- they were bound
 #: directly to their 2026-08-20/21 gate artifacts -- so nothing in the weld tooling
 #: was ever going to notice. Their drift was in each product's OWN kernel as well as
@@ -5109,31 +5154,31 @@ GATE_BOUND: Dict[str, str] = {
 #:     cylindrical_fused_magnetic_pair   docstring-stripped AST DIFFERED from its
 #:                                       gated copy (it MATCHED on 2026-08-21)
 #:
-#: WHAT CLOSED IT: all four probes re-run on the GPU host GPU 3 on 2026-08-28 against
+#: What closed it: all four probes re-run on the GPU host GPU 3 on 2026-08-28 against
 #: the tree that ships (``results/triton_gapcell_regate_2026-08-28b/``), each one
 #: released and each one matching every file it records. ``GATE_BOUND`` and
-#: ``AST_BOUND`` above now name those runs. NOTHING WAS DECLARED AWAY: no digest was
+#: ``AST_BOUND`` above now name those runs. Nothing was declared away: no digest was
 #: edited, no clause relaxed, and the four families' 20 seam-instances move out of
 #: the withheld bucket because a device measured the bytes the tree ships, not
 #: because this table stopped asking.
 #:
-#: THE MECHANISM STAYS ARMED, AND EMPTY IS ITS STRICTEST STATE. With no entry here
+#: The mechanism stays armed, and empty is its strictest state. With no entry here
 #: every drift is UNNAMED drift, and the unnamed path RAISES rather than reporting a
 #: gap -- so the next weld that goes stale stops the cut instead of quietly costing
 #: it instances. Re-add an entry only to publish a board across a drift that a
 #: re-gate has not yet repaired, and delete it again the moment one lands.
 #:
-#: THIS IS STRICTLY STRICTER THAN ``EXTERNAL_DRIFT_AT_CUT_TIME``, which records a
+#: This is strictly stricter than ``EXTERNAL_DRIFT_AT_CUT_TIME``, which records a
 #: concurrent edit and still counts the credit. Nothing here was ever counted.
 #:
-#: THE EXEMPTION IS RE-EARNED ON EVERY RUN. A family listed here whose bytes DO
+#: The exemption is re-earned on every run. A family listed here whose bytes DO
 #: match its gate raises: the entry would then be withholding credit for a reason
 #: that has stopped being true, and a stale exemption understates the board exactly
 #: as silently as a stale credit overstates it. Delete the entry when a re-gate
 #: lands; do not edit a digest.
 #:
-#: EMPTIED AGAIN 2026-09-09, BY THE CLOSE ROUND, AND AGAIN BY DEVICE MEASUREMENT
-#: RATHER THAN BY A JUDGEMENT. All 36 families it held on 2026-09-08 were re-gated
+#: Emptied again 2026-09-09, by the close campaign, and again by device measurement
+#: rather than by a judgement. All 36 families it held on 2026-09-08 were re-gated
 #: on the committed bytes (15d15c1) in four shards on the GPU host GPUs 0-3 -- the
 #: fleet roots ``results/triton_fleet_2026-09-09_close_keep`` and ``..._close0_keep``
 #: (``unified_expansion`` first, then the six gates whose probes consume that
@@ -5147,18 +5192,18 @@ GATE_BOUND: Dict[str, str] = {
 #: 459, all of it the withheld credit returning. The 2026-09-08 account is kept
 #: beneath because the mechanism is worth more than the entries were.
 #:
-#: RE-ARMED 2026-09-08, WITH 36 ENTRIES, AND THE CLAUSE THIS TABLE WROTE FOR
-#: ITSELF IS THE ONE BEING USED: "Re-add an entry only to publish a board across
+#: Re-armed 2026-09-08, with 36 entries, and the clause this table wrote for
+#: itself is the one being used: "Re-add an entry only to publish a board across
 #: a drift that a re-gate has not yet repaired, and delete it again the moment
 #: one lands." The wiring merge moved `meep_gpu/triton_kernels/launch.py`
 #: (7c4f465a -> de606ebe) and `meep_gpu/fastpath.py` (67b754de -> 4efc4598),
 #: plus the five H->D family modules, and the 2026-09-08 Triton campaign ran 30
 #: gates -- the ARM gates and the fingerprint-bound fused-pair probes -- so all
 #: 11 `FINGERPRINT_BOUND` rows re-hash clean while 36 of the 38 `GATE_BOUND`
-#: rows do not. Those 36 were in no campaign this round: the queue it was cut
+#: rows do not. Those 36 were in no campaign at that point: the queue it was cut
 #: from lists six owed and 49 drifted METAL families and no Triton one.
 #:
-#: NOTHING HERE IS DECLARED AWAY AND NOTHING HERE IS COUNTED. Every one of these
+#: Nothing here is declared away and nothing here is counted. Every one of these
 #: families' seam-instances leaves `served` for the withheld bucket, which is
 #: strictly the conservative direction: the board this publishes is a FLOOR
 #: under the drift, not a re-statement of `fusion_matrix_triton_2026-09-07_cyl`
@@ -5166,12 +5211,12 @@ GATE_BOUND: Dict[str, str] = {
 #: files the table then held were read off this builder's OWN refusal on the run
 #: before it was filled -- 36 rows, one per family -- rather than compiled by hand.
 #:
-#: THE TWO GATE_BOUND ROWS THAT WERE NEVER HERE are `complex_conductive_fused_pair`
+#: The two GATE_BOUND rows that were never here are `complex_conductive_fused_pair`
 #: and `cylindrical_fused_electric_pair`: their artifacts re-hashed clean against
 #: that tree, and an exemption for a family whose bytes DO match raises, exactly
 #: as this table's own preamble requires.
 #:
-#: A DEFECT THIS TABLE'S FIRST NON-EMPTY RUN EXPOSED, CLOSED 2026-09-10.
+#: A defect this table's first non-empty run exposed, closed 2026-09-10.
 #: "Nothing here was ever counted" held on the THREE-SEAM walk, which files a
 #: withheld instance into `buildable_not_built` under its own named sub-reason —
 #: 70 instances on the 2026-09-08 cut. It did NOT hold on the FOURTH seam:
@@ -5185,7 +5230,7 @@ GATE_BOUND: Dict[str, str] = {
 #: aware) + 173 (fourth seam, not withheld-aware) = 459, where applying this
 #: table consistently gives 286. Both are in that artifact — `credit_withheld_
 #: products` and `h_to_d_seam.served_by_product` — and neither is inferred.
-#: CLOSED 2026-09-10, WHILE THE TABLE WAS EMPTY AND IT COST NOTHING:
+#: Closed 2026-09-10, while the table was empty and it cost nothing:
 #: `h_to_d_seam.price` now takes a third per-row answer, `credit_withheld` (this
 #: table's own sentence for the product, beside `served_by`, which stays the
 #: predicate's verdict), and files such a row buildable_not_built under the SAME
@@ -5199,17 +5244,17 @@ CREDIT_WITHHELD_STALE_BINDING: Dict[str, str] = {
 }
 
 
-#: FILES THAT MOVED UNDER THIS CUT'S FEET, named rather than tolerated.
+#: Files that moved under this cut's feet, named rather than tolerated.
 #:
 #: The tree can change while a cut runs. While this cut was being
 #: assembled (2026-08-20T22:06 and 22:10 local, measured from the files' mtimes) a
 #: CONCURRENT change edited ``folded_fused_magnetic_pair.py`` and its gate, so the
 #: digests ``fingerprints.json``'s ``triton_folded_fused_magnetic_pair_device_gate``
-#: recorded no longer describe the tree. NOTHING IN THIS ROUND TOUCHED EITHER FILE.
+#: recorded no longer describe the tree. Nothing in this cut touched either file.
 #:
-#: THE FLOOR IS NOT LOOSENED. An unnamed drift still raises. What this table does is
+#: The floor is not loosened. An unnamed drift still raises. What this table does is
 #: convert an unexplained refusal into a DOCUMENTED one: the affected product's
-#: credit is marked UNVERIFIABLE ON THIS RUN and its seam-instances are reported
+#: credit is marked unverifiable on this run and its seam-instances are reported
 #: SEPARATELY, so the headline can be read with and without them. The bytes may well
 #: be fine — a re-gate of those files is what would say so — but this
 #: cut cannot assert it, and asserting it anyway is exactly the failure the binding
@@ -5219,9 +5264,9 @@ EXTERNAL_DRIFT_AT_CUT_TIME: Dict[str, str] = {
         "meep_gpu/triton_kernels/folded_fused_magnetic_pair.py and "
         "parity/meep_gpu/probe_triton_folded_fused_magnetic_pair.py were modified by "
         "a CONCURRENT change while this cut ran (mtimes 2026-08-20T22:06/22:10); "
-        "this round edited neither. Its credit is reported separately below.",
+        "this cut edited neither. Its credit is reported separately below.",
 }
-#: THE FILES EACH EXEMPTION WAS WRITTEN FOR, and only those. Until 2026-09-15 the loop
+#: The files each exemption was written for, and only those. Until 2026-09-15 the loop
 #: below exempted ANY drift on a family named above, so when
 #: ``triton_kernels/launch.py`` moved under ``folded_fused_magnetic_pair`` -- the same
 #: file 21 refused products drifted on -- this cut credited its 74 dispatching
@@ -5276,10 +5321,10 @@ def gate_bound_check(family: str, gate_relative: str) -> Dict[str, Any]:
     gate = json.loads(gate_path.read_text())
     out.update(exists=True, gate=gate)
     release = gate.get("release") or {}
-    # THE THREE CONDITIONS, all of them. See GATE_BOUND's note: a run that
+    # The three conditions, all of them. See GATE_BOUND's note: a run that
     # measured no bytes on any device must not be readable as a release.
     #
-    # TWO ARTIFACT SHAPES SINCE 2026-09-04, AND THE SECOND IS NOT A WEAKER
+    # Two artifact shapes since 2026-09-04, and the second is not a weaker
     # RULE. The probes in this package write their verdict in two shapes.
     # The one this branch was written for carries `device_status`, `release`
     # and `passed` as keys. The OLDER shape — the one
@@ -5301,7 +5346,7 @@ def gate_bound_check(family: str, gate_relative: str) -> Dict[str, Any]:
     # to the policy it is labelled with, which no run without a working CUDA
     # device can write. Until 2026-10-10 this demanded BOTH policies in one
     # artifact, and the probe met it with two copies of ONE install: its
-    # "flush" stamp resolved `keep` on every released run (MEASURED on
+    # "flush" stamp resolved `keep` on every released run (measured on
     # results/triton_regate_2026-09-04_cylm0 .. _2026-09-07_bind), because
     # install_ftz_strip memoises the first install. The probe now cuts one
     # policy per process, the campaign's, so the keep fleet's artifact carries
@@ -5343,7 +5388,7 @@ def gate_bound_check(family: str, gate_relative: str) -> Dict[str, Any]:
             f"{family}'s gate artifact {gate_relative} is not a passed "
             f"device release (read under the {shape} shape): {reasons}")
         return out
-    # THE DIGEST MAP, AND THE ONE NON-PATH KEY IN IT. `source_sha256` is a
+    # The digest map, and the one non-path key in it. `source_sha256` is a
     # map of checkout-relative path -> digest on every artifact this branch
     # reads, with ONE exception: the verdict-prose shape also carries the key
     # `gate`, which is the digest of the PROBE SCRIPT rather than a path. It
@@ -5369,7 +5414,7 @@ def gate_bound_check(family: str, gate_relative: str) -> Dict[str, Any]:
             return out
         recorded.update({path: imported[path] for path in probe})
     if shape.startswith("verdict(prose)"):
-        # ONLY THIS SHAPE WIDENS TO THE IMPORT MAP, and only because its
+        # Only this shape widens to the import map, and only because its
         # `source_sha256` is two keys wide. The other shape records its own
         # full file list there, and widening it here would silently change
         # what every other family on this board is checked against.
@@ -5519,7 +5564,7 @@ def assert_every_credit_is_bound_to_released_bytes() -> Dict[str, Any]:
             raise SystemExit(
                 f"{family} is credited by this matrix and named by no binding table; "
                 f"the `unbound` guard should have refused before this loop")
-    # THE EXEMPTION IS RE-EARNED, NEVER INHERITED. A family named in
+    # The exemption is re-earned, never inherited. A family named in
     # CREDIT_WITHHELD_STALE_BINDING that did NOT land in `withheld` is a family whose
     # bytes now match its gate -- so the reason the entry states is false, and
     # withholding its instances would understate the board on a fiction.
@@ -5535,7 +5580,7 @@ def assert_every_credit_is_bound_to_released_bytes() -> Dict[str, Any]:
         raise SystemExit("the bytes this cut credits are NOT the bytes the gates "
                          "certified:" + "".join(f"\n    {d}" for d in drift))
     if withheld:
-        log("\n  *** CREDIT WITHHELD: STALE RELEASE BINDING, NEVER REBOUND ***")
+        log("\n  *** Credit withheld: stale release binding, never rebound ***")
         for entry in withheld:
             log(f"    {entry}")
         for family in sorted(withheld_families):
@@ -5543,7 +5588,7 @@ def assert_every_credit_is_bound_to_released_bytes() -> Dict[str, Any]:
         log("    These products' seam-instances are counted as GAPS in their own "
             "bucket. The served total below is a FLOOR, short by whatever they serve.")
     if external:
-        log("\n  *** EXTERNAL DRIFT, NAMED AND NOT TOLERATED SILENTLY ***")
+        log("\n  *** External drift, named and not tolerated silently ***")
         for entry in external:
             family = entry.split(" /")[0]
             log(f"    {entry}")
@@ -5565,7 +5610,7 @@ def assert_every_credit_is_bound_to_released_bytes() -> Dict[str, Any]:
 
 
 def assert_every_built_product_is_asked_about() -> Dict[str, Any]:
-    """A MATRIX THAT DOES NOT ASK ABOUT A LANDED PRODUCT CANNOT REPORT IT.
+    """A matrix that does not ask about a landed product cannot report it.
 
     That is not hypothetical here. Both 2026-08-20b matrices declined in writing to
     ask about ``cylindrical_fused_magnetic_pair.py`` while the kernel was already
@@ -5593,12 +5638,12 @@ def assert_every_built_product_is_asked_about() -> Dict[str, Any]:
             f"occupies no cell.")
 
     # ------------------------------------------------------------------
-    # THE EXEMPTION IS RE-EARNED ON EVERY RUN, NEVER INHERITED, AND THE CHECK IS
-    # THE OPPOSITE OF THE ONE IT REPLACED.
+    # The exemption is re-earned on every run, never inherited, and the check is
+    # the opposite of the one it replaced.
     #
-    # The first version of this block withheld credit because NOTHING HAD CERTIFIED
+    # The first version of this block withheld credit because nothing had certified
     # the module, and RAISED the moment a gate appeared. It raised, twelve minutes
-    # later, exactly as designed — the concurrent round finished and landed both a
+    # later, exactly as designed — the concurrent change finished and landed both a
     # fingerprint key and a results directory. So the reason changed, and with it
     # the check: the product is now CERTIFIED, and what it still lacks is an
     # ADMISSION CENSUS on this corpus.
@@ -5615,7 +5660,7 @@ def assert_every_built_product_is_asked_about() -> Dict[str, Any]:
                 f"triton_kernels does not ship. An exception list that outlives its "
                 f"exception silences the floor it was carved out of; delete it.")
     if LANDED_CONCURRENTLY_NOT_PRICED_HERE:
-        log("\n*** LANDED CONCURRENTLY, NOT PRICED HERE "
+        log("\n*** Landed concurrently, not priced here "
             f"({len(LANDED_CONCURRENTLY_NOT_PRICED_HERE)} module(s)) — this cut's "
             "Triton total is a LOWER BOUND by whatever they serve:")
         for name, why in sorted(LANDED_CONCURRENTLY_NOT_PRICED_HERE.items()):
@@ -5670,7 +5715,7 @@ def assert_every_built_product_is_asked_about() -> Dict[str, Any]:
             "credit": "NOT COUNTED — 0 seam-instances; upper bound 10 of 15 E->P",
         }
     if GATED_NOT_PRICED_HERE:
-        log("\n*** CERTIFIED BUT NOT PRICED HERE "
+        log("\n*** Certified but not priced here "
             f"({len(GATED_NOT_PRICED_HERE)} module(s)) — this cut's Triton total "
             f"is a FLOOR:")
         for name, record in sorted(ungated_audit.items()):
@@ -5683,7 +5728,7 @@ def assert_every_built_product_is_asked_about() -> Dict[str, Any]:
             "an ADMISSION")
         log("*** CENSUS on a Triton host — not another cut on this laptop.")
     # ------------------------------------------------------------------
-    # THE RELATION, ASSERTED IN BOTH DIRECTIONS, AND BOTH COUNTS REPORTED.
+    # The relation, asserted in both directions, and both counts reported.
     #
     # Forward: every fused module the package ships is priced by PRODUCTS (the
     # block above). Reverse: every priced product names a module that exists.
@@ -5771,7 +5816,7 @@ def assert_every_built_product_is_asked_about() -> Dict[str, Any]:
 def report_the_carry(instances: List[dict]) -> Dict[str, Any]:
     """Which in-seam passes a product actually CARRIES, and what that gates.
 
-    MEASURED ON THE CORPUS, NOT READ OFF ``REPLACES``. A product's ``REPLACES``
+    Measured on the corpus, not read off ``REPLACES``. A product's ``REPLACES``
     lists the driver call sites one launch takes over INCLUDING INERT ONES, so
     reading it as a carry credits a pass to a product that never executes it. A pass
     counts as CARRIED only where some product ADMITS an instance on which that pass
@@ -5809,7 +5854,7 @@ def report_the_carry(instances: List[dict]) -> Dict[str, Any]:
                 "row": entry["row"], "seam": seam,
                 "cell": [entry["curl_arm"], entry["constitutive_arm"]],
                 "has_a_product": bool(entry["product"])})
-    log("\n=== THE CARRY GAP — reachable, unserved, waiting on ONE uncarried pass ===")
+    log("\n=== The carry gap — reachable, unserved, waiting on ONE uncarried pass ===")
     if not gap:
         log("    none")
     for pass_name, entries in sorted(gap.items(), key=lambda kv: -len(kv[1])):
@@ -5839,21 +5884,28 @@ def main() -> int:
         CENSUS = RESULTS / args.census
     if not (CENSUS / "examples.jsonl").exists():
         raise SystemExit(f"{CENSUS} carries no examples.jsonl; that is not a census")
+    # Before anything reads the tree: a census cut against another tree is refused by name.
+    subject_pin = census_subject.subject_pin(
+        rows(CENSUS), api_root=API, package="triton_kernels", census=CENSUS)
     out_dir = args.out
     out_dir.mkdir(parents=True, exist_ok=True)
 
     log(f"TRITON FUSION MATRIX — {len(rows(CENSUS))} corpus rows, four seams")
-    log(f"census : {CENSUS}")
-    log(f"fresh  : {FRESH}")
-    log(f"out    : {out_dir}")
+    log(f"census : {_repo_named(CENSUS)}")
+    log(f"subject: {subject_pin['manifest_sha256'][:16]}... over {subject_pin['subject_files']} "
+        f"files, the census's own stamp on {subject_pin['rows_checked']} measured rows, "
+        f"re-computed against this tree")
+    log(f"fresh  : {_repo_named(FRESH)}")
+    log(f"out    : {_repo_named(out_dir)}")
 
     result: Dict[str, Any] = {
         "backend": "triton",
-        "census": str(CENSUS),
+        "census": _repo_named(CENSUS),
         "census_provenance": _census_provenance(),
-        "census_unlicensed_control": str(CENSUS_UNLICENSED),
-        "fresh_corpus_record": str(FRESH),
+        "census_unlicensed_control": _repo_named(CENSUS_UNLICENSED),
+        "fresh_corpus_record": _repo_named(FRESH),
         "coverage_column": "covered_modulo_backend",
+        "census_subject_pin": subject_pin,
     }
     result["freshness"] = freshness_check()
     result["licensed_vs_unlicensed_predicate_deltas"] = licensed_vs_unlicensed()
@@ -5893,13 +5945,13 @@ def main() -> int:
     # instance ledger's count — refused, not recorded, where one is not.
     result["headline_agreement"] = fusion_taxonomy.headline_agreement(
         result, result["aggregate"]["taxonomy"], "triton")
-    # AND THE SAME FLOOR ON THE DISPATCH AXIS. `served` and `served_in_dispatch` are
+    # And the same floor on the dispatch axis. `served` and `served_in_dispatch` are
     # different numbers, and until 2026-09-11 only the first had a floor -- which is
     # how the Metal board came to publish a hardcoded dispatch 0 beside its own
     # measured 176 in one artifact. `dispatch_agreement` reads the measurement as the
     # authority and refuses any other number for the same question, listing (never
     # comparing) the totals that sit under a declared different CONDITION.
-    # READ OFF THE ARTIFACT, not off a local: this board's ``dispatch_reach`` is
+    # Read off the artifact, not off a local: this board's ``dispatch_reach`` is
     # computed in the aggregate builder, not in ``main``, and the block it embedded is
     # the same object -- reading it here keeps one authority instead of two.
     result["dispatch_agreement"] = dispatch_agreement.dispatch_agreement(
@@ -5913,7 +5965,10 @@ def main() -> int:
         f"derived from the instance ledger")
 
     out = out_dir / "fusion_matrix.json"
-    out.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
+    # The board leaves the machine: every string in it written neutrally (neutral_ids.py).
+    import neutral_ids  # noqa: PLC0415
+
+    out.write_text(json.dumps(neutral_ids.value(result), indent=2, sort_keys=True) + "\n")
     log(f"\nwrote {out}")
     return 0
 

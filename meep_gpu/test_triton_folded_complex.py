@@ -1,4 +1,4 @@
-"""Laptop contracts for Phase B — the fold under complex storage and under beta.
+"""Laptop contracts for the folded family — the fold under complex storage and under beta.
 
 Everything here runs on a laptop: no GPU, no CuPy, no Triton. What needs hardware
 — bit-identity against the array path — lives in
@@ -7,7 +7,7 @@ only meaningful on the device that runs it.
 
 What is pinned here is everything that decides whether the four kernels are ever
 ALLOWED to run, the constants they hard-code, and the ONE arithmetic claim the
-whole tranche turns on:
+whole family turns on:
 
 * the four boundary codes, ``MIRROR_SOURCE_INDEX`` and ``TARGET_IYEE`` are
   RESTATED in ``folded_complex.py`` and pinned equal to BOTH ``symmetry.py``'s
@@ -27,8 +27,8 @@ whole tranche turns on:
   load-bearing rather than conventional;
 * ``PH*`` must be 0 on every folded axis, which the predicate refuses and the
   kernel does not check;
-* the coupling to ``symmetry.mirror_ghost_fill_coverage``, which this tranche
-  reuses for the REAL family's fill and does not own.
+* the coupling to ``symmetry.mirror_ghost_fill_coverage``, which these kernels
+  reuse for the REAL family's fill and do not own.
 """
 
 from __future__ import annotations
@@ -260,7 +260,7 @@ def test_this_module_touches_neither_dispatch_nor_the_other_tracks_files():
     assert "fingerprints" not in code
     assert "plan_step" not in code
     # symmetry.py is RESTATED, never imported: importing it would make this
-    # file's constants a function of another tranche's phrasing.
+    # file's constants a function of another module's phrasing.
     assert "from .symmetry" not in code and "import symmetry" not in code
 
 
@@ -279,7 +279,7 @@ def test_the_contraction_guard_is_the_packages_one_spelling():
 
 def test_the_gate_its_composition_probe_and_the_reference_validator_exist():
     for path in (GATE_PATH, COMPOSITION_PATH, VALIDATOR_PATH):
-        assert path.exists(), f"{path} is part of this tranche's deliverable"
+        assert path.exists(), f"{path} is part of this family's deliverable"
 
 
 # ---------------------------------------------------------------------------
@@ -420,7 +420,7 @@ def _engineered_complex_plane():
     """64 engineered word PAIRS = 128 words, over the classes the fill can hit.
 
     Signed zeros and subnormals are the whole point: a random-data sweep is
-    PROVABLY blind to the class this tranche's needle lives in.
+    PROVABLY blind to the class this family's needle lives in.
 
     PLANE ASSIGNMENT, never ``re + 1j*im`` — the same rule
     ``gate_triton_complex._interleave_c8`` exists to enforce, and for the same
@@ -441,7 +441,7 @@ def _engineered_complex_plane():
     return plane
 
 
-#: LAPTOP-MEASURED (NumPy 2.x, this engineered set): words in which the previous
+#: Laptop-measured (NumPy 2.x, this engineered set): words in which the previous
 #: whole-complex fill (``phase * plane`` with the coefficient promoted to ``(+-1,
 #: +0)``) diverges from the array path's per-part product. This is the module's
 #: own headline number and the device gate's inverted needle
@@ -536,7 +536,7 @@ def test_the_parity_coefficients_imaginary_word_is_bitwise_zero(fc):
     and ``-phase`` through ``numpy.complex64`` on the host and passes both WORDS
     to the kernel. The gate's ``synthesize_zero_imag`` mutant rewrites the
     kernel's ``near_im`` / ``far_im`` argument to a literal ``0.0``; it was
-    MEASURED vacuous on run direct_20260813T084108Z (hits 6, launched 192, PTX
+    measured vacuous on run direct_20260813T084108Z (hits 6, launched 192, PTX
     differs, 0 diverging words over 96 fill rows) for exactly one structural
     reason: the word the host already passes is bitwise ``0x00000000``, so the
     mutant and the shipped kernel receive BIT-IDENTICAL operands and no grid,
@@ -749,7 +749,7 @@ def test_the_fill_keeps_the_reflect_row_a_runtime_scalar(fc):
 
 
 def test_the_fill_is_two_passes_and_the_plan_exposes_them_separately(fc):
-    """MEASURED CORRECTION, not a preference. The array path runs
+    """Measured correction, not a preference. The array path runs
     ``fill_symmetry_bc_*`` and ``fill_folded_far_ghosts_*`` as two separate
     whole-grid passes with ``zero_metal_*`` between them (driver.py:3209-3211 /
     :3222-3224). Fusing them per axis reorders a component unowned on two axes
@@ -883,7 +883,7 @@ def test_the_fill_addresses_word_pairs_and_the_near_source_is_cell_two(fc):
                                   "folded_beta_bloch_pml_curl_step"])
 def test_the_complex_curls_never_spell_a_negated_addend_with_unary_minus(fc, name):
     """Triton 3.1.0 lowers ``-x`` as ``0.0 - x``, which canonicalizes ±0 addends
-    to +0 — MEASURED REACHABLE at the driver level. The helpers
+    to +0 — measured reachable at the driver level. The helpers
     carry the ``(a*b) * -1.0`` spelling; the kernels must not reintroduce one."""
     source = kernel_source(name)
     for line in source.splitlines():
@@ -997,8 +997,8 @@ def test_a_pml_on_the_low_face_of_a_folded_axis_never_reaches_the_predicate():
 
     ``PML._resolve_mirror_faces`` raises at construction, so the configuration
     the spec names ("a PML on the LOW face of a folded axis") cannot be handed to
-    a predicate at all — a refusal, not a crash, and one this tranche inherits
-    rather than restates. Pinned here so a future PML change that silently admits
+    a predicate at all — a refusal, not a crash, and one these kernels inherit
+    rather than restate. Pinned here so a future PML change that silently admits
     it is caught by a test rather than by a plane of wrong values.
     """
     with pytest.raises(ValueError, match="mirror-symmetric"):
@@ -1196,7 +1196,7 @@ def test_the_complex_constitutive_delegate_admits_a_folded_complex_grid(fc):
 
 
 # ---------------------------------------------------------------------------
-# The real + beta family, and the coupling to symmetry.py this tranche reuses
+# The real + beta family, and the coupling to symmetry.py this family reuses
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("sub_step", ["step_B", "step_D"])
@@ -1207,9 +1207,9 @@ def test_the_folded_real_beta_configuration_is_refused_only_for_the_backend(
 
 
 def test_symmetrys_own_fill_predicate_still_admits_a_folded_REAL_beta_grid():
-    """THE COUPLING THIS TRANCHE DOES NOT OWN. K3a reuses
+    """The coupling this family does not own. K3a reuses
     ``symmetry.mirror_ghost_fill`` through ``symmetry.mirror_ghost_fill_coverage``,
-    which carries no beta clause today. If the symmetry tranche's owner adds one,
+    which carries no beta clause today. If ``symmetry.py``'s owner adds one,
     K3a's fill path silently stops being admitted — so the coupling is pinned
     here rather than assumed.
     """
@@ -1975,7 +1975,7 @@ def test_a_device_leg_that_vanishes_without_a_result_or_an_error_FAILS():
 
 
 def test_the_planted_fill_words_cover_every_needle_class():
-    """The three classes the fill's mutations live in, each MEASURED reachable.
+    """The three classes the fill's mutations live in, each measured reachable.
 
     The diagonal pairing this replaced (``words[i % 8]`` / ``words[(i + 3) % 8]``)
     hit 0 of the 8 plane-wise pairs at mirror phase +1, 1 of 8 at phase -1 and 0
@@ -2023,7 +2023,7 @@ def test_the_extreme_fill_needle_stays_FINITE_through_the_whole_path():
     A needle may sit anywhere in the float32 range whose downstream products stay
     finite, and nowhere past it. The shipped ``3.4e38`` pair broke that: it
     overflowed the curl, and the byte comparison then rested on a NaN's sign and
-    payload — unspecified by IEEE 754-2019 (§6.2.1, §6.2.3, §7.2) and MEASURED to
+    payload — unspecified by IEEE 754-2019 (§6.2.1, §6.2.3, §7.2) and measured to
     vary by numpy version on hash-identical sources (17/17 on 2.4.3, 14/17 on
     2.2.6, every differing word a NaN against a NaN).
 
@@ -2522,7 +2522,7 @@ def test_a_fill_cell_blind_in_every_state_family_is_a_FAILURE():
 def test_the_recorded_reason_for_a_zero_census_is_the_measured_one():
     """A predicted null is only a predicted null if its REASON is true.
 
-    MEASURED over the whole 12 x 2 x 4 matrix on this laptop (2026-10-08, the
+    Measured over the whole 12 x 2 x 4 matrix on this laptop (2026-10-08, the
     per-part array path): ``live_post_step`` reads 0 on every row but one,
     periodic ones included, because four driven steps from a random seed leave
     generic nonzero floats — the realistic-state arm, not a signed-zero arm.
@@ -2681,7 +2681,7 @@ def test_the_two_pass_fill_split_has_a_needle_and_the_needle_is_reachable():
     planted without stepping or stepped without planting, and the plant's diagonal
     word pairing carried none of the association-divergent pairs.
 
-    MEASURED here on NumPy, on the gate's own two-folded-axis grid and its own
+    Measured here on NumPy, on the gate's own two-folded-axis grid and its own
     seeding: fused-per-axis vs two-pass differs in 5 words of ``By`` (B family) /
     5 of ``Dx`` (D family) on ``engineered_rows``, and 3 / 4 on
     ``engineered_rows_post_step``.
@@ -3052,6 +3052,6 @@ def test_the_stale_reachability_analogy_is_named_as_stale():
     conclusion the brief carried in.
     """
     text = (PACKAGE_DIR / "folded_complex.py").read_text(encoding="utf-8")
-    assert "REACHABILITY ARGUMENT DOES NOT SURVIVE" in text
+    assert "reachability argument does not survive" in text
     for row in ("TestArrayMetadata", "TestHoleyWvgBands", "solve-cw.py"):
         assert row in text

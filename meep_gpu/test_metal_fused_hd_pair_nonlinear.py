@@ -1,12 +1,12 @@
 """Host-side contract for the H->D weld's NONLINEAR WIDENING.
 
-THERE IS NO NEW KERNEL AND NO NEW PRODUCT HERE, and that is the thing this file exists
+There is no new kernel and no new product here, and that is the thing this file exists
 to hold. :mod:`meep_gpu.metal_kernels.fused_hd_pair`'s shipped predicate already admits
 a chi2/chi3 run, through ``nonlinear_update_e``'s two SPINE arms; the widening is a
 PREDICATE fact, and its device measurement is
 ``parity/meep_gpu/gate_metal_fused_hd_pair_nonlinear.py``.
 
-WHAT A HOST SUITE CAN HOLD, then, is the three claims the widening rests on:
+What a host suite can hold, then, is the three claims the widening rests on:
 
 * **the spine arms build the CERTIFIED kernels**, through ``launch``'s own builders
   behind a scope view that hides chi2/chi3 and nothing else -- so the fused kernel's
@@ -43,7 +43,7 @@ from meep_gpu.metal_kernels import (
 API_ROOT = Path(__file__).resolve().parent.parent
 #: The 2026-09-19 board (`_components`), on which `PRODUCTS["fused_hd_pair"]` declares
 #: the nonlinear cell beside its plain one and binds it to THIS gate's own run rather
-#: than to the family's plain weld. RE-CUT 2026-09-19: the overhead round moved
+#: than to the family's plain weld. RE-CUT 2026-09-19: the host-overhead change moved
 #: `deposit_repair.py`, the fleet re-gated the cell
 #: (`metal_fused_hd_pair_nonlinear_2026-09-19_witness`) and the ledger was re-welded
 #: from it, so the 2026-09-13 board this pinned named a run the ledger no longer
@@ -51,8 +51,8 @@ API_ROOT = Path(__file__).resolve().parent.parent
 #: the component-restricted deposit repair moved the cell's import closure, the fleet
 #: re-gated it (`metal_fused_hd_pair_nonlinear_2026-09-20_restrict`) and the ledger was
 #: re-welded from that fleet. The board's cell `key` and the ledger's weld both name the
-#: 2026-09-20 run. RE-CUT AGAIN 2026-09-24 at `_2026-09-24_round3`: the night round's
-#: held-step fixes moved the cell's import closure, the round-3 fleet re-gated it
+#: 2026-09-20 run. RE-CUT AGAIN 2026-09-24 at `_2026-09-24_round3`: the overnight
+#: held-step fixes moved the cell's import closure, the `_round3` fleet re-gated it
 #: (`metal_fused_hd_pair_nonlinear_2026-09-24_round3`, released, 256 digests, zero drift),
 #: the ledger was re-welded from that fleet and the board was cut from it.
 #: RE-CUT AGAIN 2026-09-25 at `_2026-09-25_night`: the citation re-point moved the cell's import
@@ -262,7 +262,7 @@ def _cells_board() -> dict:
 def test_the_board_credits_this_cell_from_its_own_bound_artifact():
     """Both corpus rows at this cell are SERVED, and served by this family.
 
-    Until the 2026-09-10 per-cell round the board filed them buildable_not_built:
+    Until the 2026-09-10 per-cell change the board filed them buildable_not_built:
     the family's plain `halves` refused every nonlinear row before the cell clause
     was asked. Pinned from the artifact: the rows, the bucket, the product, and the
     binding -- which must be THIS gate's run, since the plain family artifact drove
@@ -302,7 +302,7 @@ def test_the_two_pin_registries_agree_on_the_nonlinear_cell():
     ledger = json.loads((API_ROOT / "meep_gpu" / "metal_kernels"
                          / "fingerprints.json").read_text(encoding="utf-8"))
     entry = ledger[bound["fingerprint"]]
-    # THE WELD'S RUNS, one per GPU architecture (``metal_runs``): the cell is bound to
+    # The weld's runs, one per GPU architecture (``metal_runs``): the cell is bound to
     # the run of one of them, and a weld with no live run names no run at all.
     from meep_gpu import metal_runs  # noqa: PLC0415
 

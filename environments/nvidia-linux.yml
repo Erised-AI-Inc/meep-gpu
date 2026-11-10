@@ -10,9 +10,17 @@
 #   conda activate meep-gpu
 #   python -m pip install .          # from the repository root; no extras
 #
+# Which recipe: the certified one for the GPU libraries. CuPy, Triton and
+# PyTorch are the versions the certification record was cut on, as the extra
+# `nvidia-certified` pins them (INSTALL.md, "Certified and supported
+# versions"). MEEP is conda-forge's double-precision build, which is supported
+# and is not the build the kernels were certified against; the fully certified
+# environment is the certification reference built from environments/locks/.
+#
 # What it installs:
-#   MEEP 1.33.0     conda-forge package `pymeep`, serial (no MPI), double precision
-#   Python 3.10     Triton 3.1.0 has no wheel for Python 3.13
+#   MEEP 1.35.0     conda-forge package `pymeep`, serial (no MPI), double precision
+#   Python 3.12     conda-forge publishes MEEP 1.35.0 for Python 3.11 to 3.14,
+#                   and Triton 3.1.0 has no wheel for Python 3.13
 #   NumPy 2.2       inside every pin of MEEP, CuPy and PyTorch below
 #   CuPy 13.5.1     from conda-forge, with the CUDA 11.8 runtime libraries, so no
 #                   CUDA toolkit has to be installed on the machine
@@ -24,18 +32,20 @@
 # a C compiler on PATH (`gcc --version` works). INSTALL.md, "What you need".
 #
 # Do not add a second CuPy (`cupy-cuda11x`, `cupy-cuda12x`) to this environment,
-# and do not install this package with the `nvidia` extras here: they would put
-# a CuPy wheel beside the conda-forge CuPy.
+# and do not install this package with an NVIDIA extra here (`nvidia`,
+# `nvidia-cuda11`, `nvidia-certified`): each would put a CuPy wheel beside the
+# conda-forge CuPy.
 #
 # To use the CUDA 12 runtime instead, change `cuda-version=11.8` to
-# `cuda-version=12.2`. The certification record was cut with the CUDA 11 runtime.
+# `cuda-version=12.2`. The certification record was cut with the CUDA 11 runtime,
+# so with the CUDA 12 runtime the GPU libraries are supported and not certified.
 name: meep-gpu
 channels:
   - conda-forge
   - nodefaults
 dependencies:
-  - python=3.10
-  - pymeep=1.33.0=nompi_*
+  - python=3.12
+  - pymeep=1.35.0=nompi_*
   - numpy=2.2
   - cupy=13.5.1
   - cuda-version=11.8

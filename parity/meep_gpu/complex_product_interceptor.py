@@ -1,4 +1,4 @@
-"""Runtime check that the array path forms no complex product (``DESIGN.md`` D16).
+"""Runtime check: the array path forms no complex product (docs/design/floating-point.md).
 
 MEEP multiplies a complex field part by part: a real coefficient times each
 ``realnum`` array (the ``DOCMP`` loops), and a Bloch connection as libc++'s
@@ -31,7 +31,7 @@ reach. That limit is why the probe is paired with a must-catch control
 (:func:`planted_complex_product`) and why its report carries the traffic counts.
 
 Scope: the stepping array path on the NumPy reference. DFT and flux accumulation
-multiply fields by ``exp(i*omega*t)`` and are outside the identity claim (DESIGN §9);
+multiply fields by ``exp(i*omega*t)`` and are outside the identity claim;
 a run with monitors reports their products as violations, so the identity cases carry
 none. Host-only; importing this module imports nothing from the package.
 """

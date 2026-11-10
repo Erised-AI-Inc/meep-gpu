@@ -1,4 +1,4 @@
-"""Laptop contracts for the tensor / off-diagonal epsilon update_E Triton tranche.
+"""Laptop contracts for the tensor / off-diagonal epsilon update_E Triton family.
 
 Everything here runs on the NumPy merge-bar machine: the optional-import
 contract, the predicate's admission AND per-clause refusals on real
@@ -232,12 +232,12 @@ def test_the_guard_is_the_packages_one_spelling_and_appears_once():
 
 
 def test_no_fingerprint_entry_is_claimed():
-    """No GATE entry for this tranche in the table's ledger — the boundary.
+    """No GATE entry for this family in the table's ledger — the boundary.
 
     It used to forbid the STRING anywhere in the file, which is a stricter
-    spelling than the sibling tranches use (``test_triton_bfast`` and
+    spelling than the sibling families' tests use (``test_triton_bfast`` and
     ``test_triton_special_kz`` both scan the top-level KEYS), and stricter than the
-    boundary itself: what must not happen is this tranche claiming a gate record it
+    boundary itself: what must not happen is this family claiming a gate record it
     did not cut. The shared ``family_recert_2026-08-14`` transcription is the one
     place the module may be CLAIMED, and it exists because the alternative was
     measured to be worse — the dispatcher pointed at this family's provenance by a
@@ -254,18 +254,18 @@ def test_no_fingerprint_entry_is_claimed():
     recorded = json.loads((PACKAGE_DIR / "fingerprints.json")
                           .read_text(encoding="utf-8"))
     assert not any("offdiag_update_e" in name for name in recorded), (
-        "this tranche's provenance lives in the gate's results directory, "
+        "this family's provenance lives in the gate's results directory, "
         "not in a gate entry of the table's fingerprints.json")
-    # THE EXACT PATH, not the bare substring. Measured 2026-08-19: the substring
-    # spelling also matched a SIBLING tranche's file — folded_offdiag_update_e.py
+    # The exact path, not the bare substring. Measured 2026-08-19: the substring
+    # spelling also matched a SIBLING family's file — folded_offdiag_update_e.py
     # contains "offdiag_update_e" — so welding the folded off-diagonal family's own
     # gate result tripped this guard, which is not the boundary it defends. The
     # docstring above already records one narrowing for exactly this reason (the
     # string spelling being "stricter than the boundary itself"); this is the same
     # correction one step further. What is still forbidden is unchanged: THIS
-    # tranche's module claimed by an entry that did not cut it.
+    # family's module claimed by an entry that did not cut it.
     #
-    # AND NAMED IS NOT CLAIMED, the third narrowing (2026-10-04). Since 2026-09-30
+    # And named is not claimed, the third narrowing (2026-10-04). Since 2026-09-30
     # ``bit_identity_gate`` binds every ``meep_gpu/`` file its identity run IMPORTED
     # (``rebind_triton_welds.bind_bit_identity``), and that run imports the whole
     # Triton package, this module included -- so the bytes are named because the run
@@ -281,11 +281,11 @@ def test_no_fingerprint_entry_is_claimed():
     claimed = sorted(key for key in naming if key in _welds(recorded))
     assert not claimed, (
         f"{claimed} are welds (status PASS over a source_sha256 map) that name this "
-        "tranche's module: a weld claims the bytes it pins, and this tranche's "
+        "kernel's module: a weld claims the bytes it pins, and this kernel's "
         "provenance lives in its gate's results directory")
     for key, found in sorted(naming.items()):
         assert found == [(("source_sha256", GUARDED_MODULE), "key")], (
-            f"{key} names this tranche's module at {found}; outside the family-recert "
+            f"{key} names this kernel's module at {found}; outside the family-recert "
             "transcription it may appear only as a key of an entry's own "
             "source_sha256, as the import record of a run that entry describes")
 
@@ -373,7 +373,7 @@ def test_an_entry_naming_this_module_pins_the_import_record_of_its_own_run():
                     if name.startswith("meep_gpu/")} == pins:
                 matched.append(capability)
         assert matched, (
-            f"{key} pins this tranche's module, and no run it records imported exactly "
+            f"{key} pins this kernel's module, and no run it records imported exactly "
             "its meep_gpu/ pin set: the pin is not the import record of a run the "
             "entry describes")
 
@@ -479,7 +479,7 @@ def test_chi2_chi3_is_refused_toward_the_nonlinear_family(od):
 def test_no_active_layer_is_refused(od):
     """Without PML the offdiag update_E is a REAL stored write
     (field[...] = constitutive, stepping.py:1019-1022 — stores_E is forced by
-    the install, fields.py:1254-1255), a different sub-step Phase A refuses."""
+    the install, fields.py:1254-1255), a different sub-step this kernel refuses."""
     fields, pml = _build(pml_thickness=0)
     assert fields.stores_E  # the no-PML sub-step is reachable, not a no-op
     reasons = _reasons(od, fields, pml)
@@ -597,7 +597,7 @@ def test_a_diagonal_key_row_planted_past_the_installer_is_refused_not_crashed(od
 
 
 def test_a_row_installed_as_an_alias_of_an_output_is_refused_not_crashed(od):
-    """The alias is REACHABLE THROUGH THE PUBLIC INSTALLER: set_epsilon_volumes
+    """The alias is reachable through the public installer: set_epsilon_volumes
     keeps the caller's array without copying (asarray + astype(copy=False),
     fields.py:1296), so a row that IS fields.Ex arrives legally installed.
     The builder refuses the alias with a raise (schedule-dependent answer);
@@ -870,7 +870,7 @@ def test_the_between_shifts_association_differs_from_the_hoist_on_varying_rows(o
     """The one genuinely new arithmetic element: (pair*u) shifted vs the
     four-point-average-times-u[i] hoist. On a VARYING coefficient the two are
     different ALGEBRA (the half-cell registration error). On a UNIFORM
-    coefficient they are algebraically equal but MEASURED bitwise-different
+    coefficient they are algebraically equal but measured bitwise-different
     all the same — distributivity (a*u + b*u vs (a+b)*u) is not a bitwise
     identity in f32 — refining the plan's predicted null for m1's uniform
     case into a recorded-outcome row: the transcription must still carry the

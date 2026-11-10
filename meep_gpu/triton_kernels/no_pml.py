@@ -7,7 +7,7 @@ An overlap fails closed. Production dispatch remains disabled:
 and refusal reporting stay importable when the optional Triton dependency is
 absent; kernel helpers are imported lazily only after admission or at launch.
 
-WHAT THIS IS FOR, stated before the physics, because the honest answer is narrow.
+What this is for, stated before the physics, because the honest answer is narrow.
 It accelerates ZERO scripts of either validation corpus. Of the 57 example scripts
 carrying boundary facts (``parity/meep_gpu/results/survey_after_monitors/survey.jsonl``)
 exactly TWO declare no boundary layer (54 are ``PML``, 1 ``Absorber``) —
@@ -22,7 +22,7 @@ MEEP's ``python/tests`` adds nothing steppable. The value is two things:
    at all, which is what let it locate the step-67 divergence in the simplest
    configuration the engine has (see BUDGET below).
 
-WHAT COLLAPSES WHEN THE ABSORBER GOES AWAY
+What collapses when the absorber goes away
 ------------------------------------------
 ``stepping._apply_curl`` (stepping.py:516-587) has four branches. With
 ``_pml_is_active(pml)`` False and ``fields.condfac_for(target)`` None, all of the
@@ -36,7 +36,7 @@ curl itself — the term table, the ghost rule, the grouping and the ownership
 mask — is UNCHANGED, which is why this kernel's first two thirds are a verbatim
 copy of ``kernels.pml_curl_step``'s.
 
-THE CURL IS MEEP'S, PER PARTNER PRESENCE. ``step_generic.cpp`` associates the
+The curl is MEEP's, per partner presence. ``step_generic.cpp`` associates the
 stencil left to right, ``dtdx * (((g1s - g1) + g2) - g2s)`` (:104), and takes a
 one-partner form where a partner's derivative axis is invariant (:72-76, :108);
 ``stepping._curl_from_operands`` does the same, and so does this kernel, through the
@@ -53,7 +53,7 @@ unless ``fields.stores_E`` (stepping.py:958). So on a plain run
 ``FdtdDriver.step``'s four heavy sub-steps reduce to TWO, and this one kernel
 covers both of them.
 
-THE THING THAT IS NOT A SIMPLIFICATION: THE E SOURCE
+The thing that is not a simplification: the E source
 ----------------------------------------------------
 With PML, ``step_B`` differences the STORED Ex/Ey/Ez arrays. Without PML and
 without a susceptibility, ``fields.stores_E`` is False and
@@ -82,7 +82,7 @@ gate's ``swap_derive_operand_order`` control is an expected null for that reason
 ``stores_E``, or the array path's own snapshot when a caller wants the
 conservative composition. Both are gated.
 
-SEPARATE KERNEL OR A FLAG ON THE EXISTING ONE?
+Separate kernel or a flag on the existing one?
 ----------------------------------------------
 A ``PML: tl.constexpr`` flag on ``kernels.pml_curl_step`` is the right END state
 and this module is the interim: the curl half — ghost rule, grouping, ownership
@@ -92,26 +92,26 @@ forever. The auxiliary and coefficient pointer arguments cost nothing to carry
 under a false constexpr (the loads are dead-code-eliminated), so the merged
 kernel would take the same eleven-argument prefix and bind placeholders, exactly
 as ``constitutive_step`` already binds its sources as inverse-epsilon
-placeholders on the H side (launch.py:272-277). ``kernels.py`` is owned by
-another live track this round, so the merge is SPECIFIED, not performed; see the
+placeholders on the H side (launch.py:272-277). ``kernels.py`` was owned by another
+live track when this was written, so the merge is SPECIFIED, not performed; see the
 module ``MERGE`` note at the bottom.
 
-BUDGET — 66 STEPS, AND IT IS NOT A PROPERTY OF THIS KERNEL
+BUDGET — 66 steps, and it is not a property of this kernel
 ----------------------------------------------------------
-Bit-identity is claimable only FOR A STATED NUMBER OF STEPS (plan section 16).
+Bit-identity is claimable only for a stated number of steps.
 Measured on the GPU host, RTX A6000, ``2d_plain`` at resolution 40 (640x640), every
 state array compared bytewise after every one of 6000 whole ``FdtdDriver.step``
-calls: **identical through step 66, FIRST DIFFERENT AT STEP 67** — 28 floats of
+calls: **identical through step 66, first different at step 67** — 28 floats of
 2,457,600, in Bx/By/Dz, the kernel writing ``0x004fbb9e`` where the array path
 writes ``0x00000000``. ``allclose`` would report True.
 
-That is section 16's ``2d_pml`` result exactly — same step, same array, same bit
+That is the 2026-08-10 ``2d_pml`` result exactly — same step, same array, same bit
 pattern — in a run with no absorber, no split-field recurrence and no PML
-coefficient anywhere in this file. Section 16 established the divergence is not
-dispersion-specific; this establishes it is not absorber-specific either. The
-seed is CuPy's flush-to-zero meeting ``dtdx * (a difference)`` at the wavefront.
-The spatial spread saturates from step 1500 at a median 49.09% of stored floats,
-against 49.65% for ``2d_pml``: the same plateau.
+coefficient anywhere in this file. The ``2d_pml`` run established the divergence is
+not dispersion-specific; this ``2d_plain`` run establishes it is not absorber-specific
+either. The seed is CuPy's flush-to-zero meeting ``dtdx * (a difference)`` at the
+wavefront. The spatial spread saturates from step 1500 at a median 49.09% of stored
+floats, against 49.65% for ``2d_pml``: the same plateau.
 
 So: 108/108 single-launch, 12/12 x 8 multi-step and 12/12 whole driver steps are
 what the gate measured and they pass; 66 is what may be CLAIMED. Nobody should
@@ -264,7 +264,7 @@ GATE_VERDICT = {
     "first_divergent_step": 67,
 }
 
-# A DEGENERATE AXIS HIDES A GROUPING DEFECT, and ``2d_plain`` is a degenerate-axis
+# A degenerate axis hides a grouping defect, and ``2d_plain`` is a degenerate-axis
 # case. A regrouping of the two-partner stencil can only show where BOTH partners
 # are present: on a run whose y axis is invariant, ``curl0``'s first partner is
 # absent and the one-partner form never reads the grouping at all. The gate's
@@ -373,8 +373,8 @@ def plain_curl_step(
     # path shifts the DERIVED volume, so its ghost is 0.0 too — not 0.0*inv_eps,
     # which would be the same value but is worth saying: `other=0.0` on both loads
     # makes the product 0.0*0.0 = +0.0, and the array path's zero is +0.0. Signed
-    # zero is the exact class §10.5 records a defect in, so it is pinned by the
-    # metallic legs of the gate rather than argued here.
+    # zero is the class in which a defect once passed a magnitude comparison, so
+    # it is pinned by the metallic legs of the gate rather than argued here.
 
     # --- the curl (stepping._curl_from_operands): DO NOT flatten these parens ---
     # One call per target: MEEP's left-to-right association with both partners, the
@@ -464,7 +464,7 @@ def _no_pml_grid_reasons(fields: Any, pml: Any, grid: Any) -> List[str]:
     #    difference a frozen H. The array path has the same hazard; this kernel
     #    refuses the configuration rather than reproducing it.
     #
-    #    GATED ON THE LAYER BEING INERT, because the sentence has to be TRUE where it
+    #    Gated on the layer being inert, because the sentence has to be TRUE where it
     #    fires. The recon build tested ``_pml_active`` alone, which appended "while
     #    the layer is inert" to every active-PML refusal too — a right verdict with a
     #    false reason, which is the failure mode a reasons list exists to avoid. The
@@ -757,9 +757,9 @@ def plan_plain_curl_from_arrays(sub_step: str, arrays: Dict[str, Any], codes,
     """Build a plan from bare device arrays — the gate's and benchmark's route.
 
     No predicate runs: the caller is a harness that constructed the configuration
-    deliberately, including the deliberately wrong ones. ``kernel=`` is plumbed
-    through because a mutation leg that silently launches the SHIPPED kernel
-    reports every defect as uncaught — the exact harness defect §13.4 records.
+    deliberately, including the deliberately wrong ones. ``kernel=`` is plumbed through
+    because a mutation leg that silently launches the SHIPPED kernel reports every defect
+    as uncaught — the harness defect once measured at 4/4 real defects reported identical.
 
     ``chunk_bounds`` is REQUIRED and has no default: the caller hands over the record
     whose presence word states which curl partners its grid has
@@ -878,7 +878,7 @@ def plan_plain_step(fields: Any, pml: Any,
 #    one-clause callers: ``_requires_active_pml`` and ``_requires_no_pml``.
 #    ``_no_pml_grid_reasons`` above is then deleted, not aliased.
 #
-# 4. ``fingerprints.json`` gains the merged kernel's hash. Note that the merge
-#    CHANGES ``kernels.py``'s bytes, so every fingerprint in that record is
-#    re-cut, which by §13.5's own rule means re-running the whole byte gate on a
-#    CUDA host. Merging is therefore a gate event, not a refactor.
+# 4. ``fingerprints.json`` gains the merged kernel's hash. Note that the merge CHANGES
+#    ``kernels.py``'s bytes, so every fingerprint in that record is re-cut, which by the
+#    record's own rule (no re-cut without re-running its gate) means re-running the
+#    whole byte gate on a CUDA host. Merging is therefore a gate event, not a refactor.

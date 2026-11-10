@@ -1,6 +1,6 @@
 """The IMAGE CLOSURE is REQUIRED on a folded seam, and these cases can show it.
 
-WHAT THIS FILE IS FOR. ``deposit_repair.fill_image_rules`` / ``repair_cells``
+What this file is for. ``deposit_repair.fill_image_rules`` / ``repair_cells``
 (deposit_repair.py:217-258) extend a deposit repair's saved and restored cell set to the
 cells the driver's post-injection ``fill_symmetry_bc_*`` / ``fill_folded_far_ghosts_*``
 image the deposit into. That closure is the whole reason
@@ -9,7 +9,7 @@ this file nothing on the merge bar executed it: ``test_deposit_repair.py`` pins 
 module's own contracts, and the device gates that byte-compare a fused launch ran their
 sources at the cell centre, which lands on a stored row NO fill reads from.
 
-WHAT A CASE MUST HAVE TO SHOW ANYTHING, and it is the point of the whole file: the
+What a case must have to show anything, and it is the point of the whole file: the
 deposit has to land ON a row a fill reads from, in the INJECTED component's own
 constitutive target. A source at the centre of a folded axis does not — its
 ``repair_cells`` returns the deposit and nothing else, so a point-only repair is exact
@@ -17,11 +17,11 @@ there BY CONSTRUCTION and a byte comparison against the array path passes whethe
 closure exists or not. :func:`test_the_centre_placement_is_vacuous_for_the_closure` pins
 that vacuity as a measured fact rather than leaving it as an argument.
 
-THE ARMED CONTROL IS THE TEST. Each case below runs three legs of complete driver steps
+The armed control is the test. Each case below runs three legs of complete driver steps
 against the array path, compared as uint32:
 
     A   the shipped ``repair_cells``    -> identical
-    B   a POINT-ONLY ``repair_cells``   -> MUST DIVERGE
+    B   a POINT-ONLY ``repair_cells``   -> must diverge
     C   no repair at all                -> MUST DIVERGE
 
 If leg B did not diverge the case would be measuring nothing, so both directions are
@@ -111,7 +111,7 @@ def test_the_closure_is_required_and_a_point_only_repair_diverges(name):
         assert probe.first_divergence(ref, cand) is None, (
             f"{name}: leg A diverged at step {step}")
 
-    # THE TWO ARMED CONTROLS. Without these the assertion above is a measurement that
+    # The two armed controls. Without these the assertion above is a measurement that
     # cannot fail: an array path compared against itself is identical for free.
     assert diverging_words("B") > 0, (
         f"{name}: withholding the IMAGE CLOSURE changed nothing, so this case cannot "

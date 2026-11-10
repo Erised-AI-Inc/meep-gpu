@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Autopsy one lifted corpus row on which the H->D weld's lift leg diverged.
 
-WHY A PROBE AND NOT A LEG. The gate's lift leg answers ONE question per row -- does the
+Why a probe and not a leg. The gate's lift leg answers ONE question per row -- does the
 weld step identically to the array path -- because that is the claim, and 129 rows x
 four references is a different budget. When a row diverges, the question changes: WHICH
 arrangement moved, and is the difference attributable to the weld at all? That is what
@@ -9,7 +9,7 @@ this probe answers, and it answers it the only way that can distinguish the two:
 drives the CERTIFIED SINGLES beside the weld on the same row, from the same state, and
 reports the three-way comparison per differing word.
 
-THE DISCRIMINATING SHAPE. On the sibling Metal backend the same leg found rows where
+The discriminating shape. On the sibling Metal backend the same leg found rows where
 EVERY dispatched arrangement -- the certified singles, both compositions and the weld --
 was bit-identical to every other, and ALL of them disagreed with the array path by one
 or two units in the last place at magnitudes around 1e-32 inside the absorber. That is a
@@ -28,7 +28,7 @@ It also censuses the reference's own stored state for subnormal words at every s
 a row that entered the denormal band before the divergence is named rather than argued
 about.
 
-WHAT THIS PROBE DOES NOT DO: it does not change any verdict. A gate that does not
+What this probe does not do: it does not change any verdict. A gate that does not
 release is the finding; this exists so that finding can be reported with a cause rather
 than as a number.
 

@@ -1,6 +1,6 @@
 """``grid.beta`` (special_kz) under complex64 storage -- the hand-CUDA curl pair.
 
-WHAT THIS FAMILY IS. A 2-D run carries ``exp(i*2*pi*beta*z)`` analytically, so
+What this family is. A 2-D run carries ``exp(i*2*pi*beta*z)`` analytically, so
 ``d/dz`` on the invariant axis is the EXACT factor ``i*2*pi*beta`` -- an
 ``i*beta*zhat x`` cross product folded into the curl (MEEP step_db.cpp:148-176).
 Under COMPLEX storage that ``i`` is paid explicitly, in the ``+-1j`` branch at
@@ -10,13 +10,13 @@ coefficient branch (stepping.py:798-799) is the complex family's, not this pair'
 -- and the certified complex family refuses beta by name in return. This module is
 the family both refusals name.
 
-WHAT IT IS WORTH, MEASURED, AND WHY IT IS BUILT SECOND
+What it is worth, measured, and why it is built second
 =============================================================================
 
 On the 2026-08-20 union census
 (``parity/meep_gpu/results/cuda_predicate_coverage_2026-08-20_closeout/``) the
 beta clause is the FIRST refusal on 16 unserved slots over 4 complex-storage rows.
-TWELVE OF THOSE SIXTEEN ARE ALSO FOLDED, so a beta kernel with no fold branch
+Twelve of those sixteen are also folded, so a beta kernel with no fold branch
 would buy 4 slots and not 16:
 
 * ``tests_param/TestSpecialKz.test_special_kz`` -- 500x1x1, all-periodic, kx =
@@ -27,7 +27,7 @@ would buy 4 slots and not 16:
   ``__idx1`` -- 135x92x1, Mirror(Y) periodic with an IN-PLANE kx on the PML'd X
   axis, beta = -0.685 / -0.912.
 
-THE ORDER WAS CHOSEN FROM THAT ARITHMETIC AND IS STATED SO IT CAN BE CHECKED. The
+The order was chosen from that arithmetic and is stated so it can be checked. The
 fold was built FIRST (``complex_folded_kernels``), because its clause is first
 refusal on 32 slots against beta's 16, and because 12 of beta's 16 need the fold
 anyway. This family's device source is therefore the FOLDED complex curl with the
@@ -37,7 +37,7 @@ unfolded grid. Building beta first and folding second would have produced two
 kernels that each served part of one row set and a composition nobody had
 measured.
 
-THE PASS, TRANSCRIBED (``stepping._special_kz_beta_term``, ``_apply_folded_increment``)
+The pass, transcribed (``stepping._special_kz_beta_term``, ``_apply_folded_increment``)
 =============================================================================
 
 * CALL SITES -- after EVERY component's curl (step_db.cpp:161-175; ``stepping.step_B``
@@ -51,17 +51,17 @@ THE PASS, TRANSCRIBED (``stepping._special_kz_beta_term``, ``_apply_folded_incre
   ``i*c*(x + iy) = -(c*y) + i*(c*x)`` (``part_products.quarter_turn``) -- two real
   products and a sign flip -- and the increment is its negation, in curl sign
   convention. NO ``dtdx``: this is an analytic derivative, not a finite difference.
-* POSITION -- a PASS OF ITS OWN after the component's curl, through MEEP's additive
+* POSITION -- a pass of its own after the component's curl, through MEEP's additive
   ladder keyed on the same chunk flags as the curl (step_generic.cpp:255-333):
   ``f -= sinv*inc`` outside the component's dsigu chunks, ``fu -= (df = sinv*inc);
   f -= sinv_u*df`` inside them, with MEEP's unowned cells at ``(+0, +0)`` and every
   stage SUBTRACTING, so a cell MEEP's loop never visits keeps its word, ``-0``
   included. Each kernel is the FOLDED complex curl with that pass inserted after the
   ``pml_apply`` call of targets 0 and 1 (``folded_pass.complex_beta_insert``), on the
-  word pair ``pml_apply`` just stored. Until 0.10 the increment was a complex product
+  word pair ``pml_apply`` just stored. Until 1.0 the increment was a complex product
   added to the curl before the masks, riding the curl's own recurrence; on the
-  complex lane's ``bf`` case the old folding differs in 120,035 of 278,318 words
-  (bit_parity_0_10 KERNELS.md section 6).
+  complex-storage ``bf`` case the old folding differs in 120,035 of 278,318 words
+  (measured during the 1.0 development).
 * PARTNER -- the SAME-CELL component snapshot, the partner's stored word pair at the
   cell. In both beta terms it is the CENTRE operand the stencil already loaded --
   target 0's ``f_2`` (the second source) and target 1's ``f_1`` (the first) -- and
@@ -71,7 +71,7 @@ THE PASS, TRANSCRIBED (``stepping._special_kz_beta_term``, ``_apply_folded_incre
   :func:`beta_source` refuses by name if either register's load line is anything
   else. No new pointer, no ghost rule, no fold parity, no wrap ever touches it.
 
-WHAT IS NOT HERE. ``update_H`` / ``update_E`` read nothing beta-dependent: beta
+What is not here. ``update_H`` / ``update_E`` read nothing beta-dependent: beta
 enters the step loop at stepping.py:384-391 and :467-474 and nowhere else. So
 :func:`covers_complex_beta_constitutive` is an ADMISSION over the CERTIFIED
 complex constitutive pair, and ``gate_cuda_complex_beta.py`` carries a device arm
@@ -80,7 +80,7 @@ for it rather than letting "nothing was found to read beta" stand as evidence.
 NO DISPATCH. Nothing in ``meep_gpu`` imports ``cuda_kernels``, so a True from the
 predicates below licenses a MEASUREMENT and not a production step.
 
-NOTHING HERE IMPORTS CUPY OR NUMPY AT MODULE SCOPE.
+Nothing here imports CuPy or NumPy at module scope.
 """
 
 from __future__ import annotations
@@ -154,7 +154,7 @@ MAGNETIC: Dict[str, bool] = {"step_B": True, "step_D": False}
 #: template names ``f_2``; target 1 (By / Dy) takes the FIRST source's centre, ``f_1``.
 #: Target 2 takes none. Transcribed from ``stepping.B_CURL_TERMS`` / ``D_CURL_TERMS``
 #: against step_B's and step_D's beta loops, and pinned against them by
-#: ``test_complex_beta.py``. THE REGISTER MUST BE THE UNSHIFTED CENTRE, never an
+#: ``test_complex_beta.py``. The register must be the unshifted centre, never an
 #: ``sf``/``ss`` shifted operand, and its load must be the window along z
 #: (:data:`BETA_PARTNER_LOADS`): the beta pass reads the stored word pair at the cell.
 BETA_PARTNER: Dict[int, Tuple[str, str]] = {
@@ -182,12 +182,12 @@ def beta_curl_coefficients(beta: float, dt: float, magnetic: bool) -> Tuple[floa
         # _realnum: ONE round of the (negated) double to the part dtype, float32
 
     so the B side (``+1j``) passes ``+coefficient`` and the D side (``-1j``)
-    ``-coefficient``, negated in double before the one rounding. TWO WORDS, ONE PER
-    CALL SITE (sign +1 for target 0, -1 for target 1), rather than one negated in the
+    ``-coefficient``, negated in double before the one rounding. Two words, one per
+    call site (sign +1 for target 0, -1 for target 1), rather than one negated in the
     kernel: the negation and the rounding commute exactly, but binding both keeps the
     transcription literal per call site, and it is what the gate's
-    ``beta_coefficients_exchanged`` host mutation corrupts. NO COMPLEX COEFFICIENT is formed anywhere: the quarter turn
-    is a part swap with real products (bit_parity_0_10 DESIGN.md D16).
+    ``beta_coefficients_exchanged`` host mutation corrupts. No complex coefficient is formed anywhere: the quarter turn
+    is a part swap with real products (no complex-by-complex product, 0.10).
 
     ``numpy`` is imported in the BODY so this module stays stdlib-only at import; the
     rounding is ``numpy.float32``, the same object ``part_products._realnum`` uses.
@@ -238,7 +238,7 @@ def beta_source(sub_step: str, folded: str = "") -> str:
     part and the folded ladder on the words ``pml_apply`` just stored; the entry point
     renamed.
 
-    THE ORDER IS MEEP'S. ``step_db`` runs the beta pass after EVERY component's curl and
+    The order is MEEP's. ``step_db`` runs the beta pass after EVERY component's curl and
     a thread here runs it right after its own component's: the beta increment of a B (D)
     component reads only E (H), which the sub-step never writes.
     """
@@ -320,12 +320,12 @@ def corpus_digest() -> str:
     return digest.hexdigest()
 
 
-#: WHAT HAS BEEN MEASURED ON A DEVICE FOR THIS FAMILY, AND WHAT HAS NOT.
+#: What has been measured on a device for this family, and what has not.
 #: Empty of a verdict until ``gate_cuda_complex_beta.py`` fills it from an
 #: artifact; ``released`` False is the honest default and not a placeholder.
 BETA_COMPLEX_ADMISSION: Dict[str, Any] = {
     "gate": "parity/meep_gpu/gate_cuda_complex_beta.py",
-    # RELEASED ON DEVICE, 2026-09-01: the GPU host, one RTX A6000 (cc 8.6, CuPy
+    # Released on device, 2026-09-01: the GPU host, one RTX A6000 (cc 8.6, CuPy
     # 13.5.1, NVRTC 11.6), under BOTH float32 subnormal policies, the arm bound
     # from the per-policy expansion probe (FMA_V1 both). The ``device_leg`` block
     # below carries the numbers, read off the two artifacts; the ``host_leg``
@@ -401,23 +401,23 @@ BETA_COMPLEX_ADMISSION: Dict[str, Any] = {
         "beta_added_not_subtracted": "CAUGHT 12/12",
         "scale_beta_by_dtdx": "CAUGHT 12/12",
         "beta_on_the_third_component": "CAUGHT 12/12",
-        # THE COMPOSITION NEEDLE. The insert moved BELOW the masks, which a FOLD
+        # The composition needle. The insert moved BELOW the masks, which a FOLD
         # makes reach twice as far: measured 0 differing words on an all-periodic
         # unfolded grid, 32 per sub-step with one wall, 64 per sub-step on a folded
         # PERIODIC axis. Scored only on fixtures that carry a mask on a beta target.
         "beta_after_mask": "CAUGHT 10/10 (scoped to fixtures with a wall or a fold)",
         "beta_subtract_as_add_negative": "NULL CONFIRMED",
-        # THE REAL FAMILY'S MEASURED NULL, RE-MEASURED HERE rather than inherited:
+        # The real family's measured null, re-measured here rather than inherited:
         # every beta grid has nz == 1, so both partners' only shifted companion is
         # the neighbour along Z and the two are the same word.
         "beta_partner_shifted": "NULL CONFIRMED 0/12",
-        # A MEASURED REFUSAL, AND THE ONE OPEN FINDING OF THIS FAMILY. Writing the
+        # A measured refusal, and the one open finding of this family. Writing the
         # coefficient's real word as a literal +0.0f instead of passing the SIGNED
         # zero Python's complex multiply produced changed NO output word on 12
         # legs. So on this platform, at the `uniform` value class, the pass-through
         # is belt and braces and NOT load-bearing -- which is the opposite of what
         # the Triton sibling's reasoning predicts, and is recorded as a null rather
-        # than argued away. WHAT WOULD DISCRIMINATE IT and is not in this gate: a
+        # than argued away. What would discriminate it and is not in this gate: a
         # `zero_init` or `signed_zero` value class, where the field's other word is
         # exactly zero and the cross term's sign is the only thing that can move a
         # word. Until that leg runs, "the signed zero matters" is UNMEASURED here.
@@ -584,7 +584,7 @@ def covers_complex_beta_curl(fields: Any, pml: Any, grid: Any, sub_step: str) ->
 
     ``sub_step`` is ``"step_B"`` or ``"step_D"``. Returns ``(covered, reason)``.
 
-    DELEGATION, NOT A SECOND CLAUSE SET. Every question except beta and the fold is
+    Delegation, not a second clause set. Every question except beta and the fold is
     the CERTIFIED complex curl predicate's, asked through it on a proxy grid whose
     beta reads zero and -- when the grid is folded -- which also reports no fold, so
     this family cannot drift to a weaker standard than the one it borrows its
@@ -592,7 +592,7 @@ def covers_complex_beta_curl(fields: Any, pml: Any, grid: Any, sub_step: str) ->
     and the volume and coefficient-vector tail are all inherited rather than
     restated.
 
-    THE SUB-STEP ARGUMENT IS REQUIRED and carries more here than elsewhere: as well
+    The sub-step argument is required and carries more here than elsewhere: as well
     as the per-term conductivity split (``stepping._apply_curl`` reads
     ``fields.condfac_for(term.target)`` per TERM, stepping.py:508), the two
     sub-steps take DIFFERENT beta coefficients -- ``+1j`` on the magnetic side and
@@ -623,19 +623,19 @@ def covers_complex_beta_constitutive(fields: Any, pml: Any, grid: Any, side: str
 
     ``side`` is ``"H"`` or ``"E"``; returns ``(covered, reason)``.
 
-    THIS FAMILY BUILDS NO CONSTITUTIVE KERNEL, and that is the finding rather than
+    This family builds no constitutive kernel, and that is the finding rather than
     an omission: ``stepping.update_H`` (:907-925) and ``update_E`` (:926-995) reach
     ``_apply_constitutive_pml`` (:2065) and neither they nor it read ``grid.beta``
     or any array the beta term writes. So the admission is the certified
     predicate's with the beta clause -- and, on a folded grid, the fold clause --
     inverted, and the ARITHMETIC is ``complex_emitter``'s own, untouched.
 
-    THAT READING IS NOT THE EVIDENCE. ``gate_cuda_complex_beta.py`` carries a
+    That reading is not the evidence. ``gate_cuda_complex_beta.py`` carries a
     constitutive arm that runs the shipped complex pair against
     ``stepping.update_H`` / ``update_E`` on beta grids whose two curls have already
     moved the state. A sub-step admitted because nothing was found to read beta,
-    with no device leg, is admitted by argument from absence -- which is what the
-    Metal track's tranche-6 split exists to warn about.
+    with no device leg, is admitted by argument from absence -- what the Metal track's
+    2026-08-19 census split (one row's curls served, its constitutive sides open) warns about.
     """
     if side not in ("H", "E"):
         raise ValueError(f"side must be 'H' or 'E', got {side!r}")
@@ -656,7 +656,7 @@ def covers_complex_beta_constitutive(fields: Any, pml: Any, grid: Any, side: str
 
 
 # ---------------------------------------------------------------------------
-# COMPILATION AND LAUNCH
+# Compilation and launch
 # ---------------------------------------------------------------------------
 
 #: ``--fmad=false`` is CORRECTNESS here and not tuning, and the beta insert adds a

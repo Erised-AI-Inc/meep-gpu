@@ -29,7 +29,7 @@ SCOPE, and why each bound is here rather than in a follow-up:
   fusion has no measured argument behind it: the sub-step-share probe put
   ``update_P`` at 51.9 % of the step at K=6 with a 9.5-28.3 pp within-run spread
   and a non-monotonic size dependence, so the precondition that would justify it
-  is bracketed, not cleared.  A K>1 configuration is REFUSED BY NAME here;
+  is bracketed, not cleared.  A K>1 configuration is refused by name here;
 * **an active PML**, inherited from the constitutive half — without one
   ``update_E`` is a different sub-step (stepping.py:1022) and, decisively for this
   product, ``Fields.drive_field`` (fields.py:1160-1162) returns the stored ``E``
@@ -38,17 +38,17 @@ SCOPE, and why each bound is here rather than in a follow-up:
 * **no electric source**, inherited from the pair: the driver injects electric
   sources between ``step_D`` and ``update_E``, inside this seam.
 
-THE ALIASING DISCIPLINE, which is a correctness argument and not a style note.
+The aliasing discipline, which is a correctness argument and not a style note.
 ``PolarizationState.update`` rotates one shared scratch buffer through the
 components (dispersion.py:686-691), so within ONE launch the destination of the
 Ey arm IS the ``P_prev`` volume the Ex arm reads, and the Ez arm's destination is
 Ey's ``P_prev``.  Rather than rely on the compiler preserving a store-after-load
-order on unannotated (never ``noalias``) pointer arguments, this kernel HOISTS
-EVERY ADE HISTORY LOAD ABOVE EVERY ADE STORE.  With all three ``P_prev`` reads
+order on unannotated (never ``noalias``) pointer arguments, this kernel hoists
+every ADE history load above every ADE store.  With all three ``P_prev`` reads
 retired before the first destination write, the arms are order-independent and the
 rotation cannot be observed by a later arm however the scheduler arranges them.
 
-Composition into ``launch.plan_step`` is deferred, exactly as each family tranche
+Composition into ``launch.plan_step`` is deferred, exactly as each family's
 was: nothing imports this module at engine startup and dispatch stays disabled.
 """
 
@@ -372,7 +372,7 @@ if triton is not None:
         # chunks and as the field everywhere else -- and the P history taken from the
         # register the subtraction already loaded.
         #
-        # EVERY HISTORY LOAD FIRST.  o1 IS the volume q0p names and o2 IS q1p's,
+        # Every history load first.  o1 IS the volume q0p names and o2 IS q1p's,
         # so a store placed between two of these loads would make the result depend
         # on the scheduler's freedom over aliasing pointers.
         if ADE0:
@@ -454,7 +454,7 @@ def fused_dispersive_chain_coverage(fields: Any, pml: Any,
     if not pair.covered:
         reasons.extend(f"pair half: {reason}" for reason in pair.reasons)
 
-    # THE SOURCE SEAM IS ASKED HERE, NOT INHERITED. The pair half now declares
+    # The source seam is asked here, not inherited. The pair half now declares
     # CARRIES_DEPOSIT_REPAIR, so what it returns for an in-seam electric source is an
     # ADMISSION -- and this chain may not inherit it. The deposit repair is a
     # TWO-CONSULT protocol: the launch runs at the first slot and the repair spends the

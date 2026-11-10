@@ -1,12 +1,12 @@
 """Sub-step byte-identity gate for the CUDA COMPLEX constitutive pair ON A FOLD.
 
-THE CENSUS REFUSAL THIS ANSWERS, quoted from ``coverage._complex_grid_refusal``::
+The census refusal this answers, quoted from ``coverage._complex_grid_refusal``::
 
     mirror symmetry: different ghost rule, a parity mask and two fill passes
 
 ``_complex_grid_refusal`` is ONE function with TWO callers --
 ``covers_real_pml_complex_curl`` and ``covers_real_pml_complex_constitutive`` --
-and this clause fires for both. FOR THE CURL IT IS REAL AND STAYS: the emitted
+and this clause fires for both. For the curl it is real and stays: the emitted
 complex curl reads neighbours through ``cshift_up``/``cshift_dn``, a fold changes
 its ghost rule, its ownership mask and its stored extent at once, and it takes
 ``bc_x/bc_y/bc_z`` as runtime arguments with no code for a mirror. The
@@ -14,10 +14,10 @@ CONSTITUTIVE pair inherited the refusal through the function the two share, and
 inheritance is not evidence. This is the same shape the Dcyl clause had before
 ``gate_cuda_complex_cylindrical_constitutive.py`` measured it.
 
-WHAT THE READING SAYS, and every fact is read off a named line:
+What the reading says, and every fact is read off a named line:
 
 1. ``complex_pml_kernels.update_fused_pml_complex`` (complex_pml_kernels.py:427-470)
-   TAKES NO BOUNDARY CODES AND NO MASK. Its argument list is the target triple,
+   takes no boundary codes and no mask. Its argument list is the target triple,
    the auxiliary triple, the source triple, the three inverse-epsilon volumes on
    the E side, ``nx, ny, nz`` and the six kps/kms vectors. No ``bc_*``, no
    ``ph_*``, no phase pair, no ``dtdx``. Compare its sibling
@@ -28,22 +28,22 @@ WHAT THE READING SAYS, and every fact is read off a named line:
    field -= kms*fw_previous``. ``_mask_non_owned_cells`` (:1865) has exactly
    three call sites -- ``step_B``, ``step_D`` and ``_bfast_term`` -- and no
    constitutive function is among them.
-3. THE EXTENT MOVES BOTH OPERANDS TOGETHER. ``PML._compute_coefficients``
+3. The extent moves both operands together. ``PML._compute_coefficients``
    (pml.py:693-695, :706-708) builds every kps/kms vector from ``grid.nx/ny/nz``
    -- the STORED extent, which is what the fold halves (grid.py:570-575) -- and
    the complex volumes are allocated on the same ``grid.shape``.
-4. THE REAL PAIR'S FOLD WAS MEASURED AND NEEDED NO DEVICE CODE
+4. The real pair's fold was measured and needed no device code
    (:data:`coverage.CONSTITUTIVE_FOLD_ADMISSION`: 112/112 per policy on 96
    folded cases, the fold-specific mutation caught 10/10).
 
-FACT 4 IS NOT INHERITED EITHER. The complex kernels are different bytes --
+Fact 4 is not inherited either. The complex kernels are different bytes --
 complex64 word pairs and the zero cross terms -- and this project does not
 transfer a verdict across kernels. That is
-the rule the Dcyl round stated and followed, and it is why this gate exists
+the rule the Dcyl complex constitutive gate stated and followed, and it is why this gate exists
 rather than a sentence citing the real one.
 
 =============================================================================
-WHAT THIS IS WORTH, COUNTED BEFORE IT WAS RUN
+What this is worth, counted before it was run
 =============================================================================
 
 The 2026-08-20 closeout census carries EIGHT complex, PML-active, folded rows,
@@ -60,15 +60,15 @@ SHORT-CIRCUITS and hides what lies behind it:
   ``TestArrayMetadata.test_array_metadata``, ``TestHoleyWvgBands.test_fields_at_kx``)
   whose ``update_E`` is refused by a clause of its own -- three more.
 
-16 - 6 - 3 = 7. NOT ONE OF THE EIGHT BECOMES A ROW THE HAND-CUDA TRACK CAN STEP
-END TO END, because their curls stay refused. A gate that reported "eight rows
+16 - 6 - 3 = 7. Not one of the eight becomes a row the hand-CUDA track can step
+end to end, because their curls stay refused. A gate that reported "eight rows
 gained" would be reporting the fold clause's short circuit as coverage.
 
 =============================================================================
-WHY A SUB-STEP GATE AND NOT A WHOLE-STEP ONE
+Why a sub-step gate and not a whole-step one
 =============================================================================
 
-A WHOLE-STEP GATE CANNOT SEE A MASK. The driver's fold repairs
+A whole-step gate cannot see a mask. The driver's fold repairs
 (``fill_symmetry_bc_B``/``_D``, ``fill_folded_far_ghosts_B``/``_D``) overwrite
 exactly the planes a missing mask would corrupt, so a whole-step in-session check
 certifies a mask-less symmetry kernel as correct. This sub-step is claimed to
@@ -77,19 +77,19 @@ cannot tell "needs none" from "is missing one". Every comparison here is ONE
 SUB-STEP from ONE frozen state.
 
 =============================================================================
-WHAT WOULD MAKE THIS GATE VACUOUS, AND THE FLOORS THAT REFUSE IT
+What would make this gate vacuous, and the floors that refuse it
 =============================================================================
 
 * ``oracle_moved`` -- the fraction of output WORDS the array path changed from
   the frozen input. Zero-init is a fixed point of this recurrence.
-* ``folded_axis_absorbs`` -- ``max|kps-1|`` and ``max|kms-1|`` ON THE FOLDED
-  AXIS. If the folded axis's profile is the identity everywhere, a
+* ``folded_axis_absorbs`` -- ``max|kps-1|`` and ``max|kms-1|`` on the folded
+  axis. If the folded axis's profile is the identity everywhere, a
   coefficient-index error there is invisible and the case is testing every axis
   except the one the fold touched. It is also what makes
   ``reverse_folded_axis_coefficients`` -- the refusal's own premise armed -- a
   real defect rather than a no-op, since a constant vector reverses to itself.
-* ``stored_past_owned`` -- recorded per case. A folded PERIODIC axis stores ONE
-  SLOT PAST MEEP's owned window and a folded METALLIC one does not
+* ``stored_past_owned`` -- recorded per case. A folded PERIODIC axis stores one
+  slot past MEEP's owned window and a folded METALLIC one does not
   (grid.py:570-575); both terminations are swept because they are structurally
   different arrays, and the record shows which each case was.
 * the signed-zero and subnormal word censuses, so the zero cross terms and the
@@ -149,7 +149,7 @@ except ImportError:  # laptop: the host-compiled and harness legs still run
 import probe_fused_kernel_bit_identity as probe  # noqa: E402
 import gate_provenance  # noqa: E402
 import gate_cuda_complex as base  # noqa: E402
-#: THE COMPLEX CONSTITUTIVE MACHINERY IS THE Dcyl GATE'S, imported rather than
+#: The complex constitutive machinery is the Dcyl gate's, imported rather than
 #: respelled: the seeding of complex volumes plane by plane (which must never
 #: form ``re + 1j*im``, or every negative zero is destroyed), the word census,
 #: the table views, the sub-lattice mutation, the adjudicator and the source
@@ -199,27 +199,27 @@ MUTATION_VALUE_CLASSES = cyl.MUTATION_VALUE_CLASSES
 
 
 # ---------------------------------------------------------------------------
-# THE CASE TABLE
+# The case table
 # ---------------------------------------------------------------------------
 #
-# EVERY AXIS IS FOLDED SOMEWHERE IN THIS LIST, and both terminations appear.
+# Every axis is folded somewhere in this list, and both terminations appear.
 # ``PML._resolve_mirror_faces`` reads ``Grid.is_mirrored`` per axis, and the
 # sibling gates' note records that enumerating X and Y alone once left a folded Z
 # graded from BOTH walls -- so a sweep carrying one folded axis proves nothing
 # about the other two.
 #
-# THE TWO TERMINATIONS ARE NOT TWO SPELLINGS OF ONE CASE. A folded PERIODIC axis
-# stores ONE SLOT PAST MEEP's owned window and a folded METALLIC one does not
+# The two terminations are not two spellings of one case. A folded PERIODIC axis
+# stores one slot past MEEP's owned window and a folded METALLIC one does not
 # (grid.py:570-575), so their coefficient vectors are structurally different
 # arrays and the deepest absorber coefficient lands in a different place. The
 # refusal is about the extent; the extent is what differs.
 #
-# BOTH ARE IN THE CORPUS, which is why both are here rather than for symmetry:
+# Both are in the corpus, which is why both are here rather than for symmetry:
 # ``solve-cw.py`` and ``TestArrayMetadata.test_array_metadata`` fold X and Y with
 # METALLIC terminations, and the four grating/waveguide rows fold one axis with a
 # PERIODIC one.
 #
-# THE UNPHASED AND PHASED CASES ARE BOTH CARRIED. Five of the eight corpus rows
+# The unphased and phased cases are both carried. Five of the eight corpus rows
 # record ``has_bloch`` TRUE with the phase on an UNFOLDED axis (a mirror plane
 # forces that axis's k component to zero), so a sweep of unphased grids alone
 # would leave the corpus's own shape unmeasured. The constitutive kernel takes no
@@ -231,7 +231,7 @@ MUTATION_VALUE_CLASSES = cyl.MUTATION_VALUE_CLASSES
 # grid point at both parities but shifts the window.
 
 FOLD_SPECS: Tuple[Dict[str, Any], ...] = (
-    # The unfolded controls. Already certified by the complex family's own round;
+    # The unfolded controls. Already certified by the complex family's own gate;
     # carried so a divergence in the folded rows cannot be blamed on the fixture.
     {"label": "unfolded_periodic", "axes": "", "phase": 1, "k_point": (0.0, 0.0, 0.0),
      "boundaries": ("periodic", "periodic", "periodic"), "cell": (8.0, 10.0, 12.0)},
@@ -247,7 +247,7 @@ FOLD_SPECS: Tuple[Dict[str, Any], ...] = (
      "k_point": (0.0, 0.0, 0.0),
      "boundaries": ("periodic", "periodic", "periodic"), "cell": (8.0, 16.0, 12.0)},
 
-    # ODD FULL COUNT on the folded axis.
+    # Odd full count on the folded axis.
     {"label": "fold_Y_periodic_odd_count", "axes": "Y", "phase": 1,
      "k_point": (0.0, 0.0, 0.0),
      "boundaries": ("periodic", "periodic", "periodic"), "cell": (8.0, 17.0, 12.0)},
@@ -262,7 +262,7 @@ FOLD_SPECS: Tuple[Dict[str, Any], ...] = (
     {"label": "fold_Z_metallic", "axes": "Z", "phase": -1, "k_point": (0.0, 0.0, 0.0),
      "boundaries": ("periodic", "periodic", "metallic"), "cell": (8.0, 12.0, 16.0)},
 
-    # A PHASE ON AN UNFOLDED AXIS -- the corpus's own shape. Five of the eight
+    # A phase on an unfolded axis -- the corpus's own shape. Five of the eight
     # rows this gate is about are Bloch-phased, always on an axis the fold does
     # not touch: a mirror plane forces its axis's k component to zero, which is
     # what ``TestHoleyWvgBands.test_fields_at_kx`` (fold Y, k on X) and
@@ -276,7 +276,7 @@ FOLD_SPECS: Tuple[Dict[str, Any], ...] = (
      "k_point": (0.0, -0.17, 0.31),
      "boundaries": ("metallic", "periodic", "periodic"), "cell": (16.0, 8.0, 12.0)},
 
-    # TWO PLANES AT ONCE, both terminations. ``solve-cw.py`` and
+    # Two planes at once, both terminations. ``solve-cw.py`` and
     # ``TestArrayMetadata.test_array_metadata`` fold X and Y together with
     # METALLIC terminations, which is exactly the first of these.
     {"label": "fold_XY_metallic", "axes": "XY", "phase": 1, "k_point": (0.0, 0.0, 0.0),
@@ -284,12 +284,12 @@ FOLD_SPECS: Tuple[Dict[str, Any], ...] = (
     {"label": "fold_XY_periodic", "axes": "XY", "phase": -1, "k_point": (0.0, 0.0, 0.0),
      "boundaries": ("periodic", "periodic", "periodic"), "cell": (16.0, 16.0, 10.0)},
 
-    # THREE PLANES AT ONCE. No complex corpus row carries one -- the corpus's
+    # Three planes at once. No complex corpus row carries one -- the corpus's
     # triply-folded row is real storage -- but the two REAL families' plane caps
-    # are being raised to three in the same round, and a complex pair capped at
+    # are being raised to three in the same change, and a complex pair capped at
     # two while its siblings sit at three would be an asymmetry resting on which
     # gate happened to sweep what rather than on any property of the kernels.
-    # THE EXTENTS ARE DELIBERATELY UNEQUAL (9, 10, 11 stored): a cube would let an
+    # The extents are deliberately unequal (9, 10, 11 stored): a cube would let an
     # index decomposition confuse i, j and k and stay bit-identical, which is what
     # ``column_major_index`` plants.
     {"label": "fold_XYZ_metallic", "axes": "XYZ", "phase": 1, "k_point": (0.0, 0.0, 0.0),
@@ -310,7 +310,7 @@ def build(xp, spec: Dict[str, Any], courant: float, rng):
     TRUE in the census, and it is half of what the complex family exists for; the
     other half, a nonzero ``k_point``, is carried by the two phased specs.
 
-    THE THICKNESS RULE IS THE SIBLING GATES' (``test_constitutive_pml_real.build``
+    The thickness rule is the sibling gates' (``test_constitutive_pml_real.build``
     and ``gate_cuda_folded_constitutive.build``), restated rather than imported so
     the gates cannot drift apart silently through a shared helper: skip an axis too
     thin to hold a layer, and on a MIRRORED axis ask for the HIGH face only.
@@ -357,7 +357,7 @@ def build(xp, spec: Dict[str, Any], courant: float, rng):
 # ---------------------------------------------------------------------------
 
 def reversed_folded_axis_tables(side: str, layer, grid) -> Dict[str, Any]:
-    """THE REFUSAL REASON, ARMED. The folded axis's profile read backwards.
+    """The refusal reason, armed. The folded axis's profile read backwards.
 
     The complex clause's stated reason is a ghost rule, a parity mask and two fill
     passes -- none of which the constitutive template contains, since it takes no
@@ -372,7 +372,7 @@ def reversed_folded_axis_tables(side: str, layer, grid) -> Dict[str, Any]:
     the leg would come back UNCAUGHT for a reason about the fixture. The floor
     refuses such a case before it is scored.
 
-    ON AN UNFOLDED CONTROL there is no folded axis and this is a no-op, which is
+    On an unfolded control there is no folded axis and this is a no-op, which is
     why the control is a bar rather than a scored leg (``dead_must_be_identical``).
     """
     tables = dict(tables_for(side, layer))
@@ -399,11 +399,11 @@ def host_mutated_tables(name: str, side: str, layer, grid) -> Dict[str, Any]:
 def coefficient_departs_from_membership(side: str, layer, grid) -> bool:
     """Whether coefficient identity and chunk membership choose different forms somewhere.
 
-    KERNELS.md section 7.2's ``predicate_on_coefficient_identity`` replaces the side's
-    own-axis membership flag with ``(kps != 1) || (kms != 1)`` on the coefficients of
-    the same Yee sub-lattice (``complex_emitter.HALF_INTEGER``). Where those two lines
-    agree on every cell of every axis the rewrite is the identity, and a case there
-    cannot show it.
+    The per-chunk form battery's ``predicate_on_coefficient_identity``
+    (docs/development/certification.md#chunk-form-battery) replaces the side's own-axis
+    membership flag with ``(kps != 1) || (kms != 1)`` on the coefficients of the same Yee
+    sub-lattice (``complex_emitter.HALF_INTEGER``). Where those two lines agree on every
+    cell of every axis the rewrite is the identity, and a case there cannot show it.
     """
     from meep_gpu.chunk_map import membership_from_record  # noqa: PLC0415
 
@@ -501,7 +501,7 @@ MUTATION_LEGS: Tuple[Dict[str, Any], ...] = (
     {"leg": "s3_old_package_constitutive_grouping",
      "mutation": "old_package_constitutive_grouping", "kind": "source",
      "expect": "caught",
-     "why": "INVERTED (KERNELS.md section 7.1): MEEP's f + ((kps*src) - (kms*prev)) "
+     "why": "INVERTED: MEEP's f + ((kps*src) - (kms*prev)) "
             "is shipped; two accumulations are a different float32 number"},
     {"leg": "s4_store_fw_before_reading_prev",
      "mutation": "store_fw_before_reading_prev", "kind": "source",
@@ -532,11 +532,11 @@ MUTATION_LEGS: Tuple[Dict[str, Any], ...] = (
             "only the field"},
     {"leg": "b1_select_removed", "mutation": "select_removed", "kind": "source",
      "expect": "caught",
-     "why": "KERNELS.md section 7.2: the whole-grid accumulation on every cell"},
+     "why": "per-chunk form battery: the whole-grid accumulation on every cell"},
     {"leg": "b2_predicate_on_coefficient_identity",
      "mutation": "predicate_on_coefficient_identity", "kind": "source",
      "expect": "caught_where_live", "reach": "coefficient_departs",
-     "why": "KERNELS.md section 7.2: the form chosen by the coefficient's value "
+     "why": "per-chunk form battery: the form chosen by the coefficient's value "
             "rather than by the chunk's membership. Live only on a division where "
             "the two lines differ on some cell: with every axis folded the far-face "
             "chunks begin where the graded coefficients do, and the predicate is "
@@ -544,11 +544,11 @@ MUTATION_LEGS: Tuple[Dict[str, Any], ...] = (
     {"leg": "b4_auxiliary_stored_on_a_plain_cell",
      "mutation": "auxiliary_stored_on_a_plain_cell", "kind": "source",
      "expect": "caught",
-     "why": "KERNELS.md section 7.2: f_w is untouched on a plain cell, and it is "
+     "why": "per-chunk form battery: f_w is untouched on a plain cell, and it is "
             "compared"},
     {"leg": "b5_auxiliary_load_unguarded", "mutation": "auxiliary_load_unguarded",
      "kind": "source", "expect": "uncaught",
-     "why": "A DECLARED NULL (KERNELS.md section 7.2): the loaded word feeds only the "
+     "why": "A DECLARED NULL (per-chunk form battery): the loaded word feeds only the "
             "layered form"},
     {"leg": "h1_reverse_folded_axis_coefficients",
      "mutation": "reverse_folded_axis_coefficients", "kind": "host",
@@ -581,7 +581,7 @@ MUTATION_LEGS: Tuple[Dict[str, Any], ...] = (
 
 #: The specs a mutation leg is scored on. CHOSEN, not sliced off the front of the
 #: case product: a leg taken from the head of the sweep landed entirely on the
-#: UNFOLDED controls on a sibling round, so the one mutation that only exists on a
+#: UNFOLDED controls on a sibling gate, so the one mutation that only exists on a
 #: fold was skipped on every leg and scored 0/0 UNCAUGHT. That is a harness defect
 #: that reads exactly like a kernel defect, which is why the selection is written
 #: out and why one unfolded control is kept in it.
@@ -603,7 +603,7 @@ HOST_MUTATION_NAMES = ("reverse_folded_axis_coefficients",
 def _reaches(leg: Dict[str, Any], case: Dict[str, Any]) -> bool:
     """Whether this case is one the leg's defect can be seen on at all.
 
-    A REACH IS A CLAIM AND EACH ONE IS DERIVED, not guessed:
+    A reach is a claim and each one is derived, not guessed:
 
     * ``folded`` -- the mutation edits the FOLDED axis's coefficient vectors. An
       unfolded control has no folded axis and the mutation is the identity there,
@@ -636,13 +636,13 @@ def one_case(backend, xp, spec: Dict[str, Any], side: str, courant: float,
              multi_step: bool = True) -> Dict[str, Any]:
     """One frozen state, run twice: the array path, then the kernel.
 
-    THE ORACLE IS ``stepping`` ITSELF on real ``Grid``/``Fields``/``PML``
+    The oracle is ``stepping`` itself on real ``Grid``/``Fields``/``PML``
     objects. There is no second transcription on the oracle leg to drift: the
     kernel is compared against the thing it claims to reproduce, word for word,
     from ONE frozen state -- oracle runs, state is restored, kernel runs.
     """
     started = time.time()
-    # SEEDED FROM A DIGEST, never from ``hash()``: Python salts ``hash()`` of a
+    # Seeded from a digest, never from ``hash()``: Python salts ``hash()`` of a
     # tuple containing strings with PYTHONHASHSEED, so a gate seeded that way
     # draws a different fixture every process and a failing case cannot be
     # replayed.
@@ -665,7 +665,7 @@ def one_case(backend, xp, spec: Dict[str, Any], side: str, courant: float,
         "operand_census": word_census(host),
     }
 
-    # THE PREDICATE'S CURRENT ANSWER, recorded rather than acted on. This gate
+    # The predicate's current answer, recorded rather than acted on. This gate
     # exists to decide whether that answer should change, so it must not be the
     # thing that gates the measurement -- but a record that did not carry it could
     # not show WHICH clause the run was taken against.
@@ -718,7 +718,7 @@ def one_case(backend, xp, spec: Dict[str, Any], side: str, courant: float,
 
     # Leg 3: the multi-step. The auxiliary is STATE, and a tree that gets the
     # field right and ``f_w`` wrong is correct for exactly one launch and wrong
-    # forever after. ONE ``Fields`` OBJECT, RUN TWICE FROM THE SAME FROZEN STATE.
+    # forever after. One ``Fields`` object, run twice from the same frozen state.
     if multi_step:
         restore(fields, frozen)
         for _ in range(MULTI_STEP_BUDGET):
@@ -806,10 +806,10 @@ def run_mutations(backend, xp, results: Dict[str, Any], out_path: str,
                   product: str, policy) -> Dict[str, Any]:
     """Every leg, source and host. A gate that cannot fail certifies nothing.
 
-    THE COMPILE MEMO IS KEYED THROUGH THE SOURCE
+    The compile memo is keyed through the source
     (``compile_cache.kernel_cache_key`` over ``complex_emitter.complex_source``'s
     output), so a mutated body is a miss and reaches the compiler. Every source
-    leg records how many sites the rewrite matched IN EACH CONSTITUTIVE SIDE,
+    leg records how many sites the rewrite matched in each constitutive side,
     because a leg reporting a pass for a mutation it never applied is worse than
     no leg -- three measured instances on the sibling track.
     """
@@ -921,14 +921,14 @@ def summarize(results: Dict[str, Any], backend_certifies: bool) -> Dict[str, Any
         reasons.append(f"multi-step divergence on {len(multi_cases) - len(multi_ok)} "
                        f"of {len(multi_cases)} cases")
 
-    # EVERY CASE MUST HAVE BEEN COMPLEX STORAGE. A gate for the complex family
+    # Every case must have been complex storage. A gate for the complex family
     # that quietly built real volumes would be measuring the other kernel, and
     # nothing else in the artifact would say so.
     if any(c["predicate_today"]["reason"].startswith("real float32 storage")
            for c in scored):
         reasons.append("a scored case was refused as real float32 storage; the "
                        "fixture did not build complex volumes")
-    # AND EVERY FOLDED ONE MUST HAVE REACHED THE FOLD CLAUSE. If a folded case
+    # And every folded one must have reached the fold clause. If a folded case
     # were refused for something upstream of the fold, the run would be measuring
     # a configuration the widening does not touch and reporting it as though it
     # did.
@@ -940,7 +940,7 @@ def summarize(results: Dict[str, Any], backend_certifies: bool) -> Dict[str, Any
         reasons.append(f"folded cases were refused by clauses other than the "
                        f"fold's: {off_clause}")
 
-    # BOTH FOLDED TERMINATIONS. A folded PERIODIC axis stores one slot past MEEP's
+    # Both folded terminations. A folded PERIODIC axis stores one slot past MEEP's
     # owned window and a METALLIC one does not, so they are structurally different
     # arrays and a sweep carrying one would answer half the question.
     terminations = set()
@@ -954,7 +954,7 @@ def summarize(results: Dict[str, Any], backend_certifies: bool) -> Dict[str, Any
         reasons.append(f"folded terminations scored were {sorted(terminations)}, "
                        f"not both of periodic and metallic")
 
-    # EVERY AXIS MUST HAVE BEEN FOLDED SOMEWHERE. The coefficient index runs on
+    # Every axis must have been folded somewhere. The coefficient index runs on
     # the slowest stride for X and the fastest for Z, and a decomposition defect
     # that confuses them is only visible if both were folded.
     folded_axes = set()
@@ -966,7 +966,7 @@ def summarize(results: Dict[str, Any], backend_certifies: bool) -> Dict[str, Any
         reasons.append(f"folded axes scored were {sorted(folded_axes)}, not all "
                        f"three")
 
-    # A PHASED FOLDED CASE. Five of the eight corpus rows carry a Bloch phase on
+    # A phased folded case. Five of the eight corpus rows carry a Bloch phase on
     # an unfolded axis, and the constitutive kernel takes no phase argument -- so
     # a sweep of unphased grids alone would license the corpus's own shape by
     # extrapolation from one it never ran.
@@ -976,11 +976,11 @@ def summarize(results: Dict[str, Any], backend_certifies: bool) -> Dict[str, Any
                        "rows this gate is about carry a Bloch phase on an unfolded "
                        "axis")
 
-    # THE PLANE COUNT IS MEASURED FROM WHAT RAN, never quoted from the case table.
+    # The plane count is measured from what ran, never quoted from the case table.
     plane_counts = sorted({c["structure"]["folded_planes"] for c in folded})
     max_planes = max(plane_counts) if plane_counts else 0
 
-    # THE SIGNED-ZERO CLASS MUST HAVE CONTAINED SIGNED ZEROS. Without them the two
+    # The signed-zero class must have contained signed zeros. Without them the two
     # zero-cross-term legs have no reach and their verdicts are about nothing.
     signed = [c for c in scored if c["value_class"] == "signed_zero"]
     negative_zeros = sum(int(c["operand_census"].get("negative_zeros", 0))
@@ -1032,7 +1032,7 @@ def summarize(results: Dict[str, Any], backend_certifies: bool) -> Dict[str, Any
         "folded_terminations": sorted(terminations),
         "folded_axes": sorted(folded_axes),
         "phased_folded_cases": len(phased),
-        # THE CAP, MEASURED. The only number a predicate's plane clause may be
+        # The cap, measured. The only number a predicate's plane clause may be
         # set from.
         "folded_planes_scored": plane_counts,
         "max_folded_planes_scored": max_planes,
@@ -1077,6 +1077,7 @@ def save(results: Dict[str, Any], out_path: str) -> None:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
+    import neutral_ids  # noqa: PLC0415
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--backend", choices=("cupy", "host", "numpy"),
                         default="cupy")
@@ -1090,7 +1091,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--skip-mutations", action="store_true")
     parser.add_argument("--falsify", default=None, choices=tuple(SOURCE_MUTATIONS),
                         help=("plant this defect for the WHOLE RUN, sweep included, "
-                              "so the RELEASE VERDICT ITSELF is shown to flip. A "
+                              "so the release verdict itself is shown to flip. A "
                               "gate whose individual legs can fail but whose "
                               "verdict cannot has not been shown to be a gate"))
     args = parser.parse_args(argv)
@@ -1100,8 +1101,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     results: Dict[str, Any] = {
         "gate": "cuda_complex_folded_constitutive",
         "started_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "host": os.uname().nodename,
-        "argv": list(argv if argv is not None else sys.argv[1:]),
+        "host": neutral_ids.machine_id(),
+        "argv": neutral_ids.argv(argv if argv is not None else sys.argv[1:]),
         "backend": args.backend,
         "product": args.product,
         "question": ("does _complex_grid_refusal's mirror-symmetry clause describe "
@@ -1118,7 +1119,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             return 2
         if args.import_meep_for_host_policy:
             results["meep_host_import"] = probe.import_meep_for_host_policy()
-        # THE OBSERVER GOES IN BEFORE THE POLICY, and the order is the design:
+        # The observer goes in before the policy, and the order is the design:
         # under 'keep' the policy's strip wraps this, so it records the option
         # tuple NVRTC was really given (post-strip).
         results["nvrtc_observer"] = probe.install_nvrtc_binary_observer()
@@ -1141,7 +1142,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     try:
         if args.falsify:
-            # THE VERDICT'S OWN FALSIFICATION LEG. Every mutation leg below shows
+            # The verdict's own falsification leg. Every mutation leg below shows
             # that a LEG can fail; this shows that the RELEASE DECISION can.
             sites = constitutive_sites(SOURCE_MUTATIONS[args.falsify])
             backend.set_source_transform(SOURCE_MUTATIONS[args.falsify])
@@ -1161,7 +1162,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
         backend.set_guard(("--fmad=false",))
         if args.backend == "cupy":
-            # THE COMPILED-IMAGE COMPARISON, which is what makes an identical
+            # The compiled-image comparison, which is what makes an identical
             # output control readable: two bit-identical NVRTC images cannot
             # produce different words, so "inert" and "unmeasured" come apart.
             results["guard_effect"] = backend.guard_effect()

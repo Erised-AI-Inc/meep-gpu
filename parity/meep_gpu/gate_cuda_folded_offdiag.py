@@ -1,6 +1,6 @@
 """Sub-step byte-identity gate for the SHIPPED CUDA off-diagonal ``update_E`` ON A FOLD.
 
-THE CLAIM UNDER TEST, and it is a claim about a PREDICATE, not about a kernel.
+The claim under test, and it is a claim about a PREDICATE, not about a kernel.
 ``meep_gpu/cuda_kernels/offdiag_constitutive_kernels.py`` ships one certified
 kernel, ``update_E_pml_real_offdiag``, emitted per row mask by
 ``offdiag_emitter.py``. This gate does not change one byte of either. It asks
@@ -12,39 +12,39 @@ whether the refusal ``covers_real_pml_offdiag_constitutive`` states at
 
 -- is a refusal the arithmetic requires, and if so WHERE, plane by plane.
 
-WHY NEITHER SIBLING VERDICT TRANSFERS, and the gate exists because of it. On
+Why neither sibling verdict transfers, and the gate exists because of it. On
 2026-08-19 the same sentence was retired from ``covers_real_pml_constitutive``
-because that sub-step READS NO NEIGHBOUR. On 2026-08-20 the curl pair was
+because that sub-step reads no neighbour. On 2026-08-20 the curl pair was
 measured folded and SPLIT: exact on a folded METALLIC axis, 0/64 on a folded
-PERIODIC one, every differing word on the ``_stored_past_owned`` top plane. THIS
-FAMILY IS NEITHER. Its row product reads NEIGHBOURING cells of the OTHER
+PERIODIC one, every differing word on the ``_stored_past_owned`` top plane. This
+family is neither. Its row product reads NEIGHBOURING cells of the OTHER
 components' volumes (``stepping._offdiagonal_terms``, stepping.py:1243-1249), so
 the element-wise argument does not apply; and it runs inside ``update_E``, which
 never calls ``_mask_non_owned_cells`` (three call sites, stepping.py:397, :479,
 :902 -- ``step_B``, ``step_D``, ``_bfast_term``), so the curl's ownership-mask
 verdict does not apply either. A third measurement was owed and this is it.
 
-WHAT THE READING SAYS BEFORE ANY DEVICE RUNS (four facts off ``stepping.py``):
+What the reading says before any device runs (four facts off ``stepping.py``):
 
-1. THE FOLD ENTERS THROUGH EXACTLY ONE STENCIL LEG -- the PARTNER-axis
+1. The fold enters through exactly one stencil leg -- the PARTNER-axis
    ``_shift_down`` (stepping.py:1243-1245). On a MIRROR boundary that helper
    writes ``_symmetry_phase(component, axis, mirror_phase) * field[2]`` into
    stored cell 0 (stepping.py:1873-1875, ``MIRROR_SOURCE_INDEX = 2``). The
    kernel's ``coord_dn`` has two branches, PERIODIC (wrap to ``n-1``) and
-   METALLIC (the ``-1`` zero ghost), and the mirror ghost is NEITHER.
-2. THE OWN-AXIS LEG IS AN EXACT ZERO ON A FOLD, AND METALLIC ALREADY SPELLS IT.
+   METALLIC (the ``-1`` zero ghost), and the mirror ghost is neither.
+2. The own-axis leg is an exact zero on a fold, and metallic already spells it.
    ``_offdiagonal_terms`` calls ``_shift_up(xp, product, own_axis, boundary,
    phase)`` with NO ``component`` and NO ``reflect_row``, so the MIRROR reflect
    branch (stepping.py:1826-1833) is not taken and the call falls through to
    ``shifted[_face(axis, -1)] = 0`` (:1834-1836) -- the same value
    ``coord_up``'s METALLIC arm produces and NOT the value its PERIODIC arm does.
-3. THE WALL MASK ALREADY ABSTAINS ON A FOLD, ON BOTH PATHS.
+3. The wall mask already abstains on a fold, on both paths.
    ``_mask_metallic_wall_coupling`` asks ``is_metallic(axis) and not
    is_mirrored(axis)`` (stepping.py:1282) and ``coverage.offdiag_wall_mask_flags``
    asks the same question of the same grid. Nothing has to change there, and the
    docstring at stepping.py:1273-1278 already carries the array path's own
    fold-equivalence measurement (8.3e-13 .. 4.7e-12) for why it abstains.
-4. THE FOLD KIND DOES NOT SPLIT THIS FAMILY THE WAY IT SPLITS THE CURL.
+4. The fold kind does not split this family the way it splits the curl.
    ``stepping._boundary_kinds`` resolves a folded axis to MIRROR whatever its
    declared termination is, and neither leg above reads ``_stored_past_owned``.
    So a folded METALLIC and a folded PERIODIC axis should behave IDENTICALLY
@@ -62,7 +62,7 @@ fold kind, and the gate is built to resolve it per case:
 * a folded axis in NEITHER role -> exact under both.
 
 =============================================================================
-THE SUBSTITUTION IS AN EXPERIMENTAL VARIABLE, NOT A DEFAULT
+The substitution is an experimental variable, not a default
 =============================================================================
 
 A folded axis resolves to ``mirror``, and ``offdiag_boundary_codes`` refuses that
@@ -74,7 +74,7 @@ one alone would report a divergence caused by the harness's own choice as though
 it were a property of the kernel.
 
 =============================================================================
-THE VERDICT IS TWO-SIDED
+The verdict is two-sided
 =============================================================================
 
 Divergence alone licenses nothing: a kernel that diverged everywhere, including
@@ -85,7 +85,7 @@ disagree ANYWHERE. The sweep is built so both sides are populated: masks that pu
 a folded axis in the partner role, in the own-axis role only, and in neither.
 
 =============================================================================
-LOCALIZATION: WHAT MAKES A DIVERGENCE A FINDING RATHER THAN A FAILURE
+Localization: what makes a divergence a finding rather than a failure
 =============================================================================
 
 Every diverging case is decomposed by PLANE. For each output array the gate
@@ -97,7 +97,7 @@ ghost-delta planes, none elsewhere" is a specification for the kernel change tha
 would fix it.
 
 =============================================================================
-WHAT WOULD MAKE THIS GATE VACUOUS, AND THE FLOORS THAT REFUSE IT
+What would make this gate vacuous, and the floors that refuse it
 =============================================================================
 
 * ``oracle_moved`` -- the fraction of output words the array path changed from
@@ -107,7 +107,7 @@ WHAT WOULD MAKE THIS GATE VACUOUS, AND THE FLOORS THAT REFUSE IT
   rows actually contributed. A case whose coupling is identically zero cannot
   distinguish ANY defect in this family; it is testing the certified PLAIN
   constitutive kernel with extra steps.
-* ``folded_axis_absorbs`` -- ``max|kps-1|``, ``max|kms-1|`` ON THE FOLDED AXIS.
+* ``folded_axis_absorbs`` -- ``max|kps-1|``, ``max|kms-1|`` on the folded axis.
   A folded axis whose coefficient vector is the identity everywhere cannot
   distinguish a coefficient-index error on the axis the fold moved.
 * ``mirror_ghost_is_live`` -- the array path's mirror ghost is
@@ -116,7 +116,7 @@ WHAT WOULD MAKE THIS GATE VACUOUS, AND THE FLOORS THAT REFUSE IT
   the fixture. Measured per case, on the folded axes.
 * ``ghost_delta_planes_are_live`` -- on a predicted-diverging case the oracle
   must have moved words on the planes the delta names.
-* The mutation battery, including legs that MUST BE UNCAUGHT. A battery of
+* The mutation battery, including legs that must be uncaught. A battery of
   only-must-be-caught legs scores identically whether the comparator works or has
   degenerated into failing everything. Every mutation leg is scoped to (spec,
   mask, substitution) triples whose UNMUTATED baseline is bit-identical -- the
@@ -136,7 +136,7 @@ token because CuPy's disk-cache key is computed above the strip seam)::
 
 Laptop (no CUDA). The NumPy backend EXECUTES the emitted device source through
 the slice test module's own evaluator -- one grammar, one copy, imported rather
-than duplicated. IT COMPILES NOTHING AND CERTIFIES NOTHING; what it settles is
+than duplicated. It compiles nothing and certifies nothing; what it settles is
 whether the harness can localize a divergence and whether it can fail::
 
     python -u gate_cuda_folded_offdiag.py --backend numpy --product reduced \\
@@ -205,7 +205,7 @@ MULTI_STEP_BUDGET = 60
 #: one alone could be a property of the choice rather than of the kernel.
 SUBSTITUTIONS: Tuple[str, ...] = ("mirror_as_metallic", "mirror_as_periodic")
 
-#: EVERY AXIS IS FOLDED SOMEWHERE IN THIS LIST, and both terminations appear on
+#: Every axis is folded somewhere in this list, and both terminations appear on
 #: each. The two terminations are carried because the reading says they should
 #: NOT differ here -- the opposite of the curl's verdict -- and a prediction that
 #: is not swept is not measured. Both plane parities, an odd full count, two
@@ -245,7 +245,7 @@ FOLD_SPECS: Tuple[Dict[str, Any], ...] = (
     {"label": "fold_Z_metallic", "axes": "Z", "phase": 1,
      "boundaries": ("periodic", "periodic", "metallic"), "cell": (8.0, 12.0, 16.0)},
 
-    # A FOLD BESIDE A LIVE METALLIC WALL, which no other spec here carries: a
+    # A fold beside a live metallic wall, which no other spec here carries: a
     # folded axis always reports ``wm = 0`` (``is_metallic and not is_mirrored``),
     # so a sweep of folded specs alone leaves every wall flag zero and the wall
     # mask untested on a fold. That is exactly the seam
@@ -256,13 +256,13 @@ FOLD_SPECS: Tuple[Dict[str, Any], ...] = (
     {"label": "fold_Z_wall_X", "axes": "Z", "phase": 1,
      "boundaries": ("metallic", "periodic", "periodic"), "cell": (8.0, 12.0, 16.0)},
 
-    # TWO PLANES AT ONCE, one termination each way and both the same way.
+    # Two planes at once, one termination each way and both the same way.
     {"label": "fold_XY_mixed", "axes": "XY", "phase": 1,
      "boundaries": ("periodic", "metallic", "periodic"), "cell": (16.0, 16.0, 10.0)},
     {"label": "fold_XZ_periodic", "axes": "XZ", "phase": -1,
      "boundaries": ("periodic", "periodic", "periodic"), "cell": (16.0, 10.0, 16.0)},
 
-    # THREE PLANES AT ONCE, both terminations. The constitutive family's
+    # Three planes at once, both terminations. The constitutive family's
     # admission is capped at two because its gate stopped there; this one does
     # not have to be.
     {"label": "fold_XYZ_periodic", "axes": "XYZ", "phase": 1,
@@ -311,7 +311,7 @@ VALUE_CLASSES: Tuple[str, ...] = ("uniform", "subnormal_band")
 ROW_FORM = "varying"
 
 #: ``--fmad=false`` is CORRECTNESS on this sub-step, not tuning. The control is
-#: EXPECTED TO DIVERGE at the inexact courant; if it does not, the guard is
+#: expected to diverge at the inexact courant; if it does not, the guard is
 #: decorative here and the record must say so rather than implying evidence it
 #: does not have.
 GUARD_SETS: Tuple[Tuple[str, Tuple[str, ...], bool], ...] = flat.GUARD_SETS
@@ -329,7 +329,7 @@ def _axis_of(component: str) -> int:
 def fold_roles(grid, mask: Sequence[int]) -> Dict[str, Any]:
     """Which role, if any, each folded axis plays in this row mask.
 
-    THE MIRROR RULE ENTERS ONLY THROUGH THE PARTNER-AXIS DOWN SHIFT
+    The mirror rule enters only through the partner-axis down shift
     (stepping.py:1243-1245), and a component's own axis is never its own
     partner (``OFFDIAG_TRANSVERSE_PARTNERS`` is own+1 and own+2), so the two
     roles are disjoint per slot and both are counted.
@@ -403,7 +403,7 @@ def ghost_delta_planes(component: str, grid, mask: Sequence[int],
 def wall_mask_bites(mask: Sequence[int], walls: Sequence[int]) -> bool:
     """Does the metallic wall mask change ANY word on this (mask, grid) pair?
 
-    A LIVE WALL FLAG IS NOT ENOUGH, and assuming it was is what made the first
+    A live wall flag is not enough, and assuming it was is what made the first
     full run of this gate report both wall discriminators DISCRIMINATOR VIOLATED
     at 3/24. ``_mask_metallic_wall_coupling`` zeroes face 0 of the axes on which
     THE COMPONENT'S Yee shift is 0 (:data:`coverage.OFFDIAG_WALL_MASK_AXES`), so
@@ -464,7 +464,7 @@ def localize(reference: np.ndarray, produced: Any, component: str, grid,
 def build(xp, spec: Dict[str, Any], courant: float):
     """A frozen ``(fields, layer, grid)`` triple for one fold spec.
 
-    THE THICKNESS RULE IS THE SIBLING FOLD GATES', not a new one: skip an axis
+    The thickness rule is the sibling fold gates', not a new one: skip an axis
     too thin to hold a layer, and on a MIRRORED axis ask for the HIGH face only.
     ``PML._resolve_mirror_faces`` (pml.py:387-415) refuses a named low face on a
     folded axis outright -- cell 0 is the mirror plane, a boundary condition
@@ -574,7 +574,7 @@ def one_case(backend, xp, spec: Dict[str, Any], mask_spec: Dict[str, Any],
              host_mutation: Optional[str] = None) -> Dict[str, Any]:
     """One frozen state, run twice: the array path, then the kernel.
 
-    THE ORACLE IS ``stepping.update_E`` ITSELF on real ``Grid``/``Fields``/``PML``
+    The oracle is ``stepping.update_E`` itself on real ``Grid``/``Fields``/``PML``
     objects with the rows installed through the PUBLIC installer, so the
     install-time validation, the zero-row drop and the stored-E switch are all in
     force. There is no second transcription on the oracle leg to drift.
@@ -619,7 +619,7 @@ def one_case(backend, xp, spec: Dict[str, Any], mask_spec: Dict[str, Any],
     case["predicted_diverges"] = predicted_diverges(roles, substitution)
     case["wall_mask_bites"] = wall_mask_bites(mask, walls)
 
-    # THE PREDICATE'S CURRENT ANSWER, recorded rather than acted on. This gate
+    # The predicate's current answer, recorded rather than acted on. This gate
     # exists to decide whether that answer should change, so it must not be the
     # thing that gates the measurement -- but a record that did not carry it
     # could not show WHICH clause the run was taken against.
@@ -738,7 +738,7 @@ def one_case(backend, xp, spec: Dict[str, Any], mask_spec: Dict[str, Any],
 
 
 def reversed_folded_axis_tables(layer, grid) -> Dict[str, Any]:
-    """THE REFUSAL REASON, ARMED. The folded axis's half-integer profile reversed.
+    """The refusal reason, armed. The folded axis's half-integer profile reversed.
 
     "The fold changes the stored extent, and the extent is what turns a cell
     index into a coefficient index" is the predicate's stated reason for refusing
@@ -790,7 +790,7 @@ def case_product(product: str, steps: int) -> List[Dict[str, Any]]:
     resolve to the same codes, and running both would double the control's weight
     in every summary for no second question.
 
-    THE REDUCED SUBSET IS NAMED, NOT SLICED. A head slice of this list is all X
+    The reduced subset is named, not sliced. A head slice of this list is all X
     folds and no declared wall, which leaves the wall discriminators with one arm
     and every fold-axis question answered on one axis.
     """
@@ -850,7 +850,7 @@ def summarize(cases: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
         for key in census:
             census[key] += case["operand_census"][key]
 
-    # THE PREDICTION IS SCORED ON THE GUARDED LEG ALONE. The unguarded control's
+    # The prediction is scored on the guarded leg alone. The unguarded control's
     # whole job is to DIVERGE where the guarded leg is identical, so scoring it
     # against a prediction about the ghost rule would read the contraction guard
     # doing its work as a failed prediction about the fold.
@@ -929,7 +929,7 @@ def run_sweep(backend, xp, results: Dict[str, Any], out_path: str, product: str,
 # The mutation battery
 # ---------------------------------------------------------------------------
 #
-# SCOPED TO THE LICENSED ARM. A leg planted on a baseline that already diverges
+# Scoped to the licensed arm. A leg planted on a baseline that already diverges
 # scores CAUGHT for free and every null reads as violated -- measured on the
 # folded-curl gate's first full run, which reported both nulls NULL VIOLATED at
 # 1/5, the 1 being its single already-diverging leg. The plan below is built from
@@ -948,7 +948,7 @@ NULL_SOURCE_MUTATIONS: Tuple[str, ...] = tuple(flat.NULL_MUTATIONS)
 HOST_MUTATIONS: Tuple[str, ...] = ("reverse_folded_axis_coefficients",
                                    "swap_sub_lattice", "drop_the_wall_flags")
 
-#: THE TWO WALL DISCRIMINATORS. Each must be a CATCH on a case whose grid
+#: The two wall discriminators. Each must be a CATCH on a case whose grid
 #: declares a metallic wall on an UNFOLDED axis and a NULL on one that declares
 #: none -- which is what makes "the wall mask is caught" a statement about the
 #: mask rather than about something else the metallic case changes. A folded axis
@@ -975,7 +975,7 @@ def mutation_plan(sweep_cases: Sequence[Dict[str, Any]], product: str
     Read off the sweep that just ran rather than tabulated, so the battery cannot
     be armed on an arm the device did not actually certify in this same process.
 
-    THE REDUCED SELECTION IS GREEDY, NOT A HEAD SLICE. Slicing the front of a
+    The reduced selection is greedy, not a head slice. Slicing the front of a
     case product landed the folded-curl gate's whole battery on its two UNFOLDED
     controls, so its one fold-specific mutation was skipped on every leg and
     scored 0/0 UNCAUGHT -- a harness defect that reads exactly like a kernel
@@ -1081,7 +1081,7 @@ def run_mutations(backend, xp, results: Dict[str, Any], out_path: str,
                                                                  mutated_text)
             backend.set_source_mutation(transform)
 
-        # THE EVALUATOR BACKEND CANNOT SEE EVERY DEFECT, and a leg it cannot see
+        # The evaluator backend cannot see every defect, and a leg it cannot see
         # must say so rather than score a number. The classification is the flat
         # gate's, imported: an edit landing in the pinned helpers or the welded
         # tail is TRANSCRIBED rather than executed off device, and an edit that
@@ -1141,7 +1141,7 @@ def run_mutations(backend, xp, results: Dict[str, Any], out_path: str,
             verdict = "NO LEGS"
             as_required = False
         elif name in WALL_DISCRIMINATORS and not (catch_arm and null_arm):
-            # A DISCRIMINATOR WITH ONE ARM IS NOT A DISCRIMINATOR. Either half
+            # A discriminator with one arm is not a discriminator. Either half
             # alone is consistent with the mask being inert.
             verdict = "NO DISCRIMINATOR"
             as_required = False
@@ -1287,7 +1287,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "gate_sha256": probe.source_digest(os.path.abspath(__file__)),
     }
 
-    # THE ORDER IS THE WHOLE POINT: the observer wraps NVRTC BELOW the strip so it
+    # The order is the whole point: the observer wraps NVRTC BELOW the strip so it
     # records the options NVRTC really received, and the policy installs before
     # the first compile.
     if backend_name == "cupy":
@@ -1308,7 +1308,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if "sweep" in legs:
         run_sweep(backend, xp, results, out_path, product, args.steps, "sweep")
     if "multistep" in legs:
-        # THE PRIMARY GUARD ONLY. The control's job is to show the guard is doing
+        # The primary guard only. The control's job is to show the guard is doing
         # work, and one launch per case already shows it; paying 60x for the same
         # demonstration buys nothing.
         run_sweep(backend, xp, results, out_path,
@@ -1353,7 +1353,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "every_case_moved_the_oracle": single.get("every_case_moved_the_oracle"),
         "mutation_legs_as_required": mutations.get("legs_as_required"),
         "all_mutation_legs_as_required": mutations.get("all_legs_as_required"),
-        # ON A CERTIFYING BACKEND BOTH MUST BE ZERO. The compiler executes every
+        # On a certifying backend both must be zero. The compiler executes every
         # line, so no defect is invisible for a reason of the harness; and a
         # defect with no licensed arm is a hole rather than a clean result.
         "mutation_legs_not_measurable":

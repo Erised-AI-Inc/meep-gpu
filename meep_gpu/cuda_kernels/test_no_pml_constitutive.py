@@ -1,6 +1,6 @@
 """The hand-CUDA NO-PML constitutive arm: every clause, its refusal, and its bytes.
 
-THIS FILE IS THE WHOLE MERGE BAR FOR THIS FAMILY, and unlike every other test in
+This file is the whole merge bar for this family, and unlike every other test in
 this directory it is not half of one. The other slices push their bit-identity
 question onto a device because a kernel has to be launched to be compared; this arm
 has no kernel, so the question it has to answer -- "does the array path move
@@ -8,7 +8,7 @@ anything on the configurations the predicate admits?" -- is answered by calling
 ``stepping.update_H`` / ``stepping.update_E`` directly and comparing uint32 words.
 That runs here, on a laptop, with no CuPy and no NVRTC.
 
-WHAT THE DEVICE LEG THEN ADDS, and why it is still owed: the same assertions on real
+What the device leg then adds, and why it is still owed: the same assertions on real
 device arrays, a whole-driver engine leg, and the mutation battery under a CUDA
 context (which is the one host where a locale reset and a shared compile cache can
 break a gate that compiles nothing --
@@ -18,7 +18,7 @@ break a gate that compiles nothing --
 land. ``test_confirmation_record_is_all_or_nothing`` refuses a half-filled record,
 so a green suite can never be mistaken for a device verdict.
 
-FIVE KINDS OF ASSERTION LIVE HERE:
+Five kinds of assertion live here:
 
 1. **the verdict table** -- one row per clause, per side, pinned to the EXACT refusal
    string. In a first-refusal predicate the clause ORDER is part of the contract:
@@ -76,7 +76,7 @@ SIDES = ("H", "E")
 IDENTITY_CYCLES = 3
 
 #: Every array a ``Fields`` may own that a constitutive sub-step could conceivably
-#: write, read by name and skipped when unallocated -- WHICH OF THEM EXIST is itself
+#: write, read by name and skipped when unallocated -- which of them exist is itself
 #: configuration-dependent (a no-PML run owns no H and no ``f_w``).
 CANDIDATE_ARRAYS = (
     "Bx", "By", "Bz", "Dx", "Dy", "Dz", "Ex", "Ey", "Ez", "Hx", "Hy", "Hz",
@@ -188,7 +188,7 @@ def _electric_state(grid, sigma=0.35):
 
 
 # ---------------------------------------------------------------------------
-# 1. THE VERDICT TABLE
+# 1. The verdict table
 #
 # One entry per clause the predicate can state, per side. This is a
 # SPECIFICATION, not a record of a previous implementation: the reason string is
@@ -257,7 +257,7 @@ def _cases(xp):
         "plain": plain,
         "inert_layer": inert,
         "active_layer": active,
-        # THE MUTATION BATTERY'S FIXTURE, and it is a different object on purpose.
+        # The mutation battery's fixture, and it is a different object on purpose.
         # ``active_layer`` also has PML storage switched on, so deleting the layer
         # clause from the source leaves clause 5 to refuse it -- the mutation would
         # be "caught" by a clause that is not the one under test, which measures
@@ -285,7 +285,7 @@ _GOLDEN = {
         "active_layer": (False, _ACTIVE_LAYER_REFUSAL),
         "active_layer_bare": (False, _ACTIVE_LAYER_REFUSAL),
         "unreadable_layer": (False, _UNREADABLE_LAYER_REFUSAL),
-        # H IS NEVER STORED WITHOUT PML (fields.py:664-665), so every clause that
+        # H is never stored without PML (fields.py:664-665), so every clause that
         # exists because update_E writes E is silent on this side. That is the
         # per-sub-step split doing its job, and it is measured below: the array path
         # moves 0 of 4608 words on the stored_e fixture's H side.
@@ -564,7 +564,7 @@ def test_an_all_zero_face_layer_is_inactive_and_therefore_ours(xp):
 
 
 # ---------------------------------------------------------------------------
-# 3. THE IDENTITY PROPERTY, with its failing control
+# 3. The identity property, with its failing control
 # ---------------------------------------------------------------------------
 
 def _words(array):
@@ -692,7 +692,7 @@ def test_the_control_that_makes_that_a_measurement(xp):
 
 
 # ---------------------------------------------------------------------------
-# 4. THE EVIDENCE TABLE, RE-MEASURED
+# 4. The evidence table, re-measured
 # ---------------------------------------------------------------------------
 
 _EVIDENCE_NEEDLES = {
@@ -791,7 +791,7 @@ _SIBLING_CONSTITUTIVE = {
 def _sibling_verdict(sibling, fields, layer, grid, side):
     """A sibling predicate's ``covered``, with a RAISE recorded as "did not admit".
 
-    THE RAISE IS A REAL MEASUREMENT AND IT IS NOT SWALLOWED HERE -- it is pinned by
+    The raise is a real measurement and it is not swallowed here -- it is pinned by
     :func:`test_a_sibling_predicate_raises_where_this_one_refuses`, which is where
     the finding lives. Collapsing it to False for the partition arithmetic is sound
     (a predicate that raised certainly did not admit the slot) and keeps the
@@ -822,14 +822,14 @@ def test_no_slot_is_ever_claimed_twice(xp, side, case, sibling):
 
 
 def test_a_sibling_predicate_raises_where_this_one_refuses(xp):
-    """A MEASURED FINDING ABOUT ``coverage.py``, pinned here rather than fixed here.
+    """A measured finding about ``coverage.py``, pinned here rather than fixed here.
 
     ``covers_real_pml_constitutive`` reads the layer as
     ``getattr(pml, "is_active", False)``. ``getattr`` with a
     default swallows a MISSING attribute, not a raising one -- so on a layer object
     whose ``is_active`` property raises, that predicate PROPAGATES the exception
     instead of refusing. Its own sibling in the same file already treats this as a
-    defect class and catches it by name ("A RAISE IS NOT A REFUSAL unless it is
+    defect class and catches it by name ("a raise is not a refusal unless it is
     caught here", ``covers_real_pml_ade_component``), and a
     predicate a planner consults turns an escaping exception into a crashed run
     where a fail-closed "no" was the correct answer.
@@ -839,7 +839,7 @@ def test_a_sibling_predicate_raises_where_this_one_refuses(xp):
     impression, and so that hardening ``coverage.py`` later FAILS this test and
     forces the record to be updated in the same change.
 
-    Not fixed in this round: ``coverage.py``'s digest is under a live census
+    Not fixed alongside this test: ``coverage.py``'s digest is under a live census
     manifest.
     """
     fields, inert, grid = build(xp, pml_thickness=0, storage=True)
@@ -1003,7 +1003,7 @@ def test_the_reach_record_adds_up_and_says_what_it_is():
     assert reach["by_side"]["H"] == reach["no_pml_rows"]
     assert reach["by_side"]["E"] == reach["no_pml_rows"] - reach["no_pml_rows_with_stored_e"]
     assert reach["rows_taken_at_both_constitutive_sub_steps"] == reach["by_side"]["E"]
-    # A SUB-STEP GAINED IS NOT A RUN TAKEN OVER, and the record says so in a field
+    # A sub-step gained is not a run taken over, and the record says so in a field
     # rather than in a sentence somebody has to read.
     assert reach["rows_taken_at_every_sub_step"] == 0
     assert reach["is_an_upper_bound"] is True
@@ -1028,7 +1028,7 @@ def test_confirmation_record_is_all_or_nothing():
         f"partially filled device record: {filled}")
     if not filled:
         return
-    # THE ARTIFACT DIRECTORY IS NOT ASSERTED TO EXIST, and that is deliberate rather
+    # The artifact directory is not asserted to exist, and that is deliberate rather
     # than lax: ``parity/meep_gpu/results/`` is gitignored, so a test that required
     # the directory would pass only on the machine that cut it and fail on every
     # clone. The RECORD is what ships; the artifact is what the record was read out
@@ -1055,7 +1055,7 @@ def test_the_device_record_and_the_reach_record_describe_the_same_arm():
     breadth leg admitted 8 configurations and the identity leg 7. Neither number
     constrains the other -- but both are claims about an arm that takes NO row whole
     step, and a record that quietly acquired a whole-step claim on one side while the
-    other still denied it is the kind of drift that outlives the round it started in.
+    other still denied it is the kind of drift that outlives the change it started in.
     """
     assert null.NULL_CONSTITUTIVE_REACH["rows_taken_at_every_sub_step"] == 0
     assert "0 of the 14 rows" in null.NULL_CONSTITUTIVE_CONFIRMATION["limits"]

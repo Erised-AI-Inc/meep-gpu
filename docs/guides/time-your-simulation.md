@@ -1,6 +1,6 @@
 # Time your own simulation
 
-The only comparison with MEEP that has been made is one case on one machine
+The comparisons with MEEP are few: for 1.0.1, four cases on one RTX 3090 and one M1 Max
 ([Will it help?](will-it-help.md)). The kernel mix, and so the speed, depends on
 the configuration, so time your own problem before relying on a speed-up. This
 page gives one script that times the same simulation three ways: on this host's
@@ -141,7 +141,7 @@ check that it prints the rank count you asked for:
 mpirun -np 8 python time_case.py meep      # an MPI build of MEEP; prints ranks=8
 ```
 
-Each leg prints one line. On the certified Apple host, as written, the GPU leg reads
+Each leg prints one line. On the certified M1 Max, as written, the GPU leg reads
 `gpu=metal step_path=fused cells=262144`, and the reference leg `gpu=None
 step_path=array`. The rates depend on the host and on what else it is running;
 repeat each leg two or three times and compare the medians.
@@ -155,17 +155,17 @@ repeat each leg two or three times and compare the medians.
   pays too (`init` in its line), so subtract that for a closer figure.
 - **`step_path=array` on the GPU leg** means no compiled kernel served your
   configuration, or the host is outside the set the kernels run on (an NVIDIA
-  host outside the supported range, or any host outside the certified set with
-  `MEEP_GPU_HARDWARE=certified`); the line on standard error says which. That
-  rate is the array path's.
+  host no kernel table supports, unless `MEEP_GPU_HARDWARE=any`, or any host
+  outside the certified set with `MEEP_GPU_HARDWARE=certified`); the line on
+  standard error says which. That rate is the array path's.
 - **A `NOTE` line on a Mac** (`the kernels are NOT CERTIFIED on this host`)
   means the GPU leg ran the Metal kernels on a supported Apple GPU, in an
   environment outside the certified one. The rate is the kernels' own;
   compare the GPU leg's results with the reference leg's before relying on
   them.
-- **The reference leg** is for checking results, not for speed. On a small grid
-  it can be faster than the GPU leg
-  ([Will it help?](will-it-help.md#small-grids-use-the-reference-or-meep-itself)).
+- **The reference leg** is for checking results, not for speed. Before 1.0, on one Mac,
+  it was faster than the GPU leg on the smallest grids; on the 1.0 code the 3-D crossover is
+  below 110,592 cells ([Will it help?](will-it-help.md#small-grids-use-the-reference-or-meep-itself)).
 - **Compare results as well as rates.** A default GPU run and a `prefer_gpu=False`
   run differ by about one part in 10^5 of the final field where values pass
   through the float32 subnormal range (8.4e-6 to 1.4e-5 on the examples;

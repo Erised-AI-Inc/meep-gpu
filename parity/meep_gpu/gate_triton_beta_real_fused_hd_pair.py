@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """DEVICE byte gate: the Triton H->D weld on the two REAL beta cells.
 
-TWO BOARD CELLS, ONE FAMILY, TWO EMITTED KERNELS::
+Two board cells, one family, two emitted kernels::
 
     H_to_D  (real beta run   -> real beta PML)         1  examples:refl-angular-kz2d.py
     H_to_D  (folded beta run -> folded real beta PML)  1  tests:TestSpecialKz.test_eigsrc_kz_1_real_imag
@@ -9,22 +9,22 @@ TWO BOARD CELLS, ONE FAMILY, TWO EMITTED KERNELS::
 Read off ``results/fusion_matrix_triton_2026-09-07_cyl/fusion_matrix.json``
 (``aggregate.h_to_d_seam.instances``, ``one_per_row`` true, denominator 597).
 
-WHAT IS BEING CERTIFIED. ``meep_gpu/triton_kernels/beta_real_fused_hd_pair.py``
+What is being certified. ``meep_gpu/triton_kernels/beta_real_fused_hd_pair.py``
 computes the certified ``update_H`` constitutive into launch-local SCRATCH, takes its
 own cell's magnetic field from registers, RECOMPUTES every one of the curl half's six
 foreign taps from pre-launch state through ``fused_hd_pair._h_cell``, steps
 ``D``/``fu_D`` in place, and rotates the ``H``/``f_w_H`` references afterwards. Per
-COMPLETE DRIVER STEP, as uint32 WORDS over every stored volume the engine allocates --
+complete driver step, as uint32 WORDS over every stored volume the engine allocates --
 never ``allclose``.
 
-WHAT THE FIXTURES MUST BE, and it is forced rather than chosen. A real beta run is
+What the fixtures must be, and it is forced rather than chosen. A real beta run is
 ``dimensions=2``: ``grid`` refuses ``beta`` off an effective-2-D Cartesian grid, and
 ``PML.__init__`` refuses a layer on the translationally invariant z axis -- a scalar
 ``setup_pml(2)`` asks for all six faces and dies before the first step. On a FOLDED
 axis the near face is the MIRROR PLANE, not a boundary, so the thickness is spelled
 per face from the fixture's own mirror set.
 
-THE LEG SET, THE REFERENCE COUNTING AND WHAT IS RECORDED-RATHER-THAN-ASSERTED are the
+The leg set, the reference counting and what is recorded-rather-than-asserted are the
 shared kit's; see :mod:`triton_hd_tail_gate_kit`.
 """
 
@@ -93,7 +93,7 @@ class BetaRealProduct(kit.Product):
         ("beta_mm", {"variant": "beta",
                      "boundaries": {"x": "metallic", "y": "metallic"}}),
         ("beta_mp", {"variant": "beta", "boundaries": {"x": "metallic"}}),
-        # THE FOLDED FIXTURES. ``Mirror(Y)`` with a periodic termination gives
+        # The folded fixtures. ``Mirror(Y)`` with a periodic termination gives
         # MIRROR_PERIODIC -- the code whose TOP-PLANE ownership mask is the delta the
         # unfolded kernel does not carry -- and with a metallic one, MIRROR_METALLIC.
         # Both are exercised, because which of the two an axis resolves to is the
@@ -105,7 +105,7 @@ class BetaRealProduct(kit.Product):
          {"variant": "folded_beta",
           "boundaries": {"x": "metallic", "y": "metallic"},
           "symmetry": (("y", -1),)}),
-        # THE RUN'S FIRST update_H on the mutation fixture's grid: unseparated, so
+        # The run's first update_H on the mutation fixture's grid: unseparated, so
         # every arrangement performs MEEP's start of H at step 1 (the array path in
         # update_H, the weld through its start_h scalar). Every fixture above is
         # seeded mid-run.
@@ -167,7 +167,7 @@ class BetaRealProduct(kit.Product):
             "target": "kernel", "expected": "CAUGHT", "hits": 2,
             "old": "        curl2 = curl_stencil(b_x, b, a, a_y, dtdx, px, py)\n",
             "new": "        curl2 = dtdx * ((b_x - b) + (a - a_y))\n",
-            "why": "INVERTED (KERNELS.md 7.1): Dz's curl takes the PREVIOUS package "
+            "why": "INVERTED: Dz's curl takes the PREVIOUS package "
                    "grouping, the pairwise `(g1s - g1) + (g2 - g2s)`, in place of MEEP's "
                    "left-to-right `((g1s - g1) + g2) - g2s` that forms.curl_stencil spells",
         },
@@ -218,7 +218,7 @@ class BetaRealProduct(kit.Product):
             "target": "kernel", "expected": "NULL", "hits": 2,
             "old": "        p0 = tl.load(u0 + idx, mask=live & du0, other=0.0)\n",
             "new": "        p0 = tl.load(u0 + idx, mask=live, other=0.0)\n",
-            "why": "PREDICTED NULL (KERNELS.md 7.2, the unconditional auxiliary load): off "
+            "why": "PREDICTED NULL (the form battery's unguarded auxiliary load): off "
                    "the dsigu chunk the selected form never consumes fu_Dx and its store "
                    "stays masked; the guard is pinned by the lift",
         },
@@ -279,18 +279,18 @@ class BetaRealProduct(kit.Product):
                               for axis, phase in spec.get("symmetry") or ()),
         }
 
-    #: THE Z EXTENT IS ZERO, and ``grid`` is what forces it: ``dimensions=2`` makes z
+    #: The Z extent is zero, and ``grid`` is what forces it: ``dimensions=2`` makes z
     #: translationally invariant, and an invariant axis is INFINITE -- a length there
     #: "describes nothing this run can represent" (grid.py:800). Measured on this
-    #: lane's first device smoke, where a 1.2 z extent died before the first step.
+    #: gate's first device smoke, where a 1.2 z extent died before the first step.
     default_cell = (2.0, 2.1, 0.0)
 
     def pml_spec(self, spec: Mapping[str, Any]) -> Any:
         """The absorber, per face.
 
-        NO LAYER ON Z: the axis is translationally invariant on a beta run and
-        ``PML.__init__`` refuses one there by name. NO LAYER ON THE NEAR FACE OF A
-        FOLDED AXIS: that face is the mirror plane, not a boundary.
+        No layer on Z: the axis is translationally invariant on a beta run and
+        ``PML.__init__`` refuses one there by name. No layer on the near face of a
+        folded axis: that face is the mirror plane, not a boundary.
         """
         folded = {axis.lower() for axis, _phase in (spec.get("symmetry") or ())}
         return {name: ((0.0, 2.0) if name in folded else 2.0) for name in "xy"}
@@ -389,7 +389,7 @@ class BetaRealProduct(kit.Product):
             findings.append(
                 "the imported constitutive lift no longer equals the certified body")
         measures["imported_constitutive_lift_equal"] = constitutive_equal
-        # THE FOUR GHOST CODES, pinned equal to the certified module's own integers.
+        # The four ghost codes, pinned equal to the certified module's own integers.
         codes = {"PERIODIC": _folded.CODE_PERIODIC, "METALLIC": _folded.CODE_METALLIC,
                  "MIRROR_METALLIC": _folded.CODE_MIRROR_METALLIC,
                  "MIRROR_PERIODIC": _folded.CODE_MIRROR_PERIODIC}
@@ -420,7 +420,7 @@ class BetaRealProduct(kit.Product):
             conditions (a callable ``withdraw``, ``is_integrated``, and at least one
             source point). The third is not decoration: a stand-in without it is
             ADMITTED, and the refusal leg would then be measuring nothing -- caught on
-            this lane's first device smoke, 2026-09-08."""
+            this gate's first device smoke, 2026-09-08."""
 
             component = "Ez"
             is_integrated = True

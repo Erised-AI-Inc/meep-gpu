@@ -1,12 +1,12 @@
 """BYTE GATE — the mirror FOLD composed with the ``grid.beta`` term, on Metal.
 
-WHAT THIS CERTIFIES: that ``metal_kernels.folded_beta``'s four products reproduce
-``stepping.py`` WORD FOR WORD on a folded grid at nonzero ``grid.beta`` — the real
+What this certifies: that ``metal_kernels.folded_beta``'s four products reproduce
+``stepping.py`` word for word on a folded grid at nonzero ``grid.beta`` — the real
 and complex curls on both sub-steps, and the two certified constitutive bodies
-re-admitted over a folded stored extent — per SUB-STEP and per COMPLETE DRIVER STEP.
+re-admitted over a folded stored extent — per SUB-STEP and per complete driver step.
 
-WHAT MAKES THIS FAMILY DIFFERENT FROM ITS TWO PARENTS, and it is the only reason it
-exists: THE FOLD WIDENS THE MASK THE BETA TERM LANDS INSIDE. Unfolded, the beta
+What makes this family different from its two parents, and it is the only reason it
+exists: the fold widens the mask the beta term lands inside. Unfolded, the beta
 increment meets ONE ownership mask (cell 0 on a non-periodic axis); folded, it meets
 TWO, because a folded PERIODIC axis also masks its LAST plane for every target whose
 Yee shift is 1 there. The array path adds the term at stepping.py:384-391 / :467-474
@@ -15,14 +15,14 @@ and masks at :397 / :479, whose ``_mask_non_owned_cells`` carries the cell-0 arm
 term sits between the curl and BOTH masks, on the DEVICE, by moving it and requiring
 a divergence — a claim about the code rather than about a comment.
 
-THIS GATE WALKS THE DRIVER'S REAL TEN-PASS LIST, which is what separates it from the
+This gate walks the driver's real ten-pass list, which is what separates it from the
 family's sibling tests. One complete folded step is::
 
     step_B -> fill_symmetry_bc_B -> zero_metal_B -> fill_folded_far_ghosts_B ->
     update_H -> step_D -> fill_symmetry_bc_D -> zero_metal_D ->
     fill_folded_far_ghosts_D -> update_E                    (driver.py:3282-3302)
 
-THE WALL PASS SITS BETWEEN THE TWO FILL PASSES and it is the pass NO Metal family
+The wall pass sits between the two fill passes and it is the pass NO Metal family
 carries, so on a walled case it runs on the ARRAY PATH between two device launches.
 Leg ``whole_step`` therefore brackets every array-path pass with an explicit
 ``sync_out`` / ``sync_in`` over exactly the volumes the package's own residency model
@@ -35,7 +35,7 @@ for one launch and wrong forever after is identical in a single-launch leg) — 
 the fold adds a fourth, its ghost plane being written by one pass and read by the
 next. Each has its own armed mutation.
 
-WHAT THIS GATE MEASURED AND THE SIBLING TESTS COULD NOT SEE. The shared builder
+What this gate measured and the sibling tests could not see. The shared builder
 ``metal_composition_matrix._fill`` writes a REAL uniform array into every volume,
 so a complex64 volume comes back with an IDENTICALLY ZERO IMAGINARY PART. Every
 complex product in the kernel then has an exact-zero operand, and three separate
@@ -46,7 +46,7 @@ imaginary part and asserts a floor, and leg ``guard``'s control is what proves t
 difference — measured on this host at ``complex_bloch_x``: with the zero imaginary
 part the NAIVE control moves 0 words, with it seeded it moves 4-11 per sub-step.
 
-A MEASURED NULL WITHOUT ITS MECHANISM IS WORTHLESS, so leg ``spellings`` supplies the
+A measured null without its mechanism is worthless, so leg ``spellings`` supplies the
 mechanism for the two refuted spellings this family cannot tell apart. HALF ONE
 measures that the spellings genuinely differ on this backend (the real negation on
 exactly the one discriminating lane; the complex cross-term fold on 80 words). HALF
@@ -58,7 +58,7 @@ censuses them — 0 negative zeros on the two curls the beta term is added to, o
 ``curl2``, which the term never touches and the structural argument does not cover,
 DOES reach ``-0.0`` (60 words), and that is the census's own non-vacuity control.
 
-THE SUBNORMAL PRECONDITION IS CHECKED, NOT ASSUMED, AND IS REPORTED AS A WINDOW.
+The subnormal precondition is checked, not assumed, and is reported as a window.
 On MPS the float32 subnormal flush is native and has no lever, so ``keep`` is NOT
 OFFERABLE and the honest third policy value is REFUSE. Band entry is a RUN-and-
 WINDOW fact rather than a family fact, so leg ``whole_step`` censuses EVERY step and
@@ -68,15 +68,15 @@ certified total. Leg ``precondition`` drives the same census over a state scaled
 the band and REQUIRES it to fire, so the empty windows next door are a measurement
 rather than a silence.
 
-THE 1e29 VOLUME CLAUSE IS NOT THIS FAMILY'S. That plan-time check belongs to
+The 1e29 volume clause is not this family's. That plan-time check belongs to
 ``nonlinear_chi3``; this family REFUSES a nonlinearity by name (leg ``refusals``
 pins it) and carries no Pade tree, so there is nothing here for it to bound.
 
-THE STATED WEAKNESS, and it is this certification's one gap against the Triton
+The stated weakness, and it is this certification's one gap against the Triton
 twin's: ``torch.mps.compile_shader`` exposes NO disassembly, no AIR and no
 optimisation report (``device.py:46-62``). This gate cannot refuse a compile whose
 emitted code violates the contraction policy and cannot establish that the pragma
-was obeyed. EVERY LEG HERE IS BEHAVIOURAL: it catches a wrong answer, never a wrong
+was obeyed. Every leg here is behavioural: it catches a wrong answer, never a wrong
 instruction.
 
     python -u gate_metal_folded_beta.py --out results/.../gate.json
@@ -98,7 +98,7 @@ if API_ROOT not in sys.path:
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
-# THE POLICY IS SET BEFORE ANY `meep_gpu` MODULE IS REACHED. On MPS the float32
+# The policy is set before any `meep_gpu` module is reached. On MPS the float32
 # subnormal flush is native and has no lever, so the resolved default `keep` is NOT
 # OFFERABLE and every Metal predicate refuses by name. Setting `flush` is what puts
 # the claim under the CHECKED precondition rather than under a pretence.
@@ -141,7 +141,7 @@ STORED: Tuple[str, ...] = (
 #: The volumes a curl plan is built from — the from-arrays route's whole input.
 CURL_ARRAYS: Tuple[str, ...] = STORED[:18]
 
-#: THE DRIVER'S OWN TEN PASSES, in its order (driver.py:3282-3287 magnetic,
+#: The driver's own ten passes, in its order (driver.py:3282-3287 magnetic,
 #: :3293-3302 electric). Spelled once, so the reference walk and the device walk
 #: cannot drift apart, and CHECKED against the package's own residency model below —
 #: if the two ever disagreed, this gate would be walking an order the composer does
@@ -168,8 +168,8 @@ HOST_PASS: Dict[str, Callable[[Any], None]] = {
     "zero_metal_D": stepping.zero_metal_D,
     "fill_D_far": stepping.fill_folded_far_ghosts_D}
 
-#: THE CASE MATRIX. Every axis is here because a mutation is reachable on one value
-#: and a MEASURED NULL on the other:
+#: The case matrix. Every axis is here because a mutation is reachable on one value
+#: and a measured NULL on the other:
 #:
 #:   TERMINATION    MIRROR_PERIODIC masks its top plane and runs the far ghost pass;
 #:                  MIRROR_METALLIC does NEITHER — the top plane is OWNED and
@@ -177,7 +177,7 @@ HOST_PASS: Dict[str, Callable[[Any], None]] = {
 #:                  a sweep on one termination proves nothing about the other;
 #:   FULL COUNT     ``reflect_row`` is ``stored - 2`` at an even full count and
 #:                  ``stored - 3`` at an odd one, so at the default extent a wrong
-#:                  ``n - 2`` formula HAPPENS TO BE RIGHT;
+#:                  ``n - 2`` formula happens to be right;
 #:   PARITY         an odd mirror plane negates and an even one does not; the parity
 #:                  is the parents' fill coefficient and reaches this family through
 #:                  the ghost plane its curl then reads;
@@ -244,7 +244,7 @@ CASE_COMPLEX: Dict[str, bool] = {label: is_complex for label, _, is_complex in C
 def enrich_complex(fields: Any, seed: int = 20260816) -> int:
     """Seed an INDEPENDENT imaginary part into every complex64 volume.
 
-    NOT COSMETIC, AND THE MEASUREMENT IS IN THE MODULE DOCSTRING.
+    Not cosmetic, and the measurement is in the module docstring.
     ``matrix._fill`` assigns a REAL array into a complex64 volume, so the imaginary
     plane comes back identically zero. Every complex product in this family's kernel
     then carries an exact-zero operand, and the contraction guard and the complex
@@ -442,7 +442,7 @@ def engine_constitutive(fields: Any, pml: Any, side: str, residency: Any) -> Any
 def engine_fill(fields: Any, family: str, residency: Any) -> Any:
     """The PARENTS' fill plan, or None where their predicates refuse.
 
-    THIS FAMILY REGISTERS NO FILL ARM, deliberately: both parents' fill predicates
+    This family registers no fill arm, deliberately: both parents' fill predicates
     carry no beta clause and already admit a folded beta run, and a third arm would
     make both seam slots AMBIGUOUS and drop them to the array path. On a WALLED grid
     they refuse by name and the pass belongs to the array path — which is the case
@@ -460,7 +460,7 @@ def from_arrays_curl(fields: Any, pml: Any, sub_step: str, codes: Any,
                      residency: Any, *, functions: Optional[Dict[str, Any]] = None,
                      has_beta: bool = True,
                      beta_override: Any = None) -> Any:
-    """THE MUTATION SEAM: bare arrays, explicit codes, an overridable function.
+    """The mutation seam: bare arrays, explicit codes, an overridable function.
 
     Dropping ``functions`` is not a slowdown, it is a silent DISARMING — every
     mutation leg would then launch the shipped kernel and report its defect as
@@ -517,7 +517,7 @@ def entry_point(fields: Any, source: str) -> Any:
 
 
 def reference_step(fields: Any, pml: Any) -> None:
-    """ONE COMPLETE DRIVER STEP on the array path — the real TEN passes."""
+    """One complete driver step on the array path — the real TEN passes."""
     stepping.step_B(fields, pml)
     stepping.fill_symmetry_bc_B(fields)
     stepping.zero_metal_B(fields)
@@ -625,7 +625,7 @@ def leg_execution(payload: Dict[str, Any], out: str) -> None:
         "gate": os.path.abspath(__file__),
     }, kernel_sources=sources, name="provenance_gate.json")
 
-    # THE WALK ORDER IS THE PACKAGE'S OWN, ASSERTED RATHER THAN COPIED. If the
+    # The walk order is the package's own, asserted rather than copied. If the
     # residency model ever renamed or reordered a pass, this gate would be walking a
     # step the composer does not believe in and every whole-step row below would be
     # a statement about a different object.
@@ -633,7 +633,7 @@ def leg_execution(payload: Dict[str, Any], out: str) -> None:
     model = tuple(n for n in metal_coverage.RESIDENCY_ORDER if n != "update_P")
     assert walked == model, (walked, model)
 
-    # DISTINCT SOURCES ARE COUNTED BESIDE THE CALLS, and the gap is not a defect: the
+    # Distinct sources are counted beside the calls, and the gap is not a defect: the
     # emitter maps every mirror code to METALLIC for the ghost gather, so many code
     # quadruples produce IDENTICAL text and `compile_source` memoizes by the source
     # STRING. Recording only the call count would claim hundreds of compilations this
@@ -683,7 +683,7 @@ def leg_curl(payload: Dict[str, Any], out: str) -> None:
 
     The driver's fill passes overwrite exactly the planes the ownership masks
     protect, so a whole-step check alone would certify a mask-less kernel as correct.
-    THIS IS THE LEG THAT CAN FAIL ON A MASK — and on this family the beta term rides
+    This is the leg that can fail on a mask — and on this family the beta term rides
     the masked plane, so it is also the leg where the composition itself is visible.
     """
     rows: List[Dict[str, Any]] = []
@@ -871,9 +871,9 @@ def leg_whole_step(payload: Dict[str, Any], out: str, budget: int = 12) -> None:
     discipline exists to prevent. ``Residency.verify()`` is asserted empty after every
     step, which is the stale-mirror invariant measured rather than assumed.
 
-    THE SUBNORMAL CENSUS IS TAKEN PER STEP AND REPORTED AS A WINDOW. Band entry is a
+    The subnormal census is taken per step and reported as a window. Band entry is a
     RUN-and-WINDOW fact rather than a family fact, so a row recording a scalar count
-    cannot be read for what it covers. A case whose census fires is REFUSED BY NAME
+    cannot be read for what it covers. A case whose census fires is refused by name
     and its comparisons are withheld from the certified total: that is a COVERAGE
     REFUSAL, not a failure, and :func:`leg_precondition` is what proves the detector
     can fire at all.
@@ -937,7 +937,7 @@ def leg_whole_step(payload: Dict[str, Any], out: str, budget: int = 12) -> None:
             "one must not: the host-pass count and the wall tag disagree")
 
         refused = bool(fired)
-        # A REFUSAL IS NOT A PASS BY ANOTHER NAME. The byte claim is only withheld
+        # A refusal is not a pass by another name. The byte claim is only withheld
         # where the precondition FAILED; where it held, a divergence is still a
         # failure and still stops the leg here.
         if not refused:
@@ -1029,7 +1029,7 @@ def drop_increment_rows(source: str, flag_prefix: str) -> str:
 
 
 def leg_position(payload: Dict[str, Any], out: str) -> None:
-    """WHERE THE BETA PASS SITS, measured per case and per sub-step.
+    """Where the beta pass sits, measured per case and per sub-step.
 
     MEEP adds the beta coupling as its own pass after every component's curl, through
     the curl's ladder, with the increment masked by the curl's own ownership rows --
@@ -1038,7 +1038,7 @@ def leg_position(payload: Dict[str, Any], out: str) -> None:
     the term folded back into the curl before the masks and forms (the previous package
     form), and the increment left unmasked by either arm.
 
-    The top-plane arm is a MEASURED NULL on a MIRROR_METALLIC fold, where the emitter
+    The top-plane arm is a measured NULL on a MIRROR_METALLIC fold, where the emitter
     writes no top-plane mask at all, and the row says so with its reason rather than
     being dropped or counted as a catch.
     """
@@ -1175,18 +1175,18 @@ def run_micro(body: str, left: np.ndarray, right: np.ndarray,
 
 
 def leg_spellings(payload: Dict[str, Any], out: str) -> None:
-    """TWO REFUTED SPELLINGS THAT THIS FAMILY CANNOT TELL APART, and why.
+    """Two refuted spellings that this family cannot tell apart, and why.
 
     ``negation_spelled_as_zero_minus`` and ``complex_increment_as_a_complex_product``
     are both recorded in leg ``mutations`` as measured nulls, and a measured null is
     worthless without its mechanism: "the spellings are the same" (false) and "this
     family cannot tell them apart" (true) are different claims.
 
-    HALF ONE — THE SPELLINGS GENUINELY DIFFER ON THIS BACKEND, measured here on the
+    Half one — the spellings genuinely differ on this backend, measured here on the
     discriminating operand patterns rather than inherited from the probe. Both are
     required to move at least one word.
 
-    HALF TWO -- THE FAMILY CANNOT REACH THE PATTERN, and this is a MEASUREMENT, not an
+    Half two -- the family cannot reach the pattern, and this is a MEASUREMENT, not an
     argument. Both differences reduce to the same question: is a word the beta
     increment is subtracted from -- the forms' ``v`` and ``n`` registers -- ever a
     NEGATIVE ZERO? A needle replaces the pass with an export of ``v0``/``v1`` (and,
@@ -1341,7 +1341,7 @@ def leg_spellings(payload: Dict[str, Any], out: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# LEG guard — the contraction directive, MEASURED, PER ARM
+# LEG guard — the contraction directive, measured, per arm
 # ---------------------------------------------------------------------------
 
 def run_variant(label: str, sub_step: str, *,
@@ -1379,7 +1379,7 @@ def leg_guard(payload: Dict[str, Any], out: str) -> None:
     On Metal this is a SOURCE variant rather than a launch keyword, so the two modes
     are two compiled kernels. Both arms carry contractable shapes: the forms'
     ``(p * km) - curl`` and the pass's ``v - (si * df)``, per part on the complex
-    arm. THE FLOOR IS PER ARM: a single sum would be satisfied by one storage while
+    arm. The floor is per arm: a single sum would be satisfied by one storage while
     the other sat at zero.
     """
     rows: List[Dict[str, Any]] = []
@@ -1490,7 +1490,7 @@ def leg_band(payload: Dict[str, Any], out: str) -> None:
 #: physical band too and certify nothing — and ``fire`` is what makes an empty window
 #: a measurement rather than a silence.
 #:
-#: ``record`` IS NOT A HEDGE, IT IS A MEASUREMENT THAT REFUTED AN ASSUMPTION. This
+#: ``record`` is not a hedge, it is a measurement that refuted an assumption. This
 #: leg was first written with 1e-30 as a second ``clean`` row, on the reasoning that
 #: leg ``band`` finds the SINGLE-STEP identity intact there. It failed, and the
 #: failure is the point: on the COMPLEX case the census fires at steps 6-7 of 8 at
@@ -1595,7 +1595,7 @@ SIGNED_ZERO_PLANTS = np.array(
 def plant_signed_zeros(fields: Any, names: Sequence[str], offset: int = 0) -> int:
     """SPRINKLE the signed-zero class onto the SOURCE volumes a curl reads.
 
-    THE CLASS HAS TO BE CONSTRUCTED OR IT CANNOT BE MEASURED, and that is not a
+    The class has to be constructed or it cannot be measured, and that is not a
     formality here: two of the spellings this gate refutes differ from the shipped
     one ONLY on a zero operand. Measured while writing this leg, on the physical-band
     random state, ``complex_zero_cross_terms_folded`` reported CAUGHT 0/14 — the
@@ -1631,7 +1631,7 @@ def source_mutations() -> Tuple[Tuple[str, Optional[bool], str, Optional[str],
     DIRECTION; anything outside either is not run and is recorded as skipped, because
     a structural null and a survived defect must never look the same in the artifact.
 
-    THE SUB-STEP AXIS EXISTS BECAUSE ONE NEEDLE MEASURED IT INTO EXISTENCE. See
+    The sub-step axis exists because one needle measured it into existence. See
     ``fold_ghost_spelled_as_a_periodic_wrap``: written unscoped it reported CAUGHT
     3/28, and the 25 misses are a STRUCTURAL property of the composition rather than
     a defect surviving.
@@ -1864,14 +1864,14 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
                          f"refutes differs ONLY on a zero operand, so an unplanted "
                          f"state would report it as a null)", floor=64)
 
-    # HOST-SIDE NEEDLE 1: THE SUB-STEP CONJUGATION. The two coefficients are built
+    # Host-side needle 1: the sub-step conjugation. The two coefficients are built
     # with `magnetic=(sub_step == "step_B")`, which is where the B/D asymmetry of
     # stepping.py:798-799 lives. Flipping it is a defect no SOURCE edit can express.
     missed = False
     ran = caught = launches = 0
     skipped_real: List[str] = []
     for case, _, complex_storage in CASES:
-        # SCOPED TO THE COMPLEX ARM, AND THE SCOPE IS A MEASUREMENT. `magnetic`
+        # Scoped to the complex arm, and the scope is a measurement. `magnetic`
         # reaches the words ONLY through the D side's quarter turn by `-c`
         # (special_kz.beta_curl_coefficients, transcribing
         # stepping._special_kz_beta_term), so on REAL storage the two sub-steps take
@@ -1917,7 +1917,7 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
                    "identical words and the flip is the identity",
                    extra={"scope": "complex", "skipped_cases": skipped_real})
 
-    # HOST-SIDE NEEDLE 2: THE FAMILY'S OWN VACUITY FLOOR. `has_beta=False` compiles
+    # Host-side needle 2: the family's own vacuity floor. `has_beta=False` compiles
     # the term out. If that agreed with the array path on a beta RUN, the beta term
     # would be doing no work on these grids and every row above would be a statement
     # about the certified fold rather than about this composition.
@@ -1954,7 +1954,7 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
                    "work on these grids and every other row here would be a claim "
                    "about the certified fold rather than about this composition")
 
-    # WHOLE-STEP NEEDLE 1: THE STALE MIRROR. On a walled case the two fills and the
+    # Whole-step needle 1: the stale mirror. On a walled case the two fills and the
     # wall clear run on the ARRAY PATH between device launches. Dropping the sync
     # back leaves the device holding bytes the host has moved on from — a smooth,
     # plausible, WRONG field rather than an error.
@@ -1997,7 +1997,7 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
                           "first_divergent_step_per_case": first_steps,
                           "budget": 6})
 
-    # WHOLE-STEP NEEDLE 2: THE SEAM ORDER. `zero_metal_*` runs BETWEEN the two fill
+    # Whole-step needle 2: the seam order. `zero_metal_*` runs BETWEEN the two fill
     # passes and the far pass reads a plane the wall clear touches. This is the
     # ordering the parents' fill predicates refuse to assume, stated as a needle: it
     # is what makes their refusal a measured fact rather than a cautious guess.
@@ -2175,7 +2175,7 @@ def leg_refusals(payload: Dict[str, Any], out: str) -> None:
         "a 3-D grid accepted beta, so the dimension clause is no longer restating a "
         "fact (MEEP fields.cpp:546-547)")
     payload["legs"]["engine_raises"]["beta_off_two_dimensions"] = grid_raised
-    # THE CLAUSE IS DRIVEN ON A STAND-IN BECAUSE THE ENGINE CANNOT BUILD ITS SUBJECT,
+    # The clause is driven on a stand-in because the engine cannot build its subject,
     # and that is exactly why the clause exists: `Grid._resolve_beta` refuses beta off
     # an effective-2-D grid at CONSTRUCTION (the raise recorded just above), so a
     # predicate that trusted the constructor would admit a hand-built `fields`
@@ -2204,9 +2204,9 @@ def leg_refusals(payload: Dict[str, Any], out: str) -> None:
         "everything and measures nothing")
 
     # Conductivity, nonlinearity and dispersion. (The missing-probe row left with the
-    # expansion probe itself, which entry 89 deleted along with its clause; the
+    # expansion probe itself, which 1.0 deleted along with its clause; the
     # predicate's BFAST clause has never had a row here.)
-    # THE CONDUCTIVITY CLAUSE IS PER SUB-STEP AND IS DRIVEN THAT WAY. An ELECTRIC
+    # The conductivity clause is per sub-step and is driven that way. An ELECTRIC
     # conductivity lands on Dx/Dy/Dz and a MAGNETIC one on Bx/By/Bz, so asking only
     # `step_B` about an electric one reports the clause as ADMITTING — which is what
     # this leg did when it was written, and is a false green rather than a finding.
@@ -2256,7 +2256,7 @@ def leg_refusals(payload: Dict[str, Any], out: str) -> None:
     assert not cylindrical.covered
     assert "cylindrical (Dcyl)" in text and "cylindrical r = 0 axis" in text, text
 
-    # THE GAP THIS FAMILY MADE VISIBLE IS NOW CLOSED, and the seam is the fold.
+    # The gap this family made visible is now closed, and the seam is the fold.
     #
     # This block used to assert that the UNFOLDED complex beta constitutive was
     # still nobody's, by pinning special_kz's refusal message. special_kz restated
@@ -2290,7 +2290,7 @@ def leg_refusals(payload: Dict[str, Any], out: str) -> None:
 
     payload["legs"]["refusals"] = rows
     save(payload, out)
-    # THIRTEEN, one per row above: entry 89 deleted the expansion-probe clause and its
+    # THIRTEEN, one per row above: 1.0 deleted the expansion-probe clause and its
     # row together, and a floor left at fourteen refuses the leg on its own census.
     kit.assert_census_floor(len(rows), "named refusals driven", floor=13)
 
@@ -2376,7 +2376,7 @@ def leg_composition(payload: Dict[str, Any], out: str) -> None:
     assert {spec.family for spec in arms.registered("update_P")} == {
         "ade_update_p"}
     assert matrix.UNREGISTERED_SLOTS == (), matrix.UNREGISTERED_SLOTS
-    # THE TWO ROWS MOVED OUT OF UNCARRIED WHEN THIS FAMILY LANDED.
+    # The two rows moved out of uncarried when this family landed.
     for row in ("fold_real_2d_beta", "fold_complex_2d_beta"):
         assert row not in matrix.UNCARRIED, row
         pinned = dict((name, expected)
@@ -2403,7 +2403,7 @@ def leg_composition(payload: Dict[str, Any], out: str) -> None:
 
 #: The Triton clause that is a fact about THAT platform rather than about a
 #: configuration, factored out and NAMED. This is the same method the Triton coverage
-#: round used ("its number is modulo that one clause"); the count of stripped clauses
+#: census used ("its number is modulo that one clause"); the count of stripped clauses
 #: is recorded per row so nothing is factored out silently.
 HOST_FACT_CLAUSES: Tuple[str, ...] = (
     "not cupy",
@@ -2425,7 +2425,7 @@ def leg_containment(payload: Dict[str, Any], out: str) -> None:
     here has a ``whole_step`` row, so any Metal-only slot this leg finds is backed by
     that evidence and the row says which.
 
-    THE TRITON SIDE IS EVALUATED MODULO TWO HOST-FACT CLAUSES, named in
+    The Triton side is evaluated modulo two host-fact clauses, named in
     :data:`HOST_FACT_CLAUSES` and counted per row. That is a CLAUSE-SHAPE comparison,
     not a runnable one: Triton cannot execute on this host at all, and pretending
     otherwise would be a bigger dishonesty than naming the factor.
@@ -2563,7 +2563,7 @@ def main() -> int:
         compared += int(row["compared"])
         certified = (certified and row["differing_vs_stepping"] == 0
                      and row["differing_vs_certified_folded_plan"] == 0)
-    # A CASE REFUSED ON THE PRECONDITION CONTRIBUTES NO COMPARISONS AND NO VERDICT.
+    # A case refused on the precondition contributes no comparisons and no verdict.
     # Folding it in either way would be wrong in both directions: as a pass it would
     # certify bytes produced under a condition the claim excludes, and as a failure it
     # would report a coverage boundary as a defect.

@@ -76,7 +76,7 @@ MEEP_MISSING = importlib.util.find_spec("meep") is None
 requires_meep = pytest.mark.requires_resource("meep")
 skip_without_meep = pytest.mark.skipif(MEEP_MISSING, reason="CPU MEEP is not installed in this environment")
 
-CROSS_VALIDATION_BAR = 0.05  # the parity matrix §7.
+CROSS_VALIDATION_BAR = 0.05  # <5 % relative L2 against CPU MEEP.
 
 # Every z coordinate below is a half-cell offset (x.x5), i.e. a row of cell
 # centres at resolution 10, so the feature under test is the only thing being
@@ -780,7 +780,7 @@ def test_odd_parity_sources_are_refused_on_a_mirror_plane(axis, phase):
     under an even X) and 9.06e-01 (Hy/Hz under an even X) — a full, plausible
     field that is simply wrong.
 
-    THE RULE IS NOW DERIVED FROM THE PLANE, NOT FROM THE EVEN X/Y TABLE. The
+    The rule is now derived from the plane, not from the even X/Y table. The
     refusal used to read ``fields.SYMMETRY_PHASES``, which is ``mirror_parity``
     frozen at MEEP's default ``phase=+1`` on X and Y alone. That made the rule
     correct only for even X/Y mirrors, refused an ``Ex`` dipole outright — the
@@ -979,7 +979,7 @@ def test_flux_monitor_with_thickness_carries_meeps_volume_measure(meep_reference
     (``FluxRegion(size=(4,4,4), direction=mp.X)``) — the refusal was an
     accepted-at-the-gate, raises-on-lift hole, and closing it is what
     ``test_from_meep.py::test_flux_region_may_extend_along_its_own_normal``
-    measures against ``mp.get_fluxes``. An INFERRED normal with extent still
+    measures against ``mp.get_fluxes``. An inferred normal with extent still
     raises, since there the axis would be a guess.
 
     Three thicknesses are checked against CPU MEEP, and the flat plane in the
@@ -1045,7 +1045,7 @@ def test_flux_planes_bracketing_a_source_conserve_power_at_any_offset():
     bound is that rounding: :data:`FOLD_ROUNDING_BOUND` units of 2**-24 of the
     flux. Measured 0.0 at 0.45 and 1.00 and at most 7.8e-08 (1.3 units) at 0.53 and
     0.70; the same pair with its upper plane moved a tenth of a cell measures
-    9.5e-03 to 1.6e-02 (MEASURED 2026-10-06), and the control below holds that
+    9.5e-03 to 1.6e-02 (measured 2026-10-06), and the control below holds that
     misplacement above the bound in this run.
 
     The geometry is symmetric on purpose. Move the source half a cell up, so the
@@ -2927,7 +2927,7 @@ RES, PML, FCEN, FWIDTH, UNTIL, BOX = 15, 9, 1.0, 1.0, 14.0, 1.0
 
 # Identical physics to the driver cases below. `odd` differs from `even` only in the
 # cell count -- 37 cells against 36 -- which is the sweep that found this engine
-# registering a monitor half a cell off when the count was odd (port reference: every
+# registering a monitor half a cell off when the count was odd (until then every
 # test used even counts, so a 4.8e-02 error was invisible).
 CASES = {
     "even": dict(cell=2.4, box_center=(0, 0, 0), component="Ez", source=(0, 0, 0)),
@@ -3195,7 +3195,7 @@ def test_near2far_matches_cpu_meep(near2far_reference):
     dipole, this engine's is the closer of the two (departure from `sin^2` at
     resolution 30: 1.77e-02 here against 3.01e-02 for MEEP on the same run).
 
-    ODD AGAINST EVEN is the assertion this case exists for. The two cell counts land
+    Odd against even is the assertion this case exists for. The two cell counts land
     within 3e-05 of each other in relative L2, so the registration carries no cell-parity
     dependence -- the defect class that once put a monitor half a cell off and stayed
     invisible because every test used an even count.
@@ -3733,7 +3733,7 @@ def test_get_field_point_answers_zero_where_no_chunk_owns_the_point():
     face of a mirror-folded METALLIC axis (no lattice image) reads ``0.0``, as MEEP's
     does, and a point ON that face is answered from the legs inside it; on a folded
     PERIODIC axis the same point is a lattice image and is answered. 0.9.2 refused all
-    three by name, which P0-g measured as 5,448 refused reads where MEEP answers, 2,504
+    three by name, measured before 1.0 as 5,448 refused reads where MEEP answers, 2,504
     of them nonzero.
     """
     folded = FdtdDriver(cell_size=(2.0, 2.0, 2.0), resolution=10, symmetry=("X",), boundaries="metallic")
@@ -4013,8 +4013,8 @@ def test_the_stepper_is_bit_reproducible_across_fresh_processes():
     process state — heap layout, a warmed thread pool, a randomized hash seed — and
     that is a real failure mode measured elsewhere in this stack: MEEP's own
     ``fields::get_eigenmode`` returns a different eigenvector on repeated identical
-    calls, which makes ``coupler.py``'s corpus parity a spread rather than a digit
-    (``the design notes (meep-corpus-inventory)``). That defect is upstream, and this
+    calls, which makes ``coupler.py``'s corpus parity a spread rather than a digit.
+    That defect is upstream, and this
     test is the guard that says so — if this engine ever acquires the same property,
     every floor recorded in this package would be a number about one particular run.
 
@@ -4214,7 +4214,7 @@ def _seeded_fold_pair(planes, counts, declared=None):
 @pytest.mark.parametrize("planes", _mirror_plane_sets(), ids=_plane_label)
 @pytest.mark.parametrize("counts", ["even", "odd-unfolded"])
 def test_a_fold_on_any_axis_at_either_phase_reproduces_the_full_domain_to_rounding(planes, counts):
-    """THE PLUMBING TEST: a folded run must BE the full-domain run, to rounding.
+    """The plumbing test: a folded run must BE the full-domain run, to rounding.
 
     The fold kernel was already pinned bit-for-bit for every axis and both phases
     (``test_fields.py`` reconstruction cases, ``test_stepping.py`` ghost cells), but
@@ -4227,7 +4227,7 @@ def test_a_fold_on_any_axis_at_either_phase_reproduces_the_full_domain_to_roundi
     peak, and not 0.0: MEEP's curl bracket ``((g1s - g1) + g2) - g2s``
     (step_generic.cpp:104) is not reflection-symmetric in rounding, so the full
     domain's two halves drift apart by rounding and the folded run differs from its
-    quadrant by the same (``test_stepping.FOLD_ROUNDING_BOUND``). MEASURED 2026-10-06
+    quadrant by the same (``test_stepping.FOLD_ROUNDING_BOUND``). Measured 2026-10-06
     over all 52 cases: at most 5.1 units, against at least 5.7e6 units for the same
     cases folded with every plane phase inverted
     (:func:`test_the_driver_fold_bound_rejects_a_wrong_mirror_phase`). The seed is
@@ -4448,7 +4448,7 @@ def test_an_odd_profile_sheet_folds_exactly_and_an_even_one_silently_does_not(ax
       plausible field. Stock MEEP answers the uniform version of it 57% (even phase)
       to 283% (odd phase) away from the unfolded run.
 
-    THE SECOND CASE IS THE NEGATIVE CONTROL AND IT IS ALSO A KNOWN GAP: the rule
+    The second case is the negative control and it is also a known gap: the rule
     refuses a uniform profile (provably even, no ``amp_func`` at all) and a zero-extent
     source (the parity condition then admits only zero current), but it does not
     evaluate a supplied ``amp_func``'s parity. It cannot decide that per source — on
@@ -4513,7 +4513,7 @@ def test_an_odd_profile_sheet_folds_exactly_and_an_even_one_silently_does_not(ax
 
 
 def test_a_z_fold_no_longer_skips_its_source_parity_check_and_its_dft_unfold():
-    """THE SILENT SKIP. A Z fold used to bypass both, and neither would have said so.
+    """The silent skip. A Z fold used to bypass both, and neither would have said so.
 
     ``sources._validate_symmetry`` / ``_validate_symmetry_parity`` and every monitor
     table in ``dft.py`` read the fold from a hard-coded ``(sym_x, sym_y, False)``
@@ -4553,7 +4553,7 @@ def test_a_z_fold_no_longer_skips_its_source_parity_check_and_its_dft_unfold():
     with pytest.raises(ValueError, match="With Z symmetry the stored half"):
         driver.add_source({**on_the_plane, "center": (0.0, 0.0, -0.5)})
 
-    # 2. A current the Z plane makes odd is refused. BOTH HALVES OF THE PHASE TABLE are
+    # 2. A current the Z plane makes odd is refused. Both halves of the phase table are
     #    exercised, because the two are refused by different mechanisms and the wording
     #    that stood here ("its own mirror image") is true of only one of them.
     #
@@ -4707,7 +4707,7 @@ def test_a_live_far_face_is_refused_on_every_folded_axis(axis, phase):
     zero-ghost treatment measured 8.8e-01 against. The bar is
     :data:`FOLD_ROUNDING_BOUND` units of 2**-24 of the run's peak, not 0.0, because
     MEEP's curl bracket is not reflection-symmetric in rounding
-    (``test_stepping.FOLD_ROUNDING_BOUND``). MEASURED 2026-10-06 over the three cases,
+    (``test_stepping.FOLD_ROUNDING_BOUND``). Measured 2026-10-06 over the three cases,
     60 steps each: at most 12.4 units. The refusal that remains is
     the nonlinear one: ``_nonlinear_transverse_sums`` shifts component PRODUCTS,
     which carry no single mirror parity and still read a zero far ghost, so a
@@ -4841,7 +4841,7 @@ def test_a_fold_holds_to_rounding_in_a_graded_medium_registered_at_the_component
 
     Rounding, not 0.0: MEEP's curl bracket is not reflection-symmetric in rounding
     (``test_stepping.FOLD_ROUNDING_BOUND``), so the bound is
-    :data:`FOLD_ROUNDING_BOUND` units of 2**-24 of each component's peak (MEASURED
+    :data:`FOLD_ROUNDING_BOUND` units of 2**-24 of each component's peak (measured
     2026-10-06: at most 1.80 units over the three axes), and the shared-scalar gap must
     stay above 1e-4 (about 1,700 units).
     """

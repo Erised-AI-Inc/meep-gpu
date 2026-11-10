@@ -2,12 +2,12 @@
 
 ``build_fusion_matrix.py`` credits a seam-instance to a fused product when the
 product's clause ladder admits the row AND the census records the composer selecting
-the product's pair. Since series entry 18 those two stopped meaning the same thing on
+the product's pair. Since 1.0 those two stopped meaning the same thing on
 the ``B_to_H`` seam, and the board's disjointness floor refused a census cut on the 1.0
 frozen bytes (354 rows admitted against 322 credited). This module holds the three
 rules that settle it, torch-free so the floor can be tested on any host:
 
-THE COMPOSER-ABSORB CREDIT. The census records ``launch.plan_step`` called with
+The composer-absorb credit. The census records ``launch.plan_step`` called with
 ``fuse=False``. That call fills ``update_H`` from the arm table and then, AFTER the
 fusion block, pops it where the run's first ``update_H`` would start H from B
 (``launch.h_start_reasons``) under a base constitutive plan that does not
@@ -37,13 +37,13 @@ every step of that rule holds on the row:
 
 Every credited instance names the pair that absorbs. Nothing here lists a row.
 
-CREDIT WITHHELD BY NAME. A row a product's predicate admits while the composer refuses
+Credit withheld by name. A row a product's predicate admits while the composer refuses
 the arm the product implements is a disagreement between the two, not a credit. The
 board records it in :data:`CREDIT_WITHHELD` with its reason, checks every entry against
 the census on every cut (the entry refuses the cut when its disagreement is no longer
 on the census), and leaves the predicate as it is for a later release to settle.
 
-THE THREE-SEAM DISJOINTNESS FLOOR. Per product, the rows its ladder admits must be
+The three-seam disjointness floor. Per product, the rows its ladder admits must be
 exactly the rows credited to it plus the rows withheld from it by name. Any other row
 is admitted by a product whose pair the composer does not install on it, which is a
 predicate overlap, and :func:`three_seam_floor` refuses the cut naming product and row.

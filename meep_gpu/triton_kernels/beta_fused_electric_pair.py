@@ -16,14 +16,14 @@ neither is re-derived here:
 * and the WELD is the one substitution :func:`.kernels.fused_curl_constitutive_D`
   already makes between exactly those two bodies on a beta = 0 run.
 
-SO THIS KERNEL IS ``fused_curl_constitutive_D``, CHARACTER FOR CHARACTER, PLUS THE
-PASS ``beta_pml_curl_step`` ADDS TO ``pml_curl_step``. A reader must be
+So this kernel is ``fused_curl_constitutive_D``, character for character, plus the
+pass ``beta_pml_curl_step`` adds to ``pml_curl_step``. A reader must be
 able to diff this body against those two and see nothing else moved; the gate's
 transcription leg asserts exactly that, statement by statement, against both
 shipped sources.
 
 ===========================================================================
-WHY THIS CELL WAS WORTH ZERO AND IS NOW WORTH ONE
+Why this cell was worth zero and is now worth one
 ===========================================================================
 
 :mod:`.beta_fused_magnetic_pair`'s docstring says, of this very cell:
@@ -31,7 +31,7 @@ WHY THIS CELL WAS WORTH ZERO AND IS NOW WORTH ONE
     The D/E partner cell is worth ZERO on this corpus (that row injects
     electrically between ``step_D`` and ``update_E``) and is not built.
 
-THAT SENTENCE WAS TRUE WHEN IT WAS WRITTEN AND IS NOT TRUE NOW, and the difference
+That sentence was true when it was written and is not true now, and the difference
 is :mod:`..deposit_repair`, which went live on 2026-08-28. The row is
 ``examples:refl-angular-kz2d.py`` — shape (1200, 1, 1), beta = 0.3321611318837033,
 all-periodic, ``has_metallic == false`` — and it declares
@@ -47,13 +47,13 @@ product: at False the source clause refuses the only row the cell has and the ar
 admits ZERO. The MAGNETIC twin keeps the flag at False for the mirror-image reason:
 on ITS seam the same row is electric-only, so no repair is consulted at all.
 
-THE SIBLING ON THE OTHER BACKEND is ``metal_kernels/beta_fused_electric_pair.py``,
+The sibling on the other backend is ``metal_kernels/beta_fused_electric_pair.py``,
 which declares the flag True for the same row and the same reason. This module is
 its Triton twin: the same two certified halves, the same seam, each transcribed
 from ITS OWN backend's body.
 
 ===========================================================================
-THE PASS, AND WHERE IT GOES
+The pass, and where it goes
 ===========================================================================
 
 ``stepping._special_kz_beta_term`` adds an analytic ``d/dz -> i*2*pi*beta`` term.
@@ -73,10 +73,10 @@ after the three curl forms and before the stores, which is where it sits here. T
   ``f - (sinv * q)`` outside the target's dsigu chunk, ``fu - (sinv * q)`` and
   ``f - (sinv_u * (sinv * q))`` inside it;
 * real storage is MEEP's implicit-i trick, so BOTH sub-steps take the same sign
-  (the ±i lives only in complex storage). MEASURED, and worth saying plainly because
+  (the ±i lives only in complex storage). Measured, and worth saying plainly because
   a reader will assume otherwise: :func:`.special_kz.beta_curl_coefficients` takes
-  ``magnetic=``, this builder passes ``False`` and the twin passes ``True``, and ON
-  REAL STORAGE THE TWO ANSWERS ARE IDENTICAL — the flag only decides the ``±1j``
+  ``magnetic=``, this builder passes ``False`` and the twin passes ``True``, and on
+  real storage the two answers are identical — the flag only decides the ``±1j``
   quarter turn on the complex path (:func:`.special_kz.beta_curl_coefficients`). So a builder here that
   copied its twin's ``magnetic=True`` would be harmless, and this product's gate
   arms NO mutation pretending to catch it; what it arms is the two WORDS exchanged
@@ -87,7 +87,7 @@ after the three curl forms and before the stores, which is where it sits here. T
 :func:`.special_kz.beta_curl_coefficients` and passed as float32 words, exactly as
 :class:`.special_kz.BetaPmlCurlPlan` passes them.
 
-``HAS_BETA`` IS CARRIED AND MUST BE 1 on any configuration this product's predicate
+``HAS_BETA`` is carried and must be 1 on any configuration this product's predicate
 admits — clause 12 of the beta family is INVERTED (``grid.beta`` must be nonzero),
 so a beta = 0 run is the ordinary :func:`.coverage.fused_pair_coverage`'s and is
 refused here by name. It is carried rather than hard-coded for
@@ -96,7 +96,7 @@ than a hand-specialised one, and it gives the gate a certified-kernel arm
 (``HAS_BETA = 0`` must reproduce ``fused_curl_constitutive_D`` bit for bit).
 
 ===========================================================================
-THE FIVE PASSES IN THE SEAM
+The five passes in the seam
 ===========================================================================
 
 ``driver.step`` runs five passes between the two halves (driver.py:3292-3304)::
@@ -109,14 +109,14 @@ THE FIVE PASSES IN THE SEAM
   pre-injection ``D``; :class:`.deposit_repair.LeadingRepairPlan` saves the two
   stateful arrays at the deposit points before the launch and
   :class:`.deposit_repair.TrailingRepairPlan` recomputes them after, in the
-  driver's own order. IGNORANCE IS STILL NEVER AN EMPTY SET: ``Fields`` does not
+  driver's own order. Ignorance is still never an empty set: ``Fields`` does not
   hold the source list, so an undeclared ``sources`` is a REFUSAL, and a source
   that cannot publish the index it writes is refused by name;
-* **``fill_symmetry_bc_D`` and ``fill_folded_far_ghosts_D`` — PROVABLY NO-OPS
-  HERE**, not carried and not refused. Both return at their first line unless
+* **``fill_symmetry_bc_D`` and ``fill_folded_far_ghosts_D`` — provably no-ops
+  here**, not carried and not refused. Both return at their first line unless
   ``grid.has_symmetry()`` (stepping.py:1481-1482, :1565-1566), and clause 5 of
   ``_beta_real_grid_reasons`` refuses every fold outright ("the folded real beta
-  curl is Phase B"). THE PREDICATE RE-CHECKS IT ANYWAY rather than reading its own
+  curl is Phase B"). The predicate re-checks it anyway rather than reading its own
   coverage off another module's guard;
 * **``zero_metal_D`` — CARRIED INLINE** (driver.py:3301; ``stepping._zero_metal``
   :2206-2247), through :func:`.coverage.zero_metal_axes`, which is IMPORTED rather
@@ -126,7 +126,7 @@ THE FIVE PASSES IN THE SEAM
   is byte-copied from it.
 
 The corpus row is all-periodic with ``has_metallic == false``, so the inline
-``zero_metal_D`` carry compiles to three ``False`` flags ON THAT ROW — which is why
+``zero_metal_D`` carry compiles to three ``False`` flags on that row — which is why
 the gate scores every wall-clear mutation on a WALLED case instead, where the flags
 are real.
 
@@ -174,7 +174,7 @@ from .. import deposit_repair as _deposit_repair
 #: wiring. Its MAGNETIC twin keeps the flag at False for the mirror-image reason:
 #: on the B seam that same row is electric-only.
 #:
-#: THE FLAG IS NOT THE WHOLE CLAIM. It only reaches ``deposit_repair.repairable``,
+#: The flag is not the whole claim. It only reaches ``deposit_repair.repairable``,
 #: which goes on refusing BY NAME every seam the repair cannot invert -- an
 #: off-diagonal constitutive, a nonlinear one, a fold whose fill map it cannot read,
 #: and an absorber whose split-field recurrence never ran. This family refuses a fold
@@ -205,7 +205,7 @@ BACKWARD = 1
 #: them do work on an admitted configuration — the two symmetry fills return at their
 #: first line without a mirror plane, which this family refuses outright — and the
 #: inert two are listed anyway: what a launch REPLACES is what the driver would
-#: otherwise have called. THE INJECTION IS NOT ONE OF THE FIVE: it is carried by the
+#: otherwise have called. The injection is not one of the five: it is carried by the
 #: deposit repair bracket around the launch, not by the launch.
 REPLACES: Tuple[str, ...] = ("step_D", "fill_symmetry_bc_D", "zero_metal_D",
                              "fill_folded_far_ghosts_D", "update_E")
@@ -257,7 +257,7 @@ if triton is not None:
     # The same constexpr code as ``kernels.METALLIC``, restated for the reason every
     # sibling restates it — importing a ``tl.constexpr`` wrapper and re-wrapping it
     # is not the same object, and the comparison in the kernel body is against a
-    # literal code. ONLY METALLIC IS NAMED: both certified bodies branch on
+    # literal code. Only metallic is named: both certified bodies branch on
     # ``== METALLIC`` and take periodic as the else.
     METALLIC = tl.constexpr(1)
 
@@ -530,12 +530,12 @@ def beta_fused_electric_pair_coverage(fields: Any, pml: Any,
         return Coverage(False,
                         tuple(dict.fromkeys(reasons + ["fields carries no grid"])))
 
-    # THE SOURCE SEAM, and on this cell it is the clause that decides everything. An
+    # The source seam, and on this cell it is the clause that decides everything. An
     # ELECTRIC source is injected BETWEEN the two halves (driver.py:3294-3299), so a
     # fused pair would consume a pre-injection D. The one corpus row of this cell
     # declares exactly that, so with CARRIES_DEPOSIT_REPAIR False the arm would admit
     # NOTHING; it is True, and the plan below brackets its launch with the repair.
-    # IGNORANCE IS NEVER AN EMPTY SET: `Fields` does not hold the source list, so an
+    # Ignorance is never an empty set: `Fields` does not hold the source list, so an
     # undeclared `sources` is itself a REFUSAL. A MAGNETIC source is injected in the
     # B/H half and does not disqualify this pair.
     reasons.extend(_deposit_repair.seam_source_reasons(
@@ -551,11 +551,11 @@ def beta_fused_electric_pair_coverage(fields: Any, pml: Any,
             f"closes"),
         carries_repair=CARRIES_DEPOSIT_REPAIR))
 
-    # THE TWO SYMMETRY PASSES. Both return at their first line without
+    # The two symmetry passes. Both return at their first line without
     # `grid.has_symmetry()` (stepping.py:1481-1482, :1565-1566), and clause 5 of
-    # `_beta_real_grid_reasons` already refuses every fold. RE-CHECKED HERE ANYWAY,
+    # `_beta_real_grid_reasons` already refuses every fold. Re-checked here anyway,
     # not inferred: this module's coverage may not be read off another module's
-    # guard, and if the beta tranche ever admits a fold this weld would silently
+    # guard, and if the beta family ever admits a fold this weld would silently
     # swallow two passes that had started doing work.
     if _call(grid, "has_symmetry", default=False):
         reasons.append(
@@ -568,7 +568,7 @@ def beta_fused_electric_pair_coverage(fields: Any, pml: Any,
                 f"axis {axis} is folded by a mirror plane: the two symmetry passes "
                 f"in this seam are no longer no-ops and this weld carries neither")
 
-    # THE WALL CLEAR is carried inline, so the grid must be able to answer which
+    # The wall clear is carried inline, so the grid must be able to answer which
     # axes are walled; an unanswerable one compiles to ZM=False and silently skips a
     # plane the array path clears.
     for name in ("has_metallic", "is_metallic", "is_mirrored"):
@@ -576,7 +576,7 @@ def beta_fused_electric_pair_coverage(fields: Any, pml: Any,
             reasons.append(
                 f"grid does not expose {name}; zero_metal_D cannot be carried inline")
 
-    # THE INVERSE-EPSILON VOLUMES ARE READ BY THE KERNEL, so `Fields` must be able to
+    # The inverse-epsilon volumes are read by the kernel, so `Fields` must be able to
     # hand one over per E component. An absent accessor would be a TypeError inside
     # the builder rather than a refusal, which is the wrong way for an uncovered
     # configuration to fail. The MAGNETIC twin needs no such clause: update_H is
@@ -712,10 +712,10 @@ def plan_beta_fused_electric_pair(fields: Any, pml: Any, sources: Any = None,
     side_spec = CONSTITUTIVE_SIDES[CONSTITUTIVE_SIDE]
     grid = fields.grid
     kinds = resolve(grid, pml)
-    # THE SAME FUNCTION THE CURL PLAN CALLS, with `magnetic` from the sub-step —
+    # The same function the curl plan calls, with `magnetic` from the sub-step —
     # identical arithmetic to the array path's per-call-site computation, and not a
     # second spelling of it. `magnetic=False` here and True in the twin, and on REAL
-    # storage the two answers are MEASURED IDENTICAL (the ±i is the implicit-i trick
+    # storage the two answers are measured identical (the ±i is the implicit-i trick
     # and lives only on the complex path). It is written this way because that is
     # what the array path computes per call site, not because the flag decides a
     # byte here.

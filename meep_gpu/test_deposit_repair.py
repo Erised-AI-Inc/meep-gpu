@@ -91,7 +91,7 @@ def _words(fields):
         if array is None:
             continue
         out[name] = numpy.ascontiguousarray(array).ravel().view(numpy.uint8)
-    # THE POLE'S STATE IS PART OF THE COMPARISON. Without it a repair that corrupted
+    # The pole's state is part of the comparison. Without it a repair that corrupted
     # P while getting E right would read as byte-identical.
     for index, state in enumerate(fields.polarizations):
         for attribute in ("P", "P_prev"):
@@ -153,7 +153,7 @@ def _fused_then_repair(fields, pml, sources, when, dt, pair, repair=True):
 
 
 def _make_source(grid, pair, component, center, size):
-    """MAGNETIC SOURCES GO THROUGH VolumeSource. `GaussianPulsedSource` refuses an H
+    """Magnetic sources go through VolumeSource. `GaussianPulsedSource` refuses an H
     component by name ("Magnetic components need VolumeSource", sources.py:205) -- which
     is why the magnetic half of this seam had never been exercised: the obvious
     constructor cannot express it."""
@@ -170,7 +170,7 @@ CASES = [
     ("electric point, 24 steps", "D", "Ez", (0.0, 0.0, 0.0), (0.0, 0.0, 0.0), 24),
     ("electric line", "D", "Ez", (0.0, 0.0, 0.0), (0.6, 0.0, 0.0), 6),
     ("electric in the PML shell", "D", "Ez", (0.5, 0.5, 0.0), (0.0, 0.0, 0.0), 6),
-    # THE SEAM THE PROBE NEVER COVERED -- 58 of the 215 excluded instances.
+    # The seam the probe never covered -- 58 of the 215 excluded instances.
     ("magnetic point", "B", "Hz", (0.0, 0.0, 0.0), (0.0, 0.0, 0.0), 6),
     ("magnetic point, 24 steps", "B", "Hz", (0.0, 0.0, 0.0), (0.0, 0.0, 0.0), 24),
     ("magnetic line", "B", "Hx", (0.0, 0.0, 0.0), (0.0, 0.6, 0.0), 6),
@@ -307,7 +307,7 @@ def test_withholding_the_repair_diverges_on_the_new_constitutive_halves(case, bu
 
 
 # ---------------------------------------------------------------------------
-# THE FOLD BOUNDARY, MEASURED IN BOTH DIRECTIONS
+# The fold boundary, measured in both directions
 # ---------------------------------------------------------------------------
 #
 # Four fused families (two Metal, two Triton) were ROUTED on 2026-08-27 holding
@@ -316,7 +316,7 @@ def test_withholding_the_repair_diverges_on_the_new_constitutive_halves(case, bu
 # `fill_folded_far_ghosts_D` AFTER the injection (driver.py:3308-3311), and the near
 # fill writes cell 0 from cell 2 (stepping.py:1450-1451, MIRROR_SOURCE_INDEX = 2).
 #
-# THE ARGUMENT WAS RIGHT AND THE BOUNDARY IS NOW RETIRED FOR THE METAL PAIR.
+# The argument was right and the boundary is now retired for the Metal pair.
 # `deposit_repair.repair_cells` extends the saved and restored set to the CLOSURE of
 # the cells those two fills image each deposit point into, and the two Metal folded
 # families flipped the flag in the same edit as that closure. What decides whether
@@ -381,7 +381,7 @@ def _folded_fused_then_repair(fields, pml, sources, when, dt, repair=True):
     and leaving them out would diverge everywhere for a reason that has nothing to do
     with the deposit, which is exactly what the mid-domain control is here to catch.
 
-    THE FILLS RUN BEFORE THE INJECTION, and that is not a modelling choice: there is no
+    The fills run before the injection, and that is not a modelling choice: there is no
     injection inside a launch. It is the whole shape of the problem.
     """
     saved = deposit_repair.save(fields, sources, "D") if repair else None
@@ -473,7 +473,7 @@ def _deposit_rows(source):
 
 
 def test_a_deposit_on_the_mirror_row_IS_carried_once_the_images_are_repaired():
-    """THE MEASUREMENT BEHIND THE TWO METAL FOLDED FAMILIES' ``= True``.
+    """The measurement behind the two Metal folded families' ``= True``.
 
     The repair restores the deposit index AND every cell the driver's post-injection
     fills image it into, so cell 0 -- rebuilt from cell 2 after the injection -- gets
@@ -486,11 +486,11 @@ def test_a_deposit_on_the_mirror_row_IS_carried_once_the_images_are_repaired():
 
 def test_the_image_closure_is_what_carries_it_and_a_point_repair_still_does_not(
         monkeypatch):
-    """THE OTHER DIRECTION, on the same case, with only the SET changed.
+    """The other direction, on the same case, with only the SET changed.
 
     This is the test that used to assert the divergence outright. It still asserts it
     -- of the point-only repair -- which is what keeps the case above from reading as
-    "a folded grid nothing disturbs". The divergence must also be AT THE IMAGE: a
+    "a folded grid nothing disturbs". The divergence must also be at the image: a
     point repair that broke the run somewhere else would satisfy a bare `differing`.
     """
     rows, differing = _run_folded(MIRROR_ROW_Y, carry_images=False,
@@ -509,7 +509,7 @@ def test_the_image_closure_is_what_carries_it_and_a_point_repair_still_does_not(
 
 
 def test_a_deposit_on_the_FAR_ghosts_reflect_row_is_carried_too():
-    """THE FOLD'S OTHER FILL, on the same grid. Y is folded PERIODIC here, so
+    """The fold's other fill, on the same grid. Y is folded PERIODIC here, so
     `fill_folded_far_ghosts_D` images the LAST stored slot from the reflect row
     `stepping._far_reflect_rows` derives — a different row, a different destination
     and the opposite Yee shift from the near fill, and a closure that only inverted
@@ -535,7 +535,7 @@ def test_a_point_repair_still_misses_the_far_ghost(monkeypatch):
 
 
 def test_the_closure_is_keyed_on_the_YEE_SHIFT_and_not_on_the_row(monkeypatch):
-    """THE CONTROL THAT SAYS THE RULE IS NOT "row 10 is special".
+    """The control that says the rule is not "row 10 is special".
 
     `Ez` at :data:`FAR_ROW_SHIFT0_Y` deposits on the SAME stored row the far ghost
     reflects from, but `Dz`'s Yee shift on the folded axis is 0, so
@@ -564,7 +564,7 @@ def test_a_deposit_off_the_mirror_row_on_the_same_folded_grid_is_carried_exactly
 
 
 # ---------------------------------------------------------------------------
-# A PERIODIC SEAM: ONE CELL IN TWO src_vol ENTRIES
+# A periodic seam: one cell in two src_vol ENTRIES
 # ---------------------------------------------------------------------------
 #
 # A full-height line on a periodic axis is placed as MEEP's loop_in_chunks places it:
@@ -661,7 +661,7 @@ def test_an_offdiagonal_row_is_refused_by_name(monkeypatch):
 
 
 def test_a_folded_cylindrical_axis_is_refused_by_name(monkeypatch):
-    """THE FOLD THE CLOSURE DOES NOT MODEL. `_mirror_phases` gives the cylindrical r
+    """The fold the closure does not model. `_mirror_phases` gives the cylindrical r
     axis a slot carrying (-1)^m rather than a mirror phase (stepping.py:2363) and its
     below-axis ghost is the r_to_minus_r image the shift helpers apply with
     per-component direction signs (:170-176), not the near fill's cell 0 <- cell 2. A
@@ -740,7 +740,7 @@ def test_no_absorber_at_all_is_refused_by_name(pair):
 
 @pytest.mark.parametrize("pair", ["B", "D"])
 def test_the_inactive_absorber_the_guard_refuses_really_does_diverge(monkeypatch, pair):
-    """THE NULL CONTROL FOR THE REFUSAL, and the mutation this test exists to catch.
+    """The null control for the refusal, and the mutation this test exists to catch.
 
     A refusal nothing measures is a refusal nobody can tell from taste. Bypassing the
     absorber clauses -- which is exactly what a regression to fail-open looks like --
@@ -759,7 +759,7 @@ def test_the_inactive_absorber_the_guard_refuses_really_does_diverge(monkeypatch
     _fused_then_repair(fields_b, pml_b, src_b, 0.0, dt, pair)
     differing = _differing(_words(fields_a), _words(fields_b))
     if pair == "D":
-        # MEASURED since the constitutive took MEEP's per-chunk forms: a layer absorbing
+        # Measured since the constitutive took MEEP's per-chunk forms: a layer absorbing
         # nowhere has no chunk carrying any layer, so the repair's form at every deposit
         # cell is the plain ``E = fresh`` -- the word the plain path writes -- and the
         # bypass is harmless on this seam. The refusal stands by name
@@ -781,7 +781,7 @@ def test_the_inactive_absorber_the_guard_refuses_really_does_diverge(monkeypatch
 
 
 def test_apply_refuses_an_inactive_absorber_whatever_save_was_told():
-    """THE BACKSTOP THAT NEEDS NO CALLER CHANGE.
+    """The backstop that needs no caller change.
 
     `apply` has always been handed the layer, and it is the only place the arithmetic
     lands, so it asserts the absorber clauses itself. A caller that reached `save`
@@ -849,7 +849,7 @@ def test_a_layer_whose_coefficients_cannot_be_read_is_refused_by_name(pair):
                          ids=["real", "complex", "dispersive"])
 def test_the_layer_the_shipped_products_run_on_is_still_admitted(pair, complex_storage,
                                                                  dispersive):
-    """THE REGRESSION CONTROL, and it is the reason the layout clause is per-axis.
+    """The regression control, and it is the reason the layout clause is per-axis.
 
     Every configuration the five Metal families declaring CARRIES_DEPOSIT_REPAIR serve
     carries an ACTIVE layer whose coefficients are the per-axis broadcast layout, and a
@@ -957,7 +957,7 @@ def test_the_magnetic_branch_repairs_what_update_H_actually_computes():
 
 
 # ---------------------------------------------------------------------------
-# THE SECOND REPAIR: deposit_repair.PLAIN_PATH
+# The second repair: deposit_repair.PLAIN_PATH
 # ---------------------------------------------------------------------------
 #
 # Everything above drives the SPLIT-FIELD repair, the inverse of
@@ -965,7 +965,7 @@ def test_the_magnetic_branch_repairs_what_update_H_actually_computes():
 # `update_E`'s plain branch with an inactive layer, which writes
 # `E[...] = (D - sum P) * inv_eps` straight to storage (stepping.py:1019-1022).
 #
-# WHY IT NEEDED A SECOND REPAIR RATHER THAN A RELAXED FIRST ONE. The split-field
+# Why it needed a second repair rather than a relaxed first one. The split-field
 # repair recomputes `field_old + ((kps*fresh) - (kms*fw_prev))` from state captured before
 # the launch. On the plain branch none of those three exists: `f_w_E*` is not
 # allocated at all, there are no kps/kms tables, and the previous field value is not
@@ -1061,7 +1061,7 @@ class _PlainInner:
 def _plain_fused_then_repair(fields, pml, sources, when, dt, repair=True):
     """Fused launch at the step_D consult, repair at the update_E consult.
 
-    DRIVES THE SHIPPED PLAN OBJECTS, not a copy of their logic: these are the exact
+    Drives the shipped plan objects, not a copy of their logic: these are the exact
     pair `launch._install_fused_pair` puts in a fused pair's two slots, with the
     `repair_paths` a product declaring `PLAIN_PATH` hands it.
     """
@@ -1094,7 +1094,7 @@ PLAIN_CASES = [
     # Ey one pole where Ex and Ez get two, so a repair that used one component's chain
     # for all three is caught here rather than nowhere.
     ("line on the one-pole component", 2, None, "Ey", (0.0, 0.0, 0.0), (0.0, 0.6, 0.0), 6),
-    # THE DEGENERATE CASE, admitted on purpose: with no pole driving anything
+    # The degenerate case, admitted on purpose: with no pole driving anything
     # `displacement_minus_polarization` returns the D array ITSELF (fields.py:1097-1098)
     # and the repair stores `D * inv_eps`. Nothing else covers a stored-E run with no
     # poles, and the aliasing is exactly the shape a repair that mutated its input
@@ -1142,7 +1142,7 @@ def test_the_plain_repair_is_byte_identical_to_the_driver_order(
                          ids=[case[0] for case in PLAIN_CASES])
 def test_withholding_the_plain_repair_diverges(
         name, poles, conductivity, component, center, size, steps):
-    """THE NULL CONTROL. Every case above must be able to tell the repair from its
+    """The null control. Every case above must be able to tell the repair from its
     absence, or its pass is worth nothing."""
     grid_a, fields_a, pml_a = _plain_build(poles=poles, conductivity=conductivity)
     _grid_b, fields_b, pml_b = _plain_build(poles=poles, conductivity=conductivity)
@@ -1177,20 +1177,20 @@ def test_the_plain_path_admits_it_and_names_what_it_refuses():
     assert deposit_repair.repairable(fields, "D", pml, paths=PLAIN) == (True, ())
     assert deposit_repair.repairable(fields, "D", None, paths=PLAIN) == (True, ())
 
-    # THE MAGNETIC SEAM IS REFUSED, and this is the clause that keeps a vacuous repair
+    # The magnetic seam is refused, and this is the clause that keeps a vacuous repair
     # from reporting success: with an inactive layer `update_H` returns without touching
     # H, so there is no stored value to put back.
     ok, reasons = deposit_repair.repairable(fields, "B", pml, paths=PLAIN)
     assert not ok and any("update_H returns without touching H" in r for r in reasons)
 
-    # AN ACTIVE LAYER, offered to the plain path: refused, naming the split-field
+    # An active layer, offered to the plain path: refused, naming the split-field
     # recurrence it would have dropped.
     _g, active_fields, active_pml = _build()
     assert active_pml.is_active
     ok, reasons = deposit_repair.repairable(active_fields, "D", active_pml, paths=PLAIN)
     assert not ok and any("SPLIT-FIELD" in reason for reason in reasons), reasons
 
-    # NO LAYER AT ALL, offered to a plain-only caller: refused, because which
+    # No layer at all, offered to a plain-only caller: refused, because which
     # recurrence ran cannot be established without one. This is the clause that stops
     # the second path from admitting on ignorance the way the first one may not.
     ok, reasons = deposit_repair.repairable(fields, "D", paths=PLAIN)

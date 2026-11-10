@@ -1,7 +1,7 @@
 """The COMPLEX no-absorber THREE-SLOT weld: ``step_D`` -> ``update_E`` -> ``update_P``
 in ONE launch per component, the register hand-off carried across BOTH seams.
 
-THE SECOND THREE-SLOT PRODUCT ON THIS TRACK, and the one the first one's record said
+The second three-slot product on this track, and the one the first one's record said
 it was NOT: ``cuda_three_slot_dispersive_weld_2026-09-03`` names the four
 ``cuda_no_pml_complex_fused_electric_pair`` rows -- ``tests:TestLoadDump.test_load_
 dump_{chunk_layout_file_3d, chunk_layout_sim_3d, structure_3d, structure_sharded_3d}``,
@@ -13,7 +13,7 @@ product declares no bracket; with nothing between update_E and update_P a regist
 hand-off is available there". This module is that shape.
 
 =============================================================================
-THE COLLISION IT RESOLVES, MEASURED
+The collision it resolves, measured
 =============================================================================
 
 On those four rows the composer selects, slot by slot, ``step_D`` = ``complex no-PML
@@ -30,17 +30,17 @@ all three slots makes no trade and serves both seams -- exactly what the real
 three-slot weld does for its ten rows.
 
 =============================================================================
-WHY THIS ONE MAY BE A SINGLE LAUNCH WHERE THE REAL WELD COULD NOT
+Why this one may be a single launch where the real weld could not
 =============================================================================
 
 The real weld runs in TWO device groups with ``deposit_repair.apply`` between them,
 because every one of its rows carries an ELECTRIC deposit inside the D seam and the
 repair recomputes the constitutive product through
-``Fields.displacement_minus_polarization``, which subtracts ``P`` AS IT STANDS. Its
+``Fields.displacement_minus_polarization``, which subtracts ``P`` as it stands. Its
 probe measured the single-launch ordering (``p_inside_the_launch``) diverging on 6 of
 7 configurations, at the deposit cells.
 
-HERE THERE IS NO DEPOSIT AND NO REPAIR, and that is a predicate fact rather than a
+Here there is no deposit and no repair, and that is a predicate fact rather than a
 hope: the D->E half this product conjoins declares ``CARRIES_DEPOSIT_REPAIR = False``
 and refuses every electric in-seam source by name (all four rows of the cell declare
 ``source_field_types == ['B']``, injected one seam earlier). Between the ``step_D``
@@ -67,10 +67,10 @@ the array path, the certified singles, and both two-slot arrangements -- because
 "nothing reads what it writes" is the kind of claim this track has been wrong about.
 
 =============================================================================
-WHAT IS LIFTED, AND WHAT IS NEW
+What is lifted, and what is new
 =============================================================================
 
-NOTHING IS RE-DERIVED. Three certified bodies are spliced, each read off the module
+Nothing is re-derived. Three certified bodies are spliced, each read off the module
 that owns it at emission time so a drift raises here rather than compiling:
 
 * the CURL BLOCK for one component, from :mod:`.no_pml_complex_fused_electric_pair`'s
@@ -93,7 +93,7 @@ The only hand-written device text is the signature. :data:`LIFT_EDITS` is the wh
 list of edits, as data.
 
 =============================================================================
-THE LAUNCH: THREE PER STEP, HOST ROTATION BETWEEN
+The launch: three per step, host rotation between
 =============================================================================
 
 One launch per E component, ALWAYS three (a component with no driving state still
@@ -105,7 +105,7 @@ E->P weld's launcher, transcribed. The array path performs the same three sub-st
 in 3 + 1 + sum(driven) launches through the certified singles.
 
 =============================================================================
-HOW THIS STAYS OUT OF THE TWO PRODUCTS' WAY, AND WHERE THE ARBITRATION IS
+How this stays out of the two products' way, and where the arbitration is
 =============================================================================
 
 Its predicate is the CONJUNCTION of both shipped predicates, so its admission set is
@@ -115,7 +115,7 @@ the ``update_E`` slot this product already holds -- the same two rules the real
 three-slot weld landed with, and the board's ``_loses_the_shared_slot`` withholds
 nothing from a column that serves both seams itself.
 
-THE THIRD CONSULT IS ANSWERED, NOT LAUNCHED. ``fused_pairs`` installs this as a
+The third consult is answered, not launched. ``fused_pairs`` installs this as a
 triple (leading half in ``step_D``, ``NoopPlan`` in ``update_E`` because the seam is
 empty, trailing half in ``update_P``); the leading half performs all three sub-steps
 and the trailing half is a NO-OP that must still answer the consult, because a
@@ -126,7 +126,7 @@ converse: advancing P at the trailing consult instead is ALSO byte-identical her
 which is the measurement that nothing sits between the two.
 
 =============================================================================
-NOTHING HERE IS DISPATCH
+Nothing here is dispatch
 =============================================================================
 
 ``meep_gpu.fastpath.plan_fast_path`` reaches no hand-CUDA product. This module ships
@@ -191,7 +191,7 @@ except ImportError:  # loaded by path, outside the package: the bit-identity pro
 
 
 # =============================================================================
-# THE PARTITION -- FLIPPED AHEAD OF THE GATE, 2026-09-04
+# The partition -- flipped ahead of the gate, 2026-09-04
 # =============================================================================
 #
 # Plain assignments with NO type annotation: the partition readers walk the syntax
@@ -213,7 +213,7 @@ CERTIFIED_KERNELS = (
 #: EMPTY since 2026-09-04; what emptied it was the run above.
 UNCERTIFIED_KERNELS = {}
 
-#: FALSE, AND IT IS THE PRODUCT'S WHOLE SHAPE. All four rows of the cell declare a
+#: False, and it is the product's whole shape. All four rows of the cell declare a
 #: magnetic source only, so the D seam is empty on 4 of 4 and no bracket is installed;
 #: the D->E half this predicate conjoins refuses every electric in-seam source by name
 #: (``deposit_repair.seam_source_reasons`` with its own ``carries_repair=False``), so
@@ -428,7 +428,7 @@ def _signature(arm_name: str, conductive: bool, component_index: int, count: int
                kinds: Sequence[bool]) -> str:
     """The fused signature for one curl arm, one component, one specialization.
 
-    THE ONLY HAND-WRITTEN DEVICE TEXT IN THIS MODULE, and it is a signature: no
+    The only hand-written device text in this module, and it is a signature: no
     arithmetic lives here. D appears EXACTLY ONCE (written by the curl, read from a
     register); E appears exactly once (stored); the bank appears once, NOT
     ``__restrict__`` because the spare slots are bound to ``inv_eps`` and never read
@@ -438,7 +438,7 @@ def _signature(arm_name: str, conductive: bool, component_index: int, count: int
     c = int(component_index)
     _target, _displacement, stem, count_name = _COMPONENTS[c]
     lines: List[str] = [f'extern "C" __global__ void {arm_name}(']
-    lines.append("    // THE SHARED VOLUME, BOUND ONCE: this component's D, written by")
+    lines.append("    // The shared volume, bound once: this component's D, written by")
     lines.append("    // the curl and read from a register by the constitutive.")
     lines.append(f"    float* __restrict__ f{c},")
     lines.append("    // B, the curl's operands (Fields.get_H returns the B arrays")
@@ -454,7 +454,7 @@ def _signature(arm_name: str, conductive: bool, component_index: int, count: int
     lines.append(f"    float* __restrict__ h{c},")
     lines.append("    // NOT __restrict__, the certified template's own declaration.")
     lines.append(f"    const float* inv_eps_{c},")
-    lines.append(f"    // THE POLE BANK, BOUND ONCE ({MAX_POLES} slots, the certified")
+    lines.append(f"    // The pole bank, bound once ({MAX_POLES} slots, the certified")
     lines.append("    // width); spare slots are bound to inv_eps and never read. NOT")
     lines.append("    // __restrict__: a spare may legitimately be inv_eps's pointer.")
     lines.append("    " + ", ".join(f"const float* {stem}{slot}"
@@ -473,7 +473,7 @@ def _signature(arm_name: str, conductive: bool, component_index: int, count: int
     lines.append("    int ph_x, int ph_y, int ph_z,")
     lines.append("    float pxr, float pxi, float pyr, float pyi, float pzr, float pzi,")
     lines.append(f"    int {count_name},")
-    lines.append("    // THE RUN'S CHUNK RECORD (chunk_map.chunk_bounds_record), int32[25]:")
+    lines.append("    // The run's chunk record (chunk_map.chunk_bounds_record), int32[25]:")
     lines.append("    // the lifted curl block reads its partner-presence word.")
     lines.append("    const int* __restrict__ cb")
     lines.append(") {")
@@ -512,8 +512,8 @@ def three_slot_no_pml_complex_source(conductive: bool, component_index: int,
         block,
         "\n    // THE CONSTITUTIVE, value-named: stepping.update_E's no-PML store for\n"
         "    // this component, reading D from the register the curl just stored\n"
-        "    // (THE FIRST SEAM) and naming the product so the recurrence reads it\n"
-        "    // from a register (THE SECOND SEAM). fields.drive_field(c) IS the\n"
+        "    // (the first seam) and naming the product so the recurrence reads it\n"
+        "    // from a register (the second seam). fields.drive_field(c) IS the\n"
         "    // stored E without an absorber (fields.py:1140-1163).\n",
         _certified_constitutive_value(c),
         _certified_poles(c, count, kinds),
@@ -545,7 +545,7 @@ def device_sources() -> Dict[str, str]:
 
 
 # =============================================================================
-# COMPILATION AND LAUNCH
+# Compilation and launch
 # =============================================================================
 
 #: NVRTC compile options -- CORRECTNESS, not performance, identical to every certified
@@ -555,7 +555,7 @@ _COMPILE_OPTIONS: Tuple[str, ...] = ('--fmad=false',)
 #: Lanes per block, one COMPLEX CELL per lane.
 _FUSED_THREADS = 256
 
-#: THE GATE'S DOOR into the emitted text: ``None`` in every shipped path; a probe
+#: The gate's door into the emitted text: ``None`` in every shipped path; a probe
 #: assigns a ``(conductive, component, count, kinds, source) -> source`` callable.
 SOURCE_TRANSFORM: Optional[Any] = None
 
@@ -569,7 +569,7 @@ def _get_kernel(conductive: bool, component_index: int, count: int,
                 sigma_kinds: Sequence[bool]):
     """Compile one specialization, memoized on (name, options, policy, source).
 
-    THE SOURCE IS EMITTED PER CALL: it is part of the memo key, and a gate mutates
+    The source is emitted per call: it is part of the memo key, and a gate mutates
     this family through :data:`SOURCE_TRANSFORM`. The memo key's FIRST element is the
     kernel symbol followed by the specialization axes, so a launch counter keyed on
     the symbol prefix sees every specialization of one arm.
@@ -731,7 +731,7 @@ def run_three_slot_no_pml_complex(fields: Any, grid: Any, *,
                                   chunk_bounds: Any) -> Dict[str, Any]:
     """All three of :data:`REPLACES`: three launches, host rotation between.
 
-    THE ROTATION IS TRANSCRIBED from dispersion.py:689-691 and run once per driving
+    The rotation is transcribed from dispersion.py:689-691 and run once per driving
     state after each component launch RETURNS, exactly as the certified launchers
     and the E->P weld run it. Every slot is re-read after the previous component's
     rotation through :func:`component_specs`.
@@ -749,7 +749,7 @@ def run_three_slot_no_pml_complex(fields: Any, grid: Any, *,
     if boundary_codes is None:
         boundary_codes = complex_boundary_codes(grid)
     if phase_flags is None or phase_values is None:
-        # THE D CURL'S TABLE: complex_emitter.KERNELS['step_D'][1] is True.
+        # The D curl's table: complex_emitter.KERNELS['step_D'][1] is True.
         derived_flags, derived_values = bloch_phase_arguments(grid, True)
         phase_flags = derived_flags if phase_flags is None else phase_flags
         phase_values = derived_values if phase_values is None else phase_values
@@ -772,23 +772,23 @@ def run_three_slot_no_pml_complex(fields: Any, grid: Any, *,
             state.P[target] = scratch
             state.P_prev[target] = p
             state._scratch = p_prev
-    # THE GROUP'S LAUNCH GRID, AND WHY A COMPONENT-MAJOR AGGREGATE HAS TO SPELL ONE.
+    # The group's launch grid, and why a component-major aggregate has to spell one.
     # ``fastpath._launch_grid_of`` reads ``blocks`` off this report through
     # ``_TripleHalfPlan.launch_grid``, and ``FastPathPlan.launch_counters`` turns it
     # into ``programs_per_dispatch`` -- the counter that separates "a kernel
     # launched" from "a kernel computed over data", which a warm launch at
     # ``grid=(0,)`` passes in every other counter.
     #
-    # THIS PRODUCT IS THE FIRST TO PUT A MULTI-LAUNCH GROUP ON A *LEADING* SLOT. The
+    # This product is the first to put a multi-launch group on a *leading* slot. The
     # real weld's component-major aggregate
     # (``three_slot_dispersive_weld.run_three_slot_polarization``) spells no
     # ``blocks`` either, but it sits on ``update_P``, and the route gate probes
     # programs on ``step_B``/``step_D`` only -- so its ``None`` was never read and
-    # the gap stayed invisible. MEASURED on the GPU host 2026-09-14: complex_no_pml_3d
+    # the gap stayed invisible. Measured on the GPU host 2026-09-14: complex_no_pml_3d
     # reported ``step_D programs_per_dispatch: null`` against 600 dispatches and
     # ``plan_launches`` 600, and the route refused the case as VACUOUS-PASS.
     #
-    # THE TOTAL, NOT ONE COMPONENT'S, because the counter is programs per DISPATCH
+    # The total, not one component's, because the counter is programs per DISPATCH
     # and one dispatch of this slot launches every component. It is the same
     # summation ``launch_counters`` already performs over a list-valued slot, where
     # ``update_P``'s per-susceptibility plans are reported as the list's total.
@@ -806,7 +806,7 @@ def covers_three_slot_complex_no_pml_dispersive_weld(
         fields: Any, pml: Any, grid: Any, sources: Any = None) -> Tuple[bool, str]:
     """May three per-component launches span ``step_D`` -> ``update_E`` -> ``update_P``?
 
-    A CONJUNCTION OF TWO SHIPPED PREDICATES, AND NOTHING IS WEAKENED. The D->E half is
+    A conjunction of two shipped predicates, and nothing is weakened. The D->E half is
     ``no_pml_complex_fused_electric_pair.covers_no_pml_complex_fused_electric_pair``
     whole -- the SOURCE question is asked there, through
     ``deposit_repair.seam_source_reasons`` with that module's ``carries_repair=False``,
@@ -817,7 +817,7 @@ def covers_three_slot_complex_no_pml_dispersive_weld(
     dropped guard's extent identity are asked. Each refusal is prefixed with the side
     that said it.
 
-    THE ADMISSION SET IS A SUBSET OF EACH HALF'S, which is what
+    The admission set is a subset of each half's, which is what
     ``fused_pairs._superseded_by_a_longer_span`` needs. Disjoint from both real
     three-slot welds on storage alone (their halves refuse complex64 by name).
     """

@@ -31,7 +31,7 @@ Legs, in order (``--legs`` selects a subset):
   real-layer coefficient tables cut at Courant 0.35 AND 0.5. The reference side
   of every comparison is computed on NUMPY (host IEEE keep), so the sweep is
   the ship-configuration comparison end to end. NOTE dtdx does not enter this
-  sub-step's arithmetic at all — the non-power-of-two-Courant mandate lands in
+  sub-step's arithmetic at all — the non-power-of-two-Courant requirement is met in
   the real-layer coefficient tables here and in the composition probe's whole
   steps, and the artifact says so rather than sweeping a dead parameter.
 * ``subnormal``  — the deliberately-seeded cancellation class, REPORTED
@@ -440,7 +440,7 @@ BOUNDARY_CONFIGS: Tuple[Tuple[str, str, str], ...] = (
     (PERIODIC, METALLIC, PERIODIC),
 )
 #: Real-layer coefficient tables are additionally cut at these Courant numbers
-#: (the mandate's home in a sub-step dtdx never enters).
+#: (where the non-power-of-two-Courant requirement is met, in a sub-step dtdx never enters).
 LAYER_COURANTS = (0.35, 0.5)
 
 
@@ -1200,7 +1200,7 @@ SHIPPED_KERNEL_NAME = "nonlinear_constitutive_step"
 def compile_renamed_mutant(source: str, tag: str):
     """Compile a mutant of the shipped kernel under its own name: ``<shipped>_<tag>``.
 
-    THE RENAME IS WHAT KEEPS THE JIT CACHE HONEST. Measured on an RTX A6000 with Triton
+    The rename is what keeps the JIT cache honest. Measured on an RTX A6000 with Triton
     3.1.0: compiled under the shipped name, after nineteen other mutants in the same
     process, the Dsqr-in-float32 mutant read as moving E words on the mutation case,
     where the same mutant compiled under a fresh name (and the host transcription) moves
@@ -1338,7 +1338,7 @@ def mutate_m6_pair_up_partner_axis(source: str) -> Tuple[str, int]:
 # plus the CODE indentation — after shipped_source()'s dedent, _pade_u's body
 # sits at four spaces while its docstring example sits at eight — so the
 # docstring line is neither counted nor rewritten and 'sites' reports exactly
-# the arithmetic sites (the audit's m7/m8 sites=2-for-1 inflation).
+# the arithmetic sites (matching the docstring too once inflated m7/m8 to sites=2 for 1).
 _M7_C2_NEEDLE = "\n    c2 = (gs * chi2) * us_sq"
 _M7_C3_NEEDLE = "\n    c3 = (dsqr * chi3) * us_cu"
 
@@ -1380,7 +1380,7 @@ def mutate_m10_store_order(source: str) -> Tuple[str, int]:
             len(pattern.findall(source)))
 
 
-# The B battery (KERNELS.md §7.2) and the old constitutive grouping (§7.1).
+# The per-chunk form battery (docs/development/certification.md#chunk-form-battery) and the old constitutive grouping (#inverted-grouping-mutations).
 _TAIL = re.compile(r"a(\d) = constitutive_form\(a\1, prev\1, src\1, kp_\1, km_\1, dw\1\)")
 _DW = re.compile(r"(dw\d = record_in\(cb, RECORD_HALF_INTEGER \+ \d, [ijk]\))")
 
@@ -1456,7 +1456,7 @@ def mutate_null_commuted_multiply(source: str) -> Tuple[str, int]:
 
     The rewrite targets the NL arm ON PURPOSE: armed on ``chi3_scalar`` the
     plan is ``nonlinear=(1,1,1)``, so the ``tl.constexpr`` specialization
-    traces exactly these three lines. (The audit demonstrated the earlier
+    traces exactly these three lines. (It was demonstrated that the earlier
     form of this control rewrote only the ``else:`` linear arms — compile-time
     DEAD under NL=(1,1,1) — so its 'not caught' verdict was an unchanged
     binary, not commutativity. The linear arms get their own live control
@@ -1949,7 +1949,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 failures.append("synthetic")
             # An error row (VACUOUS, or any exception one_case recorded) is a
             # case that measured nothing — a FAILURE, never an exclusion from
-            # 'ran'. The audit demonstrated a sweep of vacuous cases could
+            # 'ran'. It was demonstrated that a sweep of vacuous cases could
             # otherwise still headline 'passed'.
             if summary["errors"]:
                 failures.append(
@@ -1990,7 +1990,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     # A device leg that was REQUESTED but could not run must not leave a
     # certification-shaped headline: 'passed' with every device leg skipped is
-    # reachable with zero kernel launches (the audit demonstrated it on this
+    # reachable with zero kernel launches (as demonstrated on a
     # laptop). Status and exit code say so instead — 75 is the composition
     # probe's cannot-certify-here convention.
     device_legs_skipped = device_requested and not device_legs_executed

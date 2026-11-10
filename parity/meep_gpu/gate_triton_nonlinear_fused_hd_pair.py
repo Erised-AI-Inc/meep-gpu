@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """DEVICE byte gate: the Triton H->D weld driven on a NONLINEAR run.
 
-ONE BOARD CELL, TWO SEAM-INSTANCES, **AND NO NEW KERNEL**::
+One board cell, two seam-instances, **and no new kernel**::
 
     H_to_D  (nonlinear run -> nonlinear run PML)  2
         examples:3rd-harm-1d.py
@@ -10,7 +10,7 @@ ONE BOARD CELL, TWO SEAM-INSTANCES, **AND NO NEW KERNEL**::
 Read off ``results/fusion_matrix_triton_2026-09-07_cyl/fusion_matrix.json``
 (``aggregate.h_to_d_seam.instances``, ``one_per_row`` true, denominator 597).
 
-**THIS GATE CERTIFIES NO NEW KERNEL, AND THAT IS THE HEADLINE RATHER THAN A FOOTNOTE.**
+**This gate certifies no new kernel, and that is the headline rather than a footnote.**
 ``meep_gpu/triton_kernels/nonlinear_fused_hd_pair.py`` adds one predicate, one plan
 builder and one checkable identity. The kernel a covered configuration launches is
 ``fused_hd_pair.fused_constitutive_curl_H_to_D``, character for character, through
@@ -20,17 +20,17 @@ to the array path over complete driver steps. The released ``fused_hd_pair`` art
 does not contain that measurement, because its own predicate refuses every nonlinear
 run through ``coverage._grid_reasons`` clause 10.
 
-THE COVERAGE WAS NOT ALREADY OPEN ON THIS BACKEND, and this gate records the check
+The coverage was not already open on this backend, and this gate records the check
 rather than asserting it: ``launch.CERTIFIED_FUSED_PAIR_EXTRA_ARMS`` carries two rows
 and neither is ``fused_hd_pair``'s, and ``launch.CERTIFIED_FUSED_PAIR_ARMS`` carries no
 ``fused_hd_pair`` row at all. (On the Metal board the analogous row has existed since
-2026-09-05, so the 2026-09-07 Metal lane supplied an OWED MEASUREMENT there rather than
+2026-09-05, so the 2026-09-07 Metal gate run supplied an owed measurement there rather than
 opening the cell. Here the cell is opened.)
 
-THE MUTATIONS ARE CUT FROM ``fused_hd_pair.py``, in memory, because that is the file
+The mutations are cut from ``fused_hd_pair.py``, in memory, because that is the file
 whose bytes this admission launches. Nothing on disk is edited.
 
-THE EXTRA LEG THIS GATE CARRIES is ``equivalence``: the family's own
+The extra leg this gate carries is ``equivalence``: the family's own
 ``nonlinear_fused_hd_pair_equivalence`` states, as data, that this predicate is never
 WIDER than the two shipped spine arms it claims to inherit -- the one failure this
 construction can have.
@@ -77,7 +77,7 @@ class NonlinearProduct(kit.Product):
     gate = GATE
     family = family
     complex_storage = False
-    #: THE MUTATIONS ARE CUT FROM THE WELDED FAMILY'S FILE, because that is the file
+    #: The mutations are cut from the welded family's file, because that is the file
     #: whose bytes a covered configuration launches. The kit reads it and execs an
     #: in-memory copy; nothing on disk is edited.
     family_path = "meep_gpu/triton_kernels/fused_hd_pair.py"
@@ -109,7 +109,7 @@ class NonlinearProduct(kit.Product):
         ("chi3_ppm", {"boundaries": {"z": "metallic"}}),
         ("chi2_and_chi3_mmm",
          {"boundaries": {axis: "metallic" for axis in "xyz"}, "chi2": 0.02}),
-        # THE RUN'S FIRST update_H on the mutation fixture's grid: unseparated, so
+        # The run's first update_H on the mutation fixture's grid: unseparated, so
         # every arrangement performs MEEP's start of H at step 1 (the array path in
         # update_H, the weld through its start_h scalar; the rotation and the flag
         # both reach the engine through the admission's view). Every fixture above is
@@ -167,16 +167,16 @@ class NonlinearProduct(kit.Product):
                    "recompute reads B where it needs B_prev",
         },
         # -- the welded kernel's forms, on this admission's fixtures (the full
-        # KERNELS.md 7.1 / 7.2 battery is gate_triton_fused_hd_pair's, on the same
+        # form-mutation battery is gate_triton_fused_hd_pair's, on the same
         # bytes; these rows show the harness sees a form defect on a chi3 run) --
         "a1_pairwise_curl_grouping": {
             "target": "kernel", "expected": "CAUGHT", "hits": 1,
             "old": "        curl0 = curl_stencil(c_y, c, b, b_z, dtdx, py, pz)\n",
             "new": "        curl0 = dtdx * ((c_y - c) + (b - b_z))\n",
-            "why": "INVERTED (KERNELS.md 7.1): Dx's curl takes the PREVIOUS package "
-                   "grouping, the pairwise `(g1s - g1) + (g2 - g2s)`, in place of MEEP's "
-                   "left-to-right `((g1s - g1) + g2) - g2s` that forms.curl_stencil "
-                   "spells",
+            "why": "INVERTED (docs/development/certification.md#inverted-grouping-mutations): "
+                   "Dx's curl takes the PREVIOUS package grouping, the pairwise `(g1s - g1) + "
+                   "(g2 - g2s)`, in place of MEEP's left-to-right `((g1s - g1) + g2) - g2s` "
+                   "that forms.curl_stencil spells",
         },
         "b1_whole_grid_recurrence": {
             "target": "kernel", "expected": "CAUGHT", "hits": 1,
@@ -209,9 +209,9 @@ class NonlinearProduct(kit.Product):
             "target": "kernel", "expected": "NULL", "hits": 1,
             "old": "        p0 = tl.load(u0 + idx, mask=live & du0, other=0.0)\n",
             "new": "        p0 = tl.load(u0 + idx, mask=live, other=0.0)\n",
-            "why": "PREDICTED NULL (KERNELS.md 7.2, the unconditional auxiliary load): "
-                   "off the dsigu chunk the selected form never consumes fu_Dx and its "
-                   "store stays masked; the guard is pinned by the lift",
+            "why": "PREDICTED NULL (the unguarded auxiliary load; "
+                   "docs/development/certification.md#chunk-form-battery): off the dsigu chunk the selected "
+                   "form never consumes fu_Dx and its store stays masked; the guard is pinned by the lift",
         },
         "m_rotation_skipped": {
             "target": "host", "expected": "CAUGHT",
@@ -248,7 +248,7 @@ class NonlinearProduct(kit.Product):
     def configure(self, driver: Any, spec: Mapping[str, Any]) -> None:
         """Install MEEP's instantaneous chi2/chi3 per E component.
 
-        THE PAIR IS INSTALLED TOGETHER, as MEEP does: ``set_chi3`` allocates a zero
+        The pair is installed together, as MEEP does: ``set_chi3`` allocates a zero
         ``chi2`` and vice versa, and this engine's setter takes both maps.
         """
         shape = tuple(int(n) for n in driver.grid.shape)
@@ -353,7 +353,7 @@ class NonlinearProduct(kit.Product):
                 "FALSE here: neither table carries a fused_hd_pair row on this "
                 "backend, so no product admitted this cell before this admission "
                 "existed. On the Metal board the analogous EXTRA_ARMS row has "
-                "existed since 2026-09-05, and a lane there supplies an OWED "
+                "existed since 2026-09-05, and a gate run there supplies an owed "
                 "measurement rather than opening the cell"),
             "arms": list(family.ARMS),
         }
@@ -378,7 +378,7 @@ class NonlinearProduct(kit.Product):
             conditions (a callable ``withdraw``, ``is_integrated``, and at least one
             source point). The third is not decoration: a stand-in without it is
             ADMITTED, and the refusal leg would then be measuring nothing -- caught on
-            this lane's first device smoke, 2026-09-08."""
+            the H->D tail gates' first device smoke, 2026-09-08."""
 
             component = "Ez"
             is_integrated = True
@@ -400,7 +400,7 @@ class NonlinearProduct(kit.Product):
             {"name": "standing_integrated_electric_withdraw", "fields": fields,
              "sources": (_IntegratedElectric(),), "must_refuse": True,
              "needle": "standing integrated"},
-            # THE INVERTED CLAUSE, IN BOTH DIRECTIONS: a LINEAR run belongs to the
+            # The inverted clause, in both directions: a LINEAR run belongs to the
             # ordinary weld and this admission must not overlap it.
             {"name": "linear_run_belongs_to_the_ordinary_weld", "fields": linear,
              "sources": (), "must_refuse": True,

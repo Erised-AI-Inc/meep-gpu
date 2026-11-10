@@ -1,15 +1,15 @@
 """Sub-step byte-identity gate for the NEW hand-CUDA CYLINDRICAL curl pair, m = 0.
 
-THE CLAIM UNDER TEST. ``meep_gpu/cuda_kernels/cylindrical_kernels.py`` ships two
+The claim under test. ``meep_gpu/cuda_kernels/cylindrical_kernels.py`` ships two
 kernels -- ``cyl_step_B_pml_real`` and ``cyl_step_D_pml_real`` -- and this gate asks
 whether, with the column-serial radial scan in front of each (``cylindrical_prefix``),
-they reproduce ``stepping.step_B`` / ``stepping.step_D`` WORD FOR WORD on a real Dcyl
-grid at m = 0 under a split-field PML, with MEEP's per-chunk forms (bit_parity_0_10
-DESIGN.md D1, D6, D10, D11; AP6c's Dcyl forms). Every launch binds the run's chunk
+they reproduce ``stepping.step_B`` / ``stepping.step_D`` word for word on a real Dcyl
+grid at m = 0 under a split-field PML, with MEEP's per-chunk forms (the array
+path's Dcyl forms since 1.0). Every launch binds the run's chunk
 record ``cb``.
 
 =============================================================================
-WHAT CYLINDRICAL ADDS, AND THEREFORE WHAT THIS GATE HAS TO BE ABLE TO SEE
+What cylindrical adds, and therefore what this gate has to be able to see
 =============================================================================
 
 Four things (``cylindrical_kernels``' docstring derives them off ``stepping.py``). The
@@ -26,13 +26,13 @@ would certify a Dcyl kernel against Cartesian defects:
    double(Hp[r=0]))`` as a POST-ADD (one double product, rounded once), then
    ``Dy[r=0] = 0``.
 
-And the per-chunk PML forms every root kernel now carries (KERNELS.md section 7.2):
+And the per-chunk PML forms every root kernel now carries (floating-point.md):
 the recurrence on the cells whose chunk carries the dsigu layer, the dsig-only form
-elsewhere, the auxiliary touched only on the recurrence's cells -- armed as the B
+elsewhere, the auxiliary touched only on the recurrence's cells -- armed as the form
 battery, with the record's bounds, lattices and flags as host and source mutations.
 
 =============================================================================
-THE SCAN IS MEASURED, AND ITS VERDICT IS ITS OWN GATE'S
+The scan is measured, and its verdict is its own gate's
 =============================================================================
 
 The kernels read the radial difference the shipped scan writes, so a diverging case
@@ -43,7 +43,7 @@ battery -- complex storage, many-chunk divisions, its own mutations, both polici
 is ``gate_cuda_cylindrical_scan.py``'s.
 
 =============================================================================
-THE FLOORS THAT REFUSE A VACUOUS PASS
+The floors that refuse a vacuous pass
 =============================================================================
 
 * ``oracle_moved`` — the fraction of output words the array path changed from the
@@ -80,8 +80,8 @@ because CuPy's disk-cache key is computed above the strip seam)::
         --subnormal-policy keep --out $OUT/keep/gate.json
 
 Laptop (no CUDA). The NumPy backend runs the SAME oracle, the same fixture, the same
-floors and the same HOST mutations against a transcription of the device tree. IT
-COMPILES NOTHING AND CERTIFIES NOTHING — what it settles is whether the harness can
+floors and the same HOST mutations against a transcription of the device tree. It
+compiles nothing and certifies nothing — what it settles is whether the harness can
 fail::
 
     python -u gate_cuda_cylindrical_real.py --backend numpy --out /tmp/cyl_local.json
@@ -168,7 +168,7 @@ SUB_STEP_ARRAYS: Dict[str, Dict[str, Any]] = {
                "backward": True},
 }
 
-#: The six curl terms as the SHIPPED CYLINDRICAL KERNELS spell them, transcribed from
+#: The six curl terms as the shipped cylindrical kernels spell them, transcribed from
 #: ``cylindrical_kernels.py``'s two device strings. Read as ``(target, aux, first,
 #: first's axis, second, second's axis, dsig axis, dsigu axis)``. ``Bz``'s entry is
 #: the Cartesian one and is NOT what the kernel computes — the B-side substitution
@@ -214,7 +214,7 @@ def outputs(sub_step: str) -> Tuple[str, ...]:
 # The case product
 # ---------------------------------------------------------------------------
 #
-# EVERY CASE IS A REAL Dcyl GRID at m = 0. `Grid` builds the r axis itself — its
+# Every case is a real Dcyl GRID at m = 0. `Grid` builds the r axis itself — its
 # boundary pair is not caller-facing (grid.py:498-508) — so the only boundary this
 # sweep chooses is z, and BOTH terminations appear, because they select different
 # code in the kernel's ghost rule and its ownership mask.
@@ -223,7 +223,7 @@ CASES: Tuple[Dict[str, Any], ...] = (
     # The reference shape, both z terminations.
     {"label": "r16_z20_metallic", "shape": (16, 1, 20), "z_kind": "metallic"},
     {"label": "r16_z20_periodic", "shape": (16, 1, 20), "z_kind": "periodic"},
-    # A WIDER RADIAL EXTENT: the scan's accumulated sum runs further, which is
+    # A wider radial extent: the scan's accumulated sum runs further, which is
     # where a decaying field reaches the subnormal band first.
     {"label": "r40_z16_metallic", "shape": (40, 1, 16), "z_kind": "metallic"},
     # ODD EXTENTS on both axes. The wall row lands on an odd row count and the
@@ -262,14 +262,14 @@ SHARED_SOURCE_MUTATIONS: Tuple[str, ...] = (
     "drop_fu_store",                      # the auxiliary-only defect
     "read_fprev_after_store",             # the aliasing trap
     "fortran_order_index_decomposition",  # i and k swapped: the curl's index defect
-    # THE TWO SHARED NULLS.
+    # The two shared nulls.
     "commute_dtdx_scale",
     "reload_fu_from_memory",
 )
-#: THIS GATE'S NEEDLE TABLE for the shared battery above, every one borrowed from the
+#: This gate's needle table for the shared battery above, every one borrowed from the
 #: probe's shared default. The pair lifts the root pair's prelude (``curl_stencil``,
 #: the chunk-keyed ``pml_apply``), which is the text the shared default is spelled on
-#: (``regroup_stencil`` inverted to the pairwise grouping the pair carried until 0.10;
+#: (``regroup_stencil`` inverted to the pairwise grouping the pair carried before 1.0;
 #: ``gate_needles.py``).
 SHARED_NEEDLES = gate_needles.gate_table(
     "gate_cuda_cylindrical_real", probe.SOURCE_MUTATIONS, SHARED_SOURCE_MUTATIONS)
@@ -316,24 +316,24 @@ _DZ_TAIL = ("        if (bc_y == BC_METALLIC && j == 0) curl = 0.0f;\n"
 def _drop_bz_radial_substitution(source: str) -> Tuple[str, int]:
     """Bz's curl becomes the ordinary Cartesian four-operand one.
 
-    THE WHOLE B-SIDE SUBSTITUTION, deleted. ``stepping.step_B`` replaces that curl with
+    The whole B-side substitution, deleted. ``stepping.step_B`` replaces that curl with
     dtdx times the radial difference of MEEP's per-chunk ``f_rderiv_int``; a kernel that
     computed ``dEy/dr - dEx/dphi`` instead solves Cartesian Maxwell on a cylindrical grid
-    -- smooth, plausible and wrong everywhere off the axis. MUST BE CAUGHT.
+    -- smooth, plausible and wrong everywhere off the axis. Must be caught.
     """
     return _needle(_RADIAL_CURL, _CARTESIAN_BZ)(source)
 
 
 def _radial_curl_commuted(source: str) -> Tuple[str, int]:
     """A NULL: ``rad[idx] * dtdx`` for ``dtdx * rad[idx]``. IEEE multiplication commutes
-    bitwise; paired with the substitution legs on the same line. MUST BE UNCAUGHT."""
+    bitwise; paired with the substitution legs on the same line. Must be uncaught."""
     return _needle(_RADIAL_CURL, "        float curl = rad[idx] * dtdx;\n")(source)
 
 
 def _drop_axis_zero_bx(source: str) -> Tuple[str, int]:
     """``Bx[r=0] = 0`` deleted (``stepping._cylindrical_axis_zero_B``, m = 0).
 
-    A radial vector at r = 0 points nowhere. MUST BE CAUGHT.
+    A radial vector at r = 0 points nowhere. Must be caught.
     """
     return _needle("    if (i == 0) Bx[idx] = 0.0f;\n", "")(source)
 
@@ -343,7 +343,7 @@ def _drop_dz_radial_substitution(source: str) -> Tuple[str, int]:
 
     ``stepping.step_D`` replaces that curl with dtdx times the backward radial difference
     of Hp's per-chunk sum. Without it the Dz update computes ``dHp/dr`` where cylindrical
-    Maxwell needs ``(1/r)d(r*Hp)/dr``. MUST BE CAUGHT.
+    Maxwell needs ``(1/r)d(r*Hp)/dr``. Must be caught.
     """
     return _needle(_RADIAL_CURL, _CARTESIAN_DZ)(source)
 
@@ -353,8 +353,8 @@ def _radial_into_dx(source: str) -> Tuple[str, int]:
 
     ``stepping.step_D`` substitutes for the Dz TERM only; ``Dx`` reads the untouched
     ``magnetic`` mapping. The two operands differ by a whole radial integral, so this is
-    a wrong answer on a component the substitution has nothing to do with. MUST BE
-    CAUGHT.
+    a wrong answer on a component the substitution has nothing to do with. Must be
+    caught.
     """
     return _needle("        float f2 = Hy[idx];\n"
                    "        float ss = shift_dn(Hy, idx, k, nz, sz, bc_z);\n",
@@ -365,7 +365,7 @@ def _radial_into_dx(source: str) -> Tuple[str, int]:
 def _drop_axis_zero_dy(source: str) -> Tuple[str, int]:
     """``Dy[r=0] = 0`` deleted (``stepping._cylindrical_axis_zero_D``, m = 0).
 
-    An azimuthal vector at r = 0 has no direction to point. MUST BE CAUGHT.
+    An azimuthal vector at r = 0 has no direction to point. Must be caught.
     """
     return _needle("        Dy[idx] = 0.0f;\n", "")(source)
 
@@ -375,24 +375,24 @@ def _drop_axis_add_dz(source: str) -> Tuple[str, int]:
 
     ``4*Courant*Hp`` at the axis row is the analytic limit of ``(1/r)d(r*Hp)/dr`` there
     (step_db.cpp:299-341), and the radial difference cannot supply it because the curl is
-    masked on that row. MUST BE CAUGHT.
+    masked on that row. Must be caught.
     """
     return _needle(_AXIS_ADD, "")(source)
 
 
 def _fold_axis_add_into_curl(source: str) -> Tuple[str, int]:
-    """The on-axis Dz increment FOLDED INTO THE CURL instead of post-added.
+    """The on-axis Dz increment folded into the curl instead of post-added.
 
-    A DECLARED NULL SINCE THE PER-CHUNK FORMS (re-read under KERNELS.md section 7.1, and
+    A declared null since the per-chunk forms (re-read under MEEP's grouping, and
     measured UNCAUGHT on 4 of 4 specs on the device, keep). It was caught while the
     split-field recurrence ran on every cell, because the folded increment reached
     ``fu_Dz`` on the axis row. Now the axis row carries no Dz layer (dsig R: the r
     layer sits at r-high only; dsigu phi: never a layer), so Dz takes the plain form
-    there and ``fu_Dz`` is untouched (the auxiliary contract, C2); and the ownership
+    there and ``fu_Dz`` is untouched (the auxiliary contract); and the ownership
     mask has made the row's curl ``+0``. The fold is then ``f - (+0 - a)`` against
     MEEP's ``(f - +0) + a``: the same word exactly, except for the signed-zero pair
     ``f = -0``, ``a = +0`` (``Hp[0] = +0``), which this case matrix does not plant.
-    MUST BE UNCAUGHT here.
+    Must be uncaught here.
     """
     folded = _DZ_TAIL.replace(
         "        pml_apply(",
@@ -409,7 +409,7 @@ def _axis_product_in_float32(source: str) -> Tuple[str, int]:
 
     MEEP forms ``realnum(double(4*Courant) * double(Hp))`` and rounds once
     (``stepping._realnum_double_product``); a float32 factor is a different word wherever
-    ``4*Courant`` is not a float32 word, which 0.35 is not. MUST BE CAUGHT at the inexact
+    ``4*Courant`` is not a float32 word, which 0.35 is not. Must be caught at the inexact
     Courant, the only one the battery runs.
     """
     return _needle(_AXIS_ADD, "        Dz[idx] = Dz[idx] + (((float)axis_courant) * "
@@ -418,7 +418,7 @@ def _axis_product_in_float32(source: str) -> Tuple[str, int]:
 
 def _axis_product_commuted(source: str) -> Tuple[str, int]:
     """A NULL: the double product's two factors commuted. Double multiplication commutes
-    bitwise; paired with :func:`_axis_product_in_float32`. MUST BE UNCAUGHT."""
+    bitwise; paired with :func:`_axis_product_in_float32`. Must be uncaught."""
     return _needle("__double2float_rn(axis_courant * (double)(Hy[idx]))",
                    "__double2float_rn((double)(Hy[idx]) * axis_courant)")(source)
 
@@ -430,7 +430,7 @@ def _restore_r_ghost_hz(source: str) -> Tuple[str, int]:
     and the ``(-1)^m`` phase; at m = 0 the phase is +1 and Hz is a z-direction
     component, so its ghost is ``+Hz[row 0]``. The kernel serves the METALLIC zero
     instead. It is UNOBSERVABLE because ``Dy`` has r-Yee shift 0 and the ownership mask
-    zeroes its curl at exactly that row. MUST BE UNCAUGHT; its paired twin
+    zeroes its curl at exactly that row. Must be uncaught; its paired twin
     :func:`_restore_r_ghost_hz_no_mask` drops the mask and MUST be caught.
     """
     return _needle("        float ss = shift_dn(Hz, idx, i, nx, sx, bc_x);\n",
@@ -440,13 +440,13 @@ def _restore_r_ghost_hz(source: str) -> Tuple[str, int]:
 def _restore_r_ghost_hz_no_mask(source: str) -> Tuple[str, int]:
     """The ghost restored AND Dy's r mask dropped -- the paired twin.
 
-    A DECLARED NULL SINCE THE PER-CHUNK FORMS (re-read under KERNELS.md section 7.1, and
+    A declared null since the per-chunk forms (re-read under MEEP's grouping, and
     measured UNCAUGHT on 4 of 4 specs on the device, keep). The ghost reaches only Dy's
     axis-row curl. While the recurrence ran on every cell it reached ``fu_Dy`` there
     and was caught; now the axis row carries no Dy dsigu (r) layer, so ``fu_Dy`` is
-    untouched there (C2), and the m = 0 axis rule stores ``Dy[0] = +0`` after the
-    recurrence (``stepping._cylindrical_axis_zero_D``; :func:`_drop_axis_zero_dy` is the
-    caught leg on that store). MUST BE UNCAUGHT here.
+    untouched there (the auxiliary contract), and the m = 0 axis rule stores
+    ``Dy[0] = +0`` after the recurrence (``stepping._cylindrical_axis_zero_D``;
+    :func:`_drop_axis_zero_dy` is the caught leg on that store). Must be uncaught here.
     """
     out, sites = _restore_r_ghost_hz(source)
     if not sites:
@@ -461,7 +461,7 @@ def _restore_r_ghost_hz_no_mask(source: str) -> Tuple[str, int]:
     return out.replace(needle, replacement), sites
 
 
-# --- KERNELS.md section 7.2: the B battery on the per-chunk forms -------------------
+# --- the per-chunk form battery (certification.md) ----------------------------------
 #
 # The record decode is the kernel's own (bounds_block.curl_entries), so each leg edits
 # the side's own lattice: the HALF-INTEGER record on B, the INTEGER one on D.
@@ -507,7 +507,7 @@ def _b_battery(side: str) -> Dict[str, Any]:
                     f"kms_x[i], sinv_x[i], in_{lat}_x);",
                     f"pml_apply({second}, fu_{second}, idx, curl, kms_z[k], sinv_z[k], "
                     f"kms_x[i], sinv_x[i], in_{lat}_z);"), True),
-        # The auxiliary stored on a plain cell (the auxiliary contract, C2).
+        # The auxiliary stored on a plain cell (the auxiliary contract).
         "auxiliary_stored_on_a_plain_cell": (
             _needle("    if (dsigu) fu[idx] = fu_new;\n", "    fu[idx] = fu_new;\n"),
             True),
@@ -550,15 +550,15 @@ CYLINDRICAL_SOURCE_MUTATIONS: Dict[str, Dict[str, Any]] = {
     },
 }
 
-#: Source mutations LIVE ONLY ON SOME SPECS, by construction: each maps to the spec
+#: Source mutations live only on some specs, by construction: each maps to the spec
 #: labels it must be caught on, and is a null control (must move no word) on the others.
 #: ``drop_metallic_mask`` removes the r AND z wall masks at once. On the D side the r mask
 #: is unobservable since the per-chunk forms (measured: uncaught on the periodic-z spec
 #: only, device, keep): the axis row of Dy is stored ``+0`` by the m = 0 axis rule after
 #: the recurrence, Dz's axis-row curl is ``dtdx`` times the backward difference's row 0,
 #: which no segment writes (``+0``, the word the mask stores), and no auxiliary is
-#: touched on that row (C2). Only the z wall mask bites, so the leg is live where z is
-#: metallic.
+#: touched on that row (the auxiliary contract). Only the z wall mask bites, so the
+#: leg is live where z is metallic.
 SOURCE_MUTATION_LIVE_ON: Dict[str, Tuple[str, ...]] = {
     "step_D:drop_metallic_mask": ("r16_z20_metallic", "r9_z17_metallic",
                                   "r12_z48_metallic"),
@@ -624,7 +624,7 @@ def build(xp, spec: Dict[str, Any], courant: float):
 def seed_state(fields, grid, value_class: str, rng) -> Dict[str, np.ndarray]:
     """Physical-band or subnormal-band values in EVERY array either sub-step touches.
 
-    THE AUXILIARIES START NONZERO in both classes. A zero ``fu`` makes ``kms*prev``
+    The auxiliaries start nonzero in both classes. A zero ``fu`` makes ``kms*prev``
     exactly zero on the first launch whatever ``kms`` holds, so a mis-indexed
     coefficient would only show from step two.
 
@@ -718,7 +718,7 @@ def case_record(grid, layer) -> np.ndarray:
 def host_mutated_record(name: Optional[str], record: np.ndarray, grid) -> np.ndarray:
     """Corrupt the chunk record a LAUNCH BINDS, leaving the oracle's division alone.
 
-    KERNELS.md section 7.2: ``record_bound_off_by_one`` moves each layered axis's low
+    Per-chunk form battery: ``record_bound_off_by_one`` moves each layered axis's low
     run end one row up on both lattices (the boundary plane changes form);
     ``record_lattices_swapped`` hands each lattice the other's runs (the boundary plane
     moves by one cell). The record itself for any other name.
@@ -832,7 +832,7 @@ def run_kernel_numpy(sub_step: str, fields, tables, codes, dtdx, radial, record)
     recurrence's cells), and the m = 0 axis rules with the on-axis Dz product formed in
     double and rounded once.
 
-    THIS COMPILES NOTHING AND CERTIFIES NOTHING. It cannot see a defect the NVRTC
+    This compiles nothing and certifies nothing. It cannot see a defect the NVRTC
     contraction guard exists for and it is not the shipped bytes. What it settles is
     whether the harness can fail.
     """
@@ -1066,7 +1066,7 @@ def one_case(backend: str, spec: Dict[str, Any], sub_step: str, courant: float,
              host_mutation: Optional[str] = None) -> Dict[str, Any]:
     """One frozen state, run twice: the array path, then the kernel.
 
-    THE ORACLE IS ``stepping`` ITSELF on real ``Grid``/``Fields``/``PML`` objects.
+    The oracle is ``stepping`` itself on real ``Grid``/``Fields``/``PML`` objects.
     There is no second transcription on the oracle leg to drift: the kernel is
     compared against the thing it claims to reproduce, byte for byte, from ONE frozen
     state — oracle runs, state is restored, kernel runs.
@@ -1155,7 +1155,7 @@ def one_case(backend: str, spec: Dict[str, Any], sub_step: str, courant: float,
                "words": int(parts[name]["total_floats"])}
         for name in outputs(sub_step)}
 
-    # Leg 3: the multi-step. ``fu`` IS STATE. ONE ``Fields`` object, run twice from
+    # Leg 3: the multi-step. ``fu`` is state. One ``Fields`` object, run twice from
     # the SAME frozen state, with the radial difference RESCANNED every launch on both
     # paths -- which is what a real driver does and what a cached one would get wrong.
     if host_mutation is None:
@@ -1224,7 +1224,7 @@ MUTATION_SPEC_LABELS: Tuple[str, ...] = (
 def scorable_baselines(results) -> Tuple[set, List[Dict[str, Any]]]:
     """The ``(label, sub_step)`` pairs whose UNMUTATED case was bit-identical.
 
-    A MUTATION LEG ONLY MEANS SOMETHING WHERE THE BASELINE IS IDENTICAL. On an arm
+    A mutation leg only means something where the baseline is identical. On an arm
     that already diverges, every leg — including one that must be UNCAUGHT — scores
     CAUGHT for free, because the divergence it is credited with was already there.
     Read off the primary sweep rather than re-run, so it cannot disagree with itself.
@@ -1394,7 +1394,7 @@ def run_source_mutations(results, out_path, scorable) -> Dict[str, Any]:
 def policy_is_non_vacuous(results, after_stamp) -> Dict[str, Any]:
     """Did this run actually compile UNDER the policy it claims, and can it prove it?
 
-    THE TWO POLICIES ARE EVIDENCED DIFFERENTLY, and a floor that demanded one number
+    The two policies are evidenced differently, and a floor that demanded one number
     of both is what the first cut of this gate got wrong — it refused a perfectly
     good ``flush`` leg for reporting zero strips, which is precisely what a policy
     that installs NO STRIP is supposed to report. The refusal was a defect in the
@@ -1588,6 +1588,7 @@ def save(results, out_path: str) -> None:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
+    import neutral_ids  # noqa: PLC0415
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--backend", choices=("cuda", "numpy"), default="cuda")
     parser.add_argument("--product", choices=("full", "reduced"), default="full")
@@ -1602,8 +1603,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     results: Dict[str, Any] = {
         "gate": "cuda_cylindrical_real",
         "started_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "host": os.uname().nodename,
-        "argv": list(argv if argv is not None else sys.argv[1:]),
+        "host": neutral_ids.machine_id(),
+        "argv": neutral_ids.argv(argv if argv is not None else sys.argv[1:]),
         "backend": args.backend,
         "product": args.product,
         "question": ("do the NEW hand-CUDA cylindrical curl kernels reproduce "
@@ -1670,7 +1671,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     if args.backend == "cuda":
         results["nvrtc_binary_report"] = probe.nvrtc_binary_report()
-        # THE POLICY STAMP, RE-READ AFTER EVERYTHING COMPILED. The stamp taken at
+        # The policy stamp, re-read after everything compiled. The stamp taken at
         # install time necessarily reports zero NVRTC calls and zero strips — nothing
         # had compiled yet — and an artifact whose strip counters read zero cannot
         # tell an INSTALLED policy from an INERT one, which is the exact failure a

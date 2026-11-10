@@ -1,6 +1,6 @@
 """The COMPLEX-BETA fused Metal pair: special_kz ``step_D`` welded into ``update_E``.
 
-:mod:`.complex_fused_electric_pair` WITH ONE EMITTER SWAPPED, exactly as
+:mod:`.complex_fused_electric_pair` with one emitter swapped, exactly as
 :mod:`.beta_fused_electric_pair` swaps one into :mod:`.fused_electric_pair` on the
 real-storage side: the certified complex/Bloch curl body is replaced by the certified
 COMPLEX BETA curl body — :func:`.special_kz.beta_bloch_curl_source` with
@@ -8,8 +8,8 @@ COMPLEX BETA curl body — :func:`.special_kz.beta_bloch_curl_source` with
 carry, same three-line seam, same constitutive lift, same plan shape.
 
 THE CELL, from ``results/fusion_matrix_metal_2026-09-01_lastcells`` read with its own
-staleness note: ``tests:TestSpecialKz.test_special_kz`` D->E, curl arm
-``special_kz complex beta``. The tranche-6 census left ``update_E`` UNSELECTED there;
+staleness note: ``tests:TestSpecialKz.test_special_kz`` D->E, curl arm ``special_kz
+complex beta``. An earlier Metal census left ``update_E`` UNSELECTED there;
 ``results/metal_coverage_special_kz_reclose_2026-08-19/smoke/test_special_kz.json``
 re-measured the row with the 2026-08-19 constitutive arm in place and records
 ``plan_step`` selecting ``special_kz complex beta`` at ALL FOUR slots — so the pair
@@ -17,8 +17,8 @@ exists, both arms are wired and certified, and the one thing missing was this we
 CUDA serves the same row's B->H through ``cuda_special_kz_fused_magnetic_pair``,
 which is what proves the weld shape ports.
 
-WHY THE SWAP IS SOUND. The complex beta curl and the certified complex curl differ by
-ONE INSERTED BLOCK — the beta term (``stepping._special_kz_beta_term``, S:727-784),
+Why the swap is sound. The complex beta curl and the certified complex curl differ by
+one inserted block — the beta term (``stepping._special_kz_beta_term``, S:727-784),
 placed AFTER the dtdx curl and BEFORE the ownership mask, the array path's own fold
 order (S:438-445 against S:450) — plus two ``float2`` beta coefficient words. The
 body anchor, the wrapped-lane predicates, the phase rotation and the single store
@@ -31,7 +31,7 @@ row's beta and beta = 0), and this weld lifts the SAME certified body through
 :func:`.complex_fused_electric_pair.certified_constitutive_body` — imported, not
 copied.
 
-THE SIGNATURE — 30 pointers plus one packed struct, EXACTLY ON THE CEILING::
+The signature — 30 pointers plus one packed struct, exactly on the ceiling::
 
       3 D  +  3 fu_D  +  3 H        (float2, the curl half)
     + 3 E  +  3 f_w_E               (float2, the constitutive half)
@@ -53,7 +53,7 @@ repair arithmetic on complex storage is the measurement
 :mod:`.complex_fused_electric_pair` already stands on (``test_deposit_repair.py``'s
 ``COMPLEX_CASES``); nothing here adds to it.
 
-NOT WIRED AS AN ARM, for the reason every fused pair records: ``plan_step`` assigns
+Not wired as an arm, for the reason every fused pair records: ``plan_step`` assigns
 at most one arm per slot and this product spans three. It registers ``wired=False``
 and reaches its two slots through ``launch.FUSED_PAIR_ARMS`` instead.
 """
@@ -140,7 +140,7 @@ __all__ = [
 # The source
 # ---------------------------------------------------------------------------
 
-#: THE BUFFER ORDER IS ``complex_fused_electric_pair``'s, POINTER FOR POINTER. Only
+#: The buffer order is ``complex_fused_electric_pair``'s, pointer for pointer. Only
 #: the struct grows: the two real beta words after the scalars, then the chunk
 #: record, unpacked into the certified curl body's own names (``beta_plus``/
 #: ``beta_minus``, ``cb``) before any lifted text runs.
@@ -152,7 +152,7 @@ __CONTRACT__
 
 __HELPERS__
 
-// THE THREE float2 MEMBERS COME FIRST, for the measured reason
+// The three float2 members come first, for the measured reason
 // `complex_fused_magnetic_pair` records: Metal aligns float2 to 8 bytes, and with
 // the scalars first the natural host record puts every phase one word early.
 __RECORD_STRUCT__
@@ -198,7 +198,7 @@ kernel void beta_complex_fused_electric_pair_step(
     constant Params&     prm     [[buffer(30)]],
     uint idx [[thread_position_in_grid]])
 {
-    // THE PACKED ARGUMENTS ARE UNPACKED INTO THE CERTIFIED BODIES' OWN NAMES, once,
+    // The packed arguments are unpacked into the certified bodies' own names, once,
     // before any of the lifted text runs. Everything below this line is then
     // character-for-character what `special_kz.beta_bloch_curl_source` and
     // `complex_fields.bloch_constitutive_source` emit, plus the wall clear.
@@ -206,7 +206,7 @@ kernel void beta_complex_fused_electric_pair_step(
     float dtdx = prm.dtdx;
     float2 px = prm.px, py = prm.py, pz = prm.pz;
     float beta_plus = prm.beta_plus, beta_minus = prm.beta_minus;
-    // THE CHUNK RECORD rides in the same struct (no binding to spare), and this one
+    // The chunk record rides in the same struct (no binding to spare), and this one
     // line gives the lifted bounds blocks the `cb` they read.
 __RECORD_ALIAS__
 
@@ -245,7 +245,7 @@ def beta_complex_fused_electric_pair_source(
         contract: str = shaders.CONTRACT_OFF) -> str:
     """One specialised fused source: (boundaries, phases, walls, arm, contraction).
 
-    THE SPLICE IS :func:`.complex_fused_electric_pair
+    The splice is :func:`.complex_fused_electric_pair
     .complex_fused_electric_pair_source`'S, step for step, with
     :func:`certified_beta_bloch_curl_body` where its ``certified_curl_body`` stands.
     """
@@ -260,7 +260,7 @@ def beta_complex_fused_electric_pair_source(
         raise ValueError(f"zero_metal must be a per-axis triple, got {zero_metal!r}")
 
     curl = certified_beta_bloch_curl_body(codes, phased, contract)
-    # THE BETA TERM MUST BE PRESENT. A lift that silently produced the has_beta=0
+    # The beta term must be present. A lift that silently produced the has_beta=0
     # arm would be the plain complex weld wearing this family's name, and every
     # device leg would still pass at beta = 0 because a zero coefficient IS the
     # plain arithmetic.
@@ -303,7 +303,7 @@ def beta_complex_fused_electric_pair_source(
             f"    // THE SEAM: the register step_D just wrote, not a reload of "
             f"D{'xyz'[target]}.\n"
             f"    float2 src{target} = c_mul_field_left(v{target}, e{target}[ii]);\n")
-    # THE CURL'S `g` IS H AND THE CONSTITUTIVE'S `g` WAS D. After the seam there must
+    # The curl's `g` is H and the constitutive's `g` was D. After the seam there must
     # be no `g` left in the electric half at all.
     for target in range(3):
         if f"g{target}[" in electric:
@@ -394,9 +394,9 @@ def metal_beta_complex_fused_electric_pair_coverage(
     if not electric.covered:
         reasons.extend(f"constitutive half: {reason}" for reason in electric.reasons)
 
-    # THE SOURCE SEAM, and for this family it is the clause that decides whether the
+    # The source seam, and for this family it is the clause that decides whether the
     # cell is worth anything at all: the one corpus row carries an electric source.
-    # IGNORANCE IS NEVER AN EMPTY SET: `Fields` does not hold the source list.
+    # Ignorance is never an empty set: `Fields` does not hold the source list.
     reasons.extend(_deposit_repair.seam_source_reasons(
         fields, sources, 'D',
         undeclared=(
@@ -414,7 +414,7 @@ def metal_beta_complex_fused_electric_pair_coverage(
         return Coverage(False,
                         tuple(dict.fromkeys(reasons + ["fields carries no grid"])))
 
-    # THE TWO FILLS. Both halves already refuse a mirror plane (the folded beta
+    # The two fills. Both halves already refuse a mirror plane (the folded beta
     # complex family owns that intersection); restated by NAME for THIS seam.
     for axis in range(3):
         mirrored = getattr(grid, "is_mirrored", None)
@@ -501,7 +501,7 @@ class MetalBetaComplexFusedElectricPairPlan(KernelPlan):
 def params_record_dtype() -> Any:
     """The host record's dtype — THE THREE ``float2`` MEMBERS FIRST, itemsize 152.
 
-    ONE HOME FOR THE LAYOUT, for the measured reason
+    One home for the layout, for the measured reason
     :func:`.complex_fused_electric_pair.params_record_dtype` gives. The offsets are
     stated explicitly; ``itemsize`` is stated because the natural record ends at 152
     only after Metal pads the struct to its 8-byte alignment.
@@ -526,7 +526,7 @@ def _params_tensor(shape: Sequence[int], dtdx: float,
     """The five scalars, three connection words, two beta words and the chunk record
     as one 152-byte record.
 
-    PLAN-OWNED AND OUTSIDE THE RESIDENCY REGISTRY, for the reason every fused
+    Plan-owned and outside the residency registry, for the reason every fused
     pair's ``_params_tensor`` gives. Built here, once, at plan time. Nothing on the
     launch path allocates.
     """
@@ -593,7 +593,7 @@ def plan_metal_beta_complex_fused_electric_pair(
         volumes.append(name)
         return residency.mirror(name, host, constant=True)
 
-    # THE ORDER HERE IS THE SIGNATURE'S ORDER and nothing else keeps them in step.
+    # The order here is the signature's order and nothing else keeps them in step.
     flux = [bind_complex(name, getattr(fields, name)) for name in ("Dx", "Dy", "Dz")]
     auxiliary = [bind_complex("fu_" + name, getattr(fields, "fu_" + name))
                  for name in ("Dx", "Dy", "Dz")]
@@ -603,12 +603,12 @@ def plan_metal_beta_complex_fused_electric_pair(
                 for name in ("Ex", "Ey", "Ez")]
     workspace = [bind_complex("f_w_" + name, getattr(fields, "f_w_" + name))
                  for name in ("Ex", "Ey", "Ez")]
-    # THE INVERSE EPSILON IS float32 UNDER COMPLEX STORAGE — one real coefficient
+    # The inverse epsilon is float32 under complex storage — one real coefficient
     # per cell, applied to both planes by `c_mul_field_left`.
     inverse_epsilon = [
         bind_real("inv_eps_" + name, fields.inverse_epsilon_for(name))
         for name in ("Ex", "Ey", "Ez")]
-    # THE D CURL TAKES THE INTEGER LATTICE and the E constitutive the HALF-INTEGER
+    # The D curl takes the integer lattice and the E constitutive the HALF-INTEGER
     # one — the opposite pairing to the B/H twin, and the kernel cannot tell.
     curl_coefficients = [
         bind_real(f"pml:{stem}_{axis}", getattr(pml, f"{stem}_{axis}"))

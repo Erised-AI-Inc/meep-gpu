@@ -1,4 +1,4 @@
-"""Triton implementation of the real-field PML curl sub-step (Phase 1, track 2).
+"""Triton implementation of the real-field PML curl sub-step.
 
 The same kernel the hand-written CUDA track implements, written in Triton so the
 two can be compared on one gate and one benchmark: bit-identity against
@@ -9,11 +9,11 @@ two can be compared on one gate and one benchmark: bit-identity against
     if plan is not None:
         plan.run()
 
-NOTHING HERE IS ON THE STEP PATH. ``meep_gpu.fastpath.plan_fast_path`` returns
+Nothing here is on the step path. ``meep_gpu.fastpath.plan_fast_path`` returns
 None on every branch and this package does not touch it; wiring dispatch waits on
 the measurement.
 
-IMPORTING THIS PACKAGE MUST NOT NEED TRITON. Triton is an optional dependency of
+Importing this package must not need Triton. Triton is an optional dependency of
 an optional package, and a missing optional dependency must not break the engine —
 so ``coverage``/``availability`` are importable anywhere, and ``triton`` itself is
 imported only when a plan is built or launched. ``test_triton_kernels`` pins that
@@ -28,7 +28,7 @@ from typing import Any, Optional
 #:
 #: These wrappers used to spell their ``num_warps`` default as ``None``, which is
 #: not the same value: ``None`` means "let Triton choose" (4 warps for a 1-D
-#: BLOCK=256 program) while ``launch``'s own default is the MEASURED 1, and
+#: BLOCK=256 program) while ``launch``'s own default is the measured 1, and
 #: launch.py records 4 warps as a 16% throughput loss on the pair. The same call
 #: through this package and through ``.launch`` therefore built two different
 #: launch configurations from identical inputs — and every gate and probe imports
@@ -121,7 +121,7 @@ __all__ = [
     "plan_nonlinear_constitutive",
     "offdiag_constitutive_coverage",
     "plan_offdiagonal_constitutive",
-    # The four further certified families, wired in the round after those five.
+    # The four further certified families, wired in the change after those five.
     # Same lazy shape and the same rule: naming them here must not make importing
     # this package import their modules.
     "folded_complex_composition_curl_coverage",
@@ -144,7 +144,7 @@ __all__ = [
     "plan_cylindrical_complex_constitutive",
     "null_constitutive_coverage",
     "plan_null_constitutive",
-    # The residual-group ADMISSIONS, wired in the round after those four. Not one
+    # The residual-group ADMISSIONS, wired in the change after those four. Not one
     # new kernel between them: each restates a shipped clause set with the one
     # over-broad clause inverted, so a CERTIFIED body may step a configuration it
     # was refused for. Same lazy shape and the same rule as everything above.
@@ -523,7 +523,7 @@ def plan_offdiagonal_constitutive(fields: Any, pml: Any,
 # The four further certified specialized families — lazy public wrappers
 # ---------------------------------------------------------------------------
 #
-# EVERY ONE OF THESE GOES THROUGH ``.launch``, not through the family module.
+# Every one of these goes through ``.launch``, not through the family module.
 # That is deliberate and it is not merely stylistic: ``folded_complex`` and
 # ``cylindrical_complex`` import FROM ``.launch`` at module scope, so the package
 # has exactly one edge into each family and it is the planner's forwarder. A
@@ -586,7 +586,7 @@ def plan_folded_mirror_ghost_fill_complex(fields: Any, family: str,
                                           block: Optional[int] = None) -> Any:
     """Plan one complex-storage mirror-fill (K2), or None when refused.
 
-    ITS TWO PASSES ARE LAUNCHED SEPARATELY — the driver puts ``zero_metal_*``
+    Its two passes are launched separately — the driver puts ``zero_metal_*``
     between them. The contract is written out on
     ``launch.plan_folded_mirror_ghost_fill_complex``; it is repeated as a pointer
     here because this is the name a caller outside the package binds to.
@@ -930,8 +930,8 @@ def plan_step(fields: Any, pml: Any, block: Optional[int] = None,
     control the cross-sub-step fusion is measured against and it stays the default.
 
     ``fuse_labels`` is the caller's OFFER — the fused labels it will actually run —
-    and ``None`` (the default) means no restriction. THIS WRAPPER IS WHY IT IS
-    SPELLED OUT HERE RATHER THAN LEFT TO ``**kwargs``: every argument is forwarded
+    and ``None`` (the default) means no restriction. This wrapper is why it is
+    spelled out here rather than left to ``**kwargs``: every argument is forwarded
     POSITIONALLY below, so a keyword the wrapper does not name is a ``TypeError``
     at the one call site that matters. Measured 2026-09-02 on a device: the
     dispatcher passed it, this wrapper did not, and every case of a driver-route

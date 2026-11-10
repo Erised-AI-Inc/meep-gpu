@@ -1,6 +1,6 @@
 """The H->D weld on a FOLDED grid: folded ``update_H`` welded into folded ``step_D``.
 
-THE SECOND PRODUCT ON THE FOURTH SEAM, and the largest single cell this backend's
+The second product on the fourth seam, and the largest single cell this backend's
 fusion board still carries unbuilt: ``(update_H folded -> step_D folded PML)`` is
 **78 seam-instances** of a 597 denominator on
 ``parity/meep_gpu/results/fusion_matrix_triton_2026-09-07_cyl``, of which 75 read
@@ -11,7 +11,7 @@ needs cells beyond the three backward neighbours" -- is answered NO from the fol
 kernel's own text, below, and re-measured by this family's gate.
 
 =============================================================================
-WHAT THE FOLD CHANGES, HALF BY HALF
+What the fold changes, half by half
 =============================================================================
 
 **The constitutive half: nothing at all.** ``stepping.update_H`` is pointwise --
@@ -47,11 +47,11 @@ the offset lines and load lines are the shipped kernel's own spellings -- which 
 ``fused_hd_pair``'s ``OWN_LOAD_EDITS`` and ``HALO_TAPS`` apply here unchanged and the
 tap table this file parses out is identical to the plain product's.
 
-WHY THE FOLDED GHOST NEEDS NO MIRROR READ. The array path's folded ghost is
+Why the folded ghost needs no mirror read. The array path's folded ghost is
 ``parity * field[2]`` at the near face (``stepping._shift_down``) and
 ``parity * field[reflect_row]`` at the far face of a folded PERIODIC axis
 (``_shift_up``); the folded kernel serves an exact ``0.0`` for both instead. That is
-legal because BOTH GHOST VALUES ARE DEAD IN THE CURL -- their only consumer is a
+legal because both ghost values are dead in the curl -- their only consumer is a
 plane one of the two ownership masks zeroes (symmetry.py:18-35, measured at sub-step
 granularity by ``parity/meep_gpu/gate_triton_symmetry.py`` before that file was
 written). So the weld's foreign-tap set is exactly the plain product's: three backward
@@ -59,7 +59,7 @@ neighbours, no halo beyond them, no mirror-image recompute, and **no fold-depend
 kernel argument at all** -- the codes are ``tl.constexpr`` and the stored extent is
 what carries the fold.
 
-WHICH ``H`` CELLS THE TAPS LAND ON, ON A FOLD. Every one of them is an ``update_H``
+Which ``H`` cells the taps land on, on a fold. Every one of them is an ``update_H``
 OUTPUT, never a filled ``H`` ghost: there is no H fill anywhere in the engine (the
 fills exist for B and D only, driver.py:3305-3310 and :3325-3330). Stored cell 0 of a
 folded axis is a real stored cell whose ``B`` the driver's NEAR fill wrote BEFORE the
@@ -69,7 +69,7 @@ launch, so the recompute at either is a pure function of unwritten memory exactl
 it is in the interior.
 
 =============================================================================
-THE SEAM IS FILL-FREE, ON A FOLD AS MUCH AS OFF ONE
+The seam is fill-free, on a fold as much as off one
 =============================================================================
 
 ``driver.step`` consults ``fill_B`` (:3305), runs ``zero_metal_B`` behind no consult
@@ -83,7 +83,7 @@ machinery the folded D->E and B->H pairs need is NOT needed here and must not be
 imported -- a carried fill on this seam would be a pass the driver runs again.
 
 =============================================================================
-THE SHAPE: SCRATCH OUTPUT AND FOREIGN-CELL RECOMPUTE
+The shape: scratch output and foreign-cell recompute
 =============================================================================
 
 Identical to :mod:`.fused_hd_pair`'s, and it is the plain product's docstring that
@@ -103,14 +103,14 @@ moving 4384 -> 0 as ``BLOCK`` went 64 -> 1024). One dispatch:
 * :class:`.offdiag_scratch_weld.ScratchWeldPairPlan` ROTATES the six ``H``/``f_w_H``
   references after the launch returns.
 
-ONE SUB-LATTICE, ONE COEFFICIENT GROUP, and the premise is ASSERTED rather than
+One sub-lattice, one coefficient group, and the premise is ASSERTED rather than
 assumed: ``SUB_STEPS['step_D']['suffix']`` is ``''`` and
 ``CONSTITUTIVE_SIDES['H']['half_integer']`` is False, so the curl's ``kms_*`` and the
 constitutive's are the same three volumes and the signature binds them once. Binding
 the half-integer set instead compiles, launches, converges, and is a half-cell error
 in the absorber profile -- which is why it is a gate mutation.
 
-THE CODES ARE :func:`.symmetry.folded_axis_kinds`', NEVER THE PLAIN PRODUCT'S 0/1
+The codes are :func:`.symmetry.folded_axis_kinds`', never the plain product's 0/1
 MAPPING. ``plan_fused_hd_pair`` builds its triple as
 ``[1 if kind == "metallic" else 0 for kind in _boundary_kinds(grid, pml)]``
 (fused_hd_pair.py:1152-1155). On a folded grid ``_boundary_kinds`` reports
@@ -124,7 +124,7 @@ MIRROR_PERIODIC split from ``stepping._stored_past_owned`` and CROSS-CHECKS it a
 caught on every folded fixture.
 
 =============================================================================
-WHAT THE TWO MASKS COST, AND WHY THIS PRODUCT'S GATE COMPARES ``fu_D``
+What the two masks cost, and why this product's gate compares ``fu_D``
 =============================================================================
 
 :mod:`.symmetry`'s own docstring says the masks are INVISIBLE at whole-step
@@ -144,10 +144,10 @@ engine allocates, arms both mask drops, and asserts the ATTRIBUTION -- each must
 ``fu_D`` and must NOT move ``D``.
 
 =============================================================================
-WHAT THIS FAMILY DOES NOT CARRY
+What this family does not carry
 =============================================================================
 
-ONE ARM PAIR ONLY: ``("folded", "folded PML")``. A grid with NO mirror plane is
+One arm pair only: ``("folded", "folded PML")``. A grid with NO mirror plane is
 refused BY NAME and the refusal names :mod:`.fused_hd_pair`, which is the product for
 it -- the exact inverse of that module's own folded clause, so the two products are
 disjoint by construction rather than by branch order. Folded COMPLEX storage, folded
@@ -160,7 +160,7 @@ Import contract: importable WITHOUT Triton -- the predicate, the lift checks and
 plan builder (to ``None``) must answer on the laptop that is the merge bar.
 
 =============================================================================
-IT IS NOT INSTALLED, AND THE ARBITRATION IS MEASURED
+It is not installed, and the arbitration is measured
 =============================================================================
 
 :data:`INSTALLABLE` is False. The first half of the reason is the plain product's and
@@ -170,7 +170,7 @@ declared in the dispatcher's own tables -- outside this package by the one-way r
 keeps. The second half is the arbitration, and it is a MEASUREMENT over this cell's
 own rows rather than an assertion: see :data:`INSTALLABLE_REASON`.
 
-SERVED ON A FUSION BOARD IS PREDICATE ADMISSION, by that board's own definition. A
+Served on a fusion board is predicate admission, by that board's own definition. A
 released product credits its admitted seam-instances while executing NOWHERE, and
 nothing in this module implies otherwise: it is in no ``fastpath.RELEASED_FUSED_ARMS``
 envelope and ``fastpath`` never plans it. **No timing exists for this shape and none
@@ -203,7 +203,7 @@ FAMILY = "folded_fused_hd_pair"
 SLOT = "update_H"
 
 #: The driver call sites ONE launch of this plan performs, in driver order
-#: (driver.py:3311, :3315). NOTHING BETWEEN THEM IS CARRIED, and on a folded grid as
+#: (driver.py:3311, :3315). Nothing between them is carried, and on a folded grid as
 #: much as off one there is only the electric withdraw there to carry: every B-side
 #: fill closes before :3311 and every D-side one opens after :3315.
 REPLACES: Tuple[str, ...] = ("update_H", "step_D")
@@ -229,7 +229,7 @@ ARMS: Tuple[str, str] = ("folded", "folded PML")
 ROTATED: Tuple[str, ...] = _plain.ROTATED
 
 #: The volumes the curl half steps IN PLACE, safe by construction: the curl reads and
-#: writes them at the PROGRAM'S OWN CELL only.
+#: writes them at the program's own cell only.
 IN_PLACE: Tuple[str, ...] = _plain.IN_PLACE
 
 #: The constitutive half's source volumes: B, read const for the whole dispatch.
@@ -251,8 +251,8 @@ CARRIES_DEPOSIT_REPAIR = False
 #: Which repair the two slots would install. EMPTY: they install none.
 REPAIR_PATHS: Tuple[str, ...] = ()
 
-#: Does this product perform the seam's electric withdraw before its launch? NO in
-#: this round, for the plain product's reason: the only wiring that performs the hoist
+#: Does this product perform the seam's electric withdraw before its launch? NO as
+#: shipped, for the plain product's reason: the only wiring that performs the hoist
 #: is ``launch._install_fused_pair``'s ``withdraw_hoist.SEAM`` branch, which is
 #: unreachable while :data:`INSTALLABLE` is False. The predicate consequently refuses
 #: every row with a standing in-seam withdraw BY NAME -- 3 of this cell's 78.
@@ -264,19 +264,19 @@ HOISTS_THE_WITHDRAW = False
 INSTALLABLE = False
 
 INSTALLABLE_REASON = (
-    "THE COMPOSER IS NOT OFFERED THIS PRODUCT AT ALL, and that is the first half of "
+    "The composer is not offered this product at all, and that is the first half of "
     "the reason: routing it through launch._install_certified_fused_products costs a "
     "label, and on this backend a label plan_step can write must also be declared in "
     "the DISPATCHER'S own tables -- the see-through the pending-gate rung reads, and "
     "the pending list an unreleased label sits in until a ledger entry exists. Those "
     "tables are outside this package by the one-way rule this package keeps, and "
-    "outside the round that built this product; "
+    "outside the work that built this product; "
     "parity/meep_gpu/dispatch_reachability.CERTIFIED_BUT_NOT_INSTALLED names them "
     "from the right side of that wall. The flag is what keeps a later edit that lands "
     "those lines from installing the product before a composition gate has driven it "
     "end to end. "
-    "THE SECOND HALF IS THE ARBITRATION, AND IT IS MEASURED OVER THIS CELL'S OWN "
-    "ROWS. Over the driver's step_B - update_H - step_D - update_E slot path launches "
+    "The second half is the arbitration, and it is measured over this cell's own "
+    "rows. Over the driver's step_B - update_H - step_D - update_E slot path launches "
     "are 4 - (installed pairs), and a TWO-SLOT H->D product takes one slot from EACH "
     "neighbour: a LOSS where both neighbouring pairs install, a TIE where exactly one "
     "does, a GAIN where NEITHER does. Joined over the 78 seam-instances of the "
@@ -293,8 +293,8 @@ INSTALLABLE_REASON = (
     "neighbours uninstalled. That join is a PREDICATE join off a standing board; the "
     "gate's arbitration leg re-derives it on real fixtures through the shipped "
     "composer, and its lift leg re-derives it per driven corpus row off that row's "
-    "OWN composer slot table under `arbitration_over_the_driven_rows`. IT DID, AND "
-    "THE MEASURED SPLIT IS NOT THE PREDICATE JOIN'S: over the 74 rows the gate "
+    "OWN composer slot table under `arbitration_over_the_driven_rows`. It did, and "
+    "the measured split is not the predicate join's: over the 74 rows the gate "
     "actually drove it is 55 LOSS, 19 TIE and 0 GAIN, identical on both policy legs, "
     "recorded in results/triton_folded_fused_hd_pair_2026-09-07/{keep,flush}/gate.json "
     "-- against 67 / 11 / 0 over the board's 78 instances above. The two disagree "
@@ -360,7 +360,7 @@ def raw_folded_curl_tail() -> str:
 def folded_curl_lift_edits() -> Tuple[Tuple[str, str], ...]:
     """The nine ``(old, new)`` replacements the folded curl half takes, GENERATED.
 
-    THE SAME NINE THE PLAIN PRODUCT TAKES, and that is a measurement rather than a
+    The same nine the plain product takes, and that is a measurement rather than a
     convenience: three own-cell magnetic loads become the registers this launch has
     already computed, and six shifted loads become a recompute at the cell the FOLDED
     emitter's own index line composed, under the FOLDED emitter's own guard. Both the
@@ -369,7 +369,7 @@ def folded_curl_lift_edits() -> Tuple[Tuple[str, str], ...]:
     a fold-specific change to how either is spelled RAISES here instead of quietly
     redirecting a tap to the plain kernel's cell.
 
-    NOTHING IN THE RETURNED PAIRS IS TRANSCRIBED except the call's shape. In
+    Nothing in the returned pairs is transcribed except the call's shape. In
     particular the ghost BRANCH is not touched: a folded axis's mask
     (``vx = live & (si >= 0) & (si < nx)``) is the emitter's own, so a tap the folded
     ghost rule masked off still serves an exact ``+0.0`` -- ``_h_tap`` closes on
@@ -441,7 +441,7 @@ if triton is not None:  # pragma: no cover - device code, certified by the gate
     MIRROR_METALLIC = tl.constexpr(_symmetry.CODE_MIRROR_METALLIC)
     MIRROR_PERIODIC = tl.constexpr(_symmetry.CODE_MIRROR_PERIODIC)
 
-    # THE CERTIFIED CONSTITUTIVE, imported as device functions rather than copied.
+    # The certified constitutive, imported as device functions rather than copied.
     # `_h_cell` is `kernels.constitutive_step`'s side-H body as a function of a cell
     # (its lift is machine-checked in `fused_hd_pair` and re-checked by this family's
     # gate), and `_h_tap` is one component of it under the caller's validity flag.
@@ -501,7 +501,7 @@ if triton is not None:  # pragma: no cover - device code, certified by the gate
         # OWN cell's magnetic field from these registers and recomputes every foreign
         # tap from PRE-LAUNCH state through the same `_h_cell`, so no program observes
         # another program's store; the plan rotates H/f_w_H after the launch returns.
-        # ON A FOLD this is unchanged: `update_H` runs over the whole STORED extent,
+        # On a fold this is unchanged: `update_H` runs over the whole STORED extent,
         # ghost planes included, and the B those planes hold was written by the
         # driver's near and far fills BEFORE this seam opened.
         own0, own1, own2, src0, src1, src2, dw0, dw1, dw2 = _h_cell(
@@ -700,13 +700,13 @@ def folded_fused_hd_pair_coverage(fields: Any, pml: Any,
     clauses. Nothing is weakened: a configuration either half refuses is refused here
     with that half's reasons, prefixed so a reader can tell which side said it.
 
-    THE ORDER IS THE DRIVER'S. The constitutive half is asked FIRST because it runs
+    The order is the driver's. The constitutive half is asked FIRST because it runs
     first (driver.py:3311), so the first refusal a reader sees names the half the
     driver would have reached first -- and on this seam that matters, since the null
     ``update_H`` under an inactive absorber is the single largest non-fusion reason on
     the board and belongs to the constitutive side.
 
-    WHAT EACH HALF CARRIES BY NAME. The constitutive half
+    What each half carries by name. The constitutive half
     (:func:`.symmetry.folded_constitutive_coverage`) refuses a non-CuPy array module,
     complex storage, an inactive absorber, an unfolded grid, a cylindrical grid or an
     r = 0 axis, a nonzero ``k_point``, a nonlinearity, BFAST, a nonzero beta, an
@@ -718,7 +718,7 @@ def folded_fused_hd_pair_coverage(fields: Any, pml: Any,
     because conductivity does not change ``update_H`` -- a recomputed rather than
     stored E, and the six ``fu_*`` plus six curl sources.
 
-    WHAT IS DELIBERATELY NOT CONSULTED. ``deposit_repair`` (nothing is injected in
+    What is deliberately not consulted. ``deposit_repair`` (nothing is injected in
     this seam), the mirror-phase clauses (this kernel bakes no parity: its folded
     ghost is an exact ``0.0``), the far-carry clauses (the far image is a B fill
     before the seam and a D fill after it, both outside ``REPLACES``), and the wall
@@ -738,12 +738,12 @@ def folded_fused_hd_pair_coverage(fields: Any, pml: Any,
     if not curl.covered:
         reasons.extend(f"folded curl half: {reason}" for reason in curl.reasons)
 
-    # THE SEAM'S ONE PASS. Nothing is INJECTED between the two consults, so
+    # The seam's one pass. Nothing is INJECTED between the two consults, so
     # `deposit_repair` is not consulted at all and a source of either polarity is not
     # this seam's business -- the magnetic injection is one seam earlier and the
     # electric one is one seam later. What IS between them is the electric integrated-
-    # source withdraw (driver.py:3313-3314), and `withdraw_hoist` owns it. IGNORANCE
-    # IS NEVER AN EMPTY SET: `Fields` does not hold the source list, so a predicate
+    # source withdraw (driver.py:3313-3314), and `withdraw_hoist` owns it. Ignorance
+    # is never an empty set: `Fields` does not hold the source list, so a predicate
     # that inferred "no withdraw stands" from not being told would be the over-covering
     # refusal this clause exists to prevent.
     reasons.extend(_withdraw_hoist.seam_withdraw_reasons(
@@ -761,9 +761,9 @@ def folded_fused_hd_pair_coverage(fields: Any, pml: Any,
         hoists_the_withdraw=HOISTS_THE_WITHDRAW,
         span=REPLACES))
 
-    # THE FOLD, REQUIRED BY NAME -- the exact inverse of `fused_hd_pair`'s clause,
+    # The fold, required by name -- the exact inverse of `fused_hd_pair`'s clause,
     # which refuses a folded grid and names THIS product. Both halves already require
-    # a real fold; the restatement is so the reason reads AT THE SEAM rather than only
+    # a real fold; the restatement is so the reason reads at the seam rather than only
     # at the arms, and so the two products can be shown disjoint by construction
     # instead of by the order a composer happens to ask them in.
     mirrored = getattr(grid, "is_mirrored", None)
@@ -776,7 +776,7 @@ def folded_fused_hd_pair_coverage(fields: Any, pml: Any,
             "and `PML` arms on both slots; triton_kernels.fused_hd_pair is the "
             "product for that cell")
 
-    # THE CODES MUST RESOLVE. `folded_axis_kinds` is the single point of failure in
+    # The codes must resolve. `folded_axis_kinds` is the single point of failure in
     # the folded family, and a plan built on an unresolved triple would silently take
     # the PERIODIC branch on a folded axis. Asked here, with the reasons carried, so
     # the refusal is named at the predicate rather than discovered at the builder.
@@ -785,7 +785,7 @@ def folded_fused_hd_pair_coverage(fields: Any, pml: Any,
     if codes is None:
         reasons.extend(f"folded axis codes: {reason}" for reason in fold_reasons)
 
-    # THE ROTATION IS THE PRODUCT'S OWN INVARIANT. The plan swaps the ENGINE's
+    # The rotation is the product's own invariant. The plan swaps the ENGINE's
     # references for the six volumes in ROTATED after each launch, so those attributes
     # must be allocated.
     for name in ROTATED:
@@ -812,14 +812,14 @@ def explain_folded_fused_hd_pair(fields: Any, pml: Any,
 class FoldedFusedHdPairPlan(_plain.StartsH, ScratchWeldPairPlan):
     """ONE allocation-free launch for folded ``update_H`` and folded ``step_D``.
 
-    DELIBERATELY A SIBLING OF :class:`.fused_hd_pair.FusedHdPairPlan` RATHER THAN A
-    SUBCLASS, and for the reason :class:`.symmetry.FoldedPmlCurlPlan` gives about
+    DELIBERATELY A SIBLING OF :class:`.fused_hd_pair.FusedHdPairPlan` rather than a
+    subclass, and for the reason :class:`.symmetry.FoldedPmlCurlPlan` gives about
     itself: the two hold the same bindings but launch DIFFERENT kernels, and a
     subclass that inherited ``_launch`` would launch the unfolded one -- on a folded
     grid, with the plain kernel's two-valued codes, which is a plane of wrong values
     and not an exception.
 
-    THE SIX ROTATING VOLUMES ARE RESOLVED PER LAUNCH, never cached: the plan owns a
+    The six rotating volumes are resolved per launch, never cached: the plan owns a
     twin of each, reads the engine's CURRENT attribute immediately before the launch
     to decide which of the pair is live, and moves the engine's references only after
     the launch returns. A pointer captured at plan time would be one rotation stale --
@@ -831,7 +831,7 @@ class FoldedFusedHdPairPlan(_plain.StartsH, ScratchWeldPairPlan):
     scratch buffer that IS its own live volume, which would be the in-place weld this
     design exists to avoid, wearing this class's name.
 
-    ``bc`` CARRIES FOUR-VALUED CODES, not the plain product's two, and the constructor
+    ``bc`` carries four-valued codes, not the plain product's two, and the constructor
     refuses anything outside :data:`.symmetry.CODE_PERIODIC` ..
     :data:`.symmetry.CODE_MIRROR_PERIODIC`. It cannot refuse a triple that is merely
     WRONG -- 0 is a valid code, and mapping a folded axis to 0 is exactly the defect
@@ -969,7 +969,7 @@ def plan_folded_fused_hd_pair(fields: Any, pml: Any, sources: Any = None,
     a configuration this kernel does not carry must fall back to the array path, never
     raise into a caller that would otherwise have stepped correctly.
 
-    THE CODES COME FROM :func:`.symmetry.folded_axis_kinds` and from nowhere else --
+    The codes come from :func:`.symmetry.folded_axis_kinds` and from nowhere else --
     see the module docstring for what the plain product's 0/1 mapping would do here.
 
     ``kernel`` is the mutation seam. The gate compiles a deliberately broken copy of

@@ -1,9 +1,9 @@
 """Merge-bar tests for the Metal folded (mirror-symmetry) family.
 
-FOUR KINDS OF THING ARE PINNED HERE, and the first two carry the most weight
+Four kinds of thing are pinned here, and the first two carry the most weight
 because no gate can carry them.
 
-**1. THE STRUCTURAL REDUCTION.** The claim this family rests on is that the ONLY
+**1. The structural reduction.** The claim this family rests on is that the ONLY
 device-code delta over the certified curl is the top-plane mask: the ghost gather
 and the cell-0 mask are the CERTIFIED emitters' own output, reached by mapping
 every mirror code to ``METALLIC`` on the way in. That is checkable by character and
@@ -13,24 +13,24 @@ On the Triton track the analogous claim is settled with a PTX read;
 ``torch.mps.compile_shader`` exposes no disassembly at all, so source text is the
 only place it can be held here.
 
-**2. THE SIGN RULE PER COMPONENT.** The fill's parity is derived from
+**2. The sign rule per component.** The fill's parity is derived from
 ``fields.mirror_parity`` ITSELF rather than from a second reading of the Yee table,
 over every (family, axis, phase, pass, component) combination, and the emitted
-Metal text is required to be the MEASURED spelling for that sign — ``-x`` for -1
+Metal text is required to be the measured spelling for that sign — ``-x`` for -1
 and a plain copy for +1. A test that re-derived the expectation by hand would pin
 the same reading twice; this one would fail if ``mirror_parity`` and the emitter
 disagreed about a single component.
 
-**3. THE FOLD'S OWN HAZARDS**, which are not the plain curl's:
+**3. The fold's own hazards**, which are not the plain curl's:
 
-* THE MIRROR PLANE IS WRITTEN BY ONE PASS AND READ BY THE NEXT. A fold bug can be
+* The mirror plane is written by one pass and read by the next. A fold bug can be
   byte-perfect per sub-step and wrong per step, so the whole-step leg compares per
-  COMPLETE STEP over a stated budget and reports the FIRST DIVERGENT STEP;
-* THE LIVE HALF VS THE DISCARDED HALF. The two ownership masks are INVISIBLE at
+  COMPLETE STEP over a stated budget and reports the first divergent step;
+* The live half vs the discarded half. The two ownership masks are INVISIBLE at
   whole-step granularity — the driver's fill passes overwrite exactly the planes
   they protect — so a mask-less kernel passes a whole-step check. The mask leg is
   therefore a SUB-STEP leg and is compared before any fill runs;
-* THE TWO TERMINATIONS ARE DIFFERENT KERNELS. MIRROR_PERIODIC carries the
+* The two terminations are different kernels. MIRROR_PERIODIC carries the
   top-plane mask and the far ghost pass; MIRROR_METALLIC carries neither. Every
   behavioural leg runs both, because a leg carrying one proves nothing about the
   other.
@@ -139,7 +139,7 @@ def _moved(before, after) -> int:
                                    for cy in ALL_CODES for cz in ALL_CODES])
 def test_the_ghost_and_cell_zero_mask_are_the_certified_emitters_output(codes,
                                                                         backward):
-    """THE WHOLE REDUCTION CLAIM, over the full 128-source product.
+    """The whole reduction claim, over the full 128-source product.
 
     The folded curl's ghost gather and cell-0 mask must be CHARACTER-IDENTICAL to
     what ``shaders.ghost`` and ``shaders.ownership_mask`` emit for the same codes
@@ -269,7 +269,7 @@ def test_the_fill_binds_the_reflect_row_at_runtime_and_bakes_no_row_literal():
 @pytest.mark.parametrize("family", ("B", "D"))
 def test_the_fill_spells_the_sign_fields_mirror_parity_says(family, axis, phase,
                                                             pass_name):
-    """THE SIGN RULE, PER COMPONENT, against ``fields.mirror_parity`` ITSELF.
+    """The sign rule, per component, against ``fields.mirror_parity`` itself.
 
     ``mirror_parity(c, axis, phase) == phase * (1 - 2 * iyee[c][axis])``, which
     collapses to ``+phase`` on the shift-0 components the NEAR pass writes and
@@ -279,7 +279,7 @@ def test_the_fill_spells_the_sign_fields_mirror_parity_says(family, axis, phase,
     drift between the two fails here rather than becoming a plane wrong by twice
     the field.
 
-    AND THE SPELLING IS THE MEASURED ONE. On this backend +1 is a PLAIN COPY and -1
+    And the spelling is the measured one. On this backend +1 is a PLAIN COPY and -1
     is ``-x``: a runtime weight flushes every subnormal at BOTH signs (12/30 on the
     fold's own value set) and ``0.0f - x`` misses 13/30, so the parity is a source
     specialisation here rather than the constexpr multiply the Triton twin uses.
@@ -310,7 +310,7 @@ def test_the_fill_spells_the_sign_fields_mirror_parity_says(family, axis, phase,
 
 
 def test_no_emitted_fill_uses_a_refuted_parity_spelling():
-    """The three MEASURED-WRONG spellings, refused by source text.
+    """The three measured-wrong spellings, refused by source text.
 
     ``0.0f - x`` misses 13/30 on the fold's own value set (twelve subnormals plus
     one -0.0) and canonicalizes NaN; a RUNTIME weight ``w * x`` misses 12/30 at
@@ -457,7 +457,7 @@ def test_a_mirror_fill_plan_declares_the_far_pass_it_performs():
 
 
 def test_the_composed_folded_step_holds_its_mirrors_and_the_walled_one_refuses():
-    """THE RESIDENCY VERDICT, on the configuration that reaches the stale-mirror
+    """The residency verdict, on the configuration that reaches the stale-mirror
     class — measured in both directions, because a predicate that only ever says
     yes is not a predicate.
 
@@ -631,7 +631,7 @@ def test_a_plan_built_with_no_residency_is_refused():
 
 
 def test_every_other_metal_family_refuses_a_fold_by_name():
-    """DISJOINTNESS AS AN INVERSION, measured over the registered table.
+    """Disjointness as an inversion, measured over the registered table.
 
     On a folded configuration exactly one arm may admit each of the six slots, and
     every arm that refuses must give a reason — a slot filled because the others
@@ -680,19 +680,19 @@ def _restore(fields, state):
         getattr(fields, name)[...] = array
 
 
-#: THE AXES A BEHAVIOURAL LEG MUST CARRY, each because a mutation is reachable on
+#: The axes a behavioural leg must carry, each because a mutation is reachable on
 #: one value and a measured null on the other:
 #:
-#: * TERMINATION — MIRROR_PERIODIC carries the top-plane mask and the far ghost
+#: * Termination — MIRROR_PERIODIC carries the top-plane mask and the far ghost
 #:   pass, MIRROR_METALLIC carries neither (measured below: dropping the top-plane
 #:   mask is caught on the first and a null on the second);
-#: * PHASE — the parity is a SOURCE SPECIALISATION on this backend, so an odd plane
-#:   is a DIFFERENT COMPILED FILL rather than a different scalar;
-#: * FULL-COUNT PARITY — ``reflect_row`` is ``stored - 2`` at an even full count
+#: * Phase — the parity is a SOURCE SPECIALISATION on this backend, so an odd plane
+#:   is a different compiled fill rather than a different scalar;
+#: * Full-count parity — ``reflect_row`` is ``stored - 2`` at an even full count
 #:   and ``stored - 3`` at an odd one, so at the default extent the wrong ``n - 2``
-#:   formula HAPPENS TO BE RIGHT and a matrix carrying only it measures nothing
+#:   formula happens to be right and a matrix carrying only it measures nothing
 #:   about the reflect row (measured: 0 words at extent 2.0, 32 at extent 2.1);
-#: * NUMBER OF FOLDED AXES and MIXED PHASE — a doubly-unowned corner must carry the
+#: * Number of folded axes and mixed phase — a doubly-unowned corner must carry the
 #:   product of both parities, which one folded axis cannot exercise at all.
 FOLD_CASES = (
     ("periodic_even", dict()),
@@ -731,7 +731,7 @@ def test_every_shipped_specialisation_compiles_in_both_contraction_modes():
 def test_the_folded_curl_reproduces_stepping_bit_for_bit(label, kwargs, sub_step):
     """SUB-STEP granularity, which is where the two ownership masks live.
 
-    THE MASKS ARE INVISIBLE AT WHOLE-STEP GRANULARITY — the driver's fill passes
+    The masks are invisible at whole-step granularity — the driver's fill passes
     overwrite exactly the planes they protect — so a whole-step check certifies a
     mask-less kernel as correct. This leg is the one that can fail on a mask, and
     it runs BOTH terminations because ``drop_top_plane_mask`` is only reachable on
@@ -766,7 +766,7 @@ def test_the_folded_curl_reproduces_stepping_bit_for_bit(label, kwargs, sub_step
 @requires_mps
 @pytest.mark.parametrize("label,kwargs", FOLD_CASES, ids=[c[0] for c in FOLD_CASES])
 def test_the_mirror_fill_reproduces_both_array_path_passes(label, kwargs):
-    """THE MIRROR PLANE ITSELF — near and far, in the driver's own order.
+    """The mirror plane itself — near and far, in the driver's own order.
 
     The array path applies the axes in X, Y, Z order so a corner unowned on two
     planes carries the PRODUCT of both parities; the plan holds a launch per axis
@@ -807,15 +807,15 @@ def test_the_mirror_fill_reproduces_both_array_path_passes(label, kwargs):
 @pytest.mark.parametrize("label,kwargs", FOLD_CASES, ids=[c[0] for c in FOLD_CASES])
 def test_a_complete_step_agrees_and_the_first_divergent_step_is_reported(label,
                                                                         kwargs):
-    """THE WHOLE-STEP LEG — the only one that can see the fold's fourth risk.
+    """The whole-step leg — the only one that can see the fold's fourth risk.
 
     Three failure classes live ONLY in a complete step: a STALE MIRROR (a sub-step
     left on the array path writes the HOST array and a device mirror held across it
     is a smooth, plausible, WRONG field); a SEAM (``zero_metal_*`` clears stored
     cell 0 between the curl and the constitutive sub-step); and an ACCUMULATING
     AUXILIARY (``fu_*`` and ``f_w_*`` are STATE, and a kernel right for one launch
-    and wrong forever after is identical in a single-launch gate). THE FOLD ADDS A
-    FOURTH: the folded axis's ghost plane is written by one pass and READ by the
+    and wrong forever after is identical in a single-launch gate). The fold adds a
+    fourth: the folded axis's ghost plane is written by one pass and READ by the
     next, so a fold bug can be byte-perfect per sub-step and wrong per step.
 
     Every slot's launch counter is asserted, because a slot that passes by NOT
@@ -875,7 +875,7 @@ def test_a_complete_step_agrees_and_the_first_divergent_step_is_reported(label,
         if total and first_divergent is None:
             first_divergent = (step, {k: v for k, v in differing.items() if v})
 
-    assert first_divergent is None, (label, "FIRST DIVERGENT STEP", first_divergent,
+    assert first_divergent is None, (label, "first divergent step", first_divergent,
                                      "per-step differing words", per_step)
     # Vacuity: the state must actually have evolved over the budget.
     moved = sum(_moved(np.zeros_like(getattr(reference_fields, name)),
@@ -891,7 +891,7 @@ def test_a_complete_step_agrees_and_the_first_divergent_step_is_reported(label,
 
 @requires_mps
 def test_the_top_plane_mask_is_measurably_load_bearing():
-    """A GATE THAT CANNOT FAIL CERTIFIES NOTHING.
+    """A gate that cannot fail certifies nothing.
 
     Drop the top-plane mask and the sub-step must DIFFER on a MIRROR_PERIODIC run
     — otherwise the mask leg above is decorative. It must NOT differ on a
@@ -939,13 +939,13 @@ def test_the_reflect_row_mutation_is_caught_at_an_odd_full_count_only(extent,
                                                                      caught):
     """``_far_reflect_rows`` is ``n_full - stored + 2``, NOT ``n - 2``.
 
-    At an EVEN full count the two agree and the wrong formula is a MEASURED NULL;
+    At an EVEN full count the two agree and the wrong formula is a measured null;
     at an ODD one it reflects about the window top instead of about the second
     mirror, which is a whole cell wrong. Measured on this host: 0 differing words
     at extent 2.0 (shape 12 on the folded axis, reflect 10 == n - 2) and 32 at
     extent 2.1 (shape 13, reflect 10 vs n - 2 = 11).
 
-    THE POINT OF THE PARAMETRISATION IS THE FIRST ROW. A leg that ran only the
+    The point of the parametrisation is the first row. A leg that ran only the
     even count would report the mutation uncaught and be indistinguishable from a
     kernel that ignores ``reflect_row`` entirely.
     """
@@ -979,7 +979,7 @@ def test_the_reflect_row_mutation_is_caught_at_an_odd_full_count_only(extent,
 
 @requires_mps
 def test_the_fill_axis_order_is_a_measured_null_on_the_real_fold():
-    """A MEASURED NULL, and the reachability is asserted so it is not a vacuous one.
+    """A measured null, and the reachability is asserted so it is not a vacuous one.
 
     The array path applies the axes in X, Y, Z order so a doubly-unowned corner
     carries the product of both parities. Under REAL storage every fill is a
@@ -989,7 +989,7 @@ def test_the_fill_axis_order_is_a_measured_null_on_the_real_fold():
     fold where the corner really is written twice: ``Bz`` has Yee shift 1 on both
     x and y, so ``Bz[-1, -1, k]`` is written by the far pass on BOTH axes.
 
-    UNDER COMPLEX STORAGE THE SAME QUESTION IS NOT A NULL — the Triton track
+    Under complex storage the same question is not a null — the Triton track
     measured 8 of 128 diverging words at mixed phase, because a complex multiply by
     (+/-1, +0) is not associative. That is the folded complex family's problem and
     is why this null may not be generalised.
@@ -1061,7 +1061,7 @@ def test_a_flipped_parity_is_caught_on_every_fold_case():
 
 @requires_mps
 def test_the_folded_curl_reduces_to_the_certified_curl_on_an_unfolded_grid():
-    """The reduction, MEASURED rather than argued from the source text alone."""
+    """The reduction, measured rather than argued from the source text alone."""
     fields, pml = matrix.cart()
     codes = [1 if kind == "metallic" else 0
              for kind in stepping._boundary_kinds(fields.grid, pml)]
@@ -1102,18 +1102,18 @@ def test_the_folded_curl_reduces_to_the_certified_curl_on_an_unfolded_grid():
                                          ("subnormal_band", 1e-38),
                                          ("deep", 1e-40)))
 def test_the_fill_is_band_safe_and_the_curl_is_not(label, scale, phase):
-    """WHAT THE SUBNORMAL PRECONDITION ACTUALLY BOUNDS, measured rather than
+    """What the subnormal precondition actually bounds, measured rather than
     assumed for the whole family at once.
 
     On MPS the float32 subnormal flush is native and has no lever, so every
-    ARITHMETIC claim rides on a checked subnormal-free precondition. THE FILL
-    PERFORMS NO ARITHMETIC: its parity is a sign-bit operation or a plain copy, and
+    ARITHMETIC claim rides on a checked subnormal-free precondition. The fill
+    performs no arithmetic: its parity is a sign-bit operation or a plain copy, and
     a subnormal CAN live in a Metal buffer — it is the arithmetic that flushes, not
     the storage. So the fill is expected to be identical INSIDE the band, and it is:
     measured 2026-08-16 with 576 subnormal operand words in play, 0 differing at
     1e-38 and at 1e-40, at BOTH parities.
 
-    THE CURL IS THE OPPOSITE and the contrast is the point — same grid, same scale,
+    The curl is the opposite and the contrast is the point — same grid, same scale,
     1,152 subnormal operand words, 1,104 differing. A family-wide "byte-identical
     subject to a subnormal-free precondition" would understate the fill and
     overstate nothing; stating it per sub-step is what makes the precondition a
@@ -1193,7 +1193,7 @@ def test_the_curl_does_need_the_precondition():
 
 @requires_mps
 def test_the_fold_planes_carry_no_subnormal_over_a_stated_window():
-    """THE PRECONDITION IS A WINDOW, NOT A SCALAR, and it is taken ON THE PLANES.
+    """The precondition is a window, not a scalar, and it is taken on the planes.
 
     A folded run puts a deep-PML plane on the far face, which is exactly where tiny
     magnitudes live, and the fill reads and writes exactly those planes (stored row

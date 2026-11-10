@@ -13,14 +13,14 @@ already certified and neither is re-derived here:
 * and the WELD is the one substitution :func:`.kernels.fused_curl_constitutive_B`
   already makes between exactly those two bodies on a beta = 0 run.
 
-SO THIS KERNEL IS ``fused_curl_constitutive_B``, CHARACTER FOR CHARACTER, PLUS THE
-PASS ``beta_pml_curl_step`` ADDS TO ``pml_curl_step``. A reader must be
+So this kernel is ``fused_curl_constitutive_B``, character for character, plus the
+pass ``beta_pml_curl_step`` adds to ``pml_curl_step``. A reader must be
 able to diff this body against those two and see nothing else moved; the gate's
 transcription leg asserts exactly that, statement by statement, against both
 shipped sources.
 
 ===========================================================================
-THE PASS, AND WHERE IT GOES
+The pass, and where it goes
 ===========================================================================
 
 ``stepping._special_kz_beta_term`` adds an analytic ``d/dz -> i*2*pi*beta`` term.
@@ -46,7 +46,7 @@ after the three curl forms and before the stores, which is where it sits here. T
 :func:`.special_kz.beta_curl_coefficients` and passed as float32 words, exactly as
 :class:`.special_kz.BetaPmlCurlPlan` passes them.
 
-``HAS_BETA`` IS CARRIED AND MUST BE 1 on any configuration this product's predicate
+``HAS_BETA`` is carried and must be 1 on any configuration this product's predicate
 admits — clause 12 of the beta family is INVERTED (``grid.beta`` must be nonzero),
 so a beta = 0 run is the ordinary :func:`.coverage.fused_pair_coverage`'s and is
 refused here by name. It is carried rather than hard-coded for
@@ -55,7 +55,7 @@ than a hand-specialised one, and it gives the gate a certified-kernel arm
 (``HAS_BETA = 0`` must reproduce ``fused_curl_constitutive_B`` bit for bit).
 
 ===========================================================================
-THE FIVE PASSES IN THE SEAM
+The five passes in the seam
 ===========================================================================
 
 ``driver.step`` runs five passes between the two halves (driver.py:3282-3289)::
@@ -63,22 +63,22 @@ THE FIVE PASSES IN THE SEAM
     step_B -> magnetic sources -> fill_symmetry_bc_B -> zero_metal_B
            -> fill_folded_far_ghosts_B -> update_H
 
-* **the magnetic sources — REFUSED BY NAME.** The driver injects them BETWEEN the
+* **the magnetic sources — refused by name.** The driver injects them BETWEEN the
   halves (driver.py:3283-3284), so a fused pair would consume a pre-injection
   ``B``. Ignorance is never an empty set: ``Fields`` does not hold the source list,
   so an undeclared ``sources`` is a REFUSAL and not an assumed ``()``.
-* **``fill_symmetry_bc_B`` and ``fill_folded_far_ghosts_B`` — PROVABLY NO-OPS
-  HERE**, not carried and not refused. Both return at their first line unless
+* **``fill_symmetry_bc_B`` and ``fill_folded_far_ghosts_B`` — provably no-ops
+  here**, not carried and not refused. Both return at their first line unless
   ``grid.has_symmetry()`` (stepping.py:1481-1482, :1565-1566), and clause 5 of
   ``_beta_real_grid_reasons`` refuses every fold outright ("the folded real beta
-  curl is Phase B"). THE PREDICATE RE-CHECKS IT ANYWAY rather than reading its own
+  curl is Phase B"). The predicate re-checks it anyway rather than reading its own
   coverage off another module's guard.
 * **``zero_metal_B`` — CARRIED INLINE** (driver.py:3286; ``stepping._zero_metal``
   :2206-2247), through :func:`.coverage.zero_metal_axes`, which is IMPORTED rather
   than re-spelled so the predicate and the compile-time choice cannot disagree.
 
 ===========================================================================
-WHAT THE CORPUS SAYS THIS IS WORTH — measured, not argued
+What the corpus says this is worth — measured, not argued
 ===========================================================================
 
 ONE seam-instance, reachable, from ``results/fusion_matrix_triton_2026-08-20_closed/``
@@ -88,12 +88,12 @@ at the B->H cell (``real beta PML``, ``real beta run``):
 
 It declares an ELECTRIC source only (``source_field_types == ['D']``), so the
 magnetic seam is clear; it is all-periodic with ``has_metallic == false``, so the
-inline ``zero_metal_B`` carry compiles to three ``False`` flags ON THAT ROW — which
+inline ``zero_metal_B`` carry compiles to three ``False`` flags on that row — which
 is why the gate scores every wall-clear mutation on a WALLED case instead, where
 the flags are real. The D/E partner cell is worth ZERO on this corpus (that row
 injects electrically between ``step_D`` and ``update_E``) and is not built.
 
-THE OTHER BACKEND BUILT THIS FIRST: ``metal_kernels/beta_fused_magnetic_pair.py``,
+The other backend built this first: ``metal_kernels/beta_fused_magnetic_pair.py``,
 certified by ``parity/meep_gpu/gate_metal_below_the_cut_fused_pairs.py``
 (``results/below_the_cut_fused_pairs_2026-08-20/``), and worth the same one row
 there.
@@ -182,7 +182,7 @@ if triton is not None:
     # The same constexpr code as ``kernels.METALLIC``, restated for the reason
     # every sibling restates it — importing a ``tl.constexpr`` wrapper and
     # re-wrapping it is not the same object, and the comparison in the kernel body
-    # is against a literal code. ONLY METALLIC IS NAMED: both certified bodies
+    # is against a literal code. Only metallic is named: both certified bodies
     # branch on ``== METALLIC`` and take periodic as the else.
     METALLIC = tl.constexpr(1)
 
@@ -477,10 +477,10 @@ def beta_fused_magnetic_pair_coverage(fields: Any, pml: Any,
     if grid is None:
         return Coverage(False, tuple(dict.fromkeys(reasons + ["fields carries no grid"])))
 
-    # THE SOURCE SEAM. A magnetic source is injected BETWEEN the two halves
+    # The source seam. A magnetic source is injected BETWEEN the two halves
     # (driver.py:3283-3284), so a fused pair would consume a pre-injection B. An
     # ELECTRIC source is injected in the D/E seam and does not disqualify this
-    # pair. IGNORANCE IS NOT AN EMPTY SET: `Fields` does not hold the source list,
+    # pair. Ignorance is not an empty set: `Fields` does not hold the source list,
     # so a predicate that inferred "no magnetic source" from not being told would
     # be the over-covering refusal this clause exists to prevent.
     reasons.extend(_deposit_repair.seam_source_reasons(
@@ -496,11 +496,11 @@ def beta_fused_magnetic_pair_coverage(fields: Any, pml: Any,
             f"closes"),
         carries_repair=CARRIES_DEPOSIT_REPAIR))
 
-    # THE TWO SYMMETRY PASSES. Both return at their first line without
+    # The two symmetry passes. Both return at their first line without
     # `grid.has_symmetry()` (stepping.py:1481-1482, :1565-1566), and clause 5 of
-    # `_beta_real_grid_reasons` already refuses every fold. RE-CHECKED HERE
-    # ANYWAY, not inferred: this module's coverage may not be read off another
-    # module's guard, and if the beta tranche ever admits a fold this weld would
+    # `_beta_real_grid_reasons` already refuses every fold. Re-checked here
+    # anyway, not inferred: this module's coverage may not be read off another
+    # module's guard, and if the beta family ever admits a fold this weld would
     # silently swallow two passes that had started doing work.
     if _call(grid, "has_symmetry", default=False):
         reasons.append(
@@ -513,7 +513,7 @@ def beta_fused_magnetic_pair_coverage(fields: Any, pml: Any,
                 f"axis {axis} is folded by a mirror plane: the two symmetry passes "
                 f"in this seam are no longer no-ops and this weld carries neither")
 
-    # THE WALL CLEAR is carried inline, so the grid must be able to answer which
+    # The wall clear is carried inline, so the grid must be able to answer which
     # axes are walled; an unanswerable one compiles to ZM=False and silently skips
     # a plane the array path clears.
     for name in ("has_metallic", "is_metallic", "is_mirrored"):
@@ -651,7 +651,7 @@ def plan_beta_fused_magnetic_pair(fields: Any, pml: Any, sources: Any = None,
     side_spec = CONSTITUTIVE_SIDES[CONSTITUTIVE_SIDE]
     grid = fields.grid
     kinds = resolve(grid, pml)
-    # THE SAME FUNCTION THE CURL PLAN CALLS, with `magnetic` from the sub-step —
+    # The same function the curl plan calls, with `magnetic` from the sub-step —
     # identical arithmetic to the array path's per-call-site computation, and not
     # a second spelling of it.
     plus, minus = beta_curl_coefficients(grid.beta, grid.dt,

@@ -14,7 +14,7 @@ The five shapes a decision engine's tests take here (``the development notes``):
 fused pairs: 2 launches a step against 4, EXACT), DEGENERATE (a fused leg that fused
 nothing, a leg whose owner the witness cannot see, a host with no device loaded),
 SCALING (launches scale with the window, the rate does not), SHAPE/SERIALISATION (a
-whole row through ``json.dumps``) and ONE REALISTIC SYSTEM (``run_case`` end to end over
+whole row through ``json.dumps``) and one realistic system (``run_case`` end to end over
 three stub legs, every floor evaluated).
 
 No test here touches a device. Wherever the code under test would reach for ``torch``
@@ -40,8 +40,12 @@ for _path in (HERE, REPO_API):
     if _path not in sys.path:
         sys.path.insert(0, _path)
 
+import bench_cuda_kernels_vs_array as cuda_bench  # noqa: E402
 import bench_fused_products as bench  # noqa: E402
 import build_fused_timing_report as report  # noqa: E402
+import cut_timing_record  # noqa: E402
+import neutral_ids  # noqa: E402
+import timing_records  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -81,7 +85,7 @@ class _Absorbed:
 class _FastPath:
     """What the driver holds in ``_fast_path``: the frozen step plan and its residency.
 
-    A NAMED CLASS, as the driver's is, so a test reading the objects a timed window
+    A named class, as the driver's is, so a test reading the objects a timed window
     holds (:func:`test_a_window_holds_the_plan_it_compares_against`) can tell the plan
     from the namespaces around it.
     """
@@ -115,7 +119,7 @@ class _Driver:
     def __init__(self, slots, fused_slots=(), vetoed=False):
         # ``slots``: ``{slot: (arm, plan)}`` in step order; empty for the array leg.
         self.xp = numpy
-        # EVERY LEG ON THIS TABLE IS AN APPLE GPU DRIVER (``prefer_gpu=True``), the
+        # Every leg on this table is an Apple GPU driver (``prefer_gpu=True``), the
         # array oracle included: it is the same driver under ``MEEP_GPU_FUSED=0``.
         self.gpu = "metal"
         self.fields = SimpleNamespace(Ez=numpy.zeros(16, dtype=numpy.float32))
@@ -313,7 +317,7 @@ def test_the_shader_compile_counter_says_so_when_there_is_nothing_to_wrap(monkey
 
 
 def test_the_compile_witnesses_carry_a_positive_control(witness, monkeypatch):
-    """THE FLOOR IS ZERO, so the instrument has to be seen moving somewhere else.
+    """The floor is zero, so the instrument has to be seen moving somewhere else.
 
     ``no_compiles_inside_timed_region`` passes on a row whose compile witnesses never
     attached exactly as it passes on a row that compiled nothing, and the two are
@@ -327,7 +331,7 @@ def test_the_compile_witnesses_carry_a_positive_control(witness, monkeypatch):
     fired = []
 
     def compile_while_warming(_driver):
-        # ONCE AT THE FREEZE AND ONCE LATER, because the warm pass is two chunks and
+        # Once at the freeze and once later, because the warm pass is two chunks and
         # the control covers both: a compile on a later warm step is a compile too.
         fired.append(len(fired))
         sys.modules["torch"].mps.compile_shader("kernel void warm() {}")
@@ -628,7 +632,7 @@ def _window_frame_holds(plan):
 def test_a_window_holds_the_plan_it_compares_against(witness):
     """The re-freeze witness holds the plan OBJECT for as long as it is timing.
 
-    AN ADDRESS IS NOT AN IDENTITY once the object at it has been freed. The driver
+    An address is not an identity once the object at it has been freed. The driver
     drops the plan (``driver.py:3112``) before the next step rebuilds it
     (``driver.py:3269``), so the rebuild may be handed the dropped plan's address:
     measured 2026-09-20 on this stub, 2 times in 50. Those windows re-ran the whole
@@ -652,7 +656,7 @@ def test_a_window_holds_the_plan_it_compares_against(witness):
     entry = bench.window("stub", legs["fused"], frozen, witness, 2, 0)
     assert seen["window_holds_the_plan"] is True
     assert entry["plan_refroze_inside_window"] is True
-    # THE ONLY WITNESS THAT SEES THIS ONE: the slots and their owners are unchanged, so
+    # The only witness that sees this one: the slots and their owners are unchanged, so
     # the launch counts, the kernel names and the compile memo all read exactly as they
     # do in a clean window.
     assert entry["launches"] == 4 and entry["new_kernels_inside_timed_region"] == 0
@@ -695,7 +699,7 @@ def test_the_proved_rate_floor():
     # a re-frozen plan is unattached: both counts read zero on a leg proved at two
     assert bench.windows_launched_at_the_proved_rate(
         legs, [w("fused", 0, 0)]) is False
-    # NO DATA IS NOT A PASS
+    # No data is not a pass
     assert bench.windows_launched_at_the_proved_rate(legs, []) is False
 
 
@@ -880,7 +884,7 @@ def test_main_on_the_metal_table_stamps_every_row(stubbed_main, tmp_path, fake_t
     assert bench.main(["--drive-table", "metal", "--out", str(tmp_path)]) == 1
     (row,) = [json.loads(line) for line in open(tmp_path / "rows.jsonl")]
     assert isinstance(stubbed_main["witness"], bench.MetalWitness)
-    # LIFTED AS A GPU DRIVER ON THE APPLE GPU, AS THE ROUTE GATE LIFTS -- not a smoke row
+    # Lifted as a GPU driver on the Apple GPU, as the route gate lifts -- not a smoke row
     assert stubbed_main["prefer_gpu_during_the_case"] is True
     assert row["prefer_gpu"] is True and row["smoke"] is False
     assert row["sync_call"] == "torch.mps.synchronize"
@@ -888,7 +892,7 @@ def test_main_on_the_metal_table_stamps_every_row(stubbed_main, tmp_path, fake_t
     assert stubbed_main["compile_patched"] is True
     assert fake_torch.mps.compile_shader is stubbed_main["original"], \
         "the compile witness must leave the platform entry point as it found it"
-    # THE COMPILE FLOOR'S POSITIVE CONTROL, on every row including this skipped one
+    # The compile floor's positive control, on every row including this skipped one
     assert row["compile_witness"]["attached"] is True
     assert row["compile_witness"]["library_cache_entries"] is not None
     summary = json.load(open(tmp_path / "summary.json"))
@@ -927,6 +931,42 @@ def test_the_summary_medians_are_taken_over_witnessed_rows_only(
     assert summary["reportable_without_a_launch_witness"] == ["pml_3d"]
     # every reportable row keeps its own ratio; only the medians are narrowed
     assert set(summary["fused_vs_singles"]) == {"pml_2d", "pml_3d"}
+
+
+def test_the_exit_status_says_whether_every_case_was_timed():
+    """A row struck by its floors is a finished measurement; an error is not.
+
+    The release timing driver marks a bench unit done on exit 0 and runs any other
+    unit again, so a struck row that exited 1 was re-timed on every resume although
+    its record was already kept."""
+    assert bench.exit_status([{"verdict": "TIMED"}]) == 0
+    assert bench.exit_status([{"verdict": "TIMED-NOT-REPORTABLE"}]) == 0
+    assert bench.exit_status([{"verdict": "TIMED"},
+                              {"verdict": "TIMED-NOT-REPORTABLE"}]) == 0
+    for other in ("ERROR", "SKIP-TOO-LARGE", "HARNESS-FAILURE", "SKIP-NOT-THIS-LEG",
+                  None):
+        assert bench.exit_status([{"verdict": other}]) == 1, other
+        assert bench.exit_status([{"verdict": "TIMED"}, {"verdict": other}]) == 1, other
+    assert bench.exit_status([]) == 1, "no case at all is not a finished campaign"
+
+
+@pytest.mark.parametrize("verdict, reportable, status", [
+    ("TIMED", True, 0), ("TIMED-NOT-REPORTABLE", False, 0), ("ERROR", None, 1)])
+def test_main_exits_0_on_a_struck_row_and_1_on_an_error(
+        monkeypatch, fake_torch, tmp_path, verdict, reportable, status):
+    _on_an_apple_gpu(monkeypatch)
+    monkeypatch.setattr(bench, "selected_cases", lambda *_a: ["pml_2d"])
+    monkeypatch.setattr(bench, "drive_rows", lambda _n: {"pml_2d": dict(TWO_PAIRS)})
+    monkeypatch.setattr(bench, "WITNESSES", [])
+    monkeypatch.setattr(bench, "ONLY_ARMS", [])
+    monkeypatch.setattr(bench, "run_case", lambda case, *_a, **_k: {
+        "case": case, "verdict": verdict, "reportable": reportable,
+        "floors": {} if reportable is None else {"windows_steady": bool(reportable)},
+        "ratios": None, "substitution": {"launch_witness_available": True}})
+    assert bench.main(["--drive-table", "metal", "--out", str(tmp_path)]) == status
+    summary = json.load(open(tmp_path / "summary.json"))
+    assert summary["cases_reportable"] == (1 if reportable else 0)
+    assert summary["cases_timed"] == (1 if verdict.startswith("TIMED") else 0)
 
 
 def test_main_refuses_what_has_no_meaning_on_this_table(stubbed_main, tmp_path):
@@ -982,7 +1022,7 @@ def test_main_refuses_an_nvidia_table_off_a_cuda_host(stubbed_main, monkeypatch,
     assert bench.main(["--drive-table", table, "--out", str(tmp_path / "run"),
                        "--estimate"]) == 0
     assert not (tmp_path / "run").exists()
-    # ON A CUDA HOST the guard is silent, and the campaign reaches its cases.
+    # On a CUDA host the guard is silent, and the campaign reaches its cases.
     monkeypatch.setattr(backends, "cupy_available", lambda: True)
     assert bench.e2e.nvidia_host_refusal("bench_fused_products.py") is None
 
@@ -1055,7 +1095,9 @@ def test_run_case_end_to_end_evaluates_every_floor_on_this_table(
                          warm_steps=4, memory_budget=0)
     assert row["verdict"].startswith("TIMED"), row.get("why")
     floors = dict(row["floors"])
-    floors.pop("spread_within_gate")    # a millisecond stub window has no stable spread
+    # a millisecond stub window has no stable spread: it is recorded beside the floors
+    # and is none of them (the between-pass gate)
+    assert "spread_within_gate" not in floors and "per_leg" in row["window_spread"]
     assert floors == {
         "substitution_proved": True, "bit_identical": True,
         "moved_words_positive": True, "non_finite_zero": True,
@@ -1111,7 +1153,8 @@ def test_a_gpu_only_row_on_this_table_proves_the_fused_leg_alone(witness, metal,
                          warm_steps=4, memory_budget=0, legs_mode="gpu-only")
     assert lifted == ["fused"]
     floors = dict(row["floors"])
-    floors.pop("spread_within_gate")
+    assert "spread_within_gate" not in floors
+    assert list(row["window_spread"]["per_leg"]) == ["fused"]
     assert floors == {"substitution_proved": True, "moved_words_positive": True,
                       "non_finite_zero": True, "no_compiles_inside_timed_region": True,
                       "windows_launched_at_the_proved_rate": True}
@@ -1153,8 +1196,9 @@ def _nvidia_row(case, vs_singles, table="triton"):
 def _metal_row(case, fused_ms=30.0, singles_ms=60.0, array_ms=0.6, cells=(200, 120, 1),
                reportable=True, smoke=False, on_ac=False, mirrors=45, window_floor=None):
     """A Metal bench row. ``reportable=False`` fails a floor that gates; ``window_floor``
-    adds the window floor a row written before R33 carried (``spread_within_gate``),
-    and when False marks the row not reportable as the bench then did."""
+    adds the window floor a row written before the 2026-10-16 gate change carried
+    (``spread_within_gate``), and when False marks the row not reportable as the bench
+    then did."""
     per = {leg: {"median_seconds_per_step": ms / 1e3, "launches_per_step": lps,
                  "compiled_calls_per_step": lps,
                  "residency_syncs_per_step": ({"in": lps, "out": lps} if lps else None)}
@@ -1269,10 +1313,11 @@ def test_a_metal_row_that_failed_a_floor_gets_no_ratio_and_is_named():
 
 
 def test_a_row_struck_for_its_window_spread_alone_before_r33_reads_reportable():
-    """R33: the window floor gates nothing, so a row the bench marked not reportable for
-    it alone (written before R33) renders as one written after: tabled, in the median,
-    and named under no floor. One whose window floor and another floor failed is named
-    under the other one only."""
+    """Since the gate change of 2026-10-16 the window floor gates nothing (the gate of
+    record, ``docs/development/timing.md``), so a row the bench marked not reportable for
+    it alone (written before that change) renders as one written after: tabled, in the
+    median, and named under no floor. One whose window floor and another floor failed is
+    named under the other one only."""
     jitter = _metal_row("jitter_2d", window_floor=False)
     assert jitter["reportable"] is False and jitter["verdict"] == "TIMED-NOT-REPORTABLE"
     both = _metal_row("both_2d", reportable=False, window_floor=False)
@@ -1293,7 +1338,7 @@ def test_a_contended_metal_row_says_who_was_on_the_device():
     text = report.render([_contended(_metal_row("pml_2d"))], "t")
     assert "yes — before: 1 foreign process(es)" in text
     assert "**Contended rows.**" in text
-    # AND IT IS NOT A QUIET-BOX MEDIAN. With no quiet row there is no quiet headline.
+    # And it is not a quiet-box median. With no quiet row there is no quiet headline.
     assert "over 1 case whose control ran the same table" not in text
     assert "**No row was measured on a quiet device, so there is no quiet-box " \
            "median.**" in text
@@ -1419,3 +1464,193 @@ def test_a_row_the_metal_table_served_without_its_witness_enters_no_headline():
     assert "Median **2.00x** over 1 case" in text          # the 6.00x row is not in it
     line = next(t for t in text.splitlines() if t.startswith("| `pml_3d` |"))
     assert "| no witness | — |" in line and "0 : 0" not in line
+
+
+# ---------------------------------------------------------------------------
+# What a row writes about the machine (neutral_ids)
+# ---------------------------------------------------------------------------
+
+#: A machine no test here runs on: nothing a row writes may carry any of it.
+HOST = "gpu-node-17.cluster.example.edu"
+LOGIN = "fixtureuser"
+HOME = "/" + "ho" + "me" + "/fixtureuser"   # from pieces: a full home path is a hygiene-guard hit
+REAL_A = "GPU-3f1c2a9e-5b7d-4e21-9a0c-6d8e2f4b1a37"
+REAL_B = "GPU-9b2e7c41-0d6a-4f83-b5e9-1c7a3d8f6e02"
+FOREIGN_PID = 271828
+
+
+@pytest.fixture
+def machine(monkeypatch):
+    """This process as the fixture machine: its host names, login and home."""
+    monkeypatch.setattr(neutral_ids.socket, "gethostname", lambda: HOST)
+    monkeypatch.setattr(neutral_ids, "_node", lambda: HOST)
+    monkeypatch.setattr(neutral_ids.getpass, "getuser", lambda: LOGIN)
+    monkeypatch.setenv("HOME", HOME)
+    neutral_ids.reset()
+    yield neutral_ids
+    neutral_ids.reset()
+
+
+def assert_neutral(record, *tokens):
+    assert neutral_ids.residue(record) == []
+    text = json.dumps(record, sort_keys=True, default=str)
+    for token in (HOST, HOST.split(".")[0], LOGIN, HOME, REAL_A, REAL_B,
+                  str(FOREIGN_PID)) + tokens:
+        assert str(token) not in text, (token, text[:400])
+
+
+def _smi(monkeypatch):
+    """``nvidia-smi`` as a two-GPU host shows it: this process and a foreign one on
+    device 0, a stranger on device 1."""
+    gpus = f"0, {REAL_A}, 1100 MiB, 40 %\n1, {REAL_B}, 4970 MiB, 100 %"
+    apps = (f"{REAL_A}, {os.getpid()}, 300 MiB\n{REAL_A}, {FOREIGN_PID}, 800 MiB\n"
+            f"{REAL_B}, 900, 4970 MiB")
+    monkeypatch.setattr(cuda_bench, "_run", lambda command: (
+        gpus if any("--query-gpu" in part for part in command) else apps))
+    return gpus, apps
+
+
+def _old_box(pin, gpus, apps):
+    """The box the probe wrote before its tables left the machine: raw UUIDs and pids."""
+    foreign = [line for line in apps.splitlines()
+               if (not pin.startswith("GPU-") or line.split(",")[0] == pin)
+               and int(line.split(",")[1]) != os.getpid()]
+    return {"CUDA_VISIBLE_DEVICES": pin, "gpus": gpus, "compute_apps": apps,
+            "pid": os.getpid(), "foreign_compute_apps_on_pinned_gpu": foreign}
+
+
+@pytest.mark.parametrize("pin", ["0", REAL_A])
+def test_the_box_probe_writes_cards_and_owners_and_every_reader_keeps_its_verdict(
+        machine, monkeypatch, pin):
+    """``box_state`` compares pids and UUIDs raw, in process, and writes card ids, an
+    ``own``/``other`` owner and memory: no pid, no UUID. Every reader of the tables --
+    the report, the record cutter, the ladder's recorder -- reads the same neighbour off
+    the recorded row as off a raw one."""
+    gpus, apps = _smi(monkeypatch)
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", pin)
+    box = cuda_bench.box_state()
+    assert_neutral(box, f", {os.getpid()},")
+    assert "pid" not in box
+    card_a, card_b = neutral_ids.card_id(REAL_A), neutral_ids.card_id(REAL_B)
+    assert box["compute_apps"].splitlines() == [
+        f"{card_a}, own, 300 MiB", f"{card_a}, other, 800 MiB", f"{card_b}, other, 4970 MiB"]
+    old = _old_box(pin, gpus, apps)
+    # the probe's own field: its count unchanged (index-blind on an index pin, as before)
+    assert len(box["foreign_compute_apps_on_pinned_gpu"]) == len(
+        old["foreign_compute_apps_on_pinned_gpu"]) == (2 if pin == "0" else 1)
+    assert box["foreign_compute_apps_on_pinned_gpu"][0] == f"{card_a}, 800 MiB"
+    # every reader: one neighbour on the pinned device, read off either spelling
+    for reader in (lambda b: report.contended(dict(_nvidia_row("a", 2.0), box_before=b)),
+                   lambda b: len(cut_timing_record._box_foreign(b)),
+                   lambda b: len(timing_records.pinned_foreign(b))):
+        assert reader(box) == reader(old), reader
+    assert report.contended(dict(_nvidia_row("a", 2.0), box_before=box)) == (
+        "before: 1 foreign process(es)")
+    monkeypatch.setattr(cuda_bench, "_run", lambda command: (
+        gpus if any("--query-gpu" in part for part in command)
+        else f"{REAL_A}, {os.getpid()}, 300 MiB"))
+    quiet = cuda_bench.box_state()
+    assert quiet["foreign_compute_apps_on_pinned_gpu"] == []
+    assert cut_timing_record._box_foreign(quiet) == []
+    assert timing_records.pinned_foreign(quiet) == []
+
+
+def test_the_laptop_probe_writes_its_neighbours_without_pids(machine, monkeypatch):
+    ps = (f"  {FOREIGN_PID}     1 python -u {HOME}/runs/x/parity/meep_gpu/gate_metal_bfast.py"
+          " --out y\n  7  1 zsh recut_metal_gates.sh a b\n")
+    answers = {"/usr/sbin/sysctl -n hw.model": "MacBookPro18,2",
+               "/usr/sbin/sysctl -n machdep.cpu.brand_string": "Apple M1 Max",
+               "pmset -g batt": BATTERY, "pmset -g": " powermode            0\n",
+               "pmset -g therm": "CPU_Speed_Limit \t= 100\n",
+               "ps -axo pid=,ppid=,command=": ps}
+    monkeypatch.setattr(bench.sys, "platform", "darwin")
+    monkeypatch.setattr(bench, "_read_command", lambda c: answers[" ".join(c)])
+    bench._static_host_facts.cache_clear()
+    try:
+        state = bench.host_state()
+    finally:
+        bench._static_host_facts.cache_clear()
+    assert len(state["foreign_processes"]) == 2, "the count a reader reads is unchanged"
+    assert state["foreign_processes"] == ["python gate_metal_bfast.py", "zsh recut_metal_gates.sh"]
+    assert state["node"] == neutral_ids.machine_id()
+    assert_neutral(state, f"{FOREIGN_PID} 1")
+    assert report.contended(dict(_metal_row("pml_2d"), host_before=state)) == (
+        "before: 2 foreign process(es)")
+
+
+def test_the_process_environment_writes_a_uuid_pin_as_its_card_id(machine, monkeypatch):
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", REAL_A)
+    monkeypatch.setenv("TRITON_CACHE_DIR", f"{HOME}/runs/ladder_t/cache/triton")
+    monkeypatch.setenv("LD_LIBRARY_PATH", f"{HOME}/stub:/usr/lib")
+    monkeypatch.setenv(bench.PREFERENCE["variable"], "measured")
+    found = bench.process_environment()
+    assert found["CUDA_VISIBLE_DEVICES"] == neutral_ids.card_id(REAL_A)
+    assert found["TRITON_CACHE_DIR"] == "triton"
+    assert found[bench.PREFERENCE["variable"]] == "measured"
+    assert_neutral(found)
+
+
+def test_every_row_and_summary_is_written_as_it_leaves_the_machine(machine, tmp_path):
+    """The benches' two writers (``append_jsonl``, ``save``) sweep what a row carries:
+    an error naming a path, a UUID in free text, the host name."""
+    row = {"error": f"OSError: {HOME}/runs/x/rows.jsonl", "device": f"pinned {REAL_A}",
+           "note": f"ran on {HOST}", "per_leg": {"fused": {"median_seconds_per_step": 1e-3}}}
+    rows = str(tmp_path / "rows.jsonl")
+    cuda_bench.append_jsonl(rows, row)
+    cuda_bench.save({"rows": [row]}, str(tmp_path / "summary.json"))
+    written = [json.loads(line) for line in open(rows, encoding="utf-8")]
+    summary = json.load(open(str(tmp_path / "summary.json"), encoding="utf-8"))
+    assert_neutral(written)
+    assert_neutral(summary)
+    assert written[0]["per_leg"] == row["per_leg"]
+    assert written[0]["device"] == f"pinned {neutral_ids.card_id(REAL_A)}"
+
+
+def test_the_kernel_bench_header_names_the_machine_by_id(machine, monkeypatch, tmp_path):
+    """``bench_cuda_kernels_vs_array``'s results header: the host as the machine id and
+    its argument list through ``neutral_ids.argv``, read before the sweep of ``save``."""
+    _smi(monkeypatch)
+    captured = []
+
+    class Stop(Exception):
+        pass
+
+    def save(payload, path):
+        captured.append(json.loads(json.dumps(payload, default=str)))
+        raise Stop()
+
+    monkeypatch.setattr(cuda_bench, "save", save)
+    with pytest.raises(Stop):
+        cuda_bench.main(["--backend", "numpy", "--out", str(tmp_path / "out.json"),
+                         "--corpus-dir", f"{HOME}/meep/python/examples"])
+    header = captured[0]
+    assert header["host"] == neutral_ids.machine_id()
+    assert header["argv"][-1] == "<home>/meep/python/examples"
+    assert_neutral({k: header[k] for k in ("host", "argv", "box_before")})
+
+
+def test_provenance_writes_a_source_outside_the_tree_under_its_label(machine, monkeypatch):
+    monkeypatch.setattr(bench.importlib, "import_module", lambda name: SimpleNamespace(
+        __file__=f"{HOME}/elsewhere/{name.replace('.', '/')}.py"))
+
+    def no_checkout(*_args):
+        raise RuntimeError(f"not a git repository: {HOME}/elsewhere")
+
+    monkeypatch.setattr(bench, "_git", no_checkout)
+    stamp = bench.provenance(None)
+    outside = [v for v in stamp["paths"].values() if v.startswith("<home>/")]
+    assert outside, stamp["paths"]
+    assert_neutral(stamp)
+
+
+def test_the_bench_refuses_a_host_named_like_one_of_its_cases(machine, monkeypatch, tmp_path):
+    import timing_host  # noqa: PLC0415
+
+    case = bench.selected_cases("triton", (), ())[0]
+    monkeypatch.setattr(neutral_ids.socket, "gethostname", lambda: case)
+    monkeypatch.setattr(neutral_ids, "_node", lambda: case)
+    neutral_ids.reset()
+    with pytest.raises(SystemExit) as refused:
+        bench.main(["--drive-table", "triton", "--out", str(tmp_path / "out")])
+    assert timing_host.VOCABULARY_REFUSAL in str(refused.value)
+    assert not os.path.exists(tmp_path / "out")

@@ -7,9 +7,9 @@ the source-adjacent near/far mirror fills, and the constitutive update together,
 and does that six-slot route reproduce the complete CuPy driver state exactly
 after every step?
 
-SECOND LEG, ADDED 2026-08-27 WITH THE FOLDED PAIR ROUTING (:func:`check_routing`).
+Second leg, added 2026-08-27 with the folded pair routing (:func:`check_routing`).
 The composition above is the UNFUSED one and is now asked for with ``fuse=False``;
-until this round the same six plans came back under ``fuse=True`` only because the
+until that routing landed the same six plans came back under ``fuse=True`` only because the
 composer blanket-refused every folded fusion, so the flag measured nothing and the
 gate would have gone on passing whatever the routed answer became. Each case is now
 also planned WITH fusion, and the expected answer is not uniform: the three
@@ -176,27 +176,27 @@ def _folded_family_modules():
 def check_routing(plan_step, candidate, name, declarations) -> Dict[str, Any]:
     """``fuse=True`` on this folded grid: routed where clean, refused where in-seam.
 
-    THE HALF THE SIX-SLOT LEG CANNOT SEE. ``EXPECTED`` above pins the unfused route
+    The half the six-slot leg cannot see. ``EXPECTED`` above pins the unfused route
     and would keep passing if the fused route were wrong in every way, because it is
     no longer the plan this gate installs. So the routed answer is asked for here,
     per case, and it is asked in the one place where the two halves are known to be
     about the SAME grid and the SAME declared source list.
 
-    AND IT IS NOT A UNIFORM ANSWER, which is what makes it worth measuring rather
+    And it is not a uniform answer, which is what makes it worth measuring rather
     than asserting once. Three of these cases declare no source and both pairs must
     take both their slots. Two declare an ON-PLANE source, and it lands INSIDE
     exactly one of the two seams — so that pair and the other are answered
     differently, on the same grid, in the same call.
 
-    WHAT THE IN-SEAM PAIR MUST DO CHANGED ON 2026-08-30, AND THIS ASSERTION WAS
-    INVERTED RATHER THAN DROPPED. It used to require the in-seam pair to be refused
+    What the in-seam pair must do changed on 2026-08-30, and this assertion was
+    inverted rather than dropped. It used to require the in-seam pair to be refused
     BY NAME and leave both sub-steps on their separate folded plans. Both folded
     families now declare :data:`CARRIES_DEPOSIT_REPAIR`, so the composer BRACKETS
     that pair instead: ``LeadingRepairPlan`` in the curl slot, ``TrailingRepairPlan``
     in the constitutive one, with the deposit and every cell the post-injection
     fills image it into saved before the launch and restored after.
 
-    THE THING THE OLD ASSERTION WAS PROTECTING IS STILL PROTECTED, and by a stricter
+    The thing the old assertion was protecting is still protected, and by a stricter
     check than "is it refused". A routing that simply ADMITTED the in-seam pair —
     a bare ``FoldedFusedPairPlan`` in the curl slot and a ``NoopPlan`` in the other —
     would run a launch against a field the driver had not injected yet, and no byte
@@ -223,7 +223,7 @@ def check_routing(plan_step, candidate, name, declarations) -> Dict[str, Any]:
     }
     for pair, (curl, update, plan_name) in ROUTED_PLANS.items():
         if pair in refused:
-            # THE CARRIED SEAM. Both slots must hold the repair plans, in order:
+            # The carried seam. Both slots must hold the repair plans, in order:
             # anything else here is either the pre-2026-08-30 refusal (which would
             # now be a regression) or, far worse, a bare fused pair consuming a
             # pre-injection field.
@@ -255,7 +255,7 @@ def check_routing(plan_step, candidate, name, declarations) -> Dict[str, Any]:
                     f"{name}: the {pair} bracket wraps "
                     f"{type(getattr(leading, 'inner', None)).__name__!r}, not "
                     f"{plan_name!r}")
-            # THE OTHER DIRECTION, on the same objects: holding the family's flag
+            # The other direction, on the same objects: holding the family's flag
             # down must put the by-name refusal straight back. Without this the
             # bracket above could not be told from a clause that went away.
             module = _folded_family_modules()[pair]
@@ -303,7 +303,7 @@ def check_routing(plan_step, candidate, name, declarations) -> Dict[str, Any]:
     for slot in ("fill_B", "fill_D"):
         if types.get(slot) != "MirrorGhostFillPlan":
             raise AssertionError(f"{name}: {slot}={types.get(slot)!r}")
-    # The refusal this round did NOT retire, still there by name.
+    # A refusal that was NOT retired, still there by name.
     if "folded dispersive D/E fusion is not implemented" not in \
             plan.reasons.get("fused_pair_dispersive_D", ()):
         raise AssertionError(
@@ -376,7 +376,7 @@ def run_case(cp, name, cell, boundaries, mirrors, declarations, steps):
                if declarations else None)
     undo = lambda: None
     try:
-        # THE SIX-SLOT ROUTE IS THIS GATE'S SUBJECT, and it is the UNFUSED one:
+        # The six-slot route is this gate's subject, and it is the UNFUSED one:
         # separate folded curl, combined mirror fill, separate constitutive. It is
         # asked for by name (`fuse=False`) rather than obtained as a side effect of
         # a refusal. Until 2026-08-27 this call passed `fuse=True` and got the same
@@ -494,8 +494,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     from meep_gpu import backends  # noqa: PLC0415
 
     payload: Dict[str, Any] = {"environment": environment(cp), "cases": []}
-    # THE CAMPAIGN'S SUBNORMAL POLICY, installed and measured before the first driver
-    # is built and stamped into the artifact (owner ruling R16; composition_policy.py).
+    # The campaign's subnormal policy, installed and measured before the first driver
+    # is built and stamped into the artifact (composition_policy.py).
     refused = stamp_campaign_policy(payload, cp)
     save(payload, args.out)
     if refused:

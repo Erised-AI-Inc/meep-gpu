@@ -1,7 +1,7 @@
 """The device gate for the four Metal residue welds — the board's last two
 CANNOT-BIND cells and the slot-UNSELECTED special_kz pair.
 
-WHAT THIS CERTIFIES, AND ON WHAT. Four products landed in one round:
+What this certifies, and on what. Four products were added together:
 
     bfast_fused_electric_pair        BFAST x BFAST                D -> E  (1 corpus row)
     conductive_fused_electric_pair   conductive PML x ordinary    D -> E  (1)
@@ -14,15 +14,15 @@ ceiling by :mod:`meep_gpu.metal_kernels.coefficient_pack` — the curl half's si
 vectors for the BFAST pair, BOTH halves' twelve for the conductive one — and this
 gate COMPILES the refused unpacked signatures, COMPILES the shipped packed ones,
 and BISECTS the pointer ceiling on this host exactly as the cylindrical
-precedent's gate did. The other two serve the one corpus row the tranche-6 census
+precedent's gate did. The other two serve the one corpus row the 2026-08-19 coverage census
 left slot-UNSELECTED (the complex-beta constitutive arm landed 2026-08-19; the
 reclose artifact records the corrected selections), welding the certified
 ``special_kz.beta_bloch_curl`` body to the certified complex constitutive body.
 
-THE COMPARISON IS PER COMPLETE DRIVER STEP, AS uint32 WORDS, over every stored
+The comparison is per complete driver step, as uint32 WORDS, over every stored
 volume a step can touch — never ``allclose`` and never a single sub-step.
 
-THE LEGS ARE ARMED (a negative leg that does not diverge is VACUOUS and fails):
+The legs are armed (a negative leg that does not diverge is VACUOUS and fails):
 
     A  identity   the full mechanism per case: 0 differing words at every step,
                   the declared launch count, every compared array MOVED, and the
@@ -37,7 +37,7 @@ THE LEGS ARE ARMED (a negative leg that does not diverge is VACUOUS and fails):
                   (``plan_step(..., fuse=True)``) and unbracketed. The bracketed
                   walk must be bit-identical with a nonzero repaired-point count;
                   the unbracketed one MUST diverge. The conductive family's walk
-                  injects THROUGH THE DRIVER'S OWN CONDUCTIVE BRANCH — the sparse
+                  injects through the driver's own conductive branch — the sparse
                   per-deposit-cell condinv replay — imported from the no-PML
                   pairs' gate so the transcription has one home. The magnetic
                   beta-complex pair has NO deposit leg: its seam is empty on its
@@ -80,7 +80,7 @@ import numpy as np  # noqa: E402
 import metal_composition_matrix as matrix  # noqa: E402
 from gate_chunk_records import layer_record  # noqa: E402
 
-# THE DRIVER'S CONDUCTIVE INJECTION, transcribed once. The no-PML pairs' gate owns
+# The driver's conductive injection, transcribed once. The no-PML pairs' gate owns
 # the live transcription (sparse per-deposit-cell replay + dense fallback) and its
 # lifted_refusal leg holds it against the driver; this gate imports it rather than
 # writing a second copy that could drift.
@@ -102,7 +102,7 @@ from meep_gpu.metal_kernels.device import (  # noqa: E402
     MAX_BUFFER_BINDINGS, Residency, compile_source, metal_frontend_version,
 )
 
-#: THIRTEEN, NOT TWELVE, AND THE ODDNESS IS LOAD-BEARING. The BFAST Tustin state
+#: Thirteen, not twelve, and the oddness is load-bearing. The BFAST Tustin state
 #: on a zero-coefficient target advances by exactly ``-2 * state`` per step —
 #: the marginally stable ``(-1)^n`` mode stepping.py:868-874 records — so after
 #: any EVEN number of steps it is BYTE-EQUAL to its seed and the every-array-moved
@@ -165,9 +165,9 @@ def frozen(fields: Any) -> Dict[str, np.ndarray]:
 
 
 #: The auxiliary volumes the per-chunk forms leave untouched off their forms' cells
-#: (KERNELS.md §1, C2): ``fu_*`` off the recurrence's cells, ``f_w_*`` off the
+#: (the auxiliary contract): ``fu_*`` off the recurrence's cells, ``f_w_*`` off the
 #: accumulation's. Where a component's layer is absent (an invariant axis) the ORACLE
-#: never moves that volume either; the floor is the tranche-7 gate's.
+#: never moves that volume either; the floor is ``gate_metal_tranche7_fused_pairs.py``'s.
 AUXILIARY_PREFIXES: Tuple[str, ...] = ("fu_", "f_w_")
 
 
@@ -360,7 +360,7 @@ FAMILIES: Tuple[Dict[str, Any], ...] = (
             ("conductive_history_drops_condfac", 2,
              "float c0_new = ((c0_previous * cf0[ii]) - curl0) * ci0[ii];",
              "float c0_new = ((c0_previous) - curl0) * ci0[ii];"),
-            # INVERTED (KERNELS.md §7.1): the lifted curl adds the f_cond increment
+            # INVERTED: the lifted curl adds the f_cond increment
             # formed first, MEEP's grouping; this plants the package's previous one.
             ("conductive_previous_increment_grouping",
              "float u0_new = ((u0_previous * km_y) + c0_step) * si_y;",
@@ -450,7 +450,7 @@ FAMILIES: Tuple[Dict[str, Any], ...] = (
                 boundaries={"x": "metallic"})),
         ),
         "mutation_case": "beta_complex_bloch_2d",
-        # NO DEPOSIT LEG: this cell's magnetic seam is EMPTY (its one corpus row
+        # No deposit leg: this cell's magnetic seam is EMPTY (its one corpus row
         # declares source_field_types == ['D']) and the flag is False — the
         # measured position its host suite pins. A magnetic deposit walk here
         # would certify a bracket the module deliberately does not claim.
@@ -701,7 +701,7 @@ def run_deposit_case(spec: Mapping[str, Any], repair: bool = True,
                      steps: Optional[int] = None) -> Dict[str, Any]:
     """Complete driver steps with an in-seam electric source, byte compared.
 
-    THE WALK IS THE DRIVER'S: the injection lands between the fused launch and
+    The walk is the driver's: the injection lands between the fused launch and
     the trailing repair — through the driver's OWN conductive branch on the
     conductive family (the sparse condinv replay) and through the plain loop
     everywhere else — and every in-seam host pass the driver runs
@@ -931,7 +931,7 @@ def leg_binding_ceiling() -> Dict[str, Any]:
             log(f"    ceiling   {key:64s} refused={not rows[key]['compiled']}")
     # THE BISECT: MAX_POINTERS with Params compiles; one more pointer is refused
     # with the platform's own error. This is the measurement that licenses BOTH
-    # packs, re-taken on this host rather than cited from the cylindrical round.
+    # packs, re-taken on this host rather than cited from the cylindrical precedent's gate.
     bisect: Dict[str, Any] = {}
     for pointers, must_compile in ((MAX_BUFFER_BINDINGS - 1, True),
                                    (MAX_BUFFER_BINDINGS, False)):
@@ -961,6 +961,8 @@ def leg_binding_ceiling() -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 def main() -> int:
+    from metal_closed_table import close_table  # noqa: PLC0415
+    close_table()
     global STEPS
 
     parser = argparse.ArgumentParser()
@@ -1048,7 +1050,7 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    # ROUTED THROUGH THE RELEASE RUNNER, as every `gate_metal_*.py` is: the runner
+    # Routed through the release runner, as every `gate_metal_*.py` is: the runner
     # re-derives the imported source set, welds it against `source_sha256.txt`,
     # and only then records `release.released`.
     from metal_gate_runner import run_current_measurement

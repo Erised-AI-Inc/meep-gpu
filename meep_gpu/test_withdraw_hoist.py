@@ -9,8 +9,8 @@ drives the two facts a fused ``update_H + step_D`` launch rests on, the failure 
 SILENT (a launch reading the wrong words computes a plausible field nobody notices), so
 each claim is paired with the thing that must fail:
 
-* THE RESTORE WRITES ONLY B, measured on a grid rather than asserted;
-* THE FUSED ORDER IS THE DRIVER'S, byte for byte over 30 complete steps, and the two
+* The restore writes only B, measured on a grid rather than asserted;
+* The fused order is the driver's, byte for byte over 30 complete steps, and the two
   orders the commutation does not license -- the restore before ``update_H``, and no
   ``f_minus_p`` at all -- diverge.
 
@@ -54,7 +54,7 @@ def _build(cell=(1.2, 1.2, 0.0), resolution=12.0, thickness=2, seed=20261007):
     """Grid, fields, an active layer and two integrated sources (Ez, Hz).
 
     The layer is ACTIVE on purpose: H is then stored, which is the case where the magnetic
-    restore stands between the seam's two consults. The arrays are SEEDED WITH NOISE (the
+    restore stands between the seam's two consults. The arrays are seeded with noise (the
     ``test_deposit_repair`` habit: zero is a fixed point of the constitutive recurrence),
     and the state is mid-run (``h_separated``), so no first-step start is in play.
     """
@@ -437,7 +437,7 @@ def test_hoist_returns_the_count_and_refuses_a_bad_span():
 
 
 def test_the_licence_is_exactly_what_was_measured_and_is_superseded():
-    """FAILS IF THE LICENCE IS WIDENED, and it names what superseded it."""
+    """Fails if the licence is widened, and it names what superseded it."""
     assert withdraw_hoist.LICENSED_PLACEMENTS == (withdraw_hoist.BEFORE_UPDATE_H,)
     assert set(withdraw_hoist.PLACEMENT_REFUSALS) == (
         set(withdraw_hoist.PLACEMENTS) - set(withdraw_hoist.LICENSED_PLACEMENTS))

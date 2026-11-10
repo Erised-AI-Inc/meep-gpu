@@ -1,6 +1,6 @@
 """Every DRIVE row can be built and described, checked here rather than on a device.
 
-WHAT THIS EXISTS BECAUSE OF. On 2026-09-17 the CUDA route campaign recorded
+What this exists because of. On 2026-09-17 the CUDA route campaign recorded
 ``complex_no_pml_offdiag`` as ERROR after 0.0 s, on a leg where the honest verdict
 was PASS-NOT-THIS-LEG. The row had been added to ``DRIVE_CUDA`` with a builder in
 ``CASES`` and a ``needs_probe`` licence, but no entry in ``CASE_INTENT`` — and
@@ -8,12 +8,12 @@ was PASS-NOT-THIS-LEG. The row had been added to ``DRIVE_CUDA`` with a builder i
 BEFORE the ``needs_probe`` clause that would have skipped the case. So the lookup
 raised ``KeyError`` before any of the case's own logic ran.
 
-THE COST IS NOT THE CRASH, IT IS THE AMBIGUITY. An ERROR verdict in a campaign
+The cost is not the crash, it is the ambiguity. An ERROR verdict in a campaign
 summary reads exactly like a product that failed to dispatch. Distinguishing the two
 took a GPU campaign leg, a log, and an artifact extraction — for a missing dictionary
 key that a local test answers in milliseconds.
 
-THE TABLES ARE CHECKED AGAINST EACH OTHER, NOT AGAINST A LIST. A hand-written
+The tables are checked against each other, not against a list. A hand-written
 expected set would have to be edited every time a row is added, which is the same
 class of omission this file is here to catch.
 """

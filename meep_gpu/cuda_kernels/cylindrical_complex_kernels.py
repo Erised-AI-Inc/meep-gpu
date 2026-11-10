@@ -1,6 +1,6 @@
 """COMPLEX cylindrical (Dcyl) curl sub-steps, in hand CUDA -- complex64 storage, any m.
 
-WHAT IT REPLACES. ``stepping.step_B`` and ``stepping.step_D`` on a Dcyl grid with
+What it replaces. ``stepping.step_B`` and ``stepping.step_D`` on a Dcyl grid with
 complex64 storage (``abs(grid.m) >= 1``, and ``m = 0`` under ``force_complex_fields``)
 and an active split-field PML: the whole sub-step, in two launches -- the radial scan
 (:mod:`.cylindrical_prefix`, one column-serial kernel, run per stored part) and the curl
@@ -11,7 +11,7 @@ complex storage by name) and the Cartesian complex one (``complex_emitter``, whi
 refuses Dcyl by name). Both refusals stay.
 
 =============================================================================
-THE FORMS ARE THE ARRAY PATH'S (bit_parity_0_10 KERNELS.md section 1), each read from
+The forms are the array path's (since 1.0), each read from
 ``stepping`` and transcribed, per stored part
 =============================================================================
 
@@ -24,7 +24,7 @@ THE FORMS ARE THE ARRAY PATH'S (bit_parity_0_10 KERNELS.md section 1), each read
    z), so every operand is the stored word and the ghosts are plain.
 2. **Bz's and Dz's whole curl is ``dtdx`` times the radial difference** of Ep's / Hp's
    per-chunk sum, ``part_products.scale(dtdx, radial)``, which the scan writes first.
-3. **The i*m/r coupling is a PASS OF ITS OWN after the curl** (step_db.cpp:177-294,
+3. **The i*m/r coupling is a pass of its own after the curl** (step_db.cpp:177-294,
    ``stepping._cylindrical_imr_increment`` through ``_apply_folded_increment``): per
    target ``Bx <- Ez (+1)``, ``Bz <- Ex (-1)``, ``Dx <- Hz (-1)``, ``Dz <- Hx (+1)``,
    the increment is the partner's quarter turn by the real-part ``rinv``,
@@ -55,7 +55,7 @@ The r_to_minus_r near ghost is not implemented and cannot be observed (the targe
 taking a shift-down along r have r Yee shift 0 or a radial-difference curl, and the
 mask owns row 0) -- the real pair's reason, restated in ``cylindrical_kernels``.
 
-NOT CUPY AT IMPORT: the source is built from the imported prelude, so a host test
+Not CuPy at import: the source is built from the imported prelude, so a host test
 imports this module to read the text. ``cupy`` is imported at the compile and launch
 sites. The device strings are pure ASCII (NVRTC reads them through the locale), and
 ``--fmad=false`` is correctness.
@@ -69,13 +69,13 @@ from __future__ import annotations
 
 from typing import Any, Dict, Sequence, Tuple
 
-# THE CERTIFIED COMPLEX STRINGS ARE IMPORTED, NOT COPIED.
+# The certified complex strings are imported, not copied.
 from .complex_emitter import curl_bounds_block, prelude
 from .cylindrical_prefix import radial_difference, radial_scan_device_tables, radial_scan_tables
 
 
 #: The two entry points. The records that certified their 0.9.2 texts are re-cut in the
-#: combined certification round (bit_parity_0_10 CERT-3).
+#: combined certification round of 1.0 (its device-gate stage, CERT-3).
 CERTIFIED_KERNELS = (
     "cyl_step_B_pml_complex",
     "cyl_step_D_pml_complex",
@@ -472,7 +472,7 @@ def cylindrical_complex_source(sub_step: str) -> str:
             f"sub_step must be one of {sorted(_TEMPLATES)}, got {sub_step!r}")
     body = _TEMPLATES[sub_step].replace("__BOUNDS__", curl_bounds_block(sub_step))
     source = prelude() + _CYLINDRICAL_HELPERS + body
-    # PURE ASCII IS A COMPILE REQUIREMENT: a mutation that inserts a non-ASCII
+    # Pure ASCII is a compile requirement: a mutation that inserts a non-ASCII
     # character is refused at emission, not at NVRTC three frames away.
     source.encode("ascii")
     return source
@@ -550,7 +550,7 @@ def word_view(array: Any) -> Any:
 def cylindrical_complex_curl_tables(pml: 'PML', half_integer: bool) -> Dict[str, Any]:
     """One sub-step's six kms/sinv coefficient vectors, as cached device views.
 
-    THE COEFFICIENTS STAY FLOAT32 UNDER COMPLEX STORAGE: each meets a part as one real
+    The coefficients stay float32 under complex storage: each meets a part as one real
     product (``part_products.scale``).
     """
     import cupy as cp  # noqa: PLC0415

@@ -218,7 +218,7 @@ def test_a_folded_metallic_grid_is_admitted_modulo_the_numpy_host():
 def test_a_magnetic_source_is_admitted_and_an_electric_DEPOSIT_is_carried(monkeypatch):
     """The clause tested in BOTH directions, or it cannot tell refusal from refusal.
 
-    THE SEAM'S OWN SOURCE IS NOW CARRIED, NOT REFUSED (2026-08-30). What the clause
+    The seam's own source is now carried, not refused (2026-08-30). What the clause
     decides is no longer "is there a source in my seam" but "can the deposit repair
     put this one back". So the refusing direction is asserted on a source that
     publishes NO deposit index -- the fail-closed rung -- and a third case holds
@@ -235,13 +235,13 @@ def test_a_magnetic_source_is_admitted_and_an_electric_DEPOSIT_is_carried(monkey
     assert residual(product.folded_fused_pair_coverage(
         fields, pml, (electric_deposit(fields),))) == []
 
-    # (2) STILL REFUSED BY NAME: a source whose deposit cannot be saved.
+    # (2) Still refused by name: a source whose deposit cannot be saved.
     refused = residual(product.folded_fused_pair_coverage(
         fields, pml, (Source("D"),)))
     assert any("does not publish the index it writes" in reason
                for reason in refused), refused
 
-    # (3) THE FLAG IS WHAT DID IT: held False, the original refusal comes back.
+    # (3) The flag is what did it: held False, the original refusal comes back.
     monkeypatch.setattr(product, "CARRIES_DEPOSIT_REPAIR", False)
     held = residual(product.folded_fused_pair_coverage(
         fields, pml, (electric_deposit(fields),)))
@@ -291,7 +291,7 @@ def test_the_far_carry_row_checks_SURVIVED_the_retirement():
     off both the plane it writes and the plane the near fill reads. Those checks
     were written BESIDE the blanket refusal precisely so that lifting it would leave
     them in force; this asserts that it did, and it is the test that would fail if a
-    later round "simplified" the predicate by deleting what the refusal used to
+    later change "simplified" the predicate by deleting what the refusal used to
     cover.
     """
     fields, pml = build(boundaries="periodic")
@@ -376,7 +376,7 @@ def test_the_far_carry_brought_the_top_plane_mask_WITH_it():
     sits past MEEP's owned window and the fill pass writes it. While this family
     REFUSED ``MIRROR_PERIODIC`` the block was unreachable and the kernel carried
     none; carrying ``fill_folded_far_ghosts_D`` (2026-08-21) brings the axis in, so
-    the block must come with it. THIS TEST INVERTED ON THAT DATE and the inversion
+    the block must come with it. This test inverted on that date and the inversion
     is the point: a far carry that arrived without the mask would step ``fu_D``
     from an unmasked curl on the very plane it images.
 
@@ -385,7 +385,7 @@ def test_the_far_carry_brought_the_top_plane_mask_WITH_it():
     had spelled it wrongly. Both sides are asserted, so the test fails if either
     moves.
 
-    THE D ARM IS THREE LINES, NOT SIX. ``Dx (1,0,0) Dy (0,1,0) Dz (0,0,1)`` is
+    The D arm is three lines, not six. ``Dx (1,0,0) Dy (0,1,0) Dz (0,0,1)`` is
     shift 1 on the component's OWN axis only; the B family's shifts put it on the
     two others. A body carrying six would be masking the magnetic geometry.
     """
@@ -457,7 +457,7 @@ class _FieldsOn:
 
 
 def test_a_folded_axis_with_two_or_fewer_stored_cells_is_refused():
-    """The near fill images stored cell 2 FROM THAT CELL'S OWN LANE.
+    """The near fill images stored cell 2 from that cell's own lane.
 
     A fold that does not store it is an out-of-range write, not a soft error, so
     the clause is restated in this product rather than left to the curl half.
@@ -509,7 +509,7 @@ def test_every_carry_block_offsets_by_the_stride_of_the_axis_it_images():
                    "df_z": "nz - 1 - rz"}
     seen = 0
     for record in gate.parse_carry_table():
-        # THE FAR TERM COMES FIRST in every composite: the offset is written
+        # The far term comes first in every composite: the offset is written
         # destination-outward, and the order is asserted so a reordering that
         # happened to evaluate the same is still visible.
         want = " ".join(["+ " + far[axis] for axis in record["far_axes"]]
@@ -634,7 +634,7 @@ def test_the_single_launch_site_passes_the_packages_shared_guard_constant():
 
 
 def test_the_planner_names_this_module_only_through_the_folded_fusion_route():
-    """THE DEFERRAL WAS LIFTED 2026-08-27, and what replaced it is narrower.
+    """The deferral was lifted 2026-08-27, and what replaced it is narrower.
 
     This used to assert that NOTHING in ``launch.py`` names this module — the seam
     that kept a deferred product deferred, on the ground that ``plan_step`` assigns
@@ -645,30 +645,30 @@ def test_the_planner_names_this_module_only_through_the_folded_fusion_route():
     seam (``SUPPORT_MODULES``) and the import inside
     ``_folded_fused_pair_entries``.
 
-    THE OTHER TWO FILES ARE UNCHANGED, and that is the half of the old claim that
+    The other two files are unchanged, and that is the half of the old claim that
     still holds: ``fastpath.plan_fast_path`` is untouched, so no default run reaches
     this plan, and the package's ``__init__`` exports nothing from here. The KERNEL
     symbol stays private to this module in all three.
 
-    ``fastpath.py`` NOW NAMES THE FAMILY, AND THE CLAIM IS NARROWED AGAIN RATHER
-    THAN DROPPED (2026-08-29). The fusion opt-in gave every fused label an
+    ``fastpath.py`` now names the family, and the claim is narrowed again rather
+    than dropped (2026-08-29). The fusion opt-in gave every fused label an
     ``ARM_CERTIFICATION`` row, so the family name appears there — as a STRING in a
     lookup table read only when an artifact is written, which is the opposite of an
     entry point: it exists so a record naming a dispatched arm also names the gate
     that cut it. "The string is absent" was a proxy for "the planner cannot reach
     this module from fastpath", and the proxy stopped fitting. What replaces it is
     the property itself, in BOTH directions — see the same helper's note in
-    ``test_triton_folded_fused_magnetic_pair.py``, whose twin this is. THIS FILE'S
-    CHECK COVERS THE D ROW ONLY (corrected 2026-09-19): ``folded_fused_pair`` is
+    ``test_triton_folded_fused_magnetic_pair.py``, whose twin this is. This file's
+    check covers the D row only (corrected 2026-09-19): ``folded_fused_pair`` is
     NOT a substring of ``folded_fused_magnetic_pair`` (``magnetic_`` sits between
     ``fused_`` and ``pair``), so the B row is held inside the table by the twin's
     own call in ``test_triton_folded_fused_magnetic_pair.py``, not by this one.
     This note used to say the substring made this check cover both rows.
 
-    OWED, AND NOT DOABLE IN THIS ROUND: the module's own docstring still says
+    Owed, and not doable when this was written: the module's own docstring still says
     "Nothing in ``launch.py`` names this module" and "STILL NOT WIRED". Its bytes
     are digest-pinned by ``fingerprints.json``'s
-    ``triton_folded_fused_pair_device_gate``, which this round may not edit, so the
+    ``triton_folded_fused_pair_device_gate``, which could not be edited then, so the
     correction has to land in the same edit as the re-weld.
     """
     launch = (PACKAGE_DIR / "launch.py").read_text(encoding="utf-8")
@@ -716,7 +716,7 @@ def _fastpath_names_the_family_only_in_arm_certification(source: str,
     an import, a predicate, a refusal string — lands outside it and fails with the
     line number.
 
-    A ``#`` COMMENT IS NOT SCANNED (2026-09-19): a comment cannot be an import, a
+    A ``#`` comment is not scanned (2026-09-19): a comment cannot be an import, a
     predicate or a refusal string, so it is none of the three things this helper
     guards. The scan reads the token stream and skips ``tokenize.COMMENT`` tokens
     only; every other token still counts — a name, an attribute, a string, an
@@ -800,7 +800,7 @@ def test_the_module_claims_identity_ONLY_through_the_weld_that_measured_it():
             f"{name} has changed since the gate ran; the identity claim in its "
             f"docstring no longer describes the bytes that were measured")
 
-    # THE FAR CARRY'S OWN RELEASE, named where a reader will find it. The weld above
+    # The far carry's own release, named where a reader will find it. The weld above
     # was re-cut on 2026-08-21 for it: the module drifted from its 2026-08-20 weld
     # the moment the carry was written, and for the hours between that edit and the
     # device run this test failed on purpose — the fingerprint was NOT edited to
@@ -817,10 +817,10 @@ def test_the_module_claims_identity_ONLY_through_the_weld_that_measured_it():
     assert records, "no architecture's record binds the bytes this weld pins"
     assert "run_farcarryD6" in records or "run_farcarryD5" in records
 
-    # AND THE BOUND THAT DID NOT MOVE: a weld licenses a claim, not a dispatch.
-    # THE VOCABULARY MOVED, THE CLAIM DID NOT. Until 2026-08-27 these modules
-    # disclaimed dispatch with the words "NOT WIRED". The routing round then gave
-    # them an arm -- launch.py:1168 "THE TWO FOLDED PAIRS, routed 2026-08-27 by
+    # And the bound that did not move: a weld licenses a claim, not a dispatch.
+    # The vocabulary moved, the claim did not. Until 2026-08-27 these modules
+    # disclaimed dispatch with the words "NOT WIRED". The routing change then gave
+    # them an arm -- launch.py:1168 "the two folded pairs, routed 2026-08-27 by
     # _install_folded_fused_pairs" -- so "not wired" became false while the thing
     # this test is defending stayed exactly true, and the modules now say
     # "ROUTED BUT STILL NOT DISPATCHED" instead. This assertion tracks that
@@ -906,7 +906,7 @@ def test_the_gates_carry_table_verdict_FLIPS_on_every_defect_it_claims_to_see():
     per mutation — a defect the leg says it cannot see must report NOT CAUGHT with
     its reason, and every other must flip the verdict.
 
-    THIS LEG FOUND A DEFECT IN THE CARRY-TABLE LEG ITSELF on 2026-08-21: five
+    This leg found a defect in the carry-table leg itself on 2026-08-21: five
     mutations were planted and the table still passed, because the executor was
     re-deriving ownership from ``NEAR_FILL_AXES`` instead of reading the kernel's
     own lane and mask expressions — a mirrored evaluator inside the leg whose whole
@@ -959,8 +959,8 @@ def test_the_gates_predicate_leg_exercises_every_clause_in_both_directions():
     assert row["findings"] == []
     directions = {entry["case"]: entry["expect_admitted"] for entry in row["rows"]}
     assert directions["folded_metallic_magnetic_source"] is True
-    # THE THREE ROWS THE 2026-08-30 CARRY ADDED, asserted by NAME and by direction.
-    # A set equality alone would let a future round rename the carried row to the
+    # The three rows the 2026-08-30 CARRY ADDED, asserted by NAME and by direction.
+    # A set equality alone would let a later change rename the carried row to the
     # refused one and stay green, so the directions are pinned individually: the
     # deposit is ADMITTED, the source that cannot publish its index is REFUSED, and
     # the deposit is REFUSED AGAIN once the flag is held down.
@@ -1001,7 +1001,7 @@ def test_the_gate_arms_every_mutation_it_declares():
 
 
 def test_every_mutation_is_scored_on_a_grid_that_ENTERS_the_branch_it_rewrites():
-    """THE DEAD-BRANCH TRAP, priced.
+    """The dead-branch trap, priced.
 
     Every carry block sits under ``BC? == MIRROR_METALLIC`` on a named axis and
     every corner block under two. A mutation scored on a case that does not fold
@@ -1080,7 +1080,7 @@ def test_the_gates_material_names_are_the_ones_the_scan_really_finds():
 def test_the_case_table_REACHES_the_far_carry_and_the_guard_refuses_a_pairing_that_does_not():
     """Every branch this kernel ships must be named by a case that executes it.
 
-    THE SHIPPED-BUT-UNGATED TRAP, priced. Before 2026-08-21 every case in the gate
+    The shipped-but-ungated trap, priced. Before 2026-08-21 every case in the gate
     folded over a METALLIC outer declaration, and every ``FAR_a`` block is
     compile-time absent there — so a far carry released on that table would have
     been code no leg ever ran. Four folded PERIODIC cases were added with the carry.
@@ -1125,7 +1125,7 @@ def test_the_case_table_REACHES_the_far_carry_and_the_guard_refuses_a_pairing_th
         "parity-then-clear and the far ghost's clear-then-parity cannot disagree "
         "without one")
 
-    # THE GUARD IS ARMED. Re-point a far mutation at a folded METALLIC case and the
+    # The guard is armed. Re-point a far mutation at a folded METALLIC case and the
     # pairing must be refused by name.
     metallic_case = next(index for index, case in enumerate(gate.CASES)
                          if case[0] == "two_folds_metallic")

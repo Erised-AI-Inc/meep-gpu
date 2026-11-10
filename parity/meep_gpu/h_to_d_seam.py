@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""THE FOURTH SEAM — update_H -> step_D — ONE PRICING RULE FOR THREE BOARDS.
+"""The fourth seam — update_H -> step_D — one pricing rule for three boards.
 
-WHY THIS FILE EXISTS. The fusion-residue audit (§2) found the boundary between the
+Why this file exists. A review of the three boards found the boundary between the
 magnetic constitutive and the electric curl priced by no board: the three boards
 walked B->H, D->E and E->P and stopped, so up to 194 seam-instances per backend sat
 outside every denominator. Pricing it in three builders separately would have grown
@@ -9,7 +9,7 @@ three rules; this module is the one rule, and each builder hands it the two arms
 selects at ``update_H`` and ``step_D`` on each row plus its own null-constitutive
 verdict, and receives the bucket, the sentence and the detail to file.
 
-WHAT SITS IN THE SEAM is not transcribed: :func:`driver_seam_fact` locates the two
+What sits in the seam is not transcribed: :func:`driver_seam_fact` locates the two
 consults inside ``FdtdDriver.step`` by ast and RAISES unless the only statements
 between them are the magnetic ``f_minus_p`` restore (``sources.f_minus_p_end``, run
 there only where H is stored), which writes B alone and which ``step_D`` does not
@@ -18,7 +18,7 @@ update through ``f_minus_p`` and no longer stands a withdraw in this seam. A dri
 that grew a pass there would stop every board rather than be priced against a seam it
 no longer runs.
 
-WHETHER A WITHDRAW RUNS ON A ROW is measured, not read off a name (on this driver no
+Whether a withdraw runs on a row is measured, not read off a name (on this driver no
 engine source carries one, so a probe cut on it measures none; a cut on the driver
 before ``f_minus_p`` measured the integrated electric sources' withdraw):
 ``probe_h_to_d_seam.py`` lifts every row of the basis under the census machinery and
@@ -32,8 +32,8 @@ THE BUCKETS, in the taxonomy's precedence:
 ``not_fusion_surface``   ``update_H`` launches nothing on this row — the board's own
                           null-constitutive verdict, the same rule it applies to B->H
                           — so ``step_D`` alone performs the whole seam.
-``served``               a product spanning update_H + step_D admits this row, BY THE
-                          BOARD'S OWN PREDICATE WALK (``entries[i]["served_by"]``).
+``served``               a product spanning update_H + step_D admits this row, by the
+                          board's own predicate walk (``entries[i]["served_by"]``).
                           This module cannot evaluate a predicate — only the board
                           can, since the evidence is per-backend — so it carries the
                           verdict and files it second, where the taxonomy's precedence
@@ -60,12 +60,12 @@ THE BUCKETS, in the taxonomy's precedence:
                           The weld shape is NOT an in-place splice — ``step_D``'s curl
                           reads H at neighbouring cells ``update_H`` writes in the
                           same launch — so the buildable shape is the halo recompute
-                          of the pointwise H that the audit named. Or a product
+                          of the pointwise H. Or a product
                           admits it and its credit is withheld
                           (``detail["credit_withheld"]`` True, the product still
                           named).
 
-WHY ``served`` SITS SECOND AND WHAT IT SWALLOWS. Precedence is the taxonomy's
+Why ``served`` sits second and what it swallows. Precedence is the taxonomy's
 (``fusion_taxonomy.BUCKETS``), and it is matched here exactly so one instance lands in
 one bucket: ``not_fusion_surface`` outranks ``served`` — a seam whose first half
 launches nothing cannot be served, and a board claiming otherwise is a contradiction
@@ -77,8 +77,8 @@ the subtraction ``ATTAINABLE`` makes for it. So a served verdict on a withdraw r
 must name the measurement that licenses it (``served_over_the_withdraw``), or
 :func:`price` refuses it by name.
 
-WHERE A WITHHELD CREDIT SITS, AND WHY IT IS NOT WHERE THE THREE-SEAM WALK PUTS IT.
-The fourth seam decides ``credit_withheld`` AT THE SERVED RUNG — above
+Where a withheld credit sits, and why it is not where the three-seam walk puts it.
+The fourth seam decides ``credit_withheld`` at the served rung — above
 ``withdraw_seam``, so a withheld product on a withdraw row is still filed
 ``buildable_not_built`` and ``ATTAINABLE`` is unchanged by withholding. That is
 deliberate here: the row's attainability across the withdraw was measured by the
@@ -263,7 +263,7 @@ def classify(row: str, update_h_arm: Optional[str], step_d_arm: Optional[str],
              ) -> Tuple[str, str, Dict[str, Any]]:
     """One seam-instance -> (bucket, the sentence, the detail), in taxonomy precedence.
 
-    ``served_by`` is THE BOARD'S OWN VERDICT — the name of the product spanning
+    ``served_by`` is the board's own verdict — the name of the product spanning
     update_H+step_D whose predicate admits this row, or None. It is not re-derived
     here: a predicate is per-backend and this is the one rule three boards share.
     ``served_over_the_withdraw`` names the measurement licensing a served verdict on a
@@ -288,7 +288,7 @@ def classify(row: str, update_h_arm: Optional[str], step_d_arm: Optional[str],
                  "poison_measurement_changed_an_H_array":
                      block["update_H_array_path"]["poison_measurement"].get("changed")})
     if served_by and credit_withheld:
-        # DECIDED HERE, AT THE SERVED RUNG; FILED EIGHTH. The predicate admits
+        # Decided here, at the served rung; filed eighth. The predicate admits
         # (served_by is the product's own verdict and is not rewritten to None), the
         # board will not credit it, and the sentence is the three-seam walk's own so
         # the bucket stays one vocabulary. The withdraw facts ride in the detail,
@@ -322,7 +322,7 @@ def classify(row: str, update_h_arm: Optional[str], step_d_arm: Optional[str],
                    if block["withdraw_in_seam"] else ""),
                 {"product": served_by,
                  "cell": [update_h_arm, step_d_arm],
-                 # CARRIED EVEN WHEN SERVED. `served` outranks `withdraw_seam`, so
+                 # Carried even when served. `served` outranks `withdraw_seam`, so
                  # without these two keys a product admitting a withdraw row would
                  # delete the measurement that bucket exists to hold.
                  "withdraw_in_seam": bool(block["withdraw_in_seam"]),
@@ -331,7 +331,7 @@ def classify(row: str, update_h_arm: Optional[str], step_d_arm: Optional[str],
                  "served_is_a_predicate_verdict_not_an_installation": True})
     if block["withdraw_in_seam"]:
         return ("withdraw_seam",
-                "an integrated electric withdraw sits between the halves — MEASURED on "
+                "an integrated electric withdraw sits between the halves — measured on "
                 f"the lifted row: {len(withdraws)} integrated electric source(s) owning "
                 "deposit points carry a withdraw that returns a standing dipole to D "
                 "before step_D reads it (the driver the probe was cut on ran it between "
@@ -376,8 +376,8 @@ def classify(row: str, update_h_arm: Optional[str], step_d_arm: Optional[str],
             f"magnetic f_minus_p restore writes B alone), and no product on any backend spans "
             f"update_H+step_D. The weld is not an in-place splice: step_D's curl reads "
             f"H at neighbouring cells that update_H writes in the same launch, so the "
-            f"buildable shape is the halo recompute of the pointwise H the "
-            f"fusion-residue audit named (§2)",
+            f"buildable shape is the halo recompute of the pointwise H: H recomputed "
+            f"at each neighbouring cell the curl reads",
             {"cell": [update_h_arm, step_d_arm],
              "weld_shape": "halo recompute of the pointwise magnetic constitutive; an "
                            "in-place splice would be a stencil over the first half's "
@@ -392,7 +392,7 @@ def price(taxonomy, backend: str, kernel_package: str, entries: Iterable[dict],
 
     ``entries``: ``{"row": label, "update_H": arm-or-None, "step_D": arm-or-None,
     "update_H_is_null": bool}`` — the board's own selection and its own null verdict —
-    plus, ONCE A PRODUCT SPANS THE SEAM, ``"served_by"``: the spanning product whose
+    plus, once a product spans the seam, ``"served_by"``: the spanning product whose
     predicate admits that row, or None where none does (and
     ``"served_over_the_withdraw"`` on a served row whose seam holds the withdraw) and,
     optionally, ``"credit_withheld"``: the board's reason sentence where ``served_by``
@@ -406,11 +406,11 @@ def price(taxonomy, backend: str, kernel_package: str, entries: Iterable[dict],
     ``products_spanning_the_seam``: the board's product-table entries whose seam is
     H->D.
 
-    WHAT THIS REFUSES, AND WHY IT IS NOT THE OLD BLANKET REFUSAL. Until 2026-09-04 the
+    What this refuses, and why it is not the old blanket refusal. Until 2026-09-04 the
     first spanning product stopped this walk outright, which was right while no
     ``served`` branch existed and wrong the moment one did. What stands in its place is
     narrower and says what is owed: this module cannot evaluate a per-backend
-    predicate, so a board that names a spanning product must answer FOR EVERY ROW, and
+    predicate, so a board that names a spanning product must answer for every row, and
     a row it leaves unanswered is an ABSENCE — priced neither as served nor as
     buildable — and is NAMED in the refusal. The mirror refusal guards the other
     direction: a served verdict with no product spanning the seam is a credit with
@@ -457,7 +457,7 @@ def price(taxonomy, backend: str, kernel_package: str, entries: Iterable[dict],
             f"{backend}: rows are filed served by {unlisted}, which the board's own "
             f"product table does not list as spanning update_H+step_D ({spanning}). "
             f"The two walks disagree about which products exist.")
-    # THE THIRD ANSWER IS HELD TO ITS SHAPE, after the served_by checks above so a row
+    # The third answer is held to its shape, after the served_by checks above so a row
     # missing `served_by` altogether is named OWED (the more fundamental absence)
     # rather than "withheld from nobody".
     orphaned = [e["row"] for e in entries
@@ -486,7 +486,7 @@ def price(taxonomy, backend: str, kernel_package: str, entries: Iterable[dict],
             f"product — not a boolean; a withholding with no sentence behind it "
             f"cannot be re-earned or refuted.")
     probe = join([e["row"] for e in entries], probe_rows())
-    # A SERVED VERDICT ON A WITHDRAW ROW MUST NAME ITS MEASUREMENT. `served` outranks
+    # A served verdict on a withdraw row must name its measurement. `served` outranks
     # `withdraw_seam`, so such a row leaves the bucket whose content is "no launch has
     # been measured across this pass" AND leaves ATTAINABLE's subtraction for it. The
     # licence is a sentence the board supplies, not a flag: the probe campaign
@@ -519,7 +519,7 @@ def price(taxonomy, backend: str, kernel_package: str, entries: Iterable[dict],
         if expected and (bucket != expected
                          or (expected == "buildable_not_built"
                              and detail.get("credit_withheld") is not True)):
-            # THE ONE CONTRADICTION THE PRECEDENCE CAN PRODUCE, SURFACED NOT ABSORBED.
+            # The one contradiction the precedence can produce, surfaced not absorbed.
             # Only `not_fusion_surface` outranks `served`, and it means update_H
             # launches nothing on this row — so a product's predicate admitting it is
             # a claim about a seam with one half. fusion_taxonomy's docstring asks for
@@ -558,7 +558,7 @@ def price(taxonomy, backend: str, kernel_package: str, entries: Iterable[dict],
         "served": counts.get("served", 0),
         "products_spanning_the_seam": spanning,
         "served_rows": served_rows,
-        # KEYED ON THE BUCKET, as fusion_taxonomy._group_served_by_product is. Until
+        # Keyed on the bucket, as fusion_taxonomy._group_served_by_product is. Until
         # 2026-09-10 this keyed on the raw `served_by`, which coincided only because
         # the contradiction refusal above forbade a served_by row landing anywhere
         # else; a withheld row carries served_by AND is not served, so it would have
@@ -572,7 +572,7 @@ def price(taxonomy, backend: str, kernel_package: str, entries: Iterable[dict],
             product: sorted(e["row"] for e in instances
                             if e["credit_withheld"] and e["served_by"] == product)
             for product in spanning},
-        # NAMED FOR THIS SEAM so it cannot be read beside the Triton aggregate's
+        # Named for this seam so it cannot be read beside the Triton aggregate's
         # three-seam `predicate_admits` (denominator 403) as the same number; its
         # denominator is `instances_priced`.
         "predicate_admits_h_to_d": len(served_rows) + len(withheld_rows),

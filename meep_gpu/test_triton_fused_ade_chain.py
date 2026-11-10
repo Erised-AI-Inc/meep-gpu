@@ -21,7 +21,7 @@ it claims:
   positionally, and a launcher that assembles the right pointers in the wrong order
   binds every later one to a neighbouring slot — a wrong answer, not a crash.
 
-WHY ``CHAIN_MAX_POLES``' ADJUDICATION LIVES HERE. Kernel modules are bound by raw
+Why ``CHAIN_MAX_POLES``' adjudication lives here. Kernel modules are bound by raw
 sha256 in ``triton_kernels/fingerprints.json`` once their device gate lands, and a
 prose edit there makes a standing board unreproducible until the gate is re-run.
 So the cap's reasoning is pinned in tests, which nothing binds, and a test cannot
@@ -62,7 +62,7 @@ def engine(arm: str, poles: int = 2, sigma=None, kind=LORENTZIAN,
            nonlinear: bool = False):
     """One configuration on the laptop's NumPy backend, for the arm named.
 
-    THE ARM DECIDES THE CONFIGURATION, not just the predicate: ``no_pml`` is an
+    The arm decides the configuration, not just the predicate: ``no_pml`` is an
     inert layer with stored E, ``dispersive`` an absorbing one, and ``folded`` an
     absorbing one with a live mirror plane. The three are what the three arms
     exist for and each must be refused by the other two.
@@ -96,7 +96,7 @@ def engine(arm: str, poles: int = 2, sigma=None, kind=LORENTZIAN,
             np.complex64 if complex_storage else np.float32))
     if arm == "no_pml":
         return fields, PML(grid=grid, thickness=0)
-    # A MIRRORED axis takes the HIGH FACE ONLY: cell 0 lies on the mirror plane,
+    # A MIRRORED axis takes the high face only: cell 0 lies on the mirror plane,
     # which is a boundary condition and not an absorber (pml.py:408 refuses the
     # low face by name).
     thickness = tuple({"high": 2} if grid.is_mirrored(axis) else 2
@@ -315,7 +315,7 @@ def test_the_extra_scratch_cost_is_K_times_d_minus_one(arm, poles, sigma, driven
 @pytest.mark.parametrize("arm", module.ARMS)
 @pytest.mark.parametrize("poles", (1, 2, 6))
 def test_the_rotation_orbit_is_alias_free_at_every_position(arm, poles):
-    """The shape probe's LEG 2, walked THROUGH THE SHIPPED PLAN to closure.
+    """The shape probe's LEG 2, walked through the shipped plan to closure.
 
     The rotation is a permutation of a finite buffer set, so its orbit closes; nine
     positions is three full turns of the three-cycle each (susceptibility,
@@ -588,7 +588,7 @@ def test_the_recurrence_is_spelled_exactly_as_ade_update_p_spells_it():
             assert (f"s = tl.load(sigma_{letter}{slot} + idx, mask=live, "
                     f"other=0.0)") in fused
             assert f"s = sigma_{letter}{slot}" in fused
-            # THE TWO FUSIONS, and they are the only substitutions:
+            # The two fusions, and they are the only substitutions:
             assert f"p = p{letter}{slot}" in fused     # p_now[idx] -> the register
             assert f"w = src{index}" in fused          # drive[idx] -> the register
             for word in POLARIZATION_CONSTANTS:

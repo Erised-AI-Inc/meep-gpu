@@ -1,23 +1,23 @@
 """The fused electric Metal kernel, as claims a laptop can check without a GPU.
 
-WHAT THIS SUITE OWNS AND WHAT IT DELIBERATELY DOES NOT. The BYTES are the device
+What this suite owns and what it deliberately does not. The BYTES are the device
 gate's -- ``parity/meep_gpu/gate_metal_fused_electric_pair.py`` steps two engines
 side by side for twelve complete steps and compares uint32 words, and no assertion
 here duplicates that. What lives here is everything true about the family WITHOUT a
 device: what the emitted source says, which configurations the predicate refuses and
-by what name, that the arm is registered UNWIRED, and that the plan binds the lattice
+by what name, that the arm is registered unwired, and that the plan binds the lattice
 each half is supposed to take.
 
-THE THREE CLAIMS THIS SUITE MAKES THAT THE GATE CANNOT.
+The three claims this suite makes that the gate cannot.
 
 1. That the product is invisible to ``plan_step``'s DEFAULT composition -- a property
-   of the TABLE, and the whole reason this family may land beside the wired tree
+   of the TABLE, and the whole reason this family may land beside the wired families
    without touching it.
 2. That the wall-clear table is THE OFF-DIAGONAL. The gate measures that the shipped
    kernel is right; only a table-level assertion says that the B-side family's table
    is the WRONG one here, which is the single most likely slip in porting this
    product from its sibling.
-3. That the SIGNATURE IS EXACTLY THE CEILING. This family binds 31 of the 31
+3. That the signature is exactly the ceiling. This family binds 31 of the 31
    attributes the platform allows, so "it fits" and "one more pointer does not" are
    the same fact and the second half is the one a future edit will meet first.
    ``test_the_shipped_packed_signature_is_the_ceiling_itself`` states it as an
@@ -71,7 +71,7 @@ def test_the_constitutive_half_differs_only_in_the_three_seam_lines():
 
     The certified E body opens each component with ``float srcN = gN[ii] * ieN[ii];``
     -- a reload of the displacement the curl just stored, scaled by the inverse
-    permittivity. Fused, the reload is the register and the FACTOR DOES NOT MOVE.
+    permittivity. Fused, the reload is the register and the factor does not move.
     Any OTHER differing line would mean a rename reached the arithmetic.
     """
     certified = family.certified_constitutive_body().splitlines()
@@ -101,7 +101,7 @@ def test_the_displacement_stays_on_the_left_of_the_permittivity():
 
 
 def test_the_e_side_carries_its_inverse_epsilon_where_the_b_side_drops_it():
-    """THE THREE POINTERS THAT MAKE THIS 30 AND THE MAGNETIC TWIN 27.
+    """The three pointers that make this 30 and the magnetic twin 27.
 
     ``update_H`` is ``H = B`` with mu = 1 baked into the array path, so
     :mod:`.fused_magnetic_pair` DROPS the three volumes the certified constitutive
@@ -183,7 +183,7 @@ def test_the_inline_wall_clear_is_the_d_yee_shift_table(walled, expected):
 
 
 def test_the_d_table_is_the_complement_of_the_b_table():
-    """THE PORT HAZARD, pinned. The B side is the DIAGONAL, D is the OFF-diagonal.
+    """The port hazard, pinned. The B side is the DIAGONAL, D is the OFF-diagonal.
 
     Reusing :data:`.fused_magnetic_pair._ZERO_METAL_ROWS` here would clear the wrong
     component on every walled run. The two tables are asserted DISJOINT rather than
@@ -250,7 +250,7 @@ class _Source:
 
 
 def test_an_undeclared_source_set_is_refused_by_name():
-    """IGNORANCE IS NOT AN EMPTY SET. ``Fields`` does not hold the source list, so
+    """Ignorance is not an empty set. ``Fields`` does not hold the source list, so
     inferring "no sources" from not being told is the over-covering refusal this
     clause exists to prevent."""
     coverage = family.metal_fused_electric_pair_coverage(object(), None, None)
@@ -266,7 +266,7 @@ def test_an_electric_source_is_carried_and_a_magnetic_one_is_not_this_seam():
     ``CARRIES_DEPOSIT_REPAIR`` is True, so the seam clause returns only what the
     REPAIR cannot reconstruct. On the degenerate ``object()`` fields used here that
     is the missing ``f_w_E`` storage and the absent deposit index -- both refusals
-    ABOUT THE REPAIR, which is what distinguishes this from a blanket clause.
+    about the repair, which is what distinguishes this from a blanket clause.
     """
     electric = family.metal_fused_electric_pair_coverage(
         object(), None, (_Source("D"),))
@@ -288,7 +288,7 @@ def test_the_polarity_is_the_opposite_of_the_b_side_pairs():
 
 
 def test_the_flag_and_the_installer_move_together():
-    """THE CLAIM THE FLAG MAKES, checked against the composer that must honour it.
+    """The claim the flag makes, checked against the composer that must honour it.
 
     ``deposit_repair`` is explicit that True without the wrappers is the exact defect
     it exists to prevent. On this track the wrappers are built by
@@ -374,7 +374,7 @@ def test_the_plan_declares_every_pass_it_performs():
 def test_the_refuted_separate_scalar_signature_really_does_break_the_ceiling():
     """The 35-binding count is spelled once and the emitter agrees with it.
 
-    Whether it FAILS TO COMPILE is a device measurement and belongs to the gate's
+    Whether it fails to compile is a device measurement and belongs to the gate's
     ``binding_ceiling`` leg; what belongs here is that the signature this suite and
     that leg talk about is the same one, and that it is over the documented limit.
     """
@@ -460,7 +460,7 @@ def _declared_locals(source):
 
 
 def test_the_params_struct_embeds_the_record_and_one_alias_binds_it():
-    """No binding to spare, so the record rides in ``Params`` (DESIGN.md D10).
+    """No binding to spare, so the record rides in ``Params`` (docs/development/kernel-tables.md#record-bindings).
 
     The struct is declared once, ``Params`` carries it as its last member, and ONE
     line before the lifted text gives the bodies' anchored bounds blocks the ``cb``

@@ -1,13 +1,13 @@
 """Byte-identity gate for the COMPLEX E->P fused pair: ``update_E`` -> ``update_P`` welded under complex64 storage with no absorber.
 
-WHAT IS UNDER TEST, and it is a claim about the WELD, which no verdict on either
+What is under test, and it is a claim about the WELD, which no verdict on either
 half establishes:
 
 * ``complex_no_pml_fused_polarization_pair.run_complex_no_pml_fused_polarization_pair``
   -- THREE per-component launches with the host rotation between them --
   reproduces the driver's own seam, ``stepping.update_E`` immediately followed
   by ``stepping.update_P`` (driver.py:3313/:3315), byte for byte over EVERY
-  array the seam reads or writes, THE POLE VOLUMES INCLUDED and compared BY
+  array the seam reads or writes, the pole volumes included and compared BY
   SLOT (the rotation moves array objects between ``P``, ``P_prev`` and
   ``_scratch``, so only a slot-named comparison can see a wrong rotation).
 * the same weld reproduces the SEPARATELY CERTIFIED kernels it replaces --
@@ -23,7 +23,7 @@ half establishes:
   (the stored-E single is one launch for all three components; the certified
   ``update_P`` is one launch per (state, component)).
 
-THE SEAM NULL AND ITS CONTROL. The weld's one arithmetic claim is that the
+The seam null and its control. The weld's one arithmetic claim is that the
 register hand-off ``ev`` IS the certified drive load (``fields.drive_field(c)``
 is the stored E, and a complex64 word pair stored and reloaded is the identity
 on the bits):
@@ -34,7 +34,7 @@ on the bits):
   certified ADE gate's own wrong-drive control, restated against the fused
   text. It MUST DIVERGE.
 
-THE ROTATION LEGS. ``update_P``'s three buffers rotate per (state, component)
+The rotation legs. ``update_P``'s three buffers rotate per (state, component)
 on the host, and the weld transcribes that rotation between its own launches.
 The defect that "still computes" is armed THREE ways (``rotate_before_launch``,
 ``rotate_after_all_launches``, ``freeze_one_states_rotation``), each against a
@@ -165,7 +165,7 @@ def build(spec: Dict[str, Any], value_class: str, seed: int):
     tuple, because the mixed volume-beside-uniform signature is a compile-time
     axis of the fused kernel that a single-form sweep would leave ungated.
 
-    RETURNS THE SEEDED HOST WORDS BESIDE THE FIXTURE, and that third value is
+    Returns the seeded host words beside the fixture, and that third value is
     what :func:`operand_census` is asked about -- the site every sibling CUDA
     gate measures (``gate_cuda_fused_complex_pairs._seed_complex_state``
     returns exactly this dict and the case censuses it). The band class's
@@ -233,7 +233,7 @@ def build(spec: Dict[str, Any], value_class: str, seed: int):
 
 def compared_hosts(fields) -> Dict[str, np.ndarray]:
     """Every array the comparison covers: the nine stored volumes plus the
-    pole slots, BY SLOT NAME."""
+    pole slots, by slot name."""
     out = {name: np.ascontiguousarray(to_host(getattr(fields, name))).copy()
            for name in sibling.STATE}
     for index, state in enumerate(fields.polarizations):
@@ -254,13 +254,13 @@ def compare_all(reference, actual) -> Dict[str, int]:
     return {name: words_differ(left[name], right[name]) for name in left}
 
 
-#: THE SHIPPED CLASSIFIER, not a second spelling of it. This gate carried its
+#: The shipped classifier, not a second spelling of it. This gate carried its
 #: own ``np.abs(x) < FLT_MIN`` counter until 2026-09-02 and it read ZERO
 #: subnormals under the FLUSH policy on a seed that held 4629 of them -- because
 #: `set_zero_subnormals(True)` turns on DAZ as well as FTZ, so every subnormal
 #: OPERAND reads as zero and the comparison cannot see the words that are
 #: actually in memory. The precondition then failed the whole flush leg on a
-#: fixture that was correct. ``probe.operand_census`` classifies OFF THE BITS
+#: fixture that was correct. ``probe.operand_census`` classifies off the bits
 #: (exponent field zero, mantissa nonzero), which is DAZ-immune, is what every
 #: sibling CUDA gate uses, and whose own docstring says in as many words why
 #: ``x < FLT_MIN`` is the wrong test. It also counts the signed zeros and zeros
@@ -792,6 +792,7 @@ def summarize(results: Dict[str, Any], steps: int) -> Dict[str, Any]:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
+    import neutral_ids  # noqa: PLC0415
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--product", choices=("full", "reduced"),
                         default="full")
@@ -808,8 +809,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "gate": "cuda_complex_polarization_pair",
         "started_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ",
                                      time.gmtime(started)),
-        "host": __import__("socket").gethostname(),
-        "argv": list(argv or sys.argv[1:]),
+        "host": neutral_ids.machine_id(),
+        "argv": neutral_ids.argv(argv or sys.argv[1:]),
         "steps": args.steps,
         "subnormal_policy": args.subnormal_policy,
         "module": {
@@ -831,7 +832,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         results["subnormal_policy_install"] = (
             probe.install_subnormal_policy_for_run(args.subnormal_policy,
                                                    _REPO_API))
-        # THE DEVICE THIS RAN ON, in the one spelling the recorders read. Every
+        # The device this ran on, in the one spelling the recorders read. Every
         # other CUDA gate stamps this block (``gate_cuda_complex_no_pml.py`` sets
         # it in the same position, between the policy install and the policy
         # stamp); this gate did not, and the omission is why

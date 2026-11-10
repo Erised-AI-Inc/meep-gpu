@@ -1,17 +1,17 @@
 """Call the SHIPPED hand-CUDA coverage predicates on one lifted (fields, pml, grid) triple.
 
 PROMOTED 2026-08-28 out of ``results/cuda_predicate_coverage_2026-08-20_closed/`` --
-the tranche whose ``coverage_report.txt`` records 759 / 759 slots on 186 / 186 rows
+the census run whose ``coverage_report.txt`` records 759 / 759 slots on 186 / 186 rows
 across 22 families with zero overlaps -- and made SELF-CONTAINED. A battery that only
-exists inside the tranche it cut cannot be re-cut without copying a directory, and the
-copy is where the drift starts: five tranches on 2026-08-20 alone carry five different
+exists inside the census run it cut cannot be re-cut without copying a directory, and the
+copy is where the drift starts: five census runs on 2026-08-20 alone carry five different
 batteries, and ``build_cuda_fusion_matrix.py`` reads a SIXTH (``_all_families``, twelve
 families short of this one). This is the standing one.
 
-WHAT THE PROMOTION CHANGED, and nothing else changed:
+What the promotion changed, and nothing else changed:
 
 * The package root is resolved BY NAME (:func:`_find_api_root`). The depth-anchored
-  ``parents[4]`` was correct at ``results/<round>/`` and is wrong here, and its failure
+  ``parents[4]`` was correct at ``results/<campaign>/`` and is wrong here, and its failure
   mode is silent -- see that function's comment.
 * ``configuration`` now records ``source_field_types``, and the row records
   ``plan_step.live``. Both are ENGINE facts -- properties of the lifted script, not of
@@ -20,41 +20,41 @@ WHAT THE PROMOTION CHANGED, and nothing else changed:
   them, raising unless that join came out total. A CUDA census that cannot answer what
   a row's sources are is not self-contained; recording them here retires the join.
 * :func:`_cuda_fused_magnetic_pair_verdict` asks ``covers_fused_magnetic_pair``, which
-  did not exist when the closed tranche ran. It is recorded OUTSIDE the union census
+  did not exist when the closed census was cut. It is recorded OUTSIDE the union census
   and the docstring there says why.
 
-THE COMPOSER COLUMN, ADDED 2026-08-28 AND ADDING NOTHING TO ANY DENOMINATOR.
+The composer column, added 2026-08-28 and adding nothing to any denominator.
 ``meep_gpu/cuda_kernels/arms.py`` now ships a composer, so "which arm fills this slot"
 is a question with an answer instead of something a board had to reconstruct from
 which predicate admits. :func:`plan_step_selected` asks it and records the selection
 per slot, alongside a NAMED refusal for every slot the composer did not fill.
 
-IT IS A COLUMN AND NOT A VERDICT. Every leg above is untouched, so the 22 families,
+It is a column and not a verdict. Every leg above is untouched, so the 22 families,
 the 186 rows and the 759 slots are the same measurement they were; ADMISSION is what
 they count and SELECTION is what the new column carries, and the two differ exactly
 where a slot is co-admitted, a builder refuses, or no arm is registered at all. Where
 they differ the composer's answer is the one an engine would run.
 
-RE-CUT AGAIN 2026-08-15, AFTER THE CURL PREDICATE BECAME SUB-STEP-AWARE. The
+Re-cut again 2026-08-15, after the curl predicate became sub-step-aware. The
 ``_constitutive`` run beside this one measured seven sub-steps on which
 ``covers_real_pml_curl`` refused and Triton's ``pml_curl_coverage`` admitted, and zero
 the other way — six of them a dispersion clause that belongs to ``update_E`` and one a
 D conductivity charged to ``step_B``. Both were artefacts of one predicate answering
 for two kernels: it took no sub-step name, so it could only return the intersection of
 the two sub-steps' clause sets. ``covers_real_pml_curl(fields, pml, grid, sub_step)``
-now takes the name and this battery calls it ONCE PER SUB-STEP, which is the only
+now takes the name and this battery calls it once per sub-step, which is the only
 change to the subject side. Everything else — legs, lift machinery, denominators,
-factoring — is the previous round's, so the two are commensurable to the slot.
+factoring — is the previous census's, so the two are commensurable to the slot.
 
-RE-CUT 2026-08-15, AFTER THE CONSTITUTIVE PAIR LANDED. The 2026-08-15 run beside this
+Re-cut 2026-08-15, after the constitutive pair landed. The 2026-08-15 run beside this
 one had exactly ONE hand-CUDA predicate to call — ``covers_real_pml_curl`` — so its
 ``update_H``/``update_E`` numbers were the intersection of the CUDA curl predicate with
 TRITON's constitutive predicate: a statement about what a kernel built to that clause
 set WOULD reach, explicitly not a measurement of a kernel. ``cuda_kernels/coverage.py``
 now ships ``covers_real_pml_constitutive`` and ``constitutive_kernels.py`` ships the two
-kernels it gates, so those two sub-steps can be MEASURED on the shipped predicate.
+kernels it gates, so those two sub-steps can be measured on the shipped predicate.
 
-BOTH ARE RECORDED SIDE BY SIDE AND NEITHER REPLACES THE OTHER. ``ladder`` keeps the
+Both are recorded side by side and neither replaces the other. ``ladder`` keeps the
 intersection exactly as the earlier run computed it, and ``cuda_constitutive`` adds the
 shipped predicate's own verdict per side. The interesting number is where the two
 DISAGREE: the projection assumed a kernel written to Triton's clause set, and the
@@ -65,21 +65,21 @@ both, so which it is can be read off rather than argued.
 
 This file is the CUDA counterpart of
 ``results/predicate_coverage_2026-08-14_allnine/predicate_battery.py`` and is dropped
-into a byte-identical copy of that round's ``measure_predicate_coverage.py`` — same
+into a byte-identical copy of that census's ``measure_predicate_coverage.py`` — same
 denominators, same lift machinery, same three legs, same ``match_param_rows.py``. Only
-the subject changed, so the two rounds' numbers are commensurable by construction.
+the subject changed, so the two censuses' numbers are commensurable by construction.
 
-WHY THIS CAN EXIST AT ALL. ``cuda_kernels/coverage.py`` is stdlib-only as of the
-2026-08-15 patch round. Before it, ``covers_real_pml_curl`` lived beside
+Why this can exist at all. ``cuda_kernels/coverage.py`` is stdlib-only as of the
+2026-08-15 patch. Before it, ``covers_real_pml_curl`` lived beside
 ``cp.RawKernel`` objects in a module that imports ``cupy`` at scope, so it could not be
-imported — let alone exercised — off-device, and every CUDA coverage number in
-``the design notes (cuda-kernel-track-disposition)`` §2.1 is DERIVED from the Triton
-battery under a clause-subset relation rather than measured. §5 of that document says
-so in as many words and says the ladder "will need re-measuring once the predicate is
-extractable". This is that measurement.
+imported — let alone exercised — off-device, and every CUDA coverage number of the
+earlier assessment of the hand-CUDA track was DERIVED from the Triton battery under a
+clause-subset relation rather than measured. That assessment said so in as many words,
+and said the ladder would need re-measuring once the predicate was extractable. This
+is that measurement.
 
-THE ONE CLAUSE FACTORED, and how it differs from the Triton round's factoring. Every
-Triton predicate ACCUMULATES its refusals and returns them all, so that round could
+The one clause factored, and how it differs from the Triton census's factoring. Every
+Triton predicate ACCUMULATES its refusals and returns them all, so that census could
 strip the single string ``array module is 'numpy', not cupy`` out of a returned tuple
 and leave every other clause exactly as written. ``covers_real_pml_curl``
 SHORT-CIRCUITS: it returns ``(False, "backend is not CuPy")`` on its first line and
@@ -98,12 +98,12 @@ factoring has to happen at the input instead:
 
 That is the whole factoring. ``fields`` and ``pml`` are passed through untouched.
 
-BOTH VERDICTS ARE RECORDED, never mixed: ``covered`` is what the shipped predicate
+Both verdicts are recorded, never mixed: ``covered`` is what the shipped predicate
 returns on this NumPy host (False on every row, always for the backend clause) and
 ``covered_modulo_backend`` is the verdict through the shim. The second is the coverage
-number, exactly as in the Triton round.
+number, exactly as in the Triton census.
 
-THE LADDER LEGS ARE MEASURED INTERSECTIONS OF TWO SHIPPED PREDICATES, not a model of a
+The ladder legs are measured intersections of two shipped predicates, not a model of a
 kernel that does not exist. ``update_H``, ``update_E`` and ``update_P`` have no CUDA
 kernel and no CUDA predicate — that is the finding, not an omission — so "what building
 the real-storage constitutive pair would buy" is reported as the set of rows where the
@@ -111,12 +111,12 @@ shipped CUDA curl predicate admits AND the shipped Triton predicate for that sub
 admits. Each leg names the two predicates it intersected. Nothing here re-derives a
 clause, restates a refusal or models a kernel.
 
-THE CROSS-CHECK LEG. Triton's ``pml_curl_coverage`` is called on the same objects at the
-same two sub-steps, so the clause-subset relation §2.1 assumed can be tested directly
-rather than assumed: a row the CUDA predicate admits and the Triton one refuses (or the
-reverse) is a measured disagreement with the derivation.
+The cross-check leg. Triton's ``pml_curl_coverage`` is called on the same objects at the
+same two sub-steps, so the clause-subset relation the derivation assumed can be tested
+directly rather than assumed: a row the CUDA predicate admits and the Triton one refuses
+(or the reverse) is a measured disagreement with the derivation.
 
-THE SPECIALIZATION CENSUS. §2.3 of the disposition argues the CUDA cost driver is
+The specialization census. The same assessment argues the CUDA cost driver is
 Triton's ``tl.constexpr`` expansion and cites the static counts (12 of 39 bodies carry
 ``EXPANSION``; ``pml_curl_step`` is 16 variants from one source) — but nobody has
 measured how many of those variants a real corpus actually *drives*. A specialization
@@ -139,7 +139,7 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 #: ``the repository root``, resolved BY NAME and never by depth. Anchored on ``__file__``
 #: rather than on the cwd because every row is measured in a CHILD process this
 #: file does not choose the working directory of -- and anchored by name because
-#: this file has now MOVED: it was written at ``results/<round>/`` where the root
+#: this file has now MOVED: it was written at ``results/<campaign>/`` where the root
 #: sat four parents up, and it lives two parents up from here. A hard-coded
 #: ``parents[4]`` followed it silently and resolved to an ancestor of the repo, so
 #: every probe record read below missed, every child died on the resulting raise,
@@ -209,7 +209,7 @@ CUDA_CURL_SUB_STEPS: Tuple[str, ...] = ("step_B", "step_D")
 #: Which curl each ladder rung's sub-step is paired with, for the one leg that is
 #: still a projection. MEEP closes B with H and D with E (``step.cpp:67-72``,
 #: :95-103), so ``update_H`` pairs with ``step_B`` and ``update_E`` with ``step_D``.
-#: The earlier rounds used ONE curl verdict for every rung because there was only
+#: The earlier censuses used ONE curl verdict for every rung because there was only
 #: one; both curls' verdicts are recorded per rung as well, so the effect of the
 #: choice can be read off rather than assumed away.
 LADDER_CURL_PAIRING = {"update_H": "step_B", "update_E": "step_D"}
@@ -299,7 +299,7 @@ def strip_backend(reasons: Tuple[str, ...]) -> List[str]:
 
 
 def _triton_verdict(call: Callable[[], Any]) -> Dict[str, Any]:
-    """One Triton predicate; a raise is a refusal WITH ITS REASON, never a crash."""
+    """One Triton predicate; a raise is a refusal with its reason, never a crash."""
     try:
         coverage = call()
     except BaseException as exc:  # noqa: BLE001
@@ -319,7 +319,7 @@ def _triton_verdict(call: Callable[[], Any]) -> Dict[str, Any]:
 def _cuda_verdict(fields: Any, pml: Any, grid: Any, sub_step: str) -> Dict[str, Any]:
     """The shipped hand-CUDA curl predicate for ONE sub-step, both verdicts recorded.
 
-    Called once per sub-step since 2026-08-15. The previous rounds called it once and
+    Called once per sub-step since 2026-08-15. The previous censuses called it once and
     copied the answer to both, which is what the predicate itself was doing
     internally; the seven-sub-step gap against Triton was the cost of that.
     """
@@ -393,9 +393,9 @@ def _cuda_constitutive_verdict(fields: Any, pml: Any, grid: Any,
 
 
 # ---------------------------------------------------------------------------
-# THE FIVE FAMILIES THE 2026-08-20 RE-CENSUS DID NOT ASK ABOUT
+# The five families the 2026-08-20 re-census did not ask about
 #
-# MEASURED 2026-08-20: the battery asked three predicates -- the real curl, the
+# Measured 2026-08-20: the battery asked three predicates -- the real curl, the
 # real constitutive pair and the real off-diagonal update_E -- while
 # cuda_kernels/ had by then grown complex_pml_kernels.py, cylindrical_kernels.py,
 # no_pml_constitutive.py and ade_kernels.py, each with its own shipped predicate.
@@ -403,7 +403,7 @@ def _cuda_constitutive_verdict(fields: Any, pml: Any, grid: Any,
 # storage" ranked as the dominant blocker on 47 rows that a shipped CUDA predicate
 # may well admit. A census that does not ask a predicate cannot report what it
 # covers; this closes that, family by family, with no change to the three legs
-# above so the two rounds stay commensurable to the slot.
+# above so the two censuses stay commensurable to the slot.
 # ---------------------------------------------------------------------------
 
 def _one(call: Callable[[], Any]) -> Dict[str, Any]:
@@ -510,8 +510,8 @@ def _cuda_ade_verdicts(fields: Any, pml: Any, grid: Any) -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# THE FAMILY THE CLOSEOUT ROUND HAD NO PREDICATE FOR: COMPLEX STORAGE WITH NO
-# ABSORBER.
+# The family the closeout census had no predicate for: complex storage with no
+# absorber.
 #
 # The closeout census left 22 unserved slots on six rows whose union refusal was
 # "no active PML layer" (cuda_complex) and "Bx/Dx is complex64, not float32"
@@ -525,7 +525,7 @@ def _cuda_complex_no_pml_verdicts(fields: Any, pml: Any,
                                   grid: Any) -> Dict[str, Any]:
     """The three complex/no-absorber predicates, one entry per sub-step slot.
 
-    ``update_H`` IS DELIBERATELY ABSENT. Under an inert layer ``stepping.update_H``
+    ``update_H`` is deliberately absent. Under an inert layer ``stepping.update_H``
     returns at :916-917 before reading an array whatever the storage width is, so
     that slot is ``no_pml_constitutive``'s NULL arm and is already served -- the
     closeout census attributes it to ``cuda_no_pml`` on exactly these six rows. A
@@ -569,12 +569,12 @@ def _cuda_complex_no_pml_verdicts(fields: Any, pml: Any,
 def _cuda_dispersive_verdicts(fields: Any, pml: Any, grid: Any) -> Dict[str, Any]:
     """``covers_real_pml_dispersive_constitutive`` -- arm 1, update_E under a layer.
 
-    NEW THIS ROUND, and the slot it answers for was UNSERVED rather than refused
+    New in this census, and the slot it answers for was UNSERVED rather than refused
     by a family that had been asked: the closeout census attributes 8 update_E
     slots to ``cuda_constitutive``'s "dispersion: update_E's source is
     (D - sum P), not D" and no other arm had a clause to offer. A census that
     does not ASK a predicate cannot report what it covers, which is the failure
-    that cost this project two rounds -- so the leg is wired in the same change
+    that cost this project two census re-cuts -- so the leg is wired in the same change
     as the predicate.
     """
     from meep_gpu.cuda_kernels.dispersive_kernels import (  # noqa: PLC0415
@@ -612,7 +612,7 @@ def _cuda_no_pml_dispersive_verdicts(fields: Any, pml: Any,
 
 
 def _cuda_no_pml_ade_verdicts(fields: Any, pml: Any, grid: Any) -> Dict[str, Any]:
-    """``covers_no_pml_ade_update_p`` -- arm 3, and NO NEW KERNEL behind it.
+    """``covers_no_pml_ade_update_p`` -- arm 3, and no new kernel behind it.
 
     The kernel named here is the SHIPPED ``fused_update_P_pml_real``: the ADE
     device text, the coefficient triple, the rotation and the sigma
@@ -636,15 +636,15 @@ def _cuda_no_pml_ade_verdicts(fields: Any, pml: Any, grid: Any) -> Dict[str, Any
 def _cuda_offdiag_verdict(fields: Any, pml: Any, grid: Any) -> Dict[str, Any]:
     """The SHIPPED hand-CUDA off-diagonal ``update_E`` predicate, both verdicts.
 
-    NEW THIS ROUND. The previous run reported this family as a LADDER LEG — the
+    New in this census. The previous run reported this family as a LADDER LEG — the
     intersection of the CUDA curl predicate with TRITON's
     ``offdiag_constitutive_coverage`` — because there was no CUDA kernel and no
     CUDA predicate to ask. ``cuda_kernels/coverage.py`` now ships
     ``covers_real_pml_offdiag_constitutive`` and ``offdiag_emitter.py`` emits the
-    kernel it gates, so this sub-step can be MEASURED on the shipped predicate.
+    kernel it gates, so this sub-step can be measured on the shipped predicate.
 
     Both are recorded side by side and neither replaces the other: ``ladder`` keeps
-    the intersection exactly as the earlier rounds computed it, and this adds the
+    the intersection exactly as the earlier censuses computed it, and this adds the
     shipped predicate's own verdict. Where the two disagree is the interesting
     number, and it is readable rather than argued.
 
@@ -683,9 +683,9 @@ def _cuda_offdiag_verdict(fields: Any, pml: Any, grid: Any) -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# THE SIX PREDICATES THE 2026-08-20 all_families ROUND DID NOT ASK ABOUT
+# The six predicates the 2026-08-20 all_families census did not ask about
 #
-# MEASURED 2026-08-20 (closeout): ``grep '^def covers_' meep_gpu/cuda_kernels/*.py``
+# Measured 2026-08-20 (closeout): ``grep '^def covers_' meep_gpu/cuda_kernels/*.py``
 # lists sixteen shipped predicates. The all_families battery called eight of them.
 # The eight it did not call are (a) ``covers_real_pml_ade_component``, a per-
 # component helper the whole-sub-step ``covers_real_pml_ade_update_p`` already
@@ -803,7 +803,7 @@ def _cuda_bfast_verdicts(fields, pml, grid):
     return out
 
 # ---------------------------------------------------------------------------
-# THE TWO FAMILIES THE 2026-08-20 CLOSEOUT ROUND DID NOT ASK ABOUT
+# The two families the 2026-08-20 closeout census did not ask about
 #
 # ``complex_folded_kernels`` and ``complex_beta_kernels`` are new on 2026-08-20 and
 # have no caller in the closeout battery, so every slot they serve was being
@@ -816,7 +816,7 @@ def _cuda_bfast_verdicts(fields, pml, grid):
 # Cartesian complex arms do, and like them take no licence or policy argument: the
 # complex predicates read neither since the expansion licence was deleted.
 #
-# THE TWO ARE DISJOINT BY CONSTRUCTION and the union census CHECKS it rather than
+# The two are disjoint by construction and the union census CHECKS it rather than
 # assuming: the folded family inherits the certified predicate's beta refusal, and
 # the beta family requires a nonzero beta. Twelve of the beta family's sixteen
 # census slots are also folded, so a leak either way would show as an overlap.
@@ -882,9 +882,9 @@ def _cuda_complex_beta_verdicts(fields, pml, grid):
 
 
 # ---------------------------------------------------------------------------
-# THE FAMILY THE 2026-08-20 CLOSEOUT ROUND COULD NOT ASK ABOUT
+# The family the 2026-08-20 closeout census could not ask about
 #
-# ``cuda_kernels/conductive_kernels.py`` did not exist when that round ran. Its
+# ``cuda_kernels/conductive_kernels.py`` did not exist when that census ran. Its
 # predicate is the exact per-sub-step INVERSE of the conductivity clause the
 # certified curl predicate (coverage.py:972-980) and ``covers_no_pml_curl`` (which
 # delegates to it) both refuse on, so the seven slots the closeout report ranks
@@ -909,17 +909,17 @@ def _cuda_conductive_verdicts(fields, pml, grid):
 
 
 # ---------------------------------------------------------------------------
-# THE FAMILY THIS ROUND ADDS: the FOLDED off-diagonal update_E kernel
+# The family this census adds: the FOLDED off-diagonal update_E kernel
 #
-# MEASURED 2026-08-20 (closeout): update_E carried 70 slots no family served, 26
+# Measured 2026-08-20 (closeout): update_E carried 70 slots no family served, 26
 # of them refused FIRST by ``covers_real_pml_offdiag_constitutive``'s mirror
 # clause, and 20 of those needed "a MIRROR branch in the emitted coord_dn ... a
 # new kernel variant with its own byte gate"
 # (``coverage.FOLDED_OFFDIAG_ROW_MASK_ADMISSION["what_would_move_the_twenty"]``).
 # ``cuda_kernels/folded_offdiag_kernels.py`` now emits that variant and ships its
-# own predicate, so those slots can be MEASURED rather than counted as refused.
+# own predicate, so those slots can be measured rather than counted as refused.
 #
-# THE CENSUS ASKS THE **COMPOSITION** VERDICT, never the standalone one. The
+# The census asks the **composition** verdict, never the standalone one. The
 # standalone predicate deliberately admits an UNFOLDED grid so its gate can
 # measure reduction to the certified family; asking it here would claim the
 # certified family's 16 slots a second time and the analyzer would report an
@@ -961,18 +961,18 @@ def _cuda_folded_offdiag_verdict(fields: Any, pml: Any, grid: Any) -> Dict[str, 
 
 
 # ---------------------------------------------------------------------------
-# THE FAMILY THIS ROUND ADDS: complex64 storage x the OFF-DIAGONAL row at update_E
+# The family this census adds: complex64 storage x the OFF-DIAGONAL row at update_E
 #
-# MEASURED 2026-08-20 (final census): 6 of 759 slots unserved, all at update_E, and
+# Measured 2026-08-20 (final census): 6 of 759 slots unserved, all at update_E, and
 # FIVE of them are one intersection -- MEEP's tensor row product under complex64
 # storage. Every family that was asked refused on KERNEL SHAPE: ``cuda_offdiag``
 # and ``cuda_folded_offdiag`` for "complex64 storage", ``cuda_complex``,
 # ``cuda_complex_folded`` and ``cuda_complex_no_pml`` for "off-diagonal chi1inv".
 # ``complex_no_pml_kernels.WHAT_IS_NOT_BUILT`` names this transcription as the
 # obvious next target and ``meep_gpu/cuda_kernels/complex_offdiag_update_e.py``
-# now emits it, so those slots can be MEASURED rather than counted as refused.
+# now emits it, so those slots can be measured rather than counted as refused.
 #
-# TWO PREDICATES, ONE PER TAIL, and both are asked at the SAME slot. The corpus
+# Two predicates, one per tail, and both are asked at the SAME slot. The corpus
 # splits 3 / 2 on the absorber and the two arms are disjoint by the same
 # ``_pml_is_active`` switch the array path branches on (stepping.py:1015 against
 # :1022), so at most one can ever admit a row -- which the analyzer's disjointness
@@ -985,7 +985,7 @@ def _cuda_complex_offdiag_verdicts(fields: Any, pml: Any,
                                    grid: Any) -> Dict[str, Any]:
     """The two complex tensor-row predicates, folded into ONE update_E slot entry.
 
-    BOTH ANSWERS ARE RECORDED and only one is counted. The union census reads
+    Both answers are recorded and only one is counted. The union census reads
     ``covered_modulo_backend`` off the slot entry, so folding the two arms into one
     entry is what keeps this family from bidding twice at a slot it can only serve
     once; the per-arm verdicts ride alongside so a reader can see WHICH arm took a
@@ -1023,7 +1023,7 @@ def _cuda_complex_offdiag_verdicts(fields: Any, pml: Any,
 
 
 # ---------------------------------------------------------------------------
-# THE DISPERSIVE OFF-DIAGONAL update_E FAMILY
+# The dispersive off-diagonal update_E family
 # ---------------------------------------------------------------------------
 #
 # The last non-complex slot in the 759. The 2026-08-20 final census left SIX slots
@@ -1038,9 +1038,9 @@ def _cuda_complex_offdiag_verdicts(fields: Any, pml: Any,
 #     cuda_offdiag          "mirror symmetry: the fold changes the stored extent"
 #
 # ``cuda_kernels/dispersive_offdiag_update_e.py`` emits the kernel those four
-# refusals specify, so that slot can be MEASURED rather than counted as refused.
+# refusals specify, so that slot can be measured rather than counted as refused.
 #
-# THERE IS ONE PREDICATE, NOT TWO. The folded off-diagonal family needs a
+# There is one predicate, not two. The folded off-diagonal family needs a
 # composition verdict because its standalone predicate deliberately admits an
 # UNFOLDED grid that the CERTIFIED off-diagonal family already claims. This family
 # has no such overlap: an off-diagonal DISPERSIVE update_E is refused by
@@ -1074,11 +1074,11 @@ def _cuda_dispersive_offdiag_verdict(fields: Any, pml: Any,
 
 
 # ---------------------------------------------------------------------------
-# THE FAMILY ADDED AFTER THE CLOSED TRANCHE: the FUSED MAGNETIC PAIR
+# The family added after the closed census: the fused magnetic pair
 #
 # ``cuda_kernels/fused_magnetic_pair.py`` did not exist on 2026-08-20, so the closed
-# census had no caller for ``covers_fused_magnetic_pair`` and the tranche's report
-# says nothing about it. Every other family added since that round -- cylindrical
+# census had no caller for ``covers_fused_magnetic_pair`` and that census's report
+# says nothing about it. Every other family added since that census -- cylindrical
 # real (``cylindrical_coverage.covers_real_pml_cylindrical_curl``) and cylindrical
 # complex (``..covers_pml_cylindrical_complex_curl``) -- was ALREADY asked by this
 # battery under ``cuda_cylindrical`` and ``cuda_cyl_complex``; only the emitters
@@ -1086,7 +1086,7 @@ def _cuda_dispersive_offdiag_verdict(fields: Any, pml: Any,
 # family asked twice bids twice and the analyzer would report an overlap that is an
 # artifact of the question.
 #
-# IT IS RECORDED OUTSIDE THE UNION CENSUS AND THAT IS THE POINT OF THE FAMILY. The
+# It is recorded outside the union census and that is the point of the family. The
 # 759-slot denominator counts SUB-STEP SLOTS; this predicate answers for a SEAM --
 # one launch spanning step_B -> zero_metal_B -> update_H -- and both of the slots it
 # spans are already served, by ``cuda_curl`` and ``cuda_constitutive`` respectively.
@@ -1097,33 +1097,33 @@ def _cuda_dispersive_offdiag_verdict(fields: Any, pml: Any,
 # ``build_cuda_fusion_matrix.py``; this leg gives it the shipped verdict instead of
 # a reconstruction.
 #
-# IT IS THE ONLY LEG IN THIS FILE THAT TAKES ``sources``, and that is not an
+# It is the only leg in this file that takes ``sources``, and that is not an
 # ergonomic choice. A MAGNETIC source is injected BETWEEN the two halves
 # (driver.py:3293), so the predicate refuses one; ``Fields`` does not hold the source
 # list, so passing nothing makes it refuse with "the source set was not declared"
 # (deposit_repair.py:228-229) -- a refusal about the CENSUS reported as one about the
 # corpus. ``driver._sources`` is what the driver itself steps with.
 #
-# MEASURED 2026-08-28, AND IT IS WHY THIS LEG HAS A THIRD OUTCOME: ON A NUMPY HOST
-# THE PREDICATE COULD NOT BE ASKED AT ALL. ``fused_magnetic_pair.py`` opened with a
-# bare ``import cupy as cp`` AT MODULE SCOPE, so importing the module to reach
+# Measured 2026-08-28, and it is why this leg has a third outcome: on a NumPy host
+# the predicate could not be asked at all. ``fused_magnetic_pair.py`` opened with a
+# bare ``import cupy as cp`` at module scope, so importing the module to reach
 # ``covers_fused_magnetic_pair`` raised ``ModuleNotFoundError`` off-device, and the
 # 2026-08-28b census recorded ``askable: false`` on all 186 rows. Every other family
 # this battery asks lives in a module that keeps that import reachable off-device --
 # the idiom ``import cupy as cp  # noqa: PLC0415 - device-only, in a laptop-importable
 # module`` at ``folded_offdiag_kernels.py:1187``, ``conductive_kernels.py:536`` and
 # six more -- and ``coverage.py`` was patched to be stdlib-only on 2026-08-15 for
-# exactly this reason (this file's own preamble, "WHY THIS CAN EXIST AT ALL").
+# exactly this reason (this file's own preamble, "why this can exist at all").
 #
-# FIXED LATER THE SAME DAY, in the edit that landed the deposit carry: that module's
+# Fixed later the same day, in the edit that landed the deposit carry: that module's
 # ``cupy`` import (and the three certified-half imports it splices from) became
 # defensive, and ``_get_kernel`` refuses BY NAME when ``cp is None``. The predicate
-# touches neither, so this leg now records a real verdict. THE UNASKABLE BRANCH BELOW
-# STAYS: it is what keeps one unimportable predicate from costing the census all 186
+# touches neither, so this leg now records a real verdict. The unaskable branch below
+# stays: it is what keeps one unimportable predicate from costing the census all 186
 # rows, and a census that could not tell "not measured" from "refused" is the failure
 # this file exists to avoid.
 #
-# THE LEG RECORDS THAT RATHER THAN RAISING, AND IT IS NOT RECORDED AS A REFUSAL. An
+# The leg records that rather than raising, and it is not recorded as a refusal. An
 # ImportError escaping here would make ``evaluate`` raise, which
 # ``measure_predicate_coverage`` catches into ``battery_error`` and ``measured:
 # false`` -- one unaskable predicate would cost the census all 186 rows. Folding it
@@ -1143,7 +1143,7 @@ def _cuda_fused_magnetic_pair_verdict(fields: Any, pml: Any, grid: Any,
     the CuPy name is supplied at the INPUT rather than filtered out of the returned
     string.
 
-    THREE FIELDS EXIST TO KEEP THREE DIFFERENT ANSWERS APART, because two of them are
+    Three fields exist to keep three different answers apart, because two of them are
     about the census and only one is about the row:
 
     * ``askable`` -- False when the module cannot be imported on this host. The
@@ -1191,14 +1191,14 @@ def _cuda_fused_electric_pair_verdict(fields: Any, pml: Any, grid: Any,
                                       sources: Any) -> Dict[str, Any]:
     """``covers_fused_electric_pair``, in the shape the board's column reads.
 
-    THE SAME THREE-FIELD FACTORING as the real magnetic pair's, and the same reason
+    The same three-field factoring as the real magnetic pair's, and the same reason
     for taking ``sources``: an ELECTRIC source is injected BETWEEN the two halves
     (driver.py:3305/:3308), so the predicate refuses one it cannot repair, and
     ``Fields`` does not hold the source list -- passing nothing makes it refuse with
     "the source set was not declared", a refusal about the CENSUS reported as one
     about the corpus.
 
-    IT IS THE FIRST COLUMN ON THIS CENSUS THAT ANSWERS FOR THE ELECTRIC SEAM, which is
+    It is the first column on this census that answers for the electric seam, which is
     also why the board reads ``spans`` off the block rather than assuming ``step_B``:
     the three columns beside it span ``["step_B", "update_H"]`` and this one spans
     ``["step_D", "update_E"]``, and a board that keyed the seam by position would
@@ -1243,13 +1243,13 @@ def _cuda_fused_polarization_pair_verdict(function: str, family: str,
                                           sources: Any) -> Dict[str, Any]:
     """One of the two E->P pair predicates, in the shape the board's column reads.
 
-    THE FIRST COLUMNS ON THIS CENSUS THAT ANSWER FOR THE E->P SEAM, whose two
+    The first columns on this census that answer for the E->P seam, whose two
     consults are ADJACENT driver statements (driver.py:3313/:3315): the seam
     string carries no in-between pass because the driver puts none there, and the
     board's ``fused_seam_of`` reads the ``spans`` off this block as it does for
     every other column.
 
-    ``sources`` IS STILL PASSED AND STILL RECORDED, and the predicate treats it
+    ``sources`` is still passed and still recorded, and the predicate treats it
     as INERT rather than refusing an undeclared list -- a driver fact, not a
     leniency: no source list can put a deposit between two adjacent statements.
     ``sources_declared`` stays in the record so this column's rows stay
@@ -1306,7 +1306,7 @@ _COMPLEX_PAIR_SEAM: Dict[str, Dict[str, Any]] = {
     "cylindrical_fused_electric_pair": {
         "seam": "step_D -> zero_metal_D -> update_E",
         "spans": ["step_D", "update_E"]},
-    # THE SHORTEST SEAM ON THIS TABLE, and it is shorter rather than differently
+    # The shortest seam on this table, and it is shorter rather than differently
     # filled: the complex no-absorber product refuses every walled run, so
     # ``zero_metal_D`` writes nothing on any row it admits and its two consults are
     # CONTIGUOUS in driver order. The string is read by the board, which is why it is
@@ -1314,7 +1314,7 @@ _COMPLEX_PAIR_SEAM: Dict[str, Dict[str, Any]] = {
     "no_pml_complex_fused_electric_pair": {
         "seam": "step_D -> update_E",
         "spans": ["step_D", "update_E"]},
-    # THE COMPLEX CYLINDRICAL H->D PRODUCT, 2026-09-07: the fourth seam's only
+    # The complex cylindrical H->D product, 2026-09-07: the fourth seam's only
     # complex row on this table. Its two consults are contiguous in driver order
     # (nothing is INJECTED between update_H and step_D; what sits there is the
     # electric integrated-source WITHDRAW, which the predicate refuses by name), so
@@ -1323,25 +1323,25 @@ _COMPLEX_PAIR_SEAM: Dict[str, Dict[str, Any]] = {
     "cylindrical_fused_hd_pair": {
         "seam": "update_H -> step_D",
         "spans": ["update_H", "step_D"]},
-    # THE CARTESIAN COMPLEX H->D PRODUCT, 2026-09-07: the same fourth seam one grid
+    # The Cartesian complex H->D product, 2026-09-07: the same fourth seam one grid
     # over. Its two consults are contiguous in driver order for the same reason --
     # nothing is INJECTED between ``update_H`` and ``step_D``; the electric
     # integrated-source WITHDRAW sits there and the predicate refuses a standing one
     # by name -- so the string is the product's own ``REPLACES`` and the board
-    # resolves it to ``h_to_d_seam.SEAM``. ONE ROW FOR BOTH VARIANTS: the predicate
+    # resolves it to ``h_to_d_seam.SEAM``. One row for both variants: the predicate
     # reads the fold off the grid and asks the curl predicate its variant selects, so
     # the plain and folded board cells are separated by the composer's selection at
     # ``step_D`` rather than by a second seam row here.
     "complex_fused_hd_pair": {
         "seam": "update_H -> step_D",
         "spans": ["update_H", "step_D"]},
-    # THE COMPLEX BETA H->D WELD, 2026-09-08. Same seam and same spans as the plain
+    # The complex beta H->D weld, 2026-09-08. Same seam and same spans as the plain
     # complex product above -- the beta insert changes the CURL's arithmetic, not
     # which two consults the launch spans.
     "complex_beta_fused_hd_pair": {
         "seam": "update_H -> step_D",
         "spans": ["update_H", "step_D"]},
-    # THE TWO FILL-CARRYING RESIDUAL WELDS, 2026-09-02: the LONGEST seams on
+    # The two fill-carrying residual welds, 2026-09-02: the LONGEST seams on
     # this table -- all five driver passes, the two mirror fills carried by the
     # ownership inversion in cf arithmetic. The strings are each product's own
     # ``REPLACES``, which is what the board reads.
@@ -1353,15 +1353,15 @@ _COMPLEX_PAIR_SEAM: Dict[str, Dict[str, Any]] = {
         "seam": ("step_B -> fill_symmetry_bc_B -> zero_metal_B -> "
                  "fill_folded_far_ghosts_B -> update_H"),
         "spans": ["step_B", "update_H"]},
-    # THE TWO FILL-CARRYING COMPLEX ELECTRIC TWINS, 2026-09-02 (residue round):
-    # the D-side mirror of the two rows above, all five driver passes carried
-    # through the shared D-side complex carry. Each string is the product's own
-    # ``REPLACES``, which is what the board reads.
+    # The two fill-carrying complex electric twins, 2026-09-02 (products once
+    # judged unbuildable): the D-side mirror of the two rows above, all five
+    # driver passes carried through the shared D-side complex carry. Each string
+    # is the product's own ``REPLACES``, which is what the board reads.
     "complex_folded_fused_electric_pair": {
         "seam": ("step_D -> fill_symmetry_bc_D -> zero_metal_D -> "
                  "fill_folded_far_ghosts_D -> update_E"),
         "spans": ["step_D", "update_E"]},
-    # THE TWO COMPLEX STENCIL WELDS, 2026-09-02 -- the LAST two cells this board
+    # The two complex stencil welds, 2026-09-02 -- the LAST two cells this board
     # recorded UNBUILDABLE. Each string is the product's own ``REPLACES``, which is
     # what the board reads. The folded one carries all five passes; the no-absorber
     # one carries THREE, and that is its module's own declaration rather than a
@@ -1379,14 +1379,14 @@ _COMPLEX_PAIR_SEAM: Dict[str, Dict[str, Any]] = {
         "seam": ("step_D -> fill_symmetry_bc_D -> zero_metal_D -> "
                  "fill_folded_far_ghosts_D -> update_E"),
         "spans": ["step_D", "update_E"]},
-    # THE THIRD E->P PRODUCT, 2026-09-02: the complex no-absorber polarization
+    # The third E->P product, 2026-09-02: the complex no-absorber polarization
     # pair. Its two consults are ADJACENT driver statements, so the seam string
     # carries no in-between pass -- the driver's own answer, same as the two
     # real E->P columns'.
     "complex_no_pml_fused_polarization_pair": {
         "seam": "update_E -> update_P",
         "spans": ["update_E", "update_P"]},
-    # THE COMPLEX NO-ABSORBER THREE-SLOT WELD, 2026-09-04: the first COMPLEX column
+    # The complex no-absorber three-slot weld, 2026-09-04: the first COMPLEX column
     # whose ``spans`` names three slots. The seam string is the product's own
     # ``REPLACES`` -- no fill and no wall clear, because its D->E half refuses a
     # fold and a wall by name -- and the spans are its ``SLOTS``, spelled here so the
@@ -1403,9 +1403,9 @@ def _cuda_complex_fused_pair_verdict(module: str, function: str, family: str,
                                      sources: Any) -> Dict[str, Any]:
     """One COMPLEX fused-pair predicate, in the shape the board's column reads.
 
-    THE SAME THREE-FIELD FACTORING as the real pair's.
+    The same three-field factoring as the real pair's.
 
-    THE SEAM COMES FROM :data:`_COMPLEX_PAIR_SEAM`, not from a constant in this
+    The seam comes from :data:`_COMPLEX_PAIR_SEAM`, not from a constant in this
     function: two of the four complex products span the ELECTRIC seam, and the
     ``sources`` argument is the same list for both -- it is the PREDICATE that selects
     which of them are in ITS seam, through ``deposit_repair.seam_source_reasons``.
@@ -1495,13 +1495,13 @@ def _cuda_real_fused_pair_verdict(module: str, function: str, family: str,
 
     The same three-field factoring as every fused column.
 
-    THE SPANS ARE READ OFF THE SEAM STRING rather than hard-coded: the
+    The spans are read off the seam string rather than hard-coded: the
     2026-09-02 electric twins put this shape on the D seam too, and a constant
     ``["step_B", "update_H"]`` would have priced them against the MAGNETIC
     injection -- the wrong clause and a silently wrong ceiling, the exact
     defect ``_COMPLEX_PAIR_SEAM``'s own preamble records for the complex rows.
 
-    ``spans`` OVERRIDES THAT DERIVATION AND EXISTS FOR ONE SHAPE, 2026-09-02: a
+    ``spans`` overrides that derivation and exists for one shape, 2026-09-02: a
     THREE-SLOT weld. First-and-last is the right reading for every product that
     spans ONE seam, and exactly the wrong one for a product that spans two -- it
     would record ``["step_D", "update_P"]``, which is no seam this board knows, and
@@ -1673,22 +1673,22 @@ def _sub_step_backward() -> Dict[str, int]:
 def plan_step_live(fields: Any, pml: Any, sources: Any) -> Dict[str, Any]:
     """Which in-seam driver passes actually run on this row, under key ``plan_step``.
 
-    THE VALUE IS AN ENGINE FACT AND THE KEY IS THE METAL CENSUS'S. ``live_sub_steps``
+    The value is an engine fact and the key is the Metal census's. ``live_sub_steps``
     is the function ``metal_kernels.launch.plan_step`` itself calls at launch.py:977
     to fill ``MetalStepPlan.live``, and it reads only the driver's source list, the
     grid's metallic and mirror declarations and the registered polarizations -- no
     device, no shader, no arm. Calling it directly rather than through ``plan_step``
     is deliberate: ``plan_step`` also returns ``selected``, which is METAL ARM ROUTING
     -- a shader on a track with its own residency and its own binding ceiling -- and a
-    census that carried it would invite someone to read it as a CUDA cell. THE CUDA
-    CELL IS :func:`plan_step_selected`'s, taken from the hand-CUDA composer, and the
+    census that carried it would invite someone to read it as a CUDA cell. The CUDA
+    cell is :func:`plan_step_selected`'s, taken from the hand-CUDA composer, and the
     two ride in this same record under different keys precisely so neither can be
     mistaken for the other.
 
     Recorded under ``plan_step.live`` because that is where the consumer looks
     (``build_cuda_fusion_matrix.py:167``), and it looks there because it was JOINING
     this fact out of the Metal census. Deriving it from the boundary triple instead
-    was MEASURED wrong on 85 rows, so it is asked rather than reconstructed.
+    was measured wrong on 85 rows, so it is asked rather than reconstructed.
 
     ``live_resolved`` is the honest half. ``live_sub_steps`` returns ``None`` when the
     question cannot be answered -- an undeclared source list or unreadable engine
@@ -1710,13 +1710,13 @@ def plan_step_live(fields: Any, pml: Any, sources: Any) -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# WHICH ARM THE COMPOSER SELECTS -- the CUDA counterpart of the Metal census's
+# Which arm the composer selects -- the CUDA counterpart of the Metal census's
 # ``plan_step.selected`` (``predicate_battery.py:759-800``).
 #
-# WHY THE COLUMN EXISTS AT ALL. Every leg above records what a PREDICATE says: 22
+# Why the column exists at all. Every leg above records what a PREDICATE says: 22
 # families, 759 of 759 slots admitted. Admission is not selection. Until
 # ``cuda_kernels/arms.py`` landed there was nothing to ask -- ``build_cuda_fusion_
-# matrix.py`` derived a cell from WHICH PREDICATE ADMITS, which is only a cell while
+# matrix.py`` derived a cell from which predicate admits, which is only a cell while
 # exactly one does, and it now refuses to walk for exactly that reason. This leg asks
 # the shipped composer instead, so the board reads a DECISION rather than a
 # reconstruction of one.
@@ -1736,7 +1736,7 @@ def plan_step_live(fields: Any, pml: Any, sources: Any) -> Dict[str, Any]:
 def _refusal_kind(slot: str, reasons: Tuple[str, ...]) -> Dict[str, Any]:
     """Classify ONE unselected slot's refusal, against the shipped strings themselves.
 
-    NOTHING HERE TRANSCRIBES A MESSAGE. The no-arm sentence is compared against
+    Nothing here transcribes a message. The no-arm sentence is compared against
     ``arms.NO_ARM_REASONS`` and the ambiguity sentence against a probe built by
     calling ``arms.ambiguity(slot)`` with two placeholder labels, so a reworded
     composer message reclassifies the row instead of silently falling through to the
@@ -1755,7 +1755,7 @@ def _refusal_kind(slot: str, reasons: Tuple[str, ...]) -> Dict[str, Any]:
         if reason in (arms.NO_ARM_REASONS.get(slot),
                       f"no CUDA arm is registered on {slot}"):
             return {"kind": "no_arm_registered", "admitters": []}
-        # THE FILL SLOT OF AN UNFOLDED ROW (since 2026-09-27). The mirror-fill arm is
+        # The fill slot of an unfolded row (since 2026-09-27). The mirror-fill arm is
         # registered on both fill slots and refuses an unfolded grid BY NAME, so the
         # slot is unselected there -- and has nothing to serve, which is not the
         # coverage gap ``no_admitter`` names. A fold the arm refuses (complex
@@ -1779,7 +1779,7 @@ def _refusal_kind(slot: str, reasons: Tuple[str, ...]) -> Dict[str, Any]:
 def plan_step_selected(fields: Any, pml: Any, grid: Any) -> Dict[str, Any]:
     """Run the SHIPPED hand-CUDA composer and record which arm won each slot.
 
-    THE GRID IS THE SHIMMED ONE, and that is what makes this column commensurable
+    The grid is the shimmed one, and that is what makes this column commensurable
     with every other number in this file. Each shipped CUDA predicate SHORT-CIRCUITS
     on ``backend is not CuPy`` (coverage.py:82), so on this NumPy host the composer
     asked with the real grid selects NOTHING on every slot of every row -- a true
@@ -1795,7 +1795,7 @@ def plan_step_selected(fields: Any, pml: Any, grid: Any) -> Dict[str, Any]:
     is the ``no-PML null`` arm's measured state because a null kernel has no array to
     be on the wrong backend.
 
-    AN EMPTY SELECTION IS A FINDING, NOT A BLANK. Every slot of ``STEP_ORDER`` comes
+    An empty selection is a finding, not a blank. Every slot of ``STEP_ORDER`` comes
     back either in ``selected`` or in ``refusals`` with its kind and its reasons --
     ambiguity (two families admit, and the composer refuses rather than picking by
     table order), a builder that refused, no arm registered on the slot at all
@@ -1804,7 +1804,7 @@ def plan_step_selected(fields: Any, pml: Any, grid: Any) -> Dict[str, Any]:
     reason. ``unselected`` lists them so a board can count them without re-deriving
     the partition.
 
-    ``selected_kernel`` AND ``selected_family`` ARE NOT DECORATION. ``selected``
+    ``selected_kernel`` and ``selected_family`` are not decoration. ``selected``
     carries the arm LABEL, which is what ``_select_slot`` records, and two different
     families ship the label a reader would expect to disambiguate them -- the
     census's own ``kernel=`` string is the plan's, so it is read off
@@ -1813,7 +1813,7 @@ def plan_step_selected(fields: Any, pml: Any, grid: Any) -> Dict[str, Any]:
     SMALLER than ``replaces`` on purpose and says so rather than being read as a
     dispatch claim.
 
-    NOTHING IS DISPATCHED AND NOTHING IS PATCHED. ``arms.plan_step`` builds plans and
+    Nothing is dispatched and nothing is patched. ``arms.plan_step`` builds plans and
     never calls their launch-argument resolvers, ``meep_gpu.fastpath.plan_fast_path``
     still returns ``None`` on every branch, and no gate, builder or predicate is
     monkeypatched here. The only input factoring is the grid proxy the whole file
@@ -1836,7 +1836,7 @@ def plan_step_selected(fields: Any, pml: Any, grid: Any) -> Dict[str, Any]:
     }
 
     def compose(target_grid: Any) -> Any:
-        # UNCHANGED BY THE DISPATCH WIRING, DELIBERATELY. ``plan_step`` grew a
+        # Unchanged by the dispatch wiring, deliberately. ``plan_step`` grew a
         # ``fuse_labels`` argument when the seam started composing this table, and
         # this call does not pass it: ``None`` means NO RESTRICTION, which composes
         # byte-for-byte what the census has always measured. A census that started
@@ -1885,16 +1885,16 @@ def plan_step_selected(fields: Any, pml: Any, grid: Any) -> Dict[str, Any]:
     backend = [reason for reason in raw_reasons if is_backend_clause_alone(reason)]
     record["unfactored"]["refusal_clauses"] = {
         "backend": len(backend), "other": len(raw_reasons) - len(backend)}
-    # WHAT THE SHIM DID TO THE WINNER, PER SLOT AND NOT IN AGGREGATE. "every
+    # What the shim did to the winner, per slot and not in aggregate. "every
     # unshimmed refusal is the backend clause" is FALSE on this corpus and is not the
     # claim: several families reach a configuration clause before the backend one, so
     # a beta = 0 row is refused by ``real beta`` for its beta whatever the array
     # module is. What matters is narrower -- what the arm the SHIMMED composition
     # selected did without the shim -- and it is recorded as one of three states
-    # rather than a boolean, because the third is real and MEASURED:
+    # rather than a boolean, because the third is real and measured:
     #
     #   ``backend``  refused, and for the backend clause alone. The expected state.
-    #   ``selected`` ADMITTED WITHOUT THE SHIM and won the slot unshimmed too. Not
+    #   ``selected`` admitted without the shim and won the slot unshimmed too. Not
     #                a defect and not an accident: ``covers_no_pml_null_constitutive``
     #                gates a NULL kernel, so it has no array to be on the wrong
     #                backend, and it is the winner on the no-absorber rows.
@@ -1954,7 +1954,7 @@ def evaluate(driver: Any) -> Dict[str, Any]:
     sources = getattr(driver, "_sources", None)
     states = tuple(getattr(fields, "polarizations", ()) or ())
 
-    # --- THE SUBJECT: the shipped hand-CUDA curl predicate, ONE CALL PER SUB-STEP --
+    # --- The subject: the shipped hand-CUDA curl predicate, one call per sub-step --
     cuda_curl = {name: dict(_cuda_verdict(fields, pml, grid, name),
                             kernel="covers_real_pml_curl", sub_step=name,
                             family="cuda_certified")
@@ -2092,7 +2092,7 @@ def evaluate(driver: Any) -> Dict[str, Any]:
     except BaseException as exc:  # noqa: BLE001
         configuration["boundary_kinds"] = f"UNRESOLVED {type(exc).__name__}: {exc}"[:200]
 
-    # --- THE MEASUREMENT THIS ROUND ADDS: the SHIPPED CUDA off-diagonal predicate.
+    # --- The measurement this census adds: the SHIPPED CUDA off-diagonal predicate.
     # Its ladder leg (offdiag_constitutive@update_E, an intersection standing in
     # for a kernel that did not exist) stays above, unchanged, so the projection
     # and the measurement can be read side by side.
@@ -2135,7 +2135,7 @@ def evaluate(driver: Any) -> Dict[str, Any]:
             # See _cuda_fused_magnetic_pair_verdict's preamble for why.
             "cuda_fused_magnetic_pair": _cuda_fused_magnetic_pair_verdict(
                 fields, pml, grid, sources),
-            # THE TWO COMPLEX FUSED PRODUCTS, ADDED 2026-08-30 with the products.
+            # The two complex fused products, added 2026-08-30 with the products.
             # Seam verdicts like the one above: never listed in UNION_FAMILIES,
             # because a fused pair bids at no slot and would be double-counted
             # against the arms it absorbs.
@@ -2149,13 +2149,13 @@ def evaluate(driver: Any) -> Dict[str, Any]:
                     "covers_cylindrical_fused_magnetic_pair",
                     "cuda_cylindrical_fused_magnetic_pair", fields, pml, grid,
                     sources),
-            # THE FIRST ELECTRIC-SEAM PRODUCT, ADDED 2026-08-30 with the product.
+            # The first electric-seam product, added 2026-08-30 with the product.
             # Also a seam verdict and also outside UNION_FAMILIES; what is new is
             # the SEAM it spans, which the board reads off this block's own
             # ``spans`` rather than assuming.
             "cuda_fused_electric_pair": _cuda_fused_electric_pair_verdict(
                 fields, pml, grid, sources),
-            # THE TWO COMPLEX ELECTRIC-SEAM PRODUCTS, ADDED 2026-08-30 with them.
+            # The two complex electric-seam products, added 2026-08-30 with them.
             # Same shape as the two complex magnetic columns above; what differs is
             # the seam, which _COMPLEX_PAIR_SEAM supplies per module.
             "cuda_complex_fused_electric_pair": _cuda_complex_fused_pair_verdict(
@@ -2168,7 +2168,7 @@ def evaluate(driver: Any) -> Dict[str, Any]:
                     "covers_cylindrical_fused_electric_pair",
                     "cuda_cylindrical_fused_electric_pair", fields, pml, grid,
                     sources),
-            # THE NO-ABSORBER ELECTRIC PRODUCT, ADDED 2026-08-31 with it. Same shape
+            # The no-absorber electric product, added 2026-08-31 with it. Same shape
             # as the three complex columns above.
             "cuda_no_pml_complex_fused_electric_pair":
                 _cuda_complex_fused_pair_verdict(
@@ -2176,7 +2176,7 @@ def evaluate(driver: Any) -> Dict[str, Any]:
                     "covers_no_pml_complex_fused_electric_pair",
                     "cuda_no_pml_complex_fused_electric_pair", fields, pml, grid,
                     sources),
-            # THE TWO E->P PRODUCTS, ADDED 2026-09-01 with them. Seam verdicts
+            # The two E->P products, added 2026-09-01 with them. Seam verdicts
             # like the seven above -- never in UNION_FAMILIES -- and the first
             # on a seam with NOTHING between its two consults; the board reads
             # the seam off each block's own ``spans``, which is what lets a new
@@ -2189,7 +2189,7 @@ def evaluate(driver: Any) -> Dict[str, Any]:
                     "covers_no_pml_fused_polarization_pair",
                     "cuda_no_pml_fused_polarization_pair", fields, pml, grid,
                     sources),
-            # THE FIVE RESIDUAL MAGNETIC-SEAM PRODUCTS, ADDED 2026-09-02 with
+            # The five residual magnetic-seam products, added 2026-09-02 with
             # them -- the board's last buildable cells. Seam verdicts like every
             # fused column: never in UNION_FAMILIES.
             "cuda_complex_folded_fused_magnetic_pair":
@@ -2216,10 +2216,10 @@ def evaluate(driver: Any) -> Dict[str, Any]:
                     "special_kz_fused_magnetic_pair",
                     "covers_special_kz_fused_magnetic_pair",
                     "cuda_special_kz_fused_magnetic_pair",
-                    # Five passes since 2026-09-02: the residue round ported
-                    # the real pair's fill carry into this weld (its blocked
-                    # row is folded), so the string is the module's own new
-                    # REPLACES.
+                    # Five passes since 2026-09-02: a later change that day (after
+                    # the three-pass weld was certified) ported the real pair's
+                    # fill carry into this weld (its blocked row is folded), so
+                    # the string is the module's own new REPLACES.
                     "step_B -> fill_symmetry_bc_B -> zero_metal_B -> "
                     "fill_folded_far_ghosts_B -> update_H",
                     fields, pml, grid, sources),
@@ -2230,10 +2230,11 @@ def evaluate(driver: Any) -> Dict[str, Any]:
                     "cuda_bfast_fused_magnetic_pair",
                     "step_B -> zero_metal_B -> update_H",
                     fields, pml, grid, sources),
-            # THE FIVE ELECTRIC TWINS AND THE THIRD E->P PRODUCT, 2026-09-02
-            # (the residue round) -- seam verdicts like every fused column,
-            # never in UNION_FAMILIES. The three real twins have their spans read
-            # off their own seam strings -- two of which carry the D-side fills.
+            # The five electric twins and the third E->P product, 2026-09-02
+            # (built later that day, after the residual welds) -- seam verdicts
+            # like every fused column, never in UNION_FAMILIES. The three real
+            # twins have their spans read off their own seam strings -- two of
+            # which carry the D-side fills.
             "cuda_complex_folded_fused_electric_pair":
                 _cuda_complex_fused_pair_verdict(
                     "complex_folded_fused_electric_pair",
@@ -2268,7 +2269,7 @@ def evaluate(driver: Any) -> Dict[str, Any]:
                     "cuda_bfast_fused_electric_pair",
                     "step_D -> zero_metal_D -> update_E",
                     fields, pml, grid, sources),
-            # THE H->D WELD, 2026-09-06 -- THE FOURTH SEAM, and the first column on
+            # The H->D weld, 2026-09-06 -- the fourth seam, and the first column on
             # this battery whose seam is neither curl->constitutive nor
             # constitutive->polarization but CONSTITUTIVE->CURL. Its ``seam`` string
             # is therefore ``update_H -> step_D`` and the derived span is exactly
@@ -2276,7 +2277,7 @@ def evaluate(driver: Any) -> Dict[str, Any]:
             # resolves to ``h_to_d_seam.SEAM`` and what makes the board file a
             # ``served_by`` verdict per row on that seam.
             #
-            # THE COLUMN IS NOT A CLAIM THAT THE PRODUCT RUNS. Its module declares
+            # The column is not a claim that the product runs. Its module declares
             # INSTALLABLE = False and the composer refuses it on every configuration;
             # what this column carries is the PREDICATE's answer, which is what the
             # board's served bucket is defined over.
@@ -2285,7 +2286,7 @@ def evaluate(driver: Any) -> Dict[str, Any]:
                     "fused_hd_pair", "covers_fused_hd_pair",
                     "cuda_fused_hd_pair", "update_H -> step_D",
                     fields, pml, grid, sources),
-            # THE TWO CYLINDRICAL H->D PRODUCTS, 2026-09-07 -- the second and third
+            # The two cylindrical H->D products, 2026-09-07 -- the second and third
             # columns on the fourth seam, one per storage. The real m = 0 one is asked
             # like ``cuda_fused_hd_pair``; the complex one is asked like
             # ``cuda_cylindrical_fused_magnetic_pair`` and reads its seam off
@@ -2304,9 +2305,9 @@ def evaluate(driver: Any) -> Dict[str, Any]:
                     "cylindrical_fused_hd_pair",
                     "covers_cylindrical_fused_hd_pair",
                     "cuda_cylindrical_fused_hd_pair", fields, pml, grid, sources),
-            # THE CARTESIAN COMPLEX H->D PRODUCT, 2026-09-07 -- the fourth column on
+            # The Cartesian complex H->D product, 2026-09-07 -- the fourth column on
             # the fourth seam. Asked like ``cuda_complex_fused_magnetic_pair``, and its
-            # seam comes from ``_COMPLEX_PAIR_SEAM``. ONE COLUMN, TWO BOARD CELLS: the
+            # seam comes from ``_COMPLEX_PAIR_SEAM``. One column, two board cells: the
             # predicate reads the fold off the grid and asks the certified curl
             # predicate the variant
             # selects, so the plain and folded cells separate through the composer's
@@ -2318,13 +2319,13 @@ def evaluate(driver: Any) -> Dict[str, Any]:
                     "complex_fused_hd_pair",
                     "covers_complex_fused_hd_pair",
                     "cuda_complex_fused_hd_pair", fields, pml, grid, sources),
-            # THE TWO BETA COLUMNS ON THE FOURTH SEAM, 2026-09-08. Both products were
+            # The two beta columns on the fourth seam, 2026-09-08. Both products were
             # built and RELEASED on 2026-09-07 (complex_beta lift 4 of 4 driven
             # bit-identical, special_kz 2 of 2, each on BOTH subnormal policies) and
             # then went uncounted for a day because neither this battery nor
             # ``FUSED_PRODUCT_COLUMNS`` named them -- so the six seam-instances they
             # cover read as ``buildable_not_built`` while the welds sat earned. As
-            # with the row below, THE COLUMN IS NOT A CLAIM THAT THE PRODUCT RUNS:
+            # with the row below, the column is not a claim that the product runs:
             # both modules declare ``INSTALLABLE = False``; what this carries is the
             # PREDICATE's answer, which is what the board's served bucket is over.
             "cuda_complex_beta_fused_hd_pair":
@@ -2338,7 +2339,7 @@ def evaluate(driver: Any) -> Dict[str, Any]:
                     "covers_special_kz_fused_hd_pair",
                     "cuda_special_kz_fused_hd_pair", "update_H -> step_D",
                     fields, pml, grid, sources),
-            # THE FIFTH COLUMN ON THE FOURTH SEAM, 2026-09-08 -- the conductive and
+            # The fifth column on the fourth seam, 2026-09-08 -- the conductive and
             # BFAST curl tails, ONE product over two board cells. It is added here
             # because ``build_cuda_fusion_matrix.FUSED_PRODUCT_COLUMNS`` declared it
             # with the wiring and this battery did not, so ``_fused_verdicts`` refused
@@ -2354,13 +2355,13 @@ def evaluate(driver: Any) -> Dict[str, Any]:
             # ``build_cuda_fusion_matrix.fused_seams_of`` resolves it to
             # ``h_to_d_seam.SEAM``.
             #
-            # ONE COLUMN, TWO CELLS, resolved inside the predicate rather than here:
+            # One column, two cells, resolved inside the predicate rather than here:
             # ``covers_conductive_bfast_fused_hd_pair`` reads the variant off the run
             # (``grid.bfast_active`` and ``fields.condfac_for``, the two readers the
             # array path itself uses) and then asks the pair of certified predicates
             # that variant selects, so the conductive and BFAST cells separate through
             # the composer's own ``step_D`` selection and never through a second
-            # column. THE COLUMN IS NOT A CLAIM THAT THE PRODUCT RUNS: the module
+            # column. The column is not a claim that the product runs: the module
             # declares ``INSTALLABLE = False``; what this carries is the PREDICATE's
             # answer, which is what the board's served bucket is defined over.
             "cuda_conductive_bfast_fused_hd_pair":
@@ -2375,7 +2376,7 @@ def evaluate(driver: Any) -> Dict[str, Any]:
                     "covers_complex_no_pml_fused_polarization_pair",
                     "cuda_complex_no_pml_fused_polarization_pair", fields, pml,
                     grid, sources),
-            # THE COMPLEX NO-ABSORBER THREE-SLOT WELD, 2026-09-04: the third
+            # The complex no-absorber three-slot weld, 2026-09-04: the third
             # three-slot column and the first complex one. It occupies BOTH sides
             # of the shared ``update_E`` slot on the four TestLoadDump 3-D rows
             # where ``cuda_no_pml_complex_fused_electric_pair`` and
@@ -2387,7 +2388,7 @@ def evaluate(driver: Any) -> Dict[str, Any]:
                     "covers_three_slot_complex_no_pml_dispersive_weld",
                     "cuda_three_slot_complex_no_pml_dispersive_weld", fields, pml,
                     grid, sources),
-            # THE TWO STENCIL WELDS, 2026-09-02 -- the first fused columns on this
+            # The two stencil welds, 2026-09-02 -- the first fused columns on this
             # battery whose board cells were recorded UNBUILDABLE rather than
             # unbuilt. Seam verdicts like every fused column: never in
             # UNION_FAMILIES, because a fused pair bids at no slot and would be
@@ -2409,7 +2410,7 @@ def evaluate(driver: Any) -> Dict[str, Any]:
                     "step_D -> fill_symmetry_bc_D -> zero_metal_D -> "
                     "fill_folded_far_ghosts_D -> update_E",
                     fields, pml, grid, sources),
-            # THE LAST UNSERVED E->P CELL, 2026-09-02. A seam verdict like every
+            # The last unserved E->P cell, 2026-09-02. A seam verdict like every
             # fused column -- never in UNION_FAMILIES. Its span is read off its own
             # seam string, which is
             # the driver's two adjacent consults with nothing between them.
@@ -2420,7 +2421,7 @@ def evaluate(driver: Any) -> Dict[str, Any]:
                     "cuda_dispersive_offdiag_fused_polarization_pair",
                     "update_E -> update_P",
                     fields, pml, grid, sources),
-            # THE DISPERSIVE ELECTRIC PAIR, 2026-09-02, and the column that prices
+            # The dispersive electric pair, 2026-09-02, and the column that prices
             # the board's largest cell that no product occupied: D_to_E
             # (cuda_curl/PML, cuda_dispersive/dispersive), 7 corpus rows. A seam
             # verdict like every fused column -- never in UNION_FAMILIES, because a
@@ -2437,7 +2438,7 @@ def evaluate(driver: Any) -> Dict[str, Any]:
                     "step_D -> fill_symmetry_bc_D -> zero_metal_D -> "
                     "fill_folded_far_ghosts_D -> update_E",
                     fields, pml, grid, sources),
-            # THE TWO CONDUCTIVE-CURL ELECTRIC PAIRS, 2026-09-02, which price the
+            # The two conductive-curl electric pairs, 2026-09-02, which price the
             # last POINTWISE-BUILDABLE D_to_E cells this board had:
             #
             #   (cuda_conductive/conductive,  cuda_no_pml_dispersive)  2 rows
@@ -2448,7 +2449,7 @@ def evaluate(driver: Any) -> Dict[str, Any]:
             # because a fused pair bids at no slot and would be double-counted
             # against the arms it absorbs.
             #
-            # THEIR SPANS ARE THREE PASSES, NOT FIVE, and that is each module's own
+            # Their spans are three passes, not five, and that is each module's own
             # REPLACES rather than a shortened copy of the row above's: both REFUSE a
             # mirror plane by name, so ``fill_symmetry_bc_D`` and
             # ``fill_folded_far_ghosts_D`` are INERT on every row they admit (they
@@ -2468,7 +2469,7 @@ def evaluate(driver: Any) -> Dict[str, Any]:
                     "cuda_conductive_fused_electric_pair",
                     "step_D -> zero_metal_D -> update_E",
                     fields, pml, grid, sources),
-            # THE TWO THREE-SLOT WELDS, 2026-09-02, and the FIRST columns on this
+            # The two three-slot welds, 2026-09-02, and the FIRST columns on this
             # census whose ``spans`` names three slots rather than two. They are the
             # only products that occupy BOTH sides of the shared ``update_E`` slot,
             # which is the whole reason they exist: on the ten rows below, a D->E
@@ -2478,7 +2479,7 @@ def evaluate(driver: Any) -> Dict[str, Any]:
             #   cuda_three_slot_dispersive_weld           D_to_E + E_to_P, 7 rows
             #   cuda_three_slot_no_pml_dispersive_weld    D_to_E + E_to_P, 3 rows
             #
-            # THE SPANS ARE PASSED EXPLICITLY, and that is not a convenience: the
+            # The spans are passed explicitly, and that is not a convenience: the
             # first-and-last derivation would record ``["step_D", "update_P"]``,
             # which is no seam, and the board would refuse the column rather than
             # credit it at both. Seam verdicts like every fused column -- never in
@@ -2500,7 +2501,7 @@ def evaluate(driver: Any) -> Dict[str, Any]:
                     "step_D -> zero_metal_D -> update_E -> update_P",
                     fields, pml, grid, sources,
                     spans=("step_D", "update_E", "update_P")),
-            # THE TWO COMPLEX STENCIL WELDS, 2026-09-02, and the columns that price
+            # The two complex stencil welds, 2026-09-02, and the columns that price
             # the LAST two cells this board recorded UNBUILDABLE:
             #
             #   (cuda_complex_folded/folded complex,

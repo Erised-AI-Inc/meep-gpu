@@ -1,30 +1,30 @@
 #!/usr/bin/env python3
 """Native MPS byte gate for the complex conductive fused pair: ``step_D`` -> ``update_E``.
 
-WHAT IS BEING CERTIFIED, and it is not a sub-step. This product spans TWO driver
+What is being certified, and it is not a sub-step. This product spans TWO driver
 passes (``step_D`` at driver.py:3293 and ``update_E`` at :3304) across a seam that
 holds FOUR driver passes in general, so a per-sub-step comparison could not see it
-at all: the whole claim is about the SEAM. The comparison is therefore per COMPLETE
-SEAM STEP over a stated budget, against an array-path oracle running the identical
+at all: the whole claim is about the SEAM. The comparison is therefore per complete
+seam step over a stated budget, against an array-path oracle running the identical
 passes, with the first divergent step reported rather than a final pass/fail.
 
-THE EIGHT THINGS THIS GATE REFUSES TO LET PASS SILENTLY:
+The eight things this gate refuses to let pass silently:
 
 1. **A silent fallback.** Bytes alone cannot prove the fused path ran: a plan that
    was never launched is byte-identical to the oracle BY CONSTRUCTION. So every
    case asserts the exact LAUNCH COUNT (``launches_per_run`` x steps), a nonzero
-   ``runs``, and a NON-VACUITY FLOOR SPLIT BY ROLE — the arrays this seam WRITES
+   ``runs``, and a non-vacuity floor split by role — the arrays this seam WRITES
    (D, E) must all have moved, and the ones it only READS (B, H, every
    polarization array) must NOT have.
 2. **A refusal that is really an omission.** Leg ``refusal`` is the most important
-   leg in this file, because THE ELECTRIC SOURCE SLOT IS THIS FAMILY'S BINDING
-   CLAUSE. It requires: an undeclared source list refused; a real electric
+   leg in this file, because the electric source slot is this family's binding
+   clause. It requires: an undeclared source list refused; a real electric
    ``VolumeSource`` refused BY NAME with the driver line cited; a real MAGNETIC
    source NOT refused (the polarity, which is what makes this cell's four corpus
    rows reachable at all); a metallic axis refused naming ``zero_metal_D``; a
    folded axis refused naming both D-side fills; and an off-diagonal row refused
    naming the stencil.
-3. **A seam that is not empty after all.** Leg ``seam_is_empty`` DRIVES THE REAL
+3. **A seam that is not empty after all.** Leg ``seam_is_empty`` drives the real
    ``FdtdDriver`` on this cell's own configuration and records every pass that
    writes a D word between :3293 and :3304 — with a control leg carrying an
    electric source, where the conductive injection MUST fire and write. A silent
@@ -49,10 +49,10 @@ THE EIGHT THINGS THIS GATE REFUSES TO LET PASS SILENTLY:
    no arithmetic" a measurement. It is the one armed edit required to be UNCAUGHT.
 8. **A vacuous value class.** ``uniform`` is the physical band; ``pm_zero_lattice``
    is exempt from the movement floor and instead required to carry BOTH signs of
-   zero IN BOTH PLANES of the reference output; the subnormal band is REFUSED BY
-   NAME and its census required to FIRE.
+   zero in both planes of the reference output; the subnormal band is refused by
+   name and its census required to FIRE.
 
-BOTH SUBNORMAL POLICIES, AS FAR AS THIS BACKEND HAS THEM. MPS flush is native and
+Both subnormal policies, as far as this backend has them. MPS flush is native and
 has NO LEVER (metal_kernels/subnormal.py:6-13), so ``keep`` is not a second
 comparison but a REFUSAL, and leg ``policy`` requires the plan to be refused BY
 NAME under it rather than silently downgraded.
@@ -198,7 +198,7 @@ class Case:
     value_class: str = "uniform"
 
 
-#: THE CASE MATRIX. The corpus row is FIRST and named as such. ``mixed_
+#: The case matrix. The corpus row is FIRST and named as such. ``mixed_
 #: conductivity`` is the row that exercises the ONE line this family rewrites: a
 #: component without a conductivity takes the split single-line tail, and a
 #: component with one takes the certified tail unchanged, in the SAME kernel.
@@ -260,7 +260,7 @@ def build(case: Case, seed: int, scale: float = 1.0,
           ) -> Tuple[Grid, Fields, Optional[PML]]:
     """One seeded engine. Called twice per comparison, identically, for both sides.
 
-    EVERY VOLUME IS FILLED WITH PHYSICAL-BAND VALUES unless a value class says
+    Every volume is filled with physical-band values unless a value class says
     otherwise. A zero-initialised state is a FIXED POINT of this seam — with
     B = D = 0 the curl is 0, the conductive tail keeps D at 0, and the constitutive
     gives E = 0 forever — so a deliberately wrong kernel compared against a zero
@@ -272,7 +272,7 @@ def build(case: Case, seed: int, scale: float = 1.0,
     fields = Fields(grid=grid, force_complex_fields=True)
     shape = grid.shape
     rng = np.random.default_rng(seed)
-    # THE THREE COMPONENTS GET DISTINCT EPSILON ARRAYS, and that is load-bearing
+    # The three components get distinct epsilon arrays, and that is load-bearing
     # rather than thorough. `set_isotropic_epsilon_volume` hands the SAME array
     # back for all three (Fields.has_component_epsilon is then False), which makes
     # "bind Ey's inverse epsilon into Ex's slot" a no-op — a host defect that
@@ -286,7 +286,7 @@ def build(case: Case, seed: int, scale: float = 1.0,
         {name: (np.float32(1.0) / value).astype(np.float32)
          for name, value in epsilon.items()})
 
-    # THE THREE CONDUCTIVE TARGETS GET DISTINCT PROFILES, for the same reason: a
+    # The three conductive targets get distinct profiles, for the same reason: a
     # directional absorber is exactly what MEEP's `mp.Absorber` on one face gives,
     # and one shared array would make "bind Dy's condinv into Dx's slot" a no-op.
     # Each is graded along x as an Absorber's own profile is.
@@ -378,7 +378,7 @@ def compare(left: Fields, right: Fields) -> Dict[str, int]:
 def seam_step(fields: Fields, pml: Optional[PML]) -> None:
     """The two array-path passes this product replaces, in driver order.
 
-    NOTHING IS RUN BETWEEN THEM, and that is not an omission: this family's
+    Nothing is run between them, and that is not an omission: this family's
     clauses make every one of the driver's four in-seam passes inert (no electric
     source, no mirror, no wall). Leg ``seam_is_empty`` instruments the REAL driver
     to establish that rather than asserting it here.
@@ -434,7 +434,7 @@ def run_case(case: Case, leg: str, steps: int,
              functions: Optional[Mapping[str, Any]] = None,
              patch: Optional[Callable[[Any, Any, Residency], None]] = None,
              ) -> Dict[str, Any]:
-    """Step the two engines side by side and compare per COMPLETE SEAM STEP."""
+    """Step the two engines side by side and compare per complete seam step."""
     seed = case_seed(case.label, leg)
     _, reference, reference_pml = build(case, seed)
     _, actual, actual_pml = build(case, seed)
@@ -525,7 +525,7 @@ def run_case(case: Case, leg: str, steps: int,
 def run_separate_control(case: Case, steps: int) -> Dict[str, Any]:
     """The SEPARATE certified products beside the fused one, on identical state.
 
-    THIS IS THE LEG THAT MAKES "FUSION" A MEASUREMENT RATHER THAN A NAME. Three
+    This is the leg that makes "fusion" a measurement rather than a name. Three
     engines from one seed: the array path; the two ALREADY CERTIFIED Metal products
     (``complex_no_pml_conductive`` at ``step_D`` and ``complex_no_pml_stored_e`` at
     ``update_E``) dispatching the seam as separate launches; and the fused product.
@@ -632,7 +632,7 @@ def leg_binding_ceiling() -> Dict[str, Any]:
     over = [row for row in rows if not row["expected_to_fit"]]
     refused_by_name = all("bindings" in row["error"] and "device.py:72" in row["error"]
                           for row in over)
-    # WHAT THE PACKING BOUGHT, stated in numbers rather than claimed: the certified
+    # What the packing bought, stated in numbers rather than claimed: the certified
     # curl binds eight scalars and the chunk record separately (buffers 12-20 of
     # complex_no_pml_conductive._TEMPLATE).
     unpacked_two_pole = (family.CURL_POINTERS + family.CONSTITUTIVE_POINTERS
@@ -649,7 +649,7 @@ def leg_binding_ceiling() -> Dict[str, Any]:
 def leg_branch_census() -> Dict[str, Any]:
     """Every branch in the emitted text, enumerated — and every one TAKEN somewhere.
 
-    THE DEAD-BRANCH MUTATION is a defect class this project has paid for, and this
+    The dead-branch mutation is a defect class this project has paid for, and this
     family cannot answer it the way the E->P chain does: the curl half is NOT
     straight-line. It carries the ``n_elem`` guard, the three ghost-wrap ternaries,
     the nine neighbour-validity ternaries, the partner-presence ternaries of the
@@ -702,12 +702,12 @@ def leg_branch_census() -> Dict[str, Any]:
 def leg_transcription() -> Dict[str, Any]:
     """The emitted text equals the CERTIFIED emitters' own, PARSED not mirrored.
 
-    THE MIRRORED EVALUATOR is the second defect class this project has paid for.
+    The mirrored evaluator is the second defect class this project has paid for.
     Nothing here re-derives a line: each certified emitter is CALLED, its output is
     searched for the text, this family's output is searched for the same text
     modulo the documented renames, and the two are required equal.
 
-    THE CURL HALF IS CHECKED AS A BLOCK, not line by line, and that is stronger:
+    The curl half is checked as a block, not line by line, and that is stronger:
     the whole certified curl body from the ghost gather through the conductive tail
     must appear in the fused source verbatim.
     """
@@ -743,7 +743,7 @@ def leg_transcription() -> Dict[str, Any]:
             "rename": "(none) — the certified tail ALREADY names value{i}",
             "agrees": tail in certified_curl and tail in fused})
 
-    # --- THE ONE LINE THIS FAMILY REWRITES, and only on a NON-conductive row ---
+    # --- The one line this family rewrites, and only on a NON-conductive row ---
     plain = family.complex_conductive_fused_pair_source(
         (0, 0, 0), (1, 1, 1), (False, True, True), (1, 1, 1))
     certified_plain = complex_no_pml_conductive._tail(0, False)
@@ -794,7 +794,7 @@ def leg_transcription() -> Dict[str, Any]:
 
 
 def leg_policy() -> Dict[str, Any]:
-    """``keep`` must be REFUSED BY NAME; ``flush`` must admit."""
+    """``keep`` must be refused by name; ``flush`` must admit."""
     from meep_gpu import subnormal_policy  # noqa: PLC0415
 
     case = _case(MUTATION_CASE)
@@ -831,7 +831,7 @@ def leg_policy() -> Dict[str, Any]:
 def leg_refusal() -> Dict[str, Any]:
     """Every seam clause, measured BY NAME — and the POLARITY that makes the cell reachable.
 
-    THE MOST IMPORTANT LEG IN THIS FILE. A refusal that is really an omission is
+    The most important leg in this file. A refusal that is really an omission is
     indistinguishable from a refusal that is a decision, unless the reason is named
     and the OPPOSITE case is shown to be admitted. So each row states what must
     happen and what text must appear:
@@ -883,7 +883,7 @@ def leg_refusal() -> Dict[str, Any]:
           "driver.py:3296", False)
     check("magnetic_source_ADMITTED", (magnetic,), None, True)
     check("empty_source_list_ADMITTED", (), None, True)
-    # A METALLIC AXIS AND A BLOCH PHASE ARE MUTUALLY EXCLUSIVE (grid.py:993, and
+    # A metallic axis and a Bloch phase are mutually exclusive (grid.py:993, and
     # MEEP's own fields::use_bloch), so the walled row drops k on the walled axis
     # rather than asking the grid for a state it refuses to represent. The clause
     # under test is the WALL, not the phase.
@@ -899,9 +899,9 @@ def leg_refusal() -> Dict[str, Any]:
 
 
 def leg_seam_is_empty() -> Dict[str, Any]:
-    """DRIVE THE REAL DRIVER and record what writes D inside the seam.
+    """Drive the real driver and record what writes D inside the seam.
 
-    THE CLAIM THIS FAMILY RESTS ON is that on a magnetic-source-only conductive row
+    The claim this family rests on is that on a magnetic-source-only conductive row
     nothing at all happens between ``step_D`` and ``update_E`` -- in particular that
     no electric deposit runs: ``FdtdDriver.step`` injects only the electric sources
     it holds, each through its own ``inject`` (whose double-precision deposit carries
@@ -910,7 +910,7 @@ def leg_seam_is_empty() -> Dict[str, Any]:
     driver API and INSTRUMENTS the driver: every in-seam pass is wrapped and asked
     whether it WROTE a D word, and every source injection is recorded.
 
-    THE CONTROL IS THE WHOLE POINT. Leg ``with_electric`` adds an electric source
+    The control is the whole point. Leg ``with_electric`` adds an electric source
     and MUST show an electric deposit firing and writing D. A blind instrument
     would report an empty seam by measuring nothing.
     """
@@ -1017,7 +1017,7 @@ def leg_orientation_null() -> Dict[str, Any]:
     negative and a signed-zero coefficient, in BOTH contraction modes, and over a
     4096-pair random band.
 
-    THE NULL HAS ITS OWN NON-VACUITY FLOOR. The same harness is run against a
+    The null has its own non-vacuity floor. The same harness is run against a
     spelling that IS different — the package's previous zero-cross-term fused
     product ``{fma(z.x, c, -(z.y * 0)), fma(z.x, 0, z.y * c)}``, which the part-wise
     helpers replaced — and it must DIVERGE on the signed-zero classes. A harness that
@@ -1182,7 +1182,7 @@ def shader_mutations(case: Case) -> Dict[str, Dict[str, Any]]:
     base = family.complex_conductive_fused_pair_source(
         codes, phased, conductive, counts)
     edits: Dict[str, str] = {
-        # THE SEAM ITSELF. Note what is NOT armed here: replacing `value0` with
+        # The seam itself. Note what is NOT armed here: replacing `value0` with
         # `f0[ii]` is not a defect at all — the tail has ALREADY stored that word,
         # so the reload is the same value. That edit is the BYTE-NEUTRAL CONTROL
         # (leg `byte_neutral`), scored as required-UNCAUGHT; arming it here as well
@@ -1193,7 +1193,7 @@ def shader_mutations(case: Case) -> Dict[str, Dict[str, Any]]:
         "seam_takes_the_wrong_components_register":
             base.replace("float2 source = value1;", "float2 source = value0;", 1),
         # The curl's own arithmetic: MEEP's bracket (step_generic.cpp:104), the
-        # package's previous pairwise grouping planted back (KERNELS.md §7.1), and
+        # package's previous pairwise grouping planted back (docs/development/certification.md#inverted-grouping-mutations), and
         # the two partners' terms swapped.
         "previous_curl_grouping":
             base.replace("c_mul_coefficient_left(dtdx, ((c_y - c_dy) + b_dz) - b_z)",
@@ -1294,7 +1294,7 @@ def split_tail_mutations(case: Case) -> Dict[str, Dict[str, Any]]:
 
 
 def byte_neutral_control(case: Case) -> Dict[str, Any]:
-    """THE ONE ARMED EDIT REQUIRED TO BE UNCAUGHT, and it is scored on that.
+    """The one armed edit required to be uncaught, and it is scored on that.
 
     The whole claim of this fusion is that it removes a round trip and changes no
     arithmetic: the constitutive half reads a REGISTER where the certified
@@ -1304,7 +1304,7 @@ def byte_neutral_control(case: Case) -> Dict[str, Any]:
     "byte-neutral by construction" is a hypothesis; this row is the comparator
     agreeing with it.
 
-    NOTE THE DIFFERENCE FROM ``seam_takes_the_pre_curl_displacement``: that
+    Note the difference from ``seam_takes_the_pre_curl_displacement``: that
     mutation reads ``f0[ii]`` too, but the two are not the same edit — this one is
     the whole three-component reload, and the tails have ALREADY stored, so the
     reload observes the stepped value. It is placed by replacing the register in
@@ -1381,7 +1381,7 @@ HOST_MUTATIONS: Dict[str, Tuple[Callable[[Any, Any, Residency], None], str]] = {
 }
 
 
-#: THE PLANTED DEFECTS, applied to the SHIPPED emitter process-wide so the whole
+#: The planted defects, applied to the SHIPPED emitter process-wide so the whole
 #: gate runs against defective bytes and the top-level verdict must flip.
 PLANTED: Dict[str, Tuple[str, str]] = {
     # The pole chain's sign, on every component of every specialisation.

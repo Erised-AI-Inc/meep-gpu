@@ -5,7 +5,7 @@
     python parity/meep_gpu/meep_identity_smoke.py [--mode keep] [--record PATH] [--rows OUT]
     python parity/meep_gpu/meep_identity_smoke.py --mint --evidence DIR --build TAG --out PATH
 
-WHAT IT ANSWERS. Does the MEEP this interpreter imports, stepped on its own, store the
+What it answers. Does the MEEP this interpreter imports, stepped on its own, store the
 same float32 words as the identity reference that minted the record? A reference build
 is identified by more than its flags and its census (``tools/fma_census.py``): its own
 words on known cases must reproduce. This is that check, and it is MEEP alone, so it
@@ -306,9 +306,9 @@ def child(case: str, mode: str, lattice: Dict[str, List[List[int]]], steps: List
     mp.set_zero_subnormals(mode == "flush")
     state = check.subnormal_state()
     out: Dict[str, Any] = {"case": case, "mode": mode, "subnormals": state,
+                           # No path to MEEP: it named the account and the machine.
                            "meep": {"version": str(mp.__version__),
-                                    "single_precision": bool(mp.is_single_precision()),
-                                    "file": mp.__file__},
+                                    "single_precision": bool(mp.is_single_precision())},
                            "omp_num_threads": os.environ.get("OMP_NUM_THREADS")}
     if state["mode"] != mode:
         out["error"] = (f"the processor's subnormal handling is {state['mode']} after "

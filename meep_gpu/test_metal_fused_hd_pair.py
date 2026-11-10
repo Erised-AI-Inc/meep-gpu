@@ -1,6 +1,6 @@
 """Laptop tests for the Metal H->D weld (``update_H`` welded into ``step_D``).
 
-THE MERGE BAR, NOT THE CERTIFICATION. The byte claim owed by this family is a device
+The merge bar, not the certification. The byte claim owed by this family is a device
 gate that runs complete driver steps and compares uint32 words; these tests are what
 must stay green on every change, and they are chosen for the defects a byte gate would
 catch LATE, or on a configuration nobody sweeps, or not at all:
@@ -21,7 +21,7 @@ catch LATE, or on a configuration nobody sweeps, or not at all:
 * **the binding ceiling**, which is an EQUALITY here: 31 of 31, no headroom. A future
   edit that adds a volume discovers it in this file rather than at compile time;
 * **the predicate's refusals**, every one of which is answerable without a GPU;
-* **the composition.** This product is registered UNWIRED, holds a ``FUSED_PAIR_ARMS``
+* **the composition.** This product is registered unwired, holds a ``FUSED_PAIR_ARMS``
   row read off its two predicates, and declares ``INSTALLABLE = False`` on a measured
   verdict. Until 2026-09-05 that flag was load-bearing for a RELEASED product's slots:
   without it, registering this row made ``launch._neighbouring_seam_claimant`` refuse
@@ -39,7 +39,7 @@ catch LATE, or on a configuration nobody sweeps, or not at all:
 Everything that needs a device is guarded and skipped, so this file is the merge bar on
 a host with no MPS as well as on this one.
 
-WHAT THIS FILE DOES NOT CLAIM. Nothing here is a byte-identity measurement, and nothing
+What this file does not claim. Nothing here is a byte-identity measurement, and nothing
 here licenses installing the product. The seam's own numbers -- 49 rows in the
 ``(update_H ordinary -> step_D PML)`` cell, of which this predicate reaches 47 and
 refuses 2 by name -- come from
@@ -170,7 +170,7 @@ def test_the_family_is_welded_and_says_so_in_the_one_place_that_partitions_the_f
     assert "metal_fused_hd_pair_device_gate" in ledger, (
         "WELD_OWED is empty and fingerprints.json carries no "
         "metal_fused_hd_pair_device_gate: one of the two is false")
-    # AND THE COMPOSER'S OWN REFUSAL STRING MUST NOT STILL POINT AT A WITHDRAWAL. It is
+    # And the composer's own refusal string must not still point at a withdrawal. It is
     # where a reader meets this family on every run, and it is the string the board
     # quotes; a live pointer to a constant that is now empty reads as a family whose
     # certification is still owed.
@@ -194,7 +194,7 @@ def _certified_constitutive_tail(mode):
 def test_the_constitutive_lift_moves_exactly_the_declared_lines(mode):
     """Line for line: what left, what arrived, and nothing else.
 
-    The certified body and the lifted one are compared as MULTISETS OF LINES. Every
+    The certified body and the lifted one are compared as multisets of lines. Every
     line that disappeared must be a store or a rename source named in
     :data:`.fused_hd_pair.CONSTITUTIVE_LIFT_EDITS`, and every line that arrived must be
     its stated replacement. An arithmetic line that changed would show up in both sets
@@ -253,7 +253,7 @@ def test_the_two_accumulations_survive_the_lift_character_for_character(mode):
 
 @pytest.mark.parametrize("mode", MODES)
 def test_every_auxiliary_access_sits_behind_its_membership(mode):
-    """The static needles the gate's two DECLARED NULLS rest on (KERNELS.md §7.2).
+    """The static needles the gate's two DECLARED NULLS rest on (docs/development/certification.md#chunk-form-battery).
 
     An unguarded auxiliary load changes no word -- the gate scores b7 and b12 on
     agreeing -- so the guard is pinned here instead: ``prev`` is read only on the
@@ -279,7 +279,7 @@ def test_every_auxiliary_access_sits_behind_its_membership(mode):
 
 
 def test_the_record_rides_in_params_and_reaches_every_h_cell_call():
-    """31 of 31 bindings leave the chunk record no buffer of its own (DESIGN D10).
+    """31 of 31 bindings leave the chunk record no buffer of its own (docs/development/kernel-tables.md#record-bindings).
 
     ``Params`` embeds ``ChunkBounds cb`` after the five scalars, the kernel aliases it
     before any lifted text, and ``h_cell`` takes it as its last parameter, so the
@@ -338,7 +338,7 @@ def test_the_plan_builders_take_the_record_by_keyword_with_no_default():
 
 @pytest.mark.parametrize("mode", MODES)
 def test_the_lifted_body_stores_nothing_and_reads_only_unwritten_state(mode):
-    """THE PROPERTY THE WHOLE DESIGN RESTS ON.
+    """The property the whole design rests on.
 
     A recompute is a pure function of memory this launch does not write, so the lifted
     body must contain no store at all and must index only the three ``const`` groups.
@@ -598,7 +598,7 @@ def _grid(**overrides):
 
 @pytest.fixture()
 def flush_policy(monkeypatch):
-    """ONE CANONICAL POLICY, and it is a precondition rather than a default.
+    """One canonical policy, and it is a precondition rather than a default.
 
     ``coverage._metal_backend_reasons`` delegates to ``subnormal.mps_policy_reasons``
     and a resolved ``keep`` is REFUSED by name rather than silently run: Metal flushes
@@ -656,7 +656,7 @@ def test_a_plan_built_with_no_residency_is_refused_by_both_halves():
 
 
 def test_a_keep_policy_run_is_refused_by_name_rather_than_run(monkeypatch):
-    """THE ARMED CONTROL BEHIND THE FLUSH PRECONDITION.
+    """The armed control behind the flush precondition.
 
     Metal flushes denormals natively and exposes no lever -- both denormal pragma
     spellings are compile errors on this toolchain -- so a run whose resolved float32
@@ -712,7 +712,7 @@ def test_the_grid_refusals_name_the_configuration(overrides, needle, flush_polic
 
 
 def test_the_fold_refusal_names_the_second_product_and_not_a_fill(flush_policy):
-    """THE REASON IS DIFFERENT ON THIS SEAM, and saying the other one would be wrong.
+    """The reason is different on this seam, and saying the other one would be wrong.
 
     The B->H and D->E pairs refuse a fold because ``fill_symmetry_bc_*`` and
     ``fill_folded_far_ghosts_*`` run INSIDE their seam. Neither runs inside this one --
@@ -792,7 +792,7 @@ def test_a_non_integrated_electric_source_is_not_refused(flush_policy):
 
 
 def test_a_standing_electric_withdraw_is_refused_by_name_while_the_flag_is_false():
-    """THE 2 ROWS OF THE CELL'S 49 THIS PRODUCT DOES NOT REACH.
+    """The 2 rows of the cell's 49 this product does not reach.
 
     The refusal names the flag, the installability declaration and the driver line,
     because the remedy is a package of two things (the absorb row landed 2026-09-05)
@@ -914,7 +914,7 @@ def test_the_absorb_row_is_read_off_the_two_predicates_this_module_conjoins():
     assert extra == (("nonlinear PML magnetic", "nonlinear PML curl"),)
     assert "nonlinear PML magnetic" in {spec.label for spec in arms.registered("update_H")}
     assert "nonlinear PML curl" in {spec.label for spec in arms.registered("step_D")}
-    # THREE FAMILIES CARRY AN EXTRA ROW SINCE THE BETA H->D PRODUCTS WIRED, and the
+    # Three families carry an extra row since the beta H->D products wired, and the
     # two that joined are a DIFFERENT KIND of extra from this family's: each resolves
     # its curl emitter from the grid's fold and covers a SECOND cell -- the FOLDED one
     # -- through one extra row apiece, declared beside them in
@@ -947,7 +947,7 @@ def test_the_uninstallable_declaration_is_read_off_this_module():
 @needs_mps
 def test_the_seam_loop_refuses_this_product_on_its_flag_and_then_on_the_released_slot(
         flush_policy, monkeypatch):
-    """DRIVEN THROUGH THE COMPOSER, not read off the tables, from both sides.
+    """Driven through the composer, not read off the tables, from both sides.
 
     ``plan_step(fuse=True)`` is the opt-in path every Metal weld reaches, and on a
     configuration this predicate ADMITS the seam loop must still leave ``update_H`` and
@@ -965,7 +965,7 @@ def test_the_seam_loop_refuses_this_product_on_its_flag_and_then_on_the_released
     reason = plan.reasons.get(f"fused_pair_{hd.FAMILY}")
     assert reason is not None, sorted(plan.reasons)
     assert reason[0].startswith(f"{hd.FAMILY} declares INSTALLABLE = False: "), reason
-    # AND THE ARBITRATION FINDING, IN LIVE FORM. On this configuration BOTH released
+    # And the arbitration finding, in live form. On this configuration BOTH released
     # incumbents install, so all four slots of the step_B - update_H - step_D -
     # update_E path are held by two pairs in two launches. That is the 133-row column
     # of the measurement `INSTALLABLE_REASON` cites: installing this product here would
@@ -1011,7 +1011,7 @@ class _Context:
 @needs_mps
 def test_the_released_magnetic_pair_keeps_its_slot_whatever_this_flag_says(
         flush_policy, monkeypatch):
-    """THE 2026-09-04 HAZARD, CLOSED FROM THE COMPOSER'S SIDE.
+    """The 2026-09-04 hazard, closed from the composer's side.
 
     ``_neighbouring_seam_claimant`` walks ``arms.registered("update_H")`` for welds that
     also replace ``step_D`` when an INTERIOR span asks who claims the seam it opens.
@@ -1079,7 +1079,7 @@ def test_a_double_refusal_reports_both_halves_and_both_widenings():
 
 
 def test_the_spine_arms_delegate_to_the_ordinary_builders_and_the_extra_row_names_them():
-    """READ OFF THE SOURCE: the two spine arms build the ORDINARY kernels
+    """Read off the source: the two spine arms build the ORDINARY kernels
     (``launch.plan_constitutive`` / ``launch.plan_pml_curl`` under a scope view), so
     the extra absorb row is a text identity rather than a widening of the weld; and
     the row's two labels are exactly the spine arms' registered labels on the two
@@ -1105,14 +1105,14 @@ def test_the_spine_arms_delegate_to_the_ordinary_builders_and_the_extra_row_name
 @needs_mps
 def test_the_nonlinear_run_kernels_are_the_ordinary_text_byte_for_byte(
         flush_policy, monkeypatch):
-    """MEASURED, NOT ARGUED: capture every source handed to ``compile_source`` while
+    """Measured, not argued: capture every source handed to ``compile_source`` while
     building the spine arms on a chi2/chi3 run and the ordinary arms on the same grid
     without it, and require the two captures equal. This is the fact the extra absorb
     row rests on."""
     from meep_gpu.metal_kernels import nonlinear_update_e as nl
 
     captured = {}
-    # THE REAL COMPILER IS BOUND ONCE, BEFORE ANY PATCHING. Reading it inside
+    # The real compiler is bound once, before any patching. Reading it inside
     # ``capturing`` binds whatever the PREVIOUS patch installed, so each new tag
     # chains onto the last one and every later compile is appended to every earlier
     # tag's list as well -- which makes the equality below compare two aggregates
@@ -1225,7 +1225,7 @@ def test_the_rotation_moves_the_engines_references_only_after_the_launch():
 
 
 def test_an_aliased_scratch_is_refused_before_the_launch():
-    """THE WHOLE DESIGN IS THAT NOTHING WRITTEN IS READ. A twin resolving to the same
+    """The whole design is that nothing written is read. A twin resolving to the same
     tensor as its live buffer would make every foreign recompute a read of another
     thread's output, silently, so it is refused rather than launched."""
     plan, _fields, _live, _twins, launched = _rotating_plan(alias=True)
@@ -1294,7 +1294,7 @@ _SEAM_RECORD = os.path.join(
 @pytest.mark.skipif(not os.path.exists(_SEAM_RECORD),
                     reason="the H_to_D seam record is not in this checkout")
 def test_the_cell_is_49_rows_of_which_this_predicate_declines_2():
-    """READ FROM THE RECORD, not restated. The docstring's 47/49 is a claim about a
+    """Read from the record, not restated. The docstring's 47/49 is a claim about a
     measurement, so it fails here if the measurement moves rather than going quietly
     stale in prose."""
     rows = [json.loads(line) for line in open(_SEAM_RECORD, "r", encoding="utf-8")]
@@ -1313,7 +1313,7 @@ def test_the_cell_is_49_rows_of_which_this_predicate_declines_2():
 # The device gate: present, routed, and armed with needles that still resolve
 # ---------------------------------------------------------------------------
 #
-# THE GATE IS THE CERTIFICATION AND THIS SECTION IS NOT. What it pins is the part
+# The gate is the certification and this section is not. What it pins is the part
 # of the gate that can go stale WITHOUT a device: a mutation needle that stopped
 # matching arms nothing, a leg table that stopped naming a leg, a case that stopped
 # walling the axis its defects are armed on, a census cell that moved. Every one of
@@ -1419,10 +1419,10 @@ def test_every_defect_that_cannot_fire_names_a_control_that_can():
 
 
 def test_the_battery_covers_every_must_catch_row_of_the_form_contract():
-    """KERNELS.md §7.2, row for row: the six must-catch rows armed on BOTH halves, the
+    """The per-chunk form battery row for row: the six must-catch rows armed on BOTH halves, the
     two record rows as host defects, the two declared nulls scored on agreeing, the
     two planted-zero rows in their own leg, and the carried select's keying as a
-    predicted null. The grouping mutations are INVERTED (§7.1): each plants the
+    predicted null. The grouping mutations are INVERTED (docs/development/certification.md#inverted-grouping-mutations): each plants the
     package's previous grouping, under a name that says so."""
     gate = _gate_module()
     base = hd.fused_hd_pair_source(gate.MUTATION_CODES)
@@ -1524,7 +1524,7 @@ def test_the_seed_scale_is_a_power_of_two_and_the_source_carries_the_same_one():
     """Both halves of the fixture's amplitude, and they have to move together.
 
     The seed is scaled so the 60-step budget clears the float32 denormal band. A
-    POWER OF TWO is what makes that a shift of every exponent rather than a change of
+    power of two is what makes that a shift of every exponent rather than a change of
     any mantissa. And the withdraw leg's two integrated sources must carry the SAME
     factor: an O(1) dipole subtracted from a 2^80 field rounds away entirely, which
     silently disarms both of that leg's null controls while leaving its weld green.
@@ -1556,7 +1556,7 @@ def test_a_lifted_row_answers_to_a_floor_and_the_synthetic_fixture_to_the_budget
     assert "require_full_budget=False" in source, (
         "the lift's battery hook must not demand the full budget of a row whose "
         "state it does not choose")
-    # AND THE FLOOR IS APPLIED ONCE, IN THE LEG. A row answers for what it measured;
+    # And the floor is applied once, in the leg. A row answers for what it measured;
     # whether that was enough is a judgement about the CELL, made where the rows below
     # the floor can be named together instead of each reporting as a defect.
     assert "rows_below_the_clean_step_floor" in source
@@ -1568,7 +1568,7 @@ def test_a_lifted_row_answers_to_a_floor_and_the_synthetic_fixture_to_the_budget
 # The gate's own bookkeeping: an arrangement must give the engine its arrays back
 # ---------------------------------------------------------------------------
 #
-# THE DEFECT THESE PIN IS MEASURED, NOT IMAGINED. Until 2026-09-05 the gate named
+# The defect these pin is measured, not imagined. Until 2026-09-05 the gate named
 # its rotating plans by hand and only the weld arrangement named any, so
 # ``composition_today`` -- which installs the off-diagonal fused electric pair on a
 # row with an off-diagonal epsilon, and that product rotates ``D``/``fu_D`` -- left
@@ -1617,7 +1617,7 @@ class _StubDriver:
 
 
 class _MirrorRegistry:
-    """A residency BOUND BY IDENTITY to one host array, the way the real one is.
+    """A residency bound by identity to one host array, the way the real one is.
 
     ``orphaned_mirrors`` asks a residency two questions -- which names it binds, and
     which host array each name binds -- and answers the hazard from those. Both are
@@ -1640,7 +1640,7 @@ def _rotating_arrangements(gate, declares):
     driver = _StubDriver(gate)
     plan = _RotatingStub(driver.fields, "Dx", declares)
     shim = gate.Shim(driver.fields, {"update_H": plan})
-    # THE ROTATOR'S MIRROR IS BOUND TO THE ARRAY THE ENGINE NAMES RIGHT NOW, which is
+    # The rotator's mirror is bound to the array the engine names right now, which is
     # what makes the swap below an ORPHAN rather than a rename. Without it this
     # control arms nothing: a rotation of a volume no residency mirrors is the
     # engine's own polarization recurrence, which the guard is required to ignore.
@@ -1650,7 +1650,7 @@ def _rotating_arrangements(gate, declares):
 
 
 def test_an_arrangement_finds_its_rotating_plans_without_being_told():
-    """DERIVED FROM THE SHIM. The weld is not the only product that rotates, and a
+    """Derived from the shim. The weld is not the only product that rotates, and a
     list the caller maintains cannot see one the composer chose."""
     gate = _gate_module()
     driver, plan, arrangements = _rotating_arrangements(gate, declares=True)
@@ -1658,20 +1658,20 @@ def test_an_arrangement_finds_its_rotating_plans_without_being_told():
     assert rotator.rotating == (plan,)
     assert rotator.originals["Dx"] is driver.fields.Dx
     assert gate.Arrangement("array", None, None).rotating == ()
-    # ONCE PER OWNER, not once per slot: a fused pair holds both slots of its seam.
+    # Once per owner, not once per slot: a fused pair holds both slots of its seam.
     both = gate.Shim(driver.fields, {"update_H": plan, "step_D": plan})
     assert gate.Arrangement("pair", both, None).rotating == (plan,)
 
 
 def test_a_rotation_left_standing_fails_the_run_and_settling_it_does_not():
-    """THE ARMED CONTROL AND ITS NULL, on the same stub and the same driver.
+    """The armed control and its null, on the same stub and the same driver.
 
     Armed: the plan rotates and declares nothing, so nothing can settle it and the
     engine ends the step naming the twin. Null: the same plan declaring the volume it
     rotates, which the arrangement discovers and settles. The swap is asserted to have
     happened in BOTH, so the null is not passing by never rotating at all.
 
-    AND THE VERDICT IS THE ORPHAN, NOT THE RENAME, from 2026-09-06. The run's pass
+    And the verdict is the orphan, not the rename, from 2026-09-06. The run's pass
     condition used to read "did any stored name's array object change", which the
     ENGINE'S OWN three-buffer polarization recurrence answers yes to on every
     dispersive row (``dispersion.PolarizationState.step``) while no residency mirrors
@@ -1686,7 +1686,7 @@ def test_a_rotation_left_standing_fails_the_run_and_settling_it_does_not():
     before = driver.fields.Dx
     armed = gate.drive(driver, arrangements, steps=2)
     assert plan.swaps == 2, "the armed control never rotated; it proves nothing"
-    # OBSERVED AFTER EACH ARRANGEMENT'S STEP, WHICH IS NOT THE SAME AS "CAUSED BY IT",
+    # Observed after each arrangement's step, which is not the same as "caused by it",
     # and the spread is the point: an unsettled rotation contaminates every
     # arrangement that steps after it, the reference included -- here the array path
     # is stepping through the twin by step 2.
@@ -1695,7 +1695,7 @@ def test_a_rotation_left_standing_fails_the_run_and_settling_it_does_not():
                                                        "rotator": ["Dx"]}
     assert armed["every_arrangement_gave_the_engine_its_volumes_back"] is False
     assert armed["arrangements"]["rotator"]["engine_volumes_left_rotated"] == ["Dx"]
-    # AND THE END STATE IS NOT THE TEST. Two swaps put the original array back under
+    # And the end state is not the test. Two swaps put the original array back under
     # the engine's name, which is exactly why an end-of-run identity check would miss
     # this: the decoupling is per step, so it is measured per step.
     assert driver.fields.Dx is before
@@ -1712,7 +1712,7 @@ def test_a_rotation_left_standing_fails_the_run_and_settling_it_does_not():
 
 
 def test_a_rename_no_residency_mirrors_is_not_an_orphan():
-    """THE SECOND HALF OF THE 2026-09-06 REPAIR, and it is what narrowed the verdict.
+    """The second half of the 2026-09-06 repair, and it is what narrowed the verdict.
 
     The same stub, the same two swaps, the same reported rename -- with the mirror
     registry bound to a DIFFERENT volume, which is the engine's own polarization

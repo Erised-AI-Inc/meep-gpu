@@ -1,11 +1,11 @@
 """Has the field REACHED the absorber in the window the lifted leg compares?
 
-WHY THIS EXISTS. The lifted corpus guard control — the same cases with
+Why this exists. The lifted corpus guard control — the same cases with
 ``--fmad=false`` STRIPPED — is supposed to diverge, and on the synthetic gate the
 unguarded leg diverges on 240 of 240 cases. On the corpus it did not. Before
 explaining that with an argument, measure it.
 
-THE HYPOTHESIS THIS TESTS. The constitutive sub-step is
+The hypothesis this tests. The constitutive sub-step is
 
     a = f[idx] + kps * src;   f[idx] = a - kms * prev;
 
@@ -21,7 +21,7 @@ propagated from the centre to the boundary in 10 steps, every cell where the
 coefficient bites still holds exactly zero, ``kps * 0`` is 0 under both
 compilations, and the guard is unexercised no matter how many cells are compared.
 
-THIS IS THE SAME FAILURE CLASS as the one the disposition's §1.4 records for the
+This is the same failure class as the one recorded for the
 curl's lifted leg (all six cases at Courant 0.5, where the dtdx scaling is exact,
 so the leg could not distinguish the guard at all) — a leg that looks like
 evidence for the arithmetic and is evidence for something else. The difference is

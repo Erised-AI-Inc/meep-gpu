@@ -27,7 +27,7 @@ NVIDIA tables are certified under it. Under ``flush`` the host's only lever on x
 MEEP's ``set_zero_subnormals`` and CuPy needs ``CUPY_ACCELERATORS=''`` before it is
 imported, so the flush leg is measured outside the suite.
 
-THE CYLINDRICAL ROWS. The radial derivative of Bz and Dz is the difference of MEEP's
+The cylindrical rows. The radial derivative of Bz and Dz is the difference of MEEP's
 per-chunk radial sum (``stepping.cylindrical_rderiv_difference``), which NumPy forms as a
 ``cumsum`` per chunk segment, a sequential accumulation, and every other array module as
 a row loop, so CuPy's parallel scan is never used and the two round alike.

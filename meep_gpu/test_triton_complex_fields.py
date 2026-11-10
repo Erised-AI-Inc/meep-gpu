@@ -157,7 +157,7 @@ def _build(cell_size=(0.8, 0.8, 0.8), pml_thickness=2, complex_storage=True,
            storage=True, k_point=(0.3, 0.0, 0.0), **grid_kwargs):
     """A real Grid/Fields/PML triple on NumPy.
 
-    Default: the tranche's own target class — complex64 storage, an active PML,
+    Default: the complex-field kernels' own target class — complex64 storage, an active PML,
     a Bloch phase on x. Every refusal test perturbs exactly one clause off this.
     """
     grid = Grid(resolution=10.0, cell_size=cell_size, k_point=k_point,
@@ -188,7 +188,7 @@ def _constitutive_reasons(module, fields, pml, side="E"):
 @pytest.mark.parametrize("sub_step", ["step_B", "step_D"])
 def test_the_bloch_configuration_is_refused_only_for_the_backend(complex_module,
                                                                  sub_step):
-    """The configuration this tranche is FOR: complex storage, active PML, k on x.
+    """The configuration these kernels are FOR: complex storage, active PML, k on x.
 
     Every clause but CuPy must pass on both curl sub-steps — the corpus class of
     binary_grating_oblique / mode_coeff_phase / oblique-planewave.
@@ -317,7 +317,7 @@ def test_a_missing_condfac_reader_is_refused_not_read_as_no_conductivity(
 
 
 def test_a_registered_susceptibility_is_refused_outright(complex_module):
-    """Dispersion x complex has NO corpus demand; complex ADE is a future tranche."""
+    """Dispersion x complex has NO corpus demand; complex ADE is not yet built."""
     fields, pml = _build()
     pole = SimpleNamespace(
         driven=lambda: ("Ex",),
@@ -445,7 +445,7 @@ def test_mutation_dropping_the_metallic_k_clause_is_caught(complex_module,
 # The licensing rule when the probe cannot discriminate
 # ---------------------------------------------------------------------------
 #
-# MEASURED, results/complex_expansion_flush_coincidence_2026-08-15/: under the
+# Measured, results/complex_expansion_flush_coincidence_2026-08-15/: under the
 # shipped flush policy the two licensable arms were BIT-IDENTICAL on the three
 # mixed-dtype patterns (0 of 4560 words each) because flush destroys exactly the
 # subnormal lanes that separated them — on the device AND in the candidates — and
@@ -453,7 +453,7 @@ def test_mutation_dropping_the_metallic_k_clause_is_caught(complex_module,
 # uniquely. The refusal those patterns used to produce ("no single constexpr is
 # licensed") was an artifact of scoring a flushed device against kept candidates.
 #
-# THAT IS A FACT ABOUT THAT ROUND'S VECTORS, and the probe's vectors have since
+# That is a fact about that measurement's vectors, and the probe's vectors have since
 # changed: _NORMAL_UNDERFLOWING_ZR separates the arms without handing the device
 # a subnormal operand, so the mixed patterns now measure 128 words apart under
 # flush and the gate REFUSES to emit a blind record at all. The non-discriminating
@@ -968,7 +968,7 @@ def test_the_destination_is_where_the_gate_expects_it():
 # The zero-init composition class — reachability measured, not assumed
 # ---------------------------------------------------------------------------
 #
-# The tranche was certified on random-seeded states, and the seeded
+# The kernels were certified on random-seeded states, and the seeded
 # signed-zero planes carry strictly NEGATIVE imag companions — both provably
 # blind to the unary-minus addend lowering (the discriminating class is
 # re = -0.0 with a NON-negative imag word). The composition probe's zero-init
@@ -1036,7 +1036,7 @@ def test_the_negation_mutation_sites_map_the_new_spelling_to_the_old(
 
 def test_zero_init_reference_census_reaches_negative_zero_words(
         composition_module):
-    """THE REACHABILITY RESULT, re-measured at every merge: from all-+0.0
+    """The reachability result, re-measured at every merge: from all-+0.0
     state the NumPy array path stores hundreds of -0.0 words in the compared
     volumes on every odd step (and exactly none on even steps), in cells whose
     BOTH words are -0.0 (the per-part products' class, which a whole-complex
@@ -1080,7 +1080,7 @@ def test_zero_init_reference_census_reaches_negative_zero_words(
 # Measured 2026-08-11 (the expansion runs + the ftz_lanes diagnosis): CuPy 13.5.1
 # appends '-ftz=true' to every NVRTC compile; under the strip (IEEE
 # subnormal-keep) the platform is exact FMA_V1 on every orientation, and the
-# gate certifies UNDER THE POLICY IT WAS CUT UNDER and must say so in every
+# gate certifies under the policy it was cut under and must say so in every
 # artifact — bytes differ between the two policies in the subnormal range.
 #
 # The 54/48/125-word "matches NO licensed arm" of the default leg was NOT a
@@ -1180,10 +1180,10 @@ def test_the_cache_dir_must_be_private_and_policy_suffixed(gate_module):
 
 
 # ---------------------------------------------------------------------------
-# THE TININESS RULE — what the FTZ candidate emulation tests, and on what value
+# The tininess rule — what the FTZ candidate emulation tests, and on what value
 # ---------------------------------------------------------------------------
 #
-# THREE RULES, NOT TWO. IEEE 754-2019 §7.5 lets an implementation detect
+# Three rules, not two. IEEE 754-2019 §7.5 lets an implementation detect
 # tininess either BEFORE rounding (on the result computed with unbounded
 # precision AND unbounded exponent) or AFTER (on that result rounded to the
 # destination's precision, still with unbounded exponent), requiring only that
@@ -1192,7 +1192,7 @@ def test_the_cache_dir_must_be_private_and_policy_suffixed(gate_module):
 # word is still subnormal, i.e. round on the 2**-149 subnormal grid instead of
 # with an unbounded exponent.
 #
-# THE MEASURED RULE IS THE MIDDLE ONE. 37,439 vectors whose classes were derived
+# The measured rule is the middle one. 37,439 vectors whose classes were derived
 # by factoring exact rationals — built independently of the gate and of these
 # tests — run on two executors: x86 mulss / vfmadd213ss with MXCSR set once per
 # pass over all four FTZ|DAZ combinations, and PTX mul.rn.ftz.f32 /
@@ -1205,19 +1205,19 @@ def test_the_cache_dir_must_be_private_and_policy_suffixed(gate_module):
 # exponent ... non-zero and tiny". The PTX ISA is SILENT on what the test is
 # applied to and settles nothing either way.
 #
-# TWO SEPARATING CLASSES, and a test that reaches only one of them cannot pin
+# Two separating classes, and a test that reaches only one of them cannot pin
 # the rule:
 #   * :data:`TIE_ROWS` — exact value 2**-126 - 2**-150 — separates the delivered
 #     word from the other two. It does NOT separate before- from after-rounding:
 #     that value has exactly 24 significant bits, so the unbounded-exponent
 #     rounding is the identity on it and both rules call it tiny. This is the
-#     class the 2026-08-15 round mistook for a discriminator.
+#     class the 2026-08-15 measurement mistook for a discriminator.
 #   * :data:`SEPARATING_ROWS` — exact value in [2**-126 - 2**-151, 2**-126) —
 #     separates before-rounding from the other two, and nothing else does. The
 #     window is a quarter of a subnormal ulp wide, relative measure ~2**-25, so
 #     it is unreachable by sampling and its rows must be CONSTRUCTED.
 #
-# WHAT THESE TESTS DO AND DO NOT PIN, stated because the block here used to
+# What these tests do and do not pin, stated because the block here used to
 # claim more. The six tests that predate 2026-08-16 pass UNCHANGED under both
 # the before-rounding and the after-rounding models — measured, by installing
 # each in turn — so they pin FTZ and they pin the delivered-word rule out, but
@@ -1236,7 +1236,7 @@ def test_the_cache_dir_must_be_private_and_policy_suffixed(gate_module):
 #: because 2**-126 - 2**-150 has exactly 24 significant bits and therefore
 #: survives the unbounded-exponent rounding unchanged, below 2**-126.
 #:
-#: THIS CLASS DOES NOT SEPARATE BEFORE- FROM AFTER-ROUNDING. See
+#: This class does not separate before- from after-rounding. See
 #: :data:`SEPARATING_ROWS` for the class that does.
 TIE_ROWS = (
     (0x00FFFFFF, 0.5), (0x80FFFFFF, 0.5),
@@ -1247,7 +1247,7 @@ TIE_ROWS = (
 )
 
 
-#: THE SEPARATING CLASS — the only class that tells a test on the EXACT value
+#: The separating class — the only class that tells a test on the EXACT value
 #: apart from a test on the value rounded to 24 significant bits with unbounded
 #: exponent. ``(word_a, word_b)`` pairs whose exact product lies in
 #: ``[2**-126 - 2**-151, 2**-126)``: below the smallest normal, so a
@@ -1255,7 +1255,7 @@ TIE_ROWS = (
 #: unbounded-exponent rounding (the grid there is 2**-150 and 2**24 is the even
 #: neighbour), so the measured rule delivers ``0x00800000``.
 #:
-#: HOW THESE WERE CONSTRUCTED, because they cannot be sampled. Both operands
+#: How these were constructed, because they cannot be sampled. Both operands
 #: must be NORMAL or DAZ reaches the row first, so with significands
 #: ``ma, mb in [2**23, 2**24)`` the product is ``ma * mb * 2**(Ea + Eb - 46)``.
 #: The window forces ``ma * mb in [2**47 - 2**22, 2**47)`` — the ``2**48`` case
@@ -1290,7 +1290,7 @@ SEPARATING_ROWS = (
 )
 
 
-#: EVERYTHING BELOW GOES THROUGH ``candidate_arithmetic(flush=True)``, the seam
+#: Everything below goes through ``candidate_arithmetic(flush=True)``, the seam
 #: the candidate arms are actually built from, and never through a private
 #: helper the corrected file happens to spell a particular way. That is what
 #: makes these tests runnable against an EARLIER copy of the gate: pointed at

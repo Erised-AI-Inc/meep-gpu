@@ -69,7 +69,7 @@ def test_the_seam_span_slot_and_launch_count_are_the_real_siblings():
     assert family.CARRIES_DEPOSIT_REPAIR is False
     assert family.HOISTS_THE_WITHDRAW is False
     assert family.INSTALLABLE is False
-    for phrase in ("no launch saved", "three launches", "owner's design ruling",
+    for phrase in ("no launch saved", "three launches", "design decision not yet taken",
                    "predicate admission"):
         assert phrase in family.INSTALLABLE_REASON, phrase
     assert family.PREFIX_SOURCE == cylindrical_prefix.PREFIX_COMPONENT["step_D"]

@@ -2,7 +2,7 @@
 driver step, the launch structure, the seam order, and the refusals that license it.
 
 =============================================================================
-WHAT IS BEING CERTIFIED, AND WHY NEITHER HALF'S VERDICT COVERS IT
+What is being certified, and why neither half's verdict covers it
 =============================================================================
 
 ``cuda_three_slot_complex_no_pml_dispersive_weld`` owns ``step_D``, ``update_E`` and
@@ -19,10 +19,10 @@ deposit inside the span, advancing P in the same launch as the constitutive is t
 array path's arithmetic word for word.
 
 =============================================================================
-THE COMPARISONS -- FOUR ENGINES FROM ONE SEED
+The comparisons -- four engines from one seed
 =============================================================================
 
-Every product case compares per COMPLETE DRIVER STEP as uint32 words over every
+Every product case compares per complete driver step as uint32 words over every
 stored volume AND every ``P`` / ``P_prev`` / ``_scratch`` buffer BY SLOT, against:
 
   1. the ARRAY PATH (``stepping``'s own passes);
@@ -39,7 +39,7 @@ proxy (per kernel) and CUDA graph capture of the whole step (every kernel, CuPy'
 included), borrowed from the real three-slot gate rather than re-spelled.
 
 =============================================================================
-THE SEAM ORDER, MEASURED FROM BOTH SIDES
+The seam order, measured from both sides
 =============================================================================
 
 ``p_at_update_P_consult`` steps the weld with the curl+constitutive half at the
@@ -60,7 +60,7 @@ from global instead of the register; E reloaded from global instead of the regis
 -- a float32 word pair stored and reloaded is the identity on the bits, so both MUST
 be inert), the wrong drive (D fed to the recurrence instead of E: MUST diverge), the
 store landing on P^n, a bank lane swapped, the curl stencil regrouped to the previous
-package order (inverted, bit_parity_0_10 KERNELS.md section 7.1), the conductive tail
+package order (inverted), the conductive tail
 reassociated, the mask dropped. Host: the B curl's connection table (conj(eikna), the
 word below the window) in place of the D curl's, the plain tail on a conductive run,
 and the three rotation defects of the certified launcher's loop beside a local copy
@@ -150,13 +150,13 @@ def array_step(fields) -> None:
 # Fixtures
 # ---------------------------------------------------------------------------
 
-#: THE CORPUS CELL FIRST: TestLoadDump.*_3d lifts to grid (35, 32, 41), complex64,
+#: The corpus cell first: TestLoadDump.*_3d lifts to grid (35, 32, 41), complex64,
 #: Bloch k = (0.4, -1.3, 0.7), periodic on all three axes, a D AND a B conductivity,
 #: one Lorentzian driving every component, a magnetic source only. Then the axes the
 #: corpus does not vary: the pole count and the sigma form (the mixed volume/uniform
 #: signature is a compile-time axis), an unphased and a lossless row, a component
 #: with NO driving state (its launch is the curl and the constitutive alone), and a
-#: 2-D reduction. NO WALLED ROW: the product refuses a wall by name, and the refusal
+#: 2-D reduction. No walled row: the product refuses a wall by name, and the refusal
 #: leg exercises that rather than the sweep.
 SPECS: Tuple[Dict[str, Any], ...] = (
     {"label": "corpus_load_dump_3d", "cell": (35.0, 32.0, 41.0), "dimensions": 3,
@@ -262,9 +262,9 @@ class _CountingKernels:
 
 def without_the_recurrences(_conductive, _component, _count, _kinds,
                             code: str) -> str:
-    """The emitted kernel with its ADE lines CUT and NOTHING ELSE TOUCHED.
+    """The emitted kernel with its ADE lines CUT and nothing else touched.
 
-    THE POLE BANK AND ``np`` SURVIVE THE CUT, which is the whole point: the
+    The pole bank and ``np`` survive the cut, which is the whole point: the
     specialization, the signature and the bank binding are the shipped ones, so the
     constitutive still subtracts every pole through ``minus_poles_reg``. What moves
     is only WHERE the recurrence runs. Cutting instead at the ``component_specs``
@@ -307,7 +307,7 @@ def device_record(grid) -> Any:
 def curl_and_constitutive_only(fields, grid) -> Dict[str, Any]:
     """The weld's three launches with the recurrences cut out of the device text.
 
-    THE HOST ROTATION IS NOT PERFORMED EITHER, and driving the per-component launches
+    The host rotation is not performed either, and driving the per-component launches
     here rather than through :func:`run_three_slot_no_pml_complex` is what leaves it
     out -- the certified ``update_P`` at the trailing consult performs its own. Every
     other argument is the shipped launcher's, taken from the shipped defaults.
@@ -467,7 +467,7 @@ def leg_lift() -> Dict[str, Any]:
                     source.split("// pole 0")[1] == twin.split("// pole 0")[1]),
                 "drive_is_the_register": "cf_load(drive, idx)" not in source,
             })
-    # THE IDENTITY KEYS ARE NOT CHECKS. ``conductive`` is False on the plain arm and
+    # The identity keys are not checks. ``conductive`` is False on the plain arm and
     # ``component`` is 0 on the first one; scoring every bool in the row made the
     # plain arm's three rows fail whatever they measured, which is a leg that can
     # never pass. The checks are named, so they are read by name.
@@ -534,7 +534,7 @@ def leg_refusal() -> Dict[str, Any]:
     record("active_absorber", "refused", layered,
            PML(grid=layered_grid, thickness=2), layered_grid, ())
 
-    # THE ARBITRATION, THROUGH THE SHIPPED COMPOSER.
+    # The arbitration, through the shipped composer.
     plan = arms.plan_step(live, None, live_grid, sources=(), fuse=True)
     arbitration = {
         "selected": {slot: plan.selected.get(slot)
@@ -676,7 +676,7 @@ def leg_launch_structure(spec: Dict[str, Any], steps: int) -> Dict[str, Any]:
     counts = {name: graph.count(lambda s=stepper, e=engines[name]: s(*e))
               for name, stepper in steppers.items()}
     per_step: List[Dict[str, Any]] = []
-    # TWO INSTRUMENTS, EACH READ FOR WHAT IT CAN SEE. The graph counter spans the
+    # Two instruments, each read for what it can see. The graph counter spans the
     # WHOLE driver step and counts every kernel, CuPy's included, so it is the only
     # one that can say the weld reduces launches against the array path -- and it can
     # never say the weld launched three, because a whole step is far more than the
@@ -811,7 +811,7 @@ DEVICE_MUTATIONS: Tuple[Dict[str, Any], ...] = (
      "old": "cf_sub(cf_add(cf_sub(sf, f1), f2), ss)",
      "new": "cf_add(cf_sub(sf, f1), cf_sub(f2, ss))",
      "expect": "caught",
-     "why": "INVERTED (bit_parity_0_10 KERNELS.md section 7.1): the lifted curl "
+     "why": "INVERTED: the lifted curl "
             "stencil takes the previous package grouping (g1s - g1) + (g2 - g2s) where "
             "MEEP brackets ((g1s - g1) + g2) - g2s. Every mutation fixture is "
             "three-dimensional, so every component has both partners and the "
@@ -1092,6 +1092,7 @@ def summarize(results: Dict[str, Any], steps: int) -> Dict[str, Any]:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
+    import neutral_ids  # noqa: PLC0415
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--product", choices=("full", "reduced"), default="full")
     parser.add_argument("--steps", type=int, default=STEPS)
@@ -1108,8 +1109,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "kernel": weld.KERNEL_NAME,
         "kernel_symbols": list(weld.KERNEL_KEYS.values()),
         "started_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(started)),
-        "host": __import__("socket").gethostname(),
-        "argv": list(argv or sys.argv[1:]),
+        "host": neutral_ids.machine_id(),
+        "argv": neutral_ids.argv(argv or sys.argv[1:]),
         "steps": args.steps,
         "subnormal_policy": args.subnormal_policy,
         "subject_sha256": _subject_digests(),

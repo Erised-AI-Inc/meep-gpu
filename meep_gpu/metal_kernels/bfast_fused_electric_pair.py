@@ -8,13 +8,13 @@ the 2026-09-01 board scored ``UNFUSABLE ON METAL`` that the SHIPPED
         bfast_curl.curl 18p + shaders.constitutive_E 18p, sharing 3
         -> 33 pointers, ceiling 30      UNFUSABLE ON METAL   (over by 3)
 
-CROSS-BACKEND FACT, from the residue audit: the board's ``belongs to the CUDA
+A cross-backend fact: the board's ``belongs to the CUDA
 track`` position is unfulfilled — CUDA's same cell is priced POINTWISE-BUILDABLE and
 serves 0 (no BFAST fused electric pair with a deposit carry exists there) — so
 before this module NO backend served this instance and the Metal-local pack was the
 shortest route.
 
-WHAT MOVED IS NOT THE CEILING. :data:`.device.MAX_BUFFER_BINDINGS` is 31 and stays
+What moved is not the ceiling. :data:`.device.MAX_BUFFER_BINDINGS` is 31 and stays
 31; the gate measures it again rather than citing it. What changed is the
 SIGNATURE: the curl half's six per-axis PML coefficient vectors are ONE buffer with
 six element offsets carried in ``Params`` — see :mod:`.coefficient_pack` for why an
@@ -25,7 +25,7 @@ This is the THIRD cell the pack flips from UNFUSABLE to built — the two Dcyl D
 pairs are the precedent — which is what makes packing a tool on this backend rather
 than a rescue for one signature.
 
-EVERYTHING ELSE IS THE TWO SIBLINGS' CONSTRUCTION, spliced from certified emitters:
+Everything else is the two siblings' construction, spliced from certified emitters:
 
 * the curl half — :func:`.bfast_curl.bfast_curl_source` with ``backward=True`` and
   ``has_bfast=True``, lifted verbatim by :func:`certified_bfast_curl_body` exactly
@@ -47,7 +47,7 @@ and IS the row — the repair path is the split-field default, since BFAST requi
 an ACTIVE absorber (the curl predicate's clause 3) and ``update_E`` is therefore
 always ``_apply_constitutive_pml``'s recurrence.
 
-NOT WIRED AS AN ARM; reached through ``launch.FUSED_PAIR_ARMS`` instead.
+Not wired as an arm; reached through ``launch.FUSED_PAIR_ARMS`` instead.
 """
 
 # Derived from MEEP (https://github.com/NanoComp/meep).
@@ -89,17 +89,17 @@ FAMILY = "bfast_fused_electric_pair"
 SLOT = "step_D"
 REPLACES: Tuple[str, ...] = ("step_D", "zero_metal_D", "update_E")
 
-#: The curl half's per-axis PML coefficient vectors, IN PACK ORDER — the order the
+#: The curl half's per-axis PML coefficient vectors, in pack order — the order the
 #: certified BFAST curl body declares them in. One buffer holds them end to end and
 #: ``Params`` carries six element offsets.
 PACKED_VECTORS: Tuple[str, ...] = ("kmx", "sinvx", "kmy", "sinvy", "kmz", "sinvz")
 
-#: THREE BINDING COUNTS, ALL COMPILED BY THE GATE rather than argued from here:
+#: Three binding counts, all compiled by the gate rather than argued from here:
 #:
 #: * :data:`SEPARATE_SCALAR_BINDINGS` — 33 pointers with the eleven scalars bound
 #:   separately. Refused, and by a wide margin.
 #: * :data:`UNPACKED_POINTER_BINDINGS` — 33 pointers plus ONE packed ``Params&``.
-#:   THIS IS THE NUMBER THE BOARD'S VERDICT RECORDED: the fused pair as every other
+#:   This is the number the board's verdict recorded: the fused pair as every other
 #:   D/E product on this backend builds it, REFUSED at 34 bindings against 31.
 #: * :data:`PACKED_BINDINGS` — the shipped shape, 28 pointers plus ``Params``.
 SEPARATE_SCALAR_BINDINGS = 44
@@ -133,7 +133,7 @@ __all__ = [
 # The source
 # ---------------------------------------------------------------------------
 
-#: THE BUFFER ORDER IS ``fused_electric_pair``'s, GROUP FOR GROUP, with two
+#: The buffer order is ``fused_electric_pair``'s, GROUP for GROUP, with two
 #: differences and no others: the three BFAST state pointers sit immediately after
 #: the curl's three sources (where the magnetic twin puts them), and the six curl
 #: coefficient vectors have become the ONE ``cpml`` pack in the slot the first of
@@ -185,8 +185,8 @@ kernel void bfast_fused_electric_pair_step(
     constant Params&    prm     [[buffer(28)]],
     uint idx [[thread_position_in_grid]])
 {
-    // THE ELEVEN SCALARS AND THE SIX PACKED VECTORS ARE UNPACKED INTO THE CERTIFIED
-    // BODIES' OWN NAMES, once, before any of the lifted text runs. Everything below
+    // The eleven scalars and the six packed vectors are unpacked into the certified
+    // bodies' own names, once, before any of the lifted text runs. Everything below
     // this line is then character-for-character what `bfast_curl.bfast_curl_source`
     // and `shaders.constitutive_source` emit, plus the wall clear and the one seam
     // substitution.
@@ -200,7 +200,7 @@ kernel void bfast_fused_electric_pair_step(
     // READ-ONLY: nothing on the device writes `cpml` (the BFAST state s0-2 is the
     // half's device-written set and keeps its own bindings for that reason).
 __PACK_PROLOGUE__
-    // THE CHUNK RECORD rides in the same struct (no binding to spare), and this one
+    // The chunk record rides in the same struct (no binding to spare), and this one
     // line gives the lifted bounds blocks the `cb` they read.
 __RECORD_ALIAS__
 
@@ -235,7 +235,7 @@ def bfast_fused_electric_pair_source(codes: Sequence[int],
                                      contract: str = shaders.CONTRACT_OFF) -> str:
     """One specialised fused source: (boundary triple, walls, contraction mode).
 
-    THE SPLICE IS :func:`.fused_electric_pair.fused_electric_pair_source`'S, step
+    The splice is :func:`.fused_electric_pair.fused_electric_pair_source`'s, step
     for step, with :func:`certified_bfast_curl_body` where its
     ``certified_curl_body`` stands and the pack prologue re-creating the six curl
     coefficient names.
@@ -248,7 +248,7 @@ def bfast_fused_electric_pair_source(codes: Sequence[int],
         raise ValueError(f"zero_metal must be a per-axis triple, got {zero_metal!r}")
 
     curl = certified_bfast_curl_body(codes, contract)
-    # THE PASS MUST BE PRESENT — see the magnetic twin for why its absence would be
+    # The pass must be present — see the magnetic twin for why its absence would be
     # the ordinary weld wearing this family's name.
     for statement in (folded_pass.FOLDED_PASS_BEGIN, "float fp0 = s0[ii];",
                       "if (own0 && (has_y || has_z)) { s0[ii] = F0; }",
@@ -285,7 +285,7 @@ def bfast_fused_electric_pair_source(codes: Sequence[int],
             f"    // THE SEAM: the register step_D just wrote, not a reload of "
             f"D{'xyz'[target]}.\n"
             f"    float src{target} = v{target} * ie{target}[ii];\n")
-    # THE CURL'S `g` IS H AND THE CONSTITUTIVE'S `g` WAS D.
+    # The curl's `g` is H and the constitutive's `g` was D.
     for target in range(3):
         if f"g{target}[" in electric:
             raise AssertionError(
@@ -343,7 +343,7 @@ def _touching_body(written: Sequence[str], read: Sequence[str], guard: str,
 def refuted_unpacked_pointer_source(contract: str = shaders.CONTRACT_OFF) -> str:
     """The 34-binding signature this platform REFUSES — 33 pointers plus ``Params``.
 
-    THIS IS THE MEASUREMENT THE PACK EXISTS FOR: the fused pair built the way every
+    This is the measurement the pack exists for: the fused pair built the way every
     other D/E product on this backend is built — eleven scalars packed into one
     ``constant Params&``, every vector its own pointer — over the ceiling by three.
     Not shipped and not launchable: the gate compiles it and requires the failure,
@@ -451,9 +451,9 @@ def metal_bfast_fused_electric_pair_coverage(fields: Any, pml: Any,
     if not electric.covered:
         reasons.extend(f"constitutive half: {reason}" for reason in electric.reasons)
 
-    # THE SOURCE SEAM. An ELECTRIC source is injected BETWEEN the two halves
+    # The source seam. An ELECTRIC source is injected BETWEEN the two halves
     # (driver.py:3294-3299) and the one corpus row carries one — the repair is not
-    # an optimisation here; it is the product. IGNORANCE IS NEVER AN EMPTY SET.
+    # an optimisation here; it is the product. Ignorance is never an empty set.
     reasons.extend(_deposit_repair.seam_source_reasons(
         fields, sources, 'D',
         undeclared=(
@@ -471,14 +471,14 @@ def metal_bfast_fused_electric_pair_coverage(fields: Any, pml: Any,
         return Coverage(False,
                         tuple(dict.fromkeys(reasons + ["fields carries no grid"])))
 
-    # THE STATE VOLUMES. The Tustin filter's per-component state is bound as three
+    # The state volumes. The Tustin filter's per-component state is bound as three
     # POINTERS; the curl half's own predicate checks them, restated by NAME because
     # the weld is what BINDS them.
     for name in BFAST_STATE_NAMES["step_D"]:
         if getattr(fields, name, None) is None:
             reasons.append(f"{name} is not allocated; this weld binds it directly")
 
-    # THE TWO FILLS, restated by NAME for THIS seam.
+    # The two fills, restated by NAME for THIS seam.
     for axis in range(3):
         mirrored = getattr(grid, "is_mirrored", None)
         if callable(mirrored) and bool(mirrored(axis)):
@@ -557,8 +557,8 @@ def _params_tensor(shape: Sequence[int], dtdx: float, ks: Sequence[float],
     """The eleven scalars, the six pack offsets and the chunk record as one 168-byte
     device record (the record, :func:`.chunk_bounds.pack`, embedded at byte 68).
 
-    PLAN-OWNED AND OUTSIDE THE RESIDENCY REGISTRY, for the reason every fused
-    pair's ``_params_tensor`` gives. THE OFFSET FIELDS ARE THE PACK'S WHOLE COST:
+    Plan-owned and outside the residency registry, for the reason every fused
+    pair's ``_params_tensor`` gives. The offset fields are the pack's whole cost:
     six uints, in the pack's own order, and they are what buys back five buffer
     bindings. The field order here and the struct order in :data:`_TEMPLATE` are
     BOTH generated from :data:`PACKED_VECTORS`, so the two cannot drift into a
@@ -618,7 +618,7 @@ def plan_metal_bfast_fused_electric_pair(
     codes = tuple(1 if kind == "metallic" else 0
                   for kind in _boundary_kinds(grid, pml))
     walls = zero_metal_axes(grid)
-    # THE SIX SCALARS ARE THE CURL ARM'S OWN, called with the grid's OWN declared
+    # The six scalars are the curl arm's own, called with the grid's OWN declared
     # invariance flags (never a shape test) and the electric side.
     invariant = tuple(grid.is_invariant(axis) for axis in range(3))
     ks = bfast_curl_coefficients(grid.bfast_scaled_k, invariant, magnetic=False)
@@ -629,7 +629,7 @@ def plan_metal_bfast_fused_electric_pair(
         volumes.append(name)
         return residency.mirror(name, host, constant=constant)
 
-    # THE ORDER HERE IS THE SIGNATURE'S ORDER and nothing else keeps them in step.
+    # The order here is the signature's order and nothing else keeps them in step.
     flux = [bind(name, getattr(fields, name)) for name in ("Dx", "Dy", "Dz")]
     auxiliary = [bind("fu_" + name, getattr(fields, "fu_" + name))
                  for name in ("Dx", "Dy", "Dz")]
@@ -642,11 +642,11 @@ def plan_metal_bfast_fused_electric_pair(
     inverse_epsilon = [
         bind("inv_eps_" + name, fields.inverse_epsilon_for(name), constant=True)
         for name in ("Ex", "Ey", "Ez")]
-    # THE D CURL TAKES THE INTEGER LATTICE and the E constitutive the HALF-INTEGER
+    # The D curl takes the integer lattice and the E constitutive the HALF-INTEGER
     # one (SUB_STEPS['step_D']['suffix'] is '' and CONSTITUTIVE_SIDES['E']
     # ['half_integer'] is True) — the opposite pairing to the B/H twin.
     #
-    # THE PACK IS THE CURL GROUP AND NOTHING ELSE. Six read-only vectors, one
+    # The pack is the curl GROUP and nothing else. Six read-only vectors, one
     # buffer, six element offsets in Params. The constitutive group stays six
     # separate pointers because it does not have to move.
     curl_pack, pack_layout = coefficient_pack.packed_mirror(

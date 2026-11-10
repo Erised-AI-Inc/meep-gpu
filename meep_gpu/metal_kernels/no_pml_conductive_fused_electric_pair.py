@@ -1,6 +1,6 @@
 """The conductive no-PML ``step_D`` welded into stored-E ``update_E``, deposit carried.
 
-THE FIRST METAL PRODUCT ON THE SECOND DEPOSIT REPAIR. Every other fused Metal pair
+The first Metal product on the second deposit repair. Every other fused Metal pair
 that carries a deposit inverts the SPLIT-FIELD constitutive recurrence when its seam
 holds a source; this configuration runs ``update_E``'s PLAIN overwrite instead
 (``stepping.py:1019-1022``) — no ``f_w``, no coefficients, no previous value — so
@@ -18,16 +18,16 @@ Both rows are the same configuration twice: an ``mp.Absorber`` (a graded
 conductivity, not a PML), ``meep.materials.Al`` (5 poles per component), METALLIC on
 z, and ONE non-integrated ``mp.Ex`` source injected INSIDE this seam.
 
-AND IT NOW SERVES BOTH, where it shipped serving 0 of 2. The blocker was never the
+And it now serves both, where it shipped serving 0 of 2. The blocker was never the
 deposit — that is what the repair carries — but a SECOND pass in the same seam:
 ``FdtdDriver._inject_electric_through_conductivity`` used to rescale the WHOLE
 target D volume for a NON-INTEGRATED source on a conductive run, canonicalising
 every ``-0.0`` at cells no deposit closure can name, and
 :func:`_scaled_conductive_injection_reasons` refused that configuration BY NAME on
-a measured 1231-word step-1 divergence. THE DRIVER'S PASS IS NOW SPARSE — it
+a measured 1231-word step-1 divergence. The driver's pass is now sparse — it
 replays the rescale only at the deposit cells the sources publish, in the retired
 passes' exact operand order, leaving every other word untouched (and matching
-stock MEEP, step.cpp:294-317) — and the lift was taken ON A MEASUREMENT, not on
+stock MEEP, step.cpp:294-317) — and the lift was taken on a measurement, not on
 the edit: the same signed-zero protocol re-run with the sparse driver reads
 byte-identical at every step while the retired whole-volume passes replayed as a
 control still diverge (the ``lifted_refusal`` leg). What the clause still refuses
@@ -37,7 +37,7 @@ no in-tree electric source class is. Both corpus rows
 tables like every in-tree source) are therefore admitted and bracketed.
 
 ===========================================================================
-THE SEAM, PASS BY PASS
+The seam, pass by pass
 ===========================================================================
 
 The driver runs four passes between ``step_D`` and ``update_E``
@@ -50,7 +50,7 @@ The driver runs four passes between ``step_D`` and ``update_E``
   with this family — hands it this plan's own :attr:`repair_paths`, so the bracket
   saves and restores through the PLAIN repair. On this branch the save is the CELL
   SET alone (a pure overwrite has no previous value to capture) and the apply is one
-  recomputation per component at the deposit cells. IGNORANCE IS STILL A REFUSAL: an
+  recomputation per component at the deposit cells. Ignorance is still a refusal: an
   undeclared source list is refused, never read as an empty seam;
 * **the scaled conductive injection — CARRIED**, now that the driver replays the
   condinv rescale sparsely at the published deposit cells (identity everywhere
@@ -63,7 +63,7 @@ The driver runs four passes between ``step_D`` and ``update_E``
   refuse a mirror plane already, restated here by name.
 
 ===========================================================================
-EVERYTHING IS TRANSCRIBED, and from where
+Everything is transcribed, and from where
 ===========================================================================
 
 * the curl half — :data:`.no_pml_conductive._CONDUCTIVE_PLAIN_CURL_TEMPLATE`'s own
@@ -80,13 +80,13 @@ EVERYTHING IS TRANSCRIBED, and from where
   left-associated subtraction chain and ``source * inv_e`` store
   (``no_pml_stored_e.py:76-88``).
 
-WHAT MOVES IS ONE LINE, declared in :data:`LIFT_EDITS` as data: the certified E body
+What moves is one line, declared in :data:`LIFT_EDITS` as data: the certified E body
 opens ``float source = d_in[idx];`` — a reload of the displacement the curl just
 stored — and fused that reload becomes the register the conductive tail already
 names (``value{axis}``). The D store is KEPT: the next timestep's curl and
 ``update_P`` read it.
 
-WHY PER COMPONENT AND NOT ONE LAUNCH, measured against the ceiling: this cell's own
+Why per component and not one launch, measured against the ceiling: this cell's own
 rows carry FIVE poles per component, so an all-three-component signature needs
 3 D + 3 B + 3 E + 3 inv_eps + 3 condfac + 3 condinv + 15 poles = 33 pointers — over
 :data:`.device.MAX_BUFFER_BINDINGS` even with every scalar packed. Per component the
@@ -97,7 +97,7 @@ per component IS the fusion: the stepped displacement never leaves a register.
 
 NOT WIRED, like every Metal fused pair: it spans three passes and ``plan_step``
 assigns at most one arm per slot, so it registers ``wired=False`` and is composed
-only by the absorb table (``launch.FUSED_PAIR_ARMS``). MEASURED through ``plan_step``
+only by the absorb table (``launch.FUSED_PAIR_ARMS``). Measured through ``plan_step``
 with ``fuse=False`` under ``MEEP_GPU_SUBNORMAL_POLICY=flush`` on
 ``metal_composition_matrix.conductive(real_stored_e_no_pml(with_polarization=True))``:
 ``step_D`` comes back ``'conductive no-PML curl'`` and ``update_E``
@@ -361,7 +361,7 @@ def _per_component_curl(codes: Sequence[int], axis: int, conductive: bool,
             zero_metal_mask(axis, zero_metal),
             f"    f{axis}[ii] = value{axis};",
         ])
-    # EVERY CURL LINE IS A LINE OF THE CERTIFIED EMITTER'S OWN OUTPUT. The decode,
+    # Every curl line is a line of the certified emitter's own output. The decode,
     # ghost, offset, load, curl, mask and (conductive) tail text may not drift from
     # the certified module without failing here.
     for line in lines:
@@ -462,7 +462,7 @@ def refuted_over_ceiling_source(contract: str = shaders.CONTRACT_OFF) -> str:
 def _scaled_conductive_injection_reasons(fields: Any, sources: Any) -> Tuple[str, ...]:
     """Why a scaled electric source with NO deposit table is still refused BY NAME.
 
-    THE CLAUSE THAT USED TO PRICE THIS CELL AT 0 OF 2, LIFTED ON A MEASUREMENT.
+    The clause that used to price this cell at 0 of 2, lifted on a measurement.
     ``FdtdDriver._inject_electric_through_conductivity`` injects an INTEGRATED
     source point-wise; for a SCALED (non-integrated) one it used to rescale the
     WHOLE target volume by difference (``array -= before; array *= condinv;
@@ -471,12 +471,12 @@ def _scaled_conductive_injection_reasons(fields: Any, sources: Any) -> Tuple[str
     and 1231 Ez words divergent on step 1 of a signed-zero seed, identical from
     step 2 on (the wash-out that made per-step comparison load-bearing).
 
-    THE DRIVER NO LONGER DOES THAT. It snapshots the target at the deposit cells
+    The driver no longer does that. It snapshots the target at the deposit cells
     the sources publish (``deposit_repair._deposit_index`` reads the same tables),
     injects, and replays the rescale per deposit cell in the whole-volume passes'
     exact operand order — exact at every deposit cell, UNTOUCHED everywhere else,
     and closer to stock MEEP (step.cpp:294-317 scales only the injected current).
-    RE-MEASURED with the sparse replay in place, same protocol, same
+    Re-measured with the sparse replay in place, same protocol, same
     +-0-lattice seed class: the bracketed fused walk is byte-identical to the
     array path at EVERY step, and the old whole-volume passes replayed as a
     control still diverge — see the ``lifted_refusal`` leg of
@@ -528,7 +528,7 @@ def _scaled_conductive_injection_reasons(fields: Any, sources: Any) -> Tuple[str
             continue
         if not scaled:
             continue
-        # THE DRIVER'S OWN PARTITION: a published deposit table takes the sparse
+        # The driver's own partition: a published deposit table takes the sparse
         # per-cell replay (identity away from the deposit); only the table-less
         # source falls back to the whole-volume passes.
         if not hasattr(source, "_point_ix"):
@@ -563,7 +563,7 @@ def no_pml_conductive_fused_electric_pair_coverage(
     if not electric.covered:
         reasons.extend(f"stored-E half: {reason}" for reason in electric.reasons)
 
-    # THE SOURCE SEAM, CARRIED. `pml` IS FORWARDED, unlike the predicates written
+    # The source seam, carried. `pml` IS FORWARDED, unlike the predicates written
     # before the second repair: deposit_repair.repairable refuses a plain-only
     # declaration with no layer BY NAME, since which recurrence ran cannot be
     # established without one.
@@ -582,7 +582,7 @@ def no_pml_conductive_fused_electric_pair_coverage(
         pml=pml,
         repair_paths=REPAIR_PATHS))
 
-    # THE CONDUCTIVE WHOLE-VOLUME RESCALE — the clause that prices this cell.
+    # The conductive whole-volume rescale — the clause that prices this cell.
     reasons.extend(_scaled_conductive_injection_reasons(fields, sources))
 
     grid = getattr(fields, "grid", None)
@@ -590,7 +590,7 @@ def no_pml_conductive_fused_electric_pair_coverage(
         return Coverage(False,
                         tuple(dict.fromkeys(reasons + ["fields carries no grid"])))
 
-    # THE TWO FILLS, restated by name: both halves refuse a mirror plane already,
+    # The two fills, restated by name: both halves refuse a mirror plane already,
     # but a reader should not have to chase a shared grid clause to learn which two
     # driver passes that refusal empties on THIS seam.
     mirrored = getattr(grid, "is_mirrored", None)
@@ -682,7 +682,7 @@ class MetalNoPmlConductiveFusedElectricPairPlan:
     def run(self, contract: Optional[str] = None) -> None:
         """One complete D->E seam, in place, against the mirrors.
 
-        THE POLE POINTERS ARE RESOLVED AT LAUNCH, NOT AT PLAN TIME: ``update_P``
+        The pole pointers are resolved at launch, not at plan time: ``update_P``
         rotates ``P``/``P_prev``/scratch after every recurrence, so the physical
         array holding a component's current P changes between steps while the
         mirror registry does not — the same discipline
@@ -696,12 +696,14 @@ class MetalNoPmlConductiveFusedElectricPairPlan:
                 raise KeyError(
                     f"this plan holds no {mode!r} variant (it was built with "
                     f"{self.variants})")
-            poles = tuple(state.P[entry.component] for state in entry.states)
+            # Resolving which array is current is not a read of its words: the plain dict
+            # subscript keeps a held mirror on the device (barrier.BarrierDict acquires).
+            poles = tuple(dict.__getitem__(state.P, entry.component) for state in entry.states)
             if len(poles) != entry.pole_count:
                 raise RuntimeError(
                     f"{entry.component} resolved {len(poles)} poles, not the "
                     f"compiled count {entry.pole_count}")
-            # THE UNUSED POLE SLOTS BIND THE INVERSE EPSILON, NOT THE DISPLACEMENT:
+            # The unused pole slots bind the inverse epsilon, not the displacement:
             # this kernel WRITES the D volume, and padding with it would alias a
             # written buffer into a `device const float*` in the same dispatch —
             # the hazard `fused_dispersive_pair.run` names. The dead condfac /

@@ -1,6 +1,6 @@
 """The hand-CUDA fused pair on the ELECTRIC seam: predicate, lift and protocol.
 
-WHAT THIS FILE SETTLES. ``fused_electric_pair`` is the first product this track has
+What this file settles. ``fused_electric_pair`` is the first product this track has
 put on ``step_D -> zero_metal_D -> update_E``, and the three questions that decide
 whether it is real are all answerable without a device:
 
@@ -23,7 +23,7 @@ whether it is real are all answerable without a device:
    Driven the way ``FdtdDriver.step`` drives the electric seam, against the array
    path, on NumPy, with a null control that must diverge.
 
-NOTHING HERE COMPILES OR LAUNCHES ANYTHING. The fused kernel's arithmetic is a DEVICE
+Nothing here compiles or launches anything. The fused kernel's arithmetic is a DEVICE
 claim and no test on this host may speak to it (``parity/meep_gpu/
 gate_cuda_fused_electric_pair.py`` is where that is measured); what is settled here is
 the predicate and the protocol, which is exactly the half a byte comparison is blind
@@ -71,7 +71,7 @@ def magnetic_source(grid, component="Hz"):
 class _ArrayPair:
     """Stands in for the fused kernel: curl + wall clear + constitutive in one object.
 
-    THE THING UNDER TEST IS THE PROTOCOL, NOT THE KERNEL -- the same stand-in
+    The thing under test is the protocol, not the kernel -- the same stand-in
     ``test_fused_pairs`` uses on the magnetic seam, with :data:`family.REPLACES` read
     from the module rather than transcribed, so a pass added to or dropped from that
     tuple changes this stand-in without an edit here. A pass with no ``stepping``
@@ -97,7 +97,7 @@ class _ArrayPair:
 
 
 # --------------------------------------------------------------------------
-# 1. THE DECLARATIONS, AND THE WIRING THEY MAY NOT DRIFT FROM
+# 1. The declarations, and the wiring they may not drift from
 # --------------------------------------------------------------------------
 
 def test_the_product_declares_the_repair_and_the_block_that_brackets_it_exists():
@@ -118,7 +118,7 @@ def test_the_replaced_passes_are_a_contiguous_run_of_the_drivers_own_order():
     """``REPLACES`` is a claim about what one launch performed; it is checked against
     ``FdtdDriver.step``'s SOURCE rather than against a list retyped here.
 
-    SINCE 2026-08-31 THE RUN IS GAPLESS. The two mirror fills sit between ``step_D``
+    Since 2026-08-31 the run is gapless. The two mirror fills sit between ``step_D``
     and ``update_E`` in the driver and are now CARRIED by the ownership inversion, so
     ``REPLACES`` is the whole contiguous run rather than a subsequence of it -- and
     that is asserted, because a gap here would be a pass the launch skipped while the
@@ -136,7 +136,7 @@ def test_the_replaced_passes_are_a_contiguous_run_of_the_drivers_own_order():
 
 
 def test_the_absorb_declaration_matches_the_arms_the_predicate_conjoins():
-    """``FUSED_PAIR_ARMS`` is READ FROM THE PREDICATE, not assigned to it.
+    """``FUSED_PAIR_ARMS`` is read from the predicate, not assigned to it.
 
     If ``covers_fused_electric_pair`` ever conjoined different arms, absorbing those
     two slots would substitute a numerical product no arm admitted.
@@ -173,7 +173,7 @@ def test_the_two_seam_products_named_the_same_arms_sit_on_different_seams():
 
 
 # --------------------------------------------------------------------------
-# 2. THE PREDICATE — WHAT IT ADMITS, AND WHAT IT REFUSES BY NAME
+# 2. The predicate — what it admits, and what it refuses by name
 # --------------------------------------------------------------------------
 
 def test_an_electric_deposit_is_admitted_now_and_would_be_refused_without_the_flag(
@@ -221,7 +221,7 @@ def test_a_source_that_hides_the_index_it_writes_is_refused_by_name(xp):
 
 
 def test_an_undeclared_source_set_is_still_a_refusal(xp):
-    """IGNORANCE IS NEVER AN EMPTY SET. ``Fields`` does not hold the source list, so a
+    """Ignorance is never an empty set. ``Fields`` does not hold the source list, so a
     predicate that inferred "no sources" from not being told would over-cover every
     row in the corpus that has one -- which on this seam is almost all of them."""
     fields, layer, grid = build(xp)
@@ -232,7 +232,7 @@ def test_an_undeclared_source_set_is_still_a_refusal(xp):
 
 @pytest.mark.parametrize("axis,name", ((0, "X"), (1, "Y"), (2, "Z")))
 def test_a_folded_axis_is_admitted_on_every_axis_since_the_carry_landed(xp, axis, name):
-    """THE REACHABLE WIDENING, and the 53 corpus rows it is worth.
+    """The reachable widening, and the 53 corpus rows it is worth.
 
     Until 2026-08-31 this product refused every folded grid by name, and that refusal
     was the ONLY thing standing between it and 53 of the 79 rows in its cell -- the
@@ -413,13 +413,13 @@ def test_an_inverse_permittivity_volume_of_the_wrong_extent_is_refused(xp):
 
 
 # --------------------------------------------------------------------------
-# 3. THE LIFT — THE CERTIFIED TEXT, AND THE THREE EDITS THAT ARE NOT VERBATIM
+# 3. The lift — the certified text, and the three edits that are not verbatim
 # --------------------------------------------------------------------------
 
 def _string_constants(module_name):
     """Every module-level ``name = <string expression>`` in one sibling, by ``ast``.
 
-    THE CERTIFIED TEXT WITHOUT THE DEVICE LIBRARY, AND WITHOUT A SKIP.
+    The certified text without the device library, and without a skip.
     ``step_curl_kernels`` and ``constitutive_kernels`` import CuPy at module scope, so
     on the merge-bar host they cannot be imported -- and a test that skipped for that
     reason would leave the SPLICE, the part of this product that can be silently
@@ -477,7 +477,7 @@ def certified(monkeypatch):
 
 
 def test_the_emitter_refuses_by_name_where_the_certified_text_is_unreachable():
-    """THE SPLICE IS THE LIFT, so a missing half is not a degraded emit -- there is
+    """The splice is the lift, so a missing half is not a degraded emit -- there is
     nothing to emit. The refusal has to name the modules, one frame from the caller,
     rather than surface as an AttributeError inside a string operation."""
     from . import fused_electric_pair as module  # noqa: PLC0415
@@ -503,7 +503,7 @@ def test_the_lift_is_eleven_edits_and_no_silent_twelfth():
 
     SIX UNTIL 2026-08-31; the fill carry added three -- the ownership guard inside
     ``pml_apply``, and the two mirror fills whose destination thread became their
-    source thread. MEEP's per-chunk forms (bit_parity_0_10 KC2) added two: the one
+    source thread. MEEP's per-chunk forms (1.0) added two: the one
     chunk-record decode over both halves, and each carried ghost keyed on its
     destination's membership row.
     """
@@ -512,7 +512,7 @@ def test_the_lift_is_eleven_edits_and_no_silent_twelfth():
 
 
 def test_the_shared_flux_density_is_bound_exactly_once(certified):
-    """THE ALIASING HAZARD. Two ``__restrict__`` pointers to one allocation is UB that
+    """The aliasing hazard. Two ``__restrict__`` pointers to one allocation is UB that
     NVRTC miscompiles without a diagnostic, so the constitutive half must have no D
     source pointers at all -- which is only true if the seam removed all three reads."""
     source = certified
@@ -527,7 +527,7 @@ def test_the_shared_flux_density_is_bound_exactly_once(certified):
 
 
 def test_the_seam_reads_the_register_and_keeps_the_certified_operand_order(certified):
-    """``D * inv_eps`` with D ON THE LEFT (stepping.py:1011). A float32 multiply is
+    """``D * inv_eps`` with D on the left (stepping.py:1011). A float32 multiply is
     commutative on the bits, but the certified text is what this family lifts and a
     reordered operand is an edit with no row in ``LIFT_EDITS``."""
     source = certified
@@ -536,7 +536,7 @@ def test_the_seam_reads_the_register_and_keeps_the_certified_operand_order(certi
 
 
 def test_the_constitutive_half_reads_the_half_integer_sub_lattice(certified):
-    """THE COLLISION THAT MATTERS. ``kms_a`` is the INTEGER vector for the D curl and
+    """The collision that matters. ``kms_a`` is the INTEGER vector for the D curl and
     the HALF-INTEGER one for ``update_E``; letting one shadow the other compiles
     perfectly and is half a cell wrong in the absorber profile."""
     source = certified
@@ -573,7 +573,7 @@ def test_the_carried_wall_clear_is_the_off_diagonal_table_and_a_plus_zero():
     assert "if (wall_x && i == 0) { clr_y = 1; clr_z = 1; }" in carry
     assert "if (wall_y && j == 0) { clr_x = 1; clr_z = 1; }" in carry
     assert "if (wall_z && k == 0) { clr_x = 1; clr_y = 1; }" in carry
-    # THE STORE IS GUARDED ON OWNERSHIP. A cell one of the two fills images belongs to
+    # The store is guarded on ownership. A cell one of the two fills images belongs to
     # its source thread; a second thread clearing the same word would be a race, and
     # the array path agrees -- the fill writes that cell at :3309 or :3311.
     for axis in ("x", "y", "z"):
@@ -586,7 +586,7 @@ def test_the_carried_wall_clear_is_the_off_diagonal_table_and_a_plus_zero():
 
 
 def test_the_near_carry_reads_the_pre_clear_register_and_the_far_carry_the_cleared_one():
-    """THE DRIVER'S ORDER, AND IT IS MEASURABLY NOT A DETAIL.
+    """The driver's order, and it is measurably not a detail.
 
     ``fill_symmetry_bc_D`` (driver.py:3309) runs BEFORE ``zero_metal_D`` (:3310) and
     ``fill_folded_far_ghosts_D`` (:3311) AFTER it. On the B family that ordering is
@@ -683,7 +683,7 @@ def test_the_fill_plan_refuses_a_grid_the_predicate_would_have(xp, monkeypatch):
 
 
 def test_the_fill_plan_is_the_same_reading_in_seam_coverage_gives(xp):
-    """ONE SOURCE OF TRUTH for which axes each fill visits. The carry and the certified
+    """One source of truth for which axes each fill visits. The carry and the certified
     stand-alone passes read the same three functions, so they cannot disagree about
     which axes a pass visits, what parity each carries, or which row the far ghost
     images -- and the `-1` in ``reflect`` is a SENTINEL the kernel never reads (the
@@ -699,7 +699,7 @@ def test_the_fill_plan_is_the_same_reading_in_seam_coverage_gives(xp):
 
 
 def test_every_ghost_stores_the_imaged_flux_density_as_well_as_running_update_E():
-    """THE STORE TO D IS NOT OPTIONAL, and this test exists because it was missing.
+    """The store to D is not optional, and this test exists because it was missing.
 
     The first device run of the carry reported 297 differing words on a 9x7x11
     single-fold row -- exactly three ghost planes of 99 cells -- because the carry ran
@@ -767,7 +767,7 @@ def test_the_walls_the_predicate_admits_are_the_walls_the_launch_binds():
 
 
 # --------------------------------------------------------------------------
-# 4. THE TWO-CONSULT PROTOCOL AGAINST THE DRIVER'S OWN ORDER
+# 4. The two-consult protocol against the driver's own order
 # --------------------------------------------------------------------------
 
 #: The two grids the numeric leg runs on: the 2-D shape the sibling deposit tests use
@@ -778,7 +778,7 @@ GRIDS = ((1.2, 1.2, 0.0), (1.0, 1.0, 1.0))
 
 @pytest.mark.parametrize("cell", GRIDS, ids=("2d", "3d"))
 def test_the_two_slots_consulted_as_the_driver_consults_them_match_the_array_path(cell):
-    """THE ONE THAT MATTERS, and the only numeric claim this file makes.
+    """The one that matters, and the only numeric claim this file makes.
 
     Two independently seeded copies of the same state. One is stepped in the DRIVER'S
     order -- curl, inject, fill, clear, far fill, constitutive. The other is stepped
@@ -787,7 +787,7 @@ def test_the_two_slots_consulted_as_the_driver_consults_them_match_the_array_pat
     then the repair at the second. Every float32 word of all 24 arrays is compared as
     a uint32, so "close" is not a passing answer.
 
-    THE ELECTRIC SEAM'S INJECTION IS AT ``when + 0.5*dt`` (driver.py:3303), not at
+    The electric seam's injection is at ``when + 0.5*dt`` (driver.py:3303), not at
     ``when``, and ``_reference`` is the shared helper that knows it -- a protocol test
     that injected at the wrong instant would compare two different runs and could pass
     only by cancelling its own error.
@@ -875,7 +875,7 @@ def test_the_second_slot_refuses_when_the_first_never_ran():
 
 
 # --------------------------------------------------------------------------
-# 5. THE BLOCK, DRIVEN THROUGH THE COMPOSER
+# 5. The block, driven through the composer
 # --------------------------------------------------------------------------
 
 def test_the_electric_seam_fuses_and_the_pair_reports_the_pass_it_carries(xp):

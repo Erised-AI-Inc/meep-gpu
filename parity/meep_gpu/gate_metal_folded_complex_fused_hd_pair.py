@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Native MPS byte gate for the FOLDED COMPLEX Metal H->D weld.
 
-THE FIFTH PRODUCT ON THE FOURTH SEAM, on the cell both of its parents refuse by name:
+The fifth product on the fourth seam, on the cell both of its parents refuse by name:
 ``(folded complex -> folded complex)``, **5 corpus rows**, all five
 ``buildable_not_built`` on ``results/fusion_matrix_metal_2026-09-07_wired`` and none of
 them carrying a standing in-seam withdraw.
@@ -12,14 +12,14 @@ from registers, RECOMPUTES every one of the folded complex curl's six foreign ta
 pre-launch state through the same ``h_cell``, steps ``D``/``fu_D`` in place, and
 rotates the ``H``/``f_w_H`` bindings afterwards.
 
-THE CLAIM IS PER COMPLETE DRIVER STEP -- ``FdtdDriver.step``'s own consult order, with
+The claim is per complete driver step -- ``FdtdDriver.step``'s own consult order, with
 the MIRROR FILLS, the wall clear and the FAR GHOST PASSES exactly where the driver runs
 them -- as uint32 WORDS over every stored volume the engine allocates, never
 ``allclose`` (``-0.0 == 0.0`` lies), against four reference engines from one seed: the
 array path, the two CERTIFIED folded-complex singles, ``plan_step(fuse=True)`` and
 ``plan_step(fuse=False)``.
 
-WHAT THIS GATE OWNS AND WHAT IT IMPORTS. The driver walk, the capture/restore/compare
+What this gate owns and what it imports. The driver walk, the capture/restore/compare
 mechanism, the dispatch shim, the two launch counters, the rotation settling and every
 leg body live in ``hd_tail_gate_common``, which three gates share so a defect repaired
 in one is repaired in all three; the shared harness in turn imports
@@ -28,20 +28,20 @@ file owns is the fixtures, the parent emitters, the refusal table, the mutation 
 and the ``evaluate`` hook the census driver calls (the census names the GATE module as
 its ``--battery``, so that hook cannot be shared).
 
-WRITTEN FOR THE UNWIRED TREE. This product is not in ``registry.FAMILY_MODULES`` and
-holds no ``launch.FUSED_PAIR_ARMS`` absorb row. Every clause that depends on that state
-is RECORDED, never asserted, because the wiring diff this round writes inverts exactly
+Written before this product was wired, when it was not in ``registry.FAMILY_MODULES``
+and held no ``launch.FUSED_PAIR_ARMS`` absorb row. Every clause that depends on that state
+is RECORDED, never asserted, because wiring the product into the registry inverts exactly
 those; what is asserted is the substantive half -- refused BY NAME, the refusal naming
 ``INSTALLABLE`` False, the composer's selection unchanged, and the released neighbours
 keeping their slots.
 
-THE PER-CHUNK FORMS (bit_parity_0_10, KERNELS.md §7, step M5). Both halves lift the
-aligned complex emitters: the recomputed ``update_H`` selects its form on the dsigw
+The per-chunk forms (the Metal table's complex kernels). Both halves lift the
+complex emitters in MEEP's order: the recomputed ``update_H`` selects its form on the dsigw
 membership of the cell it is evaluated at, the scratch takes the pre-launch ``f_w`` on a
 cell outside the dsigw chunks, and the curl half takes the per-chunk forms on the integer
 record; the planner and the two certified singles bind the driver's chunk record. The
-grouping mutations are INVERTED (KERNELS.md §7.1) -- each plants the package's PREVIOUS
-grouping and stays must-catch -- the §7.2 select rows are armed on both halves with their
+grouping mutations are INVERTED (docs/development/certification.md#inverted-grouping-mutations) -- each plants the package's PREVIOUS
+grouping and stays must-catch -- the form battery's select rows are armed on both halves with their
 declared nulls, and the Bloch connection's operand order is a declared equivalence: with
 every product and sum rounded on its own it moves no word.
 
@@ -60,7 +60,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
-# THE POLICY, SET BEFORE ANY meep_gpu MODULE IS REACHED. `flush` is the only value the
+# The policy, set before any meep_gpu module is reached. `flush` is the only value the
 # MPS executor can honour; a resolved `keep` refuses every predicate BY NAME, which is
 # itself a measurement and is what the keep leg of a two-policy campaign records.
 os.environ.setdefault("MEEP_GPU_SUBNORMAL_POLICY", "flush")
@@ -92,8 +92,8 @@ SUBJECT_PACKAGE = "metal_kernels"
 CENSUS = "metal_coverage_2026-09-04_m0complex"
 SEAM_RECORD = "h_to_d_seam_2026-09-04"
 
-#: The board's ``(update_H arm, step_D arm)`` pair per variant -- READ FROM THE
-#: FAMILY, never re-typed here. The cell a gate measures and the cell the family
+#: The board's ``(update_H arm, step_D arm)`` pair per variant -- read from the
+#: family, never re-typed here. The cell a gate measures and the cell the family
 #: claims have to be the same cell, and two spellings of one join key is how they
 #: stop being.
 CELL_ARMS: Dict[str, Tuple[str, str]] = dict(family.VARIANT_CELLS)
@@ -106,7 +106,7 @@ M = symmetry.CODE_METALLIC
 MM = symmetry.CODE_MIRROR_METALLIC
 MP = symmetry.CODE_MIRROR_PERIODIC
 
-#: EVERY LEVER THE FOLD HAS UNDER COMPLEX STORAGE, AT BOTH VALUES.
+#: Every lever the fold has under complex storage, at both values.
 #:
 #:   TERMINATION  MIRROR_METALLIC vs MIRROR_PERIODIC is the folded families' single
 #:                point of failure: the far ghost pass and the top-plane mask exist on
@@ -229,7 +229,7 @@ def _scratch_history_store_dropped(variant, codes, phased):  # noqa: ANN001
 
 
 def _constitutive_bound_to_the_curl_sinv(variant, codes, phased):  # noqa: ANN001
-    """THE SHARED COEFFICIENT GROUP, BROKEN.
+    """The shared coefficient group, broken.
 
     Both halves sit on the same Yee sub-lattice, so the curl's ``kms`` and the
     constitutive's ``km`` are the same three volumes and are bound once -- the fact
@@ -300,7 +300,7 @@ def _cell0_mask_dropped(source: str) -> str:
 
 
 def _host_codes_from_boundary_kinds(product, case_name, spec, steps):  # noqa: ANN001
-    """THE ONE STRUCTURAL DEFECT THIS FAMILY CAN MAKE SILENTLY.
+    """The one structural defect this family can make silently.
 
     The unfolded complex product builds ``1 if kind == "metallic" else 0`` over
     ``_boundary_kinds``; on a folded grid that reports ``"mirror"``, which the
@@ -352,7 +352,7 @@ SHADER_MUTATIONS: Dict[str, Tuple[Any, ...]] = {
         lambda variant, codes, phased: common.needle(
             _shipped(variant, codes, phased),
             "((b_x - b_dx) + a_dy) - a_y", "(b_x - b_dx) + (a_dy - a_y)"),
-        "INVERTED (KERNELS.md §7.1): the package's previous pairwise curl grouping "
+        "INVERTED (certification.md#inverted-grouping-mutations): the package's previous pairwise curl grouping "
         "planted in place of MEEP's left-to-right bracket, on target 2 (both partners "
         "resolved on every fixture)", True),
     "constitutive_previous_accumulation_grouping": (
@@ -362,47 +362,47 @@ SHADER_MUTATIONS: Dict[str, Tuple[Any, ...]] = {
             "c_mul_coefficient_left(km_0, prev0)); }",
             "if (dw0) { a0 = (hi0[ii] + c_mul_coefficient_left(kp_0, src0)) - "
             "c_mul_coefficient_left(km_0, prev0); }"),
-        "INVERTED (KERNELS.md §7.1): the package's previous accumulation grouping in "
+        "INVERTED (certification.md#inverted-grouping-mutations): the package's previous accumulation grouping in "
         "the recomputed update_H", True),
     "b1_select_removed": (
         lambda variant, codes, phased: common.needle(
             _shipped(variant, codes, phased),
             "    const bool du0 = in_i_z, du1 = in_i_x, du2 = in_i_y;\n",
             "    const bool du0 = true, du1 = true, du2 = true;\n"),
-        "KERNELS.md §7.2: the whole-grid recurrence (the previous package form) on "
+        "Form battery: the whole-grid recurrence (the previous package form) on "
         "the D half", True),
     "b6_auxiliary_stored_on_a_plain_cell": (
         lambda variant, codes, phased: common.needle(
             _shipped(variant, codes, phased),
             "    if (du0) { u0[ii] = n0; }\n", "    u0[ii] = n0;\n"),
-        "KERNELS.md §7.2: fu_D written outside the recurrence's cells", True),
+        "Form battery: fu_D written outside the recurrence's cells", True),
     "b7_auxiliary_load_unconditional": (
         lambda variant, codes, phased: common.needle(
             _shipped(variant, codes, phased),
             "    float2 p0 = du0 ? u0[ii] : f0[ii];",
             "    float2 p0u = u0[ii]; float2 p0 = du0 ? p0u : f0[ii];"),
-        "DECLARED NULL (KERNELS.md §7.2): an unguarded fu load with the store still "
+        "DECLARED NULL (certification.md#chunk-form-battery): an unguarded fu load with the store still "
         "guarded changes no word", False),
     "b9_constitutive_select_removed": (
         lambda variant, codes, phased: common.needle(
             _shipped(variant, codes, phased),
             "        const bool dw0 = in_i_x, dw1 = in_i_y, dw2 = in_i_z;\n",
             "        const bool dw0 = true, dw1 = true, dw2 = true;\n"),
-        "KERNELS.md §7.2: the whole-grid accumulation in the recomputed update_H",
+        "Form battery: the whole-grid accumulation in the recomputed update_H",
         True),
     "b11_f_w_stored_on_a_plain_cell": (
         lambda variant, codes, phased: common.needle(
             _shipped(variant, codes, phased),
             "        float2 wn0 = dw0 ? src0 : wi0[ii];\n",
             "        float2 wn0 = src0;\n"),
-        "KERNELS.md §7.2: f_w_H's scratch takes B outside the accumulation's cells",
+        "Form battery: f_w_H's scratch takes B outside the accumulation's cells",
         True),
     "b12_constitutive_load_unconditional": (
         lambda variant, codes, phased: common.needle(
             _shipped(variant, codes, phased),
             "        float2 prev0 = dw0 ? wi0[ii] : float2(0.0f, 0.0f);",
             "        float2 prev0 = wi0[ii];"),
-        "DECLARED NULL (KERNELS.md §7.2): prev is consumed only on the accumulation's "
+        "DECLARED NULL (certification.md#chunk-form-battery): prev is consumed only on the accumulation's "
         "cells", False),
 }
 
@@ -513,7 +513,7 @@ REFUSALS: Tuple[Dict[str, Any], ...] = (
 # ---------------------------------------------------------------------------
 
 def params_probe() -> Dict[str, Any]:
-    """The packed record BOUND TO A LAUNCH, with every field read back.
+    """The packed record bound to a launch, with every field read back.
 
     A struct whose host record is a byte short is a plausible number rather than a
     crash, so the layout is measured on the device rather than argued from a dtype.

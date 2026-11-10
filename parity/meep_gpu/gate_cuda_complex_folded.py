@@ -12,8 +12,8 @@ THE QUESTION, in three parts, each measured separately:
    ``stepping.update_H`` / ``update_E`` read no neighbour and no mask. A reading is
    not evidence. The constitutive arm runs the certified kernels against the array
    path on a FOLDED complex grid whose two curls have ALREADY moved the state, per
-   side, scored SEPARATELY -- because the Metal track's tranche 6 ended at 757/759
-   with the two open slots being exactly one row's constitutive sides while its
+   side, scored SEPARATELY -- because the Metal track's 2026-08-19 coverage census ended
+   at 757/759, the two open slots being exactly one row's constitutive sides while its
    curls were served, so "the curl works therefore the constitutive works" is a
    shape that has already been wrong once.
 3. **Is the FOLD doing anything at all?** Every curl case measures the same frozen
@@ -22,7 +22,7 @@ THE QUESTION, in three parts, each measured separately:
    agree. A fold whose mask arms are dead on a fixture measures the CERTIFIED
    complex pair and reports it as a fold verdict.
 
-WHY THIS FAMILY EXISTS, AND WHAT THE CENSUS SAYS IT IS WORTH
+Why this family exists, and what the census says it is worth
 ------------------------------------------------------------
 ``coverage.covers_real_pml_complex_curl`` refuses every fold by name, and the
 refusal is honest: ``complex_emitter`` carries two boundary codes and no fold branch
@@ -32,7 +32,7 @@ unserved slots over 8 complex-storage rows -- of which three rows also carry
 whose ``update_E`` stays refused, so this family's own share is 17 slots over 5 rows.
 The number is recomputed from the census record; it is not this gate's to claim.
 
-WHAT WOULD MAKE THIS GATE VACUOUS, AND THE FLOORS THAT REFUSE IT
+What would make this gate vacuous, and the floors that refuse it
 ----------------------------------------------------------------
 * ``oracle_moved`` -- the fraction of output words the array path changed from the
   frozen input. A case that moved nothing is refused, not passed.
@@ -48,7 +48,7 @@ WHAT WOULD MAKE THIS GATE VACUOUS, AND THE FLOORS THAT REFUSE IT
   reaches an output word. If the image happens to be all zeros the argument is
   vacuous, so the ghost's own word census is taken and asserted nonzero on a
   folded PERIODIC axis.
-* The mutation battery, including legs that MUST BE UNCAUGHT. A battery of only
+* The mutation battery, including legs that must be uncaught. A battery of only
   must-be-caught legs scores identically whether the comparator works or has
   degenerated into failing everything.
 
@@ -63,7 +63,7 @@ because CuPy's disk-cache key is computed above the strip seam)::
 
 Laptop, NO GPU: the HOST backend compiles the SAME emitted characters with the host
 C++ compiler through ``gate_cuda_complex``'s shim and drives them on NumPy arrays.
-IT CERTIFIES NOTHING ABOUT NVRTC and says so in the artifact -- but it does execute
+It certifies nothing about NVRTC and says so in the artifact -- but it does execute
 the actual device text, so the indices, the stencils, the masks and the phase table
 are measured at the merge bar rather than hours later::
 
@@ -183,16 +183,16 @@ FOLD_SPECS: Tuple[Dict[str, Any], ...] = (
     {"label": "fold_Y_periodic_odd_count", "cell": (12.0, 15.0, 0.0), "axes": "Y",
      "phase": 1, "boundaries": ("periodic", "periodic", "periodic"),
      "k": (0.0, 0.0, 0.0)},
-    # THE ODD PLANE PARITY. No corpus row carries one.
+    # The odd plane parity. No corpus row carries one.
     {"label": "fold_Y_periodic_odd_plane", "cell": (12.0, 16.0, 0.0), "axes": "Y",
      "phase": -1, "boundaries": ("periodic", "periodic", "periodic"),
      "k": (0.0, 0.0, 0.0)},
-    # THE OTHER TERMINATION. A folded METALLIC axis is handed BC_METALLIC and must
+    # The other termination. A folded METALLIC axis is handed BC_METALLIC and must
     # get NO top-plane mask, because MEEP steps that plane.
     {"label": "fold_Y_metallic", "cell": (12.0, 16.0, 0.0), "axes": "Y",
      "phase": 1, "boundaries": ("periodic", "metallic", "periodic"),
      "k": (0.0, 0.0, 0.0)},
-    # THE SLOWEST-STRIDE AXIS: an index defect confusing a plane with its
+    # The slowest-stride axis: an index defect confusing a plane with its
     # neighbour moves with the stride.
     {"label": "fold_X_periodic", "cell": (16.0, 12.0, 0.0), "axes": "X",
      "phase": 1, "boundaries": ("periodic", "periodic", "periodic"),
@@ -225,13 +225,13 @@ def build(xp, spec: Dict[str, Any], courant: float, rng):
 
     The layer goes on the FAR face only of a folded axis, whose near face is the
     mirror plane -- the same thickness rule every folded fixture in this tree uses.
-    THREE DISTINCT INVERSE-EPSILON VOLUMES, never one: binding a single volume for
+    Three distinct inverse-epsilon volumes, never one: binding a single volume for
     all three components is the defect the twelve dead complex kernels carry, and a
     fixture that handed one array to all three could not see it.
     """
     planes = tuple(Mirror(name, spec["phase"]) for name in spec["axes"])
     kwargs = {"dimensions": 2} if float(spec["cell"][2]) == 0.0 else {}
-    # ``beta`` RIDES IN THE SPEC and is read here rather than in a second builder:
+    # ``beta`` rides in the spec and is read here rather than in a second builder:
     # ``gate_cuda_complex_beta`` uses this exact fixture with a nonzero beta, and
     # two fixtures that differ only in one constructor argument is two things to
     # keep in step. A fold spec carries no beta key and gets none.
@@ -264,7 +264,7 @@ def build(xp, spec: Dict[str, Any], courant: float, rng):
 def seed_state(fields, grid, value_class: str, rng) -> Dict[str, np.ndarray]:
     """Seed every complex volume the sub-steps touch; return the host words.
 
-    THE AUXILIARIES START NONZERO in both classes: a zero ``fu``/``f_w`` makes
+    The auxiliaries start nonzero in both classes: a zero ``fu``/``f_w`` makes
     ``kms * prev`` exactly zero on the first launch whatever ``kms`` holds, which
     would hide a mis-indexed coefficient until step two.
     """
@@ -361,7 +361,7 @@ def absorber_is_not_the_identity(layer) -> Dict[str, Any]:
 def mirror_ghost_is_nonzero(fields, grid) -> Dict[str, Any]:
     """The array path's own MIRROR ghost, and whether it carries any nonzero word.
 
-    THE WHOLE FOLD ARGUMENT is that ``stepping``'s parity-weighted ghost never
+    The whole fold argument is that ``stepping``'s parity-weighted ghost never
     reaches an output word because its one consumer plane is masked. If the image
     plane happened to be all zeros the argument would be vacuous and the curl case
     would be passing for the wrong reason. This measures it rather than assuming.
@@ -442,7 +442,7 @@ class CupyBackend:
         return sites
 
     def launch_curl(self, sub_step, fields, layer, grid, **overrides) -> None:
-        # THE LAUNCHER'S EXACTLY-ONE CONTRACT, honoured rather than argued with:
+        # The launcher's exactly-one contract, honoured rather than argued with:
         # ``step_folded_complex`` refuses a grid AND a boundary-code override in
         # one call, and a layer AND a table override likewise -- "passing a layer
         # AND its override is refused" is its own docstring. A control leg that
@@ -707,7 +707,7 @@ def build_backend(name: str):
 
 
 # ---------------------------------------------------------------------------
-# THE FAMILY'S OWN SOURCE MUTATIONS
+# The family's own source mutations
 #
 # Each is a text transform on the EMITTED source, returning ``(mutated, sites)``.
 # ``sites`` is asserted nonzero and the mutated text asserted different, because a
@@ -747,7 +747,7 @@ def m_fold_ghost_wraps(text: str) -> Tuple[str, int]:
     """``BC_MIRROR_PERIODIC`` falls through to the PERIODIC wrap instead of zero.
 
     The ghost then carries the opposite face's value instead of the zero the mask
-    makes irrelevant. THE INTERESTING PART is that this SHOULD be undetectable if
+    makes irrelevant. The interesting part is that this SHOULD be undetectable if
     the "ghost is dead" argument holds -- the ghost's one consumer plane is masked
     -- so this leg is a NULL and its verdict is the argument, measured.
     """
@@ -800,19 +800,19 @@ SOURCE_MUTATIONS: Dict[str, Callable[[str], Tuple[str, int]]] = {
     "mask_the_metallic_top_plane": m_mask_the_metallic_top_plane,
     "fold_ghost_wraps": m_fold_ghost_wraps,
     "reload_the_target": n_reload_the_target,
-    # THE CERTIFIED FAMILY'S OWN DEFECT CLASSES, re-armed here because this family
+    # The certified family's own defect classes, re-armed here because this family
     # emits its bytes: a fold delta that broke one of them would otherwise be
     # invisible to a battery that only tested the fold. The two grouping legs are
-    # the INVERTED ones (KERNELS.md section 7.1): the previous package forms are the
-    # mutants now.
+    # the INVERTED ones (docs/development/certification.md): the previous package forms
+    # are the mutants now.
     "full_complex_coefficient_products": parent.m_full_complex_coefficient_products,
     "old_package_curl_grouping": parent.m_old_package_curl_grouping,
     "connection_on_every_plane": parent.m_connection_on_every_plane,
     "conjugate_the_rotation": parent.m_conjugate_the_rotation,
     "word_pair_transposed": parent.m_word_pair_transposed,
     "column_major_index": parent.m_column_major_index,
-    # KERNELS.md section 7.2, the B battery on the per-chunk curl forms this family
-    # lifts from the emitter (the auxiliary-load leg is a declared null).
+    # The per-chunk form battery, on the per-chunk curl forms this family lifts from
+    # the emitter (the auxiliary-load leg is a declared null).
     "select_removed": parent.b_select_removed,
     "predicate_on_coefficient_identity": parent.b_predicate_on_coefficient_identity,
     "swap_dsig_and_dsigu": parent.b_swap_dsig_and_dsigu,
@@ -820,7 +820,7 @@ SOURCE_MUTATIONS: Dict[str, Callable[[str], Tuple[str, int]]] = {
     "auxiliary_load_unguarded": parent.b_auxiliary_load_unguarded,
 }
 
-#: WHICH FOLD CODE A LEG NEEDS TO BE ABLE TO BITE. A leg run only on grids that
+#: Which fold code a leg needs to be able to bite. A leg run only on grids that
 #: cannot express its defect scores UNCAUGHT for a reason that has nothing to do
 #: with the kernel.
 #: Legs whose defect needs a PHASED axis to be able to bite. A connection mutation on
@@ -830,14 +830,14 @@ SOURCE_MUTATIONS: Dict[str, Callable[[str], Tuple[str, int]]] = {
 MUTATION_REQUIRES_A_PHASE: Tuple[str, ...] = ("connection_on_every_plane",
                                               "conjugate_the_rotation")
 
-#: THE CERTIFIED COMPLEX FAMILY'S OWN SIGNED-ZERO DEFECT CLASSES, re-armed here as a
+#: The certified complex family's own signed-zero defect classes, re-armed here as a
 #: REGRESSION CHECK rather than as this family's verdict. Their full scoring belongs
 #: to ``gate_cuda_complex``, which released on them under its own case product; what
 #: this gate asks is narrower and is stated as such: did the fold delta DISABLE one?
 #: So the bar is "caught on at least one fixture", and the per-fixture table stays in
 #: the artifact rather than being collapsed into a fraction.
 #:
-#: WHY IT DOES NOT FIRE EVERYWHERE: it needs a part that is EXACTLY zero for the
+#: Why it does not fire everywhere: it needs a part that is EXACTLY zero for the
 #: literal cross term's sign to reach an output, and under uniform random operands
 #: the only exact zeros in the step are the ones the kernel itself writes -- the zero
 #: ghost and the masked planes.
@@ -857,7 +857,7 @@ HOST_MUTATIONS: Tuple[str, ...] = (
     "fold_code_read_as_periodic",
     "fold_code_read_as_metallic",
     "unconjugated_backward_phase",
-    # KERNELS.md section 7.2: the chunk record a launch binds, corrupted.
+    # Per-chunk form battery record mutations: the chunk record a launch binds, corrupted.
     "record_bound_off_by_one",
     "record_lattices_swapped",
 )
@@ -932,7 +932,7 @@ def curl_case(backend, xp, spec, sub_step, courant, value_class, guard,
               host_mutation: Optional[str] = None) -> Dict[str, Any]:
     """One frozen state, run twice: the array path, then the kernel.
 
-    THE SEED COMES FROM A DIGEST, never from ``hash()``: Python salts ``hash()`` of a
+    The seed comes from a digest, never from ``hash()``: Python salts ``hash()`` of a
     tuple containing strings with ``PYTHONHASHSEED``, so such a gate draws a
     different fixture every process and a failing case cannot be replayed.
     """
@@ -1005,7 +1005,7 @@ def curl_case(backend, xp, spec, sub_step, courant, value_class, guard,
     bound = parent.host_mutated_record(host_mutation, record, grid)
     if (host_mutation in parent.RECORD_HOST_MUTATIONS
             and not _membership_moves(record, bound, grid)):
-        # A RECORD MUTATION THAT MOVES NO CELL'S MEMBERSHIP scores nothing: the
+        # A record mutation that moves no cell's membership scores nothing: the
         # off-by-one moves the first run's end, and on a division whose layered axes
         # are all folded that run is the far-face layer ending at the last stored row,
         # so the moved end lies past the grid.
@@ -1022,7 +1022,7 @@ def curl_case(backend, xp, spec, sub_step, courant, value_class, guard,
     case["single_launch_per_array"] = {
         name: parts[name]["differing_floats"] for name in outputs}
 
-    # THE FOLD'S OWN LIVENESS FLOOR, measured on the KERNEL: hand the folded axis
+    # The fold's own liveness floor, measured on the KERNEL: hand the folded axis
     # the code the CERTIFIED family would have to use (PERIODIC on a folded
     # periodic axis, which is what "no fold branch" means) and require the answer
     # to change. A fixture where it does not measures the certified pair.
@@ -1074,7 +1074,7 @@ def curl_case(backend, xp, spec, sub_step, courant, value_class, guard,
 def constitutive_case(backend, xp, spec, side, courant, value_class, guard) -> Dict[str, Any]:
     """The CERTIFIED complex constitutive kernel against the array path, on a FOLD.
 
-    THE CURLS RUN FIRST, both of them, so the state this sub-step reads is a state
+    The curls run first, both of them, so the state this sub-step reads is a state
     the fold produced. A constitutive arm seeded with fresh random numbers would
     measure the certified kernel on a grid that merely HAS a mirror attribute.
     """
@@ -1321,7 +1321,7 @@ def run_source_mutations(results, out_path, backend, xp, product, scorable):
             backend.set_source_transform(None)
             scored = _score(legs, name not in NULL_MUTATIONS)
             if name in INHERITED_MUTATIONS:
-                # THE NARROWER QUESTION, asked and labelled as such: this leg
+                # The narrower question, asked and labelled as such: this leg
                 # belongs to gate_cuda_complex and is re-armed here only to show
                 # the fold delta did not disable it. The per-fixture table below
                 # is the evidence; the fraction is not the claim.
@@ -1422,7 +1422,7 @@ def summarize(results) -> Dict[str, Any]:
                 # PARTITION working, and calling it a missing leg would push this
                 # gate to measure a slot it does not own.
                 #
-                # RECORDED AS A NOTE, NOT A RELEASE-BLOCKING REASON -- which is
+                # Recorded as a note, not a release-blocking reason -- which is
                 # what this whole comment already argued while the line below
                 # still appended into ``reasons``. The first device run
                 # (the GPU host, 2026-09-01) surfaced the contradiction: every curl
@@ -1504,6 +1504,7 @@ def save(results, out_path: str) -> None:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
+    import neutral_ids  # noqa: PLC0415
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--backend", choices=("cupy", "host"), default="cupy")
     parser.add_argument("--product", choices=("full", "reduced"), default="full")
@@ -1517,8 +1518,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     results: Dict[str, Any] = {
         "gate": "cuda_complex_folded",
         "started_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "host": os.uname().nodename,
-        "argv": list(argv if argv is not None else sys.argv[1:]),
+        "host": neutral_ids.machine_id(),
+        "argv": neutral_ids.argv(argv if argv is not None else sys.argv[1:]),
         "backend": args.backend,
         "product": args.product,
         "question": ("is the hand-CUDA complex FOLDED curl pair byte-identical to "

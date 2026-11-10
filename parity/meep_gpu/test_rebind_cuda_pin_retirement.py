@@ -33,6 +33,7 @@ HERE = pathlib.Path(__file__).resolve().parent
 if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
 
+import ledger_scope  # noqa: E402
 import rebind_cuda_welds as R  # noqa: E402
 
 from meep_gpu import fastpath  # noqa: E402
@@ -48,11 +49,11 @@ ROWS = {
     (CYLINDRICAL, "parity/meep_gpu/gate_cuda_cylindrical_real_fused_hd_pair.py"):
         "parity/meep_gpu/gate_cuda_cylindrical_fused_hd_pair.py",
 }
-ENTRY_OF = {STENCIL: "89-X1", CYLINDRICAL: "76-KC8"}
+ENTRY_OF = {STENCIL: "expansion licence was deleted", CYLINDRICAL: "were re-derived"}
 
 
 # ---------------------------------------------------------------------------
-# THE TABLE AGAINST THE CHECKOUT AND THE SHIPPED RECORDS
+# The table against the checkout and the shipped records
 # ---------------------------------------------------------------------------
 
 
@@ -118,7 +119,7 @@ def test_a_retired_pin_leaves_both_digest_maps_together_or_not_at_all():
 
 
 # ---------------------------------------------------------------------------
-# THE RULE, THROUGH main(), ON A PLANTED REPOSITORY ROOT
+# The rule, through main(), on a planted repository root
 # ---------------------------------------------------------------------------
 
 WELD = "cuda_planted_stencil_weld"
@@ -154,7 +155,7 @@ class Plant:
         monkeypatch.setattr(R, "LEDGER", self.ledger)
         monkeypatch.setattr(R, "RECORD", self.record)
         monkeypatch.setitem(R.RETIRED_PINS, (WELD, STALE), WHY)
-        # THE TOOL'S CLOCK, advanced by hand: two runs inside one second would stamp
+        # The tool's clock, advanced by hand: two runs inside one second would stamp
         # the same recorded_utc and make a byte-identity check vacuous.
         self.now = datetime(2026, 10, 11, 12, 0, 0, tzinfo=timezone.utc)
         plant = self
@@ -394,3 +395,54 @@ def test_a_rerun_restates_an_entry_without_a_retired_pin_byte_for_byte(plant, ca
     assert json.loads(plant.text())[OTHER]["runs"][CC]["recorded_utc"] == \
         first[OTHER]["runs"][CC]["recorded_utc"]
     assert "0 pin(s) retired, 1 unchanged" in out
+
+
+def test_a_bind_that_loses_a_policy_the_run_holds_is_refused_by_name(plant, capsys):
+    """Runs are keyed by capability, not card: this is how a second card's narrower campaign
+    would take the first card's evidence, unseen until the route stage."""
+    held = plant.entry()
+    held["runs"][CC][fastpath.CERTIFIED_POLICIES] = {"flush": [], "keep": [], "third": []}
+    text = plant.write_ledger({WELD: held})
+    root = plant.campaign({WELD: (plant.imports(), plant.imports(), True)})
+    plant.run(root, "--write")
+    out = capsys.readouterr().out
+    assert "policy_dropped" in out and "['third']" in out, out
+    assert plant.text() == text
+    plant.run(root, "--write", "--allow-policy-drop")
+    capsys.readouterr()
+    written = json.loads(plant.text())[WELD]["runs"][CC][fastpath.CERTIFIED_POLICIES]
+    assert sorted(written) == ["flush", "keep"]
+
+
+def test_a_dated_block_on_moved_bytes_states_the_drift_a_carry_must_not_pass(plant, capsys):
+    """The real writer, on a run whose kernel has since moved: ``source_sha256`` comes from
+    the artifact, so the bound digest and the run's stay equal and only the statement says
+    the bytes left. The comparison a carry makes reads that statement, not the slice."""
+    entry = plant.entry(live=True)
+    entry["runs"][CC][fastpath.CERTIFIED_POLICIES] = {"flush": [], "keep": []}
+    plant.write_ledger({WELD: entry})
+    held = plant.ledger.read_bytes()
+    plant.campaign({WELD: (plant.imports(), plant.imports(), True)})
+    record = json.loads(plant.record.read_text(encoding="utf-8"))
+    record[WELD].update(artifacts=f"parity/meep_gpu/results/{CAMPAIGN}/{WELD}",
+                        compute_capability=CC, environment={"compute_capability": CC})
+    plant.record.write_text(json.dumps(record, indent=2), encoding="utf-8")
+    (plant.api / KERNEL).write_text("K = 2\n", encoding="utf-8")
+    R.main(["--only", WELD, "--write"])
+    assert f"DRIFTED  {WELD}" in capsys.readouterr().out
+    old, new = json.loads(held), json.loads(plant.text())
+    assert new[WELD]["status"] == "DRIFTED" and new[WELD]["source_drift"] == [KERNEL]
+    assert fastpath.bound_digest(new[WELD]) == fastpath.bound_digest(old[WELD])
+    cited = {"cuda": (WELD,)}
+    assert (ledger_scope.ledger_slice(new, "cuda", CC, cited)
+            == ledger_scope.ledger_slice(old, "cuda", CC, cited))
+    source = plant.api / "held.json"
+    source.write_bytes(held)
+    ledger_scope.archive_state(plant.api, "cuda", source)
+    tree = ledger_scope._Tree(plant.api)  # noqa: SLF001
+    tree._cited = cited  # noqa: SLF001
+    verdict = ledger_scope._compare_slices(  # noqa: SLF001
+        tree, "meep_gpu/cuda_kernels/fingerprints.json", "cuda",
+        hashlib.sha256(held).hexdigest(), "raw", CC, None)
+    assert verdict.moved and verdict.why == "pin_drift_stated"
+    assert verdict.proof["entries"] == [WELD]

@@ -1,6 +1,6 @@
 """The bound that separates a POLICY SPLIT from an arithmetic defect, armed off-device.
 
-WHY THIS FILE EXISTS. ``gate_dispatch_metal_route.cliff_control`` drives a released
+Why this file exists. ``gate_dispatch_metal_route.cliff_control`` drives a released
 Metal pair with the host FPU kept while the device flushes natively, and then has to
 say which of two things it is looking at: the flush-vs-keep cliff the policy rung
 exists to refuse, or a real arithmetic difference in a dispatched kernel. The whole
@@ -8,9 +8,9 @@ of that judgement is :func:`band_confinement`, and until this file it could only
 exercised by a ~3 hour campaign on an Apple-silicon host -- so a bound that was wrong
 stayed wrong for as long as it took a campaign to notice.
 
-THE BOUND THAT WAS WRONG, and the case that is pinned here as a regression. Until
+The bound that was wrong, and the case that is pinned here as a regression. Until
 2026-09-11 the predicate required ``max_rel_diff < 1e-30``. That number is
-``max|a-b|`` over ``max|a|`` -- the disagreement divided by THE ARRAY'S OWN PEAK --
+``max|a-b|`` over ``max|a|`` -- the disagreement divided by the array's own peak --
 so it grades amplitude, not disagreement. On ``pml_3d_diagonal`` five arrays peak
 near 1e-04 and passed while ``fields.Bz``, which carries only numerical residue in a
 diagonal 3D PML and peaks at 1.97e-08, failed by 78x on the second SMALLEST
@@ -71,7 +71,7 @@ MEASURED_PML_INTERMEDIATE = {
 
 
 def test_a_pml_intermediate_over_the_field_ceiling_is_judged_on_its_own():
-    """THE ARRAY THE TRUNCATION HID, and the reason it is not a defect.
+    """The array the truncation hid, and the reason it is not a defect.
 
     ``fields.fu_Dz`` is the stored stage-1 output of the split-field PML recurrence,
     and its flush perturbation reaches the field only through ``fu - fu_previous``,
@@ -147,7 +147,7 @@ def test_band_ceiling_names_every_intermediate_fields_declares():
 
 
 def test_the_ceilings_are_the_values_this_file_argues_for():
-    """THE BOUND'S VALUE, not only its shape.
+    """The bound's value, not only its shape.
 
     Every other test here probes 8-16 orders away from the ceilings, so all of them
     stay green if the three constants are loosened by eight orders -- the file would
@@ -176,7 +176,7 @@ def test_the_measured_cliff_is_confined_and_names_no_array_over_a_ceiling():
 
 
 def test_the_old_ratio_ceiling_would_still_refuse_the_array_it_refused():
-    """NON-VACUOUS AS A REGRESSION: the pinned numbers really do fail 1e-30.
+    """Non-vacuous as a regression: the pinned numbers really do fail 1e-30.
 
     Without this the file could pass because the transcription drifted toward
     something no bound ever rejected.
@@ -206,7 +206,7 @@ def test_a_normal_magnitude_disagreement_is_not_confined():
 
 @pytest.mark.parametrize("peak", [1.0e-03, 1.0e-08, 1.0e-12])
 def test_the_verdict_does_not_move_with_the_array_s_own_amplitude(peak):
-    """THE MUTATION THE OLD BOUND FAILED, as a property rather than as one case.
+    """The mutation the old bound failed, as a property rather than as one case.
 
     The same band-scale disagreement is presented against three peaks spanning nine
     orders. A predicate that reads the disagreement confines all three; the old one
@@ -290,7 +290,7 @@ def test_the_ratio_ceiling_sits_below_float32_resolution():
 
 
 def test_a_seventh_array_is_judged_and_not_truncated_away():
-    """THE DEFECT THAT MATTERED MOST, armed as a regression.
+    """The defect that mattered most, armed as a regression.
 
     Until 2026-09-11 ``cliff_control`` handed this predicate
     ``verdict["differences"][:6]``. Six of ``pml_3d_diagonal``'s twenty-four differing
@@ -313,7 +313,7 @@ def test_a_seventh_array_is_judged_and_not_truncated_away():
 
 
 def test_the_control_requires_a_flush_signature_and_not_only_confinement():
-    """THE CALLER'S HALF, which no test read until the audit found it unguarded.
+    """The caller's half, which no test read until a review found it unguarded.
 
     ``band_confinement`` answers "is the disagreement at the band's scale". It does
     NOT answer "is this a flush" -- that is ``elements_one_side_exactly_zero``, and
@@ -380,7 +380,7 @@ def test_a_field_inherits_the_ceiling_of_the_intermediate_that_wrote_it():
 
 
 def test_a_field_differing_ABOVE_its_own_intermediate_is_still_refused():
-    """THE CASE THE INHERITANCE MUST NOT SWALLOW, and the reason it is bounded.
+    """The case the inheritance must not swallow, and the reason it is bounded.
 
     The mechanism explains a field carrying AT MOST what its intermediate carried.
     A field carrying MORE is not downstream pass-through — it is arithmetic the
@@ -448,7 +448,7 @@ def test_the_tight_guards_are_not_inherited_only_band_membership_is():
 # The host flush replay: an array over a ceiling licensed by reproduction
 # ---------------------------------------------------------------------------
 
-#: ``pml_3d`` at 24 steps on the 0.10 series (01..106), keeping host against flushing
+#: ``pml_3d`` at 24 steps on a 1.0 development tree, keeping host against flushing
 #: device: ``fields.Dz`` and ``fields.Ez`` differ at 1.875e-28, over the field ceiling
 #: and ABOVE their own intermediate ``fields.fu_Dz`` (3.892e-31), so neither ceiling
 #: admits them; the host flush replay reproduces every one of the 20 differing arrays.

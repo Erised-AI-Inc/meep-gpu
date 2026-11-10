@@ -12,7 +12,7 @@ every operation one float32 operation, contraction off. Complex storage steps th
 real update on each stored part, MEEP's ``DOCMP2`` two real passes: every product is
 a real constant (or the real sigma) times one part, and the sums are per part.
 
-THE DRIVE IS SELECTED PER CHUNK, ON THE DEVICE. ``W`` is MEEP's
+The drive is selected per chunk, on the device. ``W`` is MEEP's
 ``w = f_w ? f_w : f`` (update_pols.cpp:44, :meth:`Fields.drive_field`): the stored E
 without an absorber, and under one ``f_w_E*`` on the cells whose chunk carries the
 component's own (``dsigw``) layer and the stored E everywhere else. The kernel binds
@@ -441,8 +441,10 @@ class MetalAdeUpdatePPlan:
         mode = shaders.CONTRACT_OFF if contract is None else contract
         for entry in self.entries:
             state, component = entry.state, entry.component
-            p = state.P[component]
-            p_prev = state.P_prev[component]
+            # Resolving which array is current is not a read of its words: the plain dict
+            # subscript keeps a held mirror on the device (barrier.BarrierDict acquires).
+            p = dict.__getitem__(state.P, component)
+            p_prev = dict.__getitem__(state.P_prev, component)
             scratch = state._scratch
             key = (mode, entry.sigma_is_volume, entry.dtype, entry.select_axis)
             function = self._functions.get(key)

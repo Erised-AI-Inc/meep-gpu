@@ -1,17 +1,17 @@
 """The complex conductive D->E pair, as claims a laptop can check without a GPU.
 
-WHAT THIS SUITE OWNS AND WHAT IT DELIBERATELY DOES NOT. The BYTES are the device
+What this suite owns and what it deliberately does not. The BYTES are the device
 gate's — ``parity/meep_gpu/gate_metal_complex_conductive_fused_pair.py`` steps two
 engines side by side for sixty complete seam steps and compares uint32 words — and
 no assertion here duplicates that. What lives here is everything true about the
 family WITHOUT a device: what the emitted source says, which configurations the
-predicate refuses and BY WHAT NAME, that the arm is registered UNWIRED, and that
+predicate refuses and by what name, that the arm is registered unwired, and that
 the signature respects the platform ceiling by ARITHMETIC.
 
-THE TRANSCRIPTION TESTS PARSE, THEY DO NOT MIRROR. Each one CALLS the certified
+The transcription tests parse, they do not mirror. Each one CALLS the certified
 emitter and searches its output; none re-implements a line.
 
-THE CLAUSE THIS FAMILY LIVES OR DIES ON is the electric source. The driver injects
+The clause this family lives or dies on is the electric source. The driver injects
 between the two halves (driver.py:3294-3299) and, on a conductive row, through the
 ``condinv``-scaled path at :3296 — so the whole cell exists only because its four
 corpus rows carry a MAGNETIC source and no electric one. The POLARITY is asserted
@@ -263,11 +263,11 @@ def test_the_predicate_never_raises_on_a_degenerate_object():
 
 
 def test_an_unreadable_boundary_rule_is_a_refusal_and_not_a_crash():
-    """UNREADABLE IS A REFUSAL, and BOTH halves' clause lists obey that.
+    """Unreadable is a refusal, and BOTH halves' clause lists obey that.
 
     ``_boundary_kinds`` returns ``None`` for a grid the array path will not resolve
     (coverage.py:105-121), and a clause that iterated it would raise where the
-    contract says refuse. NOTHING IS STUBBED: the certified curl half refuses this
+    contract says refuse. Nothing is stubbed: the certified curl half refuses this
     same input by its own name out of ``complex_no_pml_conductive._base_reasons``,
     so the public predicate reaches this family's clause on the real path. The curl
     half's refusal is asserted here too — that is what makes the stub unnecessary,
@@ -352,7 +352,7 @@ def test_an_offdiagonal_row_is_refused_naming_the_stencil():
 
 
 # ---------------------------------------------------------------------------
-# 5. Registration: the arm exists, is UNWIRED, and cannot be composed
+# 5. Registration: the arm exists, is unwired, and cannot be composed
 # ---------------------------------------------------------------------------
 
 def test_the_arm_is_registered_unwired_on_the_first_slot_it_spans():
@@ -418,7 +418,7 @@ def test_the_reachability_artifact_records_the_determination_and_its_control():
 
 
 # ---------------------------------------------------------------------------
-# The chunk record and the lifted curl span (bit_parity 0.10)
+# The chunk record and the lifted curl span (1.0)
 # ---------------------------------------------------------------------------
 
 def test_the_curl_span_is_lifted_and_never_re_spelled():

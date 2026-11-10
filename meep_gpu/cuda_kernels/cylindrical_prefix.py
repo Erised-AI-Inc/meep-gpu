@@ -1,8 +1,8 @@
 """The radial sum of the CUDA cylindrical curls: a column-serial scan kernel, and its host side.
 
-WHAT IT COMPUTES. MEEP's Z update on a Dcyl grid needs ``(1/r)·d(r·Fp)/dr`` where the
+What it computes. MEEP's Z update on a Dcyl grid needs ``(1/r)·d(r·Fp)/dr`` where the
 ordinary curl computes ``dFp/dr``, and MEEP builds it as ``f_rderiv_int``, a running sum
-along r restarted in EVERY STRUCTURE CHUNK over that chunk's own rows (step_db.cpp:99-119).
+along r restarted in every structure chunk over that chunk's own rows (step_db.cpp:99-119).
 The array path transcribes it as ``stepping.cylindrical_rderiv_difference``; this module is
 that function on the device, word for word::
 
@@ -19,26 +19,26 @@ full sum and the upper chunk's zero -- so the kernel writes the DIFFERENCE, a vo
 like the target, and never a prefix array. Rows no segment writes keep ``+0`` (the array
 path's ``out[...] = 0``).
 
-WHICH CHUNK OWNS A ROW is the array path's own answer, ``stepping._cylindrical_scan_starts``
+Which chunk owns a row is the array path's own answer, ``stepping._cylindrical_scan_starts``
 over the division it steps with (the lifted simulation's, else the one-rank division of the
 active layer), bound as an ``int32`` line (each target row's chunk start) and its distinct
 values as the segment list. A division whose r cuts differ along z has no such line -- the
 array path then keys the sum per cell -- and is refused by name
-(:class:`RadialScanRefusal`; bit_parity_0_10 DESIGN.md D8).
+(:class:`RadialScanRefusal`).
 
-THE SCAN IS COLUMN-SERIAL (DESIGN.md D26). One lane per column of stored words -- a
+The scan is column-serial. One lane per column of stored words -- a
 (phi, z) column, and one stored part of it on complex storage, because a C-contiguous
 complex64 volume viewed as float32 words is one column per part -- walks the rows in order.
 A parallel scan (a tree reduction, or a library ``cumsum``) associates the sum differently
 and is another float32 word on most rows; the array path's own CuPy branch is the same row
 loop for that reason. Nothing here may replace the loop with one.
 
-THE B SIDE'S WALL ROW. Ep is extended by MEEP's stored wall row (``nr + 1`` rows, the wall's
+The B side's wall row. Ep is extended by MEEP's stored wall row (``nr + 1`` rows, the wall's
 Ep held at ``+0``): the kernel reads row ``nr`` as ``+0``, so the last row's forward
 difference is the local ``0 - F[nr-1]`` MEEP reads, not minus a sum over a zero ghost. The
 D side's backward difference reads rows ``g - 1`` and ``g`` and needs no wall row.
 
-NOTHING HERE IMPORTS CUPY at module scope: the kernel text, the row builders and the
+Nothing here imports CuPy at module scope: the kernel text, the row builders and the
 starts line are pure host work, exercisable at the merge bar (a host interpreter executes
 the text against the array path in ``test_cylindrical_chunk_forms``). ``cupy`` is imported
 at the one compile site.

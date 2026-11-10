@@ -1,18 +1,18 @@
 """What this host actually does with the cylindrical complex family's own spellings.
 
-THREE QUESTIONS, THREE LEGS, ONE ARTIFACT. Each is a platform or array-path fact the
+Three questions, three legs, one artifact. Each is a platform or array-path fact the
 family would otherwise have to INHERIT from the Triton/CuPy track, and this project's
 rule is that a remembered fact about another backend is a hypothesis, not a
 measurement. Nothing here is copied forward; every number below is cut on this host.
 
-1. ``negation`` — HOW ``-x`` LOWERS ON METAL, re-measured rather than inherited.
+1. ``negation`` — how ``-x`` lowers on Metal, re-measured rather than inherited.
    The Triton cylindrical kernel spells every negated addend ``x * -1.0`` because
-   *Triton* lowers unary minus as ``0.0 - x`` and canonicalizes signed zeros. THAT
-   IS A FACT ABOUT TRITON. This leg compiles all three spellings and compares them
+   *Triton* lowers unary minus as ``0.0 - x`` and canonicalizes signed zeros. That
+   is a fact about Triton. This leg compiles all three spellings and compares them
    against ``numpy``'s own unary negation on an EXHAUSTIVE signed-zero table, so the
    shipped spelling is chosen by this host's answer.
 
-2. ``axis_identity`` — WHETHER THE r = 0 NEAR GHOST IS OBSERVABLE, measured on the
+2. ``axis_identity`` — whether the r = 0 near ghost is observable, measured on the
    ARRAY PATH on this host (NumPy, no device involved). ``stepping._shift_up``'s
    ``CYL_AXIS`` branch SHARES the ``METALLIC`` arm by source identity (:1781-1783 —
    one branch, three kinds), but the NEAR ghost (:1830-1842) writes the
@@ -22,24 +22,24 @@ measurement. Nothing here is copied forward; every number below is cut on this h
    sub-step, then run it again with ``boundaries[0]`` forced to ``metallic`` — the
    arm the kernel actually compiles — and count differing words.
 
-3. ``helper_agreement`` — WHETHER THE SHIPPED SHADER HELPER REPRODUCES THE
-   REFERENCE on this family's own orientation (the i*m/r coefficient ROW on the
+3. ``helper_agreement`` — whether the shipped shader helper reproduces the
+   reference on this family's own orientation (the i*m/r coefficient ROW on the
    left of a volume): this launches ``templates.complex_helpers()``'s ``c_mul`` on
    the device and counts differing uint32 words against ``factor * field``.
 
-SINCE THE ARRAY PATH STEPS MEEP'S CYLINDRICAL FORMS (bit_parity_0_10 AP6c), THE i*m/r
-ROW IS NOT A CALL ``stepping`` MAKES: the term is a per-part quarter turn of a float32
+Since the array path steps MEEP's cylindrical forms (1.0), the i*m/r
+row is not a call ``stepping`` makes: the term is a per-part quarter turn of a float32
 ``rinv`` row (``stepping._cylindrical_imr_increment``), and the Metal kernel forms no
 general complex product at all. Leg 3 still builds the retired row
 (:func:`legacy_imr_row`) as the operand ``c_mul`` is measured on.
 
-EVIDENCE CLASS, STATED AND NOT PAPERED OVER. ``torch.mps.compile_shader`` exposes no
+Evidence class, stated and not papered over. ``torch.mps.compile_shader`` exposes no
 AIR, no GPU ISA and no optimisation report, so legs 1 and 3 certify that the ANSWERS
 agree, never that the INSTRUCTIONS do. They catch a wrong answer, not a wrong
 instruction. That is this backend's standing certification gap against the Triton and
 CUDA tracks and it stays stated on every claim built on top of these numbers.
 
-NO SUBNORMALS ANYWHERE IN THE VECTORS. MPS flushes float32 subnormals natively with
+No subnormals anywhere in the vectors. MPS flushes float32 subnormals natively with
 no lever, so every claim this artifact licenses is made under a CHECKED
 subnormal-free precondition; a probe that mixed the band question into the
 orientation question would answer neither. The census is asserted, not assumed.
@@ -75,7 +75,7 @@ SEED = 20260816
 
 #: The negation leg's table is EXHAUSTIVE over the operand classes that matter, not
 #: sampled: random data discriminates none of the three spellings (measured 0/16384
-#: by the complex tranche), and every word the wrong spelling moves is a signed zero.
+#: by ``gate_metal_complex.py``), and every word the wrong spelling moves is a signed zero.
 _NEGATION_CORNERS: Tuple[float, ...] = (
     0.0, -0.0, 1.0, -1.0, 3.5, -3.5, 1e-20, -1e-20, 1e20, -1e20,
     float(np.float32(np.pi)), float(-np.float32(np.pi)),
@@ -115,7 +115,7 @@ def _subnormal_words(array: Any) -> int:
 
 
 def _complex_from_parts(real: Any, imag: Any) -> Any:
-    """``real + 1j*imag`` DOES NOT PRESERVE SIGNED ZEROS — build the words directly.
+    """``real + 1j*imag`` does not preserve signed zeros — build the words directly.
 
     ``zr + 1j*zi`` multiplies through complex128 and canonicalizes
     ``-0.0`` on the imaginary half. Writing the two planes into a complex64 view
@@ -205,7 +205,7 @@ def measure_negation(runner: "Runner") -> Dict[str, Any]:
 def measure_axis_identity() -> Dict[str, Any]:
     """Does forcing ``boundaries[0] = 'metallic'`` change a single word?
 
-    THE KERNEL COMPILES ``BCX = METALLIC`` ON THE r AXIS, and this leg is why it may.
+    The kernel compiles ``BCX = METALLIC`` on the r axis, and this leg is why it may.
     Two halves, and only the first is a reading:
 
     * the FAR ghost is a SOURCE IDENTITY — ``_shift_up`` (:1781-1783) has ONE branch
@@ -214,10 +214,10 @@ def measure_axis_identity() -> Dict[str, Any]:
     * the NEAR ghost is NOT — ``_shift_down``'s ``CYL_AXIS`` branch (:1830-1842)
       writes the ``r_to_minus_r`` image where ``METALLIC`` writes zero. The kernel's
       claim is that ``_mask_non_owned_cells`` (:1898-1902) zeroes the only row that
-      could consume it. That is a claim about ``stepping.py``, so it is MEASURED
+      could consume it. That is a claim about ``stepping.py``, so it is measured
       here by running the real sub-step twice.
 
-    A NONZERO COUNT IS A LEGITIMATE OUTCOME and would mean this family must carry the
+    A nonzero count is a legitimate outcome and would mean this family must carry the
     near ghost rather than compile it away. The leg reports the count; it does not
     assume it.
     """
@@ -336,7 +336,7 @@ kernel void helper_probe(
 def measure_helper_agreement(runner: "Runner") -> Dict[str, Any]:
     """``c_mul(coefficient, field)`` on the device against ``coefficient * field``.
 
-    THE ORIENTATION IS THE POINT. ``stepping`` writes ``factor * partner_values``
+    The orientation is the point. ``stepping`` writes ``factor * partner_values``
     with the COEFFICIENT on the left, so the shader passes it as ``c_mul``'s FIRST
     argument. Swapping them is a different product and a different set of
     bytes; this leg is what makes "the helper serves this call site" a measurement.
@@ -390,7 +390,7 @@ def measure_helper_agreement(runner: "Runner") -> Dict[str, Any]:
 class Runner:
     """Compiles on demand and launches one probe kernel against fresh device copies.
 
-    EVERY OUTPUT BUFFER IS SENTINEL-FILLED, never zero-filled: a kernel that wrote
+    Every output buffer is sentinel-filled, never zero-filled: a kernel that wrote
     nothing would otherwise compare equal to a reference of zeros, and a no-op
     agreeing with a no-op certifies nothing. ``moved`` is the vacuity floor.
     """

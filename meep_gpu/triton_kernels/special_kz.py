@@ -1,4 +1,4 @@
-"""Special-kz (``grid.beta``) PML curl tranche — Phase A: plain real + plain complex.
+"""Special-kz (``grid.beta``) PML curl kernels, unfolded grids: plain real + plain complex.
 
 NOT WIRED. Production dispatch is untouched: ``fastpath.plan_fast_path`` still
 returns ``None`` on every branch and this module does not touch it, ``plan_step``
@@ -11,20 +11,20 @@ inside its results directory instead. Callers are the gate
 (``parity/meep_gpu/gate_triton_special_kz.py``), the composition probe
 (``probe_triton_special_kz_composition.py``) and the laptop tests, nothing else.
 
-WHAT THIS IS FOR. Six lifted corpus rows demand it and only six: the two
+What this is for. Six lifted corpus rows demand it and only six: the two
 refl-angular-kz2d.py legs (beta = 0.332, real and complex storage),
 test_special_kz.test_special_kz (in-plane kx = 0.9205 + beta = -0.3907, complex
 storage), the two eigsrc_kz cases (beta = 0.2, Mirror — complex and folded-real)
 and the two binary_grating special_kz cases (beta = -0.685 / -0.912, Mirror +
-in-plane Bloch). Phase A (this file) carries the PLAIN real and PLAIN complex
+in-plane Bloch). This file carries the PLAIN real and PLAIN complex
 beta curls, which fully unlocks refl-angular-kz2d.py and test_special_kz; the
-folded rows stay refused by name — the folded REAL beta curl is Phase B
+folded rows stay refused by name — the folded REAL beta curl is ``folded_complex.py``'s
 (restating ``symmetry.py``'s folded clauses; unlocks test_eigsrc_kz_1_real_imag)
-and the folded COMPLEX rows are the complex tranche's own fold-under-complex-
+and the folded COMPLEX rows are the complex-field kernels' own fold-under-complex-
 storage composition gap, not a beta gap. ``parallel-wvgs-force.py`` (beta = 0.5)
 is lifter-refused (no sources at capture) and is named here, not counted.
 
-WHAT BETA IS (grid.py:668-697, stepping.py:754-811). A 2-D run carries
+What beta is (grid.py:668-697, stepping.py:754-811). A 2-D run carries
 ``exp(i*2*pi*beta*z)`` analytically, so ``d/dz`` on the invariant axis is the
 EXACT factor ``i*2*pi*beta`` — an ``i*beta*zhat x`` cross product folded into
 the curl (MEEP step_db.cpp:148-176). The family adds ONE term to the two curl
@@ -101,10 +101,10 @@ GROUPING CHOICES the gate must hold (stepping.py forces none of these):
    and delegate arithmetic to the certified ``kernels.constitutive_step`` /
    ``complex_fields.bloch_constitutive_step`` through the existing plan
    classes.
-6. Phase A refuses the fold in BOTH storage families, by name. Phase B lifts
-   the real-family fold through the folded family's own predicate; the complex
-   fold is inherited from the complex tranche's composition gap and stays in
-   that queue.
+6. This file refuses the fold in BOTH storage families, by name. The folded family
+   (``folded_complex.py``, "Phase B" in the refusal reasons) lifts the real-family
+   fold through its own predicate; the complex fold is inherited from the
+   complex-field kernels' composition gap and stays in that queue.
 7. A conductivity on the curl targets is refused by name in BOTH directions:
    these kernels transcribe the plain split-field recurrence only, and
    ``conductivity.py``'s own predicates refuse beta (conductivity.py:519-520)
@@ -266,12 +266,12 @@ def beta_curl_coefficients(beta: float, dt: float, magnetic: bool,
 def _mul_imag_coefficient_left(c_re, c_im, z_re, z_im):
     """``(c_re + i*c_im) * (z_re + i*z_im)``, every product and sum rounded on its own.
 
-    NONE OF THIS MODULE'S KERNELS CALLS IT. The beta pass forms no complex product: it
+    None of this module's kernels calls it. The beta pass forms no complex product: it
     is a quarter turn of the partner's parts by one real word
     (``part_products.quarter_turn``), which :func:`beta_bloch_pml_curl_step` spells
     inline. The helper keeps its name and signature for the sibling H->D weld
     (``beta_complex_fused_hd_pair``), which still transcribes the previous full product
-    until its own lane re-lifts it.
+    until that weld is re-lifted.
     """
     out_re = (c_re * z_re) - (c_im * z_im)
     out_im = (c_re * z_im) + (c_im * z_re)
@@ -741,10 +741,10 @@ def _beta_real_grid_reasons(fields: Any, pml: Any, grid: Any) -> List[str]:
         reasons.append("force_complex_fields=True: a complex-storage beta run "
                        "belongs to the complex beta variant")
 
-    # 3. An absorber that actually absorbs (split-field family only, §4(h)).
+    # 3. An absorber that actually absorbs (split-field family only).
     if pml is None or not getattr(pml, "is_active", False):
         reasons.append("no active PML layer (this product implements the "
-                       "split-field path only; no-PML beta is out of tranche)")
+                       "split-field path only; no-PML beta is outside its scope)")
 
     # 4. Only the two ghost rules the curl kernel writes.
     kinds = _boundary_kinds(grid, pml if (pml is not None
@@ -758,18 +758,18 @@ def _beta_real_grid_reasons(fields: Any, pml: Any, grid: Any) -> List[str]:
                 reasons.append(f"axis {axis} boundary {kind!r} is outside "
                                f"{COVERED_BOUNDARIES}")
 
-    # 5. No mirror plane: Phase A. The folded REAL beta curl is Phase B and
-    #    lifts this through the folded family's own predicate (§3/§4(g)).
+    # 5. No mirror plane here. The folded REAL beta curl is "Phase B" (``folded_complex.py``) and
+    #    lifts this through the folded family's own predicate.
     if _call(grid, "has_symmetry", default=False):
         reasons.append("a mirror plane is active (the folded real beta curl is "
-                       "Phase B; this Phase A kernel does not carry the fold)")
+                       "Phase B; this unfolded kernel does not carry the fold)")
     for axis in range(3):
         if _call(grid, "is_mirrored", axis, default=False):
             reasons.append(f"axis {axis} is folded by a mirror plane")
 
     # 6. Cartesian, effective 2-D. Grid refuses beta off 2-D Cartesian at
     #    construction (grid.py:668-697, MEEP fields.cpp:546-547) — RESTATED
-    #    here, never inferred from the constructor guard (§4(d)/(e)).
+    #    here, never inferred from the constructor guard.
     if getattr(grid, "cylindrical", False):
         reasons.append("cylindrical (Dcyl) coordinates are not carried (and the "
                        "grid itself refuses beta there, grid.py:668-697)")
@@ -792,15 +792,15 @@ def _beta_real_grid_reasons(fields: Any, pml: Any, grid: Any) -> List[str]:
         reasons.append(f"k_point {tuple(k_point)!r} is not exactly zero")
 
     # 9a/9b. A registered susceptibility must be one this package understands
-    #    (dispersion is ADMITTED for the curl, §4(c) pins the kinds).
+    #    (dispersion is ADMITTED for the curl; ``_susceptibility_reasons`` pins the kinds).
     reasons.extend(_susceptibility_reasons(fields))
 
-    # 10. No instantaneous nonlinearity (§4(b)).
+    # 10. No instantaneous nonlinearity.
     if getattr(fields, "has_nonlinearity", False):
         reasons.append("chi2/chi3 is installed (the Pade constitutive factor is "
-                       "not carried; that family is a separate tranche)")
+                       "not carried; that is a separate kernel family)")
 
-    # 11. No BFAST (§4(a) — a separate family with its own IIR state).
+    # 11. No BFAST (a separate family with its own IIR state).
     if getattr(grid, "bfast_active", False):
         reasons.append("BFAST is active (the second additive curl term is a "
                        "separate family)")
@@ -815,7 +815,7 @@ def _beta_real_grid_reasons(fields: Any, pml: Any, grid: Any) -> List[str]:
 
     # 12b. Real storage + off-diagonal epsilon + beta: stepping raises
     #    (stepping.py:800-810) and MEEP aborts (fields.cpp:548-549) — the
-    #    implicit-i trick cancels only while TE/TM stay uncoupled (§4(f)).
+    #    implicit-i trick cancels only while TE/TM stay uncoupled.
     #    Refused for the WHOLE real family, not only update_E: the run itself
     #    raises inside the first beta curl.
     if getattr(fields, "has_offdiagonal_epsilon", False):
@@ -836,7 +836,7 @@ def _curl_conductivity_reasons(fields: Any, sub_step: str) -> List[str]:
     name (the conductive product is ``conductivity.py``'s, and ITS predicate
     refuses beta, conductivity.py:519-520 — no silent overlap in either
     direction). A missing or non-callable reader is refused OUTRIGHT, the
-    complex tranche's stricter reading: inferring "no conductivity" from the
+    complex-field kernels' stricter reading: inferring "no conductivity" from the
     absence of ``condfac_for`` is admission by attribute absence."""
     reasons: List[str] = []
     reader = getattr(fields, "condfac_for", None)
@@ -866,12 +866,12 @@ def beta_pml_curl_coverage(fields: Any, pml: Any, sub_step: str) -> Coverage:
     Positive clauses only; a failing clause appends its reason and the scan
     continues. This is ``coverage.pml_curl_coverage``'s clause set with clause
     12 INVERTED (beta must be nonzero) plus the real-offdiag-beta refusal, and
-    ONE DELIBERATE NARROWING recorded here rather than left silent: the
+    one deliberate narrowing recorded here rather than left silent: the
     shipped predicate's allocation+layout clause runs over ALL six fu_ volumes,
     both source triples and the 18-volume layout set as a SET
     (coverage.py:306-315 — "coverage is a set, not a la carte"), where clauses
     13/14 below check the NAMED SUB-STEP'S 9 arrays only. That is the
-    per-sub-step scoping the certified complex tranche already uses
+    per-sub-step scoping the certified complex-field kernels already use
     (``complex_fields.complex_pml_curl_coverage``), every pointer the launched
     kernel touches is still checked, and the engine route allocates all 18
     together (``Fields.enable_pml_storage``) so no engine-built configuration
@@ -918,7 +918,7 @@ def _beta_complex_grid_reasons(fields: Any, pml: Any, grid: Any) -> List[str]:
     if getattr(xp, "__name__", "") != "cupy":
         reasons.append(f"array module is {getattr(xp, '__name__', xp)!r}, not cupy")
 
-    # 2 (INVERTED, as the complex tranche inverts it). Complex64 storage
+    # 2 (INVERTED, as the complex-field kernels invert it). Complex64 storage
     #    REQUIRED; a real beta run belongs to the real beta kernel.
     if not (getattr(fields, "force_complex_fields", False)
             or getattr(grid, "has_bloch", False)):
@@ -931,8 +931,8 @@ def _beta_complex_grid_reasons(fields: Any, pml: Any, grid: Any) -> List[str]:
         reasons.append("no active PML layer (this product implements the "
                        "complex split-field path only)")
 
-    # 4. Ghost rules; fold refused ALWAYS in the complex family (§4(g) — the
-    #    complex fold is the complex tranche's inherited composition gap, not a
+    # 4. Ghost rules; fold refused ALWAYS in the complex family (the
+    #    complex fold is the complex-field kernels' inherited composition gap, not a
     #    beta gap); cylindrical and non-2-D refused, restated.
     kinds = _boundary_kinds(grid, pml if (pml is not None
                                           and getattr(pml, "is_active", False))
@@ -946,7 +946,7 @@ def _beta_complex_grid_reasons(fields: Any, pml: Any, grid: Any) -> List[str]:
                                f"{COVERED_BOUNDARIES}")
     if _call(grid, "has_symmetry", default=False):
         reasons.append("a mirror plane is active (complex-by-fold is the "
-                       "complex tranche's composition gap, not a beta gap)")
+                       "complex-field kernels' composition gap, not a beta gap)")
     for axis in range(3):
         if _call(grid, "is_mirrored", axis, default=False):
             reasons.append(f"axis {axis} is folded by a mirror plane")
@@ -1004,8 +1004,8 @@ def _beta_complex_grid_reasons(fields: Any, pml: Any, grid: Any) -> List[str]:
             f"whose dependence beta already carries analytically "
             f"(grid.py:668-697 refuses the pairing at construction)")
 
-    # 6. No conductivity anywhere on the curl targets (strict, complex-tranche
-    #    reading; the conductive complex product does not exist).
+    # 6. No conductivity anywhere on the curl targets (strict, as the complex-field
+    #    kernels read it; the conductive complex product does not exist).
     reader = getattr(fields, "condfac_for", None)
     if not callable(reader):
         reasons.append("fields does not expose condfac_for; an unreadable "
@@ -1022,12 +1022,12 @@ def _beta_complex_grid_reasons(fields: Any, pml: Any, grid: Any) -> List[str]:
                                f"conductive complex stepping is a separate, "
                                f"unbuilt product")
 
-    # 7. No dispersion (complex ADE is a future tranche; no beta anchor
+    # 7. No dispersion (complex ADE is not yet built; no beta anchor
     #    carries a susceptibility under complex storage).
     if getattr(fields, "has_polarizations", False) or (
             getattr(fields, "polarizations", ()) or ()):
         reasons.append("a susceptibility is registered: complex-storage ADE is "
-                       "a future tranche")
+                       "not yet built")
     reasons.extend(_susceptibility_reasons(fields))
 
     # 8. No nonlinearity, no BFAST; beta INVERTED — must be nonzero.
@@ -1040,7 +1040,7 @@ def _beta_complex_grid_reasons(fields: Any, pml: Any, grid: Any) -> List[str]:
     if float(getattr(grid, "beta", 0.0)) == 0.0:
         reasons.append("grid.beta is zero: this product exists only for "
                        "special_kz runs; a beta = 0 complex run belongs to the "
-                       "certified complex tranche")
+                       "certified complex-field kernels")
 
     # 9. Stored E.
     if not getattr(fields, "stores_E", False):
@@ -1557,7 +1557,7 @@ def plan_beta_run_complex_constitutive(fields: Any, pml: Any, side: str,
 # This module is NOT imported by the package ``__init__``, is not consulted by
 # ``launch.plan_step``, and does not touch production dispatch, which keeps
 # returning None on every branch. That is SAFE to defer, not merely convenient:
-# ``coverage._grid_reasons`` clause 12 and the complex tranche's clause 8
+# ``coverage._grid_reasons`` clause 12 and ``complex_fields``' clause 8
 # already refuse every beta run, so no shipped predicate can admit a
 # configuration these predicates also admit — an admitted-overlap ambiguity
 # cannot arise until a later coordinated change adds launch-side forwarders,

@@ -4,15 +4,15 @@
     python neutralize_ledger_labels.py --write
     python neutralize_ledger_labels.py --write --staging-root DIR
 
-Since owner ruling R22 every bind and record tool writes the neutral labels of
-``neutral_labels.py``. A record a round writes replaces the one before it, but an
-entry no round re-binds keeps what its bind wrote: the dated certification blocks
+Since the 2026-10-13 hygiene fix every bind and record tool writes the neutral labels of
+``neutral_labels.py``. A record a certification round writes replaces the one before it, but an
+entry no certification round re-binds keeps what its bind wrote: the dated certification blocks
 of ``cuda_kernels/certification.json`` accumulate, one per campaign, and a block cut
 before the tools were fixed names its machine. This tool rewrites those LABEL leaves
-in place, after the round's binds, so the guard's ledger leg
+in place, after a certification round's binds, so the guard's ledger leg
 (``tools/ci/check_hygiene.py --legs ledgers``) reads clean without a hand edit.
 
-WHAT IT REWRITES, and nothing else:
+What it rewrites, and nothing else:
 
 * a ``host`` or ``hostname`` value written as a raw machine stamp (one word alone,
   before ``:``, or before ``(machine-stamped`` or ``(NOT machine-stamped``): the word
@@ -21,15 +21,22 @@ WHAT IT REWRITES, and nothing else:
   ``records`` lines that quote a manifest's machine): the same label;
 * a path under the staging root in an ``environment_at_start`` block:
   ``<staging-root>/...`` (``neutral_labels.neutral_environment``; ``--staging-root``,
-  else the directory the block's local paths share).
+  else the directory the block's local paths share). The root may itself be written
+  under ``<staging-root>``: ``--staging-root '<staging-root>/<dir>'`` writes a value an
+  earlier bind left as ``<staging-root>/<dir>/x`` as ``<staging-root>/x``;
+* a home-relative run directory under the staging root (``~/<root>/...``, ``--home-root``,
+  by default the drivers' default staging root) in a provenance leaf (``out_dir``,
+  ``recert_launcher``, ``recert_driver``, ``run_root``, ``records``): ``<staging-root>/...``
+  (``neutral_labels.neutral_home_relative``).
 
-WHAT IT PROVES before anything is written (any failure refuses the whole run, exit 1):
+What it proves before anything is written (any failure refuses the whole run, exit 1):
 the document's shape is unchanged (the same keys in the same order, the same list
 lengths, the same type at every leaf); only string leaves under ``host``,
 ``hostname``, ``records`` and an ``environment_at_start`` block changed, none under a
 ``*sha256*`` key; every entry's ``fastpath.bound_digest`` and
 ``fastpath.live_capabilities`` are unchanged; each file still serialises the way its
-writer writes it; and the guard's ledger leg finds nothing in the result. The raw
+writer writes it; and the guard's ledger rules (its private-evidence rules, the
+home-relative one among them, included) find nothing in the result. The raw
 stamps stay in the artifacts under ``results/``, which never ship.
 
 Exit: 0 done (or nothing to do), 1 refused, 2 usage.
@@ -65,6 +72,8 @@ FORMATS = ({"indent": 2, "sort_keys": True}, {"indent": 2, "ensure_ascii": False
            {"indent": 2})
 HOST_KEYS = ("host", "hostname")
 LABEL_KEYS = HOST_KEYS + ("records",)
+#: The provenance leaves a record wrote a run directory into; ``records`` is one too.
+PROVENANCE_KEYS = ("out_dir", "recert_launcher", "recert_driver", "run_root", "records")
 ENVIRONMENT_KEY = "environment_at_start"
 #: A raw machine stamp: one word alone, or before a colon or a machine-stamp note.
 _STAMP = re.compile(r"^(?P<word>[A-Za-z0-9._-]+)(?P<rest>\s*$|\s*:.*|\s+\((?:NOT )?machine-stamped.*)$",
@@ -103,7 +112,8 @@ def stamped_words(document: Any) -> Set[str]:
     return words
 
 
-def rewrite(document: Any, words: Set[str], staging_root: Optional[str]
+def rewrite(document: Any, words: Set[str], staging_root: Optional[str],
+            home_root: str = neutral_labels.DEFAULT_HOME_STAGING_ROOT
             ) -> Tuple[Any, List[str], List[str]]:
     """``(document, changed key paths, problems)`` with every label leaf neutral."""
     out = copy.deepcopy(document)
@@ -115,6 +125,8 @@ def rewrite(document: Any, words: Set[str], staging_root: Optional[str]
             match = _STAMP.match(value.strip())
             if match and match.group("word") in words:
                 value = neutral_labels.GPU_HOST + match.group("rest")
+        if key in PROVENANCE_KEYS:
+            value = neutral_labels.neutral_home_relative(value, home_root)
         return neutral_labels.neutral_text(value, words) if key in LABEL_KEYS else value
 
     def walk(value: Any, path: str, key: Optional[str]) -> Any:
@@ -172,8 +184,8 @@ def prove(before: Any, after: Any, changed: List[str]) -> List[str]:
             problems.append(f"{path}: lies under a digest")
         if any(part in fastpath.BOUND_FIELDS for part in parts):
             problems.append(f"{path}: lies under a bound field")
-        if not (parts[-1].rstrip("]") in LABEL_KEYS or ENVIRONMENT_KEY in parts
-                or (len(parts) > 1 and parts[-2] in LABEL_KEYS)):
+        if not (parts[-1].rstrip("]") in LABEL_KEYS + PROVENANCE_KEYS or ENVIRONMENT_KEY in parts
+                or (len(parts) > 1 and parts[-2] in LABEL_KEYS + PROVENANCE_KEYS)):
             problems.append(f"{path}: is not a label leaf")
     if isinstance(before, dict):
         for name, entry in before.items():
@@ -202,7 +214,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--write", action="store_true", help="apply (default: report)")
     parser.add_argument("--staging-root", default=None, metavar="DIR",
-                        help="the directory a round was staged in, for recorded paths")
+                        help="the directory a certification round was staged in, for recorded paths")
+    parser.add_argument("--home-root", default=neutral_labels.DEFAULT_HOME_STAGING_ROOT,
+                        metavar="NAME", help="the directory under the home directory a "
+                        "home-relative run directory was staged in (default: %(default)s)")
     parser.add_argument("--root", type=Path, default=_ROOT, help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
     planned: Dict[str, Tuple[str, Any]] = {}
@@ -217,7 +232,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             refusals.append(f"{name}: {exc}")
             continue
         words = stamped_words(before)
-        after, changed, problems = rewrite(before, words, args.staging_root)
+        after, changed, problems = rewrite(before, words, args.staging_root, args.home_root)
         problems += prove(before, after, changed)
         refusals.extend(f"{name}: {problem}" for problem in problems)
         print(f"  {name}: {len(changed)} label leaf(s) to rewrite, {len(words)} raw "
@@ -230,7 +245,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         cache: Dict[str, str] = {}
         for name, (_text, after) in planned.items():
             for where, value, key in guard._walk(after, ""):
-                if guard.scan_text(rules, value, cache) or (
+                if guard.scan_text(rules, value, cache) or guard.scan_home_relative(value) or (
                         key in guard._HOST_KEYS and guard._HOST_STAMP.match(value)):
                     refusals.append(f"{name}:{where}: the guard still finds a hit")
     for refusal in refusals:

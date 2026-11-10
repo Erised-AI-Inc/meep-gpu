@@ -114,7 +114,7 @@ def wrong_coefficient_lattice_plan(fields: Any, pml: Any):
 
 
 def every_cell_record_plan(fields: Any, pml: Any):
-    """Mutation (KERNELS.md section 7.2): the select removed.
+    """Mutation (the per-chunk form battery): the select removed.
 
     The plan's chunk record is replaced by one in which every stored cell carries every
     axis's layer, so every cell takes MEEP's accumulation and writes ``f_w`` -- the

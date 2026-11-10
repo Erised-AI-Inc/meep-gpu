@@ -1,29 +1,29 @@
 """The DISPERSIVE hand-CUDA D/E weld -- the laptop half.
 
-WHAT THIS FILE PINS. The device verdict lives in
+What this file pins. The device verdict lives in
 ``parity/meep_gpu/gate_cuda_dispersive_fused_electric_pair.py``; what a laptop can pin
 is the half whose failure mode is a SILENT WRONG ANSWER before any kernel runs:
 
-* THE GHOST CHAIN'S INDEX. The one thing this product does that no other backend's
+* The ghost chain's index. The one thing this product does that no other backend's
   dispersive pair does: an imaged ghost's ``D - sum P`` is re-formed from the
   DESTINATION's pole words, not the source thread's registers. Both siblings refuse a
   folded grid on this family and never meet the question; four of the seven corpus
   rows this cell owns are folded, so it is the product.
-* THE SPLICE ANCHORS AS WELDS -- the certified dispersive body's opening read, its
+* The splice anchors as welds -- the certified dispersive body's opening read, its
   subtraction chain, its ``constitutive_apply`` call and the real twin's ghost product
   are all matched as WHOLE statements, so a moved certified line fails the emit rather
   than emitting a kernel that is quietly not the certified arithmetic.
-* THE DEGENERATE ARITY. At zero poles on a component the emitted lines must be
+* The degenerate arity. At zero poles on a component the emitted lines must be
   character-identical to the non-dispersive family's, because ``fields.py:1096-1098``
   returns the D array itself and forms no subtraction at all.
-* THE DISJOINTNESS MARGIN, which is one boolean and is load-bearing: two admitters on
+* The disjointness margin, which is one boolean and is load-bearing: two admitters on
   ``step_D`` leave the seam UNFUSED, so an overlap with the real twin would cost the
   79 rows that one serves rather than adding seven.
-* ``CARRIES_DEPOSIT_REPAIR`` AS A PER-CELL MEASUREMENT off the census rather than as a
+* ``CARRIES_DEPOSIT_REPAIR`` as a per-cell measurement off the census rather than as a
   constant: all seven rows of this cell carry an electric deposit inside the seam, so
   the flag is the whole product and a monkeypatched ``False`` must cost every row.
 
-WHERE THE CERTIFIED TEXT COMES FROM ON A LAPTOP. ``step_curl_kernels`` and
+Where the certified text comes from on a laptop. ``step_curl_kernels`` and
 ``constitutive_kernels`` import CuPy at module scope, so they cannot be imported on the
 merge-bar host -- and a test that skipped for that reason would leave the SPLICE
 unchecked everywhere a laptop runs. Their device strings are plain module-level
@@ -51,13 +51,13 @@ from . import dispersive_fused_electric_pair as family
 from . import fused_electric_pair as real
 from .test_fused_pairs import _NumpyWearingCupysName
 
-#: The census this round's numbers are read off. Named so a re-cut that moved the rows
+#: The census this file's numbers are read off. Named so a re-cut that moved the rows
 #: is a NAMED failure here rather than a silently different denominator.
 CENSUS = (pathlib.Path(__file__).resolve().parents[2] / "parity" / "meep_gpu"
           / "results" / "cuda_predicate_coverage_2026-09-02_dispersive_pair")
 
-#: The board cell this product occupies, and what the census says about it. THE
-#: DENOMINATOR IS SEVEN and every one of the seven carries an electric deposit inside
+#: The board cell this product occupies, and what the census says about it. The
+#: denominator is seven and every one of the seven carries an electric deposit inside
 #: the seam, which is why ``CARRIES_DEPOSIT_REPAIR`` is the product rather than a
 #: clause of it.
 CELL = {
@@ -144,7 +144,7 @@ def certified(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# 1. THE GHOST CHAIN -- what neither sibling backend does
+# 1. The ghost chain -- what neither sibling backend does
 # ---------------------------------------------------------------------------
 
 def test_every_ghost_subtracts_the_destinations_poles_not_the_sources(certified):
@@ -232,11 +232,11 @@ def test_the_pole_chain_at_this_threads_own_cell_reads_idx(certified):
 
 
 # ---------------------------------------------------------------------------
-# 2. THE ORDER AGAINST THE METALLIC CLEANUP
+# 2. The order against the metallic cleanup
 # ---------------------------------------------------------------------------
 
 def test_the_own_cell_chain_consumes_the_post_clear_register(certified):
-    """BOTH SIBLING BACKENDS PUT THE CHAIN AFTER THE CLEAR and they agree:
+    """Both sibling backends put the chain after the clear and they agree:
     ``metal_kernels/fused_dispersive_pair`` emits ``zero_metal_mask`` then
     ``float source = v{axis};``, and ``triton_kernels/dispersive_fused_pair`` applies
     its ZM block to ``v0/v1/v2`` then opens with ``s0 = v0``. The probe's
@@ -264,7 +264,7 @@ def test_the_near_ghost_reads_the_pre_clear_register_and_the_far_one_does_not(ce
 
 
 def test_all_three_sources_are_formed_before_any_store(certified):
-    """THE CERTIFIED BODY'S OWN REORDERING, kept. Neither sibling has it -- Metal
+    """The certified body's own reordering, kept. Neither sibling has it -- Metal
     dispatches one component per launch and Triton writes three sequential E blocks --
     and adopting either interleave would silently retype the lifted body."""
     source = certified((2, 2, 2))
@@ -275,7 +275,7 @@ def test_all_three_sources_are_formed_before_any_store(certified):
 
 
 # ---------------------------------------------------------------------------
-# 3. THE LIFT AND ITS ANCHORS
+# 3. The lift and its anchors
 # ---------------------------------------------------------------------------
 
 def test_the_lift_is_the_real_twins_edits_plus_exactly_three():
@@ -288,7 +288,7 @@ def test_the_lift_is_the_real_twins_edits_plus_exactly_three():
 
 
 def test_the_shared_flux_density_is_bound_exactly_once(certified):
-    """THE ALIASING HAZARD. Two ``__restrict__`` pointers to one allocation is UB that
+    """The aliasing hazard. Two ``__restrict__`` pointers to one allocation is UB that
     NVRTC miscompiles without a diagnostic, so the constitutive half must have no D
     source pointers at all -- at EVERY arity, including the degenerate one whose line
     is the non-dispersive family's."""
@@ -333,7 +333,7 @@ def test_the_swept_arities_all_emit_and_are_pure_ascii(certified, arity):
     """Every arity ``dispersive_kernels`` sweeps must emit here too: a triple this
     family emitted and that family never swept would be a body no device has run.
 
-    PURE ASCII IS A COMPILE REQUIREMENT: NVRTC's source file is written through the
+    Pure ASCII is a compile requirement: NVRTC's source file is written through the
     interpreter's locale encoding, so a non-ASCII comment fails at first launch rather
     than at import."""
     assert arity in family.swept_arities()
@@ -357,7 +357,7 @@ def test_device_sources_keys_every_swept_arity(certified):
 ])
 def test_a_moved_certified_anchor_fails_the_emit_rather_than_emitting(
         monkeypatch, certified, anchor):
-    """THE SPLICE ANCHORS ARE WELDS. A certified line that moved must fail the emit,
+    """The splice anchors are welds. A certified line that moved must fail the emit,
     not be silently splice-around -- the failure mode otherwise is a kernel that
     compiles and is quietly not the certified arithmetic."""
     original = dispersive_kernels.dispersive_source
@@ -402,7 +402,7 @@ def test_a_vanished_ghost_product_fails_the_carry_splice(monkeypatch):
 
 
 def test_the_emitter_refuses_by_name_where_the_certified_text_is_unreachable():
-    """THE SPLICE IS THE LIFT, so a missing half is not a degraded emit. The refusal
+    """The splice is the lift, so a missing half is not a degraded emit. The refusal
     names the modules one frame from the caller, and the predicate still answers --
     which is why those imports are defensive in the first place."""
     saved = (family.dispersive_kernels, family.constitutive_kernels)
@@ -432,7 +432,7 @@ def test_the_prelude_is_the_dispersive_familys_constitutive_apply(certified):
 
 
 # ---------------------------------------------------------------------------
-# 4. THE PREDICATE, ON REAL ENGINE OBJECTS
+# 4. The predicate, on real engine objects
 # ---------------------------------------------------------------------------
 
 def electric_source(grid, component="Ez"):
@@ -500,8 +500,8 @@ def test_the_all_periodic_corpus_shape_is_admitted(xp):
 
 def test_the_folded_and_walled_corpus_shape_is_admitted(xp):
     """``tests:TestLoadDump.*_2d`` -- metallic x AND y with y ALSO mirror-folded, so
-    ``zero_metal_D`` walls x alone and the near fill runs on y. BOTH SIBLING BACKENDS
-    REFUSE THIS SHAPE on their dispersive pair, which is why it is named here."""
+    ``zero_metal_D`` walls x alone and the near fill runs on y. Both sibling backends
+    refuse this shape on their dispersive pair, which is why it is named here."""
     fields, grid, layer = build(
         xp, poles=5, boundaries=("metallic", "metallic", "periodic"),
         symmetry=(("Y", 1),))
@@ -516,7 +516,7 @@ def test_the_folded_and_walled_corpus_shape_is_admitted(xp):
 
 
 def test_the_two_electric_products_partition_on_one_boolean(xp):
-    """THE DISJOINTNESS MARGIN, and it is load-bearing rather than tidy:
+    """The disjointness margin, and it is load-bearing rather than tidy:
     ``install_fused_pairs`` leaves a seam UNFUSED when two products admit it, so an
     overlap would COST the 79 rows the real twin serves rather than adding seven."""
     for poles in (0, 1, 2, 6):
@@ -539,7 +539,7 @@ def test_no_absorber_is_refused_to_the_no_pml_arm(xp):
 
 
 def test_an_undeclared_source_set_is_refused(xp):
-    """IGNORANCE IS NEVER AN EMPTY SET: ``Fields`` does not hold the source list, so a
+    """Ignorance is never an empty set: ``Fields`` does not hold the source list, so a
     predicate that inferred "no sources" from not being told would be exactly the
     over-covering the seam clause exists to prevent."""
     fields, grid, layer = build(xp, poles=2)
@@ -567,7 +567,7 @@ def test_a_conductive_engine_is_refused_on_the_injection_route(xp):
 
 
 def test_a_pole_count_past_the_cap_is_refused_by_name(xp):
-    """``POLE_COUNT_CAP`` is MEASURED, not chosen: ``gate_cuda_dispersive`` swept
+    """``POLE_COUNT_CAP`` is measured, not chosen: ``gate_cuda_dispersive`` swept
     0..CAP and a longer chain has never been run on a device."""
     fields, grid, layer = build(xp, poles=dispersive_kernels.POLE_COUNT_CAP + 1)
     covered, why = family.covers_dispersive_fused_electric_pair(
@@ -588,7 +588,7 @@ def test_the_proxy_hides_only_the_polarizations(xp):
 
 
 # ---------------------------------------------------------------------------
-# 5. THE DEPOSIT REPAIR, AS A PER-CELL MEASUREMENT
+# 5. The deposit repair, as a per-cell measurement
 # ---------------------------------------------------------------------------
 
 def test_the_flag_is_declared_and_reaches_the_shared_clause():
@@ -630,8 +630,8 @@ def test_the_flag_is_worth_every_row_of_the_cell(xp):
 
 def test_the_repair_admits_a_dispersive_electric_seam(xp):
     """``deposit_repair.repairable`` does not refuse a pole -- it refuses only an
-    off-diagonal chi1inv and an instantaneous chi2/chi3 -- and NOT REFUSED IS NOT
-    MEASURED. What makes the admission sound here is the driver's order:
+    off-diagonal chi1inv and an instantaneous chi2/chi3 -- and not refused is not
+    measured. What makes the admission sound here is the driver's order:
     ``update_P`` runs AFTER ``update_E`` (driver.py:3315), so the polarization arrays
     the repair reads are the ones the launch consumed, unchanged."""
     fields, grid, layer = build(xp, poles=4)
@@ -641,13 +641,13 @@ def test_the_repair_admits_a_dispersive_electric_seam(xp):
 
 
 # ---------------------------------------------------------------------------
-# 6. THE CELL, READ OFF THE CENSUS
+# 6. The cell, read off the census
 # ---------------------------------------------------------------------------
 
 def _census_rows():
     """Every row of the pinned census, keyed ``leg:row``.
 
-    A MISSING CENSUS IS A FAILURE, NOT A SKIP. The census is a checked-in artifact
+    A missing census is a failure, not a skip. The census is a checked-in artifact
     under ``parity/meep_gpu/results/``, and skipping when it is absent would let this
     product's whole denominator disappear silently -- which is the one thing the cell
     numbers below exist to prevent.
@@ -669,7 +669,7 @@ def _census_rows():
 
 
 def test_the_census_names_the_seven_rows_and_this_product_admits_them_all():
-    """THE DENOMINATOR IS SEVEN, and it is named row by row so a census whose cell
+    """The denominator is seven, and it is named row by row so a census whose cell
     moved fails with WHICH row moved rather than with a changed integer.
 
     ``covered_modulo_backend`` is the reading: the census is cut on a backend-free
@@ -726,7 +726,7 @@ def test_the_real_twin_still_refuses_every_row_of_this_cell():
 def test_the_installer_gives_the_span_to_the_three_slot_weld(xp):
     """SLOT ARBITRATION, and it is a fact about the COMPOSER not this file.
 
-    THE HISTORY IS THE POINT OF THE ASSERTION. This product's predicate ADMITS every
+    The history is the point of the assertion. This product's predicate ADMITS every
     row of its cell -- the tests above measure that and its gate certifies the
     arithmetic -- and it has never been about to install here, for a reason that
     changed shape once:
@@ -743,7 +743,7 @@ def test_the_installer_gives_the_span_to_the_three_slot_weld(xp):
       This product is refused by ``_superseded_by_a_longer_span``, whose reason names
       the containing span rather than a trade.
 
-    WHAT IS PINNED IS THE INVARIANT BOTH READINGS SHARE and it is stronger now, not
+    What is pinned is the invariant both readings share and it is stronger now, not
     weaker: this product never silently displaces the later seam's product, the
     refusal is BY NAME, and its own predicate still admits the run.
     """

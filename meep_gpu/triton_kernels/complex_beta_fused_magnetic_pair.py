@@ -15,8 +15,8 @@ are already certified and neither is re-derived here:
   :func:`.complex_fused_magnetic_pair.complex_fused_curl_constitutive_B` already
   makes between exactly those two bodies on a beta = 0 complex run.
 
-SO THIS KERNEL IS ``complex_fused_curl_constitutive_B``, CHARACTER FOR CHARACTER,
-PLUS THE SAME STATEMENTS ``beta_bloch_pml_curl_step`` ADDS TO
+So this kernel is ``complex_fused_curl_constitutive_B``, character for character,
+plus the same statements ``beta_bloch_pml_curl_step`` adds to
 ``bloch_pml_curl_step`` — two scalar word arguments, the ``HAS_BETA`` constexpr,
 and the beta pass after the curl forms and before the stores (MEEP's own order:
 the pass runs after every component's curl, step_db.cpp:161-175). A reader must be
@@ -37,7 +37,7 @@ ladder (:func:`.forms.fold_ladder`). :data:`MULTIPLY_HELPERS` is the connection
 alone, as on the beta-less twin.
 
 ===========================================================================
-WHAT THE CORPUS SAYS THIS IS WORTH — measured, not argued
+What the corpus says this is worth — measured, not argued
 ===========================================================================
 
 ONE seam-instance, from
@@ -55,7 +55,7 @@ magnetic seam is quiet on it (``in_seam_source: false``,
 (:mod:`.complex_beta_fused_electric_pair`).
 
 ===========================================================================
-THE FIVE PASSES IN THE SEAM
+The five passes in the seam
 ===========================================================================
 
 The driver runs five passes between the two halves (driver.py:3281-3288)::
@@ -73,13 +73,13 @@ entirely INSIDE the curl half and touches no seam pass:
   :func:`~..deposit_repair.repairable` decides, refusing BY NAME every seam it
   cannot invert. Ignorance is never an empty set: an undeclared ``sources`` is
   a REFUSAL, not an assumed ``()``.
-* **``fill_symmetry_bc_B`` / ``fill_folded_far_ghosts_B`` — PROVABLY NO-OPS
-  HERE**, not carried and not refused: both return at their first line unless
+* **``fill_symmetry_bc_B`` / ``fill_folded_far_ghosts_B`` — provably no-ops
+  here**, not carried and not refused: both return at their first line unless
   ``grid.has_symmetry()`` (stepping.py:1481-1482, :1565-1566), and the beta
   complex family refuses every fold outright
   (:func:`.special_kz._beta_complex_grid_reasons` clause 4 — the folded complex
   beta cell belongs to :mod:`.folded_beta_complex_fused_pair` and its magnetic
-  twin). THE PREDICATE RE-CHECKS IT ANYWAY rather than reading its own coverage
+  twin). The predicate re-checks it anyway rather than reading its own coverage
   off another module's guard.
 * **``zero_metal_B`` — CARRIED INLINE** (driver.py:3286;
   ``stepping._zero_metal`` :2206-2247), through
@@ -179,7 +179,7 @@ if triton is not None:
 
     # The same constexpr code as ``complex_fields.METALLIC``, restated for the
     # reason that module restates ``kernels``' — importing a ``tl.constexpr``
-    # wrapper and re-wrapping it is not the same object. ONLY METALLIC IS NAMED:
+    # wrapper and re-wrapping it is not the same object. Only metallic is named:
     # the certified complex curl body branches on ``== METALLIC`` and takes
     # periodic as the else.
     METALLIC = tl.constexpr(1)
@@ -596,10 +596,10 @@ def complex_beta_fused_magnetic_pair_coverage(fields: Any, pml: Any,
     if grid is None:
         return Coverage(False, tuple(dict.fromkeys(reasons + ["fields carries no grid"])))
 
-    # THE SOURCE SEAM. A magnetic source is injected BETWEEN the two halves
+    # The source seam. A magnetic source is injected BETWEEN the two halves
     # (driver.py:3283-3284), so a bare fused pair would consume a pre-injection
     # B. An ELECTRIC source is injected in the D/E seam and does not disqualify
-    # this pair. IGNORANCE IS NOT AN EMPTY SET: `Fields` does not hold the
+    # this pair. Ignorance is not an empty set: `Fields` does not hold the
     # source list, so an undeclared ``sources`` is a REFUSAL. The repair flag is
     # passed, not assumed: `repairable` still refuses by name every seam it
     # cannot invert.
@@ -616,10 +616,10 @@ def complex_beta_fused_magnetic_pair_coverage(fields: Any, pml: Any,
             f"closes"),
         carries_repair=CARRIES_DEPOSIT_REPAIR))
 
-    # THE TWO SYMMETRY PASSES. Both return at their first line unless
+    # The two symmetry passes. Both return at their first line unless
     # `grid.has_symmetry()` (stepping.py:1481-1482, :1565-1566), and BOTH halves
     # already refuse a symmetry (`_beta_complex_grid_reasons` clause 4).
-    # RE-CHECKED HERE ANYWAY, not inferred: this module's coverage may not be
+    # Re-checked here anyway, not inferred: this module's coverage may not be
     # read off another module's guard — the folded complex beta cell belongs to
     # the folded product, and if the beta complex family ever admits a fold this
     # weld would silently swallow two passes that had started doing work.
@@ -634,7 +634,7 @@ def complex_beta_fused_magnetic_pair_coverage(fields: Any, pml: Any,
                 f"axis {axis} is folded by a mirror plane: the two symmetry passes "
                 f"in this seam are no longer no-ops and this weld carries neither")
 
-    # THE WALL CLEAR is carried inline, so the grid must be able to answer which
+    # The wall clear is carried inline, so the grid must be able to answer which
     # axes are walled; an unanswerable one compiles to ZM=False and silently skips
     # a plane the array path clears.
     for name in ("has_metallic", "is_metallic", "is_mirrored"):
@@ -707,7 +707,7 @@ class ComplexBetaFusedMagneticPairPlan:
         self._h_aux = tuple(CupyPointer(_word_view(a)) for a in h_aux)
         self._h_coefficients = tuple(
             CupyPointer(_flat(a)) for a in h_coefficients)
-        # THE INT32 WORD BOUND. The kernel addresses words as ``2 * idx`` in
+        # The int32 word bound. The kernel addresses words as ``2 * idx`` in
         # int32, so the complex cell count must leave room for the doubling —
         # the same halving the complex predicates apply (module docstring of
         # complex_fields, "Word addressing"). Refused here as well because the

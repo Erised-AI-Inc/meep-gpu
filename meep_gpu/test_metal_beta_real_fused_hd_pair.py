@@ -1,17 +1,17 @@
 """Laptop tests for the REAL BETA Metal H->D weld, BOTH variants.
 
-THE MERGE BAR, NOT THE CERTIFICATION. The byte claim is a device gate that runs
+The merge bar, not the certification. The byte claim is a device gate that runs
 complete driver steps and compares uint32 words
 (``parity/meep_gpu/gate_metal_beta_real_fused_hd_pair.py``). These tests are chosen for
 what a byte gate would catch late, on a configuration nobody sweeps, or not at all --
-and on this family that matters more than usual, because the CELL IS TWO CORPUS ROWS.
+and on this family that matters more than usual, because the cell is two corpus rows.
 The lift can only ever be as strong as its denominator; these tests are where the
 levers a two-row cell cannot pull are held.
 
-* **THE VARIANT PARTITION.** One product, two board cells, sound only while no grid is
+* **The variant partition.** One product, two board cells, sound only while no grid is
   admitted by both emitters. ``resolve_variant`` reads the fold off the grid, and the
   partition is asserted total and exclusive;
-* **BETA IS A CURL-ONLY TERM**, the premise that lets the certified real ``update_H``
+* **Beta is a curl-only term**, the premise that lets the certified real ``update_H``
   be welded in unchanged. ``certified_h_cell`` asserts it at build time and the test
   drives that assertion INCLUDING the negative;
 * **the packed record is the only UNPADDED one of the four H->D welds** -- seven 4-byte
@@ -26,7 +26,7 @@ levers a two-row cell cannot pull are held.
 
 Everything that needs a device is guarded and skipped.
 
-WHAT THIS FILE DOES NOT CLAIM. Nothing here is a byte-identity measurement and nothing
+What this file does not claim. Nothing here is a byte-identity measurement and nothing
 here licenses installing the product. The cells' numbers -- 1 row at
 ``(special_kz real beta)`` and 1 at ``(folded beta real)`` -- come from the Metal
 fusion board and are asserted against it.
@@ -157,7 +157,7 @@ def test_the_family_is_welded_and_the_debt_it_replaced_is_kept():
     tree cannot show, and cutting the entry without emptying it leaves a welded family
     still declaring its weld is owed. Both are read off the tree here.
 
-    THE ORDER IS THE POINT. Emptying ``WELD_OWED`` MOVES the module, and the module is
+    The order is the point. Emptying ``WELD_OWED`` MOVES the module, and the module is
     the first pin of its own weld, so ``mint_metal_weld.py`` refuses an artifact whose
     recorded digests have moved. The gate was therefore re-run AGAINST the emptied
     bytes and minted from that artifact. The debt text is kept in
@@ -192,7 +192,7 @@ def test_the_pointer_half_of_the_signature_is_the_plain_real_products():
                  "UNSHARED_KMS_BINDINGS"):
         assert getattr(beta, name) == getattr(plain, name), name
     assert beta.ROTATED_NAMES is plain.ROTATED_NAMES
-    # THE TWO BETA WORDS ARE THE ONLY DIFFERENCE, and unpacked they cost exactly two.
+    # The two beta words are the only difference, and unpacked they cost exactly two.
     assert beta.SEPARATE_SCALAR_BINDINGS == plain.SEPARATE_SCALAR_BINDINGS + 2 == 37
 
 
@@ -317,7 +317,7 @@ def test_the_beta_increment_is_the_negated_product_on_two_targets():
 
 
 def test_the_beta_coefficient_is_this_seams_electric_convention_and_unwidened():
-    """Under REAL storage the two conventions coincide -- and that is MEASURED here.
+    """Under REAL storage the two conventions coincide -- and that is measured here.
 
     ``beta_curl_coefficients`` multiplies by ``+/-1j`` only under complex storage
     (stepping.py:798-799), so a real run's magnetic and electric words are the same
@@ -462,7 +462,7 @@ def test_a_beta_free_real_grid_is_refused_naming_beta(flush_policy):
 
 
 def test_the_plain_real_product_admits_what_this_one_refuses(flush_policy):
-    """THE OTHER DIRECTION of the beta clause."""
+    """The other direction of the beta clause."""
     fields, pml = _pair(beta_value=0.0)
     verdict = plain.metal_fused_hd_pair_coverage(fields, pml, (), _FakeResidency())
     assert verdict.covered, list(verdict.reasons)

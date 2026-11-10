@@ -1,9 +1,9 @@
 """THE DYNAMIC-LOOP GATE's subject: one sub-step, written twice, one axis apart.
 
-WHAT THIS MEASURES, AND WHY IT IS WORTH A DEVICE LEG THAT BUYS NO COVERAGE.
+What this measures, and why it is worth a device leg that buys no coverage.
 
 Every hand-CUDA family after the constitutive pair has to decide what to do with
-the *arity* axes — the compile-time constants that control HOW MANY TERMS an
+the *arity* axes — the compile-time constants that control how many terms an
 unrolled inner sum has (``NP*`` pole count, ``R**`` row count, ``DRIVEN*``,
 ``ZERO_ROWS``). The *branch* axes are already settled and cost nothing: the
 shipped ``step_B_pml_real`` takes ``int bc_x, bc_y, bc_z`` as ordinary
@@ -17,8 +17,8 @@ question, not a performance one.
 It had never been measured. This module is the subject of the measurement:
 the same sub-step compiled two ways, differing in nothing but that.
 
-THE AXIS IS ``NP`` — THE PER-COMPONENT LIVE POLE COUNT — AND IT WAS CHOSEN BY
-COUNTING THE CORPUS, not by convenience. From the 210 rows of
+The axis is ``NP`` — the per-component live pole count — and it was chosen by
+counting the corpus, not by convenience. From the 210 rows of
 ``results/cuda_predicate_coverage_2026-08-15_constitutive/{examples,tests,
 tests_param_matched}.jsonl``, read through each row's ``polarization`` record
 (the per-state ``driven`` component list, which is
@@ -41,7 +41,7 @@ Ex/Ey/Ez in every one of them (the measured triples are exactly (1,1,1), (2,2,2)
 axis nothing drives would make this measurement worthless — and the sweep below
 covers 0..8 so the answer is not read off two points.
 
-IT IS ALSO THE AXIS WHOSE SUM IS ALREADY KNOWN TO BE ORDER-SENSITIVE, which is
+It is also the axis whose sum is already known to be order-sensitive, which is
 what makes it the honest choice rather than the flattering one. The sibling
 Triton module's recon measured, on real Grid/Fields/PML cases:
 
@@ -54,7 +54,7 @@ A "bit-identical" verdict here therefore cannot be explained by the sum being
 insensitive; the controls below re-establish that on this leg's own operands
 rather than inheriting it.
 
-WHAT IS TRANSCRIBED, AND FROM WHERE. The sub-step is ``stepping.update_E``
+What is transcribed, and from where. The sub-step is ``stepping.update_E``
 (stepping.py:954) with an active PML and at least one registered susceptibility.
 Per component the array path runs:
 
@@ -100,7 +100,7 @@ Every case of this experiment launches with every cell inside
 the accumulation runs everywhere and the outside form is exercised only by the
 reference's own validation against ``stepping``.
 
-The ARITY AXIS IS THE ``s`` LINE AND NOTHING ELSE. Everything downstream of it is
+The arity axis is the ``s`` line and nothing else. Everything downstream of it is
 byte-for-byte the certified ``constitutive_apply`` from
 ``cuda_kernels/constitutive_kernels.py``, reproduced here rather than imported so
 that this file compiles standalone on a host that loads it by path — and pinned
@@ -113,13 +113,13 @@ THE VARIANTS
 
 ``unrolled``            NP is a compile-time ``#define``; the subtraction chain is
                         written out. 24 pole pointers, unused slots bound to the
-                        component's own D and never read. THIS IS WHAT THE
-                        SHIPPED KERNELS DO, and one NVRTC compile per (NP0,NP1,
+                        component's own D and never read. This is what the
+                        shipped kernels do, and one NVRTC compile per (NP0,NP1,
                         NP2) triple is precisely the "variant cache" the
                         reversal condition prices.
 ``dynamic``             NP is ``int np0, np1, np2``; the chain is a
                         ``for (int p = 0; p < np; ++p) s = s - P[p][idx];`` over a
-                        DEVICE ARRAY OF POINTERS. One compile covers every arity.
+                        device array of pointers. One compile covers every arity.
 ``dynamic_notrips``     ``dynamic`` with the trip-count store removed. The NULL
                         that proves the counter is inert on the arithmetic.
 ``dynamic_pragma``      ``dynamic`` with ``#pragma unroll`` on the loop. Asks the
@@ -143,12 +143,12 @@ that reports the verdict — a gate that cannot fail certifies nothing:
                         The defect the sibling track caught 20/20.
 
 =============================================================================
-OPERAND CLASSES -- AND A DESIGN ASSUMPTION THAT MEASUREMENT OVERTURNED
+Operand classes -- and a design assumption that measurement overturned
 =============================================================================
 
 This module was first written with a purpose-built ``wide_exponent`` class as
 the headline, on the argument that terms spread over many decades "absorb and
-cancel, and that is what makes association order bite". THAT ARGUMENT IS WRONG,
+cancel, and that is what makes association order bite". That argument is wrong,
 and it was caught by measuring it in float32 NumPy on a laptop before any device
 time was spent. Forward-vs-reversed and forward-vs-presummed disagreement as a
 fraction of OUTPUT words -- the quantity the gate compares, not the pole sum --
@@ -189,7 +189,7 @@ argument. The other two are kept as coverage, not as the verdict:
   is still informative -- but it is kept separate so this leg's headline means
   what the other legs' headlines mean.
 
-THE VACUITY FLOOR is stated on the headline class: every ARMED control must be
+The vacuity floor is stated on the headline class: every ARMED control must be
 caught on at least :data:`CONTROL_CATCH_FLOOR` of the ELIGIBLE words, or the leg
 is reporting on operands that cannot tell two association orders apart and its
 "identical" means nothing. ELIGIBLE, not all, and that distinction matters for
@@ -198,7 +198,7 @@ whose OWN arity is at least 2, so scoring it across all six output arrays would
 manufacture a failure out of a case like (0, 1, 2). The eligible set is computed
 per case and recorded in the artifact.
 
-NOTHING HERE IS A SHIPPED KERNEL. This module compiles no coverage, exports no
+Nothing here is a shipped kernel. This module compiles no coverage, exports no
 predicate, and is imported by no engine path. It exists to answer one question
 about the cost model of tasks #54 and the complex family.
 """
@@ -258,8 +258,8 @@ SWEEP_SHAPES: Tuple[Tuple[int, int, int], ...] = (
 
 VALUE_CLASSES: Tuple[str, ...] = ("uniform", "wide_exponent", "subnormal_band")
 
-#: The class the headline verdict is read from, CHOSEN BY THE TABLE IN THE MODULE
-#: DOCSTRING and not by argument: ``uniform`` separates association orders three
+#: The class the headline verdict is read from, chosen by the table in the module
+#: docstring and not by argument: ``uniform`` separates association orders three
 #: times more often than the purpose-built wide class at NP=2, and more often at
 #: every other arity too.
 HEADLINE_VALUE_CLASS = "uniform"
@@ -275,11 +275,11 @@ SUBNORMAL_NEEDLES = np.array(
 #: The fraction of ELIGIBLE words at which an armed control must be caught before
 #: the headline is allowed to mean anything.
 #:
-#: SET FROM THE OUTPUT-LEVEL MEASUREMENT, AND THAT CORRECTION IS THE POINT.
+#: Set from the output-level measurement, and that correction is the point.
 #: This floor was first set at 0.25 from a laptop calibration of the raw pole sum
 #: ``s``, which reads 0.324 at NP=2. The device leg then failed sixteen legs --
-#: every NP=2 case on every shape, systematically -- because THE GATE DOES NOT
-#: COMPARE ``s``. It compares E and f_w_E, and the arithmetic between them
+#: every NP=2 case on every shape, systematically -- because the gate does not
+#: compare ``s``. It compares E and f_w_E, and the arithmetic between them
 #: collapses differences:
 #:
 #:     NP=2, uniform, 16x16x24, forward vs reversed
@@ -290,8 +290,8 @@ SUBNORMAL_NEEDLES = np.array(
 #:                                                            against a same-size E
 #:       both, which is what the gate scores           0.229
 #:
-#: THE TRANSFERABLE LESSON, and it applies to every mutation on this project: a
-#: control's catch rate must be calibrated on THE QUANTITY THE GATE COMPARES, not
+#: The transferable lesson, and it applies to every mutation on this project: a
+#: control's catch rate must be calibrated on the quantity the gate compares, not
 #: on the intermediate the mutation targets. Calibrating on the intermediate
 #: overstated this gate's discrimination by 41% at its weakest armed arity.
 #:
@@ -341,7 +341,7 @@ def _band_draw(shape: Tuple[int, int, int], rng) -> np.ndarray:
 def _wide_draw(shape: Tuple[int, int, int], rng, decades: float = 8.0) -> np.ndarray:
     """One array across ~2*``decades`` of exponent, mixed signs, no subnormals.
 
-    THE POINT OF THE CLASS. A sum of terms that all share an exponent is nearly
+    The point of the class. A sum of terms that all share an exponent is nearly
     order-insensitive: the partial sums stay in one binade and every regrouping
     rounds the same way. Spreading the terms across many decades makes each
     partial sum absorb the small terms differently depending on when they arrive,
@@ -402,11 +402,11 @@ def operand_census(arrays: Dict[str, np.ndarray]) -> Dict[str, int]:
 # The device sources
 # ---------------------------------------------------------------------------
 #
-# ONE PRELUDE, TWO SIGNATURES, SEVEN BODIES. The prelude is the certified
+# One prelude, two signatures, seven bodies. The prelude is the certified
 # constitutive apply, character for character; the two signatures differ only in
 # how the pole volumes arrive; the bodies differ only in the `s` line.
 #
-# PURE ASCII IS A COMPILE REQUIREMENT ON THIS PATH, not a style rule.
+# Pure ASCII is a compile requirement on this path, not a style rule.
 # ``cupy.cuda.compiler.compile_using_nvrtc`` writes the source through a bare
 # ``open(..., 'w')`` (compiler.py:368), so the bytes go through the interpreter's
 # LOCALE encoding — ASCII under C/POSIX, which is what a non-interactive shell on
@@ -456,7 +456,7 @@ _INDEX_BLOCK = r'''
 #: ``(a0 <= r < a1) || (b0 <= r < b1)``, read from words 12..23 of the int32[25]
 #: record (``chunk_map.chunk_bounds_record``, half-integer lattice second).
 _RECORD_BLOCK = r'''
-    // THE CHUNK RECORD (chunk_map.chunk_bounds_record): row r of this lattice and axis
+    // The chunk record (chunk_map.chunk_bounds_record): row r of this lattice and axis
     // lies in a chunk that carries the axis's layer iff (a0 <= r < a1) || (b0 <= r < b1).
     const int cbh_x_a0 = cb[12], cbh_x_a1 = cb[13], cbh_x_b0 = cb[14], cbh_x_b1 = cb[15];
     const int in_h_x = (i >= cbh_x_a0 && i < cbh_x_a1) || (i >= cbh_x_b0 && i < cbh_x_b1);
@@ -717,7 +717,7 @@ CONTROL_ARMED_AT: Dict[str, int] = {
 def unrolled_source(np0: int, np1: int, np2: int) -> str:
     """The fully-unrolled kernel at one (NP0, NP1, NP2) triple.
 
-    The arity is a ``#define`` IN THE SOURCE rather than a ``-D`` in the option
+    The arity is a ``#define`` in the source rather than a ``-D`` in the option
     tuple, and that is deliberate: it keeps the compile options of the two
     variants LITERALLY IDENTICAL, so the only thing that differs between the two
     binaries under comparison is the body. It also makes the per-variant NVRTC
@@ -913,7 +913,7 @@ def make_case(shape: Tuple[int, int, int], arities: Tuple[int, int, int],
               value_class: str, seed: int) -> Dict[str, Any]:
     """Every host array one case needs, plus its operand census.
 
-    THE POLE VOLUMES ARE ALWAYS ALLOCATED AT FULL ``MAX_POLES``, whatever the
+    The pole volumes are always allocated at full ``MAX_POLES``, whatever the
     arity, and are always filled with live values. Binding an unused slot to a
     zero volume would make the short control undetectable at the boundary and
     would make "the loop stopped early" look like "the loop read a zero".
@@ -976,7 +976,7 @@ def sweep_cases(shapes: Sequence[Tuple[int, int, int]] = SWEEP_SHAPES,
     Separated from :func:`make_case` so the case list can be counted, printed and
     asserted on a laptop before an hour of device time is spent on it.
 
-    THE UNIFORM TRIPLE IS WHAT THE CORPUS ACTUALLY DRIVES -- every one of the 15
+    The uniform triple is what the corpus actually drives -- every one of the 15
     dispersive rows has the same live pole count on Ex, Ey and Ez. A handful of
     ASYMMETRIC triples are added anyway, because an anisotropic sigma makes them
     reachable (dispersion.py:640-642 drops a component whose sigma is identically
@@ -1050,7 +1050,7 @@ def _ordered(words: np.ndarray) -> np.ndarray:
     one is reflected through ``INT32_MIN``. So an ulp distance means the same
     thing across the sign boundary as it does inside one binade.
 
-    ``+0.0`` AND ``-0.0`` COLLAPSE TO THE SAME KEY, which is correct and is
+    ``+0.0`` and ``-0.0`` collapse to the same key, which is correct and is
     deliberately not worked around: they are the same number and zero ulps apart.
     The WORD comparison is what reports them as different, and it does; the ulp
     figure answers "by how much", to which the honest answer there is "by
@@ -1096,7 +1096,7 @@ def moved_words(before: Dict[str, np.ndarray], after: Dict[str, np.ndarray],
                 names: Sequence[str] = OUTPUT_NAMES) -> Dict[str, Any]:
     """How much of the output a launch actually WROTE, against its own input.
 
-    THE VACUITY FLOOR. A kernel that returned its inputs untouched would compare
+    The vacuity floor. A kernel that returned its inputs untouched would compare
     identical to another kernel that did the same, and the leg would report a
     perfect match having measured nothing. This is checked in EVERY variant of
     EVERY case, not once per sweep.

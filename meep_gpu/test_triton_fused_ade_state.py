@@ -32,7 +32,7 @@ def _live_probe_is_welded(record, weld_name, repo_key, path):
     executed?" — and it is answered by the weld, which is the record that carries
     a status, a policy and an artifact digest.
 
-    A MISSING WELD IS A NAMED FAILURE, never a skip. The probe was re-cut on
+    A missing weld is a named failure, never a skip. The probe was re-cut on
     device on 2026-08-19 and the weld entry is pending application to
     fingerprints.json; until it lands this test says so, with the digest to apply.
     """
@@ -211,7 +211,7 @@ def test_fused_ADE_state_record_is_welded_to_every_live_dependency():
     assert specialized["kernel"] == "fused_ade_state"
     module_path = pathlib.Path(module.__file__)
     live = hashlib.sha256(module_path.read_bytes()).hexdigest()
-    # ONE HOME FOR THE RULE (device_identity.py:209). This entry pins a
+    # One home for the rule (device_identity.py:209). This entry pins a
     # specialized kernel module, whose device identity is the ``@triton.jit``
     # body plus the constants it reads; an edit the shared rule proves leaves
     # those alone leaves the record describing the shipped kernel. False for
@@ -250,7 +250,7 @@ def test_fused_ADE_state_record_is_welded_to_every_live_dependency():
     # later, mutually excluded central route evolves.
     for name in live:
         assert len(gate["source_sha256"][name]) == 64, name
-    # THE LIVE-PROBE PIN MOVED; the historical entry is left alone. See the
+    # The live-probe pin moved; the historical entry is left alone. See the
     # sibling comment in test_triton_dispersive_fused_pair for the whole reason:
     # the probe was re-cut on 2026-08-19 to install a NAMED subnormal policy and
     # to stamp provenance, and this tree adds a record rather than re-typing one.

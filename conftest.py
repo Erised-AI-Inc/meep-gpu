@@ -324,7 +324,7 @@ IDENTITY_BUILD_RECORD_ENVIRONMENT = "MEEP_IDENTITY_BUILD_RECORD"
 
 def _probe_meep_identity_reference():
     # Measured, in child processes, by tools/check_install.py's identity check in keep
-    # mode: MEEP 1.33.0 single precision, a build record describing the loaded images
+    # mode: MEEP 1.35.0 single precision, a build record describing the loaded images
     # with a clean fused multiply-add census (re-run here), subnormals kept after MEEP's
     # switch, and this host's math library as the record pins.
     if importlib.util.find_spec("meep") is None:

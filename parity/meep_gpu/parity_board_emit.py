@@ -13,7 +13,7 @@ through templates, and Triton kernels inline ``@triton.jit`` helpers of other mo
 text a module's own file spells is therefore the wrong witness for most rows; the text its
 builder hands the compiler is the right one.
 
-WHAT "EMITTED" MEANS, PER TABLE (each UNIT is one compiled text):
+What "emitted" means, per table (each unit is one compiled text):
 
 * **CUDA** -- the exact string ``cp.RawKernel`` is constructed with. ``cupy`` is replaced,
   in the child process only, by NumPy wearing CuPy's name (the stand-in the table's own
@@ -42,7 +42,7 @@ WHAT "EMITTED" MEANS, PER TABLE (each UNIT is one compiled text):
   has none of its own names it in its recipe (``launches``, ``also_launches``), and the
   recipe is refused unless the module's own text names (or imports) it.
 
-THE CANONICAL SWEEPS are data (``parity_board_emit.json``): per table, a small domain per
+The canonical sweeps are data (``parity_board_emit.json``): per table, a small domain per
 emitter parameter -- real PML 3-D (every axis metallic, both half-steps) and the
 family's own minimal case (the periodic triple, the first combination its emitter
 accepts), wall clears and Bloch phases both ways, both complex-multiply arms -- and per
@@ -52,7 +52,7 @@ off-diagonal wall masks). A parameter with no declared domain is a refusal, neve
 combination is that combination's absence, counted; a sweep larger than ``cap`` is read
 at ``cap`` points spread evenly.
 
-REFUSALS, BY NAME. A module whose emitter raises on this tree (an anchor that no longer
+Refusals, by name. A module whose emitter raises on this tree (an anchor that no longer
 matches its re-cut base) is refused with the exception text: no compiled text exists to
 read. A module with no emit route at all (a text transform, a host scan, a null arm) is
 reported as such, and the board falls back to the v1 source-text witness for it, saying so

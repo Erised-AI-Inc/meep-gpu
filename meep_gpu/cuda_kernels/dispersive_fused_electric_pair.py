@@ -1,6 +1,6 @@
 """The DISPERSIVE hand-CUDA fused pair: ``step_D`` -> the two fills -> pole-aware ``update_E``.
 
-THE LARGEST SINGLE PRODUCT LEFT ON ANY BACKEND when it was built. The board's
+The largest single product left on any backend when it was built. The board's
 ``D_to_E (cuda_curl/PML, cuda_dispersive/dispersive)`` cell carries SEVEN corpus rows
 and no product occupied it: three ``stochastic_emitter*`` examples and the four
 ``TestLoadDump.*_2d`` tests
@@ -11,21 +11,21 @@ verdict was POINTWISE-BUILDABLE, so what was missing was the weld and nothing el
 
 This module is the twin of :mod:`.fused_electric_pair` with ONE half exchanged. Every
 geometric emitter it needs -- the ownership inversion, the pre-clear copy, the wall
-carry, the ghost destination closure -- is IMPORTED FROM THAT MODULE rather than
+carry, the ghost destination closure -- is imported from that module rather than
 copied, so the two families cannot drift on the carry, and the only text this file
 writes is the pole chain and the two anchored edits that splice it in.
 
 =============================================================================
-BUILT AND RELEASED, AND NOT INSTALLED ON THIS CORPUS -- ADDED 2026-09-02
+Built and released, and not installed on this corpus -- added 2026-09-02
 =============================================================================
 
-Added by the CONDUCTIVE round, which hit the same collision on its own cells and
-measured this one while it was there. NOTHING BELOW IS RETRACTED: the arithmetic is
+Added by the change that built the conductive welds, which hit the same collision
+on its own cells and measured this one while there. Nothing below is retracted: the arithmetic is
 gated and RELEASED under both float32 subnormal policies
 (``certification.json:cuda_dispersive_fused_electric_pair_2026-09-02``) and the
 predicate still admits all seven rows.
 
-WHAT CHANGED IS WHO GETS THE SLOT. This product owns ``step_D`` AND ``update_E``;
+What changed is who gets the slot. This product owns ``step_D`` AND ``update_E``;
 ``cuda_fused_polarization_pair`` owns ``update_E`` AND ``update_P``. All SEVEN rows of
 this family's cell are EXACTLY the seven that pair serves at E->P -- measured on the
 stamped census (every row's ``cuda_ade`` covering ``update_P``) and on the board cut
@@ -36,14 +36,14 @@ made ``test_fused_polarization_pair.py``'s PML seam test read red.
 
 ``fused_pairs._later_seam_claimant`` now leaves the slot with the product that already
 served it. Lifting that needs a THREE-SLOT weld (``step_D`` -> ``update_E`` ->
-``update_P``, serving both seams instead of trading one for the other) or a ruling on
+``update_P``, serving both seams instead of trading one for the other) or a decision on
 the seam order -- either a release decision, neither a change to this file.
 
 =============================================================================
-WHAT THIS DOES THAT NEITHER SIBLING BACKEND DOES, AND WHY IT HAD TO
+What this does that neither sibling backend does, and why it had to
 =============================================================================
 
-Metal and Triton both ship a dispersive electric pair. BOTH REFUSE A FOLDED GRID:
+Metal and Triton both ship a dispersive electric pair. Both refuse a folded grid:
 
 * ``metal_kernels/fused_dispersive_pair.py`` refuses the two mirror fills through the
   E half's own "a mirror plane is active" clause and ships the fold as a SEPARATE
@@ -52,22 +52,22 @@ Metal and Triton both ship a dispersive electric pair. BOTH REFUSE A FOLDED GRID
   ``dispersive_update_e.dispersive_constitutive_coverage``.
 
 CUDA's ``covers_real_pml_dispersive_constitutive`` ADMITS a fold up to
-``ADE_FOLD_PLANES_SWEPT``, and FOUR OF THE SEVEN ROWS ARE FOLDED -- the four
+``ADE_FOLD_PLANES_SWEPT``, and four of the seven rows are folded -- the four
 ``TestLoadDump.*_2d`` rows are ``metallic`` on x, ``mirror`` on y and ``periodic`` on
 z (the stamped census's ``configuration.cuda_boundary_kinds``). A straight port of
 either sibling would serve three of seven. So this product CARRIES both fills, the way
 :mod:`.fused_electric_pair` does, and inherits that module's whole carry.
 
-THE ONE ARITHMETIC FACT THAT CARRY ADDS, AND IT IS THE POINT OF THIS FILE. The array
+The one arithmetic fact that carry adds, and it is the point of this file. The array
 path's ``update_E`` runs over the WHOLE volume and evaluates
 ``Fields.displacement_minus_polarization`` cell by cell (fields.py:1096-1105), so at an
 imaged ghost it subtracts THAT CELL'S ``P``. The source thread that writes the ghost
 holds its OWN pole registers, and re-using them is the obvious port and the cheap one.
-It is also wrong on every imaged plane. So each ghost's chain is re-formed FROM THE
-DESTINATION'S POLE WORDS, at the destination index, exactly as its inverse epsilon and
+It is also wrong on every imaged plane. So each ghost's chain is re-formed from the
+destination's pole words, at the destination index, exactly as its inverse epsilon and
 its coefficient pair already were.
 
-MEASURED BEFORE A DEVICE WAS BOOKED.
+Measured before a device was booked.
 ``parity/meep_gpu/probe_cuda_dispersive_electric_pair.py`` runs this closed form
 against the driver's own five passes over complete steps on eight configurations --
 including both corpus shapes -- and scores six armed mutations. ``poles_at_source``,
@@ -75,7 +75,7 @@ the port above, diverges on 6 of the 8; ``inv_eps_at_source`` on 6; the pole ORD
 8; the pre-clear ordering on 3; the near-fill ordering on 1 (the cross term).
 
 =============================================================================
-WHERE THE ORDERED ``D - sum P`` SUBTRACTION SITS, MEASURED ON BOTH SIBLINGS
+Where the ordered ``D - sum P`` subtraction sits, measured on both siblings
 =============================================================================
 
 Both siblings put the WHOLE chain strictly AFTER the metallic cleanup, consuming the
@@ -87,7 +87,7 @@ then opens the E half with ``s0 = v0``. They AGREE, and the probe's
 ``subtract_before_clear`` mutation shows the agreement is load-bearing rather than
 incidental: it diverges on 3 of 8 configurations.
 
-WHAT CUDA DOES DIFFERENTLY IS NOT THAT ORDER BUT ITS GRANULARITY. Both siblings
+What CUDA does differently is not that order but its granularity. Both siblings
 interleave per component -- Metal because it dispatches one component per launch
 (a 31-buffer binding ceiling this platform does not have), Triton because it writes
 three sequential E blocks. The CUDA constitutive half is LIFTED, not transcribed, and
@@ -98,7 +98,7 @@ inv_eps and writes E and f_w_E -- disjoint sets). Adopting either sibling's inte
 would silently retype that body; this file keeps it and splices into it.
 
 =============================================================================
-THE ARITY IS A COMPILE-TIME AXIS, WHICH THE REAL TWIN'S IS NOT
+The arity is a compile-time axis, which the real twin's is not
 =============================================================================
 
 :mod:`.fused_electric_pair` emits ONE device string. This family emits one per
@@ -114,7 +114,7 @@ corpus shapes: ``(5, 5, 5)`` is the four ``TestLoadDump.*_2d`` rows and ``(6, 6,
 the three ``stochastic_emitter`` ones.
 
 =============================================================================
-THE ALIASING HAZARD, WITH ONE MORE GROUP THAN THE REAL TWIN
+The aliasing hazard, with one more group than the real twin
 =============================================================================
 
 D appears EXACTLY ONCE in the signature, for :mod:`.fused_electric_pair`'s reason: the
@@ -122,7 +122,7 @@ curl writes it in place and the constitutive half reads it from a register, so b
 it a second time as ``const __restrict__`` would be two restrict pointers to one
 allocation, which NVRTC miscompiles without a diagnostic.
 
-THE POLE POINTERS ARE ``__restrict__`` and the three inverse-epsilon ones are not, both
+The pole pointers are ``__restrict__`` and the three inverse-epsilon ones are not, both
 lifted from ``dispersive_kernels.dispersive_source`` rather than decided here: two
 susceptibilities never share a ``P`` buffer (``PolarizationState.__init__`` allocates
 its own, dispersion.py:645-647) while an isotropic run hands ONE inverse-epsilon
@@ -130,14 +130,14 @@ pointer three times (fields.py:1321-1326). :func:`assert_disjoint_bindings` ther
 checks the pole group against every other restrict argument, and checks separately that
 no inv_eps volume collides with one.
 
-THE POLE POINTERS ROTATE. ``PolarizationState.update`` moves ``P``/``P_prev``/scratch
+The pole pointers rotate. ``PolarizationState.update`` moves ``P``/``P_prev``/scratch
 every step (dispersion.py:689-691), so the launcher resolves ``state.P[c]`` immediately
 before each launch through ``dispersive_kernels.resolve_pole_plan`` and never caches a
 view. A plan built before ``update_P`` names last step's arrays after it -- stale in a
 way that still computes, which is the worst kind.
 
 =============================================================================
-DISJOINT FROM THE REAL TWIN BY A SINGLE BOOLEAN
+Disjoint from the real twin by a single boolean
 =============================================================================
 
 ``install_fused_pairs`` leaves a seam UNFUSED when two products admit it, so a new
@@ -168,7 +168,7 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
     from ..grid import Grid
     from ..pml import PML
 
-# THE REAL TWIN. Every geometric emitter and every launch helper this family needs is
+# The real twin. Every geometric emitter and every launch helper this family needs is
 # taken from it rather than copied: the carry is one object, and two copies of the
 # ownership inversion is two places for the fold to be wrong.
 from . import fused_electric_pair as real
@@ -194,7 +194,7 @@ except ImportError:  # loaded by path, outside the package: the bit-identity pro
     zero_metal_axes = _load("in_seam_coverage").zero_metal_axes
     compile_cache = _load("compile_cache")
 
-# THE CERTIFIED DEVICE TEXT AND THE DISPERSIVE PREDICATE. ``dispersive_kernels``
+# The certified device text and the dispersive predicate. ``dispersive_kernels``
 # imports CuPy at module scope, so it is taken DEFENSIVELY -- but its PREDICATE is the
 # part whose failure mode is a silent wrong answer, so it is re-imported lazily inside
 # :func:`covers_dispersive_fused_electric_pair` where a device-free host still reaches
@@ -223,7 +223,7 @@ except ImportError:  # loaded by path, outside the package
 
 
 # =============================================================================
-# THE PARTITION — EMPTY ON THE CERTIFIED SIDE UNTIL A GATE MOVES IT
+# The partition — empty on the certified side until a gate moves it
 # =============================================================================
 #
 # Plain assignments with NO type annotation, for the reason every sibling in this
@@ -251,7 +251,7 @@ UNCERTIFIED_KERNELS = {}
 #: carries the ``step_D`` row. The flag and the wiring change together or not at all
 #: (``deposit_repair.py:221-226``).
 #:
-#: IT IS THE WHOLE PRODUCT HERE. Every one of the seven rows this cell owns carries an
+#: It is the whole product here. Every one of the seven rows this cell owns carries an
 #: electric deposit inside the seam -- the stamped census reports
 #: ``source_field_types`` of ``["D"]`` on six of them and ten D sources on
 #: ``stochastic_emitter.py`` -- so without the bracket this module would serve ZERO.
@@ -259,7 +259,7 @@ UNCERTIFIED_KERNELS = {}
 #: it is why ``CARRIES_DEPOSIT_REPAIR`` is asserted as a per-cell MEASUREMENT off the
 #: census in the host suite rather than read as a constant.
 #:
-#: WHAT THE REPAIR HAS TO RECONSTRUCT ON A DISPERSIVE HALF. ``deposit_repair.apply``
+#: What the repair has to reconstruct on a dispersive half. ``deposit_repair.apply``
 #: recomputes ``(f + kps*fw_fresh) - kms*fw_prev`` with ``fw_fresh`` from
 #: ``Fields.displacement_minus_polarization`` (deposit_repair.py:150-152), which IS a
 #: dispersive ``update_E``'s source -- and it is entitled to read the pole arrays it
@@ -323,7 +323,7 @@ LIFT_EDITS: Tuple[Dict[str, str], ...] = real.LIFT_EDITS + (
      "became": "        float gx_y_p = gx_y_v;\n"
                "        gx_y_p = gx_y_p - P_Ex_0[gx_y_i];  ...\n"
                "        float gx_y_s = gx_y_p * inv_eps_Ex[gx_y_i];",
-     "why": "THE GHOST CHAIN, and it is the one thing neither sibling backend has to "
+     "why": "The ghost chain, and it is the one thing neither sibling backend has to "
             "do. update_E is element-wise over the WHOLE volume, so an imaged ghost "
             "subtracts THAT CELL'S poles; the source thread's own registers are a "
             "different field on every imaged plane. Same chain, same left-to-right "
@@ -416,7 +416,7 @@ def dispersive_fused_electric_pair_prelude() -> str:
 def dispersive_fused_electric_pair_signature(counts: Sequence[int]) -> str:
     """The real twin's signature, renamed, with this arity's pole pointers inserted.
 
-    TWO ANCHORED EDITS ON ONE LIFTED STRING. The parameter list -- the shared flux
+    Two anchored edits on one lifted string. The parameter list -- the shared flux
     density bound once, the non-restrict inverse-epsilon group, the curl's integer
     sub-lattice against the constitutive's renamed half-integer one, the wall flags and
     the two fills' runtime plan -- is :data:`.fused_electric_pair._SIGNATURE` itself,
@@ -439,7 +439,7 @@ def dispersive_fused_electric_pair_signature(counts: Sequence[int]) -> str:
     return signature.replace(
         _INV_EPS_LINE,
         _INV_EPS_LINE
-        + ("    // THE POLE POINTERS, __restrict__ and lifted from\n"
+        + ("    // The pole pointers, __restrict__ and lifted from\n"
            "    // dispersive_kernels.dispersive_source: two susceptibilities never\n"
            "    // share a P buffer (dispersion.py:645-647), and they ROTATE every\n"
            "    // step, so the launcher resolves them immediately before each launch.\n"
@@ -449,23 +449,23 @@ def dispersive_fused_electric_pair_signature(counts: Sequence[int]) -> str:
 
 def dispersive_fill_carry_blocks(target: int, count: int,
                                  indent: str = "        ") -> List[str]:
-    """The real twin's ghost carry, with this component's pole chain re-formed AT THE
-    DESTINATION.
+    """The real twin's ghost carry, with this component's pole chain re-formed at the
+    destination.
 
-    ONE ANCHORED EDIT PER GHOST BLOCK. :func:`.fused_electric_pair.fill_carry_blocks`
+    One anchored edit per ghost block. :func:`.fused_electric_pair.fill_carry_blocks`
     emits, for every destination this thread owns, the imaged displacement, the store
     to D, the inverse-epsilon product and the ``constitutive_apply`` at the ghost's own
     coefficient row. All of that is lifted; what is inserted is the chain between the
     displacement and the product.
 
-    THE INDEX IS THE DESTINATION'S AND THAT IS THE WHOLE FINDING. ``update_E`` is
+    The index is the destination's and that is the whole finding. ``update_E`` is
     element-wise over the whole volume, so the ghost cell subtracts ITS OWN ``P``
     words; the source thread's registers hold a different cell's. ``P`` is READ-ONLY in
     this launch -- ``update_P`` is a later sub-step (driver.py:3315) -- so a load off
     another thread's cell is defined, exactly as the ghost's ``inv_eps`` load already
     is, and needs no barrier.
 
-    AT ARITY ZERO NOTHING IS INSERTED and the block is character-identical to the real
+    At arity zero nothing is inserted and the block is character-identical to the real
     twin's, which is what makes the degenerate configuration reduce to that family's
     certified text by construction rather than by rounding.
     """
@@ -478,7 +478,7 @@ def dispersive_fill_carry_blocks(target: int, count: int,
     out: List[str] = []
     edited = 0
     for line in lines:
-        # THE ANCHOR IS THE WHOLE STATEMENT, not a substring: a partial match would
+        # The anchor is the whole statement, not a substring: a partial match would
         # attach the chain to a line this module has not read. The tag is recovered
         # from the line and the reconstruction is compared back against it.
         prefix = f"{inner}float g{letter}"
@@ -493,7 +493,7 @@ def dispersive_fill_carry_blocks(target: int, count: int,
                     f"the real twin's ghost product is {line!r}, not the "
                     f"{expected!r} this family splices into; the pole chain would be "
                     f"inserted around a statement this module has not read")
-            out.append(f"{inner}// THE GHOST CHAIN. update_E is element-wise over the "
+            out.append(f"{inner}// The ghost chain. update_E is element-wise over the "
                        f"whole volume, so")
             out.append(f"{inner}// this imaged cell subtracts ITS OWN poles -- the "
                        f"DESTINATION index, not")
@@ -527,7 +527,7 @@ def certified_dispersive_constitutive_body(counts: Sequence[int]) -> str:
     component's flux-density read into the seam, resolves the sub-lattice name
     collision, and wraps each store in the ownership guard with its ghost blocks.
 
-    THE CHAIN ITSELF IS UNTOUCHED. Every ``s_a = s_a - P_Ea_n[idx];`` line is the
+    The chain itself is untouched. Every ``s_a = s_a - P_Ea_n[idx];`` line is the
     certified emitter's own text in the certified order, which is the arithmetic here:
     float32 addition is not associative, so ``((D - P0) - P1)`` and ``D - (P0 + P1)``
     are different numbers at two poles and above.
@@ -543,7 +543,7 @@ def certified_dispersive_constitutive_body(counts: Sequence[int]) -> str:
             "the certified dispersive body no longer decodes i on its own line; the "
             "duplicate decomposition cannot be identified")
     # Its chunk-record block goes with the decode: the real twin's union block above
-    # decodes the same three half-integer entries (DESIGN.md D10), and the dispersive
+    # decodes the same three half-integer entries, and the dispersive
     # arm reads exactly update_E's.
     if tuple(dispersive_kernels.PML_BOUNDS_ENTRIES) != tuple(real.CONSTITUTIVE_BLOCK[0]):
         raise AssertionError(
@@ -553,7 +553,7 @@ def certified_dispersive_constitutive_body(counts: Sequence[int]) -> str:
         body, "dispersive_source('pml', ...)", *real.CONSTITUTIVE_BLOCK)
     tail = body.split(real._DECODE_END, 1)[1]
 
-    # THE SEAM, per component and per arity. ONE TOKEN PER LINE is substituted and the
+    # The seam, per component and per arity. One token per line is substituted and the
     # rest of the certified statement -- the operand order, the inv_eps index, the
     # trailing annotation and every subtraction line after it -- is left as it stands.
     for target, (letter, name) in enumerate(zip(real._CARRIED, real._TARGETS)):
@@ -592,7 +592,7 @@ def certified_dispersive_constitutive_body(counts: Sequence[int]) -> str:
                 f"would need D bound a second time, which is the aliasing hazard this "
                 f"signature exists to avoid")
 
-    # THE ONE RENAME, THE OWNERSHIP GUARD AND THE GHOST CARRY, on one line each.
+    # The one rename, the ownership guard and the ghost carry, on one line each.
     for target, (letter, coordinate) in enumerate(zip(real._CARRIED,
                                                       real._COORDINATE)):
         prefix = f"    constitutive_apply(E{letter}, f_w_E{letter}, idx, src_{letter}, "
@@ -626,7 +626,7 @@ def dispersive_fused_electric_pair_source(counts: Sequence[int]) -> str:
     ``cupy.cuda.compiler.compile_using_nvrtc`` writes the source with a bare
     ``open(..., 'w')``, so the bytes go through the interpreter's locale encoding.
     """
-    # THE CERTIFIED HALVES ARE ASKED FOR FIRST, before the arity is even normalised: a
+    # The certified halves are asked for first, before the arity is even normalised: a
     # missing half is not a degraded emit, and the refusal has to name the modules one
     # frame from the caller rather than surface as an AttributeError on whichever
     # helper happened to be reached first.
@@ -660,7 +660,7 @@ def dispersive_fused_electric_pair_source(counts: Sequence[int]) -> str:
 def device_sources() -> Dict[str, str]:
     """Every source this family can emit, keyed by ``name|arity`` -- for a digest.
 
-    ONE ENTRY PER SWEPT ARITY, not one per family: the arity is a compile-time axis
+    One entry per swept arity, not one per family: the arity is a compile-time axis
     here, so a digest over a single body would pin one of six strings and let the other
     five drift. The key carries the arity for the same reason
     ``dispersive_kernels.corpus_digest`` puts it in the digest's own text.
@@ -687,7 +687,7 @@ def _clear_kernel_cache() -> int:
 def _get_kernel(counts: Sequence[int], name: str = KERNEL_NAME):
     """Compile the fused kernel at one arity, memoized on (name, options, policy, source).
 
-    THE SOURCE IS EMITTED PER CALL AND THAT IS LOAD-BEARING: it is part of the memo
+    The source is emitted per call and that is load-bearing: it is part of the memo
     key, so it has to be built before there is a key to miss on, and a gate mutates
     this family by monkeypatching the certified halves. A source memoized at first call
     would hand back the pre-mutation string forever -- a leg reporting a pass for a
@@ -736,7 +736,7 @@ def covers_dispersive_fused_electric_pair(fields: Any, pml: Any, grid: Any,
 
     Returns ``(covered, reason)`` with ``reason`` naming the FIRST refusal.
 
-    A CONJUNCTION, AND NOTHING IS WEAKENED. The curl half is the real twin's own
+    A conjunction, and nothing is weakened. The curl half is the real twin's own
     predicate; the constitutive half is
     ``dispersive_kernels.covers_real_pml_dispersive_constitutive``, whole. Every seam
     clause the real twin adds -- the two fills, the injection route, the wall reading,
@@ -744,14 +744,14 @@ def covers_dispersive_fused_electric_pair(fields: Any, pml: Any, grid: Any,
     the inverse-epsilon extents -- is asked THROUGH that predicate rather than restated
     here, so a clause added there reaches this family without a second edit.
 
-    WHAT THIS PREDICATE ADDS OVER THE CONJUNCTION IS ONE FACT: the pole volumes are
-    read AT AN IMAGED GHOST'S INDEX, which the stand-alone dispersive arm never does
+    What this predicate adds over the conjunction is one fact: the pole volumes are
+    read at an imaged ghost's index, which the stand-alone dispersive arm never does
     (it reads them at ``idx`` alone). The dispersive predicate already requires every
     ``P`` to carry the launch's shape, so what is left is that the ghost index is
     inside it -- which is the real twin's stored-extent clause, and is why that clause
     is asked here rather than assumed.
     """
-    # THE REAL TWIN'S PREDICATE, MINUS ITS CONSTITUTIVE HALF. It is asked in two
+    # The real twin's predicate, minus its constitutive half. It is asked in two
     # pieces rather than as a whole because its ordinary constitutive clause refuses
     # exactly the runs this family exists for -- ``fields.polarizations`` truthy -- so
     # calling it whole would refuse every configuration and this product would serve
@@ -763,7 +763,7 @@ def covers_dispersive_fused_electric_pair(fields: Any, pml: Any, grid: Any,
     if not covered:
         return False, f"dispersive constitutive half: {reason}"
 
-    # THE SEAM CLAUSES, DELEGATED WHOLE to the real twin's predicate by handing it a
+    # The seam clauses, delegated whole to the real twin's predicate by handing it a
     # view of this run with NO polarizations -- the one fact its ordinary constitutive
     # clause refuses on, and the one this family has already answered above through the
     # dispersive predicate. Everything else it asks is about the CURL, the two FILLS,
@@ -781,13 +781,13 @@ def covers_dispersive_fused_electric_pair(fields: Any, pml: Any, grid: Any,
 class _WithoutPolarizations:
     """``fields`` with an empty ``polarizations``, for the delegated seam clauses.
 
-    NOT A WEAKENING AND NOT A MOCK. The real twin's predicate is asked for its SEAM
+    Not a weakening and not a mock. The real twin's predicate is asked for its SEAM
     clauses -- the two fills, the injection route, the wall reading, the extents -- and
     its ordinary constitutive clause would refuse before reaching any of them on the
     single fact this family has already answered with the DISPERSIVE predicate above.
     Every other attribute is the live object's, so every clause reads the real run.
 
-    A PROXY RATHER THAN A COPY, because ``Fields`` owns device arrays: copying it would
+    A proxy rather than a copy, because ``Fields`` owns device arrays: copying it would
     duplicate volumes on a laptop and, worse, would let a clause read an array that is
     not the one the launch will bind.
     """
@@ -833,7 +833,7 @@ def assert_disjoint_bindings(fields: "Fields", tables: Dict[str, Dict[str, Any]]
                              poles: Sequence[Any]) -> int:
     """Check the promise every ``__restrict__`` in this signature makes.
 
-    THE REAL TWIN'S CHECK PLUS THE POLE GROUP. Its own check covers the fifteen field
+    The real twin's check plus the pole group. Its own check covers the fifteen field
     volumes, both coefficient groups and the three non-restrict inverse-epsilon ones;
     this adds the pole pointers, which ARE ``__restrict__`` here, and asks them against
     everything the twin already collected as well as against each other.
@@ -882,15 +882,15 @@ def launch_dispersive_fused_electric_pair(
         kernel: Optional[Any] = None, *, chunk_bounds: Any) -> Dict[str, Any]:
     """All five of :data:`REPLACES` in ONE launch, at this run's pole arity.
 
-    THE ARGUMENT ORDER IS THE SIGNATURE'S and the pole group sits immediately after the
+    The argument order is the signature's and the pole group sits immediately after the
     three inverse-epsilon volumes, which is where
     :func:`dispersive_fused_electric_pair_signature` inserts it.
 
-    ``kernel`` IS THE GATE'S DOOR, keyword-optional and named for what it is: a gate
+    ``kernel`` is the gate's door, keyword-optional and named for what it is: a gate
     compiles a deliberately broken copy of the shipped source and hands it here. A
     launcher that could not be handed its own kernel could not arm a single mutation.
 
-    ``chunk_bounds`` IS THE RUN'S CHUNK RECORD ON THE DEVICE, required and keyword-only,
+    ``chunk_bounds`` is the run's chunk record on the device, required and keyword-only,
     exactly as the real twin takes it: the curl half and the constitutive half both
     choose each cell's PML form from it.
     """
@@ -938,7 +938,7 @@ def run_dispersive_fused_electric_pair(
         kernel: Optional[Any] = None) -> Dict[str, Any]:
     """Gate on the predicate, resolve everything from the grid, launch once.
 
-    THE PREDICATE IS ASKED FIRST AND A REFUSAL IS RETURNED, NOT RAISED, because the
+    The predicate is asked first and a refusal is returned, not raised, because the
     caller's correct response to a configuration this product does not carry is the
     array path -- never an exception into a stepper that would otherwise have stepped
     correctly.

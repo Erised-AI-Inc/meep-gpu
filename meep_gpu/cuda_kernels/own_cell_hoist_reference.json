@@ -5,7 +5,7 @@
  "texts": {
   "fused_electric_pair_pml_cyl_complex": {
    "arm": null,
-   "cut_from": "apps/api/parity/meep_gpu/results/bit_parity_0_10/dev/wp/KC8/hoist_reference/cylindrical_fused_electric_pair__arm_FMA_V1.base.cu",
+   "cut_from": "0.10 lane KC8: cylindrical_fused_electric_pair__arm_FMA_V1.base.cu",
    "kernel": "fused_electric_pair_pml_cyl_complex",
    "lines": [
     "",
@@ -441,11 +441,11 @@
    ],
    "module": "cylindrical_fused_electric_pair",
    "sha256": "e7c781879a597b0e81928f93bfc3a2634f28a3335434077fafc159953aaaf370",
-   "recut_by": "bit_parity_0_10 DESIGN.md KC8 (D1, D6, D10, D11; AP6c's Dcyl forms): the Dcyl complex curl's per-chunk forms (the radial difference of MEEP's per-chunk f_rderiv_int from the column-serial scan, the i*m/r pass after the curl through the additive ladder, the axis rules' double Courant products) and this pair's lift of them -- one chunk-record decode over both halves, the dsigu and dsigw membership flags on every call, the register following each store of the target. Cut as the unhoisted composition of the emitter's own pieces (wp/KC8/scripts/cut_hoist_reference.py), the construction KC2 used for fused_magnetic_pair_pml_real; no device run backs the re-cut yet (CERT-3)."
+   "recut_by": "0.10 lane KC8 (MEEP's per-chunk forms; WP AP6c's Dcyl forms): the Dcyl complex curl's per-chunk forms (the radial difference of MEEP's per-chunk f_rderiv_int from the column-serial scan, the i*m/r pass after the curl through the additive ladder, the axis rules' double Courant products) and this pair's lift of them -- one chunk-record decode over both halves, the dsigu and dsigw membership flags on every call, the register following each store of the target. Cut as the unhoisted composition of the emitter's own pieces (0.10 lane KC8's cut_hoist_reference.py), the construction KC2 used for fused_magnetic_pair_pml_real; no device run backs the re-cut yet (CERT-3)."
   },
   "fused_magnetic_pair_pml_cyl_complex": {
    "arm": null,
-   "cut_from": "apps/api/parity/meep_gpu/results/bit_parity_0_10/dev/wp/KC8/hoist_reference/cylindrical_fused_magnetic_pair__arm_FMA_V1.base.cu",
+   "cut_from": "0.10 lane KC8: cylindrical_fused_magnetic_pair__arm_FMA_V1.base.cu",
    "kernel": "fused_magnetic_pair_pml_cyl_complex",
    "lines": [
     "",
@@ -873,7 +873,7 @@
    ],
    "module": "cylindrical_fused_magnetic_pair",
    "sha256": "a68897cbab476de4f2739e67b8ae2a22dc120ed91300b18781fc52f5322ae94b",
-   "recut_by": "bit_parity_0_10 DESIGN.md KC8 (D1, D6, D10, D11; AP6c's Dcyl forms): the Dcyl complex curl's per-chunk forms (the radial difference of MEEP's per-chunk f_rderiv_int from the column-serial scan, the i*m/r pass after the curl through the additive ladder, the axis rules' double Courant products) and this pair's lift of them -- one chunk-record decode over both halves, the dsigu and dsigw membership flags on every call, the register following each store of the target. Cut as the unhoisted composition of the emitter's own pieces (wp/KC8/scripts/cut_hoist_reference.py), the construction KC2 used for fused_magnetic_pair_pml_real; no device run backs the re-cut yet (CERT-3)."
+   "recut_by": "0.10 lane KC8 (MEEP's per-chunk forms; WP AP6c's Dcyl forms): the Dcyl complex curl's per-chunk forms (the radial difference of MEEP's per-chunk f_rderiv_int from the column-serial scan, the i*m/r pass after the curl through the additive ladder, the axis rules' double Courant products) and this pair's lift of them -- one chunk-record decode over both halves, the dsigu and dsigw membership flags on every call, the register following each store of the target. Cut as the unhoisted composition of the emitter's own pieces (0.10 lane KC8's cut_hoist_reference.py), the construction KC2 used for fused_magnetic_pair_pml_real; no device run backs the re-cut yet (CERT-3)."
   },
   "fused_magnetic_pair_pml_real": {
    "arm": null,
@@ -1447,7 +1447,7 @@
    ],
    "module": "fused_magnetic_pair",
    "sha256": "ad9b580e5ce5a72b749ce1812127fa3fe05fa50035335dd2086bb7756088fbf0",
-   "recut_by": "bit_parity_0_10 DESIGN.md KC2 (D1, D5, D10, D11): the root helpers' per-chunk forms (KC1) and this pair's lift of them -- one chunk-record decode over both halves, the dsigu and dsigw membership flags on every call, the ownership guard before the one load of f, and each carried ghost keyed on its destination's membership row (MEEP's start of H runs on the host after the launch and is not in this text). Cut as the unhoisted composition of the emitter's own pieces, the construction that reproduces the previous frozen text byte for byte on base + dev/series 01..17; no device run backs the re-cut yet (CERT-3)."
+   "recut_by": "0.10 lane KC2 (MEEP's per-chunk forms): the root helpers' per-chunk forms (KC1) and this pair's lift of them -- one chunk-record decode over both halves, the dsigu and dsigw membership flags on every call, the ownership guard before the one load of f, and each carried ghost keyed on its destination's membership row (MEEP's start of H runs on the host after the launch and is not in this text). Cut as the unhoisted composition of the emitter's own pieces, the construction that reproduces the previous frozen text byte for byte on base + development series entries 01..17; no device run backs the re-cut yet (CERT-3)."
   },
   "update_E_pml_real": {
    "arm": null,
@@ -1496,7 +1496,7 @@
     "    int j = (idx / nz) % ny;",
     "    int i = idx / (ny * nz);",
     "",
-    "    // THE CHUNK RECORD (chunk_map.chunk_bounds_record): row r of this lattice and axis",
+    "    // The chunk record (chunk_map.chunk_bounds_record): row r of this lattice and axis",
     "    // lies in a chunk that carries the axis's layer iff (a0 <= r < a1) || (b0 <= r < b1).",
     "    const int cbh_x_a0 = cb[12], cbh_x_a1 = cb[13], cbh_x_b0 = cb[14], cbh_x_b1 = cb[15];",
     "    const int in_h_x = (i >= cbh_x_a0 && i < cbh_x_a1) || (i >= cbh_x_b0 && i < cbh_x_b1);",
@@ -1528,8 +1528,8 @@
     ""
    ],
    "module": "constitutive_kernels",
-   "sha256": "c3b8cc7a121f898c7d73e574f644e44a565a97080987144a5057683ae1f3deee",
-   "recut_by": "bit_parity_0_10 DESIGN.md KC1 (D1, D6, D10): the constitutive helper takes MEEP's per-chunk forms behind its dsigw flag, the kernel binds the chunk record cb and decodes it with bounds_block.bounds_block, and each call passes its component's membership flag. Applied to the frozen text and checked equal to own_cell_hoist.unhoisted_kernel_code of the shipped register-view single; no device run backs the re-cut yet (CERT-3)."
+   "sha256": "abbccc97389e914c615b1018996398077678e3f2f5c414dca939df297c652b2b",
+   "recut_by": "0.10 lane KC1 (MEEP's per-chunk forms): the constitutive helper takes MEEP's per-chunk forms behind its dsigw flag, the kernel binds the chunk record cb and decodes it with bounds_block.bounds_block, and each call passes its component's membership flag. Applied to the frozen text and checked equal to own_cell_hoist.unhoisted_kernel_code of the shipped register-view single; no device run backs the re-cut yet (CERT-3)."
   },
   "update_H_pml_real": {
    "arm": null,
@@ -1577,7 +1577,7 @@
     "    int j = (idx / nz) % ny;",
     "    int i = idx / (ny * nz);",
     "",
-    "    // THE CHUNK RECORD (chunk_map.chunk_bounds_record): row r of this lattice and axis",
+    "    // The chunk record (chunk_map.chunk_bounds_record): row r of this lattice and axis",
     "    // lies in a chunk that carries the axis's layer iff (a0 <= r < a1) || (b0 <= r < b1).",
     "    const int cbi_x_a0 = cb[0], cbi_x_a1 = cb[1], cbi_x_b0 = cb[2], cbi_x_b1 = cb[3];",
     "    const int in_i_x = (i >= cbi_x_a0 && i < cbi_x_a1) || (i >= cbi_x_b0 && i < cbi_x_b1);",
@@ -1594,8 +1594,8 @@
     ""
    ],
    "module": "constitutive_kernels",
-   "sha256": "befca96b0260cb297ee872ae2f0f3d2ace20f8425ca285725ea79a73e4be6516",
-   "recut_by": "bit_parity_0_10 DESIGN.md KC1 (D1, D6, D10): the constitutive helper takes MEEP's per-chunk forms behind its dsigw flag, the kernel binds the chunk record cb and decodes it with bounds_block.bounds_block, and each call passes its component's membership flag. Applied to the frozen text and checked equal to own_cell_hoist.unhoisted_kernel_code of the shipped register-view single; no device run backs the re-cut yet (CERT-3)."
+   "sha256": "b086e29c30ee3396a06893e8e106777aa33d7ffbccb4b1f482236bc257afacf4",
+   "recut_by": "0.10 lane KC1 (MEEP's per-chunk forms): the constitutive helper takes MEEP's per-chunk forms behind its dsigw flag, the kernel binds the chunk record cb and decodes it with bounds_block.bounds_block, and each call passes its component's membership flag. Applied to the frozen text and checked equal to own_cell_hoist.unhoisted_kernel_code of the shipped register-view single; no device run backs the re-cut yet (CERT-3)."
   }
  }
 }

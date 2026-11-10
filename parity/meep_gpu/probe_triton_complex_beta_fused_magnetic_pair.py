@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""THE COMPLEX BETA FUSED MAGNETIC PAIR GATE — complex beta ``step_B`` welded
+"""The complex beta fused magnetic pair gate — complex beta ``step_B`` welded
 into complex ``update_H``.
 
 Does ONE launch of ``complex_beta_fused_curl_constitutive_B`` leave the engine
@@ -8,7 +8,7 @@ separately certified Triton products it replaces (the K2 beta bloch curl on
 ``step_B`` and the complex constitutive on a beta run's H side) — over every
 allocated volume, compared as uint32 words?
 
-THE ELECTRIC TWIN'S GATE (``probe_triton_complex_beta_fused_electric_pair.py``)
+The electric twin's gate (``probe_triton_complex_beta_fused_electric_pair.py``)
 is the template; the differences are the B side's own:
 
 * the seam is ``step_B -> magnetic sources -> ... -> update_H`` and the CARRY
@@ -20,7 +20,7 @@ is the template; the differences are the B side's own:
 * the beta words are the ``+i`` quarter turn's (the magnetic side's), and the
   armed wrong-words leg forces the ELECTRIC side's negated words instead.
 
-Correctness only. NOTHING HERE IS TIMED and no throughput claim is admissible.
+Correctness only. Nothing here is timed and no throughput claim is admissible.
 Dispatch stays disabled: ``launch.plan_step`` does not know this module exists.
 """
 
@@ -354,8 +354,8 @@ def _welded_seam(fields, pml, driver_module, *, wall: str = "before",
 
     ``driver_module.step_B`` IS the array path and
     carries the beta pass, so the weld's design knobs are the same questions on a beta
-    run, and the twin's per-cell forms (KT5's re-cut of this emulation) are imported
-    rather than restated.
+    run, and the twin's per-cell forms (the emulation as re-cut when the Triton table's
+    complex kernels took the per-chunk forms) are imported rather than restated.
     """
     twin_probe._welded_seam(fields, pml, driver_module, wall=wall, history=history)
 
@@ -397,7 +397,7 @@ def design_sweep_leg() -> Dict[str, Any]:
                                                (0.0, 0.0, 0.0), -0.685)
         right_fields, right_pml = _build_complex((3.0, 3.0, 0.0), boundaries,
                                                  (0.0, 0.0, 0.0), -0.685)
-        # LATCHED PER STEP: a flip that differs at one step and is rewritten by the
+        # Latched per step: a flip that differs at one step and is rewritten by the
         # next step's plain form (H or E = src outside the layer) is still visible.
         differing_set: set = set()
         for _ in range(2):
@@ -546,7 +546,7 @@ def seam_binding_leg() -> Dict[str, Any]:
     consults = tuple(fastpath.DRIVER_SLOTS) + tuple(fastpath.FAR_FILL_PASSES.values())
     foreign = [name for name in consults if name not in owned]
 
-    # A CONSULT MAY BE SPELLED AS A NAME RATHER THAN A LITERAL, and one is.
+    # A consult may be spelled as a name rather than a literal, and one is.
     # ``synchronize_magnetic_fields`` closes this seam through the by-name channel
     # ``fastpath.SYNC_PASS_OWNERS`` opens — ``dispatch(SYNC_UPDATE_H_PASS, ...)`` —
     # so a scan that matched only ``dispatch("update_H"`` reads the half-step as a
@@ -654,8 +654,8 @@ def build_driver(cp, dimensions, cell, boundaries, k_point, pml_spec, beta,
         host = (rng.uniform(-0.25, 0.25, size=shape)
                 + 1j * rng.uniform(-0.25, 0.25, size=shape)).astype(np.complex64)
         driver.set_field(name, cp.asarray(np.ascontiguousarray(host)))
-    # THE DERIVED FIELDS ARE SEEDED DIRECTLY (`set_field` takes primaries only,
-    # driver.py:3975). E IS THE BETA PARTNER of this seam's curl, and the
+    # The derived fields are seeded directly (`set_field` takes primaries only,
+    # driver.py:3975). E is the beta partner of this seam's curl, and the
     # ownership mask fires only on METALLIC axes — where the wall clears pin the
     # partner's own row to zero from the first update onward. An unseeded E
     # would make the beta-below-the-mask mutation multiply an exact zero at
@@ -937,10 +937,10 @@ def run_leg(cp, name: str, dimensions, cell, boundaries, k_point, pml_spec,
         row["arrays_total"] = len(final)
         row["arrays_compared"] = sorted(final)
         row["arrays_ever_moved"] = len(ever_moved)
-        # THE AUXILIARY CONTRACT'S EXEMPTION. fu_* and f_w_* move only on their
-        # layer's cells (KERNELS.md section 1, C2), so on a 2-D grid the invariant
-        # axis's auxiliaries are inert on EVERY route. An auxiliary the array path
-        # also leaves inert is exempt; every other unmoved array still refuses.
+        # The auxiliary contract's exemption. fu_* and f_w_* move only on their layer's
+        # cells (docs/design/floating-point.md#auxiliary-contract), so on a 2-D grid the
+        # invariant axis's auxiliaries are inert on EVERY route. An auxiliary the array
+        # path also leaves inert is exempt; every other unmoved array still refuses.
         reference_moved = moved(reference_opening, snapshot(cp, reference))
         unmoved = set(final) - set(ever_moved) - set(material)
         row["inert_on_every_route"] = sorted(
@@ -1014,7 +1014,7 @@ def compile_mutant(source: str, kernel_name: str) -> Any:
 
     The connection and the shared forms are IMPORTED into the mutant's namespace
     rather than copied (``fold_pass_mutations.MUTANT_IMPORTS``), as the shipped module
-    imports them. THE MODULE NAME MUST NOT START WITH ``triton``: Triton's dependency
+    imports them. The module name must not start with ``triton``: Triton's dependency
     finder leaves every callee whose ``__module__`` starts with its package name out of
     the kernel's cache key.
     """
@@ -1055,7 +1055,7 @@ _SHARED_ROWS, MUTATION_NEEDS = fold_passes.table(SHARED_MUTATIONS)
 def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, int]]], ...]:
     """(id, why it is armed, expectation, rewrite).
 
-    THE TWIN'S TABLE FIRST: this kernel's body IS ``complex_fused_curl_constitutive_B``'s (the
+    The twin's table first: this kernel's body IS ``complex_fused_curl_constitutive_B``'s (the
     transcription leg), so its rewrites -- the wall clear, the Bloch connection, the
     inversions and the chunk-form battery, the f_w order and the weld's registers --
     are the twin probe's own, imported from ``probe_triton_complex_fused_magnetic_pair``, and score the same
@@ -1205,16 +1205,17 @@ def run_refusals(cp, product) -> List[Dict[str, Any]]:
 
 
 def environment(cp: Any = None) -> Dict[str, Any]:
+    import neutral_ids  # noqa: PLC0415
     import socket  # noqa: PLC0415
 
     payload: Dict[str, Any] = {
-        "hostname": socket.gethostname(),
+        "hostname": neutral_ids.machine_id(),
         "python": sys.version.split()[0],
         "numpy": np.__version__,
-        "argv": list(sys.argv),
+        "argv": neutral_ids.argv(sys.argv),
         "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
-        "cupy_cache_dir": os.environ.get("CUPY_CACHE_DIR"),
-        "triton_cache_dir": os.environ.get("TRITON_CACHE_DIR"),
+        "cupy_cache_dir": neutral_ids.path(os.environ.get("CUPY_CACHE_DIR")),
+        "triton_cache_dir": neutral_ids.path(os.environ.get("TRITON_CACHE_DIR")),
     }
     try:
         import triton  # noqa: PLC0415

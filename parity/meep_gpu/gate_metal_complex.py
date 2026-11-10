@@ -5,8 +5,8 @@ subject to a declared and CHECKED subnormal-free precondition.** Not a stated
 tolerance. Leg ``precondition`` is that check and it is required to FIRE on a scaled
 control — a precondition never demonstrated to fire is decorative.
 
-THE PER-CHUNK FORMS AND THE PART-WISE PRODUCTS (bit_parity_0_10, KERNELS.md §7,
-step M5). The kernels transcribe the aligned array path, and this gate with them:
+The per-chunk forms and the part-wise products (the Metal table's complex
+kernels). The kernels transcribe the array path in MEEP's order, and this gate with them:
 
 * the in-gate transcription keys its forms on the chunk record
   (``gate_chunk_records``): the split-field recurrence where the target's dsigu
@@ -16,10 +16,10 @@ step M5). The kernels transcribe the aligned array path, and this gate with them
   left-to-right bracket with partner presence; every product is one per part; a
   phased axis wraps plainly and its unshifted operand is CONNECTED on plane 0 (copy,
   negate, or the unfused product);
-* the grouping and product mutations are INVERTED (§7.1): each plants the package's
+* the grouping and product mutations are INVERTED: each plants the package's
   PREVIOUS spelling and stays must-catch (``m1_previous_curl_grouping``,
   ``c1_previous_accumulation_grouping``, ``m10``/``m11`` the previous real-scale
-  products, ``m12`` the previous fused connection). The §7.2 battery (``b1``..``b13``)
+  products, ``m12`` the previous fused connection). The per-chunk form battery (``b1``..``b13``)
   and leg ``planted_zero`` are new;
 * the expansion probe and its leg are gone (the emitted helpers have one body, so
   there is no arm to bind), leg ``call_site_shapes`` is gone with the NumPy
@@ -30,10 +30,10 @@ step M5). The kernels transcribe the aligned array path, and this gate with them
   products beside a ``+``/``-``), and legs ``synthetic`` and ``contraction`` assert
   that it moves words.
 
-The audit history below describes the gate as it stood before this change; where it
+The audit history below describes the gate as it stood before the change above; where it
 names an arm, a leg or a mutation this block retires, this block governs.
 
-THE ORACLE IS IN PROCESS. ``stepping.step_B(fields, pml)`` and the Metal launch run
+The oracle is in process. ``stepping.step_B(fields, pml)`` and the Metal launch run
 in ONE process against ONE seed on real ``Grid``/``Fields``/``PML`` objects with
 complex64 storage. The in-file NumPy transcription STAYS in a reduced role: it is
 the mutation substrate and the only way to exercise a deliberately wrong
@@ -41,12 +41,12 @@ configuration or an odd shape. LEG ``transcription`` PINS IT against ``stepping.
 over multiple full cycles BEFORE any Metal kernel is trusted, which is what stops
 "bit-identical" from meaning the kernel reproduced whatever this file wrote twice.
 
-WHAT THIS GATE CARRIES BEYOND THE STANDARD DISCIPLINE, each because the
+What this gate carries beyond the standard discipline, each because the
 corresponding Triton gate learned it:
 
 * **the plane-wise collapse is classified explicitly.** If a backend took a
   real-scalar fast path the rotation would collapse to plane-wise and the whole
-  delta would evaporate, so ``plane_wise`` is a NAMED DIAGNOSTIC ARM measured on the
+  delta would evaporate, so ``plane_wise`` is a named diagnostic arm measured on the
   exhaustive zero table rather than a possibility ruled out by reading;
 * **the scalar operand shape is classified separately.** stepping.py:1909 multiplies
   an array plane by a complex64 SCALAR, not by an array, and that is the shape the
@@ -59,7 +59,7 @@ corresponding Triton gate learned it:
   multiply by 1+0j) buys;
 * **the Brillouin edge EXACTLY -1+0j** is a pinned case, not a sampled one.
 
-WHAT AN ADVERSARIAL AUDIT ON 2026-08-15 CHANGED, each because a leg was measuring
+What an adversarial audit on 2026-08-15 changed, each because a leg was measuring
 less than it read as measuring:
 
 * **three must-catch mutations could not fail.** m6, m7 and m13 overrode the phase
@@ -88,7 +88,7 @@ less than it read as measuring:
   256-pattern full-product table now runs beside it;
 * **the composition probe was overwriting this gate's provenance.** Distinct names.
 
-WHAT A SECOND ADVERSARIAL PASS ON 2026-08-15 CHANGED, each again because a leg read
+What a second adversarial pass on 2026-08-15 changed, each again because a leg read
 as measuring more than it measured:
 
 * **the precondition bounded ONE case of eight.** It ran ``periodic_kx`` alone while
@@ -100,8 +100,8 @@ as measuring more than it measured:
 * **the intermediate census was one value deep.** It reconstructed the curl and the
   two constitutive coefficient products; the recurrence forms five more per target
   and the constitutive a partial sum, any of which can land in the band while its
-  operands and its result are outside it. The set is now COLLECTED FROM THE PINNED
-  REFERENCE rather than re-derived, so it cannot drift from the arithmetic;
+  operands and its result are outside it. The set is now collected from the pinned
+  reference rather than re-derived, so it cannot drift from the arithmetic;
 * **the constitutive kernel had never run on an odd shape.** Two engine shapes,
   both fully 3-D, were its entire launch history — the fossil being
   ``synthetic_coefficients``' unused ``stems`` parameter. It runs on ``(7, 5, 3)``,
@@ -125,12 +125,12 @@ as measuring more than it measured:
 * **``leg_synthetic``'s docstring asserted the opposite of its code** — that the
   ``fast`` build must DIFFER, where the code requires it not to.
 
-WHAT THE CERTIFICATION ROUND CHANGED, and it is one thing, found by RUNNING the
+What certification changed, and it is one thing, found by RUNNING the
 gate on the tree rather than by reading it:
 
-* **leg ``overlap``'s tail assertion had gone stale under a peer round's wiring
-  flip.** It asserted ``not plan.replaces`` — "the complex arms are registered
-  wired=False and dispatch must be unchanged by this tranche" — and
+* **leg ``overlap``'s tail assertion had gone stale under a later wiring
+  flip.** It asserted ``not plan.replaces`` — the complex arms were registered
+  wired=False, so this family had to leave dispatch unchanged — and
   ``complex_fields.register_arms`` now registers ``wired=True``, so on a complex
   configuration ``plan_step`` composes all four sub-steps and the gate FAILED on
   its own staleness rather than on a defect. Nothing arithmetic moved: the kernel
@@ -144,18 +144,18 @@ non-power-of-two Courant FIRST; every leg proves the step MOVED STATE; predicted
 nulls recorded WITH reasons; armed mutations launch-counted with DISARMED /
 NEEDLE-MISSED classification; the signed-zero census floored.
 
-RANDOM DATA CANNOT CATCH THE ZERO-CROSS-TERM CLASS — measured 0/16,384 words for
+Random data cannot catch the zero-cross-term class — measured 0/16,384 words for
 every wrong spelling — so leg ``zero_cross_terms`` runs EXHAUSTIVE sign/zero tables
 rather than sampled rows. That is the one place this gate deliberately departs from
 the real-field gate's shape, and the measurement is why.
 
 STATED WEAKNESS, recorded because it is a real difference from the Triton
-certification: THERE IS NO PTX-EQUIVALENT AUDIT on this executor.
+certification: there is no PTX-equivalent audit on this executor.
 ``subnormal_policy`` can read every generated instruction and refuse a compile on a
 policy violation; ``torch.mps.compile_shader`` exposes no disassembly, so the
 mutation legs and this gate are the only arbiters.
 
-PREDICTED NULLS RECORDED RATHER THAN MEASURED (the discipline the BFAST gate states
+Predicted nulls recorded rather than measured (the discipline the BFAST gate states
 best): three defects are BYTE-INVISIBLE in float32 here and are pinned by
 SOURCE-TEXT assertion in ``test_metal_complex_fields.py`` instead of by a mutation —
 the complex add/sub being spelled as ``float2`` operators rather than two scalar
@@ -216,7 +216,7 @@ PERIODIC, METALLIC = templates.PERIODIC, templates.METALLIC
 COURANTS: Tuple[float, ...] = (0.35, 0.5)
 
 #: (name, cell, boundaries, k_point). The k values are chosen to exercise three
-#: distinct classes and are PINNED BY NAME:
+#: distinct classes and are pinned by name:
 #:
 #: * ``k=0``          the reduction: no phase object is built at all, and the kernel
 #:                    must be byte-identical to the plain complex path;
@@ -230,7 +230,7 @@ COURANTS: Tuple[float, ...] = (0.35, 0.5)
 #: * two axes at once, with a PML on a phased axis, because ``_bloch_phases``
 #:   ADMITS that pairing (settled by measurement on the array path, S:2322-2337) and
 #:   a gate that only ran unabsorbed phased axes would not be testing what ships.
-#: * ``periodic_ky`` and ``periodic_kxyz`` EXIST BECAUSE THEY WERE MISSING. Audited
+#: * ``periodic_ky`` and ``periodic_kxyz`` exist because they were missing. Audited
 #:   2026-08-15: every case here carried ``k_y = 0`` and ``leg_synthetic``'s phase
 #:   sets only ever phased x, or x and z — so ``_phase_block("y", ...)``,
 #:   ``_PHASED_OPERANDS["y"] = ("a_y", "c_y")`` and the ``py`` binding were emitted,
@@ -286,9 +286,9 @@ STATE = ("Bx", "By", "Bz", "Dx", "Dy", "Dz", "Ex", "Ey", "Ez", "Hx", "Hy", "Hz",
          "f_w_Hx", "f_w_Hy", "f_w_Hz", "f_w_Ex", "f_w_Ey", "f_w_Ez")
 
 def complex_from_planes(real: Any, imag: Any) -> Any:
-    """Build a complex64 array from two float32 planes THROUGH THE WORD VIEW.
+    """Build a complex64 array from two float32 planes through the word view.
 
-    ``real + 1j*imag`` DESTROYS THE SIGN OF ZEROS in ``imag``: ``1j`` is a
+    ``real + 1j*imag`` destroys the sign of zeros in ``imag``: ``1j`` is a
     complex128 scalar, so the product is a full complex multiply whose imaginary
     part comes out ``-0.0`` regardless of what ``imag`` held. Every complex
     construction in this file goes through the word view.
@@ -340,7 +340,7 @@ def build(cell, boundaries, k_point, courant: float, seed: int, scale: float = 1
             imag.reshape(-1)[3::19] = np.float32(-0.0)
             imag.reshape(-1)[11::29] = np.float32(0.0)
         array[...] = complex_from_planes(real, imag)
-    # A SEEDED STATE IS A MID-RUN ONE: H was started from B long ago, so
+    # A seeded state is a mid-run one: H was started from B long ago, so
     # ``stepping.separate_h_from_b`` must not run on it again -- the array path would
     # copy B into H and f_w on the dsigw cells at the first update_H, and no kernel
     # this gate launches does.
@@ -473,8 +473,8 @@ def _keep(collect: Optional[Dict[str, Any]], label: str, value: Any,
 
     The census may not form its own version of these expressions: an independently
     written copy is a second transcription, and a second transcription is a second
-    thing that can be wrong. So the intermediates are taken FROM THE REFERENCE
-    ITSELF, which ``leg_transcription`` pins against ``stepping.py`` over full
+    thing that can be wrong. So the intermediates are taken from the reference
+    itself, which ``leg_transcription`` pins against ``stepping.py`` over full
     cycles. ``where`` keeps only the cells whose form forms the value (each cell
     takes one of two forms, and the census covers what the kernel forms there); a
     form no cell takes -- the recurrence on a target whose dsigu axis is invariant --
@@ -542,7 +542,7 @@ def reference_curl(targets: Sequence[Any], aux: Sequence[Any],
     dsig-only form ``((f*kms) - curl)*sinv`` and leaves ``fu`` untouched. Every
     product is one per part.
 
-    ``collect`` gathers every value the kernel FORMS AND NEVER STORES, on the cells
+    ``collect`` gathers every value the kernel forms and never stores, on the cells
     that form it: the shifted and connected operands, the three unmasked curls, the
     recurrence's partial results on its cells and the dsig-only form's on its own.
     """
@@ -639,7 +639,7 @@ def run_curl_on_device(state: Dict[str, Any], pml, sub_step: str, codes, dtdx: f
                        counter: Optional[List[kit.Counter]] = None,
                        suffix: Optional[str] = None, *,
                        record: Any) -> Dict[str, Any]:
-    """One curl launch THROUGH THE SHIPPED PLAN OBJECT, returning the host results.
+    """One curl launch through the shipped plan object, returning the host results.
 
     ``record`` is the chunk record of the division the reference steps with, and has
     no default (``gate_chunk_records``).
@@ -710,7 +710,7 @@ def run_constitutive_on_device(state: Dict[str, Any], pml, side: str,
 # ---------------------------------------------------------------------------
 
 def leg_transcription(payload: Dict[str, Any], out: str, cycles: int = 3) -> None:
-    """THIS RUNS BEFORE ANY SHADER IS TRUSTED.
+    """This runs before any shader is trusted.
 
     Without it, "bit-identical" could mean the kernel faithfully reproduced whatever
     this file wrote, twice.
@@ -906,7 +906,7 @@ _EDGE = complex(-1.0, 0.0)
 def _phase_sets(codes: Sequence[int]) -> List[Tuple[Optional[complex], ...]]:
     """Every phase triple the synthetic sweep runs for one boundary triple.
 
-    PER-AXIS SINGLES ARE THE POINT. The earlier revision phased x, x-at-the-edge and
+    Per-axis singles are the point. The earlier revision phased x, x-at-the-edge and
     x-with-z and nothing else, so the y block — its ``(j == nyi - 1)`` predicate, its
     ``("a_y", "c_y")`` operand pair and the ``py`` binding — was never launched
     anywhere in the gate. Singles on each axis isolate a block; the all-three set
@@ -933,21 +933,21 @@ def _phase_sets(codes: Sequence[int]) -> List[Tuple[Optional[complex], ...]]:
 def leg_synthetic(payload: Dict[str, Any], out: str) -> None:
     """Odd shapes x boundary triples x phase sets x dtdx x GUARD x sub-step.
 
-    THE CHUNK RECORD IS A TWO-RUN ONE (``gate_chunk_records.two_run_record``): on
+    The chunk record is a two-run one (``gate_chunk_records.two_run_record``): on
     every resolved axis the integer and half-integer lattices hold two runs whose
     low boundaries are one row apart, so both curl forms, every boundary plane and a
     lattice swap are exercised on every shape, and a collapsed axis carries no
     presence bit (the absent-partner curl). The reference keys its forms on the same
     record.
 
-    THE GUARD IS LOAD-BEARING HERE, AND THE ASSERTION SAYS SO. Every product this
+    The guard is load-bearing here, and the assertion says so. Every product this
     family emits is a bare per-part ``a*b`` beside a ``+``/``-``, so ``contract(fast)``
     may fuse it and the shipped ``contract(off)`` is what keeps MEEP's two
     roundings. The sweep records the per-row delta of the ``fast`` build and asserts
     that it moves words somewhere: a zero count would say the directive does not
     reach the emitted code.
 
-    THE CONSTITUTIVE KERNEL RUNS HERE TOO, AND UNTIL THIS ROUND IT DID NOT. Every
+    The constitutive kernel runs here too, and in earlier versions of this gate it did not. Every
     odd-shape row swept the CURL only; the constitutive kernel had been launched on
     exactly two shapes ever, both from the engine matrix, both fully three
     dimensional. Its flat-index decode and its per-axis coefficient reads were
@@ -957,7 +957,7 @@ def leg_synthetic(payload: Dict[str, Any], out: str) -> None:
     :func:`synthetic_coefficients`'s ``stems`` parameter: it existed, it defaulted
     to the curl's pair, and nothing ever passed the constitutive's.
 
-    AND THE SWEEP CARRIES ITS OWN SUBNORMAL WINDOW. The claim over these 900-odd
+    And the sweep carries its own subnormal window. The claim over these 900-odd
     rows is the same claim leg ``precondition`` bounds on the engine matrix, so the
     rows are censused rather than assumed: one window per shape over the seeded
     state, every result and the reference's own unstored intermediates.
@@ -967,7 +967,7 @@ def leg_synthetic(payload: Dict[str, Any], out: str) -> None:
     guard_differences = 0
     compared = 0
     windows: Dict[str, Any] = {}
-    # PER-AXIS ROTATION COVERAGE, counted rather than assumed. The audited revision
+    # Per-axis rotation coverage, counted rather than assumed. The audited revision
     # of this leg never phased y at all; a count in the artifact is what makes that
     # kind of hole visible instead of implied by a list of tuples.
     phased_rows = [0, 0, 0]
@@ -1262,7 +1262,7 @@ def leg_multi_step(payload: Dict[str, Any], out: str, cycles: int = 4) -> None:
     A kernel that is right for one launch and wrong forever after is identical in
     the single-launch legs and only diverges here.
 
-    THE DIGEST PAIR IS NOW A CHECK. It used to digest two DIFFERENT key sets — the
+    The digest pair is now a check. It used to digest two DIFFERENT key sets — the
     device state picks up the three `inv_eps_E*` volumes the constitutive helper
     returns — so the two hashes disagreed on every row beside `differing: {}` and
     could not have agreed on any. Digested over the oracle's names they are equal,
@@ -1298,7 +1298,7 @@ def leg_multi_step(payload: Dict[str, Any], out: str, cycles: int = 4) -> None:
         bad = {n: differing(device_state[n], oracle[n]) for n in oracle}
         moved = sum(differing(oracle[n], base[n]) for n in oracle)
         compared += len(oracle)
-        # THE DIGEST PAIR IS DIGESTED OVER ONE KEY SET, and that is a correction.
+        # The digest pair is digested over one key set, and that is a correction.
         # `run_constitutive_on_device` returns the three `inv_eps_E*` volumes it was
         # handed, so `device_state` carries 27 names against the oracle's 24 and
         # `state_digest(device_state)` could NEVER equal `state_digest(oracle)` — the
@@ -1357,7 +1357,7 @@ kernel void shipped(device float2* o [[buffer(0)]],
 #: A REAL coefficient times a field (``c_mul_field_left``), against
 #: ``part_products.scale``: one float32 product per part, MEEP's DOCMP loops.
 #:
-#: ``shipped`` IS THE SHIPPED TEXT, checked by
+#: ``shipped`` is the shipped text, checked by
 #: :func:`_assert_diagnostic_arms_are_the_shipped_spelling` against
 #: ``templates.complex_helpers`` (the helper names the coefficient ``c``, this shader
 #: ``k``). The two ``previous_*`` arms are the package's previous spellings --
@@ -1503,7 +1503,7 @@ def _connect_oracle(z: Any, p: Any) -> Any:
 def leg_part_products(payload: Dict[str, Any], out: str) -> None:
     """Exhaustive signed-zero tables: the shipped helpers against ``part_products``.
 
-    THREE TABLES AND ONE RANDOM ROW. The real-coefficient scale over every
+    Three tables and one random row. The real-coefficient scale over every
     ``(z_re, z_im, c)`` triple of {1.5, -2.25, +0.0, -0.0} (64 patterns), the Bloch
     connection product over every ``(z_re, z_im, p_re, p_im)`` quadruple (256), and
     the CONNECT_NEGATE unary minus over every ``(z_re, z_im)`` pair (16), each against
@@ -1592,8 +1592,8 @@ def leg_part_products(payload: Dict[str, Any], out: str) -> None:
 # LEG bindings — the 31-binding ceiling, as an assertion
 # ---------------------------------------------------------------------------
 
-#: Needle pairs for the ``constant float2&`` scalar ABI. TRANCHE 1 CERTIFIED
-#: ``constant float&`` AND NOTHING ELSE — five needles through a Python double into
+#: Needle pairs for the ``constant float2&`` scalar ABI. The first Metal certification covered
+#: ``constant float&`` and nothing else — five needles through a Python double into
 #: a single float. This family binds a Python ``(re, im)`` TUPLE into a
 #: ``constant float2&`` for each of three phases, which is a different ABI surface,
 #: and the Brillouin edge makes its zero SIGN load-bearing: ``phase_arguments``
@@ -1633,7 +1633,7 @@ def leg_bindings(payload: Dict[str, Any], out: str) -> None:
     first is the 31-buffer ceiling. The second is whether a Python ``(re, im)`` pair
     bound to a ``constant float2&`` arrives correctly rounded in BOTH lanes and
     carries the sign of a zero: the phase reaches the kernel that way, three times
-    per curl launch, and tranche 1's clean-scalar-ABI measurement covered
+    per curl launch, and the first Metal certification's clean-scalar-ABI measurement covered
     ``constant float&`` only. It was until now inferred from the reference legs
     agreeing — true, but an inference, and the one value it turns on (the backward
     Brillouin edge's ``-0.0``) is exactly the value an ABI is most likely to
@@ -1707,12 +1707,12 @@ def leg_signed_zero(payload: Dict[str, Any], out: str) -> None:
     source and the accumulation adds and subtracts the same zeros — so it gets its
     own seeding with its own vacuity floor. A census of zero is VACUOUS, not passed.
 
-    THE ZERO-INIT CURL HALF IS ALSO NEARLY A FIXED POINT, and that is exactly why it
+    The zero-init curl half is also nearly a fixed point, and that is exactly why it
     needs BOTH floors. Every value stays zero; what moves is the SIGN BIT, so
     ``moved_words`` and the ``-0.0`` census are the same measurement seen twice and
     each one alone is the vacuity guard the other cannot be.
 
-    THE PREDICTED NULL THAT USED TO LIVE HERE WAS REFUTED BY THIS LEG'S OWN NUMBERS.
+    The predicted null that used to live here was refuted by this leg's own numbers.
     The four periodic cases were recorded ``predicted_null`` with the reason "no
     metallic axis: the ownership mask writes no exact zeros through the recurrence,
     so no -0.0 output is reachable", and the same rows recorded 760 negative-zero
@@ -1838,7 +1838,7 @@ def _precondition_case(name: str, cell, boundaries, k_point, label: str,
         sources = tuple(spec["sources"])
         got = run_curl_on_device(before, pml, sub_step, codes,
                                  float(grid.dt / grid.dx), phases, record=record)
-        # THE INTERMEDIATES COME OUT OF THE PINNED REFERENCE ITSELF, not out of a
+        # The intermediates come out of the pinned reference itself, not out of a
         # second transcription written for the census. `reference_curl` is what
         # `leg_transcription` compares against `stepping.py`, so every value
         # collected here is the array path's own.
@@ -1894,14 +1894,14 @@ def leg_precondition(payload: Dict[str, Any], out: str) -> None:
     zero and the bytes are identical; on the 1e-38 control the census FIRES and the
     gate REFUSES the case.
 
-    ALL FOUR SUB-STEPS, AND THAT IS A CORRECTION. This leg used to run the two CURL
+    All four sub-steps, and that is a correction. This leg used to run the two CURL
     sub-steps only, so the constitutive comparisons were certified with no census at
     all while the summary claimed the whole family's byte-identity was "under a
     CHECKED subnormal-free precondition". A precondition that does not cover half
     the claim is not the claim's precondition.
 
-    EVERY CASE AT THE PHYSICAL BAND, AND THAT IS THE SAME CORRECTION AGAIN, ONE
-    LEVEL UP. Until this round the census ran on ``periodic_kx`` ALONE: seven of the
+    Every case at the physical band, and that is the same correction again, one
+    level up. Before the census was widened it ran on ``periodic_kx`` ALONE: seven of the
     eight cases in the matrix, and every row of the synthetic sweep, were certified
     with no census while the summary said the claim was bounded by one. The census
     now sweeps the whole case matrix at scale 1.0 — 8 cases x 4 sub-steps — and
@@ -1909,12 +1909,12 @@ def leg_precondition(payload: Dict[str, Any], out: str) -> None:
     CONTROLS stay on one case, because their job is to show the cliff exists rather
     than to bound the claim.
 
-    INTERMEDIATES ARE RECONSTRUCTED ON THE HOST, AND THAT IS WEAKER THAN A REGISTER
-    READ — stated, not hidden. ``compile_shader`` exposes no way to read a kernel's
+    Intermediates are reconstructed on the host, and that is weaker than a register
+    read — stated, not hidden. ``compile_shader`` exposes no way to read a kernel's
     registers, so the census forms the SAME expressions in the SAME operand order on
     the host and censuses those.
 
-    THE INTERMEDIATE SET USED TO BE ONE VALUE DEEP. It censused the curl and the two
+    The intermediate set used to be one value deep. It censused the curl and the two
     constitutive coefficient products and nothing else, while the docstring said
     "the reconstructed INTERMEDIATES". The split-field recurrence forms FIVE more
     per target that are never stored — ``fu*kms``, ``fu*kms - curl``, ``f*kms_u``,
@@ -2017,11 +2017,11 @@ _CONNECT_BODY = ("    return float2((z.x * p.x) - (z.y * p.y),\n"
 #: ``must_catch``: True (must be caught) | None (record only) | False (must NOT be
 #: caught -- a declared null, with its reason).
 #:
-#: THE GROUPINGS AND THE PRODUCTS ARE INVERTED (KERNELS.md §7.1). The shipped forms
+#: The groupings and the products are inverted (docs/development/certification.md#inverted-grouping-mutations). The shipped forms
 #: are MEEP's now -- the left-to-right curl bracket, the right-hand side formed first,
 #: and every product per part with the connection unfused -- so each grouping or
 #: product mutation plants the PACKAGE'S PREVIOUS spelling and stays must-catch. The
-#: ``b*`` rows are the per-chunk form battery (KERNELS.md §7.2).
+#: ``b*`` rows are the per-chunk form battery (certification.md#chunk-form-battery).
 CURL_MUTATIONS: Dict[str, Dict[str, Any]] = {
     "m1_previous_curl_grouping": {
         "must_catch": True,
@@ -2331,7 +2331,7 @@ def _lattices_swapped(record: Any) -> Any:
     return out
 
 
-#: The record mutations (KERNELS.md §7.2): the kernel is right and the record it is
+#: The form battery's record mutations: the kernel is right and the record it is
 #: handed is not.
 RECORD_MUTATIONS: Dict[str, Tuple[Any, str]] = {
     "b3_bound_off_by_one": (_bound_off_by_one, "a run end one row past the chunk"),
@@ -2345,7 +2345,7 @@ def _assert_mutation_configuration(label: str, entry: Dict[str, Any],
                                    reference_codes, reference_phases) -> None:
     """The mutation's configuration must be the REFERENCE's, exactly.
 
-    THIS GUARD EXISTS BECAUSE THREE MUST-CATCH MUTATIONS COULD NOT FAIL. m6, m7 and
+    This guard exists because three must-catch mutations could not fail. m6, m7 and
     m13 once overrode ``phases`` while being compared against an oracle ``stepping``
     had produced on the case's OWN table: the unmutated shipped kernel launched under
     that override already differed from the oracle, so every ``CAUGHT 1/1`` was
@@ -2382,7 +2382,7 @@ def _lattice_state(fields: Any, shape) -> None:
 
 def leg_mutations(payload: Dict[str, Any], out: str) -> None:
     harness = kit.MutationHarness(payload, out)
-    # ALL THREE AXES PHASED, WITH THREE DIFFERENT FACTORS, every connection a
+    # All three axes phased, with three different factors, every connection a
     # product (CONNECT_PHASE): a crossed-axis defect (m14) and the fused connection
     # (m12) are only measurable there.
     name, cell, boundaries, k_point = config("periodic_kxyz")
@@ -2575,7 +2575,7 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
                    sum(c.launches for c in counters), caught, 1, True,
                    "step_D stepped with the forward stencil")
 
-    # b3/b4: THE RECORD IS WRONG, the kernel is the shipped one. Both families,
+    # b3/b4: the record is wrong, the kernel is the shipped one. Both families,
     # against the oracle stepped on the true division.
     for label, (mutate, why) in RECORD_MUTATIONS.items():
         wrong = mutate(record)
@@ -2632,7 +2632,7 @@ def _plain_cell(grid: Any, record: Any) -> Tuple[int, int, int]:
 
 
 def leg_planted_zero(payload: Dict[str, Any], out: str) -> None:
-    """KERNELS.md §7.2's two rows a random state never draws, planted.
+    """The form battery's two rows a random state never draws, planted.
 
     * CURL: target 0 at a plain cell with ``f = -0`` in both parts and the four
       stencil operands equal, so ``((g1s - g1) + g2) - g2s`` is ``+0``: MEEP's
@@ -2792,7 +2792,7 @@ def leg_reduction(payload: Dict[str, Any], out: str) -> None:
 
 #: (label, kwargs for `build`, why the matrix does not already contain it).
 #:
-#: THE PREDICATE ADMITS THESE AND NO LEG LAUNCHED THEM. Found by constructing real
+#: The predicate admits these and no leg launched them. Found by constructing real
 #: engine objects and CALLING ``complex_pml_curl_coverage`` /
 #: ``complex_constitutive_coverage`` over an enumeration of everything this family
 #: does not implement: the two rows below came back ADMITTED on all four slots while
@@ -2937,12 +2937,12 @@ def leg_admitted_domain(payload: Dict[str, Any], out: str) -> None:
 def leg_overlap(payload: Dict[str, Any], out: str) -> None:
     """At most one arm may admit any configuration, and on a complex one it is THIS.
 
-    THE SWEEP IS WHAT THE REGISTRY IS FOR. Every arm in the table is asked for its
+    The sweep is what the registry is for. Every arm in the table is asked for its
     verdict on every configuration in the matrix, real and complex, and at most one
     may admit. A family absent from the table could not be swept and its
     disjointness would be an assumption.
 
-    THE SWEEP OUTLIVED THE DEFERRAL IT WAS WRITTEN UNDER. It ran first while these
+    The sweep outlived the deferral it was written under. It ran first while these
     arms were ``wired=False`` — registered so they could be swept, skipped by
     ``arms_for`` so they could not dispatch — and the disjointness it measured is
     exactly what licensed the flip to ``wired=True``. The tail below now asserts the
@@ -2977,7 +2977,7 @@ def leg_overlap(payload: Dict[str, Any], out: str) -> None:
         residency = metal_launch.Residency()
         context = arm_registry.StepContext(
             fields, pml, residency, (shaders.CONTRACT_OFF,), sources=())
-        # PEERS AND WELDS ARE SWEPT SEPARATELY. A peer replaces exactly its own slot,
+        # Peers and welds are swept separately. A peer replaces exactly its own slot,
         # so two peers on one slot is the over-covering dispatch the composer fails
         # closed on. A weld (``spec.is_weld``) replaces a whole seam and its predicate
         # CONTAINS the wired arm's by construction, so it always co-admits with the arm
@@ -3030,10 +3030,10 @@ def leg_overlap(payload: Dict[str, Any], out: str) -> None:
             assert all(admitting and "complex_fields" in admitting[0]
                        for admitting in admitters.values()), row
 
-    # THE COMPOSITION IS THIS FAMILY'S OWN NOW, and the assertion is RE-POINTED
+    # The composition is this family's own now, and the assertion is RE-POINTED
     # rather than dropped. Until 2026-08-15 the arms registered `wired=False` and
-    # this tail asserted `not plan.replaces` — "dispatch must be unchanged by this
-    # tranche". `complex_fields.register_arms` has since flipped to `wired=True`,
+    # this tail asserted `not plan.replaces` — that this family left dispatch
+    # unchanged. `complex_fields.register_arms` has since flipped to `wired=True`,
     # after the composition sweep settled the only question the deferral was ever
     # about (whether wiring could change the answer on a configuration ANOTHER
     # family owns; see that function's docstring). The old assertion therefore
@@ -3041,7 +3041,7 @@ def leg_overlap(payload: Dict[str, Any], out: str) -> None:
     # replaces=('step_B', 'update_H', 'step_D', 'update_E') — and a gate that fails
     # because the tree moved under it is reporting its own staleness, not a defect.
     #
-    # WHAT REPLACES IT IS STRICTLY STRONGER, and it is the assertion that has
+    # What replaces it is strictly stronger, and it is the assertion that has
     # teeth now that the arms dispatch: all four sub-steps must be composed on
     # EVERY complex configuration in the matrix, and every one of them must be
     # THIS family's arm. The old form could only have caught a foreign arm reaching
@@ -3138,7 +3138,7 @@ def main() -> int:
     if reasons:
         return kit.cannot_certify(payload, arguments.out, reasons)
 
-    # A DISTINCT NAME, because the composition probe writes into this same
+    # A distinct name, because the composition probe writes into this same
     # directory and both callers used the default. Measured on
     # results/metal_complex_2026-08-15/: the surviving provenance.json held the
     # PROBE's five sources, and the gate's ten were recoverable only from inside
@@ -3175,9 +3175,9 @@ def main() -> int:
     # The kernel sources are hashed: a source string is generated, so the module
     # hash alone would not notice a changed specialisation.
     #
-    # BOTH CONTRACTION MODES, as `launch.compute_fingerprints` does for the real
+    # Both contraction modes, as `launch.compute_fingerprints` does for the real
     # family. The guard is a property of the SOURCE here, so `off` and `fast` are
-    # different kernels — and legs `synthetic` and `contraction` COMPILE AND LAUNCH
+    # different kernels — and legs `synthetic` and `contraction` compile and launch
     # the `fast` build on every row. Hashing only `off` would have left a launched
     # specialisation with no fingerprint at all.
     payload["kernel_source_sha256"] = {

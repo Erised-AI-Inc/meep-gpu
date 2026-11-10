@@ -1,10 +1,10 @@
 """Laptop contracts for the five 2026-09-07 Triton H->D TAIL products.
 
-THE MERGE BAR RUNS WITHOUT TRITON, which is exactly why these contracts exist: every
+The merge bar runs without Triton, which is exactly why these contracts exist: every
 one of them is a claim about HOST TEXT or a HOST predicate, and every one of them
 would otherwise be checked for the first time on a device an hour away.
 
-FIVE FAMILIES, ONE MODULE, and the shared table is what keeps a sixth from being added
+Five families, one module, and the shared table is what keeps a sixth from being added
 with a silently weaker contract:
 
     conductive_bfast_fused_hd_pair   2 instances  2 cells  2 kernels
@@ -13,7 +13,7 @@ with a silently weaker contract:
     beta_complex_fused_hd_pair       4 instances  2 cells  2 kernels
     nonlinear_fused_hd_pair          2 instances  1 cell   0 kernels (admission only)
 
-WHAT IS PINNED, and why each one is a defect that is otherwise SILENT:
+What is pinned, and why each one is a defect that is otherwise SILENT:
 
 * **the lift equality**, per variant. The fused kernel's curl body must be the
   CERTIFIED body with exactly the declared redirects. A drift here is a kernel that
@@ -219,14 +219,14 @@ def test_the_arm_tables_agree_with_each_other(family: Any, instances: int,
     for pair in claimed:
         assert pair in BOARD_CELLS, (
             f"{family.FAMILY} claims {pair}, which is not one of the nine cells the "
-            f"2026-09-07 board prices for this round")
+            f"2026-09-07 board prices for these five families")
 
 
 def test_the_five_families_claim_the_nine_board_cells_exactly_once_each() -> None:
     """No cell is claimed twice and none is left unclaimed.
 
     Two products admitting one cell is a dispatcher picking by ordering; a cell with
-    no product is a board row this round did not close.
+    no product is a board row the five families leave open.
     """
     claimed: List[Tuple[str, str]] = []
     for family, _instances, _cells in FAMILIES:
@@ -346,7 +346,7 @@ def test_a_fields_without_a_grid_is_refused(family: Any, instances: int,
     assert not verdict.covered
     assert verdict.reasons, f"{family.FAMILY} refused without a reason"
     if family is nonlinear:
-        # THE INVERTED CLAUSE RUNS FIRST on this admission, deliberately: a LINEAR run
+        # The inverted clause runs first on this admission, deliberately: a LINEAR run
         # is the ordinary weld's row and saying so is more useful than "no grid".
         assert any("chi2/chi3" in reason for reason in verdict.reasons)
     else:
@@ -418,7 +418,7 @@ def test_the_families_declare_the_multiply_helpers_they_may_reach() -> None:
 
 
 # ---------------------------------------------------------------------------
-# THE LIFT JOIN. Six of this lane's fifteen corpus rows were silently excluded on the
+# The lift join. Six of these families' fifteen corpus rows were silently excluded on the
 # first full campaign because a name match found nothing and the miss was reported as
 # a fact about the host's MEEP build. These pin the repair on the host, where it is
 # cheap, rather than on a device an hour away.
@@ -506,7 +506,7 @@ def test_the_lift_join_prefers_an_exact_name_and_says_so() -> None:
 
 def test_the_lift_join_REFUSES_rather_than_picks_when_two_methods_claim_the_name(
 ) -> None:
-    """THE CONTROL THAT BITES. Ambiguity must not be broken by iteration order.
+    """The control that bites. Ambiguity must not be broken by iteration order.
 
     Two generated methods whose (source, index) both prefix the recorded name is a
     join that cannot decide, and deciding anyway is how a measurement is attributed to
@@ -560,7 +560,7 @@ def test_upstream_safe_name_reproduces_the_three_shapes_the_corpus_uses() -> Non
     """Transcribed from the census's own recorded parameter tuples for these rows.
 
     A float, a slash-bearing string and a plain word are the three shapes the six
-    rows of this lane carry, and each one's recorded name fixes the answer.
+    affected rows carry, and each one's recorded name fixes the answer.
     """
     kit = _kit()
     assert kit.upstream_safe_name(13.2) == "13_2"
@@ -571,7 +571,7 @@ def test_upstream_safe_name_reproduces_the_three_shapes_the_corpus_uses() -> Non
 
 def test_every_parameterized_row_this_lane_lifts_reconstructs_its_recorded_name(
 ) -> None:
-    """THE WHOLE DEFECT, as a table: six recorded names, six generated methods.
+    """The whole defect, as a table: six recorded names, six generated methods.
 
     Every tuple here is transcribed from the standing census's `parameterized` block
     for that row; the recorded names are the board's, off the seam record. A join that
@@ -603,7 +603,7 @@ def test_every_parameterized_row_this_lane_lifts_reconstructs_its_recorded_name(
 
 
 def test_the_join_refuses_when_the_index_matches_but_the_parameter_does_not() -> None:
-    """THE CONTROL THAT BITES HARDEST. The index alone must not carry a row.
+    """The control that bites hardest. The index alone must not carry a row.
 
     An index join with no suffix check would take this method and attribute a
     measurement to the wrong corpus row in silence -- the failure mode that has no

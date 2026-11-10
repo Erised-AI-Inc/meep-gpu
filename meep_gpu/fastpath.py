@@ -1,6 +1,6 @@
 """The dispatch seam: which KERNEL TABLE replaces array sub-steps, and which of them.
 
-THERE ARE THREE TABLES, and the backend rung is where that is decided. A NumPy
+There are three tables, and the backend rung is where that is decided. A NumPy
 engine with an MPS device takes the METAL table, whose rungs and release rows live
 in :mod:`meep_gpu.metal_dispatch` for the reason that module's docstring gives —
 every gate artifact pins the modules it imports, so a Metal release row in THIS
@@ -15,12 +15,12 @@ composer: the driver's slot order, the whole-or-nothing rule for a fused pair, t
 subnormal gate, the certification lookup and the artifact — one implementation
 each, in :func:`_finish` and the functions it calls.
 
-THE ARRAY PATH IS THE UNIVERSAL FALLBACK AND THE ORACLE. ``stepping.py`` handles
-100% of configurations by construction, is validated against CPU MEEP to the
-floors in ``the test coverage notes``, and is bit-identical between NumPy and CuPy. The
-kernels under ``triton_kernels/`` and ``metal_kernels/`` are an accelerated SUBSET,
-gated on sha256 bit-identity against that path. So the contract this module
-implements is not "cover everything". It is:
+The array path is the universal fallback and the oracle. ``stepping.py`` handles
+100% of configurations by construction, is validated against CPU MEEP to measured
+floors (docs/design/floating-point.md#agreement-with-meep-is-measured-separately),
+and is bit-identical between NumPy and CuPy. The kernels under ``triton_kernels/`` and
+``metal_kernels/`` are an accelerated SUBSET, gated on sha256 bit-identity against
+that path. So the contract this module implements is not "cover everything". It is:
 
     dispatch only what is certified, fall back correctly for everything else,
     and make which of the two happened legible.
@@ -29,7 +29,7 @@ An uncovered slot, an uncovered grid feature, a missing Triton, a missing GPU �
 every one of them reaches the array path with a NAMED reason recorded in the run
 artifact, never an error and never a silent difference.
 
-PLAN-TIME OR NEVER. Every refusal is decided here, at the driver's configuration
+Plan-time or never. Every refusal is decided here, at the driver's configuration
 freeze. After the freeze there is NO runtime fallback: an exception out of a
 dispatched ``plan.run()`` is FATAL and propagates. That is deliberate and it is
 the opposite of defensive. A Triton launch that raises mid-write leaves its
@@ -47,7 +47,7 @@ exists because the freeze's guarantee is a statement about the freeze and
 Triton kernels after it had been called, with CuPy's ``-ftz=true`` compiler seam
 back in place — the shipped split, arrived at from inside a certified plan.
 
-DISPATCH IS ON BY DEFAULT (:data:`DISPATCH_BY_DEFAULT` is ``True``), and
+Dispatch is on by default (:data:`DISPATCH_BY_DEFAULT` is ``True``), and
 ``MEEP_GPU_DISPATCH=0`` is how a run opts out; ``MEEP_GPU_DISPATCH=1`` asks for
 dispatch explicitly, and any other value is refused by name
 (:data:`DISPATCH_ENABLE_VALUES`) with the run on the array path. What a run
@@ -62,7 +62,7 @@ closes — dispatch installs the certified policy or refuses by name — and
 :data:`DISPATCH_BY_DEFAULT` states the licence the default rests on and what that
 licence does not cover.
 
-WITHIN A DISPATCHING RUN, TWENTY-SEVEN CROSS-SUB-STEP TRITON PRODUCTS NOW DISPATCH, and
+Within a dispatching run, twenty-seven cross-sub-step Triton products now dispatch, and
 the hand-CUDA table brings its own
 (:data:`meep_gpu.fastpath_cuda.CUDA_RELEASED_FUSED_ARMS`, released against that
 table's own ledger and its own route gate, and reached only where the precedence
@@ -70,11 +70,11 @@ rung puts that table first).
 :data:`RELEASED_FUSED_ARMS` names the Triton twenty-seven and the release is decided
 in two halves — the CUDA rows are decided by the identical two halves in the sibling
 module, through the SAME :func:`_axis_reasons`:
-:data:`FUSED_RELEASE_ENVELOPE` is the shared half, which successive rounds have
+:data:`FUSED_RELEASE_ENVELOPE` is the shared half, which successive releases have
 emptied as the arms stopped agreeing on one axis after another, and
 :data:`FUSED_RELEASE_ARM_AXES` is what each arm's OWN cases
 drove, which is what lets the FOLDED pairs require a fold while the unfolded ones
-refuse one, and what moved ``cylindrical``, then the six phase-B axes, then
+refuse one, and what moved ``cylindrical``, then six axes on 2026-09-13, then
 ``pml_active`` off the shared envelope — each the moment one arm was released on a
 case the others were not. Every other fused label,
 and every one of these twenty-seven outside its own axes, still refuses the whole
@@ -83,11 +83,11 @@ performs the driver's in-seam fills in-launch; the driver then re-runs those
 array passes on top, and that composition is what the gate measured
 byte-identical rather than what this module argues about.
 
-THE COMPOSER IS TOLD WHICH LABELS THIS LADDER WILL RUN, not just that fusion is
+The composer is told which labels this ladder will run, not just that fusion is
 wanted (``plan_step``'s ``fuse_labels``). It has to be: a fused product occupies
 BOTH slots of its seam, so a label the ladder cannot admit is one clause (8) can
 only reject WHOLE, taking the separate certified arms underneath it with it.
-Measured on 2026-09-02, before this round: a conductive 2-D PML grid that had
+Measured on 2026-09-02, before this change: a conductive 2-D PML grid that had
 been dispatching ``fused pair B`` and four arms went entirely to the array path
 once ``conductive_fused_electric_pair`` was wired into the composer, because its
 label has no ledger entry and cannot be admitted. Handing the admitted set down
@@ -95,7 +95,7 @@ means an un-admitted product is never installed and its seam keeps the plans it
 had, which is what the envelope paragraph in :func:`_decide` already promised at
 the granularity of the whole run.
 
-AND THE RELEASE CAME WITH A VETO, ``MEEP_GPU_FUSE_ARMS=0``
+And the release came with a veto, ``MEEP_GPU_FUSE_ARMS=0``
 (:data:`FUSE_ARMS_VETO`), because it took a reachable configuration away. Dispatch
 with the separate arms and no fusion used to be what the switch unset meant; after
 the release that is the fused composition, so without the veto there is no way to
@@ -112,7 +112,7 @@ torch at all — ``test_package_boundary``, ``test_fastpath`` and
 function-local: :func:`metal_hardware_present`'s ``import torch``, the Metal
 ladder's own module, and rung 4's ``import triton``.
 
-NEITHER OTHER TABLE'S RELEASE ROWS ARE IN THIS FILE, and the cost argument is the
+Neither other table's release rows are in this file, and the cost argument is the
 whole reason. :data:`RELEASED_FUSED_ARMS`, :data:`ARM_CERTIFICATION`,
 :data:`FUSED_RELEASE_ENVELOPE` and :data:`FUSED_RELEASE_ARM_AXES` below are the
 TRITON table's and stay that way; the Metal twins are in
@@ -126,7 +126,7 @@ artifacts that imported the module, and a CUDA release row or a merge-rule fix
 moving costs the two route re-gates and NO Metal re-cut, because a NumPy step never
 imports ``fastpath_cuda`` and so never puts it in a Metal manifest.
 
-:func:`arm_is_fused` ANSWERS TWO OF THE THREE, and by two different mechanisms. Its
+:func:`arm_is_fused` answers two of the three, and by two different mechanisms. Its
 Triton half is a spelling (a prefix and a label set) and is unchanged; its CUDA half
 is a NAMESPACE lookup, which is what the ``cuda:`` prefix on a merged label buys —
 measured 2026-09-10, not one of the 38 labels the hand-CUDA composer writes matches
@@ -134,7 +134,7 @@ a Triton prefix, so covering both by spelling would have been guessing. The Meta
 table does not come through here at all: it reads its fused set off its own
 registry's weld flag, a declaration rather than a spelling.
 
-THE KERNEL PACKAGES' OWN DOCSTRINGS SAID DISPATCH IS NOT WIRED, and the four that
+The kernel packages' own docstrings said dispatch is not wired, and the four that
 said it loudest have been corrected: ``metal_kernels/launch.py``,
 ``metal_kernels/__init__.py``, ``cuda_kernels/arms.py`` and
 ``cuda_kernels/fused_pairs.py`` each stated that this module "returns ``None`` on
@@ -143,15 +143,15 @@ that package at all. Both halves were true when they were written and neither is
 now. What correcting them cost is not the same on the two sides and the difference
 is measured rather than assumed: the two Metal files are sha256-welded into gate
 records, so editing a comment there turns a weld test red until the gate that
-pinned it is re-run, and their corrections rode the re-gate the Triton route campaign
-of that round (``meep_gpu/route_stamps.py`` names it now) was owed anyway (this file
+pinned it is re-run, and their corrections rode the re-gate that the Triton route campaign
+(the one ``meep_gpu/route_stamps.py`` names now) was owed anyway (this file
 moved, and 32 Metal products pin it). The two CUDA files are pinned by NO ledger
 entry — 0 of the 45, counted — so their correction cost one coverage-census re-cut and
 no device time.
 
-A RESIDUE REMAINS AND IS NAMED RATHER THAN QUIETLY LEFT: roughly two dozen further
+A residue remains and is named rather than quietly left: roughly two dozen further
 Metal and Triton family modules carry the same sentence in their own docstrings.
-Each is welded to a family gate this campaign did not re-run, so correcting one
+Each is welded to a family gate the route campaign did not re-run, so correcting one
 would cost that family's device gate for a comment. They are wrong in the same
 way and are listed by a grep for "on every branch"; the recorded shape under
 ``fingerprints.json['driver_dispatch']`` contradicts them where a reader of this
@@ -160,6 +160,7 @@ seam will find it.
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import os
@@ -191,7 +192,7 @@ DISPATCH_ENABLE = "MEEP_GPU_DISPATCH"
 #: empty-grid compile mechanism can be measured against its absence on a device
 #: without editing code. Every other value (including unset) runs it.
 #:
-#: IT CHANGES WHICH SLOTS DISPATCH, not just when they compile. A slot whose
+#: It changes which slots dispatch, not just when they compile. A slot whose
 #: kernel will not compile is unfilled by the warm pass and falls to the array
 #: path; with the pass off nothing unfills, so the dispatch set is WIDER and the
 #: compile failure lands mid-step instead. The artifact records that under
@@ -204,19 +205,19 @@ WARM_SWITCH = "MEEP_GPU_WARM"
 #: dispatch refuses unless the caller has already installed the certified policy
 #: on all three executors. Every other value (including unset) installs.
 #:
-#: THE OPT-OUT CANNOT REACH A SPLIT, which is the whole reason it is spelled this
+#: The opt-out cannot reach a split, which is the whole reason it is spelled this
 #: way. "Do not install" and "do not care" are different requests, and only the
 #: first is offered: the failure this variable is next to is two executors under
 #: two policies, and a switch that let a run proceed into it would be a switch for
 #: turning the measurement off.
 SUBNORMAL_INSTALL_SWITCH = "MEEP_GPU_SUBNORMAL_INSTALL"
 
-#: THE FUSION OPT-IN: the route to a cross-sub-step fused product that no gate has
+#: The fusion opt-in: the route to a cross-sub-step fused product that no gate has
 #: released, or to a released one on a configuration outside what its gate measured.
 #: A comma-separated list of ARM LABELS (``fused pair B``, ``fused pair D``,
 #: ``fused pair B (folded)``, ``dispersive fused pair``, ``fused ADE state``).
 #:
-#: IT IS NO LONGER THE ONLY ROUTE, and that is the 2026-08-29 change. Clause (8)
+#: It is no longer the only route, and that is the 2026-08-29 change. Clause (8)
 #: now admits the union of this switch and :data:`RELEASED_FUSED_ARMS` — the arms
 #: the driver-route gate actually drove — restricted to the configurations
 #: :data:`FUSED_RELEASE_ENVELOPE` says it drove them on. Unset, on any
@@ -224,8 +225,8 @@ SUBNORMAL_INSTALL_SWITCH = "MEEP_GPU_SUBNORMAL_INSTALL"
 #: been: the composer is asked with ``fuse=False, fuse_ade=False`` and clause (8)
 #: refuses any fused label that reaches it anyway.
 #:
-#: WHY A SWITCH AND AN ALLOW-LIST CONSTANT, AND WHAT EACH IS FOR. Clause (8)'s
-#: predicate is a statement about whether a GATE HAS RUN, and until 2026-08-29 no
+#: Why a switch and an allow-list constant, and what each is for. Clause (8)'s
+#: predicate is a statement about whether a gate has run, and until 2026-08-29 no
 #: gate could run: ``_decide`` passed ``fuse=False`` as a literal, so the driver
 #: seam was unreachable from a fused arm and the refusal was unfalsifiable. The
 #: chicken-and-egg was broken the way :data:`DISPATCH_ENABLE` broke the same one
@@ -236,10 +237,10 @@ SUBNORMAL_INSTALL_SWITCH = "MEEP_GPU_SUBNORMAL_INSTALL"
 #: in a diff. The switch keeps its job — reaching an arm or a configuration the
 #: constant does not cover, which is how the NEXT gate measures the next one.
 #:
-#: SETTING IT ON A CONFIGURATION OUTSIDE THE ENVELOPE IS NOT REFUSED, and the
+#: Setting it on a configuration outside the envelope is not refused, and the
 #: record says so: the named reasons are carried by
 #: ``fusion.outside_the_released_envelope`` when the SHARED half refuses (empty
-#: since the target round emptied :data:`FUSED_RELEASE_ENVELOPE`, so in practice
+#: since the 2026-09-14 release emptied :data:`FUSED_RELEASE_ENVELOPE`, so in practice
 #: only on an unreadable shape) and by ``fusion.outside_this_arms_own_cases`` when
 #: the per-arm half does, which is now every ordinary refusal;
 #: ``fusion.driven_outside_the_released_envelope`` marks the run and reads BOTH
@@ -247,19 +248,19 @@ SUBNORMAL_INSTALL_SWITCH = "MEEP_GPU_SUBNORMAL_INSTALL"
 #: is the same shape ``MEEP_GPU_DISPATCH=1`` has — an explicit request, recorded
 #: as one — and it is what a gate needs to measure a shape nothing has measured.
 #:
-#: IT IS NOT A KILL SWITCH'S TWIN. Setting it cannot make anything dispatch that
+#: It is not a kill switch's twin. Setting it cannot make anything dispatch that
 #: the rest of the ladder refuses — the fold rung (6b), completeness (6), the
 #: subnormal gate (8b) and the warm pass all still run, in that order, after it.
 #: All it does is stop clause (8) refusing the labels it NAMES, and clause (8)
 #: still refuses every fused label neither it nor the release names, by name.
 FUSE_ARMS_SWITCH = "MEEP_GPU_FUSE_ARMS"
 
-#: THE FUSION VETO: ``MEEP_GPU_FUSE_ARMS=0`` admits NO fused arm, however many
+#: The fusion veto: ``MEEP_GPU_FUSE_ARMS=0`` admits NO fused arm, however many
 #: :data:`RELEASED_FUSED_ARMS` covers, and leaves the rest of dispatch running. It
 #: is the third value of the same switch, the way ``0`` is the third value of
 #: :data:`DISPATCH_ENABLE`, and it is a VETO — no value of it can admit an arm.
 #:
-#: WHY IT HAD TO EXIST THE MOMENT THE RELEASE DID, measured rather than foreseen.
+#: Why it had to exist the moment the release did, measured rather than foreseen.
 #: Before 2026-08-29 there were three reachable configurations: the array path
 #: (``MEEP_GPU_FUSED=0``), dispatch with separate arms (the switch unset), and
 #: dispatch with fusion (the switch set). The release collapsed the middle one:
@@ -267,7 +268,7 @@ FUSE_ARMS_SWITCH = "MEEP_GPU_FUSE_ARMS"
 #: fuses, so "dispatch, no fusion" became unreachable and the run that isolates a
 #: fusion defect from a sub-step defect could not be asked for at all.
 #:
-#: THAT IS NOT A HYPOTHETICAL COST, it is the one that stopped a gate. The
+#: That is not a hypothetical cost, it is the one that stopped a gate. The
 #: driver-route gate's substitution proof — the only claim about fusion no byte
 #: comparison can reach — counts device launches per step against a THIRD leg that
 #: dispatches the SAME SLOTS with fusion off. Run against the released tree on
@@ -276,7 +277,7 @@ FUSE_ARMS_SWITCH = "MEEP_GPU_FUSE_ARMS"
 #: to release. A release that cannot be re-measured on the tree that ships it is
 #: not a release; this switch is what keeps the baseline reachable.
 #:
-#: THE VETO WINS WHEREVER IT APPEARS, including beside arm labels
+#: The veto wins wherever it appears, including beside arm labels
 #: (``0,fused pair B``). A veto a caller can override by naming an arm is not a
 #: veto, and the ambiguity is better answered by the safe branch than by a new
 #: error path. ``fusion.vetoed`` in the record says it was in force, and
@@ -288,26 +289,30 @@ FUSE_ARMS_VETO = "0"
 #: Unset keeps the last record in memory, served by ``driver.fast_path_report()``.
 DISPATCH_LOG = "MEEP_GPU_DISPATCH_LOG"
 
-#: THE HARDWARE SCOPE: WHICH DEVICE AND TOOLCHAIN IDENTITIES THE KERNELS MAY RUN ON,
+#: The hardware scope: which device and toolchain identities the kernels may run on,
 #: named by value (:data:`HARDWARE_VALUES`). Every kernel table runs by default on an
 #: identity it SUPPORTS but that no recorded gate ran on, and says so. On the NVIDIA
-#: tables (rungs 4, 4b and 4e) supported is a range, the Triton versions
-#: :data:`TRITON_SUPPORTED_VERSIONS` and the compute capabilities
-#: :data:`SUPPORTED_COMPUTE_CAPABILITIES` (the hand-CUDA table's are its own,
-#: ``fastpath_cuda.SUPPORTED_COMPUTE_CAPABILITIES``). The Metal table supports every
-#: Apple GPU (``metal_dispatch``, rung 4M). Every other value is refused by name on
-#: every table, and so is the retired :data:`RETIRED_HARDWARE_SWITCH`, set to anything.
+#: tables (rungs 4 and 4b) supported is a SELF-CHECK, not a range: a Triton of
+#: :data:`TRITON_MINIMUM_VERSION` or later that compiled and launched the health probe
+#: on this device (:func:`triton_health`), and a CuPy whose NVRTC can target this
+#: device's architecture (``fastpath_cuda.nvrtc_target``); the warm pass then compiles
+#: every slot's own kernel at plan time and unfills a slot whose kernel will not. The
+#: Metal table supports every Apple GPU (``metal_dispatch``, rung 4M). Every other value
+#: is refused by name on every table, and so is the retired
+#: :data:`RETIRED_HARDWARE_SWITCH`, set to anything.
 #:
 #: * ``certified``: only a certified identity runs; the rest, unreadable included,
-#:   are refused by name.
+#:   are refused by name. On the NVIDIA tables the toolchain and host the kernels run
+#:   beside are compared by name too, against the stack the device's own compute
+#:   capability was certified on (:func:`certified_nvidia_stack`, rung 4c).
 #: * ``supported`` (the default, when unset): a certified identity runs; a
-#:   supported, uncertified one runs with a NOTE, unless another candidate NVIDIA
-#:   table is certified here (rung 4e drops it by name); an unsupported one is
-#:   refused by name; an unreadable one runs with ``certified: None``.
+#:   supported, uncertified one runs with a NOTE, beside a certified table as well;
+#:   an unsupported one is refused by name; an unreadable one runs with
+#:   ``certified: None``.
 #: * ``any``: every identity runs; an unsupported one is recorded
 #:   ``supported: False``.
 #:
-#: IT ADMITS AN IDENTITY AND NOTHING ELSE. Every rung below the identity rungs
+#: It admits an identity and nothing else. Every rung below the identity rungs
 #: still runs, in order. A run on an uncertified identity carries NO CERTIFICATION:
 #: the record says ``certified: False`` with the identity read under
 #: ``uncertified.served``, and one line per process names what is certified and why
@@ -317,7 +322,7 @@ HARDWARE_CERTIFIED = "certified"
 HARDWARE_SUPPORTED = "supported"
 HARDWARE_ANY = "any"
 
-#: THE NAME :data:`HARDWARE_SWITCH` REPLACED. Its ``0`` and ``1`` read as a yes/no
+#: The name :data:`HARDWARE_SWITCH` replaced. Its ``0`` and ``1`` read as a yes/no
 #: answer to a question no value asked: unset already ran a supported, uncertified
 #: identity, ``1`` also ran an unsupported one, and ``0`` restricted the kernels to
 #: certified ones. It is not read: set to anything, ``1`` and ``0`` included, it is
@@ -333,29 +338,29 @@ RETIRED_HARDWARE_SWITCH = "MEEP_GPU_ALLOW_UNCERTIFIED"
 # within it
 # ---------------------------------------------------------------------------
 
-#: THE EXPLICIT PREFERENCE, and it SELECTS WITHIN the candidate set rather than
+#: The explicit preference, and it SELECTS WITHIN the candidate set rather than
 #: widening it. A run that asked for a table this hardware cannot run is refused BY
 #: NAME at the backend rung, never answered with a different table: an artifact
 #: describing a table the caller did not ask for is worse than a refusal, because
 #: the caller has no way to see that the request was dropped.
 KERNEL_TABLE_SWITCH = "MEEP_GPU_KERNEL_TABLE"
 
-#: THE ORDER A CuPy ENGINE'S CANDIDATES ARE TAKEN IN, and the constant is the
-#: ruling rather than a preference: Triton is the release-gated incumbent, and the
+#: THE ORDER A CuPy engine's candidates are taken in, and the constant is the
+#: decision rather than a preference: Triton is the release-gated incumbent, and the
 #: hand-CUDA table fills its refusals. Measured-fastest-per-arm replaces the order
-#: once an idle-box timing round exists; until then the incumbent goes first, and
+#: once an idle-box timing run exists; until then the incumbent goes first, and
 #: flipping it is a one-constant edit priced as a fastpath edit (this file is bound
 #: by BOTH ``driver_dispatch`` records, so an edit here re-cuts them and re-drifts
 #: every Metal artifact that imported this module).
 NVIDIA_TABLE_PRECEDENCE: Tuple[str, ...] = ("triton", "cuda")
 
-#: THE SAME TUPLE UNDER THE NAME THE LADDER'S PRECEDENCE RUNG READS. Rung 3 asks the
+#: The same tuple under the name the ladder's precedence rung reads. Rung 3 asks the
 #: HARDWARE which tables exist; rung 4d orders the ones that survived their own
 #: candidacy checks, and it is that rung the campaign's arbitration legs drive. One
 #: definition, two readers, so a flip cannot move one and not the other.
 BACKEND_PRECEDENCE: Tuple[str, ...] = NVIDIA_TABLE_PRECEDENCE
 
-#: THE PREFERENCE THAT ORDERS THE NVIDIA TABLES AT RUNG 4d. Distinct from
+#: The preference that orders the NVIDIA tables at rung 4d. Distinct from
 #: :data:`KERNEL_TABLE_SWITCH`, which answers a different question one rung earlier:
 #: that one picks WHICH HARDWARE'S table (a NumPy host with an MPS device against a
 #: CuPy host), this one picks which of the two NVIDIA tables composes FIRST and
@@ -408,7 +413,7 @@ def backend_precedence(candidates: Sequence[str]) -> Any:
     * anything else -> a REFUSAL STRING naming the switch, the token and the
       candidate set.
 
-    THE REFUSAL IS A RETURN VALUE, NOT A RAISE. ``plan_fast_path``'s wrapper turns an
+    The refusal is a return value, not a raise. ``plan_fast_path``'s wrapper turns an
     exception into "internal error", which is exactly the wording that makes a
     deliberate refusal look like a defect; the ladder's contract is that every rung
     answers with a named reason and none of them raises.
@@ -420,15 +425,15 @@ def backend_precedence(candidates: Sequence[str]) -> Any:
     if wanted not in candidates:
         return (f"{BACKEND_PREFERENCE_SWITCH}={wanted} names no candidate table on "
                 f"this host; candidates are "
-                f"{', '.join(candidates) or 'none'}. The preference orders WHAT THE "
-                "HARDWARE AND THE CERTIFICATIONS ADMIT and never widens it")
+                f"{', '.join(candidates) or 'none'}. The preference orders what the "
+                "hardware and the certifications admit and never widens it")
     return (wanted,) + tuple(name for name in order if name != wanted)
 
 
 def metal_hardware_present() -> bool:
     """Is there an MPS device this process could compile a Metal shader for?
 
-    THE SAME THREE READS ``metal_kernels/coverage._metal_backend_reasons`` MAKES,
+    The same three reads ``metal_kernels/coverage._metal_backend_reasons`` makes,
     so the backend rung and the coverage clause cannot disagree about whether the
     hardware is there: torch built with MPS, an MPS device available, and
     ``torch.mps.compile_shader`` present (the entry point every hand-written Metal
@@ -453,7 +458,7 @@ def metal_hardware_present() -> bool:
 def candidate_tables(grid: Any) -> Tuple[str, ...]:
     """Which kernel tables could POSSIBLY run on this host, in precedence order.
 
-    THE RUNG IS NOT "WHICH TABLE DO WE LIKE". It is answered from two facts the
+    The rung is not "which table do we like". It is answered from two facts the
     caller cannot argue with — the engine's array module and the device that is
     actually present — and only then does :data:`KERNEL_TABLE_SWITCH` choose among
     what came back. Splitting it that way is what makes a preference naming an
@@ -464,7 +469,7 @@ def candidate_tables(grid: Any) -> Tuple[str, ...]:
     * anything else -> ``()``, and the backend rung refuses with the compound
       reason that quotes both halves.
 
-    WHOSE NUMPY ENGINE REACHES THIS RUNG: from :class:`~meep_gpu.driver.FdtdDriver`,
+    Whose NumPy engine reaches this rung: from :class:`~meep_gpu.driver.FdtdDriver`,
     only a driver built with ``prefer_gpu=True`` on an Apple GPU. A driver built with
     ``prefer_gpu=False`` is the NumPy reference and never calls the planner (its
     freeze publishes :func:`reference_record`), so the answer here is about the
@@ -482,14 +487,14 @@ def candidate_tables(grid: Any) -> Tuple[str, ...]:
     return ()
 
 
-#: THE NAMES THIS PACKAGE USED TO READ, and what replaced each. Renamed 2026-08-22: the
+#: The names this package used to read, and what replaced each. Renamed 2026-08-22: the
 #: package ships standalone as a MEEP accelerator, so its public switch surface must not
 #: carry the name of the tree it happens to live in. Seven of its switches were already
 #: ``MEEP_GPU_*``; these five were the inconsistent minority. ``*_FDTD_TRITON``
 #: carried a second leak besides the project name -- it is the general dispatch enable,
 #: and only one of the three backends is named Triton.
 #:
-#: THIS IS A REFUSAL, NOT AN ALIAS. The rename-outright rule forbids a back-compatibility
+#: This is a refusal, not an alias. The rename-outright rule forbids a back-compatibility
 #: spelling, and nothing here accepts one. But the failure a silent rename produces is
 #: the worst one available: a run with the old name set loses dispatch and still
 #: completes, so the measurement changes and nothing says so. :func:`_refuse_legacy_names`
@@ -524,16 +529,16 @@ def _refuse_legacy_names() -> None:
 #: :data:`SYNC_UPDATE_H_PASS`, which is the magnetic half-step's own name for
 #: ``update_H`` and the site a plan may DECLINE (:data:`SYNC_PASS_OWNERS`).
 #:
-#: ``fill_B``/``fill_D`` JOINED THIS TUPLE ON 2026-09-02, and what let them is the
+#: ``fill_B``/``fill_D`` joined this tuple on 2026-09-02, and what let them is the
 #: three things the previous text priced: the two driver consults, retiring the
 #: blanket fold rung with them, and a gate that runs the composition through the
-#: real seam. ALL THREE ARE NOW DONE — the third is
+#: real seam. All three are now done — the third is
 #: ``route_stamps.route_gate("triton")``'s ``folded_2d`` and ``folded_dispersive_2d``
 #: cases, which drive both fill slots in-launch — and the two folded pairs are in
 #: :data:`RELEASED_FUSED_ARMS` as a result. Every OTHER folded fused label still
 #: refuses by name at clause (8) unless :data:`FUSE_ARMS_SWITCH` opts into it.
 #:
-#: THE FILL SUB-STEP IS TWO DRIVER PASSES, not one, and the seam has to say so.
+#: The fill sub-step is two driver passes, not one, and the seam has to say so.
 #: ``launch.STEP_ORDER``'s ``fill_B``/``fill_D`` stand for the combined
 #: near-symmetry and folded-far passes, and the driver runs ``zero_metal_*``
 #: BETWEEN them (``driver.step``). The two fill arms disagree about whether that
@@ -546,7 +551,7 @@ def _refuse_legacy_names() -> None:
 #: the near half (or the fused whole) and the far-pass consult runs whatever
 #: is left, so neither plan is asked to do the thing it says it must not.
 #:
-#: WHAT THE CONSULTS DO NOT DO IS SKIP A FUSED PRODUCT'S FILLS. A folded fused pair
+#: What the consults do not do is skip a fused product's fills. A folded fused pair
 #: DECLARES ``fill_*``/``zero_metal_*``/``fill_folded_far_ghosts_*`` in its
 #: ``REPLACES``, and it performs them IN-LAUNCH — against the PRE-injection field,
 #: because ``_install_fused_pair`` writes only the curl and constitutive slots and
@@ -558,7 +563,7 @@ def _refuse_legacy_names() -> None:
 #: declaration — see :meth:`FastPathPlan._dispatch_far_fill` and
 #: ``test_a_fused_product_that_declares_the_fills_still_gets_the_drivers_passes``.
 #:
-#: THE VOCABULARY LIVES HERE, NOT IN ``triton_kernels``, and the direction is the
+#: The vocabulary lives here, not in ``triton_kernels``, and the direction is the
 #: point: dispatch depends on the kernel package and the kernel package must not
 #: know a dispatcher exists (``test_triton_kernels`` enforces both halves). The
 #: package's own files are additionally sha256-welded to the device gates that
@@ -582,7 +587,7 @@ FAR_FILL_PASSES: Mapping[str, str] = {
 
 #: The inverse, which is what :meth:`FastPathPlan.dispatch` is CONSULTED with.
 #:
-#: THE FAR PASS IS ASKED FOR BY ITS OWN DRIVER NAME rather than through a second
+#: The far pass is asked for by its own driver name rather than through a second
 #: verb, and that choice is about everything else that implements this seam. The
 #: driver's consult protocol is one method — the parity probes
 #: (``probe_triton_folded_deposit_closure``, ``probe_metal_complex_driver_step``,
@@ -607,7 +612,7 @@ FAR_FILL_OWNERS: Mapping[str, str] = {
 #: ``test_sync_pass_channel`` reads both tuples off the driver and asserts it.
 SYNC_PATH_SLOTS: Tuple[str, ...] = ("step_B", "fill_B", "update_H")
 
-#: THE SECOND BY-NAME CHANNEL, and it exists for the opposite reason to the first.
+#: The second by-name channel, and it exists for the opposite reason to the first.
 #:
 #: :data:`FAR_FILL_OWNERS` gives a pass its own name so a plan can OWN a site the
 #: slot vocabulary could not spell. This one gives a site its own name so a plan can
@@ -623,7 +628,7 @@ SYNC_PATH_SLOTS: Tuple[str, ...] = ("step_B", "fill_B", "update_H")
 #: :data:`SYNC_PATH_SLOTS`. A pair that escapes them is refused and the driver runs
 #: the array ``update_H``, which is correct everywhere.
 #:
-#: A NAME AND NOT A SECOND METHOD, for exactly the reason :data:`FAR_FILL_OWNERS`
+#: A name and not a second method, for exactly the reason :data:`FAR_FILL_OWNERS`
 #: gives: the ``DispatchAdapter`` shims in ``probe_triton_folded_deposit_closure``,
 #: ``probe_metal_complex_driver_step``, ``probe_metal_special_kz_driver_step`` and a
 #: FROZEN copy inside a gate's result directory implement this seam as one method
@@ -631,7 +636,7 @@ SYNC_PATH_SLOTS: Tuple[str, ...] = ("step_B", "fill_B", "update_H")
 #: array path; a second required method would raise ``AttributeError`` in each of
 #: them, and one of those copies is inside a record nothing may edit.
 #:
-#: WHAT THIS DOES NOT COVER, stated rather than left to be found: the sync site's
+#: What this does not cover, stated rather than left to be found: the sync site's
 #: other three consults (``step_B``, ``fill_B`` and the folded-far pass) still carry
 #: their plain names, and a product LEADING at one of them and spanning past
 #: ``update_H`` would reach the same hazard by the same route. No such product
@@ -660,7 +665,7 @@ FUSED_ARM_LABELS: Tuple[str, ...] = ("dispersive fused pair", "fused ADE state")
 def arm_is_fused(label: Any) -> bool:
     """Whether ``label`` names a cross-sub-step fused product on EITHER NVIDIA table.
 
-    THE TRITON HALF IS ONE TABLE'S VOCABULARY AND IT IS UNCHANGED. Measured
+    The Triton half is one table's vocabulary and it is unchanged. Measured
     2026-09-10: not one of the 47 labels the Metal registry writes matches either
     the prefix or the whole labels above (``fused magnetic B/H pair``, ``folded
     fused B/H pair``, ...), and not one of the 38 the hand-CUDA composer writes does
@@ -668,13 +673,13 @@ def arm_is_fused(label: Any) -> bool:
     their products differently and always did, so a predicate that tried to cover
     all of them by SPELLING would be guessing at two.
 
-    THE CUDA HALF IS ANSWERED BY THE NAMESPACE, WHICH IS WHY THE NAMESPACE EXISTS.
+    The CUDA half is answered by the namespace, which is why the namespace exists.
     A ``"cuda:"`` label is looked up in the typed
     ``fastpath_cuda.CUDA_FUSED_LABELS``, which is pinned to ``fused_pairs.py``'s AST
     by test; that lookup needs no ``cuda_kernels`` import, so this function stays
     reachable from a NumPy step that must not pay for the CUDA package.
 
-    THE METAL LADDER DOES NOT COME THROUGH HERE AT ALL: it reads its fused set off
+    The Metal ladder does not come through here at all: it reads its fused set off
     its own registry's ``is_weld`` flag (``metal_dispatch.fused_labels``), which is a
     DECLARATION rather than a spelling and cannot drift with a rename.
     """
@@ -694,7 +699,7 @@ def arm_is_fused(label: Any) -> bool:
 #: reaches this ladder, so neither this constant nor any value of the enable turns
 #: its kernels on (:func:`reference_record`).
 #:
-#: THE LICENCE, NOT YET RECORDED, is the measurement this constant's previous text
+#: The licence, not yet recorded, is the measurement this constant's previous text
 #: named as missing: ``gate_dispatch_end_to_end`` run on the shipping bytes with the
 #: harness installing NO policy and the enable left UNSET, released across its nine
 #: cases — every case PASS-DISPATCHED or PASS-FELL-BACK, no checkpoint divergent. That
@@ -706,7 +711,7 @@ def arm_is_fused(label: Any) -> bool:
 #: (a certification test, expected to fail until the run is made). That is the same
 #: one-change weld the 2026-08-15 tripwire made for ``False``.
 #:
-#: WHAT CAME BEFORE, kept because it explains the shape of the licence. The
+#: What came before, kept because it explains the shape of the licence. The
 #: 2026-08-15 ship leg diverged on six of nine cases because the CuPy and Triton
 #: executors ran on opposite subnormal policies; the same day's re-run under the
 #: shipped policy gate closed that (0 divergent, 7 PASS-DISPATCHED, 2
@@ -716,27 +721,28 @@ def arm_is_fused(label: Any) -> bool:
 #: that was the end-to-end ship leg on bytes where that leg FUSES, because this enable
 #: governs every configuration and not only the fused route.
 #:
-#: WHAT THE LICENCE DOES NOT COVER, stated so a default run is not read as more than
+#: What the licence does not cover, stated so a default run is not read as more than
 #: it is:
 #:
-#: * ONE NVIDIA COMPOSITION. The end-to-end gate runs the NVIDIA tables with Triton
+#: * One NVIDIA composition. The end-to-end gate runs the NVIDIA tables with Triton
 #:   first. A host with no validated Triton composes the hand-CUDA table alone; the
 #:   CUDA route campaign's ``cuda_alone`` leg drives that composition, NON-BLOCKING,
 #:   and the CUDA record's ``cuda_alone_leg`` says whether it ran and released. This
 #:   gate does not drive it. On the Metal table the analogous evidence is the Metal
 #:   route campaign's legs, run under held residency (that table's default), not this
 #:   gate.
-#: * THE CERTIFIED SURFACE ONLY. Triton or hand-CUDA on the compute capability
+#: * The certified surface only. Triton or hand-CUDA on the compute capability
 #:   their ledgers name is what the licence covers. A SUPPORTED device or toolchain
 #:   outside it (:data:`HARDWARE_SWITCH`) dispatches by default with ``certified:
-#:   False`` in the record and a NOTE line, unless another candidate table is
-#:   certified there (rung 4e); an unsupported one is refused by name at rung 4 or 4b
-#:   unless the scope is ``any``. A device identity that cannot be READ is not a
-#:   refusal (rung 4b) unless the scope is ``certified``, so such a host dispatches on
-#:   an architecture nothing verified. The Metal table runs on any Apple GPU
+#:   False`` in the record and a NOTE line, beside a table certified there as well; an
+#:   unsupported one is refused by name at rung 4 or 4b unless the scope is ``any``,
+#:   and a Triton that fails its health probe is dropped by name at rung 4 whatever
+#:   the scope, so the hand-CUDA table composes alone. A device identity that cannot
+#:   be READ is not a refusal (rung 4b) unless the scope is ``certified``, so such a
+#:   host dispatches on an architecture nothing verified. The Metal table runs on any Apple GPU
 #:   environment and records whether it is the certified one (``metal_dispatch``,
 #:   rung 4M). ``certified`` restricts every table to certified identities.
-#: * COMPLEX STORAGE IS PER FAMILY, and a statement about SLOTS and not about runs.
+#: * Complex storage is per family, and a statement about SLOTS and not about runs.
 #:   Every complex arm multiplies by real and imaginary part with no licence to
 #:   consult, so a complex family dispatches by default wherever its arm is
 #:   released; a family whose route leg does not reach zero differing words
@@ -746,21 +752,21 @@ def arm_is_fused(label: Any) -> bool:
 #:   BY NAME, to the array path, any composition that leaves a sub-step outside
 #:   the door-wired seam passes on the array path, so a default complex Metal run
 #:   is held throughout or on the array path, never mixed.
-#: * SPEED AGAINST EVERY ALTERNATIVE. On the measured NVIDIA 2-D rows fused dispatch
+#: * Speed against every alternative. On the measured NVIDIA 2-D rows fused dispatch
 #:   beats the array path but loses to the certified singles below about 2.4M cells;
 #:   the measured-cost preference veto that would arbitrate between dispatched
 #:   options is not wired into this ladder. On Metal, held residency (the default
-#:   since 2026-09-27) crosses the host array path at 28,246-48,027 cells (Phase 0,
-#:   harness-only) and is SLOWER below it -- 1.51x-2.34x at the route campaign's
+#:   since 2026-09-27) crosses the host array path at 28,246-48,027 cells (measured
+#:   harness-only on 2026-09-21) and is SLOWER below it -- 1.51x-2.34x at the route campaign's
 #:   step-weighted 14,123 cells -- so a small 2-D run on an Apple host is faster
 #:   built with ``prefer_gpu=False`` (the host reference), or with
 #:   ``MEEP_GPU_DISPATCH=0``. ``MEEP_GPU_METAL_RESIDENCY=shipped`` copies every mirror
 #:   both ways on every launch and is slower than the array path at every measured
 #:   size.
 #:
-#: WHAT A DEFAULT RUN NOW PAYS that an opted-out run does not: plan-time compilation,
+#: What a default run now pays that an opted-out run does not: plan-time compilation,
 #: the table's certified subnormal policy installed process-wide at rung 8b (the
-#: array path included), and PLAN-TIME OR NEVER — an exception out of a dispatched
+#: array path included), and plan-time or never — an exception out of a dispatched
 #: ``plan.run()`` after the freeze is fatal, as the module docstring states.
 DISPATCH_BY_DEFAULT = True
 
@@ -864,39 +870,47 @@ UNSUPPORTED_HINT = (f"; set {HARDWARE_SWITCH}={HARDWARE_ANY} to dispatch the ker
 CERTIFIED_SCOPE_TAIL = (f"; {HARDWARE_SWITCH}={HARDWARE_CERTIFIED} restricts the "
                         "NVIDIA kernels to certified devices and toolchains")
 
-#: THE TRITON VERSIONS THE TRITON TABLE SUPPORTS, half-open on (major, minor):
-#: ``>=3.1,<3.2``. SUPPORTED IS NOT CERTIFIED: the certified versions are the ones
-#: the cited gates ran (:func:`validated_triton_versions`); a supported one is one
-#: the table's code generation was written against and is expected to run on. The
-#: release line is the bound because Triton's code generation changes between
-#: minor releases, and the kernels were written against 3.1.
-TRITON_SUPPORTED_VERSIONS: Tuple[Tuple[int, int], Tuple[int, int]] = ((3, 1), (3, 2))
+#: The oldest Triton release the Triton table runs on, as (major, minor): ``>=3.1``,
+#: open above. Supported is not certified: the certified versions are the ones the cited
+#: gates ran (:func:`validated_triton_versions`). 3.1 is the release the kernels were
+#: written against; a later one is supported because the table checks itself on it rather
+#: than trusting a release line. The health probe compiles and launches a kernel through
+#: it on this device (:func:`triton_health`, rung 4); the keep policy's seam verifies its
+#: own rewrite before arming and audits every PTX the compiler emits, raising inside the
+#: compile on an ``.ftz`` instruction (``subnormal_policy.install_triton_policy``); and the
+#: warm pass compiles every slot's own kernel at plan time and unfills a slot whose kernel
+#: will not compile. A version with no leading ``major.minor`` is UNKNOWN: admitted by
+#: default and refused under ``certified``, as an unreadable device is.
+TRITON_MINIMUM_VERSION: Tuple[int, int] = (3, 1)
 
-#: THE COMPUTE CAPABILITIES THE TRITON TABLE SUPPORTS, inclusive on (major, minor).
-#: The floor is the one Triton 3.1 documents (7.0 and later); the ceiling is the
-#: newest target of the ptxas Triton 3.1 bundles (12.4: nothing beyond sm_90a). The
-#: hand-CUDA table states its own range,
-#: ``fastpath_cuda.SUPPORTED_COMPUTE_CAPABILITIES``.
-SUPPORTED_COMPUTE_CAPABILITIES: Tuple[Tuple[int, int], Tuple[int, int]] = ((7, 0), (9, 0))
-
-#: WHY A SUPPORTED, UNCERTIFIED NVIDIA IDENTITY RAN, in the words the run's NOTE line
+#: Why a supported, uncertified NVIDIA identity ran, in the words the run's NOTE line
 #: uses; the twin of ``metal_dispatch.SUPPORTED_BECAUSE``. ``{subject}`` names what
 #: was judged supported (:func:`_nvidia_note_reasons`): ``NVIDIA GPU and toolchain
 #: are``, ``NVIDIA GPU is`` or ``Triton version is``; ``{where}`` names the table
 #: when another table certifies this GPU; ``{supported}`` is
-#: :func:`nvidia_supported_text`, which names the Triton range and both CuPy builds'
-#: NVRTC.
+#: :func:`nvidia_supported_text`, which says what the two self-checks are.
 NVIDIA_SUPPORTED_BECAUSE = (
     "this {subject} supported but not certified bit-identical{where} "
-    "(the supported range is {supported}), and {switch}=certified would restrict "
+    "(supported means {supported}), and {switch}=certified would restrict "
     "the kernels to certified ones")
 
-#: WHY AN UNSUPPORTED NVIDIA IDENTITY RAN: only the ``any`` scope runs one.
-#: ``{subject}`` names what was read outside the range (``NVIDIA GPU``, ``Triton
-#: version`` or both); ``{range}`` states the range, and is empty when the supported
-#: clause of the same line has already stated it.
+#: Why an unsupported NVIDIA identity ran: only the ``any`` scope runs one.
+#: ``{subject}`` names what was read outside what is supported (``NVIDIA GPU``,
+#: ``Triton version`` or both); ``{range}`` states what supported means, and is empty
+#: when the supported clause of the same line has already stated it.
 NVIDIA_UNSUPPORTED_BECAUSE = (
-    "{switch}=any, which also runs this {subject} outside the supported range{range}")
+    "{switch}=any, which also runs this {subject} outside what is supported{range}")
+
+#: Why an NVIDIA identity whose support could not be checked ran. The self-check had
+#: nothing to read -- no device the health probe could launch on, a CuPy whose NVRTC
+#: will not say what it targets, a Triton version with no leading ``major.minor`` -- so
+#: the identity is admitted as an unread one is (by default and under ``any``), and the
+#: warm pass still compiles every slot's kernel before anything is written. Such an
+#: entry carries no ``supported`` key, so the NOTE quotes this reason as it stands.
+NVIDIA_UNCHECKED_BECAUSE = (
+    "{what} {read} could not be checked against the {table} table ({why}), so it ran "
+    "unchecked, as an identity that cannot be read does, and {switch}=certified would "
+    "refuse it")
 
 #: The words a compute-capability entry is recorded under (rung 4b), which the NOTE
 #: reads as the GPU; every other NVIDIA entry is the Triton version (rung 4).
@@ -910,9 +924,9 @@ def hardware_scope() -> Optional[str]:
     when it is accepted, and ``None`` for any other value, which rung 3b refuses by
     name before any table asks; ``None`` is never read as a scope, so a refused value
     restricts nothing and admits nothing. The one reader of the switch: the NVIDIA
-    ladder (``certified`` refuses every uncertified identity, ``any`` admits an
-    unsupported one and lifts rung 4e) and the Metal ladder (``certified`` refuses
-    every uncertified environment) both ask it.
+    ladder (``certified`` refuses every uncertified identity and compares the stack the
+    kernels run beside by name, ``any`` admits an unsupported one) and the Metal ladder
+    (``certified`` refuses every uncertified environment) both ask it.
     """
     raw = os.environ.get(HARDWARE_SWITCH)
     if raw is None:
@@ -930,69 +944,411 @@ def _major_minor(text: Any) -> Optional[Tuple[int, int]]:
     return (int(match.group(1)), int(match.group(2))) if match else None
 
 
-def triton_version_supported(version: Any) -> bool:
-    """Is this Triton version in :data:`TRITON_SUPPORTED_VERSIONS`? Never raises.
+def triton_version_supported(version: Any) -> Optional[bool]:
+    """Is this Triton version :data:`TRITON_MINIMUM_VERSION` or later? THREE-VALUED.
 
-    A version string with no leading ``major.minor`` is not one this package can
-    place in the range, so it is NOT supported (refused by name, unless the hardware
-    scope is ``any``) rather than unknown: the version WAS read.
+    ``None`` for a spelling with no leading ``major.minor`` (``unknown`` among them):
+    the version could not be placed, which is unknown rather than unsupported, so it is
+    admitted by default and refused under ``certified``, as an unread device is. Never
+    raises.
     """
     parsed = _major_minor(version)
-    low, high = TRITON_SUPPORTED_VERSIONS
-    return parsed is not None and low <= parsed < high
-
-
-def supported_compute_capabilities(table: str = "triton") -> Tuple[Tuple[int, int],
-                                                                    Tuple[int, int]]:
-    """The inclusive range of compute capabilities ``table`` supports."""
-    if table == CUDA_TABLE:
-        from . import fastpath_cuda  # noqa: PLC0415
-
-        return fastpath_cuda.SUPPORTED_COMPUTE_CAPABILITIES
-    return SUPPORTED_COMPUTE_CAPABILITIES
-
-
-def capability_supported(capability: Any, table: str = "triton") -> Optional[bool]:
-    """Is this compute capability in the range ``table`` supports? THREE-VALUED.
-
-    ``None`` when no capability was read, which is rung 4b's unknown; ``False`` for a
-    spelling that does not normalise to ``major.minor`` (it was read and cannot be
-    placed in the range).
-    """
-    if capability is None:
-        return None
-    spelled = _normalized_capability(capability)
-    parsed = _major_minor(spelled) if re.fullmatch(r"\d+\.\d+", spelled) else None
     if parsed is None:
-        return False
-    low, high = supported_compute_capabilities(table)
-    return low <= parsed <= high
+        return None
+    return parsed >= TRITON_MINIMUM_VERSION
 
 
-def _spelled_range(bounds: Tuple[Tuple[int, int], Tuple[int, int]]) -> str:
-    """An inclusive (major, minor) range as ``7.0 to 9.0``."""
-    return f"{bounds[0][0]}.{bounds[0][1]} to {bounds[1][0]}.{bounds[1][1]}"
-
-
-def _triton_supported_range() -> str:
-    """:data:`TRITON_SUPPORTED_VERSIONS` as a requirement, ``>=3.1,<3.2``."""
-    (low_major, low_minor), (high_major, high_minor) = TRITON_SUPPORTED_VERSIONS
-    return f">={low_major}.{low_minor},<{high_major}.{high_minor}"
+def _triton_supported_text() -> str:
+    """:data:`TRITON_MINIMUM_VERSION` as a requirement, ``>=3.1``."""
+    major, minor = TRITON_MINIMUM_VERSION
+    return f">={major}.{minor}"
 
 
 def nvidia_supported_text() -> str:
     """What the NVIDIA tables support, in the words the NOTE and the refusals use."""
-    from . import fastpath_cuda  # noqa: PLC0415
+    return (f"for the Triton table, Triton {_triton_supported_text()} that compiled and "
+            "launched the health probe on this device, and for the hand-CUDA table, a "
+            "CuPy whose NVRTC can target this device's architecture; the warm pass then "
+            "compiles every slot's kernel before the first step")
 
-    triton = _spelled_range(SUPPORTED_COMPUTE_CAPABILITIES)
-    cuda = _spelled_range(fastpath_cuda.SUPPORTED_COMPUTE_CAPABILITIES)
-    devices = (f"compute capability {triton}" if triton == cuda else
-               f"compute capability {triton} on the Triton table and {cuda} on the "
-               "hand-CUDA table")
-    builds = " or ".join(f"{nvrtc} for {build}" for build, nvrtc
-                         in fastpath_cuda.SUPPORTED_NVRTC_BUILDS.items())
-    return (f"{devices}, with Triton {_triton_supported_range()} or with the NVRTC of "
-            f"either CuPy build, {builds}")
+
+# ---------------------------------------------------------------------------
+# The Triton health probe (rung 4)
+# ---------------------------------------------------------------------------
+
+#: The probe's verdicts, one per (Triton version, compute capability) in this process:
+#: the answer is a fact about the installation and the device, and the first launch
+#: costs a compile.
+_TRITON_HEALTH: Dict[Tuple[str, str], Dict[str, Any]] = {}
+
+#: How many float32 words the probe writes: one program, one block.
+TRITON_PROBE_WORDS = 16
+
+
+# The probe's kernel, ``target = source * 2 + 1`` over one block. A PLAIN FUNCTION and
+# not a decorated one: this module imports no Triton at module level (see the package
+# rule in the module docstring), so ``tl`` is not a name here.
+# :func:`_triton_probe_launch` rebinds this function's code onto a namespace that holds
+# ``triton.language`` as ``tl`` and hands that to ``triton.jit``, which reads the source
+# from this file and resolves its names through that namespace (Triton 3.1 resolves a
+# kernel's names through ``__globals__`` only). ``from __future__ import annotations``
+# keeps the ``tl.constexpr`` annotation a string until Triton reads it.
+def _triton_health_kernel(source, target, count, BLOCK: tl.constexpr):  # noqa: F821
+    offsets = tl.arange(0, BLOCK)  # noqa: F821
+    live = offsets < count
+    tl.store(target + offsets,  # noqa: F821
+             tl.load(source + offsets, mask=live) * 2.0 + 1.0, mask=live)  # noqa: F821
+
+
+def _triton_probe_launch(xp: Any) -> None:
+    """Compile and launch the probe kernel on ``xp``'s current device, and read it back.
+
+    RAISES on any failure: no ``libcuda.so`` for the launcher Triton links at its first
+    launch, no C compiler to build that launcher with, a code generator or ``ptxas`` with
+    no target for this architecture, a driver that will not load what came out, or a
+    kernel that launched and wrote the wrong words. :func:`triton_health` turns the raise
+    into the verdict.
+
+    Only copies on the CuPy SIDE: both buffers are made from host arrays and the result
+    is read back the same way, so no CuPy kernel is compiled here, before the subnormal
+    gate (rung 8b) has pointed CuPy's cache at the keep policy's directory. The Triton
+    binary this compiles is keyed by its own source and is never a dispatched kernel's.
+    """
+    import types  # noqa: PLC0415
+
+    import triton  # noqa: PLC0415
+    import triton.language  # noqa: PLC0415
+
+    from .triton_kernels.launch import CupyPointer  # noqa: PLC0415
+
+    function = types.FunctionType(
+        _triton_health_kernel.__code__,
+        {"tl": triton.language, "triton": triton, "__name__": __name__},
+        _triton_health_kernel.__name__)
+    function.__module__ = __name__
+    function.__qualname__ = _triton_health_kernel.__qualname__
+    function.__annotations__ = dict(_triton_health_kernel.__annotations__)
+    kernel = triton.jit(function)
+    host = numpy.arange(TRITON_PROBE_WORDS, dtype=numpy.float32)
+    source = xp.asarray(host)
+    target = xp.asarray(numpy.zeros_like(host))
+    kernel[(1,)](CupyPointer(source), CupyPointer(target), TRITON_PROBE_WORDS,
+                 BLOCK=TRITON_PROBE_WORDS)
+    written = numpy.asarray(xp.asnumpy(target))
+    expected = host * numpy.float32(2.0) + numpy.float32(1.0)
+    if not numpy.array_equal(written, expected):
+        raise RuntimeError(f"the probe kernel launched and wrote {written.tolist()}, not "
+                           f"{expected.tolist()}")
+
+
+def _first_line(exc: BaseException, limit: int = 400) -> str:
+    """``Type: first line of the message``, bounded, for a refusal's text."""
+    text = str(exc).strip()
+    head = text.splitlines()[0] if text else repr(exc)
+    head = head if len(head) <= limit else head[:limit] + " ..."
+    return f"{type(exc).__name__}: {head}"
+
+
+def triton_health(xp: Any, version: str) -> Dict[str, Any]:
+    """Can this Triton compile and launch a kernel on this device? THREE-VALUED.
+
+    ``healthy`` is True when the probe kernel compiled, launched and wrote the words it
+    should; False when any step of that raised, with ``because`` naming what; and None
+    when there was nothing to probe -- a device that would not identify itself, or a
+    ``triton`` with no ``jit`` (a stand-in, not the compiler). None is UNKNOWN, as an
+    unread device is at rung 4b: admitted by default, and the warm pass still compiles
+    every slot's own kernel before anything is written.
+
+    Why it exists. A Triton that imports but cannot launch -- no
+    ``libcuda.so`` development symlink for the launcher Triton links at its first launch,
+    no C compiler to build that launcher with, a ``ptxas`` with no target for this
+    architecture -- used to stay a candidate. Composed first, it held every slot both
+    tables admit; the warm pass then unfilled those slots one by one, and they went to
+    the ARRAY PATH, never to the hand-CUDA table whose certified kernels could serve
+    them. Rung 4 drops a Triton this probe fails BY NAME, whatever the hardware scope, and
+    the hand-CUDA table then composes alone.
+
+    ``triton_kernels.launch.require_triton`` LEADS, as a diagnosis and not as the
+    verdict: its libcuda check reads three fixed directories and ``TRITON_LIBCUDA_PATH``,
+    so it can miss a symlink Triton itself finds. The compile and the launch decide, and
+    a failure quotes the check's finding when the check failed too.
+
+    Once per process per (Triton version, compute capability); a repeated answer is
+    marked ``cached``. Never raises.
+    """
+    device = _device_identity(xp)
+    capability = device.get("compute_capability")
+    verdict: Dict[str, Any] = {"version": str(version), "capability": capability}
+    if capability is None:
+        verdict.update(healthy=None, not_run_because=(
+            f"the device could not be read ({device.get('unreadable', 'unknown')}), so "
+            "there is nothing to launch the probe on"))
+        return verdict
+    if not callable(getattr(sys.modules.get("triton"), "jit", None)):
+        verdict.update(healthy=None, not_run_because=(
+            "this triton module has no jit, so it is not a compiler the probe can run"))
+        return verdict
+    key = (str(version), str(capability))
+    if key in _TRITON_HEALTH:
+        return dict(_TRITON_HEALTH[key], cached=True)
+    from .triton_kernels import launch as _launch  # noqa: PLC0415
+
+    try:
+        _launch.require_triton()
+        verdict["libcuda_check"] = "passed"
+    except Exception as exc:  # noqa: BLE001 - a diagnosis, never the verdict
+        verdict["libcuda_check"] = _first_line(exc)
+    import time  # noqa: PLC0415
+
+    started = time.perf_counter()
+    try:
+        _triton_probe_launch(xp)
+    except Exception as exc:  # noqa: BLE001 - every failure of the probe is its verdict
+        because = _first_line(exc)
+        if verdict["libcuda_check"] != "passed":
+            because += ("; triton_kernels.launch's libcuda check also failed: "
+                        f"{verdict['libcuda_check']}")
+        verdict.update(healthy=False, because=because)
+    else:
+        verdict["healthy"] = True
+    # What the probe cost this process, once: a compile on a cold Triton cache, a
+    # cache read on a warm one, plus one launch of one program.
+    verdict["seconds"] = round(time.perf_counter() - started, 4)
+    _TRITON_HEALTH[key] = dict(verdict)
+    return verdict
+
+
+def _triton_health_known(version: Any, capability: Any) -> Optional[Dict[str, Any]]:
+    """The verdict :func:`triton_health` reached for this pair in this process, or None.
+
+    A READ, never a probe: the environment block asks it, and a table that was never a
+    candidate (refused at rung 4, or not consulted) must not be probed to be described.
+    """
+    if capability is None:
+        return None
+    return _TRITON_HEALTH.get((str(version), _normalized_capability(capability)))
+
+
+# ---------------------------------------------------------------------------
+# The stack the NVIDIA kernels run beside (rung 4c)
+# ---------------------------------------------------------------------------
+
+#: The certified MEEP builds, as ``(MEEP version, precision, platform.system(),
+#: platform.machine())``: the reference builds the release is certified against, one per
+#: certified platform -- MEEP 1.35.0 in single precision, built without contraction by
+#: ``parity/meep_gpu/build_meep_reference_macos.sh`` and ``build_meep_reference_linux.sh``.
+#: This is the one place the fact is declared. The bulk permittivity read's certified list
+#: (``from_meep.CERTIFIED_CHI1INV_BUILDS``) is read off it, and every compute capability's
+#: recorded NVIDIA stack (:data:`CERTIFIED_STACK_ENTRY`) must name one of these builds on its
+#: host on the MEEP axis: the bind refuses any other, and a test holds the record to this
+#: set, so a certification against another MEEP release edits this set and re-records the
+#: stacks.
+CERTIFIED_MEEP_BUILDS = frozenset({
+    ("1.35.0", "single", "Darwin", "arm64"),
+    ("1.35.0", "single", "Linux", "x86_64"),
+})
+
+
+def meep_build_is_certified(meep: str, host: str) -> bool:
+    """Is ``meep`` (``"version precision"``) on ``host`` (``"System machine"``) certified?"""
+    return any(f"{version} {precision}" == meep and f"{system} {machine}" == host
+               for version, precision, system, machine in CERTIFIED_MEEP_BUILDS)
+
+
+#: The axes of the NVIDIA stack, in the order the record, the NOTE and the refusals name
+#: them. A bit-identity certification is a statement about the whole step, and the
+#: kernels are only part of it: the CuPy array path runs every sub-step no kernel serves,
+#: through the same NVRTC the hand-CUDA kernels compile with; the CUDA runtime and driver
+#: run both; the host does the host half; NumPy holds the host arrays; and MEEP built the
+#: grid the run lifted. NumPy is compared on ``major.minor``; MEEP as ``version
+#: precision``, and only when MEEP is imported in this process (a run built without MEEP
+#: has no MEEP build to judge).
+NVIDIA_STACK_AXES: Tuple[str, ...] = ("cupy", "nvrtc", "cuda_runtime", "cuda_driver", "host",
+                                      "numpy", "meep")
+
+#: Where the certified stack of each compute capability is recorded: this entry of the
+#: Triton ledger (``triton_kernels/fingerprints.json``), one record per capability under
+#: :data:`STACK_BY_CAPABILITY`, each holding ``stack`` (one list of certified values per
+#: axis of :data:`NVIDIA_STACK_AXES`), ``read_from`` and ``recorded_utc``. The stack is
+#: shared by both NVIDIA tables, so it has one home, in the ledger every NVIDIA host reads.
+#:
+#: Recorded per capability and never typed here: the certification round's toolchain step
+#: records, on each gate lane's card, the stack the lane's gates ran beside, and the bind
+#: writes it (``parity/meep_gpu/record_nvidia_stack.py``), refusing lanes that disagree, a
+#: MEEP build not in :data:`CERTIFIED_MEEP_BUILDS`, and a change to a capability's
+#: recorded values unless it is asked for by name. So a capability first certified on a
+#: newer driver (a cluster's) is certified on that driver, and every other capability keeps
+#: the stack its own certification measured. A capability with no record has no certified
+#: stack: the default scope leaves its axes unjudged (its own verdict at rung 4b already
+#: names the run uncertified), and ``certified`` refuses it by name.
+CERTIFIED_STACK_ENTRY = "certified_nvidia_stack"
+STACK_BY_CAPABILITY = "by_capability"
+
+#: How each axis of :data:`NVIDIA_STACK_AXES` is named in the NOTE and the refusals.
+NVIDIA_STACK_NAMES: Mapping[str, str] = {
+    "cupy": "CuPy", "nvrtc": "NVRTC", "cuda_runtime": "CUDA runtime",
+    "cuda_driver": "CUDA driver", "host": "host", "numpy": "NumPy",
+    "meep": "MEEP build",
+}
+
+#: Why a run on a stack that is not the certified one ran, as the NOTE words it: one
+#: sentence for every axis, so the line states it once.
+NVIDIA_STACK_BECAUSE = (
+    "the NVIDIA kernels run by default beside a toolchain or host that is not the one "
+    f"they were certified on, and {HARDWARE_SWITCH}=certified would refuse it")
+
+
+def certified_nvidia_stacks() -> Optional[Dict[str, Dict[str, Tuple[str, ...]]]]:
+    """Every recorded capability's certified stack, axis by axis. Never raises.
+
+    ``None`` when the Triton ledger, or its :data:`CERTIFIED_STACK_ENTRY`, cannot be read.
+    A capability record that is not in shape (a key that is not ``major.minor``, an axis
+    missing or extra, a value list that is empty or holds anything but non-empty strings)
+    is left out rather than read in part: a malformed record certifies nothing, and the
+    capability then reads as having no certified stack.
+    """
+    ledger = _fingerprints("triton")
+    if not isinstance(ledger, Mapping) or "_unreadable" in ledger:
+        return None
+    entry = ledger.get(CERTIFIED_STACK_ENTRY)
+    records = entry.get(STACK_BY_CAPABILITY) if isinstance(entry, Mapping) else None
+    if not isinstance(records, Mapping):
+        return None
+    stacks: Dict[str, Dict[str, Tuple[str, ...]]] = {}
+    for capability, record in records.items():
+        stack = record.get("stack") if isinstance(record, Mapping) else None
+        if (not _CAPABILITY_KEY.match(str(capability)) or not isinstance(stack, Mapping)
+                or set(stack) != set(NVIDIA_STACK_AXES)):
+            continue
+        values = {axis: stack[axis] for axis in NVIDIA_STACK_AXES}
+        if all(isinstance(listed, list) and listed
+               and all(isinstance(value, str) and value for value in listed)
+               for listed in values.values()):
+            stacks[str(capability)] = {axis: tuple(listed) for axis, listed in values.items()}
+    return stacks
+
+
+def certified_nvidia_stack(capability: Any) -> Optional[Mapping[str, Tuple[str, ...]]]:
+    """The certified stack of ``capability``; ``None`` when none is recorded or readable."""
+    if capability is None:
+        return None
+    return (certified_nvidia_stacks() or {}).get(_normalized_capability(capability))
+
+
+def _no_certified_stack(capability: Optional[str]) -> Optional[str]:
+    """Why ``capability`` has no certified stack to be judged against; ``None`` when it has one."""
+    if capability is None:
+        return ("the GPU's compute capability could not be read, so no capability's "
+                "certified stack applies")
+    stacks = certified_nvidia_stacks()
+    if stacks is None:
+        return (f"the certified NVIDIA stack record ({CERTIFIED_STACK_ENTRY} in the Triton "
+                f"ledger) could not be read")
+    if capability not in stacks:
+        return f"no certified stack is recorded for compute capability {capability}"
+    return None
+
+
+def _nvidia_stack_identity(xp: Any) -> Dict[str, Optional[str]]:
+    """The stack the NVIDIA kernels would run beside, READ. Never raises.
+
+    One value per axis of :data:`NVIDIA_STACK_AXES`, spelled as the certified record
+    spells it, ``None`` where it could not be read; ``meep`` is present only when MEEP is
+    imported in this process.
+    """
+    import platform  # noqa: PLC0415
+
+    def _read(reader: Any) -> Optional[str]:
+        try:
+            value = reader()
+        except Exception:  # noqa: BLE001 - an unreadable axis is recorded as unread
+            return None
+        return None if value in (None, "") else str(value)
+
+    def _nvrtc() -> Optional[str]:
+        major, minor = xp.cuda.nvrtc.getVersion()
+        return f"{int(major)}.{int(minor)}"
+
+    def _numpy() -> Optional[str]:
+        parsed = _major_minor(numpy.__version__)
+        return f"{parsed[0]}.{parsed[1]}" if parsed else None
+
+    identity: Dict[str, Optional[str]] = {
+        "cupy": _read(lambda: getattr(xp, "__version__", None)),
+        "nvrtc": _read(_nvrtc),
+        "cuda_runtime": _read(lambda: int(xp.cuda.runtime.runtimeGetVersion())),
+        "cuda_driver": _read(lambda: int(xp.cuda.runtime.driverGetVersion())),
+        "host": _read(lambda: f"{platform.system()} {platform.machine()}"),
+        "numpy": _read(_numpy),
+    }
+    meep = sys.modules.get("meep")
+    if meep is not None:
+        def _meep() -> str:
+            precision = "single" if meep.is_single_precision() else "double"
+            return f"{meep.__version__} {precision}"
+
+        identity["meep"] = _read(_meep)
+    return identity
+
+
+def nvidia_stack_block(xp: Any, capability: Any) -> Dict[str, Any]:
+    """Each axis read, ``capability``'s certified values, and the verdict. Never raises.
+
+    The comparison is against the certified stack of the device's OWN compute capability
+    (:func:`certified_nvidia_stack`), never another capability's. ``certified`` per axis
+    is True when the value read is one of that capability's certified ones, False when it
+    was read and is not, and None when it could not be read or the capability has no
+    certified stack (``no_certified_stack`` then says why); the block's own ``certified``
+    is their three-valued conjunction. ``meep`` is absent from ``axes`` when MEEP is not
+    imported, and the block says so under ``meep``.
+    """
+    identity = _nvidia_stack_identity(xp)
+    normalised = None if capability is None else _normalized_capability(capability)
+    missing = _no_certified_stack(normalised)
+    certified = None if missing else certified_nvidia_stack(normalised)
+    axes: Dict[str, Dict[str, Any]] = {}
+    for axis in NVIDIA_STACK_AXES:
+        if axis not in identity:
+            continue
+        read = identity[axis]
+        values = list(certified[axis]) if certified else []
+        axes[axis] = {"what": NVIDIA_STACK_NAMES[axis], "read": read,
+                      "certified_values": values,
+                      "certified": None if read is None or certified is None
+                      else read in values}
+    block: Dict[str, Any] = {"capability": normalised, "axes": axes,
+                             "certified": _all_of(a["certified"] for a in axes.values())}
+    if missing:
+        block["no_certified_stack"] = missing
+    if "meep" not in identity:
+        block["meep"] = ("not imported in this process, so the run has no MEEP build to "
+                         "judge")
+    return block
+
+
+def certified_stack_refusal(block: Mapping[str, Any]) -> Optional[str]:
+    """Why ``certified`` refuses the stack :func:`nvidia_stack_block` read; None if it admits it.
+
+    The one wording of rung 4c's refusal, so a gate that asks the question before it
+    spends a run (the route gate's admitted-policy leg) says what the plan would say.
+    """
+    if not block:
+        return ("the stack the NVIDIA kernels would run beside was not read, so it cannot "
+                "be judged")
+    if block.get("no_certified_stack"):
+        return (f"the stack the NVIDIA kernels would run beside cannot be judged: "
+                f"{block['no_certified_stack']}")
+    off_stack = [axis for axis in (block.get("axes") or {}).values()
+                 if axis.get("certified") is not True]
+    if not off_stack:
+        return None
+    named = "; ".join(
+        (f"{axis['what']} {axis['read']} is not the certified "
+         f"{', '.join(axis['certified_values'])}" if axis.get("read") is not None
+         else f"the {axis['what']} could not be read, so it cannot be judged")
+        for axis in off_stack)
+    return (f"the stack the NVIDIA kernels would run beside is not the one they were "
+            f"certified on for compute capability {block.get('capability')}: {named}")
 
 
 def _hardware_value_refusal(environ: Mapping[str, str]) -> Optional[str]:
@@ -1051,8 +1407,9 @@ def _admit_uncertified(record: Dict[str, Any], table: str, what: str, read: Any,
 
 
 def _judge_uncertified(record: Dict[str, Any], table: str, what: str, read: Any,
-                       certified: Sequence[Any], supported: bool, head: str,
-                       outside: str, scope: str, **facts: Any) -> Optional[str]:
+                       certified: Sequence[Any], supported: Optional[bool], head: str,
+                       outside: str, scope: str, unchecked: str = "",
+                       **facts: Any) -> Optional[str]:
     """Rungs 4 and 4b on one identity that was READ and is not certified.
 
     Returns ``None`` when the identity is ADMITTED, recorded under
@@ -1061,16 +1418,28 @@ def _judge_uncertified(record: Dict[str, Any], table: str, what: str, read: Any,
 
     * the ``certified`` scope refuses it, supported or not;
     * a SUPPORTED identity is admitted, under ``supported`` (the default) or ``any``;
+    * an identity whose support could not be CHECKED (``supported`` None; ``unchecked``
+      says why) is admitted as an unread identity is, recorded with no ``supported``
+      key and a reason of its own (:data:`NVIDIA_UNCHECKED_BECAUSE`);
     * an unsupported one is admitted under ``any`` only, recorded ``supported:
       False``, and refused by name otherwise with the way past it appended.
 
-    An admitted entry's ``because`` is about THAT identity and THAT table's range
-    (``scope``, e.g. ``compute capability 7.0 to 9.0``); the NOTE line states the
-    host's reasons from the entries' facts instead (:func:`_nvidia_note_reasons`).
+    An admitted entry's ``because`` is about THAT identity and THAT table's self-check
+    (``scope``, e.g. ``the NVRTC 11.8 of this CuPy targets sm_86``); the NOTE line
+    states the host's reasons from the entries' facts instead
+    (:func:`_nvidia_note_reasons`).
     """
     hardware = hardware_scope()
     if hardware == HARDWARE_CERTIFIED:
         return head + CERTIFIED_SCOPE_TAIL
+    if supported is None:
+        _admit_uncertified(record, table, what, read, certified,
+                           because=NVIDIA_UNCHECKED_BECAUSE.format(
+                               what=what, read=read, table=table,
+                               why=unchecked or "nothing could be read to check it",
+                               switch=HARDWARE_SWITCH),
+                           **facts)
+        return None
     if supported:
         _admit_uncertified(record, table, what, read, certified,
                            because=(f"{what} {read} is supported by the {table} table "
@@ -1092,7 +1461,7 @@ def _settle_uncertified(record: Dict[str, Any], candidates: Sequence[str],
     """Move the admitted identities of a table that is no longer a candidate to ``dropped``.
 
     A table admitted on one identity can still be refused on another (a supported
-    Triton version, then an unsupported device) or dropped at rung 4e; its admitted
+    Triton version, then a failed health probe or an unsupported device); its admitted
     entries would otherwise name, in the NOTE line, an identity that never ran.
     """
     block = record.setdefault("uncertified", {})
@@ -1108,25 +1477,11 @@ def _settle_uncertified(record: Dict[str, Any], candidates: Sequence[str],
     block["admitted"] = kept
 
 
-def _certified_here(environment: Mapping[str, Any], table: str) -> bool:
-    """Is ``table`` certified for this device AND toolchain? ``None`` is not certified.
-
-    The Triton table's toolchain is the Triton version; the hand-CUDA table's
-    admission reads no toolchain version (its kernels compile through the NVRTC of
-    whichever CuPy is installed), so its device verdict is the whole answer.
-    """
-    by_table = environment.get("device_certified_by_table") or {}
-    if table == "triton":
-        return (by_table.get("triton") is True
-                and environment.get("triton_certified") is True)
-    return by_table.get(table) is True
-
-
 def _nvidia_note_reasons(entries: Sequence[Mapping[str, Any]],
                          environment: Mapping[str, Any]) -> List[str]:
     """Why the judged NVIDIA identities in ``entries`` ran: one clause per verdict.
 
-    STATED FROM THE ENTRIES' FACTS, not joined from their ``because``: two tables that
+    Stated from the entries' facts, not joined from their ``because``: two tables that
     admit one GPU give one reason, and the clause names only what was judged. A
     compute capability is the GPU; a Triton version is the toolchain; a Triton-table
     compute capability judged beside a supported Triton version (certified or not)
@@ -1246,6 +1601,11 @@ def _certified_verdict(record: Mapping[str, Any],
         reads.append(by_table.get(table))
         if table == "triton":
             reads.append(environment.get("triton_certified"))
+        # The stack the NVIDIA kernels ran beside (rung 4c): an axis read and not
+        # certified is an ``uncertified.admitted`` entry already, so what this adds is
+        # the third value, an axis that could not be read.
+        if "stack" in environment:
+            reads.append((environment.get("stack") or {}).get("certified"))
     if reads and all(value is True for value in reads):
         return True
     return None
@@ -1263,7 +1623,7 @@ def _enable_as_set() -> bool:
     "highest precedence, read before anything else" AND against "never raises".
     Reporting a value is not the place to enforce a rule.
 
-    AN UNRECOGNISED VALUE READS ``False`` here, which is what the run gets: rung 2
+    An unrecognised value reads ``False`` here, which is what the run gets: rung 2
     refuses it by name. The refusal itself is :func:`dispatch_enabled`'s.
     """
     raw = os.environ.get(DISPATCH_ENABLE)
@@ -1317,13 +1677,81 @@ def requested_fused_arms() -> Tuple[str, ...]:
 def fused_arms_vetoed() -> bool:
     """Whether this process vetoed the fused route. Read fresh on every plan build.
 
-    TRUE WHEREVER THE TOKEN APPEARS, beside arm labels included — see
+    True wherever the token appears, beside arm labels included — see
     :data:`FUSE_ARMS_VETO` for why the ambiguous value answers to the safe branch
     instead of raising. This function can only ever REMOVE arms from what clause
     (8) admits; there is no value of the switch it reads that adds one.
     """
     raw = os.environ.get(FUSE_ARMS_SWITCH, "")
     return any(part.strip() == FUSE_ARMS_VETO for part in raw.split(","))
+
+
+#: The dispatch preference (measured cost as the arbiter; planned 2026-09-15, built in 1.0.1):
+#: whether a fused product's claim to a slot is ARBITRATED by measured cost.
+#:
+#: * ``measured`` -- the default, and unset means it. A fused candidate the shape
+#:   rule installed is withheld when this card's own timing record, or else its
+#:   architecture's representative record, measured it slower than the certified
+#:   singles it displaces (``dispatch_preference.consult``; at the run's own size where
+#:   the record carries a cost model, ``dispatch_preference.consult_cost``),
+#:   or, on an architecture with no record of its own, when the portable prior of its
+#:   vendor's nearest timed architecture says its seam's deposit-repair bracket loses
+#:   at this size (``dispatch_preference.consult_prior``). Either way the slots go to
+#:   certified singles, never to the array path: a veto the second composition cannot
+#:   confirm is dropped. See :func:`_apply_preference`.
+#: * ``span`` -- the shape rule exactly as it was before the preference existed: no
+#:   record is opened and the composition is the one the shape rule makes, byte for
+#:   byte. What every gate that asserts a shape-rule ``selected`` map runs under.
+#:
+#: Any other value is refused BY NAME at the composer rung, like every other switch
+#: in this file: a preference that guessed what a misspelt value meant would change
+#: which kernels run without saying so. The preference is ARBITRATION ONLY: it picks
+#: among certified kernels, so it never moves ``certified`` and
+#: ``MEEP_GPU_HARDWARE=certified`` arbitrates exactly as the default does.
+PREFERENCE_SWITCH = "MEEP_GPU_PREFER"
+PREFERENCE_MODES: Tuple[str, ...] = ("measured", "span")
+PREFERENCE_DEFAULT = "measured"
+
+#: What a record that is silent on a product means. A record answers where it measured:
+#: a VETO withholds the product and a keep keeps it. Where it did not measure -- a class
+#: it holds no key for, a key with too few rows, a size outside its bands -- the
+#: architecture is in exactly the position of one with no record, which must never get a
+#: slower default for lacking one. With this True such a candidate is asked of the portable
+#: prior, so a recorded architecture is never slower than an unrecorded one; with it
+#: False the shape rule stands there ("no record, so the shape rule"), which on the
+#: 1.0 DRIVE cases left 51 of 65 bracketed candidates on cc 8.6 fused against 0 of 35
+#: on the unrecorded Metal table. One constant, so the choice is one edit either way.
+PRIOR_FILLS_RECORD_SILENCE = True
+
+#: The record's ``no_record`` reasons that mean SILENCE about this product, as opposed
+#: to a record that cannot be applied to this tree or run (another route, another
+#: emitter, another baseline), which leaves the shape rule in force either way.
+RECORD_SILENCE: Tuple[str, ...] = ("class_not_in_record", "key_unmeasured",
+                                   "outside_the_measured_bands")
+
+#: Where the timing records are read from. ``None`` is the package directory, beside
+#: the kernel tables, where the shipped records are. Not a switch: a test points it at
+#: a scratch tree, and nothing in the package sets it.
+TIMING_RECORD_ROOT: Optional[str] = None
+
+
+def preference_mode() -> Tuple[Optional[str], Optional[str]]:
+    """``(mode, refusal)`` read from :data:`PREFERENCE_SWITCH`, fresh on every plan build.
+
+    Exactly one of the two is ``None``. The refusal is a return value for the reason
+    :func:`backend_precedence`'s is: the ladder answers with named reasons and never
+    raises.
+    """
+    raw = os.environ.get(PREFERENCE_SWITCH)
+    value = (raw or "").strip()
+    if not value:
+        return PREFERENCE_DEFAULT, None
+    if value in PREFERENCE_MODES:
+        return value, None
+    return None, (f"{PREFERENCE_SWITCH}={raw!r} is not one of "
+                  f"{', '.join(PREFERENCE_MODES)} (unset is {PREFERENCE_DEFAULT}); the "
+                  "preference decides which certified kernels hold a slot, and a value "
+                  "it cannot read is refused by name rather than guessed")
 
 
 def subnormal_install_enabled() -> bool:
@@ -1341,11 +1769,11 @@ def _launch_grid_of(plan: Any) -> Optional[Tuple[int, ...]]:
     computes it from ``n_elem`` and ``block``) answers here after the backing
     attribute moves, which is what makes that case measurable instead of a guess.
 
-    A WRAPPER IS READ THROUGH TO THE PLAN THAT LAUNCHES, and only in that
+    A wrapper is read through to the plan that launches, and only in that
     direction. ``deposit_repair.LeadingRepairPlan`` (deposit_repair.py:668-696)
     occupies the leading slot of a repair-carrying fused pair, holds the pair in
     ``inner`` and launches it inside its own ``run``; it spells no grid of its
-    own, so this used to answer None there. MEASURED on 2026-08-29, the
+    own, so this used to answer None there. Measured on 2026-08-29, the
     driver-route gate's first fused run on an RTX A6000: ``step_D`` carried
     ``fused pair D`` with ``dispatches: 13`` and ``programs_per_dispatch: null``
     — the one route whose non-vacuity signal is NEW reported the counter's
@@ -1354,7 +1782,7 @@ def _launch_grid_of(plan: Any) -> Optional[Tuple[int, ...]]:
     :attr:`FastPathPlan.launch_counters` exists to draw (a warm launch at
     ``grid=(0,)`` counts in every other counter).
 
-    THE ABSORBED SLOT IS DELIBERATELY NOT READ THROUGH. ``NoopPlan`` and
+    The absorbed slot is deliberately not read through. ``NoopPlan`` and
     ``TrailingRepairPlan`` both name the plan that did the work in
     ``absorbed_by``, and following THAT would report the pair's program count for
     a slot whose consult launched nothing — a claim about a launch that did not
@@ -1377,17 +1805,17 @@ def _launch_grid_of(plan: Any) -> Optional[Tuple[int, ...]]:
 def _plan_launches_of(plan: Any) -> Optional[int]:
     """How many launches the PLAN ITSELF counted, or None when it counts none.
 
-    THE SECOND, INDEPENDENT WITNESS that a dispatched slot ran a kernel. Everything
+    The second, independent witness that a dispatched slot ran a kernel. Everything
     else :attr:`FastPathPlan.launch_counters` reports is this module's own
     bookkeeping — ``dispatches`` is incremented by :meth:`FastPathPlan._ran`, one
     line after the call — so a defect in the seam's accounting would report itself
     as success. ``launches`` is kept by the object that performs the launch and is
     written nowhere in this file.
 
-    THE SAME TWO READING RULES AS :func:`_launch_grid_of`, and for the same reasons.
-    A WRAPPER IS READ THROUGH ``inner`` to the plan that launches, so a
+    The same two reading rules as :func:`_launch_grid_of`, and for the same reasons.
+    A wrapper is read through ``inner`` to the plan that launches, so a
     deposit-repair or residency-bracketed leading slot answers for the launch it
-    performs. THE ABSORBED SLOT IS DELIBERATELY NOT READ THROUGH ``absorbed_by``:
+    performs. The absorbed slot is deliberately not read through ``absorbed_by``:
     following it would report the pair's launch count for a slot whose consult
     launched nothing, which is a claim about a launch that did not happen there.
 
@@ -1475,7 +1903,7 @@ def _warm_with_empty_grid(plan: Any, invoke: Any) -> Optional[str]:
 
 
 def _warm_polarization_plans(entries: Any, drive: Any) -> Optional[str]:
-    """Warm every per-susceptibility ADE plan, ROTATION AND ALL, then put it back.
+    """Warm every per-susceptibility ADE plan, rotation and all, then put it back.
 
     ``update_P`` is the one slot the warm pass used to skip, and skipping it made a
     recoverable condition fatal: a kernel that will not compile there raises in the
@@ -1541,7 +1969,7 @@ def warm_plan(plan: Any, drive: Any = None) -> Optional[str]:
     :func:`_warm_polarization_plans` for the ``update_P`` list, whose entries take
     ``drive`` and rotate their buffers.
 
-    ``update_P`` IS A LIST ONLY ON THE TRITON TABLE. The other two composers fill it
+    ``update_P`` is a list only on the Triton table. The other two composers fill it
     with ONE plan — a Metal ``MetalAdeUpdatePPlan``, a third-backend ``NoopPlan`` or
     trailing half — and a single object takes the ORDINARY path below: ``warm()`` if
     it has one, else the empty-grid mechanism, else a recorded reason. That is the
@@ -1557,14 +1985,14 @@ def warm_plan(plan: Any, drive: Any = None) -> Optional[str]:
     that was ATTEMPTED and FAILED raises, and the caller unfills the slot; nothing
     was written, so that is safe.
 
-    NOT VERIFIED ON HARDWARE. Whether Triton 3.1 compiles-without-executing at
+    Not verified on hardware. Whether Triton 3.1 compiles-without-executing at
     ``grid=(0,)`` is a measurement this repository has not taken. The dispatch
     artifact records the outcome per slot, and ``MEEP_GPU_WARM=0`` skips the
     pass, so the two can be compared on a device without editing code.
     """
     warm = getattr(plan, "warm", None)
     if callable(warm):
-        # A ``warm()`` MAY ANSWER WITH A REASON INSTEAD OF A COMPILE, and that is the
+        # A ``warm()`` may answer with a reason instead of a compile, and that is the
         # same three-way contract this function has always had, moved one level down.
         # The hand-CUDA products compile through their family module's
         # ``_get_kernel``; a family that exposes none has no compile to perform ahead
@@ -1583,10 +2011,10 @@ def warm_plan(plan: Any, drive: Any = None) -> Optional[str]:
 
 #: The nine certified families' re-run record, as a key in ``fingerprints.json``.
 #:
-#: IT USED TO BE A PATH, and that was the defect: the path resolves into
+#: It used to be a path, and that was the defect: the path resolves into
 #: ``parity/meep_gpu/results/``, which ``.gitignore`` excludes, so a clone has no
 #: such file, ``_fingerprints().get(<path>)`` was always ``None``, and all nine of
-#: the families certified this round reached a user's artifact carrying a family
+#: the families that re-run certified reached a user's artifact carrying a family
 #: name, a dead path and nothing else — no ``recorded_utc``, no host, no run id —
 #: while the eight legacy families carried full provenance. The facts are now
 #: TRANSCRIBED into the tracked record under this key (the results directory is
@@ -1619,7 +2047,7 @@ ARM_CERTIFICATION: Mapping[str, Tuple[str, str]] = {
     "folded real beta PML": ("folded_complex", FAMILY_RECERT_GATE),
     "folded complex beta PML": ("folded_complex", FAMILY_RECERT_GATE),
     "cylindrical complex PML": ("cylindrical_complex", FAMILY_RECERT_GATE),
-    # Fill arms — not dispatchable this round (see DRIVER_SLOTS), named so the
+    # Fill arms — not dispatchable when this map was written (see DRIVER_SLOTS), named so the
     # artifact can still say which product would have served them.
     "mirror fill": ("symmetry", "symmetry_composition_gate"),
     "folded complex fill": ("folded_complex", FAMILY_RECERT_GATE),
@@ -1645,7 +2073,7 @@ ARM_CERTIFICATION: Mapping[str, Tuple[str, str]] = {
     # a gate above ALREADY certified — the arm is a wider ADMISSION of the same
     # kernel, not a new product — so each is mapped to the family whose gate cut
     # those bytes, and the entry says which body it is. The identity on the newly
-    # admitted CONFIGURATION is the closure round's device leg
+    # admitted CONFIGURATION is the residual-closure run's device leg
     # (results/residual_closure_2026-08-15/device/newpred/), which is a separate
     # measurement from the family gate named here and is why these arms could be
     # added without a new kernel.
@@ -1666,7 +2094,7 @@ ARM_CERTIFICATION: Mapping[str, Tuple[str, str]] = {
                            "triton_no_pml_conductive_device_gate"),
     "no-PML stored E": ("no_pml_stored_e",
                          "triton_no_pml_stored_e_device_gate"),
-    # THE COMPLEX NO-ABSORBER SIBLINGS, moved here from PENDING_DEVICE_GATE_ARMS on
+    # The complex no-absorber siblings, moved here from PENDING_DEVICE_GATE_ARMS on
     # 2026-09-14 by the release decision recorded beside that map. Each lookup resolves
     # TODAY and is not a promise about a run that has yet to happen: all three keys
     # are in triton_kernels/fingerprints.json with status PASS and source_drift
@@ -1680,24 +2108,24 @@ ARM_CERTIFICATION: Mapping[str, Tuple[str, str]] = {
                                        "triton_complex_no_pml_conductive_device_gate"),
     "complex no-PML stored E": ("complex_no_pml_stored_e",
                                 "triton_complex_no_pml_stored_e_device_gate"),
-    # THE UPDATE_E ARM THE SAME RULING WAS EXTENDED TO ON 2026-09-15, recorded beside
+    # The update_E arm the same decision was extended to on 2026-09-15, recorded beside
     # PENDING_DEVICE_GATE_ARMS with what stands behind it. NOT the update_H admission
     # `folded complex off-diagonal` mapped above to the complex family: the labels
     # differ in word order alone. The family name is the ledger key's own directory
     # (rebind_triton_welds.CAMPAIGN_DIRS). Unlike its three siblings this lookup was
-    # NOT clean when it was ruled -- launch.py pins drifted, policy "see artifact" --
-    # and the ruling conditioned the row on the key being re-gated and rebound in the
-    # same batch; test_the_complex_folded_offdiag_arm_is_certified_on_a_rebound_weld
+    # NOT clean when it was decided -- launch.py pins drifted, policy "see artifact" --
+    # and the decision conditioned the row on the key being re-gated and rebound in the
+    # same change; test_the_complex_folded_offdiag_arm_is_certified_on_a_rebound_weld
     # is what holds the ledger to that.
     "complex folded off-diagonal": ("complex_offdiag",
                                     "triton_complex_offdiag_device_gate"),
-    # THE CROSS-SUB-STEP FUSED PRODUCTS, mapped 2026-08-29 with the fusion
+    # The cross-sub-step fused products, mapped 2026-08-29 with the fusion
     # opt-in. A fused arm was ``("unmapped", "unmapped")`` until now, which was
     # harmless while clause (8) refused every one of them and is NOT harmless the
     # moment one can dispatch: an artifact whose dispatched arm names no gate is
     # the over-claim this map exists to prevent.
     #
-    # THE GATE NAMED IS THE ONE THAT CUT THOSE BYTES, caveats included, and one
+    # The gate named is the one that cut those bytes, caveats included, and one
     # of the caveats is why the mapping matters. ``triton_fused_electric_device_gate``
     # carries ``subnormal_policy: "NOT INSTALLED - see _mixed_policy"`` — the CuPy
     # oracle it was compared against was flushing while Triton kept — so a run
@@ -1713,11 +2141,11 @@ ARM_CERTIFICATION: Mapping[str, Tuple[str, str]] = {
     "dispersive fused pair": ("dispersive_fused_pair",
                               "triton_dispersive_fused_pair_device_gate"),
     "fused ADE state": ("fused_ade_state", "triton_fused_ade_state_device_gate"),
-    # THE INSTALLER WAVE, 2026-09-02 — three of the twenty-five products
+    # The installer wave, 2026-09-02 — three of the twenty-five products
     # ``triton_kernels/launch.CERTIFIED_FUSED_PRODUCTS`` routed in the same edit.
     # THREE, not twenty-five, and the split is the whole content of this comment.
     #
-    # A ROW HERE IS A PROMISE THAT THE LOOKUP RESOLVES. Every gate named in this
+    # A row here is a promise that the lookup resolves. Every gate named in this
     # map is a key in ``triton_kernels/fingerprints.json``, and
     # ``test_dispatch_contract.test_every_recorded_certification_points_at_a_readable_record``
     # holds it to that with no exemption — an exemption for gates that lived only
@@ -1730,9 +2158,9 @@ ARM_CERTIFICATION: Mapping[str, Tuple[str, str]] = {
     # :data:`PENDING_DEVICE_GATE_ARMS` instead, with the artifact that released
     # them, and the pending rung refuses them before anything warms. That is
     # wiring without releasing spelled at the level where it is enforced rather
-    # than asserted, and it prices the phase that follows: twenty ledger
-    # entries have to be CUT BY A GATE RUN — no in-tree tool creates one, and
-    # writing one by hand is exactly the record forgery this campaign forbids.
+    # than asserted, and it prices the work that follows: twenty ledger
+    # entries have to be cut by a gate run — no in-tree tool creates one, and
+    # writing one by hand is exactly the record forgery the certification process forbids.
     "fused pair B (complex)": ("complex_fused_magnetic_pair",
                                "triton_complex_fused_magnetic_pair_device_gate"),
     "fused pair D (complex)": ("complex_fused_electric_pair",
@@ -1740,28 +2168,28 @@ ARM_CERTIFICATION: Mapping[str, Tuple[str, str]] = {
     "fused pair B (cylindrical)": (
         "cylindrical_real_fused_magnetic_pair",
         "triton_cylindrical_real_fused_magnetic_pair_device_gate"),
-    # THE 2026-09-11 RELEASE WAVE — the three D-seam products whose arms this round
+    # The 2026-09-11 release wave — the three D-seam products whose arms that release
     # drives through the seam. Every gate named below is a key that
     # ``parity/meep_gpu/seed_triton_welds.py`` CUTS from the fleet artifacts of
     # ``dispatch_fused_route_2026-09-11_realarms``'s campaign, after the campaign,
     # from the run's own recorded digests. It is not typed and it cannot be: no
     # in-tree tool invents a ledger entry, and writing one by hand is the record
-    # forgery this campaign forbids.
+    # forgery the certification process forbids.
     #
-    # SO THESE THREE ROWS ARE DELIBERATELY UNRESOLVED UNTIL THE SEED RUNS, and the
+    # So these three rows are deliberately unresolved until the seed runs, and the
     # window is named rather than avoided. The ordering rule says every source edit
     # lands BEFORE the campaign, or the run records a file that does not ship; this
     # file is bound by ``driver_dispatch``, by all ten H->D gate artifacts and by
     # all 42 Metal gate artifacts, so it MUST be edited first.
     # ``test_every_recorded_certification_points_at_a_readable_record`` is therefore
-    # red between this edit and the seed, by design and by name in the campaign log.
+    # red between this edit and the seed, by design.
     "fused pair D (conductive)": (
         "conductive_fused_electric_pair",
         "triton_conductive_fused_electric_pair_device_gate"),
     "fused pair D (cylindrical)": (
         "cylindrical_real_fused_electric_pair",
         "triton_cylindrical_real_fused_electric_pair_device_gate"),
-    # THE THIRD ROW OF THAT WAVE, and it arrives on the re-attribution round rather
+    # The third row of that wave, and it arrives with the 2026-09-14 re-drive rather
     # than with its two siblings because the arm was held back on a divergence the
     # investigation has since attributed elsewhere (see
     # :data:`PENDING_DEVICE_GATE_ARMS`). The lookup resolves TODAY and is not a
@@ -1777,7 +2205,7 @@ ARM_CERTIFICATION: Mapping[str, Tuple[str, str]] = {
     "fused pair D (folded dispersive)": (
         "folded_dispersive_fused_pair",
         "triton_folded_dispersive_fused_pair_device_gate"),
-    # --- PHASE B, 2026-09-13: seeded by seed_triton_welds.py from the 2026-09-12
+    # --- 2026-09-13: seeded by seed_triton_welds.py from the 2026-09-12
     # identity fleet, after the probes learned to record the device identity and the
     # provenance stamp the weld contract requires. ---
     "fused pair B (real beta)": (
@@ -1820,7 +2248,7 @@ ARM_CERTIFICATION: Mapping[str, Tuple[str, str]] = {
     "fused pair D (cylindrical complex)": (
         "cylindrical_fused_electric_pair",
         "triton_cylindrical_fused_electric_pair_device_gate"),
-    # --- THE TARGET ROUND, 2026-09-13: ONE ROW, and it is a lookup that already
+    # --- the 2026-09-14 release, edited 2026-09-13: ONE ROW, and it is a lookup that already
     # resolves rather than one the campaign still owes. The gate below is a key in
     # ``triton_kernels/fingerprints.json`` TODAY, status PASS, recorded
     # 2026-09-13T07:53:43Z on the GPU host (RTX A6000, cc 8.6, CuPy 13.5.1, Triton
@@ -1837,8 +2265,8 @@ ARM_CERTIFICATION: Mapping[str, Tuple[str, str]] = {
     "fused pair D (no-PML stored E)": (
         "no_pml_fused_electric_pair",
         "triton_no_pml_fused_electric_pair_device_gate"),
-    # --- 2026-09-15: THE COMPLEX CONDUCTIVE NO-PML PAIR, and this row is
-    # DELIBERATELY UNRESOLVED UNTIL THE SEED RUNS, in the window the 2026-09-11 wave
+    # --- 2026-09-15: the complex conductive no-PML pair, and this row is
+    # deliberately unresolved until the seed runs, in the window the 2026-09-11 wave
     # above names. The key does not exist in ``triton_kernels/fingerprints.json``
     # when this edit lands. It is CUT by ``parity/meep_gpu/seed_triton_welds.py
     # --only complex_conductive_fused_pair`` from the pair gate re-run through
@@ -1849,18 +2277,18 @@ ARM_CERTIFICATION: Mapping[str, Tuple[str, str]] = {
     # (2026-08-30 to ``triton_fleet_2026-09-14_target_A``) records ``environment``
     # without ``device`` and a hand-written ``subnormal_policy`` with no
     # ``requested``/``resolved``, so ``probe_triton_complex_conductive_fused_pair.py``
-    # gains the identity and policy stamps in the same batch.
+    # gains the identity and policy stamps in the same change.
     # ``test_every_recorded_certification_points_at_a_readable_record`` is red
     # between this edit and the seed, by design and by name.
     "fused pair D (complex conductive no-PML)": (
         "complex_conductive_fused_pair",
         "triton_complex_conductive_fused_pair_device_gate"),
-    # --- THE SCRATCH-OUTPUT OFF-DIAGONAL WELDS, 2026-09-17 -- and these two rows ARE
+    # --- The scratch-output off-diagonal welds, 2026-09-17 -- and these two rows ARE
     # in the deliberately-red window the 2026-09-11 wave above names, for its
     # ordering reason. Each key is the one ``seed_triton_welds.ledger_key`` derives
     # from a FAMILY-NAMED campaign directory, and the run that cuts it is
     # ``gate_triton_offdiag_stencil_welds.py`` re-run on the bytes this edit ships.
-    # No earlier stencil artifact can seed it: the 2026-09-13 batch records no
+    # No earlier stencil artifact can seed it: the 2026-09-13 run records no
     # ``environment`` block, writes directories named ``plain``/``folded`` (which
     # would mint ``triton_plain_device_gate``), and pins a ``launch.py`` and a
     # ``fastpath.py`` this edit moves. Until that seed runs,
@@ -1877,7 +2305,7 @@ ARM_CERTIFICATION: Mapping[str, Tuple[str, str]] = {
 #: The two arms a FUSED label's kernel implements, so the rungs that decide on an
 #: ARM can still see through a label that replaced two of them.
 #:
-#: WHY THIS EXISTS AT ALL, and it is a hole the installer wave opened rather than a
+#: Why this exists at all, and it is a hole the installer wave opened rather than a
 #: tidy-up. Rung (7a) refuses a plan whose ``selected`` names an arm in
 #: :data:`PENDING_DEVICE_GATE_ARMS`; it reads one label per slot. A fused product
 #: absorbs BOTH slots and writes ITS OWN label into both, so the constituent arms
@@ -1887,13 +2315,13 @@ ARM_CERTIFICATION: Mapping[str, Tuple[str, str]] = {
 #: pending. Without this map, wiring that product would have quietly removed a
 #: standing refusal by covering the arms it names.
 #:
-#: IT IS A NARROWING AND NEVER A WIDENING. Every existing released arm's
+#: It is a narrowing and never a widening. Every existing released arm's
 #: constituents are non-pending (``PML``/``ordinary``, ``folded PML``/``folded``,
 #: ``PML``/``dispersive``), so no behaviour on the shipped release changes; what the
-#: map can do is refuse MORE, which is the only direction a wiring round is allowed
+#: map can do is refuse MORE, which is the only direction a wiring change is allowed
 #: to move a gate.
 #:
-#: THE VOCABULARY LIVES HERE AND THE COMPOSER IS WHAT IT IS CHECKED AGAINST, exactly
+#: The vocabulary lives here and the composer is what it is checked against, exactly
 #: as :data:`DRIVER_SLOTS` is: ``test_triton_certified_fused_products`` compares this
 #: map with ``launch.FUSED_PAIR_ARMS``, ``launch.FOLDED_FUSED_PAIR_ARMS``,
 #: ``launch.CERTIFIED_FUSED_PAIR_ARMS`` and ``CERTIFIED_FUSED_PAIR_EXTRA_ARMS`` —
@@ -1961,7 +2389,7 @@ FUSED_ARM_CONSTITUENTS: Mapping[str, Tuple[str, ...]] = {
     # ``fuse_ade`` block chooses between ``plan_fused_ade_state`` and
     # ``plan_ade_update_p`` for the same slot, so the arm it displaces is
     # ``ADE update_P`` and nothing else. Leaving it out would refuse it at the
-    # unnamed-absorb clause below, which is a behaviour change this wiring round has
+    # unnamed-absorb clause below, which is a behaviour change this wiring change has
     # no evidence for.
     "fused ADE state": ("ADE update_P",),
 }
@@ -1972,14 +2400,14 @@ FUSED_ARM_CONSTITUENTS: Mapping[str, Tuple[str, ...]] = {
 #: arm.  Keeping these labels here makes an opted-in run refuse the whole plan
 #: before warming instead of borrowing a sibling family's provenance.
 PENDING_DEVICE_GATE_ARMS: Mapping[str, str] = {
-    # ``fused pair D (folded dispersive)`` LEFT THIS MAP ON THE RE-ATTRIBUTION ROUND,
+    # ``fused pair D (folded dispersive)`` left this map with the 2026-09-14 re-drive,
     # and it left because the hold was a MISATTRIBUTION rather than because a ledger
     # entry was cut. Its row read "synchronize_magnetic_fields diverges from the
     # array path on this shape with fusion OFF as well as on, so the second consult
     # site cannot license it". The device investigation that went looking for that
     # divergence did not find it and found what produced the signature instead.
     #
-    # WHAT WAS MEASURED, driving the real route gate on the GPU host with the arm
+    # What was measured, driving the real route gate on the GPU host with the arm
     # admitted in-process at 7 of 7 slots over the full 1600-step ladder, three
     # times in fresh processes: PASS-FUSED every time, ``first_divergent_checkpoint``
     # null, 0 of 41 arrays differing over 200,080 words on BOTH ``fused_vs_array``
@@ -1992,13 +2420,13 @@ PENDING_DEVICE_GATE_ARMS: Mapping[str, str] = {
     # ZERO failures, of which 86 are ``folded_dispersive_2d`` rows over 23 runs and
     # all three backends, every one site=PASS with both legs byte-identical.
     #
-    # AND THERE IS NO MECHANISM: this arm spans ``step_D``/``update_E`` while
+    # And there is no mechanism: this arm spans ``step_D``/``update_E`` while
     # ``synchronize_magnetic_fields`` consults only ``step_B``, ``fill_B``,
     # ``fill_folded_far_ghosts_B`` and ``update_H_synchronize``. Installing an
     # ELECTRIC product cannot move the magnetic half-step, which is why "with fusion
     # off as well as on" never had an explanation.
     #
-    # WHAT ACTUALLY PRODUCED THE SIGNATURE, and it is a real defect that keeps its
+    # What actually produced the signature, and it is a real defect that keeps its
     # own owner: the subnormal policy installs LAZILY, at the first dispatch's plan
     # freeze, so every CuPy kernel compiled before that carries CuPy's own
     # ``-ftz=true``. The ARRAY comparison leg then flushes subnormals while both
@@ -2008,19 +2436,19 @@ PENDING_DEVICE_GATE_ARMS: Mapping[str, str] = {
     # 48, and installing the policy first PASSES. The engine-side fix (installing
     # the policy before the first CuPy compile in ``from_meep.lift_simulation``,
     # plus a pre-install compile counter in ``subnormal_policy``) is a SEPARATE
-    # round; nothing in this file's seam or gate code moved for it.
+    # change; nothing in this file's seam or gate code moved for it.
     "complex no-PML off-diagonal":
         "its family byte gate passed on the device, but the central planner/driver "
         "recertification and tracked fingerprint entry are pending",
     "folded off-diagonal dispersive":
         "its repaired family byte gate passed on the device, but the central "
         "planner/driver recertification and tracked fingerprint entry are pending",
-    # THREE ARMS LEFT THIS MAP ON 2026-09-14 — `complex ADE update_P`,
+    # Three arms left this map on 2026-09-14 — `complex ADE update_P`,
     # `complex conductive no-PML curl` and `complex no-PML stored E` — and they left
     # on a RELEASE DECISION rather than on a new run, which is recorded here because
     # the map's rule above says a family gate is "necessary but not sufficient".
     #
-    # WHAT WAS STALE. Their reasons read "its dedicated CUDA byte gate has not run"
+    # What was stale. Their reasons read "its dedicated CUDA byte gate has not run"
     # and "tracked fingerprint entry are pending". Both had stopped being true: the
     # three family gates ran and RELEASED on 2026-09-13 and sit in
     # triton_kernels/fingerprints.json today as triton_complex_ade_device_gate,
@@ -2029,24 +2457,24 @@ PENDING_DEVICE_GATE_ARMS: Mapping[str, str] = {
     # recorded 2026-09-13T07:53:3xZ on the GPU host (RTX A6000, cc 8.6), seeded by
     # seed_triton_welds.py from results/triton_fleet_2026-09-13_batch_{A,D}/.
     #
-    # WHAT WAS RULED. The sufficiency half — "the central planner and driver seam
-    # must also be recertified against the bytes that contain the arm" — was ruled
+    # What was decided. The sufficiency half — "the central planner and driver seam
+    # must also be recertified against the bytes that contain the arm" — was judged
     # SATISFIED on 2026-09-14: the driver half is re-cut from the route
     # run by recut_driver_dispatch_record.py, and the only planner record
     # (planner_integration_recert_2026-08-14) is hand-authored, no in-tree tool
     # writes one, it PREDATES these gates, and its own `dispatch` field is stale
     # ("STILL DISABLED ... returns None on every branch"), which dispatch no longer
-    # is. The ruling is the licence; this comment is the record of it, so a reader
+    # is. The decision is the licence; this comment is the record of it, so a reader
     # who finds these three in ARM_CERTIFICATION can see it was decided rather than
     # drifted into.
     #
-    # A FOURTH LEFT ON 2026-09-15, ON THE SAME RULING EXTENDED BY NAME:
+    # A fourth left on 2026-09-15, on the same decision extended by name:
     # `complex folded off-diagonal`, the update_E arm. It is NOT `folded complex
     # off-diagonal`, the update_H admission ARM_CERTIFICATION has mapped to the
     # complex family since 2026-08-16. The two labels differ in word order alone,
     # and this entry concerns the first.
     #
-    # WHAT STANDS BEHIND IT. Its family gate is triton_complex_offdiag_device_gate,
+    # What stands behind it. Its family gate is triton_complex_offdiag_device_gate,
     # status PASS, recorded 2026-09-13T07:53:36Z from
     # results/triton_fleet_2026-09-13_batch_D/complex_offdiag/ (07:03:52Z to
     # 07:04:06Z): five product rows IDENTICAL over 8 cycles -- folded_3d 110,592
@@ -2055,9 +2483,9 @@ PENDING_DEVICE_GATE_ARMS: Mapping[str, str] = {
     # mutations DIVERGENT (708 to 93,750 words) and every refusal predicate agreeing.
     # The twofold and Bloch tails are the shapes of the three corpus rows the arm
     # serves. planner_integration_recert_2026-08-14 never covered this family, which
-    # is the ground the 2026-09-14 ruling had already set aside for its siblings.
+    # is the ground the 2026-09-14 decision had already set aside for its siblings.
     #
-    # WHAT THE ROUTE MEASURED WHILE IT WAS HERE. On folded_complex_offdiag_2d and
+    # What the route measured while it was here. On folded_complex_offdiag_2d and
     # folded_complex_nobloch_offdiag_2d the composer builds this arm for update_E
     # beside `fused pair B (folded complex)` on step_B/update_H, and this map refused
     # the WHOLE plan. dispatch_fused_route_2026-09-15_weldgrid drove both as
@@ -2066,14 +2494,14 @@ PENDING_DEVICE_GATE_ARMS: Mapping[str, str] = {
     # PASS-NO-FUSED-ARM with refusing_rung `pending-device-gate`, byte-identical to
     # the array path at 1600 and 1000 steps (287,680 and 380,538 words).
     #
-    # WHAT THE LIFT IS CONDITIONED ON, because unlike the three above this entry was
-    # not clean when it was ruled. Its launch.py pins had drifted (source de606ebe
+    # What the lift is conditioned on, because unlike the three above this entry was
+    # not clean when it was decided. Its launch.py pins had drifted (source de606ebe
     # recorded against b7701503 in the tree, code a6b3a46c against af61e4f0) and its
     # subnormal_policy read "see artifact", the one name in
     # test_triton_weld_contract.POLICY_UNNAMED_BUDGET. So gate_triton_complex_offdiag.py
     # is re-run under keep on the bytes that ship -- AFTER this edit, because the gate
     # imports this file -- writing the environment block and policy stamp it lacked,
-    # and rebind_triton_welds.py rebinds the key in the same batch, deriving the
+    # and rebind_triton_welds.py rebinds the key in the same change, deriving the
     # policy from that stamp (its POLICY_UNNAMED rule). Until that rebind,
     # `test_the_complex_folded_offdiag_arm_is_certified_on_a_rebound_weld` is red by
     # design.
@@ -2081,7 +2509,7 @@ PENDING_DEVICE_GATE_ARMS: Mapping[str, str] = {
     # `test_the_residual_closure_arms_are_explicitly_fail_closed_until_recertified`
     # pins the two that REMAIN, and its disjointness clause still holds for them.
     # ---------------------------------------------------------------------
-    # THE INSTALLER WAVE'S UNTRANSCRIBED LABELS: the twenty that remain after
+    # The installer wave's untranscribed labels: the twenty that remain after
     # 2026-09-11, of the twenty-three the 2026-09-02 wave wired.
     # ---------------------------------------------------------------------
     # Every one of these is a fused LABEL rather than a sub-step arm, and every one
@@ -2096,7 +2524,7 @@ PENDING_DEVICE_GATE_ARMS: Mapping[str, str] = {
     # ``release_binding_per_product`` block), so the evidence exists and is checked
     # — it is simply not in the ledger a dispatching artifact can quote.
     #
-    # SO THEY ARE WIRED AND REFUSED, which is this round's whole intent: the
+    # So they are wired and refused, which is the whole intent of that wiring: the
     # composer can SELECT them, which is the precondition a release campaign
     # measures against, and the ladder stops them here — before the warm pass,
     # before any kernel compiles, and without borrowing a sibling family's
@@ -2104,7 +2532,7 @@ PENDING_DEVICE_GATE_ARMS: Mapping[str, str] = {
     # :data:`RELEASED_FUSED_ARMS`); this rung is what still refuses them when a run
     # opts into a label by name through :data:`FUSE_ARMS_SWITCH`.
     #
-    # THE TWO SCRATCH-OUTPUT WELDS ARE NOT HERE, and since 2026-09-15 for the other
+    # The two scratch-output welds are not here, and since 2026-09-15 for the other
     # reason. Until then they were not wired: their plan rotates the engine's own D
     # volumes and ``warm_plan`` would have driven that rotation at plan time. Their
     # shared plan base now has a ``warm`` that never rotates, ``launch.py`` routes
@@ -2113,16 +2541,16 @@ PENDING_DEVICE_GATE_ARMS: Mapping[str, str] = {
     # routing bytes -- the named window the 2026-09-11 wave also ran through, not a
     # pending hold.
     #
-    # WHAT LIFTS A ROW: a gate run that cuts the ledger entry, and since 2026-09-11
+    # What lifts a row: a gate run that cuts the ledger entry, and since 2026-09-11
     # the tool that cuts it is named — ``parity/meep_gpu/seed_triton_welds.py``,
     # which reads a fleet campaign's artifacts and writes the key from the run's own
     # recorded digests, refusing any artifact that does not carry them. No in-tree
     # tool INVENTS one — ``parity/meep_gpu/rebind_triton_welds.py`` rebinds keys that
     # already exist and refuses to create one — and writing one by hand is the
-    # record forgery this campaign forbids. Each reason names the artifact so the
+    # record forgery the certification process forbids. Each reason names the artifact so the
     # run that has to be repeated is identified rather than searched for.
     #
-    # THREE ROWS LEFT ON 2026-09-11 by exactly that route: ``fused pair D
+    # Three rows left on 2026-09-11 by exactly that route: ``fused pair D
     # (cylindrical)``, ``fused pair D (folded dispersive)`` and ``fused pair D
     # (conductive)`` were seeded from the ``_realarms`` fleet and moved to
     # :data:`ARM_CERTIFICATION`. The twenty below keep their artifact paths, which
@@ -2144,11 +2572,11 @@ PENDING_DEVICE_GATE_ARMS: Mapping[str, str] = {
         "pairs install (`fused pair B (complex)` holds step_B+update_H and `fused "
         "pair D (complex)` holds step_D+update_E) and a two-slot H->D span turns two "
         "pairs into one",
-    # ``fused pair D (complex conductive no-PML)`` LEFT THIS MAP ON 2026-09-15, by the
+    # ``fused pair D (complex conductive no-PML)`` left this map on 2026-09-15, by the
     # route this map names as the only one that lifts a row: its
-    # :data:`ARM_CERTIFICATION` row landed in the same batch as its
+    # :data:`ARM_CERTIFICATION` row landed in the same change as its
     # :data:`RELEASED_FUSED_ARMS` row, and the key that row names is cut by
-    # ``seed_triton_welds.py`` from the pair gate re-run after the batch. Its reason
+    # ``seed_triton_welds.py`` from the pair gate re-run after the change. Its reason
     # here ended "seeding it wants the pair gate re-run through
     # drive_triton_weld_gates.py, which stamps the environment identity
     # seed_triton_welds.py refuses to invent", and the second half was wrong: the
@@ -2157,10 +2585,10 @@ PENDING_DEVICE_GATE_ARMS: Mapping[str, str] = {
     # ``environment``, and this gate recorded no ``device`` there on any of its
     # twelve Triton runs (read 2026-09-15). A re-run alone would have been refused
     # the same way; what it needed was the probe stamping the identity itself,
-    # which ``probe_triton_complex_conductive_fused_pair.py`` does from this batch
+    # which ``probe_triton_complex_conductive_fused_pair.py`` does from this change
     # on. Rung (7a)'s see-through stays clear: both constituents
     # :data:`FUSED_ARM_CONSTITUENTS` names for it left this map on 2026-09-14.
-    # ``fused pair D (no-PML stored E)`` LEFT THIS MAP IN THE TARGET ROUND, and it
+    # ``fused pair D (no-PML stored E)`` left this map in the 2026-09-14 release, and it
     # left for the reason the map itself names as the only one that lifts a row: a
     # gate run cut the ledger entry. Its text here read "its gate released
     # (results/triton_regate_2026-09-02_residue/probe_triton_no_pml_fused_electric_pair/
@@ -2172,7 +2600,7 @@ PENDING_DEVICE_GATE_ARMS: Mapping[str, str] = {
     # stored E`` and ``no-PML``, and none of the three is in this map.
 }
 
-#: WHERE THIS TABLE'S ROUTE RELEASE IS RECORDED, and what a run record and a refusal cite
+#: Where this table's route release is recorded, and what a run record and a refusal cite
 #: for it. :data:`RELEASED_FUSED_ARMS` is the first constant in this file that ADMITS
 #: rather than refuses, so a reader has to be able to get from the admission to the
 #: measurement without being told where to look, and a dispatching run's own record has
@@ -2182,7 +2610,7 @@ PENDING_DEVICE_GATE_ARMS: Mapping[str, str] = {
 #: and what it measured, and ``recut_driver_dispatch_record.py`` writes it only from a
 #: released campaign whose directory is the one the stamp spells for that device.
 #:
-#: THE STAMP ITSELF IS NOT IN THIS FILE. It lives in ``meep_gpu/route_stamps.py``
+#: The stamp itself is not in this file. It lives in ``meep_gpu/route_stamps.py``
 #: (``route_stamps.route_gate("triton")``), with its history, and nothing in the dispatch
 #: path imports that module: the stamp was only ever a label here (this record's
 #: ``fusion.driver_route_gate`` and the refusal's "released by" clause), and while it was
@@ -2192,11 +2620,11 @@ PENDING_DEVICE_GATE_ARMS: Mapping[str, str] = {
 ROUTE_RECORD = ("the Triton route campaign recorded in triton_kernels/fingerprints.json "
                 "at driver_dispatch.runs[<compute capability>].released_fused_arms.gate")
 
-#: THE FUSED ARMS THAT HAVE BEEN DRIVEN THROUGH THE DRIVER SEAM, and the gate
+#: The fused arms that have been driven through the driver seam, and the gate
 #: cases each one was driven on. This is the per-arm allow-list clause (8) reads,
 #: and it is the whole of what the fused route ships enabled.
 #:
-#: WHAT "DRIVEN THROUGH THE SEAM" MEANT FOR EACH ROW, measured, not argued: the
+#: WHAT "driven through the seam" meant for each row, measured, not argued: the
 #: arm's kernel LAUNCHED from :meth:`FastPathPlan.dispatch` at the leading consult
 #: inside ``driver.step()``, on a driver lifted by ``lift_simulation`` from a real
 #: ``mp.Simulation``; the absorbed consult answered True off the sentinel or the
@@ -2210,7 +2638,7 @@ ROUTE_RECORD = ("the Triton route campaign recorded in triton_kernels/fingerprin
 #: The per-case drops are in the artifact (``cases[*].substitution``) rather than
 #: transcribed here, because they moved when the case list grew.
 #:
-#: BOTH INSTALLED PAIR SHAPES ARE NOW DRIVEN, which ``magnetic_seam_2d`` is here
+#: Both installed pair shapes are now driven, which ``magnetic_seam_2d`` is here
 #: for and is the one row of this table the ``_veto`` run could not have written.
 #: A fused pair's absorbed slot holds either a ``launch.NoopPlan`` sentinel or
 #: ``deposit_repair.TrailingRepairPlan``, and which one depends on whether the
@@ -2227,7 +2655,7 @@ ROUTE_RECORD = ("the Triton route campaign recorded in triton_kernels/fingerprin
 #: to the array path across 32 arrays and 768,000 words at every rung, and the
 #: launch drop is 4.0 -> 2.0 per step on both counters.
 #:
-#: AND THE ROUTE MEASURED IS THE ONE THAT SHIPS. All seven dispatching cases ran with
+#: And the route measured is the one that ships. All seven dispatching cases ran with
 #: ``MEEP_GPU_FUSE_ARMS`` UNSET, so what admitted each arm was THIS TABLE and not a
 #: switch — asserted per case rather than inferred from the environment, by a leg
 #: that reads the record back and requires ``fusion.value`` absent, ``opted_in``
@@ -2237,14 +2665,14 @@ ROUTE_RECORD = ("the Triton route campaign recorded in triton_kernels/fingerprin
 #: ``vetoed: true`` with nothing driven — because on the first attempt at this run
 #: the baseline fused too and the drop was 0.0 per step on every case.
 #:
-#: THE ARM LABEL IS NOT THE WHOLE PREDICATE, which is why
+#: The arm label is not the whole predicate, which is why
 #: :data:`FUSED_RELEASE_ENVELOPE` and :data:`FUSED_RELEASE_ARM_AXES` exist beside
 #: it. ``fused pair B`` is the ``("PML", "ordinary")`` pair
 #: (``triton_kernels/launch.py`` FUSED_PAIR_ARMS), and that arm pair is selected on
 #: a 3-D grid too — a shape this gate drives only as the envelope's refusal
 #: control. Releasing on the label alone would turn dispatch on for a configuration
 #: no gate certified, which is the one outcome this file exists to prevent.
-#: THE 2026-09-02 ROUND ADDS THE TWO FOLDED ARMS AND ONE 1-D CASE, and both are
+#: The 2026-09-02 release adds the two folded arms and one 1-D CASE, and both are
 #: consequences of the fill consults rather than of a new predicate. Until those
 #: landed, a folded run that filled ``fill_B``/``fill_D`` died at the completeness
 #: rung before any fused label could be judged, so ``fused pair B (folded)`` had
@@ -2255,7 +2683,7 @@ ROUTE_RECORD = ("the Triton route campaign recorded in triton_kernels/fingerprin
 #: ``update_P``. ``pml_1d`` is the 1-D shape the previous envelope refused: the
 #: composer selects the same two ordinary pairs on it that it selects in 2-D.
 #:
-#: THE 2026-09-11 ROUND ADDS FOUR ARMS AND ONE CASE, and what is new about it is
+#: The 2026-09-11 release adds four arms and one case, and what is new about it is
 #: that TWO of the three cases were already dispatching. On ``conductive_2d`` and
 #: ``folded_dispersive_2d`` the D-seam product was SELECTED by the composer in
 #: every campaign since 09-02 and withheld by ``plan_step``'s ``fuse_labels``
@@ -2267,7 +2695,7 @@ ROUTE_RECORD = ("the Triton route campaign recorded in triton_kernels/fingerprin
 #: step any more, and their substitution counts move from 4 -> 3 launches per step
 #: to 4 -> 2.
 #:
-#: ``cylindrical_m0`` IS THE ONE NEW CASE, and it is new evidence rather than a
+#: ``cylindrical_m0`` is the one new case, and it is new evidence rather than a
 #: wider read of old evidence: no release gate had ever driven a Dcyl grid, which
 #: is exactly why ``cylindrical`` sat in the shared envelope at False. It is the
 #: end-to-end gate's ``case_cylindrical`` — cell (4, 0, 4), PML 0.8, an ``mp.Ez``
@@ -2278,7 +2706,7 @@ ROUTE_RECORD = ("the Triton route campaign recorded in triton_kernels/fingerprin
 #: ``cylindrical_real`` products there and nothing else fused, the D seam carrying
 #: the deposit repair for the Ez source and the B seam the ``NoopPlan`` sentinel.
 #:
-#: THE TRITON TABLE'S, AND ONLY ITS. The Metal table's release lives in
+#: The Triton table's, and only its. The Metal table's release lives in
 #: ``metal_dispatch.METAL_RELEASED_FUSED_ARMS`` beside its own envelope, per-arm
 #: axes, certifications and pending map, and the SAME helpers decide both:
 #: :func:`_run_shape`, :func:`_axis_reasons` and :func:`fused_release_arm_reasons`
@@ -2288,20 +2716,20 @@ ROUTE_RECORD = ("the Triton route campaign recorded in triton_kernels/fingerprin
 #: the Triton record every time the Metal envelope widened, for a change Triton has
 #: no stake in.
 RELEASED_FUSED_ARMS: Mapping[str, Tuple[str, ...]] = {
-    # --- THE TARGET ROUND, 2026-09-13. EVERY CASE THIS ROUND ADDS WAS LIFTED
-    # OFF-DEVICE AND NONE OF THEM HAS BEEN DRIVEN YET, and stating that once here is
+    # --- the 2026-09-14 release, edited 2026-09-13. Every case it adds was lifted
+    # off-device and none of them has been driven yet, and stating that once here is
     # the honest form of what the rows below do. Each new name was constructed on
     # stock MEEP 1.33.0, handed to ``lift_simulation(prefer_gpu=False)``, and its run
     # shape read with :func:`_run_shape`; the axis value each one licenses in
     # :data:`FUSED_RELEASE_ARM_AXES` is that READ value. What is still owed is the
     # byte comparison: the route campaign that succeeds
     # ``dispatch_fused_route_2026-09-13_phaseB`` drives every one of them through
-    # ``run_case``, and the Triton route stamp still named phase B, so a
+    # ``run_case``, and the Triton route stamp still named that 2026-09-13 campaign, so a
     # reader comparing this table against the gate it cites can see that these
     # cases' evidence is OWED rather than banked. That is the opposite of the two
     # blocks above, where the case ran first and the row was typed after.
     #
-    # A NAME HERE IS PROVENANCE, NOT A GATE INPUT. The release decides on the AXES
+    # A name here is provenance, not a gate input. The release decides on the AXES
     # (:func:`fused_release_arm_reasons`); this table says which case drove them and
     # :func:`released_fused_arms` only requires the list to be non-empty. So a name
     # that never runs is a FALSE RECORD rather than a loosened predicate, which is
@@ -2309,11 +2737,11 @@ RELEASED_FUSED_ARMS: Mapping[str, Tuple[str, ...]] = {
     # corner the Metal roster requires and the Triton one does not, so it is
     # deliberately absent here rather than listed on the chance it rides.
     #
-    # ``pml_3d``, ``offdiag_2d`` AND ``offdiag_magnetic_2d`` ARE CO-REQUISITE WITH A
-    # COMPOSER EDIT, not a row on their own: they evidence ``fused pair B``'s widened
+    # ``pml_3d``, ``offdiag_2d`` and ``offdiag_magnetic_2d`` are co-requisite with a
+    # composer edit, not a row on their own: they evidence ``fused pair B``'s widened
     # ``off_diagonal_epsilon``, and the Triton composer refuses that pair on an
     # off-diagonal grid until ``triton_kernels/launch.py``'s
-    # ``specialized_family_owns_the_grid`` is narrowed per-pair in this same batch.
+    # ``specialized_family_owns_the_grid`` is narrowed per-pair in this same change.
     # If that narrowing does not land, this row admits a composition the composer
     # will not build and the three names are evidence of nothing; see the arm's own
     # ``off_diagonal_epsilon`` reason below, which says the same thing where a
@@ -2323,7 +2751,7 @@ RELEASED_FUSED_ARMS: Mapping[str, Tuple[str, ...]] = {
                      "offdiag_magnetic_2d", "pml_3d"),
     "fused pair D": ("pml_2d", "magnetic_seam_2d", "pml_1d", "pml_3d_diagonal"),
     "dispersive fused pair": ("dispersive_2d",),
-    # NARROWED 2026-09-11 AND RESTORED ON THE RE-ATTRIBUTION ROUND, and both moves
+    # Narrowed 2026-09-11 and restored by the 2026-09-14 re-drive, and both moves
     # are about the CASE rather than the arm. `folded_dispersive_2d` was this arm's
     # second case until 2026-09-11, when the route gate's second consult site was
     # read as diverging from the array path on that shape with fusion off as well as
@@ -2331,7 +2759,7 @@ RELEASED_FUSED_ARMS: Mapping[str, Tuple[str, ...]] = {
     # arm, so the case was withdrawn and this arm's ``susceptibilities`` row was
     # pinned at 0 to match what its remaining cases carried.
     #
-    # THAT WITHDRAWAL IS RETIRED. The divergence was measured, on the real route
+    # That withdrawal is retired. The divergence was measured, on the real route
     # gate over three fresh processes, to be an artefact of the LAZY subnormal-policy
     # install rather than anything the seam does -- the array comparison leg was
     # flushing subnormals that both dispatch legs kept -- and the seam itself read
@@ -2340,7 +2768,7 @@ RELEASED_FUSED_ARMS: Mapping[str, Tuple[str, ...]] = {
     # ``susceptibilities`` row below widening from 0 to {0, 1}: one pole from this
     # case, zero from ``folded_2d``.
     #
-    # AND ITS ONE POLE IS BANKED ON THE RELEASE ROUTE rather than owed, which is
+    # And its one pole is banked on the release route rather than owed, which is
     # what makes the widening a restoration rather than a new claim. Read out of
     # ``results/dispatch_fused_route_2026-09-08_wired/shipped/cases.jsonl``: on
     # ``folded_dispersive_2d`` the record is PASS-FUSED over 1599 steps with
@@ -2361,7 +2789,7 @@ RELEASED_FUSED_ARMS: Mapping[str, Tuple[str, ...]] = {
                               "folded_offdiag_magnetic_2d", "folded_3d"),
     "fused pair D (folded)": ("folded_2d", "folded_3d"),
     "fused pair D (conductive)": ("conductive_2d",),
-    # THE RE-ATTRIBUTION ROUND'S ONE RELEASE, and the row states honestly which half
+    # The 2026-09-14 re-drive's one release, and the row states honestly which half
     # of its evidence is banked and which the campaign owes. What is BANKED: the
     # family weld (``triton_folded_dispersive_fused_pair_device_gate``, PASS) and
     # three fresh-process drives of this gate's own ``run_case`` on
@@ -2380,7 +2808,7 @@ RELEASED_FUSED_ARMS: Mapping[str, Tuple[str, ...]] = {
     "fused pair D (folded dispersive)": ("folded_dispersive_2d",),
     "fused pair B (cylindrical)": ("cylindrical_m0",),
     "fused pair D (cylindrical)": ("cylindrical_m0",),
-    # THE SCRATCH-OUTPUT OFF-DIAGONAL WELDS, 2026-09-15, each on the route case that
+    # The scratch-output off-diagonal welds, 2026-09-15, each on the route case that
     # already carries its shape. Both cases have run on the shipped leg with the D
     # seam UNFUSED -- ``dispatch_fused_route_2026-09-15_offdiag`` reads
     # ``offdiag_magnetic_2d`` PASS-FUSED EXACT at 4.0 -> 3.0 launches per step over
@@ -2396,7 +2824,7 @@ RELEASED_FUSED_ARMS: Mapping[str, Tuple[str, ...]] = {
     # plain, 9 folded, one predicted null each).
     "fused pair D (off-diagonal)": ("offdiag_magnetic_2d",),
     "fused pair D (folded off-diagonal)": ("folded_offdiag_magnetic_2d",),
-    # --- PHASE B, 2026-09-13. Every row below was driven through this gate's own
+    # --- 2026-09-13. Every row below was driven through this gate's own
     # ``run_case`` on the GPU host (2026-09-13, one RTX A6000, 96-step ladders, every
     # case PASS-FUSED, substitution EXACT, second consult site PASS) with the rows
     # patched in-process before they were written down; the welds each cites were
@@ -2405,7 +2833,7 @@ RELEASED_FUSED_ARMS: Mapping[str, Tuple[str, ...]] = {
     "fused pair D (real beta)": ("special_kz_2d",),
     "fused pair B (folded real beta)": ("folded_special_kz_2d",),
     "fused pair D (folded real beta)": ("folded_special_kz_2d",),
-    # THE TARGET ROUND'S ``bloch`` CASES. ``complex_beta_2d`` and
+    # The 2026-09-14 release's ``bloch`` cases. ``complex_beta_2d`` and
     # ``folded_complex_beta_2d`` drove a z-only k_point, which lifts as a beta and
     # reads ``bloch False``; ``complex_beta_bloch_2d`` and
     # ``folded_complex_beta_bloch_2d`` carry the SAME beta 0.4 beside an in-plane
@@ -2420,7 +2848,7 @@ RELEASED_FUSED_ARMS: Mapping[str, Tuple[str, ...]] = {
     "fused pair B (BFAST)": ("bfast_1d",),
     "fused pair D (BFAST)": ("bfast_1d",),
     "fused pair B (nonlinear)": ("nonlinear_1d",),
-    # THE TARGET ROUND'S ``dimensions`` CASES on the complex pairs, and there are
+    # The 2026-09-14 release's ``dimensions`` cases on the complex pairs, and there are
     # THREE because the corpus rows the widening serves are all (1, 1, N) cells:
     # ``complex_1d`` is the declared 1-D cell, ``complex_3d_thinline`` the declared
     # 3-D one-cell-wide line, and ``complex_3d`` a genuine (40, 40, 40) complex
@@ -2431,10 +2859,10 @@ RELEASED_FUSED_ARMS: Mapping[str, Tuple[str, ...]] = {
                                "complex_3d_thinline", "complex_3d"),
     "fused pair D (complex)": ("bloch_2d", "complex_nobloch_2d", "complex_1d",
                                "complex_3d_thinline", "complex_3d"),
-    # THE TARGET ROUND ON THE FOLDED COMPLEX PAIRS. ``folded_complex_3d`` is the
+    # The 2026-09-14 release on the folded complex pairs. ``folded_complex_3d`` is the
     # 3-D fold (the triangular-lattice-oblique cell) and drives BOTH arms.
     #
-    # THE TWO OFF-DIAGONAL FOLDS ARE THE MAGNETIC PAIR'S AGAIN FROM 2026-09-15, and
+    # The two off-diagonal folds are the magnetic pair's again from 2026-09-15, and
     # they return with the arm that kept them out. On ``folded_complex_offdiag_2d``
     # (bloch True) and ``folded_complex_nobloch_offdiag_2d`` (bloch False) the
     # composer selects this pair for step_B/update_H and the single arm ``complex
@@ -2443,9 +2871,9 @@ RELEASED_FUSED_ARMS: Mapping[str, Tuple[str, ...]] = {
     # ``dispatch_fused_route_2026-09-15_weldgrid`` read DID-NOT-FUSE / NO-DROP with
     # every slot on the array path, and ``dispatch_fused_route_2026-09-15_offdiag``
     # drove both as ``no-fused-arm`` controls and read PASS-NO-FUSED-ARM with the
-    # refusal classified ``pending-device-gate``. The 2026-09-15 ruling lifted the
+    # refusal classified ``pending-device-gate``. The 2026-09-15 decision lifted the
     # arm (the record is beside that map) on condition that its weld is re-gated and
-    # rebound in the same batch, and both cases are DRIVE rows again. The electric
+    # rebound in the same change, and both cases are DRIVE rows again. The electric
     # twin ``fused pair D (folded complex)`` is refused by name on the row product
     # of an off-diagonal grid, so its row does not move. The two off-diagonal
     # corners are NOT credited here until the route campaign at
@@ -2456,7 +2884,7 @@ RELEASED_FUSED_ARMS: Mapping[str, Tuple[str, ...]] = {
     "fused pair D (folded complex)": ("folded_complex_2d", "folded_complex_3d"),
     "fused pair B (cylindrical complex)": ("cylindrical_m1", "cylindrical_m0_complex"),
     "fused pair D (cylindrical complex)": ("cylindrical_m1", "cylindrical_m0_complex"),
-    # --- THE TARGET ROUND'S ONE NEW ARM. ``fused pair D (no-PML stored E)`` was
+    # --- the 2026-09-14 release's one new arm. ``fused pair D (no-PML stored E)`` was
     # WIRED and REFUSED until now: the composer could select it, clause (8) refused
     # it because it was in no released set, and rung (7a) refused it because
     # :data:`PENDING_DEVICE_GATE_ARMS` said no ledger entry had been cut. Both of
@@ -2468,7 +2896,7 @@ RELEASED_FUSED_ARMS: Mapping[str, Tuple[str, ...]] = {
     # the pending row is deleted and the :data:`ARM_CERTIFICATION` row is added
     # beside this one.
     #
-    # NEITHER OF ITS TWO CASES IS THE EXISTING ``no_pml_2d``, and that is the point:
+    # Neither of its two cases is the existing ``no_pml_2d``, and that is the point:
     # that case carries no poles and no conductivity, so it evidences neither half
     # of the arm's row. ``absorber_1d`` is a 1-D ``mp.Absorber`` cell over a
     # five-pole medium (conductivity True, pml_active False) and
@@ -2477,26 +2905,26 @@ RELEASED_FUSED_ARMS: Mapping[str, Tuple[str, ...]] = {
     # ``dimensions`` 1 and 2 and both values of ``conductivity``, which is what
     # lets that axis stay unpinned honestly.
     #
-    # THE SECOND CASE WAS ``material_dispersion_0d`` UNTIL 2026-09-14, a zero-extent
+    # The second case was ``material_dispersion_0d`` until 2026-09-14, a zero-extent
     # (1, 1, 1) cell carrying the same two axis values. It was replaced rather than
     # narrowed away: on a one-cell grid every non-vacuity control the driver-route
     # gate owns is vacuous -- decisively the in-seam mutation, whose wall plane IS
     # the single cell and also the source's deposit cell that ``deposit_repair.apply``
-    # recomputes (cells MUTATED BUT NOT REPAIRED: ZERO of 1, against 399 of 400 on
+    # recomputes (cells mutated but not repaired: zero of 1, against 399 of 400 on
     # ``absorber_1d``) -- so the 2026-09-14 Triton shipped leg refused on that
     # control alone with zero failing cases. The replacement drives the SAME axis
     # values on a cell with real extent, so this row is unchanged by the swap.
     "fused pair D (no-PML stored E)": ("absorber_1d", "no_pml_dispersive_2d"),
-    # --- 2026-09-15: THE COMPLEX NO-ABSORBER D PAIR, ON ONE CASE, AND THE DRIVE IS
-    # OWED. ``complex_no_pml_3d`` has not run on the Triton route: its Triton DRIVE
-    # row was withdrawn on 2026-09-14 and is restored in this batch, and the campaign
+    # --- 2026-09-15: the complex no-absorber D pair, on one case, and the DRIVE is
+    # owed. ``complex_no_pml_3d`` has not run on the Triton route: its Triton DRIVE
+    # row was withdrawn on 2026-09-14 and is restored in this change, and the campaign
     # ``route_stamps.route_gate("triton")`` names is the run that drives it with the switch
     # unset. What is BANKED, read 2026-09-15 rather than argued:
     #
     #   * the pair gate released on every keep run it has had, eleven Triton
     #     artifacts from ``triton_fuse_2026-08-30_cells`` to
     #     ``triton_fleet_2026-09-14_target_A``, though none could be seeded (see
-    #     :data:`ARM_CERTIFICATION`); the re-run after this batch cuts the entry;
+    #     :data:`ARM_CERTIFICATION`); the re-run after this change cuts the entry;
     #   * the case's arm set on THIS table, measured on a device leg rather than a
     #     lift: the unfused comparison of
     #     ``dispatch_fused_route_cuda_2026-09-15_weldgrid/cuda_shipped_expansion_probe``
@@ -2514,14 +2942,14 @@ RELEASED_FUSED_ARMS: Mapping[str, Tuple[str, ...]] = {
     "fused pair D (complex conductive no-PML)": ("complex_no_pml_3d",),
 }
 
-#: THE CONFIGURATION AXES THE DRIVER-ROUTE GATE MEASURED, each pinned to the value
+#: The configuration axes the driver-route gate measured, each pinned to the value
 #: it measured, keyed by the name :func:`_run_shape` reports it under — so the
 #: shape the artifact publishes and the shape the release decision was made on are
-#: THE SAME READS rather than two spellings that can drift apart. That is the rule
+#: the same reads rather than two spellings that can drift apart. That is the rule
 #: :func:`_run_shape` states for the coverage predicates; this table extends it to
 #: the release.
 #:
-#: EVERY VALUE HERE WAS READ OFF A LIFTED CASE, not transcribed from the gate's
+#: Every value here was read off a lifted case, not transcribed from the gate's
 #: prose: all eight of the 2026-09-11 dispatching cases reported
 #: ``complex_storage false``, ``bloch false``, ``beta 0.0``, ``bfast false``,
 #: ``nonlinearity false``, ``off_diagonal_epsilon false`` and ``pml_active true``,
@@ -2533,8 +2961,8 @@ RELEASED_FUSED_ARMS: Mapping[str, Tuple[str, ...]] = {
 #: :data:`FUSED_RELEASE_ARM_AXES`, because which VALUE was driven depends on which
 #: arm was driven on it.
 #:
-#: AND THE TABLE IS NOW EMPTY, which is where that rule ends rather than a gap in
-#: it. Six of the seven rows left on 2026-09-13 (phase B); the target round moved
+#: And the table is now empty, which is where that rule ends rather than a gap in
+#: it. Six of the seven rows left on 2026-09-13; the 2026-09-14 release moved
 #: the seventh, ``pml_active``, for the same reason and the shared half of the
 #: release is now the empty conjunction. An empty envelope refuses nothing and
 #: asserts nothing: :func:`fused_release_reasons` still fails closed on an
@@ -2545,12 +2973,12 @@ RELEASED_FUSED_ARMS: Mapping[str, Tuple[str, ...]] = {
 #: :func:`_axis_reasons` decides twice — and because the next axis every released
 #: arm genuinely shares belongs here rather than copied twenty-seven times.
 #:
-#: WHY ``cylindrical`` IS A ROW OF ITS OWN AND NOT IMPLIED BY ``dimensions``, here
+#: Why ``cylindrical`` is a row of its own and not implied by ``dimensions``, here
 #: until 2026-09-11 and per-arm since. Measured: a Dcyl m=0 lift reports
 #: ``dimensions 2`` with ``grid_shape`` ``[80, 1, 80]``. A release keyed on
 #: dimensionality alone would have admitted it.
 #:
-#: WHAT IS NOT PINNED, AND WHY. The grid EXTENT is not: extent is a launch-grid
+#: What is not pinned, and why. The grid EXTENT is not: extent is a launch-grid
 #: argument rather than a codegen input, and the underlying sub-step families were
 #: byte-gated across the corpus extents. The STEP BUDGET is not: each case ran its
 #: own budget over a ten-rung checkpoint ladder with no divergence at any rung.
@@ -2563,7 +2991,7 @@ RELEASED_FUSED_ARMS: Mapping[str, Tuple[str, ...]] = {
 #: A ``frozenset`` means "any of these", and it is used where the gate drove more
 #: than one value of an axis; every other required value is an equality.
 #:
-#: WHAT LEFT THIS TABLE ON 2026-09-02 AND WHY. ``folded`` is now a PER-ARM axis
+#: What left this table on 2026-09-02 AND WHY. ``folded`` is now a PER-ARM axis
 #: (:data:`FUSED_RELEASE_ARM_AXES`): the two folded pairs REQUIRE a fold and the
 #: three unfolded arms require its absence, and one shared row could only have said
 #: one of those. Keeping it here at ``None`` would have refused the folded arms on
@@ -2572,7 +3000,7 @@ RELEASED_FUSED_ARMS: Mapping[str, Tuple[str, ...]] = {
 #: failure mode. The axes below are the ones every released arm was driven on with
 #: the SAME value, which is the only thing a shared table can honestly say.
 #:
-#: WHAT LEFT ON 2026-09-11, on that same rule. ``cylindrical`` is now a PER-ARM
+#: What left on 2026-09-11, on that same rule. ``cylindrical`` is now a PER-ARM
 #: axis: the two Dcyl arms REQUIRE a cylindrical grid and the five Cartesian arms
 #: refuse one, and a single shared row cannot say both. It stayed here for as long
 #: as it did because no case drove it either way; ``cylindrical_m0`` is what made
@@ -2580,14 +3008,14 @@ RELEASED_FUSED_ARMS: Mapping[str, Tuple[str, ...]] = {
 #: admitted under the shared False keeps a per-arm ``("cylindrical", False)`` row
 #: saying the same thing about the same shapes.
 #:
-#: ``m`` IS DELIBERATELY NOT PINNED ANYWHERE, and the reason is a reader rather
+#: ``m`` is deliberately not pinned anywhere, and the reason is a reader rather
 #: than a predicate: the shape ``parity/meep_gpu/dispatch_reachability`` derives
 #: from the census carries no ``m`` key at all, so a pinned ``m`` would read "m did
 #: not read" and refuse every board row — a refusal about the census reader, not
 #: about the run. The ``cylindrical_real`` coverage predicates refuse ``m != 0``
 #: themselves, which is where that question belongs.
 FUSED_RELEASE_ENVELOPE: Tuple[Tuple[str, Any, str], ...] = (
-    # WHAT LEFT ON 2026-09-13 (phase B), on the same rule as the two moves above:
+    # What left on 2026-09-13, on the same rule as the two moves above:
     # ``complex_storage``, ``bloch``, ``beta``, ``bfast``, ``nonlinearity`` and
     # ``off_diagonal_epsilon`` are PER-ARM axes now, because the arms stopped
     # agreeing on them -- the complex, beta, BFAST and nonlinear products REQUIRE
@@ -2595,61 +3023,61 @@ FUSED_RELEASE_ENVELOPE: Tuple[Tuple[str, Any, str], ...] = (
     # carries the six rows explicitly, pinned to exactly what the shared table said
     # for it, so the move refuses no live row.
     #
-    # AND ``pml_active`` LEFT IN THE TARGET ROUND, which empties the table. The
+    # And ``pml_active`` left in the 2026-09-14 release, which empties the table. The
     # trigger is the same one every earlier move had: ``fused pair D (no-PML stored
     # E)`` is released on ``absorber_1d`` and ``no_pml_dispersive_2d``, two cells
     # with no split-field PML at all, so the shared row would have had to say both
     # True and False. It is now on every arm explicitly -- True on the twenty-five
     # that carried it under the shared row, False on the new one, and True again on
-    # the folded dispersive pair the re-attribution round added, twenty-seven rows
-    # in all -- and the move was MEASURED to refuse nothing: recounted over the
+    # the folded dispersive pair the 2026-09-14 re-drive added, twenty-seven rows
+    # in all -- and the move was measured to refuse nothing: recounted over the
     # 2026-09-13 Triton
     # board's own 530 served seam-instances with the per-arm rows in place and the
     # shared row gone, ``served_in_dispatch`` reads 236, exactly what it reads with
     # the shared row, and the refused-by-envelope bucket is unchanged at 77.
     #
-    # WHAT AN EMPTY SHARED TABLE DOES TO THE RECORD, because a reader of an
+    # What an empty shared table does to the record, because a reader of an
     # artifact will notice it before reading this file: ``fusion.
     # outside_the_released_envelope`` is fed by :func:`fused_release_reasons`, so
-    # from this round it is EMPTY on every run whose shape read -- it fires only on
+    # from that release on it is EMPTY on every run whose shape read -- it fires only on
     # the unreadable-shape branch, which is a refusal about the reader rather than
     # about the configuration. The refusals a reader wants have not gone anywhere:
     # ``fusion.outside_this_arms_own_cases`` is reported precisely WHEN the shared
     # half is silent, so every axis that refused an arm is still named, per arm,
     # beside a ``released_here`` that is short of the full release.
     #
-    # WHAT THE OLD ``off_diagonal_epsilon`` ROW'S CLAUSE SAID, and why it is not
+    # What the old ``off_diagonal_epsilon`` row's clause said, and why it is not
     # repeated per-arm verbatim: it rested on the Triton composer's
     # ``specialized_family_owns_the_grid`` guard refusing every pair on an
-    # off-diagonal grid. The target round narrows that guard per-pair -- the B
+    # off-diagonal grid. The 2026-09-14 release narrows that guard per-pair -- the B
     # seam's kernel takes no inverse-epsilon pointer, so an off-diagonal chi1inv
     # cannot reach its arithmetic, while the D seam's does and stays refused -- so
-    # the blanket sentence is false after this batch and each arm's own row now says
+    # the blanket sentence is false after this change and each arm's own row now says
     # which half of the split it is on.
 )
 
-#: THE AXES ONE ARM WAS DRIVEN ON, beyond the shared table above. This is the half
+#: The axes one arm was driven on, beyond the shared table above. This is the half
 #: of the release that used to be PROVENANCE ONLY, and 2026-09-02 turned it into a
 #: predicate because the shared table could no longer carry both answers.
 #:
-#: THE RULE FOR A ROW HERE, applied uniformly: an axis is pinned for an arm when
+#: The rule for a row here, applied uniformly: an axis is pinned for an arm when
 #: that arm's OWN case list drove exactly one of its values. An axis the arm's cases
 #: drove both values of is left out — that is what ``fused pair B``'s missing
 #: ``conductivity`` and ``susceptibilities`` rows mean, since ``conductive_2d`` and
 #: ``dispersive_2d`` are in its list and ``pml_2d`` is too.
 #:
-#: WHAT THIS CLOSED, and it is the gap the previous text stated and declined to
+#: What this closed, and it is the gap the previous text stated and declined to
 #: close: ``fused pair D`` was admitted on conductive and dispersive shapes its own
 #: two cases never drove, because the shared table left both axes unpinned on the
-#: ground that the gate measured both values ACROSS ITS CASE SET. Measured against
+#: ground that the gate measured both values across its case set. Measured against
 #: the 2026-09-02 board's credited instances, the narrowing costs NOTHING: all 26
 #: ``fused pair D`` instances are ``conductivity False`` and ``susceptibilities 0``,
 #: so the axes below refuse zero live rows and retire a latent over-admission. The
 #: same is true of every ``conductivity`` row here — 0 instances of any of the four
 #: other arms sits on a conductive grid.
 #:
-#: ``susceptibilities`` IS PINNED ON TWO ARMS AND NOT ON THE OTHER THREE, and the
-#: split is about WHICH ARM THE COMPOSER SELECTS rather than about what a kernel
+#: ``susceptibilities`` is pinned on two arms and not on the other three, and the
+#: split is about which arm the composer selects rather than about what a kernel
 #: reads. On a dispersive grid the D/E seam goes to ``dispersive fused pair`` (and,
 #: on a fold, to the folded dispersive product), so ``fused pair D`` and ``fused
 #: pair D (folded)`` are simply not the arms that run there — measured on the GPU host,
@@ -2658,7 +3086,7 @@ FUSED_RELEASE_ENVELOPE: Tuple[Tuple[str, Any, str], ...] = (
 #: and ``fused pair B (folded)`` ARE what the composer selects on a dispersive grid,
 #: which is what ``dispersive_2d`` and ``folded_dispersive_2d`` drive.
 #:
-#: ``dispersive fused pair`` IS THE ONE ROW LEFT DELIBERATELY UNPINNED ON THIS AXIS,
+#: ``dispersive fused pair`` is the one row left deliberately unpinned on this axis,
 #: and it is an admitted asymmetry rather than an oversight. Its own case drove
 #: ``susceptibilities 1``, so the rule above would pin it — but the rule's purpose is
 #: to stop an arm being admitted where its gate did not run it, and this axis is not
@@ -2676,16 +3104,16 @@ FUSED_RELEASE_ENVELOPE: Tuple[Tuple[str, Any, str], ...] = (
 #: sits on a cylindrical grid, because ``launch.py``'s ``has_cylindrical`` branch
 #: refuses the ordinary and folded pairs there by name.
 #:
-#: ``pml_active`` IS THE TARGET ROUND'S ADDITION, on exactly the same rule and with
+#: ``pml_active`` is the 2026-09-14 release's addition, on exactly the same rule and with
 #: the same control: it is on every arm rather than on the new one alone, True on
 #: the twenty-five that were admitted under the old shared row and False on
-#: ``fused pair D (no-PML stored E)`` (the re-attribution round's folded dispersive
+#: ``fused pair D (no-PML stored E)`` (the 2026-09-14 re-drive's folded dispersive
 #: pair carries True too, making twenty-seven rows), and the move was recounted
 #: over the Triton
 #: board's own 530 served seam-instances at 236 before and 236 after. See
 #: :data:`FUSED_RELEASE_ENVELOPE`, which the move empties.
 #:
-#: WHAT A TWO-AXIS WIDENING DOES AND DOES NOT SAY, because the target round widens
+#: What a two-axis widening does and does not say, because the 2026-09-14 release widens
 #: two axes on two arms and this table has no corner structure to spell a
 #: conjunction. A row is a per-axis equality or membership test, so widening
 #: ``dimensions`` and ``off_diagonal_epsilon`` on one arm admits the CORNER where
@@ -2695,7 +3123,7 @@ FUSED_RELEASE_ENVELOPE: Tuple[Tuple[str, Any, str], ...] = (
 #: ``fused pair B (folded)`` gains (3-D x off-diagonal) with ``folded_3d`` diagonal
 #: and ``folded_offdiag_magnetic_2d`` 2-D; ``fused pair B (folded complex)``, whose
 #: ``off_diagonal_epsilon`` and ``bloch`` rows widened again on the 2026-09-15
-#: ruling, gains (diagonal x unphased), (3-D x off-diagonal) and (3-D x unphased) --
+#: decision, gains (diagonal x unphased), (3-D x off-diagonal) and (3-D x unphased) --
 #: its four cases drive (2-D and 3-D x diagonal x phased), (2-D x off-diagonal x
 #: phased) and (2-D x off-diagonal x unphased) -- and on the diagonal unphased 2-D
 #: fold it is released beside ``fused pair B (folded complex beta)``; and
@@ -2724,11 +3152,11 @@ FUSED_RELEASE_ARM_AXES: Mapping[str, Tuple[Tuple[str, Any, str], ...]] = {
         ("beta", 0, "no case that drove it is a special-kz run"),
         ("bfast", False, "no case that drove it is a BFAST run"),
         ("nonlinearity", False, "no case that drove it is nonlinear"),
-        # THE ONE ROW IN THIS TABLE THAT DEPENDS ON A COMPOSER EDIT, and it is said
+        # The one row in this table that depends on a composer edit, and it is said
         # in the reason rather than in a comment a refusal cannot quote. The
         # sentence this row used to carry -- "the Triton composer's
         # specialized_family_owns_the_grid guard refuses the pair there" -- was
-        # TRUE, and the target round narrows that guard per-pair so it stops being
+        # TRUE, and the 2026-09-14 release narrows that guard per-pair so it stops being
         # true for the MAGNETIC pair alone: launch.plan_fused_pair passes the
         # inverse-epsilon list only when the pair's constitutive side is "E", pair
         # "B" is "H", and kernels.fused_curl_constitutive_B's signature carries no
@@ -2742,14 +3170,14 @@ FUSED_RELEASE_ARM_AXES: Mapping[str, Tuple[Tuple[str, Any, str], ...]] = {
          "offdiag_magnetic_2d (Hz source, so the in-plane E the off-diagonal rows "
          "couple is live and the ELECTRIC pair genuinely contends for the D seam) "
          "and pml_3d (a 48-cubed sphere, off-diagonal AND 3-D in one lift) all "
-         "lifted off-device 2026-09-13 to off_diagonal_epsilon True. NONE HAS BEEN "
-         "DRIVEN, and none CAN be until triton_kernels/launch.py's "
-         "specialized_family_owns_the_grid is narrowed per-pair in this same batch "
+         "lifted off-device 2026-09-13 to off_diagonal_epsilon True. None has been "
+         "driven, and none CAN be until triton_kernels/launch.py's "
+         "specialized_family_owns_the_grid is narrowed per-pair in this same change "
          "-- that guard is what refuses the pair on these grids today, so this row "
          "and that narrowing stand or fall together; the route campaign that "
          "succeeds dispatch_fused_route_2026-09-13_phaseB is what drives all three"),
         ("pml_active", True,
-         "moved off the shared envelope in the target round; every case that drove "
+         "moved off the shared envelope in the 2026-09-14 release; every case that drove "
          "this arm carries a split-field PML, which is what the shared row said "
          "about it"),
     ),
@@ -2773,8 +3201,8 @@ FUSED_RELEASE_ARM_AXES: Mapping[str, Tuple[Tuple[str, Any, str], ...]] = {
         ("beta", 0, "no case that drove it is a special-kz run"),
         ("bfast", False, "no case that drove it is a BFAST run"),
         ("nonlinearity", False, "no case that drove it is nonlinear"),
-        # NOT the sentence this row carried until the target round. It named
-        # specialized_family_owns_the_grid, which the batch narrows per-pair, so a
+        # NOT the sentence this row carried until the 2026-09-14 release. It named
+        # specialized_family_owns_the_grid, which that release narrows per-pair, so a
         # blanket "refuses the pair there" would be false the moment that lands.
         # What is true for the ELECTRIC seam before and after is the arithmetic:
         # kernels.fused_curl_constitutive_D takes an inverse-epsilon pointer and
@@ -2783,10 +3211,10 @@ FUSED_RELEASE_ARM_AXES: Mapping[str, Tuple[Tuple[str, Any, str], ...]] = {
         ("off_diagonal_epsilon", False,
          "no off-diagonal case drove it, and this is the seam that reads chi1inv: "
          "the Triton composer refuses the ELECTRIC pair by name on an off-diagonal "
-         "grid, before the target round's per-pair narrowing of "
+         "grid, before the 2026-09-14 release's per-pair narrowing of "
          "specialized_family_owns_the_grid and after it"),
         ("pml_active", True,
-         "moved off the shared envelope in the target round; every case that drove "
+         "moved off the shared envelope in the 2026-09-14 release; every case that drove "
          "this arm carries a split-field PML, which is what the shared row said "
          "about it"),
     ),
@@ -2805,10 +3233,10 @@ FUSED_RELEASE_ARM_AXES: Mapping[str, Tuple[Tuple[str, Any, str], ...]] = {
         ("off_diagonal_epsilon", False,
          "no off-diagonal case drove it, and this is the seam that reads chi1inv: "
          "the Triton composer refuses the dispersive ELECTRIC pair by name on an "
-         "off-diagonal grid, before the target round's per-pair narrowing of "
+         "off-diagonal grid, before the 2026-09-14 release's per-pair narrowing of "
          "specialized_family_owns_the_grid and after it"),
         ("pml_active", True,
-         "moved off the shared envelope in the target round; every case that drove "
+         "moved off the shared envelope in the 2026-09-14 release; every case that drove "
          "this arm carries a split-field PML, which is what the shared row said "
          "about it"),
     ),
@@ -2824,8 +3252,8 @@ FUSED_RELEASE_ARM_AXES: Mapping[str, Tuple[Tuple[str, Any, str], ...]] = {
          "this arm IS the folded product; on an unfolded grid the ordinary pair "
          "is what the composer selects"),
         ("conductivity", False, "neither folded case carries a conductivity"),
-        # ADDED IN THE TARGET ROUND AS A NARROWING AND WIDENED BY ONE VALUE ON THE
-        # RE-ATTRIBUTION ROUND. This arm had no susceptibilities row at all while its
+        # Added in the 2026-09-14 release as a narrowing and widened by one value by the
+        # 2026-09-14 re-drive. This arm had no susceptibilities row at all while its
         # case list carried folded_dispersive_2d, the one pole it was driven on; when
         # that case's evidence was withdrawn on 2026-09-11 the arm was left admitting
         # any pole count on the strength of a case that no longer counted, so the row
@@ -2834,7 +3262,7 @@ FUSED_RELEASE_ARM_AXES: Mapping[str, Tuple[Tuple[str, Any, str], ...]] = {
         # seam), so the case is back in the arm's list and the row carries the two
         # values its own cases drive.
         #
-        # IT IS DELIBERATELY NOT WIDENED TO 5, and the trade is the point rather than
+        # It is deliberately not widened to 5, and the trade is the point rather than
         # an oversight. The four instances a five-pole admission would credit are the
         # 2-D folded TestLoadDump rows, and the route gate's Triton ENVELOPE WITNESS
         # is ``folded_dispersive5_2d`` -- the same fold at five poles -- which
@@ -2859,12 +3287,12 @@ FUSED_RELEASE_ARM_AXES: Mapping[str, Tuple[Tuple[str, Any, str], ...]] = {
         ("beta", 0, "no case that drove it is a special-kz run"),
         ("bfast", False, "no case that drove it is a BFAST run"),
         ("nonlinearity", False, "no case that drove it is nonlinear"),
-        # THE CHEAP HALF OF THE OFF-DIAGONAL WORK, and it needs no composer change
+        # The cheap half of the off-diagonal work, and it needs no composer change
         # at all: launch.py's `if fuse and has_fold` branch runs BEFORE the
         # specialized-family guard is consulted, so on a fold that guard is never
         # evaluated and the folded pairs are built by _install_folded_fused_pairs.
         # The sentence this row used to carry named that guard, which was wrong
-        # about folds before this round and is corrected here rather than widened
+        # about folds before this change and is corrected here rather than widened
         # around.
         ("off_diagonal_epsilon", frozenset({False, True}),
          "folded_offdiag_magnetic_2d lifted off-device 2026-09-13 to a 2-D "
@@ -2878,7 +3306,7 @@ FUSED_RELEASE_ARM_AXES: Mapping[str, Tuple[Tuple[str, Any, str], ...]] = {
          "the same grids; their D seam is the scratch-output weld's, released as "
          "fused pair D (folded off-diagonal) on 2026-09-15"),
         ("pml_active", True,
-         "moved off the shared envelope in the target round; every case that drove "
+         "moved off the shared envelope in the 2026-09-14 release; every case that drove "
          "this arm carries a split-field PML, which is what the shared row said "
          "about it"),
     ),
@@ -2906,7 +3334,7 @@ FUSED_RELEASE_ARM_AXES: Mapping[str, Tuple[Tuple[str, Any, str], ...]] = {
          "gives that seam to the scratch-output weld released as fused pair D "
          "(folded off-diagonal) on 2026-09-15"),
         ("pml_active", True,
-         "moved off the shared envelope in the target round; every case that drove "
+         "moved off the shared envelope in the 2026-09-14 release; every case that drove "
          "this arm carries a split-field PML, which is what the shared row said "
          "about it"),
     ),
@@ -2915,9 +3343,9 @@ FUSED_RELEASE_ARM_AXES: Mapping[str, Tuple[Tuple[str, Any, str], ...]] = {
     # is NOT released on, so a reader can see the four D-seam products separating
     # each other rather than inferring it from the labels.
     #
-    # ``susceptibilities`` IS PINNED AT 1 ON ``fused pair D (folded dispersive)``,
-    # AND THE EXEMPTION THIS TABLE GRANTS ``dispersive fused pair`` IS DELIBERATELY
-    # NOT EXTENDED TO IT. The exemption's argument fits: the arm's E half REQUIRES a
+    # ``susceptibilities`` is pinned at 1 ON ``fused pair D (folded dispersive)``,
+    # and the exemption this table grants ``dispersive fused pair`` is deliberately
+    # not extended to it. The exemption's argument fits: the arm's E half REQUIRES a
     # susceptibility to exist at all, its one case drove exactly one Lorentz pole,
     # and the corpus rows this product serves -- tests:TestLoadDump's four 2-D
     # chunk-layout/structure folds, grid (250, 126, 1) -- carry FIVE, so the pin
@@ -2954,11 +3382,11 @@ FUSED_RELEASE_ARM_AXES: Mapping[str, Tuple[Tuple[str, Any, str], ...]] = {
          "on an off-diagonal fold the D seam's constitutive arm is 'folded "
          "off-diagonal dispersive', whose products are not released"),
         ("pml_active", True,
-         "moved off the shared envelope in the target round; folded_dispersive_2d "
+         "moved off the shared envelope in the 2026-09-14 release; folded_dispersive_2d "
          "carries a split-field PML, which is what the shared row said about this "
          "arm"),
     ),
-    # THE SCRATCH-OUTPUT OFF-DIAGONAL WELDS, 2026-09-15. Every value is READ off the
+    # The scratch-output off-diagonal welds, 2026-09-15. Every value is READ off the
     # run shape the route case each row names recorded on
     # ``dispatch_fused_route_2026-09-15_offdiag`` -- 2-D, real storage, lossless, no
     # susceptibility, no Bloch phase, beta 0, no BFAST, linear, a split-field PML,
@@ -2989,7 +3417,7 @@ FUSED_RELEASE_ARM_AXES: Mapping[str, Tuple[Tuple[str, Any, str], ...]] = {
         ("off_diagonal_epsilon", True,
          "this arm IS the off-diagonal weld: its constitutive half requires a live "
          "off-diagonal row, so a diagonal grid is the ordinary fused pair D's. "
-         "ADMITTED WITHOUT A DRIVE OF ITS OWN: an off-diagonal run whose electric "
+         "Admitted without a drive of its own: an off-diagonal run whose electric "
          "source deposits INSIDE the D seam reads identically on every axis here -- "
          "offdiag_2d (Ez source) and offdiag_magnetic_2d (Hz) recorded the same run "
          "shape -- and the product's predicate is what refuses it, by name "
@@ -3005,7 +3433,7 @@ FUSED_RELEASE_ARM_AXES: Mapping[str, Tuple[Tuple[str, Any, str], ...]] = {
          "ran a 3-D X fold (fold_x_walled_3d, S1 IDENTICAL), but no route case has "
          "driven this weld at 3-D, so 3-D is not admitted"),
         ("folded", "required",
-         "this arm IS the folded weld. ADMITTED WITHOUT A ROUTE DRIVE: the axis does "
+         "this arm IS the folded weld. Admitted without a route drive: the axis does "
          "not say WHICH planes fold, folded_offdiag_magnetic_2d folds on Y alone, and "
          "7 of the 9 census rows this label serves fold on X AND Y. That corner rests "
          "on the product gate's fold_xy_mixed_walled fixture (S1 IDENTICAL against "
@@ -3047,10 +3475,10 @@ FUSED_RELEASE_ARM_AXES: Mapping[str, Tuple[Tuple[str, Any, str], ...]] = {
         ("off_diagonal_epsilon", False,
          "no off-diagonal case drove it, and this is the seam that reads chi1inv: "
          "the Triton composer refuses the ELECTRIC pair by name on an off-diagonal "
-         "grid, before the target round's per-pair narrowing of "
+         "grid, before the 2026-09-14 release's per-pair narrowing of "
          "specialized_family_owns_the_grid and after it"),
         ("pml_active", True,
-         "moved off the shared envelope in the target round; conductive_2d carries "
+         "moved off the shared envelope in the 2026-09-14 release; conductive_2d carries "
          "a split-field PML beside its D_conductivity block, which is what the "
          "shared row said about this arm"),
     ),
@@ -3074,7 +3502,7 @@ FUSED_RELEASE_ARM_AXES: Mapping[str, Tuple[Tuple[str, Any, str], ...]] = {
          "has_cylindrical branch refuses every pair by name before the "
          "off-diagonal question is reached at all"),
         ("pml_active", True,
-         "moved off the shared envelope in the target round; cylindrical_m0 "
+         "moved off the shared envelope in the 2026-09-14 release; cylindrical_m0 "
          "carries a split-field PML, which is what the shared row said about this "
          "arm"),
     ),
@@ -3098,11 +3526,11 @@ FUSED_RELEASE_ARM_AXES: Mapping[str, Tuple[Tuple[str, Any, str], ...]] = {
          "has_cylindrical branch refuses every pair by name before the "
          "off-diagonal question is reached at all"),
         ("pml_active", True,
-         "moved off the shared envelope in the target round; cylindrical_m0 "
+         "moved off the shared envelope in the 2026-09-14 release; cylindrical_m0 "
          "carries a split-field PML, which is what the shared row said about this "
          "arm"),
     ),
-    # --- PHASE B, 2026-09-13. Every row READ off the lifted run shape of the case that
+    # --- 2026-09-13. Every row READ off the lifted run shape of the case that
     # drove it, on the GPU host, before it was typed. ``beta`` is deliberately absent from
     # the four beta products' rows -- the arm IS the beta product and its predicate
     # requires beta != 0 -- and ``bloch`` from the complex pair's, which bloch_2d
@@ -3119,7 +3547,7 @@ FUSED_RELEASE_ARM_AXES: Mapping[str, Tuple[Tuple[str, Any, str], ...]] = {
         ("bloch", False, "a z-only k_point lifts as beta, not as a Bloch phase"),
         ("bfast", False, "not a BFAST run"),
         ("nonlinearity", False, "linear"),
-        ("pml_active", True, "moved off the shared envelope in the target round; its case carries a split-field PML"),
+        ("pml_active", True, "moved off the shared envelope in the 2026-09-14 release; its case carries a split-field PML"),
     ),
     "fused pair B (folded real beta)": (
         ("dimensions", 2, "folded_special_kz_2d is a 2-D grid"),
@@ -3132,7 +3560,7 @@ FUSED_RELEASE_ARM_AXES: Mapping[str, Tuple[Tuple[str, Any, str], ...]] = {
         ("bloch", False, "a z-only k_point lifts as beta, not as a Bloch phase"),
         ("bfast", False, "not a BFAST run"),
         ("nonlinearity", False, "linear"),
-        ("pml_active", True, "moved off the shared envelope in the target round; its case carries a split-field PML"),
+        ("pml_active", True, "moved off the shared envelope in the 2026-09-14 release; its case carries a split-field PML"),
     ),
     "fused pair B (complex beta)": (
         ("dimensions", 2, "complex_beta_2d is a 2-D grid"),
@@ -3142,7 +3570,7 @@ FUSED_RELEASE_ARM_AXES: Mapping[str, Tuple[Tuple[str, Any, str], ...]] = {
         ("susceptibilities", 0, "its case carries no susceptibility"),
         ("off_diagonal_epsilon", False, "its case has a diagonal epsilon"),
         ("complex_storage", True, "this arm IS the complex beta product; the real beta grid has its own pair"),
-        # WIDENED IN THE TARGET ROUND. The sentence below describes the CASE and
+        # Widened in the 2026-09-14 release. The sentence below describes the CASE and
         # not the corpus rows it was refusing: complex_beta_2d's k_point is z-only,
         # so it lifts beta 0.4 and bloch False, while TestSpecialKz.test_special_kz
         # and the binary-grating special-kz rows carry a z beta AND an in-plane
@@ -3156,7 +3584,7 @@ FUSED_RELEASE_ARM_AXES: Mapping[str, Tuple[Tuple[str, Any, str], ...]] = {
          "dispatch_fused_route_2026-09-13_phaseB is what drives it"),
         ("bfast", False, "not a BFAST run"),
         ("nonlinearity", False, "linear"),
-        ("pml_active", True, "moved off the shared envelope in the target round; its case carries a split-field PML"),
+        ("pml_active", True, "moved off the shared envelope in the 2026-09-14 release; its case carries a split-field PML"),
     ),
     "fused pair B (folded complex beta)": (
         ("dimensions", 2, "folded_complex_beta_2d is a 2-D grid"),
@@ -3175,7 +3603,7 @@ FUSED_RELEASE_ARM_AXES: Mapping[str, Tuple[Tuple[str, Any, str], ...]] = {
          "what drives it"),
         ("bfast", False, "not a BFAST run"),
         ("nonlinearity", False, "linear"),
-        ("pml_active", True, "moved off the shared envelope in the target round; its case carries a split-field PML"),
+        ("pml_active", True, "moved off the shared envelope in the 2026-09-14 release; its case carries a split-field PML"),
     ),
     "fused pair B (BFAST)": (
         ("dimensions", 3, "bfast_1d is refl-angular's shape: a z-only cell DECLARED 3-D, which MEEP builds in 3-D with one cell in x and y (the lift reads 3)"),
@@ -3189,7 +3617,7 @@ FUSED_RELEASE_ARM_AXES: Mapping[str, Tuple[Tuple[str, Any, str], ...]] = {
         ("beta", 0, "bfast_1d carries no special-kz beta"),
         ("bfast", True, "this arm IS the BFAST product; on an ordinary grid the ordinary pair is what the composer selects"),
         ("nonlinearity", False, "linear"),
-        ("pml_active", True, "moved off the shared envelope in the target round; its case carries a split-field PML"),
+        ("pml_active", True, "moved off the shared envelope in the 2026-09-14 release; its case carries a split-field PML"),
     ),
     "fused pair B (complex)": (
         ("dimensions", frozenset({1, 2, 3}),
@@ -3212,11 +3640,11 @@ FUSED_RELEASE_ARM_AXES: Mapping[str, Tuple[Tuple[str, Any, str], ...]] = {
         ("beta", 0, "neither case carries a special-kz beta"),
         ("bfast", False, "not a BFAST run"),
         ("nonlinearity", False, "linear"),
-        ("pml_active", True, "moved off the shared envelope in the target round; its case carries a split-field PML"),
+        ("pml_active", True, "moved off the shared envelope in the 2026-09-14 release; its case carries a split-field PML"),
     ),
-    # THE ARM THE TARGET ROUND MOVED ON dimensions, and the two axes it moved, gave
+    # The arm the 2026-09-14 release moved on dimensions, and the two axes it moved, gave
     # back, and takes again. folded_complex_3d moves dimensions against
-    # folded_complex_2d (same cell class, mirror and PML) and dispatches. The round
+    # folded_complex_2d (same cell class, mirror and PML) and dispatches. The release
     # also widened off_diagonal_epsilon and bloch, on the premise that an
     # off-diagonal fold needs no composer change. dispatch_fused_route_2026-09-15_weldgrid
     # measured otherwise: on folded_complex_offdiag_2d and
@@ -3227,7 +3655,7 @@ FUSED_RELEASE_ARM_AXES: Mapping[str, Tuple[Tuple[str, Any, str], ...]] = {
     # dispatch_fused_route_2026-09-15_offdiag drove both cases as `no-fused-arm`
     # controls (PASS-NO-FUSED-ARM, refusing_rung pending-device-gate).
     #
-    # THE 2026-09-15 RULING LIFTED THAT ARM, so both axes widen again, and the lift
+    # The 2026-09-15 decision lifted that arm, so both axes widen again, and the lift
     # and the widening are ONE change: the board's served_in_dispatch reads this row
     # and never the pending rung, so a widening without the lift reads +3 on the
     # board and refuses at runtime, which is the weldgrid run exactly. The cases
@@ -3264,7 +3692,7 @@ FUSED_RELEASE_ARM_AXES: Mapping[str, Tuple[Tuple[str, Any, str], ...]] = {
         ("beta", 0, "folded_complex_2d carries no special-kz beta"),
         ("bfast", False, "not a BFAST run"),
         ("nonlinearity", False, "linear"),
-        ("pml_active", True, "moved off the shared envelope in the target round; its case carries a split-field PML"),
+        ("pml_active", True, "moved off the shared envelope in the 2026-09-14 release; its case carries a split-field PML"),
     ),
     "fused pair B (cylindrical complex)": (
         ("dimensions", 2, "a Dcyl lift reports dimensions 2 with grid_shape (80, 1, 80)"),
@@ -3278,7 +3706,7 @@ FUSED_RELEASE_ARM_AXES: Mapping[str, Tuple[Tuple[str, Any, str], ...]] = {
         ("beta", 0, "no cylindrical case carries a special-kz beta"),
         ("bfast", False, "not a BFAST run"),
         ("nonlinearity", False, "linear"),
-        ("pml_active", True, "moved off the shared envelope in the target round; its case carries a split-field PML"),
+        ("pml_active", True, "moved off the shared envelope in the 2026-09-14 release; its case carries a split-field PML"),
     ),
     "fused pair D (real beta)": (
         ("dimensions", 2, "special_kz_2d is a 2-D grid"),
@@ -3291,7 +3719,7 @@ FUSED_RELEASE_ARM_AXES: Mapping[str, Tuple[Tuple[str, Any, str], ...]] = {
         ("bloch", False, "a z-only k_point lifts as beta, not as a Bloch phase"),
         ("bfast", False, "not a BFAST run"),
         ("nonlinearity", False, "linear"),
-        ("pml_active", True, "moved off the shared envelope in the target round; its case carries a split-field PML"),
+        ("pml_active", True, "moved off the shared envelope in the 2026-09-14 release; its case carries a split-field PML"),
     ),
     "fused pair D (folded real beta)": (
         ("dimensions", 2, "folded_special_kz_2d is a 2-D grid"),
@@ -3304,7 +3732,7 @@ FUSED_RELEASE_ARM_AXES: Mapping[str, Tuple[Tuple[str, Any, str], ...]] = {
         ("bloch", False, "a z-only k_point lifts as beta, not as a Bloch phase"),
         ("bfast", False, "not a BFAST run"),
         ("nonlinearity", False, "linear"),
-        ("pml_active", True, "moved off the shared envelope in the target round; its case carries a split-field PML"),
+        ("pml_active", True, "moved off the shared envelope in the 2026-09-14 release; its case carries a split-field PML"),
     ),
     "fused pair D (complex beta)": (
         ("dimensions", 2, "complex_beta_2d is a 2-D grid"),
@@ -3314,7 +3742,7 @@ FUSED_RELEASE_ARM_AXES: Mapping[str, Tuple[Tuple[str, Any, str], ...]] = {
         ("susceptibilities", 0, "its case carries no susceptibility"),
         ("off_diagonal_epsilon", False, "its case has a diagonal epsilon"),
         ("complex_storage", True, "this arm IS the complex beta product; the real beta grid has its own pair"),
-        # WIDENED IN THE TARGET ROUND. The sentence below describes the CASE and
+        # Widened in the 2026-09-14 release. The sentence below describes the CASE and
         # not the corpus rows it was refusing: complex_beta_2d's k_point is z-only,
         # so it lifts beta 0.4 and bloch False, while TestSpecialKz.test_special_kz
         # and the binary-grating special-kz rows carry a z beta AND an in-plane
@@ -3328,7 +3756,7 @@ FUSED_RELEASE_ARM_AXES: Mapping[str, Tuple[Tuple[str, Any, str], ...]] = {
          "dispatch_fused_route_2026-09-13_phaseB is what drives it"),
         ("bfast", False, "not a BFAST run"),
         ("nonlinearity", False, "linear"),
-        ("pml_active", True, "moved off the shared envelope in the target round; its case carries a split-field PML"),
+        ("pml_active", True, "moved off the shared envelope in the 2026-09-14 release; its case carries a split-field PML"),
     ),
     "fused pair D (folded complex beta)": (
         ("dimensions", 2, "folded_complex_beta_2d is a 2-D grid"),
@@ -3347,7 +3775,7 @@ FUSED_RELEASE_ARM_AXES: Mapping[str, Tuple[Tuple[str, Any, str], ...]] = {
          "what drives it"),
         ("bfast", False, "not a BFAST run"),
         ("nonlinearity", False, "linear"),
-        ("pml_active", True, "moved off the shared envelope in the target round; its case carries a split-field PML"),
+        ("pml_active", True, "moved off the shared envelope in the 2026-09-14 release; its case carries a split-field PML"),
     ),
     "fused pair D (BFAST)": (
         ("dimensions", 3, "bfast_1d is refl-angular's shape: a z-only cell DECLARED 3-D, which MEEP builds in 3-D with one cell in x and y (the lift reads 3)"),
@@ -3361,7 +3789,7 @@ FUSED_RELEASE_ARM_AXES: Mapping[str, Tuple[Tuple[str, Any, str], ...]] = {
         ("beta", 0, "bfast_1d carries no special-kz beta"),
         ("bfast", True, "this arm IS the BFAST product; on an ordinary grid the ordinary pair is what the composer selects"),
         ("nonlinearity", False, "linear"),
-        ("pml_active", True, "moved off the shared envelope in the target round; its case carries a split-field PML"),
+        ("pml_active", True, "moved off the shared envelope in the 2026-09-14 release; its case carries a split-field PML"),
     ),
     "fused pair D (complex)": (
         ("dimensions", frozenset({1, 2, 3}),
@@ -3384,7 +3812,7 @@ FUSED_RELEASE_ARM_AXES: Mapping[str, Tuple[Tuple[str, Any, str], ...]] = {
         ("beta", 0, "neither case carries a special-kz beta"),
         ("bfast", False, "not a BFAST run"),
         ("nonlinearity", False, "linear"),
-        ("pml_active", True, "moved off the shared envelope in the target round; its case carries a split-field PML"),
+        ("pml_active", True, "moved off the shared envelope in the 2026-09-14 release; its case carries a split-field PML"),
     ),
     "fused pair D (folded complex)": (
         ("dimensions", frozenset({2, 3}),
@@ -3405,7 +3833,7 @@ FUSED_RELEASE_ARM_AXES: Mapping[str, Tuple[Tuple[str, Any, str], ...]] = {
         ("beta", 0, "folded_complex_2d carries no special-kz beta"),
         ("bfast", False, "not a BFAST run"),
         ("nonlinearity", False, "linear"),
-        ("pml_active", True, "moved off the shared envelope in the target round; its case carries a split-field PML"),
+        ("pml_active", True, "moved off the shared envelope in the 2026-09-14 release; its case carries a split-field PML"),
     ),
     "fused pair D (cylindrical complex)": (
         ("dimensions", 2, "a Dcyl lift reports dimensions 2 with grid_shape (80, 1, 80)"),
@@ -3419,7 +3847,7 @@ FUSED_RELEASE_ARM_AXES: Mapping[str, Tuple[Tuple[str, Any, str], ...]] = {
         ("beta", 0, "no cylindrical case carries a special-kz beta"),
         ("bfast", False, "not a BFAST run"),
         ("nonlinearity", False, "linear"),
-        ("pml_active", True, "moved off the shared envelope in the target round; its case carries a split-field PML"),
+        ("pml_active", True, "moved off the shared envelope in the 2026-09-14 release; its case carries a split-field PML"),
     ),
     "fused pair B (nonlinear)": (
         ("dimensions", 1, "nonlinear_1d is 3rd-harm-1d's 1-D shape"),
@@ -3433,16 +3861,16 @@ FUSED_RELEASE_ARM_AXES: Mapping[str, Tuple[Tuple[str, Any, str], ...]] = {
         ("beta", 0, "nonlinear_1d carries no special-kz beta"),
         ("bfast", False, "not a BFAST run"),
         ("nonlinearity", True, "this arm IS the nonlinear B product; on a linear grid the ordinary pair is what the composer selects"),
-        ("pml_active", True, "moved off the shared envelope in the target round; its case carries a split-field PML"),
+        ("pml_active", True, "moved off the shared envelope in the 2026-09-14 release; its case carries a split-field PML"),
     ),
-    # --- THE TARGET ROUND'S ONE NEW ARM, and the row that made ``pml_active`` a
+    # --- the 2026-09-14 release's one new arm, and the row that made ``pml_active`` a
     # per-arm axis. ``fused pair D (no-PML stored E)`` runs where there is no
     # split-field PML at all, so the shared envelope row would have had to hold
     # True and False at once; every other arm now carries its own True and this one
     # carries False. See :data:`RELEASED_FUSED_ARMS` for its two cases and the
     # ledger entry that lifts its pending row.
     #
-    # ``conductivity`` AND ``susceptibilities`` ARE DELIBERATELY ABSENT. The two
+    # ``conductivity`` and ``susceptibilities`` are deliberately absent. The two
     # cases drive both values of the first (absorber_1d True, no_pml_dispersive_2d
     # False) and two different counts of the second (5 and 2), which is the
     # condition this table states for leaving an axis out -- an axis is pinned when
@@ -3451,11 +3879,11 @@ FUSED_RELEASE_ARM_AXES: Mapping[str, Tuple[Tuple[str, Any, str], ...]] = {
     # a zero-extent cell; the replacement keeps both axes unpinned for the same
     # reason, on a cell whose controls can actually fire.
     #
-    # AND THAT LEAVES AN ADMITTED ASYMMETRY, recorded here as one, under the same
+    # And that leaves an admitted asymmetry, recorded here as one, under the same
     # exemption this table grants ``dispersive fused pair`` -- and grants to that arm
-    # alone, since the re-attribution round declined to extend it to ``fused pair D
+    # alone, since the 2026-09-14 re-drive declined to extend it to ``fused pair D
     # (folded dispersive)`` and pinned that row at one pole instead, for the envelope
-    # witness's sake. MEASURED on the shipped predicate: a ZERO-pole,
+    # witness's sake. Measured on the shipped predicate: a ZERO-pole,
     # lossless, diagonal, no-absorber 1-D or 2-D grid is admitted by this row --
     # ``released_fused_arms`` returns exactly this arm there -- and on such a grid
     # there is no stored E for the product's electric half to update, so it is an
@@ -3491,7 +3919,7 @@ FUSED_RELEASE_ARM_AXES: Mapping[str, Tuple[Tuple[str, Any, str], ...]] = {
          "pml_active False. On a PML grid the ordinary fused pair D is what the "
          "composer selects"),
     ),
-    # --- 2026-09-15: THE COMPLEX NO-ABSORBER D PAIR. EVERY AXIS IS PINNED, because
+    # --- 2026-09-15: the complex no-absorber D pair. Every axis is pinned, because
     # the arm has ONE case and an axis is left open here only where its own cases
     # drove more than one value. Each value is the ``run_shape`` the Triton-only
     # unfused leg of ``dispatch_fused_route_cuda_2026-09-15_weldgrid``
@@ -3500,7 +3928,7 @@ FUSED_RELEASE_ARM_AXES: Mapping[str, Tuple[Tuple[str, Any, str], ...]] = {
     # hand-CUDA table's ``cuda:complex no-absorber three-slot weld`` row, which rests
     # on the same case.
     #
-    # WHAT IS ADMITTED WITHOUT BEING DRIVEN, named because a row can admit more than
+    # What is admitted without being driven, named because a row can admit more than
     # its case: only the grid EXTENT, which this table never pins (see the note
     # above :data:`FUSED_RELEASE_ENVELOPE`). The case is (23, 21, 27); the four
     # TestLoadDump rows it serves read (35, 32, 41) through
@@ -3552,7 +3980,7 @@ def fused_release_reasons(shape: Mapping[str, Any]) -> Tuple[str, ...]:
     read, and what the gate ran instead — a refusal that said only "outside the
     envelope" would be untraceable to the measurement that drew it.
 
-    FAILS CLOSED ON AN UNREAD FACT, which is the opposite of the device rung's
+    Fails closed on an unread fact, which is the opposite of the device rung's
     rule and deliberately so. Rung (4b) does not refuse a compute capability it
     could not read, because refusing on an unread fact asserts one; here the
     decision is an ADMISSION, and admitting on an unread fact asserts one.
@@ -3568,7 +3996,7 @@ def _axis_reasons(shape: Mapping[str, Any],
                   axes: Sequence[Tuple[str, Any, str]]) -> Tuple[str, ...]:
     """Why ``shape`` is outside ``axes``, one reason per axis, naming the read value.
 
-    FOUR KINDS OF REQUIRED VALUE, and each spells a different question:
+    Four kinds of required value, and each spells a different question:
 
     * ``None`` — the axis must be ABSENT (how :func:`_run_shape` says "not folded");
     * ``"required"`` — the axis must be PRESENT, whatever it says (how a folded
@@ -3578,7 +4006,7 @@ def _axis_reasons(shape: Mapping[str, Any],
       one value of;
     * anything else — equality.
 
-    AN AXIS THAT DID NOT READ IS A REFUSAL, not a pass, for every kind but the
+    An axis that did not read is a refusal, not a pass, for every kind but the
     first. :func:`fused_release_reasons` fails closed on an unread fact because the
     decision it feeds is an ADMISSION, and that rule has to hold per axis too.
     """
@@ -3611,7 +4039,7 @@ def fused_release_arm_reasons(shape: Mapping[str, Any],
     :func:`released_fused_arms` requires both this and
     :func:`fused_release_reasons`.
 
-    AN ARM WITH NO ROW FAILS CLOSED. A released label that nobody wrote per-arm axes
+    An arm with no row fails closed. A released label that nobody wrote per-arm axes
     for is refused by name rather than admitted on the shared table alone, because
     the shared table is deliberately only the axes every arm agrees on: an arm
     missing from :data:`FUSED_RELEASE_ARM_AXES` has no statement about the axes that
@@ -3629,16 +4057,16 @@ def fused_release_arm_reasons(shape: Mapping[str, Any],
 def released_fused_arms(shape: Mapping[str, Any]) -> Tuple[str, ...]:
     """The fused arm labels admitted here: the shared envelope AND the arm's own axes.
 
-    THE PER-ARM CASE LIST STOPPED BEING PROVENANCE ONLY ON 2026-09-02, and this
+    The per-arm case list stopped being provenance only on 2026-09-02, and this
     paragraph is what used to state the gap it closed. :data:`RELEASED_FUSED_ARMS`
-    maps each arm to the gate cases that drove IT; until this round the function
+    maps each arm to the gate cases that drove IT; until 2026-09-02 the function
     consulted only the key, so any shape the shared envelope admitted got EVERY
     released arm — ``fused pair D``, driven on two clean-D cases, was admitted on a
     conductive or dispersive shape as well, because the shared table left both axes
     unpinned on the ground that the gate had measured both values across its case
     SET rather than per arm.
 
-    IT IS NOW DECIDED IN TWO PARTS. :data:`FUSED_RELEASE_ENVELOPE` is the shared
+    It is now decided in two parts. :data:`FUSED_RELEASE_ENVELOPE` is the shared
     half — the axes every released arm was driven on with the same value — and
     :data:`FUSED_RELEASE_ARM_AXES` is the per-arm half, which is what lets the two
     folded arms REQUIRE a fold while the three unfolded ones refuse it, and what
@@ -3674,7 +4102,7 @@ CERTIFICATION_BUDGET = (
 CERTIFICATION_SUBNORMAL_POLICY = "keep"
 
 CERTIFICATION_SUBNORMAL_NOTE = (
-    "GATED ON, NOT MERELY RECORDED. This note used to say the shipped flush "
+    "Gated on, not merely recorded. This note used to say the shipped flush "
     "resolution was covered transitively and that dispatch does not compare the "
     "run's policy against the certification's. That was WRONG, and the "
     "driver-route gate measured it wrong: the transitive argument holds only for a "
@@ -3689,11 +4117,11 @@ CERTIFICATION_SUBNORMAL_NOTE = (
     "Triton are all attained under this policy, and installs it itself by default."
 )
 
-#: THE POLICY EACH TABLE CERTIFIES UNDER. Not an exemption from the one-policy rule
+#: The policy each table certifies under. Not an exemption from the one-policy rule
 #: — it is the same rule with the table's own value, and the value has to be
-#: ATTAINABLE ON EVERY EXECUTOR THAT TABLE DRIVES or the rule is decoration.
+#: attainable on every executor that table drives or the rule is decoration.
 #:
-#: WHY THE METAL ROW IS ``flush`` AND THE TRITON ROW IS NOT. MPS flushes float32
+#: Why the Metal row is ``flush`` and the Triton row is not. MPS flushes float32
 #: denormals natively and exposes no lever (``metal_kernels/subnormal.ATTAINABLE``
 #: is ``(FLUSH,)``), so ``keep`` is unattainable on that table's device half; the
 #: arm64 host is driven to flush by ``fesetenv`` on
@@ -3702,7 +4130,7 @@ CERTIFICATION_SUBNORMAL_NOTE = (
 #: :data:`CERTIFICATION_SUBNORMAL_NOTE`: ``flush`` is unattainable in a process that
 #: has already imported CuPy, and ``keep`` is what all nine families were cut under.
 #:
-#: WHAT A SPLIT WOULD HAVE COST, measured rather than argued: under a KEEPING host
+#: What a split would have cost, measured rather than argued: under a KEEPING host
 #: the released Metal pairs are byte-identical at step 12 and diverge at step 24
 #: (``pml_2d`` 12 arrays / 108 words on ``fields.Ez``), with every differing element
 #: inside a few ULP of the subnormal band. A Metal dispatch under host-keep would be
@@ -3711,7 +4139,7 @@ CERTIFICATION_SUBNORMAL_NOTE = (
 #: :data:`CERTIFICATION_SUBNORMAL_POLICY` keeps its value and every existing reader
 #: (the route gate, the conftest, the tests) is unchanged: this map is beside it,
 #: not in front of it.
-#: WHY THE CUDA ROW IS THE TRITON VALUE AND NOT A THIRD ONE. Every entry in
+#: Why the CUDA row is the Triton value and not a third one. Every entry in
 #: ``cuda_kernels/fingerprints.json`` records TWO canonical legs —
 #: ``meep_x86_flush`` and ``ieee_keep_ftz_stripped`` — and the keep leg is the
 #: dispatching one: the hand-written kernels compile through
@@ -3726,28 +4154,28 @@ TABLE_SUBNORMAL_POLICY: Mapping[str, str] = {
     METAL_TABLE: "flush",
 }
 
-#: THE POLICIES EACH TABLE MAY DISPATCH UNDER, which is a wider set than the one
+#: The policies each table may dispatch under, which is a wider set than the one
 #: policy :data:`TABLE_SUBNORMAL_POLICY` names. That map is still the policy dispatch
 #: INSTALLS when nothing is installed; this one is the set a CALLER may have installed
 #: before the freeze without the plan being refused at rung 8b.
 #:
-#: WHY FLUSH IS ADMITTED ON THE NVIDIA TABLES BUT NEVER INSTALLED BY DISPATCH. On x86
+#: Why flush is admitted on the NVIDIA tables but never installed by dispatch. On x86
 #: MEEP flushes (FTZ+DAZ is its default), so a user comparing against an unmodified
-#: MEEP wants the flush policy, and the certification rounds gate every NVIDIA family
+#: MEEP wants the flush policy, and the certification runs gate every NVIDIA family
 #: under both policies. But ``flush`` is unattainable in a process that has already
 #: imported CuPy's CUB accelerators (:data:`CERTIFICATION_SUBNORMAL_NOTE`), so dispatch
 #: cannot install it at plan time; only a caller who set ``CUPY_ACCELERATORS=''`` and
 #: installed it before the first import can be on it. Admitting it there and installing
 #: ``keep`` everywhere else changes nothing for a run that installs nothing.
 #:
-#: ADMISSION IS PER ARM, NOT PER TABLE. A policy other than the table's install
+#: Admission is per arm, not per table. A policy other than the table's install
 #: default licenses a plan only when EVERY arm the plan dispatches has a live run on
 #: this GPU's compute capability whose :data:`CERTIFIED_POLICIES` names that policy
 #: (:func:`policy_evidence_reasons`); one arm without that evidence refuses the whole
 #: plan by name, as a pending arm does, because running only its siblings would be a
 #: mixed composition no gate measured.
 #:
-#: THE METAL ROW IS UNCHANGED: MPS flushes natively and ``keep`` is unattainable on
+#: The Metal row is unchanged: MPS flushes natively and ``keep`` is unattainable on
 #: its device half, so ``flush`` is the only policy that table can be on.
 TABLE_DISPATCH_POLICIES: Mapping[str, Tuple[str, ...]] = {
     "triton": (CERTIFICATION_SUBNORMAL_POLICY, "flush"),
@@ -3809,8 +4237,8 @@ def _pair_identity(entry: Any) -> int:
     writes the same two shapes — ``triton_kernels/launch.py:1660-1668``,
     ``metal_kernels/launch.py:737-745`` and
     ``cuda_kernels/fused_pairs.py:_install_fused_pair``. That third path is now spelt
-    out where it used to be cited without one: until Phase 2 this module imported
-    ``triton_kernels`` and nothing else, and the boundary test refused to find the
+    out where it used to be cited without one: until the second table joined, this module
+    imported ``triton_kernels`` and nothing else, and the boundary test refused to find the
     hand-CUDA package NAMED here at all. It composes that table as its second table
     now, so the honest boundary is narrower and the test says so — one function-local
     import inside :func:`_decide`, below the backend rung, and no engine module may
@@ -3818,7 +4246,7 @@ def _pair_identity(entry: Any) -> int:
 
     * NO DEPOSIT — the curl slot holds the pair plan itself and the constitutive
       slot holds ``NoopPlan``, whose ``absorbed_by`` names the pair plan;
-    * A DEPOSIT IN THE SEAM — the curl slot holds ``LeadingRepairPlan``, whose
+    * A deposit in the seam — the curl slot holds ``LeadingRepairPlan``, whose
       ``absorbed_by`` names its ``inner`` pair plan, and the constitutive slot holds
       ``TrailingRepairPlan``, whose ``absorbed_by`` names THAT SAME inner plan
       (``deposit_repair.py:683``, ``:711``).
@@ -3834,7 +4262,7 @@ def _pair_identity(entry: Any) -> int:
     deposit-repair pairs of the released composition outside the mid-step licence
     guard while its own comment said they were covered.
 
-    THE WALK IS TRANSITIVE, AND ON THE SHIPPED TRITON SHAPES THAT CHANGES NOTHING.
+    The walk is transitive, and on the shipped Triton shapes that changes nothing.
     Every Triton wrapper names the pair plan itself and the pair plan names nobody,
     so one hop and the full walk answer the same integer on all three installed
     shapes (``LeadingWithdrawPlan``/``NoopPlan``, bare pair/``NoopPlan``,
@@ -3872,7 +4300,7 @@ def _split_pairs(plans: Mapping[str, Any], slots: Sequence[str],
                  order: Sequence[str]) -> Tuple[str, ...]:
     """Fused pairs that would dispatch only PART of themselves — named, one per pair.
 
-    THE ONE COMPOSITION THE SEAM CANNOT GUARD, so it is refused at PLAN TIME rather
+    The one composition the seam cannot guard, so it is refused at PLAN TIME rather
     than admitted. :meth:`FastPathPlan.dispatch` reasons about a pair through the
     slots that actually dispatch, and every safety it offers — the mid-step licence
     clause, its step-scoped commitment — assumes the pair arrives whole. A pair whose
@@ -3940,15 +4368,15 @@ class AbsentComponentClear:
     then ``f += kps * f_w - kms * f_w_prev`` keeps ``f`` at +0). Nothing else in the
     state moves: the polarizations and every other array come out the same.
 
-    ``u`` IS NOT +0 EVERYWHERE ON A FOLDED GRID, which is the second set of cells. The
+    ``u`` is not +0 everywhere on a folded grid, which is the second set of cells. The
     array path still steps the absent component's D, and the post-injection fills write
     its image planes with the mirror parity: ``fill_symmetry_bc_D`` writes cell 0 of a
     mirrored axis the component does not own, ``fill_folded_far_ghosts_D`` the far
     ghost slot of a folded periodic axis, each as ``parity * image``. With an odd parity
     that is ``-1 * (+0) = -0``, so ``u`` holds -0 on those planes in both paths (MEEP's
     fold makes them, and the array path keeps D word for word), and a dispatched
-    ``update_E`` forms ``g * (-0) = -0`` there where the array path leaves +0. MEASURED
-    (bit_parity_0_10 lane FXHD): on the folded rows ``finite_grating.py`` and
+    ``update_E`` forms ``g * (-0) = -0`` there where the array path leaves +0. Measured
+    during 1.0's development: on the folded rows ``finite_grating.py`` and
     ``TestGetPoint.test_get_point`` the shipped Metal route wrote -0 into ``f_w_Ey``
     on all 725 cells of the far ghost plane and into ``f_w_Ex``/``f_w_Ey`` on the 62
     of each far plane, every step, with no conductor anywhere and so no clear.
@@ -3974,7 +4402,7 @@ class AbsentComponentClear:
 def _absent_fill_planes(fields: Any, component: str, shape: Tuple[int, ...]) -> Any:
     """Flat indices of every plane the post-injection D fills write for ``component``.
 
-    DERIVED FROM THE FILLS' OWN RULE, not restated: :func:`deposit_repair._fill_image_rules`
+    Derived from the fills' own rule, not restated: :func:`deposit_repair._fill_image_rules`
     is the per-axis ``(axis, row read, row written)`` table the deposit repair inverts,
     built from the same ``_mirror_phases`` / ``_stored_past_owned`` / ``_far_reflect_rows``
     the fills read, for the component's D (whose Yee shifts are E's). A host NumPy array;
@@ -4126,7 +4554,7 @@ class FastPathPlan:
     #: licence :meth:`dispatch` re-checks on every consult. ``None`` only for a
     #: plan built without the gate having run, which no dispatching plan is.
     policy_licence: Optional[Tuple[Any, str, int]] = field(default=None, repr=False)
-    #: WHICH KERNEL TABLE composed this plan — ``"triton"`` or ``"metal"``. Read by
+    #: Which kernel table composed this plan — ``"triton"`` or ``"metal"``. Read by
     #: :meth:`dispatch` for the one protocol the two tables spell differently
     #: (``update_P``), and reported so an artifact naming a dispatched arm also names
     #: the composer that produced it. The default keeps every existing constructor
@@ -4159,7 +4587,7 @@ class FastPathPlan:
     #: array ``update_H`` while ``step`` keeps taking the kernel, which is correct and
     #: is also a launch the run is not getting; the count is what says so.
     sync_refusals: Dict[str, int] = field(default_factory=dict, repr=False)
-    #: The LEADING SLOT of every fused pair whose launch has run IN THE CURRENT STEP.
+    #: The LEADING SLOT of every fused pair whose launch has run in the current step.
     #: Mutable inside a frozen plan for the same reason ``launches`` is: it records
     #: what the decision DID, not the decision. Emptied at every step roll-over in
     #: :meth:`dispatch`, so a commitment can never outlive the step that made it —
@@ -4170,7 +4598,7 @@ class FastPathPlan:
     #: dataclass is frozen; like ``launches`` it is state, not decision.
     _last_position: List[int] = field(default_factory=lambda: [-1], repr=False)
     #: ``slot -> the slots of the fused pair it belongs to``, in :attr:`slots` order,
-    #: built once by :meth:`_pair_of`. THIS SEAM IS THE PER-TIMESTEP LOOP, so the
+    #: built once by :meth:`_pair_of`. This seam is the per-timestep loop, so the
     #: grouping is derived from ``step_plan.plans`` — frozen for the plan's life —
     #: rather than rebuilt on each of the five consults of every step.
     _pair_slots: Dict[str, Tuple[str, ...]] = field(default_factory=dict, repr=False)
@@ -4208,8 +4636,8 @@ class FastPathPlan:
         must mean "nothing was run", and True must mean "the whole sub-step was".
         There is no third answer and no partial one.
 
-        THE TWO FILL SLOTS ARE THE ONE PLACE THAT LOOKS LIKE AN EXCEPTION AND IS
-        NOT. ``fill_B``/``fill_D`` name a sub-step the driver runs as TWO array
+        The two fill slots are the one place that looks like an exception and is
+        not. ``fill_B``/``fill_D`` name a sub-step the driver runs as TWO array
         passes with ``zero_metal_*`` between them, so the seam has two consult
         sites for it. Consulted with the SLOT name this stands in front of
         ``fill_symmetry_bc_*``; consulted with the PASS name
@@ -4222,19 +4650,19 @@ class FastPathPlan:
         going through ``invalidate_fast_path`` would have this plan writing the
         previous allocation. Cheap, and it fails to the array path.
 
-        THE SUBNORMAL POLICY IS THE SECOND GUARD, and the same shape: everything
+        The subnormal policy is the second guard, and the same shape: everything
         rung 8b established is a statement about the freeze, so the licence is
         re-checked here rather than assumed — see
         :meth:`_policy_still_licenses_this`.
 
-        THE ONE PIECE OF STATE THIS METHOD KEEPS is a fused pair's commitment, and
+        The one piece of state this method keeps is a fused pair's commitment, and
         it lives for exactly one step: the consult positions are the driver's own
         order, so a position that does not advance opens a new step and clears what
         the last one left. Both of the shapes a pair can take are covered — see
         :func:`_pair_identity` — and a pair that would dispatch only half of itself
         never reaches here, because :func:`_split_pairs` refuses it at plan time.
 
-        AN EXCEPTION OUT OF ``run()`` PROPAGATES, deliberately (see the module
+        An exception out of ``run()`` propagates, deliberately (see the module
         docstring): a launch that raised mid-write leaves the targets partly
         updated, and the array call on top would double-apply the sub-step.
         """
@@ -4242,7 +4670,7 @@ class FastPathPlan:
             return False
         owner = FAR_FILL_OWNERS.get(slot)
         if owner is not None:
-            # THE FAR HALF OF A FILL, which is a different question from the five
+            # The far half of a fill, which is a different question from the five
             # whole sub-steps and is answered away from their bookkeeping: it is the
             # SAME slot consulted a second time, so running it through the position
             # roll-over below would read as "a new step opened" and clear a fused
@@ -4250,7 +4678,7 @@ class FastPathPlan:
             return self._dispatch_far_fill(owner)
         sync_owner = SYNC_PASS_OWNERS.get(slot)
         if sync_owner is not None:
-            # THE MAGNETIC HALF-STEP'S OWN NAME FOR A SLOT IT SHARES WITH ``step``.
+            # The magnetic half-step's own name for a slot it shares with ``step``.
             # Answered off the SAME plan and through the SAME body below — the
             # commitment bookkeeping, the pair clause and the launch counters are the
             # ones ``step`` would have got, because this site IS ``step``'s magnetic
@@ -4263,7 +4691,7 @@ class FastPathPlan:
             return False
         plan = self.step_plan.plans[slot]
 
-        # A COMMITMENT LASTS ONE STEP AND NOT A CONSULT LONGER. The driver walks its
+        # A commitment lasts one step and not a consult longer. The driver walks its
         # consults in ``slots`` order exactly once per ``step()`` (driver.py:3186),
         # so a consult whose position does not ADVANCE opens a new step, and anything
         # still standing was left behind by a step that reached a leading consult but
@@ -4271,7 +4699,7 @@ class FastPathPlan:
         # exception between the two sites (a source ``inject``, a symmetry fill, a
         # ``DepositNotRepairable``), or a caller driving the seam itself.
         #
-        # A LEAKED COMMITMENT SKIPS A SUB-STEP ENTIRELY, which is worse than the
+        # A leaked commitment skips a sub-step entirely, which is worse than the
         # double-apply the clause below exists to stop: the next step's leading
         # consult refuses on a genuinely lapsed licence and the driver runs the ARRAY
         # curl, then the absorbed consult answers True off the stale entry and runs
@@ -4282,7 +4710,7 @@ class FastPathPlan:
             self._committed.clear()
         self._last_position[0] = position
 
-        # A FUSED PAIR'S SLOTS ANSWER TOGETHER, and the licence cannot separate
+        # A fused pair's slots answer together, and the licence cannot separate
         # them. A pair owns the curl slot and the constitutive slot; the launch at the
         # FIRST consult performs BOTH halves, and the later consult holds a sentinel
         # (``NoopPlan``) or the deposit repair (``TrailingRepairPlan``). If the policy
@@ -4299,7 +4727,7 @@ class FastPathPlan:
         # counted and announced by the leading slot's own check; what it must not do is
         # un-run a launch.
         #
-        # BOTH INSTALLED SHAPES ARE COVERED, which is the correction of 2026-08-29:
+        # Both installed shapes are covered, which is the correction of 2026-08-29:
         # the clause used to read ``absorbed_by`` as "I am the absorbed slot", and in
         # the deposit-repair shape the LEADING slot carries one too
         # (``deposit_repair.py:683``). So every repair-shaped pair — 38 of the 55 the
@@ -4314,15 +4742,15 @@ class FastPathPlan:
         if not committed and not self._policy_still_licenses_this(slot):
             return False
         if slot == "update_P":
-            # THE ONE ASYMMETRIC SLOT, AND THE TWO TABLES SPELL IT DIFFERENTLY.
+            # The one asymmetric slot, and the two tables spell it differently.
             #
             # On the Triton table it holds the LIST of per-susceptibility plans, and
             # each takes ``fields.drive_field`` — MEEP's ``w``, not a stored-E
             # reader. The two agree exactly outside the absorber, so taking E
             # instead passes every no-PML case and is wrong only under PML.
             #
-            # ON THE METAL TABLE IT HOLDS ONE PLAN, whose ``run()`` takes a contract
-            # it resolved at plan build and no argument here. MEASURED 2026-09-10:
+            # On the Metal table it holds one plan, whose ``run()`` takes a contract
+            # it resolved at plan build and no argument here. Measured 2026-09-10:
             # iterating the slot and calling ``entry.run(drive)`` raised
             # ``KeyError("this ADE plan holds no (<bound method Fields.drive_field
             # ...>, True, 'float32') variant")`` on ``dispersive_2d`` and
@@ -4331,14 +4759,14 @@ class FastPathPlan:
             # middle of a step rather than a refusal. With the branch below both
             # cases are byte-identical to 192 steps.
             #
-            # THE BRANCH IS ON THE SHAPE, NOT ON THE TABLE NAME, for the same reason
+            # The branch is on the shape, not on the table name, for the same reason
             # the split-fill branch below reads ``run_near`` rather than a label: the
             # object states its own contract, and after
             # ``wrap_for_residency`` the Metal slot holds a ``SyncedPlan``, which is
             # a single object either way. ``self.table`` decides only what to HAND
             # the entries, which is the half a shape cannot answer.
             #
-            # THE HAND-CUDA TABLE TAKES THE DRIVE FIELD TOO, and its slot holds a
+            # The hand-CUDA table takes the drive field too, and its slot holds a
             # single object rather than a list: an E->P pair leaves a ``NoopPlan``
             # there and a three-slot weld leaves the triple's TRAILING half, both of
             # which accept ``*args`` and both of which advanced (or deliberately
@@ -4356,7 +4784,7 @@ class FastPathPlan:
             self._ran(slot, pair)
             return True
         if slot in FAR_FILL_PASSES and hasattr(plan, "run_near"):
-            # THE SPLIT FILL, and the branch is on the PLAN, not on the arm label.
+            # The split fill, and the branch is on the PLAN, not on the arm label.
             # ``FoldedMirrorGhostFillComplexPlan`` states in its own docstring that a
             # composed plan must call ``run_near``/``run_far`` separately because the
             # driver runs ``zero_metal_*`` between the two passes and complex
@@ -4370,7 +4798,7 @@ class FastPathPlan:
             return True
         plan.run()
         if slot == "update_E" and self.absent_clears:
-            # AFTER THE PLAN IN THE SLOT, WHATEVER IT IS: a single, a pair's sentinel
+            # After the plan in the slot, whatever it is: a single, a pair's sentinel
             # or deposit repair, a weld's trailing half. Every kernel that writes E in
             # this step has run by now, since every product spanning ``update_E``
             # launches at or before this consult, and nothing reads E before it.
@@ -4390,7 +4818,7 @@ class FastPathPlan:
         consult, which is why the fill sub-step needs two consult sites rather than
         one wider one. The identity guard has already run in :meth:`dispatch`.
 
-        THE CONTRACT IS TOTAL FOR THE PASS IT NAMES, like :meth:`dispatch`: True
+        The contract is total for the pass it names, like :meth:`dispatch`: True
         means ``fill_folded_far_ghosts_*`` will not run on the array path because a
         kernel already performed it, False means nothing did. There are two ways to
         answer True and they are not the same event:
@@ -4403,8 +4831,8 @@ class FastPathPlan:
           launch, and counted the same way (``launches`` counts launch PASSES, so a
           fused fill reads 1 per step and a split fill reads 2).
 
-        THAT SECOND SHAPE MOVES THE FAR PASS FROM AFTER ``zero_metal_*`` TO BEFORE
-        IT, and the two orders agree for a reason that is structural rather than
+        That second shape moves the far pass from after ``zero_metal_*`` to before
+        it, and the two orders agree for a reason that is structural rather than
         incidental: ``_zero_metal`` writes stored plane 0 of every axis that is
         metallic AND NOT mirrored, while ``_fill_folded_far_ghosts`` writes the last
         stored plane of a folded PERIODIC axis and reads another plane of the same
@@ -4414,7 +4842,7 @@ class FastPathPlan:
         ``test_the_far_ghost_pass_and_the_wall_clear_commute`` measures it on the
         real array path, and the driver-route gate measures it on device.
 
-        ANSWERING FALSE IS ALWAYS SAFE HERE, which is why no commitment machinery
+        Answering False is always safe here, which is why no commitment machinery
         guards it and why a lapsed policy licence simply falls back: the far fill is
         an idempotent plane write from another plane of the same array, so the array
         pass running on top of a kernel that already did it writes the same bytes.
@@ -4442,14 +4870,14 @@ class FastPathPlan:
         of them in one launch, so consulting one of its slots inside the magnetic
         half-step runs the whole span, electric halves included.
 
-        THE RULE IS CONTAINMENT AND IT IS DERIVED, not a list of refused labels: the
+        The rule is containment and it is derived, not a list of refused labels: the
         half-step backs up and restores magnetic names only, so a plan may run here
         exactly when every slot it spans is one the half-step itself runs
         (:data:`SYNC_PATH_SLOTS`). That admits every shipped product — each spans one
         field type — and refuses an ``update_H``/``step_D`` weld by its span rather
         than by its name, which is what makes it a rule and not a patch.
 
-        REFUSING IS ALWAYS SAFE HERE, and it is the whole point: False sends the
+        Refusing is always safe here, and it is the whole point: False sends the
         driver to the array ``update_H``, which advances the magnetic constitutive
         and nothing else. The count is kept because a refusal on this path means a
         run is paying for a fused product it cannot use half the time, which is a
@@ -4490,7 +4918,7 @@ class FastPathPlan:
         return cannot be the one shape whose bookkeeping is skipped — the asymmetry
         that slot already carries is the argument it takes, not its accounting.
 
-        NOTHING IS DISCARDED HERE. The commitment is released by the step roll-over
+        Nothing is discarded here. The commitment is released by the step roll-over
         rather than by the consult that consumes it, so a product spanning more than
         two slots keeps every absorbed slot covered instead of only the next one.
         """
@@ -4501,7 +4929,7 @@ class FastPathPlan:
     def _policy_still_licenses_this(self, slot: str) -> bool:
         """Is the subnormal policy the freeze gated on STILL the one in force?
 
-        THE FREEZE IS NOT THE WHOLE RUN. Everything the gate established — one
+        The freeze is not the whole run. Everything the gate established — one
         policy across host, CuPy and Triton — is a statement about the moment the
         plan was built, and ``uninstall_subnormal_policy`` is a public function
         that puts CuPy's compiler seam back. Measured before this check existed:
@@ -4537,7 +4965,7 @@ class FastPathPlan:
     def launch_counters(self) -> Dict[str, Dict[str, Any]]:
         """Per slot: how many times a kernel RAN, and how many programs each run asks for.
 
-        THE ONLY THING HERE THAT IS A MEASUREMENT RATHER THAN A DECISION, and it
+        The only thing here that is a measurement rather than a decision, and it
         exists because every other signal this module publishes is a statement
         about what was PLANNED. ``step_path`` says "fused", ``slots`` says which
         five, ``families`` says on whose certification — and a run in which the
@@ -4556,7 +4984,7 @@ class FastPathPlan:
         (``update_P`` holds a LIST of per-susceptibility plans and is reported as
         the list's total), which is unknown, not zero.
 
-        ``programs_per_dispatch`` IS NOT THE WITNESS ON EVERY TABLE, which is why
+        ``programs_per_dispatch`` is not the witness on every table, which is why
         ``plan_launches`` is beside it. A Metal ``KernelPlan`` spells no launch grid
         at all (``metal_kernels/plans.py`` __slots__ is ``_args``/``_functions``/
         ``launches``), so on that table the program count is ``None`` BY
@@ -4567,7 +4995,7 @@ class FastPathPlan:
         ``dispatches`` bookkeeping. Two counters that must agree beat one counter
         that cannot be wrong.
 
-        ``backend`` NAMES WHICH TABLE'S KERNEL THE COUNT IS ABOUT, and on a merged
+        ``backend`` names which table's kernel the count is about, and on a merged
         NVIDIA step that is not a detail: both tables launch real kernels over the
         same arrays, so a route gate proving "the fused product ran" has to be able
         to say WHOSE, and a mis-attribution here would be invisible to every byte
@@ -4607,7 +5035,7 @@ class FastPathPlan:
                       licence_lapses=dict(self.licence_lapses),
                       sync_refusals=dict(self.sync_refusals),
                       table=self.table)
-        # THE SYNC COUNTERS ARE A MEASUREMENT LIKE THE LAUNCH ONES, and they belong
+        # The sync counters are a measurement like the launch ones, and they belong
         # beside them for the same reason: the record says a residency bracket was
         # INSTALLED, and only a count says it RAN. A dispatching Metal plan whose
         # syncs are zero is a composition that read the device's stale mirrors, which
@@ -4618,7 +5046,7 @@ class FastPathPlan:
                 "in": getattr(residency, "syncs_in", None),
                 "out": getattr(residency, "syncs_out", None),
             }
-        # THE CLEAR IS COUNTED FOR THE SAME REASON: the record says which words a
+        # The clear is counted for the same reason: the record says which words a
         # freeze decided to clear, and only this count says the clear ran.
         block = self.record.get("absent_components")
         if isinstance(block, Mapping):
@@ -4667,7 +5095,7 @@ TABLE_LEDGERS: Mapping[str, str] = {
 def _fingerprints(table: str = "triton") -> Mapping[str, Any]:
     """That table's ``fingerprints.json``, read once per process. Never raises.
 
-    ONE READER, TWO LEDGERS. A record that quotes a gate has to quote it out of the
+    One reader, two ledgers. A record that quotes a gate has to quote it out of the
     ledger the gate was written to, and the two are genuinely different files with
     different keys — a Metal arm's gate key resolves to nothing in the Triton ledger
     and would be reported as an unmapped arm, which is the record-forgery shape this
@@ -4710,7 +5138,7 @@ RECERT_SWEEP_KEY = "planner_integration_recert_2026-08-14"
 def _arm_certification_map(table: str) -> Mapping[str, Tuple[str, str]]:
     """That table's ``arm label -> (family, ledger key)`` map.
 
-    THE METAL MAP IS NOT IN THIS FILE and the import is function-local for the
+    The Metal map is not in this file and the import is function-local for the
     reason :mod:`meep_gpu.metal_dispatch` states in its own docstring: a Metal
     release-row edit must not re-drift the Triton ``driver_dispatch`` record, which
     pins exactly ``driver.py``, ``fastpath.py`` and ``fields.py``. What this module
@@ -4730,8 +5158,8 @@ def _arm_certification_map(table: str) -> Mapping[str, Tuple[str, str]]:
 def _table_for_label(arm: Any, table: str) -> str:
     """Which ledger answers for THIS arm, given the table the plan was composed on.
 
-    A NAMESPACED LABEL ANSWERS FOR ITSELF. A BARE LABEL IN A PLAN COMPOSED ON THE
-    CUDA TABLE IS A TRITON ARM, and is answered from the Triton ledger: every CUDA
+    A namespaced label answers for itself. A bare label in a plan composed on the
+    CUDA table is a Triton arm, and is answered from the Triton ledger: every CUDA
     label crosses into this file namespaced (:func:`meep_gpu.fastpath_cuda.merge_tables`
     prefixes each CUDA unit, the primary's included), so under
     ``MEEP_GPU_BACKEND_PREFERENCE=cuda`` the bare labels of a merged plan are the
@@ -4768,7 +5196,7 @@ def _certification_for(arm: str, table: str = "triton", *,
     """
     table = _table_for_label(arm, table)
     if table == CUDA_TABLE:
-        # THE CUDA ENTRY IS BUILT BY THE MODULE THAT OWNS THE ROWS, in the same
+        # The CUDA entry is built by the module that owns the rows, in the same
         # shape this function returns. Delegating rather than branching inside is
         # what keeps a CUDA release-row edit off this file — see
         # :mod:`meep_gpu.fastpath_cuda` for what that costs and what it saves.
@@ -4780,7 +5208,7 @@ def _certification_for(arm: str, table: str = "triton", *,
     entry: Dict[str, Any] = {
         "family": family,
         "gate": gate,
-        # THE POLICY IS THE TABLE'S, and it has to be, because the two tables
+        # The policy is the table's, and it has to be, because the two tables
         # certify under opposite values: an entry that reported ``keep`` beside a
         # Metal gate cut under ``flush`` would be a false claim about the bytes.
         "certification_policy": TABLE_SUBNORMAL_POLICY.get(
@@ -4789,14 +5217,14 @@ def _certification_for(arm: str, table: str = "triton", *,
     }
     record = _fingerprints(table).get(gate)
     if not isinstance(record, Mapping):
-        # SAY THAT THE LOOKUP FAILED rather than emitting a family name beside a
+        # Say that the lookup failed rather than emitting a family name beside a
         # key that resolves to nothing. That asymmetry — some arms carrying
         # recorded_utc/host/purpose and others carrying nothing, with no field to
         # tell them apart — is the defect :data:`FAMILY_RECERT_GATE` records having
         # been fixed once, when nine families reached a user's artifact with a dead
         # path and no way to see that it was dead.
         #
-        # EVERY ROW IN :data:`ARM_CERTIFICATION` RESOLVES, and
+        # Every row in :data:`ARM_CERTIFICATION` resolves, and
         # ``test_every_recorded_certification_points_at_a_readable_record`` holds
         # it there, so this branch is reached only by an arm with NO row — the
         # ``("unmapped", "unmapped")`` default, which is what a wired-but-pending
@@ -4808,7 +5236,7 @@ def _certification_for(arm: str, table: str = "triton", *,
             "PENDING_DEVICE_GATE_ARMS is the expected case, and that map carries "
             "the gate artifact its release was cut from")
     if isinstance(record, Mapping):
-        # THE RUN THIS DEVICE'S ARCHITECTURE WAS CERTIFIED BY, not whichever run the
+        # The run this device's architecture was certified by, not whichever run the
         # entry happens to hold: the ledger keeps one run per compute capability, and
         # quoting another architecture's host and artifact beside this plan would be
         # the label/evidence mismatch the container exists to close. A capability with
@@ -4835,7 +5263,7 @@ def _certification_for(arm: str, table: str = "triton", *,
                 entry[key] = run[key]
             elif key in record:
                 entry[key] = record[key]
-        # THE RUN'S OWN, never the entry's: which policies released is a fact about
+        # The run's own, never the entry's: which policies released is a fact about
         # one run on one capability (:data:`CERTIFIED_POLICIES`).
         if isinstance(run.get(CERTIFIED_POLICIES), Mapping):
             entry[CERTIFIED_POLICIES] = dict(run[CERTIFIED_POLICIES])
@@ -4854,7 +5282,7 @@ def _certification_for(arm: str, table: str = "triton", *,
             f"not stated per family by {gate}; see that record's legs and the "
             "campaign-wide certification_budget at the top of this artifact")
 
-    # THE RE-CERT SWEEP IS THE TRITON LEDGER'S, and it is read out of the arm's OWN
+    # The re-cert sweep is the Triton ledger's, and it is read out of the arm's OWN
     # ledger rather than out of that one: a Metal ledger carries no such key, so the
     # block below is skipped for that table by the lookup itself instead of by a
     # branch. Quoting the Triton sweep's verdict beside a Metal gate would be
@@ -4883,7 +5311,7 @@ def _certification_for(arm: str, table: str = "triton", *,
 def _subnormal_block(table: str = "triton") -> Dict[str, Any]:
     """The resolved policy verbatim, plus which policy the families were cut under.
 
-    READ BEFORE THE GATE RUNS, which is why it is worth keeping separate from it:
+    Read before the gate runs, which is why it is worth keeping separate from it:
     the stamp taken here records what this process would resolve to on its own,
     and :func:`_subnormal_gate` may then drive it somewhere else. A stamp taken
     only afterwards could not tell a run that already kept from one dispatch moved.
@@ -4917,23 +5345,23 @@ def _subnormal_block(table: str = "triton") -> Dict[str, Any]:
 #: 80/80 bit-identical, host-keeps-Triton-flushes diverges at step 1).
 GOVERNED_EXECUTORS: Tuple[str, str, str] = ("host", "cupy", "triton")
 
-#: THE SAME ARGUMENT, PER TABLE. Each row names every executor that runs float32
+#: The same argument, per table. Each row names every executor that runs float32
 #: arithmetic inside one step of that table's composition, host included, and the
 #: rule below drives ALL of them to that table's :data:`TABLE_SUBNORMAL_POLICY`
 #: value or refuses the plan by name.
 #:
-#: THE METAL ROW HAS NO CuPy AND NO TRITON IN IT, and that is a statement about the
+#: The Metal row has no CuPy and no Triton in it, and that is a statement about the
 #: engine rather than a shortcut: that table composes over a NUMPY engine, so
 #: neither device library is in the step at all, and probing for them would either
 #: govern an executor that runs nothing (an install leg reporting "nothing to
 #: govern") or, worse, let an unrelated CuPy that happens to be importable decide a
 #: refusal. ``mps`` replaces them and is the executor ``metal_kernels/subnormal``
 #: answers for.
-#: THE CUDA ROW IS THE TRITON ROW, and that is a statement about the STEP rather
+#: The CUDA row is the Triton row, and that is a statement about the STEP rather
 #: than a shortcut. A merged plan can hold Triton arms and hand-CUDA products in the
 #: same step over the same CuPy arrays, so every executor either table drives is in
-#: every such step: the host, CuPy, and Triton whenever it is importable (the probe
-#: in :func:`_governed_executors` is what decides that, not this row).
+#: every such step: the host, CuPy, and Triton whenever a Triton plan is in the step
+#: (:func:`_governed_executors` decides that from the merged plan, not this row).
 TABLE_GOVERNED_EXECUTORS: Mapping[str, Tuple[str, ...]] = {
     "triton": GOVERNED_EXECUTORS,
     CUDA_TABLE: GOVERNED_EXECUTORS,
@@ -4964,16 +5392,27 @@ def _importable(name: str) -> bool:
         return True
 
 
-def _governed_executors(xp: Any, table: str = "triton") -> Tuple[str, ...]:
+def _governed_executors(xp: Any, table: str = "triton",
+                        step_tables: Optional[Sequence[str]] = None) -> Tuple[str, ...]:
     """The executors this freeze must drive to ONE policy, from facts it established.
 
     NOT RE-DERIVED, and that is the whole of this function. By the time the gate
-    runs, rung 3 has required ``xp.__name__ == "cupy"`` and rung 4 has IMPORTED
-    Triton and matched its version against the recorded validated list — so both
-    device executors are present and about to run, and a second opinion that
-    disagrees with those two rungs is wrong by construction.
+    runs, rung 3 has required ``xp.__name__ == "cupy"``, rung 4 has IMPORTED and
+    probed Triton, and the merge has said which table's plan holds each slot that
+    will dispatch (``step_tables``) — so which device executors are about to run is
+    known, and a second opinion that disagrees with those rungs is wrong by
+    construction.
 
-    ON THE METAL TABLE THERE IS NOTHING LEFT TO DERIVE, so nothing is: the row in
+    Triton is governed when a Triton plan is in the step, and only then.
+    It used to be governed on the hand-CUDA table whenever it was importable,
+    because both tables' plans CAN share a step; but an executor that runs nothing in
+    THIS step is protected by nothing, and a strict install on it could only fail: a
+    Triton refused at rung 4, or dropped by its health probe, with its backend class
+    out of reach, refused a hand-CUDA plan that launches no Triton kernel, whole, to
+    the array path. ``step_tables`` None (a caller that does not say) keeps the older
+    reading for the Triton table, where Triton is the table.
+
+    On the Metal table there is nothing left to derive, so nothing is: the row in
     :data:`TABLE_GOVERNED_EXECUTORS` is returned whole. Rung 4M has already required
     torch, an MPS build, an available MPS device and ``compile_shader`` — that IS
     the presence of the ``mps`` executor, established by refusals rather than by a
@@ -4983,7 +5422,7 @@ def _governed_executors(xp: Any, table: str = "triton") -> Tuple[str, ...]:
     would be governed, and a refusal to attain a policy on it would refuse a plan
     that has no CuPy in it.
 
-    THE PREVIOUS REVISION ASKED ``importlib.util.find_spec`` AND FAILED OPEN.
+    The previous revision asked ``importlib.util.find_spec`` and failed open.
     ``find_spec`` raises ``ValueError`` on a module whose ``__spec__`` is ``None``,
     that raise was read as "absent", and an executor dropped from ``governed`` can
     never trip the ``ungoverned`` refusal below — because that list is built OVER
@@ -4995,13 +5434,13 @@ def _governed_executors(xp: Any, table: str = "triton") -> Tuple[str, ...]:
     is the exact split the gate exists to prevent. The same hole swallowed the
     CuPy leg for a backend object accepted at rung 3.
 
-    THE DEFAULT IS THEREFORE TO GOVERN. An executor that turns out to run nothing
+    The default is therefore to govern. An executor that turns out to run nothing
     costs one install leg reporting "nothing to govern" (both installers answer
     that case themselves, attained and not installed); an executor wrongly left
     OUT costs the split, silently, on every step of the run.
     """
     declared = TABLE_GOVERNED_EXECUTORS.get(table, GOVERNED_EXECUTORS)
-    if table != "triton":
+    if table not in ("triton", CUDA_TABLE):
         return tuple(declared)
     governed: List[str] = ["host"]
     # The backend object rung 3 accepted IS the CuPy this run computes with — the
@@ -5009,16 +5448,21 @@ def _governed_executors(xp: Any, table: str = "triton") -> Tuple[str, ...]:
     # second one, so presence and identity are one fact here.
     if getattr(xp, "__name__", "") == "cupy" or _importable("cupy"):
         governed.append("cupy")
-    # Rung 4's ``import triton`` put it here. ``sys.modules`` is the fact; the
-    # spec lookup is only the fallback for an executor no rung reached.
-    if sys.modules.get("triton") is not None or _importable("triton"):
+    if step_tables is not None:
+        if "triton" in step_tables:
+            governed.append("triton")
+    elif table == "triton" and (sys.modules.get("triton") is not None
+                                or _importable("triton")):
+        # Rung 4's ``import triton`` put it here. ``sys.modules`` is the fact; the
+        # spec lookup is only the fallback for an executor no rung reached.
         governed.append("triton")
     return tuple(name for name in declared if name in governed)
 
 
 def _subnormal_gate(record: Dict[str, Any], xp: Any,
                     table: str = "triton", *, arms: Sequence[str] = (),
-                    capability: Any = None) -> Optional[str]:
+                    capability: Any = None,
+                    step_tables: Optional[Sequence[str]] = None) -> Optional[str]:
     """Put every executor this table drives on ONE policy before anything compiles.
 
     THE RULE: dispatch never runs two executors under disagreeing float32
@@ -5038,7 +5482,7 @@ def _subnormal_gate(record: Dict[str, Any], xp: Any,
     carrying ``.ftz`` against 0/186 for Triton on the same sub-step) and end to
     end (6 of 7 dispatching cases diverging inside the certified step window).
 
-    THE POLICY IS THE CERTIFICATION'S, NOT THE RUN'S, and that is a deliberate
+    The policy is the certification's, not the run's, and that is a deliberate
     choice against the more obvious one:
 
     * the nine families and the driver-route gate's eight byte-identical cases
@@ -5054,7 +5498,7 @@ def _subnormal_gate(record: Dict[str, Any], xp: Any,
       environment set before an import — only a policy-private ``CUPY_CACHE_DIR``,
       because CuPy's cache key is computed above the seam the strip installs at.
 
-    WHAT IT COSTS, recorded rather than hidden: on a host whose own resolution is
+    What it costs, recorded rather than hidden: on a host whose own resolution is
     ``flush`` this moves the whole run — the array path included — onto IEEE-754.
     That is a real change to the run's arithmetic, it is what makes the dispatched
     bytes attributable to a gate, and ``overrode_run_resolution`` plus the stderr
@@ -5064,7 +5508,7 @@ def _subnormal_gate(record: Dict[str, Any], xp: Any,
     raises: an install that will not come up is a named refusal and the array
     path, like every other rung.
 
-    A REFUSAL PUTS ``CUPY_CACHE_DIR`` BACK, and that undo is owned here because
+    A refusal puts ``CUPY_CACHE_DIR`` back, and that undo is owned here because
     the repoint is done here. Measured: with the install refused, the variable was
     left pointing at a freshly created keep-policy cache directory for the whole
     life of the process — while the strip was NOT installed, so every subsequent
@@ -5078,7 +5522,7 @@ def _subnormal_gate(record: Dict[str, Any], xp: Any,
     from . import subnormal_policy as policy_module  # noqa: PLC0415
 
     refusal = _drive_one_policy(record, xp, policy_module, table, arms=arms,
-                                capability=capability)
+                                capability=capability, step_tables=step_tables)
     gate = record.setdefault("subnormal", {}).setdefault("gate", {})
     if refusal is not None and not policy_module.policy_is_installed():
         # ONLY when nothing was installed. A refusal that comes AFTER a successful
@@ -5090,6 +5534,119 @@ def _subnormal_gate(record: Dict[str, Any], xp: Any,
     return refusal
 
 
+#: How many numbered siblings of the keep-policy CuPy cache directory
+#: :func:`_heal_cupy_cache_dir` tries before a private temporary one.
+CUPY_CACHE_SIBLINGS = 8
+
+
+def _cupy_cache_problem(cache: Mapping[str, Any]) -> Optional[str]:
+    """Why this keep-policy cache directory cannot be used as it stands, or None."""
+    if not cache.get("writable"):
+        return (f"{cache.get('after')!r} could not be created or written: "
+                f"{cache.get('error', 'not writable')}")
+    reasons = (cache.get("provenance") or {}).get("reasons")
+    if reasons:
+        return f"{cache.get('after')!r} is of unknown provenance: " + "; ".join(reasons)
+    return None
+
+
+def _healing_tail(cache: Mapping[str, Any]) -> str:
+    """The healing attempts, appended to a refusal that survived them."""
+    healed = cache.get("healed") or {}
+    tried = healed.get("tried") or []
+    if not tried:
+        return ""
+    return ("; no fresh directory could be made either (" + "; ".join(
+        f"{entry['directory']}: {entry['problem']}" for entry in tried) + ")")
+
+
+def _heal_cupy_cache_dir(policy_module: Any, xp: Any, cache: Dict[str, Any],
+                         problem: str) -> Dict[str, Any]:
+    """A fresh, marked keep-policy CuPy cache directory in place of one that cannot serve.
+
+    The guard is a bit-identity need and stays; only the response changes. CuPy keys
+    its disk cache above the seam the ``-ftz`` strip installs at, so a directory this
+    package did not mint may hold flushed binaries, and one that cannot be written
+    cannot hold the keep policy's. Neither is a reason to refuse the plan when another
+    directory can be made: the failed one is left untouched and unused, and the keep
+    policy gets a directory it can vouch for.
+
+    Tried in order, each through the policy module's own
+    ``point_cupy_cache_at_keep_policy`` so the token rule, the provenance check and the
+    marker are the module's and not re-implemented here: the numbered siblings
+    ``<failed>-2`` .. ``<failed>-<1 + CUPY_CACHE_SIBLINGS>`` (each carries the policy
+    token, and a sibling an earlier process minted and marked is reused, so a host whose
+    first choice is unusable still keeps a cache across runs), then a private
+    temporary directory (``tempfile.mkdtemp``, owner-only, never shared, so a cache
+    planted in a shared temporary directory cannot be adopted). A candidate is taken
+    only when it is writable, of known provenance, and marked.
+
+    Returns the record of the directory chosen, with ``before`` the caller's value,
+    ``healed`` naming the failed directory, the problem, every candidate tried and
+    which one was taken; when none could be made, the record of the last attempt, which
+    the gate refuses with the attempts listed. ``CUPY_CACHE_DIR`` is moved only to the
+    directory chosen and is left as the caller had it otherwise.
+    """
+    import tempfile  # noqa: PLC0415
+
+    before = cache.get("before")
+    failed = str(cache.get("after") or "")
+    healed: Dict[str, Any] = {"from": failed, "problem": problem, "tried": []}
+
+    def _attempt(candidate: str) -> Optional[Dict[str, Any]]:
+        os.environ["CUPY_CACHE_DIR"] = candidate
+        try:
+            attempt = dict(policy_module.point_cupy_cache_at_keep_policy(cupy=xp))
+        except Exception as exc:  # noqa: BLE001 - a candidate that raises is one that failed
+            attempt = {"after": candidate, "writable": False, "error": repr(exc)}
+        why = _cupy_cache_problem(attempt)
+        if why is None and not (attempt.get("provenance") or {}).get("marked"):
+            why = (f"{candidate!r} could not be marked as minted by this policy: "
+                   f"{(attempt.get('provenance') or {}).get('marker_error')}")
+        if why is None and attempt.get("after") == candidate:
+            return attempt
+        healed["tried"].append({"directory": candidate,
+                                "problem": why or "the policy module chose another"})
+        if before is None:
+            os.environ.pop("CUPY_CACHE_DIR", None)
+        else:
+            os.environ["CUPY_CACHE_DIR"] = before
+        return None
+
+    chosen: Optional[Dict[str, Any]] = None
+    base = failed.rstrip(os.sep)
+    for number in range(2, 2 + CUPY_CACHE_SIBLINGS):
+        chosen = _attempt(f"{base}-{number}")
+        if chosen is not None:
+            healed["to"] = chosen["after"]
+            healed["kind"] = "a numbered sibling of the failed directory"
+            break
+    if chosen is None:
+        try:
+            private = tempfile.mkdtemp(
+                prefix="meep_gpu_cupy_cache-",
+                suffix=f"-{policy_module.CUPY_CACHE_POLICY_TOKEN}")
+        except Exception as exc:  # noqa: BLE001 - recorded with the other attempts
+            healed["tried"].append({"directory": "tempfile.mkdtemp()",
+                                    "problem": repr(exc)})
+        else:
+            chosen = _attempt(private)
+            if chosen is not None:
+                healed["to"] = chosen["after"]
+                healed["kind"] = ("a private temporary directory (owner-only; not kept "
+                                  "across runs)")
+    if chosen is None:
+        result = dict(cache)
+        result["healed"] = healed
+        return result
+    chosen["before"] = before
+    chosen["changed"] = (before or "") != chosen["after"]
+    chosen["derived_from"] = ("a fresh directory minted because the keep policy's "
+                              "own could not serve")
+    chosen["healed"] = healed
+    return chosen
+
+
 def _restore_cupy_cache_dir(gate: Dict[str, Any]) -> None:
     """Undo :func:`point_cupy_cache_at_keep_policy` after a refusal that installed nothing."""
     cache = gate.get("cupy_cache_dir")
@@ -5099,7 +5656,7 @@ def _restore_cupy_cache_dir(gate: Dict[str, Any]) -> None:
         # The repoint refused before setting the variable (unwritable, or a
         # directory of unknown provenance). There is nothing to put back, and
         # recording a restore that did not happen is the kind of artifact claim
-        # this round exists to stop.
+        # this code must not make.
         return
     before = cache.get("before")
     if before is None:
@@ -5117,7 +5674,8 @@ def _restore_cupy_cache_dir(gate: Dict[str, Any]) -> None:
 
 def _drive_one_policy(record: Dict[str, Any], xp: Any, policy_module: Any,
                       table: str = "triton", *, arms: Sequence[str] = (),
-                      capability: Any = None) -> Optional[str]:
+                      capability: Any = None,
+                      step_tables: Optional[Sequence[str]] = None) -> Optional[str]:
     """The gate proper. :func:`_subnormal_gate` wraps it to own the cache-dir undo.
 
     ``table`` decides two things and nothing else: WHICH policy is required
@@ -5132,7 +5690,7 @@ def _drive_one_policy(record: Dict[str, Any], xp: Any, policy_module: Any,
     required = TABLE_SUBNORMAL_POLICY.get(table, CERTIFICATION_SUBNORMAL_POLICY)
     declared = TABLE_GOVERNED_EXECUTORS.get(table, GOVERNED_EXECUTORS)
     block = record.setdefault("subnormal", {})
-    governed = _governed_executors(xp, table)
+    governed = _governed_executors(xp, table, step_tables)
     gate: Dict[str, Any] = {
         "rule": "dispatch never runs two executors under disagreeing float32 "
                 "subnormal policies",
@@ -5148,6 +5706,7 @@ def _drive_one_policy(record: Dict[str, Any], xp: Any, policy_module: Any,
         "governed_executors": list(governed),
         "not_installed_in_this_process": [name for name in declared
                                           if name not in governed],
+        "step_tables": None if step_tables is None else sorted(step_tables),
         "variable": SUBNORMAL_INSTALL_SWITCH,
         "install_permitted": subnormal_install_enabled(),
         "installed_by": None,
@@ -5177,7 +5736,7 @@ def _drive_one_policy(record: Dict[str, Any], xp: Any, policy_module: Any,
             if ours else "something other than this freeze, before it planned")
         gate["caller_installed_policy"] = installed
         if installed != required and installed in gate["admitted_policies"]:
-            # A POLICY THE TABLE MAY DISPATCH UNDER, installed by the caller, is kept
+            # A policy the table may dispatch under, installed by the caller, is kept
             # rather than swapped (it cannot be swapped in place, for the reason the
             # refusal below gives), and licenses the plan only on per-arm evidence:
             # every dispatched arm's gate must have RELEASED under it on this GPU
@@ -5189,9 +5748,9 @@ def _drive_one_policy(record: Dict[str, Any], xp: Any, policy_module: Any,
                 "capability": (_normalized_capability(capability)
                                if capability is not None else None),
                 "missing": missing}
-            if missing or not arms:
-                shown = "; ".join(missing[:3]) or "the plan names no arm to ask"
-                more = f" (and {len(missing) - 3} more)" if len(missing) > 3 else ""
+            shown = "; ".join(missing[:3]) or "the plan names no arm to ask"
+            more = f" (and {len(missing) - 3} more)" if len(missing) > 3 else ""
+            if (missing or not arms) and hardware_scope() == HARDWARE_CERTIFIED:
                 return (f"this process already installed the {installed!r} float32 "
                         f"subnormal policy. Dispatch installs {required!r}, the policy "
                         f"every dispatchable family was certified under, and admits "
@@ -5200,13 +5759,38 @@ def _drive_one_policy(record: Dict[str, Any], xp: Any, policy_module: Any,
                         f"policy cannot be swapped in place, so dispatch takes the "
                         f"array path. Install {required!r} before the first kernel "
                         f"compiles, in a fresh process, or certify these arms under "
-                        f"{installed!r}")
+                        f"{installed!r}" + CERTIFIED_SCOPE_TAIL)
             required = installed
             gate["required_policy"] = required
-            gate["why_this_policy"] = (
-                f"the caller installed {installed!r} before the freeze; the {table} "
-                f"table admits it, and every dispatched arm's run on this GPU released "
-                f"under it")
+            if missing or not arms:
+                # Admitted uncertified. Under the default scope a policy
+                # the table may dispatch under runs whenever every executor attains it
+                # — the uniformity rule below is the correctness need and stays — and
+                # the missing per-arm evidence makes the run uncertified rather than
+                # slow: ``certified: False``, the arms named, and the NOTE line.
+                gate["policy_evidence"]["certified"] = False
+                gate["why_this_policy"] = (
+                    f"the caller installed {installed!r} before the freeze; the {table} "
+                    f"table admits it, and it runs UNCERTIFIED because not every "
+                    f"dispatched arm has a run on this GPU that released under it: "
+                    f"{shown}{more}")
+                for name in sorted(set(step_tables or (table,))):
+                    _admit_uncertified(
+                        record, name, "float32 subnormal policy", installed,
+                        [TABLE_SUBNORMAL_POLICY.get(name, required)],
+                        because=(f"the caller installed the {installed!r} float32 "
+                                 f"subnormal policy, which the NVIDIA tables may "
+                                 f"dispatch under but which not every dispatched arm "
+                                 f"was certified under on this GPU, and "
+                                 f"{HARDWARE_SWITCH}=certified would refuse it"),
+                        missing_evidence=list(missing[:5]),
+                        missing_evidence_count=len(missing))
+            else:
+                gate["policy_evidence"]["certified"] = True
+                gate["why_this_policy"] = (
+                    f"the caller installed {installed!r} before the freeze; the {table} "
+                    f"table admits it, and every dispatched arm's run on this GPU "
+                    f"released under it")
         elif installed != required:
             return (f"this process already installed the {installed!r} float32 "
                     f"subnormal policy and every dispatchable family was certified "
@@ -5215,6 +5799,34 @@ def _drive_one_policy(record: Dict[str, Any], xp: Any, policy_module: Any,
                     f"CuPy's cache key is computed above the seam the strip installs "
                     f"at — so dispatch takes the array path. Install {required!r} "
                     f"before the first kernel compiles, in a fresh process")
+        if ours:
+            # An executor this freeze governs that an earlier one did not. Since
+            # Triton is governed only where a Triton plan is in the step, a process
+            # whose first freeze composed the hand-CUDA table alone installed the
+            # policy on the host and CuPy only; a later freeze that holds a Triton
+            # plan finds the policy installed and Triton never driven. Dispatch
+            # drives that executor now, with the same strict installer, rather than
+            # refusing the plan below as "never driven": the policy is the one
+            # already in force, so nothing compiled under another one is reachable.
+            # A CALLER's partial install is not completed here — that stays the
+            # split the verify below refuses.
+            late = [name for name in governed
+                    if not policy_module.executor_report(name)]
+            installers = {"triton": lambda: policy_module.install_triton_policy(
+                              installed, strict=True),
+                          "cupy": lambda: policy_module.install_cupy_policy(
+                              installed, None, strict=True)}
+            for name in late:
+                if name not in installers:
+                    continue
+                try:
+                    installers[name]()
+                except Exception as exc:  # noqa: BLE001 - every install failure is a refusal
+                    gate["install_error"] = repr(exc)
+                    return (f"installing the {installed!r} float32 subnormal policy on "
+                            f"{name}, which this freeze governs and an earlier one did "
+                            f"not, did not come up: {exc}")
+                gate.setdefault("late_driven", []).append(name)
     elif not gate["install_permitted"]:
         return (f"{SUBNORMAL_INSTALL_SWITCH}=0 asked dispatch not to install a "
                 f"subnormal policy, and none is installed. As shipped the two "
@@ -5230,23 +5842,31 @@ def _drive_one_policy(record: Dict[str, Any], xp: Any, policy_module: Any,
             # and minting one in a process that has no CuPy would be a side effect
             # with nothing on the other end of it.
             cache = policy_module.point_cupy_cache_at_keep_policy(cupy=xp)
-            gate["cupy_cache_dir"] = cache
-            if not cache.get("writable"):
-                return (f"the {required!r} policy needs a private CUPY_CACHE_DIR "
-                        f"(CuPy's cache key is computed above the strip seam) and "
-                        f"{cache['after']!r} could not be created or written: "
-                        f"{cache.get('error', 'not writable')}")
             # PROVENANCE, because the token in the directory NAME is all that
             # separates this cache from a flush-policy one, and a name is not
             # evidence about the binaries inside it. An unmarked directory that
             # already holds entries is of unknown origin: it may hold CuPy's own
             # '-ftz=true' binaries, which a keep run would then be served without
-            # a single NVRTC call to notice.
+            # a single NVRTC call to notice. The guard stays and the response
+            # changed: such a directory, or one that cannot be
+            # created or written, is left alone and a fresh, marked one is minted
+            # in its place (:func:`_heal_cupy_cache_dir`); the plan is refused only
+            # when no writable directory can be made at all.
+            problem = _cupy_cache_problem(cache)
+            if problem is not None:
+                cache = _heal_cupy_cache_dir(policy_module, xp, cache, problem)
+            gate["cupy_cache_dir"] = cache
+            if not cache.get("writable"):
+                return (f"the {required!r} policy needs a private CUPY_CACHE_DIR "
+                        f"(CuPy's cache key is computed above the strip seam) and "
+                        f"{cache['after']!r} could not be created or written: "
+                        f"{cache.get('error', 'not writable')}"
+                        + _healing_tail(cache))
             provenance = cache.get("provenance") or {}
             if provenance.get("reasons"):
                 return (f"the {required!r} policy's CuPy cache directory "
                         f"{cache['after']!r} is of unknown provenance: "
-                        + "; ".join(provenance["reasons"]))
+                        + "; ".join(provenance["reasons"]) + _healing_tail(cache))
         try:
             # ``cupy`` is deliberately left for the installer to resolve. Handing it
             # ``xp`` was tried and reverted: on a real host ``import cupy`` is the
@@ -5265,7 +5885,7 @@ def _drive_one_policy(record: Dict[str, Any], xp: Any, policy_module: Any,
         gate["installed_by"] = "dispatch, at the configuration freeze"
         _POLICY_INSTALLED_BY_DISPATCH = policy_module.policy_epoch()
 
-    # VERIFY, whoever installed, AND VERIFY THE STATE RATHER THAN THE REPORT.
+    # VERIFY, whoever installed, and verify the state rather than the report.
     # "install_subnormal_policy returned" and "every executor obeys it" are
     # different claims, and only the second one licenses a kernel: an install can
     # report a policy while one leg was skipped or refused, and a caller may have
@@ -5273,7 +5893,7 @@ def _drive_one_policy(record: Dict[str, Any], xp: Any, policy_module: Any,
     # default, which is the split with an extra step). The reads below are the
     # policy module's own state — ``policy_is_installed``, ``get_subnormal_policy``
     # and the per-executor reports — not ``policy_stamp()``'s serialization of it,
-    # because a stamp is an ARTIFACT and this round exists because an artifact
+    # because a stamp is an ARTIFACT and this check exists because an artifact
     # said a policy was covered when no executor had been driven to it.
     executors = {name: policy_module.executor_report(name) for name in governed}
     gate["attained"] = {name: bool(report.get("attained"))
@@ -5306,7 +5926,7 @@ def _drive_one_policy(record: Dict[str, Any], xp: Any, policy_module: Any,
         return (f"the {required!r} float32 subnormal policy was not attained on "
                 f"{', '.join(failed) or 'this process'} — {detail}")
 
-    # THE HOST'S FPU, READ NOW, not taken from the record ``install_host_policy``
+    # The host's FPU, read now, not taken from the record ``install_host_policy``
     # wrote when it ran. Those are different claims the moment anything moves the
     # FPU after the install — ``mp.set_zero_subnormals`` is public MEEP API and a
     # second library setting MXCSR needs no API at all — and the comment above
@@ -5429,7 +6049,7 @@ def live_capabilities(entry: Any) -> Tuple[str, ...]:
 def retired_shape_reasons(entry: Any, run_fields: Sequence[str] = RUN_FIELDS) -> List[str]:
     """Why this entry is not in the per-capability shape. Empty means it is.
 
-    THE SHAPE IS REFUSED BY NAME rather than read both ways. A reader that accepted a
+    The shape is refused by name rather than read both ways. A reader that accepted a
     run field beside the digests would make "which bytes did this run certify" a
     question with two answers, which is the whole defect the container closes.
     """
@@ -5461,9 +6081,9 @@ def capability_report(ledger: Mapping[str, Any],
                       keys: Sequence[str]) -> Dict[str, Any]:
     """Which capabilities every one of ``keys`` has live evidence for, and what blocks.
 
-    THE INTERSECTION IS THE ANSWER, not the union: a table dispatches an arm from any
+    The intersection is the answer, not the union: a table dispatches an arm from any
     of its certified families, so a capability one family never ran on is a capability
-    the table cannot claim. A partial round therefore admits nothing, and the keys that
+    the table cannot claim. A partial certification therefore admits nothing, and the keys that
     hold it back are named rather than left to be worked out from the ledger.
     """
     by_key: Dict[str, Dict[str, Any]] = {}
@@ -5540,7 +6160,7 @@ def bind_capability(entry: Dict[str, Any], *, bound_before: Optional[str],
                     supersede: Sequence[str] = ()) -> Tuple[str, ...]:
     """Write one capability's run record, and refuse to strand the others.
 
-    THE WRITE IS THE PLACE THE STALENESS RULE IS ENFORCED, because it is the only
+    The write is the place the staleness rule is enforced, because it is the only
     moment both the old and the new bound are in hand. A rebind on UNCHANGED bytes
     adds a capability beside the ones already there, which is what makes a second
     architecture additive. A rebind on bytes that MOVED invalidates every other
@@ -5582,18 +6202,18 @@ def validated_compute_capabilities() -> Tuple[str, ...]:
     """The GPU architectures this table's cited gates ALL ran on. DERIVED, never typed.
 
     It used to be one hand-typed key in the ledger, which is the defect this replaces:
-    no tool wrote it, so a certification round on another architecture changed every
+    no tool wrote it, so a certification run on another architecture changed every
     weld's evidence and left the declaration saying what it had always said. Now it is
     the intersection of the capabilities each cited weld has a live run for
     (:func:`capability_report`), so it can only say what some run actually measured, and
-    a round that certifies one more architecture widens it by writing records.
+    a certification run that covers one more architecture widens it by writing records.
 
-    THIS FUNCTION RETURNS A TUPLE AND COLLAPSES THE TWO EMPTIES, because it answers
+    This function returns a tuple and collapses the two empties, because it answers
     "what does the record say" for the dispatch report, where both read as nothing. The
     DECISION does not go through it: rung 4b asks :func:`capability_admission`, whose
     ``admitted`` is ``None`` for a ledger that could not be read (unknown, not refused)
     and ``()`` for a readable one whose cited welds share no live capability, which
-    refuses every device until a round repairs it.
+    refuses every device until a certification run repairs it.
     """
     admitted = capability_admission("triton")["admitted"]
     return () if admitted is None else admitted
@@ -5619,7 +6239,7 @@ def _device_identity(xp: Any) -> Dict[str, Any]:
     """WHICH GPU this run would launch on, read the way the gates read it. Never raises.
 
     Triton owns the PTX/SASS the bit-identity certifications are statements about,
-    and it generates that code FOR AN ARCHITECTURE — which is the same argument
+    and it generates that code for an architecture — which is the same argument
     :data:`validated_triton_versions` rests on, applied to the other half of the
     codegen input. Every gate in ``fingerprints.json`` records
     ``the GPU host, NVIDIA RTX A6000, compute capability 8.6``; before this block the
@@ -5655,7 +6275,7 @@ def _device_identity(xp: Any) -> Dict[str, Any]:
 def _environment_block(grid: Any, table: str = "triton") -> Dict[str, Any]:
     """The toolchain and the device, as READ not assumed.
 
-    ONE ENTRY POINT, TWO TOOLCHAINS. The Triton half is below; the Metal half is
+    One entry point, two toolchains. The Triton half is below; the Metal half is
     ``metal_dispatch.environment_block``, which reads torch and the Metal frontend
     and answers ``torch_certified`` / ``frontend_certified`` THREE-VALUED — a version
     it could not read is recorded as unknown and not refused, which is rung 4b's rule
@@ -5689,7 +6309,7 @@ def _environment_block(grid: Any, table: str = "triton") -> Dict[str, Any]:
     block["device_certified"] = _device_is_validated(
         device, capability_admission("triton")["admitted"])
     block["validated_compute_capabilities"] = list(validated_compute_capabilities())
-    # THE DEVICE QUESTION IS PER TABLE, because the two NVIDIA tables were certified
+    # The device question is per table, because the two NVIDIA tables were certified
     # by different campaigns and neither list is derived from the other: Triton's is
     # the one key its ledger carries, and the hand-CUDA table's is DERIVED from the
     # certification blocks its own welds cite. ``device_certified`` above stays the
@@ -5697,7 +6317,7 @@ def _environment_block(grid: Any, table: str = "triton") -> Dict[str, Any]:
     # is what rung 4b consults.
     from . import fastpath_cuda  # noqa: PLC0415
 
-    # THE THREE-VALUED ANSWER COMES FROM THE REPORT, not from the public tuple: that
+    # The three-valued answer comes from the report, not from the public tuple: that
     # tuple cannot tell an unreadable ledger (unknown) from a readable one whose welds
     # share no live capability (refuse), and rung 4b needs them apart.
     cuda_admitted = capability_admission(CUDA_TABLE)["admitted"]
@@ -5709,27 +6329,36 @@ def _environment_block(grid: Any, table: str = "triton") -> Dict[str, Any]:
         "triton": block["device_certified"],
         CUDA_TABLE: _device_is_validated(device, cuda_admitted),
     }
-    # SUPPORTED IS NOT CERTIFIED, and it is per table for the same reason: each table
-    # states the range it supports (:func:`capability_supported`, THREE-VALUED, None
-    # where no capability was read). ``device_supported`` stays the Triton answer, as
-    # ``device_certified`` does.
+    # Supported is not certified, and it is per table for the same reason; since 1.0.1
+    # it is a SELF-CHECK per table rather than a range, three-valued,
+    # None where the check had nothing to read. The Triton table's is the health
+    # probe's verdict for this Triton on this device (:func:`triton_health`, run at
+    # rung 4 and read here, never re-run); the hand-CUDA table's is whether this CuPy's
+    # NVRTC can target the device (``fastpath_cuda.nvrtc_target``).
+    # ``device_supported`` stays the Triton answer, as ``device_certified`` does.
     capability = device.get("compute_capability")
+    health = _triton_health_known(block.get("triton"), capability)
+    cuda_target = fastpath_cuda.nvrtc_target(xp, capability)
     block["device_supported_by_table"] = {
-        "triton": capability_supported(capability, "triton"),
-        CUDA_TABLE: capability_supported(capability, CUDA_TABLE),
+        "triton": None if health is None else health.get("healthy"),
+        CUDA_TABLE: cuda_target.get("supported"),
     }
     block["device_supported"] = block["device_supported_by_table"]["triton"]
-    block["supported_ranges"] = {
+    block["supported_by"] = {
         "triton": {
-            "triton_versions": _triton_supported_range(),
-            "compute_capabilities": _spelled_range(SUPPORTED_COMPUTE_CAPABILITIES),
+            "triton_versions": _triton_supported_text(),
+            "device": ("the Triton health probe compiled and launched a kernel on this "
+                       "device" if health and health.get("healthy") else
+                       (health or {}).get("because")
+                       or (health or {}).get("not_run_because")
+                       or "the Triton health probe did not run for this Triton and "
+                          "device"),
         },
-        CUDA_TABLE: {
-            "compute_capabilities": _spelled_range(
-                fastpath_cuda.SUPPORTED_COMPUTE_CAPABILITIES),
-            "nvrtc": dict(fastpath_cuda.SUPPORTED_NVRTC_BUILDS),
-        },
+        CUDA_TABLE: cuda_target,
     }
+    # The stack the kernels run beside (rung 4c), read on every NVIDIA record: what
+    # the ``certified`` scope compares by name, and what the default scope records.
+    block["stack"] = nvidia_stack_block(xp, device.get("compute_capability"))
     block["certified_only"] = hardware_scope() == HARDWARE_CERTIFIED
     return block
 
@@ -5743,7 +6372,7 @@ def _device_is_validated(device: Mapping[str, Any],
     CuPy whose runtime API moves) is neither certified nor refused, it is UNKNOWN,
     and the artifact says so rather than picking whichever answer is convenient.
 
-    THE LIST IS A REQUIRED ARGUMENT, with no default: it used to default to the Triton
+    The list is a required argument, with no default: it used to default to the Triton
     table's, which made ``None`` mean two things at once -- "ask the Triton ledger" and
     "the ledger could not be read" -- and those now have opposite consequences. Both
     tables' lists are DERIVED from their cited welds' live
@@ -5871,7 +6500,7 @@ def _composition_block(record: Mapping[str, Any], slots: Tuple[str, ...],
             if arm in record["families"]}),
     }
     if table == METAL_TABLE:
-        # WHICH RESIDENCY MODE THE MIX WAS COMPOSED UNDER, because on this table
+        # Which residency mode the mix was composed under, because on this table
         # that is part of what "mixed" means. The array sub-steps write the HOST
         # arrays and the dispatched ones read device mirrors, so the answer to "is
         # the mix sound" depends on when the two are copied. The Metal ladder
@@ -5911,29 +6540,29 @@ def _base_record() -> Dict[str, Any]:
         "step_path": "array",
         "decision": "refused",
         "refused_because": None,
-        # A DRIVER BUILT WITH prefer_gpu=False never reaches the ladder; its freeze
+        # A driver built with prefer_gpu=False never reaches the ladder; its freeze
         # publishes :func:`reference_record`, which sets this True. Every other
         # record, dispatched or refused, is a GPU driver's (or a direct caller's).
         "reference_driver": False,
-        # WHICH ARRAY MODULE THE ENGINE RUNS ON, read off the grid before any rung
+        # Which array module the engine runs on, read off the grid before any rung
         # answers (:func:`plan_fast_path`), so a record refused at rung 1 or 2 --
         # where the ``environment`` block is deliberately not read -- still says
         # where its array path runs. ``"numpy"`` is the host CPU; ``None`` is a record
         # built with no grid in hand.
         "engine_backend": None,
-        # WHICH KERNEL TABLE, on EVERY record and not only the ones that reached
+        # Which kernel table, on EVERY record and not only the ones that reached
         # one. ``None`` is the honest pre-backend-rung answer and it is a different
         # fact from "triton": a reader comparing two refused records has to be able
         # to tell a run refused before any table was chosen from a run whose chosen
         # table then refused it, and an absent key collapses those two.
         "table": None,
-        # WHICH TABLES WERE EVEN ASKED, and why each answered as it did. Present on
+        # Which tables were even asked, and why each answered as it did. Present on
         # EVERY record for the reason ``table`` is: a reader comparing two refused
         # runs has to be able to tell "refused before any table was consulted" from
         # "both tables were asked and both declined", and an absent key collapses
         # those. Filled at rung 4, one entry per table, each with its own reason.
         "tables": {"not_read": "refused before any table was consulted"},
-        # WHICH TABLE COMPOSED FIRST when more than one was a candidate, and under
+        # Which table composed first when more than one was a candidate, and under
         # what rule. Filled at rung 4d.
         "arbitration": {"not_reached": "refused before the precedence rung"},
         "slots": {},
@@ -5955,7 +6584,7 @@ def _base_record() -> Dict[str, Any]:
             # own contracts. See :func:`_enable_as_set`.
             "effective": _enable_as_set(),
         },
-        # WHETHER THE KERNELS ARE CERTIFIED ON THE IDENTITY THAT SERVED. ``None``
+        # Whether the kernels are certified on the identity that served. ``None``
         # until a plan dispatches, and after it when an identity could not be read;
         # ``False`` only for a run on an identity admitted uncertified, which is then
         # under ``uncertified.served`` (:func:`_certified_verdict`).
@@ -5964,11 +6593,11 @@ def _base_record() -> Dict[str, Any]:
         # (``None`` when unset, which is the ``supported`` scope). ``allowed``: may a
         # SUPPORTED identity that is not certified compose (``supported`` and
         # ``any``; the Metal ladder writes its own answer, the same rule).
-        # ``unsupported_allowed``: may an NVIDIA identity outside the supported range
-        # (``any``); the Metal table runs a GPU that is not Apple's by default and does
-        # not read it. A value rung 3b refuses allows neither. An admitted identity
-        # whose table did not compose after all, refused on another identity or
-        # dropped at rung 4e, moves to ``dropped`` with the reason.
+        # ``unsupported_allowed``: may an NVIDIA identity its table's self-check says
+        # it cannot run on (``any``); the Metal table runs a GPU that is not Apple's by
+        # default and does not read it. A value rung 3b refuses allows neither. An
+        # admitted identity whose table did not compose after all, refused on another
+        # identity or by its health probe, moves to ``dropped`` with the reason.
         "uncertified": {
             "variable": HARDWARE_SWITCH,
             "value": os.environ.get(HARDWARE_SWITCH),
@@ -5977,7 +6606,7 @@ def _base_record() -> Dict[str, Any]:
             "admitted": [],
             "dropped": [],
         },
-        # THE FUSION OPT-IN, on EVERY record and not only the ones that used it.
+        # The fusion opt-in, on EVERY record and not only the ones that used it.
         # A reader comparing two runs has to be able to tell "this run asked for
         # nothing" from "this run asked and was refused", and an absent key
         # collapses those two into one.
@@ -5989,7 +6618,7 @@ def _base_record() -> Dict[str, Any]:
             "variable": FUSE_ARMS_SWITCH,
             "value": os.environ.get(FUSE_ARMS_SWITCH),
             "opted_in": list(requested_fused_arms()),
-            # THE VETO IS A SEPARATE FACT FROM AN EMPTY LIST, and the record has to
+            # The veto is a separate fact from an empty list, and the record has to
             # keep them apart: "this run asked for no extra arm" and "this run
             # refused the released ones" both leave ``opted_in`` empty and mean
             # opposite things about what dispatched.
@@ -6002,6 +6631,15 @@ def _base_record() -> Dict[str, Any]:
             "admitted_by_table": "the run shape was not reached",
             "outside_the_released_envelope": "the run shape was not reached",
             "driven": {},
+        },
+        # The dispatch preference, on EVERY record for the reason ``fusion`` is: a
+        # reader has to tell "the composer was never reached" from "the preference
+        # was consulted and vetoed nothing". Filled at the composer rung by
+        # :func:`_apply_preference`.
+        "preference": {
+            "variable": PREFERENCE_SWITCH,
+            "value": os.environ.get(PREFERENCE_SWITCH),
+            "not_reached": "refused before the composer rung",
         },
         "warm_pass": {
             "variable": WARM_SWITCH,
@@ -6036,8 +6674,13 @@ def _emit(record: Mapping[str, Any]) -> None:
     path = os.environ.get(DISPATCH_LOG, "").strip()
     if path:
         try:
+            # The log leaves the machine with the run: its paths are written under their
+            # labels (``subnormal_policy.recorded_value``); the record in memory keeps them.
+            from .subnormal_policy import recorded_value  # noqa: PLC0415
+
             with open(path, "a", encoding="utf-8") as handle:
-                handle.write(json.dumps(record, default=str) + "\n")
+                handle.write(json.dumps(recorded_value(json.loads(json.dumps(
+                    record, default=str))), default=str) + "\n")
                 handle.flush()
         except Exception:  # noqa: BLE001 - an unwritable log never refuses a step
             pass
@@ -6078,7 +6721,7 @@ def _triton_mark(environment: Mapping[str, Any]) -> str:
 def _announce(record: Mapping[str, Any]) -> None:
     """One line to stderr, so a user who never opens the artifact still knows."""
     if record.get("reference_driver"):
-        # THE REFERENCE CHOSE THE ARRAY PATH and is quiet, unless the environment
+        # The reference chose the array path and is quiet, unless the environment
         # asked for dispatch: that request does not apply here, and a run that set it
         # and got the reference did not choose that, so it is told once per process.
         value = (record.get("enable") or {}).get("value")
@@ -6089,7 +6732,7 @@ def _announce(record: Mapping[str, Any]) -> None:
                     "driver built with prefer_gpu=True, which needs a GPU on the "
                     "host")
             if _enable_value_refusal(value) is not None:
-                # THE ADVICE MUST NOT SEND THE VALUE ALONG: on a GPU driver rung 2
+                # The advice must not send the value along: on a GPU driver rung 2
                 # refuses it by name, and the run would be on the array path again.
                 line += (f"; NOTE {DISPATCH_ENABLE}={value!r} is not an accepted "
                          "value either, and a prefer_gpu=True driver refuses it by "
@@ -6103,9 +6746,9 @@ def _announce(record: Mapping[str, Any]) -> None:
         subnormal = record["subnormal"].get("stamp") or {}
         resolved = subnormal.get("resolved", "unknown")
         requested = subnormal.get("requested", "unknown")
-        # WHETHER A POLICY WAS INSTALLED, not just what it resolved to. The stamp
+        # Whether a policy was installed, not just what it resolved to. The stamp
         # reports 'none_installed' with resolved='keep' when match_meep could not be
-        # MEASURED and fell back — a fallback, not a measurement of MEEP — and a line
+        # measured and fell back — a fallback, not a measurement of MEEP — and a line
         # that prints only the resolution states the fallback as a fact.
         installed = subnormal.get("installed")
         if installed is False or subnormal.get("policy") == "none_installed":
@@ -6124,13 +6767,13 @@ def _announce(record: Mapping[str, Any]) -> None:
             policy += (f" OVERRIDING this run's own "
                        f"{gate.get('run_would_resolve_to')} resolution")
         environment = record["environment"]
-        # THE TOOLCHAIN HALF IS THE TABLE'S OWN. Printing "triton None UNCERTIFIED"
+        # The toolchain half is the table's own. Printing "triton None UNCERTIFIED"
         # beside a dispatched Metal composition would be reporting the absence of a
         # compiler that table never asks for as though it were a caveat about the
         # run — a line a user reads once and misreads. Each table names what it
         # actually compiled with, and the certification mark is that table's answer.
         table = record.get("table") or "triton"
-        # A MERGED STEP SAYS SO ON THE ONE LINE A USER READS. "table triton" beside
+        # A merged step says so on the one line a user reads. "table triton" beside
         # a step whose D seam is a hand-CUDA product would name the composer that
         # did not produce half of it, and the artifact is the only other place that
         # fact lives.
@@ -6146,7 +6789,7 @@ def _announce(record: Mapping[str, Any]) -> None:
                          f"metal frontend {environment.get('metal_frontend')} "
                          f"{_certified_mark(environment.get('frontend_certified'))}")
         elif table == CUDA_TABLE:
-            # THE HAND-CUDA TABLE COMPILES THROUGH NVRTC, not Triton, so naming a
+            # The hand-CUDA table compiles through NVRTC, not Triton, so naming a
             # Triton version beside it would credit a compiler that produced none of
             # the bytes. What it does share with the Triton table is the CuPy the
             # kernels are launched from, which is what the welds record.
@@ -6165,7 +6808,7 @@ def _announce(record: Mapping[str, Any]) -> None:
         device_supported = environment.get("device_supported")
         by_table = environment.get("device_certified_by_table") or {}
         if table != METAL_TABLE and by_table:
-            # THE DEVICE VERDICT OF THE TABLES THAT SERVED, not the Triton answer
+            # The device verdict of the tables that served, not the Triton answer
             # ``device_certified`` keeps: a hand-CUDA step on a device only the
             # hand-CUDA ledger certifies is certified, and the line says so. Where
             # every table that served reads the same, this is the Triton answer.
@@ -6174,7 +6817,7 @@ def _announce(record: Mapping[str, Any]) -> None:
                 (environment.get("device_supported_by_table") or {}).get(name)
                 for name in dispatched_tables)
         device_mark = _certified_mark(device_certified)
-        # SUPPORTED IS NOT CERTIFIED: a table that supports a device it has not
+        # Supported is not certified: a table that supports a device it has not
         # measured (the Metal table, every Apple GPU; an NVIDIA table, its range) says
         # both.
         if device_supported is True and device_certified is not True:
@@ -6186,26 +6829,33 @@ def _announce(record: Mapping[str, Any]) -> None:
                 f"{toolchain}; "
                 f"{device_text} {device_mark}")
         if record.get("certified") is False:
-            # THE UNCERTIFIED RUN'S OWN LINE, after the run's own and once per process.
+            # The uncertified run's own line, after the run's own and once per process.
             _announce_line(line)
             line = _uncertified_note(record)
+        # The preference's own line, when it changed the plan: which fused product gave
+        # way to which singles, and on what evidence -- this architecture's record, or
+        # the portable prior on an architecture with none.
+        preference_note = (record.get("preference") or {}).get("note")
+        if preference_note:
+            _announce_line(line)
+            line = preference_note
     else:
-        # EVERY REFUSAL THE RUN DID NOT CHOOSE IS SAID, once per distinct line per
+        # Every refusal the run did not choose is said, once per distinct line per
         # process (:func:`_announce_line`): a GPU driver asked for kernels, so a
         # freeze that gives it the array path says so and why, and every later
         # driver in the process repeats the same line, so it is printed once. The
         # two refusals a run CHOSE stay quiet — ``MEEP_GPU_DISPATCH=0`` and
         # ``MEEP_GPU_FUSED=0`` — because an opted-out run does not need telling.
         #
-        # NO DRIVER BUILT THROUGH THE PUBLIC API REACHES THIS BRANCH ON A HOST WITH
-        # NO GPU: ``prefer_gpu=True`` raises there at construction, and
+        # No driver built through the public API reaches this branch on a host with
+        # no GPU: ``prefer_gpu=True`` raises there at construction, and
         # ``prefer_gpu=False`` is the reference, which never plans and is answered by
         # the branch at the top. The empty-set refusal ("backend is not CuPy ... no
         # MPS device") is still announced for a direct caller of
         # :func:`plan_fast_path`, and for a GPU driver whose device went away
         # between construction and the freeze.
         #
-        # AN UNRECOGNISED VALUE OF EITHER IS NOT A CHOICE. It reads as "off" only
+        # An unrecognised value of either is not a choice. It reads as "off" only
         # because its rung refused it, and a run whose ``MEEP_GPU_DISPATCH=true`` or
         # ``MEEP_GPU_FUSED=off`` was refused has to be told, or the refusal changes
         # what it measures without saying so. That holds when ``MEEP_GPU_FUSED=0``
@@ -6217,7 +6867,7 @@ def _announce(record: Mapping[str, Any]) -> None:
         chose_the_array_path = kill["vetoes"] or not enable["effective"]
         if chose_the_array_path and enable_refusal is None and kill_refusal is None:
             return
-        # WHERE THE ARRAY PATH RUNS: a NumPy engine is the host CPU. On an Apple
+        # Where the array path runs: a NumPy engine is the host CPU. On an Apple
         # GPU driver that is the whole run, so the line a user reads says so -- at
         # every rung, which is why the engine is read off the record's own
         # ``engine_backend`` and not only off the ``environment`` block, which rungs
@@ -6239,7 +6889,7 @@ def _announce(record: Mapping[str, Any]) -> None:
                     or {}).get("policy_outlived_the_refusal")
         if outlived:
             line += (f"; NOTE the {outlived['policy']!r} float32 subnormal policy "
-                     f"was installed before this refusal and STAYS IN FORCE for "
+                     f"was installed before this refusal and stays in force for "
                      f"this process, the array path included")
     _announce_line(line)
 
@@ -6247,7 +6897,7 @@ def _announce(record: Mapping[str, Any]) -> None:
 def _announce_line(line: str) -> None:
     """Print a line to stderr once per DISTINCT line in this process.
 
-    KEYED ON THE LINE, not on the outcome. Keyed on the outcome ("refused"), a
+    Keyed on the line, not on the outcome. Keyed on the outcome ("refused"), a
     process whose first freeze refused for an unrelated reason — a NumPy grid, an
     uncertified Triton — printed that one and then swallowed EVERY later refusal,
     including the subnormal policy's. Measured: a first freeze printing "backend
@@ -6266,7 +6916,7 @@ def _refuse(record: Dict[str, Any], reason: str) -> None:
     record["decision"] = "refused"
     record["step_path"] = "array"
     record["refused_because"] = reason
-    # A REFUSAL AFTER THE GATE PASSED IS NOT "nothing was installed". Rung 8b sits
+    # A refusal after the gate passed is not "nothing was installed". Rung 8b sits
     # before the warm pass, so a plan whose every slot then fails to compile is
     # refused at rung 9 with the policy already installed and CUPY_CACHE_DIR
     # already moved — the process keeps the certification's policy for its whole
@@ -6274,7 +6924,7 @@ def _refuse(record: Dict[str, Any], reason: str) -> None:
     # is 'flush' that silently moves the entire run onto IEEE-754 while the line a
     # user reads says "step path array". It is recorded and announced instead.
     #
-    # NOT ROLLED BACK, deliberately: the warm pass has by then compiled CuPy
+    # Not rolled back, deliberately: the warm pass has by then compiled CuPy
     # and/or Triton kernels under the installed policy and both executors memoize
     # them in process, so uninstalling the seams would leave keep-compiled binaries
     # live in a process reporting no policy — the split again, from the other side.
@@ -6317,7 +6967,7 @@ def reference_record() -> Mapping[str, Any]:
     record["environment"] = {"not_read": "reference driver"}
     record["tables"] = {"not_read": "reference driver: no table consulted"}
     record["arbitration"] = {"not_reached": "reference driver"}
-    # WHAT THE HOST'S FLOATING-POINT STATE IS, read not assumed: a reference driver
+    # What the host's floating-point state is, read not assumed: a reference driver
     # installs nothing, but a GPU driver's freeze earlier in this process (or MEEP's
     # own initialization) may have left the thread flushing subnormals.
     from .backends import subnormals_flushed  # noqa: PLC0415
@@ -6346,7 +6996,7 @@ def plan_fast_path(fields: Any, pml: Any, grid: Any,
     reference: its freeze never calls this function and publishes
     :func:`reference_record` instead, whatever the environment says.
 
-    ``sources`` IS THE RUN'S SOURCE LIST, and it reaches only the fused-pair predicates,
+    ``sources`` is the run's source list, and it reaches only the fused-pair predicates,
     which are the only ones that ask. They cannot read it off ``Fields`` and refuse
     outright when it is not declared, so leaving it ``None`` is not a neutral default —
     it is the refusal. It was inert while the composer was asked with a literal
@@ -6355,7 +7005,7 @@ def plan_fast_path(fields: Any, pml: Any, grid: Any,
     would silently lose the three released arms to a by-name refusal rather than
     to a measurement.
 
-    ``chunk_layout`` IS THE RUN'S CHUNK DIVISION (``FdtdDriver.chunk_layout``, a
+    ``chunk_layout`` is the run's chunk division (``FdtdDriver.chunk_layout``, a
     :class:`meep_gpu.chunk_map.ChunkLayout`), handed through untouched to every
     table that reads it; this module never imports it. The Metal ladder reads it at
     rung 4bM, and rung 5 hands the same object to both NVIDIA composers
@@ -6376,7 +7026,7 @@ def plan_fast_path(fields: Any, pml: Any, grid: Any,
     2. The enable (:data:`DISPATCH_BY_DEFAULT`, ``True``, when unset; ``0``
        disables; any value outside :data:`DISPATCH_ENABLE_VALUES` is refused by
        name).
-    3. THE BACKEND, AND WITH IT THE KERNEL TABLE. The hardware picks the CANDIDATE
+    3. The backend, and with it the kernel table. The hardware picks the CANDIDATE
        SET (:func:`candidate_tables`) — a CuPy engine gets
        :data:`NVIDIA_TABLE_PRECEDENCE`, a NumPy engine with an MPS device gets
        ``("metal",)``, anything else gets nothing — and :data:`KERNEL_TABLE_SWITCH`
@@ -6388,27 +7038,31 @@ def plan_fast_path(fields: Any, pml: Any, grid: Any,
        From ``FdtdDriver`` a NumPy engine reaches this rung only as an Apple GPU
        driver (``prefer_gpu=True``); on a host with no device the array path is
        all there is and there is nothing to launch on.
-       ON THE METAL TABLE THE LADDER CONTINUES ELSEWHERE — rungs 4M-9M are
+       On the Metal table the ladder continues elsewhere — rungs 4M-9M are
        ``metal_dispatch.decide``, handed :func:`_finish` so every table emits
        through one tail — and rungs 4 to 9 below are the NVIDIA tables', BOTH of
        them: a CuPy engine reaches them with two candidates, not one.
-    4. THE TABLES' OWN CANDIDACY, ASKED AND ANSWERED PER TABLE. Triton: absent, or
-       a version no recorded gate ran on. Hand-CUDA:
+    4. The tables' own candidacy, asked and answered per table. Triton: absent, a
+       version no recorded gate ran on, or a Triton that fails its health probe
+       (:func:`triton_health`: it imports but cannot compile and launch a kernel on
+       this device), which is dropped by name on every scope so the hand-CUDA table
+       composes alone. Hand-CUDA:
        :func:`meep_gpu.fastpath_cuda.cuda_candidate`, which asks the same kind of
-       question of the toolchain its own certifications name. A failure DROPS THAT
-       TABLE BY NAME and the ladder continues; the plan is refused only when the
+       question of the toolchain its own certifications name. A failure drops that
+       table by name and the ladder continues; the plan is refused only when the
        candidate set empties, and that refusal quotes every table's reason so a
        reader never has to guess which half failed. This stopped being a whole-plan
        refusal the moment there were two candidates: an unvalidated Triton
        invalidates the Triton certifications wholesale and says nothing whatever
        about the hand-CUDA table. A Triton version no gate ran on is judged by
-       :func:`_judge_uncertified`: inside :data:`TRITON_SUPPORTED_VERSIONS` it is
-       admitted, recorded ``certified: False``; outside it, it is refused by name
-       unless :data:`HARDWARE_SWITCH` is ``any``; under ``certified`` it is refused
-       either way.
-    4b. AN UNCERTIFIED GPU ARCHITECTURE, also per table. Same argument as 4 on the
-       other half of the codegen input, and the same judgement against the table's
-       supported range (:func:`capability_supported`). The two validated lists come
+       :func:`_judge_uncertified`: :data:`TRITON_MINIMUM_VERSION` or later it is
+       admitted, recorded ``certified: False``; older, it is refused by name unless
+       :data:`HARDWARE_SWITCH` is ``any``; a version with no leading ``major.minor``
+       is admitted unchecked; under ``certified`` each is refused.
+    4b. An uncertified GPU architecture, also per table. Same argument as 4 on the
+       other half of the codegen input, and the same judgement, against the table's
+       own SELF-CHECK rather than a range: the health probe for the Triton table,
+       ``fastpath_cuda.nvrtc_target`` for the hand-CUDA one. The two validated lists come
        from different campaigns and neither implies the other, so a device one table
        was certified on and the other was not is a real state rather than a
        contradiction. An UNREADABLE capability (or an unreadable ledger) is recorded
@@ -6416,24 +7070,26 @@ def plan_fast_path(fields: Any, pml: Any, grid: Any,
        :data:`HARDWARE_SWITCH` is ``certified``, which refuses what it cannot judge.
        Any value of the switch but those in :data:`HARDWARE_VALUES`, and the retired
        :data:`RETIRED_HARDWARE_SWITCH` set to anything, is refused by name at rung 3b.
-    4e. A CERTIFIED TABLE OUTRANKS AN UNCERTIFIED ONE. Where a candidate table is
-       certified for this device and toolchain (:func:`_certified_here`), every
-       candidate admitted at rung 4 or 4b only because it is supported is DROPPED BY
-       NAME, so the default never makes a certified run uncertified: such a host runs
-       the certified table alone. A table whose identity or ledger could not be read
-       is not certified here, so it outranks nothing: beside it a supported table
-       composes, and a run that read ``certified: None`` before can read ``False``.
-       The ``any`` scope keeps both.
-    4d. PRECEDENCE, which is to say WHICH CANDIDATE COMPOSES FIRST and therefore
+    4c. The stack the kernels run beside (:data:`NVIDIA_STACK_AXES`): CuPy, NVRTC,
+       the CUDA runtime and driver, the host's OS and architecture, NumPy, and the MEEP
+       build when MEEP is imported, against the stack the device's OWN compute
+       capability was certified on (:func:`certified_nvidia_stack`), so each capability
+       is judged on the driver and toolchain its own certification ran beside. Under
+       ``certified`` an axis that is not that capability's certified one, or cannot be
+       read, or a capability with no recorded stack, refuses the whole plan by name;
+       under the default an axis read and not certified makes the run uncertified, with
+       the NOTE, and a capability with no recorded stack leaves the stack unjudged.
+       There is no rung 4e: a table certified here no longer drops a supported one,
+       both compose.
+    4d. PRECEDENCE, which is to say which candidate composes first and therefore
        holds every slot both of them admit. :data:`BACKEND_PRECEDENCE` is the
-       ruling — Triton first as the release-gated incumbent, hand-CUDA filling its
+       decision — Triton first as the release-gated incumbent, hand-CUDA filling its
        refusals — and :data:`BACKEND_PREFERENCE_SWITCH` reorders within the
        candidate set. A preference naming a table that is not a candidate here is a
        NAMED refusal, never a silent fallback to the other one, for the same reason
-       rung 3's is; for a table rung 4e dropped, the refusal carries the drop's
-       reason.
-    5. EVERY CANDIDATE COMPOSES, IN EFFECTIVE ORDER, AND THE RESULTS MERGE BY WHOLE
-       UNITS (:func:`meep_gpu.fastpath_cuda.merge_tables`): a secondary table's
+       rung 3's is.
+    5. Every candidate composes, in effective order, and the results merge by whole
+       units (:func:`meep_gpu.fastpath_cuda.merge_tables`): a secondary table's
        fused unit is adopted only if EVERY slot it spans is free in the primary's
        plan, and a refused unit is recorded by name against the label that held it.
        Under each composer, its own fail-closed contract still holds: a raising
@@ -6442,13 +7098,13 @@ def plan_fast_path(fields: Any, pml: Any, grid: Any,
        here as an unfilled slot with a reason, and an unfilled slot is the array
        path.
     6. COMPLETENESS: a slot the composer FILLED that the driver consults cannot
-       RUN refuses the WHOLE plan. ``fill_B``/``fill_D`` USED TO BE THAT SLOT and
+       RUN refuses the WHOLE plan. ``fill_B``/``fill_D`` used to be that slot and
        are not any more — they joined :data:`DRIVER_SLOTS` with the two driver
        consults on 2026-09-02 — so this rung now guards only a slot a future
        composer fills that no consult stands in front of. Running the remainder
        would be a composition no gate ever certified, and this project ranks that
        worse than a slower right answer.
-    6b. THE FOLD, NARROWED to exactly what the consults did not discharge. It used
+    6b. The fold, narrowed to exactly what the consults did not discharge. It used
        to refuse EVERY folded configuration, because rule 6 fires only on slots the
        composer FILLED and a fold whose two fill arms both REFUSE (a complex-storage
        mirror run: the mirror-fill arm does not carry complex64 storage and the
@@ -6457,24 +7113,24 @@ def plan_fast_path(fields: Any, pml: Any, grid: Any,
        four folded kernel slots with the ghost fills on the array path — dispatch
        ENABLED BY a sibling product's refusal, and the exact composition
        ``fields.py`` twice states this function keeps off the kernels.
-       WHAT SURVIVES IS THAT HOLE AND ONLY IT: a folded run must have BOTH fill
+       What survives is that hole and only it: a folded run must have BOTH fill
        slots carrying a kernel, or the whole plan is refused. The fold is still read
        from the GRID rather than sniffed off arm labels, so the refusal does not
        depend on which arms won; what changed is that a fold whose fills ARE covered
        is now a composition the seam can reproduce, because there is a consult in
        front of each of them.
-       THIS IS THE NARROWING THE 2026-08-29 CENSUS LICENSED and the 2026-08-29
+       This is the narrowing the 2026-08-29 CENSUS LICENSED and the 2026-08-29
        measurement declined to take: it found no folded row whose live array-path
        fills a winning fused arm's ``REPLACES`` fails to span, but the rung was
        UNREACHED then (both folded cases died at rule 6 first) so narrowing it would
        have changed no runtime behaviour. The consults change that — rule 6 no
        longer catches the folded cases — so the narrowing now decides something, and
        it decides it in the fail-closed direction.
-    7. THE NULL DROP, the one sanctioned exception to 6: a slot whose selected arm
+    7. The null drop, the one sanctioned exception to 6: a slot whose selected arm
        launches nothing is removed before completeness is judged. Sound because
        both sides of that slot are empty — the null plan's ``run`` does nothing,
        and the array call returns before its first statement.
-    8. NO FUSION EXCEPT BY NAME, COUNTED PER TABLE. Each composer is asked to fuse
+    8. No fusion except by name, counted per table. Each composer is asked to fuse
        only the arms ITS OWN release table names, on the configurations ITS OWN
        envelope and per-arm axes pin, plus whatever :data:`FUSE_ARMS_SWITCH` asks
        for; any other fused arm that appears anyway refuses the whole plan by name,
@@ -6483,7 +7139,7 @@ def plan_fast_path(fields: Any, pml: Any, grid: Any,
        ones (:data:`meep_gpu.fastpath_cuda.CUDA_RELEASED_FUSED_ARMS`); every other
        fused label of either table, and every one of these outside its own axes,
        still refuses.
-    8b. THE SUBNORMAL POLICY (:func:`_subnormal_gate`) — every executor this TABLE
+    8b. The subnormal policy (:func:`_subnormal_gate`) — every executor this TABLE
        drives (:data:`TABLE_GOVERNED_EXECUTORS`: host, CuPy and Triton here; host
        and MPS on the Metal table) driven to that table's one policy
        (:data:`TABLE_SUBNORMAL_POLICY`), or the whole plan refused by name. It sits
@@ -6492,15 +7148,23 @@ def plan_fast_path(fields: Any, pml: Any, grid: Any,
        configuration refused above would have paid that for nothing; it sits here
        and not later because a policy installed after a compile does not reach the
        binary that already exists, and rung 9 compiles. WHICH executors it governs
-       is read from what rungs 3 and 4 established, never re-derived — see
-       :func:`_governed_executors` for the fail-open that cost.
+       is read from what rungs 3 and 4 established and from the merged plan, never
+       re-derived: Triton is governed only when a Triton plan is in the step — see
+       :func:`_governed_executors` for the fail-open the older reading cost and the
+       refusal the newer one removes. A keep-policy CuPy cache directory that cannot
+       be written, or holds entries this package did not mint, is replaced by a fresh
+       marked one (:func:`_heal_cupy_cache_dir`) rather than refusing the plan; and a
+       caller-installed ``flush`` that every executor attains runs under the default
+       scope even where not every arm was certified under it, recorded uncertified
+       with the NOTE, and is refused for want of that evidence only under
+       ``certified``.
     9. The warm pass — Triton compilation made a PLAN-TIME event. A slot whose
        kernel will not compile unfills here, where nothing has been written yet.
 
     Never raises. The whole body is wrapped, and an escape is recorded as
     ``internal error`` and answered with ``None``.
 
-    THE ESCAPE KEEPS THE RECORD THE LADDER HAD BUILT. It used to mint a FRESH
+    The escape keeps the record the ladder had built. It used to mint a FRESH
     ``_base_record()``, whose ``subnormal`` block hardcodes "the configuration was
     refused before any kernel could run" — false for any escape from below rung
     8b, where a policy IS installed and ``CUPY_CACHE_DIR`` HAS moved. That was the
@@ -6521,6 +7185,606 @@ def plan_fast_path(fields: Any, pml: Any, grid: Any,
         return None
 
 
+# ---------------------------------------------------------------------------
+# The dispatch preference: measured cost as a slot arbiter (built in 1.0.1)
+# ---------------------------------------------------------------------------
+
+def _slot_bracket(entry: Any) -> Optional[Any]:
+    """The ``deposit_repair.LeadingRepairPlan`` a slot entry belongs to, or None.
+
+    The bench's own read (``bench_fused_products._bracket_of``), because ``bracketed``
+    in a record key means exactly what the timing row recorded: a slot of the product
+    holds the leading or the trailing half of the deposit-repair bracket. All three
+    installers put the two plans directly in the slots; the bounded walk through
+    ``inner`` keeps a future wrapper from hiding the bracket.
+    """
+    from . import deposit_repair  # noqa: PLC0415 - function-local, like every engine read here
+
+    for _ in range(4):
+        if entry is None:
+            return None
+        if isinstance(entry, deposit_repair.LeadingRepairPlan):
+            return entry
+        if isinstance(entry, deposit_repair.TrailingRepairPlan):
+            return getattr(entry, "_leading", None)
+        entry = getattr(entry, "inner", None)
+    return None
+
+
+def _planned_index_kind(deposit_repair: Any, fields: Any, component: str, target: str,
+                        index: int, idx: Any, plain: bool) -> str:
+    """The index the bracket will take for one ``(component, source)``, before step one.
+
+    Built with the module's own functions, on a throwaway cache: the entry
+    :func:`deposit_repair._prepared_entry` builds on the first save (its cell set and
+    its linear index, range-checked per axis), then the guard every save and repair
+    asks before it gathers through that index (``_flat`` of the field and, on the
+    split-field path, of its ``f_w_`` twin). Nothing is written; the plan's own cache
+    is untouched and builds itself on the first step as it always has.
+    """
+    from . import host_writes  # noqa: PLC0415
+
+    entry = deposit_repair._prepared_entry(  # noqa: SLF001 - the save's own builder
+        deposit_repair._PreparedCells(), fields, component, target, index, idx)  # noqa: SLF001
+    if entry.linear is None:
+        return "3-tuple"
+    field = host_writes.raw(fields, component)
+    if plain:
+        usable = deposit_repair._flat(field, entry.shape) is not None  # noqa: SLF001
+    else:
+        usable = deposit_repair._flat_views(  # noqa: SLF001
+            entry.shape, (field, host_writes.raw(fields, "f_w_" + component))) is not None
+    return "linear" if usable else "3-tuple"
+
+
+def _planned_repair_route(leading: Any, digest: str) -> Dict[str, Any]:
+    """The deposit-repair route a bracket WILL run, in the cutter's spelling, at plan time.
+
+    A timing record names the route its rows ran from their run counters
+    (``cut_timing_record._route_of``): the index, the repairs per bracketed step, whether
+    any source was restricted and whether any fell back. None of those counters exists
+    before the first step, so they are PREDICTED here from the bracket's own sources
+    with ``deposit_repair``'s own functions -- the ones :func:`deposit_repair.save` calls,
+    in the order it calls them -- and the record is compared against the prediction
+    exactly. ``test_dispatch_preference_wiring`` holds the prediction equal to the
+    counters a real save and repair then write. A route this cannot read states nothing,
+    which the consult answers ``no_record``.
+    """
+    from . import deposit_repair  # noqa: PLC0415
+
+    route: Dict[str, Any] = {"deposit_repair_sha256": digest}
+    try:
+        fields = getattr(leading, "_fields")
+        pair = getattr(leading, "pair")
+        path = deposit_repair._selected_path(  # noqa: SLF001 - the save's own selection
+            getattr(leading, "_pml"), getattr(leading, "repair_paths"))
+        plain = path is deposit_repair.PLAIN_PATH
+        kinds = set()
+        repairs = 0
+        restricted_any = fell_back_any = False
+        for index, source in enumerate(getattr(leading, "_sources")):
+            idx = deposit_repair._deposit_index(source)  # noqa: SLF001
+            if idx is None:
+                continue
+            targets, restricted = deposit_repair._source_targets(  # noqa: SLF001
+                source, pair)
+            restricted_any = restricted_any or restricted
+            fell_back_any = fell_back_any or not restricted
+            for component, target, _axis in targets:
+                repairs += 1
+                kinds.add(_planned_index_kind(deposit_repair, fields, component, target,
+                                              index, idx, plain))
+        if not repairs:
+            route.update(index=None, repairs_per_bracketed_step=None, restricted=False,
+                         fell_back=False)
+            return route
+        route.update(index=kinds.pop() if len(kinds) == 1 else "mixed",
+                     repairs_per_bracketed_step=float(repairs),
+                     restricted=restricted_any, fell_back=fell_back_any)
+    except Exception as exc:  # noqa: BLE001 - an unreadable route is not stated
+        route["unreadable"] = repr(exc)
+    return route
+
+
+def _fused_units(step_plan: Any, is_fused: Any) -> Dict[str, List[str]]:
+    """``{fused label: [the slots it holds]}`` on a composed plan, in step order."""
+    plans = getattr(step_plan, "plans", {}) or {}
+    selected = getattr(step_plan, "selected", {}) or {}
+    units: Dict[str, List[str]] = {}
+    for slot in DRIVER_SLOTS:
+        label = selected.get(slot)
+        if slot in plans and label is not None and is_fused(label):
+            units.setdefault(str(label), []).append(slot)
+    for slot in sorted(set(plans) - set(DRIVER_SLOTS)):
+        label = selected.get(slot)
+        if label is not None and is_fused(label):
+            units.setdefault(str(label), []).append(slot)
+    return units
+
+
+def _record_root() -> str:
+    return TIMING_RECORD_ROOT or os.path.dirname(os.path.abspath(__file__))
+
+
+def _confirm_veto(item: Dict[str, Any], held: List[Optional[str]], is_fused: Any,
+                  reconsult: Any) -> Optional[str]:
+    """Why a candidate veto does NOT stand on the second composition, or None if it does.
+
+    The veto is a statement about SINGLES: every slot the product held must now be held
+    by a certified single (never the array path, never another fused product), and on a
+    record the singles must be the very ones the record priced, which the consult
+    checks against ``displaces``.
+    """
+    if any(label is None for label in held):
+        return ("withholding it left a slot on the array path: "
+                + ", ".join(slot for slot, label in zip(item["slots"], held)
+                            if label is None))
+    fused = sorted({label for label in held if is_fused(label)})
+    if fused:
+        return f"withholding it let another fused product take the slots: {', '.join(fused)}"
+    if reconsult is None:
+        return None
+    verdict = reconsult(held)
+    item["verdict"] = verdict.as_dict()
+    if not verdict.vetoed:
+        return f"the record does not price these singles: {verdict.reason}"
+    return None
+
+
+def _apply_preference(record: Dict[str, Any], *, mode: str, step_plan: Any,
+                      admitted_by_table: Mapping[str, Tuple[str, ...]],
+                      compose: Any, table_of: Any, is_fused: Any,
+                      architecture: Optional[str], opted_in: Sequence[str],
+                      scratch: Any = None) -> Tuple[Any, Dict[str, Tuple[str, ...]], Any]:
+    """Arbitrate the shape rule's fused candidates by measured cost. Never raises.
+
+    ``step_plan`` is the shape rule's composition and ``scratch`` whatever the caller
+    adopts with it; ``compose(admitted_by_table)`` composes again and returns the same
+    pair. Returns the composition to use, the offer it was composed from, and its
+    scratch. Writes ``record["preference"]``.
+
+    The order, and why it costs nothing on most runs:
+
+    1. every fused product the shape rule installed is asked, once, by its OWN table
+       and THIS card and architecture: the table's record for this card
+       (``environment.device.name``) when one is shipped, else the architecture's
+       representative (:func:`dispatch_preference.consult`; ``preference.records``
+       names which, its ``role``, ``record_card`` and ``live_card``), else the portable
+       prior of the vendor's nearest timed architecture
+       (:func:`dispatch_preference.consult_prior`); and the prior too where the record
+       is silent on the product (:data:`PRIOR_FILLS_RECORD_SILENCE`). A card's own
+       record that refuses or answers a barrier is not replaced by the
+       representative. A record that
+       carries a cost model (``/3``) is asked first at the run's own size
+       (:func:`dispatch_preference.consult_cost`), and its bands only where it has no
+       price there. What would take its slots is not yet known, so a record's answer
+       here is a CANDIDATE (``displaces`` unchecked).
+       No candidate, no second composition: the shape rule's plan is returned as is.
+    2. the candidates are WITHHELD from their table's offer -- the composers' own
+       ``fuse_labels`` path, so the seam keeps the single arms it selected, the path an
+       un-admitted product has always taken -- and the step composes again.
+    3. each veto is CONFIRMED against what took the slots (:func:`_confirm_veto`); a
+       record is asked again with the real ``displaces``. Where withholding a product
+       handed its slots to another FUSED product, that product is asked the same
+       question by its own table at this size; if every such product is vetoed too,
+       they are withheld together in one composition more, which stands only if every
+       slot each of them held ends on certified singles its own rule priced (``taker_of``
+       and ``withheld_with`` name the pairing). The additive model then predicts that
+       composition fastest without pricing one fused product against another. A taker
+       that is kept, opted in or refused leaves the veto dropped. Any veto that fails is
+       dropped and the step composes once more with the vetoes that stood on the first
+       composition; if that does not confirm either, the shape rule's plan stands.
+       Every drop is recorded with its reason. At most three compositions after the
+       shape rule's, and the third only after withholding a taker did not stand.
+
+    A label named by ``MEEP_GPU_FUSE_ARMS`` is never arbitrated: an explicit opt-in is
+    how a gate asks for a composition, and the record must not answer for it.
+    """
+    from . import dispatch_preference as dp  # noqa: PLC0415
+
+    block: Dict[str, Any] = {
+        "variable": PREFERENCE_SWITCH, "value": os.environ.get(PREFERENCE_SWITCH),
+        "mode": mode, "architecture": architecture, "records": {},
+        "rule_by_table": {}, "prior": None, "candidates": [], "withheld_by_table": {},
+        "compositions": 1, "note": None}
+    record["preference"] = block
+    offer = {name: tuple(labels) for name, labels in admitted_by_table.items()}
+    unchanged = (step_plan, offer, scratch)
+    if mode == "span":
+        block["why"] = ("the shape rule: no record was opened and the composition is "
+                        "the one the shape rule makes")
+        return unchanged
+    units = _fused_units(step_plan, is_fused)
+    if not units:
+        block["why"] = "the shape rule installed no fused product"
+        return unchanged
+    run_shape = record.get("run_shape") or {}
+    try:
+        cells = dp.cells_of(run_shape.get("grid_shape"))
+    except dp.ConsultRefused as exc:
+        block["why"] = f"the run shape cannot be priced: {exc}"
+        return unchanged
+    root = _record_root()
+    try:
+        live_route: Optional[str] = dp.repair_route_sha256()
+    except OSError as exc:
+        live_route = None
+        block["live_repair_route_unreadable"] = repr(exc)
+    block["live_repair_route"] = live_route
+    records: Dict[str, Dict[str, Any]] = {}
+    # The live card, as the run's own environment block names the device (both driver
+    # families write ``environment.device.name``). A card with a record of its own reads
+    # it; any other card of the architecture reads the architecture's representative.
+    device = (record.get("environment") or {}).get("device")
+    live_card = device.get("name") if isinstance(device, Mapping) else None
+    try:
+        live_slug: Optional[str] = dp.card_slug(live_card) if live_card else None
+    except dp.RecordRefused:
+        live_slug = None
+
+    def open_table(table: str) -> None:
+        """Read ``table``'s record for this card and architecture once, into the block.
+
+        The card's own record when it is there, else the architecture's representative.
+        Never both: a card's own record that cannot be read, or that answers a barrier,
+        is this card's answer, and the representative (another card's rows) is not
+        asked in its place.
+        """
+        if table in block["records"]:
+            return
+        entry: Dict[str, Any] = {"live_card": live_card}
+        path = None
+        if architecture is None:
+            entry["status"] = "architecture_unread"
+        else:
+            try:
+                path = dp.record_path(table, architecture, root=root)
+                if live_slug is not None:
+                    own = dp.record_path(table, architecture, card=live_slug, root=root)
+                    if os.path.exists(own):
+                        path = own
+            except dp.ConsultRefused as exc:
+                path = None
+                entry["status"] = "architecture_unreadable"
+                entry["why"] = exc.detail
+        if path is not None:
+            entry["path"] = os.path.relpath(path, root)
+            if not os.path.exists(path):
+                entry["status"] = "absent"
+            else:
+                try:
+                    records[table] = dp.load_record(path, expect_table=table)
+                    entry["status"] = "read"
+                    entry["record_sha256"] = records[table].get(dp.DIGEST_FIELD)
+                    devices = dp.record_devices(records[table])
+                    entry["record_card"] = devices[0] if len(devices) == 1 else None
+                    try:
+                        cut_on = (dp.card_slug(entry["record_card"])
+                                  if entry["record_card"] else None)
+                    except dp.RecordRefused:
+                        cut_on = None
+                    entry["role"] = ("own" if live_slug is not None and cut_on == live_slug
+                                     else "representative")
+                    if dp.carries_costs(records[table]):
+                        entry["cost_model"] = records[table]["cost_model"]["rule"]
+                except dp.RecordRefused as exc:
+                    # Loud, and then treated as no record of its own: a fault to
+                    # surface, never a reason to run slower than an unrecorded host.
+                    entry["status"] = "refused"
+                    entry["refused_because"] = str(exc)
+                    _announce_line(f"meep_gpu: NOTE the {table} timing record "
+                                   f"{entry['path']} was refused ({exc}); this run "
+                                   "arbitrates that table by the portable prior")
+        block["records"][table] = entry
+        block["rule_by_table"][table] = "record" if table in records else "portable_prior"
+
+    for table in sorted({str(table_of(label)) for label in units}):
+        open_table(table)
+
+    def the_prior() -> Mapping[str, Any]:
+        """The portable prior, derived once per freeze and only when something asks."""
+        if block["prior"] is None:
+            loaded: List[Tuple[str, Mapping[str, Any]]] = []
+            refused: List[Tuple[str, str]] = []
+            for path in dp.record_files(root):
+                name = os.path.relpath(path, root)
+                try:
+                    loaded.append((name, dp.load_record(path)))
+                except dp.RecordRefused as exc:
+                    refused.append((name, str(exc)))
+            subjects: Dict[str, Dict[str, str]] = {}
+            for name in dp.TABLES:
+                try:
+                    subjects[name] = dp.live_subject_sha256(name)
+                except OSError:
+                    subjects[name] = {}
+            block["prior"] = dp.portable_prior(loaded, repair_route_sha256=live_route,
+                                               subject_sha256_by_table=subjects,
+                                               refused=refused)
+        return block["prior"]
+
+    block["prior_fills_record_silence"] = PRIOR_FILLS_RECORD_SILENCE
+    opted = set(opted_in)
+    candidates: List[Dict[str, Any]] = []
+    block["candidates"] = candidates
+    asks: Dict[str, Any] = {}
+
+    def judge(label: str, slots: Sequence[str], plan: Any) -> Dict[str, Any]:
+        """Ask ``label`` once, by its OWN table and this architecture, on ``plan``."""
+        table = str(table_of(label))
+        open_table(table)
+        leading = next((bracket for bracket in
+                        (_slot_bracket(plan.plans.get(slot)) for slot in slots)
+                        if bracket is not None), None)
+        bracketed = leading is not None
+        item: Dict[str, Any] = {"label": label, "table": table, "slots": list(slots),
+                                "bracketed": bracketed, "cells": cells,
+                                "rule": block["rule_by_table"][table], "applied": False}
+        candidates.append(item)
+        if label in opted:
+            item["why_not_applied"] = (f"named by {FUSE_ARMS_SWITCH}: an explicit "
+                                       "opt-in is not arbitrated")
+            return item
+        try:
+            if item["rule"] == "record":
+                route = (_planned_repair_route(leading, live_route or "")
+                         if bracketed else {"deposit_repair_sha256": live_route})
+                item["live_route"] = route
+
+                def ask(displaces: Optional[Sequence[str]], *, _label: str = label,
+                        _table: str = table, _route: Mapping[str, Any] = route,
+                        _bracketed: bool = bracketed) -> Any:
+                    return dp.consult(records[_table], table=_table,
+                                      capability=architecture, candidate=_label,
+                                      displaces=displaces, run_shape=run_shape,
+                                      bracketed=_bracketed, mode=mode,
+                                      repair_route=_route,
+                                      subject_sha256=dp.live_subject_sha256(_table),
+                                      cells=cells, validated=True)
+                verdict = ask(None)
+                asks[label] = ask
+                if (dp.carries_costs(records[table])
+                        and verdict.reason not in dp.BARRIER_REASONS):
+                    # A record with a cost model prices the product at THIS run's size
+                    # (:func:`dispatch_preference.consult_cost`); where it has no price
+                    # here the band keys above answer, exactly as for a /2 record.
+                    def cost_ask(displaces: Optional[Sequence[str]], *,
+                                 _label: str = label, _table: str = table,
+                                 _route: Mapping[str, Any] = route,
+                                 _bracketed: bool = bracketed) -> Any:
+                        return dp.consult_cost(
+                            records[_table], table=_table, capability=architecture,
+                            candidate=_label, displaces=displaces, run_shape=run_shape,
+                            bracketed=_bracketed, mode=mode, repair_route=_route,
+                            subject_sha256=dp.live_subject_sha256(_table), cells=cells,
+                            validated=True)
+                    priced = cost_ask(None)
+                    if not (priced.outcome == "no_record"
+                            and priced.reason in dp.COST_SILENCE):
+                        item["band_verdict"] = verdict.as_dict()
+                        item["rule"] = "cost_model"
+                        verdict = priced
+                        asks[label] = cost_ask
+                    else:
+                        item["cost_silence"] = priced.reason
+                if (PRIOR_FILLS_RECORD_SILENCE and verdict.outcome == "no_record"
+                        and verdict.reason in RECORD_SILENCE):
+                    # The record is silent on this product, so it is in the position of
+                    # an architecture with no record at all, which must not get a slower
+                    # default for that: the prior answers, and both verdicts are kept.
+                    item["record_verdict"] = verdict.as_dict()
+                    item["rule"] = "portable_prior"
+                    item["record_silence"] = verdict.reason
+                    verdict = dp.consult_prior(the_prior(), table=table,
+                                               architecture=architecture, candidate=label,
+                                               bracketed=bracketed, cells=cells,
+                                               mode=mode)
+                    asks[label] = None
+            else:
+                verdict = dp.consult_prior(the_prior(), table=table,
+                                           architecture=architecture, candidate=label,
+                                           bracketed=bracketed, cells=cells, mode=mode)
+                asks[label] = None
+        except (dp.ConsultRefused, dp.RecordRefused, OSError) as exc:
+            item["why_not_applied"] = f"the consult refused: {exc}"
+            return item
+        item["verdict"] = verdict.as_dict()
+        if not verdict.vetoed:
+            item["why_not_applied"] = verdict.reason
+        return item
+
+    for label, slots in units.items():
+        judge(label, slots, step_plan)
+
+    def stands(item: Mapping[str, Any]) -> bool:
+        return ((item.get("verdict") or {}).get("outcome") == "vetoed"
+                and "why_not_applied" not in item)
+
+    def trial(vetoes: Sequence[Dict[str, Any]]
+              ) -> Tuple[Any, Any, Any, List[Optional[str]]]:
+        """Compose with ``vetoes`` withheld and confirm each against what took its slots.
+
+        Returns the composition, its offer, its scratch, and per veto the reason it
+        does not stand there (None where it does), in order.
+        """
+        withheld = {item["label"] for item in vetoes}
+        trial_offer = {name: tuple(label for label in labels if label not in withheld)
+                       for name, labels in offer.items()}
+        trial_plan, trial_scratch = compose(trial_offer)
+        block["compositions"] += 1
+        plans = getattr(trial_plan, "plans", {}) or {}
+        selected = getattr(trial_plan, "selected", {}) or {}
+        whys = []
+        for item in vetoes:
+            held = [selected.get(slot) if slot in plans else None
+                    for slot in item["slots"]]
+            item["took_the_slots"] = held
+            ask = asks.get(item["label"])
+            whys.append(_confirm_veto(item, held, is_fused,
+                                      None if ask is None else (lambda arms, _ask=ask:
+                                                                _ask(arms))))
+        return trial_plan, trial_offer, trial_scratch, whys
+
+    def apply(vetoes: Sequence[Dict[str, Any]],
+              chosen: Tuple[Any, Any, Any, List[Optional[str]]]
+              ) -> Tuple[Any, Dict[str, Tuple[str, ...]], Any]:
+        trial_plan, trial_offer, trial_scratch, _whys = chosen
+        for item in vetoes:
+            item["applied"] = True
+        block["withheld_by_table"] = {
+            name: sorted(set(labels) - set(trial_offer[name]))
+            for name, labels in offer.items()
+            if set(labels) - set(trial_offer[name])}
+        block["note"] = _preference_note(block, architecture)
+        return trial_plan, trial_offer, trial_scratch
+
+    def fused_takers(item: Mapping[str, Any], trial_plan: Any,
+                     judged_here: Dict[str, Dict[str, Any]]) -> Optional[
+                         List[Dict[str, Any]]]:
+        """The fused products that took ``item``'s slots, judged by their OWN rule here.
+
+        Returned only when there is at least one, none had been judged before, and
+        every one of them is vetoed at this size by its own table's record, cost model
+        or prior: withholding those as well is then the composition the additive
+        model predicts fastest, and it must still hand every slot to certified
+        singles. None otherwise (a taker that is kept, opted in or refused leaves the
+        veto dropped, as before: no record prices one fused product against another).
+        """
+        held = item.get("took_the_slots") or ()
+        if any(label is None for label in held):
+            return None
+        labels = sorted({str(label) for label in held if is_fused(label)})
+        known = {entry["label"] for entry in candidates} - set(judged_here)
+        if not labels or any(label in known for label in labels):
+            return None
+        units_now = _fused_units(trial_plan, is_fused)
+        judged = []
+        for label in labels:
+            if label not in judged_here:
+                judged_here[label] = judge(label, units_now.get(label) or [
+                    slot for slot, taker in zip(item["slots"], held) if taker == label],
+                    trial_plan)
+                judged_here[label]["taker_of"] = []
+            judged_here[label]["taker_of"].append(item["label"])
+            judged.append(judged_here[label])
+        return judged if all(stands(taker) for taker in judged) else None
+
+    vetoes = [item for item in candidates if stands(item)]
+    if not vetoes:
+        return unchanged
+    first = trial(vetoes)
+    if all(why is None for why in first[3]):
+        return apply(vetoes, first)
+    confirmed = [item for item, why in zip(vetoes, first[3]) if why is None]
+    carried: List[Dict[str, Any]] = []
+    takers: List[Dict[str, Any]] = []
+    judged_here: Dict[str, Dict[str, Any]] = {}
+    for item, why in zip(vetoes, first[3]):
+        if why is None:
+            continue
+        judged = fused_takers(item, first[0], judged_here)
+        if judged is None:
+            item["why_not_applied"] = why
+            continue
+        item["withheld_with"] = [taker["label"] for taker in judged]
+        carried.append(item)
+        takers.extend(taker for taker in judged
+                      if taker["label"] not in {kept["label"] for kept in takers})
+    for label, taker in judged_here.items():
+        if label not in {kept["label"] for kept in takers}:
+            taker.setdefault("why_not_applied", "the veto it would have answered did "
+                             "not stand: another product that took the slots is kept")
+    if carried:
+        # Each product this veto handed its slots to is slower than its own singles
+        # here too: withhold them together (one composition more, taken only on this
+        # branch) and keep the plan only if every slot ends on certified singles that
+        # each product's own rule priced. Otherwise the step goes on exactly as
+        # without this composition, with the vetoes that stood on the first.
+        expanded = confirmed + carried + takers
+        widened = trial(expanded)
+        if all(why is None for why in widened[3]):
+            return apply(expanded, widened)
+        failed = {item["label"]: why for item, why in zip(expanded, widened[3])
+                  if why is not None}
+        for item in carried:
+            item["why_not_applied"] = (
+                f"withholding it let another fused product take the slots: "
+                f"{', '.join(item['withheld_with'])}; withholding that as well did not "
+                "stand: " + "; ".join(f"{label}: {why}" for label, why in
+                                      sorted(failed.items())))
+        for taker in takers:
+            taker.setdefault("why_not_applied", failed.get(
+                taker["label"], "withheld only with the veto it answered, which did "
+                "not stand"))
+    if not confirmed:
+        return unchanged
+    second = trial(confirmed)
+    if all(why is None for why in second[3]):
+        return apply(confirmed, second)
+    for item, why in zip(confirmed, second[3]):
+        if why is not None:
+            item["why_not_applied"] = why
+    return unchanged
+
+
+def _preference_note(block: Mapping[str, Any], architecture: Optional[str]) -> str:
+    """The one NOTE line a run whose preference changed its plan prints.
+
+    A record's verdict names the card the record was cut on: this card's own record, or
+    the architecture's representative, cut on another card and no measurement of this
+    one. A prior's verdict names the architecture its ceiling came from and why that one.
+    """
+    parts: List[str] = []
+    records = block.get("records") or {}
+    for item in block.get("candidates") or ():
+        if not item.get("applied"):
+            continue
+        verdict = item.get("verdict") or {}
+        evidence = verdict.get("evidence") or {}
+        singles = "+".join(str(label) for label in item.get("took_the_slots") or ())
+        where = f"{item['label']} on {','.join(item['slots'])} ({item['cells']:,} cells)"
+        read = records.get(item["table"]) or {}
+        card = read.get("record_card") or "an unnamed card"
+        whose = (f"this card's own {item['table']} timing record for {architecture}"
+                 if read.get("role") == "own" else
+                 f"the {item['table']} timing record for {architecture}, cut on {card} "
+                 f"as the architecture's representative,")
+        if item["rule"] == "cost_model":
+            predicted = evidence.get("predicted") or {}
+            low, high = predicted.get("between") or (0, 0)
+            measured = (f"measured at {low:,} cells" if low == high else
+                        f"between its {low:,}- and {high:,}-cell measurements")
+            parts.append(
+                f"{where} gave way to its certified singles {singles}: {whose} "
+                f"predicts it at {predicted.get('ratio', 0.0):.3f}x their speed at this "
+                f"size, {measured} (class {verdict.get('key')})")
+        elif item["rule"] == "record":
+            parts.append(
+                f"{where} gave way to its certified singles {singles}: {whose} measured "
+                f"it at {evidence.get('ratio', 0.0):.3f}x their speed (key "
+                f"{verdict.get('key')})")
+        else:
+            origin = sorted({f"{source['table']} {'/'.join(source['architecture'])}"
+                             for source in evidence.get("derived_from") or ()})
+            why = (f"the {item['table']} timing record for {architecture} does not price "
+                   f"it here ({item['record_silence']})" if item.get("record_silence")
+                   else f"there is no {item['table']} timing record for "
+                        f"{architecture or 'this device'}")
+            source = evidence.get("prior_architecture")
+            basis = evidence.get("basis")
+            nearest = (f"{source}, this device's own architecture"
+                       if source is not None and str(source) == str(architecture) else
+                       f"{source}, the {basis} to {architecture} timed")
+            parts.append(
+                f"{where} gave way to its certified singles {singles} by the portable "
+                f"prior: {why}, and a seam carrying the deposit-repair "
+                f"bracket lost to its singles at every size up to "
+                f"{evidence.get('bracketed_veto_up_to_cells', 0):,} cells on {nearest} "
+                f"({', '.join(origin)})")
+    return ("meep_gpu: NOTE dispatch preference: " + "; ".join(parts)
+            + f"; {PREFERENCE_SWITCH}=span keeps the shape rule")
+
+
 def _decide(record: Dict[str, Any], fields: Any, pml: Any,
             grid: Any, sources: Any = None,
             chunk_layout: Any = None) -> Optional[FastPathPlan]:
@@ -6528,7 +7792,7 @@ def _decide(record: Dict[str, Any], fields: Any, pml: Any,
     # (1) The kill switch. Read before anything else and answered before anything
     # is imported, so bisection works from a cold process.
     #
-    # AN UNRECOGNISED VALUE IS ANSWERED BEFORE ``0``. The non-raising reader reads
+    # An unrecognised value is answered before ``0``. The non-raising reader reads
     # both as "vetoed", so asking it first would report "kill switch
     # MEEP_GPU_FUSED=0" for a run whose value was ``yes`` — the refusal would be
     # right about the path and wrong about why.
@@ -6559,7 +7823,7 @@ def _decide(record: Dict[str, Any], fields: Any, pml: Any,
         _refuse(record, str(exc))
         return None
     if not enabled:
-        # ONE REFUSAL, NAMING THE VARIABLE AND THE VALUE THAT DISABLED IT. With the
+        # One refusal, naming the variable and the value that disabled it. With the
         # default on, ``0`` is the only value that reaches here: unset dispatches and
         # every other value was refused by name above. The value is read rather than
         # assumed so the text stays true if the default is ever turned off again.
@@ -6568,14 +7832,14 @@ def _decide(record: Dict[str, Any], fields: Any, pml: Any,
                         f"{os.environ.get(DISPATCH_ENABLE, '<unset>')}")
         return None
 
-    # (3) THE BACKEND, AND WITH IT THE KERNEL TABLE. Decided without importing cupy;
+    # (3) The backend, and with it the kernel table. Decided without importing cupy;
     # torch is imported only to read the MPS device for a NumPy engine, and from
     # FdtdDriver the only NumPy engine that gets here is an Apple GPU driver's
     # (``prefer_gpu=True``) — a ``prefer_gpu=False`` driver is the NumPy reference and
     # never calls this planner. On a host with neither engine's device the array path
     # is all there is, and there is nothing to launch a kernel on.
     #
-    # THE HARDWARE PICKS THE CANDIDATE SET AND A PREFERENCE SELECTS WITHIN IT
+    # The hardware picks the candidate set and a preference selects within it
     # (:func:`candidate_tables`). Splitting the rung that way is what makes
     # ``MEEP_GPU_KERNEL_TABLE`` naming an absent table a NAMED REFUSAL rather than a
     # silent fallback to whatever this host does have: a run that asked for Metal on
@@ -6600,7 +7864,7 @@ def _decide(record: Dict[str, Any], fields: Any, pml: Any,
     }
     wanted = (preference or "").strip()
     if wanted and wanted not in tables:
-        # THE PREFERENCE IS ANSWERED BEFORE THE EMPTY SET, so a caller who NAMED a
+        # The preference is answered before the empty set, so a caller who NAMED a
         # table is told about the table they named rather than about the hardware in
         # general. Both are refusals and both reach the array path; only one of them
         # tells the caller their request was seen.
@@ -6615,7 +7879,7 @@ def _decide(record: Dict[str, Any], fields: Any, pml: Any,
                         "here, and no MPS device is available on this host "
                         f"(this engine's array module is {backend!r})")
         return None
-    # (3b) THE HARDWARE SCOPE'S VALUE, answered before any table's identity is read
+    # (3b) The hardware scope's value, answered before any table's identity is read
     # and on every table, the Metal one included. An unrecognised value, or the
     # retired name set at all, is refused here whether or not this host's identity
     # is certified: read only where an identity had failed, it would ride unseen on
@@ -6624,7 +7888,7 @@ def _decide(record: Dict[str, Any], fields: Any, pml: Any,
     if scope_refusal is not None:
         _refuse(record, scope_refusal)
         return None
-    # THE PREFERENCE NARROWS THE SET; IT DOES NOT COLLAPSE IT. On a CuPy host the
+    # The preference narrows the set; it does not collapse it. On a CuPy host the
     # hardware admits BOTH NVIDIA tables and rung 4d decides which composes first,
     # so this rung's answer is a LIST. Naming one here narrows that list to the one
     # named, which is the honest reading of "selects within": a run that asked for
@@ -6634,7 +7898,7 @@ def _decide(record: Dict[str, Any], fields: Any, pml: Any,
     record["table"] = table
     record["environment"]["table"] = table
     if table == METAL_TABLE:
-        # THE METAL LADDER IS RUNGS 4M-9M AND IT LIVES IN ITS OWN MODULE, imported
+        # The Metal ladder is rungs 4M-9M and it lives in its own module, imported
         # HERE and never at module level: a NumPy step that opted out must not pay
         # for a table it will not use, and ``test_package_boundary`` measures
         # exactly that. ``_finish`` is handed down rather than imported there so the
@@ -6645,7 +7909,7 @@ def _decide(record: Dict[str, Any], fields: Any, pml: Any,
         def _finish_metal(**kwargs: Any) -> Optional[FastPathPlan]:
             """:func:`_finish` with ``fields`` bound by the caller that has it.
 
-            THE IDENTITY GUARD IS THE CALLER'S HALF TO SUPPLY.
+            The identity guard is the caller's half to supply.
             :meth:`FastPathPlan.dispatch` opens with ``if fields is not
             self.fields: return False``, so a plan built without it answers False at
             every consult — measured: the Metal composition dispatches four slots and
@@ -6653,7 +7917,7 @@ def _decide(record: Dict[str, Any], fields: Any, pml: Any,
             that says "fused". Fail-closed and loud (the launch counters stay at
             zero, which is the vacuity the gates' witnesses catch), but wrong.
 
-            BINDING IT HERE RATHER THAN ASKING THE LADDER FOR IT is the placement
+            Binding it here rather than asking the ladder for it is the placement
             that cannot be forgotten: ``plan_fast_path`` was handed this ``Fields``
             and every ladder it hands off to was handed the same one, so there is
             nothing for a second ladder to get right. ``setdefault`` leaves the
@@ -6666,10 +7930,10 @@ def _decide(record: Dict[str, Any], fields: Any, pml: Any,
         return _decide_metal(record, fields, pml, grid, sources, xp,
                              finish=_finish_metal, chunk_layout=chunk_layout)
 
-    # (4) THE TABLES' OWN CANDIDACY, ASKED PER TABLE AND ANSWERED PER TABLE.
+    # (4) The tables' own candidacy, asked per table and answered per table.
     #
-    # THIS RUNG STOPPED BEING A WHOLE-PLAN REFUSAL WHEN THE SECOND NVIDIA TABLE
-    # LANDED, and the change is the point rather than a loosening. A version no gate
+    # This rung stopped being a whole-plan refusal when the second NVIDIA table
+    # landed, and the change is the point rather than a loosening. A version no gate
     # ran on is not a small difference — Triton owns the code generation the
     # bit-identity certifications are statements about, so an unvalidated compiler
     # invalidates them wholesale — but that is a statement about the TRITON TABLE,
@@ -6704,14 +7968,32 @@ def _decide(record: Dict[str, Any], fields: Any, pml: Any,
                      "triton_supported": supported,
                      "validated_triton_versions": list(validated)})
                 # ADMITTED when supported (or under ``any``), and recorded as read: the
-                # table stays a candidate and ``triton_certified`` stays False.
+                # table stays a candidate and ``triton_certified`` stays False. A
+                # version with no leading major.minor is unchecked, not unsupported
+                # and so admitted as an unread identity is.
                 triton_reason = _judge_uncertified(
                     record, "triton", "Triton", triton_version, validated, supported,
                     head=(f"Triton {triton_version} is not in the recorded "
                           f"validated_triton_versions {list(validated)}"),
                     outside=("the Triton versions the triton table supports "
-                             f"({_triton_supported_range()})"),
-                    scope=f"Triton {_triton_supported_range()}")
+                             f"({_triton_supported_text()})"),
+                    scope=f"Triton {_triton_supported_text()}",
+                    unchecked="its version has no leading major.minor to place")
+            if triton_reason is None:
+                # (4) The health probe, last on this table's candidacy and on every
+                # scope. A Triton that imports but cannot compile and
+                # launch a kernel on this device is dropped by name, so the hand-CUDA
+                # table composes alone rather than every slot Triton would have held
+                # going to the array path at the warm pass. "Could not probe" (no
+                # device read, a stand-in Triton) is unknown and drops nothing.
+                health = triton_health(xp, triton_version)
+                record["environment"]["triton_health"] = health
+                if health.get("healthy") is False:
+                    triton_reason = (
+                        f"Triton {triton_version} imports but cannot compile and launch "
+                        f"a kernel on this device ({health.get('because')}), so the "
+                        "triton table is dropped and the hand-CUDA table composes "
+                        "without it")
     tables_block["triton"] = {"candidate": triton_reason is None,
                               "refused_because": triton_reason}
     if CUDA_TABLE not in candidates:
@@ -6724,6 +8006,9 @@ def _decide(record: Dict[str, Any], fields: Any, pml: Any,
     candidates = [name for name in candidates
                   if tables_block.get(name, {}).get("candidate")]
     if not candidates:
+        # A Triton admitted on its version and then dropped by its health probe has
+        # an admitted entry for an identity that never ran; it moves to ``dropped``.
+        _settle_uncertified(record, candidates, tables_block)
         _refuse(record, "no kernel table is a candidate on this host: "
                         + "; ".join(
                             f"{name}: {tables_block[name]['refused_because']}"
@@ -6736,7 +8021,7 @@ def _decide(record: Dict[str, Any], fields: Any, pml: Any,
     # it was ``STEP_ORDER``, and that read moved into :func:`_finish` with the tail
     # every table shares.
     #
-    # THE PACKAGE IS IMPORTED EVEN WHERE ITS COMPOSER IS NOT CONSULTED, and that is
+    # The package is imported even where its composer is not consulted, and that is
     # deliberate rather than a leak. ``triton_kernels.launch`` imports Triton lazily
     # per builder and the module itself imports cleanly with none installed, which is
     # what makes ``STEP_ORDER`` — the ONE definition of the driver's slot order, the
@@ -6744,14 +8029,14 @@ def _decide(record: Dict[str, Any], fields: Any, pml: Any,
     # What IS conditional is the call to ``plan_step`` below.
     from . import triton_kernels  # noqa: PLC0415
 
-    # UPDATED RATHER THAN REPLACED: rung 3 wrote the candidate set, the switch and
+    # Updated rather than replaced: rung 3 wrote the candidate set, the switch and
     # the chosen table into this block, and those are facts about the decision that
     # a fuller environment read has no business dropping.
     record["environment"].update(_environment_block(grid, table))
     record["run_shape"] = _run_shape(fields, pml, grid)
 
-    # (4b) The DEVICE, ASKED PER TABLE. Both NVIDIA tables generate or assemble code
-    # FOR AN ARCHITECTURE — Triton's PTX and the hand-written kernels' NVRTC compile
+    # (4b) The device, asked per table. Both NVIDIA tables generate or assemble code
+    # for an architecture — Triton's PTX and the hand-written kernels' NVRTC compile
     # alike — so a compute capability no gate ran on invalidates a bit-identity claim
     # the same way an unvalidated Triton does. Judged only when the identity was
     # actually READ: the per-table answer is None on a host whose device will not
@@ -6759,16 +8044,21 @@ def _decide(record: Dict[str, Any], fields: Any, pml: Any,
     # would be asserting one — except under the ``certified`` scope, which runs the
     # kernels only where they are certified and so refuses what it cannot judge.
     #
-    # A READ, UNCERTIFIED CAPABILITY IS JUDGED AGAINST THE TABLE'S SUPPORTED RANGE
-    # (:func:`_judge_uncertified`): admitted when supported, refused by name when not
-    # (unless the scope is ``any``), refused either way under ``certified``.
+    # A read, uncertified capability is judged by the table's own self-check
+    # (:func:`_judge_uncertified`), not by a range: the Triton table's is
+    # the health probe rung 4 ran on this device, the hand-CUDA table's whether this
+    # CuPy's NVRTC can target it (``fastpath_cuda.nvrtc_target``). Admitted when
+    # supported, admitted unchecked when the check had nothing to read, refused by name
+    # when not supported (unless the scope is ``any``), refused either way under
+    # ``certified``. The warm pass below then compiles every slot's own kernel.
     #
-    # A REFUSAL DROPS THAT TABLE, NOT THE PLAN. The two lists come from different
+    # A refusal drops that table, not the plan. The two lists come from different
     # campaigns and neither implies the other, so a device one table was certified on
     # and the other was not is a real state rather than a contradiction; the whole
     # plan is refused only when the drop empties the candidate set.
     certified_by_table = record["environment"].get("device_certified_by_table") or {}
     supported_by_table = record["environment"].get("device_supported_by_table") or {}
+    supported_by = record["environment"].get("supported_by") or {}
     device = record["environment"].get("device") or {}
     capability = device.get("compute_capability")
     for name in list(candidates):
@@ -6793,7 +8083,7 @@ def _decide(record: Dict[str, Any], fields: Any, pml: Any,
                                       "not one")}
             candidates.remove(name)
             continue
-        # NAME WHAT WOULD HAVE TO BE RE-RUN. The table's list is the intersection
+        # Name what would have to be re-run. The table's list is the intersection
         # of its cited welds' live capabilities, so "not certified here" is always
         # some set of welds with no live run on this architecture; a reader who is
         # certifying a new card needs those names, not just the verdict. Admitted or
@@ -6803,15 +8093,17 @@ def _decide(record: Dict[str, Any], fields: Any, pml: Any,
             if _normalized_capability(capability) not in state["live"]]
         welds = {"welds_without_a_live_run_here": blocking[:5],
                  "welds_without_a_live_run_here_count": len(blocking)}
-        spelled_range = _spelled_range(supported_compute_capabilities(name))
+        check = (supported_by.get(name) or {}).get("device") if name == "triton" \
+            else (supported_by.get(name) or {}).get("because")
+        check = check or "the table's self-check did not run"
         reason = _judge_uncertified(
             record, name, _CAPABILITY_WHAT, capability, recorded,
-            supported_by_table.get(name) is True,
+            supported_by_table.get(name),
             head=(f"GPU compute capability {capability} is not in the recorded "
                   f"validated_compute_capabilities {list(recorded)} for the "
                   f"{name} table"),
-            outside=f"the compute capabilities that table supports ({spelled_range})",
-            scope=f"compute capability {spelled_range}",
+            outside=f"what that table can run on: {check}",
+            scope=check, unchecked=check,
             **welds)
         if reason is None:
             # ADMITTED: the table stays a candidate, and its
@@ -6820,40 +8112,38 @@ def _decide(record: Dict[str, Any], fields: Any, pml: Any,
         tables_block[name] = {"candidate": False, "refused_because": reason, **welds}
         candidates.remove(name)
 
-    # (4e) A CERTIFIED TABLE OUTRANKS AN UNCERTIFIED ONE. Where a candidate table is
-    # certified for this device and toolchain, a candidate admitted above only
-    # because it is SUPPORTED is dropped by name: composing it first (Triton holds
-    # every slot both tables admit) would make the default run LESS certified than
-    # the certified table alone, on exactly the hosts that have one. A table whose
-    # identity could not be read was admitted by nothing and is not dropped, as
-    # before; nor is it certified here, so it does not make a supported table drop.
-    # The ``any`` scope composes both.
-    if hardware_scope() != HARDWARE_ANY:
-        environment = record["environment"]
-        certified_here = [name for name in candidates
-                          if _certified_here(environment, name)]
-        admitted_tables = {entry.get("table") for entry in
-                           (record.get("uncertified") or {}).get("admitted") or ()}
-        for name in list(candidates):
-            if not certified_here or name in certified_here \
-                    or name not in admitted_tables:
-                continue
-            entries = [entry for entry in record["uncertified"]["admitted"]
-                       if entry.get("table") == name]
-            identities = "; ".join(f"{entry['what']} {entry['read']}"
-                                   for entry in entries)
-            welds = {key: entry[key] for entry in entries for key in (
-                "welds_without_a_live_run_here", "welds_without_a_live_run_here_count")
-                if key in entry}
-            tables_block[name] = {
-                "candidate": False,
-                "refused_because": (
-                    f"the {name} table is supported but not certified here "
-                    f"({identities}), and the {', '.join(certified_here)} table is "
-                    f"certified for this device and toolchain; set "
-                    f"{HARDWARE_SWITCH}={HARDWARE_ANY} to compose it too"),
-                "dropped_for_a_certified_table": list(certified_here), **welds}
-            candidates.remove(name)
+    # (4c) The stack the kernels run beside, compared by name under ``certified``
+    # axis by axis: the CuPy, its NVRTC, the CUDA runtime and driver, the host's
+    # OS and architecture, NumPy, and the MEEP build when MEEP is imported, against
+    # the certified stack of the device's own compute capability
+    # (:func:`certified_nvidia_stack`). The stack is SHARED by both NVIDIA tables -- the
+    # CuPy array path runs every sub-step no kernel serves, through the same NVRTC --
+    # so a refusal here is the whole plan's. Under the default scope an axis read and
+    # not certified makes the run uncertified, with the NOTE, and refuses nothing; an
+    # axis that could not be read, or a capability with no recorded stack, leaves the
+    # verdict unknown.
+    #
+    # There is no rung 4e any more. It dropped a supported, uncertified
+    # table wherever another candidate was certified here, so a certification RECORD
+    # decided a slower composition: the dropped table's fills of the other's refusals
+    # were lost. Both tables now compose, and the NOTE names the table the run is
+    # uncertified on (:func:`_nvidia_note_reasons`). Under ``certified`` an uncertified
+    # table is refused at rung 4 or 4b, so that scope is unchanged.
+    stack = record["environment"].get("stack") or {}
+    stack_axes = stack.get("axes") or {}
+    off_stack = [axis for axis in stack_axes.values() if axis.get("certified") is not True]
+    # Judged only while a table is still a candidate: a device rung 4 or 4b left no
+    # table for is refused below with every table's own reason, as before.
+    refusal = certified_stack_refusal(stack) if stack and candidates else None
+    if refusal and hardware_scope() == HARDWARE_CERTIFIED:
+        _refuse(record, refusal + CERTIFIED_SCOPE_TAIL)
+        return None
+    for axis in off_stack:
+        if axis.get("certified") is False:
+            for name in candidates:
+                _admit_uncertified(record, name, axis["what"], axis["read"],
+                                   axis["certified_values"],
+                                   because=NVIDIA_STACK_BECAUSE)
     _settle_uncertified(record, candidates, tables_block)
     if not candidates:
         _refuse(record, "no kernel table is a candidate on this host: "
@@ -6863,18 +8153,12 @@ def _decide(record: Dict[str, Any], fields: Any, pml: Any,
         return None
 
     # (4d) PRECEDENCE. Which candidate composes FIRST, and therefore which table
-    # holds every slot both of them admit. The ruling is a constant
+    # holds every slot both of them admit. The decision is a constant
     # (:data:`BACKEND_PRECEDENCE`) and the switch orders within it; a switch naming a
     # table that is not a candidate here is a NAMED refusal rather than a silent
-    # fallback, for the same reason rung 3's is. A switch naming the table rung 4e
-    # dropped is refused with the drop's reason appended: the run asked for a table
-    # that is supported here, and has to be told why it did not get it.
+    # fallback, for the same reason rung 3's is.
     order = backend_precedence(candidates)
     if isinstance(order, str):
-        wanted_backend = (os.environ.get(BACKEND_PREFERENCE_SWITCH) or "").strip()
-        dropped_row = tables_block.get(wanted_backend) or {}
-        if dropped_row.get("dropped_for_a_certified_table"):
-            order += f"; {wanted_backend}: {dropped_row['refused_because']}"
         record["arbitration"] = {
             "precedence": list(BACKEND_PRECEDENCE),
             "preference_switch": BACKEND_PREFERENCE_SWITCH,
@@ -6895,7 +8179,7 @@ def _decide(record: Dict[str, Any], fields: Any, pml: Any,
         "candidates": list(candidates),
         "why": ("Triton is the release-gated incumbent and the hand-CUDA table "
                 "fills its refusals; measured-fastest-per-arm replaces this order "
-                "once an idle-box timing round exists (plan section 5.2)"),
+                "once an idle-box timing run exists"),
         "yield_pending_primary_slots": fastpath_cuda.YIELD_PENDING_PRIMARY_SLOTS,
     }
 
@@ -6904,14 +8188,14 @@ def _decide(record: Dict[str, Any], fields: Any, pml: Any,
     # fuse/fuse_ade are asked for exactly the arms a gate drove through this seam
     # on a configuration like this one, plus whatever the opt-in adds.
     #
-    #   THE FUSION OPT-IN AND THE RELEASE. ``fuse``/``fuse_ade`` were literals
+    #   The fusion opt-in and the release. ``fuse``/``fuse_ade`` were literals
     #   here until 2026-08-29, which made clause (8) below unfalsifiable: no fused
     #   product could reach the seam, so the sentence "no fused arm has been driven
     #   through the driver seam" could never stop being true. They are now read
     #   from the union of :data:`FUSE_ARMS_SWITCH` and the arms the driver-route
     #   gate RELEASED for this configuration.
     #
-    #   THE ENVELOPE GATES THE REQUEST, NOT ONLY THE ANSWER, and the order is
+    #   The envelope gates the request, not only the answer, and the order is
     #   load-bearing. Asking the composer for fusion on a configuration the
     #   release does not cover and refusing the result at clause (8) would turn a
     #   run that dispatches its separate arms TODAY into a whole-plan refusal —
@@ -6921,15 +8205,15 @@ def _decide(record: Dict[str, Any], fields: Any, pml: Any,
     #   byte. Clause (8) stays as the backstop for a fused label that arrives
     #   anyway.
     #
-    #   THE VETO SUBTRACTS, AND IT IS APPLIED TO THE ADMISSION AND NOT TO THE
-    #   RELEASE. ``released_here`` goes on reporting what the release covers for
+    #   The veto subtracts, and it is applied to the admission and not to the
+    #   release. ``released_here`` goes on reporting what the release covers for
     #   this configuration — a fact about the shape, which a switch does not
     #   change — while ``admitted`` empties, so an artifact from a vetoed run says
     #   "the release applied here and this run declined it" rather than "the
     #   release did not apply". :data:`FUSE_ARMS_VETO` is what keeps the
     #   dispatch-without-fusion baseline reachable at all.
     #
-    #   THE ADMISSION IS PER TABLE, because the release is. The two NVIDIA tables
+    #   The admission is per table, because the release is. The two NVIDIA tables
     #   were driven through this seam by two different campaigns on two different
     #   case sets, and a shared admitted set would let one table's measurement admit
     #   the other's product. ``released_here`` and ``admitted`` keep their meaning as
@@ -6954,7 +8238,7 @@ def _decide(record: Dict[str, Any], fields: Any, pml: Any,
     admitted = tuple(sorted(set(admitted_by_table["triton"])
                             | set(admitted_by_table[CUDA_TABLE])))
     released_by_table = {"triton": list(released), CUDA_TABLE: list(cuda_released)}
-    # THE FLAT KEYS REPORT THE PRIMARY TABLE AND THE MAPS REPORT BOTH, which is the
+    # The flat keys report the primary table and the maps report both, which is the
     # only reading that is true on every record. A UNION under ``released_here``
     # would say a Triton-primary run's release covers products its composer cannot
     # install; the primary's own view is what "the release applied here" has always
@@ -6969,8 +8253,8 @@ def _decide(record: Dict[str, Any], fields: Any, pml: Any,
         cuda_envelope_reasons if table == CUDA_TABLE else envelope_reasons)
     record["fusion"]["outside_the_released_envelope_by_table"] = {
         "triton": list(envelope_reasons), CUDA_TABLE: list(cuda_envelope_reasons)}
-    # THE PER-ARM HALF, REPORTED WHENEVER IT REFUSES SOMETHING THE SHARED TABLE
-    # DID NOT. Without it an artifact from, say, a conductive 2-D grid would carry
+    # The per-arm half, reported whenever it refuses something the shared table
+    # did not. Without it an artifact from, say, a conductive 2-D grid would carry
     # an EMPTY ``outside_the_released_envelope`` beside a ``released_here`` missing
     # two arms, and a reader would have no way to tell a narrowed release from a
     # bug. Only the refusing arms appear: a row per admitted arm would be a list of
@@ -6987,7 +8271,7 @@ def _decide(record: Dict[str, Any], fields: Any, pml: Any,
     if cuda_per_arm and not cuda_envelope_reasons:
         record["fusion"].setdefault("outside_this_arms_own_cases_by_table", {})[
             CUDA_TABLE] = cuda_per_arm
-    #   THE OFFER IS PER LABEL, NOT PER RUN, and 2026-09-02 is when that stopped
+    #   The offer is per label, not per run, and 2026-09-02 is when that stopped
     #   being a distinction without a difference. ``fuse`` was the whole of what
     #   this call could say, so the composer installed EVERY product whose
     #   predicate admitted — including labels this ladder cannot run. A fused
@@ -7001,12 +8285,12 @@ def _decide(record: Dict[str, Any], fields: Any, pml: Any,
     #   keeps the plans it had — which is the sentence the paragraph above already
     #   made about the envelope, applied at the granularity the release decides at.
     #
-    #   EVERY CANDIDATE IS COMPOSED, IN EFFECTIVE ORDER. The merge then walks whole
+    #   Every candidate is composed, in effective order. The merge then walks whole
     #   units: see
     #   :func:`meep_gpu.fastpath_cuda.merge_tables` for which units a secondary table
     #   may take and why a pair is never split in either direction.
     #
-    #   BOTH COMPOSERS ARE HANDED THE SAME CHUNK DIVISION, the caller's
+    #   Both composers are handed the same chunk division, the caller's
     #   ``chunk_layout``: every kernel plan binds that division's record, and the
     #   merge joins two tables' units into one step, so both must have read the same
     #   one, and handing it over states which. A composer handed none reads the
@@ -7014,48 +8298,85 @@ def _decide(record: Dict[str, Any], fields: Any, pml: Any,
     #   which is the driver's own division either way; until 2026-10-12 it read the
     #   one-rank division alone, which judged and bound a lifted run's kernels
     #   against a division the run does not have, with no refusal to show it.
-    composed: List[Tuple[str, Any]] = []
-    for name in order:
-        if name == "triton":
-            triton_admitted = admitted_by_table["triton"]
-            composed.append(("triton", triton_kernels.plan_step(
-                fields, pml,
-                fuse=bool(set(triton_admitted) - {FUSED_ADE_STATE_LABEL}),
-                fuse_ade=FUSED_ADE_STATE_LABEL in triton_admitted,
-                fuse_labels=triton_admitted,
-                sources=sources, chunk_layout=chunk_layout)))
-            continue
-        # THE ONE ``cuda_kernels`` IMPORT IN THIS FILE, function-local and BELOW
-        # the backend rung: a NumPy step never reaches this line, which is what
-        # ``test_package_boundary`` measures, and the AST test in
-        # ``test_triton_kernels`` pins that this is the only one and that it sits
-        # after the rung-3 check rather than at module scope.
-        from .cuda_kernels import arms as _cuda_arms  # noqa: PLC0415
+    #
+    #   The dispatch preference arbitrates what the shape rule composed
+    #   (:func:`_apply_preference`, built in 1.0.1). The first composition below is
+    #   the shape rule's, exactly as before; a fused product this card's timing record
+    #   or its architecture's representative (or, with no record of its own, the
+    #   portable prior of the nearest timed architecture) measures
+    #   slower than its certified singles is then withheld from its table's offer and
+    #   the step composes again, keeping the singles. The switch is read BEFORE the
+    #   composer so a value it cannot read refuses by name rather than half-composing.
+    preference, preference_refusal = preference_mode()
+    if preference_refusal is not None:
+        _refuse(record, preference_refusal)
+        return None
 
-        cuda_admitted = admitted_by_table[CUDA_TABLE]
-        composed.append((CUDA_TABLE, _cuda_arms.plan_step(
-            fields, pml, grid,
-            sources=sources,
-            fuse=bool(cuda_admitted),
-            fuse_labels=[_bare(label) for label in cuda_admitted],
-            chunk_layout=chunk_layout)))
-    step_plan = fastpath_cuda.merge_tables(
-        composed,
-        pending_of={"triton": PENDING_DEVICE_GATE_ARMS,
-                    CUDA_TABLE: fastpath_cuda.CUDA_PENDING_DEVICE_GATE_ARMS},
-        record=record)
+    def compose(offer: Mapping[str, Tuple[str, ...]], into: Dict[str, Any]) -> Any:
+        composed: List[Tuple[str, Any]] = []
+        for name in order:
+            if name == "triton":
+                triton_admitted = offer["triton"]
+                composed.append(("triton", triton_kernels.plan_step(
+                    fields, pml,
+                    fuse=bool(set(triton_admitted) - {FUSED_ADE_STATE_LABEL}),
+                    fuse_ade=FUSED_ADE_STATE_LABEL in triton_admitted,
+                    fuse_labels=triton_admitted,
+                    sources=sources, chunk_layout=chunk_layout)))
+                continue
+            # The one ``cuda_kernels`` import in this file, function-local and BELOW
+            # the backend rung: a NumPy step never reaches this line, which is what
+            # ``test_package_boundary`` measures, and the AST test in
+            # ``test_triton_kernels`` pins that this is the only one and that it sits
+            # after the rung-3 check rather than at module scope.
+            from .cuda_kernels import arms as _cuda_arms  # noqa: PLC0415
+
+            cuda_admitted = offer[CUDA_TABLE]
+            composed.append((CUDA_TABLE, _cuda_arms.plan_step(
+                fields, pml, grid,
+                sources=sources,
+                fuse=bool(cuda_admitted),
+                fuse_labels=[_bare(label) for label in cuda_admitted],
+                chunk_layout=chunk_layout)))
+        return fastpath_cuda.merge_tables(
+            composed,
+            pending_of={"triton": PENDING_DEVICE_GATE_ARMS,
+                        CUDA_TABLE: fastpath_cuda.CUDA_PENDING_DEVICE_GATE_ARMS},
+            record=into)
+
+    # A later composition writes into a copy of what the merge writes (its
+    # arbitration and the CUDA row's chunk division), taken before the first, so the
+    # record describes the composition that runs and never a mixture of two.
+    merge_writes = {key: copy.deepcopy(record[key]) for key in ("arbitration", "tables")}
+
+    def compose_again(offer: Mapping[str, Tuple[str, ...]]) -> Tuple[Any, Dict[str, Any]]:
+        into = {key: copy.deepcopy(value) for key, value in merge_writes.items()}
+        return compose(offer, into), into
+
+    step_plan = compose(admitted_by_table, record)
+    step_plan, _offer, adopted = _apply_preference(
+        record, mode=preference, step_plan=step_plan,
+        admitted_by_table=admitted_by_table, compose=compose_again,
+        table_of=lambda label: (CUDA_TABLE if _table_of(label) == CUDA_TABLE
+                                else "triton"),
+        is_fused=arm_is_fused,
+        architecture=(record["environment"].get("device") or {}).get(
+            "compute_capability"),
+        opted_in=opted_in)
+    if adopted is not None:
+        record.update(adopted)
     selected = dict(getattr(step_plan, "selected", {}) or {})
     reasons = dict(getattr(step_plan, "reasons", {}) or {})
     filled = set(getattr(step_plan, "plans", {}) or {})
 
-    # (8) NO FUSION EXCEPT BY NAME. Every fused label refuses the whole plan
+    # (8) No fusion except by name. Every fused label refuses the whole plan
     # unless a gate RELEASED that exact label for this exact configuration, or
     # this process opted into that exact label. The composition is a
     # cross-sub-step substitution the driver's five consults cannot see into, and
     # what licenses one is a gate that drove it through those consults, which is
     # a fact about a gate run and not about the plan in hand.
     #
-    # THE RELEASE IS NARROW ON PURPOSE AND THE REFUSAL SURVIVES IT. Nine arms have
+    # The release is narrow on purpose and the refusal survives it. Nine arms have
     # been driven through the seam (:data:`RELEASED_FUSED_ARMS`), on the
     # configurations :data:`FUSED_RELEASE_ENVELOPE` and
     # :data:`FUSED_RELEASE_ARM_AXES` pin between them. Twenty further fused labels
@@ -7068,7 +8389,7 @@ def _decide(record: Dict[str, Any], fields: Any, pml: Any,
     # is handed the admitted set and does not install them — so this stays the
     # backstop it was written as rather than the thing that stops them.
     #
-    # THE REFUSAL IS PER LABEL, not per opt-in: asking for ``fused pair B`` does
+    # The refusal is per label, not per opt-in: asking for ``fused pair B`` does
     # not admit ``fused pair D`` riding along in the same step, because "the two
     # halves of the step were each measured" is not "the step was measured".
     fused_slots = sorted(slot for slot in filled
@@ -7077,13 +8398,13 @@ def _decide(record: Dict[str, Any], fields: Any, pml: Any,
                       if selected[slot] not in admitted})
     if ungated:
         _record_slots(record, step_plan, (), {}, {})
-        # NAME WHAT IS REFUSED AND WHY IT IS NOT COVERED. Two different things
+        # Name what is refused and why it is not covered. Two different things
         # land here and a reader has to be able to tell them apart: a label no
         # gate has driven at all, and a released label on a configuration its
         # gate did not run. The envelope reasons are what distinguish them, so
         # they are quoted rather than summarised.
         #
-        # AND A THIRD THING LANDS HERE NOW: a label of the OTHER table. Each label
+        # And a third thing lands here now: a label of the OTHER table. Each label
         # is judged against its OWN table's release and cites its own gate, because
         # the two were driven by two campaigns and quoting one beside the other's
         # label would name a gate that never ran that product.
@@ -7105,7 +8426,7 @@ def _decide(record: Dict[str, Any], fields: Any, pml: Any,
                          "configuration that gate drove, and this one is outside "
                          "it: " + "; ".join(reasons_here))
             detail_parts.append((name, part))
-        # THE SINGLE-TABLE SENTENCE IS THE ONE IT ALWAYS WAS, down to the
+        # The single-table sentence is the one it always was, down to the
         # punctuation: the gate's classifier and this file's own tests parse it, and
         # a table name prepended to a refusal that names one table would be a
         # changed refusal reported as a narrowing. The prefix appears only when the
@@ -7115,7 +8436,7 @@ def _decide(record: Dict[str, Any], fields: Any, pml: Any,
                                 for name, part in detail_parts)
         else:
             detail = detail_parts[0][1] if detail_parts else ""
-        # A VETOED RUN IS TOLD IT VETOED, not told to set a switch it has already
+        # A vetoed run is told it vetoed, not told to set a switch it has already
         # set. This branch is defence in depth rather than a path a composer can
         # take today — the veto empties ``admitted``, so ``fuse`` is False and no
         # fused label is selected — and it is worded for the day one arrives anyway.
@@ -7140,7 +8461,7 @@ def _decide(record: Dict[str, Any], fields: Any, pml: Any,
             arm: list(driven_releases[arm])
             for arm in sorted({selected[slot] for slot in fused_slots})
             if arm in driven_releases}
-        # THE STAMP READS BOTH HALVES OF THE RELEASE, since 2026-09-02. It used to
+        # The stamp reads both halves of the release, since 2026-09-02. It used to
         # fire on the shared envelope alone, which was total while the envelope was;
         # once ``dimensions`` and ``folded`` moved to :data:`FUSED_RELEASE_ARM_AXES`
         # an opt-in could drive a released arm on a shape its own cases never ran
@@ -7170,7 +8491,7 @@ def _decide(record: Dict[str, Any], fields: Any, pml: Any,
 
     # (7) The null drop, before completeness is judged.
     #
-    # THE LABEL IS COMPARED BARE, because both NVIDIA composers spell their null
+    # The label is compared bare, because both NVIDIA composers spell their null
     # constitutive arm the same way — measured on ``no_pml_2d``, where each selects
     # ``"no-PML null"`` at ``update_H`` — and the CUDA one arrives here as
     # ``"cuda:no-PML null"``. A namespaced null that reached the dispatch set would
@@ -7185,7 +8506,7 @@ def _decide(record: Dict[str, Any], fields: Any, pml: Any,
     # planned validation into a user-visible numerical claim.  Refuse the WHOLE
     # step: running only siblings is an unmeasured mixed composition.
     #
-    # A FUSED LABEL IS ASKED ABOUT ITS CONSTITUENTS, not just about itself, and the
+    # A fused label is asked about its constituents, not just about itself, and the
     # 2026-09-02 installer wave is what made that necessary. A fused product writes
     # ONE label into BOTH slots it absorbs, so the arms it implements disappear from
     # ``selected`` — and ``complex_conductive_fused_pair`` absorbs two arms that are
@@ -7196,7 +8517,7 @@ def _decide(record: Dict[str, Any], fields: Any, pml: Any,
     # it is refused here by name, because a fused product whose constituent arms
     # this file cannot name is exactly the product no rung below can judge.
     #
-    # BOTH MAPS ARE CONSULTED, ROUTED BY THE LABEL'S OWN TABLE. A merged step can
+    # Both maps are consulted, routed by the label's own table. A merged step can
     # hold a Triton arm and a hand-CUDA product side by side, and each one's absorb
     # declaration and pending reason live with its own table's rows. Routing by the
     # PLAN's table instead would ask the Triton map about a CUDA label, find nothing,
@@ -7232,7 +8553,7 @@ def _decide(record: Dict[str, Any], fields: Any, pml: Any,
 
     # (6) Completeness. A filled slot the seam cannot run refuses everything.
     #
-    # THE FILLS LEFT THIS RUNG ON 2026-09-02. It used to be the rung that blocked
+    # The fills left this rung on 2026-09-02. It used to be the rung that blocked
     # every folded configuration: the driver-route gate drove both folded cases with
     # the fused route opted in, ``fused pair B (folded)`` was selected and admitted
     # at clause (8), and then the mirror-fill arm won ``fill_B``/``fill_D`` and this
@@ -7264,7 +8585,7 @@ def _decide(record: Dict[str, Any], fields: Any, pml: Any,
     # — every folded gate ran the fill KERNELS in the same step — and it is dispatch
     # ENABLED BY a sibling product's refusal, which is the fail-open direction.
     #
-    # WHAT THE CONSULTS DISCHARGED AND WHAT THEY DID NOT. Before them this rung had
+    # What the consults discharged and what they did not. Before them this rung had
     # to refuse every fold, because the seam could not run a fill slot at all. Now it
     # can, so the refusal is narrowed to exactly the census's own wording: a folded
     # run must have BOTH fill slots carrying a kernel. A fold whose fills are covered
@@ -7272,7 +8593,7 @@ def _decide(record: Dict[str, Any], fields: Any, pml: Any,
     # the array path while its curls are on kernels is still the mixed composition
     # nothing measured, and is still refused whole.
     #
-    # WHAT THE NARROWING LICENSED, AND WHAT IT DID NOT. The narrowing let a folded
+    # What the narrowing licensed, and what it did not. The narrowing let a folded
     # configuration REACH the rungs below; the driver-route gate re-run named by
     # ``route_stamps.route_gate("triton")`` is what then released TWO folded labels —
     # ``fused pair B (folded)`` and ``fused pair D (folded)`` — on the axes
@@ -7285,7 +8606,7 @@ def _decide(record: Dict[str, Any], fields: Any, pml: Any,
         record["built_not_dispatched"] = {
             slot: selected.get(slot, "unknown") for slot in sorted(dispatchable)}
         _record_slots(record, step_plan, (), dropped_null, {})
-        # THE WORDING CARRIES THE GATE'S OWN NEEDLES. ``gate_dispatch_fused_route``
+        # The wording carries the gate's own needles. ``gate_dispatch_fused_route``
         # classifies which rung answered by substring ("mirror-folded", "fill
         # sub-steps"), and a classifier that stops recognising the rung it watches
         # reports REFUSAL-CHANGED rather than the narrowing — the same failure the
@@ -7297,7 +8618,7 @@ def _decide(record: Dict[str, Any], fields: Any, pml: Any,
                         "ran")
         return None
 
-    # (8b) THE SUBNORMAL POLICY GATE. Last rung before anything compiles, and that
+    # (8b) The subnormal policy gate. Last rung before anything compiles, and that
     # position is the whole mechanism: a policy installed after a compile is not
     # seen by the binary that already exists, so this must precede the warm pass —
     # and it must FOLLOW every structural refusal, because installing a policy
@@ -7306,22 +8627,28 @@ def _decide(record: Dict[str, Any], fields: Any, pml: Any,
     # for the same reason.
     policy_licence: Optional[Tuple[Any, str, int]] = None
     if dispatchable:
-        # THE ARMS THAT WILL RUN, asked about a policy other than the install default
+        # The arms that will run, asked about a policy other than the install default
         # (:func:`policy_evidence_reasons`); the install default needs no per-arm
         # answer beyond the admission the plan already passed.
         running_arms = sorted({str(selected.get(slot, "unknown"))
                                for slot in dispatchable})
+        # Which tables' plans are in the step, off the merged plan (a single-table
+        # plan names none, and is the primary's): the gate governs Triton only where a
+        # Triton plan is among them.
+        step_backends = dict(getattr(step_plan, "backends", {}) or {})
+        step_tables = sorted({step_backends.get(slot, table) for slot in dispatchable})
         refusal = _subnormal_gate(
             record, xp, table, arms=running_arms,
             capability=(record["environment"].get("device") or {}).get(
-                "compute_capability"))
+                "compute_capability"),
+            step_tables=step_tables)
         if refusal is not None:
             _record_slots(record, step_plan, (), dropped_null, {})
             _refuse(record, refusal)
             return None
         from . import subnormal_policy as _policy  # noqa: PLC0415
 
-        # THE POLICY THE GATE VERIFIED, which is the table's install default unless a
+        # The policy the gate verified, which is the table's install default unless a
         # caller-installed policy was admitted on per-arm evidence. Every consult
         # compares the policy in force against this value.
         policy_licence = (_policy,
@@ -7418,7 +8745,7 @@ def _finish(*, record: Dict[str, Any], step_plan: Any, dispatchable: Set[str],
     ladder calls it by keyword with the nine names below;
     :mod:`meep_gpu.metal_dispatch` names them in its own docstring as the join.
 
-    ``fields`` IS THE IDENTITY GUARD'S OTHER HALF, not decoration.
+    ``fields`` is the identity guard's other half, not decoration.
     :meth:`FastPathPlan.dispatch` opens with ``if fields is not self.fields: return
     False`` — the guard that stops a plan built for one ``Fields`` from serving
     another after a mutation — so a ladder that does not pass it builds a plan whose
@@ -7427,7 +8754,7 @@ def _finish(*, record: Dict[str, Any], step_plan: Any, dispatchable: Set[str],
     zero on slots the record calls dispatched, which is exactly the vacuity the
     gates' launch witnesses exist to catch.
 
-    ``STEP_ORDER`` IS READ FROM ``triton_kernels.launch`` ON BOTH TABLES, and that
+    ``STEP_ORDER`` is read from ``triton_kernels.launch`` on both tables, and that
     is not a leak: ``metal_kernels.launch`` re-imports the same tuple, so there is
     one definition of the driver's slot order and both composers are ordered against
     it. ``triton_kernels.launch`` imports Triton lazily per builder and the module
@@ -7443,7 +8770,7 @@ def _finish(*, record: Dict[str, Any], step_plan: Any, dispatchable: Set[str],
                         "refused, dropped as a no-op, or failed to compile")
         return None
 
-    # A FUSED PAIR DISPATCHES WHOLE OR NOT AT ALL — see :func:`_split_pairs` for the
+    # A fused pair dispatches whole or not at all — see :func:`_split_pairs` for the
     # two ways half a pair goes wrong and why the answer is a refusal rather than a
     # per-slot fallback.
     split = _split_pairs(step_plan.plans, slots, _launch.STEP_ORDER)
@@ -7452,7 +8779,7 @@ def _finish(*, record: Dict[str, Any], step_plan: Any, dispatchable: Set[str],
         _refuse(record, "; ".join(split))
         return None
 
-    # THE ABSENT COMPONENTS' WORDS, which no table's update_E knows about: see
+    # The absent components' words, which no table's update_E knows about: see
     # :class:`AbsentComponentClear`. Built only where a kernel serves update_E, and
     # applied once here before any step, which writes +0 over words that are +0 at
     # every freeze (the set is declared before the first step, and every later
@@ -7471,12 +8798,12 @@ def _finish(*, record: Dict[str, Any], step_plan: Any, dispatchable: Set[str],
         record["absent_components"] = absent_block
 
     arms = {slot: selected.get(slot, "unknown") for slot in slots}
-    # WHICH TABLE EACH SLOT CAME FROM IS READ OFF THE PLAN, not passed in: only the
+    # Which table each slot came from is read off the plan, not passed in: only the
     # composer's own merge knows it, and a ninth keyword would be a second place for
     # the answer to be wrong. A single-table plan declares none, and every reader
     # falls back to ``table`` — which is what every gate, probe and test builds.
     backends = dict(getattr(step_plan, "backends", {}) or {})
-    # THE DEVICE'S OWN ARCHITECTURE, so each family quotes the run that certified it
+    # The device's own architecture, so each family quotes the run that certified it
     # HERE rather than whichever run its ledger entry holds.
     _device_capability = ((record.get("environment") or {}).get("device")
                           or {}).get("compute_capability")
@@ -7487,7 +8814,7 @@ def _finish(*, record: Dict[str, Any], step_plan: Any, dispatchable: Set[str],
     record["families"] = {}
     for arm in sorted(set(arms.values())):
         dispatched = [slot for slot in slots if arms[slot] == arm]
-        # THE ARM'S OWN TABLE, READ OFF THE MERGED PLAN, not the primary one. A bare
+        # The arm's own table, read off the merged plan, not the primary one. A bare
         # label carries no namespace, so under `MEEP_GPU_BACKEND_PREFERENCE=cuda` --
         # where the primary table is CUDA and the plan still holds Triton arms in the
         # slots the CUDA products did not take -- keying the lookup on the PRIMARY
@@ -7546,7 +8873,7 @@ def _record_slots(record: Dict[str, Any], step_plan: Any, slots: Tuple[str, ...]
             "state": "dispatched" if slot in slots else "array",
             "arm": selected.get(slot),
         }
-        # WHICH TABLE FILLED IT, on a merged step only. Absent on a single-table
+        # Which table filled it, on a merged step only. Absent on a single-table
         # plan rather than repeated per slot: a key that says the same thing seven
         # times is one a reader stops reading, and the record already names the
         # table once at the top.
@@ -7568,7 +8895,7 @@ def _record_slots(record: Dict[str, Any], step_plan: Any, slots: Tuple[str, ...]
             entry["reason"] = "; ".join(refusals)
         entries[slot] = entry
     record["slots"] = entries
-    # WHY EACH SEAM DID NOT FUSE, which no slot entry can carry. The composer keys
+    # Why each seam did not fuse, which no slot entry can carry. The composer keys
     # its fusion refusals ``fused_pair_<product>`` — not a ``STEP_ORDER`` slot — so
     # until 2026-09-02 they were composed, reported to nobody, and dropped. That is
     # the one question a reader of a dispatching-but-unfused run has, and it is the

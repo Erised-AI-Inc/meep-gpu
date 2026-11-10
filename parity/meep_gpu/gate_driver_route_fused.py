@@ -1,6 +1,6 @@
-"""THE DRIVER-ROUTE GATE FOR A FUSED PAIR: one launch spanning two of the driver's own consults.
+"""The driver-route gate for a fused pair: one launch spanning two of the driver's own consults.
 
-WHAT CLAUSE (8) SAYS AND WHY THIS FILE EXISTS. ``fastpath._decide`` refuses every
+What clause (8) says and why this file exists. ``fastpath._decide`` refuses every
 cross-sub-step fused product with "a fused cross-sub-step product won {slots}; no
 fused arm has been driven through the driver seam". That sentence was
 unfalsifiable until 2026-08-29: ``_decide`` passed ``fuse=False`` as a LITERAL, so
@@ -16,9 +16,9 @@ THE ARM. ``fused pair B``: the ordinary unfolded PML real-float32 magnetic pair,
 leading one holding the pair (or ``deposit_repair.LeadingRepairPlan``) and the
 absorbed one holding a ``NoopPlan`` (or ``TrailingRepairPlan``).
 
-It is the only fused arm reachable in this phase. The fold rung (6b) fires AFTER
+It was the only fused arm reachable when this gate was written. The fold rung (6b) fires AFTER
 clause (8) and refuses any mirror-folded grid whole, so every folded pair stays
-unreachable until that refusal is narrowed — which is a later phase and is
+unreachable until that refusal is narrowed — which is later work and is
 asserted STANDING here, not worked around.
 
 THE PROTOCOL, per case, in ONE process on ONE device — THREE legs, not two::
@@ -35,7 +35,7 @@ THE PROTOCOL, per case, in ONE process on ONE device — THREE legs, not two::
          then synchronize_magnetic_fields() on each and compare AGAIN, and
          restore_magnetic_fields() and compare a third time.
 
-THE THIRD LEG IS THE POINT, and it is what the 2026-08-15 driver-route gate could
+The third leg is the point, and it is what the 2026-08-15 driver-route gate could
 not have. A/C alone says the fused answer is right. A/B — same dispatcher, same
 device, same policy, fusion the only difference — is what makes the LAUNCH COUNT
 a substitution proof rather than a number: the B pair costs two Triton launches
@@ -43,7 +43,7 @@ per magnetic-half consult unfused and ONE fused, so the drop is exactly one per
 consult, counted twice over (by kernel name from Triton's own entry points, and
 by slot from the dispatcher's own counters).
 
-THE SECOND CONSULT SITE. ``driver.step`` is not the whole seam:
+The second consult site. ``driver.step`` is not the whole seam:
 ``synchronize_magnetic_fields`` consults ``step_B`` and ``update_H`` again, with
 the same three in-seam array passes between them, reading a plan it deliberately
 does not re-build. Any flux or energy monitor reaches it. A gate that drove only
@@ -52,14 +52,14 @@ and because ``restore_magnetic_fields`` puts the pre-sync arrays back exactly, t
 comparison is taken WHILE SYNCHRONIZED, where a difference is still visible, and
 again after the restore.
 
-THE SEAM COMPOSITION NO GATE HAD RUN. The driver runs ``fill_symmetry_bc_B``,
+The seam composition no gate had run. The driver runs ``fill_symmetry_bc_B``,
 ``zero_metal_B`` and ``fill_folded_far_ghosts_B`` UNCONDITIONALLY after the
 leading consult. The fused kernel already performed the metallic wipe, so the
 array pass runs a second time ON TOP of it. That composition is what every
 byte-identical step below actually measures, and the plan's own ``zero_metal``
 binding is recorded per case so a reader can see whether the wipe was live.
 
-WHAT MAKES A PASS NON-VACUOUS. Byte identity is half a verdict; a leg that fell
+What makes a pass non-vacuous. Byte identity is half a verdict; a leg that fell
 back matches trivially. Each of these is a FAILURE, not a caveat:
 
 * the record's slots show ``fused pair B`` at BOTH ``step_B`` and ``update_H``,
@@ -75,7 +75,7 @@ back matches trivially. Each of these is a FAILURE, not a caveat:
   separate kernels appear in B's and not in A's;
 * the launch drop A vs B is exactly one per magnetic-half consult.
 
-THE NULL CONTROL. "The same run with the fused route withheld MUST diverge." The
+The null control. "The same run with the fused route withheld MUST diverge." The
 route is withheld the way the warm pass withholds one: the fused plan's launch
 grid is emptied to ``(0,)`` after the freeze, so the kernel still LAUNCHES — every
 counter still counts it, the record still reads dispatched — and computes
@@ -86,7 +86,7 @@ worthless. It is an assertion, not a diagnostic.
 POLICY. ``fastpath`` rung 8b installs ``CERTIFICATION_SUBNORMAL_POLICY`` ("keep")
 itself and refuses any process that installed anything else, so the dispatch route
 supports exactly one policy and the honest second leg is to MEASURE that: a
-``flush`` run must be REFUSED BY NAME at rung 8b, never silently dispatched. The
+``flush`` run must be refused by name at rung 8b, never silently dispatched. The
 harness installs nothing — which is precisely the missing evidence
 ``fastpath.DISPATCH_BY_DEFAULT`` names.
 
@@ -112,7 +112,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import numpy
 
-# RESOLVED BY NAME, not by parent depth. A ``parents[N]`` in a file that is later
+# Resolved by name, not by parent depth. A ``parents[N]`` in a file that is later
 # moved resolves to a directory that exists and is wrong, which this tree has paid
 # for once already.
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -132,7 +132,7 @@ for path in (REPO_API, HERE):
     if path not in sys.path:
         sys.path.insert(0, path)
 
-# THE COMPARATOR IS THE RELEASED ONE, imported rather than re-derived. Its
+# The comparator is the released one, imported rather than re-derived. Its
 # collector enumerates the ``Fields`` dataclass instead of a hand-written array
 # list, its word view is the uint32 spelling every byte claim in this tree is made
 # in, and its negative control is already proven to fire. A second copy here would
@@ -168,7 +168,7 @@ ABSORBED_SLOT = "update_H"
 #: fallback. Both labels ride the same weld (``triton_fused_electric_device_gate``,
 #: kernels ``fused_curl_constitutive_B``/``_D``).
 #:
-#: WHICH PAIRS ACTUALLY COMPOSED IS MEASURED PER CASE, never assumed, and every
+#: Which pairs actually composed is measured per case, never assumed, and every
 #: count below is derived from that measurement.
 OPT_IN = ("fused pair B", "fused pair D")
 
@@ -201,7 +201,7 @@ def say(message: str) -> None:
 
 # ---------------------------------------------------------------------------
 # The cases. Every one is chosen to reach ``fused pair B`` — or, for the fold, to
-# be refused by a rung this phase does not touch.
+# be refused by a rung this gate does not touch.
 # ---------------------------------------------------------------------------
 
 def _gaussian(mp, fcen, df):
@@ -225,7 +225,7 @@ def case_pml_2d(mp, res=20):
 
 
 def case_pml_2d_magnetic_source(mp, res=20):
-    """THE SOURCE SEAM: an Hz source lands INSIDE the B pair's seam.
+    """The source seam: an Hz source lands INSIDE the B pair's seam.
 
     ``coverage.CARRIES_DEPOSIT_REPAIR`` is True for this product, so the pair is
     bracketed by ``LeadingRepairPlan``/``TrailingRepairPlan`` rather than by a
@@ -258,7 +258,7 @@ def case_folded_2d(mp, res=20):
 
     ``mp.Mirror`` on Y. Rung (6b) fires after clause (8), so opting into the arm
     does not reach it: the ladder must still refuse the whole plan and name the
-    fold. Narrowing that refusal is a later phase; this case is what makes "the
+    fold. Narrowing that refusal is later work; this case is what makes "the
     fold refusal still stands" a measurement rather than an assumption.
     """
     cell = mp.Vector3(8, 6, 0)
@@ -390,7 +390,7 @@ def _plan_summary(report: Optional[Dict[str, Any]]) -> Dict[str, Any]:
 
 
 def freeze(leg: Dict[str, Any]) -> Dict[str, Any]:
-    """Provoke the freeze THROUGH THE DRIVER, by taking one real step.
+    """Provoke the freeze through the driver, by taking one real step.
 
     NOT ``plan_fast_path`` called from here. The whole complaint clause (8) makes
     is that fused products have only ever been installed by a harness reaching
@@ -400,7 +400,7 @@ def freeze(leg: Dict[str, Any]) -> Dict[str, Any]:
     (``driver.py``: ``if self._fast_path_stale: self._fast_path = plan_fast_path(...)``),
     so one step is the driver's own freeze and nothing here substitutes for it.
 
-    THE COST IS ONE STEP, and it is why the compared window starts at step 2. The
+    The cost is one step, and it is why the compared window starts at step 2. The
     plan-time WARM PASS launches every dispatchable slot's kernel once at
     ``grid=(0,)`` inside that first freeze, and it warms a different number of
     kernels on the fused leg (one pair) than on the unfused leg (two separate
@@ -449,7 +449,7 @@ def _pair_shape(leg: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def withhold_the_fused_route(leg: Dict[str, Any]) -> Dict[str, Any]:
-    """THE NULL CONTROL: empty the fused plan's launch grid so it computes nothing.
+    """The null control: empty the fused plan's launch grid so it computes nothing.
 
     Not a monkeypatch of the dispatcher and not a deleted slot — every identity in
     the plan survives, ``absorbed_by`` still points where it pointed, the
@@ -493,7 +493,7 @@ def step_and_sync(leg: Dict[str, Any], counter: TritonLaunchCounter,
     restored: Optional[Dict[str, numpy.ndarray]] = None
     committed: List[int] = []
     if enter_second_site:
-        # THE SECOND CONSULT SITE, entered explicitly. A DFT flux monitor
+        # The second consult site, entered explicitly. A DFT flux monitor
         # accumulates without it; ``flux_in_box``/``field_energy_in_box`` are what
         # reach it, and calling it directly is the same two consults with the same
         # three in-seam passes between them, on a plan it does NOT re-build.
@@ -594,14 +594,14 @@ def substitution_proof(fused: Dict[str, Any], unfused: Dict[str, Any],
                        pairs: Tuple[str, ...], steps: int) -> Dict[str, Any]:
     """Clause 4: the device launch count DROPS by exactly one per fused launch.
 
-    THE ARITHMETIC IS DERIVED, NOT ASSUMED. Each pair's leading consult performs
+    The arithmetic is derived, not assumed. Each pair's leading consult performs
     one launch where the unfused composition performs two, so the expected number
     of fused launches is ``steps x consults_per_step`` summed over the pairs the
     composer ACTUALLY installed (read off the record, per case), and the expected
     total drop equals that same number — one net launch removed per fused launch,
     because each replaces exactly two.
 
-    TWO INDEPENDENT COUNTS, the way the hand-CUDA timing gate proved its
+    Two independent counts, the way the hand-CUDA timing gate proved its
     substitution, because each alone has a way to be wrong. Counting the TOTALS
     alone would pass if the composer had swapped one kernel for some other single
     kernel. Counting by NAME alone would pass if the fused kernel ran ALONGSIDE
@@ -704,7 +704,7 @@ def run_case(name: str, gpu_id: int, counter: TritonLaunchCounter,
             for leg in ("fused", "unfused", "array")}
     row["grid_shape"] = legs["fused"]["grid_shape"]
 
-    # THE PRECONDITION IS TAKEN FIRST, on drivers that have not stepped. Three
+    # The precondition is taken first, on drivers that have not stepped. Three
     # separately lifted drivers that never shared a starting state would make
     # every comparison below meaningless, and a freeze cannot be what establishes
     # they agree.
@@ -738,7 +738,7 @@ def run_case(name: str, gpu_id: int, counter: TritonLaunchCounter,
                                           after_freeze["array"])["identical"],
     }
 
-    # THE FOLD CASE: the ladder must refuse, and it must refuse for the FOLD —
+    # The fold case: the ladder must refuse, and it must refuse for the FOLD —
     # not because the arm was never opted into and not because something else
     # upstream said no.
     if name in MUST_REFUSE_FOLD:
@@ -751,7 +751,7 @@ def run_case(name: str, gpu_id: int, counter: TritonLaunchCounter,
                           else "FOLD-REFUSAL-MISSING")
         row["why"] = ("rung 6b fires after clause 8, so opting into the arm must "
                       "not reach past the fold; this case asserts that refusal is "
-                      "still standing and narrowing it is a later phase")
+                      "still standing and narrowing it is later work")
         for leg in legs.values():
             leg["driver"].close()
         return row
@@ -799,7 +799,7 @@ def run_case(name: str, gpu_id: int, counter: TritonLaunchCounter,
             f"unfused {legs['unfused']['launches']['total']}, "
             f"array {legs['array']['launches']['total']})")
 
-    # THE SECOND CONSULT SITE'S BOOKKEEPING. The pair commits at the leading
+    # The second consult site's bookkeeping. The pair commits at the leading
     # consult and the absorbed one discards it, so a plan that has finished a sync
     # must hold nothing; a leaked entry means the two slots would stop answering
     # together on some later step.
@@ -820,7 +820,7 @@ def run_case(name: str, gpu_id: int, counter: TritonLaunchCounter,
         leg["driver"].close()
 
     # ------------------------------------------------------------------
-    # THE NULL CONTROL, as its own pair of drivers: the same case, the fused
+    # The null control, as its own pair of drivers: the same case, the fused
     # route WITHHELD, and it must diverge.
     # ------------------------------------------------------------------
     row["null_control"] = run_null_control(name, builder, gpu_id, counter,
@@ -919,7 +919,7 @@ def policy_probe(policy: str, gpu_id: int, res: Optional[int],
 
     installed_error = None
     if policy != fastpath.CERTIFICATION_SUBNORMAL_POLICY:
-        # INSTALLED BY THE HARNESS, deliberately: it is the only way to reach rung
+        # Installed by the harness, deliberately: it is the only way to reach rung
         # 8b's "this process already installed a different policy" branch. With
         # nothing installed the rung installs the certified policy ITSELF, which
         # is the keep leg and is the evidence DISPATCH_BY_DEFAULT asks for.
@@ -951,12 +951,12 @@ def policy_leg(out_dir: str, gpu_id: int, res: Optional[int],
     Rung 8b installs ``CERTIFICATION_SUBNORMAL_POLICY`` and refuses any process
     that installed anything else, so this route supports exactly ONE policy. The
     honest measurement of "both policies" for such a family is therefore: keep
-    dispatches with the HARNESS INSTALLING NOTHING, and flush is REFUSED BY NAME
+    dispatches with the harness installing nothing, and flush is refused by name
     rather than silently dispatched. Reporting only the keep leg would leave the
     flush answer unmeasured, and the flush answer is the one that would be a wrong
     number at runtime.
 
-    EACH IN A FRESH PROCESS, because the thing being measured is a property of a
+    Each in a fresh process, because the thing being measured is a property of a
     process. A policy cannot be swapped in place — binaries compiled under the
     first are still reachable and CuPy's cache key is computed above the seam the
     strip installs at — which is exactly what rung 8b's refusal says, so measuring
@@ -1016,6 +1016,7 @@ DIGESTED = (
 
 
 def _provenance(gpu_id: int) -> Dict[str, Any]:
+    import neutral_ids  # noqa: PLC0415
     digests = {}
     for name in DIGESTED:
         path = os.path.join(REPO_API, name)
@@ -1023,7 +1024,7 @@ def _provenance(gpu_id: int) -> Dict[str, Any]:
             digests[name] = hashlib.sha256(handle.read()).hexdigest()
     record: Dict[str, Any] = {
         "utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "host": platform.node(), "machine": platform.machine(),
+        "host": neutral_ids.machine_id(), "machine": platform.machine(),
         "python": sys.version.split()[0],
         "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
         "gpu_id": gpu_id,
@@ -1060,7 +1061,7 @@ def main() -> int:
     parser.add_argument("--steps", type=int, default=DEFAULT_STEPS)
     parser.add_argument("--resolution", type=int, default=None)
     parser.add_argument("--smoke", action="store_true",
-                        help="NOT A GATE RUN. Lift the NumPy reference "
+                        help="Not a gate run. Lift the NumPy reference "
                              "(prefer_gpu=False) so the harness's own plumbing can "
                              "be shaken out on a laptop; the reference consults no "
                              "kernel table and nothing about dispatch is measured. "
@@ -1071,7 +1072,7 @@ def main() -> int:
                              "in THIS (fresh) process and print the record")
     arguments = parser.parse_args()
     prefer_gpu = not arguments.smoke
-    # AN NVIDIA GATE, REFUSED OFF NVIDIA -- before the policy-probe branch too, whose
+    # An NVIDIA gate, refused off NVIDIA -- before the policy-probe branch too, whose
     # child lifts with the same prefer_gpu: on an Apple host prefer_gpu=True resolves
     # the Metal table, which this gate does not grade.
     refusal = (_e2e.nvidia_host_refusal("gate_driver_route_fused.py")

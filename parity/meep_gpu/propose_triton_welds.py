@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Turn a gate campaign's artifacts into PROPOSED weld entries — and verify them.
 
-WHAT A WELD IS AND WHY IT NEEDS THIS. An entry in ``triton_kernels/fingerprints.json``
+What a weld is and why it needs this. An entry in ``triton_kernels/fingerprints.json``
 says "this device gate released, and here are the exact bytes it ran against".
 ``test_dispatch_contract.test_the_no_absorber_gate_records_are_welded_to_the_live_sources``
 recomputes every named digest from the live tree, so a weld that names a path
 whose bytes have moved fails the merge bar — and a weld that names a path the
-GATE NEVER IMPORTED is worse than that: it passes the test while asserting a
+gate never imported is worse than that: it passes the test while asserting a
 device result about bytes no device executed. Two attempts this week were
 rejected for exactly that, both naming a test file no gate imports.
 
@@ -23,12 +23,12 @@ either — the imported set is 30-40 modules wide and includes the whole package
 import graph; a weld is a statement about what the family binds, not a snapshot
 of the interpreter.
 
-Every proposed digest is then recomputed FROM THE LIVE LOCAL TREE and compared
+Every proposed digest is then recomputed from the live local tree and compared
 to the artifact's. A mismatch means the staged tree the gate ran on and the tree
 the weld would describe are different programs, and the entry is refused rather
 than proposed.
 
-NOTHING HERE WRITES ``fingerprints.json``. Output is a proposal packet.
+Nothing here writes ``fingerprints.json``. Output is a proposal packet.
 
 Usage::
 
@@ -90,7 +90,7 @@ BINDS: Dict[str, Sequence[str]] = {
     "cylindrical_complex": (K + "cylindrical_complex.py",
                             K + "complex_fields.py", K + "launch.py",
                             G + "gate_triton_cylindrical_complex.py"),
-    # THE COMPLEX D->E FUSED PAIR, 2026-08-30. The launched bytes are the product
+    # The complex D->E fused pair, 2026-08-30. The launched bytes are the product
     # module's own kernel; ``complex_fields.py`` because both certified halves it
     # transcribes AND the three multiply helpers its body calls live there;
     # ``coverage.py`` because the seam predicate reads ``zero_metal_axes`` and
@@ -105,7 +105,7 @@ BINDS: Dict[str, Sequence[str]] = {
         K + "kernels.py", K + "forms.py", K + "coverage.py", K + "launch.py",
         "meep_gpu/deposit_repair.py",
         G + "probe_triton_complex_fused_electric_pair.py"),
-    # THE FOLDED OFF-DIAGONAL E->P CHAIN, 2026-09-10. The launched bytes are this
+    # The folded off-diagonal E->P chain, 2026-09-10. The launched bytes are this
     # module's own kernel PLUS the JIT helpers it calls: ``_load_d_minus_p`` and
     # ``_folded_dispersive_term`` execute out of
     # ``folded_offdiag_dispersive_update_e.py`` and ``_masked_row_sum`` out of
@@ -160,7 +160,7 @@ def one_gate(name: str, artifact: Path) -> Dict[str, Any]:
     row["subnormal_policy"] = (stamp.get("policy") if isinstance(stamp, dict)
                                else stamp)
 
-    # THE GATE'S OWN WORDS, beside the canonical reading. ``released: null``
+    # The gate's own words, beside the canonical reading. ``released: null``
     # means UNREADABLE, not refused, and the difference is decidable only from
     # the keys the gate actually wrote: measured 2026-08-19,
     # gate_triton_no_pml_constitutive finished every leg green and exited 0

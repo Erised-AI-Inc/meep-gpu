@@ -35,7 +35,7 @@ Legs, in order (``--legs`` selects a subset):
   x guard off/on, plus real-layer coefficient tables cut at Courant 0.35 AND
   0.5. The reference side of every comparison is computed on NUMPY (host IEEE
   keep). NOTE dtdx does not enter this sub-step's arithmetic at all — the
-  non-power-of-two-Courant mandate lands in the real-layer coefficient tables
+  non-power-of-two-Courant requirement is met in the real-layer coefficient tables
   here and in the composition probe's whole steps (courant_note in the
   artifact). Every case asserts the coupling is nonzero somewhere AND that its
   reference bytes differ from a coefficient-dropped (diagonal-engine) control,
@@ -87,7 +87,7 @@ Legs, in order (``--legs`` selects a subset):
   catches at any amplitude, measured at unit and 2**-16 amplitude
   alike, because rtol is scale-free. Blindness is a statement about
   rounding-scale defects, and the control now embodies it.
-* THE CHUNK FORMS (every leg): the reference is the array path's row in double
+* The chunk forms (every leg): the reference is the array path's row in double
   rounded once (``stepping._offdiagonal_terms``, ``_rounded_row``) and its
   constitutive forms per chunk (``_apply_constitutive_regions``). Every sweep case
   binds a chunk record (``gate_chunk_records.two_run_record`` keys both forms on
@@ -498,7 +498,7 @@ BOUNDARY_CONFIGS: Tuple[Tuple[str, str, str], ...] = (
     (METALLIC, PERIODIC, PERIODIC),
 )
 #: Real-layer coefficient tables are additionally cut at these Courant numbers
-#: (the mandate's home in a sub-step dtdx never enters).
+#: (where the non-power-of-two-Courant requirement is met, in a sub-step dtdx never enters).
 LAYER_COURANTS = (0.35, 0.5)
 
 ROW_FORMS = ("uniform_full", "varying_full", "single_ex_ey", "single_ex_ez",
@@ -795,7 +795,7 @@ def run_synthetic(results: Dict[str, Any], out_path: str,
               for form_name in forms]
     extras = []
     # Single-row single-partner forms — every one of the kernel's six one-slot
-    # row-mask specializations launches somewhere in this tranche: the five
+    # row-mask specializations launches somewhere in this gate: the five
     # rows here (each on a boundary config that makes its wall role live) plus
     # R21-only (single_ez_ex), which the identity leg, the engine leg and the
     # composition probe's partial case all compile. R12-only (single_ey_ex)
@@ -1391,7 +1391,7 @@ def compile_mutated(source: str, kernel_name: str = "offdiag_constitutive_step")
     re-declared in the header because a @triton.jit body may not read a plain
     module global, and the shared forms are imported, as the module imports them.
 
-    THE MODULE NAME MUST NOT START WITH ``triton``. Triton's dependency finder
+    The module name must not start with ``triton``. Triton's dependency finder
     treats every callee whose ``__module__`` starts with its own package name as a
     builtin and leaves it out of the kernel's cache key, so under a ``triton_*``
     name a mutation that edits only a helper (``_row_add``, ``_offdiag_term``)
@@ -1587,7 +1587,7 @@ def mutate_null_commuted_row_sum(source: str) -> Tuple[str, int]:
             source.count(_ROW_ADD_NEEDLE))
 
 
-# --- the chunk-form battery (KERNELS.md section 7.2) --------------------------------
+# --- the per-chunk form battery (docs/development/certification.md#chunk-form-battery) ---
 
 def mutate_b1_select_removed(source: str) -> Tuple[str, int]:
     """b1: the plain form folded into the accumulation -- the dsigw select removed,

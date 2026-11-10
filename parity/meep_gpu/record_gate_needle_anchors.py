@@ -17,7 +17,7 @@ them in ``gate_needle_anchors.json``:
 ``parity/meep_gpu/test_mutation_anchors.py`` runs the check on every test run. A
 difference names the table, the needle and the target, and means one of three
 things, each a real change: a kernel the gate mutates was edited (its mutation legs
-now compile different bytes and are owed a re-run), a needle was re-spelled (a lane's
+now compile different bytes and are owed a re-run), a needle was re-spelled (an
 inversion, or a drift), or a needle stopped matching (anchor rot). Re-mint with
 ``--write`` in the same change that made it, so the record's diff shows which.
 
@@ -102,7 +102,7 @@ def _constitutive_pair() -> Dict[str, str]:
                       "_update_E_pml_real_kernel_code")
 
 
-#: EVERY TABLE BUILT WITH ``gate_needles.gate_table``: (gate id, module, attribute,
+#: Every table built with ``gate_needles.gate_table``: (gate id, module, attribute,
 #: the device strings its source-mutation legs rewrite). The targets transcribe each
 #: gate's own ``originals``; a gate id built anywhere under ``parity/meep_gpu`` and
 #: missing here fails ``test_mutation_anchors.py`` by name.
@@ -144,7 +144,7 @@ def derive_table(gate: str, module_name: str, attribute: str,
     try:
         sources = targets()
     except Exception as exc:  # noqa: BLE001 - a target the tree cannot derive is recorded
-        # A TARGET THE TREE CANNOT DERIVE IS RECORDED BY NAME, NOT RAISED. A gate whose
+        # A target the tree cannot derive is recorded by name, not raised. A gate whose
         # kernels do not derive on this tree (a lifter not yet re-cut onto a moved base
         # text, which holds its derivation by name rather than failing at import) has
         # no bytes for its needles to rewrite. The table is kept with every needle at
@@ -194,7 +194,7 @@ def derive_beta_hd() -> Dict[str, Any]:
     resolved = kit.mutation_needles_resolve(adapter)
     mutated = {}
     for name in adapter.device_mutations:
-        # A needle that does not land is RECORDED BY NAME, not raised: the kit refuses
+        # A needle that does not land is recorded by name, not raised: the kit refuses
         # it with SystemExit (the gate's own rule), and the record names it beside the
         # resolver's unresolved list rather than stopping every other table's check.
         try:

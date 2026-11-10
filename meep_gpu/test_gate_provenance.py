@@ -1,6 +1,6 @@
 """Every device gate must record the source bytes IT imported.
 
-WHY THIS IS A TEST AND NOT A CONVENTION. Measured 2026-08-17: a weld recorded
+Why this is a test and not a convention. Measured 2026-08-17: a weld recorded
 ``8ec99ec2...`` for ``no_pml_stored_e.py`` while the gate had actually executed
 ``e24660a2...``. The digest had been transcribed by hand from one of the GPU host's
 67 staged trees, chosen by eye, and the wrong one was picked. The weld test caught
@@ -21,7 +21,7 @@ import pytest
 
 PARITY = pathlib.Path(__file__).resolve().parent.parent / "parity" / "meep_gpu"
 
-#: ALL THREE TRACKS, ONE RULE. Triton, Metal and CUDA gates answer "which source
+#: All three tracks, one rule. Triton, Metal and CUDA gates answer "which source
 #: produced this artifact?" through the same helper and the same key, so a single
 #: verifier reads any of them and no track can drift to a weaker standard.
 TRACKS = {
@@ -79,12 +79,12 @@ def _stamps_before_writing(text):
 def _stamping_writers():
     """DERIVED, not listed. A gate that binds one of these delegates safely.
 
-    MEASURED 2026-08-19, and the reason this keys on WRITERS rather than on an
+    Measured 2026-08-19, and the reason this keys on WRITERS rather than on an
     import: gate_cuda_offdiag imports gate_triton_complex AND binds
     ``save = probe.save`` from probe_fused_kernel_bit_identity. An import-based
     check passed it while it wrote every verdict with no provenance at all.
 
-    MEASURED 2026-08-20, and the reason the set is derived rather than written
+    Measured 2026-08-20, and the reason the set is derived rather than written
     down: the hand-listed version named three writers while the tree held more,
     so gate_cuda_no_pml_null_constitutive — which binds ``save = ref.save`` from
     a Triton gate that stamps correctly — was reported as unwired. A list of
@@ -165,7 +165,7 @@ def _delegates_safely(text):
     if from_imported_save:
         return True
 
-    # A DIRECT CALL through the alias: ``kit.save(payload, path)``. Ten Metal
+    # A direct call through the alias: ``kit.save(payload, path)``. Ten Metal
     # gates use exactly this and bind nothing, so binding-only detection missed
     # every one of them.
     for node in _ast.walk(tree):

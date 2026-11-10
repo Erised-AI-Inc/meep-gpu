@@ -1,9 +1,9 @@
 """Merge-bar tests for the Metal BFAST curl family.
 
 Three kinds of thing are pinned here, and the first kind is the one that carries
-the most weight because NO GATE CAN CARRY IT.
+the most weight because no gate can carry it.
 
-**1. THE PREDICTED NULLS.** Five properties of the transcription are byte-INVISIBLE
+**1. The predicted nulls.** Five properties of the transcription are byte-INVISIBLE
 in float32: no seed can distinguish the shipped spelling from its alternative,
 because the two compute the same words on every input. A mutation leg for any of
 them would report "not caught" and be indistinguishable from a real miss. They are
@@ -12,11 +12,11 @@ therefore pinned by SOURCE-TEXT ASSERTION here, and named in the gate's
 shows what was measured and what was not.
 
 This matters more on Metal than on Triton. The Triton track can read every
-generated PTX instruction and REFUSE A COMPILE on a policy violation;
+generated PTX instruction and refuse a compile on a policy violation;
 ``torch.mps.compile_shader`` exposes no disassembly at all, so for this family the
 source text is the only place these five can be held.
 
-**2. THE DUPLICATE-PLUS-PIN AGREEMENTS.** Two things are deliberately restated
+**2. The duplicate-plus-pin agreements.** Two things are deliberately restated
 rather than imported — the advance's ownership mask (because ``shaders``'
 generalises on the zero literal, not on the masked variable) and the clause list
 (because the shipped reason list is built inside a function whose BFAST clause
@@ -24,7 +24,7 @@ cannot be subtracted from outside). Each restatement is asserted equal to its
 originator over a full cross product, so drift fails a test in either direction
 instead of producing a family whose wall is subtly not the certified wall.
 
-**3. THE STRUCTURAL CONTRACTS** that would otherwise be discovered at compile time
+**3. The structural contracts** that would otherwise be discovered at compile time
 or, worse, at run time: the 31-binding ceiling, the sub-step table's agreement with
 the Triton port's, and the no-module-level-torch rule that keeps the predicate
 readable on a host with no GPU.
@@ -160,7 +160,7 @@ def test_the_d_side_negates_before_rounding():
     """PREDICTED NULL. stepping.py:913-914 negates both k in HOST FLOAT64, and
     :923-924 rounds to float32 once, at use.
 
-    WHY NO SEED CAN CATCH THE ORDER. f64 negation and f32 rounding commute exactly
+    Why no seed can catch the order. f64 negation and f32 rounding commute exactly
     — negation is a sign-bit flip at both widths — so binding ``float32(-k)`` and
     ``-float32(k)`` are the same word. The order is held because the transcription
     is literal per call site, not because it is observable.
@@ -209,7 +209,7 @@ def test_the_clause_list_matches_the_triton_bfast_predicate():
     to one list and not the other is exactly the over-covering drift this pin
     exists to catch.
 
-    THE MATRIX CARRIES ITS OWN ABSORBER, and that is a repair rather than a detail.
+    The matrix carries its own absorber, and that is a repair rather than a detail.
     Every row used to build an ACTIVE ``_PML()``, so clause 3 — whose Metal wording
     is NOT the Triton module's, deliberately (see :data:`PORT_SPECIFIC_CLAUSES`) —
     was never compared, and the pin's "exact set equality" claim held only because
@@ -288,7 +288,7 @@ def test_the_sub_step_table_is_the_triton_one():
 
 
 def test_the_metal_composer_table_matches_the_one_this_family_binds():
-    """THE COMPARE THAT CAN ACTUALLY FAIL, and the drift it fences.
+    """The compare that can actually fail, and the drift it fences.
 
     ``metal_kernels.launch.SUB_STEPS`` is a SEPARATE literal — the table the shipped
     Metal composer, ``plan_from_arrays`` and the certified curl plan bind — while
@@ -431,9 +431,9 @@ def test_no_module_level_torch_import():
 
 
 def test_the_family_registers_four_wired_arms():
-    """WIRED as of tranche 2: two curls and the certified constitutive pair.
+    """Wired as of the second Metal certification: two curls and the certified constitutive pair.
 
-    The constitutive arms carry NO NEW KERNEL. ``update_H`` and ``update_E`` read
+    The constitutive arms carry no new kernel. ``update_H`` and ``update_E`` read
     nothing BFAST-dependent — the second additive term and its IIR state live in
     ``step_db`` alone — so the pair is the certified constitutive plan under a
     restated predicate, which is why the arm count is four rather than two and why
@@ -515,7 +515,7 @@ def test_a_mirror_width_no_kernel_can_bind_is_refused_by_name():
     """The residency layer must refuse an element width that SILENTLY REINTERPRETS.
 
     Lives beside this family because this family's plan builders are what register
-    mirrors, and because the defect was found by auditing the tranche's own claim
+    mirrors, and because the defect was found by auditing this family's own claim
     that complex128 is "refused by name". It was not: measured on this host, a
     complex128 host array produced a ``torch.complex128`` tensor on ``mps:0``, bound
     to a ``device float2*`` signature, and the LAUNCH SUCCEEDED — one 128-bit cell
@@ -625,8 +625,8 @@ _MATRIX = (
     ("pml_none", {}, {}, None),
 )
 
-#: THE DECLARED PORT-SPECIFIC DIVERGENCES, as ``(triton_string, metal_string)``
-#: pairs. Everything else is compared as EXACT SET EQUALITY, which is this package's
+#: The declared port-specific divergences, as ``(triton_string, metal_string)``
+#: pairs. Everything else is compared as exact set equality, which is this package's
 #: doctrine; a normalised or fuzzy key comparison would let a real clause edit
 #: through. Each pair is asserted OBSERVED on its own side over the matrix by
 #: :func:`test_every_declared_divergence_is_actually_reached`, so a pair left behind
@@ -782,7 +782,7 @@ _DEVICE_CASES = {
 def test_the_kernel_is_byte_identical_to_stepping(sub_step, case, monkeypatch):
     """The whole claim, in its smallest form: one launch, one seed, uint32 words.
 
-    THE POLICY IS SET THROUGH ``monkeypatch``, NOT ``os.environ`` DIRECTLY, and the
+    The policy is set through ``monkeypatch``, NOT ``os.environ`` DIRECTLY, and the
     difference is not cosmetic. The MPS executor delivers ``flush`` natively and
     cannot deliver ``keep``, and this arm64 host's DEFAULT resolves to keep — so
     this test needs an explicit flush to be admitted at all. Setting it on the raw

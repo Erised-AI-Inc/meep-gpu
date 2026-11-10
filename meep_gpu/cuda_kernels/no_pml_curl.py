@@ -1,6 +1,6 @@
 """The NO-ABSORBER curl family for the hand-CUDA track: three kernels and a predicate.
 
-WHAT COLLAPSES WHEN THE ABSORBER GOES AWAY. ``stepping._apply_curl``
+What collapses when the absorber goes away. ``stepping._apply_curl``
 (stepping.py:516-582) has four tails. With ``_pml_is_active(pml)`` False and
 ``fields.condfac_for(target)`` None, three of them fall away and the whole
 sub-step tail is one line (stepping.py:582)::
@@ -9,7 +9,7 @@ sub-step tail is one line (stepping.py:582)::
 
 There is no ``fu`` auxiliary (``_require_pml_storage`` is not called and every
 ``fu_*`` is None), no ``kms``/``sinv`` pair, no split-field recurrence and no
-per-chunk form to choose. The CURL ITSELF IS UNCHANGED -- the term table, the
+per-chunk form to choose. The curl itself is unchanged -- the term table, the
 ghost rule, MEEP's stencil and its partner-presence forms (``curl_stencil``), and
 the wall masks -- which is why each block below is the certified
 ``step_{B,D}_pml_real`` block VERBATIM down to the last line, with only the tail
@@ -17,7 +17,7 @@ replaced and the chunk-record words that choose a PML form dropped. That is
 deliberate and is the whole safety argument for this file: a reader can diff it
 against ``step_curl_kernels.py`` and see that nothing in the arithmetic moved.
 
-THE STENCIL IS MEEP'S, read off the run's chunk record. ``curl_stencil`` (the
+The stencil is MEEP's, read off the run's chunk record. ``curl_stencil`` (the
 shared prelude) forms ``dtdx * (((g1s - g1) + g2) - g2s)`` as C associates
 ``step_curl``'s stencil (step_generic.cpp:104), and the one-partner forms where a
 partner's derivative axis is invariant (:72-76, :108), exactly as
@@ -31,9 +31,9 @@ for the word: a 3-D run may hold a one-cell axis that is not invariant
 (``Grid.is_invariant``), and the full bracket over a present partner on such an
 axis is a different float32 number from the one-partner form.
 
-WHAT THE B SUB-STEP ACTUALLY DIFFERENCES, WHICH IS NOT ALWAYS ``fields.Ex``
+What the B sub-step actually differences, which is not always ``fields.Ex``
 --------------------------------------------------------------------------
-This is the finding that reshaped the family, and it was MEASURED before it was
+This is the finding that reshaped the family, and it was measured before it was
 written down. ``stepping.step_B`` reads its operands through
 ``_component_snapshot`` -> ``_read_component`` (stepping.py:2879-2908), whose E
 branch has TWO arms::
@@ -44,8 +44,8 @@ branch has TWO arms::
     part_products.scale(inverse, displacement, out=target)   # :2904
 
 and ``Fields.get_E`` (fields.py:1020-1047) is itself two arms: the stored array
-when ``_stored_E``, and a freshly computed ``D * inv_eps`` when not. WITHOUT AN
-ABSORBER AND WITHOUT A SUSCEPTIBILITY NOTHING STORES E -- ``fields.Ex`` is None --
+when ``_stored_E``, and a freshly computed ``D * inv_eps`` when not. Without an
+absorber and without a susceptibility nothing stores E -- ``fields.Ex`` is None --
 so the B curl differences a DERIVED volume, cell by cell ``D_c * inv_eps_c``.
 
 Measured on a real (6, 8, 10) ``Grid``/``Fields`` pair with an inhomogeneous
@@ -66,7 +66,7 @@ So this file carries THREE kernels, not two:
 
 The derived kernel is the ONLY block here that is not a verbatim copy: its two
 device helpers, ``derived_at`` and ``derived_up``, are ``shift_up`` composed with
-the multiply, in that order. THE ORDER IS THE ARITHMETIC. The array path forms
+the multiply, in that order. The order is the arithmetic. The array path forms
 the whole derived volume and then shifts it with the far-face rule, so a
 non-periodic far ghost is an exact ``0.0f`` -- NOT ``D_ghost * inv_eps_ghost`` --
 and a periodic wrap carries the WRAPPED cell's inverse epsilon, not the reading
@@ -74,8 +74,8 @@ cell's. Both are armed as source mutations in the gate
 (``derived_far_ghost_wraps``, ``derived_wrap_uses_own_inv_eps``) because reading
 them off is not measuring them.
 
-CONTRACTION IS A HAZARD ON THE DERIVED ARM ON PAPER, AND WAS MEASURED ABSENT ON
-ONE DEVICE. ``sf - f1`` is a difference of two PRODUCTS there, which is a textbook
+Contraction is a hazard on the derived arm on paper, and was measured absent on
+one device. ``sf - f1`` is a difference of two PRODUCTS there, which is a textbook
 fused-multiply-add candidate, and the array path rounds the multiply and the
 subtraction separately -- so ``--fmad=false`` is carried as CORRECTNESS rather
 than as tuning. What the gate then measured is that it changed nothing: on an RTX
@@ -85,26 +85,26 @@ on all 112 comparable cases at the inexact courant, derived arm included
 kept and its effect is NOT claimed: this run carries no evidence that it changed
 an answer here, and none that a different compiler would leave it alone.
 
-THE D SUB-STEP DIFFERENCES THE B ARRAYS, AND THAT IS NOT AN OPTIMISATION.
-``Fields.get_H`` (fields.py:1217-1239) returns the B ARRAY ITSELF without an
+The D sub-step differences the B arrays, and that is not an optimisation.
+``Fields.get_H`` (fields.py:1217-1239) returns the B array itself without an
 absorber: mu = 1, H is never stored, ``fields.Hx`` is None. Measured on the same
 fixture, ``stepping.step_D(fields, None)`` is bit-identical to the backward
 curl of Bx/By/Bz. A predicate that delegates its storage inventory to the
 certified curl predicate refuses every no-absorber run for "Hx is not allocated";
 the inventory below is this file's own for exactly that reason.
 
-WHAT THIS IS FOR, AND WHAT THE CORPUS SAYS IT IS WORTH -- WHICH IS LESS THAN THE
-ROW COUNT SUGGESTS. The union census carries 14 rows with no active absorber. Six
+What this is for, and what the corpus says it is worth -- which is less than the
+row count suggests. The union census carries 14 rows with no active absorber. Six
 are complex storage and belong to a different kernel. Of the eight real-storage
 rows, three carry a conductivity (MEEP's ``Absorber`` boundary layer IS a
 conductivity, not a PML), which routes ``_apply_curl`` to
 ``_apply_conductive_update`` (stepping.py:579-580) -- a different recurrence this
 family refuses by name. The reachable curl slots are therefore FIVE at ``step_D``
 and FIVE at ``step_B`` (one stored-E, four derived), not the 28 a "14 rows x 2
-sub-steps" reading suggests, and the census MEASURED exactly those ten:
+sub-steps" reading suggests, and the census measured exactly those ten:
 595 -> 605 of 759 slots, 113 -> 117 rows covered at every sub-step, with the
-before figure taken by running the PREVIOUS round's analyzer over the SAME data so
-the delta is one predicate's and not a difference of two rounds
+before figure taken by running the analyzer without this family over the SAME data
+so the delta is one predicate's and not a difference of two census runs
 (:data:`NO_PML_CURL_ADMISSION`, ``slots_before``/``slots_after``).
 
 The constitutive halves of those rows are a separate question and are NOT served
@@ -112,24 +112,24 @@ here: under an inactive layer ``stepping.update_H`` returns at :999-1000 and
 ``update_E`` at :1044-1045 before reading an array, so those are a null plan rather
 than a kernel -- which is what ``no_pml_constitutive.py`` already carries.
 
-THE CONDUCTIVITY IS REFUSED, not silently absorbed. ``_apply_curl``'s second tail
+The conductivity is refused, not silently absorbed. ``_apply_curl``'s second tail
 (:579-580) routes a component carrying ``condfac`` to
 ``_apply_conductive_update`` even with no absorber, and that is a different
 recurrence. It is read PER COMPONENT, so a run where one component is lossy and
 two are not takes two different tails within one sub-step -- which one kernel
 cannot serve, and which the delegated predicate refuses per sub-step by name.
 
-NO DISPATCH. Nothing in ``meep_gpu`` imports ``cuda_kernels``; these kernels are
+No dispatch. Nothing in ``meep_gpu`` imports ``cuda_kernels``; these kernels are
 reachable only from the gate and the laptop tests. ``covers_no_pml_curl``
 returning True licenses a MEASUREMENT, not a production step. What has and has not
 been measured on a device is :data:`NO_PML_CURL_ADMISSION` -- as of 2026-08-20,
 224/224 licensed cases bit-identical to ``stepping`` at one launch and 224/224 at
 60, per policy, under both float32 subnormal policies on an RTX A6000, with 25
-source mutations CAUGHT, 24 NULL CONFIRMED, none escaped, and the release verdict
+source mutations caught, 24 null confirmed, none escaped, and the release verdict
 shown to refuse a planted defect. Nothing here may be read as a device verdict
 while that record's ``host`` field is None.
 
-IMPORTABLE WITHOUT CUPY, DELIBERATELY. The predicate is consumed by the coverage
+Importable without CuPy, deliberately. The predicate is consumed by the coverage
 census, which runs on a laptop. ``cupy`` is imported INSIDE the launchers, never
 at module scope, and the shared prelude is READ out of the sibling's source
 rather than imported from it. ``cylindrical_kernels.py`` took the other route --
@@ -257,7 +257,7 @@ extern "C" __global__ void step_B_no_pml_real(
     int j = (idx / nz) % ny;
     int i = idx / (ny * nz);
 
-    // THE CHUNK RECORD (chunk_map.chunk_bounds_record): row r of this lattice and axis
+    // The chunk record (chunk_map.chunk_bounds_record): row r of this lattice and axis
     // lies in a chunk that carries the axis's layer iff (a0 <= r < a1) || (b0 <= r < b1).
     const int cb_presence = cb[24];
     const int pr_x = (cb_presence >> 0) & 1;
@@ -329,7 +329,7 @@ __device__ __forceinline__ float derived_at(
     return d[idx] * ie[idx];
 }
 
-// shift_up APPLIED TO THE DERIVED VOLUME. The array path derives the whole
+// shift_up applied to the derived volume. The array path derives the whole
 // volume first and shifts it after, so the far-face ghost of a non-periodic axis
 // is an exact zero rather than the ghost cell's product, and a periodic wrap
 // carries the WRAPPED cell's inverse epsilon. Both are armed as mutations.
@@ -365,7 +365,7 @@ extern "C" __global__ void step_B_no_pml_real_derived(
     int j = (idx / nz) % ny;
     int i = idx / (ny * nz);
 
-    // THE CHUNK RECORD (chunk_map.chunk_bounds_record): row r of this lattice and axis
+    // The chunk record (chunk_map.chunk_bounds_record): row r of this lattice and axis
     // lies in a chunk that carries the axis's layer iff (a0 <= r < a1) || (b0 <= r < b1).
     const int cb_presence = cb[24];
     const int pr_x = (cb_presence >> 0) & 1;
@@ -440,7 +440,7 @@ extern "C" __global__ void step_D_no_pml_real(
     int j = (idx / nz) % ny;
     int i = idx / (ny * nz);
 
-    // THE CHUNK RECORD (chunk_map.chunk_bounds_record): row r of this lattice and axis
+    // The chunk record (chunk_map.chunk_bounds_record): row r of this lattice and axis
     // lies in a chunk that carries the axis's layer iff (a0 <= r < a1) || (b0 <= r < b1).
     const int cb_presence = cb[24];
     const int pr_x = (cb_presence >> 0) & 1;
@@ -497,7 +497,7 @@ extern "C" __global__ void step_D_no_pml_real(
 }
 '''
 
-#: The device text, by kernel name. A MUTABLE MODULE GLOBAL on purpose: the gate's
+#: The device text, by kernel name. A mutable module global on purpose: the gate's
 #: source-mutation battery rewrites entries here and re-launches, and
 #: :func:`_get_kernel` re-reads this map on every call so a rewritten string is
 #: seen. A map memoized at first call would hand back the pre-mutation bytes
@@ -597,7 +597,7 @@ def step_no_pml_curl(fields: Any, sub_step: str, boundary_codes, dtdx: float,
 
     arm = arm or no_pml_curl_arm(fields, sub_step)
     name = ARM_KERNELS[(sub_step, arm)]
-    # THE REFUSAL COMES BEFORE THE COMPILE, so a configuration this family does not
+    # The refusal comes before the compile, so a configuration this family does not
     # serve costs an exception rather than an NVRTC call -- and so the check is
     # reachable on a host with no CuPy, which is where its test runs.
     if sub_step == "step_D" and getattr(fields, "_pml_active", False):
@@ -677,7 +677,7 @@ def no_pml_curl_arm(fields: Any, sub_step: str) -> str:
 def _array_inventory(fields: Any, grid: Any, sub_step: str, arm: str):
     """The arrays THIS family's kernel binds, checked as the kernel will use them.
 
-    THIS IS NOT A DUPLICATE OF THE CERTIFIED PREDICATE'S ARRAY LOOP. That loop
+    This is not a duplicate of the certified predicate's array loop. That loop
     asks for the eighteen arrays a PML run has; a no-absorber run has neither the
     stored H nor any ``fu``, and on the derived arm it has no stored E either. The
     list below is exactly what :func:`step_no_pml_curl` passes as a pointer, and
@@ -706,7 +706,7 @@ def _array_inventory(fields: Any, grid: Any, sub_step: str, arm: str):
             return None, problem
 
     if sub_step == "step_B" and arm == "derived_E":
-        # THE INVERSE-EPSILON VOLUMES ARE POINTERS TOO, and their DTYPE decides
+        # The inverse-epsilon volumes are pointers too, and their DTYPE decides
         # the arithmetic rather than just the launch: the array path's derived
         # buffer is ``result_type(D, inv_eps)`` (stepping.py:2903), so a float64
         # inverse epsilon makes the whole curl a float64 curl and this float32
@@ -722,7 +722,7 @@ def _array_inventory(fields: Any, grid: Any, sub_step: str, arm: str):
             if problem is not None:
                 return None, problem
 
-    # THE AUXILIARY MUST BE ABSENT, not merely unused. This family writes no
+    # The auxiliary must be absent, not merely unused. This family writes no
     # ``fu``; an ALLOCATED one means something else built it and this step would
     # leave it stale, which is a wrong answer on the NEXT sub-step rather than
     # this one.
@@ -739,7 +739,7 @@ class _ActiveLayerProxy:
 
     Every clause of ``covers_real_pml_curl`` except the absorber one is about the
     grid, the storage and the fields, and those are unchanged by the absorber's
-    absence. Satisfying that one clause AT THE INPUT is the same technique the
+    absence. Satisfying that one clause at the input is the same technique the
     coverage census uses for the CuPy-backend clause, and for the same reason:
     these predicates short-circuit, so there is no accumulated refusal list to
     filter afterwards.
@@ -771,22 +771,22 @@ class _ActiveLayerProxy:
 class _NoAbsorberFieldsProxy:
     """The run's fields, answering the sibling's PML-shaped storage questions.
 
-    WHY A PROXY AND NOT A STRING FILTER. The obvious way to reuse
+    Why a proxy and not a string filter. The obvious way to reuse
     ``covers_real_pml_curl`` is to call it and forgive the refusals a no-absorber
     run legitimately earns. That is UNSOUND, and measurably so: the predicate
     SHORT-CIRCUITS, and ``stores_E`` is clause 12 of 16. Forgiving its refusal
     silently skips the chi2/chi3 clause, the three-dimensionality clause and the
     int32 index-range clause that follow it -- three real refusals turned into
     admissions by a filter that never claimed to touch them. Answering the
-    question AT THE INPUT instead lets every later clause run.
+    question at the input instead lets every later clause run.
 
-    WHAT IS TRUE HERE AND WHAT IS A STAND-IN, named one by one:
+    What is true here and what is a stand-in, named one by one:
 
     * ``Hx``/``Hy``/``Hz`` -> the B arrays. NOT a stand-in: ``Fields.get_H``
       returns exactly these without an absorber (fields.py:1238-1239), and
       ``stepping.step_D`` differences exactly these -- measured bit-identical.
     * ``stores_E`` -> True. On the stored arm this is the truth. On the derived
-      arm it is an ASSERTION THAT THIS FILE HAS ANSWERED THE QUESTION ITSELF:
+      arm it is an assertion that this file has answered the question itself:
       ``_array_inventory`` has already checked D and the three inverse-epsilon
       volumes, which is what the derived curl actually reads.
     * ``Ex``/``Ey``/``Ez`` on the derived arm -> the D arrays, a STAND-IN. The
@@ -841,7 +841,7 @@ class _NoAbsorberFieldsProxy:
 #: test fails and this file has to be rewritten, not silently widened.
 _FORGIVEN_REFUSAL_PREFIX = "pml."
 
-#: WHAT THIS FAMILY'S OWN GATE SWEPT, where the sibling's is wider, and why the
+#: What this family's own gate swept, where the sibling's is wider, and why the
 #: difference is refused here rather than inherited.
 #:
 #: :func:`covers_no_pml_curl` DELEGATES to ``coverage.covers_real_pml_curl`` and
@@ -849,8 +849,8 @@ _FORGIVEN_REFUSAL_PREFIX = "pml."
 #: two families' evidence covers the same shapes -- delegation can only make this
 #: predicate NARROWER than the one it borrows its arithmetic from, never wider.
 #:
-#: ON 2026-08-20 THE SIBLING BECAME WIDER THAN ITS OWN GATE. Two of its refusals
-#: were retired on device rounds that ran the PML kernels
+#: On 2026-08-20 the sibling became wider than its own gate. Two of its refusals
+#: were retired on device runs of the PML kernels
 #: (``coverage.CURL_FOLD_ADMISSION``'s third fold plane and
 #: ``coverage.CURL_NONLINEAR_ADMISSION``'s chi2/chi3), and delegation would have
 #: carried both here on the strength of a measurement of DIFFERENT KERNELS.
@@ -858,7 +858,7 @@ _FORGIVEN_REFUSAL_PREFIX = "pml."
 #: simultaneous planes -- and installs no chi anywhere, so this family has run
 #: neither shape.
 #:
-#: BOTH REFUSALS COST ZERO SLOTS, which is why this is a bookkeeping correction
+#: Both refusals cost zero slots, which is why this is a bookkeeping correction
 #: and not a retreat: the corpus's triply-folded row (``TestLDOS.test_ldos_3D``)
 #: and both of its instantaneous-nonlinearity rows (``3rd-harm-1d.py``,
 #: ``Test3rdHarm1d.test_3rd_harm_1d``) are PML-ACTIVE, so this family is never
@@ -884,7 +884,7 @@ def covers_no_pml_curl(fields: Any, pml: Any, grid: Any, sub_step: str) -> tuple
 
     ``sub_step`` is ``"step_B"`` or ``"step_D"``. Returns ``(covered, reason)``.
 
-    THE SUB-STEP ARGUMENT IS REQUIRED for the reason
+    The sub-step argument is required for the reason
     :func:`coverage.covers_real_pml_curl`'s is: the conductivity is read PER
     TARGET COMPONENT in ``stepping._apply_curl`` (:546), so a D-side conductivity
     routes ``step_D`` to a recurrence this family does not implement and leaves
@@ -894,7 +894,7 @@ def covers_no_pml_curl(fields: Any, pml: Any, grid: Any, sub_step: str) -> tuple
     question for one of them and irrelevant to the other -- an over-refusal this
     predicate carried until it was measured on the corpus.
 
-    DELEGATION, NOT A SECOND CLAUSE SET. Every question except the absorber and
+    Delegation, not a second clause set. Every question except the absorber and
     the storage inventory is the certified curl predicate's, asked through it, so
     this family cannot drift to a weaker standard than the one it borrows its
     arithmetic from. The two proxies are how the questions that ARE this file's
@@ -910,14 +910,14 @@ def covers_no_pml_curl(fields: Any, pml: Any, grid: Any, sub_step: str) -> tuple
                        "split-field recurrence, which step_*_pml_real "
                        "serves and this family does not")
 
-    # THE TWO CLAUSES THIS FAMILY OWNS BECAUSE THE SIBLING NO LONGER STATES THEM.
+    # The two clauses this family owns because the sibling no longer states them.
     # Delegation inherits every refusal the sibling makes; it cannot inherit one
     # the sibling has retired. Both of the sibling's 2026-08-20 widenings rest on
-    # device rounds that ran the PML kernels, and this family's gate has swept
+    # device runs of the PML kernels, and this family's gate has swept
     # neither shape -- see :data:`NO_PML_CURL_NARROWER_THAN_THE_SIBLING`, which
     # also records that both refusals cost zero slots on this corpus.
     #
-    # THEY ARE ASKED BEFORE DELEGATION, not filtered out of its answer, for the
+    # They are asked before delegation, not filtered out of its answer, for the
     # reason :class:`_NoAbsorberFieldsProxy` gives at length: the sibling
     # short-circuits, so anything decided after the fact skips whatever lay
     # behind it.
@@ -950,14 +950,14 @@ def covers_no_pml_curl(fields: Any, pml: Any, grid: Any, sub_step: str) -> tuple
     return True, ""
 
 
-#: WHAT HAS BEEN MEASURED ON A DEVICE FOR THIS FAMILY, AND WHAT HAS NOT.
+#: What has been measured on a device for this family, and what has not.
 #:
 #: ``host`` is None until a device leg has run. Nothing in this file may be read
 #: as a device verdict while it is None --
 #: ``test_no_pml_curl.test_admission_record_is_all_or_nothing`` is what keeps the
 #: two states from blurring, and it is the same rule
 #: ``no_pml_constitutive.NULL_CONSTITUTIVE_CONFIRMATION`` carries.
-#: THE DEVICE TEXT IS PINNED BY DIGEST, NOT THE FILE. A record written after a
+#: The device text is pinned by digest, not the file. A record written after a
 #: gate ran cannot also be inside the bytes that gate stamped, and pinning the
 #: whole file would make every comment edit read as an un-gated kernel change.
 #: What must not have moved is the three device strings, so those are what the
@@ -974,7 +974,7 @@ NO_PML_CURL_ADMISSION: dict = {
     "recorded_utc": "2026-08-21T23:11:49Z",
     "host": "the GPU host",
     "device": "NVIDIA RTX A6000 (index 6, verified empty), CuPy 13.5.1, NVRTC 11.6",
-    # PER POLICY, and identical under both. 464 cases are scored in the sweep; the
+    # Per policy, and identical under both. 464 cases are scored in the sweep; the
     # 224 below are the LICENSED arm (the shipped code resolution), which is the
     # only triple a dispatch could produce. The other 240 are the two
     # misdeclaration controls and are meant to diverge.
@@ -991,7 +991,7 @@ NO_PML_CURL_ADMISSION: dict = {
     "absorber_shapes_swept": ("none", "inert_layer"),
     "shapes_swept": ("3-D", "2-D", "1-D"),
     "walls_swept": ("periodic", "metallic", "mixed", "mirror fold at both terminations"),
-    # THE TWO POLICIES ARE DIFFERENT BUILDS, not one build named twice: the NVRTC
+    # The two policies are different builds, not one build named twice: the NVRTC
     # observer recorded 65 calls and 47 distinct binaries on each leg, with
     # ``any_ftz_true_reached_nvrtc`` FALSE under keep and TRUE under flush, and the
     # same source hashing to different binaries. A policy leg whose binaries
@@ -1013,7 +1013,7 @@ NO_PML_CURL_ADMISSION: dict = {
     "host_mutations_caught": ("reverse_inverse_epsilon_volumes",
                               "alias_inverse_epsilon_to_Ez"),
     "host_mutations_null_confirmed": ("identity_rebind",),
-    # THE FOUR DEAD-PRELUDE NULLS, and what their silence measures. The shared
+    # The four dead-prelude nulls, and what their silence measures. The shared
     # ``_REAL_PML_PRELUDE`` compiles ``pml_apply`` into all three kernels and none
     # of them calls it; ``drop_fu_store``, ``read_fprev_after_store``,
     # ``swap_dsig_dsigu`` and ``reload_fu_from_memory`` therefore arm, at one site
@@ -1022,7 +1022,7 @@ NO_PML_CURL_ADMISSION: dict = {
     # split-field recurrence.
     "dead_prelude_nulls_confirmed": ("drop_fu_store", "read_fprev_after_store",
                                      "swap_dsig_dsigu", "reload_fu_from_memory"),
-    # THREE MUTATIONS THAT ARE INERT FOR STRUCTURAL REASONS, each measured red
+    # Three mutations that are inert for structural reasons, each measured red
     # first and then given a NAME rather than a filter. Every one is a fact about
     # a degenerate axis rather than about the kernel:
     #  * a folded PERIODIC axis's top-plane mask drops the plane that consumes the
@@ -1046,7 +1046,7 @@ NO_PML_CURL_ADMISSION: dict = {
         "all_periodic": {"cases": 176, "diverged": 175,
                          "confined_to_mask_delta": False},
     },
-    # THE VERDICT WAS SHOWN TO GO RED, three independent ways on the record itself
+    # The verdict was shown to go red, three independent ways on the record itself
     # (a licensed case flipped to diverging, a must-be-caught mutation flipped to
     # ESCAPED, the misdeclaration control silenced) and once for real: the
     # falsification leg ran a SEPARATE tree with the derive multiply deleted from
@@ -1059,7 +1059,7 @@ NO_PML_CURL_ADMISSION: dict = {
                                    "and derived_up", "released": False,
                           "derived_arm_identical": "0/5 single, 0/5 multi",
                           "other_arms_identical": "5/5 and 10/10, unaffected"},
-    # THE CONTRACTION GUARD IS CARRIED AND ITS EFFECT IS NOT CLAIMED. The reading
+    # The contraction guard is carried and its effect is not claimed. The reading
     # said ``sf - f1`` on the derived arm is an FMA candidate; measured, the
     # UNGUARDED build was bit-identical on all 112 comparable cases at the inexact
     # courant (0.35), on every arm, under both policies. ``--fmad=false`` stays
@@ -1074,8 +1074,8 @@ NO_PML_CURL_ADMISSION: dict = {
     "census": ("parity/meep_gpu/results/"
                "cuda_predicate_coverage_2026-08-20_no_pml_curl"),
     # RECOMPUTED as a CONTROLLED comparison rather than a difference of two
-    # rounds: the previous round's analyzer (whose UNION_FAMILIES does not know
-    # this family) run over THIS round's data gives 595/759, and the same data
+    # census runs: the earlier analyzer (whose UNION_FAMILIES does not know
+    # this family) run over this census's data gives 595/759, and the same data
     # with the family added gives 605/759. The two differ in one line of
     # configuration, so +10 slots and +4 rows-covered-at-every-sub-step is this
     # family's contribution and nothing else's. Reading 605 - 557 against the

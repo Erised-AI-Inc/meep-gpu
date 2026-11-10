@@ -1,6 +1,6 @@
 """Every CUDA weld is bound to the bytes its gate executed — and says so honestly.
 
-UNTIL 2026-08-30 THIS RECORD WAS CHECKED BY NOTHING. ``cuda_kernels/
+Until 2026-08-30 this record was checked by nothing. ``cuda_kernels/
 fingerprints.json`` holds twenty entries, each naming a released device campaign,
 its host, its two canonical policy legs, an ``artifact_sha256`` and the sha256 of
 every tree file that campaign imported. No Python file in ``meep_gpu/`` read it:
@@ -11,7 +11,7 @@ reader in the tree was ``parity/meep_gpu/rebind_cuda_welds.py``, which WRITES it
 A ledger whose sole reader is its own writer is honest self-declaration with
 nothing enforcing it, which is the state this file ends.
 
-MEASURED THE DAY IT WAS WRITTEN, by recomputing every digest independently:
+Measured the day it was written, by recomputing every digest independently:
 
     entries  20      pins  79      drifted  40      status PASS  0
 
@@ -22,14 +22,14 @@ was only ever clearable by RE-GATING on a CUDA host and rebinding with
 ``rebind_cuda_welds.py`` — never by relaxing anything here and never by typing a
 digest.
 
-CLEARED 2026-08-30, BY THE ONLY ROUTE THIS FILE ALLOWS. All twenty campaigns were
+Cleared 2026-08-30, by the only route this file allows. All twenty campaigns were
 re-run on the GPU host (NVIDIA RTX A6000, both float32 subnormal policies, 44
 canonical policy legs, every one released) into
 ``results/cuda_regate_2026-08-30/``. The measurement had in fact existed for most
 of that day and could not be used: ``rebind_cuda_welds.py`` finds a campaign's
 artifacts by asking ``certification.json`` where that campaign wrote them, and no
-block named the re-gate tree. THE BLOCKER WAS A MISSING WRITER, NOT A MISSING
-MEASUREMENT. It is closed by ``record_cuda_regate.py``, which transcribes a
+block named the re-gate tree. The blocker was a missing writer, not a missing
+measurement. It is closed by ``record_cuda_regate.py``, which transcribes a
 re-gate campaign into a certification block — every fact derived from the
 payloads — and by ``rebind_cuda_welds.py --campaign``, which refuses to bind
 against a tree the record does not name. Nothing was installed over anything: an
@@ -41,8 +41,8 @@ first disagreement.
 
     entries  20      pins  79      drifted  0       status PASS  20
 
-WHAT MAKES AN ENTRY CHECKABLE. The same rule as the Triton contract, for the same
-reason: AN ENTRY IS CHECKED IF IT PINS A FILE DIGEST. Not whether it passed, not
+What makes an entry checkable. The same rule as the Triton contract, for the same
+reason: an entry is checked if it pins a file digest. Not whether it passed, not
 whether it carries a status. Every one of the twenty here says ``DRIFTED``, so a
 ``status == "PASS"`` filter — the shape that hid ten Triton entries and 88 pinned
 pairs — would have made this entire module vacuous while reading as strict. An
@@ -51,7 +51,7 @@ entry that is deliberately not a weld is excluded BY NAME in
 ``test_every_record_key_is_checked_or_excluded_by_name`` requires that of every
 key in the file.
 
-THE SECOND CLAIM, and it is the one that bites while the re-gate is outstanding.
+The second claim, and it is the one that bites while the re-gate is outstanding.
 ``_what_status_means`` in the record says a DRIFTED entry lists the moved files in
 ``source_drift``, and that ``code_sha256`` deliberately omits them because
 ``code_identity`` licenses a weld to stand on an unchanged code digest ONLY where
@@ -59,7 +59,7 @@ THE SECOND CLAIM, and it is the one that bites while the re-gate is outstanding.
 without a device, and both are checked below: a self-declaration that is allowed
 to be WRONG is not a weaker check than no check, it is a stronger-looking one.
 
-THE WALK, added 2026-08-30 (third round). The enumerator this file landed with
+The walk, added 2026-08-30 (the day's third pass). The enumerator this file landed with
 read ``entry["source_sha256"]`` per top-level key — a FIXED SHAPE, and the same
 class of defect the status filter was, one level down. It compared 79 of the
 record's 138 digests. The 59 it did not look at:
@@ -73,7 +73,7 @@ record's 138 digests. The 59 it did not look at:
 ``meep_gpu.weld_record_walk`` now recurses the whole record — dicts and lists, at
 any depth — and every 64-hex digest is either CHECKED against this tree in a named
 tier or EXCLUDED BY A NAMED RULE carrying its reason. A digest matching neither is
-``UNCLASSIFIED``, which fails. Measured 2026-08-30, third round and then fifth:
+``UNCLASSIFIED``, which fails. Measured 2026-08-30, after the third pass and then the fifth:
 
     discovered 138   checked 118   excluded 20   unclassified 0   drifted 40
     discovered 178   checked 158   excluded 20   unclassified 0   drifted  0
@@ -84,7 +84,7 @@ because ``code_identity`` licenses a code digest beside a source digest only
 while the source digest still matches. Binding to the run that imported those
 bytes made all 79 honest to record at once.
 
-ONE RECORD PER COMPUTE CAPABILITY, 0.9.1 — a LEVEL change, not a shape change, and
+One record per compute capability, 0.9.1 — a LEVEL change, not a shape change, and
 it moves half of what this file reads. An entry used to hold one run's facts beside
 its digests; it now holds ``runs[<cc>]``, one record per architecture the campaign
 ran on, each carrying ``bound_sha256`` — the digest of the digests that run
@@ -99,11 +99,11 @@ record must expire with the bytes it certified instead of leaving every
 architecture admitted. See :mod:`meep_gpu.fastpath` (``RUNS``, ``RUN_FIELDS``,
 ``bound_digest``, ``live_capabilities``, ``retired_shape_reasons``).
 
-SO THE LEVEL IS DERIVED, NEVER TYPED TWICE. The nine required fields stay one list;
+So the level is derived, never typed twice. The nine required fields stay one list;
 ``fastpath.RUN_FIELDS`` decides which of them is asked of a run record and which of
 the entry. A hand-typed split would read a field from the level it used to live at
 and agree with a stale ledger, which is the retired-shape defect wearing this
-file's green. MEASURED 2026-10-01: 54 weld entries, 54 run records, all keyed
+file's green. Measured 2026-10-01: 54 weld entries, 54 run records, all keyed
 ``8.6``; 3 fields answered at entry level, 6 per record, 0 missing either way.
 
 Stdlib, pytest, the shared record walk, two in-package identity helpers, and
@@ -186,7 +186,7 @@ NOT_A_WELD_LEDGER_ENTRY = {
 #: require, plus the three this ledger's own shape adds: which legs were read,
 #: where the verdict was read from, and which kernels the campaign covers.
 #:
-#: THE NINE ARE ASKED AT TWO LEVELS SINCE 0.9.1, and which level is DERIVED from
+#: The nine are asked at two levels since 0.9.1, and which level is DERIVED from
 #: ``fastpath.RUN_FIELDS`` rather than written out here. Six of them — ``host``,
 #: ``records``, ``recorded_utc``, ``artifact_sha256``, ``subnormal_policy``,
 #: ``verdict_read_from`` — describe one RUN and live in ``runs[<cc>]``. Three —
@@ -196,19 +196,19 @@ NOT_A_WELD_LEDGER_ENTRY = {
 #: ``fastpath.py`` fails the test rather than being read from the level the ledger
 #: has stopped using.
 #:
-#: ``driver_dispatch`` IS NOT HELD TO THE NINE, and this note used to say the
-#: opposite — "HELD TO ALL NINE, WITH NO CARVE-OUT" — which had already been
+#: ``driver_dispatch`` is not held to the nine, and this note used to say the
+#: opposite — "held to all nine, with no carve-out" — which had already been
 #: overtaken by :data:`NOT_A_WELD` on 2026-09-11. What is true: that block pins
 #: ``meep_gpu/`` source (``fastpath.py``, ``driver.py``, ``fields.py``,
 #: ``fastpath_cuda.py``, three ``cuda_kernels`` files and every released arm's product
 #: module), so its digests are CHECKED on exactly a weld's terms and nothing about the
 #: byte tier is relaxed for it. It is not a weld, so neither these nine nor the weld
-#: status rule apply to it. Its route runs carry their own fields
-#: (``fastpath.DISPATCH_RUN_FIELDS``) under ``runs[<cc>]``, and the record is checked
-#: through them by :func:`test_the_dispatch_record_stands_on_a_live_passing_route_run`:
-#: a live run, every live run PASS, every pin matching the tree, and no route-run field
-#: beside the digests. That is the same rule the Triton and Metal contracts hold their
-#: records to.
+#: status rule apply to it. Its route runs carry their own fields under ``runs[<cc>]``
+#: (:data:`ROUTE_RUN_FIELDS`, each run's statement of the default among them), and the
+#: record is checked through them by
+#: :func:`test_the_dispatch_record_stands_on_a_live_passing_route_run`: a live run, every
+#: live run PASS, every pin matching the tree, and no route-run field beside the digests.
+#: That is the same rule the Triton and Metal contracts hold their records to.
 REQUIRED_METADATA = ("recorded_utc", "host", "artifact_sha256", "subnormal_policy",
                      "records", "legs", "verdict_read_from", "kernels",
                      "kernel_module")
@@ -225,8 +225,8 @@ WELD_RUN_RECORD_FLOOR = 54
 #: fails here rather than passing a one-element loop.
 CITED_KEY_FLOOR = 31
 
-#: Non-vacuity floors, measured 2026-08-30 by independent recomputation. THE
-#: DENOMINATOR IS PART OF THE CHECK: these fail when coverage SHRINKS, so an
+#: Non-vacuity floors, measured 2026-08-30 by independent recomputation. The
+#: denominator is part of the check: these fail when coverage SHRINKS, so an
 #: entry cannot leave the strict comparison by dropping a key — the mechanism
 #: that would have caught the Triton status filter eleven days earlier.
 ENTRY_FLOOR = 20
@@ -236,7 +236,7 @@ PIN_FLOOR = 79
 #: cannot substitute for: a digest that stops being FOUND also stops being counted
 #: by every floor derived from the walk, so only the total can report it.
 #:
-#: RAISED 2026-08-30 (fifth round) when the re-gate cleared the drift, and the
+#: RAISED 2026-08-30 (the fifth pass) when the re-gate cleared the drift, and the
 #: SHAPE of the rise is the point. Nothing was added to the ledger: the code tier
 #: went 39 -> 79 because ``code_sha256`` had been WITHHELD on every drifted file
 #: — ``code_identity`` licenses a code digest beside a source digest only while
@@ -269,9 +269,10 @@ EXPECTED_RULES = {
     "artifact_or_log_digest": 20,
     "historical_recut_log": 6,
     # Added in 0.9.1: one per weld per architecture it has a run record for
-    # (54 today, all 8.6). It is the digest of the digests that run certified,
-    # which is what makes an architecture's evidence expire with the bytes.
-    "run_bound_digest": 54,
+    # (112 today: 56 for 8.6 and 56 for 8.9; 54 until 8.9 was bound). It is the
+    # digest of the digests that run certified, which is what makes an
+    # architecture's evidence expire with the bytes.
+    "run_bound_digest": 112,
     # ARRIVED with the array-path oracle (parity/meep_gpu/record_array_path_oracle.py):
     # one fingerprint per byte-binding entry (55 with driver_dispatch) plus
     # driver_dispatch's 18 per-case digests, all compared by running the fixture in
@@ -280,6 +281,20 @@ EXPECTED_RULES = {
     # and not judged.
     "array_path_oracle_fingerprint": 73,
     "array_path_oracle_provenance": 11,
+    # ARRIVED with the first route record cut with its dispatch preference
+    # (recut_driver_dispatch_record.py, the dispatch_preference block): one pin per
+    # timing record the tree ships when a route run is cut (the records its legs ran
+    # with and, after a carry, any they were taken across), keyed by the record's
+    # repository path with the sha256 of its bytes inside (driver_dispatch.runs[<cc>].
+    # dispatch_preference.shipped_records, one statement per run), compared raw, so a
+    # timing record that moves after a cut leaves this record failing its contract. 6
+    # today: 8.6's run and 8.9's each pin the two compute capability 8.6 records, Triton
+    # and CUDA, and the Apple M1 Max record. Raised from 5, which counted 2 for 8.6: its
+    # route legs ran before the Apple record shipped, and its statement gained that
+    # record's pin when the legs were carried to the three shipped records and its run
+    # re-cut, so a statement that loses a pin again shows here (3 while one shared
+    # statement, the last cut's, held the pins).
+    walk.TIER_RAW + ":parent_key_named_pin": 6,
 }
 
 
@@ -290,7 +305,7 @@ def _record():
 def _census(record=None):
     """EVERY digest in the record, classified. The denominator, structurally derived.
 
-    THE ONE ENUMERATOR. No ``record.items()`` loop that assumes a top level, no
+    The one enumerator. No ``record.items()`` loop that assumes a top level, no
     ``entry["source_sha256"]`` that assumes a key. What the record holds is what
     gets classified, and a digest the classifier has no rule for is
     ``UNCLASSIFIED``: a failure, not silence.
@@ -357,19 +372,19 @@ def _weld_entries(record=None):
 def _weld_runs(record=None, welded=None):
     """``[(weld, capability, run)]`` and the weld entries that carry NO record.
 
-    THE RUN-FIELD DENOMINATOR SINCE 0.9.1. Six of the nine required fields, the
+    The run-field denominator since 0.9.1. Six of the nine required fields, the
     timestamps and the records line are all facts about ONE RUN and now live in
     ``runs[<cc>]``, so they are asked of every record an entry holds: an entry
     certified on two architectures answers twice, and one certified on neither
     answers never.
 
-    THE RECORDLESS LIST IS RETURNED RATHER THAN SKIPPED, and that half is what keeps
+    The recordless list is returned rather than skipped, and that half is what keeps
     the rest honest — a loop over an absent or emptied ``runs`` is a loop over
     nothing, so a migration that dropped the container would have turned every
     requirement below into a pass. Each caller asserts the list is empty and the row
     count clears :data:`WELD_RUN_RECORD_FLOOR`.
 
-    THE DENOMINATOR IS :func:`_weld_entries`, 54 of the ledger's 55 checked entries,
+    The denominator is :func:`_weld_entries`, 54 of the ledger's 55 checked entries,
     and the one it leaves out is ``driver_dispatch`` — named in :data:`NOT_A_WELD`
     with the reason. Its route runs hold route-campaign fields, not a weld's, and are
     checked by :func:`test_the_dispatch_record_stands_on_a_live_passing_route_run`.
@@ -442,7 +457,7 @@ def _device_digests_of(path):
 def _drifted(found, root=REPO):
     """Every CHECKED digest the tree does not support, across every tier present.
 
-    THE RULE IS THE RAW BYTES in the raw tier, with no allowance and no
+    The rule is the raw bytes in the raw tier, with no allowance and no
     fall-through to a laxer digest — the Metal rule, brought across unchanged.
     ``weld_survives_edit`` is deliberately NOT called: whether an edit is harmless
     is a judgement made on the host about a claim only the device can settle.
@@ -526,7 +541,7 @@ def test_the_checked_denominator_has_not_shrunk():
 def test_every_discovered_digest_is_checked_or_excluded_by_a_named_rule():
     """THE WALK. Every digest in the ledger, wherever it lives, has a fate.
 
-    THE TEST THAT REMOVES THE CLASS, and this module needed it as much as its
+    The test that removes the class, and this module needed it as much as its
     siblings did: it landed with a shape enumerator that read one key per
     top-level entry, and so compared 79 of the ledger's 138 digests while reading
     as strict. Here the record is RECURSED — dicts and lists, at any depth — and
@@ -534,7 +549,7 @@ def test_every_discovered_digest_is_checked_or_excluded_by_a_named_rule():
     carrying its reason. There is no third outcome: a digest no rule claims is
     ``UNCLASSIFIED``, and that is this assertion failing.
 
-    THE TOTAL IS ASSERTED, not only the checked count: a digest that stops being
+    The total is asserted, not only the checked count: a digest that stops being
     DISCOVERED is the failure no count of what is checked can see, because it
     leaves every count derived from the walk at the same time.
     """
@@ -574,9 +589,9 @@ def test_every_discovered_digest_is_checked_or_excluded_by_a_named_rule():
 
 
 def test_a_historical_exclusion_is_earned_by_a_live_checked_claim():
-    """HISTORY IS EXEMPT FROM THE TREE — and here is the price of that exemption.
+    """History is exempt from the tree — and here is the price of that exemption.
 
-    UNTIL 2026-09-11 THIS LEDGER CARRIED NO HISTORY AT ALL, and the test in this
+    Until 2026-09-11 this ledger carried no history at all, and the test in this
     slot asserted exactly that: an entry that grew a ``superseded_runs`` list would
     have inherited the Triton exclusion silently, because the rule lives in the
     shared walker and fires on SHAPE. Its failure message named the remedy — "bring
@@ -588,7 +603,7 @@ def test_a_historical_exclusion_is_earned_by_a_live_checked_claim():
     block per re-cut of the driver-dispatch weld, each row a ``from``/``to`` pair
     over a file whose digest moved between two cuts. Half of every pair is stale BY
     CONSTRUCTION — a log that had to match the tree could not record a change — and
-    the only way to clear a red raised against it would be to DELETE THE HISTORY,
+    the only way to clear a red raised against it would be to delete the history,
     which is the one repair that destroys evidence.
 
     THE PRICE, which is what stops this being a hole. Three legs, all checked here:
@@ -631,7 +646,7 @@ def test_a_historical_exclusion_is_earned_by_a_live_checked_claim():
                 if missing:
                     silent.append(f"{name}.{key}[{index}] declares no {missing}")
                     continue
-                # SHAPE, NOT PRESENCE. A truthy string satisfies "declares itself"
+                # Shape, not presence. A truthy string satisfies "declares itself"
                 # while saying nothing, so each field is held to the shape its writer
                 # produces: an ISO-8601 Z stamp that parses, a path under the results
                 # tree, and rows that are {file, from, to} with sha256-shaped digests
@@ -683,14 +698,14 @@ def test_a_historical_exclusion_is_earned_by_a_live_checked_claim():
     assert not unearned, (
         f"{unearned} carry HISTORICAL digests and no live checked digest at all — "
         f"an entry whose only pins are in its own past has stopped making a claim "
-        f"about this tree. THE REMEDY IS TO RE-GATE AND PIN THE LIVE BYTES. Naming it "
+        f"about this tree. The remedy is to re-gate and pin the live bytes. Naming it "
         f"in NOT_A_WELD_LEDGER_ENTRY does NOT clear this leg -- that table is read by "
         f"the entry-accounting test, not here, and the Triton original's "
         f"corresponding exemption set (NOT_A_GATE_RECORD) was deliberately not ported "
         f"because this ledger has no entry that has stopped gating. If one ever does, "
         f"the exemption has to be added HERE, in the same change, with its reason")
 
-    # LEG 3 — every historical digest is OWNED BY AN ENTRY, so leg 2 can reach it.
+    # LEG 3 — every historical digest is owned by an entry, so leg 2 can reach it.
     #
     # WIDENED 2026-09-11 by its own planted control, which is the reason the controls
     # exist. The ported form asked only ``len(trail) < 2`` — a digest literally at
@@ -707,9 +722,9 @@ def test_a_historical_exclusion_is_earned_by_a_live_checked_claim():
         f"{rootless} are not owned by a top-level entry, so no live checked digest "
         f"can ever stand beside them and leg 2 cannot ask anything of them")
 
-    # LEG 4 — THE EXEMPTION IS SHAPED, so it cannot be used as a hiding place.
+    # LEG 4 — the exemption is shaped, so it cannot be used as a hiding place.
     #
-    # THE HOLE THIS CLOSES, and it was opened by the same change that admitted the
+    # The hole this closes, and it was opened by the same change that admitted the
     # rule. ``weld_record_walk`` classifies on the TRAIL: any digest whose path
     # contains a key ending ``_recut_log`` is historical, decided FIRST, before every
     # tier rule, with no requirement on where under that key it sits. So a live pin
@@ -746,7 +761,7 @@ def test_a_historical_exclusion_is_earned_by_a_live_checked_claim():
 
 
 def test_the_earning_legs_can_each_be_made_to_fire():
-    """THE CONTROL THE PORT DROPPED. A leg nobody has watched fail proves nothing.
+    """The control the port dropped. A leg nobody has watched fail proves nothing.
 
     The Triton original ends with planted-record controls for exactly this reason, and
     the first version of this port brought none of them across — four assertions, all
@@ -809,10 +824,22 @@ def test_the_earning_legs_can_each_be_made_to_fire():
     mute[owner]["_source_sha256_recut_log"][0]["why"] = ""
     assert "leg1" in legs_over(mute), "leg 1 does not fire on an undeclared recut block"
 
-    # LEG 2 — an entry whose ONLY digests are historical.
+    # LEG 2 — an entry whose ONLY digests are historical. Every live checked pin of the
+    # entry is taken out: its source and code maps, and the timing records each run's
+    # dispatch preference names (runs[<cc>].dispatch_preference.shipped_records), which
+    # the walk checks as live pins too.
     emptied = copy.deepcopy(record)
     for key in ("source_sha256", "code_sha256"):
         emptied[owner].pop(key, None)
+    for found in _checked(_census(emptied)):
+        if found.trail[0] == owner:
+            node = emptied
+            for part in found.trail[:-1]:
+                node = node[part]
+            del node[found.trail[-1]]
+    assert not [f for f in _checked(_census(emptied)) if f.trail[0] == owner], (
+        "the plant left a live checked pin in the entry, so it is not the evasion leg 2 "
+        "refuses")
     assert "leg2" in legs_over(emptied), (
         "leg 2 does not fire on an entry whose live pins have all been moved into its "
         "own past — the exact evasion it exists to refuse")
@@ -833,7 +860,7 @@ def test_the_earning_legs_can_each_be_made_to_fire():
 
 
 def test_no_exclusion_here_rests_on_a_premise_or_a_citation():
-    """AN EXCLUSION IS ONLY AS GOOD AS ITS PREMISE — asserted as a negative, ARMED.
+    """An exclusion is only as good as its premise — asserted as a negative, ARMED.
 
     Two shapes of exclusion in the shared walker rest on something other than the
     record: a claim about this checkout (``staging_only_file``,
@@ -843,7 +870,7 @@ def test_no_exclusion_here_rests_on_a_premise_or_a_citation():
     shared walker and fire on SHAPE, so an entry that grew one of those blocks
     would inherit the exemption without anyone arguing for it.
 
-    THE NEGATIVE IS ARMED. A premise check with nothing to check is
+    The negative is armed. A premise check with nothing to check is
     indistinguishable from one that never runs, so the same function is driven
     against a planted census that does violate the premise, and must say so.
     """
@@ -882,7 +909,7 @@ def test_every_citation_in_an_exclusion_names_a_test_that_exists():
     exclusion would have gone on reading as covered. It now names file and
     function, and both must resolve.
 
-    THE SWEEP IS OVER BOTH EXCLUSION TABLES, :data:`NOT_A_WELD_LEDGER_ENTRY` and
+    The sweep is over both exclusion tables, :data:`NOT_A_WELD_LEDGER_ENTRY` and
     :data:`NOT_A_WELD`, and the walker's reasons, as the Triton contract's sweep is
     over both of its own. ``NOT_A_WELD`` joined it when ``driver_dispatch``'s reason
     began citing the test that checks its route runs.
@@ -927,7 +954,7 @@ def test_every_citation_in_an_exclusion_names_a_test_that_exists():
 def test_the_cuda_welds_are_bound_to_the_live_sources():
     """The Metal rule, on the CUDA record, over every pin in it.
 
-    RED AS LANDED, 40 of 79, which was the honest reading of a ledger nineteen of
+    Red as landed, 40 of 79, which was the honest reading of a ledger nineteen of
     whose twenty entries already said ``DRIFTED`` about themselves. GREEN SINCE
     2026-08-30, 0 of 79, and the only way it was allowed to get there: every
     campaign re-run on a CUDA host into ``results/cuda_regate_2026-08-30/`` and
@@ -954,7 +981,7 @@ def test_the_cuda_welds_are_bound_to_the_live_sources():
 def test_the_cuda_code_tier_recomputes_against_the_tree():
     """Every ``code_sha256`` pin — 39, now 79 — compared to the LIVE FILE'S CODE.
 
-    THIS IS NOT THE SAME CHECK AS ``test_no_entry_backfills_a_code_digest_beside_a
+    This is not the same check as ``test_no_entry_backfills_a_code_digest_beside_a
     _stale_source_digest``, and the difference matters. That one enforces the
     ledger's SELF-DECLARATION — the rule the record writes against itself, that a
     code digest may not sit beside a source digest that has moved. This one
@@ -996,7 +1023,7 @@ def _plant(root, rel, text):
 
 
 def test_the_drift_check_refuses_a_planted_digest(tmp_path):
-    """THE ARMED CONTROL. Withhold nothing and plant one wrong byte-digest.
+    """The armed control. Withhold nothing and plant one wrong byte-digest.
 
     Without this, the test above failing would be consistent with ``_drifted``
     reporting unconditionally, and — once the re-gate turns it green — its passing
@@ -1042,7 +1069,7 @@ def test_the_drift_check_refuses_a_planted_digest(tmp_path):
 
 
 def test_the_code_tier_is_the_clause_code_identity_licenses(tmp_path):
-    """THE ARMED CONTROL FOR THE CODE TIER, in both directions, on a real file.
+    """The armed control for the code tier, in both directions, on a real file.
 
       1. A COMMENT-ONLY EDIT: the raw digest MOVES and the code digest HOLDS.
          This is the whole clause code_identity licenses and the only reason the
@@ -1054,9 +1081,9 @@ def test_the_code_tier_is_the_clause_code_identity_licenses(tmp_path):
          illustrative.
       2. A REAL CODE EDIT: both move. The licence does not stretch to it.
       3. A PLANTED CODE DIGEST on an unedited file: reported.
-      4. A CODE DIGEST ON A FILE WITH NO CODE IDENTITY: reported, never skipped.
+      4. A code digest on a file with no code identity: reported, never skipped.
          Silently passing an incomputable comparison is the defect class this
-         round exists to remove.
+         pass exists to remove.
     """
     victim = PACKAGE / "cuda_kernels" / "ade_kernels.py"
     rel = victim.relative_to(REPO).as_posix()
@@ -1089,7 +1116,7 @@ def test_the_code_tier_is_the_clause_code_identity_licenses(tmp_path):
 
 
 def test_the_walker_finds_a_digest_planted_at_a_new_nesting_depth():
-    """THE ARMED CONTROL FOR THE WALK ITSELF. Plant one deeper than anything real.
+    """The armed control for the walk itself. Plant one deeper than anything real.
 
     Without this, a walker that stopped at depth 3 would report zero unclassified
     digests and a perfectly stable discovered count, because this ledger's deepest
@@ -1123,7 +1150,7 @@ def test_the_walker_finds_a_digest_planted_at_a_new_nesting_depth():
 def test_the_declared_source_drift_is_the_measured_source_drift():
     """``source_drift`` must be the whole truth, not a snapshot of it.
 
-    THE DEFECT THIS CATCHES, measured 2026-08-30 on
+    The defect this catches, measured 2026-08-30 on
     ``cuda_fused_magnetic_pair_2026-08-27``: it declared two moved files and
     three had moved — ``parity/meep_gpu/gate_cuda_fused_magnetic_pair.py``
     drifted after the declaration was written and nothing noticed, because
@@ -1131,7 +1158,7 @@ def test_the_declared_source_drift_is_the_measured_source_drift():
     it invites a reader to treat the two named files as the whole exposure and to
     trust every pin the list does not mention.
 
-    IT WAS CLEARED BY RE-RUNNING THE WRITER, WHICH IS THE ONLY WAY. The entry now
+    It was cleared by re-running the writer, which is the only way. The entry now
     declares ``source_drift: []`` and all four of its pins are bound to the
     2026-08-30 re-gate, so the list is the whole truth by being empty. That is a
     stronger outcome than a corrected list of three, and it is worth naming which
@@ -1164,7 +1191,7 @@ def test_the_status_is_the_one_the_tree_supports():
     the one direction this makes impossible: an entry cannot be stamped PASS
     while a pin it carries has moved.
 
-    THE DENOMINATOR IS THE WELDS, :func:`_weld_entries`, as for every other weld
+    The denominator is the welds, :func:`_weld_entries`, as for every other weld
     rule in this file. ``driver_dispatch`` is named in :data:`NOT_A_WELD`: its
     verdict is its route runs', and it is checked through them by
     :func:`test_the_dispatch_record_stands_on_a_live_passing_route_run`, which
@@ -1203,7 +1230,7 @@ def _status_problems(welded):
 
 def test_the_weld_status_rule_refuses_a_status_the_tree_does_not_support():
     """ARMED, over a synthetic ledger: the status test above fails on this tree until
-    the residue re-gate, so it has to be watched refusing what it is meant to refuse.
+    the moved pins are re-gated, so it has to be watched refusing what it is meant to refuse.
 
     Five welds pinning one file, either at its live digest or at a digest it does not
     have. A weld still needs PASS or DRIFTED, and the one the tree supports: a weld
@@ -1242,7 +1269,7 @@ def test_no_entry_backfills_a_code_digest_beside_a_stale_source_digest():
     digest beside a stale source digest would manufacture the licence that clause
     withholds."
 
-    MEASURED 2026-08-30: one entry violated it —
+    Measured 2026-08-30: one entry violated it —
     ``cuda_fused_magnetic_pair_2026-08-27`` carried a ``code_sha256`` for
     ``parity/meep_gpu/gate_cuda_fused_magnetic_pair.py`` whose source digest was
     stale. It was the SAME file the entry failed to declare in ``source_drift``,
@@ -1272,7 +1299,7 @@ def test_no_entry_backfills_a_code_digest_beside_a_stale_source_digest():
 
 
 # ---------------------------------------------------------------------------
-# THE ROUTE RECORD: checked through its runs, not as a weld
+# The route record: checked through its runs, not as a weld
 # ---------------------------------------------------------------------------
 #
 # The same rule, in the same words, as the other two weld contracts. What differs
@@ -1287,10 +1314,19 @@ DISPATCH_RECORD_DECLARED_BY = NOT_A_WELD
 PLANTED_RUN_KEY = "8.6"
 
 
+#: The route-run fields this suite's shape check reads: ``fastpath.DISPATCH_RUN_FIELDS``
+#: and each run's statement of the default, which ``fastpath.py`` cannot name without
+#: stranding every route run that binds it. The record-cut tool writes the same list
+#: (``NVIDIA_ROUTE_RUN_FIELDS``); ``test_dispatch_contract`` holds the two equal, and this
+#: suite needs no harness to read it.
+ROUTE_RUN_FIELDS = tuple(fastpath.DISPATCH_RUN_FIELDS) + ("dispatch_preference",)
+
+
 def _dispatch_shape_reasons(entry):
     """Why the record is not in the per-capability shape, read against the
-    ROUTE-run fields, which name ``status``; the weld run fields do not."""
-    return fastpath.retired_shape_reasons(entry, run_fields=fastpath.DISPATCH_RUN_FIELDS)
+    ROUTE-run fields (:data:`ROUTE_RUN_FIELDS`), which name ``status`` and each run's
+    statement of the default; the weld run fields do not."""
+    return fastpath.retired_shape_reasons(entry, run_fields=ROUTE_RUN_FIELDS)
 
 
 def _tree_digest(name):
@@ -1352,12 +1388,13 @@ def test_the_dispatch_record_rule_refuses_what_its_route_runs_do_not_support():
     been watched refusing what it is meant to refuse.
 
     The control first: a copy of the record re-pinned to the tree, holding one live
-    run that reads PASS, is accepted, so the rule can pass. Then four plants on that
+    run that reads PASS, is accepted, so the rule can pass. Then five plants on that
     control, each refused by its own clause and by nothing else: an entry-level
-    ``status`` (d), an emptied ``runs`` (a), a run that reads PASS but binds bytes
-    other than the record's, so that no run is live (a), and the live run reading
-    FAIL (b). The stale run is what holds liveness to ``fastpath.live_capabilities``:
-    a check that read every recorded run as live would accept it."""
+    ``status`` (d), an entry-level statement of the default, the one every cut used to
+    rewrite (d), an emptied ``runs`` (a), a run that reads PASS but binds bytes other
+    than the record's, so that no run is live (a), and the live run reading FAIL (b).
+    The stale run is what holds liveness to ``fastpath.live_capabilities``: a check
+    that read every recorded run as live would accept it."""
     record = _record()
     source = {name: _tree_digest(name)
               for name in record[DISPATCH_RECORD]["source_sha256"]}
@@ -1375,6 +1412,9 @@ def test_the_dispatch_record_rule_refuses_what_its_route_runs_do_not_support():
     stated = problems_with(status="PASS")
     assert len(stated) == 1 and "beside the digests" in stated[0], stated
     assert "'status'" in stated[0], stated
+    shared = problems_with(dispatch_preference={"run": "a route campaign"})
+    assert len(shared) == 1 and "beside the digests" in shared[0], shared
+    assert "'dispatch_preference'" in shared[0], shared
     emptied = problems_with(**{fastpath.RUNS: {}})
     assert len(emptied) == 1 and emptied[0].startswith("no live run"), emptied
     other_bytes = "0" * 64
@@ -1389,7 +1429,7 @@ def test_the_dispatch_record_rule_refuses_what_its_route_runs_do_not_support():
 
 
 # ---------------------------------------------------------------------------
-# WHAT AN ENTRY MUST CARRY
+# What an entry must carry
 # ---------------------------------------------------------------------------
 
 
@@ -1403,14 +1443,14 @@ def test_every_cuda_entry_carries_its_metadata(field):
     fifty-four carry all nine today, so this is a floor a future entry must clear
     rather than a backlog to be worked down.
 
-    TWO LEVELS SINCE 0.9.1, AND WHICH ONE IS DERIVED. ``fastpath.RUN_FIELDS`` names
+    Two levels since 0.9.1, and which one is derived. ``fastpath.RUN_FIELDS`` names
     the fields that describe a RUN, and those are asked of every per-capability
     record; the rest describe the bytes or the claim and are asked of the entry. The
     nine test IDs are unchanged, which is deliberate: the migration moved where a
     field lives, not what the ledger owes, and a test that renamed itself would have
     read as a new requirement instead of the same one at a new level.
 
-    THE KEY IS IN THE FAILURE, as ``weld[cc]`` for a run field: an entry certified
+    The key is in the failure, as ``weld[cc]`` for a run field: an entry certified
     on two architectures and missing a field on one of them must name which, because
     the remedy is a re-gate of THAT architecture and nothing else.
     """
@@ -1441,7 +1481,7 @@ def test_every_cuda_entry_records_a_timestamp_that_parses():
     to the same rule: it is the stamp the artifact carries, so a mismatch of
     spelling between the two is a mismatch of provenance.
 
-    PER RUN RECORD since 0.9.1, and both stamps were always run facts rather than
+    Per run record since 0.9.1, and both stamps were always run facts rather than
     weld facts — when a gate started and when its verdict was transcribed. Once two
     architectures' records sit under one entry a single pair of stamps could only
     describe one of them, which is why they moved rather than being kept.
@@ -1466,7 +1506,7 @@ def test_every_cuda_entry_artifact_digest_is_a_sha256():
     recompute them on a fresh clone — which is precisely why the recorded value
     has to be well formed: it is the only handle a later reader gets.
 
-    ONE ARTIFACT PER RUN, so one digest per run record. It is deliberately NOT part
+    One artifact per run, so one digest per run record. It is deliberately NOT part
     of ``fastpath.bound_digest`` — the bound is over the bytes a run certified, and
     an artifact is what the run produced — so nothing else in the ledger would catch
     this degrading into a note.
@@ -1487,7 +1527,7 @@ def test_every_cuda_entry_names_both_canonical_policies():
     does not identify its own result. Present is not enough — the field must say
     which two, and the ``legs`` list must have one entry per leg it names.
 
-    SPLIT ACROSS THE TWO LEVELS BY WHAT EACH FIELD IS. The policy is a property of
+    Split across the two levels by what each field is. The policy is a property of
     the ENVIRONMENT one run installed, so it is asked of every record: two
     architectures may legitimately be re-gated under different policy
     implementations, and one entry-level string could only name one of them.
@@ -1524,7 +1564,7 @@ def test_every_cuda_entry_pins_both_the_kernels_and_the_script_that_gated_them()
     """A weld over harness scripts alone certifies nothing a user runs — and a
     weld over package bytes alone cannot say what was asked of them.
 
-    MEASURED 2026-08-30: all twenty pin at least one ``meep_gpu/cuda_kernels/``
+    Measured 2026-08-30: all twenty pin at least one ``meep_gpu/cuda_kernels/``
     module and at least one ``parity/meep_gpu/`` script, which is the same
     coverage the Metal record has at 44 of 44 and the Triton record reached at
     31 of 31. The half that is easy to lose is the second one: the sources say
@@ -1579,7 +1619,7 @@ def test_no_cuda_entry_claims_a_campaign_that_failed_on_device():
     assert not welded_refusals, (
         f"entries welded despite a recorded device failure: {welded_refusals}")
 
-    # THE ARMED CONTROL, because the assertion above is currently vacuous over
+    # The armed control, because the assertion above is currently vacuous over
     # the real record and an empty result must be a fact about the ledger rather
     # than about the finder.
     victim = json.loads(json.dumps(entries["ade_2026-08-19"]))
@@ -1600,7 +1640,7 @@ def test_the_records_line_names_a_campaign_directory():
     names an ``apps/api/parity/meep_gpu/results/...`` path — the spelling that
     resolves from a checkout — rather than a bare directory name or a note.
 
-    PER RUN RECORD since 0.9.1, and this is the field the migration makes most
+    Per run record since 0.9.1, and this is the field the migration makes most
     obviously a run fact: a records line points at ONE campaign directory, and a
     second architecture's run writes a different one. An entry-level line could only
     follow one of them, so an architecture added beside the first would have had no
@@ -1619,36 +1659,36 @@ def test_the_records_line_names_a_campaign_directory():
 
 
 def test_every_cited_cuda_weld_has_a_live_record_for_some_architecture():
-    """A CITED WELD WITH NO LIVE RECORD ADMITS NOTHING, and must say so here.
+    """A cited weld with no live record admits nothing, and must say so here.
 
-    WHAT LIVENESS IS. A run record carries ``bound_sha256``, the digest of the
+    What liveness is. A run record carries ``bound_sha256``, the digest of the
     digests that run certified (``fastpath.bound_digest`` over ``BOUND_FIELDS``). A
     record is LIVE while that equals the entry's current bound, so the comparison is
-    LEDGER AGAINST LEDGER: rebinding a weld's source map without re-gating expires
+    ledger against ledger: rebinding a weld's source map without re-gating expires
     every architecture's evidence at once. Whether the ledger matches the TREE is a
     different claim and stays the job of
     ``test_the_cuda_welds_are_bound_to_the_live_sources`` above — this test would
     stay green on a record bound to bytes that have all moved, and that split is
     deliberate: one says the evidence expired, the other says the files did.
 
-    WHY THE TABLE'S ANSWER IS THE INTERSECTION. An arm dispatches from whichever
+    Why the table's answer is the intersection. An arm dispatches from whichever
     certified family serves it, so a capability ONE cited family never ran on is a
     capability the table cannot claim. An empty intersection is not "unknown": it is
     a readable ledger whose cited welds share no live architecture, and it refuses
     every device rather than admitting all of them, which is what the key it
-    replaced did when a round moved the bytes under it.
+    replaced did when a certification run moved the bytes under it.
 
-    WHAT THIS ADDS OVER ``test_capability_records.py``. That file drives the
+    What this adds over ``test_capability_records.py``. That file drives the
     machinery over synthetic ledgers and pins both shipped tables at ``('8.6',)``
     through the package's own loader. Left over, and this file's job because this
     file owns this ledger: the DENOMINATOR — how many keys the arms cite, asserted
     as a floor, since a collapsed arm map would make that file's loop pass over one
-    key — and that the claim holds for the ledger AS CHECKED IN HERE, read from the
+    key — and that the claim holds for the ledger as checked in here, read from the
     file rather than through ``fastpath._fingerprints``. The admitted set is
-    deliberately NOT pinned to a literal: the next architecture's round must widen
+    deliberately NOT pinned to a literal: the next architecture's certification run must widen
     it by writing records, not by editing this test.
 
-    MEASURED 2026-10-01: 34 arms cite 31 keys, every one live on ``8.6``, admitted
+    Measured 2026-10-01: 34 arms cite 31 keys, every one live on ``8.6``, admitted
     non-empty, 0 blocked.
     """
     record = _record()
@@ -1679,7 +1719,7 @@ def test_every_cited_cuda_weld_has_a_live_record_for_some_architecture():
 
 
 def test_no_cuda_entry_is_left_in_the_shape_the_run_records_replaced():
-    """BOTH SHAPES ARE NEVER READ, so neither may be left in the ledger.
+    """Both shapes are never read, so neither may be left in the ledger.
 
     THE RULE ``fastpath.retired_shape_reasons`` STATES, and why it is a refusal
     rather than a compatible read: an entry carrying a run field BESIDE its digests
@@ -1690,27 +1730,27 @@ def test_no_cuda_entry_is_left_in_the_shape_the_run_records_replaced():
     record that is not a mapping, a record with no ``bound_sha256``, and an entry
     that binds no bytes at all are each reported by name.
 
-    THE DENOMINATOR IS WIDER THAN THE CITED SET, which is what this adds over
+    The denominator is wider than the cited set, which is what this adds over
     ``test_capability_records.py::test_no_shipped_nvidia_weld_is_left_in_the_shape_
     this_replaced``: that one walks the 31 keys the arms cite, and this ledger holds
-    55 checked entries. An uncited weld left half-migrated is a weld the next round
+    55 checked entries. An uncited weld left half-migrated is a weld the next certification run
     rebinds against, and a prose block that grows a ``host`` is how a run field gets
     stranded in the first place.
 
-    SO EVERY ENTRY IS EITHER CLEAN OR NAMED, the mechanism this file already rests
+    So every entry is either clean or named, the mechanism this file already rests
     on everywhere else. The exemptions are the two tables that exist —
     :data:`NOT_A_WELD_LEDGER_ENTRY` and :data:`NOT_A_WELD` — because an entry with
-    no run behind it has no record to file. MEASURED 2026-10-01: 54 of 54 weld
+    no run behind it has no record to file. Measured 2026-10-01: 54 of 54 weld
     entries clean, ``driver_dispatch`` clean as well (it held ``runs: {}`` that day,
     an empty container, not the old shape; it now holds the 0.9.1 route run under
     ``runs["8.6"]``), and one entry reports — the migration's own stamp, which pins
     nothing and is named in NOT_A_WELD_LEDGER_ENTRY. ``driver_dispatch``'s own fields
     are the route-run fields, not :data:`fastpath.RUN_FIELDS`, so its shape is checked
-    against ``fastpath.DISPATCH_RUN_FIELDS`` by
+    against :data:`ROUTE_RUN_FIELDS` by
     :func:`test_the_dispatch_record_stands_on_a_live_passing_route_run`, which refuses
-    a ``status`` beside its digests.
+    a ``status`` or a statement of the default beside its digests.
 
-    THE SLOT CONTENTS ARE CHECKED TOO, and nothing else checks them.
+    The slot contents are checked too, and nothing else checks them.
     ``bind_capability`` refuses a foreign key at WRITE time, so a ledger written by
     hand — or by an older tool — can hold a record carrying a field that describes
     the BYTES, which belongs beside the digests where the bound covers it. Measured:
@@ -1770,14 +1810,14 @@ def test_no_cuda_entry_is_left_in_the_shape_the_run_records_replaced():
 
 
 # ---------------------------------------------------------------------------
-# THE ARRAY PATH THE WELDS WERE CERTIFIED AGAINST
+# The array path the welds were certified against
 # ---------------------------------------------------------------------------
 
 
 def test_the_cuda_ledger_records_the_live_array_path_oracle():
     """Every CUDA weld records the array-path behaviour it was certified against.
 
-    THE GAP THIS CLOSES. A CUDA gate passes when the kernel returns the array
+    The gap this closes. A CUDA gate passes when the kernel returns the array
     path's words, but the welds bind the KERNEL bytes and almost none of them bind an
     array-path module, so an arithmetic change to ``stepping`` and its siblings would
     leave every byte tier above green while every gate run against the new array path

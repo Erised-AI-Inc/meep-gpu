@@ -410,7 +410,7 @@ def test_the_first_step_on_the_device_equals_the_array_path(monkeypatch, fuse_la
     differing = {n: int(np.count_nonzero(_words(got[n]) != _words(want[n]))) for n in want}
     assert not {n: c for n, c in differing.items() if c}, differing
 
-    # THE PLANTED REVERT: the same composition with the start stripped differs, on H first
+    # The planted revert: the same composition with the start stripped differs, on H first
     # (and on what H feeds within the step).
     reverted, _, _ = _composed_first_step(fuse_labels, strip_start=True)
     caught = {n: int(np.count_nonzero(_words(reverted[n]) != _words(want[n]))) for n in want}

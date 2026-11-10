@@ -1,6 +1,6 @@
 """The two mirror fills carried through a COMPLEX fused ELECTRIC seam -- shared emitters.
 
-WHAT THIS IS. :mod:`.fused_electric_pair` carries ``fill_symmetry_bc_D`` and
+What this is. :mod:`.fused_electric_pair` carries ``fill_symmetry_bc_D`` and
 ``fill_folded_far_ghosts_D`` through the OWNERSHIP INVERSION -- the source
 thread writes each imaged ghost from a live register, the destination thread is
 carved out -- in real float32 arithmetic, with the D family's geometry: the
@@ -18,22 +18,22 @@ certified curl sources genuinely share the fold spelling
 folded_source`` plus the beta insert, which never touches a fill), so one
 carry serves both.
 
-NOTHING HERE IMPORTS CUPY OR NUMPY AT MODULE SCOPE: the emitters splice strings
+Nothing here imports CuPy or NumPy at module scope: the emitters splice strings
 and the clauses read a grid, and both must run on the census laptop.
 
 =============================================================================
-WHAT THE TWO PARENT CARRIES ALREADY MEASURED, AND WHAT THIS ONE COMPOSES
+What the two parent carries already measured, and what this one composes
 =============================================================================
 
-1. **THE PARITY MULTIPLY IS A FULL COMPLEX PRODUCT, NEVER A SCALE** -- the
+1. **The parity multiply is a full complex product, never a scale** -- the
    B-side complex carry's own measured fact (the GPU host 2026-09-01, 4108 words:
    ``mul_coefficient_left(+-1, z)`` matched CuPy's ``parity * z`` on every word
    including signed zeros; the plain two-word scale did not). Every parity here
    is applied through the certified ``mul_coefficient_left``.
 
-2. **THE CHAIN ORDER IS REAL AND IS THE DRIVER'S** -- also measured there
+2. **The chain order is real and is the driver's** -- also measured there
    ((-1)x((-1)xz) differs from (+1)xz in 4 of 8216 words). Transcribed for the
-   D family: ``_fill_symmetry_ghost_cells`` applies its axes IN X, Y, Z ORDER
+   D family: ``_fill_symmetry_ghost_cells`` applies its axes in X, Y, Z order
    (stepping.py's own docstring: "The axes are filled in X, Y, Z order, which
    leaves a corner unowned on two planes carrying the product of both
    parities"), each pass reading the plane the previous one wrote -- so the
@@ -43,7 +43,7 @@ WHAT THE TWO PARENT CARRIES ALREADY MEASURED, AND WHAT THIS ONE COMPOSES
    near multiplies ascending over the PRE-clear register, the clear, the far
    multiply -- never a pre-multiplied product.
 
-3. **THE PRE-CLEAR REGISTER AND THE NAMED CLEAR FLAG** -- the real electric
+3. **The pre-clear register and the named clear flag** -- the real electric
    pair's own measured ordering (``probe_cuda_electric_fill_carry_order.py``:
    0 differing words for this ordering on twelve configurations, 9 and 11 for
    the naive one on the two where the cross term exists). A D component's near
@@ -54,11 +54,11 @@ WHAT THE TWO PARENT CARRIES ALREADY MEASURED, AND WHAT THIS ONE COMPOSES
    (``cf_zero()``) and the far multiply then gives it the sign the complex
    product gives it, exactly as the array path's pass order composes.
 
-4. **THE OWNERSHIP RULE IS UNCHANGED.** Every step of
+4. **The ownership rule is unchanged.** Every step of
    ``fused_electric_pair.carried_destinations``' argument is an INDEX fact --
    it mentions no dtype -- and transfers to word pairs unchanged.
 
-WHAT THIS MODULE DOES NOT DECIDE: which configurations a product admits. Each
+What this module does not decide: which configurations a product admits. Each
 product's own predicate conjoins its two certified halves' predicates and THEN
 asks :func:`complex_electric_fill_reasons`; this module never answers for a
 curl.
@@ -142,11 +142,11 @@ _PML_APPLY_PARAMETERS = (
     "    float kms, float sinv, float kms_u, float sinv_u, int dsigu\n)")
 _PML_APPLY_PARAMETERS_OWNED = (
     "    float kms, float sinv, float kms_u, float sinv_u, int dsigu, int owned\n)")
-#: The helper's one load of the field (DESIGN.md D11): the ownership guard goes
+#: The helper's one load of the field: the ownership guard goes
 #: directly in front of it, below the ``fu`` stage.
 _PML_APPLY_FCUR = "    cf fcur = cf_load(f, idx);\n"
 _PML_APPLY_FCUR_OWNED = (
-    "    // THE OWNERSHIP GUARD. On a cell a fill images, the SOURCE thread\n"
+    "    // The ownership guard. On a cell a fill images, the SOURCE thread\n"
     "    // writes f -- so this thread must not read f[idx] either: that word is\n"
     "    // written by another block in this same launch and an ordinary CUDA\n"
     "    // launch has no grid-wide barrier at which the load would be defined.\n"
@@ -159,7 +159,7 @@ _PML_APPLY_FCUR_OWNED = (
 _PML_APPLY_STORE = "    cf_store(f, idx, value);\n"
 _PML_APPLY_STORE_REG = (
     "    cf_store(f, idx, value);\n"
-    "    // THE ONE EDIT TO THIS HELPER'S ARITHMETIC: none. Both forms and the store\n"
+    "    // The one edit to this helper's arithmetic: none. Both forms and the store\n"
     "    // are the certified ones; the value is additionally RETURNED so the\n"
     "    // constitutive half can read it from a register instead of reloading the\n"
     "    // word pair from global memory.\n"
@@ -191,7 +191,7 @@ def near_fill_axes(target: int) -> Tuple[int, ...]:
     ``stepping._fill_symmetry_ghost_cells`` (:1440-1447) writes axis ``a`` for
     component ``m`` exactly when the plane's phase is declared and
     ``iyee[m][a] == 0`` -- for D, the TWO axes that are NOT the component's
-    own, THE EXACT COMPLEMENT of the B family's. Read off ``IYEE_SHIFTS``
+    own, the exact complement of the B family's. Read off ``IYEE_SHIFTS``
     rather than hand-typed, because that inversion is the one place a constant
     is plausible and wrong.
     """
@@ -214,7 +214,7 @@ def carried_destinations(near: Sequence[int], far: Sequence[int]
                          ) -> Tuple[Tuple[Tuple[int, ...], Tuple[int, ...]], ...]:
     """Every ghost cell ONE source thread owns, as ``(far axes at top, near axes at 0)``.
 
-    THE OWNERSHIP RULE, the real electric pair's own
+    The ownership rule, the real electric pair's own
     (``fused_electric_pair.carried_destinations``), unchanged: every step of its
     argument is an INDEX fact and transfers to word pairs unchanged. Returned
     smallest-subset-first for a stable emission order.
@@ -236,7 +236,7 @@ def carried_destinations(near: Sequence[int], far: Sequence[int]
 def ownership_declarations() -> str:
     """``own_0``/``own_1``/``own_2`` -- is this thread's own cell imaged by a fill?
 
-    THE ONE PLACE THE INVERSION IS DECIDED; every other emitter here reads
+    The one place the inversion is decided; every other emitter here reads
     these three flags. D geometry: a component is near-imaged at stored 0 of
     its two shift-0 axes and far-imaged at the top of its own axis.
     """
@@ -320,16 +320,16 @@ def zero_metal_carry() -> str:
 def fill_carry_blocks(target: int, indent: str = "        ") -> List[str]:
     """Every imaged ghost this thread owns, then ``update_E`` at each of them.
 
-    ONE BLOCK PER DESTINATION IN :func:`carried_destinations`, guarded on the
+    One block per destination in :func:`carried_destinations`, guarded on the
     flags that say THIS thread is that destination's source -- stored
     :data:`NEAR_SOURCE_INDEX` on each near axis, the runtime reflect row on the
-    far axis. EVERY BLOCK IS EMITTED INSIDE the component's ownership guard by
+    far axis. Every block is emitted inside the component's ownership guard by
     :func:`constitutive_body_with_carry`.
 
-    THE VALUE, IN DRIVER ORDER, AND THE ORDER IS THE ARITHMETIC:
+    The value, in driver order, and the order is the arithmetic:
 
     1. the NEAR multiplies, one certified ``mul_coefficient_left`` per near
-       axis IN ASCENDING ORDER (stepping's own "filled in X, Y, Z order"),
+       axis in ascending order (stepping's own "filled in X, Y, Z order"),
        innermost first, over ``pre{t}`` -- the PRE-clear word pair;
     2. the WALL CLEAR at the destination -- the source thread's own
        :data:`_CLEARED` flag IS the test (a near ghost only moves FOLDED axes,
@@ -343,7 +343,7 @@ def fill_carry_blocks(target: int, indent: str = "        ") -> List[str]:
     A pure far ghost takes steps 2-as-already-applied and 3 only: its value
     starts from the POST-clear register ``d{t}``.
 
-    THE COEFFICIENT PAIR IS THE DESTINATION'S. ``update_E`` indexes ``E{m}``
+    The coefficient pair is the destination's. ``update_E`` indexes ``E{m}``
     on the component's OWN axis, and the FAR fill is the one that moves that
     axis on this family, so a far ghost takes ``kps[n - 1]`` and a pure near
     ghost this thread's own index unchanged -- the real electric pair's rule.
@@ -403,7 +403,7 @@ def fill_carry_blocks(target: int, indent: str = "        ") -> List[str]:
                 f"(stepping._fill_symmetry_ghost_cells:1440-1447)")
         coefficient = (f"{_EXTENT[target]} - 1" if far_subset
                        else _COORDINATE[target])
-        # THE MEMBERSHIP ROW IS THE COEFFICIENT'S ROW (KERNELS.md section 3.3): the top
+        # The membership row is the coefficient's row (keyed at the destination): the top
         # plane of the component's own axis for a far image, this thread's own row (its
         # own flag) for a pure near one. update_E steps the ghost with that row's own
         # dsigw form.
@@ -415,7 +415,7 @@ def fill_carry_blocks(target: int, indent: str = "        ") -> List[str]:
         lines.append(f"{inner}int {tag}_i = idx {' '.join(terms)};")
         if near_subset:
             lines.append(
-                f"{inner}// THE PARITY CHAIN, one part-wise product per pass, in "
+                f"{inner}// The parity chain, one part-wise product per pass, in "
                 f"the driver's")
             lines.append(
                 f"{inner}// own order: near axes ASCENDING over the PRE-clear pair "
@@ -523,13 +523,13 @@ def captured_curl_body(body: str, name: str, bounds: Any = None) -> str:
     untouched, which is what lets ONE function serve both the folded and the
     beta curl bodies.
 
-    THE PRE-CLEAR REGISTERS ARE DECLARED HERE AND ASSIGNED AFTER THE CAPTURES:
+    The pre-clear registers are declared here and assigned after the captures:
     ``pre{t}`` must hold the post-curl, PRE-clear value, so its assignment is
     appended after the last certified braced block rather than at declaration.
 
     ``bounds`` is ``(curl entries, curl presence, union block)``: when given, the curl
     body's own chunk-record block is removed and the product's ONE block over the union
-    of both halves' entries is emitted directly after the decode (DESIGN.md D10).
+    of both halves' entries is emitted directly after the decode.
     """
     if _DECODE_END not in body:
         raise AssertionError(
@@ -537,7 +537,7 @@ def captured_curl_body(body: str, name: str, bounds: Any = None) -> str:
             f"the carried registers have nowhere to be declared")
     union = ""
     if bounds is not None:
-        # ONE DECODE OF THE CHUNK RECORD PER KERNEL (DESIGN.md D10): the curl body's
+        # One decode of the chunk record per kernel: the curl body's
         # own block is removed (refused unless it is exactly the emitter's block for
         # the curl's entries) and the product's union block takes its place.
         curl_entries, curl_presence, union = bounds

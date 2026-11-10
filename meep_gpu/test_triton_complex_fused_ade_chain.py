@@ -19,7 +19,7 @@ it claims:
   order binds every later one to a neighbouring slot — a wrong answer, not a
   crash.
 
-WHY ``CHAIN_MAX_POLES``' ADJUDICATION LIVES HERE. Kernel modules are bound by raw
+Why ``CHAIN_MAX_POLES``' adjudication lives here. Kernel modules are bound by raw
 sha256 in ``triton_kernels/fingerprints.json`` once their device gate lands, and a
 prose edit there makes a standing board unreproducible until the gate is re-run.
 So the cap's reasoning is pinned in tests, which nothing binds, and a test cannot
@@ -62,14 +62,14 @@ def engine(*, poles=1, sigma=None, kind=LORENTZIAN, complex_storage=True,
            driven=COMPONENTS, seed=31):
     """One configuration on the laptop's NumPy backend.
 
-    THE DEFAULT IS THE CORPUS CELL, measured rather than invented:
+    The default is the corpus cell, measured rather than invented:
     ``results/predicate_coverage_2026-08-21_eop_chain/`` records the four
     ``TestLoadDump.*_3d`` rows as ``force_complex_fields=True``,
     ``pml_active=False``, ONE lorentzian susceptibility driving all three
     components, no fold, a nonzero ``k_point``. Every keyword here moves exactly
     one of those away so a refusal can be attributed.
     """
-    # A MIRROR PLANE AND A BLOCH VECTOR ARE MUTUALLY EXCLUSIVE in ``Grid``
+    # A mirror plane and a Bloch vector are mutually exclusive in ``Grid``
     # (grid.py:591 refuses the pair), so the folded configuration drops the
     # k_point. It is the fold this case is about; carrying both would fail in the
     # fixture instead of in the predicate.
@@ -279,7 +279,7 @@ def test_the_seam_carries_no_driver_pass_and_the_predicate_takes_no_sources():
 def test_the_extra_scratch_cost_is_the_sum_over_states_of_d_minus_one():
     """``K * (d - 1)`` when every state drives the same d, summed otherwise.
 
-    THE K > 1 CASE IS REACHED THROUGH DISJOINT COMPONENT SETS, because
+    The K > 1 case is reached through disjoint component sets, because
     ``CHAIN_MAX_POLES = 1`` refuses two poles on ONE component but says nothing
     about two susceptibilities driving different ones. Without that case the
     formula would only ever be tested at K = 1, where ``K *`` is invisible.

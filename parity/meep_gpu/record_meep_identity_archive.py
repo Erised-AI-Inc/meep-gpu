@@ -6,7 +6,7 @@
         --mode keep|flush --source DIR [--source DIR ...] [--exclude LABEL=REASON ...]
         [--replay] [--replay-limit N] [--link]
 
-WHAT TIER B IS. Tier A (``record_meep_identity.py``) mints a few small cases into the
+What Tier B is. Tier A (``record_meep_identity.py``) mints a few small cases into the
 repository, inside a 5 MB budget. Tier B is the same record for the whole corpus, Table 2's
 194 rows, kept in the evidence archive (``parity/meep_gpu/results/``, outside the
 repository and the wheel): per row and per reference (host and subnormal mode), MEEP's
@@ -17,7 +17,7 @@ capsule and recorded currents, so the row replays with no MEEP. MEEP's words the
 not archived: the Tier C runner never writes them, and one corpus checkpoint set is about
 277 MB raw.
 
-WHAT THIS TOOL DOES, for one set (one reference: a host and a mode):
+What this tool does, for one set (one reference: a host and a mode):
 
 1. It reads every Tier C output directory under ``--source``
    (``meep_identity_tier_c.py compare --out``; a parent of many such directories is read
@@ -80,6 +80,15 @@ ROW_FILES = {"result": "result.json", "digests": "digests.json", "planes": "plan
 STATUSES = ("holds", "differs", "error", "refused")
 
 
+def _neutral_ids():
+    """The record spellings of machine stamps: ``neutral_ids.py`` beside this file."""
+    try:
+        import neutral_ids  # noqa: PLC0415
+    except ImportError:  # imported as a package module, not from parity/meep_gpu
+        from parity.meep_gpu import neutral_ids  # noqa: PLC0415
+    return neutral_ids
+
+
 def say(text: str) -> None:
     print(f"[{time.strftime('%H:%M:%S')}] {text}", flush=True)
 
@@ -124,14 +133,23 @@ def judge_row(mode: str, result: Dict[str, Any]) -> Tuple[str, List[str]]:
 
 
 def parse_exclusions(items: List[str]) -> Dict[str, str]:
-    """``LABEL=REASON`` arguments as a dict; a missing reason is refused."""
+    """``LABEL=REASON`` arguments as a dict; a missing reason is refused. The reason is
+    recorded on the row, so it is written as a record writes free text
+    (``neutral_ids.text``): a reason typed with a path or this host's name in it is not."""
     found: Dict[str, str] = {}
     for item in items:
         label, _, reason = item.partition("=")
         if not label.strip() or not reason.strip():
             raise ValueError(f"--exclude {item!r}: give LABEL=REASON")
-        found[label.strip()] = reason.strip()
+        found[label.strip()] = _neutral_ids().text(reason.strip())
     return found
+
+
+def recorded_sources(sources: List[str]) -> List[str]:
+    """``minted.sources`` as the record writes it: each Tier C output directory under its
+    root's label (``<staging-root>/...``, ``<home>/...``; ``neutral_ids.path``), never the
+    absolute path of the machine that archived it."""
+    return [_neutral_ids().path(str(Path(source).resolve())) for source in sources]
 
 
 def count_statuses(rows: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
@@ -362,12 +380,19 @@ def main(argv: Optional[List[str]] = None) -> int:
                 + (f" ERROR {str(outcome.get('error'))[:200]}" if outcome.get("error") else ""))
     say(f"3/4 replay: {replayed['hold']} of {replayed['rows']} replayed rows hold "
         f"({replayed['candidates']} holding rows carry a capsule)")
-    leaf = {"mode": arguments.mode, "host": arguments.host,
+    # --host is typed by whoever archives the set; it is written as free text is
+    # (neutral_ids.text: this machine's own names become its machine id). A name for
+    # ANOTHER machine typed here is written as typed -- name the reference by its role
+    # (mac_keep, linux_flush), not by its host name.
+    leaf = {"mode": arguments.mode, "host": _neutral_ids().text(arguments.host),
             "meep_images": {key: sorted(values) for key, values in sorted(images.items())},
             "counts": count_statuses(rows), "replay": replayed, "rows": rows,
             "minted": {"utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "tool": TOOL,
-                       "tool_sha256": tool_sha, "sources": [str(s) for s in arguments.source],
+                       "tool_sha256": tool_sha, "sources": recorded_sources(arguments.source),
                        "seconds": round(time.time() - started, 1)}}
+    # Every row field is written neutrally (a refusal or a problem can name a path); the
+    # row files are named relative to the archive, which this leaves as it is.
+    leaf = _neutral_ids().value(leaf)
     write_set(archive, arguments.name, leaf)
     checked = check_set(archive, arguments.name)
     counts = leaf["counts"]

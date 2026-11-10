@@ -1,17 +1,17 @@
 """The SPECIAL_KZ hand-CUDA fused pair on the D/E seam: all five passes of the folded electric seam.
 
-THE BOARD'S CELL: ``D_to_E (cuda_special_kz/real beta, cuda_special_kz/real
+The board's cell: ``D_to_E (cuda_special_kz/real beta, cuda_special_kz/real
 beta)`` -- 2 seam-instances of demand, 0 clearing the source seam before this
 product existed (``examples:refl-angular-kz2d.py`` and
 ``tests:TestSpecialKz.test_eigsrc_kz_1_real_imag`` both deposit ELECTRIC
 sources inside this seam; the second is additionally FOLDED). What this module
 is worth is the BRACKET (:data:`CARRIES_DEPOSIT_REPAIR`) plus the CARRY: it is
-the ELECTRIC TWIN of :mod:`.special_kz_fused_magnetic_pair`, landed in the
-2026-09-02 residue round that priced it (fusion-residue audit §1.3: 12
+the ELECTRIC TWIN of :mod:`.special_kz_fused_magnetic_pair`, landed on
+2026-09-02 (an audit of the products earlier judged unbuildable counted 12
 electric-twin instances), with the Metal electric twins as the CARRIES=True
 shape precedent.
 
-WHAT THE CURL HALF IS: the certified ``step_D_special_kz_real`` -- the root real PML
+What the curl half is: the certified ``step_D_special_kz_real`` -- the root real PML
 backward curl body with MEEP's beta pass after the x and y components' curls
 (``folded_pass.beta_insert``; ``grid.beta != 0`` under REAL storage, MEEP's "implicitly
 store i*(TM fields)" trick, the coefficient host-rounded once by
@@ -20,9 +20,9 @@ capture: the x and y registers are the values the LADDER returns (``fold_apply_r
 because the fills and ``update_E`` must read D after both passes; the splice asserts
 both arrived, because a curl body without them would compile and be the plain real
 electric pair under this family's name. The chunk record ``cb`` is decoded ONCE for
-both halves (bit_parity_0_10 DESIGN.md D10).
+both halves.
 
-THE TWO MIRROR FILLS ARE CARRIED, BY THE REAL ELECTRIC PAIR'S OWN MACHINERY
+The two mirror fills are carried, by the real electric pair's own machinery
 (:mod:`.fused_electric_pair`): the D-side ownership inversion -- near set = the
 TWO shift-0 axes reading the PRE-clear register, far set = the component's own
 axis applied after the clear, the off-diagonal wall table between the two
@@ -33,9 +33,9 @@ certified real curl body plus the beta statements, so every anchor that carry
 splices on is byte-identical here and the machinery is IMPORTED rather than
 re-spelled.
 
-THE ALIASING RULE IS THE SIBLINGS': D is bound EXACTLY ONCE.
+The aliasing rule is the siblings': D is bound EXACTLY ONCE.
 
-NOTHING HERE IS DISPATCH; :mod:`.fused_pairs` can plan it opt-in only.
+Nothing here is dispatch; :mod:`.fused_pairs` can plan it opt-in only.
 """
 
 from __future__ import annotations
@@ -52,7 +52,7 @@ if TYPE_CHECKING:
     from ..grid import Grid
     from ..pml import PML
 
-# THE CERTIFIED TEXT AND THE SHARED CARRY. ``special_kz_curl`` is stdlib-only;
+# The certified text and the shared carry. ``special_kz_curl`` is stdlib-only;
 # ``fused_electric_pair`` -- the real D/E weld whose ownership inversion this
 # weld splices -- takes its CuPy-bound halves defensively and is importable
 # everywhere; ``constitutive_kernels`` imports CuPy at module scope and is
@@ -123,7 +123,7 @@ except ImportError:  # loaded by path, outside the package
 
 
 # =============================================================================
-# THE PARTITION -- EMPTY ON THE CERTIFIED SIDE UNTIL A GATE MOVES IT
+# The partition -- empty on the certified side until a gate moves it
 # =============================================================================
 
 #: Byte-identical with a gate verdict AND a record behind it.
@@ -139,10 +139,10 @@ CERTIFIED_KERNELS = (
 #: EMPTY since 2026-09-02; what emptied it was the run above, not an argument.
 UNCERTIFIED_KERNELS = {}
 
-#: TRUE, MEASURED OFF THE CELL: both rows declare an ELECTRIC source between
+#: True, measured off the cell: both rows declare an ELECTRIC source between
 #: ``step_D`` and ``update_E`` (``refl-angular-kz2d.py`` a point Ez;
 #: ``eigsrc_kz_1_real_imag`` its lifted eigenmode SHEETS, which publish point
-#: indices -- the premise re-measured in the residue round). Without the
+#: indices -- the premise re-measured on 2026-09-02). Without the
 #: bracket this product would serve ZERO rows and with it the whole cell. The
 #: wiring is ``fused_pairs._install_fused_pair``'s; ``repairable()`` decides
 #: per run.
@@ -193,7 +193,7 @@ LIFT_EDITS: Tuple[Dict[str, str], ...] = (
     {"line": "    constitutive_apply(Ex, f_w_Ex, idx, src_x, kps_x[i], kms_x[i], in_h_x);",
      "became": "    if (own_x) { constitutive_apply(Ex, f_w_Ex, idx, src_x, kps_x[i], "
                "kms_half_x[i], in_h_x); <ghost blocks> }",
-     "why": "ONE RENAME, NO ARITHMETIC -- the D seam's sub-lattice pairing -- plus the "
+     "why": "One rename, no arithmetic -- the D seam's sub-lattice pairing -- plus the "
             "real electric pair's ownership guard and D-side ghost carry."},
     {"line": "        Dy[base] = 0.0f; Dz[base] = 0.0f;   "
              "(in_seam_passes._zero_metal_D_kernel_code)",
@@ -207,7 +207,7 @@ LIFT_EDITS: Tuple[Dict[str, str], ...] = (
              "(stepping._write_mirror_ghost)",
      "became": "the SOURCE thread at stored 2 writes stored 0 from the "
                "PRE-clear register",
-     "why": "THE OWNERSHIP INVERSION, imported from fused_electric_pair -- "
+     "why": "The ownership inversion, imported from fused_electric_pair -- "
             "fill_symmetry_bc_D runs BEFORE zero_metal_D, so the near product is "
             "formed from pre_* and the clear is applied to the result, the driver's "
             "own order."},
@@ -219,7 +219,7 @@ LIFT_EDITS: Tuple[Dict[str, str], ...] = (
     {"line": "    <step_D_special_kz_real's chunk-record block>\n"
              "    <update_E_pml_real's chunk-record block>",
      "became": "    <ONE block, fused_electric_pair.union_bounds_block()>",
-     "why": "ONE DECODE OF THE RECORD PER KERNEL (DESIGN.md D10): both lifted bodies' "
+     "why": "One decode of the record per kernel: both lifted bodies' "
             "blocks are removed and the real electric pair's union block is emitted "
             "directly after the decode."},
 )
@@ -237,7 +237,7 @@ __all__ = [
 
 
 # =============================================================================
-# THE LIFT
+# The lift
 # =============================================================================
 
 _GLOBAL_MARKER = 'extern "C" __global__ void '
@@ -267,7 +267,7 @@ _TARGETS: Tuple[str, ...] = ("Dx", "Dy", "Dz")
 #: D appears EXACTLY ONCE.
 _SIGNATURE = r'''
 extern "C" __global__ void fused_electric_pair_special_kz_real(
-    // THE SHARED VOLUME, BOUND ONCE. The curl half writes it and the
+    // The shared volume, bound once. The curl half writes it and the
     // constitutive half reads it from a register; binding it a second time as
     // a const __restrict__ source would be UB NVRTC miscompiles silently.
     float* __restrict__ Dx, float* __restrict__ Dy, float* __restrict__ Dz,
@@ -286,7 +286,7 @@ extern "C" __global__ void fused_electric_pair_special_kz_real(
     const float* __restrict__ kms_y, const float* __restrict__ sinv_y,
     const float* __restrict__ kms_z, const float* __restrict__ sinv_z,
     // The E constitutive's HALF-INTEGER coefficients, its kms renamed
-    // kms_half_*. THE PAIRING IS THE MIRROR IMAGE OF THE B/H SEAM'S.
+    // kms_half_*. The pairing is the mirror image of the B/H seam's.
     const float* __restrict__ kps_x, const float* __restrict__ kms_half_x,
     const float* __restrict__ kps_y, const float* __restrict__ kms_half_y,
     const float* __restrict__ kps_z, const float* __restrict__ kms_half_z,
@@ -296,11 +296,11 @@ extern "C" __global__ void fused_electric_pair_special_kz_real(
     float beta_plus, float beta_minus,
     // zero_metal_D's three walled-axis flags, from in_seam_coverage.zero_metal_axes.
     int wall_x, int wall_y, int wall_z,
-    // THE TWO FILLS' RUNTIME PLAN -- the real electric pair's own tail.
+    // The two fills' runtime plan -- the real electric pair's own tail.
     int near_x, int near_y, int near_z,
     int reflect_x, int reflect_y, int reflect_z,
     float phase_x, float phase_y, float phase_z,
-    // THE CHUNK RECORD (chunk_map.chunk_bounds_record), int32[25], decoded once.
+    // The chunk record (chunk_map.chunk_bounds_record), int32[25], decoded once.
     const int* __restrict__ cb
 ) {
 '''
@@ -471,7 +471,7 @@ def covers_special_kz_fused_electric_pair(
         fields: Any, pml: Any, grid: Any, sources: Any = None) -> Tuple[bool, str]:
     """May ONE launch span the five passes of :data:`REPLACES`?
 
-    A CONJUNCTION over the special_kz family's two certified predicates --
+    A conjunction over the special_kz family's two certified predicates --
     which REQUIRE ``grid.beta != 0`` under real storage, the clause that keeps
     this product disjoint from the real electric pair (refuses beta) and from
     every complex product (real storage) -- plus the seam clauses: the
@@ -488,7 +488,7 @@ def covers_special_kz_fused_electric_pair(
     if not covered:
         return False, f"constitutive half: {reason}"
 
-    # THE INJECTION ROUTE, REFUSED BY NAME -- the real electric pair's clause.
+    # The injection route, refused by name -- the real electric pair's clause.
     if getattr(fields, "has_conductivity", False):
         return False, ("the engine carries a conductivity, so the driver "
                        "deposits this seam's electric sources through "
@@ -496,7 +496,7 @@ def covers_special_kz_fused_electric_pair(
                        "which rescales the increment by condinv; the deposit "
                        "repair has no verdict on that route")
 
-    # THE SOURCE SEAM, CARRIED RATHER THAN REFUSED (CARRIES_DEPOSIT_REPAIR).
+    # The source seam, carried rather than refused (CARRIES_DEPOSIT_REPAIR).
     seam = _deposit_repair.seam_source_reasons(
         fields, sources, 'D',
         undeclared=(
@@ -509,7 +509,7 @@ def covers_special_kz_fused_electric_pair(
     if seam:
         return False, seam[0]
 
-    # THE TWO FILLS, CARRIED by the real electric pair's inversion; what the
+    # The two fills, carried by the real electric pair's inversion; what the
     # carry does NOT reach is refused BY NAME through the fills' own predicates.
     mirrored = getattr(grid, "is_mirrored", None)
     has_symmetry = getattr(grid, "has_symmetry", None)
@@ -546,7 +546,7 @@ def covers_special_kz_fused_electric_pair(
         return False, (f"in_seam_coverage.zero_metal_axes raised on this grid: "
                        f"{type(exc).__name__}: {exc}")
 
-    # THE THREE CLAUSES THE CARRY ADDS, the real electric pair's own list.
+    # The three clauses the carry adds, the real electric pair's own list.
     for axis in range(3):
         if folded[axis] and bool(walls[axis]):
             return False, (
@@ -571,8 +571,8 @@ def covers_special_kz_fused_electric_pair(
                 f"fill's source row {_real_pair.NEAR_SOURCE_INDEX} does not "
                 f"exist (stepping._mirror_source raises on it)")
 
-    # THE THREE INVERSE-PERMITTIVITY VOLUMES MUST BE ASKABLE AND MATCH THE
-    # SHAPE THIS LAUNCH WALKS.
+    # The three inverse-permittivity volumes must be askable and match the
+    # shape this launch walks.
     accessor = getattr(fields, "inverse_epsilon_for", None)
     if not callable(accessor):
         return False, ("fields does not expose inverse_epsilon_for; update_E's "
@@ -594,7 +594,7 @@ def covers_special_kz_fused_electric_pair(
 
 
 # =============================================================================
-# THE LAUNCH
+# The launch
 # =============================================================================
 
 _FIELD_BINDINGS: Tuple[str, ...] = (

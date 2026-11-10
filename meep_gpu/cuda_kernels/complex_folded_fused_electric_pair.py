@@ -1,20 +1,20 @@
 """The FOLDED-COMPLEX hand-CUDA fused pair on the D/E seam: all five passes.
 
-THE BOARD'S CELL: ``D_to_E (cuda_complex_folded/folded complex, cuda_complex/
+The board's cell: ``D_to_E (cuda_complex_folded/folded complex, cuda_complex/
 complex)`` -- 2 seam-instances of demand, 0 clearing the source seam before
 this product existed (``tests:TestEigCoeffs.test_binary_grating_special_kz_2_
 21_2`` and ``tests:TestModeDecomposition.test_triangular_lattice_oblique``,
 both FOLDED and both declaring ``source_field_types == ['D']``: an ELECTRIC
 deposit inside this seam on every row). What this module is worth is the
 BRACKET (:data:`CARRIES_DEPOSIT_REPAIR`) plus the CARRY: it is the ELECTRIC
-TWIN of the 2026-09-02 :mod:`.complex_folded_fused_magnetic_pair`, landed in
-the residue round that priced it (fusion-residue audit §1.3: 12 electric-twin
+TWIN of the 2026-09-02 :mod:`.complex_folded_fused_magnetic_pair`, built the
+same day (an audit of the products earlier judged unbuildable counted 12 electric-twin
 instances), with the Metal electric twins as the CARRIES=True shape precedent.
 
-ONE LAUNCH PERFORMS THE FIVE DRIVER PASSES of the folded electric seam
+One launch performs the five driver passes of the folded electric seam
 (``step_D`` :3302, ``fill_symmetry_bc_D`` :3309, ``zero_metal_D`` :3310,
-``fill_folded_far_ghosts_D`` :3311, ``update_E`` :3313), THROUGH THE SHARED
-D-SIDE COMPLEX CARRY (:mod:`.complex_electric_fill_carry`) -- the real
+``fill_folded_far_ghosts_D`` :3311, ``update_E`` :3313), through the shared
+D-side complex carry (:mod:`.complex_electric_fill_carry`) -- the real
 electric pair's ownership inversion and pre-clear/clear/far composition, under
 the B-side complex carry's measured cf parity arithmetic. The sharing with the
 beta electric twin is exact rather than analogous:
@@ -23,16 +23,16 @@ folded_source`` with the beta insert applied, and the insert touches no fill,
 no ``pml_apply`` call and no constitutive statement, so every anchor the carry
 splices on is byte-identical across the two families.
 
-WHAT THE CONSTITUTIVE HALF IS: the certified complex ``update_E`` -- the
+What the constitutive half is: the certified complex ``update_E`` -- the
 ``cuda_complex`` family's own arm, which the fold admits directly (the same
 pairing the magnetic folded weld conjoins one seam earlier), with the seam,
 the ``kms_half_*`` rename and the ghost carry applied by the shared carry.
 
-THE ALIASING RULE IS THE SIBLINGS': D is bound EXACTLY ONCE, as the float32
+The aliasing rule is the siblings': D is bound exactly once, as the float32
 word view of complex64; the three ``inv_eps`` volumes stay float32, indexed by
 the COMPLEX CELL index, and are deliberately NOT ``__restrict__``.
 
-NOTHING HERE IS DISPATCH; :mod:`.fused_pairs` can plan it opt-in only.
+Nothing here is dispatch; :mod:`.fused_pairs` can plan it opt-in only.
 """
 
 from __future__ import annotations
@@ -123,7 +123,7 @@ except ImportError:  # loaded by path, outside the package
 
 
 # =============================================================================
-# THE PARTITION -- EMPTY ON THE CERTIFIED SIDE UNTIL A GATE MOVES IT
+# The partition -- empty on the certified side until a gate moves it
 # =============================================================================
 
 #: Byte-identical with a gate verdict AND a record behind it.
@@ -140,7 +140,7 @@ CERTIFIED_KERNELS = (
 #: EMPTY since 2026-09-02; what emptied it was the run above, not an argument.
 UNCERTIFIED_KERNELS = {}
 
-#: TRUE, MEASURED OFF THE CELL: both rows declare ``source_field_types ==
+#: True, measured off the cell: both rows declare ``source_field_types ==
 #: ['D']`` -- an ELECTRIC deposit between ``step_D`` and ``update_E`` on every
 #: one -- so without the bracket this product would serve ZERO rows and with it
 #: the whole cell. The wiring is ``fused_pairs._install_fused_pair``'s;
@@ -169,8 +169,8 @@ LIFT_EDITS: Tuple[Dict[str, str], ...] = (
     {"line": "    cf fcur = cf_load(f, idx);  ...  cf_store(f, idx, value);",
      "became": "    if (!owned) return cf_zero();\n    cf fcur = cf_load(f, idx);\n"
                "    ...\n    cf_store(f, idx, value);\n    return value;",
-     "why": "the ownership guard directly before the one load of the field (DESIGN.md "
-            "D11), so a destination thread never reads a word another block writes; "
+     "why": "the ownership guard directly before the one load of the field, "
+            "so a destination thread never reads a word another block writes; "
             "the value is additionally RETURNED so the constitutive half reads it "
             "from a register."},
     {"line": "(the other shared rewrites)",
@@ -180,11 +180,11 @@ LIFT_EDITS: Tuple[Dict[str, str], ...] = (
             "clear/far parity chain and the destination-coefficient rule are "
             "spelled once there, with the real electric pair's measured "
             "ordering and the B-side complex carry's cf arithmetic."},
-    # ----- THE PER-CHUNK FORMS, 0.10 (bit_parity_0_10 DESIGN.md D1, D10, D11) -------
+    # ----- The per-chunk forms, 1.0 (docs/development/kernel-tables.md) -----------
     {"line": "    <the folded curl's chunk-record block>\n"
              "    <the complex constitutive's chunk-record block>",
      "became": "    <ONE block, bounds_block.bounds_block(both entry sets, presence xyz)>",
-     "why": "ONE DECODE OF THE RECORD PER KERNEL (D10). Both bodies' blocks are removed "
+     "why": "One decode of the record per kernel. Both bodies' blocks are removed "
             "by bounds_block.strip_bounds_block (refused unless each is exactly the "
             "emitter's block for its body) and ONE block over the union is emitted "
             "directly after the decode. A ghost the carry steps takes the membership "
@@ -236,7 +236,7 @@ def _split_emitted(source: str, name: str) -> Tuple[str, str]:
 #: plan. D appears EXACTLY ONCE.
 _SIGNATURE = r'''
 extern "C" __global__ void fused_electric_pair_pml_complex_folded(
-    // THE SHARED VOLUME, BOUND ONCE, as the float32 word view of complex64 D.
+    // The shared volume, bound once, as the float32 word view of complex64 D.
     float* __restrict__ f0, float* __restrict__ f1, float* __restrict__ f2,
     float* __restrict__ u0, float* __restrict__ u1, float* __restrict__ u2,
     // H, the curl's operands.
@@ -255,7 +255,7 @@ extern "C" __global__ void fused_electric_pair_pml_complex_folded(
     const float* __restrict__ kms_y, const float* __restrict__ sinv_y,
     const float* __restrict__ kms_z, const float* __restrict__ sinv_z,
     // The E constitutive's HALF-INTEGER coefficients, its kms renamed
-    // kms_half_*. THE PAIRING IS THE MIRROR IMAGE OF THE B/H SEAM'S.
+    // kms_half_*. The pairing is the mirror image of the B/H seam's.
     const float* __restrict__ kps_x, const float* __restrict__ kms_half_x,
     const float* __restrict__ kps_y, const float* __restrict__ kms_half_y,
     const float* __restrict__ kps_z, const float* __restrict__ kms_half_z,
@@ -272,7 +272,7 @@ extern "C" __global__ void fused_electric_pair_pml_complex_folded(
     int near_x, int near_y, int near_z,
     int reflect_x, int reflect_y, int reflect_z,
     float phase_x, float phase_y, float phase_z,
-    // THE CHUNK RECORD (chunk_map.chunk_bounds_record), int32[25]: which cells take
+    // The chunk record (chunk_map.chunk_bounds_record), int32[25]: which cells take
     // which PML form, decoded once, after the index decode.
     const int* __restrict__ cb
 ) {
@@ -291,7 +291,7 @@ CONSTITUTIVE_BLOCK: Tuple[Any, Tuple[int, ...]] = (
 
 def union_bounds_block() -> str:
     """The fused kernel's ONE chunk-record block: both bodies' entries, one decode
-    (DESIGN.md D10). The names are tagged by lattice, so the union redeclares none."""
+    for both. The names are tagged by lattice, so the union redeclares none."""
     return _bounds_block.bounds_block(CURL_BLOCK[0] + CONSTITUTIVE_BLOCK[0],
                                       CURL_BLOCK[1] + CONSTITUTIVE_BLOCK[1])
 
@@ -329,7 +329,7 @@ def certified_constitutive_body() -> str:
             "the certified constitutive body no longer decodes i on its own "
             "line; the duplicate decomposition cannot be identified")
     # Its chunk-record block goes with the decode: the union block decodes update_E's
-    # entries too (D10).
+    # entries too.
     body = _bounds_block.strip_bounds_block(body, "the certified constitutive body",
                                             *CONSTITUTIVE_BLOCK)
     tail = body.split(_DECODE_END, 1)[1]
@@ -412,7 +412,7 @@ def covers_complex_folded_fused_electric_pair(
     if not covered:
         return False, f"constitutive half: {reason}"
 
-    # THE INJECTION ROUTE, REFUSED BY NAME -- the complex electric pair's own
+    # The injection route, refused by name -- the complex electric pair's own
     # clause: the complex halves admit a conductivity by name, so this refusal
     # cannot be inherited from a half and has to be made here.
     if getattr(fields, "has_conductivity", False):
@@ -422,7 +422,7 @@ def covers_complex_folded_fused_electric_pair(
                        "which rescales the increment by condinv; the deposit "
                        "repair has no verdict on that route")
 
-    # THE SOURCE SEAM, CARRIED RATHER THAN REFUSED (CARRIES_DEPOSIT_REPAIR).
+    # The source seam, carried rather than refused (CARRIES_DEPOSIT_REPAIR).
     seam = _deposit_repair.seam_source_reasons(
         fields, sources, 'D',
         undeclared=(
@@ -439,8 +439,8 @@ def covers_complex_folded_fused_electric_pair(
     if fill is not None:
         return False, fill
 
-    # THE THREE INVERSE-PERMITTIVITY VOLUMES MUST BE ASKABLE AND MATCH THE
-    # SHAPE THIS LAUNCH WALKS -- the complex electric pair's own clause.
+    # The three inverse-permittivity volumes must be askable and match the
+    # shape this launch walks -- the complex electric pair's own clause.
     try:
         extents = tuple(int(n) for n in fields.Dx.shape)
     except Exception as exc:  # noqa: BLE001
@@ -593,7 +593,7 @@ def run_complex_folded_fused_electric_pair(
     codes, refusal = _folded.folded_complex_boundary_codes(grid)
     if refusal is not None:
         return {"launched": False, "reason": refusal}
-    # THE BACKWARD CONNECTION TABLE: `True` is the step_D sub-step's own (eikna).
+    # The backward connection table: `True` is the step_D sub-step's own (eikna).
     flags, values = bloch_phase_arguments(grid, True)
     return launch_complex_folded_fused_electric_pair(
         fields, tables, codes, flags, values, zero_metal_axes(grid),

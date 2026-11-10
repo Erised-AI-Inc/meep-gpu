@@ -215,7 +215,7 @@ def one_rank_line(n_cells: int, faces: Tuple[float, float], half_integer: bool,
     x = -5, whole-volume complex relative L2 against CPU MEEP): a deposit at
     y = -4.0 (cell 40, sigma exactly 0) and one at y = -3.975 (cells 40 + 41)
     both step the BOTH-ACTIVE recurrence, while y = -3.9 (cell 42) steps the
-    dsig-only one (the absorber-placement evidence packet, §1.5-1.6). That is a
+    dsig-only one (MEEP picks the recurrence per chunk, step_db.cpp:56-59). That is a
     boundary no reading of the cells' own sigma can see: it is zero at all three.
     """
     low, high = faces
@@ -534,7 +534,7 @@ class ChunkLayout:
     def membership(self, axis: int, half_integer: bool) -> Optional[numpy.ndarray]:
         """Per stored row: does the chunk owning it carry this axis's layer?
 
-        ``half_integer`` is the component's Yee sub-lattice ON THIS AXIS. Rows MEEP
+        ``half_integer`` is the component's Yee sub-lattice on this axis. Rows MEEP
         does not own read False, except the ghost rows, which read the row they
         image. ``None`` when the division is not separable along the axis: some
         owned doubled coordinate is covered by chunks that disagree on the flag, so
@@ -688,7 +688,7 @@ class ChunkLayout:
         (:meth:`AxisFrame.doubled`). On a wrapping axis a sample at or past the window's
         top is read at its periodic image, one period ``2 * owned`` lower: the integer
         ``big_corner`` plane, which the top chunk owns, is stored row 0, and so is the
-        half-integer sample half a cell above it (INFERRED from the periodic geometry
+        half-integer sample half a cell above it (inferred from the periodic geometry
         MEEP evaluates there; no MEEP leg divides a wrapping axis with a conductivity).
         On an axis that does not wrap, a sample past the last stored row -- the top wall
         plane, or the half-integer sample half a cell beyond the window's top -- has no

@@ -17,7 +17,7 @@ not re-argued here; what this file adds is the complex arithmetic and the two cl
 that arithmetic brings with it.
 
 =============================================================================
-THE SEAM, IN ONE PARAGRAPH
+The seam, in one paragraph
 =============================================================================
 
 The driver runs ``update_H`` (driver.py:3311) -> the electric integrated-source
@@ -27,7 +27,7 @@ and the magnetic one is one seam earlier -- so :mod:`..deposit_repair` has nothi
 say about this seam and :mod:`..withdraw_hoist` is the module that does.
 
 =============================================================================
-THE SHAPE: SCRATCH OUTPUT AND FOREIGN-CELL RECOMPUTE, ON WORD PAIRS
+The shape: scratch output and foreign-cell recompute, on word pairs
 =============================================================================
 
 Complex ``step_D``'s curl reads ``H`` at the program's own cell AND at its three
@@ -53,7 +53,7 @@ Both premises are removed exactly as :mod:`.fused_hd_pair` removes them:
 :class:`ComplexFusedHdPairPlan` then ROTATES the ``H``/``f_w_H`` references, which is
 :class:`.offdiag_scratch_weld.ScratchWeldPairPlan`'s certified choreography.
 
-WHY THE RECOMPUTE IS EXACT RATHER THAN CLOSE. Complex ``update_H`` is POINTWISE: per
+Why the recompute is exact rather than close. Complex ``update_H`` is POINTWISE: per
 component it reads ``H``, ``f_w_H`` and ``B`` at ONE cell, on both float32 word planes,
 and writes the same cell -- no neighbour read, no ghost rule, no ownership mask and NO
 PHASE (``bloch_constitutive_step``'s own docstring: the constitutive sub-step never
@@ -61,7 +61,7 @@ sees the wrap, S:907-993). The stepped value at any cell is therefore a function
 state this launch does not write, and evaluating it twice gives the same bits by
 construction rather than by a tolerance.
 
-THE BLOCH CONNECTION IS NOT IN THE RECOMPUTE AND MUST NOT BE. The certified complex
+The Bloch connection is not in the recompute and must not be. The certified complex
 curl connects the UNSHIFTED partners: on a phased axis the shifted operand is a plain
 roll of the stored window, and plane 0 of the unshifted partner along that axis is
 replaced by MEEP's not-owned word, :func:`.complex_fields._connect` of the loaded
@@ -72,7 +72,7 @@ the program's own stepped ``H``. A weld that connected inside the recompute woul
 connect foreign taps the certified curl never connects.
 
 =============================================================================
-THE ARITHMETIC: THE REAL KERNELS' FORMS, ONCE PER STORED PART
+The arithmetic: the real kernels' forms, once per stored part
 =============================================================================
 
 Every product on the complex path has a REAL operand (the coefficients stay float32
@@ -89,40 +89,40 @@ record's dsigw lines, with MEEP's start of H; the curl half is
 :func:`.complex_fields.bloch_pml_curl_step`'s per-part stencil and forms keyed on the
 record's presence word and dsigu lines, the auxiliary contract on ``fu_D`` included.
 
-**A COMPLEX-BY-REAL DIVIDE DOES NOT OCCUR IN THIS KERNEL, AND THAT IS A MEASUREMENT
-RATHER THAN AN OMISSION.** Every PML reciprocal is precomputed on the HOST into
+**A complex-by-real divide does not occur in this kernel, and that is a measurement
+rather than an omission.** Every PML reciprocal is precomputed on the HOST into
 ``sinv_*`` (``pml.py``) and both halves MULTIPLY by it. The fact is carried three ways
 rather than cited: a static count over the emitted text (:func:`divide_free_evidence`),
 a laptop test, and an armed gate mutation that respells one multiply by ``si`` as a
-divide by ``1 / si`` and requires the divergence. The divide spellings the Dcyl round
-measured are RECORDED in :data:`DIVIDE_FACTS` as inapplicable-and-armed, not repeated.
+divide by ``1 / si`` and requires the divergence. The divide spellings measured in the
+Dcyl work are RECORDED in :data:`DIVIDE_FACTS` as inapplicable-and-armed, not repeated.
 
-**THE PLANTED ROW-ZERO TINY-NORMAL CASE IS PART OF THE GATE, NOT AN EXTRA.** A wrong
+**The planted row-zero tiny-normal case is part of the gate, not an extra.** A wrong
 spelling of a signed-zero or underflowing word is byte-visible only on that class, and
 a random battery does not reach it. This gate therefore PLANTS a fixture whose row 0
 holds tiny normals of both signs beside exact zeros, and scores the arithmetic
 mutations there as well as on the random battery.
 
 =============================================================================
-ONE SUB-LATTICE, ONE COEFFICIENT GROUP
+One sub-lattice, one coefficient group
 =============================================================================
 
 Both halves sit on the same Yee sub-lattice -- ``launch.SUB_STEPS['step_D']['suffix']``
 is ``''`` and ``coverage.CONSTITUTIVE_SIDES['H']['half_integer']`` is False -- so the
-curl's ``kms_x/_y/_z`` and the constitutive's ``km0/km1/km2`` ARE THE SAME THREE
-VOLUMES and the signature binds them once. Both suffixes are READ from the shipped
+curl's ``kms_x/_y/_z`` and the constitutive's ``km0/km1/km2`` are the same three
+volumes and the signature binds them once. Both suffixes are READ from the shipped
 tables and their equality is ASSERTED in :func:`plan_complex_fused_hd_pair`: binding
 the half-integer set instead compiles, launches, converges, and is a half-cell error in
 the absorber profile -- smooth, plausible and entirely wrong, which is why the gate
 arms it as a host mutation rather than leaving it a comment.
 
-**THE COEFFICIENTS STAY float32 UNDER COMPLEX STORAGE** (stepping.py:41-50), so the
+**The coefficients stay float32 under complex storage** (stepping.py:41-50), so the
 nine coefficient vectors here are the same nine the real twin binds; only the twenty-one
 FIELD volumes are word pairs, and they are bound as float32 WORD VIEWS
 (:func:`.complex_fields._word_view`) with ``n_elem`` staying the COMPLEX cell count.
 
 =============================================================================
-WHAT SITS IN THE SEAM, AND WHY THIS CELL LOSES NO ROW TO IT
+What sits in the seam, and why this cell loses no row to it
 =============================================================================
 
 :data:`CARRIES_DEPOSIT_REPAIR` is False and it is a FACT rather than a decision:
@@ -130,20 +130,20 @@ nothing is injected between the two consults. The pass that IS there is the elec
 withdraw, and :mod:`..withdraw_hoist` is its contract -- one slot, not two; a hoist,
 not a bracket.
 
-:data:`HOISTS_THE_WITHDRAW` is False IN THIS ROUND, and the flag and the wiring move
+:data:`HOISTS_THE_WITHDRAW` is False as shipped, and the flag and the wiring move
 together exactly as ``CARRIES_DEPOSIT_REPAIR``'s do: the only wiring that performs the
 hoist is ``launch._install_fused_pair``'s ``withdraw_hoist.SEAM`` branch, and this
 product declares :data:`INSTALLABLE` False, so that branch is unreachable for it. The
 predicate therefore refuses BY NAME every row whose electric withdraw does work.
 
-WHAT THAT COSTS ON THIS CELL, MEASURED: **nothing**. All 17 instances carry
+What that costs on this cell, measured: **nothing**. All 17 instances carry
 ``integrated_electric_sources: 0`` and ``withdraw_in_seam: false`` in
 ``results/h_to_d_seam_2026-09-04/h_to_d_seam.jsonl``, and the board files none of them
 under ``withdraw_seam``. The clause is still evaluated on every row rather than assumed
 away -- ignorance is never an empty set, so an undeclared source list is a refusal.
 
 =============================================================================
-THE FOLDED COMPLEX NEIGHBOUR IS NOT A VARIANT OF THIS WELD ON THIS BACKEND
+The folded complex neighbour is not a variant of this weld on this backend
 =============================================================================
 
 ``cuda_kernels/complex_fused_hd_pair`` covers its folded neighbour as a SECOND VARIANT
@@ -153,7 +153,7 @@ the PLAIN complex arm at ``update_H`` on all five folded rows, so the two cells 
 in the curl half alone and that half is the plain curl put through three anchored text
 deltas.
 
-**NEITHER HALF OF THAT HOLDS HERE, and the census says so.** On this backend the folded
+**Neither half of that holds here, and the census says so.** On this backend the folded
 complex rows select the arm ``folded complex`` at ``update_H`` (a distinct predicate,
 :func:`.folded_complex.folded_complex_constitutive_coverage`, even though it launches
 the same ``bloch_constitutive_step``), so the join that gives CUDA one shared H half
@@ -170,11 +170,11 @@ the three backward neighbours stays what :mod:`.fused_hd_pair` calls it: a probe
 guess.
 
 =============================================================================
-IT IS NOT INSTALLED, AND THE REASON HAS TWO HALVES
+It is not installed, and the reason has two halves
 =============================================================================
 
 :data:`INSTALLABLE` is False and :data:`INSTALLABLE_REASON` carries both halves --
-the label the composer would need and the ARBITRATION, which is MEASURED PER ROW rather
+the label the composer would need and the ARBITRATION, which is measured per row rather
 than asserted. Over the driver's ``step_B - update_H - step_D - update_E`` slot path
 launches are ``4 - (installed pairs)`` and a product spanning ``update_H``/``step_D``
 takes one slot from EACH neighbour, so installing it is a LOSS where both neighbouring
@@ -184,13 +184,13 @@ over this cell, and is recorded row by row in the gate's lift leg under
 ``arbitration_over_the_driven_rows``. The counts live in the artifact and are not
 copied here.
 
-**NO TIMING EXISTS FOR THIS SHAPE AND NONE IS LICENSED BY ANYTHING IN THIS MODULE.**
+**No timing exists for this shape and none is licensed by anything in this module.**
 The fused route does MORE memory traffic than the two singles for the same step-level
 launch count; whether the saved launch and the saved ``H`` write-then-read round trip
 pay for three extra pointwise complex constitutive evaluations per component per program
 is a hypothesis.
 
-SERVED ON A FUSION BOARD IS PREDICATE ADMISSION, by that board's own definition. A
+Served on a fusion board is predicate admission, by that board's own definition. A
 released product credits its admitted seam-instances while executing NOWHERE, and the
 record and the board prose say exactly that: this product is in no
 ``fastpath.RELEASED_FUSED_ARMS`` envelope and ``fastpath`` never plans it. **The
@@ -225,9 +225,9 @@ FAMILY = "complex_fused_hd_pair"
 SLOT = "update_H"
 
 #: The driver call sites ONE launch of this plan performs, in driver order
-#: (driver.py:3311, :3315). NOTHING BETWEEN THEM IS CARRIED, and there is only one
+#: (driver.py:3311, :3315). Nothing between them is carried, and there is only one
 #: thing there to carry: the electric withdraw (:3313-3314), which
-#: :data:`HOISTS_THE_WITHDRAW` declines in this round.
+#: :data:`HOISTS_THE_WITHDRAW` declines as shipped.
 REPLACES: Tuple[str, ...] = ("update_H", "step_D")
 
 #: The seam name ``launch.CERTIFIED_FUSED_PAIR_SEAMS`` files this row under, and the
@@ -273,8 +273,8 @@ CARRIES_DEPOSIT_REPAIR = False
 #: Which repair the two slots would install. EMPTY: they install none.
 REPAIR_PATHS: Tuple[str, ...] = ()
 
-#: Does this product perform the seam's electric withdraw before its launch? NO in
-#: this round. The predicate consequently refuses every row with a standing in-seam
+#: Does this product perform the seam's electric withdraw before its launch? NO as
+#: shipped. The predicate consequently refuses every row with a standing in-seam
 #: withdraw BY NAME -- which on THIS cell is 0 of 17.
 HOISTS_THE_WITHDRAW = False
 
@@ -283,15 +283,15 @@ HOISTS_THE_WITHDRAW = False
 INSTALLABLE = False
 
 INSTALLABLE_REASON = (
-    "THE COMPOSER IS NOT OFFERED THIS PRODUCT AT ALL, and that is the first half of "
+    "The composer is not offered this product at all, and that is the first half of "
     "the reason: routing it through launch._install_certified_fused_products costs a "
     "label, and on this backend a label plan_step can write must also be declared in "
     "the DISPATCHER'S own tables -- outside this package by the one-way rule it keeps, "
-    "and outside the round that built this product. The flag is what keeps a later "
+    "and outside the work that built this product. The flag is what keeps a later "
     "edit that lands those lines from installing the product before a composition "
     "gate has driven it end to end; while it stands, the gate's reference is the "
     "ARRAY PATH and the composition-installed reference AWAITS WIRING. "
-    "THE SECOND HALF IS THE ARBITRATION, and it is MEASURED PER ROW rather than "
+    "The second half is the arbitration, and it is measured per row rather than "
     "asserted: over the driver's step_B - update_H - step_D - update_E slot path "
     "launches are 4 - (installed pairs) and a TWO-SLOT H->D product takes one slot "
     "from EACH neighbour, so installing it is a LOSS where both neighbouring pairs "
@@ -299,14 +299,14 @@ INSTALLABLE_REASON = (
     "the three each corpus row is comes from that row's OWN composer slot table and "
     "is recorded, row by row, in the lift leg of "
     "parity/meep_gpu/gate_triton_complex_fused_hd_pair.py under "
-    "`arbitration_over_the_driven_rows`. WHAT IT MEASURED, stated here rather than "
+    "`arbitration_over_the_driven_rows`. What it measured, stated here rather than "
     "left to be discovered by opening an artifact: ALL TWELVE driven corpus rows are "
     "a LOSS -- 12 of 12, no TIE, no GAIN -- in the arbitration block of "
     "results/triton_complex_fused_hd_pair_2026-09-07/keep/gate.json, which counts "
     "PAIRS (one label held by both slots of a seam) rather than slots. Installing "
     "this product would RAISE the per-step launch count on every row it claims, "
     "which is why INSTALLABLE is False and would remain False even with the label "
-    "wall down. A THIRD FACT IS SPECIFIC TO THIS ARM and is measured with the "
+    "wall down. A third fact is specific to this arm and is measured with the "
     "others rather than assumed: the complex arms are certified under the 'keep' "
     "float32 subnormal policy only, so under 'flush' the composer selects nothing "
     "complex on these rows at all and the arbitration question does not arise. The "
@@ -320,9 +320,9 @@ INSTALLABLE_REASON = (
 #: measurement.
 MULTIPLY_HELPERS: Tuple[str, ...] = ("_connect",)
 
-#: THE DIVIDE FACTS THIS SEAM DOES NOT USE, recorded with their measured provenance so
+#: The divide facts this seam does not use, recorded with their measured provenance so
 #: a later reader reaches for the armed mutation instead of rediscovering them. Each
-#: entry is a spelling that is CORRECT SOMEWHERE ELSE in this package and would be a
+#: entry is a spelling that is correct somewhere else in this package and would be a
 #: silent defect here; the last one is the fact that makes them moot on this seam.
 DIVIDE_FACTS: Tuple[Dict[str, str], ...] = (
     {"claim": "CuPy's complex64 / float32 is the SCALED complex-by-complex algorithm "
@@ -394,7 +394,7 @@ H_CELL_TAIL_ARGS = ("hi0, hi1, hi2, wi0, wi1, wi2, b0, b1, b2,\n"
 def function_source(function_name: str, path: Optional[Path] = None) -> str:
     """One function's source TEXT, by name, off a file rather than by import.
 
-    TEXT AND NOT ``inspect``: :mod:`.complex_fields` imports Triton at module scope,
+    Text and not ``inspect``: :mod:`.complex_fields` imports Triton at module scope,
     so on the laptop that is this package's merge bar it cannot be imported at all --
     and the lift checks are exactly the checks that must run there.
     """
@@ -407,7 +407,7 @@ def function_source(function_name: str, path: Optional[Path] = None) -> str:
 #: the reason. DATA, not prose, so the host suite and the gate can assert the list and
 #: a line that stopped matching RAISES instead of silently leaving a stale read.
 #:
-#: THERE IS NO ARITHMETIC IN THIS TABLE. Every entry is a pointer spelling, a
+#: There is no arithmetic in this table. Every entry is a pointer spelling, a
 #: constexpr branch resolved to the side this product serves, or a store that moves to
 #: the caller; not one right-hand side, operand order or paren is touched, and every
 #: complex product still goes through the certified helper.
@@ -420,10 +420,10 @@ CONSTITUTIVE_LIFT_EDITS: Tuple[Dict[str, str], ...] = (
             "three record_in calls are the certified calls, unedited."},
     {"line": "km_N = tl.load(kmN + <axis>, ...)",
      "became": "km_N = tl.load(kmx|kmy|kmz + <axis>, ...)",
-     "why": "ONE POINTER RENAME PER AXIS, NO ARITHMETIC. Both halves sit on the same "
+     "why": "One pointer rename per axis, no arithmetic. Both halves sit on the same "
             "Yee sub-lattice (SUB_STEPS['step_D']['suffix'] == '' and "
             "CONSTITUTIVE_SIDES['H']['half_integer'] is False), so the curl's kms_x "
-            "and the constitutive's km0 ARE THE SAME VOLUME and the fused signature "
+            "and the constitutive's km0 are the same volume and the fused signature "
             "binds it once. Binding the half-integer set instead compiles and is a "
             "half-cell error in the absorber profile, converged and smooth and "
             "wrong; plan_complex_fused_hd_pair ASSERTS the two suffixes agree."},
@@ -476,7 +476,7 @@ CONSTITUTIVE_LIFT_EDITS: Tuple[Dict[str, str], ...] = (
             "character for character."},
     {"line": "idx = tl.program_id(0) * BLOCK + ... ; i = plane // ny",
      "became": "(removed -- i, j and k are parameters; idx is composed from them)",
-     "why": "THE WHOLE POINT OF THE LIFT. The certified body becomes a function "
+     "why": "The whole point of the lift. The certified body becomes a function "
             "evaluated at an ARBITRARY cell rather than at the program's own, so the "
             "cell arrives as three coordinates and the flat index is COMPOSED by the "
             "same layout the decode inverts. `live` arrives as the caller's per-lane "
@@ -568,7 +568,7 @@ def certified_constitutive_tail() -> str:
             f"         mask=live)\n",
             f"out{target}_re = constitutive_form(a_re, prev_re, src_re, {form}\n"
             f"out{target}_im = constitutive_form(a_im, prev_im, src_im, {form}\n")
-    # THE CHECK THAT MATTERS. In the fused signature `f*`, `w*` and `g*` are the
+    # The check that matters. In the fused signature `f*`, `w*` and `g*` are the
     # DISPLACEMENT, its split-field auxiliary and the magnetic field; one missed
     # rename is a smooth, plausible, entirely wrong answer rather than a compile
     # error, because those names all exist in the enclosing kernel.
@@ -616,7 +616,7 @@ OWN_LOAD_EDITS: Tuple[Tuple[str, str], ...] = tuple(
 #: to how that index or that guard is spelled RAISES instead of quietly redirecting a
 #: tap.
 #:
-#: THE BRANCH, THE SHIFT ARITHMETIC AND THE BLOCH ROTATION ARE NOT TOUCHED. Only the
+#: The branch, the shift arithmetic and the Bloch rotation are not touched. Only the
 #: two leaf loads move, and they move TOGETHER into one call that returns both planes
 #: -- so a wrapped lane is still rotated afterwards by the emitter's own ``tl.where``
 #: block, in the emitter's own order.
@@ -751,7 +751,7 @@ DEVICE_FUNCTIONS: Tuple[str, ...] = (
 def divide_free_evidence(path: Optional[Path] = None) -> Dict[str, Any]:
     """A STATIC COUNT over this product's device text: this seam divides nowhere.
 
-    The claim :data:`DIVIDE_FACTS` rests on, MEASURED off the source rather than
+    The claim :data:`DIVIDE_FACTS` rests on, measured off the source rather than
     argued -- and measured over the PARSE TREE rather than the characters. A
     text-level slash count reads the two floor divisions of the certified index
     decode (``plane = idx // nz``) and every slash inside a docstring as divisions,
@@ -1229,7 +1229,7 @@ def complex_fused_hd_pair_coverage(fields: Any, pml: Any, sources: Any = None
     with that half's reasons, prefixed so a reader can tell which side said it -- and
     that carries the complex layout checks without this file restating any of them.
 
-    THE ORDER IS THE DRIVER'S. The constitutive half is asked FIRST because it runs
+    The order is the driver's. The constitutive half is asked FIRST because it runs
     first (driver.py:3311), so the first refusal a reader sees names the half the
     driver would have reached first.
     """
@@ -1246,15 +1246,15 @@ def complex_fused_hd_pair_coverage(fields: Any, pml: Any, sources: Any = None
     if not curl.covered:
         reasons.extend(f"complex curl half: {reason}" for reason in curl.reasons)
 
-    # THE SEAM'S ONE PASS. Nothing is INJECTED between the two consults, so
+    # The seam's one pass. Nothing is INJECTED between the two consults, so
     # `deposit_repair` is not consulted at all and a source of either polarity is not
     # this seam's business -- the magnetic injection is one seam earlier
     # (driver.py:3283-3284) and the electric one is one seam later (:3317-3322). What
     # IS between them is the electric integrated-source withdraw (:3313-3314), and
-    # `withdraw_hoist` owns it. IGNORANCE IS NEVER AN EMPTY SET: `Fields` does not
+    # `withdraw_hoist` owns it. Ignorance is never an empty set: `Fields` does not
     # hold the source list, so a predicate that inferred "no withdraw stands" from not
     # being told would be the over-covering refusal this clause exists to prevent.
-    # ON THIS CELL the clause costs nothing -- all 17 corpus instances carry
+    # On this cell the clause costs nothing -- all 17 corpus instances carry
     # `integrated_electric_sources: 0` -- but it is EVALUATED, never assumed away.
     reasons.extend(_withdraw_hoist.seam_withdraw_reasons(
         fields, sources,
@@ -1271,7 +1271,7 @@ def complex_fused_hd_pair_coverage(fields: Any, pml: Any, sources: Any = None
         hoists_the_withdraw=HOISTS_THE_WITHDRAW,
         span=REPLACES))
 
-    # THE FOLD, RESTATED BY NAME. Both halves already refuse a mirror plane
+    # The fold, restated by name. Both halves already refuse a mirror plane
     # (`complex_fields._complex_grid_reasons`), and on THIS seam the reason is not the
     # one the D->E and B->H pairs give: neither fill runs between these two consults
     # (fill_B closes one seam earlier at driver.py:3304-3309 and fill_D opens one seam
@@ -1289,7 +1289,7 @@ def complex_fused_hd_pair_coverage(fields: Any, pml: Any, sources: Any = None
                 f"selects the `folded complex` arms on both slots; those cells need "
                 f"their own product and their own ghost-map measurement")
 
-    # THE ROTATION IS THE PRODUCT'S OWN INVARIANT. The plan swaps the ENGINE's
+    # The rotation is the product's own invariant. The plan swaps the ENGINE's
     # references for the six volumes in ROTATED after each launch, so those attributes
     # must be allocated.
     for name in ROTATED:
@@ -1316,7 +1316,7 @@ def explain_complex_fused_hd_pair(fields: Any, pml: Any, sources: Any = None
 class ComplexFusedHdPairPlan(_real.StartsH, ScratchWeldPairPlan):
     """ONE allocation-free launch for complex ``update_H`` and complex ``step_D``.
 
-    THE SIX ROTATING VOLUMES ARE RESOLVED PER LAUNCH, never cached: the plan owns a
+    The six rotating volumes are resolved per launch, never cached: the plan owns a
     twin of each, reads the engine's CURRENT attribute immediately before the launch
     to decide which of the pair is live, word-views it there, and moves the engine's
     references only after the launch returns. A pointer captured at plan time would be
@@ -1353,7 +1353,7 @@ class ComplexFusedHdPairPlan(_real.StartsH, ScratchWeldPairPlan):
         self.bc = tuple(int(code) for code in codes)
         if len(self.bc) != 3:
             raise ValueError("this plan needs three boundary codes")
-        # THE CONNECTION IS THE CERTIFIED CURL PLAN'S: three kinds and six float32
+        # The connection is the certified curl plan's: three kinds and six float32
         # parts from complex_fields.connection_arguments for step_D's direction, and
         # a connection only on a wrapping axis, exactly as ComplexPmlCurlPlan checks.
         self.connections = tuple(int(kind) for kind in connections)
@@ -1371,7 +1371,7 @@ class ComplexFusedHdPairPlan(_real.StartsH, ScratchWeldPairPlan):
         if str(self._dtype) != "complex64":
             raise ValueError(
                 f"this plan steps complex64 word pairs, not {self._dtype}")
-        # THE WORD INDEX IS int32 IN THE KERNEL. A grid whose doubled cell count
+        # The word index is int32 in the kernel. A grid whose doubled cell count
         # overflows it would address the wrong words rather than fail, so it is
         # refused here -- the Dcyl complex product's own check, and the same reason.
         if 2 * self.n_elem >= 2 ** 31:
@@ -1522,7 +1522,7 @@ def plan_complex_fused_hd_pair(fields: Any, pml: Any, sources: Any = None,
 
     grid = fields.grid
     kinds = resolve(grid, pml)
-    # THE CONNECTION IS THE CERTIFIED MODULE'S, not this one's:
+    # The connection is the certified module's, not this one's:
     # `connection_arguments` classifies each axis's not-owned word for step_D's
     # direction (eikna above the window under its backward differences) and rounds a
     # product's parts to float32, as the certified curl plan binds it.

@@ -1,17 +1,17 @@
 """Laptop tests for the COMPLEX BLOCH-BETA Metal H->D weld, BOTH variants.
 
-THE MERGE BAR, NOT THE CERTIFICATION. The byte claim is a device gate that runs
+The merge bar, not the certification. The byte claim is a device gate that runs
 complete driver steps and compares uint32 words
 (``parity/meep_gpu/gate_metal_beta_complex_fused_hd_pair.py``). These tests are what
 must stay green on every change, and they are chosen for what a byte gate would catch
 late or not at all:
 
-* **THE VARIANT PARTITION.** This is ONE product covering TWO board cells, and that is
+* **The variant partition.** This is ONE product covering TWO board cells, and that is
   only sound while no grid can be admitted by both emitters. ``resolve_variant`` reads
   the fold off the grid; the tests assert the partition is total, exclusive, and that
   the PLAN and the PREDICATE resolve it the same way -- a predicate that admitted on
   one variant while the plan built the other is the silent failure this shape can make;
-* **BETA IS A CURL-ONLY TERM**, which is the premise that lets the certified complex
+* **Beta is a curl-only term**, which is the premise that lets the certified complex
   ``update_H`` be welded in unchanged. ``certified_h_cell`` asserts it at build time
   and the test drives that assertion, including the negative: a planted beta
   identifier in the constitutive body must RAISE;
@@ -30,7 +30,7 @@ late or not at all:
 
 Everything that needs a device is guarded and skipped.
 
-WHAT THIS FILE DOES NOT CLAIM. Nothing here is a byte-identity measurement and nothing
+What this file does not claim. Nothing here is a byte-identity measurement and nothing
 here licenses installing the product. The cells' numbers -- 1 row at
 ``(special_kz complex beta)`` and 3 at ``(folded beta complex)``, 0 with a standing
 in-seam withdraw -- come from the Metal fusion board and are asserted against it.
@@ -165,7 +165,7 @@ def test_the_family_is_welded_and_the_debt_it_replaced_is_kept():
     tree cannot show, and cutting the entry without emptying it leaves a welded family
     still declaring its weld is owed. Both are read off the tree here.
 
-    THE ORDER IS THE POINT. Emptying ``WELD_OWED`` MOVES the module, and the module is
+    The order is the point. Emptying ``WELD_OWED`` MOVES the module, and the module is
     the first pin of its own weld, so ``mint_metal_weld.py`` refuses an artifact whose
     recorded digests have moved. The gate was therefore re-run AGAINST the emptied
     bytes and minted from that artifact. The debt text is kept in
@@ -185,7 +185,7 @@ def test_the_family_is_welded_and_the_debt_it_replaced_is_kept():
 
 
 def test_one_arm_row_serves_two_cells_and_it_is_unwired_and_gated_on_beta():
-    """ONE ROW FOR TWO CELLS is what "one product" means at the arm table."""
+    """One row for two cells is what "one product" means at the arm table."""
     rows = [row for row in arms.registered() if row.family == beta.FAMILY]
     assert len(rows) == 1
     row = rows[0]
@@ -290,7 +290,7 @@ def test_the_variant_partition_is_total_and_exclusive():
     folded_fields, _pml2 = _pair(folds=(("Y", 1),), beta_value=0.3)
     assert beta.resolve_variant(unfolded.grid) == "plain"
     assert beta.resolve_variant(folded_fields.grid) == "folded"
-    # A GRID THAT CANNOT BE ASKED IS A REFUSAL, never a default.
+    # A grid that cannot be asked is a refusal, never a default.
     assert beta.resolve_variant(None) is None
     assert beta.resolve_variant(object()) is None
 
@@ -492,7 +492,7 @@ def test_a_beta_free_complex_grid_is_refused_naming_beta(flush_policy):
 
 
 def test_the_plain_complex_product_admits_what_this_one_refuses(flush_policy):
-    """THE OTHER DIRECTION of the beta clause."""
+    """The other direction of the beta clause."""
     fields, pml = _pair(beta_value=0.0)
     verdict = plain.metal_complex_fused_hd_pair_coverage(
         fields, pml, (), _FakeResidency())

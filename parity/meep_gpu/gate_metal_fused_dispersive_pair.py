@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """Native MPS byte gate for the FIRST fused Metal kernel: ``step_D`` -> ``update_E``.
 
-WHAT IS BEING CERTIFIED, and it is not a sub-step. Every other Metal family gate
+What is being certified, and it is not a sub-step. Every other Metal family gate
 seeds a state, launches ONE kernel and compares words. This product spans THREE
 driver passes — ``step_D``, ``zero_metal_D`` and ``update_E`` — so a per-sub-step
 comparison could not see it at all: the whole claim is about the SEAM between
-them. The comparison is therefore per COMPLETE DRIVER STEP over a stated budget,
+them. The comparison is therefore per complete driver step over a stated budget,
 against an array-path oracle running the identical live pass list, with the first
 divergent step reported rather than a final pass/fail.
 
-THE FOUR THINGS THIS GATE REFUSES TO LET PASS SILENTLY:
+The four things this gate refuses to let pass silently:
 
 1. **A silent fallback.** Bytes alone cannot prove the fused path ran: a plan that
    was never launched is byte-identical to the oracle BY CONSTRUCTION, because the
@@ -18,7 +18,7 @@ THE FOUR THINGS THIS GATE REFUSES TO LET PASS SILENTLY:
    and every case asserts every compared array MOVED from its seeded value.
 2. **A hollow pass.** TWELVE mutations are ARMED — ten in the shader source, two
    in the HOST binding that no shader edit can reach — and each must be CAUGHT. Leg
-   ``battery`` arms the per-chunk form battery (KERNELS.md §7.2) on top: eleven
+   ``battery`` arms the per-chunk form battery (docs/development/certification.md) on top: eleven
    source rows and two record rows, each scored against its declaration (two are
    declared nulls). Leg ``disarm`` reruns the identical case with the shipped
    functions and requires zero, so a mutation reported as caught cannot be a
@@ -36,9 +36,9 @@ LEGS
   1  product           complete steps, per-step byte compare, launch counters, movement
   2  separate_control  the separate products stepping the same seam as separate
                        dispatches, on identical state: the fused product scored
-                       against the array path, the separate side recorded beside it
-                       (its pointwise E single is lane KM8's and steps the
-                       pre-alignment forms until then) with the dispatch counts
+                       against the array path, the separate side scored beside it
+                       (its pointwise E single, ``dispersive_update_e``, steps the
+                       same per-chunk forms) with the dispatch counts
   3  mutation          twelve armed defects, each of which MUST diverge
   3b battery           the per-chunk form battery, scored against its declarations
   3c forms             every component steps both of its forms somewhere
@@ -180,7 +180,7 @@ def build(cell: Sequence[float], boundaries: Any, poles: int, kind: str,
               thickness=tuple((2, 2) if grid.shape[axis] >= 6 else (0, 0)
                               for axis in range(3)))
     if value_class == values.PM_ZERO_LATTICE:
-        # THE POLARIZATIONS TAKE THE OPPOSED LATTICE. D = P = P_prev = 0 is a
+        # The polarizations take the opposed lattice. D = P = P_prev = 0 is a
         # FIXED POINT of this seam (the ADE chain's own gate says so in capitals),
         # so P_prev is seeded with the NEGATION of P's lattice: the recurrence
         # then differences two zeros of opposite sign, and the sign is what this
@@ -288,7 +288,7 @@ def metal_step(fields: Fields, pml: PML, dispatch: Mapping[str, Any],
 # ---------------------------------------------------------------------------
 
 def leg_subnormal_ladder(seed: int, budget: int = 4) -> Dict[str, Any]:
-    """THE EMPTY CENSUS, TURNED INTO A MEASUREMENT.
+    """The empty census, turned into a measurement.
 
     Every product row in this file reports ``reference_subnormals: 0`` and
     ``subnormal_free: true`` under policy ``flush``. Read alone that is a SILENCE:
@@ -297,7 +297,7 @@ def leg_subnormal_ladder(seed: int, budget: int = 4) -> Dict[str, Any]:
     This leg is the difference — not a second byte comparison, which MPS cannot
     give, but the precondition FIRING.
 
-    THE ORACLE ALONE runs here, seeded at each rung of
+    The oracle alone runs here, seeded at each rung of
     :data:`metal_value_classes.PRECONDITION_SCALES` and stepped through the same
     live pass list, with the same census the product rows report taken after
     every step. Nothing is compared against the device and the artifact says so:
@@ -383,7 +383,7 @@ def run_case(label: str, cell: Sequence[float], boundaries: Any, poles: int,
     after = state_of(actual)
     moved = {name: differing(before[name], after[name]) for name in before}
     still = sorted(name for name, count in moved.items() if count == 0)
-    # THE AUXILIARY CONTRACT DECIDES WHICH ARRAYS MAY NOT MOVE (KERNELS.md §1 C2): an
+    # The auxiliary contract decides which arrays may not move (docs/design/floating-point.md): an
     # auxiliary whose form's region is empty under this case's division -- fu where
     # no chunk carries the component's dsigu layer, f_w where none carries its own
     # -- is never touched on EITHER side, and must stay at its seed. Every other
@@ -400,7 +400,7 @@ def run_case(label: str, cell: Sequence[float], boundaries: Any, poles: int,
     clean = all(row["reference_subnormals"] == 0 for row in per_step)
     launches_ok = (plan.runs == len(per_step)
                    and plan.launches == plan.launches_per_run * len(per_step))
-    # THE FLOOR, AND WHICH ONE DEPENDS ON THE VALUE CLASS. The uniform class must
+    # The floor, and which one depends on the value class. The uniform class must
     # move every compared array or the comparison is a no-op agreeing with a
     # no-op. The +-0 lattice answers to the SIGN floor instead: the REFERENCE
     # OUTPUT must carry BOTH bit patterns, which is what makes a uint32 compare of
@@ -436,7 +436,7 @@ def run_case(label: str, cell: Sequence[float], boundaries: Any, poles: int,
         "poles": [entry.pole_count for entry in plan.entries],
         "mirrors": len(residency.names),
         "shape": list(plan.shape),
-        # THE FORMS THIS CASE STEPPED (DESIGN.md D13): cells per (component, form)
+        # The forms this case stepped (the form-coverage rule): cells per (component, form)
         # under the true division.
         "forms": {name: counts for name, counts in battery.form_census(
             actual.grid, actual_pml).items() if name in FORM_COMPONENTS},
@@ -452,12 +452,12 @@ def run_separate_control(label: str, cell: Sequence[float], boundaries: Any,
                          ) -> Dict[str, Any]:
     """The SEPARATE products beside the fused one, on identical state.
 
-    THE POINTWISE SIDE IS SCORED. ``dispersive_update_e`` (the pointwise
+    The pointwise side is scored. ``dispersive_update_e`` (the pointwise
     dispersive E single) steps MEEP's per-chunk constitutive forms on the chunk
     record it binds, as the array path and this fused product do, so all three
     sides are held to word identity at every step (``separate_side_scored``).
 
-    THIS IS THE LEG THAT MAKES "FUSION" A MEASUREMENT RATHER THAN A NAME. Three
+    This is the leg that makes "FUSION" a measurement rather than a name. Three
     engines from one seed: the array path, the two ALREADY CERTIFIED Metal
     products stepping the same seam as separate dispatches with ``zero_metal_D``
     left on the host between them, and the fused product. All three must agree
@@ -567,10 +567,10 @@ def shader_mutations(codes: Sequence[int], poles: int,
     """
     base = family.fused_dispersive_pair_source(codes, 0, poles, zero_metal)
     edits: Dict[str, str] = {
-        # THE SEAM ITSELF: take the curl before the split-field recurrence.
+        # The seam itself: take the curl before the split-field recurrence.
         "seam_takes_pre_recurrence_curl":
             base.replace("float source = v0;", "float source = curl0;", 1),
-        # THE SEAM'S ORDER: let the E half consume D BEFORE the wall clear, which
+        # The seam's order: let the E half consume D BEFORE the wall clear, which
         # is the array path's order inverted. Only the fused kernel can have it.
         "zero_metal_after_the_e_half":
             base.replace("    v0 = at_y ? 0.0f : v0;\n", "", 1)
@@ -586,7 +586,7 @@ def shader_mutations(codes: Sequence[int], poles: int,
         "ownership_mask_dropped":
             base.replace("    curl0 = at_y ? 0.0f : curl0;\n", "", 1)
                 .replace("    curl0 = at_z ? 0.0f : curl0;\n", "", 1),
-        # INVERTED (KERNELS.md §7.1): the shipped curl IS MEEP's left-to-right
+        # INVERTED: the shipped curl IS MEEP's left-to-right
         # bracket now, so this plants the package's PREVIOUS pairwise grouping and
         # stays must-catch.
         "curl_previous_grouping":
@@ -602,7 +602,7 @@ def shader_mutations(codes: Sequence[int], poles: int,
         "pml_accumulations_reversed":
             base.replace("value = e_out[idx] + ((kps[i] * src) - (kms[i] * prev));",
                          "value = e_out[idx] + ((kps[i] * prev) - (kms[i] * src));", 1),
-        # INVERTED (KERNELS.md §7.1): the shipped accumulation is MEEP's
+        # INVERTED: the shipped accumulation is MEEP's
         # f + ((kps*src) - (kms*prev)); this plants the package's previous
         # ((f + kps*src) - kms*prev) and stays must-catch.
         "pml_previous_accumulation_grouping":
@@ -642,7 +642,7 @@ def _membership(half: bool, axis: int) -> str:
 
 def battery_rows(codes: Sequence[int], poles: int, zero_metal: Sequence[bool]
                  ) -> Dict[str, Dict[str, Any]]:
-    """The per-chunk form battery (KERNELS.md §7.2) armed on the X component.
+    """The per-chunk form battery (docs/development/certification.md) armed on the X component.
 
     This family spells one target per launch, so its flag lines are its own
     (``const bool du0 = in_i_z;``, ``const bool dw = in_h_x;``) and the select rows
@@ -830,7 +830,7 @@ def main() -> int:
             rows.append(row)
             emit(handle, row)
 
-        # THE SECOND VALUE CLASS, on every product row, and then the band.
+        # The second value class, on every product row, and then the band.
         for offset, (name, cell, boundaries, poles, kind) in enumerate(CASES):
             index += 1
             row = {"index": index, "total": total, "leg": "value_class",
@@ -889,7 +889,7 @@ def main() -> int:
             rows.append(row)
             emit(handle, row)
 
-        # THE PER-CHUNK FORM BATTERY (KERNELS.md §7.2), each row scored against its
+        # The per-chunk form battery, each row scored against its
         # declaration: must-catch rows must diverge, the two declared nulls must not.
         for name, entry in batteries.items():
             index += 1
@@ -923,7 +923,7 @@ def main() -> int:
             rows.append(row)
             emit(handle, row)
 
-        # THE FORM-COVERAGE FLOOR (DESIGN.md D13), over the product rows.
+        # The form-coverage floor (docs/development/certification.md), over the product rows.
         index += 1
         classes: Dict[str, int] = {}
         for product in (r for r in rows if r["leg"] == "product"):
@@ -940,7 +940,7 @@ def main() -> int:
         rows.append(row)
         emit(handle, row)
 
-        # THE DISARM CHECK. The identical harness, the identical case, the SHIPPED
+        # The disarm check. The identical harness, the identical case, the SHIPPED
         # bytes and no host patch. A nonzero here would mean every "caught" above
         # is a harness that diverges on its own.
         index += 1

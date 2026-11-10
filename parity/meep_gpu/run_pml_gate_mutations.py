@@ -24,8 +24,8 @@ Mutation 2 (drop the rounding guard) needs no leg of its own: the gate already
 sweeps both guard sets, so the pair "identical with, non-identical without" is
 read straight out of the gate artifact.
 
-EVERY LEG WITH A SOURCE MUTATION MUST ACCOUNT FOR IT. The probe records how many
-times the mutated bytes were HANDED TO THE COMPILER — one log entry per
+Every leg with a source mutation must account for it. The probe records how many
+times the mutated bytes were handed to the compiler — one log entry per
 ``cp.RawKernel`` construction, which is not the same as one NVRTC compile, since
 CuPy's disk cache can answer above the strip seam (measured: a cleared memo, a
 fresh construction, and identical bytes back). For an ARMED mutation the
@@ -36,7 +36,7 @@ reporting a pass for a mutation it never applied is indistinguishable, in a
 summary, from a leg that applied it and found nothing, and the sibling track hit
 exactly that three times.
 
-EVERY LEG GETS A PRIVATE, POLICY-TOKEN-CARRYING ``CUPY_CACHE_DIR``. CuPy computes
+Every leg gets a private, policy-token-carrying ``CUPY_CACHE_DIR``. CuPy computes
 its kernel cache key ABOVE the seam ``subnormal_policy`` strips ``-ftz=true`` at,
 so a shared cache directory serves one policy's binaries under the other policy's
 name and no amount of clearing an in-process memo helps. The directory is derived
@@ -53,11 +53,13 @@ Run (the GPU host, one GPU)::
         --out-dir results/fused_pml_bit_identity_hand_<date>_keep
 
 and again with ``--subnormal-policy flush`` into its own directory: the two
-verdicts side by side are what closes §1.1, and neither alone says anything the
-other does not.
+verdicts side by side, each naming the subnormal policy its bytes were cut under,
+are the evidence of whether the kernel is byte-identical to the array path under
+both policies (a verdict that names no policy cannot be read as covering either
+one), and neither alone says anything the other does not.
 
-THE TWO-POLICY RUN IS ONLY WORTH A SLOT IF THE LEG'S OPERANDS REACH THE BAND THE
-POLICY GOVERNS, and that is a property of the fixture, not of this driver. Both
+The two-policy run is only worth a slot if the leg's operands reach the band the
+policy governs, and that is a property of the fixture, not of this driver. Both
 families now sweep a value class (``PML_VALUE_CLASSES`` and
 ``CONSTITUTIVE_VALUE_CLASSES``) and both publish a band count beside the
 normal-number pass, so each leg's record says which class it measured. The
@@ -120,7 +122,7 @@ def resolved_policy(policy: Optional[str]) -> Optional[str]:
 
     return subnormal_policy.resolve_policy(policy)[0]
 
-# WHICH SUB-STEP FAMILY A LEG MEASURES. A leg names one; the family decides the
+# Which sub-step family a leg measures. A leg names one; the family decides the
 # probe's ``--experiments``, which artifact sections carry its counts, and which
 # verdict key holds its fraction. Before the constitutive pair existed every leg
 # was the curl and all four were hard-coded — and a constitutive leg run under
@@ -159,7 +161,7 @@ def family_of(leg: Dict[str, Any]) -> Dict[str, Any]:
     return FAMILIES[leg.get("family", DEFAULT_FAMILY)]
 
 
-# THE HAND TRACK'S LEG TABLE: the real-PML pair the probe's ``HandTrackAdapter``
+# The hand track's leg table: the real-PML pair the probe's ``HandTrackAdapter``
 # drives, whose needles are ``probe.HAND_NEEDLES``. Legs are per track, as the
 # needles are: a track's mutations name ITS table's entries, and two tracks'
 # kernels are re-spelled at different times, so one track's legs are never run
@@ -183,7 +185,7 @@ HAND_LEGS: Sequence[Dict[str, Any]] = (
         "args": ["--source-mutation", "regroup_stencil", "--guard", "fmad_false",
                  "--coefficients", "synthetic"],
         "why": "mutation 3, inverted: MEEP's ((a-b)+c)-d, which the pair forms, "
-               "rewritten as the pairwise ((a-b)+(c-d)) it carried until 0.10. If "
+               "rewritten as the pairwise ((a-b)+(c-d)) it carried until 1.0. If "
                "someone puts the old parentheses back, the gate must fail.",
     },
     {
@@ -287,7 +289,7 @@ HAND_LEGS: Sequence[Dict[str, Any]] = (
         "args": ["--no-fu-compare", "--source-mutation", "drop_metallic_mask",
                  "--guard", "fmad_false", "--coefficients", "synthetic"],
         "why": "harness mutation 8 as specified: drop the auxiliary comparison and "
-               "ask whether mutation 4 still lands. MEASURED, not assumed — the "
+               "ask whether mutation 4 still lands. Measured, not assumed — the "
                "masked curl feeds the recurrence, so the target field may well "
                "carry the defect on its own.",
     },
@@ -298,14 +300,14 @@ HAND_LEGS: Sequence[Dict[str, Any]] = (
                  "fmad_false", "--coefficients", "synthetic"],
         "why": "harness mutation 8, against the defect that really is "
                "auxiliary-only. A single-launch, target-only gate must be TOTALLY "
-               "blind to it — that is R2 measured rather than argued — while the "
+               "blind to it — measured rather than argued — while the "
                "gate with fu (m8x) catches it on launch one and the multi-step leg "
                "catches it from step two.",
     },
     # ----------------------------------------------------------------------
-    # THE REAL-STORAGE CONSTITUTIVE PAIR (update_H + update_E).
+    # The real-storage constitutive pair (update_H + update_E).
     #
-    # Authored, predicated, NOT YET CERTIFIED: these legs are what would move
+    # Authored, predicated, not yet certified: these legs are what would move
     # ``constitutive_kernels.CERTIFIED_KERNELS`` off empty, and they need an
     # A6000. They are written here rather than after the device run so that the
     # gate's shape is reviewable, and its mutation set arguable, before a slot
@@ -336,7 +338,7 @@ HAND_LEGS: Sequence[Dict[str, Any]] = (
         "why": "inverted: MEEP's f + ((kps*src) - (kms*prev)), which the pair and "
                "the array path form, regrouped to the two left-to-right "
                "accumulations ((f + kps*src) - kms*prev) the pair carried until "
-               "0.10 -- a different float32 number, so the gate must fail.",
+               "1.0 -- a different float32 number, so the gate must fail.",
     },
     {
         "leg": "c2_drop_fw_store",
@@ -552,7 +554,7 @@ def run_leg(leg: Dict[str, Any], module: str, track: str, out_dir: str,
 
     cache_dir = leg_cache_dir(out_dir, resolved, leg["leg"])
     os.makedirs(cache_dir, exist_ok=True)
-    # MEASURED BEFORE THE RUN, or it measures nothing: after the leg the directory
+    # Measured before the run, or it measures nothing: after the leg the directory
     # holds whatever the leg compiled. A leg that found a warm cache may have been
     # served a binary it did not compile, which is the whole reason the directory
     # is per leg and per policy.
@@ -609,7 +611,7 @@ def run_leg(leg: Dict[str, Any], module: str, track: str, out_dir: str,
     identical, ran = _split_fraction(verdict.get(family["single_key"]))
     record["single_identical"] = identical
     record["single_ran"] = ran
-    # THE BAND COUNT COMES FROM THE LEG'S OWN FAMILY. Both families now sweep the
+    # The band count comes from the leg's own family. Both families now sweep the
     # value class, so reading the curl's key on a constitutive leg would report
     # None for a sweep that ran — which is how this line read until 2026-08-15,
     # when the constitutive leg had no band axis to report.
@@ -622,7 +624,7 @@ def run_leg(leg: Dict[str, Any], module: str, track: str, out_dir: str,
         "subnormal_band_is_non_vacuous")
     record["single_launch_band_operands"] = single.get("subnormal_band_operands")
 
-    # THE ARMED-MUTATION ACCOUNTING. A leg carrying a source mutation whose bytes
+    # The armed-mutation accounting. A leg carrying a source mutation whose bytes
     # never reached NVRTC has measured nothing, whatever its verdict says.
     accounting = (record.get("mutation") or {}).get("armed_accounting") or {}
     record["armed_accounting"] = accounting

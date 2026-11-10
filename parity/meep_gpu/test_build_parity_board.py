@@ -5,7 +5,7 @@ The emitted-text witnesses of columns (a) and (b) are tested against planted pai
 on them, the development-evidence column (d-dev) and its writer, and the whole board.
 
 Every test reads the tree or builds a synthetic one under ``tmp_path``; none writes the
-committed board. No test asks whether the COMMITTED board describes this tree: every lane
+committed board. No test asks whether the COMMITTED board describes this tree: every change
 that edits a kernel module moves the board's subject, and ``build_parity_board.py check``
 answers that question by name when the board is re-cut.
 """
@@ -139,8 +139,8 @@ def test_the_source_text_columns_name_their_state(source, b_state, a_state):
 
 
 def test_the_landed_roots_read_landed_on_their_source_text_too():
-    """The three tables' root modules spell the select and MEEP's forms in their own text
-    (lanes KC1, KT1, KM1), so the source-text fallback still sees them."""
+    """The three tables' root modules spell the select and MEEP's forms in their own text,
+    so the source-text fallback still sees them."""
     for table, path in (("cuda", "meep_gpu/cuda_kernels/step_curl_kernels.py"),
                         ("cuda", "meep_gpu/cuda_kernels/constitutive_kernels.py"),
                         ("triton", "meep_gpu/triton_kernels/kernels.py"),
@@ -158,8 +158,8 @@ def test_the_landed_roots_read_landed_on_their_source_text_too():
 def test_the_rows_are_the_step_lists_and_carry_no_verdict():
     rows = board.load_rows(ROOT)
     counts = {table: len(rows["tables"][table]["modules"]) for table in board.TABLES}
-    # KERNELS.md section 8: 75 CUDA (74 + fastpath_cuda), 72 Triton + the new forms, 90
-    # Metal (89 + metal_dispatch) + the new chunk_bounds and softfp64.
+    # The kernel-module inventory: 75 CUDA (74 + fastpath_cuda), 72 Triton + the forms
+    # module, 90 Metal (89 + metal_dispatch) + chunk_bounds and softfp64.
     assert counts == {"cuda": 75, "triton": 73, "metal": 92}
     for table in board.TABLES:
         for row in rows["tables"][table]["modules"]:
@@ -426,6 +426,38 @@ def test_each_condition_of_a_certification_is_load_bearing(tmp_path, plant, colu
     assert needle in cells[column]["why"], cells[column]
 
 
+def test_the_certified_policies_leaf_is_the_planners():
+    from meep_gpu import fastpath  # noqa: PLC0415
+
+    assert board.CERTIFIED_POLICIES == fastpath.CERTIFIED_POLICIES
+
+
+@pytest.mark.parametrize("policy, evidence, keep, flush", [
+    # gated under keep, its flush twin's verdict bound beside it (a Triton weld)
+    ("keep (installed by the gate before its first device compile)",
+     {"flush": {"artifact_sha256": "f" * 64}, "keep": {"artifact_sha256": "k" * 64}},
+     "landed", "landed"),
+    # the evidence names keep alone: flush is not certified, whatever the text says
+    ("meep_x86_flush; ieee_keep_ftz_stripped", {"keep": {"artifact_sha256": "k" * 64}},
+     "landed", "gap"),
+    # no evidence leaf: the run is read by the policy its record names
+    ("keep (installed by the gate before its first device compile)", None, "landed", "gap"),
+    ("NOT INSTALLED - see _mixed_policy", None, "gap", "gap"),
+])
+def test_a_run_covers_the_baselines_its_certified_policies_name(tmp_path, policy, evidence,
+                                                                keep, flush):
+    case = _ledger_tree(tmp_path)
+    run = case["ledger"]["w"]["runs"]["8.6"]
+    run["subnormal_policy"] = policy
+    if evidence is not None:
+        run[board.CERTIFIED_POLICIES] = evidence
+    cells = board.device_columns(case["root"], "triton", case["row"], case["ledger"], LIVE)
+    assert (cells["device_identical:keep"]["state"],
+            cells["device_identical:flush"]["state"]) == (keep, flush), cells
+    if flush == "gap":
+        assert "no live run under flush" in cells["device_identical:flush"]["why"]
+
+
 def test_a_module_no_entry_pins_is_refused_and_the_route_record_is_no_weld(tmp_path):
     case = _ledger_tree(tmp_path)
     ledger = {"driver_dispatch": case["ledger"]["w"]}
@@ -542,9 +574,9 @@ def test_a_ledger_on_another_array_path_certifies_nothing_and_says_why(built):
 def test_the_markdown_states_every_count_as_a_fraction(built):
     text = board.render_markdown(built)
     assert "| CUDA | 75 |" in text and "| Triton | 73 |" in text and "| Metal | 92 |" in text
-    assert "n/a (R13)" in text
+    assert "n/a (flush only)" in text
     assert "(d-dev) keep, NOT certification" in text
-    assert "DEVELOPMENT EVIDENCE, NOT CERTIFICATION" in text
+    assert "development evidence, not certification" in text
 
 
 def test_every_device_form_row_names_the_witness_it_was_read_with(built):
@@ -638,7 +670,7 @@ def test_the_writer_refuses_a_stale_subject_by_name(tmp_path):
 
 
 @pytest.mark.parametrize("change, needle", [
-    ({"baseline": "keep", "table": "metal", "backend": "metal"}, "owner ruling R13"),
+    ({"baseline": "keep", "table": "metal", "backend": "metal"}, "the metal table is judged under"),
     ({"backend": "metal"}, "does not run the cuda table's kernels"),
     ({"words_compared": 0}, "compared nothing"),
     ({"words_differing": 11}, "11 words differing out of 10"),
@@ -680,7 +712,7 @@ def test_a_rerun_of_the_same_leg_replaces_its_record(tmp_path):
     assert [(r["gate"], r["words_compared"]) for r in records] == [
         ("another smoke", 1000), ("smoke", 2000)]
     document = json.loads((root / board.DEV_EVIDENCE_FILE).read_text())
-    assert "NOT CERTIFICATION" in document["about"]
+    assert "not certification" in document["about"]
 
 
 def test_a_record_the_writer_did_not_make_is_refused(tmp_path):

@@ -10,7 +10,7 @@ reads that record. It emits no kernel; the kernel templates and their plans take
 it up when they read membership, and a plan checks the record it binds through
 :func:`plan_words`.
 
-THE STRUCT IS THE RECORD, WORD FOR WORD. :data:`MEMBERS` lists the 25 members in the
+The struct is the record, word for word. :data:`MEMBERS` lists the 25 members in the
 record's own order (:func:`~meep_gpu.chunk_map.record_index`), every member a 4-byte
 ``int`` except the trailing ``uint`` presence word, so the struct has no padding, its
 size is 100 bytes and its alignment 4. A flat ``int32[25]`` buffer therefore binds as
@@ -19,13 +19,13 @@ size is 100 bytes and its alignment 4. A flat ``int32[25]`` buffer therefore bin
 offset. The test file checks the member order against ``record_index`` for all 25
 positions and the numpy dtype's field offsets against ``4 * position``.
 
-NAMES ARE TAGGED BY SUB-LATTICE: ``cbi_*`` for the integer lattice and ``cbh_*`` for
+Names are tagged by sub-lattice: ``cbi_*`` for the integer lattice and ``cbh_*`` for
 the half-integer one, so a fused kernel that reads both lattices on one axis never
 declares the same local twice. The membership locals are ``in_i_<axis>`` and
 ``in_h_<axis>``; a kernel that evaluates membership at a second coordinate (a
 neighbour-straddle recompute, a carried ghost) passes a ``suffix``.
 
-ONE EMITTER, ANCHORED. :func:`prologue` writes the bounds block between
+One emitter, anchored. :func:`prologue` writes the bounds block between
 :data:`BLOCK_BEGIN` and :data:`BLOCK_END`, so a lifter that splices a certified body
 finds the block by those two lines rather than by its contents. The membership formula
 is the record's: ``(i >= a0 && i < a1) || (i >= b0 && i < b1)``, an empty run being
@@ -33,7 +33,7 @@ is the record's: ``(i >= a0 && i < a1) || (i >= b0 && i < b1)``, an empty run be
 struct's named fields, which is what the tests compare with
 :func:`~meep_gpu.chunk_map.membership_from_record` and with the layout's own lines.
 
-NO TORCH AT MODULE LEVEL: only :func:`tensor` imports it, inside the function.
+No torch at module level: only :func:`tensor` imports it, inside the function.
 """
 
 # Derived from MEEP (https://github.com/NanoComp/meep).

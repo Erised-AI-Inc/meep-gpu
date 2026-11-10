@@ -13,7 +13,7 @@ a real ``Fields``. Both storage modes are swept because they are DIFFERENT
 sub-steps: ``stores_E`` False derives ``D * inv_eps`` per sub-step, True reads
 the stored arrays. The reference takes MEEP's grouping (``kernel_order``) and the
 grid's own partner presence (``Grid.is_invariant``); the control is the package's
-pre-alignment grouping (``pairwise_order``), which must disagree wherever both partners
+pre-1.0 grouping (``pairwise_order``), which must disagree wherever both partners
 of some component are present and the Courant factor is not a power of two. The
 shapes carry 3-D runs with a one-cell resolved axis (both partners) and a 2-D run
 (z invariant: the one-partner forms).
@@ -66,7 +66,7 @@ BOUNDARY_SETS = (
     ("periodic", "metallic", "periodic"),
 )
 # 0.5 is a power of two and the FMA/association discrepancy VANISHES there; a
-# gate that swept only 0.5 would certify a broken kernel (plan section 9).
+# gate that swept only 0.5 would certify a broken kernel.
 COURANTS = (0.5, 0.35)
 STORAGE = ("derived", "stored")
 
@@ -165,7 +165,7 @@ def one_case(shape, boundaries, dtdx, sub_step, storage,
     case["vs_stepping"] = ref.combine(
         {n: ref.bit_compare(array_path[n], state[n]) for n in target_names})
 
-    # NEGATIVE CONTROL. Regroup the stencil to the package's pre-alignment pairwise
+    # NEGATIVE CONTROL. Regroup the stencil to the package's pre-1.0 pairwise
     # association and require a DISAGREEMENT — only asserted where dtdx is not
     # exactly representable, because at 0.5 the two groupings legitimately coincide.
     control = {n: before[n].copy() for n in target_names}

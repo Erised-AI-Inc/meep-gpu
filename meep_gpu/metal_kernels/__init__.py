@@ -6,7 +6,7 @@ composition and seam rules, the fail-closed arm table, the mutation harness and 
 gate's vacuity discipline all transfer, because none of them is about a backend.
 Only the launch layer and the kernel bodies are Metal-specific.
 
-WHAT IS HERE, in the first tranche:
+The modules the port started with:
 
 * :mod:`.shaders` — the two kernel sources (real-field PML curl, ``dsigw``
   constitutive) and the specialisation substitution that replaces Triton's
@@ -19,7 +19,7 @@ WHAT IS HERE, in the first tranche:
 * :mod:`.subnormal` — the MPS executor column: flush is NATIVE and
   UNCONTROLLABLE here and keep is a REFUSAL.
 
-DISPATCH IS NOT WIRED FOR THIS PACKAGE, and since 2026-09-02 that is no longer the
+Dispatch is not wired for this package, and since 2026-09-02 that is no longer the
 same sentence as "dispatch is not wired". ``meep_gpu.fastpath.plan_fast_path``
 returns a ``FastPathPlan``, the driver consults it at seven slots, and the Triton
 track dispatches nine certified families plus five fused products inside an
@@ -27,15 +27,15 @@ opted-in run. It reaches NONE of this package: the function imports
 ``triton_kernels`` and composes its ``plan_step``, which is a structural fact rather
 than a coverage verdict and is re-measured on every board cut
 (``parity/meep_gpu/dispatch_reachability``). Which track earns the step path on
-Apple hardware is Phase 3 of the dispatch-expansion plan — a residency-aware seam —
+Apple hardware is a separate decision — a residency-aware seam —
 and a benchmark informs it; a port does not make it.
 
-NO TORCH AT MODULE LEVEL, here or in any submodule that a predicate reaches.
+No torch at module level, here or in any submodule that a predicate reaches.
 :mod:`.coverage` and :mod:`.shaders` are importable, readable and testable on a
 host with no GPU and no optional dependency; only :mod:`.launch`'s launch path
 imports torch, and it does so inside the functions that need it.
 
-THE RESIDENCY LAYER IS NEW AND HAS NO TRITON COUNTERPART. The CuPy path is zero
+The residency layer is new and has no Triton counterpart. The CuPy path is zero
 copy — ``CupyPointer`` renames an existing device allocation and the kernel writes
 the engine's own array in place. On this host the engine holds NumPy, and a torch
 MPS tensor is a separate allocation, so a plan owns persistent device MIRRORS of

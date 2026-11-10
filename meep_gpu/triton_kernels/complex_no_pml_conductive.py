@@ -21,7 +21,7 @@ step_generic.cpp:87-97), on each part::
     field -= curl
     field *= condinv     # part_products.scale
 
-THE CHUNK RECORD. The kernel reads only its presence word: a run with no absorber has
+The chunk record. The kernel reads only its presence word: a run with no absorber has
 no membership run, and the conductivity is a whole-run volume on this branch (the
 array path applies it wherever ``condfac_for`` returns one). The plans bind the
 record of the run's division (``launch.chunk_bounds_for``), which with no absorber is

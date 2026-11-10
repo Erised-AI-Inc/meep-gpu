@@ -1,6 +1,6 @@
 """The METAL table's dispatch ladder and its residency seam, on the laptop.
 
-WHAT THIS PINS AND WHAT IT DELIBERATELY DOES NOT. The numbers the Metal kernels
+What this pins and what it deliberately does not. The numbers the Metal kernels
 produce are the device gates' business (``metal_kernels/fingerprints.json``, 62
 welds) and the shipped composition is ``test_metal_planner_composition``'s. What
 neither of those can see is the layer between them: which products the LADDER
@@ -11,9 +11,9 @@ comparison, and every one of them is silent when it is wrong — a mis-placed br
 is a stale mirror, and a stale mirror reads as an arithmetic defect in a kernel that
 is in fact correct.
 
-THREE THINGS ARE HELD HERE:
+Three things are held here:
 
-1. **THE BRACKET RULE, PER PLAN SHAPE**, counted on a residency that records what it
+1. **The bracket rule, per plan shape**, counted on a residency that records what it
    was asked to do. Six shapes reach ``launch.synced``: a bare device plan, a
    wrapper whose ``inner`` is its ``absorbed_by`` (the deposit repair's leading half
    and the withdraw hoist's), a plan with an ``absorbed_by`` and no ``inner`` (the
@@ -21,20 +21,20 @@ THREE THINGS ARE HELD HERE:
    ``performs_device_work = False``, and a split fill that answers
    ``run_near``/``run_far``. Each gets a different answer and each answer is a
    correctness claim.
-2. **THE RELEASE TABLE'S OWN INTEGRITY** — every released label is one the registry
+2. **The release table's own integrity** — every released label is one the registry
    can write, has an absorb declaration the ladder can see through, names a
    certification that RESOLVES in the ledger, and carries a per-arm axis row. That
    last one is the anti-forgery test: a typed row citing a weld that does not exist
    is invisible in an artifact, because the arm names a gate and the gate names
    nothing.
-3. **THE LADDER'S REFUSALS** — that an un-admitted fused product refuses the whole
+3. **The ladder's refusals** — that an un-admitted fused product refuses the whole
    plan by name, that a pending family refuses through its CONSTITUENTS as well as
    through its own label, and that the envelope names the axis it declined on.
 
-THE SEAM THIS FILE WAITS ON. The rung-3 branch that routes a NumPy engine with an
-MPS device into ``metal_dispatch`` is a separate edit batch on ``fastpath.py``.
-Tests below that need a symbol from that batch SKIP WITH THE SYMBOL NAMED rather
-than being written around: a test that quietly asserted less until the batch landed
+The seam this file waits on. The rung-3 branch that routes a NumPy engine with an
+MPS device into ``metal_dispatch`` is a separate change to ``fastpath.py``.
+Tests below that need a symbol from that change skip with the symbol named rather
+than being written around: a test that quietly asserted less until the change landed
 would be a test nobody notices stopped measuring. :data:`_PENDING_FASTPATH` is the
 list, and it doubles as the join checklist.
 """
@@ -64,10 +64,10 @@ from meep_gpu.metal_kernels import arms, device, launch  # noqa: E402
 PACKAGE_DIR = pathlib.Path(__file__).resolve().parent
 ENVIRONMENT = matrix.prepare_environment()
 
-#: The ``fastpath`` symbols this table's ladder is written against and which the
-#: dispatch batch on that file has not landed yet. A test that needs one skips by
-#: name, so the skip list IS the join checklist and an unskipped test after the
-#: batch is a test that was never waiting.
+#: The ``fastpath`` symbols this table's ladder is written against and which the Metal
+#: dispatch change to that file has not landed yet. A test that needs one skips by
+#: name, so the skip list IS the join checklist and an unskipped test after the change
+#: is a test that was never waiting.
 _PENDING_FASTPATH = {
     "_finish": "the factored tail both ladders emit through",
     "candidate_tables": "the rung-3 branch that chooses a table from the hardware",
@@ -79,7 +79,7 @@ _PENDING_FASTPATH = {
 
 #: The resource name the sanctioned skip declares. It is a genuinely-absent
 #: ARTIFACT in the same sense a missing oracle file is: the symbols below exist only
-#: after the dispatch edit batch lands on ``fastpath.py``, and until then the test
+#: after the Metal dispatch change lands in ``fastpath.py``, and until then the test
 #: has nothing to measure. Declaring it by name means the session summary counts
 #: these rather than letting them read as coverage.
 FASTPATH_BATCH = "fastpath_metal_dispatch_batch"
@@ -89,13 +89,13 @@ FASTPATH_BATCH = "fastpath_metal_dispatch_batch"
 def _leave_the_process_as_this_file_found_it():
     """Put the FPU and the policy bookkeeping back when this file is done.
 
-    RUNG 8bM INSTALLS, AND AN ATTAINED INSTALL DELIBERATELY STANDS. That is right in
+    Rung 8bM installs, and an attained install deliberately stands. That is right in
     production — a process that asked to flush and got it should keep flushing — and
     it is a leak in a suite: the tests below drive the real ``_subnormal_gate`` for
     the Metal table, which puts this host's FPU on ``flush`` through the Darwin fenv
     lever and never takes it off.
 
-    MEASURED 2026-09-10, which is why this is here rather than argued: with this file
+    Measured 2026-09-10, which is why this is here rather than argued: with this file
     running first in the same process, seven ``test_triton_complex_fields`` tests
     fail with "the candidates were asked for under the IEEE-keep policy but this
     host's FPU measurably flushes float32 subnormals", and the same seven pass when
@@ -121,13 +121,13 @@ def _requires(symbol: str) -> None:
         requires_resource_skip(
             FASTPATH_BATCH,
             f"fastpath.{symbol} has not landed yet "
-            f"({_PENDING_FASTPATH.get(symbol, 'the dispatch batch')})")
+            f"({_PENDING_FASTPATH.get(symbol, 'the Metal dispatch change')})")
 
 
 def _subnormal_gate_takes_a_table() -> bool:
     """Has ``_subnormal_gate`` grown its ``table`` argument?
 
-    AN ARITY RATHER THAN A NAME, which is why this is not in
+    An arity rather than a name, which is why this is not in
     :data:`_PENDING_FASTPATH`: the symbol EXISTS today with two parameters and the
     ladder calls it with three, so ``hasattr`` answers True while the call is a
     ``TypeError``. Asking the signature is the only reading that is not wrong.
@@ -147,7 +147,7 @@ def _subnormal_gate_takes_a_table() -> bool:
 class CountingResidency(device.Residency):
     """A residency that records every bracket, in order, without a device.
 
-    SUBCLASSED RATHER THAN STUBBED so the plans bind mirrors through the real
+    Subclassed rather than stubbed so the plans bind mirrors through the real
     registration path and the counts are about the real objects. The two ``sync``
     methods are the whole instrument: ``events`` is the ORDER, which is what
     separates "the bracket is present" from "the bracket is around the right thing".
@@ -398,7 +398,7 @@ def test_the_wrapper_declares_the_pair_identity_rather_than_forwarding_it():
 # ---------------------------------------------------------------------------
 
 def test_an_ordinary_pml_step_carries_two_brackets_and_no_more():
-    """MEASURED, not derived: two pairs, and only the LEADING slot of each launches.
+    """Measured, not derived: two pairs, and only the LEADING slot of each launches.
 
     Reproduced 2026-09-10 through the real driver on ``pml_2d``: 45 mirrors, 768
     ``sync_in`` and 768 ``sync_out`` over 384 complete steps. The count is the whole
@@ -490,7 +490,7 @@ def test_every_certification_row_resolves_to_a_readable_ledger_entry():
         assert family and gate, arm
         entry = ledger.get(gate)
         assert isinstance(entry, dict), f"{arm} names {gate}, which the ledger lacks"
-        # THE RUN'S FACTS LIVE IN ITS ARCHITECTURE'S RECORD, and only a live one
+        # The run's facts live in its architecture's record, and only a live one
         # describes the bytes the entry pins.
         runs = metal_runs.live_runs(entry)
         assert runs, f"{arm} names {gate}, which has no live per-architecture run"
@@ -540,7 +540,7 @@ def test_an_unreadable_run_shape_refuses_the_release_rather_than_admitting_it():
 def test_the_envelope_names_the_axis_it_declined_on():
     """A predicate that has only ever said yes is not known to be able to say no.
 
-    IT ASKS BOTH HALVES OF THE RELEASE, from 2026-09-12, and that is the point of
+    It asks both halves of the release, from 2026-09-12, and that is the point of
     the rewrite rather than an embellishment. ``off_diagonal_epsilon`` moved from
     the SHARED envelope to the PER-ARM axes that day. A test that kept asking only
     the shared table would have gone quiet about the axis instead of going red —
@@ -548,7 +548,7 @@ def test_the_envelope_names_the_axis_it_declined_on():
     reported the envelope healthy while the axis it was written for had moved out
     from under it.
     """
-    # THE SHARED HALF, which on 2026-09-17 stopped pinning ``pml_active`` (and
+    # The shared half, which on 2026-09-17 stopped pinning ``pml_active`` (and
     # ``bfast``) the same way it stopped pinning ``off_diagonal_epsilon`` on 09-12:
     # three arms were released whose own axes say pml_active=False / bfast=True,
     # and a shared row consulted first refused them with an EMPTY admitted set
@@ -619,7 +619,7 @@ def test_the_off_diagonal_admission_is_bounded_to_the_corner_its_cases_sat_at():
     INSTALLING a fused pair on a 2-D off-diagonal grid. It was caught by audit, not
     by a test — so this is the test.
 
-    IT ASSERTS THE CORNER AND EVERY FAIL-CLOSED EDGE, because the previous shape of
+    It asserts the corner and every fail-closed edge, because the previous shape of
     this test passed while the defect was live: it only ever asked about
     ``dimensions=3``, which is the one point that was correct. The corner is now
     two-dimensional for the ordinary pair (``offdiag_2d`` joined ``pml_3d``) and
@@ -678,7 +678,7 @@ def test_the_off_diagonal_admission_is_bounded_to_the_corner_its_cases_sat_at():
     why = metal_dispatch.fused_release_arm_reasons_metal(unread, arm)
     assert any("dimensions did not read" in reason for reason in why), why
 
-    # THE FOLDED PAIR'S CORNER IS ONE POINT: susceptibilities=0. Its row pins every
+    # The folded pair's corner is one point: susceptibilities=0. Its row pins every
     # other axis already, so the corner lists nothing else — and its one open axis
     # is exactly the one folded_2d and folded_dispersive_2d drive both values of.
     folded = dict(shape, dimensions=2, folded="mirror plane on Y",
@@ -753,7 +753,7 @@ def test_each_off_diagonal_corner_lists_exactly_the_axes_its_row_leaves_open():
 def test_the_pending_table_is_empty_and_its_last_two_arms_are_released_on_the_group_key():
     """The pending rung still refuses something REAL when it holds anything, and it
     holds nothing: the two families it held were released on the same group-key
-    ruling as their three siblings, and their certification rows resolve.
+    decision as their three siblings, and their certification rows resolve.
 
     A pending entry naming a label no registry writes would be a refusal of
     nothing; a released arm still listed as pending would be both admitted and
@@ -804,7 +804,7 @@ def _drive(pair, *, admitted=(), sources=(), finish=None):
     """
     fields, pml = pair
     grid = getattr(fields, "grid", None)
-    # THE RECORD IS THE LADDER'S OWN SHAPE, not a bare dict. ``_refuse`` announces
+    # The record is the ladder's own shape, not a bare dict. ``_refuse`` announces
     # through ``_announce``, which reads the enable and kill-switch blocks
     # ``_base_record`` fills; handing ``decide`` an empty dict would make every
     # refusal a KeyError and this file would be testing its own scaffolding.
@@ -822,10 +822,10 @@ def _drive(pair, *, admitted=(), sources=(), finish=None):
         result = metal_dispatch.decide(record, fields, pml, grid, sources, xp,
                                        finish=finish or _tail)
     except TypeError as exc:
-        # RUNG 8bM'S ARITY, AND NOTHING ELSE. ``_subnormal_gate`` exists today with
-        # two parameters and the ladder calls it with three, so a configuration that
-        # survives every structural rung dies here — which is exactly the set of
-        # tests that must wait for the dispatch batch, and none of the refusal tests
+        # Rung 8bM's arity, and nothing else. ``_subnormal_gate`` exists today with two
+        # parameters and the ladder calls it with three, so a configuration that
+        # survives every structural rung dies here — which is exactly the set of tests
+        # that must wait for the Metal dispatch change, and none of the refusal tests
         # above, which return before this rung. Narrowed to that one call so a real
         # TypeError anywhere else in the ladder still fails loudly.
         if "_subnormal_gate" not in str(exc) or _subnormal_gate_takes_a_table():
@@ -834,7 +834,7 @@ def _drive(pair, *, admitted=(), sources=(), finish=None):
             FASTPATH_BATCH,
             "rung 8bM calls fastpath._subnormal_gate(record, xp, table) and the "
             "shipped symbol takes two arguments; this configuration reaches that "
-            "rung, so it cannot be judged until the dispatch batch lands")
+            "rung, so it cannot be judged until the Metal dispatch change lands")
     return record, result, seen
 
 
@@ -923,8 +923,8 @@ def test_the_null_drop_reads_the_plan_rather_than_matching_a_label():
     if not _subnormal_gate_takes_a_table():
         requires_resource_skip(
             FASTPATH_BATCH,
-            "fastpath._subnormal_gate has 2 parameters and rung 8bM passes 3; the "
-            "ladder cannot reach the null-drop record until the dispatch batch lands")
+            "fastpath._subnormal_gate has 2 parameters and rung 8bM passes 3; the ladder "
+            "cannot reach the null-drop record until the Metal dispatch change lands")
     record, _result, _seen = _drive(matrix.real_stored_e_no_pml())
     assert "dropped_null" in json.dumps(record) or record.get("slots"), record
 
@@ -1073,8 +1073,8 @@ def test_metal_dispatch_imports_nothing_metal_and_nothing_torch_at_module_level(
 def test_fastpath_reaches_torch_and_metal_kernels_only_function_locally():
     """The same rule, on the file the rung-3 branch lands in.
 
-    Written now rather than with that batch on purpose: it passes today (that file
-    names neither) and it is what stops the batch from landing a module-level import
+    Written now rather than with that change on purpose: it passes today (that file
+    names neither) and it is what stops that change from landing a module-level import
     while every other test still goes green.
     """
     roots = _module_level_imports(PACKAGE_DIR / "fastpath.py")

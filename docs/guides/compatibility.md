@@ -80,7 +80,7 @@ refused beside another one, and the refusal names the pair.
 
 ### Acceptance on MEEP's own scripts
 
-The lift was run on the simulations that MEEP's own example and test scripts
+For 1.0, the lift was run on the simulations that MEEP's own example and test scripts
 construct (MEEP 1.33.0, single precision). The harness captures the
 <code>mp.Simulation</code> each script builds; the script's own
 <code>sim.run</code> call is not what is accepted.
@@ -91,7 +91,21 @@ construct (MEEP 1.33.0, single precision). The harness captures the
 | Test methods that captured an <code>mp.Simulation</code> | 134 of 233 | 99 of 233, of which 93 declare no source and are never stepped by MEEP either | measured |
 
 The 194 accepted simulations (60 and 134) were lifted again on 2026-09-25, 194
-of 194.
+of 194. Over MEEP 1.35.0's scripts the corpus of 1.0.1 is 223 simulations, 60 examples
+and 163 test methods ([MEEP identity on the corpus](../development/meep-identity-corpus.md)).
+Accepted of those scripts, measured on 2026-11-02 on the NumPy reference with dispatch off
+(one M1 Max, MEEP 1.35.0 single precision): 60 of 65 example scripts that build an
+<code>mp.Simulation</code>, the same 65 as 1.33.0's with no verdict moved, and 164 of 274
+test methods that build one; of the 229 test methods shared with 1.33.0 no verdict moved,
+4 MPI-only methods now skip, and 45 methods are new (34 accepted). Accepted is the preflight's
+verdict, and the corpus counts the methods whose simulation lifts, so the two differ: of the 164,
+<code>test_plot1D</code>'s lift fails (a sampled permittivity outside its declared range) and
+<code>test_ldos_3D</code>'s was not attempted, while <code>test_amp_file_func</code>, refused,
+lifts with its source substituted, which gives the corpus's 163. The refusals name their
+reason: 4 of the 5 refused examples and 103 of the 110 refused test methods declare no
+source; the others are a multilevel-atom or gyrotropic medium, a <code>geometry_center</code>
+off the origin, a non-integer <code>m</code>, an off-diagonal <code>ForceRegion</code>, a
+near-to-far transform with <code>nperiods=10</code>, and an <code>amp_func_file</code>.
 
 These counts are over MEEP's tutorial and test scripts. They are not a fraction
 of MEEP's features, and they say nothing about how often a feature occurs in
@@ -101,28 +115,88 @@ measurement, in
 
 ### An `EigenModeSource` can differ from MEEP
 
-An <code>EigenModeSource</code> lifts, but its words are not always MEEP's. The lift does
-not read the mode amplitudes that MEEP's own <code>add_eigenmode_source</code> solve
-stored: it solves the mode again with its own <code>get_eigenmode</code> call (MPB). On
-some hosts that solve is not bitwise reproducible from one process to the next, and
-neither is MEEP's, so a run with an eigenmode source can occasionally differ from MEEP,
-and from another run of itself, in every word the source reaches (owner ruling R24).
+An <code>EigenModeSource</code> lifts, but its words are not always MEEP's, and a run with
+one is not reproducible word for word from one process to the next, on the GPU or in MEEP
+itself. The lift does not read the mode amplitudes that MEEP's own
+<code>add_eigenmode_source</code> solve stored: it solves the mode again with its own
+<code>get_eigenmode</code> call (MPB). MPB's eigensolver starts with exact line
+minimization and switches to an approximate one when a step improved little and its own
+<code>clock()</code> timings say the exact one costs more than twice as much. On the two-dimensional corpus solves
+measured, each timed operation lasts a few microseconds, so the switch follows timing noise, and any solve, MEEP's
+own included, can converge to a slightly different eigenvector in any process. The
+difference is inside the eigensolver's tolerance: sampled mode amplitudes differ by 5.2e-15
+to 1.1e-7, the frequency is equal, and the group velocity differs in its last digits. The
+source then deposits other amplitudes, and every word the source reaches differs from the
+first step on: over whole runs of three corpus rows, 1,366,368 of 8,370,000, 1,379,932 of
+8,370,000 and 2,842,365 of 8,794,080 words, 16 to 32 %.
+
+So a run with an <code>EigenModeSource</code> is not bit-identical to MEEP in every run. The
+GPU steps, word for word, the mode the lift solved; that solve, like MEEP's own, is not
+reproducible between processes, so against MEEP such a run can differ, in the same process
+or in another, at the rates below, and MEEP's own run is not word-reproducible between
+processes either. Runs without an
+<code>EigenModeSource</code> are not affected, and neither is the kernels' identity with the
+array path on the same inputs, which the certification's gates measure inside one lift.
+
+How often, measured with this release, MEEP 1.35.0 single precision and MPB 1.12.0, on one
+x86-64 Linux host and its RTX 3090:
+
+| Measured | Result |
+|---|---|
+| The lift's mode against MEEP's own solve in the same process (NumPy reference; <code>test_adjoint_solver</code>'s <code>test_DFT_fields</code> and <code>test_eigenmode</code>, <code>test_mode_coeffs</code>'s <code>test_modes</code>) | differs in 4 of 300 processes on an otherwise idle host, 47 of 936 beside other work, and 3 of 108 whole runs |
+| MEEP's own words against its own reference run (the same three rows) | differ in 0 of 300 processes on an idle host, 19 of 936 beside other work, and 2 of 108 whole runs |
+| By row, idle (the lift's mode against MEEP's own) | <code>test_DFT_fields</code> 1 of 100 processes; <code>test_eigenmode</code> 0 of 100; <code>test_modes</code> 3 of 100 |
+| Dispatched runs on the RTX 3090 against the reference words (the 32 corpus rows with an <code>EigenModeSource</code> that the certification's corpus check runs) | 8 of 132 runs differed, on 8 different rows; each of the 8 rows held in its other runs. Their signature is the solve's (first difference at step 1, on the source's planes); the source tables those runs deposited were not recorded, so that they came from the solve is inferred |
+
+On the Apple M1 Max the variation has been seen too, on the NumPy reference: under MEEP
+1.33.0, <code>test_mode_decomposition</code>'s <code>test_linear_taper_2d</code> differed in
+1 of 16 runs (861,700 of 5,386,560 stored words, from the first step, with MEEP's own words
+unchanged), as it did in 1 of 41 runs on the x86-64 Linux reference host of the 1.0
+certification round; and under MEEP 1.35.0 the lift's mode differed from MEEP's own solve in
+29 of 48 processes of two small two-dimensional waveguide cases (one source and two), on a
+host loaded by other work, at nice 19; no idle rate was measured there. Its rate on the corpus
+under MEEP 1.35.0 has not been measured. The mechanism and the rates above were measured
+only with MEEP 1.35.0 and MPB 1.12.0: other MEEP versions, other MPB builds and
+double-precision builds have not been measured for them.
+
+Such a difference has a signature: it starts at the source's first deposit step, on the
+source's planes and their neighbours, and the same script run again in a fresh process gives
+MEEP's words in most runs (at the rates above). MEEP 1.35.0 offers no switch for it: MEEP
+passes fixed flags to MPB, no parameter of <code>EigenModeSource</code> or
+<code>Simulation.get_eigenmode</code> carries them, MPB reads no environment variable for
+it, and this package adds none. A MEEP built so that its <code>get_eigenmode</code> call
+adds <code>EIGS_FORCE_EXACT_LINMIN</code> to those flags would hold every solve to exact line
+minimization; that build has not been made or run. Holding <code>clock()</code> constant for
+MPB pins the same path: on the measured host it made the solves identical in every process,
+and MEEP's own words then equalled that host's reference words on all 34 corpus rows with an
+<code>EigenModeSource</code>, under <code>keep</code> and <code>flush</code>. It was used to
+measure the effect and is a diagnostic, not a supported configuration.
+
+The corpus check of the certification round declares these rows run-to-run variable: such a
+row that differs runs again in a fresh process, up to 4 runs, and holds only when every
+earlier run deposited other source tables than the run that held
+([Certification](../development/certification.md#the-direct-corpus-check-against-meep-l3)).
 
 Measured on the corpus row <code>ex.coupler</code> (<code>coupler.py</code>, an
 <code>EigenModeSource</code> in a GDSII geometry) on the x86-64 Linux references of the
-1.0 round, under <code>keep</code> and <code>flush</code>: 12 of 20 runs held (2 corpus
+1.0 certification round, under <code>keep</code> and <code>flush</code>: 12 of 20 runs held (2 corpus
 legs, 6 re-runs and 12 lift probes); a run that did not hold differed in 1,683,570 to
 5,051,638 of 44,047,776 stored words. Across fresh processes the only lifted inputs that
 varied were the two sources' point amplitudes from the lift's re-solve, and under
 <code>flush</code> MEEP's own eigenmode solve varied too (3 distinct MEEP digests in 6
 probes); with identical lifted inputs and identical MEEP words the array path's words were
-identical, in 9 of 9 processes. On the Apple M1 Max the row held in 4 of 4 runs. The same
-signature appeared once in each host's <code>keep</code> reference on
-<code>test_mode_decomposition</code>'s <code>test_linear_taper_2d</code> (861,700 and
-946,170 of 5,386,560 stored words; 15 of 15 and 40 of 40 re-runs held). Table 2 excludes
-<code>ex.coupler</code> by name from its two Linux sets
-([MEEP identity on the corpus](../development/meep-identity-corpus.md)). A 1.0.1 release
-reads MEEP's stored eigenmode amplitudes instead of re-solving them.
+identical, in 9 of 9 processes. On the Apple M1 Max the row held in 4 of 4 runs. Table 2
+excludes <code>ex.coupler</code> by name from its Linux sets
+([MEEP identity on the corpus](../development/meep-identity-corpus.md)). 1.0.1 keeps the
+re-solve.
+
+One row is a separate exception, deterministic and not caused by MPB's timings. Under MEEP
+1.35.0 the corpus row <code>test_mode_coeffs</code>'s
+<code>test_eigenmode_source_with_cylinders</code> differs from step 2 on every reference
+(3,288,122 to 3,300,604 of 22,348,458 stored words, relative L2 about 1.5e-6), by the same
+count in every process: MEEP's own words for it are reproducible between processes, the
+re-solved mode differs from MEEP's in its last bits whatever the timings, and holding the
+solve to one path does not change it. Table 2 excludes it by name from every set.
 
 ## What is refused, by name
 
@@ -258,17 +332,16 @@ beginning <code>meep_gpu: step path array on the host CPU; dispatch refused:</co
 and records the reason in <code>driver.fast_path_report()</code>. A run that
 turned kernels off itself (<code>MEEP_GPU_DISPATCH=0</code> or
 <code>MEEP_GPU_FUSED=0</code>) is on the host CPU there too, and prints nothing.
-On a CUDA host the array path stays on the device: a run on an NVIDIA GPU or
-Triton version outside the supported range, or, under
-<code>MEEP_GPU_HARDWARE=certified</code>, outside the certified list, steps
-there with the same one-line announcement.
+On a CUDA host the array path stays on the device: a run on an NVIDIA GPU that no
+kernel table supports, unless <code>MEEP_GPU_HARDWARE=any</code>, or, under
+<code>MEEP_GPU_HARDWARE=certified</code>, one outside every table's certified identity,
+steps there with the same one-line announcement, without <code>on the host CPU</code>.
 
 The second case is a run outside the certified identity on a supported GPU, with
 <code>MEEP_GPU_HARDWARE</code> unset (<code>supported</code>) or <code>any</code>. On an Apple GPU, every one of which is
-supported, it steps on the Metal kernels; on an NVIDIA GPU of compute capability
-7.0 to 9.0 (with Triton 3.1 on the Triton table) it steps on the NVIDIA kernels,
-except that a kernel table certified for that device and toolchain runs alone in
-place of one that is only supported. The run is uncertified, prints one line
+supported, it steps on the Metal kernels; on a supported NVIDIA GPU (one the
+installed CuPy or Triton can run on) it steps on the NVIDIA kernels, a table that
+is only supported composing beside one certified for that device and toolchain. The run is uncertified, prints one line
 beginning <code>meep_gpu: NOTE the kernels are NOT CERTIFIED on this host:</code>,
 and <code>driver.fast_path_report()</code> carries <code>certified: False</code>
 ([Certification on an NVIDIA GPU](kernel-dispatch.md#certification-on-an-nvidia-gpu),

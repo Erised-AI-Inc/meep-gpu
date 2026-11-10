@@ -7,13 +7,13 @@ DEVICE STATUS: **RELEASED 2026-08-20** on the GPU host, RTX A6000 GPU 4, Triton 
     harness mutations refused, 10/11 kernel mutations caught with the eleventh a
     confirmed null, 4/4 refusals.
 
-    THE FIRST RUN FAILED, IN THIS HARNESS. The staged tree did not carry the
+    The first run failed, in this harness. The staged tree did not carry the
     186-row censuses, so :func:`corpus_admission_leg` funnelled 0 -> 0 and reported
     "the Triton predicate admits NO corpus row" — a measurement about the staging
     presented as one about the corpus. That leg now refuses a census that does not
     yield 186 measured rows, naming the path, before it reports any funnel.
 
-THE CLAIM THIS GATE IS ALLOWED TO SUPPORT: for every configuration
+The claim this gate is allowed to support: for every configuration
 :func:`~meep_gpu.triton_kernels.folded_fused_pair.folded_fused_pair_coverage`
 admits, ONE launch of ``folded_fused_curl_constitutive_D`` leaves the engine in a
 state that is BIT-IDENTICAL, PER COMPLETE ``driver.step()``, to
@@ -30,7 +30,7 @@ over every allocated volume: the primaries, the split-field PML auxiliaries and 
 constitutive ``f_w`` history. Comparison is on the uint32 view. ``allclose`` appears
 nowhere.
 
-WHAT THE GATE REFUSES TO INFER.
+What the gate refuses to infer.
 
 * **Bytes alone cannot prove the fused path ran.** A silent fallback to the array
   path is byte-identical to the array path by construction. Every launch is counted
@@ -47,7 +47,7 @@ WHAT THE GATE REFUSES TO INFER.
   :func:`mutation_case_for` refuses a pairing that does not.
 
 ===========================================================================
-THE ONE STRUCTURAL LEG THAT IS NOT A MIRROR
+The one structural leg that is not a mirror
 ===========================================================================
 
 This product's new hazard is not arithmetic — the curl, the wall clear and the
@@ -111,11 +111,11 @@ SEED = 20260820
 #: (name, cell, boundaries, mirrors, steps). Every case folds at least one axis
 #: over a METALLIC outer declaration: a folded PERIODIC axis is refused by name.
 #:
-#: THE Z AXIS IS PERIODIC IN EVERY 2-D CASE, NOT METALLIC. A 2-D cell is
+#: The Z axis is periodic in every 2-D case, not metallic. A 2-D cell is
 #: translationally invariant along z; a metallic declaration there is not a wall but
 #: a polarization filter, and ``Grid`` refuses it by name (grid.py:842-877).
 #:
-#: THE PARITIES AND THE WALL SET ARE BOTH SWEPT, and neither is decoration. An EVEN
+#: The parities and the wall set are both swept, and neither is decoration. An EVEN
 #: plane makes the parity mutations invisible — the multiply is by +1 — so the odd
 #: rows are what give them anywhere to be caught. ``two_folds`` is the ONLY case
 #: that reaches a corner block, and it carries two DIFFERENT parities so the corner
@@ -133,7 +133,7 @@ CASES: Tuple[Tuple[str, Tuple[float, float, float], Any,
     ("y_fold_periodic_x", (3.2, 3.0, 0.0),
      {"x": "periodic", "y": "metallic", "z": "periodic"}, (("Y", 1),), 10),
     # ------------------------------------------------------------------
-    # THE FOLDED PERIODIC CASES (2026-08-21). Added with the far carry, and
+    # The folded periodic cases (2026-08-21). Added with the far carry, and
     # nothing before them reached a single `FAR_a` block: every case above folds
     # over a METALLIC outer declaration, which is CODE_MIRROR_METALLIC, and the
     # far fill runs only on CODE_MIRROR_PERIODIC (stepping._stored_past_owned).
@@ -141,9 +141,9 @@ CASES: Tuple[Tuple[str, Tuple[float, float, float], Any,
     # leg executed — which is the defect an adversarial verifier found in the
     # magnetic twin, one rung up, on 2026-08-21.
     #
-    # THE FULL COUNT'S PARITY IS SWEPT AND IT IS THE POINT. `_far_reflect_rows` is
+    # The full count's parity is swept and it is the point. `_far_reflect_rows` is
     # `n_full - stored + 2`, which is `stored - 2` at an EVEN full count and
-    # `stored - 3` at an ODD one. MEASURED on this exact declaration at
+    # `stored - 3` at an ODD one. Measured on this exact declaration at
     # resolution 12: cell 3.0 -> full 36, stored 20, reflect 18 (= stored - 2);
     # cell 37/12 -> full 37, stored 21, reflect 18 (= stored - 3). A kernel that
     # baked `n - 2` is exactly right on the first and a whole cell wrong on the
@@ -158,7 +158,7 @@ CASES: Tuple[Tuple[str, Tuple[float, float, float], Any,
     ("two_folds_periodic", (3.0, 37.0 / 12.0, 0.0),
      {"x": "periodic", "y": "periodic", "z": "periodic"},
      (("X", 1), ("Y", -1)), 10),
-    # A FOLDED PERIODIC AXIS BESIDE A WALL. This is the only shape in which the
+    # A folded periodic axis beside a wall. This is the only shape in which the
     # near ghost's parity-then-clear order and the far ghost's clear-then-parity
     # order can disagree, and `measure_d_side_composition_law.py` scores exactly
     # that: without a wall, `clear_before_parity` and `far_reclears` match the
@@ -172,25 +172,25 @@ CASES: Tuple[Tuple[str, Tuple[float, float, float], Any,
     # leg executes. `build_driver` reads the dimensionality off the cell's z
     # extent, so these two rows are the only thing that brings it in.
     #
-    # THREE FOLDED PERIODIC AXES is the deepest composition this family can emit:
+    # Three folded periodic axes is the deepest composition this family can emit:
     # each component owns its far plane, both near planes, and every combination
     # of the three, so one source lane writes SEVEN ghost cells.
     ("xyz_all_folded_3d", (2.0, 2.0, 2.0),
      {"x": "periodic", "y": "periodic", "z": "periodic"},
      (("X", 1), ("Y", -1), ("Z", 1)), 10),
-    # A FAR FOLD, A NEAR FOLD AND A WALL AT ONCE. This is the only shape in which
+    # A far fold, a near fold and a wall at once. This is the only shape in which
     # the CHAINED composite and a raw parity product differ: `gv_0y` is clamped by
     # the z wall (Dx clears on y and z; y is folded, so only z can), and the
     # far-over-near cell is the far parity times THAT clamped value. In 2-D it
     # cannot exist — the only axis that could clear `gv_0y` is z, and z is
     # invariant there — which is why `m12` reported UNCAUGHT on the 2-D table and
     # was measuring nothing.
-    # THE Y PLANE IS ODD, AND THAT IS THE WHOLE OF WHY THIS CASE CATCHES `m12`.
+    # The Y plane is odd, and that is the whole of why this case catches `m12`.
     # The kernel's `v0` is ALREADY wall-clamped when the carry reads it, so the
-    # near ghost's re-clamp can only change the SIGN BIT OF A ZERO: at a clamped
+    # near ghost's re-clamp can only change the sign bit of a zero: at a clamped
     # cell `PHY * v0` is `PHY * (+0.0)`, which is `+0.0` on an even plane and
     # `-0.0` on an odd one, and the re-clamp turns the latter back into `+0.0`.
-    # MEASURED: with PHY = +1 the chained composite and the raw product are
+    # Measured: with PHY = +1 the chained composite and the raw product are
     # bitwise equal; with PHY = -1 they differ in exactly that bit. An even plane
     # here would report a real defect as uncaught, which is what the first cut of
     # this case did.
@@ -218,7 +218,7 @@ REQUIRED = (
     "f_w_Ex", "f_w_Ey", "f_w_Ez", "f_w_Hx", "f_w_Hy", "f_w_Hz",
 )
 
-#: THE READ-ONLY MATERIAL VOLUMES, under the names ``inventory`` really finds.
+#: The read-only material volumes, under the names ``inventory`` really finds.
 #: A set of names that matches nothing disables BOTH the vacuity floor (which would
 #: then demand that a read-only input move) and ``material_changed`` (which could
 #: never fire). ``_assert_material_names_are_real`` is what stops a rename doing it.
@@ -258,7 +258,7 @@ def save(payload: Dict[str, Any], path: str) -> None:
     """Serialise the payload, provenance-stamped, atomically."""
     os.makedirs(os.path.dirname(os.path.abspath(path)) or ".", exist_ok=True)
     temporary = path + ".tmp"
-    # THE POLICY STAMP IS RE-READ, NOT CARRIED. Taken once at install time it
+    # The policy stamp is re-read, not carried. Taken once at install time it
     # records every counter at zero, because nothing had compiled yet.
     if "subnormal_policy" in payload:
         try:
@@ -511,7 +511,7 @@ def transcription_leg() -> Dict[str, Any]:
             findings.append(
                 f"kernels.constitutive_step no longer contains {line!r}; the "
                 f"constitutive form's source has moved")
-    # D ON THE LEFT of the inverse-epsilon multiply, at the owned cell and at every
+    # D on the left of the inverse-epsilon multiply, at the owned cell and at every
     # imaged ghost. stepping.py:1011-1013 writes `source * inverse_epsilon`, and
     # bitwise commutativity is not a licence to transcribe it backwards.
     for register in ("src0 = v0 * tl.load(ie0 + idx",
@@ -530,7 +530,7 @@ def transcription_leg() -> Dict[str, Any]:
             findings.append(
                 f"{needle} appears on fewer than six lines; the destination lane's "
                 f"D/f_w_E/E traffic is not fully masked off")
-    # THE TOP-PLANE MASK MUST NOW BE HERE. It used to be forbidden: while the
+    # The top-plane mask must now be here. It used to be forbidden: while the
     # predicate refused MIRROR_PERIODIC the block was unreachable, and an
     # unreachable branch is a lie about what the kernel does. Carrying
     # fill_folded_far_ghosts_D brings the code in, so the check FLIPS — both that
@@ -572,7 +572,7 @@ def transcription_leg() -> Dict[str, Any]:
             "the fused body open-codes a ghost store; every imaged cell must go "
             "through _carry_ghost_E")
 
-    # THE COEFFICIENT REGISTERS ARE LOADED TWICE, AND THAT IS THE D GEOMETRY.
+    # The coefficient registers are loaded twice, and that is the D geometry.
     # update_E indexes component m on axis m; the NEAR fill images along an axis
     # that is never m, so a near-only destination reuses the source lane's pair,
     # and the FAR fill images along exactly m, so its destination needs the pair at
@@ -673,7 +673,7 @@ def parse_carry_table() -> List[Dict[str, Any]]:
     value expression, the coefficient pair, the guarding constexprs and the source
     lane mask.
 
-    PARSED, NOT MIRRORED. The point of this leg is that a wrong offset, a missing
+    Parsed, not mirrored. The point of this leg is that a wrong offset, a missing
     corner, a swapped parity or a far ghost that took its source's coefficient
     becomes a wrong answer HERE, on a laptop, rather than a plausible field on a
     device. Nothing below re-derives what the kernel decided; it reads it.
@@ -707,9 +707,9 @@ def parse_carry_table() -> List[Dict[str, Any]]:
         else:
             imaged[target.id] = rhs
 
-    # Pass 1b — THE LANE DEFINITIONS, THE OWNERSHIP MASKS AND THE OFFSETS.
+    # Pass 1b — the lane definitions, the ownership masks and the offsets.
     #
-    # READ, NOT RE-DERIVED, and that is a correction rather than a refinement: the
+    # Read, not re-derived, and that is a correction rather than a refinement: the
     # first version of this leg recomputed ownership from NEAR_FILL_AXES and
     # hardcoded `== 2` / `== reflect`, which made it a MIRRORED EVALUATOR of the
     # very rule it was meant to check. The planted-defect leg caught it — five
@@ -794,7 +794,7 @@ def _offset_elements(spelling: str, shape: Sequence[int], reflect: Sequence[int]
                      offsets: Dict[str, str]) -> int:
     """Evaluate one parsed destination offset against a concrete shape.
 
-    The spelling is the kernel's own (``+ df_x + dn_y``) AND SO ARE THE DEFINITIONS
+    The spelling is the kernel's own (``+ df_x + dn_y``) and so are the definitions
     it resolves through — ``offsets`` is the kernel's own ``dn_x = -2 * nyz`` and
     ``df_x = (nx - 1 - rx) * nyz`` lines, parsed. Nothing about the stride or the
     reflect row is restated here, so a kernel that got either wrong evaluates wrong.
@@ -832,20 +832,20 @@ def _guard_holds(guard: str, near: Sequence[bool], far: Sequence[bool],
 def carry_table_leg() -> Dict[str, Any]:
     """The parsed carry table, executed against the driver's own three passes.
 
-    THE ORACLE IS THE ARRAY PATH. A random ``D`` volume is put through
+    The oracle is the array path. A random ``D`` volume is put through
     ``fill_symmetry_bc_D`` -> ``zero_metal_D`` -> ``fill_folded_far_ghosts_D`` on
     one copy; on another, only the parsed table's writes are applied, by the lanes
     the table says own them. Bitwise agreement over the whole volume is what says
-    the cover, the offsets, the weights AND THE ORDER are right.
+    the cover, the offsets, the weights and the order are right.
 
-    THIS IS THE LEG THAT WOULD CATCH THE FOUR COMPOSITION ERRORS the measurement in
+    This is the leg that would catch the four composition errors the measurement in
     ``measure_d_side_composition_law.py`` scored: it executes what the KERNEL says,
     against the array path, on grids that discriminate them. It is NOT a substitute
     for the device gate — it cannot see a memory hazard, a register reuse or a
     rounding order inside one launch, and the collision census below is a statement
     about the parsed table, not about what the hardware does with it.
 
-    THE OWNERSHIP RULE IS THE TABLE'S, NOT THIS FUNCTION'S: a lane carries only if
+    The ownership rule is the table's, not this function's: a lane carries only if
     it owns its own cell AND sits on every source plane the block names, which is
     read off the parsed ``own<t> & ...`` mask. A kernel that dropped an ownership
     term parses into a table whose writes collide, and the exactly-once census
@@ -902,7 +902,7 @@ def carry_table_leg() -> Dict[str, Any]:
                 f"{sorted(want_mask)} — every carry must be ANDed with the "
                 f"component's own ownership mask (the defect the magnetic twin's "
                 f"device gate found on 2026-08-20)")
-        # (d) THE COEFFICIENT PAIR. A near-only destination does not move the
+        # (d) The coefficient pair. A near-only destination does not move the
         #     indexed axis; anything with the far half in it does.
         want_pair = (FAR_COEFFICIENTS[target] if record["far_axes"]
                      else NEAR_COEFFICIENTS[target])
@@ -912,7 +912,7 @@ def carry_table_leg() -> Dict[str, Any]:
                 f"{want_pair} — update_E indexes component {target} on axis "
                 f"{'xyz'[target]}, which the FAR fill images along and the NEAR "
                 f"fill never does")
-        # (d') THE MEMBERSHIP FLAG, by the same rule: the destination's form is
+        # (d') The membership flag, by the same rule: the destination's form is
         #      keyed where the destination is.
         want_flag = (FAR_MEMBERSHIP[target] if record["far_axes"]
                      else NEAR_MEMBERSHIP[target])
@@ -920,7 +920,7 @@ def carry_table_leg() -> Dict[str, Any]:
             findings.append(
                 f"{tag}: keys its form on {record['membership']!r}, expected "
                 f"{want_flag!r} — the select is evaluated where the ghost cell is")
-        # (e) THE VALUE IS CHAINED. A far-over-near cell must be the far parity
+        # (e) The value is chained. A far-over-near cell must be the far parity
         #     applied to the ALREADY-CLAMPED near ghost register, not to `v`.
         if record["far_axes"] and record["near_axes"]:
             axis = record["far_axes"][0]
@@ -936,7 +936,7 @@ def carry_table_leg() -> Dict[str, Any]:
 
     # (f) EXECUTED: the table's writes against the array path's own three passes.
     #
-    # THE CASE TABLE INCLUDES A WALL ON AN UNFOLDED AXIS, and that is the whole
+    # The case table includes a wall on an unfolded axis, and that is the whole
     # point of it: without one, `clear_before_parity` and `far_reclears` are
     # invisible and this leg would agree with a kernel that had either wrong.
     rows: List[Dict[str, Any]] = []
@@ -1014,7 +1014,7 @@ def carry_table_leg() -> Dict[str, Any]:
                                           phases, names, IYEE_SHIFTS)
             offset = _offset_elements(record["offset"], shape, reflect,
                                       record["offsets"])
-            # THE SOURCE LANE IS THE KERNEL'S OWN MASK, evaluated. `own<t>` is
+            # The source lane is the kernel's own mask, evaluated. `own<t>` is
             # rebuilt from the kernel's own accumulation lines under the guards
             # this configuration satisfies; each `near_`/`far_` term is the
             # kernel's own lane definition. Nothing about which lane owns which
@@ -1193,7 +1193,7 @@ def planted_defect_leg() -> Dict[str, Any]:
     into the shipped text, the carry table is re-parsed and re-executed from that
     text, and the verdict is recorded.
 
-    THE EXPECTATION IS DECLARED PER MUTATION, not inferred from the result. A
+    The expectation is declared per mutation, not inferred from the result. A
     mutation in :data:`NOT_SCOREABLE_WITHOUT_A_DEVICE` must report NOT CAUGHT with
     its reason; every other one must FLIP the verdict. Either way round, a
     disagreement is a finding — a defect this leg was supposed to see and did not,
@@ -1290,7 +1290,7 @@ def _emulated_seam(fields, pml, driver_module, *, carry_fill: bool = True,
                    constitutive: str = "after_fill") -> None:
     """The FUSED semantics, spelled with array ops so a laptop can execute them.
 
-    THIS IS NOT THE KERNEL AND DOES NOT PRETEND TO BE. It cannot see a memory
+    This is not the kernel and does not pretend to be. It cannot see a memory
     hazard, a register reuse or a rounding order inside one launch — those are the
     device gate's to measure, and the carry's geometry is
     :func:`carry_table_leg`'s. What it CAN decide is the ORDERING design: which
@@ -1302,7 +1302,7 @@ def _emulated_seam(fields, pml, driver_module, *, carry_fill: bool = True,
 
     driver_module.step_D(fields, pml)
     if constitutive == "before_fill":
-        # THE DEFECT THIS KNOB IS: update_E consumes a PRE-FILL D, and the mirror
+        # The defect this knob is: update_E consumes a PRE-FILL D, and the mirror
         # image lands afterwards. D ends up right and E does not, which is exactly
         # the failure a fused pair that skipped the fill would produce.
         driver_module.zero_metal_D(fields)
@@ -1474,18 +1474,18 @@ def predicate_leg() -> Dict[str, Any]:
     fields, pml = build((1.6, 3.0, 1.0), "metallic", (("Y", 1),))
     record("folded_metallic_no_sources",
            product.folded_fused_pair_coverage(fields, pml, ()), True)
-    # THE ADMITTING DIRECTION OF THE SOURCE CLAUSE. A MAGNETIC source is injected in
+    # The admitting direction of the source clause. A MAGNETIC source is injected in
     # the B/H half and must NOT disqualify this pair; a clause tested only in its
     # refusing direction cannot tell "refuses electric" from "refuses everything".
     record("folded_metallic_magnetic_source",
            product.folded_fused_pair_coverage(fields, pml, (_Source("B"),)), True)
-    # THE IN-SEAM ELECTRIC DEPOSIT IS CARRIED AS OF 2026-08-30, and the three rows
+    # The in-seam electric deposit is carried as of 2026-08-30, and the three rows
     # below are the whole of that change's admission story.
     #
     # (1) A source that publishes the index it writes is ADMITTED: the pair is
     #     bracketed by LeadingRepairPlan/TrailingRepairPlan and the deposit, plus
     #     every cell the post-injection fills image it into, is saved and restored.
-    # (2) A source that does NOT publish one is still REFUSED BY NAME. This is the
+    # (2) A source that does NOT publish one is still refused by name. This is the
     #     rung that keeps the flip from being a blanket admission: `_Source` above
     #     carries a field_type and nothing else, which is exactly the shape the
     #     repair cannot save.
@@ -1507,7 +1507,7 @@ def predicate_leg() -> Dict[str, Any]:
     record("no_pml", product.folded_fused_pair_coverage(fields, None, ()),
            False, "no active PML")
 
-    # FOLDED PERIODIC IS ADMITTED as of 2026-08-21. The clause that refused it was
+    # Folded periodic is admitted as of 2026-08-21. The clause that refused it was
     # retired AFTER `results/triton_folded_far_carry_d_2026-08-21/run_farcarryD5/`
     # came back ALL GREEN, never before, and this row is what would fail if the
     # retirement were ever undone without the carry going with it.
@@ -1553,7 +1553,7 @@ def _census_rows(root: str) -> List[dict]:
 def corpus_admission_leg() -> Dict[str, Any]:
     """The funnel, on BOTH backends' censuses, and whether the two agree row for row.
 
-    THE CROSS-CHECK IS THE POINT. Two independently written predicate stacks landing
+    The cross-check is the point. Two independently written predicate stacks landing
     on the same rows through a clause ladder this long is evidence; a disagreement
     would mean one of them is wrong, and finding which is worth more than the
     product. Reported either way.
@@ -1591,11 +1591,11 @@ def corpus_admission_leg() -> Dict[str, Any]:
     metal = funnel(METAL_CENSUS, "folded_pml_curl@step_D",
                    "folded_constitutive@update_E")
     findings: List[str] = []
-    # AN ABSENT CENSUS IS NOT AN EMPTY ONE, and the difference is the whole reason
+    # An absent census is not an empty one, and the difference is the whole reason
     # this clause exists. A staged tree that did not carry the record would funnel
     # 0 -> 0 -> 0 -> 0 and this leg would report "worth zero seam-instances" — a
     # measurement about the staging, dressed as a measurement about the corpus.
-    # MEASURED 2026-08-20: that is exactly what the first GPU-host run did.
+    # Measured 2026-08-20: that is exactly what the first GPU-host run did.
     for label, root, block in (("Triton", CENSUS, triton),
                                ("Metal", METAL_CENSUS, metal)):
         if block["rows"] != 186:
@@ -1634,7 +1634,7 @@ def build_driver(cp, cell, boundaries, mirror_specs, seed: int, magnetic: bool):
     from meep_gpu.driver import FdtdDriver  # noqa: PLC0415
     from meep_gpu.grid import Mirror  # noqa: PLC0415
 
-    # THE DIMENSIONALITY IS READ OFF THE CELL, and 3-D cases exist because 2-D
+    # The dimensionality is read off the cell, and 3-D cases exist because 2-D
     # ones cannot reach a third of this kernel. In a 2-D run z is invariant, so
     # `FAR_Z`, `NEAR_Z`, every `gv_2*` register and the `kp_f2`/`km_f2` pair are
     # COMPILE-TIME ABSENT — the whole z half of the carry is shipped code no case
@@ -1670,7 +1670,7 @@ def build_driver(cp, cell, boundaries, mirror_specs, seed: int, magnetic: bool):
         # this one. Carrying one is what stops the source clause from being tested
         # only in its refusing direction.
         #
-        # OFF THE MIRROR PLANE ON EVERY FOLDED AXIS. A point source ON the plane is
+        # Off the mirror plane on every folded axis. A point source ON the plane is
         # refused with a reason on an odd fold (from_meep.py:2686-2698); a quarter
         # of the owned half-width puts it inside the stored half and clear of the
         # absorber, which a folded axis carries on its HIGH face only.
@@ -1750,7 +1750,7 @@ AUXILIARY_LINES: Dict[str, Tuple[bool, int]] = {
 def outside_every_layer(driver, names) -> List[str]:
     """The auxiliaries whose record line holds no row of the run's division.
 
-    THE AUXILIARY CONTRACT LEAVES THEM UNTOUCHED: an auxiliary word outside its form's
+    The auxiliary contract leaves them untouched: an auxiliary word outside its form's
     region is never read or written, so on a division that gives a component's layer no
     cell at all (an invariant axis carries no run) the auxiliary keeps its first word
     for the whole run, on the array path and in the kernel alike. Such an array is not a
@@ -1877,7 +1877,7 @@ def separate_route(driver):
     # Triton product owns either. Both are counted, so a difference in which of them
     # ran is a counter event rather than an invisible correction.
     #
-    # THE FAR FILL IS NOT A NO-OP ANY MORE, and the comment that said it was is
+    # The far fill is not a no-op any more, and the comment that said it was is
     # corrected here rather than left standing. It was true while every case folded
     # over a METALLIC outer declaration; the folded PERIODIC cases added on
     # 2026-08-21 make it write a real plane. That is the whole point of this route
@@ -1890,10 +1890,10 @@ def separate_route(driver):
 #: The ONLY predicate reason this leg is allowed to route around, matched on a
 #: phrase the clause carries. It is the gate-pending far-carry refusal: the kernel
 #: carries `fill_folded_far_ghosts_D`, and the predicate declines to admit a folded
-#: PERIODIC grid UNTIL A DEVICE LEG HAS RUN ONE. This gate IS that leg, so the
+#: PERIODIC grid until a device leg has run one. This gate IS that leg, so the
 #: refusal and the run are circular and one of them has to give.
 #:
-#: WHICH ONE GIVES IS THE WHOLE DESIGN. Retiring the clause first would let the
+#: Which one gives is the whole design. Retiring the clause first would let the
 #: fusion matrix price two more seam-instances against bytes nothing had measured;
 #: so instead the clause STANDS and this harness builds its plan through
 #: `plan_folded_fused_pair_from_arrays`, the route that documents itself as
@@ -1905,7 +1905,7 @@ UNGATED_FAR_CARRY_REASON = "no device leg has executed a folded PERIODIC case"
 def harness_plan_for(driver, product, kernel):
     """Build the plan for a folded PERIODIC case WITHOUT asking the predicate.
 
-    REFUSES ON ANY OTHER REASON. If the predicate declines for something that is not
+    Refuses on any other reason. If the predicate declines for something that is not
     the gate-pending far-carry clause, this raises — a harness route that swallowed
     a second reason would be a way to run a case the product genuinely does not
     cover, and the leg would then report identity for a configuration nothing
@@ -2157,7 +2157,7 @@ def shipped_device_function_source(product) -> str:
 def compile_mutant(source: str, kernel_name: str, product: Any = None) -> Any:
     """Compile a renamed mutant. The rename is what keeps the JIT cache honest.
 
-    THE HEADER'S CONSTANTS ARE READ FROM THE SHIPPED MODULE, not spelled here. They
+    The header's constants are read from the shipped module, not spelled here. They
     used to be literals (``PERIODIC = tl.constexpr(0)``), and a constant the kernel
     began branching on was then simply ABSENT from the mutant's namespace: the far
     carry brought ``MIRROR_PERIODIC`` into the body, every device case passed with
@@ -2182,7 +2182,7 @@ def compile_mutant(source: str, kernel_name: str, product: Any = None) -> Any:
               + constants + "\n")
     body = source
     if product is not None:
-        # THE DEVICE FUNCTION IS RENAMED WITH THE KERNEL. Two mutants that shared a
+        # The device function is renamed with the kernel. Two mutants that shared a
         # `_carry_ghost_E` identity would be two callers of one cached device body,
         # which is the hazard the kernel rename exists to close, one level down.
         ghost = f"_carry_ghost_E_{kernel_name}"
@@ -2204,7 +2204,7 @@ def compile_mutant(source: str, kernel_name: str, product: Any = None) -> Any:
 
 
 def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, int]]], ...]:
-    """(id, why it is armed, expectation, rewrite). The artifact records what was MEASURED."""
+    """(id, why it is armed, expectation, rewrite). The artifact records what was measured."""
 
     def m1_parity_dropped(source: str) -> Tuple[str, int]:
         """The mirror parity thrown away: the ghost becomes a copy, not an image.
@@ -2268,7 +2268,7 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
     def m5_source_index_off_by_one(source: str) -> Tuple[str, int]:
         """The ghost imaged from stored cell 1 rather than 2 (MEEP's io = -2).
 
-        THE SOURCE LANE MOVES AND THE DESTINATION OFFSET DOES NOT, which is the
+        The source lane moves and the destination offset does not, which is the
         defect: the lane at stored cell 1 writes the ghost that the lane at cell 2
         owns, so the destination lands at cell -1 of the axis. In FLAT indexing that
         is cell ``n-1`` of the previous plane rather than outside the allocation, so
@@ -2283,7 +2283,7 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
     def m6_constitutive_association(source: str) -> Tuple[str, int]:
         """The previous package grouping put back: two accumulations, left to right.
 
-        INVERTED with the alignment. The shipped form is MEEP's ``f + ((kps*src) -
+        INVERTED against MEEP's association order. The shipped form is MEEP's ``f + ((kps*src) -
         (kms*prev))`` (``forms.constitutive_form``); the mutant is the grouping the
         kernel carried before it, ``(f + kps*src) - kms*prev``, on the same
         accumulation cells. Same algebra, different float32 rounding."""
@@ -2306,7 +2306,7 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
     def m8_zero_metal_dropped(source: str) -> Tuple[str, int]:
         """The wall clear not carried: MEEP's step_boundaries(D_stuff), undone.
 
-        NO ``if`` IN THE REPLACEMENT. ``_rewrite_block`` indents every replacement
+        No ``if`` in the replacement. ``_rewrite_block`` indents every replacement
         line to the indent of the block's FIRST line, so a compound statement in
         position 0 produces an empty suite and the mutated module fails to IMPORT —
         which the harness records as an unarmed mutation, not as a caught defect.
@@ -2356,9 +2356,9 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
             source.count(needle))
 
     # ------------------------------------------------------------------
-    # THE FAR CARRY'S OWN MUTATIONS (2026-08-21). Every one of these targets a
-    # branch that arrived with `fill_folded_far_ghosts_D` and that NO DEVICE LEG
-    # HAS EVER EXECUTED. They are scored only on a case that folds a PERIODIC
+    # The far carry's own mutations (2026-08-21). Every one of these targets a
+    # branch that arrived with `fill_folded_far_ghosts_D` and that no device leg
+    # has ever executed. They are scored only on a case that folds a PERIODIC
     # axis; on a folded METALLIC grid every `FAR_a` guard is compile-time false
     # and the rewrite is a DEAD BRANCH reporting a defect it never ran.
     # ------------------------------------------------------------------
@@ -2378,7 +2378,7 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
     def m13_far_takes_the_source_coefficient(source: str) -> Tuple[str, int]:
         """The far ghost accumulated with the SOURCE lane's kps/kms pair.
 
-        THE D-SPECIFIC DEFECT. ``update_E`` indexes component m on axis m and the
+        The D-specific defect. ``update_E`` indexes component m on axis m and the
         far fill images along exactly that axis, so the destination at the top row
         takes a DIFFERENT coefficient entry than its source at the reflect row.
         Reusing the source's is the transposed form of the mutation the magnetic
@@ -2397,7 +2397,7 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
         Both halves are undone together: the top-plane ownership masks go back to
         ``live`` and every far source lane goes dead, so the mutant is the near-only
         carry rather than a half-carried state no configuration corresponds to. It
-        is the mutation that says what the whole round bought."""
+        is the mutation that says what the whole far carry bought."""
         hits = 0
         for own, coordinate, extent in (("own0", "i", "nx"), ("own1", "j", "ny"),
                                         ("own2", "k", "nz")):
@@ -2474,9 +2474,9 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
                 source.count(needle))
 
     # ------------------------------------------------------------------
-    # THE CHUNK-FORM BATTERY (KERNELS.md 7.2), on both halves. Each rewrite is a
-    # way to choose the wrong form for some cells while every word of arithmetic
-    # stays the shipped one.
+    # The per-chunk form battery (docs/development/certification.md#chunk-form-battery),
+    # on both halves. Each rewrite is a way to choose the wrong form for some cells while
+    # every word of arithmetic stays the shipped one.
     # ------------------------------------------------------------------
 
     def b1_whole_grid_recurrence(source: str) -> Tuple[str, int]:
@@ -2609,7 +2609,7 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
 
 #: Mutation id -> the CASES index whose grid carries the branch it rewrites.
 #:
-#: THE DEAD-BRANCH TRAP, priced per entry. Every carry block in this kernel sits
+#: The dead-branch trap, priced per entry. Every carry block in this kernel sits
 #: under ``BC? == MIRROR_METALLIC`` on a named axis, and every corner block under
 #: two of them. A mutation scored on a grid that does not fold those axes rewrites
 #: REAL lines the case never reaches and comes back "uncaught" while measuring
@@ -2641,7 +2641,7 @@ MUTATION_CASE: Dict[str, int] = {
     "m12_far_composite_is_a_raw_product": 10,
     # m13 rewrites the far-only x block's coefficient pair: needs x folded PERIODIC.
     # RETARGETED 2026-08-21 after the device run reported it UNCAUGHT, and the
-    # reason was MEASURED rather than guessed: on `x_fold_periodic_even` the
+    # reason was measured rather than guessed: on `x_fold_periodic_even` the
     # reflect row is nx-2 and the destination is nx-1, and the PML coefficient
     # arrays hold the SAME value at both (kps_x_h[18] == kps_x_h[19] exactly, and
     # kms likewise) because the not-owned ghost slot copies its neighbour. Taking
@@ -2690,7 +2690,7 @@ MUTATION_REQUIRES_FOLD: Dict[str, Tuple[str, ...]] = {
 
 #: Per mutation: the axes whose fold must be PERIODIC, not merely folded.
 #:
-#: THE SECOND HALF OF THE DEAD-BRANCH TRAP, and the half the pre-2026-08-21 guard
+#: The second half of the dead-branch trap, and the half the pre-2026-08-21 guard
 #: did not have. Every `FAR_a` block sits under a constexpr that is true only on
 #: ``CODE_MIRROR_PERIODIC``; a mutation scored on a folded METALLIC grid rewrites
 #: REAL lines the case never reaches and comes back "uncaught" while measuring
@@ -2727,7 +2727,7 @@ MUTATION_REQUIRES_ODD_FULL_COUNT: Dict[str, Tuple[str, ...]] = {
 #:
 #: An even plane multiplies by +1, so a dropped or duplicated parity is invisible
 #: there by construction. For `m12` the requirement is sharper than that and was
-#: MEASURED rather than assumed: the kernel's `v` register is already wall-clamped
+#: measured rather than assumed: the kernel's `v` register is already wall-clamped
 #: when the carry reads it, so the near ghost's re-clamp can only change the sign
 #: bit of a zero — `PHY * (+0.0)` is `+0.0` on an even plane and `-0.0` on an odd
 #: one. On an even plane the chained composite and the raw product are BITWISE
@@ -2750,7 +2750,7 @@ def _assert_the_far_coefficient_actually_moves(case_name: str, cell, boundaries,
                                                mirrors, axis_letter: str) -> None:
     """The far destination's kps/kms pair must not equal its source's.
 
-    THE DEVICE RUN OF 2026-08-21 IS WHY THIS EXISTS. `m13` was scored on
+    The device run of 2026-08-21 is why this exists. `m13` was scored on
     `x_fold_periodic_even` and came back UNCAUGHT; the reason was not a defect in
     the kernel but a coincidence of the absorber profile — at an even full count the
     reflect row is `nx - 2`, the destination is `nx - 1`, and the coefficient array
@@ -2758,7 +2758,7 @@ def _assert_the_far_coefficient_actually_moves(case_name: str, cell, boundaries,
     neighbour. `kps_x_h[18] == kps_x_h[19]` exactly, `kms` likewise. The mutation
     swapped one for the other and changed nothing.
 
-    A DECLARATION WOULD NOT HAVE CAUGHT THAT, because it is a property of the
+    A declaration would not have caught that, because it is a property of the
     absorber's grading and not of the case's fold set. So this builds the grid the
     case builds, reads the coefficients the kernel would read, and refuses.
     """
@@ -2815,7 +2815,7 @@ def mutation_case_for(name: str) -> Tuple[int, Tuple[Any, ...]]:
             return boundaries
         return str(boundaries.get(axis_letter.lower(), "periodic"))
 
-    # THE OUTER DECLARATION, not just the fold: a `FAR_a` block is compile-time
+    # The outer declaration, not just the fold: a `FAR_a` block is compile-time
     # absent on a folded METALLIC axis.
     for axis_letter in MUTATION_REQUIRES_PERIODIC_FOLD.get(name, ()):
         if axis_letter.upper() not in folded:
@@ -2846,7 +2846,7 @@ def mutation_case_for(name: str) -> Tuple[int, Tuple[Any, ...]]:
                 f"the sign bit of a zero); case {name_!r} declares phase "
                 f"{phases.get(axis_letter.upper())!r} there")
 
-    # THE FAR COEFFICIENT PRECONDITION, MEASURED ON THE GRID THE CASE BUILDS.
+    # The far coefficient precondition, measured on the grid the case builds.
     # `m13` swaps the destination's kps/kms pair for the source's, and on an EVEN
     # full count those two entries are BITWISE EQUAL — the not-owned ghost slot
     # copies its neighbour — so the rewrite is a no-op and the leg reports a real
@@ -2929,7 +2929,7 @@ def run_refusals(cp, product) -> List[Dict[str, Any]]:
         assert deposit_repair._deposit_index(source) is not None
         return source
 
-    # SAME PER-AXIS DECLARATION AS ``CASES``: these cells are 2-D, so a bare
+    # Same per-axis declaration as ``CASES``: these cells are 2-D, so a bare
     # "metallic" would put a PEC on the invariant z axis, which Grid refuses by name
     # (grid.py:842-877). This leg is about the product's own refusals; it must not
     # die inside the Grid constructor before reaching one.
@@ -2948,9 +2948,9 @@ def run_refusals(cp, product) -> List[Dict[str, Any]]:
          None, lambda fields: (_deposit(fields, "Ez"),)),
         ("undeclared_sources", CASES[0][1], _WALLS, (("Y", 1),),
          "was not declared", None),
-        # NOT A REFUSAL ANY MORE. `needle=None` means "this row must be ADMITTED",
+        # Not a refusal any more. `needle=None` means "this row must be ADMITTED",
         # and it is here because the retirement of the far-fill clause is the one
-        # thing this round changed about what the engine will build. A row that only
+        # thing the 2026-08-21 far carry changed about what the engine will build. A row that only
         # ever checked refusals could not have noticed it.
         ("folded_periodic", CASES[0][1], "periodic", (("Y", 1),), None, ()),
         ("unfolded", (3.0, 3.0, 0.0), _WALLS, (), "no mirror plane", ()),
@@ -2985,10 +2985,11 @@ def run_refusals(cp, product) -> List[Dict[str, Any]]:
 # ---------------------------------------------------------------------------
 
 def environment(cp: Any = None) -> Dict[str, Any]:
+    import neutral_ids  # noqa: PLC0415
     payload: Dict[str, Any] = {
         "python": sys.version.split()[0],
         "numpy": np.__version__,
-        "argv": list(sys.argv),
+        "argv": neutral_ids.argv(sys.argv),
         "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
     }
     try:
@@ -3047,7 +3048,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "UNRUN — invoked with --no-device; no CUDA leg, mutation or refusal in "
             "this artifact")
         payload["passed"] = all(row["passed"] for row in payload["no_device_legs"])
-        # ``release`` IS THE KEY ``gate_provenance.read_verdict`` CONSULTS FIRST, and
+        # ``release`` is the key ``gate_provenance.read_verdict`` consults first, and
         # it is set explicitly here because ``passed`` alone would stamp
         # ``released: True`` on an artifact that measured no bytes on any device.
         payload["release"] = {
@@ -3062,7 +3063,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     import cupy as cp  # noqa: PLC0415
     from meep_gpu import backends, subnormal_policy  # noqa: PLC0415
 
-    # BEFORE THE FIRST DEVICE COMPILE. strict=True: a process that asked to keep and
+    # Before the first device compile. strict=True: a process that asked to keep and
     # quietly did not is a process whose bytes mean nothing, and this refuses at
     # startup rather than writing an artifact whose policy field is a wish.
     subnormal_policy.install_subnormal_policy(args.subnormal_policy, cupy=cp,
@@ -3128,7 +3129,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     device_ok = all(row.get("passed") for row in payload["device_legs"])
     refusal_ok = all(row.get("passed") for row in payload["refusals"])
 
-    # A DECLARED NULL MUST BE CONFIRMED, not merely permitted: a null that IS caught
+    # A declared null must be confirmed, not merely permitted: a null that IS caught
     # means the reasoning behind the null is wrong, and that has to fail too. Every
     # mutation must also have been ARMED: a rewrite that hit nothing measured
     # nothing, whatever it then reported.

@@ -1,6 +1,6 @@
 """The three below-the-cut fused magnetic welds, as claims a laptop can check.
 
-WHAT THIS SUITE OWNS AND WHAT IT DELIBERATELY DOES NOT. The BYTES are the device
+What this suite owns and what it deliberately does not. The BYTES are the device
 gate's — ``parity/meep_gpu/gate_metal_below_the_cut_fused_pairs.py`` steps two
 engines side by side for twelve complete steps, per product, and compares uint32
 words. No assertion here duplicates that. What lives here is everything true about
@@ -10,7 +10,7 @@ these three families WITHOUT a device:
   one emitter swapped — and, for the nonlinear one, with nothing swapped at all;
 * that neither the beta nor the BFAST weld can silently degenerate into the ordinary
   product, which is the one defect every byte leg would pass;
-* that all three arms are registered UNWIRED, and WHY that is not bookkeeping here:
+* that all three arms are registered unwired, and WHY that is not bookkeeping here:
   each would contend on ``step_B`` with a WIRED sub-step arm that admits exactly the
   same configurations, so wiring one would leave the slot unselected and take the
   certified curl off the device too;
@@ -19,14 +19,14 @@ these three families WITHOUT a device:
 * that the binding counts each module spells are the counts its emitter produces —
   and for BFAST, that the count is EXACTLY the platform ceiling with zero margin.
 
-THE CORPUS DEMAND, so the suite states what these are worth rather than leaving it
+The corpus demand, so the suite states what these are worth rather than leaving it
 to a docstring: 2 + 1 + 1 = 4 reachable B->H seam-instances of 387, measured at
 ``parity/meep_gpu/results/below_the_cut_census_2026-08-20/census.json``. Every one of
 the three cells' D->E partners is worth ZERO — each row injects electrically inside
 that seam — and none is built.
 
-AND THE CELL THAT WAS NOT BUILT, with its reason as a check rather than a note. The
-tranche's fourth candidate — ``B_to_H (folded beta complex, folded beta complex)``,
+And the cell that was not built, with its reason as a check rather than a note. The
+fourth candidate in this set — ``B_to_H (folded beta complex, folded beta complex)``,
 worth 2 — was first written down as "declined on cost". It is declined on something
 sharper and testable: both reachable rows are MIRROR_PERIODIC folds, so
 ``fill_folded_far_ghosts_B`` (driver.py:3287) runs INSIDE the seam and ``update_H``
@@ -43,7 +43,7 @@ import pathlib
 
 import pytest
 
-# THE POLICY THIS MODULE ASKS ITS PREDICATE QUESTIONS UNDER, declared at IMPORT and
+# The policy this module asks its predicate questions under, declared at IMPORT and
 # not per test. Measured 2026-08-20: without it, seven tests here failed when the
 # module ran ALONE and passed in a full ``pytest meep_gpu/`` run — because collection
 # imports about twenty Metal parity modules that ``setdefault`` this variable, and
@@ -190,7 +190,7 @@ def test_a_boundary_triple_that_is_not_a_triple_is_refused(
 
 
 # ---------------------------------------------------------------------------
-# 2. THE DEGENERACY TRAP — the one defect every byte leg would pass
+# 2. The degeneracy trap — the one defect every byte leg would pass
 # ---------------------------------------------------------------------------
 
 def test_the_nonlinear_weld_emits_the_shipped_welds_bytes():
@@ -208,7 +208,7 @@ def test_the_nonlinear_weld_emits_the_shipped_welds_bytes():
 
 @pytest.mark.parametrize("name,module", (("beta", beta), ("bfast", bfast)))
 def test_the_swapped_weld_can_never_degenerate_into_the_ordinary_one(name, module):
-    """THE TRAP THIS TEST EXISTS FOR, and it is not hypothetical.
+    """The trap this test exists for, and it is not hypothetical.
 
     Both swapped emitters carry a ``has_beta`` / ``has_bfast`` arm whose body IS the
     certified ordinary curl — that arm exists so a zero-beta or zero-k run is named
@@ -310,11 +310,11 @@ def test_the_packed_signature_is_the_count_the_module_spells(
 
 
 def test_the_bfast_weld_sits_exactly_on_the_ceiling_with_no_margin():
-    """THE NUMBER THAT DECIDES WHETHER THIS CELL IS BUILDABLE AT ALL.
+    """The number that decides whether this cell is buildable at all.
 
     30 pointers plus one packed ``constant Params&`` is 31 bindings and
     ``MAX_BUFFER_BINDINGS`` is 31 — attribute indices run 0..30 and a 32nd is a
-    compile error. One more pointer and this cell would be UNFUSABLE ON METAL rather
+    compile error. One more pointer and this cell would be unfusable on Metal rather
     than merely tight, which is the verdict the fusion matrix hands the D/E
     off-diagonal cells. Pinned so a later edit that adds a buffer fails HERE with the
     reason, rather than on a device with a compiler diagnostic.
@@ -375,14 +375,14 @@ def test_the_arm_is_registered_unwired_on_step_B(name, module, emitter, _reach):
 
 @pytest.mark.parametrize("name,module,emitter,_reach", WELDS)
 def test_the_unwired_arm_is_invisible_to_the_composer(name, module, emitter, _reach):
-    """WHY UNWIRED IS NOT BOOKKEEPING FOR THIS TRANCHE.
+    """Why unwired is not bookkeeping for these three welds.
 
     Each of these welds inherits a half that is WIRED — the nonlinear spine curl, the
     ``special_kz`` real-beta curl, the BFAST curl — and admits exactly the
     configurations that arm admits. Wired, ``_select_slot`` would see two admitters
     on ``step_B`` and leave the slot UNSELECTED, which does not merely decline the
     fusion: it takes the CERTIFIED CURL off the device as well. So the flag is what
-    keeps this tranche additive, and ``arms_for`` must not return it.
+    keeps these three welds additive, and ``arms_for`` must not return it.
     """
     import numpy as np
 
@@ -393,12 +393,12 @@ def test_the_unwired_arm_is_invisible_to_the_composer(name, module, emitter, _re
     context = arms.StepContext(pair[0], pair[1], Residency(),
                                (shaders.CONTRACT_OFF,), ())
     spec = next(s for s in arms.registered() if s.family == module.FAMILY)
-    # THE LABEL MUST EXIST IN THE TABLE, or the membership test below is filtering a
+    # The label must exist in the table, or the membership test below is filtering a
     # name nothing carries and would pass for the wrong reason.
     assert spec.label in {s.label for s in arms.registered()}
     bound = arms.arms_for("step_B", context)
     assert spec.label not in {arm.label for arm in bound}
-    # AND THE CONTENDER IT WOULD DISPLACE IS REALLY THERE: exactly one WIRED arm
+    # And the contender it would displace is really there: exactly one WIRED arm
     # admits this configuration on step_B today, which is the certified curl this
     # weld would take off the device if it were wired. ``_arm_verdict`` is the
     # composer's OWN verdict function — a predicate that raises is a refusal there,
@@ -473,7 +473,7 @@ def test_the_four_welds_are_mutually_disjoint_on_the_four_run_kinds():
 
     Three welds on ONE slot that co-admitted anything would be a composition hazard
     rather than a coverage gain, and "they are disjoint" is the kind of claim that is
-    true when written and false two tranches later. So it is a table, and the whole
+    true when written and false two changes later. So it is a table, and the whole
     table is asserted rather than the cells anyone happened to think of.
     """
     fixtures = _fixtures()
@@ -535,7 +535,7 @@ def test_the_weld_is_never_wider_than_the_two_halves_it_inherits(
 
 @pytest.mark.parametrize("name,module,emitter,_reach", WELDS)
 def test_an_undeclared_source_list_is_refused(name, module, emitter, _reach):
-    """IGNORANCE IS NEVER AN EMPTY SET. ``Fields`` does not hold the source list, so
+    """Ignorance is never an empty set. ``Fields`` does not hold the source list, so
     a predicate that inferred "no sources" from not being told would be exactly the
     over-covering refusal the magnetic-seam clause exists to prevent."""
     from meep_gpu.metal_kernels.device import Residency
@@ -549,7 +549,7 @@ def test_an_undeclared_source_list_is_refused(name, module, emitter, _reach):
 
 
 # ---------------------------------------------------------------------------
-# 7. The census this tranche was built against, and the gate that certified it
+# 7. The census these welds were built against, and the gate that certified it
 # ---------------------------------------------------------------------------
 
 def test_the_corpus_census_is_present_and_says_what_these_cells_are_worth():
@@ -574,7 +574,7 @@ def test_the_corpus_census_is_present_and_says_what_these_cells_are_worth():
     }
     for key, reach in expected.items():
         assert cells[key]["reachable"] == reach, (key, cells[key])
-    # AND THE PARTNERS ARE WORTH ZERO. Building a D->E weld for any of these three
+    # And the partners are worth zero. Building a D->E weld for any of these three
     # would buy nothing: every row injects electrically inside that seam.
     for curl, const in (("nonlinear PML curl", "nonlinear"),
                         ("special_kz real beta", "special_kz real beta"),
@@ -583,14 +583,14 @@ def test_the_corpus_census_is_present_and_says_what_these_cells_are_worth():
 
 
 def test_the_declined_cells_are_declined_on_a_measured_zero_or_a_measured_cost():
-    """The two cells this tranche did NOT build, with the measurement behind each.
+    """The two cells NOT built beside these three, with the measurement behind each.
 
     ``folded beta real`` is worth ZERO — its single row declares two magnetic sources
     — which is the census's answer and not a judgement call, and this pins it so a
-    later round does not spend a kernel on it. ``folded beta complex`` is worth 2;
+    later change does not spend a kernel on it. ``folded beta complex`` is worth 2;
     the demand is pinned here and the REASON it is declined is pinned in the two
     tests below, which replaced the original "declined on cost" note with something
-    a later round can check.
+    a later change can check.
     """
     import json
 
@@ -614,7 +614,7 @@ def test_the_folded_beta_complex_cell_runs_a_pass_no_product_carries():
     slot). So ``fill_folded_far_ghosts_B`` (driver.py:3287) runs INSIDE the B->H
     seam on both of them, and ``update_H`` reads what it writes.
 
-    That is the difference between this cell and the three this tranche built: each
+    That is the difference between this cell and the three built here: each
     of those is one certified emitter swapped into a shipped weld, while this one
     would have to DERIVE a second ownership restructure for a pass no kernel on
     either backend carries. The device probe measures the consequence word for word
@@ -637,7 +637,7 @@ def test_the_folded_beta_complex_cell_runs_a_pass_no_product_carries():
         # the split `symmetry.folded_axis_kinds` resolves and `_stored_past_owned`
         # measures (triton_kernels/symmetry.py:465-473).
         assert all(not row["metallic"][axis] for axis in folded), row
-    # THE CLAUSE MUST DISCRIMINATE, or it is decoration. "mirrored and not metallic"
+    # The clause must discriminate, or it is decoration. "mirrored and not metallic"
     # is narrower than "mirrored" ONLY if the corpus holds folds of both kinds, and
     # this file's census block covers twelve selected cells rather than the corpus —
     # so the check is made where the whole corpus is counted, in the carry cut's
@@ -692,7 +692,7 @@ def test_the_carry_gap_is_asked_by_the_census_and_not_only_by_a_docstring():
     buckets = record["headline"][
         "reachable_unserved_running_an_uncarried_in_seam_pass_by_bucket"]
     assert sum(buckets.values()) == sum(totals.values()), (buckets, totals)
-    # THE ACTIONABLE HALF, asserted rather than described: most of the gap is inside
+    # The actionable half, asserted rather than described: most of the gap is inside
     # products that already exist, which is where the carry is cheapest to build.
     assert buckets["a product covers the pair and REFUSES"] > buckets.get("FITS", 0)
 
@@ -704,7 +704,7 @@ def test_the_carry_gap_is_asked_by_the_census_and_not_only_by_a_docstring():
         "fill_folded_far_ghosts_B"], gap
     assert "NEEDS AN UNCARRIED IN-SEAM PASS" in gap["verdict"], gap["verdict"]
 
-    # THE OTHER BOARD AGREES, through a ladder nobody wrote twice. The Triton cut
+    # The other board agrees, through a ladder nobody wrote twice. The Triton cut
     # runs its own arm attribution over its own census and reaches the SAME B-side
     # count. Two derivations landing on one number is the only reason to believe
     # either; a disagreement means one of the two liveness walks is wrong.

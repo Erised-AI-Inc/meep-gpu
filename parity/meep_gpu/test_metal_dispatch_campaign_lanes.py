@@ -1,6 +1,6 @@
 """Host-only tests for ``run_metal_dispatch_campaign.sh``: order, lanes, isolation.
 
-NO DEVICE AND NO GATE. Two layers, because a dry run can only show a plan:
+No device and no gate. Two layers, because a dry run can only show a plan:
 
 * the DRY RUN is parsed for what each leg WOULD be handed -- order, lane plan,
   arguments, environment, the state of each leg directory -- and for the promise
@@ -35,6 +35,9 @@ from pathlib import Path
 import pytest
 
 SCRIPT = Path(__file__).with_name("run_metal_dispatch_campaign.sh")
+if str(SCRIPT.parent) not in sys.path:
+    sys.path.insert(0, str(SCRIPT.parent))
+import neutral_ids  # noqa: E402
 _INTERPRETER = re.search(r"^PY=(\S+)$", SCRIPT.read_text(encoding="utf-8"), re.M)
 
 pytestmark = [
@@ -45,7 +48,7 @@ pytestmark = [
         reason="the campaign script needs zsh and the interpreter it names"),
 ]
 
-#: WHAT EACH LEG WAS HANDED BEFORE LANES EXISTED, typed here rather than read from
+#: What each leg was handed before lanes existed, typed here rather than read from
 #: the script: the point of the comparison is that a lane change cannot move it.
 LEG_ARGUMENTS = {
     "band_witness": ["--install-policy", "keep", "--band-witness"],
@@ -104,6 +107,8 @@ sigint = signal.getsignal(signal.SIGINT)
      "out_listing": sorted(p.name for p in out.iterdir()) if out.is_dir() else None,
      "pid": os.getpid(), "sigint_ignored": sigint is signal.SIG_IGN}))
 note("start")
+# What a gate prints names its machine; the driver rewrites the leg's log once it exits.
+print(f"stub on {os.uname().nodename} out {out} home {os.path.expanduser('~')}", flush=True)
 together = control.get("alive_together")
 if together:
     deadline = time.time() + 60
@@ -143,7 +148,7 @@ class Campaign:
         self.stub.write_text(_STUB, encoding="utf-8")
         self.tools = root / "bin"
         self.tools.mkdir()
-        # THE FAKE TOOL HAS THE REAL ONE'S TWO SHAPES: `-i -w <pid>` records and
+        # The fake tool has the real one's two shapes: `-i -w <pid>` records and
         # waits; `-i <command>` records and execs the command IN PLACE, same pid.
         self.caffeinate_seen = root / "caffeinate.watch"
         self.caffeinate_legs = root / "caffeinate.legs"
@@ -176,7 +181,7 @@ class Campaign:
         env["METAL_CAMPAIGN_RESULTS_ROOT"] = str(self.results)
         env["METAL_CAMPAIGN_RUNNER"] = str(self.stub)
         env["METAL_CAMPAIGN_POLL_SECONDS"] = "0.2"
-        # THE HOSTILE SHELL: everything a leg must not inherit, exported.
+        # The hostile shell: everything a leg must not inherit, exported.
         for name in SCRUBBED:
             env[name] = "inherited-from-the-calling-shell"
         env[WITNESS_VARIABLE] = "/inherited/stale/band_witness/gate.json"
@@ -343,7 +348,7 @@ def test_dry_run_environment_is_isolated_per_leg_under_a_hostile_shell(campaign)
 ])
 def test_the_environment_check_is_armed_and_refuses_before_anything_is_launched(
         campaign, removed, fault):
-    # THE CHECK MUST FIRE, not merely pass: each mutant drops one line of the per-leg
+    # The check must fire, not merely pass: each mutant drops one line of the per-leg
     # environment, and under the hostile shell the script's own read-back of what the
     # child would receive has to name the leak and launch nothing.
     text = SCRIPT.read_text(encoding="utf-8")
@@ -483,7 +488,7 @@ def test_the_parent_waits_for_every_lane_and_reports_every_exit_code(campaign, t
 
 
 def test_campaign_txt_has_one_writer_and_lands_lanes_in_a_fixed_leg_order(campaign):
-    # The two lanes END IN REVERSE of the fixed order and both inside one poll
+    # The two lanes end in reverse of the fixed order and both inside one poll
     # interval, so only a parent that lands them itself, in leg order, writes this.
     campaign.control({
         "shipped": {"alive_together": LANES_LONGEST_FIRST, "sleep": 0.8},
@@ -506,8 +511,8 @@ def test_campaign_txt_has_one_writer_and_lands_lanes_in_a_fixed_leg_order(campai
         match = shape.match(line)
         assert match, f"not one whole result line: {line!r}"
         leg = match.group(1)
-        assert match.group(5) == str(campaign.run / f"{leg}.log")
-        # THE LANE WROTE ITS LINE TO ITS OWN FILE; the parent copied it, verbatim.
+        assert match.group(5) == f"{campaign.run.name}/{leg}.log"
+        # The lane wrote its line to its own file; the parent copied it, verbatim.
         result_file = (campaign.run / f"{leg}.result").read_text().splitlines()
         assert f"line {line}" in result_file, (leg, result_file)
     starts = [line for line in summary if " START " in line]
@@ -569,7 +574,7 @@ def test_an_unreleased_leg_is_a_result_recorded_once_and_never_retried(campaign)
     assert sum(1 for leg, event, _ in campaign.journal()
                if leg == "shipped" and event == "start") == 1
 
-    # A SECOND INVOCATION RE-RUNS NOTHING: every leg holds a gate.json, the failed one
+    # A second invocation re-runs nothing: every leg holds a gate.json, the failed one
     # included, and its verdict still fails the campaign.
     second = campaign.invoke("--lanes", "3")
     assert second.returncode == 1
@@ -589,7 +594,8 @@ def test_band_witness_digest_is_recorded_and_its_absence_refuses_every_later_leg
     digest = hashlib.sha256(artifact.read_bytes()).hexdigest()
     summary = campaign.summary()
     recorded = [line for line in summary if line.startswith("band witness  sha256=")]
-    assert len(recorded) == 1 and digest in recorded[0] and str(artifact) in recorded[0]
+    assert len(recorded) == 1 and digest in recorded[0]
+    assert f"{campaign.run.name}/band_witness/gate.json" in recorded[0]
     assert summary.index(recorded[0]) < next(
         i for i, line in enumerate(summary) if line.startswith("harness_keep ")), \
         "the digest must be on record before any leg that reads the artifact starts"
@@ -610,12 +616,15 @@ def test_the_machine_is_held_awake_by_the_driver_and_by_each_leg_or_the_absence_
         campaign, tmp_path):
     assert campaign.invoke("--lanes", "3").returncode == 0
     summary = campaign.summary()
-    driver = re.search(r"driver_pid=(\d+)", summary[0]).group(1)
+    word, driver, state = (campaign.run / "driver.pid").read_text().split()
+    assert (word, state) == ("driver", "finished")
     # ONE assertion watching the driver ...
     assert campaign.caffeinate_seen.read_text().splitlines() == [f"-i -w {driver}"]
-    assert any(line.startswith(f"AWAKE  caffeinate -i -w {driver} held")
+    assert any(line.startswith("AWAKE  caffeinate -i -w <driver pid> held")
                and "each leg's command also holds its own" in line for line in summary)
-    # ... AND ONE PER LEG, wrapped round the leg's own command, so a leg that outlives
+    assert not re.search(rf"(?<![\w/.-]){driver}(?![\w/.-])", "\n".join(summary)), \
+        "the driver's pid stays in driver.pid"
+    # ... And one per leg, wrapped round the leg's own command, so a leg that outlives
     # a killed driver still holds one. The tool execs the command in place, so what
     # the gate is handed (asserted elsewhere, from what each stub received) is as it
     # was: here, that each leg went through it exactly once, `-i` then `env`.
@@ -627,7 +636,7 @@ def test_the_machine_is_held_awake_by_the_driver_and_by_each_leg_or_the_absence_
         outs.append(Path(words[words.index("--out") + 1]).name)
     assert sorted(outs) == sorted(ORDER)
 
-    # A HOST WITHOUT THE TOOL: the campaign still runs, and says what it lacks.
+    # A host without the tool: the campaign still runs, and says what it lacks.
     bare = Campaign(tmp_path / "bare")
     bare.caffeinate.rename(bare.tools / "not-on-the-path")
     for tool in ("date", "tee", "mkdir", "mv", "grep", "cut", "shasum", "sleep",
@@ -675,7 +684,7 @@ def test_a_gate_json_the_runner_never_finalized_is_refused_not_skipped(campaign,
     assert (unfinalized / "gate.json").read_text() == written
     assert sorted(p.name for p in unfinalized.iterdir()) == ["gate.json"]
 
-    # A LEG THAT LANDS ONE under this driver fails the campaign by name, and a band
+    # A leg that lands one under this driver fails the campaign by name, and a band
     # witness in that state is not handed to the legs that would read it.
     landing = Campaign(tmp_path / "landing")
     landing.control({"harness_flush": {"finalized": False}})
@@ -696,9 +705,8 @@ def test_a_gate_json_the_runner_never_finalized_is_refused_not_skipped(campaign,
 def test_one_lane_launches_every_leg_in_the_foreground_and_records_no_lane_line(campaign):
     assert campaign.invoke("--lanes", "1").returncode == 0
     summary = campaign.summary()
-    assert not any(" LANE   gate_pid=" in line or line.startswith("SIGNALS")
-                   for line in summary)
-    assert not list(campaign.run.glob("*.pid"))
+    assert not any(" LANE " in line or line.startswith("SIGNALS") for line in summary)
+    assert [p.name for p in campaign.run.glob("*.pid")] == ["driver.pid"], "no lane pid file"
     dispositions = {campaign.seen(leg)["sigint_ignored"] for leg in ORDER}
     assert len(dispositions) == 1, "at LANES=1 every leg is launched the same way"
 
@@ -710,18 +718,20 @@ def test_each_lane_records_its_gates_pid_and_a_stopped_gate_lands_as_a_result(ca
     driver = campaign.start("--lanes", "3")
     try:
         line = campaign.wait_for_line("shipped                    LANE ")
-        gate_pid = int(re.search(r"gate_pid=(\d+)", line).group(1))
-        assert f"kill -TERM {gate_pid}" in line
-        # THE PID ON RECORD IS THE GATE'S OWN, not the lane shell's.
+        # The LANE line names the local file that holds the gate's pid, not the pid.
+        assert f"gate pid in {campaign.run.name}/shipped.pid" in line
+        assert "kill -TERM <that pid>" in line
+        words = (campaign.run / "shipped.pid").read_text().split()
+        assert words[:3] == ["driver", str(driver.pid), "gate_pid"] and words[4] == "running"
+        gate_pid = int(words[3])
+        assert str(gate_pid) not in line and str(driver.pid) not in line
+        # The pid in the file is the gate's own, not the lane shell's.
         deadline = time.time() + 30
         while not (campaign.stub_dir / "seen.shipped.json").exists():
             assert time.time() < deadline
             time.sleep(0.05)
         time.sleep(0.2)
         assert campaign.seen("shipped")["pid"] == gate_pid
-        assert int(re.search(r"lane_shell=(\d+)", line).group(1)) != gate_pid
-        assert (campaign.run / "shipped.pid").read_text().split() == \
-            ["driver", str(driver.pid), "gate_pid", str(gate_pid), "running"]
         os.kill(gate_pid, signal.SIGTERM)
         stdout, _ = driver.communicate(timeout=60)
     finally:
@@ -732,11 +742,13 @@ def test_each_lane_records_its_gates_pid_and_a_stopped_gate_lands_as_a_result(ca
     landed = next(line for line in summary if line.startswith("shipped ") and " exit=" in line)
     assert "exit=143" in landed and "released=unreadable(" in landed
     assert (campaign.run / "shipped.pid").read_text().split()[-1] == "ended"
-    lanes = [line.split()[0] for line in summary if " LANE   gate_pid=" in line]
+    lanes = [line.split()[0] for line in summary if " LANE   gate pid in " in line]
+    for pid in (driver.pid, gate_pid):
+        assert not re.search(rf"(?<![\w/.-]){pid}(?![\w/.-])", "\n".join(summary)), pid
     assert sorted(lanes) == sorted(LANES_LONGEST_FIRST), "one LANE line per lane, none serial"
     assert any(line.startswith("SIGNALS  lanes ignore SIGINT and SIGQUIT") for line in summary)
     assert any(line.startswith("harness_flush ") and "exit=0" in line for line in summary)
-    # WHAT THE SIGNALS LINE SAYS IS TRUE OF THE PROCESSES: a lane's gate starts with
+    # What the signals line says is true of the processes: a lane's gate starts with
     # SIGINT ignored, and a serial leg is handed whatever the driver itself has.
     serial = campaign.seen("band_witness")["sigint_ignored"]
     assert campaign.seen("harness_keep")["sigint_ignored"] == serial
@@ -768,24 +780,49 @@ def test_a_second_driver_is_refused_while_the_first_is_alive_and_a_dead_one_resu
     assert text.count("  started ") == 1 and "resumed" not in text
     assert sum(1 for _, event, _ in campaign.journal() if event == "start") == 4
 
-    # A DRIVER THAT DIED left `started` with no `finished`, and its pid is dead (or is
+    # A driver that died left driver.pid saying running, and its pid is dead (or is
     # some other program by now): the next invocation resumes, as it always did.
     dead = Campaign(tmp_path / "dead")
     gone = subprocess.Popen(["true"])
     gone.wait()
     dead.run.mkdir(parents=True)
     (dead.run / "campaign.txt").write_text(
-        "campaign dispatch_metal_route_stamp  started 2026-01-01T00:00:00Z  lanes=3  "
-        f"driver_pid={gone.pid}\n")
+        "campaign dispatch_metal_route_stamp  started 2026-01-01T00:00:00Z  lanes=3\n")
+    (dead.run / "driver.pid").write_text(f"driver {gone.pid} running\n")
     assert dead.invoke("--lanes", "3").returncode == 0
     assert "resumed" in (dead.run / "campaign.txt").read_text()
     # A LIVE pid that is not this script -- the test's own -- is not a driver either.
     alive = Campaign(tmp_path / "alive")
     alive.run.mkdir(parents=True)
-    (alive.run / "campaign.txt").write_text(
-        "campaign dispatch_metal_route_stamp  started 2026-01-01T00:00:00Z  lanes=3  "
-        f"driver_pid={os.getpid()}\n")
+    (alive.run / "driver.pid").write_text(f"driver {os.getpid()} running\n")
     assert alive.invoke("--lanes", "3").returncode == 0
+
+
+def test_the_campaign_records_name_no_machine_and_hold_no_pid(campaign):
+    """campaign.txt, campaign_plan.txt and each leg's log are written through
+    ``neutral_ids.text`` and hold no pid (the driver's and the gates' stay in the local
+    driver.pid and <leg>.pid files); the dry run, which writes nothing, prints the real
+    paths a leg is handed."""
+    campaign.control({"shipped": {"sleep": 0.3}})
+    result = campaign.invoke("--lanes", "3")
+    assert result.returncode == 0, result.stdout + result.stderr
+    summary = (campaign.run / "campaign.txt").read_text()
+    plan = (campaign.run / "campaign_plan.txt").read_text()
+    logs = {leg: (campaign.run / f"{leg}.log").read_text() for leg in ORDER}
+    for name, text in [("campaign.txt", summary), ("campaign_plan.txt", plan), *logs.items()]:
+        assert neutral_ids.residue(text.splitlines()) == [], name
+        for raw in (str(campaign.root), os.path.expanduser("~"), os.uname().nodename,
+                    sys.executable):
+            assert raw not in text, (name, raw)
+    assert all(text.startswith("stub on ") for text in logs.values()), logs
+    assert plan.count("LEG order=") == 4 and "<tmp>" in plan
+    pids = [(campaign.run / "driver.pid").read_text().split()[1]]
+    pids += [(campaign.run / f"{leg}.pid").read_text().split()[3] for leg in LANES_LONGEST_FIRST]
+    for pid in pids:      # a pid as a word of its own (a digest or a path holds digits too)
+        assert not re.search(rf"(?<![\w/.-]){pid}(?![\w/.-])", summary + plan), pid
+    assert not re.search(r"(driver_pid|gate_pid|lane_shell)=|-w \d", summary + plan)
+    dry = campaign.invoke("--dry-run", "--lanes", "3")
+    assert str(campaign.run / "shipped") in dry.stdout
 
 
 def test_the_callers_switches_are_put_on_record_and_the_scrub_list_is_named(campaign):
@@ -806,7 +843,7 @@ def test_the_callers_switches_are_put_on_record_and_the_scrub_list_is_named(camp
                 assert f"{name} (scrubbed from every leg)" in exported
         assert f"{WITNESS_VARIABLE} (replaced or unset on each leg)" in exported
         assert "MEEP_GPU_CORPUS_ROOT=/somewhere/else (reaches every leg)" in exported
-    # RECORDED MEANS NOT SCRUBBED: what the line says reaches every leg, did.
+    # Recorded means not scrubbed: what the line says reaches every leg, did.
     for leg in ORDER:
         environ = campaign.seen(leg)["environ"]
         assert environ["MEEP_GPU_KERNEL_TABLE"] == "metal", leg

@@ -1,14 +1,14 @@
 """Complete-driver composition probe for the COMPLEX cylindrical (Dcyl, complex64
-storage at every m) tranche.
+storage at every m) family.
 
-m = 0 UNDER COMPLEX STORAGE (2026-09-04, ``cylindrical_complex.M_ZERO``): three
+m = 0 under complex storage (2026-09-04, ``cylindrical_complex.M_ZERO``): three
 cases below step it through complete driver steps — one at the fixture shape with
 a Gaussian source, one at the corpus row's OWN shape, Courant, m and z termination
 (examples:dipole_in_vacuum_cyl_off_axis.py: (150, 1, 300) at resolution 50,
 Courant 0.5, z metallic), and one on the +-0 lattice — and a fourth armed mutation
 negates the m = 0 on-axis ``Dz`` scalar both curl plans carry.
 
-WHAT THE SUB-STEP GATE CANNOT ANSWER. ``gate_triton_cylindrical_complex.py``
+What the sub-step gate cannot answer. ``gate_triton_cylindrical_complex.py``
 certifies ONE curl call and ONE constitutive call against an in-file reference.
 It says nothing about the four of them composing inside a real
 ``FdtdDriver.step`` — where the sources land between ``step_B`` and
@@ -17,7 +17,7 @@ and where the state that reaches ``update_E`` is the state THIS FAMILY'S curl
 kernel wrote rather than one the harness seeded. This probe measures that, per
 COMPLETE driver step, in uint32 words.
 
-THE FOUR SLOTS, and why there are four and not six. The driver's order is
+The four slots, and why there are four and not six. The driver's order is
 ``step_B -> [magnetic sources] -> fill_symmetry_bc_B -> zero_metal_B ->
 fill_folded_far_ghosts_B -> update_H -> [withdraw] -> step_D -> [electric
 sources] -> fill_symmetry_bc_D -> zero_metal_D -> fill_folded_far_ghosts_D ->
@@ -70,17 +70,17 @@ CASE DISCIPLINE, the clauses this family's composition can actually bind:
 * **Armed mutations, caught at step 1**, three of them, each read from the built
   plan so the arming cannot be a no-op on a case whose value happens to match.
 * **The nr >= 2 REFUSAL, exercised rather than asserted in prose.** A one-radial-
-  row grid is built, the shipped predicate is required to refuse it BY THAT
-  CLAUSE, the plan builder is required to return None, and the ARRAY PATH is
+  row grid is built, the shipped predicate is required to refuse it by that
+  clause, the plan builder is required to return None, and the ARRAY PATH is
   required to raise ``IndexError`` on the same grid at |m| = 1 — which is what
   makes the clause a refusal of an over-coverage rather than a taste.
 
-NO FLUX OR DFT MONITOR is attached: the sub-steps composed here are curl and
+No flux or DFT monitor is attached: the sub-steps composed here are curl and
 constitutive, and a monitor would add a sample-count obligation this probe does
 not need. A future case that adds one MUST assert its sample count.
 
-DISPATCH STAYS DISABLED. The plans are installed by monkeypatching the driver
-module's sub-step functions FOR ONE ``Fields`` OBJECT, exactly as the certified
+Dispatch stays disabled. The plans are installed by monkeypatching the driver
+module's sub-step functions for one ``Fields`` object, exactly as the certified
 composition probes do. ``fastpath.plan_fast_path`` still returns None on every
 branch and ``launch.plan_step`` does not know this module exists.
 
@@ -130,6 +130,7 @@ try:
 except ImportError:                                   # the laptop preflight
     cp = None
 
+import neutral_ids                                                    # noqa: E402
 from meep_gpu.triton_kernels import complex_fields as cxmod          # noqa: E402
 from meep_gpu.triton_kernels import cylindrical_complex as cylmod    # noqa: E402
 from meep_gpu.triton_kernels import cylindrical_triton as cylreal    # noqa: E402
@@ -151,8 +152,15 @@ def log(message: str) -> None:
 
 
 def save(payload: Any, path: str) -> None:
-    """Atomic rewrite after every case (the progress-reporting rule)."""
+    """Atomic rewrite after every case (the progress-reporting rule).
+
+    The artifact leaves the machine with the round's results, so every string in it is
+    written as ``neutral_ids`` spells it, in place (``neutral_ids.neutralize_in_place``, the
+    last step of ``gate_provenance.stamp``): the cache directory, the provenance file and
+    any error that quotes a path are written under their labels, never under the account's
+    home directory."""
     os.makedirs(os.path.dirname(os.path.abspath(path)) or ".", exist_ok=True)
+    neutral_ids.neutralize_in_place(payload)
     temporary = path + ".tmp"
     with open(temporary, "w", encoding="utf-8") as handle:
         json.dump(payload, handle, indent=2, sort_keys=True, default=str)
@@ -259,7 +267,7 @@ CASES: Tuple[Dict[str, Any], ...] = (
             "Bx/Dy row 0 and the Dz add lands on a signed-zero background"},
 )
 
-# THE ABSORBER ON A +-0 CASE IS THIN, AND THE THICKNESS IS THE MEASUREMENT.
+# The absorber on a +-0 case is thin, and the thickness is the measurement.
 # The only in-run producer of a stored -0.0 here is a NEGATIVE split-field
 # coefficient multiplying a quiet +0.0, and whether one exists is a property of
 # the absorber's profile, not of the seeding. Measured on
@@ -273,8 +281,8 @@ CASES: Tuple[Dict[str, Any], ...] = (
 # every byte compare while measuring nothing about the +-0 class. The floor
 # below is what caught it.
 
-#: Sources are ELECTRIC only (every one of the sixteen lifted rows is) and OFF
-#: THE AXIS. A point source at r = 0 lands on the row the |m| = 1 increment
+#: Sources are ELECTRIC only (every one of the sixteen lifted rows is) and off
+#: the axis. A point source at r = 0 lands on the row the |m| = 1 increment
 #: overwrites outright and the |m| >= 2 rule holds at zero, so an on-axis
 #: declaration would deposit a current the very next sub-step discards — a
 #: source that cannot separate its own control.
@@ -344,7 +352,7 @@ def seed_state(driver, xp, case: Dict[str, Any]) -> Dict[str, Any]:
     # THE +-0 LATTICE, and it exists because a plain zero-init is a FIXED POINT
     # of the constitutive sub-step here (see the module docstring). The sign of
     # the zero alternates by index parity so the background carries negative
-    # zeros for a sign-bit defect to show against; the FIRST LIVE RADIAL ROW —
+    # zeros for a sign-bit defect to show against; the first live radial row —
     # row |m| at |m| >= 2, row 1 at |m| = 1 — carries real amplitude, so the
     # axis rule and the i*m/r coupling are the only paths from there to the
     # axis rows this case watches.
@@ -379,13 +387,13 @@ def negative_zero_census(xp, driver, names=FIELD_STATE + AUX_STATE) -> int:
     means the case cannot see a defect that lives in the sign of a zero —
     VACUOUS, not passed.
 
-    OVER THE WHOLE STATE, and PER STEP rather than at the end — both measured
+    Over the whole state, and PER STEP rather than at the end — both measured
     on this family (NumPy, ``m1_signed_zero_lattice``, 2026-08-13):
 
     * primaries alone report 37 words after step 1 where the whole state reports
       177: the class lives mostly in the ``fu_`` auxiliaries and ``f_w_``, which
       is exactly where the recurrence reads it;
-    * the class is TRANSIENT WITH STEP PARITY — 177, 0, 99, 0, 95, 0 over six
+    * the class is transient with step parity — 177, 0, 99, 0, 95, 0 over six
       complete steps — because a ``-0.0`` that survives one sub-step is
       laundered back by the next ``fu *= kms`` sign flip. An END-OF-RUN census
       therefore reports 0 on a case where the class was live at every odd step,
@@ -517,7 +525,7 @@ def seam_report(fields, pml, drop_backend: bool) -> Dict[str, Any]:
             fields, pml, side).reasons)
         report[f"constitutive_{side}"] = {"covered": not reasons,
                                           "reasons": reasons}
-    # THE TWO DISJOINTNESS SEAMS. Neither sibling predicate may admit this run:
+    # The two disjointness seams. Neither sibling predicate may admit this run:
     # cylindrical_triton refuses m != 0 BY NAME, and the certified complex
     # family refuses every cylindrical grid. If either narrowed underfoot, two
     # predicates could admit one configuration and the install route below would
@@ -624,7 +632,7 @@ def install(driver_module, plans: Dict[str, Any], owner):
 # The armed mutations
 # ---------------------------------------------------------------------------
 #
-# Each one is read FROM THE BUILT PLAN and negated/bent relative to what is
+# Each one is read from the built plan and negated/bent relative to what is
 # actually there, so it can never be a no-op on a case whose value happens to
 # match a hard-coded mutant. All three must be caught at STEP 1: the i*m/r
 # coupling, the near-axis zeroing and the axis increment are all live at the
@@ -654,7 +662,7 @@ def arm_imr_row_negated(driver, plans: Dict[str, Any], case) -> str:
 def arm_zero_rows_reduced(driver, plans: Dict[str, Any], case) -> str:
     """Rebuild both curl plans with ZERO_ROWS one lower than the shipped value.
 
-    The true count is READ FROM THE PLAN first, so on a case where it is already
+    The true count is read from the plan first, so on a case where it is already
     1 the mutant is 0 and the near-axis rule vanishes entirely; on a case where
     it is 0 (|m| = 1) this mutation does not apply and the leg says so rather
     than reporting a null it never armed.
@@ -734,7 +742,7 @@ def arm_m0_axis_add_scalar_negated(driver, plans: Dict[str, Any], case) -> str:
 
 #: ``(name, case_name, callable, expected_step, why)``. Scheduled per case,
 #: because two of the three only exist in one |m| class, and each declares the
-#: COMPLETE DRIVER STEP at which it must be caught — asserted exactly, not as an
+#: complete driver step at which it must be caught — asserted exactly, not as an
 #: upper bound. "Caught eventually" is the weaker claim, and a needle caught two
 #: steps late is usually a different needle.
 MUTATIONS: Tuple[Tuple[str, str, Callable[..., str], int, str], ...] = (
@@ -815,7 +823,7 @@ def run_case(xp, case: Dict[str, Any],
                                    drop_backend=False)
         assert_seams(row["seams"], name)
 
-        # THE PER-SEEDING VACUITY FLOOR, at seed time.
+        # The per-seeding vacuity floor, at seed time.
         row["negative_zero_census_at_seed"] = negative_zero_census(xp, reference)
         if case["seeding"] == "signed_zero_lattice" and \
                 row["negative_zero_census_at_seed"] == 0:
@@ -906,7 +914,7 @@ def run_case(xp, case: Dict[str, Any],
         row["negative_zero_census_after"] = (
             row["negative_zero_census_trail"][-1]
             if row["negative_zero_census_trail"] else 0)
-        # THE PER-SEEDING VACUITY FLOOR, on the PEAK of the trail. The final
+        # The per-seeding vacuity floor, on the PEAK of the trail. The final
         # value is recorded beside it and is NOT the floor: the class alternates
         # with step parity here (see :func:`negative_zero_census`), so an
         # end-of-run test would report VACUOUS on a live case.
@@ -936,7 +944,7 @@ def run_case(xp, case: Dict[str, Any],
                                      else first_divergence["step"])
             if not row["caught"]:
                 raise AssertionError(
-                    f"{name}: ARMED MUTATION NOT CAUGHT — the composition "
+                    f"{name}: armed mutation NOT CAUGHT — the composition "
                     f"reproduced the array path with the defect installed")
             if first_divergence["step"] != mutation[3]:
                 raise AssertionError(
@@ -973,11 +981,11 @@ def run_case(xp, case: Dict[str, Any],
 # matching masked load would read a full plane past the end of the source
 # volume and store a silently wrong axis row.
 #
-# THE ARRAY PATH'S BEHAVIOUR IS NOT THE SAME ON BOTH BACKENDS, and that is a
-# MEASURED FINDING this leg exists to pin rather than a detail:
+# The array path's behaviour is not the same on both backends, and that is a
+# measured finding this leg exists to pin rather than a detail:
 #
 #   numpy  -> IndexError out of take(); the run stops loudly
-#   cupy   -> NO BOUNDS CHECK. cp.take(a, 1, axis=0) on a size-1 axis returns
+#   cupy   -> no bounds check. cp.take(a, 1, axis=0) on a size-1 axis returns
 #             row 0's data, so the SAME driver on the SAME grid steps to
 #             completion with a finite state
 #
@@ -986,7 +994,7 @@ def run_case(xp, case: Dict[str, Any],
 # defect of the ARRAY PATH — ``stepping.py`` is not this family's file and the
 # finding is ATTRIBUTED, not fixed here — and it changes what the clause is for:
 # on the GPU backend the refusal is the only thing between a run and a silently
-# wrong axis row. The leg asserts the predicate's refusal BY THAT CLAUSE and
+# wrong axis row. The leg asserts the predicate's refusal by that clause and
 # that the plan builder returns None on both backends, and it asserts the array
 # path's behaviour against a DECLARED per-backend expectation, so a backend that
 # starts or stops raising fails here instead of quietly changing the story.
@@ -1040,7 +1048,7 @@ def run_refusal(xp) -> Dict[str, Any]:
                     f"the {sub_step} plan builder returned a plan for a grid "
                     f"its own predicate refuses")
         record["refusal_reasons"] = reasons
-        # THE OTHER HALF: what the ARRAY PATH does here, measured against the
+        # The other half: what the ARRAY PATH does here, measured against the
         # DECLARED per-backend expectation. The grid is SEEDED first, so a
         # backend that does not raise is shown to produce a live state rather
         # than an empty one — "it stepped" is a much weaker statement than "it
@@ -1077,7 +1085,7 @@ def run_refusal(xp) -> Dict[str, Any]:
             raise AssertionError(
                 f"the ARRAY PATH on {backend} {observed!r} where this leg "
                 f"declares {ARRAY_PATH_ON_NR1[backend]!r}. The clause's stated "
-                f"reason is per-backend and MEASURED; a backend that changed "
+                f"reason is per-backend and measured; a backend that changed "
                 f"its behaviour must be re-measured and the declaration "
                 f"updated, not silently accepted")
         record["ok"] = True

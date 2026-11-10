@@ -1,14 +1,14 @@
 """The fused electric D/E pair on a REAL ``grid.beta`` run: ``step_D`` -> ``update_E``.
 
-:mod:`.fused_electric_pair` WITH ONE EMITTER SWAPPED, and the swap is the whole
+:mod:`.fused_electric_pair` with one emitter swapped, and the swap is the whole
 module -- the D-side mirror of what :mod:`.beta_fused_magnetic_pair` is to
 :mod:`.fused_magnetic_pair`. The certified ordinary curl body is replaced by the
 certified REAL beta curl body (:func:`.special_kz.beta_curl_source` with
-``backward=True``) and NOTHING ELSE CHANGES: the same wall-clear carry, the same
+``backward=True``) and nothing else changes: the same wall-clear carry, the same
 three-line seam, the same constitutive lift, the same 30 pointers, the same plan
 class shape.
 
-WHY THE SWAP IS SOUND. The beta curl IS the certified curl with MEEP's beta pass
+Why the swap is sound. The beta curl IS the certified curl with MEEP's beta pass
 inserted after its per-chunk forms (:func:`.special_kz.beta_curl_source`, through
 :func:`.folded_pass.with_folded_pass`): two scalars and the pass block between the
 forms and the stores, and nothing else. Everything the weld depends on is the
@@ -18,11 +18,11 @@ AFTER the pass has updated ``v`` (the array path's order: the pass runs inside
 ``step_D``, the wall clear after it). Those anchors and the pass block are ASSERTED at
 emit time, not assumed.
 
-THE CHUNK RECORD RIDES IN THE PARAMS STRUCT, as in :mod:`.fused_electric_pair`: the
+The chunk record rides in the Params struct, as in :mod:`.fused_electric_pair`: the
 only place it can ride at 31 of 31. The D curl half reads the integer entries and the
 E half the half-integer ones.
 
-WHY THE CONSTITUTIVE HALF NEEDS NOTHING. ``update_E`` reads nothing beta-dependent:
+Why the constitutive half needs nothing. ``update_E`` reads nothing beta-dependent:
 ``grid.beta`` enters the two CURLS only (stepping.py:384-391, :467-474), never
 ``_apply_constitutive_pml`` (:2130). That is the same measurement
 :func:`.special_kz.beta_run_constitutive_coverage` already ships on, and the reason
@@ -33,7 +33,7 @@ lift, imported rather than copied -- including its three-way crossing rename, wh
 is what puts the E targets on ``e`` and the inverse epsilon on ``ie``.
 
 ===========================================================================
-THE SIGNATURE — 30 pointers plus one packed struct, EXACTLY ON THE CEILING
+The signature — 30 pointers plus one packed struct, exactly on the ceiling
 ===========================================================================
 
     3 D  +  3 fu_D  +  3 H  +  6 curl coefficients (kms/sinv per axis)
@@ -58,23 +58,23 @@ with ``magnetic=False``: the two signs SWAP between the seams
 magnetic pair's pair would run a correctly-shaped, converged, wrong dispersion.
 
 ===========================================================================
-WHAT THE CORPUS SAYS THIS IS WORTH, and why it used to be zero
+What the corpus says this is worth, and why it used to be zero
 ===========================================================================
 
 ONE seam-instance: ``examples:refl-angular-kz2d.py``, the same row the magnetic
 twin serves on the other seam. :mod:`.beta_fused_magnetic_pair`'s docstring records
 that "the D/E partner cell is worth ZERO -- that row injects electrically inside the
-D/E seam -- and is not built", and THAT SENTENCE IS RETIRED BY THIS MODULE rather
+D/E seam -- and is not built", and that sentence is retired by this module rather
 than contradicted: it was true of the products shipping when it was written, before
 ``meep_gpu.deposit_repair`` existed. The deposit is now carried (see
 :data:`CARRIES_DEPOSIT_REPAIR`), so the row is reachable and the cell is worth one.
 
-REGISTERED UNWIRED, for :func:`.fused_electric_pair.register_arms`'s reason and the
-one specific to a weld that inherits a wired half: were it wired it would contend on
-``step_D`` with ``special_kz``'s real-beta curl arm, which admits exactly the same
-configurations, and ``_select_slot`` would leave the slot UNSELECTED -- taking the
-certified curl off the device as well. It reaches its two slots through
-``launch.FUSED_PAIR_ARMS`` instead.
+Registered with ``wired=False``, for :func:`.fused_electric_pair.register_arms`'s
+reason and the one specific to a weld that inherits a wired half: were it wired it
+would contend on ``step_D`` with ``special_kz``'s real-beta curl arm, which admits
+exactly the same configurations, and ``_select_slot`` would leave the slot
+UNSELECTED -- taking the certified curl off the device as well. It reaches its two
+slots through ``launch.FUSED_PAIR_ARMS`` instead.
 """
 
 # Derived from MEEP (https://github.com/NanoComp/meep).
@@ -106,7 +106,7 @@ from .. import deposit_repair as _deposit_repair
 #: about the PLAN this module builds -- that the leading slot saves and the trailing
 #: slot restores -- and is only ever changed in the same edit as that wiring.
 #:
-#: TRUE FROM THIS FAMILY'S FIRST COMMIT, and it is the whole reason the cell is worth
+#: True from this family's first commit, and it is the whole reason the cell is worth
 #: building: the one corpus row this pair reaches carries an ELECTRIC source, so
 #: without the bracket it would serve nothing at all -- which is exactly what
 #: :mod:`.beta_fused_magnetic_pair`'s docstring recorded when the repair did not
@@ -196,14 +196,14 @@ kernel void beta_fused_electric_pair_step(
     constant Params&    prm     [[buffer(30)]],
     uint idx [[thread_position_in_grid]])
 {
-    // THE SEVEN SCALARS ARE UNPACKED INTO THE CERTIFIED BODIES' OWN NAMES, once,
+    // The seven scalars are unpacked into the certified bodies' own names, once,
     // before any of the lifted text runs. Everything below this line is then
     // character-for-character what `special_kz.beta_curl_source` and
     // `shaders.constitutive_source` emit, plus the wall clear.
     uint nx = prm.nx, ny = prm.ny, nz = prm.nz, n_elem = prm.n_elem;
     float dtdx = prm.dtdx;
     float beta_plus = prm.beta_plus, beta_minus = prm.beta_minus;
-    // THE CHUNK RECORD rides in the same struct (no binding to spare: this family
+    // The chunk record rides in the same struct (no binding to spare: this family
     // sits on the ceiling), and this one line gives the lifted bounds blocks the `cb`
     // they read.
 __RECORD_ALIAS__
@@ -243,7 +243,7 @@ def beta_fused_electric_pair_source(codes: Sequence[int],
                                     contract: str = shaders.CONTRACT_OFF) -> str:
     """One specialised fused source: (boundary triple, walls, contraction mode).
 
-    THE SPLICE IS :func:`.fused_electric_pair.fused_electric_pair_source`'S, step for
+    The splice is :func:`.fused_electric_pair.fused_electric_pair_source`'s, step for
     step, with :func:`certified_beta_curl_body` where its ``certified_curl_body``
     stands. The anchors it depends on are checked here rather than inherited: an
     emitter that moved the store line or renamed a source read would otherwise
@@ -257,7 +257,7 @@ def beta_fused_electric_pair_source(codes: Sequence[int],
         raise ValueError(f"zero_metal must be a per-axis triple, got {zero_metal!r}")
 
     curl = certified_beta_curl_body(codes, contract)
-    # THE BETA PASS MUST BE PRESENT. A lift that silently produced the has_beta=0
+    # The beta pass must be present. A lift that silently produced the has_beta=0
     # arm would be the ordinary weld wearing this family's name, and every device
     # leg would still pass because beta = 0 IS the ordinary arithmetic.
     for statement in (folded_pass.FOLDED_PASS_BEGIN, "float bi0 = -(beta_plus * b);",
@@ -294,7 +294,7 @@ def beta_fused_electric_pair_source(codes: Sequence[int],
             f"    // THE SEAM: the register step_D just wrote, not a reload of "
             f"D{'xyz'[target]}.\n"
             f"    float src{target} = v{target} * ie{target}[ii];\n")
-    # THE CURL'S `g` IS H AND THE CONSTITUTIVE'S `g` WAS D. After the seam there must
+    # The curl's `g` is H and the constitutive's `g` was D. After the seam there must
     # be no `g` left in the electric half at all -- one surviving read would take the
     # magnetic field as a displacement, which is a smooth, plausible, entirely wrong
     # answer rather than a crash.
@@ -410,11 +410,11 @@ def metal_beta_fused_electric_pair_coverage(fields: Any, pml: Any,
     if not electric.covered:
         reasons.extend(f"constitutive half: {reason}" for reason in electric.reasons)
 
-    # THE SOURCE SEAM. An ELECTRIC source is injected BETWEEN the two halves
+    # The source seam. An ELECTRIC source is injected BETWEEN the two halves
     # (driver.py:3294-3299), so a fused pair would consume a pre-injection D unless
     # the deposit repair brackets the launch -- which for this family it does, and
     # which is the only reason the cell is worth anything at all.
-    # IGNORANCE IS NEVER AN EMPTY SET: `Fields` does not hold the source list, so a
+    # Ignorance is never an empty set: `Fields` does not hold the source list, so a
     # predicate that inferred "no sources" from not being told would be the
     # over-covering refusal this clause exists to prevent. A MAGNETIC source is
     # injected in the B/H half and does NOT disqualify the pair.
@@ -435,7 +435,7 @@ def metal_beta_fused_electric_pair_coverage(fields: Any, pml: Any,
         return Coverage(False,
                         tuple(dict.fromkeys(reasons + ["fields carries no grid"])))
 
-    # THE TWO FILLS. `special_kz`'s own clause 5 already refuses a mirror plane on
+    # The two fills. `special_kz`'s own clause 5 already refuses a mirror plane on
     # both halves -- a FOLDED beta run belongs to :mod:`.folded_beta` -- so this
     # restates by NAME what that refusal buys on THIS seam.
     for axis in range(3):
@@ -522,7 +522,7 @@ def _params_tensor(shape: Sequence[int], dtdx: float, beta_plus: float,
     The record is :func:`.chunk_bounds.pack` of the validated ``int32[25]`` words,
     embedded at byte 28 (every member is four bytes, so the struct has no padding).
 
-    PLAN-OWNED AND OUTSIDE THE RESIDENCY REGISTRY, for
+    Plan-owned and outside the residency registry, for
     :func:`.beta_fused_magnetic_pair._params_tensor`'s reason:
     :meth:`.Residency.mirror` binds float32 and complex64 volumes and refuses
     anything else BY NAME, and this record is neither. Built here, once, at plan
@@ -574,7 +574,7 @@ def plan_metal_beta_fused_electric_pair(
     codes = tuple(1 if kind == "metallic" else 0
                   for kind in _boundary_kinds(grid, pml))
     walls = zero_metal_axes(grid)
-    # THE COEFFICIENTS ARE THE CURL ARM'S OWN, called rather than re-derived:
+    # The coefficients are the curl arm's own, called rather than re-derived:
     # stepping.py:797-811 evaluated on the objects the array path evaluates it on, so
     # the intermediate precision is the array path's too. `magnetic=False` is the D
     # seam's sign convention and is NOT a default: the two seams take opposite signs.
@@ -587,7 +587,7 @@ def plan_metal_beta_fused_electric_pair(
         volumes.append(name)
         return residency.mirror(name, host, constant=constant)
 
-    # THE ORDER HERE IS THE SIGNATURE'S ORDER and nothing else keeps them in step.
+    # The order here is the signature's order and nothing else keeps them in step.
     flux = [bind(name, getattr(fields, name)) for name in ("Dx", "Dy", "Dz")]
     auxiliary = [bind("fu_" + name, getattr(fields, "fu_" + name))
                  for name in ("Dx", "Dy", "Dz")]
@@ -598,7 +598,7 @@ def plan_metal_beta_fused_electric_pair(
     inverse_epsilon = [
         bind("inv_eps_" + name, fields.inverse_epsilon_for(name), constant=True)
         for name in ("Ex", "Ey", "Ez")]
-    # THE D CURL TAKES THE INTEGER LATTICE and the E constitutive the HALF-INTEGER
+    # The D curl takes the integer lattice and the E constitutive the HALF-INTEGER
     # one (stepping.py:948 vs :1015). That is the OPPOSITE pairing to the B/H pair,
     # and the kernel cannot tell.
     curl_coefficients = [
@@ -655,7 +655,7 @@ def register_arms() -> Tuple[Any, ...]:
     same configurations, and ``_select_slot`` would leave the slot UNSELECTED -- the
     certified curl would come off the device as well.
 
-    THE OTHER HALF IS THE ABSORB TABLE:
+    The other half is the absorb table:
     ``launch.FUSED_PAIR_ARMS["beta_fused_electric_pair"]`` declares which arm each of
     the two slots implements.
     """

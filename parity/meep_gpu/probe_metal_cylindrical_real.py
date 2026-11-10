@@ -4,7 +4,7 @@ Five questions, each of which decides a design choice rather than decorating one
 None of them is answered by another backend's measurement, and the module says so
 where the temptation to inherit is strongest.
 
-1. **THE DIVIDE** (:func:`leg_divide`). ``cylindrical_rderiv_prefix``
+1. **The divide** (:func:`leg_divide`). ``cylindrical_rderiv_prefix``
    (stepping.py:1286-1334) divides once per element: ``(weighted[i] -
    weighted[i-1]) / divisor[i-1]``. Whether Metal's ``/`` is the correctly-rounded
    float32 divide NumPy performs is a PLATFORM FACT and is unmeasured on this
@@ -12,12 +12,12 @@ where the temptation to inherit is strongest.
    diverges. If ``/`` diverges too, the prefix cannot run on the device at all and
    the family must pay a host round trip per curl sub-step.
 
-2. **THE SCAN** (:func:`leg_prefix`). The Triton m = 0 family put the scan on the
-   ARRAY PATH and called it the round's decisive measurement
+2. **The scan** (:func:`leg_prefix`). The Triton m = 0 family put the scan on the
+   ARRAY PATH and called it that family's decisive measurement
    (``triton_kernels/cylindrical_triton.py:32-56``): ``cupy.cumsum`` is not a
    sequential float32 accumulation (87,270 of 102,400 elements differ), so on that
    backend the ORACLE ITSELF was unreproducible and no device scan could match it.
-   **THAT REASON DOES NOT TRANSFER AND ITS PREMISE IS INVERTED HERE.** This
+   **That reason does not transfer and its premise is inverted here.** This
    backend's engine holds NumPy (``metal_kernels/coverage.py:82``), and the same
    Triton paragraph records that ``numpy.cumsum`` IS byte-equal to a sequential
    accumulation. So the oracle a Metal kernel must reproduce is the sequential one,
@@ -26,20 +26,20 @@ where the temptation to inherit is strongest.
    measured here, end to end against ``stepping.cylindrical_rderiv_prefix`` itself,
    at both ``ir0`` values the two sub-steps use and with the B side's zero wall row.
 
-3. **NEGATION AND SIGNED ZERO** (:func:`leg_negation`). Re-measured on this
+3. **Negation and signed zero** (:func:`leg_negation`). Re-measured on this
    backend rather than inherited. ``shaders.py:47-51`` records ``-x`` as a sign-bit
    operation here while Triton lowers it as ``0.0 - x``; this family's masks and its
    ``Dy[0] = 0`` rule put signed zeros live on the axis row, so the three spellings
-   are measured again on THIS host, in THIS round, over an exhaustive table.
+   are measured again on THIS host, by this probe, over an exhaustive table.
 
-4. **THE r-AXIS NEAR GHOST** (:func:`leg_axis_ghost`). ``_shift_down``'s CYL_AXIS
+4. **The r-axis near ghost** (:func:`leg_axis_ghost`). ``_shift_down``'s CYL_AXIS
    branch (stepping.py:1877-1889) writes a sign-flipped image of stored row 0. The
    Triton COMPLEX family measured a METALLIC substitution identical over 80/80 rows;
    that measurement is |m| >= 1 and complex, and this family is m = 0 and real. It
    is re-measured here on the ARRAY PATH, where the question actually lives — no
    Metal involved — by stepping two engines that differ only in that one ghost rule.
 
-5. **THE OWNERSHIP MASK AND GHOST EMITTERS** (:func:`leg_emitters`). The claim the
+5. **The ownership mask and ghost emitters** (:func:`leg_emitters`). The claim the
    whole design rests on is that compiling the r axis as METALLIC reproduces BOTH
    the CYL_AXIS far ghost (identical by inspection, stepping.py:1828-1830) and the
    is_axis ownership mask (stepping.py:1945-1949) with NO new emitter. That is an
@@ -108,7 +108,7 @@ def _subnormal_words(array: Any) -> int:
 def classify(measured: Any, reference: Any) -> Dict[str, int]:
     """Split disagreeing words into the FLUSH class and everything else.
 
-    THE SPLIT IS NOT A LOOSENING, IT IS THE ONLY WAY TO ASK THE QUESTION. Metal
+    The split is not a loosening, it is the only way to ask the question. Metal
     flushes float32 subnormals and exposes no lever to stop it — no pragma, no
     environment variable, no torch API — so a comparison that lumps the flush in
     with rounding cannot say whether an operation is correctly rounded; it can only
@@ -187,7 +187,7 @@ kernel void divide_probe(
 def _divide_operands(rng: Any) -> Dict[str, Tuple[Any, Any]]:
     """Numerator/divisor pairs, in the classes the prefix actually produces.
 
-    ``rderiv`` IS THE REAL ONE: the divisors are the float32-rounded
+    ``rderiv`` is the real one: the divisors are the float32-rounded
     ``(ir + ir0) - 0.5`` row constants ``cylindrical_rderiv_prefix`` builds
     (stepping.py:1310-1312) and the numerators are differences of weighted field
     rows. The other three classes exist so a divergence can be ATTRIBUTED — a
@@ -428,7 +428,7 @@ def leg_prefix(payload: Dict[str, Any], out: str) -> None:
         "subnormal_free_cases": sum(1 for r in shipped
                                     if not r["subnormal_in"]
                                     and not r["subnormal_reference"]),
-        # STATED BECAUSE IT IS A NULL RESULT AND NULLS GET DROPPED. The contract
+        # Stated because it is a null result and nulls get dropped. The contract
         # guard is NOT exercised by this kernel: the ``fast`` arm measured the same
         # zero as the shipped one, so this leg says nothing about the pragma. The
         # reason is visible in the source — ``w`` is live across the loop iteration
@@ -608,7 +608,7 @@ def _seed_engine(fields: Any, shape, seed: int) -> None:
 def leg_axis_ghost(payload: Dict[str, Any], out: str) -> None:
     """Is the CYL_AXIS near ghost OBSERVABLE at m = 0, real storage?
 
-    THE QUESTION LIVES ON THE ARRAY PATH, so no Metal runs here. Two engines are
+    The question lives on the array path, so no Metal runs here. Two engines are
     seeded identically and stepped by ``stepping.step_B``/``step_D``; the second has
     ``_shift_down``'s CYL_AXIS branch replaced by METALLIC's zero ghost, which is
     exactly what compiling ``BCX = METALLIC`` would give the kernel. If the two

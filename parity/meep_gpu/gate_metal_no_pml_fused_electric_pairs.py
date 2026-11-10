@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The device gate for the two no-absorber stored-E Metal welds — the last buildable cells.
 
-WHAT THIS CERTIFIES, AND ON WHAT. Two products landed in one round, both welds
+What this certifies, and on what. Two products were added together, both welds
 across the D->E seam and both the FIRST Metal consumers of
 ``deposit_repair.PLAIN_PATH`` (the repair that inverts ``update_E``'s plain
 overwrite rather than the split-field recurrence):
@@ -9,7 +9,7 @@ overwrite rather than the split-field recurrence):
     no_pml_fused_electric_pair             no-PML curl x no-PML stored E          (1 corpus row)
     no_pml_conductive_fused_electric_pair  conductive no-PML curl x stored E      (2 corpus rows)
 
-THE COMPARISON IS PER COMPLETE DRIVER STEP, AS uint32 WORDS, over every stored
+The comparison is per complete driver step, as uint32 WORDS, over every stored
 volume a step can touch plus every polarization buffer — never ``allclose`` and
 never a single sub-step. ``update_P`` runs downstream of the repaired E on this
 branch (``Fields.drive_field`` returns the STORED E when the layer is inactive), so
@@ -50,7 +50,7 @@ THE LEGS, each armed (a negative leg that does not diverge is reported and fails
                       REFUSED; the counts are parsed from the emitted text and must
                       equal each module's BINDINGS_PER_COMPONENT.
 
-BOTH PAIRS BIND THE CHUNK RECORD of their run's own one-rank division
+Both pairs bind the chunk record of their run's own one-rank division
 (``gate_chunk_records.layer_record``: no layer, so the partner-presence word alone),
 as the composer hands it over, and step MEEP's stencil with its partner-presence
 forms (the conductive pair since its certified curl took MEEP's form); each family's
@@ -195,7 +195,7 @@ def build_fixture(boundaries: Optional[Dict[str, str]] = None,
 def seed_state(fields: Any, seed: int, lattice: bool = False) -> Any:
     """Physical-band values everywhere, or the +-0 lattice; inv_eps made per-cell.
 
-    THE INVERSE EPSILON IS MADE NON-UNIFORM, identically on both sides: on a
+    The inverse epsilon is made non-uniform, identically on both sides: on a
     uniform-epsilon fixture every inv_eps pointer holds one value, so a kernel that
     read the permittivity at the wrong cell — or a vacuum fixture where every
     inv_eps is an allocation of ones — is bit-identical to the right one, and a
@@ -402,7 +402,7 @@ FAMILIES: Tuple[Dict[str, Any], ...] = (
                   poles=("Ez",), conductive=("Dy",))),
         ),
         "mutation_case": "wall_xyz_2poles_all",
-        # THE SCALED (non-integrated) CASE IS COMPOSED, NOT FORCE-BRACKETED, since
+        # The scaled (non-integrated) case is composed, not force-bracketed, since
         # the lift: the shipped predicate now admits the corpus shape and the
         # composer installs the bracket itself, with the driver's sparse condinv
         # replay in the seam. The lifted_refusal leg holds the +-0-lattice class;
@@ -883,7 +883,7 @@ def run_deposit_case(spec: Mapping[str, Any], case: str, integrated: bool,
         installed = (type(leading).__name__, type(trailing).__name__)
         if repair:
             installed_ok = installed == ("LeadingRepairPlan", "TrailingRepairPlan")
-            # THE PATH ASSERTION: the composed bracket must carry this product's
+            # The path assertion: the composed bracket must carry this product's
             # own declaration, not the split-field default.
             installed_ok = installed_ok and (
                 tuple(leading.repair_paths) == (deposit_repair.PLAIN_PATH,))
@@ -978,11 +978,11 @@ def leg_deposit(spec: Mapping[str, Any], steps: int) -> Dict[str, Any]:
             f"passed={rows[label]['passed']} "
             f"repaired={rows[label].get('deposit_points_repaired')} "
             f"paths={rows[label].get('repair_paths')}")
-    # THE CONTROL DEPOSITS. An integrated source deposits nothing at the curl (its
+    # The control deposits. An integrated source deposits nothing at the curl (its
     # dipole enters at the constitutive read through f_minus_p, sources.py's
     # ``VolumeSource.inject``), so a bracket withdrawn around one has nothing to
     # repair, and a control built on it can only diverge for a reason that is not the
-    # deposit. MEASURED (bit_parity_0_10 lane FXHD): the conductive family's control,
+    # deposit. Measured during 1.0 development: the conductive family's control,
     # built integrated, read 0 differing words over the whole budget once its pair
     # stepped MEEP's stencil; built scaled, it diverges from step 1. The scaled source
     # is the one the bracket exists for, on both families.
@@ -1004,13 +1004,13 @@ def leg_deposit(spec: Mapping[str, Any], steps: int) -> Dict[str, Any]:
 
 
 def leg_lifted_refusal(spec: Mapping[str, Any], steps: int) -> Dict[str, Any]:
-    """The formerly refused configuration, MEASURED IDENTICAL — with the old hazard
+    """The formerly refused configuration, measured IDENTICAL — with the old hazard
     still armed.
 
-    THE CLAUSE THIS LEG USED TO STAND BEHIND priced the conductive cell at 0 of 2:
+    The clause this leg used to stand behind priced the conductive cell at 0 of 2:
     the driver's whole-volume condinv rescale canonicalised every ``-0.0`` in the
     target D at cells no deposit closure can name, and the walk below (the same
-    +-0-lattice class, the same PLAIN_PATH bracket) MEASURED the divergence — 2417
+    +-0-lattice class, the same PLAIN_PATH bracket) measured the divergence — 2417
     Dz words moved, 1231 Ez words divergent at step 1, identical from step 2 on.
     The driver now replays the rescale sparsely at the deposit cells the sources
     publish, so the SAME walk is re-run here and the lift is taken on what it
@@ -1167,6 +1167,8 @@ def leg_binding_ceiling() -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 def main() -> int:
+    from metal_closed_table import close_table  # noqa: PLC0415
+    close_table()
     global STEPS
 
     parser = argparse.ArgumentParser()

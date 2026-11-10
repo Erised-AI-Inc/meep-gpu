@@ -16,13 +16,13 @@ Legs, selected with ``--leg`` (default: all but ``budget`` and ``bench``):
   multistep N consecutive launches of the same plan, compared after every one.
   mutations one deliberately broken kernel per defect class, each of which must be
             CAUGHT. A mutation leg that reports a pass for a mutation it never
-            applied is worse than no leg (plan section 13.4), so every leg records
+            applied is worse than no leg, so every leg records
             the sha256 of the source it compiled.
   engine    the ENGINE plan route on a real lifted mp.Simulation, plus the
             refusals, plus N whole driver steps.
   budget    the STEP BUDGET: 2d_plain run to --budget-steps with every state array
             compared bytewise after every step, one fsync'd jsonl row per step.
-            Section 16 measured 2d_pml first differing at step 67 after a 60-step
+            2d_pml was measured first differing at step 67 after a 60-step
             budget certified it, so a budget is a claim about N and nothing more.
   bench     throughput: array path vs DERIVE=0 vs DERIVE=1, sub-step and whole step.
 
@@ -81,7 +81,7 @@ BOUNDARY_SETS = (
     ("periodic", "metallic", "periodic"),
 )
 # 0.5 alone certifies a broken kernel: the FMA/association discrepancy vanishes
-# where the scale factor is a power of two (plan section 9).
+# where the scale factor is a power of two.
 COURANTS = (0.5, 0.35, 0.2673)
 SUB_STEPS = ("step_B", "step_D")
 MULTISTEP = 8
@@ -335,8 +335,8 @@ def leg_multistep(cp) -> Dict[str, Any]:
 #
 # Each entry rewrites ONE line of the kernel source and recompiles it. The plan
 # object carries the mutated kernel explicitly (``kernel=``); dropping that
-# argument disarms every leg silently, which is the harness defect section 13.4
-# records — 4/4 real defects came back "identical" with the shipped kernel
+# argument disarms every leg silently, a harness defect that was measured:
+# 4/4 real defects came back "identical" with the shipped kernel
 # running underneath. The sha256 of the mutated source is recorded per leg so a
 # leg that ran unmutated tables cannot report a pass.
 
@@ -394,7 +394,7 @@ MUTATIONS: Tuple[Tuple[str, str, str, str], ...] = (
 
 
 def compile_mutant(name: str, old: str, new: str, source_path: str):
-    """Compile a one-line-mutated copy of the kernel FROM A REAL FILE ON DISK.
+    """Compile a one-line-mutated copy of the kernel from a real file on disk.
 
     Not ``exec``: Triton reads a kernel's text with ``inspect.getsource``, so an
     exec-ed ``@triton.jit`` body raises ``OSError: could not get source code`` at
@@ -433,8 +433,8 @@ def kernel_only_source(path: str) -> str:
     """
     with open(path, encoding="utf-8") as handle:
         text = handle.read()
-    # ANCHOR ON THE DEFINITION, NOT THE DECORATOR ALONE. A bare ``"@triton.jit"``
-    # index was the anchor once, and MEASURED: adding a module comment that merely
+    # Anchor on the definition, not the decorator alone. A bare ``"@triton.jit"``
+    # index was the anchor once, and measured: adding a module comment that merely
     # MENTIONED the decorator moved the slice's start and silently changed what the
     # gate compiled. It still ran, still reported a verdict, and the verdict was
     # about different bytes. Both anchors are asserted unique below for the same
@@ -1027,8 +1027,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     from composition_policy import (  # noqa: PLC0415
         confirm_campaign_policy, stamp_campaign_policy)
 
-    # THE CAMPAIGN'S SUBNORMAL POLICY, installed and measured before the first kernel
-    # compiles and stamped into the artifact (owner ruling R16; composition_policy.py).
+    # The campaign's subnormal policy, installed and measured before the first kernel
+    # compiles and stamped into the artifact (composition_policy.py).
     # The legs that lift a MEEP simulation import MEEP, which flushes the host, so MEEP
     # is imported before the install whenever one of them is requested.
     refused = stamp_campaign_policy(
@@ -1040,7 +1040,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return 2
 
     if "product" in legs:
-        # THE PARAMETER IS enable_fp_fusion, NOT "is the guard on".
+        # The parameter is enable_fp_fusion, NOT "is the guard on".
         # ``PmlCurlPlan.run(guard=...)`` (launch.py:170-189) forwards its argument
         # straight to ``enable_fp_fusion``, so guard=False is the GUARDED run and
         # guard=True is the unguarded control. Spelled out because this gate ran

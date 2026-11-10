@@ -25,7 +25,7 @@ tables bind. What is pinned here:
 The Metal half of the hand-over (driver to ``plan_fast_path`` to rung 4bM) is pinned in
 ``test_metal_chunk_bounds``.
 
-NOTHING HERE COMPILES OR LAUNCHES. The NVIDIA rungs are reached on a host whose engine
+Nothing here compiles or launches. The NVIDIA rungs are reached on a host whose engine
 is NumPy under the name ``cupy`` with a stub Triton (``test_dispatch_contract``'s
 doubles). The composers are either recorders or the real planners, which build plans
 without a device; a plan the warm pass cannot compile leaves its slot on the array
@@ -170,7 +170,7 @@ def test_a_drivers_freeze_hands_its_own_division_to_both_nvidia_composers(monkey
 
 
 # --------------------------------------------------------------------------
-# 2. THE DEFAULT IS NOT READ ON THE DISPATCH ROUTE
+# 2. The default is not read on the dispatch route
 # --------------------------------------------------------------------------
 
 def test_a_dispatched_cuda_composition_reads_the_drivers_division(monkeypatch):
@@ -201,7 +201,7 @@ def test_a_dispatched_cuda_composition_reads_the_drivers_division(monkeypatch):
 
 
 # --------------------------------------------------------------------------
-# 3. BOTH TABLES JUDGE THE DIVISION HANDED OVER
+# 3. Both tables judge the division handed over
 # --------------------------------------------------------------------------
 
 def test_a_lifted_division_no_record_describes_is_refused_by_both_nvidia_tables(monkeypatch):

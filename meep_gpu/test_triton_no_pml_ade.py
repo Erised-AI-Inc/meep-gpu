@@ -9,7 +9,7 @@ in-test transcription of the ADE recurrence pinned BYTE-for-byte against
 ``PolarizationState.update``. The kernel's device bytes are the existing ADE
 gate's; nothing here launches.
 
-THE LOAD-BEARING HALF OF THIS FILE IS THE CONTROL. The inverted clause admits a
+The load-bearing half of this file is the control. The inverted clause admits a
 STORED-E drive, and binding the stored E under an ACTIVE layer is "the single
 most likely silent wrong answer in dispersion" (fields.py:1149-1156) — the device
 leg measured it at 3072 of 15360 words. So there is a test here that the two
@@ -149,7 +149,7 @@ def test_the_module_reaches_into_no_other_sessions_file_and_names_its_arm(npa):
     """It still imports nothing it does not own — and the claim it carries flipped.
 
     The module shipped with an "AWAITING WIRING" header, which was true: the
-    closure round did not own ``launch.py``. ``plan_step``'s ``update_P`` block
+    residual closure did not own ``launch.py``. ``plan_step``'s ``update_P`` block
     now chooses between this family and the incumbent, so that header would be a
     false statement about a file this module does not own. What a reader needs
     instead is where the choice is made and what still holds DISPATCH shut.

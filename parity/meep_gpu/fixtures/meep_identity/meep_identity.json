@@ -1,7 +1,7 @@
 {
  "about": "MEEP identity, Tier A: per subnormal mode, the minted cases' capsules, currents and digests of MEEP's words (meep_gpu/meep_identity.py). Written only by parity/meep_gpu/record_meep_identity.py.",
  "fixture_budget_bytes": 5000000,
- "fixture_bytes": 4636168,
+ "fixture_bytes": 4636456,
  "schema": "meep_gpu.meep_identity",
  "sets": {
   "flush": {
@@ -13,9 +13,9 @@
     "a": {
      "files": {
       "capsule": {
-       "bytes": 22945,
+       "bytes": 22951,
        "file": "flush/a/capsule.capsule",
-       "sha256": "025dbc623376708197d2b71957d340e4c3a564d1f426565aef8f04765ad510c3"
+       "sha256": "8fd010373837ee17dff07d3118b040af9988a8afec3d6d53be1b9aaf48a4483a"
       },
       "currents": {
        "bytes": 17180,
@@ -25,7 +25,7 @@
       "digests": {
        "bytes": 53257,
        "file": "flush/a/digests.json",
-       "sha256": "b169c4cb2b7c18d545819ee9eda6103a09744124a6969b621f5e115e0277b9c1"
+       "sha256": "48941c68ed6ef139ec91331608406f750ba0b71f38078170194dcdfa16f2ef9a"
       },
       "planes": {
        "bytes": 403328,
@@ -56,7 +56,7 @@
        "word_plane": 81
       },
       "reader_equal": 360,
-      "seconds": 5.559,
+      "seconds": 2.385,
       "stored_equal": 360
      },
      "tier_c": {
@@ -103,7 +103,7 @@
        "point_read_differing": 0,
        "unallocated": 7200000
       },
-      "seconds": 89.428,
+      "seconds": 77.12,
       "smoke_record": {
        "equal": 0,
        "lattice_equal": null,
@@ -161,9 +161,9 @@
     "b": {
      "files": {
       "capsule": {
-       "bytes": 27908,
+       "bytes": 27936,
        "file": "flush/b/capsule.capsule",
-       "sha256": "a71b6311d6bf87aa9f4092133026e12094b3451de2667665c865d5f470bae12c"
+       "sha256": "9d2430e32ce2662bf91a1e6974f41e334051cb73f0416217cedde43b8eea0e44"
       },
       "currents": {
        "bytes": 17180,
@@ -173,7 +173,7 @@
       "digests": {
        "bytes": 53257,
        "file": "flush/b/digests.json",
-       "sha256": "48599b726d0b9a95676e93f6250f4ec1ba3fddc8d5e2699339e8ba23229fbb11"
+       "sha256": "8188645eda9d8c36d654bcc31f0eb19ffcc8a781aeef99a172d59192945239fd"
       },
       "planes": {
        "bytes": 403328,
@@ -187,7 +187,7 @@
        "arrays_pasted": 0,
        "arrays_rebuilt_differently": 0,
        "arrays_rebuilt_differently_paths": [],
-       "scalars_compared": 270,
+       "scalars_compared": 272,
        "scalars_rebuilt_differently": 0,
        "scalars_rebuilt_differently_paths": []
       },
@@ -204,7 +204,7 @@
        "word_plane": 81
       },
       "reader_equal": 360,
-      "seconds": 5.758,
+      "seconds": 2.415,
       "stored_equal": 360
      },
      "tier_c": {
@@ -251,7 +251,7 @@
        "point_read_differing": 0,
        "unallocated": 7200000
       },
-      "seconds": 66.683,
+      "seconds": 93.513,
       "smoke_record": {
        "equal": 0,
        "lattice_equal": null,
@@ -309,9 +309,9 @@
     "c": {
      "files": {
       "capsule": {
-       "bytes": 23645,
+       "bytes": 23673,
        "file": "flush/c/capsule.capsule",
-       "sha256": "9c68f3519b3069dd4306009dff0ab5f350d6f4a62201f267a021b954eca8ce67"
+       "sha256": "a742c709b58a3a2b797eb4eb8f1d971ccea5bc3525cb079684bfb2b60521c37e"
       },
       "currents": {
        "bytes": 31868,
@@ -321,7 +321,7 @@
       "digests": {
        "bytes": 55026,
        "file": "flush/c/digests.json",
-       "sha256": "eaa6cbcea56e609e604eb5435c2a56641f1992e8b51999a14946b3f2368f870e"
+       "sha256": "ec185658ef160174fabd8c46b63e2900bb9ac7b49b88b590b1a044b245daf850"
       },
       "planes": {
        "bytes": 78752,
@@ -335,7 +335,7 @@
        "arrays_pasted": 0,
        "arrays_rebuilt_differently": 0,
        "arrays_rebuilt_differently_paths": [],
-       "scalars_compared": 307,
+       "scalars_compared": 309,
        "scalars_rebuilt_differently": 0,
        "scalars_rebuilt_differently_paths": []
       },
@@ -352,7 +352,7 @@
        "word_plane": 1
       },
       "reader_equal": 372,
-      "seconds": 6.363,
+      "seconds": 3.097,
       "stored_equal": 372
      },
      "tier_c": {
@@ -404,7 +404,7 @@
        "point_read_differing": 0,
        "unallocated": 0
       },
-      "seconds": 32.056,
+      "seconds": 22.955,
       "smoke_record": {
        "equal": 0,
        "lattice_equal": null,
@@ -463,9 +463,9 @@
     "c_prime": {
      "files": {
       "capsule": {
-       "bytes": 23628,
+       "bytes": 23655,
        "file": "flush/c_prime/capsule.capsule",
-       "sha256": "0d7417cd253a6e5fe4ee6e9405ebed2b781ff70e43ecda79fe956aad711029ca"
+       "sha256": "c90d9a16fd3b84943e398874ef5505e1adafe4aa426f2b91cb23235e2dc87b36"
       },
       "currents": {
        "bytes": 17168,
@@ -475,7 +475,7 @@
       "digests": {
        "bytes": 53281,
        "file": "flush/c_prime/digests.json",
-       "sha256": "1cddfadc1f69eba934ded7d5e8c63d452ceeed5e589439e15732ffb8da2882cd"
+       "sha256": "34bfbf7ad0852bb4a5007a6744f3e2588e9178553329dca441006cd33f2cc35b"
       },
       "planes": {
        "bytes": 78752,
@@ -489,7 +489,7 @@
        "arrays_pasted": 0,
        "arrays_rebuilt_differently": 0,
        "arrays_rebuilt_differently_paths": [],
-       "scalars_compared": 307,
+       "scalars_compared": 309,
        "scalars_rebuilt_differently": 0,
        "scalars_rebuilt_differently_paths": []
       },
@@ -506,7 +506,7 @@
        "word_plane": 1
       },
       "reader_equal": 360,
-      "seconds": 4.584,
+      "seconds": 2.13,
       "stored_equal": 360
      },
      "tier_c": {
@@ -558,7 +558,7 @@
        "point_read_differing": 0,
        "unallocated": 0
       },
-      "seconds": 37.669,
+      "seconds": 21.535,
       "smoke_record": {
        "equal": 0,
        "lattice_equal": null,
@@ -616,9 +616,9 @@
     "ex.absorber-1d": {
      "files": {
       "capsule": {
-       "bytes": 28419,
+       "bytes": 28422,
        "file": "flush/ex.absorber-1d/capsule.capsule",
-       "sha256": "e739136a2c5f08d05076054d6751a936a530d037d4d98f5db879f9886c0a79e9"
+       "sha256": "d6b8383464d78bfc00f746bb15c39c87804b945ebea8f51779ddff788f489170"
       },
       "currents": {
        "bytes": 336381,
@@ -628,7 +628,7 @@
       "digests": {
        "bytes": 55023,
        "file": "flush/ex.absorber-1d/digests.json",
-       "sha256": "676e94f22d8f266c9306f78665df1f0955cefb4bb930d2747b4e66b1ce806e39"
+       "sha256": "ec63e77f2b88d4968cc32dbf94ff5e2540e05d5433ced6c799bca789694113b6"
       },
       "planes": {
        "bytes": 2144,
@@ -659,7 +659,7 @@
        "word_plane": 0
       },
       "reader_equal": 372,
-      "seconds": 2.278,
+      "seconds": 1.739,
       "stored_equal": 372
      },
      "tier_c": {
@@ -706,7 +706,7 @@
        "point_read_differing": 0,
        "unallocated": 99200
       },
-      "seconds": 6.51,
+      "seconds": 3.203,
       "smoke_record": {
        "equal": 0,
        "lattice_equal": null,
@@ -765,9 +765,9 @@
     "ex.material-dispersion": {
      "files": {
       "capsule": {
-       "bytes": 10639,
+       "bytes": 10646,
        "file": "flush/ex.material-dispersion/capsule.capsule",
-       "sha256": "21c47946d8ccc06234e3ea6b8abe366c31af22e9a78ee8ad50a6943992e41db1"
+       "sha256": "99770376d6830a1f5dbe6f2ee32c99f3a214ca8a96a233941a8f5a7a1b67d841"
       },
       "currents": {
        "bytes": 17180,
@@ -777,7 +777,7 @@
       "digests": {
        "bytes": 53223,
        "file": "flush/ex.material-dispersion/digests.json",
-       "sha256": "7b584829d10d1d28c052aefd1874d6f006b37a5224fa3a41bdbe376ffdf2443d"
+       "sha256": "b21d0ab2c054a2c8ac16c3cb80c3199e639410ca00087410e3fc1da078f1e789"
       },
       "planes": {
        "bytes": 2144,
@@ -808,7 +808,7 @@
        "word_plane": 0
       },
       "reader_equal": 360,
-      "seconds": 0.664,
+      "seconds": 0.302,
       "stored_equal": 360
      },
      "tier_c": {
@@ -855,7 +855,7 @@
        "point_read_differing": 0,
        "unallocated": 180
       },
-      "seconds": 1.489,
+      "seconds": 1.099,
       "smoke_record": {
        "equal": 0,
        "lattice_equal": null,
@@ -913,9 +913,9 @@
     "t.test_holey_wvg_bands.TestHoleyWvgBands.test_fields_at_kx": {
      "files": {
       "capsule": {
-       "bytes": 22954,
+       "bytes": 22975,
        "file": "flush/t.test_holey_wvg_bands.TestHoleyWvgBands.test_fields_at_kx/capsule.capsule",
-       "sha256": "07104e7f528e8a1e2d52cb250a22dc31593fb7d6f3edec655a22aa827c4608fd"
+       "sha256": "f09f4a2971f528035d2da5737d2103f853c4e4c1035d4a6b3da67d330dc06bd4"
       },
       "currents": {
        "bytes": 17168,
@@ -925,7 +925,7 @@
       "digests": {
        "bytes": 53310,
        "file": "flush/t.test_holey_wvg_bands.TestHoleyWvgBands.test_fields_at_kx/digests.json",
-       "sha256": "3ec23f506ac698b5131486e9a82919f2196143f9ef9d251c738e69ec4a2d7204"
+       "sha256": "5b5d0c10ca0e25aaf7d153da2d468a2e87d7de78cb53582b27d96f3e994414f2"
       },
       "planes": {
        "bytes": 40448,
@@ -939,7 +939,7 @@
        "arrays_pasted": 0,
        "arrays_rebuilt_differently": 0,
        "arrays_rebuilt_differently_paths": [],
-       "scalars_compared": 222,
+       "scalars_compared": 224,
        "scalars_rebuilt_differently": 0,
        "scalars_rebuilt_differently_paths": []
       },
@@ -956,7 +956,7 @@
        "word_plane": 0
       },
       "reader_equal": 360,
-      "seconds": 1.491,
+      "seconds": 0.85,
       "stored_equal": 360
      },
      "tier_c": {
@@ -1008,7 +1008,7 @@
        "point_read_differing": 0,
        "unallocated": 439200
       },
-      "seconds": 9.93,
+      "seconds": 11.521,
       "smoke_record": {
        "equal": 0,
        "lattice_equal": null,
@@ -1066,9 +1066,9 @@
     "t.test_ring_cyl.TestRingCyl.test_ring_cyl": {
      "files": {
       "capsule": {
-       "bytes": 17761,
+       "bytes": 17778,
        "file": "flush/t.test_ring_cyl.TestRingCyl.test_ring_cyl/capsule.capsule",
-       "sha256": "eb74ca2467c07fe2ea8337e387327ff022bdd24965687329e0bc9f9655d01861"
+       "sha256": "de2090998272bcd8214e8335cd827536ca6155b20b70c0e8fa9cf24f779c4004"
       },
       "currents": {
        "bytes": 84381,
@@ -1078,7 +1078,7 @@
       "digests": {
        "bytes": 55018,
        "file": "flush/t.test_ring_cyl.TestRingCyl.test_ring_cyl/digests.json",
-       "sha256": "189dcb5e9e6a2137eaba1aeb2ec51a2623d47572b19a4d98b3b122f33af038f9"
+       "sha256": "fe386a80fb4d291717e39f9ba33b5c6d43d486f1622a2001bc39c8e45eca7672"
       },
       "planes": {
        "bytes": 161408,
@@ -1092,7 +1092,7 @@
        "arrays_pasted": 0,
        "arrays_rebuilt_differently": 0,
        "arrays_rebuilt_differently_paths": [],
-       "scalars_compared": 207,
+       "scalars_compared": 209,
        "scalars_rebuilt_differently": 0,
        "scalars_rebuilt_differently_paths": []
       },
@@ -1109,7 +1109,7 @@
        "word_plane": 3
       },
       "reader_equal": 372,
-      "seconds": 1.795,
+      "seconds": 1.459,
       "stored_equal": 372
      },
      "tier_c": {
@@ -1156,7 +1156,7 @@
        "point_read_differing": 0,
        "unallocated": 0
       },
-      "seconds": 4.965,
+      "seconds": 3.175,
       "smoke_record": {
        "equal": 0,
        "lattice_equal": null,
@@ -1221,40 +1221,40 @@
      "system": "Linux"
     },
     "inputs_sha256": {
-     "meep_gpu/array_path_oracle.py": "e99a0a3feb81bca2a7b6af18c5bbe47808abe62ec868baacd29b9ffcae99b4db",
-     "meep_gpu/capsule.py": "74b473e6870bc1f784b4e5a5607a3bc12129b0153da76812a4281556d2656fce",
-     "meep_gpu/chunk_map.py": "bcf2e803008010dfcebf377cc073add9c33a978068be610ed32a70ace918a3c4",
-     "meep_gpu/deposit_repair.py": "3b3a2665874148ebb1fdc4d9cbbc7b7788953610e67fe3bcaeb22b73596c4cc7",
+     "meep_gpu/array_path_oracle.py": "382a570a2e12f01bdb27b8086e7cc1110a7d8615fc6e251d54051311b3b9fbe8",
+     "meep_gpu/capsule.py": "0a1421b690313fb044d917b3f2fd30bebcb14b2008ffafd510e9c1171e63d216",
+     "meep_gpu/chunk_map.py": "6bd84ef1a90a145331acd74add01736069f948bcfcf0f14530b4a14e118c0f46",
+     "meep_gpu/deposit_repair.py": "a5e49dfa6ca7f82054d1beb5967e6a12cb9feae6f4bfa0587ce10ca62b9bdd21",
      "meep_gpu/dispersion.py": "5dab447734013e50800211ebcc7aec5f2c18ba4ab9e76c67a06dcbd0260b8974",
-     "meep_gpu/driver.py": "dfdc15423274ddd589b11fd79d5814635fdee9fab71c919a4f013a256742f1d1",
-     "meep_gpu/fields.py": "99cfb1ea66edf4d1436e9939ce950386818893fb943cedeede822c216900f370",
-     "meep_gpu/from_meep.py": "e6dd7a8a436e457e58a7969a5d648384cf80f711a99425978b9555f68aa96125",
-     "meep_gpu/grid.py": "ea68d46d6c28b0ced6a75a4af9cc002acc5286a19d619a09e352294046ec6524",
-     "meep_gpu/host_writes.py": "c4fa862d518789231649d95bc75716625eafc3e896962257953bc26475f986ea",
-     "meep_gpu/meep_identity.py": "1c095319e4f2a38db9897c7932877bfe286eb4121de4de77c8a4d4ab68ab9efa",
-     "meep_gpu/part_products.py": "23cc6a36f1ba534ed59dce34d413a010ec5015e1a7c8569b20112933759b16b9",
-     "meep_gpu/pml.py": "d76f91fc967fe549badf2f42acf91d5a944a8ac21c4cea6bedfe1bea46c516fb",
-     "meep_gpu/sources.py": "2451b01223a39df67a0d3fbc5c3a9bf5cdf87a813bc5bdc1178244f523e42db1",
-     "meep_gpu/stepping.py": "913c337fd818ec5b7fabba6837146d57ebe8f077cf765f5760e857e166039c57",
-     "meep_gpu/withdraw_hoist.py": "8bee15197ead66de7e5c8b2adbf19884c1943b16b3fa3d069fcaf3bee3e20b89",
+     "meep_gpu/driver.py": "e72363e8331aa8a137c21dd96c298e66ac3bc7699000bd486f5622fcfa0889bf",
+     "meep_gpu/fields.py": "b2d4411391d6fc6e0c2953899f954939c29a45499350703fc701e626b17f844d",
+     "meep_gpu/from_meep.py": "0cbe2af3ba991d6a0d9d92f0b3fdf18b4913126d16c7f94738477ccc825c87bb",
+     "meep_gpu/grid.py": "3cdb5fc1b29a90d2a78b89b3a79303cab918403a459345f5be6faca1da791c04",
+     "meep_gpu/host_writes.py": "5d973d80aec0c4cc3fd81a210233dbf957eef34596c4f20cfdec14d65c697bf4",
+     "meep_gpu/meep_identity.py": "9e01f6e4a16e17221312a7dd0300d76c0eb3a693a47c3ee2a879eb1202cfcfe3",
+     "meep_gpu/part_products.py": "ffd7a4c46202b9e5e0560375356e23cd40eee2e8b814d2f230fca3ccf9895f07",
+     "meep_gpu/pml.py": "93d0e7c70ac32e3310cb624f95ca3de0c6d7e3da801b5c4398a3ca9ce0fc35e9",
+     "meep_gpu/sources.py": "0b61333c4802dd4db1a8ede3cce6143c3c0a017c03d7ae8dd30eb7bf83f3e6a6",
+     "meep_gpu/stepping.py": "4181a65fd14b8980993089e719e4fd26b260cf0aa0eaeae0e332f204072b94e1",
+     "meep_gpu/withdraw_hoist.py": "b19f36012060dd0ad4c09292f75e26afd8d3730bd83d08ba67daa48a5ebbc124",
      "parity/meep_gpu/meep_identity_smoke.json": "400d822fec6eadb6a2e0b041eb0ec535bf33ce3309496339bbec2c3cb2f3a9b8",
-     "parity/meep_gpu/meep_identity_smoke.py": "2b8c2dfab8486cbb61723e8041e54134985e05fdbb58e60e0505b24d87e66cdc",
-     "parity/meep_gpu/meep_identity_tier_c.py": "68bdd443b1135903f9467e90158c18af60f11619ccdd5a4a40be5d3fbc1d5dfa",
+     "parity/meep_gpu/meep_identity_smoke.py": "7288b7d13d51b80deec416dd5c771d490c15b8ad14b4a3181a5a3439ec5aa0f9",
+     "parity/meep_gpu/meep_identity_tier_c.py": "91e065063c5452901631659a348d79ed75d4d660b6b971d51368c2064eff8b91",
      "parity/meep_gpu/record_meep_identity.py": "766f72ccddb02fa0610d14a29e480228869e52aa0c2ce87fa7c9ba5c15cf2436"
     },
-    "seconds": 335.1,
+    "seconds": 290.8,
     "tool": "parity/meep_gpu/record_meep_identity.py",
     "tool_sha256": "766f72ccddb02fa0610d14a29e480228869e52aa0c2ce87fa7c9ba5c15cf2436",
-    "utc": "2026-10-15T08:35:40Z"
+    "utc": "2026-10-22T08:04:28Z"
    },
    "mode": "flush",
    "provenance_code_sha256": {
     "meep_gpu/chunk_map.py": "f0d36fdd46573db9dfd6e958aafa17cdcf5cb8f131f0b0f7b4a537b8472e9d6b",
-    "meep_gpu/deposit_repair.py": "c165c1c870013c3a329c32b46aded84463918f60e3db96c31661e0819e013a99",
+    "meep_gpu/deposit_repair.py": "a5c5bd18b5d6ce98e0651c3c670b106705551e8fae3d624c610e411a3fd4550a",
     "meep_gpu/dispersion.py": "7e59617c4d1a408ccd6f0e4ba3c963ba1424f00e2b5468b8e79f1c794460043d",
-    "meep_gpu/driver.py": "0d7fb07728ad7f67dd341d67ed4f37ef54ffdddf67f9646c521b2effdffd2e09",
-    "meep_gpu/fields.py": "d6c9113bb8dbccb0c8dc422dc2f8b979896c22da1a2d5dff0d553fc11e6efc44",
-    "meep_gpu/from_meep.py": "8472c5daa7768ef74996bd6937f77b2484d6c421e43bedc7df31f32d081da5e5",
+    "meep_gpu/driver.py": "c894b8b027c7b2d6da574b73103c89ca88e0ac684ab1fd795f02314f1e0be315",
+    "meep_gpu/fields.py": "71e7edc9e5682251ad519576ecf5b31fcadb4fc47e69e774eaa1451f34d600de",
+    "meep_gpu/from_meep.py": "6b583cad4e0b169c4d439571d816989e8f9b7c861db89b7074baa43cfcbe5613",
     "meep_gpu/grid.py": "80a5929036e19bfa6dd86e8cc8a0d8f8344eb804f6fd083c605050516655e8c7",
     "meep_gpu/host_writes.py": "20db60eff5f1e610aecd80d7359a96021713b62938a14e6640a8f437c6cff0f5",
     "meep_gpu/part_products.py": "f22eeb2f33924a389619071d4495b1006b1434f6a95de0146e521f433c66e348",
@@ -1268,11 +1268,11 @@
      "census": "no fused multiply-add instruction outside the compiler-rt division builtins in 2 of 2 image(s) (0 inside them, exempt)",
      "file": "build_record.json",
      "fp_contract": "off",
-     "sha256": "10b4b5ab39f1466ea09e65b6661a2c5b1a9d6f13adbcb5ff8f2f026cdb276134"
+     "sha256": "4497806b807cb279790f19c543ed4c99d44272ae2afe9b34c0b779ea2d2ef59a"
     },
     "images": {
-     "_meep.so.37.0.0": "0445f8367660246cbfc68feba6d015933743f512b7ce5e5a6724203641e49750",
-     "libmeep.so.37.0.0": "d7f4a0c456f1edc3fec28febb4bfd1979857d6f8456adb7fa3986f856099e2ff"
+     "_meep.so": "d02310b4e12d4c33ec4003cad62170401ba71f009a1c03ba51d858c2c515b46f",
+     "libmeep.so.39.0.0": "50f0075b28df7251ac9ceb7c1d4c50609364018b9793395f9442e2772de259dd"
     },
     "libm": {
      "cpu_features": [
@@ -1291,7 +1291,7 @@
     "meep": {
      "mpi": true,
      "single_precision": true,
-     "version": "1.33.0"
+     "version": "1.35.0"
     },
     "numpy": "2.2.6",
     "omp_num_threads": "1",
@@ -1316,9 +1316,9 @@
     "a": {
      "files": {
       "capsule": {
-       "bytes": 22942,
+       "bytes": 22949,
        "file": "keep/a/capsule.capsule",
-       "sha256": "3db426b99e5156850c46594eadd60e6b4f97af499e982677a8289d8e928eba95"
+       "sha256": "9c819d33e422c78c8a3864601df77a4209ced6f031eba3d78de2c720421e260c"
       },
       "currents": {
        "bytes": 17180,
@@ -1328,7 +1328,7 @@
       "digests": {
        "bytes": 53256,
        "file": "keep/a/digests.json",
-       "sha256": "541b32783a4617ada29376a5702344a7ee6b5525b7aa288a24d9c0bc5a288685"
+       "sha256": "3d5e2127692cc1444ba65ad647e491e5e49cf77742335b3c8495226b9aeb8600"
       },
       "planes": {
        "bytes": 403328,
@@ -1359,7 +1359,7 @@
        "word_plane": 81
       },
       "reader_equal": 360,
-      "seconds": 1.035,
+      "seconds": 1.08,
       "stored_equal": 360
      },
      "tier_c": {
@@ -1406,7 +1406,7 @@
        "point_read_differing": 0,
        "unallocated": 7200000
       },
-      "seconds": 28.923,
+      "seconds": 29.085,
       "smoke_record": {
        "equal": 0,
        "lattice_equal": null,
@@ -1464,9 +1464,9 @@
     "b": {
      "files": {
       "capsule": {
-       "bytes": 27906,
+       "bytes": 27935,
        "file": "keep/b/capsule.capsule",
-       "sha256": "506efc4a150467ff1702a371f32321a00624758edad0a4b7a123b266c03692da"
+       "sha256": "98961efd8333ecfcaf558b17ae216fedde66e7983fabc01039fd50a37859828d"
       },
       "currents": {
        "bytes": 17180,
@@ -1476,7 +1476,7 @@
       "digests": {
        "bytes": 53256,
        "file": "keep/b/digests.json",
-       "sha256": "380340b7b4b1f06ae8d345ce91eca8ac76af004b612fc2bda4b71ac7e704937a"
+       "sha256": "0cde6b0520955d1a47f33c8e34afd7b2f0964192501248f72c3dd75e719ee719"
       },
       "planes": {
        "bytes": 403328,
@@ -1490,7 +1490,7 @@
        "arrays_pasted": 0,
        "arrays_rebuilt_differently": 0,
        "arrays_rebuilt_differently_paths": [],
-       "scalars_compared": 270,
+       "scalars_compared": 272,
        "scalars_rebuilt_differently": 0,
        "scalars_rebuilt_differently_paths": []
       },
@@ -1507,7 +1507,7 @@
        "word_plane": 81
       },
       "reader_equal": 360,
-      "seconds": 0.994,
+      "seconds": 1.075,
       "stored_equal": 360
      },
      "tier_c": {
@@ -1554,7 +1554,7 @@
        "point_read_differing": 0,
        "unallocated": 7200000
       },
-      "seconds": 29.354,
+      "seconds": 29.122,
       "smoke_record": {
        "equal": 0,
        "lattice_equal": null,
@@ -1612,9 +1612,9 @@
     "c": {
      "files": {
       "capsule": {
-       "bytes": 23639,
+       "bytes": 23672,
        "file": "keep/c/capsule.capsule",
-       "sha256": "33db97c65550b35d9e48b897b63751d15487adbe1bc798976da265e85ab80b27"
+       "sha256": "be48148d5def0101b0ccfad2b56474755d14830a74d6bf4b94637206f41f389d"
       },
       "currents": {
        "bytes": 31868,
@@ -1624,7 +1624,7 @@
       "digests": {
        "bytes": 55025,
        "file": "keep/c/digests.json",
-       "sha256": "2e116e067186e33ed9d9586574437f292a67fb00775456ac03460a16f0644d33"
+       "sha256": "3983bfb46e7212cd5f057fdd2967881dac2b17afa3afb84ed3343dcb140c1916"
       },
       "planes": {
        "bytes": 78752,
@@ -1638,7 +1638,7 @@
        "arrays_pasted": 0,
        "arrays_rebuilt_differently": 0,
        "arrays_rebuilt_differently_paths": [],
-       "scalars_compared": 307,
+       "scalars_compared": 309,
        "scalars_rebuilt_differently": 0,
        "scalars_rebuilt_differently_paths": []
       },
@@ -1655,7 +1655,7 @@
        "word_plane": 1
       },
       "reader_equal": 372,
-      "seconds": 1.13,
+      "seconds": 1.187,
       "stored_equal": 372
      },
      "tier_c": {
@@ -1707,7 +1707,7 @@
        "point_read_differing": 0,
        "unallocated": 0
       },
-      "seconds": 12.563,
+      "seconds": 12.76,
       "smoke_record": {
        "equal": 0,
        "lattice_equal": null,
@@ -1766,9 +1766,9 @@
     "c_prime": {
      "files": {
       "capsule": {
-       "bytes": 23619,
+       "bytes": 23656,
        "file": "keep/c_prime/capsule.capsule",
-       "sha256": "d664a0da97b10ebc2ac71e25dc4cc88bb3680fd31d2eb6fd848c0f31587250b2"
+       "sha256": "2feb9546fcc07cc33f1b928443a6eea96a4933fcbf221c49c8b493d3ff06092c"
       },
       "currents": {
        "bytes": 17168,
@@ -1778,7 +1778,7 @@
       "digests": {
        "bytes": 53280,
        "file": "keep/c_prime/digests.json",
-       "sha256": "ee08c00ff5e30a3ac267855f5c6dd520d3a6db299b5a118c176e9e8d887d986b"
+       "sha256": "10c6a25caea4e9781f91451ce25af1a15ce756e30cf22e242d15614a46c438ff"
       },
       "planes": {
        "bytes": 78752,
@@ -1792,7 +1792,7 @@
        "arrays_pasted": 0,
        "arrays_rebuilt_differently": 0,
        "arrays_rebuilt_differently_paths": [],
-       "scalars_compared": 307,
+       "scalars_compared": 309,
        "scalars_rebuilt_differently": 0,
        "scalars_rebuilt_differently_paths": []
       },
@@ -1809,7 +1809,7 @@
        "word_plane": 1
       },
       "reader_equal": 360,
-      "seconds": 0.979,
+      "seconds": 1.046,
       "stored_equal": 360
      },
      "tier_c": {
@@ -1861,7 +1861,7 @@
        "point_read_differing": 0,
        "unallocated": 0
       },
-      "seconds": 12.013,
+      "seconds": 12.292,
       "smoke_record": {
        "equal": 0,
        "lattice_equal": null,
@@ -1919,9 +1919,9 @@
     "ex.absorber-1d": {
      "files": {
       "capsule": {
-       "bytes": 28415,
+       "bytes": 28419,
        "file": "keep/ex.absorber-1d/capsule.capsule",
-       "sha256": "6cb3c91ca2a57503ceda3e2b18cac29b834ee198f66cf1ebd09fd572e3b79a97"
+       "sha256": "14cf4b63df8890dd1c34cd4f934b8ddc9306ab65709997285753e1a42a64d478"
       },
       "currents": {
        "bytes": 336381,
@@ -1931,7 +1931,7 @@
       "digests": {
        "bytes": 55022,
        "file": "keep/ex.absorber-1d/digests.json",
-       "sha256": "4bf0e4da654f8cb90ee8650e8dd1cc01db0b3dd8e4a3ecc6950e05ca56746cae"
+       "sha256": "02c0903775cba1e78ef139b9422acb76c32de9b3b94932d892164a60423c20ae"
       },
       "planes": {
        "bytes": 2144,
@@ -1962,7 +1962,7 @@
        "word_plane": 0
       },
       "reader_equal": 372,
-      "seconds": 0.873,
+      "seconds": 0.881,
       "stored_equal": 372
      },
      "tier_c": {
@@ -2009,7 +2009,7 @@
        "point_read_differing": 0,
        "unallocated": 99200
       },
-      "seconds": 1.927,
+      "seconds": 2.039,
       "smoke_record": {
        "equal": 0,
        "lattice_equal": null,
@@ -2068,9 +2068,9 @@
     "ex.material-dispersion": {
      "files": {
       "capsule": {
-       "bytes": 10637,
+       "bytes": 10643,
        "file": "keep/ex.material-dispersion/capsule.capsule",
-       "sha256": "b508e009c480e33c3ee61670b98c37617245fd0966d63319b07cf36b7f580852"
+       "sha256": "56cadb220867d9d845dd41ce2f900a82b1cd47aa296fed9d6dd4a59b9c0fe3d0"
       },
       "currents": {
        "bytes": 17180,
@@ -2080,7 +2080,7 @@
       "digests": {
        "bytes": 53222,
        "file": "keep/ex.material-dispersion/digests.json",
-       "sha256": "93e91278e894c30c0a898676656b8d91de4f820d487a08d425ab214de5143f75"
+       "sha256": "70aae0fd76b90fc7efbb73a1d1b955fb5ec128bfc1b13a1924bcafe0de863c2a"
       },
       "planes": {
        "bytes": 2144,
@@ -2111,7 +2111,7 @@
        "word_plane": 0
       },
       "reader_equal": 360,
-      "seconds": 0.181,
+      "seconds": 0.185,
       "stored_equal": 360
      },
      "tier_c": {
@@ -2158,7 +2158,7 @@
        "point_read_differing": 0,
        "unallocated": 180
       },
-      "seconds": 0.971,
+      "seconds": 1.023,
       "smoke_record": {
        "equal": 0,
        "lattice_equal": null,
@@ -2216,9 +2216,9 @@
     "t.test_holey_wvg_bands.TestHoleyWvgBands.test_fields_at_kx": {
      "files": {
       "capsule": {
-       "bytes": 22951,
+       "bytes": 22975,
        "file": "keep/t.test_holey_wvg_bands.TestHoleyWvgBands.test_fields_at_kx/capsule.capsule",
-       "sha256": "5bfb399f1d8854155f9d84adcfac1dff8ca5fc8d42e34f766fad9164f25fdb05"
+       "sha256": "b99bb7239f8a9bd12dcf437748d7fe593ad1e7d251057929d102d5236fd93a25"
       },
       "currents": {
        "bytes": 17168,
@@ -2228,7 +2228,7 @@
       "digests": {
        "bytes": 53309,
        "file": "keep/t.test_holey_wvg_bands.TestHoleyWvgBands.test_fields_at_kx/digests.json",
-       "sha256": "36d082814ddc4653d728579b8c80e0bbcd31a4fb5808c1b9453b6527b251fb57"
+       "sha256": "6e6223ba45e153f5c8490906a012e3eac2496c67bd60cd182a7bdc3861b97849"
       },
       "planes": {
        "bytes": 40448,
@@ -2242,7 +2242,7 @@
        "arrays_pasted": 0,
        "arrays_rebuilt_differently": 0,
        "arrays_rebuilt_differently_paths": [],
-       "scalars_compared": 222,
+       "scalars_compared": 224,
        "scalars_rebuilt_differently": 0,
        "scalars_rebuilt_differently_paths": []
       },
@@ -2259,7 +2259,7 @@
        "word_plane": 0
       },
       "reader_equal": 360,
-      "seconds": 0.416,
+      "seconds": 0.421,
       "stored_equal": 360
      },
      "tier_c": {
@@ -2311,7 +2311,7 @@
        "point_read_differing": 0,
        "unallocated": 439200
       },
-      "seconds": 2.789,
+      "seconds": 3.008,
       "smoke_record": {
        "equal": 0,
        "lattice_equal": null,
@@ -2369,9 +2369,9 @@
     "t.test_ring_cyl.TestRingCyl.test_ring_cyl": {
      "files": {
       "capsule": {
-       "bytes": 17758,
+       "bytes": 17769,
        "file": "keep/t.test_ring_cyl.TestRingCyl.test_ring_cyl/capsule.capsule",
-       "sha256": "19dfb8b00d9ab6d086c3b9d4ef2a7198f74f23e79d03804b6e0907f4427d2d4c"
+       "sha256": "0e96cf3b16c9104c9618f7ffd30c5387b76dda45b83e96a18afedf9a29e4147c"
       },
       "currents": {
        "bytes": 84381,
@@ -2381,7 +2381,7 @@
       "digests": {
        "bytes": 55017,
        "file": "keep/t.test_ring_cyl.TestRingCyl.test_ring_cyl/digests.json",
-       "sha256": "e2f1159355572aa3d49fe2af4f176c4601caf1164f65777a1e2612038ce8af20"
+       "sha256": "6fe43dfe29dffecb18423d2534a90ec6de957dff8c7750a649c9cfa0423ca0b0"
       },
       "planes": {
        "bytes": 161408,
@@ -2395,7 +2395,7 @@
        "arrays_pasted": 0,
        "arrays_rebuilt_differently": 0,
        "arrays_rebuilt_differently_paths": [],
-       "scalars_compared": 207,
+       "scalars_compared": 209,
        "scalars_rebuilt_differently": 0,
        "scalars_rebuilt_differently_paths": []
       },
@@ -2412,7 +2412,7 @@
        "word_plane": 3
       },
       "reader_equal": 372,
-      "seconds": 0.617,
+      "seconds": 0.637,
       "stored_equal": 372
      },
      "tier_c": {
@@ -2459,7 +2459,7 @@
        "point_read_differing": 0,
        "unallocated": 0
       },
-      "seconds": 1.348,
+      "seconds": 1.44,
       "smoke_record": {
        "equal": 0,
        "lattice_equal": null,
@@ -2524,40 +2524,40 @@
      "system": "Darwin"
     },
     "inputs_sha256": {
-     "meep_gpu/array_path_oracle.py": "e99a0a3feb81bca2a7b6af18c5bbe47808abe62ec868baacd29b9ffcae99b4db",
-     "meep_gpu/capsule.py": "74b473e6870bc1f784b4e5a5607a3bc12129b0153da76812a4281556d2656fce",
-     "meep_gpu/chunk_map.py": "bcf2e803008010dfcebf377cc073add9c33a978068be610ed32a70ace918a3c4",
-     "meep_gpu/deposit_repair.py": "3b3a2665874148ebb1fdc4d9cbbc7b7788953610e67fe3bcaeb22b73596c4cc7",
+     "meep_gpu/array_path_oracle.py": "382a570a2e12f01bdb27b8086e7cc1110a7d8615fc6e251d54051311b3b9fbe8",
+     "meep_gpu/capsule.py": "0a1421b690313fb044d917b3f2fd30bebcb14b2008ffafd510e9c1171e63d216",
+     "meep_gpu/chunk_map.py": "6bd84ef1a90a145331acd74add01736069f948bcfcf0f14530b4a14e118c0f46",
+     "meep_gpu/deposit_repair.py": "a5e49dfa6ca7f82054d1beb5967e6a12cb9feae6f4bfa0587ce10ca62b9bdd21",
      "meep_gpu/dispersion.py": "5dab447734013e50800211ebcc7aec5f2c18ba4ab9e76c67a06dcbd0260b8974",
-     "meep_gpu/driver.py": "dfdc15423274ddd589b11fd79d5814635fdee9fab71c919a4f013a256742f1d1",
-     "meep_gpu/fields.py": "99cfb1ea66edf4d1436e9939ce950386818893fb943cedeede822c216900f370",
-     "meep_gpu/from_meep.py": "e6dd7a8a436e457e58a7969a5d648384cf80f711a99425978b9555f68aa96125",
-     "meep_gpu/grid.py": "ea68d46d6c28b0ced6a75a4af9cc002acc5286a19d619a09e352294046ec6524",
-     "meep_gpu/host_writes.py": "c4fa862d518789231649d95bc75716625eafc3e896962257953bc26475f986ea",
-     "meep_gpu/meep_identity.py": "1c095319e4f2a38db9897c7932877bfe286eb4121de4de77c8a4d4ab68ab9efa",
-     "meep_gpu/part_products.py": "23cc6a36f1ba534ed59dce34d413a010ec5015e1a7c8569b20112933759b16b9",
-     "meep_gpu/pml.py": "d76f91fc967fe549badf2f42acf91d5a944a8ac21c4cea6bedfe1bea46c516fb",
-     "meep_gpu/sources.py": "2451b01223a39df67a0d3fbc5c3a9bf5cdf87a813bc5bdc1178244f523e42db1",
-     "meep_gpu/stepping.py": "913c337fd818ec5b7fabba6837146d57ebe8f077cf765f5760e857e166039c57",
-     "meep_gpu/withdraw_hoist.py": "8bee15197ead66de7e5c8b2adbf19884c1943b16b3fa3d069fcaf3bee3e20b89",
+     "meep_gpu/driver.py": "e72363e8331aa8a137c21dd96c298e66ac3bc7699000bd486f5622fcfa0889bf",
+     "meep_gpu/fields.py": "b2d4411391d6fc6e0c2953899f954939c29a45499350703fc701e626b17f844d",
+     "meep_gpu/from_meep.py": "0cbe2af3ba991d6a0d9d92f0b3fdf18b4913126d16c7f94738477ccc825c87bb",
+     "meep_gpu/grid.py": "3cdb5fc1b29a90d2a78b89b3a79303cab918403a459345f5be6faca1da791c04",
+     "meep_gpu/host_writes.py": "5d973d80aec0c4cc3fd81a210233dbf957eef34596c4f20cfdec14d65c697bf4",
+     "meep_gpu/meep_identity.py": "9e01f6e4a16e17221312a7dd0300d76c0eb3a693a47c3ee2a879eb1202cfcfe3",
+     "meep_gpu/part_products.py": "ffd7a4c46202b9e5e0560375356e23cd40eee2e8b814d2f230fca3ccf9895f07",
+     "meep_gpu/pml.py": "93d0e7c70ac32e3310cb624f95ca3de0c6d7e3da801b5c4398a3ca9ce0fc35e9",
+     "meep_gpu/sources.py": "0b61333c4802dd4db1a8ede3cce6143c3c0a017c03d7ae8dd30eb7bf83f3e6a6",
+     "meep_gpu/stepping.py": "4181a65fd14b8980993089e719e4fd26b260cf0aa0eaeae0e332f204072b94e1",
+     "meep_gpu/withdraw_hoist.py": "b19f36012060dd0ad4c09292f75e26afd8d3730bd83d08ba67daa48a5ebbc124",
      "parity/meep_gpu/meep_identity_smoke.json": "400d822fec6eadb6a2e0b041eb0ec535bf33ce3309496339bbec2c3cb2f3a9b8",
-     "parity/meep_gpu/meep_identity_smoke.py": "2b8c2dfab8486cbb61723e8041e54134985e05fdbb58e60e0505b24d87e66cdc",
-     "parity/meep_gpu/meep_identity_tier_c.py": "68bdd443b1135903f9467e90158c18af60f11619ccdd5a4a40be5d3fbc1d5dfa",
+     "parity/meep_gpu/meep_identity_smoke.py": "7288b7d13d51b80deec416dd5c771d490c15b8ad14b4a3181a5a3439ec5aa0f9",
+     "parity/meep_gpu/meep_identity_tier_c.py": "91e065063c5452901631659a348d79ed75d4d660b6b971d51368c2064eff8b91",
      "parity/meep_gpu/record_meep_identity.py": "766f72ccddb02fa0610d14a29e480228869e52aa0c2ce87fa7c9ba5c15cf2436"
     },
-    "seconds": 174.3,
+    "seconds": 182.1,
     "tool": "parity/meep_gpu/record_meep_identity.py",
     "tool_sha256": "766f72ccddb02fa0610d14a29e480228869e52aa0c2ce87fa7c9ba5c15cf2436",
-    "utc": "2026-10-15T05:19:26Z"
+    "utc": "2026-10-22T07:52:15Z"
    },
    "mode": "keep",
    "provenance_code_sha256": {
     "meep_gpu/chunk_map.py": "f0d36fdd46573db9dfd6e958aafa17cdcf5cb8f131f0b0f7b4a537b8472e9d6b",
-    "meep_gpu/deposit_repair.py": "c165c1c870013c3a329c32b46aded84463918f60e3db96c31661e0819e013a99",
+    "meep_gpu/deposit_repair.py": "a5c5bd18b5d6ce98e0651c3c670b106705551e8fae3d624c610e411a3fd4550a",
     "meep_gpu/dispersion.py": "7e59617c4d1a408ccd6f0e4ba3c963ba1424f00e2b5468b8e79f1c794460043d",
-    "meep_gpu/driver.py": "0d7fb07728ad7f67dd341d67ed4f37ef54ffdddf67f9646c521b2effdffd2e09",
-    "meep_gpu/fields.py": "d6c9113bb8dbccb0c8dc422dc2f8b979896c22da1a2d5dff0d553fc11e6efc44",
-    "meep_gpu/from_meep.py": "8472c5daa7768ef74996bd6937f77b2484d6c421e43bedc7df31f32d081da5e5",
+    "meep_gpu/driver.py": "c894b8b027c7b2d6da574b73103c89ca88e0ac684ab1fd795f02314f1e0be315",
+    "meep_gpu/fields.py": "71e7edc9e5682251ad519576ecf5b31fcadb4fc47e69e774eaa1451f34d600de",
+    "meep_gpu/from_meep.py": "6b583cad4e0b169c4d439571d816989e8f9b7c861db89b7074baa43cfcbe5613",
     "meep_gpu/grid.py": "80a5929036e19bfa6dd86e8cc8a0d8f8344eb804f6fd083c605050516655e8c7",
     "meep_gpu/host_writes.py": "20db60eff5f1e610aecd80d7359a96021713b62938a14e6640a8f437c6cff0f5",
     "meep_gpu/part_products.py": "f22eeb2f33924a389619071d4495b1006b1434f6a95de0146e521f433c66e348",
@@ -2571,11 +2571,11 @@
      "census": "no fused multiply-add instruction outside the compiler-rt division builtins in 2 of 2 image(s) (18 inside them, exempt)",
      "file": "build_record.json",
      "fp_contract": "off",
-     "sha256": "7ddd1ec54c44c8b06e4c4e81e31edff9c64021fad13d5f39b135ca3634cbe6e8"
+     "sha256": "02391b5e34aafa050e01f81fde7c3b6b062962406565ceb30e9f5e97867d66ad"
     },
     "images": {
-     "_meep.37.so": "44ca8721afab0b25e63cb6c4efe92651b6b9837bf012be5fc336961ff042320c",
-     "libmeep.37.dylib": "88240050de1650ba215bea96c35f4a35b61fd3653150c00a4114cb6b69bc4541"
+     "_meep.so": "8d24df0fbea3275e64cde932a3a707f593855106d89824129dbf365f0081a129",
+     "libmeep.39.dylib": "4d1082be02d120730bac0c332ce2088700375e13989f11470af7c345b08b315a"
     },
     "libm": {
      "kind": "libsystem_m",
@@ -2587,7 +2587,7 @@
     "meep": {
      "mpi": true,
      "single_precision": true,
-     "version": "1.33.0"
+     "version": "1.35.0"
     },
     "numpy": "2.4.3",
     "omp_num_threads": "1",

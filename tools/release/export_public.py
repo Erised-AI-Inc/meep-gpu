@@ -14,7 +14,7 @@ manifest excludes removed, and nothing else changed: no file is edited for the
 public tree. A text that would be false or dangling without the excluded files is
 fixed in the development repository, so the two trees never say different things.
 
-WHAT IT DOES, in order. Each step prints one flushed line as it finishes.
+What it does, in order. Each step prints one flushed line as it finishes.
 
   1. Clones PUBLIC into ``DIRECTORY/public`` (no checkout, and no remote kept, so
      nothing can be pushed from it by accident) and archives REF of DEV into
@@ -34,11 +34,19 @@ WHAT IT DOES, in order. Each step prints one flushed line as it finishes.
                    digest) of an excluded file: a record that binds it would break;
        shape       the ``ls-tree -r`` of the exported tree differs from REF's by
                    anything other than the excluded files;
+       records     the exported tree does not ship a timed NVIDIA and a timed Apple
+                   dispatch-preference record: its own
+                   ``meep_gpu/dispatch_preference.timed_vendors`` (loaded by path) names
+                   no timed record of one of them, a record that loads, holds on the
+                   exported tree and measures a key, and the refusal says why;
        version     the version is not the same in ``pyproject.toml``,
                    ``CITATION.cff`` and a ``## <version> — <title> (<date>)``
                    heading of ``CHANGELOG.md``; the date disagrees with
                    ``CITATION.cff``; the tag exists on PUBLIC; or the public main
-                   already carries this version (an index never takes it twice);
+                   already carries this version (an index never takes it twice).
+                   With ``--continue-untagged-release`` the public main must carry
+                   this version instead, untagged, and the package directory must
+                   be byte-identical to the public main's;
        message     the message is not in the release form (``Summary:``,
                    ``Description:``, ``Co-authored-by`` trailers naming authors of
                    ``CITATION.cff`` and nothing after them), names a commit of DEV,
@@ -79,6 +87,7 @@ MANIFEST = "tools/release/export_manifest.json"
 MANIFEST_SCHEMA = "meep_gpu.public_export"
 CODE_IDENTITY = "meep_gpu/code_identity.py"
 PUBLIC_BRANCH = "main"
+PACKAGE_DIRECTORY = "meep_gpu"
 TAG_PREFIX = "v"
 #: sha256 prefixes searched for in the exported text (the lengths records quote).
 DIGEST_PREFIXES = (64, 16, 12)
@@ -93,8 +102,13 @@ NO_REPLY = re.compile(r"^\d+\+[A-Za-z0-9-]+@users\.noreply\.github\.com$")
 #: Home and scratch directories of a machine. ``/home/user`` is the placeholder the
 #: shipped records use, so it is not a machine's path.
 LOCAL_PATH = re.compile(r"(?:^|[\s(`'\"=:])(?:/Users/|/home/(?!user\b)|/private/|/tmp/|~/)")
-CHECKS = ("required", "removals", "references", "digests", "shape", "version", "message",
-          "guard")
+CHECKS = ("required", "removals", "references", "digests", "shape", "records", "version",
+          "message", "guard")
+#: The module whose ``timed_vendors`` is the one home of the release rule that a release
+#: ships a timed record of each vendor, read from the exported tree by path.
+PREFERENCE_MODULE = "meep_gpu/dispatch_preference.py"
+#: The vendors a release ships a timed dispatch-preference record for: every one.
+TIMED_VENDORS = ("apple", "nvidia")
 
 
 class Unusable(Exception):
@@ -328,6 +342,46 @@ def check_digests(tree: Path, texts: Dict[str, str],
     return reasons
 
 
+def check_records(tree: Path) -> List[str]:
+    """A release ships a timed NVIDIA record and a timed Apple record.
+
+    Asked of the exported tree's own ``timed_vendors`` (``PREFERENCE_MODULE``, loaded by
+    path, so the package is not imported): a record counts when it loads, holds on the
+    exported tree (its deposit-repair digest and its emitters are the tree's) and measures
+    at least one key. Each vendor without one is a reason, with the module's own why."""
+    path = tree / PREFERENCE_MODULE
+    if not path.is_file():
+        return [f"the release commit carries no {PREFERENCE_MODULE}, so it cannot say which "
+                f"vendors' GPUs have a timed dispatch-preference record"]
+    name = "_export_dispatch_preference"
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    # Registered while it runs (a dataclass resolves its module by name), and no
+    # bytecode written into the exported tree.
+    sys.modules[name], writes = module, sys.dont_write_bytecode
+    sys.dont_write_bytecode = True
+    try:
+        spec.loader.exec_module(module)
+        timed = module.timed_vendors(str(path.parent))
+    except Exception as error:  # noqa: BLE001 - any failure is the reason
+        return [f"{PREFERENCE_MODULE} cannot say which vendors are timed "
+                f"({type(error).__name__}: {error})"]
+    finally:
+        sys.modules.pop(name, None)
+        sys.dont_write_bytecode = writes
+    reasons = []
+    for vendor in TIMED_VENDORS:
+        block = timed.get(vendor) if isinstance(timed, dict) else None
+        if not isinstance(block, dict):
+            reasons.append(f"{PREFERENCE_MODULE} names no {vendor} vendor: a release ships "
+                           f"a timed NVIDIA record and a timed Apple record")
+        elif not block.get("records"):
+            reasons.append(f"no timed {vendor} dispatch-preference record ships "
+                           f"({block.get('why_none')}): a release ships a timed NVIDIA "
+                           f"record and a timed Apple record")
+    return reasons
+
+
 def check_tree_shape(dev_entries: List[str], exported_entries: List[str],
                      excluded: Sequence[str]) -> List[str]:
     """The exported tree is REF's tree minus the excluded files, byte for byte."""
@@ -448,6 +502,11 @@ def parse_arguments(argv: Optional[Sequence[str]]) -> argparse.Namespace:
                         help="an untracked local file of names for the hygiene guard, "
                              "passed through the option the manifest declares; it only "
                              "adds names")
+    parser.add_argument("--continue-untagged-release", action="store_true",
+                        help="the public main already carries this version, untagged: "
+                             "build one further commit of that release on it; refused "
+                             "unless the tag is absent and the package directory is "
+                             "byte-identical to the public main's")
     parser.add_argument("--report", type=Path,
                         help="also write the verdict of every check, and the built commit, "
                              "as JSON to this file")
@@ -550,6 +609,10 @@ def export(arguments: argparse.Namespace) -> Tuple[int, dict]:
     say(f"references and digests of the {len(excluded)} excluded files: "
         f"{len(texts)} text files searched")
 
+    reasons["records"] = check_records(tree)
+    say(f"timed dispatch-preference records: {', '.join(TIMED_VENDORS)} "
+        f"{'not all timed' if reasons['records'] else 'timed'}")
+
     facts = citation(tree)
     pyproject = (tree / "pyproject.toml").read_text(encoding="utf-8") \
         if (tree / "pyproject.toml").is_file() else ""
@@ -579,7 +642,20 @@ def export(arguments: argparse.Namespace) -> Tuple[int, dict]:
                   cwd=clone):
             found.append(f"the public repository already has the tag {TAG_PREFIX}{version}")
         public_pyproject = git("show", f"{parent}:pyproject.toml", cwd=clone, check=False)
-        if project_field(public_pyproject, "version") == version:
+        public_version = project_field(public_pyproject, "version")
+        if arguments.continue_untagged_release:
+            # One further commit of a release whose commit is public and untagged: the
+            # tag check above still refuses a published version, and the package
+            # directory must not move, so what was certified on the parent still binds.
+            if public_version != version:
+                found.append(f"--continue-untagged-release: the public {PUBLIC_BRANCH} "
+                             f"carries version {public_version!r}, not {version!r}")
+            elif (git("ls-tree", "-r", parent, "--", PACKAGE_DIRECTORY, cwd=clone)
+                  != git("ls-tree", "-r", exported_tree, "--", PACKAGE_DIRECTORY, cwd=clone)):
+                found.append(f"--continue-untagged-release: {PACKAGE_DIRECTORY}/ differs "
+                             f"from the public {PUBLIC_BRANCH}'s; a further commit of an "
+                             f"untagged release moves no package file")
+        elif public_version == version:
             found.append(f"the public {PUBLIC_BRANCH} already carries version {version}: "
                          f"a package index takes a version once")
     if not facts["contact"] or not facts["contact"][0].get("email"):
@@ -603,6 +679,7 @@ def export(arguments: argparse.Namespace) -> Tuple[int, dict]:
                     "public_parent": parent, "exported_tree": exported_tree,
                     "exported_files": len(exported_files), "excluded": excluded,
                     "dropped_from_public_main": removed, "version": version, "date": date,
+                    "continue_untagged_release": arguments.continue_untagged_release,
                     "checks": {name: {"passed": not reasons[name], "reasons": reasons[name]}
                                for name in CHECKS},
                     "guard_output_tail": guard_output.splitlines()[-40:]}

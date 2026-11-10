@@ -1,7 +1,7 @@
 """The dynamic-loop gate's clauses that need no device — which is most of them.
 
-THE GATE ITSELF NEEDS A GPU, for one thing only: the byte comparison between the
-two compiled binaries. Everything that DECIDES WHAT THAT COMPARISON MEANS does
+The gate itself needs a GPU, for one thing only: the byte comparison between the
+two compiled binaries. Everything that decides what that comparison means does
 not, and each of those is a silent wrong ANSWER rather than a crash:
 
 * whether the axis under test is REAL in the corpus and its arity actually VARIES
@@ -220,7 +220,7 @@ def test_the_reference_leg_is_not_vacuous_at_zero_poles():
 # ---------------------------------------------------------------------------
 
 def _constitutive_tail(case, state, field, axis, src):
-    """One component's 0.10 constitutive forms, in float32 NumPy, on ``case['record']``.
+    """One component's per-chunk constitutive forms, in float32 NumPy, on ``case['record']``.
 
     Built here from four arithmetic operations and the record's two comparisons,
     not by calling the subject: on the record's cells along the component's own
@@ -272,7 +272,7 @@ def _fraction(left, right):
 def _outputs(case, mode):
     """One sum order driven through the FULL reference chain to the OUTPUTS.
 
-    THE QUANTITY THE GATE COMPARES. An earlier version of this file scored the
+    The quantity the gate compares. An earlier version of this file scored the
     raw pole sum ``s`` instead, which is the quantity the mutation targets but
     not the one the byte comparison reads, and it overstated the gate's
     discrimination by 41% at NP=2 — enough to set the floor above what the device
@@ -304,12 +304,12 @@ def _outputs(case, mode):
 
 @pytest.mark.parametrize("poles", [2, 3, 5, 6, 8])
 def test_the_headline_class_separates_association_orders_above_the_floor(poles):
-    """THE CLAUSE THAT STOPS A VACUOUS "IDENTICAL".
+    """The clause that stops a vacuous "identical".
 
     If reordering or regrouping these operands does not change the float32
     OUTPUT, then two kernels agreeing on the output says nothing about whether
     they associate the sum the same way. The floor the device leg enforces is
-    checked here first, on the same class and ON THE SAME QUANTITY, so a bad
+    checked here first, on the same class and on the same quantity, so a bad
     class or a mis-set floor is caught on the laptop rather than after a device
     run.
     """
@@ -415,7 +415,7 @@ def test_an_asymmetric_triple_is_in_the_sweep():
 
 
 # ---------------------------------------------------------------------------
-# The two variants are ONE AXIS APART
+# The two variants are one axis apart
 # ---------------------------------------------------------------------------
 
 _SIGNATURE = re.compile(r"__device__ __forceinline__ void constitutive_apply\("
@@ -722,7 +722,7 @@ def test_the_runner_reports_identical_and_catches_every_control_when_honest(runn
 
 
 def test_the_runner_flips_to_divergent_when_the_subject_reassociates(runner, monkeypatch):
-    """THE CLAUSE THAT MAKES THE VERDICT MEAN SOMETHING.
+    """The clause that makes the verdict mean something.
 
     If the dynamic kernel summed in the opposite order, the runner must say so.
     A runner that could not distinguish that case would return IDENTICAL for a

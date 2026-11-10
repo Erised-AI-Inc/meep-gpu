@@ -6,7 +6,7 @@ operation in it rounds to float32 once, under the launch's ``enable_fp_fusion=Fa
 (:data:`.kernels.ENABLE_FP_FUSION`). They are the one spelling of each form for the
 kernels of :mod:`.kernels`; a kernel calls them rather than restating an expression.
 
-WHAT EACH HELPER TRANSCRIBES (the array path, which transcribes MEEP 1.33.0):
+What each helper transcribes (the array path, which transcribes MEEP 1.33.0):
 
 * :func:`chunk_in` -- membership of a stored row in one line of the chunk record
   (``chunk_map.chunk_bounds_record``): ``(a0 <= i < a1) or (b0 <= i < b1)``, which is
@@ -57,13 +57,13 @@ WHAT EACH HELPER TRANSCRIBES (the array path, which transcribes MEEP 1.33.0):
   MEEP's one-partner forms (the absent partner is not read; the plain branch drops
   ``- F``) and the increment the ladder takes.
 
-THE SELECTS ARE OUTPUT SELECTS. ``tl.where`` chooses a word and does no arithmetic, so
+The selects are output selects. ``tl.where`` chooses a word and does no arithmetic, so
 the discarded form -- computed on whatever the masked loads delivered -- never reaches a
 store. The plain forms are therefore selected, never folded into the others with unit
 or zero coefficients: ``kps = 1, kms = 0`` turns a stored ``-0`` into ``+0``, and
 ``fu := 0`` in the recurrence does the same to ``f = -0, curl = +0``.
 
-MULTIPLICATION OPERAND ORDER IS FREE AND ADDITION ORDER IS NOT. IEEE-754
+Multiplication operand order is free and addition order is not. IEEE-754
 multiplication is commutative on every word, signed zero included, so ``fu * kms`` and
 the array path's ``fu *= kms`` are one word; every sum and difference here is grouped
 exactly as the array path groups it.
@@ -106,7 +106,7 @@ def axis_present(presence, axis):
 
 @triton.jit
 def curl_stencil(g1s, g1, g2, g2s, dtdx, first, second):
-    """MEEP's ``dtdx``-scaled curl for one component, by partner presence (A1)."""
+    """MEEP's ``dtdx``-scaled curl for one component, by partner presence."""
     both = dtdx * (((g1s - g1) + g2) - g2s)
     only_first = dtdx * (g1s - g1)
     only_second = (-dtdx) * (g2s - g2)

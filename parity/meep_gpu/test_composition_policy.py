@@ -1,6 +1,6 @@
 """The five Triton composition gates install, measure and stamp the campaign's policy.
 
-Owner ruling R16: the composition gates the 11 routing arms cite install the subnormal
+The composition gates the 11 routing arms cite install the subnormal
 policy their campaign names before they build anything, refuse by name when it is not
 attained, and stamp it where every Triton writer reads a policy, so a flush composition
 run carries per-arm flush evidence like every other gate (``composition_policy.py``).
@@ -15,7 +15,7 @@ Three halves, all host-only (no GPU, no CuPy, no Triton, no MEEP run, no ledger)
   measured after a refusal;
 * the re-cut tool on those artifacts: ``recut_composition_records.second_policy_leg``
   takes flush evidence from a stamped flush verdict and refuses the unstamped shape
-  every composition gate wrote before R16.
+  every composition gate wrote before the gates stamped a policy.
 """
 
 from __future__ import annotations
@@ -445,7 +445,7 @@ def test_a_policy_that_did_not_hold_to_the_end_refuses(key, device_free, tmp_pat
 
 
 def _flush_run(tmp_path: Path, artifact: Dict[str, Any], leg: str) -> Path:
-    """A flush composition root holding one leg, with the staged manifest the round writes."""
+    """A flush composition root holding one leg, with the manifest a certification round stages."""
     import recut_composition_records as R
 
     run = tmp_path / "triton_composition_flush"

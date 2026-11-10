@@ -1,24 +1,24 @@
 """The conductive x ordinary D/E weld: emitter, predicate and the signed-zero cell.
 
-WHAT THIS SUITE PINS, and each section says which failure it is the tripwire for:
+What this suite pins, and each section says which failure it is the tripwire for:
 
-1. THE LIFT. The emitted kernel is the two CERTIFIED bodies with a named list of
-   eight edits and nothing else, and ONE decode of the chunk record serves both. Both curl helpers become VALUES and BOTH KEEP THEIR
-   AUXILIARY STORES -- ``fu`` and ``f_cond`` are the curl's own histories, and a
+1. The lift. The emitted kernel is the two CERTIFIED bodies with a named list of
+   eight edits and nothing else, and ONE decode of the chunk record serves both. Both curl helpers become VALUES and both keep their
+   auxiliary stores -- ``fu`` and ``f_cond`` are the curl's own histories, and a
    rewrite that swallowed one would leave the recurrence a step behind at every cell,
    which no seam test would notice.
-2. THE COEFFICIENT RENAME. ``kms_*`` is the INTEGER sigma sub-lattice in the curl body
+2. The coefficient rename. ``kms_*`` is the INTEGER sigma sub-lattice in the curl body
    and the HALF-INTEGER one in the constitutive body. On the bare name the two
    parameters collide and one launch binds a HALF-CELL ERROR in the absorber profile
    -- not a crash, and not something a coarse comparison would catch.
-3. THE SEAM ORDER. The wall clear sits between the curl's register capture and both
+3. The seam order. The wall clear sits between the curl's register capture and both
    its consumers.
-4. THE PREDICATE, on real engine objects, including the disjointness against the real
+4. The predicate, on real engine objects, including the disjointness against the real
    twin -- an overlap would leave the seam UNFUSED and cost the 79 rows that product
    serves.
-5. THE WHOLE-VOLUME RESCALE REFUSAL, which is what remains of the clause that used to
+5. The whole-volume rescale refusal, which is what remains of the clause that used to
    refuse this cell entirely.
-6. THE CENSUS CELL: one corpus row, its arms, and ``CARRIES_DEPOSIT_REPAIR`` as a
+6. The census cell: one corpus row, its arms, and ``CARRIES_DEPOSIT_REPAIR`` as a
    per-cell MEASUREMENT.
 
 ``constitutive_kernels`` imports CuPy at scope, so its device text is supplied FROM
@@ -45,11 +45,11 @@ from . import fused_pairs
 from . import fused_electric_pair as real
 from .test_fused_pairs import _NumpyWearingCupysName
 
-#: The census this round's numbers are read off.
+#: The census this suite's numbers are read off.
 CENSUS = (pathlib.Path(__file__).resolve().parents[2] / "parity" / "meep_gpu"
           / "results" / "cuda_predicate_coverage_2026-09-02_conductive_final")
 
-#: The board cell this product occupies. THE DENOMINATOR IS ONE.
+#: The board cell this product occupies. The denominator is one.
 CELL = {
     "seam": "D_to_E",
     "curl_arm": "cuda_conductive",
@@ -115,7 +115,7 @@ def source(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# 1. THE LIFT
+# 1. The lift
 # ---------------------------------------------------------------------------
 
 def test_the_curl_stencil_is_reused_unchanged(source):
@@ -126,7 +126,7 @@ def test_the_curl_stencil_is_reused_unchanged(source):
 
 
 def test_one_decode_of_the_chunk_record_serves_both_halves(source):
-    """D10: each lifted body's block is removed and the real twin's union block emitted.
+    """One decode: each lifted body's block is removed and the real twin's union block emitted.
 
     The D curl reads the integer record and the presence word, update_E the
     half-integer record; every record word is decoded exactly once, directly after the
@@ -145,7 +145,7 @@ def test_one_decode_of_the_chunk_record_serves_both_halves(source):
 def test_both_curl_helpers_become_values_and_keep_their_history_stores(source):
     """The two helpers return the displacement; ``fu`` and ``f_cond`` still store.
 
-    THE FAILURE THIS CATCHES IS SILENT. The weld needs the displacement in a register
+    The failure this catches is silent. The weld needs the displacement in a register
     so the wall clear can reach it before the store -- but ``fu`` (the split-field
     auxiliary) and ``f_cond`` (the conductive third history) are the CURL's own state,
     which ``zero_metal_D`` does not touch and ``update_E`` does not read. A value
@@ -205,7 +205,7 @@ def test_the_lift_edits_are_declared_and_no_more():
 
 
 # ---------------------------------------------------------------------------
-# 2. THE COEFFICIENT RENAME -- a half-cell error, not a crash
+# 2. The coefficient rename -- a half-cell error, not a crash
 # ---------------------------------------------------------------------------
 
 def test_the_two_sigma_sub_lattices_do_not_collide(source):
@@ -237,7 +237,7 @@ def test_the_curl_and_constitutive_tables_are_the_two_sub_lattices():
 
 
 # ---------------------------------------------------------------------------
-# 3. THE SEAM ORDER
+# 3. The seam order
 # ---------------------------------------------------------------------------
 
 def test_the_clear_sits_between_the_capture_and_both_consumers(source):
@@ -305,7 +305,7 @@ def test_a_moved_certified_anchor_fails_the_emit(monkeypatch, source):
 
 
 # ---------------------------------------------------------------------------
-# 4. THE PREDICATE, ON REAL ENGINE OBJECTS
+# 4. The predicate, on real engine objects
 # ---------------------------------------------------------------------------
 
 def electric_source(grid, component="Ez"):
@@ -382,7 +382,7 @@ def test_the_corpus_shape_is_admitted(xp):
 
 
 def test_it_partitions_against_the_real_twin_on_the_conductivity(xp):
-    """THE DISJOINTNESS MARGIN, and it is load-bearing rather than tidy.
+    """The disjointness margin, and it is load-bearing rather than tidy.
 
     ``install_fused_pairs`` leaves a seam UNFUSED when two products admit it, so an
     overlap would COST the 79 rows the real twin serves rather than adding one.
@@ -423,13 +423,13 @@ def test_an_undeclared_source_set_is_refused(xp):
 
 
 # ---------------------------------------------------------------------------
-# 5. THE WHOLE-VOLUME RESCALE REFUSAL -- what remains of the old blanket clause
+# 5. The whole-volume rescale refusal -- what remains of the old blanket clause
 # ---------------------------------------------------------------------------
 
 class _NoDepositTable:
     """A scaled electric source that publishes NO deposit table.
 
-    NOT A MOCK OF AN IN-TREE CLASS -- no in-tree electric source is one, which is why
+    Not a mock of an in-tree class -- no in-tree electric source is one, which is why
     the clause it triggers is about a duck-typed stranger. The driver's fallback
     applies the condinv scaling as three WHOLE-VOLUME passes for such a source, and
     those rewrite ``-0.0`` to ``+0.0`` at every cell of the component rather than only
@@ -457,7 +457,7 @@ def test_a_source_with_no_deposit_table_is_refused_by_name(xp):
 
 
 def test_the_conductive_deposit_moves_only_its_own_cells():
-    """THE PREMISE OF THIS WHOLE FAMILY, measured on the shipped deposit.
+    """The premise of this whole family, measured on the shipped deposit.
 
     This product's cell is servable only because a conductive run's electric deposit
     changes D at the source's own cells and nowhere else. The driver used to scale the
@@ -466,7 +466,7 @@ def test_the_conductive_deposit_moves_only_its_own_cells():
     source's own expression (``sources._deposit``, MEEP step.cpp:299-307) and the
     driver has no pass over the component at all. If that ever changes -- a pass over
     the volume, or a deposit that writes a cell off its table -- this product's
-    byte-identity claims are void, so it is MEASURED here on the words: a ``-0.0``
+    byte-identity claims are void, so it is measured here on the words: a ``-0.0``
     far from the deposit survives as ``-0.0``, every cell off the table is unchanged,
     and the deposit cells moved.
     """
@@ -492,7 +492,7 @@ def test_the_conductive_deposit_moves_only_its_own_cells():
 
 
 # ---------------------------------------------------------------------------
-# 6. THE REPAIR DECLARATION AND THE CENSUS CELL
+# 6. The repair declaration and the census cell
 # ---------------------------------------------------------------------------
 
 def test_the_declared_path_is_the_one_the_layer_selects(xp):
@@ -517,13 +517,13 @@ def _census_rows():
     rows = {}
     for leg in ("examples.jsonl", "tests.jsonl"):
         path = CENSUS / leg
-        # A MISSING CENSUS IS A FAILURE, NOT A SKIP: this suite's cell facts are
-        # MEASUREMENTS off that file, and skipping would turn the round's central
+        # A missing census is a failure, not a skip: this suite's cell facts are
+        # MEASUREMENTS off that file, and skipping would turn the suite's central
         # claim into a silent coverage gap.
         assert path.exists(), (
             f"the census leg {path} has not been cut; this suite reads the cell's "
             f"membership and its deposit denominator off it")
-        # THE LEG PREFIX IS THIS SUITE'S, NOT THE CENSUS'S. The census stores a bare
+        # The leg prefix is this suite's, not the census's. The census stores a bare
         # `row` ("absorber-1d.py", "TestAbsorber.test_absorber"); the BOARD keys its
         # instances by "<leg>:<row>", which is the name a reader of
         # taxonomy.instances sees and the name CELL_ROWS spells. Prefixing here means
@@ -549,7 +549,7 @@ def test_the_census_names_the_row_and_both_arms_admit_it():
 
 
 def test_the_row_carries_an_electric_deposit_and_an_active_absorber():
-    """CARRIES_DEPOSIT_REPAIR IS THE PRODUCT, measured off the census.
+    """CARRIES_DEPOSIT_REPAIR is the product, measured off the census.
 
     At False this module would compile, pass every arithmetic leg and serve ZERO.
     """
@@ -569,7 +569,7 @@ def test_the_product_column_admits_exactly_the_cell_row():
     column = "cuda_conductive_fused_electric_pair"
     assert column in next(iter(rows.values())), (
         "this census predates the product column; the battery edit and the census cut "
-        "belong to the same round")
+        "belong to the same change")
     admitted = {name for name, record in rows.items()
                 if (record.get(column) or {}).get("covered_modulo_backend")}
     assert admitted == set(CELL_ROWS), (
@@ -577,7 +577,7 @@ def test_the_product_column_admits_exactly_the_cell_row():
 
 
 # ---------------------------------------------------------------------------
-# 7. THE ARGUMENT ORDER -- a silent wrong answer if it ever drifts
+# 7. The argument order -- a silent wrong answer if it ever drifts
 # ---------------------------------------------------------------------------
 
 def _signature_parameters(text):
@@ -600,8 +600,8 @@ def test_the_launcher_binds_the_signature_in_order(source):
 
     CUDA binds by POSITION and checks no names, so a launcher assembling its tuple in
     a different order than the signature declares would compile, launch and produce a
-    plausible wrong field. ON THIS FAMILY THE HAZARD IS SHARPEST AT THE TWO
-    COEFFICIENT GROUPS: they are the same size and the same type, so swapping them is
+    plausible wrong field. On this family the hazard is sharpest at the two
+    coefficient groups: they are the same size and the same type, so swapping them is
     a half-cell error in the absorber profile that nothing downstream would name.
     """
     text = source((True, True, True))
@@ -622,6 +622,6 @@ def test_the_launcher_binds_the_signature_in_order(source):
         f"the signature declares\n  {declared}\nand the launcher assembles\n"
         f"  {expected}\nCUDA binds by position, so a difference here is a silent "
         f"wrong answer rather than an error")
-    # THE TWO COEFFICIENT GROUPS ARE THE SAME SIZE, which is exactly why their order
+    # The two coefficient groups are the same size, which is exactly why their order
     # is pinned as text: a swap is type-correct and arity-correct.
     assert len(family._CURL_TABLE_KEYS) == len(family._CONSTITUTIVE_TABLE_KEYS) == 6

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""The H->D seam on the 0.10 source path: one set of measurements for every CUDA and
+"""The H->D seam on the 1.0 source path: one set of measurements for every CUDA and
 Triton H->D gate.
 
-WHAT STANDS IN THE SEAM NOW. An integrated source enters at the constitutive update
+What stands in the seam now. An integrated source enters at the constitutive update
 through ``f_minus_p`` (``sources.f_minus_p_begin`` / ``sources.f_minus_p_end``) and stands
 no withdraw in D or B: ``withdraw_hoist.standing_withdraws`` answers ``()`` for every
 engine source. The one statement the driver runs between the ``update_H`` and ``step_D``
@@ -303,7 +303,7 @@ def seam_restore_leg(*, build: Callable[[], Any],
         "seam_pass": dict(withdraw_hoist.SEAM_PASS),
         "superseded_campaign": dict(withdraw_hoist.MEASUREMENT),
         "what_this_licenses": (
-            "this weld beside the 0.10 seam pass on this device: with integrated sources "
+            "this weld beside the 1.0 seam pass on this device: with integrated sources "
             "entering through f_minus_p, the launch spanning update_H and step_D leaves "
             "the magnetic restore after step_D and is byte-identical to the driver's "
             "order, while the restore moved before the launch and the magnetic "
@@ -350,11 +350,11 @@ def lift_withdraw_accounting(blocks: Mapping[str, Mapping[str, Any]],
     """Which lifted rows the predicate must refuse by a standing withdraw, and whether it
     refused exactly those, by name.
 
-    THE EXPECTED SET IS DERIVED FROM EACH ROW'S OWN RECORDED SOURCES -- a source whose
+    The expected set is derived from each row's own recorded sources -- a source whose
     ``withdraw_does_work`` is true and whose field type is not B -- never from the
     predicate's answer, so a predicate that refused too much or too little reads as a
     failure here. A scored row with no source list is ignorance, and ignorance is never
-    an empty set: it fails. On the 0.10 engine no source's withdraw does work, so the
+    an empty set: it fails. On the 1.0 engine no source's withdraw does work, so the
     rows the seam record flags ``withdraw_in_seam`` (cut on the driver before
     ``f_minus_p``) must be ADMITTED; a refusal naming a standing withdraw on any row
     that carries no such source is a failure.

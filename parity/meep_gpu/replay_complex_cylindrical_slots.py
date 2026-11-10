@@ -1,11 +1,11 @@
 """What the complex Dcyl constitutive admission is worth, replayed off the census.
 
-WHAT THIS ANSWERS. ``gate_cuda_complex_cylindrical_constitutive.py`` measures
+What this answers. ``gate_cuda_complex_cylindrical_constitutive.py`` measures
 WHETHER the shipped CUDA complex constitutive pair reproduces ``stepping`` on a
-Dcyl grid. This answers WHAT THAT IS WORTH, in the only currency the plan counts:
+Dcyl grid. This answers what that is worth, in the only currency the plan counts:
 slots of the predicate census, where a slot is one (corpus row, sub-step) pair.
 
-WHY A REPLAY AND NOT A RE-CENSUS. The census
+Why a replay and not a re-census. The census
 (``results/cuda_predicate_coverage_2026-08-20_all_families``) lifted every corpus
 row into a real ``Grid``/``Fields``/``PML`` triple and recorded, per row and per
 sub-step, each family's verdict AND its first refusal string. Re-lifting costs
@@ -14,14 +14,14 @@ hours and a MEEP install. Every clause of
 record already carries in its per-row ``configuration`` block, so those clauses
 can be re-run against stand-ins.
 
-THE COUNTS ARE AN UPPER BOUND, and the reason is written into the replay rather
+The counts are an upper bound, and the reason is written into the replay rather
 than only into the prose: the complex-volume and coefficient-vector tail
 (``_complex_volume_problem`` / ``_array_problem`` / ``_coefficient_vector_problem``)
 cannot be replayed from the record -- it carries no dtypes, strides or contiguity
 -- so the stand-ins are built to PASS that tail by construction. A row whose real
 arrays would fail it is counted here and would not be served in reality.
 
-THE REPLAY IS VALIDATED BEFORE IT IS USED, on the record's own numbers:
+The replay is validated before it is used, on the record's own numbers:
 
 1. every recorded ``covered_modulo_backend`` verdict for ``cuda_complex`` at
    ``update_H`` and ``update_E`` must reproduce under the BEFORE predicate;
@@ -34,7 +34,7 @@ THE REPLAY IS VALIDATED BEFORE IT IS USED, on the record's own numbers:
 4. the CURL must be unchanged everywhere, cylindrical rows included -- the whole
    point of the parameter is that only one caller passes it.
 
-WHAT IT WRITES. A FRESH census directory whose ``examples.jsonl`` / ``tests.jsonl``
+What it writes. A FRESH census directory whose ``examples.jsonl`` / ``tests.jsonl``
 carry the replayed ``cuda_complex`` constitutive verdicts and are otherwise the
 recorded bytes, so the SAME union analyzer can be run over it positionally and the
 before/after union numbers are produced by one instrument rather than two. The
@@ -85,7 +85,7 @@ class _CupyNamed:
 class _FakeArray:
     """A C-contiguous volume of the recorded shape and dtype, WITHOUT allocating it.
 
-    THAT IS THE UPPER BOUND, stated as an object: a corpus row whose real volumes
+    That is the upper bound, stated as an object: a corpus row whose real volumes
     are the wrong dtype or non-contiguous is admitted here and would be refused in
     reality.
     """
@@ -130,7 +130,7 @@ class _Grid:
     def bloch_phase(self, axis: int):
         """The per-axis wrap factor, reconstructed from the recorded k_point.
 
-        THE VALUE IS NOT RECORDED, only ``k_point`` and ``has_bloch``, so this
+        The value is not recorded, only ``k_point`` and ``has_bloch``, so this
         answers the ONE question the predicate asks of it: is this axis phased or
         not (``phase is not None``). It never asks for the number. Reconstructing a
         number instead would be inventing a fact the record does not hold.
@@ -173,7 +173,7 @@ class _Fields:
         return None
 
     def inverse_epsilon_for(self, component: str):
-        # FLOAT32 UNDER COMPLEX STORAGE, which is the predicate's own clause and
+        # float32 under complex storage, which is the predicate's own clause and
         # not an accident of this stand-in (stepping.py:41-50 against
         # fields.py:1203-1204).
         return _FakeArray(self._shape, np.float32)
@@ -196,13 +196,13 @@ def stand_ins(configuration: Dict[str, Any]):
 
 
 # ---------------------------------------------------------------------------
-# THE TWO STATES OF THE PREDICATE
+# The two states of the predicate
 # ---------------------------------------------------------------------------
 
 def verdict_before(configuration: Dict[str, Any], side: str) -> Tuple[bool, str]:
     """The pre-2026-08-20 predicate: every Dcyl run refused.
 
-    RECONSTRUCTED BY DELEGATION, never by re-transcribing the other clauses. The
+    Reconstructed by delegation, never by re-transcribing the other clauses. The
     change was exactly one argument, so the old behaviour is the old argument
     followed by the shipped function: the licence clause first (it is first in the
     shipped predicate too), then ``_complex_grid_refusal`` with
@@ -306,8 +306,8 @@ def validate(rows: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
 def price(rows: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
     """Which slots the widening moves, and what every OTHER family said about them.
 
-    A SLOT THE COMPLEX PAIR NEWLY ADMITS IS ONLY A GAIN IF NOTHING ELSE ALREADY
-    SERVED IT. The union census takes the union per slot, so a flip on a slot some
+    A slot the complex pair newly admits is only a gain if nothing else already
+    served it. The union census takes the union per slot, so a flip on a slot some
     other family already covers buys nothing -- and would additionally be an
     OVERLAP, which the analyzer prints as a finding because the arms are meant to
     partition.
@@ -365,7 +365,7 @@ def write_patched_census(source: str, destination: str,
                          rows_by_key: Dict[Any, Dict[str, Any]]) -> Dict[str, Any]:
     """A FRESH census directory carrying the replayed constitutive verdicts.
 
-    THE ORIGINAL IS NEVER WRITTEN TO. What is produced is a second directory the
+    The original is never written to. What is produced is a second directory the
     SAME union analyzer can be run over positionally, so the before and after
     numbers come from one instrument rather than from this file's own arithmetic.
     Only the two ``cuda_complex`` constitutive entries are rewritten; every other

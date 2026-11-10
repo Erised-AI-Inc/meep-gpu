@@ -1,6 +1,6 @@
 """The dispatch subnormal-policy gate, exercised on the real seam, one state per process.
 
-WHAT THE END-TO-END GATE ALREADY SHOWS, and what it does not. Re-running
+What the end-to-end gate already shows, and what it does not. Re-running
 ``gate_dispatch_end_to_end.py`` on this tree with nothing installing a policy is
 the headline: the shipped path is byte-identical to the kill-switched array path
 across every dispatching case, where before the same command diverged on six of
@@ -132,7 +132,7 @@ def preinstall(policy: str, executors: Optional[tuple] = None) -> Dict[str, Any]
         record["installed"] = False
         record["refused_with"] = f"{type(exc).__name__}: {exc}"
         if policy == "flush" and executors is None:
-            # MEASURED, and the reason the "uniform flush" state cannot simply be
+            # Measured, and the reason the "uniform flush" state cannot simply be
             # asked for on this host: CuPy's CUB reduction accelerators are fixed
             # at import and keep subnormals, so flush needs CUPY_ACCELERATORS=''
             # set before CuPy is imported. Fall back to the host leg alone, which
@@ -209,7 +209,7 @@ def main() -> int:
     elif args.case == "partial_install":
         artifact["preinstall"] = preinstall("keep", executors=("host", "cupy"))
         save(artifact, artifact_path)
-        # THE PRECONDITION IS THE CASE. Measured once and caught here: with a
+        # The precondition is the case. Measured once and caught here: with a
         # CUPY_CACHE_DIR lacking the keep token the caller's own install is
         # REFUSED, the module rolls the process back to nothing installed, and
         # what follows measures the ordinary shipped path instead of the split
@@ -251,7 +251,7 @@ def main() -> int:
         say("phase 1/2: Triton dispatch (this is what installs the policy)")
         artifact["triton"] = run_triton_phase(args.sim_case, args.res, args.gpu,
                                               None, args.out, artifact, artifact_path)
-        # DROP THE IN-PROCESS MEMO between the phases. The dispatching step above
+        # Drop the in-process memo between the phases. The dispatching step above
         # already ran the array sub-steps it did NOT dispatch, so their kernels are
         # memoized and the census below would attribute zero compiles to them and
         # report an empty CuPy leg as agreement. Dropping it makes them recompile —
@@ -259,7 +259,7 @@ def main() -> int:
         import cupy  # noqa: PLC0415
 
         cupy._util.clear_memo()
-        # AND A COLD DISK CACHE, for the same reason one layer down. The memo
+        # And a cold disk cache, for the same reason one layer down. The memo
         # drop makes CuPy look the kernel up again; the DISK cache then serves it
         # without an NVRTC call and the census reads nothing. Measured: with only
         # the memo dropped the whole-step CuPy census fell to 7 audited f32

@@ -22,11 +22,11 @@ Each entry is ``(id, why, expectation, rewrite, needs)``:
   ``"invariant_k"`` (BFAST with a nonzero k on a declared-invariant axis),
   ``"mirror_periodic"`` (a folded PERIODIC axis), or nothing.
 
-THE INVERSIONS (results/bit_parity_0_10/design/KERNELS.md section 7.1). The previous
+THE INVERSIONS (since 1.0). The previous
 kernels carried the folded term INSIDE the curl, before the forms (the array path's
 previous placement); the beta pass and the BFAST pass now follow the forms, as MEEP runs
 them. ``*_inside_the_curl`` plants the previous placement back, and must be caught. The
-BFAST state's previous one-rounding advance ``total - 2*state`` (AP6b) is planted back by
+BFAST state's previous one-rounding advance ``total - 2*state`` is planted back by
 ``f_one_rounding_advance``, and the previous whole-pass on a one-partner component (the
 absent partner's product kept with a zeroed coefficient) by ``f_absent_partner_read``.
 
@@ -403,7 +403,7 @@ def bfast_mutations() -> List[Entry]:
         ("f_pass_dropped", "no BFAST pass at all: the ordinary kernel on a BFAST run",
          "caught", lambda s: replace_all(s, "if HAS_BFAST:", "if HAS_BFAST and False:"), ()),
         ("f_one_rounding_advance",
-         "THE INVERSION (AP6b): target 2's increment from the previous one-rounding "
+         "THE INVERSION: target 2's increment from the previous one-rounding "
          "advance total - 2*state instead of MEEP's F = S - F_prev, raw = F - F_prev",
          "caught", lambda s: rewrite_block(
              s, [advance2],
@@ -457,9 +457,9 @@ def bfast_mutations() -> List[Entry]:
 # character, plus its pass. The root bodies' form lines are therefore the same text in
 # every carrier, up to the storage's part suffix (``curl2`` / ``curl2_re``) and the
 # fold's ownership mask (``live`` / ``own0``); the rewrites below match by pattern, not
-# by one spelling, so one table serves every carrier. KERNELS.md section 7.1 (the
-# previous grouping planted back: ``a1``, ``a3``) and section 7.2 (the chunk-form
-# battery: ``b*``) say what each one plants.
+# by one spelling, so one table serves every carrier. The inverted grouping mutations
+# (the previous grouping planted back: ``a1``, ``a3``) and the per-chunk form battery
+# (``b*``; both in docs/development/certification.md) say what each one plants.
 
 
 _STENCIL = _re.compile(
@@ -558,7 +558,7 @@ def form_mutations(constitutive: bool = True) -> List[Entry]:
 
     entries: List[Entry] = [
         ("a1_pairwise_stencil",
-         "THE INVERSION (KERNELS.md 7.1): target 2's curl in the previous package "
+         "THE INVERSION: target 2's curl in the previous package "
          "grouping (g1s - g1) + (g2 - g2s) instead of MEEP's ((g1s - g1) + g2) - g2s",
          "caught", _regex_lines(_STENCIL, stencil_pairwise), ()),
         ("b1_whole_grid_recurrence",
@@ -605,7 +605,7 @@ def form_mutations(constitutive: bool = True) -> List[Entry]:
 
         entries += [
             ("a3_previous_constitutive_grouping",
-             "THE INVERSION (KERNELS.md 7.1): component 0's accumulation in the "
+             "THE INVERSION: component 0's accumulation in the "
              "previous package grouping (f + kps*src) - kms*prev instead of MEEP's "
              "f + ((kps*src) - (kms*prev))", "caught",
              _previous_constitutive_grouping, ("layer",)),

@@ -11,7 +11,7 @@ fold is where this family can go wrong in ways that compile and run:
   a RUNTIME scalar taken from the same plane — two different facts about the same
   fold, and crossing them is a plane of wrong values;
 * ``fill_folded_far_ghosts_D`` is REFUSED, by the pass's own liveness condition
-  rather than by boundary code, and the refusal is MEASURED rather than argued.
+  rather than by boundary code, and the refusal is measured rather than argued.
 """
 
 from __future__ import annotations
@@ -517,7 +517,7 @@ class _RecordingKernel:
 
 
 def test_warm_launches_once_on_an_empty_grid_and_rotates_nothing(product, monkeypatch):
-    """THE MECHANISM THE ROUTING RESTS ON, through ``fastpath.warm_plan``.
+    """The mechanism the routing rests on, through ``fastpath.warm_plan``.
 
     Built by the SHIPPED builder on a NumPy host: the predicate's only refusal
     here is its backend clause (asserted), so that clause alone is replaced for

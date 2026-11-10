@@ -3,7 +3,7 @@
 THE QUESTION
 ============
 ``meep_gpu/cuda_kernels/complex_no_pml_kernels.py`` carries six kernels for a run
-with complex64 storage and NO ACTIVE ABSORBER. None has ever run on a device.
+with complex64 storage and no active absorber. None has ever run on a device.
 This gate asks, per sub-step and per arm, whether each is byte-identical to
 ``stepping.step_B`` / ``step_D`` / ``update_E`` / ``update_P`` from ONE frozen
 state -- at one launch and at 60 -- across phased and unphased periodic walls,
@@ -11,13 +11,13 @@ metallic walls, 3-D / 2-D / 1-D shapes, an absent absorber and an inert layer,
 zero / one / two poles, uniform and volume sigma, BOTH float32 subnormal policies,
 three value classes and both courants.
 
-WHAT THE CORPUS ASKED FOR, AND WHY THERE ARE FOUR KERNEL SHAPES AND NOT THREE
+What the corpus asked for, and why there are four kernel shapes and not three
 =============================================================================
 The six unserved corpus rows were lifted and their real ``Grid``/``Fields``
 objects interrogated before any kernel was written
 (``results/cuda_complex_no_pml_recon_2026-08-20/facts/``). All six store E, so
 the DERIVED-E arm the real no-absorber family needed does not arise. What does
-arise, and was not in this family's brief, is a CONDUCTIVITY: four of the six
+arise, and was not in this family's original scope, is a CONDUCTIVITY: four of the six
 rows return a float32 volume from ``fields.condfac_for`` for every one of
 Bx..Dz, so ``stepping._apply_curl`` routes them to ``_apply_conductive_update``
 (stepping.py:536-537) -- a different tail from ``target -= curl``. Eight of the
@@ -32,7 +32,7 @@ THE ARMS
 * ``update_E``                 -- ``update_E_no_pml_complex_stored``
 * ``update_P``                 -- ``update_P_no_pml_complex[_uniform]``
 
-TWO FIXTURES, NOT ONE FIXTURE RESTORED
+Two fixtures, not one fixture restored
 ======================================
 Every case builds the SAME configuration twice from the same seed and asserts the
 two start byte-identical (``fixtures_agree``, a floor, not a comment). The oracle
@@ -41,10 +41,10 @@ required here for the same reason: ``update_P`` ROTATES array objects between
 ``P``, ``P_prev`` and ``_scratch``, so "restore the frozen state" would have to
 reproduce a permutation as well as a set of values, and a restore that got the
 permutation wrong would hide exactly the defect the multi-step leg exists to
-catch. Comparison is BY SLOT NAME rather than by object identity, for the same
+catch. Comparison is by slot name rather than by object identity, for the same
 reason.
 
-WHAT WOULD MAKE THIS GATE VACUOUS, AND THE FLOORS THAT REFUSE IT
+What would make this gate vacuous, and the floors that refuse it
 ================================================================
 * ``fixtures_agree`` -- the two fixtures start byte-identical, or the case is
   comparing two different problems and a pass means nothing.
@@ -68,14 +68,14 @@ WHAT WOULD MAKE THIS GATE VACUOUS, AND THE FLOORS THAT REFUSE IT
   (``pml_apply``'s and ``constitutive_apply``'s bodies, compiled into every
   kernel here and called by none) are the measurement that this family's tails
   really are ``target -= curl`` and the conductive triple. The previous family's
-  full complex product against ``(c + 0j)`` is armed as a defect (KERNELS.md
-  section 7.1: the old form is the mutant) on the signed-zero class, the one class
+  full complex product against ``(c + 0j)`` is armed as a defect (inverted: the
+  package's old form is the mutant) on the signed-zero class, the one class
   that separates it from the part-wise product.
 * ``verdict_flips_against_planted_defect`` -- the release verdict is recomputed
   against a record with a defect planted in it, three ways, and the run fails if
   it does not flip. A gate whose verdict cannot go red is not a gate.
 
-THERE IS NO NumPy BACKEND, DELIBERATELY
+There is no NumPy backend, deliberately
 =======================================
 The sibling curl gates carry one. It costs a SECOND TRANSCRIPTION of the kernel
 -- the ghost rule, the stored window's Bloch connection, the masks, the tails -- on
@@ -161,7 +161,7 @@ _ADVANCE = np.float32(0.97)
 
 SUB_STEPS: Tuple[str, ...] = ("step_B", "step_D", "update_E", "update_P")
 
-#: 0.5 is exactly representable in float32 and 0.35 is not. ONLY THE SECOND can
+#: 0.5 is exactly representable in float32 and 0.35 is not. Only the second can
 #: distinguish a contracted expression from an uncontracted one, so the unguarded
 #: control is scored at the inexact one.
 COURANTS: Tuple[float, ...] = (0.5, 0.35)
@@ -195,7 +195,7 @@ SPECS: Tuple[Dict[str, Any], ...] = (
     {"label": "3d_mixed_phased", "cell": (9.0, 10.0, 11.0), "dimensions": 3,
      "boundaries": ("periodic", "metallic", "periodic"),
      "k_point": (0.25, 0.0, -0.15), "absorber": "none"},
-    # THE INERT LAYER. ``_pml_is_active`` is False for a zero-thickness PML, so
+    # The inert layer. ``_pml_is_active`` is False for a zero-thickness PML, so
     # stepping takes the same tail and the predicate admits it. Swept because
     # "inert is the same as absent" is otherwise an inference about pml.py.
     {"label": "3d_phased_inert_layer", "cell": (9.0, 10.0, 11.0), "dimensions": 3,
@@ -237,8 +237,8 @@ DISPLACEMENT = {"Ex": "Dx", "Ey": "Dy", "Ez": "Dz"}
 def _complex_host(shape, value_class: str, rng) -> np.ndarray:
     """One complex64 volume in a value class.
 
-    THE TWO PLANES ARE ASSIGNED, NEVER COMBINED AS ``re + 1j*im``. Measured by
-    the sibling tranche before it was reasoned about: ``1j * im`` carries a real
+    The two planes are assigned, never combined as ``re + 1j*im``. Measured in
+    ``gate_cuda_complex.py`` before it was reasoned about: ``1j * im`` carries a real
     part of ``0.0 * im``, so ``re + 1j*im`` computes ``(-0.0) + (+0.0) = +0.0``
     and DESTROYS every negative zero in the plane the zero cross terms act on.
     """
@@ -283,7 +283,7 @@ def build(xp, spec: Dict[str, Any], courant: float, conductivity: str,
     fields.enable_field_storage()
     shape = tuple(grid.shape)
 
-    # THREE DISTINCT, INHOMOGENEOUS inverse-epsilon volumes drawn away from 1.0.
+    # Three distinct, inhomogeneous inverse-epsilon volumes drawn away from 1.0.
     # Against ones the multiply is invisible; against one shared volume the
     # component-aliasing defect is invisible; against a constant volume a
     # coefficient-index error is invisible. ``coefficient_profile`` is the floor
@@ -333,7 +333,7 @@ def build(xp, spec: Dict[str, Any], courant: float, conductivity: str,
                 _complex_host(shape, value_class, rng))
             state.P_prev[component][...] = xp.asarray(
                 _complex_host(shape, value_class, rng))
-        # THE SCRATCH IS SEEDED NONZERO. It is update_P's OUTPUT and starts as
+        # The scratch is seeded nonzero. It is update_P's OUTPUT and starts as
         # whatever the previous rotation retired; left at zero, a kernel that
         # failed to write some cells would agree with an oracle that also wrote
         # nothing there.
@@ -434,7 +434,7 @@ def _profile(volume) -> Dict[str, Any]:
 def coefficient_profile(fields, sub_step: str, conductivity: str) -> Dict[str, Any]:
     """Every per-cell coefficient this sub-step's kernel INDEXES, profiled.
 
-    THE FLOOR THIS ENFORCES is the one that makes a coefficient-INDEX error
+    The floor this enforces is the one that makes a coefficient-INDEX error
     visible. A constant volume is indexed correctly by every index, so against
     one the whole class of "read cell j where cell i was meant" defects is
     unobservable and the case measures nothing about the binding. Three
@@ -536,7 +536,7 @@ def run_oracle(fields, layer, sub_step: str) -> None:
 def run_kernel(fields, grid, sub_step: str, *, layer=None,
                drive=None, poles=None, conductivity=None) -> None:
     if sub_step in ("step_B", "step_D"):
-        # THE RUN'S CHUNK RECORD: the one-rank division of the grid and the (absent
+        # The run's chunk record: the one-rank division of the grid and the (absent
         # or inert) layer, the division the oracle steps with. With no absorber no
         # chunk carries a layer; the kernel reads only the partner-presence word.
         from gate_chunk_records import layer_record  # noqa: PLC0415
@@ -577,7 +577,7 @@ def _drop_tail_store(source: str) -> Tuple[str, int]:
 def _conductive_order(source: str) -> Tuple[str, int]:
     """``(f - curl) * condfac * condinv`` instead of the array path's order.
 
-    MEASURED to change 400000 of 400000 float32 words on the host, so this must
+    Measured to change 400000 of 400000 float32 words on the host, so this must
     be CAUGHT on any live case.
     """
     return _replace_once(
@@ -603,7 +603,7 @@ def _conductive_swap_tables(source: str) -> Tuple[str, int]:
 
 
 def _conductive_full_complex_product(source: str) -> Tuple[str, int]:
-    """INVERTED (KERNELS.md section 7.1): the zero-imaginary complex product.
+    """INVERTED (must be caught): the zero-imaginary complex product.
 
     ``_apply_conductive_update`` scales each part once
     (``part_products.scale(condfac, field, out=field)``); the previous family's
@@ -694,7 +694,7 @@ def _ade_swap_history(source: str) -> Tuple[str, int]:
 
 
 #: The four DEAD-PRELUDE nulls. ``pml_apply`` and ``constitutive_apply`` are
-#: compiled into every kernel here and CALLED BY NONE, so every one of these must
+#: compiled into every kernel here and called by none, so every one of these must
 #: come back UNCAUGHT -- which is the measurement that this family's tails really
 #: are ``target -= curl`` and the conductive triple rather than the split-field
 #: recurrence, a claim that otherwise rests on reading the source.
@@ -728,7 +728,7 @@ def _dead_constitutive_regroup(source: str) -> Tuple[str, int]:
 
 #: ``name -> (transform, must_be_caught, kernel keys, leg filter or None)``.
 #:
-#: THE LEG FILTER IS NOT A CONVENIENCE. A mutation scored on a leg where it is
+#: The leg filter is not a convenience. A mutation scored on a leg where it is
 #: PROVABLY inert comes back ESCAPED and reads exactly like a kernel defect.
 #: ``conductive_full_complex_product`` is the case that forced this: the part-wise
 #: ``{re*c, im*c}`` and the zero-imaginary complex product agree EXACTLY on every
@@ -838,7 +838,7 @@ def one_case(spec: Dict[str, Any], sub_step: str, conductivity: str, poles: int,
              host_mutation: Optional[str] = None) -> Dict[str, Any]:
     """One configuration, built twice: the array path on one, the kernel on the other."""
     started = time.time()
-    # SEEDED FROM A DIGEST, NOT FROM hash(). Python salts hash() of a tuple
+    # Seeded from a digest, not from hash(). Python salts hash() of a tuple
     # containing strings with PYTHONHASHSEED, so a hash-seeded gate draws a
     # different fixture every process and a failing case cannot be replayed.
     seed = SEED + int.from_bytes(hashlib.sha256(
@@ -868,7 +868,7 @@ def one_case(spec: Dict[str, Any], sub_step: str, conductivity: str, poles: int,
         case["seconds"] = time.time() - started
         return case
 
-    # THE FLOOR THAT MAKES THE COMPARISON A COMPARISON.
+    # The floor that makes the comparison a comparison.
     before_o = fixture_hosts(fields_o, sub_step)
     before_k = fixture_hosts(fields_k, sub_step)
     disagree = sorted(name for name in before_o
@@ -886,7 +886,7 @@ def one_case(spec: Dict[str, Any], sub_step: str, conductivity: str, poles: int,
          for name, values in before_o.items()
          if np.asarray(values).dtype == np.complex64})
 
-    # THE PREDICATE'S ANSWER, recorded rather than acted on. The gate exists to
+    # The predicate's answer, recorded rather than acted on. The gate exists to
     # decide whether it should be believed, so it must not gate the measurement.
     if sub_step in ("step_B", "step_D"):
         covered, reason = family.covers_complex_no_pml_curl(
@@ -1007,7 +1007,7 @@ def case_product(product: str, guard: str = "fmad_false"):
     runs with and without a conductivity, so "the conductivity is read in
     _apply_curl and nowhere else" is measured too.
 
-    THE UNGUARDED CONTROL RUNS AT THE INEXACT COURANT ONLY. 0.5 is exactly
+    The unguarded control runs at the inexact Courant only. 0.5 is exactly
     representable and cannot separate a contracted expression from an
     uncontracted one, so an unguarded leg at 0.5 costs a case and answers nothing.
     """
@@ -1081,7 +1081,7 @@ MUTATION_LEGS: Tuple[Tuple[str, str, str, int, str, float, str], ...] = (
     ("3d_mixed_phased", "step_D", "volume", 1, "volume", INEXACT_COURANT, "uniform"),
     ("2d_phased", "step_B", "volume", 1, "volume", INEXACT_COURANT, "uniform"),
     ("2d_phased", "step_D", "volume", 1, "volume", INEXACT_COURANT, "uniform"),
-    # THE SIGNED-ZERO CONDUCTIVE LEGS, without which conductive_full_complex_product
+    # The signed-zero conductive legs, without which conductive_full_complex_product
     # has no case that can separate the zero-imaginary product from the part-wise
     # scale: the two agree exactly on every normal nonzero operand.
     ("3d_metallic", "step_B", "volume", 1, "volume", INEXACT_COURANT, "signed_zero"),
@@ -1106,7 +1106,7 @@ MUTATION_LEGS: Tuple[Tuple[str, str, str, int, str, float, str], ...] = (
     ("3d_mixed_phased", "update_P", "volume", 1, "uniform", INEXACT_COURANT,
      "uniform"),
     ("3d_metallic", "update_P", "none", 2, "uniform", INEXACT_COURANT, "uniform"),
-    # THE SIGNED-ZERO update_P LEGS, both sigma specializations: the only class whose
+    # The signed-zero update_P legs, both sigma specializations: the only class whose
     # real planes carry signed zeros, without which ade_complex_drive_product has no
     # case that can separate the per-part products from the zero-imaginary one.
     ("3d_metallic", "update_P", "none", 2, "volume", INEXACT_COURANT, "signed_zero"),
@@ -1282,7 +1282,7 @@ def summarize(results: Dict[str, Any]) -> Dict[str, Any]:
 
     reasons: List[str] = []
 
-    # EVERY ARM IS REQUIRED. A run that swept only the plain curl would release on
+    # Every arm is required. A run that swept only the plain curl would release on
     # four of the twenty reachable corpus slots and say nothing about the sixteen
     # the conductive, stored-E and ADE arms carry.
     for required in ("step_B::plain", "step_D::plain", "step_B::conductive",
@@ -1301,7 +1301,7 @@ def summarize(results: Dict[str, Any]) -> Dict[str, Any]:
                 f"{entry['multi_cases'] - entry['multi_identical']} of "
                 f"{entry['multi_cases']}")
 
-    # BOTH ABSORBER SHAPES, or "an inert layer steps like no layer" stays an
+    # Both absorber shapes, or "an inert layer steps like no layer" stays an
     # inference about pml.py rather than a measurement.
     absorbers = {c["absorber"] for c in scored}
     for shape in ("none", "inert_layer"):
@@ -1328,7 +1328,7 @@ def summarize(results: Dict[str, Any]) -> Dict[str, Any]:
     if not any(entry.get("negative_zeros", 0) for entry in census):
         reasons.append("no scored case carried a negative zero")
 
-    # A PHASED CASE MUST HAVE BEEN LIVE, or the Bloch rotation this family
+    # A phased case must have been live, or the Bloch rotation this family
     # inherits from the certified template is untested here.
     if not any(c.get("phase_is_live", {}).get("live") for c in scored):
         reasons.append("no scored case carried a live Bloch phase")
@@ -1412,7 +1412,7 @@ def summarize(results: Dict[str, Any]) -> Dict[str, Any]:
 def verdict_flips_against_planted_defect(results: Dict[str, Any]) -> Dict[str, Any]:
     """Recompute the verdict against a record with a defect planted in it.
 
-    A GATE WHOSE VERDICT CANNOT GO RED IS NOT A GATE. Three independent defects
+    A gate whose verdict cannot go red is not a gate. Three independent defects
     are planted, one at a time, into a COPY of the finished record: a scored case
     flipped to diverging, a must-be-caught source mutation flipped to ESCAPED,
     and a must-be-caught host mutation flipped to ESCAPED. Each must make
@@ -1483,6 +1483,7 @@ def save(results: Dict[str, Any], out_path: str) -> None:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
+    import neutral_ids  # noqa: PLC0415
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--product", choices=("full", "reduced"), default="full")
     parser.add_argument("--subnormal-policy", choices=("keep", "flush"),
@@ -1497,8 +1498,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     results: Dict[str, Any] = {
         "gate": "cuda_complex_no_pml",
         "started_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "host": os.uname().nodename,
-        "argv": list(argv if argv is not None else sys.argv[1:]),
+        "host": neutral_ids.machine_id(),
+        "argv": neutral_ids.argv(argv if argv is not None else sys.argv[1:]),
         "backend": "cuda",
         "product": args.product,
         "subnormal_policy": args.subnormal_policy,

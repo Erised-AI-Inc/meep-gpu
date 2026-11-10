@@ -106,6 +106,17 @@ REASON_TAGS: tuple[tuple[str, str], ...] = (
 )
 
 
+def _neutral_ids():
+    """The record spellings of machine stamps: ``neutral_ids.py`` beside this file. A
+    survey record leaves the machine that wrote it, so the interpreter, an error naming a
+    path and a child's stderr are written through it (labels, never this host's paths)."""
+    try:
+        import neutral_ids  # noqa: PLC0415
+    except ImportError:  # imported as a package module, not from parity/meep_gpu
+        from parity.meep_gpu import neutral_ids  # noqa: PLC0415
+    return neutral_ids
+
+
 def tag_reason(reason: str) -> str:  # Histogram key for one refusal sentence.
     for needle, tag in REASON_TAGS:
         if needle in reason:
@@ -124,6 +135,20 @@ os.environ.setdefault("MPLBACKEND", "Agg")
 
 class _StopExample(Exception):
     "Raised in place of the script's first terminal call, to capture the Simulation."
+
+
+def _neutral_ids():
+    # The record spellings of machine stamps (parity/meep_gpu/neutral_ids.py). The
+    # capture record leaves the machine inside every record built on it (the survey's,
+    # the sweep's, the census's, the identity corpus's, the stress run's), so the
+    # interpreter and an error that names a path are spelled neutrally HERE, in the
+    # capture, once, rather than by each parent. A child run as a script has this
+    # directory on sys.path; an in-process exec has the package root.
+    try:
+        import neutral_ids
+    except ImportError:
+        from parity.meep_gpu import neutral_ids
+    return neutral_ids
 
 
 # Scripts whose own argparse interface REQUIRES positional arguments: executed bare
@@ -211,8 +236,9 @@ def _capture(script):
     # Which interpreter (and therefore which MEEP build) produced this row. The
     # corpus has been surveyed from more than one env — the pristine reference MEEP
     # 1.33.0 and a side env that carried the optional packages — and a
-    # number that does not name its producer is not a record.
-    record["python"] = sys.executable
+    # number that does not name its producer is not a record. Spelled under its root's
+    # label (``<home>/...``): which environment, never which account or machine.
+    record["python"] = _neutral_ids().path(sys.executable)
     record["meep_version"] = str(getattr(mp, "__version__", None))
     # PyMieScatt (the analytic Mie reference two scripts import) still does
     # `from scipy.integrate import trapz`, an alias scipy >= 1.14 removed in favour
@@ -239,10 +265,10 @@ def _capture(script):
         record["capture_point"] = str(exc)
     except SystemExit as exc:
         record["outcome"] = "sysexit"
-        record["error"] = repr(exc)
+        record["error"] = _neutral_ids().text(repr(exc))
     except BaseException as exc:
         record["outcome"] = "error"
-        record["error"] = f"{type(exc).__name__}: {exc}"[:400]
+        record["error"] = _neutral_ids().text(f"{type(exc).__name__}: {exc}")[:400]
 
     record["n_simulations_constructed"] = len(state["constructed"])
     record["set_boundary_calls"] = state.get("set_boundary", [])
@@ -275,7 +301,7 @@ def _survey(script, out_path):
         record["reasons"] = list(verdict.reasons)
     except BaseException as exc:
         record["supported"] = None
-        record["compat_error"] = f"{type(exc).__name__}: {exc}"[:400]
+        record["compat_error"] = _neutral_ids().text(f"{type(exc).__name__}: {exc}")[:400]
     with open(out_path, "w") as handle:
         json.dump(record, handle)
 
@@ -419,13 +445,17 @@ def main() -> int:
             status = "timeout"
             stderr_text = _as_text(expired.stderr)
         elapsed = time.time() - case_start
+        neutral = _neutral_ids()
         if record_path.exists():
-            record = json.loads(record_path.read_text(encoding="utf-8"))
+            record = neutral.value(json.loads(record_path.read_text(encoding="utf-8")))
         else:
             # The child's stderr is the ONLY account of why it died, and discarding it
             # (as this did) turns every failure into an indistinguishable "child_died"
             # — including a harness bug that kills all 80 at once, which is exactly what
-            # it hid. Keep the tail on the record and the full text beside it.
+            # it hid. Keep the tail on the record and the full text beside it. Both are
+            # written neutrally, and the whole text before it is cut: a tail cut first can
+            # begin inside a path, where no label is recognised any more.
+            stderr_text = neutral.text(stderr_text)
             record = {"script": script.name, "outcome": status if status != "ok" else "child_died",
                       "has_simulation": False, "returncode": returncode,
                       "stderr_tail": stderr_text[-2000:]}

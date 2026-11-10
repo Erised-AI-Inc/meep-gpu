@@ -169,7 +169,7 @@ def test_an_unbarriered_instance_keeps_its_plain_class_and_pays_nothing():
 
 
 # ---------------------------------------------------------------------------
-# The dict barrier — R9, the dispersive rows
+# The dict barrier — the dispersive rows, held rather than refused
 # ---------------------------------------------------------------------------
 
 def _polarization_case():
@@ -188,7 +188,7 @@ def _polarization_case():
 
 
 def test_a_property_cannot_intercept_a_dict_subscript_which_is_why_this_exists():
-    """The premise of R9, demonstrated rather than asserted."""
+    """The premise of the dict barrier, demonstrated rather than asserted."""
     residency, state, _, _ = _polarization_case()
     barrier_module.install_read_barrier(state, residency, ("P",))
     # ``P`` is an attribute holding a dict, not a mirrored array, so nothing is

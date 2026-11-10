@@ -1,6 +1,6 @@
 """The one module that puts every hand-CUDA family in the arm table.
 
-WHAT IS IN THE TABLE. Every family the closed coverage census asked about, with the
+What is in the table. Every family the closed coverage census asked about, with the
 predicate it asked and the slots it asked on — read off
 ``parity/meep_gpu/results/cuda_predicate_coverage_2026-08-20_closed/
 predicate_battery.py:1257-1447``, which is the artifact behind "759 of 759 slots on
@@ -8,8 +8,8 @@ predicate_battery.py:1257-1447``, which is the artifact behind "759 of 759 slots
 (``.../coverage_report.txt:270-285``). Nothing here re-derives what a family covers;
 it binds the SAME entry point the census scored, at the SAME slots.
 
-REGISTRATION IS A CALL HERE, NOT AN IMPORT SIDE EFFECT IN EACH FAMILY, AND THAT IS
-THE ONE DELIBERATE DIVERGENCE FROM THE METAL TABLE. On that track a family module
+Registration is a call here, not an import side effect in each family, and that is
+the one deliberate divergence from the Metal table. On that track a family module
 registers its own arms at module scope and :mod:`.registry` merely imports it. The
 hand-CUDA family modules ship a predicate and a kernel and nothing else — and most
 of them ``import cupy`` at module scope, so registering from inside one would make
@@ -21,7 +21,7 @@ modules imported below are the laptop-evaluable ones by construction; the kernel
 modules are reached only from a launch-argument resolver, which nothing calls at
 plan time.
 
-WHAT IS DELIBERATELY NOT REGISTERED, and why each absence is a decision:
+What is deliberately not registered, and why each absence is a decision:
 
 * ``coverage.covers_real_pml_ade_component`` and
   ``dispersive_kernels.covers_no_pml_ade_component`` — per-component helpers that
@@ -38,7 +38,7 @@ WHAT IS DELIBERATELY NOT REGISTERED, and why each absence is a decision:
   permanently ambiguous with ``cuda_offdiag`` on every unfolded off-diagonal row
   (``predicate_battery.py:928-945``).
 * ``in_seam_coverage``'s three pass predicates, and ``in_seam_passes.covers_pass``
-  which dispatches over them, ON THEIR OWN. The fill slot runs TWO of those passes
+  which dispatches over them, on their own. The fill slot runs TWO of those passes
   (the near and far ghost fills) with the third (the wall wipe) between them on the
   array path, so the arm that serves it is ``arms.covers_mirror_fill`` -- the two
   fill predicates conjoined, in the seventh positional shape ``fill_by_family`` --
@@ -61,29 +61,29 @@ WHAT IS DELIBERATELY NOT REGISTERED, and why each absence is a decision:
   reachable, and it is also the sole constructor of the two deposit-repair plans on
   this track.
 
-THAT LIST IS ENFORCED, NOT DECORATIVE. :data:`NOT_REGISTERED` names each absence and
+That list is enforced, not decorative. :data:`NOT_REGISTERED` names each absence and
 ``test_arms.test_every_shipped_predicate_is_registered_or_documented`` walks the
 package for ``covers_*`` and requires every one to be in the table or in that map. A
 family that lands with no arm would otherwise never be selected and nothing would go
 red — the silent-divergence class this track spends its gates on.
 
-THE ONE FAMILY THAT REGISTERS TWO ARMS ON ONE SLOT is ``cuda_complex_offdiag``: a
+The one family that registers two arms on one slot is ``cuda_complex_offdiag``: a
 PML tail and a no-PML tail, both at ``update_E``. The census folds them into a
 single entry precisely so that family cannot bid twice at a slot it serves once,
 and records ``arms_disjoint`` beside it — the two are separated by the same
 ``_pml_is_active`` switch the array path branches on (``stepping.py:1015`` against
-:993), so at most one can ever admit a row. HERE THEY ARE REGISTERED SEPARATELY AND
-THE COMPOSER ENFORCES IT: if both ever admit, ``_select_slot`` leaves ``update_E``
+:993), so at most one can ever admit a row. Here they are registered separately and
+the composer enforces it: if both ever admit, ``_select_slot`` leaves ``update_E``
 UNSELECTED naming both, which is the fail-closed answer. Folding them into one arm
 would have hidden the very disagreement the census measures.
 
-DISJOINTNESS IS NOT ASSERTED HERE. The census measured zero overlaps across these
+Disjointness is not asserted here. The census measured zero overlaps across these
 families on the 186 rows; this module binds them and the composer refuses if that
 ever stops being true on a configuration nobody measured. A table that ASSUMED
 disjointness would silently pick by registration order, which is the defect the
 shared ``_select_slot`` exists to make impossible.
 
-NOTHING HERE IS DISPATCH. ``meep_gpu.fastpath.plan_fast_path`` still returns ``None``
+Nothing here is dispatch. ``meep_gpu.fastpath.plan_fast_path`` still returns ``None``
 on every branch; this module decides only what :func:`.arms.plan_step` may compose.
 """
 
@@ -111,10 +111,10 @@ def _predicate(module: str, name: str) -> Any:
     return getattr(import_module(f".{module}", __package__), name)
 
 
-#: THE TABLE. One row per (family, slots, predicate, positional shape, kernel label),
+#: The table. One row per (family, slots, predicate, positional shape, kernel label),
 #: in the order the census reports them.
 #:
-#: ``kernel`` IS THE CENSUS RECORD'S LABEL, QUOTED, and it is neither a device entry
+#: ``kernel`` is the census record's label, quoted, and it is neither a device entry
 #: point nor a certification. Several of the record's strings are descriptions rather
 #: than identifiers — it calls the certified curl pair ``fused_step_{B,D}_pml_real``
 #: after the python wrapper, while the declared entry points are
@@ -150,6 +150,12 @@ def _predicate(module: str, name: str) -> Any:
 #: restarted per chunk, step_db.cpp:104-118). Such an arm refuses a division whose
 #: record does not name those chunks (``chunk_coverage.chunk_division_refusal``); every
 #: arm, with or without the key, refuses a division no record describes.
+#:
+#: ``chunk_clause`` names a function of the row's module that the arm asks instead of
+#: that clause, on the composition's :class:`.arms.StepContext`
+#: (``arms.coverage_adapter``): the dispersive off-diagonal family reads a cell's chunk
+#: only through its presence words, so it is admitted on a division whose labels do not
+#: name its chunks wherever those words build on the record.
 _TABLE: Tuple[Dict[str, Any], ...] = (
     # --- the two certified real-field families whose resolvers came first ----------
     # (2026-09-17, lifted from the harnesses that drive them). Four more rows carry a
@@ -185,7 +191,7 @@ _TABLE: Tuple[Dict[str, Any], ...] = (
      # resolves each cell's halves to entry points by stripping ``fused_`` --
      # and ``step_B_pml_cylindrical`` names nothing in this tree, so the board
      # reported the CERTIFIED ``cyl_step_B_pml_real``
-     # (``cuda_cylindrical_real_2026-08-27``) as NOT AN ENTRY POINT on the
+     # (``cuda_cylindrical_real_2026-08-27``) as not an entry point on the
      # ``B_to_H (cuda_cylindrical, cuda_constitutive)`` cell.
      "shape": "curl_by_sub_step", "kernel": "fused_cyl_{slot}_pml_real"},
     {"family": "cuda_no_pml", "label": "no-PML null",
@@ -245,6 +251,7 @@ _TABLE: Tuple[Dict[str, Any], ...] = (
      "resolve": "folded_offdiag"},
     {"family": "cuda_dispersive_offdiag", "label": "dispersive off-diagonal",
      "chunk_axes": CHUNK_AXES_OFFDIAG,
+     "chunk_clause": "dispersive_offdiag_division_refusal",
      "noun": "dispersive off-diagonal update_E", "slots": ("update_E",),
      "module": "dispersive_offdiag_update_e",
      "name": "covers_real_pml_dispersive_offdiag_constitutive",
@@ -294,7 +301,7 @@ _TABLE: Tuple[Dict[str, Any], ...] = (
 
     # --- complex with NO absorber ---------------------------------------------
     #
-    # ``update_H`` IS DELIBERATELY ABSENT from this family. Under an inert layer
+    # ``update_H`` is deliberately absent from this family. Under an inert layer
     # ``stepping.update_H`` returns at :916-917 before reading an array whatever the
     # storage width is, so that slot is ``cuda_no_pml``'s NULL arm and is already
     # served on exactly these rows. A second admitter there would be a widening, not
@@ -336,7 +343,7 @@ _TABLE: Tuple[Dict[str, Any], ...] = (
 
     # --- the fill slots (2026-09-27): the certified real-storage in-seam kernels ---
     #
-    # OUTSIDE THE 759-SLOT CENSUS DENOMINATOR, which counts the four curl and
+    # Outside the 759-slot census denominator, which counts the four curl and
     # constitutive slots plus update_P; the fill slots are what rung 6b of the
     # dispatch seam requires on a folded run, and without an arm here every folded
     # row was refused WHOLE whenever this table composed without a second one. The
@@ -569,8 +576,8 @@ NOT_REGISTERED: Dict[str, str] = {
         "same exclusion as every fused product above. Its two slots are already "
         "served by the cuda_constitutive ordinary arm and the cuda_curl PML arm, and "
         "fused_pairs.FUSED_PAIR_ARMS is what requires the table to have given them to "
-        "exactly those before it may absorb. IT IS ALSO REFUSED BY THE COMPOSER ON "
-        "EVERY CONFIGURATION -- fused_hd_pair.INSTALLABLE is False, a measured verdict "
+        "exactly those before it may absorb. It is also refused by the composer on "
+        "every configuration -- fused_hd_pair.INSTALLABLE is False, a measured verdict "
         "about the slot arbitration rather than about the arithmetic -- so this "
         "exclusion is doubled: it has no single slot to bid at here, and it does not "
         "take the two it spans there either",
@@ -745,8 +752,11 @@ def register_all() -> Tuple[arms.ArmSpec, ...]:
     registered = []
     for row in _TABLE:
         predicate = _predicate(row["module"], row["name"])
+        clause = (_predicate(row["module"], row["chunk_clause"])
+                  if "chunk_clause" in row else None)
         coverage = arms.coverage_adapter(predicate, row["shape"],
-                                         chunk_axes=row.get("chunk_axes", ()))
+                                         chunk_axes=row.get("chunk_axes", ()),
+                                         chunk_clause=clause)
         resolve = _RESOLVERS.get(row.get("resolve"))
         launch = _LAUNCHERS.get(row.get("resolve"))
         plan_class = _PLAN_CLASSES.get(row.get("plan_class"), arms.CudaSlotPlan)

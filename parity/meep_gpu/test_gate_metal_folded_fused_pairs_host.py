@@ -9,10 +9,12 @@ host:
 * every shader edit applies to the source its mutation case emits (each gate's own
   ``needle`` refuses an absent anchor, and the magnetic gate's refuses an ambiguous
   one), and changes it;
-* the two INVERTED grouping rows (KERNELS.md §7.1) plant the package's previous
-  groupings over MEEP's, which the shipped source carries;
-* the two record host mutations (the B battery's bound off by one and lattice swap)
-  can arm on their mutation case's record.
+* the two INVERTED grouping rows
+  (docs/development/certification.md#inverted-grouping-mutations) plant the package's
+  previous groupings over MEEP's, which the shipped source carries;
+* the two record host mutations (the per-chunk form battery's run end one row off and
+  lattice swap; docs/development/certification.md#chunk-form-battery) can arm on their
+  mutation case's record.
 
 The gates set their subnormal policy in the environment when imported, so every check
 runs in a child process with torch made unimportable: the host checks are torch-free,

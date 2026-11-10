@@ -1,6 +1,6 @@
 """Byte-identity gate for the FIRST fused hand-CUDA product: ``step_B`` -> ``update_H``.
 
-WHAT IS UNDER TEST, AND WHY IT CANNOT BE MEASURED PER SUB-STEP.
+What is under test, and why it cannot be measured per sub-step.
 ``meep_gpu/cuda_kernels/fused_magnetic_pair.py`` ships ONE kernel that performs
 THREE driver passes in one launch::
 
@@ -8,14 +8,14 @@ THREE driver passes in one launch::
 
 The claim is about the SEAM between them -- the flux density never leaving a
 register -- so a per-sub-step comparison could not see it at all. The comparison
-here is therefore per COMPLETE DRIVER STEP, over a stated launch budget, against
+here is therefore per complete driver step, over a stated launch budget, against
 ``stepping``'s own eleven-pass sequence for the same configuration, with the D/E
 half running on the array path on BOTH sides so a corrupted B reaches E on the
 very next step. The first divergent step is reported rather than a final
 pass/fail.
 
 =============================================================================
-THE NINE THINGS THIS GATE REFUSES TO LET PASS SILENTLY
+The nine things this gate refuses to let pass silently
 =============================================================================
 
 1. **A step this gate invented.** ``leg_driver_order`` reads ``FdtdDriver.step``'s
@@ -26,25 +26,25 @@ THE NINE THINGS THIS GATE REFUSES TO LET PASS SILENTLY
 2. **A silent fallback.** Bytes alone cannot prove the fused kernel ran: an
    engine that never launched it is byte-identical to the oracle BY
    CONSTRUCTION, because the oracle is the array path the same engine would
-   otherwise take. So every case asserts EXACT launch counts from TWO
-   INDEPENDENT COUNTERS -- a proxy installed over the shipped compile memo
+   otherwise take. So every case asserts EXACT launch counts from two
+   independent counters -- a proxy installed over the shipped compile memo
    (``compile_cache._compiled_kernels``, the seam every ``_get_kernel`` route
    passes through) and the launcher's own returned report -- and requires them
    to agree, to equal the step budget, and to name ONLY the fused kernel. A run
    that launched ``step_B_pml_real`` beside the fused kernel is a run where the
    fusion added a launch instead of removing two, and the counter says so.
 
-3. **A vacuous comparison.** Two floors, per volume. WHAT MUST MOVE: on the
+3. **A vacuous comparison.** Two floors, per volume. What must move: on the
    uniform class every one of the twenty-four stored volumes must differ from
-   its seeded value, or the comparison is a no-op agreeing with a no-op. WHAT
-   MUST NOT MOVE: the nineteen read-only volumes -- eighteen PML coefficient
+   its seeded value, or the comparison is a no-op agreeing with a no-op. What
+   must not move: the nineteen read-only volumes -- eighteen PML coefficient
    vectors and ``inv_eps`` -- must be bit-unchanged from before the run, on the
    device side. Every argument in this signature is ``__restrict__``, and a
    kernel that wrote through a ``const`` binding is UB that NVRTC does not
    diagnose.
 
-   THE BAND CLASS ANSWERS TO A DIFFERENT MOVEMENT FLOOR, AND IT IS DECLARED
-   HERE RATHER THAN DISCOVERED AFTERWARDS. Under ``flush`` a state seeded
+   The band class answers to a different movement floor, and it is declared
+   here rather than discovered afterwards. Under ``flush`` a state seeded
    entirely in the subnormal band drives ``constitutive_apply`` to
    ``f[idx] = (f[idx] + 0) - 0``, which is the identity on H: ``kps * src`` and
    ``kms * prev`` both flush. So the band class is held to the three families
@@ -116,7 +116,7 @@ THE NINE THINGS THIS GATE REFUSES TO LET PASS SILENTLY
    be consistent with a deposit too small to see.
 
 =============================================================================
-WHAT THIS GATE DOES NOT CLAIM
+What this gate does not claim
 =============================================================================
 
 No throughput claim of any kind. No dispatch claim: nothing in ``meep_gpu``
@@ -132,8 +132,8 @@ product with the opposite sub-lattice pairing and no CUDA product at all.
 RUNNING IT
 =============================================================================
 
-ONE verified-empty GPU, pinned by UUID. ``CUPY_ACCELERATORS`` must be EMPTY IN
-THE ENVIRONMENT before CuPy imports, and the CuPy disk cache must be private per
+ONE verified-empty GPU, pinned by UUID. ``CUPY_ACCELERATORS`` must be empty in
+the environment before CuPy imports, and the CuPy disk cache must be private per
 policy because CuPy's cache key is computed ABOVE the strip seam::
 
     CUDA_VISIBLE_DEVICES=<uuid> CUPY_ACCELERATORS= \\
@@ -251,18 +251,18 @@ GUARD_OPTIONS: Tuple[str, ...] = ("--fmad=false",)
 # The fixture
 # ---------------------------------------------------------------------------
 #
-# THE EXTENTS ARE DELIBERATELY UNEQUAL (9, 10, 11). A cube lets an index
+# The extents are deliberately unequal (9, 10, 11). A cube lets an index
 # decomposition swap i and k and stay bit-identical, and this kernel decomposes
 # a flat thread index into i/j/k and indexes THREE coefficient vectors of three
 # different lengths with them.
 #
-# EVERY AXIS IS WALLED SOMEWHERE and one row is walled NOWHERE. The wall table
+# Every axis is walled somewhere and one row is walled NOWHERE. The wall table
 # this product carries is the B DIAGONAL -- Bx on x, By on y, Bz on z -- so a row
 # that walled only one axis cannot tell the diagonal from the D-side
 # off-diagonal complement, and the all-periodic row proves the family is not
 # wall-dependent.
 #
-# NO ROW IS FOLDED, COMPLEX, CONDUCTIVE OR SOURCE-DRIVEN. Every one of those is
+# No row is folded, complex, conductive or source-driven. Every one of those is
 # refused BY NAME by the predicate, and leg_refusal measures the refusals rather
 # than the sweep pretending to cover them.
 
@@ -288,9 +288,9 @@ SPECS: Tuple[Dict[str, Any], ...] = (
      "boundaries": ("metallic", "metallic", "periodic"),
      "pml": 1, "cell": (12.0, 9.0, 10.0)},
 
-    # ----- THE FOLDED ROWS, NEW ON 2026-08-28 -------------------------------
+    # ----- The folded rows, new on 2026-08-28 -------------------------------
     #
-    # Every one of these was REFUSED BY NAME until this round, and each carries a
+    # Every one of these was refused by name until 2026-08-28, and each carries a
     # property no other row has. They are the whole point of the fill carry: on an
     # unfolded grid neither fill runs at all, so a sweep of the rows above would
     # certify the ownership inversion without ever executing one line of it.
@@ -313,24 +313,24 @@ SPECS: Tuple[Dict[str, Any], ...] = (
     # The other TERMINATION: no far fill at all, and the curl takes BC_METALLIC.
     {"label": "fold_y_metallic", "boundaries": ("periodic", "metallic", "periodic"),
      "symmetry": (("Y", 1),), "pml": 2, "cell": CELL},
-    # A FOLD AND A WALL AT ONCE, on different axes -- the one row where the far
+    # A fold and a wall at once, on different axes -- the one row where the far
     # image of a CLEARED plane is exercised, which is where the driver's order
     # between zero_metal_B (:3295) and fill_folded_far_ghosts_B (:3296) shows and
     # where the carried register must be read AFTER the clear.
     {"label": "fold_y_wall_z", "boundaries": ("periodic", "periodic", "metallic"),
      "symmetry": (("Y", 1),), "pml": 2, "cell": CELL},
-    # TWO FOLDED AXES AT MIXED PHASES. The only shape in which the composition
+    # Two folded axes at mixed phases. The only shape in which the composition
     # question exists at all: a corner at the top of both far planes carries the
     # PRODUCT of two parities, and a cell that is a near destination on one axis
     # and a far one on another carries the product of theirs.
     {"label": "fold_xy_mixed_phase",
      "boundaries": ("periodic", "periodic", "periodic"),
      "symmetry": (("X", 1), ("Y", -1)), "pml": 2, "cell": CELL},
-    # THREE FOLDED AXES: one source thread owns SEVEN ghost cells per component,
+    # Three folded axes: one source thread owns SEVEN ghost cells per component,
     # which is the deepest the closed form ever goes.
     {"label": "fold_xyz", "boundaries": ("periodic", "periodic", "periodic"),
      "symmetry": (("X", 1), ("Y", -1), ("Z", 1)), "pml": 2, "cell": CELL},
-    # A FOLDED AXIS WHOSE ABSORBER REACHES STORED ROW 2, and it exists for ONE
+    # A folded axis whose absorber reaches stored row 2, and it exists for ONE
     # defect. The near ghost sits at stored 0 of the component's OWN axis -- the
     # axis update_H indexes on -- so it must take the DESTINATION's coefficient
     # pair and not the source thread's at stored 2. A folded axis carries no
@@ -344,7 +344,7 @@ SPECS: Tuple[Dict[str, Any], ...] = (
     {"label": "fold_x_deep_pml", "boundaries": ("periodic", "periodic", "periodic"),
      "symmetry": (("X", 1),), "pml": ((0, 5), (2, 2), (2, 2)), "cell": CELL},
 
-    # ----- THE NONLINEAR ROWS, NEW ON 2026-09-01 ----------------------------
+    # ----- The nonlinear rows, new on 2026-09-01 ----------------------------
     #
     # The board's ``B_to_H (cuda_curl/PML, cuda_nonlinear/nonlinear)`` cell: 2
     # seam-instances (``3rd-harm-1d.py``, ``Test3rdHarm1d.test_3rd_harm_1d``),
@@ -390,7 +390,7 @@ SEPARATE_CONTROL_LABELS: Tuple[str, ...] = ("wall_xyz", "all_periodic",
 
 #: The rows ``--product reduced`` keeps. NOT ``SPECS[:3]``, which is what it was
 #: until 2026-08-28 and which is now the wrong smoke test: the three rows it took
-#: are all UNFOLDED, so neither mirror fill runs and the whole of this round's
+#: are all UNFOLDED, so neither mirror fill runs and the whole fill
 #: carry would go unexercised in the mode a run is smoke-tested in.
 REDUCED_LABELS: Tuple[str, ...] = ("wall_xyz", "fold_y_periodic",
                                    "fold_xy_mixed_phase", "wall_z_nonlinear")
@@ -422,7 +422,7 @@ def build(spec: Dict[str, Any], value_class: str, rng):
     auxiliary families, and a seed written before the allocation would be
     overwritten by it.
 
-    THE AUXILIARIES START NONZERO in both classes, for the reason the curl and
+    The auxiliaries start nonzero in both classes, for the reason the curl and
     constitutive legs give: a zero ``fu`` makes ``fu * kms`` exactly zero on the
     first launch whatever ``kms`` is, which would hide a mis-indexed coefficient
     until step two.
@@ -440,7 +440,7 @@ def build(spec: Dict[str, Any], value_class: str, rng):
                 xp=cp, courant=0.5)
     fields = Fields(grid=grid)
     fields.enable_pml_storage()
-    # A FOLDED AXIS TAKES ITS ABSORBER ON THE HIGH FACE ONLY. The mirror plane is
+    # A folded axis takes its absorber on the high face only. The mirror plane is
     # the low face and ``stepping._require_consistent_pml`` admits nothing there;
     # a scalar thickness on a folded axis is a layer over the fold.
     folded = {"XYZ".index(axis) for axis, _phase in spec.get("symmetry", ())}
@@ -463,7 +463,7 @@ def build(spec: Dict[str, Any], value_class: str, rng):
     for name, values in host.items():
         getattr(fields, name)[...] = cp.asarray(np.ascontiguousarray(values))
     if spec.get("nonlinear"):
-        # THE NONLINEAR ROWS, 2026-09-01. An instantaneous chi2/chi3 on every E
+        # The nonlinear rows, 2026-09-01. An instantaneous chi2/chi3 on every E
         # component, drawn as VOLUMES so the array path's per-cell chi lookup is
         # exercised rather than a broadcast scalar (gate_cuda_nonlinear.py's own
         # fixture rule), and drawn AFTER the state so every linear label's
@@ -551,7 +551,7 @@ def read_only_drift(before: Dict[str, np.ndarray], fields, pml) -> List[str]:
 
 
 # ---------------------------------------------------------------------------
-# WHAT A COMPLETE STEP IS -- read off the driver, never modelled here
+# What a complete step is -- read off the driver, never modelled here
 # ---------------------------------------------------------------------------
 
 #: The eleven ``stepping`` calls ``FdtdDriver.step`` makes, in driver order.
@@ -645,11 +645,11 @@ class _CountingKernel:
 class MemoLaunchCounter:
     """Wrap every memoized device kernel; restore on exit.
 
-    THE MEMO IS THE RIGHT SEAM and it is the shipped one. Every launcher in this
+    The memo is the right seam and it is the shipped one. Every launcher in this
     package reaches its kernel through ``compile_cache.get_or_compile``, which
     returns ``_compiled_kernels[key]`` on a hit, so replacing the stored object
     counts every launch through every shipped route without editing one byte
-    under ``meep_gpu/``. NOTHING IS INSTALLED UNLESS THE MEMO IS ALREADY WARM,
+    under ``meep_gpu/``. Nothing is installed unless the memo is already warm,
     which is why every case warms it first: a cold memo would have the factory
     store a raw kernel and the count would read zero for a kernel that ran.
     """
@@ -688,14 +688,14 @@ class MemoLaunchCounter:
 def _warm_memo(specs: Sequence[Dict[str, Any]]) -> None:
     """Compile and launch every kernel this file drives, once, off the counted path.
 
-    The memo must be warm before :class:`MemoLaunchCounter` installs. IT TAKES THE
-    WHOLE SPEC LIST since 2026-08-28: this kernel's source is one string for every
+    The memo must be warm before :class:`MemoLaunchCounter` installs. It takes the
+    whole spec list since 2026-08-28: this kernel's source is one string for every
     fold orientation, so a single warm-up still compiles it once -- but the
     CERTIFIED in-seam fill kernels the separate-composition control launches are
     only reached on a folded row, and warming on an unfolded spec alone would leave
     their first compile inside the counted region.
 
-    A REFUSED WARM-UP IS FATAL RATHER THAN SILENT: a spec the predicate does not
+    A refused warm-up is fatal rather than silent: a spec the predicate does not
     admit would otherwise reach the product sweep and fail there with a reason
     about coverage, one leg later than the table that was wrong.
     """
@@ -735,9 +735,9 @@ def run_case(spec: Dict[str, Any], value_class: str, steps: int,
              walls_patch: Optional[Callable[[Sequence[int], Any], Sequence[int]]] = None,
              fills_patch: Optional[Callable[[Dict[str, Any], Any], Dict[str, Any]]] = None,
              label_suffix: str = "") -> Dict[str, Any]:
-    """Step two engines side by side and compare per COMPLETE DRIVER STEP.
+    """Step two engines side by side and compare per complete driver step.
 
-    ``kernel`` and the four ``*_patch`` hooks are THE GATE'S DOORS -- the
+    ``kernel`` and the four ``*_patch`` hooks are the gate's doors -- the
     shipped launcher takes a kernel, a table set and the three grid readings
     precisely so a gate can arm a defect. ``fills_patch`` is the newest and is what
     lets a HOST mutation confuse the two mirror fills' plan with the wall plan or
@@ -870,7 +870,7 @@ def run_case(spec: Dict[str, Any], value_class: str, steps: int,
 def leg_separate_control(spec: Dict[str, Any], steps: int) -> Dict[str, Any]:
     """THREE engines from one seed: array path, separate certified products, fused.
 
-    THIS IS THE LEG THAT MAKES "FUSION" A MEASUREMENT RATHER THAN A NAME. The
+    This is the leg that makes "fusion" a measurement rather than a name. The
     separate side is not a strawman: it is ``step_curl_kernels``' certified
     ``step_B_pml_real``, ``in_seam_passes``' certified ``fill_symmetry_B``,
     ``zero_metal_B`` and ``fill_folded_far_B``, and ``constitutive_kernels``'
@@ -880,7 +880,7 @@ def leg_separate_control(spec: Dict[str, Any], steps: int) -> Dict[str, Any]:
     correct fusion is byte-neutral by construction, so the launch counts are the
     only place the difference shows at all.
 
-    ON A FOLDED ROW THE SEPARATE SIDE IS THE CERTIFIED FILL KERNELS THEMSELVES, one
+    On a folded row the separate side is the certified fill kernels themselves, one
     launch per folded axis per fill, which is what makes this leg the strongest
     statement the gate makes about the carry: the fused kernel is compared not to
     the array path alone but to the very device kernels whose arithmetic it lifted.
@@ -899,7 +899,7 @@ def leg_separate_control(spec: Dict[str, Any], steps: int) -> Dict[str, Any]:
     curl_tables = step_curl_kernels.real_pml_curl_tables(sep_pml, True)
     codes = step_curl_kernels.real_curl_boundary_codes(sep_grid)
     walled = bool(any(in_seam_coverage.zero_metal_axes(sep_grid)))
-    # ONE LAUNCH PER FOLDED AXIS PER FILL, derived by the same in_seam_coverage.plan
+    # One launch per folded axis per fill, derived by the same in_seam_coverage.plan
     # the certified launcher uses, so the separate side cannot disagree with the
     # fused one about which axes each pass visits.
     near_plan = in_seam_coverage.plan("fill_symmetry", sep_grid)
@@ -919,7 +919,7 @@ def leg_separate_control(spec: Dict[str, Any], steps: int) -> Dict[str, Any]:
             step_curl_kernels._step_B_fused_pml_real(  # noqa: SLF001
                 separate, curl_tables, codes, dtdx, separate_record)
             separate_calls += 1
-            # THE DRIVER'S OWN ORDER (driver.py:3294, :3295, :3296). The near fill
+            # The driver's own order (driver.py:3294, :3295, :3296). The near fill
             # runs BEFORE the wall clear and the far fill AFTER it, and on a row
             # that is both folded and walled that order is what decides the ghost.
             if near_plan:
@@ -1044,7 +1044,7 @@ def _sync_restore(fields, backup: Mapping[str, Any]) -> None:
 
 def leg_synchronize(spec: Dict[str, Any], value_class: str, steps: int
                     ) -> Dict[str, Any]:
-    """THE SECOND CONSULT SITE. No leg on this backend had ever driven it.
+    """The second consult site. No leg on this backend had ever driven it.
 
     ``flux_in_box`` and ``field_energy_in_box`` run ``step``'s magnetic half a
     second time and then UNDO it, backing up ``_SYNC_FIELDS`` + ``_SYNC_AUXILIARY``
@@ -1057,7 +1057,7 @@ def leg_synchronize(spec: Dict[str, Any], value_class: str, steps: int
     after the restore, the fused engine is byte-identical to the array engine over
     every stored volume as uint32 words.
 
-    TWO ARMED CONTROLS, both required to diverge:
+    Two armed controls, both required to diverge:
 
     * ``advanced_D_inside_the_window`` — the half-step with ``step_D`` appended,
       which is what an ``update_H``/``step_D`` weld installed at ``update_H`` would
@@ -1206,7 +1206,7 @@ def leg_lift() -> Dict[str, Any]:
        silent fifteenth edit is a visible diff, and a gate that did not count them
        would leave that promise unkept.
 
-    The per-chunk forms (bit_parity_0_10 KC2) move the record decode: each certified
+    The per-chunk forms (1.0) move the record decode: each certified
     body carries its own chunk-record block, and the pair emits ONE block over both
     entry sets after the curl half's decode, so update_H's block leaves the
     constitutive body and its decode lines arrive in the curl body. That move is
@@ -1226,13 +1226,13 @@ def leg_lift() -> Dict[str, Any]:
         step_curl_kernels._step_B_pml_real_kernel_code,  # noqa: SLF001
         step_curl_kernels._REAL_PML_PRELUDE, "curl")  # noqa: SLF001
     lifted_curl = family.certified_curl_body()
-    # THE CONSTITUTIVE COMPARAND IS THE RAW BODY'S TAIL, not the whole body. The
+    # The constitutive comparand is the raw body's tail, not the whole body. The
     # lift deliberately DROPS the decode prologue -- the curl half already
     # emitted it and a second copy would redeclare i/j/k -- so comparing against
     # the whole body would report six dropped lines that are not edits to the
     # arithmetic at all. The tail is taken at the SAME anchor the module splits
     # on, so the two cannot disagree about where the prologue ends.
-    # THE SINGLE IS HOISTED (register view); the pair lifts its statement form, which
+    # The single is hoisted (register view); the pair lifts its statement form, which
     # own_cell_hoist returns byte for byte (and refuses by name if it cannot).
     raw_const_body = family._split_body(  # noqa: SLF001
         own_cell_hoist.unhoisted_kernel_code(
@@ -1274,7 +1274,7 @@ def leg_lift() -> Dict[str, Any]:
            for a in "xyz"]
         + [f"float pre_fu_{a} = {dsigu[a]} ? fu_B{a}[idx] : 0.0f;" for a in "xyz"]
         + [f"float pre_b_{a} = own_{a} ? B{a}[idx] : 0.0f;" for a in "xyz"])
-    # THE ONE RECORD DECODE (D10): update_H's block leaves its body, and exactly its
+    # The one record decode: update_H's block leaves its body, and exactly its
     # decode lines arrive in the curl body's union block.
     from meep_gpu.cuda_kernels import bounds_block  # noqa: PLC0415
 
@@ -1296,7 +1296,7 @@ def leg_lift() -> Dict[str, Any]:
                and sorted(hoisted_loads) == expected_loads
                and all(line in curl_added for line in moved_decode)
                and not curl_unexpected)
-    # THE CONSTITUTIVE SIDE GAINED A SECOND KIND OF EDIT ON 2026-08-28 and the
+    # The constitutive side gained a second kind of edit on 2026-08-28 and the
     # question changed with it. Three lines still leave (the certified reloads of
     # B) and three still arrive in their place (the seam plus the sub-lattice
     # rename) -- but each now sits inside its component's ownership guard, followed
@@ -1324,7 +1324,7 @@ def leg_lift() -> Dict[str, Any]:
                 and const_added.count("    if (own_x) {") == 1
                 and const_added.count("    if (own_y) {") == 1
                 and const_added.count("    if (own_z) {") == 1)
-    # THE HOISTED CONSTITUTIVE STATEMENTS (LIFT_EDIT 12), measured on the text the
+    # The hoisted constitutive statements (LIFT_EDIT 12), measured on the text the
     # composer emits: exactly the three owned calls move, to the _pre helper with
     # their two preloaded words, and nothing else in the body does.
     hoist_ok = (len(hoist_dropped) == 3 and len(hoist_added) == 3
@@ -1350,7 +1350,7 @@ def leg_lift() -> Dict[str, Any]:
                           for line in prelude_added)
                   and constitutive_kernels._REAL_CONSTITUTIVE_PRELUDE in prelude)  # noqa: SLF001
     # MEEP's stencil grouping, once, in the lifted curl_stencil helper, called by the
-    # three components (bit_parity_0_10 A1).
+    # three components (docs/design/floating-point.md).
     stencil = (source.count("dtdx * (((sf - f1) + f2) - ss)") == 1
                and source.count("float curl = curl_stencil(dtdx, ") == 3)
     binding_ok = (source.count("float* __restrict__ Bx") == 1
@@ -1361,7 +1361,7 @@ def leg_lift() -> Dict[str, Any]:
         f"if (own_{a} && wall_{a} && {c} == 0) "
         f"{{ b_{a} = 0.0f; B{a}[idx] = 0.0f; }}" in source
         for a, c in zip("xyz", "ijk"))
-    # THE OWNERSHIP INVERSION, as a property of the emitted text rather than of
+    # The ownership inversion, as a property of the emitted text rather than of
     # prose: three flags, 21 carried destinations, and the fu store ABOVE the guard
     # while the flux store is below it.
     helper = prelude[prelude.index("__device__ __forceinline__ float pml_apply_reg_pre("):]
@@ -1406,28 +1406,28 @@ def leg_lift() -> Dict[str, Any]:
 # The deposit: an in-seam magnetic source CARRIED across the fused launch
 # ---------------------------------------------------------------------------
 #
-# THIS IS THE LEG THE FLAG IS WORTH. `fused_magnetic_pair.CARRIES_DEPOSIT_REPAIR`
+# This is the leg the flag is worth. `fused_magnetic_pair.CARRIES_DEPOSIT_REPAIR`
 # became True on 2026-08-28 with `cuda_kernels/fused_pairs.py`, so this predicate
 # ADMITS rows it refused before -- every row whose magnetic source lands between
 # `step_B` and `update_H` (driver.py:3293), which is 58 of the 186 B_to_H
-# seam-instances the corpus drives. AN ADMITTED ROW THAT NOTHING MEASURES IS STRICTLY
-# WORSE THAN A REFUSED ONE: the refusal at least computed the right numbers on the
+# seam-instances the corpus drives. An admitted row that nothing measures is strictly
+# worse than a refused one: the refusal at least computed the right numbers on the
 # array path.
 #
-# WHY THIS WALK IS NOT `run_case`, and the difference is the whole mechanism:
+# Why this walk is not `run_case`, and the difference is the whole mechanism:
 #
 #   * the INJECTION is performed, between the fused launch and the repair, because
 #     that is where the driver performs it;
-#   * `zero_metal_B` runs ON THE HOST after the injection even though the kernel
+#   * `zero_metal_B` runs on the host after the injection even though the kernel
 #     carries it inline, because driver.py:3295 runs it UNCONDITIONALLY rather than
 #     behind a `dispatch` consult. That is what lets the repair read a final B and
-#     own no wall handling of its own (`deposit_repair`, "WHERE IT BELONGS IN THE
-#     STEP"). A deposit that lands on a walled cell is recomputed from the zero that
+#     own no wall handling of its own (`deposit_repair`, "where it belongs in the
+#     step"). A deposit that lands on a walled cell is recomputed from the zero that
 #     clear left, which is what the array path computes too;
 #   * the two slots are run as the two separate consults they are: `LeadingRepairPlan`
 #     at `step_B` (save, then launch) and `TrailingRepairPlan` at `update_H` (apply).
 #
-# AND THE NULL CONTROL IS THE POINT. `repair=False` asks the SHIPPED composer for a
+# And the null control is the point. `repair=False` asks the SHIPPED composer for a
 # plan with an EMPTY source list -- the bare pair plus the `NoopPlan` the False branch
 # of this flag would leave in the trailing slot -- and then injects anyway. That is
 # exactly "a product that passes True without those wrappers", built out of shipped
@@ -1452,12 +1452,12 @@ def deposit_rows(spec: Dict[str, Any]
                  ) -> Tuple[Tuple[str, str, Tuple[float, float, float]], ...]:
     """``(tag, component, size)`` for this spec's two deposit rows: POINT and EXTENT.
 
-    THE TWO ROWS DIFFER IN EXTENT, WHICH IS THE PROPERTY THEY EXIST FOR: a point
+    The two rows differ in extent, which is the property they exist for: a point
     source deposits into four cells and an extended one into a volume, so the
     repair's per-point loop is exercised at many points rather than at four. The
     COMPONENT is a second axis of variation and is DERIVED rather than declared.
 
-    A FOLDED PLANE ADMITS ONLY ITS EVEN COMPONENTS, and that is the engine's own
+    A folded plane admits only its even components, and that is the engine's own
     refusal, not a choice made here: ``sources._validate_symmetry_parity`` rejects a
     source centred on a plane that gives it parity -1, because MEEP does not and
     instead returns a smooth, plausible field 57%-283% away from the full-domain
@@ -1481,7 +1481,7 @@ def deposit_rows(spec: Dict[str, Any]
     return (("point", point, (0.0, 0.0, 0.0)), ("extent", extent, EXTENDED_SIZE))
 
 
-#: THE CARRIER FREQUENCY, AND IT IS A MEASUREMENT RATHER THAN A DEFAULT.
+#: The carrier frequency, and it is a measurement rather than a default.
 #: ``continuous_src_time::dipole`` is ``amp_factor * exp(-i*omega*t)`` with
 #: ``amp_factor`` imaginary (MEEP sources.cpp:104), so the REAL part a real-storage
 #: run deposits is proportional to ``sin(omega t)``. These fixtures run at
@@ -1514,7 +1514,7 @@ def _magnetic_source(fields, component: str = "Hy",
 def deposit_magnitude(fields, source, steps: int, dt: float) -> float:
     """The largest standing deposit this source leaves over the step budget.
 
-    THE PRECONDITION THE DEPOSIT LEGS WERE MISSING. A source whose real part is zero
+    The precondition the deposit legs were missing. A source whose real part is zero
     at every sampled time deposits nothing, and then "the repair reproduces the
     driver" and "there was nothing to reproduce" are the same green row. Measured on
     a THROWAWAY copy of the field state, restored before the leg runs.
@@ -1544,7 +1544,7 @@ def _withdraw(sources: Sequence[Any], fields) -> None:
 def deposits_on_a_cleared_cell(fields, source) -> int:
     """How many of this source's deposit points ``zero_metal_B`` also zeroes.
 
-    THE ONE ASYMMETRY BETWEEN THE TWO PATHS, MEASURED RATHER THAN ARGUED. The fused
+    The one asymmetry between the two paths, measured rather than argued. The fused
     kernel carries ``zero_metal_B`` INLINE and therefore clears before the injection;
     the driver clears AFTER it (driver.py:3295). The two can only differ where a
     deposit lands on a cell the clear zeroes, and both paths would then read the same
@@ -1601,7 +1601,7 @@ def run_deposit_case(spec: Dict[str, Any], value_class: str, steps: int,
                        "walk would inject nothing and compare a no-op with a no-op")
         return case
     case["deposit_points"] = int(cp.asarray(index[0]).size)
-    # NON-VACUITY, MEASURED. A deposit of exactly zero makes every comparison below
+    # Non-vacuity, measured. A deposit of exactly zero makes every comparison below
     # agree with a no-op -- which is what frequency 1.0 did at dt = 0.5 until
     # 2026-08-28 (see DEPOSIT_FREQUENCY). Measured on a throwaway copy, before the
     # walk, so a leg that would have measured nothing says so instead of passing.
@@ -1614,7 +1614,7 @@ def run_deposit_case(spec: Dict[str, Any], value_class: str, steps: int,
                        "other and with a no-op")
         return case
 
-    # THE SHIPPED COMPOSER BUILDS THE PLAN, not this file. Reaching for
+    # The shipped composer builds the plan, not this file. Reaching for
     # `run_fused_magnetic_pair` directly would test the kernel and skip the wiring,
     # and the wiring is what this leg exists for.
     composed = arms.plan_step(actual, pml, grid,
@@ -1706,7 +1706,7 @@ def run_deposit_case(spec: Dict[str, Any], value_class: str, steps: int,
 def leg_deposit_null_control(spec: Dict[str, Any], steps: int) -> Dict[str, Any]:
     """The unbracketed launch MUST diverge. Scored on diverging, not on agreeing.
 
-    RUN ON A FOLDED ROW TOO SINCE 2026-08-28, and that row is the one that carries
+    Run on a folded row too since 2026-08-28, and that row is the one that carries
     the argument: on a folded seam the two fills run AFTER the injection, so a
     repair that wrote only the deposit INDEX would leave every mirror image of it
     describing the pre-injection field. The component is the one the fold leaves
@@ -1730,7 +1730,7 @@ def leg_deposit_null_control(spec: Dict[str, Any], steps: int) -> Dict[str, Any]
 def leg_refusal() -> Dict[str, Any]:
     """The source seam and the fold, each measured BY NAME.
 
-    A clause nothing tests is a claim. TWO CLAUSES HAVE INVERTED. CLAUSE 2, the
+    A clause nothing tests is a claim. Two clauses have inverted. Clause 2, the
     magnetic-source slot used to CAP this family on the measured corpus; it is now
     CARRIED, because ``fused_magnetic_pair.CARRIES_DEPOSIT_REPAIR`` is True and
     ``fused_pairs._install_fused_pair`` brackets the launch. So this leg no longer
@@ -1749,7 +1749,7 @@ def leg_refusal() -> Dict[str, Any]:
        refused BY NAME -- the flip carries deposits this module can reconstruct, not
        every deposit;
     3. a real ELECTRIC ``VolumeSource`` is still not this seam's business;
-    4. CLAUSE 4 HAS INVERTED TOO, 2026-08-28. A FOLDED grid used to be refused
+    4. Clause 4 has inverted too, 2026-08-28. A FOLDED grid used to be refused
        naming both uncarried fills; the ownership inversion carries them, so the
        fold is now ADMITTED and what is asked instead is what the carry does NOT
        reach, each BY NAME:
@@ -1784,7 +1784,7 @@ def leg_refusal() -> Dict[str, Any]:
     magnetic = source_on("Hy")
     magnetic_verdict = family.covers_fused_magnetic_pair(fields, pml, grid, (magnetic,))
 
-    # THE WIRING, ASKED OF THE SHIPPED COMPOSER. A fresh build, because plan_step
+    # The wiring, asked of the shipped composer. A fresh build, because plan_step
     # composes against the fields it is handed.
     wired_fields, wired_grid, wired_pml, _ = build(spec, "uniform", case_rng("wired"))
     wired_source = VolumeSource(grid=wired_grid, component="Hy",
@@ -1796,7 +1796,7 @@ def leg_refusal() -> Dict[str, Any]:
                  for slot in ("step_B", "update_H")]
     wiring_ok = installed == ["LeadingRepairPlan", "TrailingRepairPlan"]
 
-    # 2b. THE DEPOSIT THIS MODULE CANNOT SAVE. Built by BLANKING the real source's
+    # 2b. The deposit this module cannot save. Built by BLANKING the real source's
     # resolved index rather than by stubbing a fake source, so `field_type` stays the
     # engine's own answer.
     indexless = source_on("Hy")
@@ -1818,7 +1818,7 @@ def leg_refusal() -> Dict[str, Any]:
         folded_fields, folded_pml, folded_grid, ())
     folded_plan = family.fused_magnetic_pair_fills(folded_grid)
 
-    # 4a. A MIRRORED AXIS WITH NO DECLARED +/-1 PHASE. Delegated: the refusal must
+    # 4a. A mirrored axis with no declared +/-1 PHASE. Delegated: the refusal must
     # name the FILL, so a reader can tell this seam asked in_seam_coverage rather
     # than carrying its own weaker copy of the question.
     class _OddPhase:
@@ -1831,7 +1831,7 @@ def leg_refusal() -> Dict[str, Any]:
     phase_verdict = family.covers_fused_magnetic_pair(
         folded_fields, folded_pml, _OddPhase(), ())
 
-    # 4b. A FOLDED AXIS TOO SHORT FOR STORED ROW 2.
+    # 4b. A folded axis too short for stored row 2.
     class _TooShort:
         def __getattr__(self, item):
             return getattr(folded_grid, item)
@@ -1842,7 +1842,7 @@ def leg_refusal() -> Dict[str, Any]:
     short_verdict = family.covers_fused_magnetic_pair(
         folded_fields, folded_pml, _TooShort(), ())
 
-    # 4c. FOLDED AND WALLED AT ONCE, armed where it is reachable: the plan builder.
+    # 4c. Folded and walled at once, armed where it is reachable: the plan builder.
     # `zero_metal_axes` can never report it, so a clause tested only through the
     # predicate would be a clause nothing can reach -- indistinguishable from one
     # that returns True.
@@ -1921,16 +1921,16 @@ def leg_nonlinear_widening() -> Dict[str, Any]:
     declares the matching (``PML``, ``nonlinear``) absorption. Four measurements,
     each of which has a way to be silently wrong without it:
 
-    1. **THE CHI IS LIVE, not decorative.** Two engines from one seed, one with
+    1. **The chi is live, not decorative.** Two engines from one seed, one with
        the chi cleared, stepped once on the ARRAY path: the E family must
        diverge. A fixture whose chi moved nothing would score every nonlinear
        case as a linear case wearing the label.
-    2. **THE COMPOSER'S OWN SELECTION** is (``PML``, ``nonlinear``) at
+    2. **The composer's own selection** is (``PML``, ``nonlinear``) at
        ``fuse=False`` -- read from ``plan_step``, never assumed from the census.
     3. **THE ABSORPTION**: at ``fuse=True`` the pair takes both slots through the
        extras row, and the trailing slot is the ``NoopPlan`` (no source declared,
        nothing in the seam to repair).
-    4. **THE LINEAR TWIN CONTROL**: the same spec with no chi selects
+    4. **The linear twin control**: the same spec with no chi selects
        (``PML``, ``ordinary``) and absorbs through the PRIMARY row, so the extras
        table is shown to widen the wiring rather than replace it.
 
@@ -2005,7 +2005,7 @@ def leg_nonlinear_widening() -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 def needle(source: str, old: str, new: str, count: int = 1) -> Tuple[str, int]:
-    """Replace and REPORT THE SITE COUNT. A rewrite that matched nothing comes
+    """Replace and report the site count. A rewrite that matched nothing comes
     back NOT ARMED rather than launching the shipped kernel and reporting the
     defect as uncaught -- the one failure mode a mutation leg cannot see from its
     own result."""
@@ -2020,7 +2020,7 @@ def needle(source: str, old: str, new: str, count: int = 1) -> Tuple[str, int]:
 #: row is inert for a reason about the case table, not about the kernel, and
 #: collapsing "unasked" into "uncaught" is how a gate acquires a silent hole.
 #:
-#: EVERY NULL CARRIES ITS REASON IN THE COMMENT ABOVE IT, and it is an arithmetic
+#: Every null carries its reason in the comment above it, and it is an arithmetic
 #: reason rather than an expectation.
 
 def _folded_axes(spec: Dict[str, Any]) -> set:
@@ -2030,7 +2030,7 @@ def _folded_axes(spec: Dict[str, Any]) -> set:
 def _wall(axis: str) -> Callable[[Dict[str, Any]], bool]:
     """Is ``axis`` a live WALL here -- ``is_metallic and not is_mirrored``?
 
-    THE FOLD EXCLUSION IS ``zero_metal_axes``' OWN (stepping.py:2284-2286) and it
+    The fold exclusion is ``zero_metal_axes``' OWN (stepping.py:2284-2286) and it
     has to be restated here now that folded rows are in the sweep: a folded
     METALLIC axis declares ``metallic`` and carries NO wall, so a wall mutation
     scored there would report UNCAUGHT for a reason about the case table.
@@ -2058,7 +2058,7 @@ def _two_folds(spec: Dict[str, Any]) -> bool:
 def _folded_axis(axis: str) -> Callable[[Dict[str, Any]], bool]:
     """Is THIS axis folded here?
 
-    THE FILL CARRIES ARE PER COMPONENT AND PER AXIS, so a needle that names ``gx_n``
+    The fill carries are per component and per axis, so a needle that names ``gx_n``
     (Bx's NEAR ghost, which images along x because ``iyee[Bx][x] == 0``) is a dead
     line on a row that folds only Y -- and a mutation scored there reports UNCAUGHT
     for a reason about the case table rather than about the kernel. Measured: before
@@ -2132,7 +2132,7 @@ def _odd_full_count(axis: str) -> Callable[[Dict[str, Any]], bool]:
 def _near_ghost_pair_is_observable(axis: str) -> Callable[[Dict[str, Any]], bool]:
     """Do the constitutive coefficients differ between stored rows 0 and 2 on ``axis``?
 
-    MEASURED FROM THE SPEC'S OWN ABSORBER, not declared. The near ghost takes the
+    Measured from the spec's own absorber, not declared. The near ghost takes the
     DESTINATION's pair at stored 0 while the source thread holds stored 2's, and a
     folded axis carries no absorber at the mirror plane -- so on a shallow layer the
     two entries are the same word to the bit and a kernel that reused the wrong one
@@ -2175,7 +2175,7 @@ SOURCE_MUTATIONS: Tuple[Tuple[str, Tuple[str, str, int], Optional[bool],
     ("wall_clear_misses_global",
      ("if (own_z && wall_z && k == 0) { b_z = 0.0f; Bz[idx] = 0.0f; }",
       "if (own_z && wall_z && k == 0) { b_z = 0.0f; }", 1), True, _wall("z")),
-    # THE B TABLE IS THE DIAGONAL; the D family's is the off-diagonal complement.
+    # The B table is the diagonal; the D family's is the off-diagonal complement.
     # Reusing it clears Bx on the wrong plane -- the single most likely slip in
     # porting this family from its D-side sibling.
     ("wall_clear_uses_the_wrong_axis",
@@ -2199,9 +2199,9 @@ SOURCE_MUTATIONS: Tuple[Tuple[str, Tuple[str, str, int], Optional[bool],
       "constitutive_apply_pre(Hy, f_w_Hy, idx, b_y, pre_w_y, pre_h_y, kps_y[i], kms_int_y[i], "
       "in_i_y);", 1),
      True, _always),
-    # THE ACCUMULATION IN MEEP'S GROUPING, f + ((kps*src) - (kms*prev)) -- the right-hand
-    # side formed first (step_generic.cpp's f[i] += ...; bit_parity_0_10 KERNELS.md section
-    # 1, A2). INVERTED 2026-10-08 (KERNELS.md section 7.1): the shipped form IS MEEP's, so
+    # The accumulation in MEEP's grouping, f + ((kps*src) - (kms*prev)) -- the right-hand
+    # side formed first (step_generic.cpp's f[i] += ...). INVERTED 2026-10-08: the
+    # shipped form IS MEEP's, so
     # the must-catch mutation installs the PACKAGE's old grouping, (f + kps*src) - kms*prev,
     # which is a different float32 number. Once on the owned helper (every row) and once on
     # the ghost carries' helper (folded rows).
@@ -2213,15 +2213,15 @@ SOURCE_MUTATIONS: Tuple[Tuple[str, Tuple[str, str, int], Optional[bool],
      True, _far_fill_live),
     # --- the two mirror fills, carried by the ownership inversion -----------
     #
-    # EVERY ONE OF THESE IS NEW ON 2026-08-28 and every one is scored only where
+    # Every one of these is new on 2026-08-28 and every one is scored only where
     # the pass it breaks is LIVE: an unfolded row runs neither fill, so a fill
     # defect scored there would report UNCAUGHT for a reason about the case table.
     #
-    # THE OWNERSHIP GUARD ITSELF. Dropping it puts the destination thread back on
+    # The ownership guard itself. Dropping it puts the destination thread back on
     # its own cell: it forms v from a B another block is writing, stores B there,
     # and runs update_H there -- so the ghost is written twice and the value that
     # survives is undefined. On the array path that cell holds the fill's image.
-    # REPORTED RATHER THAN REQUIRED SINCE 2026-10-08 (bit_parity_0_10 KC2), for the
+    # Reported rather than required since 2026-10-08 (the per-chunk forms), for the
     # reason ownership_guard_dropped_in_pml_apply gives below: it is a data race with no
     # deterministic verdict. Under MEEP's per-chunk forms a destination off the dsigw
     # run steps H = src from a register that is 0 there, while its source thread writes
@@ -2231,7 +2231,7 @@ SOURCE_MUTATIONS: Tuple[Tuple[str, Tuple[str, str, int], Optional[bool],
     # enumeration in test_fused_magnetic_pair_fill_carry.py pins the guard by name.
     ("ownership_guard_dropped_on_the_constitutive",
      ("    if (own_x) {\n", "    if (1) {\n", 1), None, _bx_has_a_destination),
-    # THE SAME GUARD, INVERTED, AND THE DETERMINISTIC ONE. Dropping a guard makes
+    # The same guard, inverted, and the deterministic one. Dropping a guard makes
     # two threads write one word, and which wins is undefined -- so the entry above
     # is a race that HAPPENS to be caught (3/3 on this device, 2026-08-28) rather
     # than a divergence the hardware owes anyone. Inverting it instead leaves every
@@ -2242,10 +2242,10 @@ SOURCE_MUTATIONS: Tuple[Tuple[str, Tuple[str, str, int], Optional[bool],
     ("ownership_guard_inverted_on_the_constitutive",
      ("    if (own_x) {\n", "    if (!own_x) {\n", 1), True, _always),
     # ... and inside pml_apply_reg, where it stops the destination thread READING
-    # a word another block writes. REPORTED RATHER THAN REQUIRED, and the reason is
+    # a word another block writes. Reported rather than required, and the reason is
     # the defect's own nature: without the guard the destination thread ALSO stores
-    # B at its own cell, so that word has two writers and WHICH ONE WINS IS
-    # UNDEFINED. A data race has no deterministic verdict -- measured UNCAUGHT 0/3
+    # B at its own cell, so that word has two writers and which one wins is
+    # undefined. A data race has no deterministic verdict -- measured UNCAUGHT 0/3
     # on this device on 2026-08-28, which is a race resolving in the shipped
     # kernel's favour, not evidence the guard is dead. What pins this guard
     # deterministically is the write-set enumeration over the EMITTED TEXT in
@@ -2255,20 +2255,20 @@ SOURCE_MUTATIONS: Tuple[Tuple[str, Tuple[str, str, int], Optional[bool],
     # wrong one; and `ownership_guard_inverted` below, which is deterministic.
     ("ownership_guard_dropped_in_pml_apply",
      ("    if (!owned) return 0.0f;\n", "", 1), None, _folded),
-    # THE SAME GUARD, INVERTED, AND DETERMINISTIC: the OWNER returns before storing
+    # The same guard, inverted, and deterministic: the OWNER returns before storing
     # B and the destination stores instead, so every owned cell keeps its previous
     # step's flux density. No race -- the owner simply stops writing.
     ("ownership_guard_inverted",
      ("    if (!owned) return 0.0f;", "    if (owned) return 0.0f;", 1),
      True, _always),
-    # THE NEAR FILL'S SOURCE ROW is stepping.MIRROR_SOURCE_INDEX = 2, MEEP's
+    # The near fill's source row is stepping.MIRROR_SOURCE_INDEX = 2, MEEP's
     # halved-grid io = -2. Imaging row 1 is a whole cell wrong.
     ("near_fill_images_the_wrong_row",
      ("int gx_n_i = idx - 2 * sx;", "int gx_n_i = idx - 1 * sx;", 1),
      True, _folded_axis("x")),
     ("near_fill_source_guard_moved",
      ("near_x && i == 2) {", "near_x && i == 1) {", -1), True, _folded_axis("x")),
-    # THE NEAR PARITY is +phase (the imaged components have Yee shift 0 there) and
+    # The near parity is +phase (the imaged components have Yee shift 0 there) and
     # the FAR parity is -phase (theirs is 1). Swapping either is the doubly
     # mirrored value with the wrong sign -- smooth, converged and wrong.
     ("near_fill_parity_negated",
@@ -2277,11 +2277,11 @@ SOURCE_MUTATIONS: Tuple[Tuple[str, Tuple[str, str, int], Optional[bool],
     ("far_fill_parity_unnegated",
      ("float gx_y_p = (-phase_y);", "float gx_y_p = (phase_y);", 1), True,
      _folded_periodic_axis("y")),
-    # THE REFLECT ROW is n_full - stored + 2, which is stored - 2 at an even full
+    # The reflect row is n_full - stored + 2, which is stored - 2 at an even full
     # count and stored - 3 at an odd one. Baking n - 2 reflects about the window
     # top instead of about the mirror -- exact on the even rows, a whole cell
     # wrong on fold_y_periodic_odd, which is why that spec exists.
-    # AND THE ROW IT IMAGES FROM. `reflect_y` -> `ny - 2` is the fixed formula, and
+    # And the row it images from. `reflect_y` -> `ny - 2` is the fixed formula, and
     # it is EXACT at an even full count (`_far_reflect_rows` IS `stored - 2` there),
     # so this is scored on the ODD row alone -- which is why fold_y_periodic_odd is
     # in MUTATION_SPEC_LABELS. An earlier form of this needle wrote `idx + 1 * sy`
@@ -2291,11 +2291,11 @@ SOURCE_MUTATIONS: Tuple[Tuple[str, Tuple[str, str, int], Optional[bool],
      ("int gx_y_i = idx + (ny - 1 - reflect_y) * sy;",
       "int gx_y_i = idx + (ny - 1 - (ny - 2)) * sy;", 1), True,
      _odd_full_count("y")),
-    # THE NEAR GHOST TAKES THE DESTINATION'S COEFFICIENT PAIR, at stored index 0,
+    # The near ghost takes the destination's coefficient pair, at stored index 0,
     # because the near fill images along the very axis update_H indexes on.
     # Reusing the source thread's applies stored cell 2's absorber profile to
-    # stored cell 0 -- WHERE THE GHOST STEPS THE ACCUMULATION. A DECLARED NULL SINCE
-    # 2026-10-08 (bit_parity_0_10 KC2) on this gate's one-rank division: the near ghost
+    # stored cell 0 -- where the ghost steps the accumulation. A declared null since
+    # 2026-10-08 (the per-chunk forms) on this gate's one-rank division: the near ghost
     # is stored row 0 of a FOLDED axis, which has no low face, and the one-rank line's
     # high run starts at n - span + 1 >= 1 (chunk_map.one_rank_line), so the ghost is
     # never in update_H's run there and steps H = src, which reads no coefficient. The
@@ -2306,7 +2306,7 @@ SOURCE_MUTATIONS: Tuple[Tuple[str, Tuple[str, str, int], Optional[bool],
      ("gx_n_i, gx_n_v, kps_x[0], kms_int_x[0], gx_n_w);",
       "gx_n_i, gx_n_v, kps_x[i], kms_int_x[i], gx_n_w);", 1), False,
      _near_ghost_pair_is_observable("x")),
-    # THE NEAR GHOST'S MEMBERSHIP ROW, read where its coefficient entry is (stored 0),
+    # The near ghost's membership row, read where its coefficient entry is (stored 0),
     # negated: the ghost takes the other form. Live wherever the near ghost's row sits
     # in a layer chunk or out of one, which every folded-x row's layer decides.
     ("near_ghost_membership_negated",
@@ -2316,22 +2316,22 @@ SOURCE_MUTATIONS: Tuple[Tuple[str, Tuple[str, str, int], Optional[bool],
     # THE COMPOSITION. A corner at the top of two far planes carries the PRODUCT
     # of both parities; dropping one factor is exact wherever that phase is +1,
     # which is why the mixed-phase spec is in MUTATION_SPEC_LABELS.
-    # DROPPING THE X FACTOR AND NOT THE Y ONE, and that is arithmetic rather than
+    # Dropping the X factor and not the Y one, and that is arithmetic rather than
     # taste: the mixed-phase row runs phase_x +1 and phase_y -1, so the product is
     # (-1)*(+1) = -1 and dropping the Y factor leaves -1 -- the identity. Measured
     # UNCAUGHT 0/1 in that form on 2026-08-28. Dropping the X factor leaves +1.
     ("composed_parity_drops_a_factor",
      ("float gz_xy_p = (-phase_x) * (-phase_y);",
       "float gz_xy_p = (-phase_y);", 1), True, _two_folds),
-    # THE CONSTITUTIVE AT THE GHOST. Without it H and f_w_H at every destination
+    # The constitutive at the ghost. Without it H and f_w_H at every destination
     # plane keep the previous step's value while B carries the new image.
     ("ghost_constitutive_dropped",
      ("            constitutive_apply(Hx, f_w_Hx, gx_n_i, gx_n_v, "
       "kps_x[0], kms_int_x[0], gx_n_w);\n", "", 1), True, _folded_axis("x")),
 
     # --- the curl half ------------------------------------------------------
-    # THE STENCIL IN MEEP'S GROUPING, dtdx * (((g1s - g1) + g2) - g2s) (step_generic.cpp:104,
-    # A1). INVERTED 2026-10-08 (KERNELS.md section 7.1; this gate is Appendix A's one curl
+    # The stencil in MEEP's grouping, dtdx * (((g1s - g1) + g2) - g2s) (step_generic.cpp:104).
+    # INVERTED 2026-10-08 (certification.md; this gate's one inverted curl-grouping
     # line): the shipped bracket is the one the old "parens flattened" mutation installed,
     # so the must-catch mutation now installs the PACKAGE's old pairing,
     # (sf - f1) + (f2 - ss).
@@ -2364,7 +2364,7 @@ SOURCE_MUTATIONS: Tuple[Tuple[str, Tuple[str, str, int], Optional[bool],
      ("float curl = curl_stencil(dtdx, ", "float curl = curl_stencil(1.0f, ", -1),
      True, _always),
 
-    # --- MEEP's per-chunk forms (bit_parity_0_10 KERNELS.md section 7.2, the B battery).
+    # --- the per-chunk form battery (certification.md).
     # Every one is live on every row with a layer: the gate's states are random over the
     # whole volume, so every chunk-boundary plane is exercised at the first launch.
     #
@@ -2390,7 +2390,7 @@ SOURCE_MUTATIONS: Tuple[Tuple[str, Tuple[str, str, int], Optional[bool],
      ("const int cbh_z_a0 = cb[20], cbh_z_a1 = cb[21], cbh_z_b0 = cb[22], cbh_z_b1 = cb[23];",
       "const int cbh_z_a0 = cb[8], cbh_z_a1 = cb[9], cbh_z_b0 = cb[10], cbh_z_b1 = cb[11];",
       1), True, _always),
-    # The auxiliary stored on a plain cell (the auxiliary contract, C2): the array path
+    # The auxiliary stored on a plain cell (the auxiliary contract): the array path
     # leaves fu and f_w untouched off the run and this gate compares both.
     ("split_field_auxiliary_stored_on_a_plain_cell",
      ("    if (dsigu) fu[idx] = fu_new;\n", "    fu[idx] = fu_new;\n", 1), True, _always),
@@ -2400,7 +2400,7 @@ SOURCE_MUTATIONS: Tuple[Tuple[str, Tuple[str, str, int], Optional[bool],
     # --- THE NULLS. Each must come back UNCAUGHT, and each has an arithmetic
     # --- reason, not an expectation.
     #
-    # THE FUSION'S CENTRAL CLAIM, WRITTEN AS A PROGRAM. `Bx[idx] = value`
+    # The fusion's central claim, written as a program. `Bx[idx] = value`
     # executes inside pml_apply_reg and the wall clear stores the same 0.0f it
     # put in the register, so `Bx[idx]` and `b_x` hold the same float32 word at
     # this point. A float32 stored to global and reloaded is the identity on the
@@ -2411,9 +2411,9 @@ SOURCE_MUTATIONS: Tuple[Tuple[str, Tuple[str, str, int], Optional[bool],
     ("constitutive_product_commuted",
      ("(kps * src)", "(src * kps)", -1),
      False, _always),
-    # THE AUXILIARY LOAD ISSUED UNCONDITIONALLY, the store still guarded: the loaded word
+    # The auxiliary load issued unconditionally, the store still guarded: the loaded word
     # feeds only the recurrence arm, which runs on the run's cells, so no stored word
-    # changes (KERNELS.md section 7.2's declared null; the static form of the guard is
+    # changes (the per-chunk form battery's declared null; the static form of the guard is
     # pinned in test_fused_pair_chunk_forms.py).
     ("hoisted_fu_load_unguarded",
      ("float pre_fu_x = in_h_z ? fu_Bx[idx] : 0.0f;", "float pre_fu_x = fu_Bx[idx];", 1),
@@ -2422,7 +2422,7 @@ SOURCE_MUTATIONS: Tuple[Tuple[str, Tuple[str, str, int], Optional[bool],
     # and a 32-bit float in a 32-bit slot round-trips exactly.
     ("fu_reloaded_from_memory",
      ("+ fu_new) - fprev", "+ fu[idx]) - fprev", 1), False, _always),
-    # THE COMPOSED PARITY IS A PRODUCT OF EXACT +/-1 WORDS, so its two factors
+    # The composed parity is a product of exact +/-1 WORDS, so its two factors
     # commute bitwise -- and so does the order the array path applies its two far
     # axes in, which is what carried_destinations' closed form asserts. A DECLARED
     # NULL: if this DIVERGES, the composition is order-dependent and the closed
@@ -2467,7 +2467,7 @@ def _fills_dropped(fills: Dict[str, Any], grid: Any) -> Dict[str, Any]:
 def _fills_from_walls(fills: Dict[str, Any], grid: Any) -> Dict[str, Any]:
     """The NEAR flag read off the wall table instead of the mirror phases.
 
-    THREE READINGS OF ONE GRID, and this is the confusion the launcher's docstring
+    Three readings of one grid, and this is the confusion the launcher's docstring
     warns about: ``zero_metal_axes`` EXCLUDES a folded axis, so a plan built from it
     reports no fill on exactly the axes that have one.
     """
@@ -2488,8 +2488,8 @@ def _walls_from_boundary_codes(walls: Sequence[int], grid: Any) -> Sequence[int]
     resolves -- as opposed to ``zero_metal_axes``, which additionally excludes a
     FOLDED metallic axis.
 
-    STILL A NULL AFTER THE FOLD WAS ADMITTED, FOR A DIFFERENT AND BETTER REASON,
-    and the round measured its way to it rather than assuming it.
+    Still a null after the fold was admitted, for a different and better reason,
+    and it was reached by measurement, not assumed.
 
     The OLD reason: every folded axis was refused by name, so the two questions had
     the same answer on every grid this product could serve. That reason expired on
@@ -2497,15 +2497,15 @@ def _walls_from_boundary_codes(walls: Sequence[int], grid: Any) -> Sequence[int]
 
     The reason NOW: on a folded METALLIC axis the two readings really do differ --
     this patch reports a wall there and ``zero_metal_axes`` does not -- and the
-    difference REACHES NO WORD. ``_ZERO_METAL_ROWS`` is the B DIAGONAL, so a wall on
+    difference reaches no word. ``_ZERO_METAL_ROWS`` is the B DIAGONAL, so a wall on
     axis ``a`` clears component ``a`` at stored 0 of ``a``; the NEAR fill images that
     same component at that same cell when ``a`` is folded (``iyee[Ba][a] == 0`` in
     both tables). That cell is therefore a fill DESTINATION, the emitted clear is
     guarded on ``own_a``, and the line does not fire. The two passes are mutually
     exclusive per component, which is the CUDA restatement of the Metal folded
-    pair's "THE WALL CLEAR AND THE NEAR FILL CANNOT MEET".
+    pair's "the wall clear and the near fill cannot meet".
 
-    SCORED WHERE THE TWO READINGS DIFFER (``_folded_metallic``) rather than
+    Scored where the two readings differ (``_folded_metallic``) rather than
     everywhere: a null confirmed on rows where the patch is the identity confirms
     nothing. What pins the GUARD this null rests on is host-side and deterministic:
     ``test_fused_pairs.test_the_one_re_spelled_pass_still_emits_the_diagonal_and_a_plus_zero``
@@ -2637,7 +2637,7 @@ def run_mutations(results: Dict[str, Any], out_path: str, steps: int,
             out[name] = {"armed": False, "sites": sites,
                          "why": f"the mutated source did not compile: "
                                 f"{type(exc).__name__}: {exc}"[:400]}
-            log(f"[src-mut] {name}: DID NOT COMPILE")
+            log(f"[src-mut] {name}: did not compile")
             results["source_mutations"] = out
             save(results, out_path)
             continue
@@ -2717,7 +2717,7 @@ def summarize(results: Dict[str, Any], steps: int) -> Dict[str, Any]:
                 f"read_only_moved={case.get('read_only_volumes_that_moved')} "
                 f"launches={case.get('launch_counts')}")
 
-    # BOTH VALUE CLASSES, and the precondition must DISCRIMINATE. A census that
+    # Both value classes, and the precondition must DISCRIMINATE. A census that
     # fires everywhere is a detector that cannot tell the classes apart, and one
     # that never fires is a detector never shown to work.
     classes = {case["value_class"] for case in product}
@@ -2736,7 +2736,7 @@ def summarize(results: Dict[str, Any], steps: int) -> Dict[str, Any]:
         reasons.append("a uniform case held a subnormal operand; the precondition "
                        "cannot discriminate between the two classes")
 
-    # EVERY WALL AXIS MUST HAVE BEEN LIVE somewhere. The B table is the diagonal,
+    # Every wall axis must have been live somewhere. The B table is the diagonal,
     # and a sweep that only ever walls x cannot tell it from the D-side one.
     walls = set()
     for case in product:
@@ -2746,8 +2746,8 @@ def summarize(results: Dict[str, Any], steps: int) -> Dict[str, Any]:
         reasons.append(f"only wall axes {sorted(walls)} were ever live; the "
                        f"diagonal wall table is untested on the rest")
 
-    # THE FOLD FLOOR, NEW ON 2026-08-28 AND THE SAME ARGUMENT AS THE WALL ONE.
-    # This round's whole content is that the two mirror fills are now CARRIED, and
+    # The fold floor, new on 2026-08-28 and the same argument as the wall one.
+    # The 2026-08-28 change does one thing: the two mirror fills are now CARRIED, and
     # on an unfolded grid neither of them runs at all -- so a sweep of the original
     # rows would release the carry without executing one line of it. Four
     # properties, each of which no other row supplies:
@@ -2793,7 +2793,7 @@ def summarize(results: Dict[str, Any], steps: int) -> Dict[str, Any]:
             reasons.append(f"leg {leg_name} failed: "
                            f"{json.dumps(leg, default=str)[:400]}")
 
-    # THE NONLINEAR ROWS MUST HAVE BEEN SWEPT. The widening is released only with
+    # The nonlinear rows must have been swept. The widening is released only with
     # cases that ran MEEP's Pade branch beside the weld; a product list without
     # one would release an admission the sweep never exercised.
     if not any(str(case.get("case_seed_label", "")).startswith(
@@ -2801,7 +2801,7 @@ def summarize(results: Dict[str, Any], steps: int) -> Dict[str, Any]:
         reasons.append("no nonlinear product case was scored; the 2026-09-01 "
                        "widening would be released unexercised")
 
-    # THE DEPOSIT IS PART OF THE RELEASE, not a side observation: the predicate now
+    # The deposit is part of the release, not a side observation: the predicate now
     # ADMITS every in-seam magnetic deposit, so a run that did not measure one would
     # be releasing an admission it never exercised.
     deposit = results.get("deposit", {})
@@ -2829,7 +2829,7 @@ def summarize(results: Dict[str, Any], steps: int) -> Dict[str, Any]:
                 f"case there is consistent with a deposit too small to see "
                 f"({json.dumps(null, default=str)[:300]})")
 
-    # THE SECOND CONSULT SITE IS PART OF THE RELEASE. A product certified only
+    # The second consult site is part of the release. A product certified only
     # through `step` is certified on one of the two sites the driver dispatches it
     # from, and the other one restores magnetic names only.
     synchronize = results.get("synchronize", {})
@@ -2913,12 +2913,12 @@ def summarize(results: Dict[str, Any], steps: int) -> Dict[str, Any]:
                   f"steps, on every configuration this sweep scored, under the "
                   f"float32 subnormal policy this run installed"),
         "does_not_claim": [
-            "NO THROUGHPUT. This gate times nothing and licenses no speed claim.",
-            "NO DISPATCH. Nothing in meep_gpu imports cuda_kernels; this product "
+            "No throughput. This gate times nothing and licenses no speed claim.",
+            "No dispatch. Nothing in meep_gpu imports cuda_kernels; this product "
             "is not registered on any arm and a verdict here does not wire it.",
-            "NOTHING ABOUT A FOLDED, COMPLEX, CYLINDRICAL, CONDUCTIVE, BFAST or "
-            "SPECIAL-KZ run: each is refused BY NAME and none was swept.",
-            "THE IN-SEAM MAGNETIC DEPOSIT IS NOW CARRIED RATHER THAN REFUSED, and "
+            "Nothing about a folded, complex, cylindrical, conductive, BFAST or "
+            "special-kz run: each is refused by name and none was swept.",
+            "The in-seam magnetic deposit is now carried rather than refused, and "
             "what the `deposit` legs settle is the TWO-CONSULT PROTOCOL around the "
             "launch -- the fused kernel against an uninjected field, the driver's "
             "own inject/fill/clear, then the repair -- byte-identical to the array "
@@ -2926,18 +2926,18 @@ def summarize(results: Dict[str, Any], steps: int) -> Dict[str, Any]:
             "It says nothing about a deposit whose index the engine never resolved, "
             "which is refused by name, and nothing about the D/E seam's deposit, "
             "which has no CUDA product.",
-            "NOTHING ABOUT THE D/E SEAM, which is a different product with the "
+            "Nothing about the D/E seam, which is a different product with the "
             "opposite Yee sub-lattice pairing.",
-            "NO VERDICT ABOUT THE OTHER TWO IN-SEAM PASSES. fill_symmetry_bc_B "
+            "No verdict about the other two in-seam passes. fill_symmetry_bc_B "
             "and fill_folded_far_ghosts_B are refused by this predicate, not "
             "carried, and this run says nothing about carrying them.",
-            "THE ORACLE IS stepping ON CuPy, NOT CPU MEEP. This is a "
+            "The oracle is stepping on CuPy, not CPU MEEP. This is a "
             "byte-identity claim against the package's own array path -- the "
             "same oracle both halves were certified against -- and it is not a "
             "physics claim against stock MEEP. What it settles is that the weld "
             "changed nothing; what MEEP-parity the array path already has, it "
             "keeps, and nothing here extends it.",
-            "THE MUTATION LEGS RUN ON THE UNIFORM CLASS ONLY. A mutation leg "
+            "The mutation legs run on the uniform class only. A mutation leg "
             "answers 'can this gate see this defect at all'; multiplying it by "
             "the value classes buys repetitions of that answer rather than a "
             "second question, and the product legs carry both classes.",
@@ -2946,6 +2946,7 @@ def summarize(results: Dict[str, Any], steps: int) -> Dict[str, Any]:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
+    import neutral_ids  # noqa: PLC0415
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--out", required=True, help="artifact FILE path")
     parser.add_argument("--steps", type=int, default=STEPS)
@@ -2962,8 +2963,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     results: Dict[str, Any] = {
         "gate": "cuda_fused_magnetic_pair",
         "started_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "host": os.uname().nodename,
-        "argv": list(argv if argv is not None else sys.argv[1:]),
+        "host": neutral_ids.machine_id(),
+        "argv": neutral_ids.argv(argv if argv is not None else sys.argv[1:]),
         "question": ("does ONE launch of fused_magnetic_pair_pml_real leave every "
                      "stored volume byte-identical to stepping's step_B -> "
                      "zero_metal_B -> update_H inside a complete driver step?"),
@@ -2978,7 +2979,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     if args.import_meep_for_host_policy:
         results["meep_host_import"] = probe.import_meep_for_host_policy()
-    # THE OBSERVER GOES IN BEFORE THE POLICY: under 'keep' the policy's strip
+    # The observer goes in before the policy: under 'keep' the policy's strip
     # wraps it, so it records the option tuple NVRTC was really given.
     results["nvrtc_observer"] = probe.install_nvrtc_binary_observer()
     if args.subnormal_policy:
@@ -3034,7 +3035,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             f"after_restore={leg.get('differing_after_the_restore')} "
             f"controls={leg.get('controls_that_must_diverge')}")
 
-    # THE DEPOSIT LEGS. Two carried rows -- a POINT source and an EXTENDED one, so
+    # The deposit legs. Two carried rows -- a POINT source and an EXTENDED one, so
     # the repair's per-point loop runs at many points and not only at four -- and the
     # unbracketed null control, which must diverge.
     results["deposit"] = {}
@@ -3049,7 +3050,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 f"points={leg.get('deposit_points')} "
                 f"repaired={leg.get('deposit_points_repaired')} "
                 f"plans={leg.get('installed_plans')}")
-    # ONE NULL CONTROL PER DEPOSIT ROW, and the folded one is the point: without it
+    # One null control per deposit row, and the folded one is the point: without it
     # a green folded deposit case would be consistent with a fill closure the repair
     # never needed.
     results["deposit_null_control"] = {
@@ -3070,7 +3071,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         run_mutations(results, args.out, args.steps, mutation_specs)
         run_host_mutations(results, args.out, args.steps, mutation_specs)
 
-    # THE DISARM CHECK. The identical harness, the identical cases, the SHIPPED
+    # The disarm check. The identical harness, the identical cases, the SHIPPED
     # bytes and no patch. A divergence here would mean every "caught" above is a
     # harness that diverges on its own.
     disarm_cases = [run_case(spec, "uniform", args.steps, label_suffix="|disarm")

@@ -1,14 +1,14 @@
 """The per-chunk form battery for the Metal fused pairs that LIFT the base bodies.
 
-KERNELS.md §7.2 asks every family gate for a must-catch battery against the per-chunk
-forms: the select removed, the predicate keyed on coefficient identity instead of chunk
-membership, a bound off by one, the two Yee sub-lattices swapped, the dsig and dsigu
-flags swapped, an auxiliary stored on a plain cell, and the two plain forms spelled
-through the accumulating ones (caught only where a -0 reaches them). Two rows are
-declared nulls: an auxiliary LOAD outside its guard with the store still guarded
-changes no word.
+Every family gate carries a must-catch battery against the per-chunk forms
+(docs/development/certification.md#chunk-form-battery): the select removed, the
+predicate keyed on coefficient identity instead of chunk membership, a bound off by
+one, the two Yee sub-lattices swapped, the dsig and dsigu flags swapped, an auxiliary
+stored on a plain cell, and the two plain forms spelled through the accumulating ones
+(caught only where a -0 reaches them). Two rows are declared nulls: an auxiliary LOAD
+outside its guard with the store still guarded changes no word.
 
-THE ROWS ARE THE BASE GATE'S OWN, NOT A SECOND SPELLING. ``fused_magnetic_pair``,
+The rows are the base gate's own, not a second spelling. ``fused_magnetic_pair``,
 ``fused_electric_pair`` and ``nonlinear_fused_magnetic_pair`` splice the certified
 curl and constitutive bodies of :mod:`meep_gpu.metal_kernels.shaders` verbatim (the
 constitutive half renamed pointer by pointer, never in a line these rows touch), so
@@ -86,7 +86,7 @@ def record_for(grid: Any, pml: Any, mutate: Callable[[Any], Any] = None) -> Any:
 
 
 def form_census(grid: Any, pml: Any) -> Dict[str, Dict[str, int]]:
-    """Cells per (component, form) on this case (DESIGN.md D13's coverage rule)."""
+    """Cells per (component, form) on this case (docs/development/certification.md#form-coverage)."""
     return base_gate._form_counts(layer_record(grid, pml), grid.shape)
 
 

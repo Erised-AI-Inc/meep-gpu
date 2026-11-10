@@ -1,9 +1,9 @@
 """The route gate's absorbed-consult-withheld control: where it can diverge, off-device.
 
-WHY THIS FILE EXISTS. The control lets the ARRAY ``update_H`` / ``update_E`` run on top
+Why this file exists. The control lets the ARRAY ``update_H`` / ``update_E`` run on top
 of the fused launch's own constitutive half and requires the two legs to part. Since
-the kernels' constitutive halves became bit-identical to the array path's (series entry
-22-KT1 on the Triton table), the only thing that parts them is the dsigw ACCUMULATION,
+the kernels' constitutive halves became bit-identical to the array path's (since the
+Triton root kernels took MEEP's forms), the only thing that parts them is the dsigw ACCUMULATION,
 and the precert pass of 2026-10-09 read NULL-DID-NOT-DIVERGE on pml_2d, folded_2d,
 offdiag_2d and the 1-D, complex and cylindrical cases on every route leg of both NVIDIA
 tables -- blocking every release -- while every case itself was byte-identical.
@@ -195,7 +195,7 @@ def test_pml_1d_has_no_own_axis_cell_and_never_fires(monkeypatch):
 
 
 def test_the_watched_leg_steps_exactly_as_an_unwatched_one(monkeypatch):
-    """THE WITNESS MUST NOT MOVE THE LEG IT WATCHES. A witness that leaked a write
+    """The witness must not move the leg it watches. A witness that leaked a write
     would make every control it sits beside read DIVERGED-AS-REQUIRED -- a silent
     pass. Compared over every array on the fields and the PML, past the step the
     witness first fires at."""

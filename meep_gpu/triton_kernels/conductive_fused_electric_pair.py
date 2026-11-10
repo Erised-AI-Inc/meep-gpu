@@ -1,6 +1,6 @@
 """The conductive PML ``step_D`` welded into the ordinary ``update_E``.
 
-ONE LAUNCH FOR ALL THREE COMPONENTS, and the displacement never leaves a register
+One launch for all three components, and the displacement never leaves a register
 between the wall clear and the constitutive multiply. The separate composition for
 this configuration is TWO launches -- one whole-grid conductive curl plus one
 whole-grid constitutive -- and this is one.
@@ -9,8 +9,8 @@ It is built against the LAST unbuilt non-folded D->E cell on the Triton fusion
 board -- ``(conductive PML, ordinary)``, one corpus row,
 ``tests:TestAdjointSolver.test_damping``, shape (150, 150, 1), metallic in x and y,
 measured at ``D->E 1, ceiling 1`` in
-``parity/meep_gpu/results/fusion_matrix_triton_2026-08-31_electrics`` -- and IT DOES
-NOT SERVE THAT ROW. Read the clause in
+``parity/meep_gpu/results/fusion_matrix_triton_2026-08-31_electrics`` -- and it does
+not serve that row. Read the clause in
 :func:`conductive_fused_electric_pair_coverage` that says why before reading
 anything else here: the driver applies a conductive run's electric injection as
 three WHOLE-VOLUME passes (driver.py:3363-3370) rather than at the deposit points,
@@ -18,7 +18,7 @@ which rewrites ``-0.0`` to ``+0.0`` across the whole target component, and a rep
 defined over the deposit points cannot reconstruct that. The row's source is not
 integrated, so the row is refused BY NAME and this product's corpus count is ZERO.
 
-WHY IT SHIPS ANYWAY. It is complete, gated and correct on everything it admits --
+Why it ships anyway. It is complete, gated and correct on everything it admits --
 conductive PML runs with a magnetic source, and conductive PML runs with an
 INTEGRATED electric source, which driver.py:3355-3356 injects point-wise and which
 three device legs measure as carried. The day driver.py:3363-3370 scales at the
@@ -27,7 +27,7 @@ closes with no other change. The alternative -- deleting a measured, gated weld
 because a file this module does not own is whole-volume -- would lose the
 measurement along with the product.
 
-EVERYTHING HERE IS TRANSCRIBED, and every arithmetic line carries the function it
+Everything here is transcribed, and every arithmetic line carries the function it
 came from:
 
 * the index arithmetic, the ghost rule, the curl and the ownership mask --
@@ -48,7 +48,7 @@ A reader can diff this body against those three and see that nothing moved. If y
 find yourself deriving here, you have taken a wrong turn.
 
 ===========================================================================
-WHY THE RECURRENCE IS CALLED AND NOT COPIED -- the one structural decision
+Why the recurrence is called and not copied -- the one structural decision
 ===========================================================================
 
 :func:`.conductivity._conductive_component` STORES its result. A fused pair cannot
@@ -58,13 +58,13 @@ a value this launch would have to read back.
 
 Two ways out were available and the cheaper-looking one was rejected:
 
-* CALL THE SHIPPED HELPER AND RE-LOAD ``f`` -- three extra loads, and a
+* Call the shipped helper and re-load ``f`` -- three extra loads, and a
   store-then-load of the same pointer inside one program. Bit-exact, and it makes
   the transcription claim trivial. REJECTED anyway: it makes the kernel's
   correctness depend on Triton honouring a store->load dependency through a raw
   pointer, which is a property of the compiler rather than of this file, and no
   sibling in this package leans on it.
-* MOVE ONE STATEMENT. :func:`_conductive_component_registers` is
+* Move one statement. :func:`_conductive_component_registers` is
   ``_conductive_component`` with the single ``tl.store(f_ptr + idx, v, mask=live)``
   removed from each of its two constexpr branches and ``return v`` added. The
   ``u_ptr`` and ``c_ptr`` stores stay exactly where they are, MASKS INCLUDED --
@@ -76,7 +76,7 @@ transcription leg parses both functions and asserts the statement lists are equa
 after removing exactly that one store, so a second edit to either body turns the
 gate red rather than drifting quietly.
 
-THE STORE ORDER CHANGES AND THAT IS NOT AN ARITHMETIC CHANGE. The shipped helper
+The store order changes and that is not an arithmetic change. The shipped helper
 writes ``f``, then ``u``, then ``c``; here ``u`` and ``c`` are written inside the
 helper and ``f`` is written by the caller after the wall clear. The three are
 DISTINCT VOLUMES on every admitted configuration -- ``D*``, ``fu_D*`` and
@@ -96,8 +96,8 @@ The driver runs four passes between ``step_D`` and ``update_E``
   REFUSED for a scaled one.** :data:`CARRIES_DEPOSIT_REPAIR` is True and the plan
   brackets its launch with ``deposit_repair``'s leading and trailing slots;
   ``deposit_repair.repairable(fields, 'D', pml)`` returns ``(True, ())`` on a
-  conductive PML run, measured rather than argued. THE CONDUCTIVE INJECTION IS NOT
-  THE SAME CLAUSE, and that is the correction this product paid for: for a
+  conductive PML run, measured rather than argued. The conductive injection is not
+  the same clause, and that is the correction this product paid for: for a
   non-integrated source ``FdtdDriver`` takes the ``condinv`` path
   (driver.py:3295-3296), which rescales the WHOLE VOLUME by difference
   (:3363-3370) rather than the deposit, and the repair cannot follow it. The
@@ -113,7 +113,7 @@ The driver runs four passes between ``step_D`` and ``update_E``
   fill** (stepping.py:1565-1566).
 
 ===========================================================================
-WHAT THIS MODULE IS NOT
+What this module is not
 ===========================================================================
 
 It is NOT the no-PML conductive weld. :mod:`.complex_conductive_fused_pair` serves
@@ -150,18 +150,18 @@ from .coverage import (
 from .. import deposit_repair as _deposit_repair
 
 #: Does this product bracket its fused launch with the deposit repair? TRUE, and it
-#: is MEASURED rather than defaulted -- three device legs run an INTEGRATED electric
+#: is measured rather than defaulted -- three device legs run an INTEGRATED electric
 #: source through the shipped bracket and find the engine bit-identical, and two null
 #: controls with the bracket removed diverge as they must.
 #:
-#: IT IS NOT WHAT MAKES THIS CELL REACHABLE, and that is the one place this module
+#: It is not what makes this cell reachable, and that is the one place this module
 #: differs from its 08-31 siblings. The cell's only corpus row declares a
 #: NON-INTEGRATED electric source, which the coverage clause below refuses for a
 #: reason the repair cannot fix: the driver's condinv rescale is whole-volume
 #: (driver.py:3363-3370). The flag is still load-bearing for every conductive run
 #: whose electric source IS integrated, which is what the carry legs measure.
 #:
-#: THE FLAG IS NOT THE WHOLE CLAIM. It only reaches ``deposit_repair.repairable``,
+#: The flag is not the whole claim. It only reaches ``deposit_repair.repairable``,
 #: which goes on refusing BY NAME every seam the repair cannot invert -- an
 #: off-diagonal constitutive, a nonlinear one, a fold whose fill map it cannot read,
 #: and an absorber whose split-field recurrence never ran. This family refuses a fold
@@ -193,7 +193,7 @@ BACKWARD = 1
 #: them do work on an admitted configuration -- the two symmetry fills return at
 #: their first line without a mirror plane, which this family refuses outright -- and
 #: the inert two are listed anyway: what a launch REPLACES is what the driver would
-#: otherwise have called. THE INJECTION IS NOT ONE OF THE FIVE: it is carried by the
+#: otherwise have called. The injection is not one of the five: it is carried by the
 #: deposit repair bracket around the launch, not by the launch.
 REPLACES: Tuple[str, ...] = ("step_D", "fill_symmetry_bc_D", "zero_metal_D",
                              "fill_folded_far_ghosts_D", "update_E")
@@ -257,7 +257,7 @@ if triton is not None:
     # The same constexpr codes as ``kernels``' own, restated for the reason every
     # sibling restates them -- importing a ``tl.constexpr`` wrapper and re-wrapping
     # it is not the same object, and the comparison in the kernel body is against a
-    # literal code. ONLY METALLIC IS NAMED: both certified bodies branch on
+    # literal code. Only metallic is named: both certified bodies branch on
     # ``== METALLIC`` and take periodic as the else.
     METALLIC = tl.constexpr(1)
 
@@ -268,7 +268,7 @@ if triton is not None:
         """:func:`.conductivity._conductive_component`, returning ``v`` instead of
         storing it.
 
-        ONE STATEMENT MOVED. Both constexpr branches are that function's, character
+        One statement moved. Both constexpr branches are that function's, character
         for character, minus ``tl.store(f_ptr + idx, v, mask=live)``; the ``u_ptr``
         and ``c_ptr`` stores keep their masks, which are the auxiliary contract and
         not this weld's to touch. ``f_ptr`` is still taken because the ``f`` LOAD
@@ -292,7 +292,7 @@ if triton is not None:
             cf = tl.load(cf_ptr + idx, mask=live, other=0.0)
             ci = tl.load(ci_ptr + idx, mask=live, other=0.0)
 
-            # The conductive forms. DO NOT REGROUP THESE PARENTHESES: the increment
+            # The conductive forms. Do not regroup these parentheses: the increment
             # (c_new - c) is formed before it is added (MEEP's grouping).
             c_new = ((c * cf) - curl) * ci                     # dsig cells
             increment = c_new - c
@@ -344,7 +344,7 @@ if triton is not None:
         :func:`.kernels.fused_curl_constitutive_D`'s wall clear, D store and
         constitutive half. Nothing else is here.
 
-        ``BACKWARD`` IS CARRIED AND MUST BE 1. It keeps the curl half a verbatim copy
+        ``BACKWARD`` is carried and must be 1. It keeps the curl half a verbatim copy
         of the certified body rather than a hand-specialised one. It cannot be 0: the
         wall clear below is the D family's SIX rows -- a metallic axis clears the two
         TANGENTIAL D components, where the magnetic family clears the one normal B --
@@ -478,7 +478,7 @@ if triton is not None:
             v0 = tl.where(at_z, 0.0, v0)
             v1 = tl.where(at_z, 0.0, v1)
 
-        # THE D STORE IS KEPT, and it is the store the helper no longer performs.
+        # The D store is kept, and it is the store the helper no longer performs.
         # The array path leaves the stepped displacement in the D volume and later
         # sub-steps read it; dropping it would fuse away a value the run still needs,
         # which is a different defect from a wrong arithmetic line and one no per-step
@@ -493,7 +493,7 @@ if triton is not None:
         # register the curl half computed. Component 0 takes its coefficient from
         # axis x, 1 from y, 2 from z (stepping.E_CONSTITUTIVE_TERMS) -- the
         # component's OWN axis, and its own (dsigw) record line on the half-integer
-        # sub-lattice picks the form (forms.constitutive_form). D IS ON THE LEFT of the
+        # sub-lattice picks the form (forms.constitutive_form). D is on the left of the
         # inverse-epsilon multiply because the array path writes
         # `source * inverse_epsilon_for(component)`.
         kp_0 = tl.load(kp0 + i, mask=live, other=0.0)
@@ -578,7 +578,7 @@ def conductive_fused_electric_pair_coverage(fields: Any, pml: Any,
         return Coverage(False,
                         tuple(dict.fromkeys(reasons + ["fields carries no grid"])))
 
-    # AT LEAST ONE CONDUCTIVE COMPONENT, refused BY NAME rather than left to the
+    # At least one conductive component, refused BY NAME rather than left to the
     # plan's ValueError. An all-lossless grid is kernels.fused_curl_constitutive_D's
     # own configuration and that product already serves it; admitting it here would
     # put two products on one cell, which the board scores as an ambiguity rather
@@ -589,12 +589,12 @@ def conductive_fused_electric_pair_coverage(fields: Any, pml: Any,
             "kernels.fused_curl_constitutive_D's, and coverage.fused_pair_coverage "
             "already claims it")
 
-    # THE SOURCE SEAM, and on this cell it is the clause that decides everything. An
+    # The source seam, and on this cell it is the clause that decides everything. An
     # ELECTRIC source is injected BETWEEN the two halves (driver.py:3294-3299), so a
     # fused pair would consume a pre-injection D. The one corpus row of this cell
     # declares exactly that, so with CARRIES_DEPOSIT_REPAIR False the arm would admit
     # NOTHING; it is True, and the plan below brackets its launch with the repair.
-    # IGNORANCE IS NEVER AN EMPTY SET: `Fields` does not hold the source list, so an
+    # Ignorance is never an empty set: `Fields` does not hold the source list, so an
     # undeclared `sources` is itself a REFUSAL. A MAGNETIC source is injected in the
     # B/H half and does not disqualify this pair.
     reasons.extend(_deposit_repair.seam_source_reasons(
@@ -610,28 +610,28 @@ def conductive_fused_electric_pair_coverage(fields: Any, pml: Any,
             f"closes"),
         carries_repair=CARRIES_DEPOSIT_REPAIR))
 
-    # A NON-INTEGRATED ELECTRIC SOURCE ON A CONDUCTIVE RUN — the clause that used
+    # A non-integrated electric source on a conductive run — the clause that used
     # to refuse it BY NAME was LIFTED ON A MEASUREMENT (2026-09-01), and both the
-    # retired measurement and the lift are kept here so a later round need not
+    # retired measurement and the lift are kept here so a later change need not
     # re-derive either.
     #
-    # THE RETIRED COMPOSITION. The driver used to snapshot the target D component,
+    # The retired composition. The driver used to snapshot the target D component,
     # inject, and rescale BY DIFFERENCE over the WHOLE VOLUME (`array -= before;
     # array *= condinv; array += before`). Exact for every finite value, but it
-    # rewrote `-0.0` to `+0.0` at EVERY cell of the component — MEASURED on
+    # rewrote `-0.0` to `+0.0` at EVERY cell of the component — measured on
     # the GPU host GPU 6, 2026-08-31, on this product's own wall_xy grid under the
     # signed-zero value class, one complete driver step, three routes:
     #
     #     is_integrated=True   identical, 3 steps, 3 deposits repaired
     #     is_integrated=False  Ez differs in 14 words and f_w_Ez in 74, every one
-    #                          of them -0.0 against +0.0, while D itself AGREES
+    #                          of them -0.0 against +0.0, while D itself agrees
     #
-    # THE DRIVER NO LONGER DOES THAT. `_inject_electric_through_conductivity` now
+    # The driver no longer does that. `_inject_electric_through_conductivity` now
     # snapshots the target at the deposit cells the sources publish
     # (`deposit_repair._deposit_index` reads the same tables) and replays the
     # rescale per deposit cell in the retired passes' exact operand order — exact
     # at every deposit cell, untouched everywhere else, and closer to stock MEEP
-    # (step.cpp:294-317 scales only the injected current). RE-MEASURED with the
+    # (step.cpp:294-317 scales only the injected current). Re-measured with the
     # sparse replay in place, same protocol, same signed-zero seed class: the
     # bracketed fused route is byte-identical to the array path at EVERY step,
     # and the retired whole-volume passes replayed as a control still diverge —
@@ -644,7 +644,7 @@ def conductive_fused_electric_pair_coverage(fields: Any, pml: Any,
     # an unnameable deposit must still be scaled. No in-tree electric source
     # class is one; the clause stays for the duck-typed stranger.
     #
-    # WHAT THE LIFT SERVES: the cell's only corpus row
+    # What the lift serves: the cell's only corpus row
     # (``tests:TestAdjointSolver.test_damping``), whose non-integrated electric
     # source the pre-lift clause refused by name.
     if _call(grid, "has_conductivity", default=None) is not False:
@@ -663,10 +663,10 @@ def conductive_fused_electric_pair_coverage(fields: Any, pml: Any,
                     f" and not only at the deposit, and a point repair cannot "
                     f"reconstruct that")
 
-    # THE TWO SYMMETRY PASSES. Both return at their first line without
-    # `grid.has_symmetry()` (stepping.py:1481-1482, :1565-1566). RE-CHECKED HERE
+    # The two symmetry passes. Both return at their first line without
+    # `grid.has_symmetry()` (stepping.py:1481-1482, :1565-1566). Re-checked here
     # rather than inferred from either half's guard: this module's coverage may not
-    # be read off another module's, and if the conductive tranche ever admits a fold
+    # be read off another module's, and if the conductive family ever admits a fold
     # this weld would silently swallow two passes that had started doing work.
     if _call(grid, "has_symmetry", default=False):
         reasons.append(
@@ -679,7 +679,7 @@ def conductive_fused_electric_pair_coverage(fields: Any, pml: Any,
                 f"axis {axis} is folded by a mirror plane: the two symmetry passes "
                 f"in this seam are no longer no-ops and this weld carries neither")
 
-    # THE WALL CLEAR is carried inline, so the grid must be able to answer which
+    # The wall clear is carried inline, so the grid must be able to answer which
     # axes are walled; an unanswerable one compiles to ZM=False and silently skips a
     # plane the array path clears.
     for name in ("has_metallic", "is_metallic", "is_mirrored"):
@@ -687,7 +687,7 @@ def conductive_fused_electric_pair_coverage(fields: Any, pml: Any,
             reasons.append(
                 f"grid does not expose {name}; zero_metal_D cannot be carried inline")
 
-    # THE INVERSE-EPSILON VOLUMES ARE READ BY THE KERNEL, so `Fields` must be able to
+    # The inverse-epsilon volumes are read by the kernel, so `Fields` must be able to
     # hand one over per E component. An absent accessor would be a TypeError inside
     # the builder rather than a refusal, which is the wrong way for an uncovered
     # configuration to fail.
@@ -696,7 +696,7 @@ def conductive_fused_electric_pair_coverage(fields: Any, pml: Any,
             "fields does not expose inverse_epsilon_for; the constitutive half "
             "cannot bind the inv_eps volumes it loads")
 
-    # THE THREE CONDUCTIVE VOLUMES ARE READ BY THE KERNEL for every component whose
+    # The three conductive volumes are read by the kernel for every component whose
     # COND is 1. The curl half's own predicate asks the same question and this is a
     # restatement, not a second opinion: an absent reader here is a TypeError inside
     # the builder, and a refusal is the right shape for it.
@@ -723,7 +723,7 @@ class ConductiveFusedElectricPairPlan:
     both halves' forms. The inverse-epsilon volumes are the E side's and are bound
     here.
 
-    A LOSSLESS COMPONENT BINDS ITS OWN TARGET AS THE PLACEHOLDER for the three
+    A lossless component binds its own target as the placeholder for the three
     conductive slots, and a component without a conductive-chunk volume for the
     fourth, never a null -- the same rule and the same reason as the curl plan: the
     loads sit behind a ``tl.constexpr`` branch and compile away, but a pointer

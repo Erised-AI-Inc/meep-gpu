@@ -43,10 +43,10 @@ import pytest
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 HARNESS = ROOT / "parity" / "meep_gpu"
 SCRIPTS = {
-    "osx-arm64": HARNESS / "build_meep_133_macos.sh",
-    "linux-64": HARNESS / "build_meep_133_linux.sh",
+    "osx-arm64": HARNESS / "build_meep_reference_macos.sh",
+    "linux-64": HARNESS / "build_meep_reference_linux.sh",
 }
-NATIVE_SCRIPT = HARNESS / "build_meep_133_native.sh"
+NATIVE_SCRIPT = HARNESS / "build_meep_reference_native.sh"
 
 
 def _load(name: str, path: pathlib.Path):
@@ -376,7 +376,7 @@ def test_step_11_judges_both_modes_with_check_install(platform_tag):
     assert pending is (platform_tag == "osx-arm64"), platform_tag
 
 
-RECORD_HELPER = _load("build_meep_133_record_for_identity", HARNESS / "build_meep_133_record.py")
+RECORD_HELPER = _load("build_meep_reference_record_for_identity", HARNESS / "build_meep_reference_record.py")
 
 
 def test_check_install_offers_the_identity_verdict_the_build_takes_alone():
@@ -621,7 +621,22 @@ MODULE = "/opt/env/lib/python3.12/site-packages/meep/_meep.37.so"
 IMAGES = {LIBMEEP: "1" * 64, MODULE: "2" * 64}
 LIBM = {"kind": "libsystem_m", "uuid": "42E15F5C-02B8-3B56-9889-5B59CADD45EB",
         "macos": "26.2", "os_build": "25C56"}
-EXPECTED_MEEP = {"version": "1.33.0", "single_precision": True, "mpi": True}
+EXPECTED_MEEP = {"version": "1.35.0", "single_precision": True, "mpi": True}
+
+
+@pytest.mark.parametrize("platform_tag", ["osx-arm64", "linux-64"])
+def test_the_expected_meep_is_the_lock_reference_and_a_tested_version(platform_tag):
+    """One fact, one home: the identity check's expected build is the lock's MEEP entry.
+
+    check_install's identity check reads the build it expects from
+    numerics-relevant.json (``identity_check``); the stand-in these tests judge with
+    must be that entry on both platforms, and its release must be one check_install
+    calls tested, or a reference environment would be told its own MEEP is untested.
+    """
+    spec = reference_tool.load_reference(platform_tag)["spec"]
+    assert spec.get("meep") == EXPECTED_MEEP, (platform_tag, spec.get("meep"))
+    assert EXPECTED_MEEP["version"] in check_install.TESTED_MEEP_VERSIONS, (
+        check_install.TESTED_MEEP_VERSIONS)
 
 
 def census_of(images, fused=0):
@@ -675,7 +690,7 @@ def test_flush_passes_only_where_it_is_measured_at_one_thread():
     ("other libm", ["not the one its build record pins"]),
     ("no pinned libm", ["pins no math library"]),
     ("unread libm", ["could not be identified"]),
-    ("double precision", ["its MEEP is 1.33.0, double precision"]),
+    ("double precision", ["its MEEP is 1.35.0, double precision"]),
 ])
 def test_each_point_that_does_not_hold_is_named(change, words):
     facts, rec, census = payload(), record(), None

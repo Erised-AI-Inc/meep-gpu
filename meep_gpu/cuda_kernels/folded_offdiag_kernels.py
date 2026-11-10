@@ -1,6 +1,6 @@
-"""Raw-CUDA off-diagonal (tensor epsilon) ``update_E`` ON A MIRROR-FOLDED GRID.
+"""Raw-CUDA off-diagonal (tensor epsilon) ``update_E`` on a mirror-folded grid.
 
-THE FAMILY THE PREVIOUS ROUND SPECIFIED AND DID NOT BUILD.
+The family an earlier device measurement specified and did not build.
 ``coverage.FOLDED_OFFDIAG_ROW_MASK_ADMISSION`` records ``installed: False`` and
 carries the measurement that says what is missing: on the GPU host's RTX A6000, under
 both float32 subnormal policies, the SHIPPED ``update_E_pml_real_offdiag``
@@ -17,7 +17,7 @@ the work in as many words (``what_would_move_the_twenty``):
      code and the launcher mapping for it -- a new kernel variant with its own
      byte gate, not a line in this module"
 
-This module is that variant. It changes NOT ONE BYTE of ``offdiag_emitter.py`` or
+This module is that variant. It changes not one byte of ``offdiag_emitter.py`` or
 ``offdiag_constitutive_kernels.py``, whose ``offdiag_2026-08-16`` certification
 block is pinned by digest, and it does not touch
 ``covers_real_pml_offdiag_constitutive``: that predicate's two fold refusals STAY,
@@ -25,7 +25,7 @@ and they are the disjointness seam against this file, exactly as
 ``symmetry.folded_constitutive_coverage``'s off-diagonal clause is the seam on the
 sibling track.
 
-WHAT IT TRANSCRIBES. ``stepping.update_E`` (stepping.py:954) with an active PML,
+What it transcribes. ``stepping.update_E`` (stepping.py:954) with an active PML,
 at least one surviving off-diagonal ``chi1inv`` row, no nonlinearity, no
 polarization, and at least one axis resolving to ``MIRROR`` through
 ``stepping._boundary_kinds`` -- the ``elif offdiagonal:`` branch (stepping.py:
@@ -45,12 +45,12 @@ with own axis ``a``::
     otherwise:   E_c = src                                   # f_w_c untouched
 
 Every line of that is ``offdiag_emitter``'s, unchanged, the chunk record and the
-presence words included (``offdiag_presence``). THE WHOLE DELTA IS WHAT
-THE TWO SHIFT HELPERS DO ON A MIRROR AXIS, and it is three facts, each transcribed
+presence words included (``offdiag_presence``). The whole delta is what
+the two shift helpers do on a mirror axis, and it is three facts, each transcribed
 with its line and each measured rather than argued.
 
 =============================================================================
-FACT 1. THE FOLD ENTERS THROUGH EXACTLY ONE LEG: THE PARTNER-AXIS DOWN SHIFT
+Fact 1. The fold enters through exactly one leg: the partner-axis down shift
 =============================================================================
 
 ``stepping._offdiagonal_terms`` calls ``_shift_down`` WITH a component name and
@@ -67,7 +67,7 @@ wrap nor its metallic ``-1`` zero. So the certified kernel moves bytes on that
 plane whichever of its two codes the launcher hands the folded axis, which is what
 the device sweep measured.
 
-AND THE WALL MASK DOES NOT TAKE IT BACK. ``_mask_metallic_wall_coupling`` asks
+And the wall mask does not take it back. ``_mask_metallic_wall_coupling`` asks
 ``is_metallic(axis) and not is_mirrored(axis)`` (stepping.py:1282) and therefore
 ABSTAINS on a fold plane -- deliberately, with the array path's own measurement
 beside it (stepping.py:1266-1277: zeroing the fold plane the way the metallic rule
@@ -75,8 +75,8 @@ does costs 2.0e-02 even / 3.5e-03 odd). The fold plane's coupling is alive, and
 its value is the mirror ghost's.
 
 =============================================================================
-FACT 2. THE OWN-AXIS UP SHIFT IS AN EXACT ZERO ON A FOLD, WHICH ``coord_up``
-        ALREADY SPELLS AS ITS METALLIC ARM
+Fact 2. The own-axis up shift is an exact zero on a fold, which ``coord_up``
+        already spells as its metallic arm
 =============================================================================
 
 ``_offdiagonal_terms`` calls ``_shift_up`` with FOUR arguments (stepping.py:
@@ -89,11 +89,11 @@ claim: the sibling track records the same reading as an ARRAY-PATH FINDING
 (``triton_kernels/folded_offdiag_update_e.py``, "ARRAY-PATH FINDING"), because on
 a folded PERIODIC axis MEEP's ghost past the stored top is the parity-weighted
 image of ``_far_reflect_rows``' row and the coupling does not ask for it. That
-finding belongs to ``stepping.py`` and ``driver.py``. THIS
-KERNEL REPRODUCES THE ARRAY PATH, byte for byte, either way.
+finding belongs to ``stepping.py`` and ``driver.py``. This
+kernel reproduces the array path, byte for byte, either way.
 
 =============================================================================
-FACT 3. THE TWO FOLD TERMINATIONS ARE ONE CODE HERE, AND THAT IS A PREDICTION
+Fact 3. The two fold terminations are one code here, and that is a prediction
 =============================================================================
 
 ``coverage.REAL_CURL_BC_CODES`` splits a folded PERIODIC axis from a folded
@@ -113,7 +113,7 @@ owned_cells`` and whose ``is_metallic`` disagree has one of the two drifted, and
 neither can then be trusted about anything.
 
 =============================================================================
-WHAT THE MIRROR WEIGHT IS, EXACTLY, AND WHY IT IS A RUNTIME FLOAT
+What the mirror weight is, exactly, and why it is a runtime float
 =============================================================================
 
 ``_shift_down`` is called with ``component = "D" + AXIS_NAMES[partner_axis]`` on
@@ -121,13 +121,13 @@ WHAT THE MIRROR WEIGHT IS, EXACTLY, AND WHY IT IS A RUNTIME FLOAT
 shift 1 on its OWN axis (fields.py:214-219). ``mirror_parity`` (fields.py:117)
 returns ``phase * (-1 if flipped else 1)`` with ``flipped = (own_axis == axis) !=
 is_pseudovector``, so for every partner and every axis it collapses to exactly
-``-phase``. MEASURED here rather than transcribed: :func:`mirror_ghost_weights`
+``-phase``. Measured here rather than transcribed: :func:`mirror_ghost_weights`
 derives the value through ``fields.mirror_parity`` ITSELF, and
 ``test_folded_offdiag.py`` pins the collapse over 3 axes x 2 phases.
 
-IT ARRIVES AS A RUNTIME ``float`` ARGUMENT, exactly ``+1.0f`` or ``-1.0f``, and is
-applied as a multiply on the ghost lane alone. THE SIBLING TRACK'S REASON FOR THIS
-DOES NOT TRANSFER AND A DIFFERENT ONE DOES. There, a unary minus is avoided
+It arrives as a runtime ``float`` argument, exactly ``+1.0f`` or ``-1.0f``, and is
+applied as a multiply on the ghost lane alone. The sibling track's reason for this
+does not transfer and a different one does. There, a unary minus is avoided
 because Triton 3.1.0 lowers ``-x`` as ``0.0 - x`` and canonicalizes signed zeros;
 CUDA lowers ``-x`` to ``neg.f32`` and does not, which
 ``offdiag_emitter.PRELUDE`` already records. The reason here is the PREDICATE'S:
@@ -135,7 +135,7 @@ the weight is data the launcher reads off the grid, so a plane whose phase is
 unreadable must be a REFUSAL rather than a NaN that launches, and a value the
 predicate can inspect is one it can refuse.
 
-THE WEIGHT IS APPLIED ONLY ON THE GHOST LANE, never as a blanket ``1.0f *``. The
+The weight is applied only on the ghost lane, never as a blanket ``1.0f *``. The
 array path multiplies exactly one plane (stepping.py:1871-1872) and leaves every
 other sample untouched, so a kernel that multiplied every lane by a runtime 1.0f
 would be introducing an operation the oracle does not perform. ``1.0f * x`` is the
@@ -146,7 +146,7 @@ subnormal-band value class is precisely where the difference could bite. So
 :data:`PRELUDE`'s ``ghosted_mirror`` selects between the weighted and the plain
 load, and the ``mg = 0`` arm of it is ``ghosted``'s body verbatim.
 
-THAT IS ALSO WHAT MAKES THE UNFOLDED REDUCTION STRUCTURAL. With no axis folded,
+That is also what makes the unfolded reduction structural. With no axis folded,
 every ``mg`` is 0 on every lane, ``ghosted_mirror`` returns ``ghosted``'s value
 by BRANCH rather than by a multiply a compiler is trusted to fold away, and the
 emitted body is the certified family's arithmetic exactly. The gate measures the
@@ -155,7 +155,7 @@ reduction against the certified kernel rather than claiming it, and
 EMITTER through the same NumPy evaluator.
 
 =============================================================================
-WHAT IS SPECIALIZED AND WHAT IS NOT
+What is specialized and what is not
 =============================================================================
 
 ``offdiag_emitter``'s split, unchanged, and for its reasons: the boundary and wall
@@ -164,8 +164,8 @@ float operation and no association) so they are runtime ``int`` arguments; the s
 ROW-LIVENESS flags are an ARITY axis (they change how many terms the inner sum has
 and therefore its association) so they stay the emitter's only source parameter.
 
-THE GHOST WEIGHTS FOLLOW THE BOUNDARY AXES AND ARE RUNTIME TOO, and the SIBLING
-TRACK'S EXTRA CONSTEXPR IS DELIBERATELY NOT PORTED. ``folded_offdiag_update_e.py``
+The ghost weights follow the boundary axes and are runtime too, and the sibling
+track's extra constexpr is deliberately not ported. ``folded_offdiag_update_e.py``
 carries ``MG_X``/``MG_Y``/``MG_Z`` beside ``BCX``/``BCY``/``BCZ`` -- the same fact
 twice -- so that its unfolded arm can be the certified body VERBATIM instead of a
 multiply by 1.0. Here ``bc_*`` is already a runtime value, that benefit does not
@@ -175,7 +175,7 @@ not a crash. So the kernel derives ``mg_* = (bc_* == BC_MIRROR) && at_*`` from
 ``bc_*`` in ONE line and nothing else knows the answer.
 
 =============================================================================
-PLATFORM FACTS THIS FILE DEPENDS ON
+Platform facts this file depends on
 =============================================================================
 
 * ``--fmad=false`` is CORRECTNESS, not tuning, and the option tuple is SPELLED
@@ -184,17 +184,17 @@ PLATFORM FACTS THIS FILE DEPENDS ON
   control diverging on 384/384, and this family's tail and row product are that
   one plus a select, so the guard is a precondition here too -- carried as the
   gate's own control rather than inherited.
-* SIGNED ZERO: CUDA lowers ``-x`` to ``neg.f32``, not to ``0.0f - x``. No unary
+* Signed zero: CUDA lowers ``-x`` to ``neg.f32``, not to ``0.0f - x``. No unary
   minus appears on any float path here regardless; the weight is a bound argument.
 * DIVISION: none anywhere on this path.
-* THE DEVICE SOURCE IS PURE ASCII, a compile requirement rather than a style rule:
+* The device source is pure ASCII, a compile requirement rather than a style rule:
   ``cupy.cuda.compiler.compile_using_nvrtc`` writes the source through a bare
   ``open(..., 'w')``, so the bytes go through the interpreter's LOCALE encoding --
   ASCII under C/POSIX, which is what a non-interactive shell on the validation
   host gets. The tests scan AND encode every emitted source, per row mask.
 
 =============================================================================
-IMPORTABLE WITHOUT CUPY, AND NOT CERTIFIED UNTIL THE RECORD SAYS SO
+Importable without CuPy, and not certified until the record says so
 =============================================================================
 
 ``cupy`` is imported INSIDE the launcher, never at module scope, on
@@ -202,7 +202,7 @@ IMPORTABLE WITHOUT CUPY, AND NOT CERTIFIED UNTIL THE RECORD SAYS SO
 the coverage census, which runs on a laptop. Everything above the launcher --
 emitter, predicate, tables -- is stdlib plus one lazy ``fields.mirror_parity``.
 
-NOTHING DISPATCHES THIS. No module in ``meep_gpu/`` imports ``cuda_kernels`` at
+Nothing dispatches this. No module in ``meep_gpu/`` imports ``cuda_kernels`` at
 all (``test_package_boundary.py`` pins the absence in both directions), so a
 predicate returning True licenses a MEASUREMENT and not a production step. What
 has and has not been measured on a device is :data:`FOLDED_OFFDIAG_ADMISSION`, and
@@ -295,11 +295,11 @@ _COMPILE_OPTIONS = ('--fmad=false',)
 
 
 # =============================================================================
-# THE DEVICE CODE
+# The device code
 # =============================================================================
 #
-# THE FOUR HELPERS THE CERTIFIED FAMILY ALREADY OWNS ARE READ OUT OF ITS SOURCE,
-# NOT COPIED. ``offdiag_emitter.PRELUDE`` is a module-level string constant in a
+# The four helpers the certified family already owns are read out of its source,
+# not copied. ``offdiag_emitter.PRELUDE`` is a module-level string constant in a
 # stdlib-only sibling, so it can be sliced rather than re-typed -- the route
 # ``no_pml_curl._sibling_prelude`` takes, for its reason: two copies of a helper
 # are equal only until someone edits one, and a silent divergence in ``flat`` or
@@ -374,8 +374,8 @@ _OWN_PRELUDE = r'''
 // METALLIC / MIRROR one: the neighbour COORDINATE one cell up an axis, or -1
 // where the ghost makes the sample an exact zero.
 //
-// MIRROR SHARES METALLIC'S ARM HERE AND THAT IS THE TRANSCRIPTION, NOT A
-// SHORTCUT. stepping._offdiagonal_terms calls _shift_up with four arguments
+// Mirror shares metallic's arm here and that is the transcription, not a
+// shortcut. stepping._offdiagonal_terms calls _shift_up with four arguments
 // (stepping.py:1219-1220) -- no component, no mirror_phase, no reflect_row -- so
 // the folded-PERIODIC reflect branch (stepping.py:1772-1780) cannot fire and both
 // mirror terminations fall through to shifted[_face(axis, -1)] = 0
@@ -389,7 +389,7 @@ __device__ __forceinline__ int coord_up(int a, int n, int bc) {
 
 // stepping._shift_down (stepping.py:1787), all three branches.
 //
-// THE MIRROR ARM IS THIS FAMILY'S REASON FOR EXISTING. On a folded axis the array
+// The mirror arm is this family's reason for existing. On a folded axis the array
 // path writes _symmetry_phase(component, axis, mirror_phase) *
 // _mirror_source(field, axis) into face 0 (stepping.py:1823-1825) -- the stored
 // row MIRROR_ROW, weighted by the plane's parity. It is neither the periodic wrap
@@ -407,8 +407,8 @@ __device__ __forceinline__ int coord_dn(int a, int n, int bc) {
     return n - 1;
 }
 
-// A ghosted load that carries the mirror parity ON THE GHOST LANE AND NOWHERE
-// ELSE. mg is 1 only at face 0 of an axis whose code is BC_MIRROR, and it is
+// A ghosted load that carries the mirror parity on the ghost lane and nowhere
+// else. mg is 1 only at face 0 of an axis whose code is BC_MIRROR, and it is
 // derived from bc_* in one place so the index redirect above and this weight
 // cannot disagree about which lane is the ghost.
 //
@@ -435,11 +435,11 @@ __device__ __forceinline__ float ghosted_mirror(const float* g, int index,
 //
 //     0.25*((g[i] + w*g[i-sx])*u[i] + (g[i+s] + w*g[(i+s)-sx])*u[i+s])
 //
-// BOTH GHOSTED DOWN LOADS TAKE THE SAME WEIGHT AND THE SAME REDIRECT: ``down``
+// Both ghosted down loads take the same weight and the same redirect: ``down``
 // and ``corner`` differ only in the OWN-axis coordinate, so the two hit the
 // partner-axis ghost plane together and mg is one predicate for both.
 //
-// THE UP LEG IS UNWEIGHTED AND UNREDIRECTED. It is the component's OWN axis,
+// The up leg is unweighted and unredirected. It is the component's OWN axis,
 // where the array path serves an exact zero on a fold (see coord_up), so it stays
 // the certified ``ghosted`` call character for character.
 //
@@ -460,12 +460,12 @@ __device__ __forceinline__ float folded_offdiag_term(
 }
 '''  # stepping.py live lines for the frozen device-text citation(s) in this string: 159->160, 1535-1541->1582-1588, 1723->1770, 1219-1220->1248-1249, 1772-1780->1819-1827, 1781-1783->1828-1830, 1787->1834, 1823-1825->1870-1872, 1824-1825->1871-1872, 1214-1220->1243-1249
 
-# THE SIGNATURE CARRIES ONLY THE LIVE ROW COEFFICIENTS -- the certified emitter's
+# The signature carries only the live row coefficients -- the certified emitter's
 # choice, for its reason: binding a dead slot to some other volume leaves a
 # pointer aimed at an array the kernel must never touch, which a later edit can
 # read by accident.
 #
-# THE THREE GHOST WEIGHTS ARE ALWAYS BOUND, even with no axis folded. They are
+# The three ghost weights are always bound, even with no axis folded. They are
 # scalars, not pointers, so there is no array to aim wrongly; and the launcher
 # validates each to be exactly +1.0f or -1.0f on a folded axis, where a NaN would
 # otherwise launch rather than raise.
@@ -507,14 +507,14 @@ __RECORD_BLOCK__    // Both neighbour coordinates on every axis: one term reads 
     int at_x = (i == 0), at_y = (j == 0), at_z = (k == 0);
 
     // The mirror ghost lane: face 0 of a folded axis, which is the one plane
-    // _shift_down weights (stepping.py:1823-1825). DERIVED FROM bc_* AND NOWHERE
-    // ELSE, so the index redirect in coord_dn and the weight in ghosted_mirror
+    // _shift_down weights (stepping.py:1823-1825). Derived from bc_* and nowhere
+    // else, so the index redirect in coord_dn and the weight in ghosted_mirror
     // cannot disagree about which lane is the ghost -- a disagreement would read
     // stored row MIRROR_ROW without the parity, or apply the parity to an
     // ordinary neighbour, and both are a plane of wrong values rather than a
     // crash.
     //
-    // A FOLDED AXIS IS NEVER ALSO WALL-MASKED: stepping._mask_metallic_wall_
+    // A folded axis is never also wall-masked: stepping._mask_metallic_wall_
     // coupling asks is_metallic AND NOT is_mirrored (stepping.py:1253), and
     // coverage.offdiag_wall_mask_flags asks the same question of the same grid,
     // so wm_* is 0 on a folded axis by construction. The launcher refuses the
@@ -612,8 +612,8 @@ def _wall_mask_lines(component: int, offset: int) -> List[str]:
 def _component_source(component: int, row_mask: Sequence[int]) -> str:
     """One component's whole block, on the arm its two row slots select.
 
-    Four arms: none, offset-1 only, offset-2 only, both. THE NONE ARM IS THE
-    CERTIFIED PLAIN CONSTITUTIVE KERNEL'S COMPONENT BODY -- ``src = D * inv_eps``
+    Four arms: none, offset-1 only, offset-2 only, both. The none arm is the
+    certified plain constitutive kernel's component body -- ``src = D * inv_eps``
     in float32 and the same tail -- because ``_offdiagonal_terms`` returns None for
     a component with no surviving row and ``update_E`` then never forms a double
     row. The row arm is the certified emitter's.
@@ -746,7 +746,7 @@ def mirror_ghost_weights(grid: Any) -> Tuple[float, float, float]:
     (fields.py:214-219), so the weight collapses to ``-phase`` for every partner
     and every axis.
 
-    DERIVED THROUGH ``fields.mirror_parity`` ITSELF rather than by restating the
+    Derived through ``fields.mirror_parity`` itself rather than by restating the
     collapse, so the two cannot drift; the collapse is asserted by a test over all
     3 axes x 2 phases.
 
@@ -799,10 +799,10 @@ def fold_axes(grid: Any) -> Tuple[int, ...]:
 
 
 # ---------------------------------------------------------------------------
-# THE COVERAGE PREDICATE
+# The coverage predicate
 # ---------------------------------------------------------------------------
 
-#: WHAT HAS BEEN MEASURED ON A DEVICE FOR THIS FAMILY, and nothing more.
+#: What has been measured on a device for this family, and nothing more.
 #:
 #: ``host`` is the only thing that makes any number here a device verdict; a
 #: ``host: None`` record means the predicate returning True licenses a MEASUREMENT
@@ -812,7 +812,7 @@ def fold_axes(grid: Any) -> Tuple[int, ...]:
 #: float32 subnormal policies, each in its own process with its own CuPy cache
 #: directory because CuPy's disk-cache key is computed above the strip seam.
 #:
-#: STILL NOT DISPATCHED. No module in ``meep_gpu/`` imports ``cuda_kernels``, so
+#: Still not dispatched. No module in ``meep_gpu/`` imports ``cuda_kernels``, so
 #: nothing reaches this kernel from a production step; what the record licenses is
 #: a coverage claim and a future planner branch, not a run.
 FOLDED_OFFDIAG_ADMISSION: dict = {
@@ -827,7 +827,7 @@ FOLDED_OFFDIAG_ADMISSION: dict = {
                   "keep/gate.json",
                   "parity/meep_gpu/results/cuda_folded_offdiag_kernel_2026-08-21_rename/"
                   "flush/gate.json"),
-    #: HOW THIS RECORD IS BOUND TO THOSE RUNS, and why it is NOT an artifact hash.
+    #: How this record is bound to those runs, and why it is NOT an artifact hash.
     #: A digest of ``gate.json`` inside this module is circular: the artifact's own
     #: ``source_sha256.txt`` records THIS FILE's bytes as of the run, so writing
     #: the artifact's digest here changes this file and invalidates the manifest
@@ -845,7 +845,7 @@ FOLDED_OFFDIAG_ADMISSION: dict = {
         "describes; it touches no device string and no predicate clause, and the "
         "emitter corpus digest is unchanged across the edit",),
     "policies": ("ieee_keep_ftz_stripped", "meep_x86_flush"),
-    #: PER POLICY. The two produced identical case counts and identical verdicts,
+    #: Per policy. The two produced identical case counts and identical verdicts,
     #: which is why one copy carries both; each ran in its own process.
     "cases_scored": 544,
     "cases_refused_as_vacuous": 0,
@@ -859,7 +859,7 @@ FOLDED_OFFDIAG_ADMISSION: dict = {
     #: alone cannot show that the arm this family exists for was exercised.
     "cases_where_a_fold_is_a_live_partner_axis": 168,
     "cases_where_a_fold_is_a_live_own_axis": 168,
-    #: THE PREDICTION THE CURL PAIR'S SPLIT DOES NOT TRANSFER (module docstring
+    #: The prediction the curl pair's split does not transfer (module docstring
     #: FACT 3), measured: ``update_E`` has no ownership mask and no reflect row,
     #: so ONE ``BC_MIRROR`` code serves both declared terminations.
     "folded_periodic_identical": "144/144",
@@ -881,7 +881,7 @@ FOLDED_OFFDIAG_ADMISSION: dict = {
     "release_verdict_shown_to_flip_against_a_planted_defect": True,
     "subnormal_band_is_non_vacuous": True,
     "certified": True,
-    #: WHAT THE RECORD DOES NOT SAY. It is a verdict about the EMITTER at the
+    #: What the record does not say. It is a verdict about the EMITTER at the
     #: corpus digest below, exercised on four of its 63 row masks. A mask outside
     #: those is covered by the emitter's own tests and by that digest, not by a
     #: byte gate. No throughput claim is made or possible: the box was shared.
@@ -889,10 +889,10 @@ FOLDED_OFFDIAG_ADMISSION: dict = {
                             (1, 1, 0, 0, 0, 0), (0, 0, 1, 0, 0, 0)),
     "emitter_corpus_digest":
         "9cb8ccc8f8bceb008446a811731bf547ef32bcb4c43544c9ada59fa26a92e2bd",
-    #: WHAT IT IS WORTH, recomputed 2026-08-20 on ONE tree with the union analyzer
+    #: What it is worth, recomputed 2026-08-20 on ONE tree with the union analyzer
     #: (positional path) -- the family present and absent on the SAME census, so
     #: the delta is attributable to this leg rather than to a tree that moved
-    #: between two rounds.
+    #: between two census runs.
     "corpus": {
         "census": ("parity/meep_gpu/results/"
                    "cuda_predicate_coverage_2026-08-20_folded_offdiag"),
@@ -918,20 +918,20 @@ FOLDED_OFFDIAG_ADMISSION: dict = {
 def _fold_reasons(facts: dict, grid: Any) -> List[str]:
     """Everything this family needs of a fold, as accumulated reasons.
 
-    THE ONE PLACE THE FOLD IS CLASSIFIED. The certified predicate refuses it twice
+    The one place the fold is classified. The certified predicate refuses it twice
     (``has_symmetry`` and per axis); this one has to admit it, so the two
     accessors are still both read -- an object that answers them inconsistently is
     refused rather than dispatched -- and then the axis is checked for the three
     things the kernel and its launcher actually need:
 
-    a. MORE THAN ``MIRROR_ROW`` STORED CELLS. ``coord_dn``'s mirror arm returns
+    a. More than ``MIRROR_ROW`` stored cells. ``coord_dn``'s mirror arm returns
        stored row 2 unconditionally at face 0, and ``stepping._mirror_source``
        (:1536-1541) RAISES below that many cells. A thinner axis would have the
        kernel read a neighbouring plane where the array path refuses to run.
-    b. A READABLE PLANE PHASE, exactly +1 or -1. The ghost weight is a runtime
+    b. A readable plane phase, exactly +1 or -1. The ghost weight is a runtime
        float argument, so an unreadable plane launches a NaN rather than raising.
        Checked here by NAME and again on the launched value itself.
-    c. THE TWO ROUTES TO THE TERMINATION AGREEING
+    c. The two routes to the termination agreeing
        (``coverage._fold_termination_problem``). This kernel serves both
        terminations with one code -- FACT 3 of the module docstring -- so the
        cross-check is not load-bearing for the arithmetic; it is load-bearing for
@@ -990,16 +990,16 @@ def covers_folded_offdiag_constitutive(fields: Any, pml: Any, grid: Any) -> tupl
     never reached. ``test_folded_offdiag.py`` pins the two chains equal on every
     axis except the fold one, so the duplication cannot drift silently.
 
-    ZERO FOLDED AXES IS ADMITTED HERE, and that is deliberate rather than an
+    Zero folded axes is admitted here, and that is deliberate rather than an
     oversight: with every axis PERIODIC or METALLIC the emitted body computes the
     certified family's arithmetic exactly, and the gate MEASURES that reduction
     instead of claiming it. Which of the two a planner would launch is an
     integration decision, not a coverage one, and routing by predicate order would
-    make the numerical method a function of composer order. THE CENSUS ASKS
+    make the numerical method a function of composer order. The census asks
     :func:`covers_folded_offdiag_composition`, which requires a real fold, so the
     two families partition the corpus rather than overlapping on it.
 
-    THE DISJOINTNESS SEAM, both halves:
+    The disjointness seam, both halves:
 
     * against ``covers_real_pml_offdiag_constitutive``: that predicate's two fold
       refusals STAY, and :func:`covers_folded_offdiag_composition` requires a fold;
@@ -1127,8 +1127,8 @@ def covers_folded_offdiag_constitutive(fields: Any, pml: Any, grid: Any) -> tupl
                            f"interior stored row {MIRROR_SOURCE_INDEX} -- while "
                            f"the outputs are written, so the answer would depend "
                            f"on block schedule")
-    # HALF-INTEGER ONLY, the E side's own sub-lattice (stepping.py:1015). ON A
-    # FOLDED AXIS THE VECTOR IS BUILT AT THE FOLDED STORED EXTENT, which is what
+    # Half-integer only, the E side's own sub-lattice (stepping.py:1015). On a
+    # folded axis the vector is built at the folded stored extent, which is what
     # ``_coefficient_vector_problem`` checks by SHAPE rather than by size -- the
     # clause that stops "the vectors are the right length" from being an
     # assumption on exactly the axis the fold moved.
@@ -1144,7 +1144,7 @@ def covers_folded_offdiag_constitutive(fields: Any, pml: Any, grid: Any) -> tupl
 
 
 def covers_folded_offdiag_composition(fields: Any, pml: Any, grid: Any) -> tuple:
-    """The narrower verdict, where an ACTUAL FOLD IS MANDATORY.
+    """The narrower verdict, where an actual fold is mandatory.
 
     :func:`covers_folded_offdiag_constitutive` admits an unfolded grid so that the
     gate can prove reduction to the certified family. That is not a routing rule:
@@ -1168,7 +1168,7 @@ def covers_folded_offdiag_composition(fields: Any, pml: Any, grid: Any) -> tuple
 
 
 # ---------------------------------------------------------------------------
-# THE LAUNCHER
+# The launcher
 # ---------------------------------------------------------------------------
 
 #: The emitted sources a gate has replaced, keyed by row mask -- the mutation
@@ -1187,7 +1187,7 @@ def kernel_source(row_mask: Sequence[int]) -> str:
 def set_kernel_source(row_mask: Sequence[int], source: Optional[str]) -> None:
     """Replace (or, with ``None``, restore) one mask's device text.
 
-    THE GATE'S DOOR, and it is load-bearing: a mutation harness that could not
+    The gate's door, and it is load-bearing: a mutation harness that could not
     route its own bytes through the launcher would launch the shipped kernel and
     report a pass for a defect it never introduced.
     """
@@ -1206,7 +1206,7 @@ def clear_kernel_cache() -> int:
 def _get_kernel(row_mask: Sequence[int]):
     """Compile on first use, memoized on (name, options, policy, source).
 
-    THE ROW MASK REACHES THE KEY THROUGH THE SOURCE, which is already in it, so
+    The row mask reaches the key through the source, which is already in it, so
     two specializations cannot be served each other's binary -- and neither can a
     mutation harness that rewrote the emitter's output be served the unmutated
     one. ``cupy`` is imported HERE, never at scope.
@@ -1357,7 +1357,7 @@ def update_E_folded_offdiag_fused_pml_real(fields: Any, pml: Any = None, *,
                                            chunk_bounds=None, kept=None):
     """``stepping.update_E`` with off-diagonal rows on a folded grid, in one launch.
 
-    SUPPLY ``pml`` AND EVERY DERIVED ARGUMENT IS DECIDED HERE -- the half-integer
+    Supply ``pml`` and every derived argument is decided here -- the half-integer
     tables through :func:`coverage.constitutive_sub_lattice`, the boundary codes
     through ``real_pml_boundary_kinds`` and :data:`FOLDED_BC_CODES`, the wall flags
     through the grid's own declaration, the ghost weights through

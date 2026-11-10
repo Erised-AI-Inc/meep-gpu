@@ -14,10 +14,10 @@ and never multiplies a complex number by a complex number while it steps:
 
 NumPy's and CuPy's complex multiply is neither. It contracts to ``fma(a, c,
 -(b*d))`` wherever the host has fused multiply-add (NumPy 2.x on arm64 and on
-x86-64 with FMA3, MEASURED in phase 0 on 2,000,000 of 2,000,000 words; CuPy under
+x86-64 with FMA3, measured before 1.0 on 2,000,000 of 2,000,000 words; CuPy under
 NVRTC's default ``--fmad=true``), and there is no float-times-complex loop, so a
 real coefficient times complex64 storage is a full complex multiply against
-``(k + 0j)`` whose zero cross terms can flip the sign of a zero part (MEASURED:
+``(k + 0j)`` whose zero cross terms can flip the sign of a zero part (measured:
 ``(kap - sig) < 0`` times ``+0`` gives MEEP's ``-0`` per part and NumPy's ``+0`` in
 the imaginary part). So every product on the array path goes through this module:
 :func:`scale` for a real coefficient, :func:`quarter_turn` for ``+-i`` times a real

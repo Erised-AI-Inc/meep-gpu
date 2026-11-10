@@ -3,8 +3,8 @@
 Everything here runs on a laptop: no GPU, no CuPy, no Triton. What needs hardware
 — byte identity against the array path and against the three separately certified
 products this launch replaces — lives in
-``parity/meep_gpu/probe_triton_folded_fused_magnetic_pair.py``, WHICH HAS NEVER
-RUN. That is stated in the module under test and re-stated here, because a test
+``parity/meep_gpu/probe_triton_folded_fused_magnetic_pair.py``, which has never
+run. That is stated in the module under test and re-stated here, because a test
 suite that is green while the device gate is unrun must not be mistaken for a
 certification.
 
@@ -234,7 +234,7 @@ def test_an_electric_source_is_admitted_and_a_magnetic_one_is_refused_by_name():
         fields, pml, (Source("D"), magnetic_deposit(fields)))
     assert residual(carried) == [], residual(carried)
 
-    # (2) STILL REFUSED BY NAME: a magnetic source whose deposit cannot be saved.
+    # (2) Still refused by name: a magnetic source whose deposit cannot be saved.
     refused = product.folded_fused_magnetic_pair_coverage(
         fields, pml, (Source("D"), Source("B")))
     assert any("does not publish the index it writes" in reason
@@ -266,7 +266,7 @@ def test_holding_the_carry_flag_False_puts_the_magnetic_seam_refusal_straight_ba
 
 
 def test_a_folded_periodic_axis_is_CARRIED_not_refused():
-    """THE FLIP OF 2026-08-20, at the predicate.
+    """The flip of 2026-08-20, at the predicate.
 
     This asserted the OPPOSITE until the far carry landed: a folded PERIODIC axis
     was refused BY NAME on ``fill_folded_far_ghosts_B``, which runs inside this
@@ -406,7 +406,7 @@ class _FieldsOn:
 
 
 def test_a_folded_axis_with_two_or_fewer_stored_cells_is_refused():
-    """The near fill images stored cell 2 FROM THAT CELL'S OWN LANE.
+    """The near fill images stored cell 2 from that cell's own lane.
 
     ``folded_axis_kinds`` already refuses such an axis; the clause is restated in
     the shipped predicate because a missing source plane here is an out-of-range
@@ -573,7 +573,7 @@ def test_the_single_launch_site_passes_the_packages_shared_guard_constant():
 
 
 def test_the_planner_names_this_module_only_through_the_folded_fusion_route():
-    """THE DEFERRAL WAS LIFTED 2026-08-27, and what replaced it is narrower.
+    """The deferral was lifted 2026-08-27, and what replaced it is narrower.
 
     This used to assert that NOTHING in ``launch.py`` names this module — the seam
     that kept a deferred product deferred, on the ground that ``plan_step`` assigns
@@ -584,14 +584,14 @@ def test_the_planner_names_this_module_only_through_the_folded_fusion_route():
     seam (``SUPPORT_MODULES``) and the import inside
     ``_folded_fused_pair_entries``.
 
-    THE OTHER TWO FILES ARE UNCHANGED, and that is the half of the old claim that
+    The other two files are unchanged, and that is the half of the old claim that
     still holds: ``fastpath.plan_fast_path`` is untouched, so no default run reaches
     this plan, and the package's ``__init__`` exports nothing from here. The KERNEL
     symbol stays private to this module in all three — the planner reaches the
     product through its builder, never through its kernel.
 
-    ``fastpath.py`` NOW NAMES THE FAMILY, AND THE CLAIM IS NARROWED AGAIN RATHER
-    THAN DROPPED (2026-08-29). The fusion opt-in gave every fused label an
+    ``fastpath.py`` now names the family, and the claim is narrowed again rather
+    than dropped (2026-08-29). The fusion opt-in gave every fused label an
     ``ARM_CERTIFICATION`` row, so the family name appears there — as a STRING in a
     lookup table read only when an artifact is written, which is the opposite of an
     entry point: it exists so a record that names a dispatched arm also names the
@@ -603,11 +603,11 @@ def test_the_planner_names_this_module_only_through_the_folded_fusion_route():
     mapping this product's arm label to this product's weld. A row that went
     missing, or a name that appeared anywhere else, now fails.
 
-    OWED, AND NOT DOABLE IN THIS ROUND: the module's own docstring still says
+    Owed, and not doable in this change: the module's own docstring still says
     "Nothing in ``launch.py`` names this module". Its bytes are digest-pinned by
     ``fingerprints.json``'s ``triton_folded_fused_magnetic_pair_device_gate``
     (asserted by ``test_the_module_claims_identity_ONLY_through_the_weld_that_measured_it``),
-    which this round may not edit, so the correction has to land in the same edit
+    which this change may not edit, so the correction has to land in the same edit
     as the re-weld.
     """
     launch = (PACKAGE_DIR / "launch.py").read_text(encoding="utf-8")
@@ -733,10 +733,10 @@ def test_the_module_claims_identity_ONLY_through_the_weld_that_measured_it():
             f"{name} has changed since the gate ran; the identity claim in its "
             f"docstring no longer describes the bytes that were measured")
 
-    # AND THE BOUND THAT DID NOT MOVE: a weld licenses a claim, not a dispatch.
-    # THE VOCABULARY MOVED, THE CLAIM DID NOT. Until 2026-08-27 these modules
-    # disclaimed dispatch with the words "NOT WIRED". The routing round then gave
-    # them an arm -- launch.py:1168 "THE TWO FOLDED PAIRS, routed 2026-08-27 by
+    # And the bound that did not move: a weld licenses a claim, not a dispatch.
+    # The vocabulary moved, the claim did not. Until 2026-08-27 these modules
+    # disclaimed dispatch with the words "NOT WIRED". The routing change then gave
+    # them an arm -- launch.py:1168 "The two folded pairs, routed 2026-08-27 by
     # _install_folded_fused_pairs" -- so "not wired" became false while the thing
     # this test is defending stayed exactly true, and the modules now say
     # "ROUTED BUT STILL NOT DISPATCHED" instead. This assertion tracks that
@@ -791,7 +791,7 @@ def test_the_gates_design_sweep_agrees_with_the_array_path_and_catches_its_flips
 
 
 def test_the_moved_coefficient_index_is_a_construction_fact_not_an_observable_one():
-    """MEASURED, and the reason the destination load must not be 'simplified'.
+    """Measured, and the reason the destination load must not be 'simplified'.
 
     The mirror plane is the folded axis's LOW face and no absorber reaches it, so
     ``kps[0] == kps[2]`` on that axis in every real configuration probed — 0 of 64
@@ -825,8 +825,8 @@ def test_the_gates_predicate_leg_exercises_every_clause_in_both_directions():
         "undeclared_sources", "no_pml",
         "folded_periodic_axis_is_admitted", "unfolded_grid"}
     directions = {entry["case"]: entry["expect_admitted"] for entry in row["rows"]}
-    # THE THREE ROWS THE 2026-08-30 CARRY ADDED, asserted by NAME and by direction.
-    # A set equality alone would let a future round rename the carried row to the
+    # The three rows the 2026-08-30 carry added, asserted by NAME and by direction.
+    # A set equality alone would let a future change rename the carried row to the
     # refused one and stay green, so the directions are pinned individually: the
     # deposit is ADMITTED, the source that cannot publish its index is REFUSED, and
     # the deposit is REFUSED AGAIN once the flag is held down.
@@ -840,7 +840,7 @@ def test_the_gates_predicate_leg_exercises_every_clause_in_both_directions():
 def test_the_gate_arms_every_mutation_it_declares():
     """A rewrite that matches nothing reports a real defect as uncaught.
 
-    That failure mode is not hypothetical in this tree: the fused-electric round
+    That failure mode is not hypothetical in this tree: the fused-electric pair's gate
     lost its ``kernel=`` argument on the way to the plan and reported 4/4 real
     defects as 120/120 identical. Every rewrite here is applied to the SHIPPED
     text on the laptop, and a zero-hit rewrite fails at the merge bar rather than
@@ -862,7 +862,7 @@ def test_the_gate_arms_every_mutation_it_declares():
 def changed_lines(before, after):
     """Indices into ``before`` that a rewrite really replaced or deleted.
 
-    A POSITIONAL zip IS WRONG HERE and was, on 2026-08-20: several rewrites
+    A POSITIONAL zip is wrong here and was, on 2026-08-20: several rewrites
     change the line COUNT — ``m1_wall_clear_dropped`` turns three lines into two
     — so every line after the edit shifts by one and a zip comparison reports
     almost the whole kernel as changed. The guard analysis below then finds some
@@ -887,20 +887,20 @@ def changed_lines(before, after):
 def test_every_mutation_is_scored_on_a_grid_that_ENTERS_the_branch_it_rewrites():
     """The layer under "a rewrite that matches nothing": a rewrite that matches DEAD LINES.
 
-    MEASURED 2026-08-20, on this product's first ever device run. Every mutation
+    Measured 2026-08-20, on this product's first ever device run. Every mutation
     was scored on ``CASES[1]`` (``odd_y_fold_metallic``), and
     ``m5_source_index_off_by_one`` rewrites the fill guarded by
     ``if BCX == MIRROR_METALLIC:`` — which needs X to be the FOLDED axis, not
     merely a metallic wall. On a Y-folded grid that branch is never entered, so
     the leg launched a kernel whose mutated lines could not execute and reported
-    UNCAUGHT. It was read for four rounds as a defect the comparator could not
+    UNCAUGHT. It was read, four times in a row, as a defect the comparator could not
     see; it was a statement about the case table.
 
     The sibling test above catches a rewrite that hits ZERO lines. This one
     catches a rewrite that hits real lines the scored grid never reaches, which
     is indistinguishable from the first in the artifact and much easier to miss.
 
-    THE CHECK IS STRUCTURAL, not a list: the enclosing ``if`` is read off the
+    The check is structural, not a list: the enclosing ``if`` is read off the
     device text for whichever lines each rewrite actually changed, so a mutation
     added later is covered without anyone remembering to add it here.
     """
@@ -914,7 +914,7 @@ def test_every_mutation_is_scored_on_a_grid_that_ENTERS_the_branch_it_rewrites()
     def enclosing_guard(index: int) -> str:
         """The guard a changed line sits under — or IS.
 
-        A LINE THAT IS ITSELF AN ``if`` COUNTS AS ITS OWN GUARD, and that is not a
+        A line that is itself an ``if`` counts as its own guard, and that is not a
         nicety. ``m1_wall_clear_dropped`` replaces three lines with two, DELETING
         the ``if ZM_X:`` header; asking for that line's ENCLOSING guard walks out
         to the surrounding scope, which is unguarded, so the mutation reads as
@@ -937,7 +937,7 @@ def test_every_mutation_is_scored_on_a_grid_that_ENTERS_the_branch_it_rewrites()
                 body_indent = indent
         return ""
 
-    #: THE GUARD IS EVALUATED, NOT PATTERN-MATCHED, as of 2026-08-21. It used to be
+    #: The guard is evaluated, not pattern-matched, as of 2026-08-21. It used to be
     #: a three-entry map of ``BC? == MIRROR_METALLIC`` fragments to the axis that
     #: had to be folded, and everything else — every ``NEAR_a``, every ``FAR_a``,
     #: every composite — fell through to "unclassified: assume live". That default
@@ -954,7 +954,7 @@ def test_every_mutation_is_scored_on_a_grid_that_ENTERS_the_branch_it_rewrites()
         return bool(eval(condition[3:-1].strip(), {"__builtins__": {}},  # noqa: S307
                          dict(environment)))
 
-    #: AT LEAST ONE, NOT ALL. Most rewrites here are a plain ``source.replace``
+    #: At least one, not all. Most rewrites here are a plain ``source.replace``
     #: applied to all three components, so their changed lines sit under all three
     #: axis guards at once; a grid folding one axis enters exactly one of them and
     #: the mutation is perfectly live. Demanding EVERY guard be enterable flagged
@@ -988,16 +988,16 @@ def test_every_mutation_is_scored_on_a_grid_that_ENTERS_the_branch_it_rewrites()
 
 
 def test_every_constexpr_branch_the_kernel_SHIPS_is_entered_by_some_case():
-    """SHIPPED CODE NO DEVICE LEG EXECUTES — the layer under both tests above.
+    """Shipped code no device leg executes — the layer under both tests above.
 
-    An adversarial verifier refuted the 2026-08-20 round on exactly this: the
+    An adversarial verifier refuted the 2026-08-20 release on exactly this: the
     kernel shipped the three-axis folded-PERIODIC blocks — the three
     ``if NEAR_a and (FAR_b and FAR_c):`` triples — and every ``mirrors`` value in
     the released artifact carried at most TWO folded axes, so no leg ever compiled
     them. Byte identity over ten steps on ten cases is silent about a branch none
     of the ten contains.
 
-    THE GENERAL FORM WAS WORSE THAN THE INSTANCE, and only counting showed it: 20
+    The general form was worse than the instance, and only counting showed it: 20
     of the kernel's 45 live constexpr guards were unreachable on that table, not 3
     — the whole z half of the carry, the z wall clear, and the ghost-rule wrap on
     an unfolded periodic Y. Three cases close all twenty.
@@ -1080,7 +1080,7 @@ def test_the_ownership_fix_the_device_run_found_is_re_planted_by_a_mutation():
                  "own2 & near_k & far_i & far_j)"):
         assert mask in source, mask
         assert mask not in mutated, mask
-    # AND IT MUST BE SCORED WHERE THE FAR MASKS EXIST. On a fold with no far axis
+    # And it must be scored where the far masks exist. On a fold with no far axis
     # the `own?` narrowing is empty and the rewrite is inert.
     _index, case = gate.mutation_case_for(name)
     environment = gate.case_constexprs(case)

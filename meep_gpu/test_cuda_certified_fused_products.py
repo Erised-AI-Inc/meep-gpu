@@ -1,29 +1,29 @@
-"""THE HAND-CUDA TABLE AS THE SEAM'S SECOND NVIDIA COMPOSER, and what holds it there.
+"""The hand-CUDA table as the seam's second NVIDIA composer, and what holds it there.
 
 The twin of ``test_triton_certified_fused_products`` for the table
 ``fastpath._decide`` composes after Triton. Five things are pinned here, and the
 order is the order a reader should want them in:
 
-1. THE TYPED TABLES ARE MEASURED AGAINST THE COMPOSER, never transcribed.
+1. The typed tables are measured against the composer, never transcribed.
    ``fastpath_cuda.CUDA_FUSED_LABELS`` and ``CUDA_FUSED_ARM_CONSTITUENTS`` exist so
    a NumPy step can answer "is that a fused label" without importing
    ``cuda_kernels`` — and a typed copy of somebody else's data is a copy that
    drifts, so both are compared against ``fused_pairs.py``'s own AST and its absorb
    declarations here.
-2. THE RELEASE PARTITIONS THE LABEL SPACE. Every label the composer can write is
+2. The release partitions the label space. Every label the composer can write is
    either RELEASED with its own cases and per-arm axes, or PENDING with a reason
    naming what is missing. No label is both, and none is neither.
-3. EVERY CERTIFICATION ROW RESOLVES. A released arm whose artifact names no gate is
+3. Every certification row resolves. A released arm whose artifact names no gate is
    the over-claim this whole layer exists to prevent, and
    :func:`test_every_cuda_certification_points_at_a_readable_record` is RED by
    design on the five rows the campaign has not seeded yet — see
    ``fastpath_cuda.CUDA_ARM_CERTIFICATION`` for which writer cuts each.
-4. THE OFFER IS REAL, IN BOTH DIRECTIONS AND AT BOTH OF ITS TWO POINTS. An
+4. The offer is real, in both directions and at both of its two points. An
    un-offered product is skipped before its predicate, does not supersede a shorter
    offered span, and does not withhold a slot as a neighbouring-seam claimant; and
    ``fuse_labels=None`` composes byte-for-byte what this composer composed before
    the offer existed.
-5. THE SEAM'S OWN READS ANSWER ON THESE PLANS: the measured launch grid, the
+5. The seam's own reads answer on these plans: the measured launch grid, the
    plan-time warm, and the transitive ``absorbed_by`` identity that makes a
    three-slot weld ONE unit rather than two.
 """
@@ -146,7 +146,7 @@ def _uninstallable_labels() -> set:
 def test_released_and_pending_partition_every_label_the_composer_writes():
     """Every label is accounted for exactly once, and the counts are pinned.
 
-    THE COUNTS ARE THE DENOMINATOR of every dispatch number this table publishes:
+    The counts are the denominator of every dispatch number this table publishes:
     38 products, 31 of them installable, 12 released in Tier 1 (2026-09-11) plus 8
     in Tier 2 (2026-09-13: the cylindrical complex pairs, the two off-diagonal
     stencil welds, the complex beta pairs and the BFAST pairs) and 18 pending. A
@@ -197,7 +197,7 @@ def test_the_magnetic_pair_off_diagonal_admission_is_a_corner_not_a_row():
     ``CUDA_OFF_DIAGONAL_CORNERS`` to the corner its off-diagonal cases sat at (2-D and
     3-D, lossless, no poles, no Bloch phase). A plain row could only refuse every
     off-diagonal case driven or admit every one that is not; the corner is what
-    refuses an off-diagonal grid over a susceptibility or a conductivity BY THE AXIS.
+    refuses an off-diagonal grid over a susceptibility or a conductivity by the axis.
     """
     arm = "cuda:fused magnetic pair"
     shape = {"pml_active": True, "dimensions": 2, "complex_storage": False,
@@ -216,7 +216,7 @@ def test_the_magnetic_pair_off_diagonal_admission_is_a_corner_not_a_row():
     assert why and "did not read" in why[0]
     # THE RULE: a corner lists exactly the axes the arm's row leaves open, minus the
     # presence axis ``folded`` (both sides driven; free text) and the axis itself.
-    # THE CORNER IS A LITERAL, checked as one (Metal's METAL_OFF_DIAGONAL_CORNERS test
+    # The corner is a literal, checked as one (Metal's METAL_OFF_DIAGONAL_CORNERS test
     # does the same): it lists, per axis, the values this arm's OFF-DIAGONAL cases
     # drove, for every axis its row leaves open OR pins LESS strictly than the
     # off-diagonal side. ``susceptibilities`` is the latter since 2026-09-13 -- the
@@ -304,13 +304,13 @@ def test_a_released_arm_is_admitted_on_its_own_case_shape_and_refused_off_it():
 def test_every_cuda_certification_points_at_a_readable_record():
     """A released arm whose artifact names no gate is the over-claim to prevent.
 
-    RED BY DESIGN until the campaign seeds the five rows
+    Red by design until the campaign seeds the five rows
     ``fastpath_cuda.CUDA_ARM_CERTIFICATION`` names as promises: the gate is named in
     the shipping tree BEFORE the run that cuts it, so the run the tree asked for is
     the run that is measured, and this test is what keeps the promise from being
     mistaken for evidence in the meantime.
 
-    RESOLVING IS NOW PER ARCHITECTURE: the run facts live in ``runs[<cc>]``, so a row
+    Resolving is now per architecture: the run facts live in ``runs[<cc>]``, so a row
     "resolves" only if the gate it names has a live record for the card the arm would
     dispatch on. A weld carrying a run for some OTHER architecture is counted here as
     not resolving, which is the honest reading — it is evidence about a different
@@ -344,7 +344,7 @@ def test_the_certification_policy_is_the_tables_own_and_the_two_maps_agree():
                                             capability=CERTIFIED_CAPABILITY)
     assert entry["certification_policy"] == "keep"
     # And the weld it cites records BOTH canonical legs, the keep one being the
-    # dispatching leg. THE POLICY IS THE RUN'S, so it is asked on the architecture
+    # dispatching leg. The policy is the run's, so it is asked on the architecture
     # the run was cut on: two cards certified from one tree can be driven under
     # different policies, and a table-wide answer could not say which.
     assert "ieee_keep_ftz_stripped" in entry["subnormal_policy"]
@@ -353,8 +353,8 @@ def test_the_certification_policy_is_the_tables_own_and_the_two_maps_agree():
 def test_the_validated_capabilities_are_derived_from_the_cited_blocks():
     """DERIVED, never typed: the list is what the welds' own campaigns recorded.
 
-    Re-derived here rather than compared against a literal, so a round that certifies
-    a second architecture widens both the function and this expectation by writing
+    Re-derived here rather than compared against a literal, so a later certification
+    of a second architecture widens both the function and this expectation by writing
     records. The intersection is taken over the gates the arms cite, off the ledger
     on disk, because a capability one cited family never ran on is one the table
     cannot claim.
@@ -562,7 +562,7 @@ def test_the_launch_grid_is_unknown_before_the_first_launch_and_measured_after()
 
 
 def test_a_component_major_group_spells_the_grid_its_leading_slot_is_read_for():
-    """A MULTI-LAUNCH GROUP ON A LEADING SLOT STILL OWES A GRID, and until
+    """A multi-launch group on a leading slot still owes a grid, and until
     2026-09-14 one did not pay it.
 
     The route gate probes ``programs_per_dispatch`` on ``step_B``/``step_D`` only,
@@ -571,7 +571,7 @@ def test_a_component_major_group_spells_the_grid_its_leading_slot_is_read_for():
     ``blocks`` for a year without consequence: it sits on ``update_P``, which is
     never probed. ``complex_no_pml_three_slot_dispersive_weld`` is the first product
     to put such a group on a LEADING slot, and its aggregate omitted ``blocks`` the
-    same way. MEASURED on the GPU host 2026-09-14: ``step_D dispatches 600``,
+    same way. Measured on the GPU host 2026-09-14: ``step_D dispatches 600``,
     ``programs_per_dispatch null``, and the case refused as VACUOUS-PASS -- a
     correct dispatch failing a clause whose whole job is to tell "a kernel launched"
     from "a kernel computed over data".
@@ -583,7 +583,7 @@ def test_a_component_major_group_spells_the_grid_its_leading_slot_is_read_for():
                 "components": [{"blocks": 128}, {"blocks": 128}, {"blocks": 128}]}
 
     def trailing(fields, arguments):
-        # THE CONSULT IS ANSWERED, NOT LAUNCHED: update_P was advanced inside the
+        # The consult is answered, not launched: update_P was advanced inside the
         # leading group, so this group reaches no device at all.
         return {"launched": False, "launches": 0, "advanced_in": "leading"}
 
@@ -605,11 +605,11 @@ def test_a_component_major_group_spells_the_grid_its_leading_slot_is_read_for():
 
 
 def test_the_trailing_half_of_an_absorbed_tail_is_unknown_not_witnessed():
-    """WHY ``plan_launches`` MAY NOT BE READ AS "the tail launched nothing".
+    """Why ``plan_launches`` may not be read as "the tail launched nothing".
 
     ``_TripleHalfPlan.run`` increments ``launches`` whether or not its launcher
     reached the device, so the component-major weld's trailing half books a launch
-    per step while launching nothing: MEASURED on the GPU host 2026-09-14,
+    per step while launching nothing: measured on the GPU host 2026-09-14,
     ``update_P plan_launches 600`` on the very leg whose trailing group returns
     ``{"launched": False, "launches": 0}``. A gate clause that read that counter as
     a witness would confirm a launch that never happened, which is why
@@ -746,7 +746,7 @@ def test_a_cuda_unit_whose_slot_the_primary_holds_is_refused_WHOLE_and_by_name()
         selected={"step_D": "fused electric pair",
                   "update_E": "fused electric pair"},
         reasons={})
-    # THE INCUMBENT'S PLAN HAS A ``run``. A bare object would be dropped by the
+    # The incumbent's plan has a ``run``. A bare object would be dropped by the
     # launchability filter every table now goes through, and the test would then be
     # measuring an empty primary rather than a contested slot.
     incumbent = types.SimpleNamespace(
@@ -1027,7 +1027,7 @@ def _contested_pending_tables():
 @pytest.mark.parametrize("yielding", [False, True])
 def test_a_pending_primary_slot_yields_ONLY_when_the_clause_is_true(monkeypatch,
                                                                    yielding):
-    """BOTH SIDES OF THE CONSTANT, because only one of them ships and the other one
+    """Both sides of the constant, because only one of them ships and the other one
     is what the campaign may flip it to.
 
     A constant nothing exercises in the direction it is not set to is a constant that
@@ -1058,7 +1058,7 @@ def test_a_pending_primary_slot_yields_ONLY_when_the_clause_is_true(monkeypatch,
     assert merged.backends == {"step_D": "cuda", "update_E": "cuda"}
     assert record["arbitration"]["adopted"] == {"step_D": "cuda",
                                                 "update_E": "cuda"}
-    # THE YIELD IS NOT A LICENCE TO SPLIT. The unit took BOTH of the incumbent's
+    # The yield is not a licence to split. The unit took BOTH of the incumbent's
     # slots; a yield that took one would leave half a primary pair standing, which
     # is the shape ``_split_pairs`` refuses at plan time.
     assert "cuda:fused electric pair" not in (

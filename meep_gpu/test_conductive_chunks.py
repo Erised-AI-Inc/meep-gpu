@@ -21,7 +21,7 @@ here, and against what:
 * the auxiliary contract: ``f_cond`` changes only on the dsig cells of the chunks that
   keep the conductivity, ``fu`` only on the dsigu cells.
 
-Host NumPy only; no MEEP. The identity against MEEP itself is the bit_parity_0_10 AP6d
+Host NumPy only; no MEEP. The identity against MEEP itself is the conductive forms'
 acceptance (coff MEEP 1.33.0, cases k1-k5).
 """
 

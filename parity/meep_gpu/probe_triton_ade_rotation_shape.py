@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""THE ROTATION QUESTION AT ``update_E`` -> ``update_P``, ASKED FOR **TRITON**.
+"""The rotation question at ``update_E`` -> ``update_P``, asked for **Triton**.
 
 The Metal side of this question is settled and measured:
 ``probe_metal_ade_rotation_seam.py`` / ``results/metal_ade_rotation_seam_2026-08-20/``
@@ -10,7 +10,7 @@ host round trip STAYS and the fused kernel inherits no alias.
 ``metal_kernels/fused_ade_chain.py`` is built on exactly that, released
 2026-08-20, and serves 10 of the 15 E->P seam-instances.
 
-**THAT ANSWER DOES NOT TRANSFER TO TRITON, AND THIS PROBE MEASURES WHY.**
+**That answer does not transfer to Triton, and this probe measures why.**
 
 Metal's ``update_E`` products are emitted PER COMPONENT — the fused chain compiles
 one specialisation per axis and dispatches three times, which is what makes the
@@ -19,14 +19,14 @@ not: one launch writes Ex, Ey and Ez. If that is so, the per-component shape is
 not something a Triton product can choose without splitting a certified body, and
 the choice narrows to the two shapes that keep all three components in one launch:
 
-  (a) BAKE THE ROTATION, and inherit the intra-launch alias that
+  (a) bake the rotation, and inherit the intra-launch alias that
       ``fused_ade_state``'s note is about — arm 1's OUTPUT buffer IS arm 0's
       ``p_prev`` INPUT — whose safety is an OBSERVATION on one toolchain and not a
       language guarantee. ``fused_dispersive_chain`` takes this shape and pays for
       it by HOISTING every ADE history load above every ADE store, which it can do
       because it carries at most ONE pole per component.
 
-  (c) GIVE THE SUSCEPTIBILITY ONE SCRATCH PER DRIVEN COMPONENT instead of one
+  (c) give the susceptibility one scratch per driven component instead of one
       shared scratch. ``fused_ade_state``'s note names this as the way to restore
       a guarantee — "give the launch one more scratch buffer per susceptibility so
       no output aliases any input, and the question stops being asked" — and never
@@ -104,7 +104,7 @@ TRITON_KERNELS = API_ROOT / "meep_gpu" / "triton_kernels"
 COMPONENTS: Tuple[str, ...] = ("Ex", "Ey", "Ez")
 
 #: The certified Triton kernels this probe parses, and what each is expected to be
-#: the ``update_E`` or ``update_P`` body for. THE EXPECTATION IS NOT THE ANSWER —
+#: the ``update_E`` or ``update_P`` body for. The expectation is not the answer —
 #: leg 1 reports what the parse finds and the floor only asserts that the NAME
 #: exists, so a renamed or deleted kernel fails loudly instead of quietly
 #: disabling its own row.
@@ -227,7 +227,7 @@ def leg_certified_update_e_component_shape() -> Dict[str, Any]:
         arguments = [a.arg for a in node.args.args]
         rows.append({
             "module": f"meep_gpu/triton_kernels/{module}.py",
-            # THE BYTES THIS ROW WAS PARSED OUT OF. gate_provenance.stamp records
+            # The bytes this row was parsed out of. gate_provenance.stamp records
             # what the process IMPORTED, and this probe imports none of these — it
             # reads them as text — so the digest that binds the finding has to be
             # recorded here or it is recorded nowhere.
@@ -510,8 +510,8 @@ def main() -> int:
         "shape_c_alias_free": leg2["shape_c_is_alias_free"],
         "shape_c_cost_worst_extra_volumes": leg3["worst_extra_volumes"],
         "statement": (
-            "THE ROTATION DOES NOT HAVE TO BE BAKED AND THE HOST ROUND TRIP DOES "
-            "NOT HAVE TO GO. On Metal the per-component interleave settles it. On "
+            "The rotation does not have to be baked and the host round trip does "
+            "not have to go. On Metal the per-component interleave settles it. On "
             "Triton the per-component shape is unavailable — every certified "
             "update_E writes all three components in one launch — so the shape a "
             "Triton E->P product should take is (c): keep the certified "
@@ -519,8 +519,8 @@ def main() -> int:
             "component, and the launch's write set is disjoint from its read set "
             "at every position of the rotation's orbit. The price is "
             f"{leg3['worst_extra_volumes']} extra field volumes on the corpus's "
-            "worst E->P row. THIS PROBE LICENSES A SHAPE; IT BUILDS NO KERNEL AND "
-            "MEASURES NO BYTES ON A DEVICE."),
+            "worst E->P row. This probe licenses a shape; it builds no kernel and "
+            "measures no bytes on a device."),
     }
     gate_provenance.stamp(results)
     out.write_text(json.dumps(results, indent=2, sort_keys=True) + "\n")

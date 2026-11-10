@@ -12,14 +12,14 @@ certified and neither is re-derived here:
 * and the WELD is the one substitution :func:`.kernels.fused_curl_constitutive_B`
   already makes between exactly those two bodies on a BFAST-inactive run.
 
-SO THIS KERNEL IS ``fused_curl_constitutive_B``, STATEMENT FOR STATEMENT, PLUS THE
-SAME ``if HAS_BFAST:`` BLOCK ``bfast_pml_curl_step`` ADDS TO ``pml_curl_step``. A
+So this kernel is ``fused_curl_constitutive_B``, statement for statement, plus the
+same ``if HAS_BFAST:`` BLOCK ``bfast_pml_curl_step`` adds to ``pml_curl_step``. A
 reader must be able to diff this body against those two and see nothing else moved;
 the gate's transcription leg asserts exactly that, as two statement-list equalities
 against both shipped sources.
 
 ===========================================================================
-THE PASS, AND WHERE IT GOES
+The pass, and where it goes
 ===========================================================================
 
 ``stepping._bfast_term`` is MEEP's BFAST pass, which runs per component right after
@@ -46,11 +46,11 @@ THE SIX ``k1``/``k2`` WORDS are host-computed and rounded ONCE by
 :func:`.bfast_curl.bfast_curl_coefficients`, exactly as
 :class:`.bfast_curl.BfastPmlCurlPlan` passes them.
 
-THE THREE STATE POINTERS ARE THE ENGINE'S OWN ``f_bfast_B*`` ARRAYS, bound
+The three state pointers are the engine's own ``f_bfast_B*`` ARRAYS, bound
 pointer-identically. That is not an optimisation: the driver's flux backup/restore
 mutates them in place (driver.py:4126-4135), so a copy would desynchronise the run.
 
-``HAS_BFAST`` IS CARRIED AND MUST BE 1 on any configuration this product's
+``HAS_BFAST`` is carried and must be 1 on any configuration this product's
 predicate admits — the BFAST family's clause 11 is INVERTED inside
 ``bfast_pml_curl_coverage`` (``grid.bfast_active`` required), so a BFAST-inactive
 run is the ordinary :func:`.coverage.fused_pair_coverage`'s and is refused here by
@@ -60,7 +60,7 @@ certified-kernel arm (``HAS_BFAST = 0`` must reproduce
 ``kernels.fused_curl_constitutive_B`` bit for bit).
 
 ===========================================================================
-THE FIVE PASSES IN THE SEAM
+The five passes in the seam
 ===========================================================================
 
 ``driver.step`` runs five passes between the two halves (driver.py:3282-3289)::
@@ -68,20 +68,20 @@ THE FIVE PASSES IN THE SEAM
     step_B -> magnetic sources -> fill_symmetry_bc_B -> zero_metal_B
            -> fill_folded_far_ghosts_B -> update_H
 
-* **the magnetic sources — REFUSED BY NAME** (driver.py:3283-3284). Ignorance is
+* **the magnetic sources — refused by name** (driver.py:3283-3284). Ignorance is
   never an empty set: ``Fields`` does not hold the source list, so an undeclared
   ``sources`` is a REFUSAL and not an assumed ``()``.
-* **``fill_symmetry_bc_B`` and ``fill_folded_far_ghosts_B`` — PROVABLY NO-OPS
-  HERE**. Both return at their first line unless ``grid.has_symmetry()``
+* **``fill_symmetry_bc_B`` and ``fill_folded_far_ghosts_B`` — provably no-ops
+  here**. Both return at their first line unless ``grid.has_symmetry()``
   (stepping.py:1481-1482, :1565-1566), and ``_bfast_grid_reasons`` refuses every
-  fold. THE PREDICATE RE-CHECKS IT ANYWAY rather than reading its own coverage off
+  fold. The predicate re-checks it anyway rather than reading its own coverage off
   another module's guard.
 * **``zero_metal_B`` — CARRIED INLINE**, through :func:`.coverage.zero_metal_axes`,
   which is IMPORTED rather than re-spelled so the predicate and the compile-time
   choice cannot disagree.
 
 ===========================================================================
-WHAT THE CORPUS SAYS THIS IS WORTH — measured, not argued
+What the corpus says this is worth — measured, not argued
 ===========================================================================
 
 ONE seam-instance, reachable, from ``results/fusion_matrix_triton_2026-08-20_closed/``
@@ -91,11 +91,11 @@ at the B->H cell (``BFAST PML``, ``BFAST run``):
 
 It declares an ELECTRIC source only, so the magnetic seam is clear; it is
 all-periodic with ``has_metallic == false``, so the inline ``zero_metal_B`` carry
-compiles to three ``False`` flags ON THAT ROW — which is why the gate scores every
+compiles to three ``False`` flags on that row — which is why the gate scores every
 wall-clear mutation on a WALLED case instead. The D/E partner cell is worth ZERO on
 this corpus (that row injects electrically inside that seam) and is not built.
 
-THE OTHER BACKEND BUILT THIS FIRST: ``metal_kernels/bfast_fused_magnetic_pair.py``,
+The other backend built this first: ``metal_kernels/bfast_fused_magnetic_pair.py``,
 certified by ``parity/meep_gpu/gate_metal_below_the_cut_fused_pairs.py``, and worth
 the same one row there.
 
@@ -503,10 +503,10 @@ def bfast_fused_magnetic_pair_coverage(fields: Any, pml: Any,
     if grid is None:
         return Coverage(False, tuple(dict.fromkeys(reasons + ["fields carries no grid"])))
 
-    # THE SOURCE SEAM. A magnetic source is injected BETWEEN the two halves
+    # The source seam. A magnetic source is injected BETWEEN the two halves
     # (driver.py:3283-3284), so a fused pair would consume a pre-injection B. An
     # ELECTRIC source is injected in the D/E seam and does not disqualify this
-    # pair. IGNORANCE IS NOT AN EMPTY SET.
+    # pair. Ignorance is not an empty set.
     reasons.extend(_deposit_repair.seam_source_reasons(
         fields, sources, 'B',
         undeclared=(
@@ -520,8 +520,8 @@ def bfast_fused_magnetic_pair_coverage(fields: Any, pml: Any,
             f"closes"),
         carries_repair=CARRIES_DEPOSIT_REPAIR))
 
-    # THE TWO SYMMETRY PASSES, re-checked rather than read off another module's
-    # guard: if the BFAST tranche ever admits a fold this weld would silently
+    # The two symmetry passes, re-checked rather than read off another module's
+    # guard: if the BFAST family ever admits a fold this weld would silently
     # swallow two passes that had started doing work.
     if _call(grid, "has_symmetry", default=False):
         reasons.append(
@@ -534,7 +534,7 @@ def bfast_fused_magnetic_pair_coverage(fields: Any, pml: Any,
                 f"axis {axis} is folded by a mirror plane: the two symmetry passes "
                 f"in this seam are no longer no-ops and this weld carries neither")
 
-    # THE WALL CLEAR is carried inline, so the grid must be able to answer which
+    # The wall clear is carried inline, so the grid must be able to answer which
     # axes are walled; an unanswerable one compiles to ZM=False and silently skips
     # a plane the array path clears.
     for name in ("has_metallic", "is_metallic", "is_mirrored"):
@@ -542,7 +542,7 @@ def bfast_fused_magnetic_pair_coverage(fields: Any, pml: Any,
             reasons.append(
                 f"grid does not expose {name}; zero_metal_B cannot be carried inline")
 
-    # THE INVARIANCE TABLE. The six k1/k2 words are gated on
+    # The invariance table. The six k1/k2 words are gated on
     # ``grid.is_invariant`` (bfast_curl_coefficients, grid.py:1165-1183 — the
     # grid's OWN declared dimensionality, never a shape test), so a grid that
     # cannot answer it would silently be given the un-gated coefficients.
@@ -683,7 +683,7 @@ def plan_bfast_fused_magnetic_pair(fields: Any, pml: Any, sources: Any = None,
     side_spec = CONSTITUTIVE_SIDES[CONSTITUTIVE_SIDE]
     grid = fields.grid
     kinds = resolve(grid, pml)
-    # THE SAME FUNCTION THE CURL PLAN CALLS, with the grid's OWN declared
+    # The same function the curl plan calls, with the grid's OWN declared
     # invariance flags (grid.py:1165-1183 — never a shape test) and the sub-step's
     # side. Identical arithmetic to the array path's per-call-site computation, and
     # not a second spelling of it.

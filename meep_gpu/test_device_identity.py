@@ -61,7 +61,7 @@ TRITON_LIVE = {
     "kernel body operator": ("* COEFFICIENTS[0]", "/ COEFFICIENTS[0]"),
     "kernel mask condition": ("idx < n_elem", "idx <= n_elem"),
     "kernel argument order": ("def curl(f0, n_elem,", "def curl(n_elem, f0,"),
-    # THE ONE A BODY-ONLY DIGEST WOULD MISS. The constant is compiled into the program;
+    # The one a body-only digest would miss. The constant is compiled into the program;
     # the function body is not textually different at all.
     "a module constant the kernel reads": ("COEFFICIENTS = (0.5, 0.25)",
                                            "COEFFICIENTS = (0.5, 0.125)"),
@@ -110,7 +110,7 @@ def test_the_cuda_extractor_agrees_with_the_certification_reader():
 def test_the_cuda_extractor_resolves_concatenated_kernels():
     """The shipped kernels are ``PRELUDE + r'...'``, which a literal-only reader misses.
 
-    THE POINT IS THE CONCATENATION, NOT THE COUNT. Until 2026-08-26 this module carried
+    The point is the concatenation, not the count. Until 2026-08-26 this module carried
     fourteen device strings and the count was the cheap way to say "the extractor
     resolved the folded ones too". Twelve of those were the INHERITED kernels and were
     deleted; the two that remain are exactly the ones spelled as ``PRELUDE + r'...'``,
@@ -133,6 +133,91 @@ def test_metal_returns_none_rather_than_something_weaker():
 def test_metal_reads_the_modules_own_corpus_digest():
     got = metal_shader_digests(HERE / "metal_kernels" / "offdiag_update_e.py")
     assert got and got.get("corpus"), got
+
+
+def _metal_emitters(module):
+    """The public ``*_source`` emitters, by the rule ``metal_shader_digests`` applies."""
+    return sorted(
+        name for name in dir(module)
+        if name.endswith("_source") and not name.startswith(("_", "refuted"))
+        and callable(getattr(module, name, None))
+        and getattr(getattr(module, name), "__module__", "") == module.__name__)
+
+
+def test_a_derived_metal_digest_covers_every_public_emitter_or_none():
+    """All of a module's emitters, or no device digest at all.
+
+    A digest over some of them stays equal across an edit to another's shader text, so a
+    weld pinned on it would keep its PASS on bytes no gate compiled.
+    """
+    covered = 0
+    for path in sorted((HERE / "metal_kernels").glob("*.py")):
+        if path.stem.startswith("test_") or path.stem == "__init__":
+            continue
+        try:
+            module = importlib.import_module(f"meep_gpu.metal_kernels.{path.stem}")
+        except Exception:      # noqa: BLE001 - such a module has no device digest either
+            assert metal_shader_digests(path) is None, path.stem
+            continue
+        emitters = _metal_emitters(module)
+        if callable(getattr(module, "corpus_digest", None)) or not emitters:
+            continue
+        got = metal_shader_digests(path)
+        assert got is None or sorted(got) == emitters, (path.stem, sorted(got or {}), emitters)
+        covered += bool(got)
+    assert covered, "no Metal module has a derived device digest; this test would be inert"
+
+
+@pytest.mark.parametrize("stem,emitter", [
+    ("shaders", "constitutive_source"),
+    ("complex_fields", "bloch_constitutive_source"),
+    ("symmetry", "mirror_ghost_fill_source"),
+    ("folded_complex", "folded_mirror_fill_complex_source"),
+    ("cylindrical_complex_fused_hd_pair", "curl_source"),
+])
+def test_the_metal_digest_sweeps_the_constitutive_fill_and_curl_emitters(stem, emitter):
+    """Each of these takes a parameter outside the shared sweep and needs a declared one."""
+    got = metal_shader_digests(HERE / "metal_kernels" / f"{stem}.py")
+    assert got and emitter in got, (stem, sorted(got or {}))
+
+
+def test_the_declared_metal_sweeps_match_the_emitters_own_tables():
+    from .metal_kernels import complex_fields, corpus, folded_complex, shaders, symmetry
+    assert corpus._SIDES == tuple(shaders._CONSTITUTIVE_PRODUCTS)
+    assert corpus._SIDES == tuple(complex_fields._CONSTITUTIVE_PRODUCTS)
+    assert corpus._FILL_PASSES == tuple(symmetry.FILL_PASSES) == tuple(folded_complex.FILL_PASSES)
+
+
+@pytest.mark.parametrize("stem,template,old,new", [
+    pytest.param("complex_fields", "_CONSTITUTIVE_TEMPLATE", "a0 = f0[ii] + (",
+                 "a0 = f0[ii] - (", id="complex_fields"),
+    pytest.param("folded_complex", "_FILL_TEMPLATE", "if (idx >= n_plane)",
+                 "if (idx > n_plane)", id="folded_complex"),
+])
+def test_a_planted_code_edit_in_a_metal_template_moves_the_digest(monkeypatch, stem, template,
+                                                                   old, new):
+    """A one-token code edit in a template only the constitutive or fill emitter reads."""
+    module = importlib.import_module(f"meep_gpu.metal_kernels.{stem}")
+    path = HERE / "metal_kernels" / f"{stem}.py"
+    before = metal_shader_digests(path)
+    text = getattr(module, template)
+    assert text.count(old) == 1, (stem, template, old)
+    monkeypatch.setattr(module, template, text.replace(old, new))
+    after = metal_shader_digests(path)
+    assert before and after and before != after, (stem, before, after)
+
+
+def test_an_emitter_the_sweep_cannot_reach_leaves_the_module_without_a_digest(monkeypatch):
+    from .metal_kernels import complex_fields
+
+    def planted_source(undeclared_parameter):
+        return "kernel void planted() {}"
+
+    planted_source.__module__ = complex_fields.__name__
+    path = HERE / "metal_kernels" / "complex_fields.py"
+    assert metal_shader_digests(path)
+    monkeypatch.setattr(complex_fields, "planted_source", planted_source, raising=False)
+    assert metal_shader_digests(path) is None
 
 
 @pytest.mark.parametrize("relative,expected", [

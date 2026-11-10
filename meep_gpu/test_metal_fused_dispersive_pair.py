@@ -1,14 +1,14 @@
 """The FIRST fused Metal kernel, as claims a laptop can check without a GPU.
 
-WHAT THIS SUITE OWNS AND WHAT IT DELIBERATELY DOES NOT. The BYTES are the device
+What this suite owns and what it deliberately does not. The BYTES are the device
 gate's — ``parity/meep_gpu/gate_metal_fused_dispersive_pair.py`` steps two engines
 side by side for twelve complete steps and compares uint32 words, and no assertion
 here duplicates that. What lives here is everything that is true about the family
 WITHOUT a device: what the emitted source says, which configurations the predicate
-refuses and by what name, that the arm is registered UNWIRED, and that the plan
+refuses and by what name, that the arm is registered unwired, and that the plan
 binds the lattice each half is supposed to take.
 
-THE ONE CLAIM THIS SUITE MAKES THAT THE GATE CANNOT. A gate measures the
+The one claim this suite makes that the gate cannot. A gate measures the
 configurations it runs. It cannot say the product is invisible to ``plan_step`` —
 that is a property of the TABLE, and it is the whole reason this family may land
 beside twenty-nine wired ones without touching any of them.
@@ -67,7 +67,7 @@ def test_the_electric_half_is_the_certified_constitutive_select_but_for_the_seam
 
     On a cell whose chunk carries the component's own layer the accumulation in
     MEEP's grouping, ``f + ((kps*src) - (kms*prev))``, with ``f_w`` read and written
-    there only; elsewhere ``E = src``. Those lines are the ALIGNED certified body's
+    there only; elsewhere ``E = src``. Those lines are the certified body's
     (``shaders.constitutive_source``), renamed pointer by pointer, and the product
     and the pole chain are still the pointwise body's own. The seam is the one
     line that differs: ``float source = d_in[idx];`` becomes ``float source =
@@ -95,7 +95,7 @@ def test_the_electric_half_is_the_certified_constitutive_select_but_for_the_seam
         "split-field previous value in this scope")
 
 
-#: The certified ALIGNED constitutive body's per-component lines (side E, component
+#: The certified constitutive body's per-component lines (side E, component
 #: ``t``), and the pointer renames that carry them into a one-component E half:
 #: ``dw{t}`` -> ``dw``, ``w{t}[ii]`` -> ``fw[idx]``, ``src{t}`` -> ``src``,
 #: ``prev{t}`` -> ``prev``, ``a{t}`` -> ``value``, ``f{t}[ii]`` -> ``e_out[idx]``,
@@ -220,7 +220,7 @@ def _reasons(fields, pml, sources, residency=None):
 
 
 def test_an_undeclared_source_set_is_refused_by_name():
-    """IGNORANCE IS NOT AN EMPTY SET, and this is the clause that says so.
+    """Ignorance is not an empty set, and this is the clause that says so.
 
     ``Fields`` does not hold the source list — the driver does — so a predicate
     that inferred "no electric source" from not being told would licence a fused
@@ -294,7 +294,7 @@ def test_plan_step_cannot_select_it():
 
     An unwired row stays ENUMERABLE — which is what lets a disjointness sweep see
     it — while never reaching ``_select_slot``. That distinction is the entire
-    safety argument for landing this family beside the wired tree.
+    safety argument for landing this family beside the wired families.
     """
     context = arms.StepContext(object(), None, None, (), sources=())
     labels = [arm.label for arm in arms.arms_for(family.SLOT, context)]
@@ -328,7 +328,7 @@ def test_the_plan_declares_every_pass_it_performs():
 def test_the_refuted_all_component_signature_really_does_break_the_ceiling():
     """The 35-binding count is spelled once and the emitter agrees with it.
 
-    Whether it FAILS TO COMPILE is a device measurement and belongs to the gate's
+    Whether it fails to compile is a device measurement and belongs to the gate's
     ``binding_ceiling`` leg; what belongs here is that the signature this suite and
     that leg talk about is the same one, and that it is over the documented limit.
     """
@@ -404,7 +404,7 @@ def test_the_record_block_declares_the_two_entries_and_the_two_partners(axis):
 
 
 def test_fu_and_f_w_are_touched_only_behind_their_flags():
-    """The auxiliary contract (KERNELS.md §1 C2): fu is read and written only where
+    """The auxiliary contract (docs/design/floating-point.md#auxiliary-contract): fu is read and written only where
     the dsigu chunk holds, f_w only where the component's own chunk does, and the
     plain E form reads neither f_w nor the old E."""
     source = family.fused_dispersive_pair_source((1, 1, 1), 0, 2, (True,) * 3)

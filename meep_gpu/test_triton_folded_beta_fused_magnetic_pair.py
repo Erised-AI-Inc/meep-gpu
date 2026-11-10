@@ -419,7 +419,7 @@ def test_the_composer_routes_this_product_and_dispatch_admits_it():
     ``_install_fused_pair``, taking both slots only when ``_pair_may_absorb`` finds
     the arm table has already given them to the arms this kernel implements.
 
-    Phase B (batch 2026-09-13) RELEASED it, and the second half is that fact made
+    The 2026-09-13 certification run RELEASED it, and the second half is that fact made
     checkable from the PRODUCT's side rather than from the composer's: the label
     this product writes is now in ``fastpath.RELEASED_FUSED_ARMS``, so clause (8)
     admits the whole plan; and it sits in exactly one of ``ARM_CERTIFICATION`` (its

@@ -4,7 +4,7 @@ The device source is :mod:`complex_emitter`, which imports nothing and runs at t
 merge bar; this module is the part that needs a GPU: the compile memo, the
 coefficient and phase bindings, the word views and the four launchers.
 
-WHAT THIS CLOSES. Before it, every hand-CUDA predicate refused complex64 storage
+What this closes. Before it, every hand-CUDA predicate refused complex64 storage
 by name -- ``covers_real_pml_curl`` and ``covers_real_pml_constitutive`` both say
 "complex64 storage: the recurrence is the same but the storage is not". Measured
 over the 186-row corpus record on 2026-08-16, that clause was the FIRST refusal on
@@ -13,7 +13,7 @@ storage class. It was a correct refusal about the REAL kernels and an absence of
 complex one, exactly as ``update_P`` was an absence rather than a refusal until
 ``ade_kernels`` closed it.
 
-WHICH RUNS DEMAND IT. Nine corpus scripts and only nine, per the Triton sibling's
+Which runs demand it. Nine corpus scripts and only nine, per the Triton sibling's
 census: five Bloch-phase runs (refl-angular.py, antenna_pec_ground_plane_1D.py,
 binary_grating_oblique.py, mode_coeff_phase.py, oblique-planewave.py) and two
 complex-storage-at-k=0 runs (wvg-src.py, solve-cw.py's complex-storage class).
@@ -21,7 +21,7 @@ complex-storage-at-k=0 runs (wvg-src.py, solve-cw.py's complex-storage class).
 ``grid.beta``, NOT ``bloch_phase``, and are refused by name.
 
 =============================================================================
-THE CHUNK RECORD AND THE STORED WINDOW
+The chunk record and the stored window
 =============================================================================
 
 Every launcher takes the run's chunk record ``chunk_bounds`` (``int32[25]`` on the
@@ -34,7 +34,7 @@ the operand read at the cell itself, as ``stepping._bloch_ghost_operand`` does, 
 shifted lane.
 
 =============================================================================
-THE WORD VIEW
+The word view
 =============================================================================
 
 ``complex64`` is bit-layout (re, im) interleaved, so a C-contiguous complex volume
@@ -120,21 +120,21 @@ except ImportError:  # loaded by path, outside the package: the bit-identity pro
 #: ``certification.json`` record entry behind the verdict. A name here without a
 #: record block is the failure ``test_complex_pml.py`` exists to catch, and a name
 #: in the record without one here is the same failure from the other side.
-#: THE RECORD DESCRIBES THE PREVIOUS DEVICE TEXT. The 0.10 per-chunk, part-wise forms
-#: (bit_parity_0_10 lane KC6) moved every byte of this family; the block is re-cut when
-#: the family's gate is re-run on these bytes in the combined certification round.
+#: The record describes the previous device text. The 1.0 per-chunk, part-wise forms
+#: moved every byte of this family; the block is re-cut when
+#: the family's gate is re-run on these bytes in the 1.0 certification round.
 #: RECORDED 2026-08-26. These four sat in ``UNCERTIFIED_KERNELS`` from 2026-08-19 with
 #: a passing gate behind them, deliberately, because "certified" had to be a verdict a
 #: reader could check. The block is now in ``certification.json`` as
 #: ``complex_pml_2026-08-26`` and the two halves landed together, as
 #: ``test_every_uncertified_name_has_no_record_block_and_the_reverse`` requires.
 #:
-#: THE 08-19 VERDICT WAS NOT TRANSCRIBED, IT WAS RE-EARNED. That artifact's recorded
+#: The 08-19 verdict was not transcribed, it was re-earned. That artifact's recorded
 #: digests had drifted on THIS MODULE and on ``complex_emitter.py`` -- the subject and
 #: the emitter of its device text -- so it no longer described the bytes that ship. The
 #: gate was re-run on the current tree and reproduced it exactly: 1008/1008 single-launch
 #: under BOTH float32 subnormal policies, 36/36 at the 60-launch multi-step budget,
-#: 20/20 mutation legs, expansion arm ``FMA_V1`` with its basis MEASURED.
+#: 20/20 mutation legs, expansion arm ``FMA_V1`` with its basis measured.
 CERTIFIED_KERNELS: Tuple[str, ...] = (
     "step_B_pml_complex_bloch",
     "step_D_pml_complex_bloch",
@@ -150,7 +150,7 @@ CERTIFIED_KERNELS: Tuple[str, ...] = (
 #: CuPy, and an annotated assignment is an ``ast.AnnAssign`` that reader does not
 #: match.
 #:
-#: ALL FOUR HAVE PASSED THEIR GATE and this set is where they sit anyway, which is
+#: All four have passed their gate and this set is where they sit anyway, which is
 #: a deliberate state and not an oversight. The verdict is
 #: ``parity/meep_gpu/results/cuda_complex_release_2026-08-19/`` -- RELEASED under
 #: BOTH float32 subnormal policies on an RTX A6000: 1008/1008 single-launch cases
@@ -161,7 +161,7 @@ CERTIFIED_KERNELS: Tuple[str, ...] = (
 #: a claim against, and "certified" must be a verdict someone can read rather than
 #: a word someone typed.
 #:
-#: THE TWO EDITS LAND TOGETHER, welded by
+#: The two edits land together, welded by
 #: ``test_every_uncertified_name_has_no_record_block_and_the_reverse``: moving a
 #: name here into ``CERTIFIED_KERNELS`` without adding its block fails, and adding
 #: the block without moving the name fails too. Neither half is valid alone.
@@ -190,7 +190,7 @@ def _clear_kernel_cache() -> int:
 def _get_kernel(sub_step: str):
     """Compile one sub-step, memoized on (name, options, policy, source).
 
-    THE SOURCE IS EMITTED PER CALL AND THAT IS LOAD-BEARING, for the reason the
+    The source is emitted per call and that is load-bearing, for the reason the
     sibling modules rebuild their code maps per call: the source is part of the memo
     key, so it has to be built before a key exists to miss on, and a gate mutates
     this family by monkeypatching :func:`complex_emitter.complex_source`. A source
@@ -232,9 +232,9 @@ def complex_curl_tables(pml: 'PML', half_integer: bool) -> Dict[str, Any]:
     Called ONCE per frozen configuration, not per launch: the twelve uncertified
     complex wrappers in ``step_curl_kernels`` call ``cp.ascontiguousarray(...ravel())``
     on every launch, which is six device allocations per sub-step for tables that
-    never change (port-reference defect 5.14).
+    never change.
 
-    THE COEFFICIENTS STAY FLOAT32 UNDER COMPLEX STORAGE. That is not an assumption:
+    The coefficients stay float32 under complex storage. That is not an assumption:
     ``PML._reshape_for_broadcast`` stores float32 in BOTH storage modes
     (stepping.py:41-50, fields.py:571-573 against fields.py:1203-1204), and each
     multiplies the two parts of a word separately (``part_products.scale``). A complex
@@ -338,7 +338,7 @@ def step_fused_pml_complex(sub_step: str, fields: 'Fields',
     deriving function had no callers at all, and the half-cell error the pairing
     exists to prevent was one argument away on the only live entry point.
 
-    THE OVERRIDES ARE THE GATE'S DOOR and stay, keyword-only and named for what they
+    The overrides are the gate's door and stay, keyword-only and named for what they
     are. A gate feeds DELIBERATELY WRONG tables (the swapped sub-lattice), wrong
     boundary codes (the dropped metallic wall) and wrong connections (the B curl's
     factor unconjugated, a negation bound as a product); a launcher that could not be handed
@@ -418,7 +418,7 @@ def update_fused_pml_complex(side: str, fields: 'Fields',
 
     ``chunk_bounds`` is the run's chunk record on the device, required.
 
-    THE RUN'S FIRST ``update_H`` STARTS H FROM B FIRST. MEEP allocates H and ``f_w`` as
+    The run's first ``update_H`` starts H from B first. MEEP allocates H and ``f_w`` as
     copies of B, on the chunks that carry H's own layer, at the first
     ``update_eh(H_stuff)`` (update_eh.cpp:165-177); the array path does the same in
     ``stepping.separate_h_from_b``, which ``stepping.update_H`` calls. So a launch at

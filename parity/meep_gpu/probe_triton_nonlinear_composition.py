@@ -9,14 +9,14 @@ still returning None — does the complete driver state reproduce the array-path
 driver EXACTLY after every step, for a STATED number of steps, sources, PML,
 metal zeroing and the nonlinear pole guard included?
 
-THIS PROBE IS THE NARROWING MEASUREMENT. ``coverage._grid_reasons`` clause 10
+This probe is the narrowing measurement. ``coverage._grid_reasons`` clause 10
 (coverage.py:195-196) refuses a chi2/chi3 run at EVERY sub-step, while the
 nonlinearity's arithmetic lives in ``update_E`` alone (stepping.py:975-979).
 Before each case runs, the probe asserts that the certified curl and update_H
-predicates refuse the run FOR THE CHI CLAUSE AND NOTHING ELSE — so the
+predicates refuse the run for the chi clause and nothing else — so the
 composition that then reproduces the array path byte-for-byte is exactly the
-evidence the wiring change needs to narrow the shared clause, the way plan
-§13.1 narrowed the curl's dispersion refusal. The certified plans are built
+evidence the wiring change needs to narrow the shared clause, the way the curl's
+over-broad dispersion refusal was narrowed. The certified plans are built
 through their ``from_arrays`` routes for that reason: their engine builders
 still refuse, deliberately, until the narrowing lands.
 
@@ -53,12 +53,12 @@ The cases span the corpus demand and nothing else:
    found to have compared two untouched buffers: at 16 steps against the
    factor of 21 the engine resolved then, NO sample ever accumulated and the
    recorded spectrum was ``[0, 0, 0, 0, 0]`` — "bit-exact" over exact zeros
-   certifies nothing. This probe now adopts the off-diagonal tranche's
+   certifies nothing. This probe now adopts the off-diagonal probe's
    remedy (``probe_triton_offdiag_composition.py``): the step budget is
    asserted at monitor-add time to be at least twice the engine's resolved
    decimation, ``flux_samples_in_budget`` is recorded, and an identically
    zero spectrum is REFUSED before the compare, in the device path and in
-   the laptop self-check alike. THE CASE HAS NOT BEEN RE-RUN ON THE DEVICE
+   the laptop self-check alike. The case has not been re-run on the device
    since the fix, so its flux claim is uncertified; only the laptop
    self-check's array-path leg has exercised the new assertions.
 
@@ -450,8 +450,8 @@ class PlanCounter:
     """Launch counting for EVERY composition case: all four installed plans
     are wrapped, the per-slot counts land in the artifact, and a slot whose
     count differs from the step budget fails the case — a case whose plans
-    never ran measures nothing and must FAIL, not pass (the audit found the
-    certification cases carried no per-case launch evidence at all)."""
+    never ran measures nothing and must FAIL, not pass (the certification cases
+    were found to carry no per-case launch evidence at all)."""
 
     def __init__(self, plan: Any) -> None:
         self.plan = plan
@@ -547,7 +547,7 @@ def run_case(cp, case: Dict[str, Any],
             # resolved factor never touches the accumulators — measured on
             # the certifying run, where 16 steps against a factor of 21 left
             # the "bit-exact" compare running over two untouched zero
-            # buffers. Same assertion as the off-diagonal tranche's.
+            # buffers. Same assertion as the off-diagonal probe's.
             if steps < 2 * row["resolved_decimation"]:
                 raise AssertionError(
                     f"{name}: budget {steps} accumulates fewer than two flux "
@@ -863,7 +863,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                               "reason": "subnormal policy: "
                                         + "; ".join(residual)}
         save(payload, args.out)
-        log(f"SUBNORMAL POLICY FAILURE AT CLOSE: {residual}")
+        log(f"Subnormal policy failure at close: {residual}")
         return 1
 
     ran = payload["cases"]

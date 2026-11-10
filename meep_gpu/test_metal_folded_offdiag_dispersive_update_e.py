@@ -1,6 +1,6 @@
 """Host contracts for Metal's folded tensor-row dispersive intersection.
 
-Under ruling R7 (software binary64) the family forms the off-diagonal single's double
+In software binary64 (docs/design/floating-point.md#double-precision-on-the-metal-table) the family forms the off-diagonal single's double
 row over the ordered ``D - P`` gathers, adds each term where the cell's chunk keeps
 it (the six presence words ride in ``Params`` before the chunk record), and its arm
 is wired; its PML tail is the per-chunk select on the chunk record its ``Params``
@@ -189,7 +189,7 @@ def test_partner_stencil_reads_ordered_d_minus_p_not_raw_d():
 
 def test_folded_tensor_dispersive_product_and_max_pole_count_are_admitted(
         backend_ready):
-    """No ruling refuses the row: every clause holds and the predicate admits."""
+    """No clause refuses the binary64 row: every clause holds and the predicate admits."""
     fields, pml = build(counts=(family.MAX_POLES,) * 3)
     verdict = family.folded_offdiag_dispersive_coverage(fields, pml, HostResidency(),
                                                         _record(fields, pml))
@@ -272,7 +272,7 @@ def test_arm_is_wired_offered_on_its_intersection_and_keeps_the_device_side_pole
     assert len(consulted(*build())) == 1
     assert consulted(*build(fold=False)) == []
     source = inspect.getsource(family.MetalFoldedOffdiagDispersivePlan._refresh_packs)
-    assert "tensor_for_host(state.P[component])" in source
+    assert "tensor_for_host(dict.__getitem__(state.P, component))" in source
 
 
 # ---------------------------------------------------------------------------
@@ -303,7 +303,7 @@ def _device_step(actual, pml):
 
 @needs_mps
 def test_the_double_row_is_the_array_paths_word_on_a_generic_state(monkeypatch):
-    """THE RULING'S CLAIM: on a generic state, where a float32 row differs from the
+    """The double-row claim: on a generic state, where a float32 row differs from the
     array path's double row, the shipped software-binary64 row over ``D - P`` is 0
     words from ``stepping.update_E``, ``f_w`` included."""
     monkeypatch.setenv(subnormal.POLICY_ENV, subnormal.FLUSH)
@@ -323,7 +323,7 @@ def test_the_double_row_is_the_array_paths_word_on_a_generic_state(monkeypatch):
 
 @needs_mps
 def test_a_term_its_chunk_dropped_keeps_a_negative_zero_row(monkeypatch):
-    """PRESENCE ON THE DEVICE. The rows are zero in every PML chunk of the metallic
+    """Presence on the device. The rows are zero in every PML chunk of the metallic
     axes, so MEEP drops the terms there; with ``Dx - P = -0`` the row so far is
     ``-0`` and adding a term's ``+0`` would give ``+0``. The kernel must keep ``-0``
     where the chunk dropped the term, which is the array path's word."""

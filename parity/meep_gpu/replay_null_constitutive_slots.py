@@ -1,12 +1,12 @@
 """What the hand-CUDA NO-PML NULL arm is worth, replayed off the predicate census.
 
-WHAT THIS ANSWERS. ``gate_cuda_no_pml_null_constitutive.py`` measures WHETHER the
+What this answers. ``gate_cuda_no_pml_null_constitutive.py`` measures WHETHER the
 arm is sound -- whether the array path really moves nothing on every configuration
-``covers_no_pml_null_constitutive`` admits. This answers WHAT THAT IS WORTH, in the
+``covers_no_pml_null_constitutive`` admits. This answers what that is worth, in the
 only currency the plan counts: slots of the predicate census, where a slot is one
 (corpus row, sub-step) pair.
 
-WHY A REPLAY AND NOT A RE-CENSUS. The census lifted every corpus row into a real
+Why a replay and not a re-census. The census lifted every corpus row into a real
 ``Grid``/``Fields``/``PML`` triple and recorded, per row and per sub-step, each
 shipped predicate's verdict AND its first refusal string. Re-lifting costs hours and
 a MEEP install. Every clause of this arm reads facts the record already carries in
@@ -14,7 +14,7 @@ its per-row ``configuration`` block, so the whole predicate can be re-run agains
 stand-ins built from it -- unlike the kernel predicates, whose array and
 coefficient-vector tail cannot be replayed at all.
 
-THE VALIDATION COMES FIRST, on the record's own numbers, and the replay refuses to
+The validation comes first, on the record's own numbers, and the replay refuses to
 report a count until it passes:
 
 1. every recorded ``covers_real_pml_constitutive`` verdict must reproduce from the
@@ -23,7 +23,7 @@ report a count until it passes:
 
 Only then is the null predicate run over the same stand-ins.
 
-THE COUNT IS AN UPPER BOUND, and the reasons are written into the replay rather than
+The count is an upper bound, and the reasons are written into the replay rather than
 only into the prose. THREE facts the record does not carry are supplied by
 DERIVATION from the engine's source, and each derivation is where the bound is loose:
 
@@ -42,7 +42,7 @@ DERIVATION from the engine's source, and each derivation is where the bound is l
   admitted here and refused by the shipped predicate, which reads both maps. That is
   a real loosening, and the count reports how many rows could be affected.
 
-WHAT IT IS NOT AN UPPER BOUND ON, and this is the difference from the kernel
+What it is not an upper bound on, and this is the difference from the kernel
 families' replays: there is no array or coefficient tail to skip. This arm reads no
 dtype, no stride, no contiguity and no coefficient vector, so the usual "a row whose
 real arrays would fail the tail is counted here and would not be served" caveat does
@@ -82,7 +82,7 @@ SUB_STEP = {"H": "update_H", "E": "update_E"}
 #: coverage.py is under active edit by other work and its line numbers move.
 LAYER_REFUSAL = "no active PML layer"
 
-#: THE ONE RECORDED REFUSAL THE SHIPPED PREDICATE NO LONGER EMITS. The 2026-08-16
+#: The one recorded refusal the shipped predicate no longer emits. The 2026-08-16
 #: census predates the 2026-08-19 fold widening
 #: (``coverage.CONSTITUTIVE_FOLD_ADMISSION``), so every folded row's recorded
 #: first refusal is a string the function has since retired. Those slots are
@@ -90,7 +90,7 @@ LAYER_REFUSAL = "no active PML layer"
 #: ``replay_folded_curl_slots.py`` excluded them: a replay that demanded they
 #: reproduce would be asserting that a measured widening never happened.
 #:
-#: IT CANNOT SHADOW THIS ARM'S COUNT, and that is a property of the clause ORDER
+#: It cannot shadow this arm's count, and that is a property of the clause ORDER
 #: rather than a hope: ``covers_real_pml_constitutive`` tests the layer at
 #: layer BEFORE it reaches the fold clause, so a no-PML row is
 #: refused with LAYER_REFUSAL whether it is folded or not -- then and now.
@@ -276,7 +276,7 @@ def validate(rows: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
 def _sibling_admits(fields, pml, grid, side: str) -> Tuple[bool, List[str]]:
     """Does ANY shipped CUDA constitutive predicate admit this slot today?
 
-    THE DELTA HAS TO BE MEASURED THIS WAY AND NOT OFF THE FIRST REFUSAL, and the
+    The delta has to be measured this way and not off the first refusal, and the
     first version of this replay got it wrong in exactly that way -- it counted only
     slots whose recorded first refusal was ``no active PML layer`` and reported 13
     where the answer is 19. ``covers_real_pml_constitutive`` tests
@@ -343,7 +343,7 @@ def count(rows: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
             added.append(SUB_STEP[side])
         if not added:
             continue
-        # THE WHOLE-STEP QUESTION, asked rather than assumed. A sub-step gained is
+        # The whole-step question, asked rather than assumed. A sub-step gained is
         # not a run taken over: the CUDA curl families all require an ACTIVE layer,
         # so a no-PML row's step_B/step_D stay on the array path and the row is not
         # covered end to end. The curl verdicts are re-run here rather than read off
@@ -404,7 +404,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         block = payload["count"]
         print(f"[replay] slots total {block['slots_total']}; a shipped CUDA "
               f"predicate admits {block['slots_a_shipped_cuda_predicate_admits_today']}"
-              f"; THIS ARM ADMITS {block['slots_this_arm_admits']} and ADDS "
+              f"; this arm admits {block['slots_this_arm_admits']} and adds "
               f"{block['slots_this_arm_adds']} (H {block['by_side']['H']}, "
               f"E {block['by_side']['E']}) across {block['no_pml_row_count']} rows; "
               f"claimed twice {len(block['slots_claimed_twice'])}; both constitutive "

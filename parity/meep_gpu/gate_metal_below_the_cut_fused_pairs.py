@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Native MPS byte gate for the THREE below-the-cut fused magnetic Metal welds.
 
-WHAT IS BEING CERTIFIED. Three products that each span the same three driver passes
+What is being certified. Three products that each span the same three driver passes
 — ``step_B``, ``zero_metal_B`` and ``update_H`` — on three run kinds the shipped
 :mod:`~meep_gpu.metal_kernels.fused_magnetic_pair` refuses BY NAME:
 
@@ -9,7 +9,7 @@ WHAT IS BEING CERTIFIED. Three products that each span the same three driver pas
     beta        meep_gpu/metal_kernels/beta_fused_magnetic_pair.py
     bfast       meep_gpu/metal_kernels/bfast_fused_magnetic_pair.py
 
-ONE GATE FOR THREE PRODUCTS, DELIBERATELY, AND IT IS THE POINT RATHER THAN A
+One gate for three products, deliberately, and it is the point rather than a
 SHORTCUT. All three are the SAME construction with one emitter swapped: the wall
 clear, the three-line seam and the constitutive lift are literally the shipped weld's
 own code, imported rather than copied. A harness that parameterises the emitter
@@ -18,7 +18,7 @@ fails all three legs at once instead of one. Each product still gets its OWN
 specialisation, its OWN fixture, its OWN separate-dispatch control, its OWN refusal
 questions and its OWN mutation set — nothing is inherited by assertion.
 
-THE NINE THINGS THIS GATE REFUSES TO LET PASS SILENTLY:
+The nine things this gate refuses to let pass silently:
 
 1. **A silent fallback.** Bytes alone cannot prove a fused path ran: a plan never
    launched is byte-identical to the oracle BY CONSTRUCTION. Every case asserts the
@@ -49,7 +49,7 @@ THE NINE THINGS THIS GATE REFUSES TO LET PASS SILENTLY:
    three register reads with reloads of the words the curl half just stored. That
    mutant must NOT diverge. It is the one armed edit required to be UNCAUGHT.
 8. **A refusal that is really an omission.** Leg ``refusal`` measures the magnetic
-   source seam, the electric-source polarity, the fold — AND THE DISJOINTNESS: each
+   source seam, the electric-source polarity, the fold — and the disjointness: each
    product's configuration must be REFUSED by the shipped ordinary weld and by the
    other two, in both directions. Three welds on one slot that co-admitted anything
    would be a composition hazard, not a coverage gain.
@@ -60,7 +60,7 @@ THE NINE THINGS THIS GATE REFUSES TO LET PASS SILENTLY:
    precondition that never triggers on any input this harness can build is not a
    precondition, and this leg is what stops it being one.
 
-THE SUBNORMAL POLICY ON THIS BACKEND IS ONE-SIDED, and leg ``policy`` measures that
+The subnormal policy on this backend is one-sided, and leg ``policy`` measures that
 rather than leaving it as prose: on MPS the float32 flush is native and has no lever,
 ``keep`` is a REFUSAL (metal_kernels/subnormal.py), so "both policies" here means one
 delivered and one refused BY NAME. That is checked.
@@ -116,7 +116,7 @@ from meep_gpu.metal_kernels import chunk_bounds as _chunk_bounds  # noqa: E402
 #: off by one axis needs several steps to reach the low bits of the interior.
 STEPS = 12
 
-#: The gate's seed base. PER-CASE SEEDS ARE DIGESTS OF THE CASE LABEL, never
+#: The gate's seed base. Per-case seeds are digests of the case label, never
 #: ``hash()``: Python salts ``hash()`` of a string with PYTHONHASHSEED, so a
 #: hash-seeded gate draws a different fixture every process and a failing case cannot
 #: be replayed.
@@ -267,12 +267,12 @@ class Product:
 def _beta_mutations(base: str) -> Dict[str, str]:
     """The pass that makes this weld a BETA weld (special_kz.beta_pass), armed."""
     return {
-        # DROP THE PASS'S INCREMENT ON TARGET 0: the weld becomes the ordinary one
+        # Drop the pass's increment on target 0: the weld becomes the ordinary one
         # there, the single most consequential silent defect this family can have.
         "beta_term_dropped_on_target_0":
             needle(base, "    float bi0 = -(beta_plus * b);\n",
                    "    float bi0 = 0.0f;\n"),
-        # THE PARTNERS ARE CROSS-ASSIGNED (step_db.cpp:161-175): target 0 takes the
+        # The partners are cross-assigned (step_db.cpp:161-175): target 0 takes the
         # SECOND source's centre load `b`, target 1 the FIRST source's `a`.
         "beta_partners_swapped":
             needle(base, "float bi0 = -(beta_plus * b);",
@@ -282,11 +282,11 @@ def _beta_mutations(base: str) -> Dict[str, str]:
         "beta_sign_flipped_on_target_1":
             needle(base, "float bi1 = -(beta_minus * a);",
                    "float bi1 = (beta_minus * a);"),
-        # THE PASS CARRIES NO dtdx: it is an analytic derivative.
+        # The pass carries no dtdx: it is an analytic derivative.
         "beta_term_scaled_by_dtdx":
             needle(base, "float bi0 = -(beta_plus * b);",
                    "float bi0 = -(dtdx * beta_plus * b);"),
-        # THE COEFFICIENTS ARE SIGN PARTNERS, not one value used twice.
+        # The coefficients are sign partners, not one value used twice.
         "beta_minus_replaced_by_beta_plus":
             needle(base, "float bi1 = -(beta_minus * a);",
                    "float bi1 = -(beta_plus * a);"),
@@ -302,32 +302,32 @@ def _beta_mutations(base: str) -> Dict[str, str]:
 def _bfast_mutations(base: str) -> Dict[str, str]:
     """The BFAST pass (stepping._bfast_term, bfast_curl.bfast_pass), armed."""
     return {
-        # DROP THE PASS'S INCREMENT: the weld becomes the ordinary one on target 0.
+        # Drop the pass's increment: the weld becomes the ordinary one on target 0.
         "bfast_curl_correction_dropped":
             needle(base, "    float fi0 = (has_y || has_z) ? (-(F0 - fp0)) : 0.0f;\n",
                    "    float fi0 = 0.0f;\n"),
-        # THE STATE UPDATE, dropped. A different defect from the one above and on the
+        # The state update, dropped. A different defect from the one above and on the
         # same component: the field is right this step and wrong forever after.
         "bfast_state_store_dropped":
             needle(base, "    if (own0 && (has_y || has_z)) { s0[ii] = F0; }",
                    "    // stale bfast state"),
-        # k1 IS INDEXED BY THE SECOND TERM AND k2 BY THE FIRST, cross-assigned
+        # k1 is indexed by the second term and k2 by the first, cross-assigned
         # (step_db.cpp:129-136). Swapping them is the port's likeliest slip.
         "bfast_k_pair_swapped_on_target_0":
             needle(needle(base, "float sp0 = k1_0 * (c_y + c);",
                           "float sp0 = k2_0 * (c_y + c);"),
                    "float sm0 = k2_0 * (b_z + b);", "float sm0 = k1_0 * (b_z + b);"),
-        # THE PASS SUMS, THE CURL DIFFERENCES. `(a_z + a)` is not `(a_z - a)`.
+        # The pass sums, the curl differences. `(a_z + a)` is not `(a_z - a)`.
         "bfast_sum_becomes_a_difference":
             needle(base, "float sp1 = k1_1 * (a_z + a);",
                    "float sp1 = k1_1 * (a_z - a);"),
-        # THE STATE'S TWO ROUNDINGS (F = S - F_prev, then raw = F - F_prev): the
+        # The state's two roundings (F = S - F_prev, then raw = F - F_prev): the
         # previous package form total - 2*state in one rounding.
         "bfast_state_formed_in_one_rounding":
             needle(base, "    float fi2 = (has_x || has_y) ? (-(F2 - fp2)) : 0.0f;",
                    "    float fi2 = (has_x || has_y) ? (-((sp2 - sm2) - (2.0f * fp2)))"
                    " : 0.0f;"),
-        # THE INCREMENT IS NEGATED and the ladder subtracts it.
+        # The increment is negated and the ladder subtracts it.
         "bfast_correction_sign_flipped":
             needle(base, "    float fi1 = (has_z || has_x) ? (-(F1 - fp1)) : 0.0f;",
                    "    float fi1 = (has_z || has_x) ? (F1 - fp1) : 0.0f;"),
@@ -337,7 +337,7 @@ def _bfast_mutations(base: str) -> Dict[str, str]:
 def _no_extra_mutations(base: str) -> Dict[str, str]:
     """The nonlinear weld's curl body IS the ordinary one, so it adds no defect here.
 
-    NOT AN OMISSION AND SAID SO. This family contributes an ADMISSION and nothing
+    Not an omission and said so. This family contributes an ADMISSION and nothing
     else: its emitted bytes are :func:`.fused_magnetic_pair.fused_magnetic_pair_source`'s
     for the same specialisation, which leg ``transcription`` measures as a string
     equality. A curl mutation invented for it would be one of the shared set under a
@@ -354,7 +354,7 @@ PRODUCTS: Tuple[Product, ...] = (
         fixture=_nonlinear_fixture,
         folded_fixture=lambda: matrix.nonlinear(
             matrix.folded(boundaries={"y": "metallic"}, depth=1.2)),
-        # THE CORPUS ROWS ARE 1-D-LIKE WITH A METALLIC z (census.json), so
+        # The corpus rows are 1-D-like with a metallic z (census.json), so
         # ``wall_z_3d`` is the corpus's own wall geometry and ``wall_xyz_3d`` is
         # where every wall-clear row is emitted at once.
         cases=(("all_periodic_3d", dict()),
@@ -418,7 +418,7 @@ PRODUCTS: Tuple[Product, ...] = (
                      boundaries={"y": "metallic"})),
                ("bfast_thin_pml_3d",
                 dict(bfast_scaled_k=(0.21, 0.05, 0.0), pml=1))),
-        # ALL THREE AXES WALLED **AND** ALL THREE k COMPONENTS LIVE, so every
+        # All three axes walled **and** all three k components live, so every
         # wall-clear row, the full ownership mask and all six k scalars are present
         # on the case the mutations are scored on.
         mutation_case="bfast_kxyz_wall_xyz_3d",
@@ -587,7 +587,7 @@ def run_case(product: Product, keywords: Mapping[str, Any], seed: int, steps: in
     residency.sync_in()
 
     per_step: List[Dict[str, Any]] = []
-    # MOVEMENT IS MEASURED AT EVERY STEP, NEVER FIRST-VERSUS-LAST, and this is a
+    # Movement is measured at every step, never first-versus-last, and this is a
     # correction a measurement made it: with a k vector whose target-0 coefficients
     # are both zero, the BFAST state's advance is exactly ``-2 * state``, so the
     # store is ``s = -s`` and after an EVEN budget the volume is back at its seed.
@@ -620,7 +620,7 @@ def run_case(product: Product, keywords: Mapping[str, Any], seed: int, steps: in
         if difference or census:
             break
 
-    # AN AUXILIARY THE ARRAY PATH NEVER MOVES IS THE CONTRACT, NOT A DEAD PASS: under
+    # An auxiliary the array path never moves is the contract, not a dead pass: under
     # the per-chunk forms an ``fu``/``f_w`` volume whose layer no chunk carries (a 2-D
     # case's z) moves on no path. It is still compared word for word.
     untouched = sorted(name for name, count in reference_moved.items()
@@ -632,7 +632,7 @@ def run_case(product: Product, keywords: Mapping[str, Any], seed: int, steps: in
     clean = all(row["reference_subnormals"] == 0 for row in per_step)
     launches_ok = (plan.runs == len(per_step)
                    and plan.launches == plan.launches_per_run * len(per_step))
-    # THE NON-VACUITY FLOOR, and it is per-VOLUME rather than a total: a weld that
+    # The non-vacuity floor, and it is per-volume rather than a total: a weld that
     # never wrote H at all would still move B and pass a summed check. The SEAM
     # volumes are the ones this weld is responsible for and they must move on every
     # value class.
@@ -682,7 +682,7 @@ def run_separate_control(product: Product, keywords: Mapping[str, Any], seed: in
                          steps: int) -> Dict[str, Any]:
     """The SEPARATE certified products beside the fused one, same state.
 
-    THE LEG THAT MAKES "FUSION" A MEASUREMENT RATHER THAN A NAME. Three engines from
+    The leg that makes "FUSION" a measurement rather than a name. Three engines from
     one seed: the array path, the two ALREADY CERTIFIED Metal sub-step products for
     THIS run kind stepping the same seam as separate dispatches with the wall clear
     left on the HOST between them, and the fused product. All three must agree word
@@ -765,7 +765,7 @@ def _specialisation(fields: Any, pml: Any) -> Tuple[Tuple[int, ...], Tuple[bool,
 def needle(source: str, old: str, new: str, count: int = 1) -> str:
     """Replace ``count`` occurrences and REFUSE a no-op edit.
 
-    THE DEAD-BRANCH GUARD. A mutation whose needle is absent — because the line sits
+    The dead-branch guard. A mutation whose needle is absent — because the line sits
     under a specialisation this case does not emit — would launch the shipped kernel
     and report the defect as uncaught while measuring nothing. That is the single
     failure a mutation leg cannot see from its own result, so it is refused HERE, at
@@ -784,15 +784,15 @@ def shared_mutations(product: Product, codes: Sequence[int],
     """The defects EVERY one of these three welds can carry, since all three splice
     the same wall clear, the same three-line seam and the same constitutive lift.
 
-    THE NEEDLES ARE THE ALIGNED BODIES' (KERNELS.md §7.1, §7.2). The constitutive
+    The needles are cut from the bodies in MEEP's order. The constitutive
     half every product lifts is the certified one, which selects its form per chunk
-    and accumulates in MEEP's grouping; the curl-side needles are the aligned base
-    curl's -- the nonlinear weld's own -- which the beta and BFAST curls carry with
+    and accumulates in MEEP's grouping; the curl-side needles are the base curl's
+    in MEEP's order -- the nonlinear weld's own -- which the beta and BFAST curls carry with
     their passes inserted after the per-chunk forms. The two grouping mutations are
-    INVERTED: each
+    INVERTED (docs/development/certification.md#inverted-grouping-mutations): each
     plants the package's previous grouping and stays must-catch.
 
-    THE WALL ROWS ARE ARMED ONLY WHERE THE SPECIALISATION EMITS THEM. ``zero_metal_mask``
+    The wall rows are armed only where the specialisation emits them. ``zero_metal_mask``
     writes one line per WALLED axis, so on the beta family's 2-D mutation case (x and
     y walled, z of zero extent) the ``at_z`` row does not exist. Arming it there would
     raise in :func:`needle`; skipping it silently would be the dead-branch trap. The
@@ -807,7 +807,7 @@ def shared_mutations(product: Product, codes: Sequence[int],
     other = next((axis for axis in range(3) if axis != first), first)
     flag = ("at_x", "at_y", "at_z")[first]
     other_flag = ("at_x", "at_y", "at_z")[other]
-    # THE AUXILIARY AND CURL ROWS TAKE A TARGET WHOSE FORMS A CASE REACHES. Under the
+    # The auxiliary and curl rows take a target whose forms a case reaches. Under the
     # per-chunk forms ``fu`` is written only on its target's dsigu cells; on a PLANAR
     # product z carries no layer, so target 0 (dsigu z) never writes ``fu`` and its
     # two-partner curl (y and z) is never formed. There the rows take target 1
@@ -821,25 +821,25 @@ def shared_mutations(product: Product, codes: Sequence[int],
                 ("dtdx * (((c_y - c) + b) - b_z)", "dtdx * ((c_y - c) + (b - b_z))"))
 
     edits: Dict[str, str] = {
-        # THE SEAM ITSELF: take the curl instead of the recurrence's output.
+        # The seam itself: take the curl instead of the recurrence's output.
         "seam_takes_pre_recurrence_curl":
             needle(base, "float src0 = v0;", "float src0 = curl0;"),
-        # THE SEAM, WRONG COMPONENT.
+        # The seam, wrong component.
         "seam_takes_the_wrong_component":
             needle(base, "float src1 = v1;", "float src1 = v0;"),
-        # THE WALL CLEAR, DROPPED on the first walled axis.
+        # The wall clear, dropped on the first walled axis.
         "zero_metal_dropped":
             needle(base, f"    v{first} = {flag} ? 0.0f : v{first};\n", ""),
-        # THE WALL TABLE IS THE DIAGONAL FOR B, the off-diagonal for D. Reusing the
+        # The wall table is the diagonal for B, the off-diagonal for D. Reusing the
         # D-side table clears the wrong component on every walled run.
         "zero_metal_uses_the_d_side_table":
             needle(base, f"    v{first} = {flag} ? 0.0f : v{first};",
                    f"    v{first} = {other_flag} ? 0.0f : v{first};"),
-        # THE AUXILIARY IS NOT CLEARED: `zero_metal_B` passes B_COMPONENTS only.
+        # The auxiliary is not cleared: `zero_metal_B` passes B_COMPONENTS only.
         "zero_metal_also_masks_the_auxiliary":
             needle(base, f"    if (du{aux}) {{ u{aux}[ii] = n{aux}; }}",
                    f"    if (du{aux}) {{ u{aux}[ii] = {aux_flag} ? 0.0f : n{aux}; }}"),
-        # THE OWNERSHIP MASK, dropped. A different pass from the wall clear, on the
+        # The ownership mask, dropped. A different pass from the wall clear, on the
         # same component and axis — which is exactly why both are armed.
         "ownership_mask_dropped":
             needle(base, aux_mask, ""),
@@ -851,7 +851,7 @@ def shared_mutations(product: Product, codes: Sequence[int],
         # package's previous pairwise grouping.
         "curl_previous_grouping":
             needle(base, grouping[0], grouping[1]),
-        # THE RECURRENCE PAIRS are vec.hpp's cycle_direction: target 0 takes (y, z).
+        # The recurrence pairs are vec.hpp's cycle_direction: target 0 takes (y, z).
         "recurrence_axis_pair_swapped":
             needle(base, "float n0 = ((p0 * km_y) - curl0) * si_y;",
                    "float n0 = ((p0 * km_z) - curl0) * si_z;"),
@@ -969,7 +969,7 @@ def leg_binding_ceiling(product: Product) -> Dict[str, Any]:
     module = product.module
     separate = module.SEPARATE_SCALAR_BINDINGS
     packed = module.PACKED_BINDINGS
-    # THE REFUTED SIGNATURE BELONGS TO WHICHEVER MODULE OWNS THE KERNEL. The
+    # The refuted signature belongs to whichever module owns the kernel. The
     # nonlinear family owns none — its emitted bytes ARE the shipped weld's — so the
     # shipped weld's refuted signature IS its refuted signature, and reading it from
     # there is the same statement as the one-line source forward. A per-family copy
@@ -1002,7 +1002,7 @@ def leg_binding_ceiling(product: Product) -> Dict[str, Any]:
     pointers_needed = packed - 1
     pointers = "\n".join(f"    device float*       b{n:<6}[[buffer({n})]],"
                          for n in range(pointers_needed))
-    # THE STRUCT IS READ OFF THE SOURCE THAT ACTUALLY EMITS THIS WELD, which for the
+    # The struct is read off the source that actually emits this weld, which for the
     # nonlinear family is the SHIPPED weld's — that family owns no template and a
     # fallback that quietly built a five-field struct for an eleven-field kernel
     # would make this leg measure a different signature from the shipped one. It is
@@ -1034,7 +1034,7 @@ def leg_binding_ceiling(product: Product) -> Dict[str, Any]:
                for _ in range(pointers_needed)]
     buffers[-1] = torch.full((count,), 7.0, dtype=torch.float32, device="mps")
     shape, dtdx = (3, 4, 5), 0.125
-    # THE REAL PACKER, not a hand-built record: the field the kernel reads is then
+    # The real packer, not a hand-built record: the field the kernel reads is then
     # the field the plan builder writes. n_elem is the product of the shape (60),
     # deliberately not the eight-element probe buffers, so the guard is exercised.
     params = _params_for(product, shape, dtdx)
@@ -1144,7 +1144,7 @@ def leg_refusal(product: Product) -> Dict[str, Any]:
        D/E half, and treating it as disqualifying would throw away every row this
        family exists to serve;
     4. a FOLDED grid must be refused, naming both B-side fills;
-    5. THE SHIPPED ORDINARY WELD MUST REFUSE this product's configuration, and this
+    5. The shipped ordinary weld must refuse this product's configuration, and this
        product must refuse a plain configuration the ordinary weld admits. Three
        welds on one slot that co-admitted anything would be a composition hazard.
     """
@@ -1164,7 +1164,7 @@ def leg_refusal(product: Product) -> Dict[str, Any]:
     electric = _volume_source(fields, "Ez")
     electric_coverage = product.coverage(fields, pml, (electric,), residency)
 
-    # THE FOLD, ON A CONFIGURATION OF THIS RUN KIND, and that qualifier is the whole
+    # The fold, on a configuration of this run kind, and that qualifier is the whole
     # correction. A weld whose first clause is its run-kind inversion — the nonlinear
     # one returns on ``_nonlinear_spine_reasons`` before it reaches any grid clause —
     # refuses a PLAIN folded grid for the wrong reason and never evaluates the fold
@@ -1260,7 +1260,7 @@ def leg_equivalence(product: Product) -> Dict[str, Any]:
 
 
 def leg_policy(product: Product) -> Dict[str, Any]:
-    """One policy delivered, one REFUSED BY NAME — the whole lever this backend has.
+    """One policy delivered, one refused by name — the whole lever this backend has.
 
     On MPS the float32 subnormal flush is native and uncontrollable and ``keep`` is a
     refusal (metal_kernels/subnormal.py). "Both policies" here is therefore: the
@@ -1319,7 +1319,7 @@ def main() -> int:
     rows: List[Dict[str, Any]] = []
     index = 0
 
-    # ARM EVERYTHING FIRST, so a needle absent from a specialisation fails before any
+    # Arm everything first, so a needle absent from a specialisation fails before any
     # device time is spent and names itself in the traceback.
     armed: Dict[str, Dict[str, Any]] = {}
     for product in selected:
@@ -1405,7 +1405,7 @@ def main() -> int:
                     "note": "the precondition must FIRE on a band seed; identity is "
                             "NOT claimed here and the census is the measurement"})
 
-            # THE ONE ARMED EDIT REQUIRED TO BE UNCAUGHT.
+            # The one armed edit required to be uncaught.
             neutral = run_case(product, mutation_keywords,
                                seed_for(product.key, "neutral"), args.steps,
                                functions=armed[product.key]["neutral"])
@@ -1442,7 +1442,7 @@ def main() -> int:
                         "differing_arrays": result.get("differing_arrays"),
                         "launches": result.get("launches")})
 
-            # THE DISARM CHECK. Identical harness, identical case, SHIPPED bytes.
+            # The disarm check. Identical harness, identical case, SHIPPED bytes.
             record("disarm", "shipped_bytes_on_the_mutation_case",
                    {**run_case(product, mutation_keywords,
                                seed_for(product.key, "disarm"), args.steps)})

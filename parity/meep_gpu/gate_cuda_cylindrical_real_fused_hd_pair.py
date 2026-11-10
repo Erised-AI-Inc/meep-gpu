@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Device byte gate for the CUDA REAL m = 0 Dcyl H->D product (three launches).
 
-WHAT IS BEING CERTIFIED. ``meep_gpu/cuda_kernels/cylindrical_real_fused_hd_pair.py``:
+What is being certified. ``meep_gpu/cuda_kernels/cylindrical_real_fused_hd_pair.py``:
 launch 1 (slot ``update_H``) computes the certified ``update_H_pml_real`` body at the
 thread's own cell into launch-local scratch, with MEEP's per-chunk constitutive forms;
 launch 2 is the column-serial radial scan (``cylindrical_prefix``) over the SCRATCH Hy --
@@ -10,13 +10,13 @@ bindings rotate; launch 3 is the certified ``cyl_step_D_pml_real`` with the radi
 difference handed in. Three launches per seam, as the D side's own baseline is three
 under the per-chunk sum: the product saves NO launch and ships ``INSTALLABLE = False``.
 
-THE ARITHMETIC IS THE CERTIFIED HALVES', and the battery says so: launch 1's
-accumulation inverted to the package's old grouping (KERNELS.md section 7.1), the
-section 7.2 B battery on its constitutive select, the unguarded build, and the scratch
+The arithmetic is the certified halves', and the battery says so: launch 1's
+accumulation inverted to the package's old grouping (must be caught), the per-chunk
+form battery on its constitutive select, the unguarded build, and the scratch
 stores; the scan's own battery is ``gate_cuda_cylindrical_scan.py``'s, re-read here on
 the family's shapes by the ``spelling`` leg.
 
-THE CLAIM is per COMPLETE DRIVER STEP, as uint32 words over every stored volume, against
+The claim is per complete driver step, as uint32 words over every stored volume, against
 FOUR references stepped from one seed on every fixture: the array path, the certified
 singles (``update_H_pml_real`` then ``cyl_step_D_pml_real``), the composition the
 composer installs on these rows TODAY (the released real cylindrical B->H and D->E
@@ -95,7 +95,7 @@ REDUCED_LABELS: Tuple[str, ...] = ("r16_z20_metallic", "r9_z17_periodic", "r12_z
 #: ``{name: {"old", "new", "why", "live_on", ...}}`` -- device-source rewrites of
 #: launch 1, each of which MUST make a scored fixture diverge unless declared null.
 DEVICE_MUTATIONS: Dict[str, Dict[str, Any]] = {
-    # INVERTED (bit_parity_0_10 KERNELS.md section 7.1 and Appendix A): the shipped
+    # INVERTED: the shipped
     # accumulation IS MEEP's grouping, so the must-catch edit installs the package's old
     # two left-to-right accumulations.
     "accumulation_regrouped_to_the_old_package_order": {
@@ -128,11 +128,11 @@ DEVICE_MUTATIONS: Dict[str, Dict[str, Any]] = {
                 "it: B where it needs B_prev"),
         "live_on": "every fixture with an active absorber (kms != 0)",
     },
-    # --- MEEP's per-chunk forms (KERNELS.md section 7.2, the B battery) ---------------
+    # --- the per-chunk form battery (certification.md) --------------------------------
     "constitutive_auxiliary_stored_on_a_plain_cell": {
         "old": "    *fw_out = dsigw ? src : fw[idx];",
         "new": "    *fw_out = src;",
-        "why": ("the auxiliary contract (C2): off the dsigw run the array path leaves "
+        "why": ("the auxiliary contract: off the dsigw run the array path leaves "
                 "f_w_H untouched, and the rotation makes the scratch the live f_w_H"),
         "live_on": "every fixture with an active absorber and a plain cell",
     },
@@ -343,7 +343,7 @@ class RealAdapter(Adapter):
         pure_prelude = fused_hd_pair.constitutive_prelude()
         composed = (pure_prelude + fused_hd_pair.weld_args_struct() + raw_cell
                     + family.signature())
-        # THE PRELUDE IS STRIPPED FIRST: its helper closes its own parameter list on
+        # The prelude is stripped first: its helper closes its own parameter list on
         # "\n) {\n" too, and splitting the whole string there would hand back the
         # helper's body (whose two stores the PURE form moves) as if it were the kernel's.
         h_body = certified_h[len(prelude):].split("\n) {\n", 1)[1][: -len("}\n")]
@@ -466,7 +466,7 @@ class RealAdapter(Adapter):
                                   envelope=ContinuousEnvelope(frequency=1.0, is_integrated=True))
             return fields, pml, grid, [source]
 
-        # Since entry 25 an engine integrated source enters through f_minus_p and stands
+        # Since 1.0 an engine integrated source enters through f_minus_p and stands
         # no withdraw, so it is ADMITTED; a source class bringing its own withdraw is
         # still refused by name (hd_seam_restore.withdraw_refusal_checks).
         i_fields, i_pml, i_grid, i_sources = integrated()

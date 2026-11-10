@@ -1,6 +1,6 @@
 """The real-field PML gate's harness clauses, checked where there is no device.
 
-THE GATE ITSELF NEEDS A GPU. Everything that DECIDES what the gate measures does
+The gate itself needs a GPU. Everything that DECIDES what the gate measures does
 not: which operand classes it draws, whether its mutations still resolve against
 the shipped kernel, which verdict key the runner reads, what its step budget is,
 and whether a leg can report a pass for a mutation that never reached the
@@ -9,9 +9,9 @@ gate that measured nothing returns the same 120/120 a gate that measured
 everything does — and until this file existed each was first exercised on the one
 host that can launch a kernel, hours into a device run.
 
-The clauses here are the ones the disposition names as missing on this track and
-present on the sibling one (`the design notes (cuda-kernel-track-disposition)`
-§1.3, §1.4, §1.5), plus one defect found while adding them: the mutation runner
+The clauses here are the ones a review found missing on this track and present on
+the sibling Triton track (the step budget, an operand class that can see the policy,
+and the mutation accounting), plus one defect found while adding them: the mutation runner
 was parsing a verdict key the probe had renamed, so every leg's `single_ran` read
 0 and `ok` was False on all of them.
 """
@@ -45,7 +45,7 @@ CERTIFIED_SOURCE_ATTRIBUTES = ("_step_B_pml_real_kernel_code",
 CONSTITUTIVE_SOURCE_ATTRIBUTES = ("_update_H_pml_real_kernel_code",
                                   "_update_E_pml_real_kernel_code")
 
-#: WHICH KERNELS EACH MUTATION TARGETS, and it is a partition, not a hint. A
+#: Which kernels each mutation targets, and it is a partition, not a hint. A
 #: mutation is written against one sub-step's expression tree, so "matches
 #: nothing" is the correct answer in the other sub-step's kernels and a DEFECT in
 #: its own. Before the constitutive pair landed there was only one family and the
@@ -58,7 +58,7 @@ MUTATION_TARGETS = {
     "curl": ("regroup_stencil", "drop_metallic_mask", "swap_dsig_dsigu",
              "drop_fu_store", "commute_dtdx_scale", "reload_fu_from_memory",
              "read_fprev_after_store",
-             # THE FOLD'S TWO MASKS, added with the BC_MIRROR_PERIODIC branch on
+             # The fold's two masks, added with the BC_MIRROR_PERIODIC branch on
              # 2026-08-20. Curl-only for the same reason ``drop_metallic_mask`` is:
              # ``_mask_non_owned_cells`` is a CURL pass. The constitutive kernels
              # read their own cell and have no ownership mask at all, which is why
@@ -73,7 +73,7 @@ MUTATION_TARGETS = {
                      "own_axis_to_x_for_all_three"),
     "constitutive_E_only": ("drop_inverse_epsilon", "inv_eps_left",
                             "bind_Ez_inv_eps_for_all_three"),
-    # THE LINEAR-INDEX DECOMPOSITION IS THE SAME THREE LINES IN ALL FOUR KERNELS,
+    # The linear-index decomposition is the same three lines in all four kernels,
     # and this fourth family exists because the partition check found that out.
     # It was written for the constitutive pair — nothing armed the decomposition
     # there — and it resolves on the certified curl pair too, where nothing armed
@@ -133,7 +133,7 @@ def device_sources():
 
 
 # --------------------------------------------------------------------------
-# §1.4 — the operand class, and what each one provably can and cannot produce.
+# The operand class, and what each one provably can and cannot produce.
 # --------------------------------------------------------------------------
 
 def _census(arrays) -> dict:
@@ -173,7 +173,7 @@ def keeps_subnormals():
 
 
 def test_the_uniform_class_cannot_produce_a_subnormal_or_a_signed_zero(probe):
-    """The claim the disposition makes about this leg, MEASURED rather than read.
+    """The claim a review made about this leg, measured rather than read.
 
     ``uniform(-1, 1)`` draws from the normal range and never lands on a zero, so a
     verdict cut from it says nothing about the value class a float32 subnormal
@@ -269,7 +269,7 @@ def test_the_split_leaves_the_other_legs_that_share_this_summarizer_alone(probe)
 
 
 # --------------------------------------------------------------------------
-# §1.4 on the CONSTITUTIVE family: the axis the leg did not have.
+# The operand class on the CONSTITUTIVE family: the axis the leg did not have.
 # --------------------------------------------------------------------------
 
 def _constitutive_hosts(probe, side, value_class, shape=(13, 11, 9), seed=4):
@@ -280,11 +280,11 @@ def _constitutive_hosts(probe, side, value_class, shape=(13, 11, 9), seed=4):
 @pytest.mark.parametrize("side", ("H", "E"))
 def test_the_constitutive_uniform_class_cannot_reach_the_band_it_is_run_under(
         probe, side):
-    """WHY THE TWO-POLICY CONSTITUTIVE RUN WAS GOING TO ESTABLISH NOTHING.
+    """Why the two-policy constitutive run was going to establish nothing.
 
     ``run_pml_gate_mutations.py`` prescribes running the battery twice, once per
-    float32 subnormal policy, because "the two verdicts side by side are what
-    closes §1.1". Under ``uniform`` no value in this leg can reach the band the
+    float32 subnormal policy, because "the two verdicts side by side ... are the
+    evidence". Under ``uniform`` no value in this leg can reach the band the
     policy governs, so the two runs agree by construction — the same finding the
     curl leg recorded and fixed, not carried into this family until 2026-08-15.
 
@@ -421,7 +421,7 @@ def test_a_run_that_swept_only_the_band_does_not_report_a_pass(probe):
 
 
 # --------------------------------------------------------------------------
-# §1.3 — the step budget.
+# The step budget.
 # --------------------------------------------------------------------------
 
 def test_the_curl_multi_step_budget_is_the_one_the_sibling_track_certifies(probe):
@@ -443,7 +443,7 @@ def test_the_curl_multi_step_budget_is_the_one_the_sibling_track_certifies(probe
 def test_the_constitutive_budget_is_the_one_its_record_was_cut_at(probe):
     """The budget and the record that quotes it must move together, or not at all.
 
-    THIS TEST USED TO BE A TRIPWIRE and it fired as designed. While the pair was
+    This test used to be a tripwire and it fired as designed. While the pair was
     ungated it asserted ``CERTIFIED_KERNELS = ()`` in the kernel module, with the
     message "a constitutive kernel has been certified; its record now names a step
     budget and this constant can no longer move without re-scoping it". Both
@@ -452,7 +452,7 @@ def test_the_constitutive_budget_is_the_one_its_record_was_cut_at(probe):
 
     8 was never available here for the reason it is fixed on the dispersive legs:
     ``triton_kernels/fingerprints.json`` measured "8, 10 and 6 consecutive steps
-    all passed a divergence that 40 did not", and the same tranche's laptop leg
+    all passed a divergence that 40 did not", and the same family's laptop leg
     compares the expression tree over 60 — so at 8 the leg measuring the
     EXPRESSION TREE would have run deeper than the leg measuring the COMPILED
     KERNEL. Now that a record exists, the constant is pinned to it from both
@@ -496,7 +496,7 @@ def test_the_multi_step_budget_is_carried_into_the_artifact(probe):
 def test_a_constitutive_multi_step_run_whose_auxiliary_never_advanced_fails(probe):
     """``fw[i] = src`` is unconditional, so a fixed source is a fixed point.
 
-    MEASURED on the leg as it stood: over 8 launches ``f_w`` changed against the
+    Measured on the leg as it stood: over 8 launches ``f_w`` changed against the
     previous step at step 1 only, and equalled the source exactly at every step —
     while the docstring said sources were "held fixed, so f_w compounds its own
     history". 59 of 60 launches adding no state makes "identical for 60 steps" a
@@ -515,7 +515,7 @@ def test_a_constitutive_multi_step_run_whose_auxiliary_never_advanced_fails(prob
 
 
 # --------------------------------------------------------------------------
-# §1.5 — mutations that must be UNCAUGHT, and their discriminators.
+# Mutations that must be UNCAUGHT, and their discriminators.
 # --------------------------------------------------------------------------
 
 def _expected_attributes(name: str) -> tuple:
@@ -552,7 +552,7 @@ def test_every_source_mutation_still_resolves_on_the_kernels_it_targets(
 
     It reads the hand track's own table (``probe.HAND_NEEDLES``), the one
     :class:`HandTrackAdapter` arms: every entry borrowed from the shared default, which
-    is spelled on this pair's text since 0.10.
+    is spelled on this pair's text since 1.0.
     """
     stale = []
     for name, transform in probe.HAND_NEEDLES.items():
@@ -800,7 +800,7 @@ def test_every_leg_names_a_mutation_the_probe_implements(probe, runner):
 
 
 # --------------------------------------------------------------------------
-# §1.5 — armed-mutation accounting.
+# Armed-mutation accounting.
 # --------------------------------------------------------------------------
 
 class _StubCache:
@@ -897,7 +897,7 @@ def test_an_unreadable_verdict_fails_the_leg_rather_than_scoring_zero(runner):
 
 
 # --------------------------------------------------------------------------
-# §1.2 — the second half the memo key cannot reach.
+# The compile cache: the second half the memo key cannot reach.
 # --------------------------------------------------------------------------
 
 def test_every_leg_gets_a_private_policy_token_carrying_cache_directory(runner):
@@ -1004,7 +1004,7 @@ def test_a_module_loaded_INSIDE_a_guard_still_gets_that_guard(probe, monkeypatch
 
 
 # --------------------------------------------------------------------------
-# §1.4 — the lifted-case leg's Courant axis.
+# The lifted-case leg's Courant axis.
 # --------------------------------------------------------------------------
 
 def test_the_lifted_leg_sweeps_a_dtdx_that_is_not_exactly_representable(lifted):
@@ -1025,7 +1025,7 @@ def test_the_lifted_leg_sweeps_a_dtdx_that_is_not_exactly_representable(lifted):
 
 
 def test_the_provenance_file_names_the_policy_the_bytes_were_cut_under(probe, tmp_path):
-    """§1.1's actual requirement: the ARTIFACT has to say which policy it is.
+    """The actual requirement: the ARTIFACT has to say which policy it is.
 
     ``grep -ric`` for ``subnormal|ftz|denormal|policy`` over the 2026-08-09/10
     artifact's five files returned 0 on all five, so the recorded 120/120 cannot
@@ -1097,7 +1097,7 @@ def test_the_lifted_leg_will_not_pass_on_exact_dtdx_cases_alone(lifted):
 
 
 # --------------------------------------------------------------------------
-# §1.4 again — the record's operand-class census against the live generator.
+# The operand class again — the record's census against the live generator.
 # --------------------------------------------------------------------------
 
 def test_the_recorded_operand_census_is_what_the_shipped_generator_draws(
@@ -1152,7 +1152,7 @@ def test_the_recorded_operand_census_is_what_the_shipped_generator_draws(
 
 
 # --------------------------------------------------------------------------
-# §1.1 — the runner's policy plumbing, keyed on the RESOLUTION.
+# The policy record: the runner's policy plumbing, keyed on the RESOLUTION.
 # --------------------------------------------------------------------------
 
 def test_match_meep_is_resolved_before_the_cache_directory_is_chosen(runner):
@@ -1226,7 +1226,7 @@ def test_every_argparse_policy_choice_reaches_an_installable_state(runner):
 
 
 # --------------------------------------------------------------------------
-# The policy-reach probe, which is certification.json's §1.1 evidence.
+# The policy-reach probe, certification.json's evidence that the policy reaches the compile.
 # --------------------------------------------------------------------------
 
 def test_the_policy_reach_probe_can_still_read_the_kernel_memo():
@@ -1269,7 +1269,7 @@ def test_the_policy_reach_probe_can_still_read_the_kernel_memo():
 
 
 # --------------------------------------------------------------------------
-# §1.2 — the NVRTC binary observer: the only thing that can tell two policies'
+# The NVRTC binary observer: the only thing that can tell two policies'
 # BYTES apart, and the one wrapper that could silently disable the strip.
 # --------------------------------------------------------------------------
 
@@ -1278,7 +1278,7 @@ def test_the_observer_is_installed_before_the_policy_so_it_sees_stripped_options
 
     Installed AFTER the policy the observer sits OUTSIDE the strip and records the
     pre-strip option tuple — which still carries ``-ftz=true`` under both
-    policies, making the two legs look alike in exactly the field the §1.2
+    policies, making the two legs look alike in exactly the field the two-binaries
     question is asked in. The install order is therefore a correctness property,
     not a style one, so it is asserted on the source.
     """
@@ -1288,6 +1288,31 @@ def test_the_observer_is_installed_before_the_policy_so_it_sees_stripped_options
     assert observer < policy, (
         "the NVRTC observer is installed after the policy, so it wraps the strip "
         "instead of being wrapped BY it and records pre-strip options")
+
+
+def _stand_in_compiler(front_end, cupy14=False):
+    """A stand-in ``cupy.cuda.compiler``: a real module whose compile path calls its NVRTC
+    front end through the module, as CuPy's does, so the probe can read the seam off it.
+
+    CuPy 13 shape: ``_compile_with_cache_cuda`` calls ``compile_using_nvrtc``. CuPy 14
+    shape: it calls ``_compile_using_nvrtc_no_warning``, and the public
+    ``compile_using_nvrtc`` hands over to that.
+    """
+    compiler = types.ModuleType("cupy.cuda.compiler")
+    if cupy14:
+        exec("def _compile_with_cache_cuda(source, options, arch, extra_source=None, "
+             "backend='nvrtc'):\n"
+             "    return _compile_using_nvrtc_no_warning(source, options, arch)\n"
+             "def compile_using_nvrtc(source, options=(), arch=None, *rest):\n"
+             "    return _compile_using_nvrtc_no_warning(source, options, arch, *rest)\n",
+             compiler.__dict__)
+        compiler._compile_using_nvrtc_no_warning = front_end
+    else:
+        exec("def _compile_with_cache_cuda(source, options, arch, cache_dir, "
+             "extra_source=None, backend='nvrtc'):\n"
+             "    return compile_using_nvrtc(source, options, arch)\n", compiler.__dict__)
+        compiler.compile_using_nvrtc = front_end
+    return compiler
 
 
 def test_the_observer_does_not_inherit_the_policy_mark_and_suppress_the_strip(probe):
@@ -1311,7 +1336,7 @@ def test_the_observer_does_not_inherit_the_policy_mark_and_suppress_the_strip(pr
         return (b"CUBIN-BYTES", "irrelevant")
 
     setattr(original, subnormal_policy._POLICY_MARK, subnormal_policy.KEEP)
-    fake = types.SimpleNamespace(compile_using_nvrtc=original)
+    fake = _stand_in_compiler(original)
     cupy_stub = types.SimpleNamespace(cuda=types.SimpleNamespace(compiler=fake))
 
     saved_cupy = sys.modules.get("cupy")
@@ -1337,7 +1362,7 @@ def test_the_observer_does_not_inherit_the_policy_mark_and_suppress_the_strip(pr
 
 
 def test_the_observer_fingerprints_the_bytes_and_the_options_nvrtc_received(probe):
-    """A source hash cannot answer §1.2; both policies compile the same source."""
+    """A source hash cannot tell two binaries apart; both policies compile the same source."""
     calls = []
 
     def original(source, options=(), *args, **kwargs):
@@ -1345,7 +1370,7 @@ def test_the_observer_fingerprints_the_bytes_and_the_options_nvrtc_received(prob
         # Distinct bytes per option tuple, as a real compiler produces.
         return (b"CUBIN:" + repr(tuple(options)).encode(), "log")
 
-    fake = types.SimpleNamespace(compile_using_nvrtc=original)
+    fake = _stand_in_compiler(original)
     cupy_stub = types.SimpleNamespace(cuda=types.SimpleNamespace(compiler=fake))
     saved = {k: sys.modules.get(k) for k in
              ("cupy", "cupy.cuda", "cupy.cuda.compiler")}
@@ -1376,12 +1401,52 @@ def test_the_observer_fingerprints_the_bytes_and_the_options_nvrtc_received(prob
     only_source = next(iter(report["binary_sha256_by_source"]))
     assert len(report["binary_sha256_by_source"][only_source]) == 2, (
         "one source mapping to one binary would mean the two legs cannot be "
-        "told apart, which is the §1.2 question")
+        "told apart, which is the two-binaries question")
     assert [e["ftz_true_present"] for e in report["observations"]] == [True, False]
 
 
+def _with_cupy_compiler(compiler):  # sys.modules entries for cupy, cupy.cuda and the compiler
+    cupy_stub = types.SimpleNamespace(cuda=types.SimpleNamespace(compiler=compiler))
+    return {"cupy": cupy_stub, "cupy.cuda": cupy_stub.cuda, "cupy.cuda.compiler": compiler}
+
+
+def test_the_observer_sits_on_the_front_end_cupy_14_calls(probe, monkeypatch):
+    """CuPy 14's compile path calls ``_compile_using_nvrtc_no_warning``, not
+    ``compile_using_nvrtc``: the observer is installed there, so every compile is seen,
+    through the compile path and through the public wrapper alike."""
+    def original(source, options=(), *args, **kwargs):
+        return (b"CUBIN:" + repr(tuple(options)).encode(), "log")
+
+    fake = _stand_in_compiler(original, cupy14=True)
+    for key, value in _with_cupy_compiler(fake).items():
+        monkeypatch.setitem(sys.modules, key, value)
+    probe._NVRTC_OBSERVATIONS.clear()
+    try:
+        record = probe.install_nvrtc_binary_observer()
+        assert record["installed"] is True, record
+        assert record["seam"] == "cupy.cuda.compiler._compile_using_nvrtc_no_warning", record
+        fake._compile_with_cache_cuda("SOURCE", ("--fmad=false",), None)
+        fake.compile_using_nvrtc("SOURCE", ("--fmad=false", "-ftz=true"))
+        assert probe.nvrtc_binary_report()["nvrtc_calls_observed"] == 2
+    finally:
+        probe._NVRTC_OBSERVATIONS.clear()
+
+
+def test_an_unreadable_compile_path_leaves_the_observer_uninstalled_and_says_why(
+        probe, monkeypatch):
+    """A spy on a name the compile path does not call would install and see nothing, so
+    a compile path the seam cannot be read off is refused by name."""
+    fake = types.SimpleNamespace(compile_using_nvrtc=lambda source, options=(): None)
+    for key, value in _with_cupy_compiler(fake).items():
+        monkeypatch.setitem(sys.modules, key, value)
+    record = probe.install_nvrtc_binary_observer()
+    assert record["installed"] is False, record
+    assert "the NVRTC front end of CuPy's compile path cannot be located" in record["why"]
+    assert "_compile_with_cache_cuda" in record["why"], record
+
+
 # --------------------------------------------------------------------------
-# §1.4 — non-vacuity is carried by the RUN's own record, not by trust.
+# Non-vacuity is carried by the RUN's own record, not by trust.
 # --------------------------------------------------------------------------
 
 def test_the_case_census_counts_the_values_that_actually_go_to_the_device(probe):
@@ -1435,11 +1500,11 @@ def test_a_band_leg_whose_operands_hold_no_subnormal_is_marked_vacuous(probe):
 
 
 def test_the_lifted_leg_can_name_the_policy_its_bytes_were_cut_under(lifted):
-    """§1.1 applies to EVERY artifact this track cuts, not only to ``gate.json``.
+    """Naming the policy applies to EVERY artifact this track cuts, not only to ``gate.json``.
 
-    The lifted leg is the one that runs at corpus scale, and until this round it
+    The lifted leg is the one that runs at corpus scale, and before this change it
     had no way to say which policy compiled the kernel it validated — the exact
-    defect §1.1 records against the 2026-08-09/10 record. Leaving it that way
+    defect recorded against the 2026-08-09/10 record. Leaving it that way
     while fixing the gate would move the unanswerable question rather than answer
     it, so the flag, the install and the stamp are asserted here.
     """
@@ -1455,11 +1520,11 @@ def test_the_lifted_leg_can_name_the_policy_its_bytes_were_cut_under(lifted):
         "binary under the OTHER policy")
     assert '"subnormal_policy": probe.subnormal_policy_stamp(' in source, (
         "the lifted artifact does not stamp the policy, so its verdict cannot "
-        "be filtered by one — disposition §1.1")
+        "be filtered by one")
 
 
 def test_a_flush_leg_asks_the_probe_to_import_meep_first(runner, probe):
-    """MEASURED on device 2026-08-15: without this, the whole flush leg RAISES.
+    """Measured on device 2026-08-15: without this, the whole flush leg RAISES.
 
     ``install_subnormal_policy('flush')`` refuses in a process that has not
     imported MEEP — ``mp.set_zero_subnormals`` is the only route to this
@@ -1528,7 +1593,7 @@ def _module_with_log(name, digests):
 
 
 def test_armed_accounting_reads_the_constitutive_modules_log_too(probe):
-    """MEASURED FAILURE, 2026-08-15: every constitutive leg reported 0 of 0.
+    """Measured FAILURE, 2026-08-15: every constitutive leg reported 0 of 0.
 
     ``armed_mutation_accounting`` read ``adapter.module.compile_cache`` — the
     CURL module's log — and a constitutive leg compiles nothing there. The

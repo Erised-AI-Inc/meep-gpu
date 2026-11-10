@@ -1,6 +1,6 @@
 """Metal ``update_E`` for the fold + tensor-row + dispersion intersection.
 
-**THE ROW IS MEEP'S DOUBLE ROW, IN SOFTWARE BINARY64 (ruling R7).** The source term
+**The row is MEEP's double row, in software binary64 (docs/design/floating-point.md#double-precision-on-the-metal-table).** The source term
 is the off-diagonal row ``gs*us + OFFDIAG(...) + OFFDIAG(...)`` over the ``D - P0 -
 P1 ...`` volumes, which the array path forms in float64 and rounds once
 (``stepping._offdiagonal_terms``, ``_rounded_row``). The kernel forms it as the
@@ -11,14 +11,14 @@ off-diagonal single does, statement for statement and through the same emitter
 double ``0.25`` and added left to right where the cell's chunk keeps the term; one
 rounding to float32. A component with no live row keeps the float32 ``gs*us``.
 
-**PRESENCE IS PER CHUNK (KERNELS.md §2).** The six 27-bit presence words
+**Presence is per chunk (docs/development/kernel-tables.md#record-layout).** The six 27-bit presence words
 (``OffdiagPresence kw``) ride in ``Params`` before the chunk record and are read by
 the single's own block (:func:`.offdiag_update_e.presence_block`, on the folded
 codes); the host builds them from the array path's presence
 (:func:`.offdiag_update_e.presence_for`) and the predicate refuses by name a
 division the record cannot carry them on.
 
-**THE PML TAIL IS THE ARRAY PATH'S PER-CHUNK SELECT.** The chunk record rides in the
+**The PML tail is the array path's per-chunk select.** The chunk record rides in the
 kernel's ``Params`` (``ChunkBounds cb``, :func:`.chunk_bounds.params_alias`), and the
 tail is the base constitutive kernel's own, character for character: on a cell whose
 chunk carries the component's own (``dsigw``) layer ``prev`` is read before ``f_w``
@@ -28,7 +28,7 @@ membership locals and their bounds block are the E side's
 (``shaders.constitutive_bounds_block("E")``,
 ``shaders.constitutive_membership_flags("E")``), the predicate the base kernel reads.
 
-THE SCALARS MOVE INTO ``Params``. The shader binds 27 volumes; the four scalars
+The scalars move into ``Params``. The shader binds 27 volumes; the four scalars
 (``nx``, ``ny``, ``nz``, ``n_elem``), the presence words and the chunk record ride in
 one ``constant Params&`` (:data:`BINDING_COUNT` 28 of
 :data:`.device.MAX_BUFFER_BINDINGS` 31), so neither costs a binding.
@@ -529,8 +529,10 @@ class MetalFoldedOffdiagDispersivePlan:
         import torch  # noqa: PLC0415
         for component, pack in self._packs.items():
             states = self._poles[component]
+            # Resolving which array is current is not a read of its words: the plain dict
+            # subscript keeps a held mirror on the device (barrier.BarrierDict acquires).
             device_sources = tuple(
-                self.residency.tensor_for_host(state.P[component])
+                self.residency.tensor_for_host(dict.__getitem__(state.P, component))
                 for state in states)
             destination = self._tensors[f"pack:{component}"].reshape(-1)
             if any(source is not None for source in device_sources):
@@ -630,7 +632,7 @@ def _arm_plan(context: Any, slot: str) -> Optional[MetalFoldedOffdiagDispersiveP
 
 
 def register_arms() -> Tuple[Any, ...]:
-    # Wired: the row is the array path's double row (ruling R7, software binary64).
+    # Wired: the row is the array path's double row (in software binary64).
     return (arms.register(
         FAMILY, SLOT, LABEL, _arm_coverage, _arm_plan,
         prefix=f"{LABEL}: ", noun="folded tensor dispersive stored-E constitutive",

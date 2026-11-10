@@ -1,6 +1,6 @@
 """Byte-identity gate for the two hand-CUDA SCRATCH-OUTPUT stencil welds.
 
-WHAT IS UNDER TEST, and what makes this gate different from every other one on this
+What is under test, and what makes this gate different from every other one on this
 track. ``meep_gpu/cuda_kernels/offdiag_fused_electric_pair.py`` and
 ``folded_offdiag_fused_electric_pair.py`` occupy the two ``D_to_E`` cells the hand-CUDA
 board has recorded STENCIL-BLOCKED since they were first priced::
@@ -9,7 +9,7 @@ board has recorded STENCIL-BLOCKED since they were first priced::
      thread does not own. In one launch that cell is written by another block, and
      CUDA offers no grid-wide barrier inside an ordinary launch."
 
-That verdict was MEASURED, and it is true of the weld it describes. The products under
+That verdict was measured, and it is true of the weld it describes. The products under
 test are a different weld: the curl half writes ``D_new``/``fu_new`` to a LAUNCH-LOCAL
 SCRATCH, the constitutive half takes its own cell from a register and RECOMPUTES each
 foreign cell from PRE-LAUNCH state through the same ``__device__`` function, and the
@@ -18,10 +18,10 @@ whether the recorded refusal was wrong; it asks whether a launch with neither of
 refusal's two premises is byte-identical to the array path.
 
 =============================================================================
-THE BAR, AND WHERE IT COMES FROM
+The bar, and where it comes from
 =============================================================================
 
-``results/triton_fused_offdiag_electric_2026-08-20`` is the artifact that MEASURED the
+``results/triton_fused_offdiag_electric_2026-08-20`` is the artifact that measured the
 in-place weld's race, and this gate is patterned on it and held to the inverse of its
 S1: where that record required the subject to DISAGREE and required the disagreement
 to be schedule-dependent, this one requires
@@ -32,7 +32,7 @@ to be schedule-dependent, this one requires
   anywhere in the twenty-four stored volumes fails the leg and the first divergent
   step is reported rather than a final pass/fail.
 * **S1 repeated, so a schedule can be exposed.** The 2026-08-20 record's whole finding
-  was that the in-place weld's answer DEPENDED ON THE BLOCK SCHEDULE, which a single
+  was that the in-place weld's answer depended on the block schedule, which a single
   run cannot see. Every S1 fixture is therefore run :data:`SCHEDULE_REPEATS` times from
   the same seed and every repeat must give the same bytes -- and the mutation
   ``foreign_read_from_live_buffer`` below rebuilds exactly the in-place shape, so this
@@ -52,17 +52,17 @@ to be schedule-dependent, this one requires
   anything under ``meep_gpu/``.
 
 =============================================================================
-THE MUTATIONS, AND WHY THESE
+The mutations, and why these
 =============================================================================
 
-Five are the residue audit's own list for this design, and each one is a defect that
+Five are specific to this design, and each one is a defect that
 COMPILES and produces a smooth, converged, plausible field:
 
 * ``halo_recompute_dropped`` -- a foreign sample takes the thread's OWN cell instead
   of recomputing at the neighbour. This is the shortcut a reader reaches for when the
   recompute looks expensive, and the whole design is that it is not available.
 * ``foreign_read_from_live_buffer`` -- the resolution reads the SCRATCH the launch is
-  writing instead of the pre-launch volume. THIS IS THE IN-PLACE WELD, rebuilt: if it
+  writing instead of the pre-launch volume. This is the in-place weld, rebuilt: if it
   is not caught, this gate cannot tell the two designs apart and its S1 means nothing.
 * ``scratch_aliased_to_storage`` -- the same defect from the host side, through the
   binding rather than the source. Expected to be refused BY NAME before any launch, so
@@ -80,7 +80,7 @@ constitutive boundary codes replaced by the curl's, which is the one edit that f
 makes and its twin does not.
 
 =============================================================================
-WHAT THIS GATE DOES NOT CLAIM
+What this gate does not claim
 =============================================================================
 
 No throughput claim is made or possible: the box is shared, and this file times
@@ -206,7 +206,7 @@ def products() -> Dict[str, Any]:
 #: terminations appear, both full-count parities appear, and both an isotropic and a
 #: diagonally anisotropic permittivity appear.
 #:
-#: THE ANISOTROPIC HALF IS NOT DECORATION. ``update_E`` binds THREE
+#: The anisotropic half is not decoration. ``update_E`` binds THREE
 #: inverse-permittivity pointers and on an isotropic run all three are the SAME
 #: allocation, so a kernel that read ``inv_eps_Ez`` for all three would be
 #: byte-identical on every isotropic row.
@@ -299,7 +299,7 @@ def build(spec: Dict[str, Any], value_class: str, rng):
         for partner in partners}
         for row, partners in _rows_for(spec).items()}
     fields.set_epsilon_volumes(epsilon, inverse, chi1inv_offdiagonal=rows)
-    # THE BAND CLASS IS THE SHARED DRAW, not a second one. `subnormal_band_hosts`
+    # The band class is the shared draw, not a second one. `subnormal_band_hosts`
     # takes the NAMES to seed, so the whole stored set goes into the band together
     # -- a class that seeded only the D family would leave E and f_w_E outside the
     # band and the census would say the leg was non-vacuous when half of it was.
@@ -418,7 +418,7 @@ def leg_driver_order() -> Dict[str, Any]:
         replaces = list(module.REPLACES)
         start, end = order.index(replaces[0]), order.index(replaces[-1])
         span = order[start:end + 1]
-        # THE GAP IS THE INTERESTING PART, and it is not a hole. A product may
+        # The gap is the interesting part, and it is not a hole. A product may
         # declare a SHORTER run than the driver's span so long as every pass it
         # skips is one its own predicate makes INERT -- the shape
         # no_pml_complex_fused_electric_pair records for itself: "its seam is
@@ -485,9 +485,9 @@ class _CountingKernel:
 class MemoLaunchCounter:
     """Wrap every memoized device kernel; restore on exit.
 
-    THE MEMO IS THE RIGHT SEAM and it is the shipped one: every launcher in this
-    package reaches its kernel through ``compile_cache.get_or_compile``. NOTHING IS
-    INSTALLED UNLESS THE MEMO IS ALREADY WARM -- a kernel first compiled inside the
+    The memo is the right seam and it is the shipped one: every launcher in this
+    package reaches its kernel through ``compile_cache.get_or_compile``. Nothing is
+    installed unless the memo is already warm -- a kernel first compiled inside the
     counted region is launched and NOT counted.
     """
 
@@ -554,7 +554,7 @@ def run_case(spec: Dict[str, Any], value_class: str, steps: int, *,
              kernel: Optional[Any] = None, rotate: bool = True,
              threads: int = 256, repeat: int = 0,
              label_suffix: str = "") -> Dict[str, Any]:
-    """Step two engines side by side and compare per COMPLETE DRIVER STEP.
+    """Step two engines side by side and compare per complete driver step.
 
     The reference runs ``stepping``'s own ten-pass sequence; the subject runs the
     fused launch plus the passes it does not replace. Compared as raw uint32 WORDS
@@ -635,7 +635,7 @@ def run_case(spec: Dict[str, Any], value_class: str, steps: int, *,
 def fixture_facts(spec: Dict[str, Any]) -> Dict[str, Any]:
     """What is actually LIVE on this fixture, read off a real grid.
 
-    THE MUTATION BATTERY'S HONESTY DEPENDS ON THIS. An arm scored on a fixture where
+    The mutation battery's honesty depends on this. An arm scored on a fixture where
     the machinery it disables is inert comes back UNCAUGHT and looks like a hole; an
     arm predicted null on a fixture where it IS live is a catch nobody made. Both are
     settled by asking the grid rather than by reading the spec's boundary strings --
@@ -674,7 +674,7 @@ def fixture_facts(spec: Dict[str, Any]) -> Dict[str, Any]:
             plan["reflect"][axis] >= 0 and plan["reflect"][axis] != shape[axis] - 2
             for axis in range(3)),
         "boundary_readings_differ": codes["curl"] != codes["constitutive"],
-        # THE ONE SHAPE `clear_order_flipped` CAN MOVE A WORD ON: a component with an
+        # The one shape `clear_order_flipped` can move a word on: a component with an
         # ODD near parity on one of its axes AND a wall on another of them, so a near
         # ghost lands in a plane the clear owns. Read per component off the Yee table
         # rather than off the fixture's strings.
@@ -702,7 +702,7 @@ def needle(source: str, old: str, new: str, count: int = 1) -> str:
 
 #: ``(name, applies_to, source rewrite, why, when it is LIVE)``.
 #:
-#: ``live`` decides whether the arm can move a word ON THIS FIXTURE. Where it cannot,
+#: ``live`` decides whether the arm can move a word on this fixture. Where it cannot,
 #: the arm is recorded ``predicted_null`` WITH the reason -- the vacuity discipline
 #: this campaign runs on, and the only honest way to report an arm that could not
 #: fire.
@@ -955,7 +955,7 @@ def leg_mutations(specs: Sequence[Dict[str, Any]], steps: int) -> Dict[str, Any]
         log(f"[mutation] {name:34s} {outcome:14s} "
             f"({len(armed)} armed, {len(arms) - len(armed)} predicted null)")
 
-    # THE HOST ARMS.
+    # The host arms.
     for spec in specs:
         module = products()[spec["product"]]
         key = f"rotation_skipped@{spec['label']}"
@@ -969,7 +969,7 @@ def leg_mutations(specs: Sequence[Dict[str, Any]], steps: int) -> Dict[str, Any]
         scoreboard["rotation_skipped"]["arms"].append(
             {"spec": spec["label"], "caught": not record["bit_identical"],
              "first_divergence": record["first_divergence"]})
-        # THE ALIAS ARM IS SCORED AS A REFUSAL, not as a byte divergence: the check
+        # The alias arm is scored as a refusal, not as a byte divergence: the check
         # runs BEFORE any launch and is meant to stop the in-place weld from being
         # assembled at all.
         fields, grid, pml, dtdx = build(spec, "uniform", case_rng(spec["label"]))
@@ -1196,6 +1196,7 @@ def _warm_memo(specs: Sequence[Dict[str, Any]]) -> None:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
+    import neutral_ids  # noqa: PLC0415
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--out", required=True, help="artifact FILE path")
     parser.add_argument("--steps", type=int, default=STEPS)
@@ -1214,8 +1215,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     results: Dict[str, Any] = {
         "gate": "cuda_offdiag_stencil_welds",
         "started_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "host": os.uname().nodename,
-        "argv": list(argv if argv is not None else sys.argv[1:]),
+        "host": neutral_ids.machine_id(),
+        "argv": neutral_ids.argv(argv if argv is not None else sys.argv[1:]),
         "question": ("do ONE launch of offdiag_fused_electric_pair_pml_real and one "
                      "of folded_offdiag_fused_electric_pair_pml_real leave every "
                      "stored volume byte-identical to stepping's own D-seam pass "
@@ -1362,7 +1363,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             "repeats": args.repeats, "steps_per_case": args.steps,
         },
     }
-    # THE CANONICAL VERDICT, in the spelling the fleet's readers agree on.
+    # The canonical verdict, in the spelling the fleet's readers agree on.
     # ``rebind_cuda_welds.py`` binds an entry only where EVERY policy leg carries
     # ``canonical_verdict.released`` true, and ``gate_provenance.read_verdict``
     # already reads seven spellings across three tracks; writing the canonical one

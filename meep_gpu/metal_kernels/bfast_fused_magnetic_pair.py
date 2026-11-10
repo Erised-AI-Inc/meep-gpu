@@ -1,14 +1,14 @@
 """The fused magnetic B/H pair on a BFAST run: ``step_B`` -> ``update_H``.
 
-:mod:`.fused_magnetic_pair` WITH ONE EMITTER SWAPPED, exactly as
+:mod:`.fused_magnetic_pair` with one emitter swapped, exactly as
 :mod:`.beta_fused_magnetic_pair` is, and the second-cheapest weld in the tree for the
 same reason: the certified ordinary curl body is replaced by the certified BFAST curl
 body — :func:`.bfast_curl.bfast_curl_source` with ``backward=False`` — and nothing
 else about the construction changes. Same wall-clear carry, same three-line seam, same
 constitutive lift, same plan shape.
 
-WHERE IT IS NOT FREE, AND THE NUMBER IS THE WHOLE STORY: **this weld sits EXACTLY on
-the platform's binding ceiling.** The BFAST curl carries THREE MORE POINTERS than the
+Where it is not free, and the number is the whole story: **this weld sits EXACTLY on
+the platform's binding ceiling.** The BFAST curl carries three more pointers than the
 ordinary one — the Tustin filter's per-component state ``f_bfast_Bx/By/Bz``
 (bfast_curl.py:287-290) — so the fused signature is
 
@@ -26,7 +26,7 @@ measurement and not an inference from a docstring. :mod:`.folded_fused_pair` alr
 ships at this exact width, which is why 30 is known to be reachable rather than
 hoped for.
 
-WHY THE SWAP IS SOUND. The BFAST curl IS the certified curl with MEEP's BFAST pass
+Why the swap is sound. The BFAST curl IS the certified curl with MEEP's BFAST pass
 inserted after its per-chunk forms (:func:`.bfast_curl.bfast_curl_source`, through
 :func:`.folded_pass.with_folded_pass`): three state pointers, six scalars and the pass
 block between the forms and the stores, and nothing else. Everything the weld depends
@@ -37,12 +37,12 @@ of, AFTER the pass has updated ``v`` -- the array path's order (the pass runs in
 ``step_B``, the wall clear after it). The anchors and the pass block are ASSERTED at
 emit time.
 
-THE CHUNK RECORD RIDES IN THE PARAMS STRUCT, as in :mod:`.fused_magnetic_pair`, and
+The chunk record rides in the Params struct, as in :mod:`.fused_magnetic_pair`, and
 costs no binding: at 31 of 31 there is none to spare. The curl half reads the
 half-integer entries (its forms and the pass's plain-branch flags) and the H half the
 integer ones.
 
-WHY THE CONSTITUTIVE HALF NEEDS NOTHING. ``update_H`` reads nothing BFAST-dependent:
+Why the constitutive half needs nothing. ``update_H`` reads nothing BFAST-dependent:
 :func:`.bfast_curl.bfast_run_constitutive_coverage` is already the certified
 constitutive predicate with the BFAST clause inverted, and its builder calls
 ``launch.ConstitutivePlan`` unchanged. So a BFAST run's ``update_H`` is served by the
@@ -50,7 +50,7 @@ CERTIFIED ordinary constitutive today, and this weld lifts it through
 :func:`.fused_magnetic_pair.certified_constitutive_body` — the shipped weld's own
 lift, imported rather than copied.
 
-WHAT THE CORPUS SAYS THIS IS WORTH. ONE seam-instance, reachable:
+What the corpus says this is worth. ONE seam-instance, reachable:
 ``tests:TestReflectanceAngular.test_reflectance_angular_2_35_7``, measured at
 ``parity/meep_gpu/results/below_the_cut_census_2026-08-20/census.json``. It carries an
 ELECTRIC source only, so the magnetic seam (driver.py:3283-3284) is clear; it is
@@ -58,7 +58,7 @@ all-periodic, so the inline ``zero_metal_B`` carry is compiled OUT on that row a
 gate exercises the walled specialisation separately. The D/E partner cell is worth
 ZERO and is not built.
 
-REGISTERED UNWIRED, for :func:`.fused_magnetic_pair.register_arms`'s reason.
+Registered with ``wired=False``, for :func:`.fused_magnetic_pair.register_arms`'s reason.
 """
 
 from __future__ import annotations
@@ -159,7 +159,7 @@ kernel void bfast_fused_magnetic_pair_step(
     constant Params&    prm     [[buffer(30)]],
     uint idx [[thread_position_in_grid]])
 {
-    // THE ELEVEN SCALARS ARE UNPACKED INTO THE CERTIFIED BODIES' OWN NAMES, once,
+    // The eleven scalars are unpacked into the certified bodies' own names, once,
     // before any of the lifted text runs. Everything below this line is then
     // character-for-character what `bfast_curl.bfast_curl_source` and
     // `shaders.constitutive_source` emit, plus the wall clear.
@@ -168,7 +168,7 @@ kernel void bfast_fused_magnetic_pair_step(
     float k1_0 = prm.k1_0, k2_0 = prm.k2_0;
     float k1_1 = prm.k1_1, k2_1 = prm.k2_1;
     float k1_2 = prm.k1_2, k2_2 = prm.k2_2;
-    // THE CHUNK RECORD rides in the same struct (no binding to spare), and this one
+    // The chunk record rides in the same struct (no binding to spare), and this one
     // line gives the lifted bounds blocks the `cb` they read.
 __RECORD_ALIAS__
 
@@ -205,7 +205,7 @@ def bfast_fused_magnetic_pair_source(codes: Sequence[int],
                                      contract: str = shaders.CONTRACT_OFF) -> str:
     """One specialised fused source: (boundary triple, walls, contraction mode).
 
-    THE SPLICE IS :func:`.fused_magnetic_pair.fused_magnetic_pair_source`'S, step for
+    The splice is :func:`.fused_magnetic_pair.fused_magnetic_pair_source`'s, step for
     step, with :func:`certified_bfast_curl_body` where its ``certified_curl_body``
     stands.
     """
@@ -217,7 +217,7 @@ def bfast_fused_magnetic_pair_source(codes: Sequence[int],
         raise ValueError(f"zero_metal must be a per-axis triple, got {zero_metal!r}")
 
     curl = certified_bfast_curl_body(codes, contract)
-    # THE PASS MUST BE PRESENT. A lift that silently produced the has_bfast=0 arm
+    # The pass must be present. A lift that silently produced the has_bfast=0 arm
     # would be the ordinary weld wearing this family's name, and every device leg
     # would still pass because a zero k vector IS the ordinary arithmetic.
     for statement in (folded_pass.FOLDED_PASS_BEGIN, "float fp0 = s0[ii];",
@@ -355,9 +355,9 @@ def metal_bfast_fused_magnetic_pair_coverage(fields: Any, pml: Any,
     if not magnetic.covered:
         reasons.extend(f"constitutive half: {reason}" for reason in magnetic.reasons)
 
-    # THE SOURCE SEAM. A MAGNETIC source is injected BETWEEN the two halves
+    # The source seam. A MAGNETIC source is injected BETWEEN the two halves
     # (driver.py:3283-3284), so a fused pair would consume a pre-injection B.
-    # IGNORANCE IS NEVER AN EMPTY SET: `Fields` does not hold the source list, so a
+    # Ignorance is never an empty set: `Fields` does not hold the source list, so a
     # predicate that inferred "no sources" from not being told would be the
     # over-covering refusal this clause exists to prevent.
     reasons.extend(_deposit_repair.seam_source_reasons(
@@ -377,7 +377,7 @@ def metal_bfast_fused_magnetic_pair_coverage(fields: Any, pml: Any,
         return Coverage(False,
                         tuple(dict.fromkeys(reasons + ["fields carries no grid"])))
 
-    # THE STATE VOLUMES. The Tustin filter's per-component state is bound as three
+    # The state volumes. The Tustin filter's per-component state is bound as three
     # POINTERS and there is no room to discover at launch time that one is missing:
     # the curl half's own predicate checks them, and this restates the check by NAME
     # because the weld is what BINDS them.
@@ -385,7 +385,7 @@ def metal_bfast_fused_magnetic_pair_coverage(fields: Any, pml: Any,
         if getattr(fields, name, None) is None:
             reasons.append(f"{name} is not allocated; this weld binds it directly")
 
-    # THE TWO FILLS. `bfast_curl`'s own clause 5 already refuses a mirror plane on
+    # The two fills. `bfast_curl`'s own clause 5 already refuses a mirror plane on
     # both halves, so this restates by NAME what that refusal buys on THIS seam.
     for axis in range(3):
         mirrored = getattr(grid, "is_mirrored", None)
@@ -403,7 +403,7 @@ def metal_bfast_fused_magnetic_pair_coverage(fields: Any, pml: Any,
             reasons.append(
                 f"grid does not expose {name}; zero_metal_B cannot be carried inline")
 
-    # THE RUN'S FIRST update_H. The array path starts H and f_w from B on the dsigw
+    # The run's first update_H. The array path starts H and f_w from B on the dsigw
     # cells at that update (stepping.separate_h_from_b) and the lifted H body does
     # not, so this pair takes that update only where the start cannot change a word
     # (launch.h_start_reasons), asked with no source list as fused_magnetic_pair asks.
@@ -467,7 +467,7 @@ def _params_tensor(shape: Sequence[int], dtdx: float, ks: Sequence[float],
     The record is :func:`.chunk_bounds.pack` of the validated ``int32[25]`` words,
     embedded at byte 44 (every member is four bytes, so the struct has no padding).
 
-    PLAN-OWNED AND OUTSIDE THE RESIDENCY REGISTRY, for
+    Plan-owned and outside the residency registry, for
     :func:`.fused_magnetic_pair._params_tensor`'s reason. Built here, once, at plan
     time. Nothing on the launch path allocates.
     """
@@ -518,7 +518,7 @@ def plan_metal_bfast_fused_magnetic_pair(
     codes = tuple(1 if kind == "metallic" else 0
                   for kind in _boundary_kinds(grid, pml))
     walls = zero_metal_axes(grid)
-    # THE SIX SCALARS ARE THE CURL ARM'S OWN, called with the grid's OWN declared
+    # The six scalars are the curl arm's own, called with the grid's OWN declared
     # invariance flags (never a shape test) and the magnetic side.
     invariant = tuple(grid.is_invariant(axis) for axis in range(3))
     ks = bfast_curl_coefficients(grid.bfast_scaled_k, invariant, magnetic=True)
@@ -529,7 +529,7 @@ def plan_metal_bfast_fused_magnetic_pair(
         volumes.append(name)
         return residency.mirror(name, host, constant=constant)
 
-    # THE ORDER HERE IS THE SIGNATURE'S ORDER and nothing else keeps them in step.
+    # The order here is the signature's order and nothing else keeps them in step.
     flux = [bind(name, getattr(fields, name)) for name in ("Bx", "By", "Bz")]
     auxiliary = [bind("fu_" + name, getattr(fields, "fu_" + name))
                  for name in ("Bx", "By", "Bz")]
@@ -539,7 +539,7 @@ def plan_metal_bfast_fused_magnetic_pair(
     magnetic = [bind(name, getattr(fields, name)) for name in ("Hx", "Hy", "Hz")]
     workspace = [bind("f_w_" + name, getattr(fields, "f_w_" + name))
                  for name in ("Hx", "Hy", "Hz")]
-    # THE B CURL TAKES THE HALF-INTEGER LATTICE and the H constitutive the INTEGER
+    # The B curl takes the half-integer lattice and the H constitutive the INTEGER
     # one (launch.py:109-124; CONSTITUTIVE_SIDES['H']['half_integer'] is False).
     curl_coefficients = [
         bind(f"pml:{stem}_{axis}_h", getattr(pml, f"{stem}_{axis}_h"), constant=True)

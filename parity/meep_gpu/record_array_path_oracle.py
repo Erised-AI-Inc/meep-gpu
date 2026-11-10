@@ -5,7 +5,7 @@
     python record_array_path_oracle.py --verify        # recompute; exit 1 if any ledger differs
     python record_array_path_oracle.py --report <path> # also write the run as JSON
 
-WHAT IT WRITES. The ``array_path_oracle`` leaf (``meep_gpu.array_path_oracle``) of
+What it writes. The ``array_path_oracle`` leaf (``meep_gpu.array_path_oracle``) of
 ``meep_gpu/cuda_kernels/fingerprints.json``, ``meep_gpu/triton_kernels/fingerprints.json``
 and ``meep_gpu/metal_kernels/fingerprints.json``:
 
@@ -22,7 +22,7 @@ Writing is a certification event: it says every weld of the three tables was cer
 against the array path as it steps now. Mint after a certification round on these bytes,
 never to turn that test green.
 
-WHAT IT REQUIRES BEFORE IT WRITES.
+What it requires before it writes.
 
 * The fixture runs in this process and reaches every declared form class
   (``array_path_oracle.coverage_problems`` is empty);

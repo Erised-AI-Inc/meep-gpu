@@ -1,6 +1,6 @@
 """The FIRST fused Metal kernel: ``step_D`` welded into pole-aware ``update_E``.
 
-THE METAL ANALOGUE OF ``triton_kernels.dispersive_fused_pair``, and the smallest
+The Metal analogue of ``triton_kernels.dispersive_fused_pair``, and the smallest
 real fusion on this backend. Everything here is TRANSCRIBED from two already
 certified Metal bodies plus one array-path pass; no arithmetic is re-derived, and
 every line carries the file:line it came from:
@@ -17,7 +17,7 @@ every line carries the file:line it came from:
   ``stepping.update_E`` (stepping.py:1012-1016) and
   ``stepping._apply_constitutive_pml`` (stepping.py:2130-2143).
 
-THE SEAM THIS CLOSES, and it is exactly one line. The certified E body opens
+The seam this closes, and it is exactly one line. The certified E body opens
 ``float source = d_in[idx];`` — it RELOADS the displacement the curl just stored.
 Fused, that line becomes ``float source = v0;``: the same float32 register, never
 round-tripped through device memory. A float32 value stored to a ``device float*``
@@ -26,7 +26,7 @@ transformation BY CONSTRUCTION — and the gate MEASURES it anyway, per complete
 step, because "by construction" is a hypothesis until a comparator agrees.
 
 ===========================================================================
-WHY THIS IS PER COMPONENT WHEN THE TRITON PAIR IS ONE LAUNCH — MEASURED
+Why this is per component when the Triton pair is one launch — measured
 ===========================================================================
 
 Triton's ``fused_curl_dispersive_E`` takes all three components in ONE launch.
@@ -41,7 +41,7 @@ and :data:`.device.MAX_BUFFER_BINDINGS` is 31 — buffer attribute indices must 
 0..30 and a 32nd binding is a COMPILE ERROR, the same measured ceiling that FORCES
 ``float2`` volumes on the complex families (see :mod:`.templates`).
 
-WHAT THAT DOES AND DOES NOT ESTABLISH. Thirty-five SEPARATE BINDINGS exceed the
+What that does and does not establish. Thirty-five SEPARATE BINDINGS exceed the
 ceiling, and the gate's ``binding_ceiling`` leg compiles that signature and
 requires the failure. But this docstring previously concluded the one-launch shape
 was UNBUILDABLE on Metal, and that is FALSE — measured on this host (torch 2.10.0,
@@ -72,17 +72,17 @@ curl's recurrence where the target's dsigu chunk holds (integer lattice), the E
 half's accumulation where its own-axis chunk holds (half-integer lattice), and the
 curl's partner presence from its presence word.
 
-so one dispatch per E component. THAT IS THE FUSION: the D curl arithmetic and the
+so one dispatch per E component. That is the fusion: the D curl arithmetic and the
 E constitutive arithmetic execute in one kernel body with D living in a register.
 It is not "one dispatch for the seam", and this docstring says so rather than
 letting the family name imply a launch count the platform refuses to allow.
 
-WHAT THE FUSION REMOVES, MEASURED rather than argued — the gate's
+What the fusion removes, measured rather than argued — the gate's
 ``separate_control`` leg runs the two ALREADY CERTIFIED products over the same
 seam on identical state and records both sides:
 
     separate: 4 device dispatches per step (1 curl + 3 pointwise E)
-              + 1 HOST round trip inside the seam on a walled run, because
+              + 1 host round trip inside the seam on a walled run, because
                 ``zero_metal_D`` stays on the array path there
     fused:    3 device dispatches per step, 0 host passes inside the seam
 
@@ -90,11 +90,11 @@ and all three engines — array path, separate, fused — agreed word for word a
 every complete step. A correct fusion is byte-neutral by construction, so the
 dispatch counts are the only place the difference is visible at all. Since this
 family steps MEEP's per-chunk forms the gate scores the fused product against the
-array path and records the separate side beside it: the pointwise dispersive E
-single steps the pre-alignment forms until its own lane.
+array path and scores the separate side beside it: the pointwise dispersive E
+single (``dispersive_update_e``) steps the same per-chunk forms.
 
 ===========================================================================
-WHAT THIS FAMILY REFUSES, AND WHY EACH REFUSAL IS THE SEAM RATHER THAN TASTE
+What this family refuses, and why each refusal is the seam rather than taste
 ===========================================================================
 
 The driver runs FIVE passes between ``step_D`` and ``update_E``
@@ -104,7 +104,7 @@ The driver runs FIVE passes between ``step_D`` and ``update_E``
 therefore prove the three passes in the middle either do nothing or are carried
 INLINE:
 
-* **electric sources — REFUSED BY NAME.** The injection happens inside this seam,
+* **electric sources — refused by name.** The injection happens inside this seam,
   so a fused pair would consume a pre-injection D. The source inventory must be
   DECLARED; ignorance is never treated as an empty set, exactly as
   ``dispersive_fused_pair_coverage`` insists (triton_kernels/dispersive_fused_pair.py:262).
@@ -121,14 +121,14 @@ INLINE:
   ``fu_D`` is deliberately NOT masked: the array-path pass touches
   ``D_COMPONENTS`` only.
 
-NOT WIRED, AND FOR THE REASON THE TRITON CHAIN IS NOT. ``STEP_ORDER`` assigns at
+Not wired, and for the reason the Triton chain is not. ``STEP_ORDER`` assigns at
 most one arm per slot and this product spans THREE of them (``step_D``,
 ``zero_metal_D``, ``update_E``). There is no slot it can claim without a
 composition rule nothing has measured, so it registers ``wired=False``: the
 composer cannot select it, and the disjointness sweep can still enumerate it.
 Nothing about any existing arm's behaviour changes.
 
-DISPATCH IS NOT WIRED EITHER. ``meep_gpu.fastpath.plan_fast_path`` still returns
+Dispatch is not wired either. ``meep_gpu.fastpath.plan_fast_path`` still returns
 ``None`` on every branch; the callers here are the device gate and the tests.
 """
 
@@ -182,7 +182,7 @@ from .. import deposit_repair as _deposit_repair
 #:   the dispersive branch from the plain ``D * inv_eps`` one. Every unrepaired null
 #:   control diverges. ``test_deposit_repair.py``'s ``DISPERSIVE_CASES`` is that
 #:   measurement, and it asserts the pole is live so the case cannot pass vacuously.
-#: * THE FOLD DOES NOT REACH THIS FAMILY EITHER WAY. A folded seam runs
+#: * The fold does not reach this family either way. A folded seam runs
 #:   ``fill_symmetry_bc_D``/``fill_folded_far_ghosts_D`` AFTER the injection, so a
 #:   deposit landing on a row one of them reads from is imaged into cells a point
 #:   repair never visits -- which is what ``deposit_repair.repair_cells`` closed on
@@ -222,7 +222,7 @@ __all__ = [
 # The source
 # ---------------------------------------------------------------------------
 
-#: THE POLE BUFFERS ARE ``q0..q7`` HERE AND ``p0..p7`` IN THE POINTWISE FAMILY,
+#: The pole buffers are ``q0..q7`` here and ``p0..p7`` in the pointwise family,
 #: and the rename is forced rather than stylistic: the certified curl body names
 #: its split-field previous value ``p0``/``p1``/``p2`` (shaders.py:180, :184, :188)
 #: and the certified E body names its pole buffers ``p0``..``p7``
@@ -285,13 +285,13 @@ RECORD_BUFFER = 29
 #: coordinate. The recurrence pairs are ``vec.hpp``'s cycle_direction (target 0 takes
 #: (y, z), target 1 (z, x), target 2 (x, y)).
 #:
-#: THIS FAMILY READS ONLY ``loads`` FROM IT, which are the certified curl's load lines
+#: This family reads only ``loads`` FROM IT, which are the certified curl's load lines
 #: character for character. Its curl and recurrence lines are cut from the certified
 #: emitter's own output instead (:func:`certified_target_lines`), because the base
 #: curl now steps MEEP's per-chunk forms. The ``curl`` entries keep the package's
 #: previous pairwise spelling for the three families that import this table
 #: (``folded_fused_dispersive_pair``, ``no_pml_fused_electric_pair``,
-#: ``no_pml_conductive_fused_electric_pair``), each of which re-cuts it in its own lane.
+#: ``no_pml_conductive_fused_electric_pair``), each of which re-cuts it separately.
 _TARGETS: Tuple[Dict[str, Any], ...] = (
     {   # Dx: curl_x = dHz/dy - dHy/dz  (stepping.py:422)
         "loads": ("    float b   = g1[ii];",
@@ -617,7 +617,7 @@ def metal_fused_dispersive_pair_coverage(fields: Any, pml: Any, sources: Any = N
 
     # THE SEAM. An electric source is injected BETWEEN the two halves
     # (driver.py:3292-3296), so a fused pair would consume a pre-injection D.
-    # IGNORANCE IS NOT AN EMPTY SET: `Fields` does not hold the source list, so a
+    # Ignorance is not an empty set: `Fields` does not hold the source list, so a
     # predicate that inferred "no sources" from not being told would be the
     # over-covering refusal this clause exists to prevent.
     reasons.extend(_deposit_repair.seam_source_reasons(
@@ -728,7 +728,7 @@ class MetalFusedDispersivePairPlan:
         argument that quietly did nothing would make the gate's most important leg
         vacuous.
 
-        THE POLE POINTERS ARE RESOLVED AT LAUNCH, NOT AT PLAN TIME. ``update_P``
+        The pole pointers are resolved at launch, not at plan time. ``update_P``
         rotates ``P``/``P_prev``/``_scratch`` after every recurrence, so the
         PHYSICAL array holding a component's current P changes between steps while
         the mirror registry does not. Reading ``state.P[...]`` here and looking the
@@ -744,12 +744,14 @@ class MetalFusedDispersivePairPlan:
                     f"this plan holds no {mode!r} variant (it was built with "
                     f"{self.variants}); build it with contract_variants={(mode,)} "
                     f"rather than launching the pinned one")
-            poles = tuple(state.P[entry.component] for state in entry.states)
+            # Resolving which array is current is not a read of its words: the plain dict
+            # subscript keeps a held mirror on the device (barrier.BarrierDict acquires).
+            poles = tuple(dict.__getitem__(state.P, entry.component) for state in entry.states)
             if len(poles) != entry.pole_count:
                 raise RuntimeError(
                     f"{entry.component} resolved {len(poles)} poles, not the "
                     f"compiled count {entry.pole_count}")
-            # THE UNUSED POLE SLOTS BIND THE INVERSE EPSILON, NOT THE DISPLACEMENT.
+            # The unused pole slots bind the inverse epsilon, not the displacement.
             # The pointwise family pads with `entry.displacement`
             # (dispersive_update_e.py:214) because its kernel only READS D. This
             # one WRITES D, so padding with it would alias a written buffer into a
@@ -904,7 +906,7 @@ def _arm_plan(context: Any, slot: str) -> Optional[MetalFusedDispersivePairPlan]
 def register_arms() -> Tuple[Any, ...]:
     """One row on ``step_D``, ``wired=False``.
 
-    THE FLAG IS THE WHOLE COMPOSITION STORY. ``plan_step`` assigns at most one arm
+    The flag is the whole composition story. ``plan_step`` assigns at most one arm
     per slot and this product spans three, so there is no slot it could claim
     without a composition rule nothing has measured — the same open question
     ``triton_kernels.launch`` records for the fused dispersive chain. Registering

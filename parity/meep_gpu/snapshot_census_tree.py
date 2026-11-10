@@ -1,13 +1,13 @@
 """Snapshot the bytes a WORKTREE-cut census is about to call, and stamp its provenance.
 
-WHY A CENSUS NEEDS THIS AT ALL. A census cut at a released commit is dated by that
+Why a census needs this at all. A census cut at a released commit is dated by that
 commit: ``git show <commit>:<module>`` is what the predicates were. This track is not
 committed, so a worktree census has no such handle — ``git show HEAD:...`` returns bytes
 the census never saw, and a staleness audit run against them reports CHANGED for
 predicates that never moved, which reads as "the census is stale" precisely when it is
 fresh. So the census carries its own copy of what it called.
 
-WHAT IS SNAPSHOTTED, AND WHY IT IS NOT JUST ``triton_kernels``. Every earlier
+What is snapshotted, and why it is not just ``triton_kernels``. Every earlier
 worktree census snapshotted the package. From 2026-08-30 the fusion board also reads
 ``deposit_repair.seam_source_reasons`` and ``deposit_repair.repairable`` — the two
 bodies that decide whether an in-seam deposit can be carried, and therefore the bodies
@@ -16,7 +16,7 @@ whose verdict is read but whose bytes are unaudited is credit resting on nothing
 the file is snapshotted beside the package, at the relative position the board's
 ``AUDITED`` rows spell (``../deposit_repair.py``).
 
-TWO ORDERING FACTS THIS SCRIPT EXISTS TO MAKE CHECKABLE, both stamped rather than
+Two ordering facts this script exists to make checkable, both stamped rather than
 asserted in prose:
 
 * ``snapshot_taken_before_any_kernel_edit`` — the board REFUSES to use a snapshot that
@@ -25,7 +25,7 @@ asserted in prose:
   A kernel edited DURING the census would leave a snapshot that is honest about the
   start and wrong about the end, and only this second pass can see it.
 
-ROOTS ARE RESOLVED BY NAME, NEVER BY ``parents[N]``. A promoted harness file that
+Roots are resolved by name, never by ``parents[N]``. A promoted harness file that
 counts directory levels resolves to the wrong root the moment it moves, and the
 failure is silent in the worst way: children die on import while the parent writes a
 full-length census of ``measured: false`` rows and exits 0.
@@ -78,6 +78,17 @@ def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _neutral(provenance: Dict) -> Dict:
+    """``census_provenance.json`` as it is written: every path-like value (a ``--stamp``
+    corpus root, a driver path) under its root's label, never this machine's own spelling
+    (``neutral_ids.value``). The snapshot's own keys are relative spellings already."""
+    try:
+        import neutral_ids  # noqa: PLC0415
+    except ImportError:  # imported as a package module, not from parity/meep_gpu
+        from parity.meep_gpu import neutral_ids  # noqa: PLC0415
+    return neutral_ids.value(provenance)
+
+
 def snapshot_paths() -> Dict[str, Path]:
     """``{relative spelling: source path}`` — every file the snapshot must hold."""
     out: Dict[str, Path] = {p.name: p for p in sorted(PACKAGE.glob("*.py"))}
@@ -125,7 +136,7 @@ def take(census: Path) -> int:
         "snapshot_files_differing_from_the_tree": None,
     }
     (census / "census_provenance.json").write_text(
-        json.dumps(provenance, indent=1, sort_keys=True) + "\n")
+        json.dumps(_neutral(provenance), indent=1, sort_keys=True) + "\n")
     print(f"[snapshot] {len(digests)} files -> {root}", flush=True)
     return 0
 
@@ -138,9 +149,9 @@ def verify(census: Path, extra: Dict[str, str]) -> int:
     provenance["snapshot_files_differing_from_the_tree"] = differing
     provenance["snapshot_still_matches_the_tree"] = not differing
     provenance.update(extra)
-    path.write_text(json.dumps(provenance, indent=1, sort_keys=True) + "\n")
+    path.write_text(json.dumps(_neutral(provenance), indent=1, sort_keys=True) + "\n")
     if differing:
-        print(f"[verify] {len(differing)} file(s) CHANGED DURING THE CENSUS: "
+        print(f"[verify] {len(differing)} file(s) changed during the census: "
               f"{differing}", flush=True)
         # Non-zero: the census measured a tree that no longer exists, and every
         # verdict it published is about bytes nobody can name.

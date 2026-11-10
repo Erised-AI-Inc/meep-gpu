@@ -1,16 +1,16 @@
 """The hand-CUDA arm table, as DATA — which family may fill which sub-step slot.
 
-WHY THIS EXISTS. This track ships 22 predicate families that admit 759 of 759
+Why this exists. This track ships 22 predicate families that admit 759 of 759
 sub-step slots on 186 of 186 engine-accepted corpus rows
 (``parity/meep_gpu/results/cuda_predicate_coverage_2026-08-20_closed/
-coverage_report.txt:270-285``). NOTHING SELECTED ONE. The predicates were reachable
+coverage_report.txt:270-285``). Nothing selected one. The predicates were reachable
 only from the census battery and from two stress harnesses under ``parity/``, each
 of which asked a hand-picked subset in a hand-written order and resolved an
 ambiguity — where it noticed one at all — by raising. "A CUDA-only run" had no
 subject: there was no table saying which product claims which slot, and no composer
 to fail closed when two of them claim the same one.
 
-THE FAIL-CLOSED CONTRACT IS NOT REDEFINED HERE. ``_Arm``, ``_select_slot`` and
+The fail-closed contract is not redefined here. ``_Arm``, ``_select_slot`` and
 ``STEP_ORDER`` are IMPORTED from :mod:`meep_gpu.triton_kernels.launch` — the same
 backend-free import :mod:`meep_gpu.metal_kernels.arms` takes at its line 52 — so
 all three tracks answer an ambiguity, a raising predicate and an unselected slot
@@ -18,7 +18,7 @@ identically. Exactly one admitter fills a slot; two or more leave the slot
 UNSELECTED naming all admitters; a predicate that RAISES is a refusal; an
 unselected slot is the array path, which is always correct.
 
-WHAT IS DELIBERATELY NOT PORTED FROM THE METAL TABLE:
+What is deliberately not ported from the Metal table:
 
 * **Residency.** It is a Metal concept — which private device mirrors a plan holds
   across a step — and this track has none: the hand-CUDA kernels launch against the
@@ -31,7 +31,7 @@ WHAT IS DELIBERATELY NOT PORTED FROM THE METAL TABLE:
   near binding and is not carried across. Importing that constraint would refuse
   compositions this backend can perform.
 
-THE REASONS TUPLE IS A TUPLE, and that is the single sharpest edge in this file.
+The reasons tuple is a tuple, and that is the single sharpest edge in this file.
 ``triton_kernels/launch.py:2084`` normalises a verdict with
 ``tuple(str(reason) for reason in reasons)``; every shipped CUDA predicate returns
 ``(bool, str)``, so handing the bare string through produces one "reason" PER
@@ -39,14 +39,14 @@ CHARACTER. Measured on this tree: a refusal of ``"no PML"`` came back as
 ``('no', 'o', ' ', 'P', 'M', 'L')`` prefixed six times. :func:`coverage_adapter` is
 the ONE place the wrap happens, and it wraps in a 1-tuple.
 
-REGISTRATION IS NOT DISPATCH, and this step does not wire one. ``meep_gpu.fastpath.
+Registration is not dispatch, and this step does not wire one. ``meep_gpu.fastpath.
 plan_fast_path`` still returns ``None`` on every branch and this package does not
 touch it. :func:`plan_step` decides what a dispatch WOULD compose and says which arm
 won each slot; the launch-argument resolvers below are attached to the plan and are
 NOT called at plan time, because resolving them needs a CUDA host and belongs to the
 step that gates a live dispatch.
 
-THE TABLE IS POPULATED BY IMPORT, WHICH IS WHY :func:`ensure_registered` EXISTS —
+The table is populated by import, which is why :func:`ensure_registered` exists —
 the same hazard, and the same fix, the Metal table carries: a table read before
 :mod:`.registry` has run answers with whatever the caller happened to import, and a
 missing arm does not produce a refusal, it produces a DIFFERENT SELECTION with no
@@ -73,13 +73,13 @@ class StepContext:
     import time — so the context is passed at composition time and each entry is a
     pair of functions of it. That is the whole reason the table can be data.
 
-    ``grid`` DEFAULTS TO ``fields.grid`` BUT IS SEPARATELY SETTABLE, because every
+    ``grid`` defaults to ``fields.grid`` but is separately settable, because every
     shipped CUDA predicate takes it as its own third positional argument and the
     census factors the CuPy-backend clause by handing in a proxy grid rather than
     filtering the clause out of a refusal string (``predicate_battery.py:372-389``).
     A composer that could not be given that proxy could not reproduce the census.
 
-    ``sources`` IS ``None`` UNTIL A CALLER DECLARES IT, AND ``None`` IS NOT ``()``.
+    ``sources`` is ``None`` until a caller declares it, and ``None`` is not ``()``.
     No slot arm reads it -- the four sub-step predicates do not care what the driver
     injects between them -- but the FUSION BLOCK does, because a fused pair spans the
     injection. ``Fields`` does not hold the source list, so a product asked with
@@ -88,7 +88,7 @@ class StepContext:
     ``()`` here would turn "nobody told me" into "there are none", which is the
     over-covering the clause exists to prevent.
 
-    ``chunk_layout`` IS THE RUN'S CHUNK DIVISION (``chunk_map.ChunkLayout``), the one
+    ``chunk_layout`` is the run's chunk division (``chunk_map.ChunkLayout``), the one
     every kernel reads through the ``int32[25]`` record. ``None`` means the lifted
     division the fields carry (``Fields.chunk_layout``) when a lift installed one, and
     otherwise the one-rank division of this grid and PML (``ChunkLayout.one_rank``),
@@ -195,7 +195,7 @@ class StepContext:
     def chunk_bounds(self) -> Any:
         """The host ``int32[25]`` record (``chunk_map.chunk_bounds_record``).
 
-        RAISES BY NAME where :meth:`chunk_division_refusal` refuses the division: no
+        Raises by name where :meth:`chunk_division_refusal` refuses the division: no
         kernel may be handed a record of a division the record does not describe.
         """
         refusal = self.chunk_division_refusal()
@@ -308,7 +308,7 @@ def _chunk_product_problem(layout: Any, record: Sequence[int], axis: int) -> Opt
 # The slot -> argument mappings, one per positional shape
 # ---------------------------------------------------------------------------
 #
-# MEASURED 2026-08-28 by reading every shipped ``covers_*`` signature under
+# Measured 2026-08-28 by reading every shipped ``covers_*`` signature under
 # ``meep_gpu/cuda_kernels/``: the 22 census families call through exactly SIX
 # positional shapes. Anything a family needs beyond the slot name rides on the
 # context, never on the slot.
@@ -378,23 +378,30 @@ _SHAPE_BINDERS: Dict[str, Callable[..., Any]] = {
 
 
 def coverage_adapter(predicate: Any, shape: str,
-                     chunk_axes: Sequence[int] = ()) -> Callable[..., Coverage]:
+                     chunk_axes: Sequence[int] = (),
+                     chunk_clause: Optional[Callable[["StepContext"], Optional[str]]] = None
+                     ) -> Callable[..., Coverage]:
     """The ONE place a ``(bool, str)`` CUDA predicate becomes a ``Coverage``.
 
-    THE REASON IS WRAPPED IN A TUPLE, and that is not decoration. The shared
+    The reason is wrapped in a tuple, and that is not decoration. The shared
     normaliser at ``triton_kernels/launch.py:2084`` iterates whatever is in
     ``.reasons``; a bare string is iterable, so a single-string refusal arrives at
     the composer as one reason per CHARACTER, each carrying the arm's prefix.
     Measured on this tree: ``"no PML"`` came back as six prefixed one-character
     "reasons". Every family goes through here so no family can get it wrong once.
 
-    THE CHUNK-DIVISION CLAUSE IS ASKED HERE TOO, AFTER THE FAMILY ADMITS. Every arm
+    The chunk-division clause is asked here too, after the family admits. Every arm
     refuses a division no chunk record describes, and an arm whose row declares
     ``chunk_axes`` (the off-diagonal and cylindrical families) also refuses one whose
     record does not name its chunks along those axes
     (:func:`.chunk_coverage.chunk_division_refusal`). It is asked after the family's own
     predicate, so a configuration the family refuses keeps the family's reason and
     the census's attribution is unchanged wherever the division is not the question.
+    A row that names a ``chunk_clause`` is asked that clause instead: a callable on the
+    :class:`StepContext` returning the refusal or ``None``, for a family whose kernels
+    read less of the record than ``chunk_axes`` alone implies (the dispersive
+    off-diagonal family reads a cell's chunk only through its presence words,
+    ``dispersive_offdiag_update_e.dispersive_offdiag_division_refusal``).
 
     A predicate that raises, or returns something that is not a ``(covered, reason)``
     pair, is NOT handled here on purpose: the shared ``_guarded_verdict`` already
@@ -409,7 +416,8 @@ def coverage_adapter(predicate: Any, shape: str,
     def coverage(context: StepContext, slot: str) -> Coverage:
         covered, reason = binder(predicate, context, slot)
         if covered:
-            refusal = context.chunk_division_refusal(axes)
+            refusal = (context.chunk_division_refusal(axes) if chunk_clause is None
+                       else chunk_clause(context))
             if refusal is not None:
                 return Coverage(False, (refusal,))
         return Coverage(bool(covered), (str(reason),))
@@ -434,7 +442,7 @@ CURL_SLOT_SUB_LATTICE: Dict[str, bool] = {"step_B": True, "step_D": False}
 class CudaSlotPlan:
     """What one arm would launch in one slot, and how the launch args resolve.
 
-    THIS IS A PLAN, NOT A LAUNCH, and the split is the point of the object.
+    This is a plan, not a launch, and the split is the point of the object.
     ``resolve_launch_args`` is a closure that imports the kernel module and builds
     the device tables; it is NOT called when the plan is built, because that import
     needs CuPy and the whole census — the thing that establishes what this table
@@ -456,7 +464,7 @@ class CudaSlotPlan:
     "converged, smooth and wrong", which is exactly the class of defect this track
     spends its gates on.
 
-    ``run()`` IS THE LAUNCH, since 2026-09-17, for the families that have one:
+    ``run()`` is the launch, since 2026-09-17, for the families that have one:
     it resolves the arguments for this slot and hands them to the family's launcher,
     exactly as ``fused_pairs.CudaFusedPairPlan.run`` does for a product, so the
     merge can adopt a certified single SEAM (``fastpath_cuda.SINGLE_ARM_SEAMS``) and
@@ -465,7 +473,7 @@ class CudaSlotPlan:
     and ``launchable`` is what keeps such a plan out of the dispatch set before any
     consult reaches it.
 
-    ``kernel_label`` IS A LABEL AND NOT A DEVICE ENTRY POINT, and the distinction is
+    ``kernel_label`` is a label and not a device entry point, and the distinction is
     written into the name because getting it wrong is silent. For 45 of the 51 arms
     it is the census record's own ``kernel=`` string for that family, quoted from
     ``parity/meep_gpu/results/cuda_predicate_coverage_2026-08-20_closed/
@@ -540,7 +548,7 @@ class CudaSlotPlan:
         module take the slot, because one family serves two sub-steps and the tables
         differ by sub-lattice -- where a product's resolver takes the context alone.
 
-        RESOLVED ONCE PER PLAN, not per launch. Both flatteners document the contract
+        Resolved once per plan, not per launch. Both flatteners document the contract
         ("called ONCE per frozen configuration, not per launch",
         ``step_curl_kernels.real_pml_curl_tables``, ``constitutive_kernels.
         real_constitutive_tables``): the tables are views of the PML's own device
@@ -582,12 +590,12 @@ class CudaSlotPlan:
     def warm(self) -> Optional[str]:
         """Compile this slot's kernel at plan time, launching nothing.
 
-        Compiles BY ENTRY POINT through the launcher's own ``warm`` -- never through
+        Compiles by entry point through the launcher's own ``warm`` -- never through
         ``kernel_label``, which the class docstring says is a label and not a device
         entry point. Returns a REASON when there is no launcher to compile through,
         which the warm pass records as unwarmed rather than unfilling the slot.
 
-        A LAUNCHER WHOSE SOURCE DEPENDS ON THE FROZEN CONFIGURATION says so with
+        A launcher whose source depends on the frozen configuration says so with
         ``WARMS_FROM_CONTEXT``, and is handed this plan's context as well as the
         slot. The off-diagonal families emit one source per live row mask (and the
         dispersive one per pole arity), both read off the ``Fields`` the plan was
@@ -616,8 +624,8 @@ class CudaMirrorFillPlan(CudaSlotPlan):
 
     ``fill_B`` stands for ``fill_symmetry_bc_B`` AND ``fill_folded_far_ghosts_B``, and
     the driver runs ``zero_metal_B`` BETWEEN them (``fastpath.FAR_FILL_PASSES``). The
-    certified in-seam kernels are one pass each -- ``in_seam_passes`` states that "THE
-    THREE PASSES ARE THREE LAUNCHES AND MUST NOT BE MERGED", because a near fill on a
+    certified in-seam kernels are one pass each -- ``in_seam_passes`` states that "the
+    three passes are three launches and must not be merged", because a near fill on a
     mirrored axis and the wall wipe on a metallic one share an edge -- so this plan
     exposes the split the dispatch seam reads off the PLAN rather than off the label:
     :meth:`run_near` is the near pass, consulted at the fill slot, and :meth:`run_far`
@@ -625,7 +633,7 @@ class CudaMirrorFillPlan(CudaSlotPlan):
     the array path. Nothing is reordered and nothing is fused: each half is the pass
     its gate certified, at the position the array path runs it.
 
-    ``launch_grid`` IS THE NEAR PASS'S, and only the near pass's. The near pass
+    ``launch_grid`` is the near pass's, and only the near pass's. The near pass
     launches at least once on every grid this arm admits (the predicate refuses an
     unfolded one), while the far pass legitimately launches NOTHING on a folded
     METALLIC axis; a block count of zero there would read as "a kernel launched over
@@ -711,7 +719,7 @@ class _RealPmlCurlLauncher:
 class _RealPmlConstitutiveLauncher:
     """The certified real-PML constitutive wrappers, the twin of the curl launcher.
 
-    THE RUN'S FIRST ``update_H`` STARTS H FROM B FIRST. MEEP allocates H and ``f_w``
+    The run's first ``update_H`` starts H from B first. MEEP allocates H and ``f_w``
     as copies of B, on the chunks that carry H's own layer, at the first
     ``update_eh(H_stuff)`` (update_eh.cpp:165-177); the array path does the same in
     ``stepping.separate_h_from_b``, which ``stepping.update_H`` calls and which a
@@ -827,7 +835,7 @@ def resolve_constitutive_launch_args(context: StepContext,
 # The three off-diagonal update_E singles (2026-09-27)
 # ---------------------------------------------------------------------------
 #
-# ONE WRAPPER SHAPE, THREE MODULES. Each family ships a wrapper
+# One wrapper shape, three modules. Each family ships a wrapper
 # ``update_E_*(fields, pml=None, *, tables, codes, walls[, weights])`` that derives
 # every keyword from the layer and the grid when it is handed ``pml`` -- "the
 # launcher and the predicate cannot disagree" is enforced there, in the family
@@ -839,9 +847,9 @@ def resolve_constitutive_launch_args(context: StepContext,
 # it keeps reading per launch: the live row mask and its volumes, and for the
 # dispersive family the pole chain, whose buffers rotate every step.
 #
-# CERTIFIED BY THE FAMILY'S OWN BYTE GATE, which drove these wrappers through the
+# Certified by the family's own byte gate, which drove these wrappers through the
 # same derivations: ``offdiag_2026-08-16``, ``cuda_folded_offdiag_2026-08-21`` and
-# ``cuda_dispersive_offdiag_2026-08-20``, all three re-gated in Round B
+# ``cuda_dispersive_offdiag_2026-08-20``, all three re-gated on 2026-09-25
 # (``certification.json`` ``cuda_regate_2026-09-25_roundb``). The seam they are
 # adopted into is ``step_D`` 'PML' + ``update_E`` (``fastpath_cuda.SINGLE_ARM_SEAMS``).
 
@@ -918,7 +926,7 @@ class _FoldedOffdiagLauncher(_OffdiagUpdateELauncher):
 class _DispersiveOffdiagLauncher(_OffdiagUpdateELauncher):
     """``dispersive_offdiag_update_e.update_E_dispersive_offdiag_fused_pml_real``.
 
-    THE POLE CHAIN IS NEVER AN ARGUMENT HERE. The wrapper resolves it on every call
+    The pole chain is never an argument here. The wrapper resolves it on every call
     when ``plan`` is left at ``None``, because ``PolarizationState.update`` rotates
     the three buffers each step and a chain resolved at plan time would name last
     step's arrays -- stale in a way that still computes. A resolution that carried a
@@ -1042,10 +1050,10 @@ def resolve_dispersive_offdiag_launch_args(context: StepContext,
 # The mirror fill (2026-09-27)
 # ---------------------------------------------------------------------------
 #
-# THE SIX CERTIFIED IN-SEAM KERNELS, SERVED AS A FILL ARM. ``in_seam_passes`` ships
+# The six certified in-seam kernels, served as a fill arm. ``in_seam_passes`` ships
 # ``fill_symmetry_{B,D}``, ``fill_folded_far_{B,D}`` and ``zero_metal_{B,D}``, each
 # gated on its own against the ``stepping`` function it transcribes
-# (``certification.json`` ``in_seam_2026-08-21``, re-gated in Round B). The fill
+# (``certification.json`` ``in_seam_2026-08-21``, re-gated on 2026-09-25). The fill
 # slot runs the first two; ``zero_metal_*`` stays on the array path, where the driver
 # runs it unconditionally BETWEEN them and where ``deposit_repair`` relies on it.
 
@@ -1061,14 +1069,14 @@ MIRROR_FILL_UNFOLDED_REFUSAL = "the grid is not mirror-folded"
 def covers_mirror_fill(fields: Any, grid: Any, family: str) -> Tuple[bool, str]:
     """May the certified in-seam fill kernels serve this family's fill slot?
 
-    THE CONJUNCTION OF THE TWO PASS PREDICATES, because the slot runs both passes:
+    The conjunction of the two pass predicates, because the slot runs both passes:
     ``in_seam_coverage.covers_fill_symmetry`` (real float32 C-contiguous storage, no
     cylindrical radial axis, every folded axis carrying a declared +/-1 phase) and
     ``in_seam_coverage.covers_fill_folded_far`` (the same, plus the fold's two
     termination readings agreeing and the far image row in bounds). Their reasons are
     reported deduplicated, since the second repeats the first's.
 
-    AN UNFOLDED GRID IS REFUSED BY NAME, after those two, and the order is the point.
+    An unfolded grid is refused by name, after those two, and the order is the point.
     Both pass predicates admit an unfolded Cartesian grid vacuously -- there is no
     folded axis to refuse -- and an arm that took the slot there would install a plan
     that launches nothing, on every unfolded row, in front of whatever the other
@@ -1201,7 +1209,7 @@ class ArmSpec:
     ``gate(context)`` is the cheap precondition deciding whether the arm is
     CONSULTED. It is separate from ``coverage`` because a gated-out arm contributes
     NO reason, while a consulted-and-refusing arm contributes all of its reasons by
-    name. NO ARM IN THIS TABLE CARRIES A GATE TODAY: every shipped CUDA predicate
+    name. No arm in this table carries a gate today: every shipped CUDA predicate
     enumerates its own refusals positively — that is what makes the census
     attribution readable — so gating one would replace a named reason with silence.
     The parameter stays because the state it names is real on the sibling tracks.
@@ -1283,7 +1291,7 @@ def register(family: str, slot: str, label: str, coverage: Callable[..., Any],
 
     A duplicate is refused rather than replaced: the second registration is almost
     always a module reached under two names, and silently keeping one of the two
-    would make WHICH KERNEL RUNS depend on import order. Refusing means the tree
+    would make which kernel runs depend on import order. Refusing means the tree
     fails at import, loudly, in one place.
     """
     spec = ArmSpec(family, slot, label, coverage, plan, prefix, noun, gate, wired,
@@ -1308,7 +1316,7 @@ _REGISTRATION_STATE = "cold"
 def ensure_registered() -> None:
     """Populate the table once, so it is COMPLETE before it is read.
 
-    REGISTRATION IS AN IMPORT SIDE EFFECT and that is the hazard this function
+    Registration is an import side effect and that is the hazard this function
     exists to remove. Without it the table's contents depend on which modules the
     caller happened to import — and an arm missing from the table does not produce
     a refusal, it produces a DIFFERENT SELECTION with no ambiguity detected. That is
@@ -1348,7 +1356,7 @@ def registration_state() -> str:
 
 
 def registered(slot: Optional[str] = None) -> Tuple[ArmSpec, ...]:
-    """Every registered arm — WIRED OR NOT — for one slot, or for every slot."""
+    """Every registered arm — wired or not — for one slot, or for every slot."""
     ensure_registered()
     if slot is not None:
         return tuple(_REGISTRY.get(slot, ()))
@@ -1451,7 +1459,7 @@ class CudaStepPlan:
 
     @property
     def launchable(self) -> Tuple[str, ...]:
-        # READ THROUGH THE WRAPPER. After the fusion block runs, two of the four
+        # Read through the wrapper. After the fusion block runs, two of the four
         # occupants are wrappers -- a NoopPlan / TrailingRepairPlan in the absorbed
         # slot and a LeadingRepairPlan around the launch. None of the three declares
         # `launchable`, so read bare they would each fall back to False and a fused
@@ -1483,11 +1491,11 @@ def plan_step(fields: Any, pml: Any, grid: Any = None, sources: Any = None,
     returns ``None`` are all NAMED refusals for their slot — the shared
     ``_select_slot``'s contract, not a second copy of it.
 
-    THE TABLE IS COMPLETED BEFORE IT IS READ, by :func:`ensure_registered`, and that
+    The table is completed before it is read, by :func:`ensure_registered`, and that
     call is load-bearing rather than defensive: registration is an import side
     effect, and a missing arm changes the SELECTION rather than producing a refusal.
 
-    ``fuse`` IS OPT-IN AND DEFAULTS TO OFF, so the composition this track's coverage
+    ``fuse`` is opt-in and defaults to off, so the composition this track's coverage
     census measured is what this function returns unless a caller asks for more. With
     it on, :mod:`.fused_pairs` runs AFTER every slot has been decided and may take a
     seam's two slots only where the arm table already gave them to the arms the fused
@@ -1495,11 +1503,11 @@ def plan_step(fields: Any, pml: Any, grid: Any = None, sources: Any = None,
     filled without going through the table, and running it first would be a hole
     straight through the ambiguity and builder-refusal clauses.
 
-    ``sources`` IS WHAT MAKES A FUSED SEAM ANSWERABLE. No slot arm reads it; a fused
+    ``sources`` is what makes a fused seam answerable. No slot arm reads it; a fused
     pair spans the driver's injection, so its predicate must be told. ``None`` is a
     refusal there, not an empty seam.
 
-    ``fuse_labels`` IS THE OFFER, AND IT IS PER LABEL RATHER THAN PER RUN. ``fuse``
+    ``fuse_labels`` is the offer, and it is per label rather than per run. ``fuse``
     alone can only say "install whatever admits", and a fused product occupies EVERY
     slot of its seam -- so a product the caller cannot run would take those slots and
     force the caller to refuse the whole step, taking the separate certified arms
@@ -1508,7 +1516,7 @@ def plan_step(fields: Any, pml: Any, grid: Any = None, sources: Any = None,
     dispatch seam existed; a sequence names exactly the products this caller may run
     and the rest are skipped with a NAMED reason under ``fused_pair_<family>``.
 
-    ``chunk_layout`` IS THE RUN'S CHUNK DIVISION (``chunk_map.ChunkLayout``), read by
+    ``chunk_layout`` is the run's chunk division (``chunk_map.ChunkLayout``), read by
     every arm's chunk-division clause and bound to every plan as one device record
     (:class:`StepContext`). ``None`` reads the division the array path steps with: the
     lifted one the fields carry (``Fields.chunk_layout``) when a lift installed one,
@@ -1516,7 +1524,7 @@ def plan_step(fields: Any, pml: Any, grid: Any = None, sources: Any = None,
     otherwise the one-rank default of ``grid`` and ``pml``, a driver-without-MEEP's own
     division. The returned plan's ``chunk_division`` says which one was read.
 
-    THIS IS REACHED FROM THE DISPATCH SEAM, AND HAS BEEN SINCE PHASE 2.
+    This is reached from the dispatch seam, and has been since 2026-09-11.
     ``meep_gpu.fastpath._decide`` composes this table as the SECOND kernel table on a
     CuPy engine -- imported function-locally, below the backend rung -- and
     ``fastpath_cuda.merge_tables`` then adopts whole fused units of it into the

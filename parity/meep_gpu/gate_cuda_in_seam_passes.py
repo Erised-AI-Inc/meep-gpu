@@ -1,6 +1,6 @@
 """Byte-identity gate for the CUDA IN-SEAM PASSES, one pass at a time.
 
-WHAT IS UNDER TEST. ``meep_gpu/cuda_kernels/in_seam_passes.py`` ships six kernels
+What is under test. ``meep_gpu/cuda_kernels/in_seam_passes.py`` ships six kernels
 -- a B and a D variant of each of the three passes the driver runs between a curl
 and the constitutive update that closes it::
 
@@ -13,13 +13,13 @@ against the ``stepping`` function it transcribes, from one frozen state, as raw
 uint32 words. A pass with a verdict earns a record block and moves from
 ``UNCERTIFIED_KERNELS`` to ``CERTIFIED_KERNELS``; a pass without one does not.
 
-THIS GATE CERTIFIES NO FUSION AND MEASURES NO THROUGHPUT. It measures three
+This gate certifies no fusion and measures no throughput. It measures three
 passes against three array-path functions. What that buys is the PARTS a fused
 CUDA pair would have to absorb -- nothing more, and the summary's
 ``does_not_claim`` says so.
 
 =============================================================================
-WHY EACH PASS IS ITS OWN GATE AND THE THREE ARE NEVER RUN AS ONE
+Why each pass is its own gate and the three are never run as one
 =============================================================================
 
 They share planes. On a grid with a mirrored X and a metallic Y, ``Dz`` is
@@ -33,7 +33,7 @@ configuration (``fold_X_wall_Y``) so the sharing is exercised even though each
 pass is measured alone.
 
 =============================================================================
-WHAT WOULD MAKE THIS GATE VACUOUS, AND THE FLOORS THAT REFUSE IT
+What would make this gate vacuous, and the floors that refuse it
 =============================================================================
 
 * ``oracle_moved`` -- the fraction of the family's words the ARRAY PATH changed
@@ -48,12 +48,12 @@ WHAT WOULD MAKE THIS GATE VACUOUS, AND THE FLOORS THAT REFUSE IT
 * ``operand_census`` -- how many subnormals and signed zeros the operands really
   hold. The ``subnormal_band`` class exists to make the policy legs mean
   something, and ``uniform(-1, 1)`` provably draws neither.
-* The mutation battery, including mutations that MUST BE UNCAUGHT. A battery of
+* The mutation battery, including mutations that must be uncaught. A battery of
   only-must-be-caught legs scores identically whether the comparator works or has
   degenerated into failing everything.
 
 =============================================================================
-THE MUTATIONS THIS GATE OWNS
+The mutations this gate owns
 =============================================================================
 
 None of the shared probe's mutations edit these kernels -- they were written for
@@ -64,7 +64,7 @@ reported as NOT ARMED rather than passing silently.
 Two are worth naming:
 
 * ``reflect_row_n_minus_two`` (host) bakes the fixed ``stored - 2`` image row.
-  MEASURED on this laptop before the gate ran: the real row is ``stored - 2`` at
+  Measured on this laptop before the gate ran: the real row is ``stored - 2`` at
   an EVEN full count and ``stored - 3`` at an ODD one, over eight counts 12..19.
   So this mutation is INERT at even counts by construction and is scored only on
   odd-count specs -- a battery that mixed them would report PARTIAL for a reason
@@ -96,7 +96,7 @@ policy token because CuPy's disk-cache key is computed above the strip seam)::
 
 Laptop (no CUDA). The NumPy backend runs the SAME oracle, the same fixture, the
 same floors and the same HOST mutations against a transcription of the shipped
-device tree. IT COMPILES NOTHING AND CERTIFIES NOTHING -- what it settles is
+device tree. It compiles nothing and certifies nothing -- what it settles is
 whether the transcription reproduces ``stepping`` at all, and whether the harness
 can fail::
 
@@ -158,7 +158,7 @@ SEED = 20260821
 #: record on this track is cut at. "Identical for N launches" is a claim about N.
 MULTI_STEP_BUDGET = 60
 
-#: How the multi-step leg keeps moving. THESE PASSES CARRY NO STATE -- the output
+#: How the multi-step leg keeps moving. These passes carry no state -- the output
 #: of a plane write depends only on the input -- so held fixed, launches 2..60
 #: would re-derive launch 1's answer and the leg would be a slow single launch.
 #: The same exact float32 scale is applied on both paths, so it cancels out of the
@@ -198,13 +198,13 @@ FAMILY_COMPONENTS: Dict[str, Tuple[str, str, str]] = {
 # The fixture
 # ---------------------------------------------------------------------------
 #
-# EVERY AXIS IS FOLDED SOMEWHERE, EVERY AXIS IS WALLED SOMEWHERE, and both
+# Every axis is folded somewhere, every axis is walled somewhere, and both
 # full-count parities appear on a folded PERIODIC axis. A sweep carrying one
 # folded axis proves nothing about the other two -- the three have the slowest,
 # middle and fastest stride respectively, and a face decomposition that confuses
 # them is bit-identical on a cube.
 #
-# THE EXTENTS ARE DELIBERATELY UNEQUAL. A cube lets an index decomposition swap i
+# The extents are deliberately unequal. A cube lets an index decomposition swap i
 # and k and stay identical, which is what ``transpose_face_strides`` plants.
 #
 # ``cell`` is in units of 1/resolution and the fixture runs at resolution 1.0, so
@@ -238,7 +238,7 @@ SPECS: Tuple[Dict[str, Any], ...] = (
      "boundaries": ("periodic", "periodic", "metallic"), "cell": (9.0, 10.0, 16.0)},
 
     # --- ODD full count on the folded PERIODIC axis --------------------------
-    # MEASURED: the far ghost's image row is ``stored - 2`` at an even full count
+    # Measured: the far ghost's image row is ``stored - 2`` at an even full count
     # and ``stored - 3`` at an odd one (eight counts, 12..19, on this laptop).
     # A sweep carrying one parity cannot see a baked ``n - 2``.
     {"label": "fold_X_periodic_odd_count", "axes": "X", "phase": 1,
@@ -255,7 +255,7 @@ SPECS: Tuple[Dict[str, Any], ...] = (
     {"label": "fold_X_wall_Y", "axes": "X", "phase": 1,
      "boundaries": ("periodic", "metallic", "periodic"), "cell": (16.0, 10.0, 11.0)},
 
-    # A FOLDED METALLIC AXIS BESIDE A GENUINE WALL. ``_zero_metal`` clears the y
+    # A folded metallic axis beside a genuine wall. ``_zero_metal`` clears the y
     # plane and must NOT clear the x one, whose stored cell 0 is the fold's
     # parity-weighted ghost rather than a wall. This is the only spec on which
     # ``wall_folded_metallic_axis`` is scored against an oracle that does REAL
@@ -524,7 +524,7 @@ HOST_MUTATION_APPLIES: Dict[str, Callable[[Dict[str, Any], Any], bool]] = {
     # A plan with one entry has nothing to reverse and nothing to drop.
     "reverse_axis_order": lambda spec, grid: len(spec["axes"]) >= 2,
     "drop_last_launch": lambda spec, grid: len(spec["axes"]) >= 1,
-    # Baking ``stored - 2`` IS the right row at an even full count. MEASURED over
+    # Baking ``stored - 2`` IS the right row at an even full count. Measured over
     # counts 12..19: even -> stored - 2, odd -> stored - 3.
     "reflect_row_n_minus_two":
         lambda spec, grid: any(int(grid.shape_full[a]) % 2 == 1
@@ -545,7 +545,7 @@ HOST_MUTATION_APPLIES: Dict[str, Callable[[Dict[str, Any], Any], bool]] = {
 # The source mutations: device-text rewrites, CUDA backend only
 # ---------------------------------------------------------------------------
 #
-# NONE OF THE SHARED PROBE'S MUTATIONS EDIT THESE KERNELS -- they were written for
+# None of the shared probe's mutations edit these kernels -- they were written for
 # the curl and constitutive bodies -- so the battery is this gate's own. Each
 # returns ``(mutated, sites)``; a rewrite that matches nothing comes back NOT
 # ARMED rather than passing silently.
@@ -573,7 +573,7 @@ def _drop_x_wall(source: str) -> Tuple[str, int]:
 def _transpose_face_strides(source: str) -> Tuple[str, int]:
     """``face_geometry``'s y branch takes the z branch's ROW STRIDE.
 
-    MEASURED INERT ON ``zero_metal`` AND ONLY THERE, which is why it is carried as
+    Measured inert on ``zero_metal`` and only there, which is why it is carried as
     that pass's null: the wipe stores a constant at ``base`` and never steps a row,
     so the stride is dead code in it. On either fill it moves which plane the ghost
     images and must be caught.
@@ -682,7 +682,7 @@ SOURCE_MUTATIONS: Dict[str, Tuple[Tuple[str, Callable[[str], Tuple[str, int]], O
         ("wipe_row_one", _wipe_row_one, True),
         ("drop_x_wall", _drop_x_wall, True),
         ("transpose_face_base", _transpose_face_base, True),
-        # A NULL, and a MEASURED one rather than an argued one: the wipe stores a
+        # A NULL, and a measured one rather than an argued one: the wipe stores a
         # constant at ``base`` and never steps a row, so the row stride is dead
         # code in it. Paired with ``transpose_face_base``, which edits the SAME
         # helper and must be caught -- which is what stops "inert" from being
@@ -714,7 +714,7 @@ SOURCE_MUTATIONS: Dict[str, Tuple[Tuple[str, Callable[[str], Tuple[str, int]], O
     ),
 }
 
-#: WHICH SPECS A SOURCE MUTATION IS LIVE ON. A rewrite that edits ONE axis branch
+#: Which specs a source mutation is live on. A rewrite that edits ONE axis branch
 #: of the face decomposition is a NO-OP on a grid where that axis never launches,
 #: and scoring it there reports PARTIAL for a reason about the case table rather
 #: than about the kernel. Absent from this map means "live wherever the pass runs".
@@ -879,7 +879,7 @@ def one_case(backend: str, pass_name: str, spec: Dict[str, Any], family: str,
             else mutate_plan(host_mutation, pass_name, launches, grid))
     case["launches_used"] = [dict(entry) for entry in used]
 
-    # THE TWO FLOORS ARE FOR AN UNMUTATED LEG, and they are relaxed for a mutated
+    # The two floors are for an unmutated leg, and they are relaxed for a mutated
     # one DELIBERATELY. "The array path does nothing here and the kernel writes a
     # plane" is not a vacuous case -- it is the strongest form of a catch, and it
     # is exactly what ``wall_folded_metallic_axis`` plants: on a grid whose every
@@ -1184,7 +1184,7 @@ def summarize(results: Dict[str, Any], pass_name: str) -> Dict[str, Any]:
         reasons.append(f"multi-launch divergence on {len(multi_cases) - len(multi_ok)} "
                        f"of {len(multi_cases)} cases")
 
-    # THE HOST DERIVATIONS MUST NOT HAVE DRIFTED from stepping's own, on any case.
+    # The host derivations must not have drifted from stepping's own, on any case.
     drifted = [c["label"] for c in scored
                if not all(c["derivations"][k] for k in
                           ("mirror_phases_agree", "stored_past_owned_agree",
@@ -1198,7 +1198,7 @@ def summarize(results: Dict[str, Any], pass_name: str) -> Dict[str, Any]:
         reasons.append("mirror_parity(c, a, ph) != ph * (1 - 2*iyee[c][a]) on some "
                        "combination; the kernels' single signed parity is wrong")
 
-    # EVERY AXIS MUST HAVE BEEN LIVE somewhere in the sweep. The three have the
+    # Every axis must have been live somewhere in the sweep. The three have the
     # slowest, middle and fastest stride, and a face decomposition that confuses
     # them is bit-identical on a sweep that only ever exercises one.
     live_axes = set()
@@ -1213,7 +1213,7 @@ def summarize(results: Dict[str, Any], pass_name: str) -> Dict[str, Any]:
                        f"sweep; a face decomposition defect is invisible on the "
                        f"axes that never ran")
 
-    # BOTH VALUE CLASSES, and the band class must really contain the band.
+    # Both value classes, and the band class must really contain the band.
     classes = {c["value_class"] for c in scored}
     if classes != set(VALUE_CLASSES):
         reasons.append(f"value classes scored were {sorted(classes)}, not "
@@ -1261,7 +1261,7 @@ def summarize(results: Dict[str, Any], pass_name: str) -> Dict[str, Any]:
         "scored": len(control),
         "diverged": len(control_diverged),
         "reading": (
-            "NOT MEASURED on this run: no unguarded leg was scored"
+            "Not measured on this run: no unguarded leg was scored"
             if not control else
             "the contraction guard changed an answer here, which would be a "
             "surprise: no device string in this module contains a contractible "
@@ -1314,6 +1314,7 @@ def save(results: Dict[str, Any], out_path: str) -> None:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
+    import neutral_ids  # noqa: PLC0415
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--pass", dest="pass_name", required=True, choices=PASSES)
     parser.add_argument("--backend", choices=("cuda", "numpy"), default="cuda")
@@ -1330,8 +1331,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "gate": "cuda_in_seam_passes",
         "pass": args.pass_name,
         "started_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "host": os.uname().nodename,
-        "argv": list(argv if argv is not None else sys.argv[1:]),
+        "host": neutral_ids.machine_id(),
+        "argv": neutral_ids.argv(argv if argv is not None else sys.argv[1:]),
         "backend": args.backend,
         "product": args.product,
         "question": (f"is the shipped CUDA {args.pass_name} pair byte-identical to "
@@ -1347,7 +1348,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             return 2
         if args.import_meep_for_host_policy:
             results["meep_host_import"] = probe.import_meep_for_host_policy()
-        # THE OBSERVER GOES IN BEFORE THE POLICY: under 'keep' the policy's strip
+        # The observer goes in before the policy: under 'keep' the policy's strip
         # wraps it, so it records the option tuple NVRTC was really given.
         results["nvrtc_observer"] = probe.install_nvrtc_binary_observer()
         if args.subnormal_policy:

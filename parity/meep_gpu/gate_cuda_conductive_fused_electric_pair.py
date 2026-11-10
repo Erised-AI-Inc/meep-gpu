@@ -1,18 +1,18 @@
 """Byte-identity gate for the CONDUCTIVE hand-CUDA fused pair on the electric seam.
 
-WHAT IS UNDER TEST. ``meep_gpu/cuda_kernels/conductive_fused_electric_pair.py``: ONE
+What is under test. ``meep_gpu/cuda_kernels/conductive_fused_electric_pair.py``: one
 kernel performing three driver passes in one launch, where the curl is the
 THREE-HISTORY conductive-PML recurrence::
 
     step_D (driver.py:3306) -> zero_metal_D (:3310) -> update_E (:3313)
 
-THE CELL IS ``D_to_E (cuda_conductive/conductive, cuda_constitutive/ordinary)`` and it
+The cell is ``D_to_E (cuda_conductive/conductive, cuda_constitutive/ordinary)`` and it
 owns exactly one corpus row -- ``tests:TestAdjointSolver.test_damping``, which declares
 BOTH a D and a B source, is METALLIC on x and y, carries an ACTIVE absorber and a
 conductivity, and has no susceptibility.
 
 =============================================================================
-THIS IS THE SIGNED-ZERO ROW, AND THAT IS WHAT MAKES THIS GATE DIFFERENT
+This is the signed-zero row, and that is what makes this gate different
 =============================================================================
 
 The driver used to apply the source's ``condinv`` scaling as three WHOLE-VOLUME
@@ -22,7 +22,7 @@ Both rewrites land where no deposit closure can name them, so the fused electric
 on three backends refused conductive rows BY NAME and this cell stood empty on every
 backend.
 
-THE DRIVER NOW HAS NO PASS OVER THE COMPONENT AT ALL: the ``condinv`` scale is inside
+The driver now has no pass over the component at all: the ``condinv`` scale is inside
 each source's own double-precision deposit at its own cells (``sources._deposit``).
 :func:`leg_rescale` is where this gate re-measures that ON A DEVICE rather than
 inheriting it:
@@ -37,25 +37,25 @@ inheriting it:
   signed-zero words of 588, and a classifier that knew only about signed zeros would
   report an unexplained divergence on a device that flushes.
 
-UNLIKE THE OFF-DEVICE PROBE, BOTH CLASSES CAN ARM HERE. NumPy does not flush
+Unlike the off-device probe, both classes can arm here. NumPy does not flush
 subnormals, so the probe recorded that half ``predicted_null`` with its reason; under
 the ``flush`` policy this gate can reach it, and the leg records which classes actually
 armed under which policy rather than assuming either.
 
 =============================================================================
-WHY THE COMPARISON IS PER COMPLETE DRIVER STEP
+Why the comparison is per complete driver step
 =============================================================================
 
 Two engines are built from one seed and stepped side by side, compared as raw uint32
 WORDS after EVERY step over every stored volume the seam touches -- ``D``, the
 split-field auxiliary ``fu_D``, the conductive third history ``f_cond_D``, ``E`` and
-``f_w_E``. THE TWO CURL HISTORIES ARE IN THE COMPARISON and that is not incidental:
+``f_w_E``. The two curl histories are in the comparison and that is not incidental:
 the weld turns both certified helpers into VALUES, and a rewrite that swallowed one of
 their stores would leave the recurrence a step behind at every cell while every
 seam-order check still passed.
 
 =============================================================================
-WHAT THIS GATE REFUSES TO LET PASS SILENTLY
+What this gate refuses to let pass silently
 =============================================================================
 
 1. A step this gate invented -- the driver-order leg reads ``FdtdDriver.step``'s source.
@@ -68,15 +68,15 @@ WHAT THIS GATE REFUSES TO LET PASS SILENTLY
    should move to have moved.
 
 =============================================================================
-MEEP'S PER-CHUNK FORMS (bit_parity_0_10, 0.10)
+MEEP's per-chunk forms (since 1.0)
 =============================================================================
 
 Every launch binds the case's one-rank chunk record (``base.chunk_record``) and the
 conductive-chunk binding ``conductive_keeps`` resolves. ``corpus_damping_half_sigma``
 carries the corpus row's real configuration -- the conductivity in one region, so the
 chunks of the x layer's low face keep none of it and their dsig cells step the
-non-conductive form -- and the mutation battery carries the B battery (KERNELS.md
-section 7.2) and the inverted increment grouping (section 7.1).
+non-conductive form -- and the mutation battery carries the per-chunk form battery
+and the inverted increment grouping (both in docs/development/certification.md).
 """
 
 from __future__ import annotations
@@ -132,8 +132,8 @@ FUSED_PASSES: Tuple[str, ...] = ("step_D", "zero_metal_D", "update_E")
 _TARGETS: Tuple[str, ...] = ("Dx", "Dy", "Dz")
 _ELECTRIC: Tuple[str, ...] = ("Ex", "Ey", "Ez")
 
-#: Every stored volume a complete step on this path touches. BOTH CURL HISTORIES ARE
-#: IN IT: a value rewrite that swallowed either store would be invisible otherwise.
+#: Every stored volume a complete step on this path touches. Both curl histories are
+#: in it: a value rewrite that swallowed either store would be invisible otherwise.
 STATE_NAMES: Tuple[str, ...] = (
     _TARGETS + tuple("fu_" + name for name in _TARGETS)
     + tuple("f_cond_" + name for name in _TARGETS)
@@ -151,7 +151,7 @@ MOVEMENT_FLOOR_NOTE = (
 
 CELL: Tuple[float, float, float] = (9.0, 10.0, 11.0)
 
-#: The sweep. THE FIRST ROW IS THE CORPUS SHAPE, read off the stamped census:
+#: The sweep. The first row is the corpus shape, read off the stamped census:
 #: TestAdjointSolver.test_damping is METALLIC on x and y, periodic on z, with an
 #: ACTIVE absorber and a conductivity on every D component. The rest arm what it
 #: cannot: every axis walled somewhere, one row walled nowhere, MIXED conductive masks
@@ -172,7 +172,7 @@ SPECS: Tuple[Dict[str, Any], ...] = (
     {"label": "wall_z_deep_pml", "boundaries": ("periodic", "periodic", "metallic"),
      "pml": ((2, 2), (2, 2), (4, 4)), "cell": CELL, "epsilon": "anisotropic",
      "conductivity": 0.25, "cond_mask": (True, True, True)},
-    # THE CORPUS ROW'S OWN CONDUCTIVITY LAYOUT: the conductivity in one region (an
+    # The corpus row's own conductivity layout: the conductivity in one region (an
     # adjoint design region, a lossy block), so the chunks of the x layer's low face
     # keep none of it (RegionPlan.conductive_chunks) and step the non-conductive forms
     # while the rest step the conductive ones.
@@ -256,7 +256,7 @@ def build(spec: Dict[str, Any], value_class: str, rng,
         low = 1.2 + (0.4 * offset if spec["epsilon"] == "anisotropic" else 0.0)
         values = rng.uniform(low, low + 2.2, size=shape).astype(np.float32)
         if spec["epsilon"] == "isotropic":
-            # ONE ALLOCATION BOUND THREE TIMES, which is what an isotropic run does
+            # One allocation bound three times, which is what an isotropic run does
             # (fields.py:1321-1326) and what the non-restrict inv_eps parameters exist
             # for. Building three equal COPIES instead would leave that binding
             # untested.
@@ -419,7 +419,7 @@ def run_case(spec: Dict[str, Any], value_class: str, steps: int,
              walls_patch: Optional[Callable[[Sequence[int], Any],
                                             Sequence[int]]] = None,
              label_suffix: str = "") -> Dict[str, Any]:
-    """Step two engines side by side and compare per COMPLETE DRIVER STEP."""
+    """Step two engines side by side and compare per complete driver step."""
     from meep_gpu.cuda_kernels import (  # noqa: PLC0415
         conductive_fused_electric_pair as family,
     )
@@ -592,7 +592,7 @@ def leg_separate_control(spec: Dict[str, Any], steps: int) -> Dict[str, Any]:
     walls = in_seam_coverage.zero_metal_axes(grid)
     dtdx = float(grid.dt / grid.dx)
     tables = family.conductive_fused_electric_pair_tables(pml)
-    # THE CURL'S OWN TABLE IS THE INTEGER SUB-LATTICE (half_integer False for step_D);
+    # The curl's own table is the integer sub-lattice (half_integer False for step_D);
     # the certified launcher takes it directly rather than through this family's pair.
     curl_tables = step_curl_kernels.real_pml_curl_tables(sep_pml, False)
     separate_record = base.chunk_record(sep_grid, sep_pml)
@@ -604,7 +604,7 @@ def leg_separate_control(spec: Dict[str, Any], steps: int) -> Dict[str, Any]:
     fused_counter = MemoLaunchCounter()
     for _step in range(steps):
         array_step(reference, ref_pml)
-        # EACH COMPOSITION RUNS AT step_D'S POSITION IN THE DRIVER'S ORDER, not before
+        # Each composition runs at step_D's position in the driver's order, not before
         # the whole walk. The first cut of this leg ran the D/E work first and then
         # every other pass, which puts step_B and update_H AFTER the displacement they
         # feed -- and BOTH compositions then diverged from the array path in exactly
@@ -617,7 +617,7 @@ def leg_separate_control(spec: Dict[str, Any], steps: int) -> Dict[str, Any]:
                         separate, sep_pml, "step_D", codes, dtdx,
                         tables=curl_tables, chunk_bounds=separate_record)
                     if any(walls):
-                        # THE CERTIFIED IN-SEAM PASS, through its own dispatcher.
+                        # The certified in-seam pass, through its own dispatcher.
                         in_seam_passes.run_pass("zero_metal", separate, "D",
                                                 grid=sep_grid)
                     constitutive_kernels.update_fused_pml_real(
@@ -672,7 +672,7 @@ class _Injector:
 
 
 def _dense_rescale(fields: Any, sources: Sequence[Any], when: float) -> None:
-    """THE RETIRED WHOLE-VOLUME PASSES, kept as a control and never as a code path.
+    """The retired whole-volume passes, kept as a control and never as a code path.
 
     Until the double-precision deposit the driver injected a plain current and then
     rescaled the increment by ``condinv`` over the WHOLE component:
@@ -732,7 +732,7 @@ def leg_deposit(spec: Dict[str, Any], steps: int) -> Dict[str, Any]:
     ref_sources = [_source_for(ref_grid)]
     dt = float(ref_grid.dt)
 
-    # DOES THE FIXTURE ACTUALLY DEPOSIT? Asked AT THE TIMES THE LEGS THEMSELVES USE,
+    # Does the fixture actually deposit? Asked at the times the legs themselves use,
     # because this source's carrier has period 1/frequency = 1.0 and every
     # half-integer time is an exact ZERO of its amplitude: a single hardcoded t = 0.5
     # reported zero and declared perfectly good legs vacuous on the first cut.
@@ -757,7 +757,7 @@ def leg_deposit(spec: Dict[str, Any], steps: int) -> Dict[str, Any]:
         record = base.chunk_record(grid, pml)
         for step in range(steps):
             when = (step + 0.5) * dt
-            # THE FUSED ROUTE RUNS AT step_D'S POSITION, with every other driver pass
+            # The fused route runs at step_D's position, with every other driver pass
             # in its own place around it -- the same walk `run_case` uses.
             for name in DRIVER_ORDER:
                 if name == "step_D":
@@ -766,7 +766,7 @@ def leg_deposit(spec: Dict[str, Any], steps: int) -> Dict[str, Any]:
                     launch_fused(family, fields, pml, record, tables, codes, walls,
                                  dtdx)
                     cp.cuda.runtime.deviceSynchronize()
-                    # THE SHIPPED CONDUCTIVE INJECTION, not a plain one: on this cell
+                    # The shipped conductive injection, not a plain one: on this cell
                     # the driver routes every electric source through the condinv
                     # rescale, and a leg that injected plainly would be bracketing a
                     # seam the driver does not run.
@@ -867,7 +867,7 @@ def leg_rescale(spec: Dict[str, Any], steps: int, policy: str) -> Dict[str, Any]
     record = base.chunk_record(grid2, pml2)
     for step in range(steps):
         when = (step + 0.5) * dt
-        # THE REFERENCE TAKES THE SHIPPED SPARSE INJECTION -- it is the array path as
+        # The reference takes the shipped sparse injection -- it is the array path as
         # the tree ships it today. The engine replays the RETIRED dense passes on the
         # fused route, which is the composition whose word rewrites this leg is about.
         stepping.step_D(reference, ref_pml)
@@ -896,7 +896,7 @@ def leg_rescale(spec: Dict[str, Any], steps: int, policy: str) -> Dict[str, Any]
     row["dense_control_classes"] = counts
     row["dense_diverges"] = total > 0
     row["dense_is_fully_classified"] = counts["other"] == 0 and total > 0
-    # WHICH CLASSES ACTUALLY ARMED, recorded rather than assumed. NumPy cannot arm the
+    # Which classes actually armed, recorded rather than assumed. NumPy cannot arm the
     # subnormal half at all (it does not flush); under the ``flush`` policy this leg
     # can, and under ``keep`` it may not. Either is a real answer and is recorded with
     # the policy beside it.
@@ -935,8 +935,8 @@ def _half_space(spec) -> bool:
 
 SOURCE_MUTATIONS: Tuple[Tuple[str, Tuple[str, str, int], Optional[bool],
                               Callable[[Dict[str, Any]], bool]], ...] = (
-    # --- THE SEAM ------------------------------------------------------------
-    # A CONFIRMED NULL, and declared as one rather than left at "either answer is
+    # --- The seam ------------------------------------------------------------
+    # A confirmed null, and declared as one rather than left at "either answer is
     # fine". By the time the constitutive body runs, the store above has written the
     # CLEARED register into D, so the reload is the identity. The ordering claim it
     # looks like it is making is carried by `wall_clear_misses_the_register` below,
@@ -947,7 +947,7 @@ SOURCE_MUTATIONS: Tuple[Tuple[str, Tuple[str, str, int], Optional[bool],
     ("seam_takes_the_wrong_component",
      ("    float src_x = d_x * inv_eps_Ex[idx];",
       "    float src_x = d_y * inv_eps_Ex[idx];", 1), True, _always),
-    # --- THE SUB-LATTICE SHADOW, and this defect exists only because the fusion put
+    # --- The sub-lattice shadow, and this defect exists only because the fusion put
     # both halves in one scope: the curl's kms is INTEGER and the constitutive's
     # HALF-INTEGER, and letting the certified name shadow is a half-cell error in the
     # absorber profile -- converged, smooth and wrong.
@@ -955,9 +955,9 @@ SOURCE_MUTATIONS: Tuple[Tuple[str, Tuple[str, str, int], Optional[bool],
      ("    constitutive_apply(Ex, f_w_Ex, idx, src_x, kps_x[i], kms_half_x[i], in_h_x);",
       "    constitutive_apply(Ex, f_w_Ex, idx, src_x, kps_x[i], kms_x[i], in_h_x);", 1),
      True, _graded_pml),
-    # --- THE CONDUCTIVE FORMS, chosen per structure chunk ---------------------
-    # The predicate this family carried until 0.10, on coefficient identity instead of
-    # chunk membership (KERNELS.md section 7.2): a sigma = 0 cell inside a layer's
+    # --- The conductive forms, chosen per structure chunk ---------------------
+    # The predicate this family carried before 1.0, on coefficient identity instead of
+    # chunk membership (a form-battery row): a sigma = 0 cell inside a layer's
     # chunk takes a different form.
     ("conductive_predicate_on_coefficient_identity",
      ("    float cfv = cf[idx];\n    float civ = ci[idx];\n",
@@ -968,9 +968,9 @@ SOURCE_MUTATIONS: Tuple[Tuple[str, Tuple[str, str, int], Optional[bool],
     ("conductive_selection_prefers_the_wrong_case",
      ("                : (dsig ? (((fv * km1) + inc) * si1)",
       "                : (0 ? (((fv * km1) + inc) * si1)", 1), True, _always),
-    # INVERTED (KERNELS.md section 7.1): MEEP forms the increment (c' - c) first and
+    # INVERTED (must be caught): MEEP forms the increment (c' - c) first and
     # then adds it (step_generic.cpp:209); the two accumulations left to right are what
-    # this family carried until 0.10 and a different float32 number.
+    # this family carried before 1.0 and a different float32 number.
     ("conductive_increment_regrouped_to_the_old_package_order",
      ("float u_new = dsig ? (((uv * km1) + inc) * si1)",
       "float u_new = dsig ? ((((uv * km1) + c_new) - cv) * si1)", 1), True, _always),
@@ -978,11 +978,11 @@ SOURCE_MUTATIONS: Tuple[Tuple[str, Tuple[str, str, int], Optional[bool],
      ("    float c_new = ((cv * cfv) - curl) * civ;",
       "    float c_new = (cv * cfv) - curl;", 1),
      True, _always),
-    # THE THIRD HISTORY MUST STILL BE WRITTEN. A weld that swallowed this store would
+    # The third history must still be written. A weld that swallowed this store would
     # leave the conductive recurrence a step behind at every cell.
     ("conductive_history_store_dropped",
      ("    if (dsig) c[idx] = c_new;\n", "", 1), True, _always),
-    # The B battery on the record (KERNELS.md section 7.2), on Dx's flags.
+    # The per-chunk form battery on the record, on Dx's flags.
     ("conductive_membership_bound_off_by_one",
      ("const int in_i_z = (k >= cbi_z_a0 && k < cbi_z_a1)",
       "const int in_i_z = (k >= cbi_z_a0 && k < cbi_z_a1 + 1)", 1), True, _always),
@@ -1000,19 +1000,19 @@ SOURCE_MUTATIONS: Tuple[Tuple[str, Tuple[str, str, int], Optional[bool],
     ("conductive_auxiliary_stored_on_a_plain_cell",
      ("    if (dsigu) u[idx] = u_new;\n", "    u[idx] = u_new;\n", 1), True, _always),
     # The auxiliary load issued on every cell, the store still guarded: the loaded word
-    # feeds only the forms of the cells whose chunk carries dsigu (KERNELS.md section
-    # 7.2's declared null).
+    # feeds only the forms of the cells whose chunk carries dsigu (the per-chunk form
+    # battery's declared null).
     ("conductive_auxiliary_load_unguarded",
      ("    float uv = dsigu ? u[idx] : 0.0f;\n", "    float uv = u[idx];\n", 1),
      False, _always),
     # INVERTED: MEEP's stencil grouping replaced by the pairwise one these kernels
-    # carried until 0.10 (the lifted curl_stencil helper).
+    # carried before 1.0 (the lifted curl_stencil helper).
     ("curl_stencil_regrouped_to_the_old_package_order",
      ("if (pr1 && pr2) return dtdx * (((sf - f1) + f2) - ss);",
       "if (pr1 && pr2) return dtdx * ((sf - f1) + (f2 - ss));", 1), True, _always),
     ("split_field_auxiliary_store_dropped",
      ("    if (dsigu) u[idx] = u_new;", "", 1), True, _always),
-    # --- THE WALL CARRY ------------------------------------------------------
+    # --- The wall carry ------------------------------------------------------
     ("wall_clear_uses_the_b_diagonal",
      ("if (wall_x && i == 0) { d_y = 0.0f; d_z = 0.0f; }",
       "if (wall_x && i == 0) { d_x = 0.0f; }", 1), True, _wall("x")),
@@ -1022,14 +1022,14 @@ SOURCE_MUTATIONS: Tuple[Tuple[str, Tuple[str, str, int], Optional[bool],
      ("    Dx[idx] = d_x;",
       "    Dx[idx] = d_x; if (wall_y && j == 0) fu_Dx[idx] = 0.0f;", 1), True,
      _wall("y")),
-    # THE CLEAR MUST REACH THE REGISTER: clearing the VOLUME instead leaves the
+    # The clear must reach the register: clearing the VOLUME instead leaves the
     # register uncleared and the store below writes it back over the zero, so both
     # consumers see a wall cell the array path holds at zero.
     ("wall_clear_misses_the_register",
      ("    if (wall_x && i == 0) { d_y = 0.0f; d_z = 0.0f; }",
       "    if (wall_x && i == 0) { Dy[idx] = 0.0f; Dz[idx] = 0.0f; }", 1), True,
      _wall("x")),
-    # --- THE INVERSE-EPSILON MULTIPLY ---------------------------------------
+    # --- The inverse-epsilon multiply ---------------------------------------
     # D on the LEFT is transcription discipline (IEEE multiply commutes), so this is a
     # NULL that must come back UNCAUGHT -- paired with the component swap below, which
     # must be caught.
@@ -1071,7 +1071,7 @@ def compile_source(source: str, options: Sequence[str]):
 # ---------------------------------------------------------------------------
 
 def save(results, path):
-    """Serialise the payload, WELDED TO THE BYTES THIS PROCESS IMPORTED.
+    """Serialise the payload, welded to the bytes this process imported.
 
     ``gate_provenance.stamp`` records a sha256 for every repo module the running
     interpreter actually loaded, under its own key. That is what
@@ -1215,7 +1215,7 @@ def summarize(results: Dict[str, Any], steps: int) -> Dict[str, Any]:
     }
     masks = sorted({tuple(case["cond_mask"]) for case in product
                     if "cond_mask" in case})
-    # A PARTIAL RUN MAY NOT REPORT ITSELF RELEASED. ``--only`` exists for re-running one
+    # A partial run may not report itself released. ``--only`` exists for re-running one
     # leg during development, and every skipped leg leaves an EMPTY list whose ``all()``
     # is True -- so without this a two-leg smoke run would carry
     # ``canonical_verdict.released`` and the record writer would transcribe it as a
@@ -1261,6 +1261,7 @@ def summarize(results: Dict[str, Any], steps: int) -> Dict[str, Any]:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
+    import neutral_ids  # noqa: PLC0415
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", required=True, help="FILE to write gate.json to")
     parser.add_argument("--steps", type=int, default=STEPS)
@@ -1279,8 +1280,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "subject": "meep_gpu/cuda_kernels/conductive_fused_electric_pair.py",
         "kernel": "conductive_fused_electric_pair_pml_real",
         "started_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "host": os.uname().nodename,
-        "argv": list(argv if argv is not None else sys.argv[1:]),
+        "host": neutral_ids.machine_id(),
+        "argv": neutral_ids.argv(argv if argv is not None else sys.argv[1:]),
         "question": ("does ONE launch of conductive_fused_electric_pair_pml_real leave every stored volume -- both curl histories included -- byte-identical to stepping's step_D -> zero_metal_D -> update_E inside a complete driver step, with an electric source deposited in the seam, and does the driver's condinv injection still leave every non-deposit word untouched?"),
         "subnormal_policy": arguments.subnormal_policy,
         "steps": arguments.steps,
@@ -1290,7 +1291,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     }
     if arguments.import_meep_for_host_policy:
         results["meep_host_import"] = probe.import_meep_for_host_policy()
-    # THE OBSERVER GOES IN BEFORE THE POLICY: under 'keep' the policy's strip wraps
+    # The observer goes in before the policy: under 'keep' the policy's strip wraps
     # it, so it records the option tuple NVRTC was really given.
     results["nvrtc_observer"] = probe.install_nvrtc_binary_observer()
     results["subnormal_policy_install"] = probe.install_subnormal_policy_for_run(
@@ -1358,7 +1359,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         run_host_mutations(results, out_path, arguments.steps, specs_by_label)
 
     results["summary"] = summarize(results, arguments.steps)
-    # THE LEDGER'S OWN KEY, spelled here rather than left to a reader of ``summary``:
+    # The ledger's own key, spelled here rather than left to a reader of ``summary``:
     # ``rebind_cuda_welds`` binds a weld only where every canonical policy leg carries
     # ``canonical_verdict.released`` true, and it treats a MISSING key as "no verdict"
     # rather than as a failure. A gate reporting its release under some other name

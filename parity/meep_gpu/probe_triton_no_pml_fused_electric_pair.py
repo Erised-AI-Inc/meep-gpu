@@ -5,15 +5,15 @@ for ``step_D``, ``zero_metal_D`` and ``update_E`` on a run with NO absorber and 
 E, with the in-seam electric deposit carried across the launch by
 ``deposit_repair.PLAIN_PATH``.
 
-WHAT IS NEW HERE, AND IT IS THE REASON THIS GATE EXISTS RATHER THAN A TWELFTH COPY OF
-ITS SIBLINGS. Every fused pair released before today inverts the SPLIT-FIELD
+What is new here, and it is the reason this gate exists rather than a twelfth copy of
+its siblings. Every fused pair released before today inverts the SPLIT-FIELD
 constitutive recurrence when its seam carries a deposit. This one cannot: with no
 absorber ``stepping.update_E`` writes ``E[...] = (D - sum P) * inv_eps`` straight to
 storage (``stepping.py:1019-1022``), there is no ``f_w`` to save and no ``kps``/``kms`` to
 re-apply. ``deposit_repair.PLAIN_PATH`` is the second repair, and THIS is the first
 device run of any product that declares it.
 
-THE FOUR THINGS EVERY DEVICE LEG MEASURES, per COMPLETE driver step:
+The four things every device leg measures, per COMPLETE driver step:
 
   1. the fused route against the ARRAY PATH, as uint32 words over the whole inventory
      (the primary volumes, the auxiliaries and every polarization buffer);
@@ -26,12 +26,12 @@ THE FOUR THINGS EVERY DEVICE LEG MEASURES, per COMPLETE driver step:
   4. an ORACLE CONTROL: the separate route against the array path. If that itself
      diverges the leg measured nothing about the weld.
 
-THE NULL CONTROL. The same carry cases with the deposit bracket REMOVED. It MUST
+The null control. The same carry cases with the deposit bracket REMOVED. It MUST
 diverge: the launch then consumes a pre-injection D and the repair is the whole
 difference. A bracket that changes nothing is not load-bearing, and a carry leg that
 passes beside a null control that also passes has measured the reference against itself.
 
-THE CLAUSE THAT USED TO PRICE THIS CELL IS MEASURED HERE TOO — in BOTH of its lives.
+The clause that used to price this cell is measured here too — in BOTH of its lives.
 Until 2026-09-01 a NON-INTEGRATED electric source on a conductive run sent the driver
 through a whole-volume rescale, which canonicalised every ``-0.0`` in the target D
 component to ``+0.0`` at cells no deposit closure can name; the product refused that BY
@@ -51,8 +51,8 @@ byte-identical. What the clause still refuses — a scaled source publishing NO 
 table, whose cells no point repair can name — is asserted in ``predicate`` and
 ``refusals``.
 
-WHAT A PASS DOES NOT LICENSE. Nothing about a folded grid (refused by name, and the
-fold's own divergence with NO SOURCE AT ALL is measured in
+What a pass does not license. Nothing about a folded grid (refused by name, and the
+fold's own divergence with no source at all is measured in
 ``probe_plain_deposit_repair.fold_control``), nothing about an active absorber (a
 different repair), nothing about the magnetic seam (``update_H`` writes nothing on this
 branch), nothing about dispatch, and nothing about throughput.
@@ -143,12 +143,12 @@ CARRY_STEPS = 6
 
 #: ``(name, cell, boundaries, steps, sigma, components, poles)``.
 #:
-#: THE WALL CASES ARE NOT DECORATION. Two of this cell's three corpus rows are METALLIC
+#: The wall cases are not decoration. Two of this cell's three corpus rows are METALLIC
 #: on one axis, and the wall clear is the pass this product carries INLINE — so a case
 #: list without a metallic axis would leave the three ``ZM_*`` constexprs compiled to
 #: nothing and every mutation of them a null.
 #:
-#: THE MIXED-CONDUCTIVITY CASE is the only one that puts a live ``COND == 1`` arm beside
+#: The mixed-conductivity case is the only one that puts a live ``COND == 1`` arm beside
 #: a ``COND == 0`` arm in the SAME launch, which is what the three per-target constexprs
 #: exist for.
 CASES: Tuple[Tuple[str, Tuple[float, float, float], Any, int, Any, Any, int], ...] = (
@@ -301,7 +301,7 @@ def transcription_leg() -> Dict[str, Any]:
             "the zero_metal_D block is not a contiguous run of "
             "kernels.fused_curl_constitutive_D's own")
 
-    # 3. THE THREE POLE CHAINS. Each is the certified chain with ONE line changed --
+    # 3. The three pole chains. Each is the certified chain with ONE line changed --
     #    the opening load -- and the change is asserted to BE that one line.
     for index, (register, letter) in enumerate((("v0", "a"), ("v1", "b"), ("v2", "c"))):
         chain = span(stored, f"s{index} = tl.load(g{index} + idx",
@@ -319,15 +319,15 @@ def transcription_leg() -> Dict[str, Any]:
             findings.append(
                 f"pole chain {index} is not the certified chain with only its opening "
                 f"load replaced by the register {register}")
-        # ...and the SUBSTITUTION IS THE ONLY EDIT: every interior statement must be
+        # ...and the substitution is the only edit: every interior statement must be
         # the certified one, unchanged, in order.
         if _dedent(welded[1:-1]) != _dedent(chain[1:-1]):
             findings.append(f"pole chain {index}'s interior was edited, not welded")
 
-    # 4. THE DECLARED CONSTANTS agree with the table they are read from -- AND WITH
-    #    THE OTHER ONE WHERE THE TWO AGREE.
+    # 4. The declared constants agree with the table they are read from -- and with
+    #    the other one where the two agree.
     #
-    #    THE TWO TABLES DISAGREE ON PURPOSE, and this leg is where that is pinned
+    #    The two tables disagree on purpose, and this leg is where that is pinned
     #    rather than remembered. `launch.SUB_STEPS['step_D']['sources']` is
     #    ('Hx','Hy','Hz'), which is right under an absorber where H is stored;
     #    `no_pml_conductive.SUB_STEPS` says ('Bx','By','Bz') and says why
@@ -357,7 +357,7 @@ def transcription_leg() -> Dict[str, Any]:
     if module.DERIVE != 0:
         findings.append("DERIVE must be 0: step_D differences B directly")
 
-    # 5. THE REPAIR DECLARATION, both halves of it.
+    # 5. The repair declaration, both halves of it.
     from meep_gpu import deposit_repair  # noqa: PLC0415
     if module.CARRIES_DEPOSIT_REPAIR is not True:
         findings.append("CARRIES_DEPOSIT_REPAIR is not True")
@@ -603,7 +603,7 @@ def seed_values(cp, driver, seed: int, value_class: str) -> None:
     # which is legal for a harness and is what makes the first step non-vacuous: E is
     # what `step_B` differences, and this product's own output.
     #
-    # THE POLARIZATION HISTORY IS SEEDED TOO. Left at zero, `D - sum P` is `D` and the
+    # The polarization history is seeded too. Left at zero, `D - sum P` is `D` and the
     # whole unrolled chain becomes an identity every mutation of it reproduces.
     for name in ("Ex", "Ey", "Ez", "Hx", "Hy", "Hz",
                  "fu_Bx", "fu_By", "fu_Bz", "fu_Dx", "fu_Dy", "fu_Dz",
@@ -624,7 +624,7 @@ def build_driver(cp, cell, boundaries, seed: int, value_class: str, *,
                  poles: int, integrated: bool = True):
     """One NO-ABSORBER driver with a STORED E, seeded identically for every route.
 
-    NO ``setup_pml`` CALL AT ALL, and that is the family's own precondition rather than
+    No ``setup_pml`` call at all, and that is the family's own precondition rather than
     a fixture choice: both certified halves refuse an active layer by name, and a
     fixture that set one up would report a family failure that was really a fixture
     failure.
@@ -649,7 +649,7 @@ def build_driver(cp, cell, boundaries, seed: int, value_class: str, *,
             (2.25 + 0.30 * np.sin(index * np.float32(0.037 + 0.011 * offset))
              + 0.17 * offset).astype(np.float32)))
         for offset, name in enumerate(("Ex", "Ey", "Ez"))})
-    # THE POLES ARE WHAT MAKE E STORED. Without at least one, `stores_E` is False on a
+    # The poles are what make E stored. Without at least one, `stores_E` is False on a
     # no-absorber run and `update_E` returns without writing -- the E half refuses that
     # by name and this product would have nothing to weld to.
     for pole in range(poles):
@@ -665,7 +665,7 @@ def build_driver(cp, cell, boundaries, seed: int, value_class: str, *,
         driver.set_conductivity({name: cp.asarray(values) for name in components}
                                 if components is not None else cp.asarray(values))
     if electric:
-        # THE DEPOSIT THIS PRODUCT EXISTS FOR, injected BETWEEN the two halves
+        # The deposit this product exists for, injected BETWEEN the two halves
         # (driver.py:3294-3299). INTEGRATED by default; the formerly refused
         # NON-integrated conductive case is measured deliberately in
         # `lifted_refusal_leg` (with the retired whole-volume passes as its armed
@@ -680,7 +680,7 @@ def build_driver(cp, cell, boundaries, seed: int, value_class: str, *,
         driver.add_source({"component": "Hz", "frequency": 0.31,
                            "center": (0.0, 0.0, 0.0), "width": 0.4})
     seed_values(cp, driver, seed, value_class)
-    # THE FAST PATH IS DISABLED, EXPLICITLY. `FdtdDriver.step` consults `fastpath`
+    # The fast path is disabled, explicitly. `FdtdDriver.step` consults `fastpath`
     # BEFORE the module-level sub-step functions this harness substitutes, and BOTH
     # no-absorber arms are WIRED -- so a driver left alone would step `step_D` and
     # `update_E` on Triton and the "array path" reference would be no such thing. The
@@ -705,7 +705,7 @@ def inventory(driver) -> Dict[str, Any]:
         raise AssertionError(
             "this driver does not store E, so update_E returns without writing and "
             "the constitutive half this gate exists for never runs")
-    # EVERY POLARIZATION BUFFER IS PART OF THE COMPARISON. `update_P` is driven by the
+    # Every polarization buffer is part of the comparison. `update_P` is driven by the
     # array this repair rewrites (fields.drive_field returns the STORED E on this
     # branch), so a repair that got E right and P wrong would read as identical without
     # them.
@@ -837,11 +837,11 @@ def separate_route(driver):
     on ``update_E`` -- so this route is not a second model of the seam, it is the
     shipped one.
 
-    THE THREE IN-SEAM PASSES STAY ON THE ARRAY PATH here, and one of them is the whole
+    The three in-seam passes stay on the array path here, and one of them is the whole
     point: no certified Triton product owns ``zero_metal_D``, and this fused kernel
     carries it INLINE. Comparing against a route where the driver runs its own is what
     makes the inline wall a measured claim rather than a described one. All three are
-    counted. THE INJECTION ALSO STAYS ON THE ARRAY PATH, which is what makes this the
+    counted. The injection also stays on the array path, which is what makes this the
     right oracle for the carry family: the certified kernels with the driver's own
     deposit between them.
     """
@@ -869,13 +869,13 @@ def separate_route(driver):
 def fused_route(plan, driver=None, sources=(), bracket: bool = True):
     """The fused plan in its two slots, BRACKETED when the seam carries a deposit.
 
-    THE BRACKET IS THE SHIPPED ONE, and so is the path it declares.
+    The bracket is the shipped one, and so is the path it declares.
     ``deposit_repair.LeadingRepairPlan`` / ``TrailingRepairPlan`` are the exact pair
     ``launch._install_fused_pair`` puts in these two slots, and ``REPAIR_PATHS`` is the
     product's own declaration -- a harness that assembled its own, or that passed the
     default split-field declaration, could not license the one that ships.
 
-    ALL FIVE PASSES ARE REPLACED on this route. ``zero_metal_D`` is carried INLINE by
+    All five passes are replaced on this route. ``zero_metal_D`` is carried INLINE by
     the kernel; the two fills are refused by the fold clause and are no-ops without a
     mirror. Leaving any of them on the array path would double a pass the launch
     already performed.
@@ -1015,7 +1015,7 @@ def run_leg(cp, name: str, case, steps: int, product, *,
         row["arrays_ever_moved"] = len(ever_moved)
         row["arrays_never_moved"] = sorted(
             set(final) - set(ever_moved) - set(material))
-        # THE FLOOR IS RELATIVE TO THE ARRAY PATH. An absolute "every array moved"
+        # The floor is relative to the array path. An absolute "every array moved"
         # floor fails a CORRECT kernel for properties of the CONFIGURATION; what is
         # evidence is an array the ARRAY PATH moves and this route does not, which is a
         # pass this weld swallowed.
@@ -1110,7 +1110,7 @@ def verdict_of(row: Dict[str, Any], *, require_identical: bool = True,
         failures.append(
             f"the fused route reached the array path for an absorbed pass: {fell_back}")
     if require_array_reference:
-        # THE REFERENCE MUST REALLY BE THE ARRAY PATH. `fastpath` is consulted before
+        # The reference must really be the array path. `fastpath` is consulted before
         # these functions and both no-absorber arms are WIRED, so a missing count here
         # means the reference stepped on Triton and the comparison compared two Triton
         # routes.
@@ -1136,7 +1136,7 @@ def shipped_source() -> str:
 def compile_mutant(source: str, kernel_name: str) -> Any:
     """Compile a renamed mutant. The rename is what keeps the JIT cache honest.
 
-    THE DECORATOR IS PUT BACK, and its absence is not cosmetic.
+    The decorator is put back, and its absence is not cosmetic.
     ``ast.get_source_segment`` on a ``FunctionDef`` returns the segment from ``def``
     onwards -- decorator lines are separate nodes and are NOT in it -- so the shipped
     source this harness extracts carries no ``@triton.jit``. A mutant compiled without
@@ -1160,7 +1160,7 @@ def compile_mutant(source: str, kernel_name: str) -> Any:
               "METALLIC = tl.constexpr(1)\n"
               f"RECORD_PRESENCE = tl.constexpr({RECORD_PRESENCE_WORD})\n\n@triton.jit\n")
     text = header + source.replace(KERNEL_NAME, kernel_name)
-    # A MUTATION THAT DOES NOT PARSE IS NOT A MUTATION. Checked before any device work,
+    # A mutation that does not parse is not a mutation. Checked before any device work,
     # so a broken rewrite is reported as unarmed rather than as caught.
     ast.parse(text)
     handle = tempfile.NamedTemporaryFile(
@@ -1231,7 +1231,7 @@ def mutation_table() -> Tuple[Tuple[str, str, str,
                                     Callable[[str], Tuple[str, int]]], ...]:
     """``(id, why it is armed, expectation, rewrite)``.
 
-    THE WELD ITSELF IS THE FIRST TARGET. ``s0 = v0`` is the whole substitution this
+    The weld itself is the first target. ``s0 = v0`` is the whole substitution this
     product makes, so a mutation that reads D from memory instead of from the register
     is the exact defect a careless transcription produces -- and on a run where the
     launch stores D before the constitutive half it is INVISIBLE except at the wall,
@@ -1240,7 +1240,7 @@ def mutation_table() -> Tuple[Tuple[str, str, str,
     THE WALL is the second: this family carries ``zero_metal_D`` inline, and clearing
     the wrong component of an axis is a plane of wrong values with no crash.
 
-    THE POLE CHAIN is the third, and the two rewrites there are the ones the certified
+    The pole chain is the third, and the two rewrites there are the ones the certified
     arm's own gate arms: pre-summing the poles, and reversing their order.
     """
     return (
@@ -1382,7 +1382,7 @@ def run_mutations(cp, product, pristine_ptx: Sequence[str]) -> List[Dict[str, An
             rows.append(row)
             log(f"  mutation {name}: DID NOT COMPILE")
             continue
-        # A MUTANT THAT IS NOT A JIT HANDLE IS A MUTANT THAT MEASURES NOTHING: it would
+        # A mutant that is not a jit handle is a mutant that measures nothing: it would
         # be launched as host Python and every defect would report as uncaught.
         if not hasattr(mutant, "cache") and not hasattr(mutant, "run"):
             row["error"] = ("the mutant is not a triton.jit handle "
@@ -1392,7 +1392,7 @@ def run_mutations(cp, product, pristine_ptx: Sequence[str]) -> List[Dict[str, An
             continue
         case_name, case = mutation_case_for(name)
         row["case"] = case_name
-        # THE CARRY IS ON. A mutation scored without the deposit would leave the
+        # The carry is on. A mutation scored without the deposit would leave the
         # repair's interaction with the mutated register unmeasured.
         leg = run_leg(cp, f"mutation:{name}", case, MUTATION_STEPS, product,
                       value_class="uniform", mutant=mutant, electric=True)
@@ -1431,7 +1431,7 @@ def _swap_inv_eps(_driver, plan):
 class _OnePoleShort:
     """``plan._poles`` with component 0's LAST pole withheld from every launch.
 
-    THE COUNT AND THE BINDING MOVE TOGETHER, and that is not tidiness. The plan
+    The count and the binding move together, and that is not tidiness. The plan
     asserts per launch that the resolved group length equals the compiled count
     (``no_pml_fused_electric_pair.py:906-910``) -- a real guard, and a correct one --
     so a mutation that lowered ``counts`` alone would trip it and RAISE instead of
@@ -1554,7 +1554,7 @@ def _retired_whole_volume_inject(cp, driver) -> int:
 def lifted_refusal_leg(cp, product) -> Dict[str, Any]:
     """The FORMERLY refused configuration, carried — with the retired passes armed.
 
-    THE THREE-LEG SIGNED-ZERO PROTOCOL, re-run against the lifted clause. Until
+    The three-leg signed-zero protocol, re-run against the lifted clause. Until
     2026-09-01 this leg's precursor (``priced_refusal``) ran the NON-integrated
     conductive case around the predicate and REQUIRED the divergence the refusal
     priced. The driver now replays the condinv rescale sparsely at the published
@@ -1637,7 +1637,7 @@ def lifted_refusal_leg(cp, product) -> Dict[str, Any]:
 def _retired_passes_control(cp, case) -> Dict[str, Any]:
     """Replay the retired whole-volume composition beside today's array path.
 
-    TWO ARRAY-PATH DRIVERS, identical in every way except the injection
+    Two array-path drivers, identical in every way except the injection
     composition: no fused plan is installed on either, so what diverges is the
     driver change ALONE — the exact delta the clause was lifted on. The
     divergence's word classes are recorded (signed-zero pairs, and on device the
@@ -1766,13 +1766,14 @@ def run_refusals(cp, product) -> List[Dict[str, Any]]:
 
 
 def environment(cp: Any = None) -> Dict[str, Any]:
+    import neutral_ids  # noqa: PLC0415
     import platform  # noqa: PLC0415
 
     out: Dict[str, Any] = {
-        "argv": list(sys.argv),
+        "argv": neutral_ids.argv(sys.argv),
         "python": sys.version.split()[0],
         "platform": platform.platform(),
-        "hostname": platform.node(),
+        "hostname": neutral_ids.machine_id(),
         "numpy": np.__version__,
         "env": {key: os.environ.get(key) for key in
                 ("CUDA_VISIBLE_DEVICES", "CUPY_CACHE_DIR", "TRITON_CACHE_DIR",

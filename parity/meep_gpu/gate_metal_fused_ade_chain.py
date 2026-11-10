@@ -1,21 +1,21 @@
 #!/usr/bin/env python3
 """Native MPS byte gate for the fused E->P chain: ``update_E`` welded to ``update_P``.
 
-WHAT IS BEING CERTIFIED, and it is not a sub-step. This product spans TWO driver
+What is being certified, and it is not a sub-step. This product spans TWO driver
 passes (``update_E`` at driver.py:3304 and ``update_P`` at :3306) with nothing
 between them, so a per-sub-step comparison could not see it at all: the whole
-claim is about the SEAM. The comparison is therefore per COMPLETE SEAM STEP over a
+claim is about the SEAM. The comparison is therefore per complete seam step over a
 stated budget, against an array-path oracle running the identical two passes, with
 the first divergent step reported rather than a final pass/fail.
 
-THE SIX THINGS THIS GATE REFUSES TO LET PASS SILENTLY:
+The six things this gate refuses to let pass silently:
 
 1. **A silent fallback.** Bytes alone cannot prove the fused path ran: a plan that
    was never launched is byte-identical to the oracle BY CONSTRUCTION. So every
    case asserts the exact LAUNCH COUNT (``launches_per_run`` x steps), a nonzero
-   ``runs``, and a NON-VACUITY FLOOR SPLIT BY ROLE — the arrays this seam WRITES
+   ``runs``, and a non-vacuity floor split by role — the arrays this seam WRITES
    (E, f_w_E, every polarization array) must all have moved, and the arrays it
-   only READS (B, D, H, fu_*) must NOT have.
+   only reads (B, D, H, fu_*) must NOT have.
 2. **A hollow pass.** Source mutations and HOST mutations are armed, and each must
    be CAUGHT — or, where an edit is provably a no-op on the scored configuration,
    NULL CONFIRMED by an identity check rather than reported as uncaught. Leg
@@ -35,23 +35,23 @@ THE SIX THINGS THIS GATE REFUSES TO LET PASS SILENTLY:
    is exempt from the movement floor (a zero state is a fixed point of this seam)
    and is instead required to carry BOTH signs of zero in the reference output, so
    a uint32 compare is actually discriminating something; ``subnormal_band`` is
-   REFUSED BY NAME and its census required to FIRE, which is what makes the empty
+   refused by name and its census required to FIRE, which is what makes the empty
    censuses next door a measurement rather than a silence.
 6. **An unmeasured platform assumption.** The signature packs every scalar into one
    ``constant Params&`` to fit the corpus's six-pole rows. Leg ``binding_ceiling``
    compiles the worst IN-ceiling signature and requires success, then compiles the
    first OVER-ceiling one and requires the failure.
 
-THE ADE HALF IS MEEP'S ARITHMETIC. Each pole's recurrence is
+The ADE half is MEEP's arithmetic. Each pole's recurrence is
 ``gamma1inv * (((two_minus_od * p) - (gamma1 * q)) + (omega0dtsqr * (s * w)))`` on
 MEEP's four float32 constants (``PolarizationState.constants``), the certified
 ``ade_update_p`` body's own line. The mutation leg plants the package's previous
 spelling -- the three folded coefficients and their three-term grouping -- and
-requires it caught (KERNELS.md §7.1). The pointwise ADE single selects its drive per
+requires it caught (docs/development/certification.md). The pointwise ADE single selects its drive per
 chunk on the record (``w = f_w ? f_w : f``), so the PML rows plan through the ADE
 half's own predicate unchanged, and the separate control scores all three sides.
 
-BOTH SUBNORMAL POLICIES, AS FAR AS THIS BACKEND HAS THEM. MPS flush is native and
+Both subnormal policies, as far as this backend has them. MPS flush is native and
 has NO LEVER (metal_kernels/subnormal.py:6-13), so ``keep`` is not a second
 comparison but a REFUSAL, and leg ``policy`` requires the plan to be refused BY
 NAME under it rather than silently downgraded.
@@ -66,7 +66,7 @@ LEGS
                        scored word for word on every row
   6  value_classes     uniform, +-0 lattice, subnormal band (refused, census fires)
   7  mutation          armed defects, each CAUGHT or NULL CONFIRMED
-  7b battery           the per-chunk constitutive battery (KERNELS.md §7.2) on the
+  7b battery           the per-chunk constitutive form battery on the
                        PML arm, scored against its declarations
   8  disarm            the same harness, shipped bytes, must not diverge
 
@@ -163,7 +163,7 @@ class Case:
     value_class: str = "uniform"
 
 
-#: THE CASE MATRIX. The pole counts are the corpus's own, read off
+#: The case matrix. The pole counts are the corpus's own, read off
 #: ``results/metal_coverage_tranche6_2026-08-19``: the no-PML rows carry 5 and 2
 #: (``absorber-1d.py``, ``material-dispersion.py``), the folded dispersive rows 5
 #: (``TestLoadDump.*_2d``) and the unfolded dispersive rows SIX
@@ -227,7 +227,7 @@ def _case(label: str) -> Case:
 def build(case: Case, seed: int, scale: float = 1.0) -> Tuple[Grid, Fields, Optional[PML]]:
     """One seeded engine. Called twice per comparison, identically, for both sides.
 
-    EVERY VOLUME IS FILLED WITH PHYSICAL-BAND VALUES unless a value class says
+    Every volume is filled with physical-band values unless a value class says
     otherwise, and that is the first thing this gate establishes rather than an
     afterthought: a zero-initialised state is a FIXED POINT of this seam — with
     D = P = P_prev = 0 the constitutive gives E = 0 and the recurrence gives
@@ -272,7 +272,7 @@ def build(case: Case, seed: int, scale: float = 1.0) -> Tuple[Grid, Fields, Opti
             else:
                 thickness.append((2, 2))
         pml = PML(grid=grid, thickness=tuple(thickness))
-        # THE REGION PLAN A DRIVER INSTALLS WITH THE LAYER (driver._install_region_plan):
+        # The region plan a driver installs with the layer (driver._install_region_plan):
         # the one-rank division of this grid and absorber. Stepping Fields directly
         # would install the same plan at the first update_E, but the ADE half's
         # predicate reads Fields.drive_field at PLAN time, which needs it already.
@@ -402,7 +402,7 @@ def run_case(case: Case, leg: str, steps: int,
              patch: Optional[Callable[[Any, Any, Residency], None]] = None,
              record: Optional[Callable[[Any], Any]] = None,
              ) -> Dict[str, Any]:
-    """Step the two engines side by side and compare per COMPLETE SEAM STEP.
+    """Step the two engines side by side and compare per complete seam step.
 
     ``record`` is the chunk-record mutation seam (the battery's ``b3``/``b4``): the
     kernel is the shipped one and the record it binds is the true one transformed.
@@ -489,7 +489,7 @@ def run_case(case: Case, leg: str, steps: int,
             for entry in plan.entries],
         "mirrors": len(residency.names),
         "shape": list(plan.shape), "seed": seed,
-        # THE FORMS THIS CASE STEPPED (DESIGN.md D13), on the PML arm.
+        # The forms this case stepped (the form-coverage rule), on the PML arm.
         "forms": ({name: counts for name, counts in battery.form_census(
             actual.grid, actual_pml).items() if name in FORM_COMPONENTS}
                   if actual_pml is not None else None),
@@ -503,7 +503,7 @@ def run_case(case: Case, leg: str, steps: int,
 def run_separate_control(case: Case, steps: int) -> Dict[str, Any]:
     """The SEPARATE certified products beside the fused one, on identical state.
 
-    THIS IS THE LEG THAT MAKES "FUSION" A MEASUREMENT RATHER THAN A NAME. Three
+    This is the leg that makes "FUSION" a measurement rather than a name. Three
     engines from one seed: the array path; the two ALREADY CERTIFIED Metal
     products (``no_pml_stored_e`` / ``dispersive_update_e`` for ``update_E`` and
     ``ade_update_p`` for ``update_P``) dispatching the seam as separate launches;
@@ -516,7 +516,7 @@ def run_separate_control(case: Case, steps: int) -> Dict[str, Any]:
     for this configuration today, which is why disagreement here would be a defect
     in the fused product rather than in an invented comparator.
 
-    ALL THREE SIDES ARE SCORED ON EVERY ROW. The pointwise E singles
+    All three sides are scored on every row. The pointwise E singles
     (``dispersive_update_e`` / ``folded_dispersive_update_e``) step MEEP's per-chunk
     forms on the chunk record they bind, and the pointwise ADE single selects its
     drive on it, as the array path and the fused product do.
@@ -527,7 +527,7 @@ def run_separate_control(case: Case, steps: int) -> Dict[str, Any]:
     _, fused, fused_pml = build(case, seed)
 
     separate_residency = Residency()
-    # THE FOLDED ROW TAKES THE FOLDED FAMILY, not the ordinary one. Both dispatch
+    # The folded row takes the folded family, not the ordinary one. Both dispatch
     # the SAME binding builder (folded_dispersive_update_e.py:5-8); what differs is
     # the predicate that establishes the stored extent, and the ordinary one
     # refuses a live mirror by name. Picking it here would have made the folded
@@ -660,7 +660,7 @@ def leg_binding_ceiling() -> Dict[str, Any]:
 def leg_single_guard() -> Dict[str, Any]:
     """The emitted kernel has EXACTLY ONE branch, so no mutation can be dead.
 
-    THE DEAD-BRANCH MUTATION is a defect class this project has already paid for:
+    The dead-branch mutation is a defect class this project has already paid for:
     an edit can rewrite real lines the scored grid never reaches, because they sit
     under a guard that case does not enter, and then report UNCAUGHT while
     measuring nothing. This family cannot have one — its whole body is straight
@@ -687,7 +687,7 @@ def leg_single_guard() -> Dict[str, Any]:
                          "straight_line": ((branches, ternaries) == allowed[arm]
                                            and not loops
                                            and selects == sum(allowed[arm]) - 1)})
-    # THE SELECT'S TWO FORMS ARE BOTH REACHED by the case the mutations are scored
+    # The select's two forms are both reached by the case the mutations are scored
     # on: every component has cells in and out of its own-axis layer chunk.
     case = _case(MUTATION_CASE)
     _, fields, pml = build(case, case_seed(case.label, "single_guard"))
@@ -704,7 +704,7 @@ def leg_single_guard() -> Dict[str, Any]:
 def leg_transcription() -> Dict[str, Any]:
     """The arithmetic lines equal the CERTIFIED emitters' own, PARSED not mirrored.
 
-    THE MIRRORED EVALUATOR is the second defect class this project has paid for:
+    The mirrored evaluator is the second defect class this project has paid for:
     a test that re-implements a kernel's assembly mirrors a defect instead of
     executing it. So nothing here re-derives a line. Each certified emitter is
     CALLED, its output is searched for the line, this family's output is searched
@@ -755,10 +755,10 @@ def leg_transcription() -> Dict[str, Any]:
                    and "e_out[idx] = e;" in fused)})
 
     # --- the PML half, against the CERTIFIED constitutive body's own lines -------
-    # The per-chunk select and MEEP's accumulation grouping are the ALIGNED
-    # constitutive body's (shaders.constitutive_source, side E), which is what the
-    # array path's _apply_constitutive_regions transcribes. Its component-1 lines are
-    # parsed out of the emitter's output and renamed pointer by pointer.
+    # The per-chunk select and MEEP's accumulation grouping are the certified constitutive
+    # body's (shaders.constitutive_source, side E), which follows MEEP's per-chunk
+    # arithmetic and is what the array path's _apply_constitutive_regions transcribes. Its
+    # component-1 lines are parsed out of the emitter's output and renamed pointer by pointer.
     certified = shaders.constitutive_source("E")
     fused_pml = family.fused_ade_chain_source("dispersive", 1, 2, (True, True))
     renames = (("dw1", "dw"), ("w1[ii]", "fw[idx]"), ("src1", "src"),
@@ -806,7 +806,7 @@ def leg_transcription() -> Dict[str, Any]:
 
 
 def leg_policy() -> Dict[str, Any]:
-    """``keep`` must be REFUSED BY NAME; ``flush`` must admit.
+    """``keep`` must be refused by name; ``flush`` must admit.
 
     MPS flush is native and has NO LEVER (metal_kernels/subnormal.py:6-13), so
     "both policies" cannot mean two comparisons here. It means: the policy this
@@ -851,7 +851,7 @@ def leg_policy() -> Dict[str, Any]:
 #: Scale, and what the per-step census MUST do at it: ``True`` stay clean,
 #: ``False`` fire. The clean rows are what make the firing rows mean something —
 #: a detector that fired on everything would refuse the physical band too and
-#: certify nothing. The banded rows are REFUSED BY NAME, never compared.
+#: certify nothing. The banded rows are refused by name, never compared.
 PRECONDITION_SCALES: Tuple[Tuple[str, float, Optional[bool]], ...] = (
     ("physical", 1.0, True),
     ("small_normal", 1e-25, True),
@@ -906,7 +906,7 @@ def shader_mutations(case: Case, plan_shape: Sequence[Tuple[int, int, Tuple[bool
                      ) -> Dict[str, Dict[Tuple[str, int], Any]]:
     """Source defects, each a plausible transcription slip.
 
-    ARMED ON THE X COMPONENT ONLY, with the other two axes keeping the shipped
+    Armed on the X component only, with the other two axes keeping the shipped
     bytes: that is what makes a caught mutation evidence about the MUTATED LINE
     rather than about the harness. Each edit is required to CHANGE the source —
     a no-op edit would report the shipped kernel as an uncaught defect, which is
@@ -915,11 +915,11 @@ def shader_mutations(case: Case, plan_shape: Sequence[Tuple[int, int, Tuple[bool
     axis, poles, flags = next(row for row in plan_shape if row[0] == 0)
     base = family.fused_ade_chain_source(case.arm, axis, poles, flags)
     edits: Dict[str, str] = {
-        # THE SEAM ITSELF: feed update_P the pre-inverse-epsilon displacement.
+        # The seam itself: feed update_P the pre-inverse-epsilon displacement.
         "seam_takes_the_pre_constitutive_source":
             base.replace("float w = src;", "float w = source;")
                 .replace("float w = e;", "float w = source;"),
-        # INVERTED (KERNELS.md §7.1): the shipped recurrence is MEEP's, on its four
+        # INVERTED: the shipped recurrence is MEEP's, on its four
         # float32 constants; this plants the package's previous spelling -- three
         # coefficients folded from the four and the three-term grouping -- and stays
         # must-catch.
@@ -958,7 +958,7 @@ def shader_mutations(case: Case, plan_shape: Sequence[Tuple[int, int, Tuple[bool
             "pml_accumulations_reversed":
                 base.replace(accumulation,
                              "value = e_out[idx] + ((kps[i] * prev) - (kms[i] * src));", 1),
-            # INVERTED (KERNELS.md §7.1): the shipped accumulation is MEEP's
+            # INVERTED: the shipped accumulation is MEEP's
             # f + ((kps*src) - (kms*prev)); this plants the package's previous
             # ((f + kps*src) - kms*prev) and stays must-catch.
             "pml_previous_accumulation_grouping":
@@ -986,7 +986,7 @@ def shader_mutations(case: Case, plan_shape: Sequence[Tuple[int, int, Tuple[bool
 
 def battery_rows(case: Case, plan_shape: Sequence[Tuple[int, int, Tuple[bool, ...]]]
                  ) -> Dict[str, Dict[str, Any]]:
-    """The per-chunk constitutive battery (KERNELS.md §7.2), armed on the X component.
+    """The per-chunk constitutive form battery, armed on the X component.
 
     The PML arm's only per-chunk form is the constitutive select, so the rows are
     the base gate's constitutive ones (``b9``..``b13``) spelled on this family's
@@ -1102,7 +1102,7 @@ HOST_MUTATIONS: Dict[str, Tuple[Callable[[Any, Any, Residency], None], str]] = {
 }
 
 
-#: THE PLANTED DEFECTS. A mutation leg proves that ONE case diverges when ONE
+#: The planted defects. A mutation leg proves that ONE case diverges when ONE
 #: kernel is wrong; it does not prove the gate's RELEASE VERDICT can fail. These
 #: edits are applied to the family's SHIPPED emitter for the whole process, on
 #: EVERY axis and every arm, so the complete gate — product, separate control,
@@ -1180,7 +1180,7 @@ def main() -> int:
 
     mutation_case = _case(MUTATION_CASE)
     mutation_case_no_pml = _case(MUTATION_CASE_NO_PML)
-    # UNDER A PLANTED DEFECT THE MUTATION LEGS ARE MEANINGLESS and are skipped by
+    # Under a planted defect the mutation legs are meaningless and are skipped by
     # name rather than run: they would compare defective bytes against defective
     # bytes, and several armed edits ARE the planted one, which the name-drift
     # guard correctly refuses as a no-op. What must flip is the verdict of the
@@ -1290,7 +1290,7 @@ def main() -> int:
                          "launches": result.get("launches")})
             emit(handle, rows[-1])
 
-        # THE PER-CHUNK CONSTITUTIVE BATTERY (KERNELS.md §7.2) on the PML arm, each
+        # The per-chunk constitutive form battery on the PML arm, each
         # row scored against its declaration; b13 differs only on a -0 source and
         # runs on the +-0 lattice.
         for name, entry in batteries.items():
@@ -1325,7 +1325,7 @@ def main() -> int:
                          "launches": result.get("launches")})
             emit(handle, rows[-1])
 
-        # THE DISARM CHECK. The identical harness, the identical case, the SHIPPED
+        # The disarm check. The identical harness, the identical case, the SHIPPED
         # bytes and no host patch. A nonzero here would mean every "caught" above
         # is a harness that diverges on its own.
         if args.plant is None:

@@ -1,11 +1,11 @@
 """Merge-bar tests for the Metal special_kz (``grid.beta``) curls.
 
-WHAT IS PINNED HERE THAT NO GATE CAN PIN, because a gate needs a GPU and this file
+What is pinned here that no gate can pin, because a gate needs a GPU and this file
 must pass on any host:
 
 1. **The coefficient, against ``stepping`` ITSELF.** ``beta_curl_coefficients`` is
    a transcription of ``stepping._special_kz_beta_term``'s host arithmetic, and the
-   two are compared BYTE FOR BYTE by calling the array path's own function. A gate
+   two are compared byte for byte by calling the array path's own function. A gate
    comparing kernel output to array-path output would agree even if both used the
    same wrong coefficient; this is the only place the coefficient itself is the
    thing under test.
@@ -165,7 +165,7 @@ def test_the_coefficient_matches_stepping_on_numpy_typed_grid_scalars(
     """The expression is the array path's, on the objects the array path holds --
     not on ``float()`` copies of them.
 
-    THE PATH IS LIVE. ``Grid._resolve_beta`` coerces ``beta`` to a Python float;
+    The path is live. ``Grid._resolve_beta`` coerces ``beta`` to a Python float;
     NOTHING coerces ``dt``, which is ``courant / resolution``, so
     ``Grid(courant=numpy.float32(...))`` leaves ``grid.dt`` a ``numpy.float32`` and
     hands it straight to both ``stepping._special_kz_beta_term`` and
@@ -173,7 +173,7 @@ def test_the_coefficient_matches_stepping_on_numpy_typed_grid_scalars(
     product chain EARLY, so a transcription that widens through ``float()`` first
     computes the whole chain in f64 and rounds once -- a different float32 word.
 
-    MEASURED 2026-08-15 before the casts came out: 14,926 of 40,000 random
+    Measured 2026-08-15 before the casts came out: 14,926 of 40,000 random
     ``numpy.float32`` (beta, dt, sign) draws produced a different coefficient.
     ``beta = BETA_GRATING`` with ``courant = 0.34`` DISCRIMINATES on BOTH signs.
 
@@ -364,7 +364,7 @@ _REACHABLE = [
 
 @pytest.mark.parametrize("boundaries,k", _REACHABLE)
 def test_every_source_a_reachable_grid_emits_is_enumerated(boundaries, k):
-    """The WELD MUST COVER WHAT THE GATE LAUNCHES, and once it did not.
+    """The weld must cover what the gate launches, and once it did not.
 
     ``enumerate_sources`` is what the gate fingerprints into ``provenance.json``.
     Its complex half used to be a hand-written pair of boundary triples and three
@@ -560,17 +560,17 @@ class _StubFields:
 
 
 def test_the_stub_baseline_is_ADMITTED(monkeypatch):
-    """THE POSITIVE CONTROL for every refusal row below.
+    """The positive control for every refusal row below.
 
     Without it a predicate that refused every configuration for one unrelated
     reason would satisfy the whole parametrised matrix, because each row only
     asserts that ITS clause appears among the reasons — and the reasons accumulate.
 
-    THE POLICY IS PINNED, as every other family's admission test pins it. This
+    The policy is pinned, as every other family's admission test pins it. This
     arm64 host's DEFAULT resolves to ``keep`` and the MPS executor cannot honour
     keep, so the predicate refuses; a baseline that read the ambient environment
     passed only because the shell that ran it exported ``flush``, which makes the
-    positive control a property of the shell rather than of the code. MEASURED:
+    positive control a property of the shell rather than of the code. Measured:
     green under an exported ``flush``, red under ``keep`` and red with the variable
     unset — the same three tests, the same tree.
     """
@@ -665,7 +665,7 @@ def test_the_complex_predicate_refuses_by_name(label, grid_kwargs, fields_kwargs
 def test_an_unreadable_layout_is_refused_rather_than_admitted(arm):
     """A volume that does not report its layout is NOT a contiguous one.
 
-    MEASURED admitting on the complex arm before this clause was fixed: the
+    Measured admitting on the complex arm before this clause was fixed: the
     contiguity test read ``flags is not None and not getattr(flags,
     "c_contiguous", True)``, so a volume exposing only ``dtype`` and ``shape`` was
     ADMITTED with an EMPTY reason tuple. The real arm always failed closed here;
@@ -694,7 +694,7 @@ def test_an_unreadable_layout_is_refused_rather_than_admitted(arm):
 def test_a_non_three_dimensional_shape_is_refused_on_the_complex_arm():
     """The plan multiplies ``shape[0..2]``; the predicate must refuse first.
 
-    MEASURED admitting: with a 2-D ``grid.shape`` AND 2-D volumes the per-volume
+    Measured admitting: with a 2-D ``grid.shape`` AND 2-D volumes the per-volume
     clause is silent (they agree), ``_coefficient_reasons`` is skipped by its own
     ``len(shape) == 3`` guard, and the verdict was ``covered=True`` with NO reasons
     — an ``IndexError`` waiting in ``BetaBlochPmlCurlPlan.__init__``.
@@ -751,7 +751,7 @@ def test_the_real_constitutive_companion_is_admitted_and_inherits_the_clauses(
 
 
 def test_the_complex_constitutive_admits_a_complex_beta_run(monkeypatch):
-    """THIS TEST USED TO PIN THE REFUSAL, and the inversion is the whole change.
+    """This test used to pin the refusal, and the inversion is the whole change.
 
     Until 2026-08-19 ``beta_run_complex_constitutive_coverage`` refused every
     configuration it was shown and this asserted the refusal string. It is a real
@@ -782,7 +782,7 @@ def test_the_complex_constitutive_admits_a_complex_beta_run(monkeypatch):
     # admits the same configuration, which the gate's refusals leg measures.
     ("offdiagonal_E", {}, {"has_offdiagonal_epsilon": True}, "E",
      "off-diagonal chi1inv row"),
-    # Module-wide clause 7: complex-storage ADE is a later tranche.
+    # Module-wide clause 7: complex-storage ADE is left to a later certification.
     ("susceptibility", {}, {"has_polarizations": True}, "E",
      "complex-storage ADE"),
     ("nonlinearity", {}, {"has_nonlinearity": True}, "H", "chi2/chi3"),
@@ -818,7 +818,7 @@ def test_an_unknown_sub_step_raises_rather_than_refusing_quietly():
 
 
 def test_the_family_registers_eight_wired_arms_over_all_four_slots():
-    """WIRED as of tranche 2, and SYMMETRIC as of 2026-08-19.
+    """Wired as of the second Metal certification, and symmetric as of 2026-08-19.
 
     Eight rows: a real and a complex arm on each of the four slots — two curl arms
     per curl slot, two constitutive arms per side. The count did not change when the

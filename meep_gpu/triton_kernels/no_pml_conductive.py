@@ -1,14 +1,14 @@
 """The CONDUCTIVE no-absorber curl: ``step_B``/``step_D`` with a sigma and no PML.
 
 Closes residual group (E) and the CURL half of residual group (H) — 6 of the 9
-slots the no-absorber trio is about. It is a genuine kernel: the closure round
+slots the no-absorber trio is about. It is a genuine kernel: the residual closure
 measured the incumbent plain curl DIVERGENT on this configuration at both
 sub-steps (1536/4608 and 1356/4608,
 ``results/residual_closure_2026-08-15/device/bodies/bodies.json``), and this file
 reproduces those verdicts locally before claiming to close them
 (see :data:`LOCAL_DIVERGENCE`).
 
-WHAT THE ARRAY PATH DOES, AND WHERE THE FOURTH BRANCH LIVES
+What the array path does, and where the fourth branch lives
 -----------------------------------------------------------
 ``stepping._apply_curl`` (stepping.py:489-539) has FOUR branches and this module
 owns the third::
@@ -40,13 +40,13 @@ MEEP structure.cpp:693-706), both FULL VOLUMES of ``grid.shape``. There is no
 refusal it prints — "f_cond_Bx is not allocated, but Bx is conductive" — is TRUE
 and is not a bug in that predicate.
 
-THE CURL HALF IS UNCHANGED, AND THAT IS THE WHOLE REASON THIS IS CHEAP.
+The curl half is unchanged, and that is the whole reason this is cheap.
 Conductivity enters ``_apply_curl`` only AFTER the curl is formed, so the term
 table, the ghost rule, the stencil grouping, the ownership mask and the derived-E
 source are ``no_pml.plain_curl_step``'s, byte for byte. Only the tail differs, and
 it is one expression.
 
-CONDUCTIVITY IS READ PER TERM. NOT PER SIDE, AND NOT PER RUN.
+Conductivity is read per term. Not per side, and not per run.
 --------------------------------------------------------------
 ``_apply_curl`` reads ``fields.condfac_for(term.target)`` at stepping.py:508, once
 per TERM, inside a loop that ``step_B`` runs over ``B_CURL_TERMS`` (stepping.py:214,
@@ -64,7 +64,7 @@ entirely and the kernel emits ``no_pml.plain_curl_step``'s ``f - curl`` verbatim
 so a partially conductive launch is identical on its lossless components BY
 CONSTRUCTION rather than by argument.
 
-**THE ADMISSION GATE IS A DIFFERENT QUESTION FROM THE ARITHMETIC, and conflating
+**The admission gate is a different question from the arithmetic, and conflating
 the two is the error this paragraph exists to prevent.** The arithmetic reads per
 TERM, above. The ADMISSION reads the same question ``no_pml.plain_curl_coverage``
 clause 8 reads — is a conductivity installed on ANY curl target, or is
@@ -77,7 +77,7 @@ Measured: that hole is 0 corpus slots today (all three conductive no-PML rows ca
 both sides, ``predicate_coverage_2026-08-16_wired_convention``), and it is still not
 opened, because a partition that depends on which rows exist is not a partition.
 
-WHAT THIS CLOSES, AND THE ROWS BY NAME
+What this closes, and the rows by name
 --------------------------------------
 From ``results/predicate_coverage_2026-08-16_wired_convention/remaining.txt``, the
 186-row census after the residual-group wiring:
@@ -93,7 +93,7 @@ From ``results/predicate_coverage_2026-08-16_wired_convention/remaining.txt``, t
   ``update_E`` and the already-wired ``no_pml_ade`` at ``update_P`` those two rows
   go whole-step as well.
 
-GROUP (H)'s CURLS WERE NEVER MEASURED DIRECTLY BY THE CLOSURE ROUND — the
+Group (H)'s curls were never measured directly by the residual closure — the
 assumption was that they diverge for group (E)'s reason. That assumption is now a
 MEASUREMENT and it is local, so it needs no device: see :data:`LOCAL_DIVERGENCE`
 and ``test_triton_no_pml_conductive``'s divergence leg. Dispersion cannot reach a
@@ -135,7 +135,7 @@ from .coverage import (  # READ-ONLY imports; nothing here mutates coverage.py
     _volume_reasons,
 )
 
-# ONE DEFINITION OF THE SUB-STEP TABLE, IMPORTED. The targets, the sources, the
+# One definition of the sub-step table, imported. The targets, the sources, the
 # displacement fallback and the difference direction are all identical to the
 # lossless no-PML curl's — conductivity changes the tail and nothing above it — so
 # re-spelling them here would be a second transcription of a table whose whole
@@ -155,7 +155,7 @@ __all__ = [
 ]
 
 
-#: THE GAP THIS MODULE CLOSES, MEASURED WHERE IT COULD BE — on NumPy, on this
+#: The gap this module closes, measured where it could be — on NumPy, on this
 #: laptop, against the real ``stepping`` sub-steps.
 #:
 #: The question a divergence measurement has to answer is "what would the INCUMBENT
@@ -179,14 +179,14 @@ LOCAL_DIVERGENCE: Dict[str, Dict[str, Any]] = {
     "_measured": ("NumPy float32, arm64 laptop, real Grid/Fields/PML objects, one "
                   "sub-step per case, uint32 compare. Reproduced by "
                   "test_triton_no_pml_conductive rather than quoted from here."),
-    # Group (E): the closure round's own shape. 8x8x8 x 3 targets = 1536 words, and
+    # Group (E): the residual closure's own shape. 8x8x8 x 3 targets = 1536 words, and
     # its 4608 denominator is the whole 9-volume stored inventory.
     "E_cond_no_poles_3d_step_B": {"verdict": "DIVERGENT", "differing": 1536,
                                   "compared": 1536, "moved": 1536},
     "E_cond_no_poles_3d_step_D": {"verdict": "DIVERGENT", "differing": 1536,
                                   "compared": 1536, "moved": 1536},
-    # Group (H): the same shape with poles registered and stored E. THE ASSUMPTION
-    # THE CLOSURE ROUND LEFT OPEN, now measured.
+    # Group (H): the same shape with poles registered and stored E. The assumption
+    # the residual closure left open, now measured.
     "H_cond_2_poles_3d_step_B": {"verdict": "DIVERGENT", "differing": 1536,
                                  "compared": 1536, "moved": 1536},
     "H_cond_2_poles_3d_step_D": {"verdict": "DIVERGENT", "differing": 1536,
@@ -206,7 +206,7 @@ LOCAL_DIVERGENCE: Dict[str, Dict[str, Any]] = {
 def conductive_no_pml_targets(fields: Any, sub_step: str) -> Tuple[bool, bool, bool]:
     """Which of THIS sub-step's three targets carry a conductivity.
 
-    THE SINGLE PLACE THAT DECIDES IT, for the reason
+    The single place that decides it, for the reason
     :func:`conductivity.conductive_targets` gives on the PML path: the predicate's
     per-target clauses and the ``COND0``/``COND1``/``COND2`` constexprs both read
     this function, so a lossless component cannot be stepped through the conductive
@@ -338,7 +338,7 @@ if triton is not None:  # pragma: no cover - device code, certified by the byte 
         ``ENABLE_FP_FUSION`` applies and matters MORE than on the lossless path.
         ``((f * cf) - curl) * ci`` is a multiply feeding a subtract feeding a
         multiply, with ``curl`` itself a multiply — three separate contraction sites
-        where the plain tail has one. DO NOT FLATTEN THE PARENTHESES: the array path
+        where the plain tail has one. Do not flatten the parentheses: the array path
         performs three SEQUENTIAL in-place passes (stepping.py:1996, :1997, :1998),
         each rounding to float32 before the next reads it.
         """
@@ -375,7 +375,7 @@ if triton is not None:  # pragma: no cover - device code, certified by the byte 
 
         # --- the source operands ------------------------------------------------
         # DERIVE forms stepping._read_component's D * inv_eps here rather than
-        # reading a scratch volume the host wrote. D ON THE LEFT — the array path's
+        # reading a scratch volume the host wrote. D on the left — the array path's
         # operand order (stepping.py:2450), kept literally.
         if DERIVE:
             a = tl.load(g0 + idx, mask=live, other=0.0) * tl.load(e0 + idx, mask=live, other=0.0)
@@ -644,7 +644,7 @@ def conductive_plain_curl_coverage(fields: Any, pml: Any,
     volumes for the conductive targets of THIS sub-step are present, float32,
     C-contiguous and grid-shaped.
 
-    DISPERSION IS ADMITTED, and that is this predicate's group-(H) half. The curl
+    Dispersion is admitted, and that is this predicate's group-(H) half. The curl
     differences the STORED E and H arrays and never reads a polarization —
     ``stepping.step_B`` and ``step_D`` name ``fields.polarizations`` nowhere. What a
     pole does change is ``stores_E``, and that is read below as the ``DERIVE``
@@ -687,7 +687,7 @@ def conductive_plain_curl_coverage(fields: Any, pml: Any,
     #     backwards is not a crash: with stores_E True and DERIVE 1 the kernel would
     #     difference D*inv_eps while the engine's monitors read a stored E a
     #     polarization has already been subtracted from — a smooth field one
-    #     polarization out of date. THIS IS THE CLAUSE THE GROUP (H) ROWS EXERCISE:
+    #     polarization out of date. This is the clause the group (H) rows exercise:
     #     they store E because they carry poles, so they take the DERIVE = 0 arm.
     if sub_step == "step_B":
         if bool(getattr(fields, "stores_E", False)):
@@ -759,7 +759,7 @@ class ConductivePlainCurlPlan:
     gate — and launched ONE way, so the bytes the gate certifies are the bytes the
     engine would launch.
 
-    A LOSSLESS COMPONENT BINDS ITS OWN TARGET AS THE PLACEHOLDER for its two
+    A lossless component binds its own target as the placeholder for its two
     coefficient slots, never a null. The loads sit behind a ``tl.constexpr`` branch
     and are compiled away, but a pointer argument still has to type, and passing
     ``None`` makes the launcher's failure a ``TypeError`` far from its cause. The
@@ -903,8 +903,8 @@ def plan_conductive_plain_curl_from_arrays(sub_step: str, arrays: Dict[str, Any]
     No predicate runs: the caller is a harness that constructed the configuration
     deliberately, including the deliberately wrong ones. ``kernel=`` IS LOAD-BEARING
     and is not decoration — a mutation leg that silently launches the SHIPPED kernel
-    reports every defect as uncaught, which is the harness defect the no-PML gate's
-    §13.4 records at 4/4 real defects reported as identical.
+    reports every defect as uncaught, which is the harness defect once measured at
+    4/4 real defects reported identical.
 
     ``chunk_bounds`` is REQUIRED and has no default, as on
     :func:`no_pml.plan_plain_curl_from_arrays`: the record's presence word is a fact of
@@ -961,7 +961,7 @@ def plan_conductive_plain_step(fields: Any, pml: Any,
 
 
 # ---------------------------------------------------------------------------
-# WIRING AND DEVICE CERTIFICATION — COMPLETE
+# Wiring and device certification — complete
 # ---------------------------------------------------------------------------
 #
 # ``launch.plan_step`` now has one ``conductive no-PML`` arm, gated on the same

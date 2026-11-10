@@ -8,7 +8,7 @@ runtime argument on this backend, so a folded beta row and an unfolded one compi
 to the same text.
 
 =============================================================================
-THE CELL
+The cell
 =============================================================================
 
 ``parity/meep_gpu/results/fusion_matrix_cuda_2026-09-07_wired/fusion_matrix_cuda.json``,
@@ -21,13 +21,13 @@ THE CELL
 Those are the only two REAL-storage beta rows in the corpus, and
 ``special_kz_curl``'s own admission says so and says why (the other four beta rows
 are complex storage and belong to :mod:`.complex_beta_fused_hd_pair`, the sibling
-product built in the same round). Both instances carry
+product built alongside it). Both instances carry
 ``integrated_electric_sources = 0`` and neither is in the ``withdraw_seam`` bucket,
 so :data:`HOISTS_THE_WITHDRAW` False costs this cell nothing measurable -- which is
 a fact read off the board, not a hope, and the clause is still asked.
 
-THE UPDATE_H HALF IS NOT A BETA KERNEL, AND THAT IS THE CELL'S SHAPE RATHER THAN A
-SHORTCUT. ``special_kz_curl`` ships no constitutive kernel:
+The update_H half is not a beta kernel, and that is the cell's shape rather than a
+shortcut. ``special_kz_curl`` ships no constitutive kernel:
 ``covers_special_kz_constitutive`` is an ADMISSION over the CERTIFIED
 ``update_H_pml_real``, because ``stepping.update_H`` (:907-923) through
 ``_apply_constitutive_pml`` (:2065) reads no ``grid.beta`` and no array the beta term
@@ -38,7 +38,7 @@ So this weld's constitutive half is byte-for-byte
 :func:`.fused_hd_pair.raw_update_H_cell_source`, reused rather than re-lifted.
 
 =============================================================================
-THE SHAPE: SCRATCH OUTPUT AND FOREIGN-CELL RECOMPUTE
+The shape: scratch output and foreign-cell recompute
 =============================================================================
 
 Identical in structure AND in justification to :mod:`.fused_hd_pair`, so the
@@ -55,7 +55,7 @@ whole launch); every foreign read is a RECOMPUTE of the certified pointwise
 (:func:`.fused_hd_pair.rotate_into_fields`, reused rather than re-spelled).
 
 =============================================================================
-WHAT THIS SEAM ADDS THAT NO OTHER H->D WELD HAS: THE BETA PARTNER
+What this seam adds that no other H->D weld has: the beta partner
 =============================================================================
 
 ``stepping._special_kz_beta_term`` takes the SAME-CELL component snapshot, and in the
@@ -63,8 +63,8 @@ D-side curl that snapshot is already in a register: Dx's partner is the Hy CENTR
 stencil loaded into ``f2`` and Dy's is the Hx CENTRE in ``f1`` (special_kz_curl's own
 transcription, pinned there against ``D_CURL_TERMS``). The array path evaluates
 ``step_D`` AFTER ``update_H``, so that snapshot is the POST-``update_H`` magnetic field.
-Since 0.10 the beta increment is MEEP's own pass after the component's curl, through its
-own additive ladder (``folded_pass.beta_insert``; bit_parity_0_10 KERNELS.md section 6),
+Since 1.0 the beta increment is MEEP's own pass after the component's curl, through its
+own additive ladder (``folded_pass.beta_insert``),
 and the ladder writes ``D``/``fu_D`` at the thread's OWN cell only -- in place, safe by
 construction, exactly as ``pml_apply`` is.
 
@@ -78,13 +78,13 @@ the beta pass of targets 0 and 1 one sub-step behind -- converged, plausible and
 wrong -- and it is the armed mutation ``beta_partner_reads_stale_h``, which no
 sibling H->D gate has a site for.
 
-THE ARITHMETIC IS THE CERTIFIED FAMILY'S. Every operation in this kernel comes from
+The arithmetic is the certified family's. Every operation in this kernel comes from
 ``step_curl_kernels._REAL_PML_PRELUDE`` (``shift_up``, ``shift_dn``, ``pml_apply``,
 the three boundary codes), from ``constitutive_kernels``' ``constitutive_apply``, or
 from ``special_kz_curl``'s two beta passes and the folded ladder they call
 (``folded_pass.REAL_FOLD_HELPERS``). NOTHING is retyped.
 
-TWO CuPy SPELLINGS MEASURED ON THIS BACKEND ARE RESPECTED RATHER THAN REDISCOVERED,
+TWO CuPy spellings measured on this backend are respected rather than rediscovered,
 and on THIS family both are recorded as ABSENCES rather than sites:
 
 * ``complex64 * float32`` -- the contracted four-product form -- has NO SITE here.
@@ -105,7 +105,7 @@ than imported, so loading this file by path cannot pick up a different tuple tha
 the one the gate compiled.
 
 =============================================================================
-IT IS NOT INSTALLED, AND THE REASON IS THE SIBLING'S MEASURED VERDICT
+It is not installed, and the reason is the sibling's measured verdict
 =============================================================================
 
 :data:`INSTALLABLE` is False. Over the driver's ``step_B - update_H - step_D -
@@ -118,23 +118,23 @@ neighbours are RELEASED products -- ``cuda_special_kz_fused_magnetic_pair`` hold
 and there is nothing here to re-price: this cell's seam is 2 launches today and this
 product takes it to 1, saving exactly what each neighbour saves.
 
-SHIP THE FLAG FALSE AND MEASURE THE ARBITRATION ANYWAY. What keeps the released
+Ship the flag false and measure the arbitration anyway. What keeps the released
 B->H pair in its slot is not this flag but ``fused_pairs._neighbouring_seam_claimant``'s
 end-edge guard together with ``_spans_may_absorb`` reading the live ``selected``; the
 flag is belt and braces in front of them, and the gate's arbitration leg measures
-both arrangements THROUGH THE SHIPPED COMPOSER rather than assuming either.
+both arrangements through the shipped composer rather than assuming either.
 
 =============================================================================
-NOT DISPATCHED, AND NOT YET IN THE COMPOSER'S TABLES
+Not dispatched, and not yet in the composer's tables
 =============================================================================
 
 Nothing under ``meep_gpu/`` imports ``cuda_kernels`` outside tests;
 ``fastpath.plan_fast_path`` returns ``None`` on every branch. Beyond that, this
 family is not in ``fused_pairs.FUSED_PRODUCTS``, ``registry`` or ``arms`` at all:
-the wiring is a separate change that a later round applies. The gate PLANS EVERY
-ARRANGEMENT FROM ARRAYS and drives the array path itself; the composer building a
+the wiring is a separate change that a later edit applies. The gate plans every
+arrangement from arrays and drives the array path itself; the composer building a
 composition that includes THIS product is measured in-process with the wiring rows
-patched in (the arbitration leg) and awaits the wiring round.
+patched in (the arbitration leg) and awaits that wiring change.
 """
 
 # Derived from MEEP (https://github.com/NanoComp/meep).
@@ -173,7 +173,7 @@ SLOT = "update_H"
 
 #: The driver passes ONE launch performs, in driver order (driver.py:3311, :3315).
 #: Nothing between them is carried: the electric withdraw (:3313-3314) is declined in
-#: this round, which is why it is not in this tuple.
+#: this product, which is why it is not in this tuple.
 REPLACES: Tuple[str, ...] = ("update_H", "step_D")
 
 #: The seam name ``fused_pairs.FUSED_PAIR_SEAMS`` files this row under, and the module
@@ -206,7 +206,7 @@ BETA_INSERT_LINES = 2
 #: factor names the partner register.
 _BETA_INCREMENT_PREFIX = "float inc_beta = owned_cell ? (-(beta_"
 
-#: NOT CERTIFIED YET. The gate for this family is
+#: Not certified yet. The gate for this family is
 #: ``parity/meep_gpu/gate_special_kz_fused_hd_pair.py`` and its artifacts are
 #: ``parity/meep_gpu/results/special_kz_fused_hd_pair_2026-09-07/{keep,flush}/gate.json``.
 #: A name moves from the dead set to the certified one only once
@@ -232,7 +232,7 @@ UNCERTIFIED_KERNELS = {
 #: choice; this predicate consequently does not consult ``deposit_repair`` at all.
 CARRIES_DEPOSIT_REPAIR = False
 
-#: Not in this round. The only wiring that performs the hoist is
+#: Not hoisted here. The only wiring that performs the hoist is
 #: ``fused_pairs._install_fused_pair``'s ``withdraw_hoist.SEAM`` branch, which
 #: ``_declared_uninstallable`` makes unreachable for a product declaring INSTALLABLE
 #: False. True here would be a claim about wiring that cannot fire, and would let the
@@ -306,7 +306,7 @@ def _certified_curl_source() -> str:
 #: weld's signature appends in the same place and the same order.
 _BETA_PARAMETERS = ("    float beta_plus, float beta_minus\n")
 
-#: THE DECLARATION, SPELLED AS A LITERAL. Everything after the opening parenthesis is
+#: The declaration, spelled as a literal. Everything after the opening parenthesis is
 #: taken from :func:`.fused_hd_pair.signature` so the two products' parameter lists
 #: cannot drift; the name is written out here because the partition reader needs to
 #: see it in this file's own text.
@@ -316,7 +316,7 @@ _SIGNATURE_HEAD = '\nextern "C" __global__ void fused_hd_pair_special_kz_real(\n
 def signature() -> str:
     """This kernel's parameter list: the real sibling's, plus the two beta scalars.
 
-    THE PARAMETER TEXT IS THE RELEASED PRODUCT'S OWN, cut off its signature at the
+    The parameter text is the released product's own, cut off its signature at the
     opening parenthesis rather than retyped, so a change to what
     :mod:`.fused_hd_pair` binds arrives here as a compile error or an anchor failure
     instead of as a silent divergence between two hand-kept lists.
@@ -381,11 +381,11 @@ def curl_prelude() -> str:
 def welded_curl_tail(source: Optional[str] = None) -> Tuple[str, str]:
     """``(head, tail)`` of a certified ``step_D`` body, every H read redirected.
 
-    PARAMETERISED ON THE CURL TEXT, and that parameter is the point rather than a
+    Parameterised on the curl text, and that parameter is the point rather than a
     convenience: applied to the CERTIFIED real ``step_D`` this function returns
     exactly what :func:`.fused_hd_pair.welded_curl_tail` returns, which
     ``test_special_kz_fused_hd_pair.py`` asserts as a byte equality. The beta weld is
-    therefore the released transform plus the beta assertions below, MEASURED rather
+    therefore the released transform plus the beta assertions below, measured rather
     than claimed.
 
     ``head`` is the certified preamble, the stride constants, the index decode and the
@@ -469,7 +469,7 @@ def welded_curl_tail(source: Optional[str] = None) -> Tuple[str, str]:
 def _assert_the_beta_partner_is_the_weld_register(tail: str, lifted: bool) -> None:
     """Every surviving beta line consumes a register THIS WELD redirected.
 
-    THE ONE CLAUSE THIS FAMILY OWNS AND NO SIBLING H->D WELD HAS. The beta pass's
+    The one clause this family owns and no sibling H->D weld has. The beta pass's
     partner is the SAME-CELL component snapshot, which the array path evaluates after
     ``update_H``; welded, that snapshot must be the weld's own ``own_h[...]`` register
     and never a load of the pre-launch volume. The redirect above rewrites the
@@ -477,7 +477,7 @@ def _assert_the_beta_partner_is_the_weld_register(tail: str, lifted: bool) -> No
     pairing rather than the line: per target block, each ``inc_beta`` line's partner
     names a register declared ``= own_h[...]`` in that same block.
 
-    THE SITE COUNT IS A WELD ON BOTH PATHS, and only its EMPTY case is conditional. A
+    The site count is a weld on both paths, and only its EMPTY case is conditional. A
     lifted text carrying ZERO beta lines is the certified beta-FREE ``step_D`` -- the
     input the released-transform equality check hands in -- and is accepted; anything
     else, lifted or shipped, must carry exactly :data:`BETA_INSERT_LINES`. A body that
@@ -561,7 +561,7 @@ def kernel_source() -> str:
 #: cylindrical H->D products will look for a site for each and must be told there is
 #: none -- and because carrying one backend's or one storage class's prescription into
 #: the other is the defect the divide spellings were measured to be.
-#: THE ONLY DIVISIONS ANY TEXT THIS FAMILY EMITS MAY CONTAIN: the certified index
+#: The only divisions any text this family emits may contain: the certified index
 #: decode's two INTEGER lines, which turn a flat cell index into the per-axis
 #: coefficient index. Enumerated as exact text rather than filtered by a type
 #: heuristic, so a floating-point divide arriving anywhere is a named failure.
@@ -579,7 +579,7 @@ _PERMITTED_DIVIDES = 2 * len(_PERMITTED_DIVIDE_LINES)
 def _assert_the_measured_absences(source: str) -> None:
     """Two ABSENCES, asserted rather than argued -- see the module docstring.
 
-    THE COMPLEX TYPE, because this family is real float32 storage throughout and the
+    The complex type, because this family is real float32 storage throughout and the
     ``complex64 * float32`` contraction question therefore has no site here; and
     FLOATING-POINT DIVISION, because the reciprocal this recurrence needs is ``sinv``,
     computed host-side by ``PML``. The integer index decode is the one exception and
@@ -633,15 +633,15 @@ def source_digest() -> str:
 
 def _get_kernel(source: Optional[str] = None,
                 options: Optional[Tuple[str, ...]] = None):
-    """Compile on first use, memoized in the PACKAGE'S SHARED MEMO.
+    """Compile on first use, memoized in the package's shared memo.
 
-    THE SHARED MEMO AND NOT A PRIVATE DICT, which is a measurement property rather
+    The shared memo and not a private dict, which is a measurement property rather
     than tidiness: every gate on this track counts launches by wrapping
     ``compile_cache``'s memo, and a family that kept its own dict would be INVISIBLE
     to that counter -- its launches would read as zero and a launch-structure leg
     would pass a weld that never executed.
 
-    THE SOURCE AND THE OPTIONS ARE IN THE KEY, so a mutation harness that handed in a
+    The source and the options are in the key, so a mutation harness that handed in a
     rewritten string cannot be served the shipped binary and the contraction-guard
     control cannot be served the guarded build. ``cupy`` is imported HERE.
     """
@@ -665,7 +665,7 @@ def covers_special_kz_fused_hd_pair(fields: Any, pml: Any, grid: Any,
                                     sources: Any = None) -> Tuple[bool, str]:
     """May ONE launch span ``update_H`` -> the electric withdraw -> ``step_D`` here?
 
-    A CONJUNCTION OF THE TWO CERTIFIED HALVES' OWN PREDICATES plus this seam's
+    A conjunction of the two certified halves' own predicates plus this seam's
     withdraw clause, the shared boundary triple and the rotation's six volumes --
     never a re-derivation of either half's clause set, which is what keeps this
     product from admitting a configuration a half refuses:
@@ -678,11 +678,11 @@ def covers_special_kz_fused_hd_pair(fields: Any, pml: Any, grid: Any,
       carrying a standing integrated electric withdraw;
     * the rotation: the six volumes :data:`SCRATCH_VOLUMES` names.
 
-    THE ORDER IS THE DRIVER'S: the constitutive half is asked FIRST because it runs
+    The order is the driver's: the constitutive half is asked FIRST because it runs
     first (driver.py:3311), so the first refusal a reader sees names the half the
     driver would have reached first.
 
-    BOTH HALVES ASK THE SAME BETA CLAUSES, and that is deliberate rather than
+    Both halves ask the same beta clauses, and that is deliberate rather than
     redundant: ``_beta_reasons`` refuses a zero beta, complex storage, an off-diagonal
     epsilon, a cylindrical grid and a non-2-D grid, and asking it twice is what makes
     a future edit to ONE of the two sub-step predicates a visible disagreement here
@@ -695,10 +695,10 @@ def covers_special_kz_fused_hd_pair(fields: Any, pml: Any, grid: Any,
     if not covered:
         return False, f"curl half: {reason}"
 
-    # THE SEAM'S ONE PASS. Nothing is INJECTED between the two consults, so
+    # The seam's one pass. Nothing is INJECTED between the two consults, so
     # `deposit_repair` is not consulted at all and a source of either polarity is not
     # this seam's business. What IS between them is the electric integrated-source
-    # withdraw (driver.py:3313-3314). IGNORANCE IS NEVER AN EMPTY SET: `Fields` does
+    # withdraw (driver.py:3313-3314). Ignorance is never an empty set: `Fields` does
     # not hold the source list, so a predicate that inferred "no withdraw stands"
     # from not being told would be the over-covering refusal this clause prevents.
     seam_reasons = _withdraw_hoist.seam_withdraw_reasons(
@@ -718,7 +718,7 @@ def covers_special_kz_fused_hd_pair(fields: Any, pml: Any, grid: Any,
     if seam_reasons:
         return False, seam_reasons[0]
 
-    # ONE BOUNDARY TRIPLE FOR BOTH HALVES, CHECKED. The curl resolves a fold's
+    # One boundary triple for both halves, checked. The curl resolves a fold's
     # termination into BC_MIRROR_PERIODIC or BC_METALLIC and the constitutive half
     # reads no boundary at all, so the triple this launch binds is the CURL's -- but
     # the resolution must succeed, and a grid it refuses is a grid this launch must
@@ -731,7 +731,7 @@ def covers_special_kz_fused_hd_pair(fields: Any, pml: Any, grid: Any,
         return False, (f"the curl's boundary resolution returned {codes!r}, which is "
                        f"not the per-axis triple this launch binds")
 
-    # THE SUB-LATTICE, ASSERTED RATHER THAN ASSUMED. This kernel binds ONE kms group
+    # The sub-lattice, asserted rather than assumed. This kernel binds ONE kms group
     # for both halves, which is only correct while step_D's curl and update_H read the
     # SAME Yee sub-lattice. Both read the integer positions today. If either moved,
     # sharing the group would bind one half's coefficients to the other half's lattice
@@ -741,7 +741,7 @@ def covers_special_kz_fused_hd_pair(fields: Any, pml: Any, grid: Any,
                        "step_D's curl reads the integer one; this weld binds ONE kms "
                        "group for both halves and may only do so while they agree")
 
-    # THE BETA COEFFICIENTS THE LAUNCH BINDS, asked here rather than left to raise at
+    # The beta coefficients the launch binds, asked here rather than left to raise at
     # launch time: a grid whose beta and dt cannot be rounded to two float32 scalars
     # is a refusal with a line behind it.
     try:
@@ -797,7 +797,7 @@ def special_kz_fused_hd_pair_scratch(fields: Any) -> Dict[str, Any]:
 
 def assert_scratch_is_disjoint(fields: Any, scratch: Dict[str, Any],
                                tables: Dict[str, Any]) -> int:
-    """THE CHECK THE WHOLE DESIGN RESTS ON -- the released sibling's, reused.
+    """The check the whole design rests on -- the released sibling's, reused.
 
     Same bindings, same shared ``kms`` coincidence, same two properties: no scratch
     volume is any bound input (or the launch is the IN-PLACE weld the board refused),
@@ -816,17 +816,17 @@ def launch_special_kz_fused_hd_pair(fields: Any, scratch: Dict[str, Any],
                                     threads: int = _FUSED_THREADS, *,
                                     chunk_bounds: Any,
                                     layer: Any = None) -> Dict[str, Any]:
-    """Both of :data:`REPLACES` in ONE launch. THE CALLER ROTATES AFTERWARDS.
+    """Both of :data:`REPLACES` in ONE launch. The caller rotates afterwards.
 
     The argument list is the released real weld's with the two beta words APPENDED,
     which is what lets a reader diff the two launches. ``chunk_bounds`` is the run's
     chunk record on the device, required (``step_curl_kernels.chunk_record_argument``).
-    THE RUN'S FIRST ``update_H`` STARTS H FROM B: when ``fields.h_separated`` is still
+    The run's first ``update_H`` starts H from B: when ``fields.h_separated`` is still
     False the start runs on the array path BEFORE the launch, with ``layer``, as on the
     released weld (``fused_hd_pair.launch_fused_hd_pair``), and every recompute then
     reads the started state. A first update with no ``layer`` is refused by name.
 
-    ``kernel`` IS THE GATE'S DOOR: a gate compiles a deliberately broken copy of the
+    ``kernel`` is the gate's door: a gate compiles a deliberately broken copy of the
     shipped source and hands it here. ``threads`` is the gate's schedule door -- the
     design's whole claim is that the answer does not depend on which block ran first,
     and a block size that never moves cannot expose the opposite.
@@ -868,7 +868,7 @@ def launch_special_kz_fused_hd_pair(fields: Any, scratch: Dict[str, Any],
 
 
 def rotate_into_fields(fields: Any, scratch: Dict[str, Any]) -> Dict[str, Any]:
-    """THE ROTATION -- ``fused_hd_pair.rotate_into_fields``, reused verbatim.
+    """The rotation -- ``fused_hd_pair.rotate_into_fields``, reused verbatim.
 
     The consumer audit it rests on is that module's, and it is a statement about the
     ENGINE rather than about a storage class or a beta term: every consumer of the
@@ -890,7 +890,7 @@ def run_special_kz_fused_hd_pair(fields: Any, grid: Any, pml: Any, dtdx: float, 
                                  rotate: bool = True) -> Dict[str, Any]:
     """Gate on the predicate, resolve everything from the grid, launch once, rotate.
 
-    THE PREDICATE IS ASKED FIRST AND A REFUSAL IS RETURNED, NOT RAISED, because the
+    The predicate is asked first and a refusal is returned, not raised, because the
     caller's correct response to a configuration this product does not carry is the
     array path -- never an exception into a stepper that would otherwise have stepped
     correctly.

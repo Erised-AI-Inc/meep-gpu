@@ -1,6 +1,6 @@
 """Host-side contract for the CONDUCTIVE Metal H->D weld.
 
-WHAT THESE TESTS PIN AND WHAT THEY DELIBERATELY DO NOT. Byte identity against the array
+What these tests pin and what they deliberately do not. Byte identity against the array
 path is the GATE's claim and needs a device
 (``parity/meep_gpu/gate_metal_conductive_fused_hd_pair.py``); what a host suite can hold
 is the LIFT -- that the emitted kernel is the two certified emitters' own text with
@@ -53,7 +53,7 @@ def sources() -> Sequence[Tuple[Tuple[int, ...], Tuple[bool, ...], str]]:
 def test_the_span_is_the_drivers_two_adjacent_consults():
     assert family.REPLACES == ("update_H", "step_D")
     assert family.SLOT == "update_H"
-    # THE SLOT IS THE FIRST HALF IN DRIVER ORDER, so a refusal is named on the slot
+    # The slot is the first half in driver order, so a refusal is named on the slot
     # the fusion starts at.
     assert family.SLOT == family.REPLACES[0]
 
@@ -65,7 +65,7 @@ def test_the_seam_name_is_spelled_through_withdraw_hoist():
 
 
 def test_nothing_is_injected_in_this_seam_so_the_repair_flag_is_false():
-    """A FACT ABOUT THE DRIVER, not a choice -- and the complement is asserted too.
+    """A fact about the driver, not a choice -- and the complement is asserted too.
 
     ``CARRIES_DEPOSIT_REPAIR`` False is only honest if the predicate really does not
     consult ``deposit_repair``; a flag at False beside a live consult would be a
@@ -118,8 +118,8 @@ def test_the_family_is_welded_and_the_declaration_it_replaced_is_kept():
     emptying the string leaves a welded family still declaring its weld is owed. BOTH
     are checked here rather than either being taken on trust.
 
-    THE DECLARATION WAS EMPTIED ONCE BEFORE, ON 2026-09-08, BESIDE A HAND-WRITTEN
-    LEDGER ENTRY, and both were reverted. That entry was not the minting tool's
+    The declaration was emptied once before, on 2026-09-08, beside a hand-written
+    ledger entry, and both were reverted. That entry was not the minting tool's
     output: its ``code_sha256`` map held raw ``sha256`` values, which
     ``code_identity.code_digest_of_path`` -- the function ``mint_metal_weld.py:144``
     fills that field with -- cannot return, and its ``recorded_utc`` was rounded to
@@ -159,7 +159,7 @@ def test_the_shipped_signature_is_counted_off_its_own_source():
 
 
 def test_the_vectors_only_shape_is_over_the_ceiling_by_exactly_one():
-    """THE MEASUREMENT THAT MAKES THE SECOND PACK LOAD-BEARING.
+    """The measurement that makes the second pack load-bearing.
 
     With only the nine per-axis vectors packed the signature is one binding past the
     platform ceiling, so the conductivity-volume pack is a NECESSITY rather than a
@@ -281,7 +281,7 @@ def test_the_conductive_tail_survives_the_lift_unedited():
         welded = family.conductive_welded_curl_tail(codes, lossy)
         for line in certified.splitlines():
             stripped = line.strip()
-            # THE TAIL'S OWN LINES, NAMED. A prefix like "float c" would also catch
+            # The tail's own lines, named. A prefix like "float c" would also catch
             # the curl's magnetic loads `float c_x = ...`, which the lift DOES
             # redirect -- and a test that demanded those survive unedited would
             # contradict the whole shape.
@@ -319,7 +319,7 @@ def test_the_constitutive_half_is_the_plain_products_lift():
 
 
 def test_a_lossless_target_names_no_conductivity_member():
-    """THE SENTINEL RULE, on the emitted text.
+    """The sentinel rule, on the emitted text.
 
     The plan writes offset 0 for a lossless target's two pack members and stores
     nothing for them; the premise is that the lossless tail never indexes them.
@@ -495,7 +495,7 @@ def test_the_predicate_refuses_a_fields_with_no_grid():
 
 
 def test_an_undeclared_source_set_is_refused_rather_than_assumed_empty():
-    """IGNORANCE IS NEVER AN EMPTY SET.
+    """Ignorance is never an empty set.
 
     ``Fields`` does not hold the source list, so a predicate that inferred "no
     withdraw stands" from not being told would be an over-covering refusal.
@@ -576,7 +576,7 @@ def test_unread_conductivity_members_names_exactly_the_lossless_pairs():
 # ---------------------------------------------------------------------------
 
 def test_the_arm_is_registered_unwired_on_the_first_half_of_the_seam():
-    """REGISTERED SO IT IS ENUMERABLE, NOT SO IT IS SELECTABLE."""
+    """Registered so it is enumerable, not so it is selectable."""
     from meep_gpu.metal_kernels import arms
 
     rows = [spec for spec in arms.registered("update_H")
@@ -620,7 +620,7 @@ def test_the_shipped_signature_compiles_on_every_specialisation():
 
 @pytest.mark.skipif(not _mps(), reason="no MPS device on this host")
 def test_the_three_refuted_signatures_do_not_compile():
-    """THE CEILING IS A MEASUREMENT, not an argument.
+    """The ceiling is a measurement, not an argument.
 
     The gate makes the same three compiles; repeating them here means a toolchain that
     raised the ceiling fails the host suite too, instead of leaving three constants

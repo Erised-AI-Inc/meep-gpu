@@ -1,6 +1,6 @@
 """The one import surface a Metal kernel family assembles its source from.
 
-WHAT THIS MODULE IS. Two things, and the split is deliberate:
+What this module is. Two things, and the split is deliberate:
 
 1. **A re-export of the certified emitters**, not a new home for them.
    :func:`ghost`, :func:`ownership_mask`, :func:`substitute`,
@@ -13,21 +13,21 @@ WHAT THIS MODULE IS. Two things, and the split is deliberate:
    import — EIGHTEEN per contraction mode (sixteen curl specialisations and two
    constitutive sides), thirty-six rows in ``fingerprints.json``. The trade is
    obvious in one direction.
-2. **New shared fragments** this round licenses: the ``n_elem`` guard, the flat
+2. **New shared fragments** this module introduces: the ``n_elem`` guard, the flat
    index decode, the complex ``float2`` arithmetic, and a column-serial scan
    skeleton for the cylindrical port.
 
-WHAT DELIBERATELY IS NOT HERE: ``shaders._CURL_TEMPLATE`` and
+What deliberately is not here: ``shaders._CURL_TEMPLATE`` and
 ``shaders._CONSTITUTIVE_TEMPLATE``. The certified pair keeps its own copy of both
 templates and both emitters; new families import the fragments. That is duplication
 with a stated reason, and
 ``test_metal_kernels.test_the_checked_in_fingerprints_match_the_tree`` asserts every
 one of the THIRTY-SIX checked-in kernel-source sha256s is unchanged, which makes the
-byte-neutrality of this whole extraction MEASURED rather than asserted. Re-measured
+byte-neutrality of this whole extraction measured rather than asserted. Re-measured
 2026-08-15 after the ``zero`` parameter landed on :func:`ownership_mask`: 36 of 36
 unchanged.
 
-THE COMPLEX ARITHMETIC IS MEEP'S, PART BY PART. MEEP stores a complex field as two
+The complex arithmetic is MEEP's, part by part. MEEP stores a complex field as two
 ``realnum`` arrays and forms no complex-by-complex product while it steps
 (:mod:`meep_gpu.part_products`, which the array path routes every product through):
 
@@ -46,7 +46,7 @@ THE COMPLEX ARITHMETIC IS MEEP'S, PART BY PART. MEEP stores a complex field as t
 * negation is ``-x``, a sign-bit operation on this host (0/512 on the exhaustive
   signed-zero table, where ``0.0f - x`` misses 36/512).
 
-THERE IS ONE BODY. An earlier arm copied NumPy's fused complex product and its
+There is one body. An earlier arm copied NumPy's fused complex product and its
 zero-cross-term real-coefficient helpers copied NumPy's complex-by-``(c + 0j)`` loop;
 the array path carries neither since it forms products per part, so no arm is
 chosen and nothing is measured to choose one.
@@ -61,7 +61,7 @@ compiles the split signature and requires the failure.
 
 from __future__ import annotations
 
-# EVERY ONE OF THESE IS IMPORTED, NOT RE-SPELLED — see the module docstring for the
+# Every one of these is imported, not re-spelled — see the module docstring for the
 # two reasons. `shaders` does not import this module, so the direction is one-way
 # and there is no cycle: certified emitters flow outward to the new families.
 from .shaders import (  # noqa: F401 - re-exported deliberately
@@ -151,14 +151,14 @@ def complex_helpers() -> str:
 #: A prefix reduction along the FIRST axis, one thread per (j, k) column, summed
 #: strictly serially from i = 0 upward.
 #:
-#: WHY A HAND SCAN, and this is a LICENCE rather than a preference: a parallel or
+#: Why a hand scan, and this is a LICENCE rather than a preference: a parallel or
 #: blocked scan reassociates the sum and float32 addition is not associative. The
-#: Triton cylindrical tranche measured ``torch.cumsum`` against ``numpy.cumsum`` at
+#: Triton cylindrical port measured ``torch.cumsum`` against ``numpy.cumsum`` at
 #: 2691/4096, 283/555 and 3210/4096 differing words while a column-serial reference
 #: sat at 0/4096. Any family needing a radial prefix builds on this and its gate
 #: carries that control, or the choice looks like taste.
 #:
-#: NOT CONSUMED BY ANY FAMILY IN THIS TRANCHE. It is here so the cylindrical port
+#: Not consumed by any family. It is here so the cylindrical port
 #: inherits the fragment and the reason together rather than rediscovering both.
 COLUMN_SERIAL_SCAN = r"""
 kernel void __NAME__(

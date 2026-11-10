@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""WHY EACH CUDA SEAM-INSTANCE IS BLOCKED BY THE SOURCE SEAM — the grouping, measured.
+"""Why each CUDA seam-instance is blocked by the source seam — the grouping, measured.
 
 THE QUESTION. ``build_cuda_fusion_matrix.py`` prints one number for this: *"186
 instances, 82 blocked by the source seam"*. That number is a verdict, not a diagnosis.
 The driver injects between the curl and the constitutive half, so a fused pair spanning
-the seam consumes a pre-injection field unless the PRODUCT ON THAT CELL carries
+the seam consumes a pre-injection field unless the product on that cell carries
 ``meep_gpu/deposit_repair.py``'s bracket. Three completely different things produce the
 same "blocked":
 
@@ -20,12 +20,12 @@ same "blocked":
      constitutive path whose kps/kms recurrence never ran.
 
 Only (A) and (B) are headroom. Reporting them together as "82 blocked" says nothing
-about which. THIS SCRIPT IS THAT SPLIT, and it is the deliverable of the measure phase.
+about which. This script is that split.
 
-HOW IT STAYS HONEST
+How it stays honest
 ===================
 
-**IT IMPORTS THE BOARD RATHER THAN RESTATING IT.** The clause that decides blocked
+**It imports the board rather than restating it.** The clause that decides blocked
 (:func:`build_cuda_fusion_matrix.clears_source_seam`), the cell keys
 (:data:`~build_cuda_fusion_matrix.PRODUCT_ON_CELL`), the seam-to-slot map and the census
 default are all read from the board module. A second spelling of the source clause is
@@ -33,7 +33,7 @@ precisely how the sibling Metal board came to print a refusal a shipped product 
 stopped making (``build_cuda_fusion_matrix.py:1390-1396``), and this file would be the
 second spelling.
 
-**THE (C) TEST IS WIDER THAN THE BOARD'S.** The board's ``_deposit_is_repairable``
+**The (C) test is wider than the board's.** The board's ``_deposit_is_repairable``
 checks two of ``repairable``'s clauses and says of itself that every count it credits is
 an UPPER BOUND. This script adds the two further refusals that ARE readable from the
 census configuration — a folded grid with a cylindrical r = 0 axis, and a row whose
@@ -42,7 +42,7 @@ headroom under a strictly stronger test than the one that priced the ceiling. Th
 remaining clause (``f_w_<component>`` unallocated) needs a live engine object and is
 NOT readable from a census row; it is reported as such rather than assumed away.
 
-**A CELL IS NOT HEADROOM IF THE WELD ITSELF IS REFUSED.** A STENCIL-BLOCKED cell or one
+**A cell is not headroom if the weld itself is refused.** A STENCIL-BLOCKED cell or one
 whose constitutive half launches nothing can never carry a product, so a source-blocked
 instance sitting on one is reported in its own group: closing its injection would move
 nothing. The fitness verdict is read from the board JSON the run is pointed at, which is
@@ -148,7 +148,7 @@ def main() -> int:
     board_json = json.loads(board_path.read_text())
 
     print("=" * 78, flush=True)
-    print("WHY EACH CUDA SEAM-INSTANCE IS BLOCKED BY THE SOURCE SEAM", flush=True)
+    print("Why each CUDA seam-instance is blocked by the source seam", flush=True)
     print("=" * 78, flush=True)
     print(f"census : {BOARD.CENSUS.name}", flush=True)
     print(f"board  : {board_path}", flush=True)
@@ -249,7 +249,7 @@ def main() -> int:
     build_list = collections.Counter(
         f"{m['seam']}  {m['cell']}"
         for m in groups.get("needs a fused product that does not exist yet", []))
-    print("\n--- WHAT BUILDING WOULD UNBLOCK, RANKED --------------------------",
+    print("\n--- What building would unblock, ranked --------------------------",
           flush=True)
     for rank, (cell, count) in enumerate(build_list.most_common(), start=1):
         print(f"  {rank}. {count:3d} blocked seam-instances   {cell}", flush=True)

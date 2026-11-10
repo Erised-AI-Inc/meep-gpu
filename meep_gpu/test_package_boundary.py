@@ -98,7 +98,7 @@ def test_no_module_level_torch_or_metal_kernels_import_outside_metal_kernels():
     that touches the fast path, including a pure NumPy array-path run that will
     never reach a device.
 
-    THE SECOND REASON IS THE DISPATCH SEAM ITSELF. ``fastpath`` reaches the Metal
+    The second reason is the dispatch seam itself. ``fastpath`` reaches the Metal
     table through ``meep_gpu/metal_dispatch.py``, and that module is imported at the
     backend rung — so a module-level torch there would be paid for by the CuPy table
     as well. Function-local stays legal everywhere, which is how both files reach
@@ -132,14 +132,14 @@ def test_no_module_level_torch_or_metal_kernels_import_outside_metal_kernels():
 def test_numpy_backend_stepping_never_imports_metal_kernels():
     """A NumPy step with ``MEEP_GPU_DISPATCH=0`` must not reach the Metal package at all.
 
-    RUNG 2 REFUSES BEFORE RUNG 3, and this is what measures that ordering rather
+    Rung 2 refuses before rung 3, and this is what measures that ordering rather
     than trusting it. With ``MEEP_GPU_DISPATCH=0`` the ladder declines at the
     enable, before the candidate-table rung asks the hardware anything — so a run
     that has opted out must not pay for an MPS availability probe, a Metal frontend
     read, or the import of a kernel module. Set to ``0`` explicitly rather than
     unset: dispatch is on by default, so an unset enable now passes rung 2.
 
-    THE DRIVER IS A GPU DRIVER'S ENGINE (``gpu="metal"``, set by hand so the test
+    The driver is a GPU driver's engine (``gpu="metal"``, set by hand so the test
     needs no device): only a GPU driver's freeze reaches the ladder at all. A
     ``prefer_gpu=False`` driver is the NumPy reference, which never plans and so
     imports nothing by construction; ``test_prefer_gpu.py`` holds that in a fresh
@@ -220,7 +220,7 @@ def test_numpy_backend_stepping_never_imports_cuda_kernels(monkeypatch):
     Measured as "no NEW modules", not "no modules", so a CUDA host whose other
     tests legitimately loaded cupy still runs this test meaningfully.
 
-    THE PLANNING RUNS PAST THE ENABLE. Dispatch is on by default, so the enable is
+    The planning runs past the enable. Dispatch is on by default, so the enable is
     left unset and the ladder reaches the candidate-table rung; the Metal hardware
     probe is answered "no" so a Mac refuses there as a NumPy host without a device
     does ("backend is not CuPy"), instead of planning through the Metal table.
@@ -260,7 +260,7 @@ def test_numpy_backend_stepping_never_imports_cuda_kernels(monkeypatch):
 # One name, two definitions — the shadowing guard
 # ---------------------------------------------------------------------------
 #
-# WHAT THIS CATCHES, MEASURED, not hypothesised. Two instances existed when this
+# What this catches, measured, not hypothesised. Two instances existed when this
 # was written, one in each tree:
 #
 #   * ``parity/meep_gpu/probe_fused_kernel_bit_identity.py`` defined
@@ -283,7 +283,7 @@ UNCONDITIONAL_BRANCHES = {"finally"}
 
 #: (path relative to the repository root, bound name) -> why the rebinding is legitimate.
 #:
-#: EXPLICIT AND EMPTY, and it must stay that way unless a reviewer signs a
+#: Explicit and empty, and it must stay that way unless a reviewer signs a
 #: reason. The two rebinding classes the census over these trees adjudicated as
 #: legitimate are excluded BY CONSTRUCTION below rather than by name, and neither
 #: exclusion can hide a shadowed definition:

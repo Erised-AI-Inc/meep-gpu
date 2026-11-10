@@ -389,7 +389,7 @@ def test_electric_energy_in_box_survives_a_mirror_fold():
         half = folded.electric_energy_in_box(centre_f, extent_f)
         assert whole > 0.0
         # The two total volumes differ (a fold makes MEEP's own total volume symmetric),
-        # so this pins the ORDER OF MAGNITUDE, not equality: a reducer that integrated
+        # so this pins the order of magnitude, not equality: a reducer that integrated
         # only the stored quadrant would come back near a quarter of this.
         assert 0.6 < half / whole < 1.6, (
             f"folded energy {half!r} against unfolded {whole!r}: the reflected gather is "
@@ -560,7 +560,7 @@ def test_synchronize_then_restore_returns_the_bfast_iir_state_exactly():
     Leave ``f_bfast`` one step ahead and it never does, so ONE flux call would put a
     permanent alternating error into every subsequent timestep of the run.
 
-    MEASURED with the ``f_bfast`` entries deleted from ``_SYNC_AUXILIARY``: one flux
+    Measured with the ``f_bfast`` entries deleted from ``_SYNC_AUXILIARY``: one flux
     call, then 40 further steps, moves the six primary arrays 7.86e-01 relative to the
     same run without the flux call — against 0.0e+00 with them restored, on a run whose
     parity floor against CPU MEEP is 4.4e-06.

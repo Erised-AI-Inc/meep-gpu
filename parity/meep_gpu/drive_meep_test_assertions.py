@@ -75,6 +75,24 @@ class UnsupportedDrive(Exception):
     """This test's run cannot be served by the driver; the row stays parity-only."""
 
 
+#: The MEEP release whose ``Simulation.get_array`` and ``get_dft_array`` validate their
+#: arguments (MEEP #3320: keyword-only options, the component checked, ``frequency``
+#: for material components only, ``vol`` exclusive of ``center``/``size``, a supplied
+#: ``arr`` matched exactly, ``dft_obj`` required and ``num_freq`` in range). The
+#: emulations below follow those checks on that release and later, and keep the
+#: earlier signature before it, so each release's own oracles are judged against the
+#: behaviour that release has.
+GET_ARRAY_CHECKS_FROM = (1, 35, 0)
+
+
+def meep_release(version) -> tuple:
+    """``"1.35.0"`` -> ``(1, 35, 0)``; ``(0, 0, 0)`` for a version that cannot be read."""
+    import re  # noqa: PLC0415
+
+    fields = re.match(r"(\d+)\.(\d+)(?:\.(\d+))?", str(version))
+    return tuple(int(field or 0) for field in fields.groups()) if fields else (0, 0, 0)
+
+
 # --- assertion instrumentation --------------------------------------------------------
 
 
@@ -220,7 +238,7 @@ def bind_engine_readers(mp, sim, result, notes: list[str], loaders: dict | None 
     if loaded:
         notes.append(f"load_near2far into {loaded} MEEP DftNear2Far object(s)")
 
-    # STRUCTURE READS STAY MEEP'S. `mp.Dielectric` and `mp.Permeability` are not
+    # Structure reads stay MEEP's. `mp.Dielectric` and `mp.Permeability` are not
     # fields: they are read out of the structure, which this engine never steps and
     # never modifies, so MEEP's own answer is the right one whichever code did the
     # stepping. Measured on test_array_metadata's own ring geometry (resolution 25,
@@ -242,6 +260,26 @@ def bind_engine_readers(mp, sim, result, notes: list[str], loaders: dict | None 
         except BaseException:  # noqa: BLE001
             return False
 
+    # MEEP 1.35.0's argument checks (python/simulation.py:4152-4186 there), taken where
+    # MEEP defines them: `_check_component` is MEEP's own helper (:145-159).
+    strict = meep_release(getattr(mp, "__version__", "")) >= GET_ARRAY_CHECKS_FROM
+    check_component = getattr(getattr(mp, "simulation", None), "_check_component", None)
+
+    def _strict_get_array_checks(component, vol, center, size, arr, frequency):
+        if isinstance(component, (mp.Volume, mp.volume)):
+            raise TypeError("The first argument must be the component")
+        if check_component is not None:
+            check_component(component)
+        if frequency != 0 and not _is_structure(component):
+            raise ValueError(
+                "frequency is only meaningful for mp.Dielectric and mp.Permeability, "
+                f"but component is {component}")
+        if vol is not None and (center is not None or size is not None):
+            raise ValueError(
+                "Pass either a Volume as `vol` or a `center`/`size` pair, not both")
+        if arr is not None and not isinstance(arr, numpy.ndarray):
+            raise TypeError(f"arr must be a numpy.ndarray, got {type(arr).__name__}")
+
     # Field arrays. MEEP's get_array over the whole cell has exactly the layout the
     # driver produces; a sub-volume request is cut out of it by MATCHING COORDINATES
     # from MEEP's own get_array_metadata on both the whole cell and the request, so
@@ -251,6 +289,8 @@ def bind_engine_readers(mp, sim, result, notes: list[str], loaders: dict | None 
         if _is_structure(component):
             return original_get_array(component=component, vol=vol, center=center, size=size,
                                       cmplx=cmplx, arr=arr, frequency=frequency, snap=snap)
+        if strict:
+            _strict_get_array_checks(component, vol, center, size, arr, frequency)
         name = _component_name(mp, component)
         if name is None:
             raise UnsupportedDrive(
@@ -272,14 +312,29 @@ def bind_engine_readers(mp, sim, result, notes: list[str], loaders: dict | None 
                 raise ValueError(
                     f"supplied array of shape {arr.shape} dtype {arr.dtype} does not match "
                     f"the slice's {values.shape} {values.dtype}")
+            # MEEP 1.35.0 writes in place and refuses an array it cannot write into
+            # (python/simulation.py:4180-4184 there); 1.33.0 copied it (np.require).
+            if strict and (not arr.flags["C_CONTIGUOUS"] or not arr.flags["WRITEABLE"]):
+                raise ValueError(
+                    "arr must be a C-contiguous, writeable array; otherwise the field "
+                    "data cannot be written into it in place.")
             arr[...] = values
             return arr
         return values
 
-    sim.get_array = get_array
+    if strict:
+        # MEEP 1.35.0's signature: the options after `size` are keyword-only.
+        def get_array_keywords(component, vol=None, center=None, size=None, *, cmplx=None,
+                               arr=None, frequency=0, snap=False):
+            return get_array(component, vol, center, size, cmplx, arr, frequency, snap)
+
+        sim.get_array = get_array_keywords
+        notes.append("get_array -> result.get_array, with MEEP 1.35.0's argument checks")
+    else:
+        sim.get_array = get_array
 
     def get_field_point(component, pt):
-        # THE ONE READER THAT DOES NOT GO THROUGH get_array, and the reason is that
+        # The one reader that does not go through get_array, and the reason is that
         # MEEP does not either. get_array reaches its answer through get_array_slice,
         # which averages each component's Yee values onto the CELL CENTRES first and
         # only then interpolates between those centres. get_field_point reaches its
@@ -352,15 +407,46 @@ def bind_engine_readers(mp, sim, result, notes: list[str], loaders: dict | None 
     # DftFields -> the migrated region, reduced the way MEEP reduces it. The whole
     # convention lives in the package (`from_meep.collapse_dft_region`), not here, so
     # a script transliterating `sim.get_dft_array` reaches the same code this does.
+    # On MEEP 1.35.0 and later, MEEP's checks first (python/simulation.py:4229-4263
+    # there), in its order and with its exception types, since its tests assert them.
+    # The fields-initialized check is not mirrored: this pass never initializes MEEP's
+    # fields, and the run it reads was stepped here. `num_freq` is checked against the
+    # frequencies the monitor was declared with (its `args`, the lift's own reading,
+    # from_meep._FREQUENCY_ARG_INDEX), because MEEP's lazy `freq` property would
+    # initialize the simulation. A monitor kind the package's reader refuses by name
+    # (a TypeError naming it) is a reader this driver has no counterpart for.
     def get_dft_array(dft_obj, component, num_freq):
+        if strict:
+            if dft_obj is None:
+                raise ValueError("dft_obj is required")
+            if check_component is not None:
+                check_component(component)
         name = _component_name(mp, component)
         if name is None:
             raise UnsupportedDrive(
                 f"get_dft_array asked for component {component!r}, which this driver does not "
                 f"accumulate as a field component")
-        return result.get_dft_array(dft_obj, name, int(num_freq))
+        kind = type(dft_obj).__name__
+        if strict and kind == "DftFields":
+            from meep_gpu.from_meep import _FREQUENCY_ARG_INDEX  # noqa: PLC0415
+
+            args = getattr(dft_obj, "args", None)
+            index = _FREQUENCY_ARG_INDEX[kind]
+            if isinstance(args, (list, tuple)) and len(args) > index:
+                nfreq = len(args[index])
+                if not isinstance(num_freq, (int, numpy.integer)) or not 0 <= num_freq < nfreq:
+                    raise ValueError(
+                        f"num_freq must be an integer in the range of [0, {nfreq}], "
+                        f"but got {num_freq!r}")
+        try:
+            return result.get_dft_array(dft_obj, name, int(num_freq))
+        except TypeError as refusal:
+            if f"a {kind} is refused" in str(refusal):
+                raise UnsupportedDrive(str(refusal)) from refusal
+            raise
 
     sim.get_dft_array = get_dft_array
+
     notes.append("get_dft_array -> result.get_dft_array (region + MEEP's read-time collapse)")
 
     # DftFlux -> MEEP's OWN object, so MEEP's unchanged MPB reader runs on our fields.
@@ -650,7 +736,7 @@ def slice_like_meep(mp, sim, whole, vol, center, size, collapse_empty_axes=True)
     tics and the request's tics. An axis whose requested coordinates land on grid
     points is an exact index cut, with no arithmetic at all.
 
-    An axis whose requested EXTENT IS ZERO is collapsed the way MEEP collapses it:
+    An axis whose requested extent is zero is collapsed the way MEEP collapses it:
     the two bracketing cells are combined with the linear weights of
     :func:`_flat_axis_weights` and the axis disappears. That is not an approximation
     of MEEP's answer, it is MEEP's answer — ``sim.get_array`` on a flat volume never
@@ -982,7 +1068,7 @@ def install_driven_run(mp, state: dict):
         if hasattr(mp.Simulation, name)
     }
 
-    # THE TWO-RUN NORMALIZATION IDIOM. `sim.get_flux_data` / `load_minus_flux_data` are
+    # The two-run normalization idiom. `sim.get_flux_data` / `load_minus_flux_data` are
     # intercepted for two independent reasons, and dropping either one loses the row:
     #
     #   1. MEEP's own methods reach `flux.E`, whose lazy `swigobj` property calls
@@ -1137,7 +1223,7 @@ def install_driven_run(mp, state: dict):
         return None
 
     mp.Simulation.run = driven_run
-    # THE MODULE-LEVEL SPECTRUM READERS. MEEP's tests reach these as free functions —
+    # The module-level spectrum readers. MEEP's tests reach these as free functions —
     # `mp.get_forces(self.myforce)`, `mp.get_electric_energy(energy)` — never through
     # the simulation, so binding the readers onto `sim` alone leaves them reading MEEP's
     # own un-stepped accumulator: a correctly shaped spectrum of ZEROS compared against
@@ -1173,7 +1259,7 @@ def install_driven_run(mp, state: dict):
         if name in original_module_readers:
             setattr(mp, name, make_module_reader(name, engine_reader))
 
-    # THE ADJOINT GRADIENT, refused by name — because it is the one reader in this
+    # The adjoint gradient, refused by name — because it is the one reader in this
     # corpus that would answer with a plausible number instead of an empty one.
     # `meep.adjoint` does not read its design region through any Python array API: it
     # hands the C++ `dft_fields` chunk lists of six `add_dft_fields(..., yee_grid=True,
@@ -1222,7 +1308,7 @@ def install_driven_run(mp, state: dict):
 def substitute_amp_func_file(mp, sim, notes: list[str]) -> None:
     """Read an ``amp_func_file`` source's HDF5 dataset here and hand it over as ``amp_data``.
 
-    THE ONLY SUBSTITUTION THIS HARNESS MAKES TO A TEST'S DECLARED INPUT, and it is an
+    The only substitution this harness makes to a test's declared input, and it is an
     I/O one rather than a numerical one. MEEP's own two routes are the same route:
     ``fields::add_volume_source(..., filename, dataset, amp)`` (src/sources.cpp:421-460)
     reads ``<dataset>.re`` and ``<dataset>.im`` into one complex array and calls the
@@ -1233,7 +1319,7 @@ def substitute_amp_func_file(mp, sim, notes: list[str]) -> None:
     (``test_package_boundary`` enforces it). So the read is done here and nothing else
     changes: same array, same interpolator, same deposition.
 
-    MEASURED on ``test_source.py``'s own fixture (pristine MEEP 1.33.0, single
+    Measured on ``test_source.py``'s own fixture (pristine MEEP 1.33.0, single
     precision, Ez at the origin of a 1x1 cell at resolution 60, t=200): the file route
     reads 7.16554350219667e-05 and the array route 7.165555143728852e-05 — 1.164e-10
     apart, which is the fixture's float32 storage rather than the arithmetic.

@@ -1,6 +1,6 @@
-"""A CONDUCTIVITY ON A CURL TARGET, for the hand-CUDA track: five kernels, one predicate.
+"""A conductivity on a curl target, for the hand-CUDA track: five kernels, one predicate.
 
-WHAT THIS CLOSES, AND WHY IT IS THE RESIDUE OF TWO OTHER FAMILIES
+What this closes, and why it is the residue of two other families
 =================================================================
 ``stepping._apply_curl`` (stepping.py:489-539) has FOUR tails. The certified pair
 owns the second (``_apply_pml_update``, PML and no sigma) and ``no_pml_curl.py``
@@ -22,7 +22,7 @@ owns the fourth (``target -= curl``, neither). The other two are read through
 thing it did not build" (``NO_PML_CURL_ADMISSION['what_it_does_not_license']``),
 and the certified curl predicate refuses the seventh by name ("Dx carries a
 conductivity: routes to the three-history conductive-PML recurrence",
-coverage.py:978-980). MEASURED on the 186-row census
+coverage.py:978-980). Measured on the 186-row census
 (``results/cuda_predicate_coverage_2026-08-20_closeout``) those are exactly SEVEN
 slots on THREE rows, and every one of them is a MEEP ``Absorber`` or a
 ``D_conductivity`` — the absorber IS a conductivity, not a PML:
@@ -40,14 +40,14 @@ slots on THREE rows, and every one of them is a MEEP ``Absorber`` or a
   it would be an OVERLAP, and the union census scores an overlap as a widening
   rather than as coverage.
 
-THE PER-COMPONENT QUESTION, DECIDED BY MEASUREMENT RATHER THAN BY READING
+The per-component question, decided by measurement rather than by reading
 ========================================================================
 ``_apply_curl`` reads the conductivity PER TARGET COMPONENT, inside the loop over
 that sub-step's three terms. One lossy component and two lossless therefore take
-DIFFERENT tails inside ONE sub-step, and the brief this file answers asked whether
+DIFFERENT tails inside ONE sub-step, and the question this file answers is whether
 one kernel can serve that.
 
-IT CAN, AND THE SUBSTITUTION THAT WOULD MAKE IT UNNECESSARY IS NOT AVAILABLE.
+It can, and the substitution that would make it unnecessary is not available.
 The tempting collapse is to bind ``condfac = 1``/``condinv = 1`` volumes on the
 lossless components and run the conductive tail everywhere. That is NOT the same
 computation:
@@ -69,7 +69,7 @@ component is lossless the conductive branch is preprocessed out entirely and the
 kernel emits the plain family's tail line VERBATIM. That is a construction, not an
 argument, and :func:`kernel_source` is where it can be read off.
 
-THE CURL HALF IS NOT RE-WRITTEN. IT IS THE SIBLING'S BYTES.
+The curl half is not re-written. It is the sibling's bytes.
 ==========================================================
 Conductivity enters ``_apply_curl`` only AFTER the curl is formed, so the term
 table, the ghost rule, the stencil grouping, the ownership mask and the derived-E
@@ -82,14 +82,14 @@ TRANSFORMING the shipped sibling's device text:
   ``ast`` because that module imports ``cupy`` at scope and this one must stay
   importable on the census laptop.
 
-Each transformation is a targeted replacement WITH AN EXACT COUNT CHECK
+Each transformation is a targeted replacement with an exact count check
 (:func:`_replace_exactly`), so a rename or a restructure in either sibling fails
 loudly here instead of quietly forking the arithmetic. The only lines that differ
 from the sibling are the kernel name, the added pointer parameters, and the three
 tail lines -- and ``test_conductive_kernels`` re-derives the sibling's text from
 this file's mask-0 build to pin that.
 
-MEEP'S CONDUCTIVE FORMS, PER STRUCTURE CHUNK
+MEEP's conductive forms, per structure chunk
 ============================================
 Under an active layer the tail is ``stepping._apply_conductive_pml_update``
 (stepping.py:2514-2658), which the module calls "the engine's most expensive
@@ -125,20 +125,20 @@ The forms, with ``f`` = target, ``u`` = ``fu_<target>``, ``c`` =
     not kept              pml_apply: the recurrence where dsigu, else
                           ((f*km1) - cu) * si1
 
-THE INCREMENT ``(c' - c)`` IS FORMED FIRST AND THEN ADDED: MEEP's grouping
+The increment ``(c' - c)`` is formed first and then added: MEEP's grouping
 (step_generic.cpp:167, :209). ``((u*km1) + c') - c``, which this family carried until
-0.10, is a different float32 number. ``u`` is read and written only where the cell's
+1.0, is a different float32 number. ``u`` is read and written only where the cell's
 chunk carries dsigu, ``c`` only where it carries dsig (and keeps the conductivity),
-and both keep their words everywhere else -- the auxiliary contract (KERNELS.md
-section 1, C2), which the array path spells as a restore of the prior value
+and both keep their words everywhere else -- the auxiliary contract
+(docs/design/floating-point.md), which the array path spells as a restore of the prior value
 (stepping.py:2650-2658). In the kernel that is "do not load, do not store".
 
-DO NOT FLATTEN THOSE PARENTHESES and do not let a multiply contract into an FMA.
+Do not flatten those parentheses and do not let a multiply contract into an FMA.
 ``--fmad=false`` is carried for that reason, and the gate runs an UNGUARDED
 control at the inexact courant and REPORTS whether it changed an answer rather
 than asserting that it must.
 
-WHAT IS NOT HERE
+What is not here
 ================
 * The constitutive sub-steps. ``fields.condfac_for`` is read in ``_apply_curl``
   and NOWHERE ELSE in ``stepping``; ``update_H``, ``update_E`` and
@@ -153,7 +153,7 @@ WHAT IS NOT HERE
   run on a device is :data:`CONDUCTIVE_CURL_ADMISSION`, whose ``host`` is None
   until a device leg has written it.
 
-IMPORTABLE WITHOUT CUPY, DELIBERATELY -- the predicate is consumed by the coverage
+Importable without CuPy, deliberately -- the predicate is consumed by the coverage
 census, which runs on a laptop. ``cupy`` is imported INSIDE the launcher, never at
 module scope.
 """
@@ -365,16 +365,16 @@ _COND_PML_APPLY_PRELUDE = r'''
 //   kept, dsigu only (:112-119)       u' = ((u * cf) - curl) * ci; f' as in the first
 //   kept, neither (:84-90)            f' = ((f * cf) - curl) * ci
 //   not kept (:104, :138-141, :182-183, :231-234): the non-conductive forms, pml_apply.
-// THE INCREMENT (c' - c) IS FORMED FIRST AND THEN ADDED (:167, :209);
+// The increment (c' - c) is formed first and then added (:167, :209);
 // ((u * km1) + c') - c is a different float32 number.
 //
-// THE AUXILIARY CONTRACT: u is read and written only where the chunk carries dsigu,
+// The auxiliary contract: u is read and written only where the chunk carries dsigu,
 // c only where it carries dsig, and both keep their words everywhere else -- the
 // array path restores them there (stepping.py:2650-2658). cf and ci are read only on
 // the conductive forms' cells. The conditional operator evaluates only the arm it
 // selects, so no unselected form issues a load.
 //
-// DO NOT FLATTEN THESE PARENTHESES. The array path accumulates in place, one
+// Do not flatten these parentheses. The array path accumulates in place, one
 // operation at a time, and each grouping below is one of those steps.
 __device__ __forceinline__ void cond_pml_apply(
     float* __restrict__ f, float* __restrict__ u, float* __restrict__ c,
@@ -402,7 +402,7 @@ __device__ __forceinline__ void cond_pml_apply(
     f[idx] = value;
 }
 
-// WHICH CHUNKS KEEP EACH TARGET'S CONDUCTIVITY. KEEP<n> is 1 when every chunk keeps
+// Which chunks keep each target's conductivity. KEEP<n> is 1 when every chunk keeps
 // target n's (RegionPlan.conductive_chunks all true): nothing is read. Otherwise the
 // kernel reads the plan's per-cell conductive_mask volume of that target, ck<n>.
 #if KEEP0
@@ -451,7 +451,7 @@ _KEEP_PARAMS = (
 
 def _no_pml_template(sibling: str, name: str, targets: Tuple[str, str, str]) -> str:
     """One no-PML conductive template, from ``no_pml_curl``'s shipped bytes."""
-    # THE HELPER GOES FIRST. Appended, it would be declared after its call
+    # The helper goes first. Appended, it would be declared after its call
     # sites and the translation unit would not compile -- and the byte-equality
     # test slices from ``extern "C"``, so it would not have noticed.
     source = _COND_APPLY_PRELUDE + _no_pml_curl.kernel_source(sibling)
@@ -543,7 +543,7 @@ _COEFFICIENT_PAIRS: Tuple[Tuple[str, str], ...] = (("y[j]", "z[k]"),
                                                    ("x[i]", "y[j]"))
 
 #: The device text, by kernel name, WITHOUT the three ``COND`` defines --
-#: :func:`kernel_source` prepends those. A MUTABLE MODULE GLOBAL on purpose: the
+#: :func:`kernel_source` prepends those. A mutable module global on purpose: the
 #: gate's source-mutation battery rewrites entries here and re-launches, and
 #: :func:`_get_kernel` re-reads this map on every call so a rewritten string is
 #: seen. A map memoized at first call would hand back the pre-mutation bytes
@@ -552,7 +552,7 @@ def _pml_pair_or_refusal() -> Tuple[Dict[str, str], Optional[str]]:
     """The two PML templates, or the reason they cannot be derived from today's bytes.
 
     The pair is derived from the certified PML curl pair's text, which takes MEEP's
-    per-chunk forms since 0.10 (bit_parity_0_10 DESIGN.md D1: ``pml_apply``'s ``dsigu``
+    per-chunk forms since 1.0 (``pml_apply``'s ``dsigu``
     flag, the chunk record ``cb`` and its decode block), and this pair's conductive forms
     are re-derived onto that text. A derivation that fails here -- the certified text
     moved again -- is HELD, by name, rather than raised at import: the no-absorber pair
@@ -649,7 +649,7 @@ def kernel_source(name: str, cond: Tuple[bool, bool, bool],
     chunk that drops it holds ``cf = ci = 1`` there, and ``((f * 1) - curl) * 1`` is
     ``f - curl``), so its text never reads it.
 
-    THE ONLY THING THIS ADDS TO THE TEMPLATE IS THREE ``#define`` LINES (six on the
+    The only thing this adds to the template is three ``#define`` lines (six on the
     PML pair). The two
     conductive tail helpers live IN the template, behind
     ``#if COND0 || COND1 || COND2``, so a fully lossless build still preprocesses
@@ -693,7 +693,7 @@ def _get_kernel(name: str, cond: Tuple[bool, bool, bool],
 def conductive_targets(fields: Any, sub_step: str) -> Tuple[bool, bool, bool]:
     """Which of this sub-step's three targets carry a sigma. NOT a refusal.
 
-    THE SINGLE PLACE THE QUESTION IS ASKED. The predicate reads this and so does
+    The single place the question is asked. The predicate reads this and so does
     :func:`kernel_source`'s mask, which is the discipline that keeps a clause and
     a compile-time choice from drifting apart -- the sibling track spells the same
     rule as ``conductivity.conductive_targets`` for the same reason.
@@ -742,7 +742,7 @@ def conductive_keeps(fields: Any, pml: Any,
                      sub_step: str) -> Tuple[Tuple[bool, bool, bool], Tuple[Any, Any, Any]]:
     """``(keep, masks)``: per target, does every structure chunk keep its conductivity?
 
-    THE ARRAY PATH'S OWN QUESTION, asked of the same object: ``stepping._apply_curl``
+    The array path's own question, asked of the same object: ``stepping._apply_curl``
     reads ``RegionPlan.conductive_chunks`` of the run's region plan
     (``stepping._region_plan``) and steps the non-conductive forms in a chunk that
     drops the component's conductivity (MEEP deletes a chunk's array when every sample
@@ -781,14 +781,14 @@ def conductive_keeps(fields: Any, pml: Any,
 class _LosslessFieldsProxy:
     """The run's fields, answering ``condfac_for`` None on every component.
 
-    WHY A PROXY AND NOT A STRING FILTER, which is the same answer
+    Why a proxy and not a string filter, which is the same answer
     ``no_pml_curl._NoAbsorberFieldsProxy`` gives for a different clause: the
     certified predicate SHORT-CIRCUITS, and its conductivity clause is followed by
     the ``stores_E`` clause, the chi2/chi3 clause, the dimensionality clause and
     the int32 index-range clause. Forgiving the conductivity refusal out of the
     returned string would silently skip all four -- four real refusals turned into
     admissions by a filter that never claimed to touch them. Answering the question
-    AT THE INPUT instead lets every later clause run.
+    at the input instead lets every later clause run.
 
     The conductivity itself is then checked HERE, by :func:`_conductivity_problem`,
     which asks the questions a launch actually depends on: that each conductive
@@ -845,7 +845,7 @@ def _conductivity_problem(fields: Any, grid: Any, sub_step: str, layer: str,
                           cond: Tuple[bool, bool, bool]) -> Optional[str]:
     """Why this run's conductivity is not one a launch can bind; None if it is.
 
-    THE VOLUMES ARE POINTERS AND THEIR DTYPE IS THE ARITHMETIC. The array path
+    The volumes are pointers and their dtype is the arithmetic. The array path
     forms ``field * condfac`` in ``result_type(field, condfac)``
     (stepping.py:1996), so a float64 ``condfac`` makes the whole tail a float64
     tail and this float32 kernel would be a DIFFERENT COMPUTATION rather than a
@@ -863,7 +863,7 @@ def _conductivity_problem(fields: Any, grid: Any, sub_step: str, layer: str,
     for index, component in enumerate(targets):
         history = f"f_cond_{component}"
         if not cond[index]:
-            # A LOSSLESS COMPONENT MUST CARRY NO HISTORY. MEEP allocates
+            # A lossless component must carry no history. MEEP allocates
             # ``f_cond[c]`` exactly where ``s->conductivity[c][d]`` exists
             # (fields.py:724-743), so an allocated history on a lossless component
             # means something else built it and this kernel -- whose COND == 0
@@ -905,7 +905,7 @@ def covers_conductive_curl(fields: Any, pml: Any, grid: Any,
 
     ``sub_step`` is ``"step_B"`` or ``"step_D"``. Returns ``(covered, reason)``.
 
-    THE ADMISSION IS THE EXACT INVERSE OF THE TWO INCUMBENTS' CONDUCTIVITY CLAUSE,
+    The admission is the exact inverse of the two incumbents' conductivity clause,
     per sub-step, and that is what makes the three a PARTITION rather than a set
     with a hole and an overlap:
 
@@ -920,7 +920,7 @@ def covers_conductive_curl(fields: Any, pml: Any, grid: Any,
     slot admitted twice. The census checks disjointness rather than assuming it,
     and an overlap there is scored as a widening, not as coverage.
 
-    DELEGATION, NOT A SECOND CLAUSE SET. Every question except the conductivity
+    Delegation, not a second clause set. Every question except the conductivity
     is the certified curl predicate's, asked through it -- directly under an active
     layer, and through ``no_pml_curl``'s own delegation when there is none, so the
     no-absorber storage inventory (no stored H, no ``fu``, a derived E) is that
@@ -957,7 +957,7 @@ def covers_conductive_curl(fields: Any, pml: Any, grid: Any,
             _LosslessFieldsProxy(fields), pml, grid, sub_step)
         if not covered:
             return False, reason
-        # WHICH CHUNKS KEEP THE CONDUCTIVITY is the launch's to bind (KEEP<n>, ck<n>),
+        # Which chunks keep the conductivity is the launch's to bind (KEEP<n>, ck<n>),
         # and a division that cannot answer it is refused here rather than at launch.
         try:
             conductive_keeps(fields, pml, sub_step)
@@ -1004,7 +1004,7 @@ def step_conductive_curl(fields: Any, pml: Any, sub_step: str, boundary_codes,
     ``chunk_bounds`` is the run's chunk record on the device (one contiguous
     ``int32[25]`` vector, ``chunk_map.chunk_bounds_record``), and every kernel here
     requires it: the templates are ``no_pml_curl``'s and the certified pair's bytes,
-    which since 0.10 take the record as their last argument -- the no-absorber kernels
+    which since 1.0 take the record as their last argument -- the no-absorber kernels
     read its partner-presence word to choose MEEP's stencil form per component, the PML
     pair also its membership runs to choose MEEP's form per structure chunk. A launch
     without it is refused by name before anything compiles, rather than launched one
@@ -1069,7 +1069,7 @@ def step_conductive_curl(fields: Any, pml: Any, sub_step: str, boundary_codes,
                      fields.condinv_for(component) if flag else target)
         for component, flag, target in zip(targets_names, cond, targets))
 
-    # THE ARGUMENT ORDER IS THE GATED ONE. Both branches are written out rather
+    # The argument order is the gated one. Both branches are written out rather
     # than assembled incrementally because the device record was cut against this
     # exact sequence; a reordering here would be a wrong launch that no template
     # digest could catch.
@@ -1115,7 +1115,7 @@ def step_conductive_curl(fields: Any, pml: Any, sub_step: str, boundary_codes,
     return name
 
 
-#: WHAT HAS BEEN MEASURED ON A DEVICE FOR THIS FAMILY, AND WHAT HAS NOT.
+#: What has been measured on a device for this family, and what has not.
 #:
 #: ``host`` is None until a device leg has run. Nothing in this file may be read
 #: as a device verdict while it is None -- the same all-or-nothing rule
@@ -1150,7 +1150,7 @@ CONDUCTIVE_CURL_ADMISSION: dict = {
                         "step_D/none/magnetic": 320,
                         "step_B/active/stored_E": 152,
                         "step_D/active/magnetic": 152},
-    # THE MASK IS THE EXPERIMENTAL VARIABLE and every one of the five was swept.
+    # The mask is the experimental variable and every one of the five was swept.
     # A run that swept only 'CCC' would say nothing about the configuration MEEP's
     # own allocation granularity makes ordinary.
     "conductivity_masks_swept": ("CCC", "C--", "-C-", "--C", "C-C"),
@@ -1161,13 +1161,13 @@ CONDUCTIVE_CURL_ADMISSION: dict = {
     "walls_swept": ("periodic", "metallic", "mixed", "mirror fold at both terminations"),
     "absorber_shapes_swept": ("none", "inert_layer", "active layer"),
     "coefficient_tables_swept": ("shipped", "near_one"),
-    # THE TWO POLICIES ARE DIFFERENT BUILDS, not one build named twice: the NVRTC
+    # The two policies are different builds, not one build named twice: the NVRTC
     # observer recorded 191 calls and 177 distinct binaries on each leg, with
     # ``any_ftz_true_reached_nvrtc`` FALSE under keep and TRUE under flush.
     "nvrtc_calls_per_leg": 191,
     "distinct_binaries_per_leg": 177,
     "ftz_true_reached_nvrtc": {"keep": False, "flush": True},
-    # THE TEMPLATE DIGESTS, not the file's: a record written after a gate ran
+    # The template digests, not the file's: a record written after a gate ran
     # cannot also be inside the bytes that gate stamped, and pinning the whole
     # file would make every comment edit read as an un-gated kernel change.
     "kernel_template_sha256": {
@@ -1189,7 +1189,7 @@ CONDUCTIVE_CURL_ADMISSION: dict = {
     "host_mutations_caught": ("swap_condfac_and_condinv_volumes",
                               "alias_every_component_to_the_first"),
     "host_mutations_null_confirmed": ("identity_rebind",),
-    # THE FOUR NULLS, and what their silence measures. Each edits the SAME
+    # The four nulls, and what their silence measures. Each edits the SAME
     # expression as a defect that must be caught, so "inert" is a measurement
     # rather than a claim about a leg nobody showed could fail:
     #  * cond_operand_order      <-> drop_condfac       (IEEE multiply commutes)
@@ -1202,7 +1202,7 @@ CONDUCTIVE_CURL_ADMISSION: dict = {
     "null_mutations_confirmed": ("cond_operand_order", "cond_pml_scale_commutes",
                                  "commute_dtdx_scale",
                                  "fortran_order_index_decomposition_on_a_flat_grid"),
-    # THE EXACT-COMPARISON CLAIM, MEASURED AS A CONTRAST rather than asserted.
+    # The exact-comparison claim, measured as a contrast rather than asserted.
     # stepping.py:2055-2058 is a bare ``!= 1.0``; a real PML table carries no entry
     # within 1e-7 of 1.0 that is not exactly 1.0, so a tolerance kernel is a defect
     # the shipped tables CANNOT expose. Replacing both predicates with a 1e-7
@@ -1217,7 +1217,7 @@ CONDUCTIVE_CURL_ADMISSION: dict = {
         "fixture": "one kms entry set to 0.99999994f, installed on the PML object "
                    "so the ORACLE and the KERNEL read the same table",
     },
-    # THE FOUR-CASE TAIL WAS NOT TESTED ON ONE BRANCH. Every PML case asserts a
+    # The four-case tail was not tested on one branch. Every PML case asserts a
     # nonzero cell count in each of MEEP's four subchunk cases before it is
     # scored, and a fixture that reaches fewer is SKIPPED with the census printed
     # rather than counted as evidence for a branch it never ran. Reached over the
@@ -1230,7 +1230,7 @@ CONDUCTIVE_CURL_ADMISSION: dict = {
         # The blunt one: no mask and a wrapping ghost everywhere.
         "all_periodic": {"cases": 24, "diverged": 24, "differing_words": 10365},
     },
-    # THE VERDICT WAS SHOWN TO GO RED four ways on the record itself (a licensed
+    # The verdict was shown to go red four ways on the record itself (a licensed
     # case flipped to diverging, a must-be-caught mutation flipped to ESCAPED, a
     # subchunk case flipped to unreached, the misdeclaration control silenced) and
     # once for real.
@@ -1247,13 +1247,13 @@ CONDUCTIVE_CURL_ADMISSION: dict = {
                          "neither of the three no-absorber ones, and the "
                          "divergence follows exactly that split"),
     },
-    # THE CONTRACTION GUARD IS LOAD-BEARING HERE, and that is the opposite of what
+    # The contraction guard is load-bearing here, and that is the opposite of what
     # the no-absorber sibling measured for its own tail. Every conductive tail is a
     # chain of multiply-then-subtract -- ``(f * cf) - curl``, ``(u * km1) + c_new``
-    # -- which the array path rounds one operation at a time. MEASURED at the
+    # -- which the array path rounds one operation at a time. Measured at the
     # inexact courant (0.35): of 472 cases where the guarded leg was bit-identical,
     # the UNGUARDED build diverged on 463 under keep and 464 under flush.
-    # ``no_pml_curl``'s record reads MEASURED DECORATIVE on the same compiler and
+    # ``no_pml_curl``'s record reads "MEASURED DECORATIVE" on the same compiler and
     # the same device; the difference is the tail, not the machine.
     "contraction_guard": {
         "flag": "--fmad=false",
@@ -1263,15 +1263,15 @@ CONDUCTIVE_CURL_ADMISSION: dict = {
     },
     "census": ("parity/meep_gpu/results/"
                "cuda_predicate_coverage_2026-08-20_conductive_v2"),
-    # RECOMPUTED as a CONTROLLED comparison rather than a difference of two rounds:
-    # the closeout round's analyzer (whose UNION_FAMILIES does not know this
-    # family) run over THIS round's data gives 668/759, and the same data with the
+    # RECOMPUTED as a CONTROLLED comparison rather than a difference of two censuses:
+    # the closeout census's analyzer (whose UNION_FAMILIES does not know this
+    # family) run over this family's census data gives 668/759, and the same data with the
     # family added gives 675/759. The two differ in one line of configuration, so
     # +7 slots and +2 rows-covered-at-every-sub-step is this family's contribution
     # and nothing else's. Disjointness was checked, not assumed: no slot is
     # admitted by two families on any of the 186 rows.
     #
-    # THE ABSOLUTE FIGURES ARE A SNAPSHOT AND THE DELTA IS NOT. The same controlled
+    # The absolute figures are a snapshot and the delta is not. The same controlled
     # pair was taken twice on the same day against two states of a tree several
     # families were landing into: 653 -> 660 at 08:51 and 668 -> 675 at 10:33. The
     # absolutes moved by seven because other families widened; the delta did not
@@ -1300,7 +1300,7 @@ CONDUCTIVE_CURL_ADMISSION: dict = {
         "complex storage, cylindrical coordinates, a Bloch phase, BFAST, "
         "special_kz and a third simultaneous mirror plane -- each refused by a "
         "clause INHERITED from the certified curl predicate and untested here.",
-        "a conductivity on a 1-D grid UNDER AN ACTIVE LAYER. A 1-D grid has one "
+        "a conductivity on a 1-D grid under an active layer. A 1-D grid has one "
         "non-invariant axis and a target's two ladder axes are different axes, so "
         "MEEP's cases A and B are unreachable there; every such case was SKIPPED "
         "with its census printed rather than counted. The corpus carries no such "

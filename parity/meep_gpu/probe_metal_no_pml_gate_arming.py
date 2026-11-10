@@ -3,7 +3,7 @@
 A gate that has never been seen red is a script, not a gate. Its own ``mutations``
 leg arms four defects and catches all four — but those are the gate author's four,
 and a leg cannot audit the assumption that picked it. This probe injects defects the
-gate's own m1-m4 DO NOT COVER, from outside the gate, and requires it to go red.
+gate's own m1-m4 do not cover, from outside the gate, and requires it to go red.
 
 THE INJECTIONS, each aimed at one REQUIRED property of the certification:
 
@@ -20,7 +20,7 @@ THE INJECTIONS, each aimed at one REQUIRED property of the certification:
   f4_residency_refuses   the residency verdict comes back REFUSED on the covered
                          arm. REQUIRED: the Metal-specific leg must assert its
                          verdict rather than record it — which is exactly what
-                         tranche 1's leg 8 failed to do.
+                         the first Metal certification's leg 8 failed to do.
   f5_control_goes_quiet  ``stepping.update_H`` becomes a no-op under an ACTIVE
                          layer. The controls leg's "bytes MUST move" half must
                          fail; if it does not, the identity leg is decorative.
@@ -44,18 +44,18 @@ THE INJECTIONS, each aimed at one REQUIRED property of the certification:
                          beside a poison nothing can trip, so a leg that still
                          passes without its controls is measuring nothing.
   f9_arm_gate_forced_open
-                         the ``absorber_inactive`` arm gate removed AT THE REGISTRY
+                         the ``absorber_inactive`` arm gate removed at the registry
                          (patching the module global is a no-op — ``arms.register``
                          captured the function object, and that was measured before
                          this entry was written). REQUIRED: the leg claims the gate
                          changes no verdict AND is really there; the second half is
                          what this breaks.
 
-NOTHING IN THE TREE IS EDITED. Each injection runs the real gate in a SUBPROCESS
+Nothing in the tree is edited. Each injection runs the real gate in a SUBPROCESS
 with a small patch applied after import and before ``main()``, so the certified
 module and the gate keep the sha256 the artifact records.
 
-A PASS HERE IS A RED GATE. Any injection that leaves the gate green is reported as
+A pass here is a red gate. Any injection that leaves the gate green is reported as
 an ARMING HOLE and fails this probe.
 
 Usage::
@@ -117,7 +117,7 @@ family.MetalNullConstitutiveStepPlan.run = lambda self, contract=None: None
     },
     "f4_residency_refuses": {
         "leg": "residency",
-        "why": "tranche 1 RECORDED residency_covered without asserting it",
+        "why": "the first Metal certification RECORDED residency_covered without asserting it",
         "patch": """
 from meep_gpu.metal_kernels import no_pml_constitutive as family
 from meep_gpu.metal_kernels.coverage import Coverage
@@ -138,7 +138,7 @@ from meep_gpu import stepping
 stepping.update_H = lambda fields, pml=None: None
 """,
     },
-    # ADDED 2026-08-15. Both of these left the gate GREEN before this round's fixes
+    # ADDED 2026-08-15. Both of these left the gate GREEN before the 2026-08-15 fixes
     # — measured, not supposed — and both are the arming holes rather than polish.
     "f6_slot_side_crossed": {
         "leg": "mutations",
@@ -172,7 +172,7 @@ family.METAL_NON_CLAUSES = {k: v for k, v in family.METAL_NON_CLAUSES.items()
                "the arm is CONSULTED. The leg asserts BOTH halves: forcing it open "
                "must change no verdict (a PREDICTED NULL, and it holds), and the "
                "gate must really suppress a consultation somewhere or the claim is "
-               "about a gate that is not there. THE INJECTION POINT MATTERS: "
+               "about a gate that is not there. The injection point matters: "
                "`arms.register` captured the function object, so patching the "
                "module global is a no-op — measured, the gate stayed green. The "
                "registry entry is what the leg reads and what this patches",
@@ -244,7 +244,7 @@ def main() -> int:
     holes: List[str] = []
     started = time.time()
 
-    # THE BASELINE IS A PASS CONDITION. If the unpatched gate does not go GREEN in
+    # The baseline is a pass condition. If the unpatched gate does not go GREEN in
     # this same subprocess harness, every red below is attributable to the harness
     # rather than to the injection.
     with tempfile.TemporaryDirectory() as workdir:
@@ -256,7 +256,7 @@ def main() -> int:
               f"{'GREEN' if not baseline['gate_went_red'] else 'RED'} "
               f"({baseline['elapsed_s']}s)", flush=True)
         if baseline["gate_went_red"]:
-            print("[arming] BASELINE IS RED: the harness is broken, not the gate", flush=True)
+            print("[arming] baseline is red: the harness is broken, not the gate", flush=True)
             payload = {"rows": rows, "holes": ["baseline"], "baseline_green": False}
             with open(arguments.out, "w", encoding="utf-8") as handle:
                 json.dump(payload, handle, indent=2, sort_keys=True)

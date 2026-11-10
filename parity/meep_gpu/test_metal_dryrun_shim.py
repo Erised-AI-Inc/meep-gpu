@@ -4,14 +4,14 @@
 ``probe_metal_dispatch_dryrun.install_shim`` rather than through the ladder, so the shim
 has to reproduce what ``fastpath.FastPathPlan`` and ``metal_dispatch`` do for the leg
 to measure the composition the engine runs. Two places it did not, both measured on
-the 0.10 series (01..106) as disagreements with the array path under an EQUAL host
+a 1.0 development tree as disagreements with the array path under an EQUAL host
 policy, which no flush-vs-keep reading can explain:
 
-* THE CHUNK DIVISION. The ladder hands the composer the driver's own division
+* The chunk division. The ladder hands the composer the driver's own division
   (``launch.chunk_division(fields, pml, chunk_layout)``); the shim handed none, so
   ``plan_step`` bound the one-rank division. ``folded_complex_kz2d_3d`` differed at
   normal magnitudes on 16 arrays until it was passed.
-* THE ABSENT COMPONENTS' CLEAR. ``FastPathPlan`` clears the absent electric
+* The absent components' clear. ``FastPathPlan`` clears the absent electric
   components after every ``update_E`` consult (``fastpath.AbsentComponentClear``);
   the shim did not, so ``folded_offdiag_magnetic_2d``'s absent ``Ez`` (159 words) and
   ``folded_complex_2d``'s absent ``f_w_Ey`` (160 words) read -0 against +0.

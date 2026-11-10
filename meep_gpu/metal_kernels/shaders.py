@@ -12,7 +12,7 @@ character for character:
 ONE body serves both sub-steps in each pair, exactly as ``step_generic.cpp``'s
 single ``step_curl`` does.
 
-THE PML FORM IS CHOSEN PER STRUCTURE CHUNK, as MEEP chooses it (step_db.cpp:56-59,
+The PML form is chosen per structure chunk, as MEEP chooses it (step_db.cpp:56-59,
 update_eh.cpp:162-163) and as the array path steps it. Membership is runtime data,
 never source text: each kernel binds the chunk record
 (:func:`meep_gpu.chunk_map.chunk_bounds_record`) as ``constant ChunkBounds& cb``
@@ -38,7 +38,7 @@ line, so a ghost row takes its image row's form, as the array path's line does.
 Both plain forms are OUTPUT SELECTS: the plain word is the select's other arm, not
 the accumulation with unit or zero coefficients, which differs on a ``-0``.
 
-WHY SOURCE SUBSTITUTION AND NOT RUNTIME BRANCHES. Triton specialises on
+Why source substitution and not runtime branches. Triton specialises on
 ``tl.constexpr`` arguments: ``BACKWARD``, ``BCX``/``BCY``/``BCZ``, ``SCALE`` are
 compile-time constants and the branches on them are gone before any float
 expression is emitted. ``torch.mps.compile_shader`` takes a source string and
@@ -47,7 +47,7 @@ keeps the emitted arithmetic identical to the Triton body instead of handing the
 compiler branch-hoisting opportunities around the float expressions. Each
 specialisation is therefore a distinct source string and a distinct memo key.
 
-THE TRANSCRIPTION RULES, each measured on this host rather than assumed:
+The transcription rules, each measured on this host rather than assumed:
 
 1. **The contraction pragma.** Metal defaults to contraction ON; without the
    pragma the compiler contracts ``field*kms_u + fu`` into an fma and the result
@@ -81,7 +81,7 @@ THE TRANSCRIPTION RULES, each measured on this host rather than assumed:
    array path multiplies by the float32 word of ``-dtdx``, which is ``-x`` of the
    float32 word of ``dtdx``.
 
-THE INDEX ARITHMETIC IS INTEGER AND EXACT, which is why the periodic wrap is
+The index arithmetic is integer and exact, which is why the periodic wrap is
 specialised to the one branch that can fire for a given direction (forward shifts
 reach ``n`` but never ``-1``) rather than transcribing both of Triton's nested
 ``tl.where`` calls. No float rounds on that path, so the two spellings cannot
@@ -112,7 +112,7 @@ CONTRACT_OFF = "off"
 CONTRACT_FAST = "fast"
 CONTRACT_MODES: Tuple[str, str] = (CONTRACT_OFF, CONTRACT_FAST)
 
-#: THE ONE COMPILE OPTION THAT DECIDES BIT-IDENTITY on this platform, spelled
+#: The one compile option that decides bit-identity on this platform, spelled
 #: exactly once in this package. The Metal analogue of Triton's
 #: ``ENABLE_FP_FUSION = False`` — but a file-scope property rather than a launch
 #: keyword, so it is baked into the source string and a plan that wants the other
@@ -476,7 +476,7 @@ def constitutive_membership_flags(side: str) -> Tuple[str, str, str]:
 
 #: The constitutive product per side. The H side reads B directly (mu = 1 is baked
 #: into the array path too: ``stepping.update_H`` passes ``fields.Bx``); the E side
-#: reads ``D * inv_eps`` with **D ON THE LEFT**, because the array path writes
+#: reads ``D * inv_eps`` with **D on the left**, because the array path writes
 #: ``source * fields.inverse_epsilon_for(component)`` (stepping.py:1011-1013).
 #: Float multiplication is bitwise commutative, and a transcription is not a place
 #: to rely on that.

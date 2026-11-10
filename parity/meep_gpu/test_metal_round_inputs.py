@@ -1,8 +1,7 @@
-"""The Metal round's inputs bundle: the committed manifest, and the tool that packs it.
+"""The tool that packs, verifies and unpacks the inputs bundle of a Metal certification round.
 
-Host-only, no device and no evidence archive: the committed manifest is checked for
-consistency and for host facts, and ``build_metal_round_inputs.py`` is driven on a
-synthetic results tree built in a temporary directory.
+Host-only, no device and no evidence archive: ``build_metal_round_inputs.py`` is driven on a
+synthetic results tree and a synthetic round directory built in a temporary directory.
 """
 
 from __future__ import annotations
@@ -10,9 +9,6 @@ from __future__ import annotations
 import hashlib
 import io
 import os
-import re
-import shutil
-import subprocess
 import sys
 import tarfile
 from pathlib import Path
@@ -24,119 +20,7 @@ sys.path.insert(0, str(HERE))
 
 import build_metal_round_inputs as tool  # noqa: E402
 
-ROUND = HERE / "rounds" / "metal_2026-10-04"
 REPO = HERE.parents[1]
-
-
-# ---------------------------------------------------------------------------
-# The committed round directory
-# ---------------------------------------------------------------------------
-
-def test_the_committed_manifest_is_consistent():
-    files, dirs, sums = tool.read_manifest(ROUND)
-    assert len(files) == 7 and len(dirs) == 4
-    assert files == sorted(files), "INPUT_FILES.txt is kept in sorted order"
-    assert set(sums) == set(files)
-    assert len(tool.committed_bundle_digest(ROUND)) == 64
-
-
-def test_the_four_dated_expansion_probes_are_not_in_the_bundle():
-    """They are measured per Mac; the round cuts its own (README.md)."""
-    files, dirs, _sums = tool.read_manifest(ROUND)
-    dated = re.compile(r"metal_(complex_audit|complex|special_kz|folded_complex|"
-                       r"cylindrical_complex)_2026-08-1\d")
-    assert not [name for name in files + dirs if dated.match(name)]
-
-
-def test_the_spine_baseline_ships_because_the_gate_reads_it_at_that_path():
-    files, _dirs, _sums = tool.read_manifest(ROUND)
-    gate = (HERE / "gate_metal_spine_byte_neutrality.py").read_text(encoding="utf-8")
-    assert '"metal_pml_2026-08-14", "provenance.json"' in gate
-    assert "metal_pml_2026-08-14/provenance.json" in files
-
-
-@pytest.mark.parametrize("name", sorted(p.name for p in ROUND.iterdir() if p.is_file()))
-def test_no_committed_round_file_carries_a_host_fact(name):
-    text = (ROUND / name).read_text(encoding="utf-8")
-    # Spelled in parts so this file does not itself match a scrub for home paths.
-    homes = ("/" + "Users/", "/" + "home/")
-    for pattern in homes + (r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[a-z]{2,}",):
-        assert not re.search(pattern, text), f"{name} matches {pattern}"
-
-
-def test_the_round_driver_verifies_the_inputs_before_the_fleet():
-    text = (ROUND / "run_round.sh").read_text(encoding="utf-8")
-    order = re.search(r"^ORDER=\(([^)]*)\)", text, re.M).group(1).split()
-    assert order == ["preflight", "inputs", "fleet", "status", "pack"]
-    assert "build_metal_round_inputs.py\" unpack" in text
-    assert "build_metal_round_inputs.py\" check" in text
-    assert "need inputs" in text.split("stage_fleet() {", 1)[1].split("}", 1)[0]
-
-
-def _body(text: str, function: str) -> str:
-    """A stage function's body: from its opening line to the first closing brace at
-    column 0. The stages checked here hold no heredoc, so that brace is theirs."""
-    return text.split(f"{function}() {{\n", 1)[1].split("\n}\n", 1)[0]
-
-
-def test_every_stage_refuses_to_start_before_the_one_it_follows():
-    text = (ROUND / "run_round.sh").read_text(encoding="utf-8")
-    # The first line of each body: a check placed after other work would run that
-    # work first. stage_status holds a heredoc, so it is read by its first line only.
-    for function, before in (("stage_inputs", "preflight"), ("stage_fleet", "inputs"),
-                             ("stage_status", "fleet"), ("stage_pack", "status")):
-        first = text.split(f"{function}() {{\n", 1)[1].splitlines()[0].strip()
-        assert first == f"need {before}", f"{function} starts with {first!r}"
-
-
-def test_the_stages_that_run_or_pack_gates_re_check_the_commit():
-    """``all`` skips a finished preflight, so a resumed run re-checks here."""
-    text = (ROUND / "run_round.sh").read_text(encoding="utf-8")
-    check = _body(text, "tree_is_the_commit")
-    assert '"$head" == "$EXPECT"' in check and "status --porcelain" in check
-    for function in ("stage_preflight", "stage_fleet", "stage_pack"):
-        assert "tree_is_the_commit" in _body(text, function), function
-    assert "gpu_idle" in _body(text, "stage_fleet")
-
-
-def test_the_driver_reads_the_manifest_from_the_checkout_and_checks_links_first():
-    text = (ROUND / "run_round.sh").read_text(encoding="utf-8")
-    assert "ROUND=$G/rounds/metal_2026-10-04" in text
-    assert "${0:A:h}" not in text and "$HERE" not in text
-    link_check = text.index('[[ ! -L "$R" ]]')
-    assert link_check < text.index('mkdir -p "$L"'), (
-        "the log directory is created under results/ before the link check")
-
-
-needs_zsh_here = pytest.mark.skipif(shutil.which("zsh") is None,
-                                    reason="the round driver needs zsh")
-
-
-@pytest.mark.requires_resource("zsh")
-@needs_zsh_here
-@pytest.mark.parametrize("layout", ["results_is_a_link", "no_manifest"])
-def test_the_driver_stops_before_writing_anything(tmp_path, layout):
-    """A results/ that is a link, or a REPO without this round's manifest, stops the
-    driver before its first write: nothing lands in the link's target or in results/."""
-    repo = tmp_path / "repo"
-    harness = repo / "parity" / "meep_gpu"
-    harness.mkdir(parents=True)
-    target = tmp_path / "archive"
-    target.mkdir()
-    if layout == "results_is_a_link":
-        (harness / "results").symlink_to(target)
-    else:
-        (harness / "results").mkdir()
-    environment = {k: v for k, v in os.environ.items() if not k.startswith("MEEP_GPU_")}
-    environment.update(REPO=str(repo), EXPECT="0" * 40, STAMP="2000-01-01_test")
-    completed = subprocess.run(["zsh", str(ROUND / "run_round.sh"), "preflight"],
-                               env=environment, capture_output=True, text=True,
-                               timeout=60, check=False)
-    assert completed.returncode == 3, completed.stdout + completed.stderr
-    expected = "symbolic link" if layout == "results_is_a_link" else "holds no manifest"
-    assert expected in completed.stdout
-    assert not any(target.iterdir())
-    assert not any((harness / "results").iterdir())
 
 
 # ---------------------------------------------------------------------------

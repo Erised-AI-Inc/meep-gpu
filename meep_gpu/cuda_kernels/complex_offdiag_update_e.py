@@ -1,6 +1,6 @@
 """COMPLEX64 storage x OFF-DIAGONAL chi1inv at ``update_E`` -- two hand-CUDA tails.
 
-THE LAST FIVE SLOTS ON THE BOARD, AND THEY ARE ONE ARITHMETIC SHAPE. The
+The last five slots on the board, and they are one arithmetic shape. The
 2026-08-20 final census (``results/cuda_predicate_coverage_2026-08-20_final/``)
 leaves 6 of 759 predicate slots unserved. Five of them are one intersection --
 MEEP's tensor ROW PRODUCT at ``update_E`` under COMPLEX64 storage -- and every
@@ -19,7 +19,7 @@ None of those refusals is a widening candidate and none is retired here. They ar
 all exactly right about the kernels they are about; this module is the kernel
 they are not about.
 
-THE FIVE ROWS, MEASURED OFF THE CENSUS RATHER THAN ASSUMED
+The five rows, measured off the census rather than assumed
 ==========================================================
 
 ===========================================  =====  =====  ======  ============
@@ -39,10 +39,10 @@ and the one phased fold row puts its phase on an UNFOLDED axis, which is what
 keeps this family inside the fold clause the complex track already measured.
 
 =============================================================================
-TWO KERNELS, AND THE SPLIT IS THE TAIL -- MEASURED, NOT ARGUED
+Two kernels, and the split is the tail -- measured, not argued
 =============================================================================
 
-The corpus splits 3 / 2 on the absorber, and the question the brief asked is
+The corpus splits 3 / 2 on the absorber, and the question this file answers is
 whether ONE kernel serves both. It does not, and the reason is not the absorber
 profile -- it is that the two tails are DIFFERENT COMPUTATIONS, not one
 computation at different coefficients:
@@ -54,7 +54,7 @@ computation at different coefficients:
   constitutive`` (stepping.py:1022) -- a plain OVERWRITE that reads neither.
 
 The natural collapse is to bind ``kps = 1``, ``kms = 0`` and a scratch ``f_w``, so
-that the recurrence degenerates to the store. IT DOES NOT: the recurrence computes
+that the recurrence degenerates to the store. It does not: the recurrence computes
 ``E_new = E_old + 1*src - 0*prev``, which is the store only where ``E_old`` is
 identically zero, and ``update_E``'s own input ``E`` is the field the previous
 step wrote. ``test_complex_offdiag_update_e.py`` measures this on the ARRAY PATH
@@ -68,7 +68,7 @@ are (``complex_emitter.KERNELS``).
     ``update_E_pml_complex_offdiag``      -- the split-field tail
     ``update_E_no_pml_complex_offdiag``   -- the direct store
 
-THE CORE IS ONE BODY AND IS EMITTED ONCE. Both kernels are built from the same
+The core is one body and is emitted once. Both kernels are built from the same
 :data:`_CORE` text with :data:`_TAIL_PML` or :data:`_TAIL_STORE` substituted per
 component, so the row product, the ghost rules, the phases, the parity and the
 wall mask cannot drift between the two arms; :func:`_component_source` is what
@@ -77,7 +77,7 @@ makes that true by construction rather than by care. The Triton sibling
 ``PML: tl.constexpr`` axis, which is separate compilation spelled differently.
 
 =============================================================================
-WHAT IS TRANSCRIBED, AND FROM WHERE
+What is transcribed, and from where
 =============================================================================
 
 ``stepping.update_E``'s off-diagonal branch with complex64 storage: the row is
@@ -104,7 +104,7 @@ components' volumes. Per component ``c`` with own axis ``a`` and per part::
 A component with no surviving row keeps the element-wise ``gs * us`` in float32 and
 never forms a double row.
 
-THE GHOST RULES AND THE TWO CONNECTIONS, each with the ``stepping`` branch it is:
+The ghost rules and the two connections, each with the ``stepping`` branch it is:
 
 1. ``_shift_down`` on the PARTNER axis, called with the component and the plane's
    parity: PERIODIC wraps the near face PLAINLY (the stored window: no Bloch factor
@@ -124,31 +124,31 @@ THE GHOST RULES AND THE TWO CONNECTIONS, each with the ``stepping`` branch it is
 4. ``_mask_metallic_wall_coupling`` zeroes face 0 of every axis whose Yee shift is 0
    and which is ``is_metallic and not is_mirrored`` -- it ABSTAINS on a fold.
 
-ONE ``BC_MIRROR`` CODE SERVES BOTH FOLD TERMINATIONS. ``update_E`` has no
+One ``BC_MIRROR`` code serves both fold terminations. ``update_E`` has no
 ownership mask and by rule 2 no reflect row, so the split
 ``coverage.REAL_CURL_BC_CODES`` needs for the CURL does not arise; the gate carries
 that as a NULL CONTROL -- both declared terminations of one fold must be
 bit-identical -- rather than as an assumption.
 
 =============================================================================
-WHAT DECIDES BIT-IDENTITY HERE
+What decides bit-identity here
 =============================================================================
 
 ``offdiag_emitter``'s nine items hold per part, and complex storage adds three:
 
-1. EVERY REAL-COEFFICIENT PRODUCT IS ONE FLOAT32 PRODUCT PER PART -- ``D * inv_eps``,
+1. Every real-coefficient product is one float32 product per part -- ``D * inv_eps``,
    ``pair * u``, the mirror parity and the tail's ``kps * src`` / ``kms * prev``
    (``part_products.scale``) -- through ``complex_emitter``'s ``mul_field_left`` /
    ``mul_coefficient_left``. No complex x complex product is formed except the
    connection's own (rule 3 above), and none is fused (``--fmad=false``).
-2. THE ROW IS DOUBLE PER PART: ``(double)(gs.re * us)`` and ``(double)(gs.im * us)``
+2. The row is double per part: ``(double)(gs.re * us)`` and ``(double)(gs.im * us)``
    each accumulate ``0.25 * (double)term`` in partner order where the chunk keeps the
    row, and round once.
-3. EVERY ZERO IS ``cf_zero()``, BOTH WORDS: the metallic and the up-axis ghosts and
+3. Every zero is ``cf_zero()``, both words: the metallic and the up-axis ghosts and
    the wall mask assign the integer 0 to a complex64 plane, ``(+0.0f, +0.0f)``.
 
 =============================================================================
-WHAT IS COMPILE-TIME AND WHAT IS NOT
+What is compile-time and what is not
 =============================================================================
 
 ``offdiag_emitter``'s split and ``complex_emitter``'s, unchanged, and for their
@@ -164,13 +164,13 @@ reasons:
   inner sum has and therefore its association) so they stay compile-time;
 * the TAIL is STRUCTURAL, so it is two kernels.
 
-THE GHOST LANE AND THE PARITY WEIGHT ARE DERIVED FROM ``bc_*`` IN ONE PLACE, which
+The ghost lane and the parity weight are derived from ``bc_*`` in one place, which
 is ``folded_offdiag_kernels``' rule and its reason: a second spelling of "which
 lane is the ghost" is a place for the index redirect and the parity weight to
 disagree, and a disagreement is a plane of wrong values rather than a crash.
 
 =============================================================================
-PLATFORM FACTS THIS FILE DEPENDS ON
+Platform facts this file depends on
 =============================================================================
 
 * ``--fmad=false`` is CORRECTNESS and the option tuple is SPELLED HERE rather than
@@ -183,20 +183,20 @@ PLATFORM FACTS THIS FILE DEPENDS ON
 * DIVISION: none anywhere on this path, so the one PTX exception on record
   (ptxas expanding ``div.rn.f32`` into a sequence whose range checks carry
   ``.FTZ`` in SASS regardless of the PTX modifier) cannot arise.
-* THE DEVICE STRINGS ARE PURE ASCII, a compile requirement rather than a style
+* The device strings are pure ASCII, a compile requirement rather than a style
   rule: ``cupy.cuda.compiler.compile_using_nvrtc`` writes the source through a
   bare ``open(..., 'w')`` (compiler.py:368), so the bytes go through the
   interpreter's LOCALE encoding -- ASCII under C/POSIX, which is what a
   non-interactive shell on the validation host gets. Two em-dashes in a comment
   killed a sibling kernel at its first launch on 2026-08-15. The tests scan AND
   encode every emitted source, per row mask and per arm.
-* COMPLEX64 IS FLOAT2 AND A WALL CLEAR THAT TOUCHES ONLY THE REAL PLANE IS A
-  KNOWN DEFECT CLASS IN THIS TREE. Every zero this family writes is ``cf_zero()``
+* Complex64 is float2 and a wall clear that touches only the real plane is a
+  known defect class in this tree. Every zero this family writes is ``cf_zero()``
   -- both words -- and the gate arms a real-plane-only clear of the wall mask, of
   the metallic ghost and of the up-axis ghost as three separate mutations.
 
 =============================================================================
-IMPORTABLE WITHOUT CUPY, AND NOT CERTIFIED UNTIL THE RECORD SAYS SO
+Importable without CuPy, and not certified until the record says so
 =============================================================================
 
 ``cupy`` is imported INSIDE the launchers, never at module scope, on
@@ -205,7 +205,7 @@ the coverage census, which runs on a laptop. Everything above the launchers --
 emitter, predicates, tables -- is stdlib plus ``numpy`` for the phase table and
 one lazy ``fields.mirror_parity``.
 
-NOTHING DISPATCHES THIS. No module in ``meep_gpu/`` imports ``cuda_kernels`` at
+Nothing dispatches this. No module in ``meep_gpu/`` imports ``cuda_kernels`` at
 all (``test_package_boundary.py`` pins the absence in both directions), so a
 predicate returning True licenses a MEASUREMENT and not a production step. What
 has and has not been measured on a device is
@@ -303,7 +303,7 @@ ROW_PARAMETERS: Tuple[str, ...] = _flat.ROW_PARAMETERS
 #: (fields.py:1302-1303).
 LIVE_ROW_MASKS: Tuple[Tuple[int, ...], ...] = _flat.LIVE_ROW_MASKS
 
-#: NOTHING HERE HAS A GATE VERDICT YET. The two sets partition
+#: Nothing here has a gate verdict yet. The two sets partition
 #: :func:`shipped_kernel_names`; a kernel added to this family cannot ship
 #: described by nothing. Spelled as plain assignments WITHOUT type annotations for
 #: the reason every sibling spells its own that way: the partition reader walks the
@@ -314,7 +314,7 @@ CERTIFIED_KERNELS = (
     "update_E_no_pml_complex_offdiag",
 )
 
-#: BOTH PASSED THEIR GATE UNDER BOTH POLICIES and they sit here anyway, which is a
+#: Both passed their gate under both policies and they sit here anyway, which is a
 #: deliberate state and not an oversight. What is missing is the RECORD:
 #: ``certification.json`` is the thing a reader is entitled to check a claim
 #: against, and "certified" must be a verdict someone can read rather than a word
@@ -333,7 +333,7 @@ _THREADS = 256
 
 
 # =============================================================================
-# THE DEVICE CODE
+# The device code
 # =============================================================================
 
 #: The certified real family's helpers this family reads out of
@@ -412,8 +412,8 @@ __device__ __forceinline__ int coord_dn(int a, int n, int bc) {
     return n - 1;
 }
 
-// The PARTNER-AXIS DOWN sample, with the mirror rule applied ON THE GHOST LANE AND
-// NOWHERE ELSE: parity * field[_face(axis, MIRROR_ROW)], one part-wise product
+// The PARTNER-AXIS DOWN sample, with the mirror rule applied on the ghost lane and
+// nowhere else: parity * field[_face(axis, MIRROR_ROW)], one part-wise product
 // (part_products.scale). gl is 1 only at face 0 of the partner axis, derived from
 // the coordinate in ONE place so the index redirect in coord_dn and the rule here
 // cannot disagree about which lane is the ghost. index < 0 is the metallic zero.
@@ -442,17 +442,17 @@ __device__ __forceinline__ cf pair_window(const float* g, int index, int pa, int
 //
 //     (g[i] + g[i-sx])*u[i] + (g[i+s] + g[(i+s)-sx])*u[i+s]
 //
-// THIS RETURNS THE FLOAT32 SUM INSIDE THE SCALE. The pair sums, the products and their
+// This returns the float32 sum inside the scale. The pair sums, the products and their
 // sum are realnum (float32) operations; 0.25 is a double literal, so the scale and
 // everything after it is double (the caller applies the wall mask to this sum, then
 // scales it in double).
 //
-// THE COEFFICIENT MULTIPLY SITS BETWEEN THE TWO SHIFTS. u[i] multiplies the two-point
-// partner average AT ITS OWN NODE and u[i+s] the average at the next node up this
+// The coefficient multiply sits between the two shifts. u[i] multiplies the two-point
+// partner average at its own node and u[i+s] the average at the next node up this
 // component's own axis (MEEP registers the off-diagonal entry at the component's Yee
 // site minus half a cell along its own axis, anisotropic_averaging.cpp:248-257).
 //
-// THE TWO CONNECTIONS ARE THE ARRAY PATH'S, EACH ON ITS OWN AXIS. The pair's
+// The two connections are the array path's, each on its own axis. The pair's
 // same-index operand takes the partner axis's window (eikna, pair_window); the NEAR
 // PRODUCT takes the own axis's (stepping._bloch_ghost_operand on the product,
 // below=True: conj(eikna), applied after the coefficient). The far product is the
@@ -521,7 +521,7 @@ __RECORD_BLOCK__    // Both neighbour coordinates on every axis: one term reads 
     int dj = coord_dn(j, ny, bc_y), uj = coord_up(j, ny, bc_y);
     int dk = coord_dn(k, nz, bc_z), uk = coord_up(k, nz, bc_z);
 
-    // FACE 0 OF EACH AXIS, spelled ONCE and used for both rules that ask about it:
+    // FACE 0 of each axis, spelled ONCE and used for both rules that ask about it:
     // the partner-axis mirror ghost lane and the wall-plane predicate below. They are
     // the same plane, so a second spelling would be a place for the two to disagree.
     int at_x = (i == 0), at_y = (j == 0), at_z = (k == 0);
@@ -562,12 +562,12 @@ _COEF_PARAMS = (
 #: The two tails, per component. ``{name}`` is the component, ``{axis}`` its own axis
 #: letter and ``{index}`` that axis's loop variable.
 #:
-#: THE PML TAIL IS complex_emitter's per-chunk ``constitutive_apply``, called and not
+#: The PML tail is complex_emitter's per-chunk ``constitutive_apply``, called and not
 #: respelled: the accumulation on the cells whose chunk carries the component's own
 #: (dsigw) layer -- ``in_h_<axis>``, the half-integer record on the component's own
 #: axis -- and ``E = src`` elsewhere (stepping._apply_constitutive_regions).
 #:
-#: THE STORE TAIL IS ``getattr(fields, component)[...] = constitutive``. NO f_w, NO
+#: The store tail is ``getattr(fields, component)[...] = constitutive``. NO f_w, NO
 #: recurrence and NO coefficient: the stored E IS the constitutive product without a
 #: layer.
 _TAIL_PML = ("    constitutive_apply({name}, f_w_{name}, idx, src_{name},"
@@ -647,7 +647,7 @@ def _wall_mask_lines(component: int, offset: int) -> List[str]:
     Face 0 of every axis whose Yee shift is 0 (:data:`coverage.OFFDIAG_WALL_MASK_AXES`),
     ascending -- the mask's own loop order, inside the partner loop and before the
     scale. WHICH axes can be masked is fixed by the component and compiled in; WHETHER
-    each one is masked is the runtime ``wm_*`` flag. ``cf_zero()`` IS BOTH WORDS: the
+    each one is masked is the runtime ``wm_*`` flag. ``cf_zero()`` is both words: the
     array path assigns the INTEGER 0 to the complex64 sum, the pair (+0.0f, +0.0f).
     """
     term = f"term_{E_TERMS[component][0]}_{offset}"
@@ -659,8 +659,8 @@ def _wall_mask_lines(component: int, offset: int) -> List[str]:
 def _component_source(component: int, row_mask: Sequence[int], arm: str) -> str:
     """One component's whole block, on the arm its two row slots select.
 
-    Four row arms: none, offset-1 only, offset-2 only, both. THE NONE ARM IS THE
-    ELEMENT-WISE COMPLEX CONSTITUTIVE BODY -- ``src = D * inv_eps`` per part and the
+    Four row arms: none, offset-1 only, offset-2 only, both. The none arm is the
+    element-wise complex constitutive body -- ``src = D * inv_eps`` per part and the
     same tail -- because ``_offdiagonal_terms`` returns None for a component with no
     surviving row and ``update_E`` then never forms a double row. A live component's
     row is MEEP's, per part: ``(double)(gs * us)``, each kept term's float32 sum scaled
@@ -711,7 +711,7 @@ KEPT_PARAMETERS: Tuple[str, ...] = _flat.KEPT_PARAMETERS
 def _row_parameter_lines(row_mask: Sequence[int]) -> str:
     """The live coefficient parameters, then their presence words, in slot order.
 
-    THE SIGNATURE CARRIES ONLY THE LIVE ONES, ``offdiag_emitter``'s choice and for its
+    The signature carries only the live ones, ``offdiag_emitter``'s choice and for its
     reason: binding a dead slot to some other volume leaves a pointer aimed at an array
     the kernel must never touch. NOT ``__restrict__``: a row coefficient may legally
     alias another row's, an inverse-epsilon volume or a D volume. They are float32
@@ -735,7 +735,7 @@ def normalized_row_mask(row_mask: Sequence[int]) -> Tuple[int, ...]:
 def normalized_arm(arm: str) -> str:
     """The tail key, refused by name rather than defaulted.
 
-    A WRONG TAIL IS A WRONG ANSWER, not a crash: both compile, both run, and one
+    A wrong tail is a wrong answer, not a crash: both compile, both run, and one
     accumulates onto E where the other overwrites it.
     """
     if arm not in KERNEL_NAMES:
@@ -802,7 +802,7 @@ def complex_offdiag_source(arm: str, row_mask: Sequence[int]) -> str:
 def _assert_body_is_clean(body: str, arm: str) -> None:
     """Raise if a placeholder survived or a forbidden token reached the body.
 
-    THE ASSERTIONS ARE THE POINT, and they are ``complex_no_pml_kernels``'
+    The assertions are the point, and they are ``complex_no_pml_kernels``'
     ``_curl_source``'s: a template rename upstream, a fourth component block or a
     tail this substitution missed all raise HERE, at emit, with the site named --
     rather than compiling into a kernel that silently steps a recurrence this
@@ -941,7 +941,7 @@ def chunk_arguments(fields: Any, pml: Any, codes: Sequence[int],
     it. The presence is a property of the chunk division and the coefficient, not of the
     storage width, so one builder serves both families.
 
-    WITH NO ACTIVE LAYER AND NO INSTALLED DIVISION the array path reads one chunk
+    With no active layer and no installed division the array path reads one chunk
     (``stepping._chunk_layout`` returns None) and adds every term; the record is then the
     one-rank division of the unlayered grid, whose labels are the interior on every
     axis, and every word keeps that chunk.
@@ -969,10 +969,10 @@ def complex_offdiag_tables(pml: Any) -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# THE COVERAGE PREDICATES
+# The coverage predicates
 # ---------------------------------------------------------------------------
 
-#: WHAT HAS BEEN MEASURED ON A DEVICE FOR THIS FAMILY, and nothing more.
+#: What has been measured on a device for this family, and nothing more.
 #:
 #: ``host`` is the only thing that makes any number here a device verdict; a
 #: ``host: None`` record means a predicate returning True licenses a MEASUREMENT
@@ -988,8 +988,8 @@ COMPLEX_OFFDIAG_UPDATE_E_ADMISSION: dict = {
                "compared as uint32 words"),
     "specified_by": "complex_no_pml_kernels.WHAT_IS_NOT_BUILT",
     "recorded_utc": "2026-08-21T23:21:00Z",
-    "host": "the GPU host, NVIDIA RTX A6000, CuPy 13.5.1. THE PAYLOAD CARRIES NO "
-            "MACHINE STAMP -- this gate writes no hostname and no device index, so "
+    "host": "the GPU host, NVIDIA RTX A6000, CuPy 13.5.1. The payload carries no "
+            "machine stamp -- this gate writes no hostname and no device index, so "
             "unlike the 2026-08-20 run (GPU index 3, UUID GPU-00000000-0000-0000-0000-000000000001, recorded by "
             "the session that launched it) the index for this re-cut cannot be read "
             "back out of the artifact and is not claimed here. Closing it means the "
@@ -1001,7 +1001,7 @@ COMPLEX_OFFDIAG_UPDATE_E_ADMISSION: dict = {
     "artifact_sha256": {"keep": "574f571c6c6a7836c59c87ac11908c4638182328484e634cccde123a3211574c",
                         "flush": "55c90bcb4adbb7fe688b50561fde4dbff0b6f1b028175eea34841bb9a9ddb890"},
     "gate_sha256_at_run": "a0bd21372c83763269ada0420eed243984b6e7a595724bcb77166faffcec6879",
-    #: HOW THIS RECORD IS BOUND TO THOSE RUNS, and why it is NOT an artifact hash
+    #: How this record is bound to those runs, and why it is NOT an artifact hash
     #: alone. Both artifacts carry ``imported_source_sha256``, which records THIS
     #: FILE's bytes as of the run -- so writing an artifact digest here and nothing
     #: else would be circular the moment this block was added. The non-circular
@@ -1047,7 +1047,7 @@ COMPLEX_OFFDIAG_UPDATE_E_ADMISSION: dict = {
     "cases_where_the_wall_mask_bites": 84,
     "subnormal_band_scored": 184,
     "signed_zero_scored": 184,
-    #: THE PREDICTION THE CURL PAIR'S SPLIT DOES NOT TRANSFER, measured: update_E
+    #: The prediction the curl pair's split does not transfer, measured: update_E
     #: has no ownership mask and no reflect row, so ONE BC_MIRROR code serves both
     #: declared terminations of a fold.
     "folded_periodic_identical": "240/240",
@@ -1059,7 +1059,7 @@ COMPLEX_OFFDIAG_UPDATE_E_ADMISSION: dict = {
     "mutations_escaped": 0,
     "mutations_unarmed": 0,
     #: The nine that make the battery two-sided rather than a list of catches. The
-    #: last three are MEASURED FINDINGS this run established rather than legs that
+    #: last three are measured findings this run established rather than legs that
     #: were expected to be silent -- see the gate's ``NULL_MUTATIONS`` note.
     "null_controls_confirmed": (
         "commute_the_row_sum", "commute_the_pair_add", "dead_cshift_up",
@@ -1067,7 +1067,7 @@ COMPLEX_OFFDIAG_UPDATE_E_ADMISSION: dict = {
         "parity_plane_wise", "up_ghost_real_plane_only",
         "down_ghost_real_plane_only"),
     "release_verdict_shown_to_flip_against_a_planted_defect": True,
-    #: THE GUARD FINDING, and it does NOT match the certified siblings'. The real
+    #: The guard finding, and it does NOT match the certified siblings'. The real
     #: off-diagonal family measured its unguarded control 0/384 identical, which is
     #: what makes ``--fmad=false`` CORRECTNESS there. Here the unguarded control
     #: agreed on 276/276 cases at the INEXACT courant, and the compiler says why:
@@ -1091,7 +1091,7 @@ COMPLEX_OFFDIAG_UPDATE_E_ADMISSION: dict = {
                           "parity_expansion_license over "
                           "results/expansion_probe_2026-08-17/, arm FMA_V1, "
                           "basis measured, both policies"),
-    #: WHAT THE RECORD DOES NOT SAY. It is a verdict about the EMITTER at the
+    #: What the record does not say. It is a verdict about the EMITTER at the
     #: corpus digest below, exercised on FOUR of its 63 row masks per tail and on
     #: ONE of its two expansion arms (the one the licence binds). A mask or an arm
     #: outside those is covered by the emitter's own tests and by that digest, not
@@ -1101,14 +1101,14 @@ COMPLEX_OFFDIAG_UPDATE_E_ADMISSION: dict = {
     "expansion_arms_exercised": ("FMA_V1",),
     "emitter_corpus_digest":
         "1d887e4bdc4f118674b63e26f7d64f9c1e4507c68ea413734054a66622107e91",
-    #: STILL NOT CERTIFIED, and that is a deliberate state. ``certification.json``
+    #: Still not certified, and that is a deliberate state. ``certification.json``
     #: is the thing a reader is entitled to check a claim against, and "certified"
     #: must be a verdict someone can read rather than a word someone typed. Both
     #: gates PASSED under both policies; the record entry is what is owed.
     "certified": False,
-    #: WHAT IT IS WORTH, recomputed on ONE census tree with the union analyzer --
+    #: What it is worth, recomputed on ONE census tree with the union analyzer --
     #: the family present and absent on the SAME 186 rows, so the delta is
-    #: attributable to this leg rather than to a tree that moved between rounds.
+    #: attributable to this leg rather than to a tree that moved between census runs.
     "corpus": {
         "census": ("parity/meep_gpu/results/"
                    "cuda_predicate_coverage_2026-08-20_complex_offdiag"),
@@ -1149,13 +1149,13 @@ def _fold_reasons(facts: dict, grid: Any) -> List[str]:
     to the real family's on every grid it can build, so the duplication cannot
     drift silently.
 
-    a. MORE THAN ``MIRROR_ROW`` STORED CELLS. ``coord_dn``'s mirror arm returns
+    a. More than ``MIRROR_ROW`` stored cells. ``coord_dn``'s mirror arm returns
        stored row 2 unconditionally at face 0, and ``stepping._mirror_source``
        (:1536-1541) RAISES below that many cells. A thinner axis would have the
        kernel read a neighbouring plane where the array path refuses to run.
     b. A READABLE PLANE PHASE, exactly +1 or -1. The parity is a runtime float
        argument, so an unreadable plane launches a NaN rather than raising.
-    c. THE TWO ROUTES TO THE TERMINATION AGREEING
+    c. The two routes to the termination agreeing
        (``coverage._fold_termination_problem``). One code serves both terminations
        here, so the cross-check is not load-bearing for the arithmetic; it is
        load-bearing for TRUST -- a grid whose ``stored_cells > owned_cells`` and
@@ -1217,7 +1217,7 @@ def _row_and_volume_refusal(fields: Any, grid: Any, facts: dict, arm: str) -> An
         if problem is not None:
             return problem
     if arm == "no_pml":
-        # THE AUXILIARY MUST BE ABSENT, not merely unused. The direct-store arm
+        # The auxiliary must be absent, not merely unused. The direct-store arm
         # writes no ``f_w``; an ALLOCATED one means something else built it and
         # this step would leave it stale -- a wrong answer on a LATER sub-step
         # rather than on this one. ``complex_no_pml_kernels`` refuses the same
@@ -1242,7 +1242,7 @@ def _row_and_volume_refusal(fields: Any, grid: Any, facts: dict, arm: str) -> An
         if not getattr(volume, "shape", ()):
             return (f"inverse_epsilon_for({component!r}) is a scalar, not a "
                     f"volume")
-        # FLOAT32 UNDER COMPLEX STORAGE, indexed by the COMPLEX CELL index and
+        # Float32 under complex storage, indexed by the complex cell index and
         # never word-doubled (stepping.py:41-50 against fields.py:1203-1204).
         problem = _coverage._array_problem(
             f"inverse_epsilon_for({component!r})", volume, xp, shape)
@@ -1284,13 +1284,13 @@ def _shared_complex_refusal(fields: Any, pml: Any, grid: Any,
                             facts: dict) -> Any:
     """``coverage._complex_grid_refusal`` with this family's two clauses first.
 
-    DELEGATION RATHER THAN A SECOND COPY, because that function is the one home of
+    Delegation rather than a second copy, because that function is the one home of
     the inverted storage clause, the symmetry-consistency clause, the phase
     consistency rules, BFAST, beta, dispersion, chi2/chi3, ``stores_E`` and the
     HALVED int32 word bound -- and a clause added there should be inherited here
     rather than skipped.
 
-    THE TWO PLACES THIS FAMILY DIVERGES, and each is stated HERE rather than passed
+    The two places this family diverges, and each is stated HERE rather than passed
     as a flag, because that function SHORT-CIRCUITS and a flag would change more
     than one clause:
 
@@ -1300,7 +1300,7 @@ def _shared_complex_refusal(fields: Any, pml: Any, grid: Any,
       with this family's own reason. The kernel takes ``bc_x/bc_y/bc_z`` and has no
       code for the ``axis`` kind: Dcyl replaces the radial derivative with a prefix
       sum and adds the r_to_minus_r image rule (stepping.py:1877-1888).
-    * A FOLD IS ADMITTED, which is ``admit_fold=True``, and what stands behind it is
+    * A fold is admitted, which is ``admit_fold=True``, and what stands behind it is
       the real family's device verdict for the OFF-DIAGONAL row on a fold
       (``folded_offdiag_kernels.FOLDED_OFFDIAG_ADMISSION``: 240/240 folded cases
       per policy, both terminations, up to three simultaneous planes) plus this
@@ -1324,7 +1324,7 @@ def covers_complex_offdiag_pml_update_e(fields: Any, pml: Any, grid: Any) -> tup
     Returns ``(covered, reason)`` with ``reason`` naming the FIRST refusal -- the
     convention every predicate in this package uses.
 
-    AN UNFOLDED GRID IS ADMITTED, and unlike ``folded_offdiag_kernels`` this family
+    An unfolded grid is admitted, and unlike ``folded_offdiag_kernels`` this family
     needs no separate composition verdict for it. That family had to narrow,
     because the certified flat off-diagonal kernel already claimed every unfolded
     row and admitting them twice would report an overlap that is an artifact of the
@@ -1332,7 +1332,7 @@ def covers_complex_offdiag_pml_update_e(fields: Any, pml: Any, grid: Any) -> tup
     grid: all five corpus rows are unserved and the analyzer's disjointness check
     measures that rather than assuming it.
 
-    THE DISJOINTNESS SEAM, all four sides:
+    The disjointness seam, all four sides:
 
     * against ``coverage.covers_real_pml_complex_constitutive(side='E')`` and
       ``complex_folded_kernels.covers_complex_folded_constitutive``: both refuse
@@ -1358,11 +1358,11 @@ def covers_complex_no_pml_offdiag_update_e(fields: Any, pml: Any, grid: Any) -> 
     The two slots ``complex_no_pml_kernels`` names in
     :data:`complex_no_pml_kernels.WHAT_IS_NOT_BUILT` and refuses by name.
 
-    ``stores_E`` FALSE IS REFUSED, through the shared clause set: ``update_E``
+    ``stores_E`` False is refused, through the shared clause set: ``update_E``
     returns at stepping.py:952-953 without writing anything, and admitting it would
     put a launch where the array path does nothing.
 
-    ``Fields`` IN PML STORAGE MODE IS REFUSED while the layer is inert. That is a
+    ``Fields`` in PML storage mode is refused while the layer is inert. That is a
     one-way switch (``Fields.enable_pml_storage``, fields.py:678-700) which also
     changes what ``get_H`` returns, and a ``Fields`` whose storage was switched on
     while the stepper's layer is inert reads H from an array ``update_H`` declines
@@ -1399,7 +1399,7 @@ def _covers(fields: Any, pml: Any, grid: Any, arm: str) -> tuple:
                            "never writes, and this arm writes no f_w")
         # The shared clause set requires an ACTIVE layer, and every OTHER clause in
         # it is about the grid, the storage and the fields. Satisfying that one
-        # clause AT THE INPUT is ``no_pml_curl._ActiveLayerProxy``'s technique and
+        # clause at the input is ``no_pml_curl._ActiveLayerProxy``'s technique and
         # its reason: the function short-circuits, so there is no accumulated
         # refusal list a filter could subtract from, and forgiving a refusal after
         # the fact would silently skip every clause behind it.
@@ -1424,8 +1424,8 @@ def _covers(fields: Any, pml: Any, grid: Any, arm: str) -> tuple:
     if refusal is not None:
         return False, refusal
     if arm == "pml":
-        # HALF-INTEGER ONLY, the E side's own sub-lattice (stepping.py:1015). ON A
-        # FOLDED AXIS THE VECTOR IS BUILT AT THE FOLDED STORED EXTENT, which is
+        # HALF-INTEGER ONLY, the E side's own sub-lattice (stepping.py:1015). On a
+        # folded axis the vector is built at the folded stored extent, which is
         # what ``_coefficient_vector_problem`` checks by SHAPE rather than by size
         # -- the clause that stops "the vectors are the right length" from being an
         # assumption on exactly the axis the fold moved.
@@ -1449,7 +1449,7 @@ def _covers(fields: Any, pml: Any, grid: Any, arm: str) -> tuple:
 # laptop.
 
 #: The emitted sources a gate has replaced, keyed by ``(arm, row_mask)``
-#: -- the mutation seam. A MUTABLE MODULE GLOBAL on purpose: the source-mutation
+#: -- the mutation seam. A mutable module global on purpose: the source-mutation
 #: battery rewrites entries here and re-launches, and :func:`_get_kernel` re-reads
 #: it on every call so a rewritten string is seen. A map memoized at first call
 #: would hand back the pre-mutation bytes forever, which is "a leg reporting a pass
@@ -1470,7 +1470,7 @@ def set_kernel_source(arm: str, row_mask: Sequence[int],
                       source: Optional[str]) -> None:
     """Install (or with ``source=None`` remove) one mutated device string.
 
-    THE GATE'S DOOR, and it is load-bearing: a mutation harness that could not
+    The gate's door, and it is load-bearing: a mutation harness that could not
     route its own bytes through the launcher would launch the shipped kernel and
     report a pass for a defect it never introduced.
 
@@ -1494,7 +1494,7 @@ def clear_kernel_cache() -> int:
 def _get_kernel(arm: str, row_mask: Sequence[int]):
     """Compile on first use, memoized on (name, options, policy, source).
 
-    THE ARM AND THE ROW MASK BOTH REACH THE KEY THROUGH THE SOURCE,
+    The arm and the row mask both reach the key through the source,
     which is already in it, so two specializations cannot be served each other's
     binary -- and neither can a mutation harness that rewrote the emitter's output
     be served the unmutated one.
@@ -1531,7 +1531,7 @@ def _word_view(array: Any) -> Any:
 def _require_no_aliasing(fields: Any, rows: Sequence[Any], arm: str) -> None:
     """Outputs pairwise distinct and disjoint from every input volume.
 
-    THE COUPLING IS WHY THIS IS STRONGER THAN AN ELEMENT-WISE SUB-STEP'S NEEDS.
+    The coupling is why this is stronger than an element-wise sub-step's needs.
     That one reads each cell it writes and nothing else, so an alias would be
     merely wrong; this one re-reads the partner volumes at NEIGHBOUR offsets -- on
     a folded axis including interior stored row MIRROR_ROW -- while the outputs are
@@ -1671,7 +1671,7 @@ def _run(fields: Any, pml: Any, arm: str, tables, codes, walls,
          weights, connections, chunk_bounds, kept) -> str:
     """The one launch path, with the derive-or-override contract both arms keep.
 
-    SUPPLY ``pml`` AND EVERY DERIVED ARGUMENT IS DECIDED HERE -- the half-integer
+    Supply ``pml`` and every derived argument is decided here -- the half-integer
     tables through :func:`coverage.constitutive_sub_lattice`, the boundary codes
     through ``real_pml_boundary_kinds`` and :data:`FOLDED_BC_CODES`, the wall flags
     through the grid's own declaration, the parity through ``fields.mirror_parity``,
@@ -1680,7 +1680,7 @@ def _run(fields: Any, pml: Any, arm: str, tables, codes, walls,
     launcher and the predicate cannot disagree" an enforced property rather than a
     convention a caller may keep.
 
-    THE OVERRIDES ARE THE GATE'S DOOR and stay, keyword-only at the public
+    The overrides are the gate's door and stay, keyword-only at the public
     entry points: a byte gate feeds synthetic tables no ``PML`` produces, and its
     mutations feed DELIBERATELY WRONG ones -- a mis-paired sub-lattice, a dropped
     wall flag, a fold handed the metallic code, a flipped parity, a connection table
@@ -1689,7 +1689,7 @@ def _run(fields: Any, pml: Any, arm: str, tables, codes, walls,
     override, or neither, is refused: a caller with two answers to a one-answer
     question has a bug either way.
 
-    THE CHUNK RECORD AND THE PRESENCE WORDS are derived through :func:`chunk_arguments`
+    The chunk record and the presence words are derived through :func:`chunk_arguments`
     when ``pml`` is given (the record uploaded here, once per call); a gate hands both
     (``chunk_bounds`` the device vector, ``kept`` the six words).
     """

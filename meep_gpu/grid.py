@@ -182,7 +182,7 @@ BoundarySpec = Any  # None, one condition, a 3-sequence, or a per-axis mapping; 
 def _normalize_boundaries(boundaries: BoundarySpec) -> tuple[tuple[str, str], ...]:
     """Turn an outer-boundary request into one ``(low, high)`` pair per axis.
 
-    THE DEFAULT IS PERIODIC HERE AND METALLIC IN MEEP, and the mismatch is
+    The default is periodic here and metallic in MEEP, and the mismatch is
     deliberate rather than an oversight. MEEP's ``fields::fields`` sets
     ``boundaries[b][d] = Metallic`` on every face and only ``use_bloch`` overwrites
     it with ``Periodic`` (fields.cpp, boundaries.cpp); this engine keeps periodic as
@@ -323,8 +323,8 @@ class Grid:
             invariant axis, so ``d/dz`` is the exact factor ``i*2*pi*beta`` rather
             than a difference; it couples TE to TM in the curl and it is NOT a Bloch
             phase (``k_point`` stays zero on z). Legal only at ``dimensions=2``.
-        bfast_scaled_k: MEEP's ``bfast_scaled_k`` — the BROADBAND FIXED-ANGLE SOURCE
-            TECHNIQUE, i.e. the scaled wavevector ``n * sin(theta)`` of the incidence
+        bfast_scaled_k: MEEP's ``bfast_scaled_k`` — the broadband fixed-angle source
+            technique, i.e. the scaled wavevector ``n * sin(theta)`` of the incidence
             direction. It shears time by ``t -> t - k.r/c``, which adds
             ``+d/dt (k x E)`` to dB/dt and ``-d/dt (k x H)`` to dD/dt and makes a
             planewave at a FIXED angle transversely uniform at every frequency, so
@@ -362,8 +362,8 @@ class Grid:
     boundaries: BoundarySpec = None  # Per-axis outer condition; None is periodic everywhere.
     dimensions: int = 3  # MEEP's dimensions: 3, or 2/1 with the missing axes invariant.
     # MEEP's Dcyl, under the mapping x -> r, y -> phi, z -> z (the Cartesian Yee
-    # table lands exactly on the Dcyl shifts; the design notes (fdtd-cylindrical-plan)
-    # section 1). phi is the one-cell invariant axis; ``m`` is the azimuthal number
+    # table lands exactly on the Dcyl shifts).
+    # phi is the one-cell invariant axis; ``m`` is the azimuthal number
     # of the analytic exp(i*m*phi) dependence.
     cylindrical: bool = False
     m: int = 0
@@ -380,7 +380,7 @@ class Grid:
     # (python/simulation.py:1555-1570, fields.cpp:2478-2487). It is NOT a Bloch phase:
     # nothing wraps, and ``k_point`` keeps a hard zero on z.
     beta: float = 0.0
-    # MEEP's ``fields::bfast_scaled_k`` — the BROADBAND FIXED-ANGLE SOURCE TECHNIQUE
+    # MEEP's ``fields::bfast_scaled_k`` — the broadband fixed-angle source technique
     # (BFAST). It is a knob on ``fields``, not on ``structure``
     # (python/simulation.py:1239/1537/2486), so it changes NOTHING about epsilon, the
     # PML, the sources or the constitutive relations; grep for "bfast" over MEEP's
@@ -521,7 +521,7 @@ class Grid:
         # top of the shifted window. Every axis folds the same way — the halving
         # knows nothing about which direction a run happens to propagate along.
         #
-        # A folded PERIODIC axis stores ONE CELL MORE than the halved count, at
+        # A folded PERIODIC axis stores one cell more than the halved count, at
         # BOTH count parities. `update_ntot` allocates num + 1 slots per direction
         # (vec.cpp:293-296) and `owns` reports every doubled point p with
         # `0 < p - io <= 2*num` as owned and stepped (vec.cpp:445-462), so the
@@ -530,7 +530,7 @@ class Grid:
         # one half-cell above, which is the not-owned ghost `connect_the_chunks`
         # fills and `stepping.fill_folded_far_ghosts_*` reproduces.
         #
-        # WHERE THE TWO PARITIES DIFFER is only which plane `big_corner` IS.
+        # Where the two parities differ is only which plane `big_corner` IS.
         # A mirror at doubled 0 under periodic boundaries implies a SECOND mirror
         # at doubled N (translation + reflection). At an EVEN count `big_corner`
         # is that plane exactly — a shift-0 Yee plane and an independent degree
@@ -541,7 +541,7 @@ class Grid:
         # one half-cell ABOVE it, at doubled N + 1 — the top of the odd count's
         # shifted window.
         #
-        # THAT TOP SLOT IS NOT REDUNDANT AT AN ODD COUNT, which is why this
+        # That top slot is not redundant at an odd count, which is why this
         # engine stored the halved count there and read the sample past it
         # through `stepping._shift_up`'s reflect rule instead. Reflection about
         # the second mirror is exact only where the MEDIUM is symmetric about it,
@@ -593,7 +593,7 @@ class Grid:
     def _resolve_cylindrical(self):  # MEEP Dcyl: x -> r, y -> phi (invariant), z -> z.
         """Resolve the cylindrical mode's axis table and validate its constraints.
 
-        The mapping is the plan's (the design notes (fdtd-cylindrical-plan) §1): the
+        The axis mapping: the
         Cartesian Yee-shift table lands exactly on MEEP's Dcyl shifts under
         x -> r, y -> phi, z -> z, with phi the one-cell invariant axis — so the
         invariant table here is ``(False, True, False)``, which no ``dimensions``
@@ -702,7 +702,7 @@ class Grid:
         already gathers (step_db.cpp:129-142 -> step_generic.cpp:335-471), so it costs
         no new boundary rule, no new PML slice and no source change.
 
-        CYLINDRICAL IS REFUSED, and not for want of effort. MEEP's Dcyl branch nulls
+        Cylindrical is refused, and not for want of effort. MEEP's Dcyl branch nulls
         ``f_p`` for the R component and ``f_m`` for Z by hand (step_db.cpp:87/:96)
         while leaving ``have_p``/``have_m`` TRUE, so the single-operand branch of
         ``step_bfast`` becomes reachable with a nonzero k — and that branch
@@ -1056,7 +1056,7 @@ class Grid:
     def stored_window_low(self, axis: int, iyee_shift: int) -> int:
         """The first ladder index of one component's stored window on one axis: 0 or 1.
 
-        THE STORED WINDOW. Ladder index ``i`` of a component with Yee shift ``s`` on an
+        The stored window. Ladder index ``i`` of a component with Yee shift ``s`` on an
         axis is the doubled coordinate ``origin + 2*i + s`` (:meth:`origin_doubled`), and
         the engine stores ``n`` of them (:meth:`stored_cells`). On an axis MEEP makes
         Bloch-periodic it OWNS, for a Yee-shift-0 component, the points ``lc + 2 ..
@@ -1416,7 +1416,7 @@ class Grid:
         *Raises* — everything else. Both out-of-range cases raise here rather than
         being served approximately, and the message says which one it is.
 
-        WHAT THIS REPLACED, and why it is worth a paragraph. The previous contract
+        What this replaced, and why it is worth a paragraph. The previous contract
         tolerated one cell of overhang and returned an extrapolating weight outside
         [0, 1] against a clamped index. Nothing downstream wanted extrapolation: the
         CW point source dropped the negative half of the stencil and deposited ~1.5x

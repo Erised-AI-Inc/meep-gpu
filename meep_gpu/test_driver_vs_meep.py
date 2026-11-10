@@ -20,7 +20,7 @@ measures the same reference against a k = 0 run — the run an engine that accep
 
 The remaining cases need no oracle: a symmetry run is compared cell for cell
 against the equivalent full-domain run (the equivalence that proves the
-post-injection D-side mirror fill of port-reference §5.2 is wired in), and a
+post-injection D-side mirror fill is wired in), and a
 zero-amplitude source is checked to leave the fields exactly zero — with a
 positive control, so a run that computes nothing cannot pass as a perfect one.
 A k = 0 run is pinned bit-for-bit against a driver built with no ``k_point`` at
@@ -456,7 +456,7 @@ def test_sheet_source_with_pml_matches_cpu_meep(tmp_path):  # PML path parity: e
     assert driver_ez.shape == reference.shape
     relative_l2, correlation = _magnitude_metrics(driver_ez, reference)
     assert correlation > 0.999, f"|Ez| correlation {correlation:.6f} below 0.999 on the PML path."
-    # Held far inside the <5% bar of the parity matrix §7: measured
+    # Held far inside the <5% cross-validation bar: measured
     # 2.9e-07 magnitude / 4.0e-07 complex, the same band as the no-PML core. History of
     # this one number, which is the engine's most common configuration: 8.2e-02 / 1.1e-01
     # while the upper-face sigma was graded one cell too deep, then 5.8e-04 / 6.3e-04
@@ -717,7 +717,7 @@ def test_pml_is_transparent_and_improves_as_the_grid_is_refined():  # Scaling, n
 
 
 def test_symmetry_run_matches_full_domain_run():  # Mirror symmetry must reproduce the full-domain physics.
-    # This is the equivalence test port-reference §5.2 asks for. Under an X mirror the
+    # This is the equivalence test for the post-injection mirror fill. Under an X mirror the
     # D cells at index 0 are non-owned: the curl step masks them, and only the
     # post-injection fill repairs them from their mirror partner at index 2. With the
     # fill missing those cells stay stale, feed the next curl, and the quadrant drifts
@@ -803,7 +803,7 @@ def test_symmetry_run_with_pml_matches_full_domain_run():  # The skip_lower grad
     face's own amplitude), to rounding since the curl takes MEEP's left-to-right
     bracket, which is not reflection-symmetric in rounding
     (``test_stepping.FOLD_ROUNDING_BOUND``): the bound is :data:`FOLD_ROUNDING_BOUND`
-    units of 2**-24 in the relative L2 norm (MEASURED 2026-10-06: 9.73 units quiet and
+    units of 2**-24 in the relative L2 norm (measured 2026-10-06: 9.73 units quiet and
     15.34 live, against 1.1e-02, about 1.8e5 units, for the mis-graded face). The
     grading itself is pinned exactly and boundary-free by
     ``test_grid_pml.py::test_the_folded_pml_table_is_the_full_domain_table_under_the_half_cell_shift``.
@@ -1060,10 +1060,10 @@ def test_odd_count_folded_periodic_axis_lifts_and_serves_its_live_far_face():
     ``cy - 1 .. cy - 2 + owned`` even with the far face carrying 1.3e-01 of peak,
     measured 0.0 bit for bit at this configuration while the curl's bracket was
     reflection-symmetric in rounding, and held since to :data:`FOLD_ROUNDING_BOUND`
-    units of 2**-24 of the run's peak (``test_stepping.FOLD_ROUNDING_BOUND``; MEASURED
+    units of 2**-24 of the run's peak (``test_stepping.FOLD_ROUNDING_BOUND``; measured
     2026-10-06: at most 12.1 units on the stored rows and 1.1 on the big_corner row).
 
-    THE TOP STORED ROW HAS NO FULL-DOMAIN ROW OF ITS OWN. ``big_corner`` sits at
+    The top stored row has no full-domain row of its own. ``big_corner`` sits at
     doubled ``n_full + 1``, one cell above the full run's last row, so its
     reference is that run's row 0 one lattice vector down (k = 0, no phase). That
     row is what the odd count used to serve by reflecting about the second
@@ -1124,7 +1124,7 @@ def test_zero_amplitude_source_leaves_fields_exactly_zero():  # Degenerate case,
     assert float(np.max(np.abs(driven.get_field("Ez", cell_centered=False)))) > 0.0
 
 
-def test_run_requires_one_finite_stopping_condition():  # §5.12 guard: no open-ended runs, no silent defaults.
+def test_run_requires_one_finite_stopping_condition():  # Guard: no open-ended runs, no silent defaults.
     driver = FdtdDriver(cell_size=(1.0, 1.0, 1.0), resolution=10)
     with pytest.raises(ValueError):
         driver.run()
@@ -1151,7 +1151,7 @@ def test_cancel_check_stops_the_run():  # Cancellation is raised, not swallowed,
     assert progress == [(5, 40)]
 
 
-def test_epsilon_shape_validation_checks_every_axis():  # §5.8: the half-matching array must raise, not be trimmed.
+def test_epsilon_shape_validation_checks_every_axis():  # The half-matching array must raise, not be trimmed.
     driver = FdtdDriver(cell_size=(1.0, 1.0, 2.0), resolution=10)
     nx, ny, nz = driver.shape
     driver.set_epsilon(np.full((nx, ny, nz), 2.25, dtype=np.float32))
@@ -1271,7 +1271,7 @@ def test_gaussian_source_monitors_and_lifecycle():  # The remaining driver paths
         driver.step()
 
 
-def test_monitor_region_default_is_independent_of_creation_order():  # §5.14: PML-aware defaults resolve at run start.
+def test_monitor_region_default_is_independent_of_creation_order():  # PML-aware defaults resolve at run start.
     before = FdtdDriver(cell_size=(2.0, 2.0, 2.0), resolution=10, force_complex_fields=True)
     monitor_before = before.add_dft_monitor(1.0, components=("Ez",))
     before.setup_pml(4)
@@ -1657,6 +1657,87 @@ def test_field_decay_stop_never_passes_off_an_unmeasured_run_as_decayed():  # Th
     )
     assert driven.time < 8.0, "The driven control never decayed; the degenerate case proves nothing."
     assert driven.time >= 5.0, "Stopped before the pulse had finished emitting."
+
+
+def test_the_decay_probe_reads_on_meeps_sampling_interval_and_tests_every_window():
+    # MEEP 1.34.0's sampling_interval (MEEP 1.35.0 python/simulation.py:5778-5840): the
+    # point is read only on steps whose step count is a multiple of the interval, the
+    # window test still runs on every step, and a window no sample landed in has peak 0
+    # (MEEP's cur_max, reset at each boundary), so it reads as decayed once anything
+    # was measured. The step-against-MEEP comparison is test_from_meep's
+    # test_the_decay_stop_samples_where_meeps_sampling_interval_does.
+    from .driver import _FieldDecayProbe
+
+    read_on = []
+    probe = _FieldDecayProbe(np, lambda: (read_on.append(len(read_on)), 1.0)[1], decay_by=0.5,
+                             window=1.0, start_time=0.0, source_end_time=0.0,
+                             sampling_interval=3)
+    steps = range(1, 13)
+    for step in steps:
+        probe.update(0.25 * step, step)
+    assert len(read_on) == 4, f"read {len(read_on)} times over 12 steps at interval 3, not 4"
+
+    reads = []
+    probe = _FieldDecayProbe(np, lambda: (reads.append(1), 1.0)[1], decay_by=0.5, window=0.5,
+                             start_time=0.0, source_end_time=0.0, sampling_interval=5)
+    decided = [probe.update(0.25 * step, step) for step in range(1, 10)]
+    # Step 3 closes an empty window with nothing yet measured (no decision); step 5 reads;
+    # step 6 closes the window holding that sample (ratio 1); step 9 closes a window no
+    # sample landed in: peak 0 against a running peak of 1, decayed.
+    assert len(reads) == 1 and probe.peak == 1.0
+    assert decided == [False] * 8 + [True], decided
+
+    every = []
+    probe = _FieldDecayProbe(np, lambda: (every.append(1), 1.0)[1], decay_by=0.5, window=1.0,
+                             start_time=0.0, source_end_time=0.0)
+    for step in steps:
+        probe.update(0.25 * step, step)
+    assert len(every) == 12, "the default interval must read every step, MEEP's history"
+
+
+@pytest.mark.parametrize("interval", [1, 5, 7])
+def test_the_run_reads_the_probe_on_steps_whose_count_is_a_multiple_of_the_interval(interval):
+    # MEEP samples where `sim.fields.t % sampling_interval == 0`, `fields.t` being the
+    # step count when its criterion runs, which is the driver's step count after the
+    # step it just took. The probe's reader is wrapped to record the step count at every
+    # read, so a run that passed the wrong count (one ahead, say) reads off MEEP's steps.
+    driver = _quiet_decay_case(amplitude=1.0)
+    original = driver._point_magnitude_reader
+    read_at = []
+
+    def recording_reader(component, point):
+        read = original(component, point)
+
+        def wrapped():
+            read_at.append(driver.step_count)
+            return read()
+        return wrapped
+
+    driver._point_magnitude_reader = recording_reader
+    driver.run(until_after_sources=1.0, decay_by=1e-3, decay_component="Ez",
+               decay_point=(0.0, 0.0, 0.3), max_time=8.0, decay_sampling_interval=interval)
+    assert read_at, "the probe was never read"
+    assert all(count % interval == 0 for count in read_at), read_at[:12]
+    assert read_at == list(range(interval, driver.step_count + 1, interval)), (
+        f"read on {read_at[:8]}..., not on every multiple of {interval} up to "
+        f"{driver.step_count}")
+
+
+@pytest.mark.parametrize("interval", [0, -2, 2.5, "3", None])
+def test_the_decay_sampling_interval_must_be_a_positive_integer(interval):
+    driver = _quiet_decay_case(amplitude=1.0)
+    with pytest.raises(ValueError, match="decay_sampling_interval must be a positive integer"):
+        driver.run(until_after_sources=1.0, decay_by=1e-3, decay_component="Ez",
+                   decay_point=(0.0, 0.0, 0.3), max_time=8.0, decay_sampling_interval=interval)
+    assert driver.step_count == 0
+
+
+def test_the_decay_sampling_interval_needs_the_decay_stop():
+    driver = _quiet_decay_case(amplitude=1.0)
+    with pytest.raises(ValueError, match="decay_sampling_interval"):
+        driver.run(until=1.0, decay_sampling_interval=4)
+    driver.run(until=0.5, decay_sampling_interval=1)  # the default is not a decay setting
+    assert driver.step_count > 0
 
 
 def _yee_index(driver, shifts, point):  # Index of the sample a component with these Yee shifts puts at `point`.
@@ -4326,7 +4407,7 @@ def _cavity_modes(sigma, collect_steps=3000, probe_offset=(0.0, 0.0, 0.0)):
 def test_cavity_Q_matches_cpu_meep_and_its_closed_form(
     cavity_oracle, sigma, expected_Q, freq_floor, quality_floor
 ):
-    """THE END-TO-END PATH: step a cavity, sample a point every step, invert, get Q.
+    """The end-to-end path: step a cavity, sample a point every step, invert, get Q.
 
     This is the only test that runs the stepper, ``get_field_point``, the
     step-function protocol and ``harminv`` in one line of causation, and it is the
@@ -4346,11 +4427,11 @@ def test_cavity_Q_matches_cpu_meep_and_its_closed_form(
 
         Q = |Re w| / (-2 Im w) = 2*pi*f / sigma_D
 
-    with ``f`` the resonance the run actually lands on. Taking the MEASURED f rather
+    with ``f`` the resonance the run actually lands on. Taking the measured f rather
     than the ideal 0.5 makes the prediction immune to grid dispersion, which at 14
     cells per wavelength moves the line to 0.49606.
 
-    THE MEDIUM IS UNIFORM ON PURPOSE. A structured cavity would fold the epsilon
+    The medium is uniform on purpose. A structured cavity would fold the epsilon
     REGISTRATION into the comparison — this engine stores one scalar ``inv_eps``
     shared by the three D components, and a z-stratified slab needs different sampling
     for Dz than for Dx and Dy. Measured: a hand-built slab sampled at cell centres
@@ -4359,7 +4440,7 @@ def test_cavity_Q_matches_cpu_meep_and_its_closed_form(
     (``test_grating_transmission_spectrum_matches_cpu_meep``, 3.8e-07 with three
     half-cell controls); this test is about the resonance and its extraction.
 
-    MEASURED, engine against CPU MEEP running ``mp.Harminv`` on the same cavity from
+    Measured, engine against CPU MEEP running ``mp.Harminv`` on the same cavity from
     the same starting time:
 
         sigma_D      freq            Q             amp        Q vs the closed form
@@ -4373,7 +4454,7 @@ def test_cavity_Q_matches_cpu_meep_and_its_closed_form(
     probe scores. The control below asserts exactly that, so the comparison cannot pass
     by both codes reading nothing.
 
-    WHAT THE AMPLITUDE CANNOT SEE, said plainly: the z position. An Ez mode in this box
+    What the amplitude cannot see, said plainly: the z position. An Ez mode in this box
     must have ``k`` in the xy plane (E is transverse), so every mode this probe can see
     is uniform in z, and moving the probe a whole cell along z changes the fitted
     amplitude by 3e-08. Ez's half-integer axis IS z, so this test does not constrain
@@ -5077,7 +5158,7 @@ def test_a_flux_plane_is_exact_at_every_extent_up_to_and_including_the_metallic_
         normal z = 1.90 / 1.925 / 1.95  5.5e-08 / 1.3e-07 / 1.1e-07  (was the 2.02x)
         periodic twin, full width       1.1e-07  (unmoved)
 
-    (the design notes (absorber-placement-evidence) §2.3, §3.3.)
+    (These re-measurements are why the flux-plane-on-metal refusal was deleted.)
     """
     spec = dict(cell=[2.0, 2.0, 4.0], resolution=10, src=[0.05, -0.05, -0.5],
                 plane=[0.0, 0.0, 0.8], until=12.0)

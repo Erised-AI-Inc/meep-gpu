@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 """Native MPS byte gate for the FOLDED COMPLEX fused magnetic kernel: ``step_B`` -> ``update_H``.
 
-WHAT IS BEING CERTIFIED, and it is not a sub-step. This product spans FOUR driver
+What is being certified, and it is not a sub-step. This product spans FOUR driver
 passes — ``step_B``, ``fill_symmetry_bc_B``, ``zero_metal_B`` and ``update_H`` — so a
 per-sub-step comparison could not see it at all: the whole claim is about the SEAM
 between them, and about a mirror fill carried INSIDE one dispatch whose source cell a
 different thread computes, under COMPLEX storage where the parity is a complex product
-rather than a sign. The comparison is per COMPLETE DRIVER STEP over a stated budget,
+rather than a sign. The comparison is per complete driver step over a stated budget,
 against an array-path oracle running the identical live pass list, with the first
 divergent step reported rather than a final pass/fail.
 
-THE TEN THINGS THIS GATE REFUSES TO LET PASS SILENTLY:
+The ten things this gate refuses to let pass silently:
 
 1. **A silent fallback.** Bytes alone cannot prove the fused path ran: a plan that was
    never launched is byte-identical to the oracle BY CONSTRUCTION, because the oracle
@@ -30,7 +30,7 @@ THE TEN THINGS THIS GATE REFUSES TO LET PASS SILENTLY:
    phased axis — before a single edit is applied. The two mutation cases exist because
    no single folded-complex grid can carry both a fold on every axis and a phased one:
    a folded axis may not be phased (``folded_complex._reachable_phase_flags``).
-4. **A LINE NOTHING CAN SEE.** This family's one novel line is the imaged ghost's
+4. **A line nothing can see.** This family's one novel line is the imaged ghost's
    coefficient pair, read at stored index 0 rather than reused from the source thread
    at index 2. On a FOLDED axis the mirror plane carries no absorber
    (``stepping._require_consistent_pml``: high face only), so at the shared fixture's
@@ -50,10 +50,10 @@ THE TEN THINGS THIS GATE REFUSES TO LET PASS SILENTLY:
    components because the eleven non-pointer arguments are packed into a
    ``constant Params&``. Leg ``binding_ceiling`` compiles the 35-binding
    separate-scalar signature and requires the FAILURE, then compiles AND LAUNCHES the
-   packed one with THIS FAMILY'S OWN SIX-float2 record and requires every struct field
+   packed one with this family's own six-float2 record and requires every struct field
    to read back correctly — the padding question the wider record raises is answered
    by launching it, not by arithmetic.
-7. **A refusal that is really an omission — AND A CARRY THAT IS REALLY A REFUSAL.**
+7. **A refusal that is really an omission — and a carry that is really a refusal.**
    Leg ``refusal`` builds a folded PERIODIC grid, where ``fill_folded_far_ghosts_B`` is
    live inside the seam, and requires the composer to agree the pass is LIVE, the
    predicate to COVER it, ``REPLACES`` to NAME it and the plan to report the Yee
@@ -65,7 +65,7 @@ THE TEN THINGS THIS GATE REFUSES TO LET PASS SILENTLY:
    subnormal-free, which is only a precondition if the census can fire. Leg
    ``value_classes`` runs a SUBNORMAL_BAND seed and requires the census to be NONZERO,
    plus a uniform seed and a +-0 lattice that must both stay bit-identical.
-9. **A COLLAPSE INHERITED RATHER THAN MEASURED.** The real board's far carry folds a
+9. **A collapse inherited rather than measured.** The real board's far carry folds a
    composed parity into ONE compile-time sign and states the result is order-
    independent. Under complex storage the parity is a ``float2`` and the application is
    a full complex multiply, so leg ``parity_chain_order`` re-establishes the question
@@ -78,21 +78,21 @@ THE TEN THINGS THIS GATE REFUSES TO LET PASS SILENTLY:
    subnormal policy, not two, and that is a measurement this gate carries rather than
    a gap it leaves.
 
-THE PER-CHUNK FORMS AND THE PER-PART PARITY (bit_parity_0_10, KERNELS.md §7, step M5).
-Both halves lift the aligned complex emitters and every plan binds the chunk record of
+The per-chunk forms and the per-part parity (the Metal table's complex kernels).
+Both halves lift the complex emitters in MEEP's order, and every plan binds the chunk record of
 the division the array path steps with (``gate_chunk_records.layer_record``), carried in
 ``Params``. The array path applies a mirror parity as ``part_products.scale``: one
 float32 product per part by the host-rounded parity word, so the parity words are
 floats, a product by +/-1 per part is exact, and leg ``parity_chain_order`` is INVERTED
 -- re-ordering a chain or folding it into one word moves NO word, and the chain order is
 kept as the driver's by transcription. The grouping and product mutations are INVERTED
-(KERNELS.md §7.1): each plants the package's PREVIOUS spelling and stays must-catch, the
-§7.2 select rows are armed on both halves with their declared nulls, and the Bloch
+(docs/development/certification.md#inverted-grouping-mutations): each plants the package's PREVIOUS spelling and stays must-catch, the
+form battery's select rows are armed on both halves with their declared nulls, and the Bloch
 connection's operand order is a declared equivalence. Where the text below speaks of
 the parity as a complex product, of the expansion arm, or of the chain's order moving
 bytes, it describes the previous kernels; this block governs.
 
-THE MIRROR GHOST UNDER THE ONE-RANK RECORD. ``chunk_map.one_rank_line`` never puts the
+The mirror ghost under the one-rank record. ``chunk_map.one_rank_line`` never puts the
 mirror ghost (stored row 0 of a folded axis, integer lattice) inside a layer: a folded
 axis carries its layer on the high face only, and only a wrapping axis images its wall
 plane into row 0. So under :func:`gate_chunk_records.layer_record` the ghost's
@@ -201,7 +201,7 @@ from meep_gpu.triton_kernels.symmetry import (  # noqa: E402
 #: the interior. The comparison is per COMPLETE STEP.
 STEPS = 12
 
-#: THE BASE SEED. Every case's actual seed is a DIGEST of the case's identity added to
+#: The base seed. Every case's actual seed is a DIGEST of the case's identity added to
 #: this, never ``hash()``: Python salts ``hash()`` of a string with PYTHONHASHSEED, so
 #: a hash-seeded gate draws a different fixture every process and a failing case cannot
 #: be replayed.
@@ -247,8 +247,8 @@ VALUE_CLASSES: Tuple[str, ...] = ("gaussian", "uniform", "signed_zero_lattice",
 
 #: name -> (``metal_composition_matrix.folded`` keywords, explicit PML faces or None).
 #:
-#: EVERY ROW IS complex_storage=True. THE MIRROR_PERIODIC ROWS ARE NEW AS OF THE FAR
-#: CARRY: until it landed, a folded PERIODIC axis was refused BY NAME because
+#: Every row is complex_storage=True. The MIRROR_PERIODIC rows are new as of the far
+#: carry: until it landed, a folded PERIODIC axis was refused BY NAME because
 #: ``fill_folded_far_ghosts_B`` (driver.py:3287) sits inside this seam, and leg
 #: ``refusal`` was where the refusal was measured. The kernel now carries that pass,
 #: so those rows are WALKED here and the refusal leg keeps only the boundaries that
@@ -329,7 +329,7 @@ CASES: Tuple[Tuple[str, Dict[str, Any], Optional[Any]], ...] = (
      dict(complex_storage=True, axis="XY", phase=(1, -1), extent=0.8,
           boundaries={"x": "metallic", "y": "metallic", "z": "metallic"},
           depth=1.2), ((0, 4), (0, 4), (2, 2))),
-    # THE TWO ROWS THIS PRODUCT ACTUALLY SERVES BOTH CARRY AN OFF-DIAGONAL chi1inv
+    # The two rows this product actually serves both carry an off-diagonal chi1inv
     # ROW, and until these two cases landed the gate had never built one. That is
     # not a cosmetic gap: `examples:solve-cw.py` and
     # `tests:TestArrayMetadata.test_array_metadata` are the entire corpus admission
@@ -338,7 +338,7 @@ CASES: Tuple[Tuple[str, Dict[str, Any], Optional[Any]], ...] = (
     # gate that certified only diagonal fixtures would have certified a shape the
     # product is never asked for.
     #
-    # WHAT AN OFF-DIAGONAL ROW DOES AND DOES NOT REACH, and this is the property the
+    # What an off-diagonal row does and does not reach, and this is the property the
     # two cases MEASURE rather than assume: an off-diagonal chi1inv is an ELECTRIC
     # material, read by `update_E` through a transverse Yee average
     # (stepping.py:1219-1254). `update_H` reads B and mu with the integer coefficient
@@ -348,7 +348,7 @@ CASES: Tuple[Tuple[str, Dict[str, Any], Optional[Any]], ...] = (
     # it would show, and the walk runs the whole step including `update_E` on the
     # array path.
     #
-    # THEY ARE ALSO WHERE THE TWO BACKENDS' PREDICATES DISAGREE. The TRITON census
+    # They are also where the two backends' predicates disagree. The TRITON census
     # routes these same corpus rows to a `folded complex off-diagonal` arm on BOTH
     # step_B and update_H (launch.py:2684-2695) and its plain folded-complex
     # constitutive REFUSES them by name; Metal has no off-diagonal magnetic arm and
@@ -454,7 +454,7 @@ REFUSAL_FAR_CASE: Dict[str, Any] = dict(complex_storage=True, depth=1.2)
 def _carryable_magnetic_source(fields: Any) -> Any:
     """A REAL magnetic ``VolumeSource`` on this grid that publishes its deposit index.
 
-    SEARCHED, NOT SPELLED. Which component and which offset a folded grid will accept
+    Searched, not spelled. Which component and which offset a folded grid will accept
     depends on the mirror planes it carries: a source centred on an even plane and
     driving a component that plane makes ODD is refused by ``sources`` itself, by name,
     because the parity condition would constrain it against itself. Hard-coding one
@@ -521,9 +521,9 @@ def differing(left: Any, right: Any) -> int:
 
 
 def complex_from_planes(real: Any, imag: Any) -> Any:
-    """Build a complex64 array from two float32 planes THROUGH THE WORD VIEW.
+    """Build a complex64 array from two float32 planes through the word view.
 
-    ``real + 1j*imag`` DESTROYS THE SIGN OF ZEROS in ``imag``: ``1j`` is a complex128
+    ``real + 1j*imag`` destroys the sign of zeros in ``imag``: ``1j`` is a complex128
     scalar, so the product is a full complex multiply whose imaginary part comes out
     ``-0.0`` regardless of what ``imag`` held. That defect made the first three
     expansion probes classify NumPy as matching NO arm. Every complex construction in
@@ -546,7 +546,7 @@ def _planes(rng: Any, shape: Sequence[int], value_class: str
     if value_class == "gaussian":
         real = (rng.standard_normal(shape) * 0.37).astype(np.float32)
         imag = (rng.standard_normal(shape) * 0.29).astype(np.float32)
-        # SIGNED ZEROS SEEDED INTO BOTH PLANES. They are the class the complex
+        # Signed zeros seeded into both planes. They are the class the complex
         # helpers' literal zero cross terms exist for: folding `z_im * 0.0f` to a
         # literal misses 12/128 words on the exhaustive table and 0/16,384 on random
         # data, so random seeding alone would arm those mutations at nothing.
@@ -786,7 +786,7 @@ def run_case(keywords: Mapping[str, Any], seed: int, steps: int,
     live = live_passes(actual, actual_pml)
     assert live == live_passes(reference, reference_pml)
     before = frozen(actual)
-    # THE SIGNED-ZERO FLOOR. A census of zero would mean the seeding never built the
+    # The signed-zero floor. A census of zero would mean the seeding never built the
     # class the literal zero cross terms exist for, and every zero-term mutation would
     # be armed at nothing. Not required on the band seed, which has no zeros by
     # construction.
@@ -871,7 +871,7 @@ def run_separate_control(keywords: Mapping[str, Any], seed: int, steps: int,
                          pml_faces: Optional[Any] = None) -> Dict[str, Any]:
     """The SEPARATE certified folded complex products beside the fused one, same state.
 
-    THIS IS THE LEG THAT MAKES "FUSION" A MEASUREMENT RATHER THAN A NAME. Three engines
+    This is the leg that makes "FUSION" a measurement rather than a name. Three engines
     from one seed: the array path, the two ALREADY CERTIFIED folded complex Metal
     products stepping the same seam as separate dispatches with the mirror fill and the
     wall clear left on the HOST between them, and the fused product. All three must
@@ -984,7 +984,7 @@ def needle(source: str, old: str, new: str, count: int = 1) -> str:
 def fold_edits(base: str) -> Dict[str, str]:
     """Fifteen source defects reachable on :data:`MUTATION_CASE`.
 
-    THE MUTATION CASE'S GEOMETRY, which is what makes each of these reachable: x and y
+    The mutation case's geometry, which is what makes each of these reachable: x and y
     folded with parities (+1, -1), z a live metallic wall, no phased axis. Component 0
     (Bx) images its ghost on x with parity word ``mp0``; component 1 (By) images on y
     with ``mp1``; component 2 (Bz) images nothing — z is not folded — and is the one
@@ -992,46 +992,46 @@ def fold_edits(base: str) -> Dict[str, str]:
     composite corner: this family cannot have one.
     """
     return {
-        # THE SEAM ITSELF: take the curl instead of the recurrence's output.
+        # The seam itself: take the curl instead of the recurrence's output.
         "seam_takes_pre_recurrence_curl":
             needle(base, "float2 o0_src = v0;", "float2 o0_src = curl0;"),
-        # THE FILL, DROPPED. The ghost cell then keeps last step's displacement and
+        # The fill, dropped. The ghost cell then keeps last step's displacement and
         # last step's H — what a fused pair that ignored `fill_symmetry_bc_B` would
         # produce on every folded grid.
         "near_fill_dropped":
             needle(base, "        if (i == 2) {", "        if (false) {"),
-        # THE PARITY, DROPPED. `c_mul(mp1, v1)` is component 1's ghost write on the ODD
+        # The parity, dropped. `c_mul(mp1, v1)` is component 1's ghost write on the ODD
         # plane and is the only such call in the source; a plain copy is what a reader
         # who believed "phase +1 is a copy" would write for both planes.
         "fold_parity_dropped":
             needle(base, "f1[g1_n_i] = c_mul_coefficient_left(mp1, v1);",
                    "f1[g1_n_i] = v1;"),
-        # THE PARITY, WRONG AXIS'S WORD. Two folded axes with different parities is
+        # The parity, wrong axis's word. Two folded axes with different parities is
         # exactly the configuration where this is a plane of wrong signs rather than a
         # no-op.
         "fold_parity_takes_the_other_axis_word":
             needle(base, "f1[g1_n_i] = c_mul_coefficient_left(mp1, v1);",
                    "f1[g1_n_i] = c_mul_coefficient_left(mp0, v1);"),
-        # THE SOURCE ROW. MEEP's `little_owned_corner0` puts the image at stored cell
+        # The source row. MEEP's `little_owned_corner0` puts the image at stored cell
         # 2, never cell 1 (stepping._mirror_source, MIRROR_SOURCE_INDEX).
         "ghost_images_the_wrong_source_row":
             needle(base, "int g1_n_i = ii - 2 * nzi;", "int g1_n_i = ii - 1 * nzi;"),
-        # THE OWNERSHIP CARVE-OUT, DROPPED, is RECORDED rather than scored: see
+        # The ownership carve-out, dropped, is RECORDED rather than scored: see
         # RACE_EDITS.
         # THE CELL-0 MASK, on the B DIAGONAL (`at_x` for component 0, not the D side's
         # off-diagonal pair).
         "ownership_mask_dropped":
             needle(base, "    curl0 = at_x ? float2(0.0f, 0.0f) : curl0;\n", ""),
-        # THE WALL CLEAR on the owned cell, and it is a COMPLEX zero.
+        # The wall clear on the owned cell, and it is a COMPLEX zero.
         "zero_metal_dropped":
             needle(base, "    v2 = at_z ? float2(0.0f, 0.0f) : v2;\n", ""),
-        # THE WALL CLEAR, REAL PLANE ONLY. The array path assigns a complex zero to
+        # The wall clear, real plane only. The array path assigns a complex zero to
         # BOTH planes (S:1896, :1902); clearing only the real one is the defect a
         # reader porting the real twin's `0.0f` would write.
         "zero_metal_clears_only_the_real_plane":
             needle(base, "v2 = at_z ? float2(0.0f, 0.0f) : v2;",
                    "v2 = at_z ? float2(0.0f, v2.y) : v2;"),
-        # INVERTED (KERNELS.md §7.1): the package's previous pairwise grouping planted
+        # INVERTED (certification.md#inverted-grouping-mutations): the package's previous pairwise grouping planted
         # in place of MEEP's left-to-right bracket.
         "curl_previous_grouping":
             needle(base, "((c_y - c_dy) + b_dz) - b_z", "(c_y - c_dy) + (b_dz - b_z)"),
@@ -1046,17 +1046,17 @@ def fold_edits(base: str) -> Dict[str, str]:
             needle(base, _OWNED_ACCUMULATION_0,
                    "if (dw0) { o0_acc = h0[ii] + (c_mul_coefficient_left(kp_0, o0_prev) "
                    "- c_mul_coefficient_left(km_0, o0_src)); }"),
-        # INVERTED (KERNELS.md §7.1): the package's previous accumulation grouping.
+        # INVERTED (certification.md#inverted-grouping-mutations): the package's previous accumulation grouping.
         "constitutive_previous_accumulation_grouping":
             needle(base, _OWNED_ACCUMULATION_0,
                    "if (dw0) { o0_acc = (h0[ii] + c_mul_coefficient_left(kp_0, o0_src)) "
                    "- c_mul_coefficient_left(km_0, o0_prev); }"),
-        # THE GHOST'S OWN CONSTITUTIVE UPDATE. `update_H` reads the ghost cell the fill
+        # The ghost's own constitutive update. `update_H` reads the ghost cell the fill
         # just wrote, so its store is live work; the ghost's f_w store sits under the
         # ghost row's membership guard and is a declared null (NULL_EDITS).
         "ghost_constitutive_dropped":
             needle(base, "            h0[g0_n_i] = g0_n_acc;\n", ""),
-        # THE §7.2 BATTERY (KERNELS.md §7.2), both halves; the declared nulls (b7, b12)
+        # The form battery (certification.md#chunk-form-battery), both halves; the declared nulls (b7, b12)
         # ride with NULL_EDITS.
         "b1_select_removed":
             needle(base, "    const bool du0 = in_h_z, du1 = in_h_x, du2 = in_h_y;\n",
@@ -1084,7 +1084,7 @@ _OWNED_ACCUMULATION_0 = ("if (dw0) { o0_acc = h0[ii] + (c_mul_coefficient_left(k
 def far_edits(base: str) -> Dict[str, str]:
     """The FAR CARRY's own defects, reachable ONLY on :data:`FAR_MUTATION_CASE`.
 
-    THE DEAD-BRANCH GUARD IS STRUCTURAL HERE. Every needle below sits on a line the
+    The dead-branch guard is structural here. Every needle below sits on a line the
     kernel emits only for a folded PERIODIC axis, and :data:`MUTATION_CASE` folds two
     MIRROR_METALLIC axes and so emits none of them. ``needle`` raises if the text is
     absent, so a case that stopped carrying a far ghost fails loudly rather than
@@ -1098,34 +1098,34 @@ def far_edits(base: str) -> Dict[str, str]:
     cell.
     """
     return {
-        # THE FAR FILL, DROPPED. The top stored slot then keeps whatever `step_B` left
+        # The far fill, dropped. The top stored slot then keeps whatever `step_B` left
         # there — which the top-plane mask made a complex zero — instead of the image
         # `connect_the_chunks` builds. This is the state of this family BEFORE the
         # carry, with the refusal removed: the exact silent-wrong-answer the clause
         # existed to prevent.
         "far_fill_dropped":
             needle(base, "        if (j == reflect_y) {", "        if (false) {"),
-        # THE FAR PARITY, DROPPED. `mirror_parity` is `phase * (1 - 2*iyee)`, so a
+        # The far parity, dropped. `mirror_parity` is `phase * (1 - 2*iyee)`, so a
         # shift-1 far destination takes MINUS the plane's phase; a plain copy is what a
         # reader who carried the near fill's rule to the far one would write.
         #
-        # IT IS AIMED AT COMPONENT 1'S FAR AXIS, NOT COMPONENT 0'S, AND THE CHOICE IS
-        # FORCED. This case phases (+1, -1), so the far words are `fp0 = -phase_x = -1`
+        # It is aimed at component 1's far axis, not component 0's, and the choice is
+        # forced. This case phases (+1, -1), so the far words are `fp0 = -phase_x = -1`
         # and `fp1 = -phase_y = +1` (measured: far_parity_words gives
-        # ((-1,0), (+1,0), (0,0))). `fp1` IS THE IDENTITY, so dropping it is arithmetic
+        # ((-1,0), (+1,0), (0,0))). `fp1` is the identity, so dropping it is arithmetic
         # no-op and the same needle on `f0[g0_j_i]` reported 12 launches and 0 differing
         # words — a mutation scored against nothing. `_far_axis_word_is_not_unity`
         # asserts the axis this needle uses stays non-identity.
         "far_parity_dropped":
             needle(base, "f1[g1_i_i] = c_mul_coefficient_left(fp0, v1);",
                    "f1[g1_i_i] = v1;"),
-        # THE FAR PARITY, TAKING THE NEAR WORD. The two differ by a sign at every
+        # The far parity, taking the near word. The two differ by a sign at every
         # parity (mirror_parity_coefficients returns +phase and -phase), so this is a
         # plane of wrong signs rather than a rounding question.
         "far_parity_takes_the_near_word":
             needle(base, "f0[g0_j_i] = c_mul_coefficient_left(fp1, v0);",
                    "f0[g0_j_i] = c_mul_coefficient_left(mp1, v0);"),
-        # THE REFLECT ROW, REPLACED BY THE FIXED `n - 2`. `_far_reflect_rows`' own
+        # The reflect row, replaced by the fixed `n - 2`. `_far_reflect_rows`' own
         # docstring says in capitals that this is a whole cell wrong at an ODD full
         # count, and this case carries one (extent=2.1).
         # The substituted constant is `nyi - 2` because that is the FIXED row the
@@ -1136,20 +1136,20 @@ def far_edits(base: str) -> Dict[str, str]:
         "reflect_row_is_the_fixed_n_minus_two":
             needle(base, "        if (j == reflect_y) {",
                    "        if (j == nyi - 2) {"),
-        # THE DESTINATION PLANE. The far ghost is the LAST stored slot; writing the one
+        # The destination plane. The far ghost is the LAST stored slot; writing the one
         # below it images into an owned, stepped cell.
         "far_destination_is_one_row_low":
             needle(base, "int g0_j_i = ii + ((nyi - 1) - reflect_y) * nzi;",
                    "int g0_j_i = ii + ((nyi - 2) - reflect_y) * nzi;"),
-        # THE OWNERSHIP CARVE-OUT for the far plane. Without it the top-plane thread
+        # The ownership carve-out for the far plane. Without it the top-plane thread
         # stores its own (masked) displacement over the image the source thread wrote —
         # the race the restructure exists to remove, and a real one: the two writes are
         # unordered.
         "far_destination_thread_keeps_its_displacement":
             needle(base, "    if (!(i == 0 || last_y)) {",
                    "    if (!(i == 0)) {"),
-        # THE PARITY CHAIN's two defects — FOLDED INTO ONE WORD and REVERSED — are
-        # armed in :data:`NULL_EDITS`, not here, and the reason is MEASURED rather than
+        # The parity chain's two defects — folded into one word and REVERSED — are
+        # armed in :data:`NULL_EDITS`, not here, and the reason is measured rather than
         # chosen. See that table's entries: a mirror parity is exactly +-1 + 0j on
         # every axis of every case (`far_parity_words` / `parity_words` return
         # ((-1,0),(+1,0),(0,0)) on this one), and +-1 composes exactly, so neither the
@@ -1159,18 +1159,18 @@ def far_edits(base: str) -> Dict[str, str]:
         # re-run on `signed_zero_lattice` reported the same
         # (…_2026-08-21c/, same legs). Leg `parity_chain_order` is where the residual
         # LIVES and it is measured directly there, on an engineered table.
-        # THE FAR/FAR COMPOSITE, DROPPED. Component 2's own axis is not folded here, so
+        # The far/far composite, dropped. Component 2's own axis is not folded here, so
         # it is a far destination on BOTH x and y and the corner where both fire is the
         # only cell in the kernel carrying two FAR parities. Nothing else reaches it.
         "far_far_composite_dropped":
             needle(base, "        if (i == reflect_x && j == reflect_y) {\n",
                    "        if (false && i == reflect_x && j == reflect_y) {\n"),
-        # THE TOP-PLANE CURL MASK. `folded_top_plane_mask` emits it only on a folded
+        # The top-plane curl mask. `folded_top_plane_mask` emits it only on a folded
         # PERIODIC axis; it is what makes the top slot a not-owned allocation slot
         # rather than a stepped cell, and it feeds `fu` at that cell.
         "top_plane_curl_mask_dropped":
             needle(base, "    curl0 = last_y ? float2(0.0f, 0.0f) : curl0;\n", ""),
-        # THE FAR GHOST'S COEFFICIENT PAIR. A far destination shares the indexed axis
+        # The far ghost's coefficient pair. A far destination shares the indexed axis
         # with its source thread and therefore takes that thread's own pair; reloading
         # at index 0 would apply the mirror plane's absorber profile to the top plane.
         "far_ghost_reloads_the_near_coefficient":
@@ -1194,7 +1194,7 @@ def phase_edits(base: str) -> Dict[str, str]:
         "bloch_phase_applied_on_every_lane":
             needle(base, "    if (i == 0) {\n        c_dx = c_mul(c, px);",
                    "    if (true) {\n        c_dx = c_mul(c, px);"),
-        # INVERTED (KERNELS.md §7.1): the package's previous connection product, fused
+        # INVERTED (certification.md#inverted-grouping-mutations): the package's previous connection product, fused
         # as NumPy's complex64 multiply, in place of MEEP's unfused libc++ operator*.
         "previous_fused_connection":
             needle(base, "    return float2((z.x * p.x) - (z.y * p.y),\n"
@@ -1204,11 +1204,11 @@ def phase_edits(base: str) -> Dict[str, str]:
     }
 
 
-#: THE MUTATIONS THAT MUST *NOT* CATCH, with the measurement that says so. Scored NULL
+#: The mutations that must *NOT* CATCH, with the measurement that says so. Scored NULL
 #: CONFIRMED rather than skipped: a defect nobody arms is a claim, and one that fires
 #: unexpectedly is a finding either way.
 #:
-#: A NULL IS ONLY A NULL IF THE LINE IS LIVE, and here that is measured rather than
+#: A null is only a null if the line is live, and here that is measured rather than
 #: argued: both needles sit on lines inside ``if (j == 2)`` / ``if (i == 2)``, and
 #: OTHER needles on the SAME two lines — ``fold_parity_dropped`` and
 #: ``fold_parity_takes_the_other_axis_word`` on the first, ``ghost_constitutive_dropped``
@@ -1250,7 +1250,7 @@ NULL_EDITS: Dict[str, Tuple[str, str, str, str]] = {
         "same address, so recomputing it is the same bits. Armed to show the reload is "
         "not load-bearing arithmetic — only a faithful re-read of what the array "
         "path's fill leaves for update_H."),
-    # THE TWO CHAIN DEFECTS. They were armed as CAUGHT-required and are NULL by
+    # The two chain defects. They were armed as CAUGHT-required and are NULL by
     # measurement, not by preference — and the distinction matters, because the ORDER
     # is still transcribed rather than chosen (family.parity_chain) and leg
     # `parity_chain_order` still scores the collapse as observable.
@@ -1291,13 +1291,13 @@ NULL_EDITS: Dict[str, Tuple[str, str, str, str]] = {
         MUTATION_CASE,
         "    float2 p0 = du0 ? u0[ii] : f0[ii];",
         "    float2 p0u = u0[ii]; float2 p0 = du0 ? p0u : f0[ii];",
-        "DECLARED NULL (KERNELS.md §7.2): an fu load outside the guard with the store "
+        "DECLARED NULL (certification.md#chunk-form-battery): an fu load outside the guard with the store "
         "still guarded changes no word -- the dsig-only form reads f."),
     "b12_constitutive_load_unconditional": (
         MUTATION_CASE,
         "        float2 o0_prev = dw0 ? w0[ii] : float2(0.0f, 0.0f);",
         "        float2 o0_prev = w0[ii];",
-        "DECLARED NULL (KERNELS.md §7.2): prev is consumed only on the accumulation's "
+        "DECLARED NULL (certification.md#chunk-form-battery): prev is consumed only on the accumulation's "
         "cells, so an unguarded load changes no word."),
     "ghost_fw_store_dropped": (
         MUTATION_CASE,
@@ -1317,7 +1317,7 @@ NULL_EDITS: Dict[str, Tuple[str, str, str, str]] = {
 #: live: ``name -> (old, new)``, must-catch. The f_w needle is a declared null under
 #: the one-rank record (``NULL_EDITS['ghost_fw_store_dropped']``) and the carve-out drop
 #: is a recorded race there (:data:`RACE_EDITS`); scoring both here is the
-#: division-conditional null KERNELS.md §7.1 asks to be re-read rather than inherited.
+#: division-conditional null certification.md#inverted-grouping-mutations asks to be re-read rather than inherited.
 #: Under this division the source thread's ghost accumulation READS the ``h``/``f_w``
 #: words a carve-out-free destination thread writes, which is how the previous kernels
 #: caught the carve-out drop on every case.
@@ -1329,7 +1329,7 @@ GHOST_DIVISION_EDITS: Dict[str, Tuple[str, str]] = {
         "    if (!(i == 0)) {", "    if (!(false)) {"),
 }
 
-#: THE ONE ARMED DEFECT THAT IS RUN AND NOT SCORED, with the reason. ``name -> (case,
+#: The one armed defect that is run and not scored, with the reason. ``name -> (case,
 #: old, new, why)``. Dropping the near carve-out makes the destination thread (row 0)
 #: and the source thread (row 2) store the same ``f``/``h`` words in one launch. Under
 #: the per-chunk forms the ghost takes the output select (its row is in no layer under
@@ -1356,7 +1356,7 @@ def compile_edits(edits: Mapping[str, str]) -> Dict[str, Dict[str, Any]]:
         for name, source in edits.items()}
 
 
-#: THE ONE MUTATION WHOSE CATCH IS CONDITIONAL, and the condition is measured. Reusing
+#: The one mutation whose catch is conditional, and the condition is measured. Reusing
 #: the source thread's coefficient pair for the imaged ghost is exactly the shortcut
 #: :mod:`.folded_fused_pair` is entitled to and this family is not. It is observable
 #: only where the two entries differ; leg ``moved_coefficient`` predicts that from the
@@ -1414,7 +1414,7 @@ HOST_MUTATIONS: Dict[str, Callable[[Any, Any, Residency], None]] = {
 # ---------------------------------------------------------------------------
 
 def leg_policy() -> Dict[str, Any]:
-    """The resolved float32 subnormal policy, and ``keep`` REFUSED BY NAME.
+    """The resolved float32 subnormal policy, and ``keep`` refused by name.
 
     Metal has ONE attainable policy. That is not a gap in this gate: it is a
     measurement the executor's own arm carries (``subnormal.ATTAINABLE``), and a gate
@@ -1447,12 +1447,12 @@ def leg_binding_ceiling() -> Dict[str, Any]:
     the fold adds no POINTER, so the two families' signatures are the same shape — and
     it is imported rather than re-spelled, then re-measured here on this tree.
 
-    THE PACKED HALF IS THIS FAMILY'S OWN, and it has to be: the record carries NINE
+    The packed half is this family's own, and it has to be: the record carries NINE
     ``float2`` members where the unfolded pair carries three — the far carry added the
     three FAR parity words and three reflect rows, taking the struct from 72 bytes to
     104 — so the padding question is a different question and is answered by LAUNCHING
-    the struct and reading every field back rather than by arithmetic. THE BINDING
-    COUNT IS UNCHANGED AT 28, which is the property the far carry had to preserve:
+    the struct and reading every field back rather than by arithmetic. The binding
+    count is unchanged at 28, which is the property the far carry had to preserve:
     complex storage already spent this platform's headroom on ``float2`` volumes
     (complex_fields.py:38), so six more buffers would have been 34 against a ceiling
     of 31 and the carry would have been unbuildable.
@@ -1480,7 +1480,7 @@ def leg_binding_ceiling() -> Dict[str, Any]:
     # pointers plus one packed Params& at buffer 27 is the shipped shape.
     pointers = "\n".join(f"    device float*       b{n:<6}[[buffer({n})]],"
                          for n in range(family.PACKED_BINDINGS - 1))
-    # THE SHIPPED STRUCT, taken from an emitted source rather than re-typed: three
+    # The shipped struct, taken from an emitted source rather than re-typed: three
     # float2 phases, the six parity words as floats, the scalars, the reflect rows and
     # the chunk record.
     shipped = family.folded_complex_fused_magnetic_pair_source(
@@ -1518,7 +1518,7 @@ def leg_binding_ceiling() -> Dict[str, Any]:
     shape, dtdx = (3, 4, 5), 0.125
     phases = ((0.25, -0.5), (0.75, 0.125), (-0.375, 0.625))
     parities = (1.0, -1.0, 0.5)
-    # DISTINCT WORDS FROM THE NEAR TRIPLE, deliberately: a struct whose far members
+    # Distinct words from the near triple, deliberately: a struct whose far members
     # aliased the near ones would read back correctly while the kernel multiplied by
     # the wrong parity, which is the exact defect `far_parity_takes_the_near_word`
     # arms in the source.
@@ -1613,7 +1613,7 @@ def leg_transcription(codes: Sequence[int], phased: Sequence[int]) -> Dict[str, 
 def leg_parity_chain_order() -> Dict[str, Any]:
     """The composed parity is a CHAIN; with per-part +/-1 products NEITHER collapse moves a word.
 
-    INVERTED WITH THE ARRAY PATH. The array path now applies a parity as
+    Inverted with the array path. The array path now applies a parity as
     ``part_products.scale(phase, plane)`` -- one float32 product per part -- so (1) the
     application must be the per-part real scaling and NOT the previous full complex
     product, and (2) re-ordering a chain and (3) folding it into one word must each
@@ -1621,7 +1621,7 @@ def leg_parity_chain_order() -> Dict[str, Any]:
     exact. The closed form's order (near first, far ascending) is still checked: it is
     the driver's pass order, transcribed. The text below describes the previous fill.
 
-    THE ONE PLACE THIS FAMILY DIVERGES FROM THE REAL BOARD'S FAR CARRY.
+    The one place this family diverges from the real board's far carry.
     :func:`.folded_fused_magnetic_pair.carried_destinations` folds a composed parity
     into ONE compile-time sign and states that the result is "independent of the order
     the axes are applied in". Under COMPLEX storage the parity is a ``float2`` word and
@@ -1695,7 +1695,7 @@ def leg_parity_chain_order() -> Dict[str, Any]:
     folding_observable = (any(row["chain_vs_folded_product"] for row in pairs)
                           or any(row["chain_vs_folded_product"] for row in triples))
 
-    # THE CLOSED FORM: near first, then far ascending, on every quadruple.
+    # The closed form: near first, then far ascending, on every quadruple.
     codes_set = (CODE_PERIODIC, symmetry_metallic(), MIRROR_CODES[0], MIRROR_CODES[1])
     order_rows: List[Dict[str, Any]] = []
     order_ok = True
@@ -1814,7 +1814,7 @@ def leg_refusal(cases: Mapping[str, Tuple[Dict[str, Any], Optional[Any]]]
     * the plan must report a far ghost on the components the Yee table says, and a
       reflect row that is ``stepping._far_reflect_rows``' own answer.
 
-    THE REFUSALS THAT REMAIN are measured beside it, because a product that stopped
+    The refusals that remain are measured beside it, because a product that stopped
     refusing everything would pass this leg by accident. An ELECTRIC source is not in
     this seam, which is the asymmetry this whole family rests on; an UNDECLARED source
     set is a refusal rather than an assumed empty one; an UNFOLDED complex grid belongs
@@ -1822,7 +1822,7 @@ def leg_refusal(cases: Mapping[str, Tuple[Dict[str, Any], Optional[Any]]]
     :mod:`.folded_fused_magnetic_pair`; and the reflect-row clauses the carry rests on
     refuse, on stubs, a grid that cannot support the ownership move.
 
-    THE MAGNETIC CLAUSE IS NOW TWO CLAUSES, 2026-08-30. This family gained a
+    The magnetic clause is now two clauses, 2026-08-30. This family gained a
     ``launch.FUSED_PAIR_ARMS`` row, so ``_install_fused_pair`` brackets its launch and
     ``CARRIES_DEPOSIT_REPAIR`` went True in the same edit; before that row existed
     nothing bracketed anything here and an in-seam magnetic source was barred outright,
@@ -1890,7 +1890,7 @@ def leg_refusal(cases: Mapping[str, Tuple[Dict[str, Any], Optional[Any]]]
     # restores it after the post-injection fills have imaged it.
     carried_deposit = family.metal_folded_complex_fused_magnetic_pair_coverage(
         fields, pml, (_carryable_magnetic_source(fields),), Residency())
-    # THE REFUSAL THAT SURVIVES IT, and why the leg asks both. `_MagneticSource`
+    # The refusal that survives it, and why the leg asks both. `_MagneticSource`
     # declares a field type and nothing else, so it names no cell for the repair to
     # save; a closure cannot carry what a source will not name, and that is refused BY
     # NAME rather than admitted on the strength of a flag. Asking only the admission
@@ -1907,7 +1907,7 @@ def leg_refusal(cases: Mapping[str, Tuple[Dict[str, Any], Optional[Any]]]
     undeclared_named = [reason for reason in undeclared.reasons
                         if "was not declared" in reason]
 
-    # THE TWO SIBLING SCOPES. An unfolded complex grid and a real folded one.
+    # The two sibling scopes. An unfolded complex grid and a real folded one.
     unfolded_fields, unfolded_pml = matrix.cart(complex_storage=True)
     unfolded = family.metal_folded_complex_fused_magnetic_pair_coverage(
         unfolded_fields, unfolded_pml, (), Residency())
@@ -1985,7 +1985,7 @@ def leg_moved_coefficient(cases: Mapping[str, Tuple[Dict[str, Any], Optional[Any
                           steps: int) -> Dict[str, Any]:
     """PREDICT observability from the coefficients, then measure the catch.
 
-    THE LEG THIS FAMILY EXISTS TO HAVE. Its one line that
+    The leg this family exists to have. Its one line that
     :mod:`.folded_fused_pair` does not carry is the ghost's own coefficient pair, and a
     mutation leg that simply armed the reuse would have reported it UNCAUGHT on every
     ordinary fixture and left a reader to guess whether the line is wrong or the
@@ -1996,11 +1996,11 @@ def leg_moved_coefficient(cases: Mapping[str, Tuple[Dict[str, Any], Optional[Any
     The mutation edits COMPONENT 0's ghost, so the prediction is read off the x axis;
     the census reports every folded axis so a reader can see the whole picture.
 
-    UNDER THE PER-CHUNK FORMS the ghost's coefficient pair is read only where the
+    Under the per-chunk forms the ghost's coefficient pair is read only where the
     ghost row's own membership selects the accumulation, so the prediction is the
     coefficient difference AND the x integer membership at stored row 0 of the record
-    the plan binds. The one-rank record puts that row in no layer (header: THE MIRROR
-    GHOST UNDER THE ONE-RANK RECORD), so :data:`MUTATION_CASE` keeps the one-rank
+    the plan binds. The one-rank record puts that row in no layer (header: The mirror
+    ghost under the one-rank record), so :data:`MUTATION_CASE` keeps the one-rank
     division and predicts unobservable, and :data:`DEEP_CASE` steps the ``meep_boxes``
     division, where the ghost reads its image row's membership, and predicts
     observable. Each case first runs the SHIPPED bytes under its division and must be
@@ -2088,7 +2088,7 @@ def main() -> int:
     matrix.prepare_environment()
     cases = {name: (keywords, faces) for name, keywords, faces in CASES}
 
-    # THE TWO MUTATION CASES' SPECIALISATIONS, CHECKED BEFORE ANY NEEDLE IS APPLIED.
+    # The two mutation cases' specialisations, checked before any needle is applied.
     # This is the dead-branch guard: a needle whose line sits under a feature the case
     # does not carry would report UNCAUGHT while measuring nothing.
     fold_keywords, fold_faces = cases[MUTATION_CASE]
@@ -2118,7 +2118,7 @@ def main() -> int:
     assert any(int(code) in MIRROR_CODES for code in phase_spec["codes"]), (
         f"{PHASE_MUTATION_CASE} is not folded; it would not be this family at all")
 
-    # THE FAR MUTATION CASE, checked the same way. Its needles all sit on lines the
+    # The far mutation case, checked the same way. Its needles all sit on lines the
     # kernel emits ONLY for a folded PERIODIC axis, so the fold split is the dead-branch
     # guard: two MIRROR_PERIODIC axes with MIXED parities at an ODD full count, and a
     # component whose OWN axis is unfolded so that a FAR/FAR corner exists at all.
@@ -2136,7 +2136,7 @@ def main() -> int:
     assert any(far_spec["walls"]), (
         f"{FAR_MUTATION_CASE} has no walled axis; the far ghost's inheritance of the "
         f"wall clear would never be exercised")
-    # THE REFLECT ROW, ON THE AXIS THE NEEDLE ACTUALLY REWRITES. An `any` over the
+    # The reflect row, on the axis the needle actually rewrites. An `any` over the
     # three axes passed here while `reflect_y` was itself the substituted constant,
     # and the mutation scored 12 launches at 0 differing words. A precondition that
     # quantifies over axes the needle does not touch measures a different claim from
@@ -2150,7 +2150,7 @@ def main() -> int:
         f"the fixed n - 2 = {fixed} the reflect_row_is_the_fixed_n_minus_two needle "
         f"substitutes; the mutation would rewrite the plane to itself")
 
-    # THE FAR PARITY WORD ON THE AXIS `far_parity_dropped` REWRITES. `mirror_parity`
+    # The far parity word on the axis `far_parity_dropped` REWRITES. `mirror_parity`
     # is `phase * (1 - 2*iyee)`, so the FAR word is MINUS the plane's phase and an ODD
     # plane hands the far pass an IDENTITY. Dropping an identity is not a defect, and
     # asserting the plane carries both parities does NOT establish this — the needle
@@ -2172,7 +2172,7 @@ def main() -> int:
         phase_spec["codes"], phase_spec["phased"], phase_spec["walls"])
     far_base = family.folded_complex_fused_magnetic_pair_source(
         far_spec["codes"], far_spec["phased"], far_spec["walls"])
-    # THE GHOST-ROW CASE: DEEP_CASE under MEEP's boxes. Its dead-branch guard is the
+    # The ghost-row case: DEEP_CASE under MEEP's boxes. Its dead-branch guard is the
     # record itself -- the ghost row must be inside the x layer, or every needle below
     # rewrites a store no thread executes.
     deep_keywords, deep_faces = cases[DEEP_CASE]
@@ -2245,7 +2245,7 @@ def main() -> int:
             rows.append(row)
             emit(handle, row)
 
-        # THE OFF-DIAGONAL FLOOR. Two of the product cases exist to carry an
+        # The off-diagonal floor. Two of the product cases exist to carry an
         # off-diagonal chi1inv row — the shape the only two corpus rows this product
         # serves actually have. A `rows=` keyword that stopped installing one would
         # make those cases SILENT DUPLICATES of the diagonal rows beside them and
@@ -2351,7 +2351,7 @@ def main() -> int:
             result = run_case(null_keywords, seed_for("null", name), args.steps,
                               null_faces, functions=functions)
             diverged = not result.get("bit_identical", False)
-            # THE DEAD-BRANCH GUARD FOR A NULL. A needle that changed a line the
+            # The dead-branch guard for a null. A needle that changed a line the
             # scored case never reaches reports "no divergence" while measuring
             # nothing. Every null here names sibling needles on the SAME statement
             # that are required to be CAUGHT, and this reads their verdicts off the
@@ -2414,7 +2414,7 @@ def main() -> int:
             rows.append(row)
             emit(handle, row)
 
-        # THE DISARM CHECK. The identical harness, the identical case, the SHIPPED
+        # The disarm check. The identical harness, the identical case, the SHIPPED
         # bytes and no host patch. A nonzero here would mean every "caught" above is a
         # harness that diverges on its own.
         index += 1
@@ -2428,9 +2428,9 @@ def main() -> int:
         rows.append(row)
         emit(handle, row)
 
-        # THE VERDICT ITSELF, SHOWN TO FLIP. Every leg above can pass while the
+        # The verdict itself, shown to flip. Every leg above can pass while the
         # release rule that reads them is wrong. This row recomputes the verdict over
-        # the rows collected so far WITH ONE PLANTED FAILURE and requires it to be
+        # the rows collected so far with one planted failure and requires it to be
         # FAIL — so the arbiter is measured, not assumed.
         index += 1
         planted = rows + [{"index": -1, "total": total, "leg": "planted",

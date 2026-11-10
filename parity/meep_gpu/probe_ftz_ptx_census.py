@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """DIRECT attribution: the ``.ftz`` census of BOTH executors' generated code, same sub-step.
 
-WHY THIS EXISTS. The end-to-end dispatch proof measured that, as shipped
+Why this exists. The end-to-end dispatch proof measured that, as shipped
 (``lift_simulation`` + ``MEEP_GPU_DISPATCH=1``, nothing installing a subnormal
 policy), 6 of 7 dispatching cases diverge from the kill-switched array path, that
 every differing element at the first divergent rung sits at or beside the float32
@@ -9,17 +9,17 @@ subnormal range, and that installing ONE uniform policy removes the divergence
 entirely. It did NOT show the mechanism at instruction level; it named that as the
 obvious next measurement and declined to claim it. This probe is that measurement.
 
-THE CLAIM UNDER TEST, stated so it can FAIL::
+The claim under test, stated so it can FAIL::
 
     as shipped, the CuPy array-path kernels for a sub-step carry ``.ftz`` on their
     f32 arithmetic and the Triton kernel for the SAME sub-step does not; and
     installing a subnormal policy makes the two agree.
 
 If the census does not show that, the divergence has a different cause and the
-next phase's fix would be aimed wrong. That outcome is reported plainly rather
+fix that follows would be aimed wrong. That outcome is reported plainly rather
 than smoothed over.
 
-WHAT IS COMPARED, and why it is the same thing on both sides. One lifted
+What is compared, and why it is the same thing on both sides. One lifted
 simulation, one device, one process per policy leg. The driver's five consulted
 sub-steps (``step_B``, ``update_H``, ``step_D``, ``update_E``, ``update_P``) are
 the unit: for each, the probe collects the generated code of whichever executor
@@ -44,7 +44,7 @@ because CuPy's disk cache is keyed above the seam this probe reads: a warm cache
 serves a binary without ever calling the compiler, and the probe would census
 nothing and report zero.
 
-THE CENSUS IS THE PACKAGE'S OWN. ``subnormal_policy.audit_ptx`` decides what
+The census is the package's own. ``subnormal_policy.audit_ptx`` decides what
 counts as an audited f32 arithmetic instruction — predicated forms and packed
 ``.f32x2`` included, transport (``mov``/``ld``/``st``/``cvt``) excluded — so the
 number here and the number the shipped compile-time audit enforces are the same
@@ -53,7 +53,7 @@ number, not two definitions that happen to agree today.
 LEGS (one process each; a policy is chosen before the first compile or not at all)::
 
     shipped   nothing installs a policy. CuPy flushes by its own default,
-              Triton keeps by its own. WHAT A USER GETS.
+              Triton keeps by its own. What a user gets.
     keep      install_subnormal_policy("keep") before the lift.
     flush     install_subnormal_policy("flush") before the lift, with
               CUPY_ACCELERATORS='' set before CuPy imports (the module refuses
@@ -322,7 +322,7 @@ def sass_census(cubin: Optional[bytes], nvdisasm: Optional[str]) -> Optional[Dic
     try:
         with os.fdopen(handle, "wb") as sink:
             sink.write(cubin)
-        # TWO DISASSEMBLERS, IN ORDER, and the fallback is load-bearing rather than
+        # Two disassemblers, in order, and the fallback is load-bearing rather than
         # defensive: measured on this host, ``nvdisasm -c`` reads Triton's cubin and
         # refuses every NVRTC-produced one with "appears truncated" (a 2495-byte
         # file whose first four bytes are \x7fELF), while ``cuobjdump -sass`` reads
@@ -459,7 +459,7 @@ def run_cupy_phase(case: str, res: Optional[int], gpu_id: int,
     return {
         "step_path": step_path,
         "compiles": len(capture.records),
-        # ATTRIBUTION IS FIRST-COMPILE-WINS, and that is a real limit rather than a
+        # Attribution is first-compile-wins, and that is a real limit rather than a
         # bookkeeping detail: CuPy memoizes an elementwise kernel in process, so a
         # sub-step whose expression was already compiled by an earlier sub-step
         # compiles nothing and reports an empty slot. It does not weaken the claim —
@@ -553,7 +553,7 @@ def run_triton_phase(case: str, res: Optional[int], gpu_id: int,
 def policy_leg(leg: str) -> Dict[str, Any]:
     """Install the leg's policy — or record, positively, that nothing was installed.
 
-    MEEP IS IMPORTED FIRST, ON EVERY LEG. ``install_host_policy("flush")`` refuses
+    MEEP is imported first, on every leg. ``install_host_policy("flush")`` refuses
     outright without it — ``mp.set_zero_subnormals`` is the only exposure of this
     process's FTZ/DAZ bits the package will use — and importing it on only the leg
     that needs it would make the three legs differ in more than the policy. MEEP
@@ -584,13 +584,14 @@ def policy_leg(leg: str) -> Dict[str, Any]:
 
 
 def environment() -> Dict[str, Any]:
+    import neutral_ids  # noqa: PLC0415
     import cupy  # noqa: PLC0415
     import triton  # noqa: PLC0415
 
     device = cupy.cuda.Device()
     props = cupy.cuda.runtime.getDeviceProperties(device.id)
     return {
-        "host": platform.node(),
+        "host": neutral_ids.machine_id(),
         "machine": platform.machine(),
         "python": sys.version.split()[0],
         "cupy": cupy.__version__,

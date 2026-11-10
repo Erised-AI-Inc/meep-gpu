@@ -177,6 +177,7 @@ def test_the_route_record_keeps_its_shape_and_dates_its_old_run(tmp_path):
                 "dispatch_by_default": True, "runnable_slots": ["step_B"],
                 "status": "PASS", "records": "results/a_route_campaign",
                 "recorded_utc": "2026-09-20T00:00:00Z",
+                "dispatch_preference": {"run": "a_route_campaign"},
                 "validated_compute_capabilities": []}
     text, refusals, report = run(ledger_file(
         tmp_path, {"g": weld(), "driver_dispatch": dispatch}), keys=["g"])
@@ -189,6 +190,9 @@ def test_the_route_record_keeps_its_shape_and_dates_its_old_run(tmp_path):
                if key.startswith("_route_run_before_capability_records")]
     assert len(history) == 1
     assert history[0]["records"] == "results/a_route_campaign"
+    # The run's statement of the default goes with its run, as on the Metal record.
+    assert history[0]["dispatch_preference"] == {"run": "a_route_campaign"}
+    assert "dispatch_preference" not in entry
     assert "why" in " ".join(history[0]).lower() or history[0]["_why_this_is_history"]
 
 

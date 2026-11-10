@@ -1,11 +1,11 @@
 """The hand-CUDA stencil weld's arithmetic, measured on the host before a line of PTX.
 
-WHAT THIS PROBE IS FOR. The CUDA board records two off-diagonal cells as
+What this probe is for. The CUDA board records two off-diagonal cells as
 STENCIL-BLOCKED -- ``D_to_E (cuda_curl/PML, cuda_offdiag/off-diagonal)`` (8 reachable
 seam-instances) and ``D_to_E (cuda_curl/PML, cuda_folded_offdiag/folded off-diagonal)``
 (9) -- with the verdict "the constitutive half reads the curl half's in-place output at
-a cell this thread does not own". That verdict is TRUE OF THE IN-PLACE WELD and says
-nothing about the SCRATCH-OUTPUT weld the fusion-residue audit identified (§1.1), in
+a cell this thread does not own". That verdict is true of the in-place weld and says
+nothing about the SCRATCH-OUTPUT weld, a different design in
 which
 
 * the curl half writes ``D_new``/``fu_new`` to a LAUNCH-LOCAL SCRATCH allocation, so
@@ -23,14 +23,14 @@ byte, and only if the recompute is genuinely LOAD-BEARING (a weld whose foreign 
 could have read pre-launch D would not need any of this). This probe measures both,
 on the arms the two CUDA cells actually name, on a host with no device.
 
-WHAT IT DOES NOT DO. It is not a gate and certifies nothing: NumPy is not NVRTC, and
+What it does not do. It is not a gate and certifies nothing: NumPy is not NVRTC, and
 the substitution, the launch counts and the mutation battery belong to
 ``gate_cuda_offdiag_stencil_welds.py`` on the device. What it removes is the
 possibility of discovering the ARITHMETIC is wrong from inside a device slot.
 
-THE SIBLING MEASUREMENT, AND WHAT IS NEW HERE.
+The sibling measurement, and what is new here.
 ``results/metal_scratch_weld_closed_form_2026-09-01/probe.json`` already measured the
-same closed form for the Metal lane over ten fixtures, and its fixture taxonomy and
+same closed form for the Metal table over ten fixtures, and its fixture taxonomy and
 null battery are lifted here rather than reinvented -- ``closed_form_d_final``'s five
 null arms are that probe's, argument for argument, because the resolution is the ARRAY
 PATH's arithmetic and is backend-independent. Three things are this probe's own:
@@ -199,18 +199,18 @@ def grid_facts(fields: Any) -> Dict[str, Any]:
 # The closed form, PER CELL -- the kernel's ``resolve_D``, in Python
 # ---------------------------------------------------------------------------
 #
-# ONE SCALAR FUNCTION, ONE RAW TAP. This is the whole design claim: the post-pass
+# One scalar function, one raw tap. This is the whole design claim: the post-pass
 # value of component c at ANY cell is the raw stepped value at ONE redirected cell,
-# times a product of per-axis parities applied ONE MULTIPLY AT A TIME, or an exact
+# times a product of per-axis parities applied one multiply at a time, or an exact
 # zero where the wall clear owns the plane. The kernel calls it for its own cell (to
 # fill the scratch) and for each foreign tap the off-diagonal stencil reads.
 #
-# THE PARITY SPELLING IS THE ARRAY PATH'S -- ``weight * value`` with ``weight`` the
+# The parity spelling is the array path's -- ``weight * value`` with ``weight`` the
 # Python int ``mirror_parity`` returns, exactly as ``stepping._write_mirror_ghost``
 # (:1450-1451) and ``._fill_folded_far_ghosts`` (:1524-1534) spell it, and applied
-# ONCE PER AXIS in ascending order because those two passes write plane after plane.
+# once per axis in ascending order because those two passes write plane after plane.
 #
-# THE ORDER OF THE THREE PASSES IS THE DRIVER'S (driver.py:3309, :3310, :3311): the
+# The order of the three passes is the driver's (driver.py:3309, :3310, :3311): the
 # near fill, then the wall clear, then the far fill. So a near ghost that lands in a
 # cleared plane is CLEARED (the clear runs after), and the far image reads the
 # POST-clear, POST-near value at its source row.
@@ -557,14 +557,14 @@ def run_case(name: str, family: str, build: Callable[[], Tuple[Any, Any]],
     null("clear_order_flipped", live["odd"] and live["wall"],
          "needs an odd parity meeting a cleared plane; not reachable here",
          flip_clear_order=True)
-    # THIS PROBE'S OWN ARM. The redirect's SOURCE read from pre-launch D instead of
+    # This probe's own arm. The redirect's SOURCE read from pre-launch D instead of
     # from the recomputed stepped value -- the defect a weld makes when it treats the
     # image plane as carrying state rather than as a view of the step's own output.
     null("halo_source_unstepped", live["near"] or live["far"],
          "no fold: the resolution never redirects, so there is no halo source to "
          "take from the wrong array",
          halo_source_unstepped=True)
-    # THE SCRATCH ITSELF IS NOT ARMABLE ON THIS WALK, and saying so is the point.
+    # The scratch itself is not armable on this walk, and saying so is the point.
     # ``scratch_aliased_to_storage`` is a defect about WHEN a load lands relative to
     # another block's store; this walk resolves the whole D volume before the array
     # path's update_E reads any of it, so every tap sees a fully resolved array
@@ -636,14 +636,14 @@ CASES: Tuple[Tuple[str, str, Callable[[], Tuple[Any, Any]],
     ("B_fold_odd_count", "B",
      lambda: matrix.folded(rows=_ALL_ROWS, extent=2.1), _ALL_ROWS,
      dict(near=True, far=True)),
-    # THE OTHER TERMINATION. A folded METALLIC axis has no far ghost at all
+    # The other termination. A folded METALLIC axis has no far ghost at all
     # (``_stored_past_owned`` is False), so the far machinery is dead and the near
     # fill is the whole of the fold -- a mutation caught on one termination is not
     # caught on the other.
     ("B_fold_metallic_termination", "B",
      lambda: matrix.folded(boundaries={"y": "metallic"}, rows=_ALL_ROWS), _ALL_ROWS,
      dict(near=True, far=False)),
-    # THE ONE SHAPE THAT ARMS ``clear_order_flipped``: an ODD parity meeting a
+    # The one shape that arms ``clear_order_flipped``: an ODD parity meeting a
     # CLEARED plane, which needs a wall on an axis the fold does not own.
     ("B_fold_odd_walled", "B",
      lambda: matrix.folded(phase=-1, boundaries={"x": "metallic"}, rows=_ALL_ROWS),

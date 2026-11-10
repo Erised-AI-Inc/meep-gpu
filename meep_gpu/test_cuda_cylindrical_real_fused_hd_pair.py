@@ -1,6 +1,6 @@
 """Host tests for the CUDA real m = 0 Dcyl H->D product (three launches).
 
-WHAT CAN BE TESTED WITHOUT A DEVICE: the declarations, the seam facts, the predicate on
+What can be tested without a device: the declarations, the seam facts, the predicate on
 a NumPy-wearing-CuPy shim, and the scan tables the launcher binds for the D side. The
 word-for-word sequence -- launch 1 into scratch, the column-serial scan over the scratch
 Hp, the rotation, launch 3 -- runs in a host interpreter beside ``stepping``'s own
@@ -111,15 +111,15 @@ def test_the_prefix_source_and_the_scan_side_are_read_off_the_shared_table():
 def test_the_product_declares_itself_uninstallable_on_a_cylindrical_launch_algebra():
     assert family.INSTALLABLE is False
     for phrase in ("no launch saved", "three launches", "column-serial scan",
-                   "owner's design ruling", "predicate admission"):
+                   "design decision not yet taken", "predicate admission"):
         assert phrase in family.INSTALLABLE_REASON, phrase
     assert "PREDICATE ADMISSION" in family.WHAT_A_RELEASE_DOES_NOT_LICENSE
     assert "no timing" in family.WHAT_A_RELEASE_DOES_NOT_LICENSE.lower()
 
 
 def test_the_kernel_is_in_exactly_one_certification_set_and_the_curl_is_the_certified_one():
-    # NEW with the per-chunk radial sum: no record names it until the certification
-    # round re-cuts its predecessor's block, so it is UNCERTIFIED, by name and gate.
+    # NEW with the per-chunk radial sum: no record names it until a later
+    # certification re-cuts its predecessor's block, so it is UNCERTIFIED, by name and gate.
     assert family.KERNEL_NAME in family.UNCERTIFIED_KERNELS
     assert family.KERNEL_NAME not in family.CERTIFIED_KERNELS
     assert family.KERNEL_NAME not in fused_hd_pair.CERTIFIED_KERNELS

@@ -8,7 +8,8 @@ The gate's device legs need an Apple GPU; two things it carries do not:
 * **every armed mutation lands**: each needle (the shader, conductive, periodic-wrap
   and mixed tables, the predicted null and the byte-neutral control) is present in the
   source it is armed on and changes it. The grouping mutations are the INVERTED ones
-  (KERNELS.md §7.1): each plants the package's previous grouping.
+  (docs/development/certification.md#inverted-grouping-mutations): each plants the
+  package's previous grouping.
 
 The gate sets its subnormal policy in the environment when it is imported, so every
 check runs it in a child process with torch made unimportable.

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""IS THE ELECTRIC WITHDRAW HOISTABLE OVER ``update_H``? — the one ordering question
+"""Is the electric withdraw hoistable over ``update_H``? — the one ordering question
 that bounds a fused ``update_H + step_D`` product, measured on the array path.
 
-WHY THIS FILE EXISTS. ``probe_h_to_d_seam.py`` priced the fourth fusion seam
+Why this file exists. ``probe_h_to_d_seam.py`` priced the fourth fusion seam
 (``H_to_D``) on the three boards and found that exactly ONE statement sits between the
 two consults in ``FdtdDriver.step`` (driver.py:3313-3314)::
 
@@ -14,16 +14,16 @@ takes BOTH slots in one launch, so on those 7 rows the withdraw must run either 
 the fused launch or inside it, and the boards file them under ``withdraw_seam`` — 7 of
 each backend's 194 instances — until somebody measures whether hoisting it is
 order-equivalent. The boundary track wrote the claim down as "plausible, not measured".
-THIS IS THE MEASUREMENT.
+This is the measurement.
 
-THE MECHANISM, READ OFF THE SOURCE (the half of the answer a byte comparison cannot
+The mechanism, read off the source (the half of the answer a byte comparison cannot
 give). ``VolumeSource.withdraw`` (sources.py:2092-2121) reads ``self.envelope
 .is_integrated``, ``self._n_source_points`` and ``self._applied_dipole``, resolves ONE
 array with ``_array_for(fields, self.component)`` (sources.py:236-237 — an electric
 component maps to ``Dx``/``Dy``/``Dz`` and to nothing else, ``_ARRAY_FOR_COMPONENT``
 at sources.py:120-133), and hands it to ``sources._deposit``, which subtracts
 ``real(amp * offset)`` in double at exactly those cells (``host_writes.subtract_double``).
-It then writes ``self._applied_dipole = 0j``. So the withdraw READS AND WRITES the component's D
+It then writes ``self._applied_dipole = 0j``. So the withdraw reads and writes the component's D
 array at its own deposit points, and nothing else (no source class writes an
 auxiliary).
 ``stepping.update_H`` (stepping.py:907-923) reads B, the PML's integer-position
@@ -32,7 +32,7 @@ pooled ``fields.scratch`` buffer. The two touch disjoint arrays, which is why th
 hoist ought to be free — but "ought to be" is not a measurement, and this engine has
 already been bitten by a shared-slot collision that read as free.
 
-WHAT IT MEASURES, PER ROW. The row is LIFTED by the census driver
+What it measures, per row. The row is LIFTED by the census driver
 (``measure_predicate_coverage.py``) exactly as ``probe_h_to_d_seam`` lifts it, under
 the interpreter that row's lift record names, and this module's ``evaluate`` is the
 battery. From the ONE seed the lift produces, the driver is stepped ``STEPS`` complete
@@ -40,7 +40,7 @@ driver steps under five orderings, in lockstep, with the state saved and restore
 every step boundary so all five see the same seed and the same history:
 
   ``driver``              the shipped order — the reference.
-  ``driver_repeat``       the same order again. THE RESTORE CONTROL: it must come
+  ``driver_repeat``       the same order again. The restore control: it must come
                           back byte-identical, which is what proves the save/restore
                           carries everything the evolution depends on. Without it a
                           silent hole in the snapshot would make every leg agree.
@@ -53,7 +53,7 @@ every step boundary so all five see the same seed and the same history:
                           before the injection slot). Must DIVERGE — it proves the
                           comparison is sensitive to WHERE in the seam it runs.
 
-Every leg is compared against ``driver`` per COMPLETE DRIVER STEP as uint32 WORDS over
+Every leg is compared against ``driver`` per complete driver step as uint32 WORDS over
 EVERY stored volume the row allocates — D, B, E, H, the ``f_u``/``f_cond``/``f_bfast``/
 ``f_w`` auxiliaries, the ``D - P`` scratches and every susceptibility's ``P`` and
 ``P_prev``. The volume list is DERIVED from ``Fields.reset``'s own body (fields.py) and
@@ -62,7 +62,7 @@ is the comparison ``gate_cuda_fused_electric_pair.words`` makes, with the float3
 dropped because corpus rows carry complex64 storage and casting would silently discard
 the imaginary plane.
 
-TWO STRUCTURAL CHECKS EVERY ROW MUST PASS or its verdict is refused by name:
+Two structural checks every row must pass or its verdict is refused by name:
 
 - the array path must actually be the path — the counted ``update_H``/``step_D``
   wrappers must fire exactly once per step per leg. A row whose composer answered a
@@ -71,7 +71,7 @@ TWO STRUCTURAL CHECKS EVERY ROW MUST PASS or its verdict is refused by name:
 - the compared set must MOVE — the movement floor. A comparison over volumes that
   stayed at their seed values would pass for a run that did nothing.
 
-WHAT IT DOES NOT DO / DOES NOT LICENSE. It runs on the host on the NumPy array path.
+What it does not do / does not license. It runs on the host on the NumPy array path.
 It measures the ORDERING, not a kernel: it says nothing about whether any backend's
 fused ``update_H + step_D`` kernel is bit-identical to the two array-path halves, and
 nothing about a device at all. What it settles is whether a product that HOISTS the
@@ -116,7 +116,7 @@ if str(_API) not in sys.path:
 
 RESULTS = _HERE / "results"
 
-#: THE SUBJECT IS THE ENGINE — driver.py holds the seam, sources.py holds the withdraw,
+#: The subject is the engine — driver.py holds the seam, sources.py holds the withdraw,
 #: stepping.py holds both halves. ``.`` makes the census digest ``meep_gpu/*.py``.
 SUBJECT_PACKAGE = "."
 
@@ -192,7 +192,7 @@ _RESET_VOLUMES: Optional[Tuple[str, ...]] = None
 def _reset_declared_volumes() -> Tuple[str, ...]:
     """Every array ``Fields.reset`` zeroes, read out of fields.py's own text.
 
-    DERIVED, NOT TRANSCRIBED (the habit ``leg_driver_order`` keeps for the driver's
+    Derived, not transcribed (the habit ``leg_driver_order`` keeps for the driver's
     call sequence): a volume added to the engine joins this comparison without an edit
     here, and a list here could go stale while still looking complete. The two names
     reached through rather than zeroed — ``polarizations`` and
@@ -276,7 +276,7 @@ def _suppressed_withdraw(fields: Any) -> None:  # The in-seam call, made a no-op
 def ordering(driver: Any, mode: str):
     """Run the driver's own ``step`` with the electric withdraw moved, or not.
 
-    THE DRIVER IS NEVER EDITED (and must not be: driver.py is shared by every kernel
+    The driver is never edited (and must not be: driver.py is shared by every kernel
     table). The reordering is expressed by shadowing the module-level
     ``update_H``/``step_D`` names ``FdtdDriver.step`` calls (driver.py:183-195 imports
     them into the module namespace) and by giving each electric source an INSTANCE
@@ -484,7 +484,7 @@ def evaluate(driver: Any) -> Dict[str, Any]:
     block["launch_counts"] = counts
     block["seconds"] = round(time.time() - started, 1)
 
-    # THE MOVEMENT FLOOR. A comparison over volumes that never moved off the seed would
+    # The movement floor. A comparison over volumes that never moved off the seed would
     # pass for a run that did nothing at all.
     if reference_state is not None:
         moved = {name: _differing(seed["volumes"][name], reference_state["volumes"][name])
@@ -576,6 +576,8 @@ def basis(seam: Path) -> List[dict]:
     ``withdraw_seam``; the per-leg records carry the interpreter and module each row was
     lifted under, and this probe re-lifts them exactly there.
     """
+    import neutral_ids  # noqa: PLC0415
+
     summary = json.loads((seam / "summary.json").read_text(encoding="utf-8"))
     labels = list(summary["sources"]["withdraw_rows"])
     records: Dict[str, dict] = {}
@@ -591,7 +593,9 @@ def basis(seam: Path) -> List[dict]:
                              f"record in {seam}; refusing to guess how it was lifted")
         out.append({"label": label, "leg": leg, "row": row,
                     "module": record.get("module"),
-                    "interpreter": record.get("interpreter") or sys.executable,
+                    # As the leg record spells it (the recorded spelling, which this
+                    # row's record keeps); main() executes it resolved on this machine.
+                    "interpreter": record.get("interpreter") or neutral_ids.path(sys.executable),
                     "lift_record": record.get("lift_record"),
                     "grid_shape": record.get("grid_shape"),
                     "grid_cells": record.get("grid_cells")})
@@ -600,6 +604,7 @@ def basis(seam: Path) -> List[dict]:
 
 def main() -> int:
     import measure_predicate_coverage as census  # noqa: PLC0415
+    import neutral_ids  # noqa: PLC0415
 
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--out", type=Path, default=RESULTS / CAMPAIGN)
@@ -619,7 +624,8 @@ def main() -> int:
     step_log = out / "steps.progress.log"
 
     def log(message: str) -> None:
-        line = f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] {message}"
+        # The probe log leaves the machine with the rows: its lines name directories.
+        line = f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] {neutral_ids.text(message)}"
         print(line, flush=True)
         for path in (log_path, args.progress_log):
             if not path:
@@ -665,8 +671,11 @@ def main() -> int:
         if args.resume and record_path.exists():
             log(f"{index}/{len(rows)} {row['label']}: resumed from {record_path.name}")
         else:
+            # The row names its interpreter as the census recorded it; it runs as that
+            # path on this machine (labels expanded), and the record keeps the spelling.
+            interpreter = neutral_ids.resolve(row["interpreter"])
             if row["leg"] == "examples":
-                command = [row["interpreter"], "-u",
+                command = [interpreter, "-u",
                            str(Path(census.__file__).resolve()), "--leg", "examples",
                            "--child-script",
                            str(Path(census.EXAMPLES_DIR) / row["row"]),
@@ -678,7 +687,7 @@ def main() -> int:
                     log(f"{index}/{len(rows)} {row['label']}: REFUSED — the seam record "
                         f"names no module for this tests row")
                     continue
-                command = [row["interpreter"], "-u",
+                command = [interpreter, "-u",
                            str(Path(census.__file__).resolve()), "--leg", "tests",
                            "--child-module", str(Path(census.TESTS_DIR) / row["module"]),
                            "--child-cases", json.dumps([row["row"]]),
@@ -700,10 +709,11 @@ def main() -> int:
                 stderr_text = ((expired.stderr or b"").decode("utf-8", "replace")
                                if expired.stderr else "")
             if not record_path.exists():
+                # Neutral before it is cut: a tail cut first can begin inside a path.
                 record_path.write_text(json.dumps(
                     {"row": row["row"], "measured": False,
                      "note": "child died" if status == "ok" else "child timeout",
-                     "stderr_tail": stderr_text[-1500:]}), encoding="utf-8")
+                     "stderr_tail": neutral_ids.text(stderr_text)[-1500:]}), encoding="utf-8")
         payload = json.loads(record_path.read_text(encoding="utf-8"))
         candidates = payload if isinstance(payload, list) else [payload]
         record = next((r for r in candidates if r.get("row") == row["row"]),
@@ -712,7 +722,7 @@ def main() -> int:
         record["label"] = row["label"]
         record["subject_manifest_sha256"] = digest["manifest_sha256"]
         record["battery_sha256"] = digest["battery_sha256"]
-        measured.append(record)
+        measured.append(neutral_ids.value(record))
         block = record.get("h_to_d_withdraw_order") or {}
         log(f"{index}/{len(rows)} {row['label']}: measured={record.get('measured')} "
             f"verdict={block.get('verdict')} steps={block.get('steps_compared')} "
@@ -724,7 +734,7 @@ def main() -> int:
         for record in measured:
             handle.write(json.dumps(record) + "\n")
 
-    summary = _summary(measured, digest, args.seam)
+    summary = neutral_ids.value(_summary(measured, digest, args.seam))
     (out / "summary.json").write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n",
                                       encoding="utf-8")
     log(f"wrote {out / 'summary.json'}: verdict {summary['verdict']} "
@@ -733,6 +743,8 @@ def main() -> int:
 
 
 def _summary(measured: List[dict], digest: dict, seam: Path) -> dict:
+    import neutral_ids  # noqa: PLC0415
+
     per_row = {}
     for record in measured:
         block = record.get("h_to_d_withdraw_order") or {}
@@ -773,8 +785,8 @@ def _summary(measured: List[dict], digest: dict, seam: Path) -> dict:
     return {
         "campaign": CAMPAIGN,
         "date": "2026-09-04",
-        "probe": str(Path(__file__).resolve()),
-        "seam_artifact": str(seam),
+        "probe": neutral_ids.path(str(Path(__file__).resolve())),
+        "seam_artifact": neutral_ids.path(str(seam)),
         "question": ("does hoisting the electric integrated-source withdraw from the "
                      "update_H -> step_D seam to immediately before update_H change any "
                      "stored volume, byte for byte, over 60 complete driver steps?"),

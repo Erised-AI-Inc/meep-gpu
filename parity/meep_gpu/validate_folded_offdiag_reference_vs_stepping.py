@@ -29,13 +29,13 @@ Three host legs, and the exit status is the verdict:
   built fails the leg rather than being skipped.
 * ``identity_host`` — the REACHABILITY measurement: MIRROR vs METALLIC ghost
   code on the same grid, same coefficients, same seeds. Identical exactly when
-  NO LIVE ROW SLOT takes the folded axis's component as its PARTNER, different
+  no live row slot takes the folded axis's component as its PARTNER, different
   as soon as one does. The test is at SLOT level: three of the eighteen cases
   are the counterexample that separates it from the coarser row-level reading
   (a live row that is not ``E_a`` whose only surviving slot still never takes
   ``E_a`` as a partner), and a leg carrying none of them fails as vacuous.
 
-NO BYTE-IDENTITY CLAIM ABOUT ANY KERNEL IS MADE HERE. This validator pins a
+No byte-identity claim about any kernel is made here. This validator pins a
 transcription against the array path. What the compiled kernel does is the
 device gate's question and has not been asked yet.
 

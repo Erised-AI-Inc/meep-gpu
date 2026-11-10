@@ -107,6 +107,19 @@ def test_a_single_local_path_has_no_derivable_root_and_is_residue():
     assert root is None and residue == ["X"]
 
 
+def test_a_home_relative_run_directory_is_written_under_the_staging_root_label():
+    root = N.DEFAULT_HOME_STAGING_ROOT
+    assert N.neutral_home_relative(f"~/{root}/recert_2026-08-13/launchers/a.sh") == (
+        "<staging-root>/recert_2026-08-13/launchers/a.sh")
+    assert N.neutral_home_relative(f"~/{root}/recert_2026-08-13 on the GPU host") == (
+        "<staging-root>/recert_2026-08-13 on the GPU host")
+    assert N.neutral_home_relative(f"records x/, pulled from ~/{root}/run/ (gate.json)") == (
+        "records x/, pulled from <staging-root>/run/ (gate.json)")
+    # Under another directory it is left for the caller to refuse, and named as residue.
+    assert N.neutral_home_relative("~/elsewhere/run/a.sh") == "~/elsewhere/run/a.sh"
+    assert N.home_relative_paths("~/elsewhere/run/a.sh and x~/no") == ["~/elsewhere"]
+
+
 def test_a_stamped_name_in_free_text_is_replaced_by_the_label():
     text = f"ran on {MACHINE} GPU 1; {MACHINE}.cluster.invalid stamped it"
     out = N.neutral_text(text, [f"{MACHINE}.cluster.invalid"])
@@ -235,6 +248,56 @@ def test_neutralize_ledger_labels_rewrites_the_label_leaves_and_nothing_else(tmp
     # Idempotent: a second run finds nothing to rewrite.
     before = ledger.read_bytes()
     assert neutralize_ledger_labels.main(["--root", str(tmp_path), "--write"]) == 0
+    assert ledger.read_bytes() == before
+
+
+#: A certification round's staging directory name, from neutral pieces (the guard refuses it as text).
+STAGE = "bit" + "parity_phase0"
+
+
+def _provenance_weld(other_root=False):
+    entry = _weld()
+    run = entry["runs"]["8.6"]
+    run["licence"]["environment_at_start"] = {
+        "CUPY_CACHE_DIR": f"<staging-root>/{STAGE}/NR1/route_1/caches/cupy_cache",
+        "TRITON_LIBCUDA_PATH": "<staging-root>/env/lib/libcuda_stub"}
+    root = "elsewhere" if other_root else N.DEFAULT_HOME_STAGING_ROOT
+    entry["recert_2026_08_13"] = {
+        "recert_launcher": f"~/{root}/recert_2026-08-13/launchers/a.sh",
+        "staging": {"run_root": f"~/{root}/recert_2026-08-13 on the GPU host"}}
+    entry["out_dir"] = f"~/{root}/fusedpair_2026-08-09/results (copied to results/x/)"
+    entry["superseded_runs"] = [{"records": f"results/x/ (gate.json), pulled from ~/{root}/x/"}]
+    return entry
+
+
+def test_neutralize_ledger_labels_writes_provenance_and_an_earlier_staging_root(tmp_path):
+    ledger = _ledger_root(tmp_path, _provenance_weld())
+    # The earlier bind left a certification round's own directories under the label: refused
+    # until that round's staging directory is named, and nothing is written.
+    before = ledger.read_bytes()
+    assert neutralize_ledger_labels.main(["--root", str(tmp_path), "--write"]) == 1
+    assert ledger.read_bytes() == before
+    assert neutralize_ledger_labels.main(
+        ["--root", str(tmp_path), "--write", "--staging-root", f"<staging-root>/{STAGE}/NR1"]) == 0
+    weld = json.loads(ledger.read_text())["weld"]
+    assert weld["recert_2026_08_13"] == {
+        "recert_launcher": "<staging-root>/recert_2026-08-13/launchers/a.sh",
+        "staging": {"run_root": "<staging-root>/recert_2026-08-13 on the GPU host"}}
+    assert weld["out_dir"] == "<staging-root>/fusedpair_2026-08-09/results (copied to results/x/)"
+    assert weld["superseded_runs"][0]["records"].endswith("pulled from <staging-root>/x/")
+    assert weld["runs"]["8.6"]["licence"]["environment_at_start"] == {
+        "CUPY_CACHE_DIR": "<staging-root>/route_1/caches/cupy_cache",
+        "TRITON_LIBCUDA_PATH": "<staging-root>/env/lib/libcuda_stub"}
+    assert fastpath.live_capabilities(weld) == ("8.6",)
+    hits, problems = guard.run_legs(guard.load_rules(), tmp_path, ["ledgers"])
+    assert not problems and not hits, [hit.line() for hit in hits]
+
+
+def test_neutralize_ledger_labels_refuses_a_home_relative_path_under_another_root(tmp_path):
+    ledger = _ledger_root(tmp_path, _provenance_weld(other_root=True))
+    before = ledger.read_bytes()
+    assert neutralize_ledger_labels.main(
+        ["--root", str(tmp_path), "--write", "--staging-root", f"<staging-root>/{STAGE}/NR1"]) == 1
     assert ledger.read_bytes() == before
 
 

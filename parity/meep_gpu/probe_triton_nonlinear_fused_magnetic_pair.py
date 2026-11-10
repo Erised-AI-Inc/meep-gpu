@@ -7,17 +7,17 @@ twin of the Metal family
 ``gate_metal_below_the_cut_fused_pairs.py``.
 
 ===========================================================================
-WHAT IS NEW HERE, AND WHAT IS NOT
+What is new here, and what is not
 ===========================================================================
 
-**NO ARITHMETIC IS NEW.** The kernel a covered configuration launches is
+**No arithmetic is new.** The kernel a covered configuration launches is
 ``kernels.fused_curl_constitutive_B`` — the SHIPPED ordinary fused pair, already
 device-certified (``fingerprints.json``'s ``bit_identity_gate.legs.
 fused_curl_constitutive_B``: ``single_launch_guarded_vs_array_path 60/60``) — through
 the SHIPPED ``launch.FusedPairPlan`` built by the SHIPPED ``launch.plan_fused_pair``.
 The product adds one predicate, one plan builder and one checkable identity.
 
-**WHAT IS THEREFORE ACTUALLY AT RISK, and what every leg below is aimed at:**
+**What is therefore actually at risk, and what every leg below is aimed at:**
 
 1. **The admission may be WIDER than what it claims to inherit.** The weld is
    supposed to be the conjunction of the two shipped nonlinear SPINE arms plus the
@@ -50,14 +50,14 @@ and every clause set in the predicate refuses a fold — so the launch spans
 is refused by name; an ELECTRIC source is injected in the D/E half and does not
 disqualify this pair. Both corpus rows source electrically.
 
-WHAT THE CORPUS SAYS, from ``results/fusion_matrix_triton_2026-08-20_closed/`` at
+What the corpus says, from ``results/fusion_matrix_triton_2026-08-20_closed/`` at
 the B->H cell (``nonlinear run PML``, ``nonlinear run``): TWO seam-instances,
 ``examples:3rd-harm-1d.py`` and ``tests:Test3rdHarm1d.test_3rd_harm_1d``, both with
 ``in_seam_source == false`` and ``live_in_seam_passes == ['zero_metal_B']``. The
 ``corpus_admission`` leg re-derives that from the census rather than citing it.
 
 ===========================================================================
-WHAT THIS GATE REFUSES TO INFER
+What this gate refuses to infer
 ===========================================================================
 
 * **A mutation that does not parse is not a mutation**, and a mutation whose lines
@@ -128,19 +128,19 @@ CHI3_CORPUS = 0.06
 
 #: The device cases. ``(name, cell, boundaries, steps)``.
 #:
-#: EVERY CELL IS 3-D. A 2-D cell has an INVARIANT axis, and declaring an invariant
+#: Every cell is 3-D. A 2-D cell has an INVARIANT axis, and declaring an invariant
 #: axis metallic is refused by ``Grid`` by name (grid.py:842-877) — a gate that
 #: tripped over that would die in the constructor instead of measuring a wall.
 CASES: Tuple[Tuple[str, Tuple[float, float, float], Any, int], ...] = (
-    # THE CORPUS GEOMETRY: periodic in x and y, METALLIC in z, which is exactly
+    # The corpus geometry: periodic in x and y, METALLIC in z, which is exactly
     # what both nonlinear rows declare (`boundary_kinds ['periodic','periodic',
     # 'metallic']`, `metallic [false,false,true]`). ZM_Z fires; ZM_X/ZM_Y do not.
     ("corpus_wall_z", (1.0, 1.0, 1.2),
      {"x": "periodic", "y": "periodic", "z": "metallic"}, 60),
-    # EVERY WALL LIVE: all three ZM planes and all three METALLIC ghost arms are
+    # Every wall live: all three ZM planes and all three METALLIC ghost arms are
     # entered. This is the mutation case, for that reason.
     ("wall_xyz", (1.0, 1.1, 1.2), "metallic", 60),
-    # NO WALL AT ALL: ZM_* all compile to False and every ghost arm is the
+    # No wall at all: ZM_* all compile to False and every ghost arm is the
     # periodic wrap. The complement of the case above.
     ("periodic_xyz", (1.0, 1.1, 1.2), "periodic", 60),
     # ONE LAUNCH. The ~60-step legs above measure accumulation; this one measures
@@ -177,8 +177,8 @@ REQUIRED = (
 )
 
 #: Read-only material inputs under the names the scan really finds. A leg that
-#: changes one of these measured something other than the step; a NAME THAT MATCHES
-#: NOTHING is two absent checks, not a weaker one, which is what
+#: changes one of these measured something other than the step; a name that matches
+#: nothing is two absent checks, not a weaker one, which is what
 #: :func:`_assert_material_names_are_real` exists to stop.
 MATERIAL = ("eps", "inv_eps")
 
@@ -215,7 +215,7 @@ def save(payload: Dict[str, Any], path: str) -> None:
     """Serialise the payload, provenance-stamped, atomically."""
     os.makedirs(os.path.dirname(os.path.abspath(path)) or ".", exist_ok=True)
     temporary = path + ".tmp"
-    # THE POLICY STAMP IS RE-READ, NOT CARRIED. Taken once at install time it
+    # The policy stamp is re-read, not carried. Taken once at install time it
     # records every counter at zero, because nothing had compiled yet.
     if "subnormal_policy" in payload:
         try:
@@ -598,7 +598,7 @@ def build_driver(cp, cell, boundaries, seed: int, value_class: str,
         driver.add_source({"component": "Ez", "frequency": 0.31,
                            "center": (0.0, 0.0, 0.0), "width": 0.4})
     seed_values(cp, driver, seed, value_class)
-    # THE FAST PATH IS DISABLED, EXPLICITLY. `FdtdDriver.step` consults `fastpath`
+    # The fast path is disabled, explicitly. `FdtdDriver.step` consults `fastpath`
     # BEFORE the module-level sub-step functions this harness substitutes
     # (driver.py:3281-3282), and the two nonlinear SPINE arms are WIRED — so on this
     # very family a driver left alone would step `step_B` and `update_H` on Triton
@@ -896,7 +896,7 @@ def run_leg(cp, name: str, cell, boundaries, steps: int, product,
         row["plan"] = repr(plan)
         row["plan_replaces"] = list(product.REPLACES)
         row["zero_metal_flags"] = list(plan.zero_metal)
-        # THE IDENTITY, RE-ASSERTED ON THE REAL DEVICE OBJECTS. The laptop leg
+        # The identity, re-asserted on the real device objects. The laptop leg
         # sweeps it on NumPy fixtures; this is the same question asked of the very
         # configuration whose bytes are about to be compared.
         row["equivalence"] = product.nonlinear_fused_magnetic_pair_equivalence(
@@ -1006,7 +1006,7 @@ def verdict_of(row: Dict[str, Any], *, require_identical: bool = True,
         failures.append(
             f"the fused route reached the array path for an absorbed pass: {fell_back}")
     if require_array_reference:
-        # THE REFERENCE MUST REALLY BE THE ARRAY PATH. `fastpath` is consulted
+        # The reference must really be the array path. `fastpath` is consulted
         # before these functions and the nonlinear spine arms are WIRED, so a
         # missing count here means the reference stepped on Triton and the
         # comparison compared two Triton routes.
@@ -1079,7 +1079,7 @@ def shipped_source() -> str:
     lines = [lines[0].lstrip()] + [
         line[margin:] if line[:margin].strip() == "" else line.lstrip()
         for line in lines[1:]]
-    # THE DECORATOR IS PREPENDED, and it is not cosmetic. `ast.get_source_segment`
+    # The decorator is prepended, and it is not cosmetic. `ast.get_source_segment`
     # on a FunctionDef starts at the ``def`` line and EXCLUDES the decorator list,
     # so a mutant compiled from the bare segment is a PLAIN PYTHON FUNCTION: it has
     # no ``[grid]`` launcher, and the first mutation leg dies with
@@ -1117,7 +1117,7 @@ def compile_mutant(source: str, kernel_name: str) -> Any:
     """Compile a renamed mutant. The rename is what keeps the JIT cache honest."""
     header = mutant_header()
     text = header + source.replace("fused_curl_constitutive_B", kernel_name)
-    # A MUTATION THAT DOES NOT PARSE IS NOT A MUTATION. Checked before any device
+    # A mutation that does not parse is not a mutation. Checked before any device
     # is involved, because a SyntaxError inside the loader aborts the whole
     # mutation leg on the first device run.
     ast.parse(text)
@@ -1143,7 +1143,7 @@ def _rewrite_block(source: str, before: Sequence[str],
     the entries below that drop an ``if`` drop its whole body with it.
     """
     lines = source.splitlines()
-    # MATCHED ON COMMENT-STRIPPED TEXT, so a rewrite stays armed across a trailing
+    # Matched on comment-stripped text, so a rewrite stays armed across a trailing
     # comment or a reflow. A mutation that silently stops matching reports a real
     # defect as uncaught, which this tree has already paid for once.
     stripped = [line.split("#", 1)[0].strip() for line in lines]
@@ -1242,7 +1242,7 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
 
     def m5_constitutive_association(source: str) -> Tuple[str, int]:
         """The two separate accumulations ``(H + kps*src) - kms*prev`` the package
-        carried, put back AT THE CALL SITE in place of MEEP's ``H + ((kps*src) -
+        carried, put back at the call site in place of MEEP's ``H + ((kps*src) -
         (kms*prev))`` (``forms.constitutive_form``): same algebra, different float32
         rounding. The chunk select is kept, so only the accumulation's cells move."""
         return _rewrite_block(
@@ -1444,10 +1444,11 @@ def run_refusals(cp, product) -> List[Dict[str, Any]]:
 # ---------------------------------------------------------------------------
 
 def environment(cp: Any = None) -> Dict[str, Any]:
+    import neutral_ids  # noqa: PLC0415
     payload: Dict[str, Any] = {
         "python": sys.version.split()[0],
         "numpy": np.__version__,
-        "argv": list(sys.argv),
+        "argv": neutral_ids.argv(sys.argv),
         "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
     }
     try:
@@ -1514,7 +1515,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "UNRUN — invoked with --no-device; no CUDA leg, mutation or refusal "
             "in this artifact")
         payload["passed"] = all(row["passed"] for row in payload["no_device_legs"])
-        # ``release`` IS THE KEY ``gate_provenance.read_verdict`` CONSULTS FIRST,
+        # ``release`` is the key ``gate_provenance.read_verdict`` consults first,
         # and it is set explicitly here because ``passed`` alone would stamp
         # ``released: True`` on an artifact that measured no bytes on any device.
         payload["release"] = {
@@ -1530,7 +1531,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     from meep_gpu import backends, subnormal_policy  # noqa: PLC0415
 
     if args.subnormal_policy == "flush":
-        # MEASURED REFUSAL, not a precaution. `install_subnormal_policy('flush')`
+        # Measured refusal, not a precaution. `install_subnormal_policy('flush')`
         # raises SubnormalPolicyUnattainable in a process that has not imported
         # MEEP and says why in its own words (subnormal_policy.py:1920, measured
         # here 2026-08-20): `mp.set_zero_subnormals` is the only exposure of this
@@ -1539,7 +1540,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         # no-MEEP-import boundary and initialize MPI as a side effect. Its
         # instruction to a caller that needs flush is exactly this.
         #
-        # A PARITY PROBE MAY DO WHAT THE PACKAGE MAY NOT: the boundary protects
+        # A parity probe may do what the package may not: the boundary protects
         # `meep_gpu/**`, which ships; this file is a comparator. The same helper
         # and the same reasoning as
         # `probe_fused_kernel_bit_identity.import_meep_for_host_policy`.
@@ -1640,7 +1641,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     refusal_ok = all(row.get("passed") for row in payload["refusals"])
 
     def _mutation_ok(row: Dict[str, Any]) -> bool:
-        # A DECLARED NULL MUST BE CONFIRMED, not merely permitted, and a mutation
+        # A declared null must be confirmed, not merely permitted, and a mutation
         # that was never ARMED measured nothing whatever it then reported.
         if row.get("error") is not None:
             return False

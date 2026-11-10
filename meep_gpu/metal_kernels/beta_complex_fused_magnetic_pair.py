@@ -7,9 +7,9 @@ complex/Bloch curl body is replaced by the certified COMPLEX BETA curl body —
 else about the construction changes. Same wall-clear carry (the B DIAGONAL), same
 three-line seam, same constitutive lift, same plan shape.
 
-THE CELL: ``tests:TestSpecialKz.test_special_kz`` B->H, curl arm ``special_kz
-complex beta``, constitutive arm the 2026-08-19 ``special_kz complex beta``
-restatement (the tranche-6 census predates that arm; the reclose artifact records
+THE CELL: ``tests:TestSpecialKz.test_special_kz`` B->H, curl arm ``special_kz complex
+beta``, constitutive arm the 2026-08-19 ``special_kz complex beta`` restatement (an
+earlier Metal census predates that arm; the reclose artifact records
 ``plan_step`` selecting it — see the electric twin's docstring for the citation).
 CUDA serves exactly this instance through ``cuda_special_kz_fused_magnetic_pair``,
 which is the cross-backend proof of the weld shape.
@@ -20,7 +20,7 @@ mu = 1 baked into the array path), which is the same physics that separates ever
 magnetic pair from its electric twin on this backend. The two real beta words and
 the chunk record ride in the packed struct.
 
-THE SEAM IS EMPTY ON THE CORPUS ROW — ``test_special_kz`` declares no magnetic
+The seam is empty on the corpus row — ``test_special_kz`` declares no magnetic
 source (its recorded ``plan_step.live`` carries no ``fill_B``) — so
 :data:`CARRIES_DEPOSIT_REPAIR` stays False for the measured reason the BFAST and
 real-beta magnetic pairs hold it False: the one corpus row this cell reaches is
@@ -29,7 +29,7 @@ without a measured demand would be a claim with no row behind it. (The PLAIN
 complex magnetic pair flipped True on its own cell's measured demand; no such
 demand exists on this one.)
 
-NOT WIRED AS AN ARM; reached through ``launch.FUSED_PAIR_ARMS`` instead.
+Not wired as an arm; reached through ``launch.FUSED_PAIR_ARMS`` instead.
 """
 
 # Derived from MEEP (https://github.com/NanoComp/meep).
@@ -104,7 +104,7 @@ __all__ = [
 # The source
 # ---------------------------------------------------------------------------
 
-#: THE BUFFER ORDER IS ``complex_fused_magnetic_pair``'s, POINTER FOR POINTER; only
+#: The buffer order is ``complex_fused_magnetic_pair``'s, pointer for pointer; only
 #: the struct grows the two real beta words and the chunk record, unpacked into the
 #: certified curl body's own names before any lifted text runs.
 _TEMPLATE = r"""
@@ -115,7 +115,7 @@ __CONTRACT__
 
 __HELPERS__
 
-// THE THREE float2 MEMBERS COME FIRST, for the measured alignment reason
+// The three float2 members come first, for the measured alignment reason
 // `complex_fused_magnetic_pair` records.
 __RECORD_STRUCT__
 
@@ -157,7 +157,7 @@ kernel void beta_complex_fused_magnetic_pair_step(
     constant Params&     prm     [[buffer(27)]],
     uint idx [[thread_position_in_grid]])
 {
-    // THE PACKED ARGUMENTS ARE UNPACKED INTO THE CERTIFIED BODIES' OWN NAMES, once,
+    // The packed arguments are unpacked into the certified bodies' own names, once,
     // before any of the lifted text runs. Everything below this line is then
     // character-for-character what `special_kz.beta_bloch_curl_source` and
     // `complex_fields.bloch_constitutive_source` emit, plus the wall clear.
@@ -165,7 +165,7 @@ kernel void beta_complex_fused_magnetic_pair_step(
     float dtdx = prm.dtdx;
     float2 px = prm.px, py = prm.py, pz = prm.pz;
     float beta_plus = prm.beta_plus, beta_minus = prm.beta_minus;
-    // THE CHUNK RECORD rides in the same struct (no binding to spare), and this one
+    // The chunk record rides in the same struct (no binding to spare), and this one
     // line gives the lifted bounds blocks the `cb` they read.
 __RECORD_ALIAS__
 
@@ -201,7 +201,7 @@ def beta_complex_fused_magnetic_pair_source(
         contract: str = shaders.CONTRACT_OFF) -> str:
     """One specialised fused source: (boundaries, phases, walls, arm, contraction).
 
-    THE SPLICE IS :func:`.complex_fused_magnetic_pair
+    The splice is :func:`.complex_fused_magnetic_pair
     .complex_fused_magnetic_pair_source`'S, step for step, with
     :func:`certified_beta_bloch_curl_body` where its ``certified_curl_body`` stands.
     """
@@ -216,7 +216,7 @@ def beta_complex_fused_magnetic_pair_source(
         raise ValueError(f"zero_metal must be a per-axis triple, got {zero_metal!r}")
 
     curl = certified_beta_bloch_curl_body(codes, phased, contract)
-    # THE BETA TERM MUST BE PRESENT — see the electric twin for why its absence
+    # The beta term must be present — see the electric twin for why its absence
     # would be the plain complex weld under another name.
     for statement in (folded_pass.FOLDED_PASS_BEGIN,
                       "float2 bq0 = float2(-(beta_plus * b.y), beta_plus * b.x);",
@@ -320,8 +320,8 @@ def metal_beta_complex_fused_magnetic_pair_coverage(
     if not magnetic.covered:
         reasons.extend(f"constitutive half: {reason}" for reason in magnetic.reasons)
 
-    # THE SOURCE SEAM. A MAGNETIC source is injected BETWEEN the two halves
-    # (driver.py:3283-3284). IGNORANCE IS NEVER AN EMPTY SET.
+    # The source seam. A MAGNETIC source is injected BETWEEN the two halves
+    # (driver.py:3283-3284). Ignorance is never an empty set.
     reasons.extend(_deposit_repair.seam_source_reasons(
         fields, sources, 'B',
         undeclared=(
@@ -339,7 +339,7 @@ def metal_beta_complex_fused_magnetic_pair_coverage(
         return Coverage(False,
                         tuple(dict.fromkeys(reasons + ["fields carries no grid"])))
 
-    # THE TWO FILLS, restated by NAME for THIS seam.
+    # The two fills, restated by NAME for THIS seam.
     for axis in range(3):
         mirrored = getattr(grid, "is_mirrored", None)
         if callable(mirrored) and bool(mirrored(axis)):
@@ -355,7 +355,7 @@ def metal_beta_complex_fused_magnetic_pair_coverage(
             reasons.append(
                 f"grid does not expose {name}; zero_metal_B cannot be carried inline")
 
-    # THE RUN'S FIRST update_H. The array path starts H and f_w from B on the dsigw
+    # The run's first update_H. The array path starts H and f_w from B on the dsigw
     # cells at that update (stepping.separate_h_from_b) and the lifted H body does
     # not, so this pair takes that update only where the start cannot change a word
     # (launch.h_start_reasons), asked as complex_fused_magnetic_pair asks.
@@ -494,7 +494,7 @@ def plan_metal_beta_complex_fused_magnetic_pair(
         volumes.append(name)
         return residency.mirror(name, host, constant=True)
 
-    # THE ORDER HERE IS THE SIGNATURE'S ORDER and nothing else keeps them in step.
+    # The order here is the signature's order and nothing else keeps them in step.
     flux = [bind_complex(name, getattr(fields, name)) for name in ("Bx", "By", "Bz")]
     auxiliary = [bind_complex("fu_" + name, getattr(fields, "fu_" + name))
                  for name in ("Bx", "By", "Bz")]
@@ -504,7 +504,7 @@ def plan_metal_beta_complex_fused_magnetic_pair(
                 for name in ("Hx", "Hy", "Hz")]
     workspace = [bind_complex("f_w_" + name, getattr(fields, "f_w_" + name))
                  for name in ("Hx", "Hy", "Hz")]
-    # THE B CURL TAKES THE HALF-INTEGER LATTICE and the H constitutive the INTEGER
+    # The B curl takes the half-integer lattice and the H constitutive the INTEGER
     # one — the opposite pairing to the D/E twin, and the kernel cannot tell.
     curl_coefficients = [
         bind_real(f"pml:{stem}_{axis}_h", getattr(pml, f"{stem}_{axis}_h"))

@@ -1,4 +1,4 @@
-"""Laptop contracts for the FOLDED COMPLEX BETA fused MAGNETIC B/H pair on Triton.
+"""Laptop contracts for the folded complex beta fused magnetic B/H pair on Triton.
 
 Everything here runs on the NumPy merge-bar machine. The load-bearing ones are two:
 
@@ -67,7 +67,7 @@ def product():
 class _Magnetic:
     """A magnetic source that publishes the index the injection writes.
 
-    THE IN-SEAM SOURCE ON THIS SIDE. The driver injects a magnetic current
+    The in-seam source on this side. The driver injects a magnetic current
     between ``step_B`` and ``update_H`` (driver.py:3283), which is work inside the
     seam this kernel closes, so it is the deposit repair's bracket that carries it
     — and a source that cannot name the cells it writes cannot be repaired.
@@ -374,7 +374,7 @@ def test_the_source_seam_refuses_by_name(product, sources, needle):
 
 def test_the_flag_at_False_would_cost_ONE_of_this_cells_three_rows(product,
                                                                    monkeypatch):
-    """THE FLAG IS WORTH LESS HERE THAN ON THE ELECTRIC TWIN, and the difference
+    """The flag is worth less here than on the electric twin, and the difference
     is the corpus rather than the bracket.
 
     All three of the electric twin's rows inject electrically, so its flag at
@@ -504,7 +504,7 @@ def test_the_composer_routes_this_product_and_dispatch_admits_it():
     ``_install_fused_pair``, taking both slots only when ``_pair_may_absorb`` finds
     the arm table has already given them to the arms this kernel implements.
 
-    Phase B (batch 2026-09-13) then RELEASED the arm, checkable from the PRODUCT's
+    The 2026-09-13 certification run then RELEASED the arm, checkable from the PRODUCT's
     side rather than from the composer's: the label this product writes is now in
     ``fastpath.RELEASED_FUSED_ARMS``, so clause (8) admits the whole plan; and it
     sits in exactly one of ``ARM_CERTIFICATION`` (its gate has a tracked ledger
@@ -550,13 +550,13 @@ def test_the_module_is_declared_ROUTED_rather_than_NOT_AN_ARM():
 def test_the_module_claims_identity_ONLY_through_the_run_that_measured_it():
     """This asserted the module had NO fingerprints entry, because it had none.
 
-    Phase B (batch 2026-09-13) RELEASED this arm and seeded its weld from the
+    The 2026-09-13 certification run RELEASED this arm and seeded its weld from the
     identity fleet, so the absence it pinned is gone and the property worth pinning
     is the weld's SOUNDNESS: it must record a PASS, name this module, and name it at
     the bytes on disk. An entry that drifts from the file it certifies is worse than
     no entry, because it reads as evidence.
 
-    AND THE RUN IS NAMED, which is what the title has always said and what the ledger
+    And the run is named, which is what the title has always said and what the ledger
     shape now makes checkable: the artifact digest, the timestamp and the host belong
     to ONE run of the gate, kept under ``runs[<compute capability>]``, and they are
     read out of the record for the architecture this module's arm dispatches on. Read

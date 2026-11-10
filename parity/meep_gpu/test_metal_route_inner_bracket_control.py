@@ -1,8 +1,8 @@
 """The route gate's placement control looks through a SPENT start of H, and only that.
 
-WHY THIS FILE EXISTS. ``residency-inner-bracket-dropped`` (``_drop_the_inner_bracket``)
+Why this file exists. ``residency-inner-bracket-dropped`` (``_drop_the_inner_bracket``)
 moves a wrapper's residency bracket from its inner launch to the whole slot and must
-diverge wherever the wrapper does host work before that launch. Series entry 134 put
+diverge wherever the wrapper does host work before that launch. The start-of-H change put
 ``launch.StartOfHPlan`` around whatever serves a run's first ``update_H``; its inner is
 a bracketed launch, so the control armed on it. But the start does host work only while
 ``fields.h_separated`` is False, and the control arms after one step, when the flag is

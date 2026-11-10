@@ -1,6 +1,6 @@
 """ADVERSARIAL: the 28 corpus rows the Triton board says DISPATCH, run twice, word for word.
 
-WHAT NO GATE HAS DONE. ``gate_dispatch_fused_route.py`` drove three HAND-BUILT
+What no gate has done. ``gate_dispatch_fused_route.py`` drove three HAND-BUILT
 cases (``pml_2d``, ``conductive_2d``, ``dispersive_2d``) through the driver seam
 and byte-compared them. The board
 ``results/fusion_matrix_triton_2026-08-29_final/`` then published
@@ -86,7 +86,7 @@ def say(message: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# THE ROW SET: recomputed here from the shipped ladder, never transcribed
+# The row set: recomputed here from the shipped ladder, never transcribed
 # ---------------------------------------------------------------------------
 
 def dispatching_rows(board: Path, census: Path) -> List[Dict[str, Any]]:
@@ -333,7 +333,7 @@ def plant_withhold():
 def plant_skip_repair():
     """``deposit_repair.apply`` becomes a no-op returning 0.
 
-    THE ARMING FOR THE DEPOSIT PATH. 27 of the board's 55 dispatching instances
+    The arming for the deposit path. 27 of the board's 55 dispatching instances
     carry an in-seam source, and the only thing standing between the fused
     launch's pre-injection constitutive half and a wrong answer is this call. If
     the comparison cannot see it missing, it cannot see a lost deposit.
@@ -489,7 +489,7 @@ def run_row(label: str, builder: Callable, gpu_id: int, steps: int,
         row["deposit_repairs"] = _repairs(a["driver"])
         diverged = row["first_divergent_checkpoint"] is not None
         if control != "off":
-            # A CONTROL IS NOT A CLAIM ABOUT DISPATCH. Both legs took the same
+            # A control is not a claim about dispatch. Both legs took the same
             # route, so a divergence here is the ROW's own nondeterminism (a
             # random source function, an unseeded draw) and every verdict about
             # this row from a one-variable comparison is void until it is seeded.
@@ -566,7 +566,7 @@ def main() -> int:
 
     instances = dispatching_rows(board, census)
     labels = sorted({e["row"] for e in instances})
-    say(f"SERVED IN DISPATCH recomputed: {len(instances)} instances across "
+    say(f"Served in dispatch recomputed: {len(instances)} instances across "
         f"{len(labels)} rows")
     (out / "dispatch_set.json").write_text(
         json.dumps({"instances": instances, "rows": labels}, indent=1))

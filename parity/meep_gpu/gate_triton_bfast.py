@@ -14,7 +14,7 @@ write (m9), the always-run-all-six-targets binding (the state is seeded
 nonzero, so a zero-k target's ``-2*state`` advance moves bytes), and the
 HAS_BFAST identity arm (the identity leg).
 
-THE PASS FOLLOWS THE FORMS. MEEP's BFAST pass runs on each component right after
+The pass follows the forms. MEEP's BFAST pass runs on each component right after
 its curl (step_db.cpp:124-142): the state takes two roundings (``F = S - F_prev``
 stored, ``raw = F - F_prev``), an absent partner is not read, MEEP's plain one-partner
 line drops ``- F``, and ``raw`` goes through the pass's own additive ladder keyed on the
@@ -22,7 +22,7 @@ chunk record (``fold_pass_reference``). Its position after the forms is held by 
 SOURCE assertion in ``meep_gpu/test_triton_bfast.py`` and by the transcription legs of
 the fused products; the ladder and the state's roundings are held here.
 
-CLONED from the certified tranches' harnesses (complex, special_kz, nonlinear,
+CLONED from the certified kernel families' harnesses (complex, special_kz, nonlinear,
 offdiag) and deliberately IMPORTING the
 shared machinery rather than restating: the subnormal policy
 (``install_ftz_strip`` / ``ftz_strip_license_reasons`` / ``policy_stamp``),
@@ -31,7 +31,7 @@ the shared real-PML reference transcriptions
 constitutive step), the seeding and the atomic writer all come from there, so
 this gate's verdict is about the BFAST tail and not about a re-implementation
 of the certified machinery. This family has NO complex product — real f32
-only (Phase A).
+only; complex storage is refused by name.
 
 SUBNORMAL POLICY — certification runs UNDER ``ieee_keep_ftz_stripped``. CuPy
 unconditionally appends ``-ftz=true`` (cupy/cuda/compiler.py:552); the strip
@@ -197,7 +197,7 @@ BFAST_ALL = tuple("f_bfast_" + name for name in BFAST_COMPONENTS)
 CHECK_STATE = ALL_STATE + BFAST_ALL
 
 #: The marquee's own numbers, computed the way MEEP's test computes them in
-#: USER code (test_refl_angular.py:50-52) — the demand case this tranche is
+#: USER code (test_refl_angular.py:50-52) — the demand case this kernel family is
 #: for. Natively non-power-of-two.
 KX_MARQUEE = 1.4 * math.sin(math.radians(35.7))
 COURANT_MARQUEE = (1.0 - KX_MARQUEE) / math.sqrt(3.0)
@@ -223,7 +223,7 @@ def write_provenance(results_dir: str) -> str:
             "parity/gate_triton_bfast.py": gate._digest(
                 os.path.abspath(__file__)),
         },
-        "tranche": "BFAST (bfast_scaled_k) — Phase A: real-f32 split-field-PML curl",
+        "tranche": "BFAST (bfast_scaled_k): real-f32 split-field-PML curl",
     }
     composition = os.path.join(_HERE, "probe_triton_bfast_composition.py")
     if os.path.exists(composition):
@@ -274,13 +274,13 @@ def real_bfast_pml_step(xp: Any, arrays: Dict[str, Any],
                         coefficients: Dict[str, Any], dtdx: float,
                         sub_step: str, boundaries: Sequence[str],
                         bfast_k: Sequence[float], record: Sequence[int]) -> None:
-    """One REAL BFAST curl sub-step, in place: the aligned real curl and its chunk
-    forms (``gate_triton_symmetry.reference_pml_step`` keyed on ``record``), then
-    MEEP's BFAST pass on each component -- the state's two roundings, the one-partner
-    forms by the record's presence word, the plain branch on cells in neither the
-    dsig nor the dsigu chunk -- through its ladder (``fold_pass_reference``). The
-    pass reads the curl's sources only, so following the whole curl sub-step is the
-    same word per cell as following each component's curl."""
+    """One REAL BFAST curl sub-step, in place: the real curl in MEEP's arithmetic and
+    its chunk forms (``gate_triton_symmetry.reference_pml_step`` keyed on ``record``),
+    then MEEP's BFAST pass on each component -- the state's two roundings, the
+    one-partner forms by the record's presence word, the plain branch on cells in
+    neither the dsig nor the dsigu chunk -- through its ladder
+    (``fold_pass_reference``). The pass reads the curl's sources only, so following the
+    whole curl sub-step is the same word per cell as following each component's curl."""
     _symmetry_gate().reference_pml_step(xp, arrays, coefficients, dtdx, sub_step,
                                         boundaries, (1, 1, 1), (None, None, None),
                                         record=record)
@@ -852,7 +852,7 @@ def run_refusals(results: Dict[str, Any], out_path: str) -> Dict[str, Any]:
            f"bfast side: {[r for r in mine if 'conductivity' in r]}; "
            f"conductive side: {[r for r in theirs if 'BFAST' in r]}")
 
-    # bfast + complex storage — refused by name (Phase A).
+    # bfast + complex storage — refused by name (this family is real f32 only).
     fields, pml = _np_build(complex_storage=True)
     record("bfast_complex_storage",
            any("complex family" in r for r in reasons_of(fields, pml)),
@@ -875,7 +875,7 @@ def run_refusals(results: Dict[str, Any], out_path: str) -> Dict[str, Any]:
     # bfast + a nonzero k on a DECLARED-invariant axis (clause 11a): ADMITTED. MEEP
     # does not read the partner such a k multiplies -- step_bfast takes a NULL
     # pointer and swaps it into the g2 slot (step_generic.cpp:342-346) -- and the
-    # array path now takes the same one-partner forms (bit_parity_0_10 WP AP6b), as
+    # array path now takes the same one-partner forms (since 1.0), as
     # does this kernel; the synthetic and engine legs step the class. The row
     # asserts the admission and that no reason still names the invariant axis.
     fields, pml = _np_build(cell=(2.0, 1.6, 0.0), dimensions=2,
@@ -973,10 +973,10 @@ def shipped_source() -> str:
 
 
 #: name -> (rewrite, expectation, why): the BFAST pass's mutations and the root forms'
-#: (KERNELS.md 7.1's inversions and 7.2's chunk-form battery), ``fold_pass_mutations``'
-#: shared spellings. The synthetic sweep each is scored on carries every ``need``
-#: (walled configs, both records' layers, the declared-2-D one-partner configs and
-#: the invariant-axis k), so a catch anywhere in it is a catch.
+#: (docs/development/certification.md#inverted-grouping-mutations and #chunk-form-battery),
+#: ``fold_pass_mutations``' shared spellings. The synthetic sweep each is scored on
+#: carries every ``need`` (walled configs, both records' layers, the declared-2-D
+#: one-partner configs and the invariant-axis k), so a catch anywhere in it is a catch.
 SOURCE_MUTATIONS: Dict[str, Tuple[Callable[[str], Tuple[str, int]], str, str]] = {
     name: (rewrite, expectation, why)
     for name, why, expectation, rewrite, _needs in
@@ -1275,7 +1275,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     device_available = cp is not None and _TRITON_AVAILABLE
     results: Dict[str, Any] = {
         "seed": SEED,
-        "tranche": "BFAST (bfast_scaled_k) — Phase A: real-f32 "
+        "tranche": "BFAST (bfast_scaled_k): real-f32 "
                    "split-field-PML curl",
         "granularity": "sub-step (the composition probe holds the whole-step "
                        "claim)",

@@ -11,22 +11,22 @@ the chunk record, with MEEP's start of H) -- welded by the one substitution
 :func:`.kernels.fused_curl_constitutive_B` makes on the real path: the constitutive
 half's source load becomes the register pair the curl half computed.
 
-EVERY ARITHMETIC LINE BELOW IS A VERBATIM COPY of one of those bodies; the gate's
+Every arithmetic line below is a verbatim copy of one of those bodies; the gate's
 transcription leg checks it. No product here has a complex operand, so the kernel calls
 no complex-multiply helper (:data:`MULTIPLY_HELPERS` is empty).
 
-THE RADIAL SCAN IS UPSTREAM OF THE SEAM: the plan launches
+The radial scan is upstream of the seam: the plan launches
 :func:`.cylindrical_triton.cyl_radial_difference` (per part), then this kernel.
 
-THE FIVE PASSES IN THE SEAM. ``step_B -> magnetic sources -> fill_symmetry_bc_B ->
-zero_metal_B -> fill_folded_far_ghosts_B -> update_H``: magnetic sources are REFUSED BY
-NAME (an undeclared source list is a refusal); the two symmetry fills cannot run on a
+The five passes in the seam. ``step_B -> magnetic sources -> fill_symmetry_bc_B ->
+zero_metal_B -> fill_folded_far_ghosts_B -> update_H``: magnetic sources are refused by
+name (an undeclared source list is a refusal); the two symmetry fills cannot run on a
 Dcyl cell (``Grid`` refuses a mirror there and the predicate refuses one on every axis);
 ``zero_metal_B`` is carried inline on the registers, and on an admitted Dcyl grid only
 ``ZM_Z`` can be true (:data:`FORBIDDEN_WALL_AXES`).
 
 DEVICE STATUS. The weld released on 2026-08-20 measured the previous forms and does not
-license this text; certification is owed at the combined device round.
+license this text; certification is owed to a later combined device run.
 
 Import contract: importable WITHOUT Triton -- the predicates and the plan builder (to
 ``None``) answer on a host without it.
@@ -533,12 +533,12 @@ def cylindrical_fused_magnetic_pair_coverage(fields: Any, pml: Any,
         return Coverage(False,
                         tuple(dict.fromkeys(reasons + ["fields carries no grid"])))
 
-    # THE SOURCE SEAM. A magnetic source is injected BETWEEN the two halves
+    # The source seam. A magnetic source is injected BETWEEN the two halves
     # (driver.py:3283-3284), so a fused pair would consume a pre-injection B. An
     # ELECTRIC source is injected in the D/E seam and does not disqualify this
-    # pair. MEASURED COST ON THE CORPUS: ZERO — all sixteen cylindrical rows
+    # pair. Measured cost on the corpus: zero — all sixteen cylindrical rows
     # declare electric sources only, which is what makes this the only large cell
-    # with no source attrition. IGNORANCE IS NOT AN EMPTY SET: `Fields` does not
+    # with no source attrition. Ignorance is not an empty set: `Fields` does not
     # hold the source list, so a predicate that inferred "no magnetic source" from
     # not being told would be the over-covering refusal this clause prevents.
     reasons.extend(_deposit_repair.seam_source_reasons(
@@ -554,11 +554,11 @@ def cylindrical_fused_magnetic_pair_coverage(fields: Any, pml: Any,
             f"closes"),
         carries_repair=CARRIES_DEPOSIT_REPAIR))
 
-    # THE TWO SYMMETRY PASSES. `fill_symmetry_bc_B` (driver.py:3285) and
+    # The two symmetry passes. `fill_symmetry_bc_B` (driver.py:3285) and
     # `fill_folded_far_ghosts_B` (:3287) both return at their first line unless
     # `grid.has_symmetry()` (stepping.py:1481-1482, :1565-1566); `Grid` refuses a
     # mirror on a Dcyl cell outright (grid.py:648-653) and both halves restate
-    # that. RE-CHECKED HERE ANYWAY, not inferred: this module's coverage may not be
+    # that. Re-checked here anyway, not inferred: this module's coverage may not be
     # read off another module's guard, and the cost is one attribute read.
     if _call(grid, "has_symmetry", default=False):
         reasons.append(
@@ -571,7 +571,7 @@ def cylindrical_fused_magnetic_pair_coverage(fields: Any, pml: Any,
                 f"axis {axis} is folded by a mirror plane: the two symmetry passes "
                 f"in this seam are no longer no-ops and this weld carries neither")
 
-    # THE WALL CLEAR is carried inline, so the grid must be able to answer which
+    # The wall clear is carried inline, so the grid must be able to answer which
     # axes are walled; an unanswerable one compiles to ZM=False and silently skips
     # a plane the array path clears.
     answerable = True
@@ -581,7 +581,7 @@ def cylindrical_fused_magnetic_pair_coverage(fields: Any, pml: Any,
             reasons.append(
                 f"grid does not expose {name}; zero_metal_B cannot be carried inline")
 
-    # THE WALL TABLE MUST BE THE Dcyl ONE. `Grid` cannot report r or phi walled on
+    # The wall table must be the Dcyl ONE. `Grid` cannot report r or phi walled on
     # a cylindrical cell (module docstring), and ZM_X would compile a clear on the
     # r = 0 row that the per-|m| axis rules own — a zero the array path never
     # writes there. Refused by name rather than compiled.
@@ -667,7 +667,7 @@ class CylindricalFusedMagneticPairPlan:
         self._constitutive_coefficients = tuple(
             CupyPointer(_flat(a)) for a in constitutive_coefficients)
         self._h_state = h_state
-        # THE INT32 WORD BOUND. The kernel addresses words as ``2 * idx`` in int32, so
+        # The int32 word bound. The kernel addresses words as ``2 * idx`` in int32, so
         # the complex cell count must leave room for the doubling. Refused here as well
         # because the from-arrays route runs no predicate at all.
         if 2 * self.n_elem >= 2 ** 31:

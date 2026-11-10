@@ -1,9 +1,9 @@
 """Bit-identity gate for the Triton cylindrical (Dcyl) kernels, against the array path.
 
-THE REFERENCE IS THE ARRAY PATH ITSELF. Every leg builds a twin pair of real
+The reference is the array path itself. Every leg builds a twin pair of real
 ``Grid``/``Fields``/``PML`` triples on one array module, seeds both with the same
-full-volume state, steps one with :mod:`meep_gpu.stepping` (the aligned oracle: MEEP
-1.33.0's forms, single precision, no contraction) and the other with the Triton plan, and
+full-volume state, steps one with :mod:`meep_gpu.stepping` (the oracle: MEEP 1.33.0's
+per-chunk forms, single precision, no contraction) and the other with the Triton plan, and
 compares every stored word of every field and auxiliary volume as ``uint32``. Nothing is
 transcribed here, so the gate cannot drift from the oracle it measures.
 
@@ -464,8 +464,8 @@ def compile_mutant(source: str, name: str, module: Any) -> Any:
 
 
 #: The real family's mutations: (name, kernel, edits, expected, seedings). ``kernel`` is
-#: "scan" or "curl"; ``expected`` is "caught" or "null". The Appendix A inversion (the
-#: previous pairwise curl grouping), the section 7.2 battery (whole-grid recurrence,
+#: "scan" or "curl"; ``expected`` is "caught" or "null". The inverted grouping (the
+#: previous pairwise curl grouping), the per-chunk form battery (whole-grid recurrence,
 #: membership a row off, lattices swapped, fu stored on every cell, the predicate on
 #: coefficient identity), the scan's own forms, the axis rules, and the near ghost put
 #: back (a declared null: unobservable by construction).
@@ -592,8 +592,9 @@ def save(results: Dict[str, Any], out_path: Optional[str]) -> None:
 
 def environment() -> Dict[str, Any]:
     """Every version that decides this gate's answer."""
+    import neutral_ids  # noqa: PLC0415
     info: Dict[str, Any] = {"python": platform.python_version(), "numpy": np.__version__,
-                            "host": platform.node()}
+                            "host": neutral_ids.machine_id()}
     for name in ("cupy", "triton"):
         try:
             module = __import__(name)

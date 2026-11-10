@@ -1,6 +1,6 @@
 """The fused products' plan-held source and resolve-once, exercised where there is no device.
 
-WHY THIS FILE EXISTS. Until 2026-09-19 every CUDA fused-product plan called its
+Why this file exists. Until 2026-09-19 every CUDA fused-product plan called its
 launcher without the launcher's ``kernel=`` door, so the launcher's
 ``(kernel or _get_kernel())`` ran on every launch and each getter re-spliced its
 whole certified source before keying the memo (laptop, stub CuPy: 274.5 us per
@@ -9,26 +9,26 @@ weld), and ``CudaFusedPairPlan.run`` re-resolved arguments that never change.
 ``fused_pairs._held_kernel`` now emits once per plan and shape and asks the memo on
 every launch; ``fused_pairs._resolved_once`` holds a pure resolver's answer.
 
-WHAT IS PINNED, and each is a way the change could be silently wrong:
+What is pinned, and each is a way the change could be silently wrong:
 
-1. THE KEY IS THE GETTER'S. After the product's own ``_get_kernel`` has compiled
+1. The key is the getter's. After the product's own ``_get_kernel`` has compiled
    (what ``warm()`` does at plan time), a plan's launches add NO compile-log entry
    and hand the launcher the very object the getter returned. A copied name, flag
    or option tuple that drifted would split the memo, and on a device every first
    launch would recompile.
-2. ONE EMISSION PER PLAN AND SHAPE, and none at plan build.
-3. ``get_or_compile`` IS ASKED ON EVERY LAUNCH, through the module attribute, so the
+2. One emission per plan and shape, and none at plan build.
+3. ``get_or_compile`` is asked on every launch, through the module attribute, so the
    route gate's two witnesses -- the proxy installed after import and the memo wrap
    installed after the first launch -- both see every held launch and agree
    (``parity/meep_gpu/gate_dispatch_end_to_end.py:1049-1140``).
-4. THE POLICY STAYS ON THE PER-LAUNCH PATH: a token change after the first launch
+4. The policy stays on the per-launch path: a token change after the first launch
    is a memo miss compiled from the held text.
-5. RESOLVE-ONCE IS OPT-IN AND NARROW: the builders that hold are exactly the pure
+5. Resolve-once is opt-in and narrow: the builders that hold are exactly the pure
    ones, and the off-diagonal weld and the special_kz H->D weld -- whose resolvers
    hand out scratch the launch rotates -- still resolve on every launch, while their
    TEXT is held like everyone else's.
 
-NOTHING HERE COMPILES OR LAUNCHES ANYTHING. ``cupy`` is a stub whose ``RawKernel``
+Nothing here compiles or launches anything. ``cupy`` is a stub whose ``RawKernel``
 records its construction; every emitter is a fake returning a string that depends
 only on its arguments, so the getter and the plan emit equal text exactly when they
 are asked the same question -- which is the question being tested.
@@ -46,7 +46,7 @@ import pytest
 
 from . import compile_cache, fused_pairs
 
-# EVERY MODULE A BUILDER OR CLOSURE IMPORTS LAZILY IS IMPORTED HERE, before any stub
+# Every module a builder or closure imports lazily is imported here, before any stub
 # ``cupy`` exists. A module first imported while the stub sat in ``sys.modules`` would
 # bind it at scope for the rest of the session; the fixture below asserts none was.
 from . import (  # noqa: F401
@@ -353,7 +353,7 @@ def _arm(row_name: str, monkeypatch, stub) -> Dict[str, Any]:
     monkeypatch.setattr(family, row["emitter"], _fake_emitter(counter, row["emitter"]))
     if hasattr(family, "cp"):
         monkeypatch.setattr(family, "cp", stub)
-    # THE PACKAGE MEMO, AS A CUPY HOST BINDS IT. ``complex_fused_magnetic_pair`` and
+    # The package memo, as a CuPy host binds it. ``complex_fused_magnetic_pair`` and
     # ``complex_fused_electric_pair`` import ``complex_pml_kernels`` (CuPy at scope)
     # in the same ``try`` as ``compile_cache``, so on THIS host the block falls to
     # its by-path branch and the getter keys a PRIVATE copy of the memo

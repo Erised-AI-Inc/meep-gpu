@@ -1,6 +1,6 @@
 """The own-cell hoist on the Dcyl COMPLEX fused magnetic pair, read off the emitted text.
 
-WHY A LAPTOP TEST AND NOT A GATE LEG. ``gate_cuda_fused_complex_pairs.py`` carries this
+Why a laptop test and not a gate leg. ``gate_cuda_fused_complex_pairs.py`` carries this
 family's needles and its lift leg; a hoist check added there would drift every
 complex-family weld for a check that needs no device, so the hoist's own claims are asserted
 here instead:
@@ -9,7 +9,7 @@ here instead:
    exactly once, all of them BEFORE the kernel's first store, each behind the certified
    load's own guard: ``f_w`` and the old field behind the component's dsigw flag (the one
    form that reads them), ``fu`` behind its dsigu flag, the flux density unguarded (every
-   curl form reads it) (bit_parity_0_10 DESIGN.md D11);
+   curl form reads it);
 2. the three curl calls and the three constitutive calls take exactly their own component's
    preloaded words, in the certified argument order otherwise;
 3. the three derived helpers are declared once (``pml_apply_reg_pre``, ``fold_apply_reg``,

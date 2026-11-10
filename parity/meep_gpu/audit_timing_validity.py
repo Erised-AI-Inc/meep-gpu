@@ -206,7 +206,8 @@ def audit_meep(pull: str, environment: Dict[str, Any], trace: List[Dict[str, Any
                 "median": median, "recorded": measurement["mcell_steps_per_s"],
                 "spread": (max(per_step) - min(per_step)) / st.median(per_step),
                 "windows": len(items),
-                "pid": bindings[0]["pid"] if bindings else None,
+                # rows written since they leave the machine carry no rank pid
+                "pid": bindings[0].get("pid") if bindings else None,
                 "sockets": dict(first_socket),
                 "cpus_per_rank": dict(collections.Counter(
                     len(b["affinity"]) for b in bindings if b.get("affinity"))),
@@ -223,7 +224,8 @@ def audit_meep(pull: str, environment: Dict[str, Any], trace: List[Dict[str, Any
         median = st.median(medians)
         lines.append(
             f"MEEP {key[0]} {key[1]:>10,} @{key[2]:<3} {key[3]} passes={sorted(passes)} "
-            f"processes={len({passes[p]['pid'] for p in passes})} med={median:.1f} "
+            f"processes={len({passes[p]['pid'] or ('pass', p) for p in passes})} "
+            f"med={median:.1f} "
             f"between={(max(medians) - min(medians)) / median * 100:.1f}% within_max="
             f"{max(passes[p]['spread'] for p in passes) * 100:.1f}% "
             f"recorded_mismatch={max(abs(passes[p]['median'] - passes[p]['recorded']) for p in passes):.2g} "

@@ -1,7 +1,7 @@
 """Can ONE product own ``step_D`` -> ``update_E`` -> ``update_P``, and where must the
 deposit bracket sit inside it?
 
-THE CLAIM THIS PROBE STATES AND MEASURES, off device, before a line of kernel is
+The claim this probe states and measures, off device, before a line of kernel is
 written. A single product occupying THREE driver slots reproduces the driver's own
 pass order byte for byte when, and only when, its work is grouped like this:
 
@@ -32,7 +32,7 @@ and that TWO other groupings a reader would reach for first do NOT:
 BOTH are silent: they compute, they converge, and they are wrong only at the deposit
 cells. That is why they are ARMED HERE rather than reasoned about.
 
-WHAT IS AND IS NOT MODELLED. The fused ``step_D``->``update_E`` launch is modelled by
+What is and is not modelled. The fused ``step_D``->``update_E`` launch is modelled by
 its OWN certified equivalence -- the four driver passes run back to back on an
 uninjected field -- which is what
 ``cuda_dispersive_fused_electric_pair`` / ``cuda_no_pml_dispersive_fused_electric_pair``
@@ -50,17 +50,17 @@ STATE-MAJOR (stepping.py:1427-1428). That the two orders agree is
 each state owns its seven buffers, and within a state the x, y, z sequence is
 preserved -- and here it is a measurement rather than an argument.
 
-WHAT IS COMPARED. Raw uint32 WORDS of every stored volume the span writes -- D, E and
+What is compared. Raw uint32 WORDS of every stored volume the span writes -- D, E and
 ``f_w_E`` where the arm allocates it -- AND every ``P`` and ``P_prev`` buffer of every
 registered susceptibility, over COMPLETE driver steps, against the driver's own order
 run from identical state. Never ``allclose``: ``-0.0 == 0.0`` lies.
 
-THE POLE VOLUMES ARE SEEDED NON-ZERO. Zero is a fixed point of both ``s = s - P`` and
+The pole volumes are seeded non-zero. Zero is a fixed point of both ``s = s - P`` and
 the recurrence's subtraction chain, so a zero fixture turns every pole mutation into a
 silent null and a green sweep would have measured nothing. ``poles_are_live`` is
 asserted per case, and a case that cannot arm its nulls is recorded VACUOUS.
 
-BOTH ARMS ARE SWEPT, with a deposit-carrying configuration on each:
+Both arms are swept, with a deposit-carrying configuration on each:
 
   pml      an ACTIVE layer, ``update_E``'s split-field recurrence, ``f_w_E`` allocated,
            ``REPAIR_PATHS = (SPLIT_FIELD_PATH,)``   -- the 7-row cell
@@ -158,7 +158,7 @@ _NULL_REASONS: Dict[str, str] = {
 # The configurations
 # ---------------------------------------------------------------------------
 #
-# THE FIRST FOUR ARE THE CORPUS SHAPES, read off the stamped census
+# The first four are the corpus shapes, read off the stamped census
 # (results/cuda_predicate_coverage_2026-09-02_stamped): the ten REAL rows the three-slot
 # weld exists for, which are exactly the rows where a D->E product and an E->P product
 # trade the update_E slot one for one.
@@ -171,7 +171,7 @@ CASES: Tuple[Dict[str, Any], ...] = (
     {"label": "corpus_loaddump_2d", "arm": "pml", "cell": (9., 10., 11.),
      "boundaries": ("metallic", "metallic", "periodic"), "symmetry": (("Y", 1),),
      "pml": 2, "arity": (5, 5, 5), "conductivity": None,
-     # ON THE NEAR FILL'S SOURCE ROW: y = 1.0 resolves to stored iy = 2, which IS
+     # On the near fill's source row: y = 1.0 resolves to stored iy = 2, which IS
      # ``stepping.MIRROR_SOURCE_INDEX`` -- the row ``fill_symmetry_bc_D`` reads from.
      # A deposit anywhere else is invisible to ``repair_before_fill``, which is the
      # ordering that shows why the repair sits AFTER the three passes and not before.
@@ -193,7 +193,7 @@ CASES: Tuple[Dict[str, Any], ...] = (
     {"label": "pml_fold_y_odd_wall_z", "arm": "pml", "cell": (9., 10., 11.),
      "boundaries": ("periodic", "periodic", "metallic"), "symmetry": (("Y", -1),),
      "pml": 2, "arity": (3, 2, 2), "conductivity": None,
-     # AN ODD PLANE MAKES Ex, Ez, Hy ODD and leaves Ey EVEN, so the source drives Ey;
+     # An odd plane makes Ex, Ez, Hy ODD and leaves Ey EVEN, so the source drives Ey;
      # y = 1.5 resolves to stored iy = 2 on this grid, the near fill's source row.
      "source_component": "Ey", "source_center": (0.0, 1.5, 0.0),
      "why": "an ODD mirror phase with a wall on the third axis: the deepest cell "
@@ -278,7 +278,7 @@ def build(case: Dict[str, Any]):
         if array is None:
             continue
         array[...] = rng.uniform(-1.0, 1.0, size=shape).astype(np.float32)
-    # THE POLE VOLUMES ARE SEEDED NON-ZERO -- see the module docstring.
+    # The pole volumes are seeded non-zero -- see the module docstring.
     for state in fields.polarizations:
         for store in (state.P, state.P_prev):
             for _component, array in store.items():
@@ -340,7 +340,7 @@ def fused_step_D_to_update_E(fields: Any, pml: Any) -> None:
 
 
 # ---------------------------------------------------------------------------
-# THE THIRD SLOT: update_P, component-major, every driving state fused per component
+# The third slot: update_P, component-major, every driving state fused per component
 # ---------------------------------------------------------------------------
 
 def driving_states(fields: Any, component: str) -> List[Any]:
@@ -405,7 +405,7 @@ def slot_update_P(fields: Any, mutation: str = "") -> int:
     after each group, exactly as ``ade_kernels.update_P_fused_pml_real`` rotates
     between its own per-(state, component) launches.
 
-    EVERY SLOT IS RE-READ INSIDE THE LOOP, after the previous component's rotation.
+    Every slot is re-read inside the loop, after the previous component's rotation.
     ``stale_pole_pointers`` is what happens to a launcher that does not.
     """
     launches = 0
@@ -465,8 +465,8 @@ def weld_step(fields: Any, pml: Any, sources: Sequence[Any], when: float,
               paths: Sequence[str], mutation: str = "") -> Optional[str]:
     """The three-slot composition. Returns a refusal reason, or ``None``.
 
-    The three consults are exactly where the driver puts them, and the ORDER OF THE
-    THREE GROUPS IS THE WHOLE CLAIM: the launch runs uninjected, the repair runs after
+    The three consults are exactly where the driver puts them, and the order of the
+    three groups is the whole claim: the launch runs uninjected, the repair runs after
     the driver's inject/fill/clear, and the polarization advance runs after the repair.
     """
     try:
@@ -494,7 +494,7 @@ def weld_step(fields: Any, pml: Any, sources: Sequence[Any], when: float,
     stepping.fill_folded_far_ghosts_D(fields)
 
     if mutation == "repair_after_p":
-        # THE ORDER THAT MAKES THE REPAIR READ P^(n+1): both repair paths recompute the
+        # The order that makes the repair read P^(n+1): both repair paths recompute the
         # constitutive product through displacement_minus_polarization.
         slot_update_P(fields)
 
@@ -518,7 +518,7 @@ def weld_step(fields: Any, pml: Any, sources: Sequence[Any], when: float,
 def _source_for(grid: Any, case: Dict[str, Any]) -> Any:
     """One electric point source, at the component and centre this case declares.
 
-    THE CENTRE IS A CASE FACT rather than a default, because on a folded grid WHERE
+    The centre is a case fact rather than a default, because on a folded grid WHERE
     the deposit lands decides whether ``repair_before_fill`` can be armed at all: only
     a deposit on stored ``stepping.MIRROR_SOURCE_INDEX`` of the folded axis is imaged
     by ``fill_symmetry_bc_D``, and only an imaged deposit can show that the repair
@@ -531,7 +531,7 @@ def _source_for(grid: Any, case: Dict[str, Any]) -> Any:
 
 
 def _step_times(source: Any, grid: Any, steps: int) -> List[float]:
-    """The times the run injects at, CENTRED ON THE SOURCE'S OWN PEAK.
+    """The times the run injects at, centred on the source's own peak.
 
     A driver's absolute clock is irrelevant here and a naive ``(step + 0.5) * dt``
     is actively misleading: on a fine grid it samples the Gaussian's far tail, the
@@ -575,7 +575,7 @@ def measure(case: Dict[str, Any], steps: int) -> Dict[str, Any]:
         "steps": steps,
         "repair_paths": list(_paths_for(arm)),
     }
-    # THE ARM THIS CASE CLAIMS TO BE ON, CHECKED RATHER THAN ASSUMED: an f_w on the
+    # The arm this case claims to be on, checked rather than assumed: an f_w on the
     # plain arm, or none on the split-field one, would measure a different recurrence.
     expected_fw = (arm == "pml")
     if result["has_f_w"] != expected_fw or active != expected_fw:
@@ -585,7 +585,7 @@ def measure(case: Dict[str, Any], steps: int) -> Dict[str, Any]:
         result["elapsed_s"] = round(time.time() - started, 3)
         return result
 
-    # DOES THE FIXTURE ACTUALLY DEPOSIT, AT THE TIMES THE RUN USES? Every deposit
+    # Does the fixture actually deposit, at the times the run uses? Every deposit
     # ordering below is a null without it, so it is measured at the run's OWN times
     # rather than at a convenient one -- a guard that looked at a different time would
     # certify an arming the run never had.
@@ -640,7 +640,7 @@ def measure(case: Dict[str, Any], steps: int) -> Dict[str, Any]:
     result["nulls"] = nulls
     result["case_is_vacuous"] = len(nulls) == len(MUTATIONS)
 
-    # THE WRONG REPAIR DECLARATION, which must be REFUSED BY NAME rather than
+    # The wrong repair declaration, which must be refused by name rather than
     # mis-repairing: deposit_repair.repairable refuses any recurrence not among the
     # paths its caller declares (deposit_repair.py:630-716).
     wrong_engine, _g, _p = build(case)
@@ -648,7 +648,7 @@ def measure(case: Dict[str, Any], steps: int) -> Dict[str, Any]:
                               _paths_for(arm, wrong=True))
     result["wrong_repair_path"] = {"refused": wrong_refusal}
 
-    # THE LAUNCH COUNT THIS COMPOSITION PREDICTS, counted rather than asserted.
+    # The launch count this composition predicts, counted rather than asserted.
     counter, _g, _p = build(case)
     result["update_P_launches_weld"] = slot_update_P(counter)
     result["update_P_launches_certified_singles"] = sum(

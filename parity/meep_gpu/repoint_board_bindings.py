@@ -14,7 +14,7 @@ first stale binding. Re-pointing them is a RECORDS-TIME step, done once per roun
 host that holds the round's results: this tool measures every binding against the
 round's roots and rewrites the table from that measurement, never by hand.
 
-TRITON (``triton``). For every GATE_BOUND entry the candidates are the same artifact
+Triton (``triton``). For every GATE_BOUND entry the candidates are the same artifact
 tail under each results root of the same base and the round's stamp
 (``<base>_<stamp>`` and ``<base>_<stamp>_<suffix>``; a ``keep_probe/`` tail is also
 looked for as ``keep/``, the probe run retired with the expansion licence). Each
@@ -26,26 +26,36 @@ the board binds one policy per process). Exactly one admissible candidate is CHO
 refuse (the tool never chooses between runs); none leaves the entry UNRESOLVED. An entry
 already naming an admissible artifact of the round is UNCHANGED.
 
-* By default (option A1 of the 1.0 records) any unresolved entry refuses the write:
+* By default any unresolved entry refuses the write:
   every credit is re-earned by a run on the frozen bytes, or the board is not cut.
-* With ``--withhold-unrun`` (option A2) each unresolved entry keeps its pointer and is
+* With ``--withhold-unrun`` each unresolved entry keeps its pointer and is
   named in ``CREDIT_WITHHELD_STALE_BINDING`` (which must be empty, or hold only this
   tool's own entries), so the board files its seam-instances buildable_not_built rather
   than crediting bytes no gate ran.
 
-METAL (``metal``). Every ``"gate", "metal_<gate>_<old stamp>"`` reference moves to
+Metal (``metal``). Every ``"gate", "metal_<gate>_<old stamp>"`` reference moves to
 ``metal_<gate>_<stamp>`` when that run exists, records ``release.released`` true and
 re-hashes to the tree with 0 drift; any reference without such a run refuses the write.
 ``fingerprint`` rows are the ledger's, which the bind rebinds, and are left alone. The
 board's own floor re-checks every binding, and each extra cell against the ledger's live
 run, when it is cut.
 
-A CHUNKED ROUND (``--stamps S1,S2,...``, the stamps ``chunks.py bind`` selected). The
+A chunked round (``--stamps S1,S2,...``, the stamps ``chunks.py bind`` selected). The
 candidates of an entry are gathered under EVERY stamp given, and the rules above apply
 unchanged across them: exactly one admissible candidate is chosen, two refuse, a reference
 already naming one of the stamps is unchanged.
 
-ONE DEVICE PER BOARD. A board credits one run per product, so a re-point REPLACES the run it
+The bind's selection (``--selection FILE``, the record ``chunks.py verify --selection``
+wrote). A unit run again in a later chunk leaves two runs of one gate among the stamps,
+and the bind has already chosen between them: the selection names, per unit, the stamp
+whose run it binds and that run's artifacts. With it, where two runs of one gate are
+found the one whose artifact the selection names is taken (Triton: among the admissible
+candidates; Metal: among the stamps holding the gate's directory), and it is then checked
+like any other run. Where the selection names none of them, or more than one, the entry
+refuses as before. A reference naming a run of the round that the selection did not take
+moves to the one it took.
+
+One device per board. A board credits one run per product, so a re-point REPLACES the run it
 names; a round on a second device (an H200 beside the RTX A6000, an Apple M3 beside the M1
 Max) certifies by the ledger records its bind ADDS, and must not move a board onto its runs.
 So a candidate is admissible only on the device the board's binding ran on: ``--device``
@@ -63,7 +73,8 @@ A second ``--write`` on the same results changes nothing.
 usage (from parity/meep_gpu on the evidence host):
   python repoint_board_bindings.py triton --stamp S [--withhold-unrun] [--write] [--json F]
   python repoint_board_bindings.py metal  --stamp S [--write] [--json F]
-  python repoint_board_bindings.py triton|metal --stamps S1,S2,... [...]    (a chunked round)
+  python repoint_board_bindings.py triton|metal --stamps S1,S2,... [--selection FILE] [...]
+                                              (a chunked round, and the bind's selection)
   ... [--device cc86|applegpu_g13s]          (the device the board's runs are; default: the
                                               device the bound run stamps)
 """
@@ -91,6 +102,9 @@ WITHHELD_ANCHOR = "CREDIT_WITHHELD_STALE_BINDING: Dict[str, str] = {\n"
 #: The prefix of the reason this tool writes for a withheld entry, so a rerun can tell
 #: its own entries from a person's.
 WITHHELD_REASON_LEAD = "RE-POINT PENDING"
+#: The schema of the bind's selection: ``chunks.SELECTION_SCHEMA``, restated so this tool
+#: imports nothing from the round; the test asserts the two equal.
+SELECTION_SCHEMA = "meep_gpu.cert_chunk_selection/1"
 #: A Metal gate reference: ``"gate", "metal_<...>"``, on one line or split after the comma.
 METAL_GATE_REF = re.compile(r'("gate",\s*)"(metal_[A-Za-z0-9_.-]+)"')
 METAL_ANCHOR = "RELEASE_BINDING: Dict[str, Tuple[str, str]] = {\n"
@@ -154,6 +168,29 @@ def metal_device(results: Path, stamp: Optional[str]) -> Optional[str]:
     return value if isinstance(value, str) and value else None
 
 
+def selected_artifacts(path: Path, stamps: Sequence[str]) -> set:
+    """Every artifact (relative to ``results/``) of the runs the bind's selection took.
+
+    Per unit, the selection names one stamp and records each candidate's artifacts; the
+    selected candidate's are kept. A file that is not a selection, or one that took a run
+    under a stamp outside ``stamps``, is refused by name."""
+    selection = _read_json(path)
+    if not isinstance(selection, dict) or selection.get("schema") != SELECTION_SCHEMA:
+        raise SystemExit(f"{path} is not a selection ({SELECTION_SCHEMA})")
+    chosen = selection.get("selected") or {}
+    outside = sorted({stamp for stamp in chosen.values() if stamp not in stamps})
+    if outside:
+        raise SystemExit(f"{path} takes runs under {outside}, which are not among the "
+                         f"stamps given ({list(stamps)})")
+    out = set()
+    for uid, stamp in sorted(chosen.items()):
+        for candidate in ((selection.get("units") or {}).get(uid) or {}).get(
+                "candidates") or ():
+            if candidate.get("stamp") == stamp:
+                out |= set(candidate.get("artifact_sha256") or {})
+    return out
+
+
 def _read_json(path: Path) -> Any:
     try:
         return json.loads(Path(path).read_text(encoding="utf-8"))
@@ -186,13 +223,15 @@ def _policy_names_flush(gate: Mapping[str, Any]) -> bool:
 # ------------------------------------------------------------------------- Triton ----
 def measure_triton(board, stamp: str, gate_bound: Optional[Mapping[str, str]] = None,
                    stamps: Optional[Sequence[str]] = None,
-                   device: Optional[str] = None) -> Dict[str, Any]:
+                   device: Optional[str] = None,
+                   selected: Optional[set] = None) -> Dict[str, Any]:
     """Every GATE_BOUND entry against the round's roots: candidates, the choice, why.
 
     ``stamps`` (a chunked round's chunk stamps) gathers the candidates under every one;
     ``stamp`` is then only the label the note and the withheld reason carry. ``device``
     (default: the device the bound run stamps) is the only device a candidate may have run
-    on."""
+    on. ``selected`` (:func:`selected_artifacts`) narrows two admissible candidates to the
+    one the bind's selection took."""
     stamps = list(stamps or [stamp])
     gate_bound = dict(board.GATE_BOUND if gate_bound is None else gate_bound)
     results = Path(board.RESULTS)
@@ -226,10 +265,14 @@ def measure_triton(board, stamp: str, gate_bound: Optional[Mapping[str, str]] = 
                        or _other_device(ran_on, bound_on))
                 candidates.append({
                     "artifact": relative, "admissible": why is None, "why_not": why,
-                    "device": ran_on,
+                    "device": ran_on, "selected": (None if selected is None else
+                                                   f"{root}/{t}" in selected),
                     "files_checked": len(check["recorded"]), "files_moved": len(check["moved"]),
                     "sha256": hashlib.sha256((results / root / t).read_bytes()).hexdigest()})
         admissible = [c["artifact"] for c in candidates if c["admissible"]]
+        if selected is not None and len(admissible) > 1:
+            taken = [c["artifact"] for c in candidates if c["admissible"] and c["selected"]]
+            admissible = taken or admissible
         if current in admissible:
             state, chosen = "unchanged", current
         elif len(admissible) == 1:
@@ -284,7 +327,10 @@ def rewrite_triton(text: str, measured: Mapping[str, Any], *, withhold: bool,
     unresolved = sorted(f for f, r in rows.items() if r["state"] == "unresolved")
     if ambiguous:
         raise SystemExit(f"refusing: more than one admissible run for {ambiguous}; the tool "
-                         f"never chooses between runs")
+                         f"never chooses between runs, and "
+                         + ("the bind's selection takes none or several of them"
+                            if measured.get("selection") else
+                            "no selection was given (--selection)"))
     if unresolved and not withhold:
         raise SystemExit(f"refusing: {len(unresolved)} of {len(rows)} entries have no "
                          f"admissible run of the round ({unresolved}); run their gates on "
@@ -325,7 +371,7 @@ def rewrite_triton(text: str, measured: Mapping[str, Any], *, withhold: bool,
     old_roots = sorted({old.split("/")[1] for old, _new in moves.values()})
     new_roots = sorted({new.split("/")[1] for _old, new in moves.values()})
     paragraphs = [
-        f"REPOINTED {today or datetime.date.today().isoformat()} TO THE RUNS OF ROUND "
+        f"REPOINTED {today or datetime.date.today().isoformat()} to the runs of round "
         f"``{stamp}``" + (f" (tree ``{tree[:8]}``)" if tree else "") + f", by "
         f"``repoint_board_bindings.py triton`` from the measured binding table, never by "
         f"hand: {len(moves)} of {len(rows)} entries moved from {len(old_roots)} root(s) to "
@@ -359,14 +405,19 @@ def verify_triton(text: str, measured: Mapping[str, Any], withheld: Sequence[str
 # -------------------------------------------------------------------------- Metal ----
 def measure_metal(text: str, results: Path, stamp: str, api: Path,
                   stamps: Optional[Sequence[str]] = None,
-                  device: Optional[str] = None) -> Dict[str, Any]:
+                  device: Optional[str] = None,
+                  selected: Optional[set] = None) -> Dict[str, Any]:
     """Every ``"gate", "metal_..."`` reference against the round's run of that gate.
 
     ``stamps`` (a chunked round's chunk stamps): the run is the one stamp holding the gate's
-    directory; under two, the reference is unresolved (the tool never chooses between
-    runs); ``stamp`` is then only the label the note carries. ``device`` (default: the
+    directory; under two, the run is the one whose directory the bind's selection took
+    (``selected``, :func:`selected_artifacts`), and with no selection, or one that takes
+    neither or both, the reference is unresolved (the tool never chooses between runs);
+    ``stamp`` is then only the label the note carries. ``device`` (default: the
     architecture the bound run's stamp records) is the only device the run may have run
     on."""
+    taken_dirs = (None if selected is None else
+                  {artifact.split("/", 1)[0] for artifact in selected})
     stamps = list(stamps or [stamp])
     refs = [m.group(2) for m in METAL_GATE_REF.finditer(text)]
     rows: Dict[str, Any] = {}
@@ -379,6 +430,11 @@ def measure_metal(text: str, results: Path, stamp: str, api: Path,
                          "why_not": "an undated directory name: no stamp to move"}
             continue
         holding = [s for s in stamps if (results / f"{base}_{s}").is_dir()]
+        taken = ([s for s in holding if f"{base}_{s}" in taken_dirs]
+                 if taken_dirs is not None and len(holding) > 1 else [])
+        moving = len(taken) == 1 and taken != [old]
+        if len(taken) == 1:
+            holding = taken
         bound_on = device or metal_device(results, old)
         new_name = f"{base}_{holding[0] if len(holding) == 1 else stamps[0]}"
         new_key = f"{new_name}/{artifact_name}" if key.endswith(".json") else new_name
@@ -386,11 +442,14 @@ def measure_metal(text: str, results: Path, stamp: str, api: Path,
         why = None
         moved: List[str] = []
         checked = 0
-        if old in stamps:
+        if old in stamps and not moving:
             state = "unchanged"
         elif len(holding) > 1:
             state, why = "unresolved", (f"{base}_<stamp> exists under {len(holding)} of the "
-                                        f"stamps given ({holding}): two runs of one gate")
+                                        f"stamps given ({holding}): two runs of one gate, "
+                                        + ("and the bind's selection takes none or both"
+                                           if taken_dirs is not None else
+                                           "and no selection was given (--selection)"))
         elif not artifact.is_file():
             state, why = "unresolved", f"{artifact.relative_to(results.parent)} does not exist"
         else:
@@ -495,9 +554,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                     help="the device the board's runs are (cc86; applegpu_g13s); default: "
                          "the device the bound run stamps. A run of another device is "
                          "refused")
+    ap.add_argument("--selection", default=None, metavar="FILE",
+                    help="a chunked round: the selection chunks.py verify --selection "
+                         "wrote; where a gate has two runs among the stamps, the one it "
+                         "took is the candidate")
     ap.add_argument("--withhold-unrun", action="store_true",
                     help="triton only: withhold the entries with no run of the round by "
-                         "name instead of refusing (option A2)")
+                         "name instead of refusing")
     ap.add_argument("--write", action="store_true", help="rewrite the board's table")
     ap.add_argument("--json", default=None, help="write the measured table here")
     args = ap.parse_args(argv)
@@ -510,19 +573,23 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if len(set(stamps)) != len(stamps):
         ap.error(f"--stamps names a stamp twice: {stamps}")
     args.stamp = ",".join(stamps)
+    selected = (selected_artifacts(Path(args.selection), stamps) if args.selection
+                else None)
     sys.path[:0] = [str(HERE.parents[1]), str(HERE)]
     tree = _git(HERE.parents[1], "rev-parse", "HEAD^{tree}")
     if args.board == "triton":
         import build_triton_fusion_matrix as board  # noqa: PLC0415
         builder = Path(board.__file__).resolve()
-        measured = measure_triton(board, args.stamp, stamps=stamps, device=args.device)
+        measured = measure_triton(board, args.stamp, stamps=stamps, device=args.device,
+                                  selected=selected)
         _print_triton(measured)
     else:
         builder = HERE / "build_fusion_matrix.py"
         measured = measure_metal(builder.read_text(encoding="utf-8"), HERE / "results",
                                  args.stamp, HERE.parents[1], stamps=stamps,
-                                 device=args.device)
+                                 device=args.device, selected=selected)
         _print_metal(measured)
+    measured["selection"] = args.selection
     measured["builder"] = str(builder)
     measured["builder_sha256_before"] = hashlib.sha256(builder.read_bytes()).hexdigest()
     before = builder.read_text(encoding="utf-8")

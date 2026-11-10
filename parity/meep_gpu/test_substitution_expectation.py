@@ -1,6 +1,6 @@
 """What the route gate expects a fused unit to SAVE, and why the shape is declared.
 
-THE QUESTION THIS FILE EXISTS FOR: ``expected_substitution`` decides every dispatch
+The question this file exists for: ``expected_substitution`` decides every dispatch
 case's ``EXACT`` verdict -- a measured drop that misses it reads
 ``DROPPED-BUT-NOT-EXACT`` and the case fails -- and until 2026-09-14 it had NO test
 of its own. The only three references to it in the tree were inside the gate that
@@ -49,7 +49,7 @@ def test_a_component_major_triple_saves_one_more_because_its_tail_launches_nothi
 
 
 def test_the_declared_term_moves_only_the_rows_that_declare_it():
-    """AN ADDITIVE TERM, AND THE POINT IS THAT EVERY OTHER ROW IS UNTOUCHED.
+    """An additive term, and the point is that every other row is untouched.
 
     The drive tables are shared across backends and the formula has no per-row
     override path, so a term that changed an undeclared row's expectation would
@@ -74,7 +74,7 @@ def test_tail_in_leading_is_meaningless_without_a_triple():
 
 
 def test_the_complex_no_pml_row_expects_what_the_device_measured():
-    """THE ROW THIS TERM WAS ADDED FOR, pinned against the run rather than the
+    """The row this term was added for, pinned against the run rather than the
     reasoning: the GPU host 2026-09-14, unfused 6.0 launches a step against fused 4.0."""
     spec = route_gate.DRIVE_CUDA["complex_no_pml_3d"]
     assert spec.get("triple") and spec.get("tail_in_leading")
@@ -93,11 +93,11 @@ def test_poles_still_scale_the_drop_on_both_triple_shapes():
 
 
 def test_the_pending_rung_classifier_names_every_pending_sub_step_arm():
-    """THE RUNG NO ROUTE CASE REACHES ANY MORE, kept from going stale on the host.
+    """The rung no route case reaches any more, kept from going stale on the host.
 
     ``FOLD_REFUSAL_RUNGS``'s ``pending-device-gate`` needle was read off the text the
-    ladder returned for ``folded_complex_offdiag_2d`` on 2026-09-15. The 2026-09-15
-    ruling certified that case's update_E arm, so from that batch no Triton DRIVE
+    ladder returned for ``folded_complex_offdiag_2d`` on 2026-09-15. A certification the
+    same day covered that case's update_E arm, so from then on no Triton DRIVE
     case refuses on this rung and nothing on a device would notice a pending reason
     reworded past the needle -- a reason the classifier no longer recognises reads
     REFUSAL-CHANGED on the first case that meets it, which is the failure this table
@@ -134,7 +134,7 @@ def _withheld(monkeypatch):
 
 
 def test_a_wholly_absorbed_triple_costs_its_own_four_launches_whatever_the_poles():
-    """THE ARITHMETIC IS THE ABSORBED-SLOT BRANCH'S, with update_P's real cost.
+    """The arithmetic is the absorbed-slot branch's, with update_P's real cost.
 
     Against the drive row's baseline (one launch per curl or constitutive slot, 3P
     for update_P) a separate-tail triple the Triton-less veto leg left WHOLLY on the
@@ -215,7 +215,7 @@ def test_the_waiver_is_the_triton_less_legs_only(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# Companion launches: the Dcyl pairs' radial scan (series entry 76-KC8)
+# Companion launches: the Dcyl pairs' radial scan (the CUDA cylindrical per-chunk forms)
 # ---------------------------------------------------------------------------
 
 _CYLINDRICAL_CUDA_ROWS = ("cylindrical", "cylindrical_m0_complex", "cylindrical_mneg1",

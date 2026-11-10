@@ -9,8 +9,9 @@ and it is what keeps the device legs meaningful between device runs:
   reference on every planted case, which is what the planted rows require;
 * **every source mutation lands**: each needle is present exactly once in the source
   it is armed on (both gates), the grouping row plants the package's previous
-  pairwise bracket (KERNELS.md §7.1), and each absent-partner row has a declared-null
-  twin on a grid where the planted arm never runs.
+  pairwise bracket (docs/development/certification.md#inverted-grouping-mutations), and
+  each absent-partner row has a declared-null twin on a grid where the planted arm
+  never runs.
 
 Each check runs in a child process with torch made unimportable: the host legs are
 torch-free, and the gates' own environment defaults stay out of this session.

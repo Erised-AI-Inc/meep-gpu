@@ -1,6 +1,6 @@
 """A behavioural fingerprint of the array path, recorded in every kernel ledger.
 
-WHAT THIS IS. Every kernel table is certified against the array path: a gate passes when
+What this is. Every kernel table is certified against the array path: a gate passes when
 the kernel returns the same float32 words as ``stepping`` on the same state. The kernel
 ledgers bind the bytes of the KERNEL sources, and only a handful of their entries bind an
 array-path module at all, so an arithmetic change to the array path leaves almost every
@@ -18,7 +18,7 @@ float32 words a fixed, seeded fixture set produces when the array path steps it.
   count (:data:`DECLARED_FORM_CLASSES`), so a fixture that stops reaching a form refuses by
   name instead of shrinking the tripwire.
 
-WHAT THE FIXTURE AVOIDS, so that the fingerprint is a property of the array path and not
+What the fixture avoids, so that the fingerprint is a property of the array path and not
 of the host that computed it:
 
 * No transcendental function while the array path steps. :func:`run` replaces every
@@ -46,7 +46,7 @@ of the host that computed it:
 * No subnormal flush. :func:`run` measures the host FPU, drives it to keep when it is
   flushing, refuses by name when that does not hold, and restores the entry state.
 
-THE READER IS EXCLUDED (``get_array``, ``get_field``, the point reader): no kernel
+The reader is excluded (``get_array``, ``get_field``, the point reader): no kernel
 transcribes it. DFT and flux monitors are excluded for the same reason.
 
 Provenance is reported and never judged: :func:`provenance_code_sha256` records the
@@ -116,7 +116,7 @@ LORENTZ_ANGULAR = 3.0
 DRUDE_ANGULAR = 2.0
 
 #: The array-path modules whose code identity is reported beside the fingerprint.
-#: ``meep_gpu/chunk_map.py`` does not exist before the chunk-map work package lands; a
+#: ``meep_gpu/chunk_map.py`` does not exist in trees older than the chunk map; a
 #: module that is absent is listed under ``provenance_absent`` rather than refused.
 PROVENANCE_MODULES: Tuple[str, ...] = (
     "meep_gpu/stepping.py", "meep_gpu/chunk_map.py", "meep_gpu/sources.py",
@@ -478,7 +478,7 @@ CASES: Tuple[CaseSpec, ...] = (
 def _declared() -> Tuple[str, ...]:
     """The form classes every mint must reach, written out per case.
 
-    STATIC ON PURPOSE: derived from nothing a case builds, so a case that stops reaching a
+    Static on purpose: derived from nothing a case builds, so a case that stops reaching a
     form leaves its class declared and counted zero, and the mint refuses by name.
     """
     out: List[str] = []

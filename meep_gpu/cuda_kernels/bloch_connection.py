@@ -8,7 +8,7 @@ copy, a negation or the unfused product by ``part_products.connect_parts``' rule
 the fused products' predicates resolve the same tables before they admit a run
 (``complex_offdiag_update_e.bloch_connection_table``).
 
-WHY THIS IS A MODULE OF ITS OWN. The two functions are host arithmetic over NumPy
+Why this is a module of its own. The two functions are host arithmetic over NumPy
 scalars, but they lived in ``complex_pml_kernels``, which imports CuPy at module scope
 for its compiled kernels. A predicate clause that resolved the table there raised
 ``ModuleNotFoundError: No module named 'cupy'`` on a host without CuPy, and the
@@ -79,7 +79,7 @@ def bloch_phase_arguments(grid: Any, backward: bool
     * the kind and the parts are :func:`connection_of`'s: a copy, a negation, or the
       unfused product with the phase rounded to float32 parts.
 
-    A PHASED AXIS MUST RESOLVE PERIODIC. ``stepping._bloch_phases`` raises on the pairing
+    A phased axis must resolve periodic. ``stepping._bloch_phases`` raises on the pairing
     and the predicate refuses it; this raises too, so a caller who skips the predicate is
     refused loudly rather than handed a mis-bound kind. A PML on a phased axis is ADMITTED:
     MEEP makes the axis periodic and the layer is a material under the wrap.

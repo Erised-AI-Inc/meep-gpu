@@ -101,7 +101,7 @@ MUTATIONS: dict[str, tuple] = {
     # per-point reader on any refusal, and an installed 1/x can hide a one-ulp read error.
     # So each of these is judged by test_from_meep_bulk_chi1inv.py, which compares the
     # READ words with fields::get_chi1inv at every point, plants a word for the self-check
-    # to find, and lifts off the listed builds.
+    # to find, and lifts as a certified and as an uncertified build.
     #
     # Three more readings were measured EQUIVALENT and are deliberately not mutations here
     # (each survived the pin test on all six of its cells, and none changes a read word):
@@ -134,9 +134,107 @@ MUTATIONS: dict[str, tuple] = {
         "    for position in points[:0]:  # mutation\n        location = ivec(*(indices[axis][position[axis]] for axis in range(3)))\n        answers",
         "", "meep_gpu/from_meep.py", ("meep_gpu/test_from_meep_bulk_chi1inv.py",),
     ),
-    "bulk_chi1inv_taken_on_an_unlisted_build": (
-        "    elif _bulk_read is None and stamp not in BULK_CHI1INV_BUILDS:",
-        "    elif False:  # mutation",
+    # Supported is not certified (fast by default): the bulk read runs on every build, the
+    # list names the certified ones, the hardware scope refuses by name, and the record and
+    # the NOTE line say which. One mutation per branch.
+    "bulk_chi1inv_refused_on_an_uncertified_build": (
+        "    elif admission is not None:\n        chunk_table, bulk_refusal = None, admission",
+        "    elif admission is not None or (_bulk_read is None and not certified_build):  # mutation\n        chunk_table, bulk_refusal = None, admission or \"the 1.0 gate\"",
+        "", "meep_gpu/from_meep.py", ("meep_gpu/test_from_meep_bulk_chi1inv.py",),
+    ),
+    "bulk_chi1inv_record_says_certified": (
+        "\"stamp\": stamp, \"certified_build\": certified_build,",
+        "\"stamp\": stamp, \"certified_build\": True,  # mutation\n             ",
+        "", "meep_gpu/from_meep.py", ("meep_gpu/test_from_meep_bulk_chi1inv.py",),
+    ),
+    "bulk_chi1inv_certified_scope_ignored": (
+        "    if scope == fastpath.HARDWARE_CERTIFIED and stamp not in CERTIFIED_CHI1INV_BUILDS:",
+        "    if False:  # mutation",
+        "", "meep_gpu/from_meep.py", ("meep_gpu/test_from_meep_bulk_chi1inv.py",),
+    ),
+    "bulk_chi1inv_certified_scope_refuses_a_certified_build": (
+        "    if scope == fastpath.HARDWARE_CERTIFIED and stamp not in CERTIFIED_CHI1INV_BUILDS:",
+        "    if scope == fastpath.HARDWARE_CERTIFIED:  # mutation",
+        "", "meep_gpu/from_meep.py", ("meep_gpu/test_from_meep_bulk_chi1inv.py",),
+    ),
+    "bulk_chi1inv_unaccepted_scope_admitted": (
+        "    if scope is None:\n        return (",
+        "    if False:  # mutation\n        return (",
+        "", "meep_gpu/from_meep.py", ("meep_gpu/test_from_meep_bulk_chi1inv.py",),
+    ),
+    "bulk_chi1inv_unaccepted_scope_refused_only_off_the_list": (
+        "    if scope is None:\n        return (",
+        "    if scope is None and stamp not in CERTIFIED_CHI1INV_BUILDS:  # mutation\n        return (",
+        "", "meep_gpu/from_meep.py", ("meep_gpu/test_from_meep_bulk_chi1inv.py",),
+    ),
+    "bulk_chi1inv_dense_check_never_taken": (
+        "                    certified=certified_build)",
+        "                    certified=True)  # mutation",
+        "", "meep_gpu/from_meep.py", ("meep_gpu/test_from_meep_bulk_chi1inv.py",),
+    ),
+    "bulk_chi1inv_dense_check_on_a_certified_build": (
+        "                    certified=certified_build)",
+        "                    certified=False)  # mutation",
+        "", "meep_gpu/from_meep.py", ("meep_gpu/test_from_meep_bulk_chi1inv.py",),
+    ),
+    "bulk_chi1inv_fill_drops_the_certified_flag": (
+        "                                       values, coupling, blocks, pending, certified=certified)",
+        "                                       values, coupling, blocks, pending, certified=True)  # mutation",
+        "", "meep_gpu/from_meep.py", ("meep_gpu/test_from_meep_bulk_chi1inv.py",),
+    ),
+    "bulk_chi1inv_certified_plan_densified": (
+        "    if certified:\n        return plan",
+        "    if certified and False:  # mutation\n        return plan",
+        "", "meep_gpu/from_meep.py", ("meep_gpu/test_from_meep_bulk_chi1inv.py",),
+    ),
+    "bulk_chi1inv_dense_corners_reduced_to_two": (
+        "        locals_ = ([(0, 0, 0), (-1, -1, -1)] if certified else _chi1inv_block_corners(select))",
+        "        locals_ = [(0, 0, 0), (-1, -1, -1)]  # mutation",
+        "", "meep_gpu/from_meep.py", ("meep_gpu/test_from_meep_bulk_chi1inv.py",),
+    ),
+    "bulk_chi1inv_dense_edges_dropped": (
+        "            add(\"edges\", position(select, local))",
+        "            pass  # mutation",
+        "", "meep_gpu/from_meep.py", ("meep_gpu/test_from_meep_bulk_chi1inv.py",),
+    ),
+    "bulk_chi1inv_dense_edge_ends_skipped": (
+        "        steps = sorted({1 + (k * (interior - 1)) // max(count - 1, 1) for k in range(count)})",
+        "        steps = sorted({1 + (k * (interior - 1)) // max(count - 1, 1) for k in range(count)})[1:-1]  # mutation",
+        "", "meep_gpu/from_meep.py", ("meep_gpu/test_from_meep_bulk_chi1inv.py",),
+    ),
+    "bulk_chi1inv_dense_edge_stride_coarsened": (
+        "        count = min(interior, _DENSE_EDGE_POINTS)",
+        "        count = min(interior, 2)  # mutation",
+        "", "meep_gpu/from_meep.py", ("meep_gpu/test_from_meep_bulk_chi1inv.py",),
+    ),
+    "bulk_chi1inv_dense_block_samples_dropped": (
+        "            add(\"block_samples\", position(select, numpy.unravel_index(int(flat_local), shape)))",
+        "            pass  # mutation",
+        "", "meep_gpu/from_meep.py", ("meep_gpu/test_from_meep_bulk_chi1inv.py",),
+    ),
+    "bulk_chi1inv_dense_owns_asked_at_one_corner": (
+        "        if not (chunk.volume.owns(location) and table.user.volume.owns(location)):",
+        "        if local == (0, 0, 0) and not (chunk.volume.owns(location) and table.user.volume.owns(location)):  # mutation",
+        "", "meep_gpu/from_meep.py", ("meep_gpu/test_from_meep_bulk_chi1inv.py",),
+    ),
+    "bulk_chi1inv_note_never_printed": (
+        "    if record[\"path\"] == \"bulk\" and not certified_build:\n        _announce_chi1inv_uncertified(stamp)",
+        "    if False:  # mutation\n        _announce_chi1inv_uncertified(stamp)",
+        "", "meep_gpu/from_meep.py", ("meep_gpu/test_from_meep_bulk_chi1inv.py",),
+    ),
+    "bulk_chi1inv_note_printed_on_a_certified_build": (
+        "    if record[\"path\"] == \"bulk\" and not certified_build:\n        _announce_chi1inv_uncertified(stamp)",
+        "    if record[\"path\"] == \"bulk\":  # mutation\n        _announce_chi1inv_uncertified(stamp)",
+        "", "meep_gpu/from_meep.py", ("meep_gpu/test_from_meep_bulk_chi1inv.py",),
+    ),
+    "bulk_chi1inv_note_printed_on_every_lift": (
+        "    if line in _CHI1INV_NOTES_ANNOUNCED:\n        return",
+        "    if False:  # mutation\n        return",
+        "", "meep_gpu/from_meep.py", ("meep_gpu/test_from_meep_bulk_chi1inv.py",),
+    ),
+    "bulk_chi1inv_self_check_total_not_recorded": (
+        "    record[\"self_checked_points\"] = sum(int(report.get(\"self_checked_points\", 0))",
+        "    record[\"self_checked_points\"] = 0 * sum(int(report.get(\"self_checked_points\", 0))",
         "", "meep_gpu/from_meep.py", ("meep_gpu/test_from_meep_bulk_chi1inv.py",),
     ),
     "bulk_chi1inv_restart_progress_starts_again": (
@@ -157,7 +255,7 @@ MUTATIONS: dict[str, tuple] = {
     ),
     # --- the tensor stencil itself, in stepping.py ---------------------------------
     # The "stable averaging" pairs each two-point partner average with the
-    # coefficient AT ITS OWN NODE (u at i and i+s); collapsing that to a plain
+    # coefficient at its own node (u at i and i+s); collapsing that to a plain
     # four-point field average times u[i] is identical arithmetic wherever the
     # coefficient is uniform — the uniform-tensor oracles cannot see it — and
     # wrong exactly on the material interfaces the coefficient exists for.
@@ -573,7 +671,7 @@ MUTATIONS: dict[str, tuple] = {
     # ghost row is invisible to every lift parity case (2.37e-07 restored, against a
     # parity of 2.2-3.9e-07 on eigenmode_source_waveguide_folded). It is pinned on the
     # stored rows, the state the kernel tables are certified against.
-    # ANCHOR REPAIRED 2026-09-07. It had matched 0x since the dispatch round put
+    # ANCHOR REPAIRED 2026-09-07. It had matched 0x since the dispatch change put
     # `fill_symmetry_bc_B` behind a `fill_B` consult and a comment block between
     # the injection and the fill, so this mutation was never applied and the
     # defect it pins was untested while its entry still read as live coverage.
@@ -638,7 +736,7 @@ MUTATIONS: dict[str, tuple] = {
     # reach -- the seam row of a source spanning a periodic axis -- is deposited twice and
     # rounds twice (step.cpp:309-314). Binding the source's summed table instead restores
     # the one-deposit seam the package shipped: one ulp on the seam row of every corpus row
-    # whose source spans a periodic axis (AP8a's dry run, the AP6g rows, and on a
+    # whose source spans a periodic axis (the corpus Tier C dry run, the source rows, and on a
     # mirror-folded periodic axis the far-ghost family's: ex.metasurface_lens,
     # ex.binary_grating_phasemap, ex.diffracted_planewave, ex.chirped_pulse,
     # test_mode_decomposition's test_grating_3d, test_diffracted_planewave and three
@@ -651,7 +749,7 @@ MUTATIONS: dict[str, tuple] = {
         Path("meep_gpu/sources.py"),
         ("meep_gpu/test_source_deposit.py", "meep_gpu/test_deposit_repair.py"),
     ),
-    # THE ODD-COUNT TOP CELL. A folded PERIODIC axis stores MEEP's num + 1 slots
+    # The odd-count top cell. A folded PERIODIC axis stores MEEP's num + 1 slots
     # (vec.cpp:293-296) at BOTH parities: the top shift-0 sample sits AT
     # `big_corner` and `owns` includes it (vec.cpp:445-462). This mutation restores
     # the rule that only an EVEN count stored it, which leaves the odd count's
@@ -763,8 +861,8 @@ MUTATIONS: dict[str, tuple] = {
     # 7.5444e-07), and the live half of it is pinned by
     # `cylindrical_m2_zeroing_missing_bp` above.
     # --- mp.metal: MEEP's -1e20 permittivity sentinel, carried through unchanged -----
-    # THE SUBTLEST CHOICE in the PEC work, and it is a choice about WHAT NUMBER TO
-    # INSTALL rather than about a code path. MEEP has no PEC update for a material
+    # The subtlest choice in the PEC work, and it is a choice about what number to
+    # install rather than about a code path. MEEP has no PEC update for a material
     # metal: mp.metal is an ordinary MEDIUM whose epsilon is -1e20, inverted by the
     # ordinary sym_matrix_invert branch (meepgeom.cpp:785-796) to chi1inv = -1e-20, and
     # the ordinary E = (D - sum P) * inv_eps drives E to ~0 with it. Substituting the
@@ -778,7 +876,7 @@ MUTATIONS: dict[str, tuple] = {
         "  # mutation",
         "pec_",
     ),
-    # THE OTHER WAY TO GET IT WRONG, and the one a reviewer would wave through: relax
+    # The other way to get it wrong, and the one a reviewer would wave through: relax
     # the permittivity validators for "a negative epsilon" instead of for MEEP's
     # sentinel by name. An epsilon of -3 is not a conductor, it has no stable leapfrog
     # at any Courant factor, and admitting it turns a named refusal into a silently
@@ -819,7 +917,7 @@ MUTATIONS: dict[str, tuple] = {
     # -> step_generic.cpp:335-533), run by this engine as MEEP runs it: after the curl
     # of the same component, on the operands the stencil already gathered, through its
     # own ladder. Every mutation below leaves a stable, smooth, complete run that is
-    # simply at the WRONG INCIDENCE ANGLE — which is the whole hazard: a BFAST run
+    # simply at the wrong incidence angle — which is the whole hazard: a BFAST run
     # degraded in any of these ways looks exactly like a working one.
     #
     # The Cartesian gate is gone (BFAST steps now); what this anchor still guards is
@@ -833,7 +931,7 @@ MUTATIONS: dict[str, tuple] = {
         Path("meep_gpu/from_meep.py"),
         ("meep_gpu/test_from_meep.py",),
     ),
-    # THE PRE-2026-08-04 BLIND SPOT, restored where it now lives: the gate accepts the
+    # The pre-2026-08-04 blind spot, restored where it now lives: the gate accepts the
     # run and the lift silently forgets the k, so the ordinary update equations step a
     # question they were not asked. Measured: 1.53e+00 from CPU MEEP on the
     # bfast_fixed_angle case, against its 2.33e-06 parity — and MEEP's OWN
@@ -849,7 +947,7 @@ MUTATIONS: dict[str, tuple] = {
         Path("meep_gpu/from_meep.py"),
         ("meep_gpu/test_from_meep.py",),
     ),
-    # THE SUBTLEST CHOICE IN THE PASS. step_db.cpp:129-136 indexes each k by the OTHER
+    # The subtlest choice in the pass. step_db.cpp:129-136 indexes each k by the OTHER
     # partner's own direction — `k1 = bfast_scaled_k[component_index(c_m)]` multiplies
     # g1 = f_p — and MEEP annotated both lines in place ("puts k1 in direction of g2")
     # precisely because the pairing reads backwards. Interchanging them transposes the
@@ -995,7 +1093,7 @@ MUTATIONS: dict[str, tuple] = {
         "        sampled_volume = volumes[name]",
         "structured_nonvacuum_background",
     ),
-    # THE SECOND CONSUMER of the same exclusion, and the subtlest choice in it: the
+    # The second consumer of the same exclusion, and the subtlest choice in it: the
     # bulk cross-check classifies and compares `stacked[0]` — Ex — so the mask it is
     # given must be the UNION over the three components, not Ex's own. On the
     # oblique-waveguide class (a rotated block crossing the low-x wall) the one cell
@@ -1049,7 +1147,7 @@ MUTATIONS: dict[str, tuple] = {
         "keeps_its_teeth",
     ),
     # --- materials: a MaterialGrid, and the three things its endpoints cannot say -----
-    # THE SUBTLEST OF THE THREE, and the one that is wrong in the direction nobody looks:
+    # The subtlest of the three, and the one that is wrong in the direction nobody looks:
     # MEEP DISCARDS mu / chi2 / chi3 / B_conductivity declared on a grid endpoint
     # (md->medium is default-constructed, material_data.cpp:47-50, and only
     # E_susceptibilities are merged into it, typemap_utils.cpp:528-547), while
@@ -1065,7 +1163,7 @@ MUTATIONS: dict[str, tuple] = {
     ),
     # --- the per-point D_conductivity read ---------------------------------------
     #
-    # THE SUBTLEST CHOICE IN THE PACKAGE'S MATERIAL PATH, and the one this battery is
+    # The subtlest choice in the package's material path, and the one this battery is
     # here for: sigma_D is recovered from the **D row** of chi1inv at a **NONZERO**
     # frequency. Both halves of that sentence have an obvious, plausible, wrong
     # alternative, and each alternative produces a complete, smooth, absorbing run.
@@ -1096,7 +1194,7 @@ MUTATIONS: dict[str, tuple] = {
         "structured_conductivity or material_grid_damping",
     ),
     # MEEP's conductivity[c][d] is the material value with each absorber face's ramp
-    # ALREADY ADDED INTO IT (geom_epsilon::conductivity, meepgeom.cpp:1596-1625). The
+    # already added into it (geom_epsilon::conductivity, meepgeom.cpp:1596-1625). The
     # driver's own composition would add it a second time — the naive "install what you
     # read" — for a stable, smooth, MORE absorbing run. Measured 6.0919e-02 against
     # 2.2353e-07.
@@ -1213,13 +1311,13 @@ MUTATIONS: dict[str, tuple] = {
     # grades the PML underneath). Deleted rather than re-anchored — there is no
     # refusal left to delete — and the behaviour it guarded is covered by the
     # `bloch_on_pml_axis` parity case, whose no-x-absorber control sits at 1.4e-01.
-    # --- mp.Absorber: a graded D AND B conductivity, not a matched layer ----------
+    # --- mp.Absorber: a graded D and B conductivity, not a matched layer ----------
     # The four ways to build one that still absorbs, still runs, and still looks like a
     # field. Their measured separations from CPU MEEP, against a 1.9e-07 .. 4.0e-07
     # floor: substituting a PML 2.97e-01, dropping the magnetic half 1.62e-01, sharing
     # one sigma volume across the six components 6.33e-02, and the seam rule below.
     "absorber_seam_takes_its_own_sigma": (
-        # THE SUBTLEST CHOICE IN THE FAMILY. MEEP's little_owned_corner0(c) =
+        # The subtlest choice in the family. MEEP's little_owned_corner0(c) =
         # little_corner + 2 - iyee_shift(c) (vec.hpp:1102-1104) means an INTEGER
         # component's index 0 is never stepped on a wrapping axis — step_boundaries
         # fills it from the owned copy at index N, one lattice vector up — so the seam's
@@ -1253,7 +1351,7 @@ MUTATIONS: dict[str, tuple] = {
     # Two mutations, because the two things that can go wrong here are independent and
     # each one produces a complete, smooth, plausible field.
     "b_conductivity_composed_as_a_precedence": (
-        # THE SUBTLEST CHOICE IN PHASE 0, and the one no earlier test could see. MEEP
+        # The subtlest choice here, and the one no earlier test could see. MEEP
         # ADDS the absorber face's profile onto the material's own get_cnd value —
         # "isotropically, for both magnetic and electric conductivity", MEEP's own
         # comment at meepgeom.cpp:1596-1600. "The medium's own declaration wins where it
@@ -1431,7 +1529,7 @@ MUTATIONS: dict[str, tuple] = {
     # (directionality matched at 6.17:1 vs 6.15:1 with the FIELD uncorrelated at
     # 0.9996), so the kill must come from the full-volume parity, not a ratio.
     #
-    # ONE MUTATION PER POLARIZATION, because each drives a different pair of the four
+    # One mutation per polarization, because each drives a different pair of the four
     # sheets: the Hz-sheet flip SURVIVED the TM-only battery (the TM mode's Ey is ~0,
     # so that sheet carried nothing to flip) — the hole that forced the TE case.
     "eigenmode_tm_magnetic_sheet_sign_flipped": (
@@ -1526,7 +1624,7 @@ MUTATIONS: dict[str, tuple] = {
         "            None if True else conductivity[0] if len(set(conductivity)) == 1",
         "conductivity",
     ),
-    # THE ANISOTROPY ITSELF, collapsed back to the pre-2026-08-08 engine: one shared
+    # The anisotropy itself, collapsed back to the pre-2026-08-08 engine: one shared
     # volume taken from component x. MEEP is per-component here (get_cnd,
     # meepgeom.cpp:1545-1559) and so is Fields._set_conductivity_side; only the
     # driver's public setter used to funnel the three together. Measured on the
@@ -1597,7 +1695,7 @@ MUTATIONS: dict[str, tuple] = {
         ("meep_gpu/test_sigma_recovery.py",),
     ),
     # --- materials, the structured-dispersion path (sigma looked up in the geometry) ---
-    # THE TRAP THIS ROUTE EXISTS AROUND. MEEP fills each sigma array at the location
+    # The trap this route exists around. MEEP fills each sigma array at the location
     # its own grid_volume gives the Yee point (anisotropic_averaging.cpp:336-338), and
     # containment is decided by fabs(proj) <= 0.5*size at the LAST BIT (libctl
     # geom.c:305). This engine's own coordinate for the same point agrees to 1e-7 of a
@@ -1960,7 +2058,7 @@ MUTATIONS: dict[str, tuple] = {
     # --- the source-parity rule: WHICH extent, and what a uniform profile means ----
     # The rule refuses a source on a mirror plane that cannot carry the parity the
     # fold demands, and the whole question is which extent it reads. Only extent
-    # ALONG THE FOLDED AXIS lets a source span the plane; extent on the other two
+    # along the folded axis lets a source span the plane; extent on the other two
     # leaves it lying IN the plane, where the parity condition still constrains it
     # against itself. "Extended somewhere, therefore foldable" is the plausible
     # convention — it is what a reader who saw only sheets spanning the folded axis
@@ -1992,7 +2090,7 @@ MUTATIONS: dict[str, tuple] = {
     # both failure directions are silent. These two pin the pair of choices that decide
     # it, and each is a convention a careful reader would plausibly write.
     #
-    # 1. WHAT THE GATE READS. `mp.EigenModeSource.component` is ALL_COMPONENTS, which
+    # 1. What the gate reads. `mp.EigenModeSource.component` is ALL_COMPONENTS, which
     #    names no field component, so a gate that reads that attribute asks the parity
     #    rule about nothing and answers "supported" for every eigenmode source. The
     #    driver then expands the declaration into the four Love-equivalence sheets
@@ -2014,7 +2112,7 @@ MUTATIONS: dict[str, tuple] = {
     #    to the EMPTY STRING (mp.Source.__init__). `is not None` on all three is the
     #    obvious line to write — it was written here first — and it reports a profile on
     #    every plain mp.Source ever declared. That silently disables the uniform-profile
-    #    arm of the parity rule AT THE GATE only, so the gate says supported and the
+    #    arm of the parity rule at the gate only, so the gate says supported and the
     #    driver raises; and were both to read it that way, the refused case is a sheet
     #    stock MEEP 1.33.0 answers 0.569 (even phase) to 2.829 (odd phase) away from its
     #    own unfolded run — a smooth, finished, plausible field, not an error. Costs
@@ -2113,7 +2211,7 @@ MUTATIONS: dict[str, tuple] = {
         Path("meep_gpu/backends.py"),
         ("meep_gpu/test_backends.py",),
     ),
-    # THE COLLAPSE OF A ZERO-EXTENT AXIS, restored to "keep the plane". MEEP's default
+    # The collapse of a zero-extent axis, restored to "keep the plane". MEEP's default
     # slice is `fields::total_volume()` = `gv.interior()`, which has zero extent on a
     # ONE-CELL axis (fields.cpp:717-724, vec.cpp:289-291); `array_slice` loops it on
     # the centred grid, so the bounds straddle the requested plane and both samples
@@ -2127,7 +2225,7 @@ MUTATIONS: dict[str, tuple] = {
     # 400, and on test_boundaries_1D 2.5781e-02 / 1.2888e-02 / 6.4439e-03 at 50 / 100 /
     # 200 — each equal to tan(pi*kx*dx) to five digits — against ~1e-06 with the mean.
     # The stepped fields were never involved: raw Yee storage matched MEEP at 3.0e-07.
-    # THE REFUSAL'S OWN CLAIM, restored as a defect. Until 2026-08-08 this engine
+    # The refusal's own claim, restored as a defect. Until 2026-08-08 this engine
     # refused a mirror plane combined with a Bloch phase on ANOTHER axis, on the
     # stated ground that "the folded-axis cell-centred readback averages across the
     # mirror plane without a Bloch factor". This mutation makes that true: a folded
@@ -2159,7 +2257,7 @@ MUTATIONS: dict[str, tuple] = {
         Path("meep_gpu/readback.py"),
         ("meep_gpu/test_fields.py", "meep_gpu/test_from_meep.py"),
     ),
-    # THE SAME COLLAPSE, one level up, on the READ side of the assertion driver. When
+    # The same collapse, one level up, on the READ side of the assertion driver. When
     # MEEP's `get_array` is handed a zero-extent axis it weights the two bracketing
     # cells `1 - f` and `f` towards the requested coordinate and sums them away
     # (loop_in_chunks.cpp compute_boundary_weights, array_slice.cpp:414 and
@@ -2179,7 +2277,7 @@ MUTATIONS: dict[str, tuple] = {
         ("parity/meep_gpu/test_slice_like_meep.py",),
     ),
     # --- per-point material routes and the amp_data profile -----------------------
-    # THE HALF CELL INSIDE MEEP'S ARRAY INTERPOLATOR, which is the subtlest choice in
+    # The half cell inside MEEP's array interpolator, which is the subtlest choice in
     # the amp_data route by a distance. `map_coordinates` (fields.cpp:775-777) measures
     # the offset from the array cell's CENTRE — `rx*nx - x1 - 0.5` — and picks its
     # second bracketing index from the SIGN of that offset, so dropping the 0.5 leaves
@@ -2205,7 +2303,7 @@ MUTATIONS: dict[str, tuple] = {
     # `callable_dispersion_registration_ignored` above, on the predicate that replaced
     # it.
     # --- the stress tensor and the energy density ---------------------------------
-    # THE SQRT IN sqrt_dV_and_interp_weights, which is the subtlest choice in the
+    # The sqrt in sqrt_dV_and_interp_weights, which is the subtlest choice in the
     # force reduction by a distance. MEEP builds the diagonal chunks with
     # `sqrt_dV_and_interp_weights = true` (stress.cpp:181-184) and folds `sqrt(w)` in
     # PER STEP (dft.cpp:296-300), so the interpolation weight lands on |F|^2 exactly
@@ -2223,7 +2321,7 @@ MUTATIONS: dict[str, tuple] = {
         Path("meep_gpu/dft.py"),
         ("meep_gpu/test_dft.py", "meep_gpu/test_from_meep.py"),
     ),
-    # THE TRACE SUBTRACTION IN THE DIAGONAL STRESS TERMS. `weight1 = where->weight *
+    # The trace subtraction in the diagonal stress terms. `weight1 = where->weight *
     # (d == fd ? +0.5 : -0.5)` (stress.cpp:180): the force axis ADDS half its squared
     # field and the other two SUBTRACT theirs. Giving every axis +0.5 is a plausible
     # transcription slip — the constant is right, the sign rule is gone — and it
@@ -2236,7 +2334,7 @@ MUTATIONS: dict[str, tuple] = {
         Path("meep_gpu/dft.py"),
         ("meep_gpu/test_dft.py", "meep_gpu/test_from_meep.py"),
     ),
-    # THE MEASURE APPLIED ONCE PER PAIR IN THE ENERGY REDUCTION. `add_dft_energy`
+    # The measure applied once per pair in the energy reduction. `add_dft_energy`
     # gives `include_dV_and_interp_weights = true` to E and H and FALSE to D and B
     # (dft.cpp:722-729), so the volume measure multiplies each pair exactly once.
     # Weighting both members — the symmetric-looking spelling — squares it, which on
@@ -2252,7 +2350,7 @@ MUTATIONS: dict[str, tuple] = {
         ("meep_gpu/test_dft.py", "meep_gpu/test_from_meep.py"),
     ),
     # --- the field-function reducers: which lattice `loop_in_chunks` runs on -------
-    # THE SUBTLEST CHOICE IN THE FAMILY. `fields::integrate` picks `cgrid = Centered`
+    # The subtlest choice in the family. `fields::integrate` picks `cgrid = Centered`
     # only when the requested components do NOT all share a Yee shift
     # (integrate.cpp:135-143); a pair like (Ex, Dx) DOES share one, so
     # `electric_energy_in_box` loops that component's own raw lattice and reads RAW Yee
@@ -2333,7 +2431,7 @@ MUTATIONS: dict[str, tuple] = {
         Path("meep_gpu/stepping.py"),
         ("meep_gpu/test_from_meep.py",),
     ),
-    # THE SUBTLEST CHOICE IN THE TERM, and the one only the real-storage case can see.
+    # The subtlest choice in the term, and the one only the real-storage case can see.
     # In real storage MEEP's `f[c_g][1 - cmp]` is NULL, so the whole
     # (ft == D_stuff ? -1 : +1) * (2*cmp - 1) factor collapses to 1 and BOTH sides
     # take the SAME real coefficient — that is the implicit-i-on-TM convention
@@ -2420,7 +2518,7 @@ MUTATIONS: dict[str, tuple] = {
         Path("meep_gpu/fields.py"),
         ("meep_gpu/test_region_dispatch.py",),
     ),
-    # --- MEEP's rounded lattice and its unallocated components (lane REF) ----------------
+    # --- MEEP's rounded lattice and its unallocated components ---------------------------
     # libctl's periodic copies shifted by the declared cell size rather than the rounded
     # grid's (meepgeom.cpp:1956-1985): on a cell that is not a whole number of pixels a
     # copy claims a face MEEP holds as vacuum, the lookup declines, and the inversion's
@@ -2554,7 +2652,7 @@ MUTATIONS: dict[str, tuple] = {
         Path("meep_gpu/dft.py"),
         ("meep_gpu/test_dispatch_absent_components.py",),
     ),
-    # --- R10: a BinaryPartition chunk_layout with mirrors, keyed on MEEP's grid -------
+    # --- refusing a BinaryPartition chunk_layout with mirrors, keyed on MEEP's grid ---
     # The attribute-only refusal: the partition MEEP writes back after a halving build
     # refused, which kept test_simulation.py's two _init_structure rows out of Table 2.
     "partition_written_back_refused": (

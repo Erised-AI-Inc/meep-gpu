@@ -1,10 +1,10 @@
 """CYLINDRICAL (Dcyl) curl sub-steps at m = 0 on Metal — real float32 storage.
 
-WHAT IT REPLACES. ``stepping.step_B`` and ``stepping.step_D`` on a Dcyl grid with
+What it replaces. ``stepping.step_B`` and ``stepping.step_D`` on a Dcyl grid with
 ``grid.m == 0``, real storage and an active split-field PML, including MEEP's radial
 sum ``f_rderiv_int``, which runs on the device here.
 
-THE CURL IS THE CERTIFIED ONE. :func:`cylindrical_curl_source` derives the kernel from
+The curl is the certified one. :func:`cylindrical_curl_source` derives the kernel from
 :func:`.shaders.curl_source` by four checked edits, so the bounds block, the ghost
 rule, the stencil of targets 0 and 1 (MEEP's left-to-right bracket, with the phi
 partner absent: the record's presence bit for the one-cell phi axis is clear), the
@@ -37,7 +37,7 @@ three, in the array path's order:
    predicate refuses any other Courant by name (:func:`courant_reasons`) until a
    software double product exists on this backend.
 
-WHAT IS METAL-SPECIFIC: source specialisation by substitution (direction, boundary
+What is Metal-specific: source specialisation by substitution (direction, boundary
 triple); the contraction pragma, reached through :mod:`.templates`; the chunk record
 bound as ``constant ChunkBounds&`` after the two cylindrical bindings (23 in all,
 under the 31 ceiling of :data:`.device.MAX_BUFFER_BINDINGS`). Subnormals flush on this
@@ -82,7 +82,7 @@ from . import chunk_bounds as _chunk_bounds
 from .coverage import _metal_backend_reasons, _residency_declaration_reasons
 from .device import Residency, compile_source
 
-# `.plans.KernelPlan` is DELIBERATELY NOT IMPORTED. This family's curl plan is a
+# `.plans.KernelPlan` is deliberately not imported. This family's curl plan is a
 # SIBLING of that base rather than a subclass — see `CylindricalRealCurlPlan` — so an
 # import here would be dead weight that reads as an inheritance the class does not
 # have. The reason it cannot subclass is stated at the class, not hidden here.
@@ -128,7 +128,7 @@ METALLIC = shaders.METALLIC
 #: sub-step rather than a literal at each call site.
 PREFIX_IR0: Dict[str, float] = {"step_B": 0.0, "step_D": 0.5}
 
-#: Which sub-step's scan carries the ZERO WALL ROW. Only the B side: its Bz curl is a
+#: Which sub-step's scan carries the zero wall row. Only the B side: its Bz curl is a
 #: forward difference of the radial sum, and MEEP stores the wall row with Ep held at
 #: zero (``stepping.step_B``), so the last row reads ``F[wall] - F[last]`` rather than
 #: minus the whole sum. The D side's backward difference never looks past the top.
@@ -506,8 +506,8 @@ def _cylindrical_real_grid_reasons(fields: Any, pml: Any, grid: Any) -> List[str
 
     # 5. No mirror plane anywhere, KEPT — and it must be asked TWICE, which is not
     #    tidiness. `_boundary_kinds` puts is_axis AHEAD of is_mirrored
-    #    (stepping.py:2191-2195), so a folded r axis reports CYL_AXIS and THE FOLD
-    #    VANISHES SILENTLY from the boundary triple; and `_mirror_phases`
+    #    (stepping.py:2191-2195), so a folded r axis reports CYL_AXIS and the fold
+    #    vanishes silently from the boundary triple; and `_mirror_phases`
     #    (:2291-2308) puts (-1)**grid.m into the SAME SLOT the mirror phase occupies.
     #    The boundary kinds alone therefore cannot answer this question.
     if _call(grid, "has_symmetry", default=False):
@@ -535,7 +535,7 @@ def _cylindrical_real_grid_reasons(fields: Any, pml: Any, grid: Any) -> List[str
                            f"this product's radial substitution is on axis "
                            f"{RADIAL_AXIS}")
 
-    # 6a (THIS FAMILY'S OWN). The phi axis carries ONE cell on a Dcyl grid, which is
+    # 6a (this family's own). The phi axis carries ONE cell on a Dcyl grid, which is
     #    what makes its finite difference an exact zero rather than a boundary. The
     #    clause is spelled rather than inferred from `Grid`'s own guard: this
     #    package's doctrine forbids reading a refusal off another module.
@@ -557,7 +557,7 @@ def _cylindrical_real_grid_reasons(fields: Any, pml: Any, grid: Any) -> List[str
     # 10. No instantaneous nonlinearity.
     if getattr(fields, "has_nonlinearity", False):
         reasons.append("chi2/chi3 is installed (the Pade constitutive factor is "
-                       "not carried; that family is a separate tranche)")
+                       "not carried; that is a separate family)")
 
     # 11/12. BFAST and beta, KEPT. Cylindrical + BFAST is refused by `Grid` itself
     #        (grid.py:706-742) and the clause is kept anyway, for the reason
@@ -605,8 +605,8 @@ def _curl_conductivity_reasons(fields: Any) -> List[str]:
 
     This kernel transcribes ``_apply_pml_update`` (stepping.py:1952), the PLAIN
     split-field recurrence; a conductivity routes ``_apply_curl`` to the three-stage
-    ``f_cond`` recurrence instead (:487-505). THIS PACKAGE SHIPS NO CONDUCTIVE
-    PRODUCT AT ALL, so the refusal is unconditional rather than a hand-off.
+    ``f_cond`` recurrence instead (:487-505). This package ships no conductive
+    product at all, so the refusal is unconditional rather than a hand-off.
 
     A missing or non-callable reader is refused OUTRIGHT: inferring "no conductivity"
     from the absence of ``condfac_for`` is admission by attribute absence.
@@ -738,7 +738,7 @@ class CylindricalRealCurlPlan:
     this plan cannot honour it — the curl reads the scan's output, so the two are
     ordered and cannot be one dispatch.
 
-    THE RADIAL DIFFERENCE IS A PLAN-OWNED SCRATCH VOLUME, registered non-constant
+    The radial difference is a plan-owned scratch volume, registered non-constant
     (the device writes it) through :func:`scratch_mirror`, which reuses the array
     already bound under the name, so two plans for one sub-step on one residency share
     it; the scan overwrites every word before the curl reads it. The two row vectors
@@ -747,7 +747,7 @@ class CylindricalRealCurlPlan:
     record is: nothing on the device writes them and nothing on the host reads them
     back.
 
-    ``launches`` COUNTS KERNEL LAUNCHES, NOT ``run`` CALLS, and it is two per cycle;
+    ``launches`` counts kernel launches, not ``run`` CALLS, and it is two per cycle;
     :attr:`scan_launches` and :attr:`curl_launches` are carried separately so "the
     scan ran and the curl did not" is distinguishable from "the plan ran once".
     """
@@ -835,7 +835,7 @@ class CylindricalRealCurlPlan:
     def run(self, contract: Optional[str] = None) -> None:
         """The sub-step: scan, then curl. In place.
 
-        THE ORDER IS THE CONTRACT. The curl reads the radial difference the scan
+        The order is the contract. The curl reads the radial difference the scan
         writes, a function of THIS sub-step's source volume, so a scan run after the
         curl feeds it the previous timestep's derivative: a plausible wrong field
         rather than an error.
@@ -1033,8 +1033,8 @@ def plan_cylindrical_real_curl_from_arrays(
 # The constitutive companion — no new kernel, a restated predicate
 # ---------------------------------------------------------------------------
 #
-# WHY THIS IS SOUND, and it is a READ of stepping.py rather than an analogy.
-# `update_H` (S:907) and `update_E` (S:926) contain NO CYLINDRICAL BRANCH AT ALL:
+# Why this is sound, and it is a READ of stepping.py rather than an analogy.
+# `update_H` (S:907) and `update_E` (S:926) contain no cylindrical branch at all:
 # measured on this tree by reading their own source, the words "cylindrical",
 # "is_axis" and "grid.m" do not appear in either. They are element-wise with per-axis
 # coefficient tables indexed on the component's OWN axis, and Dcyl changes nothing
@@ -1042,12 +1042,12 @@ def plan_cylindrical_real_curl_from_arrays(
 # on a Dcyl run is byte-for-byte the arithmetic the certified constitutive kernel
 # already reproduces, and only the ADMISSION has to change.
 #
-# THE TRITON TRACK MEASURED THE SAME CLAIM ON ITS OWN KERNEL — the existing
+# The Triton track measured the same claim on its own kernel — the existing
 # `kernels.constitutive_step` bytewise identical to `stepping.update_H`/`update_E` on
 # a Dcyl grid, 4/4 (`cylindrical_triton.py:84-86`) — which is corroboration on
 # another backend and NOT this port's evidence. This one's evidence is its own gate.
 #
-# THIS IS THE SAME MOVE `bfast_curl.bfast_run_constitutive_coverage` MAKES, for the
+# This is the same move `bfast_curl.bfast_run_constitutive_coverage` MAKES, for the
 # same reason, and it is the cheapest coverage on either track: no kernel, no new
 # specialisation. What it buys is WHOLE-STEP composition — without it a Dcyl run
 # takes its curls on the device and its constitutive pair on the array path, which
@@ -1153,7 +1153,7 @@ def plan_cylindrical_real_constitutive(fields: Any, pml: Any, side: str,
 # WIRING — two curl arms and the certified constitutive pair
 # ---------------------------------------------------------------------------
 #
-# WHAT SEPARATES THEM, stated because a new family must state its inversion rather
+# What separates them, stated because a new family must state its inversion rather
 # than inherit disjointness. `coverage._grid_reasons` clause 6 refuses `cylindrical`
 # AND `is_axis` BY NAME (:176-182), and every carried family either uses that list
 # (`pml_curl`, `constitutive`, `no_pml_constitutive`, `offdiag_update_e`) or restates
@@ -1162,8 +1162,8 @@ def plan_cylindrical_real_constitutive(fields: Any, pml: Any, side: str,
 # grid with the r axis declared is REQUIRED — so the separation from all nine is
 # total, and it is one clause rather than a coincidence of several.
 #
-# THE ONE FAMILY THIS DOES NOT SEPARATE FROM BY CLAUSE 6 IS THE CYLINDRICAL COMPLEX
-# ONE, and clause 2 (real storage) is what does: this family REQUIRES float32 and
+# The one family this does not separate from by clause 6 is the cylindrical complex
+# one, and clause 2 (real storage) is what does: this family REQUIRES float32 and
 # that one REQUIRES complex64, inverted in both directions. Clause 14 (m == 0 here)
 # was a SECOND separation while the complex family carried |m| >= 1 only; since
 # 2026-09-04 that family's M_ZERO arm carries complex64 at m = 0 too, so clause 14
@@ -1171,7 +1171,7 @@ def plan_cylindrical_real_constitutive(fields: Any, pml: Any, side: str,
 # cannot exist, stepping.py:731-736) rather than from a sibling product, and the two
 # families partition Dcyl by storage alone.
 #
-# ON `update_H`/`update_E` THE ADMISSION IS NOT AN AMBIGUITY EITHER, and the
+# On `update_H`/`update_E` the admission is not an ambiguity either, and the
 # reasoning is the same clause: `constitutive` and `no_pml_constitutive` are the only
 # other arms there, the first refuses a Dcyl run through the shared clause 6, and the
 # second requires an INACTIVE absorber where clause 3 here requires an active one —

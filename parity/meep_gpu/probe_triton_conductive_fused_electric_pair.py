@@ -8,7 +8,7 @@ Conductive ``step_D`` welded into the ORDINARY ``update_E`` -- the last buildabl
 non-folded D->E cell on the Triton fusion board.
 
 ===========================================================================
-WHAT THE PRODUCT CLAIMS, AND WHAT EACH LEG MEASURES
+What the product claims, and what each leg measures
 ===========================================================================
 
 The claim is narrow and checkable, and it is a claim about FOUR shipped bodies
@@ -27,7 +27,7 @@ rather than two:
    PARENTHESISATION, and unparsing re-derives minimal parentheses, which would
    silently equate ``((c * cf) - curl) * ci`` with a different float32 grouping.
 2. **REDUCTION (device).** ``COND0 = COND1 = COND2 = 0`` must reproduce the shipped
-   ``kernels.fused_curl_constitutive_D`` BIT FOR BIT over a complete step, on the
+   ``kernels.fused_curl_constitutive_D`` bit for bit over a complete step, on the
    same volumes, while BOTH differ from the conductive array path. This is the
    transcription claim measured on silicon instead of in source text, and it is the
    leg that would catch a mis-ordered argument in the plan's ``run`` that no amount
@@ -59,18 +59,18 @@ On the configurations this arm admits the two fill passes are DEAD -- the predic
 refuses every fold by name -- so the launch spans ``step_D``, ``zero_metal_D`` and
 ``update_E``, with the electric injection carried across it by the shipped repair.
 
-WHAT THE CORPUS SAYS, from ``results/fusion_matrix_triton_2026-08-31_electrics``
+What the corpus says, from ``results/fusion_matrix_triton_2026-08-31_electrics``
 at the D->E cell (``conductive PML``, ``ordinary``): ONE seam-instance,
 ``tests:TestAdjointSolver.test_damping``, shape (150, 150, 1), metallic in x and y,
 ``in_seam_source == true`` and ``in_seam_source_blocks == false``. The
 ``corpus_admission`` leg re-derives that from the census rather than citing it.
 
-THAT ROW IS WALLED, so the inline ``zero_metal_D`` carry is LIVE on it -- unlike
+That row is walled, so the inline ``zero_metal_D`` carry is LIVE on it -- unlike
 every other 08-31 electric cell, where the wall clear had to be exercised on a case
 the corpus does not itself contain. The all-periodic case is kept anyway, as the
 control in which the flags compile to False.
 
-WHY THE RECURRENCE IS THE INTERESTING PART. ``_conductive_component`` selects MEEP's
+Why the recurrence is the interesting part. ``_conductive_component`` selects MEEP's
 conductive forms per structure chunk -- the chunk record's dsig and dsigu membership
 lines and the component's conductive-chunk volume -- and reads and writes ``fu_D``
 only where ``dsigu`` and ``f_cond_D`` only on the dsig cells of conductive chunks (the
@@ -142,7 +142,7 @@ SHIPPED_HELPER = "_conductive_component"
 #: components only. Z STAYS PERIODIC in every case: on a 2-D cell it is the
 #: INVARIANT axis and ``Grid`` refuses a PEC there by name (grid.py:842-877).
 CASES: Tuple[Tuple[str, Tuple[float, float, float], Any, int, Any, Any], ...] = (
-    # THE CORPUS GEOMETRY: metallic in x and y, which is what
+    # The corpus geometry: metallic in x and y, which is what
     # tests:TestAdjointSolver.test_damping declares. ZM_X and ZM_Y fire and both
     # metallic ghost arms are entered. This is the mutation case, for that reason.
     ("wall_xy", (1.4, 1.0, 0.0),
@@ -150,14 +150,14 @@ CASES: Tuple[Tuple[str, Tuple[float, float, float], Any, int, Any, Any], ...] = 
     # ALL PERIODIC: ZM_* all compile to False and every ghost arm is the periodic
     # wrap. The control in which the wall clear is dead.
     ("periodic", (1.4, 1.0, 0.0), "periodic", 60, None, {"x": 2, "y": 2}),
-    # ONE WALLED AXIS ONLY: the case where a ROTATED wall table still clears the
+    # One walled axis only: the case where a ROTATED wall table still clears the
     # same NUMBER of planes and clears the wrong ones.
     ("wall_x", (1.4, 1.0, 0.0),
      {"x": "metallic", "y": "periodic", "z": "periodic"}, 60, None, {"x": 2, "y": 2}),
     # A MIXED GRID: one lossy component beside two lossless ones, which is the
     # configuration the three COND constexprs exist for. `_conductive_component`'s
-    # COND == 0 arm must be byte-identical to the plain recurrence ON THE SAME
-    # LAUNCH as its COND == 1 arm, and only a mixed case can measure that.
+    # COND == 0 arm must be byte-identical to the plain recurrence on the same
+    # launch as its COND == 1 arm, and only a mixed case can measure that.
     ("mixed_cond_z", (1.4, 1.0, 0.0),
      {"x": "metallic", "y": "metallic", "z": "periodic"}, 60, ("Dz",),
      {"x": 2, "y": 2}),
@@ -175,7 +175,7 @@ CASES: Tuple[Tuple[str, Tuple[float, float, float], Any, int, Any, Any], ...] = 
     # to an accumulation.
     ("wall_xy_single_launch", (1.4, 1.0, 0.0),
      {"x": "metallic", "y": "metallic", "z": "periodic"}, 1, None, {"x": 2, "y": 2}),
-    # A CONDUCTIVITY ON AN INTERIOR BLOCK ONLY, the forms' third test. MEEP keeps no
+    # A conductivity on an interior block only, the forms' third test. MEEP keeps no
     # conductivity array in a chunk whose every sample is zero (structure.cpp:883-900),
     # so the layer chunks here step the LOSSLESS forms while the interior chunk steps
     # the conductive ones, and the kernel reads the component's conductive-chunk
@@ -197,18 +197,18 @@ DEFAULT_MUTATION_CASE = "wall_xy"
 #: Per mutation, the case it is scored on. TRAP: a mutation scored on a grid that
 #: never ENTERS the branch it rewrites reports UNCAUGHT while measuring nothing.
 MUTATION_CASE: Dict[str, str] = {
-    # THE ONLY REWRITE OF THE `COND == 0` ARM, and it is DEAD on every all-lossy
+    # The only rewrite of the `COND == 0` ARM, and it is DEAD on every all-lossy
     # case: with all three flags at 1, `COND == 0` is already False and changing the
     # literal it compares against changes nothing. Measured UNCAUGHT on run b for
     # exactly that reason, and re-pointed at the mixed grid, where two of the three
     # components take that arm.
     "m_lossless_arm_takes_the_conductive_one": "mixed_cond_z",
-    # SCORED ON THE DEEP LAYER, because the region it rewrites is nine cells on the
+    # Scored on the deep layer, because the region it rewrites is nine cells on the
     # default case and 225 there. See the `deep_pml` entry in CASES.
     "m_case_a_regrouped": "deep_pml",
-    # THE THIRD TEST is live only where some chunk keeps no conductivity.
+    # The third test is live only where some chunk keeps no conductivity.
     "m_conductive_chunks_ignored": "interior_sigma",
-    # THE LOSSLESS COMPONENT'S SELECT, live only beside a lossless component.
+    # The lossless component's select, live only beside a lossless component.
     "m_lossless_select_removed": "mixed_cond_z",
     # Cells inside a layer chunk whose own coefficients are exactly 1: counted by the
     # `unit_coefficients` leg, which needs them on this case.
@@ -247,10 +247,11 @@ MUTATION_REQUIRES_LOSSLESS: Dict[str, Tuple[str, ...]] = {
 #: is a rewrite whose defect is real at the TRAFFIC layer and whose effect on stored
 #: words is provably empty -- not a rewrite nobody could be bothered to make bite. The
 #: previous forms' two coefficient-predicate nulls (a tolerance, ``|`` narrowed to
-#: ``&``) are retired with the predicate itself (DESIGN D13).
+#: ``&``) are retired with the predicate itself, not inverted
+#: (docs/development/certification.md#inverted-grouping-mutations).
 MUTATION_EVIDENCE: Dict[str, str] = {
     "m_aux_load_unmasked":
-        "KERNELS.md section 7.2's declared null: `u` is read only by the dsigu forms "
+        "The per-chunk form battery's declared null: `u` is read only by the dsigu forms "
         "(the recurrence's `fu * km1` and `f_split`'s `- u`, and the conductive "
         "`u_split` / `u_cond` that only `f_split` consumes), every one of which is "
         "selected on a dsigu cell, where the masked and the unmasked load deliver the "
@@ -270,12 +271,14 @@ MUTATION_EVIDENCE: Dict[str, str] = {
 #: (``sources._boundary_passes``: ``stepping.zero_metal_D`` called directly, not through
 #: the driver module's name this harness absorbs on the fused route). So every wall word
 #: is cleared again after the fused launch whatever the kernel stored there, and the
-#: rewrite changes no word on the carry configuration: MEASURED on the bisect of this
+#: rewrite changes no word on the carry configuration: measured on the bisect of this
 #: gate's own leg (``mutation:m_wall_clear_after_the_store`` on ``wall_xy``, 4 steps,
-#: keep): caught on series entries 23 and 24 with the lane's patch (17 Dx words differ
-#: at step 1), a null from ``25-AP6g`` (which introduced the bracket) through 53. Without
-#: an electric source nothing re-runs the D boundary passes, the wall clear is the
-#: kernel's alone, and the stored D is what the rewrite moves.
+#: keep), every tree carrying the patch that moved this product to the per-chunk forms:
+#: caught on the two trees immediately before the one that introduced the bracket (17 Dx
+#: words differ at step 1), and a null on the tree that introduced it and on every later
+#: tree the bisect covered. Without an electric source nothing re-runs the D boundary
+#: passes, the wall clear is the kernel's alone, and the stored D is what the rewrite
+#: moves.
 MUTATION_WITHOUT_ELECTRIC_CARRY: Dict[str, str] = {
     "m_wall_clear_after_the_store":
         "the integrated electric source's f_minus_p bracket re-runs zero_metal_D after "
@@ -284,8 +287,8 @@ MUTATION_WITHOUT_ELECTRIC_CARRY: Dict[str, str] = {
         "the kernel's alone",
 }
 
-#: The CARRY family: the same grids with a real ELECTRIC deposit IN THIS SEAM.
-#: THIS IS THE PRODUCT, not an extra — the cell's only corpus row sources
+#: The CARRY family: the same grids with a real ELECTRIC deposit in this seam.
+#: This is the product, not an extra — the cell's only corpus row sources
 #: electrically. One all-periodic grid (the corpus geometry) and one walled grid,
 #: where the deposit and the wall clear can interact.
 CARRY_CASES: Tuple[str, ...] = ("wall_xy", "periodic", "mixed_cond_z")
@@ -309,7 +312,7 @@ REQUIRED = (
     "f_w_Ex", "f_w_Ey", "f_w_Ez", "f_w_Hx", "f_w_Hy", "f_w_Hz",
 )
 
-#: THE CONDUCTIVE HISTORY IS PART OF THE COMPARISON, and it is required PER
+#: The conductive history is part of the comparison, and it is required PER
 #: COMPONENT rather than in :data:`REQUIRED`, because ``Fields`` allocates
 #: ``f_cond_D<c>`` only for a component that carries a conductivity
 #: (fields.py:738, :825) -- which is the whole point of the mixed case. Demanding
@@ -345,7 +348,7 @@ SEAM_OUTPUTS: Tuple[str, ...] = (
 #: Private ``Fields`` scratch that is NOT physical state. ``_fmp_scratch`` is the
 #: buffer ``Fields.displacement_minus_polarization`` allocates on first use; its
 #: presence differs by ROUTE while carrying no state either route reads across a
-#: step. THE RULE IS THE LEADING UNDERSCORE, not this list.
+#: step. The rule is the leading underscore, not this list.
 PRIVATE_SCRATCH: Tuple[str, ...] = ("_fmp_scratch",)
 
 _TEMPORARY: List[str] = []
@@ -384,9 +387,9 @@ def save(payload: Dict[str, Any], path: str) -> None:
             payload["subnormal_policy"] = _policy.policy_stamp()
         except Exception:  # noqa: BLE001 - a stamp failure must not lose the payload
             pass
-    # WHICH BYTES THIS PROCESS IMPORTED, and the one readable verdict beside the
+    # Which bytes this process imported, and the one readable verdict beside the
     # gate's own spelling. Measured on the 2026-09-09 artifact: this probe was the
-    # only one of the four in its round that wrote NEITHER — `imported_source_sha256`
+    # only one of the four in that run that wrote NEITHER — `imported_source_sha256`
     # empty and `canonical_verdict` absent — so `seed_triton_welds.py` refused it as
     # recording no imported digests, and a family with a released gate stayed
     # unweldable for want of one call. The sibling probes have carried it since
@@ -468,9 +471,9 @@ def body_statements(path: str, name: str) -> List[str]:
 def _function_source(text: str, tree: ast.Module, name: str) -> str:
     """One function as source text, DECORATOR INCLUDED.
 
-    THE DECORATOR IS PREPENDED, and it is not cosmetic. ``ast.get_source_segment``
+    The decorator is prepended, and it is not cosmetic. ``ast.get_source_segment``
     on a ``FunctionDef`` EXCLUDES the decorator list, so a mutant compiled from the
-    bare segment is a PLAIN PYTHON FUNCTION with no ``[grid]`` launcher and the first
+    bare segment is a plain Python function with no ``[grid]`` launcher and the first
     mutation leg dies with "'function' object is not subscriptable" -- measured
     2026-08-20 on a sibling gate, and again 2026-08-31 on two more.
     """
@@ -526,7 +529,7 @@ def _calls(path: str, function: str, callee: str) -> List[List[str]]:
 def _slice(statements: Sequence[str], first: str, last: str) -> List[str]:
     """The statements from the one starting with ``first`` to the one before ``last``.
 
-    Both anchors are asserted PRESENT AND UNIQUE by the caller through
+    Both anchors are asserted present and unique by the caller through
     :func:`_anchor`; a silent ``next(..., default)`` here would let a renamed anchor
     compare an empty slice against an empty slice and pass.
     """
@@ -662,7 +665,7 @@ def transcription_leg() -> Dict[str, Any]:
             f"{SHIPPED_HELPER} no longer performs {MOVED_STORE!r}, so the statement "
             f"this weld claims to have MOVED is not there to move")
 
-    # THE MASKED LOADS AND STORES KEEP THEIR MASKS. They are the auxiliary contract:
+    # The masked loads and stores keep their masks. They are the auxiliary contract:
     # ``fu`` on dsigu cells, ``f_cond`` on the dsig cells of conductive chunks.
     # Widening a store writes a component the array path leaves alone, in a volume no
     # E comparison reads on the step it happens; widening a load is a declared null
@@ -681,7 +684,7 @@ def transcription_leg() -> Dict[str, Any]:
     if invented:
         findings.append(f"statements that appear in NEITHER shipped body: {invented}")
 
-    # THE E SIDE'S OWN MULTIPLY, named rather than left to the tail equality: a tail
+    # The E side's own multiply, named rather than left to the tail equality: a tail
     # taken from the MAGNETIC fused pair would satisfy a shorter comparison.
     for component in range(3):
         line = (f"src{component} = v{component} * tl.load("
@@ -846,7 +849,7 @@ def equivalence_leg() -> Dict[str, Any]:
         findings.append("no case was admitted modulo the backend clause: this leg "
                         "measured only refusals and could not see a widening")
 
-    # WHAT THE FLAG DECIDES, measured rather than declared. It is NOT what makes
+    # What the flag decides, measured rather than declared. It is NOT what makes
     # this cell reachable -- the corpus row's source is refused for the whole-volume
     # rescale whatever the flag says -- so what is asserted is the narrower true
     # thing: with the flag True an INTEGRATED electric source is admitted, and with
@@ -871,7 +874,7 @@ def equivalence_leg() -> Dict[str, Any]:
             "electric source: the flag decides nothing and the bracket this product "
             "installs is not load-bearing")
 
-    # AND WHAT THE 2026-09-01 LIFT DECIDES, in both directions. The corpus row's
+    # And what the 2026-09-01 lift decides, in both directions. The corpus row's
     # NON-integrated source (deposit table published) must be ADMITTED modulo the
     # backend clause — the driver replays the rescale sparsely at exactly those
     # cells — while a scaled source with NO table must still be refused for the
@@ -920,7 +923,7 @@ def corpus_admission_leg() -> Dict[str, Any]:
     the repair can carry, which is the board's own ``in_seam_source_blocks`` and is
     read from there.
 
-    AN ABSENT CENSUS IS NOT AN EMPTY ONE: a missing artifact is a REFUSAL here,
+    An absent census is not an empty one: a missing artifact is a REFUSAL here,
     never a funnel of zero reported as a pass.
     """
     findings: List[str] = []
@@ -961,7 +964,7 @@ def corpus_admission_leg() -> Dict[str, Any]:
             continue
         if configuration.get("has_offdiagonal_epsilon"):
             continue
-        # DISPERSION IS THE `ordinary` ARM'S OWN REFUSAL, not this weld's addition:
+        # Dispersion is the `ordinary` arm's own refusal, not this weld's addition:
         # `constitutive_coverage` refuses a run with poles by name, because the
         # consumer would be `(D - sum P) * inv_eps` and not the register expression
         # the tail carries. A row with poles is in the DISPERSIVE cell, not this one.
@@ -1002,7 +1005,7 @@ def corpus_admission_leg() -> Dict[str, Any]:
         findings.append(
             "no row in the cell declares an ELECTRIC source, so the deposit carry "
             "this gate exists to measure is not what makes the cell reachable")
-    # WHAT THIS PRODUCT SERVES OF THE CELL, recorded so the artifact carries the
+    # What this product serves of the cell, recorded so the artifact carries the
     # number rather than leaving a reader to infer it. Since the 2026-09-01 lift the
     # electric rows are SERVED, not refused: the condinv scale reaches only the
     # published deposit cells (inside each source's own double-precision deposit since
@@ -1057,7 +1060,7 @@ def mutation_arming_leg() -> Dict[str, Any]:
 def unit_coefficients_leg() -> Dict[str, Any]:
     """Where do chunk membership and coefficient identity part, on each case grid?
 
-    THE EVIDENCE BEHIND THE B BATTERY'S PREDICATE MUTATION, re-measured on every run.
+    The evidence behind the B battery's predicate mutation, re-measured on every run.
     The kernel keys every form on the chunk record's membership lines (the one-rank
     division of each case grid, ``chunk_map.ChunkLayout.one_rank``), never on a
     coefficient. Two facts are measured per axis and Yee sub-lattice:
@@ -1073,7 +1076,7 @@ def unit_coefficients_leg() -> Dict[str, Any]:
       mutation is scored on must have some on the D curl's (integer) sub-lattice, or
       an UNCAUGHT verdict there would be a statement about the case.
 
-    NO DEVICE AND NO TRITON: the layer and the record are NumPy on this host.
+    No device and no Triton: the layer and the record are NumPy on this host.
     """
     from meep_gpu.chunk_map import ChunkLayout  # noqa: PLC0415
     from meep_gpu.fields import Fields  # noqa: PLC0415
@@ -1132,7 +1135,7 @@ def unit_coefficients_leg() -> Dict[str, Any]:
 def whole_volume_rescale_leg() -> Dict[str, Any]:
     """The RETIRED whole-volume passes' arithmetic, executed on the words it acts on.
 
-    THE MEASUREMENT BEHIND THE REFUSAL THIS PRODUCT SHIPPED WITH — and, since the
+    The measurement behind the refusal this product shipped with — and, since the
     2026-09-01 lift, behind the two clauses that survive it. The driver used to
     snapshot the target D component, inject, and rescale BY DIFFERENCE over the
     whole volume; the scale now reaches only the published deposit cells, inside each
@@ -1235,7 +1238,7 @@ def seed_values(cp, driver, seed: int, value_class: str) -> None:
     # single-launch leg non-vacuous: without a nonzero H the D curl is exactly zero
     # on step 1.
     #
-    # THE CONDUCTIVE HISTORY IS SEEDED, and that is not thoroughness. `f_cond_D` is
+    # The conductive history is seeded, and that is not thoroughness. `f_cond_D` is
     # read by `c_new = ((c * cf) - curl) * ci` and by case A's `u_split` and case C's
     # `f_first`; at `c == 0` all three lose their leading term and every mutation of
     # the history load or its store becomes a null.
@@ -1271,7 +1274,7 @@ def build_driver(cp, cell, boundaries, seed: int, value_class: str,
     index = np.arange(int(np.prod(shape)), dtype=np.float32).reshape(shape)
     # A VARYING epsilon, deliberately, and a DIFFERENT one per component.
     #
-    # BOTH HALVES OF THAT ARE MEASUREMENTS. A uniform material makes a mis-indexed
+    # Both halves of that are measurements. A uniform material makes a mis-indexed
     # coefficient a scaling many wrong transcriptions reproduce; and a material that
     # varies in SPACE but not in COMPONENT makes `ie0` and `ie1` the same volume, so
     # `src0 = v0 * ie1` is a bitwise no-op — measured 2026-08-31, when
@@ -1284,13 +1287,13 @@ def build_driver(cp, cell, boundaries, seed: int, value_class: str,
         for offset, name in enumerate(("Ex", "Ey", "Ez"))}
     driver.set_epsilon_components({name: cp.asarray(values)
                                    for name, values in epsilon.items()})
-    # PER AXIS, NOT SCALAR. On a 2-D cell z is translationally invariant and the
+    # Per axis, not scalar. On a 2-D cell z is translationally invariant and the
     # driver refuses a layer there BY NAME (driver.py:2206). A case's
     # ``sigma_margin`` is not a layer depth and is taken out first.
     depth = dict(pml_cells or {"x": 2, "y": 2})
     sigma_margin = depth.pop("sigma_margin", None)
     driver.setup_pml(depth)
-    # THE CONDUCTIVITY, and it is INSTALLED AFTER THE LAYER deliberately: the
+    # The conductivity, and it is installed after the layer deliberately: the
     # absorber's own graded sigma and a material sigma are the two independent
     # sources the engine keeps apart (driver.py:1010-1028), and a material
     # conductivity declared here is not `absorber_included`.
@@ -1318,11 +1321,11 @@ def build_driver(cp, cell, boundaries, seed: int, value_class: str,
                    if components is not None else cp.asarray(values))
         driver.set_conductivity(payload)
     if electric:
-        # THE DEPOSIT THIS PRODUCT EXISTS FOR. Injected BETWEEN the two halves
+        # The deposit this product exists for. Injected BETWEEN the two halves
         # (driver.py:3294-3299), so the fused launch consumes a pre-injection D and
         # the shipped repair is what puts the difference back.
         #
-        # INTEGRATED BY DEFAULT HERE, and that default is a MEASUREMENT rather than a
+        # Integrated by default here, and that default is a MEASUREMENT rather than a
         # convenience: on a conductive run a NON-integrated source takes
         # driver.py:3363-3370's three whole-volume passes, which rewrite -0.0 to
         # +0.0 at every cell of the target component and which a point repair cannot
@@ -1340,7 +1343,7 @@ def build_driver(cp, cell, boundaries, seed: int, value_class: str,
         driver.add_source({"component": "Hz", "frequency": 0.31,
                            "center": (0.0, 0.0, 0.0), "width": 0.4})
     seed_values(cp, driver, seed, value_class)
-    # THE FAST PATH IS DISABLED, EXPLICITLY. `FdtdDriver.step` consults `fastpath`
+    # The fast path is disabled, explicitly. `FdtdDriver.step` consults `fastpath`
     # BEFORE the module-level sub-step functions this harness substitutes, and the
     # `conductive PML` / `ordinary` arms are WIRED — so a driver left alone would
     # step `step_D` and `update_E` on Triton and the "array path" reference would be
@@ -1356,7 +1359,7 @@ def inventory(driver) -> Dict[str, Any]:
     shape = tuple(fields.grid.shape)
     found: Dict[str, Any] = {}
     for name, value in vars(fields).items():
-        # THE LEADING UNDERSCORE IS THE RULE — see PRIVATE_SCRATCH.
+        # The leading underscore is the rule — see PRIVATE_SCRATCH.
         if name.startswith("_"):
             continue
         if (getattr(value, "shape", None) == shape
@@ -1496,7 +1499,7 @@ def separate_route(driver):
 
     The three in-seam passes stay on the ARRAY PATH here: no Triton product owns the
     wall clear, and both symmetry fills are no-ops without a mirror plane. All three
-    are COUNTED. THE INJECTION ALSO STAYS ON THE ARRAY PATH, which is what makes
+    are COUNTED. The injection also stays on the array path, which is what makes
     this the right oracle for the carry family: the certified kernels with the
     driver's own deposit between them.
     """
@@ -1519,7 +1522,7 @@ def separate_route(driver):
 def fused_route(plan, driver=None, sources=(), bracket: bool = True):
     """The fused plan in its two slots, BRACKETED when the seam carries a deposit.
 
-    THE BRACKET IS THE SHIPPED ONE. ``deposit_repair.LeadingRepairPlan`` /
+    The bracket is the shipped one. ``deposit_repair.LeadingRepairPlan`` /
     ``TrailingRepairPlan`` are the exact pair ``launch._install_fused_pair`` puts in
     these two slots; a harness that assembled its own could not license the one that
     ships.
@@ -1741,7 +1744,7 @@ def run_leg(cp, name: str, cell, boundaries, steps: int, product,
         row["arrays_ever_moved"] = len(ever_moved)
         row["arrays_never_moved"] = sorted(
             set(final) - set(ever_moved) - set(material))
-        # THE FLOOR IS RELATIVE TO THE ARRAY PATH, and that is a 2026-08-31
+        # The floor is relative to the array path, and that is a 2026-08-31
         # correction rather than a softening. An absolute "every array moved" floor
         # fails a CORRECT kernel for properties of the CONFIGURATION: measured on
         # this gate's single-launch leg, `fu_By` does not move over ONE complete
@@ -1843,7 +1846,7 @@ def verdict_of(row: Dict[str, Any], *, require_identical: bool = True,
             f"the fused route reached the array path for an absorbed pass: "
             f"{fell_back}")
     if require_array_reference:
-        # THE REFERENCE MUST REALLY BE THE ARRAY PATH. `fastpath` is consulted before
+        # The reference must really be the array path. `fastpath` is consulted before
         # these functions and both arms are WIRED, so a missing count here means
         # the reference stepped on Triton and the comparison compared two Triton
         # routes.
@@ -1858,7 +1861,7 @@ def verdict_of(row: Dict[str, Any], *, require_identical: bool = True,
 
 
 # ---------------------------------------------------------------------------
-# THE REDUCTION LEG — COND=(0,0,0) must BE the shipped ordinary kernel
+# The reduction leg — COND=(0,0,0) must BE the shipped ordinary kernel
 # ---------------------------------------------------------------------------
 
 def reduction_leg(cp, product, cell, boundaries, steps: int,
@@ -1869,19 +1872,19 @@ def reduction_leg(cp, product, cell, boundaries, steps: int,
     The transcription claim, measured on silicon instead of in source text. Three
     drivers, seeded identically, on a live CONDUCTIVE run:
 
-    * route A launches THIS product's kernel with all three ``COND`` flags at 0;
-    * route B launches the SHIPPED ``kernels.fused_curl_constitutive_D`` over the
+    * the reduced route launches THIS product's kernel with all three ``COND`` flags at 0;
+    * the shipped route launches the SHIPPED ``kernels.fused_curl_constitutive_D`` over the
       same volumes, through ``launch.plan_fused_pair_from_arrays`` -- the bare-array
       route, because ``coverage.fused_pair_coverage`` refuses a conductive run by
       name and would return ``None``;
-    * route C is the array path, and is the DISCRIMINATION precondition.
+    * the third route is the array path, and is the DISCRIMINATION precondition.
 
-    NEITHER A NOR B IS COMPARED AGAINST THE ARRAY PATH FOR IDENTITY, deliberately:
+    Neither kernel route is compared against the array path for identity, deliberately:
     the array path really does take the four-case recurrence, so both routes must
     DIFFER from it. What this leg measures is that the two KERNELS agree, which is
     the reduction.
 
-    THE FLOOR IS TWO-SIDED, and that shape is a 2026-08-31 correction paid for on a
+    The floor is two-sided, and that shape is a 2026-08-31 correction paid for on a
     sibling gate. At ``COND == 0`` the conductive branch is not compiled at all, so
     ``f_cond_D*`` is never written -- BY DESIGN, and it is this leg's own claim. An
     absolute "every array moved" floor therefore asserts the NEGATION of what the leg
@@ -1895,7 +1898,7 @@ def reduction_leg(cp, product, cell, boundaries, steps: int,
     * every OTHER array the array path moves must move here too -- a pass this weld
       swallowed is still a failure, which is what the absolute floor was for.
 
-    NO ELECTRIC SOURCE HERE. Both routes are unbracketed, so a deposit in the seam
+    No electric source here. Both routes are unbracketed, so a deposit in the seam
     would put both of them one injection behind the array path and the discrimination
     precondition would fire for the wrong reason. The MAGNETIC source keeps the
     fields alive without touching this seam.
@@ -1927,7 +1930,7 @@ def reduction_leg(cp, product, cell, boundaries, steps: int,
             reduced.fields, reduced.pml, tuple(reduced._sources))
         if reduced_plan is None:
             raise AssertionError("the product refused the reduction case")
-        # KEPT BEFORE IT IS CLEARED, in a LOCAL rather than on the plan: which
+        # Kept before it is cleared, in a LOCAL rather than on the plan: which
         # components this configuration makes lossy is what decides where the array
         # path's history can move, and the flags are about to be zeroed. The plan
         # carries `__slots__`, so an attribute stashed on it would be an
@@ -2026,12 +2029,12 @@ def reduction_leg(cp, product, cell, boundaries, steps: int,
         row["history_moved_here"] = sorted(set(ever_moved) & set(history))
         row["history_moved_on_the_array_path"] = sorted(
             set(reference_moved) & set(history))
-        # SWALLOWED-PASS IS MEASURED AGAINST ROUTE B, NOT THE ARRAY PATH, for the
+        # Swallowed-pass is measured against the shipped route, not the array path, for the
         # same reason the seam-output comparison below is: the reduced route runs a
         # DIFFERENT recurrence from the conductive array path by construction, so an
         # array moving on one and not the other is the reduction, not a swallowed
-        # pass. Route B is the kernel this leg claims identity with, and it is the
-        # only route whose movement the reduced route must match.
+        # pass. The shipped route is the kernel this leg claims identity with, and
+        # it is the only route whose movement the reduced route must match.
         shipped_moved = moved(shipped_opening, snapshot(cp, shipped))
         row["inert_here_but_moving_on_the_shipped_pair"] = sorted(
             (set(final) - set(ever_moved) - set(material)) & set(shipped_moved))
@@ -2052,7 +2055,7 @@ def reduction_leg(cp, product, cell, boundaries, steps: int,
             failures.append(
                 f"COND=(0,0,0) still wrote {row['history_moved_here']}: the branch "
                 f"this flag removes was compiled anyway")
-        # THE LEVER IS A PROPERTY OF THE VALUE CLASS, recorded rather than demanded
+        # The lever is a property of the value class, recorded rather than demanded
         # of each one. On the signed-zero lattice the array path's history can hold
         # its words -- every case-A expression on +-0 inputs lands on a zero of the
         # same sign -- so the reduced route's stillness is not a measurable
@@ -2067,7 +2070,7 @@ def reduction_leg(cp, product, cell, boundaries, steps: int,
                 "VACUOUS: no component of this configuration can write its "
                 "conductive history at all, so the reduced route's stillness could "
                 "not be a measurable difference on ANY value class")
-        # A SUBSET, NOT AN EQUALITY: on a zero lattice the array path's history may move
+        # A subset, not an equality: on a zero lattice the array path's history may move
         # on some of the volumes its memberships allow and hold its words on others
         # (each conductive form on +-0 inputs lands on a zero, of either sign). What the
         # clause guards is a volume the memberships FORBID.
@@ -2093,11 +2096,11 @@ def reduction_leg(cp, product, cell, boundaries, steps: int,
             failures.append(
                 "VACUOUS: the ARRAY PATH itself moves nothing this seam writes on "
                 "this configuration")
-        # THE MOVEMENT COMPARISON IS AGAINST ROUTE B, NOT THE ARRAY PATH, and that is
-        # not a softening -- it is the only comparison that is TRUE. The reduced
+        # The movement comparison is against the shipped route, not the array path,
+        # and that is not a softening -- it is the only comparison that is TRUE. The reduced
         # route runs the ORDINARY recurrence, which stores `fu` unconditionally,
         # where the conductive array path stores it only under `dsigu`; so the
-        # reduced route legitimately moves MORE than the array path, and route B --
+        # reduced route legitimately moves MORE than the array path, and the shipped route --
         # the shipped `kernels.fused_curl_constitutive_D`, the kernel this leg claims
         # identity with -- is what it must match. Measured on run b, where the array
         # path moved `fu_Dy, fu_Dz` and the reduced route moved all three.
@@ -2108,10 +2111,10 @@ def reduction_leg(cp, product, cell, boundaries, steps: int,
                 f"the reduced route's seam-output movement "
                 f"{row['seam_outputs_moved']} is not the SHIPPED fused pair's "
                 f"{row['shipped_seam_outputs_moved']}")
-        # THE DISCRIMINATION PRECONDITION, recorded rather than assumed. If
+        # The discrimination precondition, recorded rather than assumed. If
         # COND=(0,0,0) also matches the ARRAY PATH then this value class cannot tell
         # the two kernels apart at all and its agreement is a tautology. That is a
-        # PROPERTY OF THE VALUE CLASS, not a defect, so it is reported as
+        # property of the value class, not a defect, so it is reported as
         # `discriminating: false` with its reason and the gate-level floor demands
         # that at least one class discriminate.
         row["discriminating"] = row.get("divergence_from_the_array_path") is not None
@@ -2151,7 +2154,7 @@ def compile_mutant(source: str, kernel_name: str) -> Any:
               "PERIODIC = tl.constexpr(0)\n"
               "METALLIC = tl.constexpr(1)\n\n")
     text = header + source.replace(KERNEL_NAME, kernel_name)
-    # A MUTATION THAT DOES NOT PARSE IS NOT A MUTATION. Checked before any device
+    # A mutation that does not parse is not a mutation. Checked before any device
     # work, so a broken rewrite is reported as unarmed rather than as caught.
     ast.parse(text)
     handle = tempfile.NamedTemporaryFile(
@@ -2171,7 +2174,7 @@ def _rewrite_block(source: str, before: Sequence[str],
                    after: Sequence[str]) -> Tuple[str, int]:
     """Replace a multi-line fragment, matching on the SIGNIFICANT statements only.
 
-    BLANK LINES AND COMMENTS ARE SKIPPED WHEN MATCHING and dropped from the span
+    Blank lines and comments are skipped when matching and dropped from the span
     that is replaced. Without that, a needle spanning two regions of the shipped
     body — the wall clear and the stores after it, say — matches nothing because a
     blank line or an explanatory comment sits between them, and the mutation is
@@ -2190,7 +2193,7 @@ def _rewrite_block(source: str, before: Sequence[str],
         if [lines[index].strip() for index in span] == needle:
             first, last = span[0], span[-1]
             indent = lines[first][:len(lines[first]) - len(lines[first].lstrip())]
-            # THE REPLACEMENT KEEPS ITS OWN RELATIVE INDENTATION and is re-prefixed
+            # The replacement keeps its own relative indentation and is re-prefixed
             # with the matched span's base. Stripping every line to the base instead
             # flattens a nested block, and `if ZM_X:` with its body pulled out to the
             # same column is a mutant that does not PARSE — reported as "armed" by
@@ -2218,18 +2221,18 @@ def mutation_table() -> Tuple[Tuple[str, str, str,
                                     Callable[[str], Tuple[str, int]]], ...]:
     """(id, why it is armed, expectation, rewrite).
 
-    THE FIRST GROUP REWRITES THE CONDUCTIVE FORMS, which are the only arithmetic
+    The first group rewrites the conductive forms, which are the only arithmetic
     decision this product makes that the ordinary fused pair does not: each branch
-    expression, each masked load and store of the auxiliary contract, and the B
-    battery of KERNELS.md section 7.2 -- the forms keyed on coefficient identity
-    instead of chunk membership, the record read on the other Yee sub-lattice, the
-    dsig and dsigu memberships exchanged, the conductive-chunk test removed, and the
-    lossless component's select removed. The previous package groupings are planted
-    back as INVERSIONS (section 7.1): the increment added in two operations
+    expression, each masked load and store of the auxiliary contract, and the per-chunk
+    form battery (docs/development/certification.md#chunk-form-battery) -- the forms keyed
+    on coefficient identity instead of chunk membership, the record read on the other Yee
+    sub-lattice, the dsig and dsigu memberships exchanged, the conductive-chunk test
+    removed, and the lossless component's select removed. The previous package groupings
+    are planted back as inverted grouping mutations: the increment added in two operations
     (``m_case_a_regrouped``) and the pairwise curl (``m_curl_parens_flattened``),
     each must be caught. The two coefficient-predicate rewrites the previous forms
-    carried (a tolerance, ``|`` narrowed to ``&``) are retired with the predicate
-    (DESIGN D13): the kernel no longer tests a coefficient.
+    carried (a tolerance, ``|`` narrowed to ``&``) are retired with the predicate,
+    not inverted: the kernel no longer tests a coefficient.
 
     THE REST rewrite the wall clear and the constitutive half, and are the same
     rewrites the sibling electric welds carry, on the same lines.
@@ -2270,7 +2273,7 @@ def mutation_table() -> Tuple[Tuple[str, str, str,
     def m_aux_load_unmasked(source: str) -> Tuple[str, int]:
         """``fu_D`` loaded on every live cell, its stores still guarded.
 
-        A DECLARED NULL (KERNELS.md section 7.2): the loaded word is read only by
+        A DECLARED NULL (per-chunk form battery): the loaded word is read only by
         forms selected on dsigu cells, so no stored word can move. The guard is
         pinned instead by the transcription leg's masked-load needle.
         """
@@ -2328,10 +2331,10 @@ def mutation_table() -> Tuple[Tuple[str, str, str,
                             "v, n = curl_form(f, u, curl, km1, si1, km2, si2, live)")
 
     def m_case_a_regrouped(source: str) -> Tuple[str, int]:
-        """The INVERSION (KERNELS.md 7.1): the dsig-and-dsigu ``fu`` form with the
+        """Inverted grouping mutation: the dsig-and-dsigu ``fu`` form with the
         increment added in two operations, ``((u*km1) + c_new) - c``.
 
-        That is the grouping this kernel carried before the alignment; MEEP forms the
+        That is the grouping this kernel carried before it took MEEP's; MEEP forms the
         increment ``(c_new - c)`` first (step_generic.cpp:209), and so do the array
         path and the shipped body. Must be caught.
         """
@@ -2467,9 +2470,9 @@ def mutation_table() -> Tuple[Tuple[str, str, str,
              "km_0 = tl.load(km0 + j, mask=live, other=0.0)"])
 
     def m_curl_parens_flattened(source: str) -> Tuple[str, int]:
-        """The INVERSION (KERNELS.md 7.1): the pairwise ``dtdx * ((b_x - b) + (a - a_y))``.
+        """Inverted grouping mutation: the pairwise ``dtdx * ((b_x - b) + (a - a_y))``.
 
-        That is the curl grouping this kernel carried before the alignment, planted at
+        That is the curl grouping this kernel carried before it took MEEP's, planted at
         the call site. MEEP's C associates ``g1[i+s1] - g1[i] + g2[i] - g2[i+s2]`` left
         to right (step_generic.cpp:104), which ``forms.curl_stencil`` carries. Must be
         caught. Planted on TARGET 2, whose two partners (x and y) are both present on
@@ -2603,7 +2606,7 @@ def case_a_cells(cell, boundaries, pml_cells, components) -> int:
     invariant axis is graded nowhere, so two of the three targets contribute zero and
     the count is target 2's alone.
 
-    NO DEVICE AND NO TRITON: the coefficients are the ``PML`` object's own arrays.
+    No device and no Triton: the coefficients are the ``PML`` object's own arrays.
     """
     from meep_gpu.fields import Fields  # noqa: PLC0415
     from meep_gpu.grid import Grid  # noqa: PLC0415
@@ -2651,7 +2654,7 @@ def mutation_case_for(name: str) -> Tuple[str, Tuple[Any, ...]]:
                 f"{case_name!r} declares {declaration(axis_letter)!r} there: the "
                 f"rewritten lines would be a DEAD BRANCH and the leg would report "
                 f"'uncaught' while measuring nothing")
-    # THE SAME TRAP, ONE RUNG DOWN. A rewrite inside the `COND == 1` arm scored on a
+    # The same trap, one rung down. A rewrite inside the `COND == 1` arm scored on a
     # case whose components are lossless touches a branch the launch never compiles.
     live = ("Dx", "Dy", "Dz") if components is None else tuple(components)
     for component in MUTATION_REQUIRES_CONDUCTIVE.get(name, ()):
@@ -2703,7 +2706,7 @@ def run_mutations(cp, product, pristine_ptx: Sequence[str]) -> List[Dict[str, An
             continue
         case_name, case = mutation_case_for(name)
         row["case"] = case_name
-        # THE CARRY IS ON. A mutation scored without the deposit would leave the
+        # The carry is on. A mutation scored without the deposit would leave the
         # repair's interaction with the mutated register unmeasured on every leg but
         # the carry ones. The exceptions, each with its reason, are
         # MUTATION_WITHOUT_ELECTRIC_CARRY's.
@@ -2755,13 +2758,13 @@ def run_refusals(cp, product) -> List[Dict[str, Any]]:
          lambda d: (_deposit(d, "Hz"),), None, True),
         ("mixed_conductivity_is_admitted", SIGMA_CORPUS, ("Dz",),
          lambda d: (_deposit(d, "Ez", integrated=True),), None, True),
-        # THE CORPUS ROW'S OWN SOURCE — ADMITTED since the 2026-09-01 lift: not
+        # The corpus row's own source — admitted since the 2026-09-01 lift: not
         # integrated, but its deposit table is published and the driver replays the
         # condinv rescale sparsely at exactly those cells.
         ("non_integrated_electric_source_on_a_conductive_run_is_admitted",
          SIGMA_CORPUS, None,
          lambda d: (_deposit(d, "Ez", integrated=False),), None, True),
-        # WHAT SURVIVES THE LIFT: a scaled source with NO deposit table takes the
+        # What survives the lift: a scaled source with NO deposit table takes the
         # driver's dense whole-volume fallback and stays refused by name.
         ("scaled_source_publishing_no_deposit_table", SIGMA_CORPUS, None,
          lambda d: (_ScaledElectricNoTable(),),
@@ -2803,7 +2806,7 @@ def _deposit(driver, component: str, integrated: bool = False):
 
     ``integrated`` is the flag the conductive seam turns on: driver.py:3355-3356
     injects an integrated source point-wise, where :3363-3370 rescales the whole
-    volume for a scaled one. IT RIDES ON THE ENVELOPE, not on the source
+    volume for a scaled one. It rides on the envelope, not on the source
     (sources.py:1443, :1467, :1498, :1548), and ``VolumeSource.is_integrated`` reads
     through to it -- constructing the source with the keyword is a TypeError, which
     is what run c measured.
@@ -3030,15 +3033,16 @@ def lifted_refusal_leg(cp, product) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 def environment(cp: Any = None) -> Dict[str, Any]:
+    import neutral_ids  # noqa: PLC0415
     import platform  # noqa: PLC0415
 
     out: Dict[str, Any] = {
-        "argv": list(sys.argv),
+        "argv": neutral_ids.argv(sys.argv),
         "python": sys.version.split()[0],
         "platform": platform.platform(),
         "numpy": np.__version__,
         "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
-        "cupy_cache_dir": os.environ.get("CUPY_CACHE_DIR"),
+        "cupy_cache_dir": neutral_ids.path(os.environ.get("CUPY_CACHE_DIR")),
     }
     try:
         import triton  # noqa: PLC0415
@@ -3051,7 +3055,7 @@ def environment(cp: Any = None) -> Dict[str, Any]:
             out["cupy"] = cp.__version__
             device = cp.cuda.Device()
             properties = cp.cuda.runtime.getDeviceProperties(device.id)
-            # THE DOTTED SPELLING, from the same properties the device name comes
+            # The dotted spelling, from the same properties the device name comes
             # from. `Device().compute_capability` is CuPy's undotted "86"; the weld
             # contract tests a SUBSTRING of the seeded host line against
             # `validated_compute_capabilities` (["8.6"]), so the undotted form seeds
@@ -3141,7 +3145,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     product = importlib.import_module(PRODUCT_MODULE)
     backends.guard_kernel_compilation(cp)
-    # THE MACHINE AND THE DEVICE, so this artifact can be SEEDED into a weld. The
+    # The machine and the device, so this artifact can be SEEDED into a weld. The
     # weld contract binds a host string to the record's validated Triton and
     # capability lists; `environment()` above records the device but no hostname, and
     # a seeding tool that supplied the missing half would be typing a fact instead of

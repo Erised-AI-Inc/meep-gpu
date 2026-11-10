@@ -9,7 +9,7 @@ difference (:meth:`.cylindrical_complex.CylindricalComplexCurlPlan.refresh_prefi
 This product removes the round trip and owns both seam slots.
 
 =========================================================================
-THE SHAPE, AND WHY IT IS TWO LAUNCHES AND NOT ONE
+The shape, and why it is two launches and not one
 =========================================================================
 
 ``stepping.step_D`` on a Dcyl grid takes the ``Dz`` term's radial derivative as the
@@ -28,7 +28,7 @@ unit is a whole radial column, so:
   recomputing ``Hy`` at every row through the SAME ``h_cell`` and writing the D-side
   radial difference (``ir0 = 0.5``, no wall row, per-chunk restart) into a scratch —
   :func:`.cylindrical_complex_scan.column_scan_loop` for ``step_D`` with the row source
-  being the recompute rather than a load. NOTHING WRITTEN BY THIS LAUNCH IS READ BY IT, so no
+  being the recompute rather than a load. Nothing written by this launch is read by it, so no
   thread observes another thread's store; the plan rotates ``H``/``f_w_H`` to the
   scratch afterwards, exactly as :class:`.offdiag_weld_common.ScratchWeldPairPlan` does
   for the D->E welds and :mod:`.fused_hd_pair` for the Cartesian H->D one.
@@ -50,7 +50,7 @@ redundant ``Hy`` per cell (the leader's recompute), 1.0x the cell count — not 
 233.6x a per-thread whole-column recompute would cost.
 
 =========================================================================
-WHAT THE DRIVER RUNS INSIDE THIS SEAM
+What the driver runs inside this seam
 =========================================================================
 
 ``driver.py:3313`` consults ``update_H``; ``:3315-3316`` is the electric
@@ -65,7 +65,7 @@ standing electric withdraw — the two ``withdraw_seam`` rows the boards already
 spells.
 
 =========================================================================
-THE BINDING CEILING IS MEASURED, NOT COUNTED
+The binding ceiling is measured, not counted
 =========================================================================
 
 Launch 2 is the certified curl at its own :data:`.cylindrical_complex.CURL_BINDINGS`
@@ -79,7 +79,7 @@ one-launch weld of this cell would be over the ceiling before it was written (th
 alone is 27), which is the other reason the shape is two launches.
 
 =========================================================================
-COMPOSITION: WHAT THIS PRODUCT DOES NOT CLAIM
+Composition: what this product does not claim
 =========================================================================
 
 :data:`INSTALLABLE` is False, for the reason and by the precedent :mod:`.fused_hd_pair`
@@ -93,11 +93,11 @@ state for these rows — one product owning ``update_H`` through ``update_E``, l
 as here and launch 2 the released D->E fused kernel reading the device difference — is
 named there too and is not built here.
 
-REGISTERED UNWIRED on ``update_H`` (``wired=False``, ``replaces=REPLACES``), so the
+Registered on ``update_H`` with ``wired=False`` and ``replaces=REPLACES``, so the
 seam loop can ask it and ``plan_step`` cannot select it; ``launch.FUSED_PAIR_ARMS``
 carries its absorb row and ``registry.FAMILY_MODULES`` imports it.
 
-NO TORCH AT MODULE LEVEL, as everywhere in this package.
+No torch at module level, as everywhere in this package.
 """
 
 # Derived from MEEP (https://github.com/NanoComp/meep).
@@ -219,7 +219,7 @@ __all__ = [
 
 #: The two source reads of the certified complex D-side scan loop this product does
 #: not lift verbatim, with what each became. DATA, so the suite and the gate can assert
-#: the list. THERE IS NO ARITHMETIC IN THIS TABLE: each replaces a memory read with the
+#: the list. There is no arithmetic in this table: each replaces a memory read with the
 #: recompute of the same value.
 SCAN_LIFT_EDITS: Tuple[Dict[str, str], ...] = (
     {"line": scan.source_reads("step_D")[0],
@@ -278,7 +278,7 @@ kernel void cyl_complex_hd_lead_step(
     uint idx [[thread_position_in_grid]])
 {
     uint nx = prm.nx, ny = prm.ny, nz = prm.nz, n_elem = prm.n_elem;
-    // THE CHUNK RECORD rides in the struct; `h_cell` evaluates membership from it at
+    // The chunk record rides in the struct; `h_cell` evaluates membership from it at
     // the cell it steps.
 __RECORD_ALIAS__
 __GUARD__
@@ -294,7 +294,7 @@ __DECODE__
     ho0[ii] = own.a0; ho1[ii] = own.a1; ho2[ii] = own.a2;
     wo0[ii] = own.wn0; wo1[ii] = own.wn1; wo2[ii] = own.wn2;
 
-    // --- THE COLUMN LEADER: the r = 0 thread walks its (phi, z) column -------------
+    // --- The column leader: the r = 0 thread walks its (phi, z) column -------------
     // stepping.step_D: Dz's radial difference of the per-chunk sum over the
     // POST-update_H Hy (ir0 = 0.5, backward, no wall row). The leader recomputes Hy
     // at every row through the SAME h_cell the thread at that row used for its own
@@ -430,9 +430,9 @@ def metal_cylindrical_complex_fused_hd_pair_coverage(
         reasons.extend(f"complex cylindrical curl half: {reason}"
                        for reason in curl.reasons)
 
-    # THE SEAM CLAUSE. The only pass between the two consults is the electric
-    # integrated-source withdraw (driver.py:3315-3316). IGNORANCE IS NEVER AN EMPTY
-    # SET: `Fields` does not hold the source list.
+    # The seam clause. The only pass between the two consults is the electric
+    # integrated-source withdraw (driver.py:3315-3316). Ignorance is never an empty
+    # set: `Fields` does not hold the source list.
     reasons.extend(_withdraw_hoist.seam_withdraw_reasons(
         fields, sources,
         undeclared=(
@@ -446,7 +446,7 @@ def metal_cylindrical_complex_fused_hd_pair_coverage(
             f"holding the previous step's dipole"),
         hoists_the_withdraw=HOISTS_THE_WITHDRAW))
 
-    # THE RUN'S FIRST update_H. The array path starts H and f_w from B on the dsigw
+    # The run's first update_H. The array path starts H and f_w from B on the dsigw
     # cells at that update (stepping.separate_h_from_b) and h_cell does not, so this
     # product takes that update only where the start cannot change a word: the base
     # single's own clause (launch.h_start_reasons), in its own words.
@@ -480,7 +480,7 @@ class MetalCylindricalComplexFusedHdPairPlan:
     launches are ordered. :attr:`lead_launches` and :attr:`curl_launches` are carried
     apart so "the lead ran and the curl did not" is distinguishable from "ran once".
 
-    THE ORDER IS THE CONTRACT. The curl reads the radial difference and the H the lead
+    The order is the contract. The curl reads the radial difference and the H the lead
     wrote; a
     curl run first, or a lead hoisted out of the loop, feeds the curl the PREVIOUS
     step's magnetic field — a smooth, plausible, entirely wrong field.
@@ -674,7 +674,7 @@ def plan_metal_cylindrical_complex_fused_hd_pair(
         volumes.append(name)
         return residency.mirror(name, host, constant=True)
 
-    # THE ROTATING GROUP: every stored magnetic field and split-field history is
+    # The rotating group: every stored magnetic field and split-field history is
     # mirrored under the engine's name AND given a complex64 twin.
     twins: Dict[str, Any] = {}
     for name in ROTATED_NAMES:
@@ -685,7 +685,7 @@ def plan_metal_cylindrical_complex_fused_hd_pair(
 
     flux = [bind_complex(name, getattr(fields, name)) for name in side["sources"]]
 
-    # THE RADIAL SCRATCH: (nr, ny, nz) complex64, fully overwritten by every lead
+    # The radial scratch: (nr, ny, nz) complex64, fully overwritten by every lead
     # launch before the curl reads it, shared between plans built against one
     # residency. NOT through `scratch_mirror`: that helper binds float32 by default,
     # which on a complex64 array is a silent cast that discards the imaginary plane
@@ -698,7 +698,7 @@ def plan_metal_cylindrical_complex_fused_hd_pair(
     radial = mirror(residency, radial_name, radial_host)
     volumes.append(radial_name)
 
-    # THE CONSTITUTIVE COEFFICIENTS on H's sub-lattice: kps per axis then kms per axis,
+    # The constitutive coefficients on H's sub-lattice: kps per axis then kms per axis,
     # integer lattice, in `h_cell`'s parameter order (complex_fused_hd_pair).
     suffix = "_h" if side["half_integer"] else ""
     coefficients = ([bind_real(f"pml:kps_{axis}{suffix}",
@@ -706,7 +706,7 @@ def plan_metal_cylindrical_complex_fused_hd_pair(
                     + [bind_real(f"pml:kms_{axis}{suffix}",
                                  getattr(pml, f"kms_{axis}{suffix}")) for axis in "xyz"])
 
-    # THE TWO ROW VECTORS, from stepping's own builder, grid invariants.
+    # The two row vectors, from stepping's own builder, grid invariants.
     rows = shape[0]
     weights, rinv = scan.prefix_row_vectors("step_D", rows)
     weights_host, weights_t = scratch_mirror(
@@ -737,7 +737,7 @@ def plan_metal_cylindrical_complex_fused_hd_pair(
                          for axis in "xyz" for stem in ("kms", "sinv")]
     zero_rows = cylindrical_complex.zero_rows(m, bool(grid.accurate_fields_near_cylorigin))
     curl_static = tuple(targets) + tuple(auxiliaries)
-    # THE CURL'S ARGUMENT ORDER IS THE CERTIFIED EMITTER'S: D, fu_D, H (resolved at run
+    # The curl's argument order is the certified emitter's: D, fu_D, H (resolved at run
     # time, they rotate), the six coefficient vectors, the five scalars, the radial
     # difference, the two i*m/r rows, the near-axis uniform, the axis factor, the m
     # word and the chunk record.

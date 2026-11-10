@@ -1,15 +1,15 @@
 """Merge-bar tests for the Metal FOLDED BETA family — a composition of two.
 
-THE QUESTION THIS FILE ANSWERS IS NOT "IS EACH HALF RIGHT". Both halves are already
+The question this file answers is not "is each half right". Both halves are already
 byte-certified alone: ``special_kz`` (the real and Bloch beta curls and the real
 arm's constitutive companion) and ``symmetry`` / ``folded_complex`` (the fold). The
 question is whether they remain right TOGETHER, and the composition moves exactly
-one thing: THE FOLD WIDENS THE MASK THE BETA TERM LANDS INSIDE. Unfolded, the beta
+one thing: the fold widens the mask the beta term lands inside. Unfolded, the beta
 increment meets one ownership mask (cell 0 on a non-periodic axis); folded, it meets
 two, because a folded PERIODIC axis also masks its LAST plane for every target whose
 Yee shift is 1 there. Every leg below exists because of that sentence.
 
-**1. THE STRUCTURAL COMPOSITION.** Each folded beta curl is
+**1. The structural composition.** Each folded beta curl is
 ``special_kz``'s OWN certified template with ONE block inserted at a CHECKED anchor,
 and its ghost gather and cell-0 mask are the certified emitters' output reached by
 mapping every mirror code to ``METALLIC``. Both halves are checked BY CHARACTER, in
@@ -18,7 +18,7 @@ source text is the only place the claim can be held on this backend. The stronge
 form is here: on an UNFOLDED grid the emitted source must be character-identical to
 the parent's except for an empty top-plane block.
 
-**2. THE COMPOSITION'S OWN HAZARD, WHICH NEITHER PARENT CAN TEST.** The beta term
+**2. The composition's own hazard, which neither parent can test.** The beta term
 must sit AFTER the curl and BEFORE **both** masks — the array path adds it at
 stepping.py:384-391 / :467-474 and masks at :397 / :479, whose
 ``_mask_non_owned_cells`` carries the cell-0 arm at :1945-1949 and the top-plane arm
@@ -26,14 +26,14 @@ at :1887-1897. A kernel that put it after either mask would write a beta
 contribution into a cell the array path zeroes. Checked in the SOURCE by ordering,
 and refuted on the DEVICE by the ordering mutations.
 
-**3. THE TWO MASKS REACH DIFFERENT TARGETS ON DIFFERENT SIDES, and both reach a
+**3. The two masks reach different targets on different sides, and both reach a
 beta-modified curl.** On a y fold, ``step_B``'s beta targets are ``curl0`` (Bx, Yee
 shift 1 on y — TOP-plane masked) and ``curl1`` (By, shift 0 — CELL-0 masked);
 ``step_D``'s are ``curl0`` (Dx, shift 0 — cell-0 masked) and ``curl1`` (Dy, shift 1
 — top-plane masked). So a leg on one sub-step proves nothing about the other, and
 between them the two sub-steps put the beta term under each mask exactly once.
 
-**4. THE TWO TERMINATIONS ARE DIFFERENT KERNELS.** On MIRROR_METALLIC the top plane
+**4. The two terminations are different kernels.** On MIRROR_METALLIC the top plane
 is OWNED and stepped and ``folded_top_plane_mask`` emits nothing; on MIRROR_PERIODIC
 it is masked. A sweep on one termination proves nothing about the other — and on
 this family that mask sits directly downstream of the beta term.
@@ -43,7 +43,7 @@ four neighbours to stay clear of — ``special_kz``'s two arms and the two fold
 families — and it inverts TWO clauses against them rather than one. Both directions
 are pinned here.
 
-**6. THE FILL SLOTS ARE NOT CLAIMED, DELIBERATELY**, and that is pinned as an
+**6. The fill slots are not claimed, deliberately**, and that is pinned as an
 invariant rather than left as an absence: the parents' fill predicates carry no beta
 clause and already admit a folded beta run, so a third arm would make both seam
 slots AMBIGUOUS and drop them to the array path.
@@ -52,7 +52,7 @@ Device-touching tests are skipped without MPS. EVERY behavioural leg asserts a
 VACUITY FLOOR — words actually moved — because zero-init is a fixed point of the
 constitutive sub-step and a no-op agreeing with a no-op is trivially identical.
 
-THERE IS NO GENERATED-CODE AUDIT ON THIS BACKEND. Every device leg here is
+There is no generated-code audit on this backend. Every device leg here is
 BEHAVIOURAL: it catches a wrong answer, never a wrong instruction.
 """
 
@@ -145,7 +145,7 @@ def _without_pass(source: str, kernel: str, parent_kernel: str, first: int) -> s
 
 @pytest.mark.parametrize("backward", (False, True), ids=("step_B", "step_D"))
 def test_the_real_source_is_the_certified_folded_curl_plus_exactly_the_pass(backward):
-    """DERIVED RATHER THAN COPIED, and that is the claim this pins.
+    """Derived rather than copied, and that is the claim this pins.
 
     The certified folded curl (:func:`.symmetry.folded_curl_source`) carries the
     fold's ghost rule, both ownership masks, the chunk record and the per-chunk
@@ -200,7 +200,7 @@ def test_the_ghost_and_cell_zero_mask_are_the_certified_emitters_output():
 
 
 # ---------------------------------------------------------------------------
-# 2. THE COMPOSITION'S OWN HAZARD — where the beta term sits
+# 2. The composition's own hazard — where the beta term sits
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("backward", (False, True), ids=("step_B", "step_D"))
@@ -249,7 +249,7 @@ def test_the_pass_follows_both_masks_and_the_forms_in_the_complex_source(backwar
 ), ids=("step_B", "step_D"))
 def test_each_mask_reaches_a_beta_modified_curl_on_exactly_one_side(
         backward, beta_targets, cell_zero, top):
-    """WHY A LEG ON ONE SUB-STEP PROVES NOTHING ABOUT THE OTHER.
+    """Why a leg on one sub-step proves nothing about the other.
 
     The beta pass always reaches targets 0 and 1; which of those two the
     cell-0 mask takes and which the top-plane mask takes SWAPS between the sides,
@@ -299,7 +299,7 @@ def test_a_metallic_fold_emits_no_top_plane_mask_at_all():
 def test_the_beta_partner_is_a_center_load_and_is_never_bloch_connected():
     """The array path's beta partner is the stored same-cell snapshot.
 
-    MEEP's Bloch connection applies to the unshifted operand AS READ ACROSS A WRAP
+    MEEP's Bloch connection applies to the unshifted operand as read across a wrap
     (the curl's ``c_dx``/``b_dx``); the pass reads the stored centres ``a``/``b``.
     Pinned by character.
     """
@@ -436,7 +436,7 @@ def test_a_folded_axis_may_carry_no_bloch_phase_and_an_unfolded_one_may():
 
 
 def test_the_constitutive_pair_is_admitted_and_the_e_side_scopes_dispersion():
-    """The fold and beta both reach ``update_H``/diagonal ``update_E`` NOT AT ALL.
+    """The fold and beta both reach ``update_H``/diagonal ``update_E`` not at all.
 
     So the pair is the certified body under a restated predicate — and dispersion,
     which DOES change what ``source`` is, is refused on the E side alone.
@@ -457,7 +457,7 @@ def test_the_constitutive_pair_is_admitted_and_the_e_side_scopes_dispersion():
 
 
 def test_the_two_complex_beta_constitutive_products_are_disjoint_on_the_fold():
-    """THE GAP THIS FAMILY MADE VISIBLE IS CLOSED, and the seam is the fold.
+    """The gap this family made visible is closed, and the seam is the fold.
 
     This used to assert that the UNFOLDED complex beta constitutive was still
     nobody's — two slots, one corpus row — by pinning ``special_kz``'s refusal
@@ -508,7 +508,7 @@ def test_the_family_registers_eight_arms_over_the_four_arithmetic_slots():
         labels[slot] = {spec.label for spec in here}
     assert all(names == {folded_beta.LABEL_REAL, folded_beta.LABEL_COMPLEX}
                for names in labels.values()), labels
-    # BY FAMILY IDENTITY, NOT BY NAME PREFIX. This asserts that FOLDED_BETA'S OWN arms
+    # By family identity, not by name prefix. This asserts that FOLDED_BETA'S OWN arms
     # are wired, and a prefix match is the wrong instrument for that: since 2026-08-27
     # the tree also carries `folded_beta_complex_fused_magnetic_pair`, a WELD over this
     # family's curl, which registers wired=False deliberately -- unwired keeps it
@@ -520,7 +520,7 @@ def test_the_family_registers_eight_arms_over_the_four_arithmetic_slots():
 
 
 def test_no_fill_arm_is_registered_and_the_parents_still_own_those_slots():
-    """A THIRD ARM ON THE SEAM SLOTS WOULD BE A COVERAGE LOSS DRESSED AS COMPLETENESS.
+    """A third arm on the seam slots would be a coverage loss dressed as completeness.
 
     ``fill_symmetry_bc_*`` copies ``parity * field[plane]`` and reads no beta term,
     so both parents' fill predicates carry no beta clause and already admit a folded
@@ -548,7 +548,7 @@ def test_update_p_belongs_only_to_the_independent_ade_family():
 
 @pytest.mark.parametrize("row", ("fold_real_2d_beta", "fold_complex_2d_beta"))
 def test_the_two_rows_left_uncarried_in_this_change(row):
-    """THE NON-VACUITY FLOOR, MOVED DELIBERATELY.
+    """The non-vacuity floor, moved deliberately.
 
     ``UNCARRIED`` pins rows that must select NOTHING on any arithmetic slot. These
     two were on that list until this family made them real, and moving them is only
@@ -577,13 +577,13 @@ WHOLE_STEP_CASES = (
                          ids=[c[0] for c in WHOLE_STEP_CASES])
 def test_a_complete_real_step_agrees_and_the_first_divergent_step_is_reported(
         label, kwargs):
-    """THE REAL ARBITER. Six green sub-step legs say nothing about the object the
+    """The real arbiter. Six green sub-step legs say nothing about the object the
     engine would run.
 
     Failure classes that live ONLY in a complete step: a STALE MIRROR, a SEAM, and
     an ACCUMULATING AUXILIARY (``fu_*`` is STATE, and a kernel right for one launch
-    and wrong forever after is identical in a single-launch leg). THE FOLD ADDS A
-    FOURTH: the folded axis's ghost plane is written by one pass and READ by the
+    and wrong forever after is identical in a single-launch leg). The fold adds a
+    fourth: the folded axis's ghost plane is written by one pass and READ by the
     next, and the beta term rides the plane the second mask deletes.
 
     The fill passes are the PARENTS' — this family registers none — so this leg also
@@ -644,7 +644,7 @@ def test_a_complete_real_step_agrees_and_the_first_divergent_step_is_reported(
         if total and first_divergent is None:
             first_divergent = (step, {k: v for k, v in differing.items() if v})
 
-    assert first_divergent is None, (label, "FIRST DIVERGENT STEP", first_divergent,
+    assert first_divergent is None, (label, "first divergent step", first_divergent,
                                      "per-step differing words", per_step)
     moved = sum(_moved(np.zeros_like(getattr(reference_fields, name)),
                        getattr(reference_fields, name))
@@ -728,7 +728,7 @@ def test_a_complete_complex_step_agrees_and_reports_the_first_divergent_step(
         if total and first_divergent is None:
             first_divergent = (step, {k: v for k, v in differing.items() if v})
 
-    assert first_divergent is None, (label, "FIRST DIVERGENT STEP", first_divergent,
+    assert first_divergent is None, (label, "first divergent step", first_divergent,
                                      "per-step differing words", per_step)
     moved = sum(_moved(np.zeros_like(getattr(reference_fields, name)),
                        getattr(reference_fields, name))
@@ -760,7 +760,7 @@ MUTATIONS = (
      lambda src: src.replace("-(beta_plus * b)", "-(__TMP__ * b)")
                     .replace("-(beta_minus * a)", "-(beta_plus * a)")
                     .replace("-(__TMP__ * b)", "-(beta_minus * b)"), "must_catch"),
-    # A MEASURED EQUIVALENCE, not a belief: float multiplication is commutative, so
+    # A measured equivalence, not a belief: float multiplication is commutative, so
     # the shipped operand order is transcription fidelity rather than a bit
     # requirement. Asserted null so it cannot quietly become folklore.
     ("multiply_operands_swapped",
@@ -824,7 +824,7 @@ def _from_arrays_plan(fields, pml, sub_step, codes, residency, *, beta_plus=0.0,
                          ids=[m[0] for m in MUTATIONS])
 def test_the_armed_mutations_are_caught_on_a_folded_beta_step(name, mutate,
                                                               verdict):
-    """THE LEG THAT MAKES THE OTHER LEGS MEAN SOMETHING.
+    """The leg that makes the other legs mean something.
 
     Every mutation is compiled and LAUNCHED through the plan's ``functions`` SEAM.
     Dropping that argument is not a slowdown, it is a silent DISARMING: every leg
@@ -859,14 +859,14 @@ def test_the_armed_mutations_are_caught_on_a_folded_beta_step(name, mutate,
                 for n in ("Bx", "By", "Bz"))
     assert moved > 0, (name, "VACUOUS: the reference wrote nothing")
     if verdict == "must_catch":
-        assert differing > 0, (name, "MUTATION NOT CAUGHT")
+        assert differing > 0, (name, "mutation not caught")
     else:
         assert differing == 0, (name, verdict, "expected null, measured", differing)
 
 
 @requires_mps
 def test_the_refuted_negation_spelling_is_unobservable_here_for_a_stated_reason():
-    """WHY ONE REFUTED SPELLING IS A NULL ON THIS FAMILY, PROVED IN BOTH HALVES.
+    """Why one refuted spelling is a null on this family, proved in both halves.
 
     The pass's ladder subtracts the increment, and ``v + (0.0f - x)``-style
     respellings of a negation differ from ``v - x`` in EXACTLY ONE input pattern:
@@ -874,11 +874,11 @@ def test_the_refuted_negation_spelling_is_unobservable_here_for_a_stated_reason(
     ``-0.0``; ``0.0f - +0.0`` is ``+0.0`` and ``-0.0 + +0.0`` is ``+0.0``. Every
     other zero pairing agrees, and no normal input separates them at all.)
 
-    HALF ONE — THE SPELLING IS GENUINELY DIFFERENT ON THIS BACKEND. Measured here on
+    Half one — the spelling is genuinely different on this backend. Measured here on
     that exact pattern: the two kernels disagree. So the mutation is not a no-op and
     Triton's ``* -1.0`` workaround is not needed here for the reason Triton needs it.
 
-    HALF TWO — THIS FAMILY CANNOT REACH THE PATTERN. ``grid.beta`` is legal ONLY on
+    Half two — this family cannot reach the pattern. ``grid.beta`` is legal ONLY on
     an effective-2-D grid (``Grid._resolve_beta``; MEEP fields.cpp:546-547), whose
     invariant axis stores ONE cell, so the z-shifted operand IS the centre operand
     and ``b - b_z`` is ``+0.0`` for every finite ``b`` — negative zeros included,
@@ -938,7 +938,7 @@ kernel void tail(device float* out [[buffer(0)]],
 
 @requires_mps
 def test_the_shipped_source_through_the_same_route_is_the_mutation_legs_control():
-    """THE CONTROL FOR THE MUTATION LEG, without which a null proves nothing.
+    """The control for the mutation leg, without which a null proves nothing.
 
     Every mutant is launched through ``plan_folded_beta_pml_curl_from_arrays``. If
     that route itself diverged from the array path, a ``must_catch=False``
@@ -974,7 +974,7 @@ def test_the_shipped_source_through_the_same_route_is_the_mutation_legs_control(
 @pytest.mark.parametrize("sub_step", ("step_B", "step_D"))
 def test_the_beta_free_arm_reduces_to_the_certified_folded_curl_on_the_device(
         sub_step):
-    """THE IDENTITY LEG: ``has_beta=False`` must be the FOLD, exactly.
+    """The identity leg: ``has_beta=False`` must be the FOLD, exactly.
 
     It is what says the fold half of the composition is unchanged — the ONE claim a
     source diff against ``special_kz`` cannot make, because that parent carries no

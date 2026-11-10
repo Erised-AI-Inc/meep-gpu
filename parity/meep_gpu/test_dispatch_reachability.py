@@ -1,6 +1,6 @@
 """Which kernel tables the dispatch seam can actually reach, measured off the tree.
 
-THE QUESTION THIS FILE EXISTS FOR was the boards' worst failure mode before it was
+The question this file exists for was the boards' worst failure mode before it was
 answered: every board published ``served_in_dispatch`` from its own release table
 while the dispatcher imported ONE composer, so two of the three numbers described
 products ``plan_fast_path`` could not select at all. ``dispatch_reachability``
@@ -113,7 +113,7 @@ def _drive_cuda() -> dict:
 
 
 def test_the_release_table_and_the_gate_drive_the_same_arms_on_the_same_cases():
-    """THE ONE DISAGREEMENT THAT IS ONLY DISCOVERED ON DEVICE, AND LATE.
+    """The one disagreement that is only discovered on device, and late.
 
     ``recut_driver_dispatch_record.py --backend cuda`` refuses to cut the record
     unless EVERY ``(arm, case, leg)`` row of ``CUDA_RELEASED_FUSED_ARMS`` appears in
@@ -145,7 +145,7 @@ def test_the_release_table_and_the_gate_drive_the_same_arms_on_the_same_cases():
                   if cases != driven_cases[arm]}
     assert not mismatched, f"release cases != driven cases: {mismatched}"
 
-    # AND THE LEG, which is the half a case list cannot carry: a release row that
+    # And the leg, which is the half a case list cannot carry: a release row that
     # claimed a leg its arm is never driven on would be un-cuttable even with its
     # cases right.
     for arm, legs in fastpath_cuda.CUDA_RELEASED_ARM_LEGS.items():
@@ -157,7 +157,7 @@ def test_the_release_table_and_the_gate_drive_the_same_arms_on_the_same_cases():
 def test_all_three_arbitration_verdicts_survive_into_the_summary():
     """The CUDA campaign measures three arbitration answers per case; keep three.
 
-    THE FAILURE THIS PINS was silent and total. The summary keyed arbitration by
+    The failure this pins was silent and total. The summary keyed arbitration by
     CASE and stored one verdict, so the three controls overwrote each other and the
     LAST one -- ``arbitration-preference-rejected`` -- was the only survivor. The
     two verdicts the published by-preference number is conditioned on
@@ -173,7 +173,7 @@ def test_all_three_arbitration_verdicts_survive_into_the_summary():
          "verdict": "INCUMBENT-YIELDED"},
         {"control": "arbitration-preference-rejected", "case": "pml_2d",
          "verdict": "PREFERENCE-REFUSED-BY-NAME"},
-        # A NON-ARBITRATION CONTROL ON THE SAME CASE must not enter the map: the
+        # A non-arbitration control on the same case must not enter the map: the
         # recut reads this key as the arbitration measurement and nothing else.
         {"control": "withheld-consult", "case": "pml_2d", "verdict": "WITHHELD"},
         {"control": "arbitration", "case": "folded_2d", "verdict": "NOT-APPLICABLE"},
@@ -184,7 +184,7 @@ def test_all_three_arbitration_verdicts_survive_into_the_summary():
     assert summary["pml_2d"] == ["ARBITRATION-DEFAULT-HELD", "INCUMBENT-YIELDED",
                                  "PREFERENCE-REFUSED-BY-NAME"]
     assert summary["folded_2d"] == ["NOT-APPLICABLE"]
-    # THE TWO THE RECUT REQUIRES BY NAME, stated here as the reason the list shape
+    # The two the recut requires by name, stated here as the reason the list shape
     # exists rather than left implicit in the ordering above.
     assert {"INCUMBENT-YIELDED", "ARBITRATION-DEFAULT-HELD"} <= set(summary["pml_2d"])
 
@@ -214,7 +214,7 @@ def test_a_cuda_leg_run_under_the_wrong_switch_is_refused(tmp_path, leg,
                                                           preference, expected):
     """The leg's NAME and the backend-preference switch have to agree.
 
-    WHY THIS IS A REFUSAL AND NOT A CONVENTION: the published record carries a
+    Why this is a refusal and not a convention: the published record carries a
     ``legs`` map asserting that ``cuda_shipped`` ran with the preference set and
     ``cuda_default_precedence`` ran without it, and NOTHING downstream re-reads the
     environment to check. A leg run under the wrong switch therefore publishes a
@@ -233,13 +233,13 @@ def test_a_cuda_leg_run_under_the_wrong_switch_is_refused(tmp_path, leg,
 
     assert finished.returncode == 2, finished.stdout[-2000:]
     assert expected in finished.stderr
-    # REFUSED BEFORE IT WROTE ANYTHING. A refusal that had already created the leg
+    # Refused before it wrote anything. A refusal that had already created the leg
     # directory would leave a shape the recut counts as a leg.
     assert not out.exists()
 
 
 # ---------------------------------------------------------------------------
-# WHAT THE COUNT EVALUATES, AND WHAT IT ONLY DECLARES (2026-09-11)
+# What the count evaluates, and what it only declares (2026-09-11)
 # ---------------------------------------------------------------------------
 
 
@@ -271,7 +271,7 @@ def test_the_pair_may_absorb_clause_is_evaluated_not_only_declared():
         assert verdict["contended_slots"] == [], seam
         assert verdict["rows_examined"] == 1, seam
         assert verdict["instances_whose_seam_this_table_cannot_name"] == {}, seam
-    # TWO DIFFERENT PRODUCTS WANTING ONE SLOT is the refusal this exists for: an
+    # Two different products wanting one slot is the refusal this exists for: an
     # H->D span takes update_H from the B seam and step_D from the D seam.
     clash = reachability._slot_contention([
         ("a_row", "B_to_H", "a_pair"), ("a_row", "H_to_D", "an_hd_weld")])
@@ -287,7 +287,7 @@ def test_a_board_that_passes_no_seam_says_so_instead_of_pretending():
 
 
 def test_a_seam_this_table_cannot_name_refuses_rather_than_examining_nothing():
-    """THE VACUOUS-CHECK FAILURE, armed.
+    """The vacuous-check failure, armed.
 
     Triton spells its seams ``B->H`` and the other two ``B_to_H``. Before
     ``fusion_taxonomy.canonical_seam`` was asked, the Triton board reported
@@ -357,7 +357,7 @@ def test_the_specialized_family_clause_is_read_per_backend_not_interpolated():
 def test_the_metal_off_diagonal_false_clause_is_gone_and_the_axis_is_per_arm():
     """The debt this test used to pin was PAID on 2026-09-12. It now pins the payment.
 
-    WHAT THE DEBT WAS. The shared Metal envelope's ``off_diagonal_epsilon`` row
+    What the debt was. The shared Metal envelope's ``off_diagonal_epsilon`` row
     claimed "and none CAN be on the products released here: the composer's
     specialized-family guard refuses every ordinary and folded pair on a grid with
     off-diagonal chi1inv rows". That guard is ``specialized_family_owns_the_grid``
@@ -366,13 +366,13 @@ def test_the_metal_off_diagonal_false_clause_is_gone_and_the_axis_is_per_arm():
     can be" says do not bother, a coverage boundary says drive the case — and the
     axis was the largest single lever on the Metal board.
 
-    WHAT PAID IT. ``pml_3d`` (the sphere) is a DRIVE case now and the ordinary
+    What paid it. ``pml_3d`` (the sphere) is a DRIVE case now and the ordinary
     magnetic pair dispatches there on the RELEASE route, which is the measurement
     the false clause said could not exist. The axis left the shared table for the
     per-arm one, because the arms stopped agreeing on it: that one arm drives BOTH
     values and so carries no row, while every other arm pins it False.
 
-    THE PREMISE HALF IS KEPT EXACTLY AS IT WAS. The guard must still be absent from
+    The premise half is kept exactly as it was. The guard must still be absent from
     the Metal package and present in the Triton one. If that ever stops being true
     the correction's reasoning is void, and this test says so rather than assuming a
     settled question stays settled.
@@ -402,8 +402,8 @@ def test_the_metal_off_diagonal_false_clause_is_gone_and_the_axis_is_per_arm():
                                     "conductivity": frozenset({False})},
         "folded fused B/H pair": {"dimensions": frozenset({2}),
                                   "susceptibilities": frozenset({0})},
-        # THE FOLDED COMPLEX B/H PAIR'S CORNER, added by the 2026-09-14 target round
-        # (Metal L5): its two off-diagonal cases, folded_complex_offdiag_2d and
+        # The folded complex B/H pair's corner, added on 2026-09-14
+        # for the Metal table: its two off-diagonal cases, folded_complex_offdiag_2d and
         # folded_complex_nobloch_offdiag_2d, drove both Bloch values at 2-D.
         "folded complex fused B/H pair": {"bloch": frozenset({False, True}),
                                           "dimensions": frozenset({2})},
@@ -414,9 +414,9 @@ def test_the_metal_off_diagonal_false_clause_is_gone_and_the_axis_is_per_arm():
         # off folded_offdiag_magnetic_2d's own lift, so under this table's rule --
         # list the axes the row leaves open -- there is nothing left to list.
         "folded off-diagonal fused electric D/E pair": {},
-        # AND ITS UNFOLDED TWIN, empty for the same reason.
+        # And its unfolded twin, empty for the same reason.
         "off-diagonal fused electric D/E pair": {},
-        # AND THE COMPLEX UNFOLDED ONE, 2026-09-17.
+        # And the complex unfolded one, 2026-09-17.
         "complex no-PML off-diagonal fused electric D/E pair": {},
     }
     # ...and the axis is NOT also spelled as a row, because one fact with two homes
@@ -432,7 +432,7 @@ def test_the_metal_off_diagonal_false_clause_is_gone_and_the_axis_is_per_arm():
     assert "specialized_family_owns_the_grid" in (
         package_root / "triton_kernels" / "launch.py").read_text(encoding="utf-8")
 
-    # AND THE SIBLING CORRECTION STANDS: the reachability clause reads per backend
+    # And the sibling correction stands: the reachability clause reads per backend
     # rather than interpolating one backend's guard onto another.
     assert reachability._specialized_family_guard_clause("metal").startswith(
         "NOT A CLAUSE")

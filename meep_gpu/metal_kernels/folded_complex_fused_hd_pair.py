@@ -1,7 +1,7 @@
 """The FOLDED COMPLEX H->D weld: folded complex ``update_H`` into folded complex
 ``step_D``.
 
-THE FIFTH PRODUCT ON THE FOURTH SEAM, and the cell both of its parents refuse BY
+The fifth product on the fourth seam, and the cell both of its parents refuse BY
 NAME. ``h_to_d_seam.instances`` files **5** rows under the Metal arm pair
 ``(folded complex -> folded complex)`` and all five are ``buildable_not_built``, with
 none carrying a standing in-seam withdraw:
@@ -20,8 +20,8 @@ and it stands to its two neighbours exactly as :mod:`.folded_complex` stands to
 :mod:`.complex_fields` and :mod:`.symmetry`.
 
 =============================================================================
-THIS IS THE PLAIN COMPLEX WELD WITH ONE SUBSTITUTION, AND THAT IS A STRUCTURAL
-CLAIM RATHER THAN A CONVENIENCE
+This is the plain complex weld with one substitution, and that is a structural
+claim rather than a convenience
 =============================================================================
 
 Both halves of this seam are the plain complex product's, unchanged:
@@ -48,8 +48,8 @@ and which CODES reach it. Both are gate legs (``transcription``, ``codes_source`
 rather than comments.
 
 =============================================================================
-THE SEAM IS FILL-FREE ON A FOLDED GRID -- INHERITED, AND RE-STATED BECAUSE THE
-STORAGE DOES NOT CHANGE THE DRIVER
+The seam is fill-free on a folded grid -- inherited, and re-stated because the
+storage does not change the driver
 =============================================================================
 
 ``FdtdDriver.step`` runs ``fill_symmetry_bc_B`` (:3305), ``zero_metal_B`` (:3307) and
@@ -62,7 +62,7 @@ here and none may be** -- a fill carried across this launch is a pass the driver
 again. The ``complex_fill_carry`` machinery :mod:`.folded_complex_fused_pair` needs on
 the D->E seam is not imported.
 
-WHAT THE FOLDED COMPLEX FILL DOES CHANGE, and why it does not reach this kernel.
+What the folded complex fill does change, and why it does not reach this kernel.
 :mod:`.folded_complex` records the one arithmetic delta the composition creates: under
 complex64 the array path's mirror parity is a FULL complex multiply by ``(+/-1, +0)``
 with its zero cross terms, not a sign flip, so the fill gets its own body there. That
@@ -72,8 +72,8 @@ for a ``+1`` plane and a ``-1`` plane is byte-identical -- and the gate asserts 
 sha256 rather than arguing it.
 
 =============================================================================
-THE SIGNATURE IS THE PLAIN COMPLEX PRODUCT'S EXACTLY, AND THE CEILING IS STILL AN
-EQUALITY
+The signature is the plain complex product's exactly, and the ceiling is still an
+equality
 =============================================================================
 
     3 H_out + 3 f_w_H_out          (float2 scratch, written, never read)
@@ -84,7 +84,7 @@ EQUALITY
   + 3 constitutive kps                                                        = 30
 
 plus one ``constant Params&`` = **31 = :data:`.device.MAX_BUFFER_BINDINGS`**, no
-headroom. THE FOLD ADDS NO KERNEL ARGUMENT UNDER COMPLEX STORAGE EITHER, for the four
+headroom. The fold adds no kernel argument under complex storage either, for the four
 reasons :mod:`.folded_fused_hd_pair` measures on the real cell and one more that is
 this composition's own:
 
@@ -106,8 +106,8 @@ scalars, 62 split re/im planes. The gate compiles each on THIS host and requires
 failure; it does not inherit the sibling's verdict.
 
 =============================================================================
-WHERE THE CODES COME FROM, AND WHY IT IS THE ONE THING THIS MODULE CAN GET WRONG
-SILENTLY
+Where the codes come from, and why it is the one thing this module can get wrong
+silently
 =============================================================================
 
 ``codes`` MUST come from ``symmetry.folded_axis_kinds(grid, pml)``. The plain complex
@@ -119,14 +119,14 @@ mask is not widened. Neither :func:`.folded_complex.folded_bloch_curl_source` no
 compiler can catch it (0 and 1 are valid codes there). It is a GATE MUTATION
 (``codes_from_boundary_kinds``), not a comment.
 
-THE PHASE FLAGS COME FROM ``_boundary_kinds``, NOT FROM THE FOLDED CODES, and that is
+The phase flags come from ``_boundary_kinds``, not from the folded codes, and that is
 :func:`.folded_complex.plan_folded_complex_pml_curl`'s own choice restated: a folded
 axis is refused a Bloch phase by that family's clause, so the two agree on every
 admitted run, and reading the phase off the RESOLVED kinds keeps the conjugation rule
 in one place (``complex_fields.phase_arguments``, ``backward=True`` on this seam).
 
 =============================================================================
-WHAT SITS IN THE SEAM, AND WHAT THIS PRODUCT REFUSES
+What sits in the seam, and what this product refuses
 =============================================================================
 
 :data:`CARRIES_DEPOSIT_REPAIR` is False and it is a FACT about the driver rather than
@@ -151,7 +151,7 @@ against :mod:`.complex_fused_hd_pair`'s in both directions, which is what keeps 
 folded complex row unambiguous.
 
 =============================================================================
-IT IS NOT INSTALLED, AND THE REASON IS ARBITRATION RATHER THAN ARITHMETIC
+It is not installed, and the reason is arbitration rather than arithmetic
 =============================================================================
 
 :data:`INSTALLABLE` is False, and :data:`INSTALLABLE_REASON` carries the MEASUREMENT
@@ -160,21 +160,21 @@ own fixtures, not inferred from the board. Over the driver's ``step_B - update_H
 step_D - update_E`` slot path launches are ``4 - (installed pairs)``, and a product
 spanning ``update_H``/``step_D`` takes one slot from EACH neighbour.
 
-**NO TIMING EXISTS FOR THIS SHAPE AND NONE IS LICENSED BY ANYTHING IN THIS MODULE.**
-A second Metal lane was running on this GPU while this family was gated, so no
+**No timing exists for this shape and none is licensed by anything in this module.**
+Another Metal workload was running on this GPU while this family was gated, so no
 wall-clock number taken in that window would mean anything even if one had been taken.
 
-WHAT THE FAMILY'S CREDITED INSTANCES MEAN, in the words a search will find: the
+What the family's credited instances mean, in the words a search will find: the
 board's 5 instances are **served by predicate admission** and nothing more; the
 product **installs on zero rows**; it **executes nowhere** outside its own gate and
 tests; and it licenses **no timing claim and no dispatch claim**.
 
 =============================================================================
-IS THIS A SECOND PRODUCT, OR A VARIANT OF THE PLAIN COMPLEX ONE?
+Is this a second product, or a variant of the plain complex one?
 =============================================================================
 
-**A LATER MERGE INTO ONE TWO-VARIANT PRODUCT IS THE RIGHT END STATE, AND IT IS NOT
-WHAT THIS ROUND SHIPS.** The CUDA sibling ``cuda_kernels/complex_fused_hd_pair.py``
+**A later merge into one two-variant product is the right end state, and it is not
+what this module ships.** The CUDA sibling ``cuda_kernels/complex_fused_hd_pair.py``
 already covers both cells as one product -- one transform emitting two device strings,
 plain welding the certified complex Bloch curl and folded the certified folded-complex
 one, with ``resolve()`` reading the fold off the grid -- and everything that argues for
@@ -183,17 +183,17 @@ rotation order, the binding count and all four refuted signatures are IDENTICAL,
 the two predicates differ in exactly one clause, inverted. Merging would put the fold
 where it belongs, as a source specialisation beside the boundary codes.
 
-Two things stop it in this round and both are mechanical rather than technical: the
-plain module's bytes are pinned by gate campaigns in flight, so editing it re-stales
-every weld that records it and costs a three-backend re-gate; and a merged product
-would need ONE arm row admitting both cells, which changes what
-``launch.FUSED_PAIR_ARMS`` files and what the board joins on. Both are wiring, and the
-wiring for this round is written as a diff rather than applied. Until then the
-relationship is expressed the way the tree already expresses it between
-:mod:`.fused_hd_pair` and :mod:`.folded_fused_hd_pair`: a second module that imports
-the first's tables and inverts one clause of its predicate.
+Two things stop it, and both are mechanical rather than technical: the plain module's
+bytes are pinned by gate campaigns in flight, so editing it re-stales every weld that
+records it and costs a three-backend re-gate; and a merged product would need ONE arm
+row admitting both cells, which changes what ``launch.FUSED_PAIR_ARMS`` files and what
+the board joins on. Both are wiring, and the wiring that accompanies this family is
+written as a diff rather than applied. Until then the relationship is expressed the
+way the tree already expresses it between :mod:`.fused_hd_pair` and
+:mod:`.folded_fused_hd_pair`: a second module that imports the first's tables and
+inverts one clause of its predicate.
 
-NO TORCH AT MODULE LEVEL, as everywhere in this package.
+No torch at module level, as everywhere in this package.
 """
 
 # Derived from MEEP (https://github.com/NanoComp/meep).
@@ -223,7 +223,7 @@ SLOT = "update_H"
 #: The driver passes one launch of this plan performs, in driver order
 #: (driver.py:3311, :3315). Declared rather than inferred from the slot name.
 #:
-#: NOTHING BETWEEN THEM IS CARRIED, and on a folded grid there is still only one
+#: Nothing between them is carried, and on a folded grid there is still only one
 #: thing there to carry: the electric withdraw (:3313-3314), which
 #: :data:`HOISTS_THE_WITHDRAW` declines. Both mirror fills, the wall clear and both
 #: far passes sit OUTSIDE this span -- three before ``update_H`` and three after
@@ -276,7 +276,7 @@ INSTALLABLE_REASON = (
     "launches -- composes from pieces that all now exist on this backend and is not "
     "built here")
 
-#: WHAT A RELEASE STILL OWES. Empty means "this family holds a released device gate
+#: What a release still owes. Empty means "this family holds a released device gate
 #: bound in ``fingerprints.json``"; non-empty means it does not, and the string is
 #: the debt. ``test_metal_weld_contract.test_every_metal_family_is_welded``
 #: partitions the ``gate_metal_*.py`` fleet against that file and requires the
@@ -294,7 +294,7 @@ INSTALLABLE_REASON = (
 #: have moved -- so the emptying lands FIRST and the gate measures the emptied tree.
 WELD_OWED: str = ""
 
-#: WHAT THE GATE MEASURED, KEPT. The pre-weld declaration is not deleted with the
+#: What the gate measured, kept. The pre-weld declaration is not deleted with the
 #: weld: it is the one-line record of which artifact this family's release rests on,
 #: and a reader who finds an empty ``WELD_OWED`` should still be able to find that
 #: without opening the board. VERBATIM, including the ``_2026-09-07`` stamp it names
@@ -386,8 +386,8 @@ def folded_welded_curl_tail(codes: Sequence[int], phased: Sequence[int],
                             ) -> Tuple[str, str]:
     """``(prologue, body)`` of the FOLDED complex ``step_D`` curl, H reads redirected.
 
-    THE BODY IS :func:`.complex_fused_hd_pair.welded_curl_tail`'S, WITH ONE
-    SUBSTITUTION: the source is :func:`.folded_complex.folded_bloch_curl_source`
+    The body is :func:`.complex_fused_hd_pair.welded_curl_tail`'s, with one
+    substitution: the source is :func:`.folded_complex.folded_bloch_curl_source`
     rather than ``complex_fields.bloch_curl_source``. Everything else -- the body
     anchor, the prologue cut, the offset parse, the three own-cell load edits, the six
     halo redirects, the ghost spelling and the final "no ``gN[`` survives" check -- is
@@ -400,7 +400,7 @@ def folded_welded_curl_tail(codes: Sequence[int], phased: Sequence[int],
     ``backward`` is True and never a parameter -- this pair is the D seam, and
     ``step_B``'s forward strides and unconjugated phase are a different product.
 
-    THE TWO FOLD-SPECIFIC BLOCKS SURVIVE THE LIFT UNTOUCHED, and that is a property of
+    The two fold-specific blocks survive the lift untouched, and that is a property of
     what they touch rather than an exemption. ``folded_top_plane_mask`` writes
     ``curlN = last_a ? float2(0.0f, 0.0f) : curlN;`` -- no ``gN[`` -- and the widened
     cell-0 mask writes ``curlN = at_a ? float2(0.0f, 0.0f) : curlN;``, likewise. Only
@@ -408,7 +408,7 @@ def folded_welded_curl_tail(codes: Sequence[int], phased: Sequence[int],
     offset are PARSED OUT of the emitter's own line rather than retyped, so a folded
     axis's exact complex zero stays exact and no recompute is evaluated past the face.
 
-    THE BLOCH CONNECTION IS NOT IN THE RECOMPUTE AND MUST NOT BE. The folded complex
+    The Bloch connection is not in the recompute and must not be. The folded complex
     curl applies ``complex_fields._phase_block`` to the UNSHIFTED registers on plane 0
     after the gather; this weld redirects the LOADS and leaves the connection standing
     character for character. The recompute's dsigw form is evaluated at the cell it is
@@ -447,7 +447,7 @@ def folded_welded_curl_tail(codes: Sequence[int], phased: Sequence[int],
                 f"the folded complex curl declares {var} {len(matches)} times; this "
                 f"weld redirects exactly one magnetic load per shifted tap")
         old = matches[0]
-        # THE GUARD AND THE OFFSET ARE BOTH PARSED FROM THE EMITTER'S OWN LINE.
+        # The guard and the offset are both parsed from the emitter's own line.
         head, rest = old.split(" ? ", 1)
         expected = f"g{target}["
         if not rest.startswith(expected) or not rest.endswith(f" : {_GHOST};\n"):
@@ -479,7 +479,7 @@ def folded_complex_fused_hd_pair_source(
     FOLDED complex curl's prologue and the FOLDED welded tail. The kernel entry point
     keeps the plain product's name because the template is the plain product's.
 
-    NO FILL AND NO WALL CLEAR IS CARRIED, and on a folded grid that is a stronger
+    No fill and no wall clear is carried, and on a folded grid that is a stronger
     statement than on an unfolded one: ``fill_symmetry_bc_B``, ``zero_metal_B`` and
     ``fill_folded_far_ghosts_B`` all close BEFORE the ``update_H`` consult, and their
     D twins all open AFTER the ``step_D`` consult. A fill carried here would be a pass
@@ -598,11 +598,11 @@ def metal_folded_complex_fused_hd_pair_coverage(
     clauses, the off-diagonal clause, the polarization clause and the fold clause
     INHERITED rather than restated.
 
-    THE ORDER IS THE DRIVER'S. The constitutive half is asked FIRST because it runs
+    The order is the driver's. The constitutive half is asked FIRST because it runs
     first (driver.py:3311), so the first refusal a reader sees names the half the
     driver would have reached first.
 
-    THE TWO HALVES ARE DELIBERATELY DIFFERENT PREDICATES rather than one. The curl's
+    The two halves are deliberately different predicates rather than one. The curl's
     contract refuses a conductivity on the D targets, because a conductivity routes to
     a different curl recurrence; the constitutive's deliberately does not, because a
     conductivity does not change ``update_H``. The conjunction is what refuses the
@@ -622,12 +622,12 @@ def metal_folded_complex_fused_hd_pair_coverage(
         reasons.extend(f"folded complex curl half: {reason}"
                        for reason in curl.reasons)
 
-    # THE SEAM'S ONE PASS. Nothing is INJECTED between the two consults, so
+    # The seam's one pass. Nothing is INJECTED between the two consults, so
     # `deposit_repair` is not consulted at all and a source of either polarity is not
     # this seam's business -- the magnetic injection is one seam earlier and the
     # electric one is one seam later. What IS between them is the electric
     # integrated-source withdraw (driver.py:3313-3314), and `withdraw_hoist` owns it.
-    # IGNORANCE IS NEVER AN EMPTY SET: `Fields` does not hold the source list, so a
+    # Ignorance is never an empty set: `Fields` does not hold the source list, so a
     # predicate that inferred "no withdraw stands" from not being told would be the
     # over-covering refusal this clause exists to prevent.
     reasons.extend(_withdraw_hoist.seam_withdraw_reasons(
@@ -650,8 +650,8 @@ def metal_folded_complex_fused_hd_pair_coverage(
         return Coverage(False,
                         tuple(dict.fromkeys(reasons + ["fields carries no grid"])))
 
-    # THE FOLD, REQUIRED, AND RESTATED AT PRODUCT LEVEL. Both halves already require a
-    # mirror plane. The restatement is so the reason reads AT THE SEAM rather than
+    # The fold, required, and restated at product level. Both halves already require a
+    # mirror plane. The restatement is so the reason reads at the seam rather than
     # only at the arms, and it is the exact mirror image of `complex_fused_hd_pair`'s
     # clause, which refuses a fold naming this cell: the two predicates can never both
     # admit, and neither can be widened into the other without making every folded
@@ -666,7 +666,7 @@ def metal_folded_complex_fused_hd_pair_coverage(
             "selects the `complex/Bloch` arms, which is complex_fused_hd_pair's cell "
             "and its product")
 
-    # THE ROTATION IS THE PRODUCT'S OWN INVARIANT. The plan swaps the ENGINE's
+    # The rotation is the product's own invariant. The plan swaps the ENGINE's
     # references for the six volumes in ROTATED_NAMES after each launch, so those
     # attributes must be settable and must be the arrays the residency mirrored.
     for name in ROTATED_NAMES:
@@ -674,7 +674,7 @@ def metal_folded_complex_fused_hd_pair_coverage(
             reasons.append(
                 f"{name} is not allocated; this weld rotates it against a plan-owned "
                 f"scratch twin after every launch")
-    # THE RUN'S FIRST update_H, refused on the base single's rule and in its words:
+    # The run's first update_H, refused on the base single's rule and in its words:
     # the array path starts H and f_w from B on the dsigw cells there and this weld
     # does not (launch.h_start_reasons).
     from .launch import h_start_reasons  # noqa: PLC0415 - launch imports this family's peers
@@ -689,7 +689,7 @@ def metal_folded_complex_fused_hd_pair_coverage(
 class MetalFoldedComplexFusedHdPairPlan(_weld.ScratchWeldPairPlan):
     """The shared scratch-weld plan, carrying the three facts that specialise it.
 
-    THE ROTATION IS NOT REIMPLEMENTED. ``run`` and ``_resolve`` are the base's, so
+    The rotation is not reimplemented. ``run`` and ``_resolve`` are the base's, so
     this family's post-launch buffer rotation is the same code the four D->E welds and
     the three other H->D products execute. What the subclass adds is the
     specialisation a harness must not re-derive: the per-axis phase flags the source
@@ -742,7 +742,7 @@ def plan_metal_folded_complex_fused_hd_pair(
 
     grid = fields.grid
     if codes is None:
-        # FROM `folded_axis_kinds` AND FROM NOWHERE ELSE. It routes the ghost rule
+        # From `folded_axis_kinds` and from nowhere else. It routes the ghost rule
         # through `stepping._boundary_kinds` (where a fold outranks the outer
         # declaration), splits MIRROR through `stepping._stored_past_owned`, and
         # cross-checks that split against `grid.is_metallic` -- two independent routes
@@ -752,7 +752,7 @@ def plan_metal_folded_complex_fused_hd_pair(
             return None
     codes = tuple(int(code) for code in codes)
 
-    # THE PHASE FLAGS COME FROM `_boundary_kinds`, NOT FROM THE FOLDED CODES, which is
+    # The phase flags come from `_boundary_kinds`, not from the folded codes, which is
     # `folded_complex.plan_folded_complex_pml_curl`'s own choice: a folded axis is
     # refused a phase by that family's clause, so the two agree on every admitted run,
     # and reading the phase off the RESOLVED kinds keeps the conjugation in one place.
@@ -773,7 +773,7 @@ def plan_metal_folded_complex_fused_hd_pair(
         volumes.append(name)
         return residency.mirror(name, host, constant=True)
 
-    # THE ROTATING GROUP FIRST, in ROTATED_NAMES order: every scratch, then every
+    # The rotating group first, in ROTATED_NAMES order: every scratch, then every
     # pre-launch buffer. `ScratchWeldPairPlan.run` splices exactly those two groups
     # ahead of `static_args`, so this order IS the signature's. The twin MUST be
     # mirrored as complex64: the mirror's default resolution is float32, which on a
@@ -795,10 +795,10 @@ def plan_metal_folded_complex_fused_hd_pair(
     auxiliary = [bind_complex("fu_" + name, getattr(fields, "fu_" + name))
                  for name in ("Dx", "Dy", "Dz")]
 
-    # ONE SUB-LATTICE, TWO HALVES -- and the fold does not touch it. The PML
-    # coefficient vectors are built at the FOLDED STORED EXTENT already, so the
-    # sharing argument is exactly the plain complex product's: both suffixes are READ
-    # FROM THE SHIPPED TABLES and their equality is ASSERTED rather than assumed. It
+    # One sub-lattice, two halves -- and the fold does not touch it. The PML
+    # coefficient vectors are built at the folded stored extent already, so the
+    # sharing argument is exactly the plain complex product's: both suffixes are read
+    # from the shipped tables and their equality is ASSERTED rather than assumed. It
     # is the whole premise of the 30-pointer signature, and if either table moved,
     # sharing the group would bind one half's coefficients to the other half's
     # lattice -- a converged, smooth, half-cell-wrong absorber profile.
@@ -832,7 +832,7 @@ def plan_metal_folded_complex_fused_hd_pair(
         2 * len(ROTATED_NAMES) + len(static), PACKED_BINDINGS)
     assert PACKED_BINDINGS == MAX_BUFFER_BINDINGS, (PACKED_BINDINGS,
                                                     MAX_BUFFER_BINDINGS)
-    # THE ARGUMENT ORDER IS `ScratchWeldPairPlan.__init__`'s, positionally, so this
+    # The argument order is `ScratchWeldPairPlan.__init__`'s, positionally, so this
     # family and the shared plan cannot drift on what each slot means.
     return MetalFoldedComplexFusedHdPairPlan(
         FAMILY, residency, fields, dict(twins), dict(selected), ROTATED_NAMES,
@@ -866,14 +866,14 @@ def _arm_plan(context: Any, slot: str) -> Optional["_weld.ScratchWeldPairPlan"]:
 def register_arms() -> Tuple[Any, ...]:
     """One row on ``update_H``, ``wired=False``, GATED on the fold.
 
-    REGISTERED SO IT IS ENUMERABLE, NOT SO IT IS SELECTABLE. ``arms.arms_for`` skips
+    Registered so it is enumerable, not so it is selectable. ``arms.arms_for`` skips
     an unwired row so ``plan_step`` cannot select it, while ``arms.registered`` still
     returns it -- which is what lets a composition sweep measure disjointness against
     this predicate instead of assuming it, and what lets
     ``launch._neighbouring_seam_claimant`` see the row when it asks who claims the
     seam ``update_H`` opens.
 
-    THE GATE IS ``symmetry._has_fold``, the folded families' own convention: a
+    The gate is ``symmetry._has_fold``, the folded families' own convention: a
     gated-out arm contributes NO reason, which is right, because on an unfolded run
     ``update_H`` carries other arms that will speak and this one would only add a
     refusal about a fold nobody asked for.

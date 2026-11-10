@@ -7,13 +7,13 @@ constitutive (``complex_emitter.complex_source("update_H")``) -- and this module
 introduces no arithmetic of its own: every edit is a register capture, a seam, a rename or
 the own-cell hoist, listed in :data:`LIFT_EDITS`.
 
-WHAT ONE LAUNCH PERFORMS. :data:`REPLACES` is ``step_B`` -> ``zero_metal_B`` ->
+What one launch performs. :data:`REPLACES` is ``step_B`` -> ``zero_metal_B`` ->
 ``update_H``. The radial scan is the curl's own first launch (``cylindrical_prefix``): it
 runs before this one over the current Ep and hands the difference in as ``rad``. The two
 mirror fills are absent by refusal (the predicate refuses every folded grid, and ``Grid``
 refuses a mirror on a Dcyl cell).
 
-THE REGISTER FOLLOWS EVERY STORE OF B. The curl half's value of each component is not the
+The register follows every store of B. The curl half's value of each component is not the
 value of its PML form alone:
 
 * targets 0 and 2 take the i*m/r pass after the form (``stepping._cylindrical_imr_increment``
@@ -26,7 +26,7 @@ value of its PML form alone:
 Each is a register clear or capture BESIDE the certified store, so ``update_H`` reads the
 word ``step_B`` and the wall pass left.
 
-THE OWN-CELL HOIST. Every own-cell word the kernel reads -- ``f_w_H*``, ``H*``, ``fu_B*``,
+The own-cell hoist. Every own-cell word the kernel reads -- ``f_w_H*``, ``H*``, ``fu_B*``,
 ``B*`` -- is issued before its first store, each behind the certified load's own guard
 (``fu`` behind the component's dsigu flag, ``f_w_H`` and ``H`` behind its dsigw flag, the
 one form that reads them; ``B`` unguarded, as every curl form reads it). The two helpers
@@ -35,7 +35,7 @@ text, their statements asserted equal to the certified helper's under the argume
 map (:func:`derive`). The i*m/r pass's ladder reads ``B`` and ``fu`` back after the form
 stored them: reloads of this lane's own writes.
 
-THE START OF H. The run's first ``update_H`` starts H and ``f_w_H`` from B
+The start of H. The run's first ``update_H`` starts H and ``f_w_H`` from B
 (``stepping.separate_h_from_b``); B is final only after this launch, so on that launch
 :func:`start_of_h` re-steps ``update_H`` on the array path over the stored B, as the
 Cartesian pairs do.
@@ -82,12 +82,12 @@ from .. import deposit_repair as _deposit_repair
 
 
 # =============================================================================
-# THE PARTITION -- PLAIN ASSIGNMENTS, NO ANNOTATION (the partition readers walk the
+# The partition -- plain assignments, no annotation (the partition readers walk the
 # syntax tree without importing the module)
 # =============================================================================
 
 #: The entry point. The record that certified its 0.9.2 text is re-cut in the combined
-#: certification round (bit_parity_0_10 CERT-3).
+#: certification round of 1.0 (its device-gate stage, CERT-3).
 CERTIFIED_KERNELS = (
     "fused_magnetic_pair_pml_cyl_complex",
 )
@@ -135,7 +135,7 @@ LIFT_EDITS: Tuple[Dict[str, str], ...] = (
             "cf_load(f, idx)); the expression is otherwise the certified one."},
     {"line": "    <the curl body's chunk-record block> + <update_H's>",
      "became": "    <ONE block, bounds_block.bounds_block(both entry sets, presence xyz)>",
-     "why": "one decode of the record for both halves (DESIGN.md D10); "
+     "why": "one decode of the record for both halves (docs/development/kernel-tables.md); "
             "bounds_block.strip_bounds_block refuses unless each is exactly the block "
             "its body carries."},
     {"line": "        pml_apply(Bx, fu_Bx, idx, curl, ...);",
@@ -221,8 +221,8 @@ _AXIS_TAIL_M0 = (
     "        cf_store(Bx, idx, cf_zero());\n"
     "    }\n")
 _AXIS_TAIL_M0_CARRIED = (
-    "    // THE m = 0 AXIS TAIL, CARRIED. stepping._cylindrical_axis_zero_B zeroes Br on\n"
-    "    // the axis row -- THE FIELD ONLY, never fu_Bx -- after the recurrence, so the\n"
+    "    // The m = 0 axis tail, carried. stepping._cylindrical_axis_zero_B zeroes Br on\n"
+    "    // the axis row -- the field only, never fu_Bx -- after the recurrence, so the\n"
     "    // register has to follow the store or update_H would read the pre-zeroing Bx.\n"
     "    if (m_class == 0 && i == 0) {\n"
     "        b0 = cf_zero(); cf_store(Bx, idx, b0);\n"
@@ -232,7 +232,7 @@ _AXIS_TAIL_M0_CARRIED = (
 #: signature. B appears EXACTLY ONCE.
 _SIGNATURE = r'''
 extern "C" __global__ void fused_magnetic_pair_pml_cyl_complex(
-    // THE SHARED VOLUME, BOUND ONCE, as the float32 word view of complex64 B.
+    // The shared volume, bound once, as the float32 word view of complex64 B.
     float* __restrict__ Bx, float* __restrict__ By, float* __restrict__ Bz,
     float* __restrict__ fu_Bx, float* __restrict__ fu_By, float* __restrict__ fu_Bz,
     const float* __restrict__ Ex, const float* __restrict__ Ey,
@@ -257,7 +257,7 @@ extern "C" __global__ void fused_magnetic_pair_pml_cyl_complex(
     int m_class, int zero_rows,
     // zero_metal_B's three walled-axis flags, from in_seam_coverage.zero_metal_axes.
     int wall_x, int wall_y, int wall_z,
-    // THE CHUNK RECORD (chunk_map.chunk_bounds_record), int32[25].
+    // The chunk record (chunk_map.chunk_bounds_record), int32[25].
     const int* __restrict__ cb
 ) {
 '''
@@ -505,7 +505,7 @@ def hoisted_loads() -> str:
 def _certified_source() -> Any:
     """Refuse the emitter BY NAME where the cylindrical text is unreachable.
 
-    THE SPLICE IS THE LIFT, so a missing half is not a degraded emit -- there is nothing
+    The splice is the lift, so a missing half is not a degraded emit -- there is nothing
     to emit. Raising here keeps that fact one frame from the caller instead of surfacing
     as ``'NoneType' object has no attribute`` inside a string operation.
     :func:`covers_cylindrical_fused_magnetic_pair` needs none of it and still answers.
@@ -553,7 +553,7 @@ def certified_curl_body() -> str:
     for register, target in zip(_CARRIED, _TARGETS):
         body = replace_once(body, f"        cf_store({target}, idx, cf_zero());\n",
                             f"        b{register} = cf_zero(); cf_store({target}, idx, "
-                            f"b{register});   // THE AXIS TAIL, CARRIED\n",
+                            f"b{register});   // The axis tail, carried\n",
                             f"the |m| >= 2 rule's store into {target}")
     if re.search(r"\b(pml_apply|fold_apply)\(", body):
         raise AssertionError("a certified curl-helper call survived the capture rewrite")
@@ -657,7 +657,7 @@ def covers_cylindrical_fused_magnetic_pair(fields: Any, pml: Any, grid: Any,
 
     Returns ``(covered, reason)`` with ``reason`` naming the FIRST refusal.
 
-    A CONJUNCTION, AND NOTHING IS WEAKENED. A configuration either half's own
+    A conjunction, and nothing is weakened. A configuration either half's own
     certified predicate refuses is refused here with that half's reason, prefixed so
     a reader can tell which side said it. What this predicate ADDS is the seam
     clauses: the source slot, the two UNCARRIED fills, and the grid's ability to say
@@ -672,8 +672,8 @@ def covers_cylindrical_fused_magnetic_pair(fields: Any, pml: Any, grid: Any,
     if not covered:
         return False, f"constitutive half: {reason}"
 
-    # THE SOURCE SEAM, CARRIED RATHER THAN REFUSED. A MAGNETIC source is injected
-    # BETWEEN the two halves (driver.py:3293). IGNORANCE IS NEVER AN EMPTY SET:
+    # The source seam, carried rather than refused. A MAGNETIC source is injected
+    # BETWEEN the two halves (driver.py:3293). Ignorance is never an empty set:
     # `Fields` does not hold the source list, so a predicate that inferred "no
     # sources" from not being told would be the over-covering this clause prevents.
     seam = _deposit_repair.seam_source_reasons(
@@ -688,7 +688,7 @@ def covers_cylindrical_fused_magnetic_pair(fields: Any, pml: Any, grid: Any,
     if seam:
         return False, seam[0]
 
-    # THE TWO FILLS ARE REFUSED, NOT CARRIED. The curl half already refuses every
+    # The two fills are refused, not carried. The curl half already refuses every
     # folded grid and Grid refuses a mirror on a Dcyl cell before that; the clause is
     # stated HERE anyway, because REPLACES is a claim about what one launch performed
     # and it may not rest on a clause in another module that a future device verdict
@@ -721,8 +721,8 @@ def covers_cylindrical_fused_magnetic_pair(fields: Any, pml: Any, grid: Any,
         return False, (f"in_seam_coverage.zero_metal_axes raised on this grid: "
                        f"{type(exc).__name__}: {exc}")
 
-    # THE STORED SHAPE THE KERNEL INDEXES MUST BE THE ONE THE WALL PLANE AND THE
-    # RADIAL DIFFERENCE ARE DERIVED FROM. `nx, ny, nz` come from `fields.Bx.shape`; the
+    # The stored shape the kernel indexes must be the one the wall plane and the
+    # radial difference are derived from. `nx, ny, nz` come from `fields.Bx.shape`; the
     # wall is stored cell 0 of a `grid.stored_cells` axis and the difference is
     # target-shaped.
     try:

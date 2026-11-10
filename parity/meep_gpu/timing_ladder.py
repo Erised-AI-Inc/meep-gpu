@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """The identical-case timing ladder: the package's GPU routes and stock MEEP, interleaved.
 
-WHAT A LADDER IS. One run on one host, in one quiet window, that times the package's
+What a ladder is. One run on one host, in one quiet window, that times the package's
 GPU routes (``bench_fused_products.py``, or ``bench_timing_case.py`` for a case of
 ``timing_cases.py``) and stock MEEP (``bench_meep_identical_case.py`` under ``mpirun`` or
 ``srun``) on the SAME simulation, interleaved per size and pass so that drift lands on
@@ -14,7 +14,7 @@ THE SEQUENCE, per (tier, size, pass, case):
     GPU route 1 -> MEEP block A -> GPU route 2 -> MEEP block B -> array control
     -> MEEP block C -> MEEP controls
 
-THE ORDER OF WORK, tiers outermost, then passes, then sizes, then cases:
+The order of work, tiers outermost, then passes, then sizes, then cases:
 
     preflight  every row kind once at the preflight size with short windows; a GPU row
                that does not launch what its route expects, bit-identically, with the
@@ -27,6 +27,22 @@ THE ORDER OF WORK, tiers outermost, then passes, then sizes, then cases:
     bindcheck  the binding not chosen, at the priority sizes, one pass
     rest       the remaining sizes, every pass
     largest    the largest size, every pass
+
+ONE SIDE ONLY. ``--routes none`` times MEEP alone: no GPU row, no array control, and a
+preflight of MEEP rows and the geometry digest. ``--ranks none`` times the GPU routes
+alone, the array control read off their rows: no MEEP row anywhere (no rank block, no
+MEEP control, no preflight MEEP row, no geometry digest or harness-lift digest, no binding
+probe or check), so its preflight is the GPU rows' launch check. (``--gpu-legs gpu-only``
+is another thing: what each GPU row lifts.) A host whose GPU rows and MEEP rows need
+different settings (the split ladder of ``rounds/1.0/cert8.py --split-ladder``) times a
+unit as one ladder of each kind; the two plans' rows together are the whole ladder's.
+
+THE HOST'S MEEP RANK CEILING. ``--meep-rank-ceiling N`` is the most MEEP ranks any row of
+the ladder may take: a rank block, binding-probe rank or preflight rank above it is refused
+by name, a control none of whose rows fits is omitted by name, and a control row above it
+is not planned (named under ``rows_above_rank_ceiling``). It is no parameter of a site
+file: ``rounds/1.0/cert8.py`` hands it to the MEEP half of a split session, from the rank
+blocks that session's site file declares. A ladder handed none plans as it did.
 
 THE GATE stands in front of every row that starts a process: CPU quiet (load1 for GPU
 rows; for MEEP rows the busy logical CPUs over a 3 s sample, summed per CPU,
@@ -55,8 +71,8 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
-import getpass
 import json
+import math
 import os
 import re
 import shlex
@@ -66,7 +82,7 @@ import subprocess
 import sys
 import threading
 import time
-from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 if HERE not in sys.path:
@@ -82,12 +98,41 @@ TIERS = ("preflight", "digests", "identity", "bindprobe", "priority", "bindcheck
 #: one leg, and what its ``identity`` tier vouches for.
 TIMED_TIERS = ("priority", "rest", "largest")
 GPU_LEGS = ("all", "gpu-only")
-CONTROLS = ("native", "threads2", "threads4", "hwthread", "split")
+CONTROLS = ("native", "threads2", "threads4", "hwthread", "split", "context")
 ROUTE_TABLES = {"default": "triton", "cuda": "cuda", "metal": "metal"}
 NVIDIA_ROUTES = ("default", "cuda")
+#: The preference legs. ``<route>_prefon`` and ``<route>_prefoff`` time ``<route>``'s
+#: table with the package's dispatch-preference switch (``--preference-switch``) set to
+#: its "on" or "off" value (``--preference-values``); the bare route leaves it unset, at
+#: the package's default. A package that reads no such switch (1.0.0) runs the same
+#: dispatch on all three, and the row records what it exported.
+PREFERENCE_SUFFIXES = {"_prefon": "on", "_prefoff": "off"}
+#: The labels the extended ladder's two context builds are reported under.
+CONTEXT_DEFAULT_LABELS = {"ctx-native": "native-tuned MEEP (contraction on)",
+                          "ctx-cfdouble": "conda-forge MEEP (double precision)"}
+
+
+def base_route(route: str) -> str:
+    """The route a preference leg times (``default_prefoff`` -> ``default``)."""
+    for suffix in PREFERENCE_SUFFIXES:
+        if route.endswith(suffix):
+            return route[:-len(suffix)]
+    return route
+
+
+def route_preference(route: str) -> Optional[str]:
+    """``on``, ``off`` or ``None`` (the package default) for a route name."""
+    for suffix, which in PREFERENCE_SUFFIXES.items():
+        if route.endswith(suffix):
+            return which
+    return None
+
+
+def is_nvidia(route: str) -> bool:
+    return base_route(route) in NVIDIA_ROUTES
 #: The drivers a ``--drivers-mode copy`` ladder copies into its run, by name.
 DRIVER_FILES = ("timing_ladder.py", "timing_host.py", "timing_records.py",
-                "timing_cases.py", "bench_meep_identical_case.py",
+                "neutral_ids.py", "timing_cases.py", "bench_meep_identical_case.py",
                 "digest_harness_lift.py", "gpu_array_control.py", "bench_timing_case.py",
                 "build_identical_case_table.py", "audit_timing_validity.py")
 PREFLIGHT_GPU_FLAGS = ("--repeats 2 --target-seconds 0.5 --monitors attached "
@@ -177,7 +222,7 @@ PARAMS: Tuple[Param, ...] = (
     Param("MEEP_CONFIG_LOG", "str", None, "the reference MEEP build's config.log, or "
           "'none'"),
     Param("MEEP_BUILD_RECORD", "str", None, "the reference build's build_record.json "
-          "(build_meep_133_native.sh / timing_records.py meep-build-record), or 'none'"),
+          "(build_meep_reference_native.sh / timing_records.py meep-build-record), or 'none'"),
     Param("MEEP_BUILD", "list", "", "another MEEP build, NAME=PYTHON[,LAUNCHER[,RECORD]]; "
           "repeatable", repeat=True),
     Param("RUN_ROOT", "path", None, "where ladder_<stamp>/ goes; refused inside any tree "
@@ -232,7 +277,8 @@ PARAMS: Tuple[Param, ...] = (
     Param("THREADS_PER_CORE", "int", None, "hardware threads per core; detected, or "
           "logical / physical"),
     Param("MEMORY_TOTAL_GB", "float", None, "total memory in GiB; detected"),
-    Param("RANKS", "str", None, "MEEP rank blocks A|B|C, comma lists"),
+    Param("RANKS", "str", None, "MEEP rank blocks A|B|C, comma lists; or none: the GPU "
+          "routes alone, a ladder that plans no MEEP row at all"),
     Param("BINDING", "str", "probe", "probe, bound or unbound",
           choices=("probe", "bound", "unbound")),
     Param("PROBE_RANKS", "list", None, "rank counts of the binding probe"),
@@ -243,15 +289,35 @@ PARAMS: Tuple[Param, ...] = (
     Param("FLAGS_BOUND_PE", "str", None, "launcher flags of T threads per rank "
           "({threads} is substituted)"),
     Param("CONTROLS", "list", "native,threads2,threads4,hwthread,split",
-          "MEEP controls after block C, or none"),
+          "MEEP controls after block C, or none; 'context' times the --context-meep "
+          "builds"),
+    Param("CONTEXT_MEEP", "list", "", "a MEEP build timed as a LABELLED CONTEXT leg, "
+          "NAME=PYTHON[,LAUNCHER[,RECORD]] (LAUNCHER 'none': a build without MPI, one "
+          "rank); repeatable. Recorded and reported, never the denominator; a "
+          "double-precision build is admitted here only", repeat=True),
+    Param("CONTEXT_LABEL", "list", "", "NAME=TEXT: the label a context leg is reported "
+          "under; repeatable (ctx-native and ctx-cfdouble have default labels)",
+          repeat=True),
+    Param("CONTEXT_RANKS", "list", None, "rank counts of the context legs; 2P/3 and P "
+          "by default, 1 for a build without MPI"),
+    Param("LEAVE_FREE_SHARE", "float", 0.0, "the share of the logical CPUs in scope no "
+          "MEEP row may take (a shared host's floor, e.g. 0.25): a row whose ranks x "
+          "threads exceed the rest is not planned, and the dry run names it"),
+    Param("THREADED_REFERENCE", "int", 0, "1 plans the threads2/threads4 rows as "
+          "REFERENCE legs (no control), so hybrid MPI x OpenMP can be MEEP's best and the "
+          "denominator; 0 keeps them controls", choices=("0", "1")),
+    Param("PREFERENCE_SWITCH", "str", "MEEP_GPU_PREFER", "the package's "
+          "dispatch-preference switch a <route>_prefon / <route>_prefoff route exports"),
+    Param("PREFERENCE_VALUES", "str", "on=measured,off=span", "the switch's values for "
+          "the on and off legs"),
     Param("ACCOUNT", "str", None, "the account whose GPU processes are counted; this "
           "user by default; matched by uid"),
     Param("ACCOUNT_MAX", "int", 0, "account GPU processes a row may start beside"),
     Param("CAP", "int", None, "account GPU processes above which the guard kills this "
           "ladder's row; off by default"),
-    Param("GATE_MEM_MIN_GB", "float", None, "available memory a row needs, GiB; 25 % of "
+    Param("GATE_MEM_MIN_GB", "float", None, "available memory a row needs, GiB; 25 %% of "
           "total by default"),
-    Param("GATE_CPU_MAX", "float", None, "CPU metric below which a row may start; 10 % of "
+    Param("GATE_CPU_MAX", "float", None, "CPU metric below which a row may start; 10 %% of "
           "the logical CPUs in scope by default on Linux; 'auto' (the macOS default) "
           "calibrates it from idle readings before the first row "
           "(timing_host.calibrated_cpu_max)"),
@@ -266,9 +332,9 @@ PARAMS: Tuple[Param, ...] = (
     Param("GATE_SCOPE", "str", "host", "busy CPUs over the host or over this process's "
           "allocation", choices=("host", "allocation")),
     Param("GATE_DARWIN_DAEMONS", "int", 1, "macOS: Spotlight, backup, update and media "
-          "daemons above 10 % CPU make the host not quiet", choices=("0", "1")),
+          "daemons above 10 %% CPU make the host not quiet", choices=("0", "1")),
     Param("GATE_APPLE_GPU_UTIL_MAX", "float", None, "macOS: an Apple GPU Device "
-          "Utilization % (ioreg) above which a GPU row may not start; recorded only "
+          "Utilization %% (ioreg) above which a GPU row may not start; recorded only "
           "when unset"),
     Param("MONITOR_EVERY_S", "float", 15.0, "box trace interval"),
     Param("GPU_TRACE_S", "float", 1.0, "GPU state sampling interval during GPU rows"),
@@ -346,6 +412,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--selftest", action="store_true")
     parser.add_argument("--launcher-probe", action="store_true", dest="launcher_probe")
     parser.add_argument("--resume", action="store_true")
+    parser.add_argument("--meep-rank-ceiling", type=int, default=None,
+                        dest="meep_rank_ceiling", metavar="N",
+                        help="the most MEEP ranks any row may take (the MEEP half of a "
+                             "split session, handed it by cert8.py): a rank block, probe or "
+                             "preflight rank above it is refused, a control above it omitted "
+                             "or trimmed, by name")
     return parser
 
 
@@ -453,6 +525,11 @@ class MeepBuild:
     #: The MPI implementation of THIS build's launcher (per build: a native build may
     #: bring its own mpirun); ``srun`` under the srun launcher.
     mpi_impl: str = "unknown"
+    #: A labelled context build (``--context-meep``): its rows are reported under this
+    #: label and are never the denominator. ``None`` for the reference and the controls.
+    context_label: Optional[str] = None
+    #: A build without MPI (``--context-meep NAME=PYTHON,none``): one rank, no launcher.
+    serial: bool = False
 
 
 @dataclasses.dataclass
@@ -511,18 +588,35 @@ class Config:
     corpus_root: Optional[str]
     base_env: Dict[str, str]
     memory_budget: Optional[int] = None
+    #: The labelled context builds (``--context-meep``) and the rank counts each is
+    #: timed at; ``THREADED_REFERENCE``; the preference switch and its two values.
+    context_ranks: Dict[str, List[int]] = dataclasses.field(default_factory=dict)
+    threaded_reference: bool = False
+    #: ``LEAVE_FREE_SHARE``: the CPUs (ranks x threads) above which no MEEP row is planned.
+    meep_cpu_cap: Optional[int] = None
+    preference_switch: str = "MEEP_GPU_PREFER"
+    preference_values: Dict[str, str] = dataclasses.field(
+        default_factory=lambda: {"on": "measured", "off": "span"})
     #: ``GPU_LEGS``: ``gpu-only`` times the fused leg alone (``bench_fused_products.py
     #: --legs gpu-only``) behind a three-leg identity row per route, case and size.
     gpu_legs: str = "all"
     #: ``GATE_CPU_MAX`` ``auto`` (the macOS default): the readings the live ladder takes
     #: before its first row to set the gate's CPU threshold (:meth:`Ladder.calibrate_gate`).
     cpu_calibration: Optional[Dict[str, Any]] = None
+    #: ``RANKS`` ``none``: the GPU routes alone. No row that starts MEEP is planned: no
+    #: rank block or MEEP control, no preflight MEEP row or geometry digest, no harness-lift
+    #: digest (the digest of record MEEP rows are held to), no binding probe or check.
+    no_meep: bool = False
+    #: ``--meep-rank-ceiling``: the most MEEP ranks any row may take, or ``None``. No
+    #: control row is planned above it (:func:`build_config`, :func:`build_plan`), and a
+    #: reference, probe or preflight rank above it is refused.
+    meep_rank_ceiling: Optional[int] = None
 
     def res(self, case: str, cells: int) -> int:
         return timing_cases.res_for_cells(case, cells)
 
     def table(self, route: str) -> str:
-        return ROUTE_TABLES[route]
+        return ROUTE_TABLES[base_route(route)]
 
     def flag_values(self) -> Dict[str, Any]:
         """What :func:`timing_host.binding_flags` needs beyond the mode."""
@@ -531,7 +625,8 @@ class Config:
 
     @property
     def metal_only(self) -> bool:
-        return bool(self.routes) and all(route == "metal" for route in self.routes)
+        return bool(self.routes) and all(base_route(route) == "metal"
+                                         for route in self.routes)
 
 
 def default_rank_blocks(physical: int, logical: int,
@@ -555,6 +650,24 @@ def default_rank_blocks(physical: int, logical: int,
     return a, b, c
 
 
+def control_ranks(control: str, physical: int, logical: int,
+                  context_ranks: Mapping[str, Sequence[int]]) -> List[int]:
+    """The MEEP rank counts a control's rows are planned at (:func:`build_plan`): native
+    and split at 2P/3 and P, the hybrid rows at P/T ranks of T threads, bound-hwthread at
+    4P/3 and 2P within the logical CPUs, and the context legs at every context build's."""
+    p = int(physical)
+    if control in ("native", "split"):
+        return list(dict.fromkeys([max(1, int(round(2 * p / 3.0))), p]))
+    if control in ("threads2", "threads4"):
+        return [max(1, int(round(p / float(2 if control == "threads2" else 4))))]
+    if control == "hwthread":
+        return [n for n in dict.fromkeys([int(round(4 * p / 3.0)), 2 * p]) if n <= logical]
+    if control == "context":
+        return list(dict.fromkeys(n for name in sorted(context_ranks)
+                                  for n in context_ranks[name]))
+    return []
+
+
 def parse_rank_blocks(text: str) -> Tuple[List[int], List[int], List[int]]:
     parts = str(text).split("|")
     if len(parts) != 3:
@@ -573,12 +686,12 @@ def parse_expect_launched(entries: Sequence[str]) -> Dict[Tuple[str, str], str]:
     """``ROUTE:CASE=TABLES`` -> {(route, case): tables}; refused by name when malformed."""
     out: Dict[Tuple[str, str], str] = {}
     for entry in _split_list(entries):
-        match = re.fullmatch(r"([a-z]+):([A-Za-z0-9_]+)=([a-z+]+)", entry)
+        match = re.fullmatch(r"([a-z][a-z_]*):([A-Za-z0-9_]+)=([a-z+]+)", entry)
         if not match:
             raise refuse(f"--expect-launched {entry!r}: the form is ROUTE:CASE=TABLES, "
                          "e.g. cuda:pml_3d=cuda or default:pml_3d=triton")
         route, case, tables = match.groups()
-        if route not in ROUTE_TABLES:
+        if base_route(route) not in ROUTE_TABLES:
             raise refuse(f"--expect-launched {entry!r}: no route {route!r}")
         out[(route, case)] = tables
     return out
@@ -704,19 +817,48 @@ def build_config(args: argparse.Namespace, environ: Optional[Dict[str, str]] = N
         sources["THREADS_PER_CORE"] = "derived"
     flag_values = {"sockets": sockets, "threads_per_core": threads_per_core,
                    "physical_cores": physical}
-    if values["RANKS"]:
+    # ``--ranks none``: the GPU half of a split ladder, which starts no MEEP process.
+    no_meep = str(values["RANKS"] or "").strip().lower() == "none"
+    if no_meep:
+        blocks = ([], [], [])
+    elif values["RANKS"]:
         blocks = parse_rank_blocks(values["RANKS"])
     else:
         blocks = default_rank_blocks(physical, logical, smt)
         values["RANKS"] = "|".join(",".join(str(n) for n in b) for b in blocks)
         sources["RANKS"] = "derived"
-    probe = [int(v) for v in _split_list(values["PROBE_RANKS"])] or \
-        [max(1, int(round(2.0 * physical / 3.0))), physical]
-    if values["PROBE_RANKS"] is None:
-        values["PROBE_RANKS"] = ",".join(str(n) for n in probe)
-        sources["PROBE_RANKS"] = "derived"
-    preflight_ranks = [1, physical] + ([max(blocks[2])] if blocks[2] else [])
-    preflight_ranks = list(dict.fromkeys(preflight_ranks))
+    probe: List[int] = []
+    preflight_ranks: List[int] = []
+    if not no_meep:
+        probe = [int(v) for v in _split_list(values["PROBE_RANKS"])] or \
+            [max(1, int(round(2.0 * physical / 3.0))), physical]
+        if values["PROBE_RANKS"] is None:
+            values["PROBE_RANKS"] = ",".join(str(n) for n in probe)
+            sources["PROBE_RANKS"] = "derived"
+        preflight_ranks = [1, physical] + ([max(blocks[2])] if blocks[2] else [])
+        preflight_ranks = list(dict.fromkeys(preflight_ranks))
+    # The host's MEEP rank ceiling (--meep-rank-ceiling; cert8.py hands it to the MEEP half
+    # of a split session from the rank blocks its site file declares). Every MEEP row is
+    # held to it: the rank blocks, the binding probe and the preflight row (which runs at
+    # the physical cores) are refused by name above it, before anything else is planned.
+    ceiling = getattr(args, "meep_rank_ceiling", None)
+    if ceiling is not None:
+        ceiling = int(ceiling)
+        if ceiling <= 0:
+            raise refuse(f"--meep-rank-ceiling {ceiling}: a rank count of 1 or more")
+        block_ranks = blocks[0] + blocks[1] + blocks[2]
+        if block_ranks and max(block_ranks) > ceiling:
+            raise refuse(f"--meep-rank-ceiling {ceiling}: the rank blocks {values['RANKS']} "
+                         f"(from {sources['RANKS']}) reach {max(block_ranks)} MEEP ranks; "
+                         "declare RANKS at or below the ceiling")
+        if not no_meep and physical > ceiling:
+            raise refuse(f"--meep-rank-ceiling {ceiling}: the preflight MEEP row runs at the "
+                         f"physical cores, {physical} (from {sources['PHYSICAL_CORES']}), "
+                         f"above the ceiling; declare PHYSICAL_CORES at or below {ceiling}")
+        if probe and max(probe) > ceiling:
+            raise refuse(f"--meep-rank-ceiling {ceiling}: the binding probe's ranks "
+                         f"{values['PROBE_RANKS']} (from {sources['PROBE_RANKS']}) reach "
+                         f"{max(probe)}; declare PROBE_RANKS at or below the ceiling")
     every_rank = sorted(set(blocks[0] + blocks[1] + blocks[2] + probe))
     if every_rank and max(every_rank) > logical:
         raise refuse(f"{max(every_rank)} MEEP ranks exceed the {logical} logical CPUs in "
@@ -785,6 +927,48 @@ def build_config(args: argparse.Namespace, environ: Optional[Dict[str, str]] = N
         for mode in sorted(modes_needed):
             timing_host.binding_flags(build_impl, mode, 1, platform, explicit,
                                       ranks=largest_ranks, **flag_values)
+    labels = dict(CONTEXT_DEFAULT_LABELS)
+    for item in values["CONTEXT_LABEL"] or []:
+        name, sep, text = str(item).partition("=")
+        if not sep or not name.strip() or not text.strip():
+            raise refuse(f"--context-label {item!r}: the form is NAME=TEXT")
+        labels[name.strip()] = text.strip()
+    context_ranks: Dict[str, List[int]] = {}
+    for name, build_python, build_launcher, build_record in parse_builds(
+            values["CONTEXT_MEEP"]):
+        if name in builds or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", name):
+            raise refuse(f"--context-meep {name}: the name is already used, or is not a "
+                         "plain token (it names directories and ledger labels)")
+        if name not in labels:
+            raise refuse(f"--context-meep {name}: no label; pass --context-label "
+                         f"{name}=TEXT (a context leg is reported under its label)")
+        serial = build_launcher == "none"
+        if serial:
+            build_launcher, build_impl = "none", "none"
+        else:
+            build_launcher = build_launcher or (
+                launcher if kind == "srun" else os.path.join(
+                    os.path.dirname(build_python), "mpirun"))
+            build_impl = "srun" if kind == "srun" else detect_mpi_impl_from_files(
+                build_launcher, kind)
+            if kind != "srun" and build_impl == "unknown" and mpi_impl != "unknown" and \
+                    sources["MPI_IMPL"] != "detected":
+                build_impl = mpi_impl
+        builds[name] = MeepBuild(
+            name, build_python, build_launcher, build_record, None,
+            unrecorded=build_record is None, mpi_impl=build_impl,
+            context_label=labels[name], serial=serial)
+        if serial:
+            context_ranks[name] = [1]
+        elif values["CONTEXT_RANKS"]:
+            context_ranks[name] = [_int(v, "CONTEXT_RANKS")
+                                   for v in _split_list(values["CONTEXT_RANKS"])]
+        else:
+            context_ranks[name] = list(dict.fromkeys(
+                [max(1, int(round(2 * physical / 3.0))), physical]))
+        if max(context_ranks[name]) > logical:
+            raise refuse(f"--context-ranks: {max(context_ranks[name])} ranks exceed the "
+                         f"{logical} logical CPUs in scope")
 
     # ---- routes, cases, sizes ----------------------------------------------------------
     routes = _split_list(values["ROUTES"]) if values["ROUTES"] is not None else (
@@ -794,15 +978,35 @@ def build_config(args: argparse.Namespace, environ: Optional[Dict[str, str]] = N
         sources["ROUTES"] = "derived"
     if routes == ["none"]:
         routes = []
+    if no_meep and not routes:
+        raise refuse("--ranks none with --routes none: a ladder that times neither the GPU "
+                     "routes nor MEEP")
     for route in routes:
-        if route not in ROUTE_TABLES:
-            raise refuse(f"--routes: no route {route!r} (default, cuda, metal, none)")
-        if route == "metal" and platform != "darwin":
+        if base_route(route) not in ROUTE_TABLES:
+            raise refuse(f"--routes: no route {route!r} (default, cuda, metal, none, each "
+                         f"optionally with {' or '.join(PREFERENCE_SUFFIXES)})")
+        if base_route(route) == "metal" and platform != "darwin":
             raise refuse("the metal route runs on an Apple GPU host only")
-        if route in NVIDIA_ROUTES and platform == "darwin":
+        if is_nvidia(route) and platform == "darwin":
             raise refuse(f"the {route} route drives an NVIDIA table; this host is macOS")
+    if len(set(routes)) != len(routes):
+        raise refuse(f"--routes names a route twice: {', '.join(routes)}")
+    preference_values: Dict[str, str] = {}
+    for item in _split_list(values["PREFERENCE_VALUES"]):
+        which, sep, value = item.partition("=")
+        if not sep or which not in ("on", "off") or not value:
+            raise refuse(f"--preference-values {values['PREFERENCE_VALUES']!r}: the form "
+                         "is on=VALUE,off=VALUE")
+        preference_values[which] = value
+    if any(route_preference(r) for r in routes) and set(preference_values) != {"on", "off"}:
+        raise refuse("a preference route is planned and --preference-values does not "
+                     "name both the on and the off value")
+    switch = str(values["PREFERENCE_SWITCH"] or "")
+    if any(route_preference(r) for r in routes) and not re.fullmatch(r"MEEP_GPU_[A-Z_]+",
+                                                                      switch):
+        raise refuse(f"--preference-switch {switch!r}: a MEEP_GPU_* package switch")
     gpu = values["GPU"]
-    nvidia = [r for r in routes if r in NVIDIA_ROUTES]
+    nvidia = [r for r in routes if is_nvidia(r)]
     refused_gpus = _split_list(values["REFUSE_GPUS"])
     if nvidia and gpu is None:
         raise refuse("--gpu is required when an NVIDIA route is planned: the device index "
@@ -863,10 +1067,19 @@ def build_config(args: argparse.Namespace, environ: Optional[Dict[str, str]] = N
         if control not in CONTROLS:
             raise refuse(f"--controls: no control {control!r} ({', '.join(CONTROLS)})")
     kept: List[str] = []
+    # Under the host's MEEP rank ceiling a control row above it is not planned, whatever
+    # --controls asked (a catalog's flag included): on an 8-performance-core desktop
+    # (ceiling 8) the catalog's hwthread rows (4P/3 and 2P ranks) are refused by name
+    # rather than timed above the host's limit.
     for control in controls:
         why = None
-        if control == "native" and "native" not in builds:
+        if no_meep:
+            why = "the GPU routes alone (--ranks none): no MEEP row is planned"
+        elif control == "native" and "native" not in builds:
             why = "no --meep-build native=PYTHON[,LAUNCHER[,RECORD]] was given"
+        elif control == "context" and not context_ranks:
+            why = ("no --context-meep NAME=PYTHON[,LAUNCHER[,RECORD]] was given (the "
+                   "site names the context builds; a catalog names no machine)")
         elif control in ("threads2", "threads4"):
             threads = 2 if control == "threads2" else 4
             ranks = max(1, int(round(physical / float(threads))))
@@ -882,6 +1095,12 @@ def build_config(args: argparse.Namespace, environ: Optional[Dict[str, str]] = N
             why = "the host has no SMT: there are no hardware threads above the cores"
         elif control == "hwthread" and platform == "darwin":
             why = "bound-hwthread is a bound mode, and Open MPI cannot bind on macOS"
+        if why is None and ceiling is not None:
+            planned = control_ranks(control, physical, logical, context_ranks)
+            if planned and min(planned) > ceiling:
+                why = (f"its rows plan {', '.join(str(n) for n in planned)} MEEP ranks, above "
+                       f"the host's MEEP rank ceiling {ceiling} (--meep-rank-ceiling): the "
+                       "host's limit wins over --controls")
         if why:
             omitted[control] = why
         else:
@@ -898,10 +1117,11 @@ def build_config(args: argparse.Namespace, environ: Optional[Dict[str, str]] = N
         except SystemExit as error:
             if control != "hwthread":
                 raise
-            # THE HWTHREAD CONTROL NAMES EACH RANK'S HARDWARE THREAD
+            # The hwthread control names each rank's hardware thread
             # (``timing_host.hwthread_pe_list``), which needs the topology. Without it
             # the control is omitted BY NAME rather than run in a placement that would
-            # double ranks up on some cores while others idle (CERT-8 H3).
+            # double ranks up on some cores while others idle (as the 1.0 NVIDIA timing
+            # ladder's 64-rank rows did, and were struck for).
             kept.remove(control)
             omitted[control] = str(error).replace("REFUSING: ", "", 1)
 
@@ -915,9 +1135,9 @@ def build_config(args: argparse.Namespace, environ: Optional[Dict[str, str]] = N
     cpu_max = values["GATE_CPU_MAX"]
     cpu_calibration = None
     if (cpu_max is None and platform == "darwin") or str(cpu_max).strip().lower() == "auto":
-        # CALIBRATED AT THE START, by a rule fixed in advance
+        # Calibrated at the start, by a rule fixed in advance
         # (``timing_host.calibrated_cpu_max``): the 10 % default cannot open on a laptop
-        # whose owner's session idles above it (CERT-8 F6). Until the readings are taken
+        # whose user's desktop session idles above it. Until the readings are taken
         # the gate holds the default, which is what a dry run prints beside "auto".
         cpu_calibration = {"readings": timing_host.CPU_CALIBRATION_READINGS,
                            "every_s": timing_host.CPU_CALIBRATION_EVERY_S,
@@ -937,14 +1157,16 @@ def build_config(args: argparse.Namespace, environ: Optional[Dict[str, str]] = N
         mem_min = timing_host.default_mem_min_gib(_float(memory_total, "MEMORY_TOTAL_GB"))
         values["GATE_MEM_MIN_GB"] = mem_min
         sources["GATE_MEM_MIN_GB"] = "derived"
-    account = derived("ACCOUNT", getpass.getuser())
+    # Unset, the gate counts this process's own account, by uid: the login name is
+    # never read, so no record can carry it (``recorded``).
+    account = values["ACCOUNT"]
     uid = timing_host.account_uid(account) if platform == detect_platform() else None
     cap = values["CAP"]
     scope = values["GATE_SCOPE"]
     if platform == "darwin" and scope != "host":
         raise refuse("--gate-scope allocation on macOS: the Mach CPU ticks are host-wide")
     if values["GATE_GPU_METRIC"] is None:
-        # A HOST-WIDE LOAD AVERAGE SEES EVERY JOB ON A SHARED NODE, so with an
+        # A host-wide load average sees every job on a shared node, so with an
         # allocation scope the GPU rows gate on the allocation's busy CPUs; on a Mac
         # the load average runs 2.5-2.8 times the busy CPUs and the per-CPU Mach tick
         # reading is the calibrated one.
@@ -1003,7 +1225,7 @@ def build_config(args: argparse.Namespace, environ: Optional[Dict[str, str]] = N
                      "each GPU row's own array leg (--array-control extract)")
     gpu_legs = values["GPU_LEGS"]
     if gpu_legs == "gpu-only" and routes:
-        # ONE LIFT A ROW, AND WHAT IT CANNOT SAY IS SAID: a GPU-only row has no array leg
+        # One lift a row, and what it cannot say is said: a GPU-only row has no array leg
         # to extract a control from, and no array leg to be bit-identical to, so its
         # identity comes from the identity tier's three-leg row of the same route, case
         # and size (``timing_records.identity_source``).
@@ -1048,8 +1270,23 @@ def build_config(args: argparse.Namespace, environ: Optional[Dict[str, str]] = N
         sockets=sockets, threads_per_core=threads_per_core,
         topology=topology if topology.get("method") else {},
         restricted=bool(topology.get("restricted_by_affinity")),
-        memory_budget=memory_budget, cpu_calibration=cpu_calibration, gpu_legs=gpu_legs)
+        memory_budget=memory_budget, cpu_calibration=cpu_calibration, gpu_legs=gpu_legs,
+        context_ranks=context_ranks,
+        threaded_reference=bool(_int(values["THREADED_REFERENCE"], "THREADED_REFERENCE")),
+        meep_cpu_cap=_meep_cpu_cap(values["LEAVE_FREE_SHARE"], logical),
+        preference_switch=switch, preference_values=preference_values, no_meep=no_meep,
+        meep_rank_ceiling=ceiling)
     return config
+
+
+def _meep_cpu_cap(share: Any, logical: int) -> Optional[int]:
+    """The CPUs a MEEP row may take under ``LEAVE_FREE_SHARE``; ``None`` when it is 0."""
+    value = _float(share or 0.0, "LEAVE_FREE_SHARE")
+    if value < 0.0 or value >= 1.0:
+        raise refuse(f"--leave-free-share {share!r}: a share in [0, 1)")
+    if value == 0.0:
+        return None
+    return int(math.floor((1.0 - value) * int(logical)))
 
 
 def darwin_memory_budget(total_gib: float) -> int:
@@ -1106,7 +1343,7 @@ class EnvDelta:
 #: macOS, GPU rows only. The pip ``torch`` wheel bundles its own ``libomp`` and the
 #: environment's OpenBLAS links conda's, so ``import torch`` beside NumPy aborts
 #: ("OMP: Error #15") unless two OpenMP runtimes are allowed; every Metal row imports
-#: torch. The reference Mac runs set the same (``build_meep_133_macos.sh``). Set on the
+#: torch. The reference Mac runs set the same (``build_meep_reference_macos.sh``). Set on the
 #: GPU rows' environment delta, so every row records it; the MEEP rows, which load one
 #: runtime at most, unset it.
 DARWIN_GPU_EXPORTS = {"KMP_DUPLICATE_LIB_OK": "TRUE"}
@@ -1131,7 +1368,7 @@ def gpu_env(config: Config, route: str, keep_cache: str) -> EnvDelta:
     if base_pythonpath:
         pythonpath.append(base_pythonpath)
     sets["PYTHONPATH"] = ":".join(pythonpath)
-    # AN NVIDIA ROW TIMES A CERTIFIED DEVICE AND TOOLCHAIN OR NOTHING. The package
+    # An NVIDIA row times a certified device and toolchain or nothing. The package
     # runs a supported, uncertified NVIDIA identity by default; ``certified`` keeps
     # such a row on the refusal it got before that default, so it cannot enter a
     # figure as though certified. A Metal row keeps the Metal default (unset), as
@@ -1139,11 +1376,11 @@ def gpu_env(config: Config, route: str, keep_cache: str) -> EnvDelta:
     unset.append("MEEP_GPU_ALLOW_UNCERTIFIED")
     if config.allow_uncertified:
         sets["MEEP_GPU_HARDWARE"] = "any"
-    elif route in NVIDIA_ROUTES:
+    elif is_nvidia(route):
         sets["MEEP_GPU_HARDWARE"] = "certified"
     else:
         unset.append("MEEP_GPU_HARDWARE")
-    if route in NVIDIA_ROUTES:
+    if is_nvidia(route):
         sets["CUDA_VISIBLE_DEVICES"] = str(config.gpu)
         sets["CUPY_ACCELERATORS"] = ""
         sets["TRITON_CACHE_DIR"] = os.path.join(config.out, "cache", "triton")
@@ -1157,12 +1394,17 @@ def gpu_env(config: Config, route: str, keep_cache: str) -> EnvDelta:
         sets["MEEP_GPU_CORPUS_ROOT"] = config.corpus_root
     if config.subnormal_policy:
         sets["MEEP_GPU_SUBNORMAL_POLICY"] = config.subnormal_policy
-    if route == "cuda":
+    if base_route(route) == "cuda":
         sets["MEEP_GPU_BACKEND_PREFERENCE"] = "cuda"
         unset.remove("MEEP_GPU_BACKEND_PREFERENCE")
+    which = route_preference(route)
+    if which is not None:
+        # The preference leg: the switch set explicitly in the row's delta (every other
+        # inherited MEEP_GPU_* is unset below), so the ledger shows what the leg asked.
+        sets[config.preference_switch] = config.preference_values[which]
     unset += [name for name in inherited_switches(config.base_env, list(sets))
               if name not in unset]
-    if route == "metal":
+    if base_route(route) == "metal":
         unset += [name for name in sorted(config.base_env)
                   if (name in PYTORCH_MPS_SWITCHES or name.startswith(PYTORCH_MPS_PREFIX))
                   and name not in unset]
@@ -1253,22 +1495,30 @@ def build_plan(config: Config) -> List[Row]:
             plan.append(Row(tier, "control", case, cells, res, pass_index))
         for n in c:
             meep(n)
-        p = config.physical
         for control in config.controls:
+            ranks = control_ranks(control, config.physical, config.logical,
+                                  config.context_ranks)
             if control == "native":
-                for n in dict.fromkeys([max(1, int(round(2 * p / 3.0))), p]):
+                for n in ranks:
                     meep(n, build="native", control=control)
             elif control in ("threads2", "threads4"):
                 threads = 2 if control == "threads2" else 4
-                meep(max(1, int(round(p / float(threads)))), threads=threads,
-                     control=control, binding="bound")
+                # THREADED_REFERENCE: the hybrid row is a REFERENCE leg (no control), so
+                # timing_rows may take it as MEEP's best, the denominator (H6 fixed).
+                meep(ranks[0], threads=threads,
+                     control=None if config.threaded_reference else control,
+                     binding="bound")
             elif control == "hwthread":
-                for n in dict.fromkeys([int(round(4 * p / 3.0)), 2 * p]):
-                    if n <= config.logical:
-                        meep(n, binding="bound-hwthread", control=control)
+                for n in ranks:
+                    meep(n, binding="bound-hwthread", control=control)
             elif control == "split":
-                for n in dict.fromkeys([max(1, int(round(2 * p / 3.0))), p]):
+                for n in ranks:
                     meep(n, split=False, control=control)
+            elif control == "context":
+                for name in sorted(config.context_ranks):
+                    for n in config.context_ranks[name]:
+                        meep(n, build=name, control="context",
+                             binding="unbound" if config.builds[name].serial else "chosen")
 
     first = config.cases[0]
     for tier in config.tiers:
@@ -1283,8 +1533,13 @@ def build_plan(config: Config) -> List[Row]:
                 for n in config.preflight_ranks:
                     plan.append(Row("preflight", "meep", case, cells, res, 0, ranks=n,
                                     binding="bound"))
-                plan.append(Row("preflight", "digest", case, cells, res, 0))
+                if not config.no_meep:
+                    # The digest compares the harness lift with the preflight MEEP rows.
+                    plan.append(Row("preflight", "digest", case, cells, res, 0))
         elif tier == "digests":
+            if config.no_meep:
+                # The digest of record is what the MEEP rows are held to: the MEEP half's.
+                continue
             seen = set()
             for name in ("probe", "priority", "rest", "largest"):
                 if {"probe": "bindprobe", "priority": "priority", "rest": "rest",
@@ -1298,7 +1553,7 @@ def build_plan(config: Config) -> List[Row]:
                         plan.append(Row("digests", "lift", case, cells,
                                         config.res(case, cells), 0))
         elif tier == "identity":
-            # ONE THREE-LEG ROW PER ROUTE, CASE AND TIMED SIZE, with the preflight's short
+            # One three-leg row per route, case and timed size, with the preflight's short
             # windows: the bit identity every GPU-only row of that size cites.
             if config.gpu_legs != "gpu-only":
                 continue
@@ -1315,7 +1570,7 @@ def build_plan(config: Config) -> List[Row]:
                             plan.append(Row("identity", "gpu", case, cells,
                                             config.res(case, cells), 0, route=route))
         elif tier == "bindprobe":
-            if config.binding != "probe" or config.platform == "darwin":
+            if config.binding != "probe" or config.platform == "darwin" or config.no_meep:
                 continue
             cells = config.sizes["probe"][0]
             res = config.res(first, cells)
@@ -1339,6 +1594,33 @@ def build_plan(config: Config) -> List[Row]:
                 for cells in config.sizes[tier]:
                     for case in config.cases:
                         sequence(tier, case, cells, pass_index)
+    ceiling = config.meep_rank_ceiling
+    if ceiling is not None:
+        # The host's MEEP rank ceiling (--meep-rank-ceiling): a control row above it is not
+        # planned, and the dry run and environment.json name it. A control none of whose
+        # rows fits is omitted whole by build_config; this takes the rest of one that does.
+        above = [r for r in plan if r.kind == "meep" and r.tier in TIMED_TIERS
+                 and int(r.ranks or 1) > ceiling]
+        if above:
+            config.controls_omitted["rows_above_rank_ceiling"] = (
+                f"MEEP ranks above the host's MEEP rank ceiling {ceiling} "
+                f"(--meep-rank-ceiling): " + ", ".join(sorted(
+                    {f"{r.control or r.configuration_label() or 'reference'}@{r.ranks}"
+                     for r in above})))
+            dropped = {id(r) for r in above}
+            plan = [r for r in plan if id(r) not in dropped]
+    if config.meep_cpu_cap is not None:
+        # A shared host's floor (LEAVE_FREE_SHARE): a MEEP row that would take more CPUs
+        # than the cap leaves is not planned; the dry run and environment.json name it.
+        over = sorted({(int(r.ranks or 1), r.threads) for r in plan if r.kind == "meep"
+                       and int(r.ranks or 1) * r.threads > config.meep_cpu_cap})
+        if over:
+            config.controls_omitted["rows_above_cpu_cap"] = (
+                f"ranks x threads above {config.meep_cpu_cap} of {config.logical} logical "
+                f"CPUs (--leave-free-share {config.values.get('LEAVE_FREE_SHARE')}): "
+                + ", ".join(f"{n}x{t}" for n, t in over))
+        plan = [r for r in plan if not (r.kind == "meep" and
+                                        int(r.ranks or 1) * r.threads > config.meep_cpu_cap)]
     for index, row in enumerate(plan, 1):
         row.index = index
         row.of = len(plan)
@@ -1389,6 +1671,16 @@ def meep_estimate(row: Row) -> int:
 
 
 def row_budget(config: Config, row: Row) -> int:
+    if row.kind in ("gpu", "lift") and row.case:
+        # A case whose lift is slower than pml_3d's (timing_cases.TimingCase.budget_scale:
+        # the dispersive lift verifies sigma at every point) scales its GPU and lift rows.
+        scale = timing_cases.budget_scale(str(row.case))
+        if scale != 1.0:
+            return int(round(scale * _row_budget(config, row)))
+    return _row_budget(config, row)
+
+
+def _row_budget(config: Config, row: Row) -> int:
     if row.kind == "gpu":
         return 180 if row.tier == "preflight" else gpu_estimate(row.cells or 0)
     if row.kind == "meep":
@@ -1417,7 +1709,8 @@ def row_timeout(config: Config, row: Row) -> int:
     if row.kind == "digest":
         return 600
     if row.kind == "lift":
-        return lift_timeout(row.cells or 0)
+        scale = timing_cases.budget_scale(str(row.case)) if row.case else 1.0
+        return int(round(scale * lift_timeout(row.cells or 0)))
     return 60
 
 
@@ -1458,6 +1751,8 @@ def binding_mode(config: Config, row: Row, chosen: str) -> str:
 
 def row_flags(config: Config, row: Row, chosen: str) -> Tuple[str, str, str]:
     """(mode, flags, label) of a MEEP row, with the flags of ITS build's launcher."""
+    if config.builds[row.build].serial:
+        return "serial", "", "serial"
     mode = binding_mode(config, row, chosen)
     impl = config.builds[row.build].mpi_impl if config.launcher_kind != "srun" else "srun"
     flags, label = timing_host.binding_flags(impl, mode, row.threads, config.platform,
@@ -1565,7 +1860,10 @@ def meep_command(config: Config, row: Row, chosen: str, utc_stamp: str,
     log = os.path.join(config.out, "logs", f"{key}.{utc_stamp}.log")
     impl = build.mpi_impl if config.launcher_kind != "srun" else "srun"
     report_flags = timing_host.with_report(impl, flags)
-    if config.launcher_kind == "srun":
+    if build.serial:
+        # A build without MPI: one process, no launcher (its rank count is 1 by plan).
+        launch = []
+    elif config.launcher_kind == "srun":
         launch = [build.launcher, f"--mpi={config.values['SRUN_MPI']}", "-n",
                   str(row.ranks)] + shlex.split(report_flags)
     else:
@@ -1586,12 +1884,12 @@ def meep_command(config: Config, row: Row, chosen: str, utc_stamp: str,
     if config_log:
         argv += ["--meep-config-log", config_log]
     argv += ["--box-before", box_before]
-    # NEW OPTIONS ONLY WHERE THEY DIFFER FROM THE 2026-09-28 BEHAVIOUR.
+    # New options only where they differ from the 2026-09-28 BEHAVIOUR.
     if build.name != "reference":
         argv += ["--build-label", build.name]
     if threads != 1:
-        # A THREADED ROW READS WHETHER MEEP LINKS OPENMP FROM THE RECORD THIS LADDER
-        # PROBED ITSELF (it carries a given record inside it, under build_record_file).
+        # A threaded row reads whether MEEP links OpenMP from the record this ladder
+        # probed itself (it carries a given record inside it, under build_record_file).
         argv += ["--build-record", probed_record_path(config, build.name)]
     elif build.record:
         argv += ["--build-record", build.record]
@@ -1603,6 +1901,8 @@ def meep_command(config: Config, row: Row, chosen: str, utc_stamp: str,
         argv += ["--scope-cpus", str(config.logical)]
     if config.metal_only:
         argv += ["--table", "metal"]
+    if build.context_label:
+        argv += ["--context-label", build.context_label]
     return Command(argv, config.out, meep_env(config, threads), log,
                    row_timeout(config, row), out=outdir, label=label, mode=mode,
                    flags=flags, row_id=row_id, launcher_line=line, build=build)
@@ -1713,7 +2013,8 @@ def describe_row(config: Config, row: Row, chosen: str = "bound") -> Dict[str, A
         command = gpu_command(config, row, "<KEEP_CACHE>", "<UTC>")
         entry["table"] = config.table(row.route or "default")
         entry["expected_launched"] = config.expect_launched.get((row.route, row.case))
-        entry["expected_repair"] = timing_cases.expected_repair(str(row.case))
+        entry["expected_repair"] = timing_cases.expected_repair(
+            str(row.case), config.table(row.route or "default"))
     elif row.kind == "meep":
         command = meep_command(config, row, chosen, "<UTC>", "<BOX>")
         entry["binding"] = command.label
@@ -1737,6 +2038,43 @@ def describe_row(config: Config, row: Row, chosen: str = "bound") -> Dict[str, A
         entry["env"] = command.env.as_dict()
         entry["log"] = command.log
     return entry
+
+
+def account_label(config: Config) -> Optional[str]:
+    """The gate's account as a record writes it: ``own`` (this process's), ``other``,
+    ``unresolved`` (a name no user here has), or None (another platform's dry run).
+    The uid is compared in process; neither it nor a name is written."""
+    if config.uid is None:
+        return None if config.account is None else "unresolved"
+    own = os.getuid() if hasattr(os, "getuid") else None
+    return "own" if config.uid == own else "other"
+
+
+def recorded(config: Config, record: Dict[str, Any]) -> Dict[str, Any]:
+    """A ladder record (the plan, the environment's parameters) as it leaves the
+    machine: ``ACCOUNT`` and the gate's ``uid`` as :func:`account_label`, the keep-awake
+    helper without its pid or the ladder's, and everything else through ``neutral_ids.value`` (paths
+    under their root's label, GPU UUIDs as card ids, host names as the machine id)."""
+    import neutral_ids  # noqa: PLC0415
+    out = json.loads(json.dumps(record, default=str))
+    label = account_label(config)
+    for params in (out.get("params"), out):
+        entry = (params or {}).get("ACCOUNT") if isinstance(params, dict) else None
+        if isinstance(entry, dict) and "value" in entry:
+            entry["value"] = label
+    for holder in (out.get("resolved"), out):
+        gate = (holder or {}).get("gate") if isinstance(holder, dict) else None
+        if isinstance(gate, dict) and "uid" in gate:
+            gate["uid"] = label
+    keepawake = out.get("keepawake")
+    if isinstance(keepawake, dict):
+        keepawake.pop("pid", None)
+        argv = keepawake.get("argv")
+        if isinstance(argv, list):
+            # ``caffeinate -w <pid>`` waits on this ladder's own pid: not written
+            keepawake["argv"] = ["<this ladder>" if before == "-w" else part
+                                 for before, part in zip([None] + argv, argv)]
+    return neutral_ids.value(out)
 
 
 def plan_record(config: Config, plan: List[Row]) -> Dict[str, Any]:
@@ -1793,6 +2131,10 @@ def plan_record(config: Config, plan: List[Row]) -> Dict[str, Any]:
             "sockets": config.sockets, "threads_per_core": config.threads_per_core,
             "restricted_by_affinity": config.restricted,
             "gpu_flags": config.gpu_flags,
+            # Recorded only when handed (the MEEP half of a split session): a ladder handed
+            # none records what it recorded before.
+            **({"meep_rank_ceiling": config.meep_rank_ceiling}
+               if config.meep_rank_ceiling is not None else {}),
         },
         "budget_by_tier": budget, "budget_by_size": per_size,
         "total": {"rows": len(rows), "row_s": sum(e["budget_s"] for e in rows),
@@ -1877,7 +2219,7 @@ def print_plan(record: Dict[str, Any], say: Callable[[str], None]) -> None:
             say(f"    cd {entry['cwd']} && " + " ".join(shlex.quote(a) for a in entry["argv"]))
         elif entry.get("reads"):
             say(f"    reads the array legs of {', '.join(entry['reads'])}; no process")
-    say(f"DRY RUN DONE: {record['total']['rows']} rows planned")
+    say(f"dry run done: {record['total']['rows']} rows planned")
 
 
 # ---------------------------------------------------------------------------
@@ -1890,7 +2232,11 @@ class Log:
         self.lock = threading.Lock()
 
     def say(self, message: str) -> None:
-        line = f"{utc()} [ladder] {message}"
+        """One progress line, through ``neutral_ids.text``: the log leaves the machine
+        with the run, so a path is written under its root's label and a host name as
+        the machine id."""
+        import neutral_ids  # noqa: PLC0415
+        line = neutral_ids.text(f"{utc()} [ladder] {message}")
         with self.lock:
             print(line, flush=True)
             if self.path:
@@ -1943,6 +2289,10 @@ def run_process(argv: Sequence[str], cwd: str, env: Dict[str, str], log: str,
             if pid_file:
                 with open(pid_file, "w", encoding="utf-8"):
                     pass
+    # The row's own output (the launcher's binding report names the host and the ranks'
+    # pids) went straight to the log while it ran; written neutrally once it has exited.
+    import neutral_ids  # noqa: PLC0415
+    neutral_ids.rewrite_file(log)
     if rc in (-signal.SIGKILL, 137):
         timed_out = True
     return rc, timed_out
@@ -1973,7 +2323,10 @@ class Ladder:
         self.first_code: Optional[str] = None
         self.stop = threading.Event()
         self.base_env = dict(config.base_env)
-        self.host = os.uname().nodename
+        # The machine as every ledger line and record names it: its anonymous id. The
+        # resume check compares it, and the raw node name, in process (check_identity).
+        import neutral_ids  # noqa: PLC0415
+        self.host = neutral_ids.machine_id()
         self.keepawake: Optional[subprocess.Popen] = None
 
     # ---- helpers -------------------------------------------------------------------
@@ -2150,12 +2503,19 @@ class Ladder:
         gpu_only = config.gpu_legs == "gpu-only" and row.tier in TIMED_TIERS
         entry, summary = self.record(
             timing_records.record_gpu, row, self.ledger, command.out or "", command.log,
-            expect, timing_cases.expected_repair(str(row.case)), True,
+            expect, timing_cases.expected_repair(str(row.case),
+                                                 config.table(str(row.route))), True,
             self.fields(row, kind="gpu", route=row.route, table_asked=config.table(
                 str(row.route)), rc=rc, timed_out=int(timed_out),
                 budget_s=row_budget(config, row), elapsed_s=int(time.time() - started),
                 gate_waited_s=int(waited), code_digest=code, box_before=before,
-                preference="cuda" if row.route == "cuda" else "unset", gpu=config.gpu,
+                preference="cuda" if base_route(str(row.route)) == "cuda" else "unset",
+                dispatch_preference=(None if route_preference(str(row.route)) is None else
+                                     {"switch": config.preference_switch,
+                                      "leg": route_preference(str(row.route)),
+                                      "value": config.preference_values[
+                                          str(route_preference(str(row.route)))]}),
+                gpu=config.gpu,
                 flags=command.flags, key=key, legs=config.gpu_legs if gpu_only else "all"),
             {"gpu_state_before": state_before,
              "gpu_state_after": timing_host.gpu_state(config.gpu, config.platform),
@@ -2345,7 +2705,7 @@ class Ladder:
                                                digest_file=digest_file(
                                                    config, str(row.case), int(row.res or 0))))
         if rc != 0:
-            # A LIFT THAT DID NOT SETTLE ITS SIZE'S DIGEST stops the ladder: its driver
+            # A lift that did not settle its size's digest stops the ladder: its driver
             # disagreed with the MEEP object, or it found a digest of record (a MEEP
             # row's, taken first) that is not its own. Every ratio at that size would
             # divide two different simulations.
@@ -2428,7 +2788,7 @@ class Ladder:
 
     def mint_keep_cache(self) -> None:
         config = self.config
-        if not any(route in NVIDIA_ROUTES for route in config.routes):
+        if not any(is_nvidia(route) for route in config.routes):
             return
         if config.subnormal_policy != "keep":
             self.say(f"subnormal policy {config.subnormal_policy}: no keep cache minted")
@@ -2441,7 +2801,7 @@ class Ladder:
                 "r = sp.point_cupy_cache_at_keep_policy(); p = r.get('provenance') or {}\n"
                 "print(r['after'] if (not p.get('reasons')) and p.get('marked') else "
                 "'REFUSED ' + repr(p.get('reasons')))")
-        # FROM THE SNAPSHOT'S ROOT: python -c puts the working directory first on
+        # From the snapshot's root: python -c puts the working directory first on
         # sys.path, so run from the ladder's own directory it would import the live
         # tree's meep_gpu whatever PYTHONPATH says.
         text = timing_host.run_text([config.python, "-c", code], timeout=600, env=env,
@@ -2477,7 +2837,7 @@ class Ladder:
                 if kind == "gpu" and pid.isdigit():
                     with open(path, "a", encoding="utf-8") as handle:
                         handle.write(f"{utc()} CAP BREACH ({previous} then {count}): killing "
-                                     f"this ladder's GPU row (pid {pid}) and the ladder\n")
+                                     "this ladder's GPU row and the ladder\n")
                     _signal_group(int(pid), signal.SIGTERM)
                     time.sleep(10)
                     _signal_group(int(pid), signal.SIGKILL)
@@ -2498,12 +2858,14 @@ class Ladder:
                     current = handle.read().strip()
             except OSError:
                 current = ""
-            line = f"{utc()} {self.box()} row=[{current}]"
+            # The row's kind, not its pid (``audit_timing_validity.BOX`` reads the kind).
+            line = f"{utc()} {self.box()} row=[{current.partition(' ')[0]}]"
             with open(path, "a", encoding="utf-8") as handle:
                 handle.write(line + "\n")
             self.stop.wait(every)
 
     def environment(self) -> None:
+        import neutral_ids  # noqa: PLC0415
         config = self.config
         builds: Dict[str, Any] = {}
         threaded = {row.build for row in self.plan if row.kind == "meep" and row.threads > 1}
@@ -2520,7 +2882,8 @@ class Ladder:
             record["unrecorded"] = build.unrecorded
             record["mpi_implementation_used"] = build.mpi_impl
             probe = record.get("probe") or {}
-            if probe.get("single_precision") is not True:
+            record["context_label"] = build.context_label
+            if build.context_label is None and probe.get("single_precision") is not True:
                 raise self.die(f"the MEEP build {name} ({build.python}) is not single "
                                f"precision: {probe or record.get('probe_output')}",
                                EXIT_REFUSED)
@@ -2533,12 +2896,13 @@ class Ladder:
             path = probed_record_path(config, name)
             os.makedirs(os.path.dirname(path), exist_ok=True)
             with open(path, "w", encoding="utf-8") as handle:
-                json.dump(record, handle, indent=2, sort_keys=True, default=str)
+                json.dump(neutral_ids.value(record), handle, indent=2, sort_keys=True,
+                          default=str)
             builds[name] = record
         params = {name: {"value": config.values.get(name),
                          "source": config.sources.get(name)} for name in config.values}
         with open(os.path.join(self.out, "params.env"), "w", encoding="utf-8") as handle:
-            for name, entry in sorted(params.items()):
+            for name, entry in sorted(recorded(config, params).items()):
                 value = entry["value"]
                 if isinstance(value, list):
                     value = ",".join(str(v) for v in value)
@@ -2547,7 +2911,7 @@ class Ladder:
             self.base_env) if config.routes else None
         timing_records.environment_record(
             os.path.join(self.out, "environment.json"), tree=config.tree, drivers=config.drv,
-            python=config.python, builds=builds, gpu=config.gpu, params=dict(
+            python=config.python, builds=builds, gpu=config.gpu, params=recorded(config, dict(
                 params, resolved=plan_record(config, self.plan)["resolved"],
                 mpi_implementation_from_version=timing_host.mpi_implementation(
                     timing_host.run_text([config.launcher, "--version"])),
@@ -2555,11 +2919,12 @@ class Ladder:
                 keepawake=(None if self.keepawake is None else
                            {"pid": self.keepawake.pid,
                             "argv": list(self.keepawake.args)}),
-                host=self.host), platform=config.platform,
+                host=self.host)), platform=config.platform,
             package_env=package_env, package_cwd=config.api)
 
     def identity(self) -> Dict[str, Any]:
-        """The host and the pinned GPU this ladder runs on."""
+        """The host and the pinned GPU this ladder runs on, raw: compared in process,
+        and written as :meth:`recorded_identity` spells them."""
         found: Dict[str, Any] = {"host": self.host, "platform": self.config.platform,
                                  "gpu": self.config.gpu, "gpu_uuid": None}
         if self.config.gpu is not None and self.config.platform != "darwin":
@@ -2567,21 +2932,47 @@ class Ladder:
                                                     timing_host.gpu_uuids() or {})
         return found
 
+    @staticmethod
+    def recorded_identity(found: Mapping[str, Any]) -> Dict[str, Any]:
+        """``host_identity.json`` as it leaves the machine: the host is the machine id
+        already, the pinned GPU (a UUID pin included) as its card id."""
+        out = dict(found)
+        out["gpu"] = timing_host.recorded_device(out.get("gpu"))
+        out["gpu_uuid"] = timing_host.recorded_device(out.get("gpu_uuid"))
+        return out
+
+    @staticmethod
+    def same_identity(key: str, first: Any, now: Any) -> bool:
+        """Whether a stored identity field names the machine or card this process has.
+        A file written before the identity left the machine holds the raw node name or
+        UUID, one written since the machine id or card id; each is compared with the
+        spelling it was written in."""
+        import neutral_ids  # noqa: PLC0415
+        if first == now:
+            return True
+        if key == "host":
+            return first == os.uname().nodename and now == neutral_ids.machine_id()
+        if key == "gpu_uuid" and isinstance(now, str):
+            return first == neutral_ids.card_id(now)
+        return False
+
     def check_identity(self) -> None:
-        """ONE HOST AND ONE GPU PER LADDER. The first start writes them; a ``--resume``
+        """One host and one GPU per ladder. The first start writes them; a ``--resume``
         that lands on another node (a resubmitted Slurm job), or on another device
         under the same index, is refused by name rather than mixing hosts in a ledger."""
         path = os.path.join(self.out, "host_identity.json")
         now = self.identity()
         if not os.path.exists(path):
             with open(path, "w", encoding="utf-8") as handle:
-                json.dump(dict(now, utc=utc()), handle, indent=2, sort_keys=True)
+                json.dump(dict(self.recorded_identity(now), utc=utc()), handle, indent=2,
+                          sort_keys=True)
             return
         with open(path, "r", encoding="utf-8") as handle:
             first = json.load(handle)
-        differs = [f"{key} {first.get(key)!r} -> {now.get(key)!r}"
+        recorded_now = self.recorded_identity(now)
+        differs = [f"{key} {first.get(key)!r} -> {recorded_now.get(key)!r}"
                    for key in ("host", "platform", "gpu_uuid")
-                   if first.get(key) != now.get(key)]
+                   if not self.same_identity(key, first.get(key), now.get(key))]
         if differs:
             raise self.die("this ladder started on another host or GPU than the one it "
                            f"resumes on ({'; '.join(differs)}); a ladder's rows come "
@@ -2636,7 +3027,7 @@ class Ladder:
         self.keepawake = subprocess.Popen(
             ["caffeinate", "-i", "-s", "-w", str(os.getpid())],
             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        self.say(f"keep-awake: caffeinate -i -s -w {os.getpid()} (pid {self.keepawake.pid})")
+        self.say("keep-awake: caffeinate -i -s -w <this ladder>")
 
     def run(self) -> int:
         config = self.config
@@ -2645,13 +3036,13 @@ class Ladder:
             os.makedirs(os.path.join(self.out, name), exist_ok=True)
         with open(self.pid_file, "w", encoding="utf-8"):
             pass
-        self.say(f"LADDER START stamp={config.stamp} pid={os.getpid()} nice={os.nice(0)} "
+        self.say(f"LADDER START stamp={config.stamp} nice={os.nice(0)} "
                  f"rows={len(self.plan)} drivers={config.drv} host={self.host} "
                  f"gpu={config.gpu}")
         self.check_identity()
         self.keep_awake()
         self.calibrate_gate()
-        record = plan_record(config, self.plan)
+        record = recorded(config, plan_record(config, self.plan))
         with open(os.path.join(self.out, "plan.json"), "w", encoding="utf-8") as handle:
             json.dump(record, handle, indent=1, sort_keys=True, default=str)
         self.say(f"box: {self.box()}")
@@ -2745,7 +3136,7 @@ def resolve_gpu(config: Config, problem: Callable[[str], None],
     ``auto`` becomes the UUID of the one allocated device, written into the
     configuration and the gate before any row runs (a dry run keeps the literal).
     """
-    if not any(route in NVIDIA_ROUTES for route in config.routes):
+    if not any(is_nvidia(route) for route in config.routes):
         return
     if uuids is None:
         uuids = timing_host.gpu_uuids()
@@ -2820,6 +3211,10 @@ def live_checks(config: Config, resume: bool, collect: bool = False,
             raise refuse(message)
         problems.append(message)
 
+    if timing_host.vocabulary_collisions(
+            list(config.routes) + [config.table(route) for route in config.routes]
+            + list(config.cases) + list(config.builds)):
+        problem(timing_host.VOCABULARY_REFUSAL)
     nice = os.nice(0)
     if nice != 0 and not int(config.values["ALLOW_NICE"]):
         problem(f"this process runs at nice {nice}; launch it un-niced or pass "
@@ -2848,7 +3243,7 @@ def live_checks(config: Config, resume: bool, collect: bool = False,
         if name != "reference" and not os.path.exists(build.python):
             problem(f"the interpreter of build {name}, {build.python}, does not exist")
         if config.launcher_kind != "srun":
-            # THE LAUNCHER'S OWN --version decides; the files beside it are a dry run's
+            # The launcher's own --version decides; the files beside it are a dry run's
             # stand-in. A disagreement is refused; a launcher the files could not name
             # takes the implementation its --version names.
             version = timing_host.mpi_implementation(
@@ -2862,11 +3257,11 @@ def live_checks(config: Config, resume: bool, collect: bool = False,
                 if name == "reference":
                     config.mpi_impl = version
     if config.platform == detect_platform() and config.uid is None:
-        problem(f"--account {config.account!r} names no user on this host: the account "
+        problem("--account names no user on this host: the account "
                 "gate and the cap guard would count nothing and pass forever")
     if not os.path.isdir(config.tree_src):
         problem(f"the tree under test {config.tree_src} does not exist")
-    if any(route in NVIDIA_ROUTES for route in config.routes):
+    if any(is_nvidia(route) for route in config.routes):
         if config.libcuda_stub and not os.path.isfile(
                 os.path.join(config.libcuda_stub, "libcuda.so.1")):
             problem(f"--libcuda-stub {config.libcuda_stub} holds no libcuda.so.1")
@@ -2878,8 +3273,9 @@ def live_checks(config: Config, resume: bool, collect: bool = False,
         affinity = timing_host.affinity()
         for message in timing_host.slurm_refusals(
                 environ, config.builds["reference"].mpi_impl, config.launcher_kind,
+                # The GPU routes alone (--ranks none) plan no rank: one process.
                 max(config.blocks[0] + config.blocks[1] + config.blocks[2]
-                    + config.probe_ranks + config.preflight_ranks),
+                    + config.probe_ranks + config.preflight_ranks or [1]),
                 len(affinity) if affinity is not None else None):
             problem(message)
     if config.platform == "darwin" and int(config.values["REQUIRE_AC_POWER"]):
@@ -2904,6 +3300,9 @@ def live_checks(config: Config, resume: bool, collect: bool = False,
 def placement_modes(config: Config) -> List[Tuple[str, int, int]]:
     """(mode, ranks, threads) the launcher probe checks: every mode the plan uses."""
     a, b, c = config.blocks
+    if not a + b + c + config.probe_ranks:
+        # The GPU routes alone (--ranks none): no MEEP row, no launcher mode to check.
+        return []
     largest = max(a + b + c + config.probe_ranks)
     modes: List[Tuple[str, int, int]] = []
     if config.platform == "darwin":
@@ -2965,15 +3364,17 @@ def launcher_probe(config: Config) -> List[str]:
 
 def selftest(config: Config, launcher_probe_too: bool) -> int:
     apply_process_environment()
-    print(f"selftest platform={config.platform} host={os.uname().nodename} "
+    import neutral_ids  # noqa: PLC0415
+    print(f"selftest platform={config.platform} host={neutral_ids.machine_id()} "
           f"nice={os.nice(0)} OMP_NUM_THREADS={os.environ.get('OMP_NUM_THREADS')}")
     readers = timing_host.selftest_readers(config.platform)
     for name, value in readers.items():
         print(f"selftest {name}: {json.dumps(value, default=str)}")
     problems = live_checks(config, resume=False, collect=True)
     device = timing_host.device_state(config.gate.gpu, config.uid, config.platform)
-    print(f"selftest account={config.account} uid={config.uid} gpu={config.gpu} device: "
-          f"{json.dumps(device, default=str)}")
+    print(f"selftest account={account_label(config)} "
+          f"gpu={timing_host.recorded_device(config.gpu)} device: "
+          f"{json.dumps(neutral_ids.value(device), default=str)}")
     for name, build in config.builds.items():
         version = timing_host.run_text([build.launcher, "--version"]) or ""
         print(f"selftest launcher of {name} {build.launcher}: implementation "

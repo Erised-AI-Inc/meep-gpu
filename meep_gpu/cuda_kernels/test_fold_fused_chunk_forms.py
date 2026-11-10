@@ -1,19 +1,19 @@
 """The four real-storage fold fused pairs run MEEP's folded passes, read off their text.
 
-WHAT THIS FILE SETTLES, ON A HOST WITH NO DEVICE. The BFAST fused pairs
+What this file settles, on a host with no device. The BFAST fused pairs
 (``bfast_fused_{magnetic,electric}_pair``: one launch for ``step_B`` -> ``zero_metal_B``
 -> ``update_H`` and its electric twin) and the special_kz fused pairs
 (``special_kz_fused_{magnetic,electric}_pair``: all five passes of the seam, the two mirror
 fills carried by the real pairs' ownership inversion) are spliced from the fold singles,
 which run MEEP's BFAST and beta passes after each component's curl through their own
-additive ladder (bit_parity_0_10 KERNELS.md section 6, step C7). Each emitted device text
-is EXECUTED in float32 NumPy by the real fused pairs' interpreter
-(``test_fused_pair_chunk_forms.ScatterInterpreter``) over a seeded full-volume state -- the
-BFAST state included -- and every array of the ``Fields`` is compared word for word (sign
-of zero included) with the array path's own passes, in driver order, on a copy of the same
-state: unfolded and folded grids, a lifted division, the run's first ``update_H`` and a
-mid-run state, planted ``-0`` words. A set of planted defects, each a rewrite of one
-emitted text, must change a word.
+additive ladder (docs/design/floating-point.md, "The folded increments are MEEP's separate
+passes"). Each emitted device text is EXECUTED in float32 NumPy by the real fused pairs'
+interpreter (``test_fused_pair_chunk_forms.ScatterInterpreter``) over a seeded full-volume
+state -- the BFAST state included -- and every array of the ``Fields`` is compared word
+for word (sign of zero included) with the array path's own passes, in driver order, on a
+copy of the same state: unfolded and folded grids, a lifted division, the run's first
+``update_H`` and a mid-run state, planted ``-0`` words. A set of planted defects, each a
+rewrite of one emitted text, must change a word.
 
 The kernel leg is the launcher's: the text, then -- on the run's first ``update_H``, on
 the magnetic side -- the launcher's own start of H on the array path
@@ -438,7 +438,7 @@ def test_the_carrying_pairs_pass_the_ownership_flag_to_both_helpers(family, text
 # =============================================================================
 
 def _real_weld_interpreter():
-    """The complex lane's interpreter (it models the weld's argument struct, its
+    """The complex suite's interpreter (it models the weld's argument struct, its
     out-parameters and ``&array[k]``) with the real weld's ``float name[n];`` locals."""
     import re  # noqa: PLC0415
 

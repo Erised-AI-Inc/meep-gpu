@@ -1,19 +1,19 @@
 """The COMPLEX no-absorber hand-CUDA E->P fused pair: ``update_E`` -> ``update_P``, per component.
 
-THE BOARD'S CELL: ``E_to_P (cuda_complex_no_pml/complex no-PML stored E,
+The board's cell: ``E_to_P (cuda_complex_no_pml/complex no-PML stored E,
 cuda_complex_no_pml/complex no-PML ADE)`` -- 4 seam-instances of demand, all 4
 clearing the source seam on the driver fact alone (the driver advances the
 polarizations immediately after ``update_E``, driver.py:3313 then :3315, with
-NOTHING between the two consults). The cell sat UNDETERMINED until the
-2026-09-02 residue round's fitness entry determined it POINTWISE (fusion-residue
-audit §1.5 stage 1, the ``fused_update_P_no_pml_complex[_uniform]`` label); this
-module is stage 2 -- the product that serves it, on the SHIPPED
+NOTHING between the two consults). The cell sat UNDETERMINED until a
+2026-09-02 board fitness entry for the ``fused_update_P_no_pml_complex[_uniform]``
+label determined it POINTWISE (a board-only change); this
+module is the second step -- the product that serves it, on the SHIPPED
 :mod:`.fused_polarization_pair` shape: the per-component split, the host
 rotation between component launches, and the register drive hand-off. The
 configuration is PROVEN servable by both siblings: Triton and Metal each serve
 these same TestLoadDump rows with their complex fused ADE chains.
 
-WHAT ONE COMPONENT'S LAUNCH PERFORMS. The certified complex stored-E update for
+What one component's launch performs. The certified complex stored-E update for
 THAT component (``update_E_no_pml_complex_stored``'s own ``cf_store(f{c}, idx,
 mul_field_left(minus_poles(...), inv_eps_{c}[idx]))`` line, value-named so the
 result stays in a register) followed per-thread by the certified complex ADE
@@ -27,7 +27,7 @@ len(driven())``, with the HOST rotating between component launches exactly as
 the certified launcher rotates (dispersion.py:689-691, run once per driving
 state after each component launch returns).
 
-WHY THE SPLIT IS BIT-EXACT AGAINST THE DRIVER ORDER: the real pair's own
+Why the split is bit-exact against the driver order: the real pair's own
 argument, unchanged -- the complex stored-E update reads P at ITS OWN component
 only (``minus_poles`` subtracts the component's own bank), so component c's
 launch reads nothing any earlier component's launch or rotation wrote, and the
@@ -35,14 +35,14 @@ P recurrence for (state, c) reads that state's own ``P[c]``/``P_prev[c]`` and
 writes that state's own ``_scratch`` -- disjoint across states, untouched by
 the E half.
 
-THE ALIASING RULE IS THE REAL PAIR'S: the pole bank is bound ONCE -- the E
+The aliasing rule is the real pair's: the pole bank is bound ONCE -- the E
 half's ``minus_poles`` and the P half's ``p_now`` load both read through the
 same ``a{i}`` parameter -- and the spare bank slots are bound to the source
 pointer and never read, exactly as the certified stored-E launcher binds them
 (two const restrict pointers that alias carry no modified object, the certified
 precedent).
 
-NOTHING HERE IS DISPATCH; :mod:`.fused_pairs` can plan it opt-in only.
+Nothing here is dispatch; :mod:`.fused_pairs` can plan it opt-in only.
 """
 
 from __future__ import annotations
@@ -95,11 +95,11 @@ except ImportError:  # a host with no CuPy: only the launch is unavailable
 
 
 # =============================================================================
-# THE PARTITION -- EMPTY ON THE CERTIFIED SIDE UNTIL A GATE MOVES IT
+# The partition -- empty on the certified side until a gate moves it
 # =============================================================================
 
 #: Byte-identical with a gate verdict AND a record behind it.
-#: TWO RECORDS STAND BEHIND THIS ONE NAME AND THE LATER ONE IS THE LIVE BYTES'.
+#: Two records stand behind this one name and the later one is the live bytes'.
 #: ``cuda_complex_no_pml_fused_polarization_pair_2026-09-02`` certified the
 #: weld whose drive-identity clause could only be established through
 #: ``array.data.ptr``; ``_drive_identity_problem`` now settles the same fact by
@@ -123,7 +123,7 @@ CERTIFIED_KERNELS = (
 #: EMPTY since 2026-09-02; what emptied it was the run above, not an argument.
 UNCERTIFIED_KERNELS = {}
 
-#: FALSE, BY DRIVER CONSTRUCTION rather than by measurement: the driver injects
+#: False, by driver construction rather than by measurement: the driver injects
 #: NOTHING between update_E (driver.py:3313) and update_P (:3315) -- no
 #: injection slot, no fill, no wall pass -- so there is no deposit for a
 #: bracket to carry and ``fused_pairs.FUSED_PAIR_SEAMS`` records the seam name
@@ -273,7 +273,7 @@ def _signature(component_index: int, count: int,
     lines.append("    // NOT __restrict__, the certified template's own "
                  "declaration.")
     lines.append(f"    const float* inv_eps_{component_index},")
-    lines.append(f"    // THE POLE BANK, BOUND ONCE ({MAX_POLES} slots, the "
+    lines.append(f"    // The pole bank, bound once ({MAX_POLES} slots, the "
                  f"certified width);")
     lines.append("    // spare slots are bound to the source pointer and never "
                  "read.")
@@ -310,7 +310,7 @@ def fused_polarization_pair_no_pml_complex_source(
     target, _displacement, stem, _count_name = _COMPONENTS[component_index]
     f = f"f{component_index}"
 
-    # THE E HALF: the certified store line, value-named. Same expression tree,
+    # The E half: the certified store line, value-named. Same expression tree,
     # same store; the register is what the P half reads.
     store = _certified_store_line(component_index)
     store = _replace_once(
@@ -356,7 +356,7 @@ def fused_polarization_pair_no_pml_complex_source(
         "    int idx = blockIdx.x * blockDim.x + threadIdx.x;\n"
         "    if (idx >= n_elem) return;\n"
         "\n"
-        "    // THE E HALF: the certified stored-E update for this component,\n"
+        "    // The E half: the certified stored-E update for this component,\n"
         "    // value-named. stepping.update_P binds fields.drive_field(c) as\n"
         "    // the drive -- the STORED E without an absorber (fields.py:1140-\n"
         "    // 1163) -- and a float32 word pair stored and reloaded is the\n"
@@ -456,13 +456,13 @@ def _drive_identity_problem(fields: Any, target: str) -> Optional[str]:
     expected = getattr(fields, target, None)
     if expected is None:
         return f"fields.{target} is not allocated"
-    # TWO WAYS TO ESTABLISH THE SAME FACT, AND THE OBJECT ONE COMES FIRST.
+    # Two ways to establish the same fact, and the object one comes first.
     # The claim is that ``update_P`` reads the array ``update_E`` just wrote;
     # ``named is expected`` settles it outright, on any array module, and a
     # base-pointer match settles the VIEW case CuPy can produce (a different
     # object over the same allocation) which object identity alone would miss.
     #
-    # THE POINTER TEST ALONE WAS A CENSUS DEFECT, measured 2026-09-02 and worth
+    # The pointer test alone was a census defect, measured 2026-09-02 and worth
     # recording where the clause is: ``_base_address`` reads ``array.data.ptr``,
     # which is a CuPy attribute -- a NumPy ``ndarray.data`` is a memoryview and
     # has none -- so on the BACKEND-FREE census every row refused here with a
@@ -486,7 +486,7 @@ def assert_disjoint_bindings(fields: Any, target: str,
                              states: Sequence[Any]) -> int:
     """Every ``__restrict__`` pointer of ONE component launch distinct.
 
-    CHECKED PER LAUNCH, AFTER THE PREVIOUS COMPONENT'S ROTATION. The spare bank
+    Checked per launch, after the previous component's rotation. The spare bank
     slots deliberately alias the source pointer (both read-only, the certified
     stored-E launcher's own binding) and are excluded here.
     """
@@ -584,7 +584,7 @@ def run_complex_no_pml_fused_polarization_pair(
         kernel: Optional[Any] = None) -> Dict[str, Any]:
     """Both of :data:`REPLACES` in THREE launches, host rotation between.
 
-    THE ROTATION IS TRANSCRIBED from dispersion.py:689-691, run once per
+    The rotation is transcribed from dispersion.py:689-691, run once per
     driving state after each component launch RETURNS -- the real pair's own
     sequence, which is what makes the buffer sequence identical to the
     certified per-(state, component) launcher's.
@@ -656,7 +656,7 @@ def covers_complex_no_pml_fused_polarization_pair(
     adds (the drive identity behind the register hand-off, the extent identity
     behind the dropped guard, the certified bank width).
 
-    ``sources`` IS ACCEPTED AND INERT -- a driver fact, not a leniency: nothing
+    ``sources`` is accepted and inert -- a driver fact, not a leniency: nothing
     is injected between driver.py:3313 and :3315 on any run. Disjoint from the
     two REAL E->P products on storage alone (their halves refuse complex64 by
     name; these require it).

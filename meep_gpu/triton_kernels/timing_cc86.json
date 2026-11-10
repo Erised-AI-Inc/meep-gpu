@@ -1,14 +1,17 @@
 {
  "attribution": {
-  "not_attributed": 33,
+  "not_attributed": 47,
   "why": "rows-times-products left unpriced: a product is priced only as its plan's sole fused product, or as the plan's one bracketed product"
  },
  "contention": {
   "admitted_without_an_after_probe": 0
  },
  "cut": {
+  "account_for_release": true,
   "allow_unpinned_subject": [],
   "by": "parity/meep_gpu/cut_timing_record.py",
+  "fused_leg_preference": "span",
+  "gate": "between_pass",
   "min_rows": 2,
   "require_box_after": false,
   "select_route": null,
@@ -16,172 +19,28 @@
  },
  "excluded": [
   {
-   "artifact": "results/fused_timing_2026-09-20_restrict/triton/rows.jsonl",
-   "case": "dispersive_2d",
-   "line": 4,
-   "reason": "floor failed: spread_within_gate"
-  },
-  {
-   "artifact": "results/fused_timing_2026-09-20_restrict/triton/rows.jsonl",
-   "case": "folded_2d",
-   "line": 6,
-   "reason": "floor failed: spread_within_gate"
-  },
-  {
-   "artifact": "results/fused_timing_2026-09-20_restrict/triton/rows.jsonl",
-   "case": "cylindrical_m0",
-   "line": 8,
-   "reason": "floor failed: spread_within_gate"
-  },
-  {
-   "artifact": "results/fused_timing_2026-09-20_restrict/triton/rows.jsonl",
-   "case": "folded_complex_2d",
-   "line": 9,
-   "reason": "verdict SKIP-NOT-THIS-LEG"
-  },
-  {
-   "artifact": "results/fused_timing_2026-09-20_restrict/triton/rows.jsonl",
-   "case": "nonlinear_1d",
-   "line": 13,
-   "reason": "floor failed: spread_within_gate"
-  },
-  {
-   "artifact": "results/fused_timing_2026-09-20_restrict/triton/rows.jsonl",
-   "case": "pml_3d_diagonal",
-   "line": 14,
-   "reason": "floor failed: spread_within_gate"
-  },
-  {
-   "artifact": "results/fused_timing_2026-09-20_restrict/triton/rows.jsonl",
-   "case": "offdiag_2d",
-   "line": 16,
-   "reason": "floor failed: spread_within_gate"
-  },
-  {
-   "artifact": "results/fused_timing_2026-09-20_restrict/triton/rows.jsonl",
-   "case": "bloch_2d",
-   "line": 22,
-   "reason": "verdict SKIP-NOT-THIS-LEG"
-  },
-  {
-   "artifact": "results/fused_timing_2026-09-20_restrict/triton/rows.jsonl",
-   "case": "complex_nobloch_2d",
-   "line": 23,
-   "reason": "verdict SKIP-NOT-THIS-LEG"
-  },
-  {
-   "artifact": "results/fused_timing_2026-09-20_restrict/triton/rows.jsonl",
-   "case": "complex_beta_2d",
-   "line": 24,
-   "reason": "verdict SKIP-NOT-THIS-LEG"
-  },
-  {
-   "artifact": "results/fused_timing_2026-09-20_restrict/triton/rows.jsonl",
-   "case": "folded_complex_beta_2d",
-   "line": 25,
-   "reason": "verdict SKIP-NOT-THIS-LEG"
-  },
-  {
-   "artifact": "results/fused_timing_2026-09-20_restrict/triton/rows.jsonl",
-   "case": "complex_1d",
-   "line": 26,
-   "reason": "verdict SKIP-NOT-THIS-LEG"
-  },
-  {
-   "artifact": "results/fused_timing_2026-09-20_restrict/triton/rows.jsonl",
-   "case": "complex_3d_thinline",
-   "line": 27,
-   "reason": "verdict SKIP-NOT-THIS-LEG"
-  },
-  {
-   "artifact": "results/fused_timing_2026-09-20_restrict/triton/rows.jsonl",
-   "case": "complex_3d",
-   "line": 28,
-   "reason": "verdict SKIP-NOT-THIS-LEG"
-  },
-  {
-   "artifact": "results/fused_timing_2026-09-20_restrict/triton/rows.jsonl",
-   "case": "folded_complex_3d",
-   "line": 29,
-   "reason": "verdict SKIP-NOT-THIS-LEG"
-  },
-  {
-   "artifact": "results/fused_timing_2026-09-20_restrict/triton/rows.jsonl",
-   "case": "folded_complex_kz2d_3d",
-   "line": 30,
-   "reason": "verdict SKIP-NOT-THIS-LEG"
-  },
-  {
-   "artifact": "results/fused_timing_2026-09-20_restrict/triton/rows.jsonl",
-   "case": "folded_complex_offdiag_2d",
-   "line": 31,
-   "reason": "verdict SKIP-NOT-THIS-LEG"
-  },
-  {
-   "artifact": "results/fused_timing_2026-09-20_restrict/triton/rows.jsonl",
-   "case": "folded_complex_nobloch_offdiag_2d",
-   "line": 32,
-   "reason": "verdict SKIP-NOT-THIS-LEG"
-  },
-  {
-   "artifact": "results/fused_timing_2026-09-20_restrict/triton/rows.jsonl",
-   "case": "complex_beta_bloch_2d",
-   "line": 33,
-   "reason": "verdict SKIP-NOT-THIS-LEG"
-  },
-  {
-   "artifact": "results/fused_timing_2026-09-20_restrict/triton/rows.jsonl",
-   "case": "folded_complex_beta_bloch_2d",
-   "line": 34,
-   "reason": "verdict SKIP-NOT-THIS-LEG"
-  },
-  {
-   "artifact": "results/fused_timing_2026-09-20_restrict/triton/rows.jsonl",
-   "case": "complex_no_pml_3d",
-   "line": 35,
-   "reason": "verdict SKIP-NOT-THIS-LEG"
-  },
-  {
-   "artifact": "results/fused_timing_2026-09-20_restrict/triton/rows.jsonl",
-   "case": "cylindrical_m1",
-   "line": 36,
-   "reason": "verdict SKIP-NOT-THIS-LEG"
-  },
-  {
-   "artifact": "results/fused_timing_2026-09-20_restrict/triton/rows.jsonl",
-   "case": "cylindrical_m0_complex",
-   "line": 37,
-   "reason": "verdict SKIP-NOT-THIS-LEG"
-  },
-  {
-   "artifact": "results/fused_timing_2026-09-20_restrict_licensed/triton/rows.jsonl",
-   "case": "folded_complex_2d",
+   "artifact": "results/timing_rows_rtx3090/fused/fused__8.6__triton__magnetic_seam_2d__res60__p1__c649e55a59/lab10__2026-10-27T15_44_58Z.rows.jsonl",
+   "case": "magnetic_seam_2d",
    "line": 1,
-   "reason": "floor failed: spread_within_gate"
+   "reason": "between-pass spread over the 2 passes of this case, grid shape and instrument: baseline 0.0597 > 0.05 (between-pass gate)"
   },
   {
-   "artifact": "results/fused_timing_2026-09-20_restrict_licensed/triton/rows.jsonl",
-   "case": "folded_complex_offdiag_2d",
-   "line": 11,
-   "reason": "floor failed: spread_within_gate"
+   "artifact": "results/timing_rows_rtx3090/fused/fused__8.6__triton__magnetic_seam_2d__res60__p2__5371c6c5ce/lab10__2026-10-27T17_29_00Z.rows.jsonl",
+   "case": "magnetic_seam_2d",
+   "line": 1,
+   "reason": "between-pass spread over the 2 passes of this case, grid shape and instrument: baseline 0.0597 > 0.05 (between-pass gate)"
   },
   {
-   "artifact": "results/fused_timing_2026-09-20_restrict_licensed/triton/rows.jsonl",
-   "case": "complex_no_pml_3d",
-   "line": 15,
-   "reason": "floor failed: spread_within_gate"
-  },
-  {
-   "artifact": "results/fused_timing_2026-09-20_restrict_licensed/triton/rows.jsonl",
-   "case": "cylindrical_m1",
-   "line": 16,
-   "reason": "floor failed: spread_within_gate"
-  },
-  {
-   "artifact": "results/fused_timing_sweep_2026-09-20_restrict/triton/offdiag_2d_res60/rows.jsonl",
+   "artifact": "results/timing_rows_rtx3090/fused/fused__8.6__triton__offdiag_2d__res20__p1__f8b15db0d2/lab10__2026-10-27T15_33_50Z.rows.jsonl",
    "case": "offdiag_2d",
    "line": 1,
-   "reason": "floor failed: spread_within_gate"
+   "reason": "between-pass spread over the 2 passes of this case, grid shape and instrument: fused 0.0587 > 0.05 (between-pass gate)"
+  },
+  {
+   "artifact": "results/timing_rows_rtx3090/fused/fused__8.6__triton__offdiag_2d__res20__p2__d8473322e4/lab10__2026-10-27T17_40_13Z.rows.jsonl",
+   "case": "offdiag_2d",
+   "line": 1,
+   "reason": "between-pass spread over the 2 passes of this case, grid shape and instrument: fused 0.0587 > 0.05 (between-pass gate)"
   }
  ],
  "host": [
@@ -189,151 +48,543 @@
    "backend": "cupy",
    "backend_version": "13.5.1",
    "compute_capability": "8.6",
-   "cuda_driver": 12030,
+   "cuda_driver": 13040,
    "cuda_runtime": 11080,
-   "device": "NVIDIA RTX A6000",
+   "device": "NVIDIA GeForce RTX 3090",
    "triton": "3.1.0"
   }
  ],
  "inputs": {
   "files": [
    {
-    "path": "results/fused_timing_2026-09-20_restrict/triton/rows.jsonl",
-    "rows": 37,
-    "sha256": "77b7f2127e88ef903b88a29f99b3f1bf23e7fa6f62b1bb6283f562831f63ca61"
-   },
-   {
-    "path": "results/fused_timing_2026-09-20_restrict_licensed/triton/rows.jsonl",
-    "rows": 17,
-    "sha256": "7fdf78c88ce66ab80673f4cdce8ec3cfb1256b99666a79699392a515f9de62b7"
-   },
-   {
-    "path": "results/fused_timing_sweep_2026-09-20_restrict/triton/magnetic_seam_2d_res130/rows.jsonl",
+    "path": "results/timing_rows_rtx3090/fused/fused__8.6__triton__absorber_1d__drive__p1__6ad9572c1a/lab10__2026-10-27T13_30_13Z.rows.jsonl",
     "rows": 1,
-    "sha256": "6518065f63183b4db7cd383a7969e7b231b751ed987741ea967ca30f691e1419"
+    "sha256": "f102046ffc559f03b7cc11e7f064029af37a3c0d8b5591fd0c517d57cfbfb0ac"
    },
    {
-    "path": "results/fused_timing_sweep_2026-09-20_restrict/triton/magnetic_seam_2d_res20/rows.jsonl",
+    "path": "results/timing_rows_rtx3090/fused/fused__8.6__triton__bfast_1d__drive__p1__70d7991fcf/lab10__2026-10-27T13_33_15Z.rows.jsonl",
     "rows": 1,
-    "sha256": "bcb4072ad8585169e87809c65c91f403579c549deb43e6f63935f1e2967dc0a7"
+    "sha256": "70e71571c065f201af46c67abee46a8e2f8f9eb5238324bf1300c92f6b1e1daa"
    },
    {
-    "path": "results/fused_timing_sweep_2026-09-20_restrict/triton/magnetic_seam_2d_res200/rows.jsonl",
+    "path": "results/timing_rows_rtx3090/fused/fused__8.6__triton__bloch_2d__drive__p1__93f05013fa/lab10__2026-10-27T13_36_13Z.rows.jsonl",
     "rows": 1,
-    "sha256": "a880bd1832f45d4fa58a7d940ee29854f4975f0509cb8effb5e14b987044ef65"
+    "sha256": "6c9e30c2af9f2c462825caceb2564b2587934636e991a2cfea9472d5ed3cd0c5"
    },
    {
-    "path": "results/fused_timing_sweep_2026-09-20_restrict/triton/magnetic_seam_2d_res300/rows.jsonl",
+    "path": "results/timing_rows_rtx3090/fused/fused__8.6__triton__complex_1d__drive__p1__43e8f89162/lab10__2026-10-27T13_39_19Z.rows.jsonl",
     "rows": 1,
-    "sha256": "fbea53e098b85578802fc3d20cde0568ebeb2192822637bb1b9d05ee32fe146f"
+    "sha256": "50123741f6b70bbb4a38c0a8020b7fc03ee7a37d17786986753b849f2cb305aa"
    },
    {
-    "path": "results/fused_timing_sweep_2026-09-20_restrict/triton/magnetic_seam_2d_res60/rows.jsonl",
+    "path": "results/timing_rows_rtx3090/fused/fused__8.6__triton__complex_3d__drive__p1__4a7aa60d43/lab10__2026-10-27T13_42_15Z.rows.jsonl",
     "rows": 1,
-    "sha256": "e9940ba23f11d471fcc5aad04e0801a065b1f859e42a94cf1620e65846ab904d"
+    "sha256": "c285de6140844f67972822014da5c54f0720c902795495958ccb40cde1cca050"
    },
    {
-    "path": "results/fused_timing_sweep_2026-09-20_restrict/triton/offdiag_2d_res130/rows.jsonl",
+    "path": "results/timing_rows_rtx3090/fused/fused__8.6__triton__complex_3d_thinline__drive__p1__9046a832ef/lab10__2026-10-27T13_45_15Z.rows.jsonl",
     "rows": 1,
-    "sha256": "7bd4442c65e992b134a5f9b10554b6cce1c5c0cf7f14606b9ddd8fefb08bb8c2"
+    "sha256": "94d3d5f3ad7292f8d5b019475a7e9032e7cd928d7224e79eb635b583d944540b"
    },
    {
-    "path": "results/fused_timing_sweep_2026-09-20_restrict/triton/offdiag_2d_res20/rows.jsonl",
+    "path": "results/timing_rows_rtx3090/fused/fused__8.6__triton__complex_beta_2d__drive__p1__b5ac7913e0/lab10__2026-10-27T13_48_14Z.rows.jsonl",
     "rows": 1,
-    "sha256": "8f2553ee7fbb32d31f1e3ea6dba41887e7ecdd54c5e497f79fffd27c672695cf"
+    "sha256": "5b35f201411cac041b664655e272cac78998cbfebb0242ec0127a5f9e71841ad"
    },
    {
-    "path": "results/fused_timing_sweep_2026-09-20_restrict/triton/offdiag_2d_res200/rows.jsonl",
+    "path": "results/timing_rows_rtx3090/fused/fused__8.6__triton__complex_beta_bloch_2d__drive__p1__1c9e5bdad6/lab10__2026-10-27T13_51_13Z.rows.jsonl",
     "rows": 1,
-    "sha256": "5efbb96db98ff3dae45e9c75f7b1941abd7c385a8ae18129a01411024f18dedd"
+    "sha256": "afadef6ebee95ad71bdb4a8e110782fc8335436a50056b4f682b077d6ee22561"
    },
    {
-    "path": "results/fused_timing_sweep_2026-09-20_restrict/triton/offdiag_2d_res300/rows.jsonl",
+    "path": "results/timing_rows_rtx3090/fused/fused__8.6__triton__complex_no_pml_3d__drive__p1__41b5a47063/lab10__2026-10-27T13_54_09Z.rows.jsonl",
     "rows": 1,
-    "sha256": "889b2cd0ed893b872c519cbe180645eae2be52b4ff01d7d9c40a7fa2d029841c"
+    "sha256": "52e3ede354dec3883e932348bb650ad78a59df6b63ef2ae33126751c6f642229"
    },
    {
-    "path": "results/fused_timing_sweep_2026-09-20_restrict/triton/offdiag_2d_res60/rows.jsonl",
+    "path": "results/timing_rows_rtx3090/fused/fused__8.6__triton__complex_nobloch_2d__drive__p1__05ae87c772/lab10__2026-10-27T13_57_09Z.rows.jsonl",
     "rows": 1,
-    "sha256": "3459ebcd42a9453e47ef2177303a86d8adf49c50c2002ac873b3f7e9c17bccdb"
+    "sha256": "aba399d355e26275584630843cfce006a8eda0c8b81917a9eeecf105347690fe"
    },
    {
-    "path": "results/fused_timing_sweep_2026-09-20_restrict/triton/pml_2d_res130/rows.jsonl",
+    "path": "results/timing_rows_rtx3090/fused/fused__8.6__triton__conductive_2d__drive__p1__002f5ed133/lab10__2026-10-27T14_00_11Z.rows.jsonl",
     "rows": 1,
-    "sha256": "9c7921980c9eefd27df3b329ce245563a026947aed07010d1388d82da918e21e"
+    "sha256": "716db385fbf0deb537357da1975ef6e765c541117c7ca81b7863cb952a2644be"
    },
    {
-    "path": "results/fused_timing_sweep_2026-09-20_restrict/triton/pml_2d_res20/rows.jsonl",
+    "path": "results/timing_rows_rtx3090/fused/fused__8.6__triton__cylindrical_m0__drive__p1__689837d21c/lab10__2026-10-27T14_03_13Z.rows.jsonl",
     "rows": 1,
-    "sha256": "a9c806f8f5d1b33b0fbde3f45e1789efb42e9e6af06c0d3dc0981ada300d020e"
+    "sha256": "9d36cf83963c4e844f5dd18474cd12c5cdda0df540192d4eff5cf6428e8f0e1f"
    },
    {
-    "path": "results/fused_timing_sweep_2026-09-20_restrict/triton/pml_2d_res200/rows.jsonl",
+    "path": "results/timing_rows_rtx3090/fused/fused__8.6__triton__cylindrical_m0_complex__drive__p1__6dde2bdca9/lab10__2026-10-27T14_06_15Z.rows.jsonl",
     "rows": 1,
-    "sha256": "d83ba91c30fa9598d56f6c4d21968c31e500b461e5d3c49b0e102e2d193cbffd"
+    "sha256": "ae0741e4e900c490432ceba4c994f7a30ed562a20703714155a4c651b5d26dc4"
    },
    {
-    "path": "results/fused_timing_sweep_2026-09-20_restrict/triton/pml_2d_res300/rows.jsonl",
+    "path": "results/timing_rows_rtx3090/fused/fused__8.6__triton__cylindrical_m1__drive__p1__d379185e4f/lab10__2026-10-27T14_09_18Z.rows.jsonl",
     "rows": 1,
-    "sha256": "d353b90bc60f3aab54ae5e2c24bf6e8d3c70dbddf14735e78727ab80e66e437d"
+    "sha256": "16d07caf245fac01d6f12a8d6354bb9f05c70aabd6a993407d91b18bc4a9469f"
    },
    {
-    "path": "results/fused_timing_sweep_2026-09-20_restrict/triton/pml_2d_res60/rows.jsonl",
+    "path": "results/timing_rows_rtx3090/fused/fused__8.6__triton__dispersive_2d__drive__p1__347115d8d9/lab10__2026-10-27T14_12_25Z.rows.jsonl",
     "rows": 1,
-    "sha256": "5ccd825485fcaa06129b0670ced2b64d90d91fe205440f747737217a840d4fd7"
+    "sha256": "22c9d81a1a1ab442885b701fe62f58ebd0dc1aa8ce95337c33d6078ad714abce"
+   },
+   {
+    "path": "results/timing_rows_rtx3090/fused/fused__8.6__triton__folded_2d__drive__p1__cf65d02a66/lab10__2026-10-27T14_15_32Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "59bd85c62300cc72fdacb07d2691b2f78cc471ffe6bd86b164003415753ac6c4"
+   },
+   {
+    "path": "results/timing_rows_rtx3090/fused/fused__8.6__triton__folded_3d__drive__p1__ca30489009/lab10__2026-10-27T14_18_35Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "6a30f787a5c74ea4cc9e1de5278d233c753183f2b163667e3c1cc0f74f33df7b"
+   },
+   {
+    "path": "results/timing_rows_rtx3090/fused/fused__8.6__triton__folded_complex_2d__drive__p1__2f0b9f32c0/lab10__2026-10-27T14_24_43Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "6f4f7d2b63339c937627446e07d69a01b5111a3344fad2b825bc229e544a09e3"
+   },
+   {
+    "path": "results/timing_rows_rtx3090/fused/fused__8.6__triton__folded_complex_3d__drive__p1__99cbfdc1b9/lab10__2026-10-27T14_27_50Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "5d474008795a87a7d02134711b1eb596a8cb93c3b283c6a948db0863549d9fb7"
+   },
+   {
+    "path": "results/timing_rows_rtx3090/fused/fused__8.6__triton__folded_complex_beta_2d__drive__p1__854ff635a6/lab10__2026-10-27T14_30_54Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "894bb05551f253abe76d3be98bd4cc7234cc0c2eefe2ea40b839de7069a2899e"
+   },
+   {
+    "path": "results/timing_rows_rtx3090/fused/fused__8.6__triton__folded_complex_beta_bloch_2d__drive__p1__e83d866acc/lab10__2026-10-27T14_33_57Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "8b3f29354e5ecbb5220688191565a4b49108372d34e04e5d7d05ae4320268131"
+   },
+   {
+    "path": "results/timing_rows_rtx3090/fused/fused__8.6__triton__folded_complex_kz2d_3d__drive__p1__4e8a0dfc67/lab10__2026-10-27T14_37_01Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "f54a6e6bd4d3841a853fceb725b627692bb15fafbf4266369e7833fa1881fd47"
+   },
+   {
+    "path": "results/timing_rows_rtx3090/fused/fused__8.6__triton__folded_complex_nobloch_offdiag_2d__drive__p1__8a8ccc98a7/lab10__2026-10-27T14_40_00Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "45f224d1278b4a91be458e7e4268055039a8742ca3baf7606c5c98dd41dc00fb"
+   },
+   {
+    "path": "results/timing_rows_rtx3090/fused/fused__8.6__triton__folded_complex_offdiag_2d__drive__p1__a7abadf64a/lab10__2026-10-27T14_43_02Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "5dbe1eaef7afb00794deadc39967043520ef0e60cd35a63323a74b1f82a81bc6"
+   },
+   {
+    "path": "results/timing_rows_rtx3090/fused/fused__8.6__triton__folded_dispersive_2d__drive__p1__993b8c336e/lab10__2026-10-27T14_46_15Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "b5836f28b6fb8fa754698d158596267de596620d658b686f74cc21149a1b9d6b"
+   },
+   {
+    "path": "results/timing_rows_rtx3090/fused/fused__8.6__triton__folded_offdiag_magnetic_2d__drive__p1__4f527be0e1/lab10__2026-10-27T14_49_21Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "d9b2aa0b81680c89d4fbd8728a3e5ff97badfb67d4ca267ac87b004b56d0c065"
+   },
+   {
+    "path": "results/timing_rows_rtx3090/fused/fused__8.6__triton__folded_special_kz_2d__drive__p1__86089981c2/lab10__2026-10-27T14_52_25Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "9e9e60c9544d06ea2f31d929b3c65b33a0911cfff8fc271414e8a8d762c1263e"
+   },
+   {
+    "path": "results/timing_rows_rtx3090/fused/fused__8.6__triton__magnetic_seam_2d__drive__p1__f72db7536c/lab10__2026-10-27T14_55_28Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "17ec079480d2fadb80c02571d1a55effe2202499870c3499041086f34749e0b0"
+   },
+   {
+    "path": "results/timing_rows_rtx3090/fused/fused__8.6__triton__magnetic_seam_2d__res130__p1__7d0c71d725/lab10__2026-10-27T15_59_12Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "505c6c4f1b309679c75a31a3cdf3bcad511183ca64a560c8e652b01bf17cef3f"
+   },
+   {
+    "path": "results/timing_rows_rtx3090/fused/fused__8.6__triton__magnetic_seam_2d__res130__p2__c953743d92/lab10__2026-10-27T17_14_38Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "9efa3f5cb85e9737f497859627a61baafbeb610241cb242860555732b66f805c"
+   },
+   {
+    "path": "results/timing_rows_rtx3090/fused/fused__8.6__triton__magnetic_seam_2d__res200__p1__ed73a54ed1/lab10__2026-10-27T16_13_43Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "e292427d910704dbdc8cdae785812d280247c5c883dd8cbaed03340f2f4aeceb"
+   },
+   {
+    "path": "results/timing_rows_rtx3090/fused/fused__8.6__triton__magnetic_seam_2d__res200__p2__642ef1dfac/lab10__2026-10-27T16_59_59Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "a3372606c0098f6325550cb59d6ae549ef577f9cacf28d84636547ef1fb6b633"
+   },
+   {
+    "path": "results/timing_rows_rtx3090/fused/fused__8.6__triton__magnetic_seam_2d__res20__p1__9d5a1ba340/lab10__2026-10-27T15_31_07Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "129ccf617b4fd1fd61a0052c3346de9feea375d24f578040b7716db034e0b005"
+   },
+   {
+    "path": "results/timing_rows_rtx3090/fused/fused__8.6__triton__magnetic_seam_2d__res20__p2__bc03b0ccd3/lab10__2026-10-27T17_43_01Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "f791021e411f25381832a6b27b91d243189b18aa003a3023edfebe3a7a4f95ee"
+   },
+   {
+    "path": "results/timing_rows_rtx3090/fused/fused__8.6__triton__magnetic_seam_2d__res300__p1__d7e6d7131c/lab10__2026-10-27T16_29_00Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "dfbe7045f625bb5eff9483812818da731220e20be75068f91e2581dba7a3cffd"
+   },
+   {
+    "path": "results/timing_rows_rtx3090/fused/fused__8.6__triton__magnetic_seam_2d__res300__p2__445f12e32d/lab10__2026-10-27T16_44_49Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "f00de891db00d4e1353b80398c316318bcf57f3563acb7440428c62a98e194e2"
+   },
+   {
+    "path": "results/timing_rows_rtx3090/fused/fused__8.6__triton__magnetic_seam_2d__res60__p1__c649e55a59/lab10__2026-10-27T15_44_58Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "f8d406609fa3b0421ad88e64809f61497f650b0723e7445873107c0d10b93fb0"
+   },
+   {
+    "path": "results/timing_rows_rtx3090/fused/fused__8.6__triton__magnetic_seam_2d__res60__p2__5371c6c5ce/lab10__2026-10-27T17_29_00Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "bcfa61d76e3f8852914b566f30bd60254a0381bed4a5b93a1e2a12f0eb062b20"
+   },
+   {
+    "path": "results/timing_rows_rtx3090/fused/fused__8.6__triton__no_pml_dispersive_2d__drive__p1__81c8a66aac/lab10__2026-10-27T14_58_32Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "a06761402ca6249d1865304ad43613e92382d2f27edf1d953a4e2131e15651a8"
+   },
+   {
+    "path": "results/timing_rows_rtx3090/fused/fused__8.6__triton__nonlinear_1d__drive__p1__367e8231f6/lab10__2026-10-27T15_01_42Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "ef581c9f4e2f85b18db9e9338a8221ad0eaf864cb5aee180115e342ec8bb9d53"
+   },
+   {
+    "path": "results/timing_rows_rtx3090/fused/fused__8.6__triton__offdiag_2d__drive__p1__8e2c80e5d1/lab10__2026-10-27T15_04_41Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "5ab79c53656cba4875098f1e1c7255fcae8ef42ef927048a28cf97f63097a59b"
+   },
+   {
+    "path": "results/timing_rows_rtx3090/fused/fused__8.6__triton__offdiag_2d__res130__p1__5eda9247f6/lab10__2026-10-27T16_02_04Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "59361cce195795d67a9ba823d46808b8e19a4e96dfe885db84fd3e2f1a074d36"
+   },
+   {
+    "path": "results/timing_rows_rtx3090/fused/fused__8.6__triton__offdiag_2d__res130__p2__63c92168cd/lab10__2026-10-27T17_11_44Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "97024fe9c143b2d95563e456119f47397aeb4175dd9c7485a1ce611273aaae2c"
+   },
+   {
+    "path": "results/timing_rows_rtx3090/fused/fused__8.6__triton__offdiag_2d__res200__p1__5b6a1813f3/lab10__2026-10-27T16_16_42Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "c755bec7f5addc87254cc627eafff6789ab79c2888cb7bb85dd5ce12cb61e3b2"
+   },
+   {
+    "path": "results/timing_rows_rtx3090/fused/fused__8.6__triton__offdiag_2d__res200__p2__3e5fa4a079/lab10__2026-10-27T16_57_03Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "23eafd4f50ea36226af736fe8ed0eb745f4ff66088fdb824fa1978074a3efd26"
+   },
+   {
+    "path": "results/timing_rows_rtx3090/fused/fused__8.6__triton__offdiag_2d__res20__p1__f8b15db0d2/lab10__2026-10-27T15_33_50Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "9149fb4609e8062234d270b6d62a1a184ad5e580afc849d8081a68b1e4766619"
+   },
+   {
+    "path": "results/timing_rows_rtx3090/fused/fused__8.6__triton__offdiag_2d__res20__p2__d8473322e4/lab10__2026-10-27T17_40_13Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "7c1e2b575a206e2fc8ffbae999345a20e94eaa3c2e1c21f2e66edbb665586b64"
+   },
+   {
+    "path": "results/timing_rows_rtx3090/fused/fused__8.6__triton__offdiag_2d__res300__p1__8c9dca812d/lab10__2026-10-27T16_32_14Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "20d742a8bf853ceb2674f0e4aad6b3f53695b64372ba57d11e30df6b3f464387"
+   },
+   {
+    "path": "results/timing_rows_rtx3090/fused/fused__8.6__triton__offdiag_2d__res300__p2__d00b8c5482/lab10__2026-10-27T16_41_40Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "6a377b2185ded2822db568994301a6b29a89f30f8d64cad5ec164685971288a5"
+   },
+   {
+    "path": "results/timing_rows_rtx3090/fused/fused__8.6__triton__offdiag_2d__res60__p1__53903d03ec/lab10__2026-10-27T15_47_48Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "75add2d64904e9ecc605af28100489596c854fce0eba4c30c6bf86f016fd7292"
+   },
+   {
+    "path": "results/timing_rows_rtx3090/fused/fused__8.6__triton__offdiag_2d__res60__p2__149d80e3dd/lab10__2026-10-27T17_26_08Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "47247e5ef6c64a24725b8b15d5c39680b2945ca6f652119176a63416a4d0e3e0"
+   },
+   {
+    "path": "results/timing_rows_rtx3090/fused/fused__8.6__triton__offdiag_magnetic_2d__drive__p1__24746126fb/lab10__2026-10-27T15_07_43Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "909f5867cc6d7b1a51099bda44397c0a6d92f3ded0b06af9c46ca7bd1af8b23a"
+   },
+   {
+    "path": "results/timing_rows_rtx3090/fused/fused__8.6__triton__pml_1d__drive__p1__ce555222a6/lab10__2026-10-27T15_10_47Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "4d6f717a79f013030c8cc7c879ddcecd1aa942b7e6dd6328998e10d856f4203b"
+   },
+   {
+    "path": "results/timing_rows_rtx3090/fused/fused__8.6__triton__pml_2d__drive__p1__76499842e2/lab10__2026-10-27T15_13_48Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "8fd13edb72efe61b3020f2c698b0beb7f61f6b9602c8387b72231661db0520e3"
+   },
+   {
+    "path": "results/timing_rows_rtx3090/fused/fused__8.6__triton__pml_2d__res130__p1__1a9698a78f/lab10__2026-10-27T16_04_55Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "1d9900c4b912b2286be068d7d8d8d329f9c23288d2b7b419d9ebcd87929b886e"
+   },
+   {
+    "path": "results/timing_rows_rtx3090/fused/fused__8.6__triton__pml_2d__res130__p2__8027081b14/lab10__2026-10-27T17_08_50Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "5aaa5df53b5c88ace1656ed86e7e207e550dbe447dc83d17e57d444c01e4cd9c"
+   },
+   {
+    "path": "results/timing_rows_rtx3090/fused/fused__8.6__triton__pml_2d__res200__p1__e563fba957/lab10__2026-10-27T16_19_38Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "9b4a9a5a0c52b1d20aacf7ed0e7ef936b3a2a230e655badeacd397e48a11c72f"
+   },
+   {
+    "path": "results/timing_rows_rtx3090/fused/fused__8.6__triton__pml_2d__res200__p2__9e65bb29b2/lab10__2026-10-27T16_54_06Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "57d838fd8a189f643b8f7fd810991e99fea5783834b0e6545489db36099115c8"
+   },
+   {
+    "path": "results/timing_rows_rtx3090/fused/fused__8.6__triton__pml_2d__res20__p1__00e2c33f88/lab10__2026-10-27T15_36_36Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "fc37c6bb020ee14488db41916aed0d0e636cd55c7cbe471b40a8eeb1cb79a6ee"
+   },
+   {
+    "path": "results/timing_rows_rtx3090/fused/fused__8.6__triton__pml_2d__res20__p2__c8444727ea/lab10__2026-10-27T17_37_30Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "86c00ed9dcdd642727317aa27c0991f8489d1f96d12292a3d961d0b9fa044de6"
+   },
+   {
+    "path": "results/timing_rows_rtx3090/fused/fused__8.6__triton__pml_2d__res300__p1__d4bb282eaf/lab10__2026-10-27T16_35_22Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "627f2a5b4c9043889b11b3b0d2ae59e54f712a3d036f611f17511d8b194318f6"
+   },
+   {
+    "path": "results/timing_rows_rtx3090/fused/fused__8.6__triton__pml_2d__res300__p2__61df5fd0c5/lab10__2026-10-27T16_38_31Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "ac29de2b8976fb6eff4ed44555b5d09f2fd343f39aa6566de1c4b7eba2943c9e"
+   },
+   {
+    "path": "results/timing_rows_rtx3090/fused/fused__8.6__triton__pml_2d__res60__p1__fbfbeffbbb/lab10__2026-10-27T15_50_38Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "7ac80283fd76b518f308a9dafaa4909955f66214e21332439c94c637ac2c081e"
+   },
+   {
+    "path": "results/timing_rows_rtx3090/fused/fused__8.6__triton__pml_2d__res60__p2__5e4380b00d/lab10__2026-10-27T17_23_16Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "0e4830eec534511eede01c02477a6aee750c291dc4f26953520f59892d5c2dac"
+   },
+   {
+    "path": "results/timing_rows_rtx3090/fused/fused__8.6__triton__pml_3d__drive__p1__fbb7124987/lab10__2026-10-27T15_16_55Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "b14b63047e0a2f06ebf2c0f5a30c0664fe139f362486f38a9d547be956e4a648"
+   },
+   {
+    "path": "results/timing_rows_rtx3090/fused/fused__8.6__triton__pml_3d_diagonal__drive__p1__66a0bc3049/lab10__2026-10-27T15_19_58Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "0d4c1f621e33253eabae290c093bd3136ee4ecc84fd0aed0c411eb73f7d40018"
+   },
+   {
+    "path": "results/timing_rows_rtx3090/fused/fused__8.6__triton__special_kz_2d__drive__p1__ab22bec94b/lab10__2026-10-27T15_22_58Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "af9374ae5e69fdf870bb1d999cdf4d1296a3262f98efc753ad6f38b76e53f39e"
    }
   ],
   "roots": [
-   "results/fused_timing_2026-09-20_restrict/triton",
-   "results/fused_timing_2026-09-20_restrict_licensed/triton",
-   "results/fused_timing_sweep_2026-09-20_restrict/triton"
+   "results/timing_rows_rtx3090/fused/fused__8.6__triton__absorber_1d__drive__p1__6ad9572c1a/lab10__2026-10-27T13_30_13Z.rows.jsonl",
+   "results/timing_rows_rtx3090/fused/fused__8.6__triton__bfast_1d__drive__p1__70d7991fcf/lab10__2026-10-27T13_33_15Z.rows.jsonl",
+   "results/timing_rows_rtx3090/fused/fused__8.6__triton__bloch_2d__drive__p1__93f05013fa/lab10__2026-10-27T13_36_13Z.rows.jsonl",
+   "results/timing_rows_rtx3090/fused/fused__8.6__triton__complex_1d__drive__p1__43e8f89162/lab10__2026-10-27T13_39_19Z.rows.jsonl",
+   "results/timing_rows_rtx3090/fused/fused__8.6__triton__complex_3d__drive__p1__4a7aa60d43/lab10__2026-10-27T13_42_15Z.rows.jsonl",
+   "results/timing_rows_rtx3090/fused/fused__8.6__triton__complex_3d_thinline__drive__p1__9046a832ef/lab10__2026-10-27T13_45_15Z.rows.jsonl",
+   "results/timing_rows_rtx3090/fused/fused__8.6__triton__complex_beta_2d__drive__p1__b5ac7913e0/lab10__2026-10-27T13_48_14Z.rows.jsonl",
+   "results/timing_rows_rtx3090/fused/fused__8.6__triton__complex_beta_bloch_2d__drive__p1__1c9e5bdad6/lab10__2026-10-27T13_51_13Z.rows.jsonl",
+   "results/timing_rows_rtx3090/fused/fused__8.6__triton__complex_no_pml_3d__drive__p1__41b5a47063/lab10__2026-10-27T13_54_09Z.rows.jsonl",
+   "results/timing_rows_rtx3090/fused/fused__8.6__triton__complex_nobloch_2d__drive__p1__05ae87c772/lab10__2026-10-27T13_57_09Z.rows.jsonl",
+   "results/timing_rows_rtx3090/fused/fused__8.6__triton__conductive_2d__drive__p1__002f5ed133/lab10__2026-10-27T14_00_11Z.rows.jsonl",
+   "results/timing_rows_rtx3090/fused/fused__8.6__triton__cylindrical_m0__drive__p1__689837d21c/lab10__2026-10-27T14_03_13Z.rows.jsonl",
+   "results/timing_rows_rtx3090/fused/fused__8.6__triton__cylindrical_m0_complex__drive__p1__6dde2bdca9/lab10__2026-10-27T14_06_15Z.rows.jsonl",
+   "results/timing_rows_rtx3090/fused/fused__8.6__triton__cylindrical_m1__drive__p1__d379185e4f/lab10__2026-10-27T14_09_18Z.rows.jsonl",
+   "results/timing_rows_rtx3090/fused/fused__8.6__triton__dispersive_2d__drive__p1__347115d8d9/lab10__2026-10-27T14_12_25Z.rows.jsonl",
+   "results/timing_rows_rtx3090/fused/fused__8.6__triton__folded_2d__drive__p1__cf65d02a66/lab10__2026-10-27T14_15_32Z.rows.jsonl",
+   "results/timing_rows_rtx3090/fused/fused__8.6__triton__folded_3d__drive__p1__ca30489009/lab10__2026-10-27T14_18_35Z.rows.jsonl",
+   "results/timing_rows_rtx3090/fused/fused__8.6__triton__folded_complex_2d__drive__p1__2f0b9f32c0/lab10__2026-10-27T14_24_43Z.rows.jsonl",
+   "results/timing_rows_rtx3090/fused/fused__8.6__triton__folded_complex_3d__drive__p1__99cbfdc1b9/lab10__2026-10-27T14_27_50Z.rows.jsonl",
+   "results/timing_rows_rtx3090/fused/fused__8.6__triton__folded_complex_beta_2d__drive__p1__854ff635a6/lab10__2026-10-27T14_30_54Z.rows.jsonl",
+   "results/timing_rows_rtx3090/fused/fused__8.6__triton__folded_complex_beta_bloch_2d__drive__p1__e83d866acc/lab10__2026-10-27T14_33_57Z.rows.jsonl",
+   "results/timing_rows_rtx3090/fused/fused__8.6__triton__folded_complex_kz2d_3d__drive__p1__4e8a0dfc67/lab10__2026-10-27T14_37_01Z.rows.jsonl",
+   "results/timing_rows_rtx3090/fused/fused__8.6__triton__folded_complex_nobloch_offdiag_2d__drive__p1__8a8ccc98a7/lab10__2026-10-27T14_40_00Z.rows.jsonl",
+   "results/timing_rows_rtx3090/fused/fused__8.6__triton__folded_complex_offdiag_2d__drive__p1__a7abadf64a/lab10__2026-10-27T14_43_02Z.rows.jsonl",
+   "results/timing_rows_rtx3090/fused/fused__8.6__triton__folded_dispersive_2d__drive__p1__993b8c336e/lab10__2026-10-27T14_46_15Z.rows.jsonl",
+   "results/timing_rows_rtx3090/fused/fused__8.6__triton__folded_offdiag_magnetic_2d__drive__p1__4f527be0e1/lab10__2026-10-27T14_49_21Z.rows.jsonl",
+   "results/timing_rows_rtx3090/fused/fused__8.6__triton__folded_special_kz_2d__drive__p1__86089981c2/lab10__2026-10-27T14_52_25Z.rows.jsonl",
+   "results/timing_rows_rtx3090/fused/fused__8.6__triton__magnetic_seam_2d__drive__p1__f72db7536c/lab10__2026-10-27T14_55_28Z.rows.jsonl",
+   "results/timing_rows_rtx3090/fused/fused__8.6__triton__magnetic_seam_2d__res130__p1__7d0c71d725/lab10__2026-10-27T15_59_12Z.rows.jsonl",
+   "results/timing_rows_rtx3090/fused/fused__8.6__triton__magnetic_seam_2d__res130__p2__c953743d92/lab10__2026-10-27T17_14_38Z.rows.jsonl",
+   "results/timing_rows_rtx3090/fused/fused__8.6__triton__magnetic_seam_2d__res200__p1__ed73a54ed1/lab10__2026-10-27T16_13_43Z.rows.jsonl",
+   "results/timing_rows_rtx3090/fused/fused__8.6__triton__magnetic_seam_2d__res200__p2__642ef1dfac/lab10__2026-10-27T16_59_59Z.rows.jsonl",
+   "results/timing_rows_rtx3090/fused/fused__8.6__triton__magnetic_seam_2d__res20__p1__9d5a1ba340/lab10__2026-10-27T15_31_07Z.rows.jsonl",
+   "results/timing_rows_rtx3090/fused/fused__8.6__triton__magnetic_seam_2d__res20__p2__bc03b0ccd3/lab10__2026-10-27T17_43_01Z.rows.jsonl",
+   "results/timing_rows_rtx3090/fused/fused__8.6__triton__magnetic_seam_2d__res300__p1__d7e6d7131c/lab10__2026-10-27T16_29_00Z.rows.jsonl",
+   "results/timing_rows_rtx3090/fused/fused__8.6__triton__magnetic_seam_2d__res300__p2__445f12e32d/lab10__2026-10-27T16_44_49Z.rows.jsonl",
+   "results/timing_rows_rtx3090/fused/fused__8.6__triton__magnetic_seam_2d__res60__p1__c649e55a59/lab10__2026-10-27T15_44_58Z.rows.jsonl",
+   "results/timing_rows_rtx3090/fused/fused__8.6__triton__magnetic_seam_2d__res60__p2__5371c6c5ce/lab10__2026-10-27T17_29_00Z.rows.jsonl",
+   "results/timing_rows_rtx3090/fused/fused__8.6__triton__no_pml_dispersive_2d__drive__p1__81c8a66aac/lab10__2026-10-27T14_58_32Z.rows.jsonl",
+   "results/timing_rows_rtx3090/fused/fused__8.6__triton__nonlinear_1d__drive__p1__367e8231f6/lab10__2026-10-27T15_01_42Z.rows.jsonl",
+   "results/timing_rows_rtx3090/fused/fused__8.6__triton__offdiag_2d__drive__p1__8e2c80e5d1/lab10__2026-10-27T15_04_41Z.rows.jsonl",
+   "results/timing_rows_rtx3090/fused/fused__8.6__triton__offdiag_2d__res130__p1__5eda9247f6/lab10__2026-10-27T16_02_04Z.rows.jsonl",
+   "results/timing_rows_rtx3090/fused/fused__8.6__triton__offdiag_2d__res130__p2__63c92168cd/lab10__2026-10-27T17_11_44Z.rows.jsonl",
+   "results/timing_rows_rtx3090/fused/fused__8.6__triton__offdiag_2d__res200__p1__5b6a1813f3/lab10__2026-10-27T16_16_42Z.rows.jsonl",
+   "results/timing_rows_rtx3090/fused/fused__8.6__triton__offdiag_2d__res200__p2__3e5fa4a079/lab10__2026-10-27T16_57_03Z.rows.jsonl",
+   "results/timing_rows_rtx3090/fused/fused__8.6__triton__offdiag_2d__res20__p1__f8b15db0d2/lab10__2026-10-27T15_33_50Z.rows.jsonl",
+   "results/timing_rows_rtx3090/fused/fused__8.6__triton__offdiag_2d__res20__p2__d8473322e4/lab10__2026-10-27T17_40_13Z.rows.jsonl",
+   "results/timing_rows_rtx3090/fused/fused__8.6__triton__offdiag_2d__res300__p1__8c9dca812d/lab10__2026-10-27T16_32_14Z.rows.jsonl",
+   "results/timing_rows_rtx3090/fused/fused__8.6__triton__offdiag_2d__res300__p2__d00b8c5482/lab10__2026-10-27T16_41_40Z.rows.jsonl",
+   "results/timing_rows_rtx3090/fused/fused__8.6__triton__offdiag_2d__res60__p1__53903d03ec/lab10__2026-10-27T15_47_48Z.rows.jsonl",
+   "results/timing_rows_rtx3090/fused/fused__8.6__triton__offdiag_2d__res60__p2__149d80e3dd/lab10__2026-10-27T17_26_08Z.rows.jsonl",
+   "results/timing_rows_rtx3090/fused/fused__8.6__triton__offdiag_magnetic_2d__drive__p1__24746126fb/lab10__2026-10-27T15_07_43Z.rows.jsonl",
+   "results/timing_rows_rtx3090/fused/fused__8.6__triton__pml_1d__drive__p1__ce555222a6/lab10__2026-10-27T15_10_47Z.rows.jsonl",
+   "results/timing_rows_rtx3090/fused/fused__8.6__triton__pml_2d__drive__p1__76499842e2/lab10__2026-10-27T15_13_48Z.rows.jsonl",
+   "results/timing_rows_rtx3090/fused/fused__8.6__triton__pml_2d__res130__p1__1a9698a78f/lab10__2026-10-27T16_04_55Z.rows.jsonl",
+   "results/timing_rows_rtx3090/fused/fused__8.6__triton__pml_2d__res130__p2__8027081b14/lab10__2026-10-27T17_08_50Z.rows.jsonl",
+   "results/timing_rows_rtx3090/fused/fused__8.6__triton__pml_2d__res200__p1__e563fba957/lab10__2026-10-27T16_19_38Z.rows.jsonl",
+   "results/timing_rows_rtx3090/fused/fused__8.6__triton__pml_2d__res200__p2__9e65bb29b2/lab10__2026-10-27T16_54_06Z.rows.jsonl",
+   "results/timing_rows_rtx3090/fused/fused__8.6__triton__pml_2d__res20__p1__00e2c33f88/lab10__2026-10-27T15_36_36Z.rows.jsonl",
+   "results/timing_rows_rtx3090/fused/fused__8.6__triton__pml_2d__res20__p2__c8444727ea/lab10__2026-10-27T17_37_30Z.rows.jsonl",
+   "results/timing_rows_rtx3090/fused/fused__8.6__triton__pml_2d__res300__p1__d4bb282eaf/lab10__2026-10-27T16_35_22Z.rows.jsonl",
+   "results/timing_rows_rtx3090/fused/fused__8.6__triton__pml_2d__res300__p2__61df5fd0c5/lab10__2026-10-27T16_38_31Z.rows.jsonl",
+   "results/timing_rows_rtx3090/fused/fused__8.6__triton__pml_2d__res60__p1__fbfbeffbbb/lab10__2026-10-27T15_50_38Z.rows.jsonl",
+   "results/timing_rows_rtx3090/fused/fused__8.6__triton__pml_2d__res60__p2__5e4380b00d/lab10__2026-10-27T17_23_16Z.rows.jsonl",
+   "results/timing_rows_rtx3090/fused/fused__8.6__triton__pml_3d__drive__p1__fbb7124987/lab10__2026-10-27T15_16_55Z.rows.jsonl",
+   "results/timing_rows_rtx3090/fused/fused__8.6__triton__pml_3d_diagonal__drive__p1__66a0bc3049/lab10__2026-10-27T15_19_58Z.rows.jsonl",
+   "results/timing_rows_rtx3090/fused/fused__8.6__triton__special_kz_2d__drive__p1__ab22bec94b/lab10__2026-10-27T15_22_58Z.rows.jsonl"
   ],
-  "sha256": "66bb82c84e5451222c0fcd52a93ed36526b27f4618f1a1511a59fcabba8add0e"
+  "sha256": "5dd77dd1239f3133ed31ea244a51927e1e999ee02f415cf67dd89b1b06f86c80"
  },
  "keys": {
-  "fused pair B (folded complex)|complex|2|0|clean|6561-6561": {
+  "dispersive fused pair|real|2|1|bracketed|19200-19200": {
+   "band": {
+    "hi_cells": 19200,
+    "lo_cells": 19200
+   },
+   "baseline_ms_per_step": 0.573014,
+   "baseline_spread": 0.039254,
+   "bracketed": true,
+   "dimensions": 2,
+   "displaces": [
+    "PML",
+    "dispersive"
+   ],
+   "fused_ms_per_step": 0.825345,
+   "fused_spread": 0.042138,
+   "measurements": [
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_rtx3090/fused/fused__8.6__triton__dispersive_2d__drive__p1__347115d8d9/lab10__2026-10-27T14_12_25Z.rows.jsonl",
+     "baseline_ms_per_step": 0.573014,
+     "baseline_spread": 0.039254,
+     "case": "dispersive_2d",
+     "cells": 19200,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused pair B"
+      }
+     ],
+     "fused_ms_per_step": 0.825345,
+     "fused_spread": 0.042138,
+     "grid_shape": [
+      160,
+      120,
+      1
+     ],
+     "line": 1,
+     "ratio": 0.694273,
+     "source": "bench",
+     "utc": "2026-10-27T14:11:30Z"
+    }
+   ],
+   "product": "dispersive fused pair",
+   "ratio": 0.694273,
+   "ratio_max": 0.694273,
+   "ratio_min": 0.694273,
+   "reason": "no size in it carries 2 rows, so none can set a band edge: 19,200 (1 row)",
+   "rows": 1,
+   "slots": [
+    "step_D",
+    "update_E"
+   ],
+   "slower_beyond_spread": true,
+   "status": "unmeasured",
+   "storage": "real",
+   "susceptibilities": 1,
+   "veto_margin": 0.224335
+  },
+  "fused pair B (folded complex)|complex|2|0|clean|4960-6561": {
    "band": {
     "hi_cells": 6561,
-    "lo_cells": 6561
+    "lo_cells": 4960
    },
-   "baseline_ms_per_step": 0.548299,
-   "baseline_spread": 0.026684,
+   "baseline_ms_per_step": 0.539475,
+   "baseline_spread": 0.081973,
    "bracketed": false,
    "dimensions": 2,
    "displaces": [
     "folded complex off-diagonal PML",
     "folded complex off-diagonal"
    ],
-   "fused_ms_per_step": 0.533779,
-   "fused_spread": 0.04682,
+   "fused_ms_per_step": 0.529341,
+   "fused_spread": 0.124375,
    "measurements": [
     {
      "after_probe": true,
-     "artifact": "results/fused_timing_2026-09-20_restrict_licensed/triton/rows.jsonl",
-     "baseline_ms_per_step": 0.548299,
-     "baseline_spread": 0.026684,
+     "artifact": "results/timing_rows_rtx3090/fused/fused__8.6__triton__folded_complex_offdiag_2d__drive__p1__a7abadf64a/lab10__2026-10-27T14_43_02Z.rows.jsonl",
+     "baseline_ms_per_step": 0.566085,
+     "baseline_spread": 0.081973,
+     "case": "folded_complex_offdiag_2d",
+     "cells": 4960,
+     "co_fused": [],
+     "fused_ms_per_step": 0.554654,
+     "fused_spread": 0.070291,
+     "grid_shape": [
+      80,
+      62,
+      1
+     ],
+     "line": 1,
+     "ratio": 1.020608,
+     "source": "bench",
+     "utc": "2026-10-27T14:42:13Z"
+    },
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_rtx3090/fused/fused__8.6__triton__folded_complex_nobloch_offdiag_2d__drive__p1__8a8ccc98a7/lab10__2026-10-27T14_40_00Z.rows.jsonl",
+     "baseline_ms_per_step": 0.512866,
+     "baseline_spread": 0.080785,
      "case": "folded_complex_nobloch_offdiag_2d",
      "cells": 6561,
      "co_fused": [],
-     "fused_ms_per_step": 0.533779,
-     "fused_spread": 0.04682,
+     "fused_ms_per_step": 0.504029,
+     "fused_spread": 0.124375,
      "grid_shape": [
       81,
       81,
       1
      ],
-     "line": 12,
-     "ratio": 1.027202,
+     "line": 1,
+     "ratio": 1.017533,
      "source": "bench",
-     "utc": "2026-09-21T16:31:24Z"
+     "utc": "2026-10-27T14:39:13Z"
     }
    ],
    "product": "fused pair B (folded complex)",
-   "ratio": 1.027202,
-   "ratio_max": 1.027202,
-   "ratio_min": 1.027202,
-   "reason": "no size in it carries 2 rows, so none can set a band edge: 6,561 (1 row)",
-   "rows": 1,
+   "ratio": 1.01907,
+   "ratio_max": 1.020608,
+   "ratio_min": 1.017533,
+   "reason": "no size in it carries 2 rows, so none can set a band edge: 4,960 (1 row); 6,561 (1 row)",
+   "rows": 2,
    "slots": [
     "step_B",
     "update_H"
@@ -342,29 +593,29 @@
    "status": "unmeasured",
    "storage": "complex",
    "susceptibilities": 0,
-   "veto_margin": -0.100706
+   "veto_margin": -0.222693
   },
   "fused pair B (folded)|real|2|0|bracketed|9760-9760": {
    "band": {
     "hi_cells": 9760,
     "lo_cells": 9760
    },
-   "baseline_ms_per_step": 0.542549,
-   "baseline_spread": 0.022198,
+   "baseline_ms_per_step": 0.433429,
+   "baseline_spread": 0.083747,
    "bracketed": true,
    "dimensions": 2,
    "displaces": [
     "folded PML",
     "folded"
    ],
-   "fused_ms_per_step": 0.987881,
-   "fused_spread": 0.027037,
+   "fused_ms_per_step": 0.665685,
+   "fused_spread": 0.121159,
    "measurements": [
     {
      "after_probe": true,
-     "artifact": "results/fused_timing_2026-09-20_restrict/triton/rows.jsonl",
-     "baseline_ms_per_step": 0.542549,
-     "baseline_spread": 0.022198,
+     "artifact": "results/timing_rows_rtx3090/fused/fused__8.6__triton__folded_offdiag_magnetic_2d__drive__p1__4f527be0e1/lab10__2026-10-27T14_49_21Z.rows.jsonl",
+     "baseline_ms_per_step": 0.433429,
+     "baseline_spread": 0.083747,
      "case": "folded_offdiag_magnetic_2d",
      "cells": 9760,
      "co_fused": [
@@ -373,23 +624,23 @@
        "product": "fused pair D (folded off-diagonal)"
       }
      ],
-     "fused_ms_per_step": 0.987881,
-     "fused_spread": 0.027037,
+     "fused_ms_per_step": 0.665685,
+     "fused_spread": 0.121159,
      "grid_shape": [
       160,
       61,
       1
      ],
-     "line": 18,
-     "ratio": 0.549205,
+     "line": 1,
+     "ratio": 0.651103,
      "source": "bench",
-     "utc": "2026-09-21T16:19:51Z"
+     "utc": "2026-10-27T14:48:27Z"
     }
    ],
    "product": "fused pair B (folded)",
-   "ratio": 0.549205,
-   "ratio_max": 0.549205,
-   "ratio_min": 0.549205,
+   "ratio": 0.651103,
+   "ratio_max": 0.651103,
+   "ratio_min": 0.651103,
    "reason": "no size in it carries 2 rows, so none can set a band edge: 9,760 (1 row)",
    "rows": 1,
    "slots": [
@@ -400,7 +651,60 @@
    "status": "unmeasured",
    "storage": "real",
    "susceptibilities": 0,
-   "veto_margin": 0.40156
+   "veto_margin": 0.143991
+  },
+  "fused pair B (nonlinear)|real|1|0|clean|400-400": {
+   "band": {
+    "hi_cells": 400,
+    "lo_cells": 400
+   },
+   "baseline_ms_per_step": 0.449094,
+   "baseline_spread": 0.045138,
+   "bracketed": false,
+   "dimensions": 1,
+   "displaces": [
+    "nonlinear run PML",
+    "nonlinear run"
+   ],
+   "fused_ms_per_step": 0.424959,
+   "fused_spread": 0.051994,
+   "measurements": [
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_rtx3090/fused/fused__8.6__triton__nonlinear_1d__drive__p1__367e8231f6/lab10__2026-10-27T15_01_42Z.rows.jsonl",
+     "baseline_ms_per_step": 0.449094,
+     "baseline_spread": 0.045138,
+     "case": "nonlinear_1d",
+     "cells": 400,
+     "co_fused": [],
+     "fused_ms_per_step": 0.424959,
+     "fused_spread": 0.051994,
+     "grid_shape": [
+      1,
+      1,
+      400
+     ],
+     "line": 1,
+     "ratio": 1.056795,
+     "source": "bench",
+     "utc": "2026-10-27T15:00:44Z"
+    }
+   ],
+   "product": "fused pair B (nonlinear)",
+   "ratio": 1.056795,
+   "ratio_max": 1.056795,
+   "ratio_min": 1.056795,
+   "reason": "no size in it carries 2 rows, so none can set a band edge: 400 (1 row)",
+   "rows": 1,
+   "slots": [
+    "step_B",
+    "update_H"
+   ],
+   "slower_beyond_spread": false,
+   "status": "unmeasured",
+   "storage": "real",
+   "susceptibilities": 0,
+   "veto_margin": -0.153927
   },
   "fused pair B|real|2|0|bracketed|1014001-2399999": {
    "band": {
@@ -425,27 +729,27 @@
    "storage": "real",
    "susceptibilities": 0
   },
-  "fused pair B|real|2|0|bracketed|24000-24000": {
+  "fused pair B|real|2|0|bracketed|24000-1014000": {
    "band": {
-    "hi_cells": 24000,
+    "hi_cells": 1014000,
     "lo_cells": 24000
    },
-   "baseline_ms_per_step": 0.511449,
-   "baseline_spread": 0.033384,
+   "baseline_ms_per_step": 0.311978,
+   "baseline_spread": 0.126317,
    "bracketed": true,
    "dimensions": 2,
    "displaces": [
     "PML",
     "ordinary"
    ],
-   "fused_ms_per_step": 0.878405,
-   "fused_spread": 0.044634,
+   "fused_ms_per_step": 0.505097,
+   "fused_spread": 0.127988,
    "measurements": [
     {
      "after_probe": true,
-     "artifact": "results/fused_timing_sweep_2026-09-20_restrict/triton/magnetic_seam_2d_res20/rows.jsonl",
-     "baseline_ms_per_step": 0.544115,
-     "baseline_spread": 0.016744,
+     "artifact": "results/timing_rows_rtx3090/fused/fused__8.6__triton__magnetic_seam_2d__drive__p1__f72db7536c/lab10__2026-10-27T14_55_28Z.rows.jsonl",
+     "baseline_ms_per_step": 0.299115,
+     "baseline_spread": 0.029001,
      "case": "magnetic_seam_2d",
      "cells": 24000,
      "co_fused": [
@@ -454,23 +758,23 @@
        "product": "fused pair D"
       }
      ],
-     "fused_ms_per_step": 0.891853,
-     "fused_spread": 0.027792,
+     "fused_ms_per_step": 0.487716,
+     "fused_spread": 0.039864,
      "grid_shape": [
       200,
       120,
       1
      ],
      "line": 1,
-     "ratio": 0.610095,
+     "ratio": 0.613298,
      "source": "bench",
-     "utc": "2026-09-21T14:02:45Z"
+     "utc": "2026-10-27T14:54:37Z"
     },
     {
      "after_probe": true,
-     "artifact": "results/fused_timing_2026-09-20_restrict/triton/rows.jsonl",
-     "baseline_ms_per_step": 0.484145,
-     "baseline_spread": 0.033384,
+     "artifact": "results/timing_rows_rtx3090/fused/fused__8.6__triton__magnetic_seam_2d__res20__p1__9d5a1ba340/lab10__2026-10-27T15_31_07Z.rows.jsonl",
+     "baseline_ms_per_step": 0.310792,
+     "baseline_spread": 0.043911,
      "case": "magnetic_seam_2d",
      "cells": 24000,
      "co_fused": [
@@ -479,23 +783,48 @@
        "product": "fused pair D"
       }
      ],
-     "fused_ms_per_step": 0.814081,
-     "fused_spread": 0.007949,
+     "fused_ms_per_step": 0.503185,
+     "fused_spread": 0.006046,
      "grid_shape": [
       200,
       120,
       1
      ],
-     "line": 2,
-     "ratio": 0.594713,
+     "line": 1,
+     "ratio": 0.617651,
      "source": "bench",
-     "utc": "2026-09-21T16:09:21Z"
+     "utc": "2026-10-27T15:30:38Z"
     },
     {
      "after_probe": true,
-     "artifact": "results/fused_timing_2026-09-20_restrict/triton/rows.jsonl",
-     "baseline_ms_per_step": 0.511449,
-     "baseline_spread": 0.016639,
+     "artifact": "results/timing_rows_rtx3090/fused/fused__8.6__triton__magnetic_seam_2d__res20__p2__bc03b0ccd3/lab10__2026-10-27T17_43_01Z.rows.jsonl",
+     "baseline_ms_per_step": 0.299597,
+     "baseline_spread": 0.026038,
+     "case": "magnetic_seam_2d",
+     "cells": 24000,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused pair D"
+      }
+     ],
+     "fused_ms_per_step": 0.479856,
+     "fused_spread": 0.058006,
+     "grid_shape": [
+      200,
+      120,
+      1
+     ],
+     "line": 1,
+     "ratio": 0.624348,
+     "source": "bench",
+     "utc": "2026-10-27T17:42:29Z"
+    },
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_rtx3090/fused/fused__8.6__triton__offdiag_magnetic_2d__drive__p1__24746126fb/lab10__2026-10-27T15_07_43Z.rows.jsonl",
+     "baseline_ms_per_step": 0.313164,
+     "baseline_spread": 0.093262,
      "case": "offdiag_magnetic_2d",
      "cells": 24000,
      "co_fused": [
@@ -504,24 +833,74 @@
        "product": "fused pair D (off-diagonal)"
       }
      ],
-     "fused_ms_per_step": 0.878405,
-     "fused_spread": 0.044634,
+     "fused_ms_per_step": 0.507008,
+     "fused_spread": 0.090198,
      "grid_shape": [
       200,
       120,
       1
      ],
-     "line": 17,
-     "ratio": 0.582248,
+     "line": 1,
+     "ratio": 0.617671,
      "source": "bench",
-     "utc": "2026-09-21T16:19:12Z"
+     "utc": "2026-10-27T15:06:54Z"
+    },
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_rtx3090/fused/fused__8.6__triton__magnetic_seam_2d__res130__p1__7d0c71d725/lab10__2026-10-27T15_59_12Z.rows.jsonl",
+     "baseline_ms_per_step": 0.419912,
+     "baseline_spread": 0.067013,
+     "case": "magnetic_seam_2d",
+     "cells": 1014000,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused pair D"
+      }
+     ],
+     "fused_ms_per_step": 0.575682,
+     "fused_spread": 0.088264,
+     "grid_shape": [
+      1300,
+      780,
+      1
+     ],
+     "line": 1,
+     "ratio": 0.729416,
+     "source": "bench",
+     "utc": "2026-10-27T15:58:33Z"
+    },
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_rtx3090/fused/fused__8.6__triton__magnetic_seam_2d__res130__p2__c953743d92/lab10__2026-10-27T17_14_38Z.rows.jsonl",
+     "baseline_ms_per_step": 0.409299,
+     "baseline_spread": 0.126317,
+     "case": "magnetic_seam_2d",
+     "cells": 1014000,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused pair D"
+      }
+     ],
+     "fused_ms_per_step": 0.562436,
+     "fused_spread": 0.127988,
+     "grid_shape": [
+      1300,
+      780,
+      1
+     ],
+     "line": 1,
+     "ratio": 0.727725,
+     "source": "bench",
+     "utc": "2026-10-27T17:13:59Z"
     }
    ],
    "product": "fused pair B",
-   "ratio": 0.594713,
-   "ratio_max": 0.610095,
-   "ratio_min": 0.582248,
-   "rows": 3,
+   "ratio": 0.621009,
+   "ratio_max": 0.729416,
+   "ratio_min": 0.613298,
+   "rows": 6,
    "slots": [
     "step_B",
     "update_H"
@@ -530,29 +909,29 @@
    "status": "measured",
    "storage": "real",
    "susceptibilities": 0,
-   "veto_margin": 0.345369
+   "veto_margin": 0.01797
   },
   "fused pair B|real|2|0|bracketed|2400000-5400000": {
    "band": {
     "hi_cells": 5400000,
     "lo_cells": 2400000
    },
-   "baseline_ms_per_step": 1.661228,
-   "baseline_spread": 0.000985,
+   "baseline_ms_per_step": 0.776713,
+   "baseline_spread": 0.130101,
    "bracketed": true,
    "dimensions": 2,
    "displaces": [
     "PML",
     "ordinary"
    ],
-   "fused_ms_per_step": 1.521955,
-   "fused_spread": 0.004263,
+   "fused_ms_per_step": 0.816177,
+   "fused_spread": 0.083832,
    "measurements": [
     {
      "after_probe": true,
-     "artifact": "results/fused_timing_sweep_2026-09-20_restrict/triton/magnetic_seam_2d_res200/rows.jsonl",
-     "baseline_ms_per_step": 1.036953,
-     "baseline_spread": 0.000985,
+     "artifact": "results/timing_rows_rtx3090/fused/fused__8.6__triton__magnetic_seam_2d__res200__p1__ed73a54ed1/lab10__2026-10-27T16_13_43Z.rows.jsonl",
+     "baseline_ms_per_step": 0.51086,
+     "baseline_spread": 0.052509,
      "case": "magnetic_seam_2d",
      "cells": 2400000,
      "co_fused": [
@@ -561,23 +940,48 @@
        "product": "fused pair D"
       }
      ],
-     "fused_ms_per_step": 0.970259,
-     "fused_spread": 0.004263,
+     "fused_ms_per_step": 0.572354,
+     "fused_spread": 0.024102,
      "grid_shape": [
       2000,
       1200,
       1
      ],
      "line": 1,
-     "ratio": 1.068739,
+     "ratio": 0.892559,
      "source": "bench",
-     "utc": "2026-09-21T14:25:37Z"
+     "utc": "2026-10-27T16:13:00Z"
     },
     {
      "after_probe": true,
-     "artifact": "results/fused_timing_sweep_2026-09-20_restrict/triton/magnetic_seam_2d_res300/rows.jsonl",
-     "baseline_ms_per_step": 2.285502,
-     "baseline_spread": 0.000906,
+     "artifact": "results/timing_rows_rtx3090/fused/fused__8.6__triton__magnetic_seam_2d__res200__p2__642ef1dfac/lab10__2026-10-27T16_59_59Z.rows.jsonl",
+     "baseline_ms_per_step": 0.51708,
+     "baseline_spread": 0.093622,
+     "case": "magnetic_seam_2d",
+     "cells": 2400000,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused pair D"
+      }
+     ],
+     "fused_ms_per_step": 0.562192,
+     "fused_spread": 0.025097,
+     "grid_shape": [
+      2000,
+      1200,
+      1
+     ],
+     "line": 1,
+     "ratio": 0.919757,
+     "source": "bench",
+     "utc": "2026-10-27T16:59:17Z"
+    },
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_rtx3090/fused/fused__8.6__triton__magnetic_seam_2d__res300__p1__d7e6d7131c/lab10__2026-10-27T16_29_00Z.rows.jsonl",
+     "baseline_ms_per_step": 1.048022,
+     "baseline_spread": 0.130101,
      "case": "magnetic_seam_2d",
      "cells": 5400000,
      "co_fused": [
@@ -586,332 +990,293 @@
        "product": "fused pair D"
       }
      ],
-     "fused_ms_per_step": 2.073651,
-     "fused_spread": 0.000732,
+     "fused_ms_per_step": 1.06,
+     "fused_spread": 0.083832,
      "grid_shape": [
       3000,
       1800,
       1
      ],
      "line": 1,
-     "ratio": 1.102163,
+     "ratio": 0.988699,
      "source": "bench",
-     "utc": "2026-09-21T14:43:53Z"
-    }
-   ],
-   "product": "fused pair B",
-   "ratio": 1.085451,
-   "ratio_max": 1.102163,
-   "ratio_min": 1.068739,
-   "reason": "no size in it carries 2 rows, so none can set a band edge: 2,400,000 (1 row); 5,400,000 (1 row)",
-   "rows": 2,
-   "slots": [
-    "step_B",
-    "update_H"
-   ],
-   "slower_beyond_spread": false,
-   "status": "unmeasured",
-   "storage": "real",
-   "susceptibilities": 0,
-   "veto_margin": -0.103801
-  },
-  "fused pair B|real|2|0|bracketed|24001-1014000": {
-   "band": {
-    "hi_cells": 1014000,
-    "lo_cells": 24001
-   },
-   "baseline_ms_per_step": 0.653371,
-   "baseline_spread": 0.023836,
-   "bracketed": true,
-   "dimensions": 2,
-   "displaces": [
-    "PML",
-    "ordinary"
-   ],
-   "fused_ms_per_step": 0.944535,
-   "fused_spread": 0.023693,
-   "measurements": [
+     "utc": "2026-10-27T16:28:08Z"
+    },
     {
      "after_probe": true,
-     "artifact": "results/fused_timing_sweep_2026-09-20_restrict/triton/magnetic_seam_2d_res60/rows.jsonl",
-     "baseline_ms_per_step": 0.65964,
-     "baseline_spread": 0.023836,
+     "artifact": "results/timing_rows_rtx3090/fused/fused__8.6__triton__magnetic_seam_2d__res300__p2__445f12e32d/lab10__2026-10-27T16_44_49Z.rows.jsonl",
+     "baseline_ms_per_step": 1.036345,
+     "baseline_spread": 0.005093,
      "case": "magnetic_seam_2d",
-     "cells": 216000,
+     "cells": 5400000,
      "co_fused": [
       {
        "bracketed": false,
        "product": "fused pair D"
       }
      ],
-     "fused_ms_per_step": 0.958433,
-     "fused_spread": 0.023693,
+     "fused_ms_per_step": 1.061501,
+     "fused_spread": 0.004932,
+     "grid_shape": [
+      3000,
+      1800,
+      1
+     ],
+     "line": 1,
+     "ratio": 0.976301,
+     "source": "bench",
+     "utc": "2026-10-27T16:43:54Z"
+    }
+   ],
+   "product": "fused pair B",
+   "ratio": 0.948029,
+   "ratio_max": 0.988699,
+   "ratio_min": 0.892559,
+   "rows": 4,
+   "slots": [
+    "step_B",
+    "update_H"
+   ],
+   "slower_beyond_spread": false,
+   "status": "measured",
+   "storage": "real",
+   "susceptibilities": 0,
+   "veto_margin": -0.202632
+  },
+  "fused pair B|real|2|0|clean|216000-5400000": {
+   "band": {
+    "hi_cells": 5400000,
+    "lo_cells": 216000
+   },
+   "baseline_ms_per_step": 0.493306,
+   "baseline_spread": 0.086648,
+   "bracketed": false,
+   "dimensions": 2,
+   "displaces": [
+    "PML",
+    "ordinary"
+   ],
+   "fused_ms_per_step": 0.478888,
+   "fused_spread": 0.119905,
+   "measurements": [
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_rtx3090/fused/fused__8.6__triton__offdiag_2d__res60__p1__53903d03ec/lab10__2026-10-27T15_47_48Z.rows.jsonl",
+     "baseline_ms_per_step": 0.44197,
+     "baseline_spread": 0.028946,
+     "case": "offdiag_2d",
+     "cells": 216000,
+     "co_fused": [],
+     "fused_ms_per_step": 0.419285,
+     "fused_spread": 0.036772,
      "grid_shape": [
       600,
       360,
       1
      ],
      "line": 1,
-     "ratio": 0.688248,
+     "ratio": 1.054105,
      "source": "bench",
-     "utc": "2026-09-21T14:07:57Z"
+     "utc": "2026-10-27T15:47:12Z"
     },
     {
      "after_probe": true,
-     "artifact": "results/fused_timing_sweep_2026-09-20_restrict/triton/magnetic_seam_2d_res130/rows.jsonl",
-     "baseline_ms_per_step": 0.647101,
-     "baseline_spread": 0.017401,
-     "case": "magnetic_seam_2d",
-     "cells": 1014000,
-     "co_fused": [
-      {
-       "bracketed": false,
-       "product": "fused pair D"
-      }
+     "artifact": "results/timing_rows_rtx3090/fused/fused__8.6__triton__offdiag_2d__res60__p2__149d80e3dd/lab10__2026-10-27T17_26_08Z.rows.jsonl",
+     "baseline_ms_per_step": 0.438498,
+     "baseline_spread": 0.086648,
+     "case": "offdiag_2d",
+     "cells": 216000,
+     "co_fused": [],
+     "fused_ms_per_step": 0.423892,
+     "fused_spread": 0.119905,
+     "grid_shape": [
+      600,
+      360,
+      1
      ],
-     "fused_ms_per_step": 0.930638,
-     "fused_spread": 0.023407,
+     "line": 1,
+     "ratio": 1.034458,
+     "source": "bench",
+     "utc": "2026-10-27T17:25:31Z"
+    },
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_rtx3090/fused/fused__8.6__triton__offdiag_2d__res130__p1__5eda9247f6/lab10__2026-10-27T16_02_04Z.rows.jsonl",
+     "baseline_ms_per_step": 0.424248,
+     "baseline_spread": 0.032189,
+     "case": "offdiag_2d",
+     "cells": 1014000,
+     "co_fused": [],
+     "fused_ms_per_step": 0.397875,
+     "fused_spread": 0.044537,
      "grid_shape": [
       1300,
       780,
       1
      ],
      "line": 1,
-     "ratio": 0.69533,
+     "ratio": 1.066285,
      "source": "bench",
-     "utc": "2026-09-21T14:14:49Z"
-    }
-   ],
-   "product": "fused pair B",
-   "ratio": 0.691789,
-   "ratio_max": 0.69533,
-   "ratio_min": 0.688248,
-   "reason": "no size in it carries 2 rows, so none can set a band edge: 216,000 (1 row); 1,014,000 (1 row)",
-   "rows": 2,
-   "slots": [
-    "step_B",
-    "update_H"
-   ],
-   "slower_beyond_spread": true,
-   "status": "unmeasured",
-   "storage": "real",
-   "susceptibilities": 0,
-   "veto_margin": 0.263862
-  },
-  "fused pair B|real|2|0|clean|1014001-2399999": {
-   "band": {
-    "hi_cells": 2399999,
-    "lo_cells": 1014001
-   },
-   "bracketed": false,
-   "dimensions": 2,
-   "displaces": [
-    "PML",
-    "ordinary"
-   ],
-   "measurements": [],
-   "product": "fused pair B",
-   "reason": "the verdict changes between 1,014,000 and 2,400,000 cells and no row lies between them",
-   "rows": 0,
-   "slots": [
-    "step_B",
-    "update_H"
-   ],
-   "status": "unmeasured",
-   "storage": "real",
-   "susceptibilities": 0
-  },
-  "fused pair B|real|2|0|clean|24000-1014000": {
-   "band": {
-    "hi_cells": 1014000,
-    "lo_cells": 24000
-   },
-   "baseline_ms_per_step": 0.621765,
-   "baseline_spread": 0.012139,
-   "bracketed": false,
-   "dimensions": 2,
-   "displaces": [
-    "PML",
-    "ordinary"
-   ],
-   "fused_ms_per_step": 0.591686,
-   "fused_spread": 0.03037,
-   "measurements": [
-    {
-     "after_probe": true,
-     "artifact": "results/fused_timing_sweep_2026-09-20_restrict/triton/offdiag_2d_res20/rows.jsonl",
-     "baseline_ms_per_step": 0.567099,
-     "baseline_spread": 0.010877,
-     "case": "offdiag_2d",
-     "cells": 24000,
-     "co_fused": [],
-     "fused_ms_per_step": 0.53764,
-     "fused_spread": 0.03037,
-     "grid_shape": [
-      200,
-      120,
-      1
-     ],
-     "line": 1,
-     "ratio": 1.054793,
-     "source": "bench",
-     "utc": "2026-09-21T14:04:25Z"
+     "utc": "2026-10-27T16:01:26Z"
     },
     {
      "after_probe": true,
-     "artifact": "results/fused_timing_sweep_2026-09-20_restrict/triton/offdiag_2d_res130/rows.jsonl",
-     "baseline_ms_per_step": 0.67643,
-     "baseline_spread": 0.012139,
+     "artifact": "results/timing_rows_rtx3090/fused/fused__8.6__triton__offdiag_2d__res130__p2__63c92168cd/lab10__2026-10-27T17_11_44Z.rows.jsonl",
+     "baseline_ms_per_step": 0.43423,
+     "baseline_spread": 0.047698,
      "case": "offdiag_2d",
      "cells": 1014000,
      "co_fused": [],
-     "fused_ms_per_step": 0.645732,
-     "fused_spread": 0.015897,
+     "fused_ms_per_step": 0.412736,
+     "fused_spread": 0.119617,
      "grid_shape": [
       1300,
       780,
       1
      ],
      "line": 1,
-     "ratio": 1.04754,
+     "ratio": 1.052078,
      "source": "bench",
-     "utc": "2026-09-21T14:17:47Z"
-    }
-   ],
-   "product": "fused pair B",
-   "ratio": 1.051166,
-   "ratio_max": 1.054793,
-   "ratio_min": 1.04754,
-   "reason": "no size in it carries 2 rows, so none can set a band edge: 24,000 (1 row); 1,014,000 (1 row)",
-   "rows": 2,
-   "slots": [
-    "step_B",
-    "update_H"
-   ],
-   "slower_beyond_spread": false,
-   "status": "unmeasured",
-   "storage": "real",
-   "susceptibilities": 0,
-   "veto_margin": -0.09604
-  },
-  "fused pair B|real|2|0|clean|2400000-2400000": {
-   "band": {
-    "hi_cells": 2400000,
-    "lo_cells": 2400000
-   },
-   "baseline_ms_per_step": 1.0903,
-   "baseline_spread": 0.001632,
-   "bracketed": false,
-   "dimensions": 2,
-   "displaces": [
-    "PML",
-    "ordinary"
-   ],
-   "fused_ms_per_step": 1.118402,
-   "fused_spread": 0.00057,
-   "measurements": [
+     "utc": "2026-10-27T17:11:05Z"
+    },
     {
      "after_probe": true,
-     "artifact": "results/fused_timing_sweep_2026-09-20_restrict/triton/offdiag_2d_res200/rows.jsonl",
-     "baseline_ms_per_step": 1.0903,
-     "baseline_spread": 0.001632,
+     "artifact": "results/timing_rows_rtx3090/fused/fused__8.6__triton__offdiag_2d__res200__p1__5b6a1813f3/lab10__2026-10-27T16_16_42Z.rows.jsonl",
+     "baseline_ms_per_step": 0.54977,
+     "baseline_spread": 0.002518,
      "case": "offdiag_2d",
      "cells": 2400000,
      "co_fused": [],
-     "fused_ms_per_step": 1.118402,
-     "fused_spread": 0.00057,
+     "fused_ms_per_step": 0.539153,
+     "fused_spread": 0.00163,
      "grid_shape": [
       2000,
       1200,
       1
      ],
      "line": 1,
-     "ratio": 0.974873,
+     "ratio": 1.019692,
      "source": "bench",
-     "utc": "2026-09-21T14:30:23Z"
-    }
-   ],
-   "product": "fused pair B",
-   "ratio": 0.974873,
-   "ratio_max": 0.974873,
-   "ratio_min": 0.974873,
-   "reason": "no size in it carries 2 rows, so none can set a band edge: 2,400,000 (1 row)",
-   "rows": 1,
-   "slots": [
-    "step_B",
-    "update_H"
-   ],
-   "slower_beyond_spread": true,
-   "status": "unmeasured",
-   "storage": "real",
-   "susceptibilities": 0,
-   "veto_margin": 0.022925
-  },
-  "fused pair B|real|2|0|clean|2400001-5399999": {
-   "band": {
-    "hi_cells": 5399999,
-    "lo_cells": 2400001
-   },
-   "bracketed": false,
-   "dimensions": 2,
-   "displaces": [
-    "PML",
-    "ordinary"
-   ],
-   "measurements": [],
-   "product": "fused pair B",
-   "reason": "the verdict changes between 2,400,000 and 5,400,000 cells and no row lies between them",
-   "rows": 0,
-   "slots": [
-    "step_B",
-    "update_H"
-   ],
-   "status": "unmeasured",
-   "storage": "real",
-   "susceptibilities": 0
-  },
-  "fused pair B|real|2|0|clean|5400000-5400000": {
-   "band": {
-    "hi_cells": 5400000,
-    "lo_cells": 5400000
-   },
-   "baseline_ms_per_step": 2.407347,
-   "baseline_spread": 0.000598,
-   "bracketed": false,
-   "dimensions": 2,
-   "displaces": [
-    "PML",
-    "ordinary"
-   ],
-   "fused_ms_per_step": 2.404377,
-   "fused_spread": 0.000278,
-   "measurements": [
+     "utc": "2026-10-27T16:15:57Z"
+    },
     {
      "after_probe": true,
-     "artifact": "results/fused_timing_sweep_2026-09-20_restrict/triton/offdiag_2d_res300/rows.jsonl",
-     "baseline_ms_per_step": 2.407347,
-     "baseline_spread": 0.000598,
+     "artifact": "results/timing_rows_rtx3090/fused/fused__8.6__triton__offdiag_2d__res200__p2__3e5fa4a079/lab10__2026-10-27T16_57_03Z.rows.jsonl",
+     "baseline_ms_per_step": 0.544643,
+     "baseline_spread": 0.001554,
+     "case": "offdiag_2d",
+     "cells": 2400000,
+     "co_fused": [],
+     "fused_ms_per_step": 0.533883,
+     "fused_spread": 0.001013,
+     "grid_shape": [
+      2000,
+      1200,
+      1
+     ],
+     "line": 1,
+     "ratio": 1.020155,
+     "source": "bench",
+     "utc": "2026-10-27T16:56:21Z"
+    },
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_rtx3090/fused/fused__8.6__triton__offdiag_2d__res300__p1__8c9dca812d/lab10__2026-10-27T16_32_14Z.rows.jsonl",
+     "baseline_ms_per_step": 1.143799,
+     "baseline_spread": 0.000399,
      "case": "offdiag_2d",
      "cells": 5400000,
      "co_fused": [],
-     "fused_ms_per_step": 2.404377,
-     "fused_spread": 0.000278,
+     "fused_ms_per_step": 1.13979,
+     "fused_spread": 0.000841,
      "grid_shape": [
       3000,
       1800,
       1
      ],
      "line": 1,
-     "ratio": 1.001235,
+     "ratio": 1.003517,
      "source": "bench",
-     "utc": "2026-09-21T14:52:37Z"
+     "utc": "2026-10-27T16:31:14Z"
+    },
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_rtx3090/fused/fused__8.6__triton__offdiag_2d__res300__p2__d00b8c5482/lab10__2026-10-27T16_41_40Z.rows.jsonl",
+     "baseline_ms_per_step": 1.13827,
+     "baseline_spread": 0.001949,
+     "case": "offdiag_2d",
+     "cells": 5400000,
+     "co_fused": [],
+     "fused_ms_per_step": 1.135592,
+     "fused_spread": 0.001699,
+     "grid_shape": [
+      3000,
+      1800,
+      1
+     ],
+     "line": 1,
+     "ratio": 1.002358,
+     "source": "bench",
+     "utc": "2026-10-27T16:40:45Z"
     }
    ],
    "product": "fused pair B",
-   "ratio": 1.001235,
-   "ratio_max": 1.001235,
-   "ratio_min": 1.001235,
-   "reason": "no size in it carries 2 rows, so none can set a band edge: 5,400,000 (1 row)",
+   "ratio": 1.027306,
+   "ratio_max": 1.066285,
+   "ratio_min": 1.002358,
+   "rows": 8,
+   "slots": [
+    "step_B",
+    "update_H"
+   ],
+   "slower_beyond_spread": false,
+   "status": "measured",
+   "storage": "real",
+   "susceptibilities": 0,
+   "veto_margin": -0.241011
+  },
+  "fused pair B|real|2|0|clean|24000-215999": {
+   "band": {
+    "hi_cells": 215999,
+    "lo_cells": 24000
+   },
+   "baseline_ms_per_step": 0.30914,
+   "baseline_spread": 0.01652,
+   "bracketed": false,
+   "dimensions": 2,
+   "displaces": [
+    "PML",
+    "ordinary"
+   ],
+   "fused_ms_per_step": 0.288707,
+   "fused_spread": 0.022359,
+   "measurements": [
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_rtx3090/fused/fused__8.6__triton__offdiag_2d__drive__p1__8e2c80e5d1/lab10__2026-10-27T15_04_41Z.rows.jsonl",
+     "baseline_ms_per_step": 0.30914,
+     "baseline_spread": 0.01652,
+     "case": "offdiag_2d",
+     "cells": 24000,
+     "co_fused": [],
+     "fused_ms_per_step": 0.288707,
+     "fused_spread": 0.022359,
+     "grid_shape": [
+      200,
+      120,
+      1
+     ],
+     "line": 1,
+     "ratio": 1.070775,
+     "source": "bench",
+     "utc": "2026-10-27T15:03:54Z"
+    }
+   ],
+   "product": "fused pair B",
+   "ratio": 1.070775,
+   "ratio_max": 1.070775,
+   "ratio_min": 1.070775,
+   "reason": "no size in it carries 2 rows, so none can set a band edge: 24,000 (1 row)",
    "rows": 1,
    "slots": [
     "step_B",
@@ -921,49 +1286,49 @@
    "status": "unmeasured",
    "storage": "real",
    "susceptibilities": 0,
-   "veto_margin": -0.002111
+   "veto_margin": -0.109654
   },
   "fused pair B|real|3|0|clean|110592-110592": {
    "band": {
     "hi_cells": 110592,
     "lo_cells": 110592
    },
-   "baseline_ms_per_step": 0.563507,
-   "baseline_spread": 0.032032,
+   "baseline_ms_per_step": 0.329204,
+   "baseline_spread": 0.01313,
    "bracketed": false,
    "dimensions": 3,
    "displaces": [
     "PML",
     "ordinary"
    ],
-   "fused_ms_per_step": 0.518732,
-   "fused_spread": 0.021136,
+   "fused_ms_per_step": 0.306559,
+   "fused_spread": 0.019919,
    "measurements": [
     {
      "after_probe": true,
-     "artifact": "results/fused_timing_2026-09-20_restrict/triton/rows.jsonl",
-     "baseline_ms_per_step": 0.563507,
-     "baseline_spread": 0.032032,
+     "artifact": "results/timing_rows_rtx3090/fused/fused__8.6__triton__pml_3d__drive__p1__fbb7124987/lab10__2026-10-27T15_16_55Z.rows.jsonl",
+     "baseline_ms_per_step": 0.329204,
+     "baseline_spread": 0.01313,
      "case": "pml_3d",
      "cells": 110592,
      "co_fused": [],
-     "fused_ms_per_step": 0.518732,
-     "fused_spread": 0.021136,
+     "fused_ms_per_step": 0.306559,
+     "fused_spread": 0.019919,
      "grid_shape": [
       48,
       48,
       48
      ],
-     "line": 15,
-     "ratio": 1.086318,
+     "line": 1,
+     "ratio": 1.073867,
      "source": "bench",
-     "utc": "2026-09-21T16:17:50Z"
+     "utc": "2026-10-27T15:16:00Z"
     }
    ],
    "product": "fused pair B",
-   "ratio": 1.086318,
-   "ratio_max": 1.086318,
-   "ratio_min": 1.086318,
+   "ratio": 1.073867,
+   "ratio_max": 1.073867,
+   "ratio_min": 1.073867,
    "reason": "no size in it carries 2 rows, so none can set a band edge: 110,592 (1 row)",
    "rows": 1,
    "slots": [
@@ -974,29 +1339,29 @@
    "status": "unmeasured",
    "storage": "real",
    "susceptibilities": 0,
-   "veto_margin": -0.139486
+   "veto_margin": -0.106916
   },
   "fused pair D (BFAST)|real|3|0|bracketed|250-250": {
    "band": {
     "hi_cells": 250,
     "lo_cells": 250
    },
-   "baseline_ms_per_step": 0.487658,
-   "baseline_spread": 0.014271,
+   "baseline_ms_per_step": 0.238907,
+   "baseline_spread": 0.044524,
    "bracketed": true,
    "dimensions": 3,
    "displaces": [
     "BFAST PML",
     "BFAST run"
    ],
-   "fused_ms_per_step": 0.883089,
-   "fused_spread": 0.009293,
+   "fused_ms_per_step": 0.48314,
+   "fused_spread": 0.046067,
    "measurements": [
     {
      "after_probe": true,
-     "artifact": "results/fused_timing_2026-09-20_restrict/triton/rows.jsonl",
-     "baseline_ms_per_step": 0.487658,
-     "baseline_spread": 0.014271,
+     "artifact": "results/timing_rows_rtx3090/fused/fused__8.6__triton__bfast_1d__drive__p1__70d7991fcf/lab10__2026-10-27T13_33_15Z.rows.jsonl",
+     "baseline_ms_per_step": 0.238907,
+     "baseline_spread": 0.044524,
      "case": "bfast_1d",
      "cells": 250,
      "co_fused": [
@@ -1005,23 +1370,23 @@
        "product": "fused pair B (BFAST)"
       }
      ],
-     "fused_ms_per_step": 0.883089,
-     "fused_spread": 0.009293,
+     "fused_ms_per_step": 0.48314,
+     "fused_spread": 0.046067,
      "grid_shape": [
       1,
       1,
       250
      ],
-     "line": 12,
-     "ratio": 0.552218,
+     "line": 1,
+     "ratio": 0.494488,
      "source": "bench",
-     "utc": "2026-09-21T16:15:34Z"
+     "utc": "2026-10-27T13:32:24Z"
     }
    ],
    "product": "fused pair D (BFAST)",
-   "ratio": 0.552218,
-   "ratio_max": 0.552218,
-   "ratio_min": 0.552218,
+   "ratio": 0.494488,
+   "ratio_max": 0.494488,
+   "ratio_min": 0.494488,
    "reason": "no size in it carries 2 rows, so none can set a band edge: 250 (1 row)",
    "rows": 1,
    "slots": [
@@ -1032,29 +1397,29 @@
    "status": "unmeasured",
    "storage": "real",
    "susceptibilities": 0,
-   "veto_margin": 0.424218
+   "veto_margin": 0.414921
   },
   "fused pair D (complex beta)|complex|2|0|bracketed|14400-14400": {
    "band": {
     "hi_cells": 14400,
     "lo_cells": 14400
    },
-   "baseline_ms_per_step": 0.373045,
-   "baseline_spread": 0.037671,
+   "baseline_ms_per_step": 0.262745,
+   "baseline_spread": 0.104417,
    "bracketed": true,
    "dimensions": 2,
    "displaces": [
     "complex beta PML",
     "complex beta run"
    ],
-   "fused_ms_per_step": 0.806531,
-   "fused_spread": 0.033626,
+   "fused_ms_per_step": 0.612826,
+   "fused_spread": 0.078979,
    "measurements": [
     {
      "after_probe": true,
-     "artifact": "results/fused_timing_2026-09-20_restrict_licensed/triton/rows.jsonl",
-     "baseline_ms_per_step": 0.370557,
-     "baseline_spread": 0.00984,
+     "artifact": "results/timing_rows_rtx3090/fused/fused__8.6__triton__complex_beta_2d__drive__p1__b5ac7913e0/lab10__2026-10-27T13_48_14Z.rows.jsonl",
+     "baseline_ms_per_step": 0.263177,
+     "baseline_spread": 0.104417,
      "case": "complex_beta_2d",
      "cells": 14400,
      "co_fused": [
@@ -1063,23 +1428,23 @@
        "product": "fused pair B (complex beta)"
       }
      ],
-     "fused_ms_per_step": 0.794055,
-     "fused_spread": 0.018617,
+     "fused_ms_per_step": 0.614621,
+     "fused_spread": 0.078979,
      "grid_shape": [
       120,
       120,
       1
      ],
-     "line": 4,
-     "ratio": 0.466664,
+     "line": 1,
+     "ratio": 0.428194,
      "source": "bench",
-     "utc": "2026-09-21T16:25:53Z"
+     "utc": "2026-10-27T13:47:26Z"
     },
     {
      "after_probe": true,
-     "artifact": "results/fused_timing_2026-09-20_restrict_licensed/triton/rows.jsonl",
-     "baseline_ms_per_step": 0.375532,
-     "baseline_spread": 0.037671,
+     "artifact": "results/timing_rows_rtx3090/fused/fused__8.6__triton__complex_beta_bloch_2d__drive__p1__1c9e5bdad6/lab10__2026-10-27T13_51_13Z.rows.jsonl",
+     "baseline_ms_per_step": 0.262314,
+     "baseline_spread": 0.083205,
      "case": "complex_beta_bloch_2d",
      "cells": 14400,
      "co_fused": [
@@ -1088,23 +1453,23 @@
        "product": "fused pair B (complex beta)"
       }
      ],
-     "fused_ms_per_step": 0.819008,
-     "fused_spread": 0.033626,
+     "fused_ms_per_step": 0.611032,
+     "fused_spread": 0.058839,
      "grid_shape": [
       120,
       120,
       1
      ],
-     "line": 13,
-     "ratio": 0.45852,
+     "line": 1,
+     "ratio": 0.429297,
      "source": "bench",
-     "utc": "2026-09-21T16:31:58Z"
+     "utc": "2026-10-27T13:50:26Z"
     }
    ],
    "product": "fused pair D (complex beta)",
-   "ratio": 0.462592,
-   "ratio_max": 0.466664,
-   "ratio_min": 0.45852,
+   "ratio": 0.428746,
+   "ratio_max": 0.429297,
+   "ratio_min": 0.428194,
    "rows": 2,
    "slots": [
     "step_D",
@@ -1114,29 +1479,82 @@
    "status": "measured",
    "storage": "complex",
    "susceptibilities": 0,
-   "veto_margin": 0.470183
+   "veto_margin": 0.38841
+  },
+  "fused pair D (complex conductive no-PML)|complex|3|1|clean|13041-13041": {
+   "band": {
+    "hi_cells": 13041,
+    "lo_cells": 13041
+   },
+   "baseline_ms_per_step": 0.40342,
+   "baseline_spread": 0.052727,
+   "bracketed": false,
+   "dimensions": 3,
+   "displaces": [
+    "complex conductive no-PML curl",
+    "complex no-PML stored E"
+   ],
+   "fused_ms_per_step": 0.37999,
+   "fused_spread": 0.021142,
+   "measurements": [
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_rtx3090/fused/fused__8.6__triton__complex_no_pml_3d__drive__p1__41b5a47063/lab10__2026-10-27T13_54_09Z.rows.jsonl",
+     "baseline_ms_per_step": 0.40342,
+     "baseline_spread": 0.052727,
+     "case": "complex_no_pml_3d",
+     "cells": 13041,
+     "co_fused": [],
+     "fused_ms_per_step": 0.37999,
+     "fused_spread": 0.021142,
+     "grid_shape": [
+      23,
+      21,
+      27
+     ],
+     "line": 1,
+     "ratio": 1.061658,
+     "source": "bench",
+     "utc": "2026-10-27T13:53:25Z"
+    }
+   ],
+   "product": "fused pair D (complex conductive no-PML)",
+   "ratio": 1.061658,
+   "ratio_max": 1.061658,
+   "ratio_min": 1.061658,
+   "reason": "no size in it carries 2 rows, so none can set a band edge: 13,041 (1 row)",
+   "rows": 1,
+   "slots": [
+    "step_D",
+    "update_E"
+   ],
+   "slower_beyond_spread": false,
+   "status": "unmeasured",
+   "storage": "complex",
+   "susceptibilities": 1,
+   "veto_margin": -0.135527
   },
   "fused pair D (complex)|complex|1|0|bracketed|480-480": {
    "band": {
     "hi_cells": 480,
     "lo_cells": 480
    },
-   "baseline_ms_per_step": 0.479423,
-   "baseline_spread": 0.026235,
+   "baseline_ms_per_step": 0.334678,
+   "baseline_spread": 0.034593,
    "bracketed": true,
    "dimensions": 1,
    "displaces": [
     "complex PML",
     "complex"
    ],
-   "fused_ms_per_step": 0.868571,
-   "fused_spread": 0.0259,
+   "fused_ms_per_step": 0.720884,
+   "fused_spread": 0.029478,
    "measurements": [
     {
      "after_probe": true,
-     "artifact": "results/fused_timing_2026-09-20_restrict_licensed/triton/rows.jsonl",
-     "baseline_ms_per_step": 0.479423,
-     "baseline_spread": 0.026235,
+     "artifact": "results/timing_rows_rtx3090/fused/fused__8.6__triton__complex_1d__drive__p1__43e8f89162/lab10__2026-10-27T13_39_19Z.rows.jsonl",
+     "baseline_ms_per_step": 0.334678,
+     "baseline_spread": 0.034593,
      "case": "complex_1d",
      "cells": 480,
      "co_fused": [
@@ -1145,23 +1563,23 @@
        "product": "fused pair B (complex)"
       }
      ],
-     "fused_ms_per_step": 0.868571,
-     "fused_spread": 0.0259,
+     "fused_ms_per_step": 0.720884,
+     "fused_spread": 0.029478,
      "grid_shape": [
       1,
       1,
       480
      ],
-     "line": 6,
-     "ratio": 0.551968,
+     "line": 1,
+     "ratio": 0.464261,
      "source": "bench",
-     "utc": "2026-09-21T16:27:16Z"
+     "utc": "2026-10-27T13:38:24Z"
     }
    ],
    "product": "fused pair D (complex)",
-   "ratio": 0.551968,
-   "ratio_max": 0.551968,
-   "ratio_min": 0.551968,
+   "ratio": 0.464261,
+   "ratio_max": 0.464261,
+   "ratio_min": 0.464261,
    "reason": "no size in it carries 2 rows, so none can set a band edge: 480 (1 row)",
    "rows": 1,
    "slots": [
@@ -1172,29 +1590,29 @@
    "status": "unmeasured",
    "storage": "complex",
    "susceptibilities": 0,
-   "veto_margin": 0.395897
+   "veto_margin": 0.471668
   },
   "fused pair D (complex)|complex|2|0|bracketed|4800-24000": {
    "band": {
     "hi_cells": 24000,
     "lo_cells": 4800
    },
-   "baseline_ms_per_step": 0.424165,
-   "baseline_spread": 0.030557,
+   "baseline_ms_per_step": 0.308118,
+   "baseline_spread": 0.199029,
    "bracketed": true,
    "dimensions": 2,
    "displaces": [
     "complex PML",
     "complex"
    ],
-   "fused_ms_per_step": 0.83989,
-   "fused_spread": 0.028375,
+   "fused_ms_per_step": 0.64833,
+   "fused_spread": 0.181965,
    "measurements": [
     {
      "after_probe": true,
-     "artifact": "results/fused_timing_2026-09-20_restrict_licensed/triton/rows.jsonl",
-     "baseline_ms_per_step": 0.359881,
-     "baseline_spread": 0.011532,
+     "artifact": "results/timing_rows_rtx3090/fused/fused__8.6__triton__bloch_2d__drive__p1__93f05013fa/lab10__2026-10-27T13_36_13Z.rows.jsonl",
+     "baseline_ms_per_step": 0.25536,
+     "baseline_spread": 0.199029,
      "case": "bloch_2d",
      "cells": 4800,
      "co_fused": [
@@ -1203,23 +1621,23 @@
        "product": "fused pair B (complex)"
       }
      ],
-     "fused_ms_per_step": 0.787755,
-     "fused_spread": 0.008851,
+     "fused_ms_per_step": 0.604858,
+     "fused_spread": 0.181965,
      "grid_shape": [
       40,
       120,
       1
      ],
-     "line": 2,
-     "ratio": 0.456844,
+     "line": 1,
+     "ratio": 0.422181,
      "source": "bench",
-     "utc": "2026-09-21T16:24:33Z"
+     "utc": "2026-10-27T13:35:26Z"
     },
     {
      "after_probe": true,
-     "artifact": "results/fused_timing_2026-09-20_restrict_licensed/triton/rows.jsonl",
-     "baseline_ms_per_step": 0.488449,
-     "baseline_spread": 0.030557,
+     "artifact": "results/timing_rows_rtx3090/fused/fused__8.6__triton__complex_nobloch_2d__drive__p1__05ae87c772/lab10__2026-10-27T13_57_09Z.rows.jsonl",
+     "baseline_ms_per_step": 0.360877,
+     "baseline_spread": 0.048299,
      "case": "complex_nobloch_2d",
      "cells": 24000,
      "co_fused": [
@@ -1228,23 +1646,23 @@
        "product": "fused pair B (complex)"
       }
      ],
-     "fused_ms_per_step": 0.892025,
-     "fused_spread": 0.028375,
+     "fused_ms_per_step": 0.691802,
+     "fused_spread": 0.047649,
      "grid_shape": [
       200,
       120,
       1
      ],
-     "line": 3,
-     "ratio": 0.547573,
+     "line": 1,
+     "ratio": 0.521648,
      "source": "bench",
-     "utc": "2026-09-21T16:25:12Z"
+     "utc": "2026-10-27T13:56:21Z"
     }
    ],
    "product": "fused pair D (complex)",
-   "ratio": 0.502208,
-   "ratio_max": 0.547573,
-   "ratio_min": 0.456844,
+   "ratio": 0.471915,
+   "ratio_max": 0.521648,
+   "ratio_min": 0.422181,
    "reason": "no size in it carries 2 rows, so none can set a band edge: 4,800 (1 row); 24,000 (1 row)",
    "rows": 2,
    "slots": [
@@ -1255,29 +1673,29 @@
    "status": "unmeasured",
    "storage": "complex",
    "susceptibilities": 0,
-   "veto_margin": 0.393495
+   "veto_margin": 0.196825
   },
   "fused pair D (complex)|complex|3|0|bracketed|275-64000": {
    "band": {
     "hi_cells": 64000,
     "lo_cells": 275
    },
-   "baseline_ms_per_step": 0.339091,
-   "baseline_spread": 0.02964,
+   "baseline_ms_per_step": 0.237095,
+   "baseline_spread": 0.04494,
    "bracketed": true,
    "dimensions": 3,
    "displaces": [
     "complex PML",
     "complex"
    ],
-   "fused_ms_per_step": 0.779929,
-   "fused_spread": 0.025651,
+   "fused_ms_per_step": 0.570044,
+   "fused_spread": 0.040779,
    "measurements": [
     {
      "after_probe": true,
-     "artifact": "results/fused_timing_2026-09-20_restrict_licensed/triton/rows.jsonl",
-     "baseline_ms_per_step": 0.394745,
-     "baseline_spread": 0.022323,
+     "artifact": "results/timing_rows_rtx3090/fused/fused__8.6__triton__complex_3d_thinline__drive__p1__9046a832ef/lab10__2026-10-27T13_45_15Z.rows.jsonl",
+     "baseline_ms_per_step": 0.274789,
+     "baseline_spread": 0.039013,
      "case": "complex_3d_thinline",
      "cells": 275,
      "co_fused": [
@@ -1286,23 +1704,23 @@
        "product": "fused pair B (complex)"
       }
      ],
-     "fused_ms_per_step": 0.854746,
-     "fused_spread": 0.023512,
+     "fused_ms_per_step": 0.627458,
+     "fused_spread": 0.040779,
      "grid_shape": [
       1,
       1,
       275
      ],
-     "line": 7,
-     "ratio": 0.461828,
+     "line": 1,
+     "ratio": 0.43794,
      "source": "bench",
-     "utc": "2026-09-21T16:27:59Z"
+     "utc": "2026-10-27T13:44:26Z"
     },
     {
      "after_probe": true,
-     "artifact": "results/fused_timing_2026-09-20_restrict_licensed/triton/rows.jsonl",
-     "baseline_ms_per_step": 0.283437,
-     "baseline_spread": 0.02964,
+     "artifact": "results/timing_rows_rtx3090/fused/fused__8.6__triton__complex_3d__drive__p1__4a7aa60d43/lab10__2026-10-27T13_42_15Z.rows.jsonl",
+     "baseline_ms_per_step": 0.199401,
+     "baseline_spread": 0.04494,
      "case": "complex_3d",
      "cells": 64000,
      "co_fused": [
@@ -1311,23 +1729,23 @@
        "product": "fused pair B (complex)"
       }
      ],
-     "fused_ms_per_step": 0.705111,
-     "fused_spread": 0.025651,
+     "fused_ms_per_step": 0.51263,
+     "fused_spread": 0.013445,
      "grid_shape": [
       40,
       40,
       40
      ],
-     "line": 8,
-     "ratio": 0.401975,
+     "line": 1,
+     "ratio": 0.388977,
      "source": "bench",
-     "utc": "2026-09-21T16:28:38Z"
+     "utc": "2026-10-27T13:41:30Z"
     }
    ],
    "product": "fused pair D (complex)",
-   "ratio": 0.431902,
-   "ratio_max": 0.461828,
-   "ratio_min": 0.401975,
+   "ratio": 0.413459,
+   "ratio_max": 0.43794,
+   "ratio_min": 0.388977,
    "reason": "no size in it carries 2 rows, so none can set a band edge: 275 (1 row); 64,000 (1 row)",
    "rows": 2,
    "slots": [
@@ -1338,29 +1756,29 @@
    "status": "unmeasured",
    "storage": "complex",
    "susceptibilities": 0,
-   "veto_margin": 0.492337
+   "veto_margin": 0.482268
   },
   "fused pair D (conductive)|real|2|0|bracketed|19200-19200": {
    "band": {
     "hi_cells": 19200,
     "lo_cells": 19200
    },
-   "baseline_ms_per_step": 0.922874,
-   "baseline_spread": 0.030028,
+   "baseline_ms_per_step": 0.355193,
+   "baseline_spread": 0.070591,
    "bracketed": true,
    "dimensions": 2,
    "displaces": [
     "conductive PML",
     "ordinary"
    ],
-   "fused_ms_per_step": 1.278418,
-   "fused_spread": 0.021396,
+   "fused_ms_per_step": 0.586695,
+   "fused_spread": 0.069646,
    "measurements": [
     {
      "after_probe": true,
-     "artifact": "results/fused_timing_2026-09-20_restrict/triton/rows.jsonl",
-     "baseline_ms_per_step": 0.922874,
-     "baseline_spread": 0.030028,
+     "artifact": "results/timing_rows_rtx3090/fused/fused__8.6__triton__conductive_2d__drive__p1__002f5ed133/lab10__2026-10-27T14_00_11Z.rows.jsonl",
+     "baseline_ms_per_step": 0.355193,
+     "baseline_spread": 0.070591,
      "case": "conductive_2d",
      "cells": 19200,
      "co_fused": [
@@ -1369,23 +1787,23 @@
        "product": "fused pair B"
       }
      ],
-     "fused_ms_per_step": 1.278418,
-     "fused_spread": 0.021396,
+     "fused_ms_per_step": 0.586695,
+     "fused_spread": 0.069646,
      "grid_shape": [
       160,
       120,
       1
      ],
-     "line": 3,
-     "ratio": 0.721887,
+     "line": 1,
+     "ratio": 0.605413,
      "source": "bench",
-     "utc": "2026-09-21T16:09:58Z"
+     "utc": "2026-10-27T13:59:21Z"
     }
    ],
    "product": "fused pair D (conductive)",
-   "ratio": 0.721887,
-   "ratio_max": 0.721887,
-   "ratio_min": 0.721887,
+   "ratio": 0.605413,
+   "ratio_max": 0.605413,
+   "ratio_min": 0.605413,
    "reason": "no size in it carries 2 rows, so none can set a band edge: 19,200 (1 row)",
    "rows": 1,
    "slots": [
@@ -1396,29 +1814,29 @@
    "status": "unmeasured",
    "storage": "real",
    "susceptibilities": 0,
-   "veto_margin": 0.226689
+   "veto_margin": 0.25435
   },
   "fused pair D (cylindrical complex)|complex|2|0|bracketed|6400-6400": {
    "band": {
     "hi_cells": 6400,
     "lo_cells": 6400
    },
-   "baseline_ms_per_step": 0.996122,
-   "baseline_spread": 0.048539,
+   "baseline_ms_per_step": 0.432804,
+   "baseline_spread": 0.08044,
    "bracketed": true,
    "dimensions": 2,
    "displaces": [
     "cylindrical complex PML",
     "cylindrical complex"
    ],
-   "fused_ms_per_step": 1.384008,
-   "fused_spread": 0.044706,
+   "fused_ms_per_step": 0.766369,
+   "fused_spread": 0.079295,
    "measurements": [
     {
      "after_probe": true,
-     "artifact": "results/fused_timing_2026-09-20_restrict_licensed/triton/rows.jsonl",
-     "baseline_ms_per_step": 0.996122,
-     "baseline_spread": 0.048539,
+     "artifact": "results/timing_rows_rtx3090/fused/fused__8.6__triton__cylindrical_m0_complex__drive__p1__6dde2bdca9/lab10__2026-10-27T14_06_15Z.rows.jsonl",
+     "baseline_ms_per_step": 0.437283,
+     "baseline_spread": 0.08044,
      "case": "cylindrical_m0_complex",
      "cells": 6400,
      "co_fused": [
@@ -1427,106 +1845,48 @@
        "product": "fused pair B (cylindrical complex)"
       }
      ],
-     "fused_ms_per_step": 1.384008,
-     "fused_spread": 0.044706,
+     "fused_ms_per_step": 0.761,
+     "fused_spread": 0.079295,
      "grid_shape": [
       80,
       1,
       80
      ],
-     "line": 17,
-     "ratio": 0.719737,
+     "line": 1,
+     "ratio": 0.574616,
      "source": "bench",
-     "utc": "2026-09-21T16:34:52Z"
-    }
-   ],
-   "product": "fused pair D (cylindrical complex)",
-   "ratio": 0.719737,
-   "ratio_max": 0.719737,
-   "ratio_min": 0.719737,
-   "reason": "no size in it carries 2 rows, so none can set a band edge: 6,400 (1 row)",
-   "rows": 1,
-   "slots": [
-    "step_D",
-    "update_E"
-   ],
-   "slower_beyond_spread": true,
-   "status": "unmeasured",
-   "storage": "complex",
-   "susceptibilities": 0,
-   "veto_margin": 0.187018
-  },
-  "fused pair D (folded complex beta)|complex|2|0|bracketed|7440-7440": {
-   "band": {
-    "hi_cells": 7440,
-    "lo_cells": 7440
-   },
-   "baseline_ms_per_step": 0.578445,
-   "baseline_spread": 0.038941,
-   "bracketed": true,
-   "dimensions": 2,
-   "displaces": [
-    "folded complex beta PML",
-    "folded complex"
-   ],
-   "fused_ms_per_step": 1.135935,
-   "fused_spread": 0.029742,
-   "measurements": [
-    {
-     "after_probe": true,
-     "artifact": "results/fused_timing_2026-09-20_restrict_licensed/triton/rows.jsonl",
-     "baseline_ms_per_step": 0.574632,
-     "baseline_spread": 0.014698,
-     "case": "folded_complex_beta_2d",
-     "cells": 7440,
-     "co_fused": [
-      {
-       "bracketed": false,
-       "product": "fused pair B (folded complex beta)"
-      }
-     ],
-     "fused_ms_per_step": 1.131029,
-     "fused_spread": 0.021284,
-     "grid_shape": [
-      120,
-      62,
-      1
-     ],
-     "line": 5,
-     "ratio": 0.508062,
-     "source": "bench",
-     "utc": "2026-09-21T16:26:32Z"
+     "utc": "2026-10-27T14:05:25Z"
     },
     {
      "after_probe": true,
-     "artifact": "results/fused_timing_2026-09-20_restrict_licensed/triton/rows.jsonl",
-     "baseline_ms_per_step": 0.582257,
-     "baseline_spread": 0.038941,
-     "case": "folded_complex_beta_bloch_2d",
-     "cells": 7440,
+     "artifact": "results/timing_rows_rtx3090/fused/fused__8.6__triton__cylindrical_m1__drive__p1__d379185e4f/lab10__2026-10-27T14_09_18Z.rows.jsonl",
+     "baseline_ms_per_step": 0.428325,
+     "baseline_spread": 0.056228,
+     "case": "cylindrical_m1",
+     "cells": 6400,
      "co_fused": [
       {
        "bracketed": false,
-       "product": "fused pair B (folded complex beta)"
+       "product": "fused pair B (cylindrical complex)"
       }
      ],
-     "fused_ms_per_step": 1.140841,
-     "fused_spread": 0.029742,
+     "fused_ms_per_step": 0.771739,
+     "fused_spread": 0.029021,
      "grid_shape": [
-      120,
-      62,
-      1
+      80,
+      1,
+      80
      ],
-     "line": 14,
-     "ratio": 0.510375,
+     "line": 1,
+     "ratio": 0.555013,
      "source": "bench",
-     "utc": "2026-09-21T16:32:37Z"
+     "utc": "2026-10-27T14:08:27Z"
     }
    ],
-   "product": "fused pair D (folded complex beta)",
-   "ratio": 0.509219,
-   "ratio_max": 0.510375,
-   "ratio_min": 0.508062,
+   "product": "fused pair D (cylindrical complex)",
+   "ratio": 0.564814,
+   "ratio_max": 0.574616,
+   "ratio_min": 0.555013,
    "rows": 2,
    "slots": [
     "step_D",
@@ -1536,29 +1896,227 @@
    "status": "measured",
    "storage": "complex",
    "susceptibilities": 0,
-   "veto_margin": 0.420942
+   "veto_margin": 0.265649
+  },
+  "fused pair D (cylindrical)|real|2|0|bracketed|6400-6400": {
+   "band": {
+    "hi_cells": 6400,
+    "lo_cells": 6400
+   },
+   "baseline_ms_per_step": 0.323252,
+   "baseline_spread": 0.036435,
+   "bracketed": true,
+   "dimensions": 2,
+   "displaces": [
+    "cylindrical PML",
+    "cylindrical"
+   ],
+   "fused_ms_per_step": 0.539005,
+   "fused_spread": 0.028041,
+   "measurements": [
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_rtx3090/fused/fused__8.6__triton__cylindrical_m0__drive__p1__689837d21c/lab10__2026-10-27T14_03_13Z.rows.jsonl",
+     "baseline_ms_per_step": 0.323252,
+     "baseline_spread": 0.036435,
+     "case": "cylindrical_m0",
+     "cells": 6400,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused pair B (cylindrical)"
+      }
+     ],
+     "fused_ms_per_step": 0.539005,
+     "fused_spread": 0.028041,
+     "grid_shape": [
+      80,
+      1,
+      80
+     ],
+     "line": 1,
+     "ratio": 0.59972,
+     "source": "bench",
+     "utc": "2026-10-27T14:02:23Z"
+    }
+   ],
+   "product": "fused pair D (cylindrical)",
+   "ratio": 0.59972,
+   "ratio_max": 0.59972,
+   "ratio_min": 0.59972,
+   "reason": "no size in it carries 2 rows, so none can set a band edge: 6,400 (1 row)",
+   "rows": 1,
+   "slots": [
+    "step_D",
+    "update_E"
+   ],
+   "slower_beyond_spread": true,
+   "status": "unmeasured",
+   "storage": "real",
+   "susceptibilities": 0,
+   "veto_margin": 0.335804
+  },
+  "fused pair D (folded complex beta)|complex|2|0|bracketed|7440-7440": {
+   "band": {
+    "hi_cells": 7440,
+    "lo_cells": 7440
+   },
+   "baseline_ms_per_step": 0.385639,
+   "baseline_spread": 0.079967,
+   "bracketed": true,
+   "dimensions": 2,
+   "displaces": [
+    "folded complex beta PML",
+    "folded complex"
+   ],
+   "fused_ms_per_step": 0.796819,
+   "fused_spread": 0.043954,
+   "measurements": [
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_rtx3090/fused/fused__8.6__triton__folded_complex_beta_2d__drive__p1__854ff635a6/lab10__2026-10-27T14_30_54Z.rows.jsonl",
+     "baseline_ms_per_step": 0.376533,
+     "baseline_spread": 0.016265,
+     "case": "folded_complex_beta_2d",
+     "cells": 7440,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused pair B (folded complex beta)"
+      }
+     ],
+     "fused_ms_per_step": 0.788707,
+     "fused_spread": 0.029392,
+     "grid_shape": [
+      120,
+      62,
+      1
+     ],
+     "line": 1,
+     "ratio": 0.477405,
+     "source": "bench",
+     "utc": "2026-10-27T14:30:02Z"
+    },
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_rtx3090/fused/fused__8.6__triton__folded_complex_beta_bloch_2d__drive__p1__e83d866acc/lab10__2026-10-27T14_33_57Z.rows.jsonl",
+     "baseline_ms_per_step": 0.394745,
+     "baseline_spread": 0.079967,
+     "case": "folded_complex_beta_bloch_2d",
+     "cells": 7440,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused pair B (folded complex beta)"
+      }
+     ],
+     "fused_ms_per_step": 0.804931,
+     "fused_spread": 0.043954,
+     "grid_shape": [
+      120,
+      62,
+      1
+     ],
+     "line": 1,
+     "ratio": 0.490408,
+     "source": "bench",
+     "utc": "2026-10-27T14:33:06Z"
+    }
+   ],
+   "product": "fused pair D (folded complex beta)",
+   "ratio": 0.483907,
+   "ratio_max": 0.490408,
+   "ratio_min": 0.477405,
+   "rows": 2,
+   "slots": [
+    "step_D",
+    "update_E"
+   ],
+   "slower_beyond_spread": true,
+   "status": "measured",
+   "storage": "complex",
+   "susceptibilities": 0,
+   "veto_margin": 0.385671
+  },
+  "fused pair D (folded complex)|complex|2|0|bracketed|4960-4960": {
+   "band": {
+    "hi_cells": 4960,
+    "lo_cells": 4960
+   },
+   "baseline_ms_per_step": 0.537409,
+   "baseline_spread": 0.011945,
+   "bracketed": true,
+   "dimensions": 2,
+   "displaces": [
+    "folded complex PML",
+    "folded complex"
+   ],
+   "fused_ms_per_step": 0.910507,
+   "fused_spread": 0.045647,
+   "measurements": [
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_rtx3090/fused/fused__8.6__triton__folded_complex_2d__drive__p1__2f0b9f32c0/lab10__2026-10-27T14_24_43Z.rows.jsonl",
+     "baseline_ms_per_step": 0.537409,
+     "baseline_spread": 0.011945,
+     "case": "folded_complex_2d",
+     "cells": 4960,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused pair B (folded complex)"
+      }
+     ],
+     "fused_ms_per_step": 0.910507,
+     "fused_spread": 0.045647,
+     "grid_shape": [
+      80,
+      62,
+      1
+     ],
+     "line": 1,
+     "ratio": 0.590231,
+     "source": "bench",
+     "utc": "2026-10-27T14:23:54Z"
+    }
+   ],
+   "product": "fused pair D (folded complex)",
+   "ratio": 0.590231,
+   "ratio_max": 0.590231,
+   "ratio_min": 0.590231,
+   "reason": "no size in it carries 2 rows, so none can set a band edge: 4,960 (1 row)",
+   "rows": 1,
+   "slots": [
+    "step_D",
+    "update_E"
+   ],
+   "slower_beyond_spread": true,
+   "status": "unmeasured",
+   "storage": "complex",
+   "susceptibilities": 0,
+   "veto_margin": 0.352177
   },
   "fused pair D (folded complex)|complex|3|0|bracketed|5580-21168": {
    "band": {
     "hi_cells": 21168,
     "lo_cells": 5580
    },
-   "baseline_ms_per_step": 0.593525,
-   "baseline_spread": 0.025953,
+   "baseline_ms_per_step": 0.368425,
+   "baseline_spread": 0.134852,
    "bracketed": true,
    "dimensions": 3,
    "displaces": [
     "folded complex PML",
     "folded complex"
    ],
-   "fused_ms_per_step": 1.168715,
-   "fused_spread": 0.035149,
+   "fused_ms_per_step": 0.767964,
+   "fused_spread": 0.155451,
    "measurements": [
     {
      "after_probe": true,
-     "artifact": "results/fused_timing_2026-09-20_restrict_licensed/triton/rows.jsonl",
-     "baseline_ms_per_step": 0.607289,
-     "baseline_spread": 0.024103,
+     "artifact": "results/timing_rows_rtx3090/fused/fused__8.6__triton__folded_complex_kz2d_3d__drive__p1__4e8a0dfc67/lab10__2026-10-27T14_37_01Z.rows.jsonl",
+     "baseline_ms_per_step": 0.372084,
+     "baseline_spread": 0.134852,
      "case": "folded_complex_kz2d_3d",
      "cells": 5580,
      "co_fused": [
@@ -1567,23 +2125,23 @@
        "product": "fused pair B (folded complex)"
       }
      ],
-     "fused_ms_per_step": 1.201343,
-     "fused_spread": 0.034965,
+     "fused_ms_per_step": 0.775282,
+     "fused_spread": 0.155451,
      "grid_shape": [
       90,
       62,
       1
      ],
-     "line": 10,
-     "ratio": 0.505509,
+     "line": 1,
+     "ratio": 0.479933,
      "source": "bench",
-     "utc": "2026-09-21T16:30:03Z"
+     "utc": "2026-10-27T14:36:08Z"
     },
     {
      "after_probe": true,
-     "artifact": "results/fused_timing_2026-09-20_restrict_licensed/triton/rows.jsonl",
-     "baseline_ms_per_step": 0.57976,
-     "baseline_spread": 0.025953,
+     "artifact": "results/timing_rows_rtx3090/fused/fused__8.6__triton__folded_complex_3d__drive__p1__99cbfdc1b9/lab10__2026-10-27T14_27_50Z.rows.jsonl",
+     "baseline_ms_per_step": 0.364765,
+     "baseline_spread": 0.052664,
      "case": "folded_complex_3d",
      "cells": 21168,
      "co_fused": [
@@ -1592,23 +2150,23 @@
        "product": "fused pair B (folded complex)"
       }
      ],
-     "fused_ms_per_step": 1.136086,
-     "fused_spread": 0.035149,
+     "fused_ms_per_step": 0.760646,
+     "fused_spread": 0.054655,
      "grid_shape": [
       8,
       21,
       126
      ],
-     "line": 9,
-     "ratio": 0.510314,
+     "line": 1,
+     "ratio": 0.479547,
      "source": "bench",
-     "utc": "2026-09-21T16:29:19Z"
+     "utc": "2026-10-27T14:26:56Z"
     }
    ],
    "product": "fused pair D (folded complex)",
-   "ratio": 0.507912,
-   "ratio_max": 0.510314,
-   "ratio_min": 0.505509,
+   "ratio": 0.47974,
+   "ratio_max": 0.479933,
+   "ratio_min": 0.479547,
    "reason": "no size in it carries 2 rows, so none can set a band edge: 5,580 (1 row); 21,168 (1 row)",
    "rows": 2,
    "slots": [
@@ -1619,29 +2177,29 @@
    "status": "unmeasured",
    "storage": "complex",
    "susceptibilities": 0,
-   "veto_margin": 0.428584
+   "veto_margin": 0.229764
   },
   "fused pair D (folded dispersive)|real|2|1|bracketed|4880-4880": {
    "band": {
     "hi_cells": 4880,
     "lo_cells": 4880
    },
-   "baseline_ms_per_step": 0.953484,
-   "baseline_spread": 0.034142,
+   "baseline_ms_per_step": 0.706419,
+   "baseline_spread": 0.138139,
    "bracketed": true,
    "dimensions": 2,
    "displaces": [
     "folded PML",
     "folded dispersive"
    ],
-   "fused_ms_per_step": 1.51523,
-   "fused_spread": 0.040203,
+   "fused_ms_per_step": 1.000489,
+   "fused_spread": 0.609419,
    "measurements": [
     {
      "after_probe": true,
-     "artifact": "results/fused_timing_2026-09-20_restrict/triton/rows.jsonl",
-     "baseline_ms_per_step": 0.953484,
-     "baseline_spread": 0.034142,
+     "artifact": "results/timing_rows_rtx3090/fused/fused__8.6__triton__folded_dispersive_2d__drive__p1__993b8c336e/lab10__2026-10-27T14_46_15Z.rows.jsonl",
+     "baseline_ms_per_step": 0.706419,
+     "baseline_spread": 0.138139,
      "case": "folded_dispersive_2d",
      "cells": 4880,
      "co_fused": [
@@ -1650,56 +2208,56 @@
        "product": "fused pair B (folded)"
       }
      ],
-     "fused_ms_per_step": 1.51523,
-     "fused_spread": 0.040203,
+     "fused_ms_per_step": 1.000489,
+     "fused_spread": 0.609419,
      "grid_shape": [
       80,
       61,
       1
      ],
-     "line": 7,
-     "ratio": 0.629267,
+     "line": 1,
+     "ratio": 0.706074,
      "source": "bench",
-     "utc": "2026-09-21T16:12:53Z"
+     "utc": "2026-10-27T14:45:15Z"
     }
    ],
    "product": "fused pair D (folded dispersive)",
-   "ratio": 0.629267,
-   "ratio_max": 0.629267,
-   "ratio_min": 0.629267,
+   "ratio": 0.706074,
+   "ratio_max": 0.706074,
+   "ratio_min": 0.706074,
    "reason": "no size in it carries 2 rows, so none can set a band edge: 4,880 (1 row)",
    "rows": 1,
    "slots": [
     "step_D",
     "update_E"
    ],
-   "slower_beyond_spread": true,
+   "slower_beyond_spread": false,
    "status": "unmeasured",
    "storage": "real",
    "susceptibilities": 1,
-   "veto_margin": 0.296388
+   "veto_margin": -0.453632
   },
   "fused pair D (folded real beta)|real|2|0|bracketed|7440-7440": {
    "band": {
     "hi_cells": 7440,
     "lo_cells": 7440
    },
-   "baseline_ms_per_step": 0.497391,
-   "baseline_spread": 0.025479,
+   "baseline_ms_per_step": 0.303548,
+   "baseline_spread": 0.045289,
    "bracketed": true,
    "dimensions": 2,
    "displaces": [
     "folded real beta PML",
     "folded beta run"
    ],
-   "fused_ms_per_step": 1.06613,
-   "fused_spread": 0.017465,
+   "fused_ms_per_step": 0.590141,
+   "fused_spread": 0.032033,
    "measurements": [
     {
      "after_probe": true,
-     "artifact": "results/fused_timing_2026-09-20_restrict/triton/rows.jsonl",
-     "baseline_ms_per_step": 0.497391,
-     "baseline_spread": 0.025479,
+     "artifact": "results/timing_rows_rtx3090/fused/fused__8.6__triton__folded_special_kz_2d__drive__p1__86089981c2/lab10__2026-10-27T14_52_25Z.rows.jsonl",
+     "baseline_ms_per_step": 0.303548,
+     "baseline_spread": 0.045289,
      "case": "folded_special_kz_2d",
      "cells": 7440,
      "co_fused": [
@@ -1708,23 +2266,23 @@
        "product": "fused pair B (folded real beta)"
       }
      ],
-     "fused_ms_per_step": 1.06613,
-     "fused_spread": 0.017465,
+     "fused_ms_per_step": 0.590141,
+     "fused_spread": 0.032033,
      "grid_shape": [
       120,
       62,
       1
      ],
-     "line": 11,
-     "ratio": 0.466539,
+     "line": 1,
+     "ratio": 0.514365,
      "source": "bench",
-     "utc": "2026-09-21T16:14:55Z"
+     "utc": "2026-10-27T14:51:35Z"
     }
    ],
    "product": "fused pair D (folded real beta)",
-   "ratio": 0.466539,
-   "ratio_max": 0.466539,
-   "ratio_min": 0.466539,
+   "ratio": 0.514365,
+   "ratio_max": 0.514365,
+   "ratio_min": 0.514365,
    "reason": "no size in it carries 2 rows, so none can set a band edge: 7,440 (1 row)",
    "rows": 1,
    "slots": [
@@ -1735,29 +2293,87 @@
    "status": "unmeasured",
    "storage": "real",
    "susceptibilities": 0,
-   "veto_margin": 0.490517
+   "veto_margin": 0.408313
+  },
+  "fused pair D (folded)|real|2|0|bracketed|9760-9760": {
+   "band": {
+    "hi_cells": 9760,
+    "lo_cells": 9760
+   },
+   "baseline_ms_per_step": 0.413847,
+   "baseline_spread": 0.05987,
+   "bracketed": true,
+   "dimensions": 2,
+   "displaces": [
+    "folded PML",
+    "folded"
+   ],
+   "fused_ms_per_step": 0.665736,
+   "fused_spread": 0.041485,
+   "measurements": [
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_rtx3090/fused/fused__8.6__triton__folded_2d__drive__p1__cf65d02a66/lab10__2026-10-27T14_15_32Z.rows.jsonl",
+     "baseline_ms_per_step": 0.413847,
+     "baseline_spread": 0.05987,
+     "case": "folded_2d",
+     "cells": 9760,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused pair B (folded)"
+      }
+     ],
+     "fused_ms_per_step": 0.665736,
+     "fused_spread": 0.041485,
+     "grid_shape": [
+      160,
+      61,
+      1
+     ],
+     "line": 1,
+     "ratio": 0.621638,
+     "source": "bench",
+     "utc": "2026-10-27T14:14:38Z"
+    }
+   ],
+   "product": "fused pair D (folded)",
+   "ratio": 0.621638,
+   "ratio_max": 0.621638,
+   "ratio_min": 0.621638,
+   "reason": "no size in it carries 2 rows, so none can set a band edge: 9,760 (1 row)",
+   "rows": 1,
+   "slots": [
+    "step_D",
+    "update_E"
+   ],
+   "slower_beyond_spread": true,
+   "status": "unmeasured",
+   "storage": "real",
+   "susceptibilities": 0,
+   "veto_margin": 0.277007
   },
   "fused pair D (folded)|real|3|0|bracketed|33600-33600": {
    "band": {
     "hi_cells": 33600,
     "lo_cells": 33600
    },
-   "baseline_ms_per_step": 0.476547,
-   "baseline_spread": 0.019612,
+   "baseline_ms_per_step": 0.337743,
+   "baseline_spread": 0.210815,
    "bracketed": true,
    "dimensions": 3,
    "displaces": [
     "folded PML",
     "folded"
    ],
-   "fused_ms_per_step": 0.91484,
-   "fused_spread": 0.016986,
+   "fused_ms_per_step": 0.583574,
+   "fused_spread": 0.128846,
    "measurements": [
     {
      "after_probe": true,
-     "artifact": "results/fused_timing_2026-09-20_restrict/triton/rows.jsonl",
-     "baseline_ms_per_step": 0.476547,
-     "baseline_spread": 0.019612,
+     "artifact": "results/timing_rows_rtx3090/fused/fused__8.6__triton__folded_3d__drive__p1__ca30489009/lab10__2026-10-27T14_18_35Z.rows.jsonl",
+     "baseline_ms_per_step": 0.337743,
+     "baseline_spread": 0.210815,
      "case": "folded_3d",
      "cells": 33600,
      "co_fused": [
@@ -1766,23 +2382,23 @@
        "product": "fused pair B (folded)"
       }
      ],
-     "fused_ms_per_step": 0.91484,
-     "fused_spread": 0.016986,
+     "fused_ms_per_step": 0.583574,
+     "fused_spread": 0.128846,
      "grid_shape": [
       40,
       21,
       40
      ],
-     "line": 19,
-     "ratio": 0.520907,
+     "line": 1,
+     "ratio": 0.57875,
      "source": "bench",
-     "utc": "2026-09-21T16:20:32Z"
+     "utc": "2026-10-27T14:17:44Z"
     }
    ],
    "product": "fused pair D (folded)",
-   "ratio": 0.520907,
-   "ratio_max": 0.520907,
-   "ratio_min": 0.520907,
+   "ratio": 0.57875,
+   "ratio_max": 0.57875,
+   "ratio_min": 0.57875,
    "reason": "no size in it carries 2 rows, so none can set a band edge: 33,600 (1 row)",
    "rows": 1,
    "slots": [
@@ -1793,49 +2409,49 @@
    "status": "unmeasured",
    "storage": "real",
    "susceptibilities": 0,
-   "veto_margin": 0.442495
+   "veto_margin": 0.081589
   },
   "fused pair D (no-PML stored E)|real|1|5|bracketed|400-400": {
    "band": {
     "hi_cells": 400,
     "lo_cells": 400
    },
-   "baseline_ms_per_step": 1.380116,
-   "baseline_spread": 0.033655,
+   "baseline_ms_per_step": 0.765998,
+   "baseline_spread": 0.05244,
    "bracketed": true,
    "dimensions": 1,
    "displaces": [
     "conductive no-PML",
     "no-PML stored E"
    ],
-   "fused_ms_per_step": 1.630437,
-   "fused_spread": 0.039693,
+   "fused_ms_per_step": 0.998804,
+   "fused_spread": 0.038304,
    "measurements": [
     {
      "after_probe": true,
-     "artifact": "results/fused_timing_2026-09-20_restrict/triton/rows.jsonl",
-     "baseline_ms_per_step": 1.380116,
-     "baseline_spread": 0.033655,
+     "artifact": "results/timing_rows_rtx3090/fused/fused__8.6__triton__absorber_1d__drive__p1__6ad9572c1a/lab10__2026-10-27T13_30_13Z.rows.jsonl",
+     "baseline_ms_per_step": 0.765998,
+     "baseline_spread": 0.05244,
      "case": "absorber_1d",
      "cells": 400,
      "co_fused": [],
-     "fused_ms_per_step": 1.630437,
-     "fused_spread": 0.039693,
+     "fused_ms_per_step": 0.998804,
+     "fused_spread": 0.038304,
      "grid_shape": [
       1,
       1,
       400
      ],
-     "line": 20,
-     "ratio": 0.84647,
+     "line": 1,
+     "ratio": 0.766915,
      "source": "bench",
-     "utc": "2026-09-21T16:21:11Z"
+     "utc": "2026-10-27T13:29:15Z"
     }
    ],
    "product": "fused pair D (no-PML stored E)",
-   "ratio": 0.84647,
-   "ratio_max": 0.84647,
-   "ratio_min": 0.84647,
+   "ratio": 0.766915,
+   "ratio_max": 0.766915,
+   "ratio_min": 0.766915,
    "reason": "no size in it carries 2 rows, so none can set a band edge: 400 (1 row)",
    "rows": 1,
    "slots": [
@@ -1846,49 +2462,49 @@
    "status": "unmeasured",
    "storage": "real",
    "susceptibilities": 5,
-   "veto_margin": 0.080182
+   "veto_margin": 0.142341
   },
   "fused pair D (no-PML stored E)|real|2|2|bracketed|14400-14400": {
    "band": {
     "hi_cells": 14400,
     "lo_cells": 14400
    },
-   "baseline_ms_per_step": 0.708153,
-   "baseline_spread": 0.01335,
+   "baseline_ms_per_step": 0.438415,
+   "baseline_spread": 0.02642,
    "bracketed": true,
    "dimensions": 2,
    "displaces": [
     "no-PML",
     "no-PML stored E"
    ],
-   "fused_ms_per_step": 0.992247,
-   "fused_spread": 0.034115,
+   "fused_ms_per_step": 0.641958,
+   "fused_spread": 0.029407,
    "measurements": [
     {
      "after_probe": true,
-     "artifact": "results/fused_timing_2026-09-20_restrict/triton/rows.jsonl",
-     "baseline_ms_per_step": 0.708153,
-     "baseline_spread": 0.01335,
+     "artifact": "results/timing_rows_rtx3090/fused/fused__8.6__triton__no_pml_dispersive_2d__drive__p1__81c8a66aac/lab10__2026-10-27T14_58_32Z.rows.jsonl",
+     "baseline_ms_per_step": 0.438415,
+     "baseline_spread": 0.02642,
      "case": "no_pml_dispersive_2d",
      "cells": 14400,
      "co_fused": [],
-     "fused_ms_per_step": 0.992247,
-     "fused_spread": 0.034115,
+     "fused_ms_per_step": 0.641958,
+     "fused_spread": 0.029407,
      "grid_shape": [
       120,
       120,
       1
      ],
-     "line": 21,
-     "ratio": 0.713686,
+     "line": 1,
+     "ratio": 0.682934,
      "source": "bench",
-     "utc": "2026-09-21T16:21:53Z"
+     "utc": "2026-10-27T14:57:41Z"
     }
    ],
    "product": "fused pair D (no-PML stored E)",
-   "ratio": 0.713686,
-   "ratio_max": 0.713686,
-   "ratio_min": 0.713686,
+   "ratio": 0.682934,
+   "ratio_max": 0.682934,
+   "ratio_min": 0.682934,
    "reason": "no size in it carries 2 rows, so none can set a band edge: 14,400 (1 row)",
    "rows": 1,
    "slots": [
@@ -1899,29 +2515,29 @@
    "status": "unmeasured",
    "storage": "real",
    "susceptibilities": 2,
-   "veto_margin": 0.238849
+   "veto_margin": 0.261239
   },
   "fused pair D (real beta)|real|2|0|bracketed|14400-14400": {
    "band": {
     "hi_cells": 14400,
     "lo_cells": 14400
    },
-   "baseline_ms_per_step": 0.354054,
-   "baseline_spread": 0.03618,
+   "baseline_ms_per_step": 0.197653,
+   "baseline_spread": 0.024541,
    "bracketed": true,
    "dimensions": 2,
    "displaces": [
     "real beta PML",
     "real beta run"
    ],
-   "fused_ms_per_step": 0.797126,
-   "fused_spread": 0.022328,
+   "fused_ms_per_step": 0.426647,
+   "fused_spread": 0.04069,
    "measurements": [
     {
      "after_probe": true,
-     "artifact": "results/fused_timing_2026-09-20_restrict/triton/rows.jsonl",
-     "baseline_ms_per_step": 0.354054,
-     "baseline_spread": 0.03618,
+     "artifact": "results/timing_rows_rtx3090/fused/fused__8.6__triton__special_kz_2d__drive__p1__ab22bec94b/lab10__2026-10-27T15_22_58Z.rows.jsonl",
+     "baseline_ms_per_step": 0.197653,
+     "baseline_spread": 0.024541,
      "case": "special_kz_2d",
      "cells": 14400,
      "co_fused": [
@@ -1930,23 +2546,23 @@
        "product": "fused pair B (real beta)"
       }
      ],
-     "fused_ms_per_step": 0.797126,
-     "fused_spread": 0.022328,
+     "fused_ms_per_step": 0.426647,
+     "fused_spread": 0.04069,
      "grid_shape": [
       120,
       120,
       1
      ],
-     "line": 10,
-     "ratio": 0.444164,
+     "line": 1,
+     "ratio": 0.46327,
      "source": "bench",
-     "utc": "2026-09-21T16:14:18Z"
+     "utc": "2026-10-27T15:22:11Z"
     }
    ],
    "product": "fused pair D (real beta)",
-   "ratio": 0.444164,
-   "ratio_max": 0.444164,
-   "ratio_min": 0.444164,
+   "ratio": 0.46327,
+   "ratio_max": 0.46327,
+   "ratio_min": 0.46327,
    "reason": "no size in it carries 2 rows, so none can set a band edge: 14,400 (1 row)",
    "rows": 1,
    "slots": [
@@ -1957,29 +2573,29 @@
    "status": "unmeasured",
    "storage": "real",
    "susceptibilities": 0,
-   "veto_margin": 0.497328
+   "veto_margin": 0.471499
   },
   "fused pair D|real|1|0|bracketed|640-640": {
    "band": {
     "hi_cells": 640,
     "lo_cells": 640
    },
-   "baseline_ms_per_step": 0.531705,
-   "baseline_spread": 0.02499,
+   "baseline_ms_per_step": 0.279906,
+   "baseline_spread": 0.057677,
    "bracketed": true,
    "dimensions": 1,
    "displaces": [
     "PML",
     "ordinary"
    ],
-   "fused_ms_per_step": 0.913487,
-   "fused_spread": 0.016726,
+   "fused_ms_per_step": 0.519542,
+   "fused_spread": 0.082638,
    "measurements": [
     {
      "after_probe": true,
-     "artifact": "results/fused_timing_2026-09-20_restrict/triton/rows.jsonl",
-     "baseline_ms_per_step": 0.531705,
-     "baseline_spread": 0.02499,
+     "artifact": "results/timing_rows_rtx3090/fused/fused__8.6__triton__pml_1d__drive__p1__ce555222a6/lab10__2026-10-27T15_10_47Z.rows.jsonl",
+     "baseline_ms_per_step": 0.279906,
+     "baseline_spread": 0.057677,
      "case": "pml_1d",
      "cells": 640,
      "co_fused": [
@@ -1988,23 +2604,23 @@
        "product": "fused pair B"
       }
      ],
-     "fused_ms_per_step": 0.913487,
-     "fused_spread": 0.016726,
+     "fused_ms_per_step": 0.519542,
+     "fused_spread": 0.082638,
      "grid_shape": [
       1,
       1,
       640
      ],
-     "line": 5,
-     "ratio": 0.582061,
+     "line": 1,
+     "ratio": 0.538755,
      "source": "bench",
-     "utc": "2026-09-21T16:11:34Z"
+     "utc": "2026-10-27T15:09:56Z"
     }
    ],
    "product": "fused pair D",
-   "ratio": 0.582061,
-   "ratio_max": 0.582061,
-   "ratio_min": 0.582061,
+   "ratio": 0.538755,
+   "ratio_max": 0.538755,
+   "ratio_min": 0.538755,
    "reason": "no size in it carries 2 rows, so none can set a band edge: 640 (1 row)",
    "rows": 1,
    "slots": [
@@ -2015,7 +2631,7 @@
    "status": "unmeasured",
    "storage": "real",
    "susceptibilities": 0,
-   "veto_margin": 0.376223
+   "veto_margin": 0.32093
   },
   "fused pair D|real|2|0|bracketed|1014001-2399999": {
    "band": {
@@ -2040,27 +2656,27 @@
    "storage": "real",
    "susceptibilities": 0
   },
-  "fused pair D|real|2|0|bracketed|24000-24000": {
+  "fused pair D|real|2|0|bracketed|24000-1014000": {
    "band": {
-    "hi_cells": 24000,
+    "hi_cells": 1014000,
     "lo_cells": 24000
    },
-   "baseline_ms_per_step": 0.506362,
-   "baseline_spread": 0.022072,
+   "baseline_ms_per_step": 0.407116,
+   "baseline_spread": 0.063385,
    "bracketed": true,
    "dimensions": 2,
    "displaces": [
     "PML",
     "ordinary"
    ],
-   "fused_ms_per_step": 0.91111,
-   "fused_spread": 0.038847,
+   "fused_ms_per_step": 0.588843,
+   "fused_spread": 0.078855,
    "measurements": [
     {
      "after_probe": true,
-     "artifact": "results/fused_timing_sweep_2026-09-20_restrict/triton/pml_2d_res20/rows.jsonl",
-     "baseline_ms_per_step": 0.529438,
-     "baseline_spread": 0.022072,
+     "artifact": "results/timing_rows_rtx3090/fused/fused__8.6__triton__pml_2d__drive__p1__76499842e2/lab10__2026-10-27T15_13_48Z.rows.jsonl",
+     "baseline_ms_per_step": 0.288274,
+     "baseline_spread": 0.024554,
      "case": "pml_2d",
      "cells": 24000,
      "co_fused": [
@@ -2069,23 +2685,23 @@
        "product": "fused pair B"
       }
      ],
-     "fused_ms_per_step": 0.942782,
-     "fused_spread": 0.020451,
+     "fused_ms_per_step": 0.506313,
+     "fused_spread": 0.024153,
      "grid_shape": [
       200,
       120,
       1
      ],
      "line": 1,
-     "ratio": 0.561569,
+     "ratio": 0.569358,
      "source": "bench",
-     "utc": "2026-09-21T14:01:05Z"
+     "utc": "2026-10-27T15:13:00Z"
     },
     {
      "after_probe": true,
-     "artifact": "results/fused_timing_2026-09-20_restrict/triton/rows.jsonl",
-     "baseline_ms_per_step": 0.483286,
-     "baseline_spread": 0.016825,
+     "artifact": "results/timing_rows_rtx3090/fused/fused__8.6__triton__pml_2d__res20__p1__00e2c33f88/lab10__2026-10-27T15_36_36Z.rows.jsonl",
+     "baseline_ms_per_step": 0.31048,
+     "baseline_spread": 0.046914,
      "case": "pml_2d",
      "cells": 24000,
      "co_fused": [
@@ -2094,23 +2710,335 @@
        "product": "fused pair B"
       }
      ],
-     "fused_ms_per_step": 0.879437,
-     "fused_spread": 0.038847,
+     "fused_ms_per_step": 0.532184,
+     "fused_spread": 0.057387,
      "grid_shape": [
       200,
       120,
       1
      ],
      "line": 1,
-     "ratio": 0.54954,
+     "ratio": 0.583407,
      "source": "bench",
-     "utc": "2026-09-21T16:08:27Z"
+     "utc": "2026-10-27T15:36:04Z"
+    },
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_rtx3090/fused/fused__8.6__triton__pml_2d__res20__p2__c8444727ea/lab10__2026-10-27T17_37_30Z.rows.jsonl",
+     "baseline_ms_per_step": 0.309488,
+     "baseline_spread": 0.04807,
+     "case": "pml_2d",
+     "cells": 24000,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused pair B"
+      }
+     ],
+     "fused_ms_per_step": 0.529949,
+     "fused_spread": 0.078855,
+     "grid_shape": [
+      200,
+      120,
+      1
+     ],
+     "line": 1,
+     "ratio": 0.583995,
+     "source": "bench",
+     "utc": "2026-10-27T17:36:59Z"
+    },
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_rtx3090/fused/fused__8.6__triton__pml_2d__res60__p1__fbfbeffbbb/lab10__2026-10-27T15_50_38Z.rows.jsonl",
+     "baseline_ms_per_step": 0.411881,
+     "baseline_spread": 0.047846,
+     "case": "pml_2d",
+     "cells": 216000,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused pair B"
+      }
+     ],
+     "fused_ms_per_step": 0.595526,
+     "fused_spread": 0.03016,
+     "grid_shape": [
+      600,
+      360,
+      1
+     ],
+     "line": 1,
+     "ratio": 0.691625,
+     "source": "bench",
+     "utc": "2026-10-27T15:50:02Z"
+    },
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_rtx3090/fused/fused__8.6__triton__pml_2d__res60__p2__5e4380b00d/lab10__2026-10-27T17_23_16Z.rows.jsonl",
+     "baseline_ms_per_step": 0.416092,
+     "baseline_spread": 0.063385,
+     "case": "pml_2d",
+     "cells": 216000,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused pair B"
+      }
+     ],
+     "fused_ms_per_step": 0.601649,
+     "fused_spread": 0.067269,
+     "grid_shape": [
+      600,
+      360,
+      1
+     ],
+     "line": 1,
+     "ratio": 0.691586,
+     "source": "bench",
+     "utc": "2026-10-27T17:22:40Z"
+    },
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_rtx3090/fused/fused__8.6__triton__pml_2d__res130__p1__1a9698a78f/lab10__2026-10-27T16_04_55Z.rows.jsonl",
+     "baseline_ms_per_step": 0.408389,
+     "baseline_spread": 0.027665,
+     "case": "pml_2d",
+     "cells": 1014000,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused pair B"
+      }
+     ],
+     "fused_ms_per_step": 0.589529,
+     "fused_spread": 0.011522,
+     "grid_shape": [
+      1300,
+      780,
+      1
+     ],
+     "line": 1,
+     "ratio": 0.692739,
+     "source": "bench",
+     "utc": "2026-10-27T16:04:18Z"
+    },
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_rtx3090/fused/fused__8.6__triton__pml_2d__res130__p2__8027081b14/lab10__2026-10-27T17_08_50Z.rows.jsonl",
+     "baseline_ms_per_step": 0.407116,
+     "baseline_spread": 0.030141,
+     "case": "pml_2d",
+     "cells": 1014000,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused pair B"
+      }
+     ],
+     "fused_ms_per_step": 0.588843,
+     "fused_spread": 0.021032,
+     "grid_shape": [
+      1300,
+      780,
+      1
+     ],
+     "line": 1,
+     "ratio": 0.691383,
+     "source": "bench",
+     "utc": "2026-10-27T17:08:13Z"
     }
    ],
    "product": "fused pair D",
-   "ratio": 0.555554,
-   "ratio_max": 0.561569,
-   "ratio_min": 0.54954,
+   "ratio": 0.691383,
+   "ratio_max": 0.692739,
+   "ratio_min": 0.569358,
+   "rows": 7,
+   "slots": [
+    "step_D",
+    "update_E"
+   ],
+   "slower_beyond_spread": true,
+   "status": "measured",
+   "storage": "real",
+   "susceptibilities": 0,
+   "veto_margin": 0.17776
+  },
+  "fused pair D|real|2|0|bracketed|2400000-2400000": {
+   "band": {
+    "hi_cells": 2400000,
+    "lo_cells": 2400000
+   },
+   "baseline_ms_per_step": 0.521082,
+   "baseline_spread": 0.101506,
+   "bracketed": true,
+   "dimensions": 2,
+   "displaces": [
+    "PML",
+    "ordinary"
+   ],
+   "fused_ms_per_step": 0.59932,
+   "fused_spread": 0.097832,
+   "measurements": [
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_rtx3090/fused/fused__8.6__triton__pml_2d__res200__p1__e563fba957/lab10__2026-10-27T16_19_38Z.rows.jsonl",
+     "baseline_ms_per_step": 0.519159,
+     "baseline_spread": 0.013788,
+     "case": "pml_2d",
+     "cells": 2400000,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused pair B"
+      }
+     ],
+     "fused_ms_per_step": 0.593729,
+     "fused_spread": 0.026094,
+     "grid_shape": [
+      2000,
+      1200,
+      1
+     ],
+     "line": 1,
+     "ratio": 0.874403,
+     "source": "bench",
+     "utc": "2026-10-27T16:18:54Z"
+    },
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_rtx3090/fused/fused__8.6__triton__pml_2d__res200__p2__9e65bb29b2/lab10__2026-10-27T16_54_06Z.rows.jsonl",
+     "baseline_ms_per_step": 0.523005,
+     "baseline_spread": 0.101506,
+     "case": "pml_2d",
+     "cells": 2400000,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused pair B"
+      }
+     ],
+     "fused_ms_per_step": 0.604912,
+     "fused_spread": 0.097832,
+     "grid_shape": [
+      2000,
+      1200,
+      1
+     ],
+     "line": 1,
+     "ratio": 0.864598,
+     "source": "bench",
+     "utc": "2026-10-27T16:53:24Z"
+    }
+   ],
+   "product": "fused pair D",
+   "ratio": 0.869501,
+   "ratio_max": 0.874403,
+   "ratio_min": 0.864598,
+   "rows": 2,
+   "slots": [
+    "step_D",
+    "update_E"
+   ],
+   "slower_beyond_spread": false,
+   "status": "measured",
+   "storage": "real",
+   "susceptibilities": 0,
+   "veto_margin": -0.063936
+  },
+  "fused pair D|real|2|0|bracketed|2400001-5399999": {
+   "band": {
+    "hi_cells": 5399999,
+    "lo_cells": 2400001
+   },
+   "bracketed": true,
+   "dimensions": 2,
+   "displaces": [
+    "PML",
+    "ordinary"
+   ],
+   "measurements": [],
+   "product": "fused pair D",
+   "reason": "the verdict changes between 2,400,000 and 5,400,000 cells and no row lies between them",
+   "rows": 0,
+   "slots": [
+    "step_D",
+    "update_E"
+   ],
+   "status": "unmeasured",
+   "storage": "real",
+   "susceptibilities": 0
+  },
+  "fused pair D|real|2|0|bracketed|5400000-5400000": {
+   "band": {
+    "hi_cells": 5400000,
+    "lo_cells": 5400000
+   },
+   "baseline_ms_per_step": 1.039051,
+   "baseline_spread": 0.002472,
+   "bracketed": true,
+   "dimensions": 2,
+   "displaces": [
+    "PML",
+    "ordinary"
+   ],
+   "fused_ms_per_step": 1.0667,
+   "fused_spread": 0.005526,
+   "measurements": [
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_rtx3090/fused/fused__8.6__triton__pml_2d__res300__p1__d4bb282eaf/lab10__2026-10-27T16_35_22Z.rows.jsonl",
+     "baseline_ms_per_step": 1.03918,
+     "baseline_spread": 0.000915,
+     "case": "pml_2d",
+     "cells": 5400000,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused pair B"
+      }
+     ],
+     "fused_ms_per_step": 1.066232,
+     "fused_spread": 0.005526,
+     "grid_shape": [
+      3000,
+      1800,
+      1
+     ],
+     "line": 1,
+     "ratio": 0.974629,
+     "source": "bench",
+     "utc": "2026-10-27T16:34:28Z"
+    },
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_rtx3090/fused/fused__8.6__triton__pml_2d__res300__p2__61df5fd0c5/lab10__2026-10-27T16_38_31Z.rows.jsonl",
+     "baseline_ms_per_step": 1.038922,
+     "baseline_spread": 0.002472,
+     "case": "pml_2d",
+     "cells": 5400000,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused pair B"
+      }
+     ],
+     "fused_ms_per_step": 1.067168,
+     "fused_spread": 0.001984,
+     "grid_shape": [
+      3000,
+      1800,
+      1
+     ],
+     "line": 1,
+     "ratio": 0.973531,
+     "source": "bench",
+     "utc": "2026-10-27T16:37:37Z"
+    }
+   ],
+   "product": "fused pair D",
+   "ratio": 0.97408,
+   "ratio_max": 0.974629,
+   "ratio_min": 0.973531,
    "rows": 2,
    "slots": [
     "step_D",
@@ -2120,164 +3048,56 @@
    "status": "measured",
    "storage": "real",
    "susceptibilities": 0,
-   "veto_margin": 0.394788
+   "veto_margin": 0.01893
   },
-  "fused pair D|real|2|0|bracketed|2400000-5400000": {
+  "fused pair D|real|3|0|bracketed|64000-64000": {
    "band": {
-    "hi_cells": 5400000,
-    "lo_cells": 2400000
+    "hi_cells": 64000,
+    "lo_cells": 64000
    },
-   "baseline_ms_per_step": 1.661982,
-   "baseline_spread": 0.000962,
+   "baseline_ms_per_step": 0.297953,
+   "baseline_spread": 0.036169,
    "bracketed": true,
-   "dimensions": 2,
+   "dimensions": 3,
    "displaces": [
     "PML",
     "ordinary"
    ],
-   "fused_ms_per_step": 1.525235,
-   "fused_spread": 0.013442,
+   "fused_ms_per_step": 0.507241,
+   "fused_spread": 0.027121,
    "measurements": [
     {
      "after_probe": true,
-     "artifact": "results/fused_timing_sweep_2026-09-20_restrict/triton/pml_2d_res200/rows.jsonl",
-     "baseline_ms_per_step": 1.040179,
-     "baseline_spread": 0.000962,
-     "case": "pml_2d",
-     "cells": 2400000,
+     "artifact": "results/timing_rows_rtx3090/fused/fused__8.6__triton__pml_3d_diagonal__drive__p1__66a0bc3049/lab10__2026-10-27T15_19_58Z.rows.jsonl",
+     "baseline_ms_per_step": 0.297953,
+     "baseline_spread": 0.036169,
+     "case": "pml_3d_diagonal",
+     "cells": 64000,
      "co_fused": [
       {
        "bracketed": false,
        "product": "fused pair B"
       }
      ],
-     "fused_ms_per_step": 0.974459,
-     "fused_spread": 0.013442,
+     "fused_ms_per_step": 0.507241,
+     "fused_spread": 0.027121,
      "grid_shape": [
-      2000,
-      1200,
-      1
+      40,
+      40,
+      40
      ],
      "line": 1,
-     "ratio": 1.067443,
+     "ratio": 0.5874,
      "source": "bench",
-     "utc": "2026-09-21T14:20:45Z"
-    },
-    {
-     "after_probe": true,
-     "artifact": "results/fused_timing_sweep_2026-09-20_restrict/triton/pml_2d_res300/rows.jsonl",
-     "baseline_ms_per_step": 2.283785,
-     "baseline_spread": 0.000551,
-     "case": "pml_2d",
-     "cells": 5400000,
-     "co_fused": [
-      {
-       "bracketed": false,
-       "product": "fused pair B"
-      }
-     ],
-     "fused_ms_per_step": 2.07601,
-     "fused_spread": 0.000403,
-     "grid_shape": [
-      3000,
-      1800,
-      1
-     ],
-     "line": 1,
-     "ratio": 1.100084,
-     "source": "bench",
-     "utc": "2026-09-21T14:35:10Z"
+     "utc": "2026-10-27T15:19:08Z"
     }
    ],
    "product": "fused pair D",
-   "ratio": 1.083763,
-   "ratio_max": 1.100084,
-   "ratio_min": 1.067443,
-   "reason": "no size in it carries 2 rows, so none can set a band edge: 2,400,000 (1 row); 5,400,000 (1 row)",
-   "rows": 2,
-   "slots": [
-    "step_D",
-    "update_E"
-   ],
-   "slower_beyond_spread": false,
-   "status": "unmeasured",
-   "storage": "real",
-   "susceptibilities": 0,
-   "veto_margin": -0.101038
-  },
-  "fused pair D|real|2|0|bracketed|24001-1014000": {
-   "band": {
-    "hi_cells": 1014000,
-    "lo_cells": 24001
-   },
-   "baseline_ms_per_step": 0.64145,
-   "baseline_spread": 0.03265,
-   "bracketed": true,
-   "dimensions": 2,
-   "displaces": [
-    "PML",
-    "ordinary"
-   ],
-   "fused_ms_per_step": 0.963627,
-   "fused_spread": 0.027257,
-   "measurements": [
-    {
-     "after_probe": true,
-     "artifact": "results/fused_timing_sweep_2026-09-20_restrict/triton/pml_2d_res60/rows.jsonl",
-     "baseline_ms_per_step": 0.643119,
-     "baseline_spread": 0.03265,
-     "case": "pml_2d",
-     "cells": 216000,
-     "co_fused": [
-      {
-       "bracketed": false,
-       "product": "fused pair B"
-      }
-     ],
-     "fused_ms_per_step": 0.968193,
-     "fused_spread": 0.010417,
-     "grid_shape": [
-      600,
-      360,
-      1
-     ],
-     "line": 1,
-     "ratio": 0.664247,
-     "source": "bench",
-     "utc": "2026-09-21T14:06:02Z"
-    },
-    {
-     "after_probe": true,
-     "artifact": "results/fused_timing_sweep_2026-09-20_restrict/triton/pml_2d_res130/rows.jsonl",
-     "baseline_ms_per_step": 0.639781,
-     "baseline_spread": 0.006848,
-     "case": "pml_2d",
-     "cells": 1014000,
-     "co_fused": [
-      {
-       "bracketed": false,
-       "product": "fused pair B"
-      }
-     ],
-     "fused_ms_per_step": 0.959062,
-     "fused_spread": 0.027257,
-     "grid_shape": [
-      1300,
-      780,
-      1
-     ],
-     "line": 1,
-     "ratio": 0.66709,
-     "source": "bench",
-     "utc": "2026-09-21T14:11:48Z"
-    }
-   ],
-   "product": "fused pair D",
-   "ratio": 0.665668,
-   "ratio_max": 0.66709,
-   "ratio_min": 0.664247,
-   "reason": "no size in it carries 2 rows, so none can set a band edge: 216,000 (1 row); 1,014,000 (1 row)",
-   "rows": 2,
+   "ratio": 0.5874,
+   "ratio_max": 0.5874,
+   "ratio_min": 0.5874,
+   "reason": "no size in it carries 2 rows, so none can set a band edge: 64,000 (1 row)",
+   "rows": 1,
    "slots": [
     "step_D",
     "update_E"
@@ -2286,27 +3106,27 @@
    "status": "unmeasured",
    "storage": "real",
    "susceptibilities": 0,
-   "veto_margin": 0.292686
+   "veto_margin": 0.34931
   }
  },
  "pinned_sources": {
   "bench": [
-   "1ddb5c3fbce22fea949021481669253f9bc55d1cc2e5eb6af1e900fc4957797e"
+   "577bd4db689fe282cb196dbedb1186530a7ca4f7c64dcff5ff178dfa231abc5e"
   ],
   "deposit_repair": [
-   "dffe30aba77aa4b78fbe98efea570c57c8bc14185b190792c23b710a13966850"
+   "a5e49dfa6ca7f82054d1beb5967e6a12cb9feae6f4bfa0587ce10ca62b9bdd21"
   ],
   "driver": [
-   "e82dde7bf4583f634df5b314a610077fc447a804ae39f598313a46e4e233264a"
+   "e72363e8331aa8a137c21dd96c298e66ac3bc7699000bd486f5622fcfa0889bf"
   ],
   "fastpath": [
-   "61f314fb0cb78d30bea13cf02287f069110e8dedffce4ca17288fda8f827a128"
+   "ff652e91abfb8f24a009c9a7ba063e23e8022ca659c24e7224ef928358f2ea50"
   ],
   "fused_pairs": [
-   "4385f67eda597e6b06cff858181656a3946f80a026c4ede8f48f7f5cd8897e4f"
+   "e51c13f13765554bd8cf4b03427df2b5ec4b310ea92c73dc4a42e29d892a8b60"
   ],
   "fused_polarization_pair": [
-   "b58c47173cbb4d9ecf15976945a4ba6eef2471c4b21c065d7a173cc9df121803"
+   "da6b6e50215728f4a9ec166b41e5b6cff2c9c0827ef3eeb08b8322f03118d402"
   ],
   "metal_device": [
    "not recorded"
@@ -2324,36 +3144,39 @@
  "policy": [
   "keep"
  ],
- "record_sha256": "965317c136adb1cb0370e9249c88e19dc904f063ea540176aee991b9e5299ff4",
- "recorded_utc": "2026-09-21T16:34:52Z",
+ "record_sha256": "a9a670315f1768321f2177c61d0a07ebb0ba7754c2c9911ae48a38235fedb87c",
+ "recorded_utc": "2026-10-27T17:42:29Z",
  "route": {
-  "deposit_repair_sha256": "dffe30aba77aa4b78fbe98efea570c57c8bc14185b190792c23b710a13966850",
+  "deposit_repair_sha256": "a5e49dfa6ca7f82054d1beb5967e6a12cb9feae6f4bfa0587ce10ca62b9bdd21",
   "fell_back": false,
-  "id": "dffe30aba77a:linear:1-per-step:restricted",
+  "id": "a5e49dfa6ca7:linear:1-per-step:restricted",
   "index": "linear",
   "repairs_per_bracketed_step": 1.0,
   "restricted": true,
-  "restriction_counters_recorded_on": "35 of 35 bracketed rows"
+  "restriction_counters_recorded_on": "49 of 49 bracketed rows"
  },
  "rows": {
-  "admitted": 41,
+  "admitted": 63,
   "baseline_legs": 0,
   "duplicates": 0,
-  "excluded": 28,
-  "read": 69
+  "excluded": 4,
+  "read": 67
  },
  "rules": {
-  "admission": "verdict TIMED, every recorded floor passed and all seven recorded (the same-table control among them), the plan's slots served by this table alone (substitution.tables_dispatched), lifted on the device, no foreign process on the row's device by UUID before or after, and a recorded deposit_repair digest",
+  "admission": "verdict TIMED or TIMED-NOT-REPORTABLE with every gating floor passed and all six recorded (the same-table control among them; the within-pass window floor of a row written before the between-pass gate is not read), the plan's slots served by this table alone (substitution.tables_dispatched), lifted on the device, no foreign process on the row's device by UUID before or after, a recorded deposit_repair digest, and the between-pass gate",
   "attribution": "a row times a plan and prices its SOLE fused product, or -- when the plan holds several -- the one and only one of them carrying the deposit-repair bracket, listing the others under co_fused; a plan whose products are all clean prices none of them",
   "band": "per class, the sorted measured cell counts are cut into maximal runs with one verdict and each run is trimmed to sizes with at least min_rows rows; a band is [lo_cells, hi_cells] inclusive whose EDGES are those sizes, its INTERIOR is interpolated (a size between the edges need not have been run and the verdict is applied to it), the trimmed remainder and a verdict change between two adjacent sizes are explicit unmeasured keys, and outside the measured sizes there is no key: nothing is extrapolated",
+  "between_pass": "the between-pass gate (2026-10-16): the admitted rows of one case, grid shape, repair program and timing instrument (window count and the probe floor its target sets) are its passes; two or more enter only when the spread of their fused and of their baseline rates, (max - min) / median, is at most 5 % on each leg, else every row of the point is left out by name; a point timed once has no between-pass spread and is not struck by it",
   "bracketed": "whether any slot the product holds is in the fused leg's deposit_repair_route.bracketed_slots",
+  "fused_leg_preference": "a fused row is admitted only when its process_environment records the package's dispatch-preference switch set to 'span': the shape rule composes its fused leg alone, so the row prices the product a key names and not the composition the default arbitrated",
   "min_rows_per_key": 2,
   "numbers": "fused and baseline ms/step and ratio are medians over the key's rows; fused_spread and baseline_spread are the largest window spread ((max - min) / median) any feeding row showed on that leg",
   "one_program": "rows on more than one deposit-repair route (the whole identity: digest, index, repairs per bracketed step, restricted, fell back), fused-pair emitter, subnormal policy or device refuse to pool; a source some rows pinned and others did not refuses until it is allowed by name, and is then not compared at all",
   "ratio": "baseline ms/step over fused ms/step, per row; above 1 the candidate is faster than what it displaces",
   "storage": "complex when the run shape's complex_storage is true, else real",
   "susceptibilities": "the run shape's susceptibilities count, verbatim, as the release tables pin it",
-  "veto": "a row's margin is 1 - (its fused_spread + its baseline_spread) - its ratio; veto_margin is the least margin of the key's rows and slower_beyond_spread is veto_margin > 0: EVERY row is slower by more than its own two spreads"
+  "veto": "a row's margin is 1 - (its fused_spread + its baseline_spread) - its ratio; veto_margin is the least margin of the key's rows and slower_beyond_spread is veto_margin > 0: EVERY row is slower by more than its own two spreads",
+  "window_spread": "each row's within-pass window spreads are recorded (fused_spread, baseline_spread) and gate no admission; the veto margin reads them as dispatch_preference spells it"
  },
  "schema": "meep_gpu.dispatch_preference.timing/2",
  "subject_barrier": {
@@ -2361,7 +3184,7 @@
   "cannot_cover": "a product's own device text comes from a per-product module (cuda_kernels/fused_electric_pair.py, the triton_kernels/ emitters, the Metal kernel sources) and no timing row pins one: this record cannot say which per-product kernel text it timed",
   "digests": {
    "fused_pairs": [
-    "4385f67eda597e6b06cff858181656a3946f80a026c4ede8f48f7f5cd8897e4f"
+    "e51c13f13765554bd8cf4b03427df2b5ec4b310ea92c73dc4a42e29d892a8b60"
    ]
   },
   "rows_not_recording": {

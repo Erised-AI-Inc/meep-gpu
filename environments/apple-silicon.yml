@@ -8,8 +8,15 @@
 #   conda activate meep-gpu
 #   python -m pip install .          # from the repository root; no extras
 #
+# Which recipe: the certified one for the GPU library. PyTorch is the version
+# the Metal kernels were certified with, as the extra `apple-certified` pins it
+# (INSTALL.md, "Certified and supported versions"). MEEP is conda-forge's
+# double-precision build, which is supported and is not the build the kernels
+# were certified against; the fully certified environment is the certification
+# reference built from environments/locks/.
+#
 # What it installs:
-#   MEEP 1.33.0     conda-forge package `pymeep`, serial (no MPI), double precision
+#   MEEP 1.35.0     conda-forge package `pymeep`, serial (no MPI), double precision
 #   Python 3.12     the interpreter the Metal kernels were certified on
 #   NumPy 2.4       the NumPy series the Metal kernels were certified with
 #   OpenBLAS 0.3.34 in its pthreads build, which loads no OpenMP runtime. NumPy
@@ -25,11 +32,12 @@
 # from PyPI can replace 2.10.0 in this environment. INSTALL.md, section
 # "One OpenMP runtime on an Apple silicon Mac".
 #
-# The rest of the certified environment belongs to the Mac: its GPU
-# architecture (applegpu_g13s, an M1 Max) and the Metal frontend of macOS,
-# version 32023.850.10. Neither can be installed. Every Apple GPU is supported:
-# on another GPU or macOS build the Metal kernels run, labelled uncertified.
-# tools/check_install.py reports this Mac's.
+# The rest of a certified environment belongs to the Mac: its GPU architecture
+# and the Metal frontend of its macOS, applegpu_g13s (an M1 Max) with frontend
+# 32023.921.5 (macOS 27.0.1) or applegpu_g16g (an M4) with 32023.886.1 (macOS
+# 26.6.2). Neither can be installed. Every Apple GPU is supported: on another
+# GPU or macOS build (macOS 27.2, frontend 32023.922.4, included) the Metal
+# kernels run, labelled uncertified. tools/check_install.py reports this Mac's.
 #
 # The Metal Toolchain component of Xcode is not required.
 name: meep-gpu
@@ -38,7 +46,7 @@ channels:
   - nodefaults
 dependencies:
   - python=3.12
-  - pymeep=1.33.0=nompi_*
+  - pymeep=1.35.0=nompi_*
   - numpy=2.4
   - libopenblas=0.3.34=pthreads_*
   - pip

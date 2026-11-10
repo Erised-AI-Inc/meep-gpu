@@ -6,17 +6,19 @@
         python parity/meep_gpu/meep_identity_context_l2.py run --labels FILE --out DIR \\
             [--cases-file parity/meep_gpu/meep_identity_corpus.py] [--timeout S]
 
-WHAT IT ANSWERS. Table 2 judges the array path by words against the identity reference
+What it answers. Table 2 judges the array path by words against the identity reference
 (Tier C, ``meep_identity_tier_c.py``). Beside the word counts it keeps one number from
 its old form as CONTEXT, never as a verdict: the whole-field relative L2 against the
-certification MEEP of the Mac lock (``cert``), a MEEP 1.33.0 single-precision build whose
-compiler contracts multiplies and adds into fused operations. Where the array path holds
-against the identity reference word for word, this number is MEEP's own build-to-build
-spread (the identity reference against ``cert``), and it is what the old relative-L2
-bands of Table 2 were measuring all along.
+MEEP of the interpreter this tool runs under (``cert``). It was measured against the Mac
+lock's MEEP 1.33.0 of that time, a single-precision build whose compiler contracted
+multiplies and adds into fused operations. Where the array path holds against the identity
+reference word for word, this number is MEEP's own build-to-build spread (the identity
+reference against ``cert``), and it is what the old relative-L2 bands of Table 2 were
+measuring all along. The Mac lock's MEEP 1.35.0 does not contract, and 1.0.1's Table 2 was
+cut with no rows of this tool.
 
 HOW, per row and in a process of its own, with the interpreter of the MEEP to compare
-against (``cert``: the Mac lock's environment):
+against (``cert``: a contracting build's environment; the Mac lock's no longer is one):
 
 1. The row is built and lifted on the NumPy reference exactly as Tier C builds it
    (``meep_identity_tier_c.load_cases`` / ``build_case``, the cases file's
@@ -101,8 +103,9 @@ def child(label: str, cases_file: str, out_json: str) -> int:
         from parity.meep_gpu.meep_identity_tier_c import build_case, load_cases, meep_component  # noqa: PLC0415
         from parity.meep_gpu.sweep_corpus_lift_parity import compare_fields  # noqa: PLC0415
 
-        record["meep"] = {"version": str(mp.__version__), "single_precision": bool(mp.is_single_precision()),
-                          "file": os.path.realpath(mp.__file__)}
+        # No path to MEEP: it named the account and the machine the row ran on; the
+        # version and precision are what a reader compares.
+        record["meep"] = {"version": str(mp.__version__), "single_precision": bool(mp.is_single_precision())}
         record["subnormals"] = identity.subnormal_state()
         cases = load_cases(cases_file)
         sim = build_case(cases, mp, label)
@@ -136,7 +139,12 @@ def child(label: str, cases_file: str, out_json: str) -> int:
         record["subnormals_after"] = identity.subnormal_state()
         driver.close()
     except BaseException as exc:  # noqa: BLE001 - a row that cannot be measured is recorded by name
-        record["error"] = f"{type(exc).__name__}: {exc}"[:1500]
+        try:
+            import neutral_ids  # noqa: PLC0415
+        except ImportError:  # imported as a package module, not from parity/meep_gpu
+            from parity.meep_gpu import neutral_ids  # noqa: PLC0415
+        # Neutral before it is cut: an error can name a path, and the row leaves the machine.
+        record["error"] = neutral_ids.text(f"{type(exc).__name__}: {exc}")[:1500]
     record["seconds"] = round(time.time() - started, 3)
     Path(out_json).write_text(json.dumps(record, sort_keys=True, default=str) + "\n", encoding="utf-8")
     return 0 if "error" not in record else 1
@@ -171,6 +179,9 @@ def run(labels: List[str], out: Path, cases_file: str, timeout: float) -> int:
         except subprocess.TimeoutExpired:
             rc = None
         log.close()
+        import neutral_ids  # noqa: PLC0415 - the log leaves the machine (neutral_ids.py)
+
+        neutral_ids.rewrite_file(out / "rows" / f"{label}.log")
         if target.exists():
             row = json.loads(target.read_text(encoding="utf-8"))
         else:

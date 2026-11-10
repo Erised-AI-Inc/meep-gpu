@@ -29,7 +29,7 @@ be MEEP rather than to be reasonable:
   therefore C-contiguous NumPy's, so a NumPy array of shape ``(nx, ny, nz)`` indexes
   directly.
 
-MEASURED against pristine MEEP 1.33.0 (single precision) on ``test_source.py``'s own
+Measured against pristine MEEP 1.33.0 (single precision) on ``test_source.py``'s own
 ``TestAmpFileFunc`` construction — a 1x1 cell at resolution 60, a 0.3 x 0.2 source at
 (0.1, 0.2), a 100x200x1 complex amp_data, ``Ez`` read at the origin after t=200:
 
@@ -41,7 +41,7 @@ MEASURED against pristine MEEP 1.33.0 (single precision) on ``test_source.py``'s
 The last gap is the fixture's float32 storage, not the arithmetic: MEEP reads the
 file as ``realnum``.
 
-WHAT IS NOT HERE, and why. ``amp_func_file`` itself is not read by this package —
+What is not here, and why. ``amp_func_file`` itself is not read by this package —
 ``meep_gpu`` carries no HDF5 dependency (``test_package_boundary`` enforces it), so
 the file stays the caller's to open. :func:`~.from_meep.gpu_compatibility` says so by
 name and points at this module: read the ``<dataset>.re`` / ``<dataset>.im`` pair

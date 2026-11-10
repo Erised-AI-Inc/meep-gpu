@@ -211,3 +211,47 @@ def test_the_flip_column_judges_only_the_references_where_a_row_holds(tmp_path):
     text = table.render(table.build(out, manifest, ["mac_keep", "linux_keep"], {}), "Table 2", "")
     row_c = next(line for line in text.splitlines() if line.startswith("| ") and " t.c " in line)
     assert row_c.split(" | ")[-3] == "-"
+
+
+# ------------------------ a reason that cites a certification round's private evidence
+#: A record directory of the development repository, from neutral pieces (the hygiene
+#: guard refuses it as text in a tracked file).
+CERT = "ce" + "rt"
+
+
+def test_a_reason_citing_private_evidence_is_written_with_a_neutral_description():
+    cited = (f"12 of 20 runs of the row on this host hold ({CERT}/CORPUS5/COUPLER_PROBES.txt, "
+             "COUPLER_RERUNS.txt); 1.0.1 keeps the re-solve")
+    assert table.neutral_reason(cited) == (
+        f"12 of 20 runs of the row on this host hold ({table.EVIDENCE}); 1.0.1 keeps the "
+        "re-solve")
+    assert table.neutral_reason(cited, "2 corpus legs and 6 re-runs") == (
+        "12 of 20 runs of the row on this host hold (2 corpus legs and 6 re-runs); 1.0.1 keeps "
+        "the re-solve")
+    assert table.neutral_reason("an unseeded draw per call (CustomSource)") == (
+        "an unseeded draw per call (CustomSource)")
+    assert CERT + "/" not in table.neutral_reason(f"see {CERT}/C1/REPORT.txt for it")
+
+
+def test_the_table_writes_no_private_path_from_a_record_reason(tmp_path):
+    source = _source(tmp_path, "mac", "keep", [("ex.a", _result(), None),
+                                               ("ex.d", _result(differing=7), None)])
+    out = tmp_path / "tier_b"
+    reason = f"random source, re-run twice ({CERT}/RERUNS/ex_d.txt)"
+    assert archive.main(["--archive", str(out), "--set", "mac_keep", "--mode", "keep",
+                         "--source", str(source), "--exclude", f"ex.d={reason}"]) == 0
+    manifest = {"rows": [
+        {"label": label, "kind": "example", "facts": {},
+         "table2": {"grid_cells": 10, "driver_steps": 2, "rel_l2": None}} for label in ("ex.a", "ex.d")]}
+    text = table.render(table.build(out, manifest, ["mac_keep"], {}), "Table 2", "")
+    assert f"- **ex.d**: random source, re-run twice ({table.EVIDENCE}) (mac_keep: differs)." in text
+    assert CERT + "/" not in text
+    stated = table.render(table.build(out, manifest, ["mac_keep"], {}, {"ex.d": "two re-runs"}),
+                          "Table 2", "")
+    assert "- **ex.d**: random source, re-run twice (two re-runs) (mac_keep: differs)." in stated
+
+
+def test_evidence_takes_a_row_and_a_text(tmp_path):
+    with pytest.raises(SystemExit):
+        table.main(["--archive", str(tmp_path), "--manifest", str(tmp_path / "m.json"),
+                    "--out-md", str(tmp_path / "t.md"), "--evidence", "ex.d"])

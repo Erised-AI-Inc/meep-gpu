@@ -9,7 +9,7 @@ against CPU MEEP's own ``mp.py_do_harminv`` (the external harminv C library) on
 identical signals, run in a subprocess because MEEP must not share a process with
 anything else here.
 
-WHAT THE NUMBERS COME OUT AT, measured (relative, worst case over the sweeps below):
+What the numbers come out at, measured (relative, worst case over the sweeps below):
 
 * single mode, clean, swept over odd and even record lengths, three band
   placements and an offset start: freq 4.6e-15, decay 3.6e-12, amp 4.8e-15
@@ -26,7 +26,7 @@ WHAT THE NUMBERS COME OUT AT, measured (relative, worst case over the sweeps bel
   is still found at a noise level of 3x the signal, with ``err`` risen from 1e-15
   to 1e-3, which is the point of ``err``.
 
-THE FAILURE MODE THIS FILE IS BUILT AGAINST is a confident wrong answer. Harmonic
+The failure mode this file is built against is a confident wrong answer. Harmonic
 inversion will happily fit modes to noise, and the danger is not that it fails but
 that it returns a plausible frequency with a plausible Q. So: pure noise, a
 constant signal, an all-zero signal, a repeated pole and a record shorter than the

@@ -1,6 +1,6 @@
 """Laptop tests for the Metal complex-field / Bloch family.
 
-WHAT THIS FILE IS FOR, and what it deliberately is not. The BYTES are certified by
+What this file is for, and what it deliberately is not. The BYTES are certified by
 ``parity/meep_gpu/gate_metal_complex.py``, which needs a GPU. These tests run
 anywhere and pin the things a byte gate cannot:
 
@@ -12,10 +12,10 @@ anywhere and pin the things a byte gate cannot:
    defect nobody can measure still has to be pinned somewhere, and source text is
    the honest place;
 3. **the plan builder's None-only refusal contract**;
-4. **the registration being ENUMERABLE BUT NOT WIRED**, which is what keeps this
-   tranche out of dispatch while still letting the composition probe sweep it.
+4. **the registration being enumerable but not wired**, which is what keeps this
+   family out of dispatch while still letting the composition probe sweep it.
 
-NO TORCH IS IMPORTED. Everything here is string and predicate work.
+No torch is imported. Everything here is string and predicate work.
 """
 
 from __future__ import annotations
@@ -275,7 +275,7 @@ _INTEGER_PREDICATES = {
 @pytest.mark.parametrize("codes", [(0, 0, 0), (1, 1, 1), (1, 0, 1)])
 @pytest.mark.parametrize("backward", [False, True])
 def test_no_select_in_these_kernels_branches_on_a_FIELD_VALUE(codes, backward):
-    """DENORMALS-ARE-ZERO IS VISIBLE TO PREDICATES ON MPS, NOT ONLY TO ARITHMETIC.
+    """Denormals-are-zero is visible to predicates on MPS, not only to arithmetic.
 
     Measured and recorded in ``metal_kernels.subnormal``: ``x == 0.0f`` is TRUE for a
     subnormal ``x`` and ``x < 0.0f`` is FALSE for a negative subnormal one. So a
@@ -505,13 +505,13 @@ def test_the_phase_is_formed_in_double_then_rounded_to_float32():
 
 
 # ---------------------------------------------------------------------------
-# 6. Registration: four arms, WIRED as of tranche 2
+# 6. Registration: four arms, wired as of the second Metal certification
 # ---------------------------------------------------------------------------
 
 def test_the_family_registers_four_wired_arms():
-    """One arm per slot, all four wired — the tranche-2 state.
+    """One arm per slot, all four wired — the state since the second Metal certification.
 
-    They were ``wired=False`` for a tranche and the flip followed the composition
+    They were ``wired=False`` for one certification and the flip followed the composition
     sweep rather than preceding it. What this pins is the SHAPE: exactly one arm
     per slot from this family, so the family can never be the one that makes a slot
     self-ambiguous.
@@ -578,7 +578,7 @@ def test_registering_the_same_arm_twice_is_refused():
 # 7. Over-coverage, CONSTRUCTED — real engine objects through the predicate
 # ---------------------------------------------------------------------------
 #
-# READING A CLAUSE IS NOT EVIDENCE THAT IT FIRES. Section 4 above uses synthetic
+# Reading a clause is not evidence that it fires. Section 4 above uses synthetic
 # duck objects, which can only exercise the clauses those ducks happen to model.
 # These build REAL Grid/Fields/PML objects with exactly one unsupported feature
 # installed and assert the refusal by name. Torch is still not needed: a host
@@ -587,7 +587,7 @@ def test_registering_the_same_arm_twice_is_refused():
 
 @pytest.fixture(autouse=True)
 def _flush_policy(monkeypatch):
-    """THE ARM64 DEFAULT RESOLVES TO ``keep``, WHICH MPS CANNOT DELIVER.
+    """The arm64 default resolves to ``keep``, which MPS cannot deliver.
 
     ``match_meep`` measures MEEP's own behaviour and MEEP's ``set_zero_subnormals``
     is a no-op on this host, so the process default is exactly the policy this

@@ -26,6 +26,13 @@ field was always empty; it now reads ``foreign_compute_apps_on_pinned_gpu`` join
 pinned device's UUID. ``manifest --code-only`` hashed two fixed development-layout
 prefixes and, on a release-layout root, hashed nothing and returned the digest of an
 empty listing; it now finds the layout by name and refuses a root holding neither.
+
+What a recorder WRITES leaves the machine (``neutral_ids``): every ledger line, the
+environment record and a MEEP build record are written through ``neutral_ids.value``
+(paths under their root's label, GPU UUIDs as card ids, host names as the machine id),
+the box tables of a row as ``timing_host.recorded_compute_apps`` spells them, and the
+host as ``uname -srm`` (no node name). A reader that opens a recorded path resolves it
+first (``neutral_ids.resolve``).
 """
 
 from __future__ import annotations
@@ -96,9 +103,12 @@ def parse_fields(pairs: Sequence[str]) -> Dict[str, Any]:
 
 
 def append(path: str, row: Dict[str, Any]) -> None:
+    """One JSON line, as a record writes it (``neutral_ids.value``): a ledger line and a
+    trace sample leave the machine with the run."""
+    import neutral_ids  # noqa: PLC0415
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
     with open(path, "a", encoding="utf-8") as handle:
-        handle.write(json.dumps(row, sort_keys=True, default=str) + "\n")
+        handle.write(json.dumps(neutral_ids.value(row), sort_keys=True, default=str) + "\n")
         handle.flush()
         os.fsync(handle.fileno())
 
@@ -508,6 +518,15 @@ def meep_build_record(python: str, config_log: Optional[str] = None,
     multiply-add census of those very images (``fma_census``, by
     ``tools/fma_census.py``) and the host's math library (``libm``).
     """
+    import neutral_ids  # noqa: PLC0415
+    record = _meep_build_record(python, config_log, launcher)
+    # What leaves the machine: every path (the interpreter, the config.log, the images
+    # keyed by path, the configure line's prefixes) under its root's label.
+    return neutral_ids.value(record)
+
+
+def _meep_build_record(python: str, config_log: Optional[str],
+                       launcher: Optional[str]) -> Dict[str, Any]:
     record: Dict[str, Any] = {"utc": utc(), "python": python, "launcher": launcher,
                               "config_log": config_log}
     quiet = dict(os.environ)
@@ -524,13 +543,13 @@ def meep_build_record(python: str, config_log: Optional[str] = None,
     if facts is None:
         record["probe_output"] = text[-2000:]
         return record
-    # ONLY THE IMAGES THE PROCESS LOADED: an environment can hold a stale libmeep.33
+    # Only the images the process loaded: an environment can hold a stale libmeep.33
     # beside the libmeep.37 that runs, and a record that hashed both would describe
     # a mix of two builds.
     libraries = [p for p in facts.get("loaded_meep_images", []) if os.path.isfile(p)]
     record["sha256"] = {path: sha256_file(path) for path in libraries}
     record["openmp_linked"] = linked_openmp(libraries)
-    # MEEP IS BUILT WITH OPENMP when one of ITS OWN images links a runtime directly; a
+    # MEEP is built with OpenMP when one of its own images links a runtime directly; a
     # runtime another library brought into the process (OpenBLAS) does not count.
     record["openmp"] = (any(entry["runtimes"] for entry in record["openmp_linked"].values())
                         if libraries else None)
@@ -556,6 +575,7 @@ def meep_build_record(python: str, config_log: Optional[str] = None,
 
 
 def command_meep_build_record(args: Any) -> int:
+    import neutral_ids  # noqa: PLC0415
     record = meep_build_record(args.python, args.config_log, args.launcher)
     for path in args.extra_json or []:
         try:
@@ -563,6 +583,7 @@ def command_meep_build_record(args: Any) -> int:
                 record.setdefault("build", {}).update(json.load(handle))
         except (OSError, ValueError) as error:
             record.setdefault("build_unread", []).append(f"{path}: {error}")
+    record = neutral_ids.value(record)
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
     with open(args.out, "w", encoding="utf-8") as handle:
         json.dump(record, handle, indent=2, sort_keys=True, default=str)
@@ -600,13 +621,22 @@ def environment_record(out: str, *, tree: Optional[str], drivers: Optional[str],
     """The host, every MEEP build, the packages and every resolved parameter.
 
     ``package_env`` is the environment the package versions are probed in: the GPU
-    rows' own (on macOS ``torch`` imports beside MEEP only there)."""
+    rows' own (on macOS ``torch`` imports beside MEEP only there).
+
+    Written as it leaves the machine: the host as ``uname -srm`` (kernel, release and
+    architecture; never the node name ``uname -a`` carries), the GPU listing with each
+    UUID as its card id, the compute apps as ``<card id>, own|other, <memory>`` (no pid),
+    and the whole record through ``neutral_ids.value``. The record returned is the one
+    written."""
+    import neutral_ids  # noqa: PLC0415
     platform = platform or sys.platform
-    record: Dict[str, Any] = {"utc": utc(), "params": params, "gpu": gpu,
+    record: Dict[str, Any] = {"utc": utc(), "params": params,
+                              # a UUID pin as the card id the GPU listing below carries
+                              "gpu": timing_host.recorded_device(gpu),
                               "nice": os.nice(0), "platform": platform,
                               "kmp_duplicate_lib_ok_inherited":
                                   os.environ.get("KMP_DUPLICATE_LIB_OK")}
-    record["uname"] = timing_host.run_text(["uname", "-a"])
+    record["uname"] = timing_host.run_text(["uname", "-srm"])
     record["topology"] = topology or timing_host.topology(platform)
     record["slurm"] = timing_host.slurm_facts()
     record["cpu_state"] = timing_host.cpu_state(platform)
@@ -619,13 +649,13 @@ def environment_record(out: str, *, tree: Optional[str], drivers: Optional[str],
         record["free_g"] = timing_host.run_text(["free", "-g"])
         record["loadavg"] = timing_host.read_file("/proc/loadavg")
     if timing_host.nvidia_smi_available():
-        record["nvidia_smi_gpus"] = timing_host.run_text(
+        record["nvidia_smi_gpus"] = timing_host.recorded_gpus(timing_host.run_text(
             ["nvidia-smi", "--query-gpu=index,uuid,name,driver_version,memory.total,"
              "memory.used,utilization.gpu,compute_cap,persistence_mode,ecc.mode.current",
-             "--format=csv,noheader"])
-        record["nvidia_smi_apps"] = timing_host.run_text(
+             "--format=csv,noheader"]))
+        record["nvidia_smi_apps"] = timing_host.recorded_compute_apps(timing_host.run_text(
             ["nvidia-smi", "--query-compute-apps=gpu_uuid,pid,used_memory",
-             "--format=csv,noheader"])
+             "--format=csv,noheader"]), os.getpid())
         if gpu is not None:
             record["nvidia_smi_clock_performance"] = timing_host.run_text(
                 ["nvidia-smi", "-i", str(gpu), "-q", "-d", "CLOCK,PERFORMANCE"])
@@ -647,6 +677,7 @@ def environment_record(out: str, *, tree: Optional[str], drivers: Optional[str],
         _, code = manifest(tree, True)
         record["tree"] = {"root": os.path.abspath(tree), "layout": layout_of(tree),
                           "code_digest": code}
+    record = neutral_ids.value(record)
     os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
     with open(out, "w", encoding="utf-8") as handle:
         json.dump(record, handle, indent=2, sort_keys=True, default=str)
@@ -676,7 +707,10 @@ def lift_seconds(run_log: Optional[str]) -> Dict[str, float]:
 
 def pinned_foreign(box: Optional[Dict[str, Any]]) -> Optional[List[str]]:
     """Compute apps on the PINNED device other than the row's own process, joined by
-    UUID (``CUDA_VISIBLE_DEVICES`` index -> ``gpus`` -> ``compute_apps``).
+    UUID (``CUDA_VISIBLE_DEVICES`` index -> ``gpus`` -> ``compute_apps``). A row written
+    since the tables leave the machine spells the device as its card id and the row's
+    own process as ``own`` (``timing_host.recorded_compute_apps``); an older row, a raw
+    UUID and the pid. Both tables of one row share one spelling, so the join is the same.
 
     The row's own ``foreign_compute_apps_on_pinned_gpu`` compares an index with a UUID
     and so names a neighbour on ANY device; it is recorded beside this, not instead.
@@ -684,18 +718,18 @@ def pinned_foreign(box: Optional[Dict[str, Any]]) -> Optional[List[str]]:
     if not box:
         return None
     index = str(box.get("CUDA_VISIBLE_DEVICES", "")).split(",")[0].strip()
-    uuid = index if index.startswith("GPU-") else None
+    uuid = index if index.startswith(("GPU-", "c-")) else None
     for line in str(box.get("gpus") or "").splitlines():
         cells = [c.strip() for c in line.split(",")]
         if len(cells) >= 2 and cells[0] == index:
             uuid = cells[1]
     if uuid is None:
         return None
-    own = str(box.get("pid"))
+    own = (timing_host.OWN, str(box.get("pid")))
     found = []
     for line in str(box.get("compute_apps") or "").splitlines():
         cells = [c.strip() for c in line.split(",")]
-        if len(cells) >= 2 and cells[0] == uuid and cells[1] != own:
+        if len(cells) >= 2 and cells[0] == uuid and cells[1] not in own:
             found.append(line.strip())
     return found
 
@@ -845,7 +879,7 @@ def identity_source(facts: Dict[str, Any],
     out: Dict[str, Any] = {"key": source.get("key"), "tier": source.get("tier"),
                            "cells": measured.get("cells"),
                            "bit_identity_words": measured.get("bit_identity_words")}
-    # ITS TIMING IS NOT THE QUESTION: an identity row times the preflight's half-second
+    # Its timing is not the question: an identity row times the preflight's half-second
     # windows, which the spread floor may strike, and is never a figure. What it vouches
     # for is that it ran to the end, three legs, bit-identical, on this row's facts.
     verdict = str(measured.get("verdict") or "")
@@ -908,16 +942,16 @@ def record_gpu(ledger: str, row_dir: str, run_log: Optional[str],
         entry["struck"] = (f"{facts['verdict']}: floors failed "
                            f"{facts['floors_failed'] or facts.get('error')}")
     elif facts["monitors_mode"] != "attached":
-        # THE MEEP SIDE ALWAYS ACCUMULATES ITS FLUX MONITOR: a GPU row timed without
+        # The MEEP side always accumulates its flux monitor: a GPU row timed without
         # one is a different workload and is never divided by a MEEP row.
         entry["struck"] = (f"monitors {facts['monitors_mode']}: a GPU row is timed with "
                            "its monitors attached, as the MEEP rows are")
     elif expect_launched and facts["what_launched"] != expect_launched:
-        # A ROW THAT FELL TO ANOTHER ROUTE IS A NUMBER, NOT AN ERROR, unless it is read.
+        # A row that fell to another route is a number, not an error, unless it is read.
         entry["struck"] = (f"launched {facts['what_launched']}, and this route is "
                            f"{expect_launched}")
     elif gpu_only and not identity["ok"]:
-        # A GPU-ONLY ROW HAS NO ARRAY LEG: its identity is its identity row's, or none.
+        # A GPU-only row has no array leg: its identity is its identity row's, or none.
         entry["struck"] = (f"a gpu-only row carries no array leg and its bit identity is "
                            f"not vouched for: {identity['why']}")
     elif not gpu_only and facts["bit_identical_fused_vs_array"] is not True:
@@ -998,13 +1032,40 @@ def digest_of_record(digest_file: Optional[str], candidate: Optional[str],
     return candidate, f"first-meep-row:{row_id}"
 
 
-def write_lift_digest(digest_file: str, digest: str, origin: str) -> None:
-    """The harness lift's digest becomes the digest of record for its size."""
+def write_lift_digest(digest_file: str, digest: str, origin: str,
+                      structural: Optional[str] = None) -> None:
+    """The harness lift's digest becomes the digest of record for its size; its
+    structural digest (``bench_meep_identical_case.structural_digest``), when given, is
+    written beside it for the labelled context legs."""
     os.makedirs(os.path.dirname(os.path.abspath(digest_file)), exist_ok=True)
     with open(digest_file, "w", encoding="utf-8") as handle:
         handle.write(digest + "\n")
     with open(digest_file[:-len(".sha256")] + ".source", "w", encoding="utf-8") as handle:
         handle.write(f"harness-lift:{origin}\n")
+    if structural:
+        write_structural_digest(digest_file, structural)
+
+
+def structural_digest_file(digest_file: str) -> str:
+    stem = digest_file[:-len(".sha256")] if digest_file.endswith(".sha256") else digest_file
+    return stem + ".structural.sha256"
+
+
+def write_structural_digest(digest_file: str, structural: str) -> None:
+    path = structural_digest_file(digest_file)
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as handle:
+        handle.write(structural + "\n")
+
+
+def structural_digest_of_record(digest_file: Optional[str]) -> Optional[str]:
+    if not digest_file:
+        return None
+    try:
+        with open(structural_digest_file(digest_file), "r", encoding="utf-8") as handle:
+            return handle.read().strip() or None
+    except OSError:
+        return None
 
 
 def configuration_of(measurement: Dict[str, Any]) -> Dict[str, Any]:
@@ -1035,14 +1096,26 @@ def threads_verdict(threads: int, observed: Dict[str, Any]) -> Tuple[bool, Optio
       two or more.
     * ``cpu_seconds_over_wall_min``: at least 0.75 T.
 
-    A row recorded before the baseline existed falls back to the raw count against T.
+    H6 (2026-10-17): the first fact could never hold. Importing MEEP initialises MPI
+    and creates the OpenMP pool in ONE step, so a baseline read after the import already
+    holds the pool (every hybrid row of the 1.0 timing run read 0 added at 2.0 CPU seconds
+    per wall second). A row that records ``omp_threads_busy_added_min`` -- threads gained
+    after a baseline taken BEFORE the import that were busy for half the windows' wall
+    time, minimum over ranks -- is judged by it against T - 1 instead; MPI's idle helper
+    threads do not count toward it. A row recorded before it falls back to the 1.0 rule,
+    and before the baseline existed, to the raw count against T.
     """
     if threads <= 1:
         return True, None
     added = observed.get("omp_threads_added_min")
+    busy_added = observed.get("omp_threads_busy_added_min")
     cpu = observed.get("cpu_seconds_over_wall_min") or 0.0
     floor = THREADS_CPU_FLOOR_PER_THREAD * threads
-    if added is not None:
+    if busy_added is not None:
+        ok = int(busy_added) >= threads - 1 and float(cpu) >= floor
+        counted = (f"{busy_added} threads gained after the pre-import baseline and busy "
+                   f"over the windows (floor {threads - 1})")
+    elif added is not None:
         ok = int(added) >= threads - 1 and float(cpu) >= floor
         counted = f"{added} threads added after MPI initialisation (floor {threads - 1})"
     else:
@@ -1092,7 +1165,8 @@ def record_meep(ledger: str, rows_file: str, row_id: str, run_log: Optional[str]
                 report_text = handle.read()
         except OSError:
             report_text = ""
-    bound_lines = timing_host.binding_report_lines(report_text)[:256]
+    bound_lines = [timing_host.recorded_binding_line(line) for line in
+                   timing_host.binding_report_lines(report_text)[:256]]
     entry["launcher_bindings"] = {"lines": len(bound_lines),
                                   "first": bound_lines[:2], "last": bound_lines[-1:]}
     if measurement is None:
@@ -1139,25 +1213,51 @@ def record_meep(ledger: str, rows_file: str, row_id: str, run_log: Optional[str]
                             ((environment.get("builder") or {}).get("modules")
                              or {}).items()},
     }
+    facts["geometry_digest_structural"] = measurement.get("geometry_digest_structural")
     entry["measured"] = facts
     entry["configuration"] = configuration
-    expected, source = digest_of_record(digest_file, facts["geometry_digest"], row_id)
-    expected = expect_digest or expected
+    context = configuration.get("context")
+    double_context = bool(context) and facts["single_precision"] is not True
+    if context:
+        # A labelled context leg never sets the digest of record. A single-precision one
+        # is held to it whole; a double-precision one to the lift's STRUCTURAL digest
+        # (the digest facts less epsilon's dtype and rounded hash, the two a build's
+        # precision carries), and to the digest of record when no structural one exists.
+        expected = expect_digest or digest_of_record(digest_file, None, row_id)[0]
+        source = "argument" if expect_digest else "digest of record"
+    else:
+        expected, source = digest_of_record(digest_file, facts["geometry_digest"], row_id)
+        expected = expect_digest or expected
     entry["geometry_digest_of_record"] = expected or facts["geometry_digest"]
     entry["geometry_digest_source"] = "argument" if expect_digest else source
+    structural_expected = (structural_digest_of_record(digest_file) if double_context
+                           else None)
+    if context:
+        entry["context"] = {"label": context,
+                            "precision": configuration.get("precision"),
+                            "denominator": False,
+                            "structural_digest_of_record": structural_expected}
     threads = int(configuration.get("threads_per_rank") or 1)
     observed = facts["threads_observed"] or {}
     threads_ok, threads_why = threads_verdict(threads, observed)
     cores_why = cores_verdict(entry, facts)
     conditions = condition_strikes(entry)
     entry["conditions"] = conditions
-    if expected and facts["geometry_digest"] != expected:
-        entry["struck"] = (f"geometry digest {facts['geometry_digest']} is not the "
-                           f"digest of record {expected} "
-                           f"(source: {entry['geometry_digest_source']})")
+    digest_why = None
+    if double_context and structural_expected:
+        if facts["geometry_digest_structural"] != structural_expected:
+            digest_why = (f"structural geometry digest "
+                          f"{facts['geometry_digest_structural']} is not the lift's "
+                          f"{structural_expected} (a context leg)")
+    elif expected and facts["geometry_digest"] != expected:
+        digest_why = (f"geometry digest {facts['geometry_digest']} is not the "
+                      f"digest of record {expected} "
+                      f"(source: {entry['geometry_digest_source']})")
+    if digest_why:
+        entry["struck"] = digest_why
     elif (facts["monitor"] or {}).get("stepped") is not True:
         entry["struck"] = "the flux monitor shows no sign of having been stepped"
-    elif facts["single_precision"] is not True:
+    elif facts["single_precision"] is not True and not context:
         entry["struck"] = "the MEEP build is not single precision"
     elif not threads_ok:
         entry["struck"] = threads_why
@@ -1323,7 +1423,7 @@ def command_record_note(args: Any) -> int:
 
 def decide_binding(probe_dir: str, bindings: Sequence[str], default: str,
                    out: str) -> Tuple[str, Dict[str, Any]]:
-    """THE RULE, FIXED BEFORE ANY DATA: per binding, the median over passes at each
+    """The rule, fixed before any data: per binding, the median over passes at each
     rank count, then the best rank count; the binding whose best is higher is used for
     every MEEP row at or below the physical core count. A tie, or a binding with no
     measurement, leaves the default."""
@@ -1366,7 +1466,7 @@ def decide_binding(probe_dir: str, bindings: Sequence[str], default: str,
 
 
 #: The repeat spread a variance precondition admits by default: the table's own gate
-#: between passes. Which threshold is of record is the owner's call; the rule takes it
+#: between passes. Which threshold is of record is a release decision; the rule takes it
 #: as a parameter and writes the one it used beside the verdict.
 VARIANCE_MAX_SPREAD = 0.05
 VARIANCE_MIN_REPEATS = 5
@@ -1384,15 +1484,15 @@ def variance_verdict(ledger: str, meep_ranks: int, route: Optional[str] = None,
                      tier: str = "priority", max_spread: float = VARIANCE_MAX_SPREAD,
                      min_repeats: int = VARIANCE_MIN_REPEATS,
                      check_ratio: bool = True) -> Dict[str, Any]:
-    """THE VARIANCE PRECONDITION, fixed before any row of record: repeats of ONE point,
+    """The variance precondition, fixed before any row of record: repeats of ONE point,
     the GPU route's fused rate and MEEP's at ``meep_ranks`` per repeat; GO when each side
     (and their per-repeat ratio) has at least ``min_repeats`` readings whose spread is
     within ``max_spread``.
 
-    THE ROW GATE IS NOT THIS GATE (CERT-8 H5). A repeat the bench or the ledger strikes
+    The row gate is not this gate. A repeat the bench or the ledger strikes
     -- a within-window spread above its floor, a struck MEEP leg -- is LISTED and is the
     table's to strike; it is not a box whose spread swamps the differences, which is the
-    one thing this precondition refuses. The 1.0 round's first rule required every
+    one thing this precondition refuses. The 1.0 timing run's first rule required every
     repeat ``TIMED`` and refused a 1.6 % / 3.3 % box over one 7.4 % window.
     """
     entries = [e for e in rows_of(ledger) if e.get("tier") == tier]

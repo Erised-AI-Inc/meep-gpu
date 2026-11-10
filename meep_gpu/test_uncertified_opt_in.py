@@ -9,19 +9,21 @@ default on an identity it SUPPORTS but that no cited gate ran on, records
 certified and why the kernels ran; ``certified`` restricts the kernels to certified
 identities and refuses one it cannot judge.
 
-On the NVIDIA tables supported is a range: compute capability 7.0 to 9.0 on both
-tables, and Triton ``>=3.1,<3.2`` on the Triton table. An identity read outside it is
-refused by name unless the scope is ``any``, which runs it too, recorded
-``supported: False``. A table that is certified for this device and toolchain
-outranks one that is only supported: under the default the supported one is dropped
-by name (rung 4e), and ``any`` composes both. On the Metal table every Apple GPU is
-supported.
+On the NVIDIA tables supported is a SELF-CHECK, not a range: a Triton ``>=3.1`` whose
+health probe compiled and launched a kernel on the device, for the Triton table, and a
+CuPy whose NVRTC can target the device, for the hand-CUDA table. An identity read
+outside it is refused by name unless the scope is ``any``, which runs it too, recorded
+``supported: False``; a Triton that fails its health probe is dropped by name on every
+scope. A table that is only supported composes beside one that is certified (there is
+no rung 4e), and the NOTE names the table it is uncertified on. On the Metal table
+every Apple GPU is supported.
 
 The NVIDIA half substitutes the identity: a stand-in for CuPy that reports a
-compute capability (a supported one neither NVIDIA table certifies, such as 8.9 or
-7.5 while 8.6 is the only certified one, or an unsupported one, such as 6.1 or 10.0),
-a stand-in Triton of another version, and, for rung 4e, ledgers that certify a
-capability on one table only, so it runs on a host with no NVIDIA device. The Apple
+compute capability and its NVRTC's targets (a supported device neither NVIDIA table
+certifies, such as 7.5 or 8.0 while 8.6 and 8.9 are the certified ones, or one NVRTC 11.8
+cannot target, such as 10.0 or 12.0), a stand-in Triton of another version with a
+stand-in health probe, a stand-in stack, and ledgers that certify a capability on one
+table only, so it runs on a host with no NVIDIA device. The Apple
 half substitutes both the environment the Metal ladder reads and the one the cited
 welds record, and steps a real driver; it is skipped by a declared resource on a host
 with no Apple GPU.
@@ -32,6 +34,8 @@ with no Apple GPU.
 
 from __future__ import annotations
 
+import copy
+
 import numpy as np
 import pytest
 
@@ -39,8 +43,10 @@ from conftest import requires_resource_skip
 
 from meep_gpu import backends, fastpath, fastpath_cuda
 from meep_gpu.driver import FdtdDriver
-from meep_gpu.test_capability_records import ledger_also_certified_on
+from meep_gpu.test_capability_records import (ledger_also_certified_on,
+                                              record_certified_stack)
 from meep_gpu.test_dispatch_contract import (
+    NVRTC_118_ARCHS,
     CountingPlan,
     block_cuda,
     block_triton,
@@ -50,6 +56,7 @@ from meep_gpu.test_dispatch_contract import (
     cuda_step_plan,
     cupy_like_grid,
     cupy_like_grid_with_device,
+    failing_triton_probe,
     install_composer,
     install_cuda_composer,
     step_plan,
@@ -67,13 +74,12 @@ SWITCHES = ("MEEP_GPU_DISPATCH", "MEEP_GPU_FUSED", "MEEP_GPU_KERNEL_TABLE",
             "MEEP_GPU_SUBNORMAL_POLICY", "MEEP_GPU_SUBNORMAL_INSTALL", SWITCH, RETIRED)
 
 #: Supported compute capabilities no cited gate ran on: the first two candidates both
-#: NVIDIA tables support and neither certifies (8.9 and 7.5 while 8.6 is the only
-#: certified one), so certifying another architecture (9.0 is the next) leaves them
+#: NVIDIA tables support and neither certifies (7.5 and 8.0 while 8.6 and 8.9 are the
+#: certified ones), so certifying another architecture (9.0 is the next) leaves them
 #: supported and uncertified.
 SUPPORTED_UNCERTIFIED = [(capability, f"{capability[0]}.{capability[1]}")
                          for capability in supported_uncertified_capabilities(2)]
-#: Compute capabilities neither NVIDIA table supports: below the floor and above the
-#: ceiling.
+#: Compute capabilities the stand-in NVRTC (11.8) cannot target: Blackwell devices.
 UNSUPPORTED = [(capability, f"{capability[0]}.{capability[1]}")
                for capability in unsupported_capabilities(2)]
 #: Values that are not one of the three, exact match: the retired ``0`` and ``1``,
@@ -88,9 +94,25 @@ NOTE_TAIL = ("compare the results with a prefer_gpu=False run of the same simula
              "before relying on them")
 
 
-#: The supported range as the NOTE and the per-entry reasons spell it.
-CAPABILITY_SCOPE = "compute capability 7.0 to 9.0"
-TRITON_SCOPE = "Triton >=3.1,<3.2"
+#: What the Triton version is judged against, as the per-entry reasons spell it.
+TRITON_SCOPE = "Triton >=3.1"
+#: How the Triton table's self-check reads on a device its health probe launched on.
+TRITON_DEVICE_SCOPE = ("the Triton health probe compiled and launched a kernel on this "
+                       "device")
+
+
+def _capability_scope(table, spelled):
+    """An admitted compute capability's self-check, as its entry's reason spells it."""
+    if table == "triton":
+        return TRITON_DEVICE_SCOPE
+    return f"the NVRTC 11.8 of this CuPy targets sm_{spelled.replace('.', '')}"
+
+
+def _nvrtc_outside(spelled):
+    """The hand-CUDA table's self-check on a device NVRTC 11.8 cannot target."""
+    return (f"the NVRTC 11.8 of this CuPy targets sm_{NVRTC_118_ARCHS[0]} to "
+            f"sm_{NVRTC_118_ARCHS[-1]}, and none of those loads on "
+            f"sm_{spelled.replace('.', '')}")
 
 
 def _supported_entry_because(what, read, table, scope) -> str:
@@ -122,7 +144,7 @@ def _clean(monkeypatch, tmp_path):
     """Every test starts with the switches unset, dispatch enabled, nothing said, and
     a host FPU that keeps subnormals.
 
-    THE LAST CLAUSE IS SESSION ORDER, not tidiness. MEEP's own initialization flushes
+    The last clause is session order, not tidiness. MEEP's own initialization flushes
     the host on x86-64 and never undoes it, so after any earlier test in the session
     imported MEEP the first freeze here reads "installed by dispatch over the run's
     own flush" and the second does not: two different status lines, and the "said
@@ -170,9 +192,9 @@ def _status(err: str) -> list:
             if line.startswith("meep_gpu: step path fused;")]
 
 
-def _plan_on(monkeypatch, grid, version="3.1.0"):
+def _plan_on(monkeypatch, grid, version="3.1.0", probe=None):
     """One freeze on a stand-in NVIDIA host whose composer fills one slot."""
-    stub_triton(monkeypatch, version)
+    stub_triton(monkeypatch, version, probe=probe)
     install_composer(monkeypatch, step_plan({"step_B": CountingPlan("b")},
                                             {"step_B": "PML"}))
     return fastpath.plan_fast_path(object(), object(), grid)
@@ -279,32 +301,56 @@ def test_the_retired_name_is_refused_by_name_with_its_replacement(
 # --- NVIDIA: what is supported ----------------------------------------------------------
 
 
-@pytest.mark.parametrize("capability,supported", [
-    ((7, 0), True), ((7, 5), True), ((8, 6), True), ((8, 9), True), ((9, 0), True),
-    ((6, 1), False), ((10, 0), False), ((12, 0), False), ("86", True), ("90", True),
-    ("120", False), ("sm_86", False), (None, None)])
-@pytest.mark.parametrize("table", ["triton", "cuda"])
-def test_both_tables_support_compute_capability_7_0_to_9_0(capability, supported, table):
-    assert fastpath.capability_supported(capability, table) is supported
-    assert fastpath.supported_compute_capabilities(table) == ((7, 0), (9, 0))
+NVRTC_86 = (35, 37, 50, 52, 53, 60, 61, 62, 70, 72, 75, 80, 86)
+NVRTC_128 = (50, 52, 53, 60, 61, 62, 70, 72, 75, 80, 86, 87, 89, 90, 100, 101, 120)
+
+
+@pytest.mark.parametrize("capability,archs,supported,compiles_for", [
+    ((8, 6), NVRTC_118_ARCHS, True, "sm_86"), ((8, 9), NVRTC_118_ARCHS, True, "sm_89"),
+    ((7, 0), NVRTC_118_ARCHS, True, "sm_70"), ((6, 1), NVRTC_118_ARCHS, True, "sm_61"),
+    ((10, 0), NVRTC_118_ARCHS, False, None), ((12, 0), NVRTC_118_ARCHS, False, None),
+    ((3, 0), NVRTC_118_ARCHS, False, None),
+    ((10, 0), NVRTC_128, True, "sm_100"), ((12, 0), NVRTC_128, True, "sm_120"),
+    # A binary for X.y loads on X.z, z >= y: the newest listed target of the same major.
+    ((8, 9), NVRTC_86, True, "sm_86"), ((9, 0), NVRTC_86, False, None),
+    ("86", NVRTC_118_ARCHS, True, "sm_86"), ("120", NVRTC_118_ARCHS, False, None)])
+def test_the_hand_cuda_table_supports_what_its_nvrtc_can_target(capability, archs,
+                                                                 supported, compiles_for):
+    """Support is a self-check since 1.0.1, not the range 7.0 to 9.0: a device the
+    installed NVRTC can produce a loadable binary for."""
+    grid = cupy_like_grid_with_device(capability=capability if isinstance(
+        capability, tuple) else (int(capability[:-1]), int(capability[-1])),
+        nvrtc_archs=archs)
+    target = fastpath_cuda.nvrtc_target(grid.xp, capability)
+    assert target["supported"] is supported, target
+    assert target.get("compiles_for") == compiles_for, target
+    assert target["nvrtc"] == "11.8" and target["nvrtc_targets"] == list(archs), target
+
+
+def test_the_hand_cuda_self_check_is_unknown_when_it_has_nothing_to_read():
+    assert fastpath_cuda.nvrtc_target(cupy_like_grid_with_device().xp, None)[
+        "supported"] is None
+    target = fastpath_cuda.nvrtc_target(cupy_like_grid_with_device(nvrtc=None).xp, "8.6")
+    assert target["supported"] is None
+    assert target["because"].startswith("this CuPy's NVRTC would not say what it "
+                                        "targets"), target
 
 
 @pytest.mark.parametrize("version,supported", [
-    ("3.1.0", True), ("3.1.1", True), ("3.1.0+git1234", True), ("3.2.0", False),
-    ("3.0.0", False), ("9.9.9-unreleased", False), ("unknown", False)])
-def test_the_triton_table_supports_triton_3_1(version, supported):
-    """A version with no leading ``major.minor`` was read and cannot be placed in the
-    range, so it is unsupported, not unknown."""
+    ("3.1.0", True), ("3.1.1", True), ("3.1.0+git1234", True), ("3.2.0", True),
+    ("3.3.1", True), ("9.9.9-unreleased", True), ("3.0.0", False), ("2.3.1", False),
+    ("unknown", None), ("", None)])
+def test_the_triton_table_supports_triton_3_1_and_later(version, supported):
+    """``>=3.1``, open above: a later release is checked rather than refused. A version
+    with no leading ``major.minor`` cannot be placed, so it is unknown."""
     assert fastpath.triton_version_supported(version) is supported
 
 
-def test_the_supported_range_names_both_cupy_builds_nvrtc():
+def test_the_supported_text_names_both_self_checks():
     text = fastpath.nvidia_supported_text()
-    assert "compute capability 7.0 to 9.0" in text, text
-    assert "Triton >=3.1,<3.2" in text, text
-    for build, nvrtc in fastpath_cuda.SUPPORTED_NVRTC_BUILDS.items():
-        assert f"{nvrtc} for {build}" in text, text
-    assert set(fastpath_cuda.SUPPORTED_NVRTC_BUILDS) == {"cupy-cuda11x", "cupy-cuda12x"}
+    assert "Triton >=3.1 that compiled and launched the health probe" in text, text
+    assert "a CuPy whose NVRTC can target this device's architecture" in text, text
+    assert "7.0 to 9.0" not in text and "<3.2" not in text, text
 
 
 # --- NVIDIA: a supported compute capability no gate ran on ------------------------------
@@ -327,8 +373,8 @@ def test_a_supported_uncertified_device_dispatches_by_default_and_says_so_once(
     served = block["served"]
     assert served, block
     assert {entry["table"] for entry in served} <= {"triton", "cuda"}
-    # What each table certifies, derived from its ledger rather than typed, so a round
-    # that certifies another architecture does not have to come and edit this line.
+    # What each table certifies, derived from its ledger rather than typed, so a later
+    # certification of another architecture does not have to come and edit this line.
     certified = {"triton": fastpath.validated_compute_capabilities(),
                  "cuda": fastpath_cuda.validated_compute_capabilities()}
     for entry in served:
@@ -337,7 +383,8 @@ def test_a_supported_uncertified_device_dispatches_by_default_and_says_so_once(
         assert entry["certified"] == list(certified[entry["table"]]), entry
         assert entry["supported"] is True, entry
         assert entry["because"] == _supported_entry_because(
-            "GPU compute capability", spelled, entry["table"], CAPABILITY_SCOPE), entry
+            "GPU compute capability", spelled, entry["table"],
+            _capability_scope(entry["table"], spelled)), entry
         # The gates that would certify it are named, as a refusal names them.
         assert entry["welds_without_a_live_run_here"], entry
         assert entry["welds_without_a_live_run_here_count"] >= len(
@@ -362,14 +409,14 @@ def test_a_supported_uncertified_device_dispatches_by_default_and_says_so_once(
     for entry in served:
         listed = ", ".join(entry["certified"])
         assert f"GPU compute capability {spelled} (certified: {listed})" in note, note
-    # THE OWNER'S WORDING, where it is exact: the GPU is supported and not certified,
+    # The owner's wording, where it is exact: the GPU is supported and not certified,
     # and the Triton version beside it (certified) is supported too.
     assert (". They were dispatched because this NVIDIA GPU and toolchain are "
             "supported but not certified bit-identical") in note, note
     assert f". They were dispatched because {_supported_clause('NVIDIA GPU and toolchain are')}; " \
         in note, note
     assert f"{SWITCH}=certified would restrict the kernels to certified ones" in note, note
-    assert note.count("the supported range is") == 1, note
+    assert note.count("supported means") == 1, note
     assert ("counted in the dispatch record under uncertified.served[], which names "
             "the first five in welds_without_a_live_run_here") in note, note
     assert note.endswith(NOTE_TAIL), note
@@ -404,34 +451,42 @@ def test_certified_only_refuses_a_supported_uncertified_device_by_name(
     assert _notes("\n".join(lines)) == []
 
 
-# --- NVIDIA: a compute capability outside the supported range ---------------------------
+# --- NVIDIA: a compute capability neither table can run on ------------------------------
 
 
 @pytest.mark.parametrize("capability,spelled", UNSUPPORTED)
 @pytest.mark.parametrize("value", [None, "supported", "certified"])
 def test_an_unsupported_device_is_refused_by_name(monkeypatch, capsys, capability,
                                                  spelled, value):
-    """``supported`` (the default) names the way past it (``any``); ``certified`` names
-    the restriction instead."""
+    """A device the installed NVRTC cannot target and the installed Triton cannot launch
+    on: the hand-CUDA table is refused by name at rung 4b -- ``supported`` (the default)
+    names the way past it (``any``), ``certified`` names the restriction instead -- and
+    the Triton table is dropped by its health probe at rung 4, on every scope."""
     _set(monkeypatch, value)
     grid = cupy_like_grid_with_device(capability=capability, name=b"another device")
-    assert _plan_on(monkeypatch, grid) is None
+    assert _plan_on(monkeypatch, grid, probe=failing_triton_probe([capability])) is None
     record = fastpath.last_dispatch_report()
     assert record["decision"] == "refused" and record["step_path"] == "array"
     assert record["certified"] is None
     assert record["uncertified"]["admitted"] == []
-    reason = record["refused_because"]
-    assert f"GPU compute capability {spelled} is not in the recorded" in reason, reason
     default = value != "certified"
     tail = fastpath.UNSUPPORTED_HINT if default else fastpath.CERTIFIED_SCOPE_TAIL
-    for table in ("triton", "cuda"):
-        row = record["tables"][table]
-        assert row["candidate"] is False
-        assert row["refused_because"].endswith(tail), row
-        if default:
-            assert ("outside the compute capabilities that table supports "
-                    "(7.0 to 9.0)") in row["refused_because"], row
+    cuda = record["tables"]["cuda"]
+    assert cuda["candidate"] is False
+    assert cuda["refused_because"].startswith(
+        f"GPU compute capability {spelled} is not in the recorded"), cuda
+    assert cuda["refused_because"].endswith(tail), cuda
+    if default:
+        assert (f"outside what that table can run on: {_nvrtc_outside(spelled)}"
+                in cuda["refused_because"]), cuda
+    triton = record["tables"]["triton"]
+    assert triton["candidate"] is False
+    assert triton["refused_because"].startswith(
+        "Triton 3.1.0 imports but cannot compile and launch a kernel on this device "
+        "(RuntimeError: ptxas fatal"), triton
     assert record["environment"]["device_supported"] is False
+    assert record["environment"]["device_supported_by_table"] == {"triton": False,
+                                                                  "cuda": False}
     assert record["environment"]["device_certified"] is False
     lines = _meep_lines(capsys.readouterr().err)
     assert len(lines) == 1, lines
@@ -442,27 +497,31 @@ def test_an_unsupported_device_is_refused_by_name(monkeypatch, capsys, capabilit
 @pytest.mark.parametrize("capability,spelled", UNSUPPORTED)
 def test_an_unsupported_device_runs_under_any_recorded_as_unsupported(
         monkeypatch, capsys, capability, spelled):
+    """``any`` runs the hand-CUDA table on a device its NVRTC cannot target (the Triton
+    table is not consulted here: a Triton that cannot launch is dropped on any scope)."""
     monkeypatch.setenv(SWITCH, "any")
-    grid = cupy_like_grid_with_device(capability=capability, name=b"another device")
-    plan = _plan_on(monkeypatch, grid)
+    monkeypatch.setenv(fastpath.KERNEL_TABLE_SWITCH, "cuda")
+    stub_triton(monkeypatch)
+    monkeypatch.delenv(fastpath.FUSE_ARMS_SWITCH, raising=False)
+    install_cuda_composer(monkeypatch, cuda_step_plan())
+    grid = certified_envelope_grid()
+    grid.xp.cuda = cupy_like_grid_with_device(capability=capability,
+                                              name=b"another device").xp.cuda
+    plan = fastpath.plan_fast_path(certified_envelope_fields(), certified_envelope_pml(),
+                                   grid)
     assert plan is not None, fastpath.last_dispatch_report()["refused_because"]
     record = plan.report()
     assert record["certified"] is False
     assert record["uncertified"]["unsupported_allowed"] is True
-    served = record["uncertified"]["served"]
-    assert served, record["uncertified"]
-    for entry in served:
-        assert entry["read"] == spelled
-        assert entry["supported"] is False, entry
-        assert entry["because"] == _unsupported_entry_because(
-            "GPU compute capability", spelled, entry["table"], CAPABILITY_SCOPE), entry
+    (entry,) = record["uncertified"]["served"]
+    assert (entry["table"], entry["read"], entry["supported"]) == ("cuda", spelled, False)
+    assert entry["because"] == _unsupported_entry_because(
+        "GPU compute capability", spelled, "cuda", _nvrtc_outside(spelled)), entry
     lines = _meep_lines(capsys.readouterr().err)
     status, notes = _status("\n".join(lines)), _notes("\n".join(lines))
     assert len(status) == 1 and status[0].endswith("another device UNCERTIFIED"), lines
     assert "supported," not in status[0], status
     assert len(notes) == 1, lines
-    # Only the GPU is outside the range: the certified Triton is not named as such,
-    # and nothing is called supported.
     assert f"because {_unsupported_clause('NVIDIA GPU', with_range=True)}; " in notes[0], \
         notes
     assert "supported but not certified" not in notes[0], notes
@@ -552,17 +611,18 @@ def test_a_ledger_that_cannot_be_read_leaves_the_device_unjudged(monkeypatch, va
 
 @pytest.mark.parametrize("value", [None, "supported", "certified"])
 def test_an_unsupported_triton_is_refused_by_name(monkeypatch, value):
+    """Older than 3.1: the release the kernels were written against is the floor."""
     _set(monkeypatch, value)
     block_cuda(monkeypatch)
     assert _plan_on(monkeypatch, cupy_like_grid_with_device(),
-                    version="9.9.9-unreleased") is None
+                    version="3.0.0") is None
     record = fastpath.last_dispatch_report()
     row = record["tables"]["triton"]["refused_because"]
-    assert row.startswith("Triton 9.9.9-unreleased is not in the recorded "
+    assert row.startswith("Triton 3.0.0 is not in the recorded "
                           "validated_triton_versions"), row
     if value != "certified":
         assert ("outside the Triton versions the triton table supports "
-                "(>=3.1,<3.2)") in row, row
+                "(>=3.1)") in row, row
         assert row.endswith(fastpath.UNSUPPORTED_HINT), row
     else:
         assert row.endswith(fastpath.CERTIFIED_SCOPE_TAIL), row
@@ -573,51 +633,54 @@ def test_an_unsupported_triton_is_refused_by_name(monkeypatch, value):
 def test_an_unsupported_triton_runs_under_any(monkeypatch, capsys):
     monkeypatch.setenv(SWITCH, "any")
     block_cuda(monkeypatch)
-    plan = _plan_on(monkeypatch, cupy_like_grid_with_device(),
-                    version="9.9.9-unreleased")
+    plan = _plan_on(monkeypatch, cupy_like_grid_with_device(), version="3.0.0")
     assert plan is not None, fastpath.last_dispatch_report()["refused_because"]
     record = plan.report()
     assert record["certified"] is False
     assert record["tables"]["triton"] == {"candidate": True, "refused_because": None}
     assert record["uncertified"]["served"] == [{
-        "table": "triton", "what": "Triton", "read": "9.9.9-unreleased",
+        "table": "triton", "what": "Triton", "read": "3.0.0",
         "certified": list(fastpath.validated_triton_versions()),
-        "because": _unsupported_entry_because("Triton", "9.9.9-unreleased", "triton",
+        "because": _unsupported_entry_because("Triton", "3.0.0", "triton",
                                               TRITON_SCOPE),
         "supported": False}]
-    assert record["environment"]["triton"] == "9.9.9-unreleased"
+    assert record["environment"]["triton"] == "3.0.0"
     assert record["environment"]["triton_certified"] is False
     assert record["environment"]["device_certified"] is True
     notes = _notes(capsys.readouterr().err)
     assert len(notes) == 1, notes
     certified = ", ".join(fastpath.validated_triton_versions())
-    assert f"Triton 9.9.9-unreleased (certified: {certified})" in notes[0], notes
+    assert f"Triton 3.0.0 (certified: {certified})" in notes[0], notes
     assert (f"because {_unsupported_clause('Triton version', with_range=True)}; "
             in notes[0]), notes
     assert "NVIDIA GPU" not in notes[0], notes
 
 
+@pytest.mark.parametrize("version", ["3.1.1", "3.2.0"])
 @pytest.mark.parametrize("value", [None, "supported", "any"])
-def test_a_supported_uncertified_triton_dispatches_by_default(monkeypatch, capsys, value):
+def test_a_supported_uncertified_triton_dispatches_by_default(monkeypatch, capsys, value,
+                                                              version):
     _set(monkeypatch, value)
     block_cuda(monkeypatch)
-    plan = _plan_on(monkeypatch, cupy_like_grid_with_device(), version="3.1.1")
+    plan = _plan_on(monkeypatch, cupy_like_grid_with_device(), version=version)
     assert plan is not None, fastpath.last_dispatch_report()["refused_because"]
     record = plan.report()
     assert record["certified"] is False
     assert record["uncertified"]["served"] == [{
-        "table": "triton", "what": "Triton", "read": "3.1.1",
+        "table": "triton", "what": "Triton", "read": version,
         "certified": list(fastpath.validated_triton_versions()),
-        "because": _supported_entry_because("Triton", "3.1.1", "triton", TRITON_SCOPE),
+        "because": _supported_entry_because("Triton", version, "triton", TRITON_SCOPE),
         "supported": True}]
     assert record["environment"]["triton_supported"] is True
+    assert record["environment"]["triton_health"]["healthy"] is True
     lines = _meep_lines(capsys.readouterr().err)
     status = _status("\n".join(lines))
-    assert len(status) == 1 and "triton 3.1.1 supported, UNCERTIFIED" in status[0], lines
+    assert len(status) == 1 and f"triton {version} supported, UNCERTIFIED" in status[0], \
+        lines
     notes = _notes("\n".join(lines))
-    assert len(notes) == 1 and "Triton 3.1.1 (certified:" in notes[0], notes
+    assert len(notes) == 1 and f"Triton {version} (certified:" in notes[0], notes
     assert "welds_without_a_live_run_here" not in notes[0], notes
-    # THE DEVICE IS CERTIFIED HERE, so the NOTE names the Triton version alone and
+    # The device is certified here, so the NOTE names the Triton version alone and
     # never calls the GPU uncertified (the status line says it is certified).
     assert f"because {_supported_clause('Triton version is')}; " in notes[0], notes
     assert "NVIDIA GPU" not in notes[0], notes
@@ -636,22 +699,24 @@ def test_certified_only_refuses_a_supported_uncertified_triton(monkeypatch):
 
 def test_a_table_admitted_on_one_identity_and_refused_on_another_is_dropped_whole(
         monkeypatch, capsys):
-    """A supported Triton on an unsupported device: the version admission moves to
-    ``dropped`` with the device refusal, so the NOTE never names what did not run."""
+    """A supported Triton that fails its health probe on this device: the version
+    admission moves to ``dropped`` with the probe's refusal, so the NOTE never names
+    what did not run."""
     block_cuda(monkeypatch)
     (capability, spelled), = UNSUPPORTED[:1]
     assert _plan_on(monkeypatch, cupy_like_grid_with_device(capability=capability),
-                    version="3.1.1") is None
+                    version="3.1.1", probe=failing_triton_probe([capability])) is None
     record = fastpath.last_dispatch_report()
     assert record["uncertified"]["admitted"] == []
     (dropped,) = record["uncertified"]["dropped"]
     assert (dropped["table"], dropped["what"], dropped["read"]) == (
         "triton", "Triton", "3.1.1")
-    assert f"GPU compute capability {spelled}" in dropped["dropped_because"], dropped
+    assert dropped["dropped_because"].startswith(
+        "Triton 3.1.1 imports but cannot compile and launch a kernel"), dropped
     assert _notes(capsys.readouterr().err) == []
 
 
-# --- NVIDIA: a certified table outranks a supported, uncertified one (rung 4e) ----------
+# --- NVIDIA: a supported table composes beside a certified one (no rung 4e) -------------
 
 
 def _envelope_grid_with_device(capability):
@@ -665,7 +730,11 @@ def _one_table_certifies_9_0(monkeypatch, table):
     """The shipped ledgers, with compute capability 9.0 certified on ``table`` only."""
     other = "triton" if table == fastpath.CUDA_TABLE else fastpath.CUDA_TABLE
     ledgers = {f"{table}_kernels": ledger_also_certified_on(table, "9.0"),
-               f"{other}_kernels": dict(fastpath._fingerprints(other))}  # noqa: SLF001
+               f"{other}_kernels": copy.deepcopy(
+                   dict(fastpath._fingerprints(other)))}  # noqa: SLF001
+    # The bind of 9.0 records its certified stack in the Triton ledger whichever table
+    # it binds.
+    record_certified_stack(ledgers["triton_kernels"], "9.0")
     monkeypatch.setattr(fastpath, "_FINGERPRINTS", ledgers)
 
 
@@ -685,11 +754,11 @@ OUTRANKING = [("cuda", ["step_D", "update_E"], "triton"),
 
 
 @pytest.mark.parametrize("certified,slots,dropped", OUTRANKING)
-@pytest.mark.parametrize("value", [None, "supported", "certified"])
-def test_a_certified_table_outranks_a_supported_uncertified_one(
-        monkeypatch, capsys, certified, slots, dropped, value):
-    """The default never makes a host less certified than the certified table alone."""
-    _set(monkeypatch, value)
+def test_certified_only_runs_the_certified_table_alone(monkeypatch, capsys, certified,
+                                                       slots, dropped):
+    """``certified`` refuses the uncertified table at rung 4b, so that scope runs the
+    certified table alone, certified, as it did when rung 4e existed."""
+    monkeypatch.setenv(SWITCH, "certified")
     _one_table_certifies_9_0(monkeypatch, certified)
     plan = _two_table_plan(monkeypatch)
     assert plan is not None, fastpath.last_dispatch_report()["refused_because"]
@@ -700,18 +769,8 @@ def test_a_certified_table_outranks_a_supported_uncertified_one(
     assert record["uncertified"]["admitted"] == []
     row = record["tables"][dropped]
     assert row["candidate"] is False
-    if value != "certified":
-        assert row["refused_because"] == (
-            f"the {dropped} table is supported but not certified here (GPU compute "
-            f"capability 9.0), and the {certified} table is certified for this device "
-            f"and toolchain; set {SWITCH}=any to compose it too"), row
-        assert row["dropped_for_a_certified_table"] == [certified]
-        assert row["welds_without_a_live_run_here"], row
-        (entry,) = record["uncertified"]["dropped"]
-        assert (entry["table"], entry["read"]) == (dropped, "9.0")
-        assert entry["dropped_because"] == row["refused_because"]
-    else:
-        assert row["refused_because"].endswith(fastpath.CERTIFIED_SCOPE_TAIL), row
+    assert row["refused_because"].endswith(fastpath.CERTIFIED_SCOPE_TAIL), row
+    assert "dropped_for_a_certified_table" not in row, row
     lines = _meep_lines(capsys.readouterr().err)
     assert _notes("\n".join(lines)) == [], lines
     (status,) = _status("\n".join(lines))
@@ -719,15 +778,21 @@ def test_a_certified_table_outranks_a_supported_uncertified_one(
 
 
 @pytest.mark.parametrize("certified,slots,dropped", OUTRANKING)
-def test_any_composes_the_supported_table_beside_the_certified_one(
-        monkeypatch, capsys, certified, slots, dropped):
-    monkeypatch.setenv(SWITCH, "any")
+@pytest.mark.parametrize("value", [None, "supported", "any"])
+def test_the_supported_table_composes_beside_the_certified_one(
+        monkeypatch, capsys, certified, slots, dropped, value):
+    """A certification record no longer decides a slower composition. By
+    default (and under ``any``) the supported table composes beside the certified one,
+    the run is uncertified on it, and the NOTE names the table it is about."""
+    _set(monkeypatch, value)
     _one_table_certifies_9_0(monkeypatch, certified)
     plan = _two_table_plan(monkeypatch)
     assert plan is not None, fastpath.last_dispatch_report()["refused_because"]
     record = plan.report()
     assert record["certified"] is False
     assert sorted(record["composition"]["tables_dispatched"]) == ["cuda", "triton"]
+    assert sorted(plan.slots) == ["step_B", "step_D", "update_E"]
+    assert record["tables"][dropped] == {"candidate": True, "refused_because": None}
     assert [entry["table"] for entry in record["uncertified"]["served"]] == [dropped]
     assert record["uncertified"]["dropped"] == []
     (note,) = _notes(capsys.readouterr().err)
@@ -740,39 +805,36 @@ def test_any_composes_the_supported_table_beside_the_certified_one(
 
 
 @pytest.mark.parametrize("certified,slots,dropped", OUTRANKING)
-def test_a_preference_for_the_dropped_table_is_refused_with_the_drop(
-        monkeypatch, certified, slots, dropped):
-    """Rung 4d's named refusal, carrying why the table it names is not a candidate."""
+@pytest.mark.parametrize("value", [None, "any"])
+def test_a_preference_for_the_uncertified_table_is_honoured_uncertified(
+        monkeypatch, certified, slots, dropped, value):
+    """Both tables are candidates, so a preference for either orders them; the run is
+    uncertified on the table that is not certified here."""
+    _set(monkeypatch, value)
     _one_table_certifies_9_0(monkeypatch, certified)
     monkeypatch.setenv(fastpath.BACKEND_PREFERENCE_SWITCH, dropped)
-    assert _two_table_plan(monkeypatch) is None
-    record = fastpath.last_dispatch_report()
-    reason = record["refused_because"]
-    assert reason.startswith(f"{fastpath.BACKEND_PREFERENCE_SWITCH}={dropped} names no "
-                             "candidate table on this host"), reason
-    assert reason.endswith(f"; {dropped}: {record['tables'][dropped]['refused_because']}")
-    assert record["arbitration"]["refused_because"] == reason
-    # ...and with ``any`` the preference is honoured, uncertified.
-    monkeypatch.setenv(SWITCH, "any")
     plan = _two_table_plan(monkeypatch)
     assert plan is not None, fastpath.last_dispatch_report()["refused_because"]
-    assert plan.report()["arbitration"]["effective_order"][0] == dropped
+    assert plan.report()["arbitration"]["effective_order"] == [dropped, certified]
     assert plan.report()["certified"] is False
 
 
-def test_a_preference_for_the_certified_table_is_unchanged(monkeypatch):
+def test_a_preference_for_the_certified_table_puts_it_first(monkeypatch):
     _one_table_certifies_9_0(monkeypatch, "cuda")
     monkeypatch.setenv(fastpath.BACKEND_PREFERENCE_SWITCH, "cuda")
     plan = _two_table_plan(monkeypatch)
     assert plan is not None, fastpath.last_dispatch_report()["refused_because"]
-    assert plan.report()["certified"] is True
-    assert plan.report()["arbitration"]["effective_order"] == ["cuda"]
+    assert plan.report()["arbitration"]["effective_order"] == ["cuda", "triton"]
+    # The supported Triton table fills the slot the hand-CUDA table left free, so the
+    # run is uncertified on it.
+    assert plan.report()["composition"]["tables_dispatched"] == ["cuda", "triton"]
+    assert plan.report()["certified"] is False
 
 
 def test_the_kernel_table_switch_naming_the_uncertified_table_runs_it_uncertified(
         monkeypatch, capsys):
-    """Rung 3 leaves the other table unconsulted, so no certified table is a candidate
-    and rung 4e has nothing to prefer: the table asked for runs, with the NOTE."""
+    """Rung 3 leaves the other table unconsulted: the table asked for runs, with the
+    NOTE."""
     _one_table_certifies_9_0(monkeypatch, "cuda")
     monkeypatch.setenv(fastpath.KERNEL_TABLE_SWITCH, "triton")
     plan = _two_table_plan(monkeypatch)
@@ -783,9 +845,9 @@ def test_the_kernel_table_switch_naming_the_uncertified_table_runs_it_uncertifie
     assert len(_notes(capsys.readouterr().err)) == 1
 
 
-def test_an_unreadable_table_is_not_dropped_for_a_certified_one(monkeypatch):
-    """Rung 4e drops what was ADMITTED uncertified; an unjudged table was admitted by
-    nothing and composes as it did before."""
+def test_an_unreadable_table_composes_beside_a_certified_one(monkeypatch):
+    """An unjudged table was admitted by nothing and composes beside the certified
+    one; the verdict is unknown."""
     monkeypatch.setattr(fastpath, "_FINGERPRINTS", {
         "triton_kernels": dict(fastpath._fingerprints("triton")),  # noqa: SLF001
         "cuda_kernels": {"_unreadable": "a stand-in read error"}})
@@ -801,13 +863,14 @@ def test_an_unreadable_table_is_not_dropped_for_a_certified_one(monkeypatch):
 
 
 @pytest.mark.parametrize("capability,version,supported,outside", [
-    ((6, 1), "3.1.1", "Triton version is", "NVIDIA GPU"),
-    ((7, 5), "3.2.0", "NVIDIA GPU is", "Triton version")])
+    ((7, 5), "3.0.0", "NVIDIA GPU is", "Triton version")])
 def test_under_any_a_mixed_host_says_which_identity_is_supported(
         monkeypatch, capsys, capability, version, supported, outside):
-    """One identity inside the supported range, the other outside it: the NOTE calls
-    supported only the one that is, names the other as what ``any`` ran, and states
-    the range once."""
+    """One identity supported, the other not: the NOTE calls supported only the one that
+    is, names the other as what ``any`` ran, and states what supported means once. (A
+    supported Triton on an unsupported GPU is no longer a Triton-table state: the GPU is
+    supported for that table exactly when the health probe launches on it, and a Triton
+    whose probe fails is dropped on every scope.)"""
     monkeypatch.setenv(SWITCH, "any")
     plan = _plan_on(monkeypatch, cupy_like_grid_with_device(capability=capability),
                     version=version)
@@ -822,7 +885,7 @@ def test_under_any_a_mixed_host_says_which_identity_is_supported(
     (note,) = _notes(capsys.readouterr().err)
     assert (f"because {_supported_clause(supported)}; and "
             f"{_unsupported_clause(outside, with_range=False)}") in note, note
-    assert note.count("the supported range is") == 1, note
+    assert note.count("supported means") == 1, note
     assert "GPU and toolchain" not in note, note
     assert note.endswith(NOTE_TAIL), note
 
@@ -831,14 +894,15 @@ def test_a_hand_cuda_run_claims_no_toolchain(monkeypatch, capsys):
     """The hand-CUDA table reads no toolchain version, so on a supported, uncertified
     GPU its NOTE calls the GPU supported and says nothing about a toolchain."""
     monkeypatch.setenv(fastpath.KERNEL_TABLE_SWITCH, "cuda")
-    plan = _two_table_plan(monkeypatch, capability=(8, 9))
+    # 8.7 retires 8.9 as the uncertified example: 8.9 is certified now; no round ran on 8.7.
+    plan = _two_table_plan(monkeypatch, capability=(8, 7))
     assert plan is not None, fastpath.last_dispatch_report()["refused_because"]
     record = plan.report()
     assert record["certified"] is False
     assert record["composition"]["tables_dispatched"] == ["cuda"]
     (entry,) = record["uncertified"]["served"]
     assert entry["because"] == _supported_entry_because(
-        "GPU compute capability", "8.9", "cuda", CAPABILITY_SCOPE), entry
+        "GPU compute capability", "8.7", "cuda", _capability_scope("cuda", "8.7")), entry
     lines = _meep_lines(capsys.readouterr().err)
     (status,) = _status("\n".join(lines))
     assert status.endswith("supported, UNCERTIFIED"), status
@@ -947,7 +1011,7 @@ def _environment(monkeypatch, fact=None, value=None, recorded=None) -> None:
         return toolchain
 
     monkeypatch.setattr(metal_dispatch, "metal_toolchain", substituted)
-    # ONE CITED WELD, holding one live run for the recorded architecture; a recorded
+    # One cited weld, holding one live run for the recorded architecture; a recorded
     # architecture of None is a weld whose entry cannot be read as per-architecture
     # runs (``metal_dispatch.cited_environments``).
     runs = (recorded,) if recorded.get("architecture") else None
@@ -1014,7 +1078,7 @@ def test_an_uncertified_metal_environment_runs_by_default_and_matches_a_certifie
     assert f"{SWITCH}=any" not in notes[0] and RETIRED not in notes[0], notes
     status = [line for line in lines if line.startswith("meep_gpu: step path fused;")]
     assert len(status) == 1, lines
-    # SUPPORTED IS NOT CERTIFIED: an Apple GPU no weld ran on is both, by name.
+    # Supported is not certified: an Apple GPU no weld ran on is both, by name.
     expected = ("(applegpu_other) supported, UNCERTIFIED" if fact == "architecture"
                 else "(applegpu_test0) certified")
     assert status[0].endswith(expected), status

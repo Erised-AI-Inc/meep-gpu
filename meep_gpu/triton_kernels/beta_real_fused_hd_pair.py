@@ -1,7 +1,7 @@
 """The H->D weld on the two REAL beta cells -- ``k_point`` out of the simulated plane.
 
-ONE PRODUCT, TWO VARIANTS, TWO BOARD CELLS, and the two differ in the CURL HALF AND
-NOTHING ELSE::
+One product, two variants, two board cells, and the two differ in the curl half and
+nothing else::
 
     H_to_D  (real beta run  -> real beta PML)         1 instance
         examples:refl-angular-kz2d.py
@@ -14,7 +14,7 @@ carry ``withdraw_in_seam: false``, ``integrated_electric_sources: 0`` and
 ``served_by: null``.
 
 =============================================================================
-WHY BOTH CELLS' ``update_H`` HALF IS THE CERTIFIED REAL BODY
+Why both cells' ``update_H`` half is the certified real body
 =============================================================================
 
 Read off the two arms' own predicates rather than off the board's cell labels:
@@ -38,7 +38,7 @@ copied, for the reason :mod:`.folded_fused_hd_pair` and
 lift to drift.
 
 =============================================================================
-WHAT BETA CHANGES IN THE CURL, AND WHAT THE FOLD CHANGES ON TOP OF IT
+What beta changes in the curl, and what the fold changes on top of it
 =============================================================================
 
 **Beta.** ``k_point`` out of the plane adds the two real scalars ``beta_plus`` and
@@ -53,8 +53,8 @@ exact ``0.0``), the cell-0 ownership mask widened from ``== METALLIC`` to
 ``!= PERIODIC``, and a SECOND mask block zeroing the LAST plane of a
 ``MIRROR_PERIODIC`` axis. None of that moves a tap.
 
-**SO THE FOREIGN-TAP SET IS THE PLAIN PRODUCT'S ON BOTH VARIANTS, AND THAT IS
-MEASURED RATHER THAN ASSERTED.** :func:`.fused_hd_pair.offset_coordinates` and
+**So the foreign-tap set is the plain product's on both variants, and that is
+measured rather than asserted.** :func:`.fused_hd_pair.offset_coordinates` and
 :func:`.fused_hd_pair.halo_taps` PARSE each certified body's own offset lines and its
 own load lines, and :data:`.fused_hd_pair.HALO_TAPS` declares the six shifted operands
 the parse must produce or RAISE. Both bodies pass that parse unchanged: three own-cell
@@ -62,7 +62,7 @@ loads, six shifted taps at ``(i-1,j,k)``, ``(i,j-1,k)``, ``(i,j,k-1)``, no halo 
 them, no mirror-image read.
 
 =============================================================================
-THE CODES ARE THE VARIANT'S OWN, AND GETTING THAT WRONG IS SILENT
+The codes are the variant's own, and getting that wrong is silent
 =============================================================================
 
 The plain variant's triple is ``[1 if kind == "metallic" else 0 for kind in
@@ -77,7 +77,7 @@ variant's own resolver, and the gate arms the wrong mapping as a mutation that m
 caught on every folded fixture.
 
 =============================================================================
-THE SHAPE: SCRATCH OUTPUT AND FOREIGN-CELL RECOMPUTE
+The shape: scratch output and foreign-cell recompute
 =============================================================================
 
 :mod:`.fused_hd_pair`'s, unchanged, and its docstring states the hazard this removes
@@ -85,8 +85,8 @@ THE SHAPE: SCRATCH OUTPUT AND FOREIGN-CELL RECOMPUTE
 divergent on the mirror-image seam, differing words 4384 -> 0 as ``BLOCK`` went
 64 -> 1024). One dispatch:
 
-* the constitutive half writes ``H_new``/``f_w_H_new`` to LAUNCH-LOCAL WRITE-ONLY
-  SCRATCH, so ``H``, ``f_w_H`` and ``B`` are pre-launch state for the whole dispatch.
+* the constitutive half writes ``H_new``/``f_w_H_new`` to launch-local write-only
+  scratch, so ``H``, ``f_w_H`` and ``B`` are pre-launch state for the whole dispatch.
   On this side the newly written ``f_w_H`` IS ``B`` exactly, so an in-place write
   would hand a racing neighbour ``B`` where it needs ``B_prev`` -- the easily missed
   half of the hazard;
@@ -97,7 +97,7 @@ divergent on the mirror-image seam, differing words 4384 -> 0 as ``BLOCK`` went
 * :class:`.offdiag_scratch_weld.ScratchWeldPairPlan` ROTATES the six ``H``/``f_w_H``
   references after the launch returns.
 
-ONE SUB-LATTICE, ONE COEFFICIENT GROUP, ASSERTED rather than assumed:
+One sub-lattice, one coefficient group, asserted rather than assumed:
 ``SUB_STEPS['step_D']['suffix']`` is ``''`` and
 ``coverage.CONSTITUTIVE_SIDES['H']['half_integer']`` is False, so the curl's ``kms_*``
 and the constitutive's are the same three volumes and the signature binds them once.
@@ -105,7 +105,7 @@ Binding the half-integer set instead compiles, launches, converges, and is a hal
 error in the absorber profile; the gate arms it.
 
 =============================================================================
-WHAT SITS IN THE SEAM, AND WHAT THE FOLD DOES NOT ADD TO IT
+What sits in the seam, and what the fold does not add to it
 =============================================================================
 
 Exactly one statement stands between the two consults and it is the electric
@@ -117,19 +117,19 @@ every D-side one opens after :3315. So the ``complex_fill_carry`` machinery the 
 D->E and B->H pairs need is NOT needed here and is deliberately not imported -- a
 carried fill on this seam would be a pass the driver runs again.
 
-:data:`HOISTS_THE_WITHDRAW` is False in this round because :data:`INSTALLABLE` is
+:data:`HOISTS_THE_WITHDRAW` is False as shipped because :data:`INSTALLABLE` is
 False, which makes ``launch._install_fused_pair``'s withdraw-hoist branch unreachable
 for this product. On these two cells that costs nothing: both instances carry no
 integrated electric source on the board. The clause is still evaluated on every row --
 ignorance is never an empty set, so an undeclared source list is a refusal.
 
 =============================================================================
-IT IS NOT INSTALLED, AND THE ARBITRATION IS MEASURED
+It is not installed, and the arbitration is measured
 =============================================================================
 
 :data:`INSTALLABLE` is False; :data:`INSTALLABLE_REASON` carries the label half and
 the arbitration half, and the arbitration is a MEASUREMENT per row rather than an
-assertion. SERVED ON A FUSION BOARD IS PREDICATE ADMISSION, by that board's own
+assertion. Served on a fusion board is predicate admission, by that board's own
 definition: a released product credits its admitted seam-instances while executing
 NOWHERE. This product is in no ``fastpath.RELEASED_FUSED_ARMS`` envelope and
 ``fastpath`` never plans it. **No timing exists for this shape and none is licensed
@@ -217,16 +217,16 @@ HOISTS_THE_WITHDRAW = False
 INSTALLABLE = False
 
 INSTALLABLE_REASON = (
-    "THE COMPOSER IS NOT OFFERED THIS PRODUCT AT ALL, and that is the first half of "
+    "The composer is not offered this product at all, and that is the first half of "
     "the reason: routing it through launch._install_certified_fused_products costs a "
     "label, and on this backend a label plan_step can write must also be declared in "
     "the DISPATCHER'S own tables -- outside this package by the one-way rule it "
-    "keeps, and outside the round that built this product. "
+    "keeps, and outside the work that built this product. "
     "parity/meep_gpu/dispatch_reachability.CERTIFIED_BUT_NOT_INSTALLED names them "
     "from the right side of that wall. The flag is what keeps a later edit that "
     "lands those lines from installing the product before a composition gate has "
     "driven it end to end. "
-    "THE SECOND HALF IS THE ARBITRATION, and it is MEASURED PER ROW rather than "
+    "The second half is the arbitration, and it is measured per row rather than "
     "asserted: over the driver's step_B - update_H - step_D - update_E slot path "
     "launches are 4 - (installed pairs) and a TWO-SLOT H->D product takes one slot "
     "from EACH neighbour, so installing it is a LOSS where both neighbouring pairs "
@@ -278,7 +278,7 @@ CURL_FUNCTIONS: Dict[str, str] = {
     "folded_beta": "folded_beta_pml_curl_step",
 }
 
-#: Where each certified body ends its index decode. THE ANCHOR CARRIES AN INDENT and
+#: Where each certified body ends its index decode. The anchor carries an indent and
 #: the indent is not uniform across this package: both bodies here are declared at
 #: module scope inside their module's ``if triton is not None:`` guard but at
 #: ``col_offset`` 0, so both anchors carry FOUR spaces, the same as
@@ -326,7 +326,7 @@ def raw_curl_tail(variant: str) -> str:
 def curl_lift_edits(variant: str) -> Tuple[Tuple[str, str], ...]:
     """The nine ``(old, new)`` replacements one variant's curl half takes, GENERATED.
 
-    THE SAME NINE THE PLAIN PRODUCT TAKES, on both bodies, and that is a MEASUREMENT:
+    The same nine the plain product takes, on both bodies, and that is a MEASUREMENT:
     the coordinates and the mask are PARSED out of the certified body by
     :func:`.fused_hd_pair.offset_coordinates` and :func:`.fused_hd_pair.halo_taps`, so
     a beta- or fold-specific change to how either is spelled RAISES here instead of
@@ -402,7 +402,7 @@ if triton is not None:  # pragma: no cover - device code, certified by the gate
     MIRROR_METALLIC = tl.constexpr(_folded.CODE_MIRROR_METALLIC)
     MIRROR_PERIODIC = tl.constexpr(_folded.CODE_MIRROR_PERIODIC)
 
-    # THE CERTIFIED CONSTITUTIVE, imported as device functions rather than copied.
+    # The certified constitutive, imported as device functions rather than copied.
     # Both cells' `update_H` arm delegates to `kernels.constitutive_step` unchanged
     # (the two predicates quoted in the module docstring say so), which is what makes
     # ONE constitutive half serve two cells.
@@ -643,7 +643,7 @@ if triton is not None:  # pragma: no cover - device code, certified by the gate
         HAS_BETA: tl.constexpr,
         BLOCK: tl.constexpr,
     ):
-        """``update_H`` + the FOLDED REAL BETA ``step_D``, one launch, scratch out.
+        """``update_H`` + the folded real beta ``step_D``, one launch, scratch out.
 
         ``BCX``/``BCY``/``BCZ`` take the FOUR values
         :func:`.folded_complex.folded_axis_kinds` resolves, and that classification is
@@ -661,7 +661,7 @@ if triton is not None:  # pragma: no cover - device code, certified by the gate
         i = plane // ny
 
         # ============ THE WELD: update_H, computed into registers, stored to SCRATCH
-        # ON A FOLD this is unchanged: `update_H` runs over the whole STORED extent,
+        # on a fold this is unchanged: `update_H` runs over the whole STORED extent,
         # ghost planes included, and the B those planes hold was written by the
         # driver's near and far fills BEFORE this seam opened -- const input here.
         own0, own1, own2, src0, src1, src2, dw0, dw1, dw2 = _h_cell(
@@ -893,7 +893,7 @@ def fused_kernel_for(variant: str) -> Any:
 def resolve_variant(fields: Any, pml: Any) -> Tuple[Optional[str], Tuple[str, ...]]:
     """Which variant a run resolves to, or ``(None, reasons)``.
 
-    THE RUN DECIDES, NOT THE CALLER, and the two certified curl predicates are
+    The run decides, not the caller, and the two certified curl predicates are
     DISJOINT by their own fold clauses -- :func:`.special_kz.beta_pml_curl_coverage`
     refuses a mirror plane and
     :func:`.folded_complex.folded_beta_pml_curl_coverage` requires one. Both admitting
@@ -925,8 +925,8 @@ def beta_real_fused_hd_pair_coverage(
 
     A conjunction of the two halves' OWN certified predicates plus the seam clauses.
     Nothing is weakened: a configuration either half refuses is refused here with that
-    half's reasons, prefixed so a reader can tell which side said it. THE ORDER IS THE
-    DRIVER'S -- the constitutive half runs first (driver.py:3311) and is asked first.
+    half's reasons, prefixed so a reader can tell which side said it. The order is the
+    driver's -- the constitutive half runs first (driver.py:3311) and is asked first.
     """
     grid = getattr(fields, "grid", None)
     if grid is None:
@@ -954,8 +954,8 @@ def beta_real_fused_hd_pair_coverage(
     if not curl.covered:
         reasons.extend(f"curl half: {reason}" for reason in curl.reasons)
 
-    # THE SEAM'S ONE PASS -- the electric integrated-source withdraw
-    # (driver.py:3313-3314). IGNORANCE IS NEVER AN EMPTY SET.
+    # The seam's one pass -- the electric integrated-source withdraw
+    # (driver.py:3313-3314). Ignorance is never an empty set.
     reasons.extend(_withdraw_hoist.seam_withdraw_reasons(
         fields, sources,
         undeclared=(
@@ -971,7 +971,7 @@ def beta_real_fused_hd_pair_coverage(
         hoists_the_withdraw=HOISTS_THE_WITHDRAW,
         span=REPLACES))
 
-    # THE FOLD IS THE VARIANT SELECTOR HERE, not a refusal: the folded variant
+    # The fold is the variant selector here, not a refusal: the folded variant
     # REQUIRES a mirror plane and the plain one refuses it, both through the certified
     # curl predicates above. What is checked here is only that the resolved variant
     # and the grid agree, so a caller-forced variant cannot bind the wrong codes.
@@ -990,7 +990,7 @@ def beta_real_fused_hd_pair_coverage(
             "plane; folded_axis_kinds resolves no MIRROR code and the folded arm has "
             "no array-path work to specialize")
 
-    # THE ROTATION IS THE PRODUCT'S OWN INVARIANT.
+    # The rotation is the product's own invariant.
     for name in ROTATED:
         if getattr(fields, name, None) is None:
             reasons.append(
@@ -1022,7 +1022,7 @@ def explain_beta_real_fused_hd_pair(fields: Any, pml: Any,
 class BetaRealFusedHdPairPlan(_plain.StartsH, ScratchWeldPairPlan):
     """ONE allocation-free launch for ``update_H`` and one real beta ``step_D``.
 
-    THE SIX ROTATING VOLUMES ARE RESOLVED PER LAUNCH, never cached: the plan owns a
+    The six rotating volumes are resolved per launch, never cached: the plan owns a
     twin of each, reads the engine's CURRENT attribute immediately before the launch
     to decide which of the pair is live, and moves the engine's references only after
     the launch returns. A pointer captured at plan time would be one rotation stale --
@@ -1057,7 +1057,7 @@ class BetaRealFusedHdPairPlan(_plain.StartsH, ScratchWeldPairPlan):
         self.bc = tuple(int(code) for code in codes)
         if len(self.bc) != 3:
             raise ValueError("this plan needs three boundary codes")
-        # THE CODE DOMAIN IS PER VARIANT, and it is checked rather than trusted: the
+        # The code domain is per variant, and it is checked rather than trusted: the
         # plain kernel's ghost branch tests `== METALLIC`, so a 2 or a 3 would take
         # the PERIODIC arm and wrap.
         if self.variant == "beta" and not all(
@@ -1196,7 +1196,7 @@ def plan_beta_real_fused_hd_pair(
     the shipped kernel and hands it here, and dropping the argument is not a slowdown
     but a silent DISARMING.
 
-    THE BOUNDARY CODES COME FROM THE VARIANT'S OWN RESOLVER. The folded variant takes
+    The boundary codes come from the variant's own resolver. The folded variant takes
     :func:`.folded_complex.folded_axis_kinds`' four; the plain one takes the 0/1
     mapping. Crossing them compiles and is wrong on every folded axis.
     """

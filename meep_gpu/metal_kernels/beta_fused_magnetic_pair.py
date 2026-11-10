@@ -1,16 +1,16 @@
 """The fused magnetic B/H pair on a REAL ``grid.beta`` run: ``step_B`` -> ``update_H``.
 
-:mod:`.fused_magnetic_pair` WITH ONE EMITTER SWAPPED, and the swap is the whole
+:mod:`.fused_magnetic_pair` with one emitter swapped, and the swap is the whole
 module. The certified ordinary curl body is replaced by the certified REAL beta curl
-body — :func:`.special_kz.beta_curl_source` with ``backward=False`` — and NOTHING ELSE
-CHANGES: the same wall-clear carry, the same three-line seam, the same constitutive
+body — :func:`.special_kz.beta_curl_source` with ``backward=False`` — and nothing else
+changes: the same wall-clear carry, the same three-line seam, the same constitutive
 lift, the same 27 pointers, the same plan class shape. A reader who wants to check
 that should diff this module's :func:`beta_fused_magnetic_pair_source` output against
 :func:`.fused_magnetic_pair.fused_magnetic_pair_source`'s for the same
 specialisation; the gate's ``transcription`` leg does exactly that and requires the
 difference to be the beta lines and the two struct fields, and nothing else.
 
-WHY THE SWAP IS SOUND. The beta curl IS the certified curl with MEEP's beta pass
+Why the swap is sound. The beta curl IS the certified curl with MEEP's beta pass
 inserted after its per-chunk forms (:func:`.special_kz.beta_curl_source`, through
 :func:`.folded_pass.with_folded_pass`): two scalars and the pass block between the
 forms and the stores, and nothing else. Everything the weld depends on is the
@@ -22,12 +22,12 @@ the pass has updated ``v`` -- which is the array path's order (the pass runs ins
 ``step_B``, the wall clear after it). Those anchors and the pass block are ASSERTED
 at emit time, not assumed.
 
-THE CHUNK RECORD RIDES IN THE PARAMS STRUCT, as in :mod:`.fused_magnetic_pair`: the
+The chunk record rides in the Params struct, as in :mod:`.fused_magnetic_pair`: the
 lifted bodies read ``cb.`` in their bounds blocks, the struct embeds the record
 (:func:`.chunk_bounds.params_member`) and one line aliases it before the body. The
 curl half reads the half-integer entries and the H half the integer ones.
 
-WHY THE CONSTITUTIVE HALF NEEDS NOTHING. ``update_H`` reads nothing beta-dependent —
+Why the constitutive half needs nothing. ``update_H`` reads nothing beta-dependent —
 ``_apply_constitutive_pml`` (stepping.py:2112) never sees ``grid.beta``, which enters
 the two CURLS only (stepping.py:384-391, :467-474) — which is the same measurement
 :func:`.special_kz.beta_run_constitutive_coverage` already ships on and the reason a
@@ -55,7 +55,7 @@ function is CALLED rather than re-derived here, so the words this kernel receive
 the array path's own bits including the sign of a zero.
 
 ===========================================================================
-WHAT THE CORPUS SAYS THIS IS WORTH
+What the corpus says this is worth
 ===========================================================================
 
 ONE seam-instance, reachable: ``examples:refl-angular-kz2d.py``, measured at
@@ -66,9 +66,9 @@ gate exercises the walled specialisation separately rather than leaving it unmea
 The D/E partner cell is worth ZERO — that row injects electrically inside the D/E seam
 — and is not built.
 
-REGISTERED UNWIRED, for :func:`.fused_magnetic_pair.register_arms`'s reason: the
-product spans three driver passes and would contend on ``step_B`` with the wired
-``special_kz`` real-beta curl arm that admits the same configurations.
+Registered with ``wired=False``, for :func:`.fused_magnetic_pair.register_arms`'s
+reason: the product spans three driver passes and would contend on ``step_B`` with
+the wired ``special_kz`` real-beta curl arm that admits the same configurations.
 """
 
 from __future__ import annotations
@@ -163,14 +163,14 @@ kernel void beta_fused_magnetic_pair_step(
     constant Params&    prm     [[buffer(27)]],
     uint idx [[thread_position_in_grid]])
 {
-    // THE SEVEN SCALARS ARE UNPACKED INTO THE CERTIFIED BODIES' OWN NAMES, once,
+    // The seven scalars are unpacked into the certified bodies' own names, once,
     // before any of the lifted text runs. Everything below this line is then
     // character-for-character what `special_kz.beta_curl_source` and
     // `shaders.constitutive_source` emit, plus the wall clear.
     uint nx = prm.nx, ny = prm.ny, nz = prm.nz, n_elem = prm.n_elem;
     float dtdx = prm.dtdx;
     float beta_plus = prm.beta_plus, beta_minus = prm.beta_minus;
-    // THE CHUNK RECORD rides in the same struct (no binding to spare), and this one
+    // The chunk record rides in the same struct (no binding to spare), and this one
     // line gives the lifted bounds blocks the `cb` they read.
 __RECORD_ALIAS__
 
@@ -208,7 +208,7 @@ def beta_fused_magnetic_pair_source(codes: Sequence[int],
                                     contract: str = shaders.CONTRACT_OFF) -> str:
     """One specialised fused source: (boundary triple, walls, contraction mode).
 
-    THE SPLICE IS :func:`.fused_magnetic_pair.fused_magnetic_pair_source`'S, step for
+    The splice is :func:`.fused_magnetic_pair.fused_magnetic_pair_source`'s, step for
     step, with :func:`certified_beta_curl_body` where its ``certified_curl_body``
     stands. The three anchors it depends on are checked here rather than inherited:
     an emitter that moved the store line or renamed a source read would otherwise
@@ -222,7 +222,7 @@ def beta_fused_magnetic_pair_source(codes: Sequence[int],
         raise ValueError(f"zero_metal must be a per-axis triple, got {zero_metal!r}")
 
     curl = certified_beta_curl_body(codes, contract)
-    # THE BETA PASS MUST BE PRESENT. A lift that silently produced the has_beta=0
+    # The beta pass must be present. A lift that silently produced the has_beta=0
     # arm would be the ordinary weld wearing this family's name, and every device
     # leg would still pass because beta=0 IS the ordinary arithmetic.
     for statement in (folded_pass.FOLDED_PASS_BEGIN, "float bi0 = -(beta_plus * b);",
@@ -364,9 +364,9 @@ def metal_beta_fused_magnetic_pair_coverage(fields: Any, pml: Any,
     if not magnetic.covered:
         reasons.extend(f"constitutive half: {reason}" for reason in magnetic.reasons)
 
-    # THE SOURCE SEAM. A MAGNETIC source is injected BETWEEN the two halves
+    # The source seam. A MAGNETIC source is injected BETWEEN the two halves
     # (driver.py:3283-3284), so a fused pair would consume a pre-injection B.
-    # IGNORANCE IS NEVER AN EMPTY SET: `Fields` does not hold the source list, so a
+    # Ignorance is never an empty set: `Fields` does not hold the source list, so a
     # predicate that inferred "no sources" from not being told would be the
     # over-covering refusal this clause exists to prevent. An ELECTRIC source is
     # injected in the D/E half and does NOT disqualify the pair.
@@ -387,7 +387,7 @@ def metal_beta_fused_magnetic_pair_coverage(fields: Any, pml: Any,
         return Coverage(False,
                         tuple(dict.fromkeys(reasons + ["fields carries no grid"])))
 
-    # THE TWO FILLS. `special_kz`'s own clause 5 already refuses a mirror plane on
+    # The two fills. `special_kz`'s own clause 5 already refuses a mirror plane on
     # both halves — a FOLDED beta run belongs to :mod:`.folded_beta` — so this
     # restates by NAME what that refusal buys on THIS seam.
     for axis in range(3):
@@ -406,7 +406,7 @@ def metal_beta_fused_magnetic_pair_coverage(fields: Any, pml: Any,
             reasons.append(
                 f"grid does not expose {name}; zero_metal_B cannot be carried inline")
 
-    # THE RUN'S FIRST update_H. The array path starts H and f_w from B on the dsigw
+    # The run's first update_H. The array path starts H and f_w from B on the dsigw
     # cells at that update (stepping.separate_h_from_b) and the lifted H body does
     # not, so this pair takes that update only where the start cannot change a word
     # (launch.h_start_reasons), asked with no source list as fused_magnetic_pair asks.
@@ -473,7 +473,7 @@ def _params_tensor(shape: Sequence[int], dtdx: float, beta_plus: float,
     The record is :func:`.chunk_bounds.pack` of the validated ``int32[25]`` words,
     embedded at byte 28 (every member is four bytes, so the struct has no padding).
 
-    PLAN-OWNED AND OUTSIDE THE RESIDENCY REGISTRY, for
+    Plan-owned and outside the residency registry, for
     :func:`.fused_magnetic_pair._params_tensor`'s reason: :meth:`.Residency.mirror`
     binds float32 and complex64 volumes and refuses anything else BY NAME, and this
     record is neither. Built here, once, at plan time. Nothing on the launch path
@@ -525,7 +525,7 @@ def plan_metal_beta_fused_magnetic_pair(
     codes = tuple(1 if kind == "metallic" else 0
                   for kind in _boundary_kinds(grid, pml))
     walls = zero_metal_axes(grid)
-    # THE COEFFICIENTS ARE THE CURL ARM'S OWN, called rather than re-derived:
+    # The coefficients are the curl arm's own, called rather than re-derived:
     # stepping.py:797-811 evaluated on the objects the array path evaluates it on,
     # so the intermediate precision is the array path's too.
     beta_plus, beta_minus = special_kz.beta_curl_coefficients(
@@ -537,7 +537,7 @@ def plan_metal_beta_fused_magnetic_pair(
         volumes.append(name)
         return residency.mirror(name, host, constant=constant)
 
-    # THE ORDER HERE IS THE SIGNATURE'S ORDER and nothing else keeps them in step.
+    # The order here is the signature's order and nothing else keeps them in step.
     flux = [bind(name, getattr(fields, name)) for name in ("Bx", "By", "Bz")]
     auxiliary = [bind("fu_" + name, getattr(fields, "fu_" + name))
                  for name in ("Bx", "By", "Bz")]
@@ -545,7 +545,7 @@ def plan_metal_beta_fused_magnetic_pair(
     magnetic = [bind(name, getattr(fields, name)) for name in ("Hx", "Hy", "Hz")]
     workspace = [bind("f_w_" + name, getattr(fields, "f_w_" + name))
                  for name in ("Hx", "Hy", "Hz")]
-    # THE B CURL TAKES THE HALF-INTEGER LATTICE and the H constitutive the INTEGER
+    # The B curl takes the half-integer lattice and the H constitutive the INTEGER
     # one (launch.py:109-124; CONSTITUTIVE_SIDES['H']['half_integer'] is False).
     curl_coefficients = [
         bind(f"pml:{stem}_{axis}_h", getattr(pml, f"{stem}_{axis}_h"), constant=True)

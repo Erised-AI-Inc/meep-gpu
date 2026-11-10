@@ -1,6 +1,6 @@
 """LONG HORIZON and DETERMINISM stress for the shipped CUDA kernel families.
 
-WHAT THIS IS FOR, AND WHY IT IS NOT A GATE
+What this is for, and why it is not a gate
 ==========================================
 
 The 26 gates under ``parity/meep_gpu/`` each establish, per family, byte
@@ -16,7 +16,7 @@ A. LONG HORIZON. Every gate stops at 60 launches; a real MEEP run is thousands
    of steps. ``meep_gpu/triton_kernels/no_pml.py:92`` records what happens past
    60 on a sibling track -- ``2d_plain`` at resolution 40, every state array
    compared bytewise after every one of 6000 whole ``FdtdDriver.step`` calls:
-   "identical through step 66, FIRST DIFFERENT AT STEP 67", 28 floats of
+   "identical through step 66, first different at step 67", 28 floats of
    2,457,600, in Bx/By/Dz, the kernel writing ``0x004fbb9e`` where the array path
    writes ``0x00000000``. Its module constant says the same in one field:
    ``no_pml.py:241``, ``"first_divergent_step": 67``. Sixty is not enough, and
@@ -36,7 +36,7 @@ So this file is a STRESS HARNESS, not a gate. It releases nothing, changes no
 predicate and raises no cap. Its verdict field is ``findings``, not ``released``.
 
 =============================================================================
-WHAT IT MEASURES
+What it measures
 =============================================================================
 
 LEG "long": two fixtures built from the SAME digest seed step in lockstep -- one
@@ -53,7 +53,7 @@ LEG "determinism": the SAME case is built and run N times (default
 against the oracle. The oracle is not involved: this leg asks only whether the
 kernel is a function of its inputs.
 
-TWO LADDERS, AND THE SPARSE ONE HAS A MEASURED BLIND SPOT. By default the long
+Two ladders, and the sparse one has a measured blind spot. By default the long
 leg compares at the checkpoints only; ``--compare-every-step`` compares at every
 step. They are not two settings of one instrument, they answer different
 questions, and the difference was measured here rather than assumed: a one-ULP
@@ -81,8 +81,8 @@ case and 20 x 250 per determinism case:
   one checkpoint), so no case passed by not moving. 52/52 determinism cases with
   all 20 repeats in agreement over 4,940 repeat comparisons, and no case skipped
   for build nondeterminism. The 60-launch result the gates certified reproduces
-  under this driver and holds eighty-three times further out ON THE
-  TRANSCRIPTIONS. Whole campaign: 138 s on a laptop.
+  under this driver and holds eighty-three times further out on the
+  transcriptions. Whole campaign: 138 s on a laptop.
 * ``late_persistent_perturbation`` (one field word, one ULP, from step 67 on):
   CAUGHT 26/26 on the sparse ladder and 26/26 dense; ``--bisect`` returned 67 in
   every case; and the harness's own "would a 60-step budget have seen it" field
@@ -97,7 +97,7 @@ case and 20 x 250 per determinism case:
   divergence to, arriving more than four times past the budget every certified
   gate stops at.
 * ``order_dependent_write``: CAUGHT 26/26 by leg D, and carrying no expectation
-  on leg A. ON SEVEN OF THE 26 CASES ONLY SOME REPEATS DISAGREED -- 7, 8, 10, 11
+  on leg A. On seven of the 26 cases only some repeats disagreed -- 7, 8, 10, 11
   and 12 of 19 -- a nondeterminism that resolves the same way much of the time,
   which is exactly why leg D's finding is a LOWER bound on nondeterminism and why
   20 repeats is a starting point rather than a derived number. On
@@ -110,7 +110,7 @@ case and 20 x 250 per determinism case:
 None of that is evidence about the shipped device bytes. See the closing section.
 
 =============================================================================
-WHAT WOULD MAKE EITHER LEG VACUOUS, AND THE FLOORS THAT REFUSE IT
+What would make either leg vacuous, and the floors that refuse it
 =============================================================================
 
 * ``starts_identical`` -- the two fixtures must be byte-identical on every
@@ -127,13 +127,13 @@ WHAT WOULD MAKE EITHER LEG VACUOUS, AND THE FLOORS THAT REFUSE IT
 * ``determinism_moved`` -- a determinism leg on a run that changed no state is
   20 repeats of "+0.0 == +0.0". Repeat 0 must have moved state by each
   checkpoint or the checkpoint is vacuous.
-* THE PLANTED DEFECTS. A stress leg nobody has seen fail measures nothing; see
+* The planted defects. A stress leg nobody has seen fail measures nothing; see
   :data:`PLANTED_DEFECTS`, and ``--plant`` to arm one. Two of them MUST be caught
   by one leg and MUST NOT be caught by the other, which is the only thing that
   separates a working comparator from one that has degenerated into failing
   everything.
 
-THE DRIVE IS SINUSOIDAL, AND THAT IS A CORRECTION, NOT A PREFERENCE. Every gate
+The drive is sinusoidal, and that is a correction, not a preference. Every gate
 moves its sources between launches by ``_ADVANCE = 0.97`` so the auxiliary does
 not settle. Over 60 launches that is right; over 5000 it is not.
 :func:`measure_geometric_drive_death` measures where it stops being a drive, in
@@ -180,7 +180,7 @@ other policy's binaries (``probe:4358-4361``)::
 then the same again with ``--subnormal-policy flush`` into ``$OUT/flush`` and its
 own ``CUPY_CACHE_DIR``.
 
-COST, PROJECTED FROM A MEASURED DEVICE NUMBER rather than guessed. The certified
+Cost, projected from a measured device number rather than guessed. The certified
 ``cuda_cylindrical_constitutive_2026-08-20`` artifact ran on the GPU host's RTX A6000
 at a median 0.0373 s per case over 96 cases, and each of those cases is 122
 steps (1 + 60 oracle, 1 + 60 kernel) on grids of this size class -- 0.31 ms per
@@ -194,7 +194,7 @@ rewritten atomically after every case, so an interrupted run keeps everything up
 to the failure; re-running the same command SKIPS cases whose terminal row is
 already in the ledger.
 
-WHAT THIS FILE DOES NOT CLAIM
+What this file does not claim
 =============================
 
 * Nothing here is a release clause. No predicate is read as a gate, no cap is
@@ -204,7 +204,7 @@ WHAT THIS FILE DOES NOT CLAIM
   nowhere near its bound on any of them.
 * The NumPy backend is not the shipped bytes. It cannot see a contraction the
   NVRTC guard exists for, it does not exercise the subnormal policy, and -- for
-  leg D specifically -- SINGLE-THREADED NumPy HAS NO RACES. The determinism leg's
+  leg D specifically -- single-threaded NumPy has no races. The determinism leg's
   NumPy run establishes that the comparator detects a value that is not a
   function of its inputs; it cannot establish that a device kernel has none.
 """
@@ -298,7 +298,7 @@ def drive_scale(step: int) -> np.float32:
 def measure_geometric_drive_death(factor: float = 0.97) -> Dict[str, Any]:
     """Where does the gates' geometric drive stop being a drive?
 
-    MEASURED IN THIS INTERPRETER, not quoted, and the first version of this
+    Measured in this interpreter, not quoted, and the first version of this
     function got the mechanism WRONG in a way worth leaving recorded: it looked
     for the step at which ``0.97**n`` reaches float32 +0.0, and there is no such
     step. Round-to-nearest makes the smallest subnormal a FIXED POINT --
@@ -373,7 +373,7 @@ def backend_xp(backend: str):
 
 
 def case_rng(*parts: Any) -> np.random.Generator:
-    """SEEDED FROM A DIGEST, NEVER FROM ``hash()``.
+    """Seeded from a digest, never from ``hash()``.
 
     Python salts ``hash()`` of a tuple containing strings with ``PYTHONHASHSEED``
     -- measured on this tree, one key gave four distinct seeds in four
@@ -446,7 +446,7 @@ def structure_facts(grid) -> Dict[str, Any]:
 def make_drive(fields, source_names: Sequence[str]) -> Callable[[int], None]:
     """Set this step's sources to ``base * drive_scale(step)``.
 
-    THE BASE IS CAPTURED ONCE. A drive that read the CURRENT source and scaled it
+    The base is captured once. A drive that read the CURRENT source and scaled it
     would be geometric again by another name, and would decay to zero for the same
     reason.
     """
@@ -466,7 +466,7 @@ def make_drive(fields, source_names: Sequence[str]) -> Callable[[int], None]:
 # The families
 # ---------------------------------------------------------------------------
 #
-# EVERY ONE OF THESE IMPORTS ITS ARITHMETIC FROM THE GATE THAT OWNS IT. Not one
+# Every one of these imports its arithmetic from the gate that owns it. Not one
 # line of kernel transcription is spelled here. That is the same rule
 # gate_cuda_folded_constitutive states about its source mutations -- "borrowed
 # from the shared probe so this gate cannot own a second spelling of a defect the
@@ -474,7 +474,7 @@ def make_drive(fields, source_names: Sequence[str]) -> Callable[[int], None]:
 # second copy of ``run_kernel_numpy`` in this file would drift from the gate's,
 # and a stress run against a drifted transcription reports a fact about the copy.
 #
-# The families chosen are the ones with ACCUMULATING AUXILIARY STATE, because
+# The families chosen are the ones with accumulating auxiliary state, because
 # those are the places 5000 steps differ from 60:
 #
 #   pml_curl_{B,D}         the PML split field ``fu``          (gate_cuda_folded_curl)
@@ -487,8 +487,8 @@ def make_drive(fields, source_names: Sequence[str]) -> Callable[[int], None]:
 # ``magnetic_pair`` is the composition the fused magnetic-pair kernels fuse
 # (driver.py:3282-3289: ``step_B`` -> ``fill_symmetry_bc_B`` -> ``zero_metal_B``
 # -> ``fill_folded_far_ghosts_B`` -> ``update_H``). It is carried for leg D
-# because that is where the ownership/carry question lives -- and it is COMPOSED
-# FROM THE TWO IMPORTED TRANSCRIPTIONS, so it does not reproduce the fusion's own
+# because that is where the ownership/carry question lives -- and it is composed
+# from the two imported transcriptions, so it does not reproduce the fusion's own
 # carry. See ``not_established``: this file does not run a fused kernel.
 
 
@@ -611,7 +611,7 @@ def _family_conductive():
 def _family_dispersive_pml_e(arity: Tuple[int, int, int] = (3, 2, 1)):
     """``f_w`` under a pole chain: the constitutive auxiliary plus a subtraction.
 
-    THE ARITY IS UNEQUAL PER COMPONENT on purpose -- ``(3, 2, 1)`` -- because a
+    The arity is unequal per component on purpose -- ``(3, 2, 1)`` -- because a
     chain-length defect is invisible when every component carries the same number
     of poles, which is the gate's own reason for sweeping arities at all.
     """
@@ -630,7 +630,7 @@ def _family_dispersive_pml_e(arity: Tuple[int, int, int] = (3, 2, 1)):
                   else gate.run_kernel_numpy)
 
         def step_kernel() -> None:
-            # THE PLAN IS RE-RESOLVED EVERY STEP, which is what a dispatch does.
+            # The plan is re-resolved every step, which is what a dispatch does.
             # A plan hoisted out of the loop is the ``arm3_stale_pole_plan``
             # hazard the sibling gate arms by name; carrying it here by accident
             # would make this leg measure the harness.
@@ -709,7 +709,7 @@ def _family_ade_update_p(arity: Tuple[int, int, int] = (2, 2, 2)):
 def _family_magnetic_pair():
     """``step_B`` -> the driver's three fold repairs -> ``update_H``, composed.
 
-    THE ORACLE IS THE DRIVER'S OWN SEQUENCE, transcribed from driver.py:3282-3289
+    The oracle is the driver's own sequence, transcribed from driver.py:3282-3289
     with the source injections removed (there are no sources in this fixture)::
 
         step_B(fields, pml)
@@ -718,12 +718,12 @@ def _family_magnetic_pair():
         fill_folded_far_ghosts_B(fields)
         update_H(fields, pml)
 
-    THE KERNEL LEG IS THE SAME SEQUENCE WITH THE TWO CURL/CONSTITUTIVE STEPS
-    REPLACED by the imported transcriptions, and the three repairs left as the
+    The kernel leg is the same sequence with the two curl/constitutive steps
+    replaced by the imported transcriptions, and the three repairs left as the
     ENGINE's own functions on both legs -- they are not kernels, and a copy of
     them here would be a third spelling to drift.
 
-    WHAT THIS IS AND IS NOT. It is the pair the fused magnetic-pair kernels fuse,
+    What this is and is not. It is the pair the fused magnetic-pair kernels fuse,
     run for thousands of steps and repeated for leg D. It is NOT the fused kernel:
     the fusion's own near-fill carry and its ownership mask
     (folded_fused_magnetic_pair.py:324-368) live INSIDE one launch and this
@@ -855,7 +855,7 @@ INEXACT_COURANT = 0.35
 # The planted defects
 # ---------------------------------------------------------------------------
 #
-# A STRESS LEG NOBODY HAS SEEN FAIL MEASURES NOTHING. Each of these wraps a
+# A stress leg nobody has seen fail measures nothing. Each of these wraps a
 # fixture's ``step_kernel`` -- the ORACLE leg is never touched, so a planted
 # defect is a defect in the thing under test and not in the reference.
 #
@@ -872,7 +872,7 @@ def _flip_low_bit(fixture: Fixture, name: str, index: int = 0) -> None:
 
 
 def plant_late_word_perturbation(fixture: Fixture) -> Callable[[int], None]:
-    """ONE WORD, ONE ULP, AT STEP 67 -- and nothing before it.
+    """One word, one ulp, at step 67 -- and nothing before it.
 
     This is the shape of the only past-60 divergence this project has measured
     (``triton_kernels/no_pml.py:241``: ``"first_divergent_step": 67``). It is
@@ -896,10 +896,10 @@ def plant_late_word_perturbation(fixture: Fixture) -> Callable[[int], None]:
 
 
 def plant_late_persistent_perturbation(fixture: Fixture) -> Callable[[int], None]:
-    """ONE FIELD WORD, ONE ULP, AT STEP 67 **AND EVERY STEP AFTER**.
+    """One field word, one ulp, at step 67 **and every step after**.
 
-    THIS EXISTS BECAUSE THE ONE-SHOT VERSION IS A TRANSIENT, and that was
-    MEASURED on this harness before this defect was written rather than reasoned
+    This exists because the one-shot version is a transient, and that was
+    measured on this harness before this defect was written rather than reasoned
     about. Flipping one auxiliary word once at step 67 and then comparing every
     step to 200 on the NumPy backend::
 
@@ -937,7 +937,7 @@ def plant_late_persistent_perturbation(fixture: Fixture) -> Callable[[int], None
 def plant_subnormal_flush_in_aux(fixture: Fixture) -> Callable[[int], None]:
     """Flush subnormal AUXILIARY words to +0.0 after every kernel step.
 
-    THE PHYSICALLY MOTIVATED LATE DEFECT. The sibling track attributes its
+    The physically motivated late defect. The sibling track attributes its
     step-67 divergence to exactly this mechanism -- ``no_pml.py:101``: "The seed
     is CuPy's flush-to-zero meeting ``dtdx * (a difference)`` at the wavefront" --
     and a uniform-seeded fixture has no subnormal word at step 1, so WHEN this
@@ -962,7 +962,7 @@ def plant_subnormal_flush_in_aux(fixture: Fixture) -> Callable[[int], None]:
 
 
 def plant_order_dependent_write(fixture: Fixture) -> Callable[[int], None]:
-    """A CARRY WHOSE DIRECTION IS NOT A FUNCTION OF THE INPUTS.
+    """A carry whose direction is not a function of the inputs.
 
     ``folded_fused_magnetic_pair.py:359-361`` records the ownership mask as being
     about race-freedom rather than the final value: without it, the lane holding
@@ -974,7 +974,7 @@ def plant_order_dependent_write(fixture: Fixture) -> Callable[[int], None]:
     inputs), and one no oracle comparison can see because both orderings are
     plausible answers.
 
-    IT EMULATES A RACE; IT IS NOT ONE. Single-threaded NumPy has no races. What
+    It emulates a race; it is not one. Single-threaded NumPy has no races. What
     this establishes is that leg D's comparator fires on run-to-run variation --
     the property that makes it the only leg that COULD see the device's.
     """
@@ -998,7 +998,7 @@ def plant_order_dependent_write(fixture: Fixture) -> Callable[[int], None]:
 
 
 def plant_deterministic_wrong_word(fixture: Fixture) -> Callable[[int], None]:
-    """WRONG, BUT THE SAME WRONG EVERY RUN. The determinism leg MUST NOT see it.
+    """Wrong, but the same wrong every run. The determinism leg MUST NOT see it.
 
     One auxiliary word is negated after every kernel step. Leg A catches that at
     checkpoint 1; leg D must come back IDENTICAL, because every repeat is wrong in
@@ -1164,7 +1164,7 @@ def run_long_horizon_case(registry, family: str, backend: str, label: str,
                           dense: bool = False) -> Dict[str, Any]:
     """One family, one label: lockstep to the last checkpoint, comparing as we go.
 
-    WHY TWO FIXTURES AND NOT ONE RESTORED. Comparing at checkpoint N by restoring
+    Why two fixtures and not one restored. Comparing at checkpoint N by restoring
     a frozen state and re-running the oracle N times would be O(N^2) and would put
     twelve million array-path steps in a 5000-step leg. Two fixtures stepping in
     lockstep is O(N). The price is that the pair must be shown to START identical,
@@ -1273,7 +1273,7 @@ def run_long_horizon_case(registry, family: str, backend: str, label: str,
             "vacuous": moved == 0.0,
             "elapsed_seconds": time.time() - started,
         }
-        # THE WINDOW ADVANCES. Left un-advanced, every checkpoint would report
+        # The window advances. Left un-advanced, every checkpoint would report
         # movement since STEP 0 -- a number that only grows and can never refuse a
         # run that stopped moving at step 200, which is exactly the vacuity this
         # floor exists to catch.
@@ -1325,7 +1325,7 @@ def run_long_horizon_case(registry, family: str, backend: str, label: str,
     scored = [row for row in case["rows"] if not row["vacuous"]]
     case["scored_checkpoints"] = len(scored)
     case["vacuous_checkpoints"] = len(case["rows"]) - len(scored)
-    # THE READING THE 60-STEP BUDGET WOULD HAVE GIVEN, computed from the rows
+    # The reading the 60-step budget would have given, computed from the rows
     # rather than asserted. This is the number that says whether this leg found
     # anything the certified record could not have.
     within = [row for row in case["rows"] if row["step"] <= GATE_BUDGET]
@@ -1333,7 +1333,7 @@ def run_long_horizon_case(registry, family: str, backend: str, label: str,
         None if first_divergent is None
         else bool(any(not row["identical"] for row in within)))
     if dense:
-        # THE SAME QUESTION ASKED OF THE DENSE SCAN, and it is a different
+        # The same question asked of the dense scan, and it is a different
         # question: a divergence that appears at 67 and heals by 72 is invisible
         # to the checkpoint ladder AND to any 60-launch budget, so the sparse
         # field above says None where this one says False.
@@ -1348,8 +1348,8 @@ def bisect_first_divergent_step(registry, family: str, backend: str, label: str,
                                 plant: Optional[str]) -> Dict[str, Any]:
     """The EXACT first divergent step inside ``(low, high]``, by re-running the pair.
 
-    TWO ASSUMPTIONS, BOTH CARRIED INTO THE ARTIFACT AS FIELDS RATHER THAN LEFT IN
-    A COMMENT, because one of them is MEASURED FALSE on some cases:
+    Two assumptions, both carried into the artifact as fields rather than left in
+    a comment, because one of them is measured false on some cases:
 
     ``assumes_step_reproducibility`` -- a bisection re-runs, so it assumes
     stepping to m twice lands on the same words. On the NumPy backend that holds
@@ -1413,7 +1413,7 @@ def run_determinism_case(registry, family: str, backend: str, label: str,
                          emit: Callable[[Dict[str, Any]], None]) -> Dict[str, Any]:
     """The same case, N times, every repeat compared against the FIRST.
 
-    THE ORACLE IS NOT INVOLVED. This leg does not ask whether the kernel is right;
+    The oracle is not involved. This leg does not ask whether the kernel is right;
     it asks whether the kernel is a FUNCTION -- whether the same inputs give the
     same words. That is the only question a single comparison against a reference
     cannot answer, and the only one that can see a race whose two resolutions are
@@ -1432,7 +1432,7 @@ def run_determinism_case(registry, family: str, backend: str, label: str,
     first_divergent: Optional[int] = None
     divergent_repeats: set = set()
 
-    # FLOOR: ONE REPEAT COMPARES NOTHING. "All repeats agree" with a single
+    # Floor: one repeat compares nothing. "All repeats agree" with a single
     # repeat is the same vacuous pass as an oracle comparison against itself, and
     # it would be reported in the same words as a real twenty-repeat agreement.
     if repeats < 2:
@@ -1447,7 +1447,7 @@ def run_determinism_case(registry, family: str, backend: str, label: str,
         kernel_step: Callable[..., None] = fixture.step_kernel
         if plant:
             kernel_step = PLANTED_DEFECTS[plant]["install"](fixture)
-        # THE BUILD IS PART OF "THE SAME CASE", so it is checked too. Without
+        # The build is part of "the same case", so it is checked too. Without
         # this, a fixture whose construction was itself nondeterministic -- a
         # differently-ordered rng draw, an uninitialised allocation -- would make
         # every repeat disagree, and leg D would report a FIXTURE defect in the
@@ -1533,7 +1533,7 @@ def run_determinism_case(registry, family: str, backend: str, label: str,
     case["scored_checkpoints"] = len(scored)
     case["vacuous_checkpoints"] = len(baseline_moved) - len(scored)
     if not scored:
-        # TWENTY REPEATS OF "+0.0 == +0.0". A case whose kernel moved no state is
+        # Twenty repeats of "+0.0 == +0.0". A case whose kernel moved no state is
         # not a case on which twenty agreeing runs mean anything, and reporting it
         # as agreement is the same vacuity leg A's oracle_moved floor refuses.
         case["skipped"] = ("the kernel changed no state word at any checkpoint; "
@@ -1561,7 +1561,7 @@ class Ledger:
     terminal lines and SKIPS those cases, so an interrupted eight-hour run
     resumes at the case boundary rather than from the top.
 
-    THE GRANULARITY IS THE CASE, NOT THE CHECKPOINT, and that is deliberate:
+    The granularity is the case, not the checkpoint, and that is deliberate:
     resuming mid-case would mean serialising and restoring the fixture state,
     which is a second way to build a fixture and therefore a second thing that can
     differ from the first. The rows of an interrupted case are kept for diagnosis
@@ -1619,7 +1619,7 @@ def carry_forward(previous: Dict[str, Any], ledger: Ledger,
                   leg: str) -> List[Dict[str, Any]]:
     """Cases a PREVIOUS process of this run already finished, read back for the artifact.
 
-    WITHOUT THIS, A RESUMED RUN'S ARTIFACT DESCRIBES ONLY THE LAST PROCESS. The
+    Without this, a resumed run's artifact describes only the last process. The
     ledger keeps every row -- that is what makes the run resumable at all -- but
     ``stress.json`` is the deliverable a reader opens, and one that silently lost
     the first five of nine cases would report "4 cases scored" for a nine-case
@@ -1689,10 +1689,10 @@ def summarize(results: Dict[str, Any]) -> Dict[str, Any]:
             + (f"; exact first divergent step "
                f"{case['bisect']['first_divergent_step']}"
                if case.get("bisect") else "")
-            + ("; A 60-STEP BUDGET WOULD HAVE MISSED IT"
+            + ("; a 60-step budget would have missed it"
                if case["would_a_60_step_budget_have_seen_it"] is False else ""))
 
-    # DENSE-ONLY DIVERGENCES ARE FINDINGS TOO, and they would otherwise fall
+    # Dense-only divergences are findings too, and they would otherwise fall
     # through: a transient that appears and heals between two checkpoints leaves
     # ``first_divergent_checkpoint`` None, so the loop above says nothing about
     # the very case the dense scan exists to find.
@@ -1702,13 +1702,13 @@ def summarize(results: Dict[str, Any]) -> Dict[str, Any]:
     for case in dense_only:
         dense = case["dense"]
         findings.append(
-            f"LONG HORIZON (DENSE ONLY -- the checkpoint ladder saw nothing): "
+            f"Long horizon (dense only -- the checkpoint ladder saw nothing): "
             f"{case['family']}/{case['label']} c={case['courant']}"
             f"{' plant=' + case['plant'] if case.get('plant') else ''} first "
             f"differs at STEP {dense['first_divergent_step']}, divergent on "
             f"{dense['divergent_steps']} of {dense['steps_compared']} steps, "
             f"healed intervals {dense['healed_intervals']}"
-            + ("; A 60-STEP BUDGET WOULD HAVE MISSED IT"
+            + ("; a 60-step budget would have missed it"
                if dense.get("would_a_60_step_budget_have_seen_it") is False else ""))
 
     vacuous_long = sum(c.get("vacuous_checkpoints", 0) for c in scored_long)
@@ -1736,7 +1736,7 @@ def summarize(results: Dict[str, Any]) -> Dict[str, Any]:
         armed_long = [c for c in scored_long if c.get("plant") == name]
         armed_det = [c for c in scored_det if c.get("plant") == name]
         row: Dict[str, Any] = {"why": spec["why"]}
-        # THE TWO LADDERS ARE SCORED SEPARATELY, because they answer different
+        # The two ladders are scored separately, because they answer different
         # questions. A defect the sparse ladder misses and the dense one catches
         # is a fact about the LADDER; scoring them together would report it as a
         # fact about the comparator.
@@ -1840,7 +1840,7 @@ def _does_not_claim(results: Dict[str, Any]) -> List[str]:
             "the NumPy backend compiles nothing and certifies nothing. It is not "
             "the shipped bytes, it cannot see a contraction the NVRTC guard "
             "exists for, and it does not exercise either subnormal policy",
-            "SINGLE-THREADED NumPy HAS NO RACES. The determinism leg's NumPy run "
+            "Single-threaded NumPy has no races. The determinism leg's NumPy run "
             "establishes that the comparator fires on a value that is not a "
             "function of the inputs; it establishes nothing about whether a "
             "device kernel has such a value",
@@ -1849,6 +1849,7 @@ def _does_not_claim(results: Dict[str, Any]) -> List[str]:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
+    import neutral_ids  # noqa: PLC0415
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--backend", choices=("cuda", "numpy"), default="cuda")
     parser.add_argument("--legs", "--leg", dest="leg", choices=("long", "determinism", "both"),
@@ -1873,7 +1874,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                         help=("after a divergent checkpoint, re-run the pair to "
                               "find the EXACT first divergent step"))
     parser.add_argument("--subnormal-policy", choices=("keep", "flush"), default=None)
-    # MEASURED ON DEVICE 2026-08-21, not a style choice: without this the "flush"
+    # Measured on device 2026-08-21, not a style choice: without this the "flush"
     # policy is UNATTAINABLE for the HOST executor ("MEEP is not imported") and
     # the run refuses at launch. I judged this flag a "gate concept" during the
     # coherence pass and left it off three of the four harnesses; the device
@@ -1889,7 +1890,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     out_dir = os.path.abspath(args.out)
     os.makedirs(out_dir, exist_ok=True)
     artifact = os.path.join(out_dir, "stress.json")
-    # READ BEFORE THE FIRST save() OVERWRITES IT. See read_previous_artifact.
+    # Read before the first save() overwrites it. See read_previous_artifact.
     previous_artifact = read_previous_artifact(artifact)
     ledger = Ledger(os.path.join(out_dir, "checkpoints.jsonl"))
 
@@ -1902,8 +1903,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     results: Dict[str, Any] = {
         "harness": "stress_cuda_long_horizon",
         "started_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "host": os.uname().nodename,
-        "argv": list(argv if argv is not None else sys.argv[1:]),
+        "host": neutral_ids.machine_id(),
+        "argv": neutral_ids.argv(argv if argv is not None else sys.argv[1:]),
         "backend": args.backend,
         "product": args.product,
         "questions": [
@@ -1915,7 +1916,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             "both plausible answers)",
         ],
         # ``gate_provenance.stamp`` will write ``canonical_verdict`` and find no
-        # recognised verdict shape here. THAT IS CORRECT AND DELIBERATE: this
+        # recognised verdict shape here. That is correct and deliberate: this
         # harness has no ``released``, ``passed`` or ``status`` field because it
         # releases nothing. A reader who sees UNREADABLE there should read
         # ``summary.findings``, not conclude the run failed.
@@ -1945,7 +1946,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             results["status"] = "refused: no CuPy"
             save(results, artifact)
             return 2
-        # THE OBSERVER GOES IN BEFORE THE POLICY, and the order is the design
+        # The observer goes in before the policy, and the order is the design
         # (probe:4208-4211): under 'keep' the policy's strip wraps this, so it
         # records the option tuple NVRTC was really given, post-strip. Installed
         # afterwards it would sit outside the strip and record the PRE-strip
@@ -2011,7 +2012,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                     registry, family, args.backend, label, courant,
                     case["last_clean_checkpoint"],
                     case["first_divergent_checkpoint"], args.plant)
-                # WHEN BOTH INSTRUMENTS RAN, THEY ARE CHECKED AGAINST EACH OTHER.
+                # When both instruments ran, they are checked against each other.
                 # A bisect that disagrees with a dense scan has met a
                 # NON-MONOTONE divergence, and the dense number is the right one;
                 # recording the disagreement is how the artifact says which.
@@ -2059,7 +2060,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             save(results, artifact)
 
     if args.backend == "cuda":
-        # WHETHER THE TWO POLICY LEGS COMPILED TWO BINARIES OR ONE SERVED TWICE.
+        # Whether the two policy legs compiled two binaries or one served twice.
         # Both policies compile the same SOURCE, so a compile log agrees by
         # construction and settles nothing; only the compiler's own output does.
         results["nvrtc_binary_report"] = probe.nvrtc_binary_report()
@@ -2081,7 +2082,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         log(f"[summary]   - {finding}")
     for note in verdict["notes"]:
         log(f"[summary]   . {note}")
-    # EXIT 0 EVEN WITH FINDINGS. This is a measurement harness, not a gate: a
+    # Exit 0 even with findings. This is a measurement harness, not a gate: a
     # divergence found past step 60 is the RESULT, not a failure of the run, and a
     # non-zero exit would make a successful campaign look like a crashed one to
     # whatever scheduler is watching. A non-zero exit is reserved for a harness

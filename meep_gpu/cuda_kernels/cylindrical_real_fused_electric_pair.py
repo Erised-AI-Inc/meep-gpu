@@ -6,18 +6,18 @@ and ``constitutive_kernels``' ``update_E_pml_real`` (its statement form,
 ``own_cell_hoist.unhoisted_kernel_code``) -- and this module introduces no arithmetic: every
 edit is a register capture, a seam or a rename, listed in :data:`LIFT_EDITS`.
 
-THE REGISTERS FOLLOW THE STORES. The m = 0 axis rule (``stepping._cylindrical_axis_zero_D``)
+The registers follow the stores. The m = 0 axis rule (``stepping._cylindrical_axis_zero_D``)
 adds MEEP's double ``4*Courant`` product into Dz on the axis row and zeroes Dy there AFTER
 the recurrence, so the weld updates the registers beside those stores (the add reads the
 register, which holds the word the lane stored for Dz); ``zero_metal_D`` (the OFF-DIAGONAL
 table) is then carried after it, the driver's order.
 
-THE RADIAL SCAN IS THE CURL'S FIRST LAUNCH (``cylindrical_prefix``) over the CURRENT Hp; the
-difference comes in as ``rad``. ONE DECODE of the chunk record serves both halves (DESIGN.md
-D10). The in-seam electric deposit is repaired by the bracket ``fused_pairs`` wires
+The radial scan is the curl's first launch (``cylindrical_prefix``) over the CURRENT Hp; the
+difference comes in as ``rad``. ONE DECODE of the chunk record serves both halves.
+The in-seam electric deposit is repaired by the bracket ``fused_pairs`` wires
 (:data:`CARRIES_DEPOSIT_REPAIR`).
 
-NO FILLS ARE CARRIED, BY REFUSAL. D is bound EXACTLY ONCE; the constitutive half reads the
+No fills are carried, by refusal. D is bound exactly once; the constitutive half reads the
 registers. ``inv_eps`` is bound three times and NOT ``__restrict__``. ``kms_x/y/z`` collide
 between the halves (integer for the D curl, half-integer for ``update_E``), so the
 constitutive group is ``kms_half_*``.
@@ -103,7 +103,7 @@ except ImportError:  # loaded by path, outside the package
 
 
 # =============================================================================
-# THE PARTITION -- EMPTY ON THE CERTIFIED SIDE UNTIL A GATE MOVES IT
+# The partition -- empty on the certified side until a gate moves it
 # =============================================================================
 
 #: Byte-identical with a gate verdict AND a record behind it.
@@ -120,7 +120,7 @@ CERTIFIED_KERNELS = (
 #: EMPTY since 2026-09-02; what emptied it was the run above, not an argument.
 UNCERTIFIED_KERNELS = {}
 
-#: TRUE, MEASURED OFF THE CELL: all three rows declare ``source_field_types ==
+#: True, measured off the cell: all three rows declare ``source_field_types ==
 #: ['D']`` -- an ELECTRIC deposit between ``step_D`` and ``update_E`` on every
 #: one -- so without the bracket this product would serve ZERO rows and with it
 #: all three. The wiring is ``fused_pairs._install_fused_pair``'s, the same
@@ -138,7 +138,7 @@ FAMILY = "cuda_cylindrical_real_fused_electric_pair"
 KERNEL_NAME = "fused_electric_pair_pml_cyl_real"
 
 #: The driver passes ONE launch performs (driver.py:3302, :3310, :3313). The two
-#: mirror fills are ABSENT BY REFUSAL: the predicate refuses every folded grid.
+#: mirror fills are absent by refusal: the predicate refuses every folded grid.
 REPLACES = ("step_D", "zero_metal_D", "update_E")
 
 #: The sub-step slot the planner holds this on.
@@ -153,7 +153,7 @@ LIFT_EDITS: Tuple[Dict[str, str], ...] = (
             "stores are unchanged."},
     {"line": "    <the curl body's chunk-record block> + <update_E's>",
      "became": "    <ONE block, bounds_block.bounds_block(both entry sets, presence xyz)>",
-     "why": "one decode of the record for both halves (DESIGN.md D10)."},
+     "why": "one decode of the record for both halves (docs/development/kernel-tables.md)."},
     {"line": "        pml_apply(Dx, fu_Dx, idx, curl, ...);",
      "became": "        d_x = pml_apply_reg(Dx, fu_Dx, idx, curl, ...);",
      "why": "capture the register; three lines, argument lists untouched."},
@@ -172,7 +172,7 @@ LIFT_EDITS: Tuple[Dict[str, str], ...] = (
     {"line": "    constitutive_apply(Ex, f_w_Ex, idx, src_x, kps_x[i], kms_x[i], in_h_x);",
      "became": "    constitutive_apply(Ex, f_w_Ex, idx, src_x, kps_x[i], kms_half_x[i], "
                "in_h_x);",
-     "why": "ONE RENAME, NO ARITHMETIC: kms_x is the INTEGER sub-lattice for the D curl "
+     "why": "One rename, no arithmetic: kms_x is the INTEGER sub-lattice for the D curl "
             "and the HALF-INTEGER one for update_E."},
     {"line": "        Dy[base] = 0.0f; Dz[base] = 0.0f;   (in_seam_passes._zero_metal_D)",
      "became": "    if (wall_x && i == 0) { d_y = 0.0f; Dy[idx] = d_y; d_z = 0.0f; "
@@ -205,7 +205,7 @@ _PML_APPLY_SIGNATURE_REG = "__device__ __forceinline__ float pml_apply_reg(\n"
 _PML_APPLY_STORE = "    f[idx] = value;\n"
 _PML_APPLY_STORE_REG = (
     "    f[idx] = value;\n"
-    "    // THE ONE EDIT TO THIS HELPER'S ARITHMETIC: none. Both forms and the store\n"
+    "    // The one edit to this helper's arithmetic: none. Both forms and the store\n"
     "    // are the certified ones; the value is additionally RETURNED so the\n"
     "    // constitutive half can read it from a register instead of reloading it.\n"
     "    return value;\n")
@@ -217,7 +217,7 @@ _AXIS_TAIL = (
     "        Dy[idx] = 0.0f;\n"
     "    }\n")
 _AXIS_TAIL_REG = (
-    "    // stepping._cylindrical_axis_zero_D, THE CERTIFIED STORES FOLLOWED: the\n"
+    "    // stepping._cylindrical_axis_zero_D, the certified stores followed: the\n"
     "    // registers are updated beside them so update_E reads the post-rule values.\n"
     "    // d_z holds the very word Dz[idx] carries (a float32 stored and reloaded is\n"
     "    // the identity), so the add's expression tree is the certified one. The\n"
@@ -235,7 +235,7 @@ _COORDINATE: Tuple[str, ...] = ("i", "j", "k")
 
 #: ``in_seam_passes._zero_metal_D_kernel_code``'s component table, restated as
 #: (walled-axis flag, that axis's coordinate, the two components wiped there).
-#: THE OFF-DIAGONAL COMPLEMENT: ``fields.IYEE_SHIFTS`` gives Dx (1,0,0),
+#: The off-diagonal complement: ``fields.IYEE_SHIFTS`` gives Dx (1,0,0),
 #: Dy (0,1,0), Dz (0,0,1), so a D component has Yee shift 0 on the OTHER TWO
 #: axes and TWO components sit on each wall. A pair that reused the B diagonal
 #: would clear the wrong component on every walled run.
@@ -250,7 +250,7 @@ _ZERO_METAL_ROWS: Tuple[Tuple[str, str, Tuple[str, ...]], ...] = (
 #: the wall flags appended. D appears EXACTLY ONCE.
 _SIGNATURE = r'''
 extern "C" __global__ void fused_electric_pair_pml_cyl_real(
-    // THE SHARED VOLUME, BOUND ONCE. The curl half writes it and the
+    // The shared volume, bound once. The curl half writes it and the
     // constitutive half reads it from a register; a second const __restrict__
     // binding of the same allocation would be UB NVRTC miscompiles silently.
     float* __restrict__ Dx, float* __restrict__ Dy, float* __restrict__ Dz,
@@ -275,14 +275,14 @@ extern "C" __global__ void fused_electric_pair_pml_cyl_real(
     const float* __restrict__ kms_y, const float* __restrict__ sinv_y,
     const float* __restrict__ kms_z, const float* __restrict__ sinv_z,
     // The E constitutive's HALF-INTEGER coefficients, its kms renamed
-    // kms_half_*. THE PAIRING IS THE MIRROR IMAGE OF THE B/H SEAM'S.
+    // kms_half_*. The pairing is the mirror image of the B/H seam's.
     const float* __restrict__ kps_x, const float* __restrict__ kms_half_x,
     const float* __restrict__ kps_y, const float* __restrict__ kms_half_y,
     const float* __restrict__ kps_z, const float* __restrict__ kms_half_z,
     int bc_x, int bc_y, int bc_z,
     // zero_metal_D's walled-axis flags, from in_seam_coverage.zero_metal_axes.
     int wall_x, int wall_y, int wall_z,
-    // THE CHUNK RECORD (chunk_map.chunk_bounds_record), int32[25]: which cells take
+    // The chunk record (chunk_map.chunk_bounds_record), int32[25]: which cells take
     // which PML form, decoded once for both halves.
     const int* __restrict__ cb
 ) {
@@ -403,7 +403,7 @@ def certified_curl_body() -> str:
         raise AssertionError(
             "a pml_apply call survived the capture rewrite; its value would be "
             "written to global memory and never read into the seam")
-    # THE AXIS TAIL, FOLLOWED. The certified stores are kept and the registers
+    # The axis tail, followed. The certified stores are kept and the registers
     # are updated beside them; a body without the tail is a different kernel
     # and the splice refuses it.
     if body.count(_AXIS_TAIL) != 1:
@@ -565,7 +565,7 @@ def covers_cylindrical_real_fused_electric_pair(
     already goes to) -- plus the seam clauses: the injection route, the source
     slot (carried), the two refused fills and the wall/shape facts.
 
-    DISJOINT FROM EVERY SEAM SIBLING ON THE GRID ALONE: every other electric-seam
+    Disjoint from every seam sibling on the grid alone: every other electric-seam
     product either refuses a Dcyl grid by name or requires complex64 storage,
     and this one requires real-storage Dcyl.
     """
@@ -577,7 +577,7 @@ def covers_cylindrical_real_fused_electric_pair(
     if not covered:
         return False, f"constitutive half: {reason}"
 
-    # THE INJECTION ROUTE, REFUSED BY NAME -- the real electric pair's clause,
+    # The injection route, refused by name -- the real electric pair's clause,
     # restated: with a conductivity anywhere in the engine the driver deposits
     # this seam's electric sources through
     # _inject_electric_through_conductivity (driver.py:3305), which rescales
@@ -590,7 +590,7 @@ def covers_cylindrical_real_fused_electric_pair(
                        "which rescales the increment by condinv; the deposit "
                        "repair has no verdict on that route")
 
-    # THE SOURCE SEAM, CARRIED RATHER THAN REFUSED (CARRIES_DEPOSIT_REPAIR): an
+    # The source seam, carried rather than refused (CARRIES_DEPOSIT_REPAIR): an
     # ELECTRIC source is injected BETWEEN the two halves (driver.py:3305/:3308)
     # and the bracket saves and recomputes the deposit's cells; the shared
     # clause asks what the repair can actually reconstruct. A MAGNETIC source
@@ -607,7 +607,7 @@ def covers_cylindrical_real_fused_electric_pair(
     if seam:
         return False, seam[0]
 
-    # THE TWO FILLS ARE REFUSED, NOT CARRIED, and the refusal is stated HERE
+    # The two fills are refused, not carried, and the refusal is stated HERE
     # rather than inherited, so the guarantee does not rest on a clause another
     # module could widen.
     mirrored = getattr(grid, "is_mirrored", None)
@@ -654,8 +654,8 @@ def covers_cylindrical_real_fused_electric_pair(
                        f"Dx.shape {extents}; the wall plane is derived from the "
                        f"first and indexed into the second")
 
-    # THE THREE INVERSE-PERMITTIVITY VOLUMES MUST BE ASKABLE AND MATCH THE
-    # SHAPE THIS LAUNCH WALKS -- the real electric pair's own clause.
+    # The three inverse-permittivity volumes must be askable and match the
+    # shape this launch walks -- the real electric pair's own clause.
     accessor = getattr(fields, "inverse_epsilon_for", None)
     if not callable(accessor):
         return False, ("fields does not expose inverse_epsilon_for; update_E's "

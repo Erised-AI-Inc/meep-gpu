@@ -1,6 +1,6 @@
 """The FOLDED COMPLEX fused D/E pair: a folded Bloch ``step_D`` welded into ``update_E``.
 
-THE D-SIDE TWIN OF :mod:`.folded_complex_fused_magnetic_pair`, and the mirror image of
+The D-side twin of :mod:`.folded_complex_fused_magnetic_pair`, and the mirror image of
 what :mod:`.folded_fused_pair` is to :mod:`.folded_fused_magnetic_pair` on the real
 board. It is the cell ``(folded complex, folded complex)`` at ``D_to_E``, which no
 shipped weld can stand in for: :mod:`.folded_fused_pair` is real-storage (its fold
@@ -8,7 +8,7 @@ parity is an exact sign flip, and under complex storage it is a full complex mul
 with zero cross terms), and :mod:`.complex_fused_electric_pair` refuses a mirror plane
 by name through both its halves.
 
-EVERYTHING IS LIFTED OR IMPORTED, and the three sources are the three the B-side twin
+Everything is lifted or imported, and the three sources are the three the B-side twin
 uses with the seam turned round:
 
 * the curl half — :func:`.folded_complex.folded_bloch_curl_source` with
@@ -21,7 +21,7 @@ uses with the seam turned round:
   ``"E"``, whose seven statements per component are reproduced by
   :func:`constitutive_transcription` and required to match on every build.
 
-THE FILL GEOMETRY IS THE D GEOMETRY AND IT IS THE EXACT INVERSE OF THE B TWIN'S.
+The fill geometry is the D geometry and it is the exact inverse of the B twin's.
 ``fields.IYEE_SHIFTS`` gives Dx (1,0,0), Dy (0,1,0), Dz (0,0,1), so a D component's
 Yee shift is ONE on its own axis and ZERO on the other two. The near fill therefore
 images a component on the two axes that are NOT its own (up to TWO destinations, and a
@@ -31,7 +31,7 @@ complement of the B family, where the near fill takes one axis and the far up to
 and :func:`.folded_fused_pair.carried_destinations` are the D-side answers and are
 IMPORTED rather than re-derived here.
 
-THE PARITY CHAIN IS ORDERED AND IS NOT FOLDED INTO ONE WORD, and that is inherited
+The parity chain is ordered and is not folded into one word, and that is inherited
 from the B twin as a MEASUREMENT rather than a preference: under complex storage,
 re-ordering a two-parity chain moves 8 of 128 uint32 words on an exhaustive
 signed-zero/subnormal table and folding it into one word moves up to 23 of 128, at
@@ -41,7 +41,7 @@ driver's order is near fill (:3300) -> wall clear (:3301) -> far fill (:3302), a
 :func:`parity_chain` returns exactly that: the near axes ASCENDING (the array path
 loops them in x, y, z order, stepping.py:1441-1447), then the far one.
 
-**THE WALL CLEAR SITS INSIDE THE CHAIN HERE, WHICH IT NEVER DOES ON THE B SIDE.** The
+**The wall clear sits inside the chain here, which it never does on the B side.** The
 B family's near destination is stored 0 of a FOLDED axis and its far destinations are
 axes ``_ZERO_METAL_ROWS`` never touches, so no ghost there takes a clear line at all.
 On the D side ``_ZERO_METAL_ROWS`` is the OFF-DIAGONAL — the same shift-0 axes the
@@ -53,7 +53,7 @@ into a register and then stored is the same word, and the split is what lets the
 be inserted at the driver's own point.)
 
 ===========================================================================
-THE SIGNATURE — 30 pointers plus one packed struct, EXACTLY ON THE CEILING
+The signature — 30 pointers plus one packed struct, exactly on the ceiling
 ===========================================================================
 
     3 D  +  3 fu_D  +  3 H        (float2, the curl half)
@@ -62,7 +62,7 @@ THE SIGNATURE — 30 pointers plus one packed struct, EXACTLY ON THE CEILING
   + 6 curl coefficients  +  6 constitutive coefficients   (float32)
   = 30 pointers, + one ``constant Params&`` = 31 = :data:`.device.MAX_BUFFER_BINDINGS`
 
-THREE MORE POINTERS THAN THE B TWIN'S 27, and the difference is physics rather than
+Three more pointers than the B twin's 27, and the difference is physics rather than
 layout: ``update_H`` is ``H = B`` with mu = 1 baked into the array path, so that
 family DROPS the certified constitutive's inverse-epsilon volumes; ``update_E`` reads
 ``source * inverse_epsilon_for(component)`` (stepping.py:1011-1013) and cannot. The B
@@ -71,7 +71,7 @@ three Bloch phases, the three near parities, the three far parities, four extent
 ``dtdx`` and the three reflect rows — all ride inside ONE ``constant Params&``. One
 more pointer of any kind is a compile error.
 
-NOT WIRED AS AN ARM: ``plan_step`` assigns at most one arm per slot and this product
+Not wired as an arm: ``plan_step`` assigns at most one arm per slot and this product
 spans five. It registers ``wired=False`` and reaches its two slots through
 ``launch.FUSED_PAIR_ARMS``.
 """
@@ -118,7 +118,7 @@ from .. import deposit_repair as _deposit_repair
 #: about the PLAN this module builds -- that the leading slot saves and the trailing
 #: slot restores -- and is only ever changed in the same edit as that wiring.
 #:
-#: TRUE FROM THIS FAMILY'S FIRST COMMIT, in the same edit as its
+#: True from this family's first commit, in the same edit as its
 #: ``launch.FUSED_PAIR_ARMS`` row, and it is what makes the cell worth anything: BOTH
 #: corpus rows here carry an electric source inside the seam. Nothing about the claim
 #: is new -- ``deposit_repair.repair_cells`` (deposit_repair.py:217-258) carries a
@@ -203,7 +203,7 @@ __HELPERS__
 
 __RECORD_STRUCT__
 
-// THE THREE float2 MEMBERS COME FIRST, for the reason `complex_fused_magnetic_pair`
+// The three float2 members come first, for the reason `complex_fused_magnetic_pair`
 // measured on this toolchain: Metal aligns float2 to 8 bytes, so with the scalars
 // first the struct needs internal padding and the natural host record puts every
 // phase one word early — which reads as a plausible complex number rather than as
@@ -217,7 +217,7 @@ __RECORD_STRUCT__
 // must be present because one kernel carries both fills. The chunk record follows the
 // scalars, costing no binding.
 //
-// FIFTEEN SCALARS, ONE BINDING, AND THE BINDING COUNT IS 31 EXACTLY. The far parities
+// Fifteen scalars, one binding, and the binding count is 31 EXACTLY. The far parities
 // and the three reflect rows (stepping._far_reflect_rows:1661) ride inside this record
 // rather than as six more buffers; this family sits ON the platform's 31-binding
 // ceiling (device.py:72) and could not have paid for them.
@@ -264,7 +264,7 @@ kernel void folded_complex_fused_pair_step(
     constant Params&     prm     [[buffer(30)]],
     uint idx [[thread_position_in_grid]])
 {
-    // THE FIFTEEN PACKED ARGUMENTS ARE UNPACKED INTO THE LIFTED BODIES' OWN NAMES,
+    // The fifteen packed arguments are unpacked into the lifted bodies' own names,
     // once, before any of the spliced text runs.
     //
     // The parity registers are named `mp0`/`mp1`/`mp2` (near) and `fp0`/`fp1`/`fp2`
@@ -313,7 +313,7 @@ _FAR_PARITY_REGISTER: Tuple[str, str, str] = ("fp0", "fp1", "fp2")
 #: about it can move a bit.
 _REFLECT: Tuple[str, str, str] = ("reflect_x", "reflect_y", "reflect_z")
 
-#: The TOP STORED INDEX per axis, and the boolean the lifted curl head already declares
+#: The top stored index per axis, and the boolean the lifted curl head already declares
 #: for it — reused rather than re-compared against the same extent.
 _LAST: Tuple[str, str, str] = ("(nxi - 1)", "(nyi - 1)", "(nzi - 1)")
 _LAST_FLAG: Tuple[str, str, str] = ("last_x", "last_y", "last_z")
@@ -326,7 +326,7 @@ _LAST_FLAG: Tuple[str, str, str] = ("last_x", "last_y", "last_z")
 #: dsigw flag and a register prefix — the ghost cell takes the identical six at a
 #: different index with its OWN flag, evaluated at the ghost.
 #:
-#: NOT A RETYPING: :func:`constitutive_transcription` renders these with the CERTIFIED
+#: Not a retyping: :func:`constitutive_transcription` renders these with the CERTIFIED
 #: spellings and compares them statement for statement against the lifted body, and
 #: :func:`folded_complex_fused_pair_source` runs that comparison on every build.
 _CONSTITUTIVE_STATEMENTS: Tuple[str, ...] = (
@@ -563,7 +563,7 @@ def constitutive_transcription(contract: str = shaders.CONTRACT_OFF
                                ) -> Dict[str, Any]:
     """Is :data:`_CONSTITUTIVE_STATEMENTS` the certified complex E body, statement for statement?
 
-    THE MEASUREMENT THAT MAKES THE PARAMETERISATION HONEST. This family re-emits the
+    The measurement that makes the parameterisation honest. This family re-emits the
     certified constitutive arithmetic once per owned cell and once per imaged ghost, so
     it cannot splice that body wholesale the way :mod:`.complex_fused_electric_pair`
     does. What it can do is render its own template with the CERTIFIED spellings and
@@ -598,7 +598,7 @@ def parity_chain(subset: Sequence[int], carries_far: bool, far: Sequence[int]
                  ) -> Tuple[Tuple[int, str], ...]:
     """The ORDERED ``(axis, pass)`` applications one ghost's value carries.
 
-    THE ORDER IS THE DRIVER'S AND IS TRANSCRIBED, NEVER CHOSEN. ``driver.step`` runs
+    The order is the driver's and is transcribed, never chosen. ``driver.step`` runs
     ``fill_symmetry_bc_D`` (:3300) to completion before ``fill_folded_far_ghosts_D``
     (:3302), and each pass loops its axes in ASCENDING order
     (``stepping._fill_symmetry_ghost_cells``:1441-1447,
@@ -606,13 +606,13 @@ def parity_chain(subset: Sequence[int], carries_far: bool, far: Sequence[int]
     wrote, so back-substituting a corner gives the near applications first, ascending,
     then the far one.
 
-    THE D SIDE'S CHAIN IS THE B SIDE'S TURNED ROUND: here up to TWO near applications
+    The D side's chain is the B side's turned round: here up to TWO near applications
     and at most ONE far, where the B twin has one near and up to two far. That falls
     out of ``fields.IYEE_SHIFTS`` and is not a choice: :func:`.folded_fused_pair.near_fill_axes`
     returns the axes that are NOT the component's own and
     :func:`.folded_fused_pair.far_fill_axes` returns its own axis alone.
 
-    THE WALL CLEAR IS NOT IN THIS LIST, deliberately: it is not a parity, and it sits
+    The wall clear is not in this list, deliberately: it is not a parity, and it sits
     BETWEEN the two passes (driver.py:3301). :func:`_carry_blocks` splits the emitted
     chain at that point.
     """
@@ -655,12 +655,12 @@ def _certified_fill_operand(target: int, pass_name: str) -> Tuple[str, str]:
 
 def _chain_step(target: int, tag: str, axis: int, pass_name: str,
                 first: bool) -> str:
-    """ONE ``c_mul`` of the parity chain — THE ONE PLACE it is spelled.
+    """ONE ``c_mul`` of the parity chain — the one place it is spelled.
 
     The emitter and both transcription checks call this, so a line that stopped being
     the certified fill's cannot be one in the kernel and another in the measurement.
 
-    EVERY APPLICATION LANDS IN A REGISTER HERE, where the B twin's last one writes
+    Every application lands in a register here, where the B twin's last one writes
     straight to the ghost cell. The reason is the wall clear: on the D side it sits
     BETWEEN the two fills (driver.py:3301) and its destination set — the shift-0 axes
     of ``_ZERO_METAL_ROWS`` — is exactly the near fill's, so a near-carrying ghost
@@ -679,7 +679,7 @@ def _fill_transcription(axis: int, pass_name: str,
                         contract: str = shaders.CONTRACT_OFF) -> Dict[str, Any]:
     """Is this family's ghost write the CERTIFIED folded complex D fill's own line?
 
-    THE SECOND MEASUREMENT, covering the one piece of arithmetic that is neither curl
+    The second measurement, covering the one piece of arithmetic that is neither curl
     nor constitutive. :func:`.folded_complex.folded_mirror_fill_complex_source` emits,
     on the ``"D"`` ghost-fill family::
 
@@ -778,7 +778,7 @@ def _ghost_coefficient_lines(target: int, axis: int, tag: str,
                              indent: str) -> List[str]:
     """The FAR destination's constitutive coefficient pair, read at stored ``last``.
 
-    THE INVERSE OF THE B TWIN'S ASYMMETRY, and it falls out of the same two tables.
+    The inverse of the B twin's asymmetry, and it falls out of the same two tables.
     ``complex_fields``' constitutive template indexes target ``t`` on axis ``t``
     (``stepping.E_CONSTITUTIVE_TERMS``:227), and on the D side
     :func:`.folded_fused_pair.far_fill_axes` returns axis ``t`` ALONE — so the FAR
@@ -787,12 +787,12 @@ def _ghost_coefficient_lines(target: int, axis: int, tag: str,
     absorber profile of the reflect row to the top plane: smooth, converged and wrong
     inside the PML, invisible outside it.
 
-    AND UNLIKE THE B TWIN'S NEAR CASE THIS IS NORMALLY OBSERVABLE: a folded axis
+    And unlike the B twin's near case this is normally observable: a folded axis
     carries an absorber on its HIGH face only (``stepping._require_consistent_pml``),
     so the mirror plane at stored 0 is outside the layer while the top plane the far
     ghost lands on is inside it.
 
-    THE NEAR GHOST NEEDS NO SUCH LINE: :func:`.folded_fused_pair.near_fill_axes`
+    The near ghost needs no such line: :func:`.folded_fused_pair.near_fill_axes`
     returns only axes ``a != t``, so a near destination sits at the SAME coordinate on
     the indexed axis as its owner and takes that thread's pair unchanged. A carry that
     reloaded there would be reloading the identical word. The coefficients are float32
@@ -824,7 +824,7 @@ def _constitutive_block(target: int, index: str, source: str, kp: str, km: str,
 
 def _ghost_membership_lines(target: int, axis: int, coordinate: str, tag: str,
                             indent: str) -> Tuple[List[str], str]:
-    """A carried ghost's own dsigw flag, evaluated AT ITS DESTINATION.
+    """A carried ghost's own dsigw flag, evaluated at its destination.
 
     The constitutive selects its form on the chunk that owns the cell it updates, and
     a carried ghost is a different cell from the thread's own: on its own axis (the
@@ -846,19 +846,19 @@ def _carry_blocks(target: int, near: Sequence[int], far: Sequence[int],
                   zero_metal: Sequence[bool], indent: str) -> List[str]:
     """Every imaged ghost this thread owns, then ``update_E`` at each of them.
 
-    ONE BLOCK PER DESTINATION IN :func:`.folded_fused_pair.carried_destinations` — the
+    One block per destination in :func:`.folded_fused_pair.carried_destinations` — the
     D-side enumeration, subsets of the NEAR axes crossed with the single far one.
     Each is guarded on the flags that say this thread is the source of that
     destination — stored ``NEAR_SOURCE_INDEX`` on each near axis it images, the runtime
     reflect row on the far axis — and writes the parity CHAIN applied to ``v``,
     followed by the certified constitutive at that index.
 
-    THE CHAIN IS EMITTED ONE ``c_mul`` PER PASS, IN :func:`parity_chain`'S ORDER, and
+    The chain is emitted one ``c_mul`` per pass, in :func:`parity_chain`'s order, and
     it is not folded into a single word. That is inherited from the B twin as a
     MEASUREMENT (``results/complex_parity_chain_order_2026-08-21``) rather than a
     preference.
 
-    THE WALL CLEAR IS EMITTED INSIDE THE CHAIN, which is the whole structural
+    The wall clear is emitted inside the chain, which is the whole structural
     difference from the B twin and follows the driver: ``fill_symmetry_bc_D`` (:3300),
     then ``zero_metal_D`` (:3301), then ``fill_folded_far_ghosts_D`` (:3302). A
     destination with near axes therefore takes the clear AFTER its near multiplies;
@@ -867,7 +867,7 @@ def _carry_blocks(target: int, near: Sequence[int], far: Sequence[int],
     ``_ZERO_METAL_ROWS`` never touches — its clear status is its source thread's,
     inherited by reading ``v{target}`` after those lines.
 
-    THE FLAG SET THE CLEAR IS EVALUATED ON IS THE OWNER THREAD'S ``at_x``/``at_y``/
+    The flag set the clear is evaluated on is the owner thread's ``at_x``/``at_y``/
     ``at_z``, and that is exact rather than approximate: a near destination differs
     from its owner only on FOLDED axes, and ``stepping._zero_metal`` skips a folded
     axis (stepping.py:2282-2284), so on every axis that could clear it the destination
@@ -984,7 +984,7 @@ def folded_complex_fused_pair_source(
     a crash.
 
     ``phased`` is the per-axis Bloch flag :func:`.complex_fields.phase_arguments`
-    resolves. THE PARITY IS NOT HERE: like the B twin and unlike the real fold, it is a
+    resolves. The parity is not here: like the B twin and unlike the real fold, it is a
     runtime word, so it does not specialise the source and two grids differing only in
     a mirror parity compile to the SAME kernel.
     """
@@ -1002,7 +1002,7 @@ def folded_complex_fused_pair_source(
     zero_metal = tuple(bool(value) for value in zero_metal)
     if len(zero_metal) != 3:
         raise ValueError(f"zero_metal must be a per-axis triple, got {zero_metal!r}")
-    # THE DISJOINTNESS THE CARRY RESTS ON, asserted rather than trusted:
+    # The disjointness the carry rests on, asserted rather than trusted:
     # `zero_metal_axes` is `is_metallic and not is_mirrored` (stepping.py:2282-2284),
     # so a folded axis can never be a walled one.
     for axis, code in enumerate(codes):
@@ -1057,7 +1057,7 @@ def folded_complex_fused_pair_source(
     body.append("")
 
     # The three recurrences and the three guarded `fu` stores, in the certified body's
-    # own order. `fu` IS STEPPED BY EVERY CELL'S OWN THREAD, ghost cells included, on
+    # own order. `fu` is stepped by every cell's own thread, ghost cells included, on
     # the cells whose chunk carries the dsigu layer: `step_D` steps it there and the
     # fills touch D only. On a ghost cell outside that layer the `p` read below reads
     # the D word the source thread is writing; that value feeds only `n`, which nothing
@@ -1097,7 +1097,7 @@ def folded_complex_fused_pair_source(
                     f"{fill['rows']!r}")
         _, _, displacement = statements["recurrence"][target]
         body.append("")
-        # A cell any fill writes is OWNED BY ITS SOURCE THREAD. This thread stops after
+        # A cell any fill writes is owned by its source thread. This thread stops after
         # fu there: the array path's fill overwrites the displacement it would store,
         # and forming v would read f at a word another thread writes.
         owned: List[str] = [f"{_COORDINATE[axis]} == 0" for axis in near]
@@ -1109,7 +1109,7 @@ def folded_complex_fused_pair_source(
                     [f"stored cell 0 on {_COORDINATE[axis]} (near)" for axis in near]
                     + [f"the top plane on {_COORDINATE[axis]} (far)"
                        for axis in far]) + ",",
-                "    // so those cells are OWNED BY THEIR SOURCE THREADS. This one "
+                "    // so those cells are owned by their source threads. This one "
                 "stops after fu:",
                 "    // the fill overwrites the displacement it would store, and "
                 "forming v here",
@@ -1220,11 +1220,11 @@ def metal_folded_complex_fused_pair_coverage(
         reasons.extend(f"folded complex constitutive half: {reason}"
                        for reason in electric.reasons)
 
-    # THE SOURCE SEAM. An ELECTRIC source is injected BETWEEN the two halves
+    # The source seam. An ELECTRIC source is injected BETWEEN the two halves
     # (driver.py:3294-3299), so a fused pair would consume a pre-injection D unless
     # the deposit repair brackets the launch -- which for this family it does, and
     # which is the only reason the cell is worth anything at all.
-    # IGNORANCE IS NEVER AN EMPTY SET: `Fields` does not hold the source list, so a
+    # Ignorance is never an empty set: `Fields` does not hold the source list, so a
     # predicate that inferred "no sources" from not being told would be the
     # over-covering refusal this clause exists to prevent.
     reasons.extend(_deposit_repair.seam_source_reasons(
@@ -1248,12 +1248,12 @@ def metal_folded_complex_fused_pair_coverage(
         grid, pml if (pml is not None and getattr(pml, "is_active", False)) else None)
     reasons.extend(code_reasons)
 
-    # THE FAR FILL IS CARRIED, not refused; these are the conditions its OWNERSHIP
+    # The far fill is carried, not refused; these are the conditions its OWNERSHIP
     # MOVE rests on, and the mirror parity must be readable on every folded axis.
     reasons.extend(_far_carry_reasons(grid, codes))
     reasons.extend(_mirror_phase_reasons(grid, codes))
 
-    # THE WALL CLEAR IS CARRIED INLINE, so the grid must be able to answer which axes
+    # The wall clear is carried inline, so the grid must be able to answer which axes
     # are walled. A grid that cannot would silently be treated as unwalled, which is a
     # plane of wrong values rather than a crash.
     for name in ("has_metallic", "is_metallic", "is_mirrored"):
@@ -1263,7 +1263,7 @@ def metal_folded_complex_fused_pair_coverage(
 
     shape = tuple(getattr(grid, "shape", ()))
     if codes is not None and len(shape) == 3:
-        # THE NEAR FILL IMAGES STORED CELL 2, and the source thread must exist. The
+        # The near fill images stored cell 2, and the source thread must exist. The
         # curl half's predicate already refuses a folded axis storing too few cells;
         # restated because THIS family writes the destination from a DIFFERENT thread
         # and a missing source plane is an out-of-range write, not a soft error.
@@ -1343,7 +1343,7 @@ class MetalFoldedComplexFusedPairPlan(KernelPlan):
 def params_record_dtype() -> Any:
     """The host record's dtype — THE THREE ``float2`` PHASES FIRST, itemsize 184.
 
-    ONE HOME FOR THE LAYOUT, because getting it wrong is a silent wrong answer rather
+    One home for the layout, because getting it wrong is a silent wrong answer rather
     than a crash: with the scalars first Metal's 8-byte ``float2`` alignment puts every
     complex word one slot early, and the result reads as a plausible complex number.
     The offsets are stated EXPLICITLY even though the parities-first order makes them
@@ -1372,7 +1372,7 @@ def _params_tensor(shape: Sequence[int], dtdx: float,
                    chunk_words: Any) -> Any:
     """The fifteen scalars and the chunk record as one 184-byte device record.
 
-    PLAN-OWNED AND OUTSIDE THE RESIDENCY REGISTRY: :meth:`.Residency.mirror` binds
+    Plan-owned and outside the residency registry: :meth:`.Residency.mirror` binds
     float32 and complex64 volumes and refuses anything else BY NAME, and this record is
     neither. Nothing on the launch path allocates.
 
@@ -1439,7 +1439,7 @@ def plan_metal_folded_complex_fused_pair(
     # certified helper so the conjugation rule lives in one place.
     flags, values = complex_fields.phase_arguments(
         complex_fields.bloch_phase_table(grid, kinds), backward=BACKWARD)
-    # THE TWO PARITY WORDS PER AXIS, rounded ONCE on the host through
+    # The two parity words per axis, rounded ONCE on the host through
     # `folded_complex.mirror_parity_coefficients` and PASSED, never synthesised
     # in-kernel. The two helpers are the B twin's, IMPORTED: the near word admits any
     # folded axis and the far word only a folded PERIODIC one, and neither question is
@@ -1465,7 +1465,7 @@ def plan_metal_folded_complex_fused_pair(
         volumes.append(name)
         return residency.mirror(name, host, constant=True)
 
-    # THE ORDER HERE IS THE SIGNATURE'S ORDER and nothing else keeps them in step.
+    # The order here is the signature's order and nothing else keeps them in step.
     flux = [bind_complex(name, getattr(fields, name)) for name in ("Dx", "Dy", "Dz")]
     auxiliary = [bind_complex("fu_" + name, getattr(fields, "fu_" + name))
                  for name in ("Dx", "Dy", "Dz")]
@@ -1478,7 +1478,7 @@ def plan_metal_folded_complex_fused_pair(
     inverse_epsilon = [
         bind_real("inv_eps_" + name, fields.inverse_epsilon_for(name))
         for name in ("Ex", "Ey", "Ez")]
-    # THE D CURL TAKES THE INTEGER LATTICE and the E constitutive the HALF-INTEGER one
+    # The D curl takes the integer lattice and the E constitutive the HALF-INTEGER one
     # (stepping.py:948 vs :1015). The kernel takes both and never asks which is which.
     curl_coefficients = [
         bind_real(f"pml:{stem}_{axis}", getattr(pml, f"{stem}_{axis}"))
@@ -1531,14 +1531,14 @@ def _arm_plan(context: Any,
 def register_arms() -> Tuple[Any, ...]:
     """One row on ``step_D``, ``wired=False``.
 
-    THE FLAG IS THE WHOLE COMPOSITION STORY, and it is every other fused pair's.
+    The flag is the whole composition story, and it is every other fused pair's.
     ``plan_step`` assigns at most one arm per slot and this product spans five, so
     there is no slot it could claim through the arm table. Registering unwired keeps it
     ENUMERABLE for the disjointness sweep (``arms.registered``) while
     ``arms.arms_for`` skips it, so ``_select_slot`` cannot select it and no existing
     arm's selection changes.
 
-    THE OTHER HALF IS THE ABSORB TABLE:
+    The other half is the absorb table:
     ``launch.FUSED_PAIR_ARMS["folded_complex_fused_pair"]`` declares which arm each of
     the two slots implements.
     """

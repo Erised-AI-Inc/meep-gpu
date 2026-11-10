@@ -73,7 +73,10 @@ recorded on NVIDIA hardware. On one NVIDIA RTX A6000 (conda-forge MEEP 1.33.0,
 the Triton table), the 3 examples that compare with MEEP matched the recorded
 output with 0 mismatches on 2026-09-28, the `gpu` leg identical to the `array`
 leg in 3 of 3; their comparison with MEEP (a double-precision build) was
-reported, not judged. On the CuPy route the `array` leg points
+reported, not judged. With conda-forge MEEP 1.35.0, on one NVIDIA RTX 3090 and on
+the same Apple M1 Max, the 4 examples matched the recorded output with 0
+mismatches on 2026-10-27, the `gpu` leg identical to the `array` leg in 3 of 3 on
+each host. On the CuPy route the `array` leg points
 `CUPY_CACHE_DIR` at the package's keep-policy cache before it installs the policy
 by hand, as dispatch does for the `gpu` leg; without that, CuPy refuses the `keep`
 policy. What the recorded output shows, for 3 of 3 examples:
@@ -106,10 +109,10 @@ result.
 
 `[host]` lines state which path served each run. `step path: fused` means
 compiled kernels served the step; `step path: array` means the array path did. An
-NVIDIA host outside the certified identities is refused by name and steps on the
-array path, which is a correct run. Every Apple GPU is supported, so on a Mac
-outside the certified environment the Metal kernels serve the step, the status
-line marks another Apple GPU `supported, UNCERTIFIED`, and a
-`meep_gpu: NOTE the kernels are NOT CERTIFIED` line names each fact of the
-environment that is not certified; the `gpu` against `array` comparison is judged
-there as on any host.
+NVIDIA GPU that no kernel table supports is refused by name, unless `MEEP_GPU_HARDWARE=any`, and
+steps on the array path, which is a correct run; a supported one outside the certified identity
+runs the kernels, uncertified. Every Apple GPU is supported, so on a Mac outside the certified
+environment the Metal kernels serve the step, the status line marks another Apple GPU
+`supported, UNCERTIFIED`, and a `meep_gpu: NOTE the kernels are NOT CERTIFIED` line
+names each fact of the environment that is not certified; the `gpu` against `array`
+comparison is judged there as on any host.

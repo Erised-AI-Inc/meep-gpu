@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Does ``update_E(c)`` read another component's ``P``? — the E->P interleave's licence.
 
-WHY THIS EXISTS. Every fused E->P product on this backend takes the same shape:
-ONE LAUNCH PER COMPONENT, ``update_E(c)`` immediately followed by every
+Why this exists. Every fused E->P product on this backend takes the same shape:
+one launch per component, ``update_E(c)`` immediately followed by every
 ``update_P(state, c)``, with the host rotation left where the certified plan
 already performs it. That shape is equivalent to the DRIVER's order — all of
 ``update_E`` at driver.py:3304, then all of ``update_P`` at :3306 — for exactly one
@@ -18,7 +18,7 @@ records the consequence: the fifth E->P cell,
 ``examples:absorbed_power_density.py`` — reads ``FITS — 23..23 pointers against a
 30 ceiling; NOT BUILT``. This probe asks whether "not built" is the whole story.
 
-HOW IT IS MEASURED, and it is not by reading ``stepping.py``. The dependency is
+How it is measured, and it is not by reading ``stepping.py``. The dependency is
 established by PERTURBATION on the array path: seed two identical engines, change
 ONE component's ``P`` in one of them, run ``update_E``, and count the differing
 uint32 words in each E component. A component whose E moves is a component whose
@@ -33,7 +33,7 @@ uint32 words in each E component. A component whose E moves is a component whose
     kernel would compute ``Ey`` from an ``Ex`` polarization ``update_P(Ex)`` had
     already advanced, and no ordering inside one launch repairs it.
 
-THE NON-VACUITY FLOOR. A perturbation that moved nothing anywhere would report
+The non-vacuity floor. A perturbation that moved nothing anywhere would report
 "no dependency" for every case, so each leg asserts its OWN component moved before
 it is allowed to say anything about the partners.
 
@@ -119,7 +119,7 @@ def build(label: str, complex_storage: bool, offdiagonal: bool, poles: int = 1
         # outer key is the ROW component, the inner the PARTNER whose D it couples
         # in (Fields.set_epsilon_volumes). A nonzero entry is exactly what makes
         # update_E a stencil across components.
-        # EVERY COMPONENT APPEARS AS A PARTNER, and that is a property of this
+        # Every component appears as a partner, and that is a property of this
         # table rather than of off-diagonal rows in general: MEEP's chi1inv rows
         # are per-row and need not be symmetric, so a table missing a column would
         # leave one perturbation with no partner to move and make the criterion
@@ -172,7 +172,7 @@ def run(label: str, complex_storage: bool, offdiagonal: bool,
              for name in COMPONENTS}
     assert not any(drift.values()), f"{label}: the two builds differ: {drift}"
 
-    # ONE WORD IS ENOUGH and one word is what is changed: a whole-array
+    # One word is enough and one word is what is changed: a whole-array
     # perturbation could not distinguish "Ey read P[Ex]" from "the two engines
     # were never identical". The cell is interior so no boundary rule masks it.
     state = actual.polarizations[0]
@@ -236,7 +236,7 @@ def main() -> int:
 
     verdict = {
         "probe": "does update_E(c) read another component's P?",
-        # THIS IS A HOST MEASUREMENT AND MAKES NO DEVICE CLAIM. It runs the ARRAY
+        # This is a host measurement and makes no device claim. It runs the ARRAY
         # PATH only — no Metal kernel is compiled or launched anywhere in this file
         # — and the runner's `release.released` here means "the bytes were welded
         # and the measurement exited zero", NOT "a device gate passed". Stated in

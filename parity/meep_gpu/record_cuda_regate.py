@@ -1,10 +1,10 @@
 """Transcribe a CUDA RE-GATE campaign into ``cuda_kernels/certification.json``.
 
-WHY THIS EXISTS, AND WHY IT IS A SECOND TOOL. ``rebind_cuda_welds.py`` binds
+Why this exists, and why it is a second tool. ``rebind_cuda_welds.py`` binds
 ``cuda_kernels/fingerprints.json`` to the artifacts a campaign left. It finds
 those artifacts by asking ``certification.json`` where the campaign wrote them,
 which is the right dependence -- the ledger's own ``_relation_to_certification_json``
-says certification.json is authoritative for WHAT WAS CERTIFIED and the ledger
+says certification.json is authoritative for what was certified and the ledger
 only for WHICH BYTES -- and it is also, exactly, why the rebind tool could not
 clear the drift the ledger carried on 2026-08-30. Every one of the twenty CUDA
 gates had been RE-RUN on device and RELEASED, into
@@ -13,7 +13,7 @@ named that tree. So the rebind tool could see forty stale pins and could not see
 the run that cleared them: the blocker was a MISSING WRITER, not a missing
 measurement.
 
-THE REPAIR THAT WAS TRIED FIRST, AND WHY IT IS NOT THE ONE. Installing the fresh
+The repair that was tried first, and why it is not the one. Installing the fresh
 legs INTO each block's own dated directory took the ledger to zero drift and
 broke four tests, because ``certification.json`` blocks carry an
 ``artifact_sha256`` over THEIR OWN directory and
@@ -22,7 +22,7 @@ over_the_directory`` recomputes it. A record that disagrees with its own
 directory is worse than an honest drift, so that attempt was reverted and both
 trees kept (``results/_pre_regate_2026-08-30/`` holds the originals verbatim).
 
-THE REPAIR THIS IS. A re-gate is a RUN, and a run belongs in the record. This
+The repair this is. A re-gate is a RUN, and a run belongs in the record. This
 tool writes ONE block describing the campaign -- where it ran, when, under which
 policies, which certification block each of its family subdirectories re-gated,
 and the manifest digest of the whole tree -- leaving every dated family block and
@@ -30,23 +30,31 @@ every dated directory untouched. ``rebind_cuda_welds.py --campaign`` then binds
 against that block, and refuses to bind against a campaign the record does not
 name. Nothing is installed over anything.
 
-WHAT IT REFUSES TO DO.
+What it refuses to do.
 
-* IT NEVER WRITES A BLOCK OVER A RECORD THAT ALREADY DISAGREES WITH ITS OWN
-  DIRECTORIES. Before writing anything it recomputes ``artifact_sha256`` for
+* It never writes a block over a record that already disagrees with its own
+  directories. Before writing anything it recomputes ``artifact_sha256`` for
   every block whose directory is on this machine, by the record's own rule, and
   refuses the whole run on the first mismatch. That is the 2026-08-30 lesson
   encoded where it can bite rather than remembered.
-* IT NEVER INVENTS A VERDICT. Every canonical policy leg under every family
+* It never invents a verdict. Every canonical policy leg under every family
   subdirectory must carry ``canonical_verdict.released`` true. One unreleased
   leg refuses the whole campaign: a re-gate that covered nineteen of twenty
   families is not the campaign this block would describe.
-* IT NEVER GUESSES WHICH BLOCK A SUBDIRECTORY RE-GATED. The subdirectory name
+* It never guesses which block a subdirectory re-gated. The subdirectory name
   must equal the BASENAME of some block's own declared artifact directory, and
   exactly one block must claim it. A subdirectory no block claims is a refusal,
   not a row to drop -- that is a re-run of something this record does not
   describe, and binding a weld to it would be binding to an unnamed run.
-* IT DERIVES EVERY FACT AND TYPES NONE. The timestamps, host, device,
+* It records a named subset only when told to. ``--directories D1,D2,...`` claims
+  exactly those subdirectories: the release, drift and claim checks run over them,
+  the block's ``artifact_sha256`` is taken over them alone, and the block lists them
+  (``recorded_subdirectories``) so every reader recomputes the same set. A name the
+  campaign does not hold refuses. A chunked round needs it: a unit run again in a
+  later chunk leaves its earlier, stale subdirectory in the earlier chunk's campaign,
+  beside the subdirectories the bind selected there, and recording the whole campaign
+  would refuse all of them for that one.
+* It derives every fact and types none. The timestamps, host, device,
   capability, library versions, policies, per-family leg lists, gate names and
   the manifest digest all come out of the payloads. The prose below is the
   narrative half, which is what certification.json is for; the numbers beside it
@@ -55,6 +63,7 @@ WHAT IT REFUSES TO DO.
 
     python record_cuda_regate.py --campaign results/cuda_regate_2026-08-30
     python record_cuda_regate.py --campaign results/cuda_regate_2026-08-30 --write
+    python record_cuda_regate.py --campaign results/<campaign> --directories a,b --write
 
 EXIT CODE. Non-zero on any refusal. A refusal here is a statement that the
 campaign is not describable as it stands, and the remedy is a device run or a
@@ -99,8 +108,8 @@ import neutral_labels  # noqa: E402
 #: rather than re-typed below, so a family that grows a third spelling cannot be
 #: recognised by one tool and missed by the other.
 from rebind_cuda_welds import (  # noqa: E402
-    CANONICAL_LEG_NAMES, POLICY_DIRECTORIES, RE_GATE_KEY, artifact_directory,
-    canonical_legs, leg_payloads, manifest_digest, read_verdict,
+    CANONICAL_LEG_NAMES, POLICY_DIRECTORIES, RE_GATE_KEY, RECORDED_SUBDIRECTORIES,
+    artifact_directory, canonical_legs, leg_payloads, manifest_digest, read_verdict,
     record_disagrees_with_its_own_directories,
 )
 
@@ -109,7 +118,7 @@ def _record() -> dict:
     return json.loads(RECORD.read_text(encoding="utf-8"))
 
 
-def _stamps(directory: Path) -> dict:
+def _stamps(directory: Path, subdirectories=None) -> dict:
     """When, where, on what device, and under which policies -- from the payloads.
 
     The same reader ``test_certification_metadata._artifact_stamps`` uses, over
@@ -119,7 +128,9 @@ def _stamps(directory: Path) -> dict:
     rule.
     """
     started, hosts, policies, environments = set(), set(), set(), set()
-    for path in sorted(directory.rglob("*.json")):
+    roots = ([directory] if subdirectories is None
+             else [directory / name for name in sorted(subdirectories)])
+    for path in sorted(path for root in roots for path in root.rglob("*.json")):
         payload = json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(payload, dict):
             continue
@@ -152,9 +163,9 @@ def _stamps(directory: Path) -> dict:
 def blocks_by_artifact_basename(record: dict) -> dict:
     """``{directory basename: [block names]}`` off each block's own artifact key.
 
-    THE JOIN IS THE RECORD'S OWN CLAIM, not string surgery on a name. The Triton
+    The join is the record's own claim, not string surgery on a name. The Triton
     rebind tool types its family table out precisely because stripping a prefix
-    "happens to work this round"; here nothing is stripped -- a campaign
+    only happens to work on the rows as they stand; here nothing is stripped -- a campaign
     subdirectory is matched to the block that says its artifacts live in a
     directory of that name. A basename claimed by two blocks is reported rather
     than resolved, because picking one would be a guess.
@@ -169,13 +180,22 @@ def blocks_by_artifact_basename(record: dict) -> dict:
     return found
 
 
-def survey(campaign: Path, record: dict) -> tuple[list[dict], list[str]]:
-    """One row per (block, subdirectory), and every refusal the campaign earns."""
+def survey(campaign: Path, record: dict,
+           only=None) -> tuple[list[dict], list[str]]:
+    """One row per (block, subdirectory), and every refusal the campaign earns.
+
+    ``only`` (``--directories``) surveys those subdirectories and no other; a name the
+    campaign does not hold is a refusal."""
     claimed = blocks_by_artifact_basename(record)
     rows, refusals = [], []
-    subdirectories = sorted(p for p in campaign.iterdir() if p.is_dir())
+    subdirectories = sorted(p for p in campaign.iterdir() if p.is_dir()
+                            and (only is None or p.name in only))
+    for name in sorted(set(only or ()) - {p.name for p in subdirectories}):
+        refusals.append(f"--directories names {name}/, which {campaign.name}/ does not "
+                        f"hold")
     if not subdirectories:
-        refusals.append(f"{campaign.name}/ holds no family subdirectory")
+        refusals.append(f"{campaign.name}/ holds no family subdirectory"
+                        + (" among those named" if only is not None else ""))
     for directory in subdirectories:
         name = directory.name
         owners = claimed.get(name, [])
@@ -185,7 +205,7 @@ def survey(campaign: Path, record: dict) -> tuple[list[dict], list[str]]:
                 f"an artifact directory of that name. A weld bound to it would "
                 f"be bound to a run the record does not describe.")
             continue
-        # A SUBDIRECTORY MAY BE CLAIMED BY SEVERAL BLOCKS, and that is not an
+        # A subdirectory may be claimed by several blocks, and that is not an
         # ambiguity when each of them says which legs are its own. One gate script
         # taking ``--family`` writes ``<family>_<policy>`` legs so three families can
         # share a campaign directory and one environment stamp, and each block names
@@ -204,7 +224,7 @@ def survey(campaign: Path, record: dict) -> tuple[list[dict], list[str]]:
                 f"gate_family, so which legs belong to which block is a guess")
             continue
         if len(owners) > 1 and len(set(families.values())) != len(owners):
-            # THE SCOPING ONLY DISAMBIGUATES IF THE SCOPES DIFFER. Checking that every
+            # The scoping only disambiguates if the scopes differ. Checking that every
             # claimant NAMES a gate_family, without checking that the names are
             # distinct, lets two blocks stand on the same two legs -- one measurement
             # credited twice, and canonical_policy_legs reporting twice the legs the
@@ -292,8 +312,8 @@ _DEFAULT_WHY = (
 )
 
 _WHAT_IT_DOES_NOT_CLAIM = [
-    "IT DOES NOT REPLACE ANY DATED BLOCK, AND IT DOES NOT TOUCH ANY DATED "
-    "DIRECTORY. Each family block keeps its own artifacts, its own "
+    "It does not replace any dated block, and it does not touch any dated "
+    "directory. Each family block keeps its own artifacts, its own "
     "artifact_sha256 and its own prose, and each still digests to what it "
     "records. The legs this campaign wrote live in their own tree. An earlier "
     "attempt to close the same drift installed the fresh legs INTO the dated "
@@ -302,12 +322,12 @@ _WHAT_IT_DOES_NOT_CLAIM = [
     "directory. A record that disagrees with its own directory is worse than an "
     "honest drift, so that attempt was reverted; results/_pre_regate_2026-08-30/ "
     "holds the originals verbatim and this tree holds the re-gate.",
-    "IT IS NOT A COVERAGE CLAIM. The kernels, cases, shapes and mutation legs "
+    "It is not a coverage claim. The kernels, cases, shapes and mutation legs "
     "are exactly the ones each family block already describes. Read the numbers "
     "there; the only new fact here is the date and the bytes.",
-    "IT IS NOT A WIRING CLAIM. The record's 'dispatch' key still reads "
+    "It is not a wiring claim. The record's 'dispatch' key still reads "
     "wired=false and this block does not change it.",
-    "IT TIMES NOTHING. The box is shared and this is a correctness re-gate.",
+    "It times nothing. The box is shared and this is a correctness re-gate.",
 ]
 
 _HOW_TO_READ_RE_GATED = (
@@ -324,9 +344,13 @@ _HOW_TO_READ_RE_GATED = (
 )
 
 
-def build_block(campaign: Path, rows: list[dict], stamps: dict, why: str) -> dict:
-    """The block, every fact of it derived from the tree just surveyed."""
+def build_block(campaign: Path, rows: list[dict], stamps: dict, why: str,
+                only=None) -> dict:
+    """The block, every fact of it derived from the tree just surveyed: the whole
+    campaign, or the subdirectories ``only`` names."""
     environments = [json.loads(text) for text in sorted(stamps["environment"])]
+    roots = ([campaign] if only is None else [campaign / name for name in sorted(only)])
+    payloads = sum(len(list(root.rglob("*.json"))) for root in roots)
     environment = environments[0] if len(environments) == 1 else None
     started = sorted(stamps["started_utc"])
     block = {
@@ -346,15 +370,19 @@ def build_block(campaign: Path, rows: list[dict], stamps: dict, why: str) -> dic
         "host": neutral_labels.one_host(stamps["hostname"]),
         "policies_cut_under": sorted(stamps["subnormal_policy"]),
         "artifacts": f"{ARTIFACT_PREFIX}{campaign.name} (gitignored)",
-        "artifact_sha256": manifest_digest(campaign),
+        "artifact_sha256": manifest_digest(campaign, only),
         "_artifact_sha256_is": (
-            f"{len(list(campaign.rglob('*.json')))} verdict payloads across "
+            f"{payloads} verdict payloads across "
             f"{len({row['directory'] for row in rows})} campaign subdirectorie(s) "
             f"claimed by {len(rows)} certification block(s), by the rule at the head "
             f"of this record, computed against the directory as it stands in this "
-            f"checkout. The two counts differ whenever several blocks share one "
+            f"checkout"
+            + (f", over the subdirectories named in {RECORDED_SUBDIRECTORIES} only "
+               f"(paths relative to the campaign directory); the campaign holds others "
+               f"this block does not claim" if only is not None else "")
+            + ". The two counts differ whenever several blocks share one "
             f"subdirectory, each scoped to its own gate_family."),
-        # NAMED FOR WHAT EACH COUNTS. ``families_re_gated`` used to be ``len(rows)``,
+        # Named for what each counts. ``families_re_gated`` used to be ``len(rows)``,
         # which counted rows; after the join was widened a row became a (block,
         # subdirectory) pair, so the field named after families was the one field
         # counting something else. All three are published because they genuinely
@@ -368,6 +396,8 @@ def build_block(campaign: Path, rows: list[dict], stamps: dict, why: str) -> dic
         "_how_to_read_re_gated": _HOW_TO_READ_RE_GATED,
         RE_GATE_KEY: rows,
     }
+    if only is not None:
+        block[RECORDED_SUBDIRECTORIES] = sorted(only)
     if environment is not None:
         block["device"] = environment["device_name"]
         block["compute_capability"] = environment["compute_capability"]
@@ -393,8 +423,18 @@ def main(argv=None) -> int:
     parser.add_argument("--why", default=_DEFAULT_WHY,
                         help="why THIS campaign was run. The one fact about a "
                              "re-gate that cannot be derived from the tree.")
+    parser.add_argument("--directories", default=None, metavar="D1,D2,...",
+                        help="record only these subdirectories of the campaign (default: "
+                             "every one); the block lists them and its artifact digest "
+                             "covers them alone")
     parser.add_argument("--write", action="store_true", help="apply (default: report)")
     args = parser.parse_args(argv)
+    only = None
+    if args.directories is not None:
+        only = sorted({name.strip().strip("/") for name in args.directories.split(",")
+                       if name.strip().strip("/")})
+        if not only:
+            parser.error("--directories names no subdirectory")
 
     campaign = Path(args.campaign)
     if not campaign.is_absolute():
@@ -411,16 +451,16 @@ def main(argv=None) -> int:
 
     disagreeing = record_disagrees_with_its_own_directories(record)
     for line in disagreeing:
-        print(f"  RECORD DISAGREES WITH ITS OWN DIRECTORY  {line}", flush=True)
+        print(f"  record disagrees with its own directory  {line}", flush=True)
     if disagreeing:
         print("\n  refusing to record a run into a record that no longer describes "
               "the trees it already names. Find out which side moved; do not re-cut "
               "a digest on sight.", flush=True)
         return 1
 
-    rows, refusals = survey(campaign, record)
+    rows, refusals = survey(campaign, record, only)
     refusals += drift_refusals(campaign, rows)
-    stamps = _stamps(campaign)
+    stamps = _stamps(campaign, only)
     for row in rows:
         print(f"  re-gated  {row['block']:42s} <- {row['directory']}/ "
               f"({len(row['legs'])} legs)", flush=True)
@@ -445,7 +485,7 @@ def main(argv=None) -> int:
               f"several is not describable by one", flush=True)
         return 1
 
-    block = build_block(campaign, rows, stamps, args.why)
+    block = build_block(campaign, rows, stamps, args.why, only)
     if "_environments_disagree" in block:
         print("  REFUSED   the legs disagree about the device/environment: "
               f"{block['_environments_disagree']}", flush=True)
@@ -461,6 +501,9 @@ def main(argv=None) -> int:
           flush=True)
     print(f"    recorded_utc {block['recorded_utc']}  "
           f"artifact_sha256 {block['artifact_sha256']}", flush=True)
+    if only is not None:
+        print(f"    {RECORDED_SUBDIRECTORIES}: {', '.join(only)} (the campaign holds "
+              f"{sum(1 for p in campaign.iterdir() if p.is_dir())})", flush=True)
 
     if not args.write:
         print("  (report only — pass --write to apply)", flush=True)

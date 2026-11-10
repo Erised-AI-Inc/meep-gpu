@@ -29,15 +29,15 @@ def constitutive_step(
     (stepping.py:920 vs :986), so the kernel never chooses and cannot choose wrong —
     but the host can, which is why the gate carries a swap mutation for it.
 
-    THREE THINGS DECIDE BIT-IDENTITY HERE.
+    Three things decide bit-identity here.
 
     1. **The grouping.** ``field += kps * fw`` then ``field -= kms * fw_previous`` is
        two separate accumulations, left to right: ``((f + kps*src) - kms*prev)``.
        Flattening it to ``f + (kps*src - kms*prev)`` is a different float32 number,
        and neither multiply may contract into an FMA — ``ENABLE_FP_FUSION`` is what
        stops the second. The PML coefficients are the same family of
-       non-representable multiplicands §12.2 measured on the curl, so the guard
-       matters at every Courant number, not only at a non-power-of-two one.
+       non-representable multiplicands on which the unguarded curl was measured to
+       differ, so the guard matters at every Courant number, not only at a non-power-of-two one.
     2. **The coefficient index is on the component's OWN axis.** ``kps_x``/``kms_x``
        for target 0, ``_y`` for 1, ``_z`` for 2 (``H_CONSTITUTIVE_TERMS`` /
        ``E_CONSTITUTIVE_TERMS``, stepping.py:226-227) — that is MEEP's ``dsigw``,
@@ -45,8 +45,8 @@ def constitutive_step(
        is NOT the ``dsig``/``dsigu`` cycle the curl recurrence uses.
     3. **``prev`` is read before ``fw`` is written.** The array path copies ``fw``
        first (``fw_previous = fw.copy()``) for exactly this reason. Writing the store
-       before the load produces a wrong answer only where ``kms != 0`` — i.e. INSIDE
-       THE PML ONLY — which looks like a slightly worse absorber, not like a bug.
+       before the load produces a wrong answer only where ``kms != 0`` — i.e. inside
+       the PML only — which looks like a slightly worse absorber, not like a bug.
 
     The sub-step reads no neighbour, so it needs no ghost rule, no ownership mask and
     no boundary constexpr. That does not make it boundary-agnostic: a folded or

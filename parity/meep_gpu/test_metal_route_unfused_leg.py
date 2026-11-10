@@ -2,24 +2,24 @@
 
 Three defects in the gate, all found on 2026-10-09/10 behind one real defect in the
 product (three complex cylindrical plans read the radial source's STALE host copy under
-a held residency, lane MCC):
+a held residency):
 
-1. THE UNFUSED LEG WAS RECORDED AND NEVER READ. ``run_case`` compared the unfused leg --
+1. The unfused leg was recorded and never read. ``run_case`` compared the unfused leg --
    the certified singles -- with the array path at every checkpoint, kept the answer in
    the row, and decided the verdict off the fused leg alone. The 2026-10-05 probe leg
    passed ``cylindrical_m1`` and ``cylindrical_m0_complex`` PASS-FUSED with the unfused
    leg differing on 24 of 32 arrays at step 1600. ``second_consult_site`` had the same
    blind spot.
-2. THE SEAM CENSUS REPAIRED THE FUSED LEG. ``_seam_census`` read the fused driver's state
+2. The seam census repaired the fused leg. ``_seam_census`` read the fused driver's state
    before every launch through ``collect_state``, whose ``getattr`` goes through a held
    residency's READ BARRIER and copies every device-owned volume to the host -- exactly
-   the stale copies the defective plans then read. On the 01..86 tree the fused leg
-   passed with the census and diverged without it (22,684 of 358,400 words at step 24).
-3. THE ARMED NULL WAS BLIND ON THE SERIES. Once the kernels' constitutive halves are
-   bit-identical to the array path's, the absorbed-consult-withheld control diverges
+   the stale copies the defective plans then read. Before the plans were fixed, the fused
+   leg passed with the census and diverged without it (22,684 of 358,400 words at step 24).
+3. The armed null was blind on the development tree. Once the kernels' constitutive halves
+   are bit-identical to the array path's, the absorbed-consult-withheld control diverges
    only through the own-axis accumulation, and twelve steps from the start do not reach
-   it on many cases (NULL-DID-NOT-DIVERGE on 3 of 5 probe-leg cases on 01..79). The
-   fused route gate's rule (lane FXR) -- place the window where the mechanism exists,
+   it on many cases (NULL-DID-NOT-DIVERGE on 3 of 5 probe-leg cases on that tree). The
+   fused route gate's rule -- place the window where the mechanism exists,
    NOT-APPLICABLE by name where no withheld component accumulates -- is adopted here.
 
 Host-only: every test below drives the gate's pure verdict functions, or a stand-in

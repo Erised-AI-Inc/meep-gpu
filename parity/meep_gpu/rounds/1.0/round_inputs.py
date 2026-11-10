@@ -2,7 +2,7 @@
 """The 1.0 certification round's inputs from the evidence archive: derive, check, pack,
 verify and unpack them, on the GPU host and on the Mac alike.
 
-WHY. The round's stages read measured records under ``parity/meep_gpu/results/`` that the
+Why. The round's stages read measured records under ``parity/meep_gpu/results/`` that the
 repository does not carry: the censuses and seam records the H->D lifts and the Triton
 probes join their rows to, the Metal spine baseline, the Tier B record L3 judges against,
 and the corpus legs the corpus manifest is derived from. A fresh checkout on another host
@@ -20,10 +20,10 @@ them in place (``check``). Every one is named in this directory's manifest:
 ``INPUT_BUNDLE.sha256``
     ``<sha256>  round_inputs_1_0.tgz``: the bundle cut from the archive for this manifest.
 
-The bundle is never committed or published: its records carry the machine stamps of the
-hosts that cut them.
+The bundle is never committed. Its records name no machine, account or local path: a path
+is written under a ``neutral_ids`` label.
 
-WHAT IS AN INPUT. A file a stage of the round opens and does not write, for the stages a
+What is an input. A file a stage of the round opens and does not write, for the stages a
 host other than the archive's runs: the gates (CERT-3, both machines), the bind's record
 and rebind tools, the route and the licence (CERT-4), L3 (CERT-5), and the corpus manifest
 the corpus (CERT-1) and L3 read. ``derive`` computes the list from three sources and
@@ -34,27 +34,29 @@ nothing typed by hand:
   value is read from the module's source (:func:`bound_path`), never imported. The ten
   Triton H->D gates are read through ``legs.triton_hd_inputs`` and
   ``legs.TRITON_HD_INPUT_FILES``, their one home.
-* :data:`CORPUS_MODULE`'s ``LEGS``: the seven ``parity.jsonl`` files
-  ``meep_identity_corpus.py manifest`` derives the corpus manifest from. The manifest is
-  derived on the staging host from them, byte for byte, and is not shipped.
+* :data:`CORPUS_MODULE`'s ``LEGS`` and ``RESURVEYS``: every leg's ``parity.jsonl`` and
+  each re-survey's ``lift.jsonl``, the files ``meep_identity_corpus.py manifest`` derives
+  the corpus manifest from. The manifest is derived on the staging host from them, byte
+  for byte, and is not shipped.
 * The Tier B record at :data:`TIER_B_RECORD` (the home ``docs/development/testing.md``
-  names) and, for each of the five L3 legs RUNBOOK CERT-5 runs, the row files
+  names) and, for each L3 leg RUNBOOK CERT-5 runs (:data:`L3_LEGS`), the row files
   ``l3_corpus.verify_row`` checks before a row runs (:data:`L3_ROLES`), of every set the
-  leg judges, for every row ``l3_corpus.plan_rows`` plans. A set no leg judges ships
-  nothing.
+  leg judges, for every row ``l3_corpus.plan_rows`` plans, with the Apple digest files a
+  second-reference leg reads to show its expected rows host-dependent. A set no leg judges
+  ships nothing.
 
-GRANULARITY. A reader that names a file ships that file. A census or seam directory ships
+Granularity. A reader that names a file ships that file. A census or seam directory ships
 the files its reader opens there: a census directory also holds per-row records and logs
 that no stage of the round opens.
 
-NOT INPUTS (:data:`NOT_INPUTS`). Every other module-level name that binds a path under
+Not inputs (:data:`NOT_INPUTS`). Every other module-level name that binds a path under
 ``results/`` in a harness module the round's stages import is listed there with the
 reason: an output root, a records-stage reader that runs only on the archive host (the
 censuses, the H->D probe re-cut and the boards, RUNBOOK "CERT-4 records"), or a table of
 names the round writes. ``test_round_inputs.py`` holds the two lists to the code both
 ways, so a gate that starts reading another record fails the test before the round.
 
-THE MEEP CORPUS is not an input: it is the ``python/`` tree of the MEEP release tarball,
+The MEEP corpus is not an input: it is the ``python/`` tree of the MEEP release tarball,
 which the reference environment keeps (``MEEP_GPU_CORPUS_ROOT``).
 
     python parity/meep_gpu/rounds/1.0/round_inputs.py derive [--results DIR] [--write] [--code-only]
@@ -216,6 +218,10 @@ NOT_INPUTS: Dict[Tuple[str, str], str] = {
         "the prefix the rebind writes artifact paths under; names no record",
     ("record_cuda_regate", "ARTIFACT_PREFIX"):
         "the prefix the record writes artifact paths under; names no record",
+    ("record_cuda_ade_recut", "FIRST_CERTIFICATION"):
+        "the name of the ADE family's first certification block in "
+        "cuda_kernels/certification.json, which the recorder reads in that record; no "
+        "stage opens a directory of that name",
     ("rounds/1.0/legs", "CUDA_CITED"):
         "certification block names: the subdirectories the round writes in its own "
         "campaign roots",
@@ -263,18 +269,32 @@ STAGE_SCRIPTS = (
     "meep_identity_tier_c.py", "meep_identity_corpus.py", "rounds/1.0/l3_corpus.py",
     "rounds/1.0/l3_row.py",
 )
-#: The corpus module whose ``LEGS`` name the corpus manifest's inputs.
+#: The corpus module whose ``LEGS`` and ``RESURVEYS`` name the corpus manifest's inputs.
 CORPUS_MODULE = "meep_identity_corpus"
 CORPUS_FILE = "parity.jsonl"
+#: The file a re-survey leg adds beside its ``parity.jsonl``.
+RESURVEY_FILE = "lift.jsonl"
 #: The Tier B record's home under ``results/`` and its file there.
 TIER_B = "meep_identity_tier_b"
 TIER_B_RECORD = f"{TIER_B}/meep_identity_tier_b.json"
 #: The row files ``l3_corpus.verify_row`` checks against the record before a row runs.
 L3_ROLES = ("digests", "planes", "result")
-#: The L3 legs RUNBOOK CERT-5 runs: NVIDIA, both table variants under both baselines, each
-#: judging its own Linux set; Metal, flush, judging its three default sets.
-L3_LEGS = (("triton", "keep"), ("triton", "flush"), ("cuda", "keep"), ("cuda", "flush"),
-           ("metal", "flush"))
+#: The second Linux reference build of each mode the record holds (``l3_corpus.py
+#: --second-reference``): the reference recipe's MEEP built and run on a CPU whose widest
+#: vector extension is AVX2, whose BLAS kernel family differs from that of the CPU that
+#: minted ``linux_keep`` and ``linux_flush``.
+SECOND_REFERENCES = {"keep": "linux_avx2_keep", "flush": "linux_avx2_flush"}
+#: The L3 legs RUNBOOK CERT-5 runs, as ``l3_corpus.py`` arguments: NVIDIA, both table
+#: variants under both baselines, each judging its own Linux set, and the same four on a
+#: host whose reference MEEP is the second reference build; Metal, flush, judging its three
+#: default sets.
+L3_LEGS = tuple(
+    [("--table", table, "--baseline", baseline)
+     for table in ("triton", "cuda") for baseline in ("keep", "flush")]
+    + [("--table", table, "--baseline", baseline,
+        "--second-reference", SECOND_REFERENCES[baseline])
+       for table in ("triton", "cuda") for baseline in ("keep", "flush")]
+    + [("--table", "metal", "--baseline", "flush")])
 #: A module-level value naming a dated record directory (or a path under one).
 DATED = re.compile(r"[A-Za-z0-9_.-]*20\d\d-\d\d-\d\d[A-Za-z0-9_.-]*(/[A-Za-z0-9_./-]*)?")
 
@@ -421,12 +441,27 @@ def triton_hd_readers(harness: Path = HARNESS) -> List[Tuple[str, str, Tuple[str
 
 
 def corpus_legs(harness: Path = HARNESS) -> List[str]:
-    """The corpus legs' ``parity.jsonl`` files, from ``meep_identity_corpus.LEGS``."""
-    value = _bindings(_tree(CORPUS_MODULE, harness)).get("LEGS")
+    """The corpus legs' files: every leg's ``parity.jsonl`` (``meep_identity_corpus.LEGS``)
+    and each re-survey's ``lift.jsonl`` (``meep_identity_corpus.RESURVEYS``)."""
+    bindings = _bindings(_tree(CORPUS_MODULE, harness))
+    value = bindings.get("LEGS")
     if not isinstance(value, ast.Dict) or not all(
-            isinstance(v, ast.Constant) and isinstance(v.value, str) for v in value.values):
+            isinstance(node, ast.Constant) and isinstance(node.value, str)
+            for node in (*value.keys, *value.values)):
         raise ManifestError(f"{CORPUS_MODULE}.py: LEGS is not a dict of directory names")
-    return sorted(f"{v.value}/{CORPUS_FILE}" for v in value.values)
+    legs = {key.value: item.value for key, item in zip(value.keys, value.values)}
+    resurveys = bindings.get("RESURVEYS", ast.Tuple(elts=[]))
+    if not isinstance(resurveys, ast.Tuple) or not all(
+            isinstance(node, ast.Constant) and isinstance(node.value, str)
+            for node in resurveys.elts):
+        raise ManifestError(f"{CORPUS_MODULE}.py: RESURVEYS is not a tuple of leg names")
+    names = [node.value for node in resurveys.elts]
+    unknown = [name for name in names if name not in legs]
+    if unknown:
+        raise ManifestError(f"{CORPUS_MODULE}.py: RESURVEYS names legs LEGS does not hold: "
+                            f"{unknown}")
+    return sorted([f"{directory}/{CORPUS_FILE}" for directory in legs.values()]
+                  + [f"{legs[name]}/{RESURVEY_FILE}" for name in names])
 
 
 def code_inputs(harness: Path = HARNESS) -> Dict[str, List[str]]:
@@ -448,7 +483,8 @@ def _l3():
 
 
 def tier_b_inputs(results: Path) -> Dict[str, List[str]]:
-    """The Tier B record and the row files the five L3 legs verify, under ``results``."""
+    """The Tier B record, the row files the L3 legs verify and the Apple digest files a
+    second-reference leg reads before its rows run, under ``results``."""
     l3 = _l3()
     record_path = results / TIER_B_RECORD
     if not record_path.is_file():
@@ -456,11 +492,14 @@ def tier_b_inputs(results: Path) -> Dict[str, List[str]]:
                             f"{TIER_B_RECORD} under the results tree")
     record = json.loads(record_path.read_text(encoding="utf-8"))
     out: Dict[str, List[str]] = {TIER_B_RECORD: ["l3_corpus --record"]}
-    for table, baseline in L3_LEGS:
+    for leg in L3_LEGS:
         args = l3.resolve(l3.parser().parse_args(
-            ["--table", table, "--baseline", baseline, "--record", str(record_path),
-             "--out", str(results / TIER_B / ".derive")]))
-        plan = l3.plan_rows(args, record)
+            [*leg, "--record", str(record_path), "--out", str(results / TIER_B / ".derive")]))
+        try:
+            plan = l3.plan_rows(args, record)
+        except l3.Refusal as exc:
+            raise InputsRefused(f"the record supports no L3 leg {' '.join(leg)}: {exc}") from exc
+        reader = f"l3_corpus {' '.join(leg)}"
         for label in plan["labels"]:
             for name in args.set_list:
                 files = (record["sets"][name]["rows"][label] or {}).get("files") or {}
@@ -470,7 +509,10 @@ def tier_b_inputs(results: Path) -> Dict[str, List[str]]:
                         raise InputsRefused(f"the record names no {role} file for {label} "
                                             f"in {name}")
                     path = _safe_relative(f"{TIER_B}/{entry['file']}")
-                    out.setdefault(path, []).append(f"l3_corpus {table}/{baseline}")
+                    out.setdefault(path, []).append(reader)
+        for name in (plan.get("second_reference") or {}).get("apple_digests_read") or ():
+            out.setdefault(_safe_relative(f"{TIER_B}/{name}"), []).append(
+                f"{reader} (host dependence)")
     return out
 
 
@@ -893,7 +935,7 @@ def unpack(round_dir: Path, bundle: Path, results: Path) -> Tuple[int, int]:
     if problems:
         raise InputsRefused("the bundle does not verify: " + "; ".join(problems[:10]))
     files, _dirs, sums = read_manifest(round_dir)
-    # EVERY REFUSAL BEFORE THE FIRST WRITE, so a refused unpack leaves results/ as it
+    # Every refusal before the first write, so a refused unpack leaves results/ as it
     # found it rather than half-filled.
     absent: List[str] = []
     for name in files:
@@ -1013,7 +1055,7 @@ def main(argv: Sequence[str] = ()) -> int:
             parser.error(f"{arguments.action} needs --bundle")
         if arguments.action == "verify":
             problems = verify_bundle(round_dir, arguments.bundle)
-            # THE SAME DIGEST CHECK ``unpack`` MAKES: a bundle whose members verify but
+            # The same digest check ``unpack`` makes: a bundle whose members verify but
             # whose digest is not the committed one was not cut for this manifest.
             found = sha256_file(arguments.bundle)
             expected = committed_bundle_digest(round_dir)

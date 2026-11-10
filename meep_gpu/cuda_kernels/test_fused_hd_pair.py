@@ -1,8 +1,8 @@
 """Host tests for the CUDA H->D weld: the lift, the declarations and the composition.
 
-WHAT CAN BE TESTED WITHOUT A DEVICE, AND WHAT CANNOT. The predicate, the declared edit
+What can be tested without a device, and what cannot. The predicate, the declared edit
 tables, the seam facts and the composer's refusal are all decidable here and their
-failure mode is a SILENT WRONG ANSWER, so they are tested at the merge bar. The
+failure mode is a silent wrong answer, so they are tested at the merge bar. The
 EMITTER is not: it splices the certified device strings, which live in modules that
 import CuPy at scope, so :func:`~.fused_hd_pair.kernel_source` raises by name on a host
 without one and the emitter tests declare themselves skipped rather than passing
@@ -36,7 +36,7 @@ _SEAM_RECORD = (_API_ROOT / "parity" / "meep_gpu" / "results"
 _CELL = ("cuda_constitutive/ordinary", "cuda_curl/PML")
 _EXTRA_CELL = ("cuda_nonlinear/nonlinear", "cuda_curl/PML")
 
-#: THE CERTIFIED DEVICE TEXT IS A GENUINELY ABSENT RESOURCE ON A HOST WITHOUT CuPy,
+#: The certified device text is a genuinely absent resource on a host without CuPy,
 #: and it is declared as one rather than skipped quietly: both certified modules import
 #: CuPy at scope, so on a laptop there is no text to splice and the emitter's own
 #: guard raises by name. On the validation host these run, and the gate's
@@ -146,9 +146,9 @@ def test_the_update_H_seam_candidates_are_partitioned_by_the_cells_they_absorb()
     """SEVEN candidates since the H->D tails wired, and the ambiguity rule still
     cannot fire -- on four axes rather than one.
 
-    THE GRID SPLITS THE SEVEN: the five Cartesian products refuse a Dcyl grid through
-    their certified curls' own clauses; both cylindrical products REQUIRE one. THE
-    STORAGE SPLITS EACH GROUP: this product's halves refuse complex64 by name and the
+    The grid splits the seven: the five Cartesian products refuse a Dcyl grid through
+    their certified curls' own clauses; both cylindrical products REQUIRE one. The
+    storage splits each group: this product's halves refuse complex64 by name and the
     complex one's require it, the two cylindrical products partition the same way, and
     the two beta products split from each other on the same boolean. BETA splits the
     beta pair from every other candidate (each of the others refuses ``grid.beta != 0``
@@ -156,7 +156,7 @@ def test_the_update_H_seam_candidates_are_partitioned_by_the_cells_they_absorb()
     product's two variants from the rest and from each other. So no configuration
     reaches two candidates.
 
-    ASSERTED FROM THE ABSORB TABLE, not from this docstring, and as the PARTITION
+    Asserted from the absorb table, not from this docstring, and as the PARTITION
     PROPERTY rather than a transcribed list: every (constitutive arm, curl arm) cell any
     of these products may absorb -- the primary ``FUSED_PAIR_ARMS`` row plus every
     ``FUSED_PAIR_EXTRA_ARMS`` row -- is required to be distinct across the whole seam, so
@@ -219,7 +219,7 @@ def test_the_installer_routes_this_seam_to_the_withdraw_hoist():
 def test_the_cell_this_product_claims_is_the_one_the_seam_record_measured():
     """127 rows in the primary cell, 2 in the nonlinear one, 5 refused by the withdraw.
 
-    READ FROM THE ARTIFACT, never transcribed: the module docstring quotes these
+    Read from the artifact, never transcribed: the module docstring quotes these
     numbers and a record that moved under them would leave the prose describing a
     different cell.
     """
@@ -262,7 +262,7 @@ def test_the_nonlinear_widening_is_the_same_kernel_and_not_a_second_one():
                if (row["arms"]["cuda"]["update_H"],
                    row["arms"]["cuda"]["step_D"]) in (_CELL, _EXTRA_CELL)}
     assert kernels[_CELL] == kernels[_EXTRA_CELL] == "fused_update_H_pml_real"
-    # THE MODULE'S OWN SIDE OF IT: the nonlinear family certifies exactly one kernel
+    # The module's own side of it: the nonlinear family certifies exactly one kernel
     # and it is the E one.
     assert nonlinear_constitutive.CERTIFIED_KERNELS == ("update_E_pml_real_nonlinear",)
     source = Path(nonlinear_constitutive.__file__).read_text(encoding="utf-8")

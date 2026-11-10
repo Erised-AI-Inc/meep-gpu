@@ -11,10 +11,11 @@ has its layer and the mutation must be caught. Which arms are declared, and how 
 arms are scored, are host decisions, so both are pinned here.
 
 The fixtures' DOMAIN is a host decision too: every fixture must be a chunk division the
-composer can hand the weld (the composer's chunk clause admits it), because the weld's
+composer can hand the weld (the family's chunk clause admits it), because the weld's
 predicate ends on that clause and a device gate whose fixtures it refuses cannot launch at
-all. Each fixture's division, the wrapping division the refusal leg measures, and the
-fold's termination sweep are pinned here, without a device.
+all. Each fixture's division, the corpus row's wrapping division (in the sweep, and both
+sides of it in the refusal leg), and the fold's termination sweep are pinned here,
+without a device.
 """
 
 from __future__ import annotations
@@ -124,38 +125,61 @@ def test_a_mutation_whose_every_arm_is_declared_is_not_armed(gate):
 # The domain: every fixture is a division the composer can hand the weld
 # ---------------------------------------------------------------------------
 
-def _composer_refusal(gate, spec):
+def _clauses(gate, spec, monkeypatch):
+    """``(general, family)`` on the fixture as the gate builds it, on the host."""
+    from meep_gpu.cuda_kernels import dispersive_offdiag_update_e as offdiag_e
     from meep_gpu.cuda_kernels.arms import StepContext
     from meep_gpu.cuda_kernels.chunk_coverage import CHUNK_AXES_OFFDIAG
+    from meep_gpu.cuda_kernels.test_fused_pairs import _NumpyWearingCupysName
 
-    fields, grid, pml = gate.frame(spec, np)
-    return StepContext(fields, pml, grid).chunk_division_refusal(CHUNK_AXES_OFFDIAG)
+    monkeypatch.setattr(gate, "cp", _NumpyWearingCupysName())
+    fields, grid, pml = gate.build(spec, "uniform", gate.case_rng(spec["label"]))
+    context = StepContext(fields, pml, grid)
+    return (context.chunk_division_refusal(CHUNK_AXES_OFFDIAG),
+            offdiag_e.dispersive_offdiag_division_refusal(context))
 
 
-def test_every_fixture_is_a_division_the_composers_chunk_clause_admits(gate):
-    refused = {spec["label"]: why for spec in gate.SPECS
-               if (why := _composer_refusal(gate, spec)) is not None}
+def test_every_fixture_is_a_division_the_familys_chunk_clause_admits(gate, monkeypatch):
+    refused = {spec["label"]: family for spec in gate.SPECS
+               if (family := _clauses(gate, spec, monkeypatch)[1]) is not None}
     assert not refused, refused
 
 
-def test_the_wrapping_division_the_refusal_leg_measures_is_refused_along_x(gate):
+def test_the_corpus_rows_division_is_in_the_sweep_and_only_the_family_admits_it(
+        gate, monkeypatch):
+    """The general clause refuses exactly the fixture whose x wraps with its layers; the
+    family's clause admits it because its presence words build, with the arrays deleted
+    in both x layer chunks so the presence is not all-kept."""
+    general = {spec["label"]: why for spec in gate.SPECS
+               if (why := _clauses(gate, spec, monkeypatch)[0]) is not None}
+    assert set(general) == {"wrapping_layers_interior_offdiag"}, general
+    assert general["wrapping_layers_interior_offdiag"].startswith(
+        "the chunk division is not a {low, interior, high} product along x"), general
+
+
+def test_the_refusal_leg_measures_both_sides_of_the_familys_clause(gate, monkeypatch):
     wrapping = dict(gate.SPECS[0], label="refusal_wrapping", boundaries=gate.WRAPPING)
-    why = _composer_refusal(gate, wrapping)
-    assert why is not None and why.startswith(
-        "the chunk division is not a {low, interior, high} product along x"), why
+    general, family = _clauses(gate, dict(wrapping, offdiag_dropped_on_x=None),
+                               monkeypatch)
+    assert general is not None and family is None, (general, family)
+    general, family = _clauses(gate, dict(wrapping, offdiag_dropped_on_x="high"),
+                               monkeypatch)
+    assert family is not None and family.startswith(general), family
+    assert "PresenceRefusal" in family, family
 
 
-def test_a_wrapping_axis_carries_no_layer_and_the_fold_termination_is_swept(gate):
-    """A layered axis is walled; an axis that wraps is in the sweep only bare. The
-    folded y both wraps (the periodic termination) and is walled (the metallic one)."""
+def test_a_layered_wrapping_axis_is_the_corpus_rows_alone_and_the_fold_termination_is_swept(
+        gate):
+    """A layered axis is walled, or wraps bare, except on the corpus row's own division.
+    The folded y both wraps (the periodic termination) and is walled (the metallic one)."""
     terminations = set()
     for spec in gate.SPECS:
         _fields, grid, _pml = gate.frame(spec, np)
         bare = {"xyz".index(name) for name in spec.get("bare", ())}
         for axis in range(3):
             wraps = "periodic" in grid.boundaries[axis]
-            if wraps and grid.shape[axis] >= 6:
-                assert axis in bare, (spec["label"], axis)
+            if wraps and grid.shape[axis] >= 6 and axis not in bare:
+                assert spec.get("offdiag_dropped_on_x") == "layers", (spec["label"], axis)
         if grid.is_mirrored(1):
             terminations.add("periodic" if "periodic" in grid.boundaries[1] else "wall")
     assert terminations == {"periodic", "wall"}, terminations

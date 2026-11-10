@@ -1,7 +1,7 @@
 """The FOLDED BETA COMPLEX fused Metal pair: a folded ``special_kz`` Bloch ``step_B``
 welded into ``update_H``.
 
-:mod:`.folded_complex_fused_magnetic_pair` WITH MEEP'S BETA PASS CARRIED IN, and the
+:mod:`.folded_complex_fused_magnetic_pair` with MEEP's beta pass carried in, and the
 pass is the whole module. The source is the certified weld's own output
 (:func:`.folded_complex_fused_magnetic_pair.folded_complex_fused_magnetic_pair_source`)
 with :func:`.special_kz.beta_pass` inserted in register by
@@ -22,21 +22,21 @@ stepping.fill_folded_far_ghosts_B both run inside this seam and neither is carri
 this family") and is real-storage besides. This module is the product they name.
 
 ===========================================================================
-WHAT IT REACHES, AND WHAT IT CANNOT
+What it reaches, and what it cannot
 ===========================================================================
 
 The cell is driven by THREE corpus rows and only TWO of them are reachable:
 
 * ``tests:TestEigCoeffs.test_binary_grating_special_kz_0_13_2``
 * ``tests:TestEigCoeffs.test_binary_grating_special_kz_1_17_7``
-* ``tests:TestSpecialKz.test_eigsrc_kz_0_complex`` — **UNREACHABLE ON ANY BACKEND**.
+* ``tests:TestSpecialKz.test_eigsrc_kz_0_complex`` — **unreachable on any backend**.
   It declares a MAGNETIC source, which ``driver.step`` deposits BETWEEN ``step_B`` and
   ``update_H`` (driver.py:3292-3293). No launch can straddle a deposit, so the clause
   is a driver fact rather than this kernel's scope, and it is refused by name below.
 
-**THE ROW COUNT IS NOT RE-DERIVED HERE AND THIS MODULE CLAIMS NO CELL MOVE.** The Metal
+**The row count is not re-derived here and this module claims no cell move.** The Metal
 census that placed those rows finished 2026-08-19 02:15 and ``folded_beta.py`` was
-edited at 05:16; the re-close round ``results/metal_coverage_special_kz_reclose_2026-08-19``
+edited at 05:16; the re-close run ``results/metal_coverage_special_kz_reclose_2026-08-19``
 re-ran ``TestSpecialKz.test_special_kz`` only, not these two rows. The standing board
 (``results/fusion_matrix_metal_2026-08-26_canonical``) could bound that staleness
 because NO fused product covered any folded-beta cell; this product is the first that
@@ -51,13 +51,13 @@ grid, and leaving it uncarried would make the walled specialisation a silent gap
 than a compiled-out block.
 
 ===========================================================================
-THE FILL CARRY IS THE RISK, AND IT IS TAKEN DELIBERATELY
+The fill carry is the risk, and it is taken deliberately
 ===========================================================================
 
 :mod:`.folded_beta` DECLINES to claim ``fill_B`` and ``fill_folded_far_ghosts_B``
 (folded_beta.py:46-53) — "registering a third fill arm here would make both fill slots
 AMBIGUOUS and drop them to the array path, which is a coverage LOSS dressed as
-completeness". That decision is about an ARM TABLE ROW, not about the arithmetic: the
+completeness". That decision is about an arm table row, not about the arithmetic: the
 fills copy ``parity * field[plane]`` and touch no beta term, so
 :mod:`.folded_complex`'s fill predicate already admits a folded beta run and its
 composition matrix has pinned exactly that for ``fold_complex_2d_beta`` since before
@@ -97,7 +97,7 @@ inside the struct, and any separate-scalar spelling of the 27 pointers is over t
 ceiling either way.
 
 ===========================================================================
-WHAT IS LIFTED, AND WHERE THE PASS LANDS
+What is lifted, and where the pass lands
 ===========================================================================
 
 * **the weld** -- :func:`.folded_complex_fused_magnetic_pair.folded_complex_fused_magnetic_pair_source`'s
@@ -117,7 +117,7 @@ WHAT IS LIFTED, AND WHERE THE PASS LANDS
   already ships on.
 
 ===========================================================================
-THE COMPLEX MULTIPLIES
+The complex multiplies
 ===========================================================================
 
 One ``templates.complex_helpers()`` emission serves the whole kernel. The mirror
@@ -126,7 +126,7 @@ coefficient-left multiplies are the parent's; the beta pass forms no complex pro
 (a quarter turn by a real word).
 
 ===========================================================================
-WHAT THIS FAMILY REFUSES, EACH BY NAME
+What this family refuses, each by name
 ===========================================================================
 
 * ``beta == 0`` — :mod:`.folded_complex_fused_magnetic_pair` owns that seam; the
@@ -225,7 +225,7 @@ from .. import deposit_repair as _deposit_repair
 #: * THE WIRING. ``launch._install_fused_pair`` puts a ``LeadingRepairPlan`` in
 #:   ``step_B`` and a ``TrailingRepairPlan`` in ``update_H`` whenever the seam carries
 #:   a deposit, and it reaches this family through the absorb row above.
-#: * THE FOLDED SEAM. What held every folded family at ``False`` was that a folded
+#: * The folded seam. What held every folded family at ``False`` was that a folded
 #:   seam runs ``fill_symmetry_bc_B``/``fill_folded_far_ghosts_B`` AFTER the injection
 #:   and a POINT repair never visits the MIRROR IMAGE of a deposit index. That is
 #:   retired by ``deposit_repair.repair_cells`` (deposit_repair.py:217-258), which
@@ -358,7 +358,7 @@ def compile_folded_beta_complex_fused_magnetic_pair(
 def signature_binding_census(source: Optional[str] = None) -> Dict[str, int]:
     """Count the ``[[buffer(n)]]`` attributes in an emitted source and check them.
 
-    THE POINT IS THAT THE NUMBER IS READ BACK OUT OF THE STRING. :data:`PACKED_BINDINGS`
+    The point is that the number is read back out of the string. :data:`PACKED_BINDINGS`
     is imported from a sibling and :data:`PARAMS_ITEMSIZE` is spelled by hand; a
     signature that drifted from either would otherwise be discovered on a device, or
     not at all. This counts what the emitter actually wrote, requires the attribute
@@ -499,14 +499,14 @@ def metal_folded_beta_complex_fused_magnetic_pair_coverage(
         reasons.extend(f"folded beta complex constitutive half: {reason}"
                        for reason in magnetic.reasons)
 
-    # THE PARITY ARM IS THIS PRODUCT'S OWN QUESTION and neither half asks it: the two
+    # The parity arm is this product's own question and neither half asks it: the two
     # halves are folded_beta's, which never emits a mirror-parity product because that
     # family registers NO fill arm. The fill arithmetic this weld carries inline is
     # folded_complex's, so folded_complex's artifact is required too.
 
-    # THE SOURCE SEAM. A MAGNETIC source is injected BETWEEN the two halves
+    # The source seam. A MAGNETIC source is injected BETWEEN the two halves
     # (driver.py:3292-3293), so a fused pair would consume a pre-injection B.
-    # IGNORANCE IS NOT AN EMPTY SET: `Fields` does not hold the source list, so a
+    # Ignorance is not an empty set: `Fields` does not hold the source list, so a
     # predicate that inferred "no sources" from not being told would be the
     # over-covering refusal this clause exists to prevent. An ELECTRIC source is
     # injected in the D/E half and does NOT disqualify this pair.
@@ -522,7 +522,7 @@ def metal_folded_beta_complex_fused_magnetic_pair_coverage(
             f"inside the seam this kernel closes"),
         carries_repair=CARRIES_DEPOSIT_REPAIR))
 
-    # ASKED AFTER THE SOURCE CLAUSE, deliberately: that clause reads no grid, and a
+    # Asked after the source clause, deliberately: that clause reads no grid, and a
     # degenerate object should still get its polarity named rather than only "no grid".
     grid = getattr(fields, "grid", None)
     if grid is None:
@@ -536,7 +536,7 @@ def metal_folded_beta_complex_fused_magnetic_pair_coverage(
     reasons.extend(_mirror_phase_reasons(grid, codes))
     reasons.extend(_far_carry_reasons(grid, codes))
 
-    # THE WALL CLEAR IS CARRIED INLINE, so the grid must be able to answer which axes
+    # The wall clear is carried inline, so the grid must be able to answer which axes
     # are walled. A grid that cannot would silently be treated as unwalled, which is a
     # plane of wrong values rather than a crash.
     for name in ("has_metallic", "is_metallic", "is_mirrored"):
@@ -546,7 +546,7 @@ def metal_folded_beta_complex_fused_magnetic_pair_coverage(
 
     shape = tuple(getattr(grid, "shape", ()))
     if codes is not None and len(shape) == 3:
-        # THE NEAR FILL IMAGES STORED CELL 2, and the source thread must exist. The
+        # The near fill images stored cell 2, and the source thread must exist. The
         # curl half's predicate already refuses a folded axis storing too few cells;
         # restated because THIS family writes the destination from a DIFFERENT thread
         # and a missing source plane is an out-of-range write, not a soft error.
@@ -557,7 +557,7 @@ def metal_folded_beta_complex_fused_magnetic_pair_coverage(
                     f"near fill images stored cell {NEAR_SOURCE_INDEX} and this kernel "
                     f"images it from that cell's own thread")
 
-        # THE WALL CLEAR AND THE FILL MUST NOT MEET. On this family both act on
+        # The wall clear and the fill must not meet. On this family both act on
         # component m at stored cell 0 of axis m, and `_zero_metal` skips a folded axis
         # so they are disjoint by construction. CHECKED rather than inferred: reading
         # coverage off another module's guard is what this package's rule forbids, and
@@ -570,7 +570,7 @@ def metal_folded_beta_complex_fused_magnetic_pair_coverage(
                     f"stepping._zero_metal skips a folded axis, so the two passes have "
                     f"drifted and the carry's disjointness no longer holds")
 
-    # THE RUN'S FIRST update_H, the parent's clause: the array path starts H and f_w
+    # The run's first update_H, the parent's clause: the array path starts H and f_w
     # from B on the dsigw cells at that update (stepping.separate_h_from_b) and the
     # lifted H body does not, so this pair takes that update only where the start
     # cannot change a word (launch.h_start_reasons), asked with no source list because
@@ -674,7 +674,7 @@ def params_record_dtype() -> Any:
 
 
 def beta_words(grid: Any) -> Tuple[float, float]:
-    """``(beta_plus, beta_minus)`` -- the CURL ARM'S OWN words, called.
+    """``(beta_plus, beta_minus)`` -- the curl arm's own words, called.
 
     :func:`.special_kz.beta_curl_coefficients` is the array path's coefficient
     evaluated on the objects the array path evaluates it on, so the words this kernel
@@ -775,7 +775,7 @@ def plan_metal_folded_beta_complex_fused_magnetic_pair(
 
     curl_spec = SUB_STEPS[CURL_SUB_STEP]
     side_spec = CONSTITUTIVE_SIDES[CONSTITUTIVE_SIDE]
-    # THE ORDER HERE IS THE SIGNATURE'S ORDER and nothing else keeps them in step, so
+    # The order here is the signature's order and nothing else keeps them in step, so
     # the groups are built in the order the kernel declares them. There is NO
     # inverse-mu volume: the H product is `source = B` with mu = 1 baked into the array
     # path too, which is what makes this signature 27 pointers rather than 30.
@@ -789,7 +789,7 @@ def plan_metal_folded_beta_complex_fused_magnetic_pair(
                 for name in side_spec["targets"]]
     workspace = [bind_complex(name, getattr(fields, name))
                  for name in side_spec["aux"]]
-    # THE B CURL TAKES THE HALF-INTEGER LATTICE and the H constitutive the INTEGER one
+    # The B curl takes the half-integer lattice and the H constitutive the INTEGER one
     # (SUB_STEPS['step_B']['suffix'] == '_h'; CONSTITUTIVE_SIDES['H']['half_integer'] is
     # False). That is the OPPOSITE pairing to the folded D/E pair, and the kernel cannot
     # tell -- a gate must carry a host mutation for each group.
@@ -849,7 +849,7 @@ def _arm_plan(context: Any, slot: str
 def register_arms() -> Tuple[Any, ...]:
     """One row on ``step_B``, ``wired=False``.
 
-    THE FLAG IS THE WHOLE COMPOSITION STORY, and it is every other fused pair's.
+    The flag is the whole composition story, and it is every other fused pair's.
     ``plan_step`` assigns at most one arm per slot and this product spans five, so there
     is no slot it could claim without a composition rule nothing has measured. It would
     additionally contend on ``step_B`` with :mod:`.folded_beta`'s wired ``folded beta

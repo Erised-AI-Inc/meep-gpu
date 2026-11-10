@@ -1,6 +1,6 @@
 """The COMPLEX-storage hand-CUDA fused pair: ``step_D`` -> ``zero_metal_D`` -> ``update_E``.
 
-THE FIRST COMPLEX PRODUCT ON THE ELECTRIC SEAM, and it takes the board's largest
+The first complex product on the electric seam, and it takes the board's largest
 unserved Cartesian D cell: ``D_to_E (cuda_complex/complex, cuda_complex/complex)``,
 16 seam-instances of demand of which exactly ONE clears the source seam on the driver
 fact alone (``parity/meep_gpu/results/fusion_matrix_cuda_2026-08-30_electric/board.log``,
@@ -10,7 +10,7 @@ cell, the board prices every one of those 15 on the driver fact and they can nev
 reached, whatever the fitness verdict says.
 
 =============================================================================
-WHY IT IS A SEPARATE MODULE AND NOT AN ARM OF THE COMPLEX MAGNETIC PAIR
+Why it is a separate module and not an arm of the complex magnetic pair
 =============================================================================
 
 :mod:`.complex_fused_magnetic_pair` welds ``step_B`` to ``update_H``; this welds
@@ -26,7 +26,7 @@ The two occupy DIFFERENT SEAMS, so they can never make one seam ambiguous:
 ``fused_pairs.install_fused_pairs`` decides one seam at a time and skips every product
 whose ``curl_slot`` is not the one it is deciding.
 
-WHAT IT IS DISJOINT FROM, ON ITS OWN SEAM. ``fused_electric_pair``'s predicate opens
+What it is disjoint from, on its own seam. ``fused_electric_pair``'s predicate opens
 with ``covers_real_pml_curl``, which refuses complex64 storage BY NAME; this one opens
 with :func:`covers_real_pml_complex_curl`, which refuses a run that is neither
 ``force_complex_fields`` nor Bloch-phased and refuses a Dcyl grid. A pair of predicates
@@ -34,13 +34,13 @@ that overlapped would leave the seam UNFUSED naming both, so disjointness is wha
 the slots rather than a tidiness.
 
 =============================================================================
-WHAT ONE LAUNCH PERFORMS, AND WHAT IT DOES NOT
+What one launch performs, and what it does not
 =============================================================================
 
 :data:`REPLACES` is ``step_D`` (driver.py:3302) -> ``zero_metal_D`` (:3310) ->
 ``update_E`` (:3313), declared rather than inferred from the two slots.
 
-THE TWO MIRROR FILLS ARE ABSENT BY REFUSAL, not by omission: ``fill_symmetry_bc_D``
+The two mirror fills are absent by refusal, not by omission: ``fill_symmetry_bc_D``
 (driver.py:3309) and ``fill_folded_far_ghosts_D`` (:3311) do nothing at all on an
 unfolded grid, and :func:`covers_complex_fused_electric_pair` refuses every folded one
 -- twice over, once through the complex curl half's own clause ("mirror symmetry:
@@ -51,7 +51,7 @@ ownership inversion ``fused_magnetic_pair`` uses to carry its two fills is not p
 here: there is no in-seam fill to carry on an admitted row, and porting the machinery
 anyway would be untested device text on every one of them.
 
-``zero_metal_D`` IS carried, and IT IS THE OFF-DIAGONAL TABLE -- two components per
+``zero_metal_D`` IS carried, and it is the off-diagonal table -- two components per
 walled axis, the complement of the B side's diagonal. That is the single most likely
 slip in porting from the magnetic sibling: ``fields.IYEE_SHIFTS`` gives Dx (1,0,0),
 Dy (0,1,0), Dz (0,0,1), so a D component has Yee shift 0 on the OTHER TWO axes and sits
@@ -60,7 +60,7 @@ wrong component and leave two right ones standing, on every walled run, and it i
 as a mutation rather than left to a reading.
 
 =============================================================================
-THE ALIASING HAZARD, AND THE ONE ANSWER TO IT
+The aliasing hazard, and the one answer to it
 =============================================================================
 
 The curl half writes D in place and the constitutive half reads it. Binding that one
@@ -75,14 +75,14 @@ approximate: the certified ``update_E_pml_complex_bloch`` opens each component w
 reload of the word pair ``step_D_pml_complex_bloch`` just stored, and a float32 stored
 to global and reloaded is the identity on the bits.
 
-THE THREE ``inv_eps`` POINTERS ARE DELIBERATELY NOT ``__restrict__``, and they are
+The three ``inv_eps`` pointers are deliberately not ``__restrict__``, and they are
 lifted from the certified ``update_E`` rather than decided here: an isotropic run hands
 one allocation three times (``fields.py:1323-1325``), and ``restrict`` on mutually
 aliasing arguments is a promise the caller cannot keep. They are read-only, so nothing
 is lost but the promise.
 
 =============================================================================
-THE TWO NAME COLLISIONS THE SPLICE MUST RESOLVE, AND WHY THEY MATTER
+The two name collisions the splice must resolve, and why they matter
 =============================================================================
 
 The two certified bodies were emitted from ONE template family, so they use the same
@@ -94,14 +94,14 @@ local names for different things. Spliced verbatim into one scope:
 * ``kms_x/kms_y/kms_z`` is the INTEGER sub-lattice for the D curl
   (``stepping._curl_coefficients``, :2418 with ``complex_emitter.HALF_INTEGER['step_D']
   = False``) and the HALF-INTEGER one for ``update_E`` (``HALF_INTEGER['E'] = True``,
-  stepping.py:1015). THE PAIRING IS THE MIRROR IMAGE OF THE B/H SEAM'S. Those two
+  stepping.py:1015). The pairing is the mirror image of the B/H seam's. Those two
   compile perfectly and differ by half a cell in the absorber profile -- converged,
   smooth and entirely wrong. This is the collision that matters, and it is why the
   constitutive group is renamed ``kms_half_*`` in the signature and in the spliced
   body both.
 
 =============================================================================
-NOTHING HERE IS DISPATCH
+Nothing here is dispatch
 =============================================================================
 
 ``meep_gpu.fastpath.plan_fast_path`` still returns ``None`` on every branch. This
@@ -123,7 +123,7 @@ if TYPE_CHECKING:
     from ..grid import Grid
     from ..pml import PML
 
-# THE CERTIFIED TEXT. ``complex_emitter`` imports nothing and runs at the merge bar,
+# The certified text. ``complex_emitter`` imports nothing and runs at the merge bar,
 # so this import is unconditional and the emitter below works on a laptop.
 try:
     from . import complex_emitter
@@ -182,7 +182,7 @@ except ImportError:  # loaded by path, outside the package
 
 
 # =============================================================================
-# THE PARTITION — EMPTY ON THE CERTIFIED SIDE UNTIL A GATE MOVES IT
+# The partition — empty on the certified side until a gate moves it
 # =============================================================================
 #
 # Both are PLAIN assignments with NO type annotation, for the reason every sibling in
@@ -194,7 +194,7 @@ except ImportError:  # loaded by path, outside the package
 #: record behind it. A fused product's bit-identity is a claim about the WELD, which no
 #: verdict on either half establishes, so this stays empty until the fused gate has run
 #: on a device.
-#: RELEASED ON DEVICE 2026-09-11 by the campaign ``certification.json:cuda_complex_fused_electric_pair_2026-09-11_regate``
+#: Released on device 2026-09-11 by the campaign ``certification.json:cuda_complex_fused_electric_pair_2026-09-11_regate``
 #: (parity/meep_gpu/gate_cuda_fused_complex_pairs.py --family complex_electric, keep and flush legs, 18/18 cases identical, 27/27 mutations caught).
 #: Moved here from ``UNCERTIFIED_KERNELS`` by that verdict and by nothing
 #: else: the gate ran BEFORE this edit, on the bytes that ship, and the
@@ -205,14 +205,14 @@ CERTIFIED_KERNELS = (
 #: Shipped without a gate verdict. The kernel is here to BE gated.
 UNCERTIFIED_KERNELS = {}
 
-#: Does this product bracket its fused launch with the deposit repair? TRUE, AND THE
-#: WIRING IS ``fused_pairs._install_fused_pair``'s -- the same block that brackets the
+#: Does this product bracket its fused launch with the deposit repair? True, and the
+#: wiring is ``fused_pairs._install_fused_pair``'s -- the same block that brackets the
 #: real electric pair, reached because this family has a row in
 #: ``fused_pairs.FUSED_PRODUCTS``. The flag and the wiring change together or not at all
 #: (``deposit_repair.py:221-226``); a product that declared it without the two slots
 #: would compute ``update_E`` against a pre-injection D and report success.
 #:
-#: WHAT THE REPAIR HAS TO INVERT HERE IS THE SAME ARITHMETIC IT ALREADY INVERTS.
+#: What the repair has to invert here is the same arithmetic it already inverts.
 #: ``deposit_repair.apply`` recomputes ``(f + kps*fw_fresh) - kms*fw_prev`` with ``xp``
 #: array ops, with ``fw_fresh`` being ``D * inv_eps`` on this side rather than ``B``
 #: (``deposit_repair.SEAMS["D"]``); under complex64 storage those are complex adds and
@@ -232,7 +232,7 @@ KERNEL_NAME = "fused_electric_pair_pml_complex"
 #: The driver passes ONE launch of this kernel performs, in driver order
 #: (driver.py:3302, :3310, :3313). Declared rather than inferred from the two slots.
 #:
-#: THE TWO FILLS ARE ABSENT BY REFUSAL, not by omission — see the module docstring.
+#: The two fills are absent by refusal, not by omission — see the module docstring.
 REPLACES: Tuple[str, ...] = ("step_D", "zero_metal_D", "update_E")
 
 #: The sub-step slot the planner holds this on.
@@ -268,7 +268,7 @@ LIFT_EDITS: Tuple[Dict[str, str], ...] = (
             "any store are untouched."},
     {"line": "    constitutive_apply(f0, w0, idx, s0, kps_x[i], kms_x[i], in_h_x);",
      "became": "    constitutive_apply(h0, w0, idx, s0, kps_x[i], kms_half_x[i], in_h_x);",
-     "why": "TWO RENAMES, NO ARITHMETIC. f0 is D in the curl body and E here; kms_x is "
+     "why": "Two renames, no arithmetic. f0 is D in the curl body and E here; kms_x is "
             "the INTEGER sub-lattice for the D curl and the HALF-INTEGER one for "
             "update_E -- the mirror image of the B/H seam's pairing -- and letting one "
             "shadow the other is a half-cell error in the absorber profile rather than "
@@ -283,11 +283,11 @@ LIFT_EDITS: Tuple[Dict[str, str], ...] = (
             "exactly that face. Same OFF-DIAGONAL table (two components per wall), "
             "same (+0.0f, +0.0f) word pair. The register is cleared beside the store so "
             "update_E reads the wiped value."},
-    # ----- THE PER-CHUNK FORMS, 0.10 (bit_parity_0_10 DESIGN.md D1, D10, D11) -------
+    # ----- The per-chunk forms, 1.0 (docs/development/kernel-tables.md) -----------
     {"line": "    <step_D_pml_complex_bloch's chunk-record block>\n"
              "    <update_E_pml_complex_bloch's chunk-record block>",
      "became": "    <ONE block, bounds_block.bounds_block(both entry sets, presence xyz)>",
-     "why": "ONE DECODE OF THE RECORD PER KERNEL (D10). The D curl reads the integer "
+     "why": "One decode of the record per kernel. The D curl reads the integer "
             "record along each component's dsigu axis and update_E the half-integer "
             "one along each component's own axis. Both bodies' blocks are removed by "
             "bounds_block.strip_bounds_block (refused unless each is exactly the "
@@ -330,7 +330,7 @@ _PML_APPLY_SIGNATURE_REG = "__device__ __forceinline__ cf pml_apply_reg(\n"
 _PML_APPLY_STORE = "    cf_store(f, idx, value);\n"
 _PML_APPLY_STORE_REG = (
     "    cf_store(f, idx, value);\n"
-    "    // THE ONE EDIT TO THIS HELPER'S ARITHMETIC: none. Both forms and the store\n"
+    "    // The one edit to this helper's arithmetic: none. Both forms and the store\n"
     "    // are the certified ones; the value is additionally RETURNED so the\n"
     "    // constitutive half can read it from a register instead of reloading the\n"
     "    // word pair from global memory.\n"
@@ -359,7 +359,7 @@ _ZERO_METAL_ROWS: Tuple[Tuple[str, str, Tuple[str, ...]], ...] = (
 #: flux-density source pointers at all.
 _SIGNATURE = r'''
 extern "C" __global__ void fused_electric_pair_pml_complex(
-    // THE SHARED VOLUME, BOUND ONCE, as the float32 word view of complex64 D.
+    // The shared volume, bound once, as the float32 word view of complex64 D.
     // The curl half writes it and the constitutive half reads it from a register;
     // binding it a second time as a const __restrict__ source would be two restrict
     // pointers to one allocation, which is UB and which NVRTC miscompiles without a
@@ -386,8 +386,8 @@ extern "C" __global__ void fused_electric_pair_pml_complex(
     const float* __restrict__ kms_z, const float* __restrict__ sinv_z,
     // The E constitutive's HALF-INTEGER coefficients. Its kms is renamed kms_half_*:
     // the two sub-lattices collide on the bare name in one scope, and a shadow there
-    // is a half-cell error in the absorber profile, not a compile failure. THE PAIRING
-    // IS THE MIRROR IMAGE OF THE B/H SEAM'S.
+    // is a half-cell error in the absorber profile, not a compile failure. The pairing
+    // is the mirror image of the B/H seam's.
     const float* __restrict__ kps_x, const float* __restrict__ kms_half_x,
     const float* __restrict__ kps_y, const float* __restrict__ kms_half_y,
     const float* __restrict__ kps_z, const float* __restrict__ kms_half_z,
@@ -402,7 +402,7 @@ extern "C" __global__ void fused_electric_pair_pml_complex(
     // A folded metallic axis is EXCLUDED there (stepping.py:2237-2239); this predicate
     // refuses a folded grid outright, so the two agree by construction.
     int wall_x, int wall_y, int wall_z,
-    // THE CHUNK RECORD (chunk_map.chunk_bounds_record), int32[25]: which cells take
+    // The chunk record (chunk_map.chunk_bounds_record), int32[25]: which cells take
     // which PML form, decoded once, after the index decode.
     const int* __restrict__ cb
 ) {
@@ -493,7 +493,7 @@ def certified_curl_body() -> str:
         raise AssertionError(
             "the certified curl body no longer decodes i on its own line; the carried "
             "registers have nowhere to be declared")
-    # ONE DECODE OF THE CHUNK RECORD (D10): the curl body's own block is removed and
+    # One decode of the chunk record: the curl body's own block is removed and
     # the union block, which also carries the constitutive half's entries, takes its
     # place directly after the decode.
     body = bounds_block.strip_bounds_block(body, "the certified curl body", *CURL_BLOCK)
@@ -540,7 +540,7 @@ def zero_metal_carry() -> str:
     components per wall (:data:`_ZERO_METAL_ROWS`). The register is cleared BESIDE the
     store, because the constitutive half below reads the register and not the volume.
 
-    A FOLDED METALLIC AXIS CARRIES NO WALL (``stepping._zero_metal``'s ``is_metallic
+    A folded metallic axis carries no wall (``stepping._zero_metal``'s ``is_metallic
     and not is_mirrored``, :2237-2239). This kernel never has to model that: the
     predicate refuses every folded grid, so ``zero_metal_axes`` and the boundary codes
     cannot disagree on any admitted row.
@@ -575,7 +575,7 @@ def certified_constitutive_body() -> str:
             "the certified constitutive body no longer decodes i on its own line; the "
             "duplicate decomposition cannot be identified")
     # Its chunk-record block goes with the decode: the union block above decodes
-    # update_E's entries too (D10).
+    # update_E's entries too.
     body = bounds_block.strip_bounds_block(body, "the certified constitutive body",
                                            *CONSTITUTIVE_BLOCK)
     tail = body.split(_DECODE_END, 1)[1]
@@ -600,7 +600,7 @@ def certified_constitutive_body() -> str:
             "need D bound a second time, which is the aliasing hazard this signature "
             "exists to avoid")
 
-    # THE INVERSE-PERMITTIVITY PRODUCTS ARE ASSERTED, NOT EDITED. They are the one part
+    # The inverse-permittivity products are asserted, not edited. They are the one part
     # of this body that has no counterpart on the H seam, so a change to them would be
     # exactly the kind of drift that compiles: the line is READ and required to be the
     # certified one, and nothing is substituted into it.
@@ -615,7 +615,7 @@ def certified_constitutive_body() -> str:
                 f"certified {expected!r}; this family binds inv_eps_* on the strength "
                 f"of that line and does not edit it")
 
-    # THE TWO RENAMES. Matched as whole lines so a moved argument list is a named
+    # The two renames. Matched as whole lines so a moved argument list is a named
     # failure rather than a partial substitution.
     for target, axis in zip(_CARRIED, ("x", "y", "z")):
         prefix = f"    constitutive_apply(f{target}, w{target}, idx, s{target}, "
@@ -662,8 +662,8 @@ def union_bounds_block() -> str:
 
     Emitted directly after the index decode, ahead of every line that reads a
     membership flag. The names are tagged by lattice (``cbi_*``/``in_i_*`` integer,
-    ``cbh_*``/``in_h_*`` half-integer), so the union never redeclares one (DESIGN.md
-    D10).
+    ``cbh_*``/``in_h_*`` half-integer), so the union never redeclares one
+    (docs/development/kernel-tables.md).
     """
     return bounds_block.bounds_block(CURL_BLOCK[0] + CONSTITUTIVE_BLOCK[0],
                                      CURL_BLOCK[1] + CONSTITUTIVE_BLOCK[1])
@@ -684,7 +684,7 @@ def complex_fused_electric_pair_source() -> str:
         certified_constitutive_body(),
         "}\n",
     ))
-    # PURE ASCII IS A COMPILE REQUIREMENT, not a style rule; checked here so a mutation
+    # Pure ASCII is a compile requirement, not a style rule; checked here so a mutation
     # leg that inserts a non-ASCII character is refused at emission with the reason
     # instead of at NVRTC three frames away.
     source.encode("ascii")
@@ -714,7 +714,7 @@ def _clear_kernel_cache() -> int:
 def _get_kernel(name: str = KERNEL_NAME):
     """Compile the fused kernel, memoized on (name, options, policy, source).
 
-    THE SOURCE IS EMITTED PER CALL AND THAT IS LOAD-BEARING, for the reason every
+    The source is emitted per call and that is load-bearing, for the reason every
     sibling rebuilds its code map per call: the source is part of the memo key, so it
     has to be built before there is a key to miss on, and a gate mutates this family by
     monkeypatching the emitter. A source memoized at first call would hand back the
@@ -744,7 +744,7 @@ def covers_complex_fused_electric_pair(fields: Any, pml: Any, grid: Any,
     Returns ``(covered, reason)`` with ``reason`` naming the FIRST refusal, which is
     this directory's convention.
 
-    A CONJUNCTION, AND NOTHING IS WEAKENED. A configuration either half's own certified
+    A conjunction, and nothing is weakened. A configuration either half's own certified
     predicate refuses is refused here with that half's reason, prefixed so a reader can
     tell which side said it. What this predicate ADDS is the seam clauses: the source
     slot, the injection ROUTE, the two UNCARRIED fills, and the grid's ability to say
@@ -759,7 +759,7 @@ def covers_complex_fused_electric_pair(fields: Any, pml: Any, grid: Any,
     if not covered:
         return False, f"constitutive half: {reason}"
 
-    # THE TWO FILLS ARE REFUSED, NOT CARRIED, and the refusal is stated HERE rather than
+    # The two fills are refused, not carried, and the refusal is stated HERE rather than
     # inherited. The curl half above already refuses every folded grid, so this clause
     # is unreachable today -- and that is precisely why it is written: the guarantee
     # that `fill_symmetry_bc_D` (driver.py:3309) and `fill_folded_far_ghosts_D` (:3311)
@@ -784,12 +784,12 @@ def covers_complex_fused_electric_pair(fields: Any, pml: Any, grid: Any,
                        "ownership inversion that carries the B family's two fills is "
                        "fused_magnetic_pair's and is not ported here")
 
-    # THE INJECTION ROUTE, REFUSED BY NAME, and it is a D-seam clause with no B-seam
+    # The injection route, refused by name, and it is a D-seam clause with no B-seam
     # counterpart. The driver has TWO ways to deposit an electric source in this seam:
     # the plain `source.inject` loop (driver.py:3308) and
     # `_inject_electric_through_conductivity` (:3305), which snapshots the D components,
     # injects, and then rescales only the increment by `condinv` (MEEP step.cpp:294-317).
-    # THE COMPLEX HALVES BOTH ADMIT A CONDUCTIVITY BY NAME -- `fields.condfac_for` is
+    # The complex halves both admit a conductivity by name -- `fields.condfac_for` is
     # read in `stepping._apply_curl` and nowhere else, so neither constitutive sub-step
     # sees it (coverage.covers_real_pml_complex_constitutive's own paragraph) -- so
     # unlike the real electric pair this refusal is NOT inherited from a half and has to
@@ -803,12 +803,12 @@ def covers_complex_fused_electric_pair(fields: Any, pml: Any, grid: Any,
                        "rescales the increment by condinv; the deposit repair has no "
                        "verdict on that route")
 
-    # THE SOURCE SEAM, CARRIED RATHER THAN REFUSED. An ELECTRIC source is injected
+    # The source seam, carried rather than refused. An ELECTRIC source is injected
     # BETWEEN the two halves (driver.py:3305/:3308), so a fused pair computes update_E
     # against a pre-injection D; `fused_pairs._install_fused_pair` brackets the launch
     # with LeadingRepairPlan/TrailingRepairPlan, CARRIES_DEPOSIT_REPAIR says so, and the
-    # shared clause then asks what the repair can actually reconstruct. IGNORANCE IS
-    # NEVER AN EMPTY SET: `Fields` does not hold the source list, so a predicate that
+    # shared clause then asks what the repair can actually reconstruct. Ignorance is
+    # never an empty set: `Fields` does not hold the source list, so a predicate that
     # inferred "no sources" from not being told would be exactly the over-covering this
     # clause exists to prevent. A MAGNETIC source is injected in the B/H half and does
     # not disqualify this pair.
@@ -837,8 +837,8 @@ def covers_complex_fused_electric_pair(fields: Any, pml: Any, grid: Any,
         return False, (f"in_seam_coverage.zero_metal_axes raised on this grid: "
                        f"{type(exc).__name__}: {exc}")
 
-    # THE STORED SHAPE THE KERNEL INDEXES MUST BE THE ONE THE WALL PLANE IS DERIVED
-    # FROM. `nx, ny, nz` come from `fields.Dx.shape`; the wall is stored cell 0 of a
+    # The stored shape the kernel indexes must be the one the wall plane is derived
+    # from. `nx, ny, nz` come from `fields.Dx.shape`; the wall is stored cell 0 of a
     # `grid.stored_cells` axis. If the two ever disagree the wipe is right for an array
     # this launch is not walking.
     try:
@@ -852,8 +852,8 @@ def covers_complex_fused_electric_pair(fields: Any, pml: Any, grid: Any,
                        f"{extents}; the wall plane is derived from the first and "
                        f"indexed into the second")
 
-    # THE THREE INVERSE-PERMITTIVITY VOLUMES MUST BE ASKABLE AND MUST MATCH THE SHAPE
-    # THIS LAUNCH WALKS. The constitutive half's own predicate already checks them
+    # The three inverse-permittivity volumes must be askable and must match the shape
+    # this launch walks. The constitutive half's own predicate already checks them
     # against `_grid_facts`' shape; this asks the same question against the extents THIS
     # LAUNCH walks (`fields.Dx.shape`), which is the array the flat idx indexes.
     accessor = getattr(fields, "inverse_epsilon_for", None)
@@ -897,7 +897,7 @@ _FIELD_BINDINGS: Tuple[str, ...] = (
 _INVERSE_EPSILON_COMPONENTS: Tuple[str, ...] = ("Ex", "Ey", "Ez")
 
 #: The curl's INTEGER coefficient keys and the constitutive's HALF-INTEGER ones, in
-#: signature order. THE PAIRING IS THE OPPOSITE OF THE B/H SEAM'S and the kernel cannot
+#: signature order. The pairing is the opposite of the B/H seam's and the kernel cannot
 #: tell -- a swap on either group is a half-cell error in the absorber profile,
 #: converged, smooth and wrong.
 _CURL_TABLE_KEYS: Tuple[str, ...] = (
@@ -909,7 +909,7 @@ _CONSTITUTIVE_TABLE_KEYS: Tuple[str, ...] = (
 def complex_fused_electric_pair_tables(pml: "PML") -> Dict[str, Dict[str, Any]]:
     """Both coefficient groups, each from the sub-lattice its half reads.
 
-    THE SUB-LATTICE IS DECIDED HERE, not by the caller: while it was an argument, every
+    The sub-lattice is decided here, not by the caller: while it was an argument, every
     call site was one more place the pairing could be got backwards, and backwards is a
     half-cell error rather than a crash. The D curl reads the INTEGER positions
     (``complex_emitter.HALF_INTEGER['step_D']`` is False) and ``update_E`` the
@@ -937,13 +937,13 @@ def assert_disjoint_bindings(fields: "Fields",
                              tables: Dict[str, Dict[str, Any]]) -> int:
     """Check the promise every ``__restrict__`` in the signature makes.
 
-    ONCE PER FROZEN CONFIGURATION, OFF THE LAUNCH PATH. The shared flux density is
+    Once per frozen configuration, off the launch path. The shared flux density is
     bound once by construction -- the signature has no second D group to hand it to --
     so what is left to check is that no OTHER two restrict arguments are the same
     allocation. Two ``__restrict__`` pointers to one object is UB whatever the route to
     it, and NVRTC reorders across it without a diagnostic.
 
-    THE THREE inv_eps VOLUMES ARE CHECKED DIFFERENTLY AND DELIBERATELY. They are not
+    The three inv_eps volumes are checked differently and deliberately. They are not
     ``__restrict__`` in the signature, so they may alias EACH OTHER -- an isotropic run
     hands one pointer three times and the certified kernel is built for it. What they
     may NOT do is alias a restrict-qualified argument, which would break that argument's
@@ -994,21 +994,21 @@ def launch_complex_fused_electric_pair(
     """All three of :data:`REPLACES` in ONE launch.
 
     ``boundary_codes`` are ``complex_pml_kernels.complex_boundary_codes(grid)``;
-    ``phase_flags``/``phase_values`` are ``bloch_phase_arguments(grid, True)`` -- THE
-    BACKWARD TABLE, the D curl's connection to the word ABOVE the stored window, whose
+    ``phase_flags``/``phase_values`` are ``bloch_phase_arguments(grid, True)`` -- the
+    backward table, the D curl's connection to the word ABOVE the stored window, whose
     phase is the conjugate of the magnetic sibling's; handing this launch the forward
-    one is a wrong answer on every phased row rather than a crash. ``walls`` are ``in_seam_coverage.zero_metal_axes(grid)``. THE CODES
-    AND THE WALLS ANSWER DIFFERENT QUESTIONS and confusing them is a plane of wrong
+    one is a wrong answer on every phased row rather than a crash. ``walls`` are ``in_seam_coverage.zero_metal_axes(grid)``. The codes
+    and the walls answer different questions and confusing them is a plane of wrong
     values: the codes are ``_boundary_kinds``' ghost-rule resolution and the walls are
     ``_zero_metal``'s own declaration.
 
-    ``kernel`` IS THE GATE'S DOOR, keyword-optional and named for what it is: a gate
+    ``kernel`` is the gate's door, keyword-optional and named for what it is: a gate
     compiles a deliberately broken copy of the shipped source and hands it here. A
     launcher that could not be handed its own kernel could not arm a single mutation,
     and every mutation leg would silently launch the shipped one and report the defect
     as uncaught.
 
-    ``chunk_bounds`` IS THE RUN'S CHUNK RECORD ON THE DEVICE, required and keyword-only
+    ``chunk_bounds`` is the run's chunk record on the device, required and keyword-only
     (``chunk_record_argument`` checks it).
 
     Returns the launch geometry rather than ``None`` so a gate can assert that something
@@ -1043,7 +1043,7 @@ def run_complex_fused_electric_pair(
         kernel: Optional[Any] = None) -> Dict[str, Any]:
     """Gate on the predicate, resolve everything from the grid, launch once.
 
-    THE PREDICATE IS ASKED FIRST AND A REFUSAL IS RETURNED, NOT RAISED, because the
+    The predicate is asked first and a refusal is returned, not raised, because the
     caller's correct response to a configuration this product does not carry is the
     array path -- never an exception into a stepper that would otherwise have stepped
     correctly.
@@ -1059,7 +1059,7 @@ def run_complex_fused_electric_pair(
     if tables is None:
         tables = complex_fused_electric_pair_tables(pml)
     assert_disjoint_bindings(fields, tables)
-    # THE BACKWARD PHASE TABLE. `True` is `complex_emitter.KERNELS['step_D'][1]`, read
+    # The backward phase table. `True` is `complex_emitter.KERNELS['step_D'][1]`, read
     # off the same table `complex_pml_kernels.step_fused_pml_complex` reads it from, and
     # it is the one argument of this call a copy of the magnetic sibling would get
     # silently wrong.

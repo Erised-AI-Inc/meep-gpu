@@ -103,7 +103,9 @@ def test_the_mutation_list_is_the_one_main_scores(gate):
 
 
 def test_the_inverted_constitutive_mutant_is_the_pre_0_10_grouping(gate):
-    """KERNELS.md section 7.1: the shipped form is MEEP's, so the mutant is the old one."""
+    """An inverted grouping mutation
+    (docs/development/certification.md#inverted-grouping-mutations): the shipped form is
+    MEEP's, so the mutant is the old one."""
     mutated, _hits = gate.mutated_source("regroup_constitutive", _shipped_source())
     assert "constitutive_form(" not in mutated.split('"""')[-1]
     for t in range(3):

@@ -1,4 +1,4 @@
-"""Laptop contracts for the chi2/chi3 nonlinear update_E Triton tranche.
+"""Laptop contracts for the chi2/chi3 nonlinear update_E Triton kernel.
 
 Everything here runs on the NumPy merge-bar machine: the optional-import
 contract, the predicate's admission AND per-clause refusals on real
@@ -169,7 +169,7 @@ def test_the_restated_grid_clause_set_tracks_the_shared_source(nl):
     it. Nothing behavioral can pin the restated SET on this laptop — a clause
     the shared file gains would only surface when a probe case happens to
     carry the new feature — so this deliberate change-detector is the drift
-    tripwire the audit asked for: when it fires, diff the shared builder
+    tripwire a review of the restatement asked for: when it fires, diff the shared builder
     against the restatement, carry the clause change across, and re-pin."""
     import hashlib
     import inspect
@@ -204,12 +204,12 @@ def test_the_guard_is_the_packages_one_spelling_and_appears_once():
 
 
 def test_no_fingerprint_entry_is_claimed():
-    """No GATE entry for this tranche in the table's ledger — the boundary.
+    """No GATE entry for this kernel in the table's ledger — the boundary.
 
     It used to forbid the STRING anywhere in the file, which is a stricter
-    spelling than the sibling tranches use (``test_triton_bfast`` and
+    spelling than the sibling kernel families use (``test_triton_bfast`` and
     ``test_triton_special_kz`` both scan the top-level KEYS), and stricter than the
-    boundary itself: what must not happen is this tranche claiming a gate record it
+    boundary itself: what must not happen is this kernel claiming a gate record it
     did not cut. The shared ``family_recert_2026-08-14`` transcription is the one
     place the module may be named, and it exists because the alternative was
     measured to be worse — the dispatcher pointed at this family's provenance by a
@@ -223,13 +223,13 @@ def test_no_fingerprint_entry_is_claimed():
     recorded = json.loads((PACKAGE_DIR / "fingerprints.json")
                           .read_text(encoding="utf-8"))
     assert not any("nonlinear_update_e" in name for name in recorded), (
-        "this tranche's provenance lives in the gate's results directory, "
+        "this family's provenance lives in the gate's results directory, "
         "not in a gate entry of the table's fingerprints.json")
     shared = json.dumps({key: value for key, value in recorded.items()
                          if key != "family_recert_2026-08-14"})
     assert "nonlinear_update_e" not in shared, (
         "outside the shared family-recert transcription, nothing in this file may "
-        "name this tranche's module")
+        "name this kernel's module")
 
 
 def test_the_gate_and_its_composition_probe_exist_beside_the_other_tranches():
@@ -824,7 +824,7 @@ def test_an_output_aliasing_an_input_is_refused(nl):
 def test_a_coefficient_vector_aliasing_an_output_is_refused(nl):
     """The six kps/kms vectors are in the alias inventory too: a coefficient
     re-read per element while its output is written is the same
-    schedule-dependent wrong answer (the audit found them missing)."""
+    schedule-dependent wrong answer (a review found them missing)."""
     arrays, flat = _plan_arrays()
     shape = arrays["Ex"].shape
     flat["kps_x"] = arrays["Ex"].ravel()[:shape[0]]  # view, same base address
@@ -1307,7 +1307,7 @@ def test_an_unallocated_curl_target_is_refused_and_the_builder_answers_none(
 
     Narrowing a restatement is always safe — a refusal IS the array path — so the
     clause is stated here. The incumbent's own hole is asserted, not assumed, so
-    that this test starts failing the day the owning round closes it and the two
+    that this test starts failing the day the owner of that clause closes it and the two
     predicates can be brought back into step deliberately.
     """
     fields, pml = _build()

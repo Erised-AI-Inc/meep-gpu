@@ -1,16 +1,16 @@
 """The fused E->P chain, as claims a laptop can check without a GPU.
 
-WHAT THIS SUITE OWNS AND WHAT IT DELIBERATELY DOES NOT. The BYTES are the device
+What this suite owns and what it deliberately does not. The BYTES are the device
 gate's — ``parity/meep_gpu/gate_metal_fused_ade_chain.py`` steps two engines side
 by side for sixty complete seam steps and compares uint32 words — and no assertion
 here duplicates that. What lives here is everything true about the family WITHOUT
 a device: what the emitted source says, which configurations the predicate refuses
-and by what name, that the three arms are registered UNWIRED, that the signature
+and by what name, that the three arms are registered with ``wired=False``, that the signature
 respects the platform ceiling by ARITHMETIC, and — the claim this family exists
 for — that the rotation the product leaves on the host can never put a launch's
 output on its own input.
 
-THE TRANSCRIPTION TESTS PARSE, THEY DO NOT MIRROR. Each one CALLS the certified
+The transcription tests parse, they do not mirror. Each one CALLS the certified
 emitter and searches its output; none re-implements a line. A test that re-derived
 the arithmetic would mirror a defect instead of executing it, which is a failure
 mode this project has measured (three planted assembly defects, 86 of 87 tests
@@ -74,7 +74,7 @@ def test_the_pml_half_is_the_certified_constitutive_select(axis, coordinate):
     """The PML arm's E half is the certified constitutive body's per-chunk select.
 
     The accumulation in MEEP's grouping where the component's own chunk carries its
-    layer, ``E = src`` elsewhere, ``f_w`` touched only on the former: the ALIGNED
+    layer, ``E = src`` elsewhere, ``f_w`` touched only on the former: the
     certified body's lines (``shaders.constitutive_source``, side E), renamed pointer
     by pointer. The product and the pole chain are still the pointwise dispersive
     body's own lines, and the drive is the register ``src`` -- which is ``f_w`` on the
@@ -93,7 +93,7 @@ def test_the_pml_half_is_the_certified_constitutive_select(axis, coordinate):
     assert "float w = src;" in fused, "the seam register is not read by the ADE arm"
 
 
-#: The certified ALIGNED constitutive body's per-component lines (side E, component
+#: The certified constitutive body's per-component lines in MEEP's grouping (side E, component
 #: ``t``), and the pointer renames that carry them into a one-component E half:
 #: ``dw{t}`` -> ``dw``, ``w{t}[ii]`` -> ``fw[idx]``, ``src{t}`` -> ``src``,
 #: ``prev{t}`` -> ``prev``, ``a{t}`` -> ``value``, ``f{t}[ii]`` -> ``e_out[idx]``,
@@ -157,7 +157,7 @@ def test_the_certified_ade_drive_line_is_the_only_thing_the_seam_replaces():
 def test_the_body_has_one_branch_and_on_pml_only_the_select(arm, poles):
     """Every emitted line but the guard and the PML arm's select is straight line.
 
-    THE DEAD-BRANCH MUTATION — an edit to a line the scored grid never enters,
+    The dead-branch mutation — an edit to a line the scored grid never enters,
     reported UNCAUGHT while measuring nothing — cannot hide in a kernel whose only
     branches are the ``n_elem`` guard and, under PML, the per-chunk constitutive
     select (two ``if (dw)`` and one ``dw ?``), whose two forms the gate's mutation
@@ -450,7 +450,7 @@ def test_the_seam_carries_no_source_clause_and_the_absence_is_documented():
     # Whitespace-normalised: the reason is a wrapped sentence and a raw substring
     # test would be pinning the line wrap rather than the claim.
     prose = " ".join(family.fused_ade_chain_coverage.__doc__.split())
-    assert "THERE IS NO SOURCE CLAUSE, AND THE ABSENCE IS DELIBERATE" in prose
+    assert "There is no source clause, and the absence is deliberate" in prose
     assert "This seam has no injection in it at all" in prose
 
 

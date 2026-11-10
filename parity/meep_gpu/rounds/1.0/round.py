@@ -8,7 +8,7 @@ Two stages, each a detached process that outlives the shell that started it:
        a clean tree), with every results root of the stamp required absent;
     2. the gate lanes, at most ``--gpus`` at once, each taking its own GPU lock: the
        CUDA legs split into ``--cuda-split`` campaigns by whole subdirectory, and the
-       Triton work under BOTH policies (R13) packed around them;
+       Triton work under BOTH subnormal policies, keep and flush, packed around them;
     3. ``GATES_DONE`` with every lane's N of D, and the bind commands for the host that
        holds the evidence archive (``legs.py bind``), which this stage never runs.
 
@@ -32,7 +32,7 @@ script waits on child PIDs only.
 
 It writes no ledger, fingerprint or record.
 
-CHUNKED (``--chunk-index I --chunk c<k>``, the gate stage only). The chunk's own stamp
+Chunked (``--chunk-index I --chunk c<k>``, the gate stage only). The chunk's own stamp
 (``chunks.py``: ``<round>_<device>_c<k>``) replaces ``--stamp``, so every root the stage writes
 is the chunk's; only the chunk's units run (``chunks.nvidia_plan``: its CUDA campaign
 ``cuda_regate_<stamp>_g0`` and its Triton steps); its lanes live under ``<home>/<stamp>``, and
@@ -46,13 +46,13 @@ index whose device is not ``--capability``'s or whose mode disagrees with
 with others; the round's bind is ``chunks.py verify --selection`` then ``legs.py bind --chunks
 I --selection F``, which bind each unit from its own newest run that holds.
 
-A NEW CAPABILITY (``--new-capability``, the gate stage of a chunk whose index was partitioned
+A new capability (``--new-capability``, the gate stage of a chunk whose index was partitioned
 with ``--new-device``): ``legs.check`` admits a capability the ledgers hold no live record for
 only with it, and refuses it on a certified capability and on the route stage, which runs
 once the bind has added the new capability's records. The licence of every capability lands
 in ``<licence campaign>_cc<capability>`` (``legs.licence_directory``).
 
-THE MEEP CORPUS. The gate stage names the corpus once (``legs.resolve_corpus``:
+The MEEP corpus. The gate stage names the corpus once (``legs.resolve_corpus``:
 ``--corpus-root``, else the root the reference build record of ``--python``'s environment
 names, verified against its list) and passes it to every lane, which exports it to every
 child as ``MEEP_GPU_CORPUS_ROOT``.
@@ -82,13 +82,17 @@ import chunks as C  # noqa: E402
 import legs as L  # noqa: E402
 import round_status  # noqa: E402
 
+#: The record spellings (``parity/meep_gpu/neutral_ids.py``): the round's home goes back
+#: with the results, so its log and records name no machine, account or local path.
+N = round_status.neutral_ids()
 
-#: THE ROUTE STAGE'S WATCHDOG. A route or licence leg killed by its watchdog leaves its
+
+#: The route stage's watchdog. A route or licence leg killed by its watchdog leaves its
 #: directory unreleased, and route campaign names are one-shot: the leg could then only
 #: rerun under a new route stamp, which is a new freeze. The route stage gives every route
 #: and licence step max(ROUTE_MIN_TIMEOUT, ROUTE_TIMEOUT_FACTOR x expect_s), the floor and
 #: factor the 1.0 pre-certification pass ran these legs with, and expect_s is the leg's
-#: MEASURED wall: legs.py prices every route and licence leg at the wall that pass measured
+#: measured wall: legs.py prices every route and licence leg at the wall that pass measured
 #: on a shared RTX A6000 (ROUTE_CUDA, ROUTE_TRITON, E2E_EXPECT), so every watchdog is at
 #: least 12 x the wall it guards. run_lane.py's default, max(1,800 s, 4 x expect_s), sat
 #: below Triton shipped (3,180 s) and flush (3,065 s), and 12 x the 0.9.2 prices those legs
@@ -104,7 +108,7 @@ def route_timeout(step: Dict[str, Any], factor: int, floor: int) -> int:
 
 
 def say(home: Path, message: str) -> None:
-    line = f"{time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())} [round] {message}"
+    line = f"{time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())} [round] {N.text(message)}"
     print(line, flush=True)
     with (home / "round.log").open("a", encoding="utf-8") as handle:
         handle.write(line + "\n")
@@ -139,11 +143,17 @@ def lane_argv(args: argparse.Namespace, plan: Path, lane_dir: Path, results: Pat
     return argv
 
 
-def toolchain_step(args: argparse.Namespace) -> Dict[str, Any]:
-    return {"id": "toolchain", "kind": "toolchain", "capability": args.capability,
+def toolchain_step(args: argparse.Namespace, stack_dir: Optional[Path] = None) -> Dict[str, Any]:
+    """The card and toolchain check every lane starts with. In a gate stage (``stack_dir``)
+    it also records the NVIDIA stack the lane's gates run beside, which the bind records as
+    the capability's certified stack (``record_nvidia_stack.py``)."""
+    step = {"id": "toolchain", "kind": "toolchain", "capability": args.capability,
             "versions": {"triton": args.triton_version, "cupy": args.cupy_version,
                          "meep": args.meep_version},
             "expect_s": 30, "blocking": True}
+    if stack_dir is not None:
+        step["stack_dir"] = str(stack_dir)
+    return step
 
 
 def filter_steps(steps: List[Dict[str, Any]], only: set, triton_gates: set) -> List[Dict[str, Any]]:
@@ -175,12 +185,16 @@ def run_lanes(home: Path, args: argparse.Namespace, lanes: List[List[Dict[str, A
         lane_dir = home / name
         lane_dir.mkdir(parents=True, exist_ok=True)
         plan = lane_dir / "plan.json"
-        plan.write_text(json.dumps(steps, indent=1) + "\n")
+        # Paths under their labels, in the spelling run_lane resolves back exactly
+        # (N.path_value / N.resolve_value): the plan goes back with the lane.
+        plan.write_text(json.dumps(N.path_value(steps), indent=1) + "\n")
         out = (lane_dir / "lane.out").open("a", encoding="utf-8")
         gpu = gpu_ids[k] if k < len(gpu_ids) else None
         procs[name] = subprocess.Popen(lane_argv(args, plan, lane_dir, results, subs, gpu),
                                        stdout=out, stderr=subprocess.STDOUT, cwd=str(HERE))
-        say(home, f"lane {name}: pid {procs[name].pid}, {len(steps)} step(s), "
+        # The pid stays local (lane.pid, which pack_results leaves out of the archive).
+        (lane_dir / "lane.pid").write_text(f"{procs[name].pid}\n")
+        say(home, f"lane {name}: started, {len(steps)} step(s), "
                   f"{sum(int(s.get('expect_s', 0)) for s in steps)} s expected")
         time.sleep(args.stagger)      # lanes take their first idle readings apart
     codes = {}
@@ -194,7 +208,7 @@ def run_lanes(home: Path, args: argparse.Namespace, lanes: List[List[Dict[str, A
 def stage_gates(args: argparse.Namespace, home: Path) -> int:
     repo = Path(args.repo).resolve()
     results = Path(args.results).resolve() if args.results else repo / "parity" / "meep_gpu" / "results"
-    # THE CORPUS IS NAMED ONCE, here, and every lane is handed it: --corpus-root, else the
+    # The corpus is named once, here, and every lane is handed it: --corpus-root, else the
     # root the reference environment's build record names, verified against its list.
     found = L.resolve_corpus(args.python, args.corpus_root, dict(os.environ))
     root = found["root"] or ""
@@ -217,8 +231,8 @@ def stage_gates(args: argparse.Namespace, home: Path) -> int:
         problems += chunk_problems(args, repo, results)
     elif args.new_capability:
         problems.append(L.NEW_CAPABILITY_UNCHUNKED)
-    (home / "check_gates.json").write_text(json.dumps({"problems": problems, "facts": facts},
-                                                      indent=1) + "\n")
+    (home / "check_gates.json").write_text(json.dumps(
+        N.value({"problems": problems, "facts": facts}), indent=1) + "\n")
     for line in problems:
         say(home, f"CHECK FAIL {line}")
     if problems and not args.dry_run_allow:
@@ -246,8 +260,10 @@ def stage_gates(args: argparse.Namespace, home: Path) -> int:
                                      tables=tuple(t for t in args.tables.split(",") if t),
                                      cuda_split=args.cuda_split)
     plan = [filter_steps(steps, only, triton_gates) for steps in plan]
-    plan = [([toolchain_step(args)] + steps) if steps else [] for steps in plan]
-    (home / "lanes_summary.json").write_text(json.dumps(summary, indent=1) + "\n")
+    stack_dir = results / (C.stack_root(chunk["stamp"]) if chunk is not None
+                           else L.stack_root(args.stamp))
+    plan = [([toolchain_step(args, stack_dir)] + steps) if steps else [] for steps in plan]
+    (home / "lanes_summary.json").write_text(json.dumps(N.value(summary), indent=1) + "\n")
     say(home, f"gates: {sum(1 for p in plan if p)} lane(s) on at most {args.gpus} GPU(s), "
               f"expected wall {summary['wall_s']} s (legs.py's measured walls; the full plan)")
     codes = run_lanes(home, args, plan, results, subs, "gates")
@@ -262,7 +278,7 @@ def stage_gates(args: argparse.Namespace, home: Path) -> int:
                 f"--selection <selection>"]
     else:
         bind = L.bind_plan(results, args.stamp, args.cuda_split, write=False)
-    (home / "BIND_COMMANDS.txt").write_text("\n".join(bind) + "\n")
+    (home / "BIND_COMMANDS.txt").write_text(N.text("\n".join(bind)) + "\n")
     (home / "GATES_DONE").write_text(f"{time.strftime('%FT%TZ', time.gmtime())} "
                                      f"exit codes {codes}\n")
     say(home, f"GATES DONE {codes}; bind commands (report mode) in {home / 'BIND_COMMANDS.txt'}")
@@ -317,13 +333,13 @@ def stage_route(args: argparse.Namespace, home: Path) -> int:
     repo = Path(args.repo).resolve()
     results = Path(args.results).resolve() if args.results else repo / "parity" / "meep_gpu" / "results"
     problems, facts = L.check(repo, args.capability, True, git_expect=args.expect,
-                              new_capability=args.new_capability)
+                              python=args.python, new_capability=args.new_capability)
     route_roots = []
     for key in ("triton_route_campaign", "cuda_route_campaign"):
         if facts.get(key):
             route_roots += [results / facts[key], results / f"{facts[key]}_preflight"]
-    # THE LICENCE DIRECTORY IS THE REGISTRY'S (route_stamps.licence_campaign) FOLLOWED BY
-    # THE DEVICE, one per capability (legs.licence_directory), a name the re-cut accepts a
+    # The licence directory is the registry's (route_stamps.licence_campaign) followed by
+    # the device, one per capability (legs.licence_directory), a name the re-cut accepts a
     # licence from (route_stamps.licence_refusal); legs.check reads it into the facts.
     licence_root = results / (facts.get("licence_directory") or L.licence_directory(
         facts.get("licence_campaign") or f"dispatch_end_to_end_{args.stamp}",
@@ -334,12 +350,13 @@ def stage_route(args: argparse.Namespace, home: Path) -> int:
                      for p in route_roots if p.exists()]
     coverage, lacking = L.flush_coverage(repo, args.capability)
     (home / "check_route.json").write_text(json.dumps(
-        {"problems": problems, "facts": facts, "flush_coverage": coverage}, indent=1) + "\n")
+        N.value({"problems": problems, "facts": facts, "flush_coverage": coverage}),
+        indent=1) + "\n")
     for table in ("triton", "cuda"):
         row = coverage[table]
         say(home, f"flush licence on {args.capability}: {table} {row['arms_covered']} of "
                   f"{row['arms']} arms admitted")
-    # PER-ARM ADMISSION MAKES A FLUSH LEG MIXED: a case dispatches under flush where
+    # Per-arm admission makes a flush leg mixed: a case dispatches under flush where
     # every arm it plans has flush evidence, and is refused by name otherwise. So the
     # go/no-go is not completeness (a gate whose artifact states no attained policy
     # cannot carry evidence; RUNBOOK.md section 5) but that each table admits SOME arm,
@@ -424,7 +441,7 @@ def add_common(p: argparse.ArgumentParser) -> None:
     p.add_argument("--share-idle-foreign", action="append", default=[],
                    help="gate stage: <uuid>:<pid>[,<pid>...], handed to every lane: a card whose "
                         "only compute apps are these idle PIDs may be taken (run_lane.py, A "
-                        "SHARED CARD; owner ruling R28)")
+                        "SHARED CARD)")
     p.add_argument("--share-min-free-mib", type=int, default=0,
                    help="with --share-idle-foreign: the free memory a shared card must have, MiB")
     p.add_argument("--python", default=sys.executable)
@@ -432,7 +449,7 @@ def add_common(p: argparse.ArgumentParser) -> None:
     p.add_argument("--expect", default=None, help="the frozen commit (full hash)")
     p.add_argument("--triton-version", default="3.1.0")
     p.add_argument("--cupy-version", default="13.5.1")
-    p.add_argument("--meep-version", default="1.33.0")
+    p.add_argument("--meep-version", default="1.35.0")
     p.add_argument("--timeout-floor", action="append", default=[])
     p.add_argument("--route-timeout-factor", type=int, default=ROUTE_TIMEOUT_FACTOR,
                    help="route stage: a route or licence leg's watchdog is this many "
@@ -537,8 +554,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         if proc.poll() is not None:
             print(f"the {args.stage} stage exited at once (rc {proc.returncode}); see {out}")
             return 1
-        print(f"{args.stage}: pid {proc.pid} (own session); follow {home / 'round.log'} "
-              f"and {home}/*/progress.log")
+        print(f"{args.stage}: started in its own session (pid in {home / (args.stage + '.pid')}); "
+              f"follow {home / 'round.log'} and {home}/*/progress.log")
         return 0
     say(home, f"START stage {args.stage} stamp {args.stamp} cc {args.capability} repo "
               f"{args.repo} gpus<= {args.gpus} max_locks {args.max_locks}"

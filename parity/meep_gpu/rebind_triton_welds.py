@@ -1,15 +1,15 @@
 """Rebind ``triton_kernels/fingerprints.json`` to a fresh round of gate artifacts.
 
-WHY THIS EXISTS. A weld entry names the exact bytes its gate executed. One edit
+Why this exists. A weld entry names the exact bytes its gate executed. One edit
 to ``triton_kernels/launch.py`` -- pinned by 28 of the 30 ``status == "PASS"``
 entries -- puts every one of them in drift: the ledger still points at the
-previous round's artifacts, so the welds describe bytes that no longer ship.
+previous certification round's artifacts, so the welds describe bytes that no longer ship.
 Re-running the gates is only half the repair. Until the ledger is rebound to the
 NEW artifacts the record keeps its old digests, and the weld tests correctly
 refuse the tree. This is the second half, and it is the Metal track's
 ``rebind_metal_welds.py`` brought across unchanged in intent.
 
-WHAT IT REFUSES TO DO. It does not invent a weld, widen one, or promote a gate
+What it refuses to do. It does not invent a weld, widen one, or promote a gate
 that did not pass. An entry is rebound only when the fresh artifact for that
 family says ``released``; anything else is reported and skipped, leaving the
 stale entry in place to keep failing. It keeps each entry's CURATED key set --
@@ -23,26 +23,26 @@ It is NOT a normalizer. Every bespoke hand-authored key on an entry
 asserted byte-identical after the rewrite, and an entry the tool does not
 understand is skipped rather than reshaped.
 
-ONE RECORD PER COMPUTE CAPABILITY (2026-09-30). The digests stay beside the
+One record per compute capability (2026-09-30). The digests stay beside the
 entry; the facts about the RUN -- its artifact, its records line, its timestamp,
 its host, its toolchain and its subnormal policy -- go into
-``runs[<capability>]``, and the capability is READ OFF THE RUN
+``runs[<capability>]``, and the capability is read off the run
 (:func:`run_capability`), never passed in. That makes a second architecture
 additive: a re-gate on unchanged bytes adds a record beside the ones already
 there, and the admitted set a table dispatches on is the intersection of the
 capabilities its cited welds all have a LIVE record for. A rebind on bytes that
 MOVED cannot be additive -- it leaves the other architectures' records
 certifying bytes that no longer ship -- so it refuses and names them, and
-``--supersede`` is how a round says those certifications are being dropped.
+``--supersede`` is how a certification round says those certifications are being dropped.
 
-RETIREMENT BY NAME. An entry whose gate was DELETED cannot be re-gated, so a campaign
+Retirement by name. An entry whose gate was DELETED cannot be re-gated, so a campaign
 can never rebind it, and without a rule it would stay in the ledger as a stale weld
 that every contract test reads, reported UNCOVERED with the wrong remedy ("needs a
 device re-run"). :data:`RETIRED_WELDS` names each such key with its deleted gate, and
 the campaign pass drops the entry: reported in report mode, removed from the ledger
 under ``--write``. Nothing else retires an entry, and a retired key never returns.
 
-A PIN THE GATE NO LONGER IMPORTS IS RETIRED BY ROW. :data:`RETIRED_UNIMPORTED_PINS`, generated
+A pin the gate no longer imports is retired by row. :data:`RETIRED_UNIMPORTED_PINS`, generated
 by ``import_closure.py unimported-pins triton`` and reviewed, names each ``(weld, path)``
 whose file is a module the package root used to load eagerly and lies outside the weld's
 gate's run closure. Inside a rebind only, the pin leaves the curated set (both digest maps)
@@ -81,6 +81,7 @@ if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
 
 import artifact_drift                                    # noqa: E402
+import ledger_scope                                      # noqa: E402
 import neutral_labels                                    # noqa: E402
 from meep_gpu import fastpath                            # noqa: E402
 from meep_gpu.code_identity import code_digest_of_path  # noqa: E402
@@ -91,7 +92,7 @@ LEDGER = _API / "meep_gpu" / "triton_kernels" / "fingerprints.json"
 #: The device stamp a run leaves in its own directory, written by
 #: ``triton_device_identity.py --write <dir>`` in the run's environment.
 #:
-#: WHY A SEPARATE FILE IS READ AT ALL. Measured across the 2026-09-25 fleet: of the
+#: Why a separate file is read at all. Measured across the 2026-09-25 fleet: of the
 #: artifacts this tool binds, several carry no ``environment`` block whatsoever
 #: (``complex_no_pml_curl/gate.json`` and ``complex_no_pml_conductive/gate.json``
 #: record ``environment: null``) and others carry a partial one -- the
@@ -106,10 +107,10 @@ DEVICE_STAMP = "device.json"
 
 #: Ledger key -> the campaign subdirectory whose gate measured it.
 #:
-#: AN EXPLICIT TABLE IS THE HONEST CHOICE, and not because deriving the name is
+#: An explicit table is the honest choice, and not because deriving the name is
 #: hard. Stripping ``triton_``/``_device_gate`` happens to reproduce all twelve
 #: rows below -- which is exactly the hazard. The stem rule is a coincidence of
-#: this round, and the ledger already contains keys it would get wrong in both
+#: the rows as they stand, and the ledger already contains keys it would get wrong in both
 #: directions: ``triton_dispersive_fused_pair_device_gate`` is welded by
 #: ``probe_triton_dispersive_fused_pair/dispersive_fused_pair.json`` and
 #: ``triton_fused_ade_chain_device_gate`` by ``gate_triton_fused_ade_chain/
@@ -123,7 +124,7 @@ CAMPAIGN_DIRS = {
     # 2026-08-30, the complex D->E weld. The campaign directory is named for the
     # BINDS key propose_triton_welds uses, which is also the board's product name;
     # it is typed here for the same reason every other row is -- a stem rule that
-    # happened to reproduce it would be a coincidence of this round.
+    # happened to reproduce it would be a coincidence of the rows as they stand.
     "triton_complex_fused_electric_pair_device_gate": "complex_fused_electric_pair",
     # 2026-09-17. This row was MISSING, and the machinery above did exactly what its
     # own comment promises: the entry was reported UNCOVERED -- "no row in
@@ -139,7 +140,7 @@ CAMPAIGN_DIRS = {
     "triton_complex_device_gate": "complex",
     # 2026-09-23. The two STENCIL welds were seeded on 2026-09-17 and reported UNCOVERED
     # on every rebind since, so their pins on driver.py and stepping.py drifted through
-    # two rounds that had re-gated them. Their producer is
+    # two certification rounds that had re-gated them. Their producer is
     # gate_triton_offdiag_stencil_welds.py --family <family> --out-root <root>, which
     # writes <root>/<family>/gate.json, so the campaign tree to pass is
     # triton_offdiag_stencil_welds_<stamp>/ and the directory is the family name.
@@ -156,10 +157,10 @@ CAMPAIGN_DIRS = {
     "triton_offdiag_device_gate": "offdiag",
     "triton_symmetry_device_gate": "symmetry",
 
-    # TRANCHE 2+, 2026-08-28. The families the 2026-08-27 campaign did not run and
-    # this tool reported as UNCOVERED. Their artifacts live in the tranche2/5/6
-    # campaign trees, so pass --campaign once per tree; the first tree that holds a
-    # released artifact for a key wins, and a key present in none stays UNCOVERED.
+    # The re-gate's second and later parts, 2026-08-28: families the 2026-08-27 campaign did not
+    # run and this tool reported as UNCOVERED. Their artifacts live in the campaign trees named
+    # *_tranche2, *_tranche5 and *_tranche6; pass --campaign once per tree. The first tree
+    # holding a released artifact for a key wins, and a key present in none stays UNCOVERED.
     "triton_complex_ade_device_gate": "complex_ade",
     "triton_complex_no_pml_curl_device_gate": "complex_no_pml_curl",
     "triton_complex_no_pml_conductive_device_gate": "complex_no_pml_conductive",
@@ -178,7 +179,7 @@ CAMPAIGN_DIRS = {
     "triton_folded_offdiag_fused_ade_chain_device_gate":
         "folded_offdiag_fused_ade_chain",
 
-    # THE FUSED-PAIR FAMILIES, 2026-08-28. These ship NO gate_triton_*.py of their
+    # The fused-pair families, 2026-08-28. These ship no gate_triton_*.py of their
     # own -- they are gated by probe_triton_*.py scripts run directly, so their
     # campaign subdirectory is named for the PROBE, not the family. That is why the
     # table cannot be derived from the ledger key by string surgery and is written
@@ -196,7 +197,7 @@ CAMPAIGN_DIRS = {
     "triton_fused_ade_state_device_gate": "probe_triton_fused_ade_state",
     "triton_fused_dispersive_chain_device_gate": "probe_triton_fused_dispersive_chain",
 
-    # THE ARMS RELEASED 2026-09-11. Typed here in the SAME change that pre-writes
+    # The arms released 2026-09-11. Typed here in the SAME change that pre-writes
     # their `fastpath.ARM_CERTIFICATION` rows, not after their entries exist: these
     # three keys are SEEDED by seed_triton_welds.py from the 2026-09-11_realarms
     # fleet, and a row here for a key the ledger does not yet carry reports UNCOVERED
@@ -210,7 +211,7 @@ CAMPAIGN_DIRS = {
     "triton_cylindrical_real_fused_electric_pair_device_gate":
         "cylindrical_real_fused_electric_pair",
 
-    # THE DEPOSIT IMAGE CLOSURE, 2026-08-30. Not a product weld like the rest of
+    # The deposit image closure, 2026-08-30. Not a product weld like the rest of
     # this table: it binds the gate that shows the two FOLDED fused products
     # REQUIRE deposit_repair's image closure, which is the evidence the
     # 2026-08-30 CARRIES_DEPOSIT_REPAIR flip was missing. Its directory holds
@@ -218,8 +219,8 @@ CAMPAIGN_DIRS = {
     # selects the KEEP record -- the policy every other weld here was cut under.
     "triton_folded_deposit_closure_device_gate":
         "probe_triton_folded_deposit_closure",
-    # THE FIFTEEN ARMS PHASE B RELEASED, 2026-09-13. Seeded by seed_triton_welds.py
-    # from the 2026-09-12 identity fleet and refreshed here from the batch fleet
+    # The fifteen arms the 2026-09-13 release added. Seeded by seed_triton_welds.py
+    # from the 2026-09-12 identity fleet and refreshed here from that release's fleet
     # (shard C, and the cylindrical pair's own shards). Their fleet subdirectory is
     # the gate name in drive_triton_weld_gates.GATES, which for these is the FAMILY
     # (the probe-named rows above are the 2026-08-28 exceptions, kept as they were).
@@ -240,31 +241,31 @@ CAMPAIGN_DIRS = {
     "triton_cylindrical_fused_magnetic_pair_device_gate": "cylindrical_fused_magnetic_pair",
     "triton_cylindrical_fused_electric_pair_device_gate": "cylindrical_fused_electric_pair",
 
-    # THE TWO FLEET FAMILIES THE LEDGER NEVER CARRIED, 2026-09-30. Seven of the nine
+    # The two fleet families the ledger never carried, 2026-09-30. Seven of the nine
     # families whose gates the fleet runs have a ``triton_<family>_device_gate`` row
-    # above; these two have no ledger entry at all, so a round that runs their gates
-    # had nothing to bind them to. They are SEEDED by ``seed_triton_welds.py`` from the
-    # round's own fleet; until that runs, a row here for a key the ledger does not
+    # above; these two have no ledger entry at all, so a certification round that runs
+    # their gates had nothing to bind them to. They are SEEDED by ``seed_triton_welds.py``
+    # from that round's own fleet; until that runs, a row here for a key the ledger does not
     # carry reports UNCOVERED and binds nothing, which is the correct reading and the
     # right place to be caught if the seed never happens. Their fleet subdirectory is
     # the gate name in ``drive_triton_weld_gates.GATES``, as for the 2026-09-11 block
     # above.
     #
-    # THE 22 ARMS THAT CITE ``family_recert_2026-08-14`` STILL CITE IT. Re-pointing
+    # The 22 arms that cite ``family_recert_2026-08-14`` still cite it. Re-pointing
     # them here was considered and reversed on 2026-09-30: the reason to re-point was
     # that a writer rebuilding that entry's nine family records would refuse whenever a
     # family gate states no step budget (three of the nine state none, two state a
     # singular key), but ``recut_composition_records.py --family-recert`` records what
     # the artifact states and an explicit "not stated" otherwise, which
     # ``fastpath._certification_for`` already handles for every other absent budget. So
-    # the entry stays bindable in every round and no arm changed what certifies it.
+    # the entry stays bindable in every certification round and no arm changed what certifies it.
     "triton_bfast_device_gate": "bfast",
     "triton_special_kz_device_gate": "special_kz",
 }
 
 #: Ledger key -> (the deleted gate that measured it, why it is retired).
 #:
-#: A RETIRED KEY IS NOT AN UNCOVERED ONE. ``UNCOVERED`` means "no row here yet -- re-run
+#: A retired key is not an uncovered one. ``UNCOVERED`` means "no row here yet -- re-run
 #: the gate", which is the right remedy for a family that still ships and the wrong one
 #: for a gate that left the tree: no round can re-run it, so the entry would stay as a
 #: stale weld forever. A key listed here is dropped from the ledger by the campaign pass
@@ -273,7 +274,7 @@ CAMPAIGN_DIRS = {
 #: two are disjoint: a key cannot be both rebound and retired.
 RETIRED_WELDS = {
     # The expansion licence, its arms and its gate were deleted from the package and
-    # the harness (owner ruling 2026-10-10; the CHANGELOG's expansion-licence section),
+    # the harness (decided 2026-10-10; the CHANGELOG's expansion-licence section),
     # and nothing brings them back. No arm cites this weld (retire_welds checks it).
     "triton_unified_expansion_device_gate": (
         "parity/meep_gpu/gate_triton_unified_expansion.py",
@@ -295,7 +296,7 @@ def retire_welds(ledger: dict, selected=None) -> list:
     IT REFUSES, editing nothing, in the two cases where dropping the entry would be
     wrong rather than tidy: the gate it names is back in the checkout (then the entry
     is a weld to re-gate, not to retire), or an arm of the Triton table still cites it
-    (then dropping it would change what dispatch admits, which is a ruling, not a
+    (then dropping it would change what dispatch admits, which is a release decision, not a
     rebind).
     """
     cited = {key: arm for arm, (_family, key) in fastpath.ARM_CERTIFICATION.items()}
@@ -321,21 +322,22 @@ def retire_welds(ledger: dict, selected=None) -> list:
 #: ``(weld key, repository-relative pinned path) -> the gate script(s)`` for a pin the
 #: weld's gate no longer imports.
 #:
-#: WHY THE ROWS EXIST. ``seed_triton_welds.curated_for`` pins a ``SHARED`` package file
+#: Why the rows exist. ``seed_triton_welds.curated_for`` pins a ``SHARED`` package file
 #: "when the gate imported" it, and these three welds were seeded while the package root
 #: imported the driver eagerly, so every record held ``driver.py``. Their gates build no
 #: driver (the probe for the cylindrical pair, the stencil-weld gate for both stencil
-#: welds); since the root binds its names on first use (entry 128, owner ruling R17)
-#: ``driver.py`` lies outside their run closures, so a driver-only edit would still void
+#: welds); since the root binds its names on first use (as of 1.0;
+#: docs/development/certification.md, "What a gate's import record holds") ``driver.py``
+#: lies outside their run closures, so a driver-only edit would still void
 #: these welds by curated pin. The tree fallback below would fill the pin from the
 #: checkout, which is what keeps the coupling; a row removes it. The folded off-diagonal
 #: ADE chain weld was a fourth row until the run closure followed the package root's lazy
 #: names (``import_closure.Resolver.lazy_names``): that gate's optional corpus-lift leg
 #: calls ``meep_gpu.lift_simulation``, so ``driver.py`` is inside its closure and the rule
-#: no longer licenses the row. The weld was rebound without the pin in the 1.0 round, so
-#: there is nothing left for the row to retire.
+#: no longer licenses the row. The weld was rebound without the pin in the 1.0
+#: certification round, so there is nothing left for the row to retire.
 #:
-#: GENERATED, NOT TYPED: ``import_closure.py unimported-pins triton`` prints these rows
+#: Generated, not typed: ``import_closure.py unimported-pins triton`` prints these rows
 #: from the checkout, and ``test_rebind_unimported_pins.py`` holds this literal to it both
 #: ways. A row needs BOTH halves of the rule: the file is a module the eager root loaded
 #: (``import_closure.eager_root_modules``), and it lies outside the run closure of the
@@ -343,7 +345,7 @@ def retire_welds(ledger: dict, selected=None) -> list:
 #: computed name (the stencil-weld gate's two families), is outside the closure too and
 #: is a deliberate pin: it stays, and the tree fallback still fills it.
 #:
-#: HOW A ROW ACTS, the same as ``rebind_metal_welds.RETIRED_UNIMPORTED_PINS``: only inside
+#: How a row acts, the same as ``rebind_metal_welds.RETIRED_UNIMPORTED_PINS``: only inside
 #: a rebind, reported as ``RETIRED-PIN (not imported by <gate>)``, every other pin compared
 #: as strictly as before; the run is refused if a row's file is back in its gate's run
 #: closure, and an entry is skipped if its artifact (or its second policy's artifact)
@@ -411,7 +413,7 @@ SLOT_FIELDS = ("artifact_sha256", "records", "recorded_utc", "verdict_read_from"
 #: into a plan's certification block, so dropping it on a re-bind would delete
 #: something a reader is shown.
 #:
-#: WHY CARRYING IT IS NOT THE DEFECT ``HOST_PENDING`` WAS. Those strings are curated
+#: Why carrying it is not the defect ``HOST_PENDING`` WAS. Those strings are curated
 #: accounts of what the gate MEASURES -- "8 launches per row; 8 product rows,
 #: byte-identical over 49,152 compared uint32 words; 3 of 3 mutations divergent" --
 #: and no artifact states them in that form: the gates write a ``step_budgets`` map
@@ -431,7 +433,7 @@ def carried_run_facts(entry: dict, capability: str, fields) -> dict:
     :func:`fastpath.bind_capability` writes the new record, so ``live_capabilities``
     compares the previous record's ``bound_sha256`` with the bytes this run certified.
 
-    IT USED TO ASK WHETHER THE BYTES MOVED IN THIS PASS, which is a different question
+    It used to ask whether the bytes moved in this pass, which is a different question
     once a second architecture exists. Bind 9.0 first (superseding 8.6) and then re-bind
     8.6 on the same commit: the 8.6 pass moves nothing, yet the 8.6 record it would
     carry from was bound to the PREVIOUS bytes, so a measurement of other code landed in
@@ -454,7 +456,7 @@ def carried_run_facts(entry: dict, capability: str, fields) -> dict:
 #: it. Where a sentinel is listed, the old line is kept and the fresh one is
 #: appended; if the sentinel is not in the result the entry is skipped instead.
 #:
-#: IT READS THE CAPABILITY'S OWN RECORD, not the entry, and only where that record
+#: It reads the capability's own record, not the entry, and only where that record
 #: exists. The claim being preserved was made by the 8.6 run; appending 8.6's line to
 #: a FIRST record for another architecture would make that record quote a run on a
 #: different device, and refusing instead would hold the admitted set where it is --
@@ -466,13 +468,13 @@ RECORDS_SENTINELS = {
 
 
 #: The alternative key spellings an identity block is written in, mapped onto the
-#: one this tool reads. MEASURED, not defensive: ``device_name``/``cupy_version``/
+#: one this tool reads. Measured, not defensive: ``device_name``/``cupy_version``/
 #: ``CUDA_VISIBLE_DEVICES`` are ``probe_fused_kernel_bit_identity.device_info``'s
 #: names, ``host`` and ``cc`` appear across the 2026-09-09 fleet artifacts whose
 #: ``environment`` blocks were authored per probe, and ``device``/``cupy``/``triton``
 #: are what the Triton probes and :data:`DEVICE_STAMP` write.
 #:
-#: NORMALISING BEFORE THE MERGE IS WHAT MAKES PRECEDENCE MEAN ANYTHING. Merging raw
+#: Normalising before the merge is what makes precedence mean anything. Merging raw
 #: and then reading ``device or device_name`` inverts it: a sibling device stamp's
 #: ``device`` wins over the artifact's own ``device_name``, so the weld's host line
 #: would name the stamp's card while the run's own block named another. Measured on a
@@ -490,7 +492,7 @@ def _identity_sources(fresh: dict,
     Returns the blocks, canonically spelled, and the reasons any candidate could not
     be read at all.
 
-    FOUR SOURCES, MEASURED NOT ASSUMED. ``environment`` is what the Triton probes
+    Four sources, measured not assumed. ``environment`` is what the Triton probes
     write (through :mod:`triton_device_identity`); ``device_info`` is the
     bit-identity probe's own block name; ``provenance.device`` is what
     ``gate_provenance.stamp()`` writes; and :data:`DEVICE_STAMP` is the file a
@@ -520,7 +522,7 @@ def _identity_sources(fresh: dict,
         if not stamp.is_file():
             continue
         where = f"{DEVICE_STAMP} in {Path(directory).name}"
-        # A STAMP THAT CANNOT BE PARSED IS A NAMED REFUSAL, not a source to skip.
+        # A stamp that cannot be parsed is a named refusal, not a source to skip.
         # Ignoring it would let a truncated or half-written stamp -- the shape a
         # campaign killed mid-write leaves -- pass as though the run had left none,
         # and the capability would then be decided by whatever else happened to
@@ -546,7 +548,7 @@ def run_capability(fresh: dict, dirs) -> tuple[str | None, object]:
     in the order :func:`_identity_sources` returns, so the artifact's own stamp wins
     key by key and a sibling :data:`DEVICE_STAMP` only fills what the gate left out.
 
-    WHY THE CAPABILITY IS READ AND NEVER PASSED IN. A record kept per compute
+    Why the capability is read and never passed in. A record kept per compute
     capability is only worth keeping if the key is a measurement: a tool that took
     the architecture from its command line would let one typed flag file a run on one
     device under another, and every digest in the entry would still verify. So the
@@ -554,7 +556,7 @@ def run_capability(fresh: dict, dirs) -> tuple[str | None, object]:
     run that names none is refused by name rather than defaulted to the one this
     ledger happens to already carry.
 
-    THE HOSTNAME IS CROSS-CHECKED FOR THE SAME REASON. A :data:`DEVICE_STAMP` is
+    The hostname is cross-checked for the same reason. A :data:`DEVICE_STAMP` is
     written by a separate process, so it is weaker evidence than an in-process stamp;
     what makes it usable is that it cannot silently describe a different machine than
     the artifact beside it. Where two sources both name a hostname they must match.
@@ -562,7 +564,7 @@ def run_capability(fresh: dict, dirs) -> tuple[str | None, object]:
     Triton version are all facts about the same process in practice, and the one that
     decides the weld, the capability, is the one checked.
 
-    WHY IT LIVES HERE AND NOT IN :mod:`triton_device_identity`. That module is
+    Why it lives here and not in :mod:`triton_device_identity`. That module is
     stdlib-only on purpose: it is imported by a gate that may already have refused,
     possibly because ``meep_gpu`` itself would not import, and it WRITES identity at
     run time. Reading a finished artifact back, normalising it through the engine's
@@ -624,11 +626,11 @@ def _host_line(identity: dict) -> str | None:
     * the Triton and CuPy versions, for the same reason;
     * the physical GPU index, which is what makes a placement claim checkable.
 
-    ONE SPELLING FOR BOTH TOOLS. ``seed_triton_welds.py`` calls this rather than
+    One spelling for both tools. ``seed_triton_welds.py`` calls this rather than
     composing its own line: a seeded weld and a rebound one must be
     indistinguishable, and two f-strings drift.
 
-    IT TAKES AN IDENTITY, NOT AN ARTIFACT (2026-09-30). The host used to be composed
+    It takes an identity, not an artifact (2026-09-30). The host used to be composed
     from ``fresh["environment"]`` alone, which is why the welds whose gates write no
     environment block could never have one derived and kept whatever string they
     were authored with. The caller merges every block the run left
@@ -646,7 +648,7 @@ def _host_line(identity: dict) -> str | None:
     cupy = identity.get("cupy")
     if not (host and device and capability and triton and cupy):
         return None
-    # A VERSION, NOT A REPORT OF ITS ABSENCE. A probe whose `environment()` fell to
+    # A version, not a report of its absence. A probe whose `environment()` fell to
     # its except branch writes `cupy = "unavailable: TypeError(...)"`, which is
     # truthy and would compose a host line reading "CuPy unavailable: TypeError(...)"
     # -- a weld naming an exception where its toolchain belongs, and one the contract
@@ -657,7 +659,7 @@ def _host_line(identity: dict) -> str | None:
             return None
     gpu = (identity.get("cuda_visible_devices")
            or (identity.get("env") or {}).get("CUDA_VISIBLE_DEVICES"))
-    # THE MACHINE IS REQUIRED AND NOT WRITTEN. ``host`` above is the run's own stamp,
+    # The machine is required and not written. ``host`` above is the run's own stamp,
     # and a run without one composes no line; the line names it by the neutral label,
     # because a ledger ships and its machine stamp could not be scrubbed at export.
     return neutral_labels.host_line(
@@ -674,10 +676,10 @@ def campaign_host_note(manifest: dict) -> str:
             + (f" GPU {gpu}" if gpu is not None else ""))
 
 
-def recorded_cupy_versions(ledger: dict) -> tuple[str, ...]:
+def recorded_cupy_versions(ledger: dict, capability: str | None = None) -> tuple[str, ...]:
     """The CuPy versions this ledger's live records were cut on. DERIVED, never typed.
 
-    THE OTHER HALF OF THE TOOLCHAIN AXIS. ``fastpath.validated_triton_versions()``
+    The other half of the toolchain axis. ``fastpath.validated_triton_versions()``
     declares the Triton versions the table stands on, and the weld contract holds
     every record's ``host`` string to it -- but nothing held the RUN to it, so a run
     on another Triton or another CuPy could be bound and labelled with whatever the
@@ -688,26 +690,33 @@ def recorded_cupy_versions(ledger: dict) -> tuple[str, ...]:
     An empty answer is a refusal and not a licence: a ledger that declares no CuPy
     gives this tool nothing to check a run against, and widening the toolchain is a
     deliberate act in both directions.
+
+    Given ``capability``, its own records answer: another capability's round on another
+    CuPy widens nothing for this one. Only a capability with no live record yet, a first
+    bind, is held to the versions of the others.
     """
-    found = set()
+    found: dict[str, set[str]] = {}
     for entry in ledger.values():
         if not isinstance(entry, dict):
             continue
-        for capability in fastpath.live_capabilities(entry):
-            record = entry[fastpath.RUNS][capability]
+        for live in fastpath.live_capabilities(entry):
+            record = entry[fastpath.RUNS][live]
+            names = found.setdefault(live, set())
             if record.get("cupy_version"):
-                found.add(str(record["cupy_version"]))
+                names.add(str(record["cupy_version"]))
             for token in str(record.get("host") or "").split(";"):
                 token = token.strip()
                 if token.startswith("CuPy "):
-                    found.add(token[len("CuPy "):].strip())
-    return tuple(sorted(found))
+                    names.add(token[len("CuPy "):].strip())
+    if found.get(capability):
+        return tuple(sorted(found[capability]))
+    return tuple(sorted(set().union(*found.values()))) if found else ()
 
 
 def toolchain_refusal(identity: dict, ledger: dict) -> str | None:
     """Why this run's toolchain may not be welded, or ``None``. Checked at BIND time.
 
-    THE DEFECT THIS CLOSES, measured 2026-09-29: a weld's ``host`` string was the
+    The defect this closes, measured 2026-09-29: a weld's ``host`` string was the
     only place the Triton and CuPy versions were recorded, and the only thing that
     ever compared them with the declaration was a contract test reading that string.
     Since a rebind carried the string forward rather than deriving it, a run on
@@ -726,7 +735,7 @@ def toolchain_refusal(identity: dict, ledger: dict) -> str | None:
                 f"validated_triton_versions {list(validated)}; Triton generates the "
                 f"PTX this weld is a claim about, so widening that declaration is a "
                 f"deliberate act and not a side effect of a rebind")
-    recorded = recorded_cupy_versions(ledger)
+    recorded = recorded_cupy_versions(ledger, identity.get("compute_capability"))
     if not recorded:
         return ("this ledger's live records name no CuPy version, so this run's "
                 "CuPy cannot be checked against the one the table stands on")
@@ -735,6 +744,20 @@ def toolchain_refusal(identity: dict, ledger: dict) -> str | None:
                 f"this ledger's live records were cut on; the compiler that built "
                 f"these kernels is part of the claim")
     return None
+
+
+def refuse_policy_drop(entry: dict, capability: str, run: dict, allowed: bool) -> None:
+    """Refuse, by name, a bind that replaces this capability's run and loses a policy it
+    holds. Dispatch reads those keys (``fastpath.policy_evidence_reasons``), and a second
+    card's single-policy campaign would otherwise take a caller's flush from dispatched to
+    refused on the first card's capability, unseen until the route stage."""
+    runs = entry.get(fastpath.RUNS)
+    lost = ledger_scope.policies_dropped(
+        runs.get(capability) if isinstance(runs, dict) else None, run, fastpath.CERTIFIED_POLICIES)
+    if lost and not allowed:
+        raise fastpath.CapabilityRecordError(
+            f"policy_dropped: this bind replaces the {capability} run and loses {lost}; "
+            f"pass the campaign that holds them, or --allow-policy-drop to lose them on purpose")
 
 
 def _artifact_for(directory: Path) -> Path | None:
@@ -858,12 +881,13 @@ BIT_IDENTITY_EXPERIMENTS = frozenset({
 
 def bind_bit_identity(artifact_argument: str, write: bool,
                       supersede: tuple[str, ...] = (),
-                      flush_argument: str | None = None) -> int:
+                      flush_argument: str | None = None,
+                      allow_policy_drop: bool = False) -> int:
     """Refresh ``bit_identity_gate``'s pins from a RELEASED re-run, per capability.
 
-    THE BINDER THE 2026-08-30 CONTRACT ROUND SAID WAS MISSING
-    (``test_triton_weld_contract.py``: "CLEARING IT IS A TOOL, NOT A TYPING
-    JOB... the red stands, deliberately, until somebody writes the binder").
+    The binder the 2026-08-30 weld contract tests said was missing
+    (``test_triton_weld_contract.py`` said clearing it was a tool, not a typing
+    job, and that the red stands, deliberately, until somebody writes the binder).
     Everything it writes is DERIVED from the fresh artifact, and every refusal
     fails closed:
 
@@ -879,7 +903,7 @@ def bind_bit_identity(artifact_argument: str, write: bool,
       checkout — the proof the run executed these exact bytes — before any of
       them is written into the ledger.
 
-    THE KERNEL BYTES ARE BOUND TOO, since 2026-09-30. This entry certifies the
+    The kernel bytes are bound too, since 2026-09-30. This entry certifies the
     ``PML``, ``ordinary``, ``nonlinear run PML`` and ``nonlinear run`` arms
     (``fastpath.ARM_CERTIFICATION``), and until this change its bound set was the
     harness alone — ``probe``/``probe_sha256`` and ``adapter``/``adapter_sha256``.
@@ -972,7 +996,7 @@ def bind_bit_identity(artifact_argument: str, write: bool,
             f"the run disagrees with this checkout on {disagreeing[:5]}; it "
             f"describes a different tree and nothing here may be bound from it")
 
-    # THE KERNEL BYTES THIS RUN EXECUTED. Every ``meep_gpu/`` path the probe
+    # The kernel bytes this run executed. Every ``meep_gpu/`` path the probe
     # imported, which is what the bound hashes; a path the run recorded and the
     # checkout does not have would pin a digest for bytes that do not ship.
     package = sorted(name for name in imported if name.startswith("meep_gpu/"))
@@ -986,7 +1010,7 @@ def bind_bit_identity(artifact_argument: str, write: bool,
             f"the run imported {absent[:5]}, which this checkout does not have; "
             f"a pin may not name bytes that do not ship")
 
-    # THE RUN'S OWN DEVICE AND TOOLCHAIN, resolved BEFORE the first mutation of the
+    # The run's own device and toolchain, resolved BEFORE the first mutation of the
     # entry so every refusal leaves the ledger as it was.
     capability, identity = run_capability(fresh, [artifact.parent])
     if capability is None:
@@ -1030,13 +1054,13 @@ def bind_bit_identity(artifact_argument: str, write: bool,
             f"CURRENT probe, adapter and meep_gpu/ bytes to that released verdict."),
         "recorded_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "host": host,
-        # ONE SPELLING EACH: the merge canonicalised them, and _host_line returning
+        # One spelling each: the merge canonicalised them, and _host_line returning
         # a line is the proof both are present.
         "cupy_version": str(identity["cupy"]),
         "triton_version": str(identity["triton"]),
         "subnormal_policy": policy,
     }
-    # THE ONE FIELD CARRIED, AND ONLY WITHIN ONE CAPABILITY. ``_this_recut`` is the
+    # The one field carried, and only within one capability. ``_this_recut`` is the
     # curated account of WHAT this certification covers -- which kernel bodies were
     # unchanged when the D/E pair was added, and why num_warps is a gate axis. It is
     # not a label about the machine, which is the class of field this tool now
@@ -1047,7 +1071,7 @@ def bind_bit_identity(artifact_argument: str, write: bool,
     # were unchanged is a statement about one tree, so an edit to the pinned files
     # drops it rather than carrying it onto a record about different bytes.
     run.update(carried_run_facts(entry, capability, ("_this_recut",)))
-    # THE POLICIES THAT RELEASED (``fastpath.CERTIFIED_POLICIES``): this run's, and a
+    # The policies that released (``fastpath.CERTIFIED_POLICIES``): this run's, and a
     # second policy's run of the same identity legs on the same bytes when one is
     # given. Without it dispatch admits only the install default for the arms this
     # entry certifies.
@@ -1096,13 +1120,14 @@ def bind_bit_identity(artifact_argument: str, write: bool,
     # property of the probe's own structure that the artifact nowhere states -- so
     # restating it would be this tool authoring a measurement.
     try:
+        refuse_policy_drop(entry, capability, run, allow_policy_drop)
         staled = fastpath.bind_capability(
             entry, bound_before=bound_before, capability=capability, run=run,
             supersede=supersede)
     except fastpath.CapabilityRecordError as exc:
         raise SystemExit(f"{BIT_IDENTITY_KEY}: {exc}") from None
 
-    # THE SURVIVAL PROOF: only the fields this binder owns may move, and no OTHER
+    # The survival proof: only the fields this binder owns may move, and no OTHER
     # capability's record may move at all unless it was superseded by name.
     owned = {"adapter_sha256", "probe_sha256", "source_sha256", fastpath.RUNS}
     old = before[BIT_IDENTITY_KEY]
@@ -1142,8 +1167,8 @@ def bind_bit_identity(artifact_argument: str, write: bool,
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    # REPEATABLE. One re-gate round is not necessarily one campaign directory: the
-    # 2026-08-27 routing round covered fourteen families, and the three families whose
+    # REPEATABLE. One re-gate is not necessarily one campaign directory: the
+    # 2026-08-27 routing re-gate covered fourteen families, and the three families whose
     # gates need a specific expansion probe had to be re-run into their own trees once
     # the right probe was identified (see drive_triton_weld_gates.py's notes on
     # complex_offdiag and complex_fused_ade_chain). Pass --campaign once per tree; the
@@ -1160,7 +1185,7 @@ def main(argv=None) -> int:
                              "refuses.")
     parser.add_argument("--only", default="",
                         help="comma-separated ledger keys to rebind; the rest are "
-                             "left exactly as they are. WHY THIS EXISTS: a campaign "
+                             "left exactly as they are. Why this exists: a campaign "
                              "tree can hold a family that some OTHER, later tree "
                              "already bound, and rebinding the whole tree would walk "
                              "that key backwards onto the older artifact. Measured "
@@ -1171,8 +1196,8 @@ def main(argv=None) -> int:
                              "this flag would have regressed nine welds.")
     parser.add_argument("--supersede", default="",
                         help="comma-separated compute capabilities whose records "
-                             "this round DISCARDS. WHY IT IS NEEDED AND WHY IT IS "
-                             "NOT A DEFAULT: a record is live only while the bytes "
+                             "this rebind DISCARDS. Why it is needed and why it is "
+                             "not a default: a record is live only while the bytes "
                              "the entry binds are unchanged, so a rebind on MOVED "
                              "bytes leaves every other capability's record "
                              "certifying bytes that no longer ship. That is a "
@@ -1191,16 +1216,26 @@ def main(argv=None) -> int:
     parser.add_argument("--bit-identity-flush", default=None, metavar="ARTIFACT",
                         help="with --bind-bit-identity: the identity legs re-run "
                              "under the flush policy on the same bytes")
+    parser.add_argument("--allow-policy-drop", action="store_true",
+                        help="let a bind replace a capability's run and lose a policy "
+                             "that run holds; refused by name otherwise")
+    parser.add_argument("--retire-mixed-policy", default="", metavar="KEY,...",
+                        help="ledger keys whose _mixed_policy declaration a run that "
+                             "installed and stamped its policy clears: the declaration "
+                             "is dropped and the key bound under that policy. A run that "
+                             "states no installed policy leaves it standing (skipped)")
     parser.add_argument("--write", action="store_true", help="apply (default: report)")
     args = parser.parse_args(argv)
     supersede = tuple(s.strip() for s in args.supersede.split(",") if s.strip())
+    retire_mixed = {k.strip() for k in args.retire_mixed_policy.split(",") if k.strip()}
 
     if args.bind_bit_identity is not None:
         if args.campaign or args.flush_campaign:
             raise SystemExit("--bind-bit-identity and --campaign are separate "
                              "modes; run them separately")
         return bind_bit_identity(args.bind_bit_identity, args.write, supersede,
-                                 flush_argument=args.bit_identity_flush)
+                                 flush_argument=args.bit_identity_flush,
+                                 allow_policy_drop=args.allow_policy_drop)
     if args.bit_identity_flush is not None:
         raise SystemExit("--bit-identity-flush belongs to --bind-bit-identity")
     if not args.campaign:
@@ -1225,13 +1260,13 @@ def main(argv=None) -> int:
                 f"campaign {root} lives outside {_API}; a weld's records line must "
                 "name an apps/api/... path or it points nowhere resolvable")
 
-    # PER TREE, NOT PER INVOCATION. This used to be a single ``campaign_rel``
+    # Per tree, not per invocation. This used to be a single ``campaign_rel``
     # and a single ``host``, both taken from ``campaigns[0]``, while the artifact
     # was chosen by scanning ALL the trees a few lines below. Whenever those
     # disagreed, the weld got a records line naming a tree the artifact did not
     # come from and a host read off a manifest that did not describe the run.
     #
-    # MEASURED 2026-08-30, on the record this tool wrote: two welds carry a
+    # Measured 2026-08-30, on the record this tool wrote: two welds carry a
     # records line pointing at
     # ``parity/meep_gpu/results/triton_fused_regate_2026-08-28/<family>/``,
     # a directory that does not exist and never did — that tree holds only the
@@ -1269,12 +1304,12 @@ def main(argv=None) -> int:
                 json.loads(manifest.read_text(encoding="utf-8")))
 
     ledger = json.loads(LEDGER.read_text(encoding="utf-8"))
-    # THE TYPED DECLARATION IS GONE AND MAY NOT COME BACK. The capabilities this
+    # The typed declaration is gone and may not come back. The capabilities this
     # table admits are the intersection of the capabilities its cited welds have a
     # LIVE record for (``fastpath.capability_admission``), so they are now a
     # consequence of what this tool writes. A typed key beside those records is a
     # second answer to the same question, and the one that used to be there is the
-    # defect: no tool wrote it, so a round on another architecture changed every
+    # defect: no tool wrote it, so a certification round on another architecture changed every
     # weld's evidence and left the declaration saying what it had always said.
     if "validated_compute_capabilities" in ledger:
         raise SystemExit(
@@ -1289,10 +1324,21 @@ def main(argv=None) -> int:
         unknown = selected - set(ledger)
         if unknown:
             raise SystemExit(f"--only names {sorted(unknown)}, absent from the ledger")
-    # THE RETIRED KEYS GO FIRST, so the pass below never meets them: a retired key
+    # A declaration is retired only where one stands, and only on a key this run visits.
+    from seed_triton_welds import MIXED_POLICY_FIELD  # noqa: PLC0415
+    undeclared = sorted(key for key in retire_mixed
+                        if MIXED_POLICY_FIELD not in (ledger.get(key) or {}))
+    if undeclared:
+        raise SystemExit(f"--retire-mixed-policy names {undeclared}, which declare no "
+                         f"{MIXED_POLICY_FIELD}")
+    if selected is not None and retire_mixed - selected:
+        raise SystemExit(f"--retire-mixed-policy names {sorted(retire_mixed - selected)}, "
+                         f"which --only leaves out")
+    declarations_retired = []   # (key, the policy the run installed)
+    # The retired keys go first, so the pass below never meets them: a retired key
     # would otherwise read UNCOVERED, with the remedy of a gate that no longer exists.
     retirements = retire_welds(ledger, selected)
-    # A ROW THE RULE NO LONGER LICENSES refuses the whole run, before any entry is read:
+    # A row the rule no longer licenses refuses the whole run, before any entry is read:
     # a file back in its gate's run closure is a pin to keep, so the table is wrong until
     # someone reviews it.
     stale_rows = unimported_rows_back(ledger)
@@ -1313,7 +1359,7 @@ def main(argv=None) -> int:
         if not pinned:
             skipped.append((key, "PASS but pins no source_sha256"))
             continue
-        # A PIN THE GATE NO LONGER IMPORTS leaves the curated set by row, and only by
+        # A pin the gate no longer imports leaves the curated set by row, and only by
         # row (RETIRED_UNIMPORTED_PINS); every other pin goes through the comparison and
         # the tree fallback below exactly as before.
         unimported = unimported_pins_of(key)
@@ -1327,13 +1373,13 @@ def main(argv=None) -> int:
         if key not in CAMPAIGN_DIRS:
             uncovered.append(key)
             continue
-        # THE SHAPE IS REFUSED BY NAME, not read both ways. An entry still carrying
+        # The shape is refused by name, not read both ways. An entry still carrying
         # its run's facts beside the digests would make "which bytes did this run
         # certify" a question with two answers, which is the whole point of the
         # container; and a tool that accepted both shapes would quietly write a
         # record into an entry nothing reads a record from.
         #
-        # ASKED ONLY OF THE KEYS THIS TOOL OWNS, which is why it sits after the
+        # Asked only of the keys this tool owns, which is why it sits after the
         # table lookup rather than before it. The ledger also holds entries that are
         # NOT welds -- the 08-13/14 planner sweeps and ``pending_host_recut`` carry a
         # ``host`` and a ``recorded_utc`` at their top level and no gate behind them
@@ -1346,7 +1392,7 @@ def main(argv=None) -> int:
                                  f"migrate_capability_records.py first"))
             continue
 
-        # THE FIRST TREE HOLDING AN ARTIFACT WINS -- not the first holding a
+        # The first tree holding an artifact wins -- not the first holding a
         # DIRECTORY. A gate that failed leaves its directory behind with a log and
         # an empty cases.jsonl and no gate.json, so matching on is_dir() picks the
         # failed run over the good one in a later tree and reports "holds no gate
@@ -1386,7 +1432,7 @@ def main(argv=None) -> int:
                                  f"{verdict.get('reasons') or 'no reason given'}"))
             continue
 
-        # TWO SPELLINGS, MEASURED NOT ASSUMED TO AGREE. Older probes record every file
+        # Two spellings, measured not assumed to agree. Older probes record every file
         # the run imported as ``imported_source_sha256``; the probes written on
         # 2026-08-31 record only the set the gate PINS, as ``source_sha256``. Measured
         # over the 2026-08-31 campaigns: 32 artifacts carry one or the other, 15 carry
@@ -1398,7 +1444,7 @@ def main(argv=None) -> int:
         imported = fresh.get("imported_source_sha256") or {}
         if not imported:
             imported = fresh.get("source_sha256") or {}
-        # A PIN RETIRED AS NOT IMPORTED MAY NOT BE IN THE RUN'S RECORD (whether the entry
+        # A pin retired as not imported may not be in the run's record (whether the entry
         # still pins it or an earlier bind dropped it), and a run that drops one must be
         # this checkout's bytes: the closure that licenses the drop was read off the
         # checkout's gate, so it speaks for the run only where the run executed the same
@@ -1424,7 +1470,7 @@ def main(argv=None) -> int:
                                      + (f" and {len(disagreeing) - 3} more"
                                         if len(disagreeing) > 3 else "")))
                 continue
-        # THE RUN MUST DESCRIBE THE RELEASE TREE (a chunked round certifies chunks on
+        # The run must describe the release tree (a chunked round certifies chunks on
         # earlier tips): one file its record names at other bytes, or gone, and the
         # artifact describes a tree that does not ship (artifact_drift.py).
         moved = artifact_drift.artifact_moved(fresh, _API)
@@ -1434,7 +1480,7 @@ def main(argv=None) -> int:
             continue
         unknown = [name for name in curated if name not in imported]
 
-        # A WELD MAY PIN A FILE THE GATE NEVER IMPORTS -- its own test file is the
+        # A weld may pin a file the gate never imports -- its own test file is the
         # normal case, since the gate is the subject and the test is the checker.
         # The artifact therefore CANNOT record it, and refusing outright left six
         # welds permanently unrebindable, two of which had nothing stale at all.
@@ -1463,7 +1509,7 @@ def main(argv=None) -> int:
                 continue
             taken_from_tree[key] = list(unknown)
 
-        # DEVICE DIGESTS ARE RECOMPUTED FROM THE TREE, so they are only honest
+        # Device digests are recomputed from the tree, so they are only honest
         # where the tree IS what the run imported. Compare the run's own byte
         # digest for the file against the checkout first and refuse otherwise --
         # otherwise a kernel-body edit made after the run would be re-pinned from
@@ -1482,18 +1528,18 @@ def main(argv=None) -> int:
                                  "from the ones this run imported"))
             continue
 
-        # THE TREE THE ARTIFACT ACTUALLY CAME FROM, not the first one passed.
+        # The tree the artifact actually came from, not the first one passed.
         campaign_rel, host = rel_by_root[chosen_root], host_by_root[chosen_root]
         assert (_API / campaign_rel / CAMPAIGN_DIRS[key]) == directory, (
             f"{key}: records would name {campaign_rel}/{CAMPAIGN_DIRS[key]} but "
             f"the artifact was read from {directory}")
-        # THE DEVICE, THE TOOLCHAIN, THE HOST AND THE POLICY, resolved BEFORE the
+        # The device, the toolchain, the host and the policy, resolved BEFORE the
         # first mutation of ``entry``. Every refusal above this point leaves the entry
         # untouched and these must too: ``ledger`` is the object that gets written, so
         # an entry that is half-rewritten and then skipped would be PERSISTED in that
         # state the moment any other key binds.
         #
-        # ALL FOUR ARE DERIVED ON EVERY WRITE, with no carry-forward branch left.
+        # All four are derived on every write, with no carry-forward branch left.
         # Until 2026-09-30 the host was re-derived only where the entry read the
         # sentinel "PENDING REBIND" and the policy only where it read "see artifact",
         # so re-binding a standing weld kept whatever machine and toolchain string it
@@ -1517,19 +1563,27 @@ def main(argv=None) -> int:
         if refused is not None:
             skipped.append((key, f"{CAMPAIGN_DIRS[key]}/{artifact.name}: {refused}"))
             continue
-        # THE ENTRY IS PASSED so a declared ``_mixed_policy`` exception is honoured in
+        # The entry is passed so a declared ``_mixed_policy`` exception is honoured in
         # the one spelling its existing records use, and refused if the run contradicts
         # it; see ``seed_triton_welds.policy_line``.
         from seed_triton_welds import PolicyStampConflict, policy_line  # noqa: PLC0415
+        # A declaration the run clears (``--retire-mixed-policy``): the gate now installs
+        # and stamps its policy, so the run is read as an entry without the exception
+        # would be, and the field is dropped only once it names a policy.
+        retiring = key in retire_mixed
+        reading = ({name: value for name, value in entry.items()
+                    if name != MIXED_POLICY_FIELD} if retiring else entry)
         try:
-            derived_policy = policy_line(fresh, entry)
+            derived_policy = policy_line(fresh, reading)
         except PolicyStampConflict as exc:
             skipped.append((key, f"{CAMPAIGN_DIRS[key]}/{artifact.name}: policy "
                                  f"refused: {exc}"))
             continue
         if derived_policy is None:
             skipped.append((key, f"{CAMPAIGN_DIRS[key]}/{artifact.name} carries no "
-                                 "subnormal_policy stamp naming a resolved policy"))
+                                 "subnormal_policy stamp naming a resolved policy"
+                                 + (f", so its {MIXED_POLICY_FIELD} declaration stands"
+                                    if retiring else "")))
             continue
 
         records = (f"apps/api/{campaign_rel}/{CAMPAIGN_DIRS[key]}/ - {source_field}."
@@ -1537,7 +1591,7 @@ def main(argv=None) -> int:
                    f"{len(imported)} imported digests, every pinned path taken from "
                    f"the run's own imported_source_sha256"
                    + (f"; {host}" if host else "") + ".")
-        # THE CARVE-OUT READS THE CAPABILITY'S OWN RECORD, and only where that
+        # The carve-out reads the capability's own record, and only where that
         # capability HAS one. The claim being preserved was made by a run on one
         # architecture, so appending it to a FIRST record for another would make that
         # record quote a run on a different device. Refusing instead would be worse
@@ -1557,12 +1611,12 @@ def main(argv=None) -> int:
                                      "hold them"))
                 continue
 
-        # THE BOUND BEFORE THE REWRITE, read while the entry still holds the digests
+        # The bound before the rewrite, read while the entry still holds the digests
         # its existing records were cut against. This is the comparison that decides
         # whether another architecture's record survives this write, so it cannot be
         # taken after the pins move.
         bound_before = fastpath.bound_digest(entry)
-        # Keys the artifact records come FROM THE ARTIFACT. The handful it cannot
+        # Keys the artifact records come from the artifact. The handful it cannot
         # record (see the tree-fallback rule above) come from the checkout, which
         # the guard has already proved is the tree this run executed.
         entry["source_sha256"] = {
@@ -1585,23 +1639,23 @@ def main(argv=None) -> int:
                    if verdict.get("read_from") else "")),
             "host": derived_host,
             "subnormal_policy": derived_policy,
-            # ONE SPELLING EACH: the merge canonicalised them, and _host_line
+            # One spelling each: the merge canonicalised them, and _host_line
             # returning a line is the proof both are present.
             "cupy_version": str(identity["cupy"]),
             "triton_version": str(identity["triton"]),
         }
-        # CARRIED ONLY WHILE THE BYTES ARE THE SAME. A step budget is a MEASUREMENT
+        # Carried only while the bytes are the same. A step budget is a MEASUREMENT
         # of the run that produced it ("8 launches per row; 8 product rows
         # byte-identical over 49,152 compared uint32 words"), so carrying one onto a
         # record about other bytes would put a previous tree's number in it. When the
         # previous record is not live on these bytes it is dropped, and ``fastpath``
         # names the absence rather than quoting a figure nothing measured here.
         run.update(carried_run_facts(entry, capability, CARRIED_WITHIN_CAPABILITY))
-        # THE POLICIES THAT RELEASED, the field dispatch reads to admit a
+        # The policies that released, the field dispatch reads to admit a
         # caller-installed policy other than the install default
         # (``fastpath.policy_evidence_reasons``): this run's own, plus the flush
         # campaign's run of the same gate on the same bytes when one is given.
-        first = attained_policy(fresh, entry)
+        first = attained_policy(fresh, reading)
         if first is not None:
             run[fastpath.CERTIFIED_POLICIES] = {first: {
                 "artifact_sha256": run["artifact_sha256"],
@@ -1609,7 +1663,7 @@ def main(argv=None) -> int:
                                      f"{artifact.name}:{source_field}.released"}}
         if flush_roots and first != "flush":
             evidence, why = second_policy_evidence(
-                key, entry, flush_roots, rel_by_root, capability, imported, curated,
+                key, reading, flush_roots, rel_by_root, capability, imported, curated,
                 "flush", tuple(dropping))
             if evidence is None:
                 flush_notes.append((key, why))
@@ -1622,12 +1676,17 @@ def main(argv=None) -> int:
                 f"test file. Their digests are the CHECKOUT's, which is licensed here "
                 f"only because every digest the run DID record already matched the "
                 f"checkout byte for byte, so the run and the checkout are the same tree.")
+        if retiring:
+            # Dropped here, after every refusal above: a key skipped keeps its
+            # declaration, and a refusal below puts the whole entry back.
+            entry.pop(MIXED_POLICY_FIELD, None)
         try:
+            refuse_policy_drop(entry, capability, run, args.allow_policy_drop)
             staled = fastpath.bind_capability(
                 entry, bound_before=bound_before, capability=capability, run=run,
                 supersede=supersede)
         except fastpath.CapabilityRecordError as exc:
-            # THE ENTRY IS PUT BACK. ``ledger`` is the object that gets written, and a
+            # The entry is put back. ``ledger`` is the object that gets written, and a
             # refusal here comes AFTER the pins moved, so leaving the half-rewritten
             # entry in place would persist new digests with no record behind them the
             # moment another key binds.
@@ -1635,19 +1694,20 @@ def main(argv=None) -> int:
             skipped.append((key, str(exc)))
             continue
 
-        # THE SURVIVAL PROOF, in the tool rather than in a reviewer's head. The key
+        # The survival proof, in the tool rather than in a reviewer's head. The key
         # set may not move; every entry-level field this tool does not own must come
         # out byte-identical to what went in; and no OTHER capability's record may
-        # move at all unless this round superseded it by name.
+        # move at all unless this rebind superseded it by name.
         old = before[key]
+        dropped_fields = {MIXED_POLICY_FIELD} if retiring else set()
         assert set(entry) - set(old) == set(), (key, sorted(set(entry) - set(old)))
-        assert set(old) - set(entry) == set(), (key, sorted(set(old) - set(entry)))
+        assert set(old) - set(entry) == dropped_fields, (key, sorted(set(old) - set(entry)))
         # The pin set moves only by the rows of RETIRED_UNIMPORTED_PINS, in both maps.
         for field in ("source_sha256", "code_sha256"):
             assert set(entry[field]) == set(old["source_sha256"]) - set(dropping), (
                 key, field)
         for field in old:
-            if field in ENTRY_REFRESHED or field == fastpath.RUNS:
+            if field in ENTRY_REFRESHED or field == fastpath.RUNS or field in dropped_fields:
                 continue
             assert json.dumps(entry[field], sort_keys=True) == json.dumps(
                 old[field], sort_keys=True), (key, field)
@@ -1660,9 +1720,11 @@ def main(argv=None) -> int:
                               sort_keys=True) == json.dumps(
                 record, sort_keys=True), (key, "other capability moved", name)
         pin_retirements.extend((key, name, unimported[name]) for name in dropping)
+        if retiring:
+            declarations_retired.append((key, derived_policy))
         rebound.append((key, rel_by_root[chosen_root], capability, staled))
 
-    # THE REPORT NAMES THE TREE, not just the family directory. With several
+    # The report names the tree, not just the family directory. With several
     # --campaign trees in play the family name alone does not say which run bound
     # the key, so the two misattributed records lines this tool wrote on
     # 2026-08-28 were invisible in its own output. Printing the tree makes the
@@ -1684,13 +1746,16 @@ def main(argv=None) -> int:
               flush=True)
     for key, why in retirements:
         print(f"  RETIRED   {key}: {why}", flush=True)
+    for key, policy in declarations_retired:
+        print(f"  RETIRED-DECLARATION  {key}: {MIXED_POLICY_FIELD} dropped; the run "
+              f"installed and stamped {policy!r}", flush=True)
     print(f"\n  {len(rebound)} rebound, {len(skipped)} skipped, "
           f"{len(uncovered)} PASS entries the table does not cover"
           + (f", {len(flush_notes)} without flush evidence" if flush_roots else "")
           + f", {len(retirements)} retired, {len(pin_retirements)} pin(s) retired",
           flush=True)
 
-    # THE KEY SET MOVES ONLY BY THE RETIREMENT: no entry is added, and the entries
+    # The key set moves only by the retirement: no entry is added, and the entries
     # removed are exactly the ones reported RETIRED.
     assert set(ledger) - set(before) == set(), sorted(set(ledger) - set(before))
     assert set(before) - set(ledger) == {key for key, _why in retirements}, (

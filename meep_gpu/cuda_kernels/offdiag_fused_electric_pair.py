@@ -1,6 +1,6 @@
 """The FIRST fused pair this track has put on a STENCIL cell: PML curl x off-diagonal.
 
-THE CELL, AND WHAT WAS RECORDED ABOUT IT. ``D_to_E (cuda_curl/PML,
+The cell, and what was recorded about it. ``D_to_E (cuda_curl/PML,
 cuda_offdiag/off-diagonal)`` carries 16 corpus rows, 8 of which clear the source
 injection on the driver fact alone, and the hand-CUDA board has recorded it
 STENCIL-BLOCKED since the cell was first priced:
@@ -10,8 +10,8 @@ STENCIL-BLOCKED since the cell was first priced:
      CUDA offers no grid-wide barrier inside an ordinary launch -- only cooperative
      groups, which caps the grid at the resident-block count."
 
-Every word of that is true of the weld it describes, and the fusion-residue audit
-(§1.1) found that the strongest design was never built. This module is that design:
+Every word of that is true of the weld it describes (the in-place halves in one
+launch), but the strongest design had never been built. This module is that design:
 the curl half writes a LAUNCH-LOCAL SCRATCH, the constitutive half takes its own cell
 from a register and RECOMPUTES each foreign cell from pre-launch state through the
 same ``__device__`` function, and the launcher rotates the ``D``/``fu`` bindings
@@ -19,7 +19,7 @@ afterwards. :mod:`.offdiag_stencil_weld` holds the lift and the argument for it;
 module owns the cell, the predicate, the signature and the record.
 
 =============================================================================
-WHAT ONE LAUNCH PERFORMS, AND WHAT IT REFUSES
+What one launch performs, and what it refuses
 =============================================================================
 
 :data:`REPLACES` is ``step_D`` -> ``zero_metal_D`` -> ``update_E``: a contiguous run
@@ -31,7 +31,7 @@ wall Dx and Dy), and it is carried inside :func:`offdiag_stencil_weld.resolution
 rather than as a separate pass, because the constitutive half reads its output at
 foreign cells too.
 
-THE TWO MIRROR FILLS ARE NOT CARRIED AND CANNOT RUN. ``covers_real_pml_offdiag_
+The two mirror fills are not carried and cannot run. ``covers_real_pml_offdiag_
 constitutive`` refuses a fold twice over (``has_symmetry`` and per axis,
 coverage.py:1755-1791), so ``fill_symmetry_bc_D`` (driver.py:3309) and
 ``fill_folded_far_ghosts_D`` (:3311) are no-ops on every grid this predicate admits.
@@ -42,7 +42,7 @@ string per family is this track's standing rule. The predicate asserts the flags
 dead rather than trusting the sibling clause.
 
 =============================================================================
-THE DEPOSIT IS REFUSED, AND THAT IS A MEASUREMENT, NOT A CHOICE
+The deposit is refused, and that is a measurement, not a choice
 =============================================================================
 
 :data:`CARRIES_DEPOSIT_REPAIR` is ``False``, and it is the one value this module could
@@ -59,7 +59,7 @@ The ceiling that follows is exact: 8 of the cell's 16 seam-instances, the 8 the 
 already prices as clearing the source seam.
 
 =============================================================================
-THE THREE ALIASING FACTS THE SIGNATURE IS SHAPED AROUND
+The three aliasing facts the signature is shaped around
 =============================================================================
 
 1. **``D`` and ``fu_D`` appear TWICE, and that is the design rather than a hazard.**
@@ -75,7 +75,7 @@ THE THREE ALIASING FACTS THE SIGNATURE IS SHAPED AROUND
    epsilon volume or a D volume.
 
 =============================================================================
-THE ONE NAME COLLISION, AND WHY IT MATTERS
+The one name collision, and why it matters
 =============================================================================
 
 Both certified bodies were written against the same vocabulary and collide on
@@ -96,7 +96,7 @@ raises if they ever disagree instead of binding two vectors that a reader would 
 to keep apart. The folded sibling, where they genuinely differ, binds both.
 
 =============================================================================
-NOTHING HERE IS DISPATCH
+Nothing here is dispatch
 =============================================================================
 
 ``meep_gpu.fastpath.plan_fast_path`` still returns ``None`` on every branch. This
@@ -144,13 +144,13 @@ try:
 except Exception:  # noqa: BLE001
     offdiag_constitutive_kernels = None  # type: ignore[assignment]
 
-#: BYTE-IDENTICAL TO THE ARRAY PATH WITH A DEVICE VERDICT BEHIND IT.
+#: Byte-identical to the array path with a device verdict behind it.
 #: ``certification.json``'s ``cuda_offdiag_stencil_welds_2026-09-02`` block names the same
 #: two artifacts this line rests on, and ``test_kernel_partition.py`` refuses a
 #: name here that no record block claims.
 #:
-#: THE DECLARATION IS THE FINAL BYTES, AND THAT IS THIS CAMPAIGN'S RULE 4 RATHER
-#: THAN a claim made ahead of its evidence: a gate certifies the module it
+#: The declaration is the final bytes, and that is this track's rule rather
+#: than a claim made ahead of its evidence: a gate certifies the module it
 #: imported, so a module that moved its own name between the two sets AFTER the
 #: run would leave the record bound to bytes that no longer ship -- which is
 #: exactly the drift ``rebind_cuda_welds.py`` exists to catch. The run this line
@@ -162,7 +162,7 @@ CERTIFIED_KERNELS: Tuple[str, ...] = (
 #: EMPTY since 2026-09-02; what emptied it was the run above, not an argument.
 UNCERTIFIED_KERNELS: Dict[str, str] = {}
 
-#: FALSE, AND MEASURED OFF ``deposit_repair.repairable`` RATHER THAN CHOSEN. Every row
+#: False, and measured off ``deposit_repair.repairable`` rather than chosen. Every row
 #: of this cell has an off-diagonal chi1inv row installed -- the constitutive arm's
 #: predicate REQUIRES one -- and ``repairable(fields, "D")`` refuses exactly that
 #: (deposit_repair.py:686-691). A product declaring True here would bracket its launch
@@ -171,7 +171,7 @@ UNCERTIFIED_KERNELS: Dict[str, str] = {}
 #: electric deposit through the shared seam clause, and the cell's ceiling is the 8
 #: rows the board already prices as clearing the injection on the driver fact alone.
 #:
-#: THE HOST SUITE ASSERTS THIS AGAINST THE CENSUS rather than against this comment:
+#: The host suite asserts this against the census rather than against this comment:
 #: ``test_offdiag_stencil_welds.py`` replays the board's own selection over the
 #: residual-welds census, takes this cell's rows, and asserts every one of them is
 #: refused by ``deposit_repair.repairable`` for the off-diagonal clause.
@@ -286,7 +286,7 @@ LIFT_EDITS: Tuple[Dict[str, str], ...] = _weld.CURL_LIFT_EDITS + (
              "in_h_*);",
      "became": "    constitutive_apply(E*, f_w_E*, idx, src_E*, kps_*[*], "
                "kms_half_*[*], in_h_*);",
-     "why": "ONE RENAME, NO ARITHMETIC. kms_* is the INTEGER sub-lattice for the D "
+     "why": "One rename, no arithmetic. kms_* is the INTEGER sub-lattice for the D "
             "curl and the HALF-INTEGER one for update_E, and letting one shadow the "
             "other in a single scope is a half-cell error in the absorber profile "
             "rather than a compile failure."},
@@ -312,13 +312,13 @@ __all__ = [
 
 
 # =============================================================================
-# THE DEVICE CODE
+# The device code
 # =============================================================================
 
 def prelude() -> str:
     """Both certified preludes plus the weld's own three helpers.
 
-    ORDER MATTERS AND IS DECLARED: the curl prelude first (it owns the two boundary
+    Order matters and is declared: the curl prelude first (it owns the two boundary
     defines and ``shift_up``/``shift_dn``), then the constitutive prelude with its
     duplicate defines removed and ``offdiag_term`` resolved, then the argument pack,
     the cell-wise curl and the resolution -- because ``offdiag_term`` calls
@@ -361,7 +361,7 @@ def signature(row_mask: Sequence[int]) -> str:
                         for slot, flag in enumerate(mask) if flag])
     return f'''
 extern "C" __global__ void {KERNEL_NAME}(
-    // THE SCRATCH OUTPUTS. A DIFFERENT ALLOCATION from the D/fu group below --
+    // The scratch outputs. A different allocation from the D/fu group below --
     // assert_scratch_is_disjoint checks it by base address before every launch --
     // and that separation is the whole design: nothing this launch reads is ever a
     // word this launch wrote, so the constitutive half's foreign samples are a pure
@@ -370,7 +370,7 @@ extern "C" __global__ void {KERNEL_NAME}(
     float* __restrict__ Dz_out,
     float* __restrict__ fu_Dx_out, float* __restrict__ fu_Dy_out,
     float* __restrict__ fu_Dz_out,
-    // THE PRE-LAUNCH STATE, read at ANY cell by ANY thread and written by none.
+    // The pre-launch state, read at ANY cell by ANY thread and written by none.
     const float* __restrict__ Dx, const float* __restrict__ Dy,
     const float* __restrict__ Dz,
     const float* __restrict__ fu_Dx, const float* __restrict__ fu_Dy,
@@ -451,7 +451,7 @@ def constitutive_body(row_mask: Sequence[int]) -> str:
                 f"of its thread preamble block, not one; the weld emits that block "
                 f"once and cannot splice around a changed one")
         body = body.replace(anchor, "", 1)
-    # (2) THE SEAM, diagonal half.
+    # (2) The seam, diagonal half.
     for component, target in enumerate(_D_TARGETS):
         name = _ELECTRIC[component]
         line = _weld.the_line_starting(
@@ -461,7 +461,7 @@ def constitutive_body(row_mask: Sequence[int]) -> str:
             line,
             f"    float gs_{name} = v_{'xyz'[component]};   "
             f"// the register this thread resolved for its own cell", 1)
-    # (3) THE SEAM, foreign half: every offdiag_term call's partner argument.
+    # (3) The seam, foreign half: every offdiag_term call's partner argument.
     for slot, flag in enumerate(mask):
         if not flag:
             continue
@@ -478,7 +478,7 @@ def constitutive_body(row_mask: Sequence[int]) -> str:
         body = _weld.close_call_with_the_pack(
             body, f"    float term_{component_name}_{offset} = offdiag_term(",
             f"the {coefficient} term")
-    # (4) THE SUB-LATTICE RENAME. Matched as a WHOLE LINE so a moved argument list is
+    # (4) The sub-lattice rename. Matched as a WHOLE LINE so a moved argument list is
     #     a named failure rather than a partial substitution.
     for component in range(3):
         name = _ELECTRIC[component]
@@ -518,7 +518,7 @@ def kernel_source(row_mask: Sequence[int]) -> str:
         "    const int i = idx / (ny * nz);",
         "",
         _weld.weld_args_construction(),
-        "    // THE CURL HALF. Both results go to the SCRATCH; fu is the RAW stepped",
+        "    // The curl half. Both results go to the SCRATCH; fu is the RAW stepped",
         "    // value at this cell because no in-seam pass ever touches it",
         "    // (stepping.py:1451 writes field and never fu_field; _zero_metal writes",
         "    // only the named components, :2247).",
@@ -529,7 +529,7 @@ def kernel_source(row_mask: Sequence[int]) -> str:
         "    fu_Dy_out[idx] = fu_raw[1];",
         "    fu_Dz_out[idx] = fu_raw[2];",
         "",
-        "    // THE THREE IN-SEAM PASSES, resolved for this thread's own cell. The",
+        "    // The three in-seam passes, resolved for this thread's own cell. The",
         "    // same function the constitutive half calls for a foreign cell, so the",
         "    // own-cell value and a neighbour's are the same arithmetic by",
         "    // construction rather than by a second transcription.",
@@ -572,7 +572,7 @@ def corpus_digest() -> str:
 def _get_kernel(row_mask: Sequence[int], source: Optional[str] = None):
     """Compile on first use, memoized on (name, options, policy, source).
 
-    THE ROW MASK REACHES THE KEY THROUGH THE SOURCE, which is already in it, so two
+    The row mask reaches the key through the source, which is already in it, so two
     specializations cannot be served each other's binary -- and neither can a
     mutation harness that rewrote the emitter's output be served the unmutated one.
     ``cupy`` is imported HERE, never at scope.
@@ -590,7 +590,7 @@ def _clear_kernel_cache() -> int:
 
 
 # =============================================================================
-# THE PREDICATE
+# The predicate
 # =============================================================================
 
 def covers_offdiag_fused_electric_pair(fields: Any, pml: Any, grid: Any,
@@ -600,7 +600,7 @@ def covers_offdiag_fused_electric_pair(fields: Any, pml: Any, grid: Any,
     Returns ``(covered, reason)`` with ``reason`` naming the FIRST refusal, this
     directory's convention.
 
-    A CONJUNCTION, AND NOTHING IS WEAKENED. A configuration either half's own
+    A conjunction, and nothing is weakened. A configuration either half's own
     certified predicate refuses is refused here with that half's reason, prefixed so
     a reader can tell which side said it. What this predicate ADDS is four seam
     clauses: the two mirror fills must be dead, the two boundary readings must agree,
@@ -613,7 +613,7 @@ def covers_offdiag_fused_electric_pair(fields: Any, pml: Any, grid: Any,
     if not covered:
         return False, f"constitutive half: {reason}"
 
-    # THE TWO MIRROR FILLS ARE REFUSED, NOT CARRIED, and the refusal is stated HERE
+    # The two mirror fills are refused, not carried, and the refusal is stated HERE
     # rather than inherited. The constitutive half above already refuses every folded
     # grid -- twice -- so this clause is unreachable today, and that is precisely why
     # it is written: the guarantee that fill_symmetry_bc_D (driver.py:3309) and
@@ -639,7 +639,7 @@ def covers_offdiag_fused_electric_pair(fields: Any, pml: Any, grid: Any,
                        "UNFOLDED one -- folded_offdiag_fused_electric_pair is the "
                        "product for that cell")
 
-    # THE TWO BOUNDARY READINGS MUST AGREE, checked rather than assumed. This family
+    # The two boundary readings must agree, checked rather than assumed. This family
     # binds ONE bc_* triple to both halves; the readings are the same function of an
     # unfolded grid and different functions of a folded one, so the check is what
     # keeps the single binding honest if the fold clause above ever moves.
@@ -649,12 +649,12 @@ def covers_offdiag_fused_electric_pair(fields: Any, pml: Any, grid: Any,
         return False, (f"the two boundary readings this launch binds as one: "
                        f"{type(exc).__name__}: {exc}")
 
-    # THE SOURCE SEAM, REFUSED RATHER THAN CARRIED. An ELECTRIC source is injected
+    # The source seam, refused rather than carried. An ELECTRIC source is injected
     # BETWEEN the two halves (driver.py:3305/:3308), so a fused pair would compute
     # update_E against a pre-injection D. CARRIES_DEPOSIT_REPAIR is False -- and could
     # not be True, because deposit_repair.repairable refuses an off-diagonal chi1inv
     # row by name (deposit_repair.py:686-691) and every row of this cell has one.
-    # IGNORANCE IS NEVER AN EMPTY SET: Fields does not hold the source list, so a
+    # Ignorance is never an empty set: Fields does not hold the source list, so a
     # predicate that inferred "no sources" from not being told would be exactly the
     # over-covering this clause exists to prevent.
     seam = _deposit_repair.seam_source_reasons(
@@ -671,7 +671,7 @@ def covers_offdiag_fused_electric_pair(fields: Any, pml: Any, grid: Any,
     if seam:
         return False, seam[0]
 
-    # THE STORED SHAPE THE KERNEL INDEXES MUST BE ONE TUPLE, on three readings: the
+    # The stored shape the kernel indexes must be one tuple, on three readings: the
     # launch walks Dx.shape, the certified curl's guard is nx*ny*nz and the certified
     # constitutive's is its own bounds test, and this kernel emits ONE guard. If those
     # ever disagreed the fused launch would run one half over a range its own
@@ -689,7 +689,7 @@ def covers_offdiag_fused_electric_pair(fields: Any, pml: Any, grid: Any,
                        f"ONE bounds guard and may only do so where the three are one "
                        f"number")
 
-    # THE SPLIT-FIELD STORE MUST EXIST AND BE SHAPED LIKE THE VOLUME IT SHADOWS. The
+    # The split-field store must exist and be shaped like the volume it shadows. The
     # curl half's own predicate checks the D volumes; the scratch this product
     # allocates is shaped from the fu volumes, and an absent one is a launch with a
     # null pointer rather than a refusal.
@@ -707,13 +707,13 @@ def covers_offdiag_fused_electric_pair(fields: Any, pml: Any, grid: Any,
 
 
 # =============================================================================
-# THE LAUNCH
+# The launch
 # =============================================================================
 
 def offdiag_fused_electric_pair_tables(pml: Any) -> Dict[str, Dict[str, Any]]:
     """Both coefficient groups, each from the sub-lattice its half reads.
 
-    THE SUB-LATTICE IS DECIDED HERE, not by the caller: while it was an argument,
+    The sub-lattice is decided here, not by the caller: while it was an argument,
     every call site was one more place the pairing could be got backwards, and
     backwards is a half-cell error rather than a crash. The D curl reads the INTEGER
     positions and ``update_E`` the HALF-INTEGER ones, through the same two functions
@@ -744,7 +744,7 @@ def offdiag_fused_electric_pair_codes(grid: Any, pml: Any = None) -> Tuple[int, 
     binding two and leaving a reader to keep them apart: a disagreement means the
     fold clause moved, and the folded sibling is the product for that.
     """
-    # BOTH READINGS COME FROM ``coverage``, WHICH IMPORTS NOTHING. That is not a
+    # Both readings come from ``coverage``, which imports nothing. That is not a
     # convenience: this function is a PREDICATE CLAUSE, and the census asks every
     # predicate on a laptop with no CuPy. Routing it through the two device modules
     # -- which merely delegate here (``step_curl_kernels.real_curl_boundary_codes``
@@ -782,7 +782,7 @@ def offdiag_fused_electric_pair_scratch(fields: Any) -> Dict[str, Any]:
     the next launch. Taking a pool slot and then rotating it out would break the
     pool's own tag invariant.
 
-    UNINITIALIZED IS CORRECT. Every cell of all six is written by every launch --
+    Uninitialized is correct. Every cell of all six is written by every launch --
     ``fu_*_out[idx]`` for every thread and ``D*_out[idx]`` for every thread -- so
     there is no cell whose prior contents a reader could observe. ``empty_like``
     rather than ``zeros_like`` for that reason and for the allocation cost the pool's
@@ -808,7 +808,7 @@ def _empty_like(array: Any) -> Any:
 
 def assert_scratch_is_disjoint(fields: Any, scratch: Dict[str, Any],
                                tables: Dict[str, Dict[str, Any]]) -> int:
-    """THE CHECK THE WHOLE DESIGN RESTS ON, plus the ordinary restrict promise.
+    """The check the whole design rests on, plus the ordinary restrict promise.
 
     Two things, and the first is not a convention:
 
@@ -877,13 +877,13 @@ def launch_offdiag_fused_electric_pair(
         fills: Dict[str, Tuple[Any, ...]], dtdx: float, row_mask: Sequence[int],
         rows: Sequence[Any], kept: Sequence[int], chunk_bounds: Any,
         kernel: Optional[Any] = None) -> Dict[str, Any]:
-    """All three of :data:`REPLACES` in ONE launch. THE CALLER ROTATES AFTERWARDS.
+    """All three of :data:`REPLACES` in ONE launch. The caller rotates afterwards.
 
     ``kept`` is the six presence words in slot order (0 for a dead slot,
     ``offdiag_presence.launch_chunk_arguments``) and ``chunk_bounds`` the run's chunk
     record on the device, the composition's one upload.
 
-    ``kernel`` IS THE GATE'S DOOR, keyword-optional and named for what it is: a gate
+    ``kernel`` is the gate's door, keyword-optional and named for what it is: a gate
     compiles a deliberately broken copy of the shipped source and hands it here. A
     launcher that could not be handed its own kernel could not arm a single mutation,
     and every mutation leg would silently launch the shipped one and report the defect
@@ -931,15 +931,15 @@ def launch_offdiag_fused_electric_pair(
 
 
 def rotate_into_fields(fields: Any, scratch: Dict[str, Any]) -> Dict[str, Any]:
-    """THE ROTATION. The scratch becomes the live D/fu; the retired pair becomes scratch.
+    """The rotation. The scratch becomes the live D/fu; the retired pair becomes scratch.
 
-    THE CERTIFIED E->P CHOREOGRAPHY, one seam earlier.
+    The certified E->P choreography, one seam earlier.
     ``ade_kernels.update_P_fused_pml_real`` writes a third buffer and rotates the
     names on the host afterwards (:414-424, transcribing dispersion.py:689-691); this
     is the same move on the D/fu pair, and it is what makes a scratch-output weld a
     step rather than a computation thrown away.
 
-    THE CONSUMER AUDIT THIS RESTS ON. Every consumer of the flux density in this
+    The consumer audit this rests on. Every consumer of the flux density in this
     engine resolves it BY NAME at use time -- ``getattr(fields, "D" + name[1])``
     (stepping.py:2446), ``getattr(self.fields, component)`` (driver.py:3395, :3421,
     :3454, :3984, :4322…), ``fields.get_component(...)`` in every DFT and flux monitor
@@ -966,7 +966,7 @@ def run_offdiag_fused_electric_pair(fields: Any, grid: Any, pml: Any, dtdx: floa
                                     rotate: bool = True) -> Dict[str, Any]:
     """Gate on the predicate, resolve everything from the grid, launch once, rotate.
 
-    THE PREDICATE IS ASKED FIRST AND A REFUSAL IS RETURNED, NOT RAISED, because the
+    The predicate is asked first and a refusal is returned, not raised, because the
     caller's correct response to a configuration this product does not carry is the
     array path -- never an exception into a stepper that would otherwise have stepped
     correctly.

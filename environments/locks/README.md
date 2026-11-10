@@ -3,54 +3,56 @@
 The one environment per platform that the package's tests, a certification round and the
 timing run in, locked. The three `*.yml` files one directory up are the routes for
 **using** the package (conda-forge's double-precision `pymeep`). The files here are the
-route for **certifying** it: MEEP 1.33.0 built from the release tarball in single
-precision with MPI, libGDSII and no floating-point contraction, on top of exactly these
+route for **certifying** it: MEEP, the release the build scripts name (1.35.0), built
+from its release tarball in single precision with MPI and no floating-point contraction,
+on top of exactly these
 packages, by the repository's own build script.
 
 | File | What it holds |
 |---|---|
-| `meep-gpu-ref-osx-arm64.conda.txt` | Apple silicon: an explicit conda lock, 141 packages, each by URL and MD5 |
-| `meep-gpu-ref-osx-arm64.pip.txt` | Apple silicon: 17 PyPI packages, each by version and wheel SHA-256 |
-| `meep-gpu-ref-linux-64.conda.txt` | Linux x86_64: an explicit conda lock, 147 packages, each by URL and MD5 |
-| `meep-gpu-ref-linux-64.pip.txt` | Linux x86_64: 26 PyPI packages, each by version and wheel SHA-256 |
+| `meep-gpu-ref-osx-arm64.conda.txt` | Apple silicon: an explicit conda lock, 139 packages, each by URL and MD5 |
+| `meep-gpu-ref-osx-arm64.pip.txt` | Apple silicon: 19 PyPI packages, each by version and wheel SHA-256 |
+| `meep-gpu-ref-linux-64.conda.txt` | Linux x86_64: an explicit conda lock, 145 packages, each by URL and MD5 |
+| `meep-gpu-ref-linux-64.pip.txt` | Linux x86_64: 28 PyPI packages, each by version and wheel SHA-256 |
 | `numerics-relevant.json` | per platform, the packages whose builds can change what MEEP or the GPU route computes, and the documented exceptions; apart (`corpus_only`), what only the MEEP identity corpus needs, the PyMieScatt stand-in's pins among them |
-| `additions.json` | what the locks hold beyond the environments they were read from, each pinned to one artifact, with its role and what needs it |
+| `additions.json` | what the locks hold beyond the environments they were read from, each pinned to one artifact, with its role and what needs it, and the approved replacements and removals of locked packages |
 | `recut_locks.py` | the tool that writes the locks from their own lines and `additions.json` (below) |
 
-`parity/meep_gpu/build_meep_133_macos.sh` and `build_meep_133_linux.sh` build the
+`parity/meep_gpu/build_meep_reference_macos.sh` and `build_meep_reference_linux.sh` build the
 environment end to end, in a cleared environment (`env -i`, the user site directory off,
 no pip configuration file, and no pip wheel cache: `PIP_NO_CACHE_DIR=1`, since every pin is
 installed once, by hash):
 
 1. install the conda lock without solving (`conda create --no-default-packages --file
    <lock>`) and refuse to go on unless the new prefix holds exactly the lock's artifacts;
-2. fetch the MEEP 1.33.0 release tarball, refuse it unless its SHA-256 is
-   `bdabc0a112f669f2657fbdca22e31a2aeed515372e8ed56dc55197a4cd7ff0ab`, and keep its
+2. fetch the MEEP release tarball the script names (`MEEP_VERSION`, 1.35.0), refuse it
+   unless its SHA-256 is `MEEP_SHA256`,
+   `4334a0c0d7dc302595e17519e35d93c64cdbb4d2944f2e9ae3ddf500265639a0`, and keep its
    `python/examples` and `python/tests` in the prefix as the MEEP identity corpus, with
    the SHA-256 of every file, and the corpus siblings (files outside `python/` that
    corpus rows read) beside it;
 3. build MEEP in the source tree (`--enable-single --with-mpi`, `--with-openmp` on Linux;
    `-O2 -ffp-contract=off -fno-fast-math`, and `-march=x86-64 -mtune=generic` on Linux),
-   refusing a configure that did not find libGDSII;
+   reporting whether configure found libctl's `make_mesh_with_center` (`mp.Mesh`);
 4. install the pip lock (`pip install --no-deps -r <pip lock>`), build and install the
    PyMieScatt stand-in, and refuse to go on unless the prefix's PyPI packages are exactly
    the pip lock's and the stand-in (`--require-pip-lock`, below);
 5. link the imageio-ffmpeg pin's executable into `<prefix>/bin/ffmpeg`, refusing if the
    load commands of `libmeep` and `_meep` changed since they were installed;
-6. refuse the build unless MEEP is 1.33.0, single precision, MPI and reads a GDSII file,
+6. refuse the build unless MEEP is the release the script names, single precision and MPI,
    the drift report below matches (`--require-reference`), the fused multiply-add census
    of `libmeep` and `_meep` is clean, MEEP's own words on four cases reproduce the
    recorded digests, and the identity verdict of `tools/check_install.py` passes in keep
    and in flush (on Apple silicon, flush is reached through the processor's FZ bit, and a
    check that does not drive that bit refuses it by name; the build records that refusal
    alone as pending);
-7. refuse a program the round runs (`git`, `ffmpeg`, `mpirun`, the disassembler and
+7. refuse a program a certification round runs (`git`, `ffmpeg`, `mpirun`, the disassembler and
    demangler of the census, and on Linux the C compiler Triton's launcher is built with)
    that is not found in `<prefix>/bin`, and write the record of the build.
 
 The record lives in `<prefix>/share/meep-gpu-build/`: these lock files, the corpus
-(`meep-1.33.0/python/`) and its list (`corpus_sha256.txt`), the corpus siblings beside it
-(the files outside `python/` that corpus rows read, under `meep-1.33.0/`) and their list
+(`meep-<version>/python/`) and its list (`corpus_sha256.txt`), the corpus siblings beside it
+(the files outside `python/` that corpus rows read, under `meep-<version>/`) and their list
 (`corpus_siblings_sha256.txt`), `config.log`, the
 `Makefile`, `build_record.json`, `fma_census.json`, `load_commands.json`, `ffmpeg.json`,
 the drift report (`reference_environment.json`), the digest smoke's rows, the identity
@@ -66,8 +68,8 @@ build keeps now, rewriting only the record's `corpus` entry and recording the ch
 in which the Metal kernels were certified, restricted to the packages the reference
 needs (read from that environment on 2026-10-03), and the additions below.
 
-- 127 of the first 138 conda artifacts are the ones that environment installed (same
-  URL, same MD5), libctl 4.5.1, FFTW 3.3.10, harminv 1.4.2, GSL 2.8, Open MPI 5.0.10,
+- 126 of the first 137 conda artifacts are the ones that environment installed (same
+  URL, same MD5), FFTW 3.3.10, harminv 1.4.2, GSL 2.8, Open MPI 5.0.10,
   OpenBLAS 0.3.30 (OpenMP build, with the `openblas` package that installs
   `libopenblas.dylib`, so MEEP's configure links it as the certified build did),
   llvm-openmp 22.1.0, the gfortran 15.2.0 runtime, libc++ 22.1.1, Python 3.12.13, NumPy
@@ -93,26 +95,35 @@ needs (read from that environment on 2026-10-03), and the additions below.
 - **MEEP links the same BLAS.** The lock holds the certified environment's `openblas`
   0.3.30 (`openmp_hea878ba_4`), which installs `lib/libopenblas.dylib`, so MEEP's configure
   sets `BLAS_LIBS = -lopenblas` and `libmeep` and `_meep.so` load OpenBLAS and not Apple's
-  Accelerate, as the certified build does (MEASURED 2026-10-04, the kept Makefile and
+  Accelerate, as the certified build does (measured 2026-10-04, the kept Makefile and
   `otool -L`).
-- The additions ([below](#what-the-environment-carries-added-2026-10-14)): libgdsii
+- The additions ([below](#what-the-environment-carries-added-2026-10-14)): git 2.53.0
+  and libctl 4.7.1 (conda; libctl replaces the certified environment's 4.5.1 by a recorded
+  decision, [below](#the-meep-1350-re-cut-2026-10-16)), llvmlite 0.47.0, imageio-ffmpeg 0.6.0,
+  gdstk 1.0.1 and trimesh 5.1.1 (PyPI). libgdsii 0.21 and gdspy 1.6.13, added on
+  2026-10-14, left with the MEEP 1.35.0 re-cut. The 1.0 version of this lock: libgdsii
   0.21, gdspy 1.6.13 and git 2.53.0 (conda), llvmlite 0.47.0 and imageio-ffmpeg 0.6.0
   (PyPI).
 
 **Linux x86_64 (`linux-64`).** The environment the 2026-10-03 RTX A6000 certification
-round ran in, verbatim: its 143 conda packages and its 21 PyPI packages (PyTorch 2.5.1,
-Triton 3.1.0, the CUDA 12.4 libraries PyTorch loads, and their dependencies). It was
-created on 2026-10-02 by the build script's former solve and was not changed by conda
-afterwards. It is not the older environment the NVIDIA kernels were first certified in;
-the build script's step 1 lists where the two differ (Open MPI, h5py, NVRTC). autograd
-1.9.1 joined the pip lock on 2026-10-05 ([autograd](#autograd-added-2026-10-05)), shapely
-and nlopt on 2026-10-11 ([corpus-only packages](#corpus-only-packages-added-2026-10-11)),
-and the additions on 2026-10-14: libgdsii 0.21, gdspy 1.6.13, git 2.55.0 and binutils
-2.46.1 (conda), llvmlite 0.47.0 and imageio-ffmpeg 0.6.0 (PyPI).
+round ran in, verbatim: 142 of its 143 conda packages (its libctl 4.5.1 is replaced) and
+its 21 PyPI packages (PyTorch 2.5.1, Triton 3.1.0, the CUDA 12.4 libraries PyTorch loads,
+and their dependencies). It was created on 2026-10-02 by the build script's former solve
+and was not changed by conda afterwards. It is not the older environment the NVIDIA
+kernels were first certified in; the build script's step 1 lists where the two differ
+(Open MPI, h5py, NVRTC). autograd 1.9.1 joined the pip lock on 2026-10-05
+([autograd](#autograd-added-2026-10-05)), shapely and nlopt on 2026-10-11
+([corpus-only packages](#corpus-only-packages-added-2026-10-11)), the additions on
+2026-10-14: git 2.55.0 and binutils 2.46.1 (conda), llvmlite 0.47.0 and imageio-ffmpeg
+0.6.0 (PyPI), and with the MEEP 1.35.0 re-cut ([below](#the-meep-1350-re-cut-2026-10-16),
+made on the NVIDIA host) libctl 4.7.1 (conda; it replaces 4.5.1 for MEEP 1.35.0), gdstk 1.0.1
+and trimesh 5.1.1 (PyPI). libgdsii 0.21 and gdspy 1.6.13, added on 2026-10-14, left with
+that re-cut. The 1.0 version of this lock: 147 conda packages (the 143 and libgdsii, gdspy,
+git and binutils) and 26 PyPI pins.
 
 ## What the environment carries (added 2026-10-14)
 
-The environment is everything the package, its tests (every suite), the round's drivers,
+The environment is everything the package, its tests (every suite), the certification round's drivers,
 gates, censuses, boards and record tools, the direct corpus check (L3), the MEEP identity
 corpus (all 194 rows of Table 2, `ex.coupler` and `ex.ring_gds` included) and the timing
 harness import or run. That set was found by an inventory of the tree and of the
@@ -122,8 +133,8 @@ not by memory. What the locks lacked, they now hold, each in `additions.json`:
 
 | Addition | Lock | Role | Needed by |
 |---|---|---|---|
-| libgdsii 0.21 | conda | MEEP links it (`numerics-relevant.json`, `meep_links`) | MEEP's configure links libGDSII when it finds it; without it `mp.get_GDSII_prisms` and `mp.GDSII_vol` abort, and `ex.coupler` and `ex.ring_gds` cannot run |
-| gdspy 1.6.13 | conda | corpus only | `ex.ring_gds` imports it; PyPI has no wheel of it for either platform |
+| libgdsii 0.21 (out of both locks since 2026-10-16) | conda | MEEP links it (`numerics-relevant.json`, `meep_links`) | MEEP 1.33.0's configure links libGDSII when it finds it; without it `mp.get_GDSII_prisms` and `mp.GDSII_vol` abort, and the 1.33.0 `ex.coupler` and `ex.ring_gds` cannot run |
+| gdspy 1.6.13 (out of both locks since 2026-10-16) | conda | corpus only | the 1.33.0 `ex.ring_gds` imports it; PyPI has no wheel of it for either platform |
 | git | conda | tool | the chunk tooling, the boards, L3, the hygiene guard and their tests |
 | binutils 2.46.1 (Linux) | conda | tool | the unprefixed `objdump` and `c++filt` the census runs, and the `ar`, `nm`, `ranlib` and `strip` MEEP's build runs, which otherwise came from the host; the same binutils the lock's compilers use |
 | llvmlite 0.47.0 | PyPI | tests | `meep_gpu/subnormal_policy.py` hands the Triton IR it rewrites to LLVM's own parser when llvmlite imports; 5 tests skip by the declared resource `[llvmlite]` without it |
@@ -133,12 +144,37 @@ Adding them moved none of the packages already locked: `recut_locks.py` solved e
 line pinned exactly together with the additions and got exactly the lock plus the
 additions on both platforms (141 = 138 + 3, 147 = 143 + 4; 0 moved, 0 dropped). Every
 added conda artifact answered with conda-forge's MD5 and SHA-256, and every added wheel's
-SHA-256 is PyPI's and the downloaded file's (MEASURED 2026-10-14).
+SHA-256 is PyPI's and the downloaded file's (measured 2026-10-14).
+
+## The MEEP 1.35.0 re-cut (2026-10-16)
+
+The 1.0.1 reference moves to MEEP 1.35.0. Both locks were re-cut for it by
+`recut_locks.py`, with the same three approved changes named in `additions.json` and the same
+two PyPI additions: the Apple silicon lock on the M1 Max, the Linux lock on the NVIDIA host.
+
+| Change | Lock | Role | Why |
+|---|---|---|---|
+| libctl 4.5.1 replaced by 4.7.1 | conda | MEEP links it (`meep_links`) | MEEP 1.35.0 converts an `mp.Mesh` (#3197) only when configure finds libctl's `make_mesh_with_center` (`HAVE_MAKE_MESH_WITH_CENTER`), which libctl 4.7.0 and later declare; with 4.5.1 the conversion raises `NotImplementedError` |
+| libgdsii 0.21 removed | conda | was `meep_links` | MEEP 1.35.0 deprecates libGDSII (#3245) and no corpus script calls it; MEEP's configure links it whenever it finds it, so it leaves the lock |
+| gdspy 1.6.13 removed | conda | was corpus only | no corpus script of MEEP 1.35.0 imports it |
+| gdstk 1.0.1 | PyPI | corpus only | `ex.coupler` and `ex.ring_gds` read and write GDSII with it at 1.35.0 (#3245); on Apple silicon the cp312 universal2 wheel needs only NumPy, where conda-forge's build would bring a conda `typing_extensions` beside the pip lock's; on Linux the cp310 manylinux_2_28 wheel (glibc 2.28, the lock's floor) needs NumPy and, on Python 3.10, `typing_extensions`, a line of the conda lock |
+| trimesh 5.1.1 | PyPI | corpus only | `mp.Mesh.from_file` reads mesh files with it, and `test_mesh`'s `test_from_file` skips without it; pure Python, needs only NumPy |
+
+The solve gave exactly the lock's other 137 packages plus git and libctl 4.7.1 (139; 0
+moved, 0 dropped, nothing else); libctl 4.7.1 (`h84a0fba_0`) depends on nothing but the
+macOS floor, and nothing in the lock depends on libctl's version. On Linux the solve gave
+exactly the lock's other 142 packages plus binutils, git and libctl 4.7.1 (145; 0 moved, 0
+dropped, nothing else); libctl 4.7.1 (`hb03c661_0`, conda-forge's newest linux-64 build)
+needs glibc 2.17 and libgcc 14 or later, which the lock's floor and its libgcc 16.2.0
+meet, and nothing in the lock depends on libctl's version. On each platform the
+environment built from the re-cut lock with MEEP 1.35.0 reproduced the four digest-smoke
+cases word for word (324 of 324 digests) and converts an `mp.Mesh`, and on Linux the
+build's `libmeep` and `_meep` link no libGDSII (measured 2026-10-16).
 
 **ffmpeg.** conda-forge's ffmpeg is not used: it would bring shared libraries into the
 `<prefix>/lib` MEEP links against. The imageio-ffmpeg wheel carries one executable and no
 shared library: on Linux it is statically linked (no program interpreter, no dynamic
-section), on Apple silicon it loads only `/usr/lib` and `/System/Library` (MEASURED
+section), on Apple silicon it loads only `/usr/lib` and `/System/Library` (measured
 2026-10-14, from the wheels' headers). It is installed after MEEP is, and the build checks
 that `libmeep` and `_meep` keep the load commands they were installed with.
 
@@ -152,7 +188,7 @@ that `libmeep` and `_meep` keep the load commands they were installed with.
   or in a guarded import (`simulation.py`), and only `test_adjoint_jax`, which is not a
   corpus row, imports jax.
 - A plain `gcc` on Linux: conda-forge's `gcc` package brings `conda-gcc-specs`, which
-  changes the compiler's defaults. Triton builds its launcher with `$CC`, and a round
+  changes the compiler's defaults. Triton builds its launcher with `$CC`, and a certification round
   passes the environment's own `x86_64-conda-linux-gnu-cc`; the build script compiles the
   launcher that way once to show it links.
 
@@ -162,20 +198,20 @@ Three things, and nothing else:
 
 - **The GPU driver.** On Linux the NVIDIA driver: `libcuda.so.1` (Triton's launcher links
   `-lcuda`, so the Linux build links the driver's `libcuda.so.1` into
-  `<prefix>/lib/meep-gpu-libcuda/` as `libcuda.so`, the directory a round passes as
-  `TRITON_LIBCUDA_PATH`) and `nvidia-smi`. The A6000 round ran on driver 545.23.08
+  `<prefix>/lib/meep-gpu-libcuda/` as `libcuda.so`, the directory a certification round passes as
+  `TRITON_LIBCUDA_PATH`) and `nvidia-smi`. The A6000 certification round ran on driver 545.23.08
   (CUDA 12.3); CuPy uses the conda CUDA 11.8 runtime, and PyTorch's CUDA 12.4 libraries
-  ran there under CUDA minor-version compatibility (INFERRED from NVIDIA's compatibility
+  ran there under CUDA minor-version compatibility (inferred from NVIDIA's compatibility
   policy; the round released). On a Mac the Metal stack is macOS's own; the Metal
   frontend is one per macOS build, and the package reports it.
 - **The macOS SDK** (Command Line Tools or Xcode). MEEP is compiled against the host's
   SDK: the lock's `sdkroot_env_osx-arm64` ships none. The certified `libmeep`, and the
   one the build script made from this lock on the same Mac, record SDK 26.2 and minimum
-  macOS 26.0 (MEASURED 2026-10-03, `otool -l`); the build keeps what the new `libmeep`
+  macOS 26.0 (measured 2026-10-03, `otool -l`); the build keeps what the new `libmeep`
   records in `share/meep-gpu-build/macos_sdk.txt`. The lock needs macOS 11.0 or later.
 - **glibc.** The Linux lock's compilers target glibc 2.28 (`sysroot_linux-64` 2.28), so
   the host needs glibc 2.28 or later; the build script refuses an older one. The A6000
-  round ran on glibc 2.31.
+  certification round ran on glibc 2.31.
 
 Each comes with the operating system it belongs to, and with it that system's own base
 programs, which the scripts and tools call by name and the environment does not replace
@@ -198,8 +234,8 @@ environment's own on its import path.
     python tools/compare_reference_environment.py --require-reference  # exit 1 unless it matches
 
 It reads the running interpreter's environment (`--prefix PATH` reads another conda
-environment) and prints, for every package of `numerics-relevant.json` (30 on Apple
-silicon, 37 on Linux), `same`, `different` (with both builds), `missing`, `differs by
+environment) and prints, for every package of `numerics-relevant.json` (29 on Apple
+silicon, 36 on Linux), `same`, `different` (with both builds), `missing`, `differs by
 design` or `not read`, then one verdict: the environment matches the certification
 reference, differs from it in N of D numerics-relevant packages (named), or cannot be
 confirmed to match it because some packages could not be read. Conda packages are judged
@@ -211,7 +247,9 @@ the reference's conda builds, so a pip-only install is reported as differing. A 
 build script once solved (the retired `MEEP_REFERENCE_SOLVE=1`) is named in a note.
 
 Before the verdict it lists the [corpus-only packages](#corpus-only-packages-added-2026-10-11)
-apart: shapely, nlopt and imageio-ffmpeg by version and origin, gdspy by version and build,
+apart: shapely, nlopt, imageio-ffmpeg, gdstk and trimesh by version and origin, a conda
+package by version and build (none since the MEEP 1.35.0 re-cut; an entry of
+`corpus_only` that names its `platforms` is reported on those only),
 the PyMieScatt stand-in by version and the SHA-256 of its five files (PyPI's own 1.8.1.1
 is not the stand-in), and `ffmpeg` by where `which` finds it on the reference `PATH`
 (`<prefix>/bin:/usr/bin:/bin`): held only when it resolves into the imageio-ffmpeg pin's
@@ -232,8 +270,9 @@ The report judges packages only. Two things it does not judge, by design:
 - **MEEP itself**, which is built from source and is not a package of the lock.
   `tools/check_install.py --require-reference` judges it: its step 7 prints the same
   report, preceded by a line that compares the imported MEEP with the build the
-  reference names (1.33.0, single precision, MPI build, libGDSII, from
-  `numerics-relevant.json`; libGDSII as MEEP's own `with_libGDSII()` reports it), and
+  reference names (1.35.0, single precision, MPI build, from `numerics-relevant.json`;
+  libGDSII, as MEEP's own `with_libGDSII()` reports it, only where that file names it,
+  which at 1.35.0 neither platform does), and
   fails unless both match. A host joining a certification round runs that. The build's own record
   (`reference_build.json`) holds the rest: the images' SHA-256, the census, the flags and
   the identity verdicts.
@@ -241,17 +280,20 @@ The report judges packages only. Two things it does not judge, by design:
   not loaded when it runs. The build scripts hold a build to every artifact of the lock,
   compilers and tools included; the drift report judges the environment MEEP runs in.
 
-The numerics-relevant set of Apple silicon is MEASURED: the libraries the certified
+The numerics-relevant set of Apple silicon is measured: the libraries the certified
 `libmeep` and its Python module load, the BLAS/LAPACK and OpenMP runtimes NumPy and MEEP
-reach, the MPI stack and the Python numerics (29 packages), and libgdsii (30), which the
-reference MEEP links since it is built with libGDSII (`otool -L` of a libGDSII build of
-MEEP 1.33.0 lists `@rpath/libGDSII.0.dylib`, MEASURED 2026-10-14). The Linux set (37) was
+reach, the MPI stack and the Python numerics (29 packages). libgdsii joined them on
+2026-10-14 (30), when the reference MEEP was built with libGDSII (`otool -L` of a libGDSII
+build of MEEP 1.33.0 lists `@rpath/libGDSII.0.dylib`, measured 2026-10-14), and left with
+the MEEP 1.35.0 re-cut (29 again). The Linux set (36) was
 carried over from it, with the CUDA libraries of the GPU route added, and then checked
-against the round environment's `libmeep.so` and `_meep.so` (`readelf -d`, 2026-10-03):
+against the RTX A6000 certification round environment's `libmeep.so` and `_meep.so` (`readelf -d`, 2026-10-03):
 every library they load (libctlgeom, HDF5, GSL, OpenBLAS, MPB, harminv, FFTW,
 libgfortran, libquadmath, Open MPI, libstdc++, libgomp, libgcc_s) belongs to a judged
-package; libGDSII joins them by configure's rule, and each build records its images'
-NEEDED lists (`load_commands.json`).
+package; each build records its images' NEEDED lists (`load_commands.json`). libgdsii
+joined the Linux set on 2026-10-14 (37) by configure's rule and left with the MEEP 1.35.0
+re-cut (36 again; the 1.35.0 `libmeep.so.39` and `_meep.so` NEED no libGDSII, measured
+2026-10-16).
 
 ## The field-update kernels across builds
 
@@ -269,7 +311,7 @@ measurements.
 
 - **Apple silicon, the 1.0 reference environment (2026-10-14).** The new
   `libmeep.37.dylib` against the contraction-off build of 2026-10-05 that the earlier 1.0
-  round's Metal L3 leg loaded (SHA-256 `933cd385…`): the same clang 22.1.0, the same
+  certification round's Metal L3 leg loaded (SHA-256 `933cd385…`): the same clang 22.1.0, the same
   `CFLAGS` and `CXXFLAGS` (`-O2 -ffp-contract=off -fno-fast-math`) and configure flags,
   `config.h` differing only by `HAVE_LIBGDSII`. Disassembled by the environment's own
   `llvm-objdump --no-show-raw-insn --no-leading-addr`, with immediates, `0x` constants and
@@ -281,7 +323,7 @@ measurements.
   addresses, moved by the libGDSII code, and nothing else in them differs.
 - **Linux x86_64, the 1.0 reference environment (2026-10-14).** The new
   `libmeep.so.37.0.0` against the previous Linux reference environment's (the 2026-10-03
-  RTX A6000 round's), both built by conda-forge's gcc 15.2.0 with `-O2 -march=x86-64
+  RTX A6000 certification round's), both built by conda-forge's gcc 15.2.0 with `-O2 -march=x86-64
   -mtune=generic -fopenmp` (the previous one also with `-g`, which changes no code
   generation); the new one adds `-ffp-contract=off -fno-fast-math`, which change no code
   where the instruction set has no fused multiply-add (the census reads 0 fused
@@ -300,9 +342,10 @@ measurements.
 
 ## How the locks were made
 
-**Linux.** The first 143 conda lines are the round environment's
-`conda list --explicit --md5 -p <prefix>`; every URL returned HTTP 200 and matched
-conda-forge's MD5 and SHA-256 (143 of 143). The first 21 PyPI pins list the packages of
+**Linux.** The first 142 conda lines are the 2026-10-03 RTX A6000 certification round environment's
+`conda list --explicit --md5 -p <prefix>` less its libctl, replaced by the MEEP 1.35.0
+re-cut; every URL of that export returned HTTP 200 and matched conda-forge's MD5 and
+SHA-256 (143 of 143). The first 21 PyPI pins list the packages of
 that environment's own `site-packages` (`python -s -m pip list`), each pinned to the PyPI
 wheel whose tags match the installed copy; every installed file was compared with that
 wheel's `RECORD` (21 of 21 identical). autograd was added later
@@ -349,23 +392,31 @@ lines byte for byte in their order, the additions' lines after them (URL and MD5
 solve gives them), and the pip lock's pins byte for byte with each added wheel pinned by
 the SHA-256 PyPI's JSON API gives for the file `additions.json` names. Run on locks that
 already hold the additions, it reproduces them byte for byte; `--check` says so (both
-platforms, 2026-10-14, with a package cache that already held libgdsii). `--save-solve
-PATH` keeps the solve as evidence.
+platforms, 2026-10-14, with a package cache that already held libgdsii; and 2026-10-16
+after the MEEP 1.35.0 re-cut). `--save-solve PATH` keeps the solve as evidence.
+
+An approved change of a locked package is named in `additions.json` too, with the decision it
+applies, and made by the tool, never by hand: an addition with `replaces` (`{version,
+build}`) is pinned in place of the lock's line of that name when the lock holds exactly that
+build, and its line joins the additions'; a platform's `removed` list takes out the lock's
+line of each name it gives at exactly that build. A lock that holds the name at another
+build, and a solve that still links a removed package, are refused by name. Run again on
+what it wrote, the tool reproduces it byte for byte.
 
 ## autograd (added 2026-10-05)
 
 MEEP's adjoint module (`meep.adjoint`) imports `autograd`, and so do MEEP's adjoint tests.
 Neither lock held it, so in an environment built from a lock those tests fail on import.
-The first corpus lift in the Linux round environment, on 2026-10-05, lost 13 of their rows
+The first corpus lift in the Linux certification-round environment, on 2026-10-05, lost 13 of their rows
 across four families, and 8 of its 60 legs did not release on those rows (one also on a
-timeout; MEASURED). Both locks now pin it, to the PyPI wheel by SHA-256: the digest PyPI's
-JSON API gives, and the digest of the wheel as downloaded (MEASURED 2026-10-05).
+timeout; measured). Both locks now pin it, to the PyPI wheel by SHA-256: the digest PyPI's
+JSON API gives, and the digest of the wheel as downloaded (measured 2026-10-05).
 
 - **Apple silicon: 1.8.0**, the version the certified environment holds; its installed
-  files are the 1.8.0 wheel's (39 of 39, MEASURED).
-- **Linux: 1.9.1**, the version the environment of the earlier A6000 rounds holds, whose
+  files are the 1.8.0 wheel's (39 of 39, measured).
+- **Linux: 1.9.1**, the version the environment of the earlier A6000 certification rounds holds, whose
   corpus lifts kept those rows; its installed files are the 1.9.1 wheel's (40 of 40,
-  MEASURED).
+  measured).
 
 autograd requires only `numpy<3`, which both locks satisfy, and takes no part in the field
 updates, so `numerics-relevant.json` does not name it and the drift report does not judge
@@ -380,30 +431,32 @@ calls a program, that the environment lacks is refused by name, never measured.
 `numerics-relevant.json` names what only the corpus needs under `corpus_only`, apart from
 every numerics set, since none takes part in MEEP's field updates or the GPU route;
 importing and calling shapely, nlopt and the stand-in moved no floating-point control flag
-on either host (MEASURED 2026-10-10 and 2026-10-11, in both subnormal modes).
+on either host (measured 2026-10-10 and 2026-10-11, in both subnormal modes).
 
 | Package | Corpus rows | How the locks carry it |
 |---|---|---|
 | shapely 2.1.2 | `ex.mie_scattering`, `ex.differential_cross_section` (the stand-in's `Inverse` module imports it) | a pin of each pip lock: the cp312 macOS arm64 wheel, the cp310 manylinux2014 wheel |
 | nlopt 2.11.0 | `ex.waveguide_crossing` | a pin of each pip lock: the cp312 macOS arm64 wheel, the cp310 manylinux_2_28 wheel (glibc 2.28, the lock's floor); requires `numpy>=2,<3` |
 | PyMieScatt 1.8.1.1, the stand-in | `ex.mie_scattering`, `ex.differential_cross_section` | built by `parity/meep_gpu/rounds/1.0/build_pymiescatt_standin.py`: the PyPI sdist by SHA-256, two lines changed by `pymiescatt_standin.patch` so `trapz` comes from NumPy (PyMieScatt's last release imports it from `scipy.integrate`, which SciPy 1.14 removed), the five package files checked against their SHA-256 in `numerics-relevant.json`, a wheel built by the environment's own setuptools, installed with `--no-deps` |
-| gdspy 1.6.13 (2026-10-14) | `ex.ring_gds` | a line of each conda lock (conda-forge's build; PyPI has no wheel) |
+| gdspy 1.6.13 (2026-10-14) | the 1.33.0 `ex.ring_gds` | a line of each conda lock at 1.0 (conda-forge's build; PyPI has no wheel); out of both locks since 2026-10-16, since no 1.35.0 corpus script imports it |
+| gdstk 1.0.1 (2026-10-16) | `ex.coupler`, `ex.ring_gds` of MEEP 1.35.0 | a pin of each pip lock: the cp312 universal2 wheel, the cp310 manylinux_2_28 wheel (glibc 2.28, the lock's floor) |
+| trimesh 5.1.1 (2026-10-16) | `t.test_mesh.TestMesh.test_from_file` of MEEP 1.35.0 | a pin of each pip lock (the pure-Python wheel) |
 | imageio-ffmpeg 0.6.0 and its `ffmpeg` (2026-10-14) | `test_animation_output` | a pin of each pip lock; the build scripts' step 7b links its executable into `<prefix>/bin`. Until 2026-10-14 the host's ffmpeg was linked there instead (`corpus_only.host_tools`, now retired and refused by name) |
 
 The pins of shapely and nlopt are the wheels the corpus legs of 2026-10-10 measured with.
 The stand-in's wheel is not pinned: its metadata names the setuptools that built it, which
 the two locks hold at different versions; what is pinned is everything it is built from and
-the bytes of the files it installs. `ex.coupler` and `ex.ring_gds` also need MEEP built
-with libGDSII, which the reference build is (`numerics-relevant.json`, `meep_links`).
+the bytes of the files it installs. At MEEP 1.33.0 `ex.coupler` and `ex.ring_gds` also
+needed MEEP built with libGDSII; at 1.35.0 they need gdstk and no libGDSII.
 
 ## When to re-cut
 
-The locks are the reference: the environment a round, the tests and the timing run in is
+The locks are the reference: the environment a certification round, the tests and the timing run in is
 built from them by the build scripts, so a round re-cuts nothing. A lock changes only by
 `recut_locks.py`: an addition (a package the inventory finds missing, named in
-`additions.json`), which moves no locked package, or a ruled change of a locked package (a
-new certified environment), after which the round that certifies it re-runs in an
-environment built from the new lock. A lock that conda-forge or PyPI can no longer serve (a
-URL that stops resolving) is re-cut the same way, by ruling; never re-solve a lock and call
+`additions.json`), which moves no locked package, or an approved change of a locked package (a
+new certified environment, or a replacement or removal a recorded decision names in `additions.json`),
+after which the certification round that certifies it re-runs in an environment built from the new lock. A lock that conda-forge or PyPI can no longer serve (a
+URL that stops resolving) is re-cut the same way, by a recorded decision; never re-solve a lock and call
 the result the reference. Edit `numerics-relevant.json` in the same change when the set of
 judged packages changes.

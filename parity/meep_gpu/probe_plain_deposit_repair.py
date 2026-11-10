@@ -1,6 +1,6 @@
 """Can a fused pair carry a source deposit across the PLAIN constitutive branch?
 
-THE QUESTION, AND WHY IT IS A SECOND QUESTION. ``probe_deposit_repair.py`` established
+The question, and why it is a second question. ``probe_deposit_repair.py`` established
 that a fused curl/constitutive launch may consume a pre-injection field and be REPAIRED
 at the deposit points, and it did so for the SPLIT-FIELD recurrence -- the one an active
 absorber runs. That repair is stateful: ``_apply_constitutive_pml`` (``stepping.py
@@ -16,16 +16,16 @@ straight to storage -- a PURE OVERWRITE with no ``f_w``, no ``kps``/``kms`` and 
 of the previous value. This probe is the measurement that licensed adding
 ``deposit_repair.PLAIN_PATH``, the second repair, which inverts THAT.
 
-WHY IT IS EXACT, and every clause is a property of those lines rather than an
+Why it is exact, and every clause is a property of those lines rather than an
 approximation of them:
 
-  1. NOTHING TO SAVE. The branch neither reads ``field`` nor accumulates into it, so the
+  1. Nothing to save. The branch neither reads ``field`` nor accumulates into it, so the
      repair's ``save`` captures the CELL SET and an empty state beside it.
   2. NO ``f_w``. It is not allocated on this path, and ``Fields.drive_field`` hands the
      polarizations the STORED E instead (``fields.py:1160-1162``) -- so ``update_P``,
      which runs after ``update_E`` at ``driver.py:3314``, reads exactly the array the
      repair rewrote. Nothing else consumes the constitutive product.
-  3. EVERY OPERAND IS AT THE CELL'S OWN INDEX. ``displacement_minus_polarization`` reads
+  3. Every operand is at the cell's own index. ``displacement_minus_polarization`` reads
      ``D_c`` and each ``P_n[c]``; ``inverse_epsilon_for`` is a per-cell volume. So the
      repair GATHERS both operands at the deposit cells and then multiplies
      (``deposit_repair._apply_plain``: ``volume[cells] * inverse[cells]`` through
@@ -35,7 +35,7 @@ approximation of them:
      keeps the whole-array product only when the two operands do not share a shape. Until
      2026-09-19 this clause described the whole-array form, which the repair then used.
 
-WHO THIS BUYS. Three seam-instances the Triton board records as buildable gaps with no
+Who this buys. Three seam-instances the Triton board records as buildable gaps with no
 product: ``(conductive no-PML, no-PML stored E)`` at ceiling 2 and ``(no-PML, no-PML
 stored E)`` at ceiling 1 -- ``examples:absorber-1d.py``,
 ``tests:TestAbsorber.test_absorber``, ``examples:material-dispersion.py``. All three
@@ -45,12 +45,12 @@ product; this probe is about the REPAIR it brackets its launch with.
 
 THE LEGS.
 
-  A  THE REFERENCE, the driver's own order (``driver.py:3299-3314``)::
+  A  The reference, the driver's own order (``driver.py:3299-3314``)::
 
         step_D ; inject ; fill_symmetry_bc_D ; zero_metal_D ;
         fill_folded_far_ghosts_D ; update_E ; update_P
 
-  B  FUSED PLUS REPAIR. The product's launch runs at the ``step_D`` consult and does
+  B  Fused plus repair. The product's launch runs at the ``step_D`` consult and does
      both halves against an UNINJECTED D, carrying the wall clear inline the way the
      shipped kernel does. The driver then injects and runs its own passes, and the
      ``update_E`` consult -- which the fused arm also owns -- spends itself on the
@@ -60,7 +60,7 @@ THE LEGS.
         inject ; fill_symmetry_bc_D ; zero_metal_D ; fill_folded_far_ghosts_D ;
         repair(deposit cells) ; update_P
 
-     THIS DRIVES THE SHIPPED OBJECTS: ``deposit_repair.LeadingRepairPlan`` and
+     This drives the shipped objects: ``deposit_repair.LeadingRepairPlan`` and
      ``TrailingRepairPlan``, with ``repair_paths=(PLAIN_PATH,)`` -- the exact pair
      ``launch._install_fused_pair`` puts in a fused pair's two slots.
 
@@ -68,7 +68,7 @@ THE LEGS.
      both legs agree cannot tell a working repair from a missing one, and its pass is
      worth nothing.
 
-  FOLD CONTROL  The same two legs on a MIRRORED grid, with NO SOURCE AT ALL. It is
+  FOLD CONTROL  The same two legs on a MIRRORED grid, with no source at all. It is
      expected to DIVERGE, and that divergence is what says the fold refusal in
      ``no_pml_fused_electric_pair_coverage`` is about the two post-injection FILLS and
      not about the deposit: the fills rebuild rows the fused launch never wrote, which
@@ -77,12 +77,12 @@ THE LEGS.
   DEVICE (``--backend triton``)  Leg B builds the real product through
      ``triton_kernels.no_pml_fused_electric_pair.plan_no_pml_fused_electric_pair`` and
      launches it, in place of the array emulation. Everything else is unchanged.
-     THE PREDICATE IS NOT BYPASSED HERE, unlike in ``probe_deposit_repair``: this
+     The predicate is not bypassed here, unlike in ``probe_deposit_repair``: this
      product's seam clause ADMITS an in-seam electric source (that is what
      ``CARRIES_DEPOSIT_REPAIR`` means), so the plan is obtained with the real source
      list and a refusal is a real result.
 
-WHAT A PASS DOES NOT LICENSE. Nothing about a folded grid (refused, and measured to be
+What a pass does not license. Nothing about a folded grid (refused, and measured to be
 rightly refused), nothing about an active absorber (that is the other repair), nothing
 about the magnetic seam (``update_H`` writes nothing on this branch, so
 ``PLAIN_PATH_SEAMS`` names ``D`` alone) and nothing about throughput.
@@ -120,8 +120,8 @@ from meep_gpu.sources import GaussianPulsedSource  # noqa: E402
 
 PLAIN = (deposit_repair.PLAIN_PATH,)
 
-#: Every stored volume the comparison reads, plus the polarization buffers. THE POLE
-#: STATE IS PART OF IT: without it a repair that got E right and corrupted P would read
+#: Every stored volume the comparison reads, plus the polarization buffers. The pole
+#: state is part of it: without it a repair that got E right and corrupted P would read
 #: as byte-identical, and P is driven by exactly the array this repair rewrites.
 PRIMARY = ("Ex", "Ey", "Ez", "Dx", "Dy", "Dz", "Hx", "Hy", "Hz", "Bx", "By", "Bz",
            "f_w_Ex", "f_w_Ey", "f_w_Ez", "fu_Dx", "fu_Dy", "fu_Dz",
@@ -295,7 +295,7 @@ class _HostPair:
 def _device_pair(fields, pml, sources):
     """The real product, or ``None`` where it cannot be built on this host.
 
-    THE PREDICATE IS ASKED WITH THE REAL SOURCES. This family declares
+    The predicate is asked with the real sources. This family declares
     ``CARRIES_DEPOSIT_REPAIR``, so an in-seam electric deposit is something it admits
     rather than something a probe has to step around -- and a refusal here is a real
     result about the configuration, not a harness limitation.
@@ -315,7 +315,7 @@ def _leg_b(fields, pml, sources, when, dt, repair=True, plan=None):
     inner = plan if plan is not None else _HostPair(fields, pml)
 
     if not repair:
-        # THE NULL CONTROL. The fused halves run, the driver's own passes run, and
+        # The null control. The fused halves run, the driver's own passes run, and
         # nothing is saved or restored. If this leg also matches the reference then the
         # case cannot tell a working repair from a missing one, and its PASS is worth
         # nothing.

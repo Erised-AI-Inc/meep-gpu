@@ -1,6 +1,6 @@
 """Which configurations the hand-CUDA kernels may step — with no CuPy in sight.
 
-NOTHING HERE IMPORTS CUPY, NUMPY OR THE KERNEL MODULE, AND THAT IS THE POINT.
+Nothing here imports CuPy, NumPy or the kernel module, and that is the point.
 ``step_curl_kernels`` imports ``cupy`` at module scope because it holds
 ``cp.RawKernel`` objects, so for as long as the predicate lived beside them it
 could not be imported — let alone exercised — on a machine without a GPU. The
@@ -27,7 +27,7 @@ run backwards, and gets the same treatment: the two clauses narrowed on
 fail-closed predicate quietly re-acquiring a refusal costs coverage and looks
 exactly like a legitimate "not covered" in a plan log.
 
-WHAT THESE PREDICATES COVER AND WHAT THEY DO NOT. There are two.
+What these predicates cover and what they do not. There are two.
 
 :func:`covers_real_pml_curl` answers for exactly two of the fourteen kernels in
 ``step_curl_kernels`` — ``step_B_pml_real`` and ``step_D_pml_real``,
@@ -43,7 +43,7 @@ predicate ships ahead of the certification rather than behind it; that ordering
 is deliberate, because the predicate is what decides which configurations the
 gate has to cover.
 
-COVERAGE IS A SET PER SUB-STEP, NOT PER RUN — and both functions take the
+Coverage is a set per sub-step, not per run — and both functions take the
 sub-step by name because of it. A feature that changes one sub-step's semantics
 disqualifies THAT sub-step and leaves the others alone: the array path and the
 kernels compute the same bits, and the driver separates the sub-steps with
@@ -63,7 +63,7 @@ dispersion clause that belongs to ``update_E``, one a D conductivity charged to
 ``step_B``. Writing one predicate for the whole run would have had to refuse the
 conductivity for all four, which is a refusal with no line behind it.
 
-THESE PREDICATES ARE CONSULTED BY DISPATCH, through the hand-written CUDA table's
+These predicates are consulted by dispatch, through the hand-written CUDA table's
 registry (``registry.py`` names them per slot); a sub-step they refuse is not
 served by that table's kernel, and the refusal reason is reported.
 """
@@ -76,7 +76,7 @@ from typing import Any, Tuple
 # spellings are ``stepping.PERIODIC`` / ``stepping.METALLIC``; MIRROR and
 # CYL_AXIS have no code because they have no kernel.
 #
-# THIS DICT IS SHARED WITH ``complex_pml_kernels.py``, which refuses any kind
+# This dict is shared with ``complex_pml_kernels.py``, which refuses any kind
 # outside it, and the real-field curl pair's third code is deliberately NOT in
 # here: adding it would silently hand a folded axis to a complex kernel that has
 # no branch for one. :data:`REAL_CURL_BC_CODES` below is the curl pair's own map,
@@ -144,7 +144,7 @@ CONSTITUTIVE_SIDES = {
 _ELECTRIC_COMPONENTS = ("Ex", "Ey", "Ez")
 
 # ---------------------------------------------------------------------------
-# THE OFF-DIAGONAL (TENSOR) ELECTRIC CONSTITUTIVE SUB-STEP
+# The off-diagonal (tensor) electric constitutive sub-step
 #
 # Three tables, transcribed from ``stepping``/``fields`` and pinned against them
 # by ``test_offdiag_constitutive_pml_real.py`` — written out here rather than
@@ -155,8 +155,8 @@ _ELECTRIC_COMPONENTS = ("Ex", "Ey", "Ez")
 #: The coupling partners of each component, in MEEP's ``cycle_direction`` order
 #: X -> Y -> Z (vec.hpp:586; ``stepping._offdiagonal_terms``, stepping.py:1235-1237):
 #: own axis + 1 first, own axis + 2 second. Ez therefore takes the Ex-partner
-#: volume and then the Ey-partner volume, and the ORDER BINDS COEFFICIENTS TO
-#: PARTNERS — mispairing them is a silent half-tensor.
+#: volume and then the Ey-partner volume, and the order binds coefficients to
+#: partners — mispairing them is a silent half-tensor.
 OFFDIAG_TRANSVERSE_PARTNERS = ((1, 2), (2, 0), (0, 1))
 
 #: The six coefficient slots, in plan/kernel argument order: for each row
@@ -207,7 +207,7 @@ def offdiag_row_mask(fields):
 def offdiag_fold_roles(row_mask, mirrored):
     """Which of ``update_E``'s two stencil legs a MIRROR FOLD actually reaches.
 
-    THE FOLD QUESTION ON THIS SUB-STEP IS DECIDED BY THE ROW MASK, not by the
+    The fold question on this sub-step is decided by the row mask, not by the
     fold's declared termination — the opposite of the curl pair's split, and
     measured rather than argued (see
     :data:`FOLDED_OFFDIAG_ROW_MASK_ADMISSION`). ``stepping._offdiagonal_terms``
@@ -259,11 +259,11 @@ def offdiag_fold_roles(row_mask, mirrored):
     }
 
 
-#: THE FOLDED OFF-DIAGONAL ARM — MEASURED EXACTLY, AND DELIBERATELY NOT INSTALLED.
+#: The folded off-diagonal arm — measured exactly, and deliberately not installed.
 #:
 #: ``covers_real_pml_offdiag_constitutive`` refuses every mirror fold, twice: at
 #: ``has_symmetry`` and again per axis. On 2026-08-20 that refusal was measured
-#: rather than inherited, and it turned out to be REAL BUT TOO BROAD — there is a
+#: rather than inherited, and it turned out to be real but too broad — there is a
 #: sub-arm on which the SHIPPED kernel, unchanged, is byte-identical to
 #: ``stepping.update_E`` on a folded grid. This record is that measurement, kept
 #: so the clause is not re-litigated from the reading alone, and so the arithmetic
@@ -272,7 +272,7 @@ def offdiag_fold_roles(row_mask, mirrored):
 #: THE ARM, stated exactly, is :func:`offdiag_fold_roles`'s ``changes_a_byte``
 #: being False for the code the launcher would hand the folded axis.
 #:
-#: WHY IT IS NOT INSTALLED — two independent reasons, both measured:
+#: Why it is not installed — two independent reasons, both measured:
 #:
 #: 1. **It is worth ZERO corpus slots.** See ``corpus`` below: on the 186-row /
 #:    759-slot all-families census the widened predicate admits exactly the same
@@ -392,7 +392,7 @@ FOLDED_OFFDIAG_ROW_MASK_ADMISSION = {
     ),
     #: :func:`offdiag_fold_roles` reproduces ``combinations`` exactly — 52/52
     #: combinations, 480/480 guarded cases per policy, 0 disagreements — and that
-    #: is what makes the rule above the MEASURED boundary rather than a reading of
+    #: is what makes the rule above the measured boundary rather than a reading of
     #: the array path. Re-measured by ``gate_cuda_folded_offdiag_rowmask.py`` and
     #: at the merge bar by ``test_offdiag_constitutive_pml_real.py``.
     "rule_disagreements_with_measurement": 0,
@@ -417,7 +417,7 @@ FOLDED_OFFDIAG_ROW_MASK_ADMISSION = {
         "slots_licensed": 0,
         "slots_needing_a_mirror_branch_in_the_kernel": 20,
         "overlaps_introduced": 0,
-        #: WHAT A FOLD-BLIND WIDENING WOULD BUY, and it is the sharpest reason
+        #: What a fold-blind widening would buy, and it is the sharpest reason
         #: this record exists. Drop the fold clause outright — admit every fold,
         #: which is what "the refusal is too broad" invites — and the union goes
         #: 557 -> 576. All 19 are configurations the device gate measured
@@ -581,7 +581,7 @@ def real_curl_boundary_codes(grid: Any) -> Tuple[Any, Any]:
 def _real_curl_boundary_codes_from(facts: dict) -> Tuple[Any, Any]:
     """The code triple off already-read facts — one copy, two callers.
 
-    THE FOLD SPLIT LIVES HERE AND NOT IN :func:`_boundary_kinds_from`. That helper
+    The fold split lives here and not in :func:`_boundary_kinds_from`. That helper
     is "one copy, two callers" by its own docstring and the CONSTITUTIVE siblings
     are the other caller; putting the split there widened them as a side effect —
     measured 2026-08-19, caught by
@@ -612,7 +612,7 @@ def _real_curl_boundary_codes_from(facts: dict) -> Tuple[Any, Any]:
 def _fold_termination_problem(facts: dict, axis: int):
     """Why this folded axis's termination cannot be trusted; None when it can.
 
-    TWO INDEPENDENT ROUTES TO ONE FACT, AND THEY MUST AGREE. ``Grid.stored_cells``
+    Two independent routes to one fact, and they must agree. ``Grid.stored_cells``
     exceeds ``Grid.owned_cells`` exactly when the axis is mirrored and NOT metallic
     (``stepping._stored_past_owned``, stepping.py:1503-1518, which spells out the
     ``update_ntot`` num + 1 slot ``connect_the_chunks`` fills); ``Grid.is_metallic``
@@ -637,7 +637,7 @@ def _fold_termination_problem(facts: dict, axis: int):
 
 
 # ---------------------------------------------------------------------------
-# FAIL-CLOSED READING. A RAISE IS NOT A REFUSAL unless something catches it.
+# Fail-closed reading. A raise is not a refusal unless something catches it.
 #
 # These predicates are read by a planner deciding whether to dispatch, so an
 # exception escaping one is a CRASHED RUN where a fail-closed "no" was the correct
@@ -689,7 +689,7 @@ def _stored_past_owned_from(grid: Any) -> Tuple[Any, Any, Any]:
     ``test_step_curl_pml_real.py`` pins this against ``stepping._stored_past_owned``
     on every grid the slice builds, so the transcription cannot drift silently.
 
-    ONE DELIBERATE DIVERGENCE FROM THE ORIGINAL, and it is the fail-closed rule.
+    One deliberate divergence from the original, and it is the fail-closed rule.
     ``stepping._stored_past_owned`` answers ``False`` for a grid with no callable
     ``owned_cells`` — a convenience for the stub grids in ``test_stepping.py``,
     and the right answer there because nothing downstream of it masks. Answering
@@ -747,12 +747,12 @@ def _coefficient_vector_problem(label: str, vector: Any, xp: Any, axis: int,
                                 shape: Tuple) -> Any:
     """Why ``vector`` is not this axis's float32 profile; None if it is.
 
-    THE SHAPE, NOT JUST THE SIZE. ``PML._reshape_for_broadcast`` stores these as
+    The shape, not just the size. ``PML._reshape_for_broadcast`` stores these as
     ``(n,1,1)`` / ``(1,n,1)`` / ``(1,1,n)``, so comparing ``.size`` alone admits
     another axis's profile whenever the two extents coincide — on a cubic grid,
     always. The broadcast shape says which axis it is FOR.
 
-    AND THE CONTIGUITY, which the field arrays were checked for and these were
+    And the contiguity, which the field arrays were checked for and these were
     not. The kernel takes ``reshape(-1)`` of this view; measured, a ``(2n,1,1)``
     array strided by 2 reshapes to a NON-contiguous view (the trailing size-1 dims
     let NumPy re-stride rather than copy), so ``real_constitutive_tables`` raises
@@ -779,7 +779,7 @@ def _coefficient_vector_problem(label: str, vector: Any, xp: Any, axis: int,
     return None
 
 
-#: WHAT LICENSES THE FOLD IN :func:`covers_real_pml_curl`, and what it does not.
+#: What licenses the fold in :func:`covers_real_pml_curl`, and what it does not.
 #:
 #: Until 2026-08-19 this predicate refused every mirror-folded run outright: "the
 #: fold changes the ghost rule and the ownership mask, and a curl has both". The
@@ -790,8 +790,8 @@ def _coefficient_vector_problem(label: str, vector: Any, xp: Any, axis: int,
 #: STEP 1, 2026-08-19 (``results/cuda_folded_curl_2026-08-19/``): the SHIPPED pair,
 #: unchanged, was run on folded grids with the folded axis handed ``BC_METALLIC``.
 #: A fold whose every folded axis is METALLIC came back 48/48 bit-identical at one
-#: launch and 48/48 at 60, under both float32 subnormal policies. NO DEVICE CODE
-#: WAS WRITTEN for that half: a folded METALLIC axis's far ghost is the same exact
+#: launch and 48/48 at 60, under both float32 subnormal policies. No device code
+#: was written for that half: a folded METALLIC axis's far ghost is the same exact
 #: zero, its cell-0 mask is the same mask, and ``_stored_past_owned`` is false so
 #: there is no top plane to drop.
 #:
@@ -799,11 +799,11 @@ def _coefficient_vector_problem(label: str, vector: Any, xp: Any, axis: int,
 #: termination diverged 0/64 — and the divergence was a SPECIFICATION, not a
 #: smear. 19,649 differing words (18,633 under flush), of which 19,649 lay on the
 #: mask-delta planes and ZERO anywhere else, always the same entry
-#: ``('oracle_only', -1)``: the LAST STORED SLOT, for exactly the components whose
+#: ``('oracle_only', -1)``: the last stored slot, for exactly the components whose
 #: Yee shift on the folded axis is 1. The kernels now carry that mask
 #: (``BC_MIRROR_PERIODIC``), and ``gate_cuda_folded_curl.py`` re-ran to measure it.
 #:
-#: THE SPLIT IS NOT PORTABLE ACROSS FAMILIES, and a test enforces exactly that.
+#: The split is not portable across families, and a test enforces exactly that.
 #: ``covers_real_pml_constitutive`` admitted its fold with no device code because
 #: its sub-step reads its own cell; this one needed a kernel branch. The offdiag
 #: constitutive predicate has NO fold evidence at all and still refuses one.
@@ -840,7 +840,7 @@ CURL_FOLD_ADMISSION = {
         "flush/gate.json":
             "88f71a6b323eb445564bbdbdb67aec76135df844e534e557ca101d2f9f429b3f",
     },
-    #: THE SUBJECT WAS NOT TOUCHED. The gate compiled the SHIPPED device strings;
+    #: The subject was not touched. The gate compiled the SHIPPED device strings;
     #: this is the digest the artifact recorded for them, and it is the digest of
     #: the file in the tree.
     "planes_round_subject_sha256": {
@@ -855,17 +855,17 @@ CURL_FOLD_ADMISSION = {
         "folded_mixed": (2, 3), "unfolded": (0,)},
     "planes_round_source_mutations_scored": 20,
     "planes_round_all_mutations_as_required": True,
-    # RECOMPUTED FROM THE CENSUS with the union analyzer, on scripts copied
-    # byte-identical from the 2026-08-20 closeout round so the two are
+    # Recomputed from the census with the union analyzer, on scripts copied
+    # byte-identical from the 2026-08-20 closeout run so the two are
     # commensurable to the slot. The two slots are ``TestLDOS.test_ldos_3D``'s
-    # step_B and step_D; its update_H/update_E are the constitutive round's.
+    # step_B and step_D; its update_H/update_E are the constitutive widening's.
     "planes_round_census": ("parity/meep_gpu/results/"
                             "cuda_predicate_coverage_2026-08-20_w15"),
     "planes_round_union_before": 653,
     "planes_round_union_after": 668,
     "planes_round_slots_this_arm_gained": 2,
     "planes_round_rows_gained": ("TestLDOS.test_ldos_3D",),
-    #: THE MISDECLARATION CONTROL STILL FIRES at three planes: the folded-PERIODIC
+    #: The misdeclaration control still fires at three planes: the folded-PERIODIC
     #: arm handed BC_METALLIC diverges on 56 of 56 cases with every differing word
     #: on the mask-delta planes and ZERO elsewhere (23018 words under keep, 21854
     #: under flush). An identity there would have meant the licensed arm's
@@ -876,7 +876,7 @@ CURL_FOLD_ADMISSION = {
     "plane_parities_swept": (1, -1),
     "full_count_parities_swept": ("even", "odd"),
     "terminations_swept": ("metallic", "periodic"),
-    #: Round 2, per policy, under the SHIPPED code resolution
+    #: The second run (2026-08-20, the top-plane mask), per policy, under the SHIPPED code resolution
     #: (``mirror_resolved``): every arm identical at one launch AND at 60.
     "cases_scored_per_policy": 384,
     "identical_folded_all_metallic": "48/48",
@@ -884,7 +884,7 @@ CURL_FOLD_ADMISSION = {
     "identical_folded_mixed": "16/16",
     "identical_unfolded_controls": "16/16",
     "multi_step_launches_each": 60,
-    #: THE MISDECLARATION CONTROL, and the number that makes the branch the cause.
+    #: The misdeclaration control, and the number that makes the branch the cause.
     #: The 64 cases carrying a PERIODIC-terminated folded axis, handed the METALLIC
     #: code instead — which is exactly the pre-branch kernel — still diverge, with
     #: every differing word on the mask-delta plane and ZERO elsewhere.
@@ -900,12 +900,12 @@ CURL_FOLD_ADMISSION = {
                                       "reverse_folded_axis_coefficients"),
     "top_plane_mask_mutation_caught": "3/3 per sub-step, both policies",
     "near_plane_mask_mutation_caught": "3/3 per sub-step, both policies",
-    #: WHAT THE ROUND COST THE CERTIFIED SURFACE: nothing measurable. The branch
+    #: What the change cost the certified surface: nothing measurable. The branch
     #: is taken only on the third code, and the certification gate re-run on the
     #: EDITED device strings came back 120/120 at both policies, 60/60 multi-step,
     #: 0/120 unguarded.
     #:
-    #: THIS IS THIS ROUND'S OWN EVIDENCE and it stays pointed at the run that
+    #: This is this change's own evidence and it stays pointed at the run that
     #: produced it. ``certification.json`` no longer pins the pre-edit digests:
     #: the 2026-08-22 kernel rename moved every device string, and the record was
     #: re-cut against ``fused_pml_bit_identity_hand_2026-08-22_rename`` — a later
@@ -916,17 +916,17 @@ CURL_FOLD_ADMISSION = {
 }
 
 
-#: WHAT RETIRED THE chi2/chi3 REFUSAL IN :func:`covers_real_pml_curl`, and what
+#: What retired the chi2/chi3 refusal in :func:`covers_real_pml_curl`, and what
 #: it does not license.
 #:
 #: Until 2026-08-20 this predicate refused both curl sub-steps on any grid
 #: carrying an instantaneous nonlinearity, with the census reason "instantaneous
 #: chi2/chi3: a Pade factor on the constitutive product". The sentence is true of
 #: ``update_E`` and false of this sub-step, and the clause was inherited -- the
-#: same shape the 2026-08-20 nonlinear round found on ``update_H``, and the same
+#: same shape the 2026-08-20 nonlinear work found on ``update_H``, and the same
 #: shape the mirror and dispersion clauses had before them.
 #:
-#: THE READING WAS PERFORMED RATHER THAN QUOTED. ``gate_cuda_nonlinear_curl_null``
+#: The reading was performed rather than quoted. ``gate_cuda_nonlinear_curl_null``
 #: parses ``meep_gpu/stepping.py`` with ``ast``, builds the module-level call
 #: graph and reports which functions NAME a chi2/chi3/nonlinear symbol in CODE
 #: (docstrings excluded, and the exclusion is recorded beside the un-excluded
@@ -939,19 +939,19 @@ CURL_FOLD_ADMISSION = {
 #: anywhere reports an empty intersection for the curl and means nothing by it. It
 #: found three.
 #:
-#: THAT IS A FACT ABOUT THE ORACLE. The device leg is the fact about the kernel:
+#: That is a fact about the oracle. The device leg is the fact about the kernel:
 #: the SHIPPED pair, not one byte changed, on grids carrying a chi, compared as
 #: raw uint32 against ``stepping.step_B``/``step_D`` from one frozen state.
 #:
-#: THE PREMISE WAS ARMED. ``chi_pade_scale_the_curl`` rewrites the shipped curl
+#: The premise was armed. ``chi_pade_scale_the_curl`` rewrites the shipped curl
 #: device string so the curl IS scaled by a quotient of the Pade factor's shape,
 #: and it was CAUGHT 6/6 on each sub-step under each policy, with the artifact
 #: recording that a kernel really was built from the mutated bytes. Without it the
 #: 112/112 identity would be consistent with a comparator that sees nothing. The
-#: RELEASE VERDICT ITSELF was then shown to flip: a run with that defect planted
+#: release verdict itself was then shown to flip: a run with that defect planted
 #: for the whole sweep came back ``released=False`` with 6 of 6 cases diverging.
 #:
-#: THE FLOOR THAT MAKES IT A MEASUREMENT. A null gate's characteristic failure is
+#: The floor that makes it a measurement. A null gate's characteristic failure is
 #: a fixture that never carried the thing it claims does not matter, so every case
 #: measures whether the chi CHANGES A WORD: two triples from identical rng
 #: streams, one with the chi and one without, one ``stepping.update_E`` each,
@@ -976,7 +976,7 @@ CURL_NONLINEAR_ADMISSION: dict = {
             "62ca30051d318abcc145bc9e1f2e6f15f79bb1555fea7a7a81b2b696551b466d",
     },
     #: THE SUBJECT: the bytes whose behaviour was measured. Not one of them was
-    #: changed by this round -- the gate launches the SHIPPED kernels and mutates
+    #: changed to earn this admission -- the gate launches the SHIPPED kernels and mutates
     #: only a copy of the device text.
     "subject_sha256": {
         "meep_gpu/cuda_kernels/step_curl_kernels.py":
@@ -990,7 +990,7 @@ CURL_NONLINEAR_ADMISSION: dict = {
     #: for that question: what this admission measured is what NVRTC compiles, and the
     #: deletion removed twelve strings the gate never launched.
     #:
-    #: MEASURED, so ``weld_survives_edit`` can establish it rather than assume it: the
+    #: Measured, so ``weld_survives_edit`` can establish it rather than assume it: the
     #: two certified device strings hash to 362d6420 and cd4edf1d, which are EXACTLY
     #: the values ``certification.json``'s device_source_sha256 recorded when the
     #: 2026-08-22 re-cut compiled and launched them. Pinning them here means any
@@ -1042,8 +1042,8 @@ CURL_NONLINEAR_ADMISSION: dict = {
     "all_mutations_as_required": True,
     "verdict_shown_to_flip": ("chi_pade_scale_the_curl planted for the whole run: "
                               "released=False, 6/6 cases diverging"),
-    # RECOMPUTED FROM THE CENSUS with the union analyzer, on scripts copied
-    # byte-identical from the 2026-08-20 closeout round so the two rounds are
+    # Recomputed from the census with the union analyzer, on scripts copied
+    # byte-identical from the 2026-08-20 closeout run so the two counts are
     # commensurable to the slot. FOUR slots: step_B and step_D on each of the two
     # corpus rows that carry an instantaneous nonlinearity. Both rows are now
     # covered at EVERY sub-step, because the nonlinear constitutive family already
@@ -1080,7 +1080,7 @@ def covers_real_pml_curl(fields: Any, pml: Any, grid: Any, sub_step: str) -> tup
     the first refusal, so a configuration that unexpectedly stays on the array
     path says why.
 
-    THE ARGUMENT IS REQUIRED, and it is required because it was once absent.
+    The argument is required, and it is required because it was once absent.
     There are two kernels, one per sub-step, and a predicate with no way to name
     which one it is answering for had to answer for both at once — which means
     answering with the INTERSECTION of two clause sets, and refusing each sub-step
@@ -1099,7 +1099,7 @@ def covers_real_pml_curl(fields: Any, pml: Any, grid: Any, sub_step: str) -> tup
       leaves ``step_B`` an ordinary curl. The corpus row that shows it is
       ``TestAdjointSolver.test_damping``.
 
-    WHAT IS NOT A CURL FACT AT ALL, and was refused here anyway:
+    What is not a curl fact at all, and was refused here anyway:
 
     * **a registered polarization.** ``step_B`` reads the stored E arrays and
       ``step_D`` the stored H arrays (``_component_snapshot``, stepping.py:2425);
@@ -1144,7 +1144,7 @@ def covers_real_pml_curl(fields: Any, pml: Any, grid: Any, sub_step: str) -> tup
     facts, unreadable = _grid_facts(grid)
     if unreadable is not None:
         return False, unreadable
-    # THE FOLD IS ADMITTED AT BOTH TERMINATIONS, and each half was measured on its
+    # The fold is admitted at both terminations, and each half was measured on its
     # own (:data:`CURL_FOLD_ADMISSION`). A folded METALLIC axis needed no device
     # code at all — the shipped pair was already exact on it. A folded PERIODIC one
     # diverged on exactly one plane, and the kernels now carry the branch that
@@ -1152,7 +1152,7 @@ def covers_real_pml_curl(fields: Any, pml: Any, grid: Any, sub_step: str) -> tup
     # itself are all in :func:`_real_curl_boundary_codes_from`, below the
     # cylindrical clauses, so the launcher and this predicate cannot disagree.
     #
-    # DO NOT GENERALISE A FOLD VERDICT ACROSS FAMILIES. The constitutive pair took
+    # Do not generalise a fold verdict across families. The constitutive pair took
     # the fold for free because its sub-step reads its OWN CELL; a curl reads
     # NEIGHBOURS and has an ownership mask, so the two verdicts had to be measured
     # separately — and they differed, the curl needing device code the constitutive
@@ -1165,7 +1165,7 @@ def covers_real_pml_curl(fields: Any, pml: Any, grid: Any, sub_step: str) -> tup
         # keying the admission on `mirrored` alone would silently admit it.
         return False, "symmetry with no folded axis: unresolved ghost rule"
     if len(folded) > CURL_FOLD_ADMISSION["folded_planes_swept"]:
-        # THE PLANE CAP, which the constitutive sibling has carried since its own
+        # The plane cap, which the constitutive sibling has carried since its own
         # widening and this predicate did not: between 2026-08-19 and today it
         # admitted a THREE-plane fold no gate has ever swept, while the slot replay
         # that priced the widening held those rows back. The predicate now agrees
@@ -1179,7 +1179,7 @@ def covers_real_pml_curl(fields: Any, pml: Any, grid: Any, sub_step: str) -> tup
     for axis in range(3):
         if facts["axis"][axis]:
             return False, f"axis {axis} is the cylindrical r = 0 axis"
-    # THE CODE TRIPLE ITSELF, from the one function the launcher also calls. Its
+    # The code triple itself, from the one function the launcher also calls. Its
     # refusals are this predicate's refusals: an axis whose two routes to the
     # fold's termination disagree, an axis the grid cannot answer for, and a kind
     # with no code.
@@ -1203,7 +1203,7 @@ def covers_real_pml_curl(fields: Any, pml: Any, grid: Any, sub_step: str) -> tup
     if conductive:
         return False, (f"{conductive[0]} carries a conductivity: routes to the "
                        f"three-history conductive-PML recurrence")
-    # THE INVARIANT DISPERSION IS ADMITTED ON, stated positively. The kernel binds
+    # The invariant dispersion is admitted on, stated positively. The kernel binds
     # ``fields.Ex``/``Ey``/``Ez`` directly and ``step_B`` differences whatever
     # ``get_E`` returns; with E stored that is the same array, and without it a
     # freshly computed ``D * inv_eps`` — one polarization out of date the moment a
@@ -1215,8 +1215,8 @@ def covers_real_pml_curl(fields: Any, pml: Any, grid: Any, sub_step: str) -> tup
     if not getattr(fields, "stores_E", False):
         return False, "E is recomputed from D rather than stored"
     # AN INSTANTANEOUS chi2/chi3 IS ADMITTED, and until 2026-08-20 it was refused
-    # here with "a Pade factor on the constitutive product". THE SENTENCE IS TRUE
-    # AND IS NOT ABOUT THIS SUB-STEP: the Pade factor (calc_nonlinear_u,
+    # here with "a Pade factor on the constitutive product". The sentence is true
+    # and is not about this sub-step: the Pade factor (calc_nonlinear_u,
     # stepping.py:1025) is applied where E is recovered from D, and step_B/step_D
     # difference the STORED E and H arrays. The clause was inherited from the
     # constitutive family, exactly as this predicate's mirror and dispersion
@@ -1225,14 +1225,14 @@ def covers_real_pml_curl(fields: Any, pml: Any, grid: Any, sub_step: str) -> tup
     # paragraph would otherwise be asserting, and the device leg that armed the
     # premise as a defect and caught it.
     shape = facts["shape"]
-    # THE DIMENSIONALITY CLAUSE, which the constitutive predicate carried from the
+    # The dimensionality clause, which the constitutive predicate carried from the
     # start and this one did not: a 4-D grid was admitted, and the kernels take
     # (nx, ny, nz), so that is a WRONG-INDEX answer rather than a launch failure.
     # Unreachable from a real Grid (grid.py:583 assigns a 3-tuple), which is why
     # it went unnoticed until the two predicates were censused against each other.
     if len(shape) != 3:
         return False, f"grid shape {shape} is not three-dimensional"
-    # THE INT32 INDEX RANGE, which the constitutive predicate carried from the
+    # The int32 index range, which the constitutive predicate carried from the
     # start and this one did not. ``step_B_pml_real`` declares ``int idx``
     # and guards on ``idx >= nx * ny * nz`` in int too
     # (``step_curl_kernels.py:1689-1690``), and its neighbour offsets add ``ny*nz``
@@ -1261,8 +1261,8 @@ def covers_real_pml_curl(fields: Any, pml: Any, grid: Any, sub_step: str) -> tup
     return True, "covered"
 
 
-#: The ghost rules the real-storage constitutive pair serves. MIRROR IS IN IT AND
-#: IS NOT IN :data:`BC_CODES`, which is the deliberate divergence from
+#: The ghost rules the real-storage constitutive pair serves. Mirror is in it and
+#: is not in :data:`BC_CODES`, which is the deliberate divergence from
 #: :func:`covers_real_pml_curl` and the one clause of this predicate with a DEVICE
 #: verdict rather than a reading behind it -- see
 #: :data:`CONSTITUTIVE_FOLD_ADMISSION`. ``CYL_AXIS`` was absent for the same
@@ -1275,7 +1275,7 @@ def covers_real_pml_curl(fields: Any, pml: Any, grid: Any, sub_step: str) -> tup
 #: and caught. Neither kind is admitted by argument.
 CONSTITUTIVE_BOUNDARY_KINDS: Tuple[str, ...] = (PERIODIC, METALLIC, MIRROR, CYL_AXIS)
 
-#: WHAT THE FOLD CLAUSE IS WORTH AND WHAT PAID FOR IT.
+#: What the fold clause is worth and what paid for it.
 #:
 #: Until 2026-08-19 this predicate refused every mirror-folded run with "the fold
 #: changes the stored extent, and the extent is what turns a cell index into a
@@ -1286,7 +1286,7 @@ CONSTITUTIVE_BOUNDARY_KINDS: Tuple[str, ...] = (PERIODIC, METALLIC, MIRROR, CYL_
 #: ``grid.shape``, so both operands move together and the kernel's
 #: ``i = idx/(ny*nz)`` indexes a table of exactly the length the fold left.
 #:
-#: THAT READING WAS NOT TRUSTED. ``parity/meep_gpu/gate_cuda_folded_constitutive.py``
+#: That reading was not trusted. ``parity/meep_gpu/gate_cuda_folded_constitutive.py``
 #: ran the SHIPPED pair, unchanged, on folded grids: 112 cases per policy of which
 #: 96 folded, 112/112 bit-identical to ``stepping.update_H``/``update_E`` at one
 #: launch and at 60, under both float32 subnormal policies. The unguarded control
@@ -1298,15 +1298,15 @@ CONSTITUTIVE_BOUNDARY_KINDS: Tuple[str, ...] = (PERIODIC, METALLIC, MIRROR, CYL_
 #: ranged 0.567 to 3.238, so a coefficient-index error there was visible rather
 #: than hidden behind an identity table.
 #:
-#: WHAT THE 2026-08-19 SWEEP DID NOT REACH, AND WHAT THE 2026-08-20 RE-RUN DID.
-#: The first round swept one folded axis (X, Y and Z each), both plane parities,
+#: What the 2026-08-19 sweep did not reach, and what the 2026-08-20 re-run did.
+#: The 2026-08-19 sweep covered one folded axis (X, Y and Z each), both plane parities,
 #: both folded terminations, an odd full count, and TWO planes at once (XY and
 #: XZ), so ``folded_planes_swept`` was 2 -- and the corpus's one triply-folded row
 #: (``TestLDOS.test_ldos_3D``) was refused for 2 slots here and 2 on the curl.
 #: That refusal was a fact about the gate's spec tuple rather than about the
 #: kernel, which the clause itself said in as many words.
 #:
-#: THE RE-RUN IS WHAT RAISED IT. Three FOLD_SPECS were added
+#: The re-run is what raised it. Three FOLD_SPECS were added
 #: (``fold_XYZ_metallic``, ``fold_XYZ_periodic``, ``fold_XYZ_mixed``, stored
 #: extents 9/10/11 so a cube cannot hide an index confusion), two of them were
 #: added to ``MUTATION_SPEC_LABELS`` so the battery is armed on the shape the cap
@@ -1317,16 +1317,16 @@ CONSTITUTIVE_BOUNDARY_KINDS: Tuple[str, ...] = (PERIODIC, METALLIC, MIRROR, CYL_
 #: mutation as required. Three is every plane a 3-D grid has, so the clause is now
 #: unreachable rather than merely unmet.
 #:
-#: THE SLOT COUNTS are re-derived from the census record's per-row
+#: The slot counts are re-derived from the census record's per-row
 #: ``configuration`` blocks by running THIS predicate over stand-ins built from
 #: them; the replay is validated first by reproducing every recorded verdict and
 #: first-refusal string that is not the retired fold one. All 128 slots gained
-#: were previously refused by the fold clause AND BY NOTHING ELSE, on rows that
+#: were previously refused by the fold clause and by nothing else, on rows that
 #: are folded, PML-active and real-storage, across at most the two simultaneous
 #: planes the gate swept (57 one-plane, 71 two-plane) -- so this is a widening
 #: and not a leak, which the totals alone could not distinguish.
 #:
-#: THEY ARE AN UPPER BOUND: the array and coefficient-vector tail cannot be
+#: They are an upper bound: the array and coefficient-vector tail cannot be
 #: replayed from the record, only the decision logic above it. That tail was
 #: separately exercised on REAL folded ``Grid``/``Fields``/``PML`` triples for
 #: every fold shape the gate swept, where each axis's kps/kms vector was measured
@@ -1334,7 +1334,7 @@ CONSTITUTIVE_BOUNDARY_KINDS: Tuple[str, ...] = (PERIODIC, METALLIC, MIRROR, CYL_
 #: load-bearing fact and the one the retired refusal denied.
 CONSTITUTIVE_FOLD_ADMISSION: dict = {
     "gate": "parity/meep_gpu/gate_cuda_folded_constitutive.py",
-    # ONE RUN NOW BACKS BOTH SECTIONS. The 2026-08-22 kernel rename moved the
+    # One run now backs both sections. The 2026-08-22 kernel rename moved the
     # bytes this admission is about, so it was re-cut on a run that compiled the
     # SHIPPED module -- and today's gate sweeps one, two and three fold planes in
     # a single sweep, so the base numbers and the third-plane numbers come from
@@ -1364,13 +1364,13 @@ CONSTITUTIVE_FOLD_ADMISSION: dict = {
                "cuda_predicate_coverage_2026-08-16_offdiag"),
     "slots_before": 73,
     "slots_after": 201,
-    # WAS 2, AND IS NOW 0: the third plane was swept on 2026-08-20 and the row
+    # Was 2, and is now 0: the third plane was swept on 2026-08-20 and the row
     # below is admitted. Kept as a field rather than deleted because it is what
     # the widening is worth on this corpus.
     "slots_refused_for_a_third_fold_plane": 0,
     "row_with_three_fold_planes": "TestLDOS.test_ldos_3D",
     # ------------------------------------------------------------------
-    # THE 2026-08-20 THIRD-PLANE RE-RUN
+    # The 2026-08-20 third-plane re-run
     # ------------------------------------------------------------------
     "planes_round_artifacts": ("parity/meep_gpu/results/"
                                "cuda_folded_constitutive_2026-08-21_rename"),
@@ -1382,24 +1382,24 @@ CONSTITUTIVE_FOLD_ADMISSION: dict = {
         "flush/gate.json":
             "ec2bca8d3283ac563bcbfac1515862d2d04c6c37baa5633cc712135040dec525",
     },
-    #: THE SUBJECT WAS NOT TOUCHED: the gate compiled the SHIPPED device strings.
+    #: The subject was not touched: the gate compiled the SHIPPED device strings.
     "planes_round_subject_sha256": {
         "meep_gpu/cuda_kernels/constitutive_kernels.py":
             "3a0b46400d10f93690097ff700f147dd185f9702f7a46aa5d80705d62abea4d3",
     },
-    # THE SLOT ARITHMETIC OF THE RAISE, over the same 2026-08-16 census the two
+    # The slot arithmetic of the raise, over the same 2026-08-16 census the two
     # earlier links use, so the three compose end to end: 73 -> 201 (the fold),
     # 201 -> 207 (Dcyl), 207 -> 209 (this). The two slots are
     # ``TestLDOS.test_ldos_3D``'s update_H and update_E; its two CURL slots are
-    # the curl round's, counted separately.
+    # the curl widening's, counted separately.
     "planes_round_slots_before": 207,
     "planes_round_slots_after": 209,
     "planes_round_rows_gained": 1,
-    # AND THE UNION NUMBER, recomputed with the census's own analyzer over a
-    # byte-identical copy of the 2026-08-20 closeout round's scripts, so the two
-    # rounds are commensurable to the slot: 653 -> 668 of 759 over all three of
+    # And the union number, recomputed with the census's own analyzer over a
+    # byte-identical copy of the 2026-08-20 closeout run's scripts, so the two
+    # counts are commensurable to the slot: 653 -> 668 of 759 over all three of
     # the day's widenings, of which TWO slots are this one's (the same row's
-    # step_B and step_D are the curl round's). Rows covered at every sub-step
+    # step_B and step_D are the curl widening's). Rows covered at every sub-step
     # 136 -> 139, and TestLDOS.test_ldos_3D is one of the three.
     "planes_round_census": ("parity/meep_gpu/results/"
                             "cuda_predicate_coverage_2026-08-20_w15"),
@@ -1421,7 +1421,7 @@ CONSTITUTIVE_FOLD_ADMISSION: dict = {
     "planes_round_all_mutations_as_required": True,
     "planes_round_policies_really_differed": ("any_ftz_true_reached_nvrtc FALSE "
                                               "under keep, TRUE under flush"),
-    #: WHAT THIS CAP DOES NOT LICENSE. ``dispersive_kernels`` used to read this
+    #: What this cap does not license. ``dispersive_kernels`` used to read this
     #: field for its own fold clause; it now carries
     #: :data:`~.dispersive_kernels.ADE_FOLD_PLANES_SWEPT` instead, pinned at 2,
     #: because the ADE gate has never scored a three-plane case. Raising a cap in
@@ -1492,12 +1492,12 @@ def covers_real_pml_constitutive(fields: Any, pml: Any, grid: Any,
     from the kernel, and until 2026-08-19 it removed neither from this predicate:
     the fold and cylindrical clauses were kept because they are about the STORED
     EXTENT rather than about any stencil. The fold half of that has since been
-    MEASURED and does not survive it — see :data:`CONSTITUTIVE_FOLD_ADMISSION`.
-    The cylindrical half has since been MEASURED too and does not survive it --
+    measured and does not survive it — see :data:`CONSTITUTIVE_FOLD_ADMISSION`.
+    The cylindrical half has since been measured too and does not survive it --
     see :data:`CONSTITUTIVE_CYLINDRICAL_ADMISSION`. Neither half of the original
     refusal survives contact with a device.
 
-    WHAT THIS ADMITS THAT :func:`covers_real_pml_curl` REFUSES, and why. Two
+    What this admits that :func:`covers_real_pml_curl` REFUSES, and why. Two
     things, both measured rather than argued.
 
     **A MIRROR FOLD**, up to two simultaneous planes. The curl has a real ghost
@@ -1521,7 +1521,7 @@ def covers_real_pml_constitutive(fields: Any, pml: Any, grid: Any,
     sub-steps are admitted and only ``step_D`` is refused. Refusing it here would
     be a refusal with no line behind it.
 
-    WHAT THE E SIDE REFUSES THAT THE H SIDE DOES NOT. Everything that changes
+    What the E side refuses that the H side does not. Everything that changes
     what ``source`` is:
 
     * a registered polarization — ``source`` becomes ``D - sum P``
@@ -1561,7 +1561,7 @@ def covers_real_pml_constitutive(fields: Any, pml: Any, grid: Any,
     facts, unreadable = _grid_facts(grid)
     if unreadable is not None:
         return False, unreadable
-    # A Dcyl GRID IS ADMITTED, and the refusal it replaces was explicitly
+    # A Dcyl grid is admitted, and the refusal it replaces was explicitly
     # provisional: this docstring said "The cylindrical half stands, unmeasured
     # and therefore refused" until :data:`CONSTITUTIVE_CYLINDRICAL_ADMISSION`
     # measured it -- 96/96 cases bit-identical on the GPU host at every |m| class and
@@ -1570,7 +1570,7 @@ def covers_real_pml_constitutive(fields: Any, pml: Any, grid: Any,
     # argument from absence. The premise was TRUE and the conclusion did not
     # follow, exactly as it did not for the fold.
     #
-    # THE r = 0 AXIS ROW STAYS REFUSED. That is a separate fact from the
+    # The r = 0 axis row stays refused. That is a separate fact from the
     # coordinate system: ``stepping._cylindrical_axis_zero_B`` (:648) and
     # ``_cylindrical_axis_zero_D`` (:560) are called from step_B (:376) and
     # step_D (:457) -- the CURL -- and this predicate has never been asked about
@@ -1599,11 +1599,11 @@ def covers_real_pml_constitutive(fields: Any, pml: Any, grid: Any,
                        f"simultaneous planes, so a {folded}-plane fold would be "
                        f"admitted by argument alone")
     for axis, kind in enumerate(_boundary_kinds_from(facts)):
-        # A FOLD IS ON THIS LIST, unlike the curl predicate's, and the clause
+        # A fold is on this list, unlike the curl predicate's, and the clause
         # stays anyway so that a ghost rule added to Grid later is refused
         # because it was never admitted.
         #
-        # THIS REVERSES AN ARGUMENT THIS MODULE USED TO MAKE HERE — "coverage is
+        # This reverses an argument this module used to make here — "coverage is
         # a SET, not a la carte", i.e. a grid whose ghost rule the curl kernel
         # cannot serve must not have two of its four sub-steps quietly taken over
         # by kernels that happen not to look at it. What replaced it is a device
@@ -1663,7 +1663,7 @@ def covers_real_pml_constitutive(fields: Any, pml: Any, grid: Any,
             try:
                 volume = reader(component)
             except Exception as exc:  # noqa: BLE001
-                # A RAISE IS NOT A REFUSAL unless it is caught here. This predicate
+                # A raise is not a refusal unless it is caught here. This predicate
                 # is read by a planner deciding whether to dispatch; an exception
                 # escaping it is a crashed run where a fail-closed "no" was the
                 # correct answer. ``inverse_epsilon_for`` raises ValueError on a
@@ -1694,13 +1694,13 @@ def covers_real_pml_constitutive(fields: Any, pml: Any, grid: Any,
 def covers_real_pml_offdiag_constitutive(fields: Any, pml: Any, grid: Any) -> tuple:
     """Whether ``update_E_pml_real_offdiag`` may serve this run.
 
-    ONE SUB-STEP AND ONE SIDE, so there is no argument to take: ``stepping``
+    One sub-step and one side, so there is no argument to take: ``stepping``
     installs off-diagonal ``chi1inv`` rows on the ELECTRIC constitutive relation
     alone (``update_E``'s ``elif offdiagonal:`` branch, stepping.py:1001-1008).
     Returns ``(covered, reason)`` with ``reason`` naming the FIRST refusal, the
     convention both predicates above use.
 
-    THE DISJOINTNESS SEAM. :func:`covers_real_pml_constitutive` refuses every
+    The disjointness seam. :func:`covers_real_pml_constitutive` refuses every
     off-diagonal run at ``side="E"`` (its own clause), and that refusal STAYS —
     it is what keeps the two families from both claiming the sub-step. This
     predicate is its exact complement on that axis: clause (b) below REQUIRES at
@@ -1708,7 +1708,7 @@ def covers_real_pml_offdiag_constitutive(fields: Any, pml: Any, grid: Any) -> tu
     ``test_offdiag_constitutive_pml_real.py`` measures the disjointness rather
     than asserting it.
 
-    WHY THE CLAUSE CHAIN IS WRITTEN OUT AGAIN RATHER THAN DELEGATED. The sibling
+    Why the clause chain is written out again rather than delegated. The sibling
     predicate SHORT-CIRCUITS, so "refused for the off-diagonal clause and nothing
     else" is not a question its return value can answer: the clauses after that
     one were never evaluated. Delegating would therefore admit a configuration
@@ -1717,7 +1717,7 @@ def covers_real_pml_offdiag_constitutive(fields: Any, pml: Any, grid: Any) -> tu
     there, and a test pins the two chains equal on every axis except the
     off-diagonal one, so the duplication cannot drift silently.
 
-    WHAT IS NEW HERE, and what each would be if it leaked:
+    What is new here, and what each would be if it leaked:
 
     a. **at least one surviving row slot (INVERTED)**, counted over
        :data:`OFFDIAG_ROW_SLOTS` rather than the bare
@@ -1757,7 +1757,7 @@ def covers_real_pml_offdiag_constitutive(fields: Any, pml: Any, grid: Any) -> tu
     if unreadable is not None:
         return False, unreadable
     if facts["has_symmetry"]:
-        # MEASURED, NOT INHERITED, AND MEASURED TOO BROAD — the arm this sentence
+        # Measured, not inherited, and measured too broad — the arm this sentence
         # gives up is real: see :data:`FOLDED_OFFDIAG_ROW_MASK_ADMISSION`, where
         # 96 folded cases per policy are byte-identical to ``stepping.update_E``
         # at one launch and 13 at 60. The refusal STANDS at its present width for
@@ -1775,7 +1775,7 @@ def covers_real_pml_offdiag_constitutive(fields: Any, pml: Any, grid: Any) -> tu
                        "coefficient index")
     for axis in range(3):
         if facts["mirrored"][axis]:
-            # AND THE ENGINE DOES STEP THIS, which is why the refusal is stated as
+            # And the engine does step this, which is why the refusal is stated as
             # this kernel family's rather than as the engine's: the docstring at
             # stepping.py:1219-1220 claims ``set_epsilon_volumes`` refuses a folded
             # axis at install, and ``_validated_offdiagonal_rows`` (fields.py:
@@ -1784,7 +1784,7 @@ def covers_real_pml_offdiag_constitutive(fields: Any, pml: Any, grid: Any) -> tu
             # belongs in those files; the refusal here is
             # about the stored extent and the wall mask's mirror abstention.
             #
-            # THE SECOND OF THE TWO FOLD REFUSALS, and it is not redundant with
+            # The second of the two fold refusals, and it is not redundant with
             # the first: they read different accessors (``grid.has_symmetry()``
             # against ``grid.is_mirrored(axis)``), so an object that answers them
             # inconsistently is refused rather than dispatched. Like the first, it
@@ -1901,15 +1901,15 @@ def covers_real_pml_offdiag_constitutive(fields: Any, pml: Any, grid: Any) -> tu
 
 
 # =============================================================================
-# THE ADE POLARIZATION SUB-STEP (``update_P``)
+# The ADE polarization sub-step (``update_P``)
 # =============================================================================
 #
-# THE ONLY STRUCTURAL ZERO ON THE BOARD. The 2026-08-16 census measured
+# The only structural zero on the board. The 2026-08-16 census measured
 # ``update_P  0 / 15 admitted  <- NO CUDA KERNEL, NO PREDICATE``
 # (``results/cuda_predicate_coverage_2026-08-16_offdiag/analysis.txt``). The other
 # four sub-steps are refused for reasons; this one was refused for absence.
 #
-# THE SUB-STEP IS ELEMENT-WISE AND THE ARRAY PATH SAYS SO BY NAME.
+# The sub-step is element-wise and the array path says so by name.
 # ``stepping.update_P`` (stepping.py:1360-1385) is a loop over
 # ``PolarizationState.update`` and nothing else, and its docstring (:1398-1403)
 # states the two properties this predicate is built on:
@@ -1941,13 +1941,13 @@ COVERED_SUSCEPTIBILITY_KINDS: Tuple[str, ...] = ("lorentzian", "drude")
 #: from another module's guard.
 ADE_ELECTRIC_COMPONENTS: Tuple[str, ...] = ("Ex", "Ey", "Ez")
 
-#: The ghost rules this sub-step admits. MIRROR IS IN IT AND IS NOT IN
+#: The ghost rules this sub-step admits. Mirror is in it and is not in
 #: :data:`BC_CODES`, which is the deliberate divergence from both sibling
 #: predicates and the one clause that has a number behind it -- see
 #: :data:`ADE_MIRROR_ADMISSION`. ``CYL_AXIS`` is absent: refused below by name.
 ADE_BOUNDARY_KINDS: Tuple[str, ...] = (PERIODIC, METALLIC, MIRROR)
 
-#: WHAT THE MIRROR CLAUSE IS WORTH, counted over the 15 corpus rows that have an
+#: What the mirror clause is worth, counted over the 15 corpus rows that have an
 #: ``update_P`` sub-step at all, off the shipped record's per-row
 #: ``configuration`` and ``polarization`` blocks
 #: (``results/cuda_predicate_coverage_2026-08-16_offdiag/per_row_*``). Kept as
@@ -1960,7 +1960,7 @@ ADE_BOUNDARY_KINDS: Tuple[str, ...] = (PERIODIC, METALLIC, MIRROR)
 #: own projection reached by a different route (it required BOTH curls admitted
 #: as well, and on this corpus the two conditions coincide).
 #:
-#: THIS IS A PROJECTION OVER A RECORDED CORPUS, NOT A DEVICE VERDICT. No hand-CUDA
+#: This is a projection over a recorded corpus, not a device verdict. No hand-CUDA
 #: ``update_P`` kernel has been gated. The number says what a gate would have to
 #: cover, which is the job a predicate does before certification, not after.
 ADE_MIRROR_ADMISSION: dict = {
@@ -2095,7 +2095,7 @@ def covers_real_pml_ade_component(fields: Any, pml: Any, grid: Any,
         scratch += c_prev * p_prev              #         + c_prev * P^(n-1)
         scratch += c_drive * (sigma * w)        #         + c_drive * (sigma * W^n)
 
-    WHAT THIS ADMITS THAT THE SIBLINGS REFUSE, and the line behind each:
+    What this admits that the siblings refuse, and the line behind each:
 
     * **a mirror fold.** ``stepping.update_P`` runs the whole stored array with no
       ownership mask (stepping.py:1398-1403) because the fold repair happens
@@ -2109,7 +2109,7 @@ def covers_real_pml_ade_component(fields: Any, pml: Any, grid: Any,
       through the ``f_w`` that branch wrote. This kernel binds that array; it does
       not form the product.
 
-    WHAT IT REFUSES THAT THE SIBLINGS DO NOT NEED TO NAME:
+    What it refuses that the siblings do not need to name:
 
     * **a susceptibility kind outside** :data:`COVERED_SUSCEPTIBILITY_KINDS`. The
       three-term recurrence IS the Lorentz/Drude one; another kind is a different
@@ -2119,7 +2119,7 @@ def covers_real_pml_ade_component(fields: Any, pml: Any, grid: Any,
       undriven component has no buffer to advance and asking for one is a
       KeyError inside the launcher.
 
-    AND WHAT IS REFUSED FAIL-CLOSED RATHER THAN FOR A MEASURED REASON: a
+    And what is refused fail-closed rather than for a measured reason: a
     cylindrical axis. The arithmetic is element-wise there too, by the same line,
     and this predicate refuses it anyway because no hand-CUDA family has ever been
     measured on a Dcyl run at any sub-step and the corpus drives ZERO such rows
@@ -2279,9 +2279,9 @@ def covers_real_pml_ade_component(fields: Any, pml: Any, grid: Any,
 def covers_real_pml_ade_update_p(fields: Any, pml: Any, grid: Any) -> tuple:
     """Whether the hand-CUDA ADE family may serve the WHOLE ``update_P`` sub-step.
 
-    ALL OR NOTHING OVER EVERY STATE AND EVERY DRIVEN COMPONENT, and that is a
+    All or nothing over every state and every driven component, and that is a
     property of the sub-step rather than a conservatism.
-    ``PolarizationState.update`` rotates ONE SHARED SCRATCH buffer from component
+    ``PolarizationState.update`` rotates one shared scratch buffer from component
     to component inside a single call (dispersion.py:689-691): this step's result
     lands in ``_scratch``, ``_scratch`` takes over the array that held ``P_prev``,
     and the retired history becomes the NEXT component's scratch. Covering two of
@@ -2327,7 +2327,7 @@ def covers_real_pml_ade_update_p(fields: Any, pml: Any, grid: Any) -> tuple:
 # split-field PML, all four sub-steps. The two predicates below are the written
 # refusal for what those four kernels must NOT serve.
 #
-# THE STORAGE CLAUSE IS INVERTED HERE, and that inversion is the whole point.
+# The storage clause is inverted here, and that inversion is the whole point.
 # :func:`covers_real_pml_curl` and :func:`covers_real_pml_constitutive` refuse
 # complex storage by name; these two REQUIRE it. The two sets are a PARTITION of
 # ``force_complex_fields or grid.has_bloch`` -- no configuration can be admitted by
@@ -2336,7 +2336,7 @@ def covers_real_pml_ade_update_p(fields: Any, pml: Any, grid: Any) -> tuple:
 # both) cannot arise. The Triton sibling makes the same partition on the same
 # clause and says so at ``_complex_grid_reasons``' ``require_active_pml``.
 #
-# WHY REAL STORAGE READ AS COMPLEX IS A WRONG ANSWER RATHER THAN A CRASH: the
+# Why real storage read as complex is a wrong answer rather than a crash: the
 # kernels address ``2*idx``/``2*idx+1``, so a float32 volume handed in would be
 # stepped as half a volume of made-up pairs, silently, at full speed.
 
@@ -2361,11 +2361,11 @@ def covers_real_pml_ade_update_p(fields: Any, pml: Any, grid: Any) -> tuple:
 COMPLEX_CONSTITUTIVE_BOUNDARY_KINDS: Tuple[str, ...] = (PERIODIC, METALLIC,
                                                         MIRROR, CYL_AXIS)
 
-#: WHAT THE COMPLEX FOLD CLAUSE IS WORTH AND WHAT PAID FOR IT.
+#: What the complex fold clause is worth and what paid for it.
 #:
 #: Until 2026-08-20 ``_complex_grid_refusal`` refused every mirror-folded run for
 #: BOTH complex sub-step families with "mirror symmetry: different ghost rule, a
-#: parity mask and two fill passes". FOR THE CURL THAT REFUSAL IS REAL AND STAYS:
+#: parity mask and two fill passes". For the curl that refusal is real and stays:
 #: ``complex_emitter``'s ``cshift_up``/``cshift_dn`` are a neighbour stencil, a
 #: fold changes the ghost rule and the ownership mask at once, and the emitted
 #: curl takes ``bc_x/bc_y/bc_z`` with no code for a mirror. The CONSTITUTIVE pair
@@ -2383,8 +2383,8 @@ COMPLEX_CONSTITUTIVE_BOUNDARY_KINDS: Tuple[str, ...] = (PERIODIC, METALLIC,
 #: (grid.py:570-575), and the complex volumes are allocated on the same shape, so
 #: both operands move together.
 #:
-#: THAT READING WAS NOT TRUSTED, AND THE REAL PAIR'S FOLD VERDICT WAS NOT
-#: INHERITED EITHER (:data:`CONSTITUTIVE_FOLD_ADMISSION` is different kernel bytes
+#: That reading was not trusted, and the real pair's fold verdict was not
+#: inherited either (:data:`CONSTITUTIVE_FOLD_ADMISSION` is different kernel bytes
 #: -- complex64 word pairs, the zero cross terms, an expansion arm the real pair
 #: does not take). ``parity/meep_gpu/gate_cuda_complex_folded_constitutive.py``
 #: ran the SHIPPED complex pair, unchanged, on mirror-folded complex64 grids: 180
@@ -2392,7 +2392,7 @@ COMPLEX_CONSTITUTIVE_BOUNDARY_KINDS: Tuple[str, ...] = (PERIODIC, METALLIC,
 #: ``stepping.update_H``/``update_E`` at one launch AND at 60, under BOTH float32
 #: subnormal policies on an RTX A6000.
 #:
-#: THE FLOORS THAT MAKE IT NON-VACUOUS. Every case moved words (92%-100% of the
+#: The floors that make it non-vacuous. Every case moved words (92%-100% of the
 #: output words changed from the frozen input); the folded axis's coefficient
 #: profile was required to differ from the identity, or reversing it -- the
 #: refusal's own premise armed -- would be a no-op; the ``signed_zero`` class
@@ -2400,24 +2400,24 @@ COMPLEX_CONSTITUTIVE_BOUNDARY_KINDS: Tuple[str, ...] = (PERIODIC, METALLIC,
 #: 486068 (keep) / 27992 (flush) subnormal words, so the zero cross terms and the
 #: policy both had something to act on.
 #:
-#: WHAT WAS ARMED. Fourteen legs, every one as required.
+#: What was armed. Fourteen legs, every one as required.
 #: ``reverse_folded_axis_coefficients`` -- the folded axis's kps/kms read
 #: backwards IN BOUNDS -- CAUGHT on every folded leg and SILENT on every unfolded
 #: control, where it is a no-op and must be. ``column_major_index`` (the
 #: coefficient-index defect planted in the device text, which the unequal stored
 #: extents 9/10/11 are what make visible) CAUGHT. The two float2 half-plane store
-#: defects CAUGHT. Two NULL legs CONFIRMED. And the RELEASE VERDICT ITSELF was
+#: defects CAUGHT. Two NULL legs CONFIRMED. And the release verdict itself was
 #: shown to flip: a run with ``half_plane_auxiliary_store`` planted for the whole
 #: sweep came out ``released=False`` with 24/24 cases diverging.
 #:
-#: WHAT THE SWEEP DID NOT REACH. A folded axis carrying a nonzero Bloch k
+#: What the sweep did not reach. A folded axis carrying a nonzero Bloch k
 #: component: MEEP forces a mirror plane's own axis to k = 0 and all eight corpus
 #: rows record it, so the sweep put its phases on UNFOLDED axes (24 phased folded
 #: cases) and the predicate refuses the other case BY NAME below. It costs 0
 #: slots. More than three simultaneous planes is not a configuration a 3-D grid
 #: has.
 #:
-#: WHAT IT IS WORTH, and the arithmetic matters because the fold clause SHORT-
+#: What it is worth, and the arithmetic matters because the fold clause SHORT-
 #: CIRCUITS and hides what is behind it. The 2026-08-20 closeout census carries
 #: EIGHT complex, PML-active, folded rows, all 32 of their slots unserved. Only
 #: the 16 constitutive slots are this pair's; of those, three rows carry
@@ -2440,7 +2440,7 @@ COMPLEX_CONSTITUTIVE_FOLD_ADMISSION: dict = {
             "547ff8398ca31448192e62ae50f596a55ffe7d035f7cd874411c9dd9ac2213ae",
     },
     #: THE SUBJECT: the bytes whose behaviour was measured. Not one of them was
-    #: changed by this round -- the gate compiles the SHIPPED emitter through the
+    #: changed to earn this admission -- the gate compiles the SHIPPED emitter through the
     #: SHIPPED launcher and mutates only a copy of the text.
     #:
     #: RE-RUN 2026-08-26 AND RE-POINTED. ``complex_pml_kernels.py`` moved when its four
@@ -2461,7 +2461,7 @@ COMPLEX_CONSTITUTIVE_FOLD_ADMISSION: dict = {
         "meep_gpu/cuda_kernels/complex_pml_kernels.py":
             "cfa1db011eebffbc1b5ccbef861b1296dfe31ceba356299b12cefcf08170fdca",
     },
-    #: THE CODE IDENTITY OF THOSE SAME BYTES (2026-09-25), for weld_survives_edit's
+    #: The code identity of those same bytes (2026-09-25), for weld_survives_edit's
     #: second tier: neither subject carries a literal device string, so what the gate
     #: measured is everything in them except comments and docstrings. Both digests are
     #: code_identity.code_digest of the certified bytes above (commit 03dc4b7,
@@ -2497,15 +2497,15 @@ COMPLEX_CONSTITUTIVE_FOLD_ADMISSION: dict = {
     "verdict_shown_to_flip": "half_plane_auxiliary_store, released=False, 24/24 "
                              "diverging",
     "phased_folded_axis_swept": False,
-    # RECOMPUTED FROM THE CENSUS with the union analyzer, on scripts copied
-    # byte-identical from the 2026-08-20 closeout round so the two rounds are
+    # Recomputed from the census with the union analyzer, on scripts copied
+    # byte-identical from the 2026-08-20 closeout run so the two counts are
     # commensurable to the slot. SEVEN slots on FIVE of the eight rows -- five
     # update_H and two update_E -- which is the arithmetic the header derives
     # before the run and the census then confirmed: 16 constitutive slots, minus
     # 6 on the three beta != 0 rows, minus 3 on the three off-diagonal ones.
     #
-    # AND NOT ONE ROW BECAME FULLY COVERED. Rows covered at every sub-step went
-    # 136 -> 139 over the whole round, and all three are the other two widenings'
+    # And not one row became fully covered. Rows covered at every sub-step went
+    # 136 -> 139 over the whole 2026-08-20 closeout run, and all three are the other two widenings'
     # (TestLDOS.test_ldos_3D and the two nonlinear rows). The eight folded complex
     # rows keep their sixteen refused curl slots, which is the honest half of this
     # record.
@@ -2536,11 +2536,11 @@ COMPLEX_CONSTITUTIVE_FOLD_ADMISSION: dict = {
     ),
 }
 
-#: WHAT THE COMPLEX Dcyl CLAUSE IS WORTH AND WHAT PAID FOR IT.
+#: What the complex Dcyl clause is worth and what paid for it.
 #:
 #: Until 2026-08-20 ``_complex_grid_refusal`` refused every Dcyl run for BOTH
 #: complex sub-step families with "cylindrical (Dcyl): prefix-sum radial derivative
-#: and axis-row rules". FOR THE CURL THAT REFUSAL IS REAL AND STAYS:
+#: and axis-row rules". For the curl that refusal is real and stays:
 #: ``complex_emitter``'s ``cshift_up``/``cshift_dn`` are a neighbour stencil, and
 #: Dcyl replaces the radial derivative with a prefix sum and adds the axis-row
 #: rules. The CONSTITUTIVE pair inherited it through the one function the two
@@ -2559,8 +2559,8 @@ COMPLEX_CONSTITUTIVE_FOLD_ADMISSION: dict = {
 #: ghost rule to be wrong and the only thing Dcyl could still move is the
 #: coefficient INDEX.
 #:
-#: THAT READING WAS NOT TRUSTED, AND THE REAL PAIR'S VERDICT WAS NOT INHERITED
-#: EITHER (:data:`CONSTITUTIVE_CYLINDRICAL_ADMISSION` is different kernel bytes --
+#: That reading was not trusted, and the real pair's verdict was not inherited
+#: either (:data:`CONSTITUTIVE_CYLINDRICAL_ADMISSION` is different kernel bytes --
 #: complex64 word pairs, the zero cross terms, an expansion arm the real pair does
 #: not take -- and this project does not transfer a verdict across kernels).
 #: ``parity/meep_gpu/gate_cuda_complex_cylindrical_constitutive.py`` ran the
@@ -2568,7 +2568,7 @@ COMPLEX_CONSTITUTIVE_FOLD_ADMISSION: dict = {
 #: of which 120 Dcyl, 144/144 bit-identical to ``stepping.update_H``/``update_E``
 #: at one launch AND at 60, under BOTH float32 subnormal policies on an RTX A6000.
 #:
-#: THE FLOORS THAT MAKE IT NON-VACUOUS. Every case moved words (the array path
+#: The floors that make it non-vacuous. Every case moved words (the array path
 #: changed 82%-100% of the output words from the frozen input); the radial axis's
 #: max |coefficient - 1| ranged 0.580 to 1.499, so a coefficient-index error on
 #: the axis Dcyl moved was visible rather than hidden behind a table of ones; the
@@ -2579,8 +2579,8 @@ COMPLEX_CONSTITUTIVE_FOLD_ADMISSION: dict = {
 #: NVRTC observer saw 55 compiles on each leg with ``any_ftz_true_reached_nvrtc``
 #: FALSE under keep and TRUE under flush.
 #:
-#: WHAT WAS ARMED. Fourteen legs, every one as required. ``reverse_radial_axis_
-#: coefficients`` -- THE REFUSAL'S OWN PREMISE armed as a defect, the r axis's
+#: What was armed. Fourteen legs, every one as required. ``reverse_radial_axis_
+#: coefficients`` -- the refusal's own premise armed as a defect, the r axis's
 #: kps/kms read backwards in bounds -- CAUGHT on 30/30 Dcyl legs and silent on all
 #: 6 Cartesian ones, where it is a no-op and must be. ``column_major_index``
 #: (the coefficient-index defect planted in the device text) CAUGHT 36/36.
@@ -2588,35 +2588,35 @@ COMPLEX_CONSTITUTIVE_FOLD_ADMISSION: dict = {
 #: own float2 defect class, a store that writes one plane and leaves the other --
 #: CAUGHT 36/36 each. ``fold_the_zero_cross_terms`` and ``plane_wise_scaling``
 #: CAUGHT on every case in their reach. Two NULL legs (an identity store-reload and
-#: a commuted plane sum) CONFIRMED 0/36. And the RELEASE VERDICT ITSELF was shown
+#: a commuted plane sum) CONFIRMED 0/36. And the release verdict itself was shown
 #: to flip: a run with ``half_plane_auxiliary_store`` planted for the whole sweep
 #: came out ``released=False`` with 24/24 cases diverging on 32256 of 129024 words
 #: -- exactly the auxiliary's imaginary plane.
 #:
-#: WHAT THE SWEEP DID NOT REACH, and is therefore still refused: a PHASED Dcyl
+#: What the sweep did not reach, and is therefore still refused: a PHASED Dcyl
 #: grid. Dcyl Bloch is z-only in MEEP (grid.py:654-657), no corpus row carries one
 #: (all sixteen record ``has_bloch`` FALSE) and the constitutive kernel takes no
 #: phase argument -- but unmeasured is unmeasured, so the pairing is refused by
 #: name below rather than admitted by argument. It costs 0 slots.
 #:
-#: THE SLOT COUNTS are re-derived from the census record's per-row
+#: The slot counts are re-derived from the census record's per-row
 #: ``configuration`` blocks by running THIS predicate over stand-ins built from
 #: them (``parity/meep_gpu/replay_complex_cylindrical_slots.py``); the replay is
 #: validated first by reproducing every recorded verdict and first-refusal string
 #: that is not the retired Dcyl one, and by leaving every non-Dcyl row's verdict
 #: unchanged -- which is what makes this a widening and not a leak.
 #:
-#: THEY ARE AN UPPER BOUND: the complex-volume and coefficient-vector tail cannot
+#: They are an upper bound: the complex-volume and coefficient-vector tail cannot
 #: be replayed from the record, only the decision logic above it.
 COMPLEX_CONSTITUTIVE_CYLINDRICAL_ADMISSION: dict = {
     "gate": "parity/meep_gpu/gate_cuda_complex_cylindrical_constitutive.py",
-    # THE ``b`` ROUND IS THE ONE THIS RECORD NAMES, and the reason is provenance
-    # rather than a better result: the first round (``..._2026-08-20/``, kept, not
+    # The ``b`` run is the one this record names, and the reason is provenance
+    # rather than a better result: the first run (``..._2026-08-20/``, kept, not
     # overwritten) ran gate bytes that a later docstring cleanup moved, so its
     # artifact records a gate digest the repository no longer holds. The gate was
     # re-run unchanged afterwards and reproduced the verdict case for case, so the
-    # record binds to the round whose ``imported_source_sha256`` for the gate IS
-    # the shipped file. The two rounds agree on every summary figure.
+    # record binds to the run whose ``imported_source_sha256`` for the gate IS
+    # the shipped file. The two runs agree on every summary figure.
     "artifacts": ("parity/meep_gpu/results/"
                   "cuda_complex_cylindrical_constitutive_2026-08-20b"),
     "superseded_first_round": ("parity/meep_gpu/results/"
@@ -2634,7 +2634,7 @@ COMPLEX_CONSTITUTIVE_CYLINDRICAL_ADMISSION: dict = {
     "gate_sha256_that_ran":
         "30a974b896e9df3963627c2c1069704fe8bdd44a4ddcfb488c53c35368c4c4b2",
     # THE SUBJECT: the bytes whose behaviour was measured. Not one of them was
-    # changed by this round -- the gate compiles the SHIPPED emitter through the
+    # changed to earn this admission -- the gate compiles the SHIPPED emitter through the
     # SHIPPED launcher and mutates only a copy of the text.
     "subject_sha256": {
         "meep_gpu/cuda_kernels/complex_emitter.py":
@@ -2663,13 +2663,13 @@ COMPLEX_CONSTITUTIVE_CYLINDRICAL_ADMISSION: dict = {
     "census": ("parity/meep_gpu/results/"
                "cuda_predicate_coverage_2026-08-20_all_families"),
     "replay": "parity/meep_gpu/replay_complex_cylindrical_slots.py",
-    # RECOMPUTED with the replay and then RE-MEASURED by running the census's own
+    # RECOMPUTED with the replay and then re-measured by running the census's own
     # union analyzer positionally over a patched copy of the record, so the before
     # and after numbers come from one instrument rather than from a tool's own
     # arithmetic. The replay reproduced all 372 recorded complex constitutive
     # verdicts and first-refusal strings, moved no NON-cylindrical row, and moved
-    # no curl slot at all. All 32 gained slots were refused by the Dcyl clause AND
-    # BY NOTHING ELSE, on the 16 rows that are Dcyl, PML-active and complex
+    # no curl slot at all. All 32 gained slots were refused by the Dcyl clause and
+    # by nothing else, on the 16 rows that are Dcyl, PML-active and complex
     # storage, and none of them was already served by another family -- so this is
     # a widening and not a leak, and the analyzer still reports the arms disjoint.
     "slots_before": 557,
@@ -2701,25 +2701,25 @@ def _complex_grid_refusal(fields: Any, pml: Any, grid: Any,
                           admit_fold: bool = False) -> Any:
     """The clauses both complex predicates share, or None.
 
-    ONE COPY, TWO CALLERS, for the reason the Triton sibling gives at
+    One copy, two callers, for the reason the Triton sibling gives at
     ``_complex_grid_reasons``: a duplicated copy of the phase logic is two things
     that must be kept in step forever.
 
-    ``admit_cylindrical`` AND ``admit_fold`` ARE THE TWO PLACES THE CALLERS
-    DIVERGE, and each is a parameter rather than a fork because each divergence is
+    ``admit_cylindrical`` AND ``admit_fold`` are the two places the callers
+    diverge, and each is a parameter rather than a fork because each divergence is
     exactly one clause -- and the SAME clause, read from the two sides of one
     fact: the curl reads NEIGHBOURS and the constitutive pair reads none. Dcyl
     replaces the radial derivative with a prefix sum; a fold changes the ghost
     rule and the ownership mask. Neither reaches a sub-step whose emitted template
     takes no boundary argument at all.
 
-    PASSING EITHER ONE TRUE IS LICENSED BY A DEVICE VERDICT AND BY NOTHING ELSE
+    Passing either one true is licensed by a device verdict and by nothing else
     (:data:`COMPLEX_CONSTITUTIVE_CYLINDRICAL_ADMISSION`,
-    :data:`COMPLEX_CONSTITUTIVE_FOLD_ADMISSION`). BOTH DEFAULT TO THE REFUSAL, so
+    :data:`COMPLEX_CONSTITUTIVE_FOLD_ADMISSION`). Both default to the refusal, so
     a new caller that has not been measured inherits the "no" -- which is what
     keeps ``covers_real_pml_complex_curl`` refusing both.
 
-    WHY THE PHASE CLAUSE IS SHARED WITH A SUB-STEP THAT CARRIES NO PHASE. The
+    Why the phase clause is shared with a sub-step that carries no phase. The
     constitutive kernels take no phase argument and never see the wrap
     (stepping.py:907-993), so on the face of it the phase consistency check is not
     theirs. It is shared anyway because it is not a statement about the kernel: an
@@ -2731,7 +2731,7 @@ def _complex_grid_refusal(fields: Any, pml: Any, grid: Any,
     xp, backend = _backend(grid)
     if backend != "cupy":
         return "backend is not CuPy"
-    # THE INVERTED CLAUSE. Either force_complex_fields or a nonzero k_point puts a
+    # The inverted clause. Either force_complex_fields or a nonzero k_point puts a
     # run here; the array path itself raises on real storage with a phase
     # (stepping.py:1893-1908), so the two together are the whole complex class.
     if not (getattr(fields, "force_complex_fields", False)
@@ -2743,7 +2743,7 @@ def _complex_grid_refusal(fields: Any, pml: Any, grid: Any,
     facts, unreadable = _grid_facts(grid)
     if unreadable is not None:
         return unreadable
-    # A FOLD IS REFUSED FOR THE CURL AND ADMITTED FOR THE CONSTITUTIVE PAIR, and
+    # A fold is refused for the curl and admitted for the constitutive pair, and
     # the asymmetry is a device verdict rather than an oversight in either
     # direction. The curl's refusal is REAL: cshift_up/cshift_dn are a neighbour
     # stencil, a fold changes the ghost rule and the ownership mask at once, and
@@ -2767,7 +2767,7 @@ def _complex_grid_refusal(fields: Any, pml: Any, grid: Any,
                 f"{COMPLEX_CONSTITUTIVE_FOLD_ADMISSION['folded_planes_swept']} "
                 f"simultaneous planes, so a {len(folded)}-plane fold is an "
                 f"extrapolation from the measurement rather than part of it")
-    # A Dcyl GRID IS REFUSED FOR THE CURL AND ADMITTED FOR THE CONSTITUTIVE PAIR.
+    # A Dcyl grid is refused for the curl and admitted for the constitutive pair.
     # The curl's refusal is REAL -- cshift_up/cshift_dn are a neighbour stencil and
     # Dcyl replaces the radial derivative with a prefix sum and adds the axis-row
     # rules. The constitutive pair inherited it through THIS function, and the
@@ -2798,7 +2798,7 @@ def _complex_grid_refusal(fields: Any, pml: Any, grid: Any,
         if facts["axis"][axis] and not admit_cylindrical:
             return f"axis {axis} is the cylindrical r = 0 axis"
     kinds = _boundary_kinds_from(facts)
-    # THE CURL KEEPS ``BC_CODES``, which is the same fact from the other side: its
+    # The curl keeps ``BC_CODES``, which is the same fact from the other side: its
     # emitted source takes bc_x/bc_y/bc_z as runtime arguments and there is no code
     # for the axis to pass. The constitutive template takes no boundary argument at
     # all, so the kind it never reads cannot be the wrong one.
@@ -2813,7 +2813,7 @@ def _complex_grid_refusal(fields: Any, pml: Any, grid: Any,
     # must reduce to the plain complex path, which is what keeps the complex
     # storage-at-k=0 scripts (wvg-src.py, solve-cw.py) inside this family.
     #
-    # THE PHASE IS READ DEFENSIVELY rather than through getattr-with-default: an
+    # The phase is read defensively rather than through getattr-with-default: an
     # unreadable phase is not an unphased one, and admitting one would let the
     # launcher's ``bloch_phase_arguments`` raise where a fail-closed "no" was the
     # right answer.
@@ -2840,7 +2840,7 @@ def _complex_grid_refusal(fields: Any, pml: Any, grid: Any,
             return (f"axis {axis} is metallic with k component {k_point[axis]!r}; "
                     f"a PEC wall gives the axis no lattice vector for the phase")
         if kind == MIRROR and float(k_point[axis]) != 0.0:
-            # FAIL-CLOSED AND MEASURED UNREACHABLE FROM A REAL GRID, which is the
+            # Fail-closed and measured unreachable from a real grid, which is the
             # only honest way to write a clause nothing can drive.
             # ``Grid._resolve_bloch`` (grid.py:975) RAISES on this combination --
             # "mirror symmetry on the Y axis requires k_point component y = 0" --
@@ -2858,7 +2858,7 @@ def _complex_grid_refusal(fields: Any, pml: Any, grid: Any,
         return "BFAST: a second additive term on every curl target"
     if facts["beta"] != 0.0:
         return "special_kz (grid.beta != 0): extra out-of-plane coupling terms"
-    # DISPERSION IS REFUSED OUTRIGHT ON BOTH SUB-STEP FAMILIES, unlike the real
+    # Dispersion is refused outright on both sub-step families, unlike the real
     # track where the curl admits it. There it is admitted because ``step_B``
     # differences the STORED E that ``update_E`` wrote, and dispersion changes only
     # the values in it. That reasoning holds here too -- but complex-storage ADE is
@@ -2868,8 +2868,8 @@ def _complex_grid_refusal(fields: Any, pml: Any, grid: Any,
     # Triton sibling refuses the same way and for the same reason.
     if getattr(fields, "has_polarizations", False) or (
             getattr(fields, "polarizations", None) or None):
-        return ("a susceptibility is registered: complex-storage ADE is a future "
-                "tranche and no corpus script combines dispersion with complex "
+        return ("a susceptibility is registered: complex-storage ADE is not yet "
+                "built and no corpus script combines dispersion with complex "
                 "fields")
     if getattr(fields, "_chi2_components", None) or getattr(fields, "_chi3_components", None):
         return "instantaneous chi2/chi3: a Pade factor replaces the constitutive product"
@@ -2878,7 +2878,7 @@ def _complex_grid_refusal(fields: Any, pml: Any, grid: Any,
     shape = facts["shape"]
     if len(shape) != 3:
         return f"grid shape {shape} is not three-dimensional"
-    # THE INT32 BOUND IS HALVED against the real path's. The kernels address
+    # The int32 bound is halved against the real path's. The kernels address
     # ``2*idx`` and ``2*idx+1`` in ``int``, so ``2*ncells`` is what must stay below
     # 2**31, not ``ncells``. Past it the arithmetic stops being an identity and
     # starts being a wrong answer at a wrapped word index -- a scrambled volume,
@@ -2918,7 +2918,7 @@ def covers_real_pml_complex_curl(fields: Any, pml: Any, grid: Any, sub_step: str
 
     ``sub_step`` is ``"step_B"`` or ``"step_D"``. Returns ``(covered, reason)``.
 
-    THE SUB-STEP ARGUMENT IS REQUIRED, for the reason
+    The sub-step argument is required, for the reason
     :func:`covers_real_pml_curl`'s is: there are two kernels, and one predicate
     answering for both can only return the INTERSECTION of two clause sets. The
     live per-sub-step clause is the conductivity -- ``stepping._apply_curl`` reads
@@ -2926,7 +2926,7 @@ def covers_real_pml_complex_curl(fields: Any, pml: Any, grid: Any, sub_step: str
     conductivity routes ``step_D`` to the three-history recurrence and leaves
     ``step_B`` an ordinary curl.
 
-    A CONDUCTIVITY IS REFUSED ON THE SUB-STEP THAT CARRIES IT and admitted on the
+    A conductivity is refused on the sub-step that carries it and admitted on the
     other, exactly as the real pair does. Complex conductive stepping is a separate
     product (stepping.py:2001-2109) with no corpus demand, and this family does not
     implement it.
@@ -2985,14 +2985,14 @@ def covers_real_pml_complex_constitutive(fields: Any, pml: Any, grid: Any,
 
     ``side`` is ``"H"`` (``stepping.update_H``) or ``"E"`` (``stepping.update_E``).
 
-    WHAT THIS ADMITS THAT :func:`covers_real_pml_complex_curl` REFUSES: a Dcyl
+    What this admits that :func:`covers_real_pml_complex_curl` REFUSES: a Dcyl
     GRID and a MIRROR FOLD. Both of the curl's refusals are real -- ``cshift_up``/
     ``cshift_dn`` are a neighbour stencil, Dcyl replaces the radial derivative
     with a prefix sum, and a fold changes the ghost rule and the ownership mask --
     and this pair inherited both through the one function the two predicates
     share, because its own emitted template
     (``complex_pml_kernels.update_fused_pml_complex``, :427-470) takes no boundary
-    codes, no phase pair and no mask at all. Each inheritance was MEASURED rather
+    codes, no phase pair and no mask at all. Each inheritance was measured rather
     than argued away: :data:`COMPLEX_CONSTITUTIVE_CYLINDRICAL_ADMISSION` (144/144
     per policy on 120 Dcyl cases) and
     :data:`COMPLEX_CONSTITUTIVE_FOLD_ADMISSION` (180/180 per policy on 156 folded
@@ -3002,13 +3002,13 @@ def covers_real_pml_complex_constitutive(fields: Any, pml: Any, grid: Any,
     named and refused (a PHASED Dcyl grid; a phase on the FOLDED axis -- each
     worth 0 slots).
 
-    WHAT THE E SIDE REFUSES THAT THE H SIDE DOES NOT: everything that changes what
+    What the E side refuses that the H side does not: everything that changes what
     ``source`` is. A registered polarization is already refused for the whole
     family, and an off-diagonal ``chi1inv`` row makes the sub-step non-element-wise
     (stepping.py:1001-1008) -- refused HERE and admitted by the curl, which is the
     same per-sub-step split the real track makes.
 
-    A CONDUCTIVITY IS ADMITTED ON BOTH SIDES. ``fields.condfac_for`` is read in
+    A conductivity is admitted on both sides. ``fields.condfac_for`` is read in
     ``stepping._apply_curl`` (stepping.py:508) and nowhere else in the module;
     ``update_H``, ``update_E`` and ``_apply_constitutive_pml`` never mention it. So
     a conductive complex run routes the curl that WRITES the carrying component to
@@ -3020,8 +3020,8 @@ def covers_real_pml_complex_constitutive(fields: Any, pml: Any, grid: Any,
         raise ValueError(
             f"side must be one of {sorted(CONSTITUTIVE_SIDES)}, got {side!r}")
     spec = CONSTITUTIVE_SIDES[side]
-    # ``admit_cylindrical=True`` and ``admit_fold=True`` ARE THE TWO ARGUMENTS
-    # THAT DIFFER FROM THE CURL'S CALL, and what stands behind each is a device
+    # ``admit_cylindrical=True`` and ``admit_fold=True`` are the two arguments
+    # that differ from the curl's call, and what stands behind each is a device
     # verdict rather than a reading:
     # :data:`COMPLEX_CONSTITUTIVE_CYLINDRICAL_ADMISSION` and
     # :data:`COMPLEX_CONSTITUTIVE_FOLD_ADMISSION`.

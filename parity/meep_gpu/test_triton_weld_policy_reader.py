@@ -3,14 +3,14 @@
 ``seed_triton_welds.policy_line`` is the one reader behind ``seed_triton_welds.py``,
 ``rebind_triton_welds.py`` (fleet rebind and ``--bind-bit-identity``) and
 ``recut_composition_records.py --family-recert``. Until it read more than the
-top-level ``subnormal_policy`` block, nine released gates of the 2026-10-03 round --
+top-level ``subnormal_policy`` block, nine released gates of the 2026-10-03 certification run --
 seven of them cited by dispatch arms -- could not be bound, because they state the
 policy as ``subnormal_policy_installed``, ``subnormal_policy_stamp``,
 ``summary.subnormal_policy`` or a ``policy`` stamp, and one states none at all under
 a declared ``_mixed_policy`` exception.
 
 Every artifact here is synthetic and shaped after the real one named beside it, so
-the suite needs no round directory. What each test pins:
+the suite needs no certification-run directory. What each test pins:
 
 * each answering spelling, alone, yields a line that names the policy and says
   where it was read from;

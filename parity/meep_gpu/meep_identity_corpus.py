@@ -9,11 +9,12 @@
         python parity/meep_gpu/meep_identity_tier_c.py compare \\
             --cases-file parity/meep_gpu/meep_identity_corpus.py --cases LABEL --out OUT
 
-WHAT IT IS. ``meep_identity_tier_c.py compare --cases-file`` takes a module with
+What it is. ``meep_identity_tier_c.py compare --cases-file`` takes a module with
 ``CASES`` and ``build(mp, label)``; this is that module for the manuscript's Table 2:
-the rows of the seven 2026-08-09 ``parity.jsonl`` files (``LEGS``), MEEP's
-``python/examples`` (60 measured rows) and ``python/tests`` (134), each rebuilt the way
-its row was measured, so Tier C word-compares the run Table 2 reported an L2 for:
+the rows of the seven 2026-08-09 ``parity.jsonl`` files (the first seven ``LEGS``: MEEP
+1.33.0's ``python/examples``, 60 measured rows, and ``python/tests``, 134), as the MEEP
+1.35.0 re-surveys (``RESURVEYS``, below) carry, retire and add to them, each rebuilt the
+way its row was measured, so Tier C word-compares the run its leg reported an L2 for:
 
 * the simulation is CAPTURED by the corpus harnesses' own code, not re-written: an
   example through ``sweep_corpus_lift_parity.capture_simulation`` (the survey's
@@ -35,10 +36,27 @@ those are two ``examples/main`` rows (``cavity-farfield.py`` at resolution 11 an
 ``zone_plate.py`` at 18) that the uniform cap could not measure and that the two
 ``native`` legs measured at their native resolutions instead. ``manifest`` names them.
 
+RE-SURVEYS. A leg named in ``RESURVEYS`` ran the same harnesses, unchanged, over whole
+test modules or example scripts of MEEP 1.35.0's corpus, the release the identity corpus
+is certified against. It is read after the other legs, in ``RESURVEYS`` order, and its
+``lift.jsonl`` is read beside its ``parity.jsonl``: its verdict on a case is its parity
+row when the case reached the parity stage, otherwise its lift row (no simulation built,
+the test skipped at that release, the gate's refusal or the lift's error, in the stage's
+own words). Then:
+
+* a case it measured that no earlier leg measured is a new row;
+* a row an earlier leg measured that it measured again stays the row as first measured,
+  and must define the same run (``RUN_KEYS``: resolution, step count, grid, the
+  ``amp_func_file`` substitution), or the manifest is refused; ``remeasured`` lists each
+  such row with both L2s;
+* a row an earlier leg measured that it did not measure leaves the rows and is named in
+  ``not_cases`` with its verdict and the leg whose row it was (``retires``);
+* every other case it did not measure is named in ``not_cases`` with its verdict.
+
 THE MANIFEST (``manifest``) is derived from the legs' JSONL files, never transcribed: one
 entry per row with its label, leg, kind, script or module and case, the plan it ran
-under, its Table 2 numbers (``rel_l2``, ``grid_cells``, ``driver_steps``) and its fact
-block, plus the sha256 of every input. ``CASES`` is empty until
+under, its leg's numbers (``table2``: ``rel_l2``, ``grid_cells``, ``driver_steps``) and its
+fact block, plus the sha256 of every input. ``CASES`` is empty until
 ``MEEP_IDENTITY_CORPUS_MANIFEST`` names one.
 
 THE SOURCE. ``MGPU_SITE_MEEP_SOURCE`` names the MEEP checkout whose ``python/examples``
@@ -63,7 +81,7 @@ import math
 import os
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
@@ -74,7 +92,9 @@ MANIFEST_ENVIRONMENT = "MEEP_IDENTITY_CORPUS_MANIFEST"
 SOURCE_ENVIRONMENT = "MGPU_SITE_MEEP_SOURCE"
 MANIFEST_SCHEMA = "meep_gpu.meep_identity_corpus"
 MANIFEST_VERSION = 1
-#: Table 2's seven legs (``bit_identity_probe_2026-10-05/recon_a``), relative to results/.
+#: The corpus legs, relative to results/: Table 2's seven, then the MEEP 1.35.0
+#: re-surveys. A leg whose name starts ``tests`` holds test cases, any other example
+#: scripts.
 LEGS = {
     "examples/main": "corpus_final_numpy_2026-08-09_monitorfix",
     "examples/blocked": "corpus_final_numpy_2026-08-09_monitorfix_blocked",
@@ -83,7 +103,21 @@ LEGS = {
     "examples/native_cavity_farfield": "corpus_final_numpy_2026-08-09_monitorfix_native_cavity_farfield",
     "examples/native_zone_plate": "corpus_final_numpy_2026-08-09_monitorfix_native_zone_plate",
     "tests": "meep_python_tests_2026-08-09_monitorfix",
+    "tests/meep-1.35.0": "meep_python_tests_2026-10-18_meep135",
+    "examples/gdsii/meep-1.35.0": "corpus_final_numpy_2026-10-18_meep135_gdsii",
 }
+#: The legs read as re-surveys, in this order (see RE-SURVEYS above): the test modules
+#: holding the MEEP 1.35.0 candidates, the 3-D MaterialGrid row and the sharded dump/load
+#: rows, and the two GDSII examples, each on MEEP 1.35.0.
+RESURVEYS = ("tests/meep-1.35.0", "examples/gdsii/meep-1.35.0")
+#: The file each leg's measured rows are read from, and the one a re-survey adds.
+PARITY_FILE = "parity.jsonl"
+LIFT_FILE = "lift.jsonl"
+#: The run a row defines, which a re-survey that measures the row again must reproduce:
+#: ``(part of the row, key)``.
+RUN_KEYS = (("plan", "resolution_used"), ("plan", "resolution_capped"),
+            ("table2", "driver_steps"), ("table2", "grid_cells"), ("table2", "grid_shape"),
+            ("table2", "amp_func_file_substituted"))
 #: The per-case ceiling ``_run_case`` arms around a test's own setup and body.
 TEST_SETUP_TIMEOUT_S = 600.0
 FACT_KEYS = ("cell_size", "dimensions_attr", "is_cylindrical", "effective_dims", "resolution",
@@ -104,58 +138,174 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def holds_tests(leg: str) -> bool:
+    """Whether a leg's records are test cases (its name starts ``tests``) or examples."""
+    return leg.split("/", 1)[0] == "tests"
+
+
 def label_of(leg: str, record: Dict[str, Any]) -> str:
     """A row's case label: ``ex.<script stem>`` or ``t.<module stem>.<Class.method>``."""
-    if leg == "tests":
+    if holds_tests(leg):
         return f"t.{Path(record['module']).stem}.{record['case']}"
     return f"ex.{Path(record['script']).stem}"
 
 
+def _records(path: Path) -> List[Dict[str, Any]]:
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()
+            if line.strip()]
+
+
+def _neutral(record: Dict[str, Any]) -> Tuple[Any, Any]:
+    """``(python, amp_func_file_substituted)`` of a leg record as the manifest writes them:
+    the interpreter under its root's label (``neutral_ids.path``) and the substitution notes
+    by ``survey_meep_tests.neutral_amp_notes``. Applied on READ, so a leg recorded before
+    the neutral spellings (absolute paths) and a re-survey recorded after give the same
+    manifest, and the re-survey's ``RUN_KEYS`` comparison sees one spelling of one file."""
+    from parity.meep_gpu.survey_meep_tests import neutral_amp_notes  # noqa: PLC0415
+
+    return (_neutral_ids().path(record.get("python")),
+            neutral_amp_notes(record.get("amp_func_file_substituted")))
+
+
+def _neutral_ids():
+    """The record spellings of machine stamps: ``neutral_ids.py`` beside this file."""
+    try:
+        import neutral_ids  # noqa: PLC0415
+    except ImportError:  # imported as a package module, not from parity/meep_gpu
+        from parity.meep_gpu import neutral_ids  # noqa: PLC0415
+    return neutral_ids
+
+
+def _neutral_text(why: Any) -> str:
+    """A not-case's error as the manifest writes it: neutral (``neutral_ids.text``) before
+    it is cut to 300 characters, since a lift or parity error can name a path."""
+    return _neutral_ids().text(str(why or ""))[:300]
+
+
+def _row(leg: str, record: Dict[str, Any]) -> Dict[str, Any]:
+    """The manifest row of a ``MEASURED`` parity record."""
+    plan = record.get("capped") or {}
+    facts = record.get("facts") or {}
+    python, substituted = _neutral(record)
+    return {
+        "label": label_of(leg, record), "leg": leg,
+        "kind": "test" if holds_tests(leg) else "example",
+        "script": record.get("script"), "module": record.get("module"),
+        "case": record.get("case"),
+        "python": python,
+        "plan": {key: plan.get(key) for key in PLAN_KEYS if key in plan},
+        "table2": {"rel_l2": record.get("parity_rel_l2"), "grid_cells": record.get("grid_cells"),
+                   "grid_shape": record.get("grid_shape"), "driver_steps": record.get("driver_steps"),
+                   "cpu_meep_steps": record.get("cpu_meep_steps"),
+                   "time_matched": record.get("time_matched"),
+                   "cylindrical": record.get("cylindrical"),
+                   "amp_func_file_substituted": substituted},
+        "facts": {key: facts.get(key) for key in FACT_KEYS if key in facts},
+    }
+
+
+def lift_verdict(record: Dict[str, Any]) -> Tuple[str, str]:
+    """``(verdict, why)`` for a case a lift stage did not hand to its parity stage, in that
+    stage's own words: no simulation built (the test ran to its end, was skipped or
+    errored), the gate's refusal, or the lift's error."""
+    if not record.get("has_simulation"):
+        return "NO-SIMULATION", (record.get("error") or record.get("lift_note")
+                                 or record.get("outcome") or "")
+    if record.get("accepted") is False and record.get("accepted_after_substitution") is not True:
+        return "REFUSED", "; ".join(record.get("accept_reasons") or []) or record.get("lift_error") or ""
+    if record.get("lifts") is False:
+        return "LIFT-FAILED", record.get("lift_error") or ""
+    if record.get("lifts") is not True:
+        return "NOT-LIFTED", record.get("lift_note") or record.get("accept_error") or ""
+    return "NOT-MEASURED", "it lifted, and its leg's parity stage recorded no row for it"
+
+
+def _resurvey(results: Path, leg: str, rows: List[Dict[str, Any]],
+              not_cases: List[Dict[str, Any]], inputs: Dict[str, str],
+              remeasured: List[Dict[str, Any]]) -> None:
+    """Read one re-survey into the rows (see RE-SURVEYS in the module docstring)."""
+    directory = LEGS[leg]
+    verdicts: Dict[str, Tuple[str, Dict[str, Any]]] = {}
+    for name in (LIFT_FILE, PARITY_FILE):
+        path = results / directory / name
+        inputs[f"{directory}/{name}"] = _sha256(path)
+        seen = set()
+        for record in _records(path):
+            label = label_of(leg, record)
+            if label in seen:
+                raise ValueError(f"{directory}/{name} records {label} twice")
+            seen.add(label)
+            verdicts[label] = (name, record)  # the parity row, read second, wins
+    position = {row["label"]: index for index, row in enumerate(rows)}
+    retired = set()
+    for label, (name, record) in verdicts.items():
+        if name == PARITY_FILE and record.get("parity") == "MEASURED":
+            again = _row(leg, record)
+            if label not in position:
+                position[label] = len(rows)
+                rows.append(again)
+                continue
+            first = rows[position[label]]
+            differ = [f"{part}.{key}: {first[part].get(key)!r} -> {again[part].get(key)!r}"
+                      for part, key in RUN_KEYS if first[part].get(key) != again[part].get(key)]
+            if differ:
+                raise ValueError(f"{label}: the re-survey {leg} measured another run than "
+                                 f"the {first['leg']} row: {differ}")
+            remeasured.append({"label": label, "leg": leg, "row_leg": first["leg"],
+                               "rel_l2": again["table2"]["rel_l2"],
+                               "row_rel_l2": first["table2"]["rel_l2"]})
+            continue
+        if name == PARITY_FILE:
+            verdict, why = record.get("parity"), record.get("parity_error") or ""
+        else:
+            verdict, why = lift_verdict(record)
+        entry = {"leg": leg, "label": label, "case": record.get("case") or record.get("script"),
+                 "parity": verdict, "error": _neutral_text(why)}
+        if label in position:
+            entry["retires"] = rows[position[label]]["leg"]
+            retired.add(label)
+        not_cases.append(entry)
+    rows[:] = [row for row in rows if row["label"] not in retired]
+
+
 def manifest_rows(results: Path) -> Dict[str, Any]:
-    """The manifest document, derived from the legs' ``parity.jsonl`` files."""
+    """The manifest document, derived from the legs' ``parity.jsonl`` files and the
+    re-surveys' ``lift.jsonl`` files."""
+    unknown = [leg for leg in RESURVEYS if leg not in LEGS]
+    if unknown:
+        raise ValueError(f"RESURVEYS names legs LEGS does not hold: {unknown}")
     rows: List[Dict[str, Any]] = []
     not_cases: List[Dict[str, Any]] = []
     inputs: Dict[str, str] = {}
+    remeasured: List[Dict[str, Any]] = []
     for leg, directory in LEGS.items():
-        path = results / directory / "parity.jsonl"
-        inputs[f"{directory}/parity.jsonl"] = _sha256(path)
-        for line in path.read_text(encoding="utf-8").splitlines():
-            if not line.strip():
-                continue
-            record = json.loads(line)
+        if leg in RESURVEYS:
+            continue
+        path = results / directory / PARITY_FILE
+        inputs[f"{directory}/{PARITY_FILE}"] = _sha256(path)
+        for record in _records(path):
             name = record.get("case") or record.get("script")
             if record.get("parity") != "MEASURED":
                 not_cases.append({"leg": leg, "case": name, "parity": record.get("parity"),
-                                  "error": str(record.get("parity_error") or "")[:300]})
+                                  "error": _neutral_text(record.get("parity_error"))})
                 continue
-            plan = record.get("capped") or {}
-            facts = record.get("facts") or {}
-            rows.append({
-                "label": label_of(leg, record), "leg": leg,
-                "kind": "test" if leg == "tests" else "example",
-                "script": record.get("script"), "module": record.get("module"),
-                "case": record.get("case"),
-                "python": record.get("python"),
-                "plan": {key: plan.get(key) for key in PLAN_KEYS if key in plan},
-                "table2": {"rel_l2": record.get("parity_rel_l2"), "grid_cells": record.get("grid_cells"),
-                           "grid_shape": record.get("grid_shape"), "driver_steps": record.get("driver_steps"),
-                           "cpu_meep_steps": record.get("cpu_meep_steps"),
-                           "time_matched": record.get("time_matched"),
-                           "cylindrical": record.get("cylindrical"),
-                           "amp_func_file_substituted": record.get("amp_func_file_substituted")},
-                "facts": {key: facts.get(key) for key in FACT_KEYS if key in facts},
-            })
+            rows.append(_row(leg, record))
     labels = [row["label"] for row in rows]
     duplicates = sorted({label for label in labels if labels.count(label) > 1})
     if duplicates:
         raise ValueError(f"the corpus labels are not unique: {duplicates}")
+    for leg in RESURVEYS:
+        _resurvey(results, leg, rows, not_cases, inputs, remeasured)
     superseded = {Path(directory).name for leg, directory in LEGS.items() if "native" in leg}
     return {"schema": MANIFEST_SCHEMA, "version": MANIFEST_VERSION,
             "about": "Table 2's measured rows as Tier C cases (parity/meep_gpu/meep_identity_corpus.py)",
-            "legs": dict(LEGS), "inputs_sha256": inputs, "rows": rows, "not_cases": not_cases,
+            "legs": dict(LEGS), "resurveys": list(RESURVEYS), "inputs_sha256": inputs,
+            "rows": rows, "not_cases": not_cases, "remeasured": remeasured,
             "not_cases_reason": ("recorded as something other than MEASURED by their leg; the "
                                  f"native legs {sorted(superseded)} measured the two "
-                                 "examples/main rows of this kind at native resolution")}
+                                 "examples/main rows of this kind at native resolution; a "
+                                 "re-survey's entries carry its verdict, and 'retires' names "
+                                 "the leg whose row it took out")}
 
 
 def load_manifest(path: Optional[str] = None) -> Dict[str, Any]:

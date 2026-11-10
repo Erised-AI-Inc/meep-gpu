@@ -1,6 +1,6 @@
 """Byte gate for the COMPLEX NO-ABSORBER curl arm (``complex_no_pml_curl``).
 
-DEVICE RESULT (2026-08-17), ON THE PREVIOUS BINDING. This gate released on the GPU
+Device result (2026-08-17), on the previous binding. This gate released on the GPU
 host's RTX A6000 with the ``keep`` policy installed: 8/8 shipped product rows were
 byte-identical over eight launches, all three controls and all three mutations
 diverged, and the predicate partition agreed on every refusal row. Its adversarial
@@ -12,14 +12,14 @@ planted step_B. The tracked provenance is
 ``triton_complex_no_pml_curl_device_gate`` in
 ``meep_gpu/triton_kernels/fingerprints.json``, re-cut at certification.
 
-THE PRESENT BINDING (``complex_no_pml_curl``'s module docstring): the absorber-free
+The present binding (``complex_no_pml_curl``'s module docstring): the absorber-free
 chunk record (no membership run, the grid's presence word) and unit columns, so the
 kernel's dsig-only form ``((f * 1) - curl) * 1`` steps every cell, which IS MEEP's
 plain ``f - curl`` on every word. The planted leg therefore REQUIRES the -0 target
 with an exact +0 curl to come back identical, on both sub-steps, and the previous
 binding is armed against it as a mutation that must be caught there.
 
-WHAT IT MEASURES, AND WHY IT IS NOT THE GROUP-(J) PROBE AGAIN
+What it measures, and why it is not the group-(J) probe again
 ------------------------------------------------------------
 ``probe_group_j_bodies.py`` measured a HAND-ASSEMBLED degenerate binding: it
 built a ``ComplexPmlCurlPlan`` in the probe itself, bound ``PML(thickness=0)``'s
@@ -63,19 +63,19 @@ LEGS, selected with ``--leg`` (default: all)
   refusals    the predicate's own answers on the adjacent configurations, so an
               over-broad clause is caught here and not in a later census.
 
-EVERY MEASUREMENT PRIMITIVE IS IMPORTED from ``probe_residual_group_bodies``
+Every measurement primitive is imported from ``probe_residual_group_bodies``
 unmodified — the uint32 whole-inventory comparison, the per-cycle bracketed
 vacuity gate, the live signed-zero lattice and its restore, the every-volume
 perturbation, and the complex seeding that writes BOTH halves. The 2026-08-15
 adversarial audit found four defects in the superseded measurement and repaired
 them there; running a copy is how one gets re-introduced.
 
-THE POLICY IS INSTALLED, NOT NAMED. ``MEEP_GPU_SUBNORMAL_POLICY`` in the
+The policy is installed, not named. ``MEEP_GPU_SUBNORMAL_POLICY`` in the
 environment declares a policy and installs nothing; this gate calls
 ``install_subnormal_policy('keep')`` before the first CuPy elementwise op or Triton
 compile, and records what it installed.
 
-THE SINGLE COMMAND THE NEXT DEVICE VISIT RUNS::
+The single command the next device visit runs::
 
     cd <repo>/parity/meep_gpu && \\
     MEEP_GPU_SUBNORMAL_POLICY=keep \\
@@ -584,7 +584,7 @@ def main(argv=None) -> int:
                                "started_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ",
                                                             time.gmtime()),
                                "cycles": args.cycles}
-    # THE POLICY, INSTALLED before the first CuPy elementwise op or Triton compile.
+    # The policy, installed before the first CuPy elementwise op or Triton compile.
     from meep_gpu.subnormal_policy import install_subnormal_policy
 
     payload["subnormal_policy_requested"] = args.subnormal_policy

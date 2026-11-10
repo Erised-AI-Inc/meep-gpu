@@ -1,7 +1,7 @@
 """Laptop contracts for the Triton COMPLEX H->D weld: complex ``update_H`` welded
 into complex ``step_D``.
 
-WHAT THIS SUITE IS FOR. The device gate
+What this suite is for. The device gate
 (``parity/meep_gpu/gate_triton_complex_fused_hd_pair.py``) is what certifies the bytes;
 this suite is the merge bar, and it holds the things that would otherwise only be true
 on a machine nobody runs on the way in:
@@ -20,7 +20,7 @@ on a machine nobody runs on the way in:
   ``update_H`` arm, which is what makes "not a second variant of this weld on this
   backend" a measurement instead of a sentence;
 * the declarations that DESCRIBE the wiring rather than request it, read off the tree
-  so that a later round which lands the missing label finds this suite red instead of
+  so that a later change which lands the missing label finds this suite red instead of
   finding a stale sentence.
 """
 
@@ -226,10 +226,10 @@ def test_the_two_flags_and_the_wiring_move_together(product):
     assert "4 - (installed pairs)" in reason
     assert "arbitration_over_the_driven_rows" in reason
     assert "GAIN where NEITHER does" in reason
-    # THE THIRD FACT IS THIS ARM'S OWN and must be stated: under `flush` no complex arm
+    # The third fact is this arm's own and must be stated: under `flush` no complex arm
     # is selected at all, so the arbitration question does not even arise there.
     assert "'keep'" in reason and "flush" in reason
-    # AND THE REASON NAMES THE ARRAY PATH AS THE GATE'S REFERENCE while unwired, which
+    # And the reason names the array path as the gate's reference while unwired, which
     # is the honest reading of an unregistered product's evidence.
     assert "AWAITS WIRING" in reason
 
@@ -261,7 +261,7 @@ def test_every_constitutive_lift_edit_is_declared_with_its_reason(product):
     for edit in edits:
         assert set(edit) == {"line", "became", "why"}
         assert edit["why"].strip()
-    # NO ARITHMETIC IN THE TABLE. Every entry is a pointer spelling, a resolved
+    # No arithmetic in the table. Every entry is a pointer spelling, a resolved
     # constexpr branch, a store that moves, or the decode. An edit that touched an
     # operand would be a transcription wearing a lift's name: the form call
     # (forms.constitutive_form) is named only where its destination moves, with its
@@ -430,7 +430,7 @@ def test_this_kernel_reaches_only_the_certified_connection_helper(product):
             if leaf and (leaf.startswith("_mul_") or leaf.startswith("_rotate_")
                          or leaf.startswith("_div_") or leaf == "_connect"):
                 called.add(leaf)
-    # EQUALITY IN BOTH DIRECTIONS: a second helper fails here, and so does a
+    # Equality in both directions: a second helper fails here, and so does a
     # declaration that names a helper the kernel stopped reaching.
     assert called == set(product.MULTIPLY_HELPERS)
     assert called == {"_connect"}
@@ -460,7 +460,7 @@ def test_this_seam_divides_nowhere(product):
 
 
 def test_the_divide_free_count_bites_on_a_planted_divide(product, tmp_path):
-    """THE NULL CONTROL. A zero nobody has shown can move is worth nothing."""
+    """The null control. A zero nobody has shown can move is worth nothing."""
     source = pathlib.Path(product.__file__).read_text(encoding="utf-8")
     planted = tmp_path / "planted.py"
     line = "        km_z = tl.load(kmz + k, mask=live, other=0.0)\n"
@@ -488,7 +488,7 @@ def test_the_divide_free_count_bites_on_a_planted_div_rn(product, tmp_path):
 
 
 def test_the_divide_facts_are_recorded_with_where_each_is_true(product):
-    """The Dcyl round's measured spellings are carried as inapplicable, not repeated."""
+    """The divide spellings measured for the cylindrical product are carried as inapplicable, not repeated."""
     facts = product.DIVIDE_FACTS
     assert len(facts) == 4
     for fact in facts:
@@ -635,7 +635,7 @@ def _board():
 
 
 def test_the_cell_is_seventeen_rows_and_none_of_them_carries_a_withdraw(product):
-    """The two numbers the module's docstring states, READ OFF THE BOARD.
+    """The two numbers the module's docstring states, read off the board.
 
     A board re-cut that moved either number must fail here rather than leave a
     docstring quietly wrong about what this predicate reaches.
@@ -668,14 +668,14 @@ def test_the_seam_record_agrees_with_the_board_about_this_cell(product):
 
 
 def test_the_folded_complex_neighbour_is_not_a_variant_of_this_weld_here():
-    """THE FINDING, AS A MEASUREMENT. Two cells, not one, and a different H arm.
+    """The finding, as a measurement. Two cells, not one, and a different H arm.
 
     ``cuda_kernels/complex_fused_hd_pair`` covers its folded neighbour as a second
     variant of one weld because on that backend the folded rows select the PLAIN
     complex arm at ``update_H``. On this backend they do not: the census records
     ``folded complex``, a distinct predicate, and the folded rows are split across
     two step_D arms rather than one. If a later census changes either fact, the
-    "second product, not a widening" ruling should be revisited -- and this is what
+    "second product, not a widening" decision should be revisited -- and this is what
     makes that happen.
     """
     instances = _board()["aggregate"]["h_to_d_seam"]["instances"]
@@ -711,11 +711,11 @@ LABEL = "fused pair H->D (complex)"
 
 
 def test_the_composer_carries_this_product_and_refuses_it_by_name(product):
-    """ROUTED, NOT INSTALLED. The seam loop is offered this product and refuses it.
+    """Routed, not installed. The seam loop is offered this product and refuses it.
 
-    THIS TEST WAS THE OPPOSITE ASSERTION UNTIL THE WIRING LANDED, and that is the
+    This test was the opposite assertion until the wiring landed, and that is the
     point of writing it that way: the unwired version asserted the composer named this
-    module NOWHERE, so the round that routed it found this file red instead of finding
+    module NOWHERE, so the change that routed it found this file red instead of finding
     a stale sentence. What replaces it is the stronger claim -- the product has a row,
     an arm pair and a label, and ``_declared_uninstallable`` refuses it on every
     configuration -- because a routed product whose refusal stopped firing would be

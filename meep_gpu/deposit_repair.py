@@ -1,6 +1,6 @@
 """Carry an in-seam source deposit across a fused curl/constitutive launch.
 
-THE PROBLEM THIS SOLVES. The driver injects a source BETWEEN the curl and the
+The problem this solves. The driver injects a source BETWEEN the curl and the
 constitutive half -- magnetic at ``driver.py:3293-3294``, electric at ``:3318-3322`` -- so
 a product that fuses those two halves consumes a pre-injection field. Every fusion
 predicate therefore refuses any row carrying a source in its seam, which excludes 215 of
@@ -20,7 +20,7 @@ deposit points may be REPAIRED afterwards. Measured: a median 0.016% of a real g
 most 3.45% on any grid large enough for throughput to matter, so the repair is three to
 four orders of magnitude cheaper than the round trip the fusion saves.
 
-WHY A REPAIR AND NOT A SECOND INJECTION. The constitutive half is STATEFUL --
+Why a repair and not a second injection. The constitutive half is STATEFUL --
 ``stepping._apply_constitutive_pml`` reads ``fw`` before overwriting it and then
 ACCUMULATES into the field, in MEEP's grouping (step_generic.cpp:697):
 
@@ -35,7 +35,7 @@ takes the plain form, ``field = fresh``, and its ``fw`` is left alone -- the spl
 constitutive sub-step itself makes (``stepping._apply_constitutive_regions``), read from
 the same region plan.
 
-WHERE IT BELONGS IN THE STEP, and it needs no driver change. ``step_D`` and ``update_E``
+Where it belongs in the step, and it needs no driver change. ``step_D`` and ``update_E``
 are separate consults (``driver.py:3315``, ``:3331``) and ``FastPath.dispatch`` contracts
 that True means the WHOLE sub-step ran. A fused arm owning both slots runs the kernel at
 the first and spends the second on the repair -- with the driver's inject, symmetry fill
@@ -47,13 +47,13 @@ EVIDENCE. ``parity/meep_gpu/probe_deposit_repair.py`` byte-compares this shape a
 driver's own order over 21 arrays: 7/7 identical on the host emulation and 6/6 with the
 real ``fused_curl_constitutive_D`` on an RTX A6000, with every null control diverging.
 
-A FOLDED SEAM NEEDS MORE THAN THE DEPOSIT POINTS, and that is the second half of this
+A folded seam needs more than the deposit points, and that is the second half of this
 module. ``fill_symmetry_bc_*`` and ``fill_folded_far_ghosts_*`` run AFTER the injection,
 so a deposit landing on a row a fill READS FROM changes cells the fill then rebuilds;
 :func:`repair_cells` is what extends the saved and restored set to those images. The
 comment above it carries the measurement.
 
-WHICH COMPONENTS ARE REPAIRED: THE ONE EACH SOURCE WRITES. A source deposits into ONE
+Which components are repaired: the one each source writes. A source deposits into ONE
 primary array, and a diagonal constitutive target reads only its own component at the
 cell, so at a deposit cell the other two targets' inputs are exactly what the fused
 launch consumed and its results there stand. Per source, :func:`save` captures and
@@ -62,7 +62,7 @@ deposit, ``condinv`` scale included under a conductivity); when that cannot be e
 every target of the seam and count the fallback. The comment above
 :func:`_written_targets` carries the citations and the measurement.
 
-WHAT THIS MODULE REFUSES. Only the DIAGONAL constitutive is repairable here. The
+What this module refuses. Only the DIAGONAL constitutive is repairable here. The
 off-diagonal arm is a stencil over the partner volumes the curl wrote in place
 (``stepping.py:1228-1251``) and the nonlinear arm is not a linear accumulation, so both
 are refused by name rather than repaired approximately. On a folded grid it also
@@ -70,7 +70,7 @@ refuses, by name, any fold whose fill map it cannot read: the cylindrical r = 0 
 whose below-axis ghost is a different image rule entirely, and a folded axis too short
 to hold the near fill's source row.
 
-AND IT REFUSES THE ABSORBER IT CANNOT INVERT. Everything above is about the seam; this
+And it refuses the absorber it cannot invert. Everything above is about the seam; this
 is about the recurrence. ``field + ((kps*fresh) - (kms*fw_prev))`` is the SPLIT-FIELD
 constitutive update and nothing else, so the layer whose coefficients it reads has to be
 the layer that actually ran. ``stepping._pml_is_active`` sends a layer absorbing on none
@@ -97,7 +97,7 @@ it to :func:`save`, so a configuration this cannot invert is refused before the 
 launch runs rather than after it has written.
 
 ===========================================================================
-THE SECOND REPAIR, AND WHY THE FIRST ONE'S REFUSAL STANDS UNCHANGED BESIDE IT
+The second repair, and why the first one's refusal stands unchanged beside it
 ===========================================================================
 
 Everything above describes ONE repair: the inverse of the split-field recurrence. The
@@ -106,7 +106,7 @@ invert it. That refusal was and remains CORRECT -- and it is not the same statem
 "the plain branch cannot be repaired". :data:`PLAIN_PATH` is the second repair, and it
 inverts the plain branch instead.
 
-WHAT THE PLAIN BRANCH ACTUALLY DOES, read off ``stepping.update_E``
+What the plain branch actually does, read off ``stepping.update_E``
 (``stepping.py:982-984``, ``:958-959``, ``:969``, ``:981-984``, ``:990-993``)::
 
     pml_active = _pml_is_active(pml)                                    # False here
@@ -117,26 +117,26 @@ WHAT THE PLAIN BRANCH ACTUALLY DOES, read off ``stepping.update_E``
         constitutive = source * fields.inverse_epsilon_for(component)    # :982-984
         getattr(fields, component)[...] = constitutive                   # :993
 
-THREE FACTS MAKE THAT EXACTLY INVERTIBLE, and each is a property of those lines rather
+Three facts make that exactly invertible, and each is a property of those lines rather
 than an approximation of them:
 
-1. **IT IS A PURE OVERWRITE, so there is NO STATE TO SAVE.** ``field[...] = constitutive``
+1. **It is a pure overwrite, so there is no state to save.** ``field[...] = constitutive``
    neither reads ``field`` nor accumulates into it. The split-field branch reads ``field``
    AND ``fw`` before writing and is stateful, which is the whole reason :func:`save`
    exists; this branch reads neither. What :func:`save` captures on this path is the CELL
    SET and nothing else -- the same closure, saved for the same reason (the two halves may
    not compute it separately), with an empty state beside it.
-2. **THERE IS NO ``f_w``.** It is not allocated at all on this path, and
+2. **There is no ``f_w``.** It is not allocated at all on this path, and
    ``Fields.drive_field`` returns the STORED E rather than ``f_w`` when the layer is
    inactive (``fields.py:1160-1162``). So ``update_P`` -- which runs after ``update_E``
    at ``driver.py:3333``, downstream of the repair's own slot -- reads exactly the array
    this repair rewrote. Nothing else consumes the constitutive product.
-3. **EVERY OPERAND IS AT THE CELL'S OWN INDEX.** ``displacement_minus_polarization``
+3. **Every operand is at the cell's own index.** ``displacement_minus_polarization``
    reads ``D_c`` and each ``P_n[c]`` (``fields.py:1079-1105``) and ``inverse_epsilon_for``
    is a per-cell volume, so no neighbour is read and the product at a cell depends on
    that cell's two operands and nothing else.
 
-So the plain repair is one line per component, GATHERED THEN MULTIPLIED::
+So the plain repair is one line per component, gathered then multiplied::
 
     E_c[cells] = displacement_minus_polarization(c)[cells] * inverse_epsilon_for(c)[cells]
 
@@ -155,7 +155,7 @@ on both spellings -- the linear one on the two plain-path corpus lifts
 through the module-level calls), the 3-tuple one in
 ``test_deposit_repair_linear_route.py``'s ``plain_fortran_target`` case.
 
-MEASURED BEFORE IT WAS WRITTEN, on real ``Grid``/``Fields`` objects and the shipped
+Measured before it was written, on real ``Grid``/``Fields`` objects and the shipped
 ``stepping`` functions: 13 of 13 unfolded configurations -- 0, 2 and 5 poles, with and
 without a material conductivity, 1-D/3-D, periodic and metallic walls, real and complex
 storage, point and sheet deposits -- came back bit-identical over 6 complete D->E steps
@@ -163,17 +163,17 @@ against the driver's own order, comparing every stored volume AND every polariza
 buffer as uint32, with a null control that withheld the repair diverging on every one.
 ``parity/meep_gpu/probe_plain_deposit_repair.py`` is that measurement, kept.
 
-AND THE MAGNETIC SEAM IS REFUSED HERE, BY NAME, RATHER THAN SERVED VACUOUSLY. On the
+And the magnetic seam is refused here, by name, rather than served vacuously. On the
 plain branch ``update_H`` returns without touching H (``stepping.py:944-945``); H is
 served on demand from B and no array is written. A "repair" there would have nothing to
 put back and would report success for a sub-step that stored nothing -- which is why
 :data:`PLAIN_PATH` admits seam ``D`` only.
 
-WHICH REPAIR RUNS IS DECIDED BY THE LAYER, NOT BY THE CALLER. :func:`repair_path_for`
+Which repair runs is decided by the layer, not by the caller. :func:`repair_path_for`
 asks ``stepping._pml_is_active`` -- the same function ``update_E`` branches on -- so the
 path this module inverts is by construction the recurrence that ran. What the caller
 declares in ``paths`` is which repairs IT carries, and a product handed a configuration
-whose recurrence it does not carry is refused by name. THE DEFAULT IS
+whose recurrence it does not carry is refused by name. The default is
 ``(SPLIT_FIELD_PATH,)``, so every predicate, plan and probe written before this paragraph
 keeps exactly the answer it had -- including both refusal texts above, which still fire,
 unedited, for every caller that has not declared the second path.
@@ -196,13 +196,13 @@ __all__ = ["SEAMS", "MAGNETIC_FIELD_TYPE", "repairable", "fill_image_rules",
 #: importable by predicates on a host with no engine objects built yet.
 MAGNETIC_FIELD_TYPE = "B"
 
-#: THE ORIGINAL REPAIR: the inverse of ``stepping._apply_constitutive_pml``'s split-field
+#: The original repair: the inverse of ``stepping._apply_constitutive_pml``'s split-field
 #: recurrence ``field + ((kps*fresh) - (kms*fw_prev))``, which is stateful and
 #: therefore needs ``field`` and ``fw`` captured before the launch.
 #: Runs when ``stepping._pml_is_active`` is True, and only then.
 SPLIT_FIELD_PATH = "split_field"
 
-#: THE SECOND REPAIR: the inverse of ``update_E``'s plain branch
+#: The second repair: the inverse of ``update_E``'s plain branch
 #: ``field[...] = (D - sum P) * inv_eps`` (``stepping.py:1019-1022``), which is a pure
 #: overwrite and therefore needs no state at all -- only the cell set. Runs when
 #: ``stepping._pml_is_active`` is False. See the module docstring's second half for the
@@ -268,7 +268,7 @@ def _deposit_index(source: Any) -> Optional[Tuple[Any, Any, Any]]:
 # The folded seam: the cells a post-injection fill images a deposit into
 # ---------------------------------------------------------------------------
 #
-# A POINT REPAIR IS NOT ENOUGH ON A FOLDED GRID, and that is a measurement rather than
+# A point repair is not enough on a folded grid, and that is a measurement rather than
 # an argument. ``fill_symmetry_bc_*`` and ``fill_folded_far_ghosts_*`` run AFTER the
 # injection (``driver.py:3305-3306`` and ``:3309-3310`` magnetic, ``:3325-3326`` and
 # ``:3329-3330`` electric; each fill sits behind its own consult, the wall clear between
@@ -288,7 +288,7 @@ def _deposit_index(source: Any) -> Optional[Tuple[Any, Any, Any]]:
 # image contaminates the ELECTRIC half in the same timestep because ``update_H``'s
 # ghost feeds ``step_D``'s curl.
 #
-# WHAT THE SET MUST BE, per deposit point and computed with the DEPOSITED COMPONENT's
+# What the set must be, per deposit point and computed with the DEPOSITED COMPONENT's
 # own Yee shifts:
 #
 #   near  ``stepping._fill_symmetry_ghost_cells`` (stepping.py:1426-1452) writes stored
@@ -306,22 +306,22 @@ def _deposit_index(source: Any) -> Optional[Tuple[Any, Any, Any]]:
 # :516-551, measured at ``results/metal_folded_far_carry_2026-08-20/ownership.json``);
 # the repair needs its inverse, restricted to one point.
 #
-# NO PHASES ARE NEEDED. :func:`apply` reads the constitutive input out of the
+# No phases are needed. :func:`apply` reads the constitutive input out of the
 # already-filled D/B array, which carries whatever parity the fill wrote, so the set is
 # cells and nothing else.
 #
-# THE TWO CONSTANTS ARE READ, NEVER SPELLED. ``MIRROR_SOURCE_INDEX`` (stepping.py:160)
+# The two constants are read, never spelled. ``MIRROR_SOURCE_INDEX`` (stepping.py:160)
 # and ``_far_reflect_rows`` (:1708, ``n_full - n_stored + 2``, which is ``n - 3`` at an
 # odd full count and NOT ``n - 2``) both move with the engine, and a carry that
 # hard-coded either would silently under-cover.
 #
-# OVER-COVERING IS SAFE, UNDER-COVERING IS THE SILENT WRONG ANSWER. :func:`apply` at a
+# Over-covering is safe, under-covering is the silent wrong answer. :func:`apply` at a
 # cell whose D did not change recomputes ``field_old + kp*fresh - km*fw_old`` from the
 # same pre-launch state in the same operand order, which is bit-identical -- which is
 # why a deposit ON a fill's destination costs nothing, and why the CELL SET is still
 # over-covered wherever the closure cannot tell.
 #
-# THE COMPONENT SET NO LONGER IS (2026-09-20). Until then the repair also touched all
+# The component set no longer is (2026-09-20). Until then the repair also touched all
 # three components at every deposit index, on the same argument. That was safe and it
 # was two thirds of the bracket's work: a source writes ONE array, a diagonal
 # constitutive target reads only its own component at the cell, so the other two
@@ -353,7 +353,7 @@ def _fill_image_rules(grid: Any, shifts: Sequence[int], extents: Sequence[int]
                       ) -> Tuple[Tuple[int, int, int], ...]:
     """``(axis, source row, destination row)`` for every fill that images this component.
 
-    MIRRORS THE TWO FILLS' OWN CONDITIONS rather than restating them: the same
+    Mirrors the two fills' own conditions rather than restating them: the same
     ``has_symmetry`` guard, the same ``_mirror_phases`` slot (which is where a
     cylindrical grid's ``(-1)^m`` also rides), the same shift test, and the same
     ``_stored_past_owned`` / ``_far_reflect_rows`` pair. A rule that drifted from the
@@ -385,7 +385,7 @@ def fill_image_rules(fields: Any, target: str) -> Tuple[Tuple[int, int, int], ..
     on. Empty on an unfolded grid and on a component no fill touches.
     """
     return _fill_image_rules(fields.grid, _yee_shifts(target),
-                             getattr(fields, target).shape)
+                             _shape_probe(fields, target).shape)
 
 
 def repair_cells(fields: Any, target: str, index: Tuple[Any, Any, Any]
@@ -401,7 +401,7 @@ def repair_cells(fields: Any, target: str, index: Tuple[Any, Any, Any]
     xp = grid.xp
     columns = [xp.asarray(part).reshape(-1) for part in index]
     rules = _fill_image_rules(grid, _yee_shifts(target),
-                              getattr(fields, target).shape)
+                              _shape_probe(fields, target).shape)
     if not rules:
         return columns[0], columns[1], columns[2]
     masks = {axis: (columns[axis] == source) for axis, source, _destination in rules}
@@ -478,7 +478,7 @@ def _coefficient_layout_reasons(name: str, coefficient: Any, component: str,
                                 axis: str, field_shape: Sequence[int]) -> Tuple[str, ...]:
     """Why ``apply`` cannot broadcast THIS coefficient the way the sub-step did.
 
-    RECOGNISED IS DEFINED BY WHAT :func:`apply` DOES WITH IT, not by a remembered
+    Recognised is defined by what :func:`apply` does with it, not by a remembered
     constant: it calls ``xp.broadcast_to(kps, field.shape)`` and then indexes the result
     at the repaired cells, so a coefficient is recognisable exactly when it is the rank-3
     per-axis layout ``PML._reshape_for_broadcast`` writes (``pml.py:659-669``) -- unit on
@@ -513,6 +513,25 @@ def _coefficient_layout_reasons(name: str, coefficient: Any, component: str,
                 f"graded) or {(1, 1, 1)} (no grading on this axis) index the same "
                 f"absorption the constitutive sub-step read",)
     return ()
+
+
+def _shape_probe(fields: Any, name: str) -> Any:
+    """``fields.<name>`` for a SHAPE or ALLOCATION question, fetched past the read barrier.
+
+    Every VALUE this module reads goes through :func:`host_writes.raw` and the sparse doors
+    (:func:`host_writes.gather` / :func:`host_writes.scatter`); the clauses that call this
+    ask only whether an array exists and what shape it has. Under a held Metal residency a
+    plain ``getattr`` is the read barrier (``metal_kernels.barrier``), which copies a
+    device-owned volume out WHOLE before handing it over. Measured on a held ``pml_2d`` step
+    (2026-10-16): four whole-volume copies out a step -- ``Ez`` in :func:`repairable` and
+    again in :func:`apply`, ``f_w_Ez`` in :func:`repairable`, ``Dz`` in
+    :func:`_prepared_entry` -- for these probes alone, and 41 of the 52 end-to-end and
+    route cases carry the bracket. Off a held residency this is the object ``getattr``
+    returns (``Fields`` defines no property and no ``__getattr__`` named after a field
+    array, and ``host_writes.raw`` falls back to ``getattr`` for a name outside the
+    instance mapping); on one, the shape is the device volume's, which a hold never changes.
+    """
+    return host_writes.raw(fields, name)
 
 
 def _checked_targets(pair: str, targets: Optional[Sequence[Any]]) -> Tuple[Any, ...]:
@@ -563,7 +582,7 @@ def _absorber_reasons(fields: Any, pml: Any, pair: str, *,
     spec = SEAMS[pair]
     reasons: List[str] = []
     for component, _source, axis in _checked_targets(pair, targets):
-        field = getattr(fields, component, None)
+        field = _shape_probe(fields, component)
         if field is None or getattr(field, "shape", None) is None:
             reasons.append(
                 f"{component} is not allocated, so the shape its coefficients must "
@@ -645,7 +664,7 @@ def _plain_path_reasons(fields: Any, pml: Any, pair: str, *,
                         targets: Optional[Sequence[Any]] = None) -> Tuple[str, ...]:
     """Why THIS configuration's plain constitutive is not the one :func:`apply` inverts.
 
-    THE MIRROR OF :func:`_absorber_reasons`, and deliberately not a relaxation of it.
+    The mirror of :func:`_absorber_reasons`, and deliberately not a relaxation of it.
     That function refuses everything whose recurrence is NOT the split-field one; this
     one refuses everything whose recurrence is not the plain one. Neither text is
     reachable from the other's path, so both keep saying exactly what they always said.
@@ -673,7 +692,7 @@ def _plain_path_reasons(fields: Any, pml: Any, pair: str, *,
             "writing anything: E is served on demand from D * inv_eps (Fields.get_E) "
             "and there is no stored array for a repair to put back")
     for component, _source, _axis in _checked_targets(pair, targets):
-        field = getattr(fields, component, None)
+        field = _shape_probe(fields, component)
         if field is None or getattr(field, "shape", None) is None:
             reasons.append(
                 f"{component} is not allocated, so the array the plain branch writes "
@@ -706,7 +725,7 @@ def repairable(fields: Any, pair: str,
     executes a repair supplies it (:func:`apply` takes it, :class:`LeadingRepairPlan`
     hands it to :func:`save`).
 
-    ``paths`` IS THE CALLER'S DECLARATION OF WHAT IT CARRIES, not a request. The layer
+    ``paths`` is the caller's declaration of what it carries, not a request. The layer
     decides which recurrence ran; ``paths`` decides whether this caller can invert that
     one. The default is ``(SPLIT_FIELD_PATH,)``, which is the only repair that existed
     before :data:`PLAIN_PATH` was measured, so every predicate, plan and probe that does
@@ -718,7 +737,7 @@ def repairable(fields: Any, pair: str,
 
     ``targets`` is for :func:`save` alone: the seam targets it is about to capture, so
     the per-target clauses (coefficient layout, allocation, ``f_w``) answer for those and
-    not for components the restricted repair never touches. EVERY PREDICATE LEAVES IT
+    not for components the restricted repair never touches. Every predicate leaves it
     ``None`` and is answered for the whole seam, as before -- a predicate names no
     source, so it has nothing to narrow to. The seam-wide clauses (the fold, the path,
     off-diagonal, nonlinear) never narrow.
@@ -736,7 +755,7 @@ def repairable(fields: Any, pair: str,
             "symmetry or far-ghost fill -- and which rows it images -- is unknown")
     else:
         reasons.extend(_folded_seam_reasons(grid))
-    # WHICH CLAUSES RUN IS DECIDED BY THE LAYER, through _selected_path. A caller that
+    # Which clauses run is decided by the layer, through _selected_path. A caller that
     # carries the split-field path keeps being answered by its clauses whatever the layer
     # turns out to be, so `None` and an inactive layer still produce the two named
     # refusals they always did; a caller that carries only the plain path is refused by
@@ -763,14 +782,14 @@ def repairable(fields: Any, pair: str,
             reasons.append(
                 "an instantaneous chi2/chi3: the constitutive step is not the linear "
                 "accumulation this repair inverts")
-    # THE SPLIT-FIELD PATH'S STATE CLAUSE, and it belongs to that path alone. The plain
+    # The split-field path's state clause, and it belongs to that path alone. The plain
     # branch allocates no `f_w_*` at all (fields.py:1160-1162 returns the stored E
     # instead), so requiring one there would refuse every configuration the second
     # repair exists for -- while dropping it for the split-field path would let a
     # stateful recurrence be "restored" from state that was never captured.
     if selected is SPLIT_FIELD_PATH:
         for component, _source, _axis in _checked_targets(pair, targets):
-            if getattr(fields, "f_w_" + component, None) is None:
+            if _shape_probe(fields, "f_w_" + component) is None:
                 reasons.append(
                     f"f_w_{component} is not allocated; there is no state to save")
                 break
@@ -817,11 +836,11 @@ _START_KEY = ("__h_start__",)
 # The per-step cost of the bracket: one linear index per component, built once
 # ---------------------------------------------------------------------------
 #
-# THE BRACKET WAS THE DOMINANT COST OF EVERY FUSED PLAN THAT LOSES TO ITS SINGLES,
+# The bracket was the dominant cost of every fused plan that loses to its singles,
 # measured 2026-09-17/19: ~2 ms/step of host-issued work on the two NVIDIA kernel
 # tables (Triton and hand-CUDA, both CuPy-backed), 31 of 31 timed rows holding a
-# bracketed seam losing and all 6 clean-seam one-pair rows winning. NO METAL FUSED
-# TIMING EXISTS: no ``fused_timing*`` / ``fused_ablation*`` result carries a Metal leg,
+# bracketed seam losing and all 6 clean-seam one-pair rows winning. No Metal fused
+# timing exists: no ``fused_timing*`` / ``fused_ablation*`` result carries a Metal leg,
 # and the Metal bracket is this same code on host NumPy, where it costs tens of
 # microseconds rather than milliseconds (measured below), so nothing here is a claim
 # about that table. Counted on the pml_2d lift, per step: save 12 array ops (6 three-array fancy
@@ -833,7 +852,7 @@ _START_KEY = ("__h_start__",)
 #
 # WHAT CHANGED, and why each piece is exact rather than close:
 #
-# * THE CELL SET IS BUILT ONCE PER PLAN, not once per step. :class:`LeadingRepairPlan`
+# * The cell set is built once per plan, not once per step. :class:`LeadingRepairPlan`
 #   owns a :class:`_PreparedCells`; each ``(component, source)`` entry holds the
 #   ``repair_cells`` 3-tuple AND its C-order linear index. The entry is keyed on what
 #   the set is a function of -- the deposit index arrays (identity; the sources rebind
@@ -841,8 +860,8 @@ _START_KEY = ("__h_start__",)
 #   them), the fill rules :func:`_fill_image_rules` derives this step (equality), and
 #   the ``repair_cells`` the module holds now (identity, so a gate's point-only leg that
 #   swaps it is honoured on the step it is swapped). A changed key rebuilds the entry.
-# * A CALLER HOLDING NO PLAN TAKES THE SAME ROUTE, from a ONE-SHOT cache (2026-09-19,
-#   reviewer finding F3). The gates and probes that bracket a launch by hand call the
+# * A caller holding no plan takes the same route, from a ONE-SHOT cache (2026-09-19,
+#   found in review). The gates and probes that bracket a launch by hand call the
 #   module-level :func:`save`/:func:`apply` -- e.g.
 #   ``parity/meep_gpu/gate_cuda_conductive_fused_electric_pair.py:697``/``:711``,
 #   ``probe_cuda_three_slot_weld.py:459``, ``probe_cuda_electric_fold_closure.py:254`` --
@@ -856,35 +875,35 @@ _START_KEY = ("__h_start__",)
 #   next call, with no key to go stale. The price is that such a caller builds the entry
 #   -- ``repair_cells`` plus :func:`_linear_index`'s six host reads -- on every call
 #   rather than once, which is a gate's cost and not the product's.
-# * EVERY ARRAY IS RE-READ FROM ``fields`` EVERY STEP. Only the index is cached, and it
+# * Every array is re-read from ``fields`` every step. Only the index is cached, and it
 #   is used on an array only when that array's shape is the one the index was built for
 #   and it is C-contiguous (:func:`_flat`), so ``reshape(-1)`` is a VIEW that a scatter
 #   writes through. The index was range-checked per axis when it was built, so an equal
 #   shape keeps it in range with no per-step reduction. Any array that fails either
 #   test sends that ``(component, source)`` down the 3-tuple route instead -- never a
 #   refusal, because the two routes read and write the same cells.
-# * THE CONSTITUTIVE PRODUCT IS GATHERED, THEN MULTIPLIED. ``(volume * inv_eps)[cells]``
+# * The constitutive product is gathered, then multiplied. ``(volume * inv_eps)[cells]``
 #   and ``volume[cells] * inv_eps[cells]`` are the same float product of the same two
 #   operands per cell -- IEEE multiplication is correctly rounded and no neighbour is
 #   read -- so forming it over the whole volume was pure cost. Taken only when the two
 #   arrays have the same shape; a broadcastable ``inv_eps`` keeps the whole-volume form.
-# * NO SECOND COPY. An integer-array (advanced) index returns a NEW array -- NumPy
+# * No second copy. An integer-array (advanced) index returns a NEW array -- NumPy
 #   documents that advanced indexing always returns a copy, and CuPy follows NumPy's
 #   indexing semantics (read, not measured: this host has no CuPy) -- so the
 #   ``xp.array(..., copy=True)`` after it copied a copy. It is kept for the one index
 #   shape that is not advanced -- scalar parts, which CuPy answers with a 0-d VIEW -- in
 #   :func:`_gathered`.
-# * THE COEFFICIENTS AT THE CELLS ARE GATHERED ONCE, by the shipped spelling
+# * The coefficients at the cells are gathered once, by the shipped spelling
 #   ``xp.broadcast_to(kps, shape)[cells]``, and reused while the layer hands back the
 #   SAME ``kps``/``kms`` objects (checked every step). ``PML._compute_coefficients`` is
 #   called once, from ``PML.__init__`` (``pml.py:385``), binds each coefficient
 #   (``pml.py:698-717``) and nothing in the engine writes into one afterwards.
 #
-# THE RECURRENCE IS UNTOUCHED: ``restored = f_old + kp_c * fresh`` then
+# The recurrence is untouched: ``restored = f_old + kp_c * fresh`` then
 # ``restored - km_c * fw_old`` -- the operand order of ``_apply_constitutive_pml``
 # (``stepping.py:2130-2134``) exactly as the 3-tuple route writes it.
 #
-# MEASURED 2026-09-18 on NumPy lifts through the two plans, steady state (the first
+# Measured 2026-09-18 on NumPy lifts through the two plans, steady state (the first
 # step builds the cache): pml_2d save 12 -> 6 ops and apply 30 -> 27, every one a
 # one-array gather/scatter or an elementwise op over the deposit cells, with no
 # whole-volume product; folded_2d save 28 -> 6 (the closure is not rebuilt); the plain
@@ -894,10 +913,10 @@ _START_KEY = ("__h_start__",)
 # closure case of ``parity/meep_gpu/probe_triton_folded_deposit_closure.py``, real and
 # complex, both seams, both paths -- 0 of 84,449,844 words differ as uint32 (a plan leg
 # and a module-level leg, 42,224,922 each), with the linear route taken on every entry
-# of the PLAN leg; the module-level leg then took the 3-tuple route, which is F3 below.
-# ``test_deposit_repair_linear_route.py`` pins that.
+# of the PLAN leg; the module-level leg then took the 3-tuple route, which the
+# one-shot cache closes. ``test_deposit_repair_linear_route.py`` pins that.
 #
-# RE-MEASURED 2026-09-19 after the one-shot (F3), same 25 seams and 6 trials each, now
+# Re-measured 2026-09-19 after the one-shot cache, same 25 seams and 6 trials each, now
 # counting BOTH live routes against that copy: 0 of 84,449,844 words differ (42,224,922
 # per route), and the plan and module-level routes differ from each other by 0. Route
 # counters, identical on the two: 414 linear saves and 450 linear repairs -- 18 of 18
@@ -912,7 +931,7 @@ _START_KEY = ("__h_start__",)
 # ran. Since 2026-09-20 that is once per component some source WRITES rather than three
 # times: ``1 + poles`` whole-volume passes per written component, not ``3 * (1 + poles)``.
 #
-# RESTRICTED TO THE WRITTEN COMPONENT, 2026-09-20 (the comment above
+# Restricted to the written component, 2026-09-20 (the comment above
 # :func:`_written_targets` carries the argument and the citations). Per single-component
 # source per step the bracket is ONE entry where it was three, so every route counter
 # above reads 1 per source per step on a row timed after this change and 3 on a row
@@ -927,8 +946,8 @@ _START_KEY = ("__h_start__",)
 # NOT CHANGED, and deliberately: :func:`repairable` still runs every step inside
 # :func:`save`, and :func:`apply` still re-asserts :func:`_absorber_reasons` before it
 # writes. Both are host-only and issue no array operation, and they are now the largest
-# single piece of the restricted bracket's host time. CACHING THEIR VERDICT PER PLAN
-# WAS EXAMINED WITH THE RESTRICTION AND NOT BUILT, because the proof it needs fails. A
+# single piece of the restricted bracket's host time. Caching their verdict per plan
+# was examined with the restriction and not built, because the proof it needs fails. A
 # cached verdict is sound only if every attribute the checks read is covered by an
 # event that DROPS the plan. The one such event is ``FdtdDriver.invalidate_fast_path``
 # (``driver.py:3100-3113``), which replaces the plan and is called by the DRIVER's
@@ -939,7 +958,7 @@ _START_KEY = ("__h_start__",)
 # * ``fields.has_nonlinearity`` -- ``Fields._chi2_components``, written by the public
 #   ``Fields.set_nonlinear_volumes`` (``fields.py:838``). ``FdtdDriver.fields`` is a
 #   public attribute, and a caller that reaches the mutator through it calls no
-#   invalidation. THIS ONE ATTRIBUTE IS ENOUGH: today the next :func:`save` refuses by
+#   invalidation. This one attribute is enough: today the next :func:`save` refuses by
 #   name before the launch; a cached "repairable" would restore a linear accumulation
 #   over a constitutive that is no longer linear, and report success.
 # * ``fields.has_offdiagonal_epsilon`` -- ``Fields._chi1inv_offdiagonal``, written by
@@ -951,7 +970,7 @@ _START_KEY = ("__h_start__",)
 #   (:func:`_coefficients_at` re-checks identity every step for exactly that reason).
 # * the grid's fold map (``has_symmetry``, ``is_axis``, ``_mirror_phases``,
 #   ``_far_reflect_rows``, ``stored_cells``).
-# * AND THE CALLERS THAT HOLD NO PLAN AT ALL: every gate and probe that brackets a
+# * And the callers that hold no plan at all: every gate and probe that brackets a
 #   launch by hand calls the module-level :func:`save` / :func:`apply`, where there is no
 #   plan to key a verdict on and no event that could drop it.
 #
@@ -1043,7 +1062,7 @@ def _prepared_entry(prepared: _PreparedCells, fields: Any, component: str, targe
                     index: int, idx: Tuple[Any, Any, Any]) -> _CellEntry:
     """The cached cell set for one ``(component, source)``, rebuilt if its key moved."""
     grid = fields.grid
-    target_shape = getattr(fields, target).shape
+    target_shape = _shape_probe(fields, target).shape
     entry = prepared.entries.get((component, index))
     if (entry is not None and entry.builder is repair_cells
             and entry.index[0] is idx[0] and entry.index[1] is idx[1]
@@ -1059,7 +1078,7 @@ def _prepared_entry(prepared: _PreparedCells, fields: Any, component: str, targe
     # it on the module, and the set it returns is the set this entry must carry.
     entry.cells = repair_cells(fields, target, idx)
     entry.count = int(getattr(entry.cells[0], "size", len(entry.cells[0])))
-    shape = getattr(getattr(fields, component), "shape", None)
+    shape = getattr(_shape_probe(fields, component), "shape", None)
     entry.linear = _linear_index(grid.xp, entry.cells, shape)
     entry.shape = (tuple(int(extent) for extent in shape)
                    if entry.linear is not None else None)
@@ -1113,7 +1132,7 @@ def _flat_views(shape: Tuple[int, ...], arrays: Sequence[Any]) -> Optional[List[
 def _fresh_at(fields: Any, component: str, linear: Any) -> Any:
     """``displacement_minus_polarization(component)`` at flat cells ``linear`` only.
 
-    THE WHOLE-VOLUME FORM IS THE PROBLEM THIS AVOIDS. ``Fields.displacement_minus_polarization``
+    The whole-volume form is the problem this avoids. ``Fields.displacement_minus_polarization``
     forms ``D - sum P`` over the entire grid into a shared scratch every step, and
     under a held residency each of those reads is a whole-volume sync. ``apply``
     consumes that volume at the deposit cells only, so this gathers D and each
@@ -1138,7 +1157,7 @@ def _fresh_at(fields: Any, component: str, linear: Any) -> Any:
 def _sparse_linear(xp: Any, array: Any, cells: Tuple[Any, ...]) -> Optional[Any]:
     """Flat C-order indices for ``array[cells]``, or None when the array cannot take them.
 
-    THE SAME GUARD ``_flat`` MAKES, and it is not optional: a linear index is only a
+    The same guard ``_flat`` makes, and it is not optional: a linear index is only a
     C-order flat index when the array is C-contiguous. On a Fortran-ordered or
     strided target ``reshape(-1)`` is a COPY, so a scatter through it lands nowhere
     and a gather through it reads the wrong cells -- measured by the linear-route
@@ -1219,11 +1238,11 @@ def _coefficients_at(xp: Any, entry: _CellEntry, kps: Any, kms: Any) -> Tuple[An
 # The component restriction: repair the target a source WRITES, and only that one
 # ---------------------------------------------------------------------------
 #
-# A SOURCE WRITES ONE ARRAY, AND A DIAGONAL CONSTITUTIVE TARGET READS ONLY ITS OWN.
+# A source writes one array, and a diagonal constitutive target reads only its own.
 # Both halves are read from the code, because an argument that narrows what is
 # repaired is the one kind here that fails SILENTLY when it is wrong:
 #
-# * WHAT AN INJECTION WRITES. All four engine source classes resolve their array from
+# * What an injection writes. All four engine source classes resolve their array from
 #   ``self.component`` through ``sources._ARRAY_FOR_COMPONENT`` (``sources.py:120-133``;
 #   ``Ez`` and ``Dz`` both name ``Dz``, ``Hz`` and ``Bz`` both name ``Bz``) and write
 #   that array alone:
@@ -1245,13 +1264,13 @@ def _coefficients_at(xp: Any, entry: _CellEntry, kps: Any, kms: Any) -> Tuple[An
 #   array: the curl's split auxiliary ``fu_<array>`` is never a deposit target (a chunk
 #   that carries only the dsig layer steps its field with no auxiliary,
 #   ``stepping._apply_dsig_only_update``).
-# * WHAT A TARGET READS. ``_apply_constitutive_pml`` and the plain branch of
+# * What a target reads. ``_apply_constitutive_pml`` and the plain branch of
 #   ``update_E`` read, for component c at a cell, ``D_c`` / ``B_c``, the poles'
 #   ``P_n[c]``, ``inv_eps(c)``, c's own coefficients and c's own ``field`` / ``f_w`` AT
 #   THAT CELL. The two couplings that would break this are both refused by name in
 #   :func:`repairable`: an off-diagonal ``chi1inv`` row and an instantaneous
 #   ``chi2``/``chi3``. ``stepping.H_CONSTITUTIVE_TERMS`` is diagonal with mu = 1.
-# * WHAT RUNS BETWEEN THE TWO CONSULTS. The injection, ``fill_symmetry_bc_*``,
+# * What runs between the two consults. The injection, ``fill_symmetry_bc_*``,
 #   ``zero_metal_*`` and ``fill_folded_far_ghosts_*`` (``driver.py:3293-3310``,
 #   ``:3318-3330``). Each fill and the wall clear write a component's plane from the
 #   SAME component's plane, so a deposit into ``D_c`` reaches ``D_c`` cells only --
@@ -1262,15 +1281,15 @@ def _coefficients_at(xp: Any, entry: _CellEntry, kps: Any, kms: Any) -> Tuple[An
 # it was bit-identical (the over-coverage note above :func:`_yee_shifts`) and was two
 # of every three entries in the bracket.
 #
-# MEASURED before it was written, with the restriction applied in-process: 24 of 24
+# Measured before it was written, with the restriction applied in-process: 24 of 24
 # host configurations bit-identical with a diverging wrong-component control, and on
 # the device (one RTX A6000, both NVIDIA tables, 2026-09-20) 84 of 84 legs bit-identical
 # with the fused step 1.47-1.66x faster at <= 1.0M cells
-# (``the design notes (deposit-repair-kernel-scope)`` sections 1 and 9).
+# (``pml_2d`` and ``magnetic_seam_2d``, 24,000 to 1,014,000 cells).
 # ``test_deposit_repair_component_restriction.py`` pins the shipped form against the
 # frozen full-bracket arithmetic, the wrong-component control included.
 #
-# FAIL CLOSED, AND COUNT IT. Anything that stops the written array being established
+# Fail closed, and count it. Anything that stops the written array being established
 # -- a source class whose ``inject`` is not one of the four read above (a subclass
 # included: it may override ``inject``), an ``inject`` REBOUND on the class or on the
 # instance so that what runs is not the function that was read, a ``component`` that
@@ -1278,12 +1297,12 @@ def _coefficients_at(xp: Any, entry: _CellEntry, kps: Any, kms: Any) -> Tuple[An
 # or a lookup answering anything but a
 # repeat-free selection of this seam's own targets -- keeps ALL the seam's targets for
 # that source, which is the bracket this module shipped until 2026-09-20, and bumps
-# ``_PreparedCells.restriction_fallbacks``. WHAT WOULD BREAK THE ARGUMENT, and is
+# ``_PreparedCells.restriction_fallbacks``. What would break the argument, and is
 # therefore what to re-read before widening the list below: a source that writes a
 # second array, a fill that images one component into another, an admitted
 # off-diagonal permittivity or permeability, or a nonlinearity.
 #
-# THE TYPE IS NOT THE INJECT, so :func:`_runs_the_read_inject` looks at the function.
+# The type is not the inject, so :func:`_runs_the_read_inject` looks at the function.
 # An exact-class source whose ``inject`` had been rebound to write ``Dx`` beside ``Dz``
 # was narrowed to ``Ez`` by its type alone, counted as RESTRICTED, and left ``Ex`` and
 # ``f_w_Ex`` differing from the driver's order at the deposit cell; the full bracket
@@ -1293,7 +1312,7 @@ def _coefficients_at(xp: Any, entry: _CellEntry, kps: Any, kms: Any) -> Tuple[An
 # (``parity/meep_gpu/probe_dispatch_seam_sweep.py:191`` on the instance,
 # ``gate_metal_complex_conductive_fused_pair.py:970`` on the class); both delegate and
 # write nothing of their own, so under them the bracket is the full one, exact and
-# COUNTED, for as long as the wrapper is in place. WHAT THIS STILL DOES NOT SEE: a
+# COUNTED, for as long as the wrapper is in place. What this still does not see: a
 # rebinding of what a read ``inject`` CALLS -- ``sources._deposit``,
 # ``_d_array_for``, ``_array_for``, ``_condinv_at``. Nothing in the tree does.
 
@@ -1307,13 +1326,13 @@ _READ_INJECTS: Tuple[str, ...] = ("ContinuousSource", "ExtendedSource",
 def _runs_the_read_inject(source: Any, kind: Any, engine_sources: Any) -> bool:
     """Whether calling ``source.inject`` runs the function that was read for ``kind``.
 
-    ON THE CLASS: the function in the class's OWN dict, defined in the sources module
+    On the class: the function in the class's OWN dict, defined in the sources module
     under that class's name. ``__globals__`` is the test because it cannot be dressed
     up: ``functools.wraps`` copies ``__module__`` and ``__qualname__`` onto a wrapper
     and cannot copy this, and it is an identity, so it holds wherever the tree was
     staged to and whatever file name the bytecode carries.
 
-    ON THE INSTANCE: nothing named ``inject`` in the instance's dict -- or exactly the
+    On the instance: nothing named ``inject`` in the instance's dict -- or exactly the
     bound method of that same function on this same source, which is what an
     instrument leaves behind when it restores by ``setattr`` rather than ``del``
     (``probe_dispatch_seam_sweep.py:195``). An instance whose dict cannot be read is
@@ -1440,7 +1459,7 @@ def save(fields: Any, sources: Sequence[Any], pair: str,
          prepared: Optional[_PreparedCells] = None) -> Dict[Any, Any]:
     """Capture the state the fused launch will overwrite, before it runs.
 
-    THE CELL SET IS SAVED WITH THE STATE, not recomputed in :func:`apply`. The two
+    The cell set is saved with the state, not recomputed in :func:`apply`. The two
     halves must agree exactly -- ``apply`` needs ``field_old`` and ``fw_old`` at every
     image it restores -- and a set computed twice is a set that can disagree once. That
     holds on BOTH paths, and on :data:`PLAIN_PATH` the cell set is the whole of what is
@@ -1452,7 +1471,7 @@ def save(fields: Any, sources: Sequence[Any], pair: str,
     cannot invert is refused HERE -- before the fused launch runs -- rather than at
     :func:`apply`, after the launch has already written a field nothing can put back.
 
-    THE PATH IS STAMPED INTO THE RESULT, not passed again. :func:`apply` reads it from
+    The path is stamped into the result, not passed again. :func:`apply` reads it from
     the saved dict, so the two halves cannot be told different things about which
     recurrence the state describes -- the same reason the cell set travels with it.
 
@@ -1472,7 +1491,7 @@ def save(fields: Any, sources: Sequence[Any], pair: str,
     the launch could overwrite: an integer-array index on the linear route,
     :func:`_gathered` on the 3-tuple one.
 
-    ONLY THE TARGETS A SOURCE WRITES ARE CAPTURED (2026-09-20): per source,
+    Only the targets a source writes are captured (2026-09-20): per source,
     :func:`_source_targets` names them -- one for every engine source class -- or, when
     it cannot, every target of the seam, counted as a fallback. The selection is stamped
     under :data:`_TARGETS_KEY` so :func:`apply` restores exactly what was captured here.
@@ -1495,7 +1514,7 @@ def save(fields: Any, sources: Sequence[Any], pair: str,
     path = _selected_path(pml, paths)
     xp = fields.grid.xp
     if prepared is None:
-        # ONE-SHOT, never module-global: see the comment above `_CellEntry` (F3).
+        # ONE-SHOT, never module-global: see the comment above `_CellEntry`.
         prepared = _PreparedCells()
     stamped: Dict[int, Tuple[Any, ...]] = {}
     saved: Dict[Any, Any] = {_PATH_KEY: path, _PREPARED_KEY: prepared,
@@ -1542,7 +1561,7 @@ def _apply_plain(fields: Any, pml: Any, sources: Sequence[Any], pair: str,
     each cell, so the stored words are identical (measured, 0 of 84,449,844). No
     ``f_w``, no ``kps``/``kms``, and no previous value -- the sub-step read none of them.
 
-    THE BACKSTOP RUNS HERE TOO. Like :func:`apply`, this is the only place the
+    The backstop runs here too. Like :func:`apply`, this is the only place the
     arithmetic lands, so the plain clauses are asserted whatever the caller handed
     :func:`save`; refusing before the first write is the whole point.
     """
@@ -1556,7 +1575,7 @@ def _apply_plain(fields: Any, pml: Any, sources: Sequence[Any], pair: str,
     prepared = saved.get(_PREPARED_KEY)
     repaired = 0
     for (component, _source_name, _axis), found in work:
-        # THE SAME OPERANDS AS update_E's product, GATHERED FIRST. Every operand is at
+        # The same operands as update_E's product, GATHERED FIRST. Every operand is at
         # the cell's own index (fields.py:1079-1105, a per-cell inv_eps volume), so the
         # product at a cell is the same float product whether the other cells were
         # formed or not; forming all of them cost a whole-volume multiply per component
@@ -1650,7 +1669,7 @@ def apply(fields: Any, pml: Any, sources: Sequence[Any], pair: str,
     already final; this only redoes the accumulation the fused launch performed against
     the pre-injection value.
 
-    THAT SLOT IS REQUIRED, NOT MERELY CONVENIENT, and on a folded seam it was measured
+    That slot is required, not merely convenient, and on a folded seam it was measured
     to be: the same extended repair run one line EARLIER -- after the injection but
     before the three fills -- reproduces the point repair's failure exactly, because
     the fills write D and B only, while E and f_w at a ghost are written by nothing but
@@ -1659,24 +1678,24 @@ def apply(fields: Any, pml: Any, sources: Sequence[Any], pair: str,
     answer. At this slot D at every image is already final, so no wall handling, no
     fill and no ordering among the images is needed.
 
-    WHAT IS REPAIRED IS WHAT :func:`save` CAPTURED: per source, the targets stamped under
+    What is repaired is what :func:`save` captured: per source, the targets stamped under
     :data:`_TARGETS_KEY` -- the one that source writes, or all of them on a fallback. A
     saved dict carrying no stamp is read as every target for every source.
     """
     from . import stepping  # noqa: PLC0415 - avoids a cycle at import time
 
-    # WHICH REPAIR THE SAVED STATE DESCRIBES, read from the state itself. A dict without
+    # Which repair the saved state describes, read from the state itself. A dict without
     # the stamp came from a `save` predating the second repair, or from a caller that
     # built one by hand; either way the split-field default is what it meant, and that
     # is the path whose backstop then refuses anything it cannot invert.
     if saved.get(_PATH_KEY, SPLIT_FIELD_PATH) is PLAIN_PATH:
         return _apply_plain(fields, pml, sources, pair, saved)
 
-    # WHAT IS REPAIRED IS WHAT WAS SAVED, target by target and source by source, read
+    # What is repaired is what was saved, target by target and source by source, read
     # from the state (`_TARGETS_KEY`) and never decided a second time here.
     work, missing = _repair_work(sources, pair, saved, ("cells", "field", "fw"))
 
-    # THE BACKSTOP THAT NEEDS NO CALLER CHANGE. This function has always been handed the
+    # The backstop that needs no caller change. This function has always been handed the
     # layer, and it is the only place the repair's arithmetic actually lands, so the
     # absorber clauses are asserted here whatever the caller passed to `save` -- for
     # the targets about to be written, and for all of them when there are none.
@@ -1692,7 +1711,7 @@ def apply(fields: Any, pml: Any, sources: Sequence[Any], pair: str,
     spec = SEAMS[pair]
     xp = fields.grid.xp
     prepared = saved.get(_PREPARED_KEY)
-    # WHICH FORM EACH DEPOSIT CELL TAKES IS ITS CHUNK'S: the accumulation where the
+    # Which form each deposit cell takes is its chunk's: the accumulation where the
     # chunk carries the target's own (dsigw) layer, ``f = fresh`` everywhere else with
     # ``f_w`` left alone -- the constitutive sub-step's own split
     # (``stepping._apply_constitutive_regions``), read from the same region plan.
@@ -1701,7 +1720,7 @@ def apply(fields: Any, pml: Any, sources: Sequence[Any], pair: str,
     repaired = 0
     for (component, source_name, axis), found in work:
         # RAW, because every touch below is a gather or a scatter of the deposit
-        # cells. The D seam's ``volume`` is formed AT THE CELLS by ``_fresh_at``
+        # cells. The D seam's ``volume`` is formed at the cells by ``_fresh_at``
         # rather than over the whole grid, for the reason its docstring gives; the
         # whole-volume form is built only if a cells-route entry needs it.
         field = host_writes.raw(fields, component)
@@ -1720,7 +1739,7 @@ def apply(fields: Any, pml: Any, sources: Sequence[Any], pair: str,
             field_old = saved[(component, index, "field")]
             fw_old = saved[(component, index, "fw")]
             entry = _linear_entry(prepared, component, index, cells)
-            # THE LINEAR ROUTE IS NOW A GATHER, HOST ARITHMETIC, AND A SCATTER. The
+            # The linear route is now a gather, host arithmetic, and a scatter. The
             # arithmetic is byte-unchanged from the flat-view form it replaces --
             # same operands, same order, same dtype -- and only the deposit cells
             # cross the bus. The whole-volume acquire that stood here moved ~14
@@ -1740,7 +1759,7 @@ def apply(fields: Any, pml: Any, sources: Sequence[Any], pair: str,
                 region = _entry_region(xp, plan, component, entry, cells)
                 if start:
                     field_old, fw_old = _started(xp, region, fresh, field_old, fw_old)
-                # SAME OPERAND ORDER as _apply_constitutive_pml: f + ((kp*fw) - (km*fw_prev)),
+                # Same operand order as _apply_constitutive_pml: f + ((kp*fw) - (km*fw_prev)),
                 # each product per part on complex storage, as there.
                 restored = field_old + (part_products.scale(kp_cells, fresh)
                                         - part_products.scale(km_cells, fw_old))
@@ -1759,7 +1778,7 @@ def apply(fields: Any, pml: Any, sources: Sequence[Any], pair: str,
             region = _region_of(xp, plan, component, tuple(field.shape), cells)
             if start:
                 field_old, fw_old = _started(xp, region, fresh, field_old, fw_old)
-            # SAME OPERAND ORDER as _apply_constitutive_pml: f + ((kp*fw) - (km*fw_prev)),
+            # Same operand order as _apply_constitutive_pml: f + ((kp*fw) - (km*fw_prev)),
             # each product per part on complex storage, as there.
             restored = field_old + (part_products.scale(kp_full[cells], fresh)
                                     - part_products.scale(km_full[cells], fw_old))
@@ -1779,7 +1798,7 @@ def apply(fields: Any, pml: Any, sources: Sequence[Any], pair: str,
 # The shared source-presence clause, and the two-consult plans that earn it
 # ---------------------------------------------------------------------------
 #
-# TWENTY-ONE PREDICATES ASKED THIS QUESTION IN TWENTY-ONE HAND-COPIED COPIES -- 11 Triton
+# Twenty-one predicates asked this question in twenty-one hand-copied copies -- 11 Triton
 # and 10 Metal -- each refusing any in-seam source outright. That was correct while no
 # product could carry a deposit. Now that one can, the answer depends on something the
 # copies had no way to express: whether THIS product brackets its launch with the repair.
@@ -1821,7 +1840,7 @@ def seam_source_reasons(fields: Any, sources: Any, pair: str, *,
                         ) -> Tuple[str, ...]:
     """Why this configuration's sources bar the fusion, or ``()`` if they do not.
 
-    THE DECISION LIVES HERE; THE PROSE STAYS AT THE SITE. ``undeclared`` is the site's own
+    The decision lives here; the prose stays at the site. ``undeclared`` is the site's own
     not-declared text and ``refusal(index, source)`` returns its own in-seam text, because
     those strings are pinned by that product's gate and its tests -- centralising the
     wording would silently reword twenty-one certified refusals. What is shared is the
@@ -1829,13 +1848,13 @@ def seam_source_reasons(fields: Any, sources: Any, pair: str, *,
     and whether a deposit is carryable.
 
     ``carries_repair`` is the product's own declaration that it wraps its launch in
-    :class:`LeadingRepairPlan` / :class:`TrailingRepairPlan`. IT IS NOT A HINT: a product
+    :class:`LeadingRepairPlan` / :class:`TrailingRepairPlan`. It is not a hint: a product
     that passes True without those wrappers computes the constitutive half against a
     pre-injection field and reports success, which is the exact failure this module exists
     to make impossible. The wiring and the flag change together or not at all.
 
-    ``pml`` is forwarded to :func:`repairable`, which adds the absorber clauses. NO
-    SHIPPED PREDICATE FORWARDS IT YET -- each has the layer in hand and passes it to its
+    ``pml`` is forwarded to :func:`repairable`, which adds the absorber clauses. No
+    shipped predicate forwards it yet -- each has the layer in hand and passes it to its
     own coverage halves, but not to here -- so today those clauses are asserted at
     :func:`save` and :func:`apply` instead. That is sound rather than merely tolerable:
     every family declaring ``CARRIES_DEPOSIT_REPAIR`` already refuses an absent or

@@ -38,7 +38,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import platform
 import statistics
 import sys
 import time
@@ -54,20 +53,20 @@ PROFILES = ("core", "pml", "pml_dft")
 def build(profile, cells, resolution, prefer_gpu, pml_cells, storage="complex"):
     """One configured, un-run driver.
 
-    ``storage`` DECIDES WHICH FUSED PRODUCTS CAN BE REACHED, which is why it is an
+    ``storage`` decides which fused products can be reached, which is why it is an
     argument rather than the constant it was. Every baseline recorded before
     2026-09-11 was taken with ``force_complex_fields=True``, so that stays the default
     and those numbers remain comparable.
 
-    THIS DOCSTRING SAID "REAL ONLY" UNTIL 2026-09-17, AND THAT HAS STOPPED BEING TRUE.
+    This docstring said "real only" until 2026-09-17, and that has stopped being true.
     It read that the released fused arms on all three tables are the REAL-storage ones
     "and the complex families are released on no timing path", so a complex fused run
     was refused whole -- measured on the GPU host, "no slot is left carrying a kernel:
     every product was refused, dropped as a no-op, or failed to compile". The complex
     families are released now: eleven of the twenty-eight released arms store complex
-    fields, and the 2026-09-17 round adds more. The expansion-probe licence they took
-    their admission from was deleted with the expansion arm, so a complex fused run is
-    admitted as a real one is and the timing path needs no flag for it.
+    fields, and the 2026-09-17 release campaign adds more. The expansion-probe licence
+    they took their admission from was deleted with the expansion arm, so a complex
+    fused run is admitted as a real one is and the timing path needs no flag for it.
 
     The two storages are never mixed in one comparison -- that much is unchanged, and
     a real-storage fused number and a complex-storage one answer different questions.
@@ -156,6 +155,7 @@ def one_repeat(profile, cells, resolution, prefer_gpu, pml_cells, warmup, steps,
 
 
 def main():
+    import neutral_ids  # noqa: PLC0415
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--profile", choices=PROFILES, default="pml_dft")
     parser.add_argument("--backend", choices=("gpu", "numpy"), default="gpu")
@@ -183,7 +183,7 @@ def main():
                      "use --backend gpu for --step-path fused (on an Apple GPU that "
                      "is the Metal table)")
 
-    # THE ARRAY BASELINE IS PINNED BY THE TOOL, NOT BY WHOEVER CALLS IT. Dispatch is on
+    # The array baseline is pinned by the tool, not by whoever calls it. Dispatch is on
     # by default (fastpath.DISPATCH_BY_DEFAULT), so an "array" run left to the caller's
     # environment plans kernels on a certified host and require_step_path aborts it --
     # every timing driver would have had to learn a new export. Process-scoped is the
@@ -203,7 +203,7 @@ def main():
     from meep_gpu import backends  # noqa: PLC0415
 
     resolved_gpu = backends.available_gpu() if prefer_gpu else None
-    # WHERE THE TIMED STEPS RUN. "--backend gpu" names the request, and only on a
+    # Where the timed steps run. "--backend gpu" names the request, and only on a
     # CUDA host does the engine itself live on the device: an Apple GPU driver keeps
     # NumPy host arrays, so its array path is the host CPU and only its dispatched
     # kernels are the GPU's.
@@ -248,7 +248,7 @@ def main():
         "profile": args.profile,
         "storage": args.storage,
         "measured_at_utc": datetime.now(timezone.utc).isoformat(),
-        "host": {"hostname": platform.node(), "python": sys.version.split()[0]},
+        "host": {"hostname": neutral_ids.machine_id(), "python": sys.version.split()[0]},
         "parameters": {"resolution": args.resolution, "pml_cells": args.pml_cells,
                        "warmup_steps": args.warmup_steps, "measured_steps": args.steps,
                        "repeats": args.repeats},

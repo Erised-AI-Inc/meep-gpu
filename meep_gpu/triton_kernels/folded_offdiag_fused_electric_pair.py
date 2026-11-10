@@ -2,20 +2,20 @@
 
     ceiling 9  (of 19 rows)  D->E  folded PML -> folded off-diagonal
 
-The largest of the three stencil-blocked cells this lane can reach, and the one
-the fusion-residue audit rated MEDIUM rather than HIGH because "the fold adds
+The largest of the three stencil-blocked cells the Triton table can reach, and the one
+an audit of the boards rated MEDIUM rather than HIGH because "the fold adds
 read-side redirect-at-image-source machinery". It does, and the redirect is
 per-cell pure — nothing written is read — so the runtime-cross-lane-read refusal
 that stops the folded MAGNETIC pair (``folded_fused_magnetic_pair.py:602-608``)
 does not arise here.
 
-THE DESIGN IS ``offdiag_fused_electric_pair``'S, with a longer closed form; read
+The design is ``offdiag_fused_electric_pair``'s, with a longer closed form; read
 that module and ``offdiag_scratch_weld`` first. The curl half writes ``D_new``
 and ``fu_new`` into launch-local scratch, the constitutive half re-derives each
 of its foreign stencil taps from pre-launch state, and the plan rotates the D/fu
 references after the launch. What is different is the seam:
 
-    THIS FAMILY CARRIES TWO IN-SEAM PASSES, NOT ONE.
+    This family carries two in-seam passes, not one.
 
 ``fill_symmetry_bc_D`` (driver.py:3309) writes ``cell 0 = phase * cell 2`` on
 every mirrored axis where a component's Yee shift is 0, in X, Y, Z order; then
@@ -37,7 +37,7 @@ and this weld does not carry it — see the refusal below, which is by the pass'
 own liveness condition rather than by boundary code, so a folded periodic axis
 with no stored far slot (where that pass writes nothing) stays served.
 
-WHAT IS REFUSED, AND WHY IT IS A REFUSAL AND NOT A GAP:
+What is refused, and why it is a refusal and not a gap:
 
 * ``fill_folded_far_ghosts_D`` — an axis that STORES MEEP's far ghost slot
   (``stepping._stored_past_owned``: mirrored and ``stored_cells >
@@ -52,7 +52,7 @@ WHAT IS REFUSED, AND WHY IT IS A REFUSAL AND NOT A GAP:
 
 NOT WIRED. ``fastpath`` is untouched; dispatch is a separate milestone.
 
-THE CHUNK FORMS. The constitutive half is the folded off-diagonal kernel's: MEEP's
+The chunk forms. The constitutive half is the folded off-diagonal kernel's: MEEP's
 double row with its per-chunk presence ``op``, then the constitutive form per chunk
 keyed on the record ``cb`` the plan binds (``launch.chunk_bounds_for`` on the engine
 route). The curl half is the folded curl single's own body, lifted at its anchors,
@@ -222,7 +222,7 @@ if triton is not None:  # pragma: no cover - device code, certified by the gate
                    BCX: tl.constexpr, BCY: tl.constexpr, BCZ: tl.constexpr):
         """``symmetry.pml_curl_step_folded`` at ONE named cell, returning.
 
-        THE BODY BELOW THE TWO INDEX LINES IS THE CERTIFIED FOLDED CURL'S OWN,
+        The body below the two index lines is the certified folded curl's own,
         byte for byte between its decode anchor and its store anchor; the probe's
         transcription leg asserts the two strings equal. The only edits are the
         head (``idx``/``nyz`` rebuilt from ``(i, j, k)`` by integer arithmetic)
@@ -383,7 +383,7 @@ if triton is not None:  # pragma: no cover - device code, certified by the gate
                  MG_X: tl.constexpr, MG_Y: tl.constexpr, MG_Z: tl.constexpr,
                  PH_X: tl.constexpr, PH_Y: tl.constexpr, PH_Z: tl.constexpr,
                  ZM_X: tl.constexpr, ZM_Y: tl.constexpr, ZM_Z: tl.constexpr):
-        """THE CLOSED FORM: one component's displacement AS THE SEAM LEAVES IT.
+        """The closed form: one component's displacement as the seam leaves it.
 
         Both in-seam passes, resolved per cell, in the driver's order:
 
@@ -394,7 +394,7 @@ if triton is not None:  # pragma: no cover - device code, certified by the gate
             clear         cell 0 on a metallic UNMIRRORED axis where the shift is
                           0 becomes exactly +0.0 — ``stepping._zero_metal``.
 
-        THE CLEAR IS OUTSIDE THE FILL AND NOT INSIDE IT. The driver runs
+        The clear is outside the fill and not inside it. The driver runs
         ``fill_symmetry_bc_D`` then ``zero_metal_D`` (driver.py:3309-3310), so a
         cell on both a fold plane and a wall ends at zero; putting the clear
         first would leave it holding the imaged value. The two act on disjoint
@@ -579,7 +579,7 @@ if triton is not None:  # pragma: no cover - device code, certified by the gate
             wz = tl.where(at_z, gwz, 1.0)
             uvz = live & (uk < nz)
 
-        # ============ THE SCRATCH WELD: step_D and the two in-seam passes ======
+        # ============ The scratch weld: step_D and the two in-seam passes ======
         # Nothing written below is read. The constitutive half re-derives every
         # foreign tap from PRE-LAUNCH state through the same `_step_cell`, and
         # the plan rotates the buffers after the launch returns.

@@ -1,9 +1,9 @@
 """The five ELECTRIC-TWIN welds, the D-side complex carry, and the complex E->P pair -- the laptop half.
 
-WHAT THIS FILE PINS. The device verdicts live in
+What this file pins. The device verdicts live in
 ``parity/meep_gpu/gate_cuda_fused_complex_pairs.py``'s electric families and the
 polarization gate; what a laptop can pin is the half whose failure mode is a
-SILENT WRONG ANSWER before any kernel runs:
+silent wrong answer before any kernel runs:
 
 * the shared D-side cf carry's CLOSED FORMS -- the D-family near/far complement
   (near = the TWO shift-0 axes, far = the component's own), the pre-clear/clear/
@@ -15,8 +15,8 @@ SILENT WRONG ANSWER before any kernel runs:
   guard between the ``fu`` store and the field load, the pre-clear registers;
 * the SPLICE ANCHORS as welds -- a mutated certified line fails the emit;
 * the predicates on real engine objects: each twin admits its own cell's shape
-  WITH ITS SOURCES DECLARED and refuses, BY NAME, the configurations its launch
-  cannot serve -- and ``step_D``'s nine candidates admit AT MOST ONE product per
+  with its sources declared and refuses, BY NAME, the configurations its launch
+  cannot serve -- and ``step_D``'s nine candidates admit at most one product per
   configuration, because two admitters leave the seam unfused naming both;
 * the complex no-absorber E->P pair's seam register and its storage partition
   against the two real E->P products.
@@ -46,7 +46,7 @@ def xp():
 
 
 # ---------------------------------------------------------------------------
-# 1. THE SHARED D-SIDE CARRY'S CLOSED FORMS
+# 1. The shared D-side carry's closed forms
 # ---------------------------------------------------------------------------
 
 def test_the_d_family_near_and_far_sets_are_the_b_familys_complement():
@@ -132,7 +132,7 @@ def test_fills_plan_raises_on_a_far_row_with_no_declared_phase():
 
 
 # ---------------------------------------------------------------------------
-# 2. THE EMITTED TEXT
+# 2. The emitted text
 # ---------------------------------------------------------------------------
 
 EMITTERS = {
@@ -242,7 +242,7 @@ def test_a_drifted_certified_recurrence_fails_the_polarization_splice(monkeypatc
 
 
 # ---------------------------------------------------------------------------
-# 3. THE PREDICATES, ON REAL ENGINE OBJECTS
+# 3. The predicates, on real engine objects
 # ---------------------------------------------------------------------------
 
 def _real_grid(xp, **kwargs):
@@ -334,7 +334,7 @@ def test_the_special_kz_twin_serves_both_fold_sides_alone(xp):
         xp, cell_size=(12.0, 8.0, 0.0), boundaries=("periodic",) * 3,
         dimensions=2, beta=0.332)
     assert _admitters(fields, layer, grid) == ["special_kz"]
-    # THE FOLDED SIDE (the eigsrc_kz_1_real_imag shape), served through the
+    # The folded side (the eigsrc_kz_1_real_imag shape), served through the
     # real electric pair's carry.
     fields2, layer2, grid2 = _real_grid(
         xp, cell_size=(8.0, 9.0, 0.0),
@@ -439,7 +439,7 @@ def test_each_twin_row_names_its_own_module_and_seam(family):
             "fill_folded_far_ghosts_D", "update_E"}
     else:
         assert set(module.REPLACES) == {"step_D", "zero_metal_D", "update_E"}
-    # THE FLAG IS THE PRODUCT on every twin: every row of every cell declares
+    # The flag is the product on every twin: every row of every cell declares
     # an electric deposit inside this seam (measured off the residualwelds
     # census), so False would serve nothing.
     assert module.CARRIES_DEPOSIT_REPAIR is True, module.FAMILY

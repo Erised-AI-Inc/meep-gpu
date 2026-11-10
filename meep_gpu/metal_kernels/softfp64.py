@@ -1,6 +1,6 @@
 """Software IEEE-754 binary64 for Metal kernels: MEEP's double-precision steps on float32 fields.
 
-WHY THIS EXISTS. MEEP stores single-precision fields but writes a few of its formulas
+Why this exists. MEEP stores single-precision fields but writes a few of its formulas
 with a ``double`` operand, so C++ promotes the float32 words, performs the operation in
 double and rounds once on the store:
 
@@ -18,10 +18,10 @@ double and rounds once on the store:
 The Apple GPU has no float64. These helpers carry a binary64 value as its 64-bit pattern
 in a ``ulong`` and perform each operation with integer arithmetic, one IEEE operation per
 helper, rounded to nearest even: the words they return are the words the host's own
-float64 unit returns for the same statement. Owner ruling R7 (2026-10-08) chose this over
-refusing those rows to the array path.
+float64 unit returns for the same statement. This was chosen on 2026-10-08 over
+refusing those rows to the array path (docs/design/floating-point.md).
 
-THE API (MSL, every helper ``static inline``; a binary64 operand or result is a ``ulong``
+The API (MSL, every helper ``static inline``; a binary64 operand or result is a ``ulong``
 bit pattern, a float32 one a ``uint`` bit pattern):
 
 * ``ulong sd_widen(uint w, bool fz)`` -- float32 -> binary64 (C++'s promotion, FCVT);
@@ -38,21 +38,21 @@ bit pattern, a float32 one a ``uint`` bit pattern):
 * ``ulong sd_daz(ulong x)`` -- the flush policy's input rule alone, exported for a
   consumer that receives a binary64 operand from the host.
 
-``fz`` IS THE SUBNORMAL POLICY, and Metal ships one. The MPS executor flushes natively
+``fz`` is the subnormal policy, and Metal ships one. The MPS executor flushes natively
 and cannot be made to keep (:mod:`.subnormal`: ``ATTAINABLE == (FLUSH,)``), so a Metal
 kernel runs only under ``flush`` and every shipped call passes ``fz = true``. The array
 path it must equal then runs on a host whose FPU is in that mode, and the helpers
-reproduce what that host does, MEASURED on this arm64 host (FPCR.FZ set by the package's
+reproduce what that host does, measured on this arm64 host (FPCR.FZ set by the package's
 own fenv lever; ``backends.subnormals_flushed()`` True):
 
 * an INPUT subnormal, float32 or binary64, reads as a zero of its sign: the widening of
   ``0x80000001`` is ``-0.0``, and ``0.0 - 2**-1074`` is ``+0.0``;
 * an OUTPUT whose exact value lies below the format's smallest normal is a zero of its
   sign, decided BEFORE rounding: a binary64 in ``[2**-126 * (1 - 2**-25), 2**-126)``
-  narrows to ``+-0`` where gradual underflow gives ``+-2**-126``. That is phase-0 item
-  P0-d1's band, where arm64 FZ and x86 FTZ disagree (x86 decides tininess after
+  narrows to ``+-0`` where gradual underflow gives ``+-2**-126``. That is the cross-ISA
+  flush band, where arm64 FZ and x86 FTZ disagree (x86 decides tininess after
   rounding); the Apple GPU's own float32 multiply rounds it as arm64 does
-  (``phase0/P0-d/d1/ftz_ops``).
+  (measured through PyTorch's MPS backend: 200,000 of 200,000 band products give zero).
 
 ``fz = false`` is IEEE gradual underflow, the ``keep`` policy: the control, and what the
 deposit door uses when it is handed a host that keeps (``device.Residency.subtract_double_index``
@@ -68,7 +68,7 @@ returns that NaN un-negated; widening keeps a NaN's payload shifted up 29 bits w
 quiet bit set, narrowing keeps its top 22 fraction bits. Rounding is to nearest even
 only; no other rounding mode is offered or needed.
 
-WHAT IS DELIBERATELY ABSENT: a multiply of two binary64 values, and an unrounded float32
+What is deliberately absent: a multiply of two binary64 values, and an unrounded float32
 x float32 product. No array-path statement a Metal kernel transcribes forms either:
 ``gs*us``, the off-diagonal pair products and the ``|D|^2`` squares are float32 products,
 each rounded to float32 BEFORE it is widened (``stepping._offdiagonal_terms``: ``(part *
@@ -78,7 +78,7 @@ and the only double multiplies are the power-of-two literals, which
 double-by-double product ``_nonlinear_constitutive`` forms, has no Metal family: a
 nonlinear run with an anisotropic epsilon steps on the array path.)
 
-HOW A KERNEL TAKES IT UP. Splice :data:`MSL_HELPERS` after ``#include <metal_stdlib>``,
+How a kernel takes it up. Splice :data:`MSL_HELPERS` after ``#include <metal_stdlib>``,
 ``using namespace metal;`` and the contraction directive of :mod:`.shaders` (or call
 :func:`library_source`), then call the helpers. The fragment carries an include guard,
 so two families spliced into one source define the helpers once. It contains no
@@ -88,7 +88,7 @@ device test compiles both modes and compares them), and no fast-math or denormal
 the Metal compiler reaches it. Store a result through a ``uint`` view (``sd_narrow``) where
 a keep-policy subnormal must survive; under ``fz`` no result is subnormal.
 
-THE NUMPY TRANSCRIPTION. :func:`widen`, :func:`scale_pow2`, :func:`add`, :func:`sub`,
+The NumPy transcription. :func:`widen`, :func:`scale_pow2`, :func:`add`, :func:`sub`,
 :func:`narrow`, :func:`subtract_from_word` and :func:`daz` below are the helpers
 transcribed statement for statement onto ``numpy.uint64`` arrays, branch for branch as
 masks. They exist so the arithmetic can be checked on a host with no GPU: the host tests
@@ -280,8 +280,8 @@ static inline uint sd_subtract_from_word(uint w, ulong x, bool fz) {
 """
 
 #: Each public helper's MSL signature, as the fragment spells it. The test file checks
-#: the fragment against this table, and the consuming families' lanes read it: a rename
-#: here is a rename there, in the same change.
+#: the fragment against this table, and the families that consume the fragment are
+#: written against it: a rename here is a rename there, in the same change.
 SIGNATURES = (
     "static inline ulong sd_widen(uint w, bool fz)",
     "static inline ulong sd_widen_f(float v, bool fz)",

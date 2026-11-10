@@ -7,7 +7,7 @@ reading: CuPy appends ``-ftz=true`` below our own option tuple, the strip
 installs BELOW CuPy's cache key, and ``step_curl_kernels`` holds a second
 compiled-kernel memo of its own that no policy install knows about.
 
-THE DETECTOR IS THE SHIPPED KERNEL ITSELF, not a micro-kernel. Set every source
+The detector is the shipped kernel itself, not a micro-kernel. Set every source
 field to zero so the curl is exactly 0, set ``kms = sinv = 1``, and plant a float32
 SUBNORMAL in the auxiliary. ``stepping._apply_pml_update`` then computes
 ``fu_new = ((fu * 1) - 0) * 1``, which is the identity — under ``keep``. Under
@@ -54,15 +54,15 @@ def log(message: str) -> None:
 def memo_size(sck) -> int:
     """How many compiled kernels the module is holding.
 
-    Read through the module's own cache module, NOT through a
-    ``sck._compiled_kernels`` attribute: that dict moved to
-    ``cuda_kernels/compile_cache.py`` on 2026-08-15 when its key grew the compile
-    options, the subnormal policy and the source (disposition §1.2), and
-    ``test_compile_cache.py`` pins that the old attribute stays gone. This probe
-    is the source of certification.json's §1.1 evidence — "install-then-compile
-    kept a planted 0x00004000 in fu_Bx; compile-then-install flushed it" — so it
-    has to keep running on a CUDA host after that move, and an ``AttributeError``
-    on the first leg would mean that measurement could never be re-taken.
+    Read through the module's own cache module, NOT through a ``sck._compiled_kernels``
+    attribute: that dict moved to ``cuda_kernels/compile_cache.py`` on 2026-08-15 when
+    its key grew the compile options, the subnormal policy and the source (a memo keyed
+    only on the kernel name and complexity never sees a policy installed after the first
+    compile), and ``test_compile_cache.py`` pins that the old attribute stays gone. This
+    probe is the source of certification.json's subnormal-policy evidence —
+    "install-then-compile kept a planted 0x00004000 in fu_Bx; compile-then-install
+    flushed it" — so it has to keep running on a CUDA host after that move, and an
+    ``AttributeError`` on the first leg would mean that measurement could never be re-taken.
 
     Falls back to the pre-move attribute so the probe can also be pointed at an
     older checkout, and reports ``-1`` rather than raising if neither is there:

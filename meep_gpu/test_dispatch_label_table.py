@@ -6,7 +6,7 @@ namespaced (``fastpath_cuda.merge_tables`` prefixes each CUDA unit, the primary'
 included), so it is answered from the Triton ledger. A bare label on any other table is
 that table's own: Triton on a CuPy host, Metal on a NumPy host with an MPS device.
 
-WHAT IS PINNED HERE:
+What is pinned here:
 
 * the table itself (:func:`fastpath._table_for_label`) and the lookup it routes
   (:func:`fastpath._certification_for`);
@@ -304,7 +304,9 @@ def test_rung_8b_admits_a_cuda_led_plan_with_triton_singles_under_flush(monkeypa
 def test_rung_8b_judges_a_triton_fused_pair_in_a_cuda_led_plan_on_its_own_gate(
         monkeypatch):
     """Refused by name while the fused D->E gate carries no flush run; admitted once it
-    does. Either way the clause cites the Triton gate."""
+    does. Either way the clause cites the Triton gate. (Under ``certified``: the
+    default runs a flush without that evidence uncertified.)"""
+    monkeypatch.setenv(fastpath.HARDWARE_SWITCH, fastpath.HARDWARE_CERTIFIED)
     monkeypatch.setenv(fastpath.FUSE_ARMS_SWITCH, "fused pair B")
     _install_ledgers(monkeypatch, _ledger("triton", flush_except=(FUSED_ELECTRIC_GATE,)),
                      _ledger(fastpath.CUDA_TABLE))
@@ -327,7 +329,9 @@ def test_rung_8b_judges_a_triton_fused_pair_in_a_cuda_led_plan_on_its_own_gate(
 
 def test_rung_8b_refuses_a_shared_spelling_the_triton_gate_did_not_release(monkeypatch):
     """``PML`` in a CUDA-led plan, whose ``cuda:PML`` twin released under flush: refused,
-    naming the Triton gate. The CUDA entry's evidence is about a different kernel."""
+    naming the Triton gate. The CUDA entry's evidence is about a different kernel.
+    (Under ``certified``.)"""
+    monkeypatch.setenv(fastpath.HARDWARE_SWITCH, fastpath.HARDWARE_CERTIFIED)
     gate = _triton_gate("PML")
     _install_ledgers(monkeypatch, _ledger("triton", flush_except=(gate,)),
                      _ledger(fastpath.CUDA_TABLE))

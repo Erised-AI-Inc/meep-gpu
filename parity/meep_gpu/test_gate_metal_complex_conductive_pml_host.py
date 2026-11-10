@@ -8,8 +8,9 @@ those legs meaningful between device runs:
   each product binds, so no mutation of a form is vacuous;
 * **every source mutation lands**: each needle is present in the source it is armed
   on and changes it, so no leg can be disarmed by a re-spelled kernel. The two
-  grouping mutations are the INVERTED ones (KERNELS.md §7.1): the shipped stencil and
-  ``f_cond`` increment are MEEP's groupings, so each plants the package's previous
+  grouping mutations are the INVERTED ones
+  (docs/development/certification.md#inverted-grouping-mutations): the shipped stencil
+  and ``f_cond`` increment are MEEP's groupings, so each plants the package's previous
   grouping and must be caught; the one declared null is the hoisted ``f_cond`` load;
 * **the record mutations change the record** the gate's mutation case binds;
 * **a chunk that keeps no conductivity is refused by name** on the refusal leg's

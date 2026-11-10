@@ -1,7 +1,7 @@
 """Unit tests for ``mp.Absorber``'s graded conductivity (meep_gpu.absorber).
 
 The numbers pinned here are MEEP's own, in two forms: constants transcribed from
-``meepgeom.cpp`` (the profile table) and quantities MEASURED against pristine MEEP
+``meepgeom.cpp`` (the profile table) and quantities measured against pristine MEEP
 1.33.0 single precision while building this module (the two ``sigma_max`` values,
 which came out of the reconstruction probe that reproduces ``mp.Absorber``
 bit-identically through a ``material_function``).

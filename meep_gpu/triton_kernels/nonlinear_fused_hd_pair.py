@@ -1,6 +1,6 @@
 """The H->D weld on a NONLINEAR run — admission only, no new kernel.
 
-WHAT THIS MODULE ADDS, AND WHAT IT DELIBERATELY DOES NOT. It adds one predicate, one
+What this module adds, and what it deliberately does not. It adds one predicate, one
 plan builder and one checkable identity. It adds NO arithmetic, NO kernel and NO plan
 class: the kernel a covered configuration launches here is
 :func:`.fused_hd_pair.fused_constitutive_curl_H_to_D`, character for character,
@@ -8,13 +8,13 @@ through :class:`.fused_hd_pair.FusedHdPairPlan` built by
 :func:`.fused_hd_pair.plan_fused_hd_pair`, because on a chi2/chi3 run the H->D seam IS
 the ordinary one.
 
-**SO THE HONEST HEADLINE IS THAT THIS FAMILY'S GATE CERTIFIES NO NEW KERNEL.** What it
+**So the honest headline is that this family's gate certifies no new kernel.** What it
 certifies is that the shipped weld, driven on a chi2/chi3 configuration, is
 bit-identical to the array path over complete driver steps — a measurement the
 released ``fused_hd_pair`` artifact does not contain, because its own predicate
 refuses every nonlinear run.
 
-THE MEASUREMENT THAT LICENSES THE ADMISSION IS ALREADY IN THE TREE and is not made
+The measurement that licenses the admission is already in the tree and is not made
 here. ``stepping.update_H`` and ``stepping.step_D`` never read chi2 or chi3 — the Pade
 factor enters ``update_E`` alone (stepping.py:999-1000) — so :mod:`.nonlinear_update_e`
 already ships two SPINE ARMS whose whole content is that fact, both wired into
@@ -34,7 +34,7 @@ B->H weld; this module applies it to the H->D weld, and the two are siblings rat
 than one being derived from the other.
 
 ===========================================================================
-THE CONJUNCTION, AND WHY IT IS THREE THINGS RATHER THAN TWO
+The conjunction, and why it is three things rather than two
 ===========================================================================
 
 :func:`.fused_hd_pair.fused_hd_pair_coverage` is ``constitutive_coverage('H')`` AND
@@ -45,10 +45,10 @@ half reads the nonlinearity is ``coverage._grid_reasons`` clause 10
 forwarding every array, coefficient, boundary, conductivity, dispersion and layout
 fact unchanged.
 
-THE PREDICATE HERE IS A CONJUNCTION OF **THREE** THINGS, NOT TWO, and the third is not
+The predicate here is a conjunction of **THREE** things, not two, and the third is not
 decoration:
 
-    the two SHIPPED SPINE PREDICATES  AND  ``fused_hd_pair_coverage`` through the view
+    the two shipped spine predicates  and  ``fused_hd_pair_coverage`` through the view
 
 The shipped spine predicates are NARROWER than the shared clauses they restate in one
 measured place — ``nonlinear_run_pml_curl_coverage`` refuses an unallocated CURL TARGET
@@ -60,14 +60,14 @@ makes "the weld is never wider than either half" true by construction rather tha
 inspection, and :func:`nonlinear_fused_hd_pair_equivalence` states it as a checkable
 identity that the test module and the device gate both run.
 
-A FOURTH CLAUSE INVERTS THE NONLINEARITY IN THE OTHER DIRECTION: this admission
+A fourth clause inverts the nonlinearity in the other direction: this admission
 REQUIRES an installed chi2/chi3, so it is disjoint from
 :func:`.fused_hd_pair.fused_hd_pair_coverage` in BOTH directions. Two predicates
 admitting one configuration is a dispatcher picking by ordering, which is the failure
 the arm table exists to prevent.
 
 ===========================================================================
-WHAT THE CORPUS SAYS THIS IS WORTH — measured, not argued
+What the corpus says this is worth — measured, not argued
 ===========================================================================
 
 TWO seam-instances, both reachable, from
@@ -84,11 +84,11 @@ and NOT with an integrated source, which is what clears this seam's one clause: 
 electric withdraw between the two consults (driver.py:3313-3314) is the no-op on every
 electric source on those rows.
 
-**THE COVERAGE WAS NOT ALREADY OPEN ON THIS BACKEND, and that was checked rather than
+**The coverage was not already open on this backend, and that was checked rather than
 assumed.** The Metal board's ``launch.FUSED_PAIR_EXTRA_ARMS`` has carried
 ``"fused_hd_pair": (("nonlinear PML magnetic", "nonlinear PML curl"),)`` since
 2026-09-05, so on that backend the H->D nonlinear cell was predicate-admitted before
-its gate ran and the 2026-09-07 Metal lane supplied an OWED MEASUREMENT rather than
+its gate ran and the 2026-09-07 Metal gate run supplied an OWED MEASUREMENT rather than
 opening the cell. On THIS backend
 ``launch.CERTIFIED_FUSED_PAIR_EXTRA_ARMS`` carries two rows and neither is
 ``fused_hd_pair``'s; ``launch.CERTIFIED_FUSED_PAIR_ARMS`` carries no ``fused_hd_pair``
@@ -97,7 +97,7 @@ row at all (that product is itself unwired), and
 ``coverage._grid_reasons`` clause 10. So this admission is new here.
 
 ===========================================================================
-THE SEAM, AND WHAT IS NOT INSTALLED
+The seam, and what is not installed
 ===========================================================================
 
 Exactly one statement stands between the two consults — the electric integrated-source
@@ -118,7 +118,7 @@ every configuration whether or not this admission exists. The flag is restated h
 a reader of this module does not have to follow the import to learn it, and a laptop
 test pins the two equal.
 
-SERVED ON A FUSION BOARD IS PREDICATE ADMISSION, by that board's own definition. A
+Served on a fusion board is predicate admission, by that board's own definition. A
 released product credits its admitted seam-instances while executing NOWHERE, and this
 module changes nothing about that: it is in no ``fastpath.RELEASED_FUSED_ARMS``
 envelope and ``fastpath`` never plans it. **No timing exists for this shape and none is
@@ -197,13 +197,13 @@ HOISTS_THE_WITHDRAW: bool = _weld.HOISTS_THE_WITHDRAW
 INSTALLABLE: bool = _weld.INSTALLABLE
 
 INSTALLABLE_REASON = (
-    "THIS ADMISSION INSTALLS NOTHING OF ITS OWN: it builds "
+    "This admission installs nothing of its own: it builds "
     "fused_hd_pair.FusedHdPairPlan, whose family declares INSTALLABLE = False, so "
     "launch._declared_uninstallable refuses it by name on every configuration "
     "whether or not this admission exists. The welded family's own reason is "
     "fused_hd_pair.INSTALLABLE_REASON and is not restated here, because restating it "
-    "would create a second place for it to drift. WHAT IS SPECIFIC TO THIS FAMILY is "
-    "the arbitration on ITS OWN TWO ROWS, and it is MEASURED rather than asserted: "
+    "would create a second place for it to drift. What is specific to this family is "
+    "the arbitration on its own two rows, and it is measured rather than asserted: "
     "over the driver's step_B - update_H - step_D - update_E slot path launches are "
     "4 - (installed pairs) and a TWO-SLOT H->D product takes one slot from EACH "
     "neighbour. Both nonlinear rows have a released B->H neighbour "
@@ -214,13 +214,13 @@ INSTALLABLE_REASON = (
     "The gate's arbitration leg re-derives that through the shipped composer on real "
     "fixtures and its lift leg re-derives it per driven corpus row under "
     "`arbitration_over_the_driven_rows`; those measurements are the record rather "
-    "than this sentence. WHAT THEY MEASURED: both driven corpus rows are a TIE -- 2 "
+    "than this sentence. What they measured: both driven corpus rows are a TIE -- 2 "
     "of 2, no LOSS, no GAIN -- re-derived from the composer slot tables recorded in "
     "results/triton_nonlinear_fused_hd_pair_2026-09-07/keep/lift/, each showing one "
     "installed pair (`fused pair B (nonlinear)` over step_B and update_H) and no "
     "D->E pair. Installing this product would leave the per-step launch count "
     "UNCHANGED on both rows; it lowers it on neither, so nothing about the launch "
-    "count argues for installing it. THE ARTIFACTS THEMSELVES SAY LOSS ON BOTH and "
+    "count argues for installing it. The artifacts themselves say loss on both and "
     "are wrong: the kit scored the verdict off the count of SLOTS carrying a fused "
     "label rather than the count of PAIRS, and one pair holds two slots -- this "
     "family's own prediction above is what caught it (fixed 2026-09-08 in "
@@ -254,14 +254,14 @@ class _LinearScopeView:
     and the reused builder so a covered verdict can never reach a builder that
     re-applies the broader clause.
 
-    IT IS DELIBERATELY NOT IMPORTED FROM THE B->H SIBLING, and it is NOT THE SAME
-    CLASS either. That module's view is read-only, and it can be: ``FusedPairPlan``
-    does not rotate anything. **THIS SEAM'S PLAN DOES.**
+    It is deliberately not imported from the B->H sibling, and it is not the same
+    class either. That module's view is read-only, and it can be: ``FusedPairPlan``
+    does not rotate anything. **This seam's plan does.**
     :class:`.offdiag_scratch_weld.ScratchWeldPairPlan` holds the object it was built
     with and, after every launch, ``setattr``-s the six ``H``/``f_w_H`` names onto it
     to move the engine's references onto the freshly written scratch. A view with
     ``__slots__`` and no ``__setattr__`` raises ``AttributeError: '_LinearScopeView'
-    object has no attribute 'Hx'`` at the first rotation -- measured on this lane's
+    object has no attribute 'Hx'`` at the first rotation -- measured on the
     first device run of this admission, 2026-09-08.
 
     So the write side is forwarded too, and that is the CORRECT semantics rather than
@@ -282,7 +282,7 @@ class _LinearScopeView:
         return getattr(object.__getattribute__(self, "_fields"), name)
 
     def __setattr__(self, name: str, value: Any) -> None:
-        """Every write reaches the engine. THE ROTATION IS A WRITE."""
+        """Every write reaches the engine. The rotation is a write."""
         setattr(object.__getattribute__(self, "_fields"), name, value)
 
     def __repr__(self) -> str:  # pragma: no cover - diagnostics only
@@ -336,7 +336,7 @@ def nonlinear_fused_hd_pair_coverage(fields: Any, pml: Any,
        B->H seam the reason here is not a swallowed pass (this seam is fill-free) but
        that a folded run selects the ``folded`` arms on both slots.
 
-    ``sources`` MUST BE DECLARED, for :mod:`..withdraw_hoist`'s own reason: ``Fields``
+    ``sources`` must be declared, for :mod:`..withdraw_hoist`'s own reason: ``Fields``
     does not hold the source list, so ``None`` is a REFUSAL and not an assumed empty
     set. That clause is what caps this family -- and it is also what both nonlinear
     corpus rows clear, because neither carries an INTEGRATED electric source.
@@ -349,7 +349,7 @@ def nonlinear_fused_hd_pair_coverage(fields: Any, pml: Any,
     if grid is None:
         return Coverage(False, ("fields carries no grid",))
 
-    # 2. The two shipped spine arms, by name, IN THE DRIVER'S ORDER, with their own
+    # 2. The two shipped spine arms, by name, in the driver's order, with their own
     #    reasons prefixed so a reader can tell which side said it.
     constitutive = nonlinear_run_constitutive_coverage(fields, pml,
                                                        CONSTITUTIVE_SIDE)
@@ -364,7 +364,7 @@ def nonlinear_fused_hd_pair_coverage(fields: Any, pml: Any,
     # 3. The WELD's own predicate, unchanged, through the one-clause view. This is
     #    where the electric-withdraw clause and the rotation invariant are asked.
     #
-    #    IT IS NOT RE-ASKED AFTERWARDS, and that is a difference from the B->H
+    #    It is not re-asked afterwards, and that is a difference from the B->H
     #    sibling worth naming: on that seam the driver INJECTS a magnetic source
     #    between the halves, so the admission clause 3 returns for a source is one
     #    the view could hide and the sibling asks again against the real fields.
@@ -402,7 +402,7 @@ def explain_nonlinear_fused_hd_pair(fields: Any, pml: Any,
 
 def nonlinear_fused_hd_pair_equivalence(fields: Any, pml: Any,
                                         sources: Any = None) -> Dict[str, Any]:
-    """THE IDENTITY THIS MODULE RESTS ON, as a measurement rather than a claim.
+    """The identity this module rests on, as a measurement rather than a claim.
 
     The weld's predicate is the conjunction of its two halves' predicates plus the
     seam clauses, and on a nonlinear run those two halves are the two SHIPPED spine
@@ -448,8 +448,8 @@ def plan_nonlinear_fused_hd_pair(fields: Any, pml: Any, sources: Any = None,
                                  kernel: Any = None) -> Any:
     """Build the fused H->D plan for a nonlinear run, or ``None`` when refused.
 
-    THE PLAN CLASS IS THE WELDED FAMILY'S, not a subclass, and THE BINDING LIST IS NOT
-    TRANSCRIBED. :func:`.fused_hd_pair.plan_fused_hd_pair` is called through the same
+    The plan class is the welded family's, not a subclass, and the binding list is not
+    transcribed. :func:`.fused_hd_pair.plan_fused_hd_pair` is called through the same
     :class:`_LinearScopeView`, so every volume, every coefficient table and -- the
     hazard this avoids -- the SUB-LATTICE PAIRING (the assertion that ``step_D``'s
     ``kms`` group and ``update_H``'s are the same INTEGER volumes) is chosen and
@@ -461,7 +461,7 @@ def plan_nonlinear_fused_hd_pair(fields: Any, pml: Any, sources: Any = None,
     back to the array path, never raise into a caller that would otherwise have
     stepped correctly.
 
-    ``kernel`` is THE MUTATION SEAM and it is FORWARDED rather than installed
+    ``kernel`` is the mutation seam and it is FORWARDED rather than installed
     afterwards: :func:`.fused_hd_pair.plan_fused_hd_pair` takes the argument itself.
     Dropping it would not be a slowdown, it would be a DISARMING -- every mutation leg
     of the gate would launch the shipped kernel and score its planted defect uncaught.

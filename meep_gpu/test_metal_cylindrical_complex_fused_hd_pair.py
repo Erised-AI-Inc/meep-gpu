@@ -1,7 +1,7 @@
 """Merge-bar tests for the Metal complex Dcyl two-launch H->D pair
 (``cylindrical_complex_fused_hd_pair``).
 
-WHAT THIS SUITE OWNS AND WHAT IT DOES NOT. The BYTES are the device gate's —
+What this suite owns and what it does not. The BYTES are the device gate's —
 ``parity/meep_gpu/gate_metal_cylindrical_complex_fused_hd_pair.py`` walks the product beside
 the array path and the two certified singles for twelve complete steps and compares uint32
 words. What lives here is everything true about this product WITHOUT a device: the lift is

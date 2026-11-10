@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "about": "What recut_locks.py adds to each reference lock beyond the environment the lock was read from, each pinned to one artifact, with what needs it. Found by an inventory of what the package, its tests, the certification round, the timing harness and the MEEP identity corpus import or run (README.md, 'What the environment carries'). The tool solves the lock's own lines and these, refuses unless the solve returns exactly them, and writes the locks. role: meep_links (MEEP links it; numerics-relevant.json judges it), corpus_only (only the identity corpus needs it; numerics-relevant.json names it apart), tool (a program the round or the tests run), tests (only the test suite imports it). floor: the virtual packages of the solve, the lock's host floor.",
+  "about": "What recut_locks.py adds to each reference lock beyond the environment the lock was read from, each pinned to one artifact, with what needs it. Found by an inventory of what the package, its tests, the certification round, the timing harness and the MEEP identity corpus import or run (README.md, 'What the environment carries'). The tool solves the lock's own lines and these, refuses unless the solve returns exactly them, and writes the locks. A ruled change of a locked package is named here too: an addition with replaces ({version, build}) takes the place of the lock's line of that name, and a platform's removed list takes lines out, each with the ruling it applies (ruling). role: meep_links (MEEP links it; numerics-relevant.json judges it), corpus_only (only the identity corpus needs it; numerics-relevant.json names it apart), tool (a program the round or the tests run), tests (only the test suite imports it). floor: the virtual packages of the solve, the lock's host floor.",
   "platforms": {
     "osx-arm64": {
       "conda_lock": "meep-gpu-ref-osx-arm64.conda.txt",
@@ -10,25 +10,39 @@
       },
       "conda": [
         {
-          "name": "libgdsii",
-          "version": "0.21",
-          "build": "ha393de7_5",
-          "role": "meep_links",
-          "needed_by": "MEEP's configure links libGDSII when it finds the header and the library (AC_CHECK_LIB(GDSII, libGDSIIExists)); without it mp.get_GDSII_prisms and mp.GDSII_vol abort, so ex.coupler and ex.ring_gds cannot run"
-        },
-        {
-          "name": "gdspy",
-          "version": "1.6.13",
-          "build": "py312h389731b_1",
-          "role": "corpus_only",
-          "needed_by": "ex.ring_gds imports gdspy to write the GDSII file it reads back; PyPI has no wheel of gdspy for this platform"
-        },
-        {
           "name": "git",
           "version": "2.53.0",
           "build": "pl5321hc9deb11_0",
           "role": "tool",
           "needed_by": "the round's chunk tooling (rounds/1.0/chunks.py, legs.py, metal_round.py, l3_corpus.py), the boards (build_triton_fusion_matrix.py, repoint_board_bindings.py, snapshot_census_tree.py), the hygiene guard (tools/ci/check_hygiene.py) and their tests run git"
+        },
+        {
+          "name": "libctl",
+          "version": "4.7.1",
+          "build": "h84a0fba_0",
+          "replaces": {
+            "version": "4.5.1",
+            "build": "h5505292_1"
+          },
+          "role": "meep_links",
+          "ruling": "R31",
+          "needed_by": "MEEP 1.35.0's mp.Mesh geometry (#3197): configure defines HAVE_MAKE_MESH_WITH_CENTER only when libctl's ctlgeom.h declares make_mesh_with_center, which libctl 4.7.0 and later do; with 4.5.1, converting an mp.Mesh raises NotImplementedError, and the test_mesh rows of the 1.35.0 corpus cannot run"
+        }
+      ],
+      "removed": [
+        {
+          "name": "gdspy",
+          "version": "1.6.13",
+          "build": "py312h389731b_1",
+          "ruling": "R31",
+          "why": "no script of the MEEP 1.35.0 corpus imports gdspy: ex.ring_gds and ex.coupler read and write GDSII with gdstk (#3245), a PyPI pin of the pip lock"
+        },
+        {
+          "name": "libgdsii",
+          "version": "0.21",
+          "build": "ha393de7_5",
+          "ruling": "R31",
+          "why": "libGDSII is deprecated in MEEP 1.35.0 (#3245: every libGDSII entry point warns), and no script of its corpus calls it; MEEP's configure links libGDSII whenever it finds it, so the reference leaves it out of the lock"
         }
       ],
       "pypi": [
@@ -45,6 +59,20 @@
           "wheel": "imageio_ffmpeg-0.6.0-py3-none-macosx_11_0_arm64.whl",
           "role": "corpus_only",
           "needed_by": "t.test_visualization.TestVisualization.test_animation_output is skipped unless `which ffmpeg` succeeds; the wheel carries one ffmpeg executable that loads only the operating system's libraries and no shared library of its own, and the build scripts link it into <prefix>/bin"
+        },
+        {
+          "name": "gdstk",
+          "version": "1.0.1",
+          "wheel": "gdstk-1.0.1-cp312-cp312-macosx_10_13_universal2.whl",
+          "role": "corpus_only",
+          "needed_by": "ex.coupler and ex.ring_gds import gdstk to read and write their GDSII geometry at MEEP 1.35.0 (#3245); the wheel requires only NumPy on Python 3.12, where conda-forge's build would add a conda typing_extensions beside the pip lock's"
+        },
+        {
+          "name": "trimesh",
+          "version": "5.1.1",
+          "wheel": "trimesh-5.1.1-py3-none-any.whl",
+          "role": "corpus_only",
+          "needed_by": "mp.Mesh.from_file reads mesh files through trimesh (#3197), and t.test_mesh.TestMesh.test_from_file skips without it; the wheel is pure Python and requires only NumPy"
         }
       ]
     },
@@ -56,20 +84,6 @@
         "CONDA_OVERRIDE_CUDA": "11.8"
       },
       "conda": [
-        {
-          "name": "libgdsii",
-          "version": "0.21",
-          "build": "h84d6215_5",
-          "role": "meep_links",
-          "needed_by": "MEEP's configure links libGDSII when it finds the header and the library (AC_CHECK_LIB(GDSII, libGDSIIExists)); without it mp.get_GDSII_prisms and mp.GDSII_vol abort, so ex.coupler and ex.ring_gds cannot run"
-        },
-        {
-          "name": "gdspy",
-          "version": "1.6.13",
-          "build": "py310hd41b1e2_1",
-          "role": "corpus_only",
-          "needed_by": "ex.ring_gds imports gdspy to write the GDSII file it reads back; PyPI has no wheel of gdspy for this platform"
-        },
         {
           "name": "git",
           "version": "2.55.0",
@@ -83,6 +97,34 @@
           "build": "default_h4852527_103",
           "role": "tool",
           "needed_by": "the unprefixed names (objdump, c++filt, readelf, ar, nm, ranlib, strip) of the binutils the lock's compilers already use: tools/fma_census.py runs `objdump` and `c++filt`, and MEEP's build runs `ar`, `nm`, `ranlib` and `strip`, which otherwise come from the host"
+        },
+        {
+          "name": "libctl",
+          "version": "4.7.1",
+          "build": "hb03c661_0",
+          "replaces": {
+            "version": "4.5.1",
+            "build": "hb9d3cd8_1"
+          },
+          "role": "meep_links",
+          "ruling": "R31",
+          "needed_by": "MEEP 1.35.0's mp.Mesh geometry (#3197): configure defines HAVE_MAKE_MESH_WITH_CENTER only when libctl's ctlgeom.h declares make_mesh_with_center, which libctl 4.7.0 and later do; with 4.5.1, converting an mp.Mesh raises NotImplementedError, and the test_mesh rows of the 1.35.0 corpus cannot run. 4.7.1 is conda-forge's newest linux-64 build (it requires glibc 2.17 and libgcc 14 or later, which the lock's floor and its libgcc 16.2.0 meet)"
+        }
+      ],
+      "removed": [
+        {
+          "name": "gdspy",
+          "version": "1.6.13",
+          "build": "py310hd41b1e2_1",
+          "ruling": "R31",
+          "why": "no script of the MEEP 1.35.0 corpus imports gdspy: ex.ring_gds and ex.coupler read and write GDSII with gdstk (#3245), a PyPI pin of the pip lock"
+        },
+        {
+          "name": "libgdsii",
+          "version": "0.21",
+          "build": "h84d6215_5",
+          "ruling": "R31",
+          "why": "libGDSII is deprecated in MEEP 1.35.0 (#3245: every libGDSII entry point warns), and no script of its corpus calls it; MEEP's configure links libGDSII whenever it finds it, so the reference leaves it out of the lock"
         }
       ],
       "pypi": [
@@ -99,6 +141,20 @@
           "wheel": "imageio_ffmpeg-0.6.0-py3-none-manylinux2014_x86_64.whl",
           "role": "corpus_only",
           "needed_by": "t.test_visualization.TestVisualization.test_animation_output is skipped unless `which ffmpeg` succeeds; the wheel carries one statically linked ffmpeg executable and no shared library, and the build scripts link it into <prefix>/bin"
+        },
+        {
+          "name": "gdstk",
+          "version": "1.0.1",
+          "wheel": "gdstk-1.0.1-cp310-cp310-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl",
+          "role": "corpus_only",
+          "needed_by": "ex.coupler and ex.ring_gds import gdstk to read and write their GDSII geometry at MEEP 1.35.0 (#3245); the wheel needs glibc 2.28 (the lock's floor) and requires NumPy and, on Python 3.10, typing_extensions, which the conda lock already holds"
+        },
+        {
+          "name": "trimesh",
+          "version": "5.1.1",
+          "wheel": "trimesh-5.1.1-py3-none-any.whl",
+          "role": "corpus_only",
+          "needed_by": "mp.Mesh.from_file reads mesh files through trimesh (#3197), and t.test_mesh.TestMesh.test_from_file skips without it; the wheel is pure Python and requires only NumPy"
         }
       ]
     }

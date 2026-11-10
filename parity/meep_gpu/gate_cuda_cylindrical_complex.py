@@ -1,19 +1,19 @@
 """Sub-step byte-identity gate for the NEW hand-CUDA COMPLEX cylindrical curl pair.
 
-THE CLAIM UNDER TEST. ``meep_gpu/cuda_kernels/cylindrical_complex_kernels.py`` emits
+The claim under test. ``meep_gpu/cuda_kernels/cylindrical_complex_kernels.py`` emits
 two kernels that did not exist before this run -- ``cyl_step_B_pml_complex`` and
 ``cyl_step_D_pml_complex`` -- and this gate asks whether either reproduces
-``stepping.step_B`` / ``stepping.step_D`` WORD FOR WORD on a real Dcyl grid at
+``stepping.step_B`` / ``stepping.step_D`` word for word on a real Dcyl grid at
 ``abs(grid.m) >= 1`` with complex64 storage under a split-field PML. Nothing in
 ``coverage.py``, ``step_curl_kernels.py``, ``complex_emitter.py`` or
 ``cylindrical_kernels.py`` is touched; the pair carries its own predicate
 (``cylindrical_coverage.covers_pml_cylindrical_complex_curl``).
 
-CUDA HAS NEVER BEEN MEASURED ON A COMPLEX Dcyl CURL. There is no standing record to
+CUDA has never been measured on a complex Dcyl CURL. There is no standing record to
 reproduce and nothing to inherit: every number below is this run's.
 
 =============================================================================
-WHAT THE FAMILY ADDS, AND THEREFORE WHAT THIS GATE HAS TO BE ABLE TO SEE
+What the family adds, and therefore what this gate has to be able to see
 =============================================================================
 
 Five things (``cylindrical_complex_kernels``' docstring derives them off
@@ -34,23 +34,23 @@ certified complex battery would certify a Dcyl kernel against Cartesian defects:
    post-add as a double product, then ``Dy[0] = 0``), ``Dz[0] = 0`` at |m| = 1 (field
    only) and the six-volume near-axis zeroing at |m| >= 2.
 
-And the per-chunk PML forms of the certified complex prelude (KERNELS.md section 7.2),
-armed through ``gate_cuda_complex``'s B battery and two record host mutations.
+And the per-chunk PML forms of the certified complex prelude, armed through
+``gate_cuda_complex``'s per-chunk form battery and two record host mutations.
 
 =============================================================================
-THREE BACKENDS, AND ONLY ONE OF THEM CERTIFIES
+Three backends, and only one of them certifies
 =============================================================================
 
 * ``cuda`` -- NVRTC and a GPU. The only backend whose bytes are the shipped bytes and
   the only one that can release.
-* ``host`` -- the SAME EMITTED CHARACTERS compiled by the host C++ compiler and driven
+* ``host`` -- the same emitted characters compiled by the host C++ compiler and driven
   on NumPy. It certifies nothing about NVRTC and says so in the artifact; what it
   measures is the TRANSCRIPTION -- indices, stencils, masks, operand orders,
   coefficient sub-lattices, the radial wiring and the axis rules -- at the merge bar.
   It is the ``gate_cuda_complex`` pattern, borrowed rather than re-invented.
 * neither -- ``--backend host`` on a machine with no compiler skips with its reason.
 
-THE HOST LEG COMPILES AT ``-O0``. Under the 0.9.2 text the axis-increment row negated
+The host leg compiles at ``-O0``. Under the 0.9.2 text the axis-increment row negated
 an fma OUTPUT, and Apple clang 21 at ``-O1`` rewrote ``-(fma(a,b,c))`` as
 ``fma(-a,b,-c)`` -- exact for every finite value and wrong on signed zeros (measured
 0/96, 3/96 and 0/96 host cases diverging at ``-O0``/``-O1``/``-O2``). The part-wise
@@ -76,7 +76,7 @@ THE CONTROLS
 * the mutation battery, INCLUDING legs that must be UNCAUGHT.
 
 =============================================================================
-THE FLOORS THAT REFUSE A VACUOUS PASS
+The floors that refuse a vacuous pass
 =============================================================================
 
 * ``oracle_moved`` -- the fraction of output words the array path changed. Zero is a
@@ -88,7 +88,7 @@ THE FLOORS THAT REFUSE A VACUOUS PASS
 * ``absorbs`` -- ``max|kms-1|`` and ``max|sinv-1|`` on r and z.
 * ``signed_zero_census`` -- on the ``zero_init`` and ``signed_zero`` seedings the
   reference must carry NEGATIVE ZERO words, or the whole class is VACUOUS and is
-  reported as such rather than as a pass. That is the sibling tranche's rule and it
+  reported as such rather than as a pass. That is a sibling complex gate's rule and it
   is why those cases run with a THIN absorber: measured on this family's own grids, a
   quarter-cell absorber pushes ``min kms_z`` positive and the census to 0.
 * ``INEXACT_COURANT`` -- 0.5 is exactly representable and distributing ``dtdx`` over a
@@ -210,7 +210,7 @@ def outputs(sub_step: str) -> Tuple[str, ...]:
 # The case product
 # ---------------------------------------------------------------------------
 #
-# EVERY CASE IS A REAL Dcyl GRID at |m| >= 1 with complex64 storage. ``Grid`` builds
+# Every case is a real Dcyl GRID at |m| >= 1 with complex64 storage. ``Grid`` builds
 # the r axis itself, so the only boundary a case chooses is z -- and BOTH terminations
 # appear, because they select different code in the ghost rule and the ownership mask.
 
@@ -228,17 +228,17 @@ CASES: Tuple[Dict[str, Any], ...] = (
     {"label": "m+2_r9_z17_metallic", "shape": (9, 1, 17), "m": 2, "z_kind": "metallic"},
     {"label": "m+3_r9_z17_periodic", "shape": (9, 1, 17), "m": 3, "z_kind": "periodic"},
     {"label": "m+5_r12_z48_metallic", "shape": (12, 1, 48), "m": 5, "z_kind": "metallic"},
-    # A WIDER RADIAL EXTENT: the scan's accumulated sum runs further, which is where
+    # A wider radial extent: the scan's accumulated sum runs further, which is where
     # a decaying field reaches the subnormal band first.
     {"label": "m-1_r40_z16_metallic", "shape": (40, 1, 16), "m": -1, "z_kind": "metallic"},
-    # THE ACCURATE NEAR-AXIS BRANCH, which is ZERO_ROWS = 1 at |m| = 3 rather than 3.
+    # The accurate near-axis branch, which is ZERO_ROWS = 1 at |m| = 3 rather than 3.
     # ``Grid`` refuses a Courant above ~1/(|m| + 0.5) here, so this case carries its
     # own; it is the one case whose Courant is not from COURANTS.
     {"label": "m+3_accurate_r16_z20", "shape": (16, 1, 20), "m": 3, "z_kind": "metallic",
      "accurate": True, "courant": 0.2},
-    # m = 0 UNDER COMPLEX STORAGE, the third m class (2026-09-04): no i*m/r term, no
+    # m = 0 under complex storage, the third m class (2026-09-04): no i*m/r term, no
     # curl-row fold, Bx[0] = 0 on the B side, the Dz post-add and Dy[0] = 0 on the D
-    # side. Both z terminations, and the CORPUS ROW'S OWN SHAPE -- examples:
+    # side. Both z terminations, and the corpus row's own shape -- examples:
     # dipole_in_vacuum_cyl_off_axis.py lifts to (150, 1, 300), m = 0, PML, z
     # metallic -- so the configuration the board prices is one the gate stepped.
     {"label": "m0_r16_z20_metallic", "shape": (16, 1, 20), "m": 0, "z_kind": "metallic"},
@@ -262,7 +262,7 @@ VALUE_CLASSES: Tuple[str, ...] = ("uniform", "subnormal_band", "signed_zero",
                                   "zero_init")
 SIGNED_ZERO_CLASSES: Tuple[str, ...] = ("signed_zero", "zero_init")
 
-#: Absorber depth per value class. MEASURED, not chosen: on this family's own grids a
+#: Absorber depth per value class. Measured, not chosen: on this family's own grids a
 #: quarter-cell absorber pushes ``min kms_z`` POSITIVE, the negative-zero census to 0
 #: and every signed-zero mutation to NEEDLE-MISSED -- for a reason that has nothing to
 #: do with the mutation. A two-cell absorber holds ``min kms_z`` at about -1.27.
@@ -324,12 +324,12 @@ def build(xp, spec: Dict[str, Any], courant: float, absorber: str):
 def seed_state(fields, grid, value_class: str, rng) -> None:
     """Seed every complex volume either sub-step touches.
 
-    THE TWO PLANES ARE ASSIGNED, NEVER COMBINED AS ``re + 1j*im``. Measured by the
-    sibling tranche before it was reasoned about: ``1j * im`` carries a real part of
+    The two planes are assigned, never combined as ``re + 1j*im``. Measured in
+    ``gate_cuda_complex.py`` before it was reasoned about: ``1j * im`` carries a real part of
     ``0.0 * im``, so ``re + 1j*im`` computes ``(-0.0) + (+0.0) = +0.0`` and DESTROYS
     every negative zero in the plane the zero cross terms act on.
 
-    THE AUXILIARIES START NONZERO in the live classes: a zero ``fu`` makes
+    The auxiliaries start nonzero in the live classes: a zero ``fu`` makes
     ``kms * prev`` exactly zero on the first launch whatever ``kms`` holds, so a
     mis-indexed coefficient would only show from launch two. ``zero_init`` is the
     exception and is the whole point of that class -- from all-zero state the ONLY
@@ -577,7 +577,7 @@ def _host_function(compiler: str, options: Sequence[str], workdir: str, text: st
 
 
 def _host_call(function, parameters, values: Dict[str, Any], cells: int) -> None:
-    """Call a host-compiled kernel with its arguments looked up BY PARAMETER NAME, each
+    """Call a host-compiled kernel with its arguments looked up by parameter name, each
     converted to the C type its signature declares -- so a reordered signature is a
     lookup, not a wrong pointer."""
     arguments: List[Any] = []
@@ -952,7 +952,7 @@ def m_imr_increment_unmasked(text):
 
     MEEP's pass loops over its owned cells only (LOOP_OVER_VOL_OWNED0) and the array
     path masks the increment to +0 there; unmasked, the z-wall plane of Bz / Dx takes
-    the increment. MUST BE CAUGHT where z is metallic.
+    the increment. Must be caught where z is metallic.
     """
     return _sub(r" *if \(bc_[xyz] == BC_METALLIC && \w == 0\) inc = cf_zero\(\);\n", "",
                 text)
@@ -1017,7 +1017,7 @@ def m_m0_post_add_in_float32(text):
     """The on-axis product through a float32 factor instead of MEEP's double product.
 
     ``realnum(double(4*Courant) * double(Hp))`` (step_db.cpp:324) is another word
-    wherever ``4*Courant`` is not a float32 word. MUST BE CAUGHT at the inexact Courant.
+    wherever ``4*Courant`` is not a float32 word. Must be caught at the inexact Courant.
     """
     return _sub(r"double_product\(four_courant, cf_load\(Hy, idx\)\)",
                 "mul_coefficient_left((float)four_courant, cf_load(Hy, idx))", text)
@@ -1037,7 +1037,7 @@ def m_m0_post_add_folded_before_dy_zero_swapped(text):
 def m_m0_imr_unguarded(text):
     """Run the i*m/r pass at m = 0 instead of skipping it.
 
-    MEASURED, NOT REQUIRED. The array path runs no pass at m = 0. The m = 0 row is a
+    Measured, not required. The array path runs no pass at m = 0. The m = 0 row is a
     signed zero (``realnum(sign * 0)``), so the pass adds signed-zero increments, which
     move a word only where a ``-0`` meets a ``+0`` in the ladder; the guard is kept
     because the array path SKIPS the pass.
@@ -1065,7 +1065,7 @@ def m_axis_increment_not_negated(text):
 
 def m_axis_increment_in_float32(text):
     """The |m| = 1 increment through a float32 Courant factor instead of MEEP's double
-    product (step_db.cpp:377). MUST BE CAUGHT at the inexact Courant."""
+    product (step_db.cpp:377). Must be caught at the inexact Courant."""
     return _sub(_AXIS_REPLACE,
                 r"curl = cf_neg(mul_coefficient_left((float)\1, \2));", text)
 
@@ -1242,7 +1242,7 @@ OWN_MUTATIONS: Dict[str, Dict[str, Any]] = {
                           "sub_step": "step_D"},
     "dz_axis_zero_takes_fu": {"fn": m_dz_axis_zero_takes_fu, "must": True, "reach": "m1_live",
                               "sub_step": "step_D"},
-    # THE m = 0 ARM'S OWN BATTERY: each of the array path's three m = 0 rules dropped,
+    # The m = 0 arm's own battery: each of the array path's three m = 0 rules dropped,
     # the post-add fed the wrong volume or a float32 factor, and the guard on the
     # passes removed. The store-order swap is a predicted null.
     "m0_drop_bx_axis_zero": {"fn": m_m0_drop_bx_axis_zero, "must": True,
@@ -1274,7 +1274,7 @@ OWN_MUTATIONS: Dict[str, Dict[str, Any]] = {
     "r_near_ghost_dy_image_negated": {"fn": _r_near_ghost("ss", "Hz", "-1.0"),
                                       "must": False, "reach": "any",
                                       "sub_step": "step_D"},
-    # THE HARNESS NULLS.
+    # The harness nulls.
     "radial_scale_commuted": {"fn": n_radial_scale_commuted, "must": False,
                               "reach": "any"},
     "reload_the_target_from_memory": {"fn": n_reload_the_target_from_memory,
@@ -1288,8 +1288,8 @@ OWN_MUTATIONS: Dict[str, Dict[str, Any]] = {
 #: of them arms on the IMPORTED ``_HEAD``/``_ARM_SOURCE``/``_TAIL`` strings or on the
 #: Cartesian target blocks this pair keeps unchanged -- which is itself the check that
 #: "the certified body, character for character" is true rather than claimed. The
-#: grouping legs are KERNELS.md section 7.1's inversions (the previous package grouping
-#: is the mutant) and the select legs its section 7.2 B battery.
+#: grouping legs are the inverted grouping mutations (the previous package grouping
+#: is the mutant) and the select legs the per-chunk form battery (certification.md).
 SHARED_MUTATIONS: Dict[str, Dict[str, Any]] = {
     "full_complex_coefficient_products": {"must": True, "reach": "signed_zero"},
     "old_package_curl_grouping": {"must": True, "reach": "live_state"},
@@ -1334,7 +1334,7 @@ HOST_MUTATIONS: Dict[str, Dict[str, Any]] = {
     "imr_clamp_raised": {"must": True, "reach": "m1_live"},
     "zero_rows_forced_one": {"must": True, "reach": "mmany_wide_live"},
     "m_class_forced_one": {"must": True, "reach": "not_m1_live"},
-    # THE THIRD ARM FORCED ON THE OTHER TWO: at |m| >= 1 the passes go silent, the
+    # The third arm forced on the other two: at |m| >= 1 the passes go silent, the
     # increments and the near-axis zeroing never fire and the m = 0 tails do.
     "m_class_forced_zero": {"must": True, "reach": "not_m0_live"},
     "courant_words_in_float32": {"must": True, "reach": "axis_rule_inexact"},
@@ -1351,7 +1351,7 @@ HOST_MUTATIONS: Dict[str, Dict[str, Any]] = {
 def reaches(reach: str, case: Dict[str, Any]) -> bool:
     """Whether this case is one the leg's defect can be seen on at all.
 
-    A REACH IS A CLAIM AND EACH ONE IS DERIVED:
+    A reach is a claim and each one is derived:
 
     * ``m1`` / ``mmany`` -- the two axis-rule arms are compiled branches; a mutation
       to one cannot be seen from the other;
@@ -1418,7 +1418,7 @@ def reaches(reach: str, case: Dict[str, Any]) -> bool:
     if reach == "metallic_live":
         return metallic and reaches("live_state", case)
     if reach == "mask_observable":
-        # WHICH ROWS THE MASK ACTUALLY DECIDES, derived rather than assumed. It fires
+        # Which rows the mask actually decides, derived rather than assumed. It fires
         # on (a) r at i = 0 for every shift-0 target and (b) z at k = 0 when z is
         # metallic. Row 0 of the r-masked targets is then OVERWRITTEN by this family's
         # own rules -- by the axis increment at |m| = 1 (Bx, Dy) and by the near-axis
@@ -1565,7 +1565,7 @@ def case_record(grid, layer) -> np.ndarray:
 
 def host_mutated_record(name: Optional[str], record: np.ndarray, grid) -> np.ndarray:
     """Corrupt the chunk record a LAUNCH BINDS, leaving the oracle's division alone
-    (KERNELS.md section 7.2): the low run's end one row up on both lattices, or each
+    (the form battery's record rows): the low run's end one row up on both lattices, or each
     lattice handed the other's runs."""
     if name is None:
         return record
@@ -1608,7 +1608,7 @@ def one_case(backend, spec: Dict[str, Any], sub_step: str, courant: float,
              multi_step: bool = True) -> Dict[str, Any]:
     """One frozen state, run twice: the array path, then the kernel.
 
-    THE ORACLE IS ``stepping`` ITSELF on real ``Grid``/``Fields``/``PML`` objects.
+    The oracle is ``stepping`` itself on real ``Grid``/``Fields``/``PML`` objects.
     There is no second transcription on the oracle leg to drift: the kernel is compared
     against the thing it claims to reproduce, byte for byte, from ONE frozen state.
     """
@@ -1667,7 +1667,7 @@ def one_case(backend, spec: Dict[str, Any], sub_step: str, courant: float,
                             bool(spec.get("accurate", False)))
     case["axis_row_is_live"] = live
     case["axis_row_live"] = bool(live["meets_floor"])
-    # THE FLOOR IS PER SEEDING, and that split is measured rather than tidy. On the
+    # The floor is per seeding, and that split is measured rather than tidy. On the
     # LIVE classes the axis rows must carry moved words or the per-|m| rules cannot be
     # scored at all. On the +-0 classes they need not: ``zero_init`` moves a word only
     # where a negative ``kms`` meets a quiet ``+0.0``, which on the B side is nowhere
@@ -1716,7 +1716,7 @@ def one_case(backend, spec: Dict[str, Any], sub_step: str, courant: float,
     imr_live = imr_is_live(rows)
     case["imr_is_live"] = imr_live
     if not imr_live["meets_floor"] and host_mutation is None and int(spec["m"]) != 0:
-        # AT m = 0 THE ROWS ARE ZERO BY CONSTRUCTION AND NEVER READ: the kernel guards
+        # At m = 0 the rows are zero by construction and never read: the kernel guards
         # every i*m/r site on m_class != 0, so a dead row there is the arm, not a
         # vacuous fixture. The floor stays for every |m| >= 1 case.
         case["skipped"] = ("a bound i*m/r row is constant or zero; a row-index or "
@@ -1817,7 +1817,7 @@ def run_sweep(results, out_path, backend, product, guard) -> List[Dict[str, Any]
 def scorable_baselines(results) -> Tuple[set, List[Dict[str, Any]]]:
     """The ``(label, sub_step, value_class)`` triples whose UNMUTATED case passed.
 
-    A MUTATION LEG ONLY MEANS SOMETHING WHERE THE BASELINE IS IDENTICAL. On an arm
+    A mutation leg only means something where the baseline is identical. On an arm
     that already diverges, every leg -- including one that must be UNCAUGHT -- scores
     CAUGHT for free.
     """
@@ -1877,7 +1877,7 @@ def score(legs: List[Dict[str, Any]], must_be_caught, reach: str,
             return out
         out["reading"] = f"{caught_live} of {len(live)} live cases separated"
     elif must_be_caught:
-        # THE BAR, AND WHAT IT DELIBERATELY IS NOT. "Every live case must diverge" is
+        # The bar, and what it deliberately is not. "Every live case must diverge" is
         # the default and is what CAUGHT means. A leg that catches the defect on most
         # of its live cases and misses one is NOT the same failure as a leg that never
         # catches it, and collapsing the two would either refuse a working gate for a
@@ -2114,6 +2114,7 @@ def save(results, out_path: str) -> None:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
+    import neutral_ids  # noqa: PLC0415
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--backend", choices=("cuda", "host"), default="cuda")
     parser.add_argument("--product", choices=("full", "reduced"), default="full")
@@ -2138,8 +2139,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     results: Dict[str, Any] = {
         "gate": "cuda_cylindrical_complex",
         "started_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "host": os.uname().nodename,
-        "argv": list(argv if argv is not None else sys.argv[1:]),
+        "host": neutral_ids.machine_id(),
+        "argv": neutral_ids.argv(argv if argv is not None else sys.argv[1:]),
         "backend": args.backend,
         "product": args.product,
         "question": ("do the hand-CUDA complex cylindrical curl kernels reproduce "
@@ -2187,7 +2188,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         backend = HostCompiledBackend(args.compiler)
     results["backend_certifies"] = bool(backend.certifies)
     if args.falsify and not args.skip_mutations:
-        # THE MUTATION LEGS CLEAR THE TRANSFORM when they finish, so a falsify run
+        # The mutation legs clear the transform when they finish, so a falsify run
         # that also ran them would emit the SHIPPED source for most of its cases and
         # report a verdict about nothing. Refused rather than silently half-planted.
         log("[fatal] --falsify requires --skip-mutations: the mutation legs install "

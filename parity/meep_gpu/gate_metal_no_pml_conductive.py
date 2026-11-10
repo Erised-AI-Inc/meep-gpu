@@ -90,7 +90,7 @@ def execute(*, sides: Sequence[str], mixed: bool, stored_e: bool, seed: int,
     names = ("Bx", "By", "Bz", "Dx", "Dy", "Dz")
     before = {name: np.array(getattr(actual, name), copy=True) for name in names}
     residency = Residency()
-    # THE ENGINE'S OWN RECORD for this grid: what the composer hands the arm.
+    # The engine's own record for this grid: what the composer hands the arm.
     record = chunk_bounds_record(ChunkLayout.one_rank(actual.grid, actual_pml))
     b = family.plan_metal_conductive_plain_curl(
         actual, actual_pml, "step_B", residency, functions=b_functions,

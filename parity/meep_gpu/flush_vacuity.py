@@ -1,9 +1,9 @@
 """Which vacuity floors do not apply under the ``flush`` policy, decided by measurement.
 
-WHY THIS EXISTS. Several Triton gates refuse a value class whose operands hold no float32
+Why this exists. Several Triton gates refuse a value class whose operands hold no float32
 subnormal ("VACUOUS OPERAND CLASS: value_class='subnormal_band' seeded 0 subnormals"),
 because under ``keep`` such a row measured nothing about the class it is named for. The
-Triton fleet never ran under ``flush`` before the 1.0 round, and on its first flush run
+Triton fleet never ran under ``flush`` before the 1.0 certification run, and on its first flush run
 eight of them failed on exactly that floor while every byte comparison was identical
 (pre-certification pass FPC, 2026-10-10). Under ``flush`` the class cannot occur: the host
 FPU flushes (MEEP's ``set_zero_subnormals``, FTZ and DAZ) and every executor compiles
@@ -12,7 +12,7 @@ gate that seeds its band with host arithmetic, and not in any field MEEP itself 
 floor demanding subnormal operands then fails a correct kernel for a property of the
 policy.
 
-WHAT IS DECLARED, AND ONLY WHEN THREE MEASUREMENTS AGREE.
+What is declared, and only when three measurements agree.
 :func:`subnormal_class_not_applicable` names the floor NOT APPLICABLE when
 
 1. the installed subnormal policy is ``flush`` (an install happened and resolved flush);

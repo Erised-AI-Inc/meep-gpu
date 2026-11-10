@@ -4,7 +4,7 @@ The Metal port of ``triton_kernels/bfast_curl.py``. Source of truth for the
 ARITHMETIC is ``stepping.py``; source of truth for the STRUCTURE — the predicate
 clauses, the plan shape, the refusals — is the Triton module, which is certified.
 
-WHAT BFAST IS (stepping.py:826-931, grid.py:698-753). The time-sheared substitution
+What BFAST is (stepping.py:826-931, grid.py:698-753). The time-sheared substitution
 ``t -> t - k.r/c``, under which a planewave at a FIXED incidence angle is
 transversely uniform at EVERY frequency, so plain periodic boundaries are exact for
 a whole band::
@@ -12,7 +12,7 @@ a whole band::
     dB/dt = -curl(E) + d/dt (k x E)
     dD/dt = +curl(H) - d/dt (k x H)
 
-MEEP runs it as A PASS OF ITS OWN after each component's curl, over the SAME
+MEEP runs it as a pass of its own after each component's curl, over the SAME
 shifted operands the curl gathers (step_db.cpp:124-142, ``STEP_CURL`` then
 ``STEP_BFAST`` per component), through the additive ladder the pass ends in
 (step_generic.cpp:335-533). The array path does the same: ``stepping.step_B`` /
@@ -64,7 +64,7 @@ partner's DERIVATIVE axis (``stepping.curl_presence``), cross-gated. It is load-
 because an invariant axis zeroes the curl's DIFFERENCE automatically while the BFAST
 SUM of the same two samples is ``2*g``, not zero.
 
-A NONZERO k ON A DECLARED-INVARIANT AXIS IS ADMITTED. MEEP zeroes the coefficient
+A NONZERO k on a declared-invariant axis is admitted. MEEP zeroes the coefficient
 (step_db.cpp:130-133) *and* hands ``step_bfast`` a NULL operand for the absent partner
 (step_db.cpp:62-63), which swaps a null g1 into the g2 slot carrying k1 := k2
 (step_generic.cpp:342-346) and takes its single-operand branch. The array path takes
@@ -95,7 +95,7 @@ WHAT IS METAL-SPECIFIC, and all that is:
   ``curl - adv``; IEEE-754 defines subtraction AS addition of the negation, so it
   carries the array path's ``curl + (-advance)`` on every input including signed
   zeros. Triton needed this because its unary minus lowers as ``0.0 - x``; on
-  Metal ``-x`` was MEASURED to be a sign-bit operation (0/8045, preserving -0 and
+  Metal ``-x`` was measured to be a sign-bit operation (0/8045, preserving -0 and
   subnormal bits). The spelling is kept anyway because it is literal, not because
   the workaround transfers — that distinction is recorded rather than inherited.
 * **Three IIR state buffers bind pointer-identically.** The driver's
@@ -105,16 +105,16 @@ WHAT IS METAL-SPECIFIC, and all that is:
   the mirror's ``host`` IS ``fields.f_bfast_*`` and a sync out writes it in place —
   which is a STRONGER requirement than on CuPy, and the gate holds it.
 
-WIRED AS OF TRANCHE 2. This module registers two curl arms in :mod:`.arms` and
-``plan_step`` composes them; ``fastpath.plan_fast_path`` still returns ``None`` on
-every branch, which is the separate decision. No admitted-overlap ambiguity arises
-on the two sub-steps this module plans — ``step_B`` and ``step_D`` — because every
-other predicate registered on those slots refuses a BFAST run BY NAME
+Wired since the Metal port's second stage. This module registers two curl arms in
+:mod:`.arms` and ``plan_step`` composes them; ``fastpath.plan_fast_path`` still
+returns ``None`` on every branch, which is the separate decision. No admitted-overlap
+ambiguity arises on the two sub-steps this module plans — ``step_B`` and ``step_D`` —
+because every other predicate registered on those slots refuses a BFAST run BY NAME
 (``coverage._grid_reasons`` clause 11, ``complex_fields`` clause 8, ``special_kz``
-clause 11) while clause 11 here is inverted. The composition sweep MEASURES that,
-per registered arm, rather than assuming it.
+clause 11) while clause 11 here is inverted. The composition sweep MEASURES that, per
+registered arm, rather than assuming it.
 
-THE EXCEPTION LIST IS NOT EMPTY, and an earlier revision of this paragraph said it
+The exception list is not empty, and an earlier revision of this paragraph said it
 was. The Triton module records two shipped predicates that do NOT consult the shared
 grid clauses and DO admit a BFAST run (``ade_update_p_coverage``,
 ``fused_ade_state_coverage``). Measured on this tree 2026-08-15, the Metal package has
@@ -136,12 +136,12 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-# ONE DEFINITION, IMPORTED. These are pure Python over duck-typed engine objects,
+# One definition, imported. These are pure Python over duck-typed engine objects,
 # carry no Triton clause, and are the certified transcription of the k-assignment
 # trap described above. Re-deriving them here would be a third transcription of
 # the same six cross-assigned indices.
 #
-# ``SUB_STEPS`` COMES FROM THE TRITON PACKAGE, NOT FROM ``.launch``, and the choice
+# ``SUB_STEPS`` comes from the Triton package, not from ``.launch``, and the choice
 # is deliberate rather than incidental: it is the SAME table
 # ``triton_kernels.bfast_curl`` binds against, so the two ports cannot disagree
 # about which targets, sources, direction or Yee suffix a sub-step has — and this
@@ -149,7 +149,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 # lets an unwired family be built and gated without being able to perturb
 # ``plan_step``.
 #
-# WHAT A TEST CAN AND CANNOT PIN HERE, stated because the first attempt got it
+# What a test can and cannot pin here, stated because the first attempt got it
 # wrong. Comparing this module's ``SUB_STEPS`` against the Triton table field by
 # field is ``x == x`` — the import makes them ONE OBJECT, and no edit anywhere can
 # make that compare fail. The identity is pinned as an identity, in one line. The
@@ -376,7 +376,7 @@ def _bfast_grid_reasons(fields: Any, pml: Any, grid: Any) -> List[str]:
     #    subnormal policy the MPS executor refuses.
     reasons.extend(_metal_backend_reasons(grid))
 
-    # 2. Real storage REQUIRED (Phase A). Grid DELIBERATELY allows bfast + Bloch
+    # 2. Real storage REQUIRED ("Phase A" = real-only). Grid DELIBERATELY allows bfast + Bloch
     #    (grid.py:719-724 — two independent MEEP constructor slots), and a
     #    complex-storage BFAST run is the complex family's queued composition.
     if getattr(fields, "force_complex_fields", False):
@@ -504,7 +504,7 @@ def _bfast_grid_reasons(fields: Any, pml: Any, grid: Any) -> List[str]:
 def _curl_conductivity_reasons(fields: Any) -> List[str]:
     """Conductivity refused on ALL six curl targets, BOTH directions.
 
-    THIS PACKAGE SHIPS NO CONDUCTIVE PRODUCT AT ALL, so on Metal the refusal is
+    This package ships no conductive product at all, so on Metal the refusal is
     unconditional rather than a hand-off: there is nothing for a conductive run to
     fall to but the array path. The cross-reference to ``triton_kernels/conductivity.py``
     :515-518 is kept because that module's predicate refuses bfast in return, which is
@@ -596,7 +596,7 @@ class BfastPmlCurlPlan(KernelPlan):
     the ``has_bfast`` specialisation. ``run`` and the contraction-variant contract
     are the base's, so this family cannot spell the guard its own way.
 
-    THE STATE MIRRORS WRAP ``fields.f_bfast_*`` THEMSELVES. On CuPy that is
+    The state mirrors wrap ``fields.f_bfast_*`` THEMSELVES. On CuPy that is
     literally pointer identity; here it is the mirror's ``host`` reference plus an
     in-place ``sync_out``, which is the same requirement one level up. The driver's
     flux backup/restore around the magnetic half-step (driver.py:4126-4135) depends
@@ -624,7 +624,7 @@ class BfastPmlCurlPlan(KernelPlan):
         self.dtdx = float(dtdx)
         # Already f32-rounded by the host (bfast_curl_coefficients); float() keeps
         # the bits, and a Python double bound to `constant float&` arrives
-        # correctly rounded — MEASURED on this host (5/5 needles), unlike Triton's
+        # correctly rounded — measured on this host (5/5 needles), unlike Triton's
         # dead tl.float64 path. So the words the kernel receives are the array
         # path's.
         self.ks = tuple(float(value) for value in ks)
@@ -754,7 +754,7 @@ def plan_bfast_pml_curl_from_arrays(sub_step: str, arrays: Dict[str, Any],
 # The constitutive companion — no new kernel, a restated predicate
 # ---------------------------------------------------------------------------
 #
-# WHY THIS IS SOUND, and it is a READ of stepping.py rather than an analogy. BFAST's
+# Why this is sound, and it is a READ of stepping.py rather than an analogy. BFAST's
 # whole effect is the second additive curl term and its IIR state, and both live in
 # `step_db`: `_bfast_advance` (S:874-905) is called from the CURL path only.
 # `update_H` (S:907-925) and `update_E` (S:927-994) contain no BFAST branch, read no
@@ -764,7 +764,7 @@ def plan_bfast_pml_curl_from_arrays(sub_step: str, arrays: Dict[str, Any],
 # pair on a BFAST run is byte-for-byte the arithmetic the certified constitutive
 # kernel already reproduces, and only the ADMISSION has to change.
 #
-# THIS IS THE SAME MOVE `special_kz.beta_run_constitutive_coverage` MAKES, for the
+# This is the same move `special_kz.beta_run_constitutive_coverage` MAKES, for the
 # same reason, and it is the cheapest coverage on either track: no kernel, no new
 # specialisation, no new byte claim beyond re-running the certified one on a
 # configuration the shipped predicate refused for a clause that does not apply to
@@ -866,22 +866,22 @@ def plan_bfast_run_constitutive(fields: Any, pml: Any, side: str,
 
 
 # ---------------------------------------------------------------------------
-# WIRING — two curl arms and the constitutive pair, as of tranche 2
+# Wiring — two curl arms and the constitutive pair, since the port's second stage
 # ---------------------------------------------------------------------------
 #
-# THIS MODULE USED TO REGISTER NOTHING and called that omission the safety argument
+# This module used to register nothing and called that omission the safety argument
 # for building the family before dispatch was decided. The argument was sound and
 # the omission was the wrong instrument: an unregistered arm is invisible to every
 # sweep that does not name this module, so "nothing co-admits it" could only be
 # checked by a probe written for this family. The arms are registered now, and the
 # disjointness sweep reaches them the same way it reaches every other row.
 #
-# WHAT SEPARATES THEM: `coverage._grid_reasons` clause 11 refuses a BFAST run BY
+# What separates them: `coverage._grid_reasons` clause 11 refuses a BFAST run BY
 # NAME, `complex_fields` clause 8 refuses it by name, `special_kz` clause 11
 # refuses it by name, and clause 11 here is INVERTED — `grid.bfast_active` must be
 # True. So on the curl slots the separation is total and stated four times.
 #
-# THE ONE ADMISSION THAT IS NOT AN AMBIGUITY, and it was measured rather than
+# The one admission that is not an ambiguity, and it was measured rather than
 # assumed: `no_pml_constitutive.metal_null_constitutive_coverage` ADMITS a BFAST
 # run whenever the absorber is inactive. That is a DIFFERENT SLOT (update_H /
 # update_E) and it is the correct answer there — `stepping.update_H` returns at

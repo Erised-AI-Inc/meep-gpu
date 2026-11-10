@@ -60,13 +60,13 @@ to force a GPU run.
 ## 2. One-call accelerated execution
 
 A GPU run is not automatically faster, and both entry points run on the GPU by
-default. For two-dimensional problems and small grids, expect MEEP itself or the
-NumPy reference to be as fast or faster; what has been measured, per host, and
-what has not, is in [Will it help?](../guides/will-it-help.md).
-On the one Apple GPU measured, a default lift is slower than
-<code>prefer_gpu=False</code> below a crossover between 102,400 and 230,400
-cells in 2-D and near 125,000 cells in 3-D (2026-09-27, on a loaded host; not
-a timing of record); see
+default. On two-dimensional problems and on small 3-D grids expect MEEP itself to be
+as fast or faster; what has been measured, per host, and what has not, is in
+[Will it help?](../guides/will-it-help.md). On the one Apple GPU measured, on pre-1.0
+code (2026-09-27, on a loaded host; not a timing of record), a default lift was slower
+than <code>prefer_gpu=False</code> below a crossover between 102,400 and 230,400
+cells in 2-D; on the 1.0 code the 3-D crossover is below 110,592 cells, the smallest
+grid of the 1.0 timing there; see
 [Small cells are faster on the reference](first-lift.md#small-cells-are-faster-on-the-reference).
 
 <code>run_on_gpu</code> is the closest counterpart to a simple

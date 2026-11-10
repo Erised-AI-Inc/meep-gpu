@@ -1,6 +1,6 @@
 """The complex NO-ABSORBER hand-CUDA fused pair: predicate, lift, protocol.
 
-WHAT THIS FILE SETTLES. ``no_pml_complex_fused_electric_pair`` puts the
+What this file settles. ``no_pml_complex_fused_electric_pair`` puts the
 ``cuda_complex_no_pml`` family on ``step_D -> update_E``. It occupies the board's
 ``D_to_E (cuda_complex_no_pml/complex no-PML curl, cuda_complex_no_pml/complex no-PML
 stored E)`` cell -- 4 seam-instances, all four clearing the source seam on the driver
@@ -31,7 +31,7 @@ what a byte comparison on an admitted row can never see, is:
    TWO routes by which D could be bound a second time. Both are closed and both are
    measured here.
 
-NOTHING HERE COMPILES OR LAUNCHES ANYTHING. The fused kernel's arithmetic is a DEVICE
+Nothing here compiles or launches anything. The fused kernel's arithmetic is a DEVICE
 claim and no test on this host may speak to it
 (``parity/meep_gpu/gate_cuda_fused_complex_pairs.py --family no_pml_complex_electric``
 is where that is measured); what is settled here is the predicate, the lift and the
@@ -75,14 +75,14 @@ def build(xp, *, boundaries=("periodic", "periodic", "periodic"),
           conductive=True, poles=1, complex_storage=True, layer=None, seed=20260831):
     """A frozen ``(fields, layer, grid)`` triple this product admits.
 
-    THE EXTENTS ARE DELIBERATELY UNEQUAL: a cube lets an index decomposition swap i and
+    The extents are deliberately unequal: a cube lets an index decomposition swap i and
     k and stay identical.
 
-    ``enable_pml_storage`` IS NEVER CALLED and that is load-bearing rather than an
+    ``enable_pml_storage`` is never called and that is load-bearing rather than an
     omission -- it allocates the ``fu``/``f_w`` auxiliaries, and both certified halves
     refuse a run where one exists while the layer is inert.
 
-    THE EPSILON IS ANISOTROPIC AND THE CONDUCTIVITY IS PER COMPONENT. On a vacuum
+    The epsilon is anisotropic and the conductivity is per component. On a vacuum
     fixture all three ``inv_eps`` pointers are ONE allocation of ones, so binding them
     in the wrong order or dropping the multiply outright is BIT-IDENTICAL and every
     mutation on that binding scores as uncaught while looking green. Three distinct
@@ -111,7 +111,7 @@ def build(xp, *, boundaries=("periodic", "periodic", "periodic"),
         f"3; every binding claim on this seam would be inert")
 
     if conductive:
-        # PER COMPONENT, which is the mapping form `mp.Absorber` produces
+        # Per component, which is the mapping form `mp.Absorber` produces
         # (fields.py:755-759). One shared volume is legal and makes a component-aliasing
         # defect unobservable, so the fixture draws three graded ones.
         for setter, names in ((fields.set_d_conductivity, ("Dx", "Dy", "Dz")),
@@ -161,7 +161,7 @@ def source_text(conductive=True):
 def _fused_body(conductive=True, code_only=False):
     """The fused kernel's own text, past its entry point.
 
-    SPLIT AT THE ENTRY POINT, not at the first ``\\n) {``: the certified prelude's own
+    Split at the entry point, not at the first ``\\n) {``: the certified prelude's own
     device helpers (``cshift_dn`` above all) close their parameter lists the same way,
     so a split at the first terminator would inspect the helper library instead.
 
@@ -181,7 +181,7 @@ def _fused_body(conductive=True, code_only=False):
 class _ArrayPair:
     """Stands in for the fused kernel: curl + constitutive in one object.
 
-    THE THING UNDER TEST IS THE PROTOCOL, NOT THE KERNEL -- the same stand-in the
+    The thing under test is the protocol, not the kernel -- the same stand-in the
     sibling files use, with ``REPLACES`` read from the module rather than transcribed,
     so a pass added to or dropped from that tuple changes this stand-in without an edit
     here.
@@ -204,13 +204,13 @@ class _ArrayPair:
 
 
 # --------------------------------------------------------------------------
-# 1. THE TWO DECISIONS, AND THE WIRING THEY MAY NOT DRIFT FROM
+# 1. The two decisions, and the wiring they may not drift from
 # --------------------------------------------------------------------------
 
 def test_the_flag_is_declared_False_and_is_passed_to_the_clause_that_reads_it():
     """A flag the seam clause is not handed is a claim nothing acts on.
 
-    FALSE IS THE UNUSUAL ANSWER on this seam -- every other shipped electric product
+    False is the unusual answer on this seam -- every other shipped electric product
     declares True -- so the constant, its spelling in the source (which the tree-walking
     allowlist in ``test_fused_pair_deposit_wiring`` reads) and its arrival at the clause
     are each read rather than assumed.
@@ -222,7 +222,7 @@ def test_the_flag_is_declared_False_and_is_passed_to_the_clause_that_reads_it():
 
 
 def test_the_flag_at_False_refuses_every_deposit_the_installer_could_have_bracketed(xp):
-    """THE SOUNDNESS OF THE FALSE, measured over a source matrix rather than argued.
+    """The soundness of the false, measured over a source matrix rather than argued.
 
     ``CARRIES_DEPOSIT_REPAIR = False`` is sound exactly when no configuration this
     predicate ADMITS can reach ``_install_fused_pair`` with a non-empty D seam -- if one
@@ -250,7 +250,7 @@ def test_the_flag_is_load_bearing_and_flipping_it_changes_the_answer(xp, monkeyp
     """The null control on the test above. Without it, "electric sources are refused"
     could be true of a predicate that refuses them for some unrelated reason.
 
-    FLIPPING THE FLAG TO True IS NOT A PROPOSAL. This module installs no
+    Flipping the flag to True is not a proposal. This module installs no
     ``LeadingRepairPlan``/``TrailingRepairPlan``, so True would be a claimed bracket
     nothing builds; the flip is here only to show that the shipped False is what
     produces the refusal.
@@ -266,14 +266,14 @@ def test_the_flag_is_load_bearing_and_flipping_it_changes_the_answer(xp, monkeyp
         "flipping the flag changed nothing, so the shipped False is not what refuses "
         f"an electric deposit: {why}")
     assert "is electric" not in flipped, flipped
-    # AND WHAT THE FLIP WOULD HAVE MET INSTEAD, which is the other half of why True is
+    # And what the flip would have met instead, which is the other half of why True is
     # not a proposal here: `deposit_repair.repairable` asks for the split-field history
     # this seam does not have, because there is no absorber to have written one.
     assert "f_w_Ex is not allocated" in flipped, flipped
 
 
 def test_an_undeclared_source_set_is_still_a_refusal(xp):
-    """IGNORANCE IS NEVER AN EMPTY SET. ``Fields`` does not hold the source list, so a
+    """Ignorance is never an empty set. ``Fields`` does not hold the source list, so a
     predicate that inferred "no sources" from not being told would over-cover exactly
     the configurations the clause above exists to refuse."""
     fields, layer, grid = build(xp)
@@ -285,7 +285,7 @@ def test_the_replaced_passes_are_a_contiguous_run_of_the_drivers_own_order(xp):
     """``REPLACES`` is a claim about what ONE launch performed, checked against
     ``FdtdDriver.step``'s SOURCE rather than against a list retyped here.
 
-    THIS PRODUCT'S CLAIM IS STRONGER THAN ITS SIBLINGS'. They declare a run with
+    This product's claim is stronger than its siblings'. They declare a run with
     ``zero_metal_D`` carried in registers and the two mirror fills refused; this one
     declares a CONTIGUOUS run of two, which is only honest if EVERY driver pass between
     the two consults is refused by name. So each intervening pass is looked up in the
@@ -305,7 +305,7 @@ def test_the_replaced_passes_are_a_contiguous_run_of_the_drivers_own_order(xp):
     # And the injection sites, which are driver lines rather than named passes.
     assert "source.inject(fields, source_time)" in step.replace("self.", "")
 
-    # EVERY PASS BETWEEN THEM IS REFUSED BY NAME, which is what makes the run
+    # Every pass between them is refused by name, which is what makes the run
     # contiguous. Read as refusals from the predicate, one fixture per pass.
     for pass_ in order[1:-1]:
         assert pass_ in _REFUSAL_FIXTURE, (
@@ -324,7 +324,7 @@ _REFUSAL_FIXTURE = {
 
 
 def test_the_absorb_declaration_matches_the_arms_the_predicate_conjoins():
-    """READ FROM THE PREDICATE by ``ast``, not assigned to it: if it ever conjoined
+    """Read from the predicate by ``ast``, not assigned to it: if it ever conjoined
     different arms, absorbing those two slots would substitute a numerical product no
     arm admitted."""
     from . import registry  # noqa: PLC0415 - the table, read for its labels
@@ -376,7 +376,7 @@ def test_the_kernel_label_is_the_bracket_form_of_the_two_real_symbols():
     assert product.kernel_name("conductive") == conductive
     with pytest.raises(ValueError, match="plain"):
         product.kernel_name("unlisted")
-    # THE PARTITION COVERS BOTH SYMBOLS, on whichever side of it they sit. Until
+    # The partition covers both symbols, on whichever side of it they sit. Until
     # 2026-09-11 both were UNCERTIFIED and this line pinned that; the campaign
     # ``certification.json:cuda_no_pml_complex_fused_electric_pair_2026-09-11_regate``
     # then released them on device (keep and flush legs, 14/14 cases identical,
@@ -391,7 +391,7 @@ def test_the_kernel_label_is_the_bracket_form_of_the_two_real_symbols():
 
 
 # --------------------------------------------------------------------------
-# 2. FOUR PRODUCTS ON ONE SEAM, AND THE DISJOINTNESS THAT LETS THEM COEXIST
+# 2. Four products on one seam, and the disjointness that lets them coexist
 # --------------------------------------------------------------------------
 
 def _electric_seam_admitters(fields, layer, grid):
@@ -432,7 +432,7 @@ def _pml_fixture(xp, *, complex_storage=True, cylindrical=False):
 
 
 def test_exactly_one_product_admits_each_of_the_four_electric_fixtures(xp):
-    """TWO ADMITTERS ON ONE SEAM IS A REFUSAL, NOT A GAIN.
+    """Two admitters on one seam is a refusal, not a gain.
 
     Measured on the four shapes the corpus drives at this seam rather than read off the
     four predicates' prose: a real PML run, a Cartesian complex PML run, a Dcyl complex
@@ -472,7 +472,7 @@ def test_the_absorber_is_the_partition_and_both_directions_are_named(xp):
 
 
 def test_an_inert_layer_is_admitted_because_stepping_takes_the_same_tail(xp):
-    """A ZERO-THICKNESS PML is not an absorber: ``pml.is_active`` is False, the array
+    """A zero-thickness PML is not an absorber: ``pml.is_active`` is False, the array
     path takes the plain tail, and refusing it would be a refusal with no line behind
     it. Swept because "inert is the same as absent" is otherwise an inference."""
     fields, _none, grid = build(xp)
@@ -482,11 +482,11 @@ def test_an_inert_layer_is_admitted_because_stepping_takes_the_same_tail(xp):
 
 
 # --------------------------------------------------------------------------
-# 3. THE PREDICATE — WHAT IT ADMITS, AND WHAT IT REFUSES BY NAME
+# 3. The predicate — what it admits, and what it refuses by name
 # --------------------------------------------------------------------------
 
 def test_a_conductivity_is_admitted_and_routes_to_the_conductive_arm(xp):
-    """THE CLAUSE THIS PRODUCT WOULD HAVE BEEN WORTHLESS WITHOUT.
+    """The clause this product would have been worthless without.
 
     Every corpus row on this product's cell records ``has_conductivity == True`` and
     the composer's own recorded arm is ``conductive`` at ``step_D``. A predicate that
@@ -535,7 +535,7 @@ def test_a_sub_step_whose_three_targets_disagree_is_refused_by_name(xp):
 
 
 def test_a_walled_run_is_refused_by_name_and_names_the_pass_it_does_not_carry(xp):
-    """THE DECISION ``REPLACES`` RESTS ON. ``zero_metal_D`` (driver.py:3310) runs inside
+    """The decision ``REPLACES`` rests on. ``zero_metal_D`` (driver.py:3310) runs inside
     this seam on a walled run and this pair does not carry it, so the run is refused --
     which is what makes ``REPLACES`` a contiguous run of two rather than a claim that a
     pass did nothing when it did."""
@@ -600,7 +600,7 @@ def test_a_folded_axis_is_refused_and_the_products_own_clause_names_both_fills(
 
 
 def test_a_stored_extent_that_disagrees_with_the_walked_shape_is_refused(xp):
-    """THE DROPPED BOUNDS GUARD. This kernel drops ``update_E``'s own ``n_elem`` guard
+    """The dropped bounds guard. This kernel drops ``update_E``'s own ``n_elem`` guard
     and runs the constitutive half over the CURL's range, which is only sound where
     ``grid.stored_cells``, ``Dx.shape`` and ``Ex.shape`` are one tuple."""
     fields, layer, grid = build(xp)
@@ -682,12 +682,12 @@ def test_more_poles_than_the_compiled_slots_is_refused_by_the_shared_number(xp):
 
 
 # --------------------------------------------------------------------------
-# 4. THE LIFT — THE CERTIFIED TEXT, AND THE EDITS THAT ARE NOT VERBATIM
+# 4. The lift — the certified text, and the edits that are not verbatim
 # --------------------------------------------------------------------------
 
 @pytest.mark.parametrize("conductive", (False, True))
 def test_the_shared_flux_density_is_bound_exactly_once(conductive):
-    """THE ALIASING HAZARD, ROUTE 1. Two pointers to one allocation with a
+    """The aliasing hazard, route 1. Two pointers to one allocation with a
     ``__restrict__`` promise on one of them is UB NVRTC miscompiles without a
     diagnostic, so the constitutive half must have no D source pointers at all -- which
     is only true if the seam removed all three ``minus_poles(g*)`` sources."""
@@ -707,7 +707,7 @@ def test_the_shared_flux_density_is_bound_exactly_once(conductive):
 @pytest.mark.parametrize("conductive", (False, True))
 def test_the_seam_reads_the_register_and_keeps_the_certified_operand_order(
         conductive):
-    """``(D - sum P) * inv_eps`` with the SOURCE ON THE LEFT (stepping.py:1013-1014), and
+    """``(D - sum P) * inv_eps`` with the source on the left (stepping.py:1013-1014), and
     the register in place of the reload. The enclosing store, the multiply and its
     operand order are lifted rather than retyped, so a reordered operand would be an
     edit with no ``LIFT_EDITS`` row."""
@@ -722,7 +722,7 @@ def test_the_seam_reads_the_register_and_keeps_the_certified_operand_order(
 
 @pytest.mark.parametrize("conductive", (False, True))
 def test_the_pole_subtraction_is_left_to_right_and_never_pre_summed(conductive):
-    """REGISTRATION ORDER IS BIT-LOAD-BEARING. ``((D - P0) - P1)`` against
+    """Registration order is bit-load-bearing. ``((D - P0) - P1)`` against
     ``D - (P0 + P1)`` differs on 50279 of 400000 float32 words at two poles (measured,
     ``test_complex_no_pml.py``), so the eight guarded subtractions are lifted whole."""
     source = source_text(conductive)
@@ -733,7 +733,7 @@ def test_the_pole_subtraction_is_left_to_right_and_never_pre_summed(conductive):
 
 
 def test_the_conductive_tail_keeps_the_three_operations_and_their_order():
-    """THE ORDER IS THE ARITHMETIC. ``field *= condfac; field -= curl; field *= condinv``
+    """The order is the arithmetic. ``field *= condfac; field -= curl; field *= condinv``
     reassociated to ``((field - curl) * condfac) * condinv`` differs on every float32
     word (measured, ``test_complex_no_pml.py``). Only the last statement's result is
     named."""
@@ -776,7 +776,7 @@ def test_the_curl_stencil_and_its_masks_survive_unchanged(conductive):
     assert body.count("curl_stencil(") == 3
     assert "cf_add(cf_sub(sf, f_1), cf_sub(f_2, ss))" not in body
     assert body.count("curl = cf_zero();") == 6
-    # SIX BACKWARD SHIFTS AND NO FORWARD ONE, checked on the BODY: the certified
+    # Six backward shifts and no forward one, checked on the BODY: the certified
     # prelude DEFINES both helpers, so the same count over the whole source would read
     # the helper library rather than the kernel.
     assert body.count("cshift_dn(") == 6 and "cshift_up(" not in body
@@ -784,7 +784,7 @@ def test_the_curl_stencil_and_its_masks_survive_unchanged(conductive):
 
 @pytest.mark.parametrize("conductive", (False, True))
 def test_the_split_field_machinery_is_absent_rather_than_neutralised(conductive):
-    """NO ``fu``, NO ``f_w``, NO coefficient vector, NO ownership mask and NO second
+    """No ``fu``, no ``f_w``, no coefficient vector, NO ownership mask and NO second
     index decomposition. Each is a thing the PML sibling carries and this seam does
     not, and each is checked on the emitted BODY -- the certified prelude carries
     ``pml_apply`` and ``constitutive_apply`` as dead code by design."""
@@ -810,7 +810,7 @@ def test_the_three_registers_are_declared_before_the_certified_braced_blocks(
 
 @pytest.mark.parametrize("conductive", (False, True))
 def test_the_emitted_source_is_pure_ascii_and_one_body_per_curl_tail(conductive):
-    """PURE ASCII is a compile requirement. Both lifted halves are the part-wise forms
+    """Pure ASCII is a compile requirement. Both lifted halves are the part-wise forms
     (``complex_emitter``), so the family emits one string per curl tail -- and the two
     tails are two strings, which a memo or a digest that collapsed them would get
     wrong."""
@@ -823,7 +823,7 @@ def test_the_emitted_source_is_pure_ascii_and_one_body_per_curl_tail(conductive)
 
 
 def test_the_unused_pole_slots_bind_inv_eps_and_never_the_shared_flux_density(xp):
-    """THE ALIASING HAZARD, ROUTE 2, and the one place this launcher deviates from the
+    """The aliasing hazard, route 2, and the one place this launcher deviates from the
     certified one. ``update_E_complex_no_pml_stored`` binds every unused slot to the
     SOURCE pointer, which is D; doing that here would bind D a second time."""
     fields, _layer, _grid = build(xp, poles=1)
@@ -857,7 +857,7 @@ def test_the_binding_check_finds_the_flux_density_bound_twice(xp, conductive, mo
     original = product.pole_bank_bindings
 
     def sourcelike(fields_, poles=None):
-        # THE CERTIFIED LAUNCHER'S OWN CHOICE, planted: it binds every unused slot to
+        # The certified launcher's own choice, planted: it binds every unused slot to
         # the SOURCE pointer, which on this seam is D. The bank is un-viewed here, so
         # the plant is the array itself and the check reads the same address either
         # way -- a view shares its base's pointer.
@@ -889,7 +889,7 @@ def test_the_lift_edits_are_data_and_every_one_is_complete():
 ))
 def test_the_splice_raises_rather_than_emitting_when_an_anchor_stops_matching(
         anchor, monkeypatch):
-    """EVERY ANCHOR IS AN EXACT LINE OF CERTIFIED TEXT. If one stops matching, the
+    """Every anchor is an exact line of certified text. If one stops matching, the
     certified string changed and splicing around it would produce a kernel that
     compiles and is quietly not the certified arithmetic. Each is broken in turn and
     the emitter is required to refuse."""
@@ -932,11 +932,11 @@ def test_the_launcher_binds_the_inverse_permittivity_through_the_per_component_r
 
 
 # --------------------------------------------------------------------------
-# 5. THE PLAN — WHAT THE RESOLVER BINDS
+# 5. The plan — what the resolver binds
 # --------------------------------------------------------------------------
 
 #
-# THE RESOLVERS CANNOT BE EXECUTED ON THIS HOST and are read from the SOURCE instead,
+# The resolvers cannot be executed on this host and are read from the SOURCE instead,
 # which is a deliberate second-best with a reason: ``complex_pml_kernels`` imports CuPy
 # at module scope, so every resolver that binds a phase table refuses here by name. Both
 # arguments below are ALSO armed as device mutations in
@@ -984,11 +984,11 @@ def test_the_resolver_binds_the_BACKWARD_bloch_table():
 
 
 def test_the_plan_builder_resolves_the_curl_arm_and_binds_no_table_or_wall():
-    """THE ONE RESOLVER ON THIS TRACK THAT MUST READ AN ARM. Every corpus row on this
+    """The one resolver on this track that must read an arm. Every corpus row on this
     cell takes the conductive tail, so a builder that defaulted to the plain one would
     serve the whole cell with the wrong arithmetic rather than serving nothing.
 
-    AND NO ``tables``/``walls`` KEY: this pair reads no coefficient vector and carries
+    And no ``tables``/``walls`` key: this pair reads no coefficient vector and carries
     no wall pass, and a resolver carrying an empty one would suggest the launch binds
     something it does not.
     """
@@ -1023,7 +1023,7 @@ def test_the_plan_declares_the_two_passes_it_performs_and_both_slots():
 
 
 # --------------------------------------------------------------------------
-# 6. THE TWO-CONSULT PROTOCOL, ON A SEAM THAT CARRIES NOTHING
+# 6. The two-consult protocol, on a seam that carries nothing
 # --------------------------------------------------------------------------
 
 def _protocol_fixture(cell=(1.2, 1.2, 0.0), seed=20260831, conductive=True):
@@ -1111,7 +1111,7 @@ def _driver_order(fields, layer, sources, when, dt):
 @pytest.mark.parametrize("conductive", (False, True))
 def test_the_two_slots_consulted_as_the_driver_consults_them_match_the_array_path(
         cell, conductive):
-    """THE ONE THAT MATTERS, and the only numeric claim this file makes.
+    """The one that matters, and the only numeric claim this file makes.
 
     Two independently seeded copies of the same COMPLEX-STORAGE, NO-ABSORBER,
     DISPERSIVE state. One is stepped in the DRIVER's order. The other is stepped the
@@ -1149,7 +1149,7 @@ def test_the_two_slots_consulted_as_the_driver_consults_them_match_the_array_pat
     differing = _differing(_state_words(fields_a), _state_words(fields_b))
     assert not differing, differing
     assert inner.runs == 8
-    # THE CASE MOVED SOMETHING. A run whose fields never changed would match whatever
+    # The case moved something. A run whose fields never changed would match whatever
     # the protocol did, which is the vacuity this whole track refuses.
     fresh = _protocol_fixture(cell=cell, conductive=conductive)[1]
     assert _differing(_state_words(fresh), _state_words(fields_b)), (
@@ -1208,21 +1208,21 @@ def test_the_second_slot_is_the_cheap_sentinel_and_never_a_repair_plan(xp):
 
 
 # --------------------------------------------------------------------------
-# 7. THE BLOCK, DRIVEN THROUGH THE COMPOSER
+# 7. The block, driven through the composer
 # --------------------------------------------------------------------------
 
 @pytest.mark.parametrize("conductive", (False, True))
 def test_the_seam_fuses_and_no_other_product_claims_it(xp, conductive):
     """Through ``plan_step(fuse=True)``, which is the only route a caller has.
 
-    THE OTHER THREE PRODUCTS' REFUSALS ARE READ, not assumed: two admitters leave the
+    The other three products' refusals are read, not assumed: two admitters leave the
     seam UNFUSED naming both, so a composition that fused would still be worth checking
     against the reasons the losers gave.
     """
     fields, layer, grid = build(xp, conductive=conductive)
     plan = arms.plan_step(fields, layer, grid, sources=(), fuse=True)
     label = "complex no-absorber fused electric pair"
-    # SLOT ARBITRATION, 2026-09-02: `update_E` is this pair's SECOND slot and
+    # Slot arbitration, 2026-09-02: `update_E` is this pair's SECOND slot and
     # `cuda_complex_no_pml_fused_polarization_pair`'s FIRST, and all FOUR rows of this
     # product's cell (`TestLoadDump.*_3d`) are exactly the four that pair serves at
     # E->P -- measured on the stamped census (`cuda_complex_no_pml` covering
@@ -1233,14 +1233,14 @@ def test_the_seam_fuses_and_no_other_product_claims_it(xp, conductive):
     # PREDICATE still admits this run (its gate certifies the arithmetic), and the
     # COMPOSER gives the seam to the polarization pair.
     #
-    # THIS FIXTURE CARRIES A SUSCEPTIBILITY, so the polarization pair admits it and
+    # This fixture carries a susceptibility, so the polarization pair admits it and
     # the arbitration fires: the seam goes to the product that was already serving it.
-    # THE ASSERTIONS BELOW CHANGED DIRECTION ON 2026-09-02 AND THAT IS THE POINT --
+    # The assertions below changed direction on 2026-09-02 and that is the point --
     # before that date this pair took `update_E` and the polarization pair was refused
     # with an "arm table gave it elsewhere" reason, which is how the board came to
     # credit BOTH at 4 on the same four rows.
     #
-    # AND CHANGED AGAIN ON 2026-09-04, when the COMPLEX THREE-SLOT WELD landed on
+    # And changed again on 2026-09-04, when the complex three-slot weld landed on
     # exactly these four rows: its span strictly contains this pair's, so
     # `fused_pairs._superseded_by_a_longer_span` refuses THIS pair by name and the
     # weld takes all three slots -- the E->P pair is failed closed out of update_E
@@ -1278,7 +1278,7 @@ def test_the_pair_may_not_absorb_a_slot_a_different_arm_won(xp, monkeypatch):
     """``_pair_may_absorb`` is the shared bound: a fused product may only take slots the
     ARM TABLE gave to exactly the two arms its predicate conjoins.
 
-    THE SLOT NOW HAS A SECOND LEGITIMATE CLAIMANT and the assertion says so
+    The slot now has a second legitimate claimant and the assertion says so
     rather than assuming there is none. Since 2026-09-02 the complex
     no-absorber E->P weld holds ``update_E`` as its own CURL slot, and on a
     fixture with a pole bank it admits -- so with THIS product barred the slot
@@ -1288,7 +1288,7 @@ def test_the_pair_may_not_absorb_a_slot_a_different_arm_won(xp, monkeypatch):
     BOTH fused claimants barred, which is the shape the claim was always making.
     """
     fields, layer, grid = build(xp)
-    # THE THIRD CLAIMANT, 2026-09-04: the complex three-slot weld supersedes this
+    # The third claimant, 2026-09-04: the complex three-slot weld supersedes this
     # pair by strict containment on this fixture, so it is barred here too -- this
     # test is about THIS pair's absorb clause, and a weld that took the slot for its
     # own reason would say nothing about it.
@@ -1305,7 +1305,7 @@ def test_the_pair_may_not_absorb_a_slot_a_different_arm_won(xp, monkeypatch):
         "complex no-PML stored E", "complex no-PML fused polarization pair"), \
         plan.selected
 
-    # WITH EVERY FUSED CLAIMANT BARRED the slot falls back to the plain arm --
+    # With every fused claimant barred the slot falls back to the plain arm --
     # the original statement, now made where nothing else can take it.
     monkeypatch.setitem(fused_pairs.FUSED_PAIR_ARMS,
                         "cuda_complex_no_pml_fused_polarization_pair",

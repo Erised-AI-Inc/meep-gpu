@@ -280,9 +280,10 @@ def test_metal_rows_without_a_device_reading_are_not_counted_as_clean(pull, tmp_
 
 
 def test_the_code_digest_count_reads_one_set_of_rows_on_a_resumed_ladder(pull, tmp_path):
-    """CERT-8 F4: "86 of 79 GPU and MEEP ledger rows carry a code digest" on the 1.0 Mac
-    ladder. The numerator counted the lift and digest entries too; a resume records a
-    preflight digest again. Numerator and denominator now count the same rows, once."""
+    """The 1.0 timing run read "86 of 79 GPU and MEEP ledger rows carry a code digest" on
+    the Mac ladder. The numerator counted the lift and digest entries too; a resume
+    records a preflight digest again. Numerator and denominator now count the same rows,
+    once."""
     def code(entry):
         if entry.get("ledger") in ("gpu", "meep"):
             entry["code_digest"] = "c" * 64
@@ -306,8 +307,9 @@ def test_the_code_digest_count_reads_one_set_of_rows_on_a_resumed_ladder(pull, t
 
 
 def test_a_build_named_by_its_record_alone_reports_the_records_flags(pull, tmp_path):
-    """CERT-8 F4: the Mac build was named by its record and no config.log, so the probe's
-    configure line read None and its flags {} beside a record that carried both."""
+    """In the 1.0 timing run the Mac build was named by its record and no config.log, so
+    the probe's configure line read None and its flags {} beside a record that carried
+    both."""
     environment = json.loads((pull / "environment.json").read_text())
     given = {"configure_line": "./configure --enable-single --enable-portable-binary",
              "makefile_flags": {"CXXFLAGS": "-g -O2"}, "openmp": False}
@@ -355,3 +357,273 @@ def test_gpu_only_rows_are_identical_only_by_their_identity_row(pull, tmp_path):
     pml = next(s for s in record["sizes"] if s["case"] == "pml_3d")
     assert any("not bit-identical" in s for s in pml["legs"]["metal"]["strikes"])
     assert record["denominators"]["gpu_bit_identical"] == 0
+
+
+def test_the_pinned_device_join_reads_a_row_whose_tables_left_the_machine():
+    """The box tables are written with card ids and an ``own``/``other`` owner since they
+    leave the machine (``timing_host.recorded_compute_apps``); the join reads the same
+    neighbour off them as off an older row's raw UUIDs and pid."""
+    import timing_host  # noqa: PLC0415
+
+    uuid_a = "GPU-3f1c2a9e-5b7d-4e21-9a0c-6d8e2f4b1a37"
+    uuid_b = "GPU-9b2e7c41-0d6a-4f83-b5e9-1c7a3d8f6e02"
+    gpus = f"0, {uuid_a}, 3 MiB, 0 %\n1, {uuid_b}, 4970 MiB, 0 %"
+    apps = f"{uuid_a}, 4242, 1200 MiB\n{uuid_a}, 271828, 800 MiB\n{uuid_b}, 900, 4970 MiB"
+    raw = {"CUDA_VISIBLE_DEVICES": "0", "pid": 4242, "gpus": gpus, "compute_apps": apps}
+    new = {"CUDA_VISIBLE_DEVICES": "0", "gpus": timing_host.recorded_gpus(gpus),
+           "compute_apps": timing_host.recorded_compute_apps(apps, 4242)}
+    assert len(table.pinned_foreign(raw)) == len(table.pinned_foreign(new)) == 1
+    assert "271828" not in json.dumps(new) and uuid_a not in json.dumps(new)
+    by_card = dict(new, CUDA_VISIBLE_DEVICES=timing_host.recorded_device(uuid_a))
+    assert len(table.pinned_foreign(by_card)) == 1
+
+
+def test_the_pinned_gpu_is_found_in_an_environment_record_written_by_card_id():
+    """``--gpu auto`` pins by UUID; the environment record writes the pin and the
+    listing's UUID column as the same card id, so the pinned card's model is found."""
+    import timing_host  # noqa: PLC0415
+
+    uuid_a = "GPU-3f1c2a9e-5b7d-4e21-9a0c-6d8e2f4b1a37"
+    uuid_b = "GPU-9b2e7c41-0d6a-4f83-b5e9-1c7a3d8f6e02"
+    listing = (f"0, {uuid_a}, NVIDIA RTX A6000, 535.129.03, 49140 MiB, 3 MiB, 0 %, 8.6\n"
+               f"1, {uuid_b}, NVIDIA H100 PCIe, 535.129.03, 81559 MiB, 3 MiB, 0 %, 9.0")
+    environment = {"gpu": timing_host.recorded_device(uuid_b),
+                   "nvidia_smi_gpus": timing_host.recorded_gpus(listing)}
+    facts = table.environment_facts(environment)
+    assert facts["gpu_name"] == "NVIDIA H100 PCIe" and facts["compute_capability"] == "9.0"
+    assert uuid_b not in json.dumps(facts)
+
+
+# ---------------------------------------------------------------------------
+# What a table names, and a split ladder unit read from its two halves
+# ---------------------------------------------------------------------------
+
+def test_the_table_names_no_local_path(pull, tmp_path):
+    """The table leaves the machine: the pull, a manifest, the comparison builder and a lift
+    file are named by their own names, never by an absolute path."""
+    import timing_rows as TR  # noqa: PLC0415
+
+    lifts = tmp_path / "lifts"
+    lifts.mkdir()
+    (lifts / "harness_lift_digest_pml_3d_res10.json").write_text(json.dumps(
+        {"case": "pml_3d", "resolution": 10, "verdict": {"driver_agrees": False},
+         "geometry": {"digest": DIGEST["pml_3d"], "facts": {"cells": CELLS}}}))
+    manifest = tmp_path / "SHA256SUMS"
+    manifest.write_text("")
+    record, text = build(pull, tmp_path, "--lift-digests", str(lifts), "--manifest",
+                         str(manifest))
+    assert TR.local_paths(record) == [] and TR.local_paths(text) == []
+    assert record["pull"] == "pull" and record["pull_verification"]["manifest"] == "SHA256SUMS"
+    assert record["comparison_reader_cross_check"]["builder"] == \
+        "parity/meep_gpu/build_3d_comparison.py"
+    pml = next(s for s in record["sizes"] if s["case"] == "pml_3d")
+    assert any("(harness_lift_digest_pml_3d_res10.json)" in s for s in pml["size_strikes"])
+
+
+def split_pulls(pull, tmp_path, names=("ladder_s1_u01_gpu", "ladder_s1_u01_meep")):
+    """The ladder split into the two halves of a split unit: the GPU half keeps its routes
+    and the array control, the MEEP half its MEEP rows and digests."""
+    import shutil  # noqa: PLC0415
+
+    halves = {}
+    # What the other half's ladder alone writes is not in this half's directory.
+    elsewhere = {"gpu": ("meep", "meep_splitcost", "digests"), "meep": ("gpu_metal",)}
+    for side, name in zip(("gpu", "meep"), names):
+        root = tmp_path / name
+        shutil.copytree(pull, root)
+        for directory in elsewhere[side]:
+            shutil.rmtree(root / directory)
+        kinds = table.SPLIT_KINDS[side]
+        entries = [json.loads(line) for line in open(root / "ladder_rows.jsonl")]
+        (root / "ladder_rows.jsonl").write_text("".join(
+            json.dumps(e) + "\n" for e in entries if e.get("ledger") in kinds))
+        halves[side] = root
+    return halves
+
+
+def split_row(tmp_path, halves=None):
+    import test_timing_rows as rows  # noqa: PLC0415
+    import timing_rows as TR  # noqa: PLC0415
+
+    record, = rows.split_record(tmp_path / "rec", None if halves is None
+                                else rows._halves_at(*halves))
+    return TR.write_record(str(tmp_path / "store"), record)
+
+
+def test_a_split_unit_reads_as_the_whole_ladder_with_every_ratio_labelled_split(pull, tmp_path):
+    """The GPU half's legs and the MEEP half's, with the unit's row record: the ratios a
+    whole ladder gives, each labelled split, and the masks and order beside them."""
+    (tmp_path / "whole").mkdir()
+    whole, _text = build(pull, tmp_path / "whole")
+    halves = split_pulls(pull, tmp_path)
+    record, text = build(halves["gpu"], tmp_path, "--meep-pull", str(halves["meep"]),
+                         "--split-row", split_row(tmp_path))
+    assert record["pull"] == "ladder_s1_u01_gpu" and record["meep_pull"] == "ladder_s1_u01_meep"
+    assert record["split"]["masks"] == {"gpu": "0x999988", "meep": "0xffffff"}
+    assert record["split"]["order"] == ["gpu", "meep"]
+
+    def ratios(of):
+        return {(s["case"], r["gpu"], r["denominator"]): r["value"]
+                for s in of["sizes"] for r in s["ratios"]}
+    assert ratios(record) == pytest.approx(ratios(whole)) and ratios(record)
+    assert all(r["split"] is True for s in record["sizes"] for r in s["ratios"])
+    assert not any("split" in r for s in whole["sizes"] for r in s["ratios"])
+    assert [s["digest"] for s in record["sizes"]] == [s["digest"] for s in whole["sizes"]]
+    for name in ("meep_rows", "gpu_rows", "array_controls", "ledger_entries",
+                 "ledger_by_tier_and_kind"):
+        assert record["denominators"][name] == whole["denominators"][name], name
+    assert record["denominators"]["rows_planned"] == 48, "each half's own plan, both counted"
+    assert record["comparison_reader_cross_check"] == whole["comparison_reader_cross_check"]
+    assert "× (provisional) (split) |" in text and "× (split) against MEEP@" in text
+    assert record["split"]["label"] in text
+    assert ("from the two halves of one split ladder unit, `ladder_s1_u01_gpu` (its GPU legs) "
+            "and `ladder_s1_u01_meep` (its MEEP legs)") in text
+
+
+@pytest.mark.parametrize("change, named", [
+    ("masks", "split_row_refused"),
+    ("name", "--pull not under its half's ladder"),
+    ("rows", "the gpu half's ladder ladder_s1_u01_gpu holds meep rows"),
+    ("row", "a split ladder unit is read from its two halves and its row record"),
+])
+def test_a_split_unit_is_refused_by_name_unless_its_halves_hold_the_sessions_masks(
+        pull, tmp_path, change, named):
+    """Halves that did not run under the session's masks, a pull that is not the half the
+    record names, a half that holds the other half's rows, and a MEEP half given without
+    the unit's record: each refused by name, and no table written."""
+    names = ("ladder_s2_u01_gpu", "ladder_s1_u01_meep") if change == "name" else (
+        "ladder_s1_u01_gpu", "ladder_s1_u01_meep")
+    halves = split_pulls(pull, tmp_path, names)
+    if change == "rows":
+        import shutil  # noqa: PLC0415
+        shutil.copy(pull / "ladder_rows.jsonl", halves["gpu"] / "ladder_rows.jsonl")
+    extra = ["--meep-pull", str(halves["meep"])]
+    if change != "row":
+        extra += ["--split-row", split_row(tmp_path, ("0xffffff", "0x999988")
+                                           if change == "masks" else None)]
+    with pytest.raises(SystemExit) as refused:
+        build(halves["gpu"], tmp_path, *extra)
+    assert named in str(refused.value) and str(refused.value).startswith("REFUSING")
+    assert not (tmp_path / "t.json").exists()
+
+
+def test_a_split_units_meep_side_is_read_from_its_meep_half(pull, tmp_path):
+    """The digests of record, the harness lift, the preflight's lift digest, the binding
+    decision, the lift's code digest and the MEEP builds are the MEEP half's; the host and
+    the GPU are the GPU half's."""
+    halves = split_pulls(pull, tmp_path)
+    meep = halves["meep"]
+    for case, res in RES.items():
+        (meep / "digests_lift").mkdir(exist_ok=True)
+        (meep / "digests_lift" / f"harness_lift_digest_{case}_res{res}.json").write_text(
+            json.dumps({"case": case, "resolution": res, "verdict": {"driver_agrees": True},
+                        "geometry": {"digest": DIGEST[case], "facts": {"cells": CELLS}}}))
+    (meep / "preflight" / "digest").mkdir(parents=True)
+    (meep / "preflight" / "digest" / "harness_lift_digest_pml_3d_res10.json").write_text(
+        json.dumps({"case": "pml_3d", "agreement": "agrees", "compared_with": [
+            {"cells": CELLS, "digest_equal": True, "epsilon_exact_equal": True}]}))
+    (meep / "binding_decision.json").write_text(json.dumps({"chosen": "bound"}))
+    with open(meep / "ladder_rows.jsonl", "a", encoding="utf-8") as handle:
+        handle.write(json.dumps({"ledger": "lift", "tier": "digests", "case": "pml_3d",
+                                 "res": RES["pml_3d"], "code_digest": "f" * 64}) + "\n")
+    environment = json.loads((meep / "environment.json").read_text())
+    environment["meep_builds"] = {"reference": {"configure_line": "./configure --enable-single",
+                                                "makefile_flags": {"CXXFLAGS": "-O2"}}}
+    (meep / "environment.json").write_text(json.dumps(environment))
+    record, _text = build(halves["gpu"], tmp_path, "--meep-pull", str(meep),
+                          "--split-row", split_row(tmp_path))
+    assert {s["digest"]["status"] for s in record["sizes"]} == {"equal"}
+    assert record["preflight_lift_digest"]["pml_3d"]["agreement"] == "agrees"
+    assert record["binding_decision"] == {"chosen": "bound"}
+    assert record["environment"]["meep_configure_line"] == "./configure --enable-single"
+    assert record["environment"]["meep_cxxflags"] == "-O2"
+    assert record["environment"]["platform"] == "darwin"
+    pml = next(s for s in record["sizes"] if s["case"] == "pml_3d")
+    assert not any("code digests" in strike for strike in pml["size_strikes"])
+    # The lift's code digest is read from the MEEP half: a GPU half that ran other code
+    # strikes the size.
+    _rewrite(halves["gpu"], lambda entry: entry.update(code_digest="e" * 64))
+    record, _text = build(halves["gpu"], tmp_path, "--meep-pull", str(meep),
+                          "--split-row", split_row(tmp_path / "again"))
+    pml = next(s for s in record["sizes"] if s["case"] == "pml_3d")
+    assert any("2 different code digests" in strike for strike in pml["size_strikes"])
+
+
+def test_a_pull_written_before_its_ladder_wrote_neutral_records_names_no_path(pull, tmp_path):
+    """A pull whose ladder wrote its environment record as the host spelled it (before the
+    ladder wrote neutral records): every string the table copies from it, the configure
+    line, the packages, the tree and a struck row's reason, is written under its root's
+    label, in the JSON and in the markdown alike."""
+    import timing_rows as TR  # noqa: PLC0415
+
+    home = "/" + "ho" + "me" + "/gpuhostaccount"
+    environment = json.loads((pull / "environment.json").read_text())
+    environment.setdefault("meep_builds", {})["reference"] = {
+        "configure_line": f"./configure --prefix={home}/miniforge3/envs/ref --enable-single",
+        "makefile_flags": {"CXXFLAGS": f"-O2 -I{home}/miniforge3/envs/ref/include"}}
+    environment["tree"] = dict(environment.get("tree") or {}, root=f"{home}/meep_gpu_target")
+    (pull / "environment.json").write_text(json.dumps(environment))
+    record, text = build(pull, tmp_path)
+    assert TR.local_paths(record) == [] and TR.local_paths(text) == []
+    assert "gpuhostaccount" not in json.dumps(record) and "gpuhostaccount" not in text
+    assert record["environment"]["meep_configure_line"] == (
+        "./configure --prefix=<home>/miniforge3/envs/ref --enable-single")
+
+
+def test_each_half_of_a_split_unit_is_checked_against_its_own_listing(pull, tmp_path):
+    """A split unit's table checks the GPU half against ``--manifest`` and the MEEP half
+    against ``--meep-manifest``, and names each half's count; a half not checked says so."""
+    import hashlib  # noqa: PLC0415
+
+    halves = split_pulls(pull, tmp_path)
+
+    def listing(root, name):
+        lines = [f"{hashlib.sha256((root / p).read_bytes()).hexdigest()}  ./{p}"
+                 for p in ("ladder_rows.jsonl", "environment.json")]
+        (tmp_path / name).write_text("\n".join(lines) + "\n")
+        return str(tmp_path / name)
+    record, text = build(halves["gpu"], tmp_path, "--meep-pull", str(halves["meep"]),
+                         "--split-row", split_row(tmp_path),
+                         "--manifest", listing(halves["gpu"], "gpu.sha256"),
+                         "--meep-manifest", listing(halves["meep"], "meep.sha256"))
+    assert record["pull_verification"]["matching"] == 2
+    assert record["meep_pull_verification"] == {
+        "checked": True, "manifest": "meep.sha256", "files": 2, "matching": 2,
+        "mismatched": []}
+    assert ("* **Pull** of the GPU half `ladder_s1_u01_gpu`: 2 of 2 files match") in text
+    assert ("* **Pull** of the MEEP half `ladder_s1_u01_meep`: 2 of 2 files match") in text
+    (tmp_path / "again").mkdir()
+    record, text = build(halves["gpu"], tmp_path / "again", "--meep-pull",
+                         str(halves["meep"]), "--split-row", split_row(tmp_path / "again"))
+    assert record["meep_pull_verification"] == {"checked": False}
+    assert ("* **Pull** of the MEEP half `ladder_s1_u01_meep`: not verified against a "
+            "manifest (pass `--meep-manifest`).") in text
+
+
+def test_the_account_a_pull_records_is_never_written_under_a_home_of_two_levels(pull,
+                                                                               tmp_path):
+    """A home of two levels (``/home/<group>/<account>``) written on another machine keeps the
+    account after ``<home>``; the account the pull's own ladder records (its ACCOUNT
+    parameter) is written as ``<account>`` wherever it stands as a word. An account spelled
+    like one of the record's words names nothing and rewrites nothing."""
+    import timing_rows as TR  # noqa: PLC0415
+
+    home = "/" + "ho" + "me" + "/grpdir/gpuacct"
+    environment = json.loads((pull / "environment.json").read_text())
+    environment.setdefault("params", {})["ACCOUNT"] = {"value": "gpuacct", "source": "flag"}
+    environment.setdefault("meep_builds", {})["reference"] = {
+        "configure_line": f"./configure --prefix={home}//miniforge3/envs/ref --enable-single"}
+    environment["meep_builds"]["gpuacct"] = {"configure_line": "./configure"}  # a key
+    (pull / "environment.json").write_text(json.dumps(environment))
+    record, text = build(pull, tmp_path)
+    assert "<account>" in record["environment"]["builds"]
+    assert "gpuacct" not in json.dumps(record) and "gpuacct" not in text
+    assert "grpdir" not in json.dumps(record) and "grpdir" not in text
+    assert record["environment"]["meep_configure_line"] == (
+        "./configure --prefix=<home>/<account>//miniforge3/envs/ref --enable-single")
+    assert TR.local_paths(record) == [] and TR.local_paths(text) == []
+    environment["params"]["ACCOUNT"] = {"value": "metal", "source": "flag"}
+    (pull / "environment.json").write_text(json.dumps(environment))
+    (tmp_path / "words").mkdir()
+    record, _text = build(pull, tmp_path / "words")
+    assert record["routes"]["metal"]["label"] == "GPU metal route (metal)"

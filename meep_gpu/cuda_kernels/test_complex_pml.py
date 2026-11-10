@@ -1,6 +1,6 @@
 """What the COMPLEX-storage PML family must hold, on a machine with no GPU.
 
-THE MERGE BAR FOR A SLICE WHOSE FAILURE MODE IS A SILENT WRONG ANSWER. Every claim
+The merge bar for a slice whose failure mode is a silent wrong answer. Every claim
 here is checkable without CuPy, without Triton and without a device: the emitter
 imports nothing, the predicate imports nothing, and the CuPy half is read off its
 syntax tree. What CANNOT be checked here is the only thing a device is for --
@@ -42,7 +42,7 @@ SUB_STEPS = ("step_B", "step_D", "update_H", "update_E")
 def module_level_literal(source: str, name: str):
     """A module-level constant, read off the syntax tree rather than imported.
 
-    BOTH ``Assign`` AND ``AnnAssign`` are matched here, unlike the reader the
+    Both ``Assign`` and ``AnnAssign`` are matched here, unlike the reader the
     PARTITION test uses. That asymmetry is deliberate and is the sibling families'
     own: ``UNCERTIFIED_KERNELS`` must stay UNANNOTATED because the partition is
     read by a checker that matches ``Assign`` only, and annotating it once made the
@@ -78,11 +78,11 @@ def every_source():
 
 
 # --------------------------------------------------------------------------
-# THE TRANSCRIPTION
+# The transcription
 # --------------------------------------------------------------------------
 
 def test_every_device_string_is_pure_ascii():
-    """A COMPILE REQUIREMENT, not a style rule.
+    """A compile requirement, not a style rule.
 
     ``cupy.cuda.compiler.compile_using_nvrtc`` writes the source to a ``.cu`` file
     through a bare ``open(..., 'w')``, so the bytes go through the interpreter's
@@ -205,7 +205,7 @@ def test_the_constitutive_tail_is_meeps_grouping_and_not_two_accumulations():
 def test_prev_is_read_before_the_fw_store():
     """Storing first makes ``prev`` the value just written.
 
-    Wrong only where ``kms != 0``, i.e. INSIDE THE PML ONLY, which reads as a
+    Wrong only where ``kms != 0``, i.e. inside the PML only, which reads as a
     slightly weaker absorber rather than as a bug -- the reason it is pinned here
     and carried as a gate mutation rather than left to review. Both sit under the
     chunk's ``dsigw`` flag (the auxiliary contract).
@@ -284,7 +284,7 @@ def test_the_sub_lattice_table_matches_the_engines_pairing():
 def test_the_boundary_and_phase_axes_are_runtime_arguments():
     """The design decision, enforced.
 
-    A BRANCH axis (which index, which predicated zero, which connection one plane
+    A branch axis (which index, which predicated zero, which connection one plane
     takes, which chunk form a cell takes) is a runtime argument: the boundary codes,
     the connection kinds and parts, and the run's chunk record ``cb``. Six binary
     axes as constexprs would be 64 sources for a family the corpus drives with a
@@ -314,7 +314,7 @@ def test_the_inverse_epsilon_pointers_are_not_restrict_and_only_on_the_E_side():
     assert "const float* inv_eps_0" in electric
     assert "const float* __restrict__ inv_eps" not in electric
     assert "mul_field_left(s0, inv_eps_0[idx])" in electric
-    # THE SIGNATURE, not the whole text: the shared prelude's comments name
+    # The signature, not the whole text: the shared prelude's comments name
     # ``inv_eps`` as one of the field-left orientations, so a substring search over
     # the file would fail for a reason that is documentation rather than code.
     assert "inv_eps" not in SIGNATURE.search(magnetic).group(1)
@@ -335,7 +335,7 @@ def test_inverse_epsilon_is_indexed_by_the_complex_cell_and_never_word_doubled()
 
 
 # --------------------------------------------------------------------------
-# THE PARTITION AND THE RECORD
+# The partition and the record
 # --------------------------------------------------------------------------
 
 def test_the_family_ships_four_kernels_and_it_is_partitioned():
@@ -402,7 +402,7 @@ def test_the_emitter_digest_moves_when_any_source_moves():
 
 
 # --------------------------------------------------------------------------
-# THE PREDICATE
+# The predicate
 # --------------------------------------------------------------------------
 
 class _Array:
@@ -663,7 +663,7 @@ def test_the_sub_step_argument_is_required_and_validated():
 
 
 def test_every_uncertified_name_has_no_record_block_and_the_reverse():
-    """THE WELD BETWEEN THE PARTITION AND THE RECORD, in both directions.
+    """The weld between the partition and the record, in both directions.
 
     ``certification.json`` is the sibling of ``triton_kernels/fingerprints.json``
     and the thing a reader is entitled to check a claim against. "Certified" must
@@ -710,10 +710,10 @@ def test_every_uncertified_name_has_no_record_block_and_the_reverse():
 
 
 # --------------------------------------------------------------------------
-# THE Dcyl CLAUSE — refused for the curl, admitted for the constitutive pair
+# The Dcyl clause — refused for the curl, admitted for the constitutive pair
 # --------------------------------------------------------------------------
 #
-# WHY THE ASYMMETRY IS A TEST AND NOT A COMMENT. ``_complex_grid_refusal`` is one
+# Why the asymmetry is a test and not a comment. ``_complex_grid_refusal`` is one
 # function with two callers, and the whole of the difference between them is one
 # argument. A change that flipped the default, or that passed it from the curl,
 # would widen a family that has never been measured on a Dcyl grid and nothing
@@ -755,7 +755,7 @@ def test_a_dcyl_grid_is_admitted_by_the_constitutive_pair(z_metallic, side):
 @pytest.mark.parametrize("z_metallic", [True, False])
 @pytest.mark.parametrize("sub_step", ["step_B", "step_D"])
 def test_a_dcyl_grid_is_still_refused_by_the_complex_curl(z_metallic, sub_step):
-    """THE HALF THAT MUST NOT MOVE.
+    """The half that must not move.
 
     ``cshift_up``/``cshift_dn`` are a neighbour stencil and Dcyl replaces the
     radial derivative with a prefix sum and adds the axis-row rules. Nothing has
@@ -769,7 +769,7 @@ def test_a_dcyl_grid_is_still_refused_by_the_complex_curl(z_metallic, sub_step):
 
 @pytest.mark.parametrize("side", ["H", "E"])
 def test_a_phased_dcyl_grid_is_refused_by_name_on_the_constitutive_pair(side):
-    """UNMEASURED IS UNMEASURED, and it is refused rather than argued about.
+    """Unmeasured is unmeasured, and it is refused rather than argued about.
 
     Dcyl Bloch is z-only in MEEP (grid.py:654-657), no corpus row carries one, and
     the constitutive kernel takes no phase argument at all -- so "the kernel cannot
@@ -816,7 +816,7 @@ def test_the_axis_boundary_kind_is_admitted_by_the_constitutive_list_only():
 
 
 def test_only_the_constitutive_predicate_asks_to_admit_a_dcyl_grid():
-    """EXACTLY ONE CALL SITE passes ``admit_cylindrical`` at all, and it is the pair.
+    """Exactly one call site passes ``admit_cylindrical`` at all, and it is the pair.
 
     Read off the syntax tree rather than by grep: the parameter defaults to the
     refusal, so a new caller inherits the "no", and this is what keeps an added
@@ -922,7 +922,7 @@ def test_the_dcyl_admission_matches_the_artifact_when_it_is_present():
 
 
 # --------------------------------------------------------------------------
-# THE MIRROR FOLD, admitted for the CONSTITUTIVE pair on 2026-08-20 and still
+# The mirror fold, admitted for the CONSTITUTIVE pair on 2026-08-20 and still
 # refused for the CURL. Both halves are pinned, because the asymmetry IS the
 # claim: one emitted template takes bc_x/bc_y/bc_z and the other takes no
 # boundary argument at all.
@@ -952,12 +952,12 @@ def test_the_constitutive_pair_admits_a_fold_and_the_curl_still_refuses(
     ``cshift_dn`` are a neighbour stencil and the emitted curl takes
     ``bc_x/bc_y/bc_z`` with no code for a mirror.
 
-    A TEST THAT CHECKED ONLY THE ADMISSION would pass just as well if the fold
+    A test that checked only the admission would pass just as well if the fold
     clause had been deleted from the shared helper, which would widen the curl
     too -- the exact leak ``test_the_sibling_predicates_did_not_widen_with_this_one``
     caught on the real track.
     """
-    # A FOLDED AXIS CARRIES NO PHASE: MEEP forces a mirror plane's own axis to
+    # A folded axis carries no phase: MEEP forces a mirror plane's own axis to
     # k = 0 (Grid._resolve_bloch raises otherwise), so the phase goes on an
     # unfolded axis -- which is what all eight folded complex corpus rows record.
     k_point = tuple(0.0 if mirrored[axis] else 0.3 for axis in range(3))
@@ -1066,14 +1066,14 @@ def test_the_complex_fold_admission_is_the_run_that_produced_it():
         assert path.is_file(), f"{relative} is missing from {root}"
         actual = hashlib.sha256(path.read_bytes()).hexdigest()
         assert actual == digest, f"{relative} is not the bytes the record names"
-    # THE SUBJECT WAS NOT TOUCHED: a record whose kernel bytes moved describes a
+    # The subject was not touched: a record whose kernel bytes moved describes a
     # kernel that no longer exists.
     for relative, digest in record["subject_sha256"].items():
         path = HERE.parent.parent / relative
         live = hashlib.sha256(path.read_bytes()).hexdigest()
         if live == digest:
             continue
-        # ONE HOME FOR THE RULE (device_identity.py:209): an edit that provably
+        # One home for the rule (device_identity.py:209): an edit that provably
         # cannot reach the compiled program leaves the kernel this record
         # describes intact. Anything the helper cannot establish -- including a
         # record carrying no device_sha256/code_sha256, which is this one today
@@ -1090,14 +1090,14 @@ def test_the_complex_fold_admission_is_the_run_that_produced_it():
         assert summary["single_launch_identical"] == record["identical_single_launch"]
         assert (summary["multi_step_identical"]
                 == record["identical_at_sixty_launches"])
-        # THE CAP IS THE RUN'S OWN MAXIMUM, derived by the gate from the cases it
+        # The cap is the run's own maximum, derived by the gate from the cases it
         # scored rather than from its spec tuple.
         assert (summary["max_folded_planes_scored"]
                 == record["folded_planes_swept"]), policy_leg
         assert sorted(summary["folded_terminations"]) == sorted(
             record["folded_terminations_swept"])
         assert sorted(summary["folded_axes"]) == sorted(record["folded_axes_swept"])
-        # AND THE PHASED ARM, which is the corpus's own shape: five of the eight
+        # And the phased arm, which is the corpus's own shape: five of the eight
         # rows carry a Bloch phase on an unfolded axis.
         assert summary["phased_folded_cases"] == record["phased_folded_cases"]
     falsified = json.loads((root / "falsify" / "gate.json").read_text(

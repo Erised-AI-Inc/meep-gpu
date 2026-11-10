@@ -1,16 +1,16 @@
 """The off-diagonal (tensor epsilon) ``update_E`` slice: predicate, emitter, arithmetic.
 
-THE BYTE GATE LIVES ELSEWHERE — it needs a device — and it has not run for this
+The byte gate lives elsewhere — it needs a device — and it has not run for this
 family. What is pinned HERE is everything that can be decided without a GPU, which
 for this slice is more than for either certified sibling, because the device source
 is EMITTED rather than a pair of string constants: the emitter is a stdlib-only
 module (``offdiag_emitter.py``), so a test can call it, read what it wrote, and
 EVALUATE it.
 
-WHAT "EVALUATE IT" MEANS, precisely, because the strength of every arithmetic leg
+What "evaluate it" means, precisely, because the strength of every arithmetic leg
 below rests on the split:
 
-  * READ AND EXECUTED FROM THE EMITTED TEXT: every per-component statement — the
+  * Read and executed from the emitted text: every per-component statement — the
     three flat-index expressions of each term, which partner volume and which
     coefficient each term takes, the per-term wall-mask lines, the double row (its
     diagonal start, each term's presence-guarded add in partner order and the one
@@ -19,7 +19,7 @@ below rests on the split:
     expressions. A ``dj`` where ``dk`` belongs, a mispaired coefficient, a dropped
     mask, a hoisted multiply, a float32 row or an ignored presence bit is therefore
     caught by running the SHIPPED TEXT, not by re-deriving what it ought to say.
-  * PINNED BY EXACT STRING and transcribed by hand: the small helpers
+  * Pinned by exact string and transcribed by hand: the small helpers
     (``coord_up``, ``coord_dn``, ``flat``, ``ghosted``, ``chunk_label``,
     ``chunk_row``, ``chunk_keeps``), the chunk-record block and the chunk-label
     lines (``offdiag_emitter.RECORD_BLOCK`` / ``CHUNK_LINES``, transcribed by
@@ -33,14 +33,14 @@ The two together cover the whole source: nothing in it is neither executed nor
 pinned, and :func:`test_every_line_of_the_device_source_is_executed_or_pinned`
 measures that rather than leaving it as a claim.
 
-THE ORACLE IS ``stepping.update_E`` ITSELF, on real ``Grid``/``Fields``/``PML``
+The oracle is ``stepping.update_E`` itself, on real ``Grid``/``Fields``/``PML``
 objects with rows installed through the PUBLIC installer
 (``Fields.set_epsilon_volumes``), so the install-time validation, the zero-row
 drop and the stored-E switch are all in force. Comparison is on RAW BYTES, never
 ``allclose``: -0.0 == 0.0 and NaN != NaN both lie, and this family has a live
 signed-zero question.
 
-THE BACKEND STAND-IN, AND WHAT IT IS NOT. Off device the fixture hands ``Grid`` a
+The backend stand-in, and what it is not. Off device the fixture hands ``Grid`` a
 module that is NumPy wearing CuPy's ``__name__``, because the predicate's first
 question is whether the backend is CuPy at all. Everything else it reads — dtype,
 shape, contiguity, base addresses, the PML vectors, the grid's own boundary
@@ -97,8 +97,8 @@ BOUNDARY_TRIPLES = (
     ("metallic", "metallic", "metallic"),
 )
 
-#: Consecutive sub-steps every arithmetic leg runs. MULTI-STEP BECAUSE ``f_w`` IS
-#: STATE: a tree that gets E right and ``f_w`` wrong is correct for exactly one
+#: Consecutive sub-steps every arithmetic leg runs. Multi-step because ``f_w`` is
+#: state: a tree that gets E right and ``f_w`` wrong is correct for exactly one
 #: launch and wrong forever after, and one shot cannot see it. 60 is the budget the
 #: certified constitutive pair's record carries.
 MULTI_STEP_BUDGET = 60
@@ -203,7 +203,7 @@ def install_rows(fields, grid, mask, seed=20260816, uniform=False, block=False):
 def seed_state(fields, grid, seed=7, negative_zero=False):
     """Physical-band values in every array the sub-step reads or writes.
 
-    A GATE THAT CANNOT FAIL CERTIFIES NOTHING, and zero-init is a FIXED POINT of
+    A gate that cannot fail certifies nothing, and zero-init is a FIXED POINT of
     this sub-step: with D, E and f_w all zero every tree agrees. Every leg below
     therefore asserts a vacuity floor on the oracle's own output as well.
 
@@ -381,7 +381,7 @@ def evaluate_emitted_source(source, arrays, tables, codes, walls, shape, record,
     for match in _US.finditer(body):
         scalars[f"us_{match['name']}"] = _f32(numpy.asarray(arrays[match["volume"]]))
 
-    # offdiag_term's three arithmetic lines, PARSED AND EVALUATED as expressions.
+    # offdiag_term's three arithmetic lines, parsed and evaluated as expressions.
     near_text, far_text, term_text = _TERM_BODY.search(source).groups()
 
     def offdiag_term(volume, coefficient, down, up, corner):
@@ -499,7 +499,7 @@ def run_both_paths(mask, boundaries, steps=8, source=None, rows_override=None,
     in their inputs, silently, and the comparison would be of two runs rather than
     of two trees.
 
-    PLAIN NUMPY, NOT THE ``xp`` FIXTURE, and deliberately: the arithmetic legs
+    Plain NumPy, not the ``xp`` fixture, and deliberately: the arithmetic legs
     EXECUTE the emitted source in NumPy, so on a CUDA host a CuPy-backed fixture
     would hand the evaluator arrays ``numpy.asarray`` refuses to convert. The
     fixture belongs to the PREDICATE legs, where the backend name is the question.
@@ -742,7 +742,7 @@ def configuration(case, xp):
         elif case == "row_scalar":
             entry["Ey"] = xp.float32(0.5)
         else:
-            # REACHABLE THROUGH THE PUBLIC INSTALLER: set_epsilon_volumes keeps
+            # Reachable through the public installer: set_epsilon_volumes keeps
             # the caller's array without copying (fields.py:1296), so a row that
             # IS an output arrives legally installed.
             entry["Ey"] = fields.f_w_Ez
@@ -795,7 +795,7 @@ def test_the_predicate_states_the_verdict_the_table_specifies(case, xp):
 
 
 def test_the_predicate_refuses_rather_than_raising_on_a_grid_that_cannot_answer(xp):
-    """A RAISE IS NOT A REFUSAL unless something catches it: this predicate is read
+    """A raise is not a refusal unless something catches it: this predicate is read
     by a planner deciding whether to dispatch, so an exception escaping it is a
     CRASHED RUN where a fail-closed no was the correct answer."""
     fields, layer, grid = configuration("covered_periodic", xp)
@@ -917,7 +917,7 @@ def test_the_wall_mask_asks_the_declaration_and_not_the_resolved_ghost_rule(xp):
     (stepping.py:1282) — the DECLARATION. The ghost codes are the RESOLUTION, and
     the two coincide only while folds are refused.
 
-    WITHIN THIS FAMILY'S ADMITTED SPACE THEY ARE LOCKED, and that is measured over
+    Within this family's admitted space they are locked, and that is measured over
     all eight boundary triples rather than left implied: the separation is
     future-proofing for the day a fold is admitted, not a live degree of freedom.
     """
@@ -934,7 +934,7 @@ def test_the_wall_mask_asks_the_declaration_and_not_the_resolved_ghost_rule(xp):
 
 
 def test_the_helpers_agree_with_the_shipped_sibling_helpers(xp):
-    """THE ANTI-DESYNC CLAUSE. The corpus census that produced this family's
+    """The anti-desync clause. The corpus census that produced this family's
     variant count calls the sibling track's ``row_volumes_for`` and
     ``wall_mask_axes``; if this track's answers drifted from those, the count
     would describe a different kernel than the one shipped here.
@@ -1012,7 +1012,7 @@ def test_every_certified_name_has_a_record_block_behind_it():
         assert leg["cases_refused_as_vacuous"] == 0
         assert leg["every_case_had_live_coupling"] is True
         assert leg["subnormal_band_is_non_vacuous"] is True
-        # THE GUARD IS EVIDENCE, NOT DECORATION: the unguarded control has to
+        # The guard is evidence, not decoration: the unguarded control has to
         # DIVERGE, or --fmad=false is being asserted rather than measured.
         identical, ran = leg["guard_control_identical_at_inexact_courant"].split("/")
         assert int(ran) > 0 and int(identical) < int(ran)
@@ -1020,7 +1020,7 @@ def test_every_certified_name_has_a_record_block_behind_it():
 
 
 def test_the_record_block_was_cut_against_the_emitter_that_ships_today():
-    """THE DIGEST IS THE WHOLE CLAIM for a family whose device code is emitted.
+    """The digest is the whole claim for a family whose device code is emitted.
 
     The gate sweeps four of the 63 row masks; what carries the other 59 is that
     the emitter has not moved. ``corpus_digest`` hashes every source it can emit,
@@ -1041,7 +1041,7 @@ def test_the_record_block_was_cut_against_the_emitter_that_ships_today():
         live = hashlib.sha256((HERE / name).read_bytes()).hexdigest()
         if live == digest:
             continue
-        # ONE HOME FOR THE RULE (device_identity.py:209). This family's device
+        # One home for the rule (device_identity.py:209). This family's device
         # text comes from the emitter, whose corpus digest is asserted above, so
         # a subject edit that provably reaches no device source has nothing left
         # to invalidate. The helper returns False for anything it cannot
@@ -1111,7 +1111,7 @@ def test_there_are_sixty_three_live_row_masks_and_the_all_dead_one_is_refused():
 
 
 def test_every_emitted_source_is_pure_ascii_and_survives_an_ascii_locale_write():
-    """A COMPILE REQUIREMENT, NOT A STYLE RULE.
+    """A compile requirement, not a style rule.
     ``compile_using_nvrtc`` writes the source with a bare ``open(..., 'w')``
     (compiler.py:368), so the bytes go through the interpreter's LOCALE encoding —
     ASCII under C/POSIX. Two em-dashes in a comment killed the certified sibling's
@@ -1259,7 +1259,7 @@ def test_the_ghost_rules_are_the_two_stepping_branches_and_no_others():
 
 
 def test_the_boundary_and_wall_axes_are_runtime_arguments_not_baked_in():
-    """THE SPLIT THIS FAMILY'S DESIGN RESTS ON. The boundary and wall axes are
+    """The split this family's design rests on. The boundary and wall axes are
     BRANCH axes — they select an index or a predicated zero and change no float
     operation — so they are runtime ``int`` arguments, as the certified
     ``step_B_pml_real`` already takes ``bc_x``/``bc_y``/``bc_z``. If they
@@ -1316,7 +1316,7 @@ def test_the_read_only_volumes_carry_no_restrict_promise_the_caller_cannot_keep(
 def test_the_emitted_source_borrows_nothing_from_the_curl_sub_step():
     """Anyone porting the certified curl kernel's shape into this one will reach
     for its ownership mask and its Courant factor. Neither belongs here: this
-    sub-step masks a WALL PLANE OF THE COUPLING (a different rule, a different
+    sub-step masks a wall plane of the coupling (a different rule, a different
     reason) and has no ``dtdx`` at all."""
     for mask in CORPUS_ROW_MASKS:
         text = _code_only(offdiag_emitter.offdiag_source(mask))
@@ -1356,7 +1356,7 @@ def test_the_emitter_module_still_pulls_in_no_device_dependency():
 
 
 def test_every_line_of_the_device_source_is_executed_or_pinned():
-    """NOTHING IN THE SHIPPED TEXT IS NEITHER RUN NOR PINNED.
+    """Nothing in the shipped text is neither run nor pinned.
 
     The evaluator's grammar covers the per-component statements; the pinned
     helpers and the welded tail cover the prelude; the template's fixed scaffolding
@@ -1436,12 +1436,12 @@ def test_every_line_of_the_prelude_is_executed_or_pinned():
 # THE ARITHMETIC, measured against stepping.py — on a laptop, in float32.
 #
 # What the byte gate would measure is whether the COMPILED kernel reproduces the
-# array path; what these measure is whether the EXPRESSION TREE THE EMITTER WROTE
+# array path; what these measure is whether the expression tree the emitter wrote
 # reproduces it, which is the half a compiler cannot fix and the half that is
 # wrong in every one of the four plain curl kernels (0/16 against the array path
 # under every option set). If the tree is wrong here it is wrong on the device.
 #
-# EVERY LEG CARRIES A VACUITY FLOOR. Zero-init is a FIXED POINT of this sub-step,
+# Every leg carries a vacuity floor. Zero-init is a FIXED POINT of this sub-step,
 # so a leg run on zeros passes for every tree; the floor asserts the oracle's own
 # output is in the physical band.
 # --------------------------------------------------------------------------
@@ -1459,7 +1459,7 @@ _ARITHMETIC_CASES += [((0, 0, 1, 0, 0, 0), ("metallic", "metallic", "periodic"))
                               f"{b[0][0]}{b[1][0]}{b[2][0]}"
                               for m, b in _ARITHMETIC_CASES])
 def test_the_emitted_source_is_bit_identical_to_stepping(mask, boundaries):
-    """THE HEADLINE LEG: eight consecutive sub-steps, byte-compared.
+    """The headline leg: eight consecutive sub-steps, byte-compared.
 
     Both stored quantities are compared — E and ``f_w_E`` — because ``f_w`` is what
     the next sub-step reads and a tree that gets E right and the auxiliary wrong is
@@ -1565,11 +1565,11 @@ def _mutate(text, kind):
         return re.sub(r"kps_[xyz]\[[ijk]\], kms_[xyz]\[[ijk]\]",
                       "kps_x[i], kms_x[i]", text)
     if kind == "row_in_float32":
-        # The row summed and scaled in float32: the package's arithmetic until 0.10.
+        # The row summed and scaled in float32: the package's arithmetic until 1.0.
         return (text.replace("double row_", "float row_")
                     .replace("(0.25 * (double)term_", "(0.25f * term_"))
     if kind == "select_removed":
-        # The accumulation on every cell: the whole-grid recurrence until 0.10.
+        # The accumulation on every cell: the whole-grid recurrence until 1.0.
         return re.sub(r", in_h_[xyz]\);", ", 1);", text)
     if kind == "tail_flag_on_integer_lattice":
         # The tail's membership read on the integer record: the two lattices swapped.
@@ -1580,7 +1580,7 @@ def _mutate(text, kind):
     if kind == "column_major_index":
         return text.replace("(i * nyz + j * nz + k)", "(k * nyz + j * nz + i)")
     if kind == "previous_tail_grouping":
-        # The constitutive grouping until 0.10, (f + kps*src) - kms*prev.
+        # The constitutive grouping until 1.0, (f + kps*src) - kms*prev.
         return text.replace(
             "float value = dsigw ? (f[idx] + ((kps * src) - (kms * prev))) : src;",
             "float value = dsigw ? ((f[idx] + (kps * src)) - (kms * prev)) : src;")
@@ -1689,7 +1689,7 @@ def test_a_wrong_record_or_presence_word_is_caught(edit):
 
 
 def test_the_presence_rows_reproduce_stepping_on_planted_negative_zeros():
-    """THE PRESENCE LEG: rows on an interior block, so every chunk that carries a layer
+    """The presence leg: rows on an interior block, so every chunk that carries a layer
     deletes them (26 of 27 one-rank chunks drop each row), with ``D = -0`` planted on
     every third cell, eight sub-steps byte-compared, on a walled and on a periodic
     grid."""
@@ -1798,7 +1798,7 @@ def test_the_row_is_diagonal_first_then_partner_order_in_double():
     double (``stepping._offdiagonal_terms``): the row starts at the widened diagonal
     product and each term is added in ``cycle_direction`` order, then rounded once.
     The order is pinned on the text, and the double row is shown to be a different
-    word from the float32 sum the package formed until 0.10 on the operands a real run
+    word from the float32 sum the package formed until 1.0 on the operands a real run
     produces.
     """
     for mask in CORPUS_ROW_MASKS:
@@ -1825,7 +1825,7 @@ def test_the_row_is_diagonal_first_then_partner_order_in_double():
 
 @pytest.mark.parametrize("kind", PINNED_HALF_MUTATIONS)
 def test_the_pinned_half_is_guarded_by_its_pins_not_by_the_arithmetic_legs(kind):
-    """BOTH HALVES OF THE CLAIM, measured.
+    """Both halves of the claim, measured.
 
     The four small helpers and the tail are transcribed by the evaluator rather
     than executed from the text, so a defect planted in them is INVISIBLE to the
@@ -1896,11 +1896,11 @@ def test_the_wall_mask_leg_is_reachable_and_the_periodic_control_is_not():
 
 
 # --------------------------------------------------------------------------
-# THE ARITY WITNESS — why the row mask is a compile-time axis.
+# The arity witness — why the row mask is a compile-time axis.
 # --------------------------------------------------------------------------
 
 def test_padding_a_dead_slot_with_a_zero_coefficient_is_not_bit_identical():
-    """THE MEASUREMENT BEHIND THIS FAMILY'S SPECIALIZATION SPLIT.
+    """The measurement behind this family's specialization split.
 
     The obvious way to make the row mask a runtime argument is to bind every dead
     slot to an all-zero coefficient volume, so a dropped term contributes ``+0.0``
@@ -1912,10 +1912,10 @@ def test_padding_a_dead_slot_with_a_zero_coefficient_is_not_bit_identical():
     a zero partner volume and a negative coefficient — an ordinary interior cell of
     an off-diagonal tensor beside a null field region.
 
-    THIS IS NOT A CLAIM ABOUT A DYNAMIC LOOP, AND THAT FOLD IS LICENSED. A
+    This is not a claim about a dynamic loop, and that fold is licensed. A
     runtime-bounded loop over an arity axis was measured bit-identical to the
     unrolled form at every arity 0-8 — 156/156 cases, max ULP 0
-    (``the design notes (cuda-kernel-triton-transfer-assessment)`` §3.2,
+    (measured on an RTX A6000 under ``--fmad=false``, recorded in
     ``results/cuda_dynamic_loop_2026-08-16/``) — because NVCC leaves the arithmetic
     a strictly serial dependence chain on one accumulator, which this family's row
     accumulation also is. What this test rules out is the ZERO-PADDED sum, and what
@@ -1949,7 +1949,7 @@ def test_padding_a_dead_slot_with_a_zero_coefficient_is_not_bit_identical():
                          ids=["".join(str(f) for f in m)
                               for m in offdiag_emitter.LIVE_ROW_MASKS])
 def test_the_arity_axis_folds_into_the_term_count_and_nothing_else(mask):
-    """THE ARITY AXIS, SPELLED OUT: what a row flag changes is HOW MANY terms exist.
+    """The arity axis, spelled out: what a row flag changes is HOW MANY terms exist.
 
     For every one of the 63 live masks: the emitted source carries exactly
     ``popcount(mask)`` term calls; each is the right (partner volume, coefficient)
@@ -2048,7 +2048,7 @@ def _predicate_with(*edits):
              'or getattr(fields, "_chi3_components", None):', "if False:"),
 ])
 def test_dropping_a_clause_is_caught(case, original, replacement, xp):
-    """Every refusal here is a SILENT WRONG ANSWER if it leaks, so each one is
+    """Every refusal here is a silent wrong answer if it leaks, so each one is
     removed and the configuration it protects required to become admitted."""
     mutated = _predicate_with((original, replacement))
     fields, layer, grid = configuration(case, xp)
@@ -2060,7 +2060,7 @@ def test_dropping_a_clause_is_caught(case, original, replacement, xp):
 
 
 #: The two configurations no single clause decides, with the full set of clauses
-#: that refuse them. BELT AND BRACES IS A MEASURABLE PROPERTY, and it has to be
+#: that refuse them. Belt and braces is a measurable property, and it has to be
 #: measured rather than asserted, because a one-clause drop that changes no verdict
 #: reads exactly like a clause that is not load-bearing.
 _BELT_AND_BRACES = {
@@ -2079,7 +2079,7 @@ _BELT_AND_BRACES = {
 
 @pytest.mark.parametrize("case", sorted(_BELT_AND_BRACES))
 def test_the_belt_and_braces_refusals_need_every_clause_dropped(case, xp):
-    """MEASURED, and it corrects the shape a one-clause mutation would have taken.
+    """Measured, and it corrects the shape a one-clause mutation would have taken.
 
     A folded grid is refused THREE times — ``has_symmetry``, the per-axis
     ``mirrored`` clause, and the boundary-kind clause, since a mirrored axis
@@ -2089,7 +2089,7 @@ def test_the_belt_and_braces_refusals_need_every_clause_dropped(case, xp):
     refused, and only the full set is required to admit it. That is what makes each
     clause's presence a statement rather than decoration.
 
-    THE ENGINE DOES STEP THE FOLDED CONFIGURATION. ``_validated_offdiagonal_rows``
+    The engine does step the folded configuration. ``_validated_offdiagonal_rows``
     installs rows unchanged on a folded grid (fields.py:1262-1310), with
     fold-equivalence measured 8.3e-13..4.7e-12 — so the refusal is this KERNEL
     FAMILY'S (the stored extent moves every coefficient index and the wall mask
@@ -2203,7 +2203,7 @@ def test_the_kernel_module_re_exports_rather_than_copying(xp):
 # The shipped predicate refuses every mirror fold. On 2026-08-20 a device gate
 # (``parity/meep_gpu/gate_cuda_folded_offdiag.py``, the GPU host GPU 7, both float32
 # subnormal policies) measured that refusal instead of inheriting it, and found it
-# REAL BUT BROADER THAN THE ARITHMETIC: on 96 folded cases per policy the SHIPPED
+# real but broader than the arithmetic: on 96 folded cases per policy the SHIPPED
 # kernel is byte-identical to ``stepping.update_E``, and on the complementary 352
 # every differing word lies on the ghost-delta planes.
 #
@@ -2217,7 +2217,7 @@ def test_the_kernel_module_re_exports_rather_than_copying(xp):
 #     ``stepping.update_E`` on real folded grids. This is the load-bearing one: it
 #     does not consult the artifact at all, and it fails on a laptop if the rule is
 #     wrong. The two agree on all 52 combinations.
-#   * PIN THE REFUSAL — the predicate still refuses the measured-safe arm, the
+#   * Pin the refusal — the predicate still refuses the measured-safe arm, the
 #     launcher still cannot serve it, and the record still says the arm is worth
 #     zero corpus slots. A widening that leaked in later has to break one of these.
 
@@ -2250,7 +2250,7 @@ def run_both_paths_folded(mask, symmetry, substitution, steps=2,
                           seed=20260820):
     """The oracle and the emitted source on a FOLDED grid, from one frozen state.
 
-    WHY THIS CANNOT REUSE :func:`run_both_paths`: that helper asks
+    Why this cannot reuse :func:`run_both_paths`: that helper asks
     ``coverage.BC_CODES[kind]`` for every axis, and a folded axis resolves to
     ``mirror``, which has no entry — the KeyError the launcher deliberately lets
     escape. Choosing a stand-in is exactly what is being measured, so it is named
@@ -2371,7 +2371,7 @@ FOLD_CASES = tuple(
 @pytest.mark.parametrize("mask,symmetry,substitution", FOLD_CASES,
                          ids=lambda value: str(value).replace(" ", ""))
 def test_the_fold_rule_is_the_measured_boundary(mask, symmetry, substitution):
-    """THE LOAD-BEARING LEG: bit-identity iff ``changes_a_byte`` is False.
+    """The load-bearing leg: bit-identity iff ``changes_a_byte`` is False.
 
     Measured here, on this machine, against ``stepping.update_E`` on a real folded
     grid — the artifact is not consulted. Both directions are asserted, so a rule
@@ -2489,7 +2489,7 @@ def test_the_recorded_table_is_two_sided_on_every_lever_the_rule_reads():
     ("admit_every_fold", 41, 352),
 ))
 def test_a_rule_that_is_one_row_wider_is_caught(leg, combinations, cases):
-    """THE MUTATION BATTERY, on the RULE rather than on the kernel.
+    """The mutation battery, on the RULE rather than on the kernel.
 
     Each leg is a plausible mis-statement of the boundary — the ones the reading
     invites — and each must disagree with the recorded table. ``drop_the_own_axis
@@ -2577,7 +2577,7 @@ def test_the_launcher_has_no_code_to_hand_a_folded_axis(xp):
 def test_the_record_says_what_the_arm_is_worth_and_why_it_is_not_installed():
     """The corpus arithmetic and the two reasons, pinned as data.
 
-    ZERO IS THE FINDING, so it is pinned rather than left implicit: the widened
+    Zero is the finding, so it is pinned rather than left implicit: the widened
     predicate admits the same 16 update_E slots as the shipped one on the 186-row
     census, the union is unmoved at 557/759, and the 20 slots a fold could reach
     all need a mirror branch in the kernel. A later census that moves any of these

@@ -1,8 +1,8 @@
 #!/bin/zsh
-# THE METAL DISPATCH CAMPAIGN: four legs of gate_dispatch_metal_route.py -- a serial
+# The Metal dispatch campaign: four legs of gate_dispatch_metal_route.py -- a serial
 # prefix of two, then up to LANES of the two long legs at once.
 #
-# WHY FOUR PROCESSES AND NOT ONE. Each leg differs in exactly one thing the process
+# Why four processes and not one. Each leg differs in exactly one thing the process
 # cannot change after it has started: the float32 subnormal policy is installed once
 # and LOCKED (`subnormal_policy.SubnormalPolicyLocked` refuses a second, different
 # one, because device binaries and cache entries already exist under the first). So
@@ -17,7 +17,7 @@
 #                            freeze, and must reach the same answer.
 #   harness_keep             --install-policy keep: every dispatch case must be
 #                            PASS-POLICY-REFUSED BY NAME and byte-identical to the
-#                            array path. THE POLARITY IS INVERTED against the Triton
+#                            array path. The polarity is inverted against the Triton
 #                            campaign — Triton certifies under keep so its harness
 #                            leg installs flush; this table certifies under flush, so
 #                            the refusal leg is the keeping one.
@@ -29,10 +29,10 @@
 #                            MEEP_GPU_DISPATCH=0 (see below), so "the array path
 #                            alone" is a declaration and not a consequence.
 #
-# THE ORDER, AND WHAT RUNS BESIDE WHAT
-# (the design notes (sharded-route-campaign-design) §3a item 6, §3c "Pool").
+# The order, and what runs beside what
+# (a serial prefix, then the remaining legs pulled longest first by LANES slots).
 #
-#   1. band_witness, FIRST AND ALONE. Its gate.json is an INPUT to every later leg
+#   1. band_witness, first and alone. Its gate.json is an INPUT to every later leg
 #      (the cliff control reads it through MEEP_GPU_METAL_BAND_WITNESS), so nothing
 #      may start before it has landed.
 #   2. harness_keep, still in the serial prefix. It costs ~120 s, and that its keep
@@ -43,8 +43,8 @@
 #      measured 7,796 / 7,428 s (dispatch_metal_route_2026-09-19_components/
 #      campaign.txt), so the longest leg is never the one left waiting for a slot.
 #
-# THIS ORDER DIFFERS FROM THE COMMITTED SEQUENTIAL SCRIPT'S AT EVERY LANES, 1
-# INCLUDED. That one ran band_witness, shipped, harness_flush, harness_keep; this
+# This order differs from the committed sequential script's at every LANES, 1
+# included. That one ran band_witness, shipped, harness_flush, harness_keep; this
 # one runs band_witness, harness_keep, shipped, harness_flush. The band witness is the only
 # artifact one leg writes for another to read: every leg has its own directory, log
 # and source manifest, and the gate has no wall-clock logic. What else the legs share
@@ -56,16 +56,16 @@
 # no background job, and every leg is handed exactly the arguments and environment
 # it was handed before lanes existed. Leg directory names and leg arguments are the
 # same at every LANES, so `recut_driver_dispatch_record.py` reads a laned campaign
-# unchanged. THIS GATE MAKES NO TIMING CLAIM, so a neighbour on the device costs wall
+# unchanged. This gate makes no timing claim, so a neighbour on the device costs wall
 # time and nothing else: under a measured K=2 overlap every verdict, launch count,
 # checkpoint and float observable was identical on 42 of 42 case rows and 186 of 186
-# control rows (design §5). The measured slowdown per process is in
+# control rows. The measured slowdown per process is in
 # parity/meep_gpu/README.md ("Re-running a campaign"); choose LANES from it.
 #
-# EACH LEG'S ENVIRONMENT IS BUILT ON ITS OWN COMMAND AND NOTHING IS EXPORTED. With
+# Each leg's environment is built on its own command and nothing is exported. With
 # legs side by side an export reaches every sibling started while it is set. So
 # every leg is launched as `env -u <each name it must not see> NAME=value ...
-# python ...`, the same array the dry run prints, and BEFORE ANYTHING IS LAUNCHED the
+# python ...`, the same array the dry run prints, and before anything is launched the
 # script reads back the environment each command would really hand its child and
 # refuses to start unless:
 #   * every leg that consumes the band witness carries MEEP_GPU_METAL_BAND_WITNESS
@@ -76,7 +76,7 @@
 #     MEEP_GPU_GATE_SOURCE_MANIFEST reach no leg from the calling shell, whatever it
 #     exported -- and band_witness, alone, is then HANDED MEEP_GPU_DISPATCH=0, the
 #     exact value, which the check requires of it.
-# THE BAND WITNESS'S PIN, and why it is set rather than scrubbed. That leg is the
+# The band witness's pin, and why it is set rather than scrubbed. That leg is the
 # array path by construction: it installs keep and censuses the oracle's own
 # trajectory. Before dispatch turned on by default (fastpath.DISPATCH_BY_DEFAULT,
 # 2026-09-27) the scrubbed enable was what guaranteed that; with the enable unset it
@@ -93,16 +93,16 @@
 # at once. The last is a shared manifest the runner merges with an unlocked
 # read-modify-write; unset, each leg writes its own source_sha256.txt, which is what
 # every campaign on file did.
-# THREE MORE SWITCHES ARE RECORDED, NOT SCRUBBED: MEEP_GPU_WARM,
+# Three more switches are recorded, not scrubbed: MEEP_GPU_WARM,
 # MEEP_GPU_KERNEL_TABLE and MEEP_GPU_BACKEND_PREFERENCE reach every leg alike, as
 # they always did, and a value that does not belong refuses by name rather than
 # passing silently. campaign.txt and the dry run state what the calling shell holds
 # for each, and name every other MEEP_GPU_* it exported with what became of it.
 #
-# INTEGRITY RULES (design review, §3a item 7 and §3c):
-#   * THE MACHINE IS HELD AWAKE, TWICE. `caffeinate -i -w <this pid>` covers the
-#     driver's life, the gaps between legs included. EACH LEG ALSO HOLDS ITS OWN
-#     ASSERTION, because a lane outlives a killed driver (below) and would otherwise
+# Integrity rules:
+#   * The machine is held awake, twice. `caffeinate -i -w <this pid>` covers the
+#     driver's life, the gaps between legs included. Each leg also holds its own
+#     assertion, because a lane outlives a killed driver (below) and would otherwise
 #     run on with none: the leg's command is prefixed `caffeinate -i`. Measured on
 #     this host: that tool execs the command IN PLACE -- same pid, same parent, argv
 #     and exit status untouched (7, 137, 139 and 143 read back as themselves) -- and
@@ -113,15 +113,15 @@
 #     nothing under meep_gpu/ or the gate reads that name. Where the tool is absent
 #     the campaign runs without either assertion and says so. A 35,356 s leg against
 #     7,955 s (2026-09-15) is what a sleeping host looks like.
-#   * THE BAND WITNESS'S sha256 IS RECORDED in campaign.txt beside its path, and
+#   * The band witness's sha256 is recorded in campaign.txt beside its path, and
 #     checked again at the end. That artifact decides 16 of 24 shipped cliff
 #     verdicts and no leg artifact records its path or its bytes.
-#   * A LEG DIRECTORY IS CREATED EXCLUSIVELY. One that holds a gate.json THE RUNNER
-#     FINALIZED is skipped. One that exists WITHOUT gate.json is REFUSED BY NAME and
+#   * A leg directory is created exclusively. One that holds a gate.json the runner
+#     FINALIZED is skipped. One that exists without gate.json is refused by name and
 #     never relaunched into: the gate would exit 5 on the earlier rows and the
 #     runner would then finalize whatever gate.json it finds. Moving such a
 #     directory aside is an owner action.
-#   * "FINALIZED" IS THE RUNNER'S `weld` KEY. The gate writes gate.json itself,
+#   * "FINALIZED" is the runner's `weld` key. The gate writes gate.json itself,
 #     non-atomically and already carrying `release.released`, BEFORE
 #     `metal_gate_runner.finalize_artifact` replaces it with the source-welded one.
 #     A process killed inside that window leaves a gate.json that reads
@@ -129,41 +129,50 @@
 #     (or one that does not parse) is not a result: its directory is REFUSED like
 #     any other used one, a leg that lands one reads `unfinalized(...)` and fails,
 #     and a band witness in that state is not handed to the later legs.
-#   * ONE DRIVER PER CAMPAIGN. If campaign.txt's last `started` line has no
-#     `finished` line after it and the driver_pid it names is still this script on
-#     this stamp, alive, a second invocation refuses (exit 3) before it writes
-#     anything: two drivers would both append to campaign.txt and could hold
-#     2 x LANES lanes between them. A driver that was killed leaves a dead pid, and
-#     the next invocation resumes normally.
-#   * campaign.txt HAS ONE WRITER, this process. A lane writes its result to
+#   * One driver per campaign. The driver keeps its pid in <run>/driver.pid
+#     (`driver <pid> running`, then `finished`). If that file says running and the
+#     pid is still this script on this stamp, alive, a second invocation refuses
+#     (exit 3) before it writes anything: two drivers would both append to
+#     campaign.txt and could hold 2 x LANES lanes between them. A driver that was
+#     killed leaves a dead pid, and the next invocation resumes normally.
+#   * campaign.txt and campaign_plan.txt name no machine: every line is written
+#     through the harness's `neutral_ids.text` (paths under their labels, a host
+#     name as the machine id; neutral_ids.py), paths under the run are written
+#     relative to the results root, and no pid is written there -- the driver's and
+#     each lane's gate's pids stay in the local driver.pid and <leg>.pid files. A
+#     line that cannot be written neutrally is written as a marker, never raw. Each
+#     leg's log is rewritten the same way once its gate has exited. The dry run
+#     prints the real paths: it writes nothing.
+#   * campaign.txt has one writer, this process. A lane writes its result to
 #     <run>/<leg>.result (atomically, as its last act); the parent appends landed
 #     results in a fixed leg order, so two legs finishing together cannot interleave.
-#   * A LEG THAT LANDS released=False IS A RESULT. It is recorded, it sets fail=1,
+#   * A leg that lands released=False is a result. It is recorded, it sets fail=1,
 #     and it is never retried -- a campaign that retried would be retry-until-green.
-#   * `fail=0` MEANS EVERY LEG RELEASED, which is how
+#   * `fail=0` means every leg released, which is how
 #     `meep_gpu/test_dispatch_contract.py` reads it: a non-zero exit, an unreleased or
 #     unreadable gate.json (from this run or a skipped earlier one), a refused
 #     directory and a lane that died without a result each set fail=1. The parent
 #     waits for EVERY lane and reports every exit code.
 #
-# STOPPING A CAMPAIGN, AND WHAT Ctrl-C DOES. There is no INT/TERM trap: zsh defers a
+# Stopping a campaign, and what Ctrl-C does. There is no INT/TERM trap: zsh defers a
 # trap until its foreground child ends, which at LANES=1 would make the driver
 # unkillable for a whole leg. So:
 #   * In the serial prefix, and everywhere at LANES=1, the gate is the driver's
 #     foreground child and Ctrl-C reaches it, as it always did.
-#   * AT LANES>1 THE LANES IGNORE SIGINT AND SIGQUIT (a background job of a
+#   * At LANES>1 the lanes ignore SIGINT and SIGQUIT (a background job of a
 #     non-interactive zsh starts with both ignored, and the gate inherits that).
 #     Ctrl-C stops the driver and the driver's assertion and NOT the gates: they run
 #     on under their own assertions, finish, and leave gate.json and <leg>.result,
 #     and a re-invocation SKIPs the finished ones and REFUSES the live ones.
-#   * THE HANDLE ON A LANE IS ITS GATE'S PID, which the parent records as a `LANE`
-#     line in campaign.txt (and the lane keeps in <run>/<leg>.pid, marked `ended`
-#     once the gate has). `kill -TERM <that pid>` stops that gate; its lane then
+#   * The handle on a lane is its gate's pid, which the lane keeps in
+#     <run>/<leg>.pid (`driver <pid> gate_pid <pid> running`, marked `ended` once the
+#     gate has); the parent's `LANE` line in campaign.txt points to that file.
+#     `kill -TERM <that pid>` stops that gate; its lane then
 #     lands `exit=143` like any other result. Do not signal the lane's own shell:
 #     that orphans the gate and lands `exit=?` while the gate is still running.
-#   * A STOPPED OR UNRELEASED LEG HAS USED ITS DIRECTORY, and a campaign that lands
+#   * A stopped or unreleased leg has used its directory, and a campaign that lands
 #     one has used its stamp: nothing is retried, so the re-run is a new stamp, and
-#     `meep_gpu/route_stamps.py` must name it (REROUTED["metal"], or the round's ROUND)
+#     `meep_gpu/route_stamps.py` must name it (REROUTED["metal"], or the certification round's ROUND)
 #     before it starts, because the recut files a run only under the name the
 #     registry spells; the spent name goes into route_stamps.SPENT.
 #
@@ -186,7 +195,7 @@
 # <architecture>)`: the registry's stamp followed by the GPU architecture every leg
 # recorded, e.g. `2026-10-05_perarch_applegpu_g13s` for the stamp
 # `dispatch_metal_route_2026-10-05_perarch` on an Apple M1 Max. The architecture is
-# the one the round's fleet recorded in results/metal_environment_<stamp>/start.json.
+# the one the certification round's fleet recorded in results/metal_environment_<stamp>/start.json.
 #
 # LANES is `--lanes N`, else the second positional argument, else $LANES, else 1.
 # `--dry-run` (or DRY_RUN=1) prints the plan -- order, lanes, each leg's state,
@@ -234,9 +243,33 @@ POLL_SECONDS=${METAL_CAMPAIGN_POLL_SECONDS:-5}
 RUN="$RESULTS/dispatch_metal_route_$STAMP"
 SUMMARY="$RUN/campaign.txt"
 WITNESS="$RUN/band_witness/gate.json"
+DRIVER_PID_FILE="$RUN/driver.pid"
 cd "$API" || exit 1
 
-# THE SERIAL PREFIX AND THE LANES, in launch order. The lane order is LONGEST FIRST
+# What the records hold (header, "name no machine"): a path under the results root
+# relative to it, and every line through neutral_ids.text.
+shown() { print -r -- "${1#$RESULTS/}"; }
+NEUTRAL_PROGRAM='import sys
+sys.path.insert(0, sys.argv[1])
+import neutral_ids
+if len(sys.argv) > 2:
+    neutral_ids.rewrite_file(sys.argv[2])
+else:
+    sys.stdout.write(neutral_ids.text(sys.stdin.read()))'
+UNWRITTEN_LINE="[a line was not written: it could not be written neutrally]"
+neutral() {  # neutral: stdin -> stdout through neutral_ids.text, or the marker line
+  local out
+  if out=$("$PY" -s -c "$NEUTRAL_PROGRAM" "$API/parity/meep_gpu" 2> /dev/null) && [[ -n "$out" ]]; then
+    print -r -- "$out"
+  else
+    print -r -- "$UNWRITTEN_LINE"
+  fi
+}
+rewrite_neutral() {  # rewrite_neutral <log>: a log a gate wrote, rewritten once it has exited
+  "$PY" -s -c "$NEUTRAL_PROGRAM" "$API/parity/meep_gpu" "$1" > /dev/null 2>&1
+}
+
+# The serial prefix and the lanes, in launch order. The lane order is longest first
 # by the measured leg seconds below; the numbers are printed with the plan so a
 # reader can see what the order was decided on.
 SERIAL_LEGS=(band_witness harness_keep)
@@ -245,17 +278,17 @@ ALL_LEGS=($SERIAL_LEGS $LANE_LEGS)
 typeset -A MEASURED_SECONDS
 MEASURED_SECONDS=(band_witness 27 harness_keep 120 shipped 7796 harness_flush 7428)
 
-# NAMES NO LEG MAY INHERIT, whatever the calling shell exported (see the header).
+# Names no leg may inherit, whatever the calling shell exported (see the header).
 SCRUBBED=(MEEP_GPU_SUBNORMAL_POLICY MEEP_GPU_SUBNORMAL_INSTALL MEEP_GPU_DISPATCH
           MEEP_GPU_FUSED MEEP_GPU_FUSE_ARMS MEEP_GPU_DISPATCH_LOG
           MEEP_GPU_GATE_SOURCE_MANIFEST)
-# SWITCHES THAT REACH EVERY LEG ALIKE and are therefore put on record, not scrubbed.
+# Switches that reach every leg alike and are therefore put on record, not scrubbed.
 RECORDED_SWITCHES=(MEEP_GPU_WARM MEEP_GPU_KERNEL_TABLE MEEP_GPU_BACKEND_PREFERENCE)
 WITNESS_VARIABLE=MEEP_GPU_METAL_BAND_WITNESS
-# THE ENABLE, pinned OFF on band_witness only (header, "THE BAND WITNESS'S PIN").
+# The enable, pinned off on band_witness only (header, "the band witness's pin").
 DISPATCH_ENABLE=MEEP_GPU_DISPATCH
 
-# THE PER-LEG SLEEP ASSERTION: the tool's own path, resolved once, so the plan shows
+# The per-leg sleep assertion: the tool's own path, resolved once, so the plan shows
 # the command that really runs. Empty where the tool is absent.
 CAFFEINATE=$(command -v caffeinate 2> /dev/null) || CAFFEINATE=
 
@@ -281,7 +314,7 @@ build_leg() {  # build_leg <leg>  ->  leg_set, leg_unset, leg_args, leg_environm
     # The producer of the witness is handed no witness path.
     leg_unset+=($WITNESS_VARIABLE)
     # The array path by declaration: the enable is SET to 0 on this leg rather than
-    # scrubbed (header, "THE BAND WITNESS'S PIN").
+    # scrubbed (header, "the band witness's pin").
     leg_unset=(${leg_unset:#$DISPATCH_ENABLE})
     leg_set+=("$DISPATCH_ENABLE=0")
   else
@@ -300,7 +333,7 @@ build_leg() {  # build_leg <leg>  ->  leg_set, leg_unset, leg_args, leg_environm
 }
 
 read_released() {  # read_released <gate.json>  ->  stdout, one line
-  # True | False from a gate.json THE RUNNER FINALIZED (it carries `weld`);
+  # True | False from a gate.json the runner finalized (it carries `weld`);
   # unfinalized(...) where the gate wrote one and no runner welded it;
   # unreadable(...) where it is absent or does not parse.
   "$PY" - "$1" <<'EOF'
@@ -326,36 +359,35 @@ leg_state() {  # leg_state <leg>  ->  $REPLY in RUN | SKIP | REFUSE
       REPLY=SKIP
     else
       REPLY=REFUSE
-      LEG_REFUSAL="$RUN/$leg holds a gate.json the runner never finalized ($LEG_RELEASED)"
+      LEG_REFUSAL="$(shown "$RUN/$leg") holds a gate.json the runner never finalized ($LEG_RELEASED)"
     fi
   elif [[ -e "$RUN/$leg" || -L "$RUN/$leg" ]]; then
     REPLY=REFUSE
-    LEG_REFUSAL="$RUN/$leg exists without gate.json"
+    LEG_REFUSAL="$(shown "$RUN/$leg") exists without gate.json"
   else
     REPLY=RUN
   fi
 }
 
-# ANOTHER LIVE DRIVER OF THIS CAMPAIGN: the last `started` line of campaign.txt with
-# no `finished` line after it, naming a pid that is alive AND is this script run on
-# this stamp. A pid the system has since handed to something else -- another stamp's
-# driver included -- is not this campaign's driver. What this does not cover is two
-# drivers started in the same instant, before either has written its `started` line;
-# the exclusive leg directories still keep those two from sharing a leg.
+# Another live driver of this campaign: <run>/driver.pid saying `running`, naming a
+# pid that is alive AND is this script run on this stamp. A pid the system has since
+# handed to something else -- another stamp's driver included -- is not this
+# campaign's driver. What this does not cover is two drivers started in the same
+# instant, before either has written its driver.pid; the exclusive leg directories
+# still keep those two from sharing a leg.
 other_driver() {  # other_driver  ->  $REPLY, that driver's pid, or empty
-  local last pid
+  local word pid state
   REPLY=
-  [[ -s "$SUMMARY" ]] || return 0
-  last=$(grep -E "^campaign dispatch_metal_route_.*  (started|finished) " "$SUMMARY" | tail -1)
-  [[ "$last" == *"  started "* ]] || return 0
-  pid=${${last##*driver_pid=}%%[^0-9]*}
+  [[ -s "$DRIVER_PID_FILE" ]] || return 0
+  read -r word pid state < "$DRIVER_PID_FILE"
+  [[ "$word" == driver && "$state" == running ]] || return 0
   [[ "$pid" == <1-> && "$pid" != "$$" ]] || return 0
   kill -0 "$pid" 2> /dev/null || return 0
   [[ "$(ps -o command= -p "$pid" 2> /dev/null)" == *"$SCRIPT_NAME"*"$STAMP"* ]] || return 0
   REPLY=$pid
 }
 
-# WHAT THE CALLING SHELL HOLDS that a leg could see: the three recorded switches by
+# What the calling shell holds that a leg could see: the three recorded switches by
 # value, and every other MEEP_GPU_* name it exported with what becomes of it.
 caller_environment_lines() {  # -> $reply, the lines to print
   local name value others=()
@@ -385,7 +417,7 @@ caller_environment_lines() {  # -> $reply, the lines to print
   return 0
 }
 
-# THE ENVIRONMENT CHECK reads back what each leg's `env` prefix REALLY hands a child
+# The environment check reads back what each leg's `env` prefix REALLY hands a child
 # -- the inherited environment included -- by running that same prefix around
 # `env` itself. It launches no gate and touches no device.
 ENVIRONMENT_FAULTS=()
@@ -512,31 +544,36 @@ fi
 # ---------------------------------------------------------------------------
 
 mkdir -p "$RUN"
-# ONE WRITER, AND IT APPENDS. A resumed campaign keeps the earlier block -- its
+# One writer, and it appends. A resumed campaign keeps the earlier block -- its
 # START/exit lines and the band witness digest are the only record of them.
-record() { print -r -- "$*" | tee -a "$SUMMARY"; }
+record() { print -r -- "$*" | neutral | tee -a "$SUMMARY"; }
 utc() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 
 campaign_started=$EPOCHSECONDS
 [[ -s "$SUMMARY" ]] && record "=== resumed: the lines above are an earlier run of this campaign ==="
-record "campaign dispatch_metal_route_$STAMP  started $(utc)  lanes=$LANES  driver_pid=$$"
+write_driver_pid() {  # write_driver_pid running|finished  ->  <run>/driver.pid, atomically
+  print -r -- "driver $$ $1" > "$DRIVER_PID_FILE.partial"
+  mv -f "$DRIVER_PID_FILE.partial" "$DRIVER_PID_FILE"
+}
+write_driver_pid running
+record "campaign dispatch_metal_route_$STAMP  started $(utc)  lanes=$LANES  (driver pid in driver.pid)"
 record "per-leg environments built on each command, nothing exported: ${(j:, :)SCRUBBED} reach no leg (fleet-recut inheritance trap)"
 [[ -n "${METAL_CAMPAIGN_RESULTS_ROOT:-}" ]] && record "NOTE   results root overridden: $RESULTS"
 [[ -n "${METAL_CAMPAIGN_RUNNER:-}" ]] && record "NOTE   runner overridden: $RUNNER"
 for line in "${environment_reports[@]}"; do record "$line"; done
 for line in "${caller_lines[@]}"; do record "$line"; done
-{ print -r -- "=== $(utc) driver_pid=$$"; print_plan } >> "$RUN/campaign_plan.txt"
-record "plan (each leg's arguments, environment and full command): $RUN/campaign_plan.txt"
+{ print -r -- "=== $(utc)"; print_plan } | neutral >> "$RUN/campaign_plan.txt"
+record "plan (each leg's arguments, environment and full command): $(shown "$RUN/campaign_plan.txt")"
 
 CAFFEINATE_PID=
 if [[ -n "$CAFFEINATE" ]]; then
   "$CAFFEINATE" -i -w $$ &
   CAFFEINATE_PID=$!
-  record "AWAKE  caffeinate -i -w $$ held (pid $CAFFEINATE_PID) for the campaign's life; each leg's command also holds its own (caffeinate -i), which outlives a killed driver"
+  record "AWAKE  caffeinate -i -w <driver pid> held for the campaign's life; each leg's command also holds its own (caffeinate -i), which outlives a killed driver"
 else
   record "AWAKE  NOTE caffeinate is absent: no sleep assertion is held, by the driver or by any leg, and a sleeping host stalls every leg"
 fi
-(( LANES > 1 )) && record "SIGNALS  lanes ignore SIGINT and SIGQUIT: Ctrl-C stops this driver and not the gates. Each lane's gate pid is on its LANE line; stop one with kill -TERM <gate pid>"
+(( LANES > 1 )) && record "SIGNALS  lanes ignore SIGINT and SIGQUIT: Ctrl-C stops this driver and not the gates. Each lane's gate pid is in <run>/<leg>.pid (its LANE line names the file); stop one with kill -TERM <gate pid>"
 
 fail=0
 leg_seconds_total=0
@@ -553,7 +590,7 @@ leg_process() {  # leg_process <leg> [lane]: run it, then write <leg>.result. NE
   build_leg "$leg"
   started=$EPOCHSECONDS
   if [[ "$mode" == lane ]]; then
-    # A LANE IS ALREADY A BACKGROUND SHELL, so a second `&` changes nothing the gate
+    # A lane is already a background shell, so a second `&` changes nothing the gate
     # can see -- measured: the same stdin, and SIGINT and SIGQUIT ignored, either way
     # -- and it yields the gate's OWN pid, because the command execs in place all the
     # way to python. The serial form below stays a foreground launch, as it always was.
@@ -568,9 +605,10 @@ leg_process() {  # leg_process <leg> [lane]: run it, then write <leg>.result. NE
     rc=$?
   fi
   elapsed=$(( EPOCHSECONDS - started ))
+  rewrite_neutral "$log"
   released=$(read_released "$out/gate.json")
   line=$(printf "%-26s exit=%d  released=%s  %5ds  %s  landed %s" \
-         "$leg" "$rc" "$released" "$elapsed" "$log" "$(utc)")
+         "$leg" "$rc" "$released" "$elapsed" "$(shown "$log")" "$(utc)")
   {
     print -r -- "driver $$"
     print -r -- "exit $rc"
@@ -595,12 +633,12 @@ admit_leg() {  # admit_leg <leg> -> 0 when the leg may be launched; records why 
       LEG_OUTCOME[$leg]=refused; fail=1; return 1 ;;
   esac
   if [[ "$leg" != band_witness ]] && (( ! WITNESS_USABLE )); then
-    record "$(printf '%-26s REFUSED  no runner-finalized band witness artifact at %s; every cliff control would fail closed' "$leg" "$WITNESS")"
+    record "$(printf '%-26s REFUSED  no runner-finalized band witness artifact at %s; every cliff control would fail closed' "$leg" "$(shown "$WITNESS")")"
     LEG_OUTCOME[$leg]=refused; fail=1; return 1
   fi
   # EXCLUSIVE: a plain mkdir fails if anything took the name since the check above.
   if ! mkdir "$RUN/$leg" 2> /dev/null; then
-    record "$(printf '%-26s REFUSED  %s could not be created exclusively' "$leg" "$RUN/$leg")"
+    record "$(printf '%-26s REFUSED  %s could not be created exclusively' "$leg" "$(shown "$RUN/$leg")")"
     LEG_OUTCOME[$leg]=refused; fail=1; return 1
   fi
   record "$(printf '%-26s START  %s' "$leg" "$(utc)")"
@@ -618,15 +656,16 @@ land_leg() {  # land_leg <leg> <lane exit status>: the ONLY place a result reach
     done < "$RUN/$leg.result"
   fi
   if [[ "$driver" != "$$" || -z "$line" ]]; then
+    rewrite_neutral "$RUN/$leg.log"      # the lane died before it could rewrite its log
     record "$(printf '%-26s exit=?  released=unreadable  lane ended with status %s and left no result  %s  landed %s' \
-             "$leg" "$lane_status" "$RUN/$leg.log" "$(utc)")"
+             "$leg" "$lane_status" "$(shown "$RUN/$leg.log")" "$(utc)")"
     LEG_OUTCOME[$leg]="exit ? (lane status $lane_status)"; fail=1
     return 0
   fi
   record "$line"
   LEG_OUTCOME[$leg]="exit $rc"
   (( leg_seconds_total += seconds ))
-  # A RESULT, NEVER RETRIED: an unreleased leg fails the campaign and stays as it is.
+  # A result, never retried: an unreleased leg fails the campaign and stays as it is.
   [[ "$rc" == 0 && "$released" == True ]] || fail=1
   return 0
 }
@@ -638,7 +677,7 @@ run_leg_alone() {  # the serial form: the leg is the only process this campaign 
   land_leg "$leg" $?
 }
 
-# THE CENSUS FLOOR RUNS FIRST AND ALONE, AND ITS ARTIFACT IS AN INPUT TO THE OTHERS.
+# The census floor runs first and alone, and its artifact is an input to the others.
 # It is the leg that answers "does this case's trajectory enter the subnormal band at
 # all", and that is exactly what the cliff control needs to tell "the run never enters
 # the band" from "the device did not flush" -- the two hypotheses its NO-CLIFF verdict
@@ -649,13 +688,13 @@ WITNESS_USABLE=0
 run_leg_alone band_witness
 WITNESS_SHA256=
 if [[ ! -f "$WITNESS" ]]; then
-  record "band witness  MISSING  $WITNESS  (every later leg is refused by name)"
+  record "band witness  MISSING  $(shown "$WITNESS")  (every later leg is refused by name)"
 elif [[ "$(read_released "$WITNESS")" != (True|False) ]]; then
-  record "band witness  UNFINALIZED  $WITNESS carries no runner weld  (every later leg is refused by name)"
+  record "band witness  UNFINALIZED  $(shown "$WITNESS") carries no runner weld  (every later leg is refused by name)"
 else
   WITNESS_USABLE=1
   WITNESS_SHA256=$(shasum -a 256 "$WITNESS" | cut -d' ' -f1)
-  record "band witness  sha256=$WITNESS_SHA256  $WITNESS_VARIABLE=$WITNESS"
+  record "band witness  sha256=$WITNESS_SHA256  $WITNESS_VARIABLE=$(shown "$WITNESS")"
 fi
 
 run_leg_alone harness_keep
@@ -664,18 +703,18 @@ if (( LANES == 1 )); then
   for leg in $LANE_LEGS; do run_leg_alone "$leg"; done
 else
   typeset -A LANE_PID LANE_NOTED
-  note_lane() {  # note_lane <leg>: put the gate's pid on record, once. Parent only.
+  note_lane() {  # note_lane <leg>: say where the gate's pid is, once. Parent only.
     local leg="$1" word driver key pid state
     (( ${+LANE_NOTED[$leg]} )) && return 0
     [[ -f "$RUN/$leg.pid" ]] || return 1
     read -r word driver key pid state < "$RUN/$leg.pid"
     [[ "$driver" == "$$" && "$pid" == <1-> ]] || return 1
     if [[ "$state" == running ]]; then
-      record "$(printf '%-26s LANE   gate_pid=%d  lane_shell=%d  stop it with: kill -TERM %d' \
-               "$leg" "$pid" "${LANE_PID[$leg]}" "$pid")"
+      record "$(printf '%-26s LANE   gate pid in %s; stop it with: kill -TERM <that pid>' \
+               "$leg" "$(shown "$RUN/$leg.pid")")"
     else
-      record "$(printf '%-26s LANE   gate_pid=%d  lane_shell=%d  (the gate had ended when this was noted)' \
-               "$leg" "$pid" "${LANE_PID[$leg]}")"
+      record "$(printf '%-26s LANE   gate pid in %s (the gate had ended when this was noted)' \
+               "$leg" "$(shown "$RUN/$leg.pid")")"
     fi
     LANE_NOTED[$leg]=1
   }
@@ -726,6 +765,7 @@ record "legs  ${(j:  :)outcomes}"
 record "$(printf 'wall clock %ds against %ds of leg seconds run by this driver (%.2fx)  lanes=%d' \
          "$wall" "$leg_seconds_total" "$(( wall > 0 ? 1.0 * leg_seconds_total / wall : 0 ))" "$LANES")"
 record "campaign dispatch_metal_route_$STAMP  finished $(utc)  fail=$fail"
+write_driver_pid finished
 record "NEXT: $PY parity/meep_gpu/recut_driver_dispatch_record.py --backend metal --run dispatch_metal_route_$STAMP"
 [[ -n "$CAFFEINATE_PID" ]] && kill "$CAFFEINATE_PID" 2> /dev/null
 exit $fail

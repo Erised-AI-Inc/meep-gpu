@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 """Device byte gate for the CUDA H->D weld on the conductive and BFAST curl tails.
 
-WHAT IS BEING CERTIFIED. ``meep_gpu/cuda_kernels/conductive_bfast_fused_hd_pair.py``
+What is being certified. ``meep_gpu/cuda_kernels/conductive_bfast_fused_hd_pair.py``
 computes the certified ``update_H`` constitutive into launch-local SCRATCH, takes its
 own cell's magnetic field from registers, RECOMPUTES every one of the curl half's six
 foreign taps from pre-launch state, steps ``D``/``fu_D`` and the variant's third
-history in place, and rotates the ``H``/``f_w_H`` bindings afterwards. ONE PRODUCT,
-TWO VARIANTS, TWO BOARD CELLS -- the variant is the ``step_D`` tail and nothing else:
+history in place, and rotates the ``H``/``f_w_H`` bindings afterwards. One product,
+two variants, two board cells -- the variant is the ``step_D`` tail and nothing else:
 
     conductive   H_to_D (cuda_constitutive/ordinary -> cuda_conductive/conductive)
     bfast        H_to_D (cuda_bfast/BFAST           -> cuda_bfast/BFAST)
 
-The claim is per COMPLETE DRIVER STEP -- the driver's own pass order -- over a stated
+The claim is per complete driver step -- the driver's own pass order -- over a stated
 budget of steps, as uint32 WORDS over EVERY stored volume the engine allocates
 (primaries, the split-field PML auxiliaries, both ``f_w`` histories, and the variant's
 own ``f_cond_D*`` / ``f_bfast_D*``); never ``allclose``, because ``-0.0 == 0.0`` lies.
@@ -20,7 +20,7 @@ The references are stepped from ONE seed beside the weld:
   1. the ARRAY PATH -- ``stepping``'s passes in the driver's order;
   2. the CERTIFIED SINGLES -- ``update_H`` alone then the variant's own certified
      ``step_D`` alone, as two dispatched launches, everything else on the array path;
-  3. the COMPOSITION THE COMPOSER INSTALLS ON THESE ROWS TODAY -- the released B->H
+  3. the composition the composer installs on these rows today -- the released B->H
      pair for the variant plus the released D->E pair for the variant, each ABSORBING
      the driver passes its own ``REPLACES`` names. This is the reference the whole
      arbitration finding rests on. Where a neighbour refuses a fixture, the
@@ -38,7 +38,7 @@ LEGS
                        sync channel's containment rule excludes step_D -- all read off
                        the tree, never spelled
   transcription        per VARIANT and, on the conductive one, per MASK: the certified
-                       curl's parameter list is carried across CHARACTER FOR CHARACTER,
+                       curl's parameter list is carried across character for character,
                        the certified tail differs in EXACTLY the twelve redirected
                        magnetic reads, the lifted constitutive pieces are byte-equal to
                        the released sibling's own, every declared edit's anchor
@@ -56,8 +56,8 @@ LEGS
                        unchanged by this product's presence, and that the released
                        neighbours keep the slots they had. POSITIONAL facts -- whether
                        a row for this product exists in the composer's tables at all --
-                       are RECORDED, never asserted: this gate is written for the
-                       UNWIRED tree and the wiring inverts exactly those
+                       are RECORDED, never asserted: this gate is written for a tree
+                       with no such row, and wiring the product in inverts exactly those
   ghost_observability  whether a metallic ghost's exact 0.0f is observable in step_D's
                        output at all, per variant. What it buys is an honest mutation
                        set: where every tap is masked at the plane its ghost fires on,
@@ -105,7 +105,7 @@ LEGS
                        at least one compile, the CuPy cache held ZERO entries when the
                        policy was installed, and the policy reached the compiler
   lift                 the corpus rows the standing seam record puts in the two cells,
-                       re-lifted ON THE DEVICE in their own children and driven as
+                       re-lifted on the device in their own children and driven as
                        THREE arrangements from one captured state per complete step --
                        the weld, the certified singles and the array path. The weld's
                        claim is against the CERTIFIED SINGLES, because a defect in this
@@ -164,7 +164,7 @@ import gate_provenance  # noqa: E402
 import hd_seam_restore  # noqa: E402
 import probe_fused_kernel_bit_identity as probe  # noqa: E402
 
-# THE TWO SIBLING GATES, imported for the machinery all three share: the launch counter
+# The two sibling gates, imported for the machinery all three share: the launch counter
 # that wraps the shipped memo, the word comparator, the read-only snapshot, the driver
 # dispatch shim and the corpus-lift capture/restore. ONE copy of each -- a second
 # transcription of a launch counter is a second place for a counter to stop counting.
@@ -247,7 +247,7 @@ ALL_LEGS: Tuple[str, ...] = tuple(leg for group in LEG_GROUPS.values() for leg i
 
 #: The census this gate lifts its corpus rows from, and the seam record whose
 #: ``withdraw_in_seam`` flag named the rows the 0.9.2 predicate refused by their standing
-#: withdraw. Since entry 25 those rows are admitted; the rows the predicate must refuse
+#: withdraw. Since 1.0 those rows are admitted; the rows the predicate must refuse
 #: are derived from each row's own sources (:func:`hd_seam_restore.lift_withdraw_accounting`).
 CENSUS = "cuda_predicate_coverage_2026-09-03_extended"
 SEAM_RECORD = "h_to_d_seam_2026-09-04"
@@ -260,14 +260,14 @@ CELL_ARMS: Dict[str, Tuple[str, str]] = {
     "bfast": ("cuda_bfast/BFAST", "cuda_bfast/BFAST"),
 }
 
-#: HOW MANY CLEAN COMPLETE STEPS A LIFTED CORPUS ROW MUST REACH TO COUNT.
+#: How many clean complete steps a lifted corpus row must reach to count.
 LIFT_CLEAN_STEP_FLOOR = 8
 
 # ---------------------------------------------------------------------------
 # The fixtures
 # ---------------------------------------------------------------------------
 #
-# THE CONDUCTIVE SET SWEEPS THE MASK, because the mask is a COMPILE-TIME constant and
+# The conductive set sweeps the mask, because the mask is a COMPILE-TIME constant and
 # a run that swept only 'CCC' would say nothing about the configuration MEEP's own
 # allocation granularity makes ordinary -- the certified family's own gate swept the
 # same five and this one inherits the argument. Every axis is walled somewhere, every
@@ -275,7 +275,7 @@ LIFT_CLEAN_STEP_FLOOR = 8
 # appears, which is the ONLY specialisation on which the shifted tap's PERIODIC WRAP
 # is observable at all.
 #
-# THE BFAST SET REFUSES A FOLD BY CONSTRUCTION (``bfast_curl``'s clause 4) and carries
+# The BFAST set refuses a fold by construction (``bfast_curl``'s clause 4) and carries
 # the shape the corpus row has -- a reduced-dimension, fully periodic grid, where the
 # HOST-SIDE invariance gates are what decide k1/k2 -- beside a 3-D one where neither
 # axis is invariant, so a kernel that re-derived those gates on the device would be
@@ -313,7 +313,7 @@ SPECS: Tuple[Dict[str, Any], ...] = (
     {"label": "bfast_wall_x_only", "variant": "bfast", "cell": (1.6, 1.6, 1.6),
      "boundaries": ("metallic", "periodic", "periodic"), "symmetry": (),
      "bfast_k": (0.41, 0.0, 0.63)},
-    # THE CORPUS ROW'S OWN SHAPE: reduced dimensions, fully periodic, one nonzero k.
+    # The corpus row's own shape: reduced dimensions, fully periodic, one nonzero k.
     # Two axes are INVARIANT here, so ``have_p``/``have_m`` zero four of the six
     # coefficients on the host -- the transcription's whole point, and a shape no
     # 3-D fixture reaches.
@@ -496,7 +496,7 @@ def _certified_single_launchers(fields, grid, pml, dtdx, variant: str,
     the one-rank record on a lifted mirror-folded row was measured to move the singles
     off the array path while the weld stayed on it).
 
-    RESOLVED THROUGH EACH CERTIFIED FAMILY'S OWN ENTRY POINT, never re-derived: the
+    Resolved through each certified family's own entry point, never re-derived: the
     conductive variant's ``step_D`` is ``conductive_kernels.step_conductive_curl`` and
     its ``step_B`` is the certified lossless curl (a D conductivity leaves step_B's
     targets lossless, which is exactly the arm split the census records on
@@ -544,8 +544,8 @@ def _certified_single_launchers(fields, grid, pml, dtdx, variant: str,
     return plans
 
 
-#: The released pairs either side of this seam, per variant, WITH THEIR ENTRY POINTS
-#: SPELLED. Named rather than discovered: a ``dir()`` scan for the first ``covers_*``
+#: The released pairs either side of this seam, per variant, with their entry points
+#: spelled. Named rather than discovered: a ``dir()`` scan for the first ``covers_*``
 #: on a module picks whatever sorts first -- measured 2026-09-07, it picked
 #: ``covers_fill_folded_far`` off the conductive electric pair and died on the arity.
 #: A neighbour resolved by accident is a reference arrangement that measures the wrong
@@ -606,7 +606,7 @@ def _neighbour_verdict(variant: str, role: str, fields, pml, grid) -> Tuple[bool
 def _holds(label: Any, product) -> bool:
     """Does this selected arm label name that product?
 
-    THE COMPOSER SELECTS BY LABEL AND THE MODULE DECLARES A FAMILY, and the two are
+    The composer selects by label and the module declares a family, and the two are
     different spellings of one thing (``cuda_bfast_fused_magnetic_pair`` against
     ``BFAST fused magnetic pair``). Normalised here in ONE place rather than matched by
     substring at each call site -- measured 2026-09-07: a substring match reported
@@ -650,10 +650,10 @@ def make_arrangement(mode: str, spec: Mapping[str, Any], fields, grid, pml,
     elif mode == "composition_today":
         magnetic_product, electric_product = _neighbour_products(variant)
         singles = _certified_single_launchers(fields, grid, pml, dtdx, variant)
-        # WHICH NEIGHBOURS ACTUALLY ADMIT THIS FIXTURE IS MEASURED, NOT ASSUMED. Each
+        # Which neighbours actually admit this fixture is measured, not assumed. Each
         # released pair is asked ONCE, before the first step; where it refuses, the
-        # arrangement falls back to certified singles for that half AND RECORDS THE
-        # REFUSAL, so a fixture no neighbour reaches is visible in the artifact rather
+        # arrangement falls back to certified singles for that half and records the
+        # refusal, so a fixture no neighbour reaches is visible in the artifact rather
         # than silently becoming `unfused` under another name.
         installed: Dict[str, Any] = {}
         absorbed: List[str] = []
@@ -762,7 +762,7 @@ def drive(spec: Mapping[str, Any], value_class: str, steps: int, *,
                                    for name, value in state_of(reference.fields).items()})
     first: Dict[str, Optional[Dict[str, Any]]] = {mode: None for mode in modes[1:]}
     compared = 0
-    # WHAT THE ARRAY PATH MOVED AT ANY STEP, accumulated rather than read off the final
+    # What the array path moved at any step, accumulated rather than read off the final
     # state. A seed-versus-final comparison is not a liveness measurement: on the
     # reduced-dimension BFAST fixture two of the three IIR histories carry `total == 0`
     # exactly (their k pair is zeroed by the HOST-SIDE invariance gates), so their
@@ -792,7 +792,7 @@ def drive(spec: Mapping[str, Any], value_class: str, steps: int, *,
                 progress(f"{label} step {step + 1}/{steps}")
         memo_named, memo_total = counter.named(), counter.total
 
-    # THE FLOOR IS A PROPERTY OF THE ARRAY PATH, and it is a floor rather than a list:
+    # The floor is a property of the array path, and it is a floor rather than a list:
     # a fixture may legitimately freeze a component (a reduced dimension does), and
     # demanding that every named volume move would refuse the corpus row's own shape.
     # What may NOT happen is that a case measured nothing, so each GROUP the seam
@@ -880,8 +880,8 @@ def leg_driver_order() -> Dict[str, Any]:
     between = [name for name in consulted
                if consulted.index(name) > consulted.index("update_H")
                and consulted.index(name) < consulted.index("step_D")]
-    # THE SEAM'S ONE PASS, read off driver.py: the magnetic f_minus_p restore (writes B
-    # alone, where H is stored), not the electric withdraw entry 25 retired.
+    # The seam's one pass, read off driver.py: the magnetic f_minus_p restore (writes B
+    # alone, where H is stored), not the electric withdraw retired in 1.0.
     seam = hd_seam_restore.driver_seam_facts()
     record = {
         "driver_calls": called, "walked_order": order,
@@ -902,7 +902,7 @@ def leg_driver_order() -> Dict[str, Any]:
         "step_D_is_outside_the_sync_window": "step_D" not in SYNC_PATH_SLOTS,
         "the_sync_consult_owner_is_this_products_leading_slot":
             SYNC_PASS_OWNERS.get(SYNC_UPDATE_H_PASS) == family.SLOT,
-        # THE SPAN IS THE SIBLING'S, exactly. Two products on one seam that disagreed
+        # The span is the sibling's, exactly. Two products on one seam that disagreed
         # about what the seam IS would be two different claims wearing one name.
         "the_span_is_the_released_siblings_span":
             tuple(family.REPLACES) == tuple(hd_gate._family().REPLACES),  # noqa: SLF001
@@ -957,19 +957,19 @@ def leg_transcription() -> Dict[str, Any]:
             variant, cond)
         pieces = family.welded_curl_pieces(variant, cond)
 
-        # THE CERTIFIED PARAMETER LIST IS CARRIED ACROSS CHARACTER FOR CHARACTER. Not a
+        # The certified parameter list is carried across character for character. Not a
         # substring argument about names: equality against the certified text, which is
         # the strongest form this check can take and the reason this product does not
         # hand-write a signature.
         parameters_verbatim = pieces["parameters"] == certified_params
         parameters_in_source = certified_params in source
 
-        # THE CURL PRELUDE, WHOLE AND UNEDITED -- including whatever helper the owning
+        # The curl prelude, whole and unedited -- including whatever helper the owning
         # family put in front of its kernel (`cond_pml_apply` on one variant, nothing
         # on the other).
         prelude_verbatim = pieces["prelude"] == certified_prelude
 
-        # THE CURL BODY, LINE BY LINE. The certified tail below the decode and the
+        # The curl body, line by line. The certified tail below the decode and the
         # welded one must differ in EXACTLY the twelve magnetic reads and nothing else.
         decode = family._hd._INDEX_DECODE  # noqa: SLF001
         certified_tail = certified_body[certified_body.index(decode) + len(decode):]
@@ -984,17 +984,17 @@ def leg_transcription() -> Dict[str, Any]:
                         and "own_h[" in b)
                     for a, b in changed))
 
-        # NO STALE READ SURVIVES. In the fused signature Hx/Hy/Hz are the PRE-LAUNCH
+        # No stale read survives. In the fused signature Hx/Hy/Hz are the PRE-LAUNCH
         # magnetic field, so any indexing of them below the weld would be the very
         # defect the design removes.
         below = source.split("raw_update_H_cell(idx, weld, own_h, own_w);", 1)[1]
         residue = {name: below.count(f"{name}[") for name in family.H_TARGETS}
 
-        # THE VARIANT'S OWN TAIL IS PRESENT WHOLE, and named rather than inferred: a
+        # The variant's own tail is present whole, and named rather than inferred: a
         # weld that dropped the conductive recurrence or the BFAST insert would still
         # compile and would be the lossless product wearing this one's name.
         if variant == "conductive":
-            # THE MASK IS A PREPROCESSOR CHOICE, so BOTH branches are in the text and
+            # The mask is a preprocessor choice, so BOTH branches are in the text and
             # the three ``#define`` lines are what select them. Checked as the two
             # facts that actually matter: the defines say exactly what the mask says,
             # and each target carries both a conductive and a lossless tail so the
@@ -1004,7 +1004,7 @@ def leg_transcription() -> Dict[str, Any]:
             tail_markers = {
                 "cond_pml_apply_is_defined_once": source.count(
                     "__device__ __forceinline__ void cond_pml_apply(") == 1,
-                # THE FORMS ARE CHOSEN BY THE CHUNK RECORD, not by a coefficient's
+                # The forms are chosen by the chunk record, not by a coefficient's
                 # value: no exact unity comparison survives in the text.
                 "no_coefficient_identity_partition": "!= 1.0f" not in source,
                 "the_two_store_predicates_survive": (
@@ -1078,14 +1078,14 @@ def leg_transcription() -> Dict[str, Any]:
             findings.append(f"{key}: transcription")
         per_text[key] = record
 
-    # THE CONSTITUTIVE HALF IS THE SIBLING'S OWN. Where the released product can emit,
+    # The constitutive half is the sibling's own. Where the released product can emit,
     # the four lifted pieces must be byte-equal to its; where it cannot, that is a
     # RECORDED fact rather than a pass.
     if agreement["available"] and not agreement["agree"]:
         findings.append(f"the lifted constitutive pieces disagree with the released "
                         f"sibling: {agreement['disagreements']}")
 
-    # THE DECLARED EDIT TABLES resolve: every ADDED parameter name appears in the
+    # The declared edit tables resolve: every ADDED parameter name appears in the
     # emitted signature and in no certified list.
     added = _added_parameters_resolve()
     if not added["passed"]:
@@ -1192,7 +1192,7 @@ class _BfastGrid:
 class _Source:
     """A source object shaped exactly as ``withdraw_hoist`` reads one.
 
-    THE THREE THINGS ``_withdraw_does_work`` GATES ON, and all three are needed: a
+    The three things ``_withdraw_does_work`` gates on, and all three are needed: a
     callable ``withdraw``, ``is_integrated`` True, and a positive
     ``_n_source_points``. A stub carrying only the first two is a source whose
     withdraw does NOTHING, and a refusal fixture built from it measures the
@@ -1223,7 +1223,7 @@ def leg_refusal() -> Dict[str, Any]:
             fields, pml, grid, sources)
         row = {"covered": bool(covered), "reason": reason, "expected": expect,
                "marker": marker,
-               # WHICH HALF SPOKE, RECORDED. A conjunction refuses at its FIRST clause,
+               # Which half spoke, recorded. A conjunction refuses at its FIRST clause,
                # so a configuration this product has its own clause for may be named by
                # a certified half instead -- which is a correct refusal and a fact worth
                # having in the artifact rather than a failure.
@@ -1244,7 +1244,7 @@ def leg_refusal() -> Dict[str, Any]:
     b_fields, b_grid, b_pml, _ = build(bfast_spec, "uniform",
                                        case_rng("refusal_bfast"))
 
-    # THE TWO ADMISSIONS FIRST, so a leg that refused everything cannot pass.
+    # The two admissions first, so a leg that refused everything cannot pass.
     verdict("conductive_admitted", c_fields, c_pml, c_grid, (), True)
     verdict("bfast_admitted", b_fields, b_pml, b_grid, (), True)
 
@@ -1275,7 +1275,7 @@ def leg_refusal() -> Dict[str, Any]:
     verdict("folded_bfast_grid", fold_fields, fold_pml, fold_grid, (), False,
             "mirror symmetry with BFAST")
 
-    # A NO-ABSORBER CONDUCTIVE RUN. This product's signature binds an f_cond history
+    # A no-absorber conductive run. This product's signature binds an f_cond history
     # that a run without an absorber never allocates.
     class _InertLayer:
         def __init__(self, pml: Any) -> None:
@@ -1286,7 +1286,7 @@ def leg_refusal() -> Dict[str, Any]:
         def __getattr__(self, item: str) -> Any:
             return getattr(self._pml, item)
 
-    # THE MARKER IS "active" AND NOT THIS PRODUCT'S OWN SENTENCE, because the
+    # The marker is "active" and not this product's own sentence, because the
     # CONSTITUTIVE half is asked first and refuses an inert layer by name before this
     # product's ACTIVE_LAYER_ONLY clause is reached. That ordering is the driver's --
     # update_H runs first -- and the refusal is correct either way; ``named_by``
@@ -1294,7 +1294,7 @@ def leg_refusal() -> Dict[str, Any]:
     verdict("conductive_without_an_active_layer", c_fields, _InertLayer(c_pml), c_grid,
             (), False, "active")
 
-    # THE MISSING ROTATION TARGET. The predicate refuses a run whose H storage is not
+    # The missing rotation target. The predicate refuses a run whose H storage is not
     # allocated, because the rotation has nothing to rebind.
     class _NoStoredH:
         def __init__(self, fields: Any) -> None:
@@ -1329,11 +1329,11 @@ def leg_refusal() -> Dict[str, Any]:
 def leg_arbitration() -> Dict[str, Any]:
     """The shipped composer, asked -- on both variants.
 
-    WRITTEN FOR THE UNWIRED TREE, WHICH IS WHY THE POSITIONAL FACTS ARE RECORDED AND
-    THE SUBSTANTIVE ONES ASSERTED. Whether a row for this product exists in
-    ``fused_pairs``' tables at all is exactly what a wiring change inverts, so it is
-    reported and never required. What IS required is what a wiring change must not
-    change:
+    Written for a tree with no composer row for this product, which is why the
+    positional facts are recorded and the substantive ones asserted. Whether a row
+    for this product exists in ``fused_pairs``' tables at all is exactly what a
+    wiring change inverts, so it is reported and never required. What IS required
+    is what a wiring change must not change:
 
     * the composer's SELECTION is the same whether or not this product is present;
     * the released neighbours keep the slots they had;
@@ -1373,14 +1373,15 @@ def leg_arbitration() -> Dict[str, Any]:
             "selected": {slot: str(arm) for slot, arm in selected.items()},
             "selected_unfused": {slot: str(arm) for slot, arm
                                  in (getattr(unfused, "selected", {}) or {}).items()},
-            # POSITIONAL, RECORDED NOT ASSERTED: the unwired tree has no row for this
-            # product, so the composer cannot name it. A wiring change makes this True
-            # and must not change anything below it.
+            # Positional, recorded not asserted: on the tree this gate was written for
+            # there was no composer row for this product, so the composer could not
+            # name it. A wiring change makes this True and must not change anything
+            # below it.
             "the_composer_names_this_product": bool(named),
             "refusal_texts": {key: texts for key, texts in named.items()},
             "this_product_holds_no_slot": not any(
                 _holds(arm, family) for arm in selected.values()),
-            # THE SELECTION IS THE INVARIANT A WIRING CHANGE MUST NOT MOVE, and the
+            # The selection is the invariant a wiring change must not move, and the
             # two are compared here rather than remembered: fusing must change WHICH
             # products hold the four slots and must never leave a slot unfilled.
             "every_slot_is_filled_fused_and_unfused": (
@@ -1408,7 +1409,7 @@ def leg_arbitration() -> Dict[str, Any]:
             "installable_reason": family.INSTALLABLE_REASON,
             "what_is_recorded_rather_than_asserted": (
                 "whether the composer's tables carry a row for this product at all. "
-                "This gate is written for the UNWIRED tree; the wiring change inverts "
+                "This gate is written for a tree with no such row; the wiring change inverts "
                 "exactly that fact and must leave every asserted clause here "
                 "unchanged"),
             "passed": not findings}
@@ -1421,7 +1422,7 @@ def leg_arbitration() -> Dict[str, Any]:
 def leg_ghost_observability() -> Dict[str, Any]:
     """Whether a metallic ghost's exact 0.0f can reach ``step_D``'s output.
 
-    THE COINCIDENCE, MEASURED, AND WHAT IT COSTS THE MUTATION SET, STATED. Each
+    The coincidence, measured, and what it costs the mutation set, stated. Each
     ``shift_dn`` tap's ghost fires on the plane ``ia == 0`` of the axis it steps along;
     the certified body then zeroes that component's curl on exactly that plane under
     ``BC_METALLIC``. Read off the emitted text per variant: for every tap, is there a
@@ -1480,13 +1481,13 @@ def leg_purity_and_race(specs: Sequence[Mapping[str, Any]],
                         steps: int) -> Dict[str, Any]:
     """How much the recompute is worth, and whether the schedule can be seen.
 
-    THE PURITY LEDGER. On the ARRAY PATH, per fixture: run ``update_H`` from a frozen
+    The purity ledger. On the ARRAY PATH, per fixture: run ``update_H`` from a frozen
     state and count, over the curl's valid foreign taps, how many land on a cell where
     ``H`` MOVED. That count is the number of taps whose recomputed value DIFFERS from
     what an in-place weld would have raced on. Near zero would mean the byte identity
     licenses nothing, because the hazard was never live.
 
-    THE RACE LEDGER. The same byte identity at six block sizes. The design's whole
+    The race ledger. The same byte identity at six block sizes. The design's whole
     claim is that the answer does not depend on which block ran first, and a block
     size that never moves cannot expose the opposite.
     """
@@ -1578,7 +1579,7 @@ def leg_seed_scale(steps: int) -> Dict[str, Any]:
             "what_this_measures": (
                 "the solver is LINEAR in the field state and every coefficient it "
                 "multiplies by is field-independent, so scaling every stored volume "
-                "by a POWER OF TWO shifts each float32 exponent and leaves every "
+                "by a power of two shifts each float32 exponent and leaves every "
                 "mantissa and every rounding decision untouched. A verdict that "
                 "changed with the exponent would be a claim about the band rather "
                 "than about the kernel"),
@@ -1592,9 +1593,9 @@ def leg_seed_scale(steps: int) -> Dict[str, Any]:
 def leg_launch_structure(steps: int) -> Dict[str, Any]:
     """Launches per step at the seam AND over the whole step, two counters.
 
-    THE HONEST NUMBER IS REPORTED WHETHER OR NOT IT FLATTERS THE WELD: against the
+    The honest number is reported whether or not it flatters the weld: against the
     composition the composer installs today the whole-step launch count does not fall.
-    That is the arbitration ruling as a measurement.
+    That is the slot-arbitration verdict behind ``INSTALLABLE = False``, as a measurement.
     """
     rows: Dict[str, Any] = {}
     findings: List[str] = []
@@ -1722,7 +1723,7 @@ def leg_sync(steps: int) -> Dict[str, Any]:
     ``update_H_synchronize`` consult would advance the electric state inside a window
     nothing can undo, on every flux and energy call.
 
-    THIS LEG IS THE CITATION FOR THE COMPOSER REFUSAL and it has its own null control:
+    This leg is the citation for the composer refusal and it has its own null control:
     the hazard arm MUST diverge in D/fu_D against a run that never synchronizes, and
     the guarded arm -- which declines the consult by the containment rule -- MUST NOT.
     """
@@ -1799,14 +1800,14 @@ def leg_sync(steps: int) -> Dict[str, Any]:
 def leg_withdraw(steps: int) -> Dict[str, Any]:
     """The seam's one pass on a device, per variant: :func:`hd_seam_restore.seam_restore_leg`.
 
-    Since entry 25 what stands between the two consults is the magnetic ``f_minus_p``
+    Since 1.0 what stands between the two consults is the magnetic ``f_minus_p``
     restore, not an electric withdraw. On each variant's fixture the driver carries an
     integrated electric AND an integrated magnetic source; the weld is force-installed,
     stepped in lockstep with its own array-path reference and required identical, and the
     weld with the restore moved before the launch and with no magnetic ``f_minus_p``
     must each diverge.
 
-    THIS LEG SEEDS AT 2^0 AND THE OTHER DRIVER LEGS AT 2^80, the measurement it made on
+    This leg seeds at 2^0 and the other driver legs at 2^80, the measurement it made on
     the withdraw it used to drive (2026-09-07: at 2^80 the order-one dipole was eighty
     binades below the state and both null controls stopped controlling anything), and
     it holds for the ``f_minus_p`` words it drives now.
@@ -1853,7 +1854,7 @@ def leg_withdraw(steps: int) -> Dict[str, Any]:
             f"controls={row['null_controls_first_divergence']}")
     return {"rows": rows, "findings": findings,
             "what_this_measures": (
-                "the weld beside the 0.10 seam pass on both variants: the magnetic "
+                "the weld beside the seam's one pass on both variants: the magnetic "
                 "f_minus_p restore after the launch is byte-identical to the driver's "
                 "order, and the two orderings the commutation does not license diverge"),
             "passed": not findings}
@@ -1982,7 +1983,7 @@ DEVICE_MUTATIONS: Dict[str, Dict[str, Any]] = {
                "NEXT step's constitutive recurrence, so a comparison that stopped at "
                "one step would miss it",
     },
-    # INVERTED (bit_parity_0_10 KERNELS.md section 7.1): the shipped accumulation IS
+    # INVERTED: the shipped accumulation IS
     # MEEP's grouping, f + ((kps*src) - (kms*prev)), so the must-catch edit installs
     # the package's old grouping, two separate left-to-right accumulations.
     "m_constitutive_regrouped_to_the_old_package_order": {
@@ -2005,12 +2006,12 @@ DEVICE_MUTATIONS: Dict[str, Dict[str, Any]] = {
                "catch a statement about the GROUPING rather than about touching that "
                "line at all",
     },
-    # --- MEEP's per-chunk forms (KERNELS.md section 7.2, the B battery) ---------------
+    # --- the per-chunk form battery (certification.md) --------------------------------
     "m_constitutive_auxiliary_stored_on_a_plain_cell": {
         "expected": "CAUGHT", "variant": None,
         "old": "    *fw_out = dsigw ? src : fw[idx];\n",
         "new": "    *fw_out = src;\n",
-        "why": "the auxiliary contract (C2): off the dsigw run the array path leaves "
+        "why": "the auxiliary contract: off the dsigw run the array path leaves "
                "f_w_H untouched, and the rotation makes the scratch the live f_w_H, so "
                "a scratch word written with B there is a changed f_w_H word",
     },
@@ -2023,7 +2024,7 @@ DEVICE_MUTATIONS: Dict[str, Dict[str, Any]] = {
     },
     "m_recompute_indexes_the_threads_own_profile": {
         "expected": "CAUGHT", "variant": None,
-        # THE ANCHOR CARRIES THE COMMENT THAT PRECEDES IT, because the index decode
+        # The anchor carries the comment that precedes it, because the index decode
         # itself appears TWICE in the emitted text -- once inside raw_update_H_cell and
         # once as the fused kernel's own preamble -- and an anchor that matched both
         # would be refused by the needle check rather than editing the one it means.
@@ -2045,7 +2046,7 @@ DEVICE_MUTATIONS: Dict[str, Dict[str, Any]] = {
         "expected": "CAUGHT", "variant": "conductive",
         "old": "    if (dsigu) u[idx] = u_new;\n",
         "new": "    u[idx] = u_new;\n",
-        "why": "the auxiliary contract (C2): the conductive curl's split-field "
+        "why": "the auxiliary contract: the conductive curl's split-field "
                "auxiliary written off the dsigu run, where the array path leaves it "
                "untouched (stepping.py:2650-2658)",
     },
@@ -2173,7 +2174,7 @@ def leg_mutation(specs: Sequence[Mapping[str, Any]], steps: int) -> Dict[str, An
             cond = case.get("mask") if case["variant"] == "conductive" else None
             keep = None
             if case["variant"] == "conductive":
-                # THE KEEP TRIPLE THE LAUNCH BINDS, read off the fixture's own run, so
+                # The keep triple the launch binds, read off the fixture's own run, so
                 # the mutated text compiles the same KEEP<n> as the shipped one.
                 fields, grid, pml, dtdx = build(case, "uniform",
                                                 case_rng(f"keep/{case['label']}"))
@@ -2367,7 +2368,7 @@ def _child_progress(message: str) -> None:
 def _drive_lifted_row(driver: Any, steps: int) -> Dict[str, Any]:
     """One lifted corpus row, driven through the driver's own consult order.
 
-    THE SIBLING'S SHAPE AND ITS ARGUMENT, with this product's plans: one driver,
+    The sibling's shape and its argument, with this product's plans: one driver,
     captured and restored, three arrangements per complete step from a common state,
     and the weld's claim measured against the CERTIFIED SINGLES because a defect in
     this weld cannot appear in them. A step where both dispatched arrangements agree
@@ -2410,7 +2411,7 @@ def _drive_lifted_row(driver: Any, steps: int) -> Dict[str, Any]:
         before = hd_gate._capture(driver)  # noqa: SLF001
         per_step_words = sum(words(value).size for value in before["volumes"].values())
         if step == 0:
-            # THE REPLAY CONTROL, AND IT IS THE PRECONDITION OF EVERY COMPARISON BELOW.
+            # The replay control, and it is the precondition of every comparison below.
             try:
                 driver._fast_path = None  # noqa: SLF001
                 driver._fast_path_stale = False  # noqa: SLF001
@@ -2655,6 +2656,7 @@ def lift_basis(results: Path) -> Tuple[List[dict], Dict[str, Any]]:
     chose for each row -- never from a list here. The join to a tests row's MODULE and
     to the shim's own case name is the sibling gate's, reused rather than re-derived.
     """
+    import neutral_ids  # noqa: PLC0415
     seam = results / SEAM_RECORD
     if not seam.is_dir():
         raise SystemExit(f"the lift leg needs {seam}")
@@ -2683,7 +2685,7 @@ def lift_basis(results: Path) -> Tuple[List[dict], Dict[str, Any]]:
             "label": record["label"], "leg": record["leg"], "row": record["row"],
             "module": record.get("module") or modules.get(record["label"]),
             "replay_case": replay_case.get(record["label"], record["row"]),
-            "interpreter": sys.executable,
+            "interpreter": neutral_ids.path(sys.executable),
             "cell": list(cell), "variant": wanted[cell],
             "update_H_kernel": cuda.get("update_H_kernel"),
             "step_D_kernel": cuda.get("step_D_kernel"),
@@ -2697,7 +2699,7 @@ def lift_basis(results: Path) -> Tuple[List[dict], Dict[str, Any]]:
         "rows_per_cell": {variant: sum(1 for row in rows if row["variant"] == variant)
                           for variant in CELL_ARMS},
         "rows_total": len(rows),
-        # THE PAIRING, READ OFF THE CERTIFIED ARMS RATHER THAN OFF THE CELL LABEL. The
+        # The pairing, read off the certified arms rather than off the cell label. The
         # conductive cell's two halves live in DIFFERENT modules and the record says so
         # per row; this is the fact the whole product rests on and it is carried into
         # the artifact rather than argued in a docstring.
@@ -2717,6 +2719,7 @@ def lift_basis(results: Path) -> Tuple[List[dict], Dict[str, Any]]:
 def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float,
              resume: bool, only: Optional[Sequence[str]]) -> Dict[str, Any]:
     """Every corpus row in the two cells, re-lifted in its own interpreter and driven."""
+    import lift_host  # noqa: PLC0415
     import measure_predicate_coverage as census  # noqa: PLC0415
 
     out_dir = Path(out_dir).resolve()
@@ -2858,9 +2861,21 @@ def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float
                              if "predicate_admits" not in (blocks.get(label) or {})
                              and label not in unlifted
                              and (reason := hd_seam_restore.lifter_refusal(record))}
+    # A row the identity corpus's manifest retires is a fourth class: it reached no
+    # predicate verdict and no disposition above, and it is refused by name with the
+    # manifest's reason (``lift_host.corpus_refusals``, the rule every table's lift legs
+    # share) and counted out with the rows above, never scored as unmeasured. The sharded
+    # dump/load tests are such rows: MEEP 1.35.0 runs them only under mpirun with more
+    # than one process, so their replay here builds no simulation.
+    corpus = lift_host.corpus_refusals(Path(_HERE) / "results", [
+        record for label, record in by_label.items()
+        if "predicate_admits" not in (blocks.get(label) or {})
+        and label not in unlifted and label not in refused_by_the_lifter])
+    refused_by_the_corpus = corpus["refused"]
     unmeasured = sorted(label for label, b in blocks.items()
                         if "predicate_admits" not in b and label not in unlifted
-                        and label not in refused_by_the_lifter)
+                        and label not in refused_by_the_lifter
+                        and label not in refused_by_the_corpus)
     driven = sorted(label for label in admitted if blocks[label].get("driven"))
     diverged = sorted(label for label in driven if blocks[label].get("first_divergence"))
     backend_rows = {label: len(blocks[label].get("backend_disagreement_steps") or ())
@@ -2872,13 +2887,13 @@ def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float
     unreplayable = {label: blocks[label]["not_replayable"]["volumes"]
                     for label in driven if blocks[label].get("not_replayable")}
     passed_rows = sorted(label for label in driven if blocks[label].get("passed"))
-    # THE REFUSALS, DERIVED FROM EACH ROW'S OWN SOURCES (an electric source whose
-    # withdraw does work; none since entry 25), so the seam record's withdraw_in_seam
+    # The refusals, derived from each row's own sources (an electric source whose
+    # withdraw does work; none since 1.0), so the seam record's withdraw_in_seam
     # rows -- cut on the driver before f_minus_p -- are admitted and driven.
     accounting = hd_seam_restore.lift_withdraw_accounting(
         blocks, facts["rows_with_a_standing_withdraw"])
-    # THE VARIANT THE PRODUCT PICKED ON EACH ROW MUST BE THE ONE THE SEAM RECORD'S CELL
-    # NAMES. A row served by the wrong tail would be byte-identical to nothing and this
+    # The variant the product picked on each row must be the one the seam record's cell
+    # names. A row served by the wrong tail would be byte-identical to nothing and this
     # is where a mis-resolution shows.
     variant_agrees = {label: (blocks[label].get("variant")
                               == by_label[label].get("variant"))
@@ -2892,8 +2907,11 @@ def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float
         "unmeasured": unmeasured,
         "unlifted_on_this_host": unlifted,
         "refused_by_the_lifter": refused_by_the_lifter,
+        "refused_by_the_corpus_manifest": refused_by_the_corpus,
+        "corpus_manifest": corpus["basis"],
         "rows_the_engine_was_asked_about": (len(blocks) - len(unlifted)
-                                            - len(refused_by_the_lifter)),
+                                            - len(refused_by_the_lifter)
+                                            - len(refused_by_the_corpus)),
         "driven": len(driven),
         "passed_rows": len(passed_rows), "diverged": diverged,
         "backend_disagreement_rows": backend_rows,
@@ -2927,6 +2945,7 @@ def save(results: Dict[str, Any], out: str) -> None:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
+    import neutral_ids  # noqa: PLC0415
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--out", default=None, help="artifact FILE path")
     parser.add_argument("--steps", type=int, default=STEPS)
@@ -2964,7 +2983,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "seam": withdraw_hoist.SEAM,
         "cells": {variant: list(arms) for variant, arms in CELL_ARMS.items()},
         "started_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "argv": list(argv if argv is not None else sys.argv[1:]),
+        "argv": neutral_ids.argv(argv if argv is not None else sys.argv[1:]),
         "legs_requested": list(legs),
         "steps": args.steps,
         "what_a_release_does_not_license": None,
@@ -2972,7 +2991,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if cp is None or args.no_device:
         results["device_mode"] = False
         results["status"] = "refused: no CuPy" if cp is None else "structural only"
-        # THE HOST LEGS THAT NEED NO ENGINE still run, so a laptop can check the
+        # The host legs that need no engine still run, so a laptop can check the
         # transcription without claiming anything about a device.
         for name, thunk in (("driver_order", leg_driver_order),
                             ("transcription", leg_transcription),
@@ -2998,7 +3017,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         results["subnormal_policy_install"] = probe.install_subnormal_policy_for_run(
             args.subnormal_policy, _REPO_API)
     results["cupy_cache"] = _cupy_cache_snapshot()
-    results["host"] = platform.node()
+    results["host"] = neutral_ids.machine_id()
     results["environment"] = probe.device_info()
     results["subnormal_policy_stamp"] = probe.subnormal_policy_stamp(_REPO_API)
 
@@ -3063,7 +3082,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             "the_uniform_class_contains_none":
                 bool(uniform) and all(r["operand_census"]["subnormals"] == 0
                                       for r in uniform),
-            # BOTH CELLS ARE A FLOOR, NOT A BONUS: a product leg that scored no case of
+            # Both cells are a floor, not a bonus: a product leg that scored no case of
             # one variant cannot release, so neither cell's credit can rest on the
             # other's measurement.
             "both_variants_were_driven": all(bool(rows)

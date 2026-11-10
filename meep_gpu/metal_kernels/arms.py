@@ -1,47 +1,47 @@
 """The arm table, as DATA — which product may fill which sub-step slot.
 
-WHY THIS EXISTS. ``plan_step`` spelled its arm table as two literal loops while the
+Why this exists. ``plan_step`` spelled its arm table as two literal loops while the
 package carried one family. With a tree of families that table has to be data, or
 the fail-closed contract gets re-implemented once per family and the ambiguity
 message acquires seven homes. Here a family REGISTERS its arms and ``plan_step``
 iterates.
 
-THE FAIL-CLOSED CONTRACT IS NOT REDEFINED HERE. ``_Arm`` and ``_select_slot`` are
+The fail-closed contract is not redefined here. ``_Arm`` and ``_select_slot`` are
 IMPORTED from :mod:`meep_gpu.triton_kernels.launch` — they are a label plus three
 closures and the (a)-(f) clause contract, both backend-free and already shared —
 and this module only replaces the hard-coded tables that fed them. Exactly one
 admitter fills a slot; two or more leave the slot UNSELECTED naming all admitters;
 a predicate that RAISES is a refusal; an unselected slot is the array path.
 
-THE NULL ARM GETS NO PREFERENCE, in either direction, and its gate is a condition
+The null arm gets no preference, in either direction, and its gate is a condition
 on the CONFIGURATION rather than on the table: a null preferred over a kernel
 silently deletes a real sub-step, and a kernel preferred over the null launches the
 ``dsigw`` accumulation on a step that allocates no ``f_w_*`` at all.
 
-REGISTRATION IS NOT DISPATCH, and that is still true — but the second half of the
+Registration is not dispatch, and that is still true — but the second half of the
 sentence this paragraph used to carry is not. Registering an arm here decides what
-``plan_step`` composes; it does not decide what DISPATCHES, which since Phase 3 is
-``meep_gpu.metal_dispatch``'s ladder and the release rows beside it.
-``meep_gpu.fastpath.plan_fast_path`` no longer returns ``None`` on every branch:
-it routes a NumPy engine on a host with an MPS device to that ladder, so a row
-registered here can now reach the driver's consults, and what stops one that has
-not been driven through them is a named refusal there rather than the absence of a
-seam.
+``plan_step`` composes; it does not decide what DISPATCHES, which since Metal
+dispatch landed is ``meep_gpu.metal_dispatch``'s ladder and the release rows
+beside it. ``meep_gpu.fastpath.plan_fast_path`` no longer returns ``None`` on
+every branch: it routes a NumPy engine on a host with an MPS device to that
+ladder, so a row registered here can now reach the driver's consults, and what
+stops one that has not been driven through them is a named refusal there rather
+than the absence of a seam.
 
-A FAMILY THAT IS BUILT AND GATED BUT NOT WIRED STILL REGISTERS — with
+A family that is built and gated but not wired still registers — with
 ``wired=False``. It is the ``wired`` flag, not absence from the table, that keeps
 it out of composition: :func:`arms_for` skips it so ``plan_step`` cannot launch
 it, while :func:`registered` still returns it so a composition probe can sweep
 every predicate in the table and MEASURE disjointness rather than assume it.
 
-AS OF TRANCHE 2 EVERY CERTIFIED FAMILY IS WIRED and the flag has no live user;
-it is kept because the state it names is real and will recur — the next family to
-be built and gated before its composition is settled registers ``wired=False`` and
-is swept without being selectable. What changed is not the flag but the ORDER: the
-disjointness sweep ran first, over configurations built to admit each family, and
-wiring followed the measurement.
+Since the Metal port's second stage every certified family is wired and the flag
+has no live user; it is kept because the state it names is real and will recur —
+the next family to be built and gated before its composition is settled registers
+``wired=False`` and is swept without being selectable. What changed is not the
+flag but the ORDER: the disjointness sweep ran first, over configurations built to
+admit each family, and wiring followed the measurement.
 
-THE TABLE IS POPULATED BY IMPORT, WHICH IS WHY :func:`ensure_registered` EXISTS.
+The table is populated by import, which is why :func:`ensure_registered` EXISTS.
 A family registers at its own module scope, so the table's contents used to depend
 on which modules a caller happened to import — ``import metal_kernels.launch``
 alone produced a three-arm table, and the same configuration could therefore
@@ -134,7 +134,7 @@ class ArmSpec:
     def is_weld(self) -> bool:
         """Does this arm REPLACE more driver passes than the one slot it sits on?
 
-        THIS IS THE DISTINCTION THE DISJOINTNESS SWEEP NEEDS, and ``wired`` is not
+        This is the distinction the disjointness sweep needs, and ``wired`` is not
         it. A fused product registers ``wired=False`` on ONE slot while replacing
         the whole seam -- its curl, the in-seam passes, and the constitutive that
         closes it -- so its predicate is a CONJUNCTION whose first conjunct is
@@ -184,7 +184,7 @@ def register(family: str, slot: str, label: str, coverage: Callable[..., Any],
 
     A duplicate is refused rather than replaced: the second registration is almost
     always a module re-imported under two names, and silently keeping one of the
-    two would make WHICH KERNEL RUNS depend on import order. Refusing means the
+    two would make which kernel runs depend on import order. Refusing means the
     tree fails at import, loudly, in one place.
     """
     spec = ArmSpec(family, slot, label, coverage, plan, prefix, noun, gate, wired,
@@ -209,14 +209,14 @@ _REGISTRATION_STATE = "cold"
 def ensure_registered() -> None:
     """Import every family module, so the table is COMPLETE before it is read.
 
-    REGISTRATION IS AN IMPORT SIDE EFFECT and that is the whole hazard this
+    Registration is an import side effect and that is the whole hazard this
     function exists to remove. A family registers its arms at its own module scope,
-    so before tranche 2 the table's contents depended on WHICH MODULES THE CALLER
-    HAPPENED TO IMPORT: ``import metal_kernels.launch`` alone produced a three-arm
-    table, and the same ``plan_step`` call could therefore select a different
-    product depending on an unrelated earlier import. That is not a fail-closed
-    composer; it is a composer whose ambiguity detection can be switched off by
-    import order.
+    so before the Metal port's second stage the table's contents depended on which
+    modules the caller happened to import: ``import metal_kernels.launch`` alone
+    produced a three-arm table, and the same ``plan_step`` call could therefore
+    select a different product depending on an unrelated earlier import. That is
+    not a fail-closed composer; it is a composer whose ambiguity detection can be
+    switched off by import order.
 
     :mod:`.registry` is the one module that imports them all, and every reader of
     the table goes through here first. The import is INSIDE A FUNCTION BODY
@@ -252,7 +252,7 @@ def registration_state() -> str:
 
 
 def registered(slot: Optional[str] = None) -> Tuple[ArmSpec, ...]:
-    """Every registered arm — WIRED OR NOT — for one slot, or for every slot."""
+    """Every registered arm — wired or not — for one slot, or for every slot."""
     ensure_registered()
     if slot is not None:
         return tuple(_REGISTRY.get(slot, ()))

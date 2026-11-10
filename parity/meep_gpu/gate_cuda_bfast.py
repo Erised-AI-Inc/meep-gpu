@@ -2,7 +2,7 @@
 
 THE QUESTION, in three parts, each measured separately:
 
-1. **The curl, INCLUDING THE STATE.** Is ``cuda_kernels/bfast_curl.py``'s pair
+1. **The curl, including the state.** Is ``cuda_kernels/bfast_curl.py``'s pair
    byte-identical, as uint32 words, to ``stepping.step_B`` / ``step_D`` on a grid
    whose ``bfast_scaled_k`` is nonzero -- at one launch and at 60, at an exactly
    representable courant and at one that is not, on physical-band and
@@ -27,14 +27,14 @@ THE QUESTION, in three parts, each measured separately:
    differed from ``bfast_off`` but not from ``k_zero`` would be measuring the IIR
    decay and nothing about ``k x E``.
 
-THE FOLD IS NOT SWEPT AND THE PREDICATE REFUSES IT. The certified curl pair admits
+The fold is not swept and the predicate refuses it. The certified curl pair admits
 a mirror fold since 2026-08-20 on a device verdict of its own, but that verdict
 rests on "the folded ghost VALUES are dead because their consumer planes are
 masked" -- an argument about a stencil that DIFFERENCES its ghosts. BFAST SUMS the
 same operands, so the argument does not transfer, and no corpus row pairs BFAST
 with a fold. Refusing costs nothing and is recorded in ``does_not_claim``.
 
-WHAT WOULD MAKE THIS GATE VACUOUS, AND THE FLOORS THAT REFUSE IT
+What would make this gate vacuous, and the floors that refuse it
 ----------------------------------------------------------------
 * ``oracle_moved`` over field, auxiliary AND state.
 * ``bfast_term_is_live`` -- the two control runs above.
@@ -42,12 +42,12 @@ WHAT WOULD MAKE THIS GATE VACUOUS, AND THE FLOORS THAT REFUSE IT
   equal ``S`` at the first launch, which hides the state's own term entirely.
   Measured per case rather than assumed from the seeding code.
 * ``absorber_is_not_the_identity``.
-* The mutation battery, including legs that MUST BE UNCAUGHT: ``fcur + (-df)``
+* The mutation battery, including legs that must be uncaught: ``fcur + (-df)``
   for the ladder's ``fcur - df`` (IEEE-754 defines subtraction as addition of the
   negation) and ``(f1 + sf)`` for ``(sf + f1)`` (float add commutes exactly). Each is
   paired with a must-catch leg on the same expression.
 
-THE KERNEL IS MEEP'S TWO PASSES. Per component the curl kernel's own curl and
+The kernel is MEEP's two passes. Per component the curl kernel's own curl and
 absorber, then MEEP's ``STEP_BFAST`` as a pass of its own (step_db.cpp:124-142):
 the state ``F = S - F_prev`` stored on MEEP's owned cells, ``-(F - F_prev)`` added
 through the pass's additive ladder, each form selected per cell from the chunk record
@@ -94,8 +94,8 @@ except ImportError:  # laptop: the NumPy backend still runs
 
 import probe_fused_kernel_bit_identity as probe  # noqa: E402
 import gate_chunk_records  # noqa: E402
-# The chunk-record host mutations (KERNELS.md section 7.2) are the complex gates' own,
-# imported rather than copied.
+# The chunk-record host mutations are the complex gates' own, imported rather than copied
+# (per-chunk form battery, docs/development/certification.md#chunk-form-battery).
 import gate_cuda_complex as complex_gate  # noqa: E402
 import gate_cuda_complex_folded as fold_gate  # noqa: E402
 import gate_needles  # noqa: E402
@@ -179,7 +179,7 @@ BFAST_SPECS: Tuple[Dict[str, Any], ...] = (
      "boundaries": ("metallic", "metallic", "metallic"), "cell": (8.0, 10.0, 12.0)},
     {"label": "negative_k_periodic", "k": (-0.63, 0.44, -0.21),
      "boundaries": ("periodic", "periodic", "periodic"), "cell": (10.0, 8.0, 14.0)},
-    # A THIN, INVARIANT AXIS. ``have_p``/``have_m`` are ``figure_out_step_plan``'s
+    # A thin, invariant axis. ``have_p``/``have_m`` are ``figure_out_step_plan``'s
     # flags and they zero a k on an axis the grid does not resolve
     # (stepping.py:909-912). The curl would swallow that by itself; the BFAST SUM
     # would not, which is the whole reason the gate carries this spec.
@@ -198,7 +198,7 @@ GUARD_SETS: Tuple[Tuple[str, Tuple[str, ...], bool], ...] = (
 
 
 # ---------------------------------------------------------------------------
-# THE FAMILY'S OWN SOURCE MUTATIONS
+# The family's own source mutations
 # ---------------------------------------------------------------------------
 
 def _replace_all(source: str, pairs: Sequence[Tuple[str, str]]) -> Tuple[str, int]:
@@ -266,7 +266,7 @@ def _bfast_added_not_subtracted(source: str) -> Tuple[str, int]:
 
 def _bfast_scaled_by_dtdx(source: str) -> Tuple[str, int]:
     """The term scaled by dtdx. MEEP passes ``dtdx`` to ``step_bfast`` and the body
-    NEVER READS IT; the Tustin filter already carries the ``dt``."""
+    never reads it; the Tustin filter already carries the ``dt``."""
     pairs = [(f"k1_{s}, k2_{s}, ", f"dtdx * k1_{s}, dtdx * k2_{s}, ")
              for s in ("a", "b", "c")]
     return _replace_all(source, pairs)
@@ -285,7 +285,7 @@ def _bfast_state_regrouped(source: str) -> Tuple[str, int]:
 
     Algebraically ``F_prev + (S - 2F_prev) = S - F_prev`` and NOT identical in float32:
     MEEP rounds ``S - F_prev`` once and forms the increment as a second rounding of its
-    difference from ``F_prev``. Scored as MUST BE CAUGHT because the grouping is the
+    difference from ``F_prev``. Scored as must be caught because the grouping is the
     thing being transcribed.
     """
     return _replace_all(source, [
@@ -376,7 +376,7 @@ SHARED_SOURCE_MUTATIONS: Tuple[str, ...] = (
     "read_fprev_after_store", "fortran_order_index_decomposition",
     "commute_dtdx_scale", "reload_fu_from_memory",
 )
-#: THIS GATE'S NEEDLE TABLE for the shared defects above, every one borrowed from the
+#: This gate's needle table for the shared defects above, every one borrowed from the
 #: probe's shared default, which is spelled on the root pair's text -- this family's
 #: kernels are the root kernels with the BFAST pass inserted (``gate_needles.py``).
 SHARED_NEEDLES = gate_needles.gate_table(
@@ -391,12 +391,12 @@ HOST_MUTATIONS: Tuple[str, ...] = (
     "k_indexed_by_derivative_axis",
     "swap_curl_sublattice",
     "k_scalars_rounded_again",
-    # KERNELS.md section 7.2: the chunk record a launch binds, corrupted (the oracle's
-    # division is untouched; ``gate_cuda_complex.host_mutated_record``).
+    # Per-chunk form battery record mutations: the chunk record a launch binds, corrupted
+    # (the oracle's division is untouched; ``gate_cuda_complex.host_mutated_record``).
     "record_bound_off_by_one",
     "record_lattices_swapped",
 )
-#: MUST BE UNCAUGHT: rounding an already-float32 value to float32 is the identity.
+#: Must be uncaught: rounding an already-float32 value to float32 is the identity.
 HOST_NULL_MUTATIONS: Tuple[str, ...] = ("k_scalars_rounded_again",)
 
 
@@ -614,7 +614,7 @@ def run_kernel_numpy(sub_step: str, fields, tables, codes, dtdx, coefficients, r
         inc   = -(F' - F) on MEEP's owned cells, +0 elsewhere; F' stored where owned
         ladder: f -= sinv*inc outside dsigu; fu -= (df = sinv*inc), f -= sinv_u*df inside
 
-    COMPILES NOTHING AND CERTIFIES NOTHING.
+    Compiles nothing and certifies nothing.
     """
     spec = SUB_STEP_ARRAYS[sub_step]
     shift = _shift_dn_numpy if spec["backward"] else _shift_up_numpy
@@ -948,7 +948,7 @@ def one_case(backend, spec, sub_step, courant, value_class, guard,
     tables, coefficients = host_mutated_inputs(host_mutation, sub_step, layer,
                                                grid, dtdx)
     case["bfast_coefficients"] = [[float(a), float(b)] for a, b in coefficients]
-    # THE CHUNK RECORD of the division the array path stepped with (the one-rank
+    # The chunk record of the division the array path stepped with (the one-rank
     # division of the grid and layer), handed to the kernel as the launcher binds it.
     record = np.ascontiguousarray(gate_chunk_records.layer_record(grid, layer),
                                   dtype=np.int32)
@@ -1022,7 +1022,7 @@ def one_constitutive_case(backend, spec, side, courant, value_class, guard):
     covered, reason = family.covers_bfast_constitutive(fields, layer, grid, side)
     case["predicate"] = {"covered": bool(covered), "reason": reason}
 
-    # THE BFAST RUN'S OWN HISTORY: both curls, on the array path, so the state and
+    # The BFAST run's own history: both curls, on the array path, so the state and
     # the fields this sub-step reads are what BFAST produced.
     stepping.step_B(fields, layer)
     stepping.step_D(fields, layer)
@@ -1040,7 +1040,7 @@ def one_constitutive_case(backend, spec, side, courant, value_class, guard):
         case["seconds"] = time.time() - started
         return case
 
-    # THE CHUNK RECORD of the division the array path stepped with, as the
+    # The chunk record of the division the array path stepped with, as the
     # certified launcher binds it.
     record = cp.asarray(np.ascontiguousarray(
         gate_chunk_records.layer_record(grid, layer), dtype=np.int32))
@@ -1467,6 +1467,7 @@ def save(results, out_path: str) -> None:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
+    import neutral_ids  # noqa: PLC0415
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--backend", choices=("cuda", "numpy"), default="cuda")
     parser.add_argument("--product", choices=("full", "reduced"), default="full")
@@ -1481,8 +1482,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     results: Dict[str, Any] = {
         "gate": "cuda_bfast",
         "started_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "host": os.uname().nodename,
-        "argv": list(argv if argv is not None else sys.argv[1:]),
+        "host": neutral_ids.machine_id(),
+        "argv": neutral_ids.argv(argv if argv is not None else sys.argv[1:]),
         "backend": args.backend,
         "product": args.product,
         "question": ("is the hand-CUDA BFAST curl pair byte-identical to "

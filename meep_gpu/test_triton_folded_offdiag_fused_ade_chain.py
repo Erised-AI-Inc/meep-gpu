@@ -23,7 +23,7 @@ it claims:
   order binds every later one to a neighbouring slot — a wrong answer, not a
   crash.
 
-WHY ``CHAIN_MAX_POLES``' ADJUDICATION LIVES HERE. Kernel modules are bound by the
+Why ``CHAIN_MAX_POLES``' adjudication lives here. Kernel modules are bound by the
 gate's curated digests once their device gate lands, and a prose edit there makes
 a standing board unreproducible until the gate is re-run. So the cap's reasoning
 is pinned in tests, which nothing binds, and a test cannot go stale in silence
@@ -76,7 +76,7 @@ def engine(fold: str = "Y", phase: int = +1, poles: int = 1, sigma=None,
            storage: str = "pml", seed: int = 41):
     """One configuration on the laptop's NumPy backend.
 
-    THE DEFAULT IS THE CELL: a mirror plane, distinct per-component inverse
+    The default is the cell: a mirror plane, distinct per-component inverse
     epsilon volumes with every off-diagonal row surviving, one Lorentz pole
     driving all three components, PML storage and an active absorber that takes
     the HIGH face only on the folded axis (cell 0 lies on the mirror plane, which
@@ -436,7 +436,7 @@ def test_the_extra_scratch_cost_is_K_times_d_minus_one(poles, sigma, driven):
 
 @pytest.mark.parametrize("poles", (1, 2))
 def test_the_rotation_orbit_is_alias_free_at_every_position(poles):
-    """The shape probe's LEG 2, walked THROUGH THE SHIPPED PLAN to closure.
+    """The shape probe's LEG 2, walked through the shipped plan to closure.
 
     The rotation is a permutation of a finite buffer set, so its orbit closes; nine
     positions is three full turns of the three-cycle each (susceptibility,
@@ -753,7 +753,7 @@ def test_the_recurrence_is_spelled_exactly_as_ade_update_p_spells_it():
             assert (f"s = tl.load(sigma_{letter}{slot} + idx, mask=live, "
                     f"other=0.0)") in fused
             assert f"s = sigma_{letter}{slot}" in fused
-            # THE TWO SUBSTITUTIONS, and they are the only ones: the pole is
+            # The two substitutions, and they are the only ones: the pole is
             # RE-READ through the once-bound pointer, the drive is the register.
             assert (f"p = tl.load({letter}{slot} + idx, mask=live, "
                     f"other=0.0)") in fused
@@ -950,7 +950,7 @@ def test_the_device_gate_is_present_and_names_this_module():
         "products",
         "e_to_p_products",
         "e_to_p_verdict_keys",
-        # THE PIN THAT OUTLIVED THE PLUMBING ROUND. GATE_BOUND names an ARTIFACT
+        # The pin that outlived the plumbing work. GATE_BOUND names an ARTIFACT
         # and the board refuses a PRODUCTS row whose artifact is absent, so this
         # row could only be typed once the device campaign had run. It ran on
         # 2026-09-11 (the GPU host GPU 7, cc 8.6, released with no reasons), the row

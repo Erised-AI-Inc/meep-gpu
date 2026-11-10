@@ -1,4 +1,4 @@
-"""BFAST (broadband fixed-angle source technique) PML curl tranche — Phase A:
+"""BFAST (broadband fixed-angle source technique) PML curl family, first stage:
 real-f32 split-field-PML curl only.
 
 NOT WIRED. Production dispatch is untouched: ``fastpath.plan_fast_path`` still
@@ -12,18 +12,18 @@ Callers are the gate (``parity/meep_gpu/gate_triton_bfast.py``), the
 composition probe (``probe_triton_bfast_composition.py``) and the laptop
 tests, nothing else.
 
-WHAT THIS IS FOR. One corpus unlock, the last on the round-4 fixed list:
+What this is for. One corpus unlock, the last on a fixed list of targeted rows:
 python/tests ``test_refl_angular::test_reflectance_angular_2_35_7`` (array-path
 parity 4.415e-06, 1/1 published assertion reproduced). The marquee
 configuration (MEEP test_refl_angular.py:15-95): dimensions=3, cell z-only
 (9.0 incl. 2 x 1.0 PML), resolution 200, k_point exactly zero => REAL float32
 storage, PML both z faces, GaussianSource Ex, two diagonal media n1=1.4 /
 n2=3.5, ``bfast_scaled_k = (1.4*sin(35.7 deg), 0, 0)`` ~ (0.816958, 0, 0),
-Courant ``(1 - kx)/sqrt(3)`` ~ 0.105679 — natively non-power-of-two. Phase A
+Courant ``(1 - kx)/sqrt(3)`` ~ 0.105679 — natively non-power-of-two. This stage
 (real-f32 split-field-PML curl) covers that demand in full; complex/Bloch +
 BFAST is refused by name and queued with the complex family.
 
-WHAT BFAST IS (stepping.py:826-931, grid.py:698-753). The time-sheared
+What BFAST is (stepping.py:826-931, grid.py:698-753). The time-sheared
 substitution ``t -> t - k.r/c``: dB/dt = -curl E + d/dt(k x E), dD/dt =
 +curl H - d/dt(k x H). MEEP runs it as a second additive pass over the SAME
 shifted operands the curl gathers, per component right after its curl
@@ -65,8 +65,8 @@ shifted operands the curl gathers, per component right after its curl
   (grid.py:1165-1183) — the marquee is dimensions=3 with one-cell x/y axes,
   so all flags are TRUE there and the live cross terms survive.
 
-  MEEP DOES TWO THINGS WHEN A FLAG IS FALSE, not one: it zeroes the
-  COEFFICIENT (step_db.cpp:130-133) *and* it NULLS THE OPERAND ARRAY
+  MEEP does two things when a flag is false, not one: it zeroes the
+  COEFFICIENT (step_db.cpp:130-133) *and* it nulls the operand array
   (step_db.cpp:62-63, ``f_p = have_p ? f[c_p][cmp] : NULL``). ``step_bfast``
   then swaps a null g1 to the g2 slot (step_generic.cpp:342-346, k1 and k2
   swapped with it) and takes its single-operand branch when g2 is null — in
@@ -82,7 +82,7 @@ shifted operands the curl gathers, per component right after its curl
   a k multiplies a partner MEEP does not read, and the run stores the k = 0
   run's words (measured in test_triton_bfast.py on a declared-2-D grid, states,
   auxiliaries and fields, both sub-steps);
-* D1 (dimensions=1) CARRIES A SECOND MEEP ASYMMETRY, benign and stated: MEEP's
+* D1 (dimensions=1) carries a second MEEP asymmetry, benign and stated: MEEP's
   other reason for a false flag is ``gv.has_field``, which leaves Bx/Bz/Dy/Dz
   unallocated in D1 so ``step_db``'s ``if (f[cc][cmp])`` never steps them,
   where this engine steps all six. For a k along z all six (k1, k2) are zero,
@@ -157,11 +157,11 @@ GROUPING CHOICES the gate must hold (stepping.py forces none of these):
    ``kernels.constitutive_step`` through ``launch.ConstitutivePlan``.
 10. The predicate's allocation/layout clauses are scoped to the NAMED
     sub-step's 12 arrays (3 targets + 3 fu + 3 sources + 3 f_bfast states)
-    — the per-sub-step scoping the certified complex tranche uses; the
+    — the per-sub-step scoping the certified complex-storage family uses; the
     engine allocates all of them together, so no engine-built configuration
     changes verdict.
 
-REFUSAL ENUMERATION (Phase A predicate = ``coverage._grid_reasons`` clauses
+Refusal enumeration (this stage's predicate = ``coverage._grid_reasons`` clauses
 with clause 11 INVERTED to require bfast_active, plus clause 11a which is this
 family's OWN): REQUIRE bfast_active; a READABLE k assignment (11a —
 ``bfast_scaled_k`` and a callable ``is_invariant`` on every axis; a nonzero k on
@@ -572,7 +572,7 @@ def bfast_pml_curl_step(
 # The clause numbering mirrors ``coverage._grid_reasons`` so the two can be
 # diffed. Clause 11 (BFAST) is INVERTED: this product REQUIRES bfast_active,
 # where every shipped kernel requires it off — the same inversion pattern the
-# special_kz tranche used for beta, and the reason no admitted-overlap
+# special_kz family used for beta, and the reason no admitted-overlap
 # ambiguity can arise while dispatch stays disabled. Everything else is KEPT,
 # restated rather than imported, because the shipped reason list is built
 # inside a function whose BFAST clause cannot be subtracted from outside.
@@ -587,8 +587,8 @@ def _bfast_grid_reasons(fields: Any, pml: Any, grid: Any) -> List[str]:
     if getattr(xp, "__name__", "") != "cupy":
         reasons.append(f"array module is {getattr(xp, '__name__', xp)!r}, not cupy")
 
-    # 2. Real storage REQUIRED (Phase A). A complex-storage BFAST run belongs
-    #    to the complex family's queue, not to this kernel.
+    # 2. Real storage REQUIRED (this first stage, "Phase A" in the reason). A complex-
+    #    storage BFAST run belongs to the complex family's queue, not to this kernel.
     if getattr(fields, "force_complex_fields", False):
         reasons.append("force_complex_fields=True: complex-storage BFAST is "
                        "the complex family's queued composition, not Phase A")
@@ -698,7 +698,7 @@ def _bfast_grid_reasons(fields: Any, pml: Any, grid: Any) -> List[str]:
 
 def _curl_conductivity_reasons(fields: Any) -> List[str]:
     """Conductivity refused on ALL six curl targets, BOTH directions — the
-    complex tranche's stricter reading. The conductive product is
+    complex-storage family's stricter reading. The conductive product is
     ``conductivity.py``'s, and ITS predicates refuse bfast
     (conductivity.py:515-518) — no silent overlap either way. A missing or
     non-callable reader is refused OUTRIGHT: inferring "no conductivity" from

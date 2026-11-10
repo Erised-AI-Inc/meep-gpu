@@ -483,7 +483,7 @@ def test_reachability_matches_a_direct_measurement(letter, axis):
     axis of a live row SLOT. Measured by flipping ONLY the ghost code on the same
     grid, the same coefficients and the same seeds.
 
-    THE THIRD CASE IS THE SLOT-LEVEL COUNTEREXAMPLE and it is why this test is
+    The third case is the slot-level counterexample and it is why this test is
     parametrised over row SHAPES rather than over rows: a single slot
     ``E_{a+1} <- E_{a+2}`` leaves a live row that is not ``E_a`` while no live
     slot takes ``E_a`` as its partner, so the fold enters NEITHER role. A
@@ -605,7 +605,7 @@ def test_zero_init_alone_is_vacuous_and_the_row_two_needle_is_not():
     2. Seeding stored row ``MIRROR_SOURCE_INDEX`` and nothing else makes the
        mirror ghost the only path to a nonzero fold-plane E, and the flip
        becomes byte-visible.
-    3. BUT a ``+0.0`` background still carries a NEGATIVE-ZERO CENSUS OF 0: the
+    3. BUT a ``+0.0`` background still carries a negative-zero census of 0: the
        row sum's ``diag + total`` add annihilates the ghost's parity sign
        (``+0.0 + -0.0 == +0.0``). Only a ``-0.0`` background keeps both addends
        negative, so the sign survives into stored ``f_w``. That is why the
@@ -713,7 +713,7 @@ def test_every_gate_mutation_is_armed_and_the_mutant_still_parses():
     four-space indentation and does NOT match this kernel, which is exactly the
     drift this test exists to catch.
 
-    THE SITE COUNT IS ASSERTED, NOT MERELY ``> 0``. Several patchers here
+    The site count is asserted, not merely ``> 0``. Several patchers here
     increment once per INDEPENDENT needle (m2 seven, m3 nine, f9 four, f6 two):
     if some drifted and one still matched, ``hits > 0`` would read as armed
     while the mutant carried only PART of the declared defect, and a device leg
@@ -886,7 +886,7 @@ def test_the_gate_verdict_reads_the_byte_outcome_not_the_compare_count(
         tmp_path, monkeypatch, certified, identical, expect_pass, expect_code):
     """``compared`` is a COUNT and ``certified`` is the OUTCOME.
 
-    Reading only the count is how a device round in which every comparison
+    Reading only the count is how a device run in which every comparison
     failed still stamped ``passed: true``, printed ``[gate] passed`` and exited
     0. This test drives the real ``main`` with the five device host halves
     stubbed to a fully FAILING device leg and requires exit 1 — and with the
@@ -929,7 +929,7 @@ def test_the_sweep_certifies_the_fusion_off_rows_and_controls_the_other_axis():
     """The certified configuration is ENABLE_FP_FUSION=False.
 
     Merging the fusion-on rows into ``certified`` makes a byte-PERFECT kernel
-    report ``certified: false`` on this tranche's own measured expectation
+    report ``certified: false`` on this family's own measured expectation
     (offdiag 0/28 fusion-on rows identical). Dropping the fusion axis from the
     verdict entirely loses the certified family's non-vacuity control. Both
     outcomes are driven here."""
@@ -968,7 +968,7 @@ def test_mirror_codes_null_is_measured_with_a_live_control():
 
 
 def test_the_gate_carries_three_simultaneous_mirror_planes():
-    """The predicate ADMITS three folded axes, so a later plan_step round would
+    """The predicate ADMITS three folded axes, so a later plan_step change would
     route one. Nothing in the family carried a case with more than two."""
     gate = _gate_module()
     folds = [sum(1 for code in case["codes"] if code in folded.MIRROR_CODES)

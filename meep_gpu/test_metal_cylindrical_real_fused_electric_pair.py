@@ -1,6 +1,6 @@
 """The Metal Dcyl m = 0 fused ELECTRIC weld, as claims a laptop can check.
 
-WHAT THIS SUITE OWNS AND WHAT IT DELIBERATELY DOES NOT. The BYTES are the device
+What this suite owns and what it deliberately does not. The BYTES are the device
 gate's — ``parity/meep_gpu/gate_metal_cylindrical_real_fused_electric_pair.py`` steps
 engines side by side for twelve complete steps and compares uint32 words. No assertion
 here duplicates that. What lives here is everything true about this family WITHOUT a
@@ -16,21 +16,21 @@ device:
 * that the binding count the module spells is the count its emitter produces, that the
   UNPACKED shape is over the platform ceiling by exactly one binding, and that both
   numbers come from counting the emitters' own output rather than from a docstring;
-* that the arm is registered UNWIRED but IS in the absorb table, which is the pairing
+* that the arm is registered unwired but IS in the absorb table, which is the pairing
   ``CARRIES_DEPOSIT_REPAIR`` is only allowed to move with;
 * that the two driver passes :data:`REPLACES` omits really cannot execute on a grid
   this predicate admits — executed, not read off another module's guard;
 * that its cell is DISJOINT from the |m| >= 1 complex sibling's, measured off the
   census rather than argued from the names.
 
-THE CORPUS DEMAND, so the suite states what this is worth rather than leaving it to a
+The corpus demand, so the suite states what this is worth rather than leaving it to a
 docstring: 3 reachable D->E seam-instances of the 387 priced on the 2026-08-19 census,
 and the cell has NO attrition — 3 rows drive it, 3 are admitted by both halves, and
 all 3 carry an ELECTRIC deposit inside the seam. With ``CARRIES_DEPOSIT_REPAIR`` at
 False the same product would serve ZERO, which is what makes the flag the product here
 rather than one clause of it.
 
-THE CELL'S HISTORY, because it is the only one on this board recovered from the
+The cell's history, because it is the only one on this board recovered from the
 BINDING ceiling rather than from a clause. ``fusion_matrix_metal_2026-08-30_lastcells``
 scored it ``UNFUSABLE ON METAL — even at the largest sharing measured on this seam at
 this arity (3) the fused signature needs 31 pointers, over the 30 the platform
@@ -54,11 +54,11 @@ import pathlib
 import numpy as np
 import pytest
 
-# THIS MODULE'S GREEN MAY NOT DEPEND ON A SIBLING'S IMPORT ORDER, which it did until
+# This module's green may not depend on a sibling's import order, which it did until
 # 2026-08-31. `conftest.py`'s header names this hazard exactly: about twenty Metal
 # parity modules open with this same `setdefault` at module scope, pytest imports
 # every test module during COLLECTION, and so a full serial run happened to leave
-# `flush` in force before this file's tests ran. MEASURED, three ways: standalone
+# `flush` in force before this file's tests ran. Measured, three ways: standalone
 # this module was 3 failed / 41 passed; preceded by
 # `test_metal_below_the_cut_fused_pairs.py` (which declares the policy itself) all 44
 # passed; with `MEEP_GPU_SUBNORMAL_POLICY=flush` exported all 44 passed. The three
@@ -306,7 +306,7 @@ def test_the_wall_clear_sits_after_the_axis_rules_and_before_the_store():
 
 
 def test_the_m0_axis_increment_is_a_POST_ADD_and_is_not_folded_into_the_curl():
-    """MEASURED in ``stepping.py``: folding it breaks m = 0 under PML, because Dz's dsig
+    """Measured in ``stepping.py``: folding it breaks m = 0 under PML, because Dz's dsig
     is R and sigma is zero on the axis row; it is added to the stored value after the
     forms."""
     source = emit()
@@ -342,7 +342,7 @@ def test_the_binding_count_the_module_spells_is_the_count_its_emitter_produces()
 
 
 def test_the_unpacked_shape_is_over_the_ceiling_by_EXACTLY_ONE_binding():
-    """THE MEASUREMENT THE PACK EXISTS FOR, taken off the refuted emitters' own text.
+    """The measurement the pack exists for, taken off the refuted emitters' own text.
 
     31 pointers plus one packed ``Params&`` is 32 bindings against a ceiling of 31.
     That is the board's ``UNFUSABLE ON METAL`` verdict for this cell restated as
@@ -371,7 +371,7 @@ def test_the_pack_saves_exactly_five_pointers_and_the_cell_needed_one():
 
 
 def test_the_radial_difference_is_NOT_in_the_pack_and_keeps_its_own_binding():
-    """THE ONE DESIGN DECISION HERE. ``rad`` is the only member of the curl half's
+    """The one design decision here. ``rad`` is the only member of the curl half's
     read-only set that the DEVICE writes — the radial scan fills it in the launch
     before this one. Folding it into the same allocation as the coefficients would
     have saved a seventh pointer and let a wrong offset in the SCAN overwrite a PML
@@ -392,7 +392,7 @@ def test_the_packed_vectors_are_the_curl_halfs_six_and_in_the_emitters_order():
 
 
 def test_the_pack_did_not_reach_the_arithmetic():
-    """THE INVARIANT THAT KEEPS THE LIFT A LIFT. The six aliases are declared ONCE,
+    """The invariant that keeps the lift a lift. The six aliases are declared ONCE,
     before any lifted text, and no ``prm.off_`` read appears anywhere else — so the
     certified bodies go on reading ``kmx[i]`` character for character."""
     source = emit()
@@ -615,7 +615,7 @@ def test_the_plan_is_two_dispatches_and_counts_them_apart():
 # ---------------------------------------------------------------------------
 
 def test_the_arm_is_registered_UNWIRED_and_carries_its_absorb_row():
-    """THE PAIRING ``CARRIES_DEPOSIT_REPAIR`` MAY ONLY MOVE WITH.
+    """The pairing ``CARRIES_DEPOSIT_REPAIR`` may only move with.
 
     ``wired=False`` keeps the arm out of ``_select_slot``; the absorb row is what lets
     ``_install_fused_pairs`` reach it and bracket it. A Metal family that flipped the
@@ -659,7 +659,7 @@ def test_the_deposit_flag_and_its_wiring_move_together():
 def _executable_text(path) -> str:
     """A module's source with comments and docstrings removed.
 
-    ONE HOME FOR A RULE THIS PACKAGE ALREADY WROTE DOWN
+    One home for a rule this package already wrote down
     (``test_triton_kernels.code_of``): the prose in these modules NAMES the things
     they must not touch — that is how a reader learns which track is wired and
     which is not — so an ownership check that greps the RAW file fires on its own
@@ -683,8 +683,8 @@ def _executable_text(path) -> str:
 #: path segment of the LEDGER it reads per table
 #: (``os.path.join(..., "metal_kernels", "fingerprints.json")``).
 #:
-#: THE BARE "metal_kernels IS ABSENT" ASSERTION RETIRED WITH THE SECOND KERNEL
-#: TABLE, and flipping it to "is present" would have been the wrong repair: "the
+#: The bare "metal_kernels is absent" assertion retired with the second kernel
+#: table, and flipping it to "is present" would have been the wrong repair: "the
 #: file mentions the package somewhere" says nothing about whether THIS module is
 #: reachable, which is the whole subject. What replaced it is stronger than either
 #: spelling. ``fastpath`` reaches the Metal table through the sibling
@@ -715,8 +715,8 @@ def _metal_kernels_modules_named_in(text):
 def _fastpath_code_outside_the_pending_reasons() -> str:
     """``fastpath.py``'s executable text with ``PENDING_DEVICE_GATE_ARMS`` blanked.
 
-    WHY THE CARVE-OUT IS STRUCTURAL AND NOT A SUBSTRING ALLOWANCE. This check asks
-    whether DISPATCH names a METAL module. Since the 2026-09-02 product wave,
+    Why the carve-out is structural and not a substring allowance. This check asks
+    whether DISPATCH names a METAL module. Since 2026-09-02,
     ``PENDING_DEVICE_GATE_ARMS`` carries, per refused label, the path of the TRITON
     gate artifact whose release has no ledger entry yet — and several of those
     Triton products share a bare name with a Metal one
@@ -724,7 +724,7 @@ def _fastpath_code_outside_the_pending_reasons() -> str:
     substring check therefore fired on the OTHER track's artifact path while no
     executable reference to this package had moved at all.
     
-    So the reason strings are removed by their OWN ASSIGNMENT NODE rather than by
+    So the reason strings are removed by their own assignment node rather than by
     matching their text, and everything else in the file is still searched: an
     import, a table row, a call — any real naming of a Metal module — fails
     exactly as before.
@@ -747,13 +747,13 @@ def _fastpath_code_outside_the_pending_reasons() -> str:
 def test_fastpath_does_not_name_this_module():
     """DISPATCH must not reach this package — asked in fastpath's OWN vocabulary.
 
-    THE BARE NAME STOPPED SEPARATING THE TRACKS, and pretending it still does
+    The bare name stopped separating the tracks, and pretending it still does
     would be the wrong kind of green. The Triton track ships a product with the
     SAME name: since 2026-09-11 ``fastpath.ARM_CERTIFICATION`` carries
     ``'fused pair D (cylindrical)': ('cylindrical_real_fused_electric_pair',
     'triton_cylindrical_real_fused_electric_pair_device_gate')`` — a Triton family
     and its Triton ledger key — and ``PENDING_DEVICE_GATE_ARMS`` has carried
-    Triton gate ARTIFACT PATHS with the same spelling since the 2026-09-02 wave.
+    Triton gate ARTIFACT PATHS with the same spelling since 2026-09-02.
     A bare-substring check over ``fastpath.py`` therefore reports the OTHER
     track's certification table as if this Metal module had been wired, which is
     a failure about nothing.
@@ -857,7 +857,7 @@ def test_the_artifact_carried_a_real_deposit_and_its_null_control_diverged():
 
 
 def test_the_artifact_armed_the_offset_defects_and_declared_only_the_phi_nulls():
-    """THE HAZARD THE PACK INTRODUCES, MEASURED. Six vectors in one allocation are
+    """The hazard the pack introduces, measured. Six vectors in one allocation are
     told apart by six uints and nothing else."""
     payload = json.loads(ARTIFACT.read_text(encoding="utf-8"))
     offsets = [r for r in payload["rows"] if r.get("offset_defect")]
@@ -884,7 +884,7 @@ def test_the_artifact_measured_the_fusion_and_every_other_mutation_was_caught():
     assert walled and walled[0]["seam_host_passes_for_separate"] == ["zero_metal_D"]
     assert walled[0]["seam_host_passes_for_fused"] == []
     mutations = [r for r in payload["rows"] if r["leg"] == "mutation"]
-    # FIVE DECLARED NULLS AND NO OTHERS: the phi-invariant term against its (z, r)
+    # Five declared nulls and no others: the phi-invariant term against its (z, r)
     # twin, the two phi offset swaps against the same offsets moved the other way, and
     # the r ownership mask on both D components (under MEEP's forms the m = 0 axis rule
     # overwrites Dp's row 0 and fu_Dp is never stored there).

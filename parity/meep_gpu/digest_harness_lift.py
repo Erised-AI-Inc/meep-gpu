@@ -10,7 +10,7 @@ initialised, and reads the lifted driver's own grid, PML, source and monitor cou
 
 ``--compare`` names MEEP bench row files; every ``geometry`` row in them at the same
 case and resolution must carry the same digest. ``--digest-file`` makes this lift the
-DIGEST OF RECORD for its (case, resolution): written when the file is absent (with a
+digest of record for its (case, resolution): written when the file is absent (with a
 ``.source`` beside it reading ``harness-lift:...``), compared when it is present. It is
 written ONLY when the lifted driver agrees with the MEEP object on every fact checked
 (grid shape, cells, ``dt``, PML thickness, source and monitor counts): a lift whose
@@ -21,7 +21,9 @@ The lift is the NumPy reference (``prefer_gpu=False``) unless ``--prefer-gpu`` i
 the digest is a fact about the MEEP object, which is built and initialised before any
 device is chosen.
 
-One process, one rank. Writes ``<out>/harness_lift_digest_<case>_res<res>.json``.
+One process, one rank. Writes ``<out>/harness_lift_digest_<case>_res<res>.json``, every
+string through ``neutral_ids.value`` (the record leaves the machine: its paths are written
+under their labels, ``neutral_ids.py``); the readers take its digests, cells and flags.
 """
 
 from __future__ import annotations
@@ -159,10 +161,18 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 held = handle.read().strip()
             of_record.update({"action": "compared", "held": held,
                               "equal": held == digest["digest"]})
+            import timing_records  # noqa: PLC0415 - standard library only
+            if (held == digest["digest"] and
+                    timing_records.structural_digest_of_record(args.digest_file) is None):
+                # The structural digest a labelled context leg is held to, beside a
+                # digest of record this lift agrees with (written by a MEEP row first).
+                timing_records.write_structural_digest(args.digest_file,
+                                                       digest["structural_digest"])
         else:
             import timing_records  # noqa: PLC0415 - standard library only
             timing_records.write_lift_digest(args.digest_file, digest["digest"],
-                                             f"{args.case}_res{args.res}")
+                                             f"{args.case}_res{args.res}",
+                                             digest["structural_digest"])
             of_record.update({"action": "written", "equal": True})
     record = {
         "utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
@@ -191,8 +201,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     }
     os.makedirs(args.out, exist_ok=True)
     path = os.path.join(args.out, output_name(args.case, args.res))
+    import neutral_ids  # noqa: PLC0415 - beside this file (and in a ladder's driver copy)
     with open(path, "w", encoding="utf-8") as handle:
-        json.dump(record, handle, indent=2, sort_keys=True, default=str)
+        json.dump(neutral_ids.value(record), handle, indent=2, sort_keys=True, default=str)
     print(f"harness lift: digest {digest['digest']} cells {facts['cells']:,} "
           f"driver shape {lifted['shape']} pml {lifted['pml_thickness_length']} "
           f"sources {lifted['sources']} flux monitors {lifted['flux_monitors']} "

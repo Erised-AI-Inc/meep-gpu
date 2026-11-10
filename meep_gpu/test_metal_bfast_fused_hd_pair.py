@@ -1,6 +1,6 @@
 """Host-side contract for the BFAST Metal H->D weld.
 
-WHAT THESE TESTS PIN AND WHAT THEY DELIBERATELY DO NOT. Byte identity against the array
+What these tests pin and what they deliberately do not. Byte identity against the array
 path is the GATE's claim and needs a device
 (``parity/meep_gpu/gate_metal_bfast_fused_hd_pair.py``); what a host suite can hold is
 the LIFT -- that the emitted kernel is the certified BFAST curl's and the certified
@@ -8,7 +8,7 @@ constitutive's own text with exactly the declared edits -- the SIGNATURE arithme
 Tustin SCALARS, the PREDICATE's inversions, and the declarations the composer and the
 board read.
 
-THE ONE THING THIS FAMILY CAN GET WRONG SILENTLY is the six host-rounded ``k1``/``k2``
+The one thing this family can get wrong silently is the six host-rounded ``k1``/``k2``
 scalars, and they are checked here against ``stepping``'s own term tables as float32
 WORDS -- never ``allclose``, because a sign that flipped on a zero would compare equal.
 
@@ -76,7 +76,7 @@ def test_the_withdraw_flag_and_its_wiring_move_together():
 
 
 def test_the_installable_reason_records_the_measurement_that_corrected_it():
-    """THE CELL'S FIRST READING WAS WRONG AND THE CONSTANT SAYS SO.
+    """The cell's first reading was wrong and the constant says so.
 
     It is natural to assume both neighbours install here, since
     ``bfast_fused_magnetic_pair`` and ``bfast_fused_electric_pair`` are both built and
@@ -105,8 +105,8 @@ def test_the_family_is_welded_and_the_declaration_it_replaced_is_kept():
     declaring its weld is owed. BOTH are checked here rather than either being taken
     on trust.
 
-    THE DECLARATION WAS EMPTIED ONCE BEFORE, ON 2026-09-08, BESIDE A HAND-WRITTEN
-    LEDGER ENTRY, and both were reverted. That entry was not the minting tool's
+    The declaration was emptied once before, on 2026-09-08, beside a hand-written
+    ledger entry, and both were reverted. That entry was not the minting tool's
     output: its ``code_sha256`` map held raw ``sha256`` values, which
     ``code_identity.code_digest_of_path`` -- the function ``mint_metal_weld.py:144``
     fills that field with -- cannot return, and its ``recorded_utc`` was rounded to

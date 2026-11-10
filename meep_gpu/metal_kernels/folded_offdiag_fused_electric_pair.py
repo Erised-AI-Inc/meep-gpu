@@ -1,6 +1,6 @@
 """The FOLDED ``step_D`` welded into the FOLDED OFF-DIAGONAL ``update_E``.
 
-THE LARGEST OF THE FOUR STENCIL WELDS — 19 corpus rows, 9 of them clearing the
+The largest of the four stencil welds — 19 corpus rows, 9 of them clearing the
 source seam, the biggest single cell either board has carried as ``STRUCTURALLY
 UNFUSABLE ON ANY BACKEND``. The 2026-09-01 Metal board scores it::
 
@@ -10,15 +10,15 @@ UNFUSABLE ON ANY BACKEND``. The 2026-09-01 Metal board scores it::
         -> 36 pointers, ceiling 30                     UNFUSABLE ON METAL
         verdict: STRUCTURALLY UNFUSABLE ON ANY BACKEND (the stencil)
 
-THE STENCIL AND THE CEILING ARE ANSWERED EXACTLY AS THE UNFOLDED TWIN ANSWERS
-THEM — scratch outputs, re-derivation from pre-launch state, two coefficient
+The stencil and the ceiling are answered exactly as the unfolded twin answers
+them — scratch outputs, re-derivation from pre-launch state, two coefficient
 packs — and :mod:`.offdiag_fused_electric_pair`'s docstring is the one place
-that argument lives. WHAT IS NEW HERE IS THE SEAM ITSELF: this family runs on a
+that argument lives. What is new here is the seam itself: this family runs on a
 folded grid, so the two ghost fills are not inert, and :data:`REPLACES` names
 FIVE driver passes rather than three.
 
 ===========================================================================
-THE THREE IN-SEAM PASSES, ALL CARRIED BY THE CLOSED FORM
+The three in-seam passes, all carried by the closed form
 ===========================================================================
 
 The driver runs, between ``step_D`` and ``update_E`` (driver.py:3292-3302):
@@ -29,20 +29,20 @@ cell by :func:`.offdiag_weld_common.d_final_function`, whose composition is
     far?  ->  parity_far x [ clear ? +0 : near(y) ]      (the mask INSIDE)
     else  ->  clear ? +0 : near(x)                        (the mask OUTSIDE)
 
-with ``near`` the multi-axis redirect carrying ONE PARITY MULTIPLY PER AXIS, in
+with ``near`` the multi-axis redirect carrying one parity multiply per axis, in
 ascending axis order — because the array path writes plane after plane in X, Y,
 Z order (stepping.py:1441-1447), so a doubly-unowned corner carries ``p_y *
 (p_x * raw)`` NESTED and not the single product of the two. On real storage the
 two spellings are the same bits; the distinction is measured and is why the
 nesting is emitted rather than folded.
 
-THE FOLDED AND WALLED AXES ARE DISJOINT BY CONSTRUCTION — ``_zero_metal`` skips
+The folded and walled axes are disjoint by construction — ``_zero_metal`` skips
 a folded axis by name (stepping.py:2282-2284), because its stored cell 0 holds
 the parity ghost rather than a wall — and that disjointness is what makes the
 clear guard readable off the UNMUTATED coordinates after the near redirect has
 moved the folded ones.
 
-THE FAR ARM IS THE ONE THAT NEEDS A RUNTIME INPUT. Its image row is
+The far arm is the one that needs a runtime input. Its image row is
 ``stepping._far_reflect_rows``' ``n_full - stored + 2``, which is ``stored - 2``
 at an even full count and ``stored - 3`` at an odd one, so it cannot be baked:
 the three rows ride in ``Params`` and reach ``d_final_c`` as parameters of its
@@ -50,7 +50,7 @@ own — never forwarded to ``step_cell``, which has no use for them. That is why
 :func:`.offdiag_weld_common.d_final_function` takes ``own_parameters``
 separately from ``call_arguments``.
 
-THE CLOSED FORM IS MEASURED against the array path's own three passes over
+The closed form is measured against the array path's own three passes over
 seventeen host fixtures including a two-axis MIXED-PHASE fold, an odd full
 count, a walled fold and a folded-metallic termination — zero differing uint32
 words over two complete steps, every reachable null diverging
@@ -58,7 +58,7 @@ words over two complete steps, every reachable null diverging
 again on device by this family's gate.
 
 ===========================================================================
-WHAT IS LIFTED
+What is lifted
 ===========================================================================
 
 * the curl — :func:`.symmetry.folded_curl_source` with ``backward=True``, body
@@ -68,7 +68,7 @@ WHAT IS LIFTED
   that carried the far fill but dropped the mask would leave a plane of
   unmasked cells behind;
 * the constitutive — :func:`.folded_offdiag_update_e.folded_offdiag_source`'s
-  own output, whose MIRROR GHOST LANE (index redirected to stored 2, sign
+  own output, whose mirror ghost lane (index redirected to stored 2, sign
   applied as a select on the value) is left exactly as that emitter writes it.
   Only the displacement READS are redirected, by needles built from the
   certified emitter's own index tables;
@@ -81,14 +81,14 @@ refuses an off-diagonal chi1inv by name, so the ten rows of this cell that carry
 an electric source in the seam are out of reach of any fused product on any
 backend. That is the whole distance between the cell's 19 rows and its 9.
 
-THE PER-CHUNK FORMS AND THE DOUBLE ROW are the unfolded twin's
+The per-chunk forms and the double row are the unfolded twin's
 (:mod:`.offdiag_fused_electric_pair`): the record rides in ``Params`` with the
 presence words beside it, ``step_cell`` takes the record and evaluates the curl's
 select at the cell it steps (a redirected mirror source included), the auxiliary
 store guard moves to the register, and the constitutive half is the folded single's
-software-binary64 row (ruling R7), helpers spliced after the contraction directive.
+software-binary64 row, helpers spliced after the contraction directive.
 
-NOT WIRED AS AN ARM; reached through ``launch.FUSED_PAIR_ARMS``.
+Not wired as an arm; reached through ``launch.FUSED_PAIR_ARMS``.
 """
 
 # Derived from MEEP (https://github.com/NanoComp/meep).
@@ -406,7 +406,7 @@ def metal_folded_offdiag_fused_electric_pair_coverage(
         return Coverage(False, tuple(dict.fromkeys(
             reasons + ["fields carries no grid"])))
 
-    # THIS FAMILY EXISTS FOR THE FOLD. An unfolded grid is the unfolded twin's
+    # This family exists for the fold. An unfolded grid is the unfolded twin's
     # product and must be refused here rather than served by a degenerate form,
     # or the two families overlap and the disjointness sweep is right to complain.
     mirrored = getattr(grid, "is_mirrored", None)
@@ -450,7 +450,7 @@ def _params_tensor(shape: Sequence[int], dtdx: float, offsets: Mapping[str, int]
     """The scalars, the two packs' offsets, the three reflect rows, the presence words
     and the record.
 
-    AN ABSENT REFLECT ROW IS WRITTEN ``-1`` AND IS NEVER READ: the far arm is
+    An absent reflect row is written ``-1`` and is never read: the far arm is
     emitted only for an axis in ``far_axes``, which is exactly the set with a row.
     ``-1`` rather than 0 so that a build which emitted the arm anyway indexes off
     the volume and is caught, instead of silently imaging plane zero.

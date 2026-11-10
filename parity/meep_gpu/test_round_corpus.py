@@ -1,7 +1,7 @@
-"""The 1.0 round names the MEEP corpus the CUDA H->D lifts walk (host-only).
+"""The 1.0 round tooling names the MEEP corpus the CUDA H->D lifts walk (host-only).
 
 The four CUDA H->D gates (``--lift-steps``) re-run MEEP corpus rows from
-``measure_predicate_coverage.EXAMPLES_DIR``/``TESTS_DIR``. A round that names no corpus
+``measure_predicate_coverage.EXAMPLES_DIR``/``TESTS_DIR``. A certification round that names no corpus
 on a host where none of the defaults exists refuses every lift, measured on the GPU host
 in the 1.0 pre-certification pass. These tests pin the resolution chain, the refusal
 before a GPU is taken, and the export to every child.
@@ -117,8 +117,8 @@ def test_the_check_takes_the_corpus_on_its_command_line(flag):
 def _record_writer():
     import importlib.util  # noqa: PLC0415
     spec = importlib.util.spec_from_file_location(
-        "build_meep_133_record_for_the_round", Path(__file__).resolve().parent
-        / "build_meep_133_record.py")
+        "build_meep_reference_record_for_the_round", Path(__file__).resolve().parent
+        / "build_meep_reference_record.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module

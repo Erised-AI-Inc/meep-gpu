@@ -1,6 +1,6 @@
 """The hand-CUDA E->P fused pair: ``update_E`` -> ``update_P``, welded per component.
 
-THE BOARD'S TWO CELLS. ``E_to_P (cuda_dispersive/dispersive, cuda_ade/ADE)``, 7
+The board's two cells. ``E_to_P (cuda_dispersive/dispersive, cuda_ade/ADE)``, 7
 seam-instances, and ``E_to_P (cuda_no_pml_dispersive/no-PML dispersive store,
 cuda_no_pml_ade/no-PML ADE)``, 3 -- all ten clear the source seam on the driver
 fact alone and carry NOTHING between the halves
@@ -12,12 +12,12 @@ no deposit repair, no boundary code, no phase table and no in-seam register --
 what it carries is a SHAPE CHANGE, and that is the whole module.
 
 =============================================================================
-THE SHAPE MISMATCH, MEASURED, AND WHAT THE WELD DOES ABOUT IT
+The shape mismatch, measured, and what the weld does about it
 =============================================================================
 
 ``update_E`` runs in ONE launch for all three components
 (``dispersive_kernels.update_E_fused_pml_real_dispersive``), while ``update_P``
-runs ONE LAUNCH PER (state, component), because each state's three buffers rotate
+runs one launch per (state, component), because each state's three buffers rotate
 per component INSIDE one call and "the retired history becomes the NEXT
 component's scratch" (ade_kernels.py:414-424, transcribing dispersion.py:689-691).
 The launcher re-reads every slot after each rotation; a launcher that cached the
@@ -27,14 +27,14 @@ therefore structurally refused by buffer count: advancing all three components o
 one state at once needs three outputs distinct from six live inputs, and a state
 owns seven buffers.
 
-So the weld SPLITS ``update_E`` INTO THREE PER-COMPONENT LAUNCHES and fuses each
+So the weld splits ``update_E`` into three per-component launches and fuses each
 with the ``update_P`` recurrences of its own component: 3 launches replacing
 ``1 + sum over states of len(driven())``, with the HOST still rotating between
 component launches exactly as ``ade_kernels.update_P_fused_pml_real`` rotates
 between its own. The rotation code here is that function's, line for line, run
 once per driving state after each component launch returns.
 
-WHY THE SPLIT IS BIT-EXACT AGAINST THE DRIVER ORDER, word for word:
+Why the split is bit-exact against the driver order, word for word:
 
 * the driver order is ``update_E`` (:3313) then ``update_P`` (:3315), with
   nothing between, "and the equivalence holds only while nothing reads P between
@@ -59,7 +59,7 @@ WHY THE SPLIT IS BIT-EXACT AGAINST THE DRIVER ORDER, word for word:
   driving states of one component into one launch reorders nothing that shares
   data.
 
-WHAT THE SPLIT REFUSES, AND THE ONE SLOT IT COSTS. The OFF-DIAGONAL dispersive
+What the split refuses, and the one slot it costs. The OFF-DIAGONAL dispersive
 ``update_E`` (``dispersive_offdiag_update_e``) forms a row product that reads the
 OTHER components' ``D - sum P`` volumes at neighbouring cells
 (stepping.py:1196-1251). Split per component, launch y would read ``P[x]`` AFTER
@@ -73,7 +73,7 @@ components in one launch, which the buffer count above refuses), not a wider
 predicate.
 
 =============================================================================
-THE ALIASING HAZARD, AND WHERE IT LIVES ON THIS SEAM
+The aliasing hazard, and where it lives on this seam
 =============================================================================
 
 On the D/E welds the shared volume is the flux density. Here it is THE POLE
@@ -94,7 +94,7 @@ what the predicate checked is one permutation and this is the one being run.
 ``__restrict__`` -- lifted rather than re-decided.
 
 =============================================================================
-TWO PRODUCTS, ONE MODULE, DISJOINT BY THE ABSORBER
+Two products, one module, disjoint by the absorber
 =============================================================================
 
 ``cuda_fused_polarization_pair`` welds arm 1 (``update_E_pml_real_dispersive``,
@@ -114,7 +114,7 @@ update_E arms and this weld lifts from it either way; the emitters share every
 anchor and differ where the certified arms differ.
 
 =============================================================================
-NOTHING HERE IS DISPATCH
+Nothing here is dispatch
 =============================================================================
 
 ``meep_gpu.fastpath.plan_fast_path`` still returns ``None`` on every branch. This
@@ -136,9 +136,9 @@ try:  # a host with no CuPy: the emitter and both predicates still run
 except ImportError:
     cp = None
 
-# THE CERTIFIED TEXT. ``dispersive_kernels`` imports no CuPy at module scope, so
+# The certified text. ``dispersive_kernels`` imports no CuPy at module scope, so
 # the E half's emitter is importable on a laptop. ``ade_kernels`` imports CuPy at
-# scope, so its device strings are read OFF THE SYNTAX TREE instead -- the same
+# scope, so its device strings are read off the syntax tree instead -- the same
 # route ``test_ade_update_p.py`` takes, and the reason
 # :func:`_certified_ade_strings` exists.
 try:
@@ -167,7 +167,7 @@ except ImportError:  # loaded by path, outside the package: the bit-identity pro
 
 
 # =============================================================================
-# THE PARTITION -- EMPTY ON THE CERTIFIED SIDE UNTIL A GATE MOVES IT
+# The partition -- empty on the certified side until a gate moves it
 # =============================================================================
 #
 # Plain assignments with NO type annotation: the partition readers walk the syntax
@@ -180,11 +180,11 @@ except ImportError:  # loaded by path, outside the package: the bit-identity pro
 #: CuPy 13.5.1, NVRTC 11.6) by
 #: ``parity/meep_gpu/gate_cuda_fused_polarization_pair.py``. All four legs
 #: RELEASED under BOTH float32 subnormal policies: 180/180 (PML arm) and 90/90
-#: (no-absorber arm) cases per policy bit-identical PER COMPLETE SEAM STEP to
+#: (no-absorber arm) cases per policy bit-identical per complete seam step to
 #: ``stepping.update_E`` -> ``stepping.update_P`` AND to the separately
 #: certified kernels the weld replaces, pole volumes and retired scratch in the
 #: comparison, over 60 consecutive steps, with 3 fused launches per step counted
-#: two independent ways. THE SEAM NULL is what carries the register hand-off:
+#: two independent ways. The seam null is what carries the register hand-off:
 #: ``reload_drive_from_global`` -- the register rewritten back into the certified
 #: global reload -- came back NULL CONFIRMED on every leg, and its control
 #: ``wrong_drive_register`` (D handed across instead) CAUGHT on every leg. The
@@ -204,8 +204,8 @@ CERTIFIED_KERNELS = (
 #: component with the drive handed across in a register; the fused gate is.
 UNCERTIFIED_KERNELS = {}
 
-#: Does this product bracket its launches with the deposit repair? FALSE, AND IT
-#: IS A DRIVER FACT RATHER THAN A MEASUREMENT OF THIS CELL'S ROWS: the driver
+#: Does this product bracket its launches with the deposit repair? False, and it
+#: is a driver fact rather than a measurement of this cell's rows: the driver
 #: injects nothing between ``update_E`` (driver.py:3313) and ``update_P``
 #: (:3315) on ANY run -- there is no source slot in this seam for a repair to
 #: carry, unlike the B and D seams, where the flag is measured per cell. The
@@ -233,8 +233,8 @@ KERNEL_NAME = "fused_polarization_pair_(no_)pml_real"
 
 #: The driver passes ONE ``run`` of this product performs (three launches, host
 #: rotations between), in driver order (driver.py:3313, :3315). Declared rather
-#: than inferred from the two slots. THERE IS NO PASS BETWEEN THEM TO CARRY OR
-#: REFUSE: the E->P seam has no injection, no fill and no wall clear -- the two
+#: than inferred from the two slots. There is no pass between them to carry or
+#: refuse: the E->P seam has no injection, no fill and no wall clear -- the two
 #: consults are adjacent statements.
 REPLACES: Tuple[str, ...] = ("update_E", "update_P")
 
@@ -314,7 +314,7 @@ __all__ = [
 
 
 # =============================================================================
-# THE LIFT -- E HALF (dispersive_kernels' own emitter, restricted per component)
+# The lift -- E half (dispersive_kernels' own emitter, restricted per component)
 # =============================================================================
 
 def kernel_name(arm: str) -> str:
@@ -441,7 +441,7 @@ def _certified_e_pieces(arm: str, component_index: int, count: int
             f"the certified {arm} emission no longer carries the index block "
             f"this weld lifts; the guard would be retyped rather than lifted")
     if arm == "pml":
-        # THE COMPONENT'S OWN RECORD ENTRY, every line of it lifted: the full
+        # The component's own record entry, every line of it lifted: the full
         # emission decodes all three E entries, and this launch steps one component.
         block = _pml_bounds_block(component_index)
         for line in block.splitlines():
@@ -466,7 +466,7 @@ def _certified_e_pieces(arm: str, component_index: int, count: int
 
 
 # =============================================================================
-# THE LIFT -- P HALF (ade_kernels' device strings, read off the syntax tree)
+# The lift -- P half (ade_kernels' device strings, read off the syntax tree)
 # =============================================================================
 #
 # ``ade_kernels`` imports CuPy at module scope, so its strings are recovered the
@@ -538,11 +538,11 @@ def _parse_ade_strings(text: str) -> Dict[str, str]:
 def _certified_ade_strings() -> Dict[str, str]:
     """The three ADE device strings, exactly as the certified module assigns them.
 
-    READ ON EVERY CALL, PARSED ONCE PER DISTINCT TEXT (2026-09-19). Every emission
+    Read on every call, parsed once per distinct text (2026-09-19). Every emission
     of a fused polarization kernel asks for these strings twice -- once through
     :func:`_verified_ade_bodies`, once through :func:`_ade_prologue` -- and each
     ask used to open ``ade_kernels.py`` and run ``ast.parse`` plus
-    :func:`_fold_strings` over the whole file. MEASURED 2026-09-19 on the laptop
+    :func:`_fold_strings` over the whole file. Measured 2026-09-19 on the laptop
     (Apple M1 Max, no device, 100 calls per row after one warm-up, the pre-edit
     file loaded beside this one): this function 855 -> 33 us per call; one
     emission of :func:`fused_polarization_pair_source` at one pole 1744 -> 142 us
@@ -552,7 +552,7 @@ def _certified_ade_strings() -> Dict[str, str]:
     three emitters admit (762, 378 and 42 336 keys). What a hit still costs is
     the read, one hash and one comparison of the fresh 26 KB string.
 
-    THE KEY IS THE TEXT, NOT A STAT OF THE FILE. The file is still opened and read
+    The key is the text, not a stat of the file. The file is still opened and read
     on every call, exactly as before, and only the parse of a text already seen is
     skipped. An mtime or size key is the stale-``.pyc`` class: a same-second,
     size-preserving edit of ``ade_kernels.py`` would be served the pre-edit
@@ -560,13 +560,13 @@ def _certified_ade_strings() -> Dict[str, str]:
     probe that monkeypatches this function (``test_fused_polarization_pair.py``)
     still reaches both callers, which look it up through the module at call time.
 
-    THE EMITTED SOURCE IS STILL NOT MEMOIZED, and that is not an oversight: each
+    The emitted source is still not memoized, and that is not an oversight: each
     ``_get_kernel`` on this track emits per call because its ``SOURCE_TRANSFORM``
     is applied to the emitted text and the text is part of the compile memo key
     (:func:`_get_kernel`). This memo sits one level below, on the certified INPUT,
     which no probe door rewrites.
 
-    THREE MODULES SHARE THIS READER, through :func:`_verified_ade_bodies` and
+    Three modules share this reader, through :func:`_verified_ade_bodies` and
     :func:`_ade_prologue`: this one, ``three_slot_dispersive_weld`` (and its
     no-absorber twin, which re-exports that emitter) and
     ``dispersive_offdiag_fused_polarization_pair``. A copy of this file loaded by
@@ -663,7 +663,7 @@ def _pole_block(component_index: int, pole_index: int, volume: bool,
 
 
 # =============================================================================
-# THE FUSED SIGNATURE AND SOURCE
+# The fused signature and source
 # =============================================================================
 
 def _signature(arm: str, component_index: int, count: int,
@@ -687,7 +687,7 @@ def _signature(arm: str, component_index: int, count: int,
     # and one binding here keeps the same declared promise.
     lines.append(f"    const float* inv_eps_{target},")
     for i in range(count):
-        # THE SHARED VOLUME, BOUND ONCE: the E half's chain and the P half's
+        # The shared volume, bound once: the E half's chain and the P half's
         # recurrence both read this parameter.
         lines.append(f"    const float* __restrict__ P_{target}_{i},")
     for i in range(count):
@@ -721,7 +721,7 @@ def fused_polarization_pair_source(arm: str, component_index: int, count: int,
     if not 0 <= int(component_index) <= 2:
         raise ValueError(f"component_index must be 0..2, got {component_index!r}")
     count = int(count)
-    # The certified cap is a MEASURED ceiling; reuse its refusal verbatim.
+    # The certified cap is a measured ceiling; reuse its refusal verbatim.
     certified_e.normalized_pole_counts(_counts_with(component_index, count))
     kinds = tuple(bool(kind) for kind in sigma_kinds)
     if len(kinds) != count:
@@ -770,7 +770,7 @@ def fused_polarization_pair_source(arm: str, component_index: int, count: int,
                 .replace("blockIdx", "").replace("blockDim", "")
                 .replace("threadIdx", "")):
         raise AssertionError("an unsubstituted placeholder survived the splice")
-    # PURE ASCII IS A COMPILE REQUIREMENT: NVRTC receives these bytes through the
+    # Pure ASCII is a compile requirement: NVRTC receives these bytes through the
     # interpreter's locale encoding.
     source.encode("ascii")
     return source
@@ -801,7 +801,7 @@ def device_sources() -> Dict[str, str]:
 
 
 # =============================================================================
-# COMPILATION AND LAUNCH
+# Compilation and launch
 # =============================================================================
 
 #: NVRTC compile options -- CORRECTNESS, not performance, identical to both
@@ -812,7 +812,7 @@ _COMPILE_OPTIONS: Tuple[str, ...] = ('--fmad=false',)
 #: Lanes per block, one cell per lane -- both halves' geometry.
 _FUSED_THREADS = 256
 
-#: THE GATE'S DOOR into the emitted text. ``None`` in every shipped path; a
+#: The gate's door into the emitted text. ``None`` in every shipped path; a
 #: bit-identity probe assigns an ``(arm, component_index, count, kinds, source)
 #: -> source`` callable to plant a defect in a body that does not exist until it
 #: is asked for -- ``dispersive_kernels.SOURCE_TRANSFORM``'s shape, one argument
@@ -829,7 +829,7 @@ def _get_kernel(arm: str, component_index: int, count: int,
                 sigma_kinds: Sequence[bool]):
     """Compile on first use, memoized on (name, options, policy, source).
 
-    THE SOURCE IS EMITTED PER CALL AND THAT IS LOAD-BEARING: the source is part
+    The source is emitted per call and that is load-bearing: the source is part
     of the memo key, and a probe mutates this family through
     :data:`SOURCE_TRANSFORM` -- a body memoized at first call would hand back
     the pre-mutation string forever.
@@ -867,7 +867,7 @@ def _driving_states(fields: Any, target: str) -> Tuple[Any, ...]:
 def component_specs(fields: Any) -> Dict[str, Dict[str, Any]]:
     """Per component: the driving states, pole count and sigma kinds, RIGHT NOW.
 
-    RESOLVED PER CALL AND NEVER CACHED: the rotation moves the buffers between
+    Resolved per call and never cached: the rotation moves the buffers between
     component launches, which is the certified launchers' standing hazard.
     """
     specs: Dict[str, Dict[str, Any]] = {}
@@ -887,7 +887,7 @@ def assert_disjoint_bindings(fields: Any, arm: str, target: str,
                              states: Sequence[Any]) -> int:
     """Every ``__restrict__`` pointer of ONE component launch distinct from every other.
 
-    CHECKED PER LAUNCH, AFTER THE PREVIOUS COMPONENT'S ROTATION, for the
+    Checked per launch, after the previous component's rotation, for the
     certified ADE launcher's reason: the rotation moves three names between
     launches, so what a predicate checked is one permutation and this is the one
     being run. Base addresses only -- overlapping views with different bases pass
@@ -1047,7 +1047,7 @@ def run_fused_polarization_pair(fields: Any, pml: Any, arm: str, *,
                                 chunk_bounds: Any = None) -> Dict[str, Any]:
     """Both of :data:`REPLACES` in THREE launches, host rotation between.
 
-    THE ROTATION IS TRANSCRIBED, NOT REIMPLEMENTED, from
+    The rotation is transcribed, not reimplemented, from
     ``ade_kernels.update_P_fused_pml_real`` (itself from dispersion.py:689-691)::
 
         state.P[component]      = scratch     # this step's result
@@ -1062,7 +1062,7 @@ def run_fused_polarization_pair(fields: Any, pml: Any, arm: str, *,
     commute (each state owns its seven buffers), and within a state the x, y, z
     sequence is preserved.
 
-    EVERY SLOT IS RE-READ AFTER THE PREVIOUS COMPONENT'S ROTATION, through
+    Every slot is re-read after the previous component's rotation, through
     :func:`component_specs` inside the loop -- the certified launchers' standing
     hazard, restated because this launcher is the one that would enjoy caching.
     """
@@ -1147,13 +1147,13 @@ def covers_fused_polarization_pair(fields: Any, pml: Any, grid: Any,
                                    sources: Any = None) -> Tuple[bool, str]:
     """May three per-component launches span ``update_E`` -> ``update_P`` under a PML?
 
-    A CONJUNCTION, AND NOTHING IS WEAKENED: a configuration either half's own
+    A conjunction, and nothing is weakened: a configuration either half's own
     certified predicate refuses is refused here with that half's reason,
     prefixed so a reader can tell which side said it. The off-diagonal cell is
     refused through the update_E half, and the per-component split is why that
     refusal is also THIS product's (module docstring).
 
-    ``sources`` IS ACCEPTED AND INERT, and that is a driver fact rather than a
+    ``sources`` is accepted and inert, and that is a driver fact rather than a
     leniency: nothing is injected between driver.py:3313 and :3315 on any run,
     so no source list -- declared, undeclared or empty -- can put a deposit in
     this seam. The B and D products must refuse an undeclared list because their

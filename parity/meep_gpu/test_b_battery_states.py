@@ -77,8 +77,8 @@ def test_the_no_pml_reference_defaults_to_meeps_grouping():
     """The reference a caller gets by default is MEEP's grouping, and no other tree.
 
     ``kernel_order`` (C's left-to-right) is the default and ``pairwise_order`` (the
-    package's tree until 0.10) differs from it at a Courant factor that is not a power
-    of two; the name the pre-alignment tree carried before 0.10 is refused.
+    package's tree until 1.0) differs from it at a Courant factor that is not a power
+    of two; the name that tree carried before 1.0 is refused.
     """
     state = battery.full_volume_state(NAMES, SHAPE, np.random.default_rng(11))
     sources = {n: state[n] for n in ("Ex", "Ey", "Ez")}

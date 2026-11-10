@@ -2,52 +2,53 @@
 """The 1.0 certification round's leg tables: one home for every gate the round runs.
 
 Every NVIDIA leg the round runs is spelled here once, with the expected wall time it
-took on one RTX A6000 (the 1.0 round's CERT-3 for the CUDA gate legs, the Triton fleet
-and the hand legs; the 1.0 final pre-certification pass for the route legs and the
-end-to-end licence), and the shell drivers ask this file for their plans (``plan``),
-their checks (``check``) and their estimates (``estimate``).
+took on one RTX A6000 (the 1.0 certification round's CERT-3 for the CUDA gate legs, the
+Triton fleet and the hand legs; the 1.0 final pre-certification pass for the route legs
+and the end-to-end licence), and the shell drivers ask this file for their plans
+(``plan``), their checks (``check``) and their estimates (``estimate``).
 It imports nothing from the package for the tables; ``check`` imports the checkout
 being certified, read-only.
 
-WHERE THE TABLES COME FROM.
+Where the tables come from.
 
-* CUDA ``cited``: the 70 legs of ``rounds/h200_2026-10-03/run_cuda_welds.sh`` (35 gate
-  pairs, keep and flush).
-* CUDA ``residue``: the 46 legs of the 0.9.2 residue lane (23 families, keep and
-  flush) and its ADE ``update_P`` re-cut (2 legs, a SIBLING root, never inside a
-  campaign: ``record_cuda_regate.py`` refuses a subdirectory no block claims).
-* Triton: ``rounds/h200_2026-10-03/run_round.sh``'s shards A (33), B (11), C (1), D
-  (5), the two stencil welds and the bit identity; the 0.9.2 close round's three
-  (``fused_ade_chain``, ``probe_triton_folded_deposit_closure``,
+* CUDA ``cited``: the 70 legs of the 0.9.x round's CUDA-leg script (35 gate pairs, keep and
+  flush), spelled out in the tables below.
+* CUDA ``residue``: the 46 legs of the 0.9.2 campaign ``cuda_regate_2026-10-05_cc86_residue``
+  (23 families, keep and flush) and its ADE ``update_P`` re-cut (2 legs, a SIBLING root,
+  never inside a campaign: ``record_cuda_regate.py`` refuses a subdirectory no block claims).
+* Triton: the 0.9.x round driver's shards A (33), B (11), C (1), D
+  (5), the two stencil welds and the bit identity; the closing 0.9.2 certification round's
+  three (``fused_ade_chain``, ``probe_triton_folded_deposit_closure``,
   ``complex_fused_ade_chain``); and the fleet driver's nine other gates (tier 2). 62
   fleet gates, every one in ``drive_triton_weld_gates.GATES``.
 * Triton H->D: the ten ``gate_triton_*fused_hd_pair.py`` gates under keep, every leg,
   lifts on, one root per gate (``TRITON_HD``): the gates the Triton board's GATE_BOUND
   table binds and no other step runs. Hand legs, not fleet gates.
-* Route: the 0.9.2 close round's ``run_route_lane.sh`` (blocking preflight, the
-  ``cuda_alone`` preflight, the six CUDA legs; the Triton preflight, four legs and the
-  end-to-end licence).
+* Route: the closing 0.9.2 certification round's ``run_route_lane.sh`` (blocking
+  preflight, the ``cuda_alone`` preflight, the six CUDA legs; the Triton preflight, four
+  legs and the end-to-end licence).
 
-WHAT IS NEW FOR 1.0 (DESIGN.md R13, the flush dispatch licence).
+What is new for 1.0 (the flush dispatch licence: the NVIDIA tables are certified against
+both subnormal baselines, MEEP's x86 flush default and keep).
 
-* BOTH POLICIES ON BOTH NVIDIA TABLES. CUDA already ran keep and flush legs. Triton ran
+* Both policies on both NVIDIA tables. CUDA already ran keep and flush legs. Triton ran
   keep only; 1.0 runs a second fleet under
   ``--policy flush`` into ``<fleet>_flush`` roots, which
   ``rebind_triton_welds.py --flush-campaign`` reads.
-* THE CUDA LANE SPLITS ACROSS GPUs by family subdirectory: one campaign root per GPU
+* The CUDA lane splits across GPUs by family subdirectory: one campaign root per GPU
   (``cuda_regate_<stamp>_g<k>``), each recorded by its own ``record_cuda_regate.py
-  --campaign`` and rebound by its own ``rebind_cuda_welds.py --campaign``. MEASURED:
+  --campaign`` and rebound by its own ``rebind_cuda_welds.py --campaign``. Measured:
   the 0.9.2 ledger at fa59c2f binds 31 welds from ``cuda_regate_2026-10-03_cc86`` and
   23 from ``cuda_regate_2026-10-05_cc86_residue`` on compute capability 8.6, i.e. two
   campaigns, two blocks, two rebinds. The constraint is the join: a block claims a
   WHOLE subdirectory and the rebind requires the re-gate to have cut exactly the legs
   the entry stands on, so both policies of a subdirectory (and every family sharing
   it) land in the same campaign.
-* NO EXPANSION LICENCE. The complex families take no expansion record since the
+* No expansion licence. The complex families take no expansion record since the
   licence was deleted, so no leg here carries a probe argument, the fleet runs no
   ``unified_expansion`` gate, and the route runs no probe legs.
 
-THE MEEP CORPUS. The four CUDA H->D legs (``--lift-steps``) and the ten Triton H->D hand
+The MEEP corpus. The four CUDA H->D legs (``--lift-steps``) and the ten Triton H->D hand
 legs re-run MEEP corpus rows, read from ``<root>/examples`` and ``<root>/tests``. The round
 names the root once (:func:`resolve_corpus`): ``--corpus-root``, else the root the reference
 environment's build record names (``<sys.prefix of --python>/share/meep-gpu-build/
@@ -60,7 +61,7 @@ the root to every lane as ``MEEP_GPU_CORPUS_ROOT``. The gates' own lookup chain
 (:func:`corpus_root`) is unchanged and is not what the round reads. ``metal_round.py`` reads
 the same record by the same rule.
 
-A NEW CAPABILITY (``--new-capability``). A family gate does not go through dispatch admission,
+A new capability (``--new-capability``). A family gate does not go through dispatch admission,
 so it runs on any card; only the route and licence legs need the ledgers to admit the card.
 ``check`` refuses a gate stage on a capability a table does not admit unless the flag says the
 capability is new (one the ledgers hold no live record for: an H200 at 9.0), refuses the flag
@@ -69,12 +70,12 @@ once the bind has added the capability's records. A new capability runs chunked
 (``chunks.py partition --capability 9.0 --new-device``), so every root it writes carries its
 device; its licence lands in ``<licence campaign>_cc<capability>`` as every capability's does.
 
-THE TRITON H->D INPUTS. The ten Triton H->D lifts also join their rows to a census and a
+The Triton H->D inputs. The ten Triton H->D lifts also join their rows to a census and a
 seam record under ``parity/meep_gpu/results`` (each gate's ``CENSUS`` and ``SEAM_RECORD``,
-read from its source by :func:`triton_hd_inputs`), which a checkout does not carry; ``check``
-refuses a gate stage on which either is absent or lacks a file the lift reads
-(:data:`TRITON_HD_INPUT_FILES`). Measured on the 1.0 round: with the census absent the first
-such leg ran every device leg and then stopped at its lift, 113 s into a 3,052 s leg.
+read from its source by :func:`triton_hd_inputs`), which a checkout does not carry;
+``check`` refuses a gate stage on which either is absent or lacks a file the lift reads
+(:data:`TRITON_HD_INPUT_FILES`). Measured in the 1.0 certification round: with the census
+absent the first such leg ran every device leg and then stopped at its lift, 113 s into a 3,052 s leg.
 
 usage:
   legs.py check     --repo R [--capability 8.6] [--new-capability] [--route]
@@ -95,9 +96,10 @@ import hashlib
 import importlib.machinery
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 HERE = Path(__file__).resolve().parent
 
@@ -111,9 +113,9 @@ LEAD_CASE = "pml_2d"
 #: (subdirectory, leg template with @P@, "file"|"dir", expected seconds keep, flush,
 #:  script, args...).
 #:
-#: EXPECTED SECONDS ARE MEASURED, for this table, CUDA_RESIDUE and CUDA_ADE_EXPECT: each
-#: leg's wall in the 1.0 round's CERT-3 NVIDIA (stamp 2026-10-11_10, frozen commit
-#: 2b75bef8; one RTX A6000 per lane, two CUDA campaigns beside the two Triton core
+#: Expected seconds are measured, for this table, CUDA_RESIDUE and CUDA_ADE_EXPECT: each
+#: leg's wall in the 1.0 certification round's CERT-3 NVIDIA (stamp 2026-10-11_10, frozen
+#: commit 2b75bef8; one RTX A6000 per lane, two CUDA campaigns beside the two Triton core
 #: lanes, a host other jobs loaded), rounded up. The 0.9.2 walls they replace priced the
 #: CUDA work at 22,006 s against 29,843 s measured, so the planner gave the CUDA lanes
 #: too much and two Triton lanes sat idle for about two hours. A price is RAISED above its
@@ -195,7 +197,7 @@ CUDA_CITED: Tuple[tuple, ...] = (
      "gate_cuda_complex_offdiag_stencil_welds.py"),
 )
 
-#: The residue lane: (subdirectory, wrap the flush leg in meep_host_import.py, peak
+#: The ``residue`` legs: (subdirectory, wrap the flush leg in meep_host_import.py, peak
 #: processes, expected keep, flush, script, args with @P@/@HOST@). @HOST@ is
 #: --import-meep-for-host-policy on a flush leg that is not wrapped, dropped otherwise.
 CUDA_RESIDUE: Tuple[tuple, ...] = (
@@ -291,9 +293,9 @@ TRITON_COMPOSITION_KEYS = ("cylindrical_composition_gate", "symmetry_composition
 TRITON_STENCIL = ["offdiag_fused_electric_pair", "folded_offdiag_fused_electric_pair"]
 TRITON_BITID_EXPERIMENTS = ("pml,multistep,constitutive,constitutive_multistep,fused_pair,"
                             "fused_pair_multistep,wholestep")
-#: Expected seconds per gate: MEASURED, the mean of the gate's keep and flush walls in the
-#: 1.0 round's CERT-3 NVIDIA (stamp 2026-10-11_10, frozen commit 2b75bef8; one RTX A6000
-#: per lane, the fleet driver running one gate at a time, every leg released), rounded
+#: Expected seconds per gate: measured, the mean of the gate's keep and flush walls in the
+#: 1.0 certification round's CERT-3 NVIDIA (stamp 2026-10-11_10, frozen commit 2b75bef8;
+#: one RTX A6000 per lane, the fleet driver running one gate at a time, every leg released), rounded
 #: up. One number prices both policies: the two walls differ by noise, not by policy
 #: (over the 61 gates, log(flush/keep) in CERT-3 and in the final pre-certification pass
 #: correlate at 0.10 and agree in sign for 33), so the larger of the two would only add
@@ -342,7 +344,7 @@ TRITON_EXPECT: Dict[str, int] = {
 TRITON_HAND_EXPECT = {"bit_identity": 924, "stencil_offdiag_fused_electric_pair": 597,
                       "stencil_folded_offdiag_fused_electric_pair": 731}
 
-#: THE TEN TRITON H->D GATES (``gate_triton_<gate>.py``), the update_H -> step_D fused
+#: The ten Triton H->D gates (``gate_triton_<gate>.py``), the update_H -> step_D fused
 #: pairs. ``INSTALLABLE`` is False on all ten, so no route leg dispatches them and no
 #: ledger welds them; the Triton board credits their seam-instances only through
 #: ``build_triton_fusion_matrix.GATE_BOUND``, which re-hashes each gate's artifact against
@@ -353,7 +355,7 @@ TRITON_HAND_EXPECT = {"bit_identity": 924, "stencil_offdiag_fused_electric_pair"
 #: NOT fleet gates: ``drive_triton_weld_gates.GATES`` is the weld fleet the Triton rebind
 #: and the composition policy read, and these gates weld nothing.
 #:
-#: UNDER KEEP ONLY (:data:`TRITON_HD_POLICIES`). The board binds the keep run (one policy
+#: Under keep only (:data:`TRITON_HD_POLICIES`). The board binds the keep run (one policy
 #: per process), and nothing dispatches these products, so no flush evidence is owed; a
 #: flush run is a second policy of the same measurement, added here when it is wanted.
 TRITON_HD = ("fused_hd_pair", "folded_fused_hd_pair", "complex_fused_hd_pair",
@@ -363,13 +365,13 @@ TRITON_HD = ("fused_hd_pair", "folded_fused_hd_pair", "complex_fused_hd_pair",
              "nonlinear_fused_hd_pair")
 TRITON_HD_POLICIES: Tuple[str, ...] = ("keep",)
 TRITON_HD_LIFT_TIMEOUT = 3600
-#: Expected seconds per H->D gate (keep): MEASURED, each gate's wall in the 1.0
-#: pre-certification pass (2026-10-10, series entries 01 to 105; the ten gates in two
+#: Expected seconds per H->D gate (keep): measured, each gate's wall in the 1.0
+#: pre-certification pass (2026-10-10, on that day's development tree; the ten gates in two
 #: streams of five on ONE RTX A6000, beside that pass's seven other streams on the same
-#: card, every gate released), rounded up. Seven were measured again on the frozen tree of the 1.0 round
-#: (2026-10-12, tree 729b161c, two streams on one card, every one released): fused 1,315 s,
-#: folded 1,363, complex 482, folded_complex 206, beta_complex 173, conductive_bfast 127,
-#: beta_real 100 -- 0.21 to 0.43 of the walls here. The price is the larger of the two, so
+#: card, every gate released), rounded up. Seven were measured again on the frozen tree of
+#: the 1.0 certification round (2026-10-12, tree 729b161c, two streams on one card, every
+#: one released): fused 1,315 s, folded 1,363, complex 482, folded_complex 206, beta_complex
+#: 173, conductive_bfast 127, beta_real 100 -- 0.21 to 0.43 of the walls here. The price is the larger of the two, so
 #: the step watchdog, max(1,800 s, 4 x expect_s), is at least 4x every wall measured; the
 #: planner over-packs these units by the difference until the round measures them one gate
 #: at a time on a card.
@@ -388,8 +390,8 @@ CUDA_PRE_ALONE = "pml_2d,folded_2d,pml_3d,offdiag_2d,folded_offdiag_dispersive2_
 #: (leg, cache kind, expected s, args...). "keep" caches are minted by
 #: the package; "plain" is the flush leg's.
 #:
-#: EXPECTED SECONDS ARE MEASURED: each leg's wall in the 1.0 final pre-certification pass
-#: (2026-10-10, series entries 01 to 111, tree b676c5f5; every route and licence leg on
+#: Expected seconds are measured: each leg's wall in the 1.0 final pre-certification pass
+#: (2026-10-10, development tree b676c5f5; every route and licence leg on
 #: ONE RTX A6000 shared by three CUDA route lanes, two Triton route lanes and the Triton
 #: hand lane, under the round's own run_lane.py step code), rounded up. The two flush
 #: legs ran before the bind (every case refused by policy, so neither released); the round
@@ -428,7 +430,7 @@ ROUTE_REQUIRED = {
     "cuda": ("cuda_shipped", "cuda_harness_keep", "cuda_flush", "cuda_default_precedence"),
     "triton": ("shipped", "harness_keep", "flush"),
 }
-#: The end-to-end licence's three legs, MEASURED in the same pass the same way.
+#: The end-to-end licence's three legs, measured in the same pass the same way.
 E2E_EXPECT = {"preflight": 61, "ship": 377, "null": 305}
 
 #: The argument every CUDA H->D leg passes that LIFTS MEEP corpus rows (its lift leg).
@@ -458,11 +460,11 @@ SIBLINGS_MISSING = ("names no corpus siblings (\"siblings\": the files outside p
 #: (``importlib.machinery.all_suffixes()``: source, byte code, extension modules). Byte
 #: code inside ``__pycache__`` is a cache of a listed source and is not read here.
 CORPUS_REFUSED_EXTRAS = tuple(sorted(set(importlib.machinery.all_suffixes())))
-#: THE TRITON LAUNCHER'S TOOLCHAIN. Triton compiles a C launcher for each kernel signature
+#: The Triton launcher's toolchain. Triton compiles a C launcher for each kernel signature
 #: it first runs (``triton/runtime/build.py``, ``_build``) with ``$CC``, else the first
 #: ``gcc`` on ``PATH``, else ``clang``, and links it ``-lcuda`` from ``$TRITON_LIBCUDA_PATH``,
 #: else from the directory of the dynamic linker's ``libcuda.so.1``, where a driver installs
-#: no ``libcuda.so``. MEASURED on the GPU host in the linux-64 reference environment with
+#: no ``libcuda.so``. Measured on the GPU host in the linux-64 reference environment with
 #: ``CC`` unset: the host's ``/usr/bin/gcc`` compiled the launcher, a compiler outside the
 #: environment, and with ``PATH`` holding the environment alone Triton refused ("Failed to
 #: find C compiler"). The environment carries its own compiler under this name (no plain
@@ -758,7 +760,7 @@ def launcher_toolchain(prefix: Optional[str], environ: Dict[str, str],
                 f"the reference environment {prefix} has no C compiler at {compiler}: "
                 f"Triton compiles its kernel launchers with $CC, else the host's gcc, which "
                 f"is outside the environment; rebuild the environment "
-                f"(parity/meep_gpu/build_meep_133_linux.sh) or set CC")
+                f"(parity/meep_gpu/build_meep_reference_linux.sh) or set CC")
     if not out["libcuda"]:
         path = record_dir / LIBCUDA_RECORD
         try:
@@ -837,14 +839,14 @@ def corpus_problems(steps: Sequence[Dict[str, Any]], root: Optional[str],
     out = [f"{legs_named} and the MEEP corpus does not verify: {problem}"
            for problem in record_problems]
     if not root:
-        return out or [f"{legs_named} and no corpus is named: pass --corpus-root <MEEP 1.33.0 "
+        return out or [f"{legs_named} and no corpus is named: pass --corpus-root <MEEP 1.35.0 "
                        f"source>/python (the root the round exports as {CORPUS_VARIABLE}, "
                        f"holding examples/tests); without it every lift refuses"]
     missing = [name for name in CORPUS_DIRECTORIES if not (Path(root) / name).is_dir()]
     if not missing:
         return out
     return out + [f"{legs_named} and the corpus root {root} has no {'/'.join(missing)} "
-                  f"directory: pass --corpus-root <MEEP 1.33.0 source>/python (the root the "
+                  f"directory: pass --corpus-root <MEEP 1.35.0 source>/python (the root the "
                   f"round exports as {CORPUS_VARIABLE}, holding examples/tests); without it "
                   f"every lift refuses"]
 
@@ -1022,7 +1024,7 @@ def triton_units(policies: Sequence[str] = ("keep", "flush")) -> List[Dict[str, 
     ``cylindrical_complex_composition``), shard B (its ``_env_probe`` root, the 0.9.2
     shard name), shard C (``_offdiag_probe``), the composition shard D (after its staged
     manifest), the two stencil welds and the bit identity. Every step writes a fresh
-    root; ``_flush`` roots are R13's second policy (``rebind_triton_welds.py
+    root; ``_flush`` roots hold the flush baseline's runs (``rebind_triton_welds.py
     --flush-campaign``). The H->D units are hand legs into ``triton_<gate>_<stamp>``
     (:func:`triton_hd_steps`).
     """
@@ -1165,7 +1167,7 @@ def licence_directory(licence_campaign: str, capability: str) -> str:
 def route_campaign_names(capability: str) -> Tuple[Dict[str, Any], List[str]]:
     """``(facts, problems)``: the round's NVIDIA route campaigns and licence, by name.
 
-    THE NAMES ARE THE REGISTRY'S (``meep_gpu/route_stamps.py``), read from the checkout
+    The names are the registry's (``meep_gpu/route_stamps.py``), read from the checkout
     :func:`check` put first on the path, and a name it refuses is a problem: the stamp
     still the placeholder the freeze replaces (``route_stamp_is_unset``), or a campaign
     that has already run (``route_campaign_is_spent``). The licence directory is the
@@ -1197,7 +1199,7 @@ def check(repo: Path, capability: Optional[str], route: bool, *,
     fleet gate the round does not run, or one it runs that the fleet driver does not know,
     or an H->D gate the fleet driver also runs; composition re-cut keys
     (:data:`TRITON_COMPOSITION_KEYS`) other than the ones ``recut_composition_records.LEGS``
-    covers the composition step's legs with; the flush licence absent (R13);
+    covers the composition step's legs with; the flush dispatch licence absent;
     for the route stage, a route campaign name ``meep_gpu/route_stamps.py`` refuses (the
     stamp unset, or a campaign that has already run; a gate stage records it in the facts
     and goes on); a route leg list that differs from
@@ -1285,7 +1287,7 @@ def check(repo: Path, capability: Optional[str], route: bool, *,
         facts["round_gates"] = len(wanted)
         unrun = sorted(set(fleet.GATES) - wanted)
         if unrun:
-            problems.append(f"the fleet driver carries gates this round does not run: {unrun}")
+            problems.append(f"the fleet driver carries gates the round does not run: {unrun}")
         in_fleet = sorted(set(TRITON_HD) & set(fleet.GATES))
         if in_fleet:
             problems.append(f"the H->D gates {in_fleet} are fleet gates in this checkout; the "
@@ -1308,15 +1310,15 @@ def check(repo: Path, capability: Optional[str], route: bool, *,
                                       and "flush" in admitted.get(fastpath.CUDA_TABLE, ()))
         if not facts["flush_licence"]:
             problems.append("fastpath.TABLE_DISPATCH_POLICIES does not admit flush on both "
-                            "NVIDIA tables: CP-licence.patch is not in this checkout, so the "
-                            "flush route legs would refuse at rung 8b (R13)")
+                            "NVIDIA tables: the flush dispatch licence is not in this checkout, "
+                            "so the flush route legs would refuse at rung 8b")
         import recut_driver_dispatch_record as recut  # noqa: PLC0415
         for table in ("triton", "cuda"):
             required = tuple(sorted(recut.BACKENDS[table]["required_legs"]))
             ours = tuple(sorted(ROUTE_REQUIRED[table]))
             if required != ours:
                 problems.append(f"the {table} route legs the recut requires are {required}; "
-                                f"this round runs {ours}")
+                                f"the round runs {ours}")
         if tuple(recut.BACKENDS["cuda"].get("optional_legs", ())) != ("cuda_alone",):
             problems.append(f"the CUDA optional legs are "
                             f"{recut.BACKENDS['cuda'].get('optional_legs')}, not cuda_alone")
@@ -1332,7 +1334,7 @@ def check(repo: Path, capability: Optional[str], route: bool, *,
         facts["capability_mode"] = "new" if new_capability else "certified"
         if new_capability and not capability:
             problems.append("--new-capability names no capability: pass --capability")
-        # A CAPABILITY IS SPELLED major.minor OR REFUSED BY NAME, before any table or
+        # A capability is spelled major.minor or refused by name, before any table or
         # registry reads it: a typo is never a new capability.
         try:
             spelled = bool(capability) and bool(capability_device(capability))
@@ -1353,7 +1355,7 @@ def check(repo: Path, capability: Optional[str], route: bool, *,
                         f"{list(listed)}" + ("" if route else
                                              "; a capability the ledgers hold no live record "
                                              "for is gated with --new-capability"))
-            # A NEW CAPABILITY IS SAID, NEVER INFERRED. The gate stage runs on any card,
+            # A new capability is said, never inferred. The gate stage runs on any card,
             # because no family gate goes through admission; the flag is what lets it run on
             # one the ledgers do not admit, and it is refused where it would be untrue.
             if new_capability and route:
@@ -1364,9 +1366,13 @@ def check(repo: Path, capability: Optional[str], route: bool, *,
                 problems.append(f"--new-capability: both NVIDIA tables already admit "
                                 f"{capability}; it is a certified capability, so run "
                                 f"without the flag")
-            # THE ROUTE STAGE STOPS ON A NAME THE REGISTRY REFUSES; a gate stage only
+            # The route stage stops on a name the registry refuses; a gate stage only
             # records it. The stamp edit moves a file no gate holds, so gates may run
             # before the freeze sets it, and their roots carry the round's own stamp.
+            if route and python:
+                stack_problems, block = route_stack_problems(repo, capability, python)
+                problems.extend(stack_problems)
+                facts["route_stack"] = block
             named, refusals = route_campaign_names(capability)
             facts.update(named)
             facts["licence_directory"] = licence_directory(named["licence_campaign"],
@@ -1381,6 +1387,59 @@ def check(repo: Path, capability: Optional[str], route: bool, *,
             problems.append(f"{name} is set; the route gate refuses a leg when it is "
                             "exported at all")
     return problems, facts
+
+
+#: Read, in the round's gate interpreter, the NVIDIA stack the route stage would run beside
+#: and rung 4c's verdict on it for the route's capability: the verdict the admitted-policy
+#: legs meet under ``MEEP_GPU_HARDWARE=certified`` (``fastpath.certified_stack_refusal``).
+#: Reads versions only: it opens no CUDA context.
+ROUTE_STACK_CHECK = r'''
+import json, sys
+repo, capability = sys.argv[1], sys.argv[2]
+sys.path.insert(0, repo)
+import cupy, meep
+from meep_gpu import fastpath
+block = fastpath.nvidia_stack_block(cupy, capability)
+print("ROUTE STACK " + json.dumps({"block": block,
+                                   "refusal": fastpath.certified_stack_refusal(block)},
+                                  sort_keys=True), flush=True)
+'''
+ROUTE_STACK_LINE = "ROUTE STACK "
+
+
+def route_stack_problems(repo: Path, capability: str, python: str,
+                         run: Callable[..., Any] = subprocess.run
+                         ) -> Tuple[List[str], Optional[Dict[str, Any]]]:
+    """Why the route stage's admitted-policy legs could not dispatch beside this host's stack.
+
+    Those legs run under ``MEEP_GPU_HARDWARE=certified`` and must dispatch a case, and rung
+    4c refuses every plan whose stack is not the one ``capability`` was certified on; a leg
+    that ran has used its one-shot name, so the stage asks first. Returns the problems and
+    the stack block read (``None`` when it could not be read, which is a problem too).
+    """
+    try:
+        done = run([python, "-I", "-c", ROUTE_STACK_CHECK, str(repo), capability],
+                   capture_output=True, text=True, timeout=600)
+    except (OSError, subprocess.SubprocessError) as exc:
+        return [f"the stack the route would run beside could not be read with {python}: "
+                f"{exc!r}"], None
+    lines = [line for line in (done.stdout or "").splitlines()
+             if line.startswith(ROUTE_STACK_LINE)]
+    if done.returncode != 0 or not lines:
+        tail = ((done.stderr or "") + (done.stdout or "")).strip().splitlines()[-1:]
+        return [f"the stack the route would run beside could not be read with {python} "
+                f"(exit {done.returncode}): {' '.join(tail) or 'no output'}"], None
+    try:
+        read = json.loads(lines[-1][len(ROUTE_STACK_LINE):])
+    except ValueError as exc:
+        return [f"the stack the route would run beside was printed unreadably: {exc}"], None
+    if read.get("refusal"):
+        return [f"the route's admitted-policy legs run under MEEP_GPU_HARDWARE=certified, "
+                f"which would refuse every case on this host: {read['refusal']}; the route "
+                f"runs beside the stack compute capability {capability} was certified on, "
+                f"which the bind records from the gate lanes (record_nvidia_stack.py)"
+                ], read.get("block")
+    return [], read.get("block")
 
 
 #: Why a new capability's gate stage runs chunked: an unchunked stamp carries no device, so
@@ -1419,8 +1478,8 @@ def index_device_problems(index: Dict[str, Any], capability: Optional[str],
 def hygiene_problems(repo: Path, legs: Sequence[str]) -> List[str]:
     """The hygiene guard's hits on ``repo``, one problem per leg that has any.
 
-    Owner ruling R22: a host name, account name, local path or personal e-mail address
-    in a certified byte cannot be scrubbed at export, so the round refuses to start on a
+    A host name, account name, local path or personal e-mail address in a certified
+    byte cannot be scrubbed at export, so the round refuses to start on a
     checkout whose tracked files or board subject hold one (CERT-1), and refuses the
     route stage while the ledgers the bind wrote hold one: the bind tools write neutral
     labels, and ``neutralize_ledger_labels.py`` rewrites what an earlier bind left.
@@ -1446,8 +1505,8 @@ def hygiene_problems(repo: Path, legs: Sequence[str]) -> List[str]:
 
 
 #: The files a route stage may find changed in the frozen checkout: the ledgers the
-#: bind wrote after the gates (copied in uncommitted, as the 0.9.2 per-architecture
-#: Metal round did), because the flush route legs dispatch only on the
+#: bind wrote after the gates (copied in uncommitted, as the 0.9.2 per-architecture Metal
+#: certification round did), because the flush route legs dispatch only on the
 #: ``certified_policies`` evidence the bind records. Nothing else may differ.
 ROUTE_STAGE_LEDGERS = ("meep_gpu/triton_kernels/fingerprints.json",
                        "meep_gpu/cuda_kernels/fingerprints.json",
@@ -1496,12 +1555,23 @@ def _roots_newest_first(results: Path, name: str) -> List[str]:
     return [f"results/{n}" for n in found] + [f"results/{name}"]
 
 
+def archive_commands(tables: Sequence[str]) -> List[str]:
+    """Filing the ledgers a bind wrote (``ledger_scope.py archive``), run from
+    ``parity/meep_gpu`` after it: the file's digest is its proof and filing is idempotent. The
+    state before the bind is the commit's, which ``test_every_live_ledger_is_archived`` holds
+    archived. A record cut on a state no archive holds compares whole, permanently."""
+    return [f"python ledger_scope.py archive --table {table} "
+            f"../../meep_gpu/{table}_kernels/fingerprints.json" for table in tables]
+
+
 def bind_plan(results: Path, stamp: str, cuda_campaigns: int, *, write: bool) -> List[str]:
     """The ordered commands that bind the round's evidence, for the bind host.
 
     Report mode by default: none of these writes unless ``write`` adds ``--write``
-    (the integrator's call, on the owner's tree). Run from ``parity/meep_gpu`` with
-    the round's result roots under ``results/``. The CUDA campaigns are recorded and
+    (a deliberate step, on the bind host). Run from ``parity/meep_gpu`` with
+    the round's result roots under ``results/``. The certified NVIDIA stack is recorded
+    first (``record_nvidia_stack.py``), so a stack it refuses stops the bind before any
+    other line writes. The CUDA campaigns are recorded and
     rebound one at a time (``record_cuda_regate.py`` and ``rebind_cuda_welds.py`` each
     take one ``--campaign``; the 0.9.2 ledger already binds two campaigns on one
     capability); the Triton keep roots are searched in order with their flush twins
@@ -1514,7 +1584,10 @@ def bind_plan(results: Path, stamp: str, cuda_campaigns: int, *, write: bool) ->
     (``repoint_board_bindings.py``).
     """
     w = " --write" if write else ""
-    out = []
+    # FIRST: the certified NVIDIA stack of the capability the lanes ran on, from the stack
+    # each lane's toolchain step recorded, so a stack the record tool refuses stops the bind
+    # before any line below has written anything (the bind is never run under set -e).
+    out = [f"python record_nvidia_stack.py --stack results/{stack_root(stamp)}{w}"]
     for k in range(cuda_campaigns):
         out.append(f"python record_cuda_regate.py --campaign results/cuda_regate_{stamp}_g{k}{w}")
     for k in range(cuda_campaigns):
@@ -1551,7 +1624,7 @@ def bind_plan(results: Path, stamp: str, cuda_campaigns: int, *, write: bool) ->
 
 #: The 13 files the ADE update_P re-cut manifests BEFORE its legs compile
 #: (``record_cuda_ade_recut.py`` re-hashes them file by file and refuses undeclared
-#: drift); the 0.9.2 residue lane carried the same list.
+#: drift); the 0.9.2 ``residue`` campaign carried the same list.
 ADE_SUBJECTS = (
     "meep_gpu/cuda_kernels/ade_kernels.py", "meep_gpu/cuda_kernels/coverage.py",
     "meep_gpu/cuda_kernels/compile_cache.py", "meep_gpu/cuda_kernels/test_ade_update_p.py",
@@ -1572,10 +1645,18 @@ def estimate(gpus: int, tables: Sequence[str] = ("cuda", "triton")) -> Dict[str,
 
 
 # ---------------------------------------------------------------------------- main ----
+def stack_root(stamp: str) -> str:
+    """Where an unchunked gate stage's lanes record the NVIDIA stack they ran beside, one
+    ``<lane>.json`` each (``run_lane.py``; a chunk records them inside its own root,
+    ``chunks.stack_root``)."""
+    return f"stack_{stamp}"
+
+
 def round_roots(stamp: str, cuda_campaigns: int, capability: Optional[str] = None,
                 facts: Optional[Dict[str, Any]] = None) -> List[str]:
     """Every results root name the round creates for ``stamp`` (one-shot names)."""
     names = [f"cuda_regate_{stamp}_g{k}" for k in range(cuda_campaigns)]
+    names.append(stack_root(stamp))
     names.append(f"cuda_ade_recut_{stamp}")
     for suffix in ("", "_flush"):
         fleet = f"triton_fleet_{stamp}{suffix}"
@@ -1733,13 +1814,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                     print(line, flush=True)
                 return 1
             lines += chunk_tool.records_lines(
-                index, chunk_tool.read_selection(Path(args.selection), index), results)
+                index, chunk_tool.read_selection(Path(args.selection), index), results,
+                selection_path=args.selection)
         elif args.stamp:
             lines = bind_plan(Path(args.results).resolve(), args.stamp, args.cuda_split,
                               write=args.write)
         else:
             ap.error("bind takes --stamp (one round) or --chunks (a chunked round)")
-        for line in lines:
+        for line in lines + archive_commands(("triton", "cuda")):
             print(line, flush=True)
         return 0
     repo, results = Path(args.repo).resolve(), Path(args.results).resolve()

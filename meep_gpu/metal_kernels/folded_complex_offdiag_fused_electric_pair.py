@@ -1,6 +1,6 @@
 """The folded-complex ``step_D`` welded into the complex folded OFF-DIAGONAL E.
 
-THE WIDEST OF THE FOUR STENCIL WELDS — the only cell either board priced over the
+The widest of the four stencil welds — the only cell either board priced over the
 ceiling by SEVEN rather than six, and the one that carries a fold, complex
 storage, an absorber and a Bloch phase table at once. The 2026-09-01 Metal board
 scores it::
@@ -11,15 +11,15 @@ scores it::
         -> 37 pointers, ceiling 30                     UNFUSABLE ON METAL
         verdict: STRUCTURALLY UNFUSABLE ON ANY BACKEND (the stencil)
 
-THE DESIGN IS :mod:`.offdiag_fused_electric_pair`'s, and its docstring is the one
+The design is :mod:`.offdiag_fused_electric_pair`'s, and its docstring is the one
 place that argument lives: scratch outputs, re-derivation from pre-launch state
 through one inline ``step_cell``, the three in-seam passes carried by the closed
-form, and the launcher's post-launch rotation. THE SEAM MACHINERY IS
+form, and the launcher's post-launch rotation. The seam machinery is
 :mod:`.folded_offdiag_fused_electric_pair`'s: both ghost fills are live, so
 :data:`REPLACES` names FIVE driver passes and the three runtime reflect rows ride
 in ``Params`` as ``d_final_c``'s own parameters.
 
-WHAT IS THIS FAMILY'S ALONE:
+What is this family's alone:
 
 * **the parity is a PER-PART PRODUCT at BOTH signs.**
   ``c_mul_coefficient_left(+/-1.0f, z)`` is the array path's
@@ -47,7 +47,7 @@ folded_offdiag` packs it). The scalars ride in ``Params``; ``ph`` stays its own
   pointer, because it is a device VECTOR and the coefficient pack takes
   ``float`` members only.
 
-THE BINDING COUNT. Unpacked and unshared the signature needs 43 pointers. The
+The binding count. Unpacked and unshared the signature needs 43 pointers. The
 twelve per-axis ``float`` coefficient vectors ride ``cpack`` (-11) and the nine
 read-only material volumes ``mpack`` (-8), leaving 24 pointers plus ``Params`` —
 :data:`PACKED_BINDINGS` = 25, the widest shipped stencil weld and six under the
@@ -60,14 +60,14 @@ bindings against a ceiling of 31, which the gate compiles and REQUIRES to fail.
 CARRIES_DEPOSIT_REPAIR IS FALSE and is forced by the off-diagonal constitutive,
 as on all four. That is the distance between this cell's 3 rows and its 1.
 
-THE PER-CHUNK FORMS AND THE DOUBLE ROW are the real twins' (:mod:`.offdiag_fused_\
+The per-chunk forms and the double row are the real twins' (:mod:`.offdiag_fused_\
 electric_pair`): the presence words and then the record ride in ``Params`` after the
 reflect rows, ``step_cell`` takes the record and evaluates the curl's select at the
 cell it steps, the auxiliary store guard moves to the register, and the
 constitutive half is :mod:`.complex_folded_offdiag_update_e`'s per-part software
-binary64 row (ruling R7) with its Bloch connections, per-chunk tail and all.
+binary64 row with its Bloch connections, per-chunk tail and all.
 
-NOT WIRED AS AN ARM; reached through ``launch.FUSED_PAIR_ARMS``.
+Not wired as an arm; reached through ``launch.FUSED_PAIR_ARMS``.
 """
 
 # Derived from MEEP (https://github.com/NanoComp/meep).
@@ -593,7 +593,7 @@ def plan_metal_folded_complex_offdiag_fused_electric_pair(
                 for name in SUB_STEPS["step_D"]["sources"]]
     volumes.extend(SUB_STEPS["step_D"]["sources"])
 
-    # THE CONSTITUTIVE'S PHASE VECTOR, packed on the host exactly as the certified
+    # The constitutive's phase vector, packed on the host exactly as the certified
     # plan packs it: the DOWN triple then the UP triple, one complex64 each.
     phase_pack = np.asarray([complex(real, imag) for real, imag in (*down, *up)],
                             dtype=np.complex64)

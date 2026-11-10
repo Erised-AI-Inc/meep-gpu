@@ -1,6 +1,6 @@
 """The checked precondition every Metal claim is made subject to.
 
-THE CLAIM SHAPE, and it is the whole reason this module exists: **byte-identity to
+The claim shape, and it is the whole reason this module exists: **byte-identity to
 ``stepping.py`` subject to a CHECKED subnormal-free precondition** — never a stated
 tolerance and never an ASSUMED precondition. On MPS the float32 subnormal flush is
 NATIVE and has no lever (:mod:`.subnormal`), so anything whose operand, result or
@@ -15,20 +15,20 @@ measured cliff, from scaling a whole field state and re-running one kernel:
 
 Three decades of headroom, then total divergence. A CLIFF, not a tolerance.
 
-REACHABILITY WAS MEASURED, NOT ARGUED: a 3-D pulsed Gaussian in a PML box, 1,201
+Reachability was measured, not argued: a 3-D pulsed Gaussian in a PML box, 1,201
 steps, censused every 25 across all twelve field arrays and 1.5M nonzero cells,
 produced ZERO subnormal cells; the smallest nonzero magnitude bottoms at ~3e-19 and
 HOLDS — the tail decays to the float32 round-off floor and stops rather than
 descending into the band. A CW control agreed. That measurement is why the
 precondition is expected to hold; it is NOT why it is trusted. It is checked.
 
-WHY THIS IS A MODULE AND NOT A GATE LEG. The census lived in ``subnormal.py`` and
+Why this is a module and not a gate leg. The census lived in ``subnormal.py`` and
 the WINDOW logic lived inline in one gate's leg 6, with no window concept at all.
 Seven gates asking the same question seven different ways is exactly how a family
 arrives green having censused nothing, so the window, its floors and its refusal are
 one implementation here and every gate imports it.
 
-THE INTERMEDIATE HOOK IS NOT SPECULATIVE. The census must cover RESULTS, not only
+The intermediate hook is not speculative. The census must cover RESULTS, not only
 operands — measured: on the 1e-38 control the curl's OUTPUT subnormal count (6432)
 is nearly double its INPUT count (3233), so the kernel PRODUCES subnormals it was
 not given. And one queued family reaches the band by construction rather than by
@@ -182,7 +182,7 @@ class SubnormalWindow:
 def assert_clean_or_refuse(window: SubnormalWindow, context: str) -> Dict[str, Any]:
     """The precondition, enforced. Returns the report; raises on a failure.
 
-    TWO WAYS TO FAIL AND BOTH ARE FAILURES:
+    Two ways to fail and both are failures:
 
     * the census FIRED — an operand, result or intermediate is in the band, so the
       byte-identity claim does not hold for this case and the gate REFUSES it. Not a
@@ -220,7 +220,7 @@ def demonstrate_firing(window: SubnormalWindow, context: str) -> Dict[str, Any]:
                              f"{report['vacuity_reasons']}")
     if report["clean"]:
         raise AssertionError(
-            f"{context}: the census DID NOT FIRE on the control. A precondition "
+            f"{context}: the census did not fire on the control. A precondition "
             f"never demonstrated to fire is decorative, and this control exists to "
             f"demonstrate it")
     return report
@@ -237,9 +237,9 @@ def nonlinear_intermediate_reasons(chi_volumes: Sequence[Any], chi1inv: Sequence
     product that can cross is the one the kernel forms. Returns refusal reasons, so
     a plan builder can fold them into its coverage verdict by name.
 
-    THE BOUND IS CARRIED WITH ITS PROVENANCE (:data:`NONLINEAR_BOUND_PROVENANCE`)
+    The bound is carried with its provenance (:data:`NONLINEAR_BOUND_PROVENANCE`)
     and is not yet a Metal measurement. A family that uses this must re-measure the
-    crossing THROUGH THE SHADER before its gate is cut.
+    crossing through the shader before its gate is cut.
     """
     import numpy as np  # noqa: PLC0415
 

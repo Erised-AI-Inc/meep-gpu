@@ -1,6 +1,6 @@
 {
  "about": "Outcomes of the test files in one recorded run, written only by build_parity_board.py outcomes. The board refuses it once the tree no longer hashes to its subject.",
- "cases": 12137,
+ "cases": 12214,
  "cases_without_a_test_file": 0,
  "files": {
   "meep_gpu/cuda_kernels/test_ade_strings_parse_cache.py": {
@@ -189,7 +189,7 @@
   },
   "meep_gpu/cuda_kernels/test_dispersive_offdiag_polarization_pair.py": {
    "failed": [],
-   "passed": 25,
+   "passed": 28,
    "skipped": 0
   },
   "meep_gpu/cuda_kernels/test_dispersive_offdiag_update_e.py": {
@@ -255,8 +255,10 @@
    "skipped": 0
   },
   "meep_gpu/cuda_kernels/test_in_seam_passes.py": {
-   "failed": [],
-   "passed": 291,
+   "failed": [
+    "meep_gpu.cuda_kernels.test_in_seam_passes::test_a_module_that_has_drifted_from_the_gated_bytes_declares_the_edit"
+   ],
+   "passed": 290,
    "skipped": 1
   },
   "meep_gpu/cuda_kernels/test_kernel_partition.py": {
@@ -524,6 +526,11 @@
    "passed": 19,
    "skipped": 4
   },
+  "meep_gpu/test_metal_deposit_arguments.py": {
+   "failed": [],
+   "passed": 29,
+   "skipped": 0
+  },
   "meep_gpu/test_metal_dispatch.py": {
    "failed": [],
    "passed": 37,
@@ -635,8 +642,10 @@
    "skipped": 0
   },
   "meep_gpu/test_metal_kernels.py": {
-   "failed": [],
-   "passed": 63,
+   "failed": [
+    "meep_gpu.test_metal_kernels::test_the_checked_in_fingerprints_match_the_tree"
+   ],
+   "passed": 62,
    "skipped": 0
   },
   "meep_gpu/test_metal_no_pml_conductive.py": {
@@ -684,6 +693,11 @@
    "passed": 117,
    "skipped": 36
   },
+  "meep_gpu/test_metal_read_ahead.py": {
+   "failed": [],
+   "passed": 28,
+   "skipped": 0
+  },
   "meep_gpu/test_metal_residency_barrier.py": {
    "failed": [],
    "passed": 14,
@@ -730,8 +744,14 @@
    "skipped": 0
   },
   "meep_gpu/test_metal_weld_contract.py": {
-   "failed": [],
-   "passed": 26,
+   "failed": [
+    "meep_gpu.test_metal_weld_contract::test_no_entry_backfills_a_code_digest_beside_a_stale_source_digest",
+    "meep_gpu.test_metal_weld_contract::test_the_dispatch_record_stands_on_a_live_passing_route_run",
+    "meep_gpu.test_metal_weld_contract::test_the_metal_code_tier_recomputes_against_the_tree",
+    "meep_gpu.test_metal_weld_contract::test_the_metal_device_tier_recomputes_against_the_tree",
+    "meep_gpu.test_metal_weld_contract::test_the_metal_welds_are_bound_to_the_live_sources"
+   ],
+   "passed": 21,
    "skipped": 0
   },
   "meep_gpu/test_triton_beta_fused_electric_pair.py": {
@@ -785,8 +805,10 @@
    "skipped": 9
   },
   "meep_gpu/test_triton_complex_conductive_fused_pair.py": {
-   "failed": [],
-   "passed": 24,
+   "failed": [
+    "meep_gpu.test_triton_complex_conductive_fused_pair::test_the_module_is_welded_to_the_bytes_its_gate_executed"
+   ],
+   "passed": 23,
    "skipped": 0
   },
   "meep_gpu/test_triton_complex_fields.py": {
@@ -810,8 +832,10 @@
    "skipped": 3
   },
   "meep_gpu/test_triton_complex_fused_magnetic_pair.py": {
-   "failed": [],
-   "passed": 19,
+   "failed": [
+    "meep_gpu.test_triton_complex_fused_magnetic_pair::test_this_module_is_welded_and_the_weld_describes_the_shipped_bytes"
+   ],
+   "passed": 18,
    "skipped": 11
   },
   "meep_gpu/test_triton_complex_no_pml_conductive.py": {
@@ -857,8 +881,10 @@
    "skipped": 0
   },
   "meep_gpu/test_triton_cylindrical_composition.py": {
-   "failed": [],
-   "passed": 6,
+   "failed": [
+    "meep_gpu.test_triton_cylindrical_composition::test_cylindrical_composition_provenance_welds_the_live_central_seam"
+   ],
+   "passed": 5,
    "skipped": 0
   },
   "meep_gpu/test_triton_cylindrical_fused_electric_pair.py": {
@@ -889,8 +915,10 @@
    "skipped": 1
   },
   "meep_gpu/test_triton_cylindrical_real_fused_magnetic_pair.py": {
-   "failed": [],
-   "passed": 27,
+   "failed": [
+    "meep_gpu.test_triton_cylindrical_real_fused_magnetic_pair::test_the_module_claims_identity_ONLY_through_the_weld_that_measured_it"
+   ],
+   "passed": 26,
    "skipped": 4
   },
   "meep_gpu/test_triton_device_identity.py": {
@@ -913,8 +941,10 @@
    "skipped": 0
   },
   "meep_gpu/test_triton_folded_beta_complex_fused_magnetic_pair.py": {
-   "failed": [],
-   "passed": 43,
+   "failed": [
+    "meep_gpu.test_triton_folded_beta_complex_fused_magnetic_pair::test_the_module_claims_identity_ONLY_through_the_run_that_measured_it"
+   ],
+   "passed": 42,
    "skipped": 0
   },
   "meep_gpu/test_triton_folded_beta_complex_fused_pair.py": {
@@ -968,13 +998,17 @@
    "skipped": 4
   },
   "meep_gpu/test_triton_folded_fused_magnetic_pair.py": {
-   "failed": [],
-   "passed": 41,
+   "failed": [
+    "meep_gpu.test_triton_folded_fused_magnetic_pair::test_the_module_claims_identity_ONLY_through_the_weld_that_measured_it"
+   ],
+   "passed": 40,
    "skipped": 0
   },
   "meep_gpu/test_triton_folded_fused_pair.py": {
-   "failed": [],
-   "passed": 44,
+   "failed": [
+    "meep_gpu.test_triton_folded_fused_pair::test_the_module_claims_identity_ONLY_through_the_weld_that_measured_it"
+   ],
+   "passed": 43,
    "skipped": 2
   },
   "meep_gpu/test_triton_folded_offdiag_dispersive_update_e.py": {
@@ -1026,10 +1060,11 @@
   },
   "meep_gpu/test_triton_kernels.py": {
    "failed": [
+    "meep_gpu.test_triton_kernels::test_the_fingerprint_record_matches_the_shipped_host_side",
     "meep_gpu.test_triton_kernels::test_the_fingerprint_record_matches_the_shipped_kernel_source",
     "meep_gpu.test_triton_kernels::test_the_fused_electric_record_is_welded_to_both_oracles_and_the_route"
    ],
-   "passed": 92,
+   "passed": 108,
    "skipped": 0
   },
   "meep_gpu/test_triton_no_pml.py": {
@@ -1086,8 +1121,10 @@
    "skipped": 1
   },
   "meep_gpu/test_triton_planner_composition.py": {
-   "failed": [],
-   "passed": 276,
+   "failed": [
+    "meep_gpu.test_triton_planner_composition::test_every_drifted_host_file_is_named_in_the_pending_recut_record"
+   ],
+   "passed": 275,
    "skipped": 0
   },
   "meep_gpu/test_triton_residual_group_wiring.py": {
@@ -1116,19 +1153,22 @@
    "skipped": 0
   },
   "meep_gpu/test_triton_symmetry_composition.py": {
-   "failed": [],
-   "passed": 9,
+   "failed": [
+    "meep_gpu.test_triton_symmetry_composition::test_the_symmetry_composition_record_is_welded_to_the_complete_step_seam"
+   ],
+   "passed": 8,
    "skipped": 0
   },
   "meep_gpu/test_triton_weld_contract.py": {
    "failed": [
     "meep_gpu.test_triton_weld_contract::test_no_entry_backfills_a_code_digest_beside_a_stale_source_digest",
+    "meep_gpu.test_triton_weld_contract::test_the_dispatch_record_stands_on_a_live_passing_route_run",
     "meep_gpu.test_triton_weld_contract::test_the_triton_code_tier_recomputes_against_the_tree",
     "meep_gpu.test_triton_weld_contract::test_the_triton_device_tier_recomputes_against_the_tree",
     "meep_gpu.test_triton_weld_contract::test_the_triton_welds_are_bound_to_the_live_sources",
     "meep_gpu.test_triton_weld_contract::test_the_walker_finds_a_digest_planted_at_a_new_nesting_depth"
    ],
-   "passed": 27,
+   "passed": 26,
    "skipped": 0
   }
  },
@@ -1139,19 +1179,19 @@
   "system": "Darwin"
  },
  "note": "carved from one integration's suites: the CUDA and Triton test files' cases of its package suite (CPU-only shim, Apple GPU hidden, SUITE_ENFORCE_SKIPS=0) and the Metal test files' cases of its device run (Apple GPU, no shim), on this tree's outcome subject; every marker; MEEP_GPU_DISPATCH=0",
- "recorded_utc": "2026-10-16T23:19:57Z",
+ "recorded_utc": "2026-10-22T09:31:34Z",
  "reports": [
   {
-   "file": "host_b179.xml",
-   "sha256": "10cc83cdfc64c6262d247ffa716e73edd3446a75d6ea08408c3430a256ebbc31"
+   "file": "host_b228.xml",
+   "sha256": "8fceff57eb83c1addf6b0d5cfef7c2d232a0ae1489fda32acf3fb06b3706d7b2"
   },
   {
-   "file": "device_b179.xml",
-   "sha256": "a3c74140ac5551151599c29601bb21982a18cdb11a1521d1596fe3edf18f8dbf"
+   "file": "device_b228.xml",
+   "sha256": "56a32285e4e9308cb2f2fef788f852d769fbbfbd852251fff05ceba98516bcdd"
   }
  ],
  "schema": "meep_gpu.parity_board_outcomes",
- "subject_files": 1152,
- "subject_manifest_sha256": "5baac1faf50bc87b5bf7466e9bdf0a363b1c13449f94f1314dde96980380ab26",
+ "subject_files": 1179,
+ "subject_manifest_sha256": "a55433ffa16ed09479312ca59efca6d03f93932054c8e24acb781a0b971d8bec",
  "version": 1
 }

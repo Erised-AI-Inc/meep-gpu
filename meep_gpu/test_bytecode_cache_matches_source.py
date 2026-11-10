@@ -1,6 +1,6 @@
 """The package's own bytecode caches must agree with the sources beside them.
 
-WHY THIS EXISTS. On 2026-08-22 a case-only edit to `metal_kernels/complex_fields.py`
+Why this exists. On 2026-08-22 a case-only edit to `metal_kernels/complex_fields.py`
 (`bloch_pml_curl_step` -> `..._STEP` in the Metal entry point) was reverted 14 ms after
 CPython had written the `.pyc`. A timestamp-based pyc header validates on source mtime
 and SIZE; the edit was case-only and therefore size-preserving, and the revert landed
@@ -18,7 +18,7 @@ interaction before anyone compared the RUNTIME constant to a fresh `compile()`. 
 legal specialisations of three shader emitters were affected; 1728 of them have no test
 caller at all.
 
-WHAT IT CHECKS, and what it deliberately does not. Only caches CPython would actually
+What it checks, and what it deliberately does not. Only caches CPython would actually
 SERVE: hash-based pycs verify their own content, and a cache whose header disagrees with
 its source is recompiled on the next import and is harmless. The dangerous set is the one
 whose header agrees while the code does not, which is exactly the shape above.
@@ -88,7 +88,7 @@ def test_no_served_bytecode_cache_disagrees_with_its_source():
             # so five CUDA kernel modules reported a mismatch that did not exist --
             # a false positive that took longer to clear than the defect this test
             # was written for. Compile the source as PYTHON would at import.
-            # AT THE CACHE'S OWN OPTIMISATION LEVEL: an ``.opt-1`` cache has no asserts
+            # At the cache's own optimisation level: an ``.opt-1`` cache has no asserts
             # and an ``.opt-2`` one no docstrings, so a level-0 compile would differ.
             fresh = compile(source.read_text(encoding="utf-8"), str(source), "exec",
                             dont_inherit=True, optimize=_optimisation_level(pyc))

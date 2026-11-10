@@ -1,6 +1,6 @@
 """The COMPLEX-BETA hand-CUDA fused pair: the folded-complex weld plus the beta insert.
 
-THE BOARD'S CELL: ``B_to_H (cuda_complex_beta/complex beta, cuda_complex_beta/
+The board's cell: ``B_to_H (cuda_complex_beta/complex beta, cuda_complex_beta/
 complex beta)`` -- 4 seam-instances of demand, ALL FOUR clearing the source seam
 since the 2026-09-02 flag flip (three D-sourced rows whose magnetic seam is
 empty, plus ``eigsrc_kz_0_complex``, whose lifted eigenmode sheets the deposit
@@ -11,8 +11,8 @@ family was built OVER the folded one). Both halves are CERTIFIED singles as of
 2026-09-01 (``cuda_complex_beta_2026-09-01``; the constitutive is the certified
 complex pair under the beta family's own admission).
 
-ONE LAUNCH PERFORMS THE SAME FIVE DRIVER PASSES as
-:mod:`.complex_folded_fused_magnetic_pair`, THROUGH THE SAME SHARED CARRY
+One launch performs the same five driver passes as
+:mod:`.complex_folded_fused_magnetic_pair`, through the same shared carry
 (:mod:`.complex_fill_carry`), and that sharing is exact rather than analogous:
 ``complex_beta_kernels.beta_source`` IS ``complex_folded_kernels.folded_source`` with
 MEEP's beta pass inserted after the curl of targets 0 and 1 (``folded_pass.
@@ -24,13 +24,13 @@ pass rides through the capture: targets 0 and 1's registers are the values the L
 returns (``cfold_apply_reg``), because the fills and ``update_H`` read B after both
 passes.
 
-WHAT IS DIFFERENT, AND ONLY THIS: the curl body carries the two beta passes and the
+What is different, and only this: the curl body carries the two beta passes and the
 signature carries the two host-rounded beta coefficients (``bp``/``bm``, real float32
 words -- the quarter turn forms no complex coefficient); the predicate conjoins the BETA
 family's two certified predicates, whose beta clause is what keeps this product
 disjoint from the folded pair (that family inherits the certified complex predicate's
 beta refusal) and from every real-storage product (complex64). The chunk record ``cb``
-is decoded ONCE for both halves (bit_parity_0_10 DESIGN.md D10), and the run's first
+is decoded ONCE for both halves, and the run's first
 ``update_H`` starts H from B on the array path.
 """
 
@@ -123,7 +123,7 @@ except ImportError:  # loaded by path, outside the package
 
 
 # =============================================================================
-# THE PARTITION -- EMPTY ON THE CERTIFIED SIDE UNTIL A GATE MOVES IT
+# The partition -- empty on the certified side until a gate moves it
 # =============================================================================
 
 #: Byte-identical with a gate verdict AND a record behind it; empty until the
@@ -140,7 +140,7 @@ CERTIFIED_KERNELS = (
 #: EMPTY since 2026-09-02; what emptied it was the run above, not an argument.
 UNCERTIFIED_KERNELS = {}
 
-#: TRUE, RE-MEASURED 2026-09-02 (fusion-residue audit §1.3): the False that
+#: True, re-measured 2026-09-02: the False that
 #: stood here rested on the premise that the cell's one B-sourced row
 #: (``eigsrc_kz_0_complex``) "deposits through an ``EigenModeSource``, which
 #: publishes no point index" -- and that premise is FALSE of the live tree.
@@ -252,7 +252,7 @@ def _split_emitted(source: str, name: str) -> Tuple[str, str]:
 #: binds them (after the Bloch words). B appears EXACTLY ONCE.
 _SIGNATURE = r'''
 extern "C" __global__ void fused_magnetic_pair_pml_complex_beta(
-    // THE SHARED VOLUME, BOUND ONCE, as the float32 word view of complex64 B.
+    // The shared volume, bound once, as the float32 word view of complex64 B.
     float* __restrict__ f0, float* __restrict__ f1, float* __restrict__ f2,
     float* __restrict__ u0, float* __restrict__ u1, float* __restrict__ u2,
     // E, the curl's operands.
@@ -284,7 +284,7 @@ extern "C" __global__ void fused_magnetic_pair_pml_complex_beta(
     int near_x, int near_y, int near_z,
     int reflect_x, int reflect_y, int reflect_z,
     float phase_x, float phase_y, float phase_z,
-    // THE CHUNK RECORD (chunk_map.chunk_bounds_record), int32[25], decoded once.
+    // The chunk record (chunk_map.chunk_bounds_record), int32[25], decoded once.
     const int* __restrict__ cb
 ) {
 '''
@@ -315,7 +315,7 @@ def complex_beta_fused_magnetic_pair_prelude() -> str:
 #: The chunk-record entries each lifted body decodes and the ONE union block -- the
 #: folded weld's own (the beta curl is the folded curl plus the beta passes).
 def union_bounds_block() -> str:
-    """The fused kernel's ONE chunk-record block (DESIGN.md D10)."""
+    """The fused kernel's ONE chunk-record block, one decode for both halves."""
     from . import complex_folded_fused_magnetic_pair as _folded_pair  # noqa: PLC0415
 
     return _folded_pair.union_bounds_block()
@@ -439,7 +439,7 @@ def covers_complex_beta_fused_magnetic_pair(
     (the certified complex pair under the beta admission) -- plus the seam: the
     source slot and the shared complex fill clauses.
 
-    DISJOINT FROM EVERY SEAM SIBLING: the beta clause partitions it from the
+    Disjoint from every seam sibling: the beta clause partitions it from the
     folded and plain complex pairs (both inherit the certified complex
     predicate's beta refusal), complex64 storage from the real products, and the
     Dcyl refusal (inherited) from the cylindrical ones.

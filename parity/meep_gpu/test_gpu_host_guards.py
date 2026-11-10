@@ -1,6 +1,6 @@
 """The harness's host guards: which GPU a gate grades, checked before it lifts.
 
-``prefer_gpu=True`` is THIS HOST'S GPU -- CuPy on a CUDA host, Metal kernels over
+``prefer_gpu=True`` is this host's GPU -- CuPy on a CUDA host, Metal kernels over
 NumPy host arrays on an Apple GPU -- and ``prefer_gpu=False`` is the NumPy reference,
 which never consults a kernel table. A gate written for one kernel table therefore
 cannot take "the lift succeeded" as "the lift is mine":
@@ -142,13 +142,13 @@ def _certified_triton_version():
 
 
 def _supported_uncertified_capability():
-    """A capability both NVIDIA tables support and neither admits. Derived, never typed."""
+    """A capability neither NVIDIA table admits. Derived, never typed. (Support is a
+    self-check on the device since 1.0.1, not a property of the number, so the
+    candidates are ones the certified stack's NVRTC targets.)"""
     admitted = set(_admitted("triton")) | set(_admitted(fastpath.CUDA_TABLE))
     for major, minor in ((7, 0), (7, 5), (8, 0), (8, 6), (8, 9), (9, 0)):
         spelled = f"{major}.{minor}"
-        if spelled not in admitted and all(
-                fastpath.capability_supported(spelled, table) is True
-                for table in ("triton", fastpath.CUDA_TABLE)):
+        if spelled not in admitted:
             return spelled
     raise AssertionError(f"every candidate is admitted ({sorted(admitted)}); add one")
 
@@ -433,7 +433,7 @@ def test_a_reference_leg_that_launched_or_fused_is_not_clean(monkeypatch, contro
 
 
 # ---------------------------------------------------------------------------
-# The corpus sweep's --dispatch lane
+# The corpus sweep's --dispatch mode
 # ---------------------------------------------------------------------------
 
 def test_the_sweep_refuses_dispatch_on_a_host_with_no_gpu_route(
@@ -644,5 +644,5 @@ def test_the_benchmark_refuses_a_fused_run_on_the_reference(monkeypatch, capsys)
     err = capsys.readouterr().err
     assert ("--backend numpy is the NumPy reference and never dispatches; use "
             "--backend gpu") in err, err
-    # REFUSED AT THE COMMAND LINE: before the tool pins or reads the enable.
+    # Refused at the command line: before the tool pins or reads the enable.
     assert "MEEP_GPU_DISPATCH" not in os.environ

@@ -1,6 +1,6 @@
 """The FOLDED COMPLEX magnetic seam in one Triton launch: ``step_B`` into ``update_H``.
 
-THE INTERSECTION OF THE TWO SHIPPED TRITON B/H PAIRS, and the one cell on this seam
+The intersection of the two shipped Triton B/H pairs, and the one cell on this seam
 where neither can stand in for the other. :mod:`.folded_fused_magnetic_pair` refuses
 complex storage (it steps one float32 plane); :mod:`.complex_fused_magnetic_pair` refuses a fold
 BY NAME ("a mirror plane is active: ... this weld carries neither"). This module is
@@ -8,10 +8,10 @@ that product, and it is the Triton twin of
 :mod:`..metal_kernels.folded_complex_fused_magnetic_pair`.
 
 ===========================================================================
-WHAT IT IS WORTH: +4 SEAM-INSTANCES OF 387, RECOMPUTED
+What it is worth: +4 seam-instances of 387, recomputed
 ===========================================================================
 
-MEASURED, not inferred from a ranked-gap table.
+Measured, not inferred from a ranked-gap table.
 ``parity/meep_gpu/results/fusion_matrix_triton_2026-08-21_foldedcomplex/`` re-runs the
 NAMED Triton baseline (``fusion_matrix_triton_2026-08-21c``, 115/387) with this ONE
 product added to its ``PRODUCTS`` table and lands on **119/387**: B->H 113 -> 117,
@@ -31,7 +31,7 @@ seam-instances in cells this product occupies and no shipped Triton product does
     folded complex off-diagonal PML   folded complex off-diagonal        3       2
     folded complex PML                folded complex                     2       2
 
-THE TWO CELLS ARE ONE PRODUCT, and that is a measured statement about the Triton
+The two cells are one product, and that is a measured statement about the Triton
 builders rather than a hope. ``folded_complex.plan_folded_complex_offdiag_pml_curl``
 (folded_complex.py:3101-3138) returns a :class:`.folded_complex.FoldedComplexPmlCurlPlan`
 — K1's OWN plan class launching K1's OWN kernel — and
@@ -52,13 +52,13 @@ The four rows, and what each needs from the seam — read from the two boards'
     tests:TestEigCoeffs...special_kz_2_21_2           fill_B + fill_folded_far_ghosts_B
     tests:TestModeDecomposition...triangular_lattice  fill_B + fill_folded_far_ghosts_B
 
-TWO OF THE FOUR NEED THE FAR CARRY, so this family carries it from the first cut
+Two of the four need the far carry, so this family carries it from the first cut
 rather than shipping a refusal it would have to retire. A product that took only the
 near fill would serve two instances and refuse two, and the refusal would be
 INHERITED rather than required.
 
 ===========================================================================
-THE FIVE PASSES IN THE SEAM
+The five passes in the seam
 ===========================================================================
 
 ``driver.step`` runs five passes between the two halves (driver.py:3281-3289)::
@@ -93,7 +93,7 @@ THE FIVE PASSES IN THE SEAM
   DELTA 3), which is transcribed below.
 
 ===========================================================================
-THE ONE THING THIS FAMILY MAY NOT INHERIT FROM THE REAL FOLDED PAIR
+The one thing this family may not inherit from the real folded pair
 ===========================================================================
 
 :func:`.folded_fused_magnetic_pair.folded_fused_curl_constitutive_B` composes a
@@ -101,7 +101,7 @@ destination's parities into ONE compile-time sign — ``PHX * PHY * PHZ * v0`` �
 states that the result is "independent of the order the array path applies its axes
 in", measured over nine configurations with zero differing words.
 
-THE PARITY IS A REAL SCALE PER STORED PART. MEEP's connection multiplies each
+The parity is a real scale per stored part. MEEP's connection multiplies each
 ``realnum`` part (a ``-1`` connection is a unary minus per part,
 boundaries.cpp:359-366), and the array path's fills form ``parity * plane`` through
 ``part_products.scale``: the host-rounded ``+-1.0`` word times each part, exact on
@@ -114,7 +114,7 @@ fold as declared nulls, measured at the word layer.
 The kernel still applies ONE word PER PASS, in the driver's own order, and never a
 folded word, because that is what the array path does:
 
-    THE ORDER IS THE DRIVER'S AND IS TRANSCRIBED, NEVER CHOSEN. ``driver.step`` runs
+    The order is the driver's and is transcribed, never chosen. ``driver.step`` runs
     ``fill_symmetry_bc_B`` (:3285) to completion before ``fill_folded_far_ghosts_B``
     (:3287), and the far pass loops its axes in ASCENDING order
     (``stepping._fill_folded_far_ghosts``:1518, :1528). Back-substituting a corner
@@ -128,14 +128,14 @@ folded word, because that is what the array path does:
 :func:`parity_chain` returns that list on the host so it can be read, tested and
 mutated without a device, and the kernel's blocks are emitted in exactly its order.
 
-THE PARITY WORDS ARE HOST-ROUNDED AND PASSED, never synthesised in-kernel —
+The parity words are host-rounded and passed, never synthesised in-kernel —
 :func:`.folded_complex.mirror_parity_coefficients`' rule. The plan keeps each axis's
 ``(re, im)`` pair and launches the real word (the imaginary word is ``+0`` and is not
 read). That is also why this kernel needs no mirror-phase constexpr at all: the
 phase rides in the words.
 
 ===========================================================================
-THE B GEOMETRY IS NOT THE D GEOMETRY — inherited, and re-derived here
+The B geometry is not the D geometry — inherited, and re-derived here
 ===========================================================================
 
 ``fields.IYEE_SHIFTS`` (fields.py:214-219): ``Bx (0,1,1)``, ``By (1,0,1)``,
@@ -148,23 +148,23 @@ out, and pinned by test against ``fields.IYEE_SHIFTS``.
 Two consequences, unchanged from the real folded pair and re-derived from the same
 table rather than assumed:
 
-1. **THE COEFFICIENT INDEX MOVES FOR THE NEAR HALF ONLY.** ``update_H`` indexes
+1. **The coefficient index moves for the near half only.** ``update_H`` indexes
    ``kps``/``kms`` on the component's own axis (``stepping.H_CONSTITUTIVE_TERMS``
    :226), which is exactly the axis the near fill images along — so the fill's SOURCE
    (stored 2) and DESTINATION (stored 0) take DIFFERENT coefficient entries and the
    source lane loads the destination's pair explicitly at index 0. The FAR fill
    images along an axis that is NOT the component's, so its destination sits at the
    same coefficient index as the lane that owns it.
-2. **THE WALL CLEAR AND THE NEAR FILL CANNOT MEET.** ``_zero_metal`` clears component
+2. **The wall clear and the near fill cannot meet.** ``_zero_metal`` clears component
    ``m`` at stored cell 0 of axis ``a`` when ``iyee[m][a] == 0``, i.e. ``a == m``
    again, and it SKIPS a folded axis (:2237-2239). The predicate CHECKS that
    disjointness rather than inferring it.
 
 ===========================================================================
-THE OWNERSHIP RESTRUCTURE — one launch, no barrier, no race
+The ownership restructure — one launch, no barrier, no race
 ===========================================================================
 
-The fills read cells THIS LAUNCH WRITES. Triton has no device-wide barrier, so
+The fills read cells this launch writes. Triton has no device-wide barrier, so
 ownership moves, exactly as it does on the real folded pair:
 
 * a lane on ANY destination plane — stored 0 of the near axis, the top plane of each
@@ -179,7 +179,7 @@ ownership moves, exactly as it does on the real folded pair:
   back-substitutes to it — up to seven — each with its own ORDERED parity chain, the
   displacement stored, and the constitutive update performed there.
 
-EVERY CARRY MASK IS ANDED WITH THE COMPONENT'S OWNERSHIP MASK. That is a defect the
+Every carry mask is anded with the component's ownership mask. That is a defect the
 real board's device gate FOUND rather than a precaution (``run_farcarry2``,
 2026-08-20: one word of ``Hx`` and one of ``Hy``, 1-2 ULP, on the two-folded-axis rows
 alone): with two fills a lane can be the SOURCE of one and the DESTINATION of the
@@ -187,7 +187,7 @@ other, and it would then write a ghost from a ``v`` built on a load its own mask
 zeroed. The masks are transcribed from that family with the same conjunctions.
 
 ===========================================================================
-WHAT IS DELIBERATELY *NOT* NEW
+What is deliberately *not* new
 ===========================================================================
 
 * the curl half is :func:`.folded_complex.folded_bloch_pml_curl_step` with
@@ -345,38 +345,38 @@ FAR_FILL_COMPONENTS: Tuple[Tuple[int, ...], ...] = tuple(
 
 #: What has and has not been executed on a device. Edited only by a released gate.
 DEVICE_STATUS: str = (
-    "RE-RUN 2026-09-07 (cylindrical H->D wiring round) because routing the two "
+    "RE-RUN 2026-09-07 (cylindrical H->D wiring change) because routing the two "
     "cylindrical H->D products through the composer moved the dispatch layer's own "
     "module and "
     "meep_gpu/triton_kernels/launch.py, both of which this product's gate pins, so "
     "the 2026-09-02 artifact described bytes the tree no longer ships. Re-run on "
     "the GPU host under the keep policy through a private ftz_stripped CuPy cache, with "
     "the expansion record the same campaign's unified_expansion leg measured, and "
-    "WITH THIS CONSTANT ALREADY NAMING THE NEW DIRECTORY -- the rule the previous "
+    "with this constant already naming the new directory -- the rule the previous "
     "entry below states and the reason this line is edited before the run rather "
     "than after it. "
     "Artifact: parity/meep_gpu/results/triton_regate_2026-09-11_dispatch/"
     "probe_triton_folded_complex_fused_magnetic_pair/gate.json, "
     "release.released = true. "
-    "RE-RUN 2026-09-11 (dispatch round) because the Phase batch moved "
+    "RE-RUN 2026-09-11 (dispatch re-gate) because the dispatch campaign's source edits moved "
     "meep_gpu/subnormal_policy.py and meep_gpu/triton_kernels/launch.py, both of "
     "which this product's gate pins, so the 2026-09-07 artifact described bytes the "
     "tree no longer ships -- measured on it: 2 stale digests. Re-run on the GPU host "
-    "under the keep policy through a private ftz_stripped CuPy cache, WITH THIS "
-    "CONSTANT ALREADY NAMING THE NEW DIRECTORY, by the rule the entry below states. "
-    "PREVIOUSLY RE-RUN 2026-09-07 (cylindrical H->D wiring round), artifact "
+    "under the keep policy through a private ftz_stripped CuPy cache, with this "
+    "constant already naming the new directory, by the rule the entry below states. "
+    "PREVIOUSLY RE-RUN 2026-09-07 (cylindrical H->D wiring change), artifact "
     "parity/meep_gpu/results/triton_regate_2026-09-07_cylfinal2/"
     "probe_triton_folded_complex_fused_magnetic_pair/gate.json. "
-    "PREVIOUSLY RE-RUN 2026-09-02 (dispatch-final round) because the dispatch Phase 1 change "
+    "PREVIOUSLY RE-RUN 2026-09-02 (final dispatch re-gate) because the first dispatch-expansion change "
     "moved three files this product's gate pins: meep_gpu/driver.py and "
     "meep_gpu/triton_kernels/launch.py, when fill_B/fill_D stopped being inline "
     "passes and became driver consults of the fast-path plan, and this family's own "
     "test file with them. That is a REAL edit and not the comment-only kind -- "
     "measured with device_identity.weld_survives_edit's rule, driver.py's code "
     "digest moved 7daf71630b -> 6ec5f47dbe and launch.py's 89a4956cd2 -> "
-    "13c9549f92 -- so the 2026-09-02 residue artifact describes bytes the tree no "
+    "13c9549f92 -- so the earlier 2026-09-02 artifact describes bytes the tree no "
     "longer ships. Re-run on the GPU host GPU 6 under the keep policy through a private "
-    "ftz_stripped CuPy cache, WITH THIS CONSTANT ALREADY NAMING THE NEW DIRECTORY "
+    "ftz_stripped CuPy cache, with this constant already naming the new directory "
     "-- a run whose artifact pointer is edited after it finishes certifies bytes "
     "that no longer exist. "
     "Artifact: parity/meep_gpu/results/triton_regate_2026-09-02_dispatchfinal/"
@@ -384,8 +384,8 @@ DEVICE_STATUS: str = (
     "release.released = true. "
     "PREVIOUSLY RE-RUN 2026-09-02 into "
     "parity/meep_gpu/results/triton_regate_2026-09-02_residue/, superseded by the "
-    "dispatch Phase 1 seam move described above. "
-    "PREVIOUSLY RE-RUN 2026-09-01 in the same round as the DEPOSIT CARRY "
+    "first dispatch-expansion seam move described above. "
+    "PREVIOUSLY RE-RUN 2026-09-01 alongside the DEPOSIT CARRY "
     "flip on THIS module (CARRIES_DEPOSIT_REPAIR False -> True, made 2026-08-31, "
     "discharging the board's one clause-refusal on this family), with the gate "
     "extended in the same "
@@ -398,7 +398,7 @@ DEVICE_STATUS: str = (
     "Artifact: parity/meep_gpu/results/triton_folded_beta_2026-08-31/"
     "probe_triton_folded_complex_fused_magnetic_pair/gate.json, "
     "release.released = true. "
-    "PREVIOUSLY RE-RUN 2026-08-31 after the PLAIN-REPAIR round moved meep_gpu/deposit_repair.py "
+    "PREVIOUSLY RE-RUN 2026-08-31 after the PLAIN-REPAIR change moved meep_gpu/deposit_repair.py "
     "(which gained PLAIN_PATH, the second repair) and triton_kernels/launch.py (whose "
     "_install_fused_pair gained the repair_paths argument), both of which this "
     "product's gate pins; the 08-30 artifact stopped describing the tree the moment "
@@ -434,11 +434,11 @@ DEVICE_STATUS: str = (
     "reads, so the 08-24 artifact stopped describing the tree. The probe was "
     "RE-RUN on the GPU host rather than the drift declared: device_status RUN, "
     "passed, released, and ZERO drift across its 14 recorded source digests. "
-    "RE-EARNED 2026-08-24 on the same case structure: the in-seam deposit round "
+    "RE-EARNED 2026-08-24 on the same case structure: the in-seam deposit change "
     "moved this module and its dependencies, and the 08-21 artifact stopped "
     "describing the tree; the re-run reproduced the release on the deposited "
     "bytes. "
-    "|| WHAT THE RUN DID NOT ESTABLISH, stated here and not only in the artifact: "
+    "|| What the run did not establish, stated here and not only in the artifact: "
     "the PARITY CHAIN's order and grouping are held by CONSTRUCTION and not by a "
     "device leg. The gate's parity_chain_associativity leg measures the defect REAL "
     "at the word layer -- re-ordering a two-parity chain moves 32 of 2048 uint32 "
@@ -448,7 +448,7 @@ DEVICE_STATUS: str = (
     "at a ghost SOURCE lane. So the two mutations that re-order and fold the chain "
     "come back UNCAUGHT, and that is recorded as UNREACHED rather than as a null. A "
     "synthetic bare-array leg with planted words at the source lane is what would "
-    "close it. || STILL NOT WIRED. A weld licenses a claim, not a dispatch: nothing "
+    "close it. || Still not wired. A weld licenses a claim, not a dispatch: nothing "
     "in a default run reaches this plan. This module has no fingerprints.json entry "
     "-- its licensed bytes are a function of a PROBE-BOUND arm, so a checked-in "
     "hash would record a choice rather than a measurement; the gate artifact's own "
@@ -479,7 +479,7 @@ def carried_destinations(near: Sequence[int], far: Sequence[int]
                          ) -> Tuple[Tuple[Tuple[int, ...], bool], ...]:
     """Every ghost cell ONE source lane owns, as ``(far axes at top, near?)``.
 
-    THE OWNERSHIP RULE. The driver runs the near fill, the wall clear and the far fill
+    The ownership rule. The driver runs the near fill, the wall clear and the far fill
     in that order (driver.py:3285-3287) and the far fill is applied axis by axis, so a
     cell the fills leave at the top of SEVERAL folded periodic axes is written more
     than once. Back-substituting every pass gives ONE source cell per ghost — the cell
@@ -511,7 +511,7 @@ def parity_chain(near: Sequence[int], subset: Sequence[int], carries_near: bool
                  ) -> Tuple[Tuple[int, str], ...]:
     """The ORDERED ``(axis, pass)`` applications one ghost's value carries.
 
-    THE ORDER IS THE DRIVER'S AND IS TRANSCRIBED, NEVER CHOSEN — see the module
+    The order is the driver's and is transcribed, never chosen — see the module
     docstring. Each pass reads the plane the previous one wrote, so back-substituting
     a corner gives ``c_far[a2] (x) ( c_far[a1] (x) ( c_near[n] (x) v ) )`` with
     ``a1 < a2``: the near application INNERMOST, then the far axes ascending.
@@ -1156,8 +1156,8 @@ def folded_complex_fused_magnetic_pair_coverage(fields: Any, pml: Any,
     """
     reasons: List[str] = []
 
-    # THE TWO ADMISSIONS ARE A MATCHED PAIR, AND EITHER PAIR WILL DO. The Triton
-    # tranche registers a SECOND family name over the SAME kernel and the SAME plan
+    # The two admissions are a matched pair, and either pair will do.
+    # ``folded_complex.py`` registers a SECOND family name over the SAME kernel and the SAME plan
     # class for a run carrying an off-diagonal ``chi1inv`` row:
     # ``plan_folded_complex_offdiag_pml_curl`` (folded_complex.py:3101) returns a
     # ``FoldedComplexPmlCurlPlan`` and says so in its own docstring — "the kernel and
@@ -1167,7 +1167,7 @@ def folded_complex_fused_magnetic_pair_coverage(fields: Any, pml: Any,
     # (each refuses the other's configuration by name), so this is a choice between
     # two labels for one kernel, not a widening of what the kernel does.
     #
-    # THE OFF-DIAGONAL CLAUSE IS AN E-SIDE CLAUSE AND IS CARRIED, NOT WAIVED. It
+    # The off-diagonal clause is an E-side clause and is carried, not waived. It
     # exists because the row product reads neighbours through a transverse Yee
     # average in ``stepping.update_E`` (stepping.py:1219-1254). ``update_H`` reads
     # ``B``, ``f_w_H`` and ``kps``/``kms`` and NEVER an inverse epsilon —
@@ -1177,7 +1177,7 @@ def folded_complex_fused_magnetic_pair_coverage(fields: Any, pml: Any,
     # that DID bind one would fail here instead of silently admitting a row it can
     # no longer step.
     #
-    # A MIXED PAIR IS REFUSED. Taking the curl from one admission and the
+    # A mixed pair is refused. Taking the curl from one admission and the
     # constitutive from the other would mean the two halves disagree about whether
     # an off-diagonal row is installed, which is a configuration neither predicate
     # was written for.
@@ -1207,7 +1207,7 @@ def folded_complex_fused_magnetic_pair_coverage(fields: Any, pml: Any,
         reasons.extend(f"folded complex constitutive half: {reason}"
                        for reason in constitutive.reasons)
 
-    # THE HAZARD THE OFF-DIAGONAL ADMISSION RESTS ON, CHECKED. This launch may not
+    # The hazard the off-diagonal admission rests on, checked. This launch may not
     # bind an inverse-epsilon volume; if the H side ever grew one, the clause the
     # E-side predicate raises would apply here too.
     if "inverse" in CONSTITUTIVE_SIDES[CONSTITUTIVE_SIDE]:
@@ -1226,10 +1226,10 @@ def folded_complex_fused_magnetic_pair_coverage(fields: Any, pml: Any,
         return Coverage(False,
                         tuple(dict.fromkeys(reasons + ["fields carries no grid"])))
 
-    # THE SOURCE SEAM. A magnetic source is injected BETWEEN the two halves
+    # The source seam. A magnetic source is injected BETWEEN the two halves
     # (driver.py:3283-3284), so a fused pair would consume a pre-injection B. An
     # ELECTRIC source is injected in the D/E half and does not disqualify this pair.
-    # IGNORANCE IS NOT AN EMPTY SET: `Fields` does not hold the source list, so a
+    # Ignorance is not an empty set: `Fields` does not hold the source list, so a
     # predicate that inferred "no magnetic source" from not being told would be the
     # over-covering refusal this clause exists to prevent.
     reasons.extend(_deposit_repair.seam_source_reasons(
@@ -1250,7 +1250,7 @@ def folded_complex_fused_magnetic_pair_coverage(fields: Any, pml: Any,
     reasons.extend(code_reasons)
 
     if codes is not None:
-        # THE FAR CARRY'S OWNERSHIP MOVE. `fill_folded_far_ghosts_B` (driver.py:3287)
+        # The far carry's ownership move. `fill_folded_far_ghosts_B` (driver.py:3287)
         # images the top stored slot from stepping._far_reflect_rows' row, and the
         # lane that owns that destination is the one AT the reflect row — so a row
         # outside the allocation is an out-of-range write from a lane that owns
@@ -1299,7 +1299,7 @@ def folded_complex_fused_magnetic_pair_coverage(fields: Any, pml: Any,
                     f"plane IS the near fill's read plane "
                     f"(cell {MIRROR_SOURCE_INDEX})")
 
-        # THE NEAR FILL IMAGES STORED CELL 2 FROM THAT CELL'S OWN LANE. The folded
+        # The near fill images stored cell 2 from that cell's own lane. The folded
         # complex curl predicate already refuses a folded axis storing two cells or
         # fewer; restated because THIS family writes the destination from a
         # different lane and a missing source plane is an out-of-range write, not a
@@ -1314,7 +1314,7 @@ def folded_complex_fused_magnetic_pair_coverage(fields: Any, pml: Any,
                         f"{MIRROR_SOURCE_INDEX} and this kernel images it from that "
                         f"cell's own lane")
 
-        # THE WALL CLEAR AND THE FILL MUST NOT MEET. On this family both act on
+        # The wall clear and the fill must not meet. On this family both act on
         # component m at stored cell 0 of axis m, and `_zero_metal` skips a folded
         # axis (:2237-2239) so they are disjoint by construction. CHECKED rather
         # than inferred: an overlap would be a plane of wrong values.
@@ -1327,7 +1327,7 @@ def folded_complex_fused_magnetic_pair_coverage(fields: Any, pml: Any,
                     f"passes have drifted and the carry's disjointness no longer "
                     f"holds")
 
-        # THE PARITY WORDS THE KERNEL WILL BE PASSED must be readable on every
+        # The parity words the kernel will be passed must be readable on every
         # folded axis. `folded_axis_kinds` already refuses a folded axis whose phase
         # is not +-1; this re-derives the WORDS through the builder's own function
         # so a pair that came back (0.0, 0.0) on a folded axis is caught here and
@@ -1401,7 +1401,7 @@ class FoldedComplexFusedMagneticPairPlan:
             raise ValueError(
                 f"the parity table is six (re, im) pairs — near x/y/z then far "
                 f"x/y/z — got {len(self.parity)}")
-        # DERIVED FROM `bc`, NEVER TAKEN AS AN ARGUMENT. The kernel branches its
+        # Derived from `bc`, never taken as an argument. The kernel branches its
         # curl half on the four codes and its two carries on these booleans; if
         # they could be passed independently they could disagree, and a kernel that
         # masked the top plane on one axis set and imaged the far ghost on another
@@ -1456,7 +1456,7 @@ class FoldedComplexFusedMagneticPairPlan:
         self._h_aux = tuple(CupyPointer(_word_view(a)) for a in h_aux)
         self._h_coefficients = tuple(
             CupyPointer(_flat(a)) for a in h_coefficients)
-        # THE INT32 WORD BOUND. The kernel addresses words as ``2 * idx`` in int32,
+        # The int32 word bound. The kernel addresses words as ``2 * idx`` in int32,
         # so the complex cell count must leave room for the doubling — the same
         # halving the complex predicates apply. Refused here as well because the
         # from-arrays route runs no predicate at all.

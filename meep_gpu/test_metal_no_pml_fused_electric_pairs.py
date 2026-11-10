@@ -257,7 +257,7 @@ def test_the_two_curl_arms_PARTITION_the_space_rather_than_overlap(matrix):
 
 
 # ---------------------------------------------------------------------------
-# THE LIFTED REFUSAL — the conductive cell's two corpus rows, now admitted
+# The lifted refusal — the conductive cell's two corpus rows, now admitted
 # ---------------------------------------------------------------------------
 
 class _TableLessScaledElectric:
@@ -381,7 +381,7 @@ def test_the_absorb_rows_name_the_two_measured_arms():
 
 
 def test_the_arms_the_pairs_absorb_really_do_win_their_slots(matrix):
-    """The rows above, MEASURED through ``plan_step`` with ``fuse=False``."""
+    """The rows above, measured through ``plan_step`` with ``fuse=False``."""
     from .metal_kernels import device
 
     for wrap, curl_label in ((lambda pair: pair, "no-PML curl"),

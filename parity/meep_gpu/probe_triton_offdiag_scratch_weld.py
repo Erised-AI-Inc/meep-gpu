@@ -1,14 +1,14 @@
 #!/usr/bin/env python
 """HOST probe for the SCRATCH-OUTPUT off-diagonal D/E welds — no device needed.
 
-WHAT THIS ESTABLISHES, AND WHAT IT DELIBERATELY DOES NOT.
+What this establishes, and what it deliberately does not.
 
 It establishes two things, both on this backend's own arms and both as uint32
 word comparisons:
 
   TRANSCRIPTION — every arithmetic block in each weld kernel is a certified
   body. The curl half is ``kernels.pml_curl_step``'s own text between its decode
-  and its stores, compared BYTE FOR BYTE against the weld's ``_step_cell``; the
+  and its stores, compared byte for byte against the weld's ``_step_cell``; the
   wall block is ``kernels.fused_curl_constitutive_D``'s own D-side ``ZM_*``
   block; the term helper is ``offdiag_update_e._offdiag_term`` under exactly
   four declared needles; the row-sum helper is that module's verbatim; and the
@@ -18,7 +18,7 @@ word comparisons:
   MAGNETIC field, so one missed read is a smooth, plausible, entirely wrong
   answer rather than a compile error.
 
-  THE SEAM ARITHMETIC — the scratch-output choreography (step out of place,
+  The seam arithmetic — the scratch-output choreography (step out of place,
   resolve the in-seam passes per cell by closed form, run the constitutive half
   against the resolved volume, rotate) is byte-identical to the driver's real
   pass order over two complete steps, on a fixture taxonomy, with every null
@@ -28,7 +28,7 @@ word comparisons:
 
 It establishes NOTHING about the kernel's execution. Triton cannot run on the
 laptop, and the claim that matters — that the weld's one launch is bit-identical
-to the two-launch reference AT EVERY BLOCK SIZE, which is precisely where the
+to the two-launch reference at every block size, which is precisely where the
 2026-08-20 in-place subject failed — is a device claim and belongs to
 ``gate_triton_offdiag_stencil_welds.py``. This probe is what makes that gate's
 failure modes distinguishable: a device disagreement with these legs green is a
@@ -356,7 +356,7 @@ def transcription_leg(family: str) -> Dict[str, Any]:
     if not re.search(r"from \.offdiag_update_e import [^\n]*\b_row_add\b", module_text):
         findings.append("the weld does not import offdiag_update_e._row_add")
 
-    # 6. NO DISPLACEMENT LOAD SURVIVES BELOW THE SEAM. In the fused signature the
+    # 6. No displacement load survives below the seam. In the fused signature the
     #    three `g` pointers are the MAGNETIC field; a missed read is a smooth
     #    wrong answer, not a compile error. The step helpers legitimately take
     #    them AS ARGUMENTS, which is a pass-through and not a load.
@@ -377,12 +377,12 @@ def transcription_leg(family: str) -> Dict[str, Any]:
 #                certified load addressed, under the mask it was served with
 # ---------------------------------------------------------------------------
 #
-# THIS IS WHERE A TRANSCRIPTION ERROR WOULD LIVE. The substitution replaces four
+# This is where a transcription error would live. The substitution replaces four
 # addressed loads per term with four values; if one value is re-derived at the
 # wrong cell, or under the wrong mask, or for the wrong partner component, the
 # kernel compiles, runs, and returns a smooth wrong field. Nothing else in this
 # probe would see it, and on the device it would look exactly like the race the
-# 2026-08-20 round measured — which is the confusion this leg exists to prevent.
+# 2026-08-20 artifact measured — which is the confusion this leg exists to prevent.
 
 def _calls(tree: ast.AST, name: str) -> List[ast.Call]:
     return [node for node in ast.walk(tree)
@@ -747,7 +747,7 @@ FIXTURES: Dict[str, Tuple[Dict[str, Any], ...]] = {
          "dimensions": 3,
          "boundaries": {"x": "metallic", "y": "metallic", "z": "metallic"},
          "symmetry": (("X", 1),)},
-        # THE REFUSAL'S OWN EVIDENCE. A folded PERIODIC axis stores MEEP's far
+        # The refusal's own evidence. A folded PERIODIC axis stores MEEP's far
         # ghost slot, so `fill_folded_far_ghosts_D` writes inside the seam; the
         # predicate refuses it by name and the weld model — which does not carry
         # that pass — must DISAGREE with the driver here. A refusal nobody
@@ -778,7 +778,7 @@ def _seed_class(array: np.ndarray, rng: np.random.Generator,
     if value_class == "signed_zero_lattice":
         # Normal values with a +/-0 lattice over about a third of the cells. An
         # array of nothing but +/-0 leaves every route unmoved and makes the leg
-        # vacuous, which the 2026-08-20 round measured and refused; the lattice
+        # vacuous, which the 2026-08-20 artifact measured and refused; the lattice
         # is what makes a sign observable without that.
         picks = rng.random(shape)
         values = np.where(picks < 0.18, np.float32(0.0), values)
@@ -845,7 +845,7 @@ def build_fixture(fixture: Dict[str, Any], value_class: str,
 def _words(array: Any) -> np.ndarray:
     """The uint32 words of a float32 volume.
 
-    UINT32 AND NOT FLOAT: ``-0.0 != 0.0`` is False, so a float comparison is
+    uint32 and not float: ``-0.0 != 0.0`` is False, so a float comparison is
     blind exactly where the signed-zero class matters, and NaN would compare
     unequal to itself where a bit-identity claim wants equality.
     """
@@ -878,7 +878,7 @@ def reference_step(fields: Any, pml: Any) -> None:
 
     ``driver.py:3302-3313``: ``step_D``; (no electric source on the rows these
     cells serve); ``fill_symmetry_bc_D``; ``zero_metal_D``;
-    ``fill_folded_far_ghosts_D``; ``update_E``. ALL THREE PASSES ARE CALLED,
+    ``fill_folded_far_ghosts_D``; ``update_E``. All three passes are called,
     including the ones a family refuses — a reference that dropped a pass would
     agree with a weld that dropped it too, which is the whole failure mode the
     refusal-evidence fixture exists to expose.
@@ -944,7 +944,7 @@ def choreography_leg(family: str, fixture: Dict[str, Any], value_class: str,
                      steps: int, seed: int) -> Dict[str, Any]:
     """Reference and weld, two complete steps, every stored volume, uint32.
 
-    ON AN ADMITTED FIXTURE the two must agree word for word. On a fixture the
+    On an admitted fixture the two must agree word for word. On a fixture the
     predicate REFUSES they must DISAGREE — that is the refusal's discriminating
     experiment, and a refusal that no fixture separates is a guess.
     """

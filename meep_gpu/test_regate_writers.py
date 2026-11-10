@@ -1,6 +1,6 @@
 """The re-gate writers refuse what they say they refuse — and their output stays true.
 
-WHY THIS FILE EXISTS. On 2026-08-30 two records were re-cut from fresh device
+Why this file exists. On 2026-08-30 two records were re-cut from fresh device
 runs by three tools under ``parity/meep_gpu/``: ``record_cuda_regate.py`` (writes
 a re-gate campaign into ``cuda_kernels/certification.json``),
 ``rebind_cuda_welds.py --campaign`` (binds ``cuda_kernels/fingerprints.json`` to
@@ -15,22 +15,22 @@ nobody has seen FAIL is a check that cannot fail. A writer is worse than a
 record in this respect, because its refusals are what stand between a fresh
 measurement and a record that quietly stops describing one.
 
-WHAT IS ARMED HERE, and each is one half of a failure that has already happened:
+What is armed here, and each is one half of a failure that has already happened:
 
-* THE RECORD MUST AGREE WITH ITS OWN DIRECTORIES. The first attempt to clear the
+* The record must agree with its own directories. The first attempt to clear the
   CUDA drift installed fresh legs INTO each block's dated directory: the ledger
   reached zero drift and four certification tests went red, because every block
   carries a manifest digest over its own tree. Both CUDA writers now recompute
   every present block's digest before writing a byte. Driven here against a
   planted mismatch AND against the honest pairing.
-* A CAMPAIGN THE RECORD DOES NOT NAME MAY NOT BE BOUND. Otherwise a weld points
+* A campaign the record does not name may not be bound. Otherwise a weld points
   at evidence the narrative record has no entry for.
-* THE JOIN IS THE RECORD'S OWN CLAIM. Which certification block a campaign
+* The join is the record's own claim. Which certification block a campaign
   subdirectory re-gated comes out of the block's declared artifact directory,
   never out of string surgery — the hazard ``rebind_triton_welds.CAMPAIGN_DIRS``
   is typed out to avoid. A subdirectory no block claims is a REFUSAL, not a row
   that gets dropped.
-* A CURATED MEASUREMENT MAY NOT BE SILENTLY OVERWRITTEN, and once re-cut it must
+* A curated measurement may not be silently overwritten, and once re-cut it must
   agree with the run it names. The second half is the one with no home before
   today: 38 Triton entries state ``n/m`` counters beside a ``records`` line that
   resolves to a payload in this checkout, and nothing compared them at the merge
@@ -49,6 +49,7 @@ import importlib.util
 import json
 import pathlib
 import re
+import shutil
 import sys
 
 import pytest
@@ -64,16 +65,16 @@ TRITON_LEDGER = PACKAGE / "triton_kernels" / "fingerprints.json"
 #: the Triton record uses both spellings and neither is wrong.
 RESULTS_POINTER = re.compile(r"apps/api/(parity/meep_gpu/results/[^\s,;]+)")
 
-#: Non-vacuity floors, measured 2026-08-30. THE DENOMINATOR IS THE CHECK: a
+#: Non-vacuity floors, measured 2026-08-30. The denominator is the check: a
 #: comparison that quietly stops finding anything to compare passes an empty loop
 #: while reading as strict, which is the defect this whole campaign is about.
 CUDA_WELDS_BOUND_TO_A_RECORDED_RUN = 20
 #: 38 -> 40 ON 2026-08-31: ``dispersive_composition_gate`` gained a resolving
 #: ``records`` line when it was re-cut from its fresh GPU-host run, and left
 #: :data:`NO_COMPARABLE_ARTIFACT` in the same change. Raised to the measured value so
-#: the coverage this round gained cannot quietly drain back out.
+#: the coverage this change gained cannot quietly drain back out.
 #:
-#: 40 -> 42 LATER THE SAME DAY: the two ADE-chain entries left
+#: 40 -> 42 later the same day: the two ADE-chain entries left
 #: :data:`NO_COMPARABLE_ARTIFACT` in the same change as this raise. Their reasons
 #: stopped being true the moment ``rebind_triton_welds.py`` re-ran their gates on
 #: the GPU host and bound the ``records`` lines to the fresh artifacts
@@ -94,7 +95,7 @@ CUDA_WELDS_BOUND_TO_A_RECORDED_RUN = 20
 TRITON_ENTRIES_WITH_A_COMPARABLE_ARTIFACT = 43
 
 #: How many curated ``n/m`` counters actually get compared, across those 40.
-#: STATED RATHER THAN IMPLIED, because it is far smaller than "every curated
+#: Stated rather than implied, because it is far smaller than "every curated
 #: claim" and a reader of the entry count above would assume otherwise: the join
 #: is the FIELD NAME, and most curated fields share no name with any run summary,
 #: so they are compared by nothing. That is a fact about what these gates report,
@@ -210,7 +211,7 @@ def _released_leg(**extra):
 
 
 # ---------------------------------------------------------------------------
-# THE RECORD MUST AGREE WITH ITS OWN DIRECTORIES
+# The record must agree with its own directories
 # ---------------------------------------------------------------------------
 
 
@@ -229,7 +230,7 @@ def test_the_cuda_record_agrees_with_every_directory_it_names(rebind):
 
 
 def test_the_agreement_guard_reports_a_directory_that_has_moved(rebind, tmp_path):
-    """THE ARMED CONTROL. Without it, the assertion above passing is consistent
+    """The armed control. Without it, the assertion above passing is consistent
     with the guard returning an empty list unconditionally — and an empty list is
     exactly what it returns on a machine holding no artifacts, so the live check
     alone cannot tell "agrees" from "found nothing".
@@ -264,7 +265,7 @@ def test_the_agreement_guard_reports_a_directory_that_has_moved(rebind, tmp_path
 
 
 # ---------------------------------------------------------------------------
-# A CAMPAIGN THE RECORD DOES NOT NAME MAY NOT BE BOUND
+# A campaign the record does not name may not be bound
 # ---------------------------------------------------------------------------
 
 
@@ -308,7 +309,7 @@ NOT_A_WELD = {
         "-- recut_driver_dispatch_record refuses unless every bound file carries a "
         "digest a LEG recorded -- but it names no certification campaign because "
         "none describes it.",
-    # ARRIVED 0.9.1 WITH THE PER-CAPABILITY MIGRATION, and named here on the same
+    # Arrived 0.9.1 with the per-capability migration, and named here on the same
     # terms the sibling contracts name it (``test_cuda_weld_contract`` and
     # ``test_triton_weld_contract`` NOT_A_WELD_LEDGER_ENTRY).
     "_capability_runs_migration":
@@ -322,7 +323,7 @@ NOT_A_WELD = {
 
 
 def test_every_cuda_weld_names_a_run_the_certification_record_records(rebind):
-    """THE JOIN BETWEEN THE TWO FILES, which nothing checked until today.
+    """The join between the two files, which nothing checked until today.
 
     A weld's ``records`` line is the only handle a later reader gets on the run
     its digests came from — ``results/`` is gitignored, so the line is the
@@ -339,7 +340,7 @@ def test_every_cuda_weld_names_a_run_the_certification_record_records(rebind):
     family the campaign says it did not re-gate would satisfy the first and fail
     the second.
 
-    ONE JOIN PER RUN SINCE 0.9.1, because ``records`` is a RUN fact and a weld now
+    One join per run since 0.9.1, because ``records`` is a RUN fact and a weld now
     keeps one record per compute capability under ``fastpath.RUNS``. EVERY one of
     them has to join: an architecture certified in a campaign the record does not
     describe is exactly the dangling pointer this test exists to refuse, and reading
@@ -410,7 +411,7 @@ def test_every_cuda_weld_names_a_run_the_certification_record_records(rebind):
 
 
 # ---------------------------------------------------------------------------
-# THE JOIN IS THE RECORD'S OWN CLAIM, AND A SUBDIRECTORY NOBODY CLAIMS REFUSES
+# The join is the record's own claim, and a subdirectory nobody claims refuses
 # ---------------------------------------------------------------------------
 
 
@@ -420,7 +421,7 @@ def test_the_regate_survey_refuses_what_it_cannot_attribute(transcribe, tmp_path
     The dangerous one is the first: a re-gate tree holding a family the record
     does not describe. Dropping that row would produce a campaign block that
     reads complete and silently covers less than the tree it digests — the
-    defect class this whole round exists to remove, arriving through a writer
+    defect class these writers exist to remove, arriving through a writer
     instead of a reader.
     """
     campaign = _plant_campaign(_planted_root(tmp_path) / "a_regate", {
@@ -437,14 +438,14 @@ def test_the_regate_survey_refuses_what_it_cannot_attribute(transcribe, tmp_path
             rows, refusals)
         assert rows[0]["legs"] == ["flush/gate.json", "keep/gate.json"]
 
-        # 1. A SUBDIRECTORY NO BLOCK CLAIMS.
+        # 1. A subdirectory no block claims.
         _plant_campaign(campaign, {"a_stranger": {"keep/gate.json": _released_leg(),
                                                   "flush/gate.json": _released_leg()}})
         rows, refusals = transcribe.survey(campaign, record)
         assert len(refusals) == 1 and "re-gates nothing this record names" in refusals[0]
         assert [row["block"] for row in rows] == ["a_block"]
 
-        # 2. TWO BLOCKS CLAIMING ONE DIRECTORY AND NEITHER SCOPING: still refused,
+        # 2. Two blocks claiming one directory and neither scoping: still refused,
         #    with the reason the 2026-09-11 widening made precise. Until then the
         #    message was "the join is ambiguous" and the shape was refused outright;
         #    now the refusal falls on the part that is actually a guess -- WHICH LEGS
@@ -458,7 +459,7 @@ def test_the_regate_survey_refuses_what_it_cannot_attribute(transcribe, tmp_path
         assert any("which legs belong to which block is a guess" in why
                    for why in refusals), refusals
 
-        # 2b. TWO BLOCKS CLAIMING ONE DIRECTORY, EACH SCOPED: accepted, one row per
+        # 2b. Two blocks claiming one directory, each scoped: accepted, one row per
         #     block, and each row carries ONLY its own family's legs. This is the
         #     shape a multi-family gate script writes (`<family>_<policy>` legs), and
         #     refusing it is what made the complex fused pairs unrecordable.
@@ -483,7 +484,7 @@ def test_the_regate_survey_refuses_what_it_cannot_attribute(transcribe, tmp_path
                                                   "beta_keep/gate.json"]
         assert by_block["alpha_block"]["gate_family"] == "alpha"
 
-        # 2c. TWO BLOCKS CLAIMING ONE DIRECTORY UNDER THE SAME gate_family: refused.
+        # 2c. Two blocks claiming one directory under the same gate_family: refused.
         #     Checking that every claimant NAMES a family, without checking the names
         #     are DISTINCT, would let two blocks stand on one measurement and would
         #     report twice the legs the tree holds.
@@ -497,7 +498,7 @@ def test_the_regate_survey_refuses_what_it_cannot_attribute(transcribe, tmp_path
         assert any("the same gate_family" in why for why in refusals), refusals
         assert not rows, rows
 
-        # 3. A LEG THAT DID NOT RELEASE.
+        # 3. A leg that did not release.
         (campaign / "known_family" / "keep" / "gate.json").write_text(
             json.dumps({"canonical_verdict": {"released": False,
                                               "reasons": ["a divergence"]}}),
@@ -506,7 +507,7 @@ def test_the_regate_survey_refuses_what_it_cannot_attribute(transcribe, tmp_path
         assert any("is not released" in why for why in refusals), refusals
         assert not rows
 
-        # 4. A DIRECTORY WITH NO CANONICAL POLICY LEG AT ALL.
+        # 4. A directory with no canonical policy leg at all.
         bare = _plant_campaign(_planted_root(tmp_path) / "bare", {"known_family": {}})
         (bare / "known_family").mkdir(parents=True, exist_ok=True)
         (bare / "known_family" / "notes.json").write_text("{}", encoding="utf-8")
@@ -514,6 +515,79 @@ def test_the_regate_survey_refuses_what_it_cannot_attribute(transcribe, tmp_path
         assert any("holds no canonical policy leg" in why for why in refusals), refusals
     finally:
         transcribe._API = original
+
+
+def _two_unit_campaign(tmp_path, name="a_regate_c0_g0"):
+    """A chunk's campaign: one unit selected there (released) and one whose run there is
+    stale (re-run in a later chunk: its flush leg did not release here)."""
+    leg = {"subnormal_policy_install": {"policy": "keep"},
+           "environment": {"device_name": "planted device", "compute_capability": "8.6"}}
+    # The stale run ran on another card's host line, as a re-run chunk may: a reader
+    # that strays outside the named subdirectories sees two machines.
+    elsewhere = dict(leg, host="another-host")
+    stale = dict(_released_leg(**elsewhere), canonical_verdict={
+        "released": False, "reasons": ["planted: the stale run"]})
+    campaign = _plant_campaign(_planted_root(tmp_path) / name, {
+        "known_family": {"keep/gate.json": _released_leg(**leg),
+                         "flush/gate.json": _released_leg(**leg)},
+        "rerun_family": {"keep/gate.json": _released_leg(**elsewhere),
+                         "flush/gate.json": stale}})
+    record = {
+        "a_block": {"artifacts": "parity/meep_gpu/results/known_family",
+                    "artifact_sha256": "a" * 64},
+        "b_block": {"artifacts": "parity/meep_gpu/results/rerun_family",
+                    "artifact_sha256": "b" * 64}}
+    return campaign, record
+
+
+def test_a_named_subset_of_a_campaign_is_surveyed_and_digested_alone(
+        transcribe, rebind, tmp_path, monkeypatch):
+    """``--directories``: one unit's stale run no longer refuses the units selected
+    beside it, and the digest covers exactly what the block claims."""
+    campaign, record = _two_unit_campaign(tmp_path)
+    monkeypatch.setattr(transcribe, "_API", tmp_path)
+    _rows, refusals = transcribe.survey(campaign, record)
+    assert any("rerun_family/ is not released" in why for why in refusals), refusals
+    rows, refusals = transcribe.survey(campaign, record, ["known_family"])
+    assert not refusals and [row["directory"] for row in rows] == ["known_family"]
+    _rows, refusals = transcribe.survey(campaign, record, ["known_family", "absent"])
+    assert refusals == ["--directories names absent/, which a_regate_c0_g0/ does not hold"]
+    # The same rule over the named subdirectories: equal to the whole-tree digest of a
+    # campaign that holds them alone, and different from the whole campaign's.
+    alone = _plant_campaign(tmp_path / "alone" / campaign.name, {})
+    shutil.copytree(campaign / "known_family", alone / "known_family")
+    subset = rebind.manifest_digest(campaign, ["known_family"])
+    assert subset == rebind.manifest_digest(alone) != rebind.manifest_digest(campaign)
+    stamps = transcribe._stamps(campaign, ["known_family"])
+    assert stamps["hostname"] == {"a-host"} and stamps["subnormal_policy"] == {"keep"}
+
+
+def test_a_recorded_subset_is_what_every_reader_recomputes(transcribe, rebind, tmp_path,
+                                                           monkeypatch):
+    campaign, record = _two_unit_campaign(tmp_path)
+    path = tmp_path / "certification.json"
+    path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+    monkeypatch.setattr(transcribe, "_API", tmp_path)
+    monkeypatch.setattr(transcribe, "RECORD", path)
+    assert transcribe.main(["--campaign", str(campaign), "--write"]) == 1, \
+        "the whole campaign refuses on the stale unit"
+    assert json.loads(path.read_text()) == record, "nothing written"
+    assert transcribe.main(["--campaign", str(campaign), "--directories",
+                            "known_family", "--write"]) == 0
+    block = json.loads(path.read_text())[campaign.name]
+    assert block[rebind.RECORDED_SUBDIRECTORIES] == ["known_family"]
+    assert [row["directory"] for row in block[rebind.RE_GATE_KEY]] == ["known_family"]
+    assert block["artifact_sha256"] == rebind.manifest_digest(campaign, ["known_family"])
+    assert block["canonical_policy_legs"] == 2
+    # The agreement guard reads the block's own subset: an unclaimed subdirectory may
+    # change without the record disagreeing; a claimed one may not.
+    monkeypatch.setattr(rebind, "_API", tmp_path)
+    assert rebind.block_digest(block, campaign) == block["artifact_sha256"]
+    assert rebind.record_disagrees_with_its_own_directories({"c": block}) == []
+    (campaign / "rerun_family" / "extra.json").write_text("{}")
+    assert rebind.record_disagrees_with_its_own_directories({"c": block}) == []
+    (campaign / "known_family" / "extra.json").write_text("{}")
+    assert len(rebind.record_disagrees_with_its_own_directories({"c": block})) == 1
 
 
 def test_the_live_regate_campaign_surveys_clean_or_is_not_on_this_machine(transcribe):
@@ -535,14 +609,14 @@ def test_the_live_regate_campaign_surveys_clean_or_is_not_on_this_machine(transc
 
 
 # ---------------------------------------------------------------------------
-# THE CURATED MEASUREMENT
+# The curated measurement
 # ---------------------------------------------------------------------------
 
 
 def _comparable(recut):
     """``{entry: [payloads]}`` for every Triton entry whose run is on this machine.
 
-    THE ``records`` LINES ARE THE RUNS' since 0.9.1, one per compute capability under
+    The ``records`` lines are the runs' since 0.9.1, one per compute capability under
     ``fastpath.RUNS``, and EVERY one of them is collected: a curated counter sits on
     the ENTRY, so it is a claim about every run the entry records, and comparing it
     against one architecture's payload while another's went unread is how a stale
@@ -575,7 +649,7 @@ def _comparable(recut):
 
 
 def test_every_curated_triton_claim_still_describes_the_run_it_names(recut):
-    """THE STALE-CLAIM CHECK, at the merge bar for the first time.
+    """The stale-claim check, at the merge bar for the first time.
 
     A weld's curated block is the measurement a reader takes away — ``product``,
     ``real_engine_route``, ``single_launch``, ``composition``. Its digests are
@@ -660,7 +734,7 @@ def test_the_claim_check_reports_a_planted_disagreement(recut):
 def test_the_curated_claim_walk_is_structural_and_excludes_history(recut):
     """The enumerator is a WALK, and the one thing it drops is named.
 
-    THE COINCIDENCE THIS REMOVES. ``CLAIM_BLOCKS`` names four block spellings and
+    The coincidence this removes. ``CLAIM_BLOCKS`` names four block spellings and
     the Triton record carries thirty-three distinct key names holding an ``n/m``
     counter, several at an entry's own top level. Both enumerators happen to find
     the same 13 comparable counters today, which is precisely the shape that goes
@@ -668,7 +742,7 @@ def test_the_curated_claim_walk_is_structural_and_excludes_history(recut):
     saying so. So the walk recurses, and this pins that it reaches a counter a
     block-name list cannot — nested under an unanticipated key, and inside a list.
 
-    AND THE ONE EXCLUSION IS ARMED. A counter inside a superseded run or a recert
+    And the one exclusion is armed. A counter inside a superseded run or a recert
     snapshot describes a run that is over; requiring it to match today's summary
     would demand that the past change, and the only way to clear that red would be
     to delete the evidence. It fires ZERO times on the record today — no
@@ -690,7 +764,7 @@ def test_the_curated_claim_walk_is_structural_and_excludes_history(recut):
     assert ("a_key_nobody_wrote.nested.0.deeper", "cases_exact", "3/4", "4/4") \
         in reported, reported
 
-    # HISTORY IS DROPPED, and only history.
+    # History is dropped, and only history.
     for container in ("recert_2026_08_13", "superseded_runs", "kernels_at_recert",
                       "a_recut_log", "source_drift_since_recert"):
         historical = {container: {"cases_exact": "3/4"}}
@@ -748,13 +822,13 @@ def test_the_claim_recut_is_mechanical_and_cross_checked(recut):
     # THE POST-CONDITION: nothing left disagreeing.
     assert recut.claim_disagreements({"product": fresh}, payload, block="product") == []
 
-    # 4a. THE CROSS-CHECK REFUSES when the cases and the summary disagree.
+    # 4a. The cross-check refuses when the cases and the summary disagree.
     lying = json.loads(json.dumps(payload))
     lying["summary"]["complete_steps_exact"] = "60/60"
     fresh, _, why = recut.recut_claim(entry, "product", lying)
     assert fresh is None and "cases sum to 48/48" in why, why
 
-    # 4b. AND A CLAIM WITH NO LEADING COUNTER CANNOT BE SPLIT, so it refuses
+    # 4b. And a claim with no leading counter cannot be split, so it refuses
     #     rather than guessing which half of the sentence is the measurement.
     unsplittable = {"product": {"complete_steps_exact": "all of them"}}
     fresh, _, why = recut.recut_claim(unsplittable, "product", payload)
@@ -762,7 +836,7 @@ def test_the_claim_recut_is_mechanical_and_cross_checked(recut):
 
 
 def test_every_declared_claim_recut_names_a_real_block_and_carries_a_reason(recut):
-    """A DECLARED RE-CUT IS AN EXEMPTION, and it decays like every other one.
+    """A declared re-cut is an exemption, and it decays like every other one.
 
     ``CLAIM_RECUTS`` is the one place a curated measurement is allowed to be
     overwritten from a run. Both directions: every declaration must name an entry
@@ -796,7 +870,7 @@ def test_the_frozen_key_rule_does_not_leak_past_the_declaration(recut):
     with the right operand — and a licence that leaked would let any key ride out on
     a re-cut.
 
-    THE CONSTANT IS THE ENTRY-LEVEL ONE. ``MUTABLE`` became ``ENTRY_MUTABLE`` when
+    The constant is the entry-level one. ``MUTABLE`` became ``ENTRY_MUTABLE`` when
     the run facts moved into ``runs[<cc>]``: ``artifact_sha256`` and ``log_sha256``
     left it because they are no longer entry keys at all, and what remains is the two
     digests that say which bytes the weld binds. The rule under test is unchanged —
@@ -812,7 +886,7 @@ def test_the_frozen_key_rule_does_not_leak_past_the_declaration(recut):
     undeclared = recut.ENTRY_MUTABLE | {block for block in {"real_engine_route": {}}
                                         if (key, block) in recut.CLAIM_RECUTS}
     assert "real_engine_route" not in undeclared
-    # AND THE RUN CONTAINER IS NOT IN IT: the frozen comparison excludes `runs` and
+    # And the run container is not in it: the frozen comparison excludes `runs` and
     # proves it separately (every other capability's record must come out
     # byte-identical), so a licence here would be the wrong instrument for it.
     assert "runs" not in recut.ENTRY_MUTABLE
@@ -854,13 +928,15 @@ def test_the_regate_block_digests_the_tree_it_names(rebind):
         assert directory is not None, f"{name} records no artifact directory"
         if not directory.is_dir():
             continue
-        assert rebind.manifest_digest(directory) == block["artifact_sha256"], name
-        # THE CLAIM IS ABOUT CANONICAL POLICY LEGS, so it is counted with the
+        assert rebind.block_digest(block, directory) == block["artifact_sha256"], name
+        # The claim is about canonical policy legs, so it is counted with the
         # same function the writers use — not as "every .json under here". The
         # two happen to be equal on this campaign, and a control that leant on
         # that would start failing the day a summary payload lands beside the
         # legs, which is a fact about the directory rather than about the claim.
-        legs = rebind.canonical_legs(directory)
+        claimed = block.get(rebind.RECORDED_SUBDIRECTORIES)
+        legs = [leg for leg in rebind.canonical_legs(directory)
+                if claimed is None or leg.split("/", 1)[0] in claimed]
         assert len(legs) == block["canonical_policy_legs"], (
             f"{name}: {len(legs)} canonical policy legs under {directory.name}/ "
             f"and the block claims {block['canonical_policy_legs']}")
@@ -881,7 +957,7 @@ def test_a_weld_and_its_run_agree_on_which_bytes_were_imported(rebind):
     would pass that test and fail this one, and the two together are what make
     "these bytes ran" mean something rather than "these bytes are here now".
 
-    THE RUN IS NAMED PER ARCHITECTURE since 0.9.1 — ``records`` lives in
+    The run is named per architecture since 0.9.1 — ``records`` lives in
     ``runs[<cc>]`` — while the pins it is compared against stay on the ENTRY,
     because they describe the TREE and are the same fact on every card. So each
     architecture's run is asked separately whether it imported those bytes, which is
@@ -941,7 +1017,7 @@ def test_the_hashing_helpers_agree_with_the_stdlib(rebind, tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# --only IS A NARROWING, AND ONLY A NARROWING
+# --only is a narrowing, and only a narrowing
 # ---------------------------------------------------------------------------
 
 
@@ -960,7 +1036,7 @@ def _plant_device_block(rebind, results_root, name, imports, *, released=True):
     that runs before the main loop has nothing to refuse. ``released=False`` turns
     ONE policy leg's verdict false, which is the shape the rules must refuse.
 
-    AND IT NAMES AN ARCHITECTURE, in both places a real run names one: the LEGS stamp
+    And it names an architecture, in both places a real run names one: the LEGS stamp
     it (``leg_capability``, which is where the writer takes the value from — never
     from the record) and the BLOCK declares it twice over (``block_capability``, the
     cross-check ``record_cuda_regate.py`` satisfies by building both off one
@@ -990,7 +1066,7 @@ def test_only_narrows_the_cuda_rebind_and_never_widens_it(rebind, tmp_path,
                                                           monkeypatch, capsys):
     """``--only`` skips by name, refuses an unknown name, and admits nothing the rules refuse.
 
-    WHY THE FLAG EXISTS, and therefore what this pins: seeding ONE newly released
+    Why the flag exists, and therefore what this pins: seeding ONE newly released
     block must not also seed every other absent block from its dated directory,
     several of which would seed DRIFTED -- a decision, not a side effect. So the
     flag may only ever SHRINK what a run touches. Three clauses, each of which is

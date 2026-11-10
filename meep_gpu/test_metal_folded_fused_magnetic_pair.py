@@ -1,17 +1,17 @@
 """The folded fused magnetic Metal kernel, as claims a laptop can check without a GPU.
 
-WHAT THIS SUITE OWNS AND WHAT IT DELIBERATELY DOES NOT. The BYTES are the device
+What this suite owns and what it deliberately does not. The BYTES are the device
 gate's — ``parity/meep_gpu/gate_metal_folded_fused_magnetic_pair.py`` steps two
 engines side by side for twelve complete steps and compares uint32 words, and no
 assertion here duplicates that. What lives here is everything true about the family
 WITHOUT a device: what the emitted source says, which configurations the predicate
-refuses and by what name, that the arm is registered UNWIRED, and that the plan binds
+refuses and by what name, that the arm is registered unwired, and that the plan binds
 the lattice each half is supposed to take.
 
-THE FOUR CLAIMS THIS SUITE MAKES THAT THE GATE CANNOT.
+The four claims this suite makes that the gate cannot.
 
 1. That the product is invisible to ``plan_step`` — a property of the TABLE, and the
-   whole reason this family may land beside the wired tree without touching it.
+   whole reason this family may land beside the wired families without touching it.
 2. That the near-fill geometry is the B one and NOT the D one. The gate measures
    that the shipped kernel is right; only a table-level assertion says that a
    component is a ghost destination on its OWN axis alone, which is the single most
@@ -204,7 +204,7 @@ def test_no_configuration_gives_a_component_two_ghost_axes():
 
 
 def test_the_ghost_reads_its_own_coefficient_pair_at_stored_index_zero():
-    """THE ONE LINE THE SIBLING DOES NOT CARRY.
+    """The one line the sibling does not carry.
 
     ``update_H`` indexes ``kps``/``kms`` on the component's own axis, and on this
     family the fill images along that same axis — so the source at stored 2 and the
@@ -314,7 +314,7 @@ def test_a_folded_axis_that_is_also_walled_is_refused_at_build_time():
 
 
 def test_a_folded_periodic_axis_is_CARRIED_not_refused():
-    """THE FLIP OF 2026-08-20, pinned at the source.
+    """The flip of 2026-08-20, pinned at the source.
 
     This test asserted the OPPOSITE until the far carry landed: a folded PERIODIC
     axis raised ``ValueError`` naming ``fill_folded_far_ghosts_B``, because that
@@ -428,7 +428,7 @@ class _Source:
 
 
 def test_an_undeclared_source_set_is_refused_by_name():
-    """IGNORANCE IS NOT AN EMPTY SET. ``Fields`` does not hold the source list, so
+    """Ignorance is not an empty set. ``Fields`` does not hold the source list, so
     inferring "no sources" from not being told is the over-covering refusal this
     clause exists to prevent."""
     coverage = family.metal_folded_fused_magnetic_pair_coverage(object(), None, None)
@@ -457,7 +457,7 @@ def test_a_magnetic_source_with_no_deposit_index_is_refused_by_name():
 
 def test_holding_the_shipped_flag_False_brings_the_polarity_refusal_straight_back(
         monkeypatch):
-    """THE OTHER DIRECTION. Without it, the clause above would be consistent with the
+    """The other direction. Without it, the clause above would be consistent with the
     polarity having been dropped rather than carried -- the two answers are different
     strings and only the flag chooses between them."""
     monkeypatch.setattr(family, "CARRIES_DEPOSIT_REPAIR", False)

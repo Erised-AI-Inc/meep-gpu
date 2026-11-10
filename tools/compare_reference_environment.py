@@ -7,8 +7,8 @@
 The certification reference of each platform is a pair of lock files under
 ``environments/locks/``: an explicit conda lock (every package by URL and MD5) and
 a pip requirements file (every PyPI package by version and wheel hash). The
-build scripts ``parity/meep_gpu/build_meep_133_macos.sh`` and
-``build_meep_133_linux.sh`` install exactly those files.
+build scripts ``parity/meep_gpu/build_meep_reference_macos.sh`` and
+``build_meep_reference_linux.sh`` install exactly those files.
 ``environments/locks/numerics-relevant.json`` names, per platform, the packages
 whose builds can change what MEEP or the GPU route computes. For each of them
 this prints whether the environment holds the reference's build (same),
@@ -38,10 +38,12 @@ imports it and also requires the version, precision and MPI build that
 
 Apart from the numerics-relevant packages, the report lists what only the MEEP
 identity corpus (Table 2) needs: the packages of ``numerics-relevant.json``'s
-``corpus_only`` (shapely, nlopt and imageio-ffmpeg, pinned in the pip lock; gdspy, held
-by the conda lock; the PyMieScatt stand-in, judged by its version and the bytes of its
-files) and the ``ffmpeg`` the reference ``PATH`` finds, held only when it is the
-imageio-ffmpeg wheel's executable, each held, absent or another build. None of them
+``corpus_only`` (shapely, nlopt, imageio-ffmpeg, gdstk and trimesh, pinned in the pip
+lock; any package a conda lock holds for it, none since the MEEP 1.35.0 re-cut; the
+PyMieScatt stand-in, judged by its version and the bytes of its files) and the ``ffmpeg``
+the reference ``PATH`` finds, held only when it is the imageio-ffmpeg wheel's
+executable, each held, absent or another build. An entry that
+names its ``platforms`` is judged on those platforms only (:func:`corpus_of`). None of them
 takes part in what MEEP or the GPU route computes, so none counts in the verdict:
 an environment without them is judged on its numerics exactly as one with them.
 
@@ -201,6 +203,21 @@ def judged_names(spec: dict):
     return list(seen.items())
 
 
+def corpus_of(numerics: dict, platform_tag: str) -> dict:
+    """``numerics``' ``corpus_only`` as it applies on ``platform_tag``: a ``pypi`` or
+    ``conda`` entry that names its ``platforms`` applies on those only (a package one
+    platform's lock carries and the other's does not yet); every other entry applies on
+    every platform."""
+    corpus = dict(numerics.get("corpus_only") or {})
+    for kind in ("pypi", "conda"):
+        entries = corpus.get(kind)
+        if isinstance(entries, dict):
+            corpus[kind] = {name: entry for name, entry in entries.items()
+                            if platform_tag in ((entry or {}).get("platforms")
+                                                or (platform_tag,))}
+    return corpus
+
+
 def load_reference(platform_tag: str, lock_dir: str = LOCK_DIR) -> dict:
     """The lock files and numerics set of one platform. Raises when they cannot be read."""
     with open(os.path.join(lock_dir, NUMERICS_FILE), encoding="utf-8") as handle:
@@ -221,7 +238,7 @@ def load_reference(platform_tag: str, lock_dir: str = LOCK_DIR) -> dict:
         pip = parse_pip_lock(handle.read())
     return {"platform": platform_tag, "spec": spec, "conda": conda, "pip": pip,
             "conda_lock": spec["conda_lock"], "pip_lock": spec["pip_lock"],
-            "corpus": numerics.get("corpus_only") or {}}
+            "corpus": corpus_of(numerics, platform_tag)}
 
 
 def corpus_digests(reference: dict) -> dict:

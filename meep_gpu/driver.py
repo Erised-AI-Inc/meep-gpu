@@ -57,8 +57,8 @@ a probe that never sees a nonzero field can never satisfy the criterion.
 ``symmetry`` is MEEP's ``mp.Mirror(direction, phase)``, spelled as
 :class:`~.grid.Mirror` objects or as the bare axis name that is shorthand for the
 even plane. Any of X, Y and Z may be folded, at either phase, in any combination:
-each plane halves its axis and so halves the memory and the work. THE PLANE, NOT
-THE AXIS, IS WHAT EVERY CONSUMER READS — the source-parity rule, the lattice fold,
+each plane halves its axis and so halves the memory and the work. The plane, not
+the axis, is what every consumer reads — the source-parity rule, the lattice fold,
 the DFT and flux unfolding, the PML face table and the far-face guard all resolve
 the parity through :func:`~.fields.mirror_parity` at the plane's declared phase,
 so an odd plane is the same fold with every sign inverted rather than a second
@@ -121,6 +121,7 @@ from __future__ import annotations
 
 import inspect
 import math
+import numbers
 import time as time_module
 from typing import Any, Callable, Mapping, Optional, Sequence
 
@@ -223,7 +224,7 @@ SOURCE_COMPONENTS = ELECTRIC_SOURCE_COMPONENTS + MAGNETIC_SOURCE_COMPONENTS
 SOURCE_KINDS = ("continuous", "gaussian", "custom")
 AXIS_NAMES = ("X", "Y", "Z")
 
-# THE PERFECT-ELECTRIC-CONDUCTOR SENTINEL, and it is MEEP's number rather than this
+# The perfect-electric-conductor sentinel, and it is MEEP's number rather than this
 # engine's convention. ``mp.metal`` and ``mp.perfect_electric_conductor`` are both
 # ``Medium(epsilon=-inf)`` (meep/__init__.py:4438-4439 on 1.33.0; python/meep.i:1898 in
 # the source tree), and MEEP's ``inf`` is the literal ``1.0e20``
@@ -240,7 +241,7 @@ AXIS_NAMES = ("X", "Y", "Z")
 # ordinary ``E = (D - sum P) * inv_eps`` with inv_eps = -1e-20 drives E to ~0 in those
 # cells, and carrying MEEP's own number through unchanged is bit-comparable by
 # construction. Every validator below that would otherwise refuse a non-positive
-# permittivity relaxes for THIS VALUE BY NAME and keeps refusing every other one.
+# permittivity relaxes for this value by name and keeps refusing every other one.
 PEC_EPSILON_SENTINEL = -1e20  # mp.metal's epsilon_diag entry, verbatim.
 PEC_CHI1INV_SENTINEL = -1e-20  # Its ordinary inverse, which is what MEEP stores.
 # The float32 round trip is measured, not assumed: reading the sentinel back through
@@ -360,7 +361,7 @@ def _as_xyz(name: str, value: Sequence[float]) -> tuple[float, float, float]:  #
 def _normalize_symmetry(symmetry: Sequence[MirrorSpec]) -> tuple[Mirror, ...]:  # Validate the requested mirror planes.
     """Turn the driver's ``symmetry`` argument into :class:`~.grid.Mirror` planes.
 
-    THE DESCRIPTOR EVERY CONSUMER READS. A mirror plane is an axis AND a phase —
+    The descriptor every consumer reads. A mirror plane is an axis AND a phase —
     MEEP's ``mp.Mirror(direction, phase)`` — so this returns the pair rather than
     the bare axis name it used to, and every consumer below (the source-parity
     rule, the lattice fold, the DFT unfolding, the PML face table) resolves the
@@ -617,6 +618,14 @@ class _FieldDecayProbe:
     does, so the windows are offset by one step from MEEP's; over a window of
     thousands of steps that moves no decision.
 
+    ``sampling_interval`` is MEEP's (MEEP 1.35.0 python/simulation.py:5778-5840,
+    added in 1.34.0): the point is read only on steps whose integer step count is a
+    multiple of it (``sim.fields.t % sampling_interval == 0``), and the window test
+    still runs on every step. The step count after step ``n`` here is MEEP's
+    ``fields.t`` when its criterion is next called, so both read the same steps. A
+    window in which no sample landed has peak 0, as MEEP's ``cur_max`` does. The
+    default, 1, reads every step, which is the criterion before 1.34.0.
+
     Two departures from MEEP, both deliberate. The peak is tracked as ``|f|`` and
     squared in host double precision at the window boundary, so a probe far below
     float32's smallest normal cannot underflow its own decay ratio to zero. And
@@ -627,10 +636,12 @@ class _FieldDecayProbe:
     raises instead.
     """
 
-    def __init__(self, xp, read_magnitude, decay_by, window, start_time, source_end_time):
+    def __init__(self, xp, read_magnitude, decay_by, window, start_time, source_end_time,
+                 sampling_interval=1):
         self._xp = xp
         self._read = read_magnitude
         self._decay_by = decay_by
+        self._sampling_interval = sampling_interval
         self._window = window
         self._window_start = start_time
         self._source_end_time = source_end_time
@@ -638,14 +649,18 @@ class _FieldDecayProbe:
         self._running_peak = 0.0
         self._last_ratio = None
 
-    def update(self, time: float) -> bool:  # Sample the probe; True once the field has decayed.
-        sample = self._read()
-        # xp.maximum keeps the window peak where the field lives: on CuPy this is a
-        # device-side compare, so the per-step probe costs no host transfer.
-        self._window_peak = sample if self._window_peak is None else self._xp.maximum(self._window_peak, sample)
+    def update(self, time: float, step: int = 0) -> bool:  # Sample the probe; True once decayed.
+        if step % self._sampling_interval == 0:
+            sample = self._read()
+            # xp.maximum keeps the window peak where the field lives: on CuPy this is a
+            # device-side compare, so the per-step probe costs no host transfer.
+            self._window_peak = (sample if self._window_peak is None
+                                 else self._xp.maximum(self._window_peak, sample))
         if time <= self._window_start + self._window:
             return False
-        window_peak = float(self._window_peak)  # One host transfer per window, not per step.
+        # One host transfer per window, not per step; a window no sample landed in
+        # has peak 0, as MEEP's cur_max does.
+        window_peak = 0.0 if self._window_peak is None else float(self._window_peak)
         self._window_peak = None
         self._window_start = time
         self._running_peak = max(self._running_peak, window_peak)
@@ -905,8 +920,8 @@ class FdtdDriver:
                 storage is MEEP's implicit-i-on-TM trick, which is the whole point of
                 the ``"real/imag"`` spelling — but is refused in real storage together
                 with an off-diagonal epsilon, as MEEP refuses it.
-            bfast_scaled_k: MEEP's ``bfast_scaled_k`` — the BROADBAND FIXED-ANGLE
-                SOURCE TECHNIQUE, i.e. the scaled wavevector ``n * sin(theta)`` of the
+            bfast_scaled_k: MEEP's ``bfast_scaled_k`` — the broadband fixed-angle
+                source technique, i.e. the scaled wavevector ``n * sin(theta)`` of the
                 incidence direction. It shears time by ``t -> t - k.r/c``, adding
                 ``+d/dt (k x E)`` to dB/dt and ``-d/dt (k x H)`` to dD/dt
                 (:func:`~.stepping._bfast_term`), which makes a planewave at a FIXED
@@ -968,7 +983,7 @@ class FdtdDriver:
             dimensions=dimensions,
             # MEEP Dcyl under the x -> r, y -> phi, z -> z mapping; the Grid
             # carries the mode's constraints and refusals
-            # (the design notes (fdtd-cylindrical-plan)).
+            # so this call only passes the flag and ``m`` through.
             cylindrical=bool(cylindrical),
             m=m,
             # MEEP's accurate_fields_near_cylorigin: the |m| >= 2 near-axis branch that
@@ -996,6 +1011,7 @@ class FdtdDriver:
                 f"simulation.py:2517-2522). Build the run with force_complex_fields=True."
             )
         self.fields = Fields(self.grid, force_complex_fields=self.force_complex_fields)
+        self.fields.e_reads_d = True  # MEEP's E is D's storage until the first step.
         self.pml: PML | None = None
         # The chunk division the run steps with (chunk_map.ChunkLayout): set by the
         # lift (set_chunk_layout) to the simulation's own; None means the one-rank
@@ -1114,7 +1130,7 @@ class FdtdDriver:
           forced by the branch above) contributes its parity and an unfolded Bloch axis
           its lattice phase, with no cross term.
 
-          MEASURED on the 0.9.2 reader (whole-volume complex relative L2, all six
+          Measured on the 0.9.2 reader (whole-volume complex relative L2, all six
           components, MEEP ``get_array`` layout): fold(Y,-1) with k_x = 3.5
           **1.030e-06**, against controls of 1.021e-06 for the fold alone and
           1.028e-06 for k_x = 3.5 unfolded; fold(Y,-1) with k_x = 0.1234567
@@ -1156,8 +1172,8 @@ class FdtdDriver:
 
         Accepts either this grid's own shape ``(nx, ny, nz)`` or MEEP's
         ``get_epsilon()`` shape ``(nx+1, ny+1, nz+1)``; every axis is checked, so a
-        half-matching array raises instead of slipping through (port reference §5.8
-        — the bundle's second branch was unreachable).
+        half-matching array raises instead of slipping through (in the code this was
+        ported from, the second branch was unreachable).
 
         Registration, RESOLVED by a non-uniform-epsilon oracle (the Bloch grating in
         ``test_driver_integration.py`` and ``test_driver_vs_meep.py``): ``inv_eps[i,
@@ -1179,7 +1195,7 @@ class FdtdDriver:
         separately at the three E-component Yee positions, use
         :meth:`set_epsilon_components`.
 
-        UNDER A MIRROR FOLD, PREFER :meth:`set_epsilon_components`. One shared array
+        Under a mirror fold, prefer :meth:`set_epsilon_components`. One shared array
         indexed at the integer Yee position is half a cell off for the component whose
         Yee shift on the folded axis is 1 — ``Ex`` under an X plane sits at
         ``p_i + dx/2`` and is multiplied by the permittivity at ``p_i``, so the two
@@ -1382,7 +1398,7 @@ class FdtdDriver:
         ``fill_rule`` below, and ``planar_fraction`` on the returned report for how
         much of the interface got that treatment.
 
-        WHICH OF THE TWO MEANS YOU ACTUALLY GET: the arithmetic one, always. The
+        Which of the two means you actually get: the arithmetic one, always. The
         invariance this method requires (below) forces the epsilon gradient along
         ``component``'s own axis to vanish exactly, so ``n_d = 0``, the diagonal
         collapses to ``1/<eps>``, and the interface normal has no influence on the
@@ -1393,7 +1409,7 @@ class FdtdDriver:
         polarization and needs the per-component tensor this engine cannot store, so
         it is verified in :mod:`.smoothing` and reached by nothing.
 
-        THE SCALAR CONTRACT. This engine stores ONE ``inv_eps`` volume shared by all
+        The scalar contract. This engine stores ONE ``inv_eps`` volume shared by all
         three D components, so it can carry exactly one row of MEEP's tensor. That
         reduction is exact — not approximate — when both of these hold:
 
@@ -1653,7 +1669,7 @@ class FdtdDriver:
         keeps the plain ``step_D`` bit-identical instead of merely equal to within a
         multiply by 1.0.
 
-        THE PER-COMPONENT MAPPING IS MEEP'S OWN SHAPE, not a convenience: ``get_cnd``
+        The per-component mapping is MEEP's own shape, not a convenience: ``get_cnd``
         reads ``D_conductivity_diag.x/.y/.z`` for Dx/Dy/Dz respectively
         (meepgeom.cpp:1545-1559), and :meth:`~.fields.Fields._set_conductivity_side`
         has always stored ``sigma``, ``condfac`` and ``condinv`` per component — it is
@@ -1916,7 +1932,7 @@ class FdtdDriver:
         meepgeom.cpp:1545-1559, and each face's ramp is added onto that component's own
         value).
 
-        BOTH SIDES COMPOSE THE SAME WAY, because MEEP's one loop does: the absorber
+        Both sides compose the same way, because MEEP's one loop does: the absorber
         ramp is added "isotropically, for both magnetic and electric conductivity"
         (meepgeom.cpp:1596-1600, MEEP's own comment), so a
         ``mp.Medium(B_conductivity=...)`` inside an ``mp.Absorber`` is the SUM of the
@@ -2442,7 +2458,7 @@ class FdtdDriver:
         layer, no such cell exists and the source's position in the layer cannot
         matter.
 
-        MEASURED (``component_coordinates`` is not used here; see the index note
+        Measured (``component_coordinates`` is not used here; see the index note
         below), on a source spanning the full transverse extent so that it runs
         straight through both y PML layers — test_damping's own source shape — against
         pristine CPU MEEP stepping the same cell:
@@ -2585,7 +2601,7 @@ class FdtdDriver:
         floor on Dcyl and Cartesian PEC walls alike). A source inside a PML is
         likewise admitted on every grid: the two defects the old geometric
         refusal masked are fixed and measured on Cartesian and Dcyl alike
-        (evidence packet §1.5-1.7): the curl form is chosen per chunk
+        against CPU MEEP: the curl form is chosen per chunk
         (``stepping._apply_curl``) and an integrated dipole enters at the
         constitutive update through ``f_minus_p`` (``sources.f_minus_p_begin``), never
         through D or B.
@@ -2655,7 +2671,7 @@ class FdtdDriver:
             if is_integrated and source.field_type != FIELD_TYPE_B:
                 self._store_E_for_f_minus_p()
             self._sources.append(source)
-            # THE SOURCE LIST IS A PLAN INPUT. `plan_fast_path` hands it to the
+            # The source list is a plan input. `plan_fast_path` hands it to the
             # fused-pair predicates, which cannot read it off Fields and refuse
             # outright when it is not declared; a pair admitted for one source set
             # and then run against another would compute its constitutive half
@@ -2705,10 +2721,12 @@ class FdtdDriver:
         ``update_eh.cpp:166-171``: a chunk with ``f_minus_p`` holds E apart from D. Until
         now ``get_E`` served ``D * inv_eps``; that is the E the stored array starts from,
         so a source added mid-run changes nothing until the next constitutive update.
+        Before the first step it is D's words, as MEEP's allocation copies D
+        (update_eh.cpp:165-170; ``Fields.e_reads_d``), which ``get_component`` serves.
         """
         if self.fields.stores_E:
             return
-        current = {component: self.fields.get_E(component) for component in E_COMPONENTS}
+        current = {component: self.fields.get_component(component) for component in E_COMPONENTS}
         self.fields.enable_field_storage()
         for component, values in current.items():
             getattr(self.fields, component)[...] = values
@@ -2785,8 +2803,8 @@ class FdtdDriver:
         With an explicit ``center`` / ``size`` the monitor covers that volume. Without
         one it covers the PML interior when the run has a PML, else the whole domain —
         and that default is resolved when stepping starts, not here, so adding the
-        monitor before or after :meth:`setup_pml` gives the same region (port
-        reference §5.14; the bundle's order-sensitive defaulting silently produced
+        monitor before or after :meth:`setup_pml` gives the same region (the
+        ported code's order-sensitive defaulting silently produced
         full-domain monitors that included the absorbing layers).
 
         ``decimation_factor=0`` selects MEEP's automatic safe sampling interval
@@ -3058,7 +3076,7 @@ class FdtdDriver:
             # sides: 2-D (2,4,0) normal X 9.40e-08, 2-D (4,4,0) normal Y 2.57e-09, 2-D
             # (3,3,0) normal X off-centre 6.54e-09, 3-D (4,4,4) normal X 6.28e-08 —
             # the same class as the flat controls beside them (1.43e-07, 3.86e-08).
-            # The INFERRED case above still raises, because there a normal with extent
+            # The inferred case above still raises, because there a normal with extent
             # means nothing was declared and the axis would be a guess.
         request = _decimation_request(decimation_factor)
         resolved_decimation = (
@@ -3214,7 +3232,7 @@ class FdtdDriver:
         is 1.26e-07/1.14e-07): see test_driver_vs_meep's folded-live-face cases
         for the pinned numbers.
 
-        WHAT STILL CANNOT SERVE A LIVE FACE: the nonlinear transverse sums.
+        What still cannot serve a live face: the nonlinear transverse sums.
         ``stepping._nonlinear_transverse_sums`` shifts PRODUCTS of components,
         which carry no single mirror parity, so their far-face read on a folded
         periodic axis keeps the zero ghost (``_shift_up`` with no
@@ -3329,7 +3347,7 @@ class FdtdDriver:
         namely nothing, so a plan-object test would have a NumPy laptop with an
         inert layer reporting "fused" for a run that launches nothing at all.
 
-        READ IT AFTER A STEP, not before. The plan is built at the configuration
+        Read it after a step, not before. The plan is built at the configuration
         freeze inside ``step()``, so this reads "array" before the first step of a
         run that will dispatch, and again between ``invalidate_fast_path()`` and the
         next step. That is not a lie about the future — nothing has decided yet —
@@ -3341,7 +3359,7 @@ class FdtdDriver:
 
         The benchmark harness asserts the requested path against this property so a
         predicate regression cannot silently masquerade as a perf regression.
-        ``MEEP_GPU_FUSED=0`` forces "array" for bisection AT THE FREEZE: it is
+        ``MEEP_GPU_FUSED=0`` forces "array" for bisection at the freeze: it is
         read when the plan is built, so exporting it before the process starts (or
         before the first step) is what a bisection does. Setting it mid-run changes
         nothing until something calls ``invalidate_fast_path()`` — measured: two
@@ -3364,7 +3382,7 @@ class FdtdDriver:
         JSON object per configuration freeze, so a long run's dispatch state is
         readable with ``tail`` on the machine that owns the job.
 
-        ALWAYS THIS DRIVER'S OWN FREEZE, dispatched or refused, and that is a
+        Always this driver's own freeze, dispatched or refused, and that is a
         correction: it used to fall through to the module-level last record
         whenever no plan was held, which is one process-wide slot that every
         freeze overwrites. Measured, a refused driver then reported
@@ -3422,7 +3440,7 @@ class FdtdDriver:
         stays true because E is stored, which is why any susceptibility switches the
         storage on.
 
-        MEASURED, against the expectation that swapping 7 and 7b would detune the
+        Measured, against the expectation that swapping 7 and 7b would detune the
         resonance: it does not, and the reason is worth writing down. Advancing P
         first shifts BOTH indices by one — the polarization is driven by the previous
         step's W, and the stored E then subtracts the already-advanced P — and the two
@@ -3441,7 +3459,7 @@ class FdtdDriver:
         correct slot gives 2.9e-07 — and is invisible to a magnitude comparison.
         Each source reports which slot it belongs to through ``field_type``.
 
-        Step 6 is the port fix from reference §5.2: MEEP fills D boundaries after
+        Step 6 fixes a defect of the ported code: MEEP fills D boundaries after
         ``step_source``, and the bundle exported ``fill_symmetry_bc_D`` for exactly
         this slot but never called it from either driver, so symmetric runs left the
         mirror-plane D cells stale — which the PML+symmetry kernels explicitly rely
@@ -3469,6 +3487,9 @@ class FdtdDriver:
         metallic cross-validation until a test put an Hx current on an x wall.
         """
         self._require_open()
+        # From here on a read of an E the run does not store is D * inv_eps; before the
+        # first step it was D's words, MEEP's E being D's storage (Fields.e_reads_d).
+        self.fields.e_reads_d = False
         if self._automatic_decimation_monitors:
             self._refresh_automatic_decimation()
             # Freeze factors at the first accumulated timestep, matching MEEP's
@@ -3489,7 +3510,7 @@ class FdtdDriver:
                                                  self._sources, self.chunk_layout)
                 self._fast_path_record = last_dispatch_report()
             else:
-                # prefer_gpu=False IS THE NUMPY REFERENCE: it consults no kernel
+                # prefer_gpu=False is the NumPy reference: it consults no kernel
                 # table, whatever the environment says, and its record says so. The
                 # record is the one this call built, taken from its return value
                 # rather than read back out of the process-wide slot.
@@ -3656,6 +3677,7 @@ class FdtdDriver:
         decay_by: float | None = None,
         decay_component: str | None = None,
         decay_point: Sequence[float] | None = None,
+        decay_sampling_interval: int = 1,
         max_time: float | None = None,
     ) -> float:  # Step the simulation, reporting progress and honouring cancellation.
         """Run to a stopping condition and return the elapsed wall time.
@@ -3664,7 +3686,7 @@ class FdtdDriver:
 
         * ``num_steps`` — that many time steps.
         * ``until`` — up to a finite simulation time strictly beyond the current one.
-          Infinite times raise (port reference §5.12).
+          Infinite times raise.
         * ``until_after_sources`` — MEEP's field-decay stop. The value is the trailing
           window length in simulation time, and the run ends once the peak ``|f|**2``
           at ``decay_point`` over a window has fallen to ``decay_by`` times the largest
@@ -3672,7 +3694,10 @@ class FdtdDriver:
           ``decay_by``, ``decay_component``, ``decay_point`` and ``max_time`` are all
           required with it; this is MEEP's
           ``run(until_after_sources=stop_when_fields_decayed(window, c, pt, decay_by))``
-          flattened into keywords.
+          flattened into keywords. ``decay_sampling_interval`` is that criterion's
+          ``sampling_interval`` (MEEP 1.34.0 and later): the point is read only on
+          steps whose step count is a multiple of it. The default, 1, reads every
+          step, which is MEEP's default and its criterion before 1.34.0.
 
         The decay stop cannot loop forever. ``max_time`` is the caller's ceiling and
         raises :class:`RuntimeError` when the field has not decayed by then, reporting
@@ -3733,6 +3758,7 @@ class FdtdDriver:
                 decay_component=decay_component,
                 decay_point=decay_point,
                 max_time=max_time,
+                sampling_interval=decay_sampling_interval,
             )
         else:
             unexpected = [
@@ -3745,6 +3771,9 @@ class FdtdDriver:
                 )
                 if value is not None
             ]
+            if not (isinstance(decay_sampling_interval, numbers.Integral)
+                    and decay_sampling_interval == 1):
+                unexpected.append("decay_sampling_interval")
             if unexpected:
                 raise ValueError(
                     f"{unexpected} configure the field-decay stop and need until_after_sources; "
@@ -3782,7 +3811,7 @@ class FdtdDriver:
             for stepper in steppers:
                 stepper(self, "step")
             completed = index + 1
-            decayed = decay is not None and decay.update(self.time)
+            decayed = decay is not None and decay.update(self.time, self.step_count)
             if completed % interval == 0 or completed == total or decayed:
                 if cancel_check is not None and cancel_check():
                     raise FdtdCancelled(f"FDTD run cancelled after {self.step_count} steps.")
@@ -3812,7 +3841,8 @@ class FdtdDriver:
         return time_module.perf_counter() - started
 
     def _prepare_decay_stop(
-        self, window: float, decay_by: Any, decay_component: Any, decay_point: Any, max_time: Any
+        self, window: float, decay_by: Any, decay_component: Any, decay_point: Any, max_time: Any,
+        sampling_interval: Any = 1,
     ) -> tuple[_FieldDecayProbe, int]:  # Validate the decay arguments and build the probe plus its ceiling.
         """Build the field-decay probe and the ceiling step count, validating every argument.
 
@@ -3849,6 +3879,13 @@ class FdtdDriver:
                 f"decay_by must lie in (0, 1) — the fraction of the peak |field|^2 the trailing window "
                 f"must fall to, MEEP's squared-magnitude convention — got {decay_by!r}."
             )
+        # MEEP's own check (MEEP 1.35.0 python/simulation.py:5807-5808), with its words.
+        if not isinstance(sampling_interval, numbers.Integral) or sampling_interval < 1:
+            raise ValueError(
+                f"decay_sampling_interval must be a positive integer (MEEP's "
+                f"sampling_interval: the steps between samples of the probe point), got "
+                f"{sampling_interval!r}."
+            )
         component = str(decay_component)
         probe_point = _as_xyz("decay_point", decay_point)
         ceiling = float(max_time)
@@ -3873,6 +3910,7 @@ class FdtdDriver:
             window=window_length,
             start_time=self.time,
             source_end_time=source_end,
+            sampling_interval=int(sampling_interval),
         )
         total = int(math.ceil((ceiling - self.time) / self.grid.dt - _STEP_TOLERANCE))
         return probe, total
@@ -4060,6 +4098,7 @@ class FdtdDriver:
         if tuple(values.shape) != tuple(target.shape):
             raise ValueError(f"{component} array shape {tuple(values.shape)} does not match grid shape {tuple(target.shape)}.")
         setattr(self.fields, component, values)
+        self.fields.e_reads_d = False  # A seeded state's E is read through inv_eps.
         self.invalidate_fast_path()  # The primary array was REBOUND, not written in place.
 
     def get_epsilon(self, frequency: float | None = None, component: str = "Ez") -> Any:
@@ -4136,7 +4175,7 @@ class FdtdDriver:
 
         ``gv`` is the STEPPED grid volume — halved on every mirrored axis — and
         ``interior()`` (vec.cpp:289-291) is ``[little_corner, big_corner - 2]`` in doubled
-        units, i.e. ONE CELL SHORT of the cell at the top. So an unfolded axis of a
+        units, i.e. One cell short of the cell at the top. So an unfolded axis of a
         10-unit cell at resolution 20 runs ``[-5.0, +4.95]``, not ``[-5, +5]``: the
         declared cell measured 0.05 wider than MEEP's own "total volume", and using the
         declared one made ``sim.modal_volume_in_box()`` disagree with
@@ -4355,7 +4394,7 @@ class FdtdDriver:
         this and then ``magnetic_energy_in_box``, and a caller who has already
         synchronized must not get a second half-step.
 
-        MEASURED on test_wvg_src's own cell (16 x 8, resolution 10, complex fields,
+        Measured on test_wvg_src's own cell (16 x 8, resolution 10, complex fields,
         eigenmode ContinuousSource at 0.15, until=200 = 4000 steps exactly, steady-state
         CW so no turn-on tail): the near-field flux is -1.775e-03 synchronized against
         -1.731e-03 unsynchronized, 2.5e-02 apart, and MEEP's published constant is the
@@ -4394,7 +4433,7 @@ class FdtdDriver:
         zero_metal_B(self.fields)
         if fast is None or not fast.dispatch("fill_folded_far_ghosts_B", self.fields):
             fill_folded_far_ghosts_B(self.fields)
-        # THE ONE CONSULT ON THIS PATH THAT IS NOT ``step``'s, and the name is the
+        # The one consult on this path that is not ``step``'s, and the name is the
         # difference. ``update_H`` is the last magnetic slot and therefore the seam
         # where a product may reach forward into the ELECTRIC half — a weld spanning
         # ``update_H`` and ``step_D`` is correct in ``step`` and a silent wrong answer
@@ -4422,10 +4461,10 @@ class FdtdDriver:
         for name in self._SYNC_FIELDS:
             array = getattr(self.fields, name, None)
             if array is not None and name in backup:
-                # A WHOLE-VOLUME HOST WRITE, declared as one. This runs once per
+                # A whole-volume host write, declared as one. This runs once per
                 # energy or flux query, not per step, so the whole copy it costs
-                # under a held residency is the "one full bracket per query" the
-                # residency plan already concedes -- and without the declaration the
+                # under a held residency is the "one full bracket per query" that
+                # held residency accepts by design -- and without the declaration the
                 # in-place average raised on a sealed array (measured on every held
                 # case of the 2026-09-23 preflight, through the gate's
                 # second-consult control).
@@ -4482,6 +4521,8 @@ class FdtdDriver:
         self._require_open()
         self.fields.reset()
         self.fields.h_separated = False  # The restarted run starts H from B again, as MEEP's would.
+        # MEEP's zeroed E reads +0 (fields_chunk::zero_fields), as the zeroed D does.
+        self.fields.e_reads_d = True
         self.invalidate_fast_path()  # Field arrays may have been reallocated with the state.
         self.step_count = 0
         for monitor in self._dft_monitors:

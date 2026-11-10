@@ -1,8 +1,8 @@
 """The five RESIDUAL magnetic-seam welds and the shared cf fill carry -- the laptop half.
 
-WHAT THIS FILE PINS. The device verdicts live in
+What this file pins. The device verdicts live in
 ``parity/meep_gpu/gate_cuda_fused_complex_pairs.py``'s five residual families; what a
-laptop can pin is the half whose failure mode is a SILENT WRONG ANSWER before any
+laptop can pin is the half whose failure mode is a silent wrong answer before any
 kernel runs:
 
 * the shared cf carry's CLOSED FORMS -- the ownership rule, the parity chain's
@@ -65,7 +65,7 @@ def build_folded_complex(xp, *, symmetry=(Mirror("Y", 1),),
 
 
 # ---------------------------------------------------------------------------
-# 1. THE SHARED CARRY'S CLOSED FORMS
+# 1. The shared carry's closed forms
 # ---------------------------------------------------------------------------
 
 def test_the_parity_chain_is_the_drivers_order_and_never_a_product():
@@ -144,7 +144,7 @@ def test_fills_plan_raises_on_a_far_row_with_no_declared_phase():
 
 
 # ---------------------------------------------------------------------------
-# 2. THE EMITTED TEXT
+# 2. The emitted text
 # ---------------------------------------------------------------------------
 
 EMITTERS = {
@@ -235,7 +235,7 @@ def test_the_real_welds_refuse_the_emit_by_name_on_a_cupy_free_host():
 
 
 # ---------------------------------------------------------------------------
-# 3. THE PREDICATES, ON REAL ENGINE OBJECTS
+# 3. The predicates, on real engine objects
 # ---------------------------------------------------------------------------
 
 def test_the_folded_weld_admits_its_cell_and_names_what_it_refuses(xp):
@@ -335,8 +335,8 @@ def test_the_cylindrical_real_weld_admits_m0_and_refuses_complex_storage(xp):
 
 def test_the_special_kz_weld_requires_real_beta_and_serves_both_fold_sides(xp):
     """The eigsrc_kz_1 shape (folded real beta) is ADMITTED since 2026-09-02:
-    the fold refusal that stood here rested on the deposit premise the residue
-    audit overturned, and the real pair's fill carry is now spliced in."""
+    the fold refusal that stood here rested on the deposit premise the 2026-09-02
+    census re-measurement overturned, and the real pair's fill carry is now spliced in."""
     grid = Grid(resolution=1.0, cell_size=(12.0, 8.0, 0.0),
                 boundaries=("periodic",) * 3, xp=xp, dimensions=2, beta=0.332)
     layer = PML(grid=grid, thickness=((2, 2), (2, 2), (0, 0)))
@@ -348,7 +348,7 @@ def test_the_special_kz_weld_requires_real_beta_and_serves_both_fold_sides(xp):
                            fields, layer, grid, ()))
     assert covered, reason
 
-    # THE FOLDED SIDE (the eigsrc_kz_1_real_imag shape), now served through the
+    # The folded side (the eigsrc_kz_1_real_imag shape), now served through the
     # ported carry -- and it must be served by special_kz ALONE: the real pair
     # refuses beta, every complex product refuses real storage.
     grid2 = Grid(resolution=1.0, cell_size=(8.0, 9.0, 0.0),
@@ -424,7 +424,7 @@ def test_the_bfast_weld_requires_bfast_and_refuses_the_fold_by_name(xp):
     fields2 = Fields(grid=grid2)
     fields2.enable_field_storage()
     fields2.enable_pml_storage()
-    # THE CERTIFIED BFAST CURL REFUSES A FOLD ITSELF ("the 'folded ghost
+    # The certified BFAST curl refuses a fold itself ("the 'folded ghost
     # values are dead' half of that argument does not transfer and has not been
     # measured"), so on this family the weld's own fold clause is UNREACHABLE
     # today -- and it is still written, for the complex pair's stated reason:
@@ -466,9 +466,9 @@ def test_each_product_row_names_its_own_module_and_seam(family):
     assert module.REPLACES[0] == "step_B" and module.REPLACES[-1] == "update_H"
     # the three fill-carrying welds declare all five passes; the two no-fill
     # welds declare three and REFUSE the fold in their predicates instead.
-    # special_kz joined the carrying set on 2026-09-02 (residue round): its
-    # blocked row is folded, and the fold refusal's premise fell with the
-    # deposit flag.
+    # special_kz joined the carrying set later on 2026-09-02 (after its
+    # three-pass weld): its blocked row is folded, and the fold refusal's
+    # premise fell with the deposit flag.
     if family in ("cuda_complex_folded_fused_magnetic_pair",
                   "cuda_complex_beta_fused_magnetic_pair",
                   "cuda_special_kz_fused_magnetic_pair"):
@@ -480,10 +480,10 @@ def test_each_product_row_names_its_own_module_and_seam(family):
 
 
 def test_the_repair_flag_split_is_the_re_measured_census_fact():
-    """The flag split is a CENSUS FACT, not a preference -- RE-MEASURED in the
-    2026-09-02 residue round. The folded cell's fifth row deposits a plain
-    point B Source; the beta and special_kz cells' blocked rows deposit their
-    lifted eigenmode SHEETS, which DO publish point indices
+    """The flag split is a CENSUS FACT, not a preference -- re-measured in the
+    2026-09-02 change that followed the residual welds. The folded cell's fifth
+    row deposits a plain point B Source; the beta and special_kz cells' blocked
+    rows deposit their lifted eigenmode SHEETS, which DO publish point indices
     (``_lift_eigenmode_source`` synthesises ``VolumeSource`` equivalent-current
     sheets, and every source class publishes ``_point_ix/_point_iy/_point_iz``
     at setup) -- the "publishes no point index" premise the old False rested on
@@ -536,8 +536,8 @@ def test_a_sheet_source_publishes_its_deposit_index_and_the_seam_carries_it():
 def test_the_eight_step_b_candidates_partition_on_the_folded_cell(xp):
     """One admitted product per configuration: on the folded-complex fixture,
     every OTHER step_B product must refuse -- two admitters leave the seam
-    unfused naming both, so an overlap here costs the very slots this round
-    exists to serve."""
+    unfused naming both, so an overlap here costs the very slots these welds
+    exist to serve."""
     fields, layer, grid = build_folded_complex(xp)
     admitted = []
     from . import (complex_fused_magnetic_pair, cylindrical_fused_magnetic_pair,

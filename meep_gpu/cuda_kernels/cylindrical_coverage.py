@@ -1,12 +1,12 @@
 """Which CYLINDRICAL (Dcyl) configurations the hand-CUDA curl pair may step, at m = 0.
 
-NOTHING HERE IMPORTS CUPY, NUMPY OR THE KERNEL MODULE, for the reason
+Nothing here imports CuPy, NumPy or the kernel module, for the reason
 ``coverage.py``'s header gives at length: the predicate is the part of this track
 whose failure mode is a *silent wrong answer* rather than a crash, so it has to be
 importable, exercisable and mutable on a machine with no GPU. ``cylindrical_kernels``
 holds ``cp.RawKernel`` objects and imports ``cupy`` at module scope; this does not.
 
-WHY IT IS A SEPARATE MODULE FROM ``coverage.py`` RATHER THAN A WIDENING OF IT.
+Why it is a separate module from ``coverage.py`` rather than a widening of it.
 ``covers_real_pml_curl`` refuses Dcyl BY NAME, twice — ``coverage.py:499-500``
 ("cylindrical (Dcyl): prefix-sum radial derivative and axis-row rules") and
 :501-503 (``axis N is the cylindrical r = 0 axis``). Those two clauses are RIGHT for
@@ -18,7 +18,7 @@ exactly where it is. The Metal port states the same separation as "clause 6
 INVERTED" (``metal_kernels/cylindrical_real.py``) and the Triton one as "they do not
 call ``coverage._grid_reasons``".
 
-WHAT IS SHARED AND WHAT IS RESTATED. The GRID-SHAPED helpers are IMPORTED from
+What is shared and what is restated. The GRID-SHAPED helpers are IMPORTED from
 ``coverage`` — ``_grid_facts``, ``_backend``, ``_array_problem``,
 ``_coefficient_vector_problem`` — because they read a grid and answer a question
 about layout, and a second spelling of "is this a float32 C-contiguous volume of
@@ -28,7 +28,7 @@ order and with the same numbering as ``covers_real_pml_curl``, so the two can be
 diffed by eye. A test pins that every imported helper still exists, so a rename in
 the shared file fails at the merge bar instead of silently dropping a clause.
 
-WHAT THIS PAIR CARRIES, ENUMERATED POSITIVELY:
+What this pair carries, enumerated positively:
 
 * ``grid.cylindrical`` TRUE, ``grid.m == 0`` EXACTLY, r the leading axis;
 * boundary kinds ``('axis', 'periodic', <'metallic'|'periodic'>)`` — the r axis is
@@ -37,7 +37,7 @@ WHAT THIS PAIR CARRIES, ENUMERATED POSITIVELY:
 * real float32 storage, an active split-field PML, stored E, no fold, no Bloch, no
   BFAST, no beta, no conductivity on this sub-step's targets, no chi2/chi3.
 
-WHAT IT REFUSES BY NAME AND WHY EACH IS A WRONG ANSWER RATHER THAN A CRASH:
+What it refuses by name and why each is a wrong answer rather than a crash:
 
 * ``m != 0``. |m| >= 1 forces complex64 storage, the ``i*m/r`` coupling
   (``stepping._cylindrical_imr_term``), the |m| = 1 axis increments FOLDED INTO the
@@ -113,7 +113,7 @@ DEREFERENCED: Tuple[str, ...] = (
 def cylindrical_boundary_codes(kinds: Tuple[str, ...]) -> Tuple[int, int, int]:
     """Map a Dcyl grid's resolved kinds onto the kernels' two integer codes.
 
-    THE r AXIS COMPILES AS METALLIC, and that is a transcription rather than a
+    The r axis compiles as METALLIC, and that is a transcription rather than a
     convenience: ``stepping._shift_up``'s ``CYL_AXIS`` branch SHARES the ``METALLIC``
     one character for character (stepping.py:1828-1830) — a hard zero at the far r
     face, which is the PEC wall a Dcyl cell carries at ``r_max``.
@@ -156,7 +156,7 @@ def covers_real_pml_cylindrical_curl(fields: Any, pml: Any, grid: Any,
     ``reason`` naming the FIRST refusal, exactly as ``covers_real_pml_curl`` does, so
     a configuration that unexpectedly stays on the array path says why.
 
-    THE CLAUSE ORDER MIRRORS ``covers_real_pml_curl`` so the two can be diffed by
+    The clause order mirrors ``covers_real_pml_curl`` so the two can be diffed by
     eye. The backend clause fires first for the same reason it does there — a grid
     that cannot answer must not pre-empt it.
     """
@@ -186,7 +186,7 @@ def covers_real_pml_cylindrical_curl(fields: Any, pml: Any, grid: Any,
         return False, (f"grid.is_axis {facts['axis']!r} is not "
                        f"{CYLINDRICAL_AXIS_FLAGS!r} (r must be the leading axis)")
 
-    # 14. THE INTERNAL SPLIT against a future |m| >= 1 pair, refused BY NAME.
+    # 14. The internal split against a future |m| >= 1 pair, refused by name.
     m = getattr(grid, "m", None)
     if m is None:
         return False, "grid does not report m"
@@ -203,7 +203,7 @@ def covers_real_pml_cylindrical_curl(fields: Any, pml: Any, grid: Any,
     if facts["has_symmetry"] or any(facts["mirrored"]):
         return False, "a mirror plane is active: symmetry folding is not carried"
 
-    # 4. THE GHOST RULES, per axis and spelled positively. r must be the axis, phi
+    # 4. The ghost rules, per axis and spelled positively. r must be the axis, phi
     #    must be the one-cell invariant axis, z is free among the two kernel codes.
     kinds = _boundary_kinds_from(facts)
     if kinds[0] != REQUIRED_R_KIND:
@@ -246,7 +246,7 @@ def covers_real_pml_cylindrical_curl(fields: Any, pml: Any, grid: Any,
         return False, (f"phi extent is {int(shape[1])} cells, not 1: Dcyl is 2.5-D and "
                        f"the exp(i*m*phi) dependence is analytic")
 
-    # THE INT32 INDEX RANGE. Both kernels declare ``int idx`` and add ``ny*nz`` to it
+    # The int32 index range. Both kernels declare ``int idx`` and add ``ny*nz`` to it
     # for the radial neighbour; the B side adds it AGAIN to reach the prefix's next
     # row. Past 2**31 elements that stops being an identity and starts being a wrong
     # answer at a wrapped index — a silently corrupted volume, not a launch failure.
@@ -294,7 +294,7 @@ def covers_real_pml_cylindrical_curl(fields: Any, pml: Any, grid: Any,
 # THE COMPLEX Dcyl CURL PAIR, |m| >= 1 -- a THIRD pair with a THIRD predicate
 # =============================================================================
 #
-# WHY A THIRD PREDICATE RATHER THAN A WIDENING OF EITHER EXISTING ONE. The two it
+# Why a third predicate rather than a widening of either existing one. The two it
 # sits beside are both RIGHT and both stay exactly as they are:
 #
 # * :func:`covers_real_pml_cylindrical_curl` above refuses ``force_complex_fields``
@@ -303,7 +303,7 @@ def covers_real_pml_cylindrical_curl(fields: Any, pml: Any, grid: Any,
 #   m = 0 pair);
 # * ``coverage.covers_real_pml_complex_curl`` refuses Dcyl by name -- correct,
 #   because ``step_B_pml_complex_bloch`` has no prefix pointer, no i*m/r row,
-#   no axis increment and no near-axis zeroing. The sibling Triton tranche MEASURED
+#   no axis increment and no near-axis zeroing. The sibling Triton kernels measured
 #   that refusal (1,281,955 differing uint32 words, 56 of 80 rows) rather than
 #   arguing it, and this family's gate carries the same control.
 #
@@ -311,7 +311,7 @@ def covers_real_pml_cylindrical_curl(fields: Any, pml: Any, grid: Any,
 # and neither may be widened; ``cylindrical_complex_kernels`` is a third pair with a
 # third signature, and this is its predicate.
 #
-# WHAT IT CARRIES, ENUMERATED POSITIVELY:
+# What it carries, enumerated positively:
 #
 # * ``grid.cylindrical`` TRUE, ANY integer ``grid.m`` (|m| >= 1 since 2026-08-27,
 #   m = 0 since 2026-09-04), r the leading axis, at least TWO radial rows;
@@ -319,7 +319,7 @@ def covers_real_pml_cylindrical_curl(fields: Any, pml: Any, grid: Any,
 #   INVERTS), an active split-field PML, stored E;
 # * boundary kinds ``('axis', 'periodic', <'metallic'|'periodic'>)``.
 #
-# THE INTERNAL SPLIT AGAINST THE REAL PAIR IS ON STORAGE ALONE since 2026-09-04. Until
+# The internal split against the real pair is on storage alone since 2026-09-04. Until
 # then this predicate ALSO refused ``m == 0`` by name -- the kernel compiled no such
 # arm, and m = 0 was the real pair's arithmetic. But a complex-storage m = 0 run is
 # constructible (``force_complex_fields`` is an independent switch) and the corpus
@@ -332,7 +332,7 @@ def covers_real_pml_cylindrical_curl(fields: Any, pml: Any, grid: Any,
 # constructible and this kernel would read the wrong stride on it". No triple can be
 # admitted by both, because one requires the declaration the other refuses.
 #
-# WHAT IT REFUSES BY NAME, each because it would be a smooth wrong field:
+# What it refuses by name, each because it would be a smooth wrong field:
 #
 # * a Bloch phase. Dcyl Bloch is z-only in MEEP, no corpus row carries one, and the
 #   kernel passes every phase flag 0. Admitting one later is a predicate widening
@@ -342,7 +342,7 @@ def covers_real_pml_cylindrical_curl(fields: Any, pml: Any, grid: Any,
 #   which NumPy raises ``IndexError`` on at nr = 1 (measured on a real
 #   ``Grid(cell_size=(1.0, 0, 20), m=1, complex)``) -- and the kernel's matching load
 #   ``sx + j*sy + k`` is true on every lane of such a grid, so it would read a full
-#   plane PAST THE END of the source volume. The clause is UNCONDITIONAL rather than
+#   plane past the end of the source volume. The clause is UNCONDITIONAL rather than
 #   |m| = 1 only: at |m| >= 2 an nr = 1 grid does not fault but every row is inside
 #   ``zero_rows``, so the volume is held at zero and the configuration is degenerate
 #   in both products -- and a clause that re-derives the m class is a clause that can
@@ -365,7 +365,7 @@ def covers_pml_cylindrical_complex_curl(fields: Any, pml: Any, grid: Any,
     ``sub_step`` is ``"step_B"`` or ``"step_D"``; returns ``(covered, reason)`` with
     ``reason`` naming the FIRST refusal.
 
-    THE CLAUSE ORDER MIRRORS :func:`covers_real_pml_cylindrical_curl` so the two can
+    The clause order mirrors :func:`covers_real_pml_cylindrical_curl` so the two can
     be diffed by eye, with the storage clause INVERTED and two clauses added (the
     radial minimum and the Bloch refusal). The ``m`` clause is READ and
     admitted at every integer since 2026-09-04; the real pair's clause 14 keeps its
@@ -401,7 +401,7 @@ def covers_pml_cylindrical_complex_curl(fields: Any, pml: Any, grid: Any,
         return False, (f"grid.is_axis {facts['axis']!r} is not "
                        f"{CYLINDRICAL_AXIS_FLAGS!r} (r must be the leading axis)")
 
-    # 14. THE ORDER IS READ, NOT SPLIT ON. Every integer m is an arm of this family
+    # 14. The order is read, not split on. Every integer m is an arm of this family
     #     since 2026-09-04 (``cylindrical_complex_kernels.m_class``: M_ZERO / M_ONE /
     #     M_MANY); the split against the real pair is clause 2 above, on storage. An
     #     unreadable m is still a refusal: the m class is compiled into the launch.
@@ -417,7 +417,7 @@ def covers_pml_cylindrical_complex_curl(fields: Any, pml: Any, grid: Any,
     if facts["has_symmetry"] or any(facts["mirrored"]):
         return False, "a mirror plane is active: symmetry folding is not carried"
 
-    # 4. THE GHOST RULES, per axis and spelled positively.
+    # 4. The ghost rules, per axis and spelled positively.
     kinds = _boundary_kinds_from(facts)
     if kinds[0] != REQUIRED_R_KIND:
         return False, (f"axis 0 resolves to boundary {kinds[0]!r}, not "
@@ -428,7 +428,7 @@ def covers_pml_cylindrical_complex_curl(fields: Any, pml: Any, grid: Any,
     if kinds[2] not in BC_CODES:
         return False, f"axis 2 resolves to boundary {kinds[2]!r}, which has no kernel"
 
-    # NO BLOCH PHASE AT ALL -- refused by name rather than by the kernel's silence.
+    # No Bloch phase at all -- refused by name rather than by the kernel's silence.
     if facts["has_bloch"]:
         return False, ("a Bloch phase on a cylindrical grid: this pair compiles no "
                        "rotation and no Dcyl corpus row carries one (a z-only Dcyl "
@@ -469,8 +469,8 @@ def covers_pml_cylindrical_complex_curl(fields: Any, pml: Any, grid: Any,
         return False, "instantaneous chi2/chi3: a Pade factor on the constitutive product"
     if getattr(fields, "has_polarizations", False) or (
             getattr(fields, "polarizations", ()) or ()):
-        return False, ("a susceptibility is registered: complex cylindrical ADE is a "
-                       "future tranche and no Dcyl corpus row combines the two")
+        return False, ("a susceptibility is registered: complex cylindrical ADE is not "
+                       "yet built and no Dcyl corpus row combines the two")
 
     shape = facts["shape"]
     if len(shape) != 3:
@@ -492,7 +492,7 @@ def covers_pml_cylindrical_complex_curl(fields: Any, pml: Any, grid: Any,
         return False, ("grid does not report accurate_fields_near_cylorigin; it "
                        "selects the |m| >= 2 near-axis row count and may not be assumed")
 
-    # THE INT32 INDEX RANGE, HALVED against the real pair's. Both kernels declare
+    # The int32 index range, halved against the real pair's. Both kernels declare
     # ``int idx`` and address WORDS at ``2*idx``, and the B side additionally reads
     # the prefix at ``idx + sx`` on a volume one row taller. Past 2**31 words that
     # stops being an identity and starts being a wrong answer at a wrapped index.

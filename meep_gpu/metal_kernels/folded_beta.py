@@ -5,10 +5,10 @@ Both halves are already byte-certified on this backend alone: :mod:`.special_kz`
 :mod:`.symmetry` / :mod:`.folded_complex` (the fold's curl, fill and constitutive
 admission). This module is what happens when they meet.
 
-MODELLED ON :mod:`.folded_complex`, WHICH IS THE TEMPLATE THIS FAMILY FOLLOWS and
+Modelled on :mod:`.folded_complex`, which is the template this family follows and
 the only idiom it uses. That module is the package's other "fold composed with a
 certified family" and every structural choice here is its: derive the curl source
-from the PARENT'S OWN TEMPLATE by inserting one block at a CHECKED anchor rather
+from the parent's own template by inserting one block at a CHECKED anchor rather
 than copying the template; express the two other fold deltas as CALLS into
 :mod:`.symmetry`'s emitters rather than as text; re-admit the certified
 constitutive body under a restated predicate instead of writing a second one; keep
@@ -16,13 +16,13 @@ the wide (fold-optional) verdict for a gate and register a separate routing verd
 that makes the fold mandatory; and state every inverted clause by number.
 
 ===========================================================================
-WHAT COMPOSES, AND WHAT THE COMPOSITION ACTUALLY MOVES
+What composes, and what the composition actually moves
 ===========================================================================
 
 * the CURL. The beta coupling is MEEP's own pass after every component's curl
   (step_db.cpp:161-175), through the curl's additive ladder
   (``stepping._apply_folded_increment``), and its increment is masked by the curl's
-  own ownership predicate (``_mask_non_owned_cells``). A FOLD WIDENS THAT MASK --
+  own ownership predicate (``_mask_non_owned_cells``). A fold widens that mask --
   from "metallic at cell 0" to "non-periodic at cell 0 PLUS folded-periodic at the
   top plane" -- so the pass's increment is masked on the widened set too. The
   source is therefore the CERTIFIED FOLDED curl (:func:`.symmetry.folded_curl_source`,
@@ -36,7 +36,7 @@ WHAT COMPOSES, AND WHAT THE COMPOSITION ACTUALLY MOVES
   three ``_apply_constitutive_pml`` calls over integer-position coefficients, no
   shift helper, no ghost, no ownership mask. The fold reaches them through the
   STORED EXTENT alone and beta does not reach them at all. This family therefore
-  adds NO DEVICE CODE on those two slots — it re-admits ``launch.ConstitutivePlan``
+  adds no device code on those two slots — it re-admits ``launch.ConstitutivePlan``
   (real) and ``complex_fields.ComplexConstitutivePlan`` (complex), and only the
   ADMISSION is new. Exactly the move ``symmetry.plan_folded_constitutive`` and
   ``folded_complex.plan_folded_complex_constitutive`` make;
@@ -45,7 +45,7 @@ WHAT COMPOSES, AND WHAT THE COMPOSITION ACTUALLY MOVES
   boundary-code classifier and the stored-extent clause, all IMPORTED from the two
   parents rather than re-derived.
 
-THE FILL SLOTS ARE DELIBERATELY NOT CLAIMED, and that is a decision rather than an
+The fill slots are deliberately not claimed, and that is a decision rather than an
 omission. ``fill_symmetry_bc_*`` and ``fill_folded_far_ghosts_*`` copy
 ``parity * field[plane]`` and touch no beta term at all, so ``symmetry``'s and
 ``folded_complex``'s fill predicates carry NO beta clause and already admit a
@@ -55,10 +55,10 @@ existed. Registering a third fill arm here would make both fill slots AMBIGUOUS 
 drop them to the array path, which is a coverage LOSS dressed as completeness.
 
 ===========================================================================
-WHAT WAS MEASURED ON THIS HOST FOR THIS FAMILY, 2026-08-16
+What was measured on this host for this family, 2026-08-16
 ===========================================================================
 
-A RECORD OF THE RETIRED INSERT. The measurements below are of the beta term as a
+A record of the retired insert. The measurements below are of the beta term as a
 term INSIDE the curl (``curl - (c * b)`` and ``curl - c_mul(coefficient, b)``), the
 spelling this family carried before the beta coupling became MEEP's separate pass.
 The pass forms no complex product -- its complex increment is a quarter turn of the
@@ -75,8 +75,8 @@ flushes, and none can reach an infinity whose difference would be a NaN with an
 unspecified payload), ``moved_words`` at full count on every launch, 0 vacuous
 cases and 0 surprises against the predictions recorded before the run.
 
-1. THE FILE-SCOPE ``contract(off)`` DIRECTIVE IS MANDATORY AND THAT IS NOW A DIRECT
-   MEASUREMENT rather than an inherited rule. (It is spelled ONCE in the package, in
+1. The file-scope ``contract(off)`` directive is mandatory and that is now a direct
+   measurement rather than an inherited rule. (It is spelled ONCE in the package, in
    :func:`.shaders.contraction_pragma`, and ``test_metal_kernels`` fails the build on
    a second spelling ANYWHERE — including in prose, which is how this paragraph was
    caught quoting it.) Under ``contract(fast)`` the SHIPPED
@@ -86,7 +86,7 @@ cases and 0 surprises against the predictions recorded before the run.
    shipped 0/1,728, fused 44/1,728. The pragma is what makes the beta tail's
    POSITION between the curl and the two masks survive compilation.
 
-2. NEGATION IS A SIGN-BIT OPERATION HERE, RE-MEASURED AND NOT INHERITED. On the
+2. Negation is a sign-bit operation here, re-measured and not inherited. On the
    exhaustive band-free table: ``curl + (-(c*b))`` 0/1,728 and
    ``curl + ((c*b) * -1.0f)`` 0/1,728, while ``curl + (0.0f - (c*b))``
    MISSES 22/1,728. The complex twin agrees — ``float2(0,0) - z`` misses 78/41,472
@@ -95,12 +95,12 @@ cases and 0 surprises against the predictions recorded before the run.
    does not reproduce on Metal and the workaround is not ported. The refuted
    spelling is a gate mutation, not a comment.
 
-3. THE REAL MULTIPLY'S OPERAND ORDER IS A MEASURED NULL (``curl - (b * c)``,
+3. The real multiply's operand order is a measured null (``curl - (b * c)``,
    0/1,728) — float multiplication is commutative — so the shipped order is kept
    for transcription fidelity to stepping.py:811 and not for a bit reason.
 
-4. THE COMPLEX ORIENTATION IS A NULL **ONLY WHILE THE COEFFICIENT'S REAL WORD IS AN
-   EXACT ZERO**, and the scope is MEASURED rather than argued. With the shipped
+4. The complex orientation is a null **only while the coefficient's real word is an
+   exact zero**, and the scope is measured rather than argued. With the shipped
    purely-imaginary coefficient (stepping.py:798-799 multiplies by ``+/-1j``, so the
    real word is a signed zero Python's own complex multiply produced),
    ``c_mul(partner, coefficient)`` differs from ``c_mul(coefficient, partner)`` in
@@ -111,18 +111,18 @@ cases and 0 surprises against the predictions recorded before the run.
    LEFT) and stays; the null is recorded WITH its scope so no later edit reads it as
    a general licence.
 
-5. THE ZERO CROSS TERMS STAY SPELLED even though the real word is zero. Folding the
+5. The zero cross terms stay spelled even though the real word is zero. Folding the
    product to ``float2(-(bpi*b.y), bpi*b.x)`` — the shortcut the orientation null
    invites — misses 78/41,472 under ``contract(off)``. A zero real word does not
    make the cross terms free; it makes them exact, which is a different thing.
 
-6. THE TWO BETA WORDS STAY BOUND UNIFORMS. A ``constant float&`` scalar and the same
+6. The two beta words stay bound uniforms. A ``constant float&`` scalar and the same
    value baked into the source as a decimal literal produced IDENTICAL words —
    0/144 at four coefficients under both contraction modes — so specialising the
    coefficient into the string would buy a source variant per beta value and change
    nothing. See "the arity verdict" below.
 
-7. THE BETA TERM'S POSITION AGAINST **BOTH** MASKS IS REFUTABLE, which is what makes
+7. The beta term's position against **both** masks is refutable, which is what makes
    the ordering claim above a claim about the code rather than about the comment.
    Against the array path's order (beta, then the cell-0 mask, then the top-plane
    mask): moving the beta term after the cell-0 mask diverges in exactly 1 word,
@@ -130,10 +130,10 @@ cases and 0 surprises against the predictions recorded before the run.
    the structurally correct counts for a one-dimensional stand-in whose only masked
    lanes are the first and the last.
 
-THE ARITY VERDICT, AND WHAT IT DOES AND DOES NOT LICENSE HERE. The round's
+The arity verdict, and what it does and does not license here. The Metal
 transcription settled ``probe_metal_dynamic_loop_arity.py`` as **IDENTICAL** — a
 runtime-bounded loop is bit-identical to its unrolled twin on this backend, 48
-cases and 0 differing words. THIS FAMILY HAS NO ARITY AXIS: the beta term is two
+cases and 0 differing words. This family has no arity axis: the beta term is two
 fixed multiply-and-subtract lines per curl sub-step, not a reduction over a variable
 number of terms, so there is no trip count to make runtime and the verdict is not
 load-bearing for the kernel body. What the verdict DOES license is the scalar-shaped
@@ -141,12 +141,12 @@ version of the same question, and this family makes that choice deliberately: th
 two beta coefficients and the six Bloch phase words are bound as ``constant float&``
 uniforms and are never specialised into the source string. Leg 3 above is the direct
 measurement for the scalar shape (0/144, four coefficients, both contraction modes),
-so the choice rests on its own measurement and merely AGREES with the arity round
+so the choice rests on its own measurement and merely AGREES with the arity probe
 rather than borrowing from it. Everything that IS specialised here — the boundary
 codes, the sub-step direction, the phased flags, the top-plane mask — is a BRANCH
 axis with a bounded arm count, which is what source specialisation is for.
 
-THERE IS NO GENERATED-CODE AUDIT ON THIS BACKEND. ``torch.mps.compile_shader``
+There is no generated-code audit on this backend. ``torch.mps.compile_shader``
 exposes no AIR, no GPU ISA and no optimisation report (``device.py:46-62``), so this
 family cannot refuse a compile whose emitted code violates the contraction policy
 and cannot establish that the pragma was obeyed. Every leg is BEHAVIOURAL: it
@@ -154,17 +154,17 @@ catches a wrong answer, never a wrong instruction. That is this certification's 
 weakness against the Triton twin's and it is stated rather than buried.
 
 ===========================================================================
-THE INVERTED CLAUSES — six families to stay disjoint from
+The inverted clauses — six families to stay disjoint from
 ===========================================================================
 
 ``registry.py``'s contract is that every family's grid-reason list carries the same
-numbered questions and answers exactly one of them THE OTHER WAY, and that a new
+numbered questions and answers exactly one of them the other way, and that a new
 family STATES its inversion rather than inheriting disjointness. This family is a
 product of TWO levers and each lever already has families on both sides of it, so
 it carries TWO inversions on every slot it claims — and they are the SAME two on
 both arms.
 
-CLAUSE 5 (fold) IS INVERTED AGAINST THE TWO BETA FAMILIES:
+Clause 5 (fold) is inverted against the two beta families:
 
 * ``special_kz._beta_real_grid_reasons`` refuses a mirror plane BY NAME ("the folded
   beta curl is a separate family; this kernel does not carry the fold"), plus one
@@ -177,8 +177,8 @@ CLAUSE 5 (fold) IS INVERTED AGAINST THE TWO BETA FAMILIES:
   AHEAD of ``is_mirrored`` (stepping.py:2191-2196), so a folded r axis reports
   CYL_AXIS and the fold vanishes silently.
 
-CLAUSE 12 (beta) IS INVERTED AGAINST THE TWO FOLD FAMILIES, AND BOTH OF THEM
-PRE-REGISTERED THIS INVERSION:
+Clause 12 (beta) is inverted against the two fold families, and both of them
+pre-registered this inversion:
 
 * ``symmetry._folded_curl_grid_reasons`` clause 12 requires ``grid.beta == 0`` and
   names "the folded special_kz product" as the owner of the slots it declines;
@@ -187,17 +187,17 @@ PRE-REGISTERED THIS INVERSION:
 * HERE ``grid.beta`` must be NONZERO, refused by name above it. A beta = 0 folded
   run belongs to the parents; this family exists only for the intersection.
 
-CLAUSE 2 (storage) SPLITS THE TWO ARMS OF THIS FAMILY FROM EACH OTHER, in the same
+Clause 2 (storage) splits the two arms of this family from each other, in the same
 direction and by the same predicate every other pair in the package uses: the real
 arm refuses ``force_complex_fields``, the complex arm requires
-``force_complex_fields OR has_bloch``. NOTE THE TWO SPELLINGS ARE NOT THE SAME
-PREDICATE — ``folded_complex`` records the same asymmetry — and a run with
+``force_complex_fields OR has_bloch``. Note the two spellings are not the same
+predicate — ``folded_complex`` records the same asymmetry — and a run with
 ``has_bloch`` true and ``force_complex_fields`` false is separated in BOTH
 directions anyway, because the real arm additionally refuses a nonzero ``k_point``
 outright (clause 7) and the two layout clauses pin different dtypes. A volume has
 one dtype, so one of the two must refuse any concrete run.
 
-CLAUSE 9 (per-axis Bloch legality, INCLUDING the fold clause) IS IMPORTED FROM
+Clause 9 (per-axis Bloch legality, INCLUDING the fold clause) is imported from
 ``folded_complex`` rather than restated: a folded axis may carry NO phase and NO
 nonzero k component, zone edge included, because
 ``driver._require_bloch_is_representable`` (driver.py:1047-1075) refuses the
@@ -207,15 +207,15 @@ Neither ``special_kz``'s complex arm (which never sees a fold) nor ``symmetry``
 ``TestEigCoeffs.test_binary_grating_special_kz_*`` — carry ``kx != 0`` on the
 UNFOLDED x axis with the fold on y, which is legal and admitted.
 
-CLAUSE 5b (no k on the INVARIANT axis) IS KEPT FROM ``special_kz``: beta IS that
+Clause 5b (no k on the INVARIANT axis) is kept from ``special_kz``: beta IS that
 axis's analytic dependence and ``Grid`` refuses the pairing at construction. Restated
 here, never inferred from the constructor guard.
 
-CLAUSE 4 (cylindrical) IS REFUSED TWICE, for the reason both parents give: the grid
+Clause 4 (cylindrical) is refused twice, for the reason both parents give: the grid
 flag alone is not the inversion, because ``_mirror_phases`` (stepping.py:2346-2366)
 puts ``(-1)**grid.m`` into the SAME SLOT the mirror phase occupies.
 
-SEPARATION FROM THE REMAINING FAMILIES, each by a clause that names them: the
+Separation from the remaining families, each by a clause that names them: the
 shipped real ``pml_curl``/``constitutive`` and ``bfast_curl`` refuse beta through
 ``coverage._grid_reasons`` clause 12 and refuse a fold through clause 5;
 ``complex_fields`` refuses both; ``no_pml_constitutive`` inverts on the ABSORBER (it
@@ -226,7 +226,7 @@ that combination) and whose complex arm refuses on the E side by name;
 ``folded_offdiag_update_e`` requires the same live row.
 
 ===========================================================================
-WHAT THIS FAMILY DOES NOT CLAIM, each by name rather than by omission
+What this family does not claim, each by name rather than by omission
 ===========================================================================
 
 An UNFOLDED beta run (both parents' arms own those slots); a folded beta run at
@@ -238,7 +238,7 @@ raises; a conductivity; a nonlinearity; BFAST; cylindrical coordinates; ``update
 which this family does not touch at all and whose "no arm is registered" assertion
 therefore stands unchanged.
 
-REGISTERED-BUT-CANNOT-WIN IS NOT USED HERE, and the absence is worth stating.
+Registered-but-cannot-win is not used here, and the absence is worth stating.
 ``registry.py`` keeps ``registered`` and ``wins`` separate so a missing capability
 gets NAMED at composition time instead of falling silently to the array path, and
 this family would have used it if one of its eight slots' products were unported.
@@ -247,25 +247,25 @@ otherwise admit — the folded complex off-diagonal beta ``update_E``, and the f
 dispersive beta ``update_E`` — which is the same naming through a cheaper mechanism:
 a registered-but-losing arm would report the same sentence from one slot further out.
 
-THE ONE GAP THIS FAMILY MAKES VISIBLE AND DOES NOT CLOSE. ``special_kz``'s complex
+The one gap this family makes visible and does not close. ``special_kz``'s complex
 arm registers a constitutive pair that always refuses, because no complex
-constitutive had been restated for a beta run. This family restates it FOR THE
-FOLDED CASE, which leaves the UNFOLDED complex beta constitutive as the only
+constitutive had been restated for a beta run. This family restates it for the
+folded case, which leaves the UNFOLDED complex beta constitutive as the only
 remaining beta gap on this backend — two slots, one corpus row
 (``TestSpecialKz.test_special_kz``), closable by the same restatement one level out.
 ``special_kz``'s refusal message is narrowed in this change to say so rather than to
 keep claiming that no complex constitutive admits any beta run.
 
-THE COMPLEX ARM'S ARITHMETIC IS ``special_kz``'S complex beta curl arithmetic
+The complex arm's arithmetic is ``special_kz``'s complex beta curl arithmetic
 exactly — the same ``c_mul`` with the same purely-imaginary coefficient on the LEFT,
 plus the same field-left Bloch rotation. The fold contributes no complex multiply of
 its own: its only addition is an ownership mask, which assigns a literal zero.
 
 ===========================================================================
-WHAT IS CERTIFIED, AND WHAT IS NOT — measured 2026-08-16, stated as measured
+What is certified, and what is not — measured 2026-08-16, stated as measured
 ===========================================================================
 
-MEASURED, on this host, on a FROZEN COPY of the tree (the live tree was being
+Measured, on this host, on a FROZEN COPY of the tree (the live tree was being
 written by three concurrent workflows and its hash moved during the run, so a
 live-tree number would not have been a measurement):
 
@@ -275,14 +275,14 @@ live-tree number would not have been a measurement):
   (periodic and metallic terminations, odd parity, an X fold) and three complex
   (periodic, metallic, and a Bloch phase on the unfolded axis). **202,176 uint32
   words compared, 0 differing**, with every slot's launch counter asserted at the
-  exact count its plan owes per cycle and a vacuity floor on every leg. THE FILL
-  PASSES IN THOSE LEGS ARE THE PARENTS' — this family registers none — so the legs
+  exact count its plan owes per cycle and a vacuity floor on every leg. The fill
+  passes in those legs are the parents' — this family registers none — so the legs
   also measure that the parents' fills compose with this family's curls, which is
   the claim the "no fill arm" decision rests on;
 * four armed must-catch mutations, all CAUGHT (the beta term moved after the cell-0
   mask, after both masks, the top-plane mask dropped, the two sign coefficients
   swapped); one declared EQUIVALENCE measured null (the real multiply's operand
-  order); one spelling proved UNOBSERVABLE ON THIS FAMILY'S GRIDS with both halves
+  order); one spelling proved unobservable on this family's grids with both halves
   measured — see below. A control launches the UNMUTATED source through the same
   from-arrays route and requires 0, so a null is never the harness;
 * the composition sweep over the whole matrix: **4,770 predicate evaluations, 360
@@ -294,14 +294,14 @@ live-tree number would not have been a measurement):
   states: they are a function of the PROBE-BOUND arm, so a checked-in hash would
   record a choice rather than a measurement.
 
-THE DEDICATED GATE NOW EXISTS AND IS GREEN —
+The dedicated gate now exists and is green —
 ``parity/meep_gpu/gate_metal_folded_beta.py``, artifact
 ``results/metal_folded_beta_2026-08-16/gate.json``, run on a FROZEN COPY whose hash
 was identical before and after. **3,845,376 uint32 words compared, 0 differing**, over
 fourteen legs and a fourteen-case matrix. What it adds over the sibling tests, each
 because the tests could not reach it:
 
-* the DRIVER'S REAL TEN-PASS LIST, ``zero_metal_B``/``_D`` included, for twelve
+* the driver's real ten-pass list, ``zero_metal_B``/``_D`` included, for twelve
   complete steps per case. A LIVE WALL row (``boundaries={"x": "metallic"}``) makes
   the wall pass do real work, and on such a grid BOTH parents' fill predicates refuse
   by name — so three passes per half run on the array path between device launches,
@@ -311,11 +311,11 @@ because the tests could not reach it:
   Three of the twelve are only reachable at whole-step granularity or off the source
   entirely: a STALE MIRROR (the host pass's write never carried back), the WALL-CLEAR
   SEAM (moved after the far fill), and the beta pair built from the OTHER sub-step;
-* the contraction guard MEASURED PER ARM: the real arm's ``contract(fast)`` build
+* the contraction guard measured per arm: the real arm's ``contract(fast)`` build
   diverges on every case (104-483 words) while the complex arm is a null, backed by a
   NAIVE-arm control that diverges exactly where a GENERAL complex product is live;
 * the subnormal WINDOW per case per step, with the scaled control that makes it fire.
-  ONE FINDING CORRECTS AN ASSUMPTION THIS MODULE DID NOT MAKE BUT COULD HAVE: at a
+  One finding corrects an assumption this module did not make but could have: at a
   1e-30 state scale the COMPLEX case enters the band at step 6 of 12 while the REAL
   case stays clean for all 12, on the same shape — band entry is a RUN-and-WINDOW
   fact, not a family fact;
@@ -323,9 +323,9 @@ because the tests could not reach it:
   0 Metal-only, 0 Triton-only, 0 neither — modulo two host-fact clauses that are
   named and counted, because those predicates cannot run on this host at all.
 
-ONE MEASUREMENT THE GATE MADE THAT THE SIBLING TESTS' SEEDING HID.
+One measurement the gate made that the sibling tests' seeding hid.
 ``metal_composition_matrix._fill`` assigns a REAL array into every volume, so a
-complex64 volume comes back with an IDENTICALLY ZERO IMAGINARY PART and every complex
+complex64 volume comes back with an identically zero imaginary part and every complex
 product in this family's kernel then carries an exact-zero operand. Measured on
 ``complex_bloch_x``: with that seeding the WRONG expansion arm (NAIVE) reproduces the
 array path word for word and the contraction control cannot fire; with an independent
@@ -333,7 +333,7 @@ imaginary part seeded, NAIVE misses 5-8 words per sub-step and the control moves
 The gate seeds it and asserts a floor; a complex leg run on a fresh matrix build alone
 is weaker than it looks.
 
-TWO REFUTED SPELLINGS ARE UNOBSERVABLE HERE, AND THAT IS PROVED RATHER THAN ASSUMED.
+Two refuted spellings are unobservable here, and that is proved rather than assumed.
 ``curl + (0.0f - x)`` differs from ``curl - x`` in EXACTLY ONE input pattern —
 ``curl`` a NEGATIVE zero and ``x`` a positive zero — and the two spellings ARE
 different on this backend (measured on that exact pattern: they disagree on that one
@@ -345,9 +345,9 @@ negative zero on any grid this family is admitted on. Recorded as "unobservable
 here, and here is why" rather than as an equivalence, because the two are different
 claims and only the first is true.
 
-THE SAME MECHANISM COVERS PARAGRAPH 5'S CROSS-TERM FOLD, and the gate is what
+The same mechanism covers paragraph 5's cross-term fold, and the gate is what
 established it. Dropping the zero cross terms misses 78/41,472 words in the PROBE's
-isolated tail — but every word it can change is the SIGN OF A ZERO in the beta
+isolated tail — but every word it can change is the sign of a zero in the beta
 increment, and ``curl - (+/-0.0)`` is one word unless ``curl`` is a negative zero.
 ``gate_metal_folded_beta.py``'s leg ``spellings`` measures both halves: the spellings
 really do differ (80 words over four coefficient sign combinations), and the beta-
@@ -359,13 +359,13 @@ one DOES reach ``-0.0`` (60 words across the matrix), so the zeros on ``curl0`` 
 anyway — a spelling kept for transcription fidelity costs nothing and a future grid
 shape could make the difference reachable.
 
-WHAT IS NOT DONE, by name rather than by omission:
+What is not done, by name rather than by omission:
 
-* ``fingerprints.json`` IS NOT RE-CUT. Only HOST-module hashes moved (measured: ten
+* ``fingerprints.json`` is not re-cut. Only HOST-module hashes moved (measured: ten
   of them, four belonging to concurrently landing families that are not this one's),
   and the re-cut is a deliberate act that would claim their changes too. It is owed
-  once the round's families have all landed;
-* THE CORPUS SLOT COUNT IS SHAPE-MATCHED, NOT CORPUS-LIFTED. The sixteen slots this
+  once the concurrently landing families have all landed;
+* The corpus slot count is shape-matched, not corpus-lifted. The sixteen slots this
   family targets are the four rows named in
   ``results/metal_coverage_tranche3_2026-08-16/metal_vs_triton.txt`` —
   ``TestSpecialKz.test_eigsrc_kz_1_real_imag`` (real) and
@@ -403,7 +403,7 @@ from .device import Residency, compile_source
 from .launch import SUB_STEPS
 from .plans import KernelPlan
 
-# ONE DEFINITION, IMPORTED FROM THE PARENTS. Every name below is a fact this family
+# One definition, imported from the parents. Every name below is a fact this family
 # must not re-derive: the four boundary codes and their MIRROR split, the near
 # ghost's source row, the fold classifier, the reduced-code mapping the certified
 # emitters take, and the top-plane mask itself. Re-deriving any of them here would
@@ -838,7 +838,7 @@ def _folded_beta_complex_grid_reasons(fields: Any, pml: Any, grid: Any,
     if getattr(fields, "has_polarizations", False) or (
             getattr(fields, "polarizations", ()) or ()):
         reasons.append("a susceptibility is registered: complex-storage ADE is a "
-                       "later tranche, folded or not")
+                       "separate, unbuilt product, folded or not")
     reasons.extend(_susceptibility_reasons(fields))
 
     if getattr(fields, "has_nonlinearity", False):
@@ -858,13 +858,13 @@ def _folded_beta_complex_grid_reasons(fields: Any, pml: Any, grid: Any,
 
 def folded_beta_pml_curl_coverage(fields: Any, pml: Any, sub_step: str,
                                   residency: Any = None) -> Coverage:
-    """May the REAL folded beta curl step this? THE WIDE VERDICT.
+    """May the REAL folded beta curl step this? The wide verdict.
 
-    ZERO FOLDED AXES IS ADMITTED HERE, and that is not an oversight: with every axis
+    Zero folded axes is admitted here, and that is not an oversight: with every axis
     resolving to PERIODIC/METALLIC, :func:`folded_beta_curl_source` reduces to
-    ``special_kz.beta_curl_source``'s output CHARACTER FOR CHARACTER except for an
+    ``special_kz.beta_curl_source``'s output character for character except for an
     empty top-plane block, which is a property a gate MEASURES rather than a claim.
-    THIS VERDICT MUST NOT BE REGISTERED ON A SLOT — it would make every unfolded beta
+    This verdict must not be registered on a slot — it would make every unfolded beta
     row ambiguous against ``special_kz``.
     :func:`folded_beta_composition_curl_coverage` is the routing verdict.
     """
@@ -897,7 +897,7 @@ def folded_beta_pml_curl_coverage(fields: Any, pml: Any, sub_step: str,
 
 def folded_beta_composition_curl_coverage(fields: Any, pml: Any, sub_step: str,
                                           residency: Any = None) -> Coverage:
-    """THE ROUTING VERDICT — the wide one with a fold MANDATORY.
+    """The routing verdict — the wide one with a fold MANDATORY.
 
     The clause that separates this arm from ``special_kz``'s real arm on the two curl
     slots, spelled as its own function so a reader can see the inversion in one
@@ -922,7 +922,7 @@ def folded_beta_composition_curl_coverage(fields: Any, pml: Any, sub_step: str,
 
 def folded_beta_bloch_pml_curl_coverage(fields: Any, pml: Any, sub_step: str,
                                         residency: Any = None) -> Coverage:
-    """May the COMPLEX folded beta curl step this? THE WIDE VERDICT (see above)."""
+    """May the COMPLEX folded beta curl step this? The wide verdict (see above)."""
     if sub_step not in CURL_SUB_STEPS:
         raise ValueError(
             f"sub_step must be one of {tuple(CURL_SUB_STEPS)}, got {sub_step!r}")
@@ -952,7 +952,7 @@ def folded_beta_bloch_pml_curl_coverage(fields: Any, pml: Any, sub_step: str,
 def folded_beta_composition_bloch_curl_coverage(fields: Any, pml: Any,
                                                 sub_step: str,
                                                 residency: Any = None) -> Coverage:
-    """THE ROUTING VERDICT for the complex arm — a fold MANDATORY."""
+    """The routing verdict for the complex arm — a fold MANDATORY."""
     if sub_step not in CURL_SUB_STEPS:
         raise ValueError(
             f"sub_step must be one of {tuple(CURL_SUB_STEPS)}, got {sub_step!r}")
@@ -981,7 +981,7 @@ def folded_beta_constitutive_coverage(fields: Any, pml: Any, side: str,
     ``launch.ConstitutivePlan`` unchanged. The layout clauses below are where "built
     at the folded stored extent" stops being an assumption.
 
-    THE E SIDE REFUSES WHAT CHANGES WHAT ``source`` IS, each naming its owner: a
+    The E side refuses what changes what ``source`` is, each naming its owner: a
     registered susceptibility (the source is ``D - sum P``, not ``D``), and
     ``stores_E`` false. An off-diagonal row is already refused module-wide on this
     arm, because the array path RAISES on real storage + off-diagonal + beta.
@@ -1028,10 +1028,10 @@ def folded_beta_complex_constitutive_coverage(fields: Any, pml: Any, side: str,
                                               residency: Any = None) -> Coverage:
     """May the CERTIFIED COMPLEX constitutive kernel step a FOLDED BETA run?
 
-    THE ASYMMETRY WITH ``special_kz`` IS OVER, and this function was the first half
+    The asymmetry with ``special_kz`` is over, and this function was the first half
     of closing it. ``complex_fields``' clause 8 refuses ``grid.beta`` by name, so
     admitting a complex beta run anywhere takes a restatement; this is that
-    restatement FOR THE FOLDED CASE, which is where three of the four corpus rows
+    restatement for the folded case, which is where three of the four corpus rows
     are (six slots). The UNFOLDED case — two slots, one corpus row — was a named
     refusal in ``special_kz`` until 2026-08-19 and is now
     ``special_kz.beta_run_complex_constitutive_coverage``, built the same way one
@@ -1089,7 +1089,7 @@ class FoldedBetaPmlCurlPlan(KernelPlan):
 
     ``special_kz.BetaPmlCurlPlan``'s bindings EXACTLY — the fold adds no argument,
     because the STORED EXTENT is what carries it — over a different compiled kernel.
-    DELIBERATELY A SIBLING RATHER THAN A SUBCLASS, for ``folded_complex``'s reason:
+    Deliberately a sibling rather than a subclass, for ``folded_complex``'s reason:
     the two hold the same argument tuple and launch different functions, and a
     subclass would inherit nothing but the risk that a future edit to the parent's
     ``__init__`` silently rebinds this one.
@@ -1120,7 +1120,7 @@ class FoldedBetaPmlCurlPlan(KernelPlan):
         self.chunk_bounds = _chunk_bounds.plan_words(
             chunk_bounds, self.shape, f"FoldedBetaPmlCurlPlan({sub_step})")
         # Already f32-rounded by the host (special_kz.beta_curl_coefficients);
-        # float() keeps the bits and the scalar ABI delivers them. MEASURED on this
+        # float() keeps the bits and the scalar ABI delivers them. Measured on this
         # host: a bound `constant float&` and the same value baked as a literal
         # produce identical words (0/144, four coefficients, both contraction
         # modes), so binding costs nothing and buys one source per configuration
@@ -1312,7 +1312,7 @@ def plan_folded_beta_bloch_pml_curl(fields: Any, pml: Any, sub_step: str,
         return None
 
     spec = SUB_STEPS[sub_step]
-    # THE CONNECTION COMES FROM `_boundary_kinds`, NOT FROM THE FOLDED CODES. A
+    # The connection comes from `_boundary_kinds`, not from the folded codes. A
     # folded axis is refused a phase by clause 9 above, so the two agree on every
     # admitted run; reading it off the RESOLVED kinds through `complex_fields`' own
     # host decisions keeps the connection in one place.
@@ -1469,13 +1469,13 @@ def plan_folded_beta_complex_constitutive(fields: Any, pml: Any, side: str,
 # WIRING — eight arms over four slots, two arms per slot (real and complex)
 # ---------------------------------------------------------------------------
 #
-# WHAT SEPARATES THEM, per slot, and every one of these is a clause that names the
+# What separates them, per slot, and every one of these is a clause that names the
 # other family rather than an omission:
 #
 #   step_B / step_D    `coverage._grid_reasons` clause 12 refuses beta (pml_curl,
 #                      constitutive); `bfast_curl` and `complex_fields` restate it;
 #                      `symmetry` clause 12 and `folded_complex` clause 8 refuse beta
-#                      BY NAME AND NAME THIS FAMILY; `special_kz`'s two arms refuse
+#                      by name and name this family; `special_kz`'s two arms refuse
 #                      the FOLD by name. Clause 5 HERE is inverted through
 #                      `_requires_a_fold` and clause 12 through `_requires_beta`, so
 #                      this family is separated from every other by TWO independent
@@ -1493,7 +1493,7 @@ def plan_folded_beta_complex_constitutive(fields: Any, pml: Any, side: str,
 #                      since before this family existed. A third arm here would make
 #                      both slots AMBIGUOUS and drop them to the array path.
 #
-# THE REAL AND COMPLEX ARMS ARE REGISTERED AS TWO FAMILIES, not one with a branch,
+# The real and complex arms are registered as two families, not one with a branch,
 # for `special_kz`'s reason: the disjointness sweep reaches every arm through
 # `arms.registered()`, and two rows that invert on storage must both be visible to
 # it or the pair most likely to collide is the pair it cannot see.
@@ -1511,7 +1511,7 @@ def _has_folded_beta(context: Any) -> bool:
     run at beta = 0, four or five other arms will speak on these slots and a silent
     folded-beta arm costs a reader nothing.
 
-    IT ASKS ABOUT THE FOLD AND BETA BUT NOT ABOUT STORAGE, deliberately. Both arms
+    It asks about the fold and beta but not about storage, deliberately. Both arms
     must be consulted on any folded beta run so that exactly one of them says
     "storage is real float32" or "force_complex_fields=True" — that sentence is the
     inversion made visible, and gating it out would hide which arm declined.

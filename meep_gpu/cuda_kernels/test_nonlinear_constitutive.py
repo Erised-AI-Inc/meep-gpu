@@ -1,10 +1,10 @@
 """The nonlinear (chi2/chi3) constitutive slice, on a laptop with no GPU.
 
-WHAT THIS FILE CAN AND CANNOT SETTLE. It compiles nothing and launches nothing,
+What this file can and cannot settle. It compiles nothing and launches nothing,
 so it certifies nothing. What it does settle, before a device slot is spent:
 
 * that the ARITHMETIC transcribed into the device string reproduces
-  ``stepping.update_E`` BIT FOR BIT under a nonlinearity -- the whole device tree,
+  ``stepping.update_E`` bit for bit under a nonlinearity -- the whole device tree,
   in float32 NumPy, on periodic, metallic and mixed grids, on a partly nonlinear
   run, on volume chi as well as scalar chi, and on the 1-D-like shape the two
   corpus rows carry (:func:`test_the_device_tree_reproduces_stepping_bit_for_bit`);
@@ -22,7 +22,7 @@ so it certifies nothing. What it does settle, before a device slot is spent:
 * that this predicate and every sibling constitutive predicate PARTITION the
   chi2/chi3 clause rather than overlapping on it.
 
-THE NUMPY TRANSCRIPTION BELOW IS A SECOND READER OF THE DEVICE STRING, and it is
+The NumPy transcription below is a second reader of the device string, and it is
 deliberately not shared with the gate's, which has one of its own. Two
 independent transcriptions of the same CUDA text that agree with ``stepping`` are
 worth more than one factored out and imported twice, because a misreading has to
@@ -311,12 +311,12 @@ CASES = {
     "mixed": dict(boundaries=("periodic", "metallic", "periodic"),
                   chi2={"Ex": 0.02, "Ey": -0.01, "Ez": 0.0},
                   chi3={"Ex": 0.03, "Ey": 0.02, "Ez": 0.05}),
-    # A PARTLY nonlinear run: Ey takes MEEP's ``else if (u)`` branch, which must
+    # A partly nonlinear run: Ey takes MEEP's ``else if (u)`` branch, which must
     # compile to the certified plain body.
     "partly_nonlinear": dict(boundaries=("periodic", "periodic", "metallic"),
                              chi2={"Ex": 0.0, "Ez": 0.0},
                              chi3={"Ex": 0.04, "Ez": 0.05}),
-    # THE CORPUS SHAPE: 3rd-harm-1d.py is (1, 1, nz). Two invariant axes whose
+    # The corpus shape: 3rd-harm-1d.py is (1, 1, nz). Two invariant axes whose
     # wrap returns the same cell, which is MEEP's stride(d) = 0.
     "one_dimensional": dict(boundaries=("periodic",) * 3, cell=(1.0, 1.0, 40.0),
                             chi2={"Ex": 0.0}, chi3={"Ex": 0.06}),
@@ -345,7 +345,7 @@ PLANTED_DEFECTS = {
 
 
 def _volume_chi(grid, value, seed):
-    """A SPATIALLY VARYING chi volume.
+    """A spatially varying chi volume.
 
     A uniform volume cannot distinguish a chi lookup that reads the wrong cell
     from one that reads the right one, so the volume class is drawn to vary.
@@ -363,7 +363,7 @@ def _volume_chi(grid, value, seed):
 def test_the_device_tree_reproduces_stepping_bit_for_bit(label, xp):
     """The whole kernel body against ``stepping.update_E``, as uint32 words.
 
-    NON-VACUITY IS ASSERTED, NOT ASSUMED: the array path must have moved output
+    Non-vacuity is asserted, not assumed: the array path must have moved output
     words (zero-init is a fixed point of this recurrence), the Pade factor must
     differ from 1.0 somewhere (an identity factor makes every nonlinear mutation
     invisible), and the run must sit inside the pole guard's admitted domain.
@@ -532,7 +532,7 @@ def _function_source(name: str) -> str:
 
 
 def test_update_H_names_nothing_nonlinear():
-    """THE H-SIDE NULL'S WHOLE PREMISE, read off the file rather than remembered.
+    """The H-side null's whole premise, read off the file rather than remembered.
 
     ``covers_real_pml_constitutive`` refuses a nonlinearity on BOTH sides
     (coverage.py:1056-1057). That is correct on ``update_E`` and inherited on
@@ -581,7 +581,7 @@ def test_the_predicate_and_the_sibling_partition_the_nonlinearity(xp):
 
     The census's disjointness check is the property this protects: two families
     admitting one slot is not extra coverage, it is one of them widened past its
-    evidence. Here the two predicates are complementary ON THE CHI CLAUSE, so no
+    evidence. Here the two predicates are complementary on the chi clause, so no
     coordinating edit to ``coverage.py`` is needed for them to partition.
     """
     for side in ("H", "E"):
@@ -812,7 +812,7 @@ def test_the_device_string_carries_the_lines_the_mutations_key_on():
 
 
 def test_the_device_string_names_the_partner_volumes_the_table_names():
-    """THE ONE ERROR THE NUMPY READER CANNOT SEE.
+    """The one error the NumPy reader cannot see.
 
     The reader above builds its four-point sums from ``TRANSVERSE_PARTNERS``, so
     it agrees with ``stepping`` even if the CUDA text names the wrong D array.
@@ -839,7 +839,7 @@ def test_the_device_string_names_the_partner_volumes_the_table_names():
 
 
 def test_the_device_string_is_pure_ascii_and_encodes_under_a_C_locale():
-    """MEASURED 2026-08-15: two em-dashes killed a kernel at its first launch.
+    """Measured 2026-08-15: two em-dashes killed a kernel at its first launch.
 
     ``cupy.cuda.compiler`` writes the source with a bare ``open(..., 'w')``, so
     the bytes go through the interpreter's LOCALE encoding -- ASCII under C/POSIX,
@@ -970,7 +970,7 @@ def test_the_H_arms_refusal_premise_was_armed_and_caught(policy):
 
 
 def test_the_gate_bound_the_device_bytes_that_ship_today():
-    """THE LOAD-BEARING PIN, and it is deliberately narrower than the file hash.
+    """The load-bearing pin, and it is deliberately narrower than the file hash.
 
     ``certified_module_sha256`` stops matching the moment anyone fixes a typo in a
     docstring, which makes it useless as a pin on the thing that decides the

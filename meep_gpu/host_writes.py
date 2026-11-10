@@ -1,6 +1,6 @@
 """How the engine touches arrays an execution backend may be holding on a device.
 
-WHAT THIS EXISTS FOR, and why it is not in a backend package. Most of the time the
+What this exists for, and why it is not in a backend package. Most of the time the
 engine owns its arrays outright. One backend breaks that -- the Metal path mirrors
 each volume into a device tensor and, when it HOLDS a volume, the device keeps the
 newer words between launches. A host write to the engine's array is then lost or
@@ -8,12 +8,12 @@ silently overwritten, and a host read returns stale bytes; neither raises on its
 own. The backend seals held host arrays so a stray write raises, and routes every
 legitimate host access through the functions here.
 
-THE ENGINE MUST NOT IMPORT A BACKEND, so this is a registry of live residencies
+The engine must not import a backend, so this is a registry of live residencies
 rather than a reference to one. Empty, every function below is the plain NumPy
 operation it names and costs one list check; the Metal dispatch layer registers a
 residency when it arms a hold and unregisters it when it releases one.
 
-WHY THE OPERATIONS ARE SPARSE, and the measurement that made them so. The first
+Why the operations are sparse, and the measurement that made them so. The first
 held implementation acquired WHOLE volumes: a host write to eight source cells
 copied the whole array down and, at the next launch, the whole array back up. On
 a 3-D grid at 7M cells that is 28 MB a copy, ~14 copies a step, ~400 MB a step,
@@ -22,7 +22,7 @@ passes touch a few cells (the source points, the deposit-repair cells) or one
 wall face (``_zero_metal``); moving those cells instead of the volume removes
 that cost from the step.
 
-THE THREE SHAPES OF ACCESS, and the rule for each:
+The three shapes of access, and the rule for each:
 
 * :func:`raw` fetches an attribute WITHOUT the read barrier, for a caller that will
   touch it only through :func:`gather`/:func:`scatter`/:func:`zero`. A barriered
@@ -162,7 +162,7 @@ def subtract_double(array: Any, linear: Any, real64: Any, imag64: Any = None) ->
     are scattered back through the residency's own door -- both moves are exact
     copies, so the words equal the array path's. That costs one device-to-host read
     per deposit per step; a residency that offers ``subtract_double_index`` (the
-    Metal lane's software float64 door) is handed the deposit instead.
+    Metal residency's software float64 door) is handed the deposit instead.
     """
     flags = getattr(array, "flags", None)
     if flags is None or not flags.c_contiguous:

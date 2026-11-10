@@ -115,6 +115,9 @@ def test_tier_c_holds_on_a_probe_case_and_its_replay_reproduces_it(tmp_path):
     assert result["stored"]["word_differing"] == 0 and result["stored"]["words"] > 0
     assert result["reader"]["word_differing"] == 0 and result["planted_flip"]["caught"]
     assert result["smoke_record"]["equal"] == result["smoke_record"]["of"] > 0
+    # The digests name the MEEP whose words they hold: the version the row ran.
+    words_of = json.loads((out / "keep" / "c_prime" / "digests.json").read_text())["words_of"]
+    assert words_of.startswith(f"MEEP {result['meep']['version']}, "), words_of
     replayed = _run(["replay", "--source", str(out)], tmp_path / "replay.log")
     assert replayed.returncode == 0, replayed.stdout[-3000:]
     from meep_gpu import meep_identity as identity  # noqa: PLC0415
@@ -356,3 +359,43 @@ def test_a_held_b_word_of_a_chunk_that_took_its_own_h_array_this_step_reads_its_
         raw = tier_c._float_words(first, reader.ntot[chunk])[indices[rows]]  # noqa: SLF001
         assert (raw.view(numpy.uint32) == numpy.real(words.reshape(-1)[positions[rows]])
                 .astype(numpy.float32).view(numpy.uint32)).all()
+
+
+_METAL_BLOCK_CASES = '''
+"""test_visualization.py's test_plot2D_pec simulation: an eps-12 block and an mp.metal block, no PML."""
+CASES = ("metal_block_no_pml",)
+
+
+def build(mp, label):
+    assert label in CASES, label
+    return mp.Simulation(
+        cell_size=mp.Vector3(6, 6), resolution=20, boundary_layers=[],
+        geometry=[mp.Block(size=mp.Vector3(2, 2), center=mp.Vector3(-1.2), material=mp.Medium(epsilon=12)),
+                  mp.Block(size=mp.Vector3(2, 2), center=mp.Vector3(1.2), material=mp.metal)],
+        sources=[mp.Source(src=mp.ContinuousSource(frequency=0.15), component=mp.Ez,
+                           center=mp.Vector3(0, -2))])
+'''
+
+
+@pytest.mark.parametrize("mode", ["keep", "flush"])
+def test_an_unstored_e_holds_against_meep_in_both_modes(tmp_path, mode):
+    """With no PML the package stores no E: its words are formed by the read, in the mode.
+
+    Measured on this case before the fix: at step 0, 1,640 stored Ez words (-0 against
+    MEEP's +0; the read surfaces now serve D's words, ``Fields.e_reads_d``), and under flush
+    65 and 73 subnormal Ez words at steps 80 and 160 where MEEP's flushed update stores -0,
+    because the read formed ``D * inv_eps`` with subnormals kept.
+    """
+    cases = tmp_path / "metal_block_cases.py"
+    cases.write_text(_METAL_BLOCK_CASES)
+    out = tmp_path / "tier_c"
+    done = _run(["compare", "--out", str(out), "--mode", mode, "--cases", "metal_block_no_pml",
+                 "--cases-file", str(cases), "--steps", "160"], tmp_path / "compare.log")
+    assert done.returncode == 0, done.stdout[-3000:] + done.stderr[-2000:]
+    result = json.loads((out / mode / "metal_block_no_pml" / "result.json").read_text())
+    assert {80, 160} <= set(result["steps"])
+    assert result["stored"]["words"] > 0 and result["reader"]["words"] > 0
+    assert result["stored"]["word_differing"] == 0, (result["first_difference"], result["differing_steps"])
+    assert result["reader"]["word_differing"] == 0, result["first_difference"]
+    assert result["subnormal_words"]["package_stored"] == result["subnormal_words"]["meep_stored"]
+    assert result["planted_flip"]["caught"]

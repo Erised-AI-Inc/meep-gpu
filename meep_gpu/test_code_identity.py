@@ -27,7 +27,7 @@ def plan(a, b, *, mode="fused"):
 
 #: Edits that CANNOT reach execution. Only these may keep a weld alive.
 #:
-#: EVERY ONE CHANGES THE LINE COUNT, deliberately. The first draft of this battery used
+#: Every one changes the line count, deliberately. The first draft of this battery used
 #: length-preserving replacements and passed against an implementation that hashed node
 #: attributes -- so it certified a hatch that would have rejected essentially every real
 #: docstring edit, because real ones add or remove lines. A prose-edit battery whose cases
@@ -40,7 +40,7 @@ INERT = {
     "comment reworded and doubled": ("# the enable", "# the three-valued dispatch enable\n# with a second line"),
     "comment deleted": ("   # the enable", ""),
     "blank lines inserted": ("SWITCH =", "\n\nSWITCH ="),
-    # THE HATCH REASONS ABOUT VALUES, NOT TEXT, and this is the clearest demonstration.
+    # The hatch reasons about values, not text, and this is the clearest demonstration.
     # Python folds adjacent string literals at parse time, so `"AB"` and `"A" "B"` are one
     # Constant with the same value. Splitting a long literal across lines to fit a margin
     # therefore cannot change what executes -- and is admitted. This case was written as a

@@ -1,6 +1,6 @@
 """Laptop tests for the Metal chi2/chi3 (Pade) ``update_E`` family.
 
-THE MERGE BAR, NOT THE CERTIFICATION. These are what must stay green on every
+The merge bar, not the certification. These are what must stay green on every
 change, and they are chosen for the defects a byte gate would catch LATE or not at
 all — plus this family's OWN hazards, which are not the off-diagonal family's:
 
@@ -13,7 +13,7 @@ all — plus this family's OWN hazards, which are not the off-diagonal family's:
 * **the four-corner association**, MEEP's left-to-right sum as
   ``stepping._nonlinear_transverse_sums`` forms it, whose two shifts go in
   OPPOSITE directions;
-* **the binary64 ``Dsqr``** (ruling R7: soft-fp64): one helper, the two float32 terms
+* **the binary64 ``Dsqr``** (software binary64, not a refusal): one helper, the two float32 terms
   widened and the ``0.0625`` scale and the add in software binary64, rounded once,
   against ``stepping._nonlinear_dsqr`` on the band where the float32 form differs;
 * **the per-chunk constitutive tail**, the base kernel's lines, read from the chunk
@@ -149,7 +149,7 @@ def test_the_packed_scalar_buffer_is_what_keeps_the_family_under_the_ceiling():
 # ---------------------------------------------------------------------------
 
 def test_the_pade_quotient_is_the_plain_divide_and_never_the_fast_one():
-    """MEASURED, NOT PREFERRED, and the measurement is the reason the plain
+    """Measured, not preferred, and the measurement is the reason the plain
     operator is legal here at all.
 
     ``probe_metal_divide_and_negation.py`` on this host: plain ``/`` agrees with
@@ -553,7 +553,7 @@ def _verdict(fields, grid, residency=None):
 # ---------------------------------------------------------------------------
 
 def test_a_linear_run_is_refused_toward_the_plain_kernel():
-    """THE INVERTED CLAUSE, in its own direction. MEEP DELETES the trivial pair
+    """The inverted clause, in its own direction. MEEP DELETES the trivial pair
     (structure.cpp:822-826, fields.py:879-880), which is the only reason a
     zero-chi run reproduces the linear engine bit for bit."""
     grid = _grid()
@@ -568,7 +568,7 @@ def test_a_nonlinear_run_is_admitted(monkeypatch):
     """The other direction of the same clause — and a predicate that refused
     everything would pass every refusal test above while carrying nothing.
 
-    THE POLICY IS SET HERE RATHER THAN INHERITED. Every test that asserts an
+    The policy is set here rather than inherited. Every test that asserts an
     ADMISSION needs the flush policy, because ``_metal_backend_reasons`` refuses
     outright under any other — and on this arm64 host the process default resolves
     to ``keep`` (``match_meep`` measures MEEP, whose ``set_zero_subnormals`` is a
@@ -589,7 +589,7 @@ def test_a_nonlinear_run_is_admitted(monkeypatch):
 def test_the_engine_route_admits_every_certified_configuration(
         monkeypatch, boundaries, scalar, components):
     """Over the configurations the device test below steps, the predicate admits
-    with no reason given (ruling R7: soft-fp64, so no clause refuses the binary64
+    with no reason given (software binary64, so no clause refuses the binary64
     ``Dsqr``). The backend clause is lifted so the verdict is the same on a host
     with no Apple GPU."""
     monkeypatch.setenv("MEEP_GPU_SUBNORMAL_POLICY", "flush")
@@ -640,7 +640,7 @@ def test_an_offdiagonal_row_is_refused_because_meeps_general_case_is_a_third_bod
     """MEEP scales the WHOLE row product by the Pade factor (stepping.py:1095-1099).
 
     ``offdiag_update_e`` refuses a nonlinearity through the shared clause 10, so a
-    run carrying both is uncovered WITH A REASON FROM BOTH SIDES — which is the
+    run carrying both is uncovered with a reason from both sides — which is the
     composer's fail-closed answer, not a silent gap.
     """
     from meep_gpu.metal_kernels import offdiag_update_e as offdiag
@@ -689,7 +689,7 @@ def test_a_plan_built_with_no_residency_is_refused_by_name():
 # ---------------------------------------------------------------------------
 
 def test_the_magnitude_ceiling_admits_below_and_refuses_above(monkeypatch):
-    """A CEILING TESTED FROM ONE SIDE IS A CONSTANT, NOT A CLAUSE.
+    """A ceiling tested from one side is a constant, not a clause.
 
     With ``chi1inv = 0.5``, ``|chi1inv|^3 = 0.125``, so the clause quantity is
     ``chi3 * 0.125``. The pair below and above 1e29 is therefore chi3 = 4e29
@@ -722,7 +722,7 @@ def test_the_ceiling_is_per_cell_and_not_a_product_of_two_maxima(monkeypatch):
     looser ``max|chi| * max|chi1inv|^p`` form would refuse it. Built so the two
     forms disagree.
 
-    THE VALUES ARE PICKED WITH float32 ROUNDING IN MIND, because the first spelling
+    The values are picked with float32 rounding in mind, because the first spelling
     of this test did not: ``np.float32(8e29) * 0.125`` is 1.0000000150e29, which is
     ABOVE a ceiling of exactly 1e29, so the "admitted" half failed on a rounding
     step rather than on the clause. 7.9e29 leaves real headroom.
@@ -871,7 +871,7 @@ def test_the_family_module_is_in_the_registry_list():
 
 
 def test_re_registering_the_same_arm_is_refused():
-    """A duplicate would make WHICH KERNEL RUNS depend on import order."""
+    """A duplicate would make which kernel runs depend on import order."""
     with pytest.raises(ValueError, match="already registered"):
         arms.register(family=nonlinear.FAMILY, slot=nonlinear.SLOT,
                       label="nonlinear",
@@ -905,7 +905,7 @@ def _seed_spine_pair(actual, reference, seed=29):
         values = rng.uniform(-0.35, 0.35, actual.grid.shape).astype(np.float32)
         getattr(actual, name)[...] = values
         getattr(reference, name)[...] = values
-    # A SEEDED STATE IS A MID-RUN ONE: H was started from B long ago.
+    # A seeded state is a mid-run one: H was started from B long ago.
     actual.h_separated = reference.h_separated = True
 
 
@@ -1042,7 +1042,7 @@ def _update_e_against_stepping(fields, pml, grid):
                          ids=("one", "all"))
 def test_one_update_e_is_byte_identical_to_stepping(monkeypatch, boundaries,
                                                     scalar, components):
-    """THE SUB-STEP CLAIM, as words and with a vacuity floor: the shipped plan, bound
+    """The sub-step claim, as words and with a vacuity floor: the shipped plan, bound
     to the run's chunk record, against ``stepping.update_E``.
 
     Zero init is a FIXED POINT of the constitutive sub-step, so the volumes are

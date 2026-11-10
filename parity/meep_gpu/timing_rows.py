@@ -1,23 +1,28 @@
 #!/usr/bin/env python
-"""Timing rows: the unit the timing round times, keeps, validates and cuts from.
+"""Timing rows: the unit a timing run times, keeps, validates and cuts from.
 
-WHY THIS EXISTS. Certification is modular: any subset of gates re-runs alone and each
+Why this exists. Certification is modular: any subset of gates re-runs alone and each
 record updates on its own (``rounds/1.0/chunks.py``, ``artifact_drift.py``). Timing is
 made the same way here. The unit is a ROW, and every table, ladder and dispatch-preference
 record is CUT by tool from the newest valid row of each key, never assembled by hand, so
 any subset of rows can be re-timed at any time and the cuts re-run.
 
 =============================================================================
-THE ROW, AND ITS KEY
+The row, and its key
 =============================================================================
 
 Three kinds, one record each (schema :data:`SCHEMA`):
 
-* ``ladder`` -- one (case, size, tier) of the identical-case ladder WITH THE LEGS IT IS
-  COMPARED AGAINST: every GPU route's row, the array-path control and every MEEP leg,
-  all from one ladder session on one idle box (R5: a ratio pairs legs timed in one
-  session; R18: nothing else on the box). Key ``ladder|<architecture>|<case>|<cells>|
-  <tier>``.
+* ``ladder`` -- one (case, size, tier) of the identical-case ladder with the legs it is
+  compared against: every GPU route's row, the array-path control and every MEEP leg,
+  all from one ladder session on one idle box (a ratio pairs legs timed in one
+  session, MEEP re-timed beside the GPU legs rather than reused; nothing else on the
+  box). Key ``ladder|<architecture>|<case>|<cells>|<tier>``. On a host whose GPU rows
+  need a setting MEEP must not run under (a WSL2 desktop's VM affinity mask), the session
+  times a ladder unit as two child runs, a GPU half and a MEEP half, and the row is
+  composed from both (:func:`split_ladder_records`): the same record, with a ``split``
+  block, refused unless both halves ran clean under their own masks
+  (:func:`split_refusals`), and every ratio cut from it labelled split.
 * ``fused`` -- one ``bench_fused_products.py`` unit: a (table, case, size) and its pass,
   the rows a dispatch-preference record is cut from. Key ``fused|<architecture>|
   <table>|<case>|<size>|p<pass>``, ``<size>`` ``res<r>`` or ``drive`` (the route gate's
@@ -34,11 +39,12 @@ themselves since 1.0, replacing the external import-record hook), the LAUNCH COU
 every GPU leg (per slot: arm, kernel table, dispatches, and the family and gate the plan
 cites), its ENVIRONMENT (the reference environment's build record and the MEEP build
 records), the HOST GATES it passed (the quiet window read twice, the variance
-precondition, the R18 watcher's readings and intrusions, power recorded and never
-gated), its legs' medians WITH THEIR GATE STATUS (R20), and a digest of its own body.
+precondition, the watcher's readings and intrusions, power recorded and never
+gated), its legs' medians with their gate status (so a published median always says
+whether the gate admitted it), and a digest of its own body.
 
 =============================================================================
-VALID, STALE, OR OWED A DISPATCH CHECK
+Valid, stale, or owed a dispatch check
 =============================================================================
 
 A row is assessed against a RELEASE TREE (:func:`assess`). The files its import records
@@ -59,7 +65,7 @@ in the second:
    table's ``driver_dispatch`` ledger entry pins that no arm's entry pins (the Metal
    subnormal module; a fused pair's own module, which the CUDA route record pins
    beside its weld, is that ARM's kernel text and is read by rule 2, its effect on
-   what dispatches by rule 3). In the 1.0 round's 150 NVIDIA
+   what dispatches by rule 3). In the 1.0 timing run's 150 NVIDIA
    import records the planners, ``deposit_repair.py``, ``host_writes.py``,
    ``fused_pairs.py`` and ``fused_polarization_pair.py`` were in EVERY row of both
    tables: here the re-time stays per table, because pooling a row timed before such
@@ -72,6 +78,9 @@ in the second:
    (``import_closure.Resolver.edges``, transitively): an upper bound on the text its
    launch builds, which catches a shared helper its curated pins leave out (the CUDA
    own-cell hoist module is pinned by one entry and imported by every hoisted kernel).
+   The walk stops at :data:`TABLE_COMPLETION`, so on the Metal table the kernel files an
+   entry's gate script names belong to the arm too: its family module may be pinned
+   nowhere else.
    The GATE's run closure is not used: a multi-product probe reaches nearly every
    kernel module, which would re-time every row for any kernel. An arm whose gate key
    no ledger holds (the 1.0 Triton single arms cite the sweep
@@ -79,7 +88,7 @@ in the second:
    BACKEND SLICE: every kernel file of its table belongs to it. Which rule each arm
    resolved by is written into the assessment.
 3. A kernel file no arm the row launched belongs to is EXEMPT, but the row is then
-   OWED A DISPATCH CHECK: a predicate in that file decides whether another arm is
+   owed a dispatch check: a predicate in that file decides whether another arm is
    admitted, so the row is valid only once a ``check`` record of its key, cut wholly
    on the release tree, shows the same arms dispatched on the same slots. A dispatch
    check is a short GPU run; a re-time is the whole row, MEEP legs included.
@@ -87,17 +96,30 @@ in the second:
 4. A LEDGER (:data:`DATA_FILES`: the files the dispatch path reads as data to decide
    which arms it admits) is no arm's kernel text: a change to one owes every row that
    read it a dispatch check, as rule 3. The bench records their digests beside its
-   import record (``data_sha256``).
+   import record (``data_sha256``), for every table whose module the process imported,
+   which on an Apple GPU includes the NVIDIA tables: importing a module opens no ledger.
+   So a ledger is compared only on a row whose architecture reads it
+   (``ledger_scope.py``): the NVIDIA ledgers on an NVIDIA row, the Metal ledger on an
+   Apple row. A recorded digest of the other platform's ledger is kept and not compared,
+   and ``certification.json``, which no dispatch path opens, on no row whose device can be
+   placed. Within a ledger it reads, a row reads a slice: a move outside the slice for its
+   architecture (another device's runs, a route re-cut) is set aside and named
+   (``set_aside``), so a row or a check cut before another device's bind stands. A digest
+   that cannot be set aside is compared whole, and the assessment says why
+   (``compared_whole``). Timing records are not compared here at all: no row records their
+   digests.
 
 A row that ran package code and records no launched slot (an ERROR row) cannot be
-narrowed: every moved file re-times it. A row is REFUSED by name and never cut when:
-a process that ran package code has no import record, names no package module in it,
-or records no ledger digests; the unit was not opened on a quiet window of two clear
-readings or was not watched while it ran (R18: a row collected by hand has neither);
+narrowed: every moved file it read, under rule 4's scope, re-times it. A row is REFUSED
+by name and never cut when: a process that ran package code has no import record, names
+no package module in it, or records no ledger digests or none of its own platform's; the
+unit was not opened on a quiet window of two clear
+readings or was not watched while it ran (a row collected by hand has neither);
 the watcher saw an intrusion; a ladder entry of the row was written outside the
-session that records it (R5: a ladder resumed across sessions); the ladder unit
+session that records it (a ladder resumed across sessions); the ladder unit
 exited non-zero (its passes are not the plan's); it has no reference environment build
-record (R27); or its body does not match its digest.
+record (a rebuilt environment runs another program behind the same import records);
+or its body does not match its digest.
 
 =============================================================================
 THE CUTS
@@ -113,24 +135,29 @@ THE CUTS
   selected ladder rows: every leg's median over its passes with its gate status,
   RE-DERIVED from the passes the record stores (:func:`leg_median`), never read off
   the status it was collected with, so a row collected before a rule changed is cut
-  by the rule in force. The GPU and array-control legs carry the 5 % gate of owner
-  ruling R33 (2026-10-16): a leg passes when the spread of its PASS RATES, (max - min)
-  / median over the row's passes, is at most 5 % and no pass is struck for anything
-  else. The within-pass WINDOW spread is recorded with every pass and gates nothing
-  (:func:`r33_strike` reads a pre-R33 strike on the bench's window floor alone as
-  no strike). MEEP legs carry their between-pass spread, RECORDED AND NEVER GATED
-  (owner ruling), and are struck only for what is not spread (digest, precision,
-  threads, monitor). A ratio is the route's median over MEEP's best unstruck
-  reference-configuration median and says whether it enters: it enters when the
-  route's leg passed the gate AND the session's variance precondition was GO (R18). The
-  table is accounted against the CATALOG: every catalog key with no valid measured row,
-  never timed included, is named under ``missing``.
+  by the rule in force. The GPU and array-control legs carry the 5 % gate of record
+  (since 2026-10-16; ``docs/development/timing.md``, "The gate of record"): a leg
+  passes when the spread of its PASS RATES, (max - min) / median over the row's
+  passes, is at most 5 % and no pass is struck for anything else. The within-pass
+  WINDOW spread is recorded with every pass and gates nothing (:func:`r33_strike`
+  reads a ladder's strike on the bench's window floor alone as no strike). MEEP legs
+  carry their between-pass spread, recorded and never gated, and are struck only for
+  what is not spread (digest, precision, threads, monitor). A ratio is the route's
+  median over MEEP's best unstruck reference-configuration median and says whether it
+  enters: it enters when the route's leg passed the gate AND the session's variance
+  precondition was GO. The table is accounted against the CATALOG: every catalog key
+  with no valid measured row, never timed included, is named under ``missing``.
 * :func:`cut_records` -- the dispatch-preference records, per table PER ARCHITECTURE,
   through ``cut_timing_record.cut`` on the selected fused rows' own bench lines, with
-  the release accounted for (a partial set names its missing keys). Each architecture's
-  record is written to the name ``dispatch_preference.record_path`` gives it; a record
-  of an architecture whose rows are absent is never touched, and a record cut on
-  another device is never replaced. Every catalog fused key of a table and
+  the release accounted for (a partial set names its missing keys). Each record is
+  placed by the cutter's rule for its card (``cut_timing_record.destination``): at the
+  name ``dispatch_preference.record_path`` gives its architecture when that name
+  already holds this card's record, or is empty while the card has no record of its own
+  beside it; else beside it under the card's own name (``timing_<arch>-<card>.json``).
+  A record of an architecture whose rows are absent is never touched, and another
+  card's record is never replaced. One store holds one card's rows: selected rows of one
+  table and architecture that name two cards are refused by name (``mixed_device``).
+  Every catalog fused key of a table and
   architecture with no valid measured row is named in the result and in the report
   beside the record (the record's own ``missing`` names the released (product, case)
   pairs it lacks); a table and architecture the catalog names and no row reaches is
@@ -147,12 +174,12 @@ usage:
   timing_rows.py report   --store S --release-root R --architecture A --out-dir DIR
                           [--catalog C] [--environment-record F]
 
-``--environment-record`` names the round's reference environment build record (R27):
+``--environment-record`` names the timing run's reference environment build record:
 every row that ran in another environment is then stale and owed a re-time. Without it,
 a cut whose selected rows ran in two environments is refused by name.
 
-Stdlib only (with the harness's ``artifact_drift``, ``import_closure`` and
-``cut_timing_record``), and imported by no gate: a change here voids no artifact.
+Stdlib only (with the harness's ``artifact_drift``, ``ledger_scope``, ``import_closure``
+and ``cut_timing_record``), and imported by no gate: a change here voids no artifact.
 """
 
 from __future__ import annotations
@@ -176,6 +203,7 @@ for _path in (HERE, REPO_ROOT):
         sys.path.insert(0, _path)
 
 import artifact_drift  # noqa: E402
+import ledger_scope  # noqa: E402
 
 SCHEMA = "meep_gpu.timing_row/1"
 KINDS = ("ladder", "fused", "check")
@@ -184,38 +212,42 @@ ROLES = ("release", "ab")
 DIGEST_FIELD = "record_sha256"
 #: The import record a bench writes on every row (``gate_provenance.IMPORTED_KEY``).
 IMPORTED_KEY = "imported_source_sha256"
-#: Beside it, the digests of the ledgers the process's kernel tables read
-#: (:data:`DATA_FILES`), the versions of the libraries it loaded, and the package,
-#: device and compiler switches of its environment (``bench_fused_products``).
+#: Beside it, the digests of the ledgers of the kernel tables the process imported
+#: (:data:`DATA_FILES`; :func:`ledgers_read` is what a row is compared on), the versions
+#: of the libraries it loaded, and the package, device and compiler switches of its
+#: environment (``bench_fused_products``).
 DATA_KEY = "data_sha256"
 LIBRARIES_KEY = "imported_libraries"
 ENVIRONMENT_KEY = "process_environment"
-#: The catalog the release round's driver reads (``rounds/1.0/cert8.py``).
+#: The catalog the release timing run's driver reads (``rounds/1.0/cert8.py``).
 CATALOG_SCHEMA = "meep_gpu.cert8_catalog/1"
-#: The 5 % gate (owner ruling R33, 2026-10-16): a GPU or array leg's between-pass
+#: The 5 % gate (since 2026-10-16): a GPU or array leg's between-pass
 #: spread, (max - min) / median over its pass rates. Until then the gate was also the
 #: bench's within-window floor; the window spread is now recorded and gates nothing.
 GATE = 0.05
 #: The bench floors that read a leg's within-pass WINDOW spread. A row written before
-#: R33 carries ``spread_within_gate`` among its floors, and its ladder entry may be
-#: struck on it alone; :func:`r33_strike` and :func:`gating_floors` read both as R33
-#: does, so a row cuts to one verdict whichever side of the change it was written on.
+#: the between-pass gate took effect (2026-10-16) carries ``spread_within_gate`` among
+#: its floors, and its ladder entry may be struck on it alone; :func:`r33_strike` and
+#: :func:`gating_floors` read both as the gate of record does, so a row cuts to one
+#: verdict whichever side of the change it was written on. The ``r33`` in
+#: :func:`r33_strike`, ``_r33_pass``, :data:`PRE_R33_RULE` and the cut's ``pre_r33``
+#: keys is a historical name for this 2026-10-16 change; code and tests read them by
+#: name.
 WINDOW_FLOORS = ("spread_within_gate",)
 #: The gate as every cut states it.
-GATE_RULE = ("R33 (owner ruling 2026-10-16): a GPU or array-control leg enters when the "
-             "spread of its pass rates, (max - min) / median over the row's passes, is "
-             "at most 5 % and no pass of it is struck by another check; the "
+GATE_RULE = ("the between-pass gate (2026-10-16): a GPU or array-control leg enters "
+             "when the spread of its pass rates, (max - min) / median over the row's "
+             "passes, is at most 5 % and no pass of it is struck by another check; the "
              "within-pass window spread is recorded with every pass and gates nothing")
-#: What a cut says of a pass a pre-R33 ladder struck on the window floor alone.
-PRE_R33_RULE = ("a pass a pre-R33 ladder struck on the bench's window floor alone is "
+#: What a cut says of a pass its ladder struck on the bench's window floor alone.
+PRE_R33_RULE = ("a pass its ladder struck on the bench's window floor alone is "
                 "read unstruck; that ladder's recorder stopped at the first strike, so "
                 "for such a pass it never evaluated its later checks (what the route "
                 "launched, a gpu-only row's identity row, the deposit-repair route, the "
                 "host conditions), and a record keeps none of them to re-read")
-#: How a MEEP leg's pass spread is read (owner ruling, the 2026-09-25 Mac night and the
-#: 1.0 round): recorded beside its median, never a reason to strike it.
-MEEP_SPREAD_RULE = ("MEEP's own pass spread is recorded and never strikes a leg "
-                    "(owner ruling)")
+#: How a MEEP leg's pass spread is read (the rule since the 2026-09-25 Mac ladder, kept
+#: for the 1.0 timing run): recorded beside its median, never a reason to strike it.
+MEEP_SPREAD_RULE = "MEEP's own pass spread is recorded and never strikes a leg"
 STATUSES = ("valid", "check_owed", "stale", "refused")
 #: The kernel table directories: a file under one may be ONE ARM's kernel text.
 KERNEL_DIRS = {"triton": "meep_gpu/triton_kernels/", "cuda": "meep_gpu/cuda_kernels/",
@@ -232,6 +264,11 @@ KERNEL_STEP_PATH = (
     "meep_gpu/metal_kernels/__init__.py", "meep_gpu/metal_kernels/arms.py",
     "meep_gpu/metal_kernels/registry.py",
 )
+#: The modules that import every family so a plan reads a complete table. Each is on
+#: the step path above, and no arm builds its kernel text from what it imports, so the
+#: walk behind rule 2 stops here: through one, every arm would own every kernel.
+TABLE_COMPLETION = frozenset(("meep_gpu/cuda_kernels/registry.py",
+                              "meep_gpu/metal_kernels/registry.py"))
 #: The four ledgers, per table (``tools/ci/check_hygiene.LEDGERS``).
 LEDGERS = {"triton": ("meep_gpu/triton_kernels/fingerprints.json",),
            "cuda": ("meep_gpu/cuda_kernels/certification.json",
@@ -240,7 +277,7 @@ LEDGERS = {"triton": ("meep_gpu/triton_kernels/fingerprints.json",),
 #: The ledgers as data: what the dispatch path reads to admit an arm. No arm's kernel
 #: text, so a change to one owes a dispatch check, never an arm's re-time.
 DATA_FILES = frozenset(path for paths in LEDGERS.values() for path in paths)
-#: The ledger entry that binds each table's route record (DESIGN section 8.2 step 3).
+#: The ledger entry that binds each table's route record.
 ROUTE_ENTRY = "driver_dispatch"
 _SLUG = re.compile(r"[^A-Za-z0-9._=-]+")
 
@@ -303,7 +340,15 @@ def slug(key: str) -> str:
 # The catalog: which keys an architecture's cuts account for
 # ---------------------------------------------------------------------------
 
-def load_catalog(path: str) -> Dict[str, Any]:
+def load_catalog(path: str, architecture: Optional[str] = None) -> Dict[str, Any]:
+    """The catalog, for ``architecture`` when one is given.
+
+    A PORTABLE catalog (``"portable": true``) names the rows of a platform rather than of
+    one GPU: its ``architecture`` is the one it was first cut on, and any other
+    architecture of that platform takes the same rows by naming itself here (a newly
+    certified GPU runs the same ladder). A catalog that is not portable refuses another
+    architecture by name, as before.
+    """
     with open(path, encoding="utf-8") as handle:
         catalog = json.load(handle)
     if not isinstance(catalog, Mapping) or catalog.get("schema") != CATALOG_SCHEMA:
@@ -311,7 +356,15 @@ def load_catalog(path: str) -> Dict[str, Any]:
                          f"{(catalog or {}).get('schema')!r}, not {CATALOG_SCHEMA!r}")
     if not catalog.get("architecture"):
         raise RowRefused("unsupported_catalog", f"{path}: names no architecture")
-    return dict(catalog)
+    catalog = dict(catalog)
+    if architecture and str(architecture) != str(catalog["architecture"]):
+        if not catalog.get("portable"):
+            raise RowRefused("unsupported_catalog", f"{path}: the catalog is for "
+                             f"architecture {catalog['architecture']} and is not portable; "
+                             f"it takes no rows of {architecture}")
+        catalog["architecture_of_catalog"] = catalog["architecture"]
+        catalog["architecture"] = str(architecture)
+    return catalog
 
 
 def catalog_keys(catalog: Mapping[str, Any],
@@ -463,6 +516,45 @@ def public(record: Mapping[str, Any]) -> Dict[str, Any]:
     return {k: v for k, v in record.items() if not k.startswith("_")}
 
 
+def local_paths(obj: Any) -> List[str]:
+    """Every string of ``obj`` (dictionary keys included) that names a machine's own
+    files: an absolute path outside the system directories, which name no machine, account
+    or site (``neutral_ids``'s own list: ``/usr``, ``/opt``, ``/proc``, ...); a path under
+    ``~/``; or what ``neutral_ids.residue`` finds (a local root, a home directory by its
+    shape, a Windows profile included, a GPU UUID, a host name). A row record leaves the
+    machine, so its writers spell a path under its root's label (``<home>/...``); this is
+    the check their tests hold what they wrote to, and an empty list is the pass. A URL is
+    not a path, and neither is the rest of a path that a label starts (``<home>//env``: a
+    slash right after a slash continues the path before it)."""
+    import neutral_ids  # noqa: PLC0415
+
+    found: List[str] = []
+
+    def local(text: str) -> bool:
+        if neutral_ids.text(text) != text:
+            return True
+        if re.search(r"(?<![A-Za-z0-9._$/~-])~/", text):
+            return True
+        return any(not match.group().startswith(("//",) + neutral_ids._SYSTEM_ROOTS)
+                   and text[match.start() - 1:match.start()] != "/"
+                   for match in neutral_ids._ABSOLUTE.finditer(text))
+
+    def walk(node: Any) -> None:
+        if isinstance(node, str):
+            if local(node):
+                found.append(node)
+        elif isinstance(node, Mapping):
+            for key, item in node.items():
+                walk(key)
+                walk(item)
+        elif isinstance(node, (list, tuple)):
+            for item in node:
+                walk(item)
+
+    walk(obj)
+    return found
+
+
 # ---------------------------------------------------------------------------
 # Launch counters
 # ---------------------------------------------------------------------------
@@ -542,6 +634,7 @@ class Attribution:
                     held.setdefault(key, set()).update(files)
         self._deps: Dict[str, Tuple[str, ...]] = {}
         self._resolver = None
+        self._certification: Optional[Mapping[str, Tuple[str, str]]] = None
         self.subject_files = {f"meep_gpu/{path}"
                               for path in release_subject_files(self.root).values()}
 
@@ -582,7 +675,7 @@ class Attribution:
         todo = [name for name in files if _kernel_file(name)]
         while todo:
             name = todo.pop()
-            if name in seen or not _kernel_file(name):
+            if name in seen or not _kernel_file(name) or name in TABLE_COMPLETION:
                 continue
             seen.add(name)
             if name not in self._deps:
@@ -610,7 +703,35 @@ class Attribution:
         own = {name for name in found[1] if _kernel_file(name)}
         if not own:
             return None, f"backend-slice:{backend} (entry {gate!r} pins no kernel file)"
+        if found[0] == "metal":
+            own |= self._family_modules(str(gate), found[1])
         return self.kernel_deps(own), f"ledger:{found[0]}:{gate}"
+
+    def _family_modules(self, gate: str, pins: Iterable[str]) -> Set[str]:
+        """The kernel files a Metal entry's certification names beyond its pins. An entry
+        such as ``metal_offdiag_device_gate`` pins ``launch.py`` as its only kernel file, and
+        the walk stops at the table completion, which would otherwise have reached the
+        family module holding the arm's text. So the entry also owns what its gate script
+        imports, and each module ``metal_dispatch.ARM_CERTIFICATION`` cites it for."""
+        self.kernel_deps(())
+        scripts = (name for name in pins if str(name).startswith("parity/meep_gpu/gate_"))
+        found = {name for script in scripts if self._resolver.exists(script)
+                 for name in self._resolver.edges(script, module_level=False)
+                 if _kernel_file(name)}
+        if self._certification is None:
+            path = os.path.join(self.root, "meep_gpu", "metal_dispatch.py")
+            with open(path, encoding="utf-8") as handle:
+                tree = ast.parse(handle.read())
+            self._certification = next(
+                ast.literal_eval(node.value) for node in tree.body
+                if isinstance(node, (ast.Assign, ast.AnnAssign))
+                and getattr(getattr(node, "target", None) or node.targets[0], "id", "")
+                == "ARM_CERTIFICATION")
+        for family, cited in self._certification.values():
+            name = f"meep_gpu/metal_kernels/{family}.py"
+            if cited == gate and self._resolver.exists(name):
+                found.add(name)
+        return found
 
 
 def _kernel_file(name: str) -> bool:
@@ -640,7 +761,7 @@ def release_subject_files(root: str) -> Dict[str, str]:
 
 
 # ---------------------------------------------------------------------------
-# The environment a row ran in (R27)
+# The environment a row ran in: one reference environment per cut
 # ---------------------------------------------------------------------------
 
 def file_sha256(path: Optional[str]) -> Optional[str]:
@@ -653,7 +774,7 @@ def file_sha256(path: Optional[str]) -> Optional[str]:
 
 
 def environment_id(record: Mapping[str, Any]) -> Optional[str]:
-    """The sha256 of the reference environment's build record the row ran in (R27)."""
+    """The sha256 of the reference environment's build record the row ran in."""
     reference = (record.get("environment") or {}).get("reference")
     return reference.get("sha256") if isinstance(reference, Mapping) else None
 
@@ -661,8 +782,8 @@ def environment_id(record: Mapping[str, Any]) -> Optional[str]:
 def one_environment(records: Iterable[Mapping[str, Any]], what: str) -> None:
     """Refuse, by name, one cut of rows from more than one environment.
 
-    THE IMPORT RECORD DOES NOT SEE AN ENVIRONMENT. Rows timed in two reference
-    environments (R27: another compiler, another Triton, another CuPy, another MEEP
+    The import record does not see an environment. Rows timed in two reference
+    environments (another compiler, another Triton, another CuPy, another MEEP
     build), or whose processes loaded two versions of one library, ran two programs
     although every import record matches the tree, and one record or table of them would
     compare the two. "None recorded" is a value: it does not pool with a recorded one."""
@@ -679,10 +800,10 @@ def one_environment(records: Iterable[Mapping[str, Any]], what: str) -> None:
     if len(environments) > 1:
         raise RowRefused(
             "mixed_environment",
-            f"{what}: the rows ran in {len(environments)} reference environments (R27): "
+            f"{what}: the rows ran in {len(environments)} reference environments: "
             + "; ".join(f"{digest[:12]}: {len(keys)} key(s), e.g. {keys[0]}"
                         for digest, keys in sorted(environments.items()))
-            + ". Pass --environment-record with the round's build record: every row of "
+            + ". Pass --environment-record with the timing run's build record: every row of "
               "another environment is then stale and owed a re-time")
     mixed = {name: versions for name, versions in sorted(libraries.items())
              if len(versions) > 1}
@@ -699,22 +820,77 @@ def one_environment(records: Iterable[Mapping[str, Any]], what: str) -> None:
 # Assessment
 # ---------------------------------------------------------------------------
 
+def ledgers_read(record: Mapping[str, Any], process: Mapping[str, Any]) -> Dict[str, str]:
+    """The recorded ledger digests of ``process`` a run of ``record``'s architecture reads,
+    and those of any table the row launched (rule 4)."""
+    launched = {ledger_scope.platform_of_table(backend) for backend, _, _ in dispatched(record)}
+    return {name: digest for name, digest in (process.get(DATA_KEY) or {}).items()
+            if ledger_scope.reads_ledger(name, record.get("architecture"), launched)}
+
+
+def ledger_comparison(record: Mapping[str, Any], process: Mapping[str, Any], root: str,
+                      cache: Optional[Dict[str, Any]] = None
+                      ) -> Dict[str, "ledger_scope.Verdict"]:
+    """``{ledger: verdict}`` for every ledger ``process`` read whose whole-file digest the
+    tree does not hold (``ledger_scope.ledger_moved``)."""
+    cache = {} if cache is None else cache
+    read = ledgers_read(record, process)
+    libraries = process.get("imported_libraries")
+    triton = libraries.get("triton") if isinstance(libraries, Mapping) else None
+    return {name: ledger_scope.ledger_moved(
+                name, read[name], form="raw", device=record.get("architecture"),
+                imports=process.get(IMPORTED_KEY) or {}, triton_version=triton, root=root,
+                cache=cache)
+            for name in artifact_drift.moved_files(read, Path(root), cache)}
+
+
 def moved_files(record: Mapping[str, Any], root: str,
                 cache: Optional[Dict[str, Optional[str]]] = None) -> Dict[str, List[str]]:
-    """``{file: [process roles]}`` for every recorded file the tree holds at other bytes:
-    the modules of the import record and the ledgers recorded beside it."""
+    """``{file: [process roles]}`` for every recorded file that moved for this row: the
+    modules of the import record the tree holds at other bytes, and the ledgers it read
+    whose comparison says so (rule 4)."""
     cache = {} if cache is None else cache
     out: Dict[str, List[str]] = {}
     for process in record.get("processes") or ():
-        recorded = dict(process.get(IMPORTED_KEY) or {})
-        recorded.update(process.get(DATA_KEY) or {})
-        for name in artifact_drift.moved_files(recorded, Path(root), cache):
+        moved = artifact_drift.moved_files(dict(process.get(IMPORTED_KEY) or {}), Path(root),
+                                           cache)
+        moved += [name for name, verdict in ledger_comparison(record, process, root,
+                                                              cache).items() if verdict.moved]
+        for name in sorted(moved):
             out.setdefault(name, []).append(str(process.get("role")))
     return out
 
 
+def ledgers_set_aside(record: Mapping[str, Any], root: str,
+                      cache: Optional[Dict[str, Optional[str]]] = None
+                      ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """``(set_aside, compared_whole)``: what rule 4's comparison excused and why, and the
+    ledgers that fell back to a whole digest, with the reason. A row's status never reads
+    these; they are the proof beside it."""
+    set_aside: Dict[str, Any] = {}
+    compared_whole: Dict[str, Any] = {}
+    for process in record.get("processes") or ():
+        for name, verdict in ledger_comparison(record, process, root, cache).items():
+            holder = compared_whole if verdict.moved else set_aside
+            holder.setdefault(name, {"why": verdict.why, **verdict.proof,
+                                     "recorded": (process.get(DATA_KEY) or {}).get(name)})
+    return set_aside, compared_whole
+
+
 def _clear(reading: Any) -> bool:
     return isinstance(reading, Mapping) and not reading.get("intrusions")
+
+
+def key_architecture(key: Any) -> Optional[str]:
+    """The architecture a row's key names, through a check's target. None when the key names
+    none: :func:`validate` refuses such a key, on a sealed record."""
+    try:
+        parsed = parse_key(key)
+        if parsed["kind"] == "check":
+            parsed = parse_key(parsed["target"])
+    except (RowRefused, ValueError):
+        return None
+    return parsed.get("architecture")
 
 
 def refusals(record: Mapping[str, Any], allow_unrecorded_environment: bool = False
@@ -737,41 +913,58 @@ def refusals(record: Mapping[str, Any], allow_unrecorded_environment: bool = Fal
         if process.get(DATA_KEY) is None:
             why.append(f"no ledger digests: process {process.get('role')} ran package code "
                        f"and recorded no {DATA_KEY}, so a ledger change could not be seen")
+        elif (process[DATA_KEY]
+              and not ledger_scope.holds_own_ledger(process[DATA_KEY],
+                                                    record.get("architecture"))):
+            why.append(f"no ledger of its own platform: process {process.get('role')} ran "
+                       f"package code on {record.get('architecture')!r} and {DATA_KEY} holds "
+                       "no ledger that device reads, so a ledger change could not be seen")
     if not record.get("processes"):
         why.append("no process recorded")
     gates = record.get("gates") or {}
-    # R18, AS EVIDENCE: a unit opened on a quiet window of two clear readings and watched
-    # while it ran. A row collected by hand carries neither and is never cut.
+    # An idle box, as evidence: a unit opened on a quiet window of two clear readings and
+    # watched while it ran. A row collected by hand carries neither and is never cut.
     if gates.get("collected_by_hand"):
         why.append("collected by hand: no quiet window or watcher was recorded around the "
-                   "unit (R18)")
+                   "unit (timing needs an otherwise idle box)")
     else:
         quiet = gates.get("quiet")
         if not (isinstance(quiet, list) and len(quiet) >= 2 and all(map(_clear, quiet))):
-            why.append("no quiet window of two clear readings before the unit (R18)")
+            why.append("no quiet window of two clear readings before the unit (timing "
+                       "needs an otherwise idle box)")
         watcher = gates.get("watcher")
         if not isinstance(watcher, Mapping) or not watcher.get("readings"):
-            why.append("no watcher readings while the unit ran (R18)")
+            why.append("no watcher readings while the unit ran (timing needs an "
+                       "otherwise idle box)")
     watcher = gates.get("watcher") or {}
     if watcher.get("intrusions"):
         why.append(f"intruded: the watcher saw {len(watcher['intrusions'])} intrusion(s) "
-                   "during the unit (R18)")
+                   "during the unit (timing needs an otherwise idle box)")
     outside = gates.get("session_mismatch")
     if outside:
         why.append(f"another session: {len(outside)} ledger entr(y/ies) of this row were "
-                   f"written outside the session that records it, e.g. {outside[0]} (R5)")
+                   f"written outside the session that records it, e.g. {outside[0]} "
+                   "(a row's legs are timed in one session)")
     if record.get("kind") == "ladder" or str(record.get("key", "")).startswith(
             "check|ladder|"):
         rc = (record.get("unit") or {}).get("rc")
         if rc != 0:
             why.append(f"the ladder unit exited rc {rc}: its passes are not the plan's")
+    if record.get("split") is not None:
+        why += split_refusals(record["split"], gates.get("split_ladder"),
+                              (gates.get("windows") or {}).get("vm_affinity"))
     mismatch = gates.get("architecture_mismatch")
     if mismatch:
         why.append(f"architecture: the rows stamp {mismatch} and the key names "
                    f"{record.get('architecture')}")
+    # A ledger's slice is cut for the stamped architecture, so a wrong stamp would decide alone.
+    named, stamped = key_architecture(record.get("key", "")), record.get("architecture")
+    if (named is not None and (ledger_scope.architecture_of_device(named) or named)
+            != (ledger_scope.architecture_of_device(stamped) or stamped)):
+        why.append(f"architecture: the key names {named} and the record is stamped {stamped}")
     environment = (record.get("environment") or {}).get("reference")
     if not environment and not allow_unrecorded_environment:
-        why.append("no reference environment build record (R27)")
+        why.append("no reference environment build record")
     return why
 
 
@@ -781,8 +974,8 @@ def assess(record: Mapping[str, Any], root: str, attribution: "Attribution",
            cache: Optional[Dict[str, Optional[str]]] = None,
            environment: Optional[str] = None) -> Dict[str, Any]:
     """The row's status against the release tree at ``root``, with every reason.
-    ``environment`` is the sha256 of the round's reference environment build record:
-    a row that ran in another is stale, whatever its import record says (R27)."""
+    ``environment`` is the sha256 of the timing run's reference environment build record:
+    a row that ran in another is stale, whatever its import record says."""
     out: Dict[str, Any] = {"key": record.get("key"), "path": record.get("_path"),
                            "session": (record.get("session") or {}).get("id"),
                            "moved": {}, "stale": [], "exempt": {}, "arms": [],
@@ -793,14 +986,16 @@ def assess(record: Mapping[str, Any], root: str, attribution: "Attribution",
     ran_in = environment_id(record)
     if environment is not None and ran_in != environment:
         out["stale"].append(
-            f"the reference environment moved (R27): the row ran in "
-            f"{(ran_in or 'none recorded')[:12]}, the round names {environment[:12]}; an "
+            f"the reference environment moved: the row ran in "
+            f"{(ran_in or 'none recorded')[:12]}, the timing run names {environment[:12]}; an "
             "environment is no file of the import record, and another one ran another "
             "program")
         out["status"] = "stale"
         return out
+    cache = {} if cache is None else cache
     moved = moved_files(record, root, cache)
     out["moved"] = moved
+    out["set_aside"], out["compared_whole"] = ledgers_set_aside(record, root, cache)
     if not moved:
         out["status"] = "valid"
         return out
@@ -810,7 +1005,7 @@ def assess(record: Mapping[str, Any], root: str, attribution: "Attribution",
         arms.append({"backend": backend, "arm": arm, "gate": gate, "rule": rule,
                      "files": files})
     out["arms"] = [{k: v for k, v in arm.items() if k != "files"} for arm in arms]
-    # NO LAUNCH COUNTERS, NO NARROWING: a row that ran package code and records no slot
+    # No launch counters, no narrowing: a row that ran package code and records no slot
     # it launched (an ERROR row, a row file without its plans) cannot say which arm a
     # kernel file belongs to, so every moved file re-times it.
     unnarrowed = not arms and any(p.get("ran_package") for p in record["processes"])
@@ -852,12 +1047,12 @@ def dispatch_witness(record: Mapping[str, Any], checks: Sequence[Mapping[str, An
                      root: str, cache: Optional[Dict[str, Optional[str]]] = None,
                      environment: Optional[str] = None) -> Dict[str, Any]:
     """The newest check of ``record``'s key cut wholly on the tree (and, given one, in
-    the round's environment), and its verdict."""
+    the timing run's environment), and its verdict."""
     want = dispatch_map(record)
     if not want:
         return {"ok": False, "check": None,
                 "why": "the row records no launched slot: no check can witness it"}
-    # THE LEGS THE ROW TIMED: a check lifts every leg, and a row timed with the fused
+    # The legs the row timed: a check lifts every leg, and a row timed with the fused
     # leg alone is compared on that leg.
     timed = {(str(block.get("process")), str(block.get("leg")))
              for block in record.get("launch_counters") or ()}
@@ -879,7 +1074,7 @@ def dispatch_witness(record: Mapping[str, Any], checks: Sequence[Mapping[str, An
                 "legs_the_check_did_not_lift": [list(pair) for pair in absent]}
     return {"ok": False, "check": None,
             "why": "no dispatch check of this key was cut on the release tree"
-                   + ("" if environment is None else " in the round's environment")}
+                   + ("" if environment is None else " in the timing run's environment")}
 
 
 # ---------------------------------------------------------------------------
@@ -899,7 +1094,7 @@ def select(records: Sequence[Mapping[str, Any]], root: str,
            allow_unrecorded_environment: bool = False,
            role: str = "release", environment: Optional[str] = None) -> Dict[str, Any]:
     """Per key: the newest valid row, every assessment, and what the key is owed.
-    ``environment`` (:func:`file_sha256` of the round's build record) makes a row of
+    ``environment`` (:func:`file_sha256` of the timing run's build record) makes a row of
     any other reference environment stale."""
     attribution = Attribution(root)
     cache: Dict[str, Optional[str]] = {}
@@ -916,13 +1111,13 @@ def select(records: Sequence[Mapping[str, Any]], root: str,
                       reverse=True)
         assessed = [assess(r, root, attribution, checks, allow_unrecorded_environment,
                            cache, environment) for r in held]
-        # THE NEWEST VALID ROW THAT CARRIES A MEASUREMENT, else the newest valid row at
+        # The newest valid row that carries a measurement, else the newest valid row at
         # all: a later attempt that ERRORed does not shadow an earlier timing, and a key
         # whose only valid rows failed still reaches the cut, which names it missing.
         valid = [r for r, a in zip(held, assessed) if a["status"] == "valid"]
         chosen = next((r for r in valid if measured(r)), valid[0] if valid else None)
         newest = assessed[0]
-        # A KEY WITH A VALID MEASURED ROW OWES NOTHING, even when a later attempt was
+        # A key with a valid measured row owes nothing, even when a later attempt was
         # refused (an intrusion, another tree).
         owed = ("nothing" if chosen is not None and measured(chosen) else
                 "a dispatch check" if newest["status"] == "check_owed" else "a re-time")
@@ -933,7 +1128,9 @@ def select(records: Sequence[Mapping[str, Any]], root: str,
 def bill(records: Sequence[Mapping[str, Any]], files: Sequence[str], root: str
          ) -> Dict[str, List[str]]:
     """Which keys a change to ``files`` re-times, which it owes a dispatch check, and
-    which it leaves alone: the timing half of ``import_closure.py bill``."""
+    which it leaves alone: the timing half of ``import_closure.py bill``. An upper bound on
+    a ledger: a change outside the row's slice would be set aside, and which change a name
+    stands for is not known here."""
     attribution = Attribution(root)
     changed = set(files)
     out: Dict[str, List[str]] = {"retime": [], "check": [], "untouched": []}
@@ -948,7 +1145,9 @@ def bill(records: Sequence[Mapping[str, Any]], files: Sequence[str], root: str
     for key, record in sorted(newest.items()):
         loaded = {name for process in record.get("processes") or ()
                   for name in list(process.get(IMPORTED_KEY) or {})
-                  + list(process.get(DATA_KEY) or {})}
+                  + [read for read in ledgers_read(record, process)
+                     if read not in ledger_scope.UNREAD_LEDGERS
+                     or ledger_scope.architecture_of_device(record.get("architecture")) is None]}
         hit = sorted(changed & loaded)
         if not hit:
             out["untouched"].append(key)
@@ -974,7 +1173,7 @@ def bill(records: Sequence[Mapping[str, Any]], files: Sequence[str], root: str
 
 
 # ---------------------------------------------------------------------------
-# Medians and their gate status (R20)
+# Medians and their gate status
 # ---------------------------------------------------------------------------
 
 _FLOOR_STRIKE = re.compile(r"^(?P<verdict>TIMED-NOT-REPORTABLE): floors failed "
@@ -984,8 +1183,8 @@ _STANDALONE_STRIKE = re.compile(r"^the standalone row is (?P<verdict>TIMED-NOT-R
 
 
 def r33_strike(struck: Optional[str]) -> Optional[str]:
-    """A pass's strike as R33 reads it: the strike a ladder wrote, with the window floor
-    taken out of a floor strike (:data:`WINDOW_FLOORS`). A strike on the window floor
+    """A pass's strike as the gate reads it: the strike a ladder wrote, with the window
+    floor taken out of a floor strike (:data:`WINDOW_FLOORS`). A strike on the window floor
     alone is no strike; one that also names another floor keeps that one; every other
     strike stands as written. Idempotent, so a strike already read is read the same."""
     if not isinstance(struck, str):
@@ -1012,15 +1211,16 @@ def r33_strike(struck: Optional[str]) -> Optional[str]:
 
 
 def gating_floors(row: Mapping[str, Any]) -> Dict[str, Any]:
-    """A bench row's floors without the window floor (R33): what decides whether the
-    row is reportable, read the same off a row written before the bench moved the
-    window spread out of its floors and one written after."""
+    """A bench row's floors without the window floor (gating nothing since the
+    between-pass gate took effect, 2026-10-16): what decides whether the row is
+    reportable, read the same off a row written before the bench moved the window
+    spread out of its floors and one written after."""
     return {name: value for name, value in (row.get("floors") or {}).items()
             if name not in WINDOW_FLOORS}
 
 
 def reportable(row: Mapping[str, Any]) -> bool:
-    """Whether a bench row passed every floor that gates under R33."""
+    """Whether a bench row passed every floor that gates (the window floor does not)."""
     floors = gating_floors(row)
     if not row.get("floors"):
         return row.get("reportable") is True
@@ -1035,8 +1235,9 @@ def spread(values: Iterable[Optional[float]]) -> Optional[float]:
 
 
 def _r33_pass(entry: Mapping[str, Any]) -> Dict[str, Any]:
-    """One pass as R33 reads it: its rate, its window spread (recorded, gating nothing),
-    the strike R33 keeps, and -- when that differs -- the strike its ladder wrote."""
+    """One pass as the gate reads it: its rate, its window spread (recorded, gating
+    nothing), the strike the gate keeps, and -- when that differs -- the strike its ladder
+    wrote."""
     recorded = entry.get("struck_as_recorded", entry.get("struck"))
     out = {"pass": entry.get("pass"), "rate": entry.get("rate"),
            "spread": entry.get("spread"), "struck": r33_strike(recorded)}
@@ -1050,7 +1251,7 @@ def _r33_pass(entry: Mapping[str, Any]) -> Dict[str, Any]:
 def leg_median(passes: Sequence[Mapping[str, Any]], kind: str) -> Dict[str, Any]:
     """One leg over its passes: its median, its between-pass spread, its gate status.
 
-    ``kind`` is ``gpu`` (a route or the array control: the 5 % gate of R33, no pass
+    ``kind`` is ``gpu`` (a route or the array control: the 5 % gate of record, no pass
     struck and the between-pass spread of its rates within it; each pass's window
     spread recorded, gating nothing) or ``meep`` (struck only for what is not spread;
     the pass spread recorded, never gated). Every pass is read through
@@ -1124,10 +1325,17 @@ def _last(path: str) -> Optional[Dict[str, Any]]:
 
 def _relative(path: str, root: str) -> str:
     try:
-        return os.path.relpath(os.path.abspath(path), os.path.abspath(root)).replace(
+        return os.path.relpath(os.path.realpath(path), os.path.realpath(root)).replace(
             os.sep, "/")
     except ValueError:
         return os.path.basename(path)
+
+
+def _local(recorded: Any) -> str:
+    """A path a ladder's ledger names, on this machine: the ledger writes it under its
+    root's label (``neutral_ids.path``), an older ledger raw; either is opened here."""
+    import neutral_ids  # noqa: PLC0415
+    return str(neutral_ids.resolve(str(recorded or "")))
 
 
 def meep_label(entry: Mapping[str, Any]) -> str:
@@ -1244,15 +1452,15 @@ def ladder_records(ladder_dir: str, *, session: Mapping[str, Any], architecture:
                 gpu.setdefault(route, []).append({
                     "pass": entry.get("pass"), "rate": fused.get("mcell_steps_per_s"),
                     "spread": fused.get("spread"), "struck": entry.get("struck"),
-                    # EVERY LEG'S WINDOW SPREAD, recorded and gating nothing (R33): the
+                    # Every leg's window spread, recorded and gating nothing: the
                     # bench's old floor read all three, the pass rate is the fused leg's
                     "window_spreads": {label: (leg or {}).get("spread") for label, leg
                                        in sorted((measured.get("legs") or {}).items())}})
-                row = _last(str(entry.get("rows_file") or "")) or {}
+                row = _last(_local(entry.get("rows_file"))) or {}
                 stamped.add(row_architecture(row))
                 record["processes"].append(bench_process(
                     row, f"gpu:{route}:p{entry.get('pass')}",
-                    _relative(str(entry.get("rows_file")), ladder_dir)))
+                    _relative(_local(entry.get("rows_file")), ladder_dir)))
                 record["launch_counters"] += launch_counters_of(row, f"gpu:{route}")
             elif ledger == "array_control":
                 array.append({"pass": entry.get("pass"),
@@ -1260,16 +1468,16 @@ def ladder_records(ladder_dir: str, *, session: Mapping[str, Any], architecture:
                               "spread": max([s.get("spread") or 0.0 for s in
                                              entry.get("sources") or ()] or [0.0]),
                               "struck": entry.get("struck")})
-                # A STANDALONE CONTROL (``--array-control row``) is a process of its own
+                # A standalone control (``--array-control row``) is a process of its own
                 # that runs the package: it is a process of the row, with the import
                 # record its row carries. ``gpu_array_control.py`` writes none, so such
                 # a row is refused by name rather than admitted on the GPU processes'
-                # records alone (the 1.0 round's exit hook covered that process too).
+                # records alone (the 1.0 timing run's exit hook covered that process too).
                 # The default control is read off the GPU rows' own array legs, whose
                 # processes are recorded above.
                 if entry.get("mode") == "standalone":
                     for source in entry.get("sources") or ():
-                        own = os.path.join(str(source.get("row_dir") or ""), "rows.jsonl")
+                        own = os.path.join(_local(source.get("row_dir")), "rows.jsonl")
                         row = _last(own) or {}
                         record["processes"].append({
                             "role": f"array_control:p{entry.get('pass')}",
@@ -1281,17 +1489,21 @@ def ladder_records(ladder_dir: str, *, session: Mapping[str, Any], architecture:
                 leg = meep.setdefault(label, {"ranks": entry.get("ranks"),
                                               "control": entry.get("control"),
                                               "passes": []})
+                context = (entry.get("configuration") or {}).get("context")
+                if context:
+                    # A labelled context leg: reported under its label, never MEEP's best.
+                    leg["context"] = context
                 leg["passes"].append({"pass": entry.get("pass"),
                                       "rate": measured.get("mcell_steps_per_s"),
                                       "spread": measured.get("spread"),
                                       "struck": entry.get("struck")})
-                found = [r for r in _jsonl(str(entry.get("rows_file") or ""))
+                found = [r for r in _jsonl(_local(entry.get("rows_file")))
                          if r.get("row_id") == entry.get("row_id")
                          and r.get("row") == "measurement"]
                 imported = (found[-1] if found else {}).get(IMPORTED_KEY)
                 record["processes"].append({
                     "role": f"meep:{label}:p{entry.get('pass')}",
-                    "artifact": _relative(str(entry.get("rows_file")), ladder_dir),
+                    "artifact": _relative(_local(entry.get("rows_file")), ladder_dir),
                     "ran_package": bool(imported and any(
                         name.startswith("meep_gpu/") for name in imported)),
                     IMPORTED_KEY: imported})
@@ -1299,9 +1511,9 @@ def ladder_records(ladder_dir: str, *, session: Mapping[str, Any], architecture:
                 record["notes"].append({"ledger": ledger, "pass": entry.get("pass"),
                                         "reason": entry.get("reason")
                                         or entry.get("struck")})
-        # R5, READ OFF THE LEDGER: every entry of the row was written inside the session
-        # that records it. A ladder resumed across sessions, or a directory collected
-        # under bounds it did not run in, carries legs of another session.
+        # One session, read off the ledger: every entry of the row was written inside the
+        # session that records it. A ladder resumed across sessions, or a directory
+        # collected under bounds it did not run in, carries legs of another session.
         outside = outside_session(group, session)
         if outside:
             record["gates"] = dict(record["gates"], session_mismatch=outside)
@@ -1315,11 +1527,201 @@ def ladder_records(ladder_dir: str, *, session: Mapping[str, Any], architecture:
             "gpu": {route: leg_median(passes, "gpu") for route, passes in sorted(gpu.items())},
             "array": leg_median(array, "gpu") if array else None,
             "meep": {label: dict(leg_median(leg["passes"], "meep"), ranks=leg["ranks"],
-                                 control=leg["control"])
+                                 control=leg["control"],
+                                 **({"context": leg["context"]} if leg.get("context")
+                                    else {}))
                      for label, leg in sorted(meep.items())},
         }
         out.append(record)
     return out
+
+
+#: The two halves of a split ladder unit: its GPU legs (``timing_ladder.py --ranks none``)
+#: and its MEEP legs (``--routes none``), timed as two child runs of one session.
+SPLIT_HALVES = ("gpu", "meep")
+#: What a table says of its split rows.
+SPLIT_RULE = ("a row marked split had its GPU legs and its MEEP legs timed as two child "
+              "runs of one session, one after the other in the recorded order, the GPU half "
+              "under the declared VM affinity mask and the MEEP half with the mask cleared; a "
+              "drift between the two halves enters that row's ratios in full, and the first "
+              "half alternates across the session's ladder units, so such a drift does not "
+              "push every row's ratios the same way; each of its ratios is labelled split "
+              "with the two masks and the order, and the host is described as it is")
+
+
+def split_ladder_records(gpu_dir: str, meep_dir: str, *, session: Mapping[str, Any],
+                         architecture: str, environment: Mapping[str, Any],
+                         gates: Mapping[str, Any], unit: Mapping[str, Any],
+                         split: Mapping[str, Any], role: str = "release",
+                         tiers: Sequence[str] = TIMED_TIERS) -> List[Dict[str, Any]]:
+    """One record per (case, size, tier) of a SPLIT ladder unit, the record
+    :func:`ladder_records` writes for a whole ladder: the GPU routes' legs and the array
+    control from the GPU half's ladder (``gpu_dir``), every MEEP leg from the MEEP half's
+    (``meep_dir``), each read where that ladder wrote it. Each half's artifacts are named
+    under its own ladder directory; the ladder's drivers are recorded once, and two halves
+    whose drivers differ say so (``split.drivers_differ``) and are refused. ``split`` is
+    the block the session gives (the order, and per half its unit, ladder, attempt, times,
+    exit status and VM affinity), kept with the halves that wrote rows of the key."""
+    common = dict(session=session, architecture=architecture, environment=environment,
+                  gates=gates, unit=unit, role=role, tiers=tiers)
+    dirs = {"gpu": gpu_dir, "meep": meep_dir}
+    halves = {side: {record["key"]: record for record in ladder_records(dirs[side], **common)}
+              for side in SPLIT_HALVES}
+    out = []
+    for key in sorted(set(halves["gpu"]) | set(halves["meep"])):
+        record = base_record("ladder", key, session=session, role=role,
+                             architecture=architecture, unit=unit,
+                             environment=environment, gates=gates)
+        drivers: Dict[str, Any] = {}
+        for side in SPLIT_HALVES:
+            held = halves[side].get(key)
+            if held is None:
+                continue
+            label = os.path.basename(os.path.normpath(dirs[side]))
+            for process in held["processes"]:
+                if process.get("role") == "ladder":
+                    drivers[side] = process.get(IMPORTED_KEY) or {}
+                    continue
+                record["processes"].append(dict(process, artifact=f"{label}/"
+                                                f"{process.get('artifact')}"))
+            record["notes"] += [dict(note, half=side) for note in held["notes"]]
+            for name in ("session_mismatch", "architecture_mismatch"):
+                if held["gates"].get(name):
+                    record["gates"] = dict(record["gates"], **{name: list(
+                        record["gates"].get(name) or ()) + list(held["gates"][name])})
+        if drivers:
+            record["processes"].insert(0, {"role": "ladder", "artifact": "drivers",
+                                           "ran_package": False,
+                                           IMPORTED_KEY: drivers.get("gpu", drivers.get("meep"))})
+        gpu, meep = halves["gpu"].get(key) or {}, halves["meep"].get(key) or {}
+        record["launch_counters"] = list(gpu.get("launch_counters") or ())
+        record["legs"] = {"gpu": dict((gpu.get("legs") or {}).get("gpu") or {}),
+                          "array": (gpu.get("legs") or {}).get("array"),
+                          "meep": dict((meep.get("legs") or {}).get("meep") or {})}
+        named = set(drivers.get("gpu") or {}) | set(drivers.get("meep") or {})
+        record["split"] = dict(split, halves_with_rows=[side for side in SPLIT_HALVES
+                                                        if key in halves[side]],
+                               drivers_differ=sorted(
+                                   name for name in named if len(drivers) == 2 and
+                                   drivers["gpu"].get(name) != drivers["meep"].get(name)))
+        out.append(record)
+    return out
+
+
+def split_refusals(split: Mapping[str, Any], session_masks: Optional[Mapping[str, Any]] = None,
+                   declared_mask: Optional[str] = None) -> List[str]:
+    """Why a split ladder row may never be cut: it is not one GPU half and one MEEP half
+    that both wrote rows of the key and exited 0, each under its own VM affinity mask, set
+    and read back before it and the only mask any reading of the half saw, the MEEP half's
+    not the GPU half's, both run with the same drivers. Each half's mask is also bound to
+    the session's: ``session_masks`` is the session's ``gates.split_ladder`` (the GPU and
+    MEEP masks it held), ``declared_mask`` its declared VM affinity
+    (``gates.windows.vm_affinity``); the GPU half ran under the declared mask, the MEEP
+    half under the session's MEEP mask and never under the declared one."""
+    halves = {half.get("side"): half for half in split.get("halves") or ()}
+    run = [half.get("side") for half in split.get("halves") or ()]
+    if sorted(split.get("order") or ()) != sorted(SPLIT_HALVES) or \
+            sorted(run) != sorted(SPLIT_HALVES):
+        why = (split.get("not_run") or {}).get("why")
+        return [f"split: the halves run were {run}, not one GPU half and one MEEP half"
+                + (f" ({why})" if why else "")]
+    why = []
+    for side in SPLIT_HALVES:
+        half = halves[side]
+        if side not in (split.get("halves_with_rows") or ()):
+            why.append(f"split: the {side} half recorded no row of this key")
+        if half.get("rc") != 0:
+            why.append(f"split: the {side} half exited rc {half.get('rc')}")
+        mask = half.get("vm_affinity") or {}
+        declared = mask.get("declared")
+        if not declared or mask.get("set") != "ok" or mask.get("read_back") != declared:
+            why.append(f"split: the {side} half's VM affinity was not held: declared "
+                       f"{declared}, set {mask.get('set')}, read back {mask.get('read_back')}")
+        elif list(mask.get("read") or ()) != [declared]:
+            why.append(f"split: the readings of the {side} half saw the VM affinity "
+                       f"{mask.get('read')}, not its declared {declared} alone")
+    gpu_mask = (halves["gpu"].get("vm_affinity") or {}).get("declared")
+    meep_mask = (halves["meep"].get("vm_affinity") or {}).get("declared")
+    if gpu_mask and gpu_mask == meep_mask:
+        why.append(f"split: the MEEP half ran under the GPU half's VM affinity {gpu_mask}")
+    # Each half's mask bound to the session's: the masks the session held for its GPU and
+    # MEEP halves, and the VM affinity it declared.
+    ran = {"gpu": gpu_mask, "meep": meep_mask}
+    if not session_masks:
+        why.append("split: the session recorded no split ladder masks (gates.split_ladder), "
+                   "so neither half's mask is bound to the session's")
+    else:
+        for side in SPLIT_HALVES:
+            if ran[side] != session_masks.get(side):
+                why.append(f"split: the {side} half ran under VM affinity {ran[side]}, not "
+                           f"the session's {side} mask {session_masks.get(side)}")
+    if gpu_mask != declared_mask:
+        why.append(f"split: the GPU half ran under VM affinity {gpu_mask}, not the "
+                   f"session's declared VM affinity {declared_mask}")
+    if declared_mask and meep_mask == declared_mask:
+        why.append(f"split: the MEEP half ran under the session's declared VM affinity "
+                   f"{declared_mask}, under which MEEP is never timed")
+    if split.get("drivers_differ"):
+        why.append(f"split: the two halves ran different ladder drivers: "
+                   f"{', '.join(split['drivers_differ'])}")
+    return why
+
+
+def split_label(split: Mapping[str, Any]) -> str:
+    """How a ratio cut from a split ladder row says so: the masks and the order. It names
+    no host; the host is described as it is."""
+    masks = {half.get("side"): (half.get("vm_affinity") or {}).get("declared")
+             for half in split.get("halves") or ()}
+    return (f"split: the GPU legs under VM affinity {masks.get('gpu')} and the MEEP legs "
+            f"under {masks.get('meep')}, timed as two child runs of one session, "
+            f"{' then '.join(split.get('order') or ())}")
+
+
+def split_rows(paths: Sequence[str], allow_unrecorded_environment: bool = False
+               ) -> Dict[str, Any]:
+    """A split ladder unit as the ledger builders read it (``build_identical_case_table.py
+    --split-row``, ``build_3d_comparison.py --split-row``): the store's row records of the
+    unit, any of its keys. Its two halves' ladders hold one side each, and the masks they
+    ran under are in the session's records alone, so a builder that pairs the halves'
+    legs takes them from here: each record a sealed ladder row with a ``split`` block that
+    every cut of the row store admits (:func:`refusals`, which holds the split block to
+    its own session's masks, ``gates.split_ladder`` and ``gates.windows.vm_affinity``,
+    through :func:`split_refusals`, beside the quiet window, the watcher, the session and
+    the exit status), and every record naming the same two ladders, masks and order.
+    Returns those, the label every ratio of the unit carries (:func:`split_label`), the
+    rule (:data:`SPLIT_RULE`) and the records' keys and digests; refused by name
+    otherwise, so a ratio no cut would take never reaches a builder's table."""
+    held: Optional[Dict[str, Any]] = None
+    keys: List[str] = []
+    digests: List[Optional[str]] = []
+    label = ""
+    for path in paths:
+        with open(path, encoding="utf-8") as handle:
+            record = json.load(handle)
+        validate(record)
+        split = record.get("split")
+        if record.get("kind") != "ladder" or not isinstance(split, Mapping):
+            raise RowRefused("not_a_split_row", f"{record.get('key')}: not a ladder row with "
+                                                "a split block")
+        why = refusals(record, allow_unrecorded_environment)
+        if why:
+            raise RowRefused("split_row_refused", f"{record['key']}: " + "; ".join(why))
+        halves = {half.get("side"): half for half in split.get("halves") or ()}
+        unit = {"ladders": {side: halves[side].get("ladder") for side in SPLIT_HALVES},
+                "masks": {side: (halves[side].get("vm_affinity") or {}).get("declared")
+                          for side in SPLIT_HALVES},
+                "order": list(split.get("order") or ()),
+                "session": (record.get("session") or {}).get("id")}
+        if held is not None and unit != held:
+            raise RowRefused("split_rows_differ", f"{record['key']}: its unit {unit} is not "
+                                                  f"the first record's {held}")
+        held = unit
+        keys.append(record["key"])
+        digests.append(record.get(DIGEST_FIELD))
+        label = split_label(split)
+    if held is None:
+        raise RowRefused("no_split_row", "no row record of the split unit was given")
+    return dict(held, label=label, rule=SPLIT_RULE, keys=keys, record_sha256=digests)
 
 
 def fused_record(rows_path: str, *, key: str, session: Mapping[str, Any],
@@ -1349,7 +1751,7 @@ def fused_record(rows_path: str, *, key: str, session: Mapping[str, Any],
     legs = {}
     for label, leg in sorted((row.get("per_leg") or {}).items()):
         per_step = leg.get("median_seconds_per_step")
-        # THE FLOORS THAT GATE (R33): the window spread is recorded beside them.
+        # The floors that gate: the window spread is recorded beside them.
         legs[label] = {"ms_per_step": None if per_step is None else 1e3 * per_step,
                        "spread": leg.get("spread"),
                        "gate": ("passed the bench's floors" if reportable(row)
@@ -1371,7 +1773,7 @@ def cut_ladder_table(selection: Mapping[str, Any], architecture: str,
 
     ``expected`` is the catalog's keys: one with no row in the store at all is named
     under ``missing`` beside the keys whose rows are none of them valid and measured,
-    so a cut from part of the round says what it lacks rather than dropping it. Rows of
+    so a cut from part of a timing run says what it lacks rather than dropping it. Rows of
     two environments are refused by name (:func:`one_environment`)."""
     rows = []
     missing = []
@@ -1394,23 +1796,29 @@ def cut_ladder_table(selection: Mapping[str, Any], architecture: str,
             continue
         chosen_records.append(record)
         legs = record.get("legs") or {}
-        # RE-DERIVED FROM THE PASSES, never read off the status the record was collected
-        # with: a row collected under an earlier rule cuts by the rule in force (R33).
+        # Re-derived from the passes, never read off the status the record was collected
+        # with: a row collected under an earlier rule cuts by the rule in force.
         routes = {name: leg_median(leg.get("passes") or (), "gpu")
                   for name, leg in (legs.get("gpu") or {}).items()}
         array = (leg_median(legs["array"].get("passes") or (), "gpu")
                  if legs.get("array") else None)
         meep = {name: dict(leg_median(leg.get("passes") or (), "meep"),
-                           ranks=leg.get("ranks"), control=leg.get("control"))
+                           ranks=leg.get("ranks"), control=leg.get("control"),
+                           **({"context": leg["context"]} if leg.get("context") else {}))
                 for name, leg in (legs.get("meep") or {}).items()}
-        reference = {name: leg for name, leg in meep.items() if not leg.get("control")}
+        # MEEP'S BEST is taken over the reference legs only: no control and no context
+        # label (a labelled context leg -- a native-tuned or a double-precision MEEP --
+        # is reported beside the table and is never the denominator).
+        reference = {name: leg for name, leg in meep.items()
+                     if not leg.get("control") and not leg.get("context")}
+        context_legs = {name: leg for name, leg in meep.items() if leg.get("context")}
         best_name, best = None, None
         for name, leg in sorted(reference.items()):
             if leg["status"] != "struck" and leg["median"] is not None and (
                     best is None or leg["median"] > best["median"]):
                 best_name, best = name, leg
         ratios = {}
-        # THE VARIANCE PRECONDITION IS IN FORCE (R18): a ratio of a session whose
+        # The variance precondition is in force: a ratio of a session whose
         # precondition was not run, or did not read GO, is printed and does not enter.
         variance = _variance_status(record)
         for name, leg in sorted(routes.items()):
@@ -1424,6 +1832,13 @@ def cut_ladder_table(selection: Mapping[str, Any], architecture: str,
                             "enters": leg["status"] == "passed" and variance == "GO",
                             "why": f"{name}: {leg['gate']}; MEEP {best_name}: "
                                    f"{best['gate']}; variance precondition: {variance}"}
+        split = record.get("split")
+        if split is not None:
+            # A split row's GPU and MEEP legs were timed in two child runs of the session:
+            # every ratio of it says so, with the masks and the order.
+            for ratio in ratios.values():
+                ratio["split"] = True
+                ratio["why"] = f"{ratio['why']}; {split_label(split)}"
         rows.append({"key": key, "case": parsed["case"], "cells": parsed["cells"],
                      "tier": parsed["tier"], "session": record["session"]["id"],
                      "row": "/".join(Path(record["_path"]).parts[-3:])
@@ -1431,18 +1846,29 @@ def cut_ladder_table(selection: Mapping[str, Any], architecture: str,
                      "record_sha256": record.get(DIGEST_FIELD),
                      "variance": variance,
                      "gpu": routes, "array": array, "meep": meep,
-                     "meep_best": best_name, "ratios": ratios})
+                     "meep_best": best_name, "ratios": ratios,
+                     "context": {name: {"label": leg["context"], "median": leg["median"],
+                                        "ranks": leg.get("ranks"),
+                                        "gate": leg.get("gate"),
+                                        "status": leg.get("status"),
+                                        "between_pass_spread":
+                                            leg.get("between_pass_spread")}
+                                 for name, leg in sorted(context_legs.items())}})
+        if split is not None:
+            rows[-1]["split"] = split_label(split)
     one_environment(chosen_records, f"the {architecture} identical-case table")
+    rules = {"gate": GATE, "gate_rule": GATE_RULE, "pre_r33": PRE_R33_RULE,
+             "meep": MEEP_SPREAD_RULE,
+             "selection": "per key the newest row VALID on the release tree "
+                          "that carries a measurement",
+             "ratio": "route median over the best unstruck MEEP reference "
+                      "median of the same row (one session); it enters when "
+                      "the route passed the gate and the session's variance "
+                      "precondition read GO"}
+    if any(row.get("split") for row in rows):
+        rules["split"] = SPLIT_RULE
     return {"schema": "meep_gpu.timing_table/1", "architecture": architecture,
-            "rules": {"gate": GATE, "gate_rule": GATE_RULE, "pre_r33": PRE_R33_RULE,
-                      "meep": MEEP_SPREAD_RULE,
-                      "selection": "per key the newest row VALID on the release tree "
-                                   "that carries a measurement",
-                      "ratio": "route median over the best unstruck MEEP reference "
-                               "median of the same row (one session, R5); it enters when "
-                               "the route passed the gate and the session's variance "
-                               "precondition read GO (R18)"},
-            "rows": rows, "missing": missing}
+            "rules": rules, "rows": rows, "missing": missing}
 
 
 def _variance_status(record: Mapping[str, Any]) -> str:
@@ -1464,8 +1890,9 @@ def render_table(table: Mapping[str, Any]) -> str:
         out += ["The gate: " + rules["gate_rule"] + ". "
                 + rules.get("pre_r33", "")[:1].upper() + rules.get("pre_r33", "")[1:]
                 + ".", ""]
-    # THE FUSED LEG'S window spread per pass: what every record keeps (a pass collected
-    # since R33 keeps every leg's, under ``window_spreads`` in the JSON).
+    # The fused leg's window spread per pass: what every record keeps (a pass collected
+    # since the between-pass gate took effect on 2026-10-16 keeps every leg's, under
+    # ``window_spreads`` in the JSON).
     out += ["| case | cells | tier | route | median | gate | between passes "
             "| fused window spreads | MEEP best | median | MEEP between passes | ratio "
             "| enters | variance |",
@@ -1485,8 +1912,24 @@ def render_table(table: Mapping[str, Any]) -> str:
                 f"{share(leg.get('between_pass_spread'))} | {windows or 'n/a'} | "
                 f"{row['meep_best']} | {best['median'] if best else None} | "
                 f"{share(best.get('between_pass_spread')) if best else 'n/a'} | "
-                f"{ratio.get('ratio')} | "
+                f"{ratio.get('ratio')}{' (split)' if ratio.get('split') else ''} | "
                 f"{'yes' if ratio.get('enters') else 'no'} | {row['variance']} |")
+    split_rows = [row for row in table["rows"] if row.get("split")]
+    if split_rows:
+        out += ["", "Split rows: " + rules.get("split", SPLIT_RULE) + ".", ""]
+        out += [f"- {row['case']} {row['cells']:,} {row['tier']}: {row['split']}"
+                for row in split_rows]
+    context_rows = [(row, name, leg) for row in table["rows"]
+                    for name, leg in sorted((row.get("context") or {}).items())]
+    if context_rows:
+        out += ["", "Context MEEP legs: recorded and reported beside the table, never the "
+                "denominator of any ratio above.", "",
+                "| case | cells | tier | leg | label | median | status | MEEP between passes |",
+                "|---|---|---|---|---|---|---|---|"]
+        for row, name, leg in context_rows:
+            out.append(f"| {row['case']} | {row['cells']:,} | {row['tier']} | {name} | "
+                       f"{leg['label']} | {leg['median']} | {leg.get('status')} | "
+                       f"{share(leg.get('between_pass_spread'))} |")
     if table["missing"]:
         out += ["", f"Keys without a valid row: {len(table['missing'])}"]
         out += [f"- {item['key']}: owed {item['owed']}" for item in table["missing"]]
@@ -1494,21 +1937,34 @@ def render_table(table: Mapping[str, Any]) -> str:
 
 
 # ---------------------------------------------------------------------------
-# The dispatch-preference records, per table per architecture
+# The dispatch-preference records, per table, architecture and card
 # ---------------------------------------------------------------------------
 
 def cut_records(selection: Mapping[str, Any], out_root: str, base: str = HERE,
                 tables: Sequence[str] = ("triton", "cuda", "metal"),
                 released: Optional[Mapping[str, Mapping[str, Sequence[str]]]] = None,
                 write: bool = True, expected: Sequence[str] = (),
-                named: Sequence[Tuple[str, str]] = ()) -> List[Dict[str, Any]]:
+                named: Sequence[Tuple[str, str]] = (),
+                costs: bool = False) -> List[Dict[str, Any]]:
     """Cut one record per (table, architecture) present among the selected fused rows.
 
-    ADDED, NEVER REPLACED: each lands at ``dispatch_preference.record_path`` under
-    ``out_root``; an architecture with no selected row is not touched, and a file cut on
-    another device is refused (``cut_timing_record.refuse_to_replace_another_device``).
+    ``costs`` cuts ``/3`` records, which carry the size-aware cost points the dispatch
+    preference reads at a run's own size (``cut_timing_record.cut``'s ``costs``).
 
-    NOTHING IS DROPPED IN SILENCE: ``expected`` is the catalog's keys. Every fused key of
+    Added per card, never replaced across cards: each is placed under ``out_root`` by
+    ``cut_timing_record.destination`` -- the architecture's own name
+    (``dispatch_preference.record_path``) when it holds this card's record, or is empty
+    while the card has no record of its own beside it; else the card's own name beside
+    it. ``destination`` refuses what would make that unsafe (a file at either name that
+    cannot say it is one card's record, another exact device's record under the card's
+    slug, the card at both names), so the name it returns needs no further check. The
+    result's ``path`` is where it went (on a refusal, the architecture's own name: the
+    refusal names the file it is about) and ``card`` the exact device name its rows
+    stamp. An architecture with no selected row is not touched. One store holds one
+    card's rows: selected rows of one table and architecture that name two cards are
+    refused by the cut (``mixed_device``).
+
+    Nothing is dropped in silence: ``expected`` is the catalog's keys. Every fused key of
     a (table, architecture) with no valid measured row -- never timed included -- is in
     the result's ``missing_keys`` and in the report beside the record, and a (table,
     architecture) the catalog or the store names that no selected row reaches is in the
@@ -1516,7 +1972,7 @@ def cut_records(selection: Mapping[str, Any], out_root: str, base: str = HERE,
     (:func:`catalog_tables`): a table whose DRIVE cases are the release's and that has no
     sweep names no key of its own, and with no row it would otherwise vanish.
 
-    ONE ENVIRONMENT PER RECORD: the selected rows of a (table, architecture) that ran in
+    One environment per record: the selected rows of a (table, architecture) that ran in
     two reference environments, or loaded two versions of one library, are refused by
     name (:func:`one_environment`), as ``cut_timing_record`` refuses two subjects.
     """
@@ -1562,13 +2018,15 @@ def cut_records(selection: Mapping[str, Any], out_root: str, base: str = HERE,
                             f"the {table} record on {architecture}")
             record = cut.cut(table, sorted(files), base=base,
                              released=(released or {}).get(table)
-                             if released is not None else cut.released_cases(table))
-            cut.out_capability(table, target, record)
-            cut.refuse_to_replace_another_device(target, record)
+                             if released is not None else cut.released_cases(table),
+                             costs=costs)
+            target = cut.destination(table, record, os.path.dirname(target))
         except (cut.CutRefused, dp.RecordRefused, RowRefused) as refusal:
             result["refused"] = str(refusal)
             written.append(result)
             continue
+        result["path"] = target
+        result["card"] = cut.record_card(record)
         result["missing"] = len(record.get("missing") or ())
         result["record_sha256"] = record[dp.DIGEST_FIELD]
         if write:
@@ -1643,6 +2101,12 @@ def _status_lines(selection: Mapping[str, Any]) -> List[str]:
     total = len(selection)
     lines.append("keys: " + ", ".join(f"owed {name} {count} of {total}"
                                       for name, count in sorted(counts.items())))
+    missing, moved = ledger_scope.states_not_archived(
+        (assessment.get("set_aside") or {}, assessment.get("compared_whole") or {})
+        for chosen in selection.values() for assessment in chosen["assessments"])
+    lines.append(f"ledger states not archived: {len(missing)} of {moved} moved ledger digests"
+                 + (f" ({', '.join(missing)}): add one with ledger_scope.py archive"
+                    if missing else ""))
     return lines
 
 
@@ -1665,23 +2129,33 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     table.add_argument("--store", required=True)
     table.add_argument("--release-root", default=REPO_ROOT)
     table.add_argument("--catalog", required=True,
-                       help="the round's catalog: every key it names is accounted for")
+                       help="the timing run's catalog: every key it names is accounted for")
     table.add_argument("--architecture", required=True)
     table.add_argument("--out-md", required=True)
     table.add_argument("--out-json", required=True)
     table.add_argument("--allow-unrecorded-environment", action="store_true")
     records = sub.add_parser("records", help="cut the dispatch-preference records, one "
-                                             "per table per architecture")
+                                             "per table, architecture and card")
     records.add_argument("--store", required=True)
     records.add_argument("--release-root", default=REPO_ROOT)
     records.add_argument("--out-root", required=True,
-                         help="the package directory the records land in "
-                              "(<table>_kernels/timing_<architecture>.json)")
+                         help="the package directory the records land in: "
+                              "<table>_kernels/timing_<architecture>.json, the "
+                              "architecture's representative, when it holds this card's "
+                              "record or is empty while the card has no record of its own "
+                              "beside it; else beside it as "
+                              "timing_<architecture>-<card>.json")
     records.add_argument("--catalog", required=True,
-                         help="the round's catalog: every fused key it names is accounted "
+                         help="the timing run's catalog: every fused key it names is accounted "
                               "for")
     records.add_argument("--base", default=HERE)
+    records.add_argument("--architecture", default=None,
+                         help="with a portable catalog: the architecture whose records are "
+                              "cut (the catalog's own by default)")
     records.add_argument("--allow-unrecorded-environment", action="store_true")
+    records.add_argument("--costs", action="store_true",
+                         help="cut /3 records: the keys plus per-size cost points, which the "
+                              "dispatch preference reads at a run's own size")
     report = sub.add_parser("report", help="the fused-product report of an architecture, "
                                            "from the selected fused rows")
     report.add_argument("--store", required=True)
@@ -1694,7 +2168,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     for selecting in (status, table, records, report):
         selecting.add_argument(
             "--environment-record", metavar="FILE",
-            help="the round's reference environment build record (R27): a row that "
+            help="the timing run's reference environment build record: a row that "
                  "ran in another environment is stale and owed a re-time")
     args = parser.parse_args(argv)
     try:
@@ -1717,7 +2191,8 @@ def _main(args: argparse.Namespace) -> int:
     selection = select(held, args.release_root, args.allow_unrecorded_environment,
                        environment=file_sha256(args.environment_record))
     catalog_file = getattr(args, "catalog", None)
-    catalog = load_catalog(catalog_file) if catalog_file else None
+    catalog = (load_catalog(catalog_file, getattr(args, "architecture", None))
+               if catalog_file else None)
     expected = (catalog_keys(catalog, skip_release_drive=True) if catalog else [])
     named = catalog_tables(catalog) if catalog else []
     if args.command == "status":
@@ -1766,7 +2241,7 @@ def _main(args: argparse.Namespace) -> int:
         unreached = [f"{table} on {architecture}: no valid row of this table"
                      for table, architecture in named
                      if architecture == args.architecture and table not in reached]
-        # THE RELEASE'S DRIVE CASES are known only by running the bench's estimate, so
+        # The release's drive cases are known only by running the bench's estimate, so
         # they are not listed key by key here: said so, never left out in silence.
         tables_spec = (((catalog.get("fused") or {}).get("tables") or {})
                        if catalog and str(catalog["architecture"]) == args.architecture
@@ -1788,7 +2263,7 @@ def _main(args: argparse.Namespace) -> int:
             "--rows", staged["drive"], "--sweep", staged["sweep"],
             "--out", os.path.join(args.out_dir, "fused_timing.md")])
     results = cut_records(selection, args.out_root, base=args.base, expected=expected,
-                          named=named)
+                          named=named, costs=args.costs)
     for result in results:
         say(json.dumps(result, sort_keys=True))
     return 2 if any("refused" in r for r in results) else 0

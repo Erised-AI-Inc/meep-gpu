@@ -1,6 +1,6 @@
 """The Metal Dcyl m = 0 fused magnetic weld, as claims a laptop can check.
 
-WHAT THIS SUITE OWNS AND WHAT IT DELIBERATELY DOES NOT. The BYTES are the device
+What this suite owns and what it deliberately does not. The BYTES are the device
 gate's — ``parity/meep_gpu/gate_metal_cylindrical_real_fused_magnetic_pair.py`` steps
 engines side by side for twelve complete steps and compares uint32 words. No
 assertion here duplicates that. What lives here is everything true about this family
@@ -11,7 +11,7 @@ WITHOUT a device:
   register — plus the spliced wall clear, and nothing else;
 * that the wall clear it splices is the B family's DIAGONAL table and not the D
   side's complement, which is the single most likely porting slip;
-* that the arm is registered UNWIRED and carries its absorb row — since 2026-09-17
+* that the arm is registered unwired and carries its absorb row — since 2026-09-17
   the Metal composer asks this product through its ``launch.FUSED_PAIR_ARMS`` row
   and through nothing else in ``launch`` — and that ``fastpath`` names no Metal
   module;
@@ -22,7 +22,7 @@ WITHOUT a device:
 * that its cell is DISJOINT from the |m| >= 1 complex sibling's, measured off the
   census rather than argued from the names.
 
-THE CORPUS DEMAND, so the suite states what this is worth rather than leaving it to a
+The corpus demand, so the suite states what this is worth rather than leaving it to a
 docstring: 3 reachable B->H seam-instances of the 387 priced on the 2026-08-19 census,
 and the cell has NO attrition — 3 rows drive it, 3 clear the magnetic seam, 3 are
 admitted.
@@ -45,12 +45,12 @@ PACKAGE_DIR = pathlib.Path(__file__).resolve().parent
 REPO = PACKAGE_DIR.parent
 GATE = (REPO / "parity" / "meep_gpu"
         / "gate_metal_cylindrical_real_fused_magnetic_pair.py")
-#: THE ``b`` DIRECTORY IS THE RELEASE. Its sibling without the suffix is the same
+#: The ``b`` directory is the release. Its sibling without the suffix is the same
 #: gate against the module's PRE-AMENDMENT bytes, kept as the record of that run; a
 #: weld binds bytes, so amending the module's docstring moved the file and required a
 #: fresh artifact rather than an overwrite.
 #: RE-CUT 2026-08-23, fresh directory, by the same rule the 08-20b cut established.
-#: The in-seam deposit round delegated this module's source-presence clause to
+#: The in-seam deposit change delegated this module's source-presence clause to
 #: `deposit_repair.seam_source_reasons`, which moved the file, so the 08-20b artifact
 #: stopped describing it. The gate was re-run on this host and released PASS against
 #: the current bytes. The module's docstring keeps RELEASED 2026-08-20: that is when
@@ -405,15 +405,15 @@ def test_the_arm_is_registered_UNWIRED_and_carries_its_absorb_row():
 
     ``wired=False`` keeps the arm out of ``_select_slot``; the absorb row is what lets
     ``_install_fused_pairs`` ASK this product. The row landed 2026-09-17
-    (``metal_kernels/launch.py:1236``, in the block headed "THE SIX B->H AND D->E
-    ROWS THE COMPOSER WAS STILL MISSING"): before it the family was certified with a
+    (``metal_kernels/launch.py:1236``, in the block headed "The six B->H and D->E
+    rows the composer was still missing"): before it the family was certified with a
     released weld and ``dispatch_reachability.metal_certified_but_not_installed``
     reported it by name, because the seam loop had no arm pair to absorb. The pair
     is the ``cylindrical m=0`` arm's own two predicates, which is what
     ``metal_cylindrical_real_fused_magnetic_pair_coverage`` calls — the electric
     twin's row, on the B->H seam.
 
-    ASKED, NOT BRACKETED. ``CARRIES_DEPOSIT_REPAIR`` stays False (module :227) and
+    Asked, not bracketed. ``CARRIES_DEPOSIT_REPAIR`` stays False (module :227) and
     the source clause refuses an in-seam magnetic deposit by name
     (``test_a_magnetic_source_is_refused_and_an_electric_one_is_admitted``), so the
     family is declared in ``ROUTED_WITHOUT_THE_REPAIR``
@@ -433,7 +433,7 @@ def test_the_arm_is_registered_UNWIRED_and_carries_its_absorb_row():
 def _executable_text(path) -> str:
     """A module's source with comments and docstrings removed.
 
-    ONE HOME FOR A RULE THIS PACKAGE ALREADY WROTE DOWN
+    One home for a rule this package already wrote down
     (``test_triton_kernels.code_of``): the prose in these modules NAMES the things
     they must not touch — that is how a reader learns which track is wired and
     which is not — so an ownership check that greps the RAW file fires on its own
@@ -457,8 +457,8 @@ def _executable_text(path) -> str:
 #: path segment of the LEDGER it reads per table
 #: (``os.path.join(..., "metal_kernels", "fingerprints.json")``).
 #:
-#: THE BARE "metal_kernels IS ABSENT" ASSERTION RETIRED WITH THE SECOND KERNEL
-#: TABLE, and flipping it to "is present" would have been the wrong repair: "the
+#: The bare "metal_kernels is absent" assertion retired with the second kernel
+#: table, and flipping it to "is present" would have been the wrong repair: "the
 #: file mentions the package somewhere" says nothing about whether THIS module is
 #: reachable, which is the whole subject. What replaced it is stronger than either
 #: spelling. ``fastpath`` reaches the Metal table through the sibling
@@ -489,8 +489,8 @@ def _metal_kernels_modules_named_in(text):
 def _fastpath_code_outside_the_pending_reasons() -> str:
     """``fastpath.py``'s executable text with ``PENDING_DEVICE_GATE_ARMS`` blanked.
 
-    WHY THE CARVE-OUT IS STRUCTURAL AND NOT A SUBSTRING ALLOWANCE. This check asks
-    whether DISPATCH names a METAL module. Since the 2026-09-02 product wave,
+    Why the carve-out is structural and not a substring allowance. This check asks
+    whether DISPATCH names a METAL module. Since the 2026-09-02 installer change,
     ``PENDING_DEVICE_GATE_ARMS`` carries, per refused label, the path of the TRITON
     gate artifact whose release has no ledger entry yet — and several of those
     Triton products share a bare name with a Metal one
@@ -521,7 +521,7 @@ def _fastpath_code_outside_the_pending_reasons() -> str:
 def _metal_launch_code_outside_the_absorb_rows() -> str:
     """``metal_kernels/launch.py``'s executable text with ``FUSED_PAIR_ARMS`` blanked.
 
-    THE SAME STRUCTURAL CARVE-OUT AS :func:`_fastpath_code_outside_the_pending_reasons`,
+    The same structural carve-out as :func:`_fastpath_code_outside_the_pending_reasons`,
     for the same reason. Since 2026-09-17 the absorb table names this family as a
     KEY (``launch.py:1236``) by design, so "launch never names the module" stopped
     being the test of "launch never reaches the module". The table is removed by its
@@ -554,7 +554,7 @@ def _metal_launch_code_outside_the_absorb_rows() -> str:
 def test_fastpath_does_not_name_this_module():
     """DISPATCH must not reach this package — asked per track, not by a name.
 
-    THE BARE NAME STOPPED SEPARATING THE TRACKS ON 2026-09-02, and pretending it
+    The bare name stopped separating the tracks on 2026-09-02, and pretending it
     still does would be the wrong kind of green. The Triton track ships a product
     with the SAME name: ``fastpath.ARM_CERTIFICATION`` now carries
     ``'fused pair B (cylindrical)': ('cylindrical_real_fused_magnetic_pair',
@@ -564,7 +564,7 @@ def test_fastpath_does_not_name_this_module():
     over ``fastpath.py`` therefore reports the other track's certification table as
     if this Metal module had been wired.
 
-    SO EACH FILE IS ASKED IN ITS OWN VOCABULARY, and neither question is weaker:
+    So each file is asked in its own vocabulary, and neither question is weaker:
 
     * ``fastpath.py`` must not name the METAL PACKAGE, which is the whole of the
       boundary and is STRONGER than the bare name it replaces: an import, a table
@@ -635,7 +635,7 @@ def test_the_released_artifact_is_in_the_tree_and_says_it_released():
     products = [row for row in payload["rows"] if row["leg"] == "product"]
     assert len(products) == 6
     assert all(row["differing_words"] == 0 for row in products)
-    # THE FUSION, MEASURED: three dispatches become two, and on a walled run the
+    # The fusion, measured: three dispatches become two, and on a walled run the
     # separate side leaves the wall clear on the host where the fused side does not.
     controls = [row for row in payload["rows"] if row["leg"] == "separate_control"]
     assert controls and all(row["separate_dispatches_per_step"] == 3
@@ -675,7 +675,7 @@ def test_the_module_claims_identity_ONLY_through_the_artifact_that_measured_it()
     for key, digest in sorted(recorded.items()):
         if live == digest:
             continue
-        # ONE HOME FOR THE RULE (device_identity.py:209). This module emits its
+        # One home for the rule (device_identity.py:209). This module emits its
         # shader text, so its device identity is the emitted corpus rather than
         # its bytes: a prose edit here cannot change a character of what the MPS
         # compiler received. The helper returns False for anything it cannot

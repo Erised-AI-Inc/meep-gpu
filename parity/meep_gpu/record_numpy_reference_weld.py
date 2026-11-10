@@ -4,7 +4,7 @@
     python record_numpy_reference_weld.py --write
     python record_numpy_reference_weld.py --validator-out <dir>/pml_reference_vs_stepping.json
 
-WHAT IT WRITES. One leaf of ``meep_gpu/triton_kernels/fingerprints.json``:
+What it writes. One leaf of ``meep_gpu/triton_kernels/fingerprints.json``:
 ``fused_electric_gate.numpy_reference_weld.probe_sha256``, the sha256 of the NumPy
 validator that the D/E record names under ``numpy_reference_weld.probe``
 (``validate_pml_reference_vs_stepping.py``). The validator checks the bit-identity
@@ -12,12 +12,12 @@ probe's PML reference against ``stepping.py`` itself, on NumPy, so it needs no G
 ``test_triton_kernels.py::test_the_fused_electric_record_is_welded_to_both_oracles_and_the_route``
 holds the leaf against the file in the tree.
 
-WHY A TOOL. No rebind or recut tool writes this leaf: it is nested inside an
+Why a tool. No rebind or recut tool writes this leaf: it is nested inside an
 uncited entry, and no device gate produces it. Editing the validator (comments
 included) leaves the record naming bytes that no longer ship, and rule 1 of the
 repository forbids moving the digest by hand.
 
-WHAT IT REQUIRES BEFORE IT WRITES. It runs the validator itself, in a child
+What it requires before it writes. It runs the validator itself, in a child
 process of this interpreter with the inherited environment, and writes the digest
 only when all of these hold:
 

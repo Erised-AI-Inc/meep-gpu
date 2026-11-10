@@ -15,7 +15,7 @@ ever executed and this gate has produced no device artifact. The ``--no-device``
 legs HAVE run, on a laptop, and are labelled as such in the payload. Nothing in this
 repository claims byte identity for this product.
 
-THE CLAIM THIS GATE IS ALLOWED TO SUPPORT, once it runs: for every configuration
+The claim this gate is allowed to support, once it runs: for every configuration
 :func:`~meep_gpu.triton_kernels.complex_fused_magnetic_pair.complex_fused_magnetic_pair_coverage`
 admits, ONE launch of ``complex_fused_curl_constitutive_B`` leaves the engine in a
 state that is BIT-IDENTICAL, PER COMPLETE ``driver.step()``, to
@@ -32,22 +32,22 @@ over every allocated volume: the complex primaries, the split-field PML auxiliar
 and the constitutive ``f_w`` history. Comparison is on the uint32 word view.
 ``allclose`` appears nowhere.
 
-WHAT THE GATE REFUSES TO INFER.
+What the gate refuses to infer.
 
 * **Bytes alone cannot prove the fused path ran.** A silent fallback to the array
   path is byte-identical to the array path by construction. Every launch is counted
   through a proxy that owns the kernel object, every substitution is counted per
-  route in the installer, and one ARMED HARNESS MUTATION removes the substitution so
+  route in the installer, and one armed harness mutation removes the substitution so
   the counters — not the bytes — are what catches it.
 * **A no-op agreeing with a no-op is trivially identical.** Every compared array must
   MOVE during the leg; a leg whose magnetic trio is frozen in all three routes is
   armed and must be caught by the moved-state census.
 * **"The two symmetry fills are no-ops here" is a claim, not a construction.** It is
-  MEASURED on the laptop (``NO-DEVICE LEG 3``), with a folded control that separates,
+  measured on the laptop (``NO-DEVICE LEG 3``), with a folded control that separates,
   so the leg is about the fold rather than about the probe.
 
 ===========================================================================
-THE SEAM, AND WHY IT IS THE MAGNETIC ONE
+The seam, and why it is the magnetic one
 ===========================================================================
 
 The driver runs five passes (driver.py:3281-3288)::
@@ -115,7 +115,7 @@ for _path in (HERE, API_ROOT):
 SEED = 20260819
 
 #: (name, dimensions, cell, boundaries, k_point, pml, steps). Every case stores
-#: complex fields. THE SET IS SWEPT AND NEITHER AXIS IS DECORATION: a k = 0 case is
+#: complex fields. The set is swept and neither axis is decoration: a k = 0 case is
 #: what makes the phase-skip reduction to the plain complex path measurable, a
 #: phased case is the only place the rotation mutations have anywhere to be caught,
 #: and a case with real METALLIC walls is the only place the wall-clear mutations
@@ -157,7 +157,7 @@ REQUIRED = (
 #: other than the step.
 #: THE READ-ONLY MATERIAL VOLUMES, under the names ``inventory`` really finds.
 #:
-#: MEASURED 2026-08-20: this tuple read ``("inverse_epsilon", "epsilon")`` while
+#: Measured 2026-08-20: this tuple read ``("inverse_epsilon", "epsilon")`` while
 #: the scan takes its keys from ``vars(fields)``, which names them ``eps`` and
 #: ``inv_eps``. Nothing matched, and that silently broke BOTH directions of the
 #: check it feeds: the vacuity floor demanded that two read-only INPUTS move,
@@ -190,7 +190,7 @@ def save(payload: Dict[str, Any], path: str) -> None:
     """Serialise the payload, provenance-stamped, atomically."""
     os.makedirs(os.path.dirname(os.path.abspath(path)) or ".", exist_ok=True)
     temporary = path + ".tmp"
-    # THE POLICY STAMP IS RE-READ, NOT CARRIED. Taken once at install time it
+    # The policy stamp is re-read, not carried. Taken once at install time it
     # records every counter at zero, because nothing had compiled yet — a record
     # that cannot tell an installed policy apart from an inert one.
     if "subnormal_policy" in payload:
@@ -417,7 +417,7 @@ def transcription_leg() -> Dict[str, Any]:
                 f"stepping._zero_metal writes COMPLEX zero and both planes must be "
                 f"cleared")
 
-    # THE WELD REPLACED A LOAD, AND THE LOAD MUST BE GONE. If the constitutive half
+    # The weld replaced a load, and the load must be gone. If the constitutive half
     # still read B from memory, the "fusion" would be a launch-count optimisation
     # with a live re-read — a different kernel with a different hazard. TWO is the
     # right count and not one: the curl half loads each source component's real and
@@ -433,7 +433,7 @@ def transcription_leg() -> Dict[str, Any]:
                 f"component's two words once and the constitutive half must read B "
                 f"from the register, not from memory")
 
-    # NO MULTIPLY OUTSIDE THE THREE DECLARED HELPERS. A fourth would be a fourth
+    # No multiply outside the three declared helpers. A fourth would be a fourth
     # operand orientation, and this product's whole helper claim is that it adds
     # none.
     helpers = sorted({name for name in product.MULTIPLY_HELPERS
@@ -451,7 +451,7 @@ def transcription_leg() -> Dict[str, Any]:
             f"{list(product.MULTIPLY_HELPERS)}; the pattern-set claim "
             f"names orientations the kernel no longer launches")
 
-    # THE inv_eps ARM MUST NOT BE HERE. `SCALE` belongs to the E side; carrying it
+    # The inv_eps arm must not be here. `SCALE` belongs to the E side; carrying it
     # would add the D-LEFT orientation this product's pattern set does not cover.
     if any("SCALE" in line for line in fused):
         findings.append(
@@ -549,14 +549,14 @@ def _welded_seam(fields, pml, driver_module, *, wall: str = "before",
                  history: str = "read_then_write") -> None:
     """The FUSED semantics, spelled with array ops so a laptop can execute them.
 
-    THIS IS NOT THE KERNEL AND DOES NOT PRETEND TO BE. It cannot see a memory
+    This is not the kernel and does not pretend to be. It cannot see a memory
     hazard, a register reuse or a rounding order inside one launch — those are the
     device gate's to measure. What it CAN decide is the DESIGN question the weld
     answers: which value reaches ``update_H``, and in which order relative to the
     wall clear and to the ``f_w`` history read. Each is a knob and the leg reports
     which flips the array path can see.
 
-    THE TWO SYMMETRY FILLS ARE SIMPLY ABSENT HERE. That is the module's central
+    The two symmetry fills are simply absent here. That is the module's central
     claim and this leg is where it is measured: on an unfolded complex run the
     five-pass array path and this three-pass emulation must be BIT-IDENTICAL, and
     the folded control must separate.
@@ -638,7 +638,7 @@ def symmetry_inertness_leg() -> Dict[str, Any]:
         if not moved:
             findings.append(f"{name}: VACUOUS, the array path moved nothing")
 
-    # THE FOLDED CONTROL. Real fields, because a fold plus complex storage is
+    # The folded control. Real fields, because a fold plus complex storage is
     # refused by the halves anyway and this leg is only asking whether the two
     # passes CAN write. If the control does not separate, this leg is measuring a
     # dead call rather than an inert one.
@@ -693,7 +693,7 @@ def symmetry_inertness_leg() -> Dict[str, Any]:
 def design_sweep_leg() -> Dict[str, Any]:
     """Each design choice flipped, on NumPy, against the array-path composition.
 
-    A choice whose flip is byte-identical is reported as a NULL WITH ITS REASON —
+    A choice whose flip is byte-identical is reported as a null with its reason —
     a measurement about the configuration, not a licence to drop the choice from
     the kernel.
     """
@@ -803,7 +803,7 @@ def predicate_leg() -> Dict[str, Any]:
     def residual(verdict) -> List[str]:
         """The reasons that are not the NumPy-host backend clause.
 
-        MATCHED ON THE CLAUSE, NOT ON THE WORD 'cupy'. A filter on every reason
+        Matched on the clause, not on the word 'cupy'. A filter on every reason
         mentioning cupy would also swallow any other clause that names a backend,
         and a refusal that vanishes from the residual is a refusal the leg reports
         as an admission.
@@ -831,7 +831,7 @@ def predicate_leg() -> Dict[str, Any]:
     record("bloch_electric_source",
            product.complex_fused_magnetic_pair_coverage(
                bloch, bloch_pml, (_Source("D"),)), True)
-    # THE IN-SEAM MAGNETIC DEPOSIT IS CARRIED AS OF 2026-08-30. Same three rows
+    # The in-seam magnetic deposit is carried as of 2026-08-30. Same three rows
     # as the two folded families: carried, refused by name without a publishable
     # index, and refused for BEING in the seam again once the flag is held down.
     record("bloch_magnetic_deposit_is_carried",
@@ -924,7 +924,7 @@ def seam_binding_leg() -> Dict[str, Any]:
     consults = tuple(fastpath.DRIVER_SLOTS) + tuple(fastpath.FAR_FILL_PASSES.values())
     foreign = [name for name in consults if name not in owned]
 
-    # A CONSULT MAY BE SPELLED AS A NAME RATHER THAN A LITERAL, and one is.
+    # A consult may be spelled as a name rather than a literal, and one is.
     # ``synchronize_magnetic_fields`` closes this seam through the by-name channel
     # ``fastpath.SYNC_PASS_OWNERS`` opens — ``dispatch(SYNC_UPDATE_H_PASS, ...)`` —
     # so a scan that matched only ``dispatch("update_H"`` reads the half-step as a
@@ -1100,7 +1100,7 @@ AUXILIARY_LINES: Dict[str, Tuple[bool, int]] = {
 def outside_every_layer(driver, names) -> List[str]:
     """The auxiliaries whose record line holds no row of the run's division.
 
-    THE AUXILIARY CONTRACT LEAVES THEM UNTOUCHED: an auxiliary word outside its form's
+    The auxiliary contract leaves them untouched: an auxiliary word outside its form's
     region is never read or written, so on a division that gives a component's layer
     no cell at all (a 2-D case layering y only gives fu_Bx, fu_By, f_w_Hx, f_w_Hz none)
     the auxiliary keeps its first word for the whole run, on the array path and in the
@@ -1405,8 +1405,8 @@ def compile_mutant(source: str, kernel_name: str) -> Any:
     The connection helper and the shared forms are IMPORTED into the mutant's
     namespace rather than copied, for the same reason the shipped module imports
     them: a second spelling is a second place to be wrong, and a mutant carrying its
-    own copy would no longer be testing the shipped arithmetic. THE MODULE NAME MUST
-    NOT START WITH ``triton``: Triton's dependency finder leaves every callee whose
+    own copy would no longer be testing the shipped arithmetic. The module name must
+    not start with ``triton``: Triton's dependency finder leaves every callee whose
     ``__module__`` starts with its package name out of the kernel's cache key, so a
     helper-only mutant could be served another mutant's binary (measured on the
     off-diagonal gate, 2026-10-08).
@@ -1435,7 +1435,7 @@ def compile_mutant(source: str, kernel_name: str) -> Any:
 
 
 def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, int]]], ...]:
-    """(id, why it is armed, expectation, rewrite). The artifact records what was MEASURED."""
+    """(id, why it is armed, expectation, rewrite). The artifact records what was measured."""
 
     def m1_wall_clear_dropped(source: str) -> Tuple[str, int]:
         """The wall clear not carried: MEEP's step_boundaries(B_stuff), undone.
@@ -1446,7 +1446,7 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
             source,
             ["if ZM_X:", "v0_re = tl.where(at_x, 0.0, v0_re)",
              "v0_im = tl.where(at_x, 0.0, v0_im)"],
-            # NO ``if`` IN THE REPLACEMENT. ``_rewrite_block`` indents every
+            # No ``if`` in the replacement. ``_rewrite_block`` indents every
             # replacement line to the indent of the block's FIRST line, so a
             # compound statement in position 0 produces an empty suite and the
             # mutated module fails to IMPORT -- which this harness records as an
@@ -1488,7 +1488,7 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
         return _rewrite_block(source, ["if CNX:"], ["if 0:"])
 
     def m14_connection_on_the_old_wrapped_plane(source: str) -> Tuple[str, int]:
-        """INVERSION (Appendix A): the x connection on the LAST plane, where the
+        """INVERSION: the x connection on the LAST plane, where the
         rolled operand used to carry the phase, instead of the unshifted operand's
         plane 0."""
         hits = 0
@@ -1499,7 +1499,7 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
         return source, hits if hits == 4 else 0
 
     def a1_pairwise_stencil(source: str) -> Tuple[str, int]:
-        """INVERSION (Appendix A): the previous pairwise grouping
+        """INVERSION: the previous pairwise grouping
         ``(g1s - g1) + (g2 - g2s)`` in place of MEEP's left-to-right stencil."""
         needle = "curl2_re = curl_stencil(b_x_re, b2_re, a2_re, a_y_re, dtdx, px, py)"
         return (source.replace(needle,
@@ -1507,7 +1507,7 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
                 source.count(needle))
 
     def a2_whole_grid_recurrence(source: str) -> Tuple[str, int]:
-        """INVERSION (Appendix A): the split-field recurrence on every cell, the
+        """INVERSION: the split-field recurrence on every cell, the
         previous whole-grid form, instead of each chunk's own."""
         hits = 0
         for needle in ("du0 = record_in(cb, lattice + 8, k)",
@@ -1518,7 +1518,7 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
         return source, hits if hits == 3 else 0
 
     def a3_constitutive_old_grouping(source: str) -> Tuple[str, int]:
-        """INVERSION (Appendix A): the previous two-accumulation grouping
+        """INVERSION: the previous two-accumulation grouping
         ``(f + kps*src) - kms*prev`` in place of MEEP's ``f + ((kps*src) -
         (kms*prev))``, on component 1's real part (component 1's own axis, y, is
         the one the 2-D scoring case layers)."""
@@ -1600,7 +1600,7 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
     def m8_imaginary_plane_of_the_weld_dropped(source: str) -> Tuple[str, int]:
         """The weld carried on the real plane only: the imaginary source is zero.
 
-        THE OLD REWRITE COULD NOT EXPRESS THIS, and was measured armed-and-uncaught
+        The old rewrite could not express this, and was measured armed-and-uncaught
         on the GPU host 2026-08-20 for a reason that is structural rather than about
         the kernel. It replaced ``src_im = v{c}_im`` with a load of
         ``f{c} + 2*idx + 1`` -- meaning to read the PRE-STEP imaginary B -- but the
@@ -1627,7 +1627,7 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
         return source.replace(needle, "start = start_h != start_h"), source.count(needle)
 
     def m9_commuted_multiply(source: str) -> Tuple[str, int]:
-        """PREDICTED NULL: IEEE multiplication commutes; the connection's real
+        """Predicted null: IEEE multiplication commutes; the connection's real
         product spelled operand-first. Only the PTX may move. It is the control that
         says a caught mutation means something."""
         return n1_store_order(source)
@@ -1672,7 +1672,7 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
 
 #: Mutation id -> the CASES index whose grid carries the branch it rewrites.
 #:
-#: THERE IS NO SINGLE CASE THAT SERVES THEM ALL, and the code used to claim there
+#: There is no single case that serves them all, and the code used to claim there
 #: was: every mutation ran on CASES[4] (bloch_x_metallic_y) under the comment "the
 #: only one in CASES where every mutation above has somewhere to be caught". That
 #: case declares x PERIODIC, so `if ZM_X:` is never entered and
@@ -1805,10 +1805,11 @@ def run_refusals(cp, product) -> List[Dict[str, Any]]:
 # ---------------------------------------------------------------------------
 
 def environment(cp: Any = None) -> Dict[str, Any]:
+    import neutral_ids  # noqa: PLC0415
     payload: Dict[str, Any] = {
         "python": sys.version.split()[0],
         "numpy": np.__version__,
-        "argv": list(sys.argv),
+        "argv": neutral_ids.argv(sys.argv),
         "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
     }
     try:
@@ -1869,7 +1870,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "UNRUN — invoked with --no-device; no CUDA leg, mutation or refusal "
             "in this artifact")
         payload["passed"] = all(row["passed"] for row in payload["no_device_legs"])
-        # ``release`` IS THE KEY ``gate_provenance.read_verdict`` CONSULTS FIRST, and
+        # ``release`` is the key ``gate_provenance.read_verdict`` consults first, and
         # it is set explicitly here because ``passed`` alone would stamp
         # ``released: True`` on an artifact that measured no bytes on any device. A
         # laptop leg is evidence about the design and the predicate; it is not a
@@ -1886,7 +1887,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     import cupy as cp  # noqa: PLC0415
     from meep_gpu import backends, subnormal_policy  # noqa: PLC0415
 
-    # BEFORE THE FIRST DEVICE COMPILE. strict=True: a process that asked to keep and
+    # Before the first device compile. strict=True: a process that asked to keep and
     # quietly did not is a process whose bytes mean nothing.
     subnormal_policy.install_subnormal_policy(args.subnormal_policy, cupy=cp,
                                               strict=True)
@@ -1954,7 +1955,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     device_ok = all(row.get("passed") for row in payload["device_legs"])
     refusal_ok = all(row.get("passed") for row in payload["refusals"])
-    # A DECLARED NULL MUST BE CONFIRMED, not merely permitted -- see the sibling
+    # A declared null must be confirmed, not merely permitted -- see the sibling
     # comment in probe_triton_folded_fused_magnetic_pair. Under the old rule any
     # expectation other than "caught" passed unconditionally, so moving a
     # stubbornly uncaught mutation to a null spelling would silence it rather

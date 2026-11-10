@@ -7,12 +7,12 @@ helpers, its ``ComplexPmlCurlPlan`` argument layout, its predicate spine
 and its ``register_arms`` are the idiom this family extends. Where a fact is that
 module's, it is IMPORTED rather than re-spelled — one idiom, not two.
 
-THE LARGEST REMAINING SURFACE ON THIS BACKEND: sixteen lifted corpus rows,
+The largest remaining surface on this backend: sixteen lifted corpus rows,
 SIXTY-FOUR sub-step slots, and the family carrying the unbounded ``ZERO_ROWS``
 axis that made the port look like a week's work. It is not: see the arity note.
 
 ======================================================================
-THE 64 SLOTS SPLIT 32/32, AND ONLY HALF NEED A KERNEL
+The 64 slots split 32/32, and only half need a kernel
 ======================================================================
 
 ``stepping.update_H`` (:907-924) and ``update_E`` (:926-993) carry NO cylindrical
@@ -24,7 +24,7 @@ already computes them, and this module contributes a restated PREDICATE plus a p
 builder that delegates to :class:`complex_fields.ComplexConstitutivePlan`. That is
 the same shape :mod:`.folded_complex` took for its constitutive pair.
 
-THE IDENTITY IS ESTABLISHED BY MEASUREMENT, NOT BY GREP. The certified Triton
+The identity is established by measurement, not by grep. The certified Triton
 reference ran ``stepping.update_H``/``update_E`` on a real complex Dcyl
 ``Fields``/``PML`` against a plain complex elementwise ``dsigw`` reference carrying
 no cylindrical clause: 480/480 rows, 0 differing uint32 words, over
@@ -35,14 +35,14 @@ x {random, signed-zero} seeding x {H, E} (harness ``run_constitutive_identity`` 
 compiler would not.
 
 ======================================================================
-WHY ``ZERO_ROWS`` IS A RUNTIME UNIFORM AND NOT A SPECIALISATION
+Why ``ZERO_ROWS`` is a runtime uniform and not a specialisation
 ======================================================================
 
 The Triton kernel carries ``ZERO_ROWS`` as a ``tl.constexpr`` whose value is
 ``abs(m)``, so its variant count is ``8 x UNBOUNDED`` — no author can enumerate it.
 Two measurements collapse that here, and neither is inherited:
 
-1. ``parity/meep_gpu/probe_metal_dynamic_loop_arity.py`` measured, ON THIS HOST,
+1. ``parity/meep_gpu/probe_metal_dynamic_loop_arity.py`` measured, on this host,
    that a runtime-uniform THRESHOLD (``i < zero_rows`` read from a
    ``constant uint&``) is bit-identical to the literal-threshold twin — 12/12
    cases, 3,145,728 words compared, 0 differing, max ULP 0, in BOTH contraction
@@ -50,24 +50,24 @@ Two measurements collapse that here, and neither is inherited:
    track's favourable PTX result was NOT assumed to transfer**; this backend has no
    disassembly, so the question was settled behaviourally before the family was
    built on top of it.
-2. ``ZERO_ROWS`` IS NOT AN ARITY AND NEVER WAS. In the certified Triton body it is
+2. ``ZERO_ROWS`` is not an arity and never was. In the certified Triton body it is
    spent at exactly ONE site (``triton_kernels/cylindrical_complex.py:971``,
    ``near = i < ZERO_ROWS``) feeding twelve ``tl.where`` calls. It is an integer
-   comparison on the row index — no accumulation, no trip count, and NO FLOAT
-   ROUNDS ANYWHERE ON THAT PATH. So the weaker threshold result is all this family
+   comparison on the row index — no accumulation, no trip count, and no float
+   rounds anywhere on that path. So the weaker threshold result is all this family
    needs; the arity result licenses ADE ``update_P``, not this.
 
 The unbounded axis therefore disappears. What remains is
 ``BACKWARD x BCZ x M_CLASS`` = **8 sources per contraction mode**, finite and
 enumerated by :func:`enumerate_cylindrical_sources`.
 
-``M_CLASS`` STAYS A COMPILE-TIME BRANCH and that is not an inconsistency: |m| = 1
+``M_CLASS`` stays a compile-time branch and that is not an inconsistency: |m| = 1
 and |m| >= 2 compute DIFFERENT ARITHMETIC (an axis-row replacement versus a
 near-axis zeroing of six volumes), not the same arithmetic at a different count.
 A threshold folds to a uniform; two different bodies do not.
 
 ======================================================================
-THE r AXIS COSTS THE KERNEL NO BRANCH — one reading, one measurement
+The r axis costs the kernel no branch — one reading, one measurement
 ======================================================================
 
 ``stepping._boundary_kinds`` returns ``CYL_AXIS`` on r (:2145), which is outside
@@ -83,29 +83,29 @@ and they are established differently ON PURPOSE:
   that ``_mask_non_owned_cells`` (:1898-1902) zeroes the only row that can consume
   it — every array the shift helpers move has Yee shift 1 on r, and the two terms
   taking an r down-shift (``Dy`` partner ``Hz``, ``Dz`` partner ``Hp``) both have
-  r-shift 0. That is a claim about ``stepping.py``, so it is MEASURED on this host
+  r-shift 0. That is a claim about ``stepping.py``, so it is measured on this host
   by leg ``axis_identity`` of ``parity/meep_gpu/probe_metal_cylindrical_complex.py``:
   the real sub-step against the same sub-step with ``boundaries[0]`` forced to
   ``metallic``, over m in {1,-1,2,-2,3,5} x {z metallic, z periodic} x {B, D}.
 
-A NONZERO COUNT THERE IS A LEGITIMATE OUTCOME and would mean this family must carry
+A nonzero count there is a legitimate outcome and would mean this family must carry
 the near ghost. The probe reports the count; this module does not assume it.
 
 ======================================================================
-THE FOUR CYLINDRICAL ADDITIONS, in the order the kernel applies them
+The four cylindrical additions, in the order the kernel applies them
 ======================================================================
 
-1. **THE RADIAL DIFFERENCE STAYS ON THE ARRAY PATH.** MEEP sums ``f_rderiv_int``
+1. **The radial difference stays on the array path.** MEEP sums ``f_rderiv_int``
    in every structure chunk from that chunk's first row, ``rinv`` multiplied, and
    the stencil reads the difference of two partial sums of the owning chunk
    (``stepping.cylindrical_rderiv_difference``). Its float32 summation order DEFINES
    the answer, and this module CALLS it (:func:`radial_difference`) with the run's
-   chunk starts rather than re-deriving it. B side: Ep = ``Ey`` extended by ONE
-   ZERO WALL ROW, ``ir0 = 0.0``, forward; D side: Hp = ``Hy``, ``ir0 = 0.5``,
+   chunk starts rather than re-deriving it. B side: Ep = ``Ey`` extended by one
+   zero wall row, ``ir0 = 0.0``, forward; D side: Hp = ``Hy``, ``ir0 = 0.5``,
    backward. Target 2's WHOLE curl is ``dtdx`` times that difference, one product
    per part; the phi partner is absent on a Dcyl grid.
 
-   **AND THIS IS THE ONE PLACE THIS BACKEND PAYS A HOST ROUND TRIP.** The engine
+   **And this is the one place this backend pays a host round trip.** The engine
    holds NumPy, so the sum is formed on the HOST and the plan must, per launch, sync
    its SOURCE volume OUT, sum it, and sync the difference IN — one component out and
    one volume in per curl sub-step, against a residency layer that exists because a
@@ -124,7 +124,7 @@ THE FOUR CYLINDRICAL ADDITIONS, in the order the kernel applies them
    sinv_dsig * inc``: outside the dsigu chunks ``f -= df``, inside ``fu -= df`` and
    ``f -= sinv_dsigu * df``, per part. Four call sites — ``Bx <- Ez`` (+1),
    ``Bz <- Ex`` (-1), ``Dx <- Hz`` (-1), ``Dz <- Hx`` (+1); the partners are centre
-   loads the certified body already makes. **THE rinv ROW IS HOST-BUILT AND BOUND**
+   loads the certified body already makes. **The rinv row is host-built and bound**
    (:func:`imr_rinv_row`): Metal's ``max`` disagrees with ``numpy.maximum`` on two
    zeros and ``fast::divide`` is measured-divergent here, so the kernel never divides
    and never takes a max.
@@ -143,14 +143,14 @@ THE FOUR CYLINDRICAL ADDITIONS, in the order the kernel applies them
    auxiliaries held at zero on rows ``[0:|m|]`` (row 0 alone under
    ``accurate_fields_near_cylorigin``), ``fu_`` stored on those rows unconditionally.
 
-5. **THE m = 0 ARM**, a THIRD COMPILE-TIME BODY: no i*m/r pass (the array path
+5. **The m = 0 arm**, a third compile-time body: no i*m/r pass (the array path
    branches on ``grid.m != 0``; the rows stay BOUND and are never read), no
    axis-row increment, and the m = 0 axis rules on the stored FIELDS after the
    forms: B side ``Bx[r = 0] = 0``; D side ``Dz[r = 0] += axis_factor * Hp[r = 0]``
    (``Hp`` the stored ``Hy``, the ``g1`` centre ``b``) and then ``Dy[r = 0] = 0``.
    The increment is a POST-ADD, never a curl fold.
 
-   THE AXIS FACTORS ARE MEEP'S DOUBLE PRODUCTS. ``4*Courant``, ``-Courant`` and
+   The axis factors are MEEP's double products. ``4*Courant``, ``-Courant`` and
    ``+Courant`` multiply a float32 in double and round once
    (``stepping._realnum_double_product``). The kernel forms a float32 product with
    the factor's float32 word, which is that double product exactly when ``Courant``
@@ -160,12 +160,12 @@ THE FOUR CYLINDRICAL ADDITIONS, in the order the kernel applies them
    rounding off. MEEP's default Courant 0.5 is a float32 word.
 
 ======================================================================
-NEGATION AND SIGNED ZEROS — RE-MEASURED HERE, NOT INHERITED
+Negation and signed zeros — re-measured here, not inherited
 ======================================================================
 
 The Triton cylindrical kernel spells every negated addend ``x * -1.0`` because
-*Triton* lowers unary minus as ``0.0 - x`` and canonicalizes signed zeros. **THAT IS
-A FACT ABOUT TRITON AND IT DOES NOT REPRODUCE HERE.** Leg ``negation`` of this
+*Triton* lowers unary minus as ``0.0 - x`` and canonicalizes signed zeros. **That is
+a fact about Triton and it does not reproduce here.** Leg ``negation`` of this
 family's probe compiles all three spellings on this host in both contraction modes
 and compares them against ``numpy.negative`` on an exhaustive signed-zero table;
 this module ships ``-x``, which is what the array path performs (a sign flip on
@@ -180,16 +180,16 @@ SURVIVES the ``curl - m`` fold is a separate question and is left to the gate's
 minuend census rather than asserted here.
 
 ======================================================================
-THE INVERTED CLAUSES — six families to stay disjoint from
+The inverted clauses — six families to stay disjoint from
 ======================================================================
 
 ``registry.py``'s contract: every family's grid-reason list carries the same
-numbered questions and answers exactly one of them THE OTHER WAY, and a new family
+numbered questions and answers exactly one of them the other way, and a new family
 STATES its inversion rather than inheriting disjointness. Two admitters leave a slot
 UNSELECTED and it falls to the array path — a SILENT coverage loss — so a missed
 inversion costs slots quietly.
 
-CLAUSE 6 (CARTESIAN) IS INVERTED, and it alone separates this family from ALL NINE
+Clause 6 (cartesian) is inverted, and it alone separates this family from ALL NINE
 carried families. ``coverage._grid_reasons`` clause 6 (:176-182) refuses
 ``grid.cylindrical`` and ``is_axis`` BY NAME; ``complex_fields``,
 ``folded_complex``, ``special_kz``, ``bfast_curl``, ``offdiag_update_e``,
@@ -197,7 +197,7 @@ carried families. ``coverage._grid_reasons`` clause 6 (:176-182) refuses
 it. HERE ``grid.cylindrical`` must be TRUE and ``is_axis`` must be exactly
 ``(True, False, False)``.
 
-CLAUSE 2 (STORAGE) IS INVERTED against the shipped real families and is THE clause
+Clause 2 (storage) is inverted against the shipped real families and is THE clause
 that separates this family from the CYLINDRICAL REAL m = 0 product, in both
 directions: complex64 is REQUIRED here and REFUSED there
 (``cylindrical_real._cylindrical_real_grid_reasons`` clause 2). Since 2026-09-04
@@ -205,7 +205,7 @@ the two families partition Dcyl by STORAGE and by storage alone — a complex64 
 any integer m is this family's, a float32 run is the real family's (and the engine
 admits a float32 run only at m = 0, stepping.py:731-736).
 
-CLAUSE 14 USED TO REFUSE m = 0 BY NAME AND NO LONGER DOES. Until 2026-09-04 this
+Clause 14 used to refuse m = 0 by name and no longer does. Until 2026-09-04 this
 family carried |m| >= 1 only and named the real product as m = 0's owner; that was
 correct about the |m| >= 1 arithmetic and WRONG about the partition, because the
 real product refuses complex64 storage, so a complex64 m = 0 run — a constructible
@@ -215,34 +215,34 @@ already is. What survives of clause 14 is the READABILITY requirement: ``grid.m`
 must be an integer, because the arm and the near-axis uniform are functions of it
 and an unreadable m would bind the wrong body.
 
-CLAUSE 4 (BOUNDARIES) IS WIDENED, PER AXIS, AND NOT GLOBALLY. ``'axis'`` is admitted
+Clause 4 (boundaries) is widened, per axis, and not globally. ``'axis'`` is admitted
 on r ONLY; phi must resolve PERIODIC; z may be METALLIC or PERIODIC. A global
 widening would silently admit an axis-kind z, which no rule in this kernel serves.
 
-CLAUSE 5 (FOLD) IS REFUSED TWICE, and that is not tidiness. ``_boundary_kinds``
+Clause 5 (fold) is refused twice, and that is not tidiness. ``_boundary_kinds``
 puts ``is_axis`` AHEAD of ``is_mirrored`` (:2144-2148), so a folded r axis reports
-``CYL_AXIS`` and THE FOLD VANISHES SILENTLY; and ``_mirror_phases`` (:2291-2308)
+``CYL_AXIS`` and the fold vanishes silently; and ``_mirror_phases`` (:2291-2308)
 puts ``(-1)**grid.m`` into the SAME SLOT the mirror phase occupies. The grid flag
 alone is not the inversion. (``Grid`` also refuses a mirror on a Dcyl cell,
 grid.py:648-653 — which is exactly the "another module already guards it" reasoning
 this file exists to refuse.)
 
-CLAUSE 7 (k = 0) IS KEPT UN-INVERTED. Dcyl Bloch is z-only in MEEP
+Clause 7 (k = 0) is kept un-inverted. Dcyl Bloch is z-only in MEEP
 (grid.py:654-658 refuses a k on r or phi), none of the sixteen demand rows carries
 one, and the kernel compiles NO rotation at all. Admitting a z phase later is a
 predicate widening plus a gate row, not a silent extension.
 
-CLAUSES 10, 11, 12 ARE KEPT: no chi2/chi3, no BFAST, ``beta == 0``. None of the
+Clauses 10, 11, 12 are kept: no chi2/chi3, no BFAST, ``beta == 0``. None of the
 sixteen rows carries a susceptibility, a conductivity, BFAST, chi2/chi3, an
 off-diagonal epsilon or a Bloch phase.
 
-THE M_CLASS SPLIT IS NOT A CLAUSE AND MUST NOT BECOME THREE FAMILIES. m = 0 versus
+The M_CLASS split is not a clause and must not become three families. m = 0 versus
 |m| = 1 versus |m| >= 2 is a source-substitution branch inside ONE family, exactly
 as ``BACKWARD`` and ``BCZ`` are. Two arms registered on one slot is the composer's
 "refuses rather than picking by table order" residual, not a win.
 
 ======================================================================
-WHAT THIS FAMILY DOES NOT CLAIM, each by name
+What this family does not claim, each by name
 ======================================================================
 
 Real float32 storage at any m (the cylindrical REAL product's kernel); a
@@ -250,25 +250,25 @@ conductivity on any curl target; a registered susceptibility (complex-storage AD
 unbuilt on either geometry); chi2/chi3; BFAST; ``grid.beta``; a Bloch phase; a
 mirror plane; an off-diagonal chi1inv row on ``update_E``; and a radial extent below
 two rows, where the |m| = 1 axis increment reads the FIRST OFF-AXIS row and NumPy
-raises where CuPy silently returns row 0 (both measured by the Triton tranche).
+raises where CuPy silently returns row 0 (both measured by the Triton cylindrical port).
 
-REGISTERED-BUT-CANNOT-WIN IS NOT USED HERE, and the absence is stated. Every slot
+Registered-but-cannot-win is not used here, and the absence is stated. Every slot
 this family claims IS ported. The capabilities it lacks are refused by name inside
 predicates that would otherwise admit, which is the same naming through a cheaper
 mechanism.
 
-NO ENTRY IN ``fingerprints.json``'s ``kernel_source_sha256``, as for
+No entry in ``fingerprints.json``'s ``kernel_source_sha256``, as for
 :mod:`.complex_fields`: the gate hashes the specialisations it launches.
 This module's own BYTES are hashed under ``host_sha256``, because
 ``launch._host_modules()`` enumerates the package.
 
-**THERE IS NO GENERATED-CODE AUDIT ON THIS BACKEND.** ``torch.mps.compile_shader``
+**There is no generated-code audit on this backend.** ``torch.mps.compile_shader``
 exposes no AIR, no ISA and no optimisation report, so every leg behind this family is
 BEHAVIOURAL: it catches a wrong answer, not a wrong instruction. That is this
 backend's standing certification gap against the Triton and CUDA tracks and it stays
 stated.
 
-WIRED, WITH NO DEVICE BYTE GATE YET. The arms register ``wired=True`` so
+Wired, with no device byte gate yet. The arms register ``wired=True`` so
 ``plan_step`` composes them, and the composition disjointness is what the matrix
 rows measure. ``fastpath.plan_fast_path`` still returns ``None`` on every branch;
 which track earns the step path is a separate decision this port does not make.
@@ -330,10 +330,10 @@ CYLINDRICAL_AXIS_FLAGS: Tuple[bool, bool, bool] = (True, False, False)
 #: The smallest radial extent this product may step. The |m| = 1 axis increment reads
 #: the FIRST OFF-AXIS row (``_cylindrical_axis_increment_B``'s ``xp.take(Ez, 1,
 #: axis=0)``) and the kernel's matching load ``g2[nyz + j*nzi + k]`` is live on every
-#: lane, so below
-#: this it would read a full plane PAST THE END of the source volume. Measured by the
-#: Triton tranche on a real ``(1, 1, 20)`` grid: NumPy RAISES IndexError there and
-#: CuPy SILENTLY RETURNS ROW 0 — the two backends disagree about whether the
+#: lane, so below this it would read a full plane past the end of the source volume.
+#: Measured by the Triton cylindrical port on a real ``(1, 1, 20)`` grid: NumPy
+#: RAISES IndexError there and
+#: CuPy silently returns row 0 — the two backends disagree about whether the
 #: configuration is steppable at all, which is why the clause is unconditional rather
 #: than |m| = 1 only.
 MINIMUM_RADIAL_ROWS = 2
@@ -361,8 +361,8 @@ CURL_SOURCES: Tuple[str, ...] = ("Ex", "Ey", "Ez", "Hx", "Hy", "Hz")
 #: How many buffers the cylindrical complex curl binds: 9 float2 volumes + 6
 #: coefficient vectors + 5 shape/dtdx scalars + the radial difference + 2 i*m/r rows
 #: + 1 zero-rows uniform + the axis factor + the m word + the chunk record.
-#: CHECKED AGAINST THE PLATFORM CEILING
-#: AT IMPORT, for :mod:`.complex_fields`' reason — the ``float2`` design rests on the
+#: Checked against the platform ceiling
+#: at import, for :mod:`.complex_fields`' reason — the ``float2`` design rests on the
 #: margin and a binding added to the signature must be refused here BY NAME rather
 #: than discovered as a compile error a reader has to attribute.
 CURL_BINDINGS = 27
@@ -491,7 +491,7 @@ def radial_difference(xp: Any, sub_step: str, sources: Dict[str, Any], starts: A
 
     ``stepping.cylindrical_rderiv_difference`` is CALLED, never re-derived: its
     per-chunk float32 summation order DEFINES the answer. B side: Ep = ``Ey`` extended
-    by ONE ZERO WALL ROW (``stepping.step_B``, including its pooled-versus-fresh
+    by one zero wall row (``stepping.step_B``, including its pooled-versus-fresh
     allocation), ``ir0 = 0.0``, forward; D side: Hp = ``Hy``, ``ir0 = 0.5``, backward.
     ``starts`` is ``stepping._cylindrical_scan_starts``' answer for Bz or Dz.
     """
@@ -530,7 +530,7 @@ def pull_radial_source(residency: Any, name: str) -> None:
       mirror, leaves a host-owned one alone (its words are the newest), and keeps
       the seal.
 
-    MEASURED on the Metal engine route under a hold (64 steps, the whole state against
+    Measured on the Metal engine route under a hold (64 steps, the whole state against
     the array path): m = 1 and m = 2 runs diverged from step 4 -- 111,415 / 1,376,256
     and 118,204 / 1,146,880 words by step 64 -- and so did a run carrying a flux monitor,
     while the shipped bracket read 0 on every one. The driver-route gate's unfused rows,
@@ -787,7 +787,7 @@ def enumerate_cylindrical_sources(contract: str = shaders.CONTRACT_OFF
 # Coverage — positive refusal enumeration
 # ---------------------------------------------------------------------------
 #
-# THESE PREDICATES CALL NEITHER SHARED CLAUSE LIST, and that is deliberate rather
+# These predicates call neither shared clause list, and that is deliberate rather
 # than lazy: `coverage._grid_reasons` clauses 2, 6 and 7 refuse this whole domain,
 # and `complex_fields._complex_grid_reasons` clause 4 refuses cylindrical outright.
 # Both are RIGHT for their own products and must stay — each is now load-bearing in
@@ -803,8 +803,8 @@ def _shared_reasons(fields: Any, pml: Any, grid: Any, residency: Any) -> List[st
     reasons.extend(_metal_backend_reasons(grid))
     reasons.extend(_residency_declaration_reasons(residency))
 
-    # 2 (INVERTED against coverage.py clause 2, AND THE ONE CLAUSE THAT PARTITIONS
-    #    Dcyl BETWEEN THIS FAMILY AND THE REAL ONE). Complex64 storage REQUIRED; the
+    # 2 (INVERTED against coverage.py clause 2, and the one clause that partitions
+    #    Dcyl between this family and the real one). Complex64 storage REQUIRED; the
     #    real family refuses it by name in the other direction. At |m| >= 1 the
     #    array path REFUSES real storage outright (stepping.py:731-736, MEEP's
     #    change_m aborts on the same combination), so a real Dcyl run is m = 0 and
@@ -812,7 +812,7 @@ def _shared_reasons(fields: Any, pml: Any, grid: Any, residency: Any) -> List[st
     #    here (m = 0 since 2026-09-04). The DECLARATION is checked here; the dtype is
     #    verified by the layout clause.
     #
-    #    THE NARROWER SPELLING IS CORRECT HERE. `complex_fields` admits
+    #    The narrower spelling is correct here. `complex_fields` admits
     #    `force_complex_fields OR has_bloch`; this family refuses a k_point outright
     #    (clause 7), so `has_bloch` can never be the thing that puts a run here and
     #    including it would admit a configuration clause 7 then refuses — two
@@ -856,7 +856,7 @@ def _shared_reasons(fields: Any, pml: Any, grid: Any, residency: Any) -> List[st
     if getattr(fields, "has_polarizations", False) or (
             getattr(fields, "polarizations", ()) or ()):
         reasons.append("a susceptibility is registered: complex-storage ADE is a "
-                       "later tranche, and no cylindrical corpus row combines the two")
+                       "separate, unbuilt product, and no cylindrical corpus row combines the two")
     reasons.extend(_susceptibility_reasons(fields))
 
     # 10/11/12. No instantaneous nonlinearity (the Pade factor REPLACES the
@@ -873,7 +873,7 @@ def _shared_reasons(fields: Any, pml: Any, grid: Any, residency: Any) -> List[st
         reasons.append(f"special_kz beta={getattr(grid, 'beta', 0.0)!r} is nonzero "
                        f"(that is grid.beta, not a Bloch phase)")
 
-    # 7 (KEPT UN-INVERTED). NO BLOCH PHASE. Dcyl Bloch is z-only in MEEP
+    # 7 (KEPT UN-INVERTED). No Bloch phase. Dcyl Bloch is z-only in MEEP
     #    (grid.py:654-658 refuses a k on r or phi), none of the sixteen demand rows
     #    carries one, and the kernel compiles no rotation at all. Admitting a z
     #    phase later is a predicate widening plus a gate row — not a silent
@@ -912,8 +912,8 @@ def _cylindrical_geometry_reasons(fields: Any, pml: Any, grid: Any) -> List[str]
 
     # 14 (READABILITY). `grid.m` must be an INTEGER: the compile-time arm
     #    (`m_class`) and the near-axis uniform (`zero_rows`) are functions of it, and
-    #    an unreadable m would bind the wrong body as a smooth wrong field. NO VALUE
-    #    OF m IS REFUSED HERE since 2026-09-04: m = 0 is the `M_ZERO` arm (module
+    #    an unreadable m would bind the wrong body as a smooth wrong field. No value
+    #    of m is refused here since 2026-09-04: m = 0 is the `M_ZERO` arm (module
     #    docstring, addition 5). Until then this clause refused m = 0 by name as "the
     #    cylindrical REAL product's kernel", which was wrong about the partition —
     #    the real product refuses complex64 storage (its clause 2), so a complex64
@@ -929,7 +929,7 @@ def _cylindrical_geometry_reasons(fields: Any, pml: Any, grid: Any) -> List[str]
         except Exception:  # noqa: BLE001 - an unreadable m is not coverage
             reasons.append(f"grid.m = {m!r} is not an integer")
 
-    # 4 (WIDENED PER AXIS, never globally). 'axis' on r only; phi PERIODIC; z either.
+    # 4 (widened per axis, never globally). 'axis' on r only; phi PERIODIC; z either.
     kinds = _boundary_kinds(
         grid, pml if (pml is not None and getattr(pml, "is_active", False)) else None)
     if kinds is None:
@@ -946,8 +946,8 @@ def _cylindrical_geometry_reasons(fields: Any, pml: Any, grid: Any) -> List[str]
 
     # 5 (REFUSED TWICE, and the second half is the load-bearing one). The grid FLAG
     #    is not the inversion: `_boundary_kinds` puts is_axis AHEAD of is_mirrored
-    #    (stepping.py:2191-2195), so a folded r axis reports CYL_AXIS and THE FOLD
-    #    VANISHES SILENTLY; and `_mirror_phases` (:2346-2363) puts (-1)**grid.m into
+    #    (stepping.py:2191-2195), so a folded r axis reports CYL_AXIS and the fold
+    #    vanishes silently; and `_mirror_phases` (:2346-2363) puts (-1)**grid.m into
     #    the SAME SLOT the mirror phase occupies.
     if _call(grid, "has_symmetry", default=False):
         reasons.append("a mirror plane is active (symmetry folding is not carried; "
@@ -1045,13 +1045,13 @@ def cylindrical_complex_constitutive_coverage(fields: Any, pml: Any, side: str,
                                               residency: Any = None) -> Coverage:
     """May the CERTIFIED ``complex_fields.bloch_constitutive_step`` run here?
 
-    NO NEW KERNEL AND NO NEW ARITHMETIC: only the ADMISSION is this family's.
+    No new kernel and no new arithmetic: only the ADMISSION is this family's.
     ``complex_fields.complex_constitutive_coverage`` correctly refuses a cylindrical
     grid, because that product's CURL cannot step one; this verdict proves the Dcyl
     geometry and the coefficient lengths explicitly instead of weakening that family
     globally.
 
-    THE GEOMETRY REACHES THIS SUB-STEP THROUGH NOTHING AT ALL, and that is the
+    The geometry reaches this sub-step through nothing at all, and that is the
     measured finding this family rests half its slots on: ``stepping.update_H``
     (:907-924) and the diagonal ``update_E`` (:983-991) are three
     ``_apply_constitutive_pml`` calls over per-axis coefficient tables indexed on the
@@ -1108,7 +1108,7 @@ def cylindrical_complex_constitutive_coverage(fields: Any, pml: Any, side: str,
 class CylindricalComplexCurlPlan(KernelPlan):
     """A launchable COMPLEX cylindrical curl sub-step: array-path radial sum, ONE kernel.
 
-    THE ONE DIVERGENCE FROM :class:`.plans.KernelPlan`, STATED WHERE IT HAPPENS.
+    The one divergence from :class:`.plans.KernelPlan`, stated where it happens.
     :meth:`run` calls ``super().run``, so the dict lookup, the variant refusal and the
     launch counter are the base's, unchanged. What it ADDS is a pre-pass: the radial
     difference is the array path's per-chunk sequential sum, computed on the host by
@@ -1225,7 +1225,7 @@ def _build_curl_plan(sub_step: str, shape, dtdx: float, courant: float, m: int,
                    for name in spec["targets"]]
     sources = [mirror(residency, name, arrays[name]) for name in spec["sources"]]
 
-    # THE RADIAL BUFFER IS THE PLAN'S OWN and is allocated once: `Residency.mirror`
+    # The radial buffer is the plan's own and is allocated once: `Residency.mirror`
     # refuses re-registering a name against a DIFFERENT host array, and the array
     # path's sum returns a pooled or fresh array every call, so its result is COPIED
     # into this buffer.
@@ -1364,7 +1364,7 @@ def plan_cylindrical_complex_constitutive(
 # WIRING — four arms over four slots
 # ---------------------------------------------------------------------------
 #
-# WHAT SEPARATES THEM, per slot, and every one is a clause that NAMES the other
+# What separates them, per slot, and every one is a clause that NAMES the other
 # family rather than an omission:
 #
 #   step_B / step_D    every carried family refuses cylindrical through clause 6 —
@@ -1383,7 +1383,7 @@ def plan_cylindrical_complex_constitutive(
 #                      off-diagonal row under REAL storage, which this family
 #                      refuses on the E side and cannot supply on either.
 #
-# THE ARMS ARE GATED on cylindrical + complex storage, for `folded_complex`'s
+# The arms are gated on cylindrical + complex storage, for `folded_complex`'s
 # reason: on a Cartesian run five other families speak on these four slots, so a
 # silent cylindrical arm costs a reader nothing, while a consulted-and-refusing one
 # would add nine reasons to every Cartesian refusal message.
@@ -1436,7 +1436,7 @@ def register_arms() -> Tuple[Any, ...]:
     CERTIFIED ``complex_fields`` body under a restated predicate, which is where 32
     of this family's 64 slots come from at no arithmetic cost.
 
-    REGISTERED-BUT-CANNOT-WIN IS NOT USED, and the absence is stated rather than
+    Registered-but-cannot-win is not used, and the absence is stated rather than
     left to a reader. ``registry.py`` keeps ``registered`` and ``wins`` separate so a
     missing capability gets NAMED at composition time instead of falling silently to
     the array path, and this family would have used it if a slot's product were
@@ -1445,7 +1445,7 @@ def register_arms() -> Tuple[Any, ...]:
     ``update_E``, a cylindrical ADE — are refused by name inside predicates that
     would otherwise admit, which is the same naming through a cheaper mechanism.
 
-    ``update_P`` IS NOT TOUCHED. This family carries no pole recurrence, so
+    ``update_P`` is not touched. This family carries no pole recurrence, so
     ``metal_composition_matrix.UNREGISTERED_SLOTS`` and
     ``test_no_arm_is_registered_on_a_slot_no_product_carries`` stand unchanged and
     are NOT retired here.

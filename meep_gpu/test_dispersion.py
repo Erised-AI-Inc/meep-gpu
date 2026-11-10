@@ -241,8 +241,8 @@ def test_a_drude_terms_residual_against_chi1_discrete_is_a_constant(frequency):
 
     A Drude recurrence has roots exactly z = 1 and z = (1-g2)/(1+g2). The first is
     the free-electron DC mode: an abruptly started drive excites it and it never
-    decays, so ``P/W`` never converges and the ratio form of the previous test FAILS
-    ON CORRECT CODE. What is true is that ``P^n - chi_tilde*W^n`` is a CONSTANT, and
+    decays, so ``P/W`` never converges and the ratio form of the previous test fails
+    on correct code. What is true is that ``P^n - chi_tilde*W^n`` is a CONSTANT, and
     asserting that pins both the transfer function and the pole structure at once —
     it also fails if ``c_now`` carries the Lorentz restoring term instead of zero.
     """

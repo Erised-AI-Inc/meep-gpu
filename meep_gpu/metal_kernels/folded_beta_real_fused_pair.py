@@ -1,7 +1,7 @@
 """The FOLDED BETA REAL fused D/E pair: a folded ``special_kz`` ``step_D`` welded into
 ``update_E``.
 
-:mod:`.folded_fused_pair` WITH ONE EMITTER SWAPPED, and the swap is the whole module —
+:mod:`.folded_fused_pair` with one emitter swapped, and the swap is the whole module —
 the real-storage sibling of :mod:`.folded_beta_complex_fused_pair` and the D-side twin
 of :mod:`.folded_beta_real_fused_magnetic_pair`. The folded real curl body is replaced
 by the certified FOLDED BETA real curl body
@@ -16,7 +16,7 @@ This is the cell ``(folded beta real, folded beta real)`` at ``D_to_E``.
 product" as the owner) and :mod:`.beta_fused_electric_pair` refuses a fold by name, so
 this is the product they name.
 
-WHY THE SWAP IS SOUND, measured rather than argued. The folded beta curl and the folded
+Why the swap is sound, measured rather than argued. The folded beta curl and the folded
 curl differ by TWO STATEMENTS and two scalars::
 
     curl0 = curl0 - (beta_plus  * b);
@@ -26,7 +26,7 @@ inserted AFTER the ``dtdx`` curl and BEFORE BOTH ownership masks — the array p
 order (stepping.py:467-474 against :479). Everything below the cut is untouched, which
 is why every carry emitter is called rather than copied.
 
-THE SIGNATURE IS :data:`.folded_fused_pair.PACKED_BINDINGS` UNMOVED — 30 pointers plus
+The signature is :data:`.folded_fused_pair.PACKED_BINDINGS` unmoved — 30 pointers plus
 one packed ``constant Params&``, 31, the platform ceiling exactly. The beta term adds
 NO POINTER: its two coefficients are floats and ride inside the same record the five
 scalars and three reflect rows already ride in, so the struct grows from eight fields
@@ -36,7 +36,7 @@ to ten and the binding count does not move.
 by :func:`.special_kz.beta_curl_coefficients` with ``magnetic=False``. That flag is not
 a default: the two seams take OPPOSITE signs.
 
-NOT WIRED AS AN ARM: ``plan_step`` assigns at most one arm per slot and this product
+Not wired as an arm: ``plan_step`` assigns at most one arm per slot and this product
 spans five. It reaches its two slots through ``launch.FUSED_PAIR_ARMS``.
 """
 
@@ -67,7 +67,7 @@ from .. import deposit_repair as _deposit_repair
 #: Does this product bracket its fused launch with the deposit repair? While False the
 #: source-presence clause below refuses every in-seam deposit.
 #:
-#: TRUE FROM THIS FAMILY'S FIRST COMMIT, in the same edit as its
+#: True from this family's first commit, in the same edit as its
 #: ``launch.FUSED_PAIR_ARMS`` row, and it is what makes the cell worth anything: the one
 #: corpus row here carries an electric source inside the seam. The machinery is
 #: ``deposit_repair.repair_cells``' image closure over a FOLDED seam
@@ -172,7 +172,7 @@ def metal_folded_beta_real_fused_pair_coverage(
         reasons.extend(f"folded beta real constitutive half: {reason}"
                        for reason in electric.reasons)
 
-    # THE SOURCE SEAM. An ELECTRIC source is injected BETWEEN the two halves
+    # The source seam. An ELECTRIC source is injected BETWEEN the two halves
     # (driver.py:3294-3299), so a fused pair would consume a pre-injection D unless the
     # deposit repair brackets the launch -- which for this family it does.
     reasons.extend(_deposit_repair.seam_source_reasons(
@@ -267,7 +267,7 @@ class MetalFoldedBetaRealFusedPairPlan(KernelPlan):
 
 
 def beta_words(grid: Any) -> Tuple[float, float]:
-    """``(beta_plus, beta_minus)`` — the CURL ARM'S OWN coefficients, called.
+    """``(beta_plus, beta_minus)`` — the curl arm's own coefficients, called.
 
     ``magnetic=False`` because :data:`CURL_SUB_STEP` is ``step_D`` -- NOT a default,
     because the two seams take opposite signs; ``complex_storage=False`` because this

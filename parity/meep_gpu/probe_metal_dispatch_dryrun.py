@@ -1,37 +1,37 @@
 #!/usr/bin/env python3
-"""THE DRY RUN: every Metal route-gate case driven through the real driver seam,
+"""The dry run: every Metal route-gate case driven through the real driver seam,
 BEFORE the release rows that cite it are typed.
 
-WHY IT EXISTS, AND IT IS AN ORDERING FACT RATHER THAN A CONVENIENCE. The Metal
+Why it exists, and it is an ordering fact rather than a convenience. The Metal
 release rows (``meep_gpu.metal_dispatch.METAL_RELEASED_FUSED_ARMS`` and
 ``METAL_FUSED_RELEASE_ARM_AXES``) are the only TYPED statements in the whole
 release, and they have to be written BEFORE the campaign that proves them: the
 campaign's own gate reads them back and refuses to release a leg that did not
-drive every ``(arm, case)`` pair they name. Every source edit of a round must land
-before the round's campaign starts, so a row discovered wrong afterwards is not
+drive every ``(arm, case)`` pair they name. Every source edit of a certification round must
+land before its campaign starts, so a row discovered wrong afterwards is not
 repointed — it is a second full Metal fleet recut (~73 minutes, 62 ledger rebinds)
 and a second campaign. This probe is what makes that discovery cost ten minutes
 instead.
 
-WHAT IT MEASURES, and it is deliberately the same measurement the gate makes minus
+What it measures, and it is deliberately the same measurement the gate makes minus
 the release machinery: for each case, one driver lifted by
 ``meep_gpu.lift_simulation(sim, prefer_gpu=False)`` runs with the SHIPPED Metal
 composer's plans installed at ``driver._fast_path``, and a second driver lifted
 from an identical declaration runs the array path; every stored array on ``Fields``
 and the PML is byte-compared as uint32 at every rung of a checkpoint ladder.
 
-WHY A SHIM AND NOT ``plan_fast_path``. The rung-3 branch that routes a NumPy engine
-with an MPS device into ``meep_gpu.metal_dispatch`` is a separate edit batch on
+Why a shim and not ``plan_fast_path``. The rung-3 branch that routes a NumPy engine
+with an MPS device into ``meep_gpu.metal_dispatch`` is a separate change to
 ``fastpath.py``; until it lands, ``plan_fast_path`` refuses this host at the backend
 rung and there is nothing to measure. The shim is the same pattern
 ``probe_metal_complex_driver_step.MetalShim`` and ``gate_metal_fused_hd_pair.Shim``
 already use, and it answers the driver's OWN consults — ``driver.step`` reads
 ``self._fast_path`` once per step and calls ``fast.dispatch(slot, fields)`` at seven
-sites. The shipped planner is untouched. AFTER the fastpath batch lands this probe
+sites. The shipped planner is untouched. AFTER that fastpath change lands this probe
 keeps its value: it is the cheap re-runnable check before every future envelope
 widening, where the rows are typed first again.
 
-THE TWO FACTS THAT MAKE IT NON-VACUOUS, because a shim that quietly declined
+The two facts that make it non-vacuous, because a shim that quietly declined
 everything would produce a perfectly green byte comparison — the oracle IS the
 array path:
 
@@ -72,7 +72,7 @@ import time
 import traceback
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-# RESOLVED BY NAME, NEVER BY DEPTH. A ``parents[N]`` walk is correct only while
+# Resolved by name, never by depth. A ``parents[N]`` walk is correct only while
 # this file stays at the depth it was written at, and a moved harness resolving a
 # wrong root is a trap this campaign has already paid for once.
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -108,7 +108,7 @@ def say(message: str) -> None:
 #: the two dispatch gates' own, imported rather than re-declared: a route-gate case
 #: is a NAME the release binds, and this probe's whole job is to measure the case
 #: the gate will drive — not a lookalike of it.
-#: THE METAL ROUTE GATE'S OWN CASE TABLE, not the shared one: the two off-diagonal
+#: The Metal route gate's own case table, not the shared one: the two off-diagonal
 #: cases live in ``gate_dispatch_metal_route`` because that module is bound by the
 #: Metal driver record alone (the shared module's bytes are bound by the CUDA
 #: driver record too). The gate imports this probe LAZILY, inside a function, so
@@ -143,8 +143,8 @@ CASE_INTENT: Dict[str, str] = {
     "special_kz_2d": "the beta electric pair on real storage carrying a nonzero beta",
     "bloch_2d": "the complex pairs on a Bloch-periodic grid",
     "folded_complex_2d": "the folded complex pairs",
-    "pml_3d": "THE ENVELOPE CONTROL (a sphere): off-diagonal chi1inv rows",
-    "no_pml_2d": "THE NO-FUSED-ARM CONTROL: no absorber, so no pair is selected",
+    "pml_3d": "the envelope control (a sphere): off-diagonal chi1inv rows",
+    "no_pml_2d": "The no-fused-arm control: no absorber, so no pair is selected",
     "offdiag_2d": "the ordinary magnetic pair on a 2-D off-diagonal grid; the D "
                   "seam keeps the offdiag singles",
     "folded_offdiag_2d": "the folded magnetic pair on a folded off-diagonal grid, "
@@ -166,30 +166,30 @@ CASE_INTENT: Dict[str, str] = {
 class DryRunShim:
     """A ``FastPathPlan``-shaped object that answers the driver's seven consults.
 
-    THE CONTRACT IS ``fastpath.FastPathPlan.dispatch``'S, reproduced here rather
+    The contract is ``fastpath.FastPathPlan.dispatch``'S, reproduced here rather
     than imported because importing it would need the plan dataclass and the whole
     ladder that builds it. The three clauses that matter for correctness are the
     ones copied verbatim in behaviour:
 
-    * THE IDENTITY GUARD — a consult whose ``fields`` is not the object the plans
+    * The identity guard — a consult whose ``fields`` is not the object the plans
       were built from is DECLINED, because the plans hold device mirrors bound to
       those arrays by identity;
-    * ``update_P`` TAKES NO DRIVE FIELD ON THIS TRACK. The Triton slot holds a LIST
+    * ``update_P`` takes no drive field on this track. The Triton slot holds a LIST
       of per-susceptibility plans each taking ``fields.drive_field``; the Metal
       composer fills it with ONE ``MetalAdeUpdatePPlan`` whose ``run()`` takes a
       contract. Handing it a drive field is a ``KeyError`` on the dispatch path,
       which is where exceptions PROPAGATE — measured, and it is the load-bearing
-      half of the fastpath batch's ``dispatch`` edit;
-    * THE SPLIT FILL — a fill plan that declares ``run_near`` launches its near pass
+      half of that fastpath change's ``dispatch`` edit;
+    * the split fill — a fill plan that declares ``run_near`` launches its near pass
       at the near consult and its far pass at the driver's own far site, and one
       that does not (``MirrorGhostFillPlan``) fuses both into the near launch and
       answers the far consult True having launched nothing.
 
-    ``run_near``/``run_far`` ARE REACHED THROUGH ``hasattr``, which is why
+    ``run_near``/``run_far`` are reached through ``hasattr``, which is why
     ``launch.SyncedPlan`` answers them through ``__getattr__``: a wrapper defining
     them as real methods would make ``hasattr`` True for a fill plan that has none.
 
-    THE ABSENT COMPONENTS' CLEAR IS THE FOURTH CLAUSE, and the plan's own: where a
+    The absent components' clear is the fourth clause, and the plan's own: where a
     kernel serves ``update_E``, ``FastPathPlan`` builds
     ``fastpath._absent_component_clears`` once, applies it before the first step, and
     applies it again after every ``update_E`` consult, whatever plan sits in the slot
@@ -294,7 +294,7 @@ def compose_metal_step(driver: Any, sources: Any, fuse: bool = True,
                        ) -> Tuple[Any, Any, Dict[str, Any]]:
     """Plan the step TWICE and install the residency bracket. The ladder's rung 5M.
 
-    THE SECOND PASS IS NOT REDUNDANT and the derivation of the synced set is the
+    The second pass is not redundant and the derivation of the synced set is the
     load-bearing half. ``gate_metal_whole_step.covered_passes`` states the rule: a
     FILL plan occupies ONE slot and may replace TWO passes, because the driver runs
     the near symmetry fill and the folded far-ghost fill either side of the wall
@@ -307,14 +307,14 @@ def compose_metal_step(driver: Any, sources: Any, fuse: bool = True,
     whole Metal backend clause and cannot read an intention that has not been
     installed yet.
 
-    ``fuse_labels`` IS THE RELEASE'S OWN SHAPE and ``None`` is not it. The ladder
+    ``fuse_labels`` is the release's own shape and ``None`` is not it. The ladder
     hands the composer the ADMITTED label set, so a product the release does not
     cover is never installed and its seam keeps the separate certified arms. With
     ``None`` — every product offered — this probe measures a composition WIDER than
     the one the campaign will drive, which is the right default for a dry run (it
     answers "is this product correct at the seam at all") and the wrong one for
     modelling a release row. ``--fuse-labels`` is how the second question is asked,
-    and MEASURED 2026-09-10 it is a different composition on two cases: with every
+    and measured 2026-09-10 it is a different composition on two cases: with every
     product offered, ``bloch_2d`` fuses both complex pairs and ``folded_complex_2d``
     both folded complex pairs, while the release admits only the magnetic one of
     each.
@@ -323,7 +323,7 @@ def compose_metal_step(driver: Any, sources: Any, fuse: bool = True,
     from meep_gpu.metal_kernels.subnormal import declaring_dispatch_policy  # noqa: PLC0415
 
     fields, pml = driver.fields, driver.pml
-    # THE DRIVER'S OWN CHUNK DIVISION, as the ladder's rung 4bM hands it to the composer
+    # The driver's own chunk division, as the ladder's rung 4bM hands it to the composer
     # (``metal_dispatch``: ``launch.chunk_division(fields, pml, chunk_layout)``). Left
     # out, ``plan_step`` binds the one-rank division of the grid, which is not the
     # division a lifted run steps with wherever MEEP divided it otherwise (a folded
@@ -410,7 +410,7 @@ def run_case(case: str, res: Optional[int], max_steps: Optional[int],
         "case": case, "intent": CASE_INTENT.get(case, "?"),
         "utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
     }
-    # THE ENABLE IS IRRELEVANT HERE and the environment is pinned to say so: the
+    # The enable is irrelevant here and the environment is pinned to say so: the
     # shim is seated directly, so no ladder rung is consulted on either leg and a
     # stale switch from a sibling process cannot change what this measures.
     for name in ("MEEP_GPU_DISPATCH", "MEEP_GPU_FUSED", "MEEP_GPU_FUSE_ARMS"):
@@ -499,7 +499,7 @@ def run_case(case: str, res: Optional[int], max_steps: Optional[int],
                             "out": shim.residency.syncs_out},
         "mirrors": len(shim.residency.names),
     }
-    # THE RESIDENCY VERDICT, read after the last sync_out. It is not consulted for
+    # The residency verdict, read after the last sync_out. It is not consulted for
     # correctness in per-launch-sync mode -- the bracket is what makes the host
     # authoritative -- so it is a VACUITY floor rather than a claim: a non-empty
     # registry whose mirrors all agree with their hosts.
@@ -539,6 +539,7 @@ def run_case(case: str, res: Optional[int], max_steps: Optional[int],
 # ---------------------------------------------------------------------------
 
 def _provenance(policy: Dict[str, Any]) -> Dict[str, Any]:
+    import neutral_ids  # noqa: PLC0415
     import hashlib  # noqa: PLC0415
     import platform  # noqa: PLC0415
 
@@ -556,7 +557,7 @@ def _provenance(policy: Dict[str, Any]) -> Dict[str, Any]:
     record: Dict[str, Any] = {
         "probe": "metal_dispatch_dryrun",
         "utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "host": platform.node(), "machine": platform.machine(),
+        "host": neutral_ids.machine_id(), "machine": platform.machine(),
         "python": sys.version.split()[0],
         "source_sha256": digests,
         "this_script_sha256": hashlib.sha256(
@@ -615,7 +616,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         print(f"unknown cases: {unknown}; known: {sorted(CASES)}", file=sys.stderr)
         return 2
 
-    # THE POLICY FIRST, AND MEEP BEFORE IT. ``install_host_policy`` drives the host
+    # The policy first, and MEEP before it. ``install_host_policy`` drives the host
     # FPU through MEEP's own ``set_zero_subnormals`` before falling back to the fenv
     # lever, and a request it cannot verify is reported UNATTAINABLE -- so a run
     # that imports MEEP afterwards would be measuring a policy it never established.

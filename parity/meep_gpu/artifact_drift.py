@@ -1,16 +1,18 @@
 """Does a gate artifact's import record still describe the tree being released?
 
-WHY THIS EXISTS. A chunked certification round (``rounds/1.0/chunks.py``) runs each chunk of
-gates on the first pushed tip that holds that chunk's final bytes, while other series entries
-are still landing. Under per-kernel certification (R17) that is sound exactly where an
+Why this exists. A chunked certification round (``rounds/1.0/chunks.py``) runs each chunk of
+gates on the first pushed tip that holds that chunk's final bytes, while later commits of the
+release are still landing. Certification is per kernel (a gate's import record is its own
+dependency set; docs/development/certification.md, "What a gate's import record holds"), so
+running a chunk that early is sound exactly where an
 artifact's import record (``gate_provenance.IMPORTED_KEY``: every repository module the gate's
 process held) is byte-equal in the release tree. An artifact cut early whose record names a
-file a later entry moved describes other bytes, and it must be refused by name rather than
+file a later commit moved describes other bytes, and it must be refused by name rather than
 bound: the rebind tools would otherwise take the curated digests from the record and leave the
 weld pointing at a run of a tree that does not ship.
 
 THE RULE, one home for every tool that applies it (the three rebind tools in their campaign
-mode, and ``chunks.py verify`` over every artifact of a round):
+mode, and ``chunks.py verify`` over every artifact of a certification round):
 
 * the record is ``imported_source_sha256``; a probe that wrote only its curated
   ``source_sha256`` is read through that map instead (the fallback

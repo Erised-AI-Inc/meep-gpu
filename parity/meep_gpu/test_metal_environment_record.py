@@ -140,7 +140,7 @@ def test_a_rebind_files_the_run_under_the_campaigns_architecture(results, monkey
     assert run["host"] == metal_environment.host_line(ENVIRONMENT)
     assert run["environment_read_from"] == f"metal_environment_{STAMP}/start.json"
     assert (run["torch"], run["metal_frontend"]) == ("2.10.0", "32023.850.10")
-    # THE CURATED POLICY LINE IS CARRIED from this architecture's previous run.
+    # The curated policy line is carried from this architecture's previous run.
     assert run["subnormal_policy"] == POLICY
     assert "this architecture's previous run" in run["_subnormal_policy_read_from"]
     for field in metal_runs.RUN_FIELDS:
@@ -148,7 +148,7 @@ def test_a_rebind_files_the_run_under_the_campaigns_architecture(results, monkey
 
 
 def test_a_second_architecture_on_the_same_bytes_joins_the_first(results, monkeypatch):
-    """A second Mac's round ADDS its run; the first Mac's is byte-identical afterwards."""
+    """A second Mac's certification ADDS its run; the first Mac's is byte-identical afterwards."""
     _record(results, ENVIRONMENT, ENVIRONMENT)
     path = _ledger(results, monkeypatch, OTHER)
     before = _entry(path)["runs"]["applegpu_g15p"]
@@ -158,7 +158,7 @@ def test_a_second_architecture_on_the_same_bytes_joins_the_first(results, monkey
     assert entry["runs"]["applegpu_g15p"] == before
     report = metal_runs.admission_report({ENTRY: entry}, [ENTRY])
     assert report["admitted"] == ("applegpu_g13s", "applegpu_g15p"), report
-    # A FIRST RUN for this architecture: the artifact states no policy, so the line
+    # A first run for this architecture: the artifact states no policy, so the line
     # every other live run carries is taken, and the run says from where.
     run = entry["runs"]["applegpu_g13s"]
     assert run["subnormal_policy"] == POLICY

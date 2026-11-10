@@ -159,14 +159,15 @@ def test_the_cases_carry_both_forms_on_every_component(certified):
 
 #: name -> (edit, case, plant, arity, must change a word)
 DEFECTS: Dict[str, Tuple[Tuple[str, str], str, bool, Tuple[int, int, int], bool]] = {
-    # THE INVERTED MUTATION: the 0.9.2 package grouping where MEEP's ships.
+    # The inverted mutation: the 0.9.2 package grouping where MEEP's ships.
     "package_grouping": (("(f[idx] + ((kps * src) - (kms * prev)))",
                           "((f[idx] + (kps * src)) - (kms * prev))"),
                          "walls3d", False, (2, 2, 2), True),
     # The select removed on Ex's own cell: the accumulation everywhere (0.9.2).
     "select_removed": (("kms_half_x[i], in_h_x);", "kms_half_x[i], 1);"),
                        "walls3d", False, (2, 2, 2), True),
-    # The auxiliary stored on a plain cell (C2's auxiliary contract).
+    # The auxiliary stored on a plain cell (the auxiliary contract,
+    # docs/design/floating-point.md#auxiliary-contract).
     "auxiliary_on_a_plain_cell": (("    if (dsigw) fw[idx] = src;\n",
                                    "    fw[idx] = src;\n"),
                                   "walls3d", False, (2, 2, 2), True),

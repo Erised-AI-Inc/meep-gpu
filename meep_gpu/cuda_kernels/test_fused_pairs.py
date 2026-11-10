@@ -1,9 +1,9 @@
 """The hand-CUDA fusion block, and the in-seam deposit it carries.
 
-WHAT THIS FILE SETTLES. Until 2026-08-28 ``covers_fused_magnetic_pair`` had NO laptop
+What this file settles. Until 2026-08-28 ``covers_fused_magnetic_pair`` had NO laptop
 test at all -- its module imported CuPy at scope, so the census recorded it as
 ``askable: false`` and the merge bar never reached it. The predicate is the part whose
-failure mode is a SILENT WRONG ANSWER, so the questions here are the ones that decide
+failure mode is a silent wrong answer, so the questions here are the ones that decide
 whether the deposit carry is real:
 
 1. **Does the predicate ADMIT what it used to refuse?** A magnetic deposit in the
@@ -18,7 +18,7 @@ whether the deposit carry is real:
 4. **Does the block fail closed?** It may not claim a slot the arm table refused or
    gave to another arm; it may not run unless asked; it may not raise.
 
-NOTHING HERE COMPILES OR LAUNCHES ANYTHING. The fused product's own arithmetic is a
+Nothing here compiles or launches anything. The fused product's own arithmetic is a
 DEVICE claim and no test on this host may speak to it: what is measured here is the
 protocol around the launch, which is exactly the half the repair lives in.
 """
@@ -95,15 +95,15 @@ def magnetic_source(grid, component="Hz"):
 class _ArrayPair:
     """Stands in for the fused kernel: curl + wall clear + constitutive in one object.
 
-    THE THING UNDER TEST IS THE PROTOCOL, NOT THE KERNEL. The shipped product is one
+    The thing under test is the protocol, not the kernel. The shipped product is one
     launch of ``fused_magnetic_pair_pml_real`` and this is three array calls, but to
     the two-consult protocol they are the same THING: an object whose ``run()`` closes
     the seam against whatever the field holds when it is called, against an
     UNINJECTED field. CuPy is not installed on the merge-bar host, and a test that
     needed it would not run here at all -- it would be a skip, which is not evidence.
 
-    The calls are the product's own ``REPLACES``, in its own order, READ FROM THE
-    MODULE rather than transcribed -- which is why this stand-in gained the two
+    The calls are the product's own ``REPLACES``, in its own order, read from the
+    module rather than transcribed -- which is why this stand-in gained the two
     mirror fills on 2026-08-28 without a line changing here. The table is looked up
     on ``stepping`` by the pass's own name for the same reason: a pass added to
     ``REPLACES`` with no ``stepping`` function is a KeyError here rather than a
@@ -130,7 +130,7 @@ class _ArrayPair:
 
 
 # --------------------------------------------------------------------------
-# 1. THE PREDICATE ADMITS WHAT IT USED TO REFUSE
+# 1. The predicate admits what it used to refuse
 # --------------------------------------------------------------------------
 
 def test_the_product_declares_the_repair_and_the_block_that_brackets_it_exists():
@@ -149,7 +149,7 @@ def test_the_product_declares_the_repair_and_the_block_that_brackets_it_exists()
 
 
 def test_a_magnetic_deposit_is_admitted_now_and_was_refused_before(xp, monkeypatch):
-    """THE MOVEMENT, measured on one configuration asked twice.
+    """The movement, measured on one configuration asked twice.
 
     The refusing answer is produced by holding the SHIPPED flag at ``False`` -- the
     state this product was in until the block landed -- so the before column is the
@@ -181,7 +181,7 @@ def test_an_electric_source_never_disqualified_this_seam(xp):
 
 
 # --------------------------------------------------------------------------
-# 2. AND STILL REFUSES, BY NAME, WHAT THE REPAIR CANNOT RECONSTRUCT
+# 2. And still refuses, by name, what the repair cannot reconstruct
 # --------------------------------------------------------------------------
 
 def test_a_source_that_hides_the_index_it_writes_is_refused_by_name(xp):
@@ -201,7 +201,7 @@ def test_a_source_that_hides_the_index_it_writes_is_refused_by_name(xp):
 
 
 def test_an_undeclared_source_set_is_still_a_refusal(xp):
-    """IGNORANCE IS NOT AN EMPTY SET, and the flip does not touch that: a repair that
+    """Ignorance is not an empty set, and the flip does not touch that: a repair that
     was never handed a source saves nothing and restores nothing."""
     fields, layer, grid = build(xp)
     covered, reason = family.covers_fused_magnetic_pair(fields, layer, grid, None)
@@ -210,7 +210,7 @@ def test_an_undeclared_source_set_is_still_a_refusal(xp):
 
 
 def test_the_repairs_own_state_refusal_is_shadowed_here_and_that_is_not_a_hole(xp):
-    """WHERE THE REMAINING ``repairable`` CLAUSES LAND ON THIS SEAM, stated rather
+    """Where the remaining ``repairable`` clauses land on this seam, stated rather
     than implied.
 
     ``deposit_repair.repairable`` refuses three things. Two are D-side only (an
@@ -234,7 +234,7 @@ def test_the_repairs_own_state_refusal_is_shadowed_here_and_that_is_not_a_hole(x
 
 @pytest.mark.parametrize("axis,name", ((0, "X"), (1, "Y"), (2, "Z")))
 def test_a_folded_axis_is_carried_now_and_was_refused_before(xp, axis, name):
-    """THE FILLS WERE A SEPARATE QUESTION FROM THE DEPOSIT, AND THEY ARE ANSWERED.
+    """The fills were a separate question from the deposit, and they are answered.
 
     Until 2026-08-28 a folded seam was refused because it runs
     ``fill_symmetry_bc_B`` and ``fill_folded_far_ghosts_B`` after the injection and
@@ -242,7 +242,7 @@ def test_a_folded_axis_is_carried_now_and_was_refused_before(xp, axis, name):
     thread writes the destination from a live register, so no thread reads a word
     another block writes -- and ``REPLACES`` names all five passes.
 
-    BOTH DIRECTIONS ARE MEASURED. The admission is asked of the shipped predicate;
+    Both directions are measured. The admission is asked of the shipped predicate;
     the plan the launch would take is asked of the shipped builder, and it must
     actually name the fold rather than come back empty (an "admission" whose plan is
     all-zeros carries nothing and would be a silent wrong answer, not a fusion).
@@ -258,7 +258,7 @@ def test_a_folded_axis_is_carried_now_and_was_refused_before(xp, axis, name):
     assert plan["phase"][axis] in (1.0, -1.0), plan
     assert sum(plan["near"]) == 1, "only the folded axis carries the near fill"
 
-    # ... AND THE REFUSAL THE CARRY DOES NOT LIFT. A folded axis too short to hold
+    # ... And the refusal the carry does not lift. A folded axis too short to hold
     # the near fill's source row is still refused BY NAME: the carry images stored
     # row 2 and ``stepping._mirror_source`` raises where it does not exist.
     class _TooShort:
@@ -275,7 +275,7 @@ def test_a_folded_axis_is_carried_now_and_was_refused_before(xp, axis, name):
 
 
 # --------------------------------------------------------------------------
-# 3. THE TWO-CONSULT PROTOCOL AGAINST THE DRIVER'S OWN ORDER
+# 3. The two-consult protocol against the driver's own order
 # --------------------------------------------------------------------------
 
 #: The two grids the numeric leg runs on: the 2-D shape the sibling deposit tests use
@@ -286,7 +286,7 @@ GRIDS = ((1.2, 1.2, 0.0), (1.0, 1.0, 1.0))
 
 @pytest.mark.parametrize("cell", GRIDS, ids=("2d", "3d"))
 def test_the_two_slots_consulted_as_the_driver_consults_them_match_the_array_path(cell):
-    """THE ONE THAT MATTERS, and the only numeric claim this file makes.
+    """The one that matters, and the only numeric claim this file makes.
 
     Two independently seeded copies of the same state. One is stepped in the DRIVER'S
     order -- curl, inject, fill, clear, far fill, constitutive. The other is stepped
@@ -295,7 +295,7 @@ def test_the_two_slots_consulted_as_the_driver_consults_them_match_the_array_pat
     then the repair at the second. Every float32 word of all 24 arrays is compared as
     a uint32, so "close" is not a passing answer.
 
-    MEASURED 2026-08-28 on this host: 0 differing words of 4704 (2-D, 14x14x1) and 0
+    Measured 2026-08-28 on this host: 0 differing words of 4704 (2-D, 14x14x1) and 0
     of 41472 (3-D, 12x12x12) over 8 steps, with 12 deposit points repaired in each.
     The null control below diverges on 8 words in both -- 4 in ``Hz`` and 4 in
     ``f_w_Hz`` -- which is what makes the zeros above evidence rather than a tautology.
@@ -383,7 +383,7 @@ def test_the_second_slot_refuses_when_the_first_never_ran():
 
 
 # --------------------------------------------------------------------------
-# 4. THE BLOCK, AND THE WAYS IT MUST FAIL CLOSED
+# 4. The block, and the ways it must fail closed
 # --------------------------------------------------------------------------
 
 def test_fusion_is_opt_in_and_the_default_composition_is_unchanged(xp):
@@ -416,7 +416,7 @@ def test_a_seam_carrying_a_deposit_fuses_into_the_two_repair_plans(xp):
     assert isinstance(plan.plans["update_H"], deposit_repair.TrailingRepairPlan)
     assert fused_pairs.declaring_plan(plan.plans["update_H"]) is \
         plan.plans["step_B"].inner
-    # AND THE LAUNCHABILITY IS READ THROUGH THE WRAPPERS. Neither repair plan
+    # And the launchability is read through the wrappers. Neither repair plan
     # declares `launchable`; read bare, a seam would stop reporting as launchable the
     # moment it started carrying a deposit, which is a claim about the kernel made by
     # a fact about the source list.
@@ -442,7 +442,7 @@ def test_a_pair_may_not_claim_a_slot_the_arm_table_gave_to_another_arm(xp):
     declined to give anyone. Driven here by handing the block a selection in which
     ``update_H`` went to a different arm.
 
-    THE EXEMPLAR ARM IS ``BFAST``, NOT ``nonlinear``: until 2026-09-01 this test
+    The exemplar arm is ``BFAST``, not ``nonlinear``: until 2026-09-01 this test
     handed ``update_H`` to ``nonlinear``, and that pair became a DECLARED
     absorption (``FUSED_PAIR_EXTRA_ARMS``) because the nonlinear family's H arm
     IS the ordinary certified kernel this pair splices. The property pinned here
@@ -547,11 +547,11 @@ def test_two_products_claiming_one_seam_leave_it_unfused_naming_both(xp, monkeyp
 
 
 # --------------------------------------------------------------------------
-# 5. THE TABLE ITSELF
+# 5. The table itself
 # --------------------------------------------------------------------------
 
 def test_the_absorb_declaration_matches_the_arms_the_predicate_conjoins():
-    """``FUSED_PAIR_ARMS`` is READ FROM THE PREDICATE, not assigned to it.
+    """``FUSED_PAIR_ARMS`` is read from the predicate, not assigned to it.
 
     ``covers_fused_magnetic_pair`` opens with the ``PML`` curl arm's own predicate and
     the ``ordinary`` constitutive arm's own predicate. If it ever conjoined different
@@ -578,7 +578,7 @@ def test_the_absorb_declaration_matches_the_arms_the_predicate_conjoins():
 def test_every_declared_seam_names_a_slot_pair_the_composer_walks():
     """Every seam row names two walked slots, and its seam name is one of three kinds.
 
-    THE THREE KINDS ARE NOT SPELLINGS, they are what the DRIVER puts between the two
+    The three kinds are not spellings, they are what the DRIVER puts between the two
     consults, and each row says which:
 
     * ``'B'`` / ``'D'`` -- an INJECTION. The row names one of
@@ -612,7 +612,7 @@ def test_every_declared_seam_names_a_slot_pair_the_composer_walks():
     assert kinds["empty"] == ["update_E"], kinds
     assert kinds["withdraw"] == ["update_H"], kinds
     assert fused_pairs.FUSED_PAIR_SEAMS["update_E"] == ("update_P", None)
-    # THE NAME IS THE WITHDRAW MODULE'S OWN, not a fourth copy of the string: the
+    # The name is the withdraw module's own, not a fourth copy of the string: the
     # installer routes on it and ``withdraw_hoist`` refuses a span that is not its
     # own, so two spellings would be two things to drift.
     assert fused_pairs.FUSED_PAIR_SEAMS["update_H"] == (
@@ -645,7 +645,7 @@ def test_the_h_to_d_seam_row_is_last_because_placed_first_it_would_displace_a_re
 def test_the_h_to_d_seam_is_installed_through_the_withdraw_hoist_not_the_deposit_bracket():
     """``_install_fused_pair`` routes the seam NAME, so both tracks read one protocol.
 
-    THE BRANCH IS IN THE INSTALLER AND NOT IN A FAMILY, which is the same argument
+    The branch is in the installer and not in a family, which is the same argument
     that keeps the deposit bracket out of the families: a family free to decide for
     itself which mechanism its seam carries is a family that can decide wrong, and
     the wrong answer here (the deposit bracket, on a seam with no injection) computes
@@ -662,7 +662,7 @@ def test_the_h_to_d_seam_is_installed_through_the_withdraw_hoist_not_the_deposit
     assert isinstance(plans["update_H"], withdraw_hoist.LeadingWithdrawPlan)
     assert plans["update_H"].span == ("update_H", "step_D")
     assert plans["update_H"].placement == withdraw_hoist.BEFORE_UPDATE_H
-    # NO TRAILING PLAN: nothing is injected in this seam, so the second slot is the
+    # No trailing plan: nothing is injected in this seam, so the second slot is the
     # no-op sentinel, never ``TrailingRepairPlan``.
     assert isinstance(plans["step_D"], launch_module.NoopPlan)
     assert not isinstance(plans["step_D"], deposit_repair.TrailingRepairPlan)
@@ -672,7 +672,7 @@ def test_the_h_to_d_seam_is_installed_through_the_withdraw_hoist_not_the_deposit
 def test_an_uninstallable_product_is_refused_by_name_and_claims_no_slot():
     """``INSTALLABLE = False`` is honoured by the INSTALLER, on every configuration.
 
-    IT IS A FACT ABOUT THE PRODUCT, NOT ABOUT THE RUN, so it is asked beside the
+    It is a fact about the product, not about the run, so it is asked beside the
     absorb declaration -- before the predicate -- and reported on every
     configuration. A product whose own module refuses the composition must not reach
     a slot even where its predicate admits and the arm table would let it absorb.
@@ -713,9 +713,9 @@ def test_an_uninstallable_product_is_not_a_neighbouring_seam_claimant():
     not one; the control is the same product with the flag at ``True``, which MUST be
     named -- otherwise this test would pass with the filter deleted.
 
-    WHAT CHANGED: ``_neighbouring_seam_claimant`` never asks that question of the B->H
+    What changed: ``_neighbouring_seam_claimant`` never asks that question of the B->H
     pair at all, in EITHER flag state, because ``step_B`` sits in one row of
-    ``FUSED_PAIR_SEAMS`` and the span is an end edge. Until this round the flipped
+    ``FUSED_PAIR_SEAMS`` and the span is an end edge. Until 2026-09-05 the flipped
     flag made this function return the H->D stub as the B->H pair's claimant -- the
     displacement of a released product the key order is pinned to prevent, reached
     from the other direction and asserted here as the OLD behaviour.
@@ -748,8 +748,8 @@ def test_an_uninstallable_product_is_not_a_neighbouring_seam_claimant():
 
 
 def test_slot_degrees_are_read_off_the_table_and_the_end_edges_are_b_to_h_and_e_to_p():
-    """THE GUARD IS DERIVED, NOT SPELLED, and on this four-row table the derivation
-    reproduces the released 2026-09-02 ruling: ``D_to_E`` is INTERIOR here (``update_E``
+    """The guard is derived, not spelled, and on this four-row table the derivation
+    reproduces the released 2026-09-02 decision: ``D_to_E`` is INTERIOR here (``update_E``
     sits in two rows) and yields to ``E_to_P``, where on the three-row Metal and Triton
     tables it is an end edge. This is what fails the day a fifth row is priced without
     thinking about position."""
@@ -775,7 +775,7 @@ def _composition(plan, slots=("step_B", "update_H", "step_D", "update_E", "updat
 
 
 def test_a_registered_admitting_uninstallable_h_to_d_stand_in_does_not_cost_the_b_to_h_pair_its_seam():
-    """ARRANGEMENT F OF THE TIE MEASUREMENT, ON THIS COMPOSER, FROM BOTH SIDES.
+    """Arrangement F of the tie measurement, on this composer, from both sides.
 
     A stand-in H->D product whose predicate ADMITS and which cannot install (no absorb
     row) leaves every slot's owner exactly as shipped -- the B->H pair keeps
@@ -836,18 +836,18 @@ def test_a_registered_admitting_uninstallable_h_to_d_stand_in_does_not_cost_the_
 
 
 def test_the_neighbouring_seam_rule_asks_the_later_seam_only():
-    """THE EARLIER-NEIGHBOUR HALF WAS REMOVED 2026-09-04, and this pins why.
+    """The earlier-neighbour half was removed 2026-09-04, and this pins why.
 
     It was redundant where it was meant to help — an H->D span's last slot is
     ``step_D``, which opens the D->E seam, so the later half names a claimant and
-    returns first — and where it did fire it reversed a released ruling: the only
+    returns first — and where it did fire it reversed a released decision: the only
     product class whose last slot opens no seam is E->P, so it refused the
     polarization pair while the later half was already refusing the D->E product in
     that pair's favour. Both neighbours annihilated. See
     ``test_the_e_to_p_incumbent_survives_arbitration_on_a_dispersive_run``.
     """
     source = pathlib.Path(fused_pairs.__file__).read_text(encoding="utf-8")
-    assert "EARLIER-NEIGHBOUR HALF WAS REMOVED" in source, (
+    assert "earlier-neighbour half was removed" in source, (
         "the removal's reasoning is the record of a measurement; keep it with the code")
     tree = ast.parse(source)
     function = next(node for node in ast.walk(tree)
@@ -873,7 +873,7 @@ def test_the_product_table_and_the_absorb_table_name_the_same_families():
 
 
 # --------------------------------------------------------------------------
-# 6. THE DEVICE TEXT THIS EDIT DID NOT TOUCH
+# 6. The device text this edit did not touch
 # --------------------------------------------------------------------------
 #
 # The deposit carry is a HOST change: two plan objects around a launch. Nothing
@@ -885,12 +885,12 @@ def test_the_product_table_and_the_absorb_table_name_the_same_families():
 def test_the_lift_is_fourteen_edits_and_no_silent_fifteenth():
     """``LIFT_EDITS`` is data so a gate can assert the list rather than the prose.
 
-    FIVE UNTIL 2026-08-28, SEVEN SINCE, and the two that arrived are the ownership
+    Five until 2026-08-28, seven since, and the two that arrived are the ownership
     inversion's two halves -- the guard inside ``pml_apply_reg`` and the guarded,
-    carry-bearing constitutive statement. TWELVE SINCE THE OWN-CELL HOIST: the
+    carry-bearing constitutive statement. Twelve since the own-cell hoist: the
     twelve guarded pre-loads, the two derived ``_pre`` helpers, and the two sets of
-    own-cell call rewrites. FOURTEEN SINCE MEEP'S PER-CHUNK FORMS (bit_parity_0_10
-    KC2): the one chunk-record decode over both halves, and each carried ghost keyed on
+    own-cell call rewrites. Fourteen since MEEP's per-chunk forms (1.0):
+    the one chunk-record decode over both halves, and each carried ghost keyed on
     its destination's membership row. A fifteenth entry would be a fifteenth departure
     from the certified text and may not arrive quietly; the five that were there before
     must all still be there, which is what stops a rewrite from replacing one departure
@@ -918,7 +918,7 @@ def test_the_lift_is_fourteen_edits_and_no_silent_fifteenth():
         "    constitutive_apply(Hx, f_w_Hx, gx_n_i, gx_n_v, kps_x[0], kms_int_x[0]);",
     } <= lines
     carried = [edit for edit in family.LIFT_EDITS
-               if "OWNERSHIP INVERSION" in edit["why"]]
+               if "ownership inversion" in edit["why"]]
     assert len(carried) == 2, [edit["line"] for edit in carried]
     assert any("if (!owned) return 0.0f;" in edit["became"] for edit in carried)
     assert any("if (own_x) {" in edit["became"] for edit in carried)
@@ -928,7 +928,7 @@ def test_the_one_re_spelled_pass_still_emits_the_diagonal_and_a_plus_zero():
     """``zero_metal_carry`` needs none of the CuPy-importing siblings, so the ONE
     re-spelled pass in the product is checkable here.
 
-    THE DIAGONAL, and it is the clause that would be silently wrong if the D
+    The diagonal, and it is the clause that would be silently wrong if the D
     family's table were reused: Bx clears on an x wall, By on y, Bz on z. The stored
     constant is ``+0.0f`` and never ``-0.0f`` (a signed zero is a different word),
     and both the register and the global store are emitted -- clearing only the
@@ -940,7 +940,7 @@ def test_the_one_re_spelled_pass_still_emits_the_diagonal_and_a_plus_zero():
     for component, wall, coordinate in (("Bx", "wall_x", "i"), ("By", "wall_y", "j"),
                                         ("Bz", "wall_z", "k")):
         register = f"b_{component[1]}"
-        # THE OWNERSHIP GUARD JOINED THIS LINE ON 2026-08-28 and it is not
+        # The ownership guard joined this line on 2026-08-28 and it is not
         # decoration: on a cell one of the two fills images, the array path's own
         # order overwrites the clear (zero_metal_B at driver.py:3295, the far fill
         # at :3296), so clearing it here would be a SECOND thread writing that word.
@@ -990,7 +990,7 @@ def test_the_replaced_passes_are_the_products_own_declaration(xp):
 
 
 def test_the_e_to_p_incumbent_survives_arbitration_on_a_dispersive_run():
-    """THE 2026-09-02 TRADE RULING, PINNED FROM BOTH SIDES.
+    """The 2026-09-02 trade decision, pinned from both sides.
 
     ``_later_seam_claimant`` withholds the D->E pair because the polarization pair
     claims ``update_E``; nothing pinned the other direction, and on 2026-09-04 an
@@ -999,9 +999,9 @@ def test_the_e_to_p_incumbent_survives_arbitration_on_a_dispersive_run():
     because every test asserted who was WITHHELD and none asserted who INSTALLS.
 
     A neighbouring-seam rule that refuses the E->P incumbent has re-litigated a
-    released ruling from the other side, and this test is the tripwire.
+    released decision from the other side, and this test is the tripwire.
 
-    EXTENDED 2026-09-05 WITH THE INSTALLED SIDE, driven through the composer: the
+    Extended 2026-09-05 with the installed side, driven through the composer: the
     polarization pair holds ``update_E`` AND ``update_P``, two pairs are installed
     over ``step_B..update_P`` rather than one, and the D->E product's recorded reason
     names ``cuda_fused_polarization_pair``. The three-slot welds are taken out of the
@@ -1029,7 +1029,7 @@ def test_the_e_to_p_incumbent_survives_arbitration_on_a_dispersive_run():
         "update_H", "step_D", ("update_H", "step_D"))
     assert refused is not None and refused[0] == "cuda_dispersive_fused_electric_pair"
 
-    # WHO INSTALLS, through the composer. As shipped, the three-slot weld strictly
+    # Who installs, through the composer. As shipped, the three-slot weld strictly
     # contains the D->E product's span and takes all three slots.
     shipped = arms.plan_step(fields, layer, grid, sources=(), fuse=True)
     assert shipped.selected["step_D"] == shipped.selected["update_E"] \

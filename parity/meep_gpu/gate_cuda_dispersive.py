@@ -1,6 +1,6 @@
 """Sub-step byte-identity gate for the THREE DISPERSIVE hand-CUDA arms.
 
-WHAT IS UNDER TEST, and it is three different claims rather than one:
+What is under test, and it is three different claims rather than one:
 
 * **arm1** -- ``dispersive_kernels.update_E_pml_real_dispersive`` reproduces
   ``stepping.update_E`` under an active absorber when the source is
@@ -9,19 +9,19 @@ WHAT IS UNDER TEST, and it is three different claims rather than one:
   own layer, the plain store elsewhere). A NEW KERNEL.
 * **arm2** -- ``dispersive_kernels.update_E_no_pml_real_dispersive`` reproduces
   ``stepping.update_E`` with NO absorber and stored E, where the sub-step is the
-  plain store at stepping.py:1022. A SECOND NEW KERNEL, not a flag on the first:
+  plain store at stepping.py:1022. A second new kernel, not a flag on the first:
   no auxiliary, no coefficient vector, no history, no per-axis index.
 * **arm3** -- the SHIPPED ``ade_kernels.update_P_fused_pml_real`` reproduces
   ``stepping.update_P`` (MEEP's recurrence in its four float32 constants) on a
-  LAYERLESS run, where both of its drive pointers are the stored E. NO NEW KERNEL
-  AT ALL. This leg is what turns "a predicate widening, not a new kernel" from a
+  LAYERLESS run, where both of its drive pointers are the stored E. No new kernel
+  at all. This leg is what turns "a predicate widening, not a new kernel" from a
   reading of ``Fields.drive_field`` into a measurement, and it carries
   ``arm3_wrong_drive_CONTROL`` -- the same shipped launcher with ``D`` bound as
   the drive -- which MUST DIVERGE. A leg whose control cannot fail has not shown
   that binding the right array is what produced the pass.
 
 =============================================================================
-THE VACUITY TRAP THIS FAMILY SITS ON TOP OF
+The vacuity trap this family sits on top of
 =============================================================================
 
 A zero-initialised constitutive or ADE step leaves every output word at ``+0.0``
@@ -47,7 +47,7 @@ than scoring it:
    ``drop_inverse_epsilon_dispersive`` is bit-identical to the shipped kernel.
 
 =============================================================================
-THE POLE-ORDER PAIR IS INVISIBLE AT ONE POLE, AND THAT IS MEASURED
+The pole-order pair is invisible at one pole, and that is measured
 =============================================================================
 
 ``sum_then_subtract`` (``D - (P0 + P1)``) and ``reverse_pole_order`` are EXACTLY
@@ -155,7 +155,7 @@ GUARD_SETS: Tuple[Tuple[str, Tuple[str, ...], bool], ...] = (
 
 
 # ---------------------------------------------------------------------------
-# THE CASE TABLE
+# The case table
 # ---------------------------------------------------------------------------
 #
 # Every spec is a configuration the ELEVEN corpus rows this family answers for
@@ -174,7 +174,7 @@ SPECS: Tuple[Dict[str, Any], ...] = (
     # absorbed_power_density.py's shape class: periodic/mirror/periodic.
     {"label": "pml_2d_folded_periodic", "pml": True, "mirrors": (1,),
      "boundaries": ("periodic", "periodic", "periodic"), "cell": (12.0, 14.0, 1.0)},
-    # TWO SIMULTANEOUS PLANES -- the ceiling CONSTITUTIVE_FOLD_ADMISSION swept and
+    # Two simultaneous planes -- the ceiling CONSTITUTIVE_FOLD_ADMISSION swept and
     # the ceiling this family's predicate inherits. Admitting it without scoring
     # it would be inheriting a verdict across families.
     {"label": "pml_3d_folded_two_planes", "pml": True, "mirrors": (0, 1),
@@ -195,7 +195,7 @@ SPECS: Tuple[Dict[str, Any], ...] = (
     # material-dispersion.py: the fully periodic degenerate cell.
     {"label": "no_pml_all_periodic", "pml": False, "mirrors": (),
      "boundaries": ("periodic", "periodic", "periodic"), "cell": (8.0, 10.0, 12.0)},
-    # A FOLD WITHOUT AN ABSORBER. No corpus row carries it; the predicate admits
+    # A fold without an absorber. No corpus row carries it; the predicate admits
     # it, so it is scored rather than admitted on the unfolded cases' evidence.
     {"label": "no_pml_folded", "pml": False, "mirrors": (1,),
      "boundaries": ("metallic", "periodic", "metallic"), "cell": (10.0, 12.0, 8.0)},
@@ -220,7 +220,7 @@ ARMS_BY_SPEC: Dict[str, Tuple[str, ...]] = {
 #: cannot disagree about what "measured up to the cap" means.
 ARITIES: Tuple[Tuple[int, int, int], ...] = dispersive.POLE_COUNTS_SWEPT
 
-#: THE ARITIES A POLE MUTATION MAY BE SCORED AT. Two and above, always -- see the
+#: The arities a pole mutation may be scored at. Two and above, always -- see the
 #: header. A leg planted at arity (0,0,0) or (1,1,1) is reported NO LEGS.
 MUTATION_ARITIES: Tuple[Tuple[int, int, int], ...] = ((2, 2, 2), (5, 5, 5))
 
@@ -307,7 +307,7 @@ SOURCE_MUTATIONS: Dict[str, Dict[str, Any]] = {
         "arms": ("arm1", "arm2"), "pole_defect": False, "must_be_caught": False},
     "commute_constitutive_scale": {
         "arms": ("arm1",), "pole_defect": False, "must_be_caught": False},
-    # KERNELS.md section 7.2's rows on the per-chunk select.
+    # The per-chunk form battery's rows on the per-chunk select.
     "accumulate_on_every_cell": {
         "arms": ("arm1",), "pole_defect": False, "must_be_caught": True},
     "record_bound_off_by_one": {
@@ -323,11 +323,11 @@ SOURCE_MUTATIONS: Dict[str, Dict[str, Any]] = {
 
 
 # ---------------------------------------------------------------------------
-# THE SOURCE MUTATIONS, spelled against the EMITTED text
+# The source mutations, spelled against the EMITTED text
 # ---------------------------------------------------------------------------
 
 def _mutate_sum_then_subtract(source: str) -> Tuple[str, int]:
-    """``((D - P0) - P1)`` becomes ``D - (P0 + P1)``. INVISIBLE AT ONE POLE."""
+    """``((D - P0) - P1)`` becomes ``D - (P0 + P1)``. Invisible at one pole."""
     sites = 0
     out = source
     for _target, _src, axis in dispersive.ELECTRIC_TERMS:
@@ -366,7 +366,7 @@ _ACCUMULATION = "(f[idx] + ((kps * src) - (kms * prev)))"
 
 
 def _mutate_regroup(source: str) -> Tuple[str, int]:
-    """THE INVERTED MUTATION (KERNELS.md Appendix A): the 0.9.2 package grouping
+    """The inverted mutation (see certification.md): the 0.9.2 package grouping
     ``(f + kps*src) - kms*prev`` planted where MEEP's ``f + ((kps*src) - (kms*prev))``
     ships. Must be caught."""
     return (source.replace(_ACCUMULATION, "((f[idx] + (kps * src)) - (kms * prev))"),
@@ -387,7 +387,7 @@ def _mutate_store_before_read(source: str) -> Tuple[str, int]:
 
 
 def _mutate_accumulate_every_cell(source: str) -> Tuple[str, int]:
-    """THE SELECT REMOVED (section 7.2): the dsigw accumulation on every cell, which
+    """The select removed (per-chunk form battery): the dsigw accumulation on every cell, which
     is the 0.9.2 whole-grid form. Caught where a component has plain cells."""
     pattern = r", (in_h_[xyz])\);"
     return re.subn(pattern, ", 1);", source)[0], len(re.findall(pattern, source))
@@ -426,7 +426,7 @@ def _mutate_plain_as_unit_accumulation(source: str) -> Tuple[str, int]:
             source.count(needle))
 
 
-#: THE LEFT OPERAND OF THE INVERSE-EPSILON MULTIPLY HAS TWO SPELLINGS, and the
+#: The left operand of the inverse-epsilon multiply has two spellings, and the
 #: first cut of these two rewrites knew only one. At arity 0 the emitted line is
 #: ``float src_x = Dx[idx] * inv_eps_Ex[idx];`` and at every arity above it is
 #: ``float src_x = s_x * inv_eps_Ex[idx];`` -- the chain's register, with no
@@ -438,7 +438,7 @@ _INV_EPS_OPERANDS = r"(\w+(?:\[idx\])?)"
 
 
 def _mutate_drop_inverse_epsilon(source: str) -> Tuple[str, int]:
-    """The source becomes ``(D - sum P)``, unscaled. MUST BE CAUGHT."""
+    """The source becomes ``(D - sum P)``, unscaled. Must be caught."""
     pattern = rf"= {_INV_EPS_OPERANDS} \* inv_eps_E([xyz])\[idx\];"
     return re.subn(pattern, r"= \1;", source)[0], len(re.findall(pattern, source))
 
@@ -523,7 +523,7 @@ def build(xp, spec: Dict[str, Any], courant: float, arity: Tuple[int, int, int],
           rng) -> Tuple[Any, Any, Any]:
     """A frozen ``(fields, layer, grid)`` triple at one spec and one pole arity.
 
-    THE ARITY IS BUILT FROM REAL ``PolarizationState`` OBJECTS, never faked: a
+    The arity is built from real ``PolarizationState`` objects, never faked: a
     per-component sigma of zero is what ``PolarizationState`` filters on
     (dispersion.py:645-647), which is the engine's own spelling of "this term
     does not drive that component" and is exactly what MEEP's ``needs_P`` /
@@ -538,7 +538,7 @@ def build(xp, spec: Dict[str, Any], courant: float, arity: Tuple[int, int, int],
                 **kwargs)
     layer = None
     if spec["pml"]:
-        # THE LOW FACE IS DROPPED ON A MIRRORED AXIS: cell 0 lies ON the mirror
+        # The low face is dropped on a mirrored axis: cell 0 lies ON the mirror
         # plane, a boundary condition rather than an outer wall, and an absorber
         # there would eat the mirrored half of the domain (pml.py:399-412).
         thickness = {
@@ -593,7 +593,7 @@ def seed_state(fields, grid, arm: str, value_class: str, arity, rng) -> Dict[str
     ``uniform``          -- [-1, 1), auxiliaries NONZERO so a mis-indexed
                             coefficient shows at launch one rather than two.
     ``subnormal_band``   -- the shared band draw, with the needles forced in.
-    ``cancellation``     -- THIS FAMILY'S OWN. Each pole carries an equal share of
+    ``cancellation``     -- this family's own. Each pole carries an equal share of
                             D so the chain walks the sum down towards zero, plus a
                             perturbation sweeping 1e-45..1e-30 on the LAST pole,
                             plus signed zeros and both ends of the subnormal
@@ -601,7 +601,7 @@ def seed_state(fields, grid, arm: str, value_class: str, arity, rng) -> Dict[str
                             realism: it is that the verdict otherwise says nothing
                             about the band ``D - sum P`` actually visits.
 
-    THE MATERIAL STAYS NORMAL under every class. Driving inverse epsilon into the
+    The material stays normal under every class. Driving inverse epsilon into the
     band too would make every product underflow and the leg would measure the
     fixture rather than the policy's reach into this arithmetic.
     """
@@ -813,7 +813,7 @@ def structure_facts(grid) -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# THE TWO KERNEL-SIDE BACKENDS
+# The two kernel-side backends
 # ---------------------------------------------------------------------------
 
 def tables_for(layer, host_mutation: Optional[str] = None) -> Dict[str, Any]:
@@ -869,7 +869,7 @@ def run_kernel_numpy(arm: str, fields, layer, tables, plan,
                      defect: Optional[str] = None) -> None:
     """The EMITTED device body, transcribed to NumPy float32, line for line.
 
-    THIS COMPILES NOTHING AND CERTIFIES NOTHING. It cannot see a defect the NVRTC
+    This compiles nothing and certifies nothing. It cannot see a defect the NVRTC
     contraction guard exists for, it does not exercise the subnormal policy, and
     it is not the shipped bytes. What it settles is (a) whether the transcription
     reproduces ``stepping`` at all and (b) whether this harness can fail -- both
@@ -948,7 +948,7 @@ def arm3_record(fields):
 def _arm3_local_loop(fields, drive, hoisted: bool) -> int:
     """``ade_kernels.update_P_fused_pml_real``'s loop, copied, with a hoist switch.
 
-    WHY A COPY EXISTS AT ALL. The stale-plan defect is a defect in the LAUNCHER's
+    Why a copy exists at all. The stale-plan defect is a defect in the LAUNCHER's
     pointer resolution, and the shipped launcher has no door for it -- it re-reads
     ``state.P``/``P_prev``/``_scratch`` inside its own loop and there is no
     argument that makes it stop. Monkeypatching it would test the patch.
@@ -1069,14 +1069,14 @@ def one_case(backend: str, spec: Dict[str, Any], arm: str, arity: Tuple[int, int
              numpy_defect: Optional[str] = None) -> Dict[str, Any]:
     """One frozen state, run twice: the array path, then the kernel.
 
-    THE ORACLE IS ``stepping`` ITSELF on real ``Grid``/``Fields``/``PML``/
+    The oracle is ``stepping`` itself on real ``Grid``/``Fields``/``PML``/
     ``PolarizationState`` objects. There is no second transcription on the oracle
     leg to drift: the kernel is compared against the thing it claims to
     reproduce, byte for byte, from ONE frozen state.
     """
     started = time.time()
     xp = cp if backend == "cuda" else _NumpyWearingCupysName()
-    # SEEDED FROM A DIGEST, NEVER FROM hash(). Python salts hash() of a tuple
+    # Seeded from a digest, never from hash(). Python salts hash() of a tuple
     # containing strings with PYTHONHASHSEED, so such a gate draws a different
     # fixture every process and a failing case cannot be replayed.
     rng = np.random.default_rng(
@@ -1094,7 +1094,7 @@ def one_case(backend: str, spec: Dict[str, Any], arm: str, arity: Tuple[int, int
         "numpy_defect": numpy_defect,
         "boundaries": list(spec["boundaries"]), "mirrors": list(spec["mirrors"]),
         "structure": structure_facts(grid),
-        # A ZERO-ARITY CASE IS A REDUCTION CONTROL, NOT A COVERAGE CLAIM. The
+        # A zero-arity case is a reduction control, not a coverage claim. The
         # predicate refuses it ("no susceptibility is registered": that run is
         # coverage.covers_real_pml_constitutive's), and it is scored anyway
         # because the emitted body at arity (0,0,0) is character-identical to the
@@ -1106,7 +1106,7 @@ def one_case(backend: str, spec: Dict[str, Any], arm: str, arity: Tuple[int, int
              if isinstance(value, np.ndarray)}),
     }
 
-    # THE PREDICATE'S ANSWER, recorded rather than acted on.
+    # The predicate's answer, recorded rather than acted on.
     if arm == "arm1":
         covered, reason = dispersive.covers_real_pml_dispersive_constitutive(
             fields, layer, grid)
@@ -1158,7 +1158,7 @@ def one_case(backend: str, spec: Dict[str, Any], arm: str, arity: Tuple[int, int
         case["seconds"] = time.time() - started
         return case
     if arm == "arm3":
-        # WHICH BUFFERS THE ORACLE LEFT WHERE. The rotation moves three names per
+        # Which buffers the oracle left where. The rotation moves three names per
         # component, so the comparison has to be against the same permutation the
         # kernel path will produce, and the snapshot is taken by (state, component)
         # rather than by identity for exactly that reason.
@@ -1287,7 +1287,7 @@ def mutation_plan(product: str, arms: Sequence[str], pole_defect: bool,
                   value_class: str = "uniform"):
     """One case per (spec, arm) at the INEXACT courant, at an arity that can see it.
 
-    POLE MUTATIONS ARE PINNED TO :data:`MUTATION_ARITIES`, all of which are two or
+    Pole mutations are pinned to :data:`MUTATION_ARITIES`, all of which are two or
     above, because ``sum_then_subtract`` and ``reverse_pole_order`` are PROVABLY
     inert at one pole. A leg scored at arity 1 would report a harness defect as a
     kernel pass, which is the failure the header measures rather than asserts.
@@ -1392,7 +1392,7 @@ def run_numpy_defects(results, out_path, product):
         results["numpy_defects"] = out
         save(results, out_path)
 
-    # THE INVISIBILITY MEASUREMENT, taken rather than quoted.
+    # The invisibility measurement, taken rather than quoted.
     invisibility = {}
     for name in ("sum_then_subtract",):
         rows = []
@@ -1506,7 +1506,7 @@ def summarize(results: Dict[str, Any]) -> Dict[str, Any]:
         reasons.append(f"multi-step divergence on {len(multi_cases) - len(multi_ok)} "
                        f"of {len(multi_cases)} cases")
 
-    # EVERY SWEPT ARITY MUST HAVE BEEN SCORED on arm 1 and arm 2, or the cap is
+    # Every swept arity must have been scored on arm 1 and arm 2, or the cap is
     # not a measured ceiling and POLE_COUNT_CAP is a number rather than evidence.
     for arm in ("arm1", "arm2"):
         arities = {tuple(case["arity"]) for case in by_arm[arm]}
@@ -1515,13 +1515,13 @@ def summarize(results: Dict[str, Any]) -> Dict[str, Any]:
         if missing:
             reasons.append(f"{arm} did not score arities {missing}; "
                            f"POLE_COUNT_CAP claims every one of them was run")
-    # A MULTI-POLE CASE ON EVERY ARM THAT HAS A CHAIN, or the whole pole-order
+    # A multi-pole case on every arm that has a chain, or the whole pole-order
     # battery rests on cases where it is provably inert.
     for arm in ("arm1", "arm2"):
         if not [case for case in by_arm[arm] if max(case["arity"]) >= 2]:
             reasons.append(f"{arm} scored no case with two or more poles; every "
                            f"pole-order defect is provably inert below that")
-    # BOTH FOLD CLASSES on arm 1: five of its eight corpus rows are folded.
+    # Both fold classes on arm 1: five of its eight corpus rows are folded.
     folded = [case for case in by_arm["arm1"] if case["mirrors"]]
     if not folded:
         reasons.append("arm1 scored no folded case; five of its eight corpus rows "
@@ -1530,7 +1530,7 @@ def summarize(results: Dict[str, Any]) -> Dict[str, Any]:
         reasons.append("arm1 scored no TWO-plane fold; the predicate admits two "
                        "and admitting the ceiling unmeasured is admitting by "
                        "argument alone")
-    # THE CANCELLATION CLASS, which is the only one that puts D - sum P in the band.
+    # The cancellation class, which is the only one that puts D - sum P in the band.
     classes = {case["value_class"] for case in scored}
     if "cancellation" not in classes:
         reasons.append("the cancellation value class was never scored; without it "
@@ -1614,11 +1614,11 @@ def summarize(results: Dict[str, Any]) -> Dict[str, Any]:
 def verdict_flips_against_planted_defect(results: Dict[str, Any]) -> Dict[str, Any]:
     """Recompute the verdict against a record with a defect planted in it.
 
-    A GATE WHOSE VERDICT CANNOT GO RED IS NOT A GATE. Four independent defects
+    A gate whose verdict cannot go red is not a gate. Four independent defects
     are planted, one at a time, into a COPY of the finished record. Each must make
-    ``released`` False ON ITS OWN.
+    ``released`` False on its own.
 
-    A PLANT THE RECORD CANNOT CARRY IS REPORTED, NOT PASSED AND NOT FAILED -- on
+    A plant the record cannot carry is reported, not passed and not failed -- on
     the NumPy backend there are no source mutations to flip.
     """
     out: Dict[str, Any] = {"plants": [], "all_flipped": True, "inapplicable": []}
@@ -1703,6 +1703,7 @@ def save(results: Dict[str, Any], out_path: str) -> None:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
+    import neutral_ids  # noqa: PLC0415
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--backend", choices=("cuda", "numpy"), default="cuda")
     parser.add_argument("--product", choices=("full", "reduced"), default="full")
@@ -1717,8 +1718,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     results: Dict[str, Any] = {
         "gate": "cuda_dispersive",
         "started_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "host": os.uname().nodename,
-        "argv": list(argv if argv is not None else sys.argv[1:]),
+        "host": neutral_ids.machine_id(),
+        "argv": neutral_ids.argv(argv if argv is not None else sys.argv[1:]),
         "backend": args.backend,
         "product": args.product,
         "question": ("do the two emitted dispersive update_E kernels reproduce "
@@ -1738,7 +1739,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             return 2
         if args.import_meep_for_host_policy:
             results["meep_host_import"] = probe.import_meep_for_host_policy()
-        # THE OBSERVER GOES IN BEFORE THE POLICY: under 'keep' the policy's strip
+        # The observer goes in before the policy: under 'keep' the policy's strip
         # wraps this, so it records the option tuple NVRTC was really given.
         results["nvrtc_observer"] = probe.install_nvrtc_binary_observer()
         if args.subnormal_policy:

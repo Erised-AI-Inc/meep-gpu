@@ -7,7 +7,7 @@
     python parity/meep_gpu/meep_identity_tier_c.py replay --source DIR [--mode keep|flush]
         [--cases ...] [--rows FILE]
 
-WHAT IT ANSWERS. Does the package's array path store MEEP's words? ``compare`` is the
+What it answers. Does the package's array path store MEEP's words? ``compare`` is the
 only tier that steps MEEP (``meep_gpu/meep_identity.py`` states the three tiers). It runs
 where an identity-reference MEEP is installed (``tools/check_install.py
 --require-identity-reference``) and writes what Tier A replays; ``replay`` is Tier A on
@@ -22,7 +22,7 @@ COMPARE, per case, each in a process of its own:
    cannot reach is refused by name. ``keep`` is the reference of both hosts; ``flush``
    is MEEP's x86 flush-on-import at ``OMP_NUM_THREADS=1`` (refused at any other count),
    and on arm64 MEEP stepped under FZ, which stores the x86 flush reference's words
-   (R13; phase0/P0-d1m, 0 of 72,801,288 differing words).
+   (measured: 0 of 72,801,288 compared words differ; docs/development/testing.md#meep-identity).
 2. The case is built and lifted on the NumPy reference under
    ``capsule.recording_construction``; the capsule is written at step 0 with the
    simulation, so it carries the lifted chunk division. The cases are the four of
@@ -58,7 +58,8 @@ COMPARE, per case, each in a process of its own:
    exact word is read (``MeepReader``). Under ``flush`` the stored-word reads and their
    compare run with subnormals kept (DAZ/FZ would read a stored subnormal as zero), and
    the mode is restored and measured before either side steps again; MEEP's and the
-   package's readers run in the mode. They are compared with the driver's stored words as bit patterns on
+   package's readers run in the mode, and so are the package's words taken (an E it does
+   not store is ``D * inv_eps``, formed by the read, as Tier A's replay forms it). They are compared with the driver's stored words as bit patterns on
    the compared cells (owned and wall, ``meep_identity.cell_classes``): value-differing,
    word-differing and sign-of-zero-only counts. Ghost cells are compared too, with MEEP's
    point read, and reported, never judged. MEEP's ``sim.get_array`` of every component is compared with
@@ -66,11 +67,11 @@ COMPARE, per case, each in a process of its own:
    step.
 5. DIGESTS of MEEP's words: the stored and reader digest of every component at every
    compared step, and the plane digests up to step 20 (``meep_identity``'s schema).
-6. A PLANTED FLIP at step min(20, N): one word of the driver's most populated component
+6. A planted flip at step min(20, N): one word of the driver's most populated component
    is flipped by one ulp in a copy. The word compare must count exactly one word, the
    digest must differ from MEEP's, and exactly one plane digest, the word's own, must
    differ.
-7. THE SMOKE RECORD. For a case ``meep_identity_smoke.json`` records, at its steps,
+7. The smoke record. For a case ``meep_identity_smoke.json`` records, at its steps,
    MEEP's point read on the whole lattice (ghosts included, as the smoke reads them) must
    digest to the smoke record's: the MEEP stepped here is the identity reference that
    minted it, and the lift beside it changed nothing MEEP stores.
@@ -109,6 +110,15 @@ if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
 MARK = "TIER-C-JSON "
+
+
+def _neutral_ids():
+    """The record spellings of machine stamps: ``neutral_ids.py`` beside this file."""
+    try:
+        import neutral_ids  # noqa: PLC0415
+    except ImportError:  # imported as a package module, not from parity/meep_gpu
+        from parity.meep_gpu import neutral_ids  # noqa: PLC0415
+    return neutral_ids
 #: A case's wall-clock ceiling; ``MEEP_IDENTITY_CASE_TIMEOUT`` (seconds) raises it for a
 #: corpus row whose MEEP word reads alone outrun the default.
 CASE_TIMEOUT_S = int(os.environ.get("MEEP_IDENTITY_CASE_TIMEOUT", "1800"))
@@ -752,14 +762,15 @@ def child_compare(spec: Dict[str, Any]) -> Dict[str, Any]:
     # MEEP's own switch first (on x86 it is the mechanism, and the flush reference is
     # MEEP's own flush-on-import); where it has no effect (arm64) the package's lever
     # installs the thread's floating-point environment, FE_DFL_DISABLE_DENORMS_ENV for
-    # flush (FPCR.FZ), which steps MEEP to the x86 flush reference's words (R13).
+    # flush (FPCR.FZ), which steps MEEP to the x86 flush reference's words.
     _module, mechanism = subnormal_policy._drive_host_fpu(mode == "flush")  # noqa: SLF001
     state = identity.subnormal_state()
     result: Dict[str, Any] = {
         "case": case, "mode": mode, "subnormals": state, "subnormal_mechanism": mechanism,
         "omp_num_threads": os.environ.get("OMP_NUM_THREADS"),
-        "meep": {"version": str(mp.__version__), "single_precision": bool(mp.is_single_precision()),
-                 "file": os.path.realpath(mp.__file__)},
+        # No path to MEEP: the build is identified by its images' sha256 below, and the
+        # path named the account and the machine the reference ran on.
+        "meep": {"version": str(mp.__version__), "single_precision": bool(mp.is_single_precision())},
         "host": {"system": platform.system(), "machine": platform.machine(),
                  "python": platform.python_version(), "numpy": numpy.__version__}}
     if state["mode"] != mode:
@@ -778,7 +789,9 @@ def child_compare(spec: Dict[str, Any]) -> Dict[str, Any]:
     result["meep"]["images"] = {os.path.basename(path): check.sha256_of(path)
                                 for path in check.loaded_image_paths()
                                 if os.path.basename(path).startswith(("libmeep", "_meep"))}
-    result["libm"] = check.libm_identity()
+    # libm's own path is a record field too (Linux): under its root's label when it lies
+    # in an environment (``neutral_ids.value``); a system path is kept as it is.
+    result["libm"] = _neutral_ids().value(check.libm_identity())
 
     import meep_gpu  # noqa: PLC0415
     from meep_gpu import capsule  # noqa: PLC0415
@@ -836,8 +849,9 @@ def child_compare(spec: Dict[str, Any]) -> Dict[str, Any]:
         Under flush, ``get_field``'s float-to-double promotion, the cast back and the
         value compare would read a stored subnormal word as zero (DAZ on x86, FZ on
         arm64), so a subnormal on one side against a zero on the other could compare
-        equal. MEEP and the driver are stepped in the mode; only the reads leave it, and
-        the mode is put back and measured before either steps again.
+        equal. MEEP and the driver are stepped in the mode, and the package's words are
+        taken in it (an E it does not store is formed by the read); only the reads leave
+        it, and the mode is put back and measured before either steps again.
         """
         if mode != "flush":
             yield
@@ -912,6 +926,12 @@ def child_compare(spec: Dict[str, Any]) -> Dict[str, Any]:
             planes = []
             step_counts = {"stored": {}, "reader": {}}
             per_component = {}
+            # The package's words are taken here, in the mode, as its own step reads them
+            # and as Tier A's replay takes them: an E the run does not store is formed on
+            # the read (Fields.get_E's D * inv_eps), a stored word is copied. Only their
+            # reads and compares below leave the mode.
+            package_words = {name: driver.get_field(name, cell_centered=False)
+                             for name in identity.COMPONENTS}
             with exact_reads():
                 for name in identity.COMPONENTS:
                     theirs, inexact, imaginary, point_read_differing = readers[name].read()
@@ -936,7 +956,7 @@ def child_compare(spec: Dict[str, Any]) -> Dict[str, Any]:
                     if complex_storage:
                         reads["held_aliased_complex"] += int(numpy.count_nonzero(
                             readers[name].held_aliased_substituted & masks[name]))
-                    ours = driver.get_field(name, cell_centered=False)
+                    ours = package_words[name]
                     subnormal["meep_stored"] += subnormal_words(theirs)
                     subnormal["package_stored"] += subnormal_words(ours)
                     counts = word_counts(ours, theirs, masks[name])
@@ -986,7 +1006,7 @@ def child_compare(spec: Dict[str, Any]) -> Dict[str, Any]:
                 if planes:
                     plane_rows.append(numpy.stack(planes))
                 if target == flip_step:
-                    flip = plant_flip(identity, driver, masks, stored_digests[str(target)],
+                    flip = plant_flip(identity, package_words, masks, stored_digests[str(target)],
                                       plane_rows[-1], readers, target)
             if per_component:
                 differing_steps.append(target)
@@ -1015,8 +1035,8 @@ def child_compare(spec: Dict[str, Any]) -> Dict[str, Any]:
         "planes": {"file": CASE_FILES["planes"], "steps": plane_steps, "axis": "x",
                    "digest_bytes": identity.PLANE_DIGEST_BYTES},
         "planted_flip": {key: flip[key] for key in ("step", "component", "word", "plane")},
-        "words_of": ("MEEP 1.33.0, fields_chunk::f read exactly on the package's lattice; "
-                     "reader: sim.get_array"),
+        "words_of": (f"MEEP {mp.__version__}, fields_chunk::f read exactly on the package's "
+                     "lattice; reader: sim.get_array"),
     }
     files = identity.write_digests(out, document, plane_array)
     driver.close()
@@ -1062,18 +1082,19 @@ def child_compare(spec: Dict[str, Any]) -> Dict[str, Any]:
     return result
 
 
-def plant_flip(identity: Any, driver: Any, masks: Dict[str, Any], digests: Dict[str, str],
-               planes: Any, readers: Dict[str, Any], step: int) -> Dict[str, Any]:
+def plant_flip(identity: Any, package_words: Dict[str, Any], masks: Dict[str, Any],
+               digests: Dict[str, str], planes: Any, readers: Dict[str, Any],
+               step: int) -> Dict[str, Any]:
     """Flip one word of the most populated component in a copy; the three checks."""
     import numpy  # noqa: PLC0415
 
     best, best_count = None, -1
     for name in identity.COMPONENTS:
-        words = identity.compared_words(driver.get_field(name, cell_centered=False), masks[name])
+        words = identity.compared_words(package_words[name], masks[name])
         count = int(numpy.count_nonzero(words & numpy.uint32(0x7FFFFFFF)))
         if count > best_count:
             best, best_count = name, count
-    array = driver.get_field(best, cell_centered=False)
+    array = package_words[best]
     words = identity.compared_words(array, masks[best])
     nonzero = numpy.flatnonzero(words & numpy.uint32(0x7FFFFFFF))
     index = int(nonzero[0]) if nonzero.size else 0
@@ -1163,13 +1184,17 @@ def run_child(spec: Dict[str, Any]) -> Dict[str, Any]:
                 timer.cancel()
         with open(errors_path, encoding="utf-8", errors="replace") as handle:
             tail = (handle.read().strip().splitlines() or other)[-6:]
+    # What a child reports, and its stderr, is written into result.json, the error record,
+    # the rows file and the stage ledger: neutral here, once (``neutral_ids.value``), since an
+    # error or a traceback names paths.
     if result is not None:
         if result.get("error"):
             result["stderr_tail"] = tail
-        return result
-    return {"case": spec.get("case"), "error": f"exited {process.returncode} before reporting "
-                                              f"(a kill after {CASE_TIMEOUT_S} s reads -9): "
-                                              f"{' | '.join(tail)}"}
+        return _neutral_ids().value(result)
+    return _neutral_ids().value(
+        {"case": spec.get("case"), "error": f"exited {process.returncode} before reporting "
+                                            f"(a kill after {CASE_TIMEOUT_S} s reads -9): "
+                                            f"{' | '.join(tail)}"})
 
 
 def append_row(path: Optional[str], row: Dict[str, Any]) -> None:

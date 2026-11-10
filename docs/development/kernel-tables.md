@@ -6,16 +6,16 @@ The array path is the numerical oracle and remains the fallback for every
 configuration. Compiled kernels replace it slot by slot, inside
 <code>driver.step()</code>, by default wherever a released arm covers the
 configuration on a host its kernel table admits (a supported NVIDIA host,
-compute capability 7.0 to 9.0 with Triton 3.1, or any Apple GPU, every one of
+one whose installed CuPy or Triton can run the table, or any Apple GPU, every one of
 which is supported; outside the certified identity, labelled uncertified);
 <code>MEEP_GPU_DISPATCH=0</code> turns
 dispatch off. Three tables dispatch through the driver's own consults:
 
 | Table | What exists | Runtime status |
 |---|---|---|
-| Triton | CuPy-pointer interop, per-sub-step coverage predicates, compiled kernels, fingerprinted gate records with a <code>driver_dispatch</code> block, and cross-sub-step fused products | Released and dispatching: 30 arms over 64 arm-case rows; board 334 of 597 seam-instances reachable in dispatch. The first table on a CuPy engine. |
-| Hand-written CUDA | <code>cp.RawKernel</code> sources behind the same fail-closed seam, its own certification ledger, and its own board | Released and dispatching: 23 arms over 68 arm-case rows; board 352 of 597, by preference. With a validated Triton it composes second, so it serves nothing there unless <code>MEEP_GPU_BACKEND_PREFERENCE=cuda</code> puts it first. Without one it composes alone, a composition run on one device for the installation check's simulation, one example and one route leg with Triton withheld from the process (19 of 39 cases byte-identical, 2026-09-29), and not timed. |
-| Metal | Hand-written shaders compiled through <code>torch.mps.compile_shader</code> over persistent MPS mirrors of NumPy-owned fields, with a plan-time residency bracket, held on the device by default | Released and dispatching for a <code>prefer_gpu=True</code> driver on an Apple GPU (a NumPy engine with an MPS device): 29 arms over 72 arm-case rows; board 327 of 597, a correctness and reachability number. For the residency modes see [Execution backends](execution-backends.md#residency-is-the-seam). |
+| Triton | CuPy-pointer interop, per-sub-step coverage predicates, compiled kernels, fingerprinted gate records with a <code>driver_dispatch</code> block, and cross-sub-step fused products | Released and dispatching: 30 arms over 64 arm-case rows; board 334 of 597 seam-instances reachable in dispatch (the 1.0 cut; the 1.0.1 censuses measured 0 flipped flags on 194 of 194 rows per table, and the 1.0.1 cut is owed with the archived inputs). The first table on a CuPy engine. |
+| Hand-written CUDA | <code>cp.RawKernel</code> sources behind the same fail-closed seam, its own certification ledger, and its own board | Released and dispatching: 23 arms over 68 arm-case rows; board 352 of 597 (the 1.0 cut; the 1.0.1 census measured 0 flipped flags on 194 of 194 rows and one changed selection, and the 1.0.1 cut is owed), by preference. With an admitted Triton it composes second, so it serves nothing there unless <code>MEEP_GPU_BACKEND_PREFERENCE=cuda</code> puts it first. Without one it composes alone, a composition run on one device for the installation check's simulation, one example and one route leg with Triton withheld from the process (31 of 39 cases byte-identical, 6 refusals the leg requires and 2 with no fused arm, 2026-10-28), and not timed. |
+| Metal | Hand-written shaders compiled through <code>torch.mps.compile_shader</code> over persistent MPS mirrors of the engine's NumPy arrays, with a plan-time residency bracket; under the default <code>held</code> residency the device owns each engine volume between launches | Released and dispatching for a <code>prefer_gpu=True</code> driver on an Apple GPU (a NumPy engine with an MPS device): 29 arms over 72 arm-case rows; board 327 of 597 (the 1.0 cut; 0 flipped flags on 194 of 194 rows in the 1.0.1 census, the 1.0.1 cut owed), a correctness and reachability number. For the residency modes see [Execution backends](execution-backends.md#residency-is-the-seam). |
 
 The array path is still the reference the arithmetic is proved against, and a
 compiled kernel is a performance specialization rather than a second source of
@@ -27,16 +27,18 @@ user-facing switches, boards and measurements, read
 ## What releases an arm
 
 A benchmark is not in this chain. A fused arm reaches a user run only after all
-four of the following. Dispatch is on by default, so once all four hold, a run
-that does not set <code>MEEP_GPU_DISPATCH=0</code> gets the arm:
+four of the following. Dispatch is on by default, so once all four hold, a run that does
+not set <code>MEEP_GPU_DISPATCH=0</code> gets the arm unless measured cost prefers its singles:
 
 1. **A per-family device gate**, paired with a null control that must be able to
-   fail, establishing the family's arithmetic on real hardware under the
-   certified subnormal policy.
+   fail, establishing the family's arithmetic on real hardware under each
+   subnormal policy its table certifies.
 2. **A ledger weld** binding that certification to the bytes that executed —
    <code>ARM_CERTIFICATION</code> for the Triton table,
    <code>CUDA_ARM_CERTIFICATION</code> for the hand-written table, and the
-   Metal table's own registry.
+   Metal table's own registry. A weld keeps one run per device, so one device's bind on
+   unchanged bytes leaves what another device reads unmoved
+   (<code>parity/meep_gpu/ledger_scope.py</code>).
 3. **An entry in that table's released-arms map**, restricted by both the shared
    release envelope and that arm's own axes row. Both halves must admit the
    configuration; either one refuses it alone.
@@ -65,11 +67,12 @@ gate that certified its entry point. The units are:
   Its near and far passes run at the driver's two fill consults, with the wall
   clear between them left on the array path.
 
-These singles let the hand-written table serve a mirror-folded run and an
-off-diagonal D/E seam without a second table, which matters on a host with no
-validated Triton. That composition has been run on one device for the installation check's simulation and one example, and by the
-route campaign's leg with Triton withheld from the process (2026-09-29): 19 of 39 cases byte-identical to the array path with only
-CUDA kernels launched, 18 complex cases skipped and 2 with no fused arm. It has not been timed.
+These singles let the hand-written table serve a mirror-folded run and an off-diagonal D/E seam
+without a second table, which matters on a host with no admitted Triton. That composition has been
+run on one device for the installation check's simulation and one example, and by the route
+campaign's leg with Triton withheld from the process (2026-10-28): 31 of 39 cases byte-identical to
+the array path with only CUDA kernels launched, 6 refusals the leg requires and 2 with no fused arm.
+It has not been timed.
 
 ### The chunk division on the hand-written table
 
@@ -86,6 +89,21 @@ on a lifted run, so the census judges the division the run steps with.
 The division's <code>int32[25]</code> record (<code>chunk_map.chunk_bounds_record</code>)
 is uploaded once per composition, and every plan of that composition, single or
 fused, binds the same device vector.
+
+Every arm refuses a division no record describes (one that is not separable along an
+axis, or a line with more than two runs), and the array path steps it
+(<code>cuda_kernels/chunk_coverage.py</code>). The off-diagonal and cylindrical
+families index MEEP's chunks beyond the membership runs, through the record's run
+labels, so they also refuse a division whose labels do not name its chunk intervals
+one to one: on an axis that wraps and carries a layer on both faces, the stored row 0
+images the high wall plane and reads the low run's label. The dispersive off-diagonal
+<code>update_E</code> and its E&rarr;P weld read a cell's chunk only to look up whether
+that chunk keeps an off-diagonal <code>chi1inv</code> array, through presence words
+built from the array path's own per-cell presence and checked against it on every
+stored cell (<code>offdiag_presence.presence_words</code>). They are admitted on such
+a division wherever those words build on its record, and refused by the builder's
+reason otherwise
+(<code>dispersive_offdiag_update_e.dispersive_offdiag_division_refusal</code>).
 
 The table's root kernels read it: the real-field PML curl pair
 (<code>step_B_pml_real</code>, <code>step_D_pml_real</code>), the constitutive pair
@@ -267,7 +285,94 @@ the chunk division reads the division as data: the record
 a partner-presence word). It is bound once per plan, as one pointer argument named
 <code>cb</code>, rather than as integer arguments or source text: Triton
 specialises an integer argument equal to 1 or divisible by 16, and bounds in the
-source would put one compiled binary per grid in the cache.
+source would put one compiled binary per grid in the cache. The forms the record
+selects, and the arrays each reads and writes, are the
+[per-chunk PML forms](../design/floating-point.md#per-chunk-forms).
+
+### Layout of the record {#record-layout}
+
+| Words | Content |
+|---|---|
+| 0 to 23 | <code>[sub-lattice ∈ {integer, half-integer}][axis ∈ {x, y, z}][a0, a1, b0, b1]</code>, at index <code>((half * 3) + axis) * 4 + word</code> (<code>chunk_map.record_index</code>). Stored row <code>r</code> of a component on that sub-lattice and axis lies in a chunk that carries the axis's layer exactly when <code>(a0 <= r < a1) or (b0 <= r < b1)</code>; an empty run is <code>[0, 0)</code> |
+| 24 | The partner-presence word: bit <code>a</code> set when axis <code>a</code> is not invariant (<code>Grid.is_invariant</code>), so a curl partner differenced along it is present ([Absent stencil partners](../design/floating-point.md#partner-presence)) |
+
+- **One line per (axis, sub-lattice), ghost-adjusted.** The record encodes
+  <code>ChunkLayout.membership(axis, half)</code>, the line the array path's region plan
+  steps with. A ghost row takes the value of the row it images (the near ghost of a
+  mirrored axis, the far ghost of a folded periodic one), so a kernel that evaluates the
+  record at a stored ghost index reads its image's form, and keying a carried ghost at its
+  destination equals keying it at its image.
+- **Which entries a kernel reads.** A curl component reads its dsigu axis, a constitutive
+  component its own axis, each on the component's own Yee sub-lattice along that axis:
+  the B curl reads the half-integer record, the D curl and <code>update_H</code> the
+  integer one, and <code>update_E</code> the half-integer one. That is the sub-lattice of
+  the coefficient table the kernel already reads.
+- **Refused by name when it is built**: a division that is not separable along an axis
+  (which form a cell steps depends on more than its index there), a line with more than
+  two runs after the ghost adjustment, and any line the recomputed formula does not
+  reproduce exactly. The array path steps such a division on its mask route, and every
+  kernel slot stays on the array path with the reason named.
+- **Extensions for families that index MEEP's chunks.** The off-diagonal row and the
+  conductive curl need a per-chunk fact the runs cannot carry: whether a chunk keeps an array MEEP
+  deletes where it is identically zero. The row binds a 27-bit presence word per row slot, Metal's curl
+  one per conductive target (CUDA's and Triton's, a per-cell mask); CUDA and Metal index it by
+  <code>lx + 3*ly + 9*lz</code>, labels off the record on the component's own sub-lattice (0 first run,
+  2 second, 1 otherwise), Triton by <code>9*x + 3*y + z</code>, segments off the owner volume. The
+  cylindrical radial sum restarts at each chunk start along r. What a table then requires of the division
+  differs, and each refuses the rest by name to the array path: Triton, for the whole plan, global cuts
+  leaving at most three segments along the axes concerned; the hand-written CUDA off-diagonal and
+  cylindrical families, labels naming the chunks one to one (the dispersive family excepted, above);
+  Metal, presence words that reproduce the array path's own, and for its real radial scan r cuts not varying along z.
+
+### One record, three bindings {#record-bindings}
+
+The same words reach every table, built once per plan:
+
+| Table | Binding |
+|---|---|
+| Hand-written CUDA | One <code>const int*</code> argument, <code>cb</code>, the kernel's last; one device vector per composition, shared by every plan of it |
+| Triton | One pointer argument, <code>cb</code>, read with scalar loads at the top of the program; a plan built without one is refused by name rather than defaulting to "every cell in the layer", which would disarm a gate's mutation legs |
+| Metal | The <code>ChunkBounds</code> struct, as the kernel's last buffer, or embedded as a member of the family's <code>Params</code> struct where the family carries its scalars there and has no buffer binding to spare |
+
+Source text was ruled out on every table. Metal specialises its sources by string
+substitution and fingerprints one digest per enumerated label, and CUDA puts the source in
+its compile-cache key, so bounds in the text would make both sets grow with every grid and
+layer. A pointer also avoids Triton's integer specialisation.
+
+### Fused products and the record {#fused-products-and-the-record}
+
+A fused product lifts certified single-kernel bodies, so it inherits their forms. Four
+rules keep the inheritance exact:
+
+- **One decode per kernel.** Each table has one emitter of the record's decode block
+  (<code>cuda_kernels/bounds_block.py</code> on the hand-written table), placed directly
+  after the index decode. A product that welds two bodies removes each body's own block
+  and emits one block over the union of their entries. The decoded names are tagged by
+  sub-lattice (<code>cbh_*</code> and <code>in_h_*</code> for the half-integer lattice,
+  <code>cbi_*</code> and <code>in_i_*</code> for the integer one), so the union never
+  declares a name twice. On Metal the family's <code>Params</code> embeds the record, and
+  one alias line before the lifted body binds it.
+- **A carried ghost is keyed at its destination.** A fill that carries a constitutive
+  result onto a ghost cell selects its form on the membership row whose coefficient entry
+  it already reads: stored row 0 of the component's own axis for a near image, the top
+  plane for a far one, and the thread's own row otherwise. Because the record is
+  ghost-adjusted, that is the image row's form.
+- **A recompute is keyed at the recomputed cell.** An H&rarr;D weld or a scratch weld that
+  re-derives a neighbour's value runs the certified body through its own index decode, so
+  the membership test inside the body is evaluated at the recomputed cell, not at the
+  thread's.
+- **Guarded loads, and the ownership guard before the one load of the field.** On the
+  hand-written table the curl helper reads its auxiliary as
+  <code>float fprev = dsigu ? fu[idx] : 0.0f;</code> and the field once, as
+  <code>float fcur = f[idx];</code>. In a fused pair that a symmetry fill crosses, the
+  ownership guard <code>if (!owned) return 0.0f;</code> sits directly before that load:
+  on a cell a fill images, another block writes the field in the same launch, and an
+  ordinary launch has no grid-wide barrier at which the load would be defined. The
+  <code>fu</code> stage stays above the guard, since the fills write the field and never
+  <code>fu</code>. Hoisted loads keep the same guards: <code>fu</code> behind its dsigu
+  flag, <code>f_w</code> and the old field behind ownership and the dsigw flag.
+
+### Where each table reads it {#record-per-table}
 
 On the Triton table:
 
@@ -339,7 +444,7 @@ On the Metal table:
   (<code>metal_kernels/nonlinear_update_e.py</code>): the record last, the base
   constitutive tail per chunk, the four-corner transverse sums left to right, and
   <code>Dsqr</code>'s <code>0.0625</code> scale and the addition after it in software
-  binary64 (<code>metal_kernels/softfp64.py</code>, ruling R7), rounded once, as
+  binary64 (<code>metal_kernels/softfp64.py</code>; [Double precision on the Metal table](../design/floating-point.md#double-precision-on-the-metal-table)), rounded once, as
   <code>stepping._nonlinear_dsqr</code> forms them. Its harness builder requires
   <code>chunk_bounds</code>.
 - **The cylindrical families bind it and step MEEP's cylindrical forms**
@@ -380,7 +485,7 @@ On the Metal table:
   wall-masked, scaled by the double <code>0.25</code> and added where the cell's chunk
   keeps the row (the word's bit at the cell's chunk code, read off the record on the
   component's own sub-lattice per axis); the row rounded once, every double operation
-  through <code>metal_kernels/softfp64.py</code> (ruling R7). The words are built from
+  through <code>metal_kernels/softfp64.py</code>. The words are built from
   the array path's own presence and refused by name where the record does not
   reproduce it (<code>offdiag_update_e.presence_words</code>). The complex folded row
   connects a Bloch phase on the same-index operand's plane 0, as the array path does.

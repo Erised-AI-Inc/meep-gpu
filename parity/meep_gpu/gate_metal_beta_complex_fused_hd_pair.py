@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Native MPS byte gate for the COMPLEX BLOCH-BETA Metal H->D weld, BOTH variants.
 
-ONE PRODUCT, TWO CELLS, and this gate measures both from one descriptor:
+One product, two cells, and this gate measures both from one descriptor:
 
     (special_kz complex beta -> special_kz complex beta)   1 corpus row
     (folded beta complex     -> folded beta complex)       3 corpus rows
@@ -19,11 +19,11 @@ state through the same ``h_cell``, steps ``D``/``fu_D`` in place, and rotates th
 template with one slot inserted -- and ``resolve_variant`` reads the fold off the grid,
 so a row never chooses between them.
 
-THE CLAIM IS PER COMPLETE DRIVER STEP, as uint32 WORDS over every stored volume the
+The claim is per complete driver step, as uint32 WORDS over every stored volume the
 engine allocates, never ``allclose``, against the array path, the two CERTIFIED beta
 singles for the resolved variant, ``plan_step(fuse=True)`` and ``plan_step(fuse=False)``.
 
-WHAT THIS GATE ADDS OVER ITS TWO SIBLINGS, because it is what beta adds:
+What this gate adds over its two siblings, because it is what beta adds:
 
 * **the beta term is armed twice** -- compiled out, and with its two centre partners
   swapped -- on both variants. Both must fire;
@@ -40,7 +40,7 @@ WHAT THIS GATE ADDS OVER ITS TWO SIBLINGS, because it is what beta adds:
   record and reads every field back, because a struct four bytes short of what the
   shader may address is a plausible number rather than a crash.
 
-WRITTEN FOR THE UNWIRED TREE: every clause that depends on the wiring tables is
+Written before the product was wired: every clause that depends on the wiring tables is
 RECORDED, never asserted. What is asserted is refused BY NAME, the refusal naming
 ``INSTALLABLE`` False, the composer's selection unchanged, and the released neighbours
 keeping their slots.
@@ -60,7 +60,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-# THE POLICY, SET BEFORE ANY meep_gpu MODULE IS REACHED.
+# The policy, set before any meep_gpu module is reached.
 os.environ.setdefault("MEEP_GPU_SUBNORMAL_POLICY", "flush")
 HERE = Path(__file__).resolve().parent
 API_ROOT = next(parent for parent in HERE.parents
@@ -86,15 +86,15 @@ SUBJECT_PACKAGE = "metal_kernels"
 CENSUS = "metal_coverage_2026-09-04_m0complex"
 SEAM_RECORD = "h_to_d_seam_2026-09-04"
 
-#: The board's ``(update_H arm, step_D arm)`` pair per variant -- READ FROM THE
-#: FAMILY, never re-typed here. The cell a gate measures and the cell the family
+#: The board's ``(update_H arm, step_D arm)`` pair per variant -- read from the
+#: family, never re-typed here. The cell a gate measures and the cell the family
 #: claims have to be the same cell, and two spellings of one join key is how they
 #: stop being.
 CELL_ARMS: Dict[str, Tuple[str, str]] = dict(family.VARIANT_CELLS)
 
 LIFT_PREFIX = "MEEP_GPU_BETA_COMPLEX_HD_GATE"
 
-#: EVERY LEVER BOTH VARIANTS HAVE, and the two that only one of them has.
+#: Every lever both variants have, and the two that only one of them has.
 #:
 #:   VARIANT      plain and folded, at least three fixtures each, because the two
 #:                emitters are the whole of what the variant means;
@@ -129,7 +129,7 @@ CASES: Tuple[Tuple[str, Dict[str, Any]], ...] = (
           boundaries={"x": "metallic", "y": "metallic"})),
 )
 
-#: The fixtures the shader mutations are armed on: ONE OF EACH VARIANT, because the two
+#: The fixtures the shader mutations are armed on: one of each variant, because the two
 #: variants are two device strings and a defect caught in one is not caught in the
 #: other, plus the MIRROR_METALLIC fold, which is the only specialisation on which a
 #: folded top plane is STEPPED rather than masked.
@@ -213,7 +213,7 @@ def _scratch_history_store_dropped(variant, codes, phased):  # noqa: ANN001
 
 
 def _constitutive_bound_to_the_curl_sinv(variant, codes, phased):  # noqa: ANN001
-    """THE SHARED COEFFICIENT GROUP, BROKEN -- the premise of the 30-pointer shape."""
+    """The shared coefficient group, broken -- the premise of the 30-pointer shape."""
     source = _shipped(variant, codes, phased)
     if "kmx, kmy, kmz, cb)" not in source:
         raise AssertionError("no h_cell call ends with the shared kms group")
@@ -276,7 +276,7 @@ def _beta_ladder_ignores_dsigu(variant, codes, phased):  # noqa: ANN001
 def _previous_fused_connection(variant, codes, phased):  # noqa: ANN001
     """The Bloch connection's product fused, NumPy's complex64 multiply.
 
-    INVERTED (KERNELS.md §7.1): the connection is MEEP's unfused product
+    INVERTED (docs/development/certification.md#inverted-grouping-mutations): the connection is MEEP's unfused product
     (``c_mul``, the array path's ``stepping._bloch_ghost_operand``); this plants the
     package's previous fused spelling in the one helper every connection calls, so a
     fixture with a phased axis must diverge.
@@ -323,7 +323,7 @@ def _host_written_in_place(product, case_name, spec, steps):  # noqa: ANN001
 
 
 def _host_beta_words_magnetic(product, case_name, spec, steps):  # noqa: ANN001
-    """THE BETA COEFFICIENT FROM THE MAGNETIC CONVENTION.
+    """The beta coefficient from the magnetic convention.
 
     Under complex storage ``beta_curl_coefficients`` negates the word for an electric
     sub-step (the quarter turn by ``-coefficient``, stepping._special_kz_beta_term).
@@ -490,7 +490,7 @@ REFUSALS: Tuple[Dict[str, Any], ...] = (
 # ---------------------------------------------------------------------------
 
 def params_probe() -> Dict[str, Any]:
-    """The 152-byte packed record BOUND TO A LAUNCH, with every field read back.
+    """The 152-byte packed record bound to a launch, with every field read back.
 
     Three ``float2`` members, five scalars, two beta words and the chunk record, which
     Metal rounds up to its 8-byte alignment. A host record that is short of the

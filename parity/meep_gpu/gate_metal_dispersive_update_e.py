@@ -8,8 +8,8 @@ is appended and fsynced before the following Metal product is launched.
 The oracle is ``stepping.update_E`` then ``PolarizationState.update`` on the
 one-rank region plan of each case's grid and layer, and the plans bind that
 division's chunk record. Every product row records, per component, the cells of
-each constitutive form (the form-coverage rule, DESIGN.md D13) and requires both
-forms on every split component. Mutations (KERNELS.md §7.1, §7.2): the previous
+each constitutive form (docs/development/certification.md#form-coverage) and requires both
+forms on every split component. Mutations (certification.md#inverted-grouping-mutations and #chunk-form-battery): the previous
 package accumulation grouping is planted and must be caught; so are the select
 removed, the auxiliary stored on a plain cell, the integer lattice read for the
 half-integer one and the bound record moved by one row; the auxiliary load made
@@ -187,14 +187,14 @@ def _mutant_sources() -> Dict[str, Tuple[str, str]]:
             base, "source = source - p1[idx];", "// dropped p1")),
         "fw_store_dropped": ("caught", _planted(
             base, "    if (dw) { fw[idx] = src; }", "    // stale fw")),
-        # §7.1, inverted: the package's previous grouping, (f + kps*src) - kms*prev.
+        # INVERTED: the package's previous grouping, (f + kps*src) - kms*prev.
         "previous_accumulation_grouping": ("caught", _planted(
             base, _ACCUMULATE,
             "    if (dw) { value = (e_out[idx] + (kps[i] * src)) - (kms[i] * prev); }")),
         "pml_kps_kms_order_reversed": ("caught", _planted(
             base, _ACCUMULATE,
             "    if (dw) { value = e_out[idx] + ((kms[i] * src) - (kps[i] * prev)); }")),
-        # §7.2: today's previous whole-grid form, the accumulation on every cell.
+        # Form battery: the package's previous whole-grid form, the accumulation on every cell.
         "select_removed": ("caught", _planted(
             _planted(_planted(base, "    float prev = dw ? fw[idx] : 0.0f;",
                               "    float prev = fw[idx];"),

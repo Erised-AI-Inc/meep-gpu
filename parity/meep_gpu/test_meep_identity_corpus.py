@@ -29,13 +29,24 @@ def _row(**extra):
     return record
 
 
-def _legs(tmp_path: Path, rows_by_leg):
+def _write(path: Path, rows):
+    lines = [json.dumps(row) for row in rows]
+    path.write_text("\n".join(lines) + ("\n" if lines else ""))
+
+
+def _legs(tmp_path: Path, rows_by_leg, lifts_by_leg=None):
     for leg, directory in corpus.LEGS.items():
         path = tmp_path / directory
         path.mkdir(parents=True, exist_ok=True)
-        lines = [json.dumps(row) for row in rows_by_leg.get(leg, [])]
-        (path / "parity.jsonl").write_text("\n".join(lines) + ("\n" if lines else ""))
+        _write(path / "parity.jsonl", rows_by_leg.get(leg, []))
+        if leg in corpus.RESURVEYS:
+            _write(path / "lift.jsonl", (lifts_by_leg or {}).get(leg, []))
     return tmp_path
+
+
+def _inputs():
+    return ({f"{d}/parity.jsonl" for d in corpus.LEGS.values()}
+            | {f"{corpus.LEGS[leg]}/lift.jsonl" for leg in corpus.RESURVEYS})
 
 
 def test_the_manifest_keeps_measured_rows_and_names_the_rest(tmp_path):
@@ -48,8 +59,85 @@ def test_the_manifest_keeps_measured_rows_and_names_the_rest(tmp_path):
     assert [row["label"] for row in document["rows"]] == ["ex.a-b", "t.test_x.TestX.test_one"]
     assert document["not_cases"] == [{"leg": "examples/main", "case": "c.py",
                                       "parity": "LIFT-OR-STEP-FAILED", "error": "refused"}]
-    assert set(document["inputs_sha256"]) == {f"{d}/parity.jsonl" for d in corpus.LEGS.values()}
+    assert set(document["inputs_sha256"]) == _inputs()
     assert document["rows"][0]["table2"]["driver_steps"] == 200
+    assert document["remeasured"] == []
+
+
+def _case(case, **extra):
+    record = {"module": "test_x.py", "case": case, "has_simulation": True, "accepted": True,
+              "lifts": True}
+    record.update(extra)
+    return record
+
+
+def test_a_resurvey_adds_rows_retires_rows_it_cannot_build_and_names_its_refusals(tmp_path):
+    resurvey = corpus.RESURVEYS[0]
+    assert corpus.holds_tests(resurvey) and not corpus.holds_tests(corpus.RESURVEYS[1])
+    results = _legs(tmp_path, {
+        "tests": [_row(module="test_x.py", case="TestX.test_kept"),
+                  _row(module="test_x.py", case="TestX.test_gone")],
+        resurvey: [_row(module="test_x.py", case="TestX.test_kept", parity_rel_l2=0.0),
+                   _row(module="test_x.py", case="TestX.test_new")],
+    }, {resurvey: [
+        _case("TestX.test_kept"),
+        _case("TestX.test_gone", has_simulation=False, accepted=None, lifts=None,
+              outcome="skipped", error="MPI specific test"),
+        _case("TestX.test_new"),
+        _case("TestX.test_refused", accepted=False, accept_reasons=["no sources"], lifts=False,
+              lift_error="cannot be lifted"),
+        _case("TestX.test_plain", has_simulation=False, accepted=None, lifts=None,
+              outcome="ran_to_end"),
+    ]})
+    document = corpus.manifest_rows(results)
+    rows = {row["label"]: row for row in document["rows"]}
+    assert list(rows) == ["t.test_x.TestX.test_kept", "t.test_x.TestX.test_new"]
+    assert rows["t.test_x.TestX.test_kept"]["leg"] == "tests"  # the row as first measured
+    assert rows["t.test_x.TestX.test_new"]["leg"] == resurvey
+    assert rows["t.test_x.TestX.test_new"]["kind"] == "test"
+    assert document["remeasured"] == [{"label": "t.test_x.TestX.test_kept", "leg": resurvey,
+                                       "row_leg": "tests", "rel_l2": 0.0, "row_rel_l2": 1e-6}]
+    named = {entry["label"]: entry for entry in document["not_cases"]}
+    assert named["t.test_x.TestX.test_gone"] == {
+        "leg": resurvey, "label": "t.test_x.TestX.test_gone", "case": "TestX.test_gone",
+        "parity": "NO-SIMULATION", "error": "MPI specific test", "retires": "tests"}
+    assert named["t.test_x.TestX.test_refused"]["parity"] == "REFUSED"
+    assert named["t.test_x.TestX.test_refused"]["error"] == "no sources"
+    assert "retires" not in named["t.test_x.TestX.test_refused"]
+    assert named["t.test_x.TestX.test_plain"]["error"] == "ran_to_end"
+    assert set(document["inputs_sha256"]) == _inputs()
+    assert document["resurveys"] == list(corpus.RESURVEYS)
+
+
+def test_a_resurvey_that_measures_another_run_refuses_the_manifest(tmp_path):
+    resurvey = corpus.RESURVEYS[0]
+    results = _legs(tmp_path, {
+        "tests": [_row(module="test_x.py", case="TestX.test_one")],
+        resurvey: [_row(module="test_x.py", case="TestX.test_one", driver_steps=400)],
+    }, {resurvey: [_case("TestX.test_one")]})
+    with pytest.raises(ValueError, match="another run"):
+        corpus.manifest_rows(results)
+
+
+def test_a_resurvey_recording_a_case_twice_refuses_the_manifest(tmp_path):
+    resurvey = corpus.RESURVEYS[0]
+    results = _legs(tmp_path, {}, {resurvey: [_case("TestX.test_one"), _case("TestX.test_one")]})
+    with pytest.raises(ValueError, match="twice"):
+        corpus.manifest_rows(results)
+
+
+def test_the_lift_verdict_quotes_the_stage_that_stopped_the_case():
+    assert corpus.lift_verdict({"has_simulation": False, "error": "skipped here"}) == (
+        "NO-SIMULATION", "skipped here")
+    assert corpus.lift_verdict({"has_simulation": True, "accepted": False,
+                                "accept_reasons": ["a", "b"], "lifts": False}) == ("REFUSED", "a; b")
+    assert corpus.lift_verdict({"has_simulation": True, "accepted": False,
+                                "accepted_after_substitution": True, "lifts": False,
+                                "lift_error": "boom"}) == ("LIFT-FAILED", "boom")
+    assert corpus.lift_verdict({"has_simulation": True, "accepted": True, "lifts": None,
+                                "lift_note": "not attempted"}) == ("NOT-LIFTED", "not attempted")
+    assert corpus.lift_verdict({"has_simulation": True, "accepted": True,
+                                "lifts": True})[0] == "NOT-MEASURED"
 
 
 def test_two_rows_with_one_label_refuse_the_manifest(tmp_path):

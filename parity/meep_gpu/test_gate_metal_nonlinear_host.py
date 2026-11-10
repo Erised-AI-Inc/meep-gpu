@@ -6,8 +6,9 @@ they keep the device legs meaningful between device runs:
 
 * **every source mutation lands**: each needle occurs exactly once in the shipped
   source of every boundary configuration it is armed on, so no leg is disarmed by a
-  re-spelled kernel. The package's previous forms are must-catch entries (KERNELS.md
-  §7.1): the paired corners, the two-step accumulation and the float32 ``Dsqr``;
+  re-spelled kernel. The package's previous forms are must-catch entries
+  (docs/development/certification.md#inverted-grouping-mutations): the paired corners,
+  the two-step accumulation and the float32 ``Dsqr``;
 * **every record mutation moves the record and stays a record**: the planted chunk
   record differs from the shipped one and still passes the plan's own check, so the
   leg launches it rather than refusing it;

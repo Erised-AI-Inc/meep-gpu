@@ -1,13 +1,13 @@
 """Byte-identity gate for the DISPERSIVE off-diagonal ``update_E`` CUDA kernel.
 
-THE CLAIM UNDER TEST. ``meep_gpu/cuda_kernels/dispersive_offdiag_update_e.py``
+The claim under test. ``meep_gpu/cuda_kernels/dispersive_offdiag_update_e.py``
 emits ``update_E_pml_real_folded_offdiag_dispersive``: MEEP's tensor row
 product at ``update_E`` whose OPERANDS are ``D - sum P`` rather than ``D``, over a
 possibly mirror-folded stored extent. Does it reproduce ``stepping.update_E``,
 word for word -- and does it still reduce to the two certified off-diagonal
 families where no pole drives anything?
 
-WHY THIS GATE EXISTS AND WHAT SPECIFIED IT. The 2026-08-20 union census
+Why this gate exists and what specified it. The 2026-08-20 union census
 (``results/cuda_predicate_coverage_2026-08-20_final/``) reads 753 / 759 slots
 served by twenty shipped hand-CUDA families. Five of the six residual slots are
 complex64. The sixth is ``examples/absorbed_power_density.py`` at ``update_E``,
@@ -23,11 +23,11 @@ Read together those four ARE the specification. This gate measures whether the
 kernel written to it works.
 
 =============================================================================
-THE FUSION QUESTION, SETTLED BY MEASUREMENT RATHER THAN BY PREFERENCE
+The fusion question, settled by measurement rather than by preference
 =============================================================================
 
 The census note says this slot may want "a new kernel OR a measured fusion of two
-shipped ones". THE ``composition`` LEG IS THAT MEASUREMENT. It runs the only
+shipped ones". The ``composition`` leg is that measurement. It runs the only
 route that exists -- materialize the three ``D - sum P`` volumes with the array
 path, then launch the SHIPPED ``update_E_pml_real_folded_offdiag`` with
 those buffers bound in place of ``D`` -- against the same oracle on the same
@@ -47,7 +47,7 @@ the leg records why: neither shipped kernel exposes ``D - sum P`` as an output.
 not the identity in float32, and the ``E`` accumulation would have to be undone.
 
 =============================================================================
-WHAT MAKES A CASE NON-VACUOUS, AND WHAT REFUSES ONE
+What makes a case non-vacuous, and what refuses one
 =============================================================================
 
 A gate that cannot fail certifies nothing, and this sub-step has five ways to be
@@ -60,7 +60,7 @@ vacuous. Each is measured PER CASE and a case below its floor is REFUSED:
 * ``pole_chain_bites`` -- whether ``D - sum P`` differs BITWISE from ``D``. A case
   whose chain is inert is a NON-dispersive case wearing dispersive clothes, and
   every ordering leg would come back UNCAUGHT for a reason about the fixture;
-* ``folded_axis_absorbs`` -- ``max|kps-1|`` ON THE FOLDED AXIS. A folded axis whose
+* ``folded_axis_absorbs`` -- ``max|kps-1|`` on the folded axis. A folded axis whose
   half-integer profile is the identity cannot show a coefficient-index error on
   the axis the fold moved;
 * ``mirror_ghost_is_live`` -- the ghost is ``parity * (D - sum P)[2]``, so the
@@ -68,7 +68,7 @@ vacuous. Each is measured PER CASE and a case below its floor is REFUSED:
   the mirror ghost EQUALS the metallic zero it is being distinguished from.
 
 =============================================================================
-THE BATTERY'S OWN TWO-SIDEDNESS
+The battery's own two-sidedness
 =============================================================================
 
 Every swept case must be BIT-IDENTICAL, so the sweep alone cannot show that the
@@ -87,7 +87,7 @@ particular:
   on an ODD plane it is +1 and dropping it is the identity.
 
 =============================================================================
-THE RELEASE VERDICT IS ITSELF FALSIFIED
+The release verdict is itself falsified
 =============================================================================
 
 ``--legs falsify`` re-runs the whole verdict computation over a sweep whose one
@@ -106,7 +106,7 @@ token because CuPy's disk-cache key is computed above the strip seam)::
 
 Laptop (no CUDA). The NumPy backend EXECUTES the emitted device source through
 the slice test module's own evaluator -- one grammar, one copy, imported rather
-than duplicated. IT COMPILES NOTHING AND CERTIFIES NOTHING::
+than duplicated. It compiles nothing and certifies nothing::
 
     python -u gate_cuda_dispersive_offdiag.py --backend numpy \\
         --product reduced --out /tmp/dispersive_offdiag_local.json
@@ -173,7 +173,7 @@ COMPONENTS: Tuple[str, ...] = flat.COMPONENTS
 #: hand-CUDA record is cut at. "Identical for N steps" is a claim about N.
 MULTI_STEP_BUDGET = 60
 
-#: EVERY AXIS IS FOLDED SOMEWHERE, both plane parities appear, both declared
+#: Every axis is folded somewhere, both plane parities appear, both declared
 #: terminations appear, and one, two and three simultaneous planes all appear.
 #: The two UNFOLDED controls carry the unfolded arm, which this family ADMITS --
 #: unlike the folded off-diagonal family, there is no shipped competitor there.
@@ -208,14 +208,14 @@ FOLD_SPECS: Tuple[Dict[str, Any], ...] = (
      "boundaries": ("periodic", "periodic", "periodic"),
      "cell": (8.0, 12.0, 16.0)},
 
-    # A FOLD BESIDE A LIVE METALLIC WALL, which no other spec here carries: a
+    # A fold beside a live metallic wall, which no other spec here carries: a
     # folded axis always reports ``wm = 0``, so a sweep of folded specs alone
     # leaves every wall flag zero and the wall mask untested on a fold.
     {"label": "fold_X_wall_Y", "axes": "X", "phase": 1,
      "boundaries": ("periodic", "metallic", "periodic"),
      "cell": (16.0, 8.0, 12.0)},
 
-    # TWO PLANES AT ONCE, and THREE, both terminations.
+    # Two planes at once, and THREE, both terminations.
     {"label": "fold_XY_mixed", "axes": "XY", "phase": 1,
      "boundaries": ("periodic", "metallic", "periodic"),
      "cell": (16.0, 16.0, 10.0)},
@@ -239,7 +239,7 @@ ROW_MASK_SPECS: Tuple[Dict[str, Any], ...] = (
             "the PLAIN dispersive arm beside a coupled component"},
 )
 
-#: The pole arities. THE FAMILY'S OWN LIST, imported, so the gate cannot sweep an
+#: The pole arities. The family's own list, imported, so the gate cannot sweep an
 #: arity the emitter refuses -- or miss one the predicate admits.
 ARITIES: Tuple[Tuple[int, int, int], ...] = family.POLE_COUNTS_SWEPT
 
@@ -307,7 +307,7 @@ def _plane_index(axis: int, index: int, shape) -> Tuple[Any, ...]:
 def build(xp, spec: Dict[str, Any], courant: float):
     """A frozen ``(fields, layer, grid)`` triple for one fold spec.
 
-    THE THICKNESS RULE IS THE SIBLING FOLD GATES', not a new one: skip an axis too
+    The thickness rule is the sibling fold gates', not a new one: skip an axis too
     thin to hold a layer, and on a MIRRORED axis ask for the HIGH face only.
     ``PML._resolve_mirror_faces`` refuses a named low face on a folded axis
     outright -- cell 0 is the mirror plane, a boundary condition rather than a
@@ -332,12 +332,12 @@ def build(xp, spec: Dict[str, Any], courant: float):
 def register_poles(fields, grid, arity: Sequence[int], rng):
     """Build real ``PolarizationState`` objects at one arity, P seeded away from 0.
 
-    THE ARITY IS BUILT FROM REAL OBJECTS, never faked: a per-component sigma of
+    The arity is built from real objects, never faked: a per-component sigma of
     zero is what ``PolarizationState`` filters on (dispersion.py:641-643), which
     is the engine's own spelling of "this term does not drive that component" and
     is exactly what MEEP's ``needs_P`` / ``trivial_sigma`` pair does.
 
-    ARITY (0, 0, 0) STILL REGISTERS ONE STATE. That is what the configuration IS:
+    Arity (0, 0, 0) still registers one state. That is what the configuration IS:
     ``fields.polarizations`` truthy -- which both non-dispersive off-diagonal
     predicates refuse on -- with a chain of zero on every component, which the
     array path serves by ALIASING D. A fixture that registered nothing would build
@@ -364,7 +364,7 @@ def register_poles(fields, grid, arity: Sequence[int], rng):
 def seed_pole_state(fields, grid, value_class: str, rng) -> Dict[str, np.ndarray]:
     """Re-seed the pole buffers in the requested value class.
 
-    THE MATERIAL AND THE COEFFICIENTS STAY NORMAL under the band class. Driving
+    The material and the coefficients stay normal under the band class. Driving
     them into the band too would make every product underflow and the leg would
     measure the fixture rather than the policy's reach into this arithmetic.
     """
@@ -388,7 +388,7 @@ def seed_pole_state(fields, grid, value_class: str, rng) -> Dict[str, np.ndarray
 def pole_plan_arrays(plan: Dict[str, Any]) -> Dict[str, Any]:
     """``{'P_Ex_0': array, ...}`` in the kernel signature's own order.
 
-    TAKES THE PLAN rather than the fields, so a leg that hands the launcher a
+    Takes the plan rather than the fields, so a leg that hands the launcher a
     deliberately reversed chain hands the evaluator the same reversed chain. A
     version that re-resolved from ``fields`` would leave the two backends
     measuring different permutations and the host ordering defect would score
@@ -485,7 +485,7 @@ def folded_axis_absorbs(layer, grid) -> Dict[str, Any]:
 def mirror_ghost_is_live(fields, layer, grid) -> Dict[str, Any]:
     """Is the mirror ghost distinguishable from the metallic zero it replaces?
 
-    THE FLOOR IS MEASURED ON THE CHAIN, NOT ON D, and that is this family's own
+    The floor is measured on the chain, not on D, and that is this family's own
     difference from the folded off-diagonal gate's version: the array path shifts
     ``volumes[partner]``, which is ``D - sum P``, so the ghost is
     ``parity * (D - sum P)[MIRROR_SOURCE_INDEX]``. A fixture whose D row 2 is
@@ -573,7 +573,7 @@ def slice_module():
 def evaluator_blind_lines(text: str) -> List[str]:
     """Lines of an emitted body the NumPy evaluator neither EXECUTES nor pins.
 
-    THE HAZARD THIS EXISTS FOR, measured on the certified family's first laptop
+    The hazard this exists for, measured on the certified family's first laptop
     run: the evaluator is a ``finditer`` over an anchored grammar, so a mutation
     that rewrites a statement into a form the grammar does not match is not
     applied at all -- it is SILENTLY SKIPPED, and the leg then reports a verdict
@@ -582,7 +582,7 @@ def evaluator_blind_lines(text: str) -> List[str]:
     differ and why both are reported.
     """
     tests = slice_module()
-    # THE SLICE'S OWN GRAMMAR LIST, read rather than restated, so the two cannot
+    # The slice's own grammar list, read rather than restated, so the two cannot
     # name different patterns.
     grammar = tests._grammar_patterns()
     body = text[text.index('extern "C"'):]
@@ -695,7 +695,7 @@ class EvaluatorBackend:
 class KernelBackend:
     """The shipped CuPy launcher, driven through its own gate door.
 
-    THE GUARD AND THE MUTATION BOTH REACH NVRTC THROUGH THE SOURCE-KEYED MEMO:
+    The guard and the mutation both reach NVRTC through the source-keyed memo:
     ``_get_kernel`` keys on ``(name, options, policy, source)``, so overriding
     ``_COMPILE_OPTIONS`` or installing a source override is a MISS and the compiler
     sees the bytes this leg intends. The memo is dropped at both ends anyway,
@@ -766,9 +766,9 @@ class KernelBackend:
 
 
 class CompositionBackend:
-    """THE MEASURED ALTERNATIVE: materialize ``D - sum P``, then the SHIPPED kernel.
+    """The measured alternative: materialize ``D - sum P``, then the SHIPPED kernel.
 
-    THIS IS NOT A FUSION OF TWO SHIPPED KERNELS AND THE RECORD SAYS SO. Neither
+    This is not a fusion of two shipped kernels and the record says so. Neither
     shipped kernel exposes ``D - sum P`` as an output:
     ``update_E_pml_real_dispersive`` writes ``(D - sum P) * inv_eps`` into
     ``f_w`` and accumulates ``E`` (recovering the operand needs a DIVISION, which
@@ -776,12 +776,12 @@ class CompositionBackend:
     and ``update_E_pml_real_folded_offdiag`` has no pole parameters at all.
     So the only composition that exists is one shipped kernel plus the ARRAY PATH.
 
-    WHAT IT COSTS, counted rather than timed, because a shared box cannot give a
+    What it costs, counted rather than timed, because a shared box cannot give a
     trustworthy time and a pass count is exact: ``sum(arity)`` extra full-volume
     subtraction passes plus one full-volume copy per driven component, and three
     scratch volumes held live. The fused kernel's numbers are zero and zero.
 
-    THE D POINTERS ARE REBOUND AROUND THE LAUNCH and restored in a ``finally``.
+    The D pointers are rebound around the launch and restored in a ``finally``.
     The shipped launcher reads ``fields.Dx`` directly, and there is no other way
     to hand it the materialized volumes without editing it -- which this file does
     not do.
@@ -861,7 +861,7 @@ def build_backend(name: str):
 # the wrong tensor in it -- and none would be caught by a magnitude comparison at
 # any tolerance a physicist would accept.
 #
-# THE FIRST GROUP IS THIS FAMILY'S OWN: the four gathered field reads stated
+# The first group is this family's own: the four gathered field reads stated
 # wrongly in each of the ways the reading invites. The rest are the two parent
 # families' defects re-anchored on this grammar, carried because this kernel emits
 # that arithmetic too and a gate that only tested its own delta would certify a
@@ -882,14 +882,14 @@ def _replace(needle: str, replacement: str, text: str) -> Tuple[str, int]:
 
 
 def m_couple_the_raw_D(text):
-    """THE MIDDLE REFUSAL, planted -- and SURGICALLY, which took one measurement.
+    """The middle refusal, planted -- and SURGICALLY, which took one measurement.
 
     The defect is "subtract the polarization from the diagonal term, then couple
     the RAW D volumes". Only the COUPLING's four gathered reads change: the
-    diagonal ``gs_c`` keeps its chain, and THE MIRROR PARITY IS LEFT EXACTLY
-    WHERE IT WAS.
+    diagonal ``gs_c`` keeps its chain, and the mirror parity is left exactly
+    where it was.
 
-    THE FIRST VERSION OF THIS LEG ALSO DELETED THE MIRROR WRAPPER, and the laptop
+    The first version of this leg also deleted the mirror wrapper, and the laptop
     run scored it CAUGHT on two arity-(0,0,0) FOLDED cases -- where the chain is
     empty and there is nothing about ``D - sum P`` left to be wrong. It was
     catching the missing parity weight, not the missing chain, and a leg that
@@ -921,7 +921,7 @@ def m_diagonal_reads_raw_D(text):
 
 
 def m_up_leg_reads_raw_D(text):
-    """THE HALF-DONE EDIT. ``dmp_ghosted_<c>`` is the OWN-axis up leg of every
+    """The half-done edit. ``dmp_ghosted_<c>`` is the OWN-axis up leg of every
     term; leaving its interior load as the raw D while the near leg reads the
     chain is what an author reaches by fixing the obvious read and missing the
     gathered one."""
@@ -933,7 +933,7 @@ def m_up_leg_reads_raw_D(text):
 def m_sum_then_subtract(text):
     """``D - (P0 + P1 + ...)`` instead of ``((D - P0) - P1) - ...``.
 
-    A DISCRIMINATOR IN THE ARITY, and written generically over it so that BOTH
+    A discriminator in the arity, and written generically over it so that BOTH
     arms exist: float32 addition is not associative, but ``D - (P0)`` and
     ``(D - P0)`` are the same expression, so this must be CAUGHT at two poles and
     above and be a NULL at one. A battery armable only at two would have no null
@@ -952,7 +952,7 @@ def m_reverse_pole_order(text):
     """The chain in ``fields.polarizations`` order REVERSED (fields.py:1125).
 
     The same arity discriminator as above, and written the same way so it has the
-    same two arms: at ONE pole the reversal is the identity ON THE TEXT ITSELF,
+    same two arms: at ONE pole the reversal is the identity on the text itself,
     which is a site that cannot bite, and at two and above it is a different
     float32 number.
     """
@@ -977,7 +977,7 @@ def m_parity_weights_the_raw_D(text):
     wherever the parity is -1, which is every EVEN plane -- and inert wherever the
     chain is empty, which is the other half of its discriminator.
 
-    ONE ``re.sub`` WITH A REPLACEMENT FUNCTION rather than a loop over
+    One ``re.sub`` with a replacement function rather than a loop over
     ``finditer`` on a string the loop is also rewriting: the first version did
     that and reported 3 sites where there are 9, because every match after the
     first was found at an offset the mutated text no longer had.
@@ -1029,7 +1029,7 @@ def m_flip_the_parity_sign(text):
 
 
 def m_drop_the_parity_weight(text):
-    """THE SHARPEST DISCRIMINATOR IN THE PLANE PARITY. The weight is ``-phase``:
+    """The sharpest discriminator in the plane parity. The weight is ``-phase``:
     on an EVEN plane it is -1 and dropping it must be caught, on an ODD plane it
     is +1 and dropping it is the identity."""
     return _replace(_MIRROR_SELECT, "return value;", text)
@@ -1096,8 +1096,8 @@ def m_wrong_own_axis_table(text):
 
 def n_scale_the_quarter_in_float32(text):
     """NULL: the term's float32 sum scaled by ``0.25f`` in float32 and widened.
-    0.25 is an exact power of two, so the float32 product is exact AWAY FROM
-    UNDERFLOW and widening it gives the double scale's word. Armed on the uniform
+    0.25 is an exact power of two, so the float32 product is exact away from
+    underflow and widening it gives the double scale's word. Armed on the uniform
     class only."""
     return _sub(r"\(0\.25 \* \(double\)term_(\w+)\)", r"(double)(0.25f * term_\1)",
                 text)
@@ -1151,20 +1151,20 @@ SOURCE_MUTATIONS: Dict[str, Callable[[str], Tuple[str, int]]] = {
 NULL_MUTATIONS: Tuple[str, ...] = ("scale_the_quarter_in_float32",
                                    "commute_the_near_product")
 
-#: DISCRIMINATORS IN THE POLE ARITY: the same expression at one pole, a different
+#: Discriminators in the pole arity: the same expression at one pole, a different
 #: float32 number at two and above. Caught where the case's arity has a chain of
 #: two or more, a NULL where it does not.
 ARITY_DISCRIMINATORS: Tuple[str, ...] = ("sum_then_subtract",
                                          "reverse_pole_order")
 
-#: DEFECTS THAT NEED A LIVE POLE CHAIN AT ALL. At arity (0, 0, 0) the emitted tree
+#: Defects that need a live pole chain at all. At arity (0, 0, 0) the emitted tree
 #: is the folded off-diagonal family's and every one of these is the identity --
 #: which is the reduction arm, measured rather than claimed.
 CHAIN_MUTATIONS: Tuple[str, ...] = (
     "couple_the_raw_D", "diagonal_reads_raw_D", "up_leg_reads_raw_D",
     "parity_weights_the_raw_D")
 
-#: Defects that HAVE NO SITE without a live chain, so their null arm is the
+#: Defects that have no site without a live chain, so their null arm is the
 #: REFUSAL ("the mutation matched nothing in this case's emitted body") rather
 #: than a scored inert case. They are must-be-caught legs, and calling them
 #: discriminators would demand a null arm that cannot exist -- which the first
@@ -1182,7 +1182,7 @@ PARTNER_ARM_MUTATIONS: Tuple[str, ...] = (
 #: The same, for the OWN-axis arm.
 OWN_ARM_MUTATIONS: Tuple[str, ...] = ("folded_own_axis_wraps",)
 
-#: DEFECTS THAT ARE THE IDENTITY WHEN THE PARITY IS +1. The weight is ``-phase``,
+#: Defects that are the identity when the parity is +1. The weight is ``-phase``,
 #: so on an ODD plane it is exactly ``+1.0`` and any defect that only changes
 #: whether or how the weight is applied is bitwise inert there. Both parities are
 #: swept: a battery at even planes alone would score these CAUGHT and learn
@@ -1241,7 +1241,7 @@ def apply_host_mutation(name: Optional[str], layer, grid, tables, codes, walls,
 def launched_pole_plan(fields, host_mutation: Optional[str]):
     """The plan the launch binds -- or a deliberately reversed one.
 
-    THE ORDERING DEFECT THAT ACTUALLY THREATENS THIS KERNEL, armed on the HOST
+    The ordering defect that actually threatens this kernel, armed on the HOST
     side rather than in the source: the launcher resolves
     ``fields.polarizations`` filtered by ``drives`` on every call, and a launcher
     that resolved it in the wrong order would compute ``((D - P1) - P0)``.
@@ -1269,7 +1269,7 @@ def one_case(backend, xp, spec: Dict[str, Any], mask_spec: Dict[str, Any],
              host_mutation: Optional[str] = None) -> Dict[str, Any]:
     """One frozen state, run twice: the array path, then the kernel.
 
-    THE ORACLE IS ``stepping.update_E`` ITSELF on real ``Grid``/``Fields``/``PML``
+    The oracle is ``stepping.update_E`` itself on real ``Grid``/``Fields``/``PML``
     objects with the rows installed through the PUBLIC installer and real
     ``PolarizationState`` objects registered, so the install-time validation, the
     zero-row drop, the stored-E switch and the ``drives`` filter are all in force.
@@ -1278,7 +1278,7 @@ def one_case(backend, xp, spec: Dict[str, Any], mask_spec: Dict[str, Any],
     started = time.time()
     key = case_key(spec, mask_spec, arity, courant, value_class, guard_label,
                    steps)
-    # A STABLE PER-CASE SEED, from a DIGEST rather than from ``hash()``: Python
+    # A stable per-case seed, from a DIGEST rather than from ``hash()``: Python
     # salts ``hash()`` of a str with PYTHONHASHSEED, so a run seeded from it draws
     # a different fixture every process and a failing case cannot be replayed.
     rng = np.random.default_rng(
@@ -1292,7 +1292,7 @@ def one_case(backend, xp, spec: Dict[str, Any], mask_spec: Dict[str, Any],
     register_poles(fields, grid, arity, rng)
     host = flat.seed_state(fields, grid, value_class, rng)
     host.update(seed_pole_state(fields, grid, value_class, rng))
-    # THE PLAN THE LAUNCH BINDS, resolved ONCE here and handed to the backend, so
+    # The plan the launch binds, resolved ONCE here and handed to the backend, so
     # the evaluator's ``P_<c>_<k>`` arrays and the CuPy launcher's argument order
     # are the same permutation -- including when ``reverse_the_launched_pole_plan``
     # deliberately makes it the wrong one.
@@ -1336,12 +1336,12 @@ def one_case(backend, xp, spec: Dict[str, Any], mask_spec: Dict[str, Any],
     case["wall_mask_bites"] = wall_mask_bites(mask, walls)
     case["chain_is_live"] = max(arity) > 0
     case["has_a_multi_pole_chain"] = max(arity) >= 2
-    # THE MIRROR GHOST ENTERS THROUGH ONE LEG ONLY -- the PARTNER-axis down shift
+    # The mirror ghost enters through one leg only -- the PARTNER-axis down shift
     # (stepping.py:1243-1245) -- so a defect in how the parity meets the CHAIN can
-    # only bite where the folded axis is a live slot's partner AND THAT PARTNER
-    # COMPONENT ITSELF CARRIES POLES.
+    # only bite where the folded axis is a live slot's partner and that partner
+    # component itself carries poles.
     #
-    # MEASURED, NOT ARGUED. The 2026-08-20 keep leg scored
+    # Measured, not argued. The 2026-08-20 keep leg scored
     # ``parity_weights_the_raw_D`` DISCRIMINATOR VIOLATED on exactly two cases:
     # arity (2, 0, 3) folded on Y, where the folded partner is Ey and Ey's chain is
     # empty, so the rewrite had nothing to rewrite there. Expecting a catch from
@@ -1349,7 +1349,7 @@ def one_case(backend, xp, spec: Dict[str, Any], mask_spec: Dict[str, Any],
     case["folded_partner_chain_is_live"] = any(
         arity[axis] > 0 for axis in roles["folded_partner_axes"])
 
-    # THE FIVE PREDICATES' ANSWERS, recorded rather than acted on. A record that
+    # The five predicates' answers, recorded rather than acted on. A record that
     # did not carry all five could not show that the families PARTITION this
     # configuration rather than sharing it.
     from meep_gpu.cuda_kernels import dispersive_kernels  # noqa: PLC0415
@@ -1460,7 +1460,7 @@ def one_case(backend, xp, spec: Dict[str, Any], mask_spec: Dict[str, Any],
 def wall_mask_bites(mask: Sequence[int], walls: Sequence[int]) -> bool:
     """Does the metallic wall mask change ANY word on this (mask, grid) pair?
 
-    A LIVE WALL FLAG IS NOT ENOUGH. ``_mask_metallic_wall_coupling`` zeroes face 0
+    A live wall flag is not enough. ``_mask_metallic_wall_coupling`` zeroes face 0
     of the axes on which THE COMPONENT'S Yee shift is 0, so ``wm_y`` reaches Ex
     and Ez and never reaches Ey.
     """
@@ -1494,7 +1494,7 @@ def case_is_valid(case: Dict[str, Any]) -> Tuple[bool, Optional[str]]:
 def case_product(product: str, steps: int) -> List[Dict[str, Any]]:
     """The swept cases, before the guard axis multiplies them.
 
-    THE REDUCED SUBSET IS NAMED, NOT SLICED. A head slice of this list is all X
+    The reduced subset is named, not sliced. A head slice of this list is all X
     folds and no declared wall, which leaves the wall discriminators with one arm
     and every fold-axis question answered on one axis.
     """
@@ -1640,7 +1640,7 @@ def run_sweep(backend, xp, results: Dict[str, Any], out_path: str, product: str,
 
 
 # ---------------------------------------------------------------------------
-# THE COMPOSITION LEG: the alternative, measured
+# The composition leg: the alternative, measured
 # ---------------------------------------------------------------------------
 
 def run_composition(backend, xp, results: Dict[str, Any], out_path: str,
@@ -1707,7 +1707,7 @@ def run_composition(backend, xp, results: Dict[str, Any], out_path: str,
 # The mutation battery
 # ---------------------------------------------------------------------------
 #
-# SCOPED TO CASES WHOSE UNMUTATED BASELINE WAS BIT-IDENTICAL, read off the sweep
+# Scoped to cases whose unmutated baseline was bit-identical, read off the sweep
 # that just ran rather than tabulated, so no leg can be armed on an arm the device
 # did not actually certify in this same process.
 
@@ -1715,7 +1715,7 @@ def mutation_plan(sweep_cases: Sequence[Dict[str, Any]], product: str
                   ) -> List[Dict[str, Any]]:
     """The (spec, mask, arity) triples a defect may be planted on.
 
-    THE REDUCED SELECTION IS GREEDY, NOT A HEAD SLICE. Slicing the front of a case
+    The reduced selection is greedy, not a head slice. Slicing the front of a case
     product landed the folded-curl gate's whole battery on its two UNFOLDED
     controls, so its one fold-specific mutation was skipped on every leg and
     scored 0/0 UNCAUGHT -- a harness defect that reads exactly like a kernel
@@ -1752,7 +1752,7 @@ def mutation_plan(sweep_cases: Sequence[Dict[str, Any]], product: str
                      "folded_axes": tuple(case["roles"]["folded_axes"])})
     if product == "full":
         return plan
-    # THE COVERAGE KEYS ARE CROSSES, NOT INDEPENDENT AXES, and that is a
+    # The coverage keys are crosses, not independent axes, and that is a
     # measurement rather than a preference. The first laptop run covered each axis
     # separately, and because arity (0, 0, 0) is first in the list every FOLDED
     # entry was already satisfied by it -- so no case in the plan was folded AND
@@ -1898,8 +1898,8 @@ def run_mutations(backend, xp, results: Dict[str, Any], out_path: str,
             valid, why = case_is_valid(case)
             case["case_is_valid"] = valid
             case["refused_because"] = why
-            # A SOURCE LEG WHOSE TRANSFORM MATCHED NOTHING ON THIS CASE'S BODY IS
-            # NOT SCORED. The arity axis makes the sites case-dependent -- a
+            # A source leg whose transform matched nothing on this case's body is
+            # not scored. The arity axis makes the sites case-dependent -- a
             # chain-editing defect has no site at arity (0,0,0) -- and scoring a
             # rewrite that never happened as UNCAUGHT is the dead-branch trap.
             if transform is not None:
@@ -1940,7 +1940,7 @@ def run_mutations(backend, xp, results: Dict[str, Any], out_path: str,
         if not scored:
             verdict, as_required = "NO LEGS", False
         elif discriminator and not (catch_arm and null_arm):
-            # A DISCRIMINATOR WITH ONE ARM IS NOT A DISCRIMINATOR. Either half
+            # A discriminator with one arm is not a discriminator. Either half
             # alone is consistent with the rule being inert.
             verdict, as_required = "NO DISCRIMINATOR", False
         else:
@@ -2105,7 +2105,7 @@ def build_verdict(results: Dict[str, Any]) -> Dict[str, Any]:
 
 def run_falsification(backend, xp, results: Dict[str, Any], out_path: str,
                       steps: int) -> Dict[str, Any]:
-    """RUN THE VERDICT AGAINST A PLANTED DEFECT AND REQUIRE IT TO REFUSE.
+    """Run the verdict against a planted defect and require it to refuse.
 
     The defect chosen is ``couple_the_raw_D`` -- the MIDDLE REFUSAL -- because if
     the verdict cannot refuse THAT then this family has no reason to exist over
@@ -2246,7 +2246,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     from meep_gpu.cuda_kernels import offdiag_emitter  # noqa: E402,PLC0415
     results["certified_sibling_corpus_digest"] = offdiag_emitter.corpus_digest()
 
-    # THE ORDER IS THE WHOLE POINT: the observer wraps NVRTC BELOW the strip so it
+    # The order is the whole point: the observer wraps NVRTC BELOW the strip so it
     # records the options NVRTC really received, and the policy installs before
     # the first compile.
     if backend_name == "cupy":
@@ -2268,7 +2268,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if "sweep" in legs:
         run_sweep(backend, xp, results, out_path, product, args.steps, "sweep")
     if "multistep" in legs:
-        # THE PRIMARY GUARD ONLY. The control's job is to show the guard is doing
+        # The primary guard only. The control's job is to show the guard is doing
         # work, and one launch per case already shows it; paying 60x for the same
         # demonstration buys nothing.
         run_sweep(backend, xp, results, out_path,

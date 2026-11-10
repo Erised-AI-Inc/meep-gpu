@@ -271,7 +271,7 @@ def test_the_kernel_refuses_by_raising_rather_than_being_silently_none(restored_
 
     ``None`` would let a caller that forgot to check coverage fail with an
     ``AttributeError`` from somewhere unrelated; ``_UnavailableKernel`` names the
-    missing dependency at the launch site. Certified by the complex tranche and
+    missing dependency at the launch site. Certified with the complex-storage family and
     reused here rather than re-invented, which is what this pins.
     """
     real_import = builtins.__import__
@@ -295,10 +295,10 @@ def test_the_kernel_refuses_by_raising_rather_than_being_silently_none(restored_
 
 
 def test_the_module_is_wired_into_the_planner_but_not_into_dispatch():
-    """THE CLAIM CHANGED IN ONE PLACE AND MUST NOT HAVE CHANGED IN THE OTHERS.
+    """The claim changed in one place and must not have changed in the others.
 
     This family is now CONSULTED by ``launch.plan_step`` behind the
-    ``has_cylindrical and has_complex`` gate — that is the round that wired it,
+    ``has_cylindrical and has_complex`` gate — that is the change that wired it,
     and asserting its absence from ``launch.py`` would now be asserting that the
     wiring did not happen. So the planner leg is inverted: the module must be
     named there, and named through a LAZY forwarder.
@@ -335,7 +335,7 @@ def test_the_module_is_wired_into_the_planner_but_not_into_dispatch():
         # rather than quietly skip, or this whole check goes vacuous exactly when
         # the wiring is being changed.
         assert path.exists(), f"{owned} not found; the dispatch check is now blind"
-        # THE DISPATCH CLAIM MOVED, and only here. ``fastpath.py`` now dispatches
+        # The dispatch claim moved, and only here. ``fastpath.py`` now dispatches
         # the track, so it NAMES this family — its run artifact reports which
         # certification each dispatched arm rides on, and that is a lookup table
         # of strings. What it must still not do is IMPORT this module: a
@@ -366,7 +366,7 @@ def test_the_module_is_wired_into_the_planner_but_not_into_dispatch():
 def test_the_fusion_guard_has_exactly_one_launch_site_spelled_the_house_way():
     """``enable_fp_fusion`` rides as a launch keyword, once, never in an options dict.
 
-    It is not byte-uniform across tranches — measured: complex 68/68 fusion-on
+    It is not byte-uniform across kernel families — measured: complex 68/68 fusion-on
     rows identical, special_kz 24/96, nonlinear 0/108, offdiag 0/28, bfast 0/52 —
     so which configuration a family certifies under is a fact about the family,
     and it can only be one fact if there is one launch site.
@@ -431,7 +431,7 @@ def test_the_prefix_spec_is_the_one_step_B_and_step_D_pass():
     ``ir0`` is half the component's own radial Yee shift: Ep sits at the node
     (r-shift 0) and Hp half a cell out (r-shift 1). The wall row is the historical
     defect this project already paid for once — without it the last row's forward
-    difference becomes MINUS THE WHOLE ACCUMULATED SUM, and the gate's
+    difference becomes minus the whole accumulated sum, and the gate's
     ``no_wall_row`` needle is live at 12032 words.
     """
     assert module.PREFIX["step_B"]["component"] == "Ey"      # Ep
@@ -550,7 +550,7 @@ def test_a_real_complex_dcyl_grid_is_admitted_but_for_the_cupy_backend(sub_step,
 def test_the_constitutive_side_is_admitted_on_the_same_grids(side, m):
     """32 of the family's 64 sub-step slots, with NO new kernel.
 
-    The finding this tranche turns on: ``stepping.update_H`` (:907-924) and
+    The finding this family turns on: ``stepping.update_H`` (:907-924) and
     ``update_E`` (:926-993) carry no cylindrical branch at all, so the certified
     ``complex_fields.bloch_constitutive_step`` body already computes both sides.
     Measured, not argued — the gate's identity leg is 480/480 rows, 0 differing
@@ -1419,7 +1419,7 @@ def test_every_gate_mutation_needle_is_present_in_the_shipped_text():
 
 
 def test_the_gate_mutation_table_covers_the_battery_it_owes():
-    """The Appendix A inversion, the section 7.2 battery, the i*m/r pass, the axis rules,
+    """The inverted grouping, the per-chunk form battery, the i*m/r pass, the axis rules,
     the scan, and the declared nulls -- by name."""
     names = {row[0] for row in gate_module().COMPLEX_MUTATIONS}
     owed = {"a1_pairwise_curl_grouping", "b1_whole_grid_recurrence",

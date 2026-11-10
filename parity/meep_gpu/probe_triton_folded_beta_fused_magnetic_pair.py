@@ -141,7 +141,7 @@ MUTATION_CASE: Dict[str, str] = {
     "m_far_carry_dropped": "corpus_y_fold_periodic",
 }
 
-#: The CARRY family: a real MAGNETIC deposit IN THIS SEAM.
+#: The CARRY family: a real MAGNETIC deposit in this seam.
 CARRY_CASES: Tuple[str, ...] = ("corpus_y_fold_periodic", "y_fold_metallic_wall_x")
 
 CARRY_STEPS = 8
@@ -1195,13 +1195,13 @@ def verdict_of(row: Dict[str, Any], *, require_identical: bool = True,
 
 
 # ---------------------------------------------------------------------------
-# THE REDUCTION LEG — HAS_BETA = 0 must BE the shipped plain folded kernel
+# The reduction leg — HAS_BETA = 0 must BE the shipped plain folded kernel
 # ---------------------------------------------------------------------------
 
 def reduction_leg(cp, product, cell, boundaries, mirrors, steps: int,
                   value_class: str = "uniform") -> Dict[str, Any]:
     """``HAS_BETA = 0`` reproduces ``folded_fused_curl_constitutive_B`` bit for
-    bit while DIFFERING from the array path. NO MAGNETIC SOURCE HERE: both
+    bit while DIFFERING from the array path. No magnetic source here: both
     fused routes are unbracketed, so an in-seam deposit would put both one
     injection behind the array path for the wrong reason."""
     import meep_gpu.driver as driver_module  # noqa: PLC0415
@@ -1252,7 +1252,7 @@ def reduction_leg(cp, product, cell, boundaries, mirrors, steps: int,
                             grid.dt / grid.dx, num_warps=1,
                             reflect=_far_reflect_rows(grid) or (None, None, None),
                             chunk_bounds=layer_record(grid, pml)))
-        # MEEP'S START OF H, as the product's plan carries it (h_state is the
+        # MEEP's start of H, as the product's plan carries it (h_state is the
         # driver's Fields): the from-arrays route builds a plan that has already
         # started.
         shipped_plan._h_state = fields  # noqa: SLF001 - the harness owns the route
@@ -1395,9 +1395,9 @@ CASE_CARRIES: Dict[str, Tuple[str, ...]] = {
     "corpus_single_launch": ("wall", "layer", "mirror_periodic"),
 }
 
-#: The beta pass's own mutations and the root forms' (KERNELS.md 7.1's inversions and
-#: 7.2's chunk-form battery): ``fold_pass_mutations``' shared spellings, the same text
-#: in every carrier of the pass.
+#: The beta pass's own mutations and the root forms' (the inverted grouping mutations and
+#: the per-chunk form battery of docs/development/certification.md):
+#: ``fold_pass_mutations``' shared spellings, the same text in every carrier of the pass.
 SHARED_MUTATIONS = (fold_passes.beta_mutations(False, True, CURL_ANCHOR)
                     + fold_passes.form_mutations(True))
 _SHARED_ROWS, MUTATION_NEEDS = fold_passes.table(SHARED_MUTATIONS)
@@ -1452,8 +1452,8 @@ def mutation_table() -> Tuple[Tuple[str, str, str,
     def m_ownership_and_dropped(source: str) -> Tuple[str, int]:
         """The near carry images from a lane the ownership rule excludes.
 
-        AN EXPECTED NULL on every configuration beta admits, measured on the first
-        device run of the aligned kernel (2026-10-09, 4 of 4 steps identical) and
+        An expected null on every configuration beta admits, measured on the first
+        device run of the kernel in MEEP's forms (2026-10-09, 4 of 4 steps identical) and
         claimed per run through :func:`ownership_null_premise`. The stray write lands
         on a cell its owning composite rewrites later in the same program, and
         outside Bx's own layer, where it would leave a workspace word. The
@@ -1469,11 +1469,11 @@ def mutation_table() -> Tuple[Tuple[str, str, str,
         """The near image billed at the source row's coefficients instead of the
         destination's origin pair.
 
-        AN EXPECTED NULL, measured on the first device run (2026-09-01): the rewrite
+        An expected null, measured on the first device run (2026-09-01): the rewrite
         exchanges ``kp0[0]`` for ``kp0[2]`` on the INTEGER-lattice H coefficients,
         and a folded axis absorbs on its HIGH face only, so rows 0..2 sit outside
         every admissible absorber and the two words are byte-equal on every
-        configuration this predicate can admit. The premise is MEASURED per run
+        configuration this predicate can admit. The premise is measured per run
         (``null_premise`` on the row); ``m_far_coefficient_rebilled_at_origin`` is the
         catchable mutation of the same billing seam."""
         return fold_passes.rewrite_block(
@@ -1598,7 +1598,7 @@ def mutation_case_for(name: str) -> Tuple[str, Tuple[Any, ...]]:
 
 
 def ownership_null_premise(case) -> Dict[str, Any]:
-    """Why dropping ``own0`` from Bx's near-x carry leaves no word, MEASURED on the
+    """Why dropping ``own0`` from Bx's near-x carry leaves no word, measured on the
     scored case's own host objects.
 
     The lanes the drop admits are the near-x sources the far-y rule excludes,
@@ -1663,7 +1663,7 @@ def run_mutations(cp, product, pristine_ptx: Sequence[str]) -> List[Dict[str, An
         try:
             case_name, case = mutation_case_for(name)
             if name == "m_near_coefficient_not_moved":
-                # THE NULL'S PREMISE, MEASURED rather than asserted: the words
+                # The null's premise, measured rather than asserted: the words
                 # the rewrite exchanges must be byte-equal on the scored grid,
                 # or the null declaration is wrong and the row fails.
                 premise_driver = build_grid(case[1], case[2], case[3], case[5])
@@ -1797,20 +1797,21 @@ def run_refusals(cp, product) -> List[Dict[str, Any]]:
 # ---------------------------------------------------------------------------
 
 def environment(cp: Any = None) -> Dict[str, Any]:
+    import neutral_ids  # noqa: PLC0415
     import platform  # noqa: PLC0415
 
     out: Dict[str, Any] = {
-        "argv": list(sys.argv),
+        "argv": neutral_ids.argv(sys.argv),
         "python": sys.version.split()[0],
         "platform": platform.platform(),
         "numpy": np.__version__,
         "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
-        "cupy_cache_dir": os.environ.get("CUPY_CACHE_DIR"),
+        "cupy_cache_dir": neutral_ids.path(os.environ.get("CUPY_CACHE_DIR")),
     }
     try:
         import socket  # noqa: PLC0415
 
-        out["hostname"] = socket.gethostname()
+        out["hostname"] = neutral_ids.machine_id()
     except Exception:  # noqa: BLE001
         pass
     try:

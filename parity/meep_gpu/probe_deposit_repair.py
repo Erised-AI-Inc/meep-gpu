@@ -15,27 +15,27 @@ shipped ``stepping`` functions, comparing uint32 words. No device and no Triton:
 being tested is the ARCHITECTURE, not a kernel. A device gate would re-run this shape
 with the real fused kernel in place of leg B's emulated pair.
 
-THE DEVICE LEG (``--backend triton``). Leg B above emulates the fused product with the
+The device leg (``--backend triton``). Leg B above emulates the fused product with the
 shipped array functions, which tests the ARCHITECTURE and not a kernel. With
 ``--backend triton`` leg B instead builds the real product through
 ``triton_kernels.plan_fused_pair(fields, pml, "D", sources=...)`` and launches
 ``fused_curl_constitutive_D`` -- the same kernel the certified welds cover.
 
-THE PREDICATE IS DELIBERATELY BYPASSED THERE, and only there. ``fused_pair_coverage``
+The predicate is deliberately bypassed there, and only there. ``fused_pair_coverage``
 refuses any row carrying an in-seam source (``triton_kernels/coverage.py:477-481``), which
 is the clause the deposit work proposes to change; a probe that respected it could never
 ask the question. So the device leg passes ``sources=()`` to obtain the plan and then
 injects for real. That is NOT a claim the predicate should admit blindly -- it is the
 measurement that would license changing it, and the repair is what makes the answer right.
 
-THE TWO LEGS, per step.
+The two legs, per step.
 
-  A -- THE REFERENCE, the driver's own order (``driver.py:3291-3304``)::
+  A -- The reference, the driver's own order (``driver.py:3291-3304``)::
 
         step_D ; inject ; fill_symmetry_bc_D ; zero_metal_D ;
         fill_folded_far_ghosts_D ; update_E
 
-  B -- FUSED PLUS REPAIR. The fused product runs at the ``step_D`` consult and does both
+  B -- Fused plus repair. The fused product runs at the ``step_D`` consult and does both
     halves against an UNINJECTED D, carrying the wall clear inline the way the shipped
     kernel does (``triton_kernels/kernels.py:474-479`` applies ZM_* to the curl output
     before storing). The driver then injects and runs its own unconditional
@@ -46,7 +46,7 @@ THE TWO LEGS, per step.
         inject ; fill_symmetry_bc_D ; zero_metal_D ; fill_folded_far_ghosts_D ;
         repair(deposit points)
 
-WHY THE REPAIR IS A REPAIR AND NOT A SECOND INJECTION. The constitutive half is STATEFUL:
+Why the repair is a repair and not a second injection. The constitutive half is STATEFUL:
 ``_apply_constitutive_pml`` (``stepping.py:2130-2134``) reads ``fw`` BEFORE overwriting
 it and then ACCUMULATES into the field::
 
@@ -58,12 +58,12 @@ restores the two arrays at the deposit points from values saved BEFORE the fused
 and recomputes them, in the same operand order, from the injected D. Every other cell is
 already correct, because the deposit changed nothing there.
 
-WHY NO WALL CLEAR IS NEEDED IN THE REPAIR. ``driver.py:3301`` calls ``zero_metal_D``
+Why no wall clear is needed in the repair. ``driver.py:3301`` calls ``zero_metal_D``
 unconditionally, after the injection -- it is not behind a dispatch consult. So by the
 time the ``update_E`` consult is reached the D array is already injected, filled and
 cleared. A deposit that lands on a metallic wall cell is zero in both legs.
 
-WHAT A PASS DOES NOT LICENSE. Nothing about a device, nothing about Triton, nothing about
+What a pass does not license. Nothing about a device, nothing about Triton, nothing about
 throughput, and nothing about rows whose seam also carries a live ``fill_symmetry_bc_D``
 or ``fill_folded_far_ghosts_D`` pass -- those clauses stay in the predicate.
 
@@ -247,7 +247,7 @@ class _HostPair:
 def _leg_b(fields, pml, sources, when, dt, repair=True, plan=None):
     """Fused pair at the step_D consult, repair at the update_E consult.
 
-    THIS DRIVES THE SHIPPED OBJECTS, not a copy of their logic. Earlier revisions of this
+    This drives the shipped objects, not a copy of their logic. Earlier revisions of this
     probe carried their own save/restore inline, which established the SHAPE and is what
     the 2026-08-22 records measured -- but a probe that reimplements the thing it certifies
     cannot license the thing that ships. It now runs
@@ -257,7 +257,7 @@ def _leg_b(fields, pml, sources, when, dt, repair=True, plan=None):
     inner = plan if plan is not None else _HostPair(fields, pml)
 
     if not repair:
-        # THE NULL CONTROL. The fused halves run, the driver's own passes run, and
+        # The null control. The fused halves run, the driver's own passes run, and
         # nothing is saved or restored. If this leg also matches the reference then the
         # case cannot tell a working repair from a missing one, and its PASS is worth
         # nothing.
@@ -329,7 +329,7 @@ def run_case(name: str, *, steps: int, cell, resolution, thickness, component,
         record["differing"] = _differing(_snapshot(fields_a), _snapshot(fields_b))
         record["identical"] = not record["differing"]
 
-        # THE NULL CONTROL, on its own pair of fields: the same protocol with the repair
+        # The null control, on its own pair of fields: the same protocol with the repair
         # withheld. It MUST diverge, or this case is not measuring the repair.
         grid_c, fields_c, pml_c = _build(cell, resolution, thickness, complex_fields=complex_fields, backend=backend)
         grid_d, fields_d, pml_d = _build(cell, resolution, thickness, complex_fields=complex_fields, backend=backend)
@@ -367,7 +367,7 @@ CASES = (
     ("line_ez_pml",                  6, (1.2, 1.2, 0.0), 12.0, 2, "Ez", (0.0, 0.0, 0.0),  (0.6, 0.0, 0.0), False),
     ("point_ez_pml_complex",         6, (1.2, 1.2, 0.0), 12.0, 2, "Ez", (0.0, 0.0, 0.0),  (0.0, 0.0, 0.0), True),
     ("point_ez_3d",                  4, (0.8, 0.8, 0.8), 10.0, 2, "Ez", (0.0, 0.0, 0.0),  (0.0, 0.0, 0.0), False),
-    # DEPOSIT ON THE PML SHELL: the wall/absorber interaction the repair must not disturb.
+    # Deposit on the PML shell: the wall/absorber interaction the repair must not disturb.
     ("point_ez_in_pml",              6, (1.2, 1.2, 0.0), 12.0, 2, "Ez", (0.5, 0.5, 0.0),  (0.0, 0.0, 0.0), False),
 )
 
@@ -403,7 +403,7 @@ def main() -> int:
         "identical": sum(1 for r in scored if r["identical"]),
         "errors": sum(1 for r in rows if r.get("error")),
         "control_diverged": sum(1 for r in scored if r.get("control_diverged")),
-        # A CASE RELEASES ONLY IF BOTH HOLD: the repaired leg matches AND the unrepaired
+        # A case releases only if both hold: the repaired leg matches AND the unrepaired
         # one does not. The second clause is what stops a vacuous pass.
         "release": bool(scored)
                    and all(r["identical"] and r.get("control_diverged") for r in scored)

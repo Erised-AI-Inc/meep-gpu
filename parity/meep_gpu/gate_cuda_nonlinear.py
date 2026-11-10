@@ -1,6 +1,6 @@
 """Sub-step byte-identity gate for the INSTANTANEOUS chi2/chi3 constitutive family.
 
-THE CENSUS REFUSAL THIS ANSWERS, quoted::
+The census refusal this answers, quoted::
 
     instantaneous chi2/chi3: a Pade factor replaces the constitutive product
 
@@ -11,7 +11,7 @@ refusal is two claims and this gate measures them separately, because they are
 not the same claim.
 
 =============================================================================
-ARM E -- A NEW KERNEL, MEASURED AGAINST THE ARRAY PATH
+Arm E -- a new kernel, measured against the array path
 =============================================================================
 
 ``meep_gpu/cuda_kernels/nonlinear_constitutive.update_E_pml_real_nonlinear``
@@ -22,7 +22,7 @@ four-point transverse average of the OTHER two D volumes inside it. What is bein
 measured is whether the transcription reproduces that arithmetic word for word.
 
 =============================================================================
-ARM H -- A NULL, AND THE PREMISE IS ARMED SO IT IS NOT A BLIND SPOT
+Arm H -- a null, and the premise is armed so it is not a blind spot
 =============================================================================
 
 ``stepping.update_H`` (stepping.py:907-923) is six lines and none of them reads
@@ -39,14 +39,14 @@ Pade factor. It must be CAUGHT. Without it, "chi does not reach update_H" would 
 a claim resting on a leg nobody showed could fail.
 
 =============================================================================
-WHAT WOULD MAKE THIS GATE VACUOUS, AND THE FLOORS THAT REFUSE IT
+What would make this gate vacuous, and the floors that refuse it
 =============================================================================
 
 * ``oracle_moved`` -- the fraction of output words the array path changed from the
   frozen input. Zero-init is a fixed point of this recurrence; a case that moved
   nothing is refused, not passed.
-* ``pade_departure`` -- ``max|u - 1|`` over the live components. THE FLOOR THIS
-  FAMILY EXISTS FOR. If the Pade factor is the identity everywhere, every one of
+* ``pade_departure`` -- ``max|u - 1|`` over the live components. The floor this
+  family exists for. If the Pade factor is the identity everywhere, every one of
   the nine nonlinear source mutations is invisible and the case measures the
   certified linear kernel under a new name. Hard floor on the two ``uniform``
   amplitude classes and the planted ``dsqr_band``; recorded on the others, where a
@@ -64,12 +64,12 @@ WHAT WOULD MAKE THIS GATE VACUOUS, AND THE FLOORS THAT REFUSE IT
   bit-identical for a reason about the fixture.
 * ``transverse_departure`` -- ``Dsqr`` must differ from ``gs*gs`` somewhere, or
   the whole four-corner stencil is untested and four of the mutations are inert.
-* The mutation battery, INCLUDING FOUR THAT MUST BE UNCAUGHT. A battery of
+* The mutation battery, including four that must be uncaught. A battery of
   only-must-be-caught legs scores identically whether the comparator works or has
   degenerated into failing everything.
 
 =============================================================================
-THE FIVE CLASSES, AND WHY THE DIVISION AND THE DOUBLE DSQR NEED THEIR OWN
+The five classes, and why the division and the double Dsqr need their own
 =============================================================================
 
 ``constitutive_kernels.py``'s header records the one PTX exception this package
@@ -77,7 +77,7 @@ knows of: ptxas expands ``div.rn.f32`` into a Newton-Raphson sequence whose rang
 checks carry ``.FTZ`` in SASS regardless of the PTX modifier, so a PTX audit does
 not fully enforce a subnormal *keep* policy where a division appears. It ends "if
 a future constitutive variant ever divides ... that exception applies to it".
-THIS IS THAT VARIANT, and these classes are how the exception is measured rather
+This is that variant, and these classes are how the exception is measured rather
 than argued:
 
 * ``uniform / moderate`` -- the workhorse. ``u`` departs from 1 by a few percent.
@@ -105,8 +105,8 @@ than argued:
   subnormal grid; under ``flush`` it flushes it to zero, and that changes ``Dsqr``
   only where ``gs*gs`` itself is still normal (below ``2^-126`` both forms flush to
   the same zero). A band drawn below ``2^-63`` makes every ``gs*gs`` subnormal and
-  so reaches the ``keep`` difference alone (MEASURED on the GPU host, bit_parity_0_10
-  lane KC1n: the ``flush`` leg read 0 differing cells and ``dsqr_in_float32`` 0 of
+  so reaches the ``keep`` difference alone (measured on the GPU host for 1.0:
+  the ``flush`` leg read 0 differing cells and ``dsqr_in_float32`` 0 of
   5). Here every source volume is drawn in ``(-2^-62.75, 2^-62.75)``
   (``DSQR_BAND_SCALE``), so about one cell in six has a normal ``gs*gs`` while
   ``0.0625*t`` often lies below ``2^-126``, which reaches both, and ``chi3 = 6e36``
@@ -117,10 +117,10 @@ than argued:
   scored on this class alone.
 
 =============================================================================
-THE DIVISION SPELLING PROBE
+The division spelling probe
 =============================================================================
 
-The kernel divides with ``__fdiv_rn``. The sibling Triton track MEASURED that the
+The kernel divides with ``__fdiv_rn``. The sibling Triton track measured that the
 plain operator was not IEEE division on THAT platform (``div.full.f32``, ~2 ulp),
 and CUDA's default is ``-prec-div=true``, so the two spellings
 are expected to agree HERE. Expected is not measured: ``plain_division`` rewrites
@@ -144,7 +144,7 @@ token because CuPy's disk-cache key is computed above the strip seam)::
 
 Laptop (no CUDA). The NumPy backend runs the SAME oracle, the same fixture, the
 same floors and the same HOST mutations against a transcription of the shipped
-device tree. IT COMPILES NOTHING AND CERTIFIES NOTHING::
+device tree. It compiles nothing and certifies nothing::
 
     python -u gate_cuda_nonlinear.py --backend numpy --out /tmp/nl_local.json
 
@@ -239,7 +239,7 @@ def outputs(side: str) -> Tuple[str, ...]:
 def state_names(side: str) -> Tuple[str, ...]:
     """Everything the case has to freeze, seed and restore.
 
-    ON THE E SIDE THAT IS ALL THREE D VOLUMES, and it is the one structural
+    On the E side that is all three D volumes, and it is the one structural
     difference between this family and the element-wise pair: the transverse
     average reads the OTHER two components at NEIGHBOURING cells, so a fixture
     that seeded only the component's own source would leave two thirds of the
@@ -254,7 +254,7 @@ def state_names(side: str) -> Tuple[str, ...]:
 # The case product
 # ---------------------------------------------------------------------------
 #
-# GHOST RULES ARE THE AXIS THIS FAMILY ADDS. The certified constitutive pair
+# Ghost rules are the axis this family adds. The certified constitutive pair
 # reads no neighbour, so its sweep did not have to care which face a cell sat on;
 # this one reads four corners of two partner volumes, so every case below names a
 # boundary triple and the sweep carries all-periodic, all-metallic, and both
@@ -270,7 +270,7 @@ SPECS: Tuple[Dict[str, Any], ...] = (
      "cell": (8.0, 10.0, 12.0)},
     {"label": "mixed_mpm", "boundaries": ("metallic", "periodic", "metallic"),
      "cell": (10.0, 8.0, 12.0)},
-    # THE CORPUS SHAPE. 3rd-harm-1d.py lifts to (1, 1, nz): two invariant axes
+    # The corpus shape. 3rd-harm-1d.py lifts to (1, 1, nz): two invariant axes
     # whose periodic wrap returns the same cell, which is what MEEP's stride(d)=0
     # computes for a direction it does not have. The absorber lives on z alone.
     {"label": "one_dimensional", "boundaries": ("periodic", "periodic", "periodic"),
@@ -314,7 +314,7 @@ PADE_FLOOR_CLASSES: Tuple[Tuple[str, str], ...] = (
     ("uniform", "moderate"), ("uniform", "near_pole"), ("dsqr_band", "dsqr_band"))
 
 #: chi magnitudes per amplitude class, chosen against the pole guard's derived
-#: bound ``|c2| + |c3| < 1/3`` (stepping.py:1356-1359) and MEASURED per case --
+#: bound ``|c2| + |c3| < 1/3`` (stepping.py:1356-1359) and measured per case --
 #: ``expansion`` is recorded and floored, never assumed from these numbers.
 CHI_BY_AMPLITUDE: Dict[str, Tuple[float, float]] = {
     "moderate": (0.02, 0.05),
@@ -357,10 +357,10 @@ def _four_point_pair_association(source: str) -> Tuple[str, int]:
 
     ``stepping._nonlinear_transverse_sums`` adds the corners in the order MEEP C
     reads them, ``((g[i] + g[i+s]) + g[i-s1]) + g[i+(s-s1)]``
-    (step_generic.cpp:646-648); until 16-AP6h it formed the near pair and then that
+    (step_generic.cpp:646-648); before 1.0 it formed the near pair and then that
     pair shifted, ``(g[i] + g[i-s1]) + (g[i+s] + g[i+s-s1])``. This puts that
-    pairing back (the KERNELS.md section 7.1 inversion of the former
-    ``four_point_left_to_right``). MUST BE CAUGHT -- and if it is not, the two
+    pairing back (certification.md's grouping inversion of the former
+    ``four_point_left_to_right``). Must be caught -- and if it is not, the two
     associations agree on this fixture and the transcription note is decorative.
     """
     needle = ("    float own_pair = g[o_c] + (v_u ? g[o_u] : 0.0f);\n"
@@ -388,7 +388,7 @@ def _dsqr_same_direction_shifts(source: str) -> Tuple[str, int]:
     states the geometry that forces the two shifts to be opposite: for Ez at
     ``(x_i, y_j, z_k+1/2)`` the partner Dx sits at ``(x_i+1/2, y_j, z_k)``, half a
     cell DOWN in x and half a cell UP in z. This survives every scalar test and
-    shows up only in the mixed-polarization terms. MUST BE CAUGHT.
+    shows up only in the mixed-polarization terms. Must be caught.
 
     Spelled as a rewrite of the CALL SITES' argument text -- the up-neighbour
     index and its validity flag swapped for the down pair -- because both are
@@ -403,7 +403,7 @@ def _dsqr_same_direction_shifts(source: str) -> Tuple[str, int]:
         for before, after in swaps:
             # WHOLE TOKENS. An earlier spelling matched "uk *" and so silently
             # skipped the component whose own axis is the LAST one -- the index
-            # there is written "+ uk" with no trailing "*". MEASURED: that left
+            # there is written "+ uk" with no trailing "*". Measured: that left
             # the mutation a complete no-op on the (1, 1, nz) corpus shape, where
             # the other two components' own axes have extent 1 and their up- and
             # down-neighbours coincide, and the leg came back UNCAUGHT for a
@@ -420,7 +420,7 @@ def _dsqr_drop_transverse(source: str) -> Tuple[str, int]:
     ``0.0625 = (1/4)^2`` is what turns each unnormalized four-point sum back into
     a mean before it is squared (stepping.py:1131-1147); without the term ``Dsqr``
     is the component's own square and the interpolation onto its Yee position is
-    gone. MUST BE CAUGHT. Spelled on ``nonlinear_dsqr``'s one return, which every
+    gone. Must be caught. Spelled on ``nonlinear_dsqr``'s one return, which every
     component calls.
     """
     needle = "    return __double2float_rn(own_sq + 0.0625 * transverse_sq);\n"
@@ -435,7 +435,7 @@ def _dsqr_in_float32(source: str) -> Tuple[str, int]:
     operations rounded once (``nonlinear_constitutive`` note 7). The float32 form
     differs only where the exact ``0.0625*t`` lies below float32's normal range,
     so this is scored on the planted ``dsqr_band`` class alone
-    (``SOURCE_MUTATION_CLASSES``), where it MUST BE CAUGHT; on every other class it
+    (``SOURCE_MUTATION_CLASSES``), where it must be caught; on every other class it
     cannot change a stored word.
     """
     needle = ("    double own_sq = gs * gs;\n"
@@ -448,12 +448,12 @@ def _dsqr_in_float32(source: str) -> Tuple[str, int]:
 
 
 def _drop_pade_factor(source: str) -> Tuple[str, int]:
-    """THE REFUSAL'S PREMISE, ARMED ON THE E SIDE: no Pade factor at all.
+    """The refusal's premise, armed on the E side: no Pade factor at all.
 
     "a Pade factor REPLACES the constitutive product" is why this family is a
     kernel rather than a widening. If removing the factor leaves the bytes
     unchanged, the fixture has no live nonlinearity and every other nonlinear leg
-    on that case is measuring the certified linear kernel. MUST BE CAUGHT.
+    on that case is measuring the certified linear kernel. Must be caught.
     """
     pattern = r"src_([xyz]) = src_\1 \* pade_u\([^;]*\);"
     return re.subn(pattern, "", source)[0], len(re.findall(pattern, source))
@@ -472,7 +472,7 @@ def _swap_epsilon_powers(source: str) -> Tuple[str, int]:
     ``calc_nonlinear_u`` (stepping.py:1054-1055) pairs the LINEAR term with the
     square and the CUBIC term with the cube; MEEP's own comment derives it from
     inverting ``D = eps*E + chi2*E^2 + chi3*|E|^2 E``. Exchanged, the factor is
-    smooth, finite and wrong. MUST BE CAUGHT.
+    smooth, finite and wrong. Must be caught.
     """
     needle = ("    float c2 = (gs * chi2) * us_sq;\n"
               "    float c3 = (dsqr * chi3) * us_cu;\n")
@@ -484,7 +484,7 @@ def _swap_epsilon_powers(source: str) -> Tuple[str, int]:
 def _scale_row_before_product(source: str) -> Tuple[str, int]:
     """``gs * (us * u)`` for ``(gs * us) * u``: the row scaled before it is formed.
 
-    stepping.py:1107-1109 forms the row and THEN scales it. MUST BE CAUGHT.
+    stepping.py:1107-1109 forms the row and THEN scales it. Must be caught.
     """
     pattern = r"src_([xyz]) = src_\1 \* (pade_u\([^;]*\));"
     replacement = r"src_\1 = gs_\1 * (us_\1 * \2);"
@@ -497,7 +497,7 @@ def _drop_metallic_transverse_ghost(source: str) -> Tuple[str, int]:
     ``_shift_up`` / ``_shift_down`` write an exact zero past a perfect conductor
     (stepping.py:1830, :1857). Wrapping instead reads the far wall's field into
     the near wall's average -- the classic ghost-rule confusion, and one that is
-    completely invisible on an all-periodic fixture. MUST BE CAUGHT on the
+    completely invisible on an all-periodic fixture. Must be caught on the
     metallic specs; the sweep is what makes sure such a spec is scored.
     """
     out, count = source, 0
@@ -512,7 +512,7 @@ def _drop_inverse_epsilon_nonlinear(source: str) -> Tuple[str, int]:
     """The source becomes D instead of ``D * inv_eps``.
 
     Invisible against a table of ones, which is why the fixture draws inverse
-    epsilon away from 1.0. MUST BE CAUGHT.
+    epsilon away from 1.0. Must be caught.
     """
     pattern = r"float src_([xyz]) = gs_\1 \* us_\1;"
     return re.subn(pattern, r"float src_\1 = gs_\1;", source)[0], \
@@ -520,12 +520,12 @@ def _drop_inverse_epsilon_nonlinear(source: str) -> Tuple[str, int]:
 
 
 def _bind_Ez_inv_eps_for_all_three_nonlinear(source: str) -> Tuple[str, int]:
-    """DEFECT 2 OF THE COMPLEX TEMPLATE, armed: one epsilon volume for all three.
+    """Defect 2 of the complex template, armed: one epsilon volume for all three.
 
     ``update_E_pml_complex``'s wrapper passes ``fields.inv_eps``, the Ez
     view (fields.py:1259-1260). Exactly bit-identical under an isotropic epsilon,
     so its whole power comes from the fixture drawing three INDEPENDENT volumes.
-    MUST BE CAUGHT.
+    Must be caught.
     """
     out, count = source, 0
     for axis in "xy":
@@ -537,7 +537,7 @@ def _bind_Ez_inv_eps_for_all_three_nonlinear(source: str) -> Tuple[str, int]:
 
 
 def _swap_chi2_chi3_operands(source: str) -> Tuple[str, int]:
-    """The two susceptibilities exchanged at the call site. MUST BE CAUGHT."""
+    """The two susceptibilities exchanged at the call site. Must be caught."""
     pattern = r"pade_u\((gs_[xyz]), (dsqr), q2, q3, (us_sq), (us_cu)\)"
     return re.subn(pattern, r"pade_u(\1, \2, q3, q2, \3, \4)", source)[0], \
         len(re.findall(pattern, source))
@@ -549,7 +549,7 @@ def _inv_eps_left_nonlinear(source: str) -> Tuple[str, int]:
     stepping.py:1011 writes D on the left and this kernel keeps that order for
     transcription discipline, not because it changes a bit. Its discriminating
     sibling is :func:`_drop_inverse_epsilon_nonlinear`, which edits the same
-    expression and MUST be caught. MUST BE UNCAUGHT.
+    expression and MUST be caught. Must be uncaught.
     """
     pattern = r"float src_([xyz]) = gs_\1 \* us_\1;"
     return re.subn(pattern, r"float src_\1 = us_\1 * gs_\1;", source)[0], \
@@ -557,7 +557,7 @@ def _inv_eps_left_nonlinear(source: str) -> Tuple[str, int]:
 
 
 def _commute_pade_scale(source: str) -> Tuple[str, int]:
-    """A NULL: ``u * (gs*us)`` for ``(gs*us) * u``. MUST BE UNCAUGHT.
+    """A NULL: ``u * (gs*us)`` for ``(gs*us) * u``. Must be uncaught.
 
     Paired with :func:`_scale_row_before_product`, which regroups the SAME
     expression and must be caught -- so the pair says the comparator is sensitive
@@ -574,7 +574,7 @@ def _commute_dsqr_transverse_sum(source: str) -> Tuple[str, int]:
 
     This is the swapped-partner defect in the only form that reaches the bits: the
     partner ORDER itself is pinned as TEXT by the slice test, because ``Dsqr``'s
-    sum forgives it exactly. MUST BE UNCAUGHT.
+    sum forgives it exactly. Must be uncaught.
     """
     needle = "    double transverse_sq = g1s * g1s + g2s * g2s;\n"
     replacement = "    double transverse_sq = g2s * g2s + g1s * g1s;\n"
@@ -582,7 +582,7 @@ def _commute_dsqr_transverse_sum(source: str) -> Tuple[str, int]:
 
 
 def _plain_division(source: str) -> Tuple[str, int]:
-    """THE SPELLING PROBE, not a release clause. ``num / den`` for ``__fdiv_rn``.
+    """The spelling probe, not a release clause. ``num / den`` for ``__fdiv_rn``.
 
     The sibling Triton track measured the plain operator to be ``div.full.f32``
     (~2 ulp) on that platform. CUDA's default is ``-prec-div=true``, so these are
@@ -601,13 +601,13 @@ def _pade_scale_the_H_source(source: str) -> Tuple[str, int]:
     constitutive product". ``stepping.update_H`` contains no such factor, so the
     refusal is inherited -- but "the comparator would notice if it did" is a claim
     that has to be shown. This rewrites the H device string so the source really is
-    scaled by a quotient of the same shape, and it MUST BE CAUGHT. Without it the
+    scaled by a quotient of the same shape, and it must be caught. Without it the
     H arm's 100% pass rate would be consistent with a comparator that sees nothing.
 
     Applied to ``constitutive_kernels._update_H_pml_real_kernel_code``, which
     is restored immediately afterwards.
     """
-    # THE SINGLE IS HOISTED (register view): its source is the preload
+    # The single is hoisted (register view): its source is the preload
     # ``float src_a = Ba[idx];``, so that is where the Pade factor goes -- the same
     # word, scaled by the same quotient, before any statement reads it.
     pattern = r"float src_([xyz]) = (B[xyz])\[idx\];"
@@ -616,7 +616,7 @@ def _pade_scale_the_H_source(source: str) -> Tuple[str, int]:
     return re.subn(pattern, replacement, source)[0], len(re.findall(pattern, source))
 
 
-#: This family's own device-text defects. ``True`` means MUST BE CAUGHT.
+#: This family's own device-text defects. ``True`` means must be caught.
 E_SOURCE_MUTATIONS: Dict[str, Tuple[Any, bool]] = {
     "four_point_pair_association": (_four_point_pair_association, True),
     "dsqr_same_direction_shifts": (_dsqr_same_direction_shifts, True),
@@ -656,7 +656,7 @@ H_SOURCE_MUTATIONS: Dict[str, bool] = {
     "commute_constitutive_scale": False,
 }
 
-#: THIS GATE'S NEEDLE TABLE for the two batteries above: ``pade_scale_the_H_source``
+#: This gate's needle table for the two batteries above: ``pade_scale_the_H_source``
 #: is its own, and the rest are borrowed from the probe's shared default until this
 #: gate's kernels need a spelling of their own, which is then an ``own=`` entry here
 #: and moves no other gate (``gate_needles.py``).
@@ -666,7 +666,7 @@ SHARED_NEEDLES = gate_needles.gate_table(
     "gate_cuda_nonlinear", probe.SOURCE_MUTATIONS, _ARMED,
     own={"pade_scale_the_H_source": _pade_scale_the_H_source})
 
-#: MUTATIONS THAT ARE PROVABLY INERT, OR MEASURED INVISIBLE, ON SOME SPECS, with the
+#: Mutations that are provably inert, or measured invisible, on some specs, with the
 #: reason and the specs they ARE scored on. A leg on which a defect cannot change a
 #: byte scores
 #: UNCAUGHT and drags the verdict to PARTIAL for a reason about the fixture, which
@@ -680,10 +680,10 @@ SOURCE_MUTATION_SPECS: Dict[str, Dict[str, Any]] = {
         "why": ("the METALLIC branch is never taken on an all-periodic grid, so "
                 "deleting it cannot change a byte there"),
     },
-    # THE (1, 1, nz) CORPUS SHAPE IS TOO SMALL FOR A DSQR-ROUNDING DEFECT. Two axes of
+    # The (1, 1, nz) corpus shape is too small for a Dsqr-rounding defect. Two axes of
     # one cell make two of each four-point sum's corners coincide, and 40 cells give
-    # 120 E words whose c3 weight rounds a one-ulp Dsqr difference away. MEASURED on
-    # the host (bit_parity_0_10 lane KC1n, the gate's NumPy transcription with the
+    # 120 E words whose c3 weight rounds a one-ulp Dsqr difference away. Measured on
+    # the host (for 1.0, the gate's NumPy transcription with the
     # defect put back, the battery's own legs): the pairing changes 6 to 8 of the 40
     # sums of each partner on the live axis (none on an invariant one) and 0 stored
     # words at the single launch and after 60 launches. The float32 Dsqr on its
@@ -716,7 +716,7 @@ SOURCE_MUTATION_SPECS: Dict[str, Dict[str, Any]] = {
 }
 
 
-#: MUTATIONS SCORED ON ANOTHER CLASS than the battery's ``uniform/near_pole``, with
+#: Mutations scored on another class than the battery's ``uniform/near_pole``, with
 #: the reason: a defect that lives in a band no other class reaches would score
 #: UNCAUGHT there for a reason about the fixture.
 SOURCE_MUTATION_CLASSES: Dict[str, Dict[str, Any]] = {
@@ -778,7 +778,7 @@ class _NumpyWearingCupysName:
 def build(xp, spec: Dict[str, Any], courant: float, amplitude: str, rng):
     """A frozen ``(fields, layer, grid)`` triple carrying a live nonlinearity.
 
-    THE THICKNESS RULE IS THE SLICE'S OWN: skip an axis too thin to hold a layer.
+    The thickness rule is the slice's own: skip an axis too thin to hold a layer.
     On the 1-D spec that leaves the absorber on z alone, which is what the corpus
     rows carry and is also what makes ``absorber_departure`` a per-axis reading
     rather than a single number.
@@ -850,11 +850,11 @@ def install_nonlinearity(fields, grid, spec: Dict[str, Any], amplitude: str,
 def seed_state(fields, grid, side: str, value_class: str, rng) -> Dict[str, np.ndarray]:
     """Physical-band or subnormal-band values in every array the sub-step touches.
 
-    THE AUXILIARIES START NONZERO in both classes. A zero ``f_w`` makes
+    The auxiliaries start nonzero in both classes. A zero ``f_w`` makes
     ``kms * prev`` exactly zero on the first launch whatever ``kms`` holds, so a
     mis-indexed coefficient would only show from step two.
 
-    THE MATERIAL STAYS NORMAL under the band class: driving inverse epsilon into
+    The material stays normal under the band class: driving inverse epsilon into
     the band too would make every product underflow and the leg would measure the
     fixture rather than the policy's reach into this arithmetic.
     """
@@ -936,12 +936,12 @@ def swapped_kps_kms_tables(side: str, layer) -> Dict[str, Any]:
 
 
 def linearized_bindings(fields) -> Dict[str, Any]:
-    """THE E ARM'S REFUSAL, ARMED AT THE HOST: every component reported linear.
+    """The E arm's refusal, armed at the host: every component reported linear.
 
     The kernel then runs its NL=0 arm -- the certified plain body -- on a run whose
     array path applies a Pade factor. If that is bit-identical, the case has no
     live nonlinearity in it and every nonlinear leg on it is measuring nothing.
-    MUST BE CAUGHT, and it is the host-side twin of ``drop_pade_factor``.
+    Must be caught, and it is the host-side twin of ``drop_pade_factor``.
     """
     bindings = nlc.nonlinear_bindings(fields)
     bindings = dict(bindings)
@@ -990,7 +990,7 @@ def run_kernel_cuda(side: str, fields, tables, bindings, codes) -> None:
     deliberately corrupted ones. Passing the layer instead would derive them
     correctly and disarm every host mutation.
     """
-    # Since 0.10 the oracle (``stepping.update_H``/``update_E``) chooses each cell's form
+    # Since 1.0 the oracle (``stepping.update_H``/``update_E``) chooses each cell's form
     # by the region plan it installs on ``fields``, and the kernels by the record of
     # that division.
     from gate_chunk_records import region_plan_record  # noqa: PLC0415
@@ -1024,7 +1024,7 @@ def _neighbour(n: int, code: int, delta: int):
 def four_point_sum_numpy(g, own_axis: int, partner_axis: int, codes, shape):
     """``four_point_sum`` from the device string, in float32 NumPy.
 
-    MEEP C's order, LEFT TO RIGHT: ``((g[i] + g[i+s]) + g[i-s1]) + g[i+(s-s1)]``.
+    MEEP C's order, left to right: ``((g[i] + g[i+s]) + g[i-s1]) + g[i+(s-s1)]``.
     """
     identity = [np.arange(shape[axis]) for axis in range(3)]
     up_index, up_valid = _neighbour(shape[own_axis], codes[own_axis], +1)
@@ -1105,7 +1105,7 @@ def pade_pieces(fields, bindings, codes) -> Dict[str, Any]:
 def run_kernel_numpy(side: str, fields, tables, bindings, codes) -> None:
     """The device tree, transcribed, in float32 -- the laptop backend.
 
-    THIS COMPILES NOTHING AND CERTIFIES NOTHING. It cannot see a defect the NVRTC
+    This compiles nothing and certifies nothing. It cannot see a defect the NVRTC
     contraction guard exists for, it does not exercise the subnormal policy, and it
     is not the shipped bytes. What it settles is (a) whether the transcription
     reproduces ``stepping`` at all and (b) whether this harness can fail -- both on
@@ -1276,7 +1276,7 @@ def one_case(backend: str, spec: Dict[str, Any], side: str, courant: float,
              host_mutation: Optional[str] = None) -> Dict[str, Any]:
     """One frozen state, run twice: the array path, then the kernel.
 
-    THE ORACLE IS ``stepping`` ITSELF on real ``Grid``/``Fields``/``PML`` objects.
+    The oracle is ``stepping`` ITSELF on real ``Grid``/``Fields``/``PML`` objects.
     There is no second transcription on the oracle leg to drift: the kernel is
     compared against the thing it claims to reproduce, byte for byte, from ONE
     frozen state -- oracle runs, state is restored, kernel runs.
@@ -1307,7 +1307,7 @@ def one_case(backend: str, spec: Dict[str, Any], side: str, courant: float,
         case["seconds"] = time.time() - started
         return case
 
-    # BOTH PREDICATES' ANSWERS, recorded rather than acted on. This gate decides
+    # Both predicates' answers, recorded rather than acted on. This gate decides
     # whether the census's refusal should change, so it must not be gated by it --
     # but a record that did not carry both could not show that the two PARTITION.
     covered, reason = nlc.covers_real_pml_nonlinear_constitutive(fields, layer, grid, side)
@@ -1320,7 +1320,7 @@ def one_case(backend: str, spec: Dict[str, Any], side: str, courant: float,
     }
 
     if not covered and reason and reason.startswith("no instantaneous chi2/chi3"):
-        # MEASURED, and it is a finding rather than a nuisance: under the
+        # Measured, and it is a finding rather than a nuisance: under the
         # ``meep_x86_flush`` policy a float32 chi VOLUME drawn in the subnormal
         # band is annihilated on the host at install time, so
         # ``Fields.set_nonlinear_volumes`` sees a trivial pair and drops it
@@ -1408,7 +1408,7 @@ def one_case(backend: str, spec: Dict[str, Any], side: str, courant: float,
 
     # Leg 3: the multi-step. The auxiliary is STATE.
     #
-    # ONE ``Fields`` OBJECT, RUN TWICE FROM THE SAME FROZEN STATE, rather than a
+    # ONE ``Fields`` object, run twice from the same frozen state, rather than a
     # second object built beside it: two objects means two epsilon draws unless
     # the volumes are copied across, and a fixture that solved two different
     # problems would report a divergence that says nothing about the kernel.
@@ -1497,13 +1497,13 @@ def mutation_plan(product: str, side_filter: Optional[str] = None):
     this gate see this defect at all", and multiplying it by the whole sweep buys
     repetitions of that answer rather than a second question.
 
-    THE CLASS IS ``uniform/near_pole``, AND THAT IS A MEASURED CHOICE. The two
+    The class is ``uniform/near_pole``, and that is a measured choice. The two
     degenerate classes make ``u`` exactly 1 by construction and would score every
     nonlinear mutation UNCAUGHT for a reason about the fixture. Between the two
     live ones, a defect that enters through ``Dsqr`` reaches the output only
     through ``c3 = (Dsqr * chi3) * chi1inv^3`` -- a weight of order
     ``0.0625 * chi3 * chi1inv^3``, which at the moderate amplitude is ~3e-4, small
-    enough to round a one-ulp stencil difference away entirely. MEASURED on
+    enough to round a one-ulp stencil difference away entirely. Measured on
     the GPU host: at ``moderate``, the association mutation (then
     ``four_point_left_to_right``, installing MEEP's order against the paired array
     path) came back 0 differing words on the (1, 1, nz) corpus shape under the keep
@@ -1513,7 +1513,7 @@ def mutation_plan(product: str, side_filter: Optional[str] = None):
     ``near_pole`` raises that weight by 3.2x and is where the question "can this
     gate see this defect" is actually asked.
 
-    WHAT THAT DOES NOT ESTABLISH is carried in the summary's ``does_not_claim``:
+    What that does not establish is carried in the summary's ``does_not_claim``:
     the mutation legs do not show that every defect is visible at every amplitude
     the family admits, only that the comparator can see it.
     """
@@ -1653,7 +1653,7 @@ def run_source_mutations(results: Dict[str, Any], out_path: str,
         results["source_mutations"] = out
         save(results, out_path)
 
-    # THE SPELLING PROBE, scored the same way and reported separately. Not a
+    # The spelling probe, scored the same way and reported separately. Not a
     # release clause: it is a claim about the compiler, not about this kernel.
     results["division_spelling_probe"] = _score_source_mutation(
         "E:plain_division", nlc, e_attribute, _plain_division, False,
@@ -1689,7 +1689,7 @@ def summarize(results: Dict[str, Any]) -> Dict[str, Any]:
         reasons.append(f"multi-step divergence on {len(multi_cases) - len(multi_ok)} "
                        f"of {len(multi_cases)} cases")
 
-    # THE FAMILY'S OWN NON-VACUITY: at least one scored E case per ghost rule must
+    # The family's own non-vacuity: at least one scored E case per ghost rule must
     # have had a Pade factor that is not the identity, or the sweep measured the
     # certified linear kernel under a new name.
     live = [c for c in electric if c.get("pade", {}).get("pade_departure", 0.0) > 0.0]
@@ -1709,7 +1709,7 @@ def summarize(results: Dict[str, Any]) -> Dict[str, Any]:
         reasons.append("no live E case carried a linear component; MEEP's "
                        "`else if (u)` branch was never exercised")
 
-    # THE PREDICATES MUST PARTITION on every case, not merely be believed to.
+    # The predicates must partition on every case, not merely be believed to.
     overlaps = [c["label"] for c in scored if not c["predicate"]["disjoint"]]
     if overlaps:
         reasons.append(f"both predicates admitted the same slot on {sorted(set(overlaps))}")
@@ -1742,7 +1742,7 @@ def summarize(results: Dict[str, Any]) -> Dict[str, Any]:
     guard_control = {
         "scored_at_inexact_courant": len(control),
         "diverged": len(control_diverged),
-        "reading": ("NOT MEASURED on this run: no unguarded leg was scored at the "
+        "reading": ("Not measured on this run: no unguarded leg was scored at the "
                     "inexact courant" if not control else
                     "the contraction guard is load-bearing on this sub-step"
                     if control_diverged else
@@ -1753,7 +1753,7 @@ def summarize(results: Dict[str, Any]) -> Dict[str, Any]:
 
     division = results.get("division_spelling_probe", {})
     if not division.get("armed"):
-        division_reading = "NOT MEASURED: the plain-division rewrite did not arm"
+        division_reading = "Not measured: the plain-division rewrite did not arm"
     elif division.get("verdict") == "NULL CONFIRMED":
         division_reading = ("MEASURED EQUIVALENT on this platform: `num / den` and "
                             "__fdiv_rn(num, den) produced identical bytes on every "
@@ -1776,7 +1776,7 @@ def summarize(results: Dict[str, Any]) -> Dict[str, Any]:
         "reading": None,
     }
     if not subnormal:
-        reach["reading"] = "NOT MEASURED: no subnormal_chi case was scored"
+        reach["reading"] = "Not measured: no subnormal_chi case was scored"
     elif reach["chi_terms_subnormal"] == 0:
         reach["reading"] = ("the c2/c3 terms held no subnormal on this run, so this "
                             "class did not put one near the divide; under the flush "
@@ -1802,7 +1802,7 @@ def summarize(results: Dict[str, Any]) -> Dict[str, Any]:
         "reading": None,
     }
     if not band:
-        band_reach["reading"] = ("NOT MEASURED: no dsqr_band case was scored (the "
+        band_reach["reading"] = ("Not measured: no dsqr_band case was scored (the "
                                  "reduced product does not carry the class)")
     elif band_reach["cells_where_the_dsqr_forms_differ"] == 0:
         band_reach["reading"] = ("the dsqr_band class reached no cell where the double "
@@ -1884,6 +1884,7 @@ def save(results: Dict[str, Any], out_path: str) -> None:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
+    import neutral_ids  # noqa: PLC0415
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--backend", choices=("cuda", "numpy"), default="cuda")
     parser.add_argument("--product", choices=("full", "reduced"), default="full")
@@ -1901,8 +1902,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     results: Dict[str, Any] = {
         "gate": "cuda_nonlinear_constitutive",
         "started_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "host": os.uname().nodename,
-        "argv": list(argv if argv is not None else sys.argv[1:]),
+        "host": neutral_ids.machine_id(),
+        "argv": neutral_ids.argv(argv if argv is not None else sys.argv[1:]),
         "backend": args.backend,
         "product": args.product,
         "question": ("does the census refusal 'instantaneous chi2/chi3: a Pade "
@@ -1918,7 +1919,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             return 2
         if args.import_meep_for_host_policy:
             results["meep_host_import"] = probe.import_meep_for_host_policy()
-        # THE OBSERVER GOES IN BEFORE THE POLICY, and the order is the design:
+        # The observer goes in before the policy, and the order is the design:
         # under 'keep' the policy's strip wraps this, so it records the option
         # tuple NVRTC was really given (post-strip).
         results["nvrtc_observer"] = probe.install_nvrtc_binary_observer()

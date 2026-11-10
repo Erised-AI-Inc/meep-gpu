@@ -93,7 +93,7 @@ def test_a_matched_pair_forms_a_ratio(tmp_path):
     assert entry["meep_best_ranks"] == 32 and entry["meep"]["32"] == 510.0
     assert entry["routes"]["triton"]["vs_best_meep"] == pytest.approx(1024.0 / 510.0)
     assert record["summary"] == "paired 1 of 1; refused 0 of 1"
-    assert "**2.01×**" in text and "ONE GPU PASS PER ROUTE DIRECTORY" in text
+    assert "**2.01×**" in text and "one GPU pass per route directory" in text
 
 
 @pytest.mark.parametrize("name, build, reason", [
@@ -207,3 +207,87 @@ def test_the_2026_09_28_file_name_is_read_by_its_content(tmp_path):
         {"case": "pml_3d", "resolution": 20,
          "geometry": {"digest": DIGEST, "facts": {"cells": 512_000}}}))
     assert cmp.read_digests(str(tmp_path))[("pml_3d", 512_000)]["digest"] == DIGEST
+    found = cmp.read_digests(str(tmp_path))[("pml_3d", 512_000)]
+    assert found["file"] == "harness_lift_digest_res20.json", \
+        "named as the directory read names it: a table quoting it leaves the machine"
+
+
+# ---------------------------------------------------------------------------
+# A split ladder unit: the GPU half's routes over the MEEP half's rows
+# ---------------------------------------------------------------------------
+
+def split_halves(tmp_path):
+    """The two ladders of a split unit as the session names them, each holding one side:
+    the GPU half planned no MEEP row (``--ranks none``), the MEEP half no GPU row."""
+    gpu, meep = tmp_path / "ladder_s1_u01_gpu", tmp_path / "ladder_s1_u01_meep"
+    write_route(gpu / "gpu_default" / "pass1")
+    write_meep(meep / "meep", 32, [meep_row(500.0), meep_row(520.0), meep_row(510.0)])
+    write_digest(meep / "digests_lift")
+    for root, ranks, routes in ((gpu, "none", "default"), (meep, "8|1|", "none")):
+        (root / "environment.json").write_text(json.dumps(
+            {"params": {"RANKS": {"value": ranks}, "ROUTES": {"value": routes}}}))
+    return gpu, meep
+
+
+def split_row(tmp_path, halves=None):
+    """The store's record of the unit (``test_timing_rows.split_record``): halves at the
+    session's masks unless ``halves`` names others."""
+    import test_timing_rows as rows  # noqa: PLC0415
+    import timing_rows as TR  # noqa: PLC0415
+
+    record, = rows.split_record(tmp_path / "rec", None if halves is None
+                                else rows._halves_at(*halves))
+    return TR.write_record(str(tmp_path / "store"), record)
+
+
+def run_split(tmp_path, *extra, meep=None, digests=None):
+    gpu, half = split_halves(tmp_path)
+    out, record_path = tmp_path / "table.md", tmp_path / "table.json"
+    status = cmp.main(["--host", "test", "--routes", f"default={gpu / 'gpu_default' / 'pass1'}",
+                       "--meep", str(meep or half / "meep"),
+                       "--digests", str(digests or half / "digests_lift"), "--out", str(out),
+                       "--json", str(record_path)] + list(extra))
+    return status, json.loads(record_path.read_text()), out.read_text()
+
+
+def test_a_split_units_ratio_is_labelled_split_with_both_masks(tmp_path):
+    """The GPU half's route over the MEEP half's best: the ratio a whole ladder would give,
+    labelled split, with the two masks, the order and the row record beside it."""
+    status, record, text = run_split(tmp_path, "--split-row", split_row(tmp_path))
+    assert status == 0
+    entry = record["sections"]["pml_3d"][0]["routes"]["default"]
+    assert entry["vs_best_meep"] == pytest.approx(1024.0 / 510.0) and entry["split"] is True
+    split = record["split"]
+    assert split["masks"] == {"gpu": "0x999988", "meep": "0xffffff"}
+    assert split["order"] == ["gpu", "meep"]
+    assert split["keys"] == ["ladder|8.6|pml_3d|512000|priority"]
+    assert split["ladders"] == {"gpu": "ladder_s1_u01_gpu", "meep": "ladder_s1_u01_meep"}
+    assert "**2.01×** (split)" in text and split["label"] in text and split["rule"] in text
+
+
+def test_a_split_row_whose_halves_did_not_hold_the_sessions_masks_is_refused_by_name(tmp_path):
+    with pytest.raises(SystemExit) as refused:
+        run_split(tmp_path, "--split-row", split_row(tmp_path, ("0xffffff", "0x999988")))
+    message = str(refused.value)
+    assert message.startswith("REFUSING: --split-row: split_row_refused")
+    assert "the gpu half ran under VM affinity 0xffffff, not the session's gpu mask " \
+           "0x999988" in message
+    assert not (tmp_path / "table.json").exists()
+
+
+def test_the_two_halves_of_a_split_unit_are_refused_without_their_row(tmp_path):
+    """A route of a ladder that planned no MEEP row over MEEP rows of one that planned no
+    GPU row: the two halves of a split unit, whose ratio would read as one ladder's."""
+    with pytest.raises(SystemExit, match="the two halves of a split ladder unit"):
+        run_split(tmp_path)
+
+
+@pytest.mark.parametrize("given", ["meep", "digests"])
+def test_a_split_row_pairs_only_the_halves_it_names(tmp_path, given):
+    """MEEP rows or lift digests from a ladder other than the MEEP half the record names."""
+    other = tmp_path / "ladder_s2_u01_meep"
+    write_meep(other / "meep", 32, [meep_row(500.0)])
+    write_digest(other / "digests_lift")
+    with pytest.raises(SystemExit, match=f"--{given} not under its half's ladder"):
+        run_split(tmp_path, "--split-row", split_row(tmp_path),
+                  **{given: other / ("meep" if given == "meep" else "digests_lift")})

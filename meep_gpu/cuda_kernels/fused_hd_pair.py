@@ -1,6 +1,6 @@
 """The H->D weld: ``update_H`` welded into ``step_D``, one launch, scratch output.
 
-THE FOURTH FUSION SEAM ON THIS BACKEND, and the first one whose two halves sit in
+The fourth fusion seam on this backend, and the first one whose two halves sit in
 the order constitutive-then-curl. The driver runs
 
     ``update_H`` (driver.py:3311) -> the electric integrated-source withdraw
@@ -13,7 +13,7 @@ earlier (:3283-3284) -- so :mod:`..deposit_repair` has nothing to say about this
 and :mod:`..withdraw_hoist` is the module that does.
 
 =============================================================================
-THE SHAPE: SCRATCH OUTPUT AND FOREIGN-CELL RECOMPUTE
+The shape: scratch output and foreign-cell recompute
 =============================================================================
 
 ``step_D``'s curl reads ``H`` at the thread's own cell AND at its three BACKWARD
@@ -41,7 +41,7 @@ The launcher then ROTATES the ``H``/``f_w_H`` bindings, which is the choreograph
 :func:`.offdiag_fused_electric_pair.rotate_into_fields` already ships on the D/fu_D
 pair and ``ade_kernels.update_P_fused_pml_real`` ships on ``P``/``P_prev``.
 
-WHY THE RECOMPUTE IS EXACT RATHER THAN CLOSE. ``update_H`` is POINTWISE: per component
+Why the recompute is exact rather than close. ``update_H`` is POINTWISE: per component
 it reads ``H``, ``f_w_H`` and ``B`` at ONE cell and writes the same cell
 (stepping.py:907-923 through ``_apply_constitutive_pml``, stepping.py:2112-2143; the
 kernel is ``constitutive_kernels._update_H_pml_real_kernel_code``, which reads no
@@ -50,14 +50,14 @@ at any cell is a function of state this launch does not write, and evaluating it
 gives the same bits by construction rather than by a tolerance. That is CHEAPER than
 the D->E weld's recompute, whose recomputed half is itself a curl.
 
-WHY THE COEFFICIENT INDEX NEEDS NO THEOREM. The recompute takes the FLAT INDEX the
+Why the coefficient index needs no theorem. The recompute takes the FLAT INDEX the
 certified ``shift_dn`` composed and runs the certified body's OWN decode on it, so
 ``kps_x[i]`` and ``kms_x[i]`` are indexed at the recomputed cell exactly as the
 certified body indexes them at the thread's own. The recompute is the certified
 arithmetic at the recomputed cell, not an approximation of it.
 
 =============================================================================
-ONE DEVICE STRING, AND THAT IS THIS BACKEND'S OWN FACT
+One device string, and that is this backend's own fact
 =============================================================================
 
 The boundary kind is a RUNTIME ARGUMENT here (``bc_x``/``bc_y``/``bc_z``, with
@@ -74,7 +74,7 @@ One device string also means ONE certification digest, which is this track's sta
 rule: no per-boundary variant can end up pinned that nobody ran.
 
 =============================================================================
-WHAT SITS IN THE SEAM, AND WHY THIS PRODUCT REFUSES THE WITHDRAW ROWS
+What sits in the seam, and why this product refuses the withdraw rows
 =============================================================================
 
 :data:`CARRIES_DEPOSIT_REPAIR` is False and it is a FACT rather than a decision:
@@ -82,7 +82,7 @@ nothing is injected between the two consults, so there is no deposit to bracket.
 pass that IS there is the electric withdraw, and :mod:`..withdraw_hoist` is its
 contract -- one slot, not two; a hoist, not a bracket.
 
-:data:`HOISTS_THE_WITHDRAW` is False IN THIS ROUND, and the flag and the wiring move
+:data:`HOISTS_THE_WITHDRAW` is False in this product, and the flag and the wiring move
 together exactly as ``CARRIES_DEPOSIT_REPAIR``'s do. The only wiring that performs the
 hoist is ``fused_pairs._install_fused_pair``'s ``withdraw_hoist.SEAM`` branch, which
 wraps the built plan in a :class:`..withdraw_hoist.LeadingWithdrawPlan`; this product
@@ -94,7 +94,7 @@ previous step's standing dipole and report success, the exact failure
 ``withdraw_hoist`` exists to prevent. So the predicate refuses, BY NAME, every row
 whose electric withdraw does work.
 
-WHAT THAT COSTS, MEASURED rather than estimated
+What that costs, measured rather than estimated
 (``parity/meep_gpu/results/h_to_d_seam_2026-09-04/h_to_d_seam.jsonl``, joined on the
 CUDA arms): the ``(cuda_constitutive/ordinary -> cuda_curl/PML)`` cell is **127 rows**,
 of which **122** are ``buildable_not_built`` and **5** are ``withdraw_seam`` --
@@ -108,7 +108,7 @@ and requires both the un-hoisted arrangement and the ``after_step_D`` placement 
 diverge.
 
 =============================================================================
-IT IS NOT INSTALLED, AND THE REASON IS A MEASURED VERDICT RATHER THAN A MISSING GATE
+It is not installed, and the reason is a measured verdict rather than a missing gate
 =============================================================================
 
 :data:`INSTALLABLE` is False, and :data:`INSTALLABLE_REASON` carries the measurement
@@ -119,7 +119,7 @@ from each neighbour can only tie or lose. Only a four-slot
 ``step_B -> update_H -> step_D -> update_E`` weld is strictly additive, and it is not
 built here.
 
-WHAT KEEPS THE RELEASED B->H PAIR IN ITS SLOT IS NOT THIS FLAG. It is
+What keeps the released B->H pair in its slot is not this flag. It is
 ``fused_pairs._neighbouring_seam_claimant``'s end-edge guard (a B->H span is an END
 EDGE of ``FUSED_PAIR_SEAMS`` by the table's own degrees and is never asked whether a
 neighbour claims its seam) together with ``_spans_may_absorb`` reading the live
@@ -135,7 +135,7 @@ count; whether the saved launch and the saved ``H`` write-then-read round trip p
 up to six extra pointwise constitutive evaluations per thread is a hypothesis.
 
 =============================================================================
-THE NONLINEAR CELL IS THE ONE WIDENING, AND IT IS A MODULE IDENTITY
+The nonlinear cell is the one widening, and it is a module identity
 =============================================================================
 
 A chi2/chi3 run selects ``cuda_nonlinear``'s ``nonlinear`` arm at ``update_H`` and the
@@ -147,7 +147,7 @@ not a byte comparison between two emitted texts, because there is only one text:
 NULL WIDENING -- ``covers_real_pml_nonlinear_constitutive(..., side="H")`` admits the
 SHIPPED ``constitutive_kernels.update_H_pml_real`` unchanged, because
 ``stepping.update_H`` (:907-923) reads no chi (that module's docstring, "Arm H (NULL
-WIDENING). No kernel."), and the null is MEASURED by
+WIDENING). No kernel."), and the null is measured by
 ``parity/meep_gpu/gate_cuda_nonlinear.py`` with its own premise armed as a defect
 (``pade_scale_the_H_source``, CAUGHT 6/6). The census agrees from the other side: both
 nonlinear rows record ``update_H_kernel: fused_update_H_pml_real``, the ordinary arm's
@@ -160,7 +160,7 @@ ordinary one refuses when either is present and the nonlinear one refuses when n
 is -- so exactly one can answer and the disjunction is a lookup rather than a widening.
 
 =============================================================================
-WHAT THIS FAMILY DOES NOT CARRY
+What this family does not carry
 =============================================================================
 
 Every other configuration is refused through the two halves' OWN certified predicates,
@@ -170,7 +170,7 @@ cylindrical r = 0 axis, a Dcyl grid (the cylindrical ``step_D`` differences a
 column-serial radial scan that is deliberately not a kernel on this track), and any
 grid whose two halves resolve different boundary triples.
 
-THE FOLD IS ADMITTED, and by the two halves' own device verdicts rather than by
+The fold is admitted, and by the two halves' own device verdicts rather than by
 argument: ``coverage.CONSTITUTIVE_FOLD_ADMISSION`` for the constitutive half and
 ``BC_MIRROR_PERIODIC`` for the curl, whose mask split was measured by
 ``gate_cuda_folded_curl.py`` (``results/cuda_folded_curl_2026-08-19/``). The seam
@@ -180,7 +180,7 @@ and ``fill_D`` opens one seam later (:3324-3330), so no ghost plane is rewritten
 between the two consults this launch spans.
 
 =============================================================================
-NOTHING DISPATCHES THIS
+Nothing dispatches this
 =============================================================================
 
 ``meep_gpu.fastpath.plan_fast_path`` builds ``triton_kernels`` plans and never names
@@ -238,9 +238,9 @@ SLOT = "update_H"
 #: The driver passes ONE launch of this kernel performs, in driver order
 #: (driver.py:3311, :3315). Declared rather than inferred from the slot names.
 #:
-#: NOTHING BETWEEN THEM IS CARRIED, and there is only one thing there to carry: the
+#: Nothing between them is carried, and there is only one thing there to carry: the
 #: electric withdraw (:3313-3314), which :data:`HOISTS_THE_WITHDRAW` declines in this
-#: round. It is not in this tuple because the product does not perform it.
+#: product. It is not in this tuple because the product does not perform it.
 REPLACES: Tuple[str, ...] = ("update_H", "step_D")
 
 #: The seam name ``fused_pairs.FUSED_PAIR_SEAMS`` files this row under, and the module
@@ -257,12 +257,12 @@ SCRATCH_VOLUMES: Tuple[str, ...] = ("Hx", "Hy", "Hz",
 #: ``update_H`` body's own spelling.
 H_TARGETS: Tuple[str, str, str] = ("Hx", "Hy", "Hz")
 
-#: BYTE-IDENTICAL TO FOUR INDEPENDENT ARRANGEMENTS OF THE SEAM, WITH A DEVICE VERDICT
-#: BEHIND IT. ``certification.json``'s ``cuda_fused_hd_pair_2026-09-06`` block names
+#: Byte-identical to four independent arrangements of the seam, with a device verdict
+#: behind it. ``certification.json``'s ``cuda_fused_hd_pair_2026-09-06`` block names
 #: the artifact this line rests on, and ``test_kernel_partition.py`` refuses a name
 #: here that no record block claims.
 #:
-#: THE DECLARATION IS THE FINAL BYTES, and that is this track's rule rather than a
+#: The declaration is the final bytes, and that is this track's rule rather than a
 #: claim made ahead of its evidence: a gate certifies the module it IMPORTED, so a
 #: module that moved its own name between the two sets AFTER the run would leave the
 #: record bound to bytes that no longer ship. The released campaign was cut against
@@ -289,15 +289,15 @@ UNCERTIFIED_KERNELS = {}
 CARRIES_DEPOSIT_REPAIR = False
 
 #: Does this product perform the seam's electric withdraw before its launch? NO in this
-#: round. See the module docstring: the only wiring that performs it is
+#: product. See the module docstring: the only wiring that performs it is
 #: ``fused_pairs._install_fused_pair``'s :data:`..withdraw_hoist.SEAM` branch, which
 #: this product never reaches (:data:`INSTALLABLE` False), so True here would be a
 #: claim about wiring that cannot fire. The predicate consequently refuses every row
 #: with a standing in-seam withdraw BY NAME -- 5 of the cell's 127.
 HOISTS_THE_WITHDRAW = False
 
-#: May the composer install this product? NO, on every configuration, for a MEASURED
-#: VERDICT rather than a policy. ``fused_pairs._declared_uninstallable`` reads this and
+#: May the composer install this product? NO, on every configuration, for a measured
+#: verdict rather than a policy. ``fused_pairs._declared_uninstallable`` reads this and
 #: reports :data:`INSTALLABLE_REASON` on every run.
 INSTALLABLE = False
 
@@ -387,7 +387,7 @@ _APPLY_PARAMETERS_PURE = (
     "    float kps, float kms, int dsigw, float* fw_out\n)")
 _APPLY_FW_STORE = "    if (dsigw) fw[idx] = src;\n"
 _APPLY_FW_STORE_PURE = (
-    "    // THE FIRST OF THE TWO STORES, HANDED BACK INSTEAD OF PERFORMED. The\n"
+    "    // The first of the two stores, handed back instead of performed. The\n"
     "    // caller writes it to the SCRATCH volume, so nothing this launch reads is\n"
     "    // ever a word this launch wrote -- and on this side the stored value IS\n"
     "    // B[idx], so an in-place write would hand a racing neighbour B where its\n"
@@ -398,7 +398,7 @@ _APPLY_FW_STORE_PURE = (
     "    *fw_out = dsigw ? src : fw[idx];\n")
 _APPLY_F_STORE = "    f[idx] = value;\n"
 _APPLY_F_STORE_PURE = (
-    "    // THE SECOND STORE, LIKEWISE. Same forms, same tree, same operand order;\n"
+    "    // The second store, likewise. Same forms, same tree, same operand order;\n"
     "    // the value is RETURNED so the caller can store it to scratch for its own\n"
     "    // cell and consume it from a register for the curl half.\n"
     "    return value;\n")
@@ -416,7 +416,7 @@ _SHIFT_DN_SIGNATURE_RECOMPUTE = (
     "    const WeldArgs& weld\n)")
 
 #: Every line of certified CONSTITUTIVE text this weld does not lift verbatim, with
-#: the reason. DATA, not prose. THERE IS NO ARITHMETIC IN THIS TABLE: every entry is a
+#: the reason. DATA, not prose. There is no arithmetic in this table: every entry is a
 #: store that moves to the caller, a pointer qualifier, or the thread binding.
 CONSTITUTIVE_LIFT_EDITS: Tuple[Dict[str, str], ...] = (
     {"line": "__device__ __forceinline__ void constitutive_apply(",
@@ -454,17 +454,17 @@ CONSTITUTIVE_LIFT_EDITS: Tuple[Dict[str, str], ...] = (
             "calling this at all."},
     {"line": "    int k = idx % nz; int j = (idx / nz) % ny; int i = idx / (ny * nz);",
      "became": "(kept, verbatim, inside raw_update_H_cell)",
-     "why": "NOT AN EDIT, and listed because a reader will look for one. The decode "
+     "why": "Not an edit, and listed because a reader will look for one. The decode "
             "is the certified body's own and is what turns the recomputed cell's flat "
             "index into the per-axis coefficient index kps_x[i] / kps_y[j] / "
             "kps_z[k]. Dropping it and reusing the thread's i/j/k would index the "
             "absorber profile at the WRONG cell -- converged, smooth and wrong."},
     {"line": "    <update_H_pml_real's chunk-record block>",
      "became": "(kept, verbatim, inside raw_update_H_cell; cb bound from the pack)",
-     "why": "NOT AN EDIT EITHER. The block decodes the record at the cell its decode "
+     "why": "Not an edit either. The block decodes the record at the cell its decode "
             "names, so a foreign recompute chooses the accumulation or f = src by the "
-            "RECOMPUTED cell's membership, not the thread's (KERNELS.md section 3.3, "
-            "recomputes). The record pointer joins the pack as WeldArgs::cb."},
+            "RECOMPUTED cell's membership, not the thread's. The record pointer joins "
+            "the pack as WeldArgs::cb."},
     {"line": "    constitutive_apply(H*, f_w_H*, idx, B*[idx], kps_*[*], kms_*[*], "
              "in_i_*);",
      "became": "    h_out[n] = constitutive_apply_pure(H*, f_w_H*, idx, B*[idx], "
@@ -483,7 +483,7 @@ CURL_LIFT_EDITS: Tuple[Dict[str, str], ...] = (
      "became": "__device__ __forceinline__ float shift_dn_recompute(\n"
                "    int comp, int idx, int ia, int na, int stride, int bc,\n"
                "    const WeldArgs& weld\n)",
-     "why": "THE FOREIGN TAP. The partner VOLUME becomes a COMPONENT TAG, because the "
+     "why": "The foreign tap. The partner VOLUME becomes a COMPONENT TAG, because the "
             "value the curl needs at a neighbour is not a stored word any more -- it "
             "is update_H's result there, recomputed from pre-launch state. The tag is "
             "a compile-time constant at every call site. The certified shift_dn stays "
@@ -521,7 +521,7 @@ CURL_LIFT_EDITS: Tuple[Dict[str, str], ...] = (
     {"line": "    int idx = blockIdx.x * blockDim.x + threadIdx.x; ... "
              "int i = idx / (ny * nz);",
      "became": "(kept, verbatim, as the fused kernel's own preamble)",
-     "why": "NOT AN EDIT. The fused kernel keeps the CURL's preamble and decode as "
+     "why": "Not an edit. The fused kernel keeps the CURL's preamble and decode as "
             "its own -- one bounds guard, one decode -- and the constitutive half's "
             "copy is dropped instead. Splicing both would redeclare idx, i, j and k "
             "and the kernel would not compile."},
@@ -649,7 +649,7 @@ def weld_args_struct() -> str:
     """The argument pack, declared."""
     lines = [
         "",
-        "// THE PRE-LAUNCH STATE, packed once. Every member is read-only for the whole",
+        "// The pre-launch state, packed once. Every member is read-only for the whole",
         "// launch: that is the property the recompute rests on, and binding H, f_w_H",
         "// and B const here is where it is stated in the type system rather than in a",
         "// comment.",
@@ -672,7 +672,7 @@ def weld_args_construction(indent: str = "    ") -> str:
 def raw_update_H_cell_source() -> str:
     """The certified ``update_H_pml_real`` body as a ``__device__`` function of a CELL.
 
-    THE ENTIRE BODY IS LIFTED. Only the thread preamble and the three
+    The entire body is lifted. Only the thread preamble and the three
     ``constitutive_apply`` call lines are edited, each through an exact anchor, so a
     change in the certified text is a named failure rather than a silently different
     kernel. The decode, the component-to-axis pairing and the ``B*[idx]`` sources
@@ -690,10 +690,10 @@ def raw_update_H_cell_source() -> str:
                        "_update_H_pml_real_kernel_code")
     body = _needle(
         body, _THREAD_PREAMBLE,
-        "    // THE CELL ARRIVES AS A FLAT INDEX. The bounds guard left with the\n"
+        "    // The cell arrives as a flat index. The bounds guard left with the\n"
         "    // thread index: every caller is either the kernel's own guarded thread\n"
         "    // or an index the certified shift_dn composed, which that helper's own\n"
-        "    // branch keeps inside the volume. The DECODE BELOW STAYS -- it is what\n"
+        "    // branch keeps inside the volume. The decode below stays -- it is what\n"
         "    // indexes the absorber profile at the recomputed cell rather than at\n"
         "    // the thread's own.\n",
         "the constitutive body's thread preamble")
@@ -716,7 +716,7 @@ def raw_update_H_cell_source() -> str:
         body = body.replace(line, captured, 1)
 
     signature = (
-        "\n// The certified update_H_pml_real, evaluated at ONE ARBITRARY CELL and\n"
+        "\n// The certified update_H_pml_real, evaluated at one arbitrary cell and\n"
         "// storing nothing. This is the function the curl half calls for every\n"
         "// foreign tap it needs: a pure function of H, f_w_H and B, none of which\n"
         "// this launch writes, so a foreign evaluation cannot depend on which block\n"
@@ -762,7 +762,7 @@ def resolution_source() -> str:
 def shift_dn_recompute_source() -> str:
     """The certified ``shift_dn`` with its two leaf loads RESOLVED.
 
-    THE BRANCHES AND THE INDEX EXPRESSIONS ARE THE CERTIFIED HELPER'S OWN, parsed out
+    The branches and the index expressions are the certified helper's own, parsed out
     of its text rather than retyped: everything left of ``g[`` is carried across
     verbatim, the expression inside the brackets is taken as written, and the exact
     ``0.0f`` the metallic and mirror-periodic ghosts read is untouched. A change in how
@@ -784,7 +784,7 @@ def shift_dn_recompute_source() -> str:
     end = body.find("}\n")
     if end < 0:
         raise AssertionError("the certified shift_dn does not close")
-    # EVERYTHING PAST THE CLOSING BRACE IS DROPPED, and dropping it is load-bearing
+    # Everything past the closing brace is dropped, and dropping it is load-bearing
     # rather than tidy: the rest of the certified prelude is `pml_apply`, which
     # :func:`curl_prelude` already emits VERBATIM. Carrying it through here a second
     # time is a duplicate definition NVRTC refuses outright -- which is the good
@@ -795,7 +795,7 @@ def shift_dn_recompute_source() -> str:
         raise AssertionError(
             "the certified shift_dn's body appears to extend past the first closing "
             "brace; this weld lifts a two-statement helper")
-    # THE TWO LEAF LOADS. Found by their `g[` spelling, with the index expression
+    # The two leaf loads. Found by their `g[` spelling, with the index expression
     # taken from inside the brackets and nothing else on the line touched.
     loads = [line for line in body.splitlines(keepends=True) if "g[" in line]
     if len(loads) != 2:
@@ -847,7 +847,7 @@ def welded_curl_tail() -> Tuple[str, str]:
             "the certified step_D body no longer carries exactly one thread preamble "
             "and one index decode; this weld keeps both verbatim and splices its "
             "constitutive half directly below the decode")
-    # The cut keeps the curl's chunk-record block with its decode (D10): the block
+    # The cut keeps the curl's chunk-record block with its decode: the block
     # directly after the decode reads the record once for the curl half, and the
     # constitutive half decodes its own entries inside raw_update_H_cell.
     block = "\n" + bounds_block.bounds_block(*CURL_BLOCK)
@@ -918,7 +918,7 @@ def welded_curl_tail() -> Tuple[str, str]:
 def signature() -> str:
     """The kernel's parameter list.
 
-    THIRTY POINTERS AND SEVEN SCALARS, and unlike the sibling Metal family there is no
+    Thirty pointers and seven scalars, and unlike the sibling Metal family there is no
     binding ceiling to argue from: NVRTC takes its arguments through a 4 KB parameter
     space and this signature is nowhere near it. The ``kms`` group is bound ONCE for
     both halves because both read the INTEGER Yee sub-lattice -- and that is ASSERTED
@@ -928,7 +928,7 @@ def signature() -> str:
     """
     return f'''
 extern "C" __global__ void {KERNEL_NAME}(
-    // THE SCRATCH OUTPUTS. A DIFFERENT ALLOCATION from the pre-launch group below --
+    // The scratch outputs. A different allocation from the pre-launch group below --
     // assert_scratch_is_disjoint checks it by base address before every launch -- and
     // that separation is the whole design: nothing this launch reads is ever a word
     // this launch wrote, so the curl half's foreign taps are a pure function of
@@ -937,7 +937,7 @@ extern "C" __global__ void {KERNEL_NAME}(
     float* __restrict__ Hz_out,
     float* __restrict__ f_w_Hx_out, float* __restrict__ f_w_Hy_out,
     float* __restrict__ f_w_Hz_out,
-    // THE PRE-LAUNCH STATE, read at ANY cell by ANY thread and written by none.
+    // The pre-launch state, read at ANY cell by ANY thread and written by none.
     const float* __restrict__ Hx, const float* __restrict__ Hy,
     const float* __restrict__ Hz,
     const float* __restrict__ f_w_Hx, const float* __restrict__ f_w_Hy,
@@ -945,8 +945,8 @@ extern "C" __global__ void {KERNEL_NAME}(
     const float* __restrict__ Bx, const float* __restrict__ By,
     const float* __restrict__ Bz,
     // D and its split-field auxiliary: written IN PLACE, which is safe by
-    // construction -- pml_apply reads and writes f[idx] and fu[idx] at the THREAD'S
-    // OWN CELL only, so no thread reads a displacement another thread wrote.
+    // construction -- pml_apply reads and writes f[idx] and fu[idx] at the thread's
+    // own cell only, so no thread reads a displacement another thread wrote.
     float* __restrict__ Dx, float* __restrict__ Dy, float* __restrict__ Dz,
     float* __restrict__ fu_Dx, float* __restrict__ fu_Dy, float* __restrict__ fu_Dz,
     int nx, int ny, int nz, float dtdx,
@@ -961,7 +961,7 @@ extern "C" __global__ void {KERNEL_NAME}(
     const float* __restrict__ kps_x, const float* __restrict__ kps_y,
     const float* __restrict__ kps_z,
     int bc_x, int bc_y, int bc_z,
-    // THE CHUNK RECORD (chunk_map.chunk_bounds_record), int32[25]: decoded once for
+    // The chunk record (chunk_map.chunk_bounds_record), int32[25]: decoded once for
     // the curl half after the index decode, and inside raw_update_H_cell at every
     // recomputed cell.
     const int* __restrict__ cb
@@ -1014,7 +1014,7 @@ def source_digest() -> str:
 def _get_kernel(source: Optional[str] = None):
     """Compile on first use, memoized on (name, options, policy, source).
 
-    THE SOURCE IS IN THE KEY, so a mutation harness that handed in a rewritten string
+    The source is in the key, so a mutation harness that handed in a rewritten string
     cannot be served the shipped binary and a late policy install cannot be served an
     earlier one. ``cupy`` is imported HERE, never at scope.
     """
@@ -1041,22 +1041,22 @@ def covers_fused_hd_pair(fields: Any, pml: Any, grid: Any,
     Returns ``(covered, reason)`` with ``reason`` naming the FIRST refusal, this
     directory's convention.
 
-    A CONJUNCTION, AND NOTHING IS WEAKENED. A configuration either half's own certified
+    A conjunction, and nothing is weakened. A configuration either half's own certified
     predicate refuses is refused here with that half's reason, prefixed so a reader can
     tell which side said it.
 
-    THE ORDER IS THE DRIVER'S. The constitutive half is asked FIRST because it runs
+    The order is the driver's. The constitutive half is asked FIRST because it runs
     first (driver.py:3311), so the first refusal a reader sees names the half the
     driver would have reached first -- and on this seam that matters, since the null
     ``update_H`` (an inactive absorber returns before its first statement,
     stepping.py:944) is the single largest non-fusion reason on the board and belongs
     to the constitutive side.
 
-    WHAT THIS ADDS to the two halves: the seam's own withdraw clause, the shared
+    What this adds to the two halves: the seam's own withdraw clause, the shared
     boundary-triple check, and the rotation's requirement that the six magnetic volumes
     be allocated attributes this weld may rebind.
     """
-    # THE CONSTITUTIVE HALF, admitted by EITHER its ordinary predicate OR the
+    # The constitutive half, admitted by EITHER its ordinary predicate OR the
     # nonlinear-run spine arm's. The two are DISJOINT on chi2/chi3 -- the ordinary one
     # refuses when either map is non-empty (coverage.py's chi clause) and the
     # nonlinear one refuses when both are empty -- so exactly one can answer. A double
@@ -1073,11 +1073,11 @@ def covers_fused_hd_pair(fields: Any, pml: Any, grid: Any,
     if not covered:
         return False, f"curl half: {reason}"
 
-    # THE SEAM'S ONE PASS. Nothing is INJECTED between the two consults, so
+    # The seam's one pass. Nothing is INJECTED between the two consults, so
     # `deposit_repair` is not consulted at all and a source of either polarity is not
     # this seam's business. What IS between them is the electric integrated-source
-    # withdraw (driver.py:3313-3314), and `withdraw_hoist` owns it. IGNORANCE IS NEVER
-    # AN EMPTY SET: `Fields` does not hold the source list, so a predicate that
+    # withdraw (driver.py:3313-3314), and `withdraw_hoist` owns it. Ignorance is never
+    # an empty set: `Fields` does not hold the source list, so a predicate that
     # inferred "no withdraw stands" from not being told would be the over-covering
     # refusal this clause exists to prevent.
     seam_reasons = _withdraw_hoist.seam_withdraw_reasons(
@@ -1097,7 +1097,7 @@ def covers_fused_hd_pair(fields: Any, pml: Any, grid: Any,
     if seam_reasons:
         return False, seam_reasons[0]
 
-    # ONE BOUNDARY TRIPLE FOR BOTH HALVES, CHECKED. The curl resolves a fold's
+    # One boundary triple for both halves, checked. The curl resolves a fold's
     # termination into BC_MIRROR_PERIODIC or BC_METALLIC and the constitutive half
     # reads no boundary at all, so the triple this launch binds is the CURL's -- but
     # the resolution must succeed, and a grid it refuses is a grid this launch must
@@ -1111,7 +1111,7 @@ def covers_fused_hd_pair(fields: Any, pml: Any, grid: Any,
         return False, (f"the curl's boundary resolution returned {codes!r}, which is "
                        f"not the per-axis triple this launch binds")
 
-    # THE SUB-LATTICE, ASSERTED RATHER THAN ASSUMED. This kernel binds ONE kms group
+    # The sub-lattice, asserted rather than assumed. This kernel binds ONE kms group
     # for both halves, which is only correct while step_D's curl and update_H read the
     # SAME Yee sub-lattice. Both read the integer positions today
     # (step_curl_kernels._step_D_fused_pml_real passes half_integer=False;
@@ -1123,7 +1123,7 @@ def covers_fused_hd_pair(fields: Any, pml: Any, grid: Any,
                        "step_D's curl reads the integer one; this weld binds ONE kms "
                        "group for both halves and may only do so while they agree")
 
-    # THE ROTATION IS THE PRODUCT'S OWN INVARIANT. The launcher swaps the ENGINE's
+    # The rotation is the product's own invariant. The launcher swaps the ENGINE's
     # references for the six volumes in SCRATCH_VOLUMES after every launch, so those
     # attributes must exist and be allocated.
     for name in SCRATCH_VOLUMES:
@@ -1186,7 +1186,7 @@ def fused_hd_pair_scratch(fields: Any) -> Dict[str, Any]:
     that produced them; these are the opposite -- the rotation hands them to the driver
     as the live ``H``/``f_w_H`` and keeps the retired pair for the next launch.
 
-    UNINITIALIZED IS CORRECT. Every cell of all six is written by every launch, so
+    Uninitialized is correct. Every cell of all six is written by every launch, so
     there is no cell whose prior contents a reader could observe.
     """
     import cupy as cp  # noqa: PLC0415 - device-only
@@ -1204,7 +1204,7 @@ def fused_hd_pair_scratch(fields: Any) -> Dict[str, Any]:
 
 def assert_scratch_is_disjoint(fields: Any, scratch: Dict[str, Any],
                                tables: Dict[str, Any]) -> int:
-    """THE CHECK THE WHOLE DESIGN RESTS ON, plus the ordinary restrict promise.
+    """The check the whole design rests on, plus the ordinary restrict promise.
 
     Two things, and the first is not a convention:
 
@@ -1217,7 +1217,7 @@ def assert_scratch_is_disjoint(fields: Any, scratch: Dict[str, Any],
        to one object is UB whatever the route to it, and NVRTC reorders across it
        without a diagnostic.
 
-    THE SHARED ``kms`` GROUP IS THE ONE DELIBERATE COINCIDENCE and is bound ONCE, so it
+    The shared ``kms`` group is the one deliberate coincidence and is bound ONCE, so it
     is visited once and is not a collision. Returns the number of distinct allocations
     inspected, so a caller can assert that something was actually examined.
     """
@@ -1255,9 +1255,9 @@ def launch_fused_hd_pair(fields: Any, scratch: Dict[str, Any], tables: Dict[str,
                          kernel: Optional[Any] = None,
                          threads: int = _FUSED_THREADS, *, chunk_bounds: Any,
                          layer: Any = None) -> Dict[str, Any]:
-    """Both of :data:`REPLACES` in ONE launch. THE CALLER ROTATES AFTERWARDS.
+    """Both of :data:`REPLACES` in ONE launch. The caller rotates afterwards.
 
-    ``kernel`` IS THE GATE'S DOOR, keyword-optional and named for what it is: a gate
+    ``kernel`` is the gate's door, keyword-optional and named for what it is: a gate
     compiles a deliberately broken copy of the shipped source and hands it here. A
     launcher that could not be handed its own kernel could not arm a single mutation,
     and every mutation leg would silently launch the shipped one and report the defect
@@ -1267,11 +1267,11 @@ def launch_fused_hd_pair(fields: Any, scratch: Dict[str, Any], tables: Dict[str,
     answer does NOT depend on which block ran first, and a block size that never moves
     cannot expose the opposite.
 
-    ``chunk_bounds`` IS THE RUN'S CHUNK RECORD ON THE DEVICE, required and keyword-only
+    ``chunk_bounds`` is the run's chunk record on the device, required and keyword-only
     (``step_curl_kernels.chunk_record_argument`` checks it): the curl half and every
     recomputed ``update_H`` choose their forms from it.
 
-    THE RUN'S FIRST ``update_H`` STARTS H FROM B (``stepping.separate_h_from_b``,
+    The run's first ``update_H`` starts H from B (``stepping.separate_h_from_b``,
     MEEP's update_eh.cpp:165-177), and this launch IS that update when
     ``fields.h_separated`` is still False. B is final at this seam (step_B, the
     magnetic injection, the fills and the wall clear all ran one seam earlier), so the
@@ -1314,14 +1314,14 @@ def launch_fused_hd_pair(fields: Any, scratch: Dict[str, Any], tables: Dict[str,
 
 
 def rotate_into_fields(fields: Any, scratch: Dict[str, Any]) -> Dict[str, Any]:
-    """THE ROTATION. The scratch becomes the live H/f_w_H; the retired pair becomes scratch.
+    """The rotation. The scratch becomes the live H/f_w_H; the retired pair becomes scratch.
 
-    THE CERTIFIED CHOREOGRAPHY, one seam earlier than
+    The certified choreography, one seam earlier than
     :func:`.offdiag_fused_electric_pair.rotate_into_fields` performs it on ``D``/``fu_D``
     and one field type over from ``ade_kernels.update_P_fused_pml_real``'s
     ``P``/``P_prev`` rotation.
 
-    THE CONSUMER AUDIT THIS RESTS ON. Every consumer of the magnetic field in this
+    The consumer audit this rests on. Every consumer of the magnetic field in this
     engine resolves it BY NAME at use time -- ``getattr(self.fields, name)`` in
     ``driver.synchronize_magnetic_fields`` (:4339, :4388) and in every energy and flux
     accessor, ``fields.get_component(...)`` in every DFT and flux monitor -- so a
@@ -1350,7 +1350,7 @@ def run_fused_hd_pair(fields: Any, grid: Any, pml: Any, dtdx: float, *,
                       rotate: bool = True) -> Dict[str, Any]:
     """Gate on the predicate, resolve everything from the grid, launch once, rotate.
 
-    THE PREDICATE IS ASKED FIRST AND A REFUSAL IS RETURNED, NOT RAISED, because the
+    The predicate is asked first and a refusal is returned, not raised, because the
     caller's correct response to a configuration this product does not carry is the
     array path -- never an exception into a stepper that would otherwise have stepped
     correctly.

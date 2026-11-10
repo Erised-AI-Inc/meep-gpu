@@ -1,13 +1,13 @@
 """Byte gate for the Dcyl m = 0 fused magnetic pair: ``step_B`` welded into ``update_H``.
 
-DEVICE STATUS: RE-CUT 2026-10-09 onto the aligned forms (MEEP's per-chunk radial sum,
+DEVICE STATUS: RE-CUT 2026-10-09 onto MEEP's per-chunk forms (the radial sum,
     the chunk-keyed PML forms, the double-product axis rule, the root pair's
     chunk-keyed constitutive half). The release recorded under
     ``parity/meep_gpu/results/triton_cylindrical_real_fused_magnetic_pair_2026-08-20/``
     measured the previous text and does not license this one; the certification round
     owes the re-run.
 
-THE CLAIM THIS GATE IS ALLOWED TO SUPPORT: for every configuration
+The claim this gate is allowed to support: for every configuration
 :func:`~meep_gpu.triton_kernels.cylindrical_real_fused_magnetic_pair.cylindrical_real_fused_magnetic_pair_coverage`
 admits, the radial scan (``cylindrical_triton.cyl_radial_difference``) followed by ONE
 launch of
@@ -26,12 +26,12 @@ over every allocated volume: the primaries, the split-field PML auxiliaries and 
 constitutive ``f_w`` history. Comparison is on the uint32 view. ``allclose`` appears
 nowhere.
 
-WHAT THE GATE REFUSES TO INFER.
+What the gate refuses to infer.
 
 * **Bytes alone cannot prove the fused path ran.** A silent fallback to the array
   path is byte-identical to the array path by construction. Every launch is counted
   through a proxy that owns the kernel object, every substitution is counted per
-  route in the installer, and one ARMED HARNESS MUTATION removes the substitution so
+  route in the installer, and one armed harness mutation removes the substitution so
   the counters — not the bytes — are what catches it.
 * **A no-op agreeing with a no-op is trivially identical.** Every compared array must
   MOVE during the leg; a leg whose magnetic trio is frozen in all three routes is
@@ -49,7 +49,7 @@ WHAT THE GATE REFUSES TO INFER.
   that is the row the wall-clear mutation targets.
 
 ===========================================================================
-THE RADIAL SCAN IS UPSTREAM OF THE SEAM, and this gate compares like with like
+The radial scan is upstream of the seam, and this gate compares like with like
 ===========================================================================
 
 ``cylindrical_triton.cyl_radial_difference`` computes MEEP's per-chunk radial
@@ -107,7 +107,7 @@ SEED = 20260820
 #: grid outright, so every admitted configuration is walled on z and ``ZM_Z`` fires
 #: on every one. :func:`structural_walls_leg` measures that rather than asserting it.
 #:
-#: THE COURANT NUMBERS ARE SWEPT and three of the four are not powers of two: the
+#: The Courant numbers are swept and three of the four are not powers of two: the
 #: PML coefficients are the family of non-representable multiplicands the curl's
 #: association mutations need in order to be visible at all.
 CASES: Tuple[Tuple[str, Tuple[float, float, float], float, float, int], ...] = (
@@ -356,7 +356,7 @@ def transcription_leg() -> Dict[str, Any]:
             findings.append(
                 f"kernels.constitutive_step no longer contains {line!r}")
 
-    # NO BOUNDARY CONSTEXPRS. The Dcyl declaration is compiled in; a BC branch here
+    # No boundary constexprs. The Dcyl declaration is compiled in; a BC branch here
     # would mean this body serves a declaration the predicate refuses.
     for needle in ("BCX", "BCY", "BCZ", "PERIODIC", "METALLIC", "MIRROR"):
         if any(needle in line for line in fused):
@@ -519,7 +519,7 @@ def structural_walls_leg() -> Dict[str, Any]:
     ``kernels.fused_curl_constitutive_B``'s. Two of them can never be entered on a
     Dcyl grid — the r axis carries its own boundary pair rather than a declared PEC,
     and phi is the one-cell invariant axis, which ``Grid`` refuses a PEC on by name
-    (grid.py:842-877). THAT IS MEASURED HERE, over a sweep, and it is what licenses
+    (grid.py:842-877). That is measured here, over a sweep, and it is what licenses
     the mutation table to arm ``ZM_Z`` alone: a mutation rewriting a branch whose
     constexpr is false on every scored case would report "uncaught" while measuring
     nothing.
@@ -582,9 +582,9 @@ def structural_walls_leg() -> Dict[str, Any]:
 def mask_observability_leg() -> Dict[str, Any]:
     """Does the fixture put a NON-ZERO value where the ownership mask acts?
 
-    THE MASK THIS PRODUCT CARRIES ZEROES TWO PLANES: ``Bx``'s curl at r = 0 and
+    The mask this product carries zeroes two planes: ``Bx``'s curl at r = 0 and
     ``Bz``'s curl at z = 0 (``stepping._mask_non_owned_cells``). Both curls read
-    ``Ep`` (= ``Ey``) there, and under the aligned forms ``Ep`` is EXACTLY ``+0`` on
+    ``Ep`` (= ``Ey``) there, and under MEEP's per-chunk forms ``Ep`` is EXACTLY ``+0`` on
     both planes after any ``update_E``: ``Ey``'s own axis (phi) never carries a layer,
     so ``E = D * inv_eps`` there, and the m = 0 axis rule zeroes ``Dp[0]`` while
     ``zero_metal_D`` clears ``Dy`` at z = 0. The mask is therefore observable only on
@@ -646,7 +646,7 @@ def _emulated_seam(fields, pml, driver_module, *, carry_wall: bool = True,
                    order: str = "clear_then_constitutive") -> None:
     """The FUSED semantics, spelled with array ops so a laptop can execute them.
 
-    THIS IS NOT THE KERNEL AND DOES NOT PRETEND TO BE. It cannot see a register
+    This is not the kernel and does not pretend to be. It cannot see a register
     reuse or a rounding order inside one launch — those are the device gate's. What
     it CAN decide is the ORDERING design: whether ``update_H`` consumes the
     wall-cleared ``B`` or the un-cleared one, which is the only thing the seam's
@@ -733,7 +733,7 @@ def predicate_leg() -> Dict[str, Any]:
     _grid, fields, pml = _dcyl((2.0, 0.0, 2.0), 10.0, 0.5)
     record("dcyl_m0_no_sources",
            product.cylindrical_real_fused_magnetic_pair_coverage(fields, pml, ()), True)
-    # THE ADMITTING DIRECTION. An ELECTRIC source is injected in the D/E half and
+    # The admitting direction. An ELECTRIC source is injected in the D/E half and
     # must NOT disqualify this pair — and it is what all three corpus rows carry.
     record("dcyl_m0_electric_source",
            product.cylindrical_real_fused_magnetic_pair_coverage(
@@ -806,7 +806,7 @@ def _census_rows(root: str) -> List[dict]:
 def corpus_admission_leg() -> Dict[str, Any]:
     """The funnel, on BOTH backends' censuses, and whether the two agree row for row.
 
-    THE CROSS-CHECK IS THE POINT. A disagreement would mean one of the two backends'
+    The cross-check is the point. A disagreement would mean one of the two backends'
     predicate ladders is wrong, which matters more than the product; reported either
     way. This cell is the one with NO attrition — every row that drives it clears the
     magnetic seam — so a funnel that narrows anywhere is itself the finding.
@@ -835,7 +835,7 @@ def corpus_admission_leg() -> Dict[str, Any]:
     metal = funnel(METAL_CENSUS, "cylindrical_real_curl@step_B",
                    "cylindrical_real_constitutive@update_H")
     findings: List[str] = []
-    # AN ABSENT CENSUS IS NOT AN EMPTY ONE. A staged tree that did not carry the
+    # An absent census is not an empty one. A staged tree that did not carry the
     # record would funnel 0 -> 0 -> 0 and this leg would report "worth zero" — a
     # measurement about the staging dressed as one about the corpus.
     for label, root, block in (("Triton", CENSUS, triton),
@@ -897,8 +897,8 @@ def build_driver(cp, cell, resolution, courant, seed: int, electric: bool):
     for name in ("Bx", "By", "Bz", "Dx", "Dy", "Dz"):
         driver.set_field(name, cp.asarray(np.ascontiguousarray(
             rng.uniform(-0.25, 0.25, size=shape).astype(np.float32))))
-    # THE ELECTRIC FIELD IS SEEDED, and that is what makes the curl's ownership mask
-    # observable: under the aligned forms ``Ep`` is exactly +0 on the r = 0 row and the
+    # The electric field is seeded, and that is what makes the curl's ownership mask
+    # observable: under MEEP's per-chunk forms ``Ep`` is exactly +0 on the r = 0 row and the
     # z = 0 wall after any update_E (``E = D * inv_eps`` off E's own layer, ``Dp[0] = 0``,
     # ``Dy`` cleared on the wall), so only the first step_B can see the mask, and only if
     # it reads a seeded E. :func:`mask_observability_leg` measures both arms.
@@ -1082,11 +1082,11 @@ def fused_route(plan):
 # ---------------------------------------------------------------------------
 
 def at_rest_by_the_auxiliary_contract(pml: Any) -> Tuple[str, ...]:
-    """The auxiliary volumes the aligned forms never touch on this run, both seams.
+    """The auxiliary volumes MEEP's per-chunk forms never touch on this run, both seams.
 
     DERIVED, not listed: ``fu`` of a curl target is read and written only where the
     target's chunk carries its dsigu layer, and ``f_w`` of a constitutive component only
-    where its own axis carries one (the auxiliary contract, KERNELS.md section 1 C2). An
+    where its own axis carries one (docs/design/floating-point.md#auxiliary-contract). An
     axis with no absorber on either face (``PML.axis_has_pml``: phi on every Dcyl run, z on
     a periodic one) carries no layer in any chunk, so the target whose dsigu axis it is
     (``cylindrical_triton.DSIG_AXES``) and the component whose own axis it is keep their
@@ -1289,7 +1289,7 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
         are not touched: their constexprs are structurally false, and a rewrite of a
         dead branch reports "uncaught" while measuring nothing.
 
-        NO ``if`` IN THE REPLACEMENT. ``_rewrite_block`` indents every replacement
+        No ``if`` in the replacement. ``_rewrite_block`` indents every replacement
         line to the indent of the block's FIRST line, so a compound statement in
         position 0 produces an empty suite and the mutated module fails to IMPORT —
         which the harness records as an unarmed mutation, not as a caught defect.
@@ -1309,7 +1309,7 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
         measurement about the seam's order rather than about the clear's existence —
         that one is m1's.
 
-        NO ``if`` IN THE FIRST REPLACEMENT: ``_rewrite_block`` indents every
+        No ``if`` in the first replacement: ``_rewrite_block`` indents every
         replacement line to the block's first line, so a compound statement in
         position 0 produces an empty suite and the mutant fails to IMPORT."""
         hits = 0
@@ -1340,7 +1340,7 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
     def m5_ownership_mask_dropped(source: str) -> Tuple[str, int]:
         """The r = 0 / z = 0 ownership mask (stepping._mask_non_owned_cells:1865).
 
-        OBSERVABLE ONLY BECAUSE THE FIXTURE SEEDS THE ELECTRIC CONSTITUTIVE HISTORY,
+        Observable only because the fixture seeds the electric constitutive history,
         and that is measured rather than assumed: :func:`mask_observability_leg`
         reports ``Ep`` non-zero on both masked planes with ``f_w_E*`` seeded and
         EXACTLY zero without it. With the un-seeded fixture this mutation came back
@@ -1353,9 +1353,10 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
             ["curl0 = curl0", "curl2 = curl2"])
 
     def m6_constitutive_association(source: str) -> Tuple[str, int]:
-        """THE INVERSION (Appendix A): the PREVIOUS package grouping put back,
-        ``(f + kps*src) - kms*prev`` in place of MEEP's ``f + ((kps*src) - (kms*prev))``
-        on the accumulation's cells. Same algebra, different float32 rounding."""
+        """THE INVERSION (docs/development/certification.md#inverted-grouping-mutations):
+        the PREVIOUS package grouping put back, ``(f + kps*src) - kms*prev`` in place of
+        MEEP's ``f + ((kps*src) - (kms*prev))`` on the accumulation's cells. Same algebra,
+        different float32 rounding."""
         return _rewrite_block(
             source, ["a0 = constitutive_form(a0, prev0, src0, kp_0, km_0, dw0)"],
             ["a0 = tl.where(dw0, (a0 + kp_0 * src0) - km_0 * prev0, src0)"])
@@ -1395,7 +1396,7 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
             ["p1 = tl.load(u1 + idx, mask=live, other=0.0)"])
 
     def m11_whole_grid_recurrence(source: str) -> Tuple[str, int]:
-        """The section 7.2 battery: the recurrence on every cell (the previous form)."""
+        """The per-chunk form battery: the recurrence on every cell (the previous form)."""
         return _rewrite_block(
             source, ["du0 = record_in(cb, lattice + 8, k)"], ["du0 = k >= 0"])
 
@@ -1581,10 +1582,11 @@ def run_refusals(cp, product) -> List[Dict[str, Any]]:
 # ---------------------------------------------------------------------------
 
 def environment(cp: Any = None) -> Dict[str, Any]:
+    import neutral_ids  # noqa: PLC0415
     payload: Dict[str, Any] = {
         "python": sys.version.split()[0],
         "numpy": np.__version__,
-        "argv": list(sys.argv),
+        "argv": neutral_ids.argv(sys.argv),
         "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
     }
     try:
@@ -1676,10 +1678,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         cylindrical_real_fused_magnetic_pair as product)
 
     backends.guard_kernel_compilation(cp)
-    # THE MACHINE AND THE DEVICE, so this artifact can be REBOUND from what it
+    # The machine and the device, so this artifact can be REBOUND from what it
     # measured. This family already holds a ledger entry, and its host line is not
-    # rewritten on a rebind — but the entry's pins move in this round anyway (its
-    # pinned test module and this probe are both edited), so the next artifact is
+    # rewritten on a rebind — but the entry's pins move anyway (the change that added
+    # this block edited its pinned test module and this probe), so the next artifact is
     # made seed-shaped here rather than left as the one that is not.
     import triton_device_identity  # noqa: PLC0415
 

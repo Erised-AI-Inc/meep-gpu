@@ -1,11 +1,11 @@
 """Byte gate for the Metal TENSOR (off-diagonal epsilon) ``update_E`` kernel.
 
-THE CLAIM THIS GATE MAKES, and the only one: **byte-identity to ``stepping.py`` on
+The claim this gate makes, and the only one: **byte-identity to ``stepping.py`` on
 this host, subject to a declared and CHECKED subnormal-free precondition.** Not a
 stated tolerance. Leg 5 is that check and it is REQUIRED to fire on the scaled
 control — a precondition never demonstrated to fire is decorative.
 
-THE ORACLE IS IN PROCESS. ``stepping.update_E(fields, pml)`` and the Metal launch
+The oracle is in process. ``stepping.update_E(fields, pml)`` and the Metal launch
 run in ONE process against ONE seed, on real ``Grid``/``Fields``/``PML`` objects
 carrying rows installed through the PUBLIC installer
 (``Fields.set_epsilon_volumes``). The in-file transcription stays, in a reduced
@@ -14,13 +14,13 @@ wrong configuration. LEG 0 pins it against ``stepping.py`` over multiple full
 cycles BEFORE any Metal kernel is trusted, which is what stops "bit-identical"
 from meaning the kernel reproduced whatever the harness wrote twice.
 
-WHAT THIS FAMILY ADDS OVER THE CERTIFIED CONSTITUTIVE ONE, and therefore what this
+What this family adds over the certified constitutive one, and therefore what this
 gate is actually about: the row product reads NEIGHBOURS through a transverse Yee
 average. It is the first Metal constitutive stencil that is not element-wise. The
-one genuinely new arithmetic element is THE COEFFICIENT MULTIPLY SITTING BETWEEN
-THE TWO SHIFTS, and the leg that matters most is the mutation that hoists it.
+one genuinely new arithmetic element is the coefficient multiply sitting between
+the two shifts, and the leg that matters most is the mutation that hoists it.
 
-THE ALLCLOSE-BLINDNESS CONTROL IS CARRIED HERE (leg 6, ``m1`` on UNIFORM rows at
+The allclose-blindness control is carried here (leg 6, ``m1`` on UNIFORM rows at
 2**-16 amplitude). It is the sharpest justification of byte gating in this project:
 on uniform rows the hoist is ALGEBRAICALLY EQUAL and differs only through
 distributivity rounding (~1 ulp relative, far below ``rtol=1e-5``), while scaling
@@ -31,7 +31,7 @@ it: ``m1`` on VARYING rows cannot serve, because a first-order registration defe
 is O(1) relative and ``allclose`` correctly catches it at any amplitude (``rtol``
 is scale-free), and the 0.25 distribution cannot serve because it is a true null.
 
-THE TEN LEGS:
+The ten legs:
 
   0  transcription  the in-gate NumPy reference vs ``stepping.py``, full cycles
   0b execution      proof the bytes came off the GPU: mirror residency, the entry
@@ -46,13 +46,13 @@ THE TEN LEGS:
   6  mutations      armed, launch-counted, three-valued, with the blindness control
   7  refusals       every named refusal, including the STALE-DOCSTRING guard
   8  engine         plans from the engine's own objects + the disjointness sweep,
-                    and the WIRING CONTRACT: the arm is wired as of tranche 2, so
+                    and the WIRING CONTRACT: the arm is wired since the whole-step gate measured its composition, so
                     the leg asserts plan_step selects it BY LABEL for update_E
                     while the plain E-side arm still refuses (see leg 8's own
                     docstring for why re-pointing that assertion is a strictly
                     stronger check and not a relaxation)
 
-RULING R7: SOFTWARE BINARY64. The array path forms the off-diagonal row in float64
+SOFTWARE BINARY64 (docs/design/floating-point.md). The array path forms the off-diagonal row in float64
 and rounds once (``stepping._offdiagonal_terms``, ``_rounded_row``): ``gs*us`` in
 float32 widened, each term's float32 pair sum wall-masked and scaled by MEEP's double
 0.25, added left to right where the cell's chunk keeps the term, one rounding. The
@@ -61,16 +61,16 @@ compares the kernel with ``stepping.py`` on GENERIC states, where a float32 row 
 differ in about 1.6 % of words, and the in-gate transcription forms the same double
 row. Two legs are added:
 
-  b_select  the per-chunk tail (KERNELS.md §7.2 B battery) on EXACT-ROW states:
+  b_select  the per-chunk tail (the per-chunk form battery) on EXACT-ROW states:
             dyadic words, so every differing word is the tail's, with the battery's
             must-catch mutations and its declared null
-  presence  the 27-bit presence words (KERNELS.md §2): a row zero in the PML chunks
+  presence  the 27-bit presence words (docs/development/kernel-tables.md): a row zero in the PML chunks
             on metallic walls, D = -0 on the row component so a dropped term and an
             added +0 differ; the kernel 0 words from ``stepping.py``, the words not
             all-kept and expanding back to the array path's presence, and the
             presence-ignored and presence-cleared mutants caught
 
-The mutation leg carries the float32 row (the pre-R7 spelling) as must-catch on
+The mutation leg carries the float32 row (the pre-binary64 spelling) as must-catch on
 two-term masks, the terms-grouped-first double row as must-catch on a planted
 cancelling-terms state (the only state class where binary64's association reaches a
 float32 word: random states, wide-exponent rows included, measured it null), and the
@@ -81,7 +81,7 @@ a non-power-of-two Courant in every sweep; every case proves the step MOVED STAT
 **and** that its reference bytes DIFFER from a coefficient-dropped diagonal control
 (so no case passes with the coupling dark); a CANCELLATION amplitude class where
 ``gs*us ~ -coupling``, without which the row-sum association is not byte-visible in
-f32 — MEASURED and floored, in both directions, because its first shape was inert
+f32 — measured and floored, in both directions, because its first shape was inert
 (see :data:`AMPLITUDES`); ALL EIGHT boundary triples, because the original four
 were all x/y-symmetric and an axis confusion survives in the other four; MANDATORY
 spatially varying row volumes plus both three-distinct and three-alias
@@ -97,7 +97,7 @@ TABLES here — the ``kps_a_h``/``kms_a_h`` vectors a Courant of 0.35 produces �
 the artifact says so rather than sweeping a dead parameter and calling it coverage.
 
 STATED WEAKNESS, recorded because it is a real difference from the Triton
-certification: there is NO PTX-EQUIVALENT AUDIT on this executor.
+certification: there is no PTX-equivalent audit on this executor.
 ``compile_shader`` exposes no disassembly, so a "refuse the compile when the
 generated code violates the policy" guard has no Metal analogue and the mutation
 legs plus this gate are the only arbiters.
@@ -195,11 +195,11 @@ def assert_state_moved(before: Dict[str, Any], after: Dict[str, Any],
 def assert_differs_from_control(measured: Dict[str, Any], control: Dict[str, Any],
                                 names: Sequence[str], label: str,
                                 what: str) -> int:
-    """The FEATURE WAS ON. Returns how many words separate it from the control.
+    """The feature was on. Returns how many words separate it from the control.
 
     Without this a case passes just as happily with the coupling dark: a coupling of
     exactly zero reproduces the diagonal engine byte for byte, and a gate that only
-    compared kernel against oracle would call that a pass FOR THE COUPLING.
+    compared kernel against oracle would call that a pass for the coupling.
     """
     delta = sum(differing(measured[name], control[name]) for name in names)
     assert delta > 0, (
@@ -216,8 +216,8 @@ STATE: Tuple[str, ...] = (
     "fu_Bx", "fu_By", "fu_Bz", "fu_Dx", "fu_Dy", "fu_Dz",
     "f_w_Hx", "f_w_Hy", "f_w_Hz", "f_w_Ex", "f_w_Ey", "f_w_Ez")
 
-#: What ``update_E`` writes and what every comparison therefore covers. THE
-#: AUXILIARIES ARE STATE: a kernel that is right for one launch and wrong forever
+#: What ``update_E`` writes and what every comparison therefore covers. The
+#: auxiliaries are state: a kernel that is right for one launch and wrong forever
 #: after only diverges once ``f_w_*`` is compared, and omitting them is how that
 #: defect hides.
 COMPARED: Tuple[str, ...] = ("Ex", "Ey", "Ez", "f_w_Ex", "f_w_Ey", "f_w_Ez")
@@ -227,7 +227,7 @@ COMPARED: Tuple[str, ...] = ("Ex", "Ey", "Ez", "f_w_Ex", "f_w_Ey", "f_w_Ez")
 #: multiplier in the kernel — see the module docstring.
 COURANTS: Tuple[float, ...] = (0.35, 0.5)
 
-#: ALL EIGHT boundary triples, and the last four are a hole this round closed.
+#: ALL EIGHT boundary triples; the last four were added later to close a hole.
 #:
 #: The first four were the whole matrix: (0,0,0), (1,1,0), (1,1,1), (0,0,1). Every
 #: one of them is SYMMETRIC in x and y, so a defect that treated one axis as
@@ -238,7 +238,7 @@ COURANTS: Tuple[float, ...] = (0.35, 0.5)
 #: pairs. Measured clean on all eight (2026-08-15, 0 differing words each), but by
 #: a probe rather than by this gate, which is the definition of a hole.
 #:
-#: INDEX ORDER IS LOAD-BEARING: legs 3/4/5/7 index this tuple (``CONFIGS[1]`` is
+#: Index order is load-bearing: legs 3/4/5/7 index this tuple (``CONFIGS[1]`` is
 #: the metallic-xy workhorse, ``CONFIGS[1:3]`` the two mostly-metallic ones), so
 #: the new entries are APPENDED rather than interleaved.
 CONFIGS: Tuple[Tuple[str, Tuple[float, float, float], Any], ...] = (
@@ -259,7 +259,7 @@ CONFIGS: Tuple[Tuple[str, Tuple[float, float, float], Any], ...] = (
 #: algebraically equal there); ``varying_full`` is MANDATORY and is what makes the
 #: REGISTRATION — not merely the rounding — byte-visible.
 #:
-#: THE LAST TWO ARE A VALUE-CLASS AXIS ON THE COEFFICIENTS, and they were missing.
+#: The last two are a value-class axis on the coefficients, and they were missing.
 #: Every form above draws the rows from one narrow normal distribution, so the
 #: whole sweep exercised a single exponent decade and no signed zero ever reached
 #: the coefficient side — while the coefficient is the operand this family adds
@@ -563,17 +563,17 @@ def reference_offdiag(targets: Sequence[Any], aux: Sequence[Any],
     separates "the kernel matches the reference" from "the reference is right".
     Every flag defaults to the transcribed behaviour.
 
-    THE ROW IS THE DOUBLE ROW (``stepping._offdiagonal_terms``, ``_rounded_row``):
+    The row is the double row (``stepping._offdiagonal_terms``, ``_rounded_row``):
     ``gs*us`` in float32, widened; per live term the float32 pair sum
     ``(g + g_down)*u + shift_up((g + g_down)*u)``, wall-masked, scaled by the double
     0.25 and added left to right where ``presence`` (one volume or ``None`` per
-    slot) keeps it; one rounding to float32. ``float32_row`` plants the pre-R7
+    slot) keeps it; one rounding to float32. ``float32_row`` plants the pre-binary64
     float32 row, ``group_terms_first`` the double row with the two terms summed
     first, ``quarter_in_float32`` the quarter applied to the float32 sum before
     widening (a null under the subnormal-free precondition), ``drop_presence`` the
     term added everywhere.
 
-    THE TAIL IS THE PER-CHUNK SELECT (``stepping._apply_constitutive_regions``):
+    The tail is the per-chunk select (``stepping._apply_constitutive_regions``):
     on a cell whose chunk carries the component's own layer (``record``'s
     half-integer line on its own axis) ``prev`` is read before ``f_w`` is written and
     ``E = E + ((kps*src) - (kms*prev))``; elsewhere ``E = src`` and ``f_w`` is left
@@ -794,7 +794,7 @@ def inverse_map(fields) -> Dict[str, Any]:
 def leg_transcription(payload: Dict[str, Any], out: str, cycles: int = 3) -> None:
     """The in-gate reference vs ``stepping.py`` itself, over multiple full cycles.
 
-    THIS LEG COMES FIRST AND NOTHING ELSE IS TRUSTED WITHOUT IT. The reference is
+    This leg comes first and nothing else is trusted without it. The reference is
     the mutation substrate: leg 6 plants defects in it to confirm the comparison
     would catch them. A substrate that is not the array path makes every one of
     those measurements a statement about the harness.
@@ -849,7 +849,7 @@ def leg_transcription(payload: Dict[str, Any], out: str, cycles: int = 3) -> Non
                 f"{name}/courant={courant}: the in-gate transcription differs from "
                 f"stepping.py by {worst} words. Every mutation measurement below "
                 f"would be a statement about this harness, not about the kernel")
-    # --- AND THE OTHER DIRECTION: is the comparison SENSITIVE? -----------------
+    # --- and the other direction: is the comparison SENSITIVE? -----------------
     # A transcription that agrees with stepping.py proves the harness reproduces the
     # array path; it does not prove the COMPARISON would notice if it stopped. So
     # each host-side defect flag is planted in the reference and required to move
@@ -871,7 +871,7 @@ def leg_transcription(payload: Dict[str, Any], out: str, cycles: int = 3) -> Non
             ("drop_wall_mask", "the metallic wall-coupling mask dropped"),
             ("overapply_wall_mask", "the mask applied to the component's OWN axis"),
             ("store_before_load", "f_w written before prev is read"),
-            ("float32_row", "the row summed in float32 with 0.25f, the pre-R7 "
+            ("float32_row", "the row summed in float32 with 0.25f, the pre-binary64 "
                             "spelling: the array path's row is a double one")):
         broken = reference_state(base, pml, slots, inverse, codes, walls,
                                  **{flag: True})
@@ -921,20 +921,20 @@ def leg_transcription(payload: Dict[str, Any], out: str, cycles: int = 3) -> Non
 def leg_execution(payload: Dict[str, Any], out: str) -> None:
     """That the bytes this gate compares came off the GPU, measured five ways.
 
-    THE FALSE-PASS THIS CLOSES, and it was open on this family. Every other device
+    The false-pass this closes, and it was open on this family. Every other device
     leg here reads host arrays after a launch and compares them to ``stepping.py``.
     If the launch had silently not happened, or had happened on the host, those
     arrays would still be *some* numbers. The family carried only
     ``plan.launches == 1`` against that, and a launch count is the weakest of the
     available proofs: ``KernelPlan.run`` increments BEFORE it calls, so the counter
     is satisfied by an entry point that does nothing at all. The standard applied
-    here is the one the BFAST tranche established, transplanted rather than
+    here is the one the BFAST family's gates established, transplanted rather than
     reinvented, because a family-by-family standard is how a track ends up with a
     weakest link nobody named.
 
     1. RESIDENCY. Every mirror the ENGINE-route plan binds is reported with its
        ``torch`` device string, and every one must be ``mps``.
-    2. THE ENTRY POINT'S IDENTITY. The object the launch path calls must be a
+    2. The entry point's identity. The object the launch path calls must be a
        ``torch._C._mps_MetalKernel`` — a compiled handle from
        ``torch.mps.compile_shader``. No Python callable in this tree can satisfy
        that, so "a host function stood in for the kernel" is excluded BY TYPE. This
@@ -943,10 +943,10 @@ def leg_execution(payload: Dict[str, Any], out: str) -> None:
        number, which residency alone cannot distinguish.
     3. THE COUNTER counts LAUNCHES, not plans: 0 before, 1 after one run, 2 after
        two.
-    4. THE NEGATIVE CONTROL, which is what makes 1-3 mean anything: the host arrays
+    4. The negative control, which is what makes 1-3 mean anything: the host arrays
        are compared to the oracle BEFORE the launch and must DIFFER, so "the plan
        was built and never run" cannot pass this gate's comparison.
-    5. THE FALLBACK ITSELF, measured rather than argued away: the same shipped plan
+    5. The fallback itself, measured rather than argued away: the same shipped plan
        builder against a CPU-resident registry must RAISE. The exact message is
        recorded because it is a fact about this torch build, not a law.
     """
@@ -1136,14 +1136,14 @@ SWEEP_CELLS: Tuple[Tuple[str, Tuple[float, float, float], float], ...] = (
 #: is byte-visible in f32; without it a whole class of grouping defects is
 #: unobservable and the gate would not know.
 #:
-#: NAMES ONLY, AND THAT IS THE HONEST SHAPE. This was a (name, factor) pair whose
+#: Names only, and that is the honest shape. This was a (name, factor) pair whose
 #: factor was bound to ``_factor`` and never applied to anything, so the artifact's
 #: ``amplitude`` column read like a state-scale sweep that did not exist. The
 #: cancellation class is produced entirely by :func:`_cancelling_inverse_epsilon`;
 #: the state scale is swept by leg 5 and by the blindness control, which are where
 #: a scale factor belongs.
 #:
-#: AND THE CLASS ITSELF WAS VACUOUS UNTIL 2026-08-15. Its first shape solved
+#: And the class itself was vacuous until 2026-08-15. Its first shape solved
 #: ``u = -(gs*us)/g_partner`` on the reading that the four-point transverse sum is
 #: ``4*g_partner[i]`` — true for a smooth field, FALSE for the random seeding
 #: :func:`build` uses, where the three other samples are independent draws.
@@ -1197,7 +1197,7 @@ def _cancelling_inverse_epsilon(state: Dict[str, Any], fields,
                                 walls: Sequence[int]) -> Dict[str, Any]:
     """An inverse epsilon that makes ``gs*us`` cancel the coupling POINTWISE.
 
-    SOLVE ON THE DIAGONAL SIDE, NOT THE COEFFICIENT SIDE — that is the whole
+    Solve on the diagonal side, not the coefficient side — that is the whole
     correction. ``total`` is a STENCIL in the coefficient (``u[i]`` multiplies the
     near pair and ``u[i+s]`` the far one), so no pointwise choice of ``u`` puts the
     row sum anywhere in particular. ``us`` is a plain pointwise factor, so
@@ -1302,7 +1302,7 @@ def leg_synthetic(payload: Dict[str, Any], out: str) -> None:
     nowhere would mean the guard is doing nothing, so the leg asserts it fired at
     least once across the sweep.
 
-    THE ROW VALUE CLASS IS AN AXIS HERE AND IS FLOORED. Every other form draws the
+    The row value class is an axis here and is floored. Every other form draws the
     coefficients from one narrow normal distribution, so before ``signed_zero_rows``
     and ``wide_exponent`` this sweep exercised a single exponent decade on the one
     operand this family adds over the certified constitutive kernel, and never a
@@ -1323,7 +1323,7 @@ def leg_synthetic(payload: Dict[str, Any], out: str) -> None:
 
     def skip(shape_name: str, config_name: str, form: str, amplitude: str,
              why: str) -> None:
-        """A SKIP WITH ITS REASON. Two of these used to be bare ``continue``s.
+        """A skip with its reason. Two of these used to be bare ``continue``s.
 
         The engine's METALLIC-one-cell refusal was always recorded; the
         cancellation-install failure and the no-surviving-row case were not, and a
@@ -1368,7 +1368,7 @@ def leg_synthetic(payload: Dict[str, Any], out: str) -> None:
                              "configuration belongs to the certified plain kernel")
                         continue
                     if amplitude == "cancellation":
-                        # THE ROWS ARE LEFT EXACTLY AS INSTALLED and the DIAGONAL
+                        # The rows are left exactly as installed and the DIAGONAL
                         # side is solved instead — see _cancelling_inverse_epsilon
                         # for why the coefficient side cannot produce this class.
                         try:
@@ -1455,7 +1455,7 @@ def leg_synthetic(payload: Dict[str, Any], out: str) -> None:
                      "it")}
     save(payload, out)
     assert compared > 0, "the sweep ran no cases"
-    # THE VALUE-CLASS FLOORS. A named class that was never constructed makes the
+    # The value-class floors. A named class that was never constructed makes the
     # artifact claim coverage it does not have, which is worse than not sweeping
     # the class at all.
     assert_census_floor(worst_negative_zeros,
@@ -1471,7 +1471,7 @@ def leg_synthetic(payload: Dict[str, Any], out: str) -> None:
         "the compiler nothing to contract — both are findings, and a gate that "
         "recorded neither would be certifying the pragma's presence rather than "
         "its effect")
-    # THE CANCELLATION FLOOR, and its DISCRIMINATION control. The first shape of
+    # The cancellation floor, and its DISCRIMINATION control. The first shape of
     # this class was measurably inert (median |src|/|gs*us| = 1.000000 on both
     # arms), which is exactly the failure a named-but-unmeasured class produces:
     # the artifact claimed a regime the sweep never entered. Both directions are
@@ -1596,7 +1596,7 @@ def leg_seam(payload: Dict[str, Any], out: str) -> None:
 def leg_signed_zero(payload: Dict[str, Any], out: str) -> None:
     """A +-0 lattice through the whole state, with a census FLOOR per seeding.
 
-    ZERO-INIT IS A FIXED POINT of this sub-step — every product is zero, the row
+    Zero-init is a fixed point of this sub-step — every product is zero, the row
     sum is zero, ``f_w`` takes zero and the recurrence adds zero — so a leg that
     seeded zeros and compared zeros would agree with itself and certify nothing.
     The seeding is a LATTICE inside a physically-seeded state, and the floor is what
@@ -1625,10 +1625,10 @@ def leg_signed_zero(payload: Dict[str, Any], out: str) -> None:
             # is checked PER SEEDING because zero-init is a fixed point of this
             # sub-step and would have moved nothing at all.
             #
-            # THE D VOLUMES ARE FLOORED TOO, and they were not. The floor used to
+            # The D volumes are floored too, and they were not. The floor used to
             # cover ``COMPARED`` alone — E and f_w, which enter this sub-step only
             # as ``f`` and ``prev`` in the element-wise PML tail. The volumes the
-            # COUPLING STENCIL READS are Dx/Dy/Dz, at the home cell, at the
+            # coupling stencil reads are Dx/Dy/Dz, at the home cell, at the
             # partner-axis neighbour, at the own-axis neighbour and at the corner;
             # a signed-zero handling difference in the row product could only show
             # up through them. Flooring only the outputs left this leg certifying
@@ -1699,7 +1699,7 @@ def leg_precondition(payload: Dict[str, Any], out: str) -> None:
     ``pair``, ``product`` and ``term`` inside the kernel, and a value can be in the
     band there while every operand and every result is an ordinary number.
 
-    THE REACHABILITY QUESTION FOR THIS FAMILY, answered rather than inherited: the
+    The reachability question for this family, answered rather than inherited: the
     coupling multiplies a FIELD by a COEFFICIENT, never a field by a field, so it is
     in the same magnitude class as the certified constitutive product and there is
     no ``E^3``-style cube to drive an intermediate three decades below its
@@ -1722,7 +1722,7 @@ def leg_precondition(payload: Dict[str, Any], out: str) -> None:
         stepping.update_E(fields, pml)
         after = snapshot(fields)
 
-        # THE FLOORS ARE THIS FAMILY'S, declared rather than defaulted. Every
+        # The floors are this family's, declared rather than defaulted. Every
         # censused volume must contribute at least one grid's worth of words, and
         # the INTERMEDIATE floor is non-zero because this family HAS intermediates
         # that never reach a stored array — `pair`, `product` and `term`. A window
@@ -1754,7 +1754,7 @@ def leg_precondition(payload: Dict[str, Any], out: str) -> None:
                     continue
                 partner_axis = offdiag.TRANSVERSE_PARTNERS[component][offset]
                 values = before[offdiag.E_TERMS[partner_axis][1]]
-                # RECONSTRUCTED ON THE HOST, same expression and same operand
+                # Reconstructed on the host, same expression and same operand
                 # order as the shader. Weaker than reading the device's registers,
                 # which is not possible here, and strictly stronger than censusing
                 # only the stored arrays.
@@ -1886,7 +1886,7 @@ def _mutations() -> Dict[str, Dict[str, Any]]:
         "m8_store_before_load": {
             "must_catch": True,
             "why": ("`prev` must be read BEFORE f_w is written (stepping.py:2137); "
-                    "reversed it is wrong only where kms != 0, i.e. INSIDE THE PML "
+                    "reversed it is wrong only where kms != 0, i.e. inside the PML "
                     "ONLY, and looks like a slightly worse absorber"),
             "apply": lambda s: needle(s, "    float prev0 = dw0 ? w0[ii] : 0.0f;",
                                       "    if (dw0) { w0[ii] = 0.0f; }\n"
@@ -1901,7 +1901,7 @@ def _mutations() -> Dict[str, Dict[str, Any]]:
         },
         "m10_previous_accumulation_grouping": {
             "must_catch": True,
-            "why": ("INVERTED (KERNELS.md §7.1): the shipped tail is MEEP's "
+            "why": ("INVERTED: the shipped tail is MEEP's "
                     "`f + ((kps*src) - (kms*prev))` (step_generic.cpp:689, :697); the "
                     "package's previous `((f + kps*src) - kms*prev)` is a different "
                     "float32 number, planted here and must-catch"),
@@ -1909,7 +1909,7 @@ def _mutations() -> Dict[str, Dict[str, Any]]:
                 s, "    if (dw0) { a0 = f0[ii] + ((kp_0 * src0) - (km_0 * prev0)); }",
                 "    if (dw0) { a0 = (f0[ii] + kp_0 * src0) - km_0 * prev0; }"),
         },
-        # --- THE INDEX AND AXIS ARMS, added 2026-08-15 ----------------------
+        # --- the index and axis arms, added 2026-08-15 ----------------------
         # Six assembled flat-index expressions and a per-component coefficient
         # index were held by a unit test's independent spelling and by nothing in
         # this gate. Task "arm the axis-mapping and index-decomposition mutations"
@@ -1972,7 +1972,7 @@ def _mutations() -> Dict[str, Dict[str, Any]]:
         },
         "m20_null_partner_axis_metallic_near_ghost_wrapped": {
             "must_catch": False,
-            "why": ("RECORDED NULL, AND NOW MEASURED — it used to be recorded as "
+            "why": ("Recorded null, and now measured — it used to be recorded as "
                     "'NOT MEASURED BY MUTATION'. The partner-axis metallic NEAR "
                     "ghost's entire support is the partner-axis face-0 plane, and "
                     "the wall-coupling mask zeroes each term's pair sum on that "
@@ -2026,9 +2026,9 @@ def _mutations() -> Dict[str, Dict[str, Any]]:
         },
         "m22_float32_row": {
             "must_catch": True,
-            "why": ("RULING R7'S MUTATION: component 0's row formed in float32 -- "
+            "why": ("THE FLOAT32-ROW MUTATION: component 0's row formed in float32 -- "
                     "0.25f * each pair sum, the terms summed and added to gs*us in "
-                    "float32 -- the pre-R7 spelling. The array path sums the row in "
+                    "float32 -- the pre-binary64 spelling. The array path sums the row in "
                     "float64 and rounds once; on a two-term mask the float32 sums "
                     "round (a one-term row is one rounding of an exact sum, so the "
                     "mutation is armed on the two-term mask only)"),
@@ -2036,7 +2036,7 @@ def _mutations() -> Dict[str, Dict[str, Any]]:
         },
         "m23_terms_grouped_first": {
             "must_catch": True,
-            "why": ("the double row is summed LEFT TO RIGHT, (gs*us + term1) + "
+            "why": ("the double row is summed left to right, (gs*us + term1) + "
                     "term2; summing the two terms first is a different double "
                     "rounding. It is visible only where the two terms cancel and "
                     "dominate the diagonal by more than binary64 carries beyond "
@@ -2055,7 +2055,7 @@ def _mutations() -> Dict[str, Dict[str, Any]]:
 
 
 def _float32_row_component_0(source: str) -> str:
-    """Component 0's double row replaced by the pre-R7 float32 row (both terms live)."""
+    """Component 0's double row replaced by the pre-binary64 float32 row (both terms live)."""
     old = ("    ulong od_row0 = sd_widen_f(gs0 * us0, true);\n"
            "    if (od_kept_00) { od_row0 = sd_add(od_row0, sd_scale_pow2(sd_widen_f("
            "sum_00, true), -2, true), true); }\n"
@@ -2115,10 +2115,10 @@ def _plant_cancelling_terms(fields, seed: int) -> None:
 def leg_mutations(payload: Dict[str, Any], out: str) -> None:
     """Every mutation ARMED, LAUNCH-COUNTED and classified three ways.
 
-    Then THE BLINDNESS CONTROL, which is the reason this family's gate exists in
+    Then the blindness control, which is the reason this family's gate exists in
     this shape: ``m1`` on UNIFORM rows at 2**-16 amplitude must FAIL bytes and PASS
     ``allclose``. The two measured wrong turns are recorded beside it so a later
-    round does not re-derive them.
+    change does not re-derive them.
     """
     harness = MutationHarness(payload, out, key="mutations")
     started = harness.started
@@ -2185,7 +2185,7 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
                    "— a half-cell error in the absorber profile, converged, smooth "
                    "and wrong")
 
-    # --- THE ALLCLOSE-BLINDNESS CONTROL -------------------------------------
+    # --- the allclose-blindness control -------------------------------------
     # Uniform rows, state scaled by an EXACT power of two. On uniform rows the m1
     # hoist is algebraically equal and differs only through distributivity
     # rounding; the exact-power-of-two scaling commutes with round-to-nearest, so
@@ -2235,7 +2235,7 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
            "byte_differing_words": byte_delta,
            "allclose_passes": allclose_ok,
            "recorded_wrong_turn_varying_rows_allclose_passes": varying_allclose_ok,
-           "why": ("THE SHARPEST JUSTIFICATION OF BYTE GATING IN THIS PROJECT. On "
+           "why": ("The sharpest justification of byte gating in this project. On "
                    "UNIFORM rows the hoist is algebraically equal and differs only "
                    "through distributivity rounding (~1 ulp relative, far under "
                    "rtol=1e-5); scaling the state by an exact power of two commutes "
@@ -2276,7 +2276,7 @@ def leg_refusals(payload: Dict[str, Any], out: str) -> None:
     ``fields.py:1237-1241`` both claim the installer refuses folded rows, and
     ``_validated_offdiagonal_rows`` demonstrably installs them. This leg SHOWS the
     predicate refusing a folded run that ``stepping`` steps, so the refusal is
-    recorded as THIS KERNEL FAMILY'S rather than mistaken for the engine's.
+    recorded as this kernel family's rather than mistaken for the engine's.
     """
     rows: List[Dict[str, Any]] = []
     started = time.time()
@@ -2347,7 +2347,7 @@ def leg_refusals(payload: Dict[str, Any], out: str) -> None:
     record("complex_storage", complex_verdict.covered, complex_verdict.reasons,
            False)
 
-    # THE STALE-DOCSTRING GUARD. A folded grid: the install does NOT refuse the
+    # The stale-docstring guard. A folded grid: the install does NOT refuse the
     # rows (whatever stepping.py:1219-1220 and fields.py:1237-1241 claim), and
     # stepping steps the configuration — but this family refuses it, and the
     # refusal is the FAMILY's.
@@ -2390,7 +2390,7 @@ def leg_refusals(payload: Dict[str, Any], out: str) -> None:
         "note must be rewritten rather than left claiming otherwise")
 
     # ------------------------------------------------------------------
-    # EVERY REMAINING UNIMPLEMENTED FEATURE, CONSTRUCTED AND CALLED.
+    # Every remaining unimplemented feature, constructed and called.
     #
     # The five cases above were the whole leg, and the other nine features this
     # family does not carry — dispersion, chi2/chi3, beta, BFAST, cylindrical, a
@@ -2479,10 +2479,10 @@ def leg_refusals(payload: Dict[str, Any], out: str) -> None:
     refuse("E_is_not_stored", _Overridden(plain_f, stores_E=False), plain_p,
            "recomputed from D")
 
-    # The five malformed row forms, PLANTED PAST THE INSTALLER, plus the
+    # The five malformed row forms, planted past the installer, plus the
     # fail-closed case that used to raise an IndexError out of the predicate.
     shape = tuple(plain_grid.shape)
-    # THE LOOP VARIABLE IS NOT `needle`: that is the KIT'S mutation helper, and
+    # The loop variable is not `needle`: that is the KIT'S mutation helper, and
     # shadowing it leaves the function unbound for the rest of this leg — a
     # NameError waiting for whoever next plants a defect here.
     for label, value, clause in (
@@ -2501,7 +2501,7 @@ def leg_refusals(payload: Dict[str, Any], out: str) -> None:
         refuse(label, _PlantedRows(plain_f, {"Ex": {"Ey": value}}), plain_p, clause)
 
     # ------------------------------------------------------------------
-    # THE CLAUSES NO CASE HAD EVER CONSTRUCTED. Reading a clause is not evidence
+    # The clauses no case had ever constructed. Reading a clause is not evidence
     # that it fires, and these seven were refused only by reading.
     # ------------------------------------------------------------------
     bloch_grid = Grid(resolution=10.0, cell_size=base_cell, boundaries="periodic",
@@ -2526,7 +2526,7 @@ def leg_refusals(payload: Dict[str, Any], out: str) -> None:
     refuse("unallocated_auxiliary", _Overridden(plain_f, f_w_Ey=None), plain_p,
            "f_w_Ey is not allocated")
 
-    # THE PUBLIC-INSTALLER ROUTE, and it is not the same case as the planted one.
+    # The public-installer route, and it is not the same case as the planted one.
     # `_validated_offdiagonal_rows` casts with astype(..., copy=False), whose
     # default order="K" PRESERVES Fortran order (fields.py:1296), and
     # `set_epsilon_volumes` stores the inverse map with no normalization at all
@@ -2574,7 +2574,7 @@ def leg_refusals(payload: Dict[str, Any], out: str) -> None:
            note="the coefficient vectors are indexed by the component's OWN axis; "
                 "a short vector is an out-of-bounds read, not a crash")
 
-    # THE ALIAS CLAUSES, CONSTRUCTED. The output one was refused from the start;
+    # The alias clauses, constructed. The output one was refused from the start;
     # the SOURCE one is new and is the second real over-coverage defect this
     # project has found by constructing a configuration rather than reading a
     # clause. Its damage is invisible to this gate's own comparison — see
@@ -2606,11 +2606,11 @@ def leg_refusals(payload: Dict[str, Any], out: str) -> None:
            "aliases source Dx")
 
     # ------------------------------------------------------------------
-    # THE DELIBERATE ADMISSIONS. A refusals leg that only records refusals cannot
+    # The deliberate admissions. A refusals leg that only records refusals cannot
     # tell "correctly admitted" from "never asked": conductivity is NOT a clause
     # here, deliberately, on the reading that it changes the CURL sub-steps only
     # (`condfac` appears in stepping.py exclusively inside `_apply_curl`,
-    # :504-537). That reading is now MEASURED for this family rather than cited.
+    # :504-537). That reading is now measured for this family rather than cited.
     # ------------------------------------------------------------------
     def admit(label: str, install, note: str) -> None:
         _grid, admitted, admitted_pml = build(base_cell, base_bounds, 0.35, SEED,
@@ -2663,10 +2663,10 @@ def leg_refusals(payload: Dict[str, Any], out: str) -> None:
 def leg_engine(payload: Dict[str, Any], out: str) -> None:
     """Plans from the engine's own objects, and no two arms co-admitting.
 
-    THE ARM IS REGISTERED ``wired=True`` AS OF TRANCHE 2, and this leg asserts
+    The arm is registered ``wired=True``, and this leg asserts
     THAT. It used to assert the opposite, and the flip is a supersession recorded
-    rather than a relaxation: the tranche-1 assertion's stated premise was "a wired
-    arm would let ``plan_step`` select a family WHOSE COMPOSITION HAS NOT BEEN
+    rather than a relaxation: the earlier assertion's stated premise was "a wired
+    arm would let ``plan_step`` select a family whose composition has not been
     MEASURED", and that premise is now false by measurement. The whole-step gate
     (``results/metal_whole_step_2026-08-16/whole_step.json``) drives 15 cases x 12
     cycles, 20,200,320 uint32 comparisons, ZERO divergences, with all 23 arms
@@ -2676,10 +2676,10 @@ def leg_engine(payload: Dict[str, Any], out: str) -> None:
     path for the whole step. Composition measured is exactly the condition the old
     assertion named as the thing it was protecting.
 
-    THE REPLACEMENT IS STRICTLY STRONGER, which is the only shape in which a gate
+    The replacement is strictly stronger, which is the only shape in which a gate
     assertion may be re-pointed. "``plan_step`` must select NOTHING" is satisfied
     by a planner that has silently lost the family; the assertions below require
-    that it select the OFFDIAG ARM BY LABEL, so a planner that dropped the arm, or
+    that it select the offdiag arm by label, so a planner that dropped the arm, or
     one that let the PLAIN constitutive arm win the slot, now FAILS here where the
     old form would have passed. The disjointness seam — the plain E-side predicate
     must still REFUSE an off-diagonal run — is unchanged and still the byte-relevant
@@ -2693,7 +2693,7 @@ def leg_engine(payload: Dict[str, Any], out: str) -> None:
     specs = [s for s in arms.registered(offdiag.SLOT) if s.family == offdiag.FAMILY]
     assert len(specs) == 1, f"expected one offdiag arm, found {specs!r}"
     assert specs[0].wired, (
-        "the offdiag arm is registered UNWIRED. Tranche 2 wired it and the "
+        "the offdiag arm is registered unwired. It was wired once the "
         "whole-step gate measured the composition; an unwired arm here means the "
         "family was silently dropped out of dispatch")
     arm_label = specs[0].label
@@ -2701,7 +2701,7 @@ def leg_engine(payload: Dict[str, Any], out: str) -> None:
         "family": specs[0].family, "slot": specs[0].slot, "label": arm_label,
         "wired": bool(specs[0].wired),
         "supersession": (
-            "tranche 1 asserted wired=False; tranche 2 wired the arm after the "
+            "this leg first asserted wired=False; the arm was wired after the "
             "whole-step gate measured the composition (15 cases x 12 cycles, "
             "20200320 uint32 comparisons, 0 divergences, case "
             "'offdiag_real_one_row' selects update_E=offdiag). This gate asserts "
@@ -2787,7 +2787,7 @@ def exact_state(fields, seed: int) -> None:
 
 
 def _b_battery() -> Dict[str, Dict[str, Any]]:
-    """KERNELS.md §7.2's B battery for the constitutive tail, in shipped-source terms.
+    """The per-chunk form battery for the constitutive tail, in shipped-source terms.
 
     ``record`` entries are HOST mutations of the bound record (the kernel unchanged);
     ``state`` names a planted state. Each must-catch row is caught when any compared
@@ -2849,7 +2849,7 @@ def _b_battery() -> Dict[str, Dict[str, Any]]:
         },
         "b5_auxiliary_stored_on_a_plain_cell": {
             "must_catch": True,
-            "why": "f_w is untouched off the accumulation's cells (C2)",
+            "why": "f_w is untouched off the accumulation's cells (the auxiliary contract)",
             "apply": every_component("    if (dw{t}) {{ w{t}[ii] = src{t}; }}",
                                      "    w{t}[ii] = src{t};"),
         },
@@ -2892,7 +2892,7 @@ def leg_b_select(payload: Dict[str, Any], out: str) -> None:
     take the pure diagonal), both inverse-epsilon forms. Per case: the step MOVED
     STATE, both forms ran (``f_w`` moved on some cells and not on others), the
     shipped kernel and the in-gate transcription are 0 words from the oracle. Then
-    the B battery on two triples, launch-counted, and the execution proofs.
+    the per-chunk form battery on two triples, launch-counted, and the execution proofs.
     """
     rows: List[Dict[str, Any]] = []
     started = time.time()
@@ -2969,7 +2969,7 @@ def leg_b_select(payload: Dict[str, Any], out: str) -> None:
     entry_type = f"{type(entry).__module__}.{type(entry).__name__}"
     assert entry_type == "torch._C._mps_MetalKernel", entry_type
 
-    # --- the B battery ---------------------------------------------------------
+    # --- the per-chunk form battery --------------------------------------------
     battery: List[Dict[str, Any]] = []
     for label, entry_spec in _b_battery().items():
         for name, cell, boundaries in (CONFIGS[0], CONFIGS[1]):
@@ -3046,7 +3046,7 @@ def _presence_build(cell, boundaries, rows: Dict[str, Tuple[str, ...]], seed: in
     kinds = ((boundaries,) * 3 if isinstance(boundaries, str) else tuple(boundaries))
     keep = np.zeros(shape, dtype=bool)
     # Zero only along metallic axes: there the record's labels name the PML chunks
-    # one to one (a wrapping axis's row 0 joins the low run, KERNELS.md §2).
+    # one to one (a wrapping axis's row 0 joins the chunk record's low run).
     keep[tuple(slice(3, -3) if kind == "metallic" and n > 8 else slice(None)
                for kind, n in zip(kinds, shape))] = True
     built = {row: {partner: np.where(keep, (UNIFORM_ROWS[(row, partner)] * (
@@ -3063,7 +3063,7 @@ def _presence_build(cell, boundaries, rows: Dict[str, Tuple[str, ...]], seed: in
 
 
 def leg_presence(payload: Dict[str, Any], out: str) -> None:
-    """THE PER-CHUNK PRESENCE WORDS against ``stepping.py`` (KERNELS.md §2).
+    """The per-chunk presence words against ``stepping.py`` (docs/development/kernel-tables.md).
 
     Per case: the word of every live slot is NOT all-kept (MEEP deleted the row in
     the PML chunks) and expands back to the array path's own presence on every
@@ -3178,6 +3178,11 @@ LEGS: Tuple[Tuple[str, Callable[[Dict[str, Any], str], None]], ...] = (
 
 
 def main() -> int:
+    from meep_gpu.metal_kernels import (  # noqa: PLC0415,F401
+        offdiag_update_e,
+    )
+    from metal_closed_table import close_table  # noqa: PLC0415
+    close_table()
     parser = argument_parser(__doc__ or "")
     arguments = parser.parse_args()
     started = time.time()
@@ -3201,7 +3206,7 @@ def main() -> int:
     # This family's OWN source enumeration, recorded HERE rather than in
     # fingerprints.json: the byte gate binds its own provenance record inside its
     # results directory, so the verdict and the sources it is a verdict about
-    # travel together. (The arm is WIRED as of tranche 2; this record is kept
+    # travel together. (The arm is now WIRED; this record is kept
     # family-local regardless, because a shared side file is exactly what an
     # earlier probe overwrote.)
     launched = {
@@ -3246,7 +3251,7 @@ def main() -> int:
         "gate_metal_offdiag.py": os.path.abspath(__file__),
         "metal_gate_kit.py": os.path.join(HERE, "metal_gate_kit.py"),
     }, kernel_sources=launched, name="gate_provenance.json")
-    # AND IN THE GATE'S OWN ARTIFACT, not only in a side file. The per-source
+    # And in the gate's own artifact, not only in a side file. The per-source
     # hashes are what says WHICH specialisations this run launched, and a side file
     # in a shared directory is exactly what the probe overwrote; carrying them in
     # gate.json means the verdict and the thing it is a verdict about travel
@@ -3267,10 +3272,10 @@ def main() -> int:
         {"name": "m11_null_quarter_in_float32",
          "reason": "0.25 is an exact power of two, so 0.25f * sum is exact in "
                    "float32 wherever the result is normal, and widening it equals "
-                   "scaling the widened sum. MEASURED by the mutation leg as "
+                   "scaling the widened sum. Measured by the mutation leg as "
                    "must_catch False"},
         {"name": "m12_null_commute_the_row_sum",
-         "reason": "binary64 addition is bitwise commutative. MEASURED by the "
+         "reason": "binary64 addition is bitwise commutative. Measured by the "
                    "mutation leg as must_catch False"},
         {"name": "partner_axis_metallic_NEAR_zero_ghost",
          "reason": "MEASURED BY MUTATION as of 2026-08-15 — this entry used to say "
@@ -3308,8 +3313,8 @@ def main() -> int:
     return summarize(
         payload, arguments.out,
         claim=("byte-identity to stepping.py under the declared subnormal-free "
-               "precondition: the software-binary64 row (ruling R7), the per-chunk "
-               "presence words and the per-chunk tail, with the B battery, the "
+               "precondition: the software-binary64 row, the per-chunk "
+               "presence words and the per-chunk tail, with the form battery, the "
                "float32-row mutation and the presence mutants armed"),
         scope=("the off-diagonal (tensor) chi1inv electric constitutive sub-step "
                "under an active split-field PML: real float32 storage, periodic "

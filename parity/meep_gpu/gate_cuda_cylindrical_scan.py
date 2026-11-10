@@ -1,14 +1,14 @@
 """Word-identity gate for the CUDA column-serial radial scan, ``cyl_radial_difference``.
 
-THE CLAIM UNDER TEST. ``meep_gpu/cuda_kernels/cylindrical_prefix.py`` ships one kernel,
-``cyl_radial_difference`` (bit_parity_0_10 DESIGN.md D26): MEEP's per-chunk
+The claim under test. ``meep_gpu/cuda_kernels/cylindrical_prefix.py`` ships one kernel,
+``cyl_radial_difference`` (a column-serial scan): MEEP's per-chunk
 ``f_rderiv_int`` (step_db.cpp:99-119) and the radial difference a Bz or Dz cell reads
 from the sum of the chunk that owns it. This gate asks whether it reproduces the array
 path's ``stepping.cylindrical_rderiv_difference`` -- called exactly as ``stepping.step_B``
-and ``stepping.step_D`` call it -- WORD FOR WORD, on both sides, on real and complex64
+and ``stepping.step_D`` call it -- word for word, on both sides, on real and complex64
 storage, on one- and many-chunk divisions, under both float32 subnormal policies.
 
-THE ORACLE IS THE ARRAY PATH ON THE SAME BACKEND. On CuPy,
+The oracle is the array path on the same backend. On CuPy,
 ``cylindrical_rderiv_difference`` takes its row loop (one rounded add per row,
 ``stepping._cylindrical_segment_scan``), because a library ``cumsum`` is a parallel scan
 with another association; on NumPy, ``numpy.cumsum``, which accumulates row after row.
@@ -22,20 +22,20 @@ THE LEGS
   over the whole target-shaped difference, rows no segment writes included. The launch
   is handed an output buffer pre-filled with a NaN word, so a row the kernel fails to
   write is a differing word rather than a lucky zero.
-* source mutations, each MUST BE CAUGHT: the ``rinv`` factor dropped; ``rinv`` read one
+* source mutations, each must be caught: the ``rinv`` factor dropped; ``rinv`` read one
   row late; the forward and backward differences swapped; the running total carried
   across segments; the weights dropped; the B side's wall row filled from the last
   stored row; the clearing loop removed.
-* host mutations, each MUST BE CAUGHT: the starts line one row late; a segment dropped
+* host mutations, each must be caught: the starts line one row late; a segment dropped
   from the list; the other side's ``ir0`` in the weights (the half-cell error); the B
   side's wall row dropped from the sum.
-* the declared NULLS, each MUST BE UNCAUGHT: the weight product commuted and the
+* the declared NULLS, each must be uncaught: the weight product commuted and the
   ``rinv`` product commuted (IEEE multiplication commutes bitwise). Each is paired with
   a caught leg on the same expression.
 * the contraction guard: the same text compiled without ``--fmad=false``.
   ``total + rinv * (here - prev)`` is a contraction candidate, so the unguarded control
   is expected to diverge on some case; a control identical everywhere is reported as
-  the guard MEASURED DECORATIVE on these cases, not as a failure.
+  the guard measured decorative on these cases, not as a failure.
 
 =============================================================================
 THE FLOORS
@@ -57,7 +57,7 @@ Device (the GPU host, ONE verified-empty GPU, a fresh CuPy cache per policy)::
         --out $OUT/keep/gate.json
 
 Laptop (no CUDA): the NumPy backend runs the same cases and host mutations against a
-NumPy transcription of the column-serial loop. IT COMPILES NOTHING AND CERTIFIES NOTHING;
+NumPy transcription of the column-serial loop. It compiles nothing and certifies nothing;
 what it settles is whether the harness can fail::
 
     python -u gate_cuda_cylindrical_scan.py --backend numpy --out /tmp/scan_local.json
@@ -659,6 +659,7 @@ def summarize(results) -> Dict[str, Any]:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
+    import neutral_ids  # noqa: PLC0415
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--backend", choices=("cuda", "numpy"), default="cuda")
     parser.add_argument("--product", choices=("full", "reduced"), default="full")
@@ -671,8 +672,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     results: Dict[str, Any] = {
         "gate": "cuda_cylindrical_scan",
         "started_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "host": os.uname().nodename,
-        "argv": list(argv if argv is not None else sys.argv[1:]),
+        "host": neutral_ids.machine_id(),
+        "argv": neutral_ids.argv(argv if argv is not None else sys.argv[1:]),
         "backend": args.backend, "product": args.product,
         "question": ("does cyl_radial_difference reproduce "
                      "stepping.cylindrical_rderiv_difference word for word?"),

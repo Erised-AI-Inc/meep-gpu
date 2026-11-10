@@ -1,6 +1,6 @@
 """The folded COMPLEX off-diagonal ``update_E`` arm is SHIPPED, not missing.
 
-WHY THIS FILE EXISTS.  The 2026-09-02 Triton fusion board reports
+Why this file exists.  The 2026-09-02 Triton fusion board reports
 ``constitutive_admitters: []`` on three D->E seam-instances that carry the
 ``folded complex off-diagonal PML`` curl arm::
 
@@ -8,16 +8,16 @@ WHY THIS FILE EXISTS.  The 2026-09-02 Triton fusion board reports
     tests:TestArrayMetadata.test_array_metadata
     tests:TestHoleyWvgBands.test_fields_at_kx
 
-Read as a product statement that is false, and a build round was opened on it.
+Read as a product statement that is false, and build work was started on it.
 The arm exists (``complex_offdiag_update_e``'s folded/active-PML tail), is
 registered at ``update_E`` in ``launch.py``'s arm table, and its device byte gate
 is RELEASED (``triton_kernels/fingerprints.json`` ::
 ``triton_complex_offdiag_device_gate``, ``status: PASS``).
 
-WHAT WAS ACTUALLY TRUE was narrower and mechanical: the census that board reads was
-cut under an expansion probe artifact classifying the BASE FOUR patterns, and this
-tranche then bound the parity pattern as well, so the arm refused with clauses about
-the ARTIFACT and never about the configuration. That licence is deleted.
+What was actually true was narrower and mechanical: the census that board reads was
+cut under an expansion probe artifact classifying the BASE FOUR patterns, and this arm's
+certification then bound the parity pattern as well, so the arm refused with clauses
+about the ARTIFACT and never about the configuration. That licence is deleted.
 
 These tests pin the BEHAVIOUR, so the reading cannot be made again from a board
 column: the arm admits every one of the three configurations modulo the CuPy

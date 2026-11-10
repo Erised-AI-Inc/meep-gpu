@@ -4,7 +4,7 @@ A NEEDLE is one rewrite of a kernel's device text: the defect a gate's source-mu
 leg installs, applied as ``transform(source) -> (mutated source, sites hit)``. The
 shared harness (``probe_fused_kernel_bit_identity.py``) spells the curl and
 constitutive defects once, as its SHARED DEFAULT (``probe.SOURCE_MUTATIONS``), and
-until 0.10 every CUDA gate that borrowed one read it straight out of that default. A
+until 1.0 every CUDA gate that borrowed one read it straight out of that default. A
 re-spelling there therefore moved every borrowing gate at once, whichever kernel table
 it measured.
 
@@ -12,12 +12,12 @@ This module gives each gate its OWN table. :func:`gate_table` builds it from the
 the gate arms: each name resolves to the gate's own needle when the gate supplies one
 (``own=``), and otherwise to the shared default's entry, borrowed by identity. So:
 
-* a lane that re-spells a defect for its own kernels adds ONE ``own=`` entry in its
+* a gate that re-spells a defect for its own kernels adds ONE ``own=`` entry in its
   own gate file, and no other gate's bytes move;
 * the shared default is re-spelled only once :func:`NeedleTable.borrowed` shows that
   no gate still borrowing it measures a kernel the new spelling would not match. The
-  0.10 inversion of the MEEP-grouping mutations (``bit_parity_0_10/DESIGN.md`` D12,
-  KERNELS §7.1) went that way: each lane spelled its gates' defects on its kernels'
+  1.0 inversion of the MEEP-grouping mutations (one needle table per gate, each table
+  inverting its own) went that way: each table spelled its gates' defects on its kernels'
   new text, and the shared default took the real-PML pair's spellings last, when no
   table borrowed the old ones, so every gate whose kernels carry that text borrows
   them again;

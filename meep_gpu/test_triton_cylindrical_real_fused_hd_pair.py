@@ -206,7 +206,7 @@ def test_the_two_flags_and_the_wiring_move_together(product):
     assert "LOSES a launch" in product.INSTALLABLE_REASON
     assert "gate_triton_cylindrical_real_fused_hd_pair.py" in product.INSTALLABLE_REASON
     assert "dispatch_reachability" in product.INSTALLABLE_REASON
-    # THE ONE-WAY RULE: nothing in this package may know a dispatcher exists.
+    # The one-way rule: nothing in this package may know a dispatcher exists.
     assert "fastpath" not in product.INSTALLABLE_REASON
 
 
@@ -456,7 +456,7 @@ def test_the_composer_is_offered_this_product_and_refuses_it_by_the_flag(product
     (``dispatch_reachability.PRODUCT_ARM_LABELS``) -- and what keeps the product out of
     every slot is its own ``INSTALLABLE = False``, which ``_declared_uninstallable``
     reports by name on every row BEFORE the predicate is asked. Until the routing
-    round this test asserted the absence from every one of those tables; the
+    change this test asserted the absence from every one of those tables; the
     tables moved and so did the pin."""
     from .triton_kernels import launch as launch_module
     from . import fastpath, withdraw_hoist
@@ -620,7 +620,7 @@ def test_every_mutation_needle_resolves_exactly_once(gate, product):
     for tag in nulls:
         assert ("PREDICTED NULL" in gate.MUTATIONS[tag]["why"]
                 or "MEASURED NULL" in gate.MUTATIONS[tag]["why"]), tag
-    # THE ARMED DEFECTS the design names are all here, and the scan-ordering plant.
+    # The armed defects the design names are all here, and the scan-ordering plant.
     for tag in ("m_H_written_in_place", "m_f_w_H_written_in_place",
                 "b7_fw_scratch_stored_unmasked", "b8_fw_scratch_stored_on_the_layer_only",
                 "b11_start_of_H_not_forwarded", "m_rotation_skipped", "m_fp_fusion_on",

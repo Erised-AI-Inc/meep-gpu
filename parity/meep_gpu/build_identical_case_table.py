@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """The identical-case table: the GPU routes against stock MEEP on the same simulation.
 
-WHAT IT READS. Only a timing ladder's own ledger (``ladder_rows.jsonl``) and the files
+What it reads. Only a timing ladder's own ledger (``ladder_rows.jsonl``) and the files
 it names: ``bench_fused_products`` ``rows.jsonl`` for the GPU rows,
 ``bench_meep_identical_case`` ``rows_r<N>.jsonl`` for MEEP, ``environment.json``,
 ``binding_decision.json`` and the digests of record under ``digests/``. Every fact the
@@ -9,7 +9,7 @@ table states is read from those files: the routes and the tables they asked for,
 cases and sizes, the passes, the rank counts and MEEP configurations, the GPU's name and
 compute capability, the host's cores, the binding rule's decision. Nothing is typed.
 
-WHERE THE LEDGER'S PATHS POINT. A ledger records the GPU host's absolute paths. Each
+Where the ledger's paths point. A ledger records the GPU host's absolute paths. Each
 entry the released ladder writes carries ``run_dir``, the run directory those paths are
 under, and is mapped onto the pull by it. A ledger written before that field existed
 (2026-09-28) is mapped with ``--remote-root <the run directory on the host>``.
@@ -28,30 +28,58 @@ MEEP leg must carry its size's geometry digest of record, a stepped flux monitor
 a single-precision build.
 Every strike names its reason.
 
-TWO RULES, both reported, because which one is of record is an owner ruling this table
+TWO RULES, both reported, because which one is of record is a maintainer's decision this table
 does not make. Per-row: a size's ratios enter only if EVERY leg at that size passes.
 Per-ratio: a ratio enters if its two legs pass. MEEP's best is taken over every rank
 count and configuration tried, blind to the gate; a best that fails the gate strikes
 its ratios and is never replaced by the next one. The reference build's best is
 reported beside it.
 
-THE DIGEST OF RECORD per (case, size) is the harness lift's when the ladder's
+The digest of record per (case, size) is the harness lift's when the ladder's
 ``digests`` tier took one (``digests/<case>_res<r>.source`` reads ``harness-lift``) or
 ``--lift-digests`` holds one; otherwise the first MEEP row's, and the table says
 "harness-lift digest pending; ratios provisional" for that size. Where a lift digest
 exists, every MEEP leg is compared against IT, not only against the digest held.
 
-A SIZE IS STRUCK WHOLE -- every ratio at it, under both rules, each strike named --
+A size is struck whole -- every ratio at it, under both rules, each strike named --
 when the harness lift's digest differs from the digest of record (``DIFFERENT``) or
 its driver disagreed with the MEEP object it lifted, when its GPU, MEEP and lift rows
 ran different code (the ledger's ``code_digest``) or were
 built by different builder sources, or when the GPU rows' monitor count is not the MEEP
 rows' DFT-object count.
 
+A SPLIT LADDER UNIT (``rounds/1.0/cert8.py --split-ladder``) is two ladders of one session:
+the GPU half (``--pull``: the GPU routes and the array control, no MEEP row) and the MEEP
+half (``--meep-pull``: every MEEP row, the digests of record and the harness lift), timed
+under two VM affinity masks that only the session's row records hold. ``--split-row``
+names the store's row record of the unit (any of its keys; ``timing_rows.split_rows``): it
+is refused by name unless both halves held the session's masks
+(``timing_rows.split_refusals``), and so is a pull that is not the half's ladder the record
+names or that holds the other half's rows. The table is then the one a whole ladder would
+give, read from both, with every ratio labelled split and the masks and order beside it.
+
+What the table writes leaves the machine: a pull, a manifest and a lift file are named by
+their own names, never by an absolute path, and every string the table copies from its
+inputs (a ladder's environment record, a struck row's reason) is written as
+``neutral_ids`` writes a record: a path under its root's label (``<home>/...``), the
+account as ``<account>``. A pull written before its ladder wrote neutral records names the
+timing host's paths, and the table never passes them on.
+
+A home of two levels (``/home/<group>/<account>``) cannot be told from a directory by its
+shape: written on another machine, its first level becomes ``<home>`` and the account
+stays. So the account a pull's own ladder records (its ``ACCOUNT`` parameter, when written
+as a name: a word of three or more characters that is none of ``neutral_ids``' record
+words) is written as ``<account>`` wherever it stands as a word in the table.
+
+A split unit's two halves are each checked against their own host's sha256 listing:
+``--manifest`` for the GPU half (``--pull``) and ``--meep-manifest`` for the MEEP half.
+
 Usage:
   build_identical_case_table.py --pull <ladder dir> --out-md TABLE.md --out-json table.json
       [--remote-root <run dir on the host>] [--lift-digests DIR] [--manifest <sha256 list>]
       [--standing label=comparison.json ...] [--tiers "priority rest largest"]
+      [--meep-pull <the MEEP half's ladder dir> --split-row RECORD [...]
+       [--meep-manifest <the MEEP half's sha256 list>]]
 """
 
 from __future__ import annotations
@@ -64,7 +92,8 @@ import json
 import os
 import re
 import statistics
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+import sys
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 GATE = 0.05
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -142,26 +171,28 @@ def verify_pull(pull: Pull, manifest: Optional[str]) -> Dict[str, Any]:
                 local = None
             if local != digest:
                 bad.append(name)
-    return {"checked": True, "manifest": os.path.abspath(manifest), "files": count,
+    return {"checked": True, "manifest": os.path.basename(manifest), "files": count,
             "matching": count - len(bad), "mismatched": bad}
 
 
 def pinned_foreign(box: Optional[Dict[str, Any]]) -> Optional[List[str]]:
-    """Compute apps on the PINNED device other than the row's own, joined by UUID."""
+    """Compute apps on the PINNED device other than the row's own, joined by UUID (by
+    card id, with the row's own process as ``own``, in a row whose box tables leave the
+    machine: ``timing_host.recorded_compute_apps``)."""
     if not box:
         return None
     index = str(box.get("CUDA_VISIBLE_DEVICES", "")).split(",")[0].strip()
-    uuid = index if index.startswith("GPU-") else None
+    uuid = index if index.startswith(("GPU-", "c-")) else None
     for line in str(box.get("gpus") or "").splitlines():
         cells = [c.strip() for c in line.split(",")]
         if len(cells) >= 2 and cells[0] == index:
             uuid = cells[1]
     if uuid is None:
         return None
-    own = str(box.get("pid"))
+    own = ("own", str(box.get("pid")))
     return [line.strip() for line in str(box.get("compute_apps") or "").splitlines()
             if [c.strip() for c in line.split(",")][:1] == [uuid]
-            and [c.strip() for c in line.split(",")][1:2] != [own]]
+            and ([c.strip() for c in line.split(",")][1:2] or [None])[0] not in own]
 
 
 def comparison_builder() -> Any:
@@ -250,7 +281,7 @@ def gpu_rows(ledger: List[Dict[str, Any]], pull: Pull, tiers: Sequence[str],
                int(entry["pass"]))
         attached = measured.get("monitors_attached")
         host = [row.get("host_before"), row.get("host_after")]
-        # A GPU-ONLY ROW'S IDENTITY IS ITS IDENTITY ROW'S (``timing_records.identity_source``):
+        # A GPU-only row's identity is its identity row's (``timing_records.identity_source``):
         # read as bit-identical only when the ledger found that row and every clause held.
         in_row = measured.get("bit_identical_fused_vs_array")
         cited = entry.get("bit_identity_from")
@@ -461,38 +492,122 @@ def environment_facts(environment: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+#: The ledger kinds each half of a split ladder unit holds: the GPU half its routes and
+#: the array control, the MEEP half every MEEP row, the digests and the harness lift.
+SPLIT_KINDS = {"gpu": ("gpu", "array_control"), "meep": ("meep", "digest", "lift")}
+
+
+def read_split(args: argparse.Namespace, pull: Pull, ledger: List[Dict[str, Any]],
+               builder: Any) -> Tuple[Pull, List[Dict[str, Any]], Dict[str, Any]]:
+    """The MEEP half of a split ladder unit (``--meep-pull``), its ledger, and the unit
+    as its row record names it (``--split-row``, read by the comparison builder's
+    ``split_unit``): refused by name unless both are given, the record admits both halves
+    against the session's masks, each pull is its half's ladder, and neither half's
+    ledger holds the other half's rows."""
+    if not (getattr(args, "meep_pull", None) and getattr(args, "split_row", None)):
+        raise SystemExit("REFUSING: a split ladder unit is read from its two halves and its "
+                         "row record: --pull <the GPU half>, --meep-pull <the MEEP half> and "
+                         "--split-row <the store's record of the unit>")
+    meep_pull = Pull(args.meep_pull, args.remote_root)
+    unit = builder.split_unit(args.split_row, {"gpu": pull.root}, meep_pull.root, None,
+                              flags={"routes": "--pull", "meep": "--meep-pull"})
+    meep_ledger = jsonl(meep_pull.path("ladder_rows.jsonl"))
+    for side, entries, other in (("gpu", ledger, "meep"), ("meep", meep_ledger, "gpu")):
+        found = sorted({str(e.get("ledger")) for e in entries
+                        if e.get("ledger") in SPLIT_KINDS[other]})
+        if found:
+            raise SystemExit(f"REFUSING: the {side} half's ladder "
+                             f"{os.path.basename(pull.root if side == 'gpu' else meep_pull.root)}"
+                             f" holds {', '.join(found)} rows, the {other} half's: it is not "
+                             f"the {side} half of a split unit")
+    return meep_pull, meep_ledger, unit
+
+
+def recorded_accounts(pulls: Sequence[Optional[str]]) -> List[str]:
+    """The account names the pulls' own ladders record (``params.ACCOUNT.value`` of each
+    ``environment.json``), when written as a name: three or more characters of a word, none
+    of ``neutral_ids.RECORD_WORDS`` (a login spelled like the package or a table would
+    rewrite every word of the table). A ladder that wrote its records neutrally records
+    ``<account>`` there, which names nothing."""
+    import neutral_ids  # noqa: PLC0415
+    names = set()
+    for root in pulls:
+        if not root:
+            continue
+        found = read_json(os.path.join(root, "environment.json")) or {}
+        value = ((found.get("params") or {}).get("ACCOUNT") or {}).get("value")
+        if isinstance(value, str) and re.fullmatch(r"[A-Za-z0-9._-]{3,}", value) and \
+                value.lower() not in neutral_ids.RECORD_WORDS:
+            names.add(value)
+    return sorted(names)
+
+
+def neutral_table(record: Dict[str, Any], accounts: Sequence[str]) -> Dict[str, Any]:
+    """The table's record as it leaves the machine: every string, a key included, through
+    ``neutral_ids.value``, then each of ``accounts`` (:func:`recorded_accounts`) as
+    ``<account>`` wherever it stands as a word."""
+    import neutral_ids  # noqa: PLC0415
+    record = neutral_ids.value(record)
+    if not accounts:
+        return record
+    word = re.compile(r"(?<![A-Za-z0-9_-])(?:" + "|".join(map(re.escape, accounts))
+                      + r")(?![A-Za-z0-9_-])")
+
+    def write(node: Any) -> Any:
+        if isinstance(node, str):
+            return word.sub(neutral_ids.ACCOUNT, node)
+        if isinstance(node, Mapping):
+            return {write(k) if isinstance(k, str) else k: write(v) for k, v in node.items()}
+        if isinstance(node, list):
+            return [write(v) for v in node]
+        return node
+    return write(record)
+
+
 def build(args: argparse.Namespace) -> Dict[str, Any]:
     pull = Pull(args.pull, args.remote_root)
     ledger = jsonl(pull.path("ladder_rows.jsonl"))
     tiers = tuple(args.tiers.split()) if args.tiers else RESULT_TIERS
     environment = read_json(pull.path("environment.json")) or {}
-    decision = read_json(pull.path("binding_decision.json"))
     builder = comparison_builder()
-    record: Dict[str, Any] = {"pull": pull.root, "gate": GATE, "tiers": list(tiers),
+    # A whole ladder is both halves; a split unit reads its MEEP side from the MEEP half.
+    meep_pull, meep_ledger, split = pull, ledger, None
+    if getattr(args, "meep_pull", None) or getattr(args, "split_row", None):
+        meep_pull, meep_ledger, split = read_split(args, pull, ledger, builder)
+    every = ledger if split is None else ledger + meep_ledger
+    decision = read_json(meep_pull.path("binding_decision.json"))
+    record: Dict[str, Any] = {"pull": os.path.basename(pull.root), "gate": GATE,
+                              "tiers": list(tiers),
                               "pull_verification": verify_pull(pull, args.manifest)}
+    if split is not None:
+        record["meep_pull"] = os.path.basename(meep_pull.root)
+        record["meep_pull_verification"] = verify_pull(meep_pull,
+                                                       getattr(args, "meep_manifest", None))
+        record["split"] = {name: split[name] for name in (
+            "label", "masks", "order", "ladders", "keys", "record_sha256", "rule")}
     planned_cases = [c for c in (((environment.get("params") or {}).get("CASES") or {})
                                  .get("value") or "").replace(",", " ").split() if c]
     default_case = planned_cases[0] if planned_cases else "pml_3d"
     gpus = gpu_rows(ledger, pull, tiers, default_case)
-    meeps = meep_rows(ledger, pull, tiers, default_case)
-    checks = meep_rows(ledger, pull, ("bindcheck",), default_case)
-    probes = meep_rows(ledger, pull, ("bindprobe",), default_case)
+    meeps = meep_rows(meep_ledger, meep_pull, tiers, default_case)
+    checks = meep_rows(meep_ledger, meep_pull, ("bindcheck",), default_case)
+    probes = meep_rows(meep_ledger, meep_pull, ("bindprobe",), default_case)
     controls: Dict[Tuple, Dict] = {}
     for entry in ledger:
         if entry.get("ledger") == "array_control" and entry.get("tier") in tiers:
             controls[(case_of(entry, default_case), int(entry["res"]),
                       int(entry["pass"]))] = entry
-    of_record = digests_of_record(pull, args.lift_digests, builder)
+    of_record = digests_of_record(meep_pull, args.lift_digests, builder)
     lift = builder.read_digests(args.lift_digests) if args.lift_digests else {}
-    lift.update(builder.read_digests(pull.path("digests_lift"))
-                if os.path.isdir(pull.path("digests_lift")) else {})
+    lift.update(builder.read_digests(meep_pull.path("digests_lift"))
+                if os.path.isdir(meep_pull.path("digests_lift")) else {})
     lift_code: Dict[Tuple[str, int], str] = {}
-    for entry in ledger:
+    for entry in meep_ledger:
         if entry.get("ledger") == "lift" and entry.get("code_digest"):
             lift_code[(case_of(entry, default_case), int(entry.get("res") or 0))] = \
                 entry["code_digest"]
     preflight_lift = {}
-    for path in glob.glob(pull.path("preflight", "digest", "harness_lift_digest*.json")):
+    for path in glob.glob(meep_pull.path("preflight", "digest", "harness_lift_digest*.json")):
         found = read_json(path) or {}
         preflight_lift[str(found.get("case"))] = found
 
@@ -507,26 +622,28 @@ def build(args: argparse.Namespace) -> Dict[str, Any]:
     ratio_ranks = [int(v) for v in (args.ratio_ranks or "").replace(",", " ").split() if v]
 
     # ---- denominators ----------------------------------------------------------------
+    # Over both halves of a split unit: each half's ledger counts its own planned rows.
     by_kind: Dict[str, int] = {}
-    for entry in ledger:
+    for entry in every:
         key = f"{entry.get('tier')}/{entry.get('ledger')}"
         by_kind[key] = by_kind.get(key, 0) + 1
-    code_digests = sorted({e.get("code_digest") for e in ledger if e.get("code_digest")})
-    planned = max((int(e.get("of") or 0) for e in ledger), default=0)
-    # ONE NUMERATOR, ONE DENOMINATOR, ONE SET OF ROWS. The 1.0 Mac table read "86 of 79
+    code_digests = sorted({e.get("code_digest") for e in every if e.get("code_digest")})
+    planned = sum(max((int(e.get("of") or 0) for e in half), default=0)
+                  for half in ((ledger,) if split is None else (ledger, meep_ledger)))
+    # One numerator, one denominator, one set of rows. The 1.0 Mac table read "86 of 79
     # GPU and MEEP ledger rows carry a code digest": the numerator counted every ledger
     # kind (the lift and digest entries carry one too) and the denominator GPU and MEEP
     # entries. Both now count GPU and MEEP rows, once each -- a resumed ladder records
     # a row again under the same tier and index, and the last entry is the row's.
     measured_rows: Dict[Tuple[Any, ...], Dict[str, Any]] = {}
-    for entry in ledger:
+    for entry in every:
         if entry.get("ledger") in ("gpu", "meep"):
             key = (entry.get("ledger"), entry.get("tier"), entry.get("index"))
             if entry.get("index") is None:
                 key = key + (len(measured_rows),)
             measured_rows[key] = entry
     record["denominators"] = {
-        "ledger_entries": len(ledger), "rows_planned": planned,
+        "ledger_entries": len(every), "rows_planned": planned,
         "ledger_by_tier_and_kind": by_kind,
         "gpu_rows": len(gpus),
         "gpu_timed": sum(g["verdict"] == "TIMED" for g in gpus.values()),
@@ -560,10 +677,19 @@ def build(args: argparse.Namespace) -> Dict[str, Any]:
                                                 for e in measured_rows.values()),
         "ledger_gpu_and_meep_rows": len(measured_rows),
         "ledger_other_entries_carrying_code_digest": sum(
-            bool(e.get("code_digest")) for e in ledger
+            bool(e.get("code_digest")) for e in every
             if e.get("ledger") not in ("gpu", "meep")),
     }
     record["environment"] = environment_facts(environment)
+    if split is not None:
+        # The MEEP builds as the MEEP half's ladder probed them.
+        theirs = environment_facts(read_json(meep_pull.path("environment.json")) or {})
+        for name in ("meep_configure_line", "meep_cxxflags", "mpirun", "builds"):
+            record["environment"][name] = theirs[name]
+        record["environment"]["packages"] = dict(
+            record["environment"]["packages"] or {},
+            **{name: (theirs["packages"] or {}).get(name)
+               for name in ("meep", "meep_single_precision")})
     record["binding_decision"] = decision
     record["routes"] = {route: {"table_asked": table, "label": route_label[route]}
                         for route, table in routes.items()}
@@ -786,6 +912,10 @@ def build(args: argparse.Namespace) -> Dict[str, Any]:
                                                                       "pending"),
                     "vs_best_window_bound": (gpu["median"] / best_window
                                              if label == "best" and best_window else None)})
+                if split is not None:
+                    # The GPU leg and the MEEP leg were timed in the two halves of a split
+                    # unit: every ratio says so (the masks and the order: record "split").
+                    ratios[-1]["split"] = True
         sizes.append({"case": case, "res": res, "cells": cells, "legs": legs, "info": info,
                       "digest": digest_status, "size_strikes": size_strikes,
                       "meep_best": {"ranks": best_key[1], "configuration": best_key[0],
@@ -851,7 +981,7 @@ def build(args: argparse.Namespace) -> Dict[str, Any]:
             "struck": m["struck"]})
     record["bindcheck"] = bindcheck
     outside = []
-    for entry in ledger:
+    for entry in every:
         if entry.get("tier") not in ("preflight", "bindprobe", "digests", "identity"):
             continue
         measured_entry = entry.get("measured") or {}
@@ -878,9 +1008,10 @@ def build(args: argparse.Namespace) -> Dict[str, Any]:
     record["outside_the_table"] = outside
 
     # ---- the comparison reader's own view, as a cross-check ----------------------
-    cross: Dict[str, Any] = {"builder": COMPARISON_BUILDER}
+    cross: Dict[str, Any] = {
+        "builder": "parity/meep_gpu/" + os.path.basename(COMPARISON_BUILDER)}
     agree = disagree = 0
-    meep_dir = pull.path("meep")
+    meep_dir = meep_pull.path("meep")
     if os.path.isdir(meep_dir):
         theirs_meep = builder.read_meep(meep_dir)
         for size in sizes:
@@ -974,8 +1105,12 @@ def render(record: Dict[str, Any]) -> str:
     passes = record["passes"]
     add("# Identical-case 3-D table: GPU routes against stock MEEP on the same simulation")
     add("")
-    add(f"Built by `build_identical_case_table.py` from the ladder at `{record['pull']}`, "
-        f"reading its ledger `ladder_rows.jsonl` and the row files it names. Cases: "
+    split = record.get("split")
+    source = (f"the ladder `{record['pull']}`, reading its ledger" if split is None else
+              f"the two halves of one split ladder unit, `{record['pull']}` (its GPU legs) "
+              f"and `{record['meep_pull']}` (its MEEP legs), reading each one's ledger")
+    add(f"Built by `build_identical_case_table.py` from {source} "
+        f"`ladder_rows.jsonl` and the row files it names. Cases: "
         + ", ".join(f"`{c}`" for c in cases) + f". Mcell-steps/s throughout; every value is "
         f"the MEDIAN over {len(passes)} fresh-process pass(es) ({', '.join(map(str, passes))}); "
         "spreads are (max − min) / median. Tiers read: " + ", ".join(record["tiers"]) + ".")
@@ -986,7 +1121,8 @@ def render(record: Dict[str, Any]) -> str:
         if not best:
             continue
         summary.append(f"`{s['case']}` {s['cells']:,} cells: "
-                       + ", ".join(f"{r['gpu_label']} {r['value']:.2f}×" for r in best)
+                       + ", ".join(f"{r['gpu_label']} {r['value']:.2f}×"
+                                   + (" (split)" if r.get("split") else "") for r in best)
                        + f" against MEEP@{s['meep_best']['ranks']}"
                        + (f" [{s['meep_best']['configuration']}]"
                           if s["meep_best"]["configuration"] != "reference" else "")
@@ -1002,12 +1138,22 @@ def render(record: Dict[str, Any]) -> str:
     add("")
     add("## Provenance and denominators")
     add("")
-    pv = record["pull_verification"]
-    if pv.get("checked"):
-        add(f"* **Pull**: {pv['matching']} of {pv['files']} files match the GPU host's "
-            "sha256 listing.")
-    else:
-        add("* **Pull**: not verified against a manifest (pass `--manifest`).")
+    halves = [("pull_verification", "--manifest", "")]
+    if split is not None:
+        halves = [("pull_verification", "--manifest", f" of the GPU half `{record['pull']}`"),
+                  ("meep_pull_verification", "--meep-manifest",
+                   f" of the MEEP half `{record['meep_pull']}`")]
+    for field, flag, which in halves:
+        pv = record[field]
+        if pv.get("checked"):
+            add(f"* **Pull**{which}: {pv['matching']} of {pv['files']} files match the "
+                "timing host's sha256 listing.")
+        else:
+            add(f"* **Pull**{which}: not verified against a manifest (pass `{flag}`).")
+    if split is not None:
+        add(f"* **Split**: every ratio marked (split) pairs the two halves of one split ladder "
+            f"unit, {split['label']} (row records {', '.join(split['keys'])}); "
+            f"{split['rule']}.")
     if env.get("apple_gpu"):
         apple = env["apple_gpu"]
         add(f"* **Host**: {apple.get('model') or 'an Apple GPU'} "
@@ -1138,7 +1284,8 @@ def render(record: Dict[str, Any]) -> str:
                 spread_text = (f"{r['paired_pass_range'][0]:.2f}–{r['paired_pass_range'][1]:.2f}"
                                if r["paired_pass_range"] else "—")
                 add(f"| {s['cells']:,} | {r['gpu_label']} | {denominator} | {r['value']:.2f}×"
-                    + (" (provisional)" if r["provisional"] else "") + f" | {spread_text} | "
+                    + (" (provisional)" if r["provisional"] else "")
+                    + (" (split)" if r.get("split") else "") + f" | {spread_text} | "
                     f"{'enters' if r['enters_per_row'] else 'struck'} | "
                     f"{'enters' if r['enters_per_ratio'] else 'struck'} |")
         add("")
@@ -1290,7 +1437,7 @@ def render(record: Dict[str, Any]) -> str:
     add("* **Not licensed**: another case, problem size, GPU, CPU or MEEP build than the "
         "ones recorded above; 2-D, cylindrical or dispersive rows; monitor-heavy runs; "
         "per-watt or per-dollar claims; any claim against MEEP@1.")
-    add("* **Open**: which gate rule is of record (per-row or per-ratio) is an owner ruling "
+    add("* **Open**: which gate rule is of record (per-row or per-ratio) is a maintainer's decision "
         "this table does not make.")
     add("")
     return "\n".join(out) + "\n"
@@ -1310,10 +1457,25 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                         help="tiers whose rows form the table; priority rest largest")
     parser.add_argument("--ratio-ranks", default="8,1", dest="ratio_ranks",
                         help="reference rank counts every GPU leg is also divided by")
+    parser.add_argument("--meep-pull", default=None, dest="meep_pull",
+                        help="a split ladder unit's MEEP half (--pull is its GPU half); "
+                             "with --split-row")
+    parser.add_argument("--split-row", nargs="+", default=None, dest="split_row",
+                        metavar="RECORD",
+                        help="the row store's record(s) of the split unit: every ratio is "
+                             "labelled split, and refused by name unless both halves held "
+                             "the session's masks")
+    parser.add_argument("--meep-manifest", default=None, dest="meep_manifest",
+                        help="the MEEP half's sha256 listing, as --manifest is the GPU half's")
     parser.add_argument("--out-md", required=True, dest="out_md")
     parser.add_argument("--out-json", required=True, dest="out_json")
     args = parser.parse_args(argv)
-    record = build(args)
+    if HERE not in sys.path:
+        sys.path.insert(0, HERE)
+    # The table leaves the machine: every string it copied from its inputs, a pull written
+    # before its ladder wrote neutral records included, under its root's label, and the
+    # account those pulls record as <account>. The markdown is rendered from that record.
+    record = neutral_table(build(args), recorded_accounts([args.pull, args.meep_pull]))
     text = render(record)
     with open(args.out_json, "w", encoding="utf-8") as handle:
         json.dump(record, handle, indent=1, sort_keys=True, default=str)

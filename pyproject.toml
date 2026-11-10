@@ -10,7 +10,7 @@ build-backend = "setuptools.build_meta"
 #     python tools/rename_distribution.py --name NEW-NAME --apply
 # and never edit the name by hand.
 name = "meep-gpu"
-version = "1.0.0"
+version = "1.0.1"
 description = "GPU time stepping for MEEP simulations: steps a simulation built by the user's own MEEP installation on one NVIDIA or Apple GPU"
 readme = "README.md"
 license = "GPL-2.0-or-later"
@@ -39,7 +39,7 @@ classifiers = [
   "Operating System :: MacOS",
   "Environment :: GPU :: NVIDIA CUDA"
 ]
-# MEEP IS A PREREQUISITE AND IS NOT LISTED HERE. MEEP's Python module is
+# MEEP is a prerequisite and is not listed here. MEEP's Python module is
 # distributed through conda-forge (package `pymeep`) or built from source; it is
 # not installable from the Python package index, where the name `meep` belongs to
 # an unrelated project. Install MEEP first, into the environment that will run
@@ -62,26 +62,54 @@ Changelog = "https://github.com/Erised-AI-Inc/meep-gpu/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
 # ---------------------------------------------------------------------------
+# Two recipes install the device libraries. INSTALL.md, "Certified and
+# supported versions", holds the one table of both.
+#
+#   * SUPPORTED, the default extras (`nvidia`, `nvidia-cuda11`, `fdtd-gpu`,
+#     `fdtd-gpu-triton`, `apple`): each library has a lower bound, the version
+#     the kernels were certified with, and no upper bound unless a known
+#     incompatibility is stated beside it, so newer releases install. The
+#     compiled kernels run on them, and the run is recorded as not certified
+#     (`certified: False`, and one `meep_gpu: NOTE` line names what is not).
+#   * CERTIFIED (`nvidia-certified`, `apple-certified`): exact pins, the
+#     versions the certification record was cut on. Bit identity with the
+#     reference MEEP holds on this recipe only, on certified hardware, beside
+#     the rest of the certified stack, which no installer can pin (INSTALL.md
+#     lists it). To verify a host, run with MEEP_GPU_HARDWARE=certified: every
+#     fact outside the certified identity is then refused by name and the run
+#     takes the array path.
+#
+# The packaging test (meep_gpu/test_triton_kernels.py) holds both recipes to
+# these rules, and the certified pins to the records they come from.
+# ---------------------------------------------------------------------------
 # The NVIDIA route: CuPy (array path and hand-written CUDA kernels), Triton
 # (compiled kernels) and PyTorch, which Triton imports to select its NVIDIA
-# driver; the package itself does not use PyTorch on this route. Stack of record:
-# CuPy 13.5.1, Triton 3.1.0, PyTorch 2.5.1, one device of compute capability 8.6.
+# driver; the package itself does not use PyTorch on this route.
 #
 #   * A CuPy wheel's NAME encodes the CUDA major version and no environment
 #     marker can express the toolkit a host has installed. `nvidia` installs the
-#     CUDA 12 build. The certification record was cut with the CUDA 11 build of
-#     the same CuPy version (CUDA runtime 11.8 under a 12.3 driver);
-#     `nvidia-cuda11` installs that build. The two cannot be installed together.
-#   * Triton is a RANGE and carries a platform marker. PyTorch pins an exact
-#     Triton on linux-x86_64, and PyTorch 2.5.1 is the release that pins the
-#     certified one, so an exact pin here could only repeat it or contradict it.
-#     The range is not the correctness pin: an installed Triton version that is
-#     not in the certification ledger is supported inside this same range and runs
-#     recorded as not certified (MEEP_GPU_HARDWARE=certified refuses it by name
-#     and takes the array path); outside it the package refuses it by name
+#     CUDA 12 build and `nvidia-cuda11` the CUDA 11 build. The two cannot be
+#     installed together.
+#   * CuPy 13.5.1 or later, with no upper bound. This package suspends MEEP's
+#     flush-to-zero mode for the length of every CuPy compile (without that, a
+#     kernel that includes CCCL's <cuda/std/limits> fails to build once MEEP is
+#     imported) and applies the `keep` subnormal policy, both at the compiler
+#     front end CuPy's compile path calls. CuPy renamed that function in 14
+#     (`compile_using_nvrtc` in 13, `_compile_using_nvrtc_no_warning` in 14), so
+#     the package reads it off the compile path and refuses by name a CuPy whose
+#     compile path calls none it recognizes. Run with the package: CuPy 14.2.0,
+#     the CUDA 12 build (NVRTC 12.4, NumPy 2.2.6, Python 3.10), as well as
+#     13.5.1. CuPy 14 needs NumPy 2.0 or later, below 2.6, and has no CUDA 11
+#     build: `nvidia-cuda11` stays on CuPy 13.
+#   * Triton 3.1 or later, with no upper bound. When a run is planned, the
+#     package compiles and launches one small kernel through the installed
+#     Triton; a Triton that cannot is set aside by name and the hand-written
+#     CUDA kernels run without it. A Triton older than 3.1 is refused by name
 #     unless MEEP_GPU_HARDWARE=any.
-#     Triton 3.1.0 publishes wheels for Python 3.10 to 3.12, so the NVIDIA route
-#     needs one of those interpreters.
+#   * PyTorch 2.5.1 or later. Every PyTorch release requires one Triton
+#     release on Linux (2.5.1 requires exactly 3.1.0; a newer PyTorch, a newer
+#     Triton), so PyTorch chooses the Triton and no Triton pin here may
+#     contradict it.
 #   * The extras install Python packages only. The NVIDIA driver, the CUDA
 #     libraries a CuPy wheel loads and the C compiler Triton uses at its first
 #     launch belong to the host.
@@ -90,34 +118,56 @@ Changelog = "https://github.com/Erised-AI-Inc/meep-gpu/blob/main/CHANGELOG.md"
 # ---------------------------------------------------------------------------
 nvidia = [
   "meep-gpu[fdtd-gpu-triton]",
-  "torch==2.5.1; sys_platform == 'linux' and platform_machine == 'x86_64'"
+  "torch>=2.5.1; sys_platform == 'linux' and platform_machine == 'x86_64'"
 ]
 nvidia-cuda11 = [
-  "cupy-cuda11x==13.5.1; sys_platform == 'linux' and platform_machine == 'x86_64'",
-  "triton>=3.1,<3.2; sys_platform == 'linux' and platform_machine == 'x86_64'",
-  "torch==2.5.1; sys_platform == 'linux' and platform_machine == 'x86_64'"
+  "cupy-cuda11x>=13.5.1; sys_platform == 'linux' and platform_machine == 'x86_64'",
+  "triton>=3.1; sys_platform == 'linux' and platform_machine == 'x86_64'",
+  "torch>=2.5.1; sys_platform == 'linux' and platform_machine == 'x86_64'"
 ]
-# The two names below are the ones the package's own packaging test reads
-# (meep_gpu/test_triton_kernels.py). `nvidia` is the same set under the name the
-# README uses.
+# `fdtd-gpu` (CuPy alone: the array path and the hand-written CUDA kernels) and
+# `fdtd-gpu-triton` (CuPy and Triton) are the parts `nvidia` is built from;
+# `nvidia` adds PyTorch.
 fdtd-gpu = [
-  "cupy-cuda12x==13.5.1; sys_platform == 'linux' and platform_machine == 'x86_64'"
+  "cupy-cuda12x>=13.5.1; sys_platform == 'linux' and platform_machine == 'x86_64'"
 ]
 fdtd-gpu-triton = [
   "meep-gpu[fdtd-gpu]",
-  "triton>=3.1,<3.2; sys_platform == 'linux' and platform_machine == 'x86_64'"
+  "triton>=3.1; sys_platform == 'linux' and platform_machine == 'x86_64'"
+]
+# The certified NVIDIA recipe, the CUDA 11 build: no CUDA 12 build is certified.
+# The stack of record is CuPy 13.5.1 (CUDA 11 build), Triton 3.1.0 and PyTorch
+# 2.5.1, on compute capabilities 8.6 and 8.9. The certification record also
+# names NVRTC and the CUDA runtime 11.8, which a CUDA 12 build of CuPy cannot
+# load, so on a CUDA 12 toolkit there is no certified recipe: the same versions
+# through `nvidia` run the fast path and are recorded as not certified. The
+# Triton pin repeats the one PyTorch 2.5.1 requires. Triton 3.1.0 publishes
+# wheels for Python 3.8 to 3.12, so this recipe needs Python 3.10, 3.11 or 3.12.
+# Verify with MEEP_GPU_HARDWARE=certified.
+nvidia-certified = [
+  "cupy-cuda11x==13.5.1; sys_platform == 'linux' and platform_machine == 'x86_64'",
+  "triton==3.1.0; sys_platform == 'linux' and platform_machine == 'x86_64'",
+  "torch==2.5.1; sys_platform == 'linux' and platform_machine == 'x86_64'"
 ]
 # ---------------------------------------------------------------------------
 # The Apple route: PyTorch supplies the MPS device and the Metal shader
-# frontend the Metal kernels launch through. Certified environment of record:
-# GPU architecture applegpu_g13s (Apple M1 Max), torch 2.10.0, Metal frontend
-# metalfe-32023.850.10, PYTORCH_MPS_FAST_MATH unset or 0. The GPU and the
-# frontend (one per macOS build) belong to the host and cannot be pinned by an
-# installer. On any other environment the Metal kernels run and the run is
-# recorded as not certified, unless MEEP_GPU_HARDWARE=certified refuses it by
-# name to the array path.
+# frontend the Metal kernels launch through. Certified environments of record:
+# applegpu_g13s (Apple M1 Max, Metal frontend metalfe-32023.921.5) and
+# applegpu_g16g (Apple M4, metalfe-32023.886.1), each with torch 2.10.0 and
+# PYTORCH_MPS_FAST_MATH unset or 0. The GPU and the frontend (one per macOS
+# build) belong to the host and cannot be pinned by an installer.
+#
+#   * `apple`, supported: PyTorch 2.10.0 or later, with no upper bound. On any
+#     environment other than a certified one the Metal kernels run and the
+#     run is recorded as not certified.
+#   * `apple-certified`: PyTorch 2.10.0 exactly. MEEP_GPU_HARDWARE=certified
+#     verifies the rest of a certified environment, and refuses anything
+#     else by name to the array path.
 # ---------------------------------------------------------------------------
 apple = [
+  "torch>=2.10.0; sys_platform == 'darwin' and platform_machine == 'arm64'"
+]
+apple-certified = [
   "torch==2.10.0; sys_platform == 'darwin' and platform_machine == 'arm64'"
 ]
 test = [
@@ -139,7 +189,7 @@ exclude = ["parity*", "examples*", "tools*", "docs*", "benchmarks*"]
 namespaces = false
 
 [tool.setuptools.package-data]
-# RUN-TIME DATA. The kernel tables open their certification ledgers beside the
+# Run-time data. The kernel tables open their certification ledgers beside the
 # modules when a run is planned; a wheel built without them would leave every
 # table unreadable. Listed by directory, not by a recursive glob, so nothing
 # else under the package directory rides along.
@@ -154,7 +204,7 @@ meep_gpu = ["LICENSE", "NOTICE"]
 # exercises the array-path reference; certification of the kernels is the gate
 # harness under parity/meep_gpu, not this suite.
 testpaths = ["meep_gpu", "parity/meep_gpu"]
-# NEVER COLLECT AN ARTIFACT TREE. Gate and benchmark runs write their output
+# Never collect an artifact tree. Gate and benchmark runs write their output
 # under parity/meep_gpu/results/, including staged copies of source. Anything
 # named test_*.py that lands there would otherwise be collected by the default
 # invocation and run against the live package with another tree's expectations.

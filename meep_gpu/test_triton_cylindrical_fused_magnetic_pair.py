@@ -1,6 +1,6 @@
 """The CYLINDRICAL COMPLEX fused magnetic Triton pair, as a laptop can check it.
 
-WHAT THIS SUITE OWNS AND WHAT IT DELIBERATELY DOES NOT. The BYTES are the device
+What this suite owns and what it deliberately does not. The BYTES are the device
 gate's — ``parity/meep_gpu/probe_triton_cylindrical_fused_magnetic_pair.py`` runs
 three routes in lockstep on CuPy and compares uint32 words at one launch and sixty,
 under BOTH float32 subnormal policies, and no assertion here duplicates that. What
@@ -8,7 +8,7 @@ lives here is everything true about the family WITHOUT a device: what the shippe
 kernel TEXT says, which configurations the predicate refuses and by what name, that
 the product is not an arm, and the choices a byte gate structurally cannot hold.
 
-THE FIVE CLAIMS THIS SUITE MAKES THAT THE GATE CANNOT.
+The five claims this suite makes that the gate cannot.
 
 1. **The product is not an arm.** Nothing in ``launch.py`` names this module and
    ``fastpath`` is untouched, so no default run can reach it. That is a property of
@@ -29,7 +29,7 @@ THE FIVE CLAIMS THIS SUITE MAKES THAT THE GATE CANNOT.
    appears in this body — parsed out of all three files, so a planted defect is
    EXECUTED against the certified text rather than mirrored by a re-implementation.
 
-NO EXPANSION ARM IS ASSERTED HERE, because none remains: the expansion licence, its
+No expansion arm is asserted here, because none remains: the expansion licence, its
 probe artifacts and the arm argument are deleted on all three tables, so every
 complex product has one emitted form. The device gate holds the bytes.
 """
@@ -112,16 +112,16 @@ def test_the_composer_routes_this_product_and_the_driver_seam_released_it():
     ``_install_fused_pair``, taking both slots only when ``_pair_may_absorb`` finds
     the arm table has already given them to the arms this kernel implements.
 
-    WIRING WAS NOT RELEASING, and this is the file where that sentence ended. It
+    Wiring was not releasing, and this is the file where that sentence ended. It
     was named ``..._and_dispatch_still_refuses_it`` for as long as the label sat
-    outside ``fastpath.RELEASED_FUSED_ARMS``; the 2026-09-13 phase B batch
+    outside ``fastpath.RELEASED_FUSED_ARMS``; the 2026-09-13 certification run
     (``dispatch_fused_route_2026-09-13_phaseB``) drove it through the driver's own
     consults on the two cylindrical-complex arms this product covers, so the label
     now names them in ``RELEASED_FUSED_ARMS`` and the pending rung no longer holds
     it.
 
-    THE PARTITION IS STILL EXACTLY ONE OF TWO, in the other direction: the label
-    is in ``ARM_CERTIFICATION`` (its ledger entry was cut from the phase B fleet
+    The partition is still exactly one of two, in the other direction: the label
+    is in ``ARM_CERTIFICATION`` (its ledger entry was cut from that run's fleet
     artifact by ``seed_triton_welds.py``) and out of ``PENDING_DEVICE_GATE_ARMS``.
     Both are asserted rather than one, because a label released while still pending
     would be a plan claiming a certification the rung says it lacks.
@@ -148,7 +148,7 @@ def test_the_composer_routes_this_product_and_the_driver_seam_released_it():
 def _ledger_claims(product: str) -> tuple[list[str], list[str]]:
     """Where the Triton ledger makes a claim ABOUT ``product``: keys, and digests.
 
-    ASKED STRUCTURALLY, BECAUSE A SUBSTRING ALSO MATCHES PROSE. Until 2026-09-04
+    Asked structurally, because a substring also matches prose. Until 2026-09-04
     this was ``product not in json.dumps(record)``, and on that day it went red
     over a sentence: ``family_recert_2026-08-14``'s ``source_drift_since_recert``
     declaration for ``cylindrical_complex.py`` names
@@ -188,7 +188,7 @@ def _ledger_claims(product: str) -> tuple[list[str], list[str]]:
 
 
 def test_the_module_has_a_fingerprints_weld():
-    """RELEASED 2026-09-13, so a byte-identity claim IS now made: the phase B batch
+    """RELEASED 2026-09-13, so a byte-identity claim IS now made: that certification run
     ran this family's device gate to a release verdict and ``seed_triton_welds.py``
     cut its weld from the 2026-09-12 identity fleet, keyed on the gate and pinning
     the module's checked-in digests. What used to be "no checked-in hash may imply
@@ -229,7 +229,7 @@ def test_the_kernel_calls_no_complex_multiply_helper():
 # ---------------------------------------------------------------------------
 
 def test_every_certified_curl_statement_appears_in_the_fused_body():
-    """PARSED OUT OF BOTH FILES. A suite that re-implemented the kernel's arithmetic
+    """Parsed out of both files. A suite that re-implemented the kernel's arithmetic
     would MIRROR a planted defect instead of executing it — measured on this project
     2026-08-20, where three planted assembly defects each left 86 of 87 mirrored
     tests passing."""
@@ -247,7 +247,7 @@ def test_every_certified_curl_statement_appears_in_the_fused_body():
 
 
 def test_every_constitutive_statement_of_the_twin_appears_in_the_fused_body():
-    """``update_H`` carries NO cylindrical branch — the cylindrical tranche measured
+    """``update_H`` carries NO cylindrical branch — the cylindrical family's gate measured
     480/480 rows, 0 differing words — so the constitutive half IS the complex twin's
     weld, character for character."""
     certified = statements(
@@ -330,7 +330,7 @@ def test_the_axis_increment_replaces_the_row_and_negates_with_a_literal():
     """REPLACE, never accumulate — and the negation is ``* -1.0``, never unary minus
     (Triton lowers ``-x`` as ``0.0 - x`` and canonicalizes +-0).
 
-    MEASURED ON THE GPU HOST 2026-08-20 AND THIS IS WHY THE GATE SWEEPS VALUE CLASSES:
+    Measured on the GPU host 2026-08-20 and this is why the gate sweeps value classes:
     the accumulate spelling is a CATCH on the +-0 lattice and a NULL under random
     seeding and under zero-init. A gate that swept uniform seeds alone would have
     reported the defect uncaught and called the kernel certified."""

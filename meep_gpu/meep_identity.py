@@ -6,7 +6,7 @@ equals the reference MEEP's word at every compared step, and that every word
 ``get_array`` returns equals MEEP's. It is tested in three tiers
 (``docs/development/testing.md``, "MEEP identity"):
 
-* **Tier C**, the MEEP lane (``parity/meep_gpu/meep_identity_tier_c.py``): where a
+* **Tier C**, the MEEP side (``parity/meep_gpu/meep_identity_tier_c.py``): where a
   verified identity-reference MEEP is installed, it lifts a case, steps the lifted driver
   and MEEP in pair order, compares every word in process, and writes what Tier A replays.
 * **Tier A**, the replay (this module, judged in the default package suite): a capsule of
@@ -45,7 +45,7 @@ FTZ|DAZ through glibc's ``fenv_t`` on x86-64 Linux), measures it before the firs
 and at every compared step, refuses by name when it is not the mode, and restores the
 entry state. A ``flush`` set is minted only from an x86 flush reference at
 ``OMP_NUM_THREADS=1``; its replay runs the array path under FTZ|DAZ on x86-64 and under
-FZ on Apple silicon, where it is judged row by row (owner ruling R13).
+FZ on Apple silicon, judged row by row: arm64 FZ and x86 FTZ round some tiny products differently.
 
 COMPLEX MULTIPLIES. :func:`watching_complex_multiplies` views the driver's state arrays as
 an ndarray subclass whose ``__array_ufunc__`` and ``__array_function__`` record every
@@ -97,7 +97,7 @@ LEDGER_FILE = "meep_identity.json"
 #: Names another fixtures directory (a set minted to a staging directory, or an absent
 #: one): read by :func:`fixtures_root`.
 FIXTURES_ENVIRONMENT = "MEEP_IDENTITY_FIXTURES"
-#: The Tier A fixture budget in the repository (owner ruling R6), measured at mint.
+#: The Tier A fixture budget in the repository, measured at mint.
 FIXTURE_BUDGET_BYTES = 5_000_000
 #: The files of one minted case, by role, relative to the fixtures directory.
 CASE_FILES: Tuple[str, ...] = ("capsule", "currents", "digests", "planes")

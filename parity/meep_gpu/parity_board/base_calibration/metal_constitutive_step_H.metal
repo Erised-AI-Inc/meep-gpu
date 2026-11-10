@@ -48,8 +48,8 @@ kernel void constitutive_step(
 
     // --- component 0 -----------------------------------------------------------
     // `prev` is read BEFORE `fw` is written: the array path copies fw first
-    // (stepping.py:2090). Reversed, this is wrong only where kms != 0 -- INSIDE
-    // THE PML ONLY -- and looks like a slightly worse absorber, not like a bug.
+    // (stepping.py:2090). Reversed, this is wrong only where kms != 0 -- inside
+    // the PML only -- and looks like a slightly worse absorber, not like a bug.
     float prev0 = w0[ii];
     float src0 = g0[ii];
     w0[ii] = src0;

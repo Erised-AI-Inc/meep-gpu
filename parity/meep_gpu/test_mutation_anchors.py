@@ -1,6 +1,6 @@
 """The mutation batteries' anchors must still resolve — checked on every test run.
 
-Two harnesses, the same failure. THE CONVERTER'S BATTERY (the first three tests):
+Two harnesses, the same failure. The converter's battery (the first three tests):
 ``mutate_from_meep.py`` proves the converter's tests would NOTICE a converter bug, by
 applying each plausible one-line defect and requiring a failure. That proof is only
 worth what its anchors are worth: a mutation whose ``find`` text no longer appears in
@@ -22,7 +22,7 @@ A failure here means: re-anchor the mutation onto the rule that replaced the old
 or delete it if the change made it meaningless. Do not silence it — an unanchored
 mutation is a test that has stopped testing.
 
-THE GATE HARNESS'S NEEDLE TABLES (the rest). Every CUDA gate that arms the shared
+The gate harness's needle tables (the rest). Every CUDA gate that arms the shared
 probe's defects builds its own table with ``gate_needles.gate_table``; a device leg's
 verdict is a function of the mutated bytes it compiles, so a host derivation of those
 bytes is what a CPU run can check about it. ``record_gate_needle_anchors.py``
@@ -36,7 +36,7 @@ Re-mint with ``record_gate_needle_anchors.py --write`` in the change that moved 
 so the record's diff says which.
 
 THE INVERSION (the last two tests). The shared default's grouping defects plant the
-grouping the kernels carried until 0.10 on MEEP's, and no table keeps its own copy of
+grouping the kernels carried until 1.0 on MEEP's, and no table keeps its own copy of
 a shared spelling: a gate either borrows the default's entry or spells a different
 defect, so a later re-spelling of the default reaches every gate that shares it.
 """

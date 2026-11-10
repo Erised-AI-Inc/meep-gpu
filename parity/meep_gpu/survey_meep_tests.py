@@ -95,6 +95,61 @@ OPTIONAL_DEPS = {
     "meep.adjoint", "meep.mpb", "mpb", "pytest", "h5py", "matplotlib", "scipy",
 }
 
+
+def _neutral_ids():
+    """The record spellings of machine stamps: ``neutral_ids.py`` beside this file. A
+    survey row leaves the machine that wrote it, so the interpreter, an error naming a path,
+    a child's stderr and the log are written through it (labels, never this host's paths)."""
+    try:
+        import neutral_ids  # noqa: PLC0415
+    except ImportError:  # imported as a package module, not from parity/meep_gpu
+        from parity.meep_gpu import neutral_ids  # noqa: PLC0415
+    return neutral_ids
+
+
+def _amp_spec_name(spec: str) -> str:
+    """``file:dataset`` with the file named by its base name: MEEP's tests build the spec
+    from their own absolute ``data/`` directory, which names the account and the machine
+    the corpus was surveyed on, not the measurement."""
+    filename, colon, dataset = spec.rpartition(":")
+    if not colon:
+        return os.path.basename(spec.replace("\\", "/"))
+    return os.path.basename(filename.replace("\\", "/")) + ":" + dataset
+
+
+def neutral_amp_notes(notes):
+    """``amp_func_file_substituted`` as a row writes it: each note's ``amp_func_file`` spec
+    reduced to the HDF5 file's base name and dataset (:func:`_amp_spec_name`), then the
+    note through ``neutral_ids.text``. Every spelling of one spec (an absolute path on any
+    machine, or a base name already) gives the same note, so rows recorded before and after
+    this rule compare equal where they read the same file (``meep_identity_corpus``'s
+    ``RUN_KEYS``)."""
+    if not isinstance(notes, list):
+        return notes
+    import re  # noqa: PLC0415
+
+    def one(note):
+        if not isinstance(note, str):
+            return note
+        note = re.sub(r"amp_func_file (['\"])(.*?)\1",
+                      lambda m: f"amp_func_file {m.group(1)}{_amp_spec_name(m.group(2))}{m.group(1)}",
+                      note)
+        return _neutral_ids().text(note)
+
+    return [one(note) for note in notes]
+
+
+def neutral_record(record):
+    """A survey row as it is written: ``amp_func_file_substituted`` by
+    :func:`neutral_amp_notes`, every other string through ``neutral_ids.value``."""
+    if not isinstance(record, dict):
+        return _neutral_ids().value(record)
+    out = dict(record)
+    if "amp_func_file_substituted" in out:
+        out["amp_func_file_substituted"] = neutral_amp_notes(out["amp_func_file_substituted"])
+    return _neutral_ids().value(out)
+
+
 # Names that mean the module drives MPI rather than a single rank.
 MPI_MARKERS = (
     "divide_parallel_processes", "count_processors", "merge_subgroup_data",
@@ -204,7 +259,7 @@ def stage_inventory(tests: Path, out_root: Path, say) -> None:
             row = {"module": path.name, "parse_error": f"{type(exc).__name__}: {exc}"[:300]}
         rows.append(row)
         with jsonl.open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps(row) + "\n")
+            handle.write(json.dumps(neutral_record(row)) + "\n")
         say(f"  {index:>2}/{len(files)} {path.name:<38} sims={row.get('simulation_sites', '?'):>3} "
             f"methods={row.get('n_test_methods', '?'):>3} asserts={row.get('n_assertion_calls', '?'):>4} "
             f"deps={','.join(row.get('optional_deps') or []) or '-'}")
@@ -247,6 +302,19 @@ class _StopTest(Exception):
 
 class _CaseTimeout(Exception):
     pass
+
+
+def _neutral_ids():
+    # The record spellings of machine stamps (parity/meep_gpu/neutral_ids.py): the case
+    # record leaves the machine inside every record built on it (this survey's rows, the
+    # census's, the identity corpus's, the stress run's), so the interpreter and an error
+    # naming a path are spelled neutrally here, once. A child run as a script has this
+    # directory on sys.path; an in-process exec has the package root.
+    try:
+        import neutral_ids
+    except ImportError:
+        from parity.meep_gpu import neutral_ids
+    return neutral_ids
 
 
 # Every route into MEEP's own stepper or grid build, exactly the set the examples
@@ -387,7 +455,8 @@ def _run_case(module, module_path, class_name, method_name, timeout_s):
     record = {
         "module": os.path.basename(module_path),
         "case": f"{class_name}.{method_name}",
-        "python": sys.executable,
+        # Under its root's label (``<home>/...``): which environment, never whose.
+        "python": _neutral_ids().path(sys.executable),
         "meep_version": str(getattr(mp, "__version__", None)),
         "single_precision": bool(getattr(mp, "is_single_precision", lambda: None)()),
     }
@@ -406,16 +475,16 @@ def _run_case(module, module_path, class_name, method_name, timeout_s):
         record["capture_point"] = str(exc)
     except _CaseTimeout as exc:
         record["outcome"] = "case_timeout"
-        record["error"] = str(exc)
+        record["error"] = _neutral_ids().text(str(exc))
     except unittest.SkipTest as exc:
         record["outcome"] = "skipped"
-        record["error"] = str(exc)[:300]
+        record["error"] = _neutral_ids().text(str(exc))[:300]
     except SystemExit as exc:
         record["outcome"] = "sysexit"
-        record["error"] = repr(exc)
+        record["error"] = _neutral_ids().text(repr(exc))
     except BaseException as exc:
         record["outcome"] = "error"
-        record["error"] = f"{type(exc).__name__}: {exc}"[:400]
+        record["error"] = _neutral_ids().text(f"{type(exc).__name__}: {exc}")[:400]
     finally:
         _cancel_alarm()
     record["setup_s"] = round(time.time() - started, 2)
@@ -508,7 +577,7 @@ def child_lift(namespace: dict, module, module_path: str, case: tuple, timeout_s
         record["accept_error"] = f"{type(exc).__name__}: {exc}"[:600]
     progress(f"{record['case']}: gate accepted={record.get('accepted')}")
 
-    # THE VERDICT AS WRITTEN IS RECORDED ABOVE AND NEVER OVERWRITTEN. What follows is
+    # The verdict as written is recorded above and never overwritten. What follows is
     # the one substitution the assertions stage performs — reading an `amp_func_file`
     # source's HDF5 dataset here and handing it over as the `amp_data` array MEEP's own
     # file route builds from it (sources.cpp:421-460). The package refuses the file
@@ -529,7 +598,7 @@ def child_lift(namespace: dict, module, module_path: str, case: tuple, timeout_s
             substituted = []
             record["amp_func_file_substitution_error"] = f"{type(exc).__name__}: {exc}"[:400]
         if substituted:
-            record["amp_func_file_substituted"] = substituted
+            record["amp_func_file_substituted"] = neutral_amp_notes(substituted)
             try:
                 verdict = meep_gpu.gpu_compatibility(sim)
                 record["accepted_after_substitution"] = bool(verdict.supported)
@@ -596,7 +665,7 @@ def child_parity(namespace: dict, module, module_path: str, case: tuple, timeout
     except Exception:
         pass
 
-    # THE SAME ONE SUBSTITUTION the lift and assertions stages make, applied here for
+    # The same one substitution the lift and assertions stages make, applied here for
     # the same reason: `amp_func_file` names an HDF5 dataset, the package carries no
     # HDF5 dependency and refuses that spelling, and MEEP's own file route reads the
     # dataset and then calls the ARRAY overload (src/sources.cpp:421-460). Reading it
@@ -618,7 +687,7 @@ def child_parity(namespace: dict, module, module_path: str, case: tuple, timeout
         substituted = []
         record["amp_func_file_substitution_error"] = f"{type(exc).__name__}: {exc}"[:400]
     if substituted:
-        record["amp_func_file_substituted"] = substituted
+        record["amp_func_file_substituted"] = neutral_amp_notes(substituted)
         progress(f"{record['case']}: amp_func_file read here; both sides get the array")
 
     facts = record.get("facts") or {}
@@ -747,7 +816,7 @@ CASE_OVERHEAD_S = 30.0
 
 
 # Rows whose STOCK-MEEP control pass alone costs more than any alarm this harness
-# would set. THE DISTINCTION THIS TABLE EXISTS TO KEEP: a row killed by the per-case
+# would set. The distinction this table exists to keep: a row killed by the per-case
 # alarm is alarm-limited — raising --assert-timeout drives it — whereas a row in here
 # is not, and a bigger alarm only buys a longer kill. Both were measured; conflating
 # them is how a budget question gets mistaken for a capability one.
@@ -782,7 +851,7 @@ COST_LIMITED_CASES: dict[str, dict] = {
 def module_ceiling(stage: str, n_cases: int, args) -> tuple[float, str]:
     """Wall-clock ceiling for one module's child process, in seconds.
 
-    THE CEILING HAS TO TRACK THE PER-CASE TIMEOUT OR IT CANCELS IT. A module ceiling
+    The ceiling has to track the per-case timeout or it cancels it. A module ceiling
     below what its own cases are allowed to spend kills the child mid-batch and loses
     every case after the slow one — measured: test_binary_grating recorded one row and
     then a ``<module tail>`` marker, twice, at both 900 s and 3630 s.
@@ -884,7 +953,7 @@ def run_child_module(namespace: dict, module_path: str, stage: str, out_jsonl: P
 
     def emit(record: dict) -> None:
         with out_jsonl.open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps(record) + "\n")
+            handle.write(json.dumps(neutral_record(record)) + "\n")
             handle.flush()
 
     started = time.time()
@@ -962,7 +1031,7 @@ def main() -> int:
                              "a bound it can state in advance. 0 disables the cap.")
     parser.add_argument("--include-cost-limited", action="store_true",
                         help="attempt the cases in COST_LIMITED_CASES, whose stock-MEEP control "
-                             "pass was MEASURED to outrun any alarm. Off by default: they are "
+                             "pass was measured to outrun any alarm. Off by default: they are "
                              "recorded with that measurement instead of eating the module's "
                              "ceiling and taking every case after them down with it.")
     parser.add_argument("--case-timeout", type=float, default=180.0,
@@ -1010,6 +1079,7 @@ def main() -> int:
         log_path.write_text("", encoding="utf-8")
 
     def say(message: str) -> None:
+        message = _neutral_ids().text(message)  # the log leaves the machine with the rows
         print(message, flush=True)
         with log_path.open("a", encoding="utf-8") as handle:
             handle.write(message + "\n")
@@ -1042,7 +1112,7 @@ def main() -> int:
         modules = [name for name in modules if name in wanted]
         per_module_cases = {name: wanted[name] for name in modules}
 
-    # Cases MEASURED to outrun any alarm are held out of the child's batch and given
+    # Cases measured to outrun any alarm are held out of the child's batch and given
     # their measurement as their row (see COST_LIMITED_CASES). Held out rather than
     # attempted-and-killed because the kill is not confined to the case: the parent
     # kills the whole child, so every case queued behind it is lost too — which is
@@ -1114,7 +1184,7 @@ def main() -> int:
         if cases_here is not None and not cases_here:
             with jsonl.open("a", encoding="utf-8") as handle:
                 for row in pre_rows:
-                    handle.write(json.dumps(row) + "\n")
+                    handle.write(json.dumps(neutral_record(row)) + "\n")
                 handle.flush()
             say(f"  {index:>2}/{len(modules)} {module:<38} "
                 f"{len(pre_rows):>3} cases  all held out (cost-limited)  [  0.0 s]")
@@ -1161,6 +1231,8 @@ def main() -> int:
         if child_out.exists():
             rows = [json.loads(line) for line in child_out.read_text(encoding="utf-8").splitlines()
                     if line.strip()]
+        # Neutral before it is cut: a tail cut first can begin inside a path.
+        stderr_text = _neutral_ids().text(stderr_text)
         if not rows or status == "timeout" or (returncode not in (0, None)):
             # The child died (or ran out of time) with cases still unvisited. That is
             # a result about the harness, recorded as such rather than as a refusal.
@@ -1186,7 +1258,7 @@ def main() -> int:
             (batch_dir / f"{module}.{args.stage}.stderr.txt").write_text(stderr_text, encoding="utf-8")
         with jsonl.open("a", encoding="utf-8") as handle:
             for row in rows:
-                handle.write(json.dumps(row) + "\n")
+                handle.write(json.dumps(neutral_record(row)) + "\n")
             handle.flush()
         elapsed = time.time() - case_start
         if args.stage == "lift":
@@ -1281,7 +1353,7 @@ def summarize(jsonl: Path, stage: str, say) -> None:
         # runs its own solver, and the constructor-bookkeeping tests never call run()
         # at all. Their assertions hold, but they are not evidence about the STEPPER,
         # so the quotable figure excludes them — the same split `analyze_meep_tests
-        # _survey.py` reports as "THE QUOTABLE NUMBER" from rollup's engine_stepped_*.
+        # _survey.py` reports as "the quotable number" from rollup's engine_stepped_*.
         stepped = [r for r in driven if (r.get("driven") or {}).get("engine_steps")]
         say(f"  of which actually STEPPED this engine : {len(stepped)} cases, "
             f"{sum(r.get('assertions_passed', 0) for r in stepped)}/"

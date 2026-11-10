@@ -17,7 +17,7 @@ bindings therefore carry three flags, one for each target in ``step_B`` or
 ``step_D``.  A D-only conductivity still admits the ``step_B`` plan, but all of
 its flags are false and it emits the ordinary direct tail for that sub-step.
 
-THE STENCIL IS MEEP'S, the plain no-PML curl's statements imported rather than
+The stencil is MEEP's, the plain no-PML curl's statements imported rather than
 restated (:data:`.no_pml_curl.CURL_STATEMENTS`, the PML curl's own text):
 ``dtdx * (((g1s - g1) + g2) - g2s)`` with both partners, ``dtdx * (g1s - g1)`` without
 ``g2`` and ``(-dtdx) * (g2s - g2)`` without ``g1`` (``stepping._curl_from_operands``;
@@ -231,7 +231,7 @@ def metal_conductive_plain_curl_coverage(fields: Any, pml: Any,
 class MetalConductivePlainCurlPlan(KernelPlan):
     """Persistent-mirror plan for one no-PML conductive curl sub-step.
 
-    THE CHUNK RECORD BINDS LAST (:data:`RECORD_BUFFER`), checked against the plan's
+    The chunk record binds last (:data:`RECORD_BUFFER`), checked against the plan's
     shape (:func:`.chunk_bounds.plan_words`) and uploaded once as a plan-owned
     ``int32`` vector, as the plain no-PML curl binds it. ``chunk_bounds`` keeps the
     host words for inspection.

@@ -7,10 +7,10 @@ source per step instead of three -- and FAIL CLOSED to all three, counting it, w
 the written array cannot be established. The argument is that a diagonal constitutive
 target reads its own component at the cell and nothing else, so recomputing it where its
 input did not change reproduces the launch's value bit for bit; the full bracket was
-over-covering. ``the design notes (deposit-repair-kernel-scope)`` section 1 finding 1 and
-section 9 carry the measurements this rests on.
+over-covering, and it was measured before it landed: 24 of 24 host configurations
+bit-identical in process, and 84 of 84 device legs on one RTX A6000 (2026-09-20).
 
-WHAT THIS FILE HOLDS. Over-covering is safe and UNDER-covering is the silent wrong
+What this file holds. Over-covering is safe and UNDER-covering is the silent wrong
 answer, so nothing here is argued:
 
 * every comparison runs the FROZEN FULL-BRACKET arithmetic
@@ -23,7 +23,7 @@ answer, so nothing here is argued:
   (``restricted_sources``) and that nothing fell back (``restriction_fallbacks``): a
   bit-identity check against a module that quietly kept the full bracket would pass for
   the wrong reason;
-* every comparison is paired with THE NULL CONTROL -- the same protocol with the repair
+* every comparison is paired with the null control -- the same protocol with the repair
   aimed at the WRONG component -- which must diverge, and diverge in the source's own
   component. A case where that leg agrees cannot tell a correct restriction from one
   that repairs nothing.
@@ -35,7 +35,7 @@ it, which is what reaches the conductive deposit (each source's own double-preci
 deposit scaled by ``condinv``, ``sources._deposit``), the magnetic synchronization path
 (``driver.synchronize_magnetic_fields``) and the lifted corpus cases.
 
-ALL FOUR LISTED SOURCE CLASSES ARE DRIVEN. ``_make_source`` builds two of them
+All four listed source classes are driven. ``_make_source`` builds two of them
 (``GaussianPulsedSource``, ``VolumeSource``); the ``CW`` cases and the ``continuous``
 driver configurations build the other two (``ContinuousSource``, ``ExtendedSource``),
 which are what the driver's default source kind constructs. Every injection writes its
@@ -43,7 +43,7 @@ one primary array and nothing else: a deposit under a layer whose chunk carries 
 dsig layer is damped by the dsig-only form on the field itself, so no auxiliary is a
 deposit target.
 
-AND THE LIST IS OF INJECTS, NOT OF TYPES: an exact-class source whose ``inject`` has
+And the list is of injects, not of types: an exact-class source whose ``inject`` has
 been rebound -- on the instance or on the class, delegating or writing a second array
 -- must fail closed like any other source whose write path was not read.
 
@@ -120,7 +120,7 @@ def _state_arrays(fields: Any) -> Dict[str, numpy.ndarray]:
     ``_condinv``, a pole's ``sigma``) that no step writes, and are left out so the
     word count is a count of words a step CAN write.
 
-    SCRATCH IS EXCLUDED BY NAME, and that is the one judgement here:
+    Scratch is excluded by name, and that is the one judgement here:
     ``_fmp_scratch`` is the shared buffer ``displacement_minus_polarization``
     overwrites whole on every call (``fields.py:1096-1105``). It carries nothing between
     calls and legitimately ends a step holding the LAST component formed -- Ez after the
@@ -174,7 +174,7 @@ def _compare(label: str, left: Dict[str, numpy.ndarray],
 # The emulated level: the driver's order, with the launch emulated by stepping
 # ---------------------------------------------------------------------------
 
-#: The fused product's launch: the sub-step in the DRIVER'S OWN ORDER
+#: The fused product's launch: the sub-step in the driver's own order
 #: (``driver.py:3291-3311`` magnetic, ``:3315-3331`` electric) with the one thing a
 #: launch cannot contain -- the injection -- left out. On an unfolded grid both fills
 #: are inert; on a folded one they are what a folded product's REPLACES carries.
@@ -275,7 +275,7 @@ class _Counters:
 
 
 class _FrozenFullBracket:
-    """THE UNRESTRICTED ARITHMETIC: every target of the seam, for every source."""
+    """The unrestricted arithmetic: every target of the seam, for every source."""
 
     def __init__(self, fields, pml, sources, pair, paths):
         self._args = (fields, pml, tuple(sources), pair, tuple(paths))
@@ -365,7 +365,7 @@ def _run(case: Case, leg: str):
             _bracketed_step(fields, pml, sources, step * dt, dt, case.pair, case.inject,
                             bracket)
         if step < case.steps - 1:
-            # THE STATE AFTER EVERY STEP, not only the last. A D-seam case here never
+            # The state after every step, not only the last. A D-seam case here never
             # steps B, so on an ungraded axis a wrong constitutive result is overwritten
             # by the next step's and the final state would vouch for the last step alone
             # (the comment above ``CW_FREQUENCY`` is where that was measured).
@@ -377,7 +377,7 @@ def _run(case: Case, leg: str):
 
 
 def _aim_at_the_wrong_component(monkeypatch) -> None:
-    """THE NULL CONTROL'S PLANT: every source's repair lands on the NEXT target of its
+    """The null control's plant: every source's repair lands on the NEXT target of its
     seam -- a real target, so every guard admits it -- and never on the one it wrote."""
     real = deposit_repair._written_targets
 
@@ -404,7 +404,7 @@ def _own_arrays(sources: Sequence[Any], pair: str) -> set:
 
 
 def _pole_build(complex_storage: bool = False, seed: int = 20260920):
-    """SPLIT FIELD, DISPERSIVE, EVERY COMPONENT DRIVEN. ``test_deposit_repair``'s
+    """Split field, dispersive, every component driven. ``test_deposit_repair``'s
     dispersive build puts its pole on Ez alone, so ``D - sum P`` is formed for one
     component and the shared scratch is never reused inside one repair. Here two poles
     drive Ex, Ey and Ez with different sigmas, so every component's constitutive input
@@ -434,7 +434,7 @@ def _pole_build(complex_storage: bool = False, seed: int = 20260920):
 
 
 def _conductive_build(seed: int = 20260921):
-    """SPLIT FIELD WITH A D CONDUCTIVITY: the configuration whose electric deposits
+    """Split field with a D conductivity: the configuration whose electric deposits
     carry the ``condinv`` scale inside their own double expression (``sources._deposit``)."""
     grid = Grid(resolution=12.0, cell_size=(1.2, 1.2, 0.0), dimensions=2)
     fields = Fields(grid=grid)
@@ -551,7 +551,7 @@ CASES = [
          _point("B", "Hz")),
     Case("complex B line Hx in the PML shell", "B", lambda: _build(complex_storage=True),
          _point("B", "Hx", SHELL, (0.0, 0.3, 0.0))),
-    # SEVERAL SOURCES ON ONE SEAM.
+    # Several sources on one seam.
     Case("two sources, one component, ONE CELL (a duplicate cell)", "D", _build,
          _several("D", ("Ez", O, O), ("Ez", O, O))),
     Case("two sources, one component, overlapping line and point", "D", _build,
@@ -564,7 +564,7 @@ CASES = [
          _several("D", ("Ex", O, O), ("Ey", (0.1, 0.0, 0.0), O), ("Ez", SHELL, O))),
     Case("two magnetic sources on different components", "B", _build,
          _several("B", ("Hx", O, O), ("Hz", (0.1, 0.2, 0.0), O))),
-    # THE FOLDED SEAM: the image closure is per (component, source), so restricting the
+    # The folded seam: the image closure is per (component, source), so restricting the
     # component must keep every image of the component that IS written.
     Case("folded, Ez on the near fill's source row", "D", _folded_build,
          lambda grid: [_folded_source(grid, MIRROR_ROW_Y, "Ez")]),
@@ -588,7 +588,7 @@ CASES = [
          _several("D", ("Ex", O, O), ("Ez", (0.2, 0.1, 0.0), (0.3, 0.0, 0.0))), steps=12),
     Case("SHARED SCRATCH, complex: one source on Ex", "D",
          lambda: _pole_build(complex_storage=True), _point("D", "Ex", SHELL), steps=12),
-    # THE PLAIN OVERWRITE PATH.
+    # The plain overwrite path.
     Case("plain, two poles, Ez", "D", _plain_build, _point("D", "Ez"), paths=PLAIN),
     Case("plain, the one-pole component Ey, line", "D", _plain_build,
          _point("D", "Ey", O, (0.0, 0.6, 0.0)), paths=PLAIN),
@@ -596,7 +596,7 @@ CASES = [
          _point("D", "Ez"), paths=PLAIN),
     Case("plain, Ex and Ez together", "D", _plain_build,
          _several("D", ("Ex", O, (0.6, 0.0, 0.0)), ("Ez", O, O)), paths=PLAIN),
-    # THE CONDUCTIVE DEPOSIT: the driver's own per-source injection on a D conductivity.
+    # The conductive deposit: the driver's own per-source injection on a D conductivity.
     Case("conductive deposit, split field, Ez", "D", _conductive_build,
          _point("D", "Ez")),
     Case("conductive deposit, split field, Ex line and Ez point", "D", _conductive_build,
@@ -612,7 +612,7 @@ CASES = [
          paths=PLAIN),
     Case("an INTEGRATED magnetic source (its dipole at the constitutive update)", "B", _build,
          lambda grid: [_integrated(grid, "Hz", O)]),
-    # THE TWO CLASSES THE DEFAULT ``continuous`` KIND BUILDS. Both are on
+    # The two classes the default ``continuous`` kind builds. Both are on
     # ``deposit_repair._READ_INJECTS``, and every case above builds the other two
     # (``_make_source``: GaussianPulsedSource and VolumeSource), so until 2026-09-20 an
     # edit to either ``inject`` that added a second write would have passed this file.
@@ -698,7 +698,7 @@ def test_the_restricted_repair_is_word_identical_to_the_full_bracket(case):
 
 @pytest.mark.parametrize("case", CASES, ids=IDS)
 def test_repairing_the_wrong_component_diverges(case, monkeypatch):
-    """THE NULL CONTROL. Without it every case above proves only that two legs agree."""
+    """The null control. Without it every case above proves only that two legs agree."""
     full, _frozen, _sources = _run(case, "frozen_full")
     _aim_at_the_wrong_component(monkeypatch)
     wrong, bracket, sources = _run(case, "plan")
@@ -834,7 +834,7 @@ def test_known_value_at_one_hand_built_deposit_cell(pair, component, complex_sto
 
     before, count = drive(fields, pml, source, deposit_repair.save, deposit_repair.apply)
     assert count == 1, count
-    # THE RECURRENCE ON SCALARS, each operation rounded on its own, in
+    # The recurrence on scalars, each operation rounded on its own, in
     # ``_apply_constitutive_pml``'s operand order: MEEP's right-hand side first
     # (step_generic.cpp:697).
     expected = f_old + ((kp * fresh) - (km * fw_old))
@@ -849,7 +849,7 @@ def test_known_value_at_one_hand_built_deposit_cell(pair, component, complex_sto
     fused = _contracted(numpy.real(f_old), numpy.real(fresh), numpy.real(fw_old), kp, km)
     assert words(numpy.real(expected)) != words(fused)
 
-    # NOTHING ELSE MOVED. The other two components at this cell were not written by the
+    # Nothing else moved. The other two components at this cell were not written by the
     # source, so the restricted repair leaves them exactly as the launch left them.
     after = _state_words(fields)
     moved = {name for name in after if (after[name] != before[name]).any()}
@@ -950,7 +950,7 @@ READ_INJECT = {kind: kind.__dict__["inject"] for kind in (
 
 
 def _write_Dx_too(source, fields) -> None:
-    """THE WRITE THE ALLOW-LIST EXISTS TO CATCH: a second array, at the deposit cells."""
+    """The write the allow-list exists to catch: a second array, at the deposit cells."""
     fields.Dx[source._point_ix, source._point_iy, source._point_iz] -= numpy.float32(0.125)
 
 
@@ -992,7 +992,7 @@ FAIL_CLOSED = {
         lambda monkeypatch, source: (_unmapped(monkeypatch), source)[1],
     "a source class whose inject this module has not read":
         lambda monkeypatch, source: _retype(source),
-    # THE INJECT THAT WILL RUN IS NOT THE FUNCTION THAT WAS READ. The type is still the
+    # The inject that will run is not the function that was read. The type is still the
     # engine's own class, which is all the allow-list looked at until 2026-09-20.
     "inject rebound on the instance, delegating":
         lambda monkeypatch, source: _rebind_on_the_instance(source),
@@ -1011,7 +1011,7 @@ FAIL_CLOSED = {
 @pytest.mark.parametrize("why", sorted(FAIL_CLOSED))
 def test_an_unestablished_written_array_fails_closed_to_all_three_and_is_counted(
         monkeypatch, why):
-    """FAIL CLOSED, COUNTED, AND STILL EXACT. The full bracket is what the module
+    """Fail closed, counted, and still exact. The full bracket is what the module
     shipped before the restriction, so falling back to it is the known-good answer."""
     steps = 6
 
@@ -1088,7 +1088,7 @@ def test_a_lookup_that_answers_nonsense_keeps_the_full_bracket(monkeypatch, answ
 
 
 def _answer_by_type_alone(source: Any, pair: str):
-    """WHAT THE ALLOW-LIST ANSWERED BEFORE IT LOOKED AT ``inject`` (this module at sha256
+    """What the allow-list answered before it looked at ``inject`` (this module at sha256
     ``53ba484c1f96``): the exact engine class and its component, nothing else."""
     if type(source).__name__ not in deposit_repair._READ_INJECTS:
         return None
@@ -1100,7 +1100,7 @@ def _answer_by_type_alone(source: Any, pair: str):
 @pytest.mark.parametrize("where", ["instance", "class"])
 def test_a_rebound_inject_that_writes_a_second_array_is_repaired_in_full(monkeypatch,
                                                                          where):
-    """THE SILENT CASE, WITH ITS NULL CONTROL. An exact-class source whose ``inject`` was
+    """The silent case, with its null control. An exact-class source whose ``inject`` was
     rebound to write Dx beside Dz: restricted to Ez it leaves Ex and f_w_Ex computed from
     a Dx the launch never saw. The full bracket this module shipped until 2026-09-20 got
     it right only by over-covering; the guard in ``_written_targets`` gets it right by
@@ -1124,7 +1124,7 @@ def test_a_rebound_inject_that_writes_a_second_array_is_repaired_in_full(monkeyp
                             f"{leg}", full, live), (where, leg)
         assert bracket.counters.restriction_fallbacks == steps
         assert bracket.counters.restricted_sources == 0
-    # THE NULL CONTROL: the same source narrowed by its type alone IS wrong, and wrong in
+    # The null control: the same source narrowed by its type alone IS wrong, and wrong in
     # the array the rebound inject wrote -- so the legs above can see the difference. The
     # source sits in the interior, outside every chunk carrying the x layer, so Ex there
     # takes the plain form and its f_w is never written: Ex alone shows it.
@@ -1146,7 +1146,7 @@ def test_what_the_lookup_answers_for_each_spelling_of_a_rebound_inject(monkeypat
 
     assert deposit_repair._written_targets(fresh(), "D") == (ez,)
     assert deposit_repair._written_targets(_rebind_on_the_instance(fresh()), "D") is None
-    # PUT BACK THE WAY THE SEAM PROBE PUTS IT BACK (``probe_dispatch_seam_sweep.py:195``):
+    # Put back the way the seam probe puts it back (``probe_dispatch_seam_sweep.py:195``):
     # ``setattr(source, "inject", <the bound real method>)``, which leaves an instance
     # attribute behind -- but one that runs the function that was read, on this source.
     source = fresh()
@@ -1467,7 +1467,7 @@ def test_the_checks_a_restricted_bracket_runs_still_refuse_its_own_component():
     assert deposit_repair.seam_source_reasons(
         fields, [source], "D", undeclared="-", refusal=lambda index, source: "-",
         carries_repair=True, pml=pml), "the predicate admitted what it used to refuse"
-    # THE OTHER DIRECTION, stated rather than left implicit: a source on Ez neither
+    # The other direction, stated rather than left implicit: a source on Ez neither
     # reads nor writes anything graded on x, so ITS bracket is not refused for it --
     # and what it writes is still the full bracket's answer, because the unrecognised
     # coefficient belongs to a recurrence this repair never evaluates.
@@ -1478,7 +1478,7 @@ def test_the_checks_a_restricted_bracket_runs_still_refuse_its_own_component():
 
 
 # ---------------------------------------------------------------------------
-# THE HOST CHECKS ARE LIVE EVERY STEP, which is why their verdict is not cached
+# The host checks are live every step, which is why their verdict is not cached
 # ---------------------------------------------------------------------------
 #
 # ``repairable`` inside ``save`` and ``_absorber_reasons`` inside ``apply`` are the
@@ -1489,7 +1489,7 @@ def test_the_checks_a_restricted_bracket_runs_still_refuse_its_own_component():
 # (``Fields.set_nonlinear_volumes``, ``Fields.set_epsilon_volumes``, a rebound ``f_w_*``
 # or PML coefficient) never reach ``FdtdDriver.invalidate_fast_path``, and the gates
 # that bracket a launch by hand hold no plan to invalidate at all. Each case below
-# mutates one such attribute UNDER A LIVE PLAN, through the public surface where one
+# mutates one such attribute under a live plan, through the public surface where one
 # exists, and requires the next step to refuse BEFORE the fused launch. They pass
 # today because nothing is cached; a verdict cache that did not also key on every one
 # of these would turn each refusal into a silent wrong answer and fail here.
@@ -1574,7 +1574,7 @@ def test_a_layer_mutated_between_the_two_consults_is_refused_before_the_first_wr
 
 
 # ---------------------------------------------------------------------------
-# THE DRIVER LEVEL: complete steps of a real FdtdDriver
+# The driver level: complete steps of a real FdtdDriver
 # ---------------------------------------------------------------------------
 
 SLOTS = {"B": ("step_B", "update_H"), "D": ("step_D", "update_E")}
@@ -1692,7 +1692,7 @@ def _synthetic_driver(conductive: bool = False, dispersive: bool = False,
                           "frequency": 1.0, "fwidth": 0.4, "center": center,
                           "size": (0.0, 0.0, 0.0)})
     if continuous:
-        # THE DRIVER'S DEFAULT KIND, through the driver's own constructor
+        # The driver's default kind, through the driver's own constructor
         # (``driver.py:2494-2510``): a point becomes a ``ContinuousSource`` and an extent
         # an ``ExtendedSource``. The line lies under the y layer; the conductive
         # configuration keeps both clear of the layers, as
@@ -1732,7 +1732,7 @@ def _live_counters(plans: Mapping[str, Any]) -> Dict[str, Any]:
 @pytest.mark.parametrize("name", sorted(SYNTHETIC))
 def test_a_real_driver_steps_identically_restricted_through_the_sync_path(
         monkeypatch, name):
-    """COMPLETE DRIVER STEPS with a flux call in the middle, so the magnetic bracket
+    """Complete driver steps with a flux call in the middle, so the magnetic bracket
     runs a second way -- ``synchronize_magnetic_fields`` consults ``step_B`` and then
     ``update_H_synchronize`` (``driver.py:4354``, ``:4386``), and ``restore`` then
     writes H back under the plan. Two magnetic and two electric sources, each pair on

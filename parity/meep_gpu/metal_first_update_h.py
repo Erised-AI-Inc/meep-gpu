@@ -1,6 +1,6 @@
 """A run's FIRST ``update_H`` through the Metal composition: the leg two gates share.
 
-WHY THE OTHER LEGS NEVER SAW IT. Every other leg of ``gate_metal_pml`` and
+Why the other legs never saw it. Every other leg of ``gate_metal_pml`` and
 ``gate_metal_fused_magnetic_pair`` seeds a mid-run state, which carries
 ``Fields.h_separated`` (H was started from B long ago), so neither the array path nor the
 composition takes MEEP's start of H (``stepping.separate_h_from_b``; update_eh.cpp:165-177)

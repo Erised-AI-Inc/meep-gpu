@@ -3,8 +3,8 @@
 The guides in this section describe the contract around a lifted run:
 
 - [Will it help?](will-it-help.md) states where the GPU has been measured
-  faster than MEEP and where to expect no gain, with the 1.0 comparisons on an
-  identical problem (one NVIDIA host, one Apple laptop) and the status of every
+  faster than MEEP and where to expect no gain, with the comparisons on an
+  identical problem, on NVIDIA and Apple hardware, and the status of every
   number.
 - [Time your own simulation](time-your-simulation.md) measures your own problem
   on this host's GPU, on the NumPy reference and on MEEP.

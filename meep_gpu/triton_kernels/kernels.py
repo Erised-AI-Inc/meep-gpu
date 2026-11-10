@@ -20,7 +20,7 @@ Every one of them takes ``ENABLE_FP_FUSION`` and every one of them has its group
 pinned by the shared byte gate; see the two numbered notes below, which apply to all
 five and not only to the curl.
 
-THE FORMS COME FROM :mod:`.forms`, NOT FROM THIS FILE. MEEP picks its PML form per
+The forms come from :mod:`.forms`, not from this file. MEEP picks its PML form per
 structure chunk (step_db.cpp:56-59) and its curl expression per partner presence
 (fields.cpp:428-453), and so does the array path. The four kernels below read the
 run's chunk record -- the ``int32[25]`` of ``chunk_map.chunk_bounds_record``, bound
@@ -36,7 +36,7 @@ expression itself, the term-to-axis table and the split-field recurrence are
 identical, exactly as ``step_generic.cpp``'s single ``step_curl`` is one function
 for both field types.
 
-WHAT IS TRANSCRIBED, and from where (re-checked against the tree, not the plan):
+What is transcribed, and from where (re-checked against the current source tree):
 
 * term table          ``stepping.B_CURL_TERMS`` / ``D_CURL_TERMS`` (stepping.py:213-223)
 * ghost rule          ``stepping._shift_up`` (:1723) / ``_shift_down`` (:1787),
@@ -51,7 +51,7 @@ WHAT IS TRANSCRIBED, and from where (re-checked against the tree, not the plan):
 * chunk membership    ``chunk_map.chunk_bounds_record`` / ``chunk_map.record_index``
 * coefficient pairing ``stepping._curl_coefficients`` (:2418)
 
-THE TWO THINGS THAT DECIDE BIT-IDENTITY, both measured rather than assumed:
+The two things that decide bit-identity, both measured rather than assumed:
 
 1. ``ENABLE_FP_FUSION = False``. Triton's ``enable_fp_fusion`` gates BOTH the
    LLVM contraction pass and ptxas's ``--fmad=false``; with it left at its True
@@ -296,7 +296,7 @@ def constitutive_step(
     (stepping.py:920 vs :986), so the kernel never chooses and cannot choose wrong —
     but the host can, which is why the gate carries a swap mutation for it.
 
-    THREE THINGS DECIDE BIT-IDENTITY HERE.
+    Three things decide bit-identity here.
 
     1. **The grouping.** MEEP's ``f[i] += X - Y;`` forms the right-hand side first,
        so the word is ``f + ((kps*src) - (kms*prev))``: the two products, their
@@ -306,8 +306,8 @@ def constitutive_step(
        ``((f + kps*src) - kms*prev)`` is a different float32 number, and neither
        multiply may contract into an FMA — ``ENABLE_FP_FUSION`` is what
        stops the second. The PML coefficients are the same family of
-       non-representable multiplicands §12.2 measured on the curl, so the guard
-       matters at every Courant number, not only at a non-power-of-two one.
+       non-representable multiplicands on which the unguarded curl was measured to
+       differ, so the guard matters at every Courant number, not only at a non-power-of-two one.
     2. **The coefficient index is on the component's OWN axis.** ``kps_x``/``kms_x``
        for target 0, ``_y`` for 1, ``_z`` for 2 (``H_CONSTITUTIVE_TERMS`` /
        ``E_CONSTITUTIVE_TERMS``, stepping.py:226-227) — that is MEEP's ``dsigw``,
@@ -315,10 +315,10 @@ def constitutive_step(
        is NOT the ``dsig``/``dsigu`` cycle the curl recurrence uses.
     3. **``prev`` is read before ``fw`` is written.** The array path copies ``fw``
        first (``fw_previous = fw.copy()``) for exactly this reason. Writing the store
-       before the load produces a wrong answer only where ``kms != 0`` — i.e. INSIDE
-       THE PML ONLY — which looks like a slightly worse absorber, not like a bug.
+       before the load produces a wrong answer only where ``kms != 0`` — i.e. inside
+       the PML only — which looks like a slightly worse absorber, not like a bug.
 
-    ``start_h`` IS MEEP'S START OF H (``stepping.separate_h_from_b``). MEEP allocates no
+    ``start_h`` is MEEP's start of H (``stepping.separate_h_from_b``). MEEP allocates no
     H array at first — ``alloc_f`` points H at B's storage (fields.cpp:485-494) — and
     the run's first ``update_eh(H_stuff)`` in a chunk that carries H's own layer starts
     H as a COPY of B and ``f_w`` as a copy of that H (update_eh.cpp:165-177). A nonzero
@@ -425,9 +425,9 @@ def fused_curl_constitutive_B(
     ZM_X: tl.constexpr, ZM_Y: tl.constexpr, ZM_Z: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
-    """``step_B`` and ``update_H`` in ONE launch — the cross-sub-step fusion (F1).
+    """``step_B`` and ``update_H`` in ONE launch — the cross-sub-step fusion.
 
-    THE POINT IS THE MEMORY ROUND TRIP, NOT THE ARITHMETIC. :func:`pml_curl_step`
+    The point is the memory round trip, not the arithmetic. :func:`pml_curl_step`
     stores ``v0`` into ``Bx`` and :func:`constitutive_step` immediately loads
     ``Bx`` back at the SAME index; both kernels are bandwidth-bound, so that store
     and that load are attacking the binding constraint and nothing else. This body
@@ -440,7 +440,7 @@ def fused_curl_constitutive_B(
     ``v0``..``v2`` the curl just computed ARE the B words MEEP's first ``update_eh``
     would copy from.
 
-    IS THE ROUND TRIP LOAD-BEARING FOR BIT-IDENTITY? No, and it is measured rather
+    Is the round trip load-bearing for bit-identity? No, and it is measured rather
     than argued. A Triton fp32 value lives in a 32-bit register on NVIDIA — there
     is no x87-style extended-precision accumulator for it to be truncated FROM —
     so ``store(f32 reg); load(f32)`` is the identity function on the bits. The gate
@@ -449,9 +449,9 @@ def fused_curl_constitutive_B(
     ``reload_B_from_memory_but_shift`` must not be, which is what makes the first
     result a measurement instead of a tautology.
 
-    ``BACKWARD`` IS CARRIED AND BOUND TO 0. Keeping it makes the curl half a
+    ``BACKWARD`` is carried and bound to 0. Keeping it makes the curl half a
     verbatim copy rather than a hand-specialised one, which is the whole reason the
-    transcription risk here is low. It must be 0: the D-side pair is Phase B, its
+    transcription risk here is low. It must be 0: the D-side pair is a separate product, its
     ownership mask covers two axes per component instead of one, and — decisively —
     an electric source deposits into D between ``step_D`` and ``update_E``, which
     this kernel has no way to carry. ``plan_fused_pair`` refuses anything else.
@@ -471,10 +471,10 @@ def fused_curl_constitutive_B(
     host binds them from that second question, and the gate carries
     ``drop_zero_metal_inline`` and ``zero_metal_after_constitutive`` for it.
 
-    WHAT IS NOT CARRIED, and therefore refused by ``fused_pair_coverage``: a
+    What is not carried, and therefore refused by ``fused_pair_coverage``: a
     magnetic source. ``FdtdDriver.step`` injects magnetic currents between
     ``step_B`` and ``update_H`` (driver.py:3164-3165), so a run that has one has
-    real work in the seam and the fusion is not a code motion. Phase A stays free
+    real work in the seam and the fusion is not a code motion. This B/H pair stays free
     of the source question entirely.
     """
     idx = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
@@ -678,7 +678,7 @@ def fused_curl_constitutive_D(
     ZM_X: tl.constexpr, ZM_Y: tl.constexpr, ZM_Z: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
-    """``step_D`` and ``update_E`` in one launch — cross-sub-step fusion F2.
+    """``step_D`` and ``update_E`` in one launch — the cross-sub-step fusion.
 
     This is the electric counterpart of :func:`fused_curl_constitutive_B`, kept a
     separate kernel because its seam is materially different. ``step_D`` uses the

@@ -1,6 +1,6 @@
 """``certification.json`` against the shipped source — with no GPU in the room.
 
-WHAT THIS FILE IS FOR. Everything the hand-CUDA track has certified was measured
+What this file is for. Everything the hand-CUDA track has certified was measured
 on one device and written into a ``parity/meep_gpu/results/`` directory — for the
 curl pair, ``fused_pml_bit_identity_hand_2026-08-22_rename/``, which replaced the
 2026-08-09 run beside it when the folded-PERIODIC top-plane branch moved both
@@ -24,8 +24,8 @@ this file welds the two together at the merge bar:
   * and the gaps the record does NOT close stay written down in it.
 
 The sibling record is ``triton_kernels/fingerprints.json`` and the sibling tests
-are in ``meep_gpu/test_triton_kernels.py``; the clauses here are the ones that
-round converged on, ported to a track that had none of them.
+are in ``meep_gpu/test_triton_kernels.py``; the clauses here are the ones the Triton
+gates converged on, ported to a track that had none of them.
 """
 
 from __future__ import annotations
@@ -55,7 +55,7 @@ GATE_DIR = (HERE.parents[1] / "parity" / "meep_gpu" / "results"
 
 #: Leg subdirectory -> the float32 subnormal policy that leg must stamp.
 #:
-#: BOTH ARE REQUIRED, and that is the whole reason this mapping exists rather than
+#: Both are required, and that is the whole reason this mapping exists rather than
 #: a single path. "Cut under both policies" is the fact that discharged this
 #: record's last piece of metadata debt (``test_certification_metadata.py``'s
 #: METADATA_DEBT, emptied on 2026-08-20), so a test that checked one leg would
@@ -171,7 +171,7 @@ def test_a_no_device_edit_that_names_a_kernel_module_says_why_the_verdict_surviv
     edited kernel keep a stale certification. Requiring the justification costs
     the honest case one sentence and closes the dishonest one.
 
-    MEASURED 2026-08-20, and this is why the rule exists rather than the taste:
+    Measured 2026-08-20, and this is why the rule exists rather than the taste:
     step_curl_kernels.py's certified curl strings grew the BC_MIRROR_PERIODIC
     top-plane mask, and that module is a SUBJECT of the off-diagonal block, whose
     release clause requires every edit to be touches_device_code False. The
@@ -199,7 +199,7 @@ def test_a_no_device_edit_that_names_a_kernel_module_says_why_the_verdict_surviv
         for edit in block["post_certification_edits"]:
             if edit.get("touches_device_code"):
                 continue
-            # THE SUBJECT OF THE EDIT, not every module its prose mentions. Every
+            # The subject of the edit, not every module its prose mentions. Every
             # entry in this record opens with the file it changed ("coverage.py
             # gained ...", "step_curl_kernels.py's certified curl device strings
             # grew ..."), and a rule that matched anywhere in the sentence flagged
@@ -236,7 +236,7 @@ def test_the_recorded_device_sources_are_the_shipped_device_sources():
             f"{name} changed since the bit-identity gate certified it. Re-run "
             f"parity/meep_gpu/probe_fused_kernel_bit_identity.py --track hand on "
             f"a CUDA host and re-cut certification.json with the new verdict.")
-    # THE ALL-FOURTEEN DIGEST IS RETIRED (2026-08-26) AND SO IS THIS CLAUSE. It
+    # The all-fourteen digest is retired (2026-08-26) and so is this clause. It
     # existed to freeze the twelve INHERITED kernels, which had no gate of their own;
     # they were deleted, so there is nothing left for it to freeze and a hash over two
     # strings under a name that says fourteen would be worse than none. The binding it
@@ -259,7 +259,7 @@ def test_the_certified_digest_is_the_one_the_gate_wrote():
     tests above. Where the artifact IS present, this is what catches a digest
     typed in by hand from the wrong run.
 
-    BOTH POLICY LEGS, not one. The old artifact was a single flat run and a single
+    Both policy legs, not one. The old artifact was a single flat run and a single
     pair of files was all there was to check. The 2026-08-20 re-cut is two device
     legs — one per float32 subnormal policy — and "cut under both" is the fact that
     let ``test_certification_metadata.py`` delete its last METADATA_DEBT entry. So
@@ -291,15 +291,15 @@ def test_the_certified_digest_is_the_one_the_gate_wrote():
         document = json.loads(payload.read_text(encoding="utf-8"))
         verdict = document["verdict"]
 
-        # THE DIGEST, from both of the artifact's homes for it.
+        # The digest, from both of the artifact's homes for it.
         assert entry["certified_module_sha256"] == written["module_sha256"].strip(), leg
         assert entry["certified_module_sha256"] == document["kernel_source_sha256"], leg
 
-        # THE LEG IS THE POLICY THE RECORD FILES IT UNDER.
+        # The leg is the policy the record files it under.
         assert written["subnormal_policy"].strip() == policy, leg
         assert verdict["subnormal_policy"] == policy, leg
 
-        # AND IT IS A PASS AT THE NUMBERS THE RECORD READS OFF IT.
+        # And it is a pass at the numbers the record reads off it.
         recorded = gate["per_policy"][leg]
         assert verdict["pass"] is True, leg
         assert verdict["curl_single_launch"] == \
@@ -381,7 +381,7 @@ def test_every_uncertified_kernel_carries_the_dead_marker_and_its_evidence():
     and which family covers each one.
     """
     source = module_source()
-    start = source.index("CERTIFIED, AND DEAD")
+    start = source.index("Certified, and dead")
     block = source[start:source.index("CERTIFIED_KERNELS = (", start)]
     for fact in ("0/16", "26 rows of the 186", "no fail-closed refusal"):
         assert fact in block, f"the dead-kernel block does not state {fact!r}"
@@ -405,7 +405,7 @@ def test_the_recorded_gate_verdict_is_pass_shaped():
     half is what stops the guarded half from being a comparison of two identical
     things: if ``--fmad=false`` did nothing, both columns would read N/N.
 
-    AND THE RE-CUT MAY NOT BE WEAKER THAN WHAT IT REPLACED. The 2026-08-09 cut
+    And the re-cut may not be weaker than what it replaced. The 2026-08-09 cut
     this block used to carry ran ONE leg, at normal numbers only, 8 steps deep.
     Its replacement runs a leg per float32 policy, adds a subnormal-band class the
     old one did not have at all, and goes 60 deep. Every one of those is asserted
@@ -492,7 +492,7 @@ def test_the_record_states_the_gaps_it_does_not_close():
 
     # The re-cut did not close everything, and the one it opened is the residual
     # of the one it closed: flush's host FPU flushes the graded band at
-    # generation, so that leg covers the needle constants only (section 7.2).
+    # generation, so that leg covers the needle constants only.
     assert "graded-subnormal-band-not-covered-under-flush" in gaps
 
 
@@ -563,7 +563,7 @@ def test_a_gap_whose_harness_half_landed_says_what_still_needs_the_device():
         assert gap["status"].startswith("open"), gap["id"]
 
 
-#: Every key in the record that names a MULTI-STEP LAUNCH BUDGET, in any block, in
+#: Every key in the record that names a multi-step launch budget, in any block, in
 #: any spelling the gates use. All of them must read 60.
 #:
 #: What is deliberately NOT in here: ``multi_step_runs`` (how many runs, not how
@@ -600,7 +600,7 @@ def multi_step_budgets(node, path="") -> dict:
 def test_the_harness_description_and_the_measured_verdict_stay_separate_blocks():
     """The two blocks may now AGREE — and must still be two different kinds of thing.
 
-    THE OLD CLAUSE AND WHY IT WENT. ``harness_2026-08-15`` says what the gate
+    The old clause and why it went. ``harness_2026-08-15`` says what the gate
     harness DOES; ``bit_identity_gate`` says what a device measured. Until
     2026-08-20 the loudest sign the two had not collapsed was that their step
     budgets disagreed — 60 in the harness, 8 in the verdict — so this test pinned
@@ -610,10 +610,10 @@ def test_the_harness_description_and_the_measured_verdict_stay_separate_blocks()
     The verdict EARNED the harness's number instead of inheriting it, which is
     exactly the event the old clause was there to distinguish from the other one.
 
-    WHAT NOW PROTECTS THE SAME PROPERTY. Not a disagreeing number — a difference in
+    What now protects the same property. Not a disagreeing number — a difference in
     kind that survives the numbers agreeing:
 
-      * the verdict block is CHECKABLE AGAINST A RUN. It names an artifact
+      * the verdict block is checkable against a run. It names an artifact
         directory, a device, both policy stamps, and a per-policy leg for every
         aggregate it reports; ``test_certification_metadata.py`` recomputes its
         digest over that directory and asserts its timestamp, host and policies are
@@ -679,8 +679,8 @@ def test_the_harness_description_and_the_measured_verdict_stay_separate_blocks()
         f"a verdict that was never re-cut or a budget somebody lowered.")
     assert "multi-step-budget-is-8" in {gap["id"] for gap in entry["resolved_gaps"]}
     assert gate["_multi_step_supersedes_the_recorded_8"], (
-        "the block no longer says what its 60 replaced, so a reader comparing it "
-        "against the 2026-08-14 disposition finds the 8 simply missing")
+        "the block no longer says what its 60 replaced, so a reader who remembers the "
+        "earlier budget of 8 finds the 8 simply missing")
 
 
 def test_the_lifted_case_leg_records_the_regime_it_could_not_test():
@@ -713,9 +713,9 @@ def test_the_test_coverage_index_reports_as_many_open_gaps_as_the_record_carries
 
     ``the test coverage notes``'s row for this file said "the four open gaps" and
     enumerated four while the record carried six and the test above pinned six —
-    the two omitted being exactly the pair §1.5 singles out (a mutation that must
-    be UNCAUGHT, and armed-mutation accounting). A stale count in the file the
-    round patched *for* stale counts, so the count is welded rather than trusted:
+    the two omitted being exactly two harness clauses the gate lacked (a mutation
+    that must be UNCAUGHT, and armed-mutation accounting). A stale count in the file
+    the re-cut patched *for* stale counts, so the count is welded rather than trusted:
     the row must spell the number the record actually carries.
     """
     words = {1: "one", 2: "two", 3: "three", 4: "four", 5: "five", 6: "six",
@@ -746,7 +746,7 @@ def test_the_test_coverage_index_reports_as_many_open_gaps_as_the_record_carries
 
     # And the resolved ones may not simply vanish from the index either: the row
     # has to say they were closed by a measurement, or a reader comparing the
-    # index against the 2026-08-14 disposition finds five questions missing.
+    # index against the six gaps first recorded finds five questions missing.
     assert "resolved_gaps" in index or "re-cut" in index, (
         "TEST_COVERAGE.md does not mention the re-cut that closed the other "
         "gaps, so the drop from six to one reads as gaps going quiet")
@@ -794,5 +794,5 @@ def test_the_kernel_module_carries_no_bare_line_number_reference():
         f"{MODULE.name} carries line-number references {found}; they go stale on "
         f"the next insertion above them and nothing recomputes them. Name the "
         f"symbol or the section heading instead.")
-    assert "THE STENCIL IS PARENTHESISED TO" in source, (
+    assert "The stencil is ``stepping._curl_from_operands``" in source, (
         "the note the _COMPILE_OPTIONS docstring points at by name is gone")

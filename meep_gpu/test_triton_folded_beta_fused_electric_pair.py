@@ -385,7 +385,7 @@ def test_a_fold_beside_a_wall_on_the_same_axis_never_admits(product):
     reports both a fold and a wall on one axis is a drift the predicate must
     refuse rather than compile.
 
-    MEASURED: the refusal fires one rung EARLIER than the weld's own wall/fold
+    Measured: the refusal fires one rung EARLIER than the weld's own wall/fold
     clause — the curl half's ``folded_axis_kinds`` sees ``_stored_past_owned``
     and ``is_metallic`` disagreeing about the termination and refuses the drift
     by name. Either spelling is a refusal; admitting is the failure.
@@ -475,10 +475,10 @@ def test_the_composer_routes_this_product_and_dispatch_still_refuses_it():
     ``_install_fused_pair``, taking both slots only when ``_pair_may_absorb`` finds
     the arm table has already given them to the arms this kernel implements.
 
-    WIRING WAS NOT RELEASING, and until 2026-09-13 the second half asserted that
+    Wiring was not releasing, and until 2026-09-13 the second half asserted that
     sentence from the PRODUCT's side: the label this product wrote was not in
-    ``fastpath.RELEASED_FUSED_ARMS``, so clause (8) refused the whole plan. Phase B
-    of the 2026-09-13 batch (driver record
+    ``fastpath.RELEASED_FUSED_ARMS``, so clause (8) refused the whole plan. The
+    2026-09-13 certification run (driver record
     ``dispatch_fused_route_2026-09-13_phaseB``) released this arm — it seeded a
     ``fingerprints.json`` weld and took an ``ARM_CERTIFICATION`` row — so the label
     is now IN ``RELEASED_FUSED_ARMS`` and clause (8) ADMITS it. It still sits in

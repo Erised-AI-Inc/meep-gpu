@@ -16,7 +16,7 @@ Three predicates live here, one per kernel:
   (``update_P``), per (state, component), on MEEP's four float32 words
   (:func:`polarization_constant_reasons`).
 
-COVERAGE IS A SET PER SUB-STEP, NOT PER RUN. A feature that changes one sub-step's
+Coverage is a set per sub-step, not per run. A feature that changes one sub-step's
 semantics disqualifies THAT sub-step; the others may still dispatch, because the
 array path and the kernels compute the same bits and the sub-steps are separated
 by array-path boundary work in the driver's loop. Dispersion is the case that
@@ -24,7 +24,7 @@ forced the distinction: it changes ``update_E`` (source becomes ``D - sum P``) a
 adds ``update_P``, and it changes the curl not at all — the curl differences the
 STORED E and H arrays, which exist under PML whether or not a pole is registered.
 
-DISPERSION AND OFF-DIAGONAL EPSILON ARE ADMITTED FOR THE CURL, DELIBERATELY.
+Dispersion and off-diagonal epsilon are admitted for the curl, deliberately.
 Both are *constitutive-only* features: their entire effect is inside ``update_E``
 (``stepping.py:996-1022``, ``fields.py:1096-1105``), and both force stored E
 (``fields.py:676``/``:1255``), which is the invariant the curl actually depends on.
@@ -58,7 +58,7 @@ from ..chunk_map import AXIS_NAMES, ChunkLayoutRefusal, chunk_bounds_record, gri
 #: for are installed through that one call (``launch.py:2967``), so there is no route
 #: by which a fused pair from this module reaches the device unbracketed.
 #:
-#: THE PRECONDITION THIS PRODUCT MEETS is that its constitutive half is POINTWISE, on
+#: The precondition this product meets is that its constitutive half is POINTWISE, on
 #: both sides of the step: ``update_H`` is ``H = B/mu`` cell by cell
 #: (``stepping.py:947-951``) and the diagonal ``update_E`` is ``(D - sum P) * inv_eps``
 #: cell by cell (``stepping.py:1012-1015``), while the kernel's own half reads six values
@@ -70,7 +70,7 @@ from ..chunk_map import AXIS_NAMES, ChunkLayoutRefusal, chunk_bounds_record, gri
 #: are refused per run by ``deposit_repair.repairable``, which the clause below
 #: consults rather than assumes.
 #:
-#: IT IS NOT A HINT. A product that passes True without those wrappers computes the
+#: It is not a hint. A product that passes True without those wrappers computes the
 #: constitutive half against a pre-injection field and reports success, which is the
 #: exact failure ``deposit_repair`` exists to prevent. Flag and wiring move together.
 CARRIES_DEPOSIT_REPAIR = True
@@ -494,10 +494,10 @@ def fused_pair_coverage(fields: Any, pml: Any, pair: str = "B",
        ``_zero_metal`` skips for a reason worth 1.28e+00 relative L2) is refused
        by clause 1 already.
 
-    ``sources`` MUST BE DECLARED. ``Fields`` does not hold the source list — the
+    ``sources`` must be declared. ``Fields`` does not hold the source list — the
     driver does — so this predicate cannot look it up, and a predicate that infers
-    "no source in this seam" from its own ignorance is the over-covering refusal
-    §10.4 names as the dangerous failure. ``None`` is therefore a REFUSAL, not an
+    "no source in this seam" from its own ignorance over-covers, the dangerous
+    failure: the run quietly returns wrong physics. ``None`` is therefore a REFUSAL, not an
     empty set; the caller passes ``driver._sources`` (possibly ``()``).
     """
     if pair not in FUSED_PAIRS:

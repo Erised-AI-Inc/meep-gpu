@@ -1,10 +1,10 @@
 """The CUDA dispersive and ADE kernels transcribe the array path's forms, read off their text.
 
-WHAT THIS FILE SETTLES, ON A HOST WITH NO DEVICE. The hand-CUDA ``update_P`` kernels
+What this file settles, on a host with no device. The hand-CUDA ``update_P`` kernels
 (``ade_kernels``), the PML dispersive ``update_E`` (``dispersive_kernels``' arm 1) and the
 two products that lift them -- the E->P pair (``fused_polarization_pair``) and the
 three-slot weld's recurrence group (``three_slot_dispersive_weld``) -- step the array
-path's forms (bit_parity_0_10 DESIGN.md D1, D3, D27; KERNELS.md section 6, F_DISPERSIVE):
+path's forms (the per-chunk constitutive forms and the auxiliary contract):
 
 * ``update_P``: MEEP's isotropic recurrence in its four float32 words and its grouping,
   ``gamma1inv * (((p * two_minus_od) - (gamma1 * q)) + (omega0dtsqr * (s * w)))``

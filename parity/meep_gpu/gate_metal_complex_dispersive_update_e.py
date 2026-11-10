@@ -5,11 +5,11 @@ The oracle is ``stepping.update_E`` then ``PolarizationState.update`` on the
 one-rank region plan of each case's grid and layer; both plans bind that division's
 chunk record (the E plan selects its form on it, the ADE plan its drive). Every
 product row records, per component, the cells of each form and requires both on
-every split component. Mutations (KERNELS.md §7.1, §7.2), each on Ex: the previous
+every split component. Mutations, each on Ex: the previous
 accumulation grouping planted (must-catch), the coefficient order reversed, the
 select removed, the auxiliary stored on a plain cell, the integer lattice read and
 the bound record moved by one row; the unconditional auxiliary load is a declared
-null.
+null (docs/development/certification.md#inverted-grouping-mutations and #chunk-form-battery).
 """
 
 from __future__ import annotations
@@ -171,7 +171,7 @@ def mutant_sources() -> Dict[str, Tuple[str, str]]:
             base, "source = source - p1[idx];", "// dropped p1")),
         "fw_store_dropped": ("caught", _planted(
             base, "    if (dw) { fw[idx] = src; }", "    // stale fw")),
-        # §7.1, inverted: the package's previous grouping, (f + kps*src) - kms*prev.
+        # INVERTED: the package's previous grouping, (f + kps*src) - kms*prev.
         "previous_accumulation_grouping": ("caught", _planted(
             base, _ACCUMULATE,
             "    if (dw) { value = (e_out[idx] + c_mul_coefficient_left(kps[i], src)) "

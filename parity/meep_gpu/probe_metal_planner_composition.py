@@ -1,6 +1,6 @@
-"""The Metal composer's disjointness, MEASURED — configurations built, predicates called.
+"""The Metal composer's disjointness, measured — configurations built, predicates called.
 
-WHAT THIS ANSWERS, and why nothing else can. ``plan_step`` is fail-closed: two arms
+What this answers, and why nothing else can. ``plan_step`` is fail-closed: two arms
 admitting one slot leaves the slot UNSELECTED and names both. That contract is only
 worth anything if the ambiguity is RARE — a composer that refuses every slot is
 fail-closed and useless — so the question is not "does it fail closed" but "over the
@@ -8,7 +8,7 @@ configurations this backend can meet, how often do two products admit the same
 slot". That is a measurement over constructed configurations, not a reading of
 clause lists, because the clause lists are exactly what is being checked.
 
-THE METHOD IS THE TRITON PLANNER SWEEP'S, unchanged: build a configuration matrix
+The method is the Triton planner sweep's, unchanged: build a configuration matrix
 that puts each family near its neighbours' boundaries, then for EVERY row and EVERY
 slot call EVERY registered predicate — wired or not — and count. Three numbers come
 out and all three are reported:
@@ -19,12 +19,12 @@ out and all three are reported:
 * **overlaps** — how many (row, slot) pairs had two or more admitters. Every one is
   listed by name, with its claimants, and every one must be a PLANTED row.
 
-THE SWEEP CONSULTS UNWIRED ARMS TOO. The loop is written over ``arms.registered()``
+The sweep consults unwired arms too. The loop is written over ``arms.registered()``
 rather than ``arms.arms_for()`` deliberately, so that the next family to be
 built-and-gated-before-wiring is swept the moment it registers instead of the moment
 somebody remembers to add it here.
 
-A WELD IS TALLIED APART FROM A PEER (``ArmSpec.is_weld``). A fused product registers
+A weld is tallied apart from a peer (``ArmSpec.is_weld``). A fused product registers
 on the first slot of the seam it replaces and its predicate CONTAINS the wired arm's,
 so it always co-admits with the arm it welds; the composer installs it after
 selection, never as a slot's second claimant. Its admissions are recorded per row
@@ -34,7 +34,7 @@ in for this: it would also drop a deferred single-slot peer, which is the case t
 sweep exists to catch. No matrix row expects a weld label in ``selected``, so the
 peer-only agreement rule is exact.
 
-WHAT THIS IS NOT. It is not a byte claim: no kernel launches here and no field moves.
+What this is not. It is not a byte claim: no kernel launches here and no field moves.
 It is not a coverage number either — that is the corpus battery, on lifted rows. It
 is the composition's own safety property and nothing more.
 
@@ -218,9 +218,9 @@ def sweep(out_path: str) -> Dict[str, Any]:
     payload["totals"]["arms_never_winning"] = [
         arm for arm in matrix.EXPECTED_WINNERS if arm not in winners]
 
-    # --- THE OTHER HALF OF THE NON-VACUITY FLOOR -----------------------------
+    # --- the other half of the non-vacuity floor -----------------------------
     # `arms_never_winning` catches an arm that fires nowhere. This catches an arm
-    # that fires WHERE NO PRODUCT EXISTS, which is the worse of the two: an arm
+    # that fires where no product exists, which is the worse of the two: an arm
     # quietly admitting a cylindrical, nonlinear, folded-beta or folded-BFAST row
     # would step a recurrence this backend does not implement, and the sweep would
     # report it as coverage. Only the four ARITHMETIC slots are checked — a seam
@@ -231,7 +231,7 @@ def sweep(out_path: str) -> Dict[str, Any]:
         row = by_label.get(label)
         if row is None:
             uncarried.append({"row": label, "family": family,
-                              "violation": "ROW ABSENT FROM THE MATRIX"})
+                              "violation": "row absent from the matrix"})
             continue
         selected = {slot: arm for slot, arm in row["selected"].items()
                     if slot in matrix.ARITHMETIC_SLOTS}
@@ -287,7 +287,7 @@ def main() -> int:
               or bool(totals["arms_never_winning"])
               or bool(totals["uncarried_violations"])
               or bool(totals["unregistered_slots_violations"]))
-    # THE ONLY OVERLAPS THIS SWEEP TOLERATES, and both are the SAME engine coupling
+    # The only overlaps this sweep tolerates, and both are the SAME engine coupling
     # one level apart: an arm refusing on `has_offdiagonal_epsilon` and an arm
     # requiring a LIVE ROW SLOT agree only when the flag and the dict disagree, which
     # the engine's read-only property makes unreachable. The matrix names both rows

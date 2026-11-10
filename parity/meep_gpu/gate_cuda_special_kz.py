@@ -12,7 +12,7 @@ THE QUESTION, in three parts, each measured separately:
    ``stepping.update_H`` / ``update_E`` read nothing beta-dependent. A reading is
    not evidence. The constitutive arm runs the certified kernels against the array
    path on a beta grid whose two curls have ALREADY moved the state, per side, and
-   the two sides are scored SEPARATELY -- because the Metal track's tranche 6 ended
+   the two sides are scored SEPARATELY -- because an earlier Metal coverage census ended
    at 757/759 with the two open slots being exactly one row's constitutive sides
    while its curls were served, so "the curl works therefore the constitutive works"
    is a shape that has already been wrong once on this family.
@@ -24,7 +24,7 @@ THE QUESTION, in three parts, each measured separately:
    ``d_c`` in {X, Y} only (step_db.cpp:148-176). A kernel that put a term on the z
    component would pass a gate that only asked "did anything change".
 
-WHAT THE FIXTURE CAN AND CANNOT BE, and it is not a choice
+What the fixture can and cannot be, and it is not a choice
 ----------------------------------------------------------
 ``Grid`` refuses ``dimensions=2`` with a z extent ("an invariant axis is INFINITE
 and uniform"), and ``_resolve_beta`` refuses beta off a 2-D Cartesian grid
@@ -35,13 +35,13 @@ real-storage beta rows are 1200x1x1 and 420x212x1. The consequence is stated in
 only at a single cell here, and they are the CERTIFIED pair's, already gated
 elsewhere on grids that are thick in z.
 
-THE FOLD IS IN THE SWEEP, at both terminations, because one of the two corpus rows
+The fold is in the sweep, at both terminations, because one of the two corpus rows
 has one: ``TestSpecialKz.test_eigsrc_kz_1_real_imag`` is a Y fold with a PERIODIC
 termination (stored 212 > owned 211). The beta term reuses a CENTRE register the
 fold never touches, so the composition is expected to be free -- and expecting is
 why it is swept rather than argued.
 
-WHAT WOULD MAKE THIS GATE VACUOUS, AND THE FLOORS THAT REFUSE IT
+What would make this gate vacuous, and the floors that refuse it
 ----------------------------------------------------------------
 * ``oracle_moved`` -- the fraction of output words the array path changed from the
   frozen input. A case that moved nothing is refused, not passed.
@@ -50,14 +50,14 @@ WHAT WOULD MAKE THIS GATE VACUOUS, AND THE FLOORS THAT REFUSE IT
   case where the term changes no word measures the certified kernel, not this one.
 * ``absorber_is_not_the_identity`` -- ``max|kms-1|`` and ``max|sinv-1|`` over every
   axis. An identity profile hides a coefficient-index error.
-* The mutation battery, including legs that MUST BE UNCAUGHT. A battery of
+* The mutation battery, including legs that must be uncaught. A battery of
   only-must-be-caught legs scores identically whether the comparator works or has
   degenerated into failing everything. The two beta nulls are the family's own:
   ``fcur + (-df)`` for the ladder's ``fcur - df`` (IEEE-754 defines subtraction as
   addition of the negation) and ``(g * c)`` for ``(c * g)`` (float multiply
   commutes exactly). Each is paired with a must-catch leg on the same expression.
 
-THE KERNEL IS MEEP'S TWO PASSES. Per component the curl kernel's own curl and
+The kernel is MEEP's two passes. Per component the curl kernel's own curl and
 absorber, then -- on x and y only -- MEEP's beta pass as a pass of its own
 (step_db.cpp:161-175): ``-(c * g)`` on MEEP's owned cells, ``+0`` elsewhere, added
 through the pass's additive ladder, each form selected per cell from the chunk record
@@ -75,7 +75,7 @@ token because CuPy's disk-cache key is computed above the strip seam)::
 
 Laptop (no CUDA). The NumPy backend runs the SAME oracle, the same fixture, the
 same floors and the same HOST mutations against a transcription of the device
-tree. IT COMPILES NOTHING AND CERTIFIES NOTHING::
+tree. It compiles nothing and certifies nothing::
 
     python -u gate_cuda_special_kz.py --backend numpy --out /tmp/skz.json
 
@@ -110,8 +110,8 @@ except ImportError:  # laptop: the NumPy backend still runs
 
 import probe_fused_kernel_bit_identity as probe  # noqa: E402
 import gate_chunk_records  # noqa: E402
-# The chunk-record host mutations (KERNELS.md section 7.2) are the complex gates' own,
-# imported rather than copied.
+# The battery's chunk-record host mutations (docs/development/certification.md#chunk-form-battery)
+# are the complex gates' own, imported rather than copied.
 import gate_cuda_complex as complex_gate  # noqa: E402
 import gate_cuda_complex_folded as fold_gate  # noqa: E402
 import gate_needles  # noqa: E402
@@ -206,7 +206,7 @@ BETA_SPECS: Tuple[Dict[str, Any], ...] = (
      "boundaries": ("periodic", "metallic", "periodic"), "cell": (8.0, 16.0, 0.0)},
     {"label": "fold_Y_periodic_odd_plane", "axes": "Y", "phase": -1, "beta": 0.2,
      "boundaries": ("periodic", "periodic", "periodic"), "cell": (8.0, 16.0, 0.0)},
-    # A FOLD ON THE SLOWEST-STRIDE AXIS: the beta partner for By is the Ex CENTRE
+    # A fold on the slowest-stride axis: the beta partner for By is the Ex CENTRE
     # and for Bx the Ey centre, so an index defect that confused a centre with a
     # neighbour would move with the stride.
     {"label": "fold_X_periodic", "axes": "X", "phase": 1, "beta": -0.42,
@@ -226,7 +226,7 @@ GUARD_SETS: Tuple[Tuple[str, Tuple[str, ...], bool], ...] = (
 
 
 # ---------------------------------------------------------------------------
-# THE FAMILY'S OWN SOURCE MUTATIONS
+# The family's own source mutations
 # ---------------------------------------------------------------------------
 #
 # Each is a text transform on the device string, returning ``(mutated, sites)``.
@@ -266,7 +266,7 @@ def _drop_beta_term(source: str) -> Tuple[str, int]:
 
 
 def _beta_partner_shifted(source: str) -> Tuple[str, int]:
-    """NULL, AND THE NULL IS THE FINDING. MEASURED 2026-08-20, 0/4 caught.
+    """Null, and the null is the finding. Measured 2026-08-20, 0/4 caught.
 
     This began as the family's headline must-catch leg -- "the SHIFTED operand
     instead of the CENTRE one", the transcription's most likely silent slip. It is
@@ -282,7 +282,7 @@ def _beta_partner_shifted(source: str) -> Tuple[str, int]:
       cell on a periodic axis ``shift_up``/``shift_dn`` return ``g[idx]`` itself.
 
     So on the only grids this family can ever be handed, the centre operand and the
-    z-shifted operand ARE THE SAME WORD, and swapping them is not a defect at all.
+    z-shifted operand are the same word, and swapping them is not a defect at all.
     Recorded as a NULL that must be UNCAUGHT rather than deleted, because a
     mutation quietly dropped and a mutation that cannot bite look identical in a
     verdict -- and because if a future grid ever made z thick, this leg would start
@@ -413,7 +413,7 @@ BETA_SOURCE_MUTATIONS: Dict[str, Any] = {
     "beta_product_operands_commuted": _beta_product_operands_commuted,
 }
 
-#: MUST BE UNCAUGHT. The first two are IEEE identities; the third is a MEASURED
+#: Must be uncaught. The first two are IEEE identities; the third is a measured
 #: structural fact about every grid this family can be handed -- see
 #: :func:`_beta_partner_shifted`, which is where the reasoning lives.
 BETA_NULL_MUTATIONS: Tuple[str, ...] = ("beta_subtract_as_add_negative",
@@ -431,7 +431,7 @@ SHARED_SOURCE_MUTATIONS: Tuple[str, ...] = (
     "read_fprev_after_store", "fortran_order_index_decomposition",
     "commute_dtdx_scale", "reload_fu_from_memory",
 )
-#: THIS GATE'S NEEDLE TABLE for the shared defects above, every one borrowed from the
+#: This gate's needle table for the shared defects above, every one borrowed from the
 #: probe's shared default, which is spelled on the root pair's text -- this family's
 #: kernels are the root kernels with the beta pass inserted (``gate_needles.py``).
 SHARED_NEEDLES = gate_needles.gate_table(
@@ -452,12 +452,12 @@ HOST_MUTATIONS: Tuple[str, ...] = (
     "beta_coefficient_rounded_twice",
     "swap_curl_sublattice",
     "beta_coefficient_negated_from_plus",
-    # KERNELS.md section 7.2: the chunk record a launch binds, corrupted (the oracle's
+    # Per-chunk form battery: the chunk record a launch binds, corrupted (the oracle's
     # division is untouched; ``gate_cuda_complex.host_mutated_record``).
     "record_bound_off_by_one",
     "record_lattices_swapped",
 )
-#: MUST BE UNCAUGHT: float64 negation and float32 rounding commute exactly, so
+#: Must be uncaught: float64 negation and float32 rounding commute exactly, so
 #: computing the minus coefficient as ``-plus`` in float64 and rounding once is
 #: the same word as computing it from ``sign = -1`` (grouping choice 1). A gate
 #: whose every host leg must be caught cannot tell a working comparator from one
@@ -525,7 +525,7 @@ def seed_state(fields, grid, names: Sequence[str], value_class: str,
                rng) -> Dict[str, np.ndarray]:
     """Physical-band or subnormal-band values in every array the sub-step touches.
 
-    THE AUXILIARIES START NONZERO in both classes: a zero ``fu`` makes ``kms*prev``
+    The auxiliaries start nonzero in both classes: a zero ``fu`` makes ``kms*prev``
     exactly zero on the first launch whatever ``kms`` holds, which would hide a
     mis-indexed coefficient until step two.
     """
@@ -689,7 +689,7 @@ def run_kernel_numpy(sub_step: str, fields, tables, codes, dtdx: float,
               = -(beta_minus * f1)  By / Dy    (centre, sign -1)
         ladder: f -= sinv*inc outside dsigu; fu -= (df = sinv*inc), f -= sinv_u*df inside
 
-    THIS COMPILES NOTHING AND CERTIFIES NOTHING. It cannot see a defect the NVRTC
+    This compiles nothing and certifies nothing. It cannot see a defect the NVRTC
     contraction guard exists for and it is not the shipped bytes; what it settles
     is whether the harness can localize a divergence and whether it can fail.
     """
@@ -980,7 +980,7 @@ def one_case(backend: str, spec: Dict[str, Any], sub_step: str, courant: float,
     restore(fields, frozen)
     tables, beta = host_mutated_inputs(host_mutation, sub_step, layer, grid, dtdx)
     case["beta_coefficients"] = [float(beta[0]), float(beta[1])]
-    # THE CHUNK RECORD of the division the array path stepped with (the one-rank
+    # The chunk record of the division the array path stepped with (the one-rank
     # division of the grid and layer), handed to the kernel as the launcher binds it.
     record = np.ascontiguousarray(gate_chunk_records.layer_record(grid, layer),
                                   dtype=np.int32)
@@ -1034,7 +1034,7 @@ def one_constitutive_case(backend: str, spec: Dict[str, Any], side: str,
                           guard: str) -> Dict[str, Any]:
     """The CERTIFIED constitutive kernel against the array path, on a BETA run.
 
-    THE CURLS RUN FIRST, both of them, so the state this sub-step reads is a state
+    The curls run first, both of them, so the state this sub-step reads is a state
     the beta term produced. A constitutive arm seeded with fresh random numbers
     would measure the certified kernel on a grid that merely HAS a beta attribute;
     this measures it on a beta run's own history.
@@ -1065,7 +1065,7 @@ def one_constitutive_case(backend: str, spec: Dict[str, Any], side: str,
     covered, reason = family.covers_special_kz_constitutive(fields, layer, grid, side)
     case["predicate"] = {"covered": bool(covered), "reason": reason}
 
-    # THE BETA RUN'S OWN HISTORY: both curls, on the array path, before anything
+    # The beta run's own history: both curls, on the array path, before anything
     # is frozen. The constitutive sub-step then reads what beta produced.
     stepping.step_B(fields, layer)
     stepping.step_D(fields, layer)
@@ -1084,7 +1084,7 @@ def one_constitutive_case(backend: str, spec: Dict[str, Any], side: str,
         case["seconds"] = time.time() - started
         return case
 
-    # THE CHUNK RECORD of the division the array path stepped with, as the
+    # The chunk record of the division the array path stepped with, as the
     # certified launcher binds it.
     record = cp.asarray(np.ascontiguousarray(
         gate_chunk_records.layer_record(grid, layer), dtype=np.int32))
@@ -1407,7 +1407,7 @@ def summarize(results) -> Dict[str, Any]:
         reasons.append("the transcribed curl/beta term table disagrees with "
                        "stepping's")
 
-    # THE PREDICATE MUST AGREE WITH THE SWEEP. Every case swept is one the
+    # The predicate must agree with the sweep. Every case swept is one the
     # predicate admits, and every one is a case the CERTIFIED predicate refuses --
     # so an overlap between the two families would show here as a case both admit.
     for case in scored:
@@ -1420,7 +1420,7 @@ def summarize(results) -> Dict[str, Any]:
                            f"predicate also admits this case; the two families "
                            f"are meant to partition on beta")
 
-    # THE CONSTITUTIVE ARM, scored PER SIDE.
+    # The constitutive arm, scored PER SIDE.
     constitutive = results.get("constitutive", {}).get("fmad_false", [])
     per_side: Dict[str, Dict[str, int]] = {}
     for case in constitutive:
@@ -1439,7 +1439,7 @@ def summarize(results) -> Dict[str, Any]:
         if entry is None or entry["cases"] == 0:
             reasons.append(f"update_{side} was never scored on a beta run; the "
                            f"constitutive admission would rest on the reading "
-                           f"alone, which is what the Metal tranche-6 split warns "
+                           f"alone, which is what the earlier Metal 757/759 split warns "
                            f"against")
             continue
         if entry["single"] != entry["cases"] or entry["multi"] != entry["multi_cases"]:
@@ -1475,7 +1475,7 @@ def summarize(results) -> Dict[str, Any]:
         "scored_at_inexact_courant": len(control),
         "comparable_where_guarded_leg_was_identical": len(comparable),
         "diverged": len(control_diverged),
-        "reading": ("NOT MEASURED on this run" if not comparable else
+        "reading": ("Not measured on this run" if not comparable else
                     "the contraction guard is load-bearing on this pair"
                     if control_diverged else
                     "MEASURED DECORATIVE on these cases: the unguarded leg was "
@@ -1527,6 +1527,7 @@ def save(results, out_path: str) -> None:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
+    import neutral_ids  # noqa: PLC0415
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--backend", choices=("cuda", "numpy"), default="cuda")
     parser.add_argument("--product", choices=("full", "reduced"), default="full")
@@ -1541,8 +1542,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     results: Dict[str, Any] = {
         "gate": "cuda_special_kz",
         "started_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "host": os.uname().nodename,
-        "argv": list(argv if argv is not None else sys.argv[1:]),
+        "host": neutral_ids.machine_id(),
+        "argv": neutral_ids.argv(argv if argv is not None else sys.argv[1:]),
         "backend": args.backend,
         "product": args.product,
         "question": ("is the hand-CUDA special_kz curl pair byte-identical to "

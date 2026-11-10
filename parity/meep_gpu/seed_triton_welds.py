@@ -1,26 +1,26 @@
 """Create a Triton ledger entry for a family whose gate RELEASED and has none.
 
-WHY THIS EXISTS, AND WHY IT IS NOT ``rebind_triton_welds.py``. That tool REFRESHES
+Why this exists, and why it is not ``rebind_triton_welds.py``. That tool REFRESHES
 the pins of an entry that already exists and refuses to invent a key -- correctly,
 because inventing one is how a weld starts describing a run that never happened. But
 that refusal left a real gap: 23 fused arms sit in
 ``fastpath.PENDING_DEVICE_GATE_ARMS`` with released gates and NO ledger entry, and
-``the design notes (meep-gpu-dispatch-expansion-plan)`` name it as the phase's real cost -- "20
-ledger entries have to be cut BY A GATE RUN. No in-tree tool creates one, and writing
-one by hand is record forgery."
+that gap was the dispatch expansion's real cost: 20 ledger entries had to be
+cut by a gate run; no in-tree tool created one, and writing one by hand would be
+record forgery.
 
-WHERE THE COUNT STANDS. 23 of the 29 pending rows were fused arms before the
-2026-09-11 round; that round seeds three of them from the ``..._realarms_a`` fleet --
+Where the count stands. 23 of the 29 pending rows were fused arms before the
+2026-09-11 campaign; that campaign seeds three of them from the ``..._realarms_a`` fleet --
 ``triton_folded_dispersive_fused_pair_device_gate``,
 ``triton_conductive_fused_electric_pair_device_gate`` and
 ``triton_cylindrical_real_fused_electric_pair_device_gate`` -- leaving TWENTY pending
-fused arms with no entry. The fourth arm released in that round, ``fused pair B
+fused arms with no entry. The fourth arm released in that campaign, ``fused pair B
 (cylindrical)``, is not seeded here at all: its entry
 (``triton_cylindrical_real_fused_magnetic_pair_device_gate``) already exists and this
 tool refuses it by name, because refreshing a standing pin is
 ``rebind_triton_welds.py``'s job and doing it here would walk one backwards.
 
-THE DISTINCTION THIS TOOL RESTS ON. Deriving an entry from a RELEASED artifact is not
+The distinction this tool rests on. Deriving an entry from a RELEASED artifact is not
 forgery; typing one is. Every field here comes out of the gate's own record: the pins
 from ``imported_source_sha256``, the verdict from the artifact's own verdict field,
 the host from its environment block (written as its neutral label,
@@ -28,7 +28,7 @@ the host from its environment block (written as its neutral label,
 refusals below are what keep it that way. It is the Triton twin of
 ``rebind_cuda_welds.py --seed``.
 
-WHAT IT REFUSES.
+What it refuses.
 
 * A gate whose artifact is not RELEASED. A pending arm is pending because nothing
   proved it; an entry cut from an unreleased run would say the opposite.
@@ -47,7 +47,7 @@ WHAT IT REFUSES.
   stand on. A weld is a claim about generated PTX, so the compiler is part of it, and
   widening that declaration is a deliberate act rather than a side effect of a seed.
 
-WHERE EACH FIELD LANDS. The pins and the ``status`` sit on the entry, because they
+Where each field lands. The pins and the ``status`` sit on the entry, because they
 describe the BYTES. Everything that describes the RUN -- its artifact digest, records
 line, timestamp, host, toolchain and policy -- goes into ``runs[<capability>]``, and
 the capability is read off the run (``rebind_triton_welds.run_capability``) so a
@@ -122,7 +122,7 @@ def curated_for(directory: str, imported: dict, fresh: dict | None = None) -> li
     through; pinning every import would make the entry go red on an unrelated edit,
     which is the failure mode that trains people to ignore drift.
 
-    THE GATE SCRIPT IS READ OFF THE RECORD, NOT MATCHED BY NAME. The line below it
+    The gate script is read off the record, not matched by name. The line below it
     keeps the name match, which finds a per-family probe like
     ``probe_triton_beta_fused_electric_pair.py``; what it cannot find is a gate named
     after the WELD GROUP rather than the product. Measured 2026-09-17:
@@ -148,9 +148,9 @@ def curated_for(directory: str, imported: dict, fresh: dict | None = None) -> li
     return sorted(set(keys))
 
 
-#: WHERE A GATE ARTIFACT STATES THE POLICY ITS OWN PROCESS INSTALLED, in the order
+#: Where a gate artifact states the policy its own process installed, in the order
 #: the line is read from. Enumerated over every ``gate.json`` of the 2026-10-03 Triton
-#: round (three fleet roots, the stencil welds, the unified flush run, the composition
+#: certification run (three fleet roots, the stencil welds, the unified flush run, the composition
 #: and bit-identity runs): the gates do not share one spelling, and until this table
 #: the reader knew only the first row, so nine released runs -- seven of them cited by
 #: dispatch arms -- could not be bound. Each row is a STAMP BLOCK, the dict
@@ -159,7 +159,7 @@ def curated_for(directory: str, imported: dict, fresh: dict | None = None) -> li
 #: is told apart: it is the stamp in ``no_pml_constitutive`` and a launch-configuration
 #: dict (block size, warps, the REQUESTED policy) in the fused-pair probes.
 #:
-#: A STAMP ANSWERS ONLY WITH ``resolved``, AND ONLY WHEN IT WAS INSTALLED.
+#: A stamp answers only with ``resolved``, and only when it was installed.
 #: ``policy_stamp()`` fills ``resolved`` before anything is installed -- it is then a
 #: preference, and the stamp says so with ``installed: False`` and ``policy:
 #: "none_installed"`` -- and ``requested`` is the question, never the answer. Such a
@@ -232,7 +232,7 @@ POLICY_NOT_READ = ("policy_stamps", "environment.subnormal_policy_stamps", "poli
                    "rows[].policy", "expansion", "expansion_probe", "expansion_license",
                    "unified_licenses", "no_device_legs")
 
-#: THE DECLARED EXCEPTION. Three entries carry ``_mixed_policy``: their gate never
+#: The declared exception. Three entries carry ``_mixed_policy``: their gate never
 #: installs a policy, so the CuPy oracle flushed while Triton kept, and their records
 #: say so in exactly this string. ``test_triton_weld_contract.POLICY_UNNAMED_BUDGET``
 #: admits it per weld, on every architecture, until the gate installs a policy.
@@ -278,14 +278,14 @@ def policy_line(fresh: dict, entry: dict | None = None) -> str | None:
     inside it. Reading `resolved` and reporting the stamp beside it is what the
     accepted entries do, so a seeded weld is indistinguishable from a rebound one.
 
-    EVERY SPELLING IS READ AND THEY MUST AGREE. The attained policy is read from each
+    Every spelling is read and they must agree. The attained policy is read from each
     stamp block (:data:`POLICY_STAMP_BLOCKS`) and installed-name string
     (:data:`POLICY_INSTALLED_NAMES`) the artifact carries; requests and stamp names
     are read beside them as cross-checks. Two statements naming different policies
     raise :class:`PolicyStampConflict` naming both, rather than letting table order
     pick one.
 
-    ONLY AN INSTALLED ``resolved`` ANSWERS. A stamp answers with its ``resolved`` key
+    Only an installed ``resolved`` answers. A stamp answers with its ``resolved`` key
     alone; ``requested`` is a cross-check. A stamp taken before any install
     (``installed: False`` or ``policy: "none_installed"``) or whose ``resolved`` names
     neither policy is a DENIAL: it counts as stated, never answers, and an answer
@@ -404,7 +404,7 @@ def policy_line(fresh: dict, entry: dict | None = None) -> str | None:
     if primary is not None:
         path, block, resolved = primary
         stamp = block.get("policy") or "?"
-        # ABSENT AND EMPTY ARE DIFFERENT MEASUREMENTS. The keep policy is attainable
+        # Absent and empty are different measurements. The keep policy is attainable
         # only with an `ftz_stripped` CuPy cache, so "carries no ftz token" is a claim
         # about the run; an artifact whose stamp recorded no cache directory at all
         # supports neither that claim nor its opposite, and says so.
@@ -419,7 +419,7 @@ def policy_line(fresh: dict, entry: dict | None = None) -> str | None:
                 f"requested={block.get('requested', '?')} resolved={resolved}; stamp "
                 f"{stamp}; {token}{where})")
     if attained:
-        # A WELD MUST NAME THE POLICY IT WAS CUT UNDER, and only an installed name is
+        # A weld must name the policy it was cut under, and only an installed name is
         # left: the gate recorded no stamp, so the mechanism and the cache directory
         # are unstated and the line says so instead of supplying them.
         where, resolved = attained[0]
@@ -428,7 +428,7 @@ def policy_line(fresh: dict, entry: dict | None = None) -> str | None:
                 f"stated)")
     # "?" is not a name: the contract test greps this line for `keep` or `flush`, and
     # a placeholder would clear the presence check while failing the naming one -- a
-    # red the seeding round could not explain. Refuse instead, by returning None.
+    # red the seeding tool could not explain. Refuse instead, by returning None.
     return None
 
 
@@ -439,10 +439,10 @@ def main(argv=None) -> int:
     parser.add_argument("--only", default="",
                         help="comma-separated family directories to consider")
     parser.add_argument("--supersede", default="",
-                        help="comma-separated compute capabilities this round "
+                        help="comma-separated compute capabilities this run "
                              "DISCARDS. It is accepted so the seeder and "
-                             "rebind_triton_welds.py take the same flag and a round "
-                             "driver can pass it to both; on a seed it can only ever "
+                             "rebind_triton_welds.py take the same flag and a "
+                             "certification driver can pass it to both; on a seed it can only ever "
                              "be a no-op, because a key that already exists is "
                              "refused by name, so there is no other architecture's "
                              "record here to strand.")
@@ -464,7 +464,7 @@ def main(argv=None) -> int:
     only = {s.strip() for s in args.only.split(",") if s.strip()}
 
     record = json.loads(LEDGER.read_text(encoding="utf-8"))
-    # THE TYPED DECLARATION IS GONE AND MAY NOT COME BACK: the capabilities a table
+    # The typed declaration is gone and may not come back: the capabilities a table
     # admits are now the intersection of the ones its cited welds have a LIVE record
     # for, so they follow from the records this tool writes. A typed key beside them
     # is a second answer to the same question.
@@ -505,7 +505,7 @@ def main(argv=None) -> int:
             refused.append((sub.name, "curated set pins no path under meep_gpu/"))
             continue
 
-        # THE DEVICE IDENTITY IS REQUIRED, AND MOST GATES DO NOT RECORD IT.
+        # The device identity is required, and most gates do not record it.
         # `test_every_triton_weld_names_a_validated_triton_and_capability` holds a
         # weld to naming a validated Triton and a compute capability, and only the
         # `probe_triton_*` artifacts carry an `environment` block with `device` in
@@ -539,7 +539,7 @@ def main(argv=None) -> int:
                                       "-- a weld that does not say `keep` or `flush` "
                                       "does not identify its own result"))
             continue
-        # THE MACHINE IS MEASURED OR THE WELD IS NOT CUT. Until 2026-09-11 the host
+        # The machine is measured or the weld is not cut. Until 2026-09-11 the host
         # line defaulted the hostname to the string "the GPU host" -- the one typed fact
         # in an otherwise derived entry, and typed about the very thing a reader
         # would go back to. It was defensible only while every gate ran on one box;
@@ -559,10 +559,10 @@ def main(argv=None) -> int:
         if toolchain is not None:
             refused.append((sub.name, toolchain))
             continue
-        # THE ENTRY IS THE BYTES; THE RECORD IS THE RUN. The pins and the status say
+        # The entry is the bytes; the record is the run. The pins and the status say
         # what this weld certifies and are what `fastpath.bound_digest` hashes;
         # everything that describes the run that earned it is filed under the
-        # capability that run measured, so a later round on another architecture adds
+        # capability that run measured, so a later certification on another architecture adds
         # a record beside this one instead of overwriting it.
         entry = {
             "_seeded": (
@@ -582,9 +582,9 @@ def main(argv=None) -> int:
                 "recorded matched the checkout byte for byte) and disclosed in the "
                 "record; `recorded_utc` is when this entry was cut, not when the gate "
                 "ran."),
-            # READ, NOT TYPED. `verdict` is the artifact's own release field, and the
+            # Read, not typed. `verdict` is the artifact's own release field, and the
             # candidate was refused above unless it was True -- so this records what
-            # the run said rather than what the seeding round wanted it to say.
+            # the run said rather than what the seeding tool wanted it to say.
             "status": "PASS" if ok else "<unreleased>",
             "source_sha256": {n: imported[n] for n in curated},
             "code_sha256": {n: code_digest_of_path(_API / n) for n in curated},
@@ -592,7 +592,7 @@ def main(argv=None) -> int:
         run = {
             "artifact_sha256": hashlib.sha256(artifact.read_bytes()).hexdigest(),
             "host": host,
-            # THE PATH A READER CAN ACTUALLY WALK. `campaign.name` is the leaf, so
+            # The path a reader can actually walk. `campaign.name` is the leaf, so
             # the line read `parity/meep_gpu/triton_fleet_.../<sub>/` and
             # dropped the `results/` component the campaign really sits under -- a
             # records line pointing at a directory that does not exist. Relative to
@@ -601,7 +601,7 @@ def main(argv=None) -> int:
                         f"{sub.name}/ - {field}.released"),
             "recorded_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "subnormal_policy": policy,
-            # ONE SPELLING EACH: the merge canonicalised them, and _host_line
+            # One spelling each: the merge canonicalised them, and _host_line
             # returning a line is the proof both are present.
             "cupy_version": str(identity["cupy"]),
             "triton_version": str(identity["triton"]),

@@ -19,15 +19,23 @@ repository. Never build a public tree by hand.
 
 ## Before the export: the release commit
 
-The release commit is on the development repository's `main`, reviewed, with its
-continuous-integration run read. At that commit:
+The release commit is on the development repository's `main`, reviewed, with its continuous-integration run
+read. A release prepared on a branch reaches `main` through a merge that keeps the branch's tree. At that commit:
 
 - `pyproject.toml` and `CITATION.cff` carry the release version, and
   `CITATION.cff`'s `date-released` is the release date;
 - `CHANGELOG.md` has the heading `## <version> — <title> (<date>)`; the title becomes
   the tag's message, `meep-gpu <version> — <title>`;
 - the hygiene guard, `tools/ci/check_hygiene.py`, is green: no host name, account
-  name, local path or personal address in any tracked file;
+  name, local path, personal address or private evidence path in any tracked file,
+  and no development jargon in any exported file (a declared pending entry passes
+  until the tool that writes its file re-cuts it);
+- the package ships at least one timed NVIDIA dispatch-preference record and one timed
+  Apple record: `meep_gpu.test_dispatch_preference::test_the_package_ships_an_nvidia_and_an_apple_timing_record`
+  passes and is not listed in `tools/ci/pending_certification.txt`, whose listed failures
+  the continuous-integration run accepts. The export refuses a release without both
+  (its `records` check asks the exported tree's own `dispatch_preference.timed_vendors`:
+  a record that loads, holds on the tree and measures at least one key);
 - every file the manifest requires on the public repository is present, among them
   `.github/workflows/publish.yml`, the workflow the package index's trusted publisher
   is registered to (it runs on the public repository only);
@@ -63,6 +71,7 @@ nothing committed) if any fails:
 | `references` | an exported file names an excluded file, by path or by file name |
 | `digests` | an exported file carries an excluded file's sha256 (or a Python file's code digest): a record that binds it would break |
 | `shape` | the exported tree's `ls-tree -r` differs from the release commit's by anything other than the excluded files |
+| `records` | the exported tree does not ship a timed NVIDIA and a timed Apple dispatch-preference record: its own `meep_gpu/dispatch_preference.timed_vendors`, loaded by path, names no record of one vendor that loads, holds on the exported tree and measures a key; the refusal names the vendor and why |
 | `version` | the version or the date disagree across `pyproject.toml`, `CITATION.cff` and the CHANGELOG heading, or the public repository already has the tag or the version |
 | `message` | the message is out of the form above |
 | `guard` | the release commit's hygiene guard is absent, or exits non-zero on the exported tree |

@@ -12,6 +12,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
+import neutral_ids  # noqa: E402
+import timing_host  # noqa: E402
 import timing_records as tr  # noqa: E402
 
 UUID0 = "GPU-00000000-aaaa"
@@ -96,14 +98,15 @@ def test_record_gpu_strikes_another_route_and_lost_bit_identity(tmp_path):
 
 def meep_rows(path, row_id, digest="d" * 64, configuration=None, threads=None,
               stepped=True, binding="bound-core-by-package", binding_facts=None,
-              ranks=16):
+              ranks=16, single=True, structural=None):
     measurement = {"row": "measurement", "row_id": row_id, "case": "pml_3d",
                    "cells": 512000, "ranks": ranks, "mcell_steps_per_s": 500.0,
                    "ms_per_step": 1.0, "spread": 0.01, "windows": 6,
                    "steps_per_window": 100, "stepper": "fields_step", "init_seconds": 2.0,
                    "geometry_digest": digest, "monitor": {"stepped": stepped},
+                   "geometry_digest_structural": structural,
                    "threads_observed": threads,
-                   "environment": {"meep": "1.33.0", "single_precision": True,
+                   "environment": {"meep": "1.33.0", "single_precision": single,
                                    "binding_label": binding,
                                    "binding": binding_facts or {"bound": True}}}
     if configuration is not None:
@@ -159,7 +162,7 @@ def test_configuration_fields_and_threads(tmp_path):
               threads={"threads_min": 3, "cpu_seconds_over_wall_min": 1.9})
     entry, _ = tr.record_meep(ledger, rows, "t2ok", None, None, None, {})
     assert not entry.get("struck")
-    # THE BASELINE: MPI's helper threads already make a single-threaded rank read 3.
+    # The baseline: MPI's helper threads already make a single-threaded rank read 3.
     meep_rows(rows, "t2mpi", configuration={"threads_per_rank": 2},
               threads={"threads_min": 3, "omp_threads_added_min": 0,
                        "cpu_seconds_over_wall_min": 1.9})
@@ -393,7 +396,7 @@ def test_record_control_names_the_metal_gate(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# A GPU-only row cites its identity row (CERT-8: one lift, no array control)
+# A GPU-only row cites its identity row (one lift, no array control)
 # ---------------------------------------------------------------------------
 
 def _gpu_only_row(**kw):
@@ -468,7 +471,7 @@ def test_a_gpu_only_row_cannot_borrow_another_rows_identity(tmp_path, change, wh
 
 
 # ---------------------------------------------------------------------------
-# The variance precondition (CERT-8 H5)
+# The variance precondition, which is not the row gate
 # ---------------------------------------------------------------------------
 
 def _variance_ledger(path, gpu, meep, gpu_verdicts=None, ranks=32):
@@ -525,3 +528,300 @@ def test_the_variance_precondition_refuses_a_spread_above_its_threshold(tmp_path
     few = str(tmp_path / "few.jsonl")
     _variance_ledger(few, [600.0, 601.0], [400.0, 401.0])
     assert "2 readable repeats < 5" in tr.variance_verdict(few, 32)["why"][0]
+
+
+# ---------------------------------------------------------------------------
+# H6: the thread gain read from a baseline taken before the OpenMP pool exists
+# ---------------------------------------------------------------------------
+
+#: A 24 x 2 row of the 1.0 timing run, as the bench recorded it: the
+#: thread count read after ``import meep`` already held the OpenMP worker, so 0 were
+#: "added" while the rank ran 1.997 CPU seconds per wall second.
+CERT9N_24X2 = {"threads_min": 4, "threads_at_mpi_init_this_rank": 4,
+               "omp_threads_added_min": 0, "cpu_seconds_over_wall_min": 1.9975}
+
+
+def test_the_1_0_hybrid_row_is_struck_by_the_old_rule_and_read_by_the_new_one(tmp_path):
+    ledger = str(tmp_path / "ledger.jsonl")
+    rows = str(tmp_path / "rows_r24.jsonl")
+    meep_rows(rows, "old", configuration={"threads_per_rank": 2}, threads=CERT9N_24X2,
+              ranks=24)
+    entry, _ = tr.record_meep(ledger, rows, "old", None, None, None, {})
+    assert "0 threads added after MPI initialisation (floor 1)" in entry["struck"]
+    # The same row with the bench's H6 fields: the worker was gained after the pre-import
+    # baseline (1 thread) and ran for the whole window, beside the main thread.
+    fixed = dict(CERT9N_24X2, threads_baseline="before_import_meep",
+                 threads_before_import_this_rank=1, busy_threads_min=2,
+                 omp_threads_busy_added_min=1)
+    meep_rows(rows, "new", configuration={"threads_per_rank": 2}, threads=fixed, ranks=24)
+    entry, _ = tr.record_meep(ledger, rows, "new", None, None, None, {})
+    assert not entry.get("struck"), entry.get("struck")
+
+
+def test_mpi_helpers_gained_at_import_do_not_count_as_openmp_threads(tmp_path):
+    """A T = 2 rank whose only busy thread is the main one: MPI's two helpers (and a
+    CUDA-aware MPI's CUDA thread) were gained after the pre-import baseline too, but sat
+    idle, so the gain of record is 0 and the row is struck."""
+    ledger = str(tmp_path / "ledger.jsonl")
+    rows = str(tmp_path / "rows_r24.jsonl")
+    idle = {"threads_min": 4, "threads_before_import_this_rank": 1, "busy_threads_min": 1,
+            "omp_threads_busy_added_min": 0, "cpu_seconds_over_wall_min": 1.6,
+            "threads_baseline": "before_import_meep"}
+    meep_rows(rows, "idle", configuration={"threads_per_rank": 2}, threads=idle, ranks=24)
+    entry, _ = tr.record_meep(ledger, rows, "idle", None, None, None, {})
+    assert ("0 threads gained after the pre-import baseline and busy over the windows "
+            "(floor 1)") in entry["struck"]
+    # T = 4 needs three busy workers; and the CPU floor still binds beside the count.
+    four = {"omp_threads_busy_added_min": 3, "cpu_seconds_over_wall_min": 3.99}
+    meep_rows(rows, "t4", configuration={"threads_per_rank": 4}, threads=four, ranks=12)
+    entry, _ = tr.record_meep(ledger, rows, "t4", None, None, None, {})
+    assert not entry.get("struck")
+    slow = {"omp_threads_busy_added_min": 3, "cpu_seconds_over_wall_min": 2.5}
+    meep_rows(rows, "t4slow", configuration={"threads_per_rank": 4}, threads=slow, ranks=12)
+    entry, _ = tr.record_meep(ledger, rows, "t4slow", None, None, None, {})
+    assert "floor 3.00" in entry["struck"]
+
+
+def test_busy_threads_counts_only_threads_gained_and_busy():
+    import bench_meep_identical_case as bench
+    before = {100: 10.0, 101: 0.0, 102: 0.0, 103: 0.0}
+    after = {100: 12.0, 101: 0.0, 102: 0.0, 103: 1.95}
+    ran = bench.busy_threads(before, after, 2.0, [100])
+    assert ran["busy"] == 2 and ran["busy_gained"] == 1
+    assert bench.busy_threads(None, after, 2.0, [100]) == {"available": False}
+    # A thread that started after the first reading counts from zero.
+    ran = bench.busy_threads({100: 10.0}, {100: 12.0, 104: 1.5}, 2.0, [100])
+    assert ran["busy_gained"] == 1
+
+
+# ---------------------------------------------------------------------------
+# Labelled context legs
+# ---------------------------------------------------------------------------
+
+def test_a_context_leg_may_be_double_precision_and_is_held_to_the_structural_digest(
+        tmp_path):
+    ledger = str(tmp_path / "ledger.jsonl")
+    rows = str(tmp_path / "rows_r48.jsonl")
+    digest_file = str(tmp_path / "digests" / "pml_3d_res20.sha256")
+    tr.write_lift_digest(digest_file, "a" * 64, "pml_3d_res20", structural="s" * 64)
+    assert tr.structural_digest_of_record(digest_file) == "s" * 64
+    context = {"context": "conda-forge MEEP (double precision)", "precision": "double",
+               "build": "ctx-cfdouble"}
+    # Its full digest differs (epsilon dtype, dt bits); its structural digest agrees.
+    meep_rows(rows, "cf", digest="b" * 64, structural="s" * 64, single=False,
+              configuration=context, ranks=48)
+    entry, _ = tr.record_meep(ledger, rows, "cf", None, digest_file, None, {})
+    assert not entry.get("struck"), entry.get("struck")
+    assert entry["context"]["denominator"] is False
+    assert entry["context"]["label"] == "conda-forge MEEP (double precision)"
+    meep_rows(rows, "cfbad", digest="b" * 64, structural="t" * 64, single=False,
+              configuration=context, ranks=48)
+    entry, _ = tr.record_meep(ledger, rows, "cfbad", None, digest_file, None, {})
+    assert "structural geometry digest" in entry["struck"]
+    # The same double-precision row WITHOUT a context label is struck as before, and a
+    # context leg never writes the digest of record.
+    meep_rows(rows, "plain", digest="a" * 64, structural="s" * 64, single=False, ranks=48)
+    entry, _ = tr.record_meep(ledger, rows, "plain", None, digest_file, None, {})
+    assert entry["struck"] == "the MEEP build is not single precision"
+    fresh = str(tmp_path / "digests" / "pml_3d_res32.sha256")
+    meep_rows(rows, "first-cf", digest="c" * 64, single=False, configuration=context,
+              ranks=48)
+    tr.record_meep(ledger, rows, "first-cf", None, fresh, None, {})
+    assert not os.path.exists(fresh)
+
+
+
+def test_a_rank_reports_the_launchers_placement_not_its_pinned_main_thread():
+    """H6b: under OMP_PROC_BIND the main thread is pinned to its first place once MEEP
+    is imported; the rank's placement is the set read before the import."""
+    import types
+    import bench_meep_identical_case as bench
+    stand_in = types.SimpleNamespace(my_rank=lambda: 0)
+    facts = bench.rank_facts(stand_in, [0, 1, 48, 49])
+    assert facts["affinity"] == [0, 1, 48, 49]
+    assert facts["affinity_read"] == "before_import_meep"
+    cores = {0: "0:0", 48: "0:0", 1: "0:1", 49: "0:1"}
+    summary = bench.binding_summary({"ranks": [facts]}, scope_cpus=96, cores=cores)
+    assert summary["physical_cores_used"] == 2 and summary["physical_cores_per_rank"] == [2]
+
+
+# ---------------------------------------------------------------------------
+# What a recorder writes about the machine (neutral_ids)
+# ---------------------------------------------------------------------------
+
+#: A machine no test here runs on: nothing a recorder writes may carry any of it.
+HOST = "gpu-node-17.cluster.example.edu"
+LOGIN = "fixtureuser"
+HOME = "/" + "ho" + "me" + "/fixtureuser"   # from pieces: a full home path is a hygiene-guard hit
+REAL_A = "GPU-3f1c2a9e-5b7d-4e21-9a0c-6d8e2f4b1a37"
+REAL_B = "GPU-9b2e7c41-0d6a-4f83-b5e9-1c7a3d8f6e02"
+FOREIGN_PID = 271828
+
+
+@pytest.fixture
+def machine(monkeypatch):
+    """This process as the fixture machine: its host names, login and home."""
+    monkeypatch.setattr(neutral_ids.socket, "gethostname", lambda: HOST)
+    monkeypatch.setattr(neutral_ids, "_node", lambda: HOST)
+    monkeypatch.setattr(neutral_ids.getpass, "getuser", lambda: LOGIN)
+    monkeypatch.setenv("HOME", HOME)
+    neutral_ids.reset()
+    yield neutral_ids
+    neutral_ids.reset()
+
+
+def assert_neutral(record, *tokens):
+    assert neutral_ids.residue(record) == []
+    text = json.dumps(record, sort_keys=True, default=str)
+    for token in (HOST, HOST.split(".")[0], LOGIN, HOME, REAL_A, REAL_B,
+                  str(FOREIGN_PID)) + tokens:
+        assert str(token) not in text, (token, text[:400])
+
+
+def _nvidia_host(monkeypatch):
+    """``run_text`` answering as a two-GPU Linux host named ``HOST``."""
+    answers = {
+        "uname -a": f"Linux {HOST} 5.15.0-91-generic #101-Ubuntu SMP x86_64 GNU/Linux",
+        "uname -srm": "Linux 5.15.0-91-generic x86_64",
+        "lscpu": f"Model name: AMD EPYC 7742 64-Core Processor\nHostname: {HOST}",
+        "free -g": "Mem: 1007 12 900",
+    }
+
+    def run_text(command, timeout=30.0, env=None, cwd=None):
+        joined = " ".join(command)
+        if joined in answers:
+            return answers[joined]
+        if "--query-gpu=index,uuid,name" in joined:
+            return (f"0, {REAL_A}, NVIDIA RTX A6000, 535.129.03, 49140 MiB, 3 MiB, 0 %, "
+                    f"8.6, Enabled, Disabled\n1, {REAL_B}, NVIDIA RTX A6000, 535.129.03, "
+                    "49140 MiB, 5000 MiB, 99 %, 8.6, Enabled, Disabled")
+        if "--query-compute-apps" in joined:
+            return f"{REAL_B}, {FOREIGN_PID}, 5000 MiB"
+        if "CLOCK,PERFORMANCE" in joined:
+            return f"GPU 00000000:01:00.0\n    GPU UUID : {REAL_A}\n    Clocks : 1800 MHz"
+        return ""
+
+    monkeypatch.setattr(timing_host, "run_text", run_text)
+    monkeypatch.setattr(timing_host, "nvidia_smi_available", lambda: True)
+    monkeypatch.setattr(timing_host, "read_file", lambda path: "1.0 1.0 1.0 1/100 9")
+    monkeypatch.setattr(timing_host, "cpu_state", lambda platform=None: {"governor": "x"})
+    monkeypatch.setattr(timing_host, "gpu_state", lambda gpu, platform=None: {
+        "state": {"uuid": timing_host.recorded_device(REAL_A), "clocks.sm": "1800"}})
+
+
+def test_the_environment_record_writes_nothing_of_the_machine(machine, monkeypatch, tmp_path):
+    """environment.json leaves the machine: the host as ``uname -srm``, every UUID as its
+    card id, no foreign pid, every path under its root's label. GPU model, driver and
+    compute capability stay."""
+    _nvidia_host(monkeypatch)
+    monkeypatch.setenv("SLURMD_NODENAME", HOST.split(".")[0])
+    monkeypatch.setattr(tr, "probe_packages", lambda python, **_k: (
+        {"python": "3.12.4", "executable": f"{HOME}/miniforge3/envs/meep/bin/python",
+         "meep": "1.35.0", "meep_file": f"{HOME}/miniforge3/envs/meep/lib/meep/__init__.py"},
+        ""))
+    out = str(tmp_path / "environment.json")
+    builds = {"reference": {"python": f"{HOME}/miniforge3/envs/meep/bin/python",
+                            "sha256": {f"{HOME}/miniforge3/envs/meep/lib/libmeep.so.37": "ab"}}}
+    params = {"TREE_SRC": {"value": f"{HOME}/meep-gpu", "source": "given"},
+              "host": HOST}
+    returned = tr.environment_record(out, tree=None, drivers=None, python="py",
+                                     builds=builds, gpu="0", params=params,
+                                     topology={"physical_cores": 64}, platform="linux")
+    with open(out, encoding="utf-8") as handle:
+        written = json.load(handle)
+    assert written == json.loads(json.dumps(returned, default=str))
+    assert_neutral(written)
+    assert written["uname"] == "Linux 5.15.0-91-generic x86_64"
+    card_a, card_b = neutral_ids.card_id(REAL_A), neutral_ids.card_id(REAL_B)
+    assert "NVIDIA RTX A6000, 535.129.03" in written["nvidia_smi_gpus"]
+    assert written["nvidia_smi_gpus"].splitlines()[0].startswith(f"0, {card_a}, ")
+    assert written["nvidia_smi_apps"] == f"{card_b}, other, 5000 MiB"
+    assert written["slurm"]["SLURMD_NODENAME"] == neutral_ids.machine_id()
+    assert written["packages"]["executable"] == "<home>/miniforge3/envs/meep/bin/python"
+    assert written["params"]["TREE_SRC"]["value"] == "<home>/meep-gpu"
+
+
+def test_a_meep_build_record_writes_nothing_of_the_machine(machine, monkeypatch, tmp_path):
+    image = tmp_path / "lib" / "libmeep.so.37"
+    image.parent.mkdir()
+    image.write_bytes(b"\x7fELF fixture")
+    config_log = tmp_path / "config.log"
+    config_log.write_text(f"This file contains any messages\n  $ ./configure "
+                          f"--prefix={HOME}/miniforge3/envs/meep --with-mpi\n"
+                          "CFLAGS='-O2'\nCXXFLAGS='-O2'\n")
+    facts = {"meep": "1.35.0", "single_precision": True, "with_mpi": True,
+             "meep_file": f"{HOME}/miniforge3/envs/meep/lib/python3.12/meep/__init__.py",
+             "loaded_meep_images": [str(image), f"{HOME}/miniforge3/envs/meep/lib/_meep.so"],
+             "loaded_by": "/proc/self/maps", "extensions_present": [],
+             "libmeep_present": [f"{HOME}/miniforge3/envs/meep/lib/libmeep.so.33"],
+             "openmp_runtimes_loaded": [], "prefix": f"{HOME}/miniforge3/envs/meep"}
+    monkeypatch.setattr(timing_host, "run_text",
+                        lambda *a, **k: "BUILD " + json.dumps(facts))
+    monkeypatch.setattr(tr, "identity_facts", lambda python: (
+        {"libm": {"kind": "glibc libm", "path": f"{HOME}/sysroot/libm.so.6",
+                  "sha256": "cd"}, "subnormals_after_import": {"mode": "keep"}}, ""))
+
+    class Census:
+        @staticmethod
+        def census(paths, progress=None):
+            return {"images": [{"path": p, "sha256": "ef"} for p in paths],
+                    "verdict": {"none_outside_exempt": True, "text": "clean"}}
+
+    monkeypatch.setattr(tr, "load_tool", lambda name: Census)
+    record = tr.meep_build_record(f"{HOME}/miniforge3/envs/meep/bin/python", str(config_log))
+    assert_neutral(record)
+    assert record["python"] == "<home>/miniforge3/envs/meep/bin/python"
+    assert record["configure_line"] == "./configure --prefix=<home>/miniforge3/envs/meep --with-mpi"
+    assert list(record["sha256"].values()) == [tr.sha256_file(str(image))]
+    assert record["probe"]["single_precision"] is True
+
+
+def _box_pair():
+    """One box as the probe saw it (raw) and as a row records it: device 0 pinned by
+    index, this process on it, a foreign app on it, another on device 1."""
+    gpus = f"0, {REAL_A}, 3 MiB, 0 %\n1, {REAL_B}, 4970 MiB, 0 %"
+    apps = (f"{REAL_A}, 4242, 1200 MiB\n{REAL_A}, {FOREIGN_PID}, 800 MiB\n"
+            f"{REAL_B}, 900, 4970 MiB")
+    raw = {"CUDA_VISIBLE_DEVICES": "0", "pid": 4242, "gpus": gpus, "compute_apps": apps}
+    recorded = {"CUDA_VISIBLE_DEVICES": "0", "gpus": timing_host.recorded_gpus(gpus),
+                "compute_apps": timing_host.recorded_compute_apps(apps, 4242)}
+    return raw, recorded
+
+
+def test_the_pinned_device_join_reads_raw_and_recorded_rows_alike(machine):
+    raw, recorded = _box_pair()
+    assert tr.pinned_foreign(raw) == [f"{REAL_A}, {FOREIGN_PID}, 800 MiB"]
+    assert tr.pinned_foreign(recorded) == [f"{neutral_ids.card_id(REAL_A)}, other, 800 MiB"]
+    assert_neutral(recorded, "4242")
+    # pinned by UUID: the recorded pin is the card id the listing carries
+    by_uuid = dict(recorded, CUDA_VISIBLE_DEVICES=timing_host.recorded_device(REAL_A))
+    assert len(tr.pinned_foreign(by_uuid)) == 1
+    quiet = dict(recorded, compute_apps=timing_host.recorded_compute_apps(
+        f"{REAL_A}, 4242, 1200 MiB", 4242))
+    assert tr.pinned_foreign(quiet) == []
+
+
+def test_a_ledger_line_writes_nothing_of_the_machine_and_its_rows_still_open(
+        machine, tmp_path):
+    ledger = str(tmp_path / "ledger.jsonl")
+    row_dir = str(tmp_path / "row")
+    write_rows(row_dir, [gpu_row()])
+    log = tmp_path / "meep.log"
+    log.write_text(f"[{HOST.split('.')[0]}:{FOREIGN_PID}] Rank 0 bound to package[0][core:0]\n"
+                   f"[{HOST.split('.')[0]}:{FOREIGN_PID + 1}] Rank 1 bound to "
+                   "package[0][core:1]\n")
+    fields = {"run_dir": f"{HOME}/meep_gpu_validation/ladder_t", "host": HOST}
+    tr.record_gpu(ledger, row_dir, None, None, None, False, dict(fields))
+    tr.record_meep(ledger, str(tmp_path / "rows_r2.jsonl"), "r", str(log), None, None,
+                   dict(fields))
+    tr.record_note(ledger, "not_started", f"not started: {HOME}/bin/mpirun missing",
+                   dict(fields))
+    lines = [json.loads(line) for line in open(ledger, encoding="utf-8")]
+    assert_neutral(lines, str(FOREIGN_PID + 1))
+    assert {line["host"] for line in lines} == {neutral_ids.machine_id()}
+    assert lines[0]["run_dir"] == "<home>/meep_gpu_validation/ladder_t"
+    # a reader opens a recorded rows file through neutral_ids.resolve
+    opened = neutral_ids.resolve(lines[0]["rows_file"])
+    assert os.path.realpath(opened) == os.path.realpath(os.path.join(row_dir, "rows.jsonl"))
+    assert lines[1]["launcher_bindings"]["first"] == [
+        "Rank 0 bound to package[0][core:0]", "Rank 1 bound to package[0][core:1]"]

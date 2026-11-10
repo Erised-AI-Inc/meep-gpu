@@ -17,9 +17,12 @@ The output artifact has two normalized fields:
     mismatch.
 
 ``source_sha256``
-    Absolute source paths mapped to SHA-256 values read from the files imported
-    by this process.  It is intentionally not a list inferred from the current
-    working directory or copied from a staging tree.
+    Source paths, relative to the API root (the checkout), mapped to SHA-256
+    values read from the files imported by this process.  It is intentionally not
+    a list inferred from the current working directory or copied from a staging
+    tree: each path is the ``module.__file__`` of a module the process imported,
+    and it is written relative to the checkout it lies in, because the artifact
+    leaves the machine and names no local path (``neutral_ids.py``).
 
 The artifact directory also contains ``source_sha256.txt``.  It is an
 append-only-in-scope campaign manifest: a later gate run in the same directory
@@ -44,6 +47,11 @@ from typing import Any, Iterable, Mapping, Sequence
 
 HERE = Path(__file__).resolve().parent
 API_ROOT = HERE.parents[1]
+
+try:
+    import neutral_ids
+except ImportError:  # imported as a package module, not from parity/meep_gpu
+    from parity.meep_gpu import neutral_ids
 EXIT_CANNOT_CERTIFY = 75
 SOURCE_MANIFEST_ENV = "MEEP_GPU_GATE_SOURCE_MANIFEST"
 
@@ -70,7 +78,7 @@ def discover_gates(directory: Path = HERE) -> tuple[Path, ...]:
 def discover_dispatch_gates(directory: Path = HERE) -> tuple[Path, ...]:
     """Metal gates deliberately named OUTSIDE the ``gate_metal_*`` glob.
 
-    NAMED ONE BY ONE, and the explicitness is the point rather than a shortcoming.
+    Named one by one, and the explicitness is the point rather than a shortcoming.
     ``gate_dispatch_metal_route.py`` measures the DISPATCH LADDER rather than a
     kernel family, and the ``gate_metal_*`` stem is read by three other mechanisms
     that would each misread it:
@@ -126,7 +134,16 @@ def runtime_source_sha256(*, gate_path: Path,
             continue
         if _is_python_source(path, root):
             paths.add(path)
-    return {str(path): sha256_of(path) for path in sorted(paths)}
+    return {_recorded_name(path, root): sha256_of(path) for path in sorted(paths)}
+
+
+def _recorded_name(path: Path, root: Path) -> str:
+    """A source as the artifact names it: relative to the API root, or, for a file outside
+    it (which :func:`check_artifact_weld` refuses), its path under its root's label."""
+    try:
+        return path.relative_to(root).as_posix()
+    except ValueError:
+        return neutral_ids.path(str(path))
 
 
 def _atomic_json_write(payload: Mapping[str, Any], path: Path) -> None:
@@ -225,8 +242,12 @@ def check_artifact_weld(payload: Mapping[str, Any], *, root: Path | None = None)
         if not isinstance(name, str) or not isinstance(digest, str):
             reasons.append("source_sha256 contains a non-string path or digest")
             continue
-        path = Path(name)
-        if not path.is_absolute() or not _is_python_source(path, root):
+        if Path(name).is_absolute():
+            reasons.append(f"recorded source is an absolute path, not one relative to the API "
+                           f"root: {neutral_ids.path(name)}")
+            continue
+        path = (root / name).resolve()
+        if not _is_python_source(path, root):
             reasons.append(f"recorded source is not a Python file below API root: {name}")
             continue
         if sha256_of(path) != digest:
@@ -266,20 +287,28 @@ def finalize_artifact(*, artifact_path: Path, gate_path: Path, exit_code: int,
         reasons.append("gate could not certify on this host (exit 75)")
     elif exit_code != 0:
         reasons.append(f"gate returned exit status {exit_code}")
+    try:
+        manifest_name = manifest_path.resolve().relative_to(
+            artifact_path.parent.resolve()).as_posix()
+    except ValueError:
+        manifest_name = neutral_ids.path(str(manifest_path))
     payload["weld"] = {
         "passed": not weld_reasons and not manifest_reasons
                   and not _existing_manifest_reasons(manifest, sources),
         "source_count": len(sources),
-        "manifest": str(manifest_path),
+        "manifest": manifest_name,
     }
     payload["release"] = {
         "released": exit_code == 0 and not reasons,
         "reasons": reasons,
     }
+    # The artifact leaves the machine: every string in it written neutrally (no host
+    # name, account, card UUID or local path), the gate's own fields included.
+    neutral_ids.neutralize_in_place(payload)
     _atomic_json_write(payload, artifact_path)
     print(
         f"[release] released={payload['release']['released']} "
-        f"sources={len(sources)} artifact={artifact_path}",
+        f"sources={len(sources)} artifact={neutral_ids.path(str(artifact_path))}",
         flush=True,
     )
     return payload

@@ -1,9 +1,9 @@
 """The Metal WHOLE STEP against the array path, byte for byte, per complete step.
 
-WHAT THIS ARBITRATES THAT NO FAMILY GATE CAN. Each family gate certifies ONE
+What this arbitrates that no family gate can. Each family gate certifies ONE
 sub-step: it seeds a state, launches one kernel, and compares words. A shelf of
 green family gates says nothing about the object the engine would actually run,
-which is a COMPLETE DRIVER STEP composed of four sub-steps, a wall pass on a walled
+which is a complete driver step composed of four sub-steps, a wall pass on a walled
 grid, and whatever the composer left on the array path in between. Five failure
 classes live only there and every one of them is invisible to a per-sub-step gate:
 
@@ -36,29 +36,29 @@ classes live only there and every one of them is invisible to a per-sub-step gat
    leaving every shipped kernel exactly as it is, and asserts its reordering is a
    PERMUTATION of the driver's own so it cannot be measuring a dropped pass instead.
 
-5. **A PLAN THAT ITSELF TOUCHES THE HOST MID-COMPOSITION** — tranche 4's own class,
-   and the reason the two cylindrical families belong here rather than only in their
-   family gates. The complex cylindrical curl's ``run`` syncs its prefix SOURCE out,
-   scans it on the host, and syncs the prefix mirror back in BEFORE launching; the
-   real m = 0 curl's ``run`` dispatches TWICE, and the second launch reads what the
-   first wrote. Both are correct exactly once per sub-step per step and in one
-   order, and both are indistinguishable from their broken twins in any gate that
-   launches once. Leg ``armed`` arms each directly (``stale_cylindrical_prefix``,
-   ``cylindrical_scan_after_curl``) — the second keeps the launch COUNT exactly
-   right, which is why a counter cannot catch it.
+5. **A plan that itself touches the host mid-composition** — the class the two
+   cylindrical families introduced, and the reason they belong here rather than only
+   in their family gates. The complex cylindrical curl's ``run`` syncs its prefix
+   SOURCE out, scans it on the host, and syncs the prefix mirror back in BEFORE
+   launching; the real m = 0 curl's ``run`` dispatches TWICE, and the second launch
+   reads what the first wrote. Both are correct exactly once per sub-step per step
+   and in one order, and both are indistinguishable from their broken twins in any
+   gate that launches once. Leg ``armed`` arms each directly
+   (``stale_cylindrical_prefix``, ``cylindrical_scan_after_curl``) — the second keeps
+   the launch COUNT exactly right, which is why a counter cannot catch it.
 
-THE CLAIM SHAPE, unchanged from every other Metal claim and restated because it is
+The claim shape, unchanged from every other Metal claim and restated because it is
 a real condition rather than a formality: **byte-identity subject to a CHECKED
 subnormal-free precondition**. On MPS the float32 subnormal flush is native and has
 no lever, so a run whose operands, results or intermediates enter the band is not
 covered by this gate's claim. Leg ``subnormal_window`` censuses every state array on
-every step and REPORTS THE WINDOW — first and last step at which any word landed in
-the band — rather than a scalar verdict, because the chi3 round measured a run whose
+every step and reports the window — first and last step at which any word landed in
+the band — rather than a scalar verdict, because on a measured chi3 run the
 band entry was a transient: first at step 55, last at step 3,726, clean for the
 remaining 16,274. A census that fires once and a census that never fires are
 different claims and this gate distinguishes them.
 
-WHAT THIS IS NOT. It is not throughput: nothing here is timed and no throughput has
+What this is not. It is not throughput: nothing here is timed and no throughput has
 ever been measured on this backend. It is not dispatch: ``fastpath.plan_fast_path``
 still returns ``None`` on every branch, and this gate builds its composition by
 calling ``plan_step`` directly, which is what makes it a measurement of what WOULD
@@ -121,14 +121,14 @@ STATE_NAMES: Tuple[str, ...] = tuple(sorted(
      for name in metal_coverage.sub_step_volumes(slot)}
     | {f"f_bfast_{side}{axis}" for side in "BD" for axis in "xyz"}))
 
-#: The budget every multi-step case runs, STATED rather than implied. Tranche 1's
-#: cycle leg used four; twelve is used here because this gate's whole point is the
-#: classes that only compound — `fu_*`, `f_w_*` and the marginally stable
-#: `f_bfast_*`, whose homogeneous mode is (-1)^n and never decays — and a defect
-#: that needs three steps to become visible in the low bits is exactly the kind a
-#: four-step budget would report as green. The comparison is per COMPLETE STEP, so
-#: the budget also bounds `first_divergence`: a case that passes here is identical
-#: at every one of its twelve steps, not merely at the last.
+#: The budget every multi-step case runs, STATED rather than implied. The first
+#: Metal certification's cycle leg used four; twelve is used here because this
+#: gate's whole point is the classes that only compound — `fu_*`, `f_w_*` and the
+#: marginally stable `f_bfast_*`, whose homogeneous mode is (-1)^n and never decays
+#: — and a defect that needs three steps to become visible in the low bits is
+#: exactly the kind a four-step budget would report as green. The comparison is per
+#: COMPLETE STEP, so the budget also bounds `first_divergence`: a case that passes
+#: here is identical at every one of its twelve steps, not merely at the last.
 CYCLES = 12
 
 #: The seam order one complete driver step runs in — FIVE PASSES PER HALF followed
@@ -139,7 +139,7 @@ CYCLES = 12
 #: The order is driver.py:3281-3287 (B half) and :3292-3302 (D half):
 #: ``step_B`` -> magnetic sources -> ``fill_symmetry_bc_B`` -> ``zero_metal_B`` ->
 #: ``fill_folded_far_ghosts_B`` -> ``update_H``, and the same five on the D side.
-#: THE WALL PASS SITS BETWEEN THE TWO FILL PASSES, which is not a detail: it is the
+#: The wall pass sits between the two fill passes, which is not a detail: it is the
 #: reason the folded families refuse both fill slots on a walled run by name, and
 #: the reason a fold bug can be byte-perfect per sub-step and wrong per step.
 SEAM_ORDER: Tuple[str, ...] = tuple(metal_coverage.RESIDENCY_ORDER)
@@ -239,7 +239,7 @@ def frozen(fields: Any) -> Dict[str, Any]:
 def live_slots(fields: Any, pml: Any) -> Tuple[str, ...]:
     """Which seam slots this run actually executes. Sources are ``()`` here.
 
-    THE COMPOSER'S OWN MODEL, not a second one. This used to derive the answer from
+    The composer's own model, not a second one. This used to derive the answer from
     ``zero_metal_axes`` alone, which was correct while nothing folded and silently
     wrong the moment something did: a folded run executes ``fill_symmetry_bc_*`` on
     every step with no source at all (stepping.py:1482-1483 returns immediately only
@@ -307,7 +307,7 @@ def run_metal_step(fields: Any, pml: Any, plan: Any, residency: Any,
     an explicit ``sync_out`` / ``sync_in``. That bracket is the residency clause
     made operational, and leg ``armed`` measures that removing it diverges.
 
-    THE TWO FILL PASSES ARE DISPATCHED SEPARATELY and never through the fill plan's
+    The two fill passes are dispatched separately and never through the fill plan's
     own ``run()``. ``run()`` walks near then far back to back, which is the driver's
     order ONLY where the wall pass between them does nothing; this walk puts
     ``zero_metal_*`` where the driver puts it, so a walled folded run is stepped in
@@ -315,7 +315,7 @@ def run_metal_step(fields: Any, pml: Any, plan: Any, residency: Any,
     convenient. Whether the plan owns the far pass is read from its own
     ``replaces_sub_steps`` — a folded METALLIC axis has no far pass and says so.
     """
-    # THE REGION PLAN IS INSTALLED BEFORE THE FIRST SLOT, as the driver installs it with
+    # The region plan is installed before the first slot, as the driver installs it with
     # the layer. Stepping ``Fields`` directly, the array path installs the one-rank plan
     # lazily at its first PML sub-step (``stepping._region_plan``); a composition whose
     # kernel serves ``update_E`` leaves no array-path ``update_E`` to do it, and an
@@ -419,7 +419,7 @@ CASES: Tuple[Tuple[str, Any, str], ...] = (
     ("beta_real_2d_metallic",
      lambda: matrix.flat(beta=0.33, boundaries={"x": "metallic"}),
      "special_kz real beta, WALLED"),
-    # MOVED HERE FROM `MIXED_CASES` ON 2026-08-19. This row was the gate's generic
+    # Moved here from `MIXED_CASES` on 2026-08-19. This row was the gate's generic
     # partial composition — the complex beta curls on the device, both constitutive
     # slots on the array path, because no complex beta constitutive product existed.
     # `special_kz` gained one, so the row composes a WHOLE step and belongs on this
@@ -436,7 +436,7 @@ CASES: Tuple[Tuple[str, Any, str], ...] = (
     ("offdiag_real_one_row", lambda: matrix.cart(rows={"Ex": ("Ey",)}),
      "off-diagonal update_E beside the shipped curls"),
 
-    # -- THE FOLD, which adds a FOURTH failure class to the three above -------
+    # -- The fold, which adds a FOURTH failure class to the three above -------
     # A folded step is TEN passes, not six: the near symmetry fill writes a ghost
     # plane that the NEXT sub-step reads, and on a folded periodic axis a far pass
     # writes another one after the wall clear. So a fold defect can be byte-perfect
@@ -485,7 +485,7 @@ CASES: Tuple[Tuple[str, Any, str], ...] = (
      lambda: matrix.dispersive(matrix.folded(rows={"Ex": ("Ey",)})),
      "folded tensor-row PML E with live packed poles and the ADE successor"),
 
-    # -- TRANCHE 4: THE FOLDED BETA FAMILY, ON BOTH STORAGES ------------------
+    # -- The folded beta family, on both storages -----------------------------
     # A folded beta step is the same TEN passes as any other fold, and the beta term
     # lands INSIDE the widened mask — between the curl and the top-plane mask — so
     # every one of the fold's four failure classes applies to it unchanged while the
@@ -510,7 +510,7 @@ CASES: Tuple[Tuple[str, Any, str], ...] = (
      "two of the four folded-beta corpus rows actually are, and the only arm that "
      "is not the zero-phase specialisation"),
 
-    # -- TRANCHE 4: THE TWO CYLINDRICAL FAMILIES ------------------------------
+    # -- The two cylindrical families -----------------------------------------
     # Every row takes CYL_COURANT, the float32 word of the matrix's default: the
     # cylindrical axis rules form MEEP's double products with Courant, which the Metal
     # kernels form in float32 only for a float32-word Courant (any other is refused by
@@ -534,7 +534,7 @@ CASES: Tuple[Tuple[str, Any, str], ...] = (
     ("dcyl_m1_complex_zperiodic",
      lambda: matrix.cylindrical(m=1, z_kind="periodic", courant=CYL_COURANT),
      "the other BCZ arm, and the one Triton's own predicate refuses by name — the "
-     "8 Metal-only slots this round reports live on this shape"),
+     "8 Metal-only slots reported live on this shape"),
     ("dcyl_m3_complex", lambda: matrix.cylindrical(m=3, courant=CYL_COURANT),
      "|m| = 3: the M_MANY arm, whose near-axis zero-row count is 3 rather than 1"),
     ("dcyl_m0_real",
@@ -550,7 +550,7 @@ CASES: Tuple[Tuple[str, Any, str], ...] = (
 #: Rows whose composition is deliberately PARTIAL — some slots stay on the array
 #: path — because that is the shape the residency clause exists for.
 MIXED_CASES: Tuple[Tuple[str, Any, str], ...] = (
-    # `beta_complex_2d` LEFT THIS LIST ON 2026-08-19 for the full-step list above:
+    # `beta_complex_2d` left this list on 2026-08-19 for the full-step list above:
     # its two constitutive slots stopped being on the array path. The row below is
     # the beta family's remaining partial composition and the closest replacement —
     # a real beta run with a susceptibility, where the ADE E leg is another family's
@@ -561,7 +561,7 @@ MIXED_CASES: Tuple[Tuple[str, Any, str], ...] = (
     ("cart_pml_complex_offdiag",
      lambda: matrix.cart(complex_storage=True, rows={"Ex": ("Ey",)}),
      "complex curls and update_H on the device, update_E on the array path"),
-    # THE NULL PAIR IS A MIXED CASE, not a full-step one, and that is a MEASURED
+    # The null pair is a mixed case, not a full-step one, and that is a measured
     # coverage gap rather than a quirk of this list. Under an inactive absorber the
     # constitutive pair is null — correct, and it launches nothing — but BOTH CURLS
     # fall to the array path, because no Metal product carries the plain (no-PML)
@@ -570,7 +570,7 @@ MIXED_CASES: Tuple[Tuple[str, Any, str], ...] = (
     ("nopml_real_nostore", lambda: matrix.cart(pml=0, storage=False, eps=False),
      "the no-PML NULL pair, with both curls on the array path (no Metal plain-curl "
      "product exists)"),
-    # THE WALLED FOLD, and it is a MIXED case for a reason worth stating: the two
+    # The walled fold, and it is a MIXED case for a reason worth stating: the two
     # fill slots are refused BY NAME on a walled run, because `zero_metal_*` runs
     # BETWEEN the near and far passes (driver.py:3285/:3286) and a plan may not fuse
     # across it. So the four arithmetic slots compose, both fills fall to the array
@@ -591,8 +591,8 @@ MIXED_CASES: Tuple[Tuple[str, Any, str], ...] = (
     ("fold_real_2d_no_pml", lambda: matrix.folded_no_pml(),
      "a folded no-PML run: the two ghost passes on the device, the null "
      "constitutive pair, both curls on the array path"),
-    # -- TRANCHE 4 --------------------------------------------------------------
-    # THE WALLED FOLDED BETA RUN, both storages. Ten passes with the wall clear in
+    # -- Mixed cases for the folded beta, Pade and cylindrical-conductivity families --
+    # The walled folded beta run, both storages. Ten passes with the wall clear in
     # its real position BETWEEN the two ghost passes, which is why both fill slots
     # are refused by name and run on the array path with syncs. This is the row
     # where the fold's seam, the wall's seam and the beta term are live in one step
@@ -606,7 +606,7 @@ MIXED_CASES: Tuple[Tuple[str, Any, str], ...] = (
      lambda: matrix.folded(complex_storage=True, beta=0.3,
                            boundaries={"x": "metallic"}),
      "the same seam under complex storage"),
-    # THE PADE FAMILY IS A ONE-SLOT COMPOSITION and therefore only ever a mixed
+    # The Pade family is a one-slot composition and therefore only ever a mixed
     # case: the SHARED clause 10 refuses chi2/chi3 on every sub-step, so the two
     # curls and `update_H` stay on the array path while `update_E` runs on the
     # device. That makes it the strictest residency row in the gate — a mirror is
@@ -618,7 +618,7 @@ MIXED_CASES: Tuple[Tuple[str, Any, str], ...] = (
      lambda: matrix.nonlinear(matrix.cart(boundaries="metallic")),
      "the same, WALLED: `zero_metal_D` writes D between the host curl and the "
      "device update_E that reads it"),
-    # THE NULL PAIR SPLITTING ON A NONLINEAR RUN. `update_H` is the null's and
+    # The null pair splitting on a nonlinear run. `update_H` is the null's and
     # `update_E` is NOBODY'S, because the null refuses the Pade factor by name.
     # Nothing dispatches on this row at all — the null performs no device work — so
     # it is here for the residency verdict and the byte compare rather than for a
@@ -627,7 +627,7 @@ MIXED_CASES: Tuple[Tuple[str, Any, str], ...] = (
      lambda: matrix.nonlinear(matrix.cart(pml=0, storage=False, eps=False)),
      "a nonlinear run with an INACTIVE absorber: the null takes update_H, update_E "
      "falls to the array path, and nothing is dispatched"),
-    # A CONDUCTIVITY ON A CYLINDRICAL RUN. The two curls fall to the array path (a
+    # A conductivity on a cylindrical run. The two curls fall to the array path (a
     # conductivity is a curl-only refusal) and the constitutive pair composes, so a
     # cylindrical mirror is held across two host curl writes per step. The scope of
     # the refusal is the property; a row where the conductivity also sank the
@@ -676,7 +676,7 @@ def run_case(label: str, build: Any, why: str, probes: Dict[str, Any],
              cycles: int = CYCLES) -> Dict[str, Any]:
     """One configuration: array path and Metal composition in lockstep.
 
-    TWO INDEPENDENT ENGINE OBJECTS, built from the same seeds, rather than one
+    Two independent engine objects, built from the same seeds, rather than one
     object snapshotted and restored. Restoring writes the host arrays a mirror
     shadows, so a snapshot/restore harness has to remember to re-sync — and a
     harness that forgets produces a green run for the wrong reason. Two objects
@@ -719,14 +719,14 @@ def run_case(label: str, build: Any, why: str, probes: Dict[str, Any],
     for slot, product in plan.plans.items():
         device_work = bool(getattr(product, "performs_device_work", True))
         counter = "launches" if device_work else "runs"
-        # HOW MANY DISPATCHES ONE CYCLE OWES THIS SLOT. One for an ordinary
+        # How many dispatches one cycle owes this slot. One for an ordinary
         # sub-step; for a FILL it is one per folded axis per pass it owns, because
         # the fill walks axes in X, Y, Z order and each is its own launch. Derived
         # from the plan's own axis entries rather than assumed to be one, so a
         # two-axis fold is required to dispatch four times per step and a plan that
         # quietly skipped an axis cannot satisfy the counter.
         near = getattr(product, "near", None)
-        # A NON-FILL PLAN DECLARES ITS OWN DISPATCH COUNT rather than being assumed
+        # A non-fill plan declares its own dispatch count rather than being assumed
         # to launch once. `cylindrical_real`'s curl plan dispatches TWICE per run —
         # the radial scan, then the curl that reads it — and reading 1 here would
         # have failed a correct composition, while relaxing the assertion to ">= 1"
@@ -779,7 +779,7 @@ def assert_case(row: Dict[str, Any], expect_full: bool) -> None:
         f"{label}: first divergence at complete step {row['first_divergence']}: "
         f"{row['per_step'][row['first_divergence'] - 1]['differing']}")
     assert not row["mirror_drift"], f"{label}: residency drift {row['mirror_drift']}"
-    # EVERY FILLED SLOT MUST HAVE RUN, once per cycle. A plan that was composed and
+    # Every filled slot must have run, once per cycle. A plan that was composed and
     # never invoked makes the byte compare a comparison of the array path with
     # itself, which is the hollow pass this assertion exists to refuse. The counter
     # is the plan kind's own — `launches` for a kernel, `runs` for the null — so
@@ -802,7 +802,7 @@ def assert_case(row: Dict[str, Any], expect_full: bool) -> None:
             "zero_metal_B", "zero_metal_D"}, (
             f"{label}: expected a full-step composition, but "
             f"{row['on_array_path']} stayed on the array path")
-    # A FOLDED CASE MUST HAVE STEPPED TEN PASSES, NOT SIX. Reported as its own
+    # A folded case must have stepped ten passes, not six. Reported as its own
     # assertion rather than folded into `expect_full` because the failure it
     # catches is the opposite one: a fold whose ghost passes were never in the walk
     # at all would compose, launch, compare and PASS — the array-path oracle would
@@ -841,7 +841,7 @@ def leg_whole_step(payload: Dict[str, Any], out: str, probes: Dict[str, Any],
 # ---------------------------------------------------------------------------
 
 def fold_order_mutations(probes: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """THE FOLD'S OWN FAILURE CLASS: a ghost plane produced and consumed a pass apart.
+    """The fold's own failure class: a ghost plane produced and consumed a pass apart.
 
     The three classes the rest of this leg arms are storage, seam and accumulation.
     A fold adds a fourth that none of them reaches and no per-sub-step gate can:
@@ -906,7 +906,7 @@ def fold_order_mutations(probes: Dict[str, Any]) -> List[Dict[str, Any]]:
 
 
 def tranche_four_mutations(probes: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """The two composition defects the FOUR NEW FAMILIES made reachable.
+    """The two composition defects the four new families made reachable.
 
     None of them is arithmetic — the four family gates own that — and none is
     visible to a per-sub-step gate, which is the bar for belonging in this leg.
@@ -922,8 +922,8 @@ def tranche_four_mutations(probes: Dict[str, Any]) -> List[Dict[str, Any]]:
                                    launch's prefix is correct by construction.
 
     ``cylindrical_scan_after_curl`` the real m = 0 curl plan is the one plan in the
-                                   tree that dispatches twice, and THE ORDER IS THE
-                                   CONTRACT: the curl reads the prefix the scan
+                                   tree that dispatches twice, and the order is the
+                                   contract: the curl reads the prefix the scan
                                    writes. Inverting them keeps both launch counts
                                    exactly right, which is precisely why a counter
                                    cannot catch it and a whole-step compare must.
@@ -931,7 +931,7 @@ def tranche_four_mutations(probes: Dict[str, Any]) -> List[Dict[str, Any]]:
     The earlier ``dropped_sync_nonlinear`` mutation no longer belongs here: the
     nonlinear B/H/D/E spine is now fully device resident, so deleting a host-sync
     bracket would remove no operation.  Keeping it would be a deliberately
-    disarmed mutation.  THE SAME THING HAPPENED TO THE COMPLEX BETA ROW on
+    disarmed mutation.  The same thing happened to the complex beta row on
     2026-08-19 — its constitutive pair left the array path — so ``dropped_sync``
     moved to the real beta DISPERSIVE composition, which still holds a mirror
     across one host write and asserts that it does before mutating anything.
@@ -1040,7 +1040,7 @@ def leg_armed(payload: Dict[str, Any], out: str, probes: Dict[str, Any]) -> None
     rows: List[Dict[str, Any]] = []
 
     # --- dropped_sync, on a mixed composition -------------------------------
-    # THE SUBSTRATE MOVED ON 2026-08-19. It used to be `beta_complex_2d`, whose two
+    # The substrate moved on 2026-08-19. It used to be `beta_complex_2d`, whose two
     # constitutive slots were on the array path; `special_kz` gained its complex
     # constitutive companion, that row composes a whole step, and the mutation would
     # have had NO host write to drop — reported NEEDLE-MISSED, which is the honest
@@ -1201,7 +1201,7 @@ def leg_subnormal(payload: Dict[str, Any], out: str, probes: Dict[str, Any],
                   cycles: int = 24) -> None:
     """Census every state array on every step; report the WINDOW, not a scalar.
 
-    WHY A WINDOW. The chi3 round measured a real corpus row whose band entry was a
+    Why a window. A chi3 measurement on a real corpus row found its band entry was a
     TRANSIENT — first subnormal at step 55, last at step 3,726, then clean for the
     remaining 16,274 steps — driven by a narrow-band source envelope whose turn-on
     sweeps forty decades. A gate that censused once, or that reported a single
@@ -1209,7 +1209,7 @@ def leg_subnormal(payload: Dict[str, Any], out: str, probes: Dict[str, Any],
     where it happened to look. First step, last step and live count per step are
     what make the precondition CHECKED rather than assumed.
 
-    THE FLOORS ARE THE VACUITY DISCIPLINE. A census that observed nothing is not
+    The floors are the vacuity discipline. A census that observed nothing is not
     clean, it is empty. ``observed_words`` must exceed a floor per case, and the
     floor is asserted.
     """
@@ -1313,7 +1313,7 @@ def main() -> int:
     if want("resident_pole_pack"):
         leg_resident_pole_pack(payload, path, probes)
 
-    # THE HEADLINE NUMBER, computed from the record rather than quoted: how many
+    # The headline number, computed from the record rather than quoted: how many
     # uint32 words this gate actually compared. A gate whose comparison count is
     # not reported cannot be told apart from one that compared a handful.
     compared = 0

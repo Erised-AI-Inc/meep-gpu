@@ -9,7 +9,7 @@ marks the mirror device-owned and seals it. The pull is
 :func:`~meep_gpu.metal_kernels.cylindrical_complex.pull_radial_source`, which reads through
 the hold (``acquire_read``) and keeps the unheld bracket's copy unchanged.
 
-MEASURED before the pull existed, on the Metal engine route with held residency and no
+Measured before the pull existed, on the Metal engine route with held residency and no
 monitor: m = 1 and m = 2 runs diverged from the array path from step 4 (111,415 / 1,376,256
 and 118,204 / 1,146,880 words of the whole state by step 64); the shipped bracket read 0.
 

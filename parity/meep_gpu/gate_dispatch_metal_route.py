@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""THE DRIVER-ROUTE GATE FOR THE METAL TABLE: fused Metal pairs, through the real seam.
+"""The driver-route gate for the Metal table: fused Metal pairs, through the real seam.
 
-THE TORCH-SIDE SIBLING OF ``gate_dispatch_fused_route.py``, and the measurement the
+The torch-side sibling of ``gate_dispatch_fused_route.py``, and the measurement the
 Metal release rows are cut from. ``meep_gpu.metal_dispatch`` is the second kernel
 table's ladder: ``fastpath._decide``'s backend rung routes a NumPy engine with an
 MPS device into it, and every rung below is that module's. What licenses a fused
@@ -9,7 +9,7 @@ Metal product to reach ``FastPathPlan.dispatch`` is
 ``metal_dispatch.METAL_RELEASED_FUSED_ARMS`` — a TYPED table naming which arm was
 driven on which case — and this gate is what makes those rows a measurement.
 
-"DRIVEN THROUGH THE DRIVER SEAM" MEANS THE SEVEN REAL CONSULTS, exactly as it does
+"Driven through the driver seam" means the seven real consults, exactly as it does
 on the Triton track. ``driver.MeepGPUDriver.step`` makes five (``step_B``,
 ``update_H``, ``step_D``, ``update_E``, ``update_P``) plus the two fill sites, and
 ``synchronize_magnetic_fields`` makes two more off a plan it deliberately does not
@@ -19,11 +19,11 @@ A fused pair takes TWO of those slots: the launch happens at the leading consult
 the absorbed consult answers off a sentinel (``launch.NoopPlan``) or off
 ``deposit_repair.TrailingRepairPlan``.
 
-WHAT THIS TABLE ADDS THAT THE TRITON ONE DOES NOT HAVE: A RESIDENCY SEAM. Metal
+What this table adds that the Triton one does not have: a residency seam. Metal
 kernels read and write DEVICE mirrors of the engine's host arrays, so between two
 launches the host must be authoritative — the driver's unconsulted passes all run
 on host arrays. ``metal_kernels.launch.wrap_for_residency`` installs a
-``sync_in``/``sync_out`` bracket around every device launch AT PLAN TIME, which is
+``sync_in``/``sync_out`` bracket around every device launch at plan time, which is
 why ``FastPathPlan.dispatch`` needs no residency branch. That bracket is a
 correctness surface no byte comparison can see the absence of on its own — a
 missing sync is a stale mirror, and a stale mirror is a wrong answer that looks
@@ -40,21 +40,21 @@ now the NumPy reference and never plans, so it could not be the fused leg.)::
     unfused    MEEP_GPU_DISPATCH=1  MEEP_GPU_FUSE_ARMS=0            the substitution baseline
     array      MEEP_GPU_DISPATCH=1  MEEP_GPU_FUSED=0                the oracle
 
-BOTH KERNEL LEGS MUST MATCH THE ORACLE. The unfused leg dispatches the certified
+Both kernel legs must match the oracle. The unfused leg dispatches the certified
 singles, so a divergence there fails the row as ``UNFUSED-DIVERGENCE`` on every branch
 (:func:`case_verdict`); until 2026-10-10 it was compared and not read. And no instrument
 riding a leg may move its residency: the seam census reads without the read barrier
 (:func:`_census_state`). Beside the route rows, :data:`ENGINE_SMOKE` drives Dcyl complex
 runs through the engine's default route with no instrument on the legs at all.
 
-FOUR INDEPENDENT ANSWERS TO "DID A KERNEL ACTUALLY RUN", because a leg that quietly
+Four independent answers to "did a kernel actually run", because a leg that quietly
 fell back matches trivially — the oracle IS the array path:
 
 1. ``driver.active_step_path == "fused"`` and the record's ``fusion.driven`` names a
    fused arm at BOTH slots of every pair;
 2. ``fast_path_report()["launch_counters"]`` shows a nonzero dispatch count on the
-   leading slot AND on the absorbed slot. ``programs_per_dispatch`` IS EXPLICITLY
-   NOT THE WITNESS HERE and that is a difference from the Triton gate rather than
+   leading slot AND on the absorbed slot. ``programs_per_dispatch`` is explicitly
+   not the witness here and that is a difference from the Triton gate rather than
    an omission: a Metal ``KernelPlan`` spells no launch grid (``plans.py``'s
    ``__slots__`` is ``_args``/``_functions``/``launches``), so the counter reports
    ``None`` by construction and asserting on it would fail every leg. The per-plan
@@ -67,11 +67,11 @@ fell back matches trivially — the oracle IS the array path:
    and there is no package-external MPS launch counter, so unlike Triton's PTX read
    BOTH of these are in-package. ``metal_kernels.subnormal.mps_policy_report``
    already records ``ptx_equivalent_audit: None`` for exactly this reason;
-4. THE SUBSTITUTION PROOF: compiled-function calls per complete step must DROP
+4. The substitution proof: compiled-function calls per complete step must DROP
    against the ``unfused`` leg by exactly one per fused pair per step, counted twice
    over, on IDENTICAL slot sets, while the two legs stay byte-identical.
 
-THE SUBNORMAL POLICY IS THE OTHER HALF OF THE CLAIM. MPS flushes float32 denormals
+The subnormal policy is the other half of the claim. MPS flushes float32 denormals
 natively and exposes no lever, so ``flush`` is the only attainable device policy;
 this arm64 host's own resolution is ``keep`` (MEEP's ``set_zero_subnormals`` is the
 ``#if HAVE_IMMINTRIN_H`` no-op here) and ``subnormal_policy`` drives it to flush
@@ -90,7 +90,7 @@ Run (this Mac, ONE MPS device, through the runner that welds the artifact)::
         parity/meep_gpu/gate_dispatch_metal_route.py -- \\
         --out parity/meep_gpu/results/dispatch_metal_route_<stamp>/shipped
 
-BEFORE A FREEZE, THE CONTROLS DRY RUN (``--controls-dry-run``, run directly, not
+Before a freeze, the controls dry run (``--controls-dry-run``, run directly, not
 through the runner; :func:`controls_dry_run`): one lift per drive case, the gate's
 freeze step, and each residency control armed on it in the gate's own schedule. It
 reports every plan's wrapper chains against :data:`ROUTE_WRAPPER_RULINGS`, what each
@@ -103,7 +103,7 @@ moved from it. It compares no bytes, writes no ``gate.json`` and releases nothin
         --controls-dry-run --out <scratch dir> \\
         [--dry-run-reference <campaign>/shipped/controls.jsonl]
 
-THE NAME IS LOAD-BEARING AND IS DELIBERATELY OUTSIDE THE ``gate_metal_*`` GLOB.
+The name is load-bearing and is deliberately outside the ``gate_metal_*`` GLOB.
 Three separate mechanisms derive meaning from that stem: ``recut_metal_gates.sh``'s
 fleet loop would launch this four-leg campaign with the wrong arguments and count it
 as a failed gate; ``test_metal_weld_contract``'s family derivation would invent a
@@ -124,7 +124,7 @@ import time
 import numpy
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-# RESOLVED BY NAME, NEVER BY DEPTH. A ``parents[N]`` walk is correct only while this
+# Resolved by name, never by depth. A ``parents[N]`` walk is correct only while this
 # file stays at the depth it was written at; the harness traps this campaign has
 # already paid for include exactly that failure in a moved file.
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -146,6 +146,7 @@ for path in (HERE, _API):
 import gate_dispatch_end_to_end as e2e  # noqa: E402  the byte comparator and the cases
 import gate_dispatch_fused_route as route  # noqa: E402  the extra cases and the controls
 import gate_provenance  # noqa: E402
+import plan_key  # noqa: E402  the canonical plan form every leg records
 
 
 def say(message: str) -> None:
@@ -179,7 +180,7 @@ class CountingFunction:
 def _wrap_functions(node: Any, sink: List[CountingFunction]) -> Any:
     """Wrap every compiled callable in a plan's function table, SHAPE PRESERVED.
 
-    TWO TABLE SHAPES, AND ONLY ONE USED TO BE HANDLED. Most plans hold a flat
+    Two table shapes, and only one used to be handled. Most plans hold a flat
     ``{mode: function}``; the symmetry plans hold ``{mode: {key: function}}`` and
     index the inner table by the entry's key at launch time (the ``_walk`` method
     of ``metal_kernels/symmetry.py``). Replacing that inner MAPPING with a single
@@ -208,7 +209,7 @@ _COMPILED_LEAF_TYPE = "_mps_MetalKernel"
 def _function_table_names(owner: Any) -> List[str]:
     """Every attribute of ``owner`` that holds a function table, read off the owner.
 
-    THE TABLE IS NOT ALWAYS CALLED ``_functions``, and reading only that name was a
+    The table is not always called ``_functions``, and reading only that name was a
     witness defect for a year of campaigns. ``plans.KernelPlan`` keeps its callables
     in ``_functions``; the real-cylindrical plans are deliberately NOT KernelPlan
     subclasses and keep theirs in ``_prefix_functions``/``_fused_functions``
@@ -253,7 +254,7 @@ def _leaf_types(node: Any, sink: List[str]) -> None:
 class MetalLaunchCounter:
     """Two counts of every Metal launch, both taken off the plans a leg runs.
 
-    THE HONEST DIFFERENCE FROM THE TRITON GATE, stated rather than papered over.
+    The honest difference from the Triton gate, stated rather than papered over.
     Triton's counter patches ``JITFunction.run`` and ``CompiledKernel.launch_enter
     _hook`` — entry points OUTSIDE anything this package owns — so no defect in the
     dispatcher can make it agree by construction. There is no such external counter
@@ -265,7 +266,7 @@ class MetalLaunchCounter:
     invoking anything disagrees with its functions; a shim that reports a dispatch
     it never made disagrees with both.
 
-    ONE OWNER IS WRAPPED ONCE. A fused pair occupies BOTH slots of its seam, so
+    One owner is wrapped once. A fused pair occupies BOTH slots of its seam, so
     walking slots reaches the same declaring plan twice and the second wrapper would
     count the first — measured on the sibling gate as exactly twice the launches the
     plans report, which reads as the two witnesses disagreeing.
@@ -279,7 +280,7 @@ class MetalLaunchCounter:
     def attach(self, label: str, plan_holder: Any) -> Dict[str, Any]:
         """Wrap every compiled function of every plan this leg will run. Idempotent per owner.
 
-        RETURNS WHAT IT COULD NOT SEE, per call, rather than storing it on the
+        Returns what it could not see, per call, rather than storing it on the
         counter: one counter serves the whole run and leg labels repeat for every
         case, so a list kept here would either never reach a verdict or stick to
         every later case. The caller stores the answer on the LEG.
@@ -350,7 +351,7 @@ CASES: Dict[str, Any] = dict(route.CASES)
 def case_offdiag_2d(mp, res=20):
     """``pml_2d`` AND an off-diagonal ``chi1inv``, differing in that ONE axis.
 
-    THE SHAPE THE RETIRED ENVELOPE ROW NAMED. When ``off_diagonal_epsilon`` left the
+    The shape the retired envelope row named. When ``off_diagonal_epsilon`` left the
     Metal shared envelope (2026-09-12) the note on the per-arm bound (now
     ``metal_dispatch.METAL_OFF_DIAGONAL_CORNERS``) said what would widen the
     ordinary magnetic pair past 3-D: "a 2-D off-diagonal case with an electric
@@ -363,15 +364,15 @@ def case_offdiag_2d(mp, res=20):
     rather than an inference. Measured on the lift 2026-09-12: the two run shapes
     differ in ``off_diagonal_epsilon`` alone, same ``grid_shape`` (200, 120, 1).
 
-    WHY IT LIVES HERE AND NOT IN ``gate_dispatch_fused_route``. That module's bytes
+    Why it lives here and not in ``gate_dispatch_fused_route``. That module's bytes
     are bound by the CUDA driver record (``cuda_kernels/fingerprints.json:
     driver_dispatch`` digests ``parity/meep_gpu/gate_dispatch_fused_route.py``), so
     a builder added there costs a CUDA campaign to re-cut; this module is bound by
     the Metal driver record alone, which the Metal campaign re-cuts anyway. The
-    Triton round that wants the same shapes (dispatch expansion plan §8) re-gates
-    everything and can move them then.
+    Triton campaign that wants the same shapes (the folded magnetic pair on
+    off-diagonal grids) re-gates everything anyway and can move them then.
 
-    WHAT IT IS FOR: on Metal the ordinary magnetic pair is admitted off-diagonal
+    What it is for: on Metal the ordinary magnetic pair is admitted off-diagonal
     only inside the corner its own off-diagonal cases sat at, and this case is the
     2-D point of it. The D seam keeps the ``offdiag`` singles here exactly as
     ``pml_3d`` does, so it is a ONE-seam case.
@@ -393,8 +394,8 @@ def case_offdiag_2d(mp, res=20):
 def case_folded_offdiag_2d(mp, res=20):
     """``folded_2d`` AND an off-diagonal ``chi1inv``, differing in that ONE axis.
 
-    ``case_folded_2d`` with its slab replaced by a CYLINDER CENTRED ON THE FOLD
-    PLANE: the same cell, PML, mirror, Ez source and flux plane. Centring the
+    ``case_folded_2d`` with its slab replaced by a cylinder centred on the fold
+    plane: the same cell, PML, mirror, Ez source and flux plane. Centring the
     cylinder on the plane keeps the mirror symmetry exact, and its curved surface
     is what writes the off-diagonal ``chi1inv`` rows (subpixel averaging, as for
     :func:`case_offdiag_2d` above). Measured on the lift against ``folded_2d``
@@ -404,7 +405,7 @@ def case_folded_offdiag_2d(mp, res=20):
     ``grid_shape`` (160, 61, 1); only ``off_diagonal_epsilon`` differs, False ->
     True. Same home as :func:`case_offdiag_2d`, for the same reason.
 
-    WHAT IT IS FOR: the folded magnetic pair on a folded off-diagonal grid — the
+    What it is for: the folded magnetic pair on a folded off-diagonal grid — the
     largest single block of served-but-not-dispatched instances on the Metal
     board once the unfolded 2-D block beside it is closed. The folded ELECTRIC
     pair's refusal beside it is half of what the case measures: no D-seam product
@@ -485,10 +486,10 @@ def case_cylindrical_m1(mp, res=20):
     ``bloch`` False, ``grid_shape`` (80, 1, 80). The composer selects the
     cylindrical complex fused electric D/E pair on the D seam (unfused 4, fused 3),
     byte-identical to the array path. It dispatched on the probe leg alone until the
-    expansion licence was deleted (bit_parity_0_10 X1); it dispatches on the
+    expansion licence was deleted (in 1.0); it dispatches on the
     shipped leg now.
 
-    THE B SEAM CHANGED ON 2026-09-17 and this docstring said the opposite until then:
+    The B seam changed on 2026-09-17 and this docstring said the opposite until then:
     it read that the composer "keeps the ``cylindrical complex`` singles on the B
     seam — that family's magnetic pair carries no absorb row". It has one now, and
     the 2026-09-17 dry run measured the consequence on every Dcyl complex case
@@ -510,7 +511,7 @@ def case_cylindrical_m1(mp, res=20):
 def case_cylindrical_m0_complex(mp, res=20):
     """Dcyl at m = 0 under ``force_complex_fields``: the cylindrical COMPLEX electric pair at m = 0.
 
-    THE CORNER THE 2026-09-12 VERIFIER NAMED: the cylindrical complex electric D/E
+    The corner the 2026-09-12 verifier named: the cylindrical complex electric D/E
     pair's row pins ``complex_storage`` True and cannot pin ``m`` (the census records
     none), so it admits the ``dipole_in_vacuum_cyl_off_axis`` shape -- m = 0 with
     complex storage forced -- on evidence taken at m = 1 alone. ``case_cylindrical``'s
@@ -532,7 +533,7 @@ def case_folded_dispersive_3d(mp, res=10):
     """``folded_3d`` with its block made Lorentzian: the folded B/H pair at 3-D over
     a susceptibility.
 
-    THE CASE THAT KEEPS AN OMITTED AXIS HONEST. ``folded fused B/H pair`` carries no
+    The case that keeps an omitted axis honest. ``folded fused B/H pair`` carries no
     ``susceptibilities`` row because ``folded_2d`` and ``folded_dispersive_2d`` drive
     both values — but once ``folded_3d`` opened its ``dimensions`` row to {2, 3},
     both values had been driven only at 2-D, and (folded, 3-D, one pole) would have
@@ -568,26 +569,26 @@ def case_folded_dispersive_3d(mp, res=10):
 # The nine cases added 2026-09-13, and why every one of them is DEFINED HERE
 # ---------------------------------------------------------------------------
 #
-# THE HOME RULE, AND THE ONE PLACE IT IS ALLOWED TO DUPLICATE. A builder belongs in
+# The home rule, and the one place it is allowed to duplicate. A builder belongs in
 # ``gate_dispatch_fused_route`` when more than one backend's route gate drives the
 # same shape, and Triton and CUDA do drive most of the nine below. It is written
 # HERE ANYWAY, for the reason :func:`case_offdiag_2d` states and one more: that
 # module's bytes are pinned by the CUDA driver record, the two campaigns run on
 # different hardware and on different days, and a Metal DRIVE row whose builder
-# lives in a file another lane is editing this hour would make this gate's cases
-# depend on that lane's landing order. A name defined in both files resolves HERE —
+# lives in a file another table's work is editing this hour would make this gate's cases
+# depend on that work's landing order. A name defined in both files resolves HERE —
 # ``CASES`` starts as a copy of that module's and these assignments overwrite it —
 # so a divergence between the two constructions would be invisible from this side.
-# THE TWO COPIES MUST THEREFORE AGREE CELL FOR CELL; every construction below is the
-# round's canonical one, and the existing duplicates (``offdiag_2d``,
+# The two copies must therefore agree cell for cell; every construction below is the
+# canonical one for these cases, and the existing duplicates (``offdiag_2d``,
 # ``complex_nobloch_2d``, ``folded_3d``, ``cylindrical_m1``,
 # ``cylindrical_m0_complex``) are under the same rule.
 #
-# WHAT WAS MEASURED BEFORE THESE WERE TYPED, and what was not. Every builder below
+# What was measured before these were typed, and what was not. Every builder below
 # was constructed and handed to ``lift_simulation(prefer_gpu=False)`` on stock MEEP
-# 1.33.0 on 2026-09-13, WITH ITS MONITORS, and the run shape quoted in each
+# 1.33.0 on 2026-09-13, with its monitors, and the run shape quoted in each
 # docstring is ``fastpath._run_shape(...)`` read back verbatim; each lifted shape was
-# then run through ``metal_dispatch.released_fused_arms_metal`` with this round's
+# then run through ``metal_dispatch.released_fused_arms_metal`` with the 2026-09-13
 # release rows in place, and that admitted set is what the DRIVE table's ``arms``
 # field carries. NOT measured, and it cannot be on this host: the fused pair install
 # refuses on a NumPy array module, so which labels the composer SELECTS, how many
@@ -618,7 +619,7 @@ def case_dispersive6_2d(mp, res=15):
     ``susceptibilities`` 6, ``complex_storage`` False, ``bloch`` False, ``beta`` 0,
     ``conductivity`` False, ``off_diagonal_epsilon`` False, ``pml_active`` True.
 
-    SIX EXPLICIT LORENTZIANS RATHER THAN ``meep.materials.Ag``, which is the corpus
+    Six explicit lorentzians rather than ``meep.materials.Ag``, which is the corpus
     rows' own material and reads six states as well (one Drude then five
     Lorentzian). The release reads the COUNT and nothing else about the poles, so
     the two are the same evidence on the axis this case exists for, and an explicit
@@ -626,7 +627,7 @@ def case_dispersive6_2d(mp, res=15):
     revised. If the corpus material is preferred, ``Ag`` is the substitution
     and the lifted count must be re-read rather than assumed.
 
-    TWO ARMS, NOT ONE. ``fused dispersive D/E pair`` leaves ``susceptibilities``
+    Two arms, not one. ``fused dispersive D/E pair`` leaves ``susceptibilities``
     unpinned — the admitted asymmetry recorded on
     ``metal_dispatch.METAL_FUSED_RELEASE_ARM_AXES`` — so the release admits it here
     beside the magnetic pair (measured on the lift), and a DRIVE row naming only the
@@ -666,7 +667,7 @@ def case_folded_dispersive5_2d(mp, res=20):
     D/E pair`` also leaves ``susceptibilities`` unpinned and is admitted here
     (measured on the lift), so the row names it beside the folded magnetic pair.
 
-    THIS SHAPE IS ALSO THE TRITON GATE'S ENVELOPE WITNESS, which is worth knowing
+    This shape is also the Triton gate's envelope witness, which is worth knowing
     from this side: on that table the release DECLINES every folded arm here, and
     driving it as a Metal dispatch case does not touch that, because the two gates
     read their own release tables. It is the same asymmetry ``pml_3d_diagonal``
@@ -703,7 +704,7 @@ def case_complex_1d(mp, res=40):
     ``conductivity`` False, ``off_diagonal_epsilon`` False, ``susceptibilities`` 0,
     ``pml_active`` True; both complex pairs admitted.
 
-    IT IS THE FIRST 1-D EVIDENCE EITHER COMPLEX ARM CARRIES, and that is the reason
+    It is the first 1-D evidence either complex arm carries, and that is the reason
     it is here rather than a consequence of it. ``gate_metal_tranche7_fused_pairs``
     and ``gate_metal_complex_fused_magnetic_pair`` build their complex fixtures
     through ``matrix.cart``, whose cell is 3-D, and neither family gate has ever
@@ -737,7 +738,7 @@ def case_complex_3d_thinline(mp, res=25):
     ``complex_storage`` True, ``bloch`` True, ``k_point`` (0.41, 0, 1.8), ``beta``
     0, ``susceptibilities`` 0, ``pml_active`` True; both complex pairs admitted.
 
-    IT IS HALF THE EVIDENCE FOR THE 3 AND NOT ALL OF IT. This grid is degenerate —
+    It is half the evidence for the 3 and not all of it. This grid is degenerate —
     one cell in two directions — so a ``dimensions`` row widened on this case alone
     would license 3-D complex storage on nothing but thin lines.
     :func:`case_complex_3d` is the other half.
@@ -756,8 +757,8 @@ def case_complex_3d_thinline(mp, res=25):
 def case_complex_3d(mp, res=10):
     """A GENUINE 3-D complex block: the case that keeps the widened 3 from being degenerate.
 
-    THE HONESTY CASE OF THE ROUND, and it is worth stating plainly because it
-    credits nothing. The seven corpus rows the complex pairs' ``dimensions``
+    The case that credits nothing, and it is worth stating plainly why it is in
+    the set. The seven corpus rows the complex pairs' ``dimensions``
     widening actually serves are ALL ``(1, 1, N)`` cells, so :func:`case_complex_1d`
     and :func:`case_complex_3d_thinline` between them would have licensed
     ``dimensions`` 3 on evidence from degenerate grids — while the census carries
@@ -768,7 +769,7 @@ def case_complex_3d(mp, res=10):
     CREDITED to these products (their D seam goes to the conductive and
     no-PML-off-diagonal complex families), so the board number is identical with and
     without this case. It is in the set because the alternative is a row that
-    admits a shape no case drove, which is the defect class this round exists to
+    admits a shape no case drove, which is the defect class the 2026-09-13 cases exist to
     close.
 
     An AXIS-ALIGNED block, so ``chi1inv`` stays diagonal and the case is about one
@@ -777,7 +778,7 @@ def case_complex_3d(mp, res=10):
     (0.3, 0, 0), ``beta`` 0, ``off_diagonal_epsilon`` False, ``susceptibilities`` 0,
     ``pml_active`` True; both complex pairs admitted.
 
-    THE PML IS ON Z ALONE, which is a composition difference from every other
+    The PML is on Z alone, which is a composition difference from every other
     complex case on this table and is the one thing the dry run must look at before
     the row is trusted: x and y stay periodic under the Bloch phase, so the no-PML
     arms own those directions' work and the slot set may not be the one
@@ -812,9 +813,9 @@ def case_folded_complex_3d(mp, res=20):
     ``k_point`` (0, -1.7035, 2.4694), ``beta`` 0, ``off_diagonal_epsilon`` False,
     ``susceptibilities`` 0, ``pml_active`` True; both folded complex pairs admitted.
 
-    THE CAVEAT THIS CASE CARRIES, and it is a release decision rather than a defect.
+    The caveat this case carries, and it is a release decision rather than a defect.
     ``folded complex fused D/E pair`` has NO device gate file of its own — it binds
-    to the tranche-7 GROUP weld, whose four folded-complex fixtures are built at
+    to the seven-pair GROUP weld, whose four folded-complex fixtures are built at
     ``matrix.folded``'s default depth and are all 2-D — so this route case would be
     the FIRST 3-D evidence that arm has ever carried. Its magnetic twin is backed by
     eleven 3-D fixtures on ``gate_metal_folded_complex_fused_magnetic_pair``. If a
@@ -824,7 +825,7 @@ def case_folded_complex_3d(mp, res=20):
     ``gate_metal_tranche7_fused_pairs.py`` adding a 3-D folded-complex fixture,
     which turns this into a coverage extension rather than a first certification.
 
-    THE SOURCE IS IN THE HALF THE MIRROR PLANE KEEPS, which is load-bearing and was
+    The source is in the half the mirror plane keeps, which is load-bearing and was
     learned the hard way on this case's sibling. MEEP adds sources with
     ``use_symmetry=false``, so a source in the discarded half lands in no stored
     chunk: the run returns a field whose peak is exactly 0 while reading as
@@ -859,12 +860,12 @@ def case_folded_complex_kz2d_3d(mp, res=20):
     ``k_point`` (2.797, 0, -1.0849), ``beta`` 0, ``susceptibilities`` 0,
     ``pml_active`` True; both folded complex pairs admitted.
 
-    WHY BOTH THIS AND :func:`case_folded_complex_3d`. They are the same axis at two
+    Why both this and :func:`case_folded_complex_3d`. They are the same axis at two
     very different builds — a (8, 21, 126) volumetric fold and a (90, 62, 1) sheet
     declared 3-D — and the two corpus rows behind the widening are one of each. A
     single case would have left the other's shape admitted on an inference.
 
-    THE SOURCE IS AT ``y = +2.0``, IN THE HALF THE MIRROR KEEPS, and this is the
+    The source is at ``y = +2.0``, in the half the mirror keeps, and this is the
     case that taught the rule: declared at ``y = -2.0`` the lift refuses by name,
     because MEEP adds sources with ``use_symmetry=false`` and a source in the
     discarded half lands in no stored chunk — the run then returns an exactly-zero
@@ -894,7 +895,7 @@ def case_folded_complex_offdiag_2d(mp, res=20):
     absent from that table is refused on every off-diagonal grid — which is the
     whole of what kept ``TestHoleyWvgBands.test_fields_at_kx`` off the dispatch
     route. This case is the corner entry's Bloch half: the folded complex cell with
-    its slab replaced by a CYLINDER CENTRED ON THE FOLD PLANE, so the mirror stays
+    its slab replaced by a cylinder centred on the fold plane, so the mirror stays
     exact and the curved surface is what makes MEEP's subpixel averaging write the
     off-diagonal rows — the same mechanism :func:`case_offdiag_2d` and
     :func:`case_folded_offdiag_2d` use.
@@ -904,12 +905,12 @@ def case_folded_complex_offdiag_2d(mp, res=20):
     ``k_point`` (0.3, 0, 0), ``beta`` 0, ``conductivity`` False,
     ``off_diagonal_epsilon`` True, ``susceptibilities`` 0, ``pml_active`` True.
 
-    EXACTLY ONE ARM IS ADMITTED HERE (measured on the lift): the folded complex
+    Exactly one arm is admitted here (measured on the lift): the folded complex
     MAGNETIC pair. The D/E twin has no corner of its own, and no D-seam product is
     admitted on an off-diagonal grid at all, so this is a ONE-seam case and the
     refusal beside it is half of what the case records.
 
-    THE FAMILY EVIDENCE IS AT 3-D AND THIS MOVES IT TO 2-D.
+    The family evidence is at 3-D and this moves it to 2-D.
     ``gate_metal_folded_complex_fused_magnetic_pair`` already drives this arm
     off-diagonal on ``y_metallic_offdiag_3d`` and ``xy_mixed_offdiag_wall_z_3d``;
     all three corpus rows behind the corner are 2-D, which is why the corner reads
@@ -933,7 +934,7 @@ def case_folded_complex_offdiag_2d(mp, res=20):
 def case_folded_complex_nobloch_offdiag_2d(mp, res=10):
     """A fold and forced complex storage with NO k_point, on an off-diagonal grid.
 
-    THE UNPHASED HALF of the folded complex magnetic pair's off-diagonal corner, and
+    The unphased half of the folded complex magnetic pair's off-diagonal corner, and
     the case that lets that arm's row drop its ``bloch`` pin. Two mirror planes and
     ``force_complex_fields`` with no ``k_point`` at all, a cylinder for the
     off-diagonal ``chi1inv``: it is ``examples:solve-cw.py``'s and
@@ -949,10 +950,10 @@ def case_folded_complex_nobloch_offdiag_2d(mp, res=10):
     ``susceptibilities`` 0, ``pml_active`` True; exactly one arm admitted, the
     folded complex magnetic pair.
 
-    THE SOURCE IS IN THE QUADRANT BOTH PLANES KEEP, at (+4, +4). At (-4, 0) the lift
+    The source is in the quadrant both planes keep, at (+4, +4). At (-4, 0) the lift
     refuses, for the reason :func:`case_folded_complex_kz2d_3d` records.
 
-    IT IS EVIDENCE FOR THE MAGNETIC ARM AND FOR NOTHING ELSE, which is why the
+    It is evidence for the magnetic arm and for nothing else, which is why the
     folded complex D/E pair KEEPS its ``bloch`` pin while the magnetic twin drops
     it: the release does not admit the D/E arm on an off-diagonal grid, so this case
     cannot be the "both values driven" licence for it. Writing that drop on the
@@ -977,7 +978,7 @@ CASES["folded_offdiag_2d"] = case_folded_offdiag_2d
 CASES["folded_3d"] = case_folded_3d
 CASES["folded_dispersive_3d"] = case_folded_dispersive_3d
 CASES["complex_nobloch_2d"] = case_complex_nobloch_2d
-# THE NINE ADDED 2026-09-13. These assignments OVERWRITE any same-named builder
+# The nine added 2026-09-13. These assignments OVERWRITE any same-named builder
 # inherited from ``gate_dispatch_fused_route`` — see the home-rule note above the
 # builders — so where a name exists in both files the two constructions must agree
 # cell for cell, because a divergence is invisible from this side.
@@ -995,8 +996,8 @@ CASES["cylindrical_m0_complex"] = case_cylindrical_m0_complex
 
 CASE_INTENT: Dict[str, str] = dict(route.CASE_INTENT)
 CASE_INTENT["cylindrical"] = (
-    "the cylindrical m = 0 electric pair on a Dcyl grid. THE BUILDER CARRIES NO "
-    "FLUX MONITOR — it is the end-to-end gate's, and the Metal release cites this "
+    "the cylindrical m = 0 electric pair on a Dcyl grid. The builder carries no "
+    "flux monitor — it is the end-to-end gate's, and the Metal release cites this "
     "name — so the observable comparison and the second consult site are recorded "
     "NOT-APPLICABLE here rather than counted as passes")
 CASE_INTENT["special_kz_2d"] = (
@@ -1004,12 +1005,12 @@ CASE_INTENT["special_kz_2d"] = (
     "composer and, from 2026-09-12, RELEASED, so the D seam fuses. It was this "
     "table's only no-fused-arm case until then")
 CASE_INTENT["pml_3d"] = (
-    "THE OFF-DIAGONAL GRID: a sphere, whose subpixel averaging writes off-diagonal "
+    "The off-diagonal grid: a sphere, whose subpixel averaging writes off-diagonal "
     "chi1inv rows. It was the ENVELOPE CONTROL until 2026-09-12; it dispatches the "
     "ordinary magnetic pair now, and carries the refusal of every other arm by "
     "name")
 CASE_INTENT["no_pml_2d"] = (
-    "THE ENVELOPE CONTROL from 2026-09-12: no absorber, so the SHARED release "
+    "the envelope control from 2026-09-12: no absorber, so the SHARED release "
     "envelope refuses on pml_active and the released set is empty. It is the only "
     "case that witnesses the shared table saying no")
 CASE_INTENT["offdiag_2d"] = (
@@ -1027,22 +1028,22 @@ CASE_INTENT["folded_3d"] = (
     "THE FOLDED 3-D GRID: both folded pairs with the mirror fill in both fill "
     "slots, on a block, so the case is about the dimensions row alone")
 CASE_INTENT["folded_dispersive_3d"] = (
-    "THE FOLDED 3-D GRID OVER A SUSCEPTIBILITY: the folded magnetic pair alone, "
+    "the folded 3-D grid over a susceptibility: the folded magnetic pair alone, "
     "driving the (3-D, one pole) corner its omitted susceptibilities row needs")
 CASE_INTENT["complex_nobloch_2d"] = (
-    "COMPLEX STORAGE WITHOUT A k_point: both complex pairs, and the case that lets "
+    "complex storage without a k_point: both complex pairs, and the case that lets "
     "their rows drop bloch")
 CASE_INTENT["dispersive6_2d"] = (
-    "SIX SUSCEPTIBILITY STATES on an unfolded 2-D grid: the 6 in the ordinary "
+    "Six susceptibility states on an unfolded 2-D grid: the 6 in the ordinary "
     "magnetic pair's enumerated susceptibilities row, with the dispersive electric "
     "pair beside it because that arm leaves the axis unpinned")
 CASE_INTENT["folded_dispersive5_2d"] = (
-    "FIVE SUSCEPTIBILITY STATES on a fold: the 5 in the folded magnetic pair's "
+    "Five susceptibility states on a fold: the 5 in the folded magnetic pair's "
     "enumerated susceptibilities row, with the folded dispersive electric pair "
     "beside it for the same reason. It is also the Triton gate's envelope witness, "
     "which is a decision on that table and does not reach this one")
 CASE_INTENT["complex_1d"] = (
-    "COMPLEX STORAGE ON A CELL DECLARED 1-D: the 1 in the complex pairs' dimensions "
+    "complex storage on a cell declared 1-D: the 1 in the complex pairs' dimensions "
     "row, and the first 1-D evidence either arm carries — neither family gate has "
     "driven dimensions=1")
 CASE_INTENT["complex_3d_thinline"] = (
@@ -1054,19 +1055,19 @@ CASE_INTENT["complex_3d"] = (
     "being evidenced by degenerate grids alone. It credits nothing on the board and "
     "is here for that reason")
 CASE_INTENT["folded_complex_3d"] = (
-    "A FOLD, A NONZERO k_point AND THREE DIMENSIONS AT ONCE: the folded complex "
+    "a fold, a nonzero k_point and three dimensions at once: the folded complex "
     "pairs' dimensions row opened to {2, 3}, on the triangular-lattice-oblique cell")
 CASE_INTENT["folded_complex_kz2d_3d"] = (
-    "A FOLDED ZERO-THICKNESS CELL ASKED FOR AS 3-D (kz_2d='3d', so the z phase does "
+    "a folded zero-thickness cell asked for as 3-D (kz_2d='3d', so the z phase does "
     "not lift as a beta): the second and differently-built corner of the same "
     "dimensions row")
 CASE_INTENT["folded_complex_offdiag_2d"] = (
-    "THE FOLDED COMPLEX OFF-DIAGONAL GRID, Bloch half: folded_complex_2d with a "
+    "the folded complex off-diagonal grid, Bloch half: folded_complex_2d with a "
     "cylinder on the fold plane, so only off_diagonal_epsilon differs. Exactly one "
-    "arm is admitted — the folded complex magnetic pair, inside the corner this "
-    "round gives it — and every other arm is refused by name")
+    "arm is admitted — the folded complex magnetic pair, inside the off-diagonal "
+    "corner added for it on 2026-09-13 — and every other arm is refused by name")
 CASE_INTENT["folded_complex_nobloch_offdiag_2d"] = (
-    "THE FOLDED COMPLEX OFF-DIAGONAL GRID, unphased half: two mirror planes and "
+    "the folded complex off-diagonal grid, unphased half: two mirror planes and "
     "force_complex_fields with no k_point. It is what lets the folded complex "
     "MAGNETIC pair's row drop its bloch pin; the D/E twin keeps that pin, because "
     "no D-seam product is admitted on an off-diagonal grid and this case is "
@@ -1088,8 +1089,8 @@ CASE_INTENT["cylindrical_m0_complex"] = (
 #: each slot a row declares under ``collapsed_single_launches_per_step`` (from
 #: 2026-09-19, one row: ``complex_no_pml_3d``; see :func:`expected_drop_per_step`).
 #:
-#: MEASURED 2026-09-10, NOT GUESSED — FOR THE ROWS THAT CARRY A DATE OF 2026-09-10
-#: OR EARLIER. Each of those was read by lifting the case with
+#: Measured 2026-09-10, not guessed — for the rows that carry a date of 2026-09-10
+#: or earlier. Each of those was read by lifting the case with
 #: ``lift_simulation(prefer_gpu=False)``, evaluating
 #: ``metal_dispatch.released_fused_arms_metal(fastpath._run_shape(...))`` on it, and
 #: composing with ``metal_kernels.launch.plan_step(fuse=True, fuse_labels=<the
@@ -1097,8 +1098,8 @@ CASE_INTENT["cylindrical_m0_complex"] = (
 #: then counted off the plans' own ``KernelPlan.launches`` over eight complete steps
 #: after the freeze, in both compositions.
 #:
-#: THE NINE ROWS ADDED 2026-09-13 ARE HALF-MEASURED, AND THE SENTENCE ABOVE WOULD
-#: HAVE COVERED THEM FALSELY, so the split is stated here rather than left to a
+#: The nine rows added 2026-09-13 are half-measured, and the sentence above would
+#: have covered them falsely, so the split is stated here rather than left to a
 #: reader comparing dates. On those rows the LIFT and the RELEASE were taken — every
 #: builder was constructed with its monitors and handed to
 #: ``lift_simulation(prefer_gpu=False)`` on stock MEEP 1.33.0, and the ``arms`` list
@@ -1116,7 +1117,7 @@ CASE_INTENT["cylindrical_m0_complex"] = (
 #: ``recut_driver_dispatch_record.py --backend metal`` refuses to write a record for
 #: any ``(arm, case)`` pair no dispatching leg drove.
 #:
-#: ``arms`` IS WHAT THE RELEASE ADMITS HERE, not what the composer would select if
+#: ``arms`` is what the release admits here, not what the composer would select if
 #: everything were offered, and on three cases those differ. The composer is handed
 #: the admitted label set, so a product the release does not cover is never
 #: installed and its seam keeps the separate certified arms:
@@ -1128,12 +1129,12 @@ CASE_INTENT["cylindrical_m0_complex"] = (
 #:   dispatching rows now;
 #: * ``bloch_2d``, ``complex_nobloch_2d``, ``folded_complex_2d`` and
 #:   ``cylindrical_m1`` dispatched ONLY on the probe leg until the expansion
-#:   licence was deleted (bit_parity_0_10 X1): their pairs were licensed by an
+#:   licence was deleted (in 1.0): their pairs were licensed by an
 #:   expansion probe outside the tree, and on the shipped leg every one of them
 #:   was refused by name. They dispatch on the shipped leg now. Until later on
 #:   2026-09-12 the two complex D/E pairs were selected-but-withheld on the first
-#:   two, so those rows drove one pair; they drive two now. SEVEN OF THE NINE ROWS
-#:   ADDED 2026-09-13 WERE IN THE SAME POSITION — ``complex_1d``,
+#:   two, so those rows drove one pair; they drive two now. Seven of the nine rows
+#:   added 2026-09-13 were in the same position — ``complex_1d``,
 #:   ``complex_3d_thinline`` and ``complex_3d`` under the complex probe,
 #:   ``folded_complex_3d``, ``folded_complex_kz2d_3d``,
 #:   ``folded_complex_offdiag_2d`` and ``folded_complex_nobloch_offdiag_2d`` under
@@ -1150,12 +1151,12 @@ CASE_INTENT["cylindrical_m0_complex"] = (
 #:   D-seam product is admitted on an off-diagonal grid, so all three are one-seam
 #:   cases.
 #:
-#: THE TABLE NO LONGER HAS A ``no-fused-arm`` ROW. ``special_kz_2d`` was the last
+#: The table no longer has a ``no-fused-arm`` ROW. ``special_kz_2d`` was the last
 #: one. That control did not disappear: it moved to :data:`ENVELOPE_CASE`
 #: (``no_pml_2d``), where the SHARED table does the refusing — a place no family
 #: release can erode, which is exactly what went wrong with resting it here.
 #:
-#: ``reached_by`` NAMES THE ROUTE. Every dispatching case runs with
+#: ``reached_by`` names the route. Every dispatching case runs with
 #: ``MEEP_GPU_FUSE_ARMS`` UNSET, because that is what SHIPS: the release admits and
 #: the switch is not involved. :func:`release_route_leg` reads the record back and
 #: requires it to say so, since "the switch was unset in the environment" and "the
@@ -1177,7 +1178,7 @@ DRIVE: Dict[str, Dict[str, Any]] = {
         "arms": ["fused magnetic B/H pair", "fused electric D/E pair"],
         "pairs": 2, "reached_by": "release", "expect": "dispatch",
         "seam": ["B", "D"], "launches_per_step": (4, 2), "monitors": 2,
-        "why": ("THE B-SEAM DEPOSIT REPAIR. The magnetic Gaussian is injected "
+        "why": ("The B-seam deposit repair. The magnetic Gaussian is injected "
                 "between step_B and update_H, so step_B holds a LeadingRepairPlan "
                 "and update_H the TrailingRepairPlan; the D seam is clean here, so "
                 "step_D/update_E are the sentinel pair. Exactly the mirror of "
@@ -1189,7 +1190,7 @@ DRIVE: Dict[str, Dict[str, Any]] = {
         "arms": ["fused magnetic B/H pair",
                  "conductive fused electric D/E pair"],
         "pairs": 2, "reached_by": "release", "expect": "dispatch",
-        # TWO SEAMS FROM 2026-09-12, and one until then. The conductive product was
+        # Two seams from 2026-09-12, and one until then. The conductive product was
         # withheld for want of a per-family weld; it is released now on its group
         # weld, so the D seam it already owned is FUSED rather than separate. The
         # note below is kept because the 2026-09-11 correction it records is still
@@ -1199,13 +1200,13 @@ DRIVE: Dict[str, Dict[str, Any]] = {
         # anyway, and the in-seam control read that claim and reported a
         # NULL-DID-NOT-DIVERGE for a mutation that had no fused pair to sit beside.
         "seam": ["B", "D"], "launches_per_step": (4, 2), "monitors": 2,
-        "why": ("BOTH SEAMS FUSED, AND THE 2026-09-02 LESSON STILL STANDING "
-                "BEHIND IT. A D_conductivity is installed, so the conductive "
+        "why": ("Both seams fused, and the 2026-09-02 lesson still standing "
+                "behind it. A D_conductivity is installed, so the conductive "
                 "product owns the D curl; from 2026-09-12 that product is RELEASED "
                 "on its group weld, so its seam fuses instead of keeping "
                 "`conductive PML curl` + `ordinary`, and the launch count drops "
                 "from 3 to 2.\n\n"
-                "WHAT THIS CASE USED TO CONTROL FOR: before the offer existed, an "
+                "What this case used to control for: before the offer existed, an "
                 "un-admitted product took both slots of its seam and clause 8 "
                 "refused the WHOLE plan. That refusal was reachable through "
                 "`bloch_2d` and `folded_complex_2d` while the two complex D/E "
@@ -1218,7 +1219,7 @@ DRIVE: Dict[str, Dict[str, Any]] = {
         "arms": ["fused magnetic B/H pair", "fused dispersive D/E pair"],
         "pairs": 2, "reached_by": "release", "expect": "dispatch",
         "seam": ["B", "D"], "launches_per_step": (9, 7), "monitors": 2,
-        "why": ("A SECOND FUSED FAMILY BESIDE THE ORDINARY PAIR, and the one case "
+        "why": ("A second fused family beside the ordinary pair, and the one case "
                 "whose update_P slot is LIVE. On this table that slot holds ONE "
                 "MetalAdeUpdatePPlan whose run() takes a contract rather than the "
                 "Triton list of per-susceptibility plans taking a drive field — "
@@ -1230,7 +1231,7 @@ DRIVE: Dict[str, Dict[str, Any]] = {
         "arms": ["fused magnetic B/H pair", "fused electric D/E pair"],
         "pairs": 2, "reached_by": "release", "expect": "dispatch",
         "seam": ["B", "D"], "launches_per_step": (4, 2), "monitors": 1,
-        "why": ("ONE LIVE AXIS. dimensions is released as {1, 2, 3} on the two "
+        "why": ("One live axis. dimensions is released as {1, 2, 3} on the two "
                 "ordinary pairs, and this is the 1 in it: the composer selects the "
                 "same two pairs on a (1, 1, N) grid that it selects in 2-D."),
     },
@@ -1238,7 +1239,7 @@ DRIVE: Dict[str, Dict[str, Any]] = {
         "arms": ["fused magnetic B/H pair", "fused electric D/E pair"],
         "pairs": 2, "reached_by": "release", "expect": "dispatch",
         "seam": ["B", "D"], "launches_per_step": (4, 2), "monitors": 1,
-        "why": ("THE 3 IN dimensions = {1, 2, 3}, and where this gate deliberately "
+        "why": ("The 3 in dimensions = {1, 2, 3}, and where this gate deliberately "
                 "differs from the Triton one: there this shape is the ENVELOPE "
                 "CONTROL, here it is a DISPATCH case. An axis-aligned block keeps "
                 "the permittivity tensor diagonal, the composer selects both "
@@ -1251,7 +1252,7 @@ DRIVE: Dict[str, Dict[str, Any]] = {
         "pairs": 2, "reached_by": "release", "expect": "dispatch",
         "seam": ["B", "D"], "fills": ["fill_B", "fill_D"],
         "launches_per_step": (6, 4), "monitors": 1,
-        "why": ("BOTH FOLDED PAIRS WITH THE MIRROR FILL IN BOTH FILL SLOTS. Rung "
+        "why": ("Both folded pairs with the mirror fill in both fill slots. Rung "
                 "6bM refuses a fold whose fills are on the array path while its "
                 "curls are on kernels, so a folded case that does not carry a fill "
                 "IN-LAUNCH measures a composition the ladder is supposed to refuse "
@@ -1271,13 +1272,13 @@ DRIVE: Dict[str, Dict[str, Any]] = {
         # by luck with dead evidence sitting beside it. One key now.
         "seam": ["B", "D"], "fills": ["fill_B", "fill_D"],
         "launches_per_step": (11, 9), "monitors": 1,
-        "why": ("BOTH FOLDED PAIRS OVER A SUSCEPTIBILITY, update_P live under all "
+        "why": ("Both folded pairs over a susceptibility, update_P live under all "
                 "of it. `folded fused D/E pair` pins susceptibilities at 0 because "
                 "this case gives its D seam away: the folded DISPERSIVE product "
                 "wins that seam, and from 2026-09-12 it is RELEASED on the "
-                "tranche-7 group weld, so the seam FUSES rather than running "
+                "seven-pair group weld, so the seam FUSES rather than running "
                 "separate arms. Launches drop from 10 to 9.\n\n"
-                "THE ADMITTED ASYMMETRY: the folded dispersive arm leaves "
+                "The admitted asymmetry: the folded dispersive arm leaves "
                 "`susceptibilities` unpinned, so it is ADMITTED on folded_2d, which "
                 "carries none. Measured 2026-09-12: the composer does not SELECT it "
                 "there — folded_2d still composes `folded fused D/E pair` on both D "
@@ -1288,10 +1289,10 @@ DRIVE: Dict[str, Dict[str, Any]] = {
         "arms": ["cylindrical m=0 fused electric D/E pair",
                  "cylindrical m=0 fused magnetic B/H pair"],
         "pairs": 2, "reached_by": "release", "expect": "dispatch",
-        # BOTH SEAMS SINCE 2026-09-17. This read `seam: ["D"]` with a comment saying
+        # Both seams since 2026-09-17. This read `seam: ["D"]` with a comment saying
         # the B seam stays on separate `cylindrical m=0` arms; that was true while
-        # cylindrical_real_fused_magnetic_pair held no absorb row, and the all-paths
-        # batch gave it one. launches_per_step is dropped rather than re-guessed: the
+        # cylindrical_real_fused_magnetic_pair held no absorb row, and the 2026-09-17
+        # change gave it one. launches_per_step is dropped rather than re-guessed: the
         # recorded (6, 5) was the one-pair composition's.
         "seam": ["B", "D"], "monitors": 0,
         "why": ("THE Dcyl m = 0 SHAPE, and the reason `cylindrical` is a PER-ARM "
@@ -1305,14 +1306,14 @@ DRIVE: Dict[str, Dict[str, Any]] = {
         "arms": ["beta fused electric D/E pair"],
         "pairs": 1, "reached_by": "release", "expect": "dispatch",
         "seam": ["D"], "launches_per_step": (4, 3), "monitors": 1,
-        "why": ("THE BETA ELECTRIC PAIR, RELEASED 2026-09-12. The composer selects "
+        "why": ("The beta electric pair, released 2026-09-12. The composer selects "
                 "`beta fused electric D/E pair` on this grid and the release now "
-                "admits it: the family cites the tranche-7 GROUP weld, and the arm "
+                "admits it: the family cites the seven-pair GROUP weld, and the arm "
                 "pins beta at the ONE value this case drives (0.4) rather than at "
                 "any beta. The B seam keeps `special_kz real beta` on both slots, "
                 "so this is a one-seam case and the run must still be "
                 "byte-identical to the array path.\n\n"
-                "WHAT THIS CASE STOPPED BEING, recorded because the gate lost a "
+                "What this case stopped being, recorded because the gate lost a "
                 "control here. Until 2026-09-12 it was the ONLY case whose expect "
                 "was `no-fused-arm` — a product selected and nothing admitted, the "
                 "cleanest statement of what the offer does. ENVELOPE_CASE is "
@@ -1321,7 +1322,7 @@ DRIVE: Dict[str, Dict[str, Any]] = {
                 "was not: it rests on a shared row no family release can erode, "
                 "while this case rested on a family merely being unreleased, which "
                 "is exactly what stopped being true.\n\n"
-                "A BFAST CASE WAS BUILT FOR THIS ROLE AND DROPPED, recorded so it "
+                "A BFAST case was built for this role and dropped, recorded so it "
                 "is not rebuilt blind. A pml_2d grid with a nonzero "
                 "bfast_scaled_k isolates the refusal to ONE axis (measured: shared "
                 "refusals = 1, naming bfast) and would have been the cleaner "
@@ -1336,10 +1337,10 @@ DRIVE: Dict[str, Dict[str, Any]] = {
                  "complex fused electric D/E pair"],
         "pairs": 2, "reached_by": "release", "expect": "dispatch",
         "seam": ["B", "D"], "launches_per_step": (4, 2), "monitors": 1,
-        "why": ("COMPLEX STORAGE UNDER A NONZERO k_point: BOTH complex pairs "
+        "why": ("Complex storage under a nonzero k_point: BOTH complex pairs "
                 "dispatch. The electric pair was selected-but-withheld until later "
-                "on 2026-09-12 (its cell is bound by the tranche-7 GROUP weld and "
-                "the group-key ruling reached it last), so the drop was 4 -> 3 "
+                "on 2026-09-12 (its cell is bound by the seven-pair GROUP weld and "
+                "the group-key change reached it last), so the drop was 4 -> 3 "
                 "then and is 4 -> 2 now, measured by the dry-run probe."),
     },
     "complex_nobloch_2d": {
@@ -1347,7 +1348,7 @@ DRIVE: Dict[str, Dict[str, Any]] = {
                  "complex fused electric D/E pair"],
         "pairs": 2, "reached_by": "release", "expect": "dispatch",
         "seam": ["B", "D"], "launches_per_step": (4, 2), "monitors": 1,
-        "why": ("COMPLEX STORAGE WITH NO k_point AT ALL (force_complex_fields), the "
+        "why": ("Complex storage with no k_point at all (force_complex_fields), the "
                 "shape of wvg-src.py and the two waveguide-source tests. It is the "
                 "case that lets the complex pairs' rows DROP their bloch row: "
                 "bloch_2d drives True and this case drives False, and every other "
@@ -1360,12 +1361,12 @@ DRIVE: Dict[str, Dict[str, Any]] = {
         "arms": ["fused magnetic B/H pair"],
         "pairs": 1, "reached_by": "release", "expect": "dispatch",
         "seam": ["B"], "launches_per_step": (4, 3), "monitors": 1,
-        "why": ("THE OFF-DIAGONAL GRID, DISPATCHING FROM 2026-09-12. A sphere, "
+        "why": ("The off-diagonal grid, dispatching from 2026-09-12. A sphere, "
                 "whose subpixel averaging writes off-diagonal chi1inv rows: "
                 "measured, this case's run shape reads off_diagonal_epsilon=True. "
                 "It was the ONLY case on this table that did until offdiag_2d and "
                 "folded_offdiag_2d joined it on 2026-09-12.\n\n"
-                "IT WAS THE ENVELOPE CONTROL UNTIL 2026-09-12, and it stopped "
+                "It was the envelope control until 2026-09-12, and it stopped "
                 "being one because the axis moved. While off_diagonal_epsilon was "
                 "a SHARED envelope row the released set here was empty and an "
                 "opt-in was the only route to a fused label. The row is per-arm "
@@ -1380,15 +1381,15 @@ DRIVE: Dict[str, Dict[str, Any]] = {
                 "WHAT DISPATCHES: the magnetic pair takes step_B/update_H; the D "
                 "seam keeps `PML` and `offdiag` singles, because no D-seam product "
                 "is admitted on an off-diagonal grid. One seam, 4 -> 3.\n\n"
-                "WHY IT MATTERS MORE THAN ITS ONE ROW: the off-diagonal refusals "
+                "Why it matters more than its one row: the off-diagonal refusals "
                 "were the biggest single block of served instances the Metal "
                 "release did not credit, and the clause that said none COULD be "
                 "credited was false — it rested on a specialized-family guard that "
                 "exists only in the Triton composer. See "
                 "metal_dispatch.METAL_FUSED_RELEASE_ENVELOPE's note."),
     },
-    # --- THE ALL-PATHS ROUND'S ELEVEN NEW CASES, 2026-09-17. Every ``arms`` set and
-    # every ``pairs`` count below was MEASURED by probe_metal_dispatch_dryrun.py
+    # --- The eleven route cases added 2026-09-17. Every ``arms`` set and
+    # every ``pairs`` count below was measured by probe_metal_dispatch_dryrun.py
     # before the row was typed -- the composer's own ``composition.selected``, joined
     # to fastpath._run_shape on the same lift -- rather than inherited from an
     # analogous row and confirmed later. ``launches_per_step`` is still OMITTED: the
@@ -1396,19 +1397,19 @@ DRIVE: Dict[str, Dict[str, Any]] = {
     # dispatches and not launches, and a typed number nobody measured is worse than
     # an absent one.
     #
-    # THE BUILDERS ARE INHERITED from gate_dispatch_fused_route: ``CASES`` starts as a
+    # The builders are inherited from gate_dispatch_fused_route: ``CASES`` starts as a
     # copy of that module's, and thirteen of the twenty-nine rows this table already
-    # carried resolve that way. The home rule applies to builders this round
-    # CONSTRUCTS, and this round constructs none.
+    # carried resolve that way. The home rule applies to builders a change
+    # CONSTRUCTS, and this one constructs none.
     "complex_no_pml_3d": {
         "arms": ["fused complex conductive no-PML curl -> complex stored E"],
         "pairs": 1, "reached_by": "release", "expect": "dispatch",
         "seam": ["D"],
-        # THE ONE ROW WHOSE PAIR COLLAPSES A PER-COMPONENT SINGLE. Measured 2026-09-19
+        # The one row whose pair collapses a per-component single. Measured 2026-09-19
         # on dispatch_metal_route_2026-09-19_witness/shipped_expansion_probe, the
         # case's first substitution measurement (it read DID-NOT-FUSE on 09-17): over
         # 600 steps the unfused leg's `complex no-PML stored E` booked 1800 launches on
-        # update_E -- ONCE PER COMPONENT, 3 a step -- beside step_D's `complex
+        # update_E -- once per component, 3 a step -- beside step_D's `complex
         # conductive no-PML curl` at 600, and the fused leg's `fused complex
         # conductive no-PML curl -> complex stored E` booked 600 on step_D with
         # update_E held by the pair. Four launches became one: 8.0 -> 5.0 a step,
@@ -1417,13 +1418,13 @@ DRIVE: Dict[str, Dict[str, Any]] = {
         # The proof expected 1 and read DROPPED-BUT-NOT-EXACT on a correct result.
         # See :func:`expected_drop_per_step` for the rule and what keeps it honest.
         "collapsed_single_launches_per_step": {"update_E": 3},
-        "why": ("THE COMPLEX CONDUCTIVE NO-ABSORBER WELD, on the shape the four "
+        "why": ("The complex conductive no-absorber weld, on the shape the four "
                 "TestLoadDump 3-D rows carry. Lifted 2026-09-17: dimensions 3, grid "
                 "(23, 21, 27), complex storage, bloch True at k_point "
                 "(0.4, -1.3, 0.7), conductivity True, ONE pole, pml_active False. "
-                "The family was certified and welded before this round and held no "
+                "The family was certified and welded before 2026-09-17 and held no "
                 "launch.FUSED_PAIR_ARMS row, so the seam loop could not ask it; the "
-                "row landed in the all-paths batch. ONE pair: the B seam keeps "
+                "row landed on 2026-09-17. ONE pair: the B seam keeps "
                 "`no-PML null` (nothing to do on a cell with no boundary layer) and "
                 "update_P keeps `ADE update_P` beside the weld. Its four corpus rows "
                 "are MAGNETIC-sourced, which is the polarity that makes them "
@@ -1433,11 +1434,11 @@ DRIVE: Dict[str, Dict[str, Any]] = {
         "arms": ["complex no-PML off-diagonal fused electric D/E pair"],
         "pairs": 1, "reached_by": "release", "expect": "dispatch",
         "seam": ["D"],
-        "why": ("THE COMPLEX UNFOLDED OFF-DIAGONAL WELD. Lifted 2026-09-17: "
+        "why": ("The complex unfolded off-diagonal weld. Lifted 2026-09-17: "
                 "dimensions 2, grid (25, 25, 1), complex storage, bloch True at "
                 "k_point (0.3892, 0.1597, 0), off_diagonal True, lossless, "
                 "pml_active False. It dispatches on the shipped leg now that no "
-                "complex family reads an expansion probe (bit_parity_0_10 X1): "
+                "complex family reads an expansion probe (since 1.0): "
                 "measured on the Mac (Apple M1 Max, held residency, 2026-10-10), the "
                 "weld drove step_D and update_E for 1500 steps and the fused leg read "
                 "0 of 17,500 words differing from the array path at all ten "
@@ -1447,7 +1448,7 @@ DRIVE: Dict[str, Dict[str, Any]] = {
         "arms": ["fused magnetic B/H pair", "off-diagonal fused electric D/E pair"],
         "pairs": 2, "reached_by": "release", "expect": "dispatch",
         "seam": ["B", "D"],
-        "why": ("THE OFF-DIAGONAL WELD'S OWN CASE, and why it is a NEW case rather "
+        "why": ("The off-diagonal weld's own case, and why it is a NEW case rather "
                 "than the `offdiag_2d` this table already drives. Measured "
                 "2026-09-17: on offdiag_2d and pml_3d the D seam keeps the separate "
                 "`PML` and `offdiag` arms, and the composer says why -- 'source 0 "
@@ -1469,7 +1470,7 @@ DRIVE: Dict[str, Dict[str, Any]] = {
                  "folded off-diagonal fused electric D/E pair"],
         "pairs": 2, "reached_by": "release", "expect": "dispatch",
         "seam": ["B", "D"], "fills": ["fill_B", "fill_D"],
-        "why": ("THE FOLDED TWIN OF THE ROW ABOVE, and the same source polarity is "
+        "why": ("The folded twin of the row above, and the same source polarity is "
                 "what makes it reachable. Lifted 2026-09-17: dimensions 2, grid "
                 "(160, 61, 1), folded 'mirror plane on Y', off_diagonal True, "
                 "lossless, real storage, PML active. Measured selection: the folded "
@@ -1483,7 +1484,7 @@ DRIVE: Dict[str, Dict[str, Any]] = {
                  "cylindrical m=0 fused electric D/E pair"],
         "pairs": 2, "reached_by": "release", "expect": "dispatch",
         "seam": ["B", "D"],
-        "why": ("THE REAL Dcyl CELL WITH BOTH SEAMS FUSED. `cylindrical` drives the "
+        "why": ("The real Dcyl cell with both seams fused. `cylindrical` drives the "
                 "electric pair alone and always has; what changed on 2026-09-17 is "
                 "that `cylindrical_real_fused_magnetic_pair` gained a "
                 "launch.FUSED_PAIR_ARMS row, so the seam loop can ask it. Measured "
@@ -1497,7 +1498,7 @@ DRIVE: Dict[str, Dict[str, Any]] = {
         "arms": ["no-PML fused electric D/E pair"],
         "pairs": 1, "reached_by": "release", "expect": "dispatch",
         "seam": ["D"],
-        "why": ("THE NO-ABSORBER STORED-E PAIR. Lifted 2026-09-17: dimensions 2, "
+        "why": ("The no-absorber stored-E pair. Lifted 2026-09-17: dimensions 2, "
                 "grid (120, 120, 1), pml_active False, TWO susceptibility states, "
                 "lossless, real storage. ONE pair: the B seam keeps `no-PML curl` "
                 "and `no-PML null`, which is what a cell with no boundary layer and "
@@ -1508,7 +1509,7 @@ DRIVE: Dict[str, Dict[str, Any]] = {
         "arms": ["conductive no-PML fused electric D/E pair"],
         "pairs": 1, "reached_by": "release", "expect": "dispatch",
         "seam": ["D"],
-        "why": ("THE CONDUCTIVE NO-ABSORBER PAIR, on the cell whose mp.Absorber is "
+        "why": ("The conductive no-absorber pair, on the cell whose mp.Absorber is "
                 "the conductivity. Lifted 2026-09-17: dimensions 1, grid "
                 "(1, 1, 400), pml_active False, conductivity True, and FIVE "
                 "susceptibility states -- MEEP expresses an Absorber's conductivity "
@@ -1520,11 +1521,11 @@ DRIVE: Dict[str, Dict[str, Any]] = {
         "arms": ["BFAST fused electric D/E pair"],
         "pairs": 1, "reached_by": "release", "expect": "dispatch",
         "seam": ["D"],
-        "why": ("THE BFAST ELECTRIC PAIR. Lifted 2026-09-17: dimensions 3, grid "
+        "why": ("The BFAST electric pair. Lifted 2026-09-17: dimensions 3, grid "
                 "(1, 1, 250), bfast True, real storage, lossless, PML active. ONE "
                 "pair, and the B seam is the reason: `bfast_fused_magnetic_pair` "
                 "holds no launch.FUSED_PAIR_ARMS row, deliberately -- it is one of "
-                "the three the all-paths round measured winning its slot and then "
+                "the three the 2026-09-17 change measured winning its slot and then "
                 "left unwired, because routing it empties the population "
                 "test_metal_fused_pair_deposit_wiring sweeps for the "
                 "refused-by-name property. So the B seam keeps the separate `BFAST` "
@@ -1535,18 +1536,18 @@ DRIVE: Dict[str, Dict[str, Any]] = {
                  "complex-beta fused electric D/E pair"],
         "pairs": 2, "reached_by": "release", "expect": "dispatch",
         "seam": ["B", "D"],
-        "why": ("THE COMPLEX BETA PAIRS AT bloch=False. Lifted 2026-09-17: "
+        "why": ("The complex beta pairs at bloch=False. Lifted 2026-09-17: "
                 "dimensions 2, grid (120, 120, 1), complex storage, beta 0.4, "
                 "bloch False, lossless, PML active. Both pairs dispatch on the "
-                "shipped leg: they no longer read an expansion probe (bit_parity_0_10 "
-                "X1)."),
+                "shipped leg: they no longer read an expansion probe (since "
+                "1.0)."),
     },
     "complex_beta_bloch_2d": {
         "arms": ["complex-beta fused magnetic B/H pair",
                  "complex-beta fused electric D/E pair"],
         "pairs": 2, "reached_by": "release", "expect": "dispatch",
         "seam": ["B", "D"],
-        "why": ("THE bloch=True VALUE OF THE SAME TWO ARMS, on the same cell. Both "
+        "why": ("THE bloch=True value of the same two arms, on the same cell. Both "
                 "values are driven because both arms' rows pin `bloch` as the "
                 "enumeration {False, True}, and an axis that named a value no case "
                 "drove would be the widening-without-evidence this table refuses. "
@@ -1558,7 +1559,7 @@ DRIVE: Dict[str, Dict[str, Any]] = {
                  "folded beta complex fused D/E pair"],
         "pairs": 2, "reached_by": "release", "expect": "dispatch",
         "seam": ["B", "D"], "fills": ["fill_B", "fill_D"],
-        "why": ("THE FOLDED BETA-COMPLEX PAIRS AT bloch=False. Lifted 2026-09-17: "
+        "why": ("The folded beta-complex pairs at bloch=False. Lifted 2026-09-17: "
                 "dimensions 2, grid (120, 62, 1), folded 'mirror plane on Y', "
                 "complex storage, beta 0.4, bloch False, lossless, PML active. This "
                 "family reads TWO licences -- folded_complex's and special_kz's "
@@ -1571,7 +1572,7 @@ DRIVE: Dict[str, Dict[str, Any]] = {
                  "folded beta complex fused D/E pair"],
         "pairs": 2, "reached_by": "release", "expect": "dispatch",
         "seam": ["B", "D"], "fills": ["fill_B", "fill_D"],
-        "why": ("THE bloch=True VALUE OF THE SAME TWO ARMS, for the reason "
+        "why": ("THE bloch=True value of the same two arms, for the reason "
                 "complex_beta_bloch_2d exists: both rows pin `bloch` as {False, "
                 "True} and both values must be driven for that enumeration to rest "
                 "on evidence."),
@@ -1581,7 +1582,7 @@ DRIVE: Dict[str, Dict[str, Any]] = {
                  "folded beta real fused D/E pair"],
         "pairs": 2, "reached_by": "release", "expect": "dispatch",
         "seam": ["B", "D"], "fills": ["fill_B", "fill_D"],
-        "why": ("THE FOLDED REAL-BETA PAIRS. Lifted 2026-09-17: dimensions 2, grid "
+        "why": ("The folded real-beta pairs. Lifted 2026-09-17: dimensions 2, grid "
                 "(120, 62, 1), folded 'mirror plane on Y', REAL storage, beta 0.4, "
                 "bloch False, lossless, PML active. Real storage is the axis that "
                 "separates these two arms from the folded beta COMPLEX pair on "
@@ -1593,7 +1594,7 @@ DRIVE: Dict[str, Dict[str, Any]] = {
         "arms": ["fused magnetic B/H pair"],
         "pairs": 1, "reached_by": "release", "expect": "dispatch",
         "seam": ["B"], "launches_per_step": (4, 3), "monitors": 2,
-        "why": ("THE 2-D OFF-DIAGONAL GRID, DISPATCHING FROM 2026-09-12. pml_2d's "
+        "why": ("THE 2-D off-diagonal grid, dispatching from 2026-09-12. pml_2d's "
                 "slab replaced by a cylinder: measured on the lift, the two run "
                 "shapes differ in off_diagonal_epsilon and nothing else, same "
                 "grid_shape (200, 120, 1). It is the case the retired shared "
@@ -1605,7 +1606,7 @@ DRIVE: Dict[str, Dict[str, Any]] = {
                 "was typed: the magnetic pair takes step_B/update_H; the D seam "
                 "keeps `PML` and `offdiag` singles, exactly as pml_3d. Unfused 4, "
                 "fused 3, byte-identical to 192 steps in both compositions.\n\n"
-                "WHAT IT PROVES ABOUT THE TABLE: the ordinary magnetic pair's "
+                "What it proves about the table: the ordinary magnetic pair's "
                 "off-diagonal corner is (dimensions in {2, 3}, susceptibilities 0, "
                 "conductivity False); this case is the dimensions=2 point of it."),
     },
@@ -1614,7 +1615,7 @@ DRIVE: Dict[str, Dict[str, Any]] = {
         "pairs": 1, "reached_by": "release", "expect": "dispatch",
         "seam": ["B"], "fills": ["fill_B", "fill_D"],
         "launches_per_step": (6, 5), "monitors": 1,
-        "why": ("THE FOLDED OFF-DIAGONAL GRID, DISPATCHING FROM 2026-09-12. "
+        "why": ("The folded off-diagonal grid, dispatching from 2026-09-12. "
                 "folded_2d's slab replaced by a cylinder centred on the fold "
                 "plane: measured on the lift, the two run shapes differ in "
                 "off_diagonal_epsilon and nothing else, same grid_shape (160, 61, "
@@ -1630,7 +1631,7 @@ DRIVE: Dict[str, Dict[str, Any]] = {
                 "off_diagonal_epsilon False and no D-seam product is admitted on "
                 "an off-diagonal grid. Unfused 6, fused 5, byte-identical to 192 "
                 "steps in both compositions.\n\n"
-                "WHY THE FOLDED ARM NEEDED A CORNER AND NOT AN OMISSION: its row "
+                "Why the folded arm needed a corner and not an omission: its row "
                 "leaves susceptibilities open because folded_2d and "
                 "folded_dispersive_2d drive both values, but off-diagonal it was "
                 "driven only at zero — the exact precondition failure the "
@@ -1643,11 +1644,11 @@ DRIVE: Dict[str, Dict[str, Any]] = {
         "pairs": 2, "reached_by": "release", "expect": "dispatch",
         "seam": ["B", "D"], "fills": ["fill_B", "fill_D"],
         "launches_per_step": (8, 6), "monitors": 1,
-        "why": ("A FOLD AND A NONZERO k_point AT ONCE: the folded complex fill "
+        "why": ("A fold and a nonzero k_point at once: the folded complex fill "
                 "covers both fill slots (so rung 6bM passes) and BOTH folded "
                 "complex pairs take their seams. The D/E pair was "
-                "selected-but-withheld until later on 2026-09-12 (tranche-7 group "
-                "weld; the ruling reached it last), so the drop was 8 -> 7 then "
+                "selected-but-withheld until later on 2026-09-12 (seven-pair group "
+                "weld; the group-key change reached it last), so the drop was 8 -> 7 then "
                 "and is 8 -> 6 now, measured by the dry-run probe. Without the "
                 "folded-complex licence both fill arms refuse and rung 6bM refuses "
                 "the whole plan — which is the refusal this case also records."),
@@ -1656,7 +1657,7 @@ DRIVE: Dict[str, Dict[str, Any]] = {
         "arms": ["folded fused B/H pair", "folded fused dispersive D/E pair"],
         "pairs": 2, "reached_by": "release", "expect": "dispatch",
         "seam": ["B", "D"], "fills": ["fill_B", "fill_D"], "monitors": 1,
-        # TWO PAIRS SINCE 2026-09-17, and this row is the one the confirming pass
+        # Two pairs since 2026-09-17, and this row is the one the confirming pass
         # earned its place on. `folded fused dispersive D/E pair` was RELEASED on
         # folded_dispersive_2d alone while the composer had been holding step_D and
         # update_E here all along; the release row said one case, so this row said one
@@ -1665,7 +1666,7 @@ DRIVE: Dict[str, Dict[str, Any]] = {
         # susceptibilities axis it forces, {1, 5} as an enumeration -- is what makes
         # the claim and the composition agree. launches_per_step is dropped: the
         # recorded (11, 10) was the one-pair reading.
-        "why": ("THE FOLDED MAGNETIC PAIR AT 3-D OVER ONE LORENTZIAN POLE, update_P "
+        "why": ("The folded magnetic pair at 3-D over one lorentzian pole, update_P "
                 "live under it. Its row omits susceptibilities because both values "
                 "are driven, and folded_3d opening dimensions to {2, 3} would have "
                 "left the (3-D, one pole) corner admitted on nothing — this case "
@@ -1679,7 +1680,7 @@ DRIVE: Dict[str, Dict[str, Any]] = {
         "pairs": 2, "reached_by": "release", "expect": "dispatch",
         "seam": ["B", "D"], "fills": ["fill_B", "fill_D"],
         "launches_per_step": (6, 4), "monitors": 1,
-        "why": ("THE FOLDED PAIRS IN 3-D, on an axis-aligned block under one "
+        "why": ("The folded pairs in 3-D, on an axis-aligned block under one "
                 "mirror plane. Measured by the dry-run probe before this row was "
                 "typed: both folded pairs with the mirror fill in both fill slots, "
                 "6 -> 4, byte-identical to the array path; the two-plane fold the "
@@ -1690,14 +1691,14 @@ DRIVE: Dict[str, Dict[str, Any]] = {
                 "case is 2-D only."),
     },
     # -----------------------------------------------------------------------
-    # THE NINE ROWS ADDED 2026-09-13, REAL STORAGE FIRST AND THEN COMPLEX, and
+    # The nine rows added 2026-09-13, real storage first and then complex, and
     # every one of them BEFORE the two Dcyl complex rows below. That order is a
     # correctness rule and not a style: a Dcyl COMPLEX case stepped earlier in a
     # process makes later real-storage Cartesian cases diverge from the array path
     # at subnormal magnitudes, on both dispatch legs, and the cause is open. Nothing
     # is inserted after `cylindrical_m1`.
     #
-    # WHAT IS MEASURED IN THESE ROWS AND WHAT IS NOT. `arms` is READ: every builder
+    # What is measured in these rows and what is not. `arms` is READ: every builder
     # was lifted off-device on 2026-09-13 with its monitors and run through
     # `metal_dispatch.released_fused_arms_metal`, and the lists below are those
     # admitted sets verbatim. `pairs` and `seam` are PREDICTED from the named
@@ -1711,21 +1712,21 @@ DRIVE: Dict[str, Dict[str, Any]] = {
         "arms": ["fused magnetic B/H pair", "fused dispersive D/E pair"],
         "pairs": 2, "reached_by": "release", "expect": "dispatch",
         "seam": ["B", "D"], "monitors": 1,
-        "why": ("SIX SUSCEPTIBILITY STATES, and the pole count as the only axis "
+        "why": ("Six susceptibility states, and the pole count as the only axis "
                 "that moves. case_dispersive_2d with its single Lorentzian "
                 "replaced by six: measured on the lift 2026-09-13 the run shape "
                 "reads susceptibilities 6 on a (90, 90, 1) grid, everything else "
                 "as dispersive_2d. It is the 6 in the ordinary magnetic pair's "
                 "enumerated {0, 1, 6} row, and the three stochastic_emitter rows "
                 "are what that 6 serves.\n\n"
-                "TWO ARMS BECAUSE THE RELEASE ADMITS TWO. `fused dispersive D/E "
+                "Two arms because the release admits two. `fused dispersive D/E "
                 "pair` leaves susceptibilities UNPINNED — the recorded release decision "
                 "on the three dispersive-adjacent rows — so it is admitted here "
                 "beside the magnetic pair (measured on the lift). A row naming "
                 "only the magnetic pair would hand the composer a label set "
                 "narrower than the release, which is not what this table's `arms` "
                 "field means.\n\n"
-                "COMPOSITION INHERITED FROM dispersive_2d, NOT READ: both seams "
+                "Composition inherited from dispersive_2d, NOT READ: both seams "
                 "fused with update_P live under all of it. At six poles that slot "
                 "holds six times the work it holds at one, so the launch counts "
                 "are certainly NOT dispersive_2d's (9, 7) and are deliberately "
@@ -1736,7 +1737,7 @@ DRIVE: Dict[str, Dict[str, Any]] = {
         "arms": ["folded fused B/H pair", "folded fused dispersive D/E pair"],
         "pairs": 2, "reached_by": "release", "expect": "dispatch",
         "seam": ["B", "D"], "fills": ["fill_B", "fill_D"], "monitors": 1,
-        "why": ("FIVE SUSCEPTIBILITY STATES ON A FOLD. case_folded_dispersive_2d "
+        "why": ("Five susceptibility states on a fold. case_folded_dispersive_2d "
                 "with five Lorentzians in place of its one: measured on the lift "
                 "2026-09-13, susceptibilities 5 on an (80, 61, 1) grid under a "
                 "mirror plane on Y, everything else identical. It is the 5 in the "
@@ -1746,12 +1747,12 @@ DRIVE: Dict[str, Dict[str, Any]] = {
                 "TWO ARMS, for dispersive6_2d's reason: `folded fused dispersive "
                 "D/E pair` leaves susceptibilities unpinned and the release admits "
                 "it here (measured on the lift).\n\n"
-                "THE SAME SHAPE IS THE TRITON GATE'S ENVELOPE WITNESS, where the "
+                "The same shape is the Triton gate's envelope witness, where the "
                 "release DECLINES every folded arm. That is a fact about the "
                 "Triton table and it does not reach this one — the two gates read "
                 "their own releases — and it is the mirror of pml_3d_diagonal, "
                 "which is an envelope control there and a dispatch case here.\n\n"
-                "COMPOSITION INHERITED FROM folded_dispersive_2d, NOT READ: both "
+                "Composition inherited from folded_dispersive_2d, NOT READ: both "
                 "folded pairs with the mirror fill in both fill slots so rung 6bM "
                 "has something to pass, update_P live. The launch counts are again "
                 "omitted rather than carried over, because five poles are not "
@@ -1762,8 +1763,8 @@ DRIVE: Dict[str, Dict[str, Any]] = {
                  "complex fused electric D/E pair"],
         "pairs": 2, "reached_by": "release", "expect": "dispatch",
         "seam": ["B", "D"], "monitors": 1,
-        "why": ("COMPLEX STORAGE ON A CELL DECLARED 1-D: the 1 in the complex "
-                "pairs' dimensions row, which this round opens from 2 to "
+        "why": ("Complex storage on a cell declared 1-D: the 1 in the complex "
+                "pairs' dimensions row, which the 2026-09-13 change opened from 2 to "
                 "{1, 2, 3}. dimensions=1 is passed explicitly, so the case is "
                 "about the axis rather than about the cell extents; measured on "
                 "the lift 2026-09-13 the run shape reads dimensions 1, grid "
@@ -1771,13 +1772,13 @@ DRIVE: Dict[str, Dict[str, Any]] = {
                 "both complex pairs admitted. It is refl-angular.py's shape, and "
                 "TestPlanewave1D and TestReflectanceAngular_0_0 are served with "
                 "it.\n\n"
-                "THIS IS THE FIRST 1-D EVIDENCE EITHER ARM CARRIES, which is the "
+                "This is the first 1-D evidence either arm carries, which is the "
                 "reason it is a route case and not an inference. Both family gates "
                 "build their complex fixtures through matrix.cart on a 3-D cell "
                 "and neither has ever driven dimensions=1; the byte-identity leg "
                 "through the real driver seam is what supplies it here, exactly as "
                 "pml_1d does for the ordinary pairs.\n\n"
-                "COMPOSITION INHERITED FROM pml_1d AND bloch_2d, NOT READ: both "
+                "Composition inherited from pml_1d and bloch_2d, NOT READ: both "
                 "pairs on a (1, 1, N) grid, the electric Gaussian inside the D "
                 "seam so step_D holds the leading repair. Probe leg only, as every "
                 "complex case on this table."),
@@ -1787,25 +1788,25 @@ DRIVE: Dict[str, Dict[str, Any]] = {
                  "complex fused electric D/E pair"],
         "pairs": 2, "reached_by": "release", "expect": "dispatch",
         "seam": ["B", "D"], "monitors": 1,
-        "why": ("A (0, 0, L) CELL DECLARED 3-D UNDER AN OBLIQUE k, which MEEP does "
+        "why": ("A (0, 0, L) cell declared 3-D under an oblique k, which MEEP does "
                 "not collapse: measured on the lift 2026-09-13, dimensions 3 on a "
                 "(1, 1, 275) grid, complex storage, k=(0.41, 0, 1.8), both complex "
                 "pairs admitted. Four corpus rows are physically one-dimensional "
                 "and answer dimensions 3 — antenna_pec_ground_plane_1D.py, "
                 "dipole_in_vacuum_1D.py, TestBoundaries1D and "
                 "TestReflectanceAngular_1_20_6 — and this is their shape.\n\n"
-                "IT IS HALF THE EVIDENCE FOR THE 3. The grid is one cell wide in "
+                "It is half the evidence for the 3. The grid is one cell wide in "
                 "two directions, so this case alone would license 3-D complex "
                 "storage on nothing but thin lines. complex_3d below is the other "
                 "half and is in the campaign for exactly that reason.\n\n"
-                "COMPOSITION INHERITED FROM complex_1d, NOT READ."),
+                "Composition inherited from complex_1d, NOT READ."),
     },
     "complex_3d": {
         "arms": ["complex fused magnetic B/H pair",
                  "complex fused electric D/E pair"],
         "pairs": 2, "reached_by": "release", "expect": "dispatch",
         "seam": ["B", "D"], "monitors": 1,
-        "why": ("A GENUINE 3-D COMPLEX BLOCK, AND IT CREDITS NOTHING. Measured on "
+        "why": ("A GENUINE 3-D complex block, and it credits nothing. Measured on "
                 "the lift 2026-09-13: dimensions 3, grid (40, 40, 40), complex "
                 "storage, bloch True at k=(0.3, 0, 0), off_diagonal_epsilon False "
                 "(the block is axis-aligned), both complex pairs admitted. The "
@@ -1818,9 +1819,9 @@ DRIVE: Dict[str, Dict[str, Any]] = {
                 "the 2026-09-13 census none of those five is credited to these "
                 "products, so the board number is identical with and without this "
                 "case. It is here because a row that admits a shape no case drove "
-                "is the defect this round exists to close, not because it moves "
-                "the count.\n\n"
-                "THE ONE THING THE DRY RUN MUST LOOK AT: the PML is on Z ALONE, so "
+                "is the defect class the 2026-09-13 cases exist to close, not because it "
+                "moves the count.\n\n"
+                "The one thing the dry run must look at: the PML is on Z ALONE, so "
                 "x and y stay periodic under the Bloch phase and the no-PML arms "
                 "may own work the other complex cases give to the PML arms. `pairs` "
                 "and `seam` are inherited from complex_nobloch_2d and are a "
@@ -1832,31 +1833,31 @@ DRIVE: Dict[str, Dict[str, Any]] = {
                  "folded complex fused D/E pair"],
         "pairs": 2, "reached_by": "release", "expect": "dispatch",
         "seam": ["B", "D"], "fills": ["fill_B", "fill_D"], "monitors": 1,
-        "why": ("A FOLD, A NONZERO k_point AND THREE DIMENSIONS AT ONCE — the "
+        "why": ("A fold, a nonzero k_point and three dimensions at once — the "
                 "triangular-lattice-oblique cell, which is "
                 "TestModeDecomposition.test_triangular_lattice_oblique's own "
                 "shape. Measured on the lift 2026-09-13: dimensions 3, grid "
                 "(8, 21, 126), folded on X, complex storage, k=(0, -1.7035, "
                 "2.4694), beta 0, both folded complex pairs admitted. It opens "
                 "those arms' dimensions row from 2 to {2, 3}.\n\n"
-                "THE D/E HALF IS THIS ARM'S FIRST 3-D EVIDENCE EVER, and it is "
+                "The D/E half is this arm's first 3-D evidence ever, and it is "
                 "flagged rather than buried. `folded complex fused D/E pair` has "
-                "no device gate file of its own — it binds to the tranche-7 GROUP "
+                "no device gate file of its own — it binds to the seven-pair GROUP "
                 "weld, whose four folded-complex fixtures are all 2-D — while its "
                 "magnetic twin is backed by eleven 3-D fixtures on its own family "
                 "gate. If it is decided that a route case may not be an arm's "
                 "first 3-D evidence, drop the D/E half: remove this case and "
                 "folded_complex_kz2d_3d from that arm's row in "
                 "METAL_RELEASED_FUSED_ARMS, re-pin its dimensions at 2, and the "
-                "board loses two instances that no other lever in this batch also "
+                "board loses two instances that no other 2026-09-13 change also "
                 "carries. The cheaper repair is one 3-D fixture in "
                 "gate_metal_tranche7_fused_pairs.py.\n\n"
-                "THE SOURCE SITS ON THE MIRROR PLANE, at x = 0. MEEP adds sources "
+                "The source sits on the mirror plane, at x = 0. MEEP adds sources "
                 "with use_symmetry=false, so a source in the half the plane "
                 "discards lands in no stored chunk and the run returns an "
                 "exactly-zero field while reading as complete; the lift refuses "
                 "that by name rather than letting it through.\n\n"
-                "COMPOSITION INHERITED FROM folded_complex_2d, NOT READ: both "
+                "Composition inherited from folded_complex_2d, NOT READ: both "
                 "pairs with the folded-complex fill in both fill slots, which is "
                 "what rung 6bM checks."),
     },
@@ -1865,7 +1866,7 @@ DRIVE: Dict[str, Dict[str, Any]] = {
                  "folded complex fused D/E pair"],
         "pairs": 2, "reached_by": "release", "expect": "dispatch",
         "seam": ["B", "D"], "fills": ["fill_B", "fill_D"], "monitors": 1,
-        "why": ("A FOLDED ZERO-THICKNESS CELL ASKED FOR AS 3-D. kz_2d='3d' is what "
+        "why": ("A folded zero-thickness cell asked for as 3-D. kz_2d='3d' is what "
                 "keeps the z component of the k_point from lifting as a beta, so "
                 "the declared 3 stands on a cell with no z extent; MEEP reports "
                 "'Working in 3D dimensions' and the lift agrees. Measured "
@@ -1873,12 +1874,12 @@ DRIVE: Dict[str, Dict[str, Any]] = {
                 "storage, k=(2.797, 0, -1.0849), beta 0, both folded complex pairs "
                 "admitted. It is "
                 "TestEigCoeffs.test_binary_grating_special_kz_2_21_2's shape.\n\n"
-                "WHY BOTH THIS AND folded_complex_3d: they are the same axis at "
+                "Why both this and folded_complex_3d: they are the same axis at "
                 "two very different builds — a volumetric fold and a sheet "
                 "declared 3-D — and the two corpus rows behind the widening are "
                 "one of each. A single case would leave the other's shape admitted "
                 "on an inference.\n\n"
-                "THE SOURCE IS AT y = +2.0, IN THE HALF THE MIRROR KEEPS, and this "
+                "The source is at y = +2.0, in the half the mirror keeps, and this "
                 "is the case that taught that rule: at y = -2.0 the lift refuses "
                 "by name. Every folded case on this table now puts its sources in "
                 "the kept half.\n\n"
@@ -1889,7 +1890,7 @@ DRIVE: Dict[str, Dict[str, Any]] = {
         "arms": ["folded complex fused B/H pair"],
         "pairs": 1, "reached_by": "release", "expect": "dispatch",
         "seam": ["B"], "fills": ["fill_B", "fill_D"], "monitors": 1,
-        "why": ("THE FOLDED COMPLEX OFF-DIAGONAL GRID, BLOCH HALF. "
+        "why": ("The folded complex off-diagonal grid, Bloch half. "
                 "folded_complex_2d with its slab replaced by a cylinder centred on "
                 "the fold plane — the same cell, PML, k_point, mirror and source — "
                 "so the two run shapes differ in off_diagonal_epsilon ALONE. "
@@ -1897,14 +1898,14 @@ DRIVE: Dict[str, Dict[str, Any]] = {
                 "folded on Y, complex storage, bloch True, off_diagonal_epsilon "
                 "True, and EXACTLY ONE arm admitted — the folded complex magnetic "
                 "pair.\n\n"
-                "WHAT IT BUYS: `folded complex fused B/H pair` was ABSENT from "
+                "What it buys: `folded complex fused B/H pair` was ABSENT from "
                 "metal_dispatch.METAL_OFF_DIAGONAL_CORNERS, and an arm absent from "
                 "that table is refused on every off-diagonal grid. This case and "
                 "its unphased twin are the corner entry's two halves, and the "
                 "entry is the step at which this backend's dispatch count reaches "
                 "its target. TestHoleyWvgBands.test_fields_at_kx is the row this "
                 "half recovers on its own.\n\n"
-                "ONE SEAM, AND THE REFUSAL BESIDE IT IS HALF THE MEASUREMENT: no "
+                "One seam, and the refusal beside it is half the measurement: no "
                 "D-seam product is admitted on an off-diagonal grid, so the D seam "
                 "keeps its separate arms here exactly as on pml_3d, offdiag_2d and "
                 "folded_offdiag_2d. Composition inherited from folded_offdiag_2d, "
@@ -1914,14 +1915,14 @@ DRIVE: Dict[str, Dict[str, Any]] = {
         "arms": ["folded complex fused B/H pair"],
         "pairs": 1, "reached_by": "release", "expect": "dispatch",
         "seam": ["B"], "fills": ["fill_B", "fill_D"], "monitors": 1,
-        "why": ("THE FOLDED COMPLEX OFF-DIAGONAL GRID, UNPHASED HALF: two mirror "
+        "why": ("The folded complex off-diagonal grid, unphased half: two mirror "
                 "planes and force_complex_fields with NO k_point at all, a "
                 "cylinder for the off-diagonal chi1inv. Measured on the lift "
                 "2026-09-13: dimensions 2, grid (81, 81, 1), folded on X and Y, "
                 "complex storage, bloch False, off_diagonal_epsilon True, exactly "
                 "one arm admitted. It is examples:solve-cw.py's and "
                 "tests:TestArrayMetadata.test_array_metadata's shape.\n\n"
-                "THE TWO HALVES PAY ONLY TOGETHER, measured on the 2026-09-13 "
+                "The two halves pay only together, measured on the 2026-09-13 "
                 "census: those two rows are refused TWICE OVER, on bloch AND on "
                 "off_diagonal_epsilon, so the corner entry without the bloch drop "
                 "recovers one instance (fields_at_kx, the Bloch half's row) and "
@@ -1930,12 +1931,12 @@ DRIVE: Dict[str, Dict[str, Any]] = {
                 "bloch pin: with folded_complex_2d, folded_complex_3d, "
                 "folded_complex_kz2d_3d and folded_complex_offdiag_2d driving "
                 "True, it drives False.\n\n"
-                "THE D/E TWIN KEEPS ITS PIN, and this case is why it must. The "
+                "The D/E twin keeps its pin, and this case is why it must. The "
                 "release does not admit that arm on an off-diagonal grid, so this "
                 "run is not evidence about it at any k_point; dropping its pin on "
                 "the magnetic twin's licence would claim a case that never drove "
                 "it.\n\n"
-                "THE SOURCE IS IN THE QUADRANT BOTH PLANES KEEP, at (+4, +4); at "
+                "The source is in the quadrant both planes keep, at (+4, +4); at "
                 "(-4, 0) the lift refuses. One seam, composition inherited from "
                 "folded_offdiag_2d, not read."),
     },
@@ -1959,15 +1960,15 @@ DRIVE: Dict[str, Dict[str, Any]] = {
                 "census records no m, so a row would refuse every corpus row as "
                 "unread; the arm is bounded on complex storage as its m = 0 twin "
                 "is bounded on real). It dispatches on the shipped leg: no complex "
-                "family reads an expansion probe (bit_parity_0_10 X1)."),
+                "family reads an expansion probe (since 1.0)."),
     },
     "cylindrical_m0_complex": {
         "arms": ["cylindrical complex fused electric D/E pair",
                  "cylindrical complex fused magnetic B/H pair"],
         "pairs": 2, "reached_by": "release", "expect": "dispatch",
         "seam": ["B", "D"], "monitors": 1,
-        "why": ("Dcyl AT m = 0 UNDER COMPLEX STORAGE: the corner the 2026-09-12 "
-                "round's verifier named. The arm's row cannot pin m (the census "
+        "why": ("Dcyl AT m = 0 under complex storage: the corner the 2026-09-12 "
+                "verifier named. The arm's row cannot pin m (the census "
                 "records none) and pins complex_storage True, so it admits the "
                 "dipole_in_vacuum_cyl_off_axis shape -- m = 0 with "
                 "force_complex_fields -- on evidence taken at m = 1 alone. This "
@@ -1975,10 +1976,10 @@ DRIVE: Dict[str, Dict[str, Any]] = {
                 "(the complex electric pair on the D seam, the cylindrical complex "
                 "singles on the B seam), 4 -> 3, byte-identical by the dry-run "
                 "probe 2026-09-13 to 96 steps. Probe leg only, as its m = 1 twin.\n\n"
-                "THE B SEAM AND THE PAIR COUNT MOVED ON 2026-09-17, and this row is "
+                "The B seam and the pair count moved on 2026-09-17, and this row is "
                 "the reason a wiring change has to re-confirm rows nobody edited. "
                 "`cylindrical_complex_fused_magnetic_pair` gained a "
-                "launch.FUSED_PAIR_ARMS row in the all-paths batch -- it was "
+                "launch.FUSED_PAIR_ARMS row that day -- it was "
                 "certified and welded before and the seam loop simply could not ask "
                 "it -- so the composer now takes step_B/update_H with the cylindrical "
                 "complex MAGNETIC pair and this is a two-seam, two-pair row. Measured "
@@ -1996,10 +1997,10 @@ DRIVE: Dict[str, Dict[str, Any]] = {
 def case_engine_cylindrical_complex_m1(mp, res=16):
     """Dcyl, complex storage, m = 1: PML on r and z, a dielectric shell, an Er Gaussian.
 
-    The engine smoke's ``cyl_m1`` (lane MCC), on which the held-residency defect in the
+    The engine smoke's ``cyl_m1``, on which the held-residency defect in the
     three complex cylindrical plans was found: 111,415 of 1,376,256 words differed from
-    the array path over steps 1, 4, 16 and 64 (first seen at step 4) on the tree
-    carrying series entries 01..86, held; 0 shipped.
+    the array path over steps 1, 4, 16 and 64 (first seen at step 4) on the
+    development tree before the fix, held; 0 shipped.
     """
     shell = [mp.Cylinder(radius=2.0, height=mp.inf, material=mp.Medium(epsilon=2.5)),
              mp.Cylinder(radius=1.2, height=mp.inf, material=mp.Medium(epsilon=1.0))]
@@ -2014,8 +2015,8 @@ def case_engine_cylindrical_complex_m1(mp, res=16):
 def case_engine_cylindrical_complex_m2(mp, res=16):
     """Dcyl, complex storage, m = 2: PML on r only (metallic z walls), an Ep Gaussian.
 
-    The engine smoke's ``cyl_m2`` (lane MCC): 118,204 of 1,146,880 words differed from
-    the array path held on the 01..86 tree, 0 shipped.
+    The engine smoke's ``cyl_m2``: 118,204 of 1,146,880 words differed from the array
+    path held on the development tree before the cylindrical plan fix, 0 shipped.
     """
     shell = [mp.Cylinder(radius=2.0, height=mp.inf, material=mp.Medium(epsilon=2.5)),
              mp.Cylinder(radius=1.2, height=mp.inf, material=mp.Medium(epsilon=1.0))]
@@ -2042,7 +2043,7 @@ _DCYL_COMPLEX_ARMS: Dict[str, str] = {
     "update_E": "cylindrical complex fused electric D/E pair",
 }
 
-#: ROWS DRIVEN THE WAY A USER'S RUN IS, NOT THE WAY A ROUTE ROW IS. A route row
+#: Rows driven the way a user's run is, not the way a route row is. A route row
 #: (:data:`DRIVE`) steps three legs through the gate's instrument -- a
 #: :class:`MetalLaunchCounter` wrapped round every compiled callable, the seam census
 #: patched into every launch, ``driver.run`` in chunks, the fused route reached through
@@ -2078,15 +2079,15 @@ ENGINE_SMOKE: Dict[str, Dict[str, Any]] = {
     },
 }
 
-#: THE TWO CASES :func:`envelope_leg` DRIVES, and why it takes two from 2026-09-12.
+#: The two cases :func:`envelope_leg` DRIVES, and why it takes two from 2026-09-12.
 #:
-#: IT USED TO TAKE ONE. ``pml_3d`` — the SPHERE, whose subpixel averaging writes
+#: It used to take one. ``pml_3d`` — the SPHERE, whose subpixel averaging writes
 #: off-diagonal ``chi1inv`` rows — served both directions while
 #: ``off_diagonal_epsilon`` was a SHARED envelope row: nothing was released
 #: off-diagonal, so the shared table refused EVERY arm there, and an opt-in was the
 #: only way to reach a fused label at all.
 #:
-#: THAT AXIS IS PER-ARM NOW and the ordinary magnetic pair IS released on the
+#: That axis is per-arm now and the ordinary magnetic pair IS released on the
 #: sphere, so the shared table refuses nothing there. One case can no longer witness
 #: both directions, and the honest split is:
 #:
@@ -2099,7 +2100,7 @@ ENGINE_SMOKE: Dict[str, Dict[str, Any]] = {
 #:   and exactly the one arm driven off-diagonal is admitted. That is a richer
 #:   statement than the opt-in it replaces, because the release route reaches it.
 #:
-#: ``no_pml_2d`` WAS CHOSEN OVER A NEW BFAST CASE, and the alternative is recorded
+#: ``no_pml_2d`` was chosen over a new BFAST case, and the alternative is recorded
 #: because it was built and measured before being dropped. A ``pml_2d`` grid with a
 #: nonzero ``bfast_scaled_k`` isolates the refusal to ONE axis (measured: shared
 #: refusals = 1, naming ``bfast``; every other axis a value the gate drove), which is
@@ -2178,7 +2179,7 @@ def ladder_for(total: int) -> List[int]:
 def _as_list(value: Any) -> Any:
     """``list(...)`` a sequence, and leave anything else exactly as it is.
 
-    THE SENTINEL IS A SENTENCE, NOT AN EMPTY LIST, and ``list()`` over a sentence is
+    The sentinel is a sentence, not an empty list, and ``list()`` over a sentence is
     a list of characters. Before the run shape is reached, ``_base_record`` fills
     ``fusion.released_here`` / ``admitted`` / ``outside_the_released_envelope`` with
     the string "the run shape was not reached" — which is the right record, because
@@ -2193,19 +2194,28 @@ def _as_list(value: Any) -> Any:
 
 
 def _fuse_env(arms: Sequence[str],
-              reached_by: str = "release") -> Dict[str, Optional[str]]:
+              reached_by: str = "release",
+              shape_rule: bool = True) -> Dict[str, Optional[str]]:
     """The environment a fused leg runs under, and WHICH ROUTE reaches the arm.
 
     ``release`` is the shipped one: the switch UNSET, and
     ``metal_dispatch.METAL_RELEASED_FUSED_ARMS`` narrowed per arm by
     ``METAL_FUSED_RELEASE_ARM_AXES`` does the admitting. ``opt-in`` names the arms
     explicitly and is how a shape the envelope does not cover is reached at all.
+
+    ``shape_rule`` is the fused route gate's rule (``route.dispatch_preference_env``):
+    True, the default, runs the shape rule's composition, which every leg that asserts
+    a composition asserts; False unsets the dispatch-preference switch, so the package
+    default arbitrates, which only :func:`default_preference_leg` asks for. On this table
+    the default reads the live Apple GPU family's Metal timing record when the tree ships
+    one, else the portable prior of the Apple records it ships (none: the shape rule).
     """
+    preference = route.dispatch_preference_env(shape_rule)
     if reached_by == "release":
         return {"MEEP_GPU_DISPATCH": "1", "MEEP_GPU_FUSED": None,
-                "MEEP_GPU_FUSE_ARMS": None}
+                "MEEP_GPU_FUSE_ARMS": None, **preference}
     return {"MEEP_GPU_DISPATCH": "1", "MEEP_GPU_FUSED": None,
-            "MEEP_GPU_FUSE_ARMS": ",".join(arms) if arms else None}
+            "MEEP_GPU_FUSE_ARMS": ",".join(arms) if arms else None, **preference}
 
 
 ARRAY_ENV: Dict[str, Optional[str]] = {"MEEP_GPU_DISPATCH": "1",
@@ -2216,7 +2226,7 @@ ARRAY_ENV: Dict[str, Optional[str]] = {"MEEP_GPU_DISPATCH": "1",
 def unfused_env() -> Dict[str, Optional[str]]:
     """The substitution baseline: every certified sub-step arm, NOTHING fused.
 
-    THE VETO TOKEN IS READ FROM THE PACKAGE rather than spelled ``"0"`` here, so a
+    The veto token is read from the package rather than spelled ``"0"`` here, so a
     gate cannot go on asking for a baseline the product stopped offering. Imported
     LATE, like everything else that touches ``meep_gpu`` in this file: a
     module-scope import would pull MEEP in before the harness has decided the
@@ -2239,7 +2249,7 @@ def step_leg(case: str, leg: Dict[str, Any], counter: MetalLaunchCounter,
     the legs are stepped ALTERNATELY, so a delta from one early origin also counts
     the other legs' launches.
 
-    THE COUNTER IS ATTACHED AFTER THE FIRST CHUNK, and that is why the first chunk
+    The counter is attached after the first chunk, and that is why the first chunk
     is excluded from the rate rather than merely noisy: the plan does not exist
     until the driver's first ``step()`` freezes the configuration, so there is
     nothing to wrap before it.
@@ -2344,7 +2354,7 @@ def fused_leg_is_real(leg: Dict[str, Any], spec: Dict[str, Any]) -> Dict[str, An
         if not entry.get("dispatches"):
             failures.append(f"{slot} carries {arm!r} but its consult ran "
                             f"{entry.get('dispatches')} times")
-    # THE PER-PLAN WITNESS, and it is `plan_launches` rather than
+    # The per-plan witness, and it is `plan_launches` rather than
     # `programs_per_dispatch`. A Metal KernelPlan spells no launch grid, so
     # `programs_per_dispatch` is None BY CONSTRUCTION on every Metal slot and
     # asserting on it would fail every leg while measuring nothing. What separates
@@ -2361,7 +2371,7 @@ def fused_leg_is_real(leg: Dict[str, Any], spec: Dict[str, Any]) -> Dict[str, An
         failures.append("no Metal plan booked a launch at all (KernelPlan.launches)")
     if not leg["metal_launches"]["function_calls"]:
         failures.append("no compiled Metal function was invoked (CountingFunction)")
-    # THE TWO COUNTS MUST AGREE, which is what the class docstring always said they
+    # The two counts must agree, which is what the class docstring always said they
     # did. Checked in STEADY STATE, because the witness attaches after the first chunk
     # and the totals above include that chunk's launches; and checked IN ADDITION to
     # the non-zero clauses rather than instead of them, because steady-state equality
@@ -2388,7 +2398,7 @@ def fused_leg_is_real(leg: Dict[str, Any], spec: Dict[str, Any]) -> Dict[str, An
         failures.append(f"HARNESS: function-table leaves that are not compiled Metal "
                         f"kernels were found and would be counted as launches: "
                         f"{sorted(leg['non_kernel_leaves'])[:6]}")
-    # A FOLDED CASE THAT DOES NOT RUN A FILL IN-LAUNCH IS VACUOUS. Rung 6bM refuses
+    # A folded case that does not run a fill in-launch is vacuous. Rung 6bM refuses
     # a fold whose fills are on the array path while its curls are not, so a "folded
     # case dispatched" that left both fills on the host would be measuring a
     # composition the ladder is supposed to refuse — and would look identical, byte
@@ -2414,14 +2424,14 @@ def fused_leg_is_real(leg: Dict[str, Any], spec: Dict[str, Any]) -> Dict[str, An
 def array_leg_is_clean(leg: Dict[str, Any]) -> Dict[str, Any]:
     """The oracle leg must BE the array path and must launch nothing.
 
-    THE METAL SPELLING OF ``e2e.killswitch_leg_is_clean``, and it is a separate
+    The Metal spelling of ``e2e.killswitch_leg_is_clean``, and it is a separate
     function rather than a call into that one because the launch witness differs:
     the Triton version reads ``leg["triton_launches"]``, a counter installed on
     Triton's own entry points, and this table has none — its two counts are
     ``KernelPlan.launches`` and the ``CountingFunction`` wrappers, both attached to
     the plans a leg holds.
 
-    THE CLAUSE THAT MATTERS IS THE SECOND. "The oracle agreed with the dispatch
+    The clause that matters is the second. "The oracle agreed with the dispatch
     leg" is worthless if the oracle also dispatched, and a kill-switch leg that
     launched a kernel is exactly that failure — the two legs would be the same
     composition compared with itself.
@@ -2455,7 +2465,7 @@ def expected_drop_per_step(spec: Dict[str, Any]) -> int:
     step of the UNFUSED single on that slot, declared under
     :data:`COLLAPSED_SINGLES_KEY`. A slot the row does not declare contributes 0.
 
-    "ONE LAUNCH FEWER PER PAIR" IS THE N = 1 INSTANCE OF IT, and it was the whole rule
+    "One launch fewer per pair" is the N = 1 instance of it, and it was the whole rule
     until 2026-09-19. It holds wherever the pair launches its replaced singles at
     the rate they launched unfused, which is every row but one: measured on
     ``dispatch_metal_route_2026-09-19_witness``, dispersive_2d's unfused
@@ -2469,7 +2479,7 @@ def expected_drop_per_step(spec: Dict[str, Any]) -> int:
     not merely a per-component single, and a row that declared a per-component
     single the pair does not collapse would expect a drop the run cannot show.
 
-    DECLARED, NOT DETECTED, for the reason the NVIDIA route gate's
+    Declared, not detected, for the reason the NVIDIA route gate's
     ``expected_substitution`` gives for ``poles`` and ``tail_in_leading``: a clause
     that reads its own expectation off the measurement cannot fail. Two things keep
     the declaration non-vacuous. :func:`substitution_proof` cross-checks each
@@ -2493,7 +2503,7 @@ def _declaration_mismatches(fused: Dict[str, Any], unfused: Dict[str, Any],
     included) rather than by the steady-state tail: 1800 launches over 600 steps is
     3, and over the tail's 599 it is not an integer at all.
 
-    A DECLARED SLOT NO PAIR REPLACED is a mismatch too: the declaration says a fused
+    A declared slot no pair replaced is a mismatch too: the declaration says a fused
     unit collapses that single, and a slot outside the fused leg's driven set is
     one nothing collapsed.
     """
@@ -2510,7 +2520,7 @@ def _declaration_mismatches(fused: Dict[str, Any], unfused: Dict[str, Any],
                           "unfused_steps": steps, "unfused_per_step": per_step,
                           "unfused_arm": entry.get("arm"),
                           "replaced_by": driven.get(slot)}
-        # N = 1 DECLARES NOTHING AND N < 1 IS FALSE. A declared 0 would lower the
+        # N = 1 declares nothing and N < 1 is false. A declared 0 would lower the
         # expected drop below ``pairs`` and let a step that saved nothing read EXACT --
         # "no data" scoring as the best value -- so a collapse is at least two.
         if int(n) < 2:
@@ -2526,7 +2536,7 @@ def _declaration_mismatches(fused: Dict[str, Any], unfused: Dict[str, Any],
                             f"{steps} steps ({per_step} a step, arm "
                             f"{entry.get('arm')!r})")
     if declared:
-        # THE COLLAPSE IS READ ON THE FUSED SIDE TOO, not inferred from the total. A
+        # The collapse is read on the fused side too, not inferred from the total. A
         # declared row's expectation rests on two facts the chunk drop alone cannot
         # separate: the pair launched ONCE a step, and nothing outside the pairs moved.
         # A pair that did not collapse (3 a step) beside an unrelated slot that lost 2
@@ -2566,24 +2576,24 @@ def substitution_proof(fused: Dict[str, Any], unfused: Dict[str, Any],
                        spec: Dict[str, Any]) -> Dict[str, Any]:
     """The launches the drive row declares a step saves, counted twice over.
 
-    THE CLAIM FUSION MAKES, and the only one no byte comparison can reach: two
+    The claim fusion makes, and the only one no byte comparison can reach: two
     sub-steps became one launch -- one fewer per pair per step, plus N - 1 for each
     single a pair collapses from N launches into its one
     (:func:`expected_drop_per_step`). The comparison is against a THIRD leg that
     dispatched the same slots with fusion off — not against the array path, which
     launches nothing and would make any number look like a saving.
 
-    THE SLOT SETS MUST MATCH before the arithmetic means anything: if the unfused
+    The slot sets must match before the arithmetic means anything: if the unfused
     leg dispatched a different set, the delta mixes the fusion with a coverage
     difference and the claim is recorded as not-comparable rather than asserted.
 
-    AND THE BASELINE MUST ACTUALLY BE UNFUSED, read out of ITS OWN RECORD rather
+    And the baseline must actually be unfused, read out of its own record rather
     than inferred from the environment it was handed — "the switch said no arms" and
     "the record shows no arm driven" are different claims and only the second is a
     baseline.
     """
     a, b = steady_state_rate(fused), steady_state_rate(unfused)
-    # THE EXPECTATION IS THE ROW'S DECLARATION, recorded beside the number it
+    # The expectation is the row's declaration, recorded beside the number it
     # produced so a reader of the artifact can see which rows declared anything.
     declared = {slot: int(n) for slot, n in
                 dict(spec.get(COLLAPSED_SINGLES_KEY) or {}).items()}
@@ -2597,7 +2607,7 @@ def substitution_proof(fused: Dict[str, Any], unfused: Dict[str, Any],
     out["baseline_vetoed_fusion"] = baseline.get("vetoed")
     out["baseline_driven"] = dict(baseline.get("driven") or {})
     if not spec["pairs"]:
-        # A CASE THAT IS HERE TO BE REFUSED SUBSTITUTES NOTHING, and reporting a
+        # A case that is here to be refused substitutes nothing, and reporting a
         # zero drop as EXACT would put a green word on a measurement never taken.
         out["verdict"] = "NOT-APPLICABLE"
         out["why"] = "this case expects no fused product, so no launch is substituted"
@@ -2614,19 +2624,19 @@ def substitution_proof(fused: Dict[str, Any], unfused: Dict[str, Any],
     function_drop = b["function_calls_per_step"] - a["function_calls_per_step"]
     out["launch_drop_per_step"] = drop
     out["function_drop_per_step"] = function_drop
-    # THE LEVELS AGREE, NOT ONLY THE DROPS. A drop of 2.0 against a function-call
+    # The levels agree, not only the drops. A drop of 2.0 against a function-call
     # drop of 2.0 read EXACT on the cylindrical case while the fused leg's compiled
     # calls stood at 0.0 per step: two blind witnesses agree on a difference.
     levels_agree = (a["launches"] == a["function_calls"]
                     and b["launches"] == b["function_calls"])
     out["levels_agree"] = levels_agree
     out["counts_agree"] = abs(drop - function_drop) < 1e-9 and levels_agree
-    # THE DECLARATION IS CHECKED WHERE A SUBSTITUTION EXISTS TO CHECK IT AGAINST: a
+    # The declaration is checked where a substitution exists to check it against: a
     # fused leg that drove a pair. A leg that fused nothing -- a policy-refused leg,
     # a DID-NOT-FUSE -- has no pair to collapse anything and reads NO-DROP below,
     # which says the right thing; relabelling it a declaration error would not.
     #
-    # ONLY DECLARED SLOTS ARE CROSS-CHECKED, and "an undeclared replaced single
+    # Only declared slots are cross-checked, and "an undeclared replaced single
     # launches once a step" is NOT asserted, because it is false on rows that are
     # correct: measured 2026-09-19, every dispatching leg of
     # dispatch_metal_route_2026-09-19_witness carries nine EXACT rows whose undeclared
@@ -2697,11 +2707,11 @@ def _synced_plans(driver: Any) -> List[Any]:
 
 #: The ``mode`` the held form of :func:`_drop_one_sync_in` records, and the key
 #: :func:`residency_controls` reads that form's verdict by.
-HELD_SYNC_IN_MODE = "held: one acquire_write leaves the mirror unclaimed"
+HELD_SYNC_IN_MODE = "held: one source-deposit device write dropped"
 
 #: The residency's sparse-door counters (``device.Residency``): writes that land on
-#: the current side of a mirror and move no ownership, which the held form of
-#: :func:`_drop_one_sync_in` cannot reach. Read as deltas over the armed steps.
+#: the current side of a mirror and move no ownership. Read as deltas over the armed
+#: steps; ``double_subtracts`` counts the deposit door the held null drops one write of.
 _DOOR_COUNTERS = ("sparse_scatters", "sparse_zeros", "double_subtracts")
 
 
@@ -2710,10 +2720,110 @@ def _door_counts(residency: Any) -> Dict[str, int]:
     return {name: int(getattr(residency, name, 0) or 0) for name in _DOOR_COUNTERS}
 
 
+def _stored_words(rows: Any) -> Any:
+    """Device rows read back as their 32-bit words (a host copy, compared bit for bit)."""
+    import numpy as np  # noqa: PLC0415
+
+    return np.ascontiguousarray(rows.detach().cpu().numpy()).view(np.uint32).copy()
+
+
+def _drop_one_deposit_write(residency: Any, state: Dict[str, Any]):
+    """Arm the held null on ``residency``: drop the device write of ONE source deposit.
+
+    Under a hold the field mirrors are DEVICE_OWNED between launches, so the host
+    writes beside the kernels go through the residency's sparse doors, which write
+    the current side and move no ownership. The source deposit
+    (``Residency.subtract_double_index``) is the door every held composition drives on
+    every step, and on a device-owned mirror it writes the device and nothing else: the
+    tensor IS the only copy of the deposited cells until the next copy-out. Dropping
+    that write therefore leaves the next launch reading the cells as they stood before
+    the source acted, which the twin leg does not, so the run MUST diverge.
+
+    The drop is measured, not assumed. The door runs as shipped and the deposited
+    rows are read back before and after it; a call that changed no stored word (a
+    zero source amplitude, or a payload below the rounding of every word it touches)
+    is a provable no-op, is counted in ``deposits_unchanged`` and is not the drop. The
+    first call that changes a word on a device-owned mirror has its rows written back
+    to their previous words, and ``words_dropped`` records how many words that undid.
+    A call on a mirror the device does not own (``deposits_not_device_owned``) writes
+    the host too, so it is passed through rather than dropped, as is a deposit into an
+    array this residency does not mirror (``deposits_unmirrored``). ``deposits``
+    counts every call on this residency over the armed steps, the drop included.
+
+    Patched at the CLASS and keyed on the identity of this one residency, so every
+    other residency, and every deposit after the drop, runs shipped. ``acquire_write``
+    is counted and not changed: a held host write that moves ownership is uploaded by
+    the next ``sync_in``, which this null does not reach, and a composition that
+    makes one is reported rather than passed (:func:`held_sync_in_verdict`).
+    """
+    from meep_gpu.metal_kernels import device as device_module  # noqa: PLC0415
+
+    cls = type(residency)
+    real_door = getattr(cls, "subtract_double_index", None)
+    real_acquire = getattr(cls, "acquire_write", None)
+    state.update({"mode": HELD_SYNC_IN_MODE, "armed": True, "deposits": 0,
+                  "deposits_unchanged": 0, "deposits_not_device_owned": 0,
+                  "deposits_unmirrored": 0, "words_dropped": 0,
+                  "acquire_calls": 0, "acquires_on_a_mirror": 0})
+    doors_at_arm = _door_counts(residency)
+
+    def patched_door(self, array, linear, real64, imag64=None):  # noqa: ANN001
+        if self is not residency:
+            return real_door(self, array, linear, real64, imag64)
+        state["deposits"] += 1
+        if state["suppressed"]:
+            return real_door(self, array, linear, real64, imag64)
+        mirror = self._by_host_identity(array)
+        if mirror is None:
+            state["deposits_unmirrored"] += 1
+            return real_door(self, array, linear, real64, imag64)
+        if mirror.state != device_module.DEVICE_OWNED:
+            state["deposits_not_device_owned"] += 1
+            return real_door(self, array, linear, real64, imag64)
+        view = mirror.index_view()
+        index = self._device_index(linear)
+        before = view.index_select(0, index).clone()
+        real_door(self, array, linear, real64, imag64)
+        changed = int((_stored_words(before)
+                       != _stored_words(view.index_select(0, index))).sum())
+        if not changed:
+            state["deposits_unchanged"] += 1
+            return None
+        device_module._scatter_rows(view, index, before)  # noqa: SLF001
+        state["suppressed"] = 1
+        state["slot"] = mirror.name
+        state["words_dropped"] = changed
+        return None
+
+    def counted_acquire(self, target):  # noqa: ANN001
+        if self is not residency:
+            return real_acquire(self, target)
+        state["acquire_calls"] += 1
+        array = real_acquire(self, target)
+        if self._targets(target):
+            state["acquires_on_a_mirror"] += 1
+        return array
+
+    if real_door is not None:
+        cls.subtract_double_index = patched_door
+    if real_acquire is not None:
+        cls.acquire_write = counted_acquire
+
+    def restore() -> None:
+        if real_door is not None:
+            cls.subtract_double_index = real_door
+        if real_acquire is not None:
+            cls.acquire_write = real_acquire
+        after = _door_counts(residency)
+        state["door_counts"] = {name: after[name] - doors_at_arm[name] for name in after}
+
+    return restore
+
+
 def _drop_one_sync_in(driver: Any):
     """Suppress the sync_in of the LEADING bracketed launch of every step. MUST diverge.
 
-    THE ARMED NULL FOR THE RESIDENCY SEAM, and the seam has no other witness. In
+    The armed null for the residency seam, and the seam has no other witness. In
     per-launch-sync mode the residency VERDICT is not consulted for correctness —
     the bracket is what makes the host authoritative — so "the mirrors agreed" says
     nothing about whether the bracket is load-bearing. Removing one upload per step
@@ -2725,8 +2835,11 @@ def _drop_one_sync_in(driver: Any):
 
     Patched at the CLASS, keyed on the identity of ONE instance, so exactly one
     bracket per step is disarmed and the rest of the seam runs shipped.
+
+    Under held residency the null is the held transport's instead: one source
+    deposit's device write is dropped (:func:`_drop_one_deposit_write`) and the row
+    is graded by :func:`held_sync_in_verdict`.
     """
-    from meep_gpu.metal_kernels import device as device_module  # noqa: PLC0415
     from meep_gpu.metal_kernels import launch  # noqa: PLC0415
 
     targets = _synced_plans(driver)
@@ -2736,63 +2849,32 @@ def _drop_one_sync_in(driver: Any):
     if not targets:
         return (lambda: None), state
 
-    # UNDER A HOLD, SUPPRESSING A sync_in IS NOT THE NULL -- it can be a genuine
+    # Under a hold, suppressing a sync_in is not the null -- it can be a genuine
     # no-op. A held ``sync_in`` copies only the mirrors the host OWNS, so if the
     # bracket this control picks happens to have none, removing it changes nothing
     # and the control reads NULL-DID-NOT-DIVERGE on a seam that is perfectly
     # load-bearing. Measured on ``magnetic_seam_2d``, ``dispersive_2d`` and
     # ``pml_3d`` in the first held campaign.
     #
-    # What IS load-bearing under a hold is the OWNERSHIP MOVE. So the held null
-    # leaves ``acquire_write`` unsealing as usual -- otherwise the host write would
-    # merely raise -- and suppresses only the transition to HOST_OWNED. The write
-    # then lands on the host and the next ``sync_in`` skips it, because the machine
-    # still believes the mirror clean. That is precisely the missed-write defect the
-    # ownership machine exists to prevent, so the run MUST diverge.
+    # What IS load-bearing under a hold is the held TRANSPORT. Between launches the
+    # field mirrors are device-owned, and the host passes beside the kernels write
+    # them through the residency's sparse doors, which write the current side and move
+    # no ownership: on the held route every such write measured went through a door,
+    # and none through ``acquire_write``. So the held null drops the device write of
+    # one source deposit, the door every held composition drives on every step
+    # (:func:`_drop_one_deposit_write`), and the run MUST diverge.
     #
-    # THE HELD NULL MEASURES ITS OWN REACH, NOT AN UPLOAD. ``verify()`` is not read on
+    # The held null measures its own reach, not an upload. ``verify()`` is not read on
     # this path and no step is judged stale, so the per-launch fields are dropped from
-    # the state rather than left at a zero nothing measured (until 2026-10-13 they
-    # stayed, and :func:`residency_controls` read that zero as "verify() read EMPTY at
-    # every skipped sync_in"). What the path does count: every entry into
-    # ``acquire_write`` over the armed steps, the entries that named a registered
-    # mirror, and what the residency's sparse doors (``scatter``, the zero doors, the
-    # device-side deposit subtraction) counted over the same steps. Those doors write
-    # the current side and move no ownership, so they never reach this null. Measured
-    # on the round's held route campaign (2026-10-13, 42 / 42 dispatched cases on both
-    # dispatch legs): ``suppressed`` 0 on every row, so no host write reached
-    # ``acquire_write`` on a mirror in the armed steps.
+    # the state rather than left at a zero nothing measured. What it records: the
+    # deposit calls over the armed steps and why each one before the drop was passed
+    # through, the words the dropped write would have changed, the entries into
+    # ``acquire_write``, and the sparse doors' counts over the same steps.
     residency = getattr(targets[0], "residency", None)
     if residency is not None and getattr(residency, "held", frozenset()):
-        real_acquire = type(residency).acquire_write
         for key in ("steps_with_stale_mirrors", "stale_mirrors"):
             state.pop(key, None)
-        state.update({"mode": HELD_SYNC_IN_MODE, "armed": True, "acquire_calls": 0,
-                      "acquires_on_a_mirror": 0})
-        doors_at_arm = _door_counts(residency)
-
-        def patched_acquire(self, target):  # noqa: ANN001
-            state["acquire_calls"] += 1
-            array = real_acquire(self, target)
-            mirrors = self._targets(target)
-            if mirrors:
-                state["acquires_on_a_mirror"] += 1
-            if mirrors and state["suppressed"] < 1:
-                for mirror in mirrors:
-                    mirror.state = device_module.CLEAN_BOTH
-                state["suppressed"] += 1
-                state["slot"] = mirrors[0].name
-            return array
-
-        type(residency).acquire_write = patched_acquire
-
-        def restore_acquire() -> None:
-            type(residency).acquire_write = real_acquire
-            after = _door_counts(residency)
-            state["door_counts"] = {name: after[name] - doors_at_arm[name]
-                                    for name in after}
-
-        return restore_acquire, state
+        return _drop_one_deposit_write(residency, state), state
     target_id = id(targets[0])
     state["slot"] = getattr(targets[0], "slot", None) or type(
         getattr(targets[0], "inner", None)).__name__
@@ -2800,7 +2882,7 @@ def _drop_one_sync_in(driver: Any):
 
     def patched(self, *args: Any, **kwargs: Any) -> None:  # noqa: ANN001
         if id(self) == target_id:
-            # WAS THERE AN UPLOAD TO SUPPRESS? ``verify()`` reports, per mirror, how
+            # Was there an upload to suppress? ``verify()`` reports, per mirror, how
             # many words the device copy differs from the host array by. Read at the
             # instant the upload would have run, an EMPTY verdict means the host has
             # written nothing the device does not already hold -- so skipping the
@@ -2836,7 +2918,7 @@ def _drop_one_sync_in(driver: Any):
 def _drop_the_inner_bracket(driver: Any):
     """Move a wrapper's bracket from its INNER launch to the whole SLOT. MUST diverge.
 
-    THE PLACEMENT CONTROL. Two wrappers in this composition do HOST work before
+    The placement control. Two wrappers in this composition do HOST work before
     their launch — ``deposit_repair.LeadingRepairPlan`` saves the deposit points and
     ``withdraw_hoist.LeadingWithdrawPlan`` performs the seam's electric withdraw —
     and ``launch.synced`` therefore brackets the inner launch rather than the slot,
@@ -2848,7 +2930,7 @@ def _drop_the_inner_bracket(driver: Any):
     Returns ``armed: False`` when the case's plan carries no such wrapper, which is
     the honest answer for a clean seam rather than a pass.
 
-    A SPENT START OF H IS LOOKED THROUGH, NEVER ARMED ON. ``launch.StartOfHPlan``
+    A spent start of H is looked through, never armed on. ``launch.StartOfHPlan``
     sits around whatever serves a run's first ``update_H`` and does host work only
     while ``fields.h_separated`` is False -- on that first ``update_H`` and on no
     later step, and nothing but ``driver.reset`` (which drops the plan) lowers the
@@ -2884,8 +2966,8 @@ def _drop_the_inner_bracket(driver: Any):
             continue
         kind = type(entry).__name__
         state["wrapper_kinds"][slot] = kind
-        # A WRAPPER WHOSE PRE-LAUNCH HOST WORK WRITES NOTHING CANNOT BE MEASURED BY
-        # THIS CONTROL, and saying so is the difference between a null and a result.
+        # A wrapper whose pre-launch host work writes nothing cannot be measured by
+        # this control, and saying so is the difference between a null and a result.
         # Moving an upload ACROSS a read-only operation cannot change a byte on
         # either side: ``deposit_repair.save`` gathers the deposit cells OUT -- through
         # an advanced index, or the plan's cached linear index into a C-order view,
@@ -2961,7 +3043,7 @@ def _pre_launch_host_work_is_read_only(wrapper: Any) -> bool:
 def _verify_after_every_sync_out(driver: Any):
     """Read ``Residency.verify()`` IMMEDIATELY after each sync_out. The vacuity floor.
 
-    THE INSTANT MATTERS AND THE MEASUREMENT PROVES IT. Read at the END of a step,
+    The instant matters and the measurement proves it. Read at the END of a step,
     ``verify()`` is NOT empty on a leg carrying a trailing deposit repair — measured
     2026-09-10 on ``bloch_2d``: ``{'Ez': 2, 'Dz': 2, 'f_w_Ez': 2}`` — because the
     repair is HOST work that runs after the last launch's copy-back and the
@@ -2973,10 +3055,10 @@ def _verify_after_every_sync_out(driver: Any):
     two sides must agree exactly. That is the residency claim, at the one moment it
     is a claim.
 
-    THE FLOOR IS THE REGISTRY: an empty ``verify()`` from an empty registry proves
+    The floor is the registry: an empty ``verify()`` from an empty registry proves
     nothing, so ``residency.names`` is counted too.
 
-    UNDER A HOLD THE CLAIM CHANGES AND SO DOES THE CHECK. The device owns the
+    Under a hold the claim changes and so does the check. The device owns the
     written set between launches, so the host is stale for those mirrors by design
     and blanket equality would be red on correct code. The held form asserts a SET
     equality instead -- the mirrors that differ are exactly the ones the bookkeeping
@@ -3005,7 +3087,7 @@ def _verify_after_every_sync_out(driver: Any):
             if verdict and len(state["disagreements"]) < 8:
                 state["disagreements"].append(dict(verdict))
             return
-        # HELD: THE SAME ASSERTION WOULD BE RED ON CORRECT CODE. The device owns the
+        # Held: the same assertion would be red on correct code. The device owns the
         # written set between launches, so the host is stale for exactly those
         # mirrors BY DESIGN and a blanket "verify() is empty" check measures the
         # design rather than the implementation.
@@ -3110,7 +3192,7 @@ def _current_words(array: Any) -> Any:
     """
     from meep_gpu import host_writes  # noqa: PLC0415
 
-    # ONE INDEX OBJECT PER SIZE, reused: ``Residency._device_index`` caches the device
+    # One index object per size, reused: ``Residency._device_index`` caches the device
     # copy of an index array by IDENTITY and keeps the host array alive, so a fresh
     # ``arange`` per call would add a whole-volume index (host and device) to that
     # cache on every launch of the run.
@@ -3130,14 +3212,14 @@ def _current_words(array: Any) -> Any:
 def _census_state(driver: Any) -> Dict[str, int]:
     """How many float32 words of every stored array are in the subnormal band.
 
-    AN INSTRUMENT THAT RIDES THE FUSED LEG MUST NOT CHANGE IT, and until 2026-10-10 this
+    An instrument that rides the fused leg must not change it, and until 2026-10-10 this
     one did. It read the state through ``gate_dispatch_end_to_end.collect_state``, whose
     walk fetches every array with ``getattr`` -- through a held residency's READ
     BARRIER, which copies each device-owned volume out and marks it clean. Installed by
     :func:`_seam_census` before EVERY launch of the run, it refreshed the fused leg's
     host copies before every kernel read them, so the fused leg never ran under a hold
     at all: whatever a plan read from a stale host copy was made current by the census
-    first. MEASURED on the tree carrying series entries 01..86 (MCC's defect: three
+    first. Measured on a development tree before the cylindrical plan fix (the defect: three
     complex cylindrical plans read the radial source's stale host copy under a hold),
     ``cylindrical_m1`` with the released probes, 24 steps: census ON, the fused leg 0
     differing words at every checkpoint while the unfused leg (whose own driver the
@@ -3167,7 +3249,7 @@ def _census_state(driver: Any) -> Dict[str, int]:
 def band_witness(case: str, res: Optional[int], steps: int) -> Dict[str, Any]:
     """Does the ORACLE's own trajectory enter the subnormal band? The vacuity floor.
 
-    THE CLAIM UNDER TEST IS AN EQUIVALENCE — that flushing float32 denormals on both
+    The claim under test is an equivalence — that flushing float32 denormals on both
     executors changes no byte of the answer — and an equivalence over a value class
     the run never constructs is vacuous. So the array leg is re-run with the host
     KEEPING and every stored array is censused every step: at least one dispatching
@@ -3176,7 +3258,7 @@ def band_witness(case: str, res: Optional[int], steps: int) -> Dict[str, Any]:
 
     Run in the ``band_witness`` leg, which installs ``keep`` and dispatches nothing.
 
-    "DISPATCHES NOTHING" IS CHECKED HERE, NOT ASSUMED. The driver is an Apple GPU
+    "Dispatches nothing" is checked here, not assumed. The driver is an Apple GPU
     driver like every other this gate lifts (:func:`_lift`), so its array path is the
     environment's doing: ``run_metal_dispatch_campaign.sh`` hands this leg
     ``MEEP_GPU_DISPATCH=0``. A witness that fused would census a trajectory stepped
@@ -3219,13 +3301,13 @@ def band_witness(case: str, res: Optional[int], steps: int) -> Dict[str, Any]:
 def _seam_census(driver: Any):
     """Census every operand a plan is about to read, immediately before each launch.
 
-    THE ONE MOMENT AT WHICH THE KERNEL'S OPERANDS ARE EXACTLY THE ARRAYS ON THE
-    OBJECT — after the seam's deposits, before the sub-step overwrites them. Recorded
+    The one moment at which the kernel's operands are exactly the arrays on the
+    object — after the seam's deposits, before the sub-step overwrites them. Recorded
     as PROVENANCE and not as a verdict: under the installed flush both executors
     flush, so the byte comparison is the arbiter and this says which value class the
     comparison was made over.
 
-    THE FUSED LEG'S OWN LAUNCHES ONLY. The patch sits on the CLASS, so every leg's
+    The fused leg's own launches only. The patch sits on the CLASS, so every leg's
     launches reach it while the three legs step alternately; a launch whose residency
     mirrors none of this driver's field arrays belongs to another leg, cannot have
     changed this driver's operands, and is counted under ``other_legs_launches``
@@ -3288,20 +3370,20 @@ def _seam_census(driver: Any):
 _SMALLEST_NORMAL_FLOAT32 = 1.1754943508222875e-38
 
 
-#: THE THREE BOUNDS THE CLIFF PREDICATE READS. Two are absolute, because "the
+#: The three bounds the cliff predicate reads. Two are absolute, because "the
 #: disagreement is in the subnormal band" is an absolute statement about float32 and
 #: has no relative form; the third is normalised against float32's own resolution.
 #:
-#: WHY THE OLD FIXED RATIO WAS WRONG, measured 2026-09-11 on ``pml_3d_diagonal``. The
+#: Why the old fixed ratio was wrong, measured 2026-09-11 on ``pml_3d_diagonal``. The
 #: predicate required ``max_rel_diff < 1e-30``, and ``max_rel_diff`` is ``max|a-b|``
-#: over ``max|a|`` -- the disagreement divided by THE ARRAY'S OWN PEAK. Five of that
+#: over ``max|a|`` -- the disagreement divided by the array's own peak. Five of that
 #: case's six judged arrays peak near 1e-04 and passed; ``fields.Bz`` peaks at
 #: 1.97e-08, four orders lower, because Bz carries only numerical residue in a
 #: diagonal 3D PML. Its worst disagreement is 1.55e-36 -- the second SMALLEST of the
 #: six -- yet divided by that tiny peak it read 7.85e-29 and failed by 78x. The clause
 #: was grading the array's AMPLITUDE, not the disagreement.
 #:
-#: WHAT THE REPLACEMENT IS AND IS NOT, stated without flattery because this is a
+#: What the replacement is and is not, stated without flattery because this is a
 #: RELEASE bound. Write P for the array peak and d for the disagreement. The old
 #: predicate admitted ``d < P*1e-30``; the new one admits ``d < min(1e-28, P*R)`` with
 #: R = ``_BAND_RATIO_CEILING``. The ratio of the two is ``min(1e2/P, R*1e30)``, so the
@@ -3312,7 +3394,7 @@ _SMALLEST_NORMAL_FLOAT32 = 1.1754943508222875e-38
 #: recorded here rather than quietly corrected, because a wrong justification under a
 #: release bound is the defect, not the typo.
 #:
-#: SO THE LOOSENING IS DELIBERATE AND IS PAID FOR ELSEWHERE. It is deliberate because
+#: So the loosening is deliberate and is paid for elsewhere. It is deliberate because
 #: ``P*1e-30`` is unsatisfiable on a quiet field component for reasons that have
 #: nothing to do with the arithmetic: at P = 1.97e-08 it demanded d < 1.97e-38, which is
 #: 1.7 times the smallest normal float32 (1.18e-38) -- so it admitted only a handful of
@@ -3332,7 +3414,7 @@ _SMALLEST_NORMAL_FLOAT32 = 1.1754943508222875e-38
 #:     has ever measured (7.85e-29). It is not fitted to that measurement; 1e-20 is
 #:     where "invisible at float32 resolution" stops being arguable.
 #:
-#: WHAT THIS PREDICATE STILL CANNOT SAY, recorded so the next reader does not have to
+#: What this predicate still cannot say, recorded so the next reader does not have to
 #: rediscover it. The ratio clause binds only where ``P*R < 1e-28``, i.e. on an array
 #: peaking below **1e-08** -- that crossover moves with R and an earlier revision of
 #: this comment left the 1e-16 figure from the R = 1e-12 era standing, which was stale
@@ -3346,9 +3428,9 @@ _BAND_VALUE_CEILING = 1e-28
 _BAND_DIFFERENCE_CEILING = 1e-28
 _BAND_RATIO_CEILING = 1e-20
 
-#: THE STORED SPLIT-FIELD PML INTERMEDIATES, and their own value ceiling.
+#: The stored split-field PML intermediates, and their own value ceiling.
 #:
-#: WHY THEY ARE NOT FIELDS. ``fields.py`` says it outright at the declaration: "MEEP
+#: Why they are not fields. ``fields.py`` says it outright at the declaration: "MEEP
 #: step_generic.cpp: fu holds the INTERMEDIATE RESULT for the dsigu PML direction,
 #: needed when two PML directions are active (3D) in step_curl". The recurrence is
 #: ``_apply_pml_update`` (stepping.py:1975):
@@ -3363,7 +3445,7 @@ _BAND_RATIO_CEILING = 1e-20
 #: it UNCANCELLED. Judging the two against one ceiling compares quantities one stage
 #: apart.
 #:
-#: MEASURED 2026-09-11 on ``pml_3d_diagonal``, which is the case with two active PML
+#: Measured 2026-09-11 on ``pml_3d_diagonal``, which is the case with two active PML
 #: directions and therefore the only one that allocates these arrays at all. Every
 #: other component's intermediate and consumer carry the SAME differing magnitude
 #: (fu_Dx/Dx 4.568e-30, fu_Dy/Dy 1.439e-29, fu_Bx/Bx 2.678e-29, fu_Bz/Bz 6.666e-32 --
@@ -3372,7 +3454,7 @@ _BAND_RATIO_CEILING = 1e-20
 #: the same 176 of subnormal magnitude in both. The 1e-28 field ceiling refused the
 #: case on that one array.
 #:
-#: AND THE 1.922e-28 IS THE FLUSH, PROVEN ON THE HOST rather than argued.
+#: And the 1.922e-28 is the flush, proven on the host rather than argued.
 #: ``parity/meep_gpu/probe_pml_intermediate_flush.py`` lifts the case twice on the
 #: ARRAY path in NumPy with no device, runs one leg as it ships and the other with
 #: stage 1's output flushed wherever it is subnormal -- a VALUE test, not a bit mask --
@@ -3382,10 +3464,10 @@ _BAND_RATIO_CEILING = 1e-20
 #: stage-1 calls. A flush of the PML intermediate, and nothing else, produces that
 #: number.
 #:
-#: SO THE CEILING IS SEPARATE AND NAMED, not raised for everything. 1e-26 is two orders
+#: So the ceiling is separate and named, not raised for everything. 1e-26 is two orders
 #: above the measured value -- not fitted to its last digit -- and twelve orders below
 #: fu_Dz's own peak of 2.008e-03, so an arithmetic defect at the field's scale is still
-#: refused on these arrays as loudly as on any other. THE STRONGER MOVE, recorded as
+#: refused on these arrays as loudly as on any other. The stronger move, recorded as
 #: owed rather than done: make the host replay a LEG of this control, the way
 #: ``band_witness`` decides what a threshold could not, and let an array over the field
 #: ceiling pass on reproduced evidence instead of on a second constant.
@@ -3430,7 +3512,7 @@ def _pml_intermediate_of(array: Any) -> Optional[str]:
 def _band_census(state: Dict[str, Any]) -> Dict[str, Any]:
     """How many stored words sit IN the subnormal band, per array. The vacuity floor.
 
-    WHY THE CLIFF CONTROL CANNOT CONCLUDE WITHOUT IT. When a keeping host and a
+    Why the cliff control cannot conclude without it. When a keeping host and a
     flushing device produce the same answer, the row named two hypotheses and could
     separate neither: "either the run never enters the subnormal band or the device
     did not flush". Only the first is a statement about the CASE, and it is directly
@@ -3471,7 +3553,7 @@ BAND_WITNESS_ENVIRONMENT = "MEEP_GPU_METAL_BAND_WITNESS"
 def band_witness_verdicts() -> Dict[str, str]:
     """Per case, what the band-witness leg measured. Empty when it has not run.
 
-    WHY THE CLIFF CONTROL CANNOT CONCLUDE WITHOUT IT, and why nothing inside that
+    Why the cliff control cannot conclude without it, and why nothing inside that
     control can substitute. When a keeping host and a flushing device agree, the row
     could only name two hypotheses -- "the run never enters the subnormal band" or
     "the device did not flush" -- and separating them needs a census of the ORACLE's
@@ -3481,7 +3563,7 @@ def band_witness_verdicts() -> Dict[str, str]:
     holds ZERO band words while the two legs differ on 496 elements, because MPS
     flushes exact subnormal INTERMEDIATES that leave no subnormal in storage.
 
-    MEASURED PAIRING, 2026-09-11: the five cases that read NO-CLIFF -- conductive_2d,
+    Measured pairing, 2026-09-11: the five cases that read NO-CLIFF -- conductive_2d,
     dispersive_2d, pml_1d, folded_dispersive_2d, cylindrical -- are EXACTLY the five
     the witness reports BAND-EMPTY, and every case that did cliff is BAND-NON-EMPTY.
     """
@@ -3493,7 +3575,7 @@ def band_witness_verdicts() -> Dict[str, str]:
             payload = json.load(handle)
     except Exception:  # noqa: BLE001 - an unreadable witness decides nothing
         return {}
-    # THE SUMMARY KEYS ITS CONTROLS "<case>:<control>", so the case is the part
+    # The summary keys its controls "<case>:<control>", so the case is the part
     # before the colon. Read from the summary's own shape rather than from a
     # remembered one: this is the only consumer, and a shape that moved would
     # otherwise hand every case ``None`` and silently restore the old NO-CLIFF.
@@ -3515,7 +3597,7 @@ def band_witness_verdicts() -> Dict[str, str]:
 def band_confinement(entries: List[Dict[str, Any]]) -> Dict[str, Any]:
     """Is every array's disagreement at the subnormal band's scale? With the reason.
 
-    SEPARATED FROM :func:`cliff_control` SO IT CAN BE ARMED WITHOUT A DEVICE. The
+    Separated from :func:`cliff_control` so it can be armed without a device. The
     predicate is the licensing half of the cliff control -- it is what decides
     ``CLIFF-CONFINED-TO-THE-BAND`` against ``CLIFF-OUTSIDE-THE-BAND``, which is the
     difference between a policy split and "an arithmetic defect in a dispatched
@@ -3528,7 +3610,7 @@ def band_confinement(entries: List[Dict[str, Any]]) -> Dict[str, Any]:
     value that no ceiling admits, so a forensics shape that stopped reporting one of
     these would refuse rather than quietly confine.
     """
-    # THE MAGNITUDE EACH ARRAY DIFFERED AT, so a field can be judged against the
+    # The magnitude each array differed at, so a field can be judged against the
     # intermediate that WROTE it. See the inheritance note below.
     magnitudes = {str(entry.get("array")):
                   (entry.get("largest_differing_magnitude") or 0.0)
@@ -3540,16 +3622,16 @@ def band_confinement(entries: List[Dict[str, Any]]) -> Dict[str, Any]:
         ratio = entry.get("max_rel_diff") or 1.0
         own = _is_pml_intermediate(entry.get("array"))
 
-        # A FIELD INHERITS ITS OWN INTERMEDIATE'S CEILING, and the reason is the
+        # A field inherits its own intermediate's ceiling, and the reason is the
         # recurrence rather than a preference. stepping._apply_pml_update's stage 2
         # is `field += fu; field -= fu_previous`, so it consumes the stage-1
-        # intermediate as a DIFFERENCE OF SUCCESSIVE VALUES and the intermediate's
+        # intermediate as a difference of successive values and the intermediate's
         # differing magnitude passes straight through into the field. Granting
         # `fu_Dy` a 1e-26 ceiling while holding `Dy` to 1e-28 is therefore
         # incoherent: every intermediate flush between those two values refuses its
         # own consumer, and the consumer's magnitude was never independent evidence.
         #
-        # MEASURED, 2026-09-12, and this is the bug that found it. The beta electric
+        # Measured, 2026-09-12, and this is the bug that found it. The beta electric
         # pair's release put special_kz_2d's `fields.Dy` at 1.894e-28 — over the
         # field ceiling — while its own `fields.fu_Dy` sat at 1.896e-28, UNDER the
         # intermediate ceiling. The host-only replay in
@@ -3560,18 +3642,18 @@ def band_confinement(entries: List[Dict[str, Any]]) -> Dict[str, Any]:
         # fu_Dz/Dz 4.731e-32, fu_Bz/Bz 3.363e-32, fu_Bx/Bx 2.003e-34 — which is the
         # pass-through stated as a measurement rather than read off the source.
         #
-        # IT IS BOUNDED BY THE PRODUCER, not granted outright: the field must differ
+        # It is bounded by the producer, not granted outright: the field must differ
         # at NO MORE than its intermediate did. A field carrying a LARGER magnitude
         # than the intermediate that wrote it is not explained by this mechanism and
         # is refused, which is the case this clause must not swallow.
         #
-        # THE TIGHT GUARDS ARE UNTOUCHED. `max_abs_diff` (1e-28) and `max_rel_diff`
+        # The tight guards are untouched. `max_abs_diff` (1e-28) and `max_rel_diff`
         # (1e-20) still judge every array at the field ceiling; only band MEMBERSHIP
         # — the magnitude at which elements differ — inherits. On the case that
         # found this, those two sat at 1.2e-35 and 2.3e-31, orders below their own
         # ceilings.
         #
-        # `E`/`H` ARE NOT CLAIMED. Their companions are `f_w_` arrays, and whether
+        # `E`/`H` are not claimed. Their companions are `f_w_` arrays, and whether
         # that relationship is the same pass-through has not been measured, so they
         # keep the field ceiling and this clause says nothing about them.
         producer = _pml_intermediate_of(entry.get("array"))
@@ -3585,7 +3667,7 @@ def band_confinement(entries: List[Dict[str, Any]]) -> Dict[str, Any]:
             ("max_abs_diff", difference, _BAND_DIFFERENCE_CEILING),
             ("max_rel_diff", ratio, _BAND_RATIO_CEILING)) if not seen < ceiling]
         per_array.append({"array": entry.get("array"), "over_ceiling": failed,
-                          # WHICH CEILING JUDGED IT, in the record. A reader of the
+                          # Which ceiling judged it, in the record. A reader of the
                           # artifact can otherwise not tell why two arrays with the
                           # same magnitude got different verdicts.
                           "judged_as": ("pml_intermediate" if own else
@@ -3607,9 +3689,9 @@ def band_confinement(entries: List[Dict[str, Any]]) -> Dict[str, Any]:
 
 def replay_licensed(confinement: Dict[str, Any], fused_state: Dict[str, Any],
                     replay_state: Optional[Dict[str, Any]]) -> Dict[str, Any]:
-    """An array over a ceiling, licensed by the HOST FLUSH REPLAY reproducing it word for word.
+    """An array over a ceiling, licensed by the host flush replay reproducing it word for word.
 
-    THE STRONGER MOVE :data:`_BAND_INTERMEDIATE_VALUE_CEILING`'s note recorded as owed.
+    The stronger move :data:`_BAND_INTERMEDIATE_VALUE_CEILING`'s note recorded as owed.
     ``replay_state`` is the array path stepped on the HOST with the FPU FLUSHING -- MPS's
     mode -- over the same steps as the two legs (:func:`_host_flush_replay`). Where the
     fused leg's array equals it in every word, the fused leg's disagreement with the
@@ -3619,7 +3701,7 @@ def replay_licensed(confinement: Dict[str, Any], fused_state: Dict[str, Any],
     that departs from the flushing array path by one word is refused as before, and an
     array within its ceilings needs no replay at all.
 
-    MEASURED 2026-10-10 on ``pml_3d`` (01..106): ``fields.Dz`` and ``fields.Ez`` differ at
+    Measured 2026-10-10 on ``pml_3d`` (01..106): ``fields.Dz`` and ``fields.Ez`` differ at
     1.875e-28, over the 1e-28 field ceiling and not downstream of a larger ``fu_Dz``
     (3.892e-31); the host replay reproduces all 20 differing arrays' counts and
     magnitudes exactly. Pure, so the test suite arms it without a device; returns a new
@@ -3679,9 +3761,9 @@ def _host_flush_replay(case: str, res: Optional[int], steps: int) -> Dict[str, A
 
 
 def cliff_control(case: str, spec: Dict[str, Any], res: Optional[int]) -> Dict[str, Any]:
-    """Drive a released pair with the HOST KEEPING and require divergence IN THE BAND.
+    """Drive a released pair with the host keeping and require divergence in the band.
 
-    THE MEASUREMENT THAT MAKES THE POLICY RUNG A RULE RATHER THAN A PRECAUTION, and
+    The measurement that makes the policy rung a rule rather than a precaution, and
     it has to go round the ladder in TWO places rather than one. Rung 8bM refuses to
     dispatch under an installed ``keep``, so there is no composition to compare on
     that leg; and the composer's own backend clause
@@ -3691,7 +3773,7 @@ def cliff_control(case: str, spec: Dict[str, Any], res: Optional[int]) -> Dict[s
     zero slots and the control reported "nothing to arm" — a control that cannot
     fire is a control that measures nothing.
 
-    SO THE SPLIT IS BUILT IN THE ORDER IT WOULD HAPPEN, on a leg where the composer
+    So the split is built in the order it would happen, on a leg where the composer
     works: the plans are composed under a DECLARED flush and seated at the driver's
     own freeze slot (exactly as ``probe_metal_dispatch_dryrun`` does), and only then
     is the HOST FPU driven to keep for the duration of the run. The device half
@@ -3699,7 +3781,7 @@ def cliff_control(case: str, spec: Dict[str, Any], res: Optional[int]) -> Dict[s
     is unattainable there — so what steps is a genuine two-policy process, which is
     precisely what rung 8bM exists to refuse.
 
-    THE PREDICATE IS THE COMPARATOR'S OWN BAND BOUND, and the obvious stronger
+    The predicate is the comparator's own band bound, and the obvious stronger
     assertion is FALSE. Measured 2026-09-10 at step 24: ``fields.Ez`` has
     ``elements_differing`` 111 against ``elements_subnormal_magnitude`` 53, because
     results derived FROM a flushed intermediate are normal-magnitude one step later
@@ -3742,7 +3824,7 @@ def cliff_control(case: str, spec: Dict[str, Any], res: Optional[int]) -> Dict[s
         fused_driver.close()
         array_driver.close()
         return row
-    # THE HOST GOES TO KEEP HERE AND NOWHERE EARLIER: the composition above needed
+    # The host goes to keep here and nowhere earlier: the composition above needed
     # the declared flush to exist at all, and the split is what the STEPPING does.
     flushing_at_entry = subnormal_policy.backends.subnormals_flushed()
     subnormal_policy._drive_host_fpu(False)  # noqa: SLF001 - the rollback path's own call
@@ -3757,7 +3839,7 @@ def cliff_control(case: str, spec: Dict[str, Any], res: Optional[int]) -> Dict[s
                                         e2e.collect_state(array_driver))
             if point == CONTROL_STEPS:
                 at_twelve = verdict["identical"]
-            # EVERY DIFFERING ARRAY, NOT THE FIRST SIX. This was
+            # Every differing array, not the first six. This was
             # ``verdict["differences"][:6]`` until 2026-09-11, and the predicate below
             # reads exactly this list -- so the control that decides whether a Metal
             # release is a policy split or an arithmetic defect was judging 6 of the
@@ -3778,7 +3860,7 @@ def cliff_control(case: str, spec: Dict[str, Any], res: Optional[int]) -> Dict[s
         subnormal_policy._drive_host_fpu(flushing_at_entry)  # noqa: SLF001
     row["host_restored"] = (subnormal_policy.backends.subnormals_flushed()
                             == flushing_at_entry)
-    # THE BAND CENSUS IS TAKEN BEFORE THE DRIVERS CLOSE, on the ARRAY leg -- the one
+    # The band census is taken before the drivers close, on the ARRAY leg -- the one
     # whose host kept, so its subnormals are still there to count. Taken here rather
     # than only on the NO-CLIFF branch, so a run that DID cliff also records how much
     # band it had.
@@ -3800,9 +3882,9 @@ def cliff_control(case: str, spec: Dict[str, Any], res: Optional[int]) -> Dict[s
         say(f"{case}: cliff control -> NOT-ARMED (the host would not keep)")
         return row
     if final["identical"]:
-        # WHICH OF THE TWO HYPOTHESES, decided rather than listed. The census is taken
+        # Which of the two hypotheses, decided rather than listed. The census is taken
         # on the KEEPING leg, whose values a flush has not already zeroed.
-        # AN EMPTY STORED BAND IS NOT A PROOF THAT THE RUN STAYED OUT OF THE BAND,
+        # An empty stored band is not a proof that the run stayed out of the band,
         # and this branch used to draw that conclusion. Measured on this same
         # campaign, pml_3d_diagonal: the keeping leg's stored census reads ZERO words
         # in the band at the end of the run and the two legs nonetheless differ on
@@ -3841,7 +3923,7 @@ def cliff_control(case: str, spec: Dict[str, Any], res: Optional[int]) -> Dict[s
             f"(stored band {band_census['words_in_the_band']} words, which decides "
             "nothing)")
         return row
-    # THE BAND BOUND, read off the comparator's own forensics rather than restated.
+    # The band bound, read off the comparator's own forensics rather than restated.
     worst = [entry for entry in final["differences"] if "largest_differing_magnitude" in entry]
     row["band"] = [{"array": entry["array"],
                     "elements_differing": entry.get("elements_differing"),
@@ -3854,7 +3936,7 @@ def cliff_control(case: str, spec: Dict[str, Any], res: Optional[int]) -> Dict[s
                    for entry in worst]
     confinement = band_confinement(worst)
     if any(entry["over_ceiling"] for entry in confinement["per_array"]):
-        # AN ARRAY OVER A CEILING IS JUDGED AGAINST THE HOST FLUSH REPLAY, not refused on
+        # An array over a ceiling is judged against the host flush replay, not refused on
         # the constant alone (:func:`replay_licensed`); one that the replay does not
         # reproduce word for word keeps its ceilings.
         try:
@@ -3866,7 +3948,7 @@ def cliff_control(case: str, spec: Dict[str, Any], res: Optional[int]) -> Dict[s
         confinement = replay_licensed(confinement, fused_state, replay_state)
     confined = confinement["confined"]
     row["band_bounds"] = confinement
-    # FAIL CLOSED ON A SHORT LIST. The predicate is only a statement about the case if
+    # Fail closed on a short list. The predicate is only a statement about the case if
     # it saw every array that differed; a comparator cap (``compare_state`` keeps 40)
     # or a re-introduced slice would otherwise quietly narrow what CONFINED means.
     judged = len(confinement["per_array"])
@@ -3903,7 +3985,7 @@ def cliff_control(case: str, spec: Dict[str, Any], res: Optional[int]) -> Dict[s
 def _dryrun():
     """The dry-run probe's composer + shim, imported lazily.
 
-    SHARED RATHER THAN COPIED. The cliff control needs a composition seated at the
+    Shared rather than copied. The cliff control needs a composition seated at the
     driver's freeze slot without the ladder, which is precisely what
     ``probe_metal_dispatch_dryrun`` is; two spellings of "install the shipped
     composer's plans in the engine's own seam" would be two chances to place the
@@ -3917,7 +3999,7 @@ def _dryrun():
 def metal_host_refusal(gate: str) -> Optional[str]:
     """Why this host cannot run a Metal-table harness, or ``None`` on an Apple GPU.
 
-    ``prefer_gpu=True`` is THIS HOST'S GPU. On a CUDA host it lifts CuPy drivers,
+    ``prefer_gpu=True`` is this host's GPU. On a CUDA host it lifts CuPy drivers,
     which dispatch the NVIDIA tables and would be graded here under Metal labels; on
     a host with no GPU the first lift raises. Both are refused up front, by name,
     before a leg directory is written.
@@ -4011,7 +4093,7 @@ def _one_step_report(case: str, env: Dict[str, Optional[str]],
 #: the first step at which re-applying a withheld constitutive sub-step changes a word,
 #: plus ``CONTROL_STEPS - 1`` more; this bounds the REACH LEG that finds that step. The
 #: same bound, for the same reason, as the fused route gate's: measured there on the
-#: NumPy array path of the tree carrying series entries 01..86, the first such step is 2
+#: NumPy array path of a 1.0 development tree, the first such step is 2
 #: to 48 across the route cases (the cylindrical cases 26), and a case that needs more
 #: than four times the largest refuses by name rather than stepping without bound.
 ARMED_NULL_REACH_CAP = 200
@@ -4035,7 +4117,7 @@ def _own_axis_structure(leg: Dict[str, Any],
                         slots: Any) -> Optional[Dict[str, Dict[str, str]]]:
     """Per withheld constitutive slot, each component's constitutive region mode.
 
-    THE ACCUMULATION LIVES ONLY ON A COMPONENT'S OWN-AXIS LAYER. ``update_H`` and
+    The accumulation lives only on a component's own-axis layer. ``update_H`` and
     ``update_E`` step every component through ``stepping._apply_constitutive_regions``:
     the dsigw accumulation on the cells whose chunk carries the component's OWN-axis
     layer, and MEEP's plain constitutive, the pure write ``f = src``, everywhere else
@@ -4046,7 +4128,7 @@ def _own_axis_structure(leg: Dict[str, Any],
     Read off the plan the driver installed (``Fields.region_plan``), never built here.
     FAIL CLOSED: ``None`` -- an unreadable driver, an inactive or foreign layer, a slot
     that is not constitutive -- grants no NOT-APPLICABLE. The fused route gate's reader
-    (lane FXR) with the same contract; the Metal gate reads the ARRAY leg, which holds
+    with the same contract; the Metal gate reads the ARRAY leg, which holds
     nothing on a device.
     """
     driver = leg.get("driver")
@@ -4147,7 +4229,7 @@ def reach_leg(case: str, res: Optional[int], counter: MetalLaunchCounter,
               slots: Any, cap: int = ARMED_NULL_REACH_CAP) -> Dict[str, Any]:
     """The first step at which re-applying a withheld constitutive arm changes a word.
 
-    A FRESH ARRAY-PATH LIFT (:data:`ARRAY_ENV`), stepped one step at a time under
+    A fresh array-path lift (:data:`ARRAY_ENV`), stepped one step at a time under
     :func:`_reapplication_witness` until any watched slot fires or ``cap`` steps have
     run. Its own trajectory is the array path's; nothing it measures reaches the two
     legs the control compares, which are never wrapped. ``first_change_step`` is
@@ -4190,8 +4272,8 @@ def withheld_verdict(*, withheld: int, launching_failures: List[str], identical:
                      reach: Optional[Dict[str, Any]]) -> Tuple[str, str]:
     """``(verdict, named reason)`` for the absorbed-consult-withheld control. Pure.
 
-    The fused route gate's ladder (lane FXR), with this gate's stricter NOT-APPLICABLE
-    guard kept on both rulings: a ruling that the comparison has no armed direction is
+    The fused route gate's ladder, with this gate's stricter NOT-APPLICABLE
+    guard kept on both verdicts: a verdict that the comparison has no armed direction is
     granted only where the case's in-seam mutation is scheduled and armed for every
     withheld side and no device group was left running (``in_seam_carries``), because
     that row and the main byte comparison are what carry the claim instead. In order:
@@ -4229,7 +4311,7 @@ def withheld_verdict(*, withheld: int, launching_failures: List[str], identical:
 
 def withheld_control(case: str, spec: Dict[str, Any], res: Optional[int],
                      counter: MetalLaunchCounter) -> Dict[str, Any]:
-    """The absorbed consult forced False. MUST diverge — WHERE THE MECHANISM EXISTS.
+    """The absorbed consult forced False. MUST diverge — where the mechanism exists.
 
     With the second consult answering False the driver runs the array
     ``update_H``/``update_E`` ON TOP of the constitutive half the fused launch
@@ -4238,13 +4320,13 @@ def withheld_control(case: str, spec: Dict[str, Any], res: Optional[int],
     this control does NOT diverge, the byte comparison cannot see whether the fused
     kernel's second half ran at all.
 
-    THE LEADING REPAIR SLOT IS EXCLUDED, structurally rather than by slot name:
+    The leading repair slot is excluded, structurally rather than by slot name:
     ``deposit_repair.LeadingRepairPlan`` carries ``absorbed_by is self.inner`` and it
     LAUNCHES, so withholding it suppresses the launch itself and makes a divergence
     ambiguous about which mechanism produced it. ``route._withhold_absorbed_consult``
     is that discriminator, reused rather than re-derived.
 
-    ON AN INACTIVE LAYER THE MECHANISM DOES NOT EXIST, and the ladder says so the way
+    On an inactive layer the mechanism does not exist, and the ladder says so the way
     the fused route gate's does (``gate_dispatch_fused_route.withheld_control``),
     reusing its helpers unchanged. ``stepping.update_E`` forks on ``_pml_is_active``:
     the inactive arm is a pure overwrite ``E = constitutive`` and ``update_H`` returns
@@ -4253,22 +4335,22 @@ def withheld_control(case: str, spec: Dict[str, Any], res: Optional[int],
     array E, identical whatever the kernel did. Measured 2026-09-18 on this device:
     with the kernel's E write suppressed AND the consult withheld, 0 of 65 arrays
     differ on ``absorber_1d`` and 0 of 29 on ``no_pml_dispersive_2d``. It read
-    NOT-ARMED until the envelope round admitted those arms on ``pml_active=False``,
+    NOT-ARMED until a later envelope change admitted those arms on ``pml_active=False``,
     and NULL-DID-NOT-DIVERGE after, on the same blindness. NOT-APPLICABLE is granted
     only where every guard below holds, and never on an unreadable layer.
 
-    ON AN ACTIVE LAYER THE ACCUMULATION IS PER COMPONENT, AND IT HAS TO BE REACHED --
-    the fused route gate's rule (lane FXR), adopted here because the same blind control
+    On an active layer the accumulation is per component, and it has to be reached --
+    the fused route gate's rule, adopted here because the same blind control
     exists on this table. On an accumulating cell a second application adds
     ``(kps * fw) - (kms * fw)``, which is +0 wherever sigma is 0 or the field has not
     arrived; once the kernels' constitutive halves are bit-identical to the array
     path's, the control diverges only through that accumulation, and twelve steps from
-    the start reach no graded own-axis cell on many cases. MEASURED with this gate on
-    the probe leg: on the tree carrying series entries 01..79, ``NULL-DID-NOT-DIVERGE``
+    the start reach no graded own-axis cell on many cases. Measured with this gate on
+    the probe leg: on an intermediate 1.0 development tree, ``NULL-DID-NOT-DIVERGE``
     on 3 of 5 cases (``bloch_2d``, ``complex_3d``, ``cylindrical_m1``); on that tree
     with the expansion-licence deletion applied, on 10 of 18 (``cylindrical_m0_complex``
     and six complex shapes besides); every one of them read DIVERGED-AS-REQUIRED on
-    2026-10-05, before the series.
+    2026-10-05, before the 1.0 changes.
     So the window is PLACED rather than fixed: where no withheld component has an
     own-axis cell the control is NOT-APPLICABLE by name (``NO-OWN-AXIS-LAYER``, read off
     the plan the driver installed, under the same guard as the inactive layer); where
@@ -4277,8 +4359,8 @@ def withheld_control(case: str, spec: Dict[str, Any], res: Optional[int],
     to ``CONTROL_STEPS`` past it with the consult still withheld; identical then is
     NULL-DID-NOT-DIVERGE, and a reach leg that never fires within
     :data:`ARMED_NULL_REACH_CAP` is ``NOT-ARMED`` by name. Every branch is
-    :func:`withheld_verdict`. MEASURED with this rule on the probe leg, series entries
-    01..86 with the cylindrical plan fix (lane MCC): ``cylindrical``,
+    :func:`withheld_verdict`. Measured with this rule on the probe leg, on a later
+    development tree with the cylindrical plan fix: ``cylindrical``,
     ``cylindrical_m0``, ``cylindrical_m1`` and ``cylindrical_m0_complex`` first armed at
     step 26 and DIVERGED-AS-REQUIRED over a 37-step window, ``pml_2d`` at 13 (24 steps),
     ``bloch_2d`` at 25 (36 steps), and ``pml_1d`` NOT-APPLICABLE by
@@ -4315,7 +4397,7 @@ def withheld_control(case: str, spec: Dict[str, Any], res: Optional[int],
             and _accumulating_components(structure)
             and not route._launching_slots_ran(  # noqa: SLF001
                 a, dict(state.get("skipped_launching") or {}), steps)["failures"]):
-        # THE WINDOW IS PLACED WHERE THE MECHANISM EXISTS. Some withheld component
+        # The window is placed where the mechanism exists. Some withheld component
         # accumulates on an own-axis layer and twelve steps from the start did not part
         # the legs; the reach leg finds the first step at which a second application
         # changes a word, and both legs are stepped to CONTROL_STEPS past it, the
@@ -4386,12 +4468,12 @@ def withheld_control(case: str, spec: Dict[str, Any], res: Optional[int],
         row["why"] = ("no absorbed consult was reached, so nothing was withheld and "
                       "this control measured nothing")
     elif row["reason"] == "LAUNCHING-SLOT-DID-NOT-LAUNCH":
-        # PORTED FROM THE FUSED ROUTE GATE: a device group this control left running
+        # Ported from the fused route gate: a device group this control left running
         # must show it ran. It only tightens; no Metal composition measured so far
         # leaves one running.
         row["why"] = "; ".join(launching["failures"])
     elif row["reason"] == "INACTIVE-LAYER":
-        # THE MECHANISM DOES NOT EXIST ON THIS BRANCH (docstring). What carries the
+        # The mechanism does not exist on this branch (docstring). What carries the
         # claim is named in the order it carries it: the MAIN byte comparison first
         # -- the fused leg answered the update_E consult itself on every step, so no
         # array update_E ran there, and a dead second half parts it from the array
@@ -4412,7 +4494,7 @@ def withheld_control(case: str, spec: Dict[str, Any], res: Optional[int],
             f"by in-seam-pass-mutated-{'/'.join(sides)}, which shows no array pass "
             f"recomputed E after the wall wipe")
     elif row["reason"] == "NO-OWN-AXIS-LAYER":
-        # THE SAME RULING, PER COMPONENT, under the same guard: the layer is active,
+        # The same verdict, per component, under the same guard: the layer is active,
         # but the plan the driver installed gives no withheld component a cell on its
         # own-axis layer, so each array arm is the plain constitutive, a pure write, on
         # every cell.
@@ -4512,7 +4594,7 @@ def seam_mutation_control(case: str, spec: Dict[str, Any], side: str,
             row["verdict"] = "NOT-ARMED"
             row["why"] = "the leg did not fuse, so the mutation had no seam to sit in"
         elif not _side_is_fused(block["driven"], side):
-            # THE GUARD IS PER SIDE, because the mutation is. ``zero_metal_B`` only
+            # The guard is per side, because the mutation is. ``zero_metal_B`` only
             # sits in a seam the MAGNETIC pair spans; on a case whose B seam runs
             # separate certified arms, both legs run the same mutated wipe followed
             # by the same array sub-step and the mutation cancels -- which is a true
@@ -4545,66 +4627,81 @@ def seam_mutation_control(case: str, spec: Dict[str, Any], side: str,
 def held_sync_in_verdict(state: Dict[str, Any], *, identical: bool) -> Tuple[str, str]:
     """The verdict and text of ``residency-sync_in-dropped`` in its HELD form.
 
-    Every clause names a field the held form of :func:`_drop_one_sync_in` measured
-    over the armed steps, and nothing else: that form reads no ``verify()`` and judges
-    no step stale, so no text here may claim an upload was measured. Four outcomes:
+    Every clause names a field the held form (:func:`_drop_one_deposit_write`)
+    measured over the armed steps, and nothing else: that form reads no ``verify()``
+    and judges no step stale, so no text here may claim an upload was measured. Five
+    outcomes:
 
-    * nothing suppressed, legs identical: NOT-APPLICABLE. No host write reached
-      ``acquire_write`` on a mirror, so there was no ownership move to leave
-      unclaimed and the null did not bite; that is a measured property of the
-      composition (its host writes, if any, went through the sparse doors, whose
-      counts the row carries), and the held seam's evidence here is the
-      ``residency-verify-after-every-sync_out`` row and the case's byte identity;
-    * nothing suppressed, legs differ: HARNESS-FAILURE. The patched ``acquire_write``
-      changed nothing, so the divergence is not this control's;
-    * a mirror left unclaimed, legs identical: NULL-DID-NOT-DIVERGE;
-    * a mirror left unclaimed, legs differ: DIVERGED-AS-REQUIRED.
+    * nothing dropped, legs differ: HARNESS-FAILURE. The patched door changed
+      nothing, so the divergence is not this control's;
+    * nothing dropped, and a host write moved ownership through ``acquire_write``:
+      NOT-ARMED. That write is uploaded by the held ``sync_in``, which this null does
+      not reach, so the held seam carried a write no must-diverge control covered;
+    * nothing dropped otherwise: NOT-APPLICABLE. No source deposit changed a stored
+      word on a device-owned mirror over the armed steps (each passed-through call is
+      counted by its reason), so there was no device-only write to drop;
+    * one deposit write dropped, legs identical: NULL-DID-NOT-DIVERGE;
+    * one deposit write dropped, legs differ: DIVERGED-AS-REQUIRED.
     """
     steps = state.get("steps", CONTROL_STEPS)
-    calls = state.get("acquire_calls")
-    on_mirror = state.get("acquires_on_a_mirror")
+    deposits = state.get("deposits", 0)
+    passed = (f"{state.get('deposits_unchanged', 0)} changed no stored word, "
+              f"{state.get('deposits_not_device_owned', 0)} met a mirror the device did "
+              f"not own and {state.get('deposits_unmirrored', 0)} wrote an array the "
+              "residency does not mirror")
+    on_mirror = state.get("acquires_on_a_mirror", 0)
     doors = state.get("door_counts")
     if not state.get("suppressed"):
         if not identical:
             return ("HARNESS-FAILURE",
-                    f"the held null suppressed nothing over {steps} armed steps "
-                    f"(acquire_write entered {calls} time(s), {on_mirror} on a mirror) "
-                    "and the armed leg still differs from its twin, so the divergence "
-                    "is not this control's")
+                    f"the held null dropped no deposit write over {steps} armed steps "
+                    f"({deposits} deposit call(s): {passed}) and the armed leg still "
+                    "differs from its twin, so the divergence is not this control's")
+        if on_mirror:
+            return ("NOT-ARMED",
+                    f"held residency: no source deposit changed a stored word on a "
+                    f"device-owned mirror over {steps} armed steps ({deposits} deposit "
+                    f"call(s): {passed}), while Residency.acquire_write was entered "
+                    f"{on_mirror} time(s) on a registered mirror. Those host writes are "
+                    "uploaded by the held sync_in, which this null does not reach, so the "
+                    "held seam carried a write no must-diverge control covered")
         return ("NOT-APPLICABLE",
-                f"held residency: this control leaves the mirror of the first "
-                f"acquire_write after it arms unclaimed, and over {steps} armed steps "
-                f"Residency.acquire_write was entered {calls} time(s), {on_mirror} of "
-                "them on a registered mirror, so no host write declared an ownership "
-                "move for it to suppress and the held null did not bite. The sparse "
-                f"doors counted {doors} over the same steps; they write the current "
-                "side and move no ownership, so this control does not reach them. No "
-                "upload was measured on this path (verify() is not read), and the held "
-                "seam's evidence on this composition is "
-                "residency-verify-after-every-sync_out and the case's byte identity")
+                f"held residency: this control drops the device write of the first "
+                f"source deposit that changes a stored word on a device-owned mirror, "
+                f"and over {steps} armed steps the deposit door was entered {deposits} "
+                f"time(s) on this composition's residency: {passed}, so there was no "
+                "device-only write to drop. Residency.acquire_write was entered 0 times "
+                f"on a registered mirror, and the sparse doors counted {doors}")
+    words = state.get("words_dropped")
     if identical:
         return ("NULL-DID-NOT-DIVERGE",
-                f"held residency: the mirror {state.get('slot')!r} was left clean after "
-                f"a host write declared it ({on_mirror} acquire(s) on a mirror over "
-                f"{steps} armed steps), so the next sync_in skipped that write, and the "
-                "answer still did not change, so the ownership move is not "
-                "load-bearing here and the byte identity above it is not evidence "
-                "about the seam")
+                f"held residency: the source deposit's device write to "
+                f"{state.get('slot')!r} was dropped ({words} stored word(s) left at "
+                "their value before the deposit, on a mirror only the device held) and "
+                "the answer still did not change, so the held transport is not "
+                "load-bearing here and the byte identity above it is not evidence about "
+                "the seam")
     return ("DIVERGED-AS-REQUIRED",
-            f"held residency: the mirror {state.get('slot')!r} was left clean after a "
-            "host write declared it, and the run diverged")
+            f"held residency: the source deposit's device write to {state.get('slot')!r} "
+            f"was dropped ({words} stored word(s) left at their value before the "
+            "deposit) and the run diverged")
 
 
 def residency_controls(case: str, spec: Dict[str, Any], res: Optional[int],
-                       counter: MetalLaunchCounter) -> List[Dict[str, Any]]:
+                       counter: MetalLaunchCounter,
+                       controls: Optional[Sequence[str]] = None) -> List[Dict[str, Any]]:
     """The three residency controls, each a separate row. Two MUST diverge; one is a floor.
 
     (a) DROP ONE sync_in PER STEP on the leading bracketed launch — the seam's own
-        armed null;
-    (b) DROP THE INNER BRACKET of every wrapper that does host work first, so the
+        armed null; under held residency, drop one source deposit's device write, the
+        held transport's null;
+    (b) drop the inner bracket of every wrapper that does host work first, so the
         upload lands BEFORE that work;
-    (c) VERIFY IMMEDIATELY AFTER EVERY sync_out — the vacuity floor, which must be
+    (c) verify immediately after every sync_out — the vacuity floor, which must be
         clean on a shipped seam and whose registry must be non-empty.
+
+    ``controls`` names a subset to run, in this order (every control when ``None``);
+    the gate itself always runs all three.
     """
     rows: List[Dict[str, Any]] = []
     for name, arm, must_diverge in (
@@ -4612,6 +4709,8 @@ def residency_controls(case: str, spec: Dict[str, Any], res: Optional[int],
             ("residency-inner-bracket-dropped", _drop_the_inner_bracket, True),
             ("residency-verify-after-every-sync_out", _verify_after_every_sync_out,
              False)):
+        if controls is not None and name not in controls:
+            continue
         say(f"{case}: RESIDENCY CONTROL {name} — {CONTROL_STEPS} steps")
         row: Dict[str, Any] = {"control": name}
         a, b = _pair_of_lifted(case, spec, res, counter, name)
@@ -4624,7 +4723,7 @@ def residency_controls(case: str, spec: Dict[str, Any], res: Optional[int],
             b["driver"].close()
             rows.append(row)
             continue
-        # ONE STEP FIRST: the plan does not exist until the driver's freeze, and
+        # One step first: the plan does not exist until the driver's freeze, and
         # every arm below reaches into it.
         step_leg(case, a, counter, 1)
         step_leg(case, b, counter, 1)
@@ -4643,7 +4742,7 @@ def residency_controls(case: str, spec: Dict[str, Any], res: Optional[int],
                     "fused_arms_driven": fusion_block(a)["driven"]})
         if must_diverge:
             if state.get("started_while_looked_through"):
-                # THE LOOK-THROUGH WAS WRONG, so no verdict may rest on it. The
+                # The look-through was wrong, so no verdict may rest on it. The
                 # control judged these slots by their occupant because their start
                 # of H was spent when it armed; a start that then ran did host work
                 # the control treated as absent.
@@ -4655,12 +4754,12 @@ def residency_controls(case: str, spec: Dict[str, Any], res: Optional[int],
             elif not state.get("armed"):
                 read_only = state.get("read_only_slots") or []
                 looked = state.get("looked_through") or {}
-                # A PROVEN NO-OP IS NOT AN UNARMED CONTROL. ``NOT-ARMED`` says the
+                # A proven no-op is not an unarmed control. ``NOT-ARMED`` says the
                 # control could not arm and does not say why, and the leg fails on
                 # it; ``NOT-APPLICABLE`` carries the measurement that this
                 # composition cannot exercise the control at all, which is a
                 # statement and not a gap.
-                # NEITHER A WRITING WRAPPER NOR ANY WRAPPER AT ALL is a property of
+                # Neither a writing wrapper nor any wrapper at all is a property of
                 # the COMPOSITION, measured here and recorded with the wrapper kinds
                 # this plan actually holds. The control disarms a bracket around
                 # pre-launch host work that WRITES; a plan with no such wrapper
@@ -4688,21 +4787,21 @@ def residency_controls(case: str, spec: Dict[str, Any], res: Optional[int],
                         "was done when the control armed (fields.h_separated True), "
                         "so that wrapper does no host work at any armed step")
             elif state.get("mode") == HELD_SYNC_IN_MODE:
-                # THE HELD FORM IS READ BY ITS OWN FIELDS. It suppresses no upload
+                # The held form is read by its own fields. It suppresses no upload
                 # and reads no verify(), so the no-op branch below is not open to it
                 # (its state carries no ``steps_with_stale_mirrors``); what it
-                # measured is how often a host write reached ``acquire_write``.
+                # measured is the deposit write it dropped and the calls it passed.
                 row["verdict"], row["why"] = held_sync_in_verdict(
                     state, identical=verdict["identical"])
             elif (verdict["identical"] and "steps_with_stale_mirrors" in state
                   and not state["steps_with_stale_mirrors"]):
-                # ONLY A CONTROL THAT MEASURED THE UPLOAD may call it a no-op:
+                # Only a control that measured the upload may call it a no-op:
                 # ``_drop_one_sync_in`` counts, at the instant of each skipped
                 # sync_in, the steps on which the device lacked the host's bytes.
                 # ``_drop_the_inner_bracket`` suppresses no upload -- it moves one --
                 # and keeps no such count, so this branch is not open to it; nor is
                 # the held form of ``_drop_one_sync_in``, read above.
-                # THE UPLOAD HAD NOTHING TO CARRY. Measured at the instant it was
+                # The upload had nothing to carry. Measured at the instant it was
                 # suppressed: every mirror already held what the host held, on every
                 # step. Skipping a copy of bytes that are already equal cannot change
                 # an answer, so this is a statement about the composition -- nothing
@@ -4716,7 +4815,7 @@ def residency_controls(case: str, spec: Dict[str, Any], res: Optional[int],
                     "held the host's bytes and there was nothing for the bracket to "
                     "carry")
             elif verdict["identical"] and name == "residency-inner-bracket-dropped":
-                # THIS CONTROL'S OWN FIELDS: the slots it re-bracketed and the
+                # This control's own fields: the slots it re-bracketed and the
                 # wrapper kind in each, over the armed steps.
                 slots = state.get("slots") or []
                 kinds = {slot: (state.get("wrapper_kinds") or {}).get(slot)
@@ -4754,7 +4853,7 @@ def residency_controls(case: str, spec: Dict[str, Any], res: Optional[int],
                               "immediately after the copy-back, when nothing had "
                               "run in between")
             elif state.get("under_synced"):
-                # THE HELD FORM'S FIRST FAILURE DIRECTION: a mirror differs that
+                # The held form's first failure direction: a mirror differs that
                 # the bookkeeping believes CLEAN. That is a device write the state
                 # machine did not record, so nothing will ever sync it out and the
                 # host reads pre-launch bytes for the rest of the run.
@@ -4765,7 +4864,7 @@ def residency_controls(case: str, spec: Dict[str, Any], res: Optional[int],
                 row["under_synced"] = state["under_synced"][:4]
             else:
                 row["verdict"] = "RESIDENCY-CLEAN"
-            # THE OVER-CLAIM IS MEASURED, NOT FAILED, and the asymmetry is the whole
+            # The over-claim is measured, not failed, and the asymmetry is the whole
             # reason the two directions are separated. An UNDER-sync is a device
             # write the machine did not record: nothing will ever copy it out, the
             # host reads pre-launch bytes for the rest of the run, and the answer is
@@ -4800,14 +4899,14 @@ def residency_controls(case: str, spec: Dict[str, Any], res: Optional[int],
 #: Every WRAPPER a frozen Metal route plan may hold -- a plan entry, or an entry's
 #: ``inner``, that itself wraps an ``inner`` -- and how the residency controls treat
 #: it. The controls dry run refuses a plan holding a wrapper not named here: a new
-#: wrapper is a shape no control was written for, and the 2026-10-13 round's route
-#: campaign paid for one (``launch.StartOfHPlan``, new in that round, armed
+#: wrapper is a shape no control was written for, and the 2026-10-13 certification round's route
+#: campaign paid for one (``launch.StartOfHPlan``, new in that certification round, armed
 #: ``residency-inner-bracket-dropped`` on 2 of 42 cases and read NULL-DID-NOT-DIVERGE
 #: on both; the route smoke before the freeze had run 2 other cases). Adding a wrapper
 #: here is the ruling the dry run asks for.
 ROUTE_WRAPPER_RULINGS: Dict[str, str] = {
     "SyncedPlan": ("the residency bracket around a launch: residency-sync_in-dropped "
-                   "drops its upload (held: the ownership move), "
+                   "drops its upload (held: one source deposit's device write), "
                    "residency-verify-after-every-sync_out reads after it"),
     "LeadingRepairPlan": ("pre-launch host work that only READS the fields: "
                           "residency-inner-bracket-dropped records the slot as "
@@ -4878,7 +4977,7 @@ def predict_control(name: str, state: Dict[str, Any]) -> str:
     if not state.get("armed"):
         return "NOT-APPLICABLE"
     if state.get("mode") == HELD_SYNC_IN_MODE and not state.get("suppressed"):
-        return "NOT-APPLICABLE"
+        return "NOT-ARMED" if state.get("acquires_on_a_mirror") else "NOT-APPLICABLE"
     return "ARMS"
 
 
@@ -5113,14 +5212,39 @@ def release_route_leg(case: str, spec: Dict[str, Any],
     return row
 
 
+def default_preference_leg(case: str, spec: Dict[str, Any],
+                           res: Optional[int]) -> Dict[str, Any]:
+    """The package default on a released case: the dispatch preference left unset.
+
+    The fused route gate's control (``route.default_preference_leg``) on this table's
+    lift: one step with the switch unset, and the dispatch record's preference block
+    read by ``route.default_preference_row``. Its rows feed the run's
+    ``dispatch_preference`` summary, which the driver_dispatch record carries.
+    """
+    if spec.get("reached_by") != "release":
+        return {"control": "default-preference", "case": case,
+                "verdict": "NOT-APPLICABLE",
+                "why": (f"{case} is reached by {spec.get('reached_by')!r}: an explicit "
+                        "opt-in is never arbitrated, so the default is the shape rule "
+                        "there")}
+    report, path = _one_step_report(
+        case, _fuse_env(spec["arms"], "release", shape_rule=False), res)
+    row = route.default_preference_row(report, path)
+    row["case"] = case
+    say(f"{case}: default-preference leg -> {row['verdict']} :: records="
+        f"{ {t: e['status'] for t, e in row['records_read'].items()} } vetoes="
+        f"{[item['label'] for item in row['vetoes_applied']]}")
+    return row
+
+
 def envelope_leg(res: Optional[int]) -> Dict[str, Any]:
     """The ENVELOPE, both directions, on a shape the release does not cover.
 
-    IT DRIVES TWO CASES FROM 2026-09-12, one per direction, and
+    It drives two cases from 2026-09-12, one per direction, and
     :data:`ENVELOPE_CASE` records why the single case it used to drive can no
     longer witness both.
 
-    DIRECTION 1 — THE SHARED ENVELOPE REFUSES THE REQUEST. With the switch unset on
+    Direction 1 — the shared envelope refuses the request. With the switch unset on
     :data:`ENVELOPE_CASE` (``no_pml_2d``), ``released_fused_arms_metal`` is empty,
     so the composer is asked with ``fuse=False``, nothing fuses, and the record must
     NAME :data:`ENVELOPE_AXIS` (``pml_active``). Without this the envelope is a
@@ -5128,7 +5252,7 @@ def envelope_leg(res: Optional[int]) -> Dict[str, Any]:
     The axis is read from the constant rather than hardcoded because it has already
     changed once — it was ``off_diagonal_epsilon`` until that axis went per-arm.
 
-    WHICH CONJUNCT CARRIES THE WEIGHT HERE, said plainly because it changed with the
+    Which conjunct carries the weight here, said plainly because it changed with the
     case. Direction 1 is ``names_the_axis and nothing_fused and not released_here``.
     On ``no_pml_2d`` the ``nothing_fused`` conjunct is NON-DISCRIMINATING: no fused
     product is a candidate on an absorber-free grid at all, so it would read true
@@ -5138,16 +5262,16 @@ def envelope_leg(res: Optional[int]) -> Dict[str, Any]:
     would catch the different bug of something fusing anyway, not because it is
     evidence here.
 
-    THE AXIS IS READ FROM BOTH HALVES OF THE RELEASE. The shared envelope refuses
+    The axis is read from both halves of the release. The shared envelope refuses
     every arm at once; each arm's own axes refuse only it, and the record publishes
     the second as ``outside_this_arms_own_cases``. A leg reading only the first
     could find it empty on a shape refused per-arm and report the envelope broken
     while it was working.
 
-    DIRECTION 2 — WHAT AN UN-ADMITTED PRODUCT DOES, on
+    Direction 2 — what an un-admitted product does, on
     :data:`ENVELOPE_OFFER_CASE` (``pml_3d``). The composer is handed the admitted
     LABEL SET, so a product this run cannot admit is never installed, its seam keeps
-    the separate certified arms, and the plan DISPATCHES the rest. MEASURED on this
+    the separate certified arms, and the plan DISPATCHES the rest. Measured on this
     case 2026-09-10: opting into ``fused magnetic B/H pair`` alone installs it on
     ``step_B``/``update_H`` while ``step_D``/``update_E`` keep ``PML`` and
     ``offdiag``, with 42 ``offered to run`` refusals recorded for the products that
@@ -5262,7 +5386,7 @@ def envelope_leg(res: Optional[int]) -> Dict[str, Any]:
 def second_consult_verdict(out: Dict[str, Any]) -> Tuple[str, List[str]]:
     """``(PASS|FAIL, failing clauses)`` for the second consult site's record. Pure.
 
-    BOTH KERNEL LEGS ARE JUDGED. The site steps the magnetic half again on every leg,
+    Both kernel legs are judged. The site steps the magnetic half again on every leg,
     and until 2026-10-10 only the fused leg's synchronized and restored states were
     read; the unfused leg -- the singles -- was compared and its answer discarded, the
     same single-leg blind spot the case verdict carried (:func:`unfused_agreement`).
@@ -5288,17 +5412,17 @@ def second_consult_site(case: str, legs: Dict[str, Dict[str, Any]],
                         spec: Dict[str, Any]) -> Dict[str, Any]:
     """Exercise ``synchronize_magnetic_fields`` on every leg and compare.
 
-    THE SEAM HAS SEVEN CONSULTS, NOT FIVE. ``synchronize_magnetic_fields`` runs
+    The seam has seven consults, not five. ``synchronize_magnetic_fields`` runs
     ``step_B`` and ``update_H`` again off a plan it deliberately does NOT re-freeze,
     with the same unconsulted in-seam passes between them; any flux or energy
     monitor reaches it. A gate that drove only ``step()`` has not driven the seam.
 
-    ON THIS TABLE IT IS ALSO THE RESIDENCY'S HARDEST SITE: the call backs the
+    On this table it is also the residency's hardest site: the call backs the
     magnetic arrays up on the HOST, steps them, and restores them in place, all
     outside any bracket. Per-launch sync is what makes that correct with no driver
     change, and this leg is the measurement of it.
 
-    A CASE WITH NO MONITOR IS NOT-APPLICABLE rather than a pass: the driver's own
+    A case with no monitor is NOT-APPLICABLE rather than a pass: the driver's own
     ``synchronize_magnetic_fields`` can be called anyway, but on a case with no
     observable the comparison that follows it has nothing to be about, and calling
     that a pass would put a green word on a measurement never taken.
@@ -5414,7 +5538,7 @@ def run_case(case: str, counter: MetalLaunchCounter, res: Optional[int],
     row["first_divergent_checkpoint"] = None
     row["first_divergent_checkpoint_unfused"] = None
 
-    # THE SEAM CENSUS rides the fused leg for its whole run, recorded as provenance.
+    # The seam census rides the fused leg for its whole run, recorded as provenance.
     # It reads without the residency read barrier (:func:`_census_state`), so riding
     # the leg does not refresh its host copies before each launch.
     census_restore, census_state = _seam_census(fused["driver"])
@@ -5464,6 +5588,9 @@ def run_case(case: str, counter: MetalLaunchCounter, res: Optional[int],
     row["comparator_control"] = e2e.comparator_negative_control(finals["fused"])
     row["array_leg_control"] = array_leg_is_clean(array)
     row["legs"] = {label: {"plan": leg["plan"], "fusion": fusion_block(leg),
+                           # The dispatch preference the leg's plan was made under, as
+                           # its record wrote it (``span`` on the fused leg).
+                           "preference": (leg.get("report") or {}).get("preference"),
                            "metal_launches": leg["metal_launches"],
                            "chunks": leg["chunks"],
                            "steady_state": steady_state_rate(leg)}
@@ -5544,15 +5671,15 @@ def case_verdict(row: Dict[str, Any], spec: Dict[str, Any], *,
     Lifted out of :func:`run_case` so the verdict chain can be driven on a host with no
     device: it reads only the row's recorded blocks and the five facts passed in.
 
-    THE UNFUSED LEG IS JUDGED ON EVERY BRANCH. It dispatches the certified SINGLES of
+    The unfused leg is judged on every branch. It dispatches the certified SINGLES of
     every slot the fused leg fuses (``MEEP_GPU_FUSE_ARMS=0``), so it is a kernel leg in
     its own right, and until 2026-10-10 its byte comparison was recorded and never
     read: the probe legs of the 2026-09-25, 2026-10-02 and 2026-10-05 campaigns each
     passed ``cylindrical_m1`` and ``cylindrical_m0_complex`` PASS-FUSED with the
     unfused leg differing from step 2 (24 of 32 arrays, NaN, at step 1600 on
     2026-10-05) -- 6 of the 342 compared rows of those three campaigns, every one of
-    them Dcyl complex, and a real defect in the singles' held-residency reads (lane
-    MCC). The unfused leg of every other row matched the array path.
+    them Dcyl complex, and a real defect in the singles' held-residency reads (since
+    fixed). The unfused leg of every other row matched the array path.
     A divergence on that leg -- at any checkpoint, in the final state, or in the
     observables (:func:`unfused_agreement`) -- now fails the row as
     ``UNFUSED-DIVERGENCE``, after the fused leg's own DIVERGENCE and before anything
@@ -5568,7 +5695,7 @@ def case_verdict(row: Dict[str, Any], spec: Dict[str, Any], *,
                   and bool(row["evidence"]["driven"]))
 
     if policy_installed is not None and spec["expect"] == "dispatch":
-        # THE SEAM SUPPORTS ONE POLICY, AND THIS IS THE LEG THAT SAYS SO. The
+        # The seam supports one policy, and this is the leg that says so. The
         # harness installed a policy this table was not certified under, so the
         # required outcome inverts: rung 8bM must refuse BY NAME, nothing may fuse,
         # and the run must still be byte-identical to the array path, because a
@@ -5576,8 +5703,8 @@ def case_verdict(row: Dict[str, Any], spec: Dict[str, Any], *,
         # word.
         report = fused_report
         reason = report.get("refused_because") or ""
-        # THE REFUSAL IS WHEREVER THE LADDER PUT IT, AND UNDER AN INSTALLED KEEP IT
-        # IS PER SLOT. The composer's own backend clause
+        # The refusal is wherever the ladder put it, and under an installed keep it
+        # is per slot. The composer's own backend clause
         # (``metal_kernels.subnormal.mps_policy_reasons``) refuses every ARM under a
         # resolved keep, so the plan is empty before rung 8bM is reached and the
         # top-level string is the generic "no slot is left carrying a kernel". Each
@@ -5696,7 +5823,7 @@ def case_verdict(row: Dict[str, Any], spec: Dict[str, Any], *,
     elif not row["array_leg_control"]["clean"]:
         row["verdict"] = "CONTROL-FAILURE"
     elif row["substitution"]["verdict"] != "EXACT":
-        # EVERY VERDICT BUT EXACT REFUSES HERE, DECLARATION-MISMATCH included: a
+        # Every verdict but exact refuses here, DECLARATION-MISMATCH included: a
         # drive row whose collapsed-single declaration the unfused leg's own counter
         # contradicts has no expected drop to be exact against.
         row["verdict"] = "NO-SUBSTITUTION"
@@ -5721,12 +5848,20 @@ def engine_smoke_env(residency: str) -> Dict[str, Optional[str]]:
     Every dispatch switch is UNSET -- the route a user's ``lift_simulation`` takes -- and
     ``held`` is reached by leaving the residency variable unset too, so the row
     measures the default rather than a spelling of it.
+
+    The one switch set is the dispatch preference, to the shape rule
+    (``route.dispatch_preference_env``). The row asks for the named pairs on all four
+    slots, the shape rule's composition; under the package default the dispatch preference,
+    the Metal record or the prior of Apple records, may give a bracketed seam's slots to its
+    certified singles on a grid this small, and the row would measure singles, asserting pairs.
+    Named rather than inherited, so the row runs the same whichever leg ran before it.
     """
     if residency not in ENGINE_SMOKE_RESIDENCIES:
         raise ValueError(f"engine smoke residency {residency!r}; one of "
                          f"{ENGINE_SMOKE_RESIDENCIES}")
     return {"MEEP_GPU_DISPATCH": None, "MEEP_GPU_FUSED": None, "MEEP_GPU_FUSE_ARMS": None,
-            "MEEP_GPU_METAL_RESIDENCY": None if residency == "held" else residency}
+            "MEEP_GPU_METAL_RESIDENCY": None if residency == "held" else residency,
+            **route.dispatch_preference_env(True)}
 
 
 def engine_leg_record(report: Dict[str, Any], path: Optional[str], steps: int,
@@ -5929,17 +6064,19 @@ PASS_VERDICTS = ("PASS-FUSED", "PASS-POLICY-REFUSED", "PASS-NO-FUSED-ARM",
 #: flush, and both make the policy rung's refusal a precaution rather than a rule.
 CONTROL_PASS = ("DIVERGED-AS-REQUIRED", "NOT-APPLICABLE", "REFUSED-BY-NAME",
                 "RELEASE-ADMITTED", "ENVELOPE-HOLDS", "RESIDENCY-CLEAN",
-                "BAND-NON-EMPTY", "CLIFF-CONFINED-TO-THE-BAND", "PASS")
+                "BAND-NON-EMPTY", "CLIFF-CONFINED-TO-THE-BAND", "PASS",
+                route.DEFAULT_PREFERENCE_RECORDED)
 
 
 def _provenance() -> Dict[str, Any]:
     """The bytes, the host, the toolchain, and the policy this run measured under."""
+    import neutral_ids  # noqa: PLC0415
     import hashlib  # noqa: PLC0415
     import platform  # noqa: PLC0415
 
     package = os.path.join(_API, "meep_gpu")
     digests: Dict[str, str] = {}
-    # ``deposit_repair.py`` IS THE BRACKET, and it joined this list 2026-09-19. Its
+    # ``deposit_repair.py`` is the bracket, and it joined this list 2026-09-19. Its
     # ``LeadingRepairPlan`` / ``TrailingRepairPlan`` wrap every bracketed seam's launch
     # (``_drop_the_inner_bracket`` reads them slot by slot), yet the five legs of
     # ``dispatch_metal_route_2026-09-17_allpaths`` name it only in the top-level
@@ -5959,7 +6096,7 @@ def _provenance() -> Dict[str, Any]:
                 digests[name] = hashlib.sha256(handle.read()).hexdigest()
         except OSError as exc:
             digests[name] = f"unreadable: {exc!r}"
-    # THE GATE ITSELF, keyed the way the LEDGER spells a parity path rather than the
+    # The gate itself, keyed the way the LEDGER spells a parity path rather than the
     # way this file's siblings are keyed. `mint_metal_weld` requires every pinned
     # path to appear in the artifact's own record — a weld may only bind bytes the
     # gate is recorded as having imported — and
@@ -5973,11 +6110,11 @@ def _provenance() -> Dict[str, Any]:
     record: Dict[str, Any] = {
         "gate": "dispatch_metal_route",
         "utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "host": platform.node(), "machine": platform.machine(),
+        "host": neutral_ids.machine_id(), "machine": platform.machine(),
         "python": sys.version.split()[0],
         "source_sha256": digests,
         "this_script_sha256": digests[_this],
-        # HOW EVERY LEG WAS LIFTED, stamped since 2026-09-27 so the driver_dispatch
+        # How every leg was lifted, stamped since 2026-09-27 so the driver_dispatch
         # record reads it off the legs. An artifact without this block was lifted
         # ``prefer_gpu=False`` under the enable, which planned Metal before that date.
         "lift": {"prefer_gpu": True, "driver_gpu": "metal",
@@ -5995,7 +6132,7 @@ def _provenance() -> Dict[str, Any]:
 
         record["metal_frontend"] = device.metal_frontend_version()
         record["apple_gpu"] = device.apple_gpu_identity()
-        # THE STAMP THE ARTIFACT CARRIES, and it is not decoration: the claim is only
+        # The stamp the artifact carries, and it is not decoration: the claim is only
         # as good as the precondition it was certified under, and this arm's answer
         # can differ from `policy_resolution`'s because it also honours an install
         # and a dispatch's declaration.
@@ -6032,7 +6169,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                         help="cap the ladder; the full run is the default")
     parser.add_argument("--install-policy", default=None,
                         help="install this float32 subnormal policy before anything "
-                             "else. UNSET IS THE SHIPPED LEG: it leaves the install "
+                             "else. Unset is the shipped leg: it leaves the install "
                              "to rung 8bM, which is precisely the evidence "
                              "DISPATCH_BY_DEFAULT would wait on.")
     parser.add_argument("--band-witness", action="store_true",
@@ -6042,6 +6179,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--no-controls", action="store_true",
                         help="skip the armed controls (diagnostic only; a run made "
                              "with this is not a gate run)")
+    parser.add_argument("--plan-only", action="store_true",
+                        help="Not a gate run. Record the plan the package default "
+                             "makes on every released drive case (the "
+                             "default-preference control alone, one step each) into "
+                             "plans.jsonl and plans.json, and write no gate.json: the "
+                             "plan pass the route carry tool compares a campaign's "
+                             "recorded plans with (rounds/1.0/carry.py)")
     parser.add_argument("--controls-dry-run", action="store_true",
                         help="PRE-FREEZE: one lift per drive case, the gate's freeze "
                              "step, and each residency control armed on it; reports "
@@ -6061,15 +6205,27 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if arguments.dry_run_reference and not arguments.controls_dry_run:
         print("--dry-run-reference needs --controls-dry-run", file=sys.stderr)
         return 2
+    if arguments.plan_only and (arguments.band_witness or arguments.no_controls
+                                or arguments.controls_dry_run):
+        print("--plan-only takes none of --band-witness, --no-controls or "
+              "--controls-dry-run", file=sys.stderr)
+        return 2
+    if arguments.plan_only:
+        held = [name for name in (route.PLAN_ROWS, route.PLAN_SUMMARY, "gate.json")
+                if os.path.exists(os.path.join(arguments.out, name))]
+        if held:
+            print(f"REFUSING: {arguments.out} already holds {held}; a plan pass is "
+                  "one-shot, point --out at a fresh directory", file=sys.stderr)
+            return 5
 
-    # A METAL GATE, REFUSED OFF AN APPLE GPU before its leg directory exists.
+    # A Metal gate, refused off an Apple GPU before its leg directory exists.
     refusal = metal_host_refusal("gate_dispatch_metal_route.py")
     if refusal:
         print(refusal, file=sys.stderr)
         return 2
 
     os.makedirs(arguments.out, exist_ok=True)
-    # A GATE MUST NOT WRITE INTO ANOTHER RUN'S ARTIFACT. The JSONL files are opened
+    # A gate must not write into another run's artifact. The JSONL files are opened
     # in APPEND mode because progress reporting wants every row on disk the moment it lands; the
     # cost is that pointing --out at a directory a previous run wrote silently
     # INTERLEAVES two runs' rows in one file while summary.json is rewritten from
@@ -6088,7 +6244,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return 5
 
     e2e._PROGRESS_PATH = os.path.join(arguments.out, "progress.log")  # noqa: SLF001
-    # LIFTED AS AN APPLE GPU DRIVER, ALWAYS. `prefer_gpu=True` resolves this host's
+    # Lifted as an Apple GPU driver, always. `prefer_gpu=True` resolves this host's
     # GPU, which on the host `metal_host_refusal` admitted is Metal: NumPy host arrays
     # with device mirrors beside them. A `prefer_gpu=False` lift is the NumPy
     # reference and never plans, whatever MEEP_GPU_DISPATCH says, so it cannot be a
@@ -6105,7 +6261,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
               file=sys.stderr)
         return 2
     if arguments.band_witness or arguments.controls_dry_run:
-        # THE WITNESS CENSUSES THE ROUTE ROWS' ORACLES; an engine-smoke row has no cliff
+        # The witness censuses the route rows' oracles; an engine-smoke row has no cliff
         # control to read it, so it is not a witness case. Nor does it carry an armed
         # control, so the controls dry run skips it too.
         names = [n for n in names if n in DRIVE]
@@ -6120,6 +6276,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     provenance["install_policy_requested"] = arguments.install_policy
     provenance["harness_installs_nothing"] = arguments.install_policy is None
     provenance["band_witness_leg"] = bool(arguments.band_witness)
+    # The grid the default's one-step plans ran at: a plan pass stands for this leg only
+    # at the same resolution, since the timing records arbitrate by cell count.
+    provenance["resolution"] = arguments.resolution
     if arguments.install_policy:
         try:
             provenance["installed_policy"] = dict(
@@ -6131,7 +6290,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         except BaseException as exc:  # noqa: BLE001
             say(f"REFUSING: install_subnormal_policy raised {exc!r}")
             return 4
-        # WHICH LEG THIS IS, decided against the TABLE's own constant rather than a
+        # Which leg this is, decided against the TABLE's own constant rather than a
         # literal here, so a change to the certified policy moves this leg with it
         # instead of leaving a gate asserting a policy nobody certifies any more.
         from meep_gpu import metal_dispatch  # noqa: PLC0415
@@ -6155,6 +6314,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if arguments.controls_dry_run:
         return controls_dry_run(names, arguments.resolution, arguments.out, provenance,
                                 arguments.dry_run_reference)
+    if arguments.plan_only:
+        return plan_only_run([n for n in names if n in DRIVE], arguments, provenance)
 
     counter = MetalLaunchCounter()
     rows: List[Dict[str, Any]] = []
@@ -6172,7 +6333,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     # ---------------------------------------------------------------- band witness
     if arguments.band_witness:
-        # THE ARRAY PATH AGAINST ITS OWN ARITHMETIC, and nothing else. This leg
+        # The array path against its own arithmetic, and nothing else. This leg
         # dispatches nothing by construction: it is the measurement that the value
         # class the flush-equivalence claim is ABOUT is a class this corpus's own
         # trajectories construct.
@@ -6201,6 +6362,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             "controls": {f"{c.get('case')}:band-witness": c.get("verdict")
                          for c in controls},
             "release": {"released": released, "reasons": reasons},
+            # The timing records the tree ships, on every leg of a campaign alike, so the
+            # recut can hold the legs to one set; this leg runs no default-mode plan.
+            "dispatch_preference": route._dispatch_preference_or_error(controls),
+            # This leg dispatches nothing, so it made no plan: an empty map, which is
+            # true, where a missing one would read as a leg recorded before plan keying.
+            "plan_keys": {},
+            "plan_inputs": plan_key.plan_inputs(),
             "what_this_licenses": (
                 "that the subnormal band is non-empty on the named cases. It "
                 "licenses NOTHING about dispatch: this leg installs keep and runs "
@@ -6237,14 +6405,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         say(f"=== case {index}/{len(names)}: {name} -> {row.get('verdict')} "
             f"({row['case_wall_s']} s) ===")
 
-        # THE CONTROLS FOLLOW THE CASE. An engine-smoke row carries no armed control:
+        # The controls follow the case. An engine-smoke row carries no armed control:
         # its legs are deliberately uninstrumented, and the route rows' controls arm
         # the same products.
         if (arguments.no_controls or name in ENGINE_SMOKE
                 or DRIVE[name]["expect"] != "dispatch"):
             continue
         if UNCERTIFIED_POLICY_INSTALLED is not None:
-            # THE ARMED CONTROLS CANNOT ARM ON THIS LEG, and the honest record says
+            # The armed controls cannot arm on this leg, and the honest record says
             # so rather than reporting NOT-ARMED rows as failures. Each needs a
             # fused launch to sit beside, and rung 8bM refused the plan whole. What
             # this leg measures instead is the CLIFF: a released pair driven under a
@@ -6268,6 +6436,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             lambda: withheld_control(name, DRIVE[name], arguments.resolution,
                                      counter),
             lambda: release_route_leg(name, DRIVE[name], arguments.resolution),
+            lambda: default_preference_leg(name, DRIVE[name], arguments.resolution),
         ):
             try:
                 entry = maker()
@@ -6308,7 +6477,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             record(entry, name)
 
     # ------------------------------------------------------------------- envelope
-    # ONCE PER RUN AND NOT PER CASE. It is a property of the RELEASE, not of any
+    # once per run and not per case. It is a property of the RELEASE, not of any
     # case here: it drives its own out-of-envelope shape and asks the two questions
     # no in-envelope case can reach.
     if not arguments.no_controls:
@@ -6350,7 +6519,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     elif not demonstrated:
         reasons.append("no case dispatched a fused Metal pair through the driver "
                        "seam, so nothing about the Metal route was measured")
-    # A LEG THAT MEASURES ZERO MUST NOT RELEASE. `control_failures` catches a control
+    # A leg that measures zero must not release. `control_failures` catches a control
     # that ran and failed; it cannot catch one that never ran, and the two controls
     # below are what this release rests on — the shipped ROUTE and the ENVELOPE.
     if not arguments.no_controls and UNCERTIFIED_POLICY_INSTALLED is None:
@@ -6365,6 +6534,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             reasons.append("no case was shown reaching its fused arm through "
                            "METAL_RELEASED_FUSED_ARMS with MEEP_GPU_FUSE_ARMS unset, "
                            "so this run is not evidence about the SHIPPED route")
+            released = False
+        if route.DEFAULT_PREFERENCE_RECORDED not in verdicts:
+            reasons.append("no case recorded the dispatch preference under the "
+                           "package default, so this run cannot say which timing "
+                           "records gave the default it certifies")
             released = False
     if arguments.no_controls:
         reasons.append("--no-controls: the armed nulls did not run, so this is a "
@@ -6399,6 +6573,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "failures": failures,
         "control_failures": control_failures,
         "release": {"released": released, "reasons": reasons},
+        # The default and the records it rests on, as the fused route gate states it
+        # (``route.dispatch_preference_summary``); the driver_dispatch record carries it.
+        "dispatch_preference": route._dispatch_preference_or_error(controls),
+        "plan_keys": plan_key.route_leg_keys(rows, controls),
+        "plan_inputs": plan_key.plan_inputs(),
         "what_this_licenses": (
             "the arms listed under arms_driven, on the exact configurations listed "
             "under verdicts, with the policy recorded in provenance, under the "
@@ -6417,6 +6596,55 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     say(f"SUBSTITUTION {json.dumps(summary['substitution'])}")
     say(f"RELEASE released={released} reasons={reasons}")
     return 0 if released else 1
+
+
+def plan_only_run(names: List[str], arguments: Any, provenance: Dict[str, Any]) -> int:
+    """``--plan-only``: the default-preference control alone, on every drive case.
+
+    The fused route gate's plan pass (``route.plan_only_run``) on this table's lift: the
+    default's one-step plan is the only plan of a route leg that reads the timing
+    records, so it is what a re-cut record is asked against. Exit 0 when every case
+    recorded the default or is not applicable, else 1.
+    """
+    rows: List[Dict[str, Any]] = []
+    path = os.path.join(arguments.out, route.PLAN_ROWS)
+    for index, name in enumerate(names, 1):
+        started = time.time()
+        try:
+            row = default_preference_leg(name, DRIVE[name], arguments.resolution)
+        except BaseException as exc:  # noqa: BLE001 - a raising case is a row
+            row = {"control": "default-preference", "verdict": "ERROR",
+                   "error": f"{type(exc).__name__}: {exc}"[:2000]}
+        row["case"] = name
+        row["case_wall_s"] = round(time.time() - started, 2)
+        rows.append(row)
+        with open(path, "a", encoding="utf-8") as handle:  # incremental, as it lands
+            handle.write(json.dumps(row, default=str) + "\n")
+            handle.flush()
+        say(f"plan {index}/{len(names)}: {name} -> {row.get('verdict')} "
+            f"{plan_key.key_digest(row.get(plan_key.KEY_FIELD)) or '-'} "
+            f"({row['case_wall_s']} s)")
+    passing = (route.DEFAULT_PREFERENCE_RECORDED, "NOT-APPLICABLE")
+    failures = [r["case"] for r in rows if r.get("verdict") not in passing]
+    summary = {
+        "gate": "dispatch_metal_route",
+        "mode": "plan-only",
+        "provenance": provenance,
+        "plan_keys": plan_key.route_leg_keys([], rows),
+        "plan_inputs": plan_key.plan_inputs(),
+        "dispatch_preference": route._dispatch_preference_or_error(rows),
+        "failures": failures,
+        "release": {"released": False,
+                    "reasons": ["--plan-only: a plan pass, not a gate run"]},
+        "rows": rows,
+    }
+    gate_provenance.stamp(summary)
+    with open(os.path.join(arguments.out, route.PLAN_SUMMARY), "w",
+              encoding="utf-8") as handle:
+        json.dump(summary, handle, indent=1, default=str)
+    say(f"PLAN-ONLY {len(rows) - len(failures)}/{len(rows)} cases recorded or not "
+        f"applicable; failures {failures}")
+    return 1 if failures else 0
 
 
 def _write(out: str, summary: Dict[str, Any]) -> None:

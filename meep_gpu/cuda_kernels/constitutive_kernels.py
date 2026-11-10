@@ -1,6 +1,6 @@
 """Raw-CUDA real-storage constitutive kernels: ``update_H`` and ``update_E``.
 
-THE ZERO-ROW SURFACE. Before this file the hand-CUDA track covered 84 of 759
+The zero-row surface. Before this file the hand-CUDA track covered 84 of 759
 predicate slots and **zero rows at every sub-step**, for one reason: no
 real-storage constitutive kernel existed. ``update_H``, ``update_E`` and
 ``update_P`` all sat at zero rows, so every row the certified curl pair admits
@@ -8,14 +8,14 @@ still had to hand two of its four sub-steps back to the array path. These two
 kernels are the first half of that gap — the ordinary real-storage PML case,
 which is what 54 of the 57 corpus scripts declare.
 
-WHY A NEW MODULE AND NOT ``step_curl_kernels.py``. That file's fourteen device
+Why a new module and not ``step_curl_kernels.py``. That file's fourteen device
 strings are frozen: ``certification.json`` pins each certified string by digest,
 pins all fourteen concatenated, and pins the whole-file digest, and
 ``test_certification_record.py`` fails on a laptop the moment any of the three
 moves. Adding a kernel there would have forced a record edit that no device run
 backs. Nothing in this file changes a byte of that one.
 
-WHAT IS TRANSCRIBED, AND FROM WHERE. Every line below cites ``../stepping.py``
+What is transcribed, and from where. Every line below cites ``../stepping.py``
 by name and line, exactly as the certified curl pair does:
 
 * the term table and which axis each component reads
@@ -32,7 +32,7 @@ by name and line, exactly as the certified curl pair does:
                         on the cells whose chunk carries the component's own
                         (dsigw) layer, ``f = src`` everywhere else
 
-THE REFERENCE FOR THE DECISIONS — tile shape, launch geometry, vectorization —
+The reference for the decisions — tile shape, launch geometry, vectorization —
 is the sibling Triton kernel ``triton_kernels/kernels.py:constitutive_step``,
 which is certified. The ARITHMETIC is written from ``stepping.py`` regardless.
 The two agree on all four decisions that matter here: one element per program
@@ -43,21 +43,21 @@ because the coefficient index is a per-axis *lookup* and a vector load would
 straddle the ``k`` decomposition.
 
 =============================================================================
-DO NOT TRANSCRIBE ``update_H_pml_complex`` / ``update_E_pml_complex``
+Do not transcribe ``update_H_pml_complex`` / ``update_E_pml_complex``
 =============================================================================
 
 They are the obvious template and they are the wrong one. Three defects, all
 read first-hand out of ``step_curl_kernels.py`` and all silent:
 
-1. THEY ACCUMULATE ON EVERY CELL. Both run ``f[idx] += kps_val * fw_new -
+1. They accumulate on every cell. Both run ``f[idx] += kps_val * fw_new -
    kms_val * fw_prev`` over the whole volume and store ``fw`` everywhere. The
    array path runs that accumulation only on the cells whose chunk carries the
    component's own layer and stores ``f = src`` elsewhere, leaving ``fw`` alone
    there (``stepping._apply_constitutive_regions``, MEEP's update_eh.cpp:162-170).
    Their grouping, ``f + (kps*src - kms*prev)``, is MEEP's
-   (step_generic.cpp:689, :697) and the one this file takes since 0.10; until
+   (step_generic.cpp:689, :697) and the one this file takes since 1.0; until
    then the array path accumulated twice, left to right, and so did this file.
-2. THE E SIDE BINDS ONE EPSILON VOLUME FOR ALL THREE COMPONENTS. Its host
+2. The E side binds one epsilon volume for all three components. Its host
    wrapper passes ``fields.inv_eps``, which ``Fields.set_epsilon_volumes``
    re-points at ``self._inv_eps_components["Ez"]`` (fields.py:1259-1260) as a
    "representative material array". On any run whose three components do not
@@ -65,7 +65,7 @@ read first-hand out of ``step_curl_kernels.py`` and all silent:
    updated with **Ez's** inverse permittivity. The comment directly above that
    line says constitutive updates always use the component-aware accessors; the
    complex kernel does not. This file binds three pointers.
-3. THE E SIDE PUTS INVERSE EPSILON ON THE LEFT
+3. The E side puts inverse epsilon on the left
    (``complex<float>(inv_eps_val, 0.0f) * Dx[idx]``) where stepping.py:1011
    writes ``source * fields.inverse_epsilon_for(component)``, D on the left.
    This one is INERT on the bits — float32 multiply is bitwise commutative, and
@@ -75,7 +75,7 @@ read first-hand out of ``step_curl_kernels.py`` and all silent:
    order is kept here for discipline, not because it changes a bit.
 
 =============================================================================
-PLATFORM FACTS THIS FILE DEPENDS ON (CUDA path, adjudicated 2026-08-15)
+Platform facts this file depends on (CUDA path, adjudicated 2026-08-15)
 =============================================================================
 
 * ``--fmad=false`` is CORRECTNESS, not tuning. ``a*b + c`` is contracted by
@@ -86,15 +86,15 @@ PLATFORM FACTS THIS FILE DEPENDS ON (CUDA path, adjudicated 2026-08-15)
   ``fma.rn.f32`` and zero contractible mul/add/sub.
 * SIGNED ZERO: CUDA does NOT canonicalize it the way Triton does. ``-x`` lowers
   to ``neg.f32``, not to ``0.0f - x``, so a negated addend needs no workaround
-  on this path. SAY IT OUT LOUD rather than rely on it — the asymmetry is a
+  on this path. Say it out loud rather than rely on it — the asymmetry is a
   trap for anyone porting a body between the two tracks in either direction,
   and this kernel is written so that it never depends on the answer: the
   subtraction is spelled ``a - kms*prev``, never ``a + (-(kms*prev))``.
-* THE DEVICE STRINGS ARE PURE ASCII, and that is a compile requirement rather
+* The device strings are pure ASCII, and that is a compile requirement rather
   than a style rule. ``cupy.cuda.compiler.compile_using_nvrtc`` writes the source
   to a ``.cu`` file with a bare ``open(..., 'w')`` (compiler.py:368), so the
   bytes go through the interpreter's LOCALE encoding — ASCII under C/POSIX, which
-  is what a non-interactive shell on the validation host gets. MEASURED
+  is what a non-interactive shell on the validation host gets. Measured
   2026-08-15: two em-dashes in the comment block of the E kernel below made it
   die at its first launch with ``UnicodeEncodeError ... position 2535``, while
   the pure-ASCII H kernel compiled beside it. Nothing was wrong with the
@@ -110,7 +110,7 @@ PLATFORM FACTS THIS FILE DEPENDS ON (CUDA path, adjudicated 2026-08-15)
   exception applies to it and this note is where it was written down.
 
 =============================================================================
-CERTIFIED 2026-08-15 — AND WHAT THAT DOES AND DOES NOT MEAN
+Certified 2026-08-15 — and what that does and does not mean
 =============================================================================
 
 Both kernels are byte-identical to the array path, per sub-step and over 60
@@ -120,9 +120,9 @@ block is ``certification.json``'s ``constitutive_2026-08-15``; the numbers there
 are derived from the run's own artifacts by
 ``results/cuda_constitutive_recut_2026-08-15/summarize_constitutive_recut.py``.
 
-WHAT IT DOES NOT MEAN. NOTHING DISPATCHES THEM, and the reason is stronger than
-a planner declining to: NO MODULE IN ``meep_gpu/`` IMPORTS ``cuda_kernels`` AT
-ALL. ``fastpath.py`` is the Triton dispatcher and never names this package;
+What it does not mean. Nothing dispatches them, and the reason is stronger than
+a planner declining to: no module in ``meep_gpu/`` imports ``cuda_kernels`` at
+all. ``fastpath.py`` is the Triton dispatcher and never names this package;
 ``test_package_boundary.py`` pins that absence in both directions. The only
 importers are this directory's tests and the parity probes. So certification here
 is a statement about two kernels and not about any run, and wiring them is a
@@ -213,15 +213,15 @@ UNCERTIFIED_KERNELS = {}
 
 
 # =============================================================================
-# THE DEVICE CODE
+# The device code
 # =============================================================================
 #
-# FIVE THINGS DECIDE BIT-IDENTITY HERE. The first three are the sibling Triton
+# Five things decide bit-identity here. The first three are the sibling Triton
 # kernel's numbered notes, measured there and re-stated because they are
 # properties of the TRANSCRIPTION, not of the language it is written in. The
 # fourth and fifth are this file's own.
 #
-# 1. THE GROUPING IS MEEP'S (step_generic.cpp:689, :697): the right-hand side is
+# 1. The grouping is MEEP's (step_generic.cpp:689, :697): the right-hand side is
 #    formed first, then added to ``f`` once.
 #
 #        value = f[idx] + ((kps * src) - (kms * prev));
@@ -230,29 +230,29 @@ UNCERTIFIED_KERNELS = {}
 #    ``field += (kps * fw) - (kms * fw_previous)``, and in the scratch branch
 #    ``multiply(kps, fw, out=product); multiply(kms, fw_previous,
 #    out=fw_previous); subtract(product, fw_previous, out=product); field +=
-#    product``. ``(f + kps*src) - kms*prev``, the grouping until 0.10, is a
+#    product``. ``(f + kps*src) - kms*prev``, the grouping until 1.0, is a
 #    different float32 number.
 #
-# 2. THE COEFFICIENT INDEX IS THE COMPONENT'S OWN AXIS. ``kps_x``/``kms_x`` for
+# 2. The coefficient index is the component's own axis. ``kps_x``/``kms_x`` for
 #    component 0, ``_y`` for 1, ``_z`` for 2 — MEEP's ``dsigw``, the absorption a
 #    component accumulates along the direction it points in
 #    (``H_CONSTITUTIVE_TERMS``/``E_CONSTITUTIVE_TERMS``, stepping.py:227-228).
 #    It is NOT the dsig/dsigu cycle the curl recurrence uses, and getting the two
 #    confused is a smooth, converged, entirely wrong absorber.
 #
-# 3. ``prev`` IS READ BEFORE ``fw`` IS WRITTEN. The array path copies fw first
+# 3. ``prev`` is read before ``fw`` is written. The array path copies fw first
 #    (``fw_previous = fw.copy()``, :2084; ``scratch.copy_of("previous", fw)``,
 #    :2090) for exactly this reason. Storing before loading makes ``prev`` the
-#    value just written, and is wrong only where ``kms != 0`` — i.e. INSIDE THE
-#    PML ONLY — which reads as a slightly weaker absorber, not as a bug.
+#    value just written, and is wrong only where ``kms != 0`` — i.e. inside the
+#    PML only — which reads as a slightly weaker absorber, not as a bug.
 #
-# 4. THERE IS NO OWNERSHIP MASK AND NO GHOST RULE, AND THAT IS TRANSCRIBED, NOT
-#    FORGOTTEN. ``_apply_constitutive_pml`` writes every cell of the volume, and
+# 4. There is no ownership mask and no ghost rule, and that is transcribed, not
+#    forgotten. ``_apply_constitutive_pml`` writes every cell of the volume, and
 #    this sub-step reads no neighbour so it needs no ``shift_up``/``shift_dn``.
 #    Anyone porting the curl kernel's shape into this one will reach for both.
 #    Neither belongs here.
 #
-#    THE MASK'S CALL SITES, READ OFF THE FILE RATHER THAN REMEMBERED. This note
+#    The mask's call sites, read off the file rather than remembered. This note
 #    used to say ``_mask_non_owned_cells`` (:1865) was "called from ``_apply_curl``
 #    and from nowhere else", and that was wrong twice: there are THREE call sites
 #    and none of them is ``_apply_curl``. They are ``step_B`` (:369), ``step_D``
@@ -260,14 +260,14 @@ UNCERTIFIED_KERNELS = {}
 #    which sits directly above ``update_H``. The conclusion is unchanged (no
 #    constitutive function masks anything, and the predicate refuses BFAST
 #    outright), but a sentence about another file's structure is exactly the kind
-#    this tranche insists on reading off the source, so
+#    this file insists on reading off the source, so
 #    ``test_constitutive_pml_real.py`` now does.
 #
 #    That does NOT make the sub-step boundary-agnostic, which is why the
 #    predicate still refuses a fold and a cylindrical axis: both change the
 #    STORED EXTENT, and the extent is what turns ``i`` into a coefficient index.
 #
-# 5. THE FORM IS CHOSEN PER STRUCTURE CHUNK (update_eh.cpp:162-163). On a cell
+# 5. The form is chosen per structure chunk (update_eh.cpp:162-163). On a cell
 #    whose chunk carries the component's own layer (``dsigw``) the accumulation
 #    of note 1 runs and ``fw`` takes ``src``; everywhere else ``f = src`` and
 #    ``fw`` is neither read nor written (``stepping._apply_constitutive_regions``,
@@ -323,7 +323,7 @@ extern "C" __global__ void update_H_pml_real(
     int j = (idx / nz) % ny;
     int i = idx / (ny * nz);
 
-    // THE CHUNK RECORD (chunk_map.chunk_bounds_record): row r of this lattice and axis
+    // The chunk record (chunk_map.chunk_bounds_record): row r of this lattice and axis
     // lies in a chunk that carries the axis's layer iff (a0 <= r < a1) || (b0 <= r < b1).
     const int cbi_x_a0 = cb[0], cbi_x_a1 = cb[1], cbi_x_b0 = cb[2], cbi_x_b1 = cb[3];
     const int in_i_x = (i >= cbi_x_a0 && i < cbi_x_a1) || (i >= cbi_x_b0 && i < cbi_x_b1);
@@ -361,7 +361,7 @@ extern "C" __global__ void update_H_pml_real(
 }
 '''
 
-# E side: source is D * inv_eps with D ON THE LEFT (stepping.py:1011-1013),
+# E side: source is D * inv_eps with D on the left (stepping.py:1011-1013),
 # HALF-INTEGER coefficients (:1015, half_integer=True), and THREE inverse-epsilon
 # pointers — one per component, from Fields.inverse_epsilon_for. They may all
 # alias one volume (set_isotropic_epsilon_volume) and the kernel does not care;
@@ -388,7 +388,7 @@ extern "C" __global__ void update_E_pml_real(
     int j = (idx / nz) % ny;
     int i = idx / (ny * nz);
 
-    // THE CHUNK RECORD (chunk_map.chunk_bounds_record): row r of this lattice and axis
+    // The chunk record (chunk_map.chunk_bounds_record): row r of this lattice and axis
     // lies in a chunk that carries the axis's layer iff (a0 <= r < a1) || (b0 <= r < b1).
     const int cbh_x_a0 = cb[12], cbh_x_a1 = cb[13], cbh_x_b0 = cb[14], cbh_x_b1 = cb[15];
     const int in_h_x = (i >= cbh_x_a0 && i < cbh_x_a1) || (i >= cbh_x_b0 && i < cbh_x_b1);
@@ -465,7 +465,7 @@ def _clear_kernel_cache() -> int:
 def _get_kernel(name: str):
     """Compile on first use, memoized on (name, options, policy, source).
 
-    THE CODE MAP IS REBUILT PER CALL AND THAT IS LOAD-BEARING, for the same
+    The code map is rebuilt per call and that is load-bearing, for the same
     reason it is in the sibling module: the source is part of the memo key, so
     the map has to be read before a key exists to miss on, and the bit-identity
     probe mutates kernels by assigning over the module-level source string. A
@@ -490,7 +490,7 @@ def real_constitutive_tables(pml: 'PML', half_integer: bool) -> dict:
     Called ONCE per frozen configuration, not per launch — the complex wrappers
     in the sibling module call ``cp.ascontiguousarray(...ravel())`` on every
     launch, which is six device allocations per sub-step for tables that never
-    change (port-reference defect 5.14). ``PML._reshape_for_broadcast`` already
+    change. ``PML._reshape_for_broadcast`` already
     stores float32 arrays of shape (n,1,1)/(1,n,1)/(1,1,n), so ``reshape(-1)`` is
     a view and holding it costs nothing.
 
@@ -528,7 +528,7 @@ def constitutive_tables_for(side: str, pml: 'PML') -> dict:
     :func:`constitutive_sub_lattice`, the same function the predicate asks, so the
     two cannot disagree.
 
-    IT IS REACHED FROM :func:`update_fused_pml_real`, and until 2026-08-15 it was
+    It is reached from :func:`update_fused_pml_real`, and until 2026-08-15 it was
     not reached from anywhere. The launcher took a caller-supplied ``tables`` dict
     and passed it straight through, so the docstring above it claiming the launcher
     and the predicate "cannot disagree" described a convention, not an enforced
@@ -602,7 +602,7 @@ def _update_H_fused_pml_real(fields: 'Fields', tables: dict, chunk_bounds):
     and mu = 1 is already baked into that choice — there is no permeability
     volume to multiply by and introducing one here would be a second engine.
 
-    THE RUN'S FIRST ``update_H`` IS NOT THIS LAUNCH'S BUSINESS: MEEP starts H and
+    The run's first ``update_H`` is not this launch's business: MEEP starts H and
     ``f_w_H`` as copies of B on the dsigw cells there (``stepping.separate_h_from_b``),
     and the dispatched launcher runs that start on the array path before its first
     launch (``arms._RealPmlConstitutiveLauncher``).
@@ -649,7 +649,7 @@ def update_fused_pml_real(side: str, fields: 'Fields', pml: 'PML' = None, *,
                           tables: dict = None, chunk_bounds=None):
     """Run ``update_H`` (side='H') or ``update_E`` ('E') in one launch.
 
-    SUPPLY ``pml`` AND THE SUB-LATTICE IS DECIDED HERE, from the side, by the same
+    Supply ``pml`` and the sub-lattice is decided here, from the side, by the same
     :func:`constitutive_sub_lattice` the predicate asks — which is what makes "the
     launcher and the predicate cannot disagree about which table a side reads" an
     enforced property of this function rather than a convention a caller may keep.
@@ -658,7 +658,7 @@ def update_fused_pml_real(side: str, fields: 'Fields', pml: 'PML' = None, *,
     and the half-cell error the whole pairing exists to prevent was one argument
     away on the only entry point anything actually calls.
 
-    ``tables`` IS THE GATE'S DOOR and stays, keyword-only and named for what it is.
+    ``tables`` is the gate's door and stays, keyword-only and named for what it is.
     ``probe_fused_kernel_bit_identity.py`` feeds synthetic tables that no ``PML``
     produces, and its host mutation ``swap_constitutive_sublattice`` feeds
     DELIBERATELY MIS-PAIRED ones — a gate that could not hand in its own tables

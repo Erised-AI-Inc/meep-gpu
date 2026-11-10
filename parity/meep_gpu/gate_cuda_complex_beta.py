@@ -24,22 +24,22 @@ THE QUESTION, in four parts, each measured separately:
    (step_db.cpp:148-176), so Bz (Dz) must NOT move; a kernel that put a term on the
    z component would pass a gate that only asked "did anything change".
 
-THE KERNEL IS MEEP'S TWO PASSES
+The kernel is MEEP's two passes
 -------------------------------
 Per component the folded kernel's own curl and absorber, then -- on targets 0 and 1
 only -- MEEP's beta pass as a pass of its own (step_db.cpp:161-175):
 ``-quarter_turn(c, g)`` formed part by part from ONE real float32 coefficient per call
-site (no complex coefficient is formed anywhere), ``(+0, +0)`` on the cells MEEP's
-loop does not visit, added through the pass's additive ladder, each form selected per
-cell from the chunk record the launcher binds. The gate hands the kernel the record of
-the division the array path stepped with (``gate_cuda_complex.case_record``), and the
-two record host mutations of KERNELS.md section 7.2 corrupt the record it binds.
+site (no complex coefficient is formed anywhere), ``(+0, +0)`` on the cells MEEP's loop does
+not visit, added through the pass's additive ladder, each form selected per cell from the
+chunk record the launcher binds. The gate hands the kernel the record of the division the
+array path stepped with (``gate_cuda_complex.case_record``), and the two record host mutations
+of the per-chunk form battery (docs/development/certification.md) corrupt the record it binds.
 
-WHAT WOULD MAKE THIS GATE VACUOUS, AND THE FLOORS THAT REFUSE IT
+What would make this gate vacuous, and the floors that refuse it
 ----------------------------------------------------------------
 Every floor of ``gate_cuda_complex_folded`` (the fixture, the absorber, the mirror
 ghost) plus ``beta_term_is_live`` above. The mutation battery includes legs that
-MUST BE UNCAUGHT: a battery of only must-be-caught legs scores identically whether
+must be uncaught: a battery of only must-be-caught legs scores identically whether
 the comparator works or has degenerated into failing everything.
 
 RUNNING IT
@@ -51,7 +51,7 @@ Device (the GPU host, ONE verified-empty GPU)::
         --subnormal-policy keep --out $OUT/keep/gate.json
 
 Laptop, no GPU: the HOST backend compiles the SAME emitted characters with the host
-C++ compiler and drives them on NumPy. IT CERTIFIES NOTHING ABOUT NVRTC::
+C++ compiler and drives them on NumPy. It certifies nothing about NVRTC::
 
     python -u gate_cuda_complex_beta.py --backend host --out /tmp/beta.json
 
@@ -87,7 +87,7 @@ except ImportError:  # laptop: the host backend still runs
 import gate_provenance  # noqa: E402
 import probe_fused_kernel_bit_identity as probe  # noqa: E402
 
-# THE FOLD GATE IS THIS ONE'S HARNESS, imported rather than copied. This family's
+# The fold gate is this one's harness, imported rather than copied. This family's
 # kernels ARE the folded ones plus an insert, so its fixture, its floors, its
 # backends and its verdict shape are the same questions about the same emitter --
 # and a second copy of a fixture is a second thing to keep in step. What is added
@@ -161,11 +161,11 @@ BETA_SPECS: Tuple[Dict[str, Any], ...] = (
     {"label": "beta_fold_Y_periodic_kx", "cell": (12.0, 16.0, 0.0), "axes": "Y",
      "phase": 1, "boundaries": ("periodic", "periodic", "periodic"),
      "k": (0.27, 0.0, 0.0), "beta": -0.6850526103319672},
-    # THE OTHER TERMINATION, which no corpus row carries.
+    # The other termination, which no corpus row carries.
     {"label": "beta_fold_Y_metallic", "cell": (12.0, 16.0, 0.0), "axes": "Y",
      "phase": 1, "boundaries": ("periodic", "metallic", "periodic"),
      "k": (0.0, 0.0, 0.0), "beta": 0.2},
-    # THE ODD PLANE PARITY, and an odd full count on a fold over the SLOWEST-STRIDE
+    # The odd plane parity, and an odd full count on a fold over the SLOWEST-STRIDE
     # axis: the beta partner for target 1 is the FIRST source's centre, so an index
     # defect confusing a centre with a neighbour moves with the stride.
     {"label": "beta_fold_X_periodic_odd", "cell": (15.0, 8.0, 0.0), "axes": "X",
@@ -274,14 +274,14 @@ class CupyBackend(fold_gate.CupyBackend):
 
     def launch_curl(self, sub_step, fields, layer, grid, *,
                     beta_coefficients_override=None, **overrides) -> None:
-        # THE OVERRIDE IS RENAMED AT THIS SEAM ON PURPOSE. The launcher's keyword is
+        # The override is renamed at this seam on purpose. The launcher's keyword is
         # ``beta_coefficients`` and the gate's is ``beta_coefficients_override``,
         # because the gate ALSO passes ``None`` to mean "derive them from the grid"
         # -- and the launcher refuses a grid AND an override for the same quantity.
         # One translation, here, rather than two spellings threaded through the case.
         if beta_coefficients_override is not None:
             overrides["beta_coefficients"] = beta_coefficients_override
-        # THE LAUNCHER'S EXACTLY-ONE CONTRACT: ``step_complex_beta`` refuses a
+        # The launcher's exactly-one contract: ``step_complex_beta`` refuses a
         # layer AND a table override in one call ("the tables are derived from
         # the sub-step's own sub-lattice" -- its own docstring), so the
         # swapped-sub-lattice mutation hands it NO layer and the launcher takes
@@ -405,7 +405,7 @@ def build_backend(name: str):
 
 
 # ---------------------------------------------------------------------------
-# THE FAMILY'S OWN SOURCE MUTATIONS
+# The family's own source mutations
 # ---------------------------------------------------------------------------
 
 def _sub(pattern: str, replacement: str, text: str) -> Tuple[str, int]:
@@ -454,7 +454,7 @@ def m_beta_on_an_unowned_cell(text: str) -> Tuple[str, int]:
 def m_beta_partner_shifted(text: str) -> Tuple[str, int]:
     """The SHIFTED companion instead of the unshifted centre.
 
-    A MEASURED NULL on the REAL special_kz family (0/12 CAUGHT) and expected to be
+    A measured null on the REAL special_kz family (0/12 CAUGHT) and expected to be
     one here for the same STRUCTURAL reason: every beta grid has nz == 1, and both
     partners' only shifted companion is the neighbour along Z, so the two are the
     same word. Kept and scored as a null rather than deleted -- if it ever becomes
@@ -511,7 +511,7 @@ def n_beta_subtract_as_add_negative(text: str) -> Tuple[str, int]:
     return _sub(r": cf_sub\(fcur, df\);", ": cf_add(fcur, cf_neg(df));", text)
 
 
-#: Legs that MUST BE UNCAUGHT. ``beta_partner_shifted`` is here on the REAL
+#: Legs that must be uncaught. ``beta_partner_shifted`` is here on the REAL
 #: family's measured verdict and this gate re-measures it rather than inheriting it.
 NULL_MUTATIONS: Tuple[str, ...] = ("beta_subtract_as_add_negative",
                                    "beta_partner_shifted",
@@ -533,15 +533,15 @@ SOURCE_MUTATIONS: Dict[str, Callable[[str], Tuple[str, int]]] = {
     "scale_beta_by_dtdx": m_scale_beta_by_dtdx,
     "beta_partner_shifted": m_beta_partner_shifted,
     "beta_subtract_as_add_negative": n_beta_subtract_as_add_negative,
-    # THE FOLD'S OWN DEFECT CLASSES, re-armed because these kernels carry the fold
+    # The fold's own defect classes, re-armed because these kernels carry the fold
     # branches: a beta delta that broke one of them would otherwise be invisible.
     "drop_the_top_plane_mask": fold_gate.m_drop_the_top_plane_mask,
     "drop_the_fold_cell_zero_mask": fold_gate.m_drop_the_fold_cell_zero_mask,
     "reload_the_target": fold_gate.n_reload_the_target,
-    # AND THE CERTIFIED COMPLEX FAMILY'S, for the same reason one rung further down --
+    # And the certified complex family's, for the same reason one rung further down --
     # the set the fold gate re-arms (``gate_cuda_complex_folded.SOURCE_MUTATIONS``):
-    # the two grouping legs are the INVERTED ones (KERNELS.md section 7.1), and the B
-    # battery is the per-chunk curl forms these kernels lift from the emitter.
+    # the two grouping legs are the INVERTED ones (the previous package grouping), and the
+    # per-chunk form battery is armed on the curl forms these kernels lift from the emitter.
     "full_complex_coefficient_products": grandparent.m_full_complex_coefficient_products,
     "old_package_curl_grouping": grandparent.m_old_package_curl_grouping,
     "connection_on_every_plane": grandparent.m_connection_on_every_plane,
@@ -584,8 +584,8 @@ HOST_MUTATIONS: Tuple[str, ...] = (
     "beta_coefficients_exchanged",
     "beta_coefficients_zeroed",
     "beta_coefficient_rounded_twice",
-    # KERNELS.md section 7.2: the chunk record a launch binds, corrupted (the oracle's
-    # division is untouched; ``gate_cuda_complex.host_mutated_record``).
+    # Per-chunk form battery record mutations: the chunk record a launch binds, corrupted
+    # (the oracle's division is untouched; ``gate_cuda_complex.host_mutated_record``).
     "record_bound_off_by_one",
     "record_lattices_swapped",
 )
@@ -634,7 +634,7 @@ def curl_case(backend, xp, spec, sub_step, courant, value_class, guard,
               host_mutation: Optional[str] = None) -> Dict[str, Any]:
     """One frozen state, run twice: the array path, then the kernel.
 
-    THE SEED COMES FROM A DIGEST, never from ``hash()``: Python salts ``hash()`` of
+    The seed comes from a digest, never from ``hash()``: Python salts ``hash()`` of
     a tuple containing strings with ``PYTHONHASHSEED``, so such a gate draws a
     different fixture every process and a failing case cannot be replayed.
     """
@@ -756,7 +756,7 @@ def curl_case(backend, xp, spec, sub_step, courant, value_class, guard,
 def constitutive_case(backend, xp, spec, side, courant, value_class, guard):
     """The CERTIFIED complex constitutive kernel against the array path, on a BETA run.
 
-    THE CURLS RUN FIRST, both of them, so the state this sub-step reads is a state
+    The curls run first, both of them, so the state this sub-step reads is a state
     the beta term produced. A constitutive arm seeded with fresh random numbers
     would measure the certified kernel on a grid that merely HAS a beta attribute.
     """
@@ -1096,6 +1096,7 @@ def save(results, out_path: str) -> None:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
+    import neutral_ids  # noqa: PLC0415
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--backend", choices=("cupy", "host"), default="cupy")
     parser.add_argument("--product", choices=("full", "reduced"), default="full")
@@ -1109,8 +1110,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     results: Dict[str, Any] = {
         "gate": "cuda_complex_beta",
         "started_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "host": os.uname().nodename,
-        "argv": list(argv if argv is not None else sys.argv[1:]),
+        "host": neutral_ids.machine_id(),
+        "argv": neutral_ids.argv(argv if argv is not None else sys.argv[1:]),
         "backend": args.backend,
         "product": args.product,
         "question": ("is the hand-CUDA complex beta curl pair byte-identical to "

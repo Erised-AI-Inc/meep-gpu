@@ -1,10 +1,10 @@
 """Complex-field (force_complex_fields / Bloch k_point) PML curl + constitutive, on Metal.
 
-THE LARGEST CORPUS FAMILY ON EITHER TRACK: sixteen rows, and the sole admitter on
+The largest corpus family on either track: sixteen rows, and the sole admitter on
 all four sub-steps for every one of them. Complex64 is stepped as ``float2``
 volumes, each part by the array path's own float32 arithmetic.
 
-NO ENTRY IN ``fingerprints.json``'s ``kernel_source_sha256``, deliberately: this
+No entry in ``fingerprints.json``'s ``kernel_source_sha256``, deliberately: this
 module's sources are a family of specialisations, and ``gate_metal_complex``
 hashes every specialisation it launches into its own results directory. This
 module's own bytes ARE hashed, under ``host_sha256``, because
@@ -22,13 +22,13 @@ TWO KERNELS, one per sub-step family, each transcribing ``stepping.py``:
 * :func:`bloch_constitutive_source` -- complex ``update_H`` / ``update_E``: the
   ``dsigw`` accumulation and the plain ``f = src`` (``_apply_constitutive_regions``).
 
-EVERY PRODUCT IS FORMED PART BY PART, as MEEP forms it (``meep_gpu.part_products``):
+Every product is formed part by part, as MEEP forms it (``meep_gpu.part_products``):
 a realnum coefficient times a field is one float32 product per part
 (:func:`.templates.complex_helpers`), and complex add and subtract are per part by
 definition. So each part of every word is the real kernel's arithmetic
 (:mod:`.shaders`), and the forms are the real kernel's:
 
-* the PML form is chosen PER STRUCTURE CHUNK from the bound chunk record
+* the PML form is chosen per structure chunk from the bound chunk record
   (:mod:`.chunk_bounds`, read through the same anchored blocks the real kernels
   emit): on a cell whose chunk carries the target's dsigu layer the split-field
   recurrence ``n = ((fu*kms) - curl)*sinv; f = (((f*kms_u) + n) - fu)*sinv_u; fu =
@@ -41,7 +41,7 @@ definition. So each part of every word is the real kernel's arithmetic
   absent-partner forms from the record's presence word (step_generic.cpp:72-76,
   :104-108).
 
-THE BLOCH CONNECTION IS ON THE UNSHIFTED OPERAND, AT PLANE 0. On a phased axis the
+The Bloch connection is on the unshifted operand, at plane 0. On a phased axis the
 engine stores MEEP's owned window (``Grid.stored_window_low``): a shifted read one
 stored cell over is always an owned word, so the ghost rule is the plain periodic
 wrap, and the reads that leave the window are the SAME-INDEX reads across the half
@@ -57,14 +57,14 @@ word`` with every product and sum rounded on its own (:func:`.templates.complex_
 (:data:`CONNECT_NONE` / :data:`CONNECT_NEGATE` / :data:`CONNECT_PHASE`); the phase
 words are bound.
 
-WHY float2 IS FORCED AND NOT PREFERRED. Metal's buffer attribute indices run 0..30,
+Why float2 is forced and not preferred. Metal's buffer attribute indices run 0..30,
 so a kernel binds at most 31 buffers; a 32nd is a COMPILE ERROR, measured on this
 toolchain. The curl binds :data:`CURL_BINDINGS` = 24 (9 ``float2`` volumes, 6
 coefficient vectors, 5 scalars, 3 phases, the chunk record). The same kernel with
 re/im planes bound SEPARATELY needs 36 and cannot be built at all; the gate compiles
 that signature and requires the failure.
 
-WHAT IS TRANSCRIBED, and from where (``stepping``):
+What is transcribed, and from where (``stepping``):
 
 * term table            ``B_CURL_TERMS`` / ``D_CURL_TERMS``
 * ghost rule            ``_shift_up`` / ``_shift_down``, PERIODIC and METALLIC
@@ -124,8 +124,8 @@ from .plans import KernelPlan
 FAMILY = "complex_fields"
 
 #: How many buffers the shipped curl binds: 9 float2 volumes + 6 coefficient vectors
-#: + 5 scalars + 3 phases + the chunk record. CHECKED AGAINST THE PLATFORM CEILING AT
-#: IMPORT, because
+#: + 5 scalars + 3 phases + the chunk record. Checked against the platform ceiling at
+#: import, because
 #: the whole ``float2`` design rests on this margin and the number was previously a
 #: literal in three places (this module's docstring, the gate's ``bindings`` leg and
 #: a test). One home, checked, so a binding added to the signature is refused here by
@@ -455,7 +455,7 @@ __DECODE__
     // --- the chunk record: each component's own-axis membership at this cell -----
 __BOUNDS__
 
-    // NO GHOST RULE, NO OWNERSHIP MASK AND NO PHASE: the constitutive sub-step reads
+    // No ghost rule, no ownership mask and no phase: the constitutive sub-step reads
     // no neighbour and never sees a wrap. The coefficient index is on the
     // component's OWN axis -- kps_x/kms_x for target 0, _y for 1, _z for 2
     // (H_CONSTITUTIVE_TERMS / E_CONSTITUTIVE_TERMS). That is MEEP's dsigw, NOT the
@@ -728,11 +728,11 @@ def _complex_grid_reasons(fields: Any, pml: Any, grid: Any, residency: Any) -> L
 
     # 5 (REPLACES clause 7). Per-axis phase consistency. A phased axis must resolve
     #    PERIODIC (stepping._bloch_phases raises there, S:2346-2360; re-checked
-    #    because a mis-baked phase flag is a PLANE OF WRONG VALUES, not a crash) and
-    #    a metallic axis must carry a k component of exactly 0. has_bloch FALSE IS
-    #    ADMITTED: with every phase flag 0 the kernel emits no rotation at all and
+    #    because a mis-baked phase flag is a plane of wrong values, not a crash) and
+    #    a metallic axis must carry a k component of exactly 0. has_bloch false is
+    #    admitted: with every phase flag 0 the kernel emits no rotation at all and
     #    must reduce to the plain complex path, and the gate's unphased rows are
-    #    that reduction measured. AN ABSORBER ON A PHASED AXIS IS ADMITTED — settled
+    #    that reduction measured. An absorber on a phased axis is admitted — settled
     #    on the array path by measurement rather than argument (S:2322-2337, 2.82e-07
     #    against CPU MEEP), and this predicate does not re-litigate it.
     #
@@ -784,7 +784,7 @@ def _complex_grid_reasons(fields: Any, pml: Any, grid: Any, residency: Any) -> L
                 reasons.append(f"a conductivity is installed on {target}; conductive "
                                f"complex stepping is a separate, unbuilt product")
 
-    # 7. No dispersion, refused OUTRIGHT: complex ADE belongs to a later tranche.
+    # 7. No dispersion, refused OUTRIGHT: complex ADE belongs to a later stage of the port.
     #    The shape clauses still run so an unreadable susceptibility is NAMED.
     if getattr(fields, "has_polarizations", False) or (
             getattr(fields, "polarizations", ()) or ()):
@@ -1003,7 +1003,7 @@ class ComplexPmlCurlPlan(KernelPlan):
         # float(): the array path consumes the Python scalar at complex64 precision
         # (the float32-rounded scalar on each plane) and Metal binds a Python float
         # into `constant float&` correctly rounded — measured, and the same clean
-        # scalar ABI the real tranche certified.
+        # scalar ABI the real-field families certified.
         self.dtdx = float(dtdx)
         self.backward = bool(SUB_STEPS[sub_step]["backward"])
         self.bc = tuple(int(code) for code in bc)
@@ -1011,7 +1011,7 @@ class ComplexPmlCurlPlan(KernelPlan):
         self.phase_values = tuple((float(re), float(im)) for re, im in phase_values)
         self.residency = residency
         self.volumes = tuple(volumes)
-        # THE CHUNK RECORD BINDS LAST (CURL_RECORD_BUFFER), checked against the plan's
+        # The chunk record binds last (CURL_RECORD_BUFFER), checked against the plan's
         # shape and uploaded once as a plan-owned int32 vector, as the real curl plan
         # binds it (launch.PmlCurlPlan).
         self.chunk_bounds = _chunk_bounds.plan_words(
@@ -1246,7 +1246,7 @@ def plan_complex_constitutive_from_arrays(
 
 
 # ---------------------------------------------------------------------------
-# Registration — WIRED, as of tranche 2
+# Registration — wired since the Metal port's second stage
 # ---------------------------------------------------------------------------
 
 #: Which constitutive side each slot names, so one pair of callables serves both.
@@ -1279,14 +1279,14 @@ def _constitutive_arm_plan(context: Any, slot: str) -> Any:
 def register_arms() -> Tuple[Any, ...]:
     """Register this family's four arms, WIRED.
 
-    THEY WERE ``wired=False`` FOR ONE TRANCHE, and the flip is what the composition
-    sweep bought. The deferral was never about doubt in the kernel — the byte gate
-    had certified it — but about whether wiring it could change the answer on a
-    configuration some OTHER family owns. That is a question about predicates, not
-    about arithmetic, and it was settled by constructing the configurations and
-    calling every predicate on every slot rather than by reading clause lists.
+    They were ``wired=False`` for one stage of the Metal port, and the flip is what the
+    composition sweep bought. The deferral was never about doubt in the kernel — the
+    byte gate had certified it — but about whether wiring it could change the answer on
+    a configuration some OTHER family owns. That is a question about predicates, not
+    about arithmetic, and it was settled by constructing the configurations and calling
+    every predicate on every slot rather than by reading clause lists.
 
-    WHAT MAKES THIS THE ONLY ADMITTER, in both directions and by name: clause 2 is
+    What makes this the only admitter, in both directions and by name: clause 2 is
     INVERTED here (complex64 storage REQUIRED, so the shipped real kernels' clause 2
     refuses everything this admits), and clause 8 refuses ``grid.beta`` by name, so a
     complex BETA run lands on :mod:`.special_kz`'s complex arm rather than being
@@ -1312,6 +1312,6 @@ def register_arms() -> Tuple[Any, ...]:
 
 #: Registered ON IMPORT, once. The registry refuses a duplicate (family, slot,
 #: label) by design — a second registration is almost always a module reached under
-#: two names, and silently keeping one would make WHICH KERNEL RUNS depend on import
+#: two names, and silently keeping one would make which kernel runs depend on import
 #: order — so registration lives here rather than at every caller.
 ARMS = register_arms()

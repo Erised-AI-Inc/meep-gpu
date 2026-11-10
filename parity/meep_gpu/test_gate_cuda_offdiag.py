@@ -1,7 +1,7 @@
 """The off-diagonal CUDA gate's clauses that need no device — which is most of them.
 
-THE GATE ITSELF NEEDS A GPU for one thing only: comparing NVRTC's output against
-the array path. Everything that decides WHAT THAT COMPARISON MEANS runs here, and
+The gate itself needs a GPU for one thing only: comparing NVRTC's output against
+the array path. Everything that decides what that comparison means runs here, and
 every one of them is a silent wrong ANSWER rather than a crash:
 
 * whether the fixture can distinguish anything at all — a case whose coupling is
@@ -60,6 +60,30 @@ gate = load(GATE_PATH, "gate_cuda_offdiag_under_test")
 policy_probe = load(POLICY_PROBE_PATH, "probe_cuda_offdiag_policy_binaries_under_test")
 
 from meep_gpu.cuda_kernels import coverage, offdiag_emitter  # noqa: E402
+
+
+@pytest.fixture
+def host_keeps_subnormals():
+    """The host FPU keeps subnormals for this test, and is put back afterwards.
+
+    For the tests that compute on the host in float32 inside the subnormal band.
+    Whether the thread flushes at entry is session order, not the test's doing:
+    MEEP's initialization flushes the host on x86-64 and never undoes it, and the
+    needle then reads 0 (measured: conda-forge MEEP 1.33.0 on a Linux x86-64 CI
+    runner). Same contract as ``host_keeps_subnormals`` in ``meep_gpu/conftest.py``,
+    whose fixtures this directory does not see.
+    """
+    from meep_gpu import backends, subnormal_policy
+
+    flushing_at_entry = backends.subnormals_flushed()
+    if flushing_at_entry:
+        subnormal_policy._drive_host_fpu(False)  # noqa: SLF001
+    assert not backends.subnormals_flushed(), (
+        "the host could not be driven to keep subnormals, so this test's subnormal "
+        "words would be flushed before it measured them")
+    yield
+    if backends.subnormals_flushed() != flushing_at_entry:
+        subnormal_policy._drive_host_fpu(flushing_at_entry)  # noqa: SLF001
 
 
 # ---------------------------------------------------------------------------
@@ -163,7 +187,7 @@ def test_the_transpose_is_armed_only_on_transpose_closed_masks():
 
 
 def test_the_transpose_moves_the_READS_and_leaves_the_DECLARATIONS_alone():
-    """THE REGRESSION FOR A MEASURED FALSE NULL, 2026-08-16.
+    """The regression for a measured false null, 2026-08-16.
 
     The first spelling of this defect renamed the signature too, which is a
     consistent ALPHA RENAME: the parameter in each position stays bound to the
@@ -257,7 +281,7 @@ def test_the_swept_cases_all_carry_a_live_coupling_and_a_moved_oracle():
         assert record["coupling_is_live"], spec
 
 
-def test_the_band_class_reaches_the_band_and_the_uniform_class_cannot():
+def test_the_band_class_reaches_the_band_and_the_uniform_class_cannot(host_keeps_subnormals):
     """A leg run under a subnormal policy whose operands hold no subnormal measures
     nothing and reports a pass while doing it. Measured per class, off device."""
     grid_shape = (8, 8, 8)
@@ -344,7 +368,7 @@ def test_the_evaluator_grammar_covers_every_shipped_source():
     ("scale_the_quarter_in_float32", "arithmetic"),
 ])
 def test_the_classifier_says_which_defects_the_evaluator_can_see(name, expected):
-    """THE MEASURED HAZARD, pinned per defect.
+    """The measured hazard, pinned per defect.
 
     On this gate's first laptop run, four defects planted in the pinned half came
     back UNCAUGHT and three planted outside the grammar came back with verdicts
@@ -514,8 +538,8 @@ def test_the_corpus_row_masks_are_both_in_the_product():
 # The policy-binaries probe
 # ---------------------------------------------------------------------------
 
-def test_the_needle_arithmetic_is_what_the_probe_claims_it_is():
-    """THE PROBE'S OWN PREDICTION, evaluated off device from the shipped text.
+def test_the_needle_arithmetic_is_what_the_probe_claims_it_is(host_keeps_subnormals):
+    """The probe's own prediction, evaluated off device from the shipped text.
 
     ``2n`` on the coupled component and ``n`` on the uncoupled ones, exactly, as
     bit patterns — every intermediate is a power of two inside the subnormal band.

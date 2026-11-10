@@ -1,6 +1,6 @@
 """The certified/uncertified partition, over the WHOLE package rather than per family.
 
-WHAT THIS FILE IS FOR. Every family module in this package carries two module-level
+What this file is for. Every family module in this package carries two module-level
 names -- ``CERTIFIED_KERNELS`` and ``UNCERTIFIED_KERNELS`` -- and a per-module test
 beside it checks that its own kernels land in exactly one of them. Those per-module
 checks are the ones that know the family: how many kernels it ships, which gate a
@@ -8,7 +8,7 @@ dead name owes, what its emitter can produce. What none of them can see is a mod
 that carries NEITHER name, because a test that reads one file cannot notice a file
 that has no test.
 
-MEASURED 2026-08-28, before this file existed: EIGHT family modules shipped kernels
+Measured 2026-08-28, before this file existed: EIGHT family modules shipped kernels
 and declared neither name -- ``bfast_curl``, ``conductive_kernels``, ``no_pml_curl``,
 ``special_kz_curl``, ``complex_beta_kernels``, ``complex_folded_kernels``,
 ``folded_offdiag_kernels`` and ``dispersive_offdiag_update_e``, eighteen kernels
@@ -33,7 +33,7 @@ ask:
 4. Does the record claim a kernel no module certifies -- an orphaned verdict, the
    failure that put six Triton welds in a ledger nothing recomputed?
 
-THE ANNOTATION TRAP, AND WHY THIS READER DOES NOT FALL INTO IT. The per-module
+The annotation trap, and why this reader does not fall into it. The per-module
 readers match ``ast.Assign`` only, which is why every family module's comment tells
 the next author to spell ``UNCERTIFIED_KERNELS`` WITHOUT a type annotation: an
 annotated assignment is an ``ast.AnnAssign``, invisible to them, and an invisible
@@ -43,7 +43,7 @@ partition is an unenforced one. Two modules annotate anyway
 reader would silently skip them. This one reads BOTH forms. That is strictly
 stronger and it is the only spelling difference this file has an opinion about.
 
-WHAT THIS FILE DOES NOT REPLACE. The per-module partition tests, all of which assert
+What this file does not replace. The per-module partition tests, all of which assert
 something this reader cannot derive -- the exact kernel set a family ships, that a
 particular family's dead set is EMPTY, which gate a dead name owes, or a set
 produced by calling an emitter over its row masks. Those clauses are the reason a
@@ -101,7 +101,7 @@ def family_modules() -> list[pathlib.Path]:
 def partition_sets(source: str) -> dict[str, object]:
     """``{name: value}`` for whichever of the two names the module assigns.
 
-    BOTH SYNTAX FORMS, deliberately -- see the annotation trap in the module
+    Both syntax forms, deliberately -- see the annotation trap in the module
     docstring. Evaluated with ``ast.literal_eval`` rather than by importing, because
     importing most of these modules needs CuPy and this must run on a laptop; a
     module that spells one of the two as a name reference rather than a literal is

@@ -201,7 +201,7 @@
     "triton/hd/nonlinear_fused_hd_pair"
    ],
    "utc": "2026-10-15T11:21:35Z",
-   "why": "R27 corpus gap (cert/CORPUS5/ALERT_EXPLAINED.txt): c1 without cuda/cuda_fused_hd_pair_2026-09-06, whose lift basis holds tests:TestSimulation.test_epsilon_input_file and test_numpy_epsilon; c1 never launches"
+   "why": "R27 corpus gap (the round's CORPUS5 record): c1 without cuda/cuda_fused_hd_pair_2026-09-06, whose lift basis holds tests:TestSimulation.test_epsilon_input_file and test_numpy_epsilon; c1 never launches"
   },
   {
    "expect_s": 20370,
@@ -253,7 +253,7 @@
     "triton/hd/folded_fused_hd_pair"
    ],
    "utc": "2026-10-15T11:21:35Z",
-   "why": "R27 corpus gap: the two units whose lift basis holds the two rows, run alone on the refreshed prefix (cert/CORPUS_FIX_LINUX.txt, record 82b44d39)"
+   "why": "R27 corpus gap: the two units whose lift basis holds the two rows, run alone on the refreshed prefix (the round's CORPUS_FIX_LINUX record 82b44d39)"
   },
   {
    "expect_s": 9197,

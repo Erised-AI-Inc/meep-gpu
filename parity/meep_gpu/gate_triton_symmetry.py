@@ -1,9 +1,9 @@
 """Bit-identity gate for the folded-grid (mirror symmetry) Triton kernels.
 
-WHY THIS IS A SEPARATE FILE AND NOT A BRANCH OF THE SHARED PROBE. The shared
+Why this is a separate file and not a branch of the shared probe. The shared
 probe (``probe_fused_kernel_bit_identity.py``) and the shared track adapter
-(``track_triton_pml.py``) are being edited RIGHT NOW by the concurrent fused-pair
-workflow, so this round does not touch either. Everything reusable is IMPORTED
+(``track_triton_pml.py``) were being edited by a concurrent fused-pair change when
+this gate was written, so it does not touch either. Everything reusable is IMPORTED
 from the shared probe and nothing is re-implemented: the byte comparator, the ULP
 key, the curl grouping, the split-field recurrence, the synthetic coefficient
 tables, the field seeding, the artifact writer. What is added here is only what
@@ -14,7 +14,7 @@ kernel, and a real-engine substitution). Merging these branches into
 edit once those files are free; it is listed with the rest of the deferred
 integration in ``meep_gpu/triton_kernels/symmetry.py``'s module docstring.
 
-THE GATE MUST STAY AT SUB-STEP GRANULARITY, and this is not a preference. At
+The gate must stay at sub-step granularity, and this is not a preference. At
 whole-step granularity NEITHER fold mask is observable: the driver's fill passes
 overwrite exactly the planes the masks protect, so a kernel carrying neither is
 bytewise-identical after a complete step (measured, both terminations, 24 steps,
@@ -42,7 +42,7 @@ Usage (the GPU host, one clear device)::
 Every case prints one flushed line as it lands and the JSON artifact is rewritten
 incrementally (the progress-reporting rule).
 
-THE ARTIFACT STATES ITS OWN OUTCOME. The last thing written is ``verdict``, a
+The artifact states its own outcome. The last thing written is ``verdict``, a
 dict carrying ``pass`` plus the clause behind every leg above — the shape
 ``gate_provenance.read_verdict`` already reads, so "did this gate release?" is
 answerable mechanically rather than by knowing this file. ``main`` exits 1 on a
@@ -193,7 +193,7 @@ def reference_curl(xp: Any, sources: Dict[str, Any], term, dtdx: Any,
     with neither the curl is an exact ``+0``. The full bracket over an absent
     partner is not the one-partner word: ``(a + g2) - g2`` rounds twice more.
 
-    ``pairwise_order`` is the package's grouping before the alignment,
+    ``pairwise_order`` is the package's grouping before it took MEEP's,
     ``dtdx * ((shifted_first - first) + (second - shifted_second))`` over both
     partners whatever the presence: a control the kernel must NOT reproduce.
     """
@@ -641,7 +641,7 @@ def multi_step_case(shape, boundaries, dtdx, phase, row_parity,
 
 
 #: The multi-step sub-sweep, as data rather than as a comprehension inside
-#: ``main``. TWO CONSUMERS NEED THE SAME LIST: the leg that runs it, and the
+#: ``main``. Two consumers need the same list: the leg that runs it, and the
 #: verdict clause that has to know how many cases a COMPLETE leg produces. With
 #: the product written out at the call site the clause could only compare a
 #: count against itself, and a leg that died at case 30 would record 30/30 and
@@ -789,7 +789,7 @@ _TOP_IF = re.compile(r"if BC([XYZ]) == MIRROR_PERIODIC:")
 _GHOST_IF = re.compile(r"if BC([XYZ]) == PERIODIC:")
 #: The curl call (``forms.curl_stencil``), whose grouping is MEEP's left-to-right
 #: ``dtdx * (((g1s - g1) + g2) - g2s)`` with the partner presence. The regroup puts
-#: the pairwise grouping the kernel carried before the forms back AT THE CALL SITE.
+#: the pairwise grouping the kernel carried before the forms back at the call site.
 _STENCIL = re.compile(
     r"curl(?P<t>\d) = curl_stencil\((?P<g1s>\w+), (?P<g1>\w+), (?P<g2>\w+), "
     r"(?P<g2s>\w+), dtdx, (?P<p1>\w+), (?P<p2>\w+)\)")
@@ -806,7 +806,7 @@ _DSIGU_LINE = re.compile(r"du(?P<t>\d) = record_in\(cb, lattice \+ (?P<w>\d), (?
 
 
 def drop_top_plane_mask(source: str) -> Tuple[str, int]:
-    """(a) The fold's own mask is gone. CAUGHT ONLY ON A ``MIRROR_PERIODIC`` CASE.
+    """(a) The fold's own mask is gone. Caught only on a ``MIRROR_PERIODIC`` case.
 
     Rewritten to ``curl0 = curl0`` rather than deleted: the statement is the whole
     body of a constexpr ``if`` and removing it is a syntax error, and a mutation
@@ -829,7 +829,7 @@ def top_plane_mask_on_a_metallic_fold_too(source: str) -> Tuple[str, int]:
     """(c) The top mask fires on BOTH folds. Deletes a plane the metallic fold steps.
 
     The classification getting it backwards in this direction is the silent half
-    of risk 5: a spurious top mask on a folded METALLIC axis wipes a stepped
+    of that error: a spurious top mask on a folded METALLIC axis wipes a stepped
     plane. ``== MIRROR_PERIODIC`` -> ``>= MIRROR_METALLIC``, i.e. any mirror.
     """
     return _TOP_IF.sub(r"if BC\1 >= MIRROR_METALLIC:", source), \
@@ -851,9 +851,9 @@ def fold_ghost_wraps(source: str) -> Tuple[str, int]:
 def regroup_stencil(source: str) -> Tuple[str, int]:
     """(e) MEEP's ``((a-b)+c)-d`` -> the pairwise ``(a-b)+(c-d)``. The associativity family.
 
-    INVERTED with the alignment: the shipped grouping is MEEP's, and the mutant is
-    the grouping the kernel carried before it, written at the call site so the
-    partner-presence select goes with it.
+    INVERTED: the shipped grouping is MEEP's, and the mutant is the grouping the kernel
+    carried before it took MEEP's, written at the call site so the partner-presence
+    select goes with it.
     """
     def pairwise(match: "re.Match[str]") -> str:
         return (f"curl{match['t']} = dtdx * (({match['g1s']} - {match['g1']})"
@@ -925,7 +925,7 @@ def plain_curl_collapse(source: str) -> Tuple[str, int]:
 
     On a cell outside both of target 0's layers (unit coefficients) the word
     becomes ``(f + (0 - curl)) - 0``, which is MEEP's ``f - curl`` on every pair but
-    ``f = -0, curl = +0``. CAUGHT ONLY BY THE PLANTED CASE: a random state never
+    ``f = -0, curl = +0``. Caught only by the planted case: a random state never
     draws that pair. The statement is inserted after target 0's form call, at that
     call's own indentation.
     """
@@ -1295,7 +1295,7 @@ ENGINE_STEPS = 4
 def run_engine(results: Dict[str, Any], out_path: str) -> Dict[str, Any]:
     """``stepping.step_B``/``step_D`` against the plan, from identical state.
 
-    THE STRONGEST LEG, and the one the synthetic sweep cannot be: it uses the REAL
+    The strongest leg, and the one the synthetic sweep cannot be: it uses the REAL
     graded PML tables at the STORED extent of a folded axis, the real
     ``_boundary_kinds`` resolution, the real ``_far_reflect_rows``, and the
     predicate + plan builder the engine would use. What it is NOT is an
@@ -1435,7 +1435,7 @@ def _time(callable_: Callable[[], None]) -> float:
 # The recorded verdict
 # ---------------------------------------------------------------------------
 #
-# WHY THIS EXISTS. Every leg above decides something — 512/512 guarded, 0/512
+# Why this exists. Every leg above decides something — 512/512 guarded, 0/512
 # unguarded, 14 mutations caught, 7/7 on real folded grids — and until now the
 # gate wrote all of it down and never wrote down what it CONCLUDED. Measured
 # 2026-08-19: ``gate_provenance.read_verdict`` returns ``released=None`` on the
@@ -1445,9 +1445,9 @@ def _time(callable_: Callable[[], None]) -> float:
 # ``read_verdict`` already understands (``verdict.pass``, the shape
 # ``gate_triton_cylindrical`` writes) — not an eleventh spelling of one fact.
 #
-# TWO RULES SHAPE EVERY CLAUSE BELOW.
+# Two rules shape every clause below.
 #
-# 1. A COUNT IS COMPARED AGAINST WHAT A COMPLETE LEG PRODUCES, never against
+# 1. A count is compared against what a complete leg produces, never against
 #    itself. The artifact is rewritten every 25 cases (progress reporting), and every leg's
 #    running summary is a ratio of what has landed SO FAR — so a sweep killed at
 #    case 300 leaves ``300/300 identical`` behind it. Against itself that reads
@@ -1455,7 +1455,7 @@ def _time(callable_: Callable[[], None]) -> float:
 #    not. The expected counts are therefore derived from the sweep constants,
 #    which is also what makes them follow an edit to those constants.
 #
-# 2. A LEG THAT FAILS MUST MAKE THE VERDICT FALSE, NOT MAKE THE PROCESS RAISE.
+# 2. A leg that fails must make the verdict false, not make the process raise.
 #    A gate that dies writes no verdict at all, and ``read_verdict`` reports
 #    that as ``released=None`` — UNREADABLE, which is deliberately not the same
 #    claim as refused. A refusal that arrives dressed as a silence is the hole
@@ -1505,7 +1505,7 @@ def expected_fill_cases() -> int:
 def _synthetic_clause(results: Dict[str, Any]) -> Tuple[bool, Dict[str, Any]]:
     """Guarded identical on every case, and the unguarded control identical on none.
 
-    BOTH HALVES ARE REQUIRED. The guarded half alone cannot distinguish a kernel
+    Both halves are required. The guarded half alone cannot distinguish a kernel
     that matches from a comparator that would call anything identical; the
     unguarded half (``enable_fp_fusion=True``) is the positive control that says
     the comparison can see a difference, and it is only evidence while it fails
@@ -1519,7 +1519,7 @@ def _synthetic_clause(results: Dict[str, Any]) -> Tuple[bool, Dict[str, Any]]:
         "unguarded_identical": f"{unguarded.get('identical')}/{unguarded.get('ran')}",
         "expected_per_guard": expected,
     }
-    # THE PLANTED CELLS ARE PART OF THE CLAIM: the split record's plain cells must
+    # The planted cells are part of the claim: the split record's plain cells must
     # have been planted and must read MEEP's plain word back, or the planted-case
     # mutation below was scored on a sweep that never drew its pair.
     planted = int(record.get("planted_cells", 0))
@@ -1551,7 +1551,7 @@ def _multi_step_clause(results: Dict[str, Any]) -> Tuple[bool, Dict[str, Any]]:
 def _mutations_clause(results: Dict[str, Any]) -> Tuple[bool, Dict[str, Any]]:
     """Every curl defect changes the answer, and every one of them was tried.
 
-    THE NAME LIST IS CHECKED, not just the entries present. A mutation whose
+    The name list is checked, not just the entries present. A mutation whose
     needle drifted off the kernel records an ``error`` and no ``caught`` key, and
     a leg that died halfway records nothing at all for the rest — both of which
     would otherwise leave a shorter dict in which every entry says ``caught``.
@@ -1618,7 +1618,7 @@ def _fill_mutations_clause(results: Dict[str, Any]) -> Tuple[bool, Dict[str, Any
 def _engine_clause(results: Dict[str, Any]) -> Tuple[bool, Dict[str, Any]]:
     """``stepping.step_B``/``step_D`` substituted on real folded grids, identical.
 
-    A REFUSED CONFIGURATION FAILS THIS CLAUSE. The predicate declining a grid the
+    A refused configuration fails this clause. The predicate declining a grid the
     gate built is not a neutral outcome here: this leg exists to exercise the
     real coverage predicate and the real plan builder, and a refusal means the
     kernel was never launched on that grid — an untested configuration, recorded
@@ -1689,7 +1689,7 @@ def verdict(results: Dict[str, Any], legs: Sequence[str]) -> Dict[str, Any]:
         if not ok:
             out["reasons"].append(f"{clause_name}: {json.dumps(detail, default=str)}")
 
-    # A LEG THAT RAISED, STATED SEPARATELY. Its clause is already false (a leg
+    # A leg that raised, stated separately. Its clause is already false (a leg
     # that died wrote a short record, or none), but a leg can also raise AFTER
     # its record is complete — in the summary log, or in its own final save — and
     # that failure would otherwise leave no mark on the verdict at all.
@@ -1699,7 +1699,7 @@ def verdict(results: Dict[str, Any], legs: Sequence[str]) -> Dict[str, Any]:
     if raised:
         out["reasons"].append("certifying leg(s) raised: " + ", ".join(raised))
 
-    # THE POLICY IS A RELEASE CLAUSE, NOT A DECORATION. Every clause above is a
+    # The policy is a release clause, not a decoration. Every clause above is a
     # byte comparison, and a byte comparison is a statement about one float32
     # subnormal policy; a run whose strip was never installed or never exercised
     # compared bytes this engine does not ship, and the weld quoting it would
@@ -1751,7 +1751,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     args = parser.parse_args(argv)
     legs = tuple(name.strip() for name in args.legs.split(",") if name.strip())
 
-    # THE SHIP POLICY, INSTALLED BEFORE THE FIRST DEVICE COMPILE. This gate's
+    # The ship policy, installed before the first device compile. This gate's
     # ORACLE IS CuPy — reference_pml_step is called with ``cp``, never ``np`` —
     # and CuPy appends '-ftz=true' to every NVRTC compile unconditionally
     # (cupy/cuda/compiler.py:552) while Triton keeps subnormals natively. Without
@@ -1785,7 +1785,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     def run_leg(name: str, body: Callable[[], None]) -> None:
         """One leg, or the record of why it did not finish.
 
-        A LEG IS NOT ALLOWED TO KILL THE RUN. An uncaught exception here writes
+        A leg is not allowed to kill the run. An uncaught exception here writes
         no verdict at all, and ``read_verdict`` reports a verdict-less artifact
         as ``released=None`` — unreadable, which is deliberately NOT the claim
         "refused". Recording the exception and carrying on turns a leg that blew
@@ -1828,7 +1828,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     run_leg("engine", engine_leg)
     run_leg("bench", lambda: run_bench(results, args.out))
 
-    # REFRESHED AFTER THE LEGS, not only at startup: the strip's counters mean
+    # Refreshed after the legs, not only at startup: the strip's counters mean
     # nothing until this run's compiles have gone through them.
     results["subnormal_policy"] = policy_stamp("cupy")
     results["subnormal_policy_license_reasons"] = ftz_strip_license_reasons()

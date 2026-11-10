@@ -7,7 +7,7 @@ MEEP's owned-cell loop leaves to the boundary pass.
 differences for B, and MEEP's negated strides (backward differences) for D, so
 that a single ``field -= curl`` expression produces dB/dt = -curl(E) and
 dD/dt = +curl(H). Where a PML layer is present the same pass takes MEEP's form
-PER STRUCTURE CHUNK (step_db.cpp:56-59): the split-field auxiliary recurrence on
+per structure chunk (step_db.cpp:56-59): the split-field auxiliary recurrence on
 the cells whose chunk carries the component's dsigu layer, the dsig-only form on
 the field alone everywhere else, read from the run's
 :class:`~.chunk_map.RegionPlan`. ``update_H`` and ``update_E`` close the
@@ -72,7 +72,7 @@ coupling (special-kz beta, cylindrical i*m/r) or a complex source amplitude
 what makes that true: a complex64 coefficient would multiply the real part by the
 imaginary part of the field and the equivalence would be gone.
 
-COMPLEX STORAGE IS STEPPED PART BY PART, as MEEP steps its two ``realnum`` arrays
+Complex storage is stepped part by part, as MEEP steps its two ``realnum`` arrays
 (the ``DOCMP`` loops): every product on a field goes through :mod:`~.part_products`
 -- a real coefficient times each part, a quarter turn as a swap of parts, a Bloch
 connection as MEEP's separately rounded ``complex<float>`` product. NumPy's and
@@ -373,15 +373,15 @@ def step_B(fields: "Fields", pml: Optional["PML"] = None) -> None:  # Curl sub-s
         # the prefix sum of (1/r)d(r*Ep)/dr, summed per structure chunk. Ep sits at the
         # node (r-shift 0), so ir0 = 0.0 where the D side's Hp gave 0.5.
         #
-        # THE PREFIX IS A CUMSUM, NOT A FIELD, so the generic shift machinery's
+        # The prefix is a cumsum, not a field, so the generic shift machinery's
         # metallic far ghost is wrong for it: a zero ghost turns the last row's
-        # forward difference into MINUS THE WHOLE ACCUMULATED SUM. MEEP stores
+        # forward difference into minus the whole accumulated sum. MEEP stores
         # the wall row (nr + 1 rows) and its Bz reads prefix[wall] - prefix[last],
         # with the wall's Ep held at zero by zero_metal — a LOCAL value. The same
         # thing here: the prefix runs over Ep extended by its zero wall row, and
         # Bz's radial difference is taken of consecutive extended rows directly.
         # Measured before the wall row: the m = 1 run's first divergence was born at the
-        # LAST TWO ROWS at step 3 (rows 0-17 exactly zero error) and grew inward,
+        # last two rows at step 3 (rows 0-17 exactly zero error) and grew inward,
         # with a spurious Hz where MEEP's cancels to 5e-11. The D side never
         # needs the wall row: its backward difference reads rows i and i-1.
         xp = grid.xp
@@ -389,7 +389,7 @@ def step_B(fields: "Fields", pml: Optional["PML"] = None) -> None:  # Curl sub-s
         # zeros_like + concatenate, which allocated the whole volume again every
         # step; the two writes below move exactly the bytes concatenate moved.
         #
-        # The ``scratch is None`` branch exists so the POOL CAN BE TURNED OFF here as
+        # The ``scratch is None`` branch exists so the pool can be turned off here as
         # it can everywhere else on the step path: that switch is what
         # test_step_scratch_is_bit_identical differences against, and without it the
         # cylindrical path — which holds `radial`, the one pooled buffer carried
@@ -574,7 +574,7 @@ def _apply_curl(fields: "Fields", term: Any, curl: Any, pml: Optional["PML"],
     (``fields.condfac_for``), so a component with no sigma takes the plain path even
     while its neighbours are lossy — which is MEEP's own allocation granularity.
 
-    UNDER A PML THE FORM IS CHOSEN PER STRUCTURE CHUNK, as MEEP chooses it
+    Under a PML the form is chosen per structure chunk, as MEEP chooses it
     (step_db.cpp:56-59): the run's :class:`~.chunk_map.RegionPlan` names, per
     component, the cells whose owning chunk carries the dsigu layer. There the
     split-field recurrence runs (:func:`_apply_pml_update`); everywhere else the
@@ -651,7 +651,7 @@ def _cylindrical_axis_increment_D(fields: "Fields", magnetic: Dict[str, Any],
     off-axis Hp site. |m| = 1: Dp on the axis takes d(Hr)/dz - 2*Hz (the factor
     2 is the doubled-ivec compensation — Hz sits half a cell off the axis).
 
-    The increment is FOLDED INTO THE CURL ARRAY at row 0 by the caller rather
+    The increment is folded into the curl array at row 0 by the caller rather
     than added to the field afterwards, for the same reason the i*m/r pass is:
     MEEP's axis loop is the single kap/sig-laddered recurrence over that row
     (its main loop never visits it), and folding the dfcnd into the curl makes
@@ -851,7 +851,7 @@ def _cylindrical_imr_increment(fields: "Fields", target: str, partner_values: An
     Complex storage is REQUIRED — the coupling has no real-storage form, which is MEEP's
     own rule (``change_m`` aborts on real fields for m != 0).
 
-    Returned in CURL SIGN CONVENTION, ``-raw``, for :func:`_apply_folded_increment`, which
+    Returned in curl sign convention, ``-raw``, for :func:`_apply_folded_increment`, which
     SUBTRACTS it through MEEP's additive ladder: the pass is increment-only (no decay of
     ``the_f``), keyed on the chunk's ``dsig`` and ``dsigu`` layers exactly as the curl of
     the same component keys. MEEP's eight loops are that ladder's forms: an R target's
@@ -995,7 +995,7 @@ def _bfast_term(fields: "Fields", term: CurlTerm, operands: CurlOperands,
     component has been applied: MEEP's ``STEP_BFAST`` is a pass of its own after
     ``STEP_CURL`` (step_db.cpp:124-142), not a term inside the curl.
 
-    ONE PARTNER. MEEP hands ``step_bfast`` NULL for a partner its step plan lacks and,
+    One partner. MEEP hands ``step_bfast`` NULL for a partner its step plan lacks and,
     when that is ``g1``, swaps ``g1`` with ``g2`` and ``k1`` with ``k2``
     (step_generic.cpp:342-346); the branch then reads ``k1*(g1[i+s1] + g1[i]) - F[i]``.
     In MEEP's PLAIN branch — no PML layer on either axis in the chunk and no
@@ -1007,7 +1007,7 @@ def _bfast_term(fields: "Fields", term: CurlTerm, operands: CurlOperands,
     presence — so the two spellings differ only in signed zeros; the product by the
     zero k (``-0.0`` on the D side) is still formed, because its sign reaches the store.
 
-    WHY THE SUM AND NOT THE DIFFERENCE. ``S`` is twice the two-point average of the
+    Why the sum and not the difference. ``S`` is twice the two-point average of the
     cross product interpolated onto the target's own Yee position, and ``F_n = S_n -
     F_{n-1}`` with output ``F_n - F_{n-1}`` is the z-domain filter
     ``(1 - z^-1)/(1 + z^-1)`` — the TUSTIN (bilinear) derivative — so ``raw`` is
@@ -1017,7 +1017,7 @@ def _bfast_term(fields: "Fields", term: CurlTerm, operands: CurlOperands,
     ``dt * dA/dt`` on a smooth turn-on (``test_stepping``): 3.5e-04 relative, which is
     the finite-difference reference's own second-order floor, not the identity's.
 
-    MARGINALLY STABLE, ON PURPOSE. The homogeneous mode of ``F_n = -F_{n-1}`` is
+    Marginally stable, on purpose. The homogeneous mode of ``F_n = -F_{n-1}`` is
     ``(-1)^n``, undamped forever: a unit perturbation with no drive gives -1, +1, -1, …
     indefinitely (pinned in ``test_stepping``). MEEP has exactly this property. It
     means single-precision Nyquist noise in ``f_bfast`` never decays, unlike every other
@@ -1336,11 +1336,11 @@ def _image_nonlinear_mirror_ghosts(fields: "Fields", plan: Any) -> None:  # E an
     the image while the update is pointwise. The nonlinear ``Dsqr`` reads the
     neighbouring cells of the transverse partners, so at a ghost it is not: there the
     ghost is written from its image here, after the update, as
-    :func:`_fill_symmetry_ghost_cells` writes D and B. MEASURED (bit_parity_0_10
-    phase-0 leg P0-h, the folded nonlinear case against MEEP 1.33.0 built without
-    contraction): without it, ghost E words depart from step 68 and owned words
+    :func:`_fill_symmetry_ghost_cells` writes D and B. Measured on the folded
+    nonlinear case against MEEP 1.33.0 built without
+    contraction: without it, ghost E words depart from step 68 and owned words
     from step 90; with it, 0 owned or wall words differ to step 1000. A linear run
-    keeps the pointwise ghost, which reaches no owned or wall word (the same leg's
+    keeps the pointwise ghost, which reaches no owned or wall word (the same measurement's
     linear control).
 
     ``f_w`` is written only where the accumulation runs (the auxiliary contract), and
@@ -1387,7 +1387,7 @@ def calc_nonlinear_u(dsqr: Any, di: Any, chi1inv: Any, chi2: Any,
         c3 = Dsqr * chi3 * (chi1inv * chi1inv * chi1inv)
         u  = (1 + c2 + 2*c3) / (1 + 2*c2 + 3*c3)
 
-    THE APPROXIMATION, IN MEEP'S OWN WORDS (step_generic.cpp:537-541): inverting
+    The approximation, in MEEP's own words (step_generic.cpp:537-541): inverting
     ``D = eps*E + chi2*E^2 + chi3*|E|^2 E`` for E is a cubic, and this Pade
     approximant stands in for solving it. "This is inaccurate if the nonlinear index
     change is large, of course, but in that case the chi2/chi3 power-series expansion
@@ -1436,7 +1436,7 @@ def _nonlinear_constitutive(fields: "Fields", component: str,
                             displacement: Dict[str, Any]) -> Any:  # One component's scaled gs*us.
     """``(gs * us) * calc_nonlinear_u(...)`` for one component — MEEP step_generic.cpp:646-655.
 
-    REAL AND IMAGINARY PARTS ARE INDEPENDENT, and that is MEEP's doing, not a
+    Real and imaginary parts are independent, and that is MEEP's doing, not a
     convenience. ``update_eh``'s ``DOCMP`` loop runs the whole nonlinear update once
     per Cartesian part of the complex field (update_eh.cpp:149), passing
     ``dmp[dc][cmp]`` — so Re E is recovered from Re D with a ``u`` built only from
@@ -1448,7 +1448,7 @@ def _nonlinear_constitutive(fields: "Fields", component: str,
     gs = displacement["volumes"][component]
     us = fields.inverse_epsilon_for(component)
     xp = fields.grid.xp
-    # MEEP's MOST GENERAL CASE (step_generic.cpp:590-601) scales the WHOLE row
+    # MEEP's most general case (step_generic.cpp:590-601) scales the WHOLE row
     # product by the Pade factor: fw = (gs*us + OFFDIAG + OFFDIAG) * u. The row is a
     # double (each OFFDIAG is, :580-581), so the product is formed in double and the
     # store rounds it once. The coefficient is real, so the row is formed per part
@@ -1494,14 +1494,14 @@ def _nonlinear_dsqr(gs: Any, transverse: Tuple[Any, Any], part: Any) -> Any:  # 
     (:func:`_nonlinear_transverse_sums`) back into a mean before it is squared, so
     ``Dsqr`` really is ``|D|^2`` interpolated to this component's Yee position.
 
-    THE PRECISION IS MEEP's. ``gs * gs`` and ``g1s * g1s + g2s * g2s`` are ``realnum``
+    The precision is MEEP's. ``gs * gs`` and ``g1s * g1s + g2s * g2s`` are ``realnum``
     (float32) operations, but ``0.0625`` is a double literal, so the scaled sum and the
     addition that follows it are double operations, and the ``const realnum Dsqr``
     parameter of ``calc_nonlinear_u`` (:542) rounds the result once. Here: the two
     float32 terms are formed in the field's own precision, widened, scaled and added
     as float64 ufuncs, and the sum is rounded once back to the field's precision.
     Against the float32 form this moves Dsqr only where the exact ``0.0625 * t`` lies
-    below float32's normal range (MEASURED, bit_parity_0_10 phase-0 leg P0-h:
+    below float32's normal range (a host check of the two forms over synthetic float32 operand bands:
     12,568,559 of 396,821,530 operand pairs differ, 0 outside that band), which on
     the measured cases reaches no stored E word.
 
@@ -1535,11 +1535,11 @@ def _nonlinear_transverse_sums(fields: "Fields", component: str,
     way round is a half-cell registration error that survives every scalar test and
     shows up only in the mixed-polarization terms.
 
-    THE ASSOCIATION IS MEEP's, LEFT TO RIGHT: ``((g[i] + g[i+s]) + g[i-s1]) +
+    The association is MEEP's, left to right: ``((g[i] + g[i+s]) + g[i-s1]) +
     g[i+(s-s1)]``, each addition one rounding in the field's precision. Pairing the
     corners instead, ``(g[i] + g[i-s1]) + (g[i+s] + g[i+(s-s1)])``, is the same sum in
-    exact arithmetic and a different float32 word. MEASURED against MEEP 1.33.0 single
-    precision built without contraction (bit_parity_0_10 phase-0 leg P0-h, the four
+    exact arithmetic and a different float32 word. Measured against MEEP 1.33.0 single
+    precision built without contraction (the four
     unfolded nonlinear cases): the pair form moved 79,850 to 2,056,001 stored words on
     three of them, this order none on any.
 
@@ -1616,7 +1616,7 @@ def _offdiagonal_terms(fields: "Fields", component: str,
     ``structure_chunk::set_chi1inv`` registers the off-diagonal entries at the
     component's Yee site minus half a cell along its own axis — the integer node
     (anisotropic_averaging.cpp:248-257, ``here - shift1``) — so ``u[i]`` multiplies
-    the two-point partner average AT ITS OWN NODE and ``u[i+s]`` the average at the
+    the two-point partner average at its own node and ``u[i+s]`` the average at the
     next node up. The partner pair is formed exactly as
     :func:`_nonlinear_transverse_sums` forms its half — a half-cell DOWN the
     partner's axis, then the product shifted half a cell UP this component's axis —
@@ -2122,7 +2122,7 @@ def _fill_folded_far_ghosts(fields: "Fields", terms: Sequence[CurlTerm]) -> None
     ``locate_point_in_user_volume`` then ``S.transform`` / ``S.phase_shift``);
     the D sub-step's backward differences at the top row are what consume it.
 
-    THE IMAGE ROW IS NOT ALWAYS ``n - 2``. Both parities put the ghost one
+    The image row is not always ``n - 2``. Both parities put the ghost one
     half-cell above ``big_corner``, but ``big_corner`` is the second mirror
     itself at an EVEN count (ghost at doubled ``n_full + 1``, image ``n_full -
     1`` — the row below, slot ``n - 2``) and one half-cell ABOVE it at an ODD
@@ -2443,7 +2443,7 @@ def _shift_up(xp: Any, field: Any, axis: int, boundary: str,
     face; the driver refuses to combine a nonlinearity with a live-faced periodic
     fold rather than serve that zero as an answer.
 
-    WHICH SAMPLE THE ZERO STANDS FOR, on a metallic axis. Every array this helper
+    Which sample the zero stands for, on a metallic axis. Every array this helper
     shifts has Yee shift 0 on the shifted axis: the two curl partners of a component
     always sit on the opposite side of the half-cell from it, and the forward
     difference is always the shift-1 component reading its shift-0 neighbours (Bx
@@ -2546,7 +2546,7 @@ def _bloch_ghost_operand(xp: Any, field: Any, axis: int, boundary: str,
                          scratch_tag: str = "bloch_ghost") -> Any:  # Same-index read across the window edge.
     """A stencil operand read at the SAME stored index, with plane 0 as MEEP's not-owned word.
 
-    THE STORED WINDOW. On an axis MEEP makes Bloch-periodic it OWNS, for a component
+    The stored window. On an axis MEEP makes Bloch-periodic it OWNS, for a component
     with Yee shift 0 there, the points ``lc + 2 .. lc + 2N``, and holds ``lc`` as a
     not-owned word that ``step_boundaries`` fills from the owned ``lc + 2N``
     (boundaries.cpp:203-230, step.cpp:171-221). This engine stores the same window:
@@ -2796,7 +2796,7 @@ def separate_h_from_b(fields: "Fields", pml: "PML") -> None:
     magnetic current deposited inside the layer before that first update is in both.
     This engine allocates H and ``f_w`` at zero; the two starts agree wherever B is
     zero at that moment, and differ where a magnetic source has already written B in
-    a dsigw cell whose ``kms`` is not 1 (MEASURED by phase 0's P0-f, the in-layer
+    a dsigw cell whose ``kms`` is not 1 (measured on the in-layer
     magnetic cases: the copy start reproduces MEEP's step-1 H word 4 of 4 where the
     zero start reproduces 0 of 4).
 
@@ -2896,7 +2896,7 @@ def _apply_conductive_pml_update(
     the word only on dsig cells, and the selection below follows MEEP's chunk
     structure on every cell anyway.
 
-    THE MEMBERSHIPS ARE DATA. ``dsig_active`` / ``dsigu_active`` are the chunk
+    The memberships are data. ``dsig_active`` / ``dsigu_active`` are the chunk
     memberships of the two layers on this component's lattice (the run's
     :class:`~.chunk_map.RegionPlan`; broadcastable bool lines or full volumes), and
     ``conductive`` is the plan's per-cell volume of the chunks that keep the
@@ -2904,11 +2904,11 @@ def _apply_conductive_pml_update(
     carries a layer owns cells whose own sigma is exactly zero, and a chunk that keeps
     a conductivity owns cells whose own conductivity is zero.
 
-    THE AUXILIARY CONTRACT: ``fu`` is written only on the dsigu cells and ``f_cond``
+    The auxiliary contract: ``fu`` is written only on the dsigu cells and ``f_cond``
     only on the dsig cells of the chunks that keep a conductivity -- the cells whose
     form reads them -- and both keep their words everywhere else.
 
-    THIS IS THE ENGINE'S MOST EXPENSIVE CURL, reached by any run combining a material
+    This is the engine's most expensive curl, reached by any run combining a material
     conductivity with a PML. It evaluates every form on the whole volume and selects
     with ``copyto(..., where=mask)``, which allocates nothing; the full-volume
     temporaries come from the :class:`~.fields.StepScratch` pool under tags of their
@@ -3048,7 +3048,7 @@ def _boundary_kinds(grid: "Grid", pml: Optional["PML"]) -> Tuple[str, str, str]:
     which the PML deliberately skips (an absorber there would eat the mirrored half)
     and which reflects rather than repeating. Any of the three axes may carry one.
 
-    THE FOLD OUTRANKS THE DECLARATION, and that is not a tie-break, it is the same
+    The fold outranks the declaration, and that is not a tie-break, it is the same
     answer twice. MEEP keeps ``symmetry`` and ``fields::boundaries`` as separate
     mechanisms, so a folded axis still declares an outer condition for the full cell's
     two faces; but the stored quadrant's near face is the plane (mirror ghost) and its
@@ -3145,7 +3145,7 @@ def _zero_metal(fields: "Fields", components: Sequence[str]) -> None:  # Zero th
     engine does not store: its value is supplied as the zero ghost by
     :func:`_shift_up`, so the pair of walls is complete without the extra plane.
 
-    A FOLDED METALLIC AXIS HAS NO STORED WALL AT ALL, and writing one is not a
+    A folded metallic axis has no stored wall at all, and writing one is not a
     harmless extra zero. ``grid_volume::halve`` moves that axis's origin to
     ``io = -2`` (vec.cpp), so its stored cell 0 sits one full cell BELOW the mirror
     plane and holds the parity-weighted ghost ``fill_symmetry_bc_D`` writes there —

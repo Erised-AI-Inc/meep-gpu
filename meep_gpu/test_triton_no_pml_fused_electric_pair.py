@@ -5,7 +5,7 @@ THE PRODUCT welds the no-absorber ``step_D`` to the stored-E ``update_E`` and ca
 across it by ``deposit_repair.PLAIN_PATH`` — the SECOND repair, and this is the first
 product to declare it.
 
-WHAT THIS FILE MEASURES AND WHAT THE DEVICE GATE MEASURES ARE DIFFERENT QUESTIONS. The
+What this file measures and what the device gate measures are different questions. The
 bytes are the gate's (``parity/meep_gpu/probe_triton_no_pml_fused_electric_pair.py``, on
 an RTX A6000). What is here is everything answerable without a device and everything
 that would be a silent widening if it drifted: the TRANSCRIPTION (each arithmetic block
@@ -13,14 +13,14 @@ is a contiguous run of a certified body), the PREDICATE in both directions, the 
 tables the product reads rather than spells, the declaration that it is not an arm, and
 the wiring records that have to name it.
 
-THE ONE CLAUSE WORTH READING FIRST is the priced refusal. This cell has three corpus
+The one clause worth reading first is the priced refusal. This cell has three corpus
 rows. Two of them were refused until the 2026-09-01 lift not for the deposit — that is
 carried — but because the driver then rescaled a WHOLE D volume for a NON-INTEGRATED
 source on a conductive run, at cells no deposit closure can name. The driver has since
 lost every pass over the component: the conductivity scale is inside each source's own
 double-precision deposit (``sources._deposit``, step.cpp:299-307). What survives is the
 refusal of a source that publishes no deposit table, which a point repair cannot name;
-it is pinned here in BOTH directions and MEASURED on the device by the gate's own
+it is pinned here in BOTH directions and measured on the device by the gate's own
 ``priced_refusal`` leg rather than argued.
 """
 
@@ -151,7 +151,7 @@ def reasons_of(product, fields, pml, sources):
     on the merge-bar laptop and which keeping would make every row here read as
     refused.
 
-    NOTHING ELSE COMES OFF, and that is the point of the 2026-08-31 fix this helper
+    Nothing else comes off, and that is the point of the 2026-08-31 fix this helper
     used to work around. ``_curl_half`` once asked BOTH no-absorber arms and returned
     both reason lists when neither admitted -- which on a NumPy host is always -- so
     the LOSING arm's clauses ("a conductivity is installed on Dx", "no curl target
@@ -322,7 +322,7 @@ def test_replaces_is_the_drivers_own_call_order(product):
     than carried, and a launch may only claim to replace what it performs.
     """
     assert product.REPLACES == ("step_D", "zero_metal_D", "update_E")
-    # READ OFF THE DRIVER'S `step` BODY by AST, so a docstring mention cannot stand in
+    # Read off the driver's `step` BODY by AST, so a docstring mention cannot stand in
     # for a call and a call moved out of `step` fails here.
     import inspect
 
@@ -332,7 +332,7 @@ def test_replaces_is_the_drivers_own_call_order(product):
 
     body = ast.parse(textwrap.dedent(
         inspect.getsource(driver_module.FdtdDriver.step)))
-    # SORTED BY POSITION: `ast.walk` is breadth-first and its order is not the
+    # Sorted by position: `ast.walk` is breadth-first and its order is not the
     # source's, so an unsorted list answers a different question from "in what order
     # does the driver call these".
     calls = [node for node in ast.walk(body)
@@ -420,7 +420,7 @@ def test_the_flag_at_False_would_cost_every_electric_run(product):
 
 
 # ---------------------------------------------------------------------------
-# THE LIFTED REFUSAL — the clause that used to cost two of the three corpus rows
+# The lifted refusal — the clause that used to cost two of the three corpus rows
 # ---------------------------------------------------------------------------
 
 def test_the_corpus_rows_own_scaled_source_is_now_admitted(product):
@@ -475,7 +475,7 @@ def test_the_clause_is_quiet_except_for_the_tableless_scaled_source(product):
 
 
 def test_the_drivers_conductive_deposit_moves_only_its_own_cells():
-    """THE TRIPWIRE UNDER THE LIFT, re-measured on the deposit that replaced the replay.
+    """The tripwire under the lift, re-measured on the deposit that replaced the replay.
 
     The lifted clause is a claim about a file this module does not own: that on a
     conductive run the driver changes a component ONLY at a source's own cells, so a
@@ -583,7 +583,7 @@ def test_the_composer_routes_this_product_and_dispatch_still_refuses_it():
     ``_install_fused_pair``, taking both slots only when ``_pair_may_absorb`` finds
     the arm table has already given them to the arms this kernel implements.
 
-    WIRING IS NOT RELEASING, and the second half is that sentence made checkable
+    Wiring is not releasing, and the second half is that sentence made checkable
     from the PRODUCT's side rather than from the composer's. It asserted "the label
     this product writes is NOT in ``fastpath.RELEASED_FUSED_ARMS``" until
     2026-09-14 -- a PRE-WIRING fact that the release then inverted, which is the
@@ -594,7 +594,7 @@ def test_the_composer_routes_this_product_and_dispatch_still_refuses_it():
     ledger entry) and ``PENDING_DEVICE_GATE_ARMS``, and
     ``FUSED_ARM_CONSTITUENTS`` names it.
 
-    ITS SECOND CASE CHANGED IN THE SAME ROUND: ``material_dispersion_0d`` was
+    Its second case changed with that release: ``material_dispersion_0d`` was
     replaced by ``no_pml_dispersive_2d``, which drives the same two axis values
     (dimensions 2, conductivity False) on a cell with real extent, because on a
     (1, 1, 1) grid every non-vacuity control the driver-route gate owns is vacuous.

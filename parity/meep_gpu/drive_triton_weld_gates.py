@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Run every Triton device gate SEQUENTIALLY on one physically empty GPU.
+"""Run every Triton device gate SEQUENTIALLY on one physically empty GPU, or one whose only resident is its display.
 
-WHY A DRIVER AND NOT FOURTEEN SHELL SCRIPTS. The certified families each got a
+Why a driver and not fourteen shell scripts. The certified families each got a
 bespoke ``run_triton_*_direct.sh``; the fourteen UNWELDED ones would need
 fourteen more, and every one of them would re-implement the residency guard, the
 subnormal-policy cache naming, the libcuda stub and the artifact readout — four
@@ -9,11 +9,18 @@ places to get one thing wrong, times fourteen. Worse, a shell fleet has no
 uniform record: the campaign's answer to "which gates released?" would again be
 recovered by reading fourteen differently shaped logs by eye.
 
-WHAT THIS OWNS, AND WHAT IT DELIBERATELY DOES NOT.
+What this owns, and what it deliberately does not.
 
-* It owns PLACEMENT (one physically empty GPU, re-verified before every gate, so
-  a process that arrives mid-campaign stops the next gate rather than sharing a
-  device with it), the ENVIRONMENT every gate needs on this box, and the RECORD.
+* It owns the ENVIRONMENT every gate needs on this box and the RECORD. It owns no
+  PLACEMENT rule: which card is free is decided by the round's one rule
+  (``rounds/1.0/display_card.py``, the idle rule and the display rule for a card that also
+  drives a display), the rule the round's lanes apply. Inside a lane the gates run on the
+  card the lane took and recorded (``--lane-placement``); before every gate this driver asks
+  that same rule once more (:data:`PLACEMENT`, :func:`wait_for_device`), so a process that
+  arrives mid-campaign stops the next gate rather than sharing a device with it. Run on its
+  own, with no lane, it asks the rule for the card it is told to use at the start
+  (:meth:`display_card.Placement.start`) and refuses every gate on a card the rule refuses.
+  Each gate's row records the decision.
 * It owns NOTHING about a verdict. It runs the gate's own ``main`` in its own
   process, reads the artifact the gate wrote, and reports
   ``canonical_verdict`` — the gate's word, normalised by
@@ -24,7 +31,7 @@ WHAT THIS OWNS, AND WHAT IT DELIBERATELY DOES NOT.
 * It WELDS NOTHING. ``fingerprints.json`` is not opened, let alone written. The
   campaign's output is a proposal packet; a human applies it.
 
-PROCESS PER GATE, NOT ONE PROCESS. Every gate installs a subnormal policy at the
+Process per gate, not one process. Every gate installs a subnormal policy at the
 NVRTC seam and several import each other. In one process the first gate's install
 would silently decide
 the tenth gate's verdict. Separate processes also mean a segfault costs one row.
@@ -52,34 +59,59 @@ import os
 from pathlib import Path
 import platform
 import shlex
-import socket
 import subprocess
 import sys
 import time
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+try:
+    import neutral_ids
+except ImportError:  # imported as a package module, not from parity/meep_gpu
+    from parity.meep_gpu import neutral_ids
+
 HERE = Path(__file__).resolve().parent
 API_ROOT = HERE.parents[1]
+#: The certification round's tools, where the display rule lives (``display_card.py``).
+ROUND_TOOLS = HERE / "rounds" / "1.0"
+
+
+def _round_module(name: str):
+    """A module of the round's tools, loaded from its file and shared with any importer
+    that loaded it first (``run_lane.py``, ``fleet_launch.py``). Loaded by path rather than
+    by putting the round's directory on ``sys.path``, where its modules (``round``,
+    ``legs``, ``chunks``) would be importable by name from every process that imports
+    this driver."""
+    if name in sys.modules:
+        return sys.modules[name]
+    import importlib.util  # noqa: PLC0415 - only this loader needs it
+
+    spec = importlib.util.spec_from_file_location(name, ROUND_TOOLS / f"{name}.py")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    try:
+        spec.loader.exec_module(module)
+    except BaseException:
+        sys.modules.pop(name, None)
+        raise
+    return module
+
+
+display_card = _round_module("display_card")
 
 #: Devices this campaign may never take, whatever ``nvidia-smi`` reports about
 #: them. They are set aside on the host this driver ran on; "idle right now" is not
 #: permission, and a residency check that passes on one of them is answering the
 #: wrong question.
 #:
-#: A DEFAULT, NOT A FACT ABOUT EVERY HOST, since 2026-09-30. Certifying a second
+#: A default, not a fact about every host, since 2026-09-30. Certifying a second
 #: compute capability means running this fleet on a card this driver has never seen,
 #: on a box where 4 and 5 may be the only free devices — a set hardcoded here ties
-#: the round to one machine. It stays the DEFAULT rather than becoming empty because
+#: the campaign to one machine. It stays the DEFAULT rather than becoming empty because
 #: every standing invocation on the current GPU host omits the flag, and a flag whose
 #: absence newly permits a set-aside device would be a silent change of who this
 #: driver may disturb. A different host passes its own set, or ``--forbidden-gpus ''``
 #: to declare that nothing is set aside.
 DEFAULT_FORBIDDEN_GPUS = frozenset({4, 5})
-
-#: A device carrying more than this with no listed compute process is still
-#: treated as occupied. Matches the direct runners' guard: an unattributable
-#: resident is still a resident.
-IDLE_MIB_CEILING = 64
 
 EXIT_CANNOT_CERTIFY = 75
 
@@ -125,8 +157,8 @@ class Gate:
 def _gates() -> Tuple[Gate, ...]:
     """Every Triton gate this runner knows how to invoke.
 
-    Tranche 1 (the first fourteen) were the gates with no ``status: PASS`` weld
-    on 2026-08-19. Tranche 2 (2026-08-28) adds the twelve the routing re-gate
+    Gate group 1 (the first fourteen) were the gates with no ``status: PASS`` weld
+    on 2026-08-19. Group 2 (2026-08-28) adds the twelve the routing re-gate
     needed; see the comment at its head for why.
     """
     return (
@@ -148,7 +180,7 @@ def _gates() -> Tuple[Gate, ...]:
              note="--backend cupy: the numpy default certifies nothing on a "
                   "device host"),
         Gate("conductivity", "gate_triton_conductivity.py",
-             # --subnormal-policy IS REQUIRED HERE and nowhere else in this list. This
+             # --subnormal-policy is required here and nowhere else in this list. This
              # gate is the only one that declares the flag, and its default is "none"
              # (gate_triton_conductivity.py:2132) -- deliberately, so a re-run reproduces
              # the original numbers. `install_policy("none")` returns the not_installed
@@ -161,7 +193,7 @@ def _gates() -> Tuple[Gate, ...]:
              lambda out: ["--out", out / "gate.json"], "gate.json",
              timeout=10800, policy_flag="--subnormal-policy",
              note="RUNTIME, 2026-10-09, one RTX A6000: 3,798 s released, sharing the card "
-                  "with symmetry and two CUDA gates; the 0.10 mutation sweep (24 legs) "
+                  "with symmetry and two CUDA gates; the 1.0 mutation sweep (24 legs) "
                   "outgrew the 3,600 s this entry carried, which killed it on the dry "
                   "run's card shared by the fleet. 10,800 s is 2.8x the measured run "
                   "and 2.1x the heaviest shared figure of its sibling (symmetry, 5,066 s)"),
@@ -194,9 +226,9 @@ def _gates() -> Tuple[Gate, ...]:
              lambda out: ["--out", out / "gate.json"], "gate.json",
              timeout=10800),
 
-        # ------------------------------------------------- TRANCHE 2, 2026-08-28
-        # The twelve families the 2026-08-19 tranche did not need and this one does.
-        # WHY THEY ARE HERE NOW: the deposit-repair routing edited triton_kernels/
+        # ------------------------------------------------- Gate group 2, 2026-08-28
+        # The twelve families the 2026-08-19 group did not need and this one does.
+        # Why they are here now: the deposit-repair routing edited triton_kernels/
         # launch.py, which 28 of the 30 PASS welds pin, and a weld is owed a RE-RUN
         # rather than an edited record. The 2026-08-27 campaign covered fourteen of
         # them; rebind_triton_welds.py then reported the other eighteen as UNCOVERED
@@ -257,8 +289,8 @@ def _gates() -> Tuple[Gate, ...]:
                   "off-diagonal modules — the kernel executes JIT helpers out of "
                   "them, which is why the board binds this family by its gate "
                   "rather than by a fingerprint"),
-        # ------------------------------------------------- TRANCHE 3, 2026-08-30
-        # The two D->E FUSED PRODUCTS the fusion round built. Neither is a re-gate:
+        # ------------------------------------------------- Gate group 3, 2026-08-30
+        # The two D->E FUSED PRODUCTS the fusion work built. Neither is a re-gate:
         # each is a NEW family's FIRST device run, and each takes ``--out`` as a
         # DIRECTORY (checked per script, not assumed from the flag name — both do
         # ``os.makedirs(out)`` and write ``gate.json`` inside it).
@@ -301,10 +333,10 @@ def _gates() -> Tuple[Gate, ...]:
                   "and its own predicate refuses one, so a fixture that set a PML "
                   "up would report a family failure that was really a fixture "
                   "failure"),
-        # ------------------------------------------------- TRANCHE 4, 2026-08-31
+        # ------------------------------------------------- Gate group 4, 2026-08-31
         # The FOLDED DISPERSIVE D->E weld — the largest remaining unbuilt cell on
         # the Triton board, and a NEW family's FIRST device run rather than a
-        # re-gate. Like the tranche-3 pair above it takes ``--out`` as a DIRECTORY.
+        # re-gate. Like the group-3 pair above it takes ``--out`` as a DIRECTORY.
         Gate("folded_dispersive_fused_pair",
              "probe_triton_folded_dispersive_fused_pair.py",
              lambda out: ["--out", out],
@@ -447,16 +479,16 @@ def _gates() -> Tuple[Gate, ...]:
                   "that case (own_spelling_verdict) and records read_from = "
                   "'verdict.REFUSAL ESTABLISHED'; released=True means the refusal was "
                   "established, which is the gate's exit 0"),
-        # ------------------------------------------------- TRANCHE 5, 2026-09-02
-        # THE SETTLEMENT TRANCHE. Tranches 1-4 leave 19 of the 40 drifted ledger
+        # ------------------------------------------------- Gate group 5, 2026-09-02
+        # The settlement group. Groups 1-4 leave 19 of the 40 drifted ledger
         # entries undischargeable, because `rebind_triton_welds.CAMPAIGN_DIRS`
         # points them at directories no gate above produces: 9 at `probe_triton_*`
-        # runs, and 10 at records with no row at all. MEASURED 2026-09-02 against
+        # runs, and 10 at records with no row at all. Measured 2026-09-02 against
         # launch.py@48845c8c / driver.py@8cce1c5b / __init__.py@87f8dee2:
         # 40 of 42 ledger entries carrying source_sha256 are in drift, and the
-        # tranches above reach 21 of them.
+        # groups above reach 21 of them.
         #
-        # WHY EVERY ONE OF THESE IS A RE-RUN AND NOT A WAIVER. The comment-only
+        # Why every one of these is a re-run and not a waiver. The comment-only
         # exemption that took the CUDA track to ZERO re-gates does not exist here:
         # `device_identity.weld_survives_edit` needs a `code_sha256` or
         # `device_sha256` for the file it is asked about, and the probe artifacts
@@ -465,20 +497,20 @@ def _gates() -> Tuple[Gate, ...]:
         # 35 credited products: 16 moved-file instances CODE-MOVED, 54 NO-BASIS,
         # ZERO comment-only. There is no re-run list to shrink.
         #
-        # `--out` IS A FILE FOR EVERY ROW BELOW, which is why they all pass
-        # `out / "gate.json"` rather than the bare `out` the tranche-3/4 rows use.
+        # `--out` is a file for every row below, which is why they all pass
+        # `out / "gate.json"` rather than the bare `out` the group-3/4 rows use.
         # Checked per script, not assumed: 15 of the 17 fused-pair probes call
         # `save(payload, args.out)` (save() makes the PARENT directory), and the two
         # `folded_beta_complex_*` probes are dual-mode -- `if out.endswith(".json"):
         # artifact = out` -- so the same argument is correct for them too. The five
         # composition probes take a bare `--out <file>` and nothing else.
         #
-        # THE COMPOSITION ROWS TAKE NO `--subnormal-policy`: none of the five
+        # The composition rows take no `--subnormal-policy`: none of the five
         # declares the flag, so they read the policy from the environment the runner
         # exports (the CUPY_CACHE_DIR "ftz_stripped" token). Passing a flag they do
         # not define would abort them at argparse.
         #
-        # TWO OF THEM IMPORT `cases`, which lives only under results/*/scripts/:
+        # Two of them import `cases`, which lives only under results/*/scripts/:
         # `conductivity_composition` and `engine_route`. That is the same gap that
         # failed `no_pml` in the 2026-09-02_foldedrelease campaign -- its staged
         # copy and the runner's PYTHONPATH edit are both mtime 03:59:13 while the
@@ -495,7 +527,7 @@ def _gates() -> Tuple[Gate, ...]:
              "probe_triton_complex_fused_magnetic_pair.py",
              lambda out: ["--out", out / "gate.json"], "gate.json",
              timeout=10800, policy_flag="--subnormal-policy",
-             note="DIRECTORY NAME IS THE CAMPAIGN_DIRS ROW, probe_triton_ prefix and "
+             note="Directory name is the CAMPAIGN_DIRS row, probe_triton_ prefix and "
                   "all -- the rebind maps the ledger key to this exact string, and a "
                   "shorter name would fail closed. Discharges the two red "
                   "test_triton_complex_fused_magnetic_pair tests"),
@@ -531,7 +563,7 @@ def _gates() -> Tuple[Gate, ...]:
              "probe_triton_fused_ade_state.py",
              lambda out: ["--out", out / "gate.json"], "gate.json",
              timeout=10800, policy_flag="--subnormal-policy"),
-        # The ten GATE_BOUND board artifacts the tranches above do not produce.
+        # The ten GATE_BOUND board artifacts the groups above do not produce.
         # Each is the SAME PROGRAM that cut the artifact the board cites today, so
         # re-pointing those rows is a fresh run of the same measurement rather than
         # the stem-match hazard rebind_triton_welds.CAMPAIGN_DIRS warns about.
@@ -572,14 +604,14 @@ def _gates() -> Tuple[Gate, ...]:
              "probe_triton_nonlinear_fused_magnetic_pair.py",
              lambda out: ["--out", out / "gate.json"], "gate.json",
              timeout=10800, policy_flag="--subnormal-policy"),
-        # THE COMPOSITION RECORDS. No CAMPAIGN_DIRS row exists for any of these, so
+        # The composition records. No CAMPAIGN_DIRS row exists for any of these, so
         # the rebind fails closed on them until one is typed. They are here because
         # two of the ten red tests name them directly: the no-absorber dispatch
         # contract fails on conductivity_composition_gate (__init__.py 017f710e ->
         # 87f8dee2) and test_triton_cylindrical_composition fails on
         # cylindrical_composition_gate (launch.py f3031c82 -> 48845c8c).
         #
-        # NOT INCLUDED, DELIBERATELY: no_pml_composition_gate and
+        # Not included, deliberately: no_pml_composition_gate and
         # fused_electric_gate. Both are cut by scripts this driver ALREADY runs
         # (gate_triton_no_pml.py, gate_triton_fused_electric.py) but under
         # COMPOSITION-SPECIFIC arguments, so pointing their ledger rows at the
@@ -625,67 +657,43 @@ GATES = {gate.name: gate for gate in _gates()}
 
 
 def log(message: str) -> None:
-    print(message, flush=True)
+    """One driver log line, written neutrally (``neutral_ids.text``): the log goes back with
+    the campaign, so it names no machine, account or local path."""
+    print(neutral_ids.text(message), flush=True)
 
 
-def _nvidia_smi(args: Sequence[str]) -> str:
-    """Query NVML with ``CUDA_VISIBLE_DEVICES`` SCRUBBED from the environment.
-
-    The pinning this driver applies to the gate is inherited by anything it
-    spawns, and a residency question asked through a mask is not the question:
-    physical index 7 would either be invisible or answer for whatever the mask
-    renamed to 0.
-    """
-    env = dict(os.environ)
-    env.pop("CUDA_VISIBLE_DEVICES", None)
+def campaign_relative(path: Any, out_root: Path) -> str:
+    """A path the campaign records: relative to the campaign directory when it lies under it
+    (the readers resolve it against the directory they read the row in), else written under
+    its root's label (``neutral_ids.path``)."""
+    text = str(path)
     try:
-        completed = subprocess.run(["nvidia-smi", *args], capture_output=True,
-                                   text=True, env=env, check=False)
-    except OSError as exc:
-        # NO NVIDIA-SMI IS NOT AN EMPTY DEVICE. The caller reads an unparseable
-        # answer as "occupied" and refuses, which is the right way for a
-        # placement guard to fail on a host that cannot answer the question.
-        return f"nvidia-smi unavailable: {exc!r}"
-    return completed.stdout.strip()
+        return Path(text).resolve().relative_to(out_root.resolve()).as_posix()
+    except ValueError:
+        return neutral_ids.path(text)
 
 
-def device_is_empty(index: int, forbidden: frozenset) -> Tuple[bool, str]:
-    """Is this PHYSICAL device free right now, and what says so.
-
-    ``forbidden`` is threaded rather than read from a module constant so that one
-    campaign's set-aside devices are the ones it was told about; see
-    :data:`DEFAULT_FORBIDDEN_GPUS`.
-    """
-    if index in forbidden:
-        return False, (f"GPU {index} is set aside on this host "
-                       f"(--forbidden-gpus {sorted(forbidden)}) and is never "
-                       f"available to this campaign")
-    resident = _nvidia_smi(["--id", str(index), "--query-compute-apps=pid,"
-                            "process_name,used_memory", "--format=csv,noheader"])
-    if resident:
-        return False, f"GPU {index} carries a compute process: {resident}"
-    used = _nvidia_smi(["--id", str(index), "--query-gpu=memory.used",
-                        "--format=csv,noheader,nounits"])
-    try:
-        used_mib = int(used.splitlines()[0])
-    except (ValueError, IndexError):
-        return False, f"GPU {index} memory unreadable: {used!r}"
-    if used_mib > IDLE_MIB_CEILING:
-        return False, (f"GPU {index} reports {used_mib} MiB used with no listed "
-                       f"process; an unattributable resident is still a resident")
-    return True, f"GPU {index} empty: {used_mib} MiB, no compute process"
+#: The placement check of every gate: the round's one rule (``display_card.Placement``),
+#: made by :func:`main` for the card this run is on. ``PLACEMENT.last`` holds the latest
+#: decision, which :func:`run_one` records in the gate's row.
+PLACEMENT: Optional[display_card.Placement] = None
 
 
 def wait_for_device(index: int, patience_s: int, *, forbidden: frozenset,
-                    poll_s: int = 60) -> Tuple[bool, str]:
-    """Block until the device is empty, or give up and REFUSE — never share."""
+                    poll_s: int = display_card.RECHECK_S) -> Tuple[bool, str]:
+    """Block until the round's rule takes the device, reading it every ``poll_s`` seconds,
+    or give up after ``patience_s`` and REFUSE — never share. A device that is set aside is
+    refused at once."""
+    if PLACEMENT is None:
+        raise RuntimeError("the placement check is made by main(), from the lane's record or "
+                           "this run's first reading")
     deadline = time.time() + patience_s
-    empty, why = device_is_empty(index, forbidden)
+    empty, why = PLACEMENT.check(index)
     while not empty and time.time() < deadline and index not in forbidden:
         log(f"[wait] {why}; re-checking in {poll_s}s "
             f"({int(deadline - time.time())}s of patience left)")
         time.sleep(poll_s)
-        empty, why = device_is_empty(index, forbidden)
+        empty, why = PLACEMENT.check(index)
     return empty, why
 
 
@@ -695,7 +703,7 @@ def gate_environment(gpu: int, cache_root: Path, gate_name: str,
 
     Every entry is here because its absence has already cost a run:
 
-    * ``MEEP_GPU_SUBNORMAL_POLICY`` — THE CAMPAIGN'S POLICY, NAMED. Without it
+    * ``MEEP_GPU_SUBNORMAL_POLICY`` — the campaign's policy, named. Without it
       ``install_ftz_strip`` resolves ``match_meep`` by measuring the FPU that
       MEEP's own initialization left behind, which on this x86 host is FLUSH;
       every existing weld in ``fingerprints.json`` records ``keep``, so an
@@ -711,7 +719,7 @@ def gate_environment(gpu: int, cache_root: Path, gate_name: str,
     * ``CUPY_CACHE_DIR`` carrying the policy token — CuPy computes its cache key
       ABOVE the seam where the ``-ftz=true`` strip installs, so a directory
       shared with a flush run serves flushed binaries under a keep record's
-      name. PRIVATE PER GATE here, one step beyond the per-run privacy the
+      name. private per gate here, one step beyond the per-run privacy the
       direct runners use, because this campaign runs fourteen policy installs
       back to back.
     * ``TRITON_CACHE_DIR`` fresh per gate — the mutation batteries rename the
@@ -722,7 +730,7 @@ def gate_environment(gpu: int, cache_root: Path, gate_name: str,
       a many-core shared host; nothing here is timed, and grabbing every
       thread to compute an oracle is rude, not fast.
 
-    TWO ENTRIES ARE HERE AHEAD OF THE FAILURE RATHER THAN BEHIND IT (2026-09-30),
+    Two entries are here ahead of the failure rather than behind it (2026-09-30),
     and that is the whole reason a family gate needs no certification switch:
 
     * ``MEEP_GPU_DISPATCH=0`` — PINNED OFF, never inherited. The gates and probes
@@ -734,16 +742,16 @@ def gate_environment(gpu: int, cache_root: Path, gate_name: str,
       reason.
     * ``MEEP_GPU_HARDWARE`` — SET TO ``certified`` in the child's environment. The
       package runs a supported card the record does not certify by default
-      (``supported``), and ``any`` runs an unsupported one too; a round whose point
-      is to EARN that certification must neither inherit ``any`` from the shell that
-      launched it nor take the default, or the evidence it cuts would rest on the
-      admission it is supposed to produce. ``certified`` restricts every kernel to
-      certified identities. The retired ``MEEP_GPU_ALLOW_UNCERTIFIED`` is removed
+      (``supported``), and ``any`` runs an unsupported one too; a certification round
+      whose point is to EARN that certification must neither inherit ``any`` from the
+      shell that launched it nor take the default, or the evidence it cuts would rest
+      on the admission it is supposed to produce. ``certified`` restricts every kernel
+      to certified identities. The retired ``MEEP_GPU_ALLOW_UNCERTIFIED`` is removed
       from the child's environment: the package refuses it by name, set to anything.
     """
     home = Path.home()
     stub = os.environ.get("TRITON_LIBCUDA_PATH", str(home / "triton_libcuda_stub"))
-    # THE DIRECTORY NAME IS PART OF THE POLICY MECHANISM. ``ftz_stripped`` is the
+    # The directory name is part of the policy mechanism. ``ftz_stripped`` is the
     # token ``cupy_cache_reasons`` REQUIRES under keep and FORBIDS under flush,
     # so it tracks the policy rather than being pasted in.
     token = "ftz_stripped" if policy == "keep" else policy
@@ -766,7 +774,7 @@ def gate_environment(gpu: int, cache_root: Path, gate_name: str,
         "OPENBLAS_NUM_THREADS": "1",
         "CUPY_CACHE_DIR": str(cupy_cache),
         "TRITON_CACHE_DIR": str(triton_cache),
-        # THE INHERITED PYTHONPATH IS APPENDED, NOT DISCARDED. Measured
+        # The inherited PYTHONPATH is appended, not discarded. Measured
         # 2026-08-19: the no-PML gate's ENGINE leg does ``import cases`` — the
         # shared MEEP builder module that lives in a results script bundle and
         # not on any package path — and an overwritten PYTHONPATH turned that
@@ -815,17 +823,17 @@ def record_device(python: str, out_root: Path, env: Dict[str, str]
     campaign on a reason, because a fleet whose device is unknown cannot be bound
     to anything.
 
-    WHY A CAMPAIGN CANNOT SKIP IT (2026-09-30). A certification record is keyed by
-    compute capability, and every writer has to READ that key off the run. The
-    family gates do not supply it: by the multi-capability design's census of the
-    2026-09-25 fleet, the family artifacts' ``environment`` blocks are empty and
-    twelve of the thirty-seven cited welds name no device at all (that census is the
-    design's, not a count taken here) — so a round that ran only this fleet would leave
-    the rebind nothing to key a slot by, and the round would end with gates that
-    released and no capability to certify. One recorder process, before the first
-    gate, in the environment the gates themselves get, closes that.
+    Why a campaign cannot skip it (2026-09-30). A certification record is keyed
+    by compute capability, and every writer has to READ that key off the run.
+    The family gates do not supply it: by a census of the 2026-09-25 fleet (not
+    recounted here), the family artifacts' ``environment`` blocks are empty and
+    twelve of the thirty-seven cited welds name no device at all — so a
+    certification round that ran only this fleet would leave the rebind nothing
+    to key a slot by, and would end with gates that released and no capability
+    to certify. One recorder process, before the first gate, in the environment
+    the gates themselves get, closes that.
 
-    IN THE GATE ENVIRONMENT, NOT THIS PROCESS'S. ``CUDA_VISIBLE_DEVICES`` is what
+    In the gate environment, not this process's. ``CUDA_VISIBLE_DEVICES`` is what
     decides which card a child sees; recording the identity anywhere else would
     describe whatever device index 0 is on the box rather than the one every gate in
     this campaign is pinned to. It is a separate process from the gates for the
@@ -837,8 +845,9 @@ def record_device(python: str, out_root: Path, env: Dict[str, str]
     log_path = out_root / "device.log"
     spelled = " ".join(shlex.quote(part) for part in argv)
     with log_path.open("w", encoding="utf-8") as handle:
-        completed = subprocess.run(argv, cwd=str(API_ROOT), env=env, stdout=handle,
+        completed = subprocess.run(argv, cwd=str(API_ROOT), env=env, stdout=subprocess.PIPE,
                                    stderr=subprocess.STDOUT, check=False)
+        handle.write(neutral_ids.text(completed.stdout.decode("utf-8", errors="replace")))
     if completed.returncode != 0:
         return None, (f"{spelled} exited {completed.returncode}: "
                       f"{_last_line(log_path)} (full output in {log_path})")
@@ -870,7 +879,7 @@ def own_spelling_verdict(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     The widening is HERE rather than in ``read_verdict`` because that module is
     weld-pinned at its live digest (six entries across the CUDA certification and
     the Triton and Metal fingerprint ledgers), and this row reader is the one the
-    fleet and the round's status stage read.
+    fleet and the certification round's status stage read.
     """
     verdict = payload.get("verdict")
     if isinstance(verdict, dict) and isinstance(verdict.get("REFUSAL ESTABLISHED"), bool):
@@ -934,7 +943,8 @@ def native_verdict(payload: Dict[str, Any]) -> Dict[str, Any]:
 
 def run_one(gate: Gate, *, python: str, out_root: Path, cache_root: Path,
             gpu: int, heartbeat: int, patience: int,
-            policy: str, forbidden: frozenset) -> Dict[str, Any]:
+            policy: str, forbidden: frozenset,
+            poll: int = display_card.RECHECK_S) -> Dict[str, Any]:
     """Run one gate to completion and return the row the campaign records."""
     out_dir = out_root / gate.name
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -949,8 +959,10 @@ def run_one(gate: Gate, *, python: str, out_root: Path, cache_root: Path,
         "note": gate.note,
     }
 
-    empty, why = wait_for_device(gpu, patience, forbidden=forbidden)
+    empty, why = wait_for_device(gpu, patience, forbidden=forbidden, poll_s=poll)
     row["placement"] = why
+    if PLACEMENT.last is not None:
+        row["placement_check"] = dict(PLACEMENT.last)
     if not empty:
         row.update({"exit_code": None, "released": None, "elapsed_s": 0.0,
                     "imported_digests": 0, "refused_by_driver": why})
@@ -958,15 +970,18 @@ def run_one(gate: Gate, *, python: str, out_root: Path, cache_root: Path,
         return row
 
     argv = [python, "-u", str(HERE / gate.script), *gate.argv(out_dir, policy)]
-    row["argv"] = " ".join(shlex.quote(part) for part in argv)
+    row["argv"] = neutral_ids.text(" ".join(shlex.quote(part) for part in argv))
     log(f"[gate] {gate.name:<20} starting — {why}")
     log(f"[gate] {gate.name:<20} argv: {row['argv']}")
 
     env = gate_environment(gpu, cache_root, gate.name, policy)
-    row["cupy_cache_dir"] = env["CUPY_CACHE_DIR"]
+    row["cupy_cache_dir"] = campaign_relative(env["CUPY_CACHE_DIR"], out_root)
     with log_path.open("w", encoding="utf-8") as handle:
+        # The gate's output reaches gate.log through neutral_ids.copy_lines: a gate prints
+        # its paths, and the log goes back with the campaign.
         process = subprocess.Popen(argv, cwd=str(API_ROOT), env=env,
-                                   stdout=handle, stderr=subprocess.STDOUT)
+                                   stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        copier = neutral_ids.copy_lines(process.stdout, handle)
         next_beat = time.time() + heartbeat
         timed_out = False
         while True:
@@ -985,15 +1000,16 @@ def run_one(gate: Gate, *, python: str, out_root: Path, cache_root: Path,
                 next_beat = now + heartbeat
                 log(f"[beat] {gate.name:<20} {int(now - started):>6}s elapsed | "
                     f"{_last_line(log_path)}")
+        copier.join(timeout=120)
     elapsed = time.time() - started
     row["exit_code"] = None if timed_out else process.returncode
     row["timed_out"] = timed_out
     row["elapsed_s"] = round(elapsed, 1)
-    row["log"] = str(log_path)
+    row["log"] = campaign_relative(log_path, out_root)
 
     artifact_path = gate.artifact(out_dir)
     payload, problem = read_artifact(artifact_path)
-    row["artifact"] = str(artifact_path)
+    row["artifact"] = campaign_relative(artifact_path, out_root)
     row["artifact_sha256"] = sha256_of(artifact_path)
     row["artifact_bytes"] = (artifact_path.stat().st_size
                              if artifact_path.exists() else 0)
@@ -1022,7 +1038,9 @@ def run_one(gate: Gate, *, python: str, out_root: Path, cache_root: Path,
         + ("  TIMED OUT" if timed_out else ""))
     for reason in (row.get("reasons") or [])[:6]:
         log(f"       refusal: {str(reason)[:220]}")
-    return row
+    # The row leaves the machine with the campaign: every string in it written neutrally,
+    # the gate's own environment block and reasons included (the gate artifact keeps its own).
+    return neutral_ids.value(row)
 
 
 def append_jsonl(path: Path, row: Dict[str, Any]) -> None:
@@ -1034,6 +1052,7 @@ def append_jsonl(path: Path, row: Dict[str, Any]) -> None:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
+    global PLACEMENT
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--gpu", type=int, default=7,
                         help="PHYSICAL device index; anything in --forbidden-gpus "
@@ -1057,6 +1076,15 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--heartbeat", type=int, default=120)
     parser.add_argument("--patience", type=int, default=1800,
                         help="seconds to wait for a busy device before refusing")
+    parser.add_argument("--poll", type=int, default=display_card.RECHECK_S,
+                        help="seconds between two readings of a busy device "
+                             "(display_card.RECHECK_S; a round lane passes its own)")
+    parser.add_argument("--lane-placement", default=None,
+                        help="the round lane's record of how it took --gpu "
+                             "(<lane>/placement.json, rounds/1.0/display_card.py): the rule "
+                             "that took the card and, for a display card, its resident. Every "
+                             "gate is then checked by that rule; without it this run asks the "
+                             "rule itself for the card's first reading")
     args = parser.parse_args(argv)
 
     try:
@@ -1085,17 +1113,30 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return 2
 
     log(f"===== triton weld campaign {time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())} =====")
-    log(f"host: {socket.gethostname()}  {platform.platform()}")
+    log(f"machine: {neutral_ids.machine_id()}  {platform.platform()}")
     log(f"python: {args.python}")
     log(f"api root: {API_ROOT}")
     log(f"out root: {out_root}")
     log(f"gpu: {args.gpu}  gates: {len(names)}  jsonl: {jsonl}")
     log(f"devices set aside on this host: {sorted(forbidden) or 'none'}")
     log(f"subnormal policy requested for every gate: {args.policy!r}")
-    log(_nvidia_smi(["--query-gpu=index,name,memory.used,utilization.gpu",
-                     "--format=csv,noheader"]))
+    log(display_card.run_smi("--query-gpu=index,name,memory.used,utilization.gpu",
+                             "--format=csv,noheader").strip())
+    # How the card was taken, before anything of this campaign touches it: the lane's record,
+    # or (no lane) this run's own first reading by the same rule.
+    PLACEMENT = display_card.Placement(
+        lambda *query: display_card.run_smi(*query), set_aside=forbidden, say=log)
+    if args.lane_placement:
+        try:
+            record = json.loads(Path(args.lane_placement).read_text(encoding="utf-8"))
+            PLACEMENT.adopt(record, args.gpu)
+        except (OSError, ValueError) as exc:
+            log(f"ABORT: --lane-placement {args.lane_placement!r}: {exc}")
+            return 2
+    else:
+        PLACEMENT.start(args.gpu)
 
-    # THE DEVICE, BEFORE THE FIRST GATE AND IN THE GATES' OWN ENVIRONMENT. The
+    # The device, before the first gate and in the gates' own environment. The
     # record a rebind keys a slot by is the compute capability this campaign ran
     # on, and the family gates stamp none; a campaign that discovered that after
     # the fleet had run would have spent the GPU hours and still have nothing to
@@ -1121,21 +1162,27 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         row = run_one(gate, python=args.python, out_root=out_root,
                       cache_root=cache_root, gpu=args.gpu,
                       heartbeat=args.heartbeat, patience=args.patience,
-                      policy=args.policy, forbidden=forbidden)
+                      policy=args.policy, forbidden=forbidden, poll=args.poll)
         row["order"] = index
         rows.append(row)
         append_jsonl(jsonl, row)
 
     summary = {
         "finished_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "host": socket.gethostname(),
+        # The machine as its anonymous id: the rebind reads "a machine was stamped" and
+        # labels it (rebind_triton_welds.campaign_host_note); two campaigns compare equal
+        # exactly when they ran on one machine.
+        "host": neutral_ids.machine_id(),
         "gpu": args.gpu,
         "forbidden_gpus": sorted(forbidden),
-        # THE DEVICE, IN THE CAMPAIGN RECORD AND NOT ONLY IN A SIBLING FILE. A
+        # The device, in the campaign record and not only in a sibling file. A
         # reader asking "which card certified this?" reads one artifact, and a
         # rebind reading the campaign row does not have to find device.json beside
         # it. Same bytes, both places, written once by the recorder.
         "device": device,
+        # How the card was taken: the lane's record, or this run's own first reading, and the
+        # rule it was held to (each gate's row carries its own decision).
+        "placement": PLACEMENT.summary(),
         "released": sorted(r["gate"] for r in rows if r.get("released") is True),
         "refused": sorted(r["gate"] for r in rows if r.get("released") is False),
         "unreadable": sorted(r["gate"] for r in rows
@@ -1144,7 +1191,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "rows": rows,
     }
     (out_root / "campaign.json").write_text(
-        json.dumps(summary, indent=1, sort_keys=True, default=str) + "\n",
+        json.dumps(neutral_ids.value(summary), indent=1, sort_keys=True, default=str) + "\n",
         encoding="utf-8")
     log("===== campaign summary =====")
     for row in rows:

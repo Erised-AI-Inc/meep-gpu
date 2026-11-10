@@ -7,7 +7,7 @@ leg's own half-step, so until the ``state_entering_the_site`` measurement landed
 the row, from one the site produced — and the row's own name points at the
 half-step.
 
-THE ROW WAS DIAGNOSABLE, but only by arithmetic a reader had to do. With every
+The row was diagnosable, but only by arithmetic a reader had to do. With every
 ``restore_returns_the_state`` True, each leg is byte-equal to its own pre-site
 state, so ``restored_fused_vs_array`` is exactly ``before[fused] == before[array]``:
 a row reporting all-True restores beside a False restored comparison is reporting a
@@ -20,7 +20,7 @@ array legs on two resolutions and both folded cases.
 So these tests pin the classification rather than the physics: the site reports
 what it produced, and says so when it was handed something it did not.
 
-THE OTHER HALF OF THIS FILE IS THE SAME RULING FROM THE OTHER END (2026-09-14): a
+The other half of this file is the same rule from the other end (2026-09-14): a
 case whose builder returns NO MONITOR has neither a flux comparison nor a second
 consult site, and both must be recorded NOT-APPLICABLE rather than scored as
 passes. ``e2e.compare_spectra`` over two empty mappings answers ``identical True``,
@@ -28,13 +28,13 @@ and the site can be driven by hand on any driver, so both clauses were producing
 green words for measurements the configuration never takes. The Metal route gate
 has kept exactly this record for ``cylindrical`` since 2026-09-12.
 
-IT IS DERIVED FROM THE BUILDER, not declared per case: ``run_leg`` carries the
+It is derived from the builder, not declared per case: ``run_leg`` carries the
 monitor list the case RETURNED, so a builder that starts returning one is scored
-again with no edit to the gate, and there is no key a future round can set to quiet
+again with no edit to the gate, and there is no key a future certification can set to quiet
 an inconvenient clause. The tests below drive both directions — the decline, and a
 case that declares a monitor still FAILING on the same legs.
 
-MEASURED CONSEQUENCE on the 2026-09-14 CUDA shipped leg: ``material_dispersion_0d``
+Measured CONSEQUENCE on the 2026-09-14 CUDA shipped leg: ``material_dispersion_0d``
 (cell ``(1, 1, 1)``) read SECOND-CONSULT-HARNESS-FAILURE because every curl on a
 one-cell grid is zero, so the magnetic half-step genuinely changes nothing and the
 site's own non-vacuity clause fired on a true property of the cell.
@@ -205,7 +205,7 @@ def _legs_declaring(monitors_per_leg: Dict[str, Any],
 
 
 def test_a_case_whose_builder_returns_NO_MONITOR_declines_the_site():
-    """The ruling: no observable, no measurement, and no green word either.
+    """The rule: no observable, no measurement, and no green word either.
 
     The clauses below the decline are not evaluated at all — the row says the site
     was declined and why — so a reader cannot mistake it for a site that ran.

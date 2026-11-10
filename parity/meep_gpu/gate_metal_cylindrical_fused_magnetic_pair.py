@@ -2,14 +2,14 @@
 """Native MPS byte gate for the CYLINDRICAL COMPLEX fused magnetic Metal kernel:
 Dcyl ``step_B`` -> ``update_H``.
 
-WHAT IS BEING CERTIFIED, and it is not a sub-step. This product spans THREE driver
+What is being certified, and it is not a sub-step. This product spans THREE driver
 passes — ``step_B``, ``zero_metal_B`` and ``update_H`` — so a per-sub-step
 comparison could not see it at all: the whole claim is about the SEAM between them.
-The comparison is therefore per COMPLETE DRIVER STEP over a stated budget, against
+The comparison is therefore per complete driver step over a stated budget, against
 an array-path oracle running the identical live pass list, with the first divergent
 step reported rather than a final pass/fail.
 
-THE EIGHT THINGS THIS GATE REFUSES TO LET PASS SILENTLY:
+The eight things this gate refuses to let pass silently:
 
 1. **A silent fallback.** Bytes alone cannot prove the fused path ran: a plan that
    was never launched is byte-identical to the oracle BY CONSTRUCTION, because the
@@ -55,7 +55,7 @@ THE EIGHT THINGS THIS GATE REFUSES TO LET PASS SILENTLY:
    and on this family the electric case is every corpus row); ``m = 0`` refused by
    name; a Cartesian grid refused; and a real-storage Dcyl run refused.
 
-WHAT THIS GATE DOES NOT CLAIM. Nothing about throughput. The fusion removes ONE
+What this gate does not claim. Nothing about throughput. The fusion removes ONE
 DISPATCH and, on a walled run, one host wall pass; it does NOT remove the radial
 sum's pre-pass (``stepping.cylindrical_rderiv_difference``, MEEP's ``f_rderiv_int``
 per structure chunk), which stays on the host because its float32 summation order
@@ -155,7 +155,7 @@ STATE_NAMES: Tuple[str, ...] = tuple(
 
 #: name -> ``metal_composition_matrix.cylindrical`` keywords.
 #:
-#: WHAT THE ROWS CARRY BETWEEN THEM, and every axis here is a COMPILE-TIME arm of
+#: What the rows carry between them, and every axis here is a COMPILE-TIME arm of
 #: the shipped emitter rather than a variation of taste:
 #:
 #:   |m| CLASS      ``M_ONE`` emits an axis-row increment and no near-axis hold;
@@ -232,7 +232,7 @@ def words(array: Any) -> np.ndarray:
 
 
 def floor_violations(moved: Mapping[str, int], pml: Any) -> List[str]:
-    """The vacuity floor under the auxiliary contract (KERNELS.md §1, C2).
+    """The vacuity floor under the auxiliary contract (docs/design/floating-point.md#auxiliary-contract).
 
     ``f_w_{H,E}c`` is touched only where c's own axis (its dsigw) carries a layer and
     ``fu_{B,D}c`` only where its dsigu axis, ``(c + 2) % 3``, does, by the array path
@@ -374,7 +374,7 @@ def metal_step(fields: Any, pml: Any, dispatch: Mapping[str, Any],
 
 def leg_subnormal_ladder(keywords: Mapping[str, Any], seed: int,
                          budget: int = 4) -> Dict[str, Any]:
-    """THE EMPTY CENSUS, TURNED INTO A MEASUREMENT.
+    """The empty census, turned into a measurement.
 
     Every product row in this file reports ``reference_subnormals: 0`` and
     ``subnormal_free: true`` under policy ``flush``. Read alone that is a SILENCE:
@@ -383,7 +383,7 @@ def leg_subnormal_ladder(keywords: Mapping[str, Any], seed: int,
     This leg is the difference — not a second byte comparison, which MPS cannot
     give, but the precondition FIRING.
 
-    THE ORACLE ALONE runs here, seeded at each rung of
+    The oracle alone runs here, seeded at each rung of
     :data:`metal_value_classes.PRECONDITION_SCALES` and stepped through the same
     live pass list, with the same census the product rows report taken after
     every step. Nothing is compared against the device and the artifact says so:
@@ -459,13 +459,13 @@ def run_case(keywords: Mapping[str, Any], seed: int, steps: int,
     identical = (len(per_step) == steps
                  and all(row["differing_words"] == 0 for row in per_step))
     clean = all(row["reference_subnormals"] == 0 for row in per_step)
-    # THE PREFIX PRE-PASS IS PART OF THE CONTRACT, not diagnostics: a plan that
+    # The prefix pre-pass is part of the contract, not diagnostics: a plan that
     # skipped it would step every launch after the first from a stale prefix, which
     # is smooth and wrong. One refresh per run, asserted rather than trusted.
     launches_ok = (plan.runs == len(per_step)
                    and plan.launches == plan.launches_per_run * len(per_step)
                    and plan.prefix_syncs == len(per_step))
-    # THE FLOOR, AND WHICH ONE DEPENDS ON THE VALUE CLASS. The uniform class must
+    # The floor, and which one depends on the value class. The uniform class must
     # move every compared array or the comparison is a no-op agreeing with a
     # no-op. The +-0 lattice answers to the SIGN floor instead: the REFERENCE
     # OUTPUT must carry BOTH bit patterns, which is what makes a uint32 compare of
@@ -512,7 +512,7 @@ def run_separate_control(keywords: Mapping[str, Any], seed: int, steps: int,
                          ) -> Dict[str, Any]:
     """The SEPARATE certified products beside the fused one, same state.
 
-    THIS IS THE LEG THAT MAKES "FUSION" A MEASUREMENT RATHER THAN A NAME. Three
+    This is the leg that makes "FUSION" a measurement rather than a name. Three
     engines from one seed: the array path, the two ALREADY CERTIFIED Metal products
     stepping the same seam as separate dispatches with the wall clear left on the
     HOST between them, and the fused product. All three must agree word for word at
@@ -524,7 +524,7 @@ def run_separate_control(keywords: Mapping[str, Any], seed: int, steps: int,
     The separate side is not a strawman: those two plans are exactly what
     ``plan_step`` composes today for this configuration.
 
-    NOTE WHAT THE COUNTS SHOW AND WHAT THEY DO NOT. Both sides pay ONE prefix
+    Note what the counts show and what they do not. Both sides pay ONE prefix
     pre-pass per step; the fusion does not remove it and this leg records it on both
     sides so no reader can mistake the dispatch saving for a scan saving.
     """
@@ -624,22 +624,22 @@ def needle(source: str, old: str, new: str, count: int = 1) -> str:
 
 #: Every needle, as DATA, keyed by mutation name -> (case, old, new).
 #:
-#: SPELLED AS DATA SO THE REACHABILITY LEG AND THE MUTATION LEG CANNOT DRIFT ABOUT
-#: WHICH CASE A DEFECT IS SCORED ON. That drift is the dead-branch class this
+#: Spelled as data so the reachability leg and the mutation leg cannot drift about
+#: which case a defect is scored on. That drift is the dead-branch class this
 #: project has already paid for: ``M_ONE`` and ``M_MANY`` compile DIFFERENT BODIES
 #: and a metallic-z line does not exist on a periodic-z source, so a needle armed on
 #: the wrong case would edit nothing and report UNCAUGHT while measuring nothing.
 def _edits() -> Dict[str, Tuple[str, str, str]]:
     zero = templates.COMPLEX_ZERO
     return {
-        # ---- THE SEAM ITSELF ------------------------------------------------
+        # ---- the seam itself ------------------------------------------------
         # Take the curl instead of the recurrence's output.
         "seam_takes_pre_recurrence_curl":
             (M_ONE_CASE, "float2 src0 = v0;", "float2 src0 = curl0;"),
         # Bx's constitutive source is v0, not v1.
         "seam_takes_the_wrong_component":
             (M_ONE_CASE, "float2 src1 = v1;", "float2 src1 = v0;"),
-        # ---- THE CYLINDRICAL CURL HALF --------------------------------------
+        # ---- the cylindrical curl half --------------------------------------
         # The i*m/r partner registers: target 0 takes `c` (Ez), target 2 takes `a`
         # (Ex). Swapping them is the single most plausible slip in this term.
         "imr_partners_swapped":
@@ -719,15 +719,15 @@ def _edits() -> Dict[str, Tuple[str, str, str]]:
             (M_ZERO_CASE, "    v0 = at_x ? float2(0.0f, 0.0f) : v0;",
              "    v0 = at_x ? float2(0.0f, 0.0f) : v0;\n"
              "    n0 = at_x ? float2(0.0f, 0.0f) : n0;"),
-        # ---- THE WALL CLEAR (metallic z only) -------------------------------
+        # ---- the wall clear (metallic z only) -------------------------------
         "zero_metal_dropped":
             (WALL_CASE, f"    v2 = at_z ? {zero} : v2;\n", ""),
-        # THE WALL TABLE IS THE DIAGONAL FOR B: Bz clears on a z wall. Clearing Bx
+        # The wall table is the diagonal for B: Bz clears on a z wall. Clearing Bx
         # there is the D-side (off-diagonal) table, the most likely porting slip.
         "zero_metal_uses_the_d_side_table":
             (WALL_CASE, f"    v2 = at_z ? {zero} : v2;",
              f"    v0 = at_z ? {zero} : v0;"),
-        # THE CLEAR IS A *COMPLEX* ZERO — both planes (S:1896, :1902).
+        # The clear is a *COMPLEX* ZERO — both planes (S:1896, :1902).
         "zero_metal_clears_only_the_real_plane":
             (WALL_CASE, f"    v2 = at_z ? {zero} : v2;",
              "    v2 = at_z ? float2(0.0f, v2.y) : v2;"),
@@ -738,16 +738,16 @@ def _edits() -> Dict[str, Tuple[str, str, str]]:
         "zero_metal_also_masks_the_auxiliary":
             (WALL_CASE, "    if (du0) { u0[ii] = n0; }",
              f"    if (du0) {{ u0[ii] = at_z ? {zero} : n0; }}"),
-        # ---- THE CERTIFIED COMPLEX BASE -------------------------------------
+        # ---- the certified complex base -------------------------------------
         # No arm-swap row: the family binds one helper block (templates.complex_helpers,
         # products formed part by part).
-        # INVERTED (KERNELS.md §7.1): the package's previous pairwise grouping planted
+        # INVERTED (docs/development/certification.md#inverted-grouping-mutations): the package's previous pairwise grouping planted
         # in place of MEEP's left-to-right ((g1s - g1) + g2) - g2s, on target 1, the
         # one whose two partners are both present on a Dcyl grid.
         "curl_previous_package_grouping":
             (M_ONE_CASE, "c_mul_coefficient_left(dtdx, ((a_z - a_dz) + c_dx) - c_x)",
              "c_mul_coefficient_left(dtdx, (a_z - a_dz) + (c_dx - c_x))"),
-        # THE INVARIANT-AXIS TERM (KERNELS.md Appendix A): target 0's phi partner is
+        # The invariant-axis term (certification.md#inverted-grouping-mutations): target 0's phi partner is
         # absent and MEEP's one-partner form is (-dtdx) * (g2s - g2); the package's
         # previous spelling kept it as a self-difference. A PREDICTED NULL.
         "curl_invariant_term_kept_as_a_self_difference":
@@ -757,7 +757,7 @@ def _edits() -> Dict[str, Tuple[str, str, str]]:
         "curl_direction_reversed":
             (M_ONE_CASE, "int si = i + 1, sj = j + 1, sk = k + 1;",
              "int si = i - 1, sj = j - 1, sk = k - 1;"),
-        # THE RECURRENCE PAIRS are vec.hpp's cycle_direction: target 0 takes (y, z).
+        # The recurrence pairs are vec.hpp's cycle_direction: target 0 takes (y, z).
         "recurrence_axis_pair_swapped":
             (M_ONE_CASE,
              "float2 n0 = c_mul_field_left(c_mul_field_left(p0, km_y) - curl0, si_y);",
@@ -780,7 +780,7 @@ def _edits() -> Dict[str, Tuple[str, str, str]]:
              "c_mul_coefficient_left(km_0, prev0));",
              "a0 = h0[ii] + (c_mul_coefficient_left(km_0, src0) - "
              "c_mul_coefficient_left(kp_0, prev0));"),
-        # INVERTED (KERNELS.md §7.1): the package's previous constitutive grouping
+        # INVERTED (certification.md#inverted-grouping-mutations): the package's previous constitutive grouping
         # ((f + kps*src) - kms*prev) in place of MEEP's f + ((kps*src) - (kms*prev)).
         "constitutive_previous_package_grouping":
             (M_ONE_CASE,
@@ -789,7 +789,7 @@ def _edits() -> Dict[str, Tuple[str, str, str]]:
              "a0 = (h0[ii] + c_mul_coefficient_left(kp_0, src0)) - "
              "c_mul_coefficient_left(km_0, prev0);"),
         # `prev` is read BEFORE `fw` is written. Reversed, this is wrong only on the
-        # dsigw cells -- INSIDE THE PML ONLY -- and looks like a slightly worse
+        # dsigw cells -- inside the PML only -- and looks like a slightly worse
         # absorber, not like a bug.
         "constitutive_prev_read_after_write":
             (M_ONE_CASE,
@@ -817,7 +817,7 @@ PREDICTED_NULL: Dict[str, str] = {
 }
 
 
-#: THE VALUE-CLASS FINDING, measured 2026-08-20 on both backends.
+#: The value-class finding, measured 2026-08-20 on both backends.
 VALUE_CLASS_FINDING = (
     "the increment REPLACES row 0 rather than accumulating, and after the "
     "ownership mask that row is exactly +0.0 — so `-inc` and `+0.0 - inc` differ "
@@ -831,7 +831,7 @@ VALUE_CLASS_FINDING = (
     "what this leg measures.")
 
 
-#: THE ARM SWAPS: the WHOLE body of another m class compiled for a case, which is the
+#: The arm swaps: the WHOLE body of another m class compiled for a case, which is the
 #: m-class split armed rather than argued. ``(case, arm compiled instead)``. The
 #: m = 0 body at |m| = 1 lacks the coupling and the increment; the |m| = 1 body at
 #: m = 0 REPLACES Bx's axis row with an increment the array path never forms (its
@@ -977,7 +977,7 @@ HOST_MUTATIONS: Dict[str, Callable[[Any, Any, Residency], None]] = {
 #: Measured on this host 2026-08-20 on the Dcyl fixture: a 2-cell absorber gives
 #: ``min kms_z = -1.396`` (integer lattice) / ``-0.348`` (half-integer), a 3-cell one
 #: ``-0.597`` / ``-0.109``, and a 5-cell one ``+0.042`` / ``+0.224`` — no negative
-#: coefficient anywhere. So the FIVE-CELL ROW CARRIES NO SIGNED-ZERO PRODUCER AT ALL
+#: coefficient anywhere. So the five-cell row carries no signed-zero producer at all
 #: and its census is 0: a mutation reported null there would be null for a reason
 #: that has nothing to do with the mutation. It is kept as the VACUITY CONTROL, and
 #: the leg FAILS if a depth declared non-vacuous censuses zero or if the depth
@@ -995,7 +995,7 @@ def _thin_absorber(keywords: Mapping[str, Any], depth: int,
     kernel.
 
     ``zero_init`` is every word ``+0.0``. ``signed_zero_lattice`` is every word an
-    exact zero with a RANDOM SIGN, and the two are NOT the same class: MEASURED on
+    exact zero with a random sign, and the two are NOT the same class: measured on
     the GPU host 2026-08-20, the ``axis_increment_accumulates`` needle is NULL under
     zero-init on this seam and CAUGHT on the lattice, because the lattice puts
     ``-0.0`` words into ``fu`` itself and ``-0.0 * 1.0`` keeps the sign where an
@@ -1006,7 +1006,7 @@ def _thin_absorber(keywords: Mapping[str, Any], depth: int,
     from meep_gpu.pml import PML  # noqa: PLC0415
 
     fields, _pml = matrix.cylindrical(**{"courant": MATRIX_COURANT, **dict(keywords)})
-    # THE DRAW IS INDEPENDENT OF THE ABSORBER DEPTH, deliberately: the depth axis
+    # The draw is independent of the absorber depth, deliberately: the depth axis
     # of this leg is about which coefficients go negative, and a lattice that also
     # changed with it would confound the two. Seeded from a DIGEST, not hash(),
     # so a failing draw can be replayed in another process.
@@ -1037,7 +1037,7 @@ def _zero_init_launch(keywords: Mapping[str, Any], depth: int,
     """ONE fused launch from a zero state, against ONE array-path B->H seam.
 
     Per-launch rather than per-complete-step, and that is the second half of the
-    cylindrical tranche's finding: the divergence this class produces is TRANSIENT —
+    cylindrical family's finding: the divergence this class produces is TRANSIENT —
     a ``-0.0`` that survives one sub-step is laundered back to ``+0.0`` by the next
     ``fu *= kms`` sign flip — so an end-of-budget compare reports 0 on a state that
     genuinely diverged at step 1.
@@ -1072,29 +1072,29 @@ def _zero_init_launch(keywords: Mapping[str, Any], depth: int,
 def leg_signed_zero() -> Dict[str, Any]:
     """The +-0 class, measured at the launch where it is live — and its vacuity floor.
 
-    THE MOST IMPORTANT LEG FOR THE THREE PREDICTED NULLS IN THIS FILE, because it is
+    The most important leg for the three predicted nulls in this file, because it is
     the one that decides whether a null is a fact about the kernel or a fact about
     the seeding. Random seeds are provably blind to the signed-zero class: the
     reachable producer is a NEGATIVE ``kms = kappa - sigma`` times a quiet ``+0.0``
     word, which needs a THIN absorber, and an exact ``-0.0`` difference has
     probability zero under a continuous seed.
 
-    So this leg runs a zero-initialised state against thin absorbers, ASSERTS THE
-    CENSUS IS NON-ZERO IN RUN (a row whose census is zero measures nothing, whatever
+    So this leg runs a zero-initialised state against thin absorbers, asserts the
+    census is non-zero in run (a row whose census is zero measures nothing, whatever
     its differing-word count says), requires the shipped kernel to be identical
     there, and then runs the ``axis_increment_accumulates`` mutant on the same
     configuration and RECORDS its result. The mutant is expected to be NULL — Bx's
     split-field dsig axis is phi, whose ``kms`` is 1.0 and never negative — and that
     expectation is what the leg measures rather than assumes.
 
-    THE FIVE-CELL ROW IS THE VACUITY CONTROL and is required to census ZERO. Without
+    The five-cell row is the vacuity control and is required to census ZERO. Without
     it, a future absorber-depth change could quietly turn every row of this leg
     vacuous and the leg would keep passing.
     """
     rows: List[Dict[str, Any]] = []
     base = family.cylindrical_fused_magnetic_pair_source(
         templates.METALLIC, cylindrical_complex.M_ONE, (False, False, True))
-    # THE TWO NEEDLES WHOSE VISIBILITY IS A QUESTION ABOUT THE VALUE CLASS. Both
+    # The two needles whose visibility is a question about the value class. Both
     # differ from the shipped spelling ONLY in the sign of a zero, so both are
     # invisible on a uniform seed by construction; whether they are visible at all
     # is what this leg measures rather than asserts.
@@ -1111,7 +1111,7 @@ def leg_signed_zero() -> Dict[str, Any]:
                                       ).cylindrical_fused_magnetic_pair_step}
                 for name, (old, new) in needles.items()}
     ok = True
-    # THREE DRAWS OF THE LATTICE, because the catch is a SINGLE CELL — the axis row
+    # Three draws of the lattice, because the catch is a single cell — the axis row
     # whose seeded sign exposes the difference — and one draw is a statement about
     # that draw. Recorded per draw so the reader sees the spread rather than a
     # summary that hides it.
@@ -1143,7 +1143,7 @@ def leg_signed_zero() -> Dict[str, Any]:
             ok = ok and row["vacuity_matches_declaration"] and row["shipped_identical"]
     lattice = [row for row in rows if row["value_class"] == "signed_zero_lattice"]
     zeroed = [row for row in rows if row["value_class"] == "zero_init"]
-    # AT LEAST ONE NON-VACUOUS LATTICE ROW, not all of them. The catch is a single
+    # At least one non-vacuous lattice row, not all of them. The catch is a single
     # cell and whether a given draw exposes it is a property of that draw; demanding
     # every row would make this leg fail on a seed rather than on the kernel.
     caught_on_lattice = any(row["axis_increment_accumulates_differing_words"]
@@ -1151,7 +1151,7 @@ def leg_signed_zero() -> Dict[str, Any]:
     null_on_zero_init = not any(row["axis_increment_accumulates_differing_words"]
                                 for row in zeroed)
     return {
-        # THE PASS CONDITION IS THE PAIR, and that is the finding. The needle must
+        # The pass condition is the pair, and that is the finding. The needle must
         # be CAUGHT on the +-0 lattice (where `fu` itself carries -0.0 words) and
         # NULL under zero-init (where an all-+0.0 state cannot manufacture one on
         # this seam). A gate that swept zero-init alone reported it uncaught and
@@ -1272,7 +1272,7 @@ def leg_needle_reachability(
         specialisations: Mapping[str, Tuple[int, int, Sequence[bool]]]) -> Dict[str, Any]:
     """Every needle must be PRESENT in the source of the case it is scored on.
 
-    THE DEAD-BRANCH CHECK, and it is the reason this leg exists at all. A mutation
+    The dead-branch check, and it is the reason this leg exists at all. A mutation
     can rewrite REAL lines the scored grid never reaches, report UNCAUGHT, and
     measure nothing. On this family the guards are COMPILE-TIME: ``M_ONE`` and
     ``M_MANY`` emit different bodies and a metallic-z line is absent from a
@@ -1408,7 +1408,7 @@ def _volume_source(fields: Any, component: str) -> Any:
 def leg_refusal() -> Dict[str, Any]:
     """The source seam, the m split and the geometry split, each measured by name.
 
-    THE SOURCE CLAUSE COSTS THIS FAMILY ZERO CORPUS ROWS, which is exactly why it
+    The source clause costs this family zero corpus rows, which is exactly why it
     has to be tested: a clause that never fires on the measured corpus is a clause
     nothing has exercised, and a Dcyl script that drove a magnetic current would be
     admitted by both halves and stepped wrong through this weld.
@@ -1422,7 +1422,7 @@ def leg_refusal() -> Dict[str, Any]:
     4. a REAL-STORAGE ``m = 0`` run must be refused BY NAME on STORAGE (the
        real-storage product's row), and a COMPLEX-STORAGE ``m = 0`` run must be
        ADMITTED and its plan must build — the ``M_ZERO`` arm, 2026-09-04, and the
-       corpus row ``dipole_in_vacuum_cyl_off_axis.py``; before that round this leg
+       corpus row ``dipole_in_vacuum_cyl_off_axis.py``; before that arm was added this leg
        pinned the m = 0 refusal, which is what left that row on the array path;
     5. a CARTESIAN grid must be refused;
     6. a REAL-STORAGE Dcyl run at |m| = 1 must be refused.
@@ -1602,7 +1602,7 @@ def main() -> int:
             rows.append(row)
             emit(handle, row)
 
-        # THE SECOND VALUE CLASS, on every product row, and then the band.
+        # The second value class, on every product row, and then the band.
         for offset, (name, keywords) in enumerate(CASES):
             index += 1
             row = {"index": index, "total": total, "leg": "value_class",
@@ -1633,7 +1633,7 @@ def main() -> int:
                      **leg_refusal()})
         emit(handle, rows[-1])
 
-        # THE ONE ARMED EDIT REQUIRED TO BE UNCAUGHT. Scored on NOT diverging.
+        # The one armed edit required to be uncaught. Scored on NOT diverging.
         index += 1
         result = run_case(cases[M_ONE_CASE], 71000, args.steps, functions=neutral)
         row = {"index": index, "total": total, "leg": "byte_neutral_control",
@@ -1682,7 +1682,7 @@ def main() -> int:
             rows.append(row)
             emit(handle, row)
 
-        # THE DISARM CHECK. The identical harness, the identical case, the SHIPPED
+        # The disarm check. The identical harness, the identical case, the SHIPPED
         # bytes and no host patch. A nonzero here would mean every "caught" above is
         # a harness that diverges on its own.
         index += 1

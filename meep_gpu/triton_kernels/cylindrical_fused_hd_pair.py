@@ -10,7 +10,7 @@ launch algebra (three launches against three; kept, not dispatched) and the
 arbitration are identical and are not restated here.
 
 =============================================================================
-WHAT THE COMPLEX STORAGE CHANGES, AND WHAT IT DOES NOT
+What the complex storage changes, and what it does not
 =============================================================================
 
 **Launch 1** (:func:`cyl_complex_update_H_scratch`) is the complex Cartesian weld's
@@ -145,7 +145,7 @@ except ImportError as _exc:  # pragma: no cover - the laptop path
 
 if triton is not None:  # pragma: no cover - device code, certified by the gate
 
-    # THE CERTIFIED COMPLEX CONSTITUTIVE, imported as a device function rather than
+    # The certified complex constitutive, imported as a device function rather than
     # copied: its lift is machine-checked in complex_fused_hd_pair and re-checked by
     # this family's gate.
     from .complex_fused_hd_pair import _h_cell_complex  # noqa: PLC0415
@@ -334,7 +334,7 @@ class CylindricalFusedHdPairPlan(_cartesian.StartsH, ScratchWeldPairPlan):
                 "sub-lattice")
         self._kps = tuple(CupyPointer(_flat(a)) for a in kps)
         self._kms = tuple(CupyPointer(_flat(a)) for a in kms)
-        # THE CERTIFIED COMPLEX step_D PLAN, once over each rotating allocation, built
+        # The certified complex step_D PLAN, once over each rotating allocation, built
         # by the certified harness builder.
         live = {name: getattr(fields, name) for name in ROTATED}
         curl_flat = dict(zip((f"{stem}_{axis}" for axis in "xyz"

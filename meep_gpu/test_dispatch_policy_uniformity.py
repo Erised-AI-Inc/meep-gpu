@@ -1,6 +1,6 @@
 """The uniformity rule, measured on plans where CuPy and Triton are really governed.
 
-WHY THIS FILE EXISTS, and it is not "more coverage of the same thing".
+Why this file exists, and it is not "more coverage of the same thing".
 ``test_dispatch_subnormal_gate`` pins that the shipped opt-in path installs the
 certified policy or refuses by name. It did so, for its whole life, with
 ``governed_executors == ['host']`` on every test where the gate PERMITTED
@@ -9,7 +9,7 @@ from the governed set in exactly the tests that dispatched, and present only in
 the two negative controls that refuse. The headline test therefore proved the
 HOST FPU had been driven and nothing at all about CuPy and Triton: the same shape
 of gap as the "the subnormal policy question is settled" claim that this whole
-round exists to correct.
+file exists to correct.
 
 The cause was structural. The gate decided governance with
 ``importlib.util.find_spec`` and read ANY exception from it as "absent" — and
@@ -26,7 +26,7 @@ here has genuinely put a Triton under the policy. The CuPy leg answers honestly
 that a laptop with no CuPy compiles nothing — which is a true "nothing to govern",
 not a dropped executor, and the artifact now says which.
 
-NOTHING HERE LAUNCHES A KERNEL. The device half is
+Nothing here launches a kernel. The device half is
 ``parity/meep_gpu/gate_dispatch_end_to_end.py`` and ``probe_ftz_ptx_census.py``.
 """
 
@@ -44,6 +44,7 @@ import meep_gpu.fastpath as fastpath
 import meep_gpu.subnormal_policy as policy_module
 from meep_gpu.triton_kernels import launch as launch_module
 from meep_gpu.triton_kernels.launch import TritonStepPlan
+from meep_gpu.test_backends import cupy_compiler_module
 
 
 # ---------------------------------------------------------------------------
@@ -165,7 +166,7 @@ def test_a_dispatching_plan_governs_triton_and_says_it_drove_it(monkeypatch):
     assert gate["attained"]["triton"] is True
     report = policy_module.executor_report("triton")
     assert report["installed"] is True and report["attained"] is True
-    # THE HOOKS LANDED ON THE CLASS THE COMPILER WOULD INSTANTIATE, which is the
+    # The hooks landed on the class the compiler would instantiate, which is the
     # difference between "the install returned" and "Triton is under the policy":
     # the mechanism digest in the cache key is what separates this policy's
     # binaries from the other one's on disk.
@@ -218,7 +219,7 @@ def test_a_triton_that_cannot_be_governed_refuses_instead_of_dispatching(monkeyp
     module = types.ModuleType("triton")
     module.__version__ = "3.1.0"
     monkeypatch.setitem(sys.modules, "triton", module)
-    # BARE MEANS BARE: where a real Triton was imported earlier in the process, its
+    # Bare means bare: where a real Triton was imported earlier in the process, its
     # submodules are still in ``sys.modules`` and ``from triton.backends import
     # backends`` would reach the real compiler behind the stand-in, which governs.
     # Hidden for the test (``monkeypatch`` puts them back), as on a host where the
@@ -299,11 +300,16 @@ def test_a_successful_install_keeps_the_pointer_moved(monkeypatch, tmp_path):
     assert policy_module.cupy_cache_reasons("keep", os.environ["CUPY_CACHE_DIR"]) == []
 
 
-def test_a_cache_directory_this_package_did_not_mint_is_refused(monkeypatch, tmp_path):
+def test_a_cache_directory_this_package_did_not_mint_is_never_used(monkeypatch, tmp_path):
     """PROVENANCE. The token in the NAME is a rule about the name; it is not
     evidence about the binaries inside, and nothing checked that. A directory
     holding entries with no marker may hold CuPy's own -ftz=true output, and a
-    disk-cache hit serves it with no compile and no counter."""
+    disk-cache hit serves it with no compile and no counter.
+
+    The guard stays and the response changed: the directory is left
+    untouched and unused, and a fresh, marked sibling serves the keep policy; the
+    plan is refused only when no directory can be made (``test_nvidia_fast_default``).
+    """
     poisoned = tmp_path / f"cache-{policy_module.CUPY_CACHE_POLICY_TOKEN}"
     poisoned.mkdir()
     (poisoned / "e3b0c442.cubin").write_bytes(b"not ours")
@@ -314,10 +320,13 @@ def test_a_cache_directory_this_package_did_not_mint_is_refused(monkeypatch, tmp
     provenance = policy_module.keep_policy_cache_provenance(str(poisoned))
     assert provenance["reasons"], "an unmarked, non-empty cache is unknown"
 
-    assert plan_on_a_governed_host(monkeypatch) is None
-    reason = fastpath.last_dispatch_report()["refused_because"]
-    assert "provenance" in reason and str(poisoned) in reason
-    assert "Delete that directory" in reason, "a refusal a user cannot act on"
+    plan = plan_on_a_governed_host(monkeypatch)
+    assert plan is not None, fastpath.last_dispatch_report()["refused_because"]
+    cache = gate_of(fastpath.last_dispatch_report())["cupy_cache_dir"]
+    assert cache["healed"]["from"] == str(poisoned)
+    assert "provenance" in cache["healed"]["problem"]
+    assert os.environ["CUPY_CACHE_DIR"] == cache["after"] == f"{poisoned}-2"
+    assert sorted(os.listdir(poisoned)) == ["e3b0c442.cubin"], "left untouched"
 
 
 def test_a_directory_this_package_minted_is_reused_without_complaint(monkeypatch, tmp_path):
@@ -342,7 +351,7 @@ def test_a_directory_this_package_minted_is_reused_without_complaint(monkeypatch
 
 
 def test_a_policy_uninstalled_after_the_freeze_stops_the_dispatch(monkeypatch):
-    """MEASURED BEFORE THE FIX: the plan kept answering True after
+    """Measured before the fix: the plan kept answering True after
     ``uninstall_subnormal_policy()`` had put CuPy's compiler seam back — so
     already-compiled Triton kernels went on keeping while every new CuPy compile
     carried CuPy's own ``-ftz=true`` again. The shipped split, from inside a
@@ -410,7 +419,7 @@ def test_a_refusal_below_the_gate_says_the_policy_stayed_installed(monkeypatch, 
     assert outlived["not_rolled_back_because"]
     line = [text for text in capsys.readouterr().err.splitlines()
             if text.startswith("meep_gpu: step path")][0]
-    assert "STAYS IN FORCE" in line
+    assert "stays in force" in line
 
 
 def test_an_escape_after_the_gate_keeps_the_record_the_ladder_built(monkeypatch):
@@ -485,13 +494,13 @@ def test_an_uninstall_between_freezes_drops_the_attribution(monkeypatch):
 def test_a_second_distinct_refusal_still_reaches_stderr(monkeypatch, capsys):
     """The announcement was keyed on the literal "refused", so a process whose
     first freeze refused for an unrelated reason swallowed every later refusal —
-    including the policy's, the one this round exists for."""
+    including the policy's, the one this test exists for."""
     import meep_gpu.triton_kernels as package
     import numpy
 
     monkeypatch.setattr(package, "plan_step", lambda f, p, **kwargs: step_plan(
         {"step_B": CountingPlan("b")}, {"step_B": "PML"}))
-    # THE FIRST REFUSAL HAS TO BE THE BACKEND'S ON EVERY MACHINE, and since the
+    # The first refusal has to be the backend's on every machine, and since the
     # kernel table became a choice that is a statement about the HARDWARE rather
     # than about the engine: a NumPy engine on a Mac with an MPS device is now a
     # CANDIDATE for the Metal table and is admitted, so on this laptop the ladder
@@ -563,9 +572,8 @@ def test_an_undropped_cupy_kernel_memo_is_not_attained(monkeypatch, tmp_path):
     The drop's result was recorded and then left out of ``reasons``."""
     monkeypatch.setenv("CUPY_CACHE_DIR",
                        str(tmp_path / f"c-{policy_module.CUPY_CACHE_POLICY_TOKEN}"))
-    compiler = types.SimpleNamespace()
-    for name in policy_module._COMPILER_ENTRY_POINTS:
-        setattr(compiler, name, lambda *a, **k: None)
+    compiler = cupy_compiler_module("14", lambda name, source, options: None,
+                                    tmp_path / "cupy_default_cache")
     fake = types.SimpleNamespace(cuda=types.SimpleNamespace(compiler=compiler))
     monkeypatch.setattr(policy_module, "_clear_cupy_kernel_memo",
                         lambda cupy: {"cleared": False,

@@ -1,12 +1,12 @@
 """The compile memo's key, exercised where there is no device.
 
-WHY THIS FILE EXISTS. Until 2026-08-15 ``step_curl_kernels`` memoized compiled
+Why this file exists. Until 2026-08-15 ``step_curl_kernels`` memoized compiled
 kernels on ``(name, is_complex)`` and nothing else. A float32 subnormal policy
 installed after a kernel had first compiled was therefore never seen by that
 module: the second caller got the first caller's binary, under the second
 caller's policy name, with every counter reading zero. The 120/120 the track
 holds names no policy at all, and could not be filtered by one, because the field
-does not exist in the artifact (disposition §1.1, §1.2).
+does not exist in the artifact.
 
 The fix is a KEY, not a hook, and the difference is the whole point: a hook has
 to be called by :mod:`meep_gpu.subnormal_policy`'s install, which this package
@@ -15,7 +15,7 @@ needs nobody to remember. What follows measures that — including with the REAL
 policy module driven through a REAL install, because the failure being pinned is
 a late install and a mock of one proves nothing about the module that does it.
 
-WHAT IT STILL DOES NOT PROVE, and no laptop can: that the recompiled binary is
+What it still does not prove, and no laptop can: that the recompiled binary is
 different BYTES. CuPy's own on-disk cache key is computed above the seam the
 policy strips ``-ftz=true`` at, so the rebuild this file proves happens can still
 be served the previous policy's binary off disk. The second half is a fresh,
@@ -72,7 +72,7 @@ def _empty_memo():
 # --------------------------------------------------------------------------
 
 def test_one_kernel_under_two_policies_is_two_entries():
-    """THE required half of the fix, stated as the disposition states it.
+    """The required half of the fix: the policy is part of the memo key.
 
     Same name, same options, same source; two policies. Two entries, two
     compiles, and the two lookups may not hand back the same object — that
@@ -103,7 +103,7 @@ def test_a_policy_installed_after_the_first_compile_is_not_served_the_earlier_bi
         monkeypatch, tmp_path):
     """The late install, driven through the REAL policy module.
 
-    This is the measured failure from the disposition: install-then-compile and
+    This is the measured failure: install-then-compile and
     compile-then-install produced different bytes on device, and the module could
     not tell the two apart. Here the same sequence runs on a laptop — compile
     first, install second — and the second lookup must MISS.
@@ -111,7 +111,7 @@ def test_a_policy_installed_after_the_first_compile_is_not_served_the_earlier_bi
     The install is real (``install_subnormal_policy('keep')``), so what is being
     pinned is this module's reading of that module, not a mock of it.
 
-    ``CUPY_CACHE_DIR`` IS SET, AND THAT IS NOT COSMETIC. A ``keep`` install with
+    ``CUPY_CACHE_DIR`` is set, and that is not cosmetic. A ``keep`` install with
     ``strict=True`` REFUSES a cache directory that does not carry the
     ``ftz_stripped`` token (``subnormal_policy.cupy_cache_reasons``), and it only
     reaches that check when CuPy is importable — so on a laptop without CuPy the

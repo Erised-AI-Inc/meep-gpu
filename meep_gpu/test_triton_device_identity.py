@@ -1,6 +1,6 @@
 """The Triton probes' device-identity block, held to what the weld tools read.
 
-WHY THIS IS ON THE LAPTOP MERGE BAR. ``parity/meep_gpu/triton_device_identity.py``
+Why this is on the laptop merge bar. ``parity/meep_gpu/triton_device_identity.py``
 runs inside a device gate, on a shared box, at the end of a run that has already
 cost GPU minutes — the worst possible place to discover that it raises. Every claim
 its docstring makes is checked here instead: that it never imports a device stack,
@@ -137,6 +137,16 @@ def test_the_module_imports_nothing_that_needs_a_device():
     # without importing it). All three are stdlib and none can reach a device, which
     # is what this clause is for; FORBIDDEN_IMPORT_ROOTS above is what holds the
     # device line, and it is checked first.
-    assert found <= {"__future__", "importlib", "json", "os", "socket", "sys", "time",
-                     "typing"}, (
+    # ``neutral_ids`` (beside it, by name or as ``parity.meep_gpu.neutral_ids``) writes the
+    # machine as its anonymous id; it is stdlib only too, which the second check holds.
+    assert found <= {"__future__", "importlib", "json", "neutral_ids", "os", "parity",
+                     "socket", "sys", "time", "typing"}, (
         f"unexpected imports {sorted(found)}: this module is stdlib only")
+    helper = ast.parse((MODULE_PATH.parent / "neutral_ids.py").read_text(encoding="utf-8"))
+    used = {alias.name.split(".")[0] for node in ast.walk(helper)
+            if isinstance(node, ast.Import) for alias in node.names}
+    used |= {node.module.split(".")[0] for node in ast.walk(helper)
+             if isinstance(node, ast.ImportFrom) and node.module}
+    assert used <= {"__future__", "functools", "getpass", "hashlib", "hmac", "os", "pathlib",
+                    "re", "secrets", "socket", "subprocess", "sys", "tempfile", "threading",
+                    "typing"}, f"neutral_ids.py imports {sorted(used)}: it must be stdlib only"

@@ -1,7 +1,7 @@
 """The FOLDED BETA REAL fused B/H pair: a folded ``special_kz`` ``step_B`` welded into
 ``update_H``.
 
-:mod:`.folded_fused_magnetic_pair` WITH ONE EMITTER SWAPPED, and the swap is the whole
+:mod:`.folded_fused_magnetic_pair` with one emitter swapped, and the swap is the whole
 module — the B-side twin of :mod:`.folded_beta_real_fused_pair` and the real-storage
 sibling of :mod:`.folded_beta_complex_fused_magnetic_pair`. The folded real curl body
 is replaced by the certified FOLDED BETA real curl body
@@ -16,7 +16,7 @@ This is the cell ``(folded beta real, folded beta real)`` at ``B_to_H``.
 beta product" as the owner) and :mod:`.beta_fused_magnetic_pair` refuses a fold by
 name, so this is the product they name.
 
-WHY THE SWAP IS SOUND, measured rather than argued. The folded beta curl and the folded
+Why the swap is sound, measured rather than argued. The folded beta curl and the folded
 curl differ by TWO STATEMENTS and two scalars::
 
     curl0 = curl0 - (beta_plus  * b);
@@ -25,11 +25,11 @@ curl differ by TWO STATEMENTS and two scalars::
 inserted AFTER the ``dtdx`` curl and BEFORE BOTH ownership masks — the array path's own
 order (stepping.py:384-391 against :397). Everything below the cut is untouched.
 
-WHY THE CONSTITUTIVE HALF NEEDS NOTHING. ``update_H`` reads nothing beta-dependent:
+Why the constitutive half needs nothing. ``update_H`` reads nothing beta-dependent:
 ``grid.beta`` enters the two CURLS only, never ``_apply_constitutive_pml``. That is the
 measurement :func:`.folded_beta.folded_beta_constitutive_coverage` already ships on.
 
-THE SIGNATURE IS :data:`.fused_magnetic_pair.PACKED_BINDINGS` UNMOVED — 27 pointers
+The signature is :data:`.fused_magnetic_pair.PACKED_BINDINGS` unmoved — 27 pointers
 plus one packed ``constant Params&``, 28 of the platform's 31. The beta term adds NO
 POINTER: its two coefficients are floats and ride inside the same record the five
 scalars and three reflect rows already ride in.
@@ -38,7 +38,7 @@ scalars and three reflect rows already ride in.
 by :func:`.special_kz.beta_curl_coefficients` with ``magnetic=True``. That flag is not
 a default: the two seams take OPPOSITE signs.
 
-NOT WIRED AS AN ARM: this product spans five driver passes. It reaches its two slots
+Not wired as an arm: this product spans five driver passes. It reaches its two slots
 through ``launch.FUSED_PAIR_ARMS``.
 """
 
@@ -69,7 +69,7 @@ from .. import deposit_repair as _deposit_repair
 #: Does this product bracket its fused launch with the deposit repair? While False the
 #: source-presence clause below refuses every in-seam deposit.
 #:
-#: TRUE FROM THIS FAMILY'S FIRST COMMIT, in the same edit as its
+#: True from this family's first commit, in the same edit as its
 #: ``launch.FUSED_PAIR_ARMS`` row. The claim is exactly the one
 #: :mod:`.folded_fused_magnetic_pair` has carried since 2026-08-28, on the same seam
 #: with the same geometry: ``deposit_repair.repair_cells`` (deposit_repair.py:217-258)
@@ -168,7 +168,7 @@ def metal_folded_beta_real_fused_magnetic_pair_coverage(
         reasons.extend(f"folded beta real constitutive half: {reason}"
                        for reason in magnetic.reasons)
 
-    # THE SOURCE SEAM. A MAGNETIC source is injected BETWEEN the two halves
+    # The source seam. A MAGNETIC source is injected BETWEEN the two halves
     # (driver.py:3283-3284), so a fused pair would consume a pre-injection B unless the
     # deposit repair brackets the launch -- which for this family it does. An ELECTRIC
     # source is injected in the D/E half and does NOT disqualify the pair.
@@ -258,7 +258,7 @@ class MetalFoldedBetaRealFusedMagneticPairPlan(KernelPlan):
 
 
 def beta_words(grid: Any) -> Tuple[float, float]:
-    """``(beta_plus, beta_minus)`` — the CURL ARM'S OWN coefficients, called.
+    """``(beta_plus, beta_minus)`` — the curl arm's own coefficients, called.
 
     ``magnetic=True`` because :data:`CURL_SUB_STEP` is ``step_B`` -- NOT a default,
     because the two seams take opposite signs; ``complex_storage=False`` because this
@@ -342,7 +342,7 @@ def plan_metal_folded_beta_real_fused_magnetic_pair(
         + [bind(name, getattr(fields, name)) for name in ("Hx", "Hy", "Hz")]
         + [bind("f_w_" + name, getattr(fields, "f_w_" + name))
            for name in ("Hx", "Hy", "Hz")]
-        # THE B CURL TAKES THE HALF-INTEGER LATTICE and the H constitutive the INTEGER
+        # The B curl takes the half-integer lattice and the H constitutive the INTEGER
         # one — the OPPOSITE pairing to the D/E pair, and the kernel cannot tell.
         + [bind(f"pml:{stem}_{axis}_h", getattr(pml, f"{stem}_{axis}_h"),
                 constant=True)

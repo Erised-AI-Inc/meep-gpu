@@ -5,12 +5,12 @@ plus its stdlib-only emitter ``offdiag_emitter.py``. Nothing dispatches it; this
 gate is what would move ``CERTIFIED_KERNELS`` off empty.
 
 =============================================================================
-WHY THIS IS A FILE OF ITS OWN RATHER THAN A FAMILY IN THE SHARED PROBE
+Why this is a file of its own rather than a family in the shared probe
 =============================================================================
 
 ``probe_fused_kernel_bit_identity.py`` drives the curl pair and the plain
-constitutive pair, and its mutation machinery rewrites MODULE-LEVEL STRING
-CONSTANTS. This family has none: its device source is EMITTED per row mask, so
+constitutive pair, and its mutation machinery rewrites module-level string
+constants. This family has none: its device source is EMITTED per row mask, so
 the thing a mutation has to rewrite is a function's OUTPUT, and the thing a sweep
 has to vary is which of the 63 sources gets compiled. Bending the shared probe
 around that would change a file two other certified records are cut against.
@@ -22,7 +22,7 @@ two tracks are laid out the same way (``gate_triton_offdiag.py`` imports the sam
 helpers), so the three families' claims stay commensurable.
 
 =============================================================================
-THE ORACLE IS THE ARRAY PATH ITSELF
+The oracle is the array path itself
 =============================================================================
 
 ``stepping.update_E`` on real ``Grid``/``Fields``/``PML`` objects, with the rows
@@ -44,7 +44,7 @@ on a laptop, before a device slot is spent. Every mutation's catch rate is
 therefore a number twice: once off device and once on it.
 
 =============================================================================
-A GATE THAT CANNOT FAIL CERTIFIES NOTHING
+A gate that cannot fail certifies nothing
 =============================================================================
 
 Zero-init is a fixed point of this sub-step, so every case carries two floors and
@@ -61,12 +61,12 @@ The mutation legs are the other half. Source defects are planted in the EMITTED
 TEXT and compiled from it — the compile memo is keyed through the source, so a
 mutated body is a miss and reaches NVRTC — and every leg records how many
 compiles came from the mutated bytes, because a leg reporting a pass for a
-mutation it never applied is worse than no leg (§13.4 of the disposition, three
-measured instances). Legs that MUST BE UNCAUGHT are carried beside legs that edit
+mutation it never applied is worse than no leg (three measured instances when this
+family was certified). Legs that must be uncaught are carried beside legs that edit
 the same expression and must be caught, so "inert" is a measurement.
 
 =============================================================================
-GUARDS, POLICIES AND COURANTS
+Guards, policies and Courants
 =============================================================================
 
 ``--fmad=false`` is CORRECTNESS here, not tuning: the two tail accumulations, the
@@ -76,7 +76,7 @@ guard ON (primary) and OFF (control), and the control is expected to DIVERGE —
 if it does not, the guard is decorative on this sub-step and the record says so
 rather than implying evidence it does not have.
 
-COURANT 0.5 IS EXACT IN FLOAT32, so a contracted and an uncontracted expression
+Courant 0.5 is exact in float32, so a contracted and an uncontracted expression
 round identically and the guard cannot be measured there. 0.35 is not
 representable and is where it becomes visible. Both are swept; the summary
 reports the control's divergence at the inexact Courant separately.
@@ -211,7 +211,7 @@ VALUE_CLASSES: Tuple[str, ...] = ("uniform", "subnormal_band")
 #: the difference.
 ROW_FORMS: Tuple[str, ...] = ("varying", "uniform")
 
-#: THE PRESENCE CASES (0.10). MEEP deletes a row's ``chi1inv`` array in every chunk where
+#: The presence cases (since 1.0). MEEP deletes a row's ``chi1inv`` array in every chunk where
 #: it is identically zero and drops its term there, which differs from adding a zero only
 #: on a ``-0`` row -- so the random product above never sees it. These cases keep the
 #: rows on an interior block (``block``: every chunk that carries a layer deletes them),
@@ -333,7 +333,7 @@ def seed_state(fields, grid, value_class: str, rng) -> Dict[str, np.ndarray]:
     divergence the multi-step leg exists to catch, and no reason to hide it from
     the single-launch leg as well.
 
-    THE MATERIAL STAYS NORMAL under the band class. Driving the coefficients into
+    The material stays normal under the band class. Driving the coefficients into
     the band too would make every product underflow and the leg would measure the
     fixture rather than the policy's reach into this arithmetic.
     """
@@ -443,7 +443,7 @@ _SCAFFOLDING: Tuple[str, ...] = (
 def evaluator_blind_lines(text: str) -> List[str]:
     """Lines of an emitted body the NumPy evaluator neither EXECUTES nor pins.
 
-    THE HAZARD THIS EXISTS FOR, measured on this gate's first laptop run. The
+    The hazard this exists for, measured on this gate's first laptop run. The
     evaluator is a ``finditer`` over an anchored grammar, so a mutation that
     rewrites a statement into a form the grammar does not match is not applied at
     all — it is SILENTLY SKIPPED. Two of this file's defects do exactly that
@@ -575,14 +575,14 @@ class EvaluatorBackend:
 class KernelBackend:
     """The shipped CuPy launcher, driven through its own gate door.
 
-    THE GUARD AND THE MUTATION BOTH REACH NVRTC THROUGH THE SOURCE-KEYED MEMO.
+    The guard and the mutation both reach NVRTC through the source-keyed memo.
     ``_get_kernel`` keys on ``(name, options, policy, source)``, so overriding
     ``_COMPILE_OPTIONS`` or wrapping ``offdiag_launch_source`` is a MISS and the
     compiler sees the bytes this leg intends. The memo is dropped at both ends anyway,
-    because a leg that measured a guard it never applied is the failure family the
-    disposition records three instances of.
+    because a leg that measured a guard it never applied is the failure family of which
+    three instances were measured when this family was certified.
 
-    THE TEXT THIS BACKEND MUTATES AND DIGESTS IS THE LAUNCH TEXT,
+    The text this backend mutates and digests is the launch text,
     ``offdiag_emitter.offdiag_launch_source``: the certified statement form in the
     own-cell register view, which is what ``_get_kernel`` compiles. A mutation is
     applied AFTER the hoist, so the port rule never sees a mutated helper (two of the
@@ -730,8 +730,8 @@ def m_transpose_the_chi1inv_term_table(text: str) -> Tuple[str, int]:
     would name a parameter the emitted signature never declared, and a compile
     failure is not a catch.
 
-    ONLY THE USE IS REWRITTEN, NEVER THE DECLARATION, and that is the whole
-    mutation rather than a detail. MEASURED, 2026-08-16, on the first keep leg:
+    Only the use is rewritten, never the declaration, and that is the whole
+    mutation rather than a detail. Measured, 2026-08-16, on the first keep leg:
     the first spelling of this defect renamed both, which is a consistent ALPHA
     RENAME — the parameter in each position stays bound to the same volume and is
     still read by the same term, so the arithmetic is untouched and the kernel was
@@ -798,7 +798,7 @@ def m_column_major_index(text: str) -> Tuple[str, int]:
 
 
 def m_previous_tail_grouping(text: str) -> Tuple[str, int]:
-    """The constitutive grouping the package used until 0.10, ``(f + kps*src) -
+    """The constitutive grouping the package used before 1.0, ``(f + kps*src) -
     kms*prev``, in place of MEEP's ``f + ((kps*src) - (kms*prev))`` (the inversion
     rule: the mutation that used to plant MEEP's grouping now plants the old one)."""
     return _sub(
@@ -822,7 +822,7 @@ def m_drop_fw_store(text: str) -> Tuple[str, int]:
 
 
 def m_row_in_float32(text: str) -> Tuple[str, int]:
-    """The row summed and scaled in float32 -- the package's arithmetic until 0.10 --
+    """The row summed and scaled in float32 -- the package's arithmetic before 1.0 --
     where MEEP scales by the double literal 0.25 and sums the row in double."""
     out, hits = _sub(r"double row_(\w+) = ", r"float row_\1 = ", text)
     out, more = _sub(r"\(0\.25 \* \(double\)term_(\w+)\)", r"(0.25f * term_\1)", out)
@@ -855,8 +855,8 @@ def m_plain_constitutive_via_unit_coefficients(text: str) -> Tuple[str, int]:
 def n_scale_the_quarter_in_float32(text: str) -> Tuple[str, int]:
     """NULL: the term's float32 sum scaled by ``0.25f`` in float32 and widened.
 
-    0.25 is an exact power of two, so the float32 product is exact AWAY FROM
-    UNDERFLOW and widening it gives the double scale's word. It is NOT a null once
+    0.25 is an exact power of two, so the float32 product is exact away from
+    underflow and widening it gives the double scale's word. It is NOT a null once
     ``0.25*x`` is subnormal in float32, which is why this leg is armed on the uniform
     class only and says so.
     """
@@ -947,7 +947,7 @@ def apply_host_mutation(name: Optional[str], layer, grid,
         return tables, (0, 0, 0), walls, record, kept
     if name == "select_removed":
         # Every row of every lattice in a layer chunk: the accumulation, f_w read
-        # and f_w written on every cell -- the whole-grid recurrence until 0.10.
+        # and f_w written on every cell -- the whole-grid recurrence before 1.0.
         for half in (False, True):
             for axis in range(3):
                 base = ((1 if half else 0) * 3 + axis) * 4
@@ -1009,7 +1009,7 @@ def one_case(backend, xp, cell, shape_label, boundaries, mask, row_form,
         advance_sources(fields)
     oracle = {name: probe.to_host(getattr(fields, name)).copy() for name in OUTPUTS}
 
-    # THE TWO VACUITY FLOORS, taken on the ORACLE's own output.
+    # The two vacuity floors, taken on the ORACLE's own output.
     moved = sum(int(np.count_nonzero(
         oracle[name].ravel().view(np.uint32)
         != frozen[name].ravel().view(np.uint32))) for name in OUTPUTS)
@@ -1269,7 +1269,7 @@ MUTATION_LEGS: Tuple[Dict[str, Any], ...] = (
             "by construction, so it must be caught as a wrong answer"},
     {"leg": "o12_previous_tail_grouping", "mutation": "previous_tail_grouping",
      "kind": "source", "expect": "caught",
-     "why": "the welded tail in the grouping the package used until 0.10, "
+     "why": "the welded tail in the grouping the package used before 1.0, "
             "(f + kps*src) - kms*prev: the inversion of the leg that planted MEEP's"},
     {"leg": "o13_store_fw_before_reading_prev",
      "mutation": "store_fw_before_reading_prev", "kind": "source",
@@ -1296,14 +1296,14 @@ MUTATION_LEGS: Tuple[Dict[str, Any], ...] = (
             "resolves to (0,0,0), so the same pair applies"},
     {"leg": "b1_row_in_float32", "mutation": "row_in_float32", "kind": "source",
      "expect": "caught", "masks": ((1, 1, 1, 1, 1, 1), (0, 0, 1, 1, 0, 0)),
-     "why": "the row scaled and summed in float32, the package's arithmetic until "
-            "0.10, where MEEP's 0.25 is a double literal and the row a double sum. A "
+     "why": "the row scaled and summed in float32, the package's arithmetic before "
+            "1.0, where MEEP's 0.25 is a double literal and the row a double sum. A "
             "one-term row is ONE rounding of an exact double sum either way, so the leg "
             "is armed only on masks where a component adds two terms."},
     {"leg": "b2_select_removed", "mutation": "select_removed", "kind": "host",
      "expect": "caught",
      "why": "every cell in a layer chunk: the accumulation and the f_w traffic on "
-            "every cell, the whole-grid recurrence until 0.10"},
+            "every cell, the whole-grid recurrence before 1.0"},
     {"leg": "b3_predicate_on_coefficient_identity",
      "mutation": "predicate_on_coefficient_identity", "kind": "source",
      "expect": "caught",
@@ -1362,7 +1362,7 @@ MUTATION_LEGS: Tuple[Dict[str, Any], ...] = (
      "steps": 1,
      "why": "HARNESS: drop the auxiliary comparison against the defect that really "
             "is auxiliary-only. A single-launch, target-only gate must be TOTALLY "
-            "blind to it — R2 measured rather than argued — while o14 catches it "
+            "blind to it — measured rather than argued — while o14 catches it "
             "with f_w and the multi-step leg catches it from step two."},
 )
 
@@ -1457,7 +1457,7 @@ def run_mutations(backend, xp, results: Dict[str, Any], out_path: str,
                         statement, transform(statement)[0])
             backend.set_source_mutation(transform)
 
-        # THE EVALUATOR BACKEND CANNOT SEE EVERY DEFECT, and a leg it cannot see
+        # The evaluator backend cannot see every defect, and a leg it cannot see
         # must say so rather than score a number. Skipped here, measured on device.
         skip_reason = None
         if (not backend.certifies and classification is not None
@@ -1517,7 +1517,7 @@ def run_mutations(backend, xp, results: Dict[str, Any], out_path: str,
             record["refused_because"] = why
             cases.append(record)
 
-        # DID THE MUTATED BYTES REACH THE COMPILER? apply-time text matching is
+        # Did the mutated bytes reach the compiler? apply-time text matching is
         # necessary and not sufficient: between the rewrite and NVRTC sit a memo
         # that has to miss and a disk cache that has to not answer.
         compiles = backend.compile_log()[before_compiles:]
@@ -1628,7 +1628,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "gate_sha256": probe.source_digest(os.path.abspath(__file__)),
     }
 
-    # THE ORDER IS THE WHOLE POINT: the observer wraps NVRTC BELOW the strip so it
+    # The order is the whole point: the observer wraps NVRTC BELOW the strip so it
     # records the options NVRTC really received, and the policy installs before the
     # first compile. Install-then-compile keeps a planted subnormal;
     # compile-then-install flushes it and stays flushed through a cache clear.
@@ -1650,7 +1650,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if "bytes" in legs:
         run_bytes(backend, xp, results, out_path, product, args.steps, "bytes")
     if "multistep" in legs:
-        # THE PRIMARY GUARD ONLY. The control's job is to show the guard is doing
+        # The primary guard only. The control's job is to show the guard is doing
         # work, and one launch per case already shows it; paying 60x for the same
         # demonstration buys nothing the single-launch leg has not already
         # measured, and this leg's cost is what a device slot is spent on.
@@ -1681,7 +1681,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "every_case_had_live_coupling": single.get("every_case_had_live_coupling"),
         "mutation_legs_as_required": mutations.get("legs_as_required"),
         "all_mutation_legs_as_required": mutations.get("all_legs_as_required"),
-        # ON A CERTIFYING BACKEND THIS MUST BE ZERO. The compiler executes every
+        # On a certifying backend this must be zero. The compiler executes every
         # line, so no defect is invisible for a reason of the harness; a nonzero
         # count would mean a leg was skipped on the run the record is cut from.
         "mutation_legs_not_measurable":

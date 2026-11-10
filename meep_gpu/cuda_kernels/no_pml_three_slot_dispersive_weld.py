@@ -1,6 +1,6 @@
 """The NO-ABSORBER three-slot weld: ``step_D`` -> ``update_E`` -> ``update_P``.
 
-THE NO-PML TWIN of :mod:`.three_slot_dispersive_weld`, over the board's second
+The no-PML twin of :mod:`.three_slot_dispersive_weld`, over the board's second
 collision cell. Where that module welds the PML D->E product to the PML-ADE
 recurrence for the SEVEN rows of ``D_to_E (cuda_curl/PML,
 cuda_dispersive/dispersive)``, this one welds
@@ -13,10 +13,10 @@ dispersive store)`` and its extra cell ``D_to_E (cuda_no_pml_curl/no-PML curl,
 this weld exists to resolve.
 
 =============================================================================
-WHY THIS IS A SECOND MODULE AND NOT A SECOND FAMILY IN THE FIRST
+Why this is a second module and not a second family in the first
 =============================================================================
 
-ONE DECLARATION, AND IT IS THE ONE THAT CANNOT BE SHARED. :data:`REPAIR_PATHS` is
+One declaration, and it is the one that cannot be shared. :data:`REPAIR_PATHS` is
 ``deposit_repair.PLAIN_PATH`` here and ``SPLIT_FIELD_PATH`` there, because
 ``update_E`` with an INACTIVE layer is a pure overwrite (stepping.py:1019-1022) and the
 split-field repair inverts a recurrence that does not run. ``fused_pairs``
@@ -26,7 +26,7 @@ NAME rather than a mis-repair, measured 7 of 7 in the probe's ``wrong_repair_pat
 row. It is the same reason :mod:`.no_pml_dispersive_fused_electric_pair` is a
 separate module from :mod:`.dispersive_fused_electric_pair`.
 
-EVERYTHING ELSE IS IMPORTED, NOT COPIED. The emitter, the launcher, the rotation and
+Everything else is imported, not copied. The emitter, the launcher, the rotation and
 the binding check all live in :mod:`.three_slot_dispersive_weld` and are re-exported
 here, because with the ``update_E`` half removed from the fused kernel the device
 text is ARM-INDEPENDENT: what is left is the certified ADE recurrence, and the
@@ -37,7 +37,7 @@ whichever it is handed, and the ARM only names which of the two the predicate
 requires.
 
 =============================================================================
-WHAT THE ARM CHANGES, IN FULL
+What the arm changes, in full
 =============================================================================
 
 * the D->E half launched in group 1 --
@@ -54,7 +54,7 @@ Nothing else. :data:`KERNEL_NAME`, :data:`LIFT_EDITS` and the emitted device tex
 :mod:`.three_slot_dispersive_weld`'s, and the digest that pins them is one digest.
 
 =============================================================================
-NOTHING HERE IS DISPATCH
+Nothing here is dispatch
 =============================================================================
 
 ``meep_gpu.fastpath.plan_fast_path`` composes ``triton_kernels.plan_step`` and
@@ -71,7 +71,7 @@ from __future__ import annotations
 import os
 from typing import Any, Dict, Optional, Tuple
 
-# THE PML TWIN. Every piece of device text, every launcher and the rotation come from
+# The PML twin. Every piece of device text, every launcher and the rotation come from
 # it rather than a copy: the kernel is arm-independent (module docstring), and two
 # copies of the rotation is two places for the buffer sequence to be wrong.
 try:
@@ -106,10 +106,10 @@ except ImportError:  # loaded by path, outside the package
 
 
 # =============================================================================
-# THE PARTITION -- BOTH HALVES EMPTY, BY OWNERSHIP
+# The partition -- both halves empty, by ownership
 # =============================================================================
 
-#: BOTH HALVES EMPTY, AND THAT IS AN OWNERSHIP FACT RATHER THAN AN OMISSION. This
+#: Both halves empty, and that is an ownership fact rather than an omission. This
 #: module writes NO device text: the kernel this arm launches is
 #: ``three_slot_dispersive_weld``'s, emitted by that module's emitter, and one kernel
 #: name is owned by exactly one family
@@ -125,13 +125,13 @@ except ImportError:  # loaded by path, outside the package
 CERTIFIED_KERNELS = ()
 UNCERTIFIED_KERNELS = {}
 
-#: TRUE, AND IT IS THE WHOLE PRODUCT. All three rows of this weld's cells carry an
+#: True, and it is the whole product. All three rows of this weld's cells carry an
 #: ELECTRIC deposit inside the ``step_D`` -> ``update_E`` span, so without the bracket
 #: it would serve ZERO. The flag and the wiring change together or not at all;
 #: ``fused_pairs._install_fused_triple`` is what installs the bracket.
 CARRIES_DEPOSIT_REPAIR = True
 
-#: THE PLAIN REPAIR, and this is the declaration that makes this a separate module.
+#: The plain repair, and this is the declaration that makes this a separate module.
 #: ``update_E`` under an inactive layer is a pure overwrite (stepping.py:1019-1022);
 #: declaring the default split-field one would make ``deposit_repair.repairable``
 #: refuse every configuration this product exists for. Inherited from the D->E half
@@ -144,7 +144,7 @@ FAMILY = "cuda_three_slot_no_pml_dispersive_weld"
 #: The PML twin's symbol, spelled once THERE. The device text is arm-independent.
 KERNEL_NAME = shared.KERNEL_NAME
 
-#: THE TWIN, and this is the declaration a gate must read before it plants a defect.
+#: The twin, and this is the declaration a gate must read before it plants a defect.
 #: The emitted text, the compile memo and :data:`~.three_slot_dispersive_weld.
 #: SOURCE_TRANSFORM` all live in that module and NOT here, because one kernel name is
 #: owned by exactly one family (:data:`CERTIFIED_KERNELS` above). Assigning a source
@@ -164,7 +164,7 @@ REPLACES: Tuple[str, ...] = ("step_D", "zero_metal_D", "update_E", "update_P")
 #: The slot the composer holds this on (the span's first).
 SLOT = "step_D"
 
-#: ALL THREE slots this product owns, in driver order.
+#: All three slots this product owns, in driver order.
 SLOTS: Tuple[str, str, str] = ("step_D", "update_E", "update_P")
 
 #: The PML twin's, because the emitted text is the same text.
@@ -192,7 +192,7 @@ __all__ = [
 
 def run_three_slot_polarization(fields: Any, kernel: Optional[Any] = None, *,
                                 chunk_bounds: Any) -> Dict[str, Any]:
-    """THE THIRD SLOT on this arm: the shared launcher, pinned to ``no_pml``.
+    """The third slot on this arm: the shared launcher, pinned to ``no_pml``.
 
     A one-line wrapper rather than an alias, so this module's callers cannot pass the
     other arm's name into a launcher whose only uses for it are
@@ -215,7 +215,7 @@ def covers_no_pml_three_slot_dispersive_weld(fields: Any, pml: Any, grid: Any,
                                              ) -> Tuple[bool, str]:
     """May ONE product span ``step_D`` -> ``update_E`` -> ``update_P`` with no absorber?
 
-    A CONJUNCTION OF TWO SHIPPED PREDICATES, AND NOTHING IS WEAKENED. The D->E half
+    A conjunction of two shipped predicates, and nothing is weakened. The D->E half
     is ``no_pml_dispersive_fused_electric_pair.covers_no_pml_dispersive_fused_
     electric_pair`` whole -- which is where the SOURCE question is asked, through
     ``deposit_repair.seam_source_reasons`` carrying that module's own
@@ -223,14 +223,14 @@ def covers_no_pml_three_slot_dispersive_weld(fields: Any, pml: Any, grid: Any,
     module makes. The E->P half is
     ``fused_polarization_pair.covers_no_pml_fused_polarization_pair`` whole.
 
-    DISJOINT FROM THE PML TWIN ON THE ABSORBER ALONE: both of this one's halves
+    Disjoint from the PML twin on the absorber alone: both of this one's halves
     refuse an active layer by name and both of that one's require it, so no run can
     be claimed by two -- the same single boolean the four halves already partition on.
 
-    THE ADMISSION SET IS A SUBSET OF EACH HALF'S, which is what
+    The admission set is a subset of each half's, which is what
     ``fused_pairs._superseded_by_a_longer_span`` needs.
 
-    NOTHING IS ADDED, for the PML twin's measured reason: see
+    Nothing is added, for the PML twin's measured reason: see
     :func:`~.three_slot_dispersive_weld.covers_three_slot_dispersive_weld`, including
     which fact about this product no predicate can express.
     """

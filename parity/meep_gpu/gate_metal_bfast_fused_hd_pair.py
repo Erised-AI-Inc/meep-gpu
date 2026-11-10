@@ -2,7 +2,7 @@
 """Native MPS byte gate for the BFAST Metal H->D weld: the BFAST-run ``update_H``
 welded into the BFAST ``step_D``.
 
-THE THIRD ARM PAIR ON THE FOURTH SEAM, and the first one whose CURL half is not a
+The third arm pair on the fourth seam, and the first one whose CURL half is not a
 member of the certified PML curl family at all. The driver runs
 
     the ``update_H`` consult -> the magnetic ``f_minus_p`` restore, where H is
@@ -14,7 +14,7 @@ cell taken from registers, every one of the BFAST curl's six foreign taps RECOMP
 from pre-launch state, ``D``/``fu_D``/``f_bfast_D`` stepped in place, and the
 ``H``/``f_w_H`` bindings rotated afterwards.
 
-THE CLAIM IS PER COMPLETE DRIVER STEP -- ``FdtdDriver.step``'s own consult order -- over
+The claim is per complete driver step -- ``FdtdDriver.step``'s own consult order -- over
 a stated budget, as uint32 WORDS over every stored volume the engine allocates (never
 ``allclose``: ``-0.0 == 0.0`` lies), against FOUR reference engines from one seed:
 
@@ -22,17 +22,17 @@ a stated budget, as uint32 WORDS over every stored volume the engine allocates (
   2. the CERTIFIED SINGLES -- ``bfast_curl.plan_bfast_run_constitutive(..., 'H')`` at
      ``update_H`` and ``bfast_curl.plan_bfast_pml_curl(..., 'step_D')`` at ``step_D``,
      two dispatches on the seam;
-  3. the COMPOSITION THE COMPOSER INSTALLS TODAY -- ``plan_step(fuse=True)``, which on
+  3. the composition the composer installs today -- ``plan_step(fuse=True)``, which on
      every row this product reaches puts the released ``bfast_fused_magnetic_pair``
      across ``step_B``/``update_H`` and ``bfast_fused_electric_pair`` across
      ``step_D``/``update_E``. This is the reference the arbitration finding rests on;
   4. the same slots DISPATCHED UNFUSED -- ``plan_step(fuse=False)``.
 
 =============================================================================
-WHAT IS BFAST-SPECIFIC HERE, AND WHY EACH LEG EXISTS
+What is BFAST-specific here, and why each leg exists
 =============================================================================
 
-**The pack is what makes this product exist, so it is MEASURED.** Unpacked the
+**The pack is what makes this product exist, so it is measured.** Unpacked the
 signature is 33 pointers plus one ``Params`` = 34 against a ceiling of 31. Leg
 ``binding_ceiling`` compiles that shape and the 44-binding separate-scalar one and
 requires both to FAIL, bisects the ceiling on this host, compiles the shipped 26 on
@@ -63,7 +63,7 @@ certified BFAST curl to be a redirected magnetic read and requires no ``gN[`` sp
 to survive at all.
 
 =============================================================================
-THE FIVE THINGS THIS GATE REFUSES TO LET PASS SILENTLY
+The five things this gate refuses to let pass silently
 =============================================================================
 
 1. **A silent fallback.** Bytes alone cannot prove the fused path ran: an unlaunched
@@ -117,7 +117,7 @@ LEGS
   mutation          every armed shader and host defect, each of which MUST diverge
   disarm            the identical harness, shipped bytes, must not diverge
 
-THE GENERIC MACHINERY IS IMPORTED FROM ``gate_metal_fused_hd_pair`` RATHER THAN COPIED:
+The generic machinery is imported from ``gate_metal_fused_hd_pair`` rather than copied:
 the driver walk, the capture/restore/compare mechanism, the shim that answers the
 engine's own dispatch seam, the two launch counters, the rotation settling, the
 orphaned-mirror guard and the two censuses are the SAME mechanism this product needs,
@@ -141,7 +141,7 @@ import time
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple
 
-# THE POLICY, SET BEFORE ANY meep_gpu MODULE IS REACHED. The campaign runs this gate
+# The policy, set before any meep_gpu module is reached. The campaign runs this gate
 # under both policies from separate artifact directories; a resolved `keep` is expected
 # to refuse every predicate by name, which is what leg `policy` records.
 os.environ.setdefault("MEEP_GPU_SUBNORMAL_POLICY", "flush")
@@ -155,7 +155,7 @@ for _path in (str(API_ROOT), str(HERE)):
 
 import numpy as np  # noqa: E402
 
-# THE SIBLING GATE AS A LIBRARY. See the module docstring.
+# The sibling gate as a library. See the module docstring.
 import gate_metal_fused_hd_pair as _shared  # noqa: E402
 
 from meep_gpu import stepping, withdraw_hoist  # noqa: E402
@@ -199,7 +199,7 @@ SUBJECT_PACKAGE = "metal_kernels"
 #: The budget every synthetic case runs. SIXTY, the sibling H->D gate's, and for its
 #: reason: the state this weld carries between steps -- the rotated ``H``/``f_w_H``
 #: pair, the in-place ``fu_D`` AND the Tustin state ``f_bfast_D``, which is a
-#: MARGINALLY STABLE IIR the array path never resets -- compounds across steps.
+#: marginally stable iir the array path never resets -- compounds across steps.
 STEPS = 60
 
 #: The steps at which the sync leg calls the flux accessor.
@@ -208,12 +208,12 @@ SYNC_STEPS: Tuple[int, ...] = (3, 7)
 #: The floor a lifted corpus row must reach to count. See the sibling gate's constant.
 LIFT_CLEAN_STEP_FLOOR = 8
 
-#: THE SEED IS SCALED BY 2^80 -- the sibling gate's measurement, DRIVEN here rather than
+#: The seed is scaled by 2^80 -- the sibling gate's measurement, DRIVEN here rather than
 #: inherited, because this fixture carries a volume the sibling's does not: the Tustin
 #: state, whose filter is the one a scale could in principle disturb.
 SEED_SCALE_BITS = 80
 
-#: THE SHEAR, AND ALL THREE COMPONENTS ARE NONZERO ON PURPOSE. Measured 2026-09-07 with
+#: The shear, and all three components are nonzero on purpose. Measured 2026-09-07 with
 #: ``bfast_scaled_k = (0.2, 0.0, 0.0)``: ``f_bfast_Dx`` never moved over the whole run,
 #: because target 0's two scalars are read off the OTHER two axes and both were zero. A
 #: fixture built on that k would compare a state volume that is identically zero and
@@ -221,7 +221,7 @@ SEED_SCALE_BITS = 80
 #: keeps this constant honest.
 BFAST_K: Tuple[float, float, float] = (0.2, -0.13, 0.07)
 
-#: name -> the fixture's keywords. ALL EIGHT BOUNDARY SPECIALISATIONS, because the ghost
+#: name -> the fixture's keywords. All eight boundary specialisations, because the ghost
 #: rule is exactly what specialisation changes and the recompute's guard is what a
 #: redirect is most likely to eat, plus one row on a SINGLE-AXIS shear -- the shape the
 #: cell's own corpus row carries, and the one on which two of the three targets' scalars
@@ -241,7 +241,7 @@ CASES: Tuple[Tuple[str, Dict[str, Any]], ...] = tuple(
 #: The case the mutations are armed on: every axis walled, every k component live.
 MUTATION_CASE = "bc_mmm"
 
-#: THE SECOND MUTATION CASE. On a metallic axis ``stepping._mask_non_owned_cells``
+#: The second mutation case. On a metallic axis ``stepping._mask_non_owned_cells``
 #: zeroes the very curl component the shifted tap feeds, at the very plane where the
 #: ghost is served, so no metallic BOUNDARY VALUE is observable through this kernel's
 #: output. On an all-periodic grid that mask does not fire and cell 0's curl is a live
@@ -271,12 +271,12 @@ ALL_LEGS: Tuple[str, ...] = tuple(leg for group in LEG_GROUPS.values() for leg i
 
 #: The census this gate lifts its corpus rows from, the seam record whose
 #: ``withdraw_in_seam`` flag named the rows the 0.9.2 predicate refused by their standing
-#: withdraw (admitted since entry 25; ``_shared.lift_refusal_accounting``), and the cell.
+#: withdraw (now admitted; ``_shared.lift_refusal_accounting``), and the cell.
 CENSUS = "metal_coverage_2026-09-04_m0complex"
 SEAM_RECORD = "h_to_d_seam_2026-09-04"
 CELL_ARMS: Tuple[str, str] = ("BFAST", "BFAST")
 
-#: HOW MANY TIMES ``h_cell(`` APPEARS IN THE SHIPPED SOURCE: one declaration, the
+#: How many times ``h_cell(`` appears in the shipped source: one declaration, the
 #: thread's own cell, and one per shifted magnetic tap.
 H_CELL_CALL_SITES = 1 + 1 + len(plain.HALO_TAPS)
 
@@ -332,7 +332,7 @@ def build_driver(keywords: Mapping[str, Any], seed: int,
     for array in stored_volumes(driver.fields).values():
         array[...] = (0.37 * rng.standard_normal(array.shape)).astype(array.dtype)
         array *= scale
-    # A SEEDED STATE IS A MID-RUN ONE: H was started from B long ago, so
+    # A seeded state is a mid-run one: H was started from B long ago, so
     # ``stepping.separate_h_from_b`` must not run again on it (the plain weld's gate
     # and the composition matrix seed the same flag).
     driver.fields.h_separated = True
@@ -348,7 +348,7 @@ def build_driver(keywords: Mapping[str, Any], seed: int,
 def arrangement_singles(driver: Any) -> Arrangement:
     """Reference 2: the two certified BFAST singles at the seam's two slots.
 
-    THE CONSTITUTIVE HALF IS THE CERTIFIED ORDINARY BODY UNDER A BFAST PREDICATE --
+    The constitutive half is the certified ordinary body under a BFAST predicate --
     ``bfast_curl.plan_bfast_run_constitutive`` builds through ``launch``'s own
     ``ConstitutivePlan``, so "same kernel" is a fact rather than a claim.
     """
@@ -402,7 +402,7 @@ def arrangement_weld(driver: Any, functions: Optional[Mapping[str, Any]] = None,
             occupant, driver.fields, sources, span=family.REPLACES)
     plans: Dict[str, Any] = {}
     if rest_unfused:
-        # ON THIS ARRANGEMENT'S OWN RESIDENCY: the weld writes D and fu_D IN PLACE and
+        # On this arrangement's own residency: the weld writes D and fu_D IN PLACE and
         # ``update_E`` reads them; a second registry would give that read a different
         # device buffer.
         base, _residency = _shared._composed(driver, fuse=False,  # noqa: SLF001
@@ -459,7 +459,7 @@ def run_product(driver: Any, steps: int,
         legs[name]["dispatched"].get("update_H", 0) == result["steps_stepped"]
         and legs[name]["absorbed"].get("step_D", 0) == result["steps_stepped"]
         for name in ("weld", "weld_seam_only"))
-    # THE SEAM'S OWN OUTPUTS INCLUDE THE TUSTIN STATE, which the sibling's do not:
+    # The seam's own outputs include the Tustin state, which the sibling's do not:
     # this weld steps `f_bfast_D` in place, so a run where it never moved would be a
     # run where the tail's own state was never compared.
     seam_outputs = tuple(
@@ -469,7 +469,7 @@ def run_product(driver: Any, steps: int,
         if name in result["volumes_compared"])
     seam_moved = {name: int(result["moved_from_seed"].get(name, 0))
                   for name in seam_outputs}
-    # A TUSTIN COMPONENT WHOSE TWO SCALARS ARE BOTH EXACTLY ZERO CANNOT MOVE, and
+    # A Tustin component whose two scalars are both exactly zero cannot move, and
     # that is a fact about the SHEAR rather than about this kernel. Target 0's k1 and
     # k2 are read off the other two axes (stepping.py:911-912), so
     # `bfast_scaled_k = (0.2, 0, 0)` leaves `f_bfast_Dx` identically zero for the
@@ -483,7 +483,7 @@ def run_product(driver: Any, steps: int,
         name for index, name in enumerate(BFAST_STATE_NAMES["step_D"])
         if scalars[2 * index] == 0.0 and scalars[2 * index + 1] == 0.0)
     if movement_floor == "all":
-        # THE FIXTURE'S OWN FLOOR IS THE SEAM'S OUTPUTS, and every one of them must
+        # The fixture's own floor is the seam's outputs, and every one of them must
         # have moved unless its two scalars make movement impossible.
         floor = not [name for name in result["arrays_that_never_moved"]
                      if name in seam_outputs and name not in dead_states]
@@ -537,7 +537,7 @@ def run_product(driver: Any, steps: int,
 class BfastIntermediateCensus(_shared.BaseIntermediateCensus):
     """The sibling census, plus the BFAST tail -- which it does not see AT ALL.
 
-    WHY THIS SUBCLASS EXISTS, and it is a SILENT gap rather than a declared one.
+    Why this subclass exists, and it is a SILENT gap rather than a declared one.
     ``gate_metal_fused_hd_pair.IntermediateCensus`` models three helpers and COUNTS two
     more, and a step that reaches a counted one reports ``covered`` False. But
     ``stepping._bfast_term`` is in neither list, so on a BFAST run its intermediates
@@ -552,7 +552,7 @@ class BfastIntermediateCensus(_shared.BaseIntermediateCensus):
     helper RETURNS and the state it leaves behind must both equal this replay's, bit
     for bit, or :func:`_shared._agrees` raises.
 
-    THE MASK IS THE ENGINE'S OWN. ``_mask_non_owned_cells`` is called rather than
+    The mask is the engine's own. ``_mask_non_owned_cells`` is called rather than
     re-implemented, because the increment's mask and the curl's are the same predicate
     and this census must not become a second reading of it.
     """
@@ -564,7 +564,7 @@ class BfastIntermediateCensus(_shared.BaseIntermediateCensus):
         super().__enter__()
         from meep_gpu import stepping as _stepping  # noqa: PLC0415
 
-        # THE ORIGINAL IS THE ONE THE BASE SAVED on entry, never the live attribute
+        # The original is the one the base saved on entry, never the live attribute
         # re-read here, and it must not be a census wrapper: one left installed would
         # be saved, wrapped and restored, one level deeper per use
         # (``_shared.BaseIntermediateCensus``).
@@ -617,7 +617,7 @@ class BfastIntermediateCensus(_shared.BaseIntermediateCensus):
                            else np.where(plain, single, less).astype(f32))
             raw = note("bfast:updated-state", (updated - state_in).astype(f32))
             increment = (-raw).astype(f32)
-            # THE ENGINE'S OWN MASK, called rather than re-implemented.
+            # The engine's own mask, called rather than re-implemented.
             _stepping._mask_non_owned_cells(increment, grid, term.iyee)  # noqa: SLF001
             owned = np.ones(state_in.shape, dtype=bool)
             _stepping._mask_non_owned_cells(owned, grid, term.iyee)  # noqa: SLF001
@@ -630,7 +630,7 @@ class BfastIntermediateCensus(_shared.BaseIntermediateCensus):
         return self
 
 
-# THE CENSUS THE SHARED DRIVER USES IS SUBSTITUTED FOR THIS ONE, at module scope.
+# The census the shared driver uses is substituted for this one, at module scope.
 # ``_shared.drive`` constructs ``IntermediateCensus()`` by name inside its own loop, so
 # the ONLY seam a gate has for extending the instrument is the attribute the name
 # resolves to. This rebinds a HARNESS attribute in this process, never a product one.
@@ -669,7 +669,7 @@ def shader_mutations(codes: Sequence[int]) -> Dict[str, Tuple[str, str]]:
     def arm(name: str, source: str, why: str) -> None:
         out[name] = (source, why)
 
-    # THE LEGS THIS FAMILY EXISTS FOR: the foreign tap.
+    # The legs this family exists for: the foreign tap.
     arm("foreign_tap_reads_stale_H",
         needle(base, tap, "    float a_y = vy ? hi0[oy] : 0.0f;\n"),
         "the tap reads the PRE-LAUNCH H at the neighbour instead of recomputing "
@@ -679,7 +679,7 @@ def shader_mutations(codes: Sequence[int]) -> Dict[str, Tuple[str, str]]:
         "the tap reads the flux density where the curl needs the stepped H")
     arm("foreign_tap_reads_the_scratch_output",
         needle(base, tap, "    float a_y = vy ? ho0[oy] : 0.0f;\n"),
-        "THE PLANTED RACE: the tap reads another thread's store, which holds either "
+        "The planted race: the tap reads another thread's store, which holds either "
         "the neighbour's new H (if that thread ran first) or two-launches-old scratch")
     arm("halo_recompute_dropped",
         needle(base, tap, "    float a_y = 0.0f;\n"),
@@ -693,8 +693,8 @@ def shader_mutations(codes: Sequence[int]) -> Dict[str, Tuple[str, str]]:
     arm("own_cell_reads_stale_H_not_the_register",
         needle(base, "    float a   = own.a0;\n", "    float a   = hi0[ii];\n"),
         "the curl takes the pre-launch H at its own cell: the seam undone")
-    # THE CONSTITUTIVE HALF, inside h_cell (8-space indent: the lifted body).
-    # INVERTED (KERNELS.md §7.1): the shipped grouping is MEEP's, so the mutation
+    # The constitutive half, inside h_cell (8-space indent: the lifted body).
+    # INVERTED (docs/development/certification.md#inverted-grouping-mutations): the shipped grouping is MEEP's, so the mutation
     # plants the package's PREVIOUS grouping and stays must-catch.
     arm("constitutive_previous_accumulation_grouping",
         needle(base, _ACCUMULATION_0,
@@ -723,7 +723,7 @@ def shader_mutations(codes: Sequence[int]) -> Dict[str, Tuple[str, str]]:
                "    wo0[ii] = own.wnext0; wo1[ii] = own.wnext1; wo2[ii] = own.wnext2;\n",
                "    wo1[ii] = own.wnext1; wo2[ii] = own.wnext2;\n"),
         "one split-field history never advances")
-    # THE CURL HALF. INVERTED (KERNELS.md §7.1), as the constitutive grouping is.
+    # The curl half. INVERTED (certification.md#inverted-grouping-mutations), as the constitutive grouping is.
     arm("curl_previous_grouping",
         needle(base, "dtdx * (((c_y - c) + b) - b_z)", "dtdx * ((c_y - c) + (b - b_z))"),
         "the package's previous pairwise grouping (g1s - g1) + (g2 - g2s) planted in "
@@ -817,22 +817,22 @@ def predicted_null_mutations(codes: Sequence[int]
     base = family.bfast_fused_hd_pair_source(codes)
     out: Dict[str, Tuple[str, str, str]] = {}
     if all(codes):
-        # THE EDIT MOVES THE GHOST BRANCH, NEVER THE TAKEN ONE. Measured 2026-09-07:
+        # The edit moves the ghost branch, never the taken one. Measured 2026-09-07:
         # an edit written as `vy ? 1.0f : 0.0f` replaces the RECOMPUTE on every cell
         # where `vy` holds, which is the whole interior -- it fired, correctly, and
         # said nothing about the ghost. Only the `: 0.0f` side is the ghost.
         out["metallic_ghost_replaced_by_the_own_cells_constitutive"] = (
             needle(base, _a_y_line(),
                    f"    float a_y = vy ? {_tap_call('i, sj, k', 0)} : own.a0;\n"),
-            "INERT BY CONSTRUCTION, and it is a property of the ARRAY PATH rather "
+            "Inert by construction, and it is a property of the ARRAY PATH rather "
             "than of this weld. `a_y` feeds curl target 2 and nothing else, and "
             "stepping._mask_non_owned_cells (stepping.py:1940-1948) zeroes that "
             "target wherever j == 0 on a metallic y axis -- which is EXACTLY the "
             "plane where `vy` is false and the exact 0.0f past the wall is served. "
             "So no edit to a metallic ghost VALUE can reach this kernel's output. "
             "The same boundary rule IS observable on a PERIODIC axis, where that "
-            "mask does not fire, and that is the control. ON THIS FAMILY THE CLAIM "
-            "IS WIDER THAN ON THE PLAIN WELD and is still true: `a_y` also feeds the "
+            "mask does not fire, and that is the control. On this family the claim "
+            "is wider than on the plain weld and is still true: `a_y` also feeds the "
             "BFAST pass's `sm2`, and the pass masks `fi2` and guards the state store "
             "by the SAME ownership predicate (bfast_curl.bfast_pass), so the ghost is "
             "masked out of the Tustin state as well as out of the curl",
@@ -871,7 +871,7 @@ def byte_neutral_source(codes: Sequence[int]) -> str:
 # ---------------------------------------------------------------------------
 
 def leg_arm_pairing() -> Dict[str, Any]:
-    """THE CELL IS THE SHIPPED COMPOSER'S OWN ANSWER, not this gate's inference.
+    """The cell is the shipped composer's own answer, not this gate's inference.
 
     Unlike the conductive H->D cell, both halves here come from ONE family --
     ``bfast_curl`` registers all four slots -- but the two halves are still different
@@ -895,7 +895,7 @@ def leg_arm_pairing() -> Dict[str, Any]:
             driver.fields, driver.pml, "H", residency).covered,
         "step_D_bfast_curl": bfast_curl.bfast_pml_curl_coverage(
             driver.fields, driver.pml, "step_D", residency).covered,
-        # AND THE ORDINARY ARMS REFUSE, which is the other half of the same
+        # And the ordinary arms refuse, which is the other half of the same
         # measurement: two products claiming one slot is how a composer builds both.
         "update_H_ordinary": constitutive_coverage(driver.fields, driver.pml, "H",
                                                    residency).covered,
@@ -942,7 +942,7 @@ def leg_refusal() -> Dict[str, Any]:
         driver.fields, driver.pml, (), Residency())
     record("the_bfast_fixture", verdict.covered, verdict.reasons, True)
 
-    # THE INVERSION, BOTH WAYS. A run with no shear belongs to `fused_hd_pair`.
+    # The inversion, both ways. A run with no shear belongs to `fused_hd_pair`.
     plainly = build_driver({"boundaries": {"x": "metallic", "y": "metallic",
                                            "z": "metallic"},
                             "bfast_scaled_k": (0.0, 0.0, 0.0)}, 8)
@@ -958,7 +958,7 @@ def leg_refusal() -> Dict[str, Any]:
     record("the_plain_product_admits_the_unsheared_grid", verdict.covered,
            verdict.reasons, True)
 
-    # THE SEAM'S ONE PASS. An undeclared source set is not an empty one.
+    # The seam's one pass. An undeclared source set is not an empty one.
     verdict = family.metal_bfast_fused_hd_pair_coverage(
         driver.fields, driver.pml, None, Residency())
     record("an_undeclared_source_set_is_refused", verdict.covered, verdict.reasons,
@@ -994,7 +994,7 @@ def leg_refusal() -> Dict[str, Any]:
 def leg_tustin_scalars() -> Dict[str, Any]:
     """The six k words the plan bakes are ``stepping``'s own, with the D-side negation.
 
-    THE SCALARS ARE THE ONE THING THIS FAMILY CAN GET WRONG SILENTLY. They are computed
+    The scalars are the one thing this family can get wrong silently. They are computed
     on the host, rounded to float32 ONCE, and written into a packed struct; a sign, an
     order or a rounding that moved is a converged, smooth, wrong Tustin filter rather
     than a failure. So they are compared as uint32 WORDS against
@@ -1026,7 +1026,7 @@ def leg_tustin_scalars() -> Dict[str, Any]:
                 differing(np.array(electric, dtype=np.float32), baked)),
             "differing_words_vs_the_magnetic_side": int(
                 differing(np.array(magnetic, dtype=np.float32), baked)),
-            # THE D SIDE NEGATES BOTH (stepping.py:913-914, MEEP's `if (ft ==
+            # The D side negates both (stepping.py:913-914, MEEP's `if (ft ==
             # D_stuff)`), so the two sides are the same magnitudes with opposite signs
             # wherever they are nonzero.
             "the_D_side_is_the_negated_B_side": bool(np.array_equal(
@@ -1056,7 +1056,7 @@ def leg_tustin_scalars() -> Dict[str, Any]:
 def leg_state_census() -> Dict[str, Any]:
     """Every ``f_bfast_D`` component moves somewhere on the fixture set.
 
-    MEASURED ON THE ARRAY PATH, and it is what keeps :data:`BFAST_K` honest. With
+    Measured on the array path, and it is what keeps :data:`BFAST_K` honest. With
     ``bfast_scaled_k = (0.2, 0, 0)`` -- the shape the cell's corpus row carries --
     target 0's two scalars are read off the OTHER two axes and are both zero, so
     ``f_bfast_Dx`` is identically zero for the whole run and a fixture built on it would
@@ -1135,7 +1135,7 @@ def leg_transcription(codes: Sequence[int]) -> Dict[str, Any]:
     welded = family.bfast_welded_curl_tail(codes)
     certified_tail = _tail_after_decode(certified_curl)[: -len("}\n")]
 
-    # THE CURL HALF: every line differs only where a magnetic read was redirected.
+    # The curl half: every line differs only where a magnetic read was redirected.
     certified_lines = certified_tail.splitlines()
     welded_lines = welded.splitlines()
     changed = [(a, b) for a, b in zip(certified_lines, welded_lines) if a != b]
@@ -1145,7 +1145,7 @@ def leg_transcription(codes: Sequence[int]) -> Dict[str, Any]:
     survives = [f"g{target}[" for target in range(3)
                 if f"g{target}[" in welded]
 
-    # THE CONSTITUTIVE HALF: the lift edits, verified by re-deriving them.
+    # The constitutive half: the lift edits, verified by re-deriving them.
     h_cell = plain.h_cell_function()
     lifted_ok = all(spelling in h_cell for spelling in
                     ("float prev0 = dw0 ? wi0[ii] : 0.0f;", "float src0 = b0[ii];",
@@ -1180,7 +1180,7 @@ def leg_transcription(codes: Sequence[int]) -> Dict[str, Any]:
 
 
 def _volume_source(fields: Any, component: str, integrated: bool) -> Any:
-    """THE ENGINE'S OWN SOURCE, not a stand-in.
+    """The engine's own source, not a stand-in.
 
     ``withdraw_hoist._withdraw_does_work`` reads ``_n_source_points``, which only a
     real ``VolumeSource`` publishes -- a duck-typed stub answers 0 and the clause
@@ -1209,7 +1209,7 @@ def leg_arbitration() -> Dict[str, Any]:
         unfused = metal_launch.plan_step(driver.fields, driver.pml,
                                          residency=Residency(), sources=(),
                                          fuse=False)
-        # AND THE SAME QUESTION WITH THE ABSORB ROW APPLIED IN-PROCESS. Without a
+        # And the same question with the absorb row applied in-process. Without a
         # `launch.FUSED_PAIR_ARMS` row the seam loop refuses this product before
         # asking anything about the run, so a refusal measured only that way says
         # nothing about the arbitration. With the row applied the refusal has to move
@@ -1243,7 +1243,7 @@ def leg_arbitration() -> Dict[str, Any]:
                 reason for key, value in plan.reasons.items()
                 if family.FAMILY in key for reason in
                 (value if isinstance(value, (list, tuple)) else [value])][:4],
-            # THE SUBSTANTIVE CLAIM, not a positional one. The two RELEASED
+            # The substantive claim, not a positional one. The two RELEASED
             # neighbours keep the four slots they hold today; which LABEL each wears
             # is the composer's business and is RECORDED rather than asserted, because
             # wiring this product changes labels and not ownership.
@@ -1472,7 +1472,7 @@ def leg_ghost_observability() -> Dict[str, Any]:
 def leg_policy() -> Dict[str, Any]:
     """What the resolved subnormal policy is, and what it does to the predicate.
 
-    RECORDED, NOT ASSERTED. The campaign runs this gate under both policies from
+    Recorded, not asserted. The campaign runs this gate under both policies from
     separate artifact directories; under a resolved ``keep`` the MPS executor cannot
     honour the policy and every Metal predicate refuses BY NAME, which is a measured
     refusal rather than a failure of this product.
@@ -1543,7 +1543,7 @@ def leg_binding_ceiling() -> Dict[str, Any]:
         ok, why = _compiles(family.bfast_fused_hd_pair_source(codes_of(name)))
         shipped[name] = {"compiled": ok, "error": why}
 
-    # AND THE PACKED PROBE LAUNCHES, reading back every Params field.
+    # And the packed probe launches, reading back every Params field.
     launched = _probe_params_readback()
     return {
         "passed": bool(all(not row["compiled"] for row in refuted.values())
@@ -1585,7 +1585,7 @@ def _probe_params_readback() -> Dict[str, Any]:
 
     names = family.PACKED_VECTORS
     record = np.zeros(1, dtype=family.params_record_dtype())
-    # THE SIX TUSTIN SCALARS RIDE THE SAME STRUCT AS THE OFFSETS, so a `float` written
+    # The six Tustin scalars ride the same struct as the offsets, so a `float` written
     # at a `uint`'s offset is a plausible wrong number rather than an error; the probe
     # reads every field back and the values are chosen distinct.
     expected = ([3, 5, 7, 105, np.float32(0.5)]
@@ -1847,12 +1847,12 @@ def leg_launch_structure(steps: int) -> Dict[str, Any]:
         "what_this_says": (
             f"the weld saves exactly one launch against the two singles at the seam "
             f"and {step_saving:+g} against the composition the composer installs today "
-            f"over the whole step. LAUNCH COUNTS ARE NOT TIME and no timing exists "
+            f"over the whole step. Launch counts are not time and no timing exists "
             f"for this shape"),
     }
 
 
-#: THE SOURCES ARE SCALED WITH THE SEED, and leaving them unscaled DISARMS the
+#: The sources are scaled with the seed, and leaving them unscaled DISARMS the
 #: withdraw leg: an O(1) dipole subtracted from a 2^80 field rounds away entirely, so
 #: neither null control could diverge and the leg would prove nothing while reporting
 #: green. An integrated electric AND an integrated magnetic source: the magnetic one's
@@ -1906,7 +1906,7 @@ def leg_mutation(steps: int, codes: Sequence[int],
         armed.append((name, source, why, MUTATION_CASE))
     for name, (source, why) in sorted(bfast_mutations(codes).items()):
         armed.append((name, source, why, MUTATION_CASE))
-    # THE B BATTERY (KERNELS.md §7.2), the plain weld's own rows on this source: the
+    # The form battery (certification.md#chunk-form-battery), the plain weld's own rows on this source: the
     # BFAST weld lifts the same curl flags line, recurrence and h_cell.
     base = family.bfast_fused_hd_pair_source(codes)
     for name, (source, why) in sorted(_shared.b_battery(base).items()):
@@ -1979,7 +1979,7 @@ def leg_disarm(steps: int) -> Dict[str, Any]:
     driver = build_driver(dict(CASES)[MUTATION_CASE], 9292)
     result = run_product(driver, steps)
     legs = result["arrangements"]
-    # THE WALK'S OWN STOP REASONS ARE RECORDED: a disarm that compared no word has
+    # The walk's own stop reasons are recorded: a disarm that compared no word has
     # either raised inside the walk or met the denormal band at its first step, and
     # the two are different findings.
     return {"passed": bool(legs["weld"]["identical"] and result["passed"]),
@@ -2097,7 +2097,7 @@ def lift_basis(results: Path) -> Tuple[List[dict], Dict[str, Any]]:
             seam_row = seam_rows.get(label, {})
             rows.append({
                 "label": label, "leg": record.get("leg", leg), "row": record["row"],
-                # THE CASE THE CHILD MUST BE ASKED FOR IS NOT ALWAYS THE ROW'S NAME.
+                # The case the child must be asked for is not always the row's name.
                 # A `parameterized`-expanded module is lifted through
                 # `parity/meep_gpu/shim/parameterized.py`, which DELIBERATELY does not
                 # reproduce the upstream method name (re-deriving it would be a guess
@@ -2111,7 +2111,7 @@ def lift_basis(results: Path) -> Tuple[List[dict], Dict[str, Any]]:
                 # the census recorded one, and the LABEL stays the upstream row's.
                 "case": record.get("case") or record["row"],
                 "module": record.get("module") or seam_row.get("module"),
-                # WHERE THE CHILD RUNS: this gate's interpreter. The path the census
+                # Where the child runs: this gate's interpreter. The path the census
                 # recorded is kept as recorded_interpreter and never launched.
                 **lift_host.row_fields(record, seam_row),
                 "grid_cells": record.get("grid_cells"),
@@ -2151,7 +2151,7 @@ def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float
     import lift_host  # noqa: PLC0415
     import measure_predicate_coverage as census  # noqa: PLC0415
 
-    # ABSOLUTE, BEFORE ANYTHING IS BUILT FROM IT: the child runs with ``cwd`` set to
+    # Absolute, before anything is built from it: the child runs with ``cwd`` set to
     # the lift workdir, so a relative artifact path handed to it resolves somewhere
     # that does not exist and the child dies AFTER the lift with the parent recording
     # a right-shaped row that measured nothing.
@@ -2186,7 +2186,7 @@ def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float
         if not link.exists():
             with contextlib.suppress(OSError):
                 link.symlink_to(entry)
-    # THE CENSUS'S OWN SHIM PATH, for the six MEEP test modules that decorate with
+    # The census's own shim path, for the six MEEP test modules that decorate with
     # ``parameterized`` (not installed here). Added ONLY for the modules whose text
     # asks for it, on the census's own test, so no other row's imports change.
     shim_path = Path(census.__file__).resolve().parent / "shim"
@@ -2200,7 +2200,7 @@ def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float
                 encoding="utf-8", errors="replace"):
             needs_shim.add(module_name)
 
-    # WHAT THIS HOST CANNOT LIFT, asked once before any child: the needs the rows
+    # What this host cannot lift, asked once before any child: the needs the rows
     # declare, probed under this interpreter (lift_host).
     host = lift_host.host_check(rows, environment, work)
     if host["unreadable"]:
@@ -2261,7 +2261,7 @@ def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float
                 stderr_text = ((expired.stderr or b"").decode("utf-8", "replace")
                                if expired.stderr else "")
             if not record_path.exists():
-                # STAMPED LIKE ANY OTHER PAYLOAD: this is the record a reader gets
+                # Stamped like any other payload: this is the record a reader gets
                 # when a child produced nothing, which is exactly the case where
                 # "which tree was this?" is the first question.
                 died = {"row": row["row"], "measured": False, "note": note,
@@ -2271,7 +2271,7 @@ def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float
                                        encoding="utf-8")
         payload = json.loads(record_path.read_text(encoding="utf-8"))
         candidates = payload if isinstance(payload, list) else [payload]
-        # THE CHILD REPORTS THE CASE IT RAN, which on a shim-expanded module is the
+        # The child reports the case it ran, which on a shim-expanded module is the
         # `__idx{N}` name and not the upstream row's; match on either.
         wanted = {row["row"], row.get("case") or row["row"]}
         record = next((r for r in candidates
@@ -2295,23 +2295,34 @@ def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float
                       if b.get("predicate_admits"))
     refused = sorted(label for label, b in blocks.items()
                      if b.get("predicate_admits") is False)
+    # A row the identity corpus's manifest retires that reached no predicate verdict is
+    # refused by name with the manifest's reason, never scored as unmeasured
+    # (``lift_host.corpus_refusals``), and is out of the denominator like a row unlifted on
+    # this host.
+    corpus = lift_host.corpus_refusals(HERE / "results", [
+        record for record in measured
+        if "predicate_admits" not in blocks[record["label"]]
+        and record["label"] not in unlifted])
+    refused_by_the_corpus = corpus["refused"]
+    counted_out = len(unlifted) + len(refused_by_the_corpus)
     unmeasured = sorted(label for label, b in blocks.items()
-                        if "predicate_admits" not in b and label not in unlifted)
+                        if "predicate_admits" not in b and label not in unlifted
+                        and label not in refused_by_the_corpus)
     driven = sorted(label for label in admitted if blocks[label].get("driven"))
     passed_rows = sorted(label for label in driven if blocks[label].get("passed"))
-    # THE 0.10 REFUSALS (``_shared.lift_refusal_accounting``): the seam record's
-    # ``withdraw_in_seam`` rows are admitted since entry 25, and a row carrying a
-    # magnetic source is refused by ``launch.h_start_reasons``, derived from the row's
-    # own sources.
+    # THE REFUSALS (``_shared.lift_refusal_accounting``): the seam record's
+    # ``withdraw_in_seam`` rows are admitted (no engine source stands a withdraw), and a
+    # row carrying a magnetic source is refused by ``launch.h_start_reasons``, derived
+    # from the row's own sources.
     accounting = _shared.lift_refusal_accounting(
         blocks, facts["rows_with_a_standing_withdraw"])
     expected_refused = accounting["expected_refused_from_the_row_sources"]
     return {
-        # THE DENOMINATOR IS THE CELL'S: every row the standing census puts in this
+        # The denominator is the cell's: every row the standing census puts in this
         # cell must be admitted unless its own sources say the predicate refuses it by
         # name, every admitted row must drive, and every driven row must be
-        # byte-identical over every step its own precondition held for. AND AT LEAST
-        # ONE ROW DRIVES: "no row disagreed" over no rows is not a pass (the folded
+        # byte-identical over every step its own precondition held for. And at least
+        # one row drives: "no row disagreed" over no rows is not a pass (the folded
         # sibling's rule, and the plain gate's through its majority floor).
         "passed": bool(blocks and not unmeasured
                        and accounting["passed"]
@@ -2329,7 +2340,9 @@ def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float
         "no_row_drove": not driven,
         "unmeasured": unmeasured,
         "unlifted_on_this_host": unlifted,
-        "rows_the_engine_was_asked_about": len(blocks) - len(unlifted),
+        "refused_by_the_corpus_manifest": refused_by_the_corpus,
+        "corpus_manifest": corpus["basis"],
+        "rows_the_engine_was_asked_about": len(blocks) - counted_out,
         "host_capabilities": host,
         "driven": len(driven),
         "driven_and_identical": len(passed_rows),
@@ -2350,7 +2363,7 @@ COVERAGE = family.metal_bfast_fused_hd_pair_coverage
 
 
 def leg_policy_refusal() -> Dict[str, Any]:
-    """UNDER A POLICY THE EXECUTOR CANNOT HONOUR, every fixture is refused BY NAME.
+    """Under a policy the executor cannot honour, every fixture is refused BY NAME.
 
     This is the ``keep`` leg's whole measurement, and it is a measurement rather than a
     skip. MPS flushes float32 denormals natively and exposes no lever -- both denormal
@@ -2436,7 +2449,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         log(f"LEG {leg}: {'PASS' if row.get('passed') else 'FAIL'} "
             f"({time.perf_counter() - started:.1f}s)")
 
-    # A POLICY THIS EXECUTOR CANNOT HONOUR IS MEASURED, NOT SKIPPED. See
+    # A policy this executor cannot honour is measured, not skipped. See
     # `leg_policy_refusal`: under a resolved `keep` the shipped predicate refuses by
     # name on both halves, so the byte legs have nothing to drive and running them
     # would either crash on a refused plan or -- worse -- report a green harness that
@@ -2587,10 +2600,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "what_this_does_not_license": (
             "installing the product (the composer refuses it by name and the "
             "arbitration leg pins that), flipping HOISTS_THE_WITHDRAW (no engine "
-            "source stands a withdraw in this seam since entry 25; the withdraw leg "
+            "source stands a withdraw in this seam; the withdraw leg "
             "measures where the magnetic f_minus_p restore sits, not the flag), any "
             "throughput claim (launch counts are not time, no timing exists for this "
-            "shape, and another Metal lane shared this GPU during the run), complex "
+            "shape, and another Metal job shared this GPU during the run), complex "
             "storage under BFAST, a FOLDED BFAST run (a different cell and a different "
             "product), an inactive "
             "absorber, a conductive or beta or cylindrical run, or any step past a "

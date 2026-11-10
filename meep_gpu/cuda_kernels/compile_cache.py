@@ -1,6 +1,6 @@
 """The compiled-kernel memo and its key — with no CuPy in sight.
 
-WHAT WAS WRONG. ``step_curl_kernels`` memoized every compiled kernel on
+What was wrong. ``step_curl_kernels`` memoized every compiled kernel on
 ``(name, is_complex)`` and nothing else: not the compile options, not the source
 it compiled, and not the float32 subnormal policy in force when it compiled.
 ``_clear_kernel_cache()`` was called by nothing in the engine and nothing in a
@@ -8,10 +8,10 @@ policy install, so a policy installed after a kernel had first compiled was
 never seen by that module at all — the second caller was handed the first
 caller's binary under the second caller's policy name. The certification the
 track actually holds could not even be filtered by policy, because the field
-did not exist anywhere (disposition §1.1, §1.2).
+did not exist anywhere.
 
-THE KEY IS THE FIX, AND IT IS STRONGER THAN A HOOK. The disposition asks for two
-things: key the memo on ``(name, is_complex, options, policy)`` and clear it on a
+The key is the fix, and it is stronger than a hook. Two remedies were proposed:
+key the memo on ``(name, is_complex, options, policy)`` and clear it on a
 policy install. A hook that clears on install has to be CALLED, and this package
 may not edit :mod:`meep_gpu.subnormal_policy` to add the call — so a hook here
 would be one more thing that silently does not happen. Folding the policy into
@@ -20,15 +20,15 @@ compiled under simply misses, and the kernel is rebuilt. :func:`clear_kernel_cac
 is still exported (the bit-identity probe drives it between guard sets), but
 nothing's correctness rests on it being called.
 
-THE SOURCE IS IN THE KEY TOO, and it costs nothing. The kernel source strings are
+The source is in the key too, and it costs nothing. The kernel source strings are
 module-level constants, so Python has already cached their hashes and a tuple
 lookup compares them by identity — while a mutation harness that rewrites one
 (``probe_fused_kernel_bit_identity.py``) can no longer be served the unmutated
 binary even if it forgets to drop the memo. That is the same defect class the
-Triton round hit three times: a leg reporting a pass for a mutation it never
+Triton track hit three times: a leg reporting a pass for a mutation it never
 applied.
 
-WHAT THIS DOES NOT FIX, STATED HERE BECAUSE HALF A FIX READS LIKE A WHOLE ONE.
+What this does not fix, stated here because half a fix reads like a whole one.
 Keying this memo does NOT separate CuPy's own disk cache. CuPy computes that key
 ABOVE the ``compile_using_nvrtc`` seam where ``subnormal_policy`` strips
 ``-ftz=true`` (``subnormal_policy.py:87-89``), so a rebuild under a new policy
@@ -38,7 +38,7 @@ the gate; :func:`compile_policy_token` folds the directory in so that at least
 this memo can tell two of them apart, and ``run_pml_gate_mutations.py`` takes a
 private one per leg.
 
-NOTHING HERE IMPORTS CUPY — the same reason ``coverage.py`` does not. The memo's
+Nothing here imports CuPy — the same reason ``coverage.py`` does not. The memo's
 policy is decision logic whose failure mode is a silent wrong binary, so it is
 exercised at the merge bar on a laptop (``test_compile_cache.py``) rather than
 only on the one host that can launch a kernel.
@@ -86,7 +86,7 @@ _POLICY_MODULE: Optional[Any] = None
 def _policy_module() -> Optional[Any]:
     """The subnormal-policy module, or ``None`` when it cannot be reached.
 
-    IMPORTED, NEVER REIMPLEMENTED: the policy is one process-wide decision and a
+    Imported, never reimplemented: the policy is one process-wide decision and a
     second reading of it here would be a second answer. Three routes, in falling
     order of directness, and the last two exist because this package's kernel
     module is ALSO loaded by path outside the package (the bit-identity probe),
@@ -130,7 +130,7 @@ def compile_policy_token() -> str:
       strip installs at, so two directories are two sets of binaries for the same
       key and one directory shared across policies is a poisoned one.
 
-    ON THE LAUNCH PATH, AND MEASURED THERE RATHER THAN CALLED CHEAP: 0.708 us
+    On the launch path, and measured there rather than called cheap: 0.708 us
     uninstalled and 0.736 us with a policy installed (laptop, 200 000 iterations,
     ``timeit``), of which the ``os.environ`` read is 0.311 us,
     ``executor_report("cupy")`` 0.153 us (it copies a dict), and
@@ -138,7 +138,7 @@ def compile_policy_token() -> str:
     rest is the f-string. ``_get_kernel``'s other per-call work — the 14-entry
     code map and the key build — is measured in that function's docstring.
 
-    NOT MEMOIZED, DELIBERATELY. Freezing the token per process is the staleness
+    Not memoized, deliberately. Freezing the token per process is the staleness
     this whole key exists to remove: a policy installed after the first launch
     would not move a frozen token, and the second caller would be handed the
     first caller's binary under the second caller's policy name — the exact
@@ -182,13 +182,13 @@ def kernel_cache_key(name: str, is_complex: bool, options: Sequence[str],
 def get_or_compile(key: Tuple[Any, ...], factory: Callable[[], Any]) -> Any:
     """The memo. ``factory`` runs exactly once per distinct key, and is logged.
 
-    The log is the armed-mutation accounting the disposition asks for (§1.5): it
+    The log is the armed-mutation accounting a gate leg needs: it
     records the sha256 of the source ACTUALLY handed to the compiler, so a gate
     leg can assert that the mutated bytes reached it rather than that the
     mutation matched some text. A leg reporting a pass for a mutation it never
     applied is a defect this project hit three times on the sibling track.
 
-    WHAT ONE ENTRY IS, EXACTLY — a FACTORY INVOCATION, i.e. one ``cp.RawKernel``
+    What one entry is, exactly — a factory invocation, i.e. one ``cp.RawKernel``
     construction. It is an UPPER BOUND on NVRTC calls and not a count of them:
     CuPy's disk-cache key is computed above the seam ``subnormal_policy`` strips
     ``-ftz=true`` at, so a construction can be answered off disk with no compiler

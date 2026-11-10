@@ -1,10 +1,10 @@
 """The CUDA root kernels transcribe the array path's per-chunk PML forms, read off their text.
 
-WHAT THIS FILE SETTLES, ON A HOST WITH NO DEVICE. The four root kernels of this table --
+What this file settles, on a host with no device. The four root kernels of this table --
 ``step_B_pml_real`` / ``step_D_pml_real`` (``step_curl_kernels``), ``update_H_pml_real`` /
 ``update_E_pml_real`` (``constitutive_kernels``) -- and the nonlinear ``update_E``
 (``nonlinear_constitutive``) choose MEEP's PML form per structure chunk from the run's
-chunk record ``cb`` (bit_parity_0_10 DESIGN.md D1, D6, D10, D11; ``stepping._apply_curl``
+chunk record ``cb`` (``stepping._apply_curl``
 and ``_apply_constitutive_regions``). Three things are checked:
 
 1. **The record decode is the emitter's.** Each kernel carries, directly after its index
@@ -962,7 +962,7 @@ def test_a_kernel_handed_the_one_rank_record_on_the_split_division_is_caught(ker
 
 #: Defects the equivalence must see, each a rewrite of one root text: ``(kernel, find,
 #: replace, case)``. Every one must change a word of the comparison above, on random or
-#: planted-zero states. The last two are the planted-``-0`` must-catch rows of D13.
+#: planted-zero states. The last two are the planted-``-0`` must-catch rows the form-coverage rule asks for.
 DEFECTS = {
     "recurrence_on_every_cell": ("step_B_pml_real", "int dsigu\n) {",
                                  "int dsigu_chunk\n) {\n    const int dsigu = 1;", "box3d"),
@@ -1031,7 +1031,7 @@ def test_each_planted_defect_changes_a_word(defect, roots):
                             for n in _STATE)
     if defect in PLANTED_ONLY:
         # Equal to the shipped form on every word but a signed zero: only the planted
-        # -0 state can see them (KERNELS.md section 7.2), and the random state must not.
+        # -0 state can see them (the per-chunk form battery), and the random state must not.
         assert counts[False] == 0 and counts[True] > 0, (defect, counts)
     else:
         assert any(counts.values()), (defect, counts)
@@ -1040,7 +1040,7 @@ def test_each_planted_defect_changes_a_word(defect, roots):
 #: The D magnitude of the planted ``|D|^2`` band: with every D volume drawn in
 #: ``(-2^-63, 2^-63)``, ``gs*gs`` reaches ``2^-126`` while ``0.0625*(g1s^2 + g2s^2)``
 #: often lies below float32's normal range, the one band where the double and the
-#: float32 ``Dsqr`` differ (16-AP6h; phase-0 P0-h). ``chi3`` lifts such a ``Dsqr``
+#: float32 ``Dsqr`` differ (docs/design/floating-point.md, "The nonlinear update is MEEP's arithmetic"). ``chi3`` lifts such a ``Dsqr``
 #: into ``c3``: ``Dsqr <= 3 * 2^-126`` and ``chi1inv^3 <= (1/1.2)^3`` bound
 #: ``c3 <= 0.18`` at ``chi3 = 9e36``, inside the pole guard's ``1/3``.
 DSQR_BAND_SCALE = F32(2.0 ** -63)
@@ -1105,7 +1105,7 @@ def test_the_nonlinear_update_E_text_is_the_array_path_word_for_word(case, chi_k
 
     Its constitutive tail takes the per-chunk forms, its transverse sums add the four
     corners left to right in MEEP's order, and its ``|D|^2`` is formed in double and
-    rounded once (16-AP6h's forms, after phase-0 P0-h); this checks the whole sub-step
+    rounded once (MEEP's forms; docs/design/floating-point.md, "The nonlinear update is MEEP's arithmetic"); this checks the whole sub-step
     against ``stepping.update_E`` on a grid carrying chi2/chi3, including the planted
     band where the double ``|D|^2`` is the only form that agrees.
     """

@@ -2,22 +2,22 @@
 """Run the checkout's own Triton fleet driver, with per-gate timeouts that can only RISE.
 
 The round runs ``parity/meep_gpu/drive_triton_weld_gates.py`` exactly as the 0.9.2
-rounds did (its argv, its per-gate environment, its artifact layout, its
+certification rounds did (its argv, its per-gate environment, its artifact layout, its
 ``campaign.json``), with one deviation, recorded in the driver log's first line:
 ``--timeout-floor gate=seconds`` raises that gate's timeout to at least ``seconds``.
-It never lowers one. MEASURED: on the 1.0 tree a pre-certification pass timed out
+It never lowers one. Measured on the 1.0 tree: a pre-certification pass timed out
 ``conductivity`` at its 3,600 s timeout and ``symmetry`` at 5,400 s with only two
 gates on the card (0.9.x sequential fleets took 620-680 s and 330-390 s). The driver
-itself carries 10,800 s for both since entry 99; the round's defaults below hold every
-gate's timeout at 3x or more the larger of its two measured walls (the 1.0 round's
-CERT-3 and the final pre-certification pass), which raises four gates.
+itself now carries 10,800 s for both; the round's defaults below hold every gate's
+timeout at 3x or more the larger of its two measured walls (the 1.0 certification round's
+device-gate stage and the final pre-certification pass), which raises four gates.
 A timed-out gate is a gate with no verdict; a longer timeout costs only wall time on a
 gate that hangs.
 
 A second deviation, only under ``--policy flush`` and only with
 ``--host-import-wrapper W``: each gate process is started as ``python -u W <repo>
 <gate script> <args>``, which imports MEEP and then runs the gate's own ``__main__``
-with its own argv. MEASURED: on the 1.0 tree a flush fleet gate that installs its
+with its own argv. Measured on the 1.0 tree: a flush fleet gate that installs its
 policy before anything imports MEEP refuses at startup ("the 'flush' subnormal policy
 is UNATTAINABLE for the 'host' executor: MEEP is not imported in this process"),
 because the host FTZ/DAZ bits are reachable only through MEEP. ``W`` must be a copy
@@ -58,7 +58,7 @@ if str(HERE) not in sys.path:
 import legs  # noqa: E402 - beside this file; the toolchain rule lives there
 
 #: The round's default floors (seconds): 3x the larger of each gate's walls in the 1.0
-#: round's CERT-3 NVIDIA (one gate at a time on a card) and in the final
+#: certification round's NVIDIA device-gate stage (one gate at a time on a card) and in the final
 #: pre-certification pass (four gates sharing a card), rounded up to a multiple of 300 s,
 #: for the four gates whose driver timeout falls below that: ``conductivity`` and
 #: ``symmetry`` 10,800 -> 15,900 s (walls 5,261 s and 5,275 s), ``folded_complex``
@@ -119,7 +119,10 @@ def main(argv=None) -> int:
         dict(os.environ))
     problems += toolchain["problems"]
     if problems:
-        print("fleet_launch: REFUSED: " + "; ".join(problems), flush=True)
+        import round_status  # noqa: PLC0415 - beside this file; it loads neutral_ids.py
+
+        print(round_status.neutral_ids().text("fleet_launch: REFUSED: " + "; ".join(problems)),
+              flush=True)
         return 3
     os.environ.update(GATE_EXPORTS)
     legs.launcher_environment(os.environ, toolchain)

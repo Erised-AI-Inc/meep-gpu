@@ -2,7 +2,7 @@
 """DEVICE byte gate for the Triton FOLDED H->D weld: folded ``update_H`` welded into
 folded ``step_D``.
 
-THE SECOND PRODUCT ON THE FOURTH SEAM, and the largest single cell this backend's
+The second product on the fourth seam, and the largest single cell this backend's
 fusion board carries unbuilt: ``(update_H folded -> step_D folded PML)`` is 78
 seam-instances of a 597 denominator on
 ``results/fusion_matrix_triton_2026-09-07_cyl`` -- 75 ``buildable_not_built`` and 3
@@ -10,13 +10,13 @@ seam-instances of a 597 denominator on
 unfolded cell; this file is that gate with the fold in it, and everything the fold
 changes is a leg here rather than a sentence.
 
-WHAT IS BEING CERTIFIED. ``meep_gpu/triton_kernels/folded_fused_hd_pair.py`` computes
+What is being certified. ``meep_gpu/triton_kernels/folded_fused_hd_pair.py`` computes
 the folded ``update_H`` constitutive into launch-local SCRATCH through the CERTIFIED
 ``fused_hd_pair._h_cell`` (imported, not copied), takes its own cell's magnetic field
 from registers, RECOMPUTES every one of the folded curl's six foreign taps from
 pre-launch state, steps ``D``/``fu_D`` in place with
 ``symmetry.pml_curl_step_folded``'s own body, and rotates the ``H``/``f_w_H``
-references afterwards. The claim is per COMPLETE DRIVER STEP -- ``FdtdDriver.step``'s
+references afterwards. The claim is per complete driver step -- ``FdtdDriver.step``'s
 own consult order, with the near symmetry fill, the wall clear and the folded FAR
 ghost pass running exactly where the driver runs them -- over a stated budget of
 steps, as uint32 WORDS over EVERY stored volume the engine allocates (primaries,
@@ -27,14 +27,14 @@ seed:
   1. the ARRAY PATH -- ``stepping``'s passes under the driver's own loop;
   2. the CERTIFIED SINGLES -- ``symmetry.plan_folded_constitutive(..., "H")`` then
      ``symmetry.plan_folded_pml_curl(..., "step_D")`` as two dispatched plans;
-  3. the COMPOSITION THE COMPOSER INSTALLS ON THESE ROWS TODAY -- ``plan_step(fuse=
+  3. the composition the composer installs on these rows today -- ``plan_step(fuse=
      True)``'s own plans, which on every row this product reaches puts the released
      ``fused pair B (folded)`` in ``step_B``/``update_H``;
   4. the same slots DISPATCHED UNFUSED -- ``plan_step(fuse=False)``.
 
-WHY EVERY STORED VOLUME AND NOT JUST THE PRIMARIES. ``symmetry.py``'s own docstring
+Why every stored volume and not just the primaries. ``symmetry.py``'s own docstring
 says the two ownership masks are INVISIBLE after a complete driver step, because the
-fill passes overwrite exactly the planes they protect. THAT IS TRUE OF ``D`` AND
+fill passes overwrite exactly the planes they protect. That is true of ``D`` AND
 FALSE OF ``fu_D``, and it is measured rather than reasoned: on the Metal sibling
 (``results/metal_folded_fused_hd_pair_2026-09-07_wired``) dropping the top-plane mask
 moved 264 words and dropping the cell-0 mask 540, after complete steps, EVERY one of
@@ -45,14 +45,14 @@ the primaries alone would certify a MASK-LESS folded curl as correct. Both mask 
 are armed here, SCORED at whole step, and their ATTRIBUTION is asserted: each must
 move ``fu_D`` and must NOT move ``D``.
 
-THE CODES ARE THIS FAMILY'S SINGLE POINT OF FAILURE. ``plan_fused_hd_pair`` maps
+The codes are this family's single point of failure. ``plan_fused_hd_pair`` maps
 ``_boundary_kinds`` to ``1 if metallic else 0``; on a folded axis that reports
 ``"mirror"``, which the expression sends to 0 = PERIODIC -- the ghost wraps to the far
 plane and the cell-0 mask is never emitted. Both are valid codes, so nothing in the
 kernel can catch it. ``codes_source`` arms exactly that mapping and requires it caught
 on every folded fixture.
 
-BOTH CANONICAL SUBNORMAL POLICIES. ``keep`` needs a ``CUPY_CACHE_DIR`` carrying the
+Both canonical subnormal policies. ``keep`` needs a ``CUPY_CACHE_DIR`` carrying the
 ``ftz_stripped`` token; ``flush`` needs ``--import-meep-for-host-policy``, because
 ``mp.set_zero_subnormals`` is the only exposure of this process's FTZ/DAZ bits the
 package may use. ``strict=True``: a process that asked to keep and quietly did not is
@@ -90,7 +90,7 @@ LEGS
   refusal            by name: an undeclared source list; a source class bringing a
                      standing INTEGRATED electric withdraw of its own (the 3 rows of 78
                      the 2026-09-04 board filed under withdraw_seam are admitted since
-                     entry 25); a non-integrated electric source NOT refused; a
+                     1.0); a non-integrated electric source NOT refused; a
                      magnetic source NOT refused; an UNFOLDED grid, naming
                      ``fused_hd_pair``; a cylindrical grid; a conductivity naming the
                      curl half; an inactive absorber naming the constitutive half
@@ -98,7 +98,7 @@ LEGS
                      both directions on the same fixtures
   arbitration        the composer, asked: on a folded row this product's predicate
                      admits, the released ``fused pair B (folded)`` holds step_B AND
-                     update_H, and with this product's row INJECTED IN PROCESS it is
+                     update_H, and with this product's row injected in process it is
                      refused twice over -- by ``_pair_may_absorb`` naming the incumbent
                      and by ``_declared_uninstallable`` naming the flag -- while the
                      incumbent KEEPS its slots
@@ -127,13 +127,13 @@ LEGS
   disarm             the identical harness, shipped bytes, must not diverge
   lift               every corpus row the standing census puts in the (folded ->
                      folded PML) cell -- 78 of them, the refusals expected derived from
-                     each row's own sources (none since entry 25) --
-                     re-lifted in its own interpreter WHICH INSTALLS THE SAME
-                     SUBNORMAL POLICY BEFORE ITS FIRST DEVICE COMPILE, driven to
+                     each row's own sources (none since 1.0) --
+                     re-lifted in its own interpreter which installs the same
+                     subnormal policy before its first device compile, driven to
                      bit-identity over the full budget, with the composer's own slot
                      table per row
 
-THE PRODUCT IS UNREGISTERED WHILE THIS GATE RUNS. No composer installs it -- there is
+The product is unregistered while this gate runs. No composer installs it -- there is
 no ``CERTIFIED_FUSED_PRODUCTS`` row and no ``fastpath`` label -- so reference 3 is the
 composition the composer builds WITHOUT it, and the weld is force-installed by this
 gate's own shim. A composition-installed reference awaits wiring and is named as owed
@@ -207,12 +207,12 @@ GATE = "triton_folded_fused_hd_pair"
 #: Every module whose bytes this gate's verdict depends on.
 SOURCES: Tuple[str, ...] = (
     "meep_gpu/triton_kernels/folded_fused_hd_pair.py",
-    # THE PLAIN PRODUCT IS BOUND BECAUSE ITS TEXT IS HALF OF THIS ONE: `_h_cell` and
+    # The plain product is bound because its text is half of this one: `_h_cell` and
     # `_h_tap` are IMPORTED from it and are this weld's whole constitutive arithmetic,
     # and `OWN_LOAD_EDITS`/`HALO_TAPS`/`offset_coordinates`/`halo_taps`/`needle` are
     # the lift machinery this module reuses rather than copies.
     "meep_gpu/triton_kernels/fused_hd_pair.py",
-    # AND SYMMETRY, BECAUSE THE CURL HALF IS CUT OUT OF IT. `pml_curl_step_folded` is
+    # And symmetry, because the curl half is cut out of it. `pml_curl_step_folded` is
     # the certified body this weld lifts, and `folded_axis_kinds` is the classifier
     # that decides which of the four ghost rules each axis takes -- the single point
     # of failure in this family.
@@ -224,7 +224,7 @@ SOURCES: Tuple[str, ...] = (
     "meep_gpu/triton_kernels/launch.py",
     "meep_gpu/stepping.py",
     "meep_gpu/withdraw_hoist.py",
-    # THE DRIVER IS BOUND ON PURPOSE. This weld's whole `REPLACES` claim is about
+    # The driver is bound on purpose. This weld's whole `REPLACES` claim is about
     # WHICH passes run between `update_H` and `step_D`, and on a folded grid that
     # claim is larger than on an unfolded one: three B-side passes close before the
     # first consult and three D-side ones open after the second. A driver that
@@ -246,13 +246,13 @@ STEPS = 60
 #: measured to persist and not to be a one-step transient.
 SYNC_STEPS: Tuple[int, ...] = (3, 7)
 
-#: HOW MANY CLEAN COMPLETE STEPS A LIFTED CORPUS ROW MUST REACH TO COUNT. The
+#: How many clean complete steps a lifted corpus row must reach to count. The
 #: synthetic fixture's amplitude is this gate's to choose; a lifted row's state is
 #: the ROW'S and enters the denormal band on its own schedule. It is a FLOOR and not
 #: a target: the record carries each row's own step count and the words it compared.
 LIFT_CLEAN_STEP_FLOOR = 8
 
-#: THE EIGHT FOLDED SPECIALISATIONS. The fold is expressed entirely through the
+#: The eight folded specialisations. The fold is expressed entirely through the
 #: four-valued boundary constexprs and the stored extent, so what a fixture varies
 #: is exactly what the kernel specialises on: which axes are folded, which
 #: termination each fold carries (MIRROR_METALLIC stores no slot past MEEP's owned
@@ -269,7 +269,7 @@ CASES: Tuple[Tuple[str, Dict[str, Any]], ...] = (
     # top-plane mask is emitted on y.
     ("fold_y_periodic", {"symmetry": (("Y", 1),),
                          "boundaries": {"x": "metallic", "y": "periodic"}}),
-    # THE SAME GRID WITH THE ODD MIRROR PLANE. This product bakes no parity -- its
+    # The same grid with the odd mirror plane. This product bakes no parity -- its
     # folded ghost is an exact 0.0 and the phase enters only the fill kernels, which
     # are outside REPLACES -- so the emitted source must be IDENTICAL to the case
     # above and the bytes must still equal the array path, which images with -1.
@@ -279,7 +279,7 @@ CASES: Tuple[Tuple[str, Dict[str, Any]], ...] = (
     # (MM, MM, P) -- two folded metallic axes, the cell's largest single shape.
     ("fold_xy_metallic", {"symmetry": (("X", 1), ("Y", 1)),
                           "boundaries": {"x": "metallic", "y": "metallic"}}),
-    # (MP, MM, M) -- THE MUTATION CASE. Every line the shipped kernel can emit except
+    # (MP, MM, M) -- the mutation case. Every line the shipped kernel can emit except
     # the periodic wrap: a top-plane mask on x, a folded metallic ghost on y, a plain
     # metallic wall on z, and the cell-0 mask live on all three.
     ("fold_xy_mixed_z_wall", {"symmetry": (("X", 1), ("Y", 1)),
@@ -298,7 +298,7 @@ CASES: Tuple[Tuple[str, Dict[str, Any]], ...] = (
     ("fold_xyz_metallic", {"symmetry": (("X", 1), ("Y", 1), ("Z", 1)),
                            "boundaries": {"x": "metallic", "y": "metallic",
                                           "z": "metallic"}}),
-    # THE RUN'S FIRST update_H on the mutation case's grid. Every case above is seeded
+    # The run's first update_H on the mutation case's grid. Every case above is seeded
     # MID-RUN (``Fields.h_separated`` True: H was started from B long ago); this one
     # starts unseparated, so every arrangement performs MEEP's start of H
     # (``stepping.separate_h_from_b``) at step 1 -- the array path in ``update_H``,
@@ -310,12 +310,12 @@ CASES: Tuple[Tuple[str, Dict[str, Any]], ...] = (
 )
 #: The case MEEP's start of H is scored on.
 FIRST_UPDATE_CASE = "fold_xy_mixed_z_wall_first_update"
-#: THE CASE THE MUTATIONS ARE ARMED ON: (MIRROR_PERIODIC, MIRROR_METALLIC,
+#: The case the mutations are armed on: (MIRROR_PERIODIC, MIRROR_METALLIC,
 #: METALLIC). Every line the shipped kernel can emit except the periodic wrap is
 #: present -- a top-plane mask on x, a folded metallic ghost on y, a plain metallic
 #: wall on z, and the widened cell-0 mask live on all three.
 MUTATION_CASE = "fold_xy_mixed_z_wall"
-#: THE SECOND MUTATION CASE, and it is not a duplicate of the first. The fold WIDENED
+#: The second mutation case, and it is not a duplicate of the first. The fold WIDENED
 #: the cell-0 mask from ``== METALLIC`` to ``!= PERIODIC``, so on a folded or walled
 #: axis it zeroes the very curl component the shifted tap feeds at the very plane
 #: where the ghost is served and no boundary VALUE is observable there at all. Only a
@@ -329,7 +329,7 @@ COURANT = 0.35
 PML_CELLS = 2
 EPSILON: Dict[str, float] = {"Ex": 2.0, "Ey": 2.5, "Ez": 3.0}
 
-#: THE SEED IS SCALED BY 2^80, AND THE EXPONENT IS A MEASUREMENT RATHER THAN A TUNING.
+#: The seed is scaled by 2^80, and the exponent is a measurement rather than a tuning.
 #: The solver is linear in the field state and every coefficient it multiplies by is
 #: field-independent, so scaling every stored volume by 2^n shifts each float32
 #: EXPONENT by n and leaves every MANTISSA and every rounding decision untouched --
@@ -350,7 +350,7 @@ SEED_SCALE_BITS = 80
 MODES: Tuple[str, ...] = ("array", "singles", "composition_today", "unfused",
                           "weld", "weld_seam_only")
 
-#: THE SPLIT IS THE PREDICATE'S, NOT A CONVENIENCE. ``coverage._grid_reasons`` clause
+#: The split is the predicate's, not a convenience. ``coverage._grid_reasons`` clause
 #: 1 refuses any grid whose ``xp`` is not CuPy, so ``refusal`` and ``arbitration`` --
 #: which LAUNCH nothing -- still need a device to build a fixture the predicate can
 #: admit at all. They sit in the device group for that reason and not because they
@@ -366,7 +366,7 @@ ALL_LEGS: Tuple[str, ...] = tuple(leg for group in LEG_GROUPS.values() for leg i
 
 #: The census this gate lifts its corpus rows from, and the seam record whose
 #: ``withdraw_in_seam`` flag named the rows the 0.9.2 predicate refused by their standing
-#: withdraw. Since entry 25 those rows are admitted; the rows the predicate must refuse
+#: withdraw. Since 1.0 those rows are admitted; the rows the predicate must refuse
 #: are derived from each row's own sources (:func:`hd_seam_restore.lift_withdraw_accounting`).
 CENSUS = "predicate_coverage_triton_2026-09-04_cylm0"
 SEAM_RECORD = "h_to_d_seam_2026-09-04"
@@ -403,9 +403,9 @@ def _host(array: Any) -> np.ndarray:
 
 
 def native_words(array: Any) -> Any:
-    """One array as uint32 WORDS, WHERE IT LIVES. Byte compares, never allclose.
+    """One array as uint32 words, where it lives. Byte compares, never allclose.
 
-    THE COMPARISON STAYS ON THE DEVICE, and that is not only speed. Every snapshot
+    The comparison stays on the device, and that is not only speed. Every snapshot
     this gate takes is of the whole stored state, five arrangements deep, once per
     complete step; brought to the host that is a gigabyte of copies per step on the
     corpus's largest rows and the lift leg cannot finish at all. The words are the
@@ -443,7 +443,7 @@ _RESET_VOLUMES: Optional[Tuple[str, ...]] = None
 def reset_declared_volumes() -> Tuple[str, ...]:
     """Every array ``Fields.reset`` zeroes, read out of ``fields.py``'s own text.
 
-    DERIVED, NOT TRANSCRIBED: a volume added to the engine joins the comparison
+    Derived, not transcribed: a volume added to the engine joins the comparison
     without an edit here, and a list here could go stale while looking complete.
     """
     global _RESET_VOLUMES  # noqa: PLW0603 - read once from disk, then held
@@ -480,7 +480,7 @@ def stored_volumes(fields: Any) -> Dict[str, Any]:
 
 
 def capture(driver: Any) -> Dict[str, Any]:
-    """The whole of the state one complete step advances, WHERE IT LIVES."""
+    """The whole of the state one complete step advances, where it lives."""
     return {
         "volumes": {name: _module_of(array).array(array, copy=True)
                     for name, array in stored_volumes(driver.fields).items()},
@@ -512,7 +512,7 @@ def restore(driver: Any, snapshot: Mapping[str, Any]) -> List[str]:
     return lazily
 
 
-#: THE PRIVATE-SCRATCH RULE IS THE LEADING UNDERSCORE, and it is this package's own
+#: The private-scratch rule is the leading underscore, and it is this package's own
 #: (``gate_triton_folded_dispersive_fused_pair.PRIVATE_SCRATCH`` and the test that
 #: pins the rule rather than the name). ``Fields._fmp_scratch`` is allocated by
 #: whichever route calls ``displacement_minus_polarization`` -- the array path always,
@@ -629,7 +629,7 @@ def build_driver(keywords: Mapping[str, Any], seed: int,
     foreign taps recompute from. A hand-written walk over the pass list would be a
     second model of what a folded step is.
 
-    THE ABSORBER GOES ON THE FAR FACE OF A FOLDED AXIS ONLY. The near face of a
+    The absorber goes on the far face of a folded axis only. The near face of a
     folded axis is the MIRROR PLANE, not a boundary -- ``PML.__post_init__`` refuses
     a layer there, and ``symmetry.folded_axis_kinds`` refuses a grid whose layer it
     cannot resolve. So the thickness is spelled per face from the fixture's own
@@ -664,7 +664,7 @@ def build_driver(keywords: Mapping[str, Any], seed: int,
         host = (float(amplitude)
                 * rng.standard_normal(array.shape)).astype(np.float32) * scale
         array[...] = _module_of(array).asarray(host.astype(np.float32))
-    # A SEEDED STATE IS A MID-RUN ONE unless the case says otherwise: H was started
+    # A seeded state is a mid-run one unless the case says otherwise: H was started
     # from B long ago, so no arrangement starts it again. The first-update case keeps
     # the flag False, and ``capture``/``restore`` carry it, so every arrangement's
     # step 1 is the run's first update_H.
@@ -725,22 +725,22 @@ def declaring(plan: Any) -> Any:
 class Shim:
     """A ``FastPathPlan``-shaped object that runs this gate's plans inside the driver.
 
-    THE SEAM IS THE ENGINE'S OWN: ``driver.step`` reads ``self._fast_path`` once per
+    The seam is the engine's own: ``driver.step`` reads ``self._fast_path`` once per
     step and consults ``fast.dispatch(slot, fields)``; ``synchronize_magnetic_fields``
     consults it again under the by-name channel ``update_H_synchronize``. This object
     answers both. The shipped planner is untouched.
 
-    THE SYNC CHANNEL IS ANSWERED BY THE CONTAINMENT RULE, READ OFF ``fastpath``: a
+    The sync channel is answered by the containment rule, read off ``fastpath``: a
     plan may run inside the magnetic half-step only when every slot it spans is one
     the half-step itself runs (``SYNC_PATH_SLOTS``). A weld spanning ``step_D`` is
     refused by its span. ``sync_hazard=True`` is the ARMED arm of the sync leg: the
     plan answers the consult anyway, which is what a product that did not decline
     would do, and the leg requires the divergence in ``D``.
 
-    EVERY ANSWER IS COUNTED. A shim that quietly declined everything would still
+    Every answer is counted. A shim that quietly declined everything would still
     produce a green byte comparison, because the oracle IS the array path.
 
-    THE CLEAR THE SHIPPED DISPATCH OWES AFTER ``update_E`` is applied here too.
+    The clear the shipped dispatch owes after ``update_E`` is applied here too.
     ``FastPathPlan.dispatch`` writes +0 over the absent electric components' E and
     ``f_w`` words after every ``update_E`` consult it answers
     (``fastpath.AbsentComponentClear``: the sign-bit inverse-permittivity cells, and on a
@@ -763,7 +763,7 @@ class Shim:
                  sync_hazard: bool = False) -> None:
         self.fields = fields
         self.plans = {name: plan for name, plan in plans.items() if plan is not None}
-        # ONE COUNTER PER DECLARING OWNER, claimed by the FIRST slot that names it.
+        # One counter per declaring owner, claimed by the FIRST slot that names it.
         # A fused pair sits in both slots of its seam -- the pair in the first, a
         # ``NoopPlan`` whose ``absorbed_by`` points back at it in the second -- so
         # wrapping every slot would report one launch as two and the two witnesses
@@ -836,7 +836,7 @@ class Shim:
             self.absorbed[slot] = self.absorbed.get(slot, 0) + 1
             return True
         if slot == "update_P" and isinstance(plan, (list, tuple)):
-            # THE ONE ASYMMETRIC SLOT, and this shim answers it the way
+            # The one asymmetric slot, and this shim answers it the way
             # ``FastPathPlan.dispatch`` does (fastpath.py:1818-1827): it holds the
             # LIST of per-susceptibility plans, and each takes ``fields.drive_field``
             # -- MEEP's ``w``, not a stored-E reader. The two agree exactly outside
@@ -856,7 +856,7 @@ class Shim:
     def launches(self) -> int:
         """Launches the PLAN side counted -- ``run()`` calls on the plan that WORKS.
 
-        THE WRAPPER GOES ROUND THE PLAN WHOSE ``declaring`` OWNER IS ITSELF, which is
+        The wrapper goes round the plan whose ``declaring`` owner is itself, which is
         exactly the one slot of a fused pair that launches; the other slot holds a
         ``NoopPlan`` whose ``absorbed_by`` points back at it. Counting every slot
         instead would report a fused pair as two launches -- the two witnesses would
@@ -898,7 +898,7 @@ class CountingKernel:
 def count_kernel(plan: Any, kernel: Any) -> Optional[CountingKernel]:
     """Force a plan to launch through a counting wrapper of ``kernel``, or decline.
 
-    DECLINES RATHER THAN WRAPS NOTHING. A plan whose kernel this file cannot resolve
+    Declines rather than wraps nothing. A plan whose kernel this file cannot resolve
     -- the composer may install any arm on the slots this weld does not own -- would
     otherwise get a wrapper around ``None`` and die at its first launch inside
     ``__getitem__``. Measured 2026-09-06 on ``examples:cavity_arrayslice.py``, whose
@@ -925,7 +925,7 @@ def count_kernel(plan: Any, kernel: Any) -> Optional[CountingKernel]:
 def settle_rotation(plan: Any, fields: Any, originals: Mapping[str, Any]) -> int:
     """After a step that rotated, put the ENGINE's references back on the seed arrays.
 
-    THE WELD SWAPS ``fields.Hx`` AND ITS TWIN AFTER EVERY LAUNCH, and that is the
+    The weld swaps ``fields.Hx`` and its twin after every launch, and that is the
     product's own certified choreography. But this gate drives FIVE arrangements on
     ONE driver, and the other four bound their pointers to the seed arrays by
     identity; a rotation left standing at the end of a step would leave them writing
@@ -949,7 +949,7 @@ def settle_rotation(plan: Any, fields: Any, originals: Mapping[str, Any]) -> int
 def rotating_owners(shim: Optional[Shim]) -> Tuple[Any, ...]:
     """Every distinct plan in this shim that rotates one of the ENGINE's volumes.
 
-    DERIVED FROM THE SHIM, never listed by the caller: the WELD is not the only
+    Derived from the shim, never listed by the caller: the WELD is not the only
     rotating product a step can carry, and a list a caller maintains cannot see a
     product the composer chose.
     """
@@ -1002,7 +1002,7 @@ class Arrangement:
         self.on_step_done: Optional[Callable[[], None]] = None
 
     def count_launches(self) -> None:
-        """Wrap every plan's kernel ONCE PER DECLARING OWNER, never once per slot.
+        """Wrap every plan's kernel once per declaring owner, never once per slot.
 
         A fused pair occupies BOTH slots of its seam, so walking slots would wrap that
         owner's kernel twice -- the second wrapper counting the first -- and the
@@ -1039,7 +1039,7 @@ class Arrangement:
 def _default_kernel_for(owner: Any) -> Any:
     """The kernel a plan launches when its ``_kernel`` override is unset.
 
-    LARGER THAN THE PLAIN GATE'S TABLE, and it has to be: a folded ``plan_step``
+    Larger than the plain gate's table, and it has to be: a folded ``plan_step``
     installs the folded curl, the folded fills and the two released folded pairs on
     the slots this weld does not own, and a plan the counter cannot resolve makes the
     two launch witnesses incomparable rather than disagreeing (``count_kernel``
@@ -1142,8 +1142,8 @@ def arrangement_weld(driver: Any, kernel: Any = None,
     """The SUBJECT: the weld force-installed at ``update_H``, ``step_D`` absorbed.
 
     FORCE-INSTALLED, because the composer refuses this product (``INSTALLABLE`` False,
-    and no ``CERTIFIED_FUSED_PRODUCTS`` row on a backend whose label table lives in a
-    file this round does not own) and this gate must measure it anyway. Every other
+    and neither ``CERTIFIED_FUSED_PRODUCTS`` nor ``fastpath.FUSED_ARM_CONSTITUENTS``
+    carries a row for it) and this gate must measure it anyway. Every other
     slot carries the unfused single ``plan_step(fuse=False)`` selects for it, so the
     only difference between this arrangement and reference 4 is the seam.
 
@@ -1189,7 +1189,7 @@ def drive(driver: Any, arrangements: Mapping[str, Arrangement], steps: int,
     (the sync leg's accessor call); its return value is recorded.
     """
     seed = capture(driver)
-    # THE ARRAY OBJECT THE ENGINE NAMES FOR EACH STORED VOLUME, BEFORE ANY LAUNCH.
+    # The array object the engine names for each stored volume, before any launch.
     # Every arrangement's plans hold pointers to these by identity, and ``capture``
     # reads whatever ``fields`` names at the end of a step, so a rotation a step
     # leaves standing silently decouples the two.
@@ -1222,7 +1222,7 @@ def drive(driver: Any, arrangements: Mapping[str, Arrangement], steps: int,
                 hooks[name].append(per_step_hook(step, name, driver))
             state[name] = capture(driver)
         pin_array_path(driver)
-        # THE PRECONDITION IS CHECKED BEFORE THE COMPARISON, never after: a step whose
+        # The precondition is checked before the comparison, never after: a step whose
         # reference state has entered the denormal band is not compared at all, so a
         # disagreement inside the band can never be counted as an agreement OR as a
         # divergence of this product.
@@ -1252,7 +1252,7 @@ def drive(driver: Any, arrangements: Mapping[str, Arrangement], steps: int,
             if difference and not row.get("autopsy"):
                 row["autopsy"] = {name: autopsy(state[reference], state[name],
                                                 difference)}
-        # PAIRWISE, BETWEEN ARRANGEMENTS, and this is what separates a finding about
+        # Pairwise, between arrangements, and this is what separates a finding about
         # THIS weld from a finding about a sub-step it does not own. Two arrangements
         # that dispatch the same slots and differ only at this seam must agree WORD
         # FOR WORD whatever either of them does against the array path.
@@ -1307,7 +1307,7 @@ def all_arrangements(driver: Any, kernel: Any = None,
         "composition_today": arrangement_composition(driver, fuse=True),
         "unfused": arrangement_composition(driver, fuse=False),
         "weld": arrangement_weld(driver, kernel=kernel, launcher=launcher),
-        # THE SEAM ALONE: this weld at its two slots, every other slot on the ARRAY
+        # The seam alone: this weld at its two slots, every other slot on the ARRAY
         # PATH. It is what isolates a finding about the seam from a finding about a
         # neighbouring sub-step's own agreement with the array path.
         "weld_seam_only": arrangement_weld(driver, kernel=kernel, launcher=launcher,
@@ -1326,13 +1326,13 @@ def run_product(driver: Any, steps: int,
                 clean_floor: int = 1) -> Dict[str, Any]:
     """The four-reference identity on ONE driver. The core measurement.
 
-    THE SAME BAR ON A LIFTED CORPUS ROW AS ON THE SYNTHETIC FIXTURE: the full budget,
+    The same bar on a lifted corpus row as on the synthetic fixture: the full budget,
     and every arrangement equal to the array path outright. An earlier revision bounded
     a lifted row's budget at the last step whose reference state carried no word in the
     float32 denormal band and let the seam claim alone carry the row, on the premise
     that "inside the band the CuPy array path and the Triton kernels are measured to
-    disagree for a reason that has nothing to do with any weld". THAT PREMISE WAS
-    MEASURED FALSE on 2026-09-06 (``results/triton_hd_lift_policy_2026-09-06``): the
+    disagree for a reason that has nothing to do with any weld". That premise was
+    measured FALSE on 2026-09-06 (``results/triton_hd_lift_policy_2026-09-06``): the
     disagreement belonged to the lift leg's CHILD INTERPRETER, which ran with NO
     subnormal policy installed -- native CuPy (``-ftz=true``, flush) against native
     Triton (no ``.ftz`` on arithmetic, keep) -- so the array path flushed the curl
@@ -1346,7 +1346,7 @@ def run_product(driver: Any, steps: int,
     """
     started = time.time()
     arrangements = all_arrangements(driver, count=True)
-    #: THE PAIRS THAT CARRY THIS PRODUCT'S OWN CLAIM. ``weld`` and ``unfused``
+    #: The pairs that carry this product's own claim. ``weld`` and ``unfused``
     #: dispatch the SAME four slots and differ only at this seam;
     #: ``composition_today`` is what the composer installs on these rows. Either can
     #: disagree with the array path for a reason belonging to ``step_B`` or
@@ -1365,7 +1365,7 @@ def run_product(driver: Any, steps: int,
                    for row in result["per_step"])
 
     per_reference = {name: agrees(name) for name in references}
-    # WHICH SIDE MOVED. A row where the weld still agrees with the certified singles
+    # Which side moved. A row where the weld still agrees with the certified singles
     # but some arrangement disagrees with the array path is a finding about THAT
     # arrangement, not about this weld, and the record has to say so.
     disagree_with_array = sorted(name for name in references if not per_reference[name])
@@ -1374,13 +1374,13 @@ def run_product(driver: Any, steps: int,
                    for row in result["per_step"])
 
     pair_agreement = {f"{a}|{b}": pair_agrees(f"{a}|{b}") for a, b in PAIRS}
-    # THE SEAM CLAIM, stated as the conjunction it is. Each clause is a comparison
+    # The seam claim, stated as the conjunction it is. Each clause is a comparison
     # this gate makes, and together they say: at ITS OWN two slots this weld is the
     # array path (`weld_seam_only`), the two certified halves it replaces are the
     # array path on this row (`singles`), and against the two whole-step compositions
     # that dispatch the same slots it is identical word for word.
     seam_claim = {
-        # THE SHARPEST STATEMENT OF THIS PRODUCT'S OWN CLAIM: ONE launch produces,
+        # The sharpest statement of this product's own claim: one launch produces,
         # word for word, what the TWO certified launches it replaces produce -- on the
         # same driver, the same seed and the same complete steps -- whatever either of
         # them does against the array path. Two entirely different kernels: the
@@ -1398,7 +1398,7 @@ def run_product(driver: Any, steps: int,
                        and result["steps_compared"] >= clean_floor
                        and (not require_full_budget
                             or result["steps_compared"] == steps)
-                       # EVERY ARRANGEMENT EQUALS THE ARRAY PATH OUTRIGHT, on the
+                       # Every arrangement equals the array path outright, on the
                        # synthetic fixture and on a lifted corpus row alike.
                        and result["bit_identical"]),
         "seam_claim": seam_claim,
@@ -1436,7 +1436,7 @@ def run_product(driver: Any, steps: int,
 def leg_driver_order() -> Dict[str, Any]:
     """``REPLACES`` is the driver's two adjacent consults, and nothing else is between.
 
-    READ OFF THE TREE. A gate that spelled the seam would keep reading correctly after
+    Read off the tree. A gate that spelled the seam would keep reading correctly after
     a driver move while the bytes described a step nothing performs.
     """
     findings: List[str] = []
@@ -1454,7 +1454,7 @@ def leg_driver_order() -> Dict[str, Any]:
         findings.append(f"the consult after update_H is {order[first + 1:first + 2]}, "
                         f"not ['step_D']; this product's REPLACES is not two adjacent "
                         f"consults")
-    # WHAT SITS BETWEEN THEM, as statements rather than as a claim.
+    # What sits between them, as statements rather than as a claim.
     between = body.split('fast.dispatch("update_H"', 1)[1]
     between = between.split('fast.dispatch("step_D"', 1)[0]
     statements = [line.strip() for line in between.splitlines()
@@ -1479,7 +1479,7 @@ def leg_driver_order() -> Dict[str, Any]:
     if family.SEAM != h_to_d_seam.SEAM:
         findings.append(f"the product's SEAM {family.SEAM!r} is not the boards' "
                         f"{h_to_d_seam.SEAM!r}")
-    # THE FOLD-SIDE PASSES, BY NAME: all three B-side ones close BEFORE the first
+    # The fold-side passes, by name: all three B-side ones close BEFORE the first
     # consult and all three D-side ones open AFTER the second, so the seam this
     # product spans is fill-FREE on a folded grid and nothing has to be carried
     # across the launch. Read off the statements, not asserted.
@@ -1490,7 +1490,7 @@ def leg_driver_order() -> Dict[str, Any]:
             findings.append(
                 f"{pass_name} runs BETWEEN the two consults; on a folded grid this "
                 f"seam would then carry a fill and this product performs none")
-    # THE SYNC CHANNEL'S CONTAINMENT RULE, read off fastpath rather than asserted.
+    # The sync channel's containment rule, read off fastpath rather than asserted.
     if "step_D" in SYNC_PATH_SLOTS:
         findings.append("step_D is inside SYNC_PATH_SLOTS; the containment rule would "
                         "then admit this weld into the magnetic half-step, where D is "
@@ -1506,7 +1506,7 @@ def leg_driver_order() -> Dict[str, Any]:
                         "hoist branch is then unreachable and nothing performs the "
                         "withdraw before the launch")
     if family.INSTALLABLE:
-        findings.append("INSTALLABLE is True; this round's arbitration verdict is that "
+        findings.append("INSTALLABLE is True; the arbitration verdict is that "
                         "it must not be")
     return {"passed": not findings, "findings": findings,
             "consult_order": order,
@@ -1525,8 +1525,8 @@ def leg_driver_order() -> Dict[str, Any]:
 def leg_transcription() -> Dict[str, Any]:
     """Both halves are the certified kernels' own text, plus the declared edits.
 
-    THE CURL HALF IS CUT OUT OF ``symmetry.py`` AND THE CONSTITUTIVE HALF IS NOT CUT
-    AT ALL: it is imported. So this leg asserts three things the plain gate does not
+    The curl half is cut out of ``symmetry.py`` and the constitutive half is not cut
+    at all: it is imported. So this leg asserts three things the plain gate does not
     have to -- that the two certified curl bodies are DIFFERENT text, that the fold's
     own three deltas are in ours and not in the plain one, and that this module
     defines no copy of ``_h_cell``/``_h_tap``.
@@ -1534,7 +1534,7 @@ def leg_transcription() -> Dict[str, Any]:
     findings: List[str] = []
     measures: Dict[str, Any] = {}
 
-    # 1. THE CONSTITUTIVE HALF IS THE PLAIN PRODUCT'S, AND IS IMPORTED.
+    # 1. The constitutive half is the plain product's, and is imported.
     certified_constitutive = plain.certified_constitutive_tail()
     lifted_constitutive = plain.lifted_constitutive_tail()
     measures["constitutive_chars"] = len(certified_constitutive)
@@ -1559,7 +1559,7 @@ def leg_transcription() -> Dict[str, Any]:
     measures["constitutive_is_imported_not_copied"] = (
         "_h_cell" not in defined and "_h_tap" not in defined)
 
-    # 2. THE CURL HALF IS THE FOLDED BODY WITH THE NINE REDIRECTS.
+    # 2. The curl half is the folded body with the nine redirects.
     certified_curl = family.certified_curl_tail()
     lifted_curl = family.lifted_curl_tail()
     measures["curl_chars"] = len(certified_curl)
@@ -1573,7 +1573,7 @@ def leg_transcription() -> Dict[str, Any]:
         findings.append(f"the curl half takes {measures['curl_lift_edits']} edits, "
                         f"not the three own-cell reads plus six shifted taps")
 
-    # 3. THE TWO CERTIFIED CURLS ARE DIFFERENT TEXT, AND THE FOLD'S DELTAS ARE OURS.
+    # 3. The two certified curls are different text, and the fold's deltas are ours.
     folded_raw = family.raw_folded_curl_tail()
     plain_raw = plain._cut(plain._source_of("pml_curl_step"),  # noqa: SLF001
                            plain.DECODE_END)
@@ -1611,7 +1611,7 @@ def leg_transcription() -> Dict[str, Any]:
             findings.append(f"the lifted {label} body is only {len(statements)} "
                             f"statements; the anchors have crossed")
 
-    # 5. THE TAP TABLE IS PARSED FROM THE FOLDED EMITTER'S OWN LINES.
+    # 5. The tap table is parsed from the folded emitter's own lines.
     taps = plain.halo_taps(folded_raw)
     offsets = plain.offset_coordinates(folded_raw)
     measures["halo_taps"] = {name: list(value) for name, value in sorted(taps.items())}
@@ -1634,7 +1634,7 @@ def leg_transcription() -> Dict[str, Any]:
             findings.append(f"{stem} survives in the welded text; in this signature "
                             f"that pointer does not exist")
 
-    # 7. ASCII EVERYWHERE THIS MODULE WRITES ITS OWN PROSE, and NOT inside the lifted
+    # 7. ASCII everywhere this module writes its own prose, and NOT inside the lifted
     #    body -- because the lifted body is `symmetry.pml_curl_step_folded`'s own
     #    text, character for character, and that text carries four em dashes in its
     #    mask comments. Making the module ASCII would break the byte equality above,
@@ -1652,7 +1652,7 @@ def leg_transcription() -> Dict[str, Any]:
             f"the family module carries {len(strays)} non-ASCII line(s) that are NOT "
             f"the certified folded body's own: {strays[:3]}")
 
-    # 8. EVERY MUTATION NEEDLE RESOLVES EXACTLY ONCE, IN THE FILE IT NAMES, checked
+    # 8. Every mutation needle resolves exactly once, in the file it names, checked
     #    before any device time. A needle that matched nothing is a DISARMED leg.
     texts = {"folded": module_text,
              "plain": (API_ROOT / "meep_gpu" / "triton_kernels"
@@ -1662,7 +1662,7 @@ def leg_transcription() -> Dict[str, Any]:
         if spec["target"] != "kernel":
             continue
         where = spec.get("module", "folded")
-        # A MUTATION MAY CARRY SEVERAL EDITS -- the paired control that earns a null
+        # A mutation may carry several edits -- the paired control that earns a null
         # is two -- and EVERY needle of EVERY one has to resolve exactly once.
         for old_text, _new_text in (spec.get("edits")
                                     or ((spec["old"], spec["new"]),)):
@@ -1802,7 +1802,7 @@ def leg_refusal() -> Dict[str, Any]:
             f"first")
     driver.close()
 
-    # 10. AN UNFOLDED GRID -- a real one, not a proxy -- refused, naming the plain
+    # 10. An unfolded grid -- a real one, not a proxy -- refused, naming the plain
     #     product; and the plain product ADMITS it. The inverse of clause 11.
     unfolded_driver = build_driver({"boundaries": {"x": "metallic", "y": "metallic"}},
                                    seed=1)
@@ -1819,7 +1819,7 @@ def leg_refusal() -> Dict[str, Any]:
     finally:
         unfolded_driver.close()
 
-    # 11. DISJOINTNESS, DRIVEN ON EVERY FIXTURE: exactly one product admits each.
+    # 11. Disjointness, driven on every fixture: exactly one product admits each.
     disjoint: Dict[str, Any] = {}
     for name, keywords in CASES:
         case_driver = build_driver(dict(keywords), seed=1)
@@ -1878,9 +1878,9 @@ class _ConductiveView:
 def _inject_product_row() -> Callable[[], None]:
     """Put this product's row into the composer's tables IN PROCESS, and undo it.
 
-    THE COUNTERFACTUAL IS MEASURED RATHER THAN ARGUED. The shipped tables do not carry
+    The counterfactual is measured rather than argued. The shipped tables do not carry
     this product -- on this backend a composer label must also appear in
-    ``fastpath.FUSED_ARM_CONSTITUENTS``, which is in a file this round does not own --
+    ``fastpath.FUSED_ARM_CONSTITUENTS``, which does not name it either --
     so the arbitration cannot be observed from the tree as it stands. Injecting the
     row here drives the two brakes the composition would rely on, on the real
     composer, without editing anything.
@@ -1988,7 +1988,7 @@ def leg_arbitration() -> Dict[str, Any]:
         finally:
             driver.close()
 
-    # THE SEAM ROW EXISTS AND IS LAST, and its pair name is the withdraw hoist's.
+    # The seam row exists and is last, and its pair name is the withdraw hoist's.
     seams = triton_launch.CERTIFIED_FUSED_PAIR_SEAMS
     if seams.get("update_H") != ("step_D", withdraw_hoist.SEAM):
         findings.append(f"the composer's H->D seam row is {seams.get('update_H')!r}")
@@ -2016,7 +2016,7 @@ def leg_arbitration() -> Dict[str, Any]:
 def purity_ledger(fields: Any, pml: Any) -> Dict[str, Any]:
     """How many of the FOLDED curl's valid foreign taps land on a cell ``update_H`` MOVED.
 
-    THIS IS THE LEDGER THIS SHAPE UNIQUELY OWES, and the fold adds a second column to
+    This is the ledger this shape uniquely owes, and the fold adds a second column to
     it. The weld's claim is that a foreign tap RECOMPUTES a value an in-place
     arrangement would have raced on; if ``update_H`` moved nothing at the cells the
     curl taps, the recompute and the stale read would agree by accident and the
@@ -2028,7 +2028,7 @@ def purity_ledger(fields: Any, pml: Any) -> Dict[str, Any]:
     only proof of a recompute if ``update_H`` moved that cell too, so both counts are
     reported and neither is inferred from the other.
 
-    THE GUARD IS THE FOLDED KERNEL'S, not the plain one's: ``pml_curl_step_folded``
+    The guard is the folded kernel's, not the plain one's: ``pml_curl_step_folded``
     wraps on PERIODIC and masks on EVERY other code, the two mirror codes included.
     Taking the plain kernel's `metallic` test here would count a folded axis as
     wrapping and the ledger would describe a kernel nobody launches.
@@ -2166,7 +2166,7 @@ CURL_EXPRESSIONS = ("curl0", "curl1", "curl2")
 def ghost_observability() -> Dict[str, Any]:
     """Does any BOUNDARY VALUE the FOLDED ghost serves reach ``step_D``'s output?
 
-    THE ANSWER IS NO, AND IT IS DERIVED FROM THE FOLDED KERNEL'S OWN TEXT. Each
+    The answer is no, and it is derived from the folded kernel's own text. Each
     shifted tap feeds one curl component (read off the three ``curlN = curl_stencil(...)``
     calls) and its ghost fires on the plane of the axis it shifts along (read
     off the offset lines); the folded cell-0 mask's own
@@ -2177,7 +2177,7 @@ def ghost_observability() -> Dict[str, Any]:
     ghost SERVES moves no byte, and why the mask drops are the armed mutations and
     the ghost edit is the recorded null they earn.
 
-    THE TOP-PLANE BLOCK IS PARSED SEPARATELY and is a different claim: it zeroes the
+    The top-plane block is parsed separately and is a different claim: it zeroes the
     LAST plane of a MIRROR_PERIODIC axis for each D target's own axis, which is the
     slot the driver's far fill writes and the curl must not.
     """
@@ -2247,7 +2247,7 @@ def leg_ghost_observability() -> Dict[str, Any]:
         findings.append(f"the BACKWARD top-plane mask has "
                         f"{len(result['top_plane_mask'])} clauses, not the three the D "
                         f"targets' single shift-1 axis each gives")
-    # THE TOP-PLANE MASK IS THE D FAMILY'S OWN AXIS, one clause per target.
+    # The top-plane mask is the D family's own axis, one clause per target.
     expected_top = {("X", "curl0", "x"), ("Y", "curl1", "y"), ("Z", "curl2", "z")}
     if set(result["top_plane_mask"]) != expected_top:
         findings.append(
@@ -2318,12 +2318,12 @@ MUTATIONS: Dict[str, Dict[str, Any]] = {
         "case": MUTATION_CASE,
         "old": "        a0 = constitutive_form(a0, prev0, src0, kp_0, km_0, dw0)\n",
         "new": "        a0 = tl.where(dw0, (a0 + kp_0 * src0) - km_0 * prev0, src0)\n",
-        "why": "INVERTED (KERNELS.md 7.1): the accumulation takes the PREVIOUS package "
-               "grouping, the two accumulations `((f + kps*src) - kms*prev)`, in "
-               "place of MEEP's one add of the difference `f + ((kps*src) - "
-               "(kms*prev))` that forms.constitutive_form spells. The two are "
-               "different float32 numbers on the dsigw cells, so the old spelling "
-               "must be caught",
+        "why": "INVERTED (docs/development/certification.md#inverted-grouping-mutations): "
+               "the accumulation takes the PREVIOUS package grouping, the two "
+               "accumulations `((f + kps*src) - kms*prev)`, in place of MEEP's one add of "
+               "the difference `f + ((kps*src) - (kms*prev))` that "
+               "forms.constitutive_form spells. The two are different float32 numbers on "
+               "the dsigw cells, so the old spelling must be caught",
     },
     # ---- the curl half and the weld, whose text lives in THIS family's module ----
     "m_f_w_H_written_in_place": {
@@ -2341,13 +2341,13 @@ MUTATIONS: Dict[str, Dict[str, Any]] = {
         "case": MUTATION_CASE,
         "old": "        curl0 = curl_stencil(c_y, c, b, b_z, dtdx, py, pz)\n",
         "new": "        curl0 = dtdx * ((c_y - c) + (b - b_z))\n",
-        "why": "INVERTED (KERNELS.md 7.1): Dx's curl takes the PREVIOUS package "
-               "grouping, the pairwise `(g1s - g1) + (g2 - g2s)`, in place of MEEP's "
-               "left-to-right `((g1s - g1) + g2) - g2s` that forms.curl_stencil "
-               "spells. `(a + b) - c` and `a + (b - c)` round differently in "
-               "float32, so the old spelling must be caught",
+        "why": "INVERTED (docs/development/certification.md#inverted-grouping-mutations): "
+               "Dx's curl takes the PREVIOUS package grouping, the pairwise `(g1s - g1) + "
+               "(g2 - g2s)`, in place of MEEP's left-to-right `((g1s - g1) + g2) - g2s` "
+               "that forms.curl_stencil spells. `(a + b) - c` and `a + (b - c)` round "
+               "differently in float32, so the old spelling must be caught",
     },
-    # ---- the chunk forms (KERNELS.md 7.2): the folded curl's selects ---------------
+    # ---- the per-chunk form battery: the folded curl's selects ---------------------
     "b1_whole_grid_recurrence": {
         "target": "kernel", "module": "folded", "expected": "CAUGHT",
         "case": MUTATION_CASE,
@@ -2403,9 +2403,9 @@ MUTATIONS: Dict[str, Dict[str, Any]] = {
         "case": MUTATION_CASE,
         "old": "        tl.store(u0 + idx, n0, mask=live & du0)\n",
         "new": "        tl.store(u0 + idx, n0, mask=live)\n",
-        "why": "fu_Dx is stored on a plain cell, which the auxiliary contract (C2) "
-               "leaves untouched; every fixture volume is seeded at every cell, so "
-               "the stray word is observable",
+        "why": "fu_Dx is stored on a plain cell, which the auxiliary contract "
+               "(docs/design/floating-point.md#auxiliary-contract) leaves untouched; every "
+               "fixture volume is seeded at every cell, so the stray word is observable",
     },
     "b7_fw_scratch_stored_unmasked": {
         "target": "kernel", "module": "folded", "expected": "CAUGHT",
@@ -2451,9 +2451,9 @@ MUTATIONS: Dict[str, Dict[str, Any]] = {
         "expected_override": "NULL", "case": MUTATION_CASE,
         "old": "        p0 = tl.load(u0 + idx, mask=live & du0, other=0.0)\n",
         "new": "        p0 = tl.load(u0 + idx, mask=live, other=0.0)\n",
-        "why": "PREDICTED NULL (KERNELS.md 7.2, the unconditional auxiliary load): "
-               "off the dsigu chunk the selected form never consumes fu_Dx and its "
-               "store stays masked, so no word moves; the guard is pinned by the lift",
+        "why": "PREDICTED NULL (the unguarded auxiliary load; "
+               "docs/development/certification.md#chunk-form-battery): off the dsigu chunk the selected form never "
+               "consumes fu_Dx and its store stays masked, so no word moves; the guard is pinned by the lift",
     },
     "m_drop_cell0_mask": {
         "target": "kernel", "module": "folded", "expected": "CAUGHT",
@@ -2608,7 +2608,7 @@ MUTATIONS: Dict[str, Dict[str, Any]] = {
     },
     "m_withdraw_after_step_D": {
         "target": "host", "expected": "CAUGHT", "case": MUTATION_CASE,
-        "why": "the seam's one pass on the wrong side of the launch. Since entry 25 that "
+        "why": "the seam's one pass on the wrong side of the launch. Since 1.0 that "
                "pass is the magnetic f_minus_p restore (no electric withdraw stands), "
                "and the withdraw leg drives it moved before the launch, and dropped, on "
                "a fixture carrying integrated electric and magnetic sources; both must "
@@ -2651,7 +2651,7 @@ MUTABLE_MODULES = {
 def _exec_module(name: str, filename: str, text: str) -> Any:
     """Register ``text`` under a fake filename and execute it as a module.
 
-    TRITON READS THE SOURCE BACK. ``JITFunction.__init__`` calls
+    Triton reads the source back. ``JITFunction.__init__`` calls
     ``inspect.getsourcelines(fn)``, and a function created by ``exec`` has no file for
     ``inspect`` to find. Registering the text in ``linecache`` under this module's own
     fake filename is what makes the mutant compile, and it also keeps Triton's JIT
@@ -2674,7 +2674,7 @@ def mutated_family(tag: str, edits: Sequence[Tuple[str, str]],
                    where: str = "folded") -> Any:
     """Import a COPY of this family with one or more source edits applied.
 
-    TWO FILES, BECAUSE THIS PRODUCT'S TEXT LIVES IN TWO. The curl half and the weld
+    Two files, because this product's text lives in two. The curl half and the weld
     are in ``folded_fused_hd_pair.py``; the constitutive half is
     ``fused_hd_pair._h_cell`` / ``_h_tap``, IMPORTED rather than copied. A mutation of
     the constitutive half therefore has to build a mutant of the PLAIN module first
@@ -2717,7 +2717,7 @@ def mutated_family(tag: str, edits: Sequence[Tuple[str, str]],
                 f"not be redirected at the mutant; the shipped ones would be launched")
     else:
         folded_text = apply(folded_text, "the family module")
-    # THE MARKER, ALWAYS: a distinct kernel source per mutant, even when only the
+    # The marker, always: a distinct kernel source per mutant, even when only the
     # imported plain module changed.
     folded_text = folded_text.replace(
         MUTANT_MARKER_ANCHOR, MUTANT_MARKER_ANCHOR + f"        # mutant: {tag}\n", 1)
@@ -2728,14 +2728,14 @@ def _rebound_codes(mapping: Callable[[Sequence[int]], Sequence[int]],
                    ) -> Callable[[Any], Any]:
     """Rebind a built plan's boundary codes -- the fold's host mutation seam.
 
-    THE PLAN IS BUILT BY THE SHIPPED BUILDER FIRST, so what this replaces is exactly
+    The plan is built by the shipped builder first, so what this replaces is exactly
     the triple ``folded_axis_kinds`` resolved, and nothing else about the plan.
     """
 
     def wrap(plan: Any) -> Any:
         rebound = tuple(int(code) for code in mapping(plan.bc))
         if rebound == tuple(plan.bc):
-            # A NO-OP REBIND IS A DISARMED LEG WEARING A PASS. The mapping and the
+            # A no-op rebind is a disarmed leg wearing a pass. The mapping and the
             # fixture have to disagree, or the mutation launches the shipped codes and
             # reports the defect as uncaught.
             raise AssertionError(
@@ -2838,9 +2838,9 @@ def leg_seed_scale(steps: int, seed: int) -> Dict[str, Any]:
 def leg_launch_structure(steps: int, seed: int) -> Dict[str, Any]:
     """Launches per step at the seam AND over the whole step, two counters.
 
-    THE HONEST NUMBER IS REPORTED WHETHER OR NOT IT FLATTERS THE WELD: against the
+    The honest number is reported whether or not it flatters the weld: against the
     composition the composer installs today the whole-step launch count does not fall.
-    That is the arbitration ruling as a measurement.
+    That is the arbitration verdict ``INSTALLABLE_REASON`` records, as a measurement.
     """
     findings: List[str] = []
     driver = build_driver(dict(CASES[MUTATION_INDEX][1]), seed=seed)
@@ -2868,7 +2868,7 @@ def leg_launch_structure(steps: int, seed: int) -> Dict[str, Any]:
     finally:
         driver.close()
     steps_run = result["steps_compared"]
-    # THE FOLD MAKES ONE plan.run() MORE THAN ONE LAUNCH, and that is measured rather
+    # The fold makes one plan.run() more than one launch, and that is measured rather
     # than tolerated. `symmetry.MirrorGhostFillPlan.run` is its two passes back to
     # back: the near pass launches once per folded axis and the far pass once per
     # folded axis whose entry declares a far plane (MirrorGhostFillPlan._launch), so
@@ -2900,7 +2900,7 @@ def leg_launch_structure(steps: int, seed: int) -> Dict[str, Any]:
     if seam_launches.get("singles") != 2:
         findings.append(f"the certified singles occupy {seam_launches.get('singles')} "
                         f"launches at the seam, not two")
-    # THE WELD'S OWN WHOLE-STEP COUNT, asserted rather than left to the table: one
+    # The weld's own whole-step count, asserted rather than left to the table: one
     # launch per distinct plan per step, and the seam contributing exactly one of them.
     per_step_launches = _weld_step_launches(arrangements)
     expected = steps_run * per_step_launches
@@ -3003,7 +3003,7 @@ PERIODIC_INDEX = [name for name, _ in CASES].index(PERIODIC_MUTATION_CASE)
 def leg_sync(steps: int, seed: int) -> Dict[str, Any]:
     """The sync channel: a plan spanning ``step_D`` must DECLINE the half-step.
 
-    A REQUIRED LEG WITH ITS OWN NULL CONTROL. ``synchronize_magnetic_fields`` backs up
+    A required leg with its own null control. ``synchronize_magnetic_fields`` backs up
     ``_SYNC_FIELDS`` + ``_SYNC_AUXILIARY`` and restores them; ``D``, ``fu_D`` and
     ``f_cond_D`` are in NEITHER, so a weld that answered the consult would advance the
     electric state inside a half-step nothing can undo. The declining arm must be
@@ -3081,13 +3081,13 @@ SEAM_SOURCES = (
 def leg_withdraw(steps: int, seed: int) -> Dict[str, Any]:
     """The seam's one pass on a device: :func:`hd_seam_restore.seam_restore_leg`.
 
-    Since entry 25 what stands between the two consults is the magnetic ``f_minus_p``
+    Since 1.0 what stands between the two consults is the magnetic ``f_minus_p``
     restore, not an electric withdraw. The folded driver carries an integrated electric
     AND an integrated magnetic source (:data:`SEAM_SOURCES`); the weld arrangement is
     force-installed, stepped in lockstep with its own array-path reference (its rotation
     settled after every step, as :func:`drive` settles it) and required identical, and
     the weld with the restore moved before the launch and with no magnetic
-    ``f_minus_p`` must each diverge. THE SEED IS NOT SCALED HERE (2^0): the
+    ``f_minus_p`` must each diverge. The seed is not scaled here (2^0): the
     ``f_minus_p`` words are the sources' amplitude, which a 2^80 state would swallow.
     """
     keywords = dict(CASES[MUTATION_INDEX][1])
@@ -3181,7 +3181,7 @@ def leg_mutation(steps: int, seed: int) -> List[Dict[str, Any]]:
     """Every armed defect, each with its declared outcome, its reason and -- where the
     defect is a mask -- the ATTRIBUTION of the words it moved.
 
-    THE ATTRIBUTION IS THE FOLD'S OWN CLAUSE. ``symmetry.py``'s docstring says the two
+    The attribution is the fold's own clause. ``symmetry.py``'s docstring says the two
     ownership masks are invisible after a complete driver step; the Metal sibling
     measured that FALSE for the auxiliary and true for the displacement. Each mask
     mutation therefore declares which volume family it must move and which it must
@@ -3243,7 +3243,7 @@ def leg_mutation(steps: int, seed: int) -> List[Dict[str, Any]]:
                         "first_divergence_step": result["first_divergence_step"],
                         "steps_compared": result["steps_compared"],
                         "passed": outcome == expected})
-            # WHICH VOLUMES MOVED, always recorded; asserted where the mutation
+            # Which volumes moved, always recorded; asserted where the mutation
             # declares an attribution.
             volumes = {}
             for entry in result["per_step"]:
@@ -3304,7 +3304,7 @@ def lift_basis(results: Path) -> Tuple[List[dict], Dict[str, Any]]:
     seam = results / SEAM_RECORD
     if not census.is_dir() or not seam.is_dir():
         raise SystemExit(f"the lift leg needs {census} and {seam}")
-    # THE ARMS COME FROM THE SEAM RECORD, and that is not a convenience. The census's
+    # The arms come from the seam record, and that is not a convenience. The census's
     # own `plan_step.selected` is empty on every row: it was cut on a NumPy host,
     # where `coverage._grid_reasons` clause 1 refuses every arm, so a join on it would
     # silently return an EMPTY cell and this leg would report a full-length pass over
@@ -3356,15 +3356,15 @@ def _child_progress(message: str) -> None:
 def lift_child(leg: str, script: Optional[str], module_path: Optional[str],
                case: Optional[str], out_json: str, steps: int,
                max_cells: Optional[int], policy: Optional[str] = None) -> int:
-    """One corpus row: capture the simulation, lift it TO THE DEVICE, drive it.
+    """One corpus row: capture the simulation, lift it to the device, drive it.
 
-    THE HARVESTERS ARE THE CENSUS'S OWN -- ``sweep_corpus_lift_parity.capture_simulation``
+    The harvesters are the census's own -- ``sweep_corpus_lift_parity.capture_simulation``
     for an example script and ``survey_meep_tests``' namespace for a test case -- so
     the row this drives is the row the census priced. What this child does NOT reuse is
     ``measure_predicate_coverage``'s own child, and the reason is one line of it: it
     lifts with ``prefer_gpu=False``, and every Triton plan binds a device pointer.
 
-    THE POLICY IS INSTALLED HERE, IN THIS PROCESS, BEFORE THE FIRST DEVICE COMPILE. The
+    The policy is installed here, in this process, before the first device compile. The
     parent's install lives on ``CUDABackend`` and on CuPy's compiler front ends in the
     PARENT's memory; a child inherits the environment -- the cache directories -- and
     nothing else. The 2026-09-06 campaign ran every corpus row without this: native
@@ -3410,7 +3410,7 @@ def lift_child(leg: str, script: Optional[str], module_path: Optional[str],
                     sim = sim_candidate
                     break
         if sim is None:
-            # A ROW THIS HOST'S MEEP CANNOT BUILD IS NAMED, NOT SCORED. The census was
+            # A row this host's MEEP cannot build is named, not scored. The census was
             # cut on a build with libGDSII; this one is not, and `get_GDSII_prisms`
             # raises before any Simulation exists. That is a fact about the HOST, not
             # about the engine or this weld, and scoring it as a gap is the phantom-
@@ -3437,7 +3437,7 @@ def lift_child(leg: str, script: Optional[str], module_path: Optional[str],
         finally:
             with contextlib.suppress(Exception):
                 driver.close()
-        # STAMPED AFTER THE DRIVE, so the counters say what this child compiled.
+        # Stamped after the drive, so the counters say what this child compiled.
         record["subnormal_policy"] = subnormal_policy.policy_stamp()
     except BaseException as error:  # noqa: BLE001 - a refusal is the result
         import traceback  # noqa: PLC0415
@@ -3483,7 +3483,7 @@ def evaluate_row(driver: Any, steps: int, max_cells: Optional[int]) -> Dict[str,
                      why_not_driven=(f"{cells} cells exceeds the leg's cap "
                                      f"{max_cells}; refused rather than run partially"))
         return block
-    # THE DETERMINISM CONTROL, and it is a MEASUREMENT rather than a list of names.
+    # The determinism control, and it is a MEASUREMENT rather than a list of names.
     # This whole comparison steps ONE driver through several arrangements in lockstep
     # from one captured seed; a row whose current is drawn fresh on every evaluation
     # -- a CustomSource over `np.random.randn()`, which three corpus rows in this cell
@@ -3494,7 +3494,7 @@ def evaluate_row(driver: Any, steps: int, max_cells: Optional[int]) -> Dict[str,
     # byte claim exists to make. Measured 2026-09-06: examples:stochastic_emitter.py
     # disagrees with ITSELF at step 1 on Dz/Ez/f_w_Ez, and every pair of arrangements
     # disagrees by the same order.
-    # THE CONTROL LEAVES THE DRIVER FOUR STEPS IN, and the row is put back. ``drive``
+    # The control leaves the driver four steps in, and the row is put back. ``drive``
     # returns with the last arrangement's state standing; without this restore the
     # measurement below would start at engine step 4 while reporting step 1, which is
     # what made the 2026-09-06 record's step 20 the probe's step 24 on the same row.
@@ -3533,7 +3533,7 @@ def evaluate_row(driver: Any, steps: int, max_cells: Optional[int]) -> Dict[str,
                 f"scored"))
         return block
     block["driven"] = True
-    # THE DRIVER'S OWN CHUNK DIVISION for every plan built on this lifted row, the one the
+    # The driver's own chunk division for every plan built on this lifted row, the one the
     # array path steps with (hd_seam_restore.plans_bind_the_driver_chunk_layout).
     with hd_seam_restore.plans_bind_the_driver_chunk_layout(driver):
         block.update(run_product(driver, steps, progress=_child_progress,
@@ -3552,6 +3552,8 @@ def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float
     it, fails this leg by name -- a resumed run over rows measured before the child
     installed anything is caught the same way, because those rows carry no stamp.
     """
+    import neutral_ids  # noqa: PLC0415
+    import lift_host  # noqa: PLC0415
     import measure_predicate_coverage as census  # noqa: PLC0415
 
     out_dir = Path(out_dir).resolve()
@@ -3583,7 +3585,7 @@ def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float
         if not link.exists():
             with contextlib.suppress(OSError):
                 link.symlink_to(entry)
-    # THE CENSUS'S OWN SHIM PATH, for the modules whose text asks for it. Six MEEP
+    # The census's own shim path, for the modules whose text asks for it. Six MEEP
     # test modules decorate with `parameterized`, which is not installed; a row from
     # one of them dies on the IMPORT and comes back unmeasured -- a row scored as
     # unmeasurable by the harness rather than by the engine.
@@ -3659,14 +3661,14 @@ def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float
             handle.write(json.dumps(record, default=str) + "\n")
 
     blocks = {r["label"]: (r.get("triton_folded_fused_hd_pair_gate") or {}) for r in measured}
-    # THE DENOMINATOR IS THE CELL'S, MINUS THE ROWS THIS HOST'S MEEP CANNOT BUILD --
+    # The denominator is the cell's, minus the rows this host's MEEP cannot build --
     # each NAMED with the error that establishes it, never a count. The census was cut
     # on a build with libGDSII and this one is not, so a handful of corpus rows raise
     # before any Simulation exists; a leg that scored them as failures of the weld
     # would be publishing a phantom gap.
     unliftable = {record["label"]: str(record.get("error") or record.get("note") or "")
                   for record in measured if record.get("unliftable_on_this_host")}
-    # A ROW THE ENGINE'S OWN LIFTER REFUSES BY NAME (MeepSimulationNotLiftable) is
+    # A row the engine's own lifter refuses by name (MeepSimulationNotLiftable) is
     # nobody's to step either: named with the lifter's reason and counted out with the
     # rows above, never scored as unmeasured (hd_seam_restore.lifter_refusal).
     refused_by_the_lifter = {record["label"]: reason for record in measured
@@ -3675,15 +3677,26 @@ def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float
                              and (reason := hd_seam_restore.lifter_refusal(record))}
     unliftable.update({label: f"refused by the engine's lifter: {reason}"
                        for label, reason in refused_by_the_lifter.items()})
+    # A row the identity corpus's manifest retires that reached no predicate verdict is
+    # refused by name with the manifest's reason (``lift_host.corpus_refusals``, the rule
+    # every table's lift legs share) and counted out with the rows above, never scored as
+    # unmeasured. The sharded dump/load tests are such rows: MEEP 1.35.0 runs them only
+    # under mpirun with more than one process, so their replay here builds no simulation.
+    corpus = lift_host.corpus_refusals(HERE / "results", [
+        record for record in measured
+        if record["label"] not in unliftable
+        and "predicate_admits" not in (record.get("triton_folded_fused_hd_pair_gate") or {})])
+    refused_by_the_corpus = corpus["refused"]
+    unliftable.update(refused_by_the_corpus)
     liftable = {label: block for label, block in blocks.items()
                 if label not in unliftable}
     blocks = liftable
     admitted = sorted(label for label, b in blocks.items() if b.get("predicate_admits"))
     refused = sorted(label for label, b in blocks.items()
                      if b.get("predicate_admits") is False)
-    # THE REFUSALS, DERIVED FROM EACH ROW'S OWN SOURCES -- an electric source whose
+    # The refusals, derived from each row's own sources -- an electric source whose
     # withdraw does work -- never from the predicate's answer, and scored only on the
-    # rows this host could lift. Since entry 25 no engine source's withdraw does work,
+    # rows this host could lift. Since 1.0 no engine source's withdraw does work,
     # so the seam record's withdraw_in_seam rows (cut on the driver before f_minus_p)
     # are admitted and driven (hd_seam_restore.lift_withdraw_accounting).
     accounting = hd_seam_restore.lift_withdraw_accounting(
@@ -3696,23 +3709,23 @@ def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float
     passed_rows = sorted(label for label in driven if blocks[label].get("passed"))
     not_driven = {label: blocks[label].get("why_not_driven")
                   for label in admitted if not blocks[label].get("driven")}
-    # REFUSED BY MEASUREMENT, not by name: the row's own array path does not repeat
+    # Refused by measurement, not by name: the row's own array path does not repeat
     # itself, so no cross-arrangement byte claim is defined for it.
     non_deterministic = {label: blocks[label].get("why_not_driven")
                          for label in admitted
                          if blocks[label].get("array_path_repeats_itself") is False}
     not_driven = {label: reason for label, reason in not_driven.items()
                   if label not in non_deterministic}
-    # A ROW FAILS ON ITS SEAM CLAIM, not on a neighbouring sub-step's arithmetic.
+    # A row fails on its seam claim, not on a neighbouring sub-step's arithmetic.
     diverged = sorted(label for label in driven
                       if not all((blocks[label].get("seam_claim") or {}).values()))
     diverged_against_the_array_path = sorted(
         label for label in driven if not blocks[label].get("bit_identical"))
-    # A STANDING PROPERTY OF THE TWO CERTIFIED ARMS UNDER THIS POLICY, not of this
+    # A standing property of the two certified arms under this policy, not of this
     # weld: rows where `update_H` + `step_D` dispatched as the two separately
     # certified singles already disagree with the CuPy array path. Reported here
-    # because this leg is where it is visible, and owned by nothing in this round.
-    # THE ARBITRATION, MEASURED OVER THE DRIVEN CORPUS ROWS rather than argued in a
+    # because this leg is where it is visible; nothing here addresses it.
+    # The arbitration, measured over the driven corpus rows rather than argued in a
     # docstring. Over the driver's step_B - update_H - step_D - update_E slot path
     # launches are `4 - (installed pairs)`; a two-slot H->D product takes one slot
     # from EACH neighbour, so installing it is:
@@ -3756,7 +3769,7 @@ def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float
     cleared = sorted(label for label in driven
                      if label not in below and label not in diverged)
     majority_cleared = len(cleared) * 2 >= len(driven) if driven else False
-    # THE CHILD'S OWN POLICY STAMP, per driven row. The parent's stamp says what the
+    # The child's own policy stamp, per driven row. The parent's stamp says what the
     # parent installed; each child compiled and launched in its own process, and the
     # 2026-09-06 record was cut with every child running native CuPy against native
     # Triton under the parent's name. A row counts only if ITS process installed the
@@ -3799,7 +3812,7 @@ def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float
                        and len(driven) + len(non_deterministic) == len(admitted)
                        and accounting["passed"]
                        and not not_driven and not diverged
-                       # EVERY DRIVEN ROW PASSED, and every ADMITTED row was either
+                       # Every driven row passed, and every ADMITTED row was either
                        # driven or refused BY MEASUREMENT. A SET equality, not a
                        # count: it closes the case of a row that is neither, which a
                        # count cannot see. The clause it replaces was
@@ -3816,6 +3829,8 @@ def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float
         "facts": facts,
         "rows_in_cell": facts["rows_in_cell"],
         "rows_unliftable_on_this_host": unliftable,
+        "refused_by_the_corpus_manifest": refused_by_the_corpus,
+        "corpus_manifest": corpus["basis"],
         "rows_this_host_could_lift": len(blocks),
         "rows_admitted_and_driven": len(driven),
         "the_denominator": (
@@ -3895,7 +3910,7 @@ def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float
                                   for label in driven)),
         "modules_lifted_with_the_parameterized_shim": sorted(needs_shim),
         "steps": steps,
-        "rows_jsonl": str(lift_dir / "rows.jsonl"),
+        "rows_jsonl": neutral_ids.path(str(lift_dir / "rows.jsonl")),
     }
 
 
@@ -3967,7 +3982,7 @@ def verdict(rows: Sequence[Dict[str, Any]], legs: Sequence[str],
         clauses["every_predicted_null_is_recorded_with_its_reason"] = all(
             row.get("why") for row in by_leg.get("mutation", ())
             if row.get("expected") == "NULL")
-        # EVERY PREDICTED NULL IS EARNED BY A PAIRED CONTROL THAT FIRES. A null
+        # Every predicted null is earned by a paired control that fires. A null
         # nothing discriminates is indistinguishable from a disarmed leg.
         nulls = [row for row in by_leg.get("mutation", ())
                  if row.get("expected") == "NULL"]
@@ -3978,7 +3993,7 @@ def verdict(rows: Sequence[Dict[str, Any]], legs: Sequence[str],
             row["mutation"] not in pairs
             or pairs[row["mutation"]].get("outcome") == "CAUGHT"
             for row in nulls)
-        # THE TWO MASK DROPS, WHOSE ATTRIBUTION IS THE FOLD'S OWN FINDING.
+        # The two mask drops, whose attribution is the fold's own finding.
         masks = [row for row in by_leg.get("mutation", ())
                  if row.get("attribution")]
         clauses["both_mask_drops_are_armed"] = len(masks) == 2
@@ -3993,6 +4008,7 @@ def verdict(rows: Sequence[Dict[str, Any]], legs: Sequence[str],
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
+    import neutral_ids  # noqa: PLC0415
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", default=None)
     parser.add_argument("--no-device", action="store_true")
@@ -4044,7 +4060,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             "this product is in no fastpath.RELEASED_FUSED_ARMS envelope, fastpath "
             "never plans it, and the composer is not even offered it"),
         "the_composition_installed_reference_awaits_wiring": (
-            "THE PRODUCT IS UNREGISTERED WHILE THIS GATE RUNS. It has no "
+            "The product is unregistered while this gate runs. It has no "
             "launch.CERTIFIED_FUSED_PRODUCTS row and no fastpath label, so no "
             "composer installs it and reference 3 (composition_today) is the "
             "composition the shipped composer builds WITHOUT it -- the released "
@@ -4067,7 +4083,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             payload["meep_host_import"] = bit_identity.import_meep_for_host_policy()
         from meep_gpu import subnormal_policy  # noqa: PLC0415
 
-        # BEFORE THE FIRST DEVICE COMPILE. strict=True: a process that asked to keep
+        # Before the first device compile. strict=True: a process that asked to keep
         # and quietly did not is a process whose bytes mean nothing.
         subnormal_policy.install_subnormal_policy(args.subnormal_policy, cupy=cupy,
                                                   strict=True)
@@ -4080,7 +4096,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             "device": str(cupy.cuda.runtime.getDeviceProperties(
                 cupy.cuda.runtime.getDevice())["name"]),
             "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
-            "cupy_cache_dir": os.environ.get("CUPY_CACHE_DIR")})
+            "cupy_cache_dir": neutral_ids.path(os.environ.get("CUPY_CACHE_DIR"))})
         log(f"subnormal policy installed: "
             f"{payload['subnormal_policy'].get('policy')!r} "
             f"(requested {args.subnormal_policy!r}, "
@@ -4146,7 +4162,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             stream.close()
 
     payload["release"] = verdict(rows, legs, policy_attained)
-    # THE SHAPE THE BOARD'S RELEASE BINDING READS. `build_triton_fusion_matrix`'s
+    # The shape the board's release binding reads. `build_triton_fusion_matrix`'s
     # GATE_BOUND route requires all three of `device_status == "RUN"`,
     # `release.released` and `passed` -- deliberately, so a `--no-device` or host-only
     # run cannot be read as a release. `device_status` is derived from whether any

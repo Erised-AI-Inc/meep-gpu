@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Conformance gate: does EVERY executor actually obey the requested subnormal policy?
 
-WHAT THIS REPLACES. The alternative to this gate is re-certifying all nine Triton
+What this replaces. The alternative to this gate is re-certifying all nine Triton
 families under both policies — every gate, every probe, every byte. This gate makes
 that unnecessary for the POLICY question specifically: a family's bytes depend on
 the policy only through the float32 arithmetic its executors perform, so proving
@@ -10,7 +10,7 @@ kernels use, is what "the policy is uniform" means. (It does not replace the
 families' own bit-identity gates, which pin GROUPING; it removes the need to run
 each of them twice.)
 
-WHY THIS IS NOT OPTIONAL. A half-applied policy is a divergence generator, measured
+Why this is not optional. A half-applied policy is a divergence generator, measured
 rather than feared: the bfast composition is bit-identical on 7/7 cases and 80/80
 steps under uniform keep, and diverges at step 1 with 92 differing floats of 2880
 across 22 arrays when only Triton is flipped to flush. Three executors decide
@@ -42,7 +42,7 @@ in ``conductive_pml_curl_step`` alone) — plus ``tl.cumsum``, which no shipped
 kernel uses today and which is carried because it is the one scan class this
 engine could reach for.
 
-THREE CLASSES OF OP, and the distinctions are load-bearing. GOVERNED ops are
+Three classes of op, and the distinctions are load-bearing. GOVERNED ops are
 float32 arithmetic and must follow the policy. TRANSPORT ops (``tl.where``,
 load/store) move bits without arithmetic — ``selp.f32`` and ``ld.global.f32``
 carry no ``.ftz`` under any policy — so they must KEEP under both, and a transport
@@ -54,13 +54,13 @@ sign flip (``xorps``), so ``np.negative`` keeps a subnormal while the device's
 as well as the policy, and the exception is read from
 ``subnormal_policy.EXECUTOR_OP_EXCEPTIONS`` rather than invented here.
 
-EVERY CELL IS TWO ASSERTIONS, not one. The structural verdict (all 256 lanes kept
+Every cell is two assertions, not one. The structural verdict (all 256 lanes kept
 / all flushed / mixed) AND lane 0's exact word against the word that executor must
 produce. A verdict alone cannot tell ``0 - x`` (``+0``) from ``neg`` (``-0``): both
 read "flush" while the two executors disagree in the sign bit, which is a real
 byte divergence between kernels that this gate exists to catch.
 
-THE KNOWN GAP is a leg of its own. A plain ``/`` on floats lowers to
+The known gap is a leg of its own. A plain ``/`` on floats lowers to
 ``div.full.f32`` as inline asm, which LLVM never sees, so the ``flush`` policy's
 LLVM attribute cannot reach it. Under ``flush`` that compile is expected to be
 REFUSED by ``subnormal_policy``'s PTX auditor; the leg asserts the refusal and
@@ -326,7 +326,7 @@ def build_cases(seed: int = SEED, lanes: int = N_LANES) -> List[Dict[str, Any]]:
                "disagreement in this cell is information about the host, not noise",
     })
 
-    # 10. TRITON ONLY: the associative scan. NO SHIPPED KERNEL USES ``tl.cumsum``
+    # 10. Triton only: the associative scan. No shipped kernel uses ``tl.cumsum``
     #    today — the only occurrences in ``triton_kernels/`` are prose in two
     #    comments — so this case is carried as the one SCAN class this engine could
     #    reach for, not as coverage of something in flight. Lane 0 of a scan is a
@@ -354,7 +354,7 @@ def reduction_case() -> Dict[str, Any]:
     — CuPy 13.5.1's default reduction accelerator is a CUB binary built when CuPy
     was built, which no compile-time option this policy can reach applies to.
     ``subnormal_policy.install_cupy_policy`` therefore switches that accelerator
-    off under ``"flush"``, and THIS CASE IS THE MEASUREMENT that it worked.
+    off under ``"flush"``, and this case is the measurement that it worked.
     """
     buffer_bits = np.zeros(4096, dtype=np.uint32)
     buffer_bits[137] = BITS_2P_M135
@@ -664,7 +664,7 @@ def triton_namespace() -> Dict[str, Any]:
 
     @triton.jit
     def t_plain_div(A, B, Out, n, BLOCK: tl.constexpr):
-        # THE KNOWN GAP, deliberately: a plain '/' lowers to div.full.f32 as
+        # The known gap, deliberately: a plain '/' lowers to div.full.f32 as
         # inline asm, which LLVM never sees. No shipped kernel spells it this way.
         offs = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
         m = offs < n
@@ -879,7 +879,7 @@ def run(policy: str, out_path: str, legs: Tuple[str, ...]) -> int:
             log(f"[skip] triton: {record['skipped']['triton']}")
         if available:
             for case in cases:
-                # A REFUSAL IS A RESULT, not a crash. Under 'flush' the PTX
+                # A refusal is a result, not a crash. Under 'flush' the PTX
                 # auditor raises out of Triton's compiler for any audited f32
                 # instruction that lacks .ftz, and an uncaught raise here would
                 # end the run with a traceback: no verdict, no matrix, and the

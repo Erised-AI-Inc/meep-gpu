@@ -8,7 +8,7 @@ arm64 macOS, so the kernel's BYTES are the owed device gate's
 (``parity/meep_gpu/gate_triton_no_pml_stored_e.py``); the ARITHMETIC is entirely
 carryable here, because the sub-step is a subtraction chain and a multiply.
 
-THE THREE THINGS THIS FILE EXISTS TO PIN, in order of how easy each is to get
+The three things this file exists to pin, in order of how easy each is to get
 wrong:
 
 1. **The poles are not pre-summed and their ORDER is load-bearing.**
@@ -103,7 +103,7 @@ def build(*, counts=(2, 2, 2), conductive=False, cell=(0.8, 0.8, 0.8),
     for name in D_COMPONENTS + E_COMPONENTS:
         array = getattr(fields, name, None)
         if array is not None:
-            # A PHYSICAL BAND, not zeros. Zero-init is a fixed point of this
+            # A physical band, not zeros. Zero-init is a fixed point of this
             # sub-step and a no-op agreeing with a no-op is trivially identical.
             array[...] = rng.uniform(-0.4, 0.4, size=grid.shape).astype(array.dtype)
     for state in fields.polarizations:
@@ -188,7 +188,7 @@ def reference_update_E(fields, *, presum=False, reverse=False, drop=0,
     Written here rather than imported so the test has something to MUTATE. Every
     keyword is a mutation lever and each one is driven below.
 
-        s   = ((D_c - P_0[c]) - P_1[c]) - ...     LEFT TO RIGHT, polarizations order
+        s   = ((D_c - P_0[c]) - P_1[c]) - ...     Left to right, polarizations order
         E_c = s * inv_eps_c                        stored, stepping.py:1022
     """
     out = {}
@@ -262,7 +262,7 @@ MUTATIONS = {
     "drop_the_last_pole": (dict(drop=1), dict(counts=(2, 2, 2)), True),
     "use_the_certified_accumulation": (dict(accumulate=True),
                                        dict(counts=(2, 2, 2)), True),
-    # THE EXPECTED-UNCAUGHT CONTROL. float32 multiplication is bitwise
+    # The expected-uncaught control. float32 multiplication is bitwise
     # commutative; a gate leg reporting this "caught" is comparing something other
     # than bytes. It is in the battery so that claim keeps being measured.
     "swap_the_multiply_operands": (dict(operand_swap=True),

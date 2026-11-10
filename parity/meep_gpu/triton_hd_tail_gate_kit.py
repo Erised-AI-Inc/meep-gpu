@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """The shared body of the 2026-09-07 Triton H->D TAIL gates.
 
-FIVE PRODUCTS, ONE HARNESS, and that is a correctness decision rather than a size one.
+Five products, one harness, and that is a correctness decision rather than a size one.
 ``gate_triton_conductive_bfast_fused_hd_pair``, ``gate_triton_beta_real_fused_hd_pair``,
 ``gate_triton_folded_complex_fused_hd_pair``, ``gate_triton_beta_complex_fused_hd_pair``
 and ``gate_triton_nonlinear_fused_hd_pair`` measure the SAME seam with the SAME weld
@@ -14,26 +14,26 @@ generic fixture builder, the arrangements, and every leg written against a
 :class:`Product` descriptor so a fifth copy of each leg cannot drift from the other
 four.
 
-WHAT EACH GATE SCRIPT STILL OWNS, because it is what differs: its fixtures, its cell
+What each gate script still owns, because it is what differs: its fixtures, its cell
 arms, its weld and singles builders, its own mutation table, its refusal cases, its
 transcription pins, and its ``main``.
 
 =============================================================================
-THE CLAIM AND ITS SHAPE
+The claim and its shape
 =============================================================================
 
-Per COMPLETE DRIVER STEP -- ``FdtdDriver.step``'s own consult order, with every fill,
+Per complete driver step -- ``FdtdDriver.step``'s own consult order, with every fill,
 wall clear and far pass exactly where the driver runs them -- as uint32 WORDS over
 every stored volume the engine allocates, NEVER ``allclose`` (``-0.0 == 0.0`` lies),
 against up to five reference engines driven in lockstep from one seed:
 
   1. the ARRAY PATH -- ``stepping``'s passes under the driver's own loop;
   2. the CERTIFIED SINGLES -- the two parent plans dispatched at the seam's two slots;
-  3. the COMPOSITION THE COMPOSER INSTALLS TODAY -- ``plan_step(fuse=True)``;
+  3. the composition the composer installs today -- ``plan_step(fuse=True)``;
   4. the same slots DISPATCHED UNFUSED -- ``plan_step(fuse=False)``;
-  5. THE SEAM ALONE -- this weld at its two slots, every other slot on the array path.
+  5. the seam alone -- this weld at its two slots, every other slot on the array path.
 
-**REFERENCE COUNTING, STATED HERE SO NO RECORD OVERSTATES IT.** Every one of those
+**Reference counting, stated here so no record overstates it.** Every one of those
 comparisons is against the ARRAY PATH, so 2, 3 and 4 are MACHINERY CONTROLS: they say
 the harness's own dispatch of other people's kernels is clean. The WELD-SPECIFIC
 volume is the words compared for the ``weld`` and ``weld_seam_only`` arrangements plus
@@ -43,18 +43,18 @@ it and every product row carries BOTH numbers under
 ``weld_specific_words_compared`` and ``control_words_compared``.
 
 =============================================================================
-WHAT IS RECORDED RATHER THAN ASSERTED, AND WHY
+What is recorded rather than asserted, and why
 =============================================================================
 
-These gates are written for the UNWIRED tree: the five products are not in
+These gates are written before the five products are wired: they are not in
 ``launch.CERTIFIED_FUSED_PRODUCTS``, hold no ``CERTIFIED_FUSED_PAIR_ARMS`` absorb row,
 and are not reachable from ``plan_step``. That makes a whole class of "positional"
-claim UNSAFE TO ASSERT, and this harness refuses to assert it:
+claim unsafe to assert, and this harness refuses to assert it:
 
 * on this backend ``launch._install_certified_fused_products`` iterates
   ``CERTIFIED_FUSED_PRODUCTS``, so an unwired family is never offered to the composer
   at all. A leg asserting "the product installs on ZERO fixtures" would therefore be
-  testing the ABSENCE OF WIRING, and it INVERTS the moment the wiring patch lands;
+  testing the absence of wiring, and it INVERTS the moment the wiring patch lands;
 * the same is true of "the refusal names INSTALLABLE": the branch that would say so is
   downstream of a table membership test the product does not pass yet.
 
@@ -134,13 +134,13 @@ EXIT_INCOMPLETE = 75
 
 #: The census this kit lifts corpus rows from, and the seam record whose
 #: ``withdraw_in_seam`` flag named the rows the 0.9.2 predicates refused by their
-#: standing withdraw (admitted since entry 25; the refusals a row owes are derived from
-#: its own sources). THE PARENT GATE'S OWN, so a re-cut census moves every H->D gate on
+#: standing withdraw (admitted since 1.0; the refusals a row owes are derived from
+#: its own sources). The parent gate's own, so a re-cut census moves every H->D gate on
 #: this backend together.
 CENSUS = base.CENSUS
 SEAM_RECORD = base.SEAM_RECORD
 
-#: The seed scale. THE EXPONENT IS A MEASUREMENT RATHER THAN A TUNING: the solver is
+#: The seed scale. The exponent is a measurement rather than a tuning: the solver is
 #: linear in the field state and every coefficient it multiplies by is
 #: field-independent, so scaling every stored volume by 2^n shifts each float32
 #: EXPONENT by n and leaves every MANTISSA and every rounding decision untouched.
@@ -312,7 +312,7 @@ def build_driver(product: Product, spec: Mapping[str, Any], seed: int,
     and the sync channel are ``FdtdDriver.step``'s, and a hand-written walk over the
     live pass list would be a second model of what a step is.
 
-    THE SEED IS COMPLEX WHERE THE RUN IS. A real seed under complex storage leaves
+    The seed is complex where the run is. A real seed under complex storage leaves
     every imaginary word at ``+0.0``, which is exactly the value class a mis-selected
     word plane is invisible on.
     """
@@ -349,7 +349,7 @@ def build_driver(product: Product, spec: Mapping[str, Any], seed: int,
             host = (amplitude * rng.standard_normal(
                 array.shape)).astype(np.float32) * scale
         array[...] = xp.asarray(np.ascontiguousarray(host))
-    # A SEEDED STATE IS A MID-RUN ONE unless the fixture says otherwise: H was started
+    # A seeded state is a mid-run one unless the fixture says otherwise: H was started
     # from B long ago, so no arrangement starts it again. A first-update fixture
     # (``h_started`` False) keeps the flag False, and ``capture``/``restore`` carry
     # it, so every arrangement's step 1 is the run's first update_H -- MEEP's start
@@ -499,7 +499,7 @@ def all_arrangements(product: Product, driver: Any, kernel: Any = None,
         "unfused": arrangement_composition(product, driver, fuse=False),
         "weld": arrangement_weld(product, driver, kernel=kernel, module=module,
                                  launcher=launcher),
-        # THE SEAM ALONE: this weld at its two slots, every other slot on the ARRAY
+        # The seam alone: this weld at its two slots, every other slot on the ARRAY
         # PATH. It is what isolates a finding about the seam from a finding about a
         # neighbouring sub-step's own agreement with the array path.
         "weld_seam_only": arrangement_weld(product, driver, kernel=kernel,
@@ -575,7 +575,7 @@ def run_product(product: Product, driver: Any, steps: int,
 
     pair_agreement = {f"{a}|{b}": pair_agrees(f"{a}|{b}") for a, b in PAIRS}
     seam_claim = {
-        # THE SHARPEST STATEMENT OF THIS PRODUCT'S OWN CLAIM: ONE launch produces,
+        # The sharpest statement of this product's own claim: one launch produces,
         # word for word, what the TWO certified launches it replaces produce -- on the
         # same driver, the same seed and the same complete steps.
         "the_weld_at_its_seam_equals_the_two_certified_singles":
@@ -610,7 +610,7 @@ def run_product(product: Product, driver: Any, steps: int,
 def leg_driver_order(product: Product) -> Dict[str, Any]:
     """``REPLACES`` is the driver's two adjacent consults, and the sync rule excludes it.
 
-    READ OFF THE TREE, never spelled: ``driver.py``'s own consult order decides what
+    Read off the tree, never spelled: ``driver.py``'s own consult order decides what
     this weld may span, and a driver that reordered its seam must withhold this credit
     rather than be invisible.
     """
@@ -627,7 +627,7 @@ def leg_driver_order(product: Product) -> Dict[str, Any]:
                 "update_H and step_D are not adjacent consults in driver.step")
     else:
         findings.append("driver.step does not consult both slots by name")
-    # THE SYNC CONTAINMENT RULE: a plan may run inside the magnetic half-step only
+    # The sync containment rule: a plan may run inside the magnetic half-step only
     # when every slot it spans is one the half-step itself runs. A weld spanning
     # step_D is refused by its span, and that is read from `fastpath`'s own tables.
     outside = tuple(slot for slot in replaces if slot not in SYNC_PATH_SLOTS)
@@ -728,18 +728,18 @@ def leg_refusal(product: Product, seed: int) -> List[Dict[str, Any]]:
 def leg_arbitration(product: Product, seed: int) -> List[Dict[str, Any]]:
     """What the SHIPPED composer does on a fixture this product's predicate admits.
 
-    WHAT IS ASSERTED is only what the wiring cannot invert:
+    What is asserted is only what the wiring cannot invert:
 
     * the composer's SELECTION is unchanged by this product's existence (this product
       is not in its tables, so it cannot be);
     * every slot the composer fills is still filled, and every neighbouring released
       pair keeps the slots it held.
 
-    WHAT IS RECORDED, and deliberately NOT asserted: whether the composer names this
+    What is recorded, and deliberately NOT asserted: whether the composer names this
     family at all, the refusal text if it does, and whether that text names
     ``INSTALLABLE``. On this backend ``_install_certified_fused_products`` iterates
     ``CERTIFIED_FUSED_PRODUCTS``, so an unwired family is never offered; a leg
-    asserting "it installs on zero fixtures" would be testing the ABSENCE OF WIRING
+    asserting "it installs on zero fixtures" would be testing the absence of wiring
     and would invert the moment the wiring patch lands.
     """
     rows: List[Dict[str, Any]] = []
@@ -756,7 +756,7 @@ def leg_arbitration(product: Product, seed: int) -> List[Dict[str, Any]]:
                 key: [line for line in value if family_name in str(line)]
                 for key, value in plan.reasons.items()
                 if any(family_name in str(line) for line in value)}
-            # THE SAME COMPOSER, RE-RUN. The product exists on disk in both runs;
+            # The same composer, re-run. The product exists on disk in both runs;
             # nothing here injects it into a table, because injecting it is exactly
             # the wiring whose effect this leg must not pre-empt.
             again = _composed(driver, fuse=True)
@@ -775,7 +775,7 @@ def leg_arbitration(product: Product, seed: int) -> List[Dict[str, Any]]:
                 "composer_selected": selected,
                 "slots_filled": slots_filled,
                 "expected_incumbents": product.arbitration_incumbents(),
-                # RECORDED, NOT ASSERTED -- see the docstring.
+                # Recorded, not asserted -- see the docstring.
                 "recorded_composer_names_this_family": bool(composer_names_it),
                 "recorded_refusal_text": refusal_text,
                 "recorded_refusal_names_INSTALLABLE": (
@@ -812,7 +812,7 @@ def leg_product(product: Product, steps: int, seed: int,
     for name, spec in product.fixtures:
         driver = build_driver(product, spec, seed=seed)
         try:
-            # THE PREDICATE IS ASKED FIRST, and a refusal is RECORDED BY NAME rather
+            # The predicate is asked first, and a refusal is recorded by name rather
             # than raised out of the arrangement builder. Under `flush` the complex
             # families' arms are refused by their own certification clause -- they
             # were certified under `keep` only -- and a gate that died with a
@@ -912,7 +912,7 @@ def mutated_family(product: Product, tag: str, old: str, new: str,
     which is the door the product itself documents; a harness that launched the
     shipped kernel instead would report a pass for a defect it never introduced.
 
-    ``expect_hits`` IS DECLARED PER MUTATION AND MATCHED EXACTLY. A family that emits
+    ``expect_hits`` is declared per mutation and matched exactly. A family that emits
     TWO kernels from one lifted body has the same weld line in both, and the honest
     edit is to make it in BOTH -- one of them is the kernel the mutation fixture
     launches and the other is dead text in that run. What must never be allowed is a
@@ -937,7 +937,7 @@ def mutated_family(product: Product, tag: str, old: str, new: str,
     stem = Path(product.family_path).stem
     name = f"meep_gpu.triton_kernels.{stem}__mut_{tag}"
     filename = str(source_path) + f"#{tag}"
-    # TRITON READS THE SOURCE BACK. `JITFunction.__init__` calls
+    # Triton reads the source back. `JITFunction.__init__` calls
     # `inspect.getsourcelines(fn)`, and a function created by `exec` has no file for
     # `inspect` to find. Registering the mutated text in `linecache` under this
     # module's own fake filename is what makes the mutant compile, and it also keeps
@@ -973,7 +973,7 @@ class RotationSkipped:
 def half_integer_rebind(pml: Any) -> Callable[[Any], Any]:
     """Rebind the plan's coefficient group to the ``_h`` sub-lattice -- a host mutation.
 
-    THE DEFECT THIS ARMS IS SILENT BY CONSTRUCTION: both halves sit on the INTEGER
+    The defect this arms is silent by construction: both halves sit on the INTEGER
     sub-lattice and the weld binds one ``kms`` group for both. Binding the
     half-integer set instead compiles, launches and converges -- it is a half-cell
     error in the absorber profile, smooth and entirely wrong.
@@ -1043,7 +1043,7 @@ def policy_refusal_types() -> Tuple[type, ...]:
 def leg_mutation(product: Product, steps: int, seed: int) -> List[Dict[str, Any]]:
     """Every armed defect MUST diverge; every predicted null carries its reason.
 
-    A POLICY REFUSAL IS RECOGNISED BY THE POLICY MACHINERY, NOT BY A WORD. Scoring
+    A policy refusal is recognised by the policy machinery, not by a word. Scoring
     an expected-CAUGHT mutation PASSED because its exception was a policy refusal is
     correct only when the refusal really came from
     :func:`policy_refusal_types` -- until 2026-09-08 the test was
@@ -1092,7 +1092,7 @@ def leg_mutation(product: Product, steps: int, seed: int) -> List[Dict[str, Any]
             "differing_words": int(words_differing), "error": error,
             "why": spec.get("why"), "target": spec.get("target"),
             "seconds": round(time.time() - started, 2),
-            # WHICH CLASS EXCUSED THIS ROW, when one did. A refusal that passes an
+            # Which class excused this row, when one did. A refusal that passes an
             # expected-CAUGHT mutation must name the policy exception it came from;
             # the recognised set is read off the policy module, never matched as
             # text (see :func:`policy_refusal_types`).
@@ -1201,12 +1201,13 @@ def leg_lift(product: Product, gate_path: Path, out_dir: Path, steps: int,
              policy: Optional[str]) -> List[Dict[str, Any]]:
     """Every corpus row of this product's cells, lifted in its OWN interpreter.
 
-    THE CHILD INSTALLS THE SAME SUBNORMAL POLICY BEFORE ITS FIRST DEVICE COMPILE and
+    The child installs the same subnormal policy before its first device compile and
     stamps the row with it. The parent's install lives on CuPy's compiler front ends
     in the PARENT's memory; a child inherits the environment and nothing else, and the
     2026-09-06 campaign's phantom divergences on every driven row were exactly that
     omission (``results/triton_hd_lift_policy_2026-09-06``).
     """
+    import lift_host  # noqa: PLC0415
     import measure_predicate_coverage as census  # noqa: PLC0415
 
     results = API_ROOT / "parity" / "meep_gpu" / "results"
@@ -1218,10 +1219,10 @@ def leg_lift(product: Product, gate_path: Path, out_dir: Path, steps: int,
     out_dir.mkdir(parents=True, exist_ok=True)
     progress_path = out_dir / "steps.progress.log"
 
-    # THE CORPUS'S OWN DIRECTORIES, and a refusal rather than a measurement on
+    # The corpus's own directories, and a refusal rather than a measurement on
     # nothing: `measure_predicate_coverage` resolves them from MEEP_GPU_CORPUS_ROOT,
     # and a lift leg that ran without them would report every row unmeasured with a
-    # FileNotFoundError -- measured on this lane's first full campaign, 2026-09-08,
+    # FileNotFoundError -- measured on this harness's first full campaign, 2026-09-08,
     # where the child was handed a bare `test_adjoint_solver.py` and looked for it in
     # the repo root.
     examples_dir = Path(census.EXAMPLES_DIR)
@@ -1233,7 +1234,7 @@ def leg_lift(product: Product, gate_path: Path, out_dir: Path, steps: int,
                      f"MEEP_GPU_CORPUS_ROOT to the checkout the census was cut over. "
                      f"REFUSED rather than measured on nothing"]}]
 
-    # THE CHILD RUNS IN A WORKDIR WITH THE EXAMPLES' DATA FILES SYMLINKED IN, because
+    # The child runs in a workdir with the examples' data files symlinked in, because
     # several example scripts open a file beside themselves by relative path.
     work = out_dir / "workdir"
     work.mkdir(exist_ok=True)
@@ -1245,7 +1246,7 @@ def leg_lift(product: Product, gate_path: Path, out_dir: Path, steps: int,
             with contextlib.suppress(OSError):
                 link.symlink_to(entry)
 
-    # THE CENSUS'S OWN SHIM PATH, for the modules whose text asks for it: six MEEP
+    # The census's own shim path, for the modules whose text asks for it: six MEEP
     # test modules decorate with `parameterized`, which is not installed, and a row
     # from one of them dies on the IMPORT -- unmeasurable by the harness rather than
     # by the engine.
@@ -1262,6 +1263,15 @@ def leg_lift(product: Product, gate_path: Path, out_dir: Path, steps: int,
 
     rows: List[Dict[str, Any]] = []
     driven = refused = unmeasured = unliftable = 0
+    # The rows the identity corpus's manifest retires, asked only about a row that reached
+    # no verdict (``lift_host.corpus_refusals``, the rule every table's lift legs share).
+    refused_by_the_corpus: Dict[str, str] = {}
+    corpus_basis: Dict[str, Any] = {}
+
+    def retired(entry: Dict[str, Any]) -> Optional[str]:
+        answer = lift_host.corpus_refusals(results, [entry])
+        corpus_basis.update(answer["basis"] or {})
+        return answer["refused"].get(entry["label"])
     for index, row in enumerate(sorted(basis, key=lambda item: item["label"]), 1):
         label = row["label"]
         target = out_dir / (label.replace("/", "_").replace(":", "__") + ".json")
@@ -1321,9 +1331,9 @@ def leg_lift(product: Product, gate_path: Path, out_dir: Path, steps: int,
         stamp_block = record.get("subnormal_policy") or {}
         stamp = stamp_block.get("policy")
         findings: List[str] = []
-        # THE REFUSAL A ROW OWES IS DERIVED FROM ITS OWN SOURCES -- an electric source
+        # The refusal a row owes is derived from its own sources -- an electric source
         # whose withdraw does work -- never from the seam record's withdraw_in_seam flag,
-        # which was cut on the driver before f_minus_p: since entry 25 no engine source
+        # which was cut on the driver before f_minus_p: since 1.0 no engine source
         # stands a withdraw, so a flagged row is admitted and driven like any other. A
         # measured row with no source list is ignorance, and ignorance fails.
         source_facts = gate_result.get("source_facts")
@@ -1342,7 +1352,7 @@ def leg_lift(product: Product, gate_path: Path, out_dir: Path, steps: int,
             refused += 1
         elif (record.get("unliftable_on_this_host")
                 and not (record.get("unliftable_evidence") or {}).get("outcome")):
-            # AN UNEVIDENCED EXCLUSION IS NOT AN EXCLUSION. The claim "this host's
+            # An unevidenced exclusion is not an exclusion. The claim "this host's
             # MEEP cannot build this row" is a claim about the world, and a row that
             # carries no outcome from the run that establishes it is scored as a
             # FAILURE, in the denominator, rather than quietly dropped out of it.
@@ -1351,8 +1361,8 @@ def leg_lift(product: Product, gate_path: Path, out_dir: Path, steps: int,
                 f"outcome from the case run stands behind it")
             unmeasured += 1
         elif record.get("unliftable_on_this_host"):
-            # A ROW THIS HOST'S MEEP CANNOT BUILD IS NAMED AND LEFT OUT OF THE
-            # DENOMINATOR, which is the released sibling gate's own rule. The census
+            # A row this host's MEEP cannot build is named and left out of the
+            # denominator, which is the released sibling gate's own rule. The census
             # was cut on a MEEP build this host does not have (libGDSII is the usual
             # one), so `get_GDSII_prisms` raises before any Simulation exists. That is
             # a fact about the HOST, not about the engine or this weld, and scoring it
@@ -1361,9 +1371,16 @@ def leg_lift(product: Product, gate_path: Path, out_dir: Path, steps: int,
             # its own reason and the basis row counts it separately.
             unliftable += 1
         elif not measured and hd_seam_restore.lifter_refusal(record):
-            # THE ENGINE'S OWN LIFTER REFUSED THIS ROW BY NAME (MeepSimulationNotLiftable):
+            # The engine's own lifter refused this row by name (MeepSimulationNotLiftable):
             # nothing runs on any path, so it is counted out with the rows above, its
             # reason riding in the record (child_error), never scored as a hole.
+            unliftable += 1
+        elif not measured and (reason := retired({**row, "label": label})):
+            # The identity corpus's manifest retires this row and it reached no verdict:
+            # refused by name with the manifest's reason and counted out with the rows
+            # above, never scored as a hole. The sharded dump/load tests are such rows:
+            # MEEP 1.35.0 runs them only under mpirun with more than one process.
+            refused_by_the_corpus[label] = reason
             unliftable += 1
         elif not measured:
             findings.append(f"{label}: not measured -- "
@@ -1378,7 +1395,7 @@ def leg_lift(product: Product, gate_path: Path, out_dir: Path, steps: int,
             driven += 1
             if not identical:
                 findings.append(f"{label}: DIVERGED")
-            # THE JOIN'S OWN CONTROL. A row reached through the parameterized
+            # The join's own control. A row reached through the parameterized
             # (source, index) join landed on ONE generated method out of several that
             # share a class; a join that picked the wrong parameter tuple moves the
             # grid, so the census's recorded shape is compared to the shape the driver
@@ -1393,11 +1410,11 @@ def leg_lift(product: Product, gate_path: Path, out_dir: Path, steps: int,
                     f"this run lifted {list(actual_shape)} -- the row this "
                     f"measurement belongs to is NOT established "
                     f"({record.get('case_join')})")
-            # WHAT THE CHILD MUST AGREE WITH IS THE REQUEST, NOT ITS SPELLING.
+            # What the child must agree with is the request, not its spelling.
             # `policy_stamp()["policy"]` is the policy's CANONICAL name -- under the
             # CLI's `keep` the process installs `ieee_keep_ftz_stripped` and under
             # `flush` it installs `meep_x86_flush` -- so comparing it to the flag's
-            # own word failed EVERY driven row of this lane's first full campaign
+            # own word failed EVERY driven row of this harness's first full campaign
             # (`results/triton_hd_tail_2026-09-08_firstround/*/keep`: nine of the
             # fifteen corpus rows drove, all nine bit-identical, all nine then
             # scored FAIL on the name). The stamp carries `requested`/`resolved` for
@@ -1429,10 +1446,17 @@ def leg_lift(product: Product, gate_path: Path, out_dir: Path, steps: int,
                      "unliftable_on_this_host": bool(
                          record.get("unliftable_on_this_host")),
                      "unliftable_evidence": record.get("unliftable_evidence"),
+                     "refused_by_the_corpus_manifest": refused_by_the_corpus.get(label),
                      "result": gate_result,
                      "child_error": record.get("child_error")})
-    rows.append({"leg": "lift", "case": "basis", "passed": True, "findings": [],
+    # A refusal by name never passes a leg that drove nothing.
+    vacuous = ([f"{len(refused_by_the_corpus)} row(s) refused by the identity corpus's "
+                f"manifest and none driven: a leg that drove no row measured nothing"]
+               if refused_by_the_corpus and not driven else [])
+    rows.append({"leg": "lift", "case": "basis", "passed": not vacuous, "findings": vacuous,
                  "basis": facts, "rows_driven": driven,
+                 "refused_by_the_corpus_manifest": refused_by_the_corpus,
+                 "corpus_manifest": corpus_basis or None,
                  "rows_refused_by_the_withdraw_clause": refused,
                  "rows_unmeasured": unmeasured,
                  "rows_unliftable_on_this_host": unliftable,
@@ -1480,7 +1504,7 @@ def resolve_case(module: Any, names: Sequence[Tuple[str, str]],
                  case: str) -> Tuple[Optional[Tuple[str, str]], str]:
     """Which enumerated ``(class, method)`` is the census's recorded ``case``?
 
-    THE NAME ALONE IS NOT ENOUGH, AND ASSUMING IT WAS COST THIS LANE SIX ROWS.
+    The name alone is not enough, and assuming it was cost this harness six rows.
     MEEP decorates six test modules with ``parameterized.expand``, the package is not
     installed on the gate host, and the census supplies a deliberate stand-in
     (``parity/meep_gpu/shim/parameterized.py``) whose docstring says in terms that it
@@ -1492,13 +1516,13 @@ def resolve_case(module: Any, names: Sequence[Tuple[str, str]],
     miss as ``unliftable_on_this_host``, a claim about the host's MEEP build. Measured
     2026-09-08 on the first full campaign: six of fifteen corpus rows, every one of
     them a ``parameterized`` name, silently left the denominator
-    (``results/triton_hd_tail_2026-09-08_firstround/*/keep``, the round before this
+    (``results/triton_hd_tail_2026-09-08_firstround/*/keep``, the campaign before this
     repair; its ``PROVENANCE.md`` names the six).
 
     What this does instead, in order, and it RECORDS which rung answered:
 
     1. an EXACT ``Class.method`` match, which is every non-parameterized row;
-    2. the SHIM'S OWN PARAMETERS, RECONSTRUCTED AND CHECKED. Each generated method
+    2. the shim's own parameters, reconstructed and checked. Each generated method
        carries the three things the shim records on it: ``__parameterized_source__``
        (the undecorated function's real name, read off the module rather than parsed
        out of a string), ``__parameterized_index__``, and ``__parameterized_args__``
@@ -1510,7 +1534,7 @@ def resolve_case(module: Any, names: Sequence[Tuple[str, str]],
        guess the shim's docstring forbids: nothing is inferred from the recorded
        string, and a reconstruction that disagrees REFUSES the row instead of
        assigning it. Verified against the standing census's own ``parameterized``
-       blocks for all six of this lane's rows -- 13.2 -> ``13_2``,
+       blocks for all six of this harness's rows -- 13.2 -> ``13_2``,
        ``'real/imag'`` -> ``real_imag``, 35.7 -> ``35_7``.
 
     Ambiguity is REFUSED, never broken by iteration order. The grid the census
@@ -1566,7 +1590,7 @@ def lift_child(product: Product, leg: str, script: Optional[str],
                module_path: Optional[str], case: Optional[str], out_json: str,
                steps: int, max_cells: Optional[int],
                policy: Optional[str] = None) -> int:
-    """One corpus row: capture the simulation, lift it TO THE DEVICE, drive it.
+    """One corpus row: capture the simulation, lift it to the device, drive it.
 
     The harvesters are the census's own, reached through the parent gate so a moved
     harness cannot leave two spellings of "which row did we price".
@@ -1611,7 +1635,7 @@ def lift_child(product: Product, leg: str, script: Optional[str],
                            if key != "row"})
             sim = candidate
         if sim is None:
-            # AN UNLIFTABLE CLAIM MUST CARRY ITS EVIDENCE. This branch is reached only
+            # An unliftable claim must carry its evidence. This branch is reached only
             # after the named case actually RAN, so what stands behind the claim is the
             # harness's own outcome for that run -- the error MEEP raised before any
             # Simulation existed. A row reaching it with neither an outcome nor an
@@ -1666,7 +1690,7 @@ def evaluate_row(product: Product, driver: Any, steps: int,
         "variant": product.variant(driver),
         "grid_cells": cells,
         "sources": len(sources),
-        # THE ROW'S OWN SOURCES, for the lift's refusal accounting: which electric source
+        # The row's own sources, for the lift's refusal accounting: which electric source
         # carries a withdraw that does work (hd_seam_restore.electric_withdraw_sources).
         "source_facts": [{"type": type(source).__name__,
                           "field_type": str(getattr(source, "field_type", "")),
@@ -1681,17 +1705,17 @@ def evaluate_row(product: Product, driver: Any, steps: int,
         out["skipped_for_size"] = f"{cells} cells above the {max_cells} cap"
         return out
     pin_array_path(driver)
-    # THE DRIVER'S OWN CHUNK DIVISION for every plan built on this lifted row, the one the
+    # The driver's own chunk division for every plan built on this lifted row, the one the
     # array path steps with (hd_seam_restore.plans_bind_the_driver_chunk_layout).
     with hd_seam_restore.plans_bind_the_driver_chunk_layout(driver):
         result = run_product(product, driver, steps,
                              progress=base._child_progress,  # noqa: SLF001
                              require_full_budget=False,
                              clean_floor=base.LIFT_CLEAN_STEP_FLOOR)
-    # THE COMPOSER'S OWN SLOT TABLE FOR THIS ROW -- what the arbitration is measured
+    # The composer's own slot table for this row -- what the arbitration is measured
     # against, per row, rather than argued from a cell-wide join.
     #
-    # COUNT PAIRS, NOT SLOTS. A fused pair writes ONE label into BOTH slots of its
+    # Count pairs, not slots. A fused pair writes ONE label into BOTH slots of its
     # seam, so counting the slots that carry a fused label double-counts every pair:
     # `sum(1 for label in selected.values() if "fused pair" in label)` reads 4 where
     # two pairs install and 2 where ONE does, and a threshold of >= 2 on that number
@@ -1706,7 +1730,7 @@ def evaluate_row(product: Product, driver: Any, steps: int,
     # and three of `folded_complex`'s five. Every other H->D gate in this package
     # already counted pairs this way (`gate_triton_complex_fused_hd_pair._pair_holds`,
     # `triton_cylindrical_hd_gate_kit`'s `pairs_installed`); this kit was the one
-    # that did not. THE RECORDED ARTIFACTS ARE NOT EDITED -- they say what they
+    # that did not. The recorded artifacts are not edited -- they say what they
     # measured, and a re-run is what re-earns the number.
     composed = _composed(driver, fuse=True)
 
@@ -1837,6 +1861,7 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
 def run(product: Product, gate_path: Path,
         argv: Optional[Sequence[str]] = None) -> int:
     """The whole runner, shared. A gate script's ``main`` is three lines over this."""
+    import neutral_ids  # noqa: PLC0415
     parser = argparse.ArgumentParser(description=product.gate)
     add_arguments(parser)
     args = parser.parse_args(argv)
@@ -1869,8 +1894,8 @@ def run(product: Product, gate_path: Path,
             "this product is in no fastpath.RELEASED_FUSED_ARMS envelope, fastpath "
             "never plans it, and the composer is not even offered it"),
         "what_a_release_here_does_not_move": (
-            "NOTHING ON ANY BOARD. The wiring that would let a board credit these "
-            "cells MOVES THE VERY FILES THIS ARTIFACT PINS, so a re-gate is owed "
+            "Nothing on any board. The wiring that would let a board credit these "
+            "cells moves the very files this artifact pins, so a re-gate is owed "
             "after the merge before any board credit is real"),
         "rows": rows,
     }
@@ -1885,7 +1910,7 @@ def run(product: Product, gate_path: Path,
             payload["meep_host_import"] = bit_identity.import_meep_for_host_policy()
         from meep_gpu import subnormal_policy  # noqa: PLC0415
 
-        # BEFORE THE FIRST DEVICE COMPILE. strict=True: a process that asked to keep
+        # Before the first device compile. strict=True: a process that asked to keep
         # and quietly did not is a process whose bytes mean nothing.
         subnormal_policy.install_subnormal_policy(args.subnormal_policy, cupy=cupy,
                                                   strict=True)
@@ -1898,7 +1923,7 @@ def run(product: Product, gate_path: Path,
             "device": str(cupy.cuda.runtime.getDeviceProperties(
                 cupy.cuda.runtime.getDevice())["name"]),
             "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
-            "cupy_cache_dir": os.environ.get("CUPY_CACHE_DIR")})
+            "cupy_cache_dir": neutral_ids.path(os.environ.get("CUPY_CACHE_DIR"))})
         log(f"subnormal policy installed: "
             f"{payload['subnormal_policy'].get('policy')!r} "
             f"(requested {args.subnormal_policy!r}, "
@@ -1975,7 +2000,7 @@ def run(product: Product, gate_path: Path,
         if not value:
             log(f"  clause FAILED: {name}")
     if not payload["release"]["released"]:
-        # EXIT 75 MEANS "THIS RECORD IS NOT THE WHOLE GATE"; a whole gate that did not
+        # Exit 75 means "this record is not the whole gate"; a whole gate that did not
         # release is a DEFINITE non-release.
         if set(legs) == set(all_legs(product)):
             return 1

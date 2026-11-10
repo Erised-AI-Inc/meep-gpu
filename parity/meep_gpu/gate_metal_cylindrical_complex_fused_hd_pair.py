@@ -1,13 +1,13 @@
 """Byte gate for the Metal Dcyl COMPLEX two-launch H->D pair: ``update_H`` folded with the
 device radial scan, then the certified complex curl.
 
-THE CLAIM THIS GATE IS ALLOWED TO SUPPORT: for every configuration
+The claim this gate is allowed to support: for every configuration
 :func:`~meep_gpu.metal_kernels.cylindrical_complex_fused_hd_pair.metal_cylindrical_complex_fused_hd_pair_coverage`
 admits, ``run()`` — ONE dispatch of ``cyl_complex_hd_lead_step`` (the pointwise complex H
 constitutive into scratch plus the column-leader radial sum of the recomputed ``Hy`` into
 a radial-difference scratch), the H/f_w_H rotation, then ONE dispatch of the CERTIFIED
 complex cylindrical curl against the rotated H and the device radial difference — leaves
-the engine in a state that is BIT-IDENTICAL, PER COMPLETE DRIVER STEP, to
+the engine in a state that is bit-identical, per complete driver step, to
 
   * the NumPy array path (``stepping.update_H`` then ``stepping.step_D``, inside the
     driver's full pass list), and
@@ -18,7 +18,7 @@ the engine in a state that is BIT-IDENTICAL, PER COMPLETE DRIVER STEP, to
 
 over every stored volume, compared as uint32 words. ``allclose`` appears nowhere.
 
-WHAT IS NEW AND MEASURED HERE, beyond the two pieces measured elsewhere (the scan against
+What is new and measured here, beyond the two pieces measured elsewhere (the scan against
 ``stepping.cylindrical_rderiv_difference`` in ``gate_metal_cylindrical_complex_scan``;
 ``h_cell`` being the complex H->D weld's lift of the certified body): the SEAM between
 them — that the column leader's recomputed ``Hy`` at every row is bit-identical to what
@@ -281,7 +281,7 @@ class ProductEngine:
         else:
             raise ValueError(self.order)
         if not self.rotate:
-            # THE NO-ROTATION DEFECT: put the engine's references back on the
+            # The no-rotation defect: put the engine's references back on the
             # pre-launch buffers, so the next curl and the host read stale H.
             for name in family.ROTATED_NAMES:
                 current = getattr(self.fields, name)
@@ -633,7 +633,7 @@ def run_case(label: str, seed: int, steps: int,
                     for name in prod_state)
         if value_class == values.PM_ZERO_LATTICE and step == 1:
             sign_floor = values.zero_sign_census(list(ref_state.values()))
-        # THE SEAM, MEASURED DIRECTLY: the radial scratch the lead wrote equals the
+        # The seam, measured directly: the radial scratch the lead wrote equals the
         # array path's own radial difference over the DEVICE engine's post-update Hy.
         prefix_differing = differing(plan.radial_host,
                                      radial_oracle(product.fields, product.pml))

@@ -1,11 +1,11 @@
 """The complex beta family runs MEEP's beta pass after the curl, read off its text.
 
-WHAT THIS FILE SETTLES, ON A HOST WITH NO DEVICE. The complex beta curl pair
+What this file settles, on a host with no device. The complex beta curl pair
 (``complex_beta_kernels``: the folded complex curl with MEEP's beta pass after the curl of
 targets 0 and 1, ``-quarter_turn(c, g)`` part by part through the folded ladder) and its two
 fused pairs (``complex_beta_fused_{magnetic,electric}_pair``: all five passes of the seam,
 the two mirror fills carried by the shared complex carries) are executed by the complex
-lane's interpreter (``test_complex_chunk_forms.ComplexInterpreter``) through their own
+suite's interpreter (``test_complex_chunk_forms.ComplexInterpreter``) through their own
 launchers, on NumPy wearing CuPy's name, over a seeded full-volume complex state, and
 every array of the ``Fields`` is compared word for word (sign of zero included, both parts)
 with the array path's own passes on a copy of the same state: unfolded and folded beta

@@ -2,12 +2,12 @@
 """Byte gate for the CYLINDRICAL COMPLEX fused ELECTRIC pair: Dcyl ``step_D``
 welded into ``update_E``.
 
-THE CLAIM THIS GATE IS ALLOWED TO SUPPORT: for every configuration
+The claim this gate is allowed to support: for every configuration
 :func:`~meep_gpu.triton_kernels.cylindrical_fused_electric_pair.cylindrical_fused_electric_pair_coverage`
 admits, ONE launch of ``cyl_complex_fused_curl_constitutive_D`` — bracketed by the
 SHIPPED deposit repair wherever the seam carries an electric deposit — leaves the
 engine in a state that is BIT-IDENTICAL, over every dynamic volume, on the uint32
-word view, PER COMPLETE DRIVER STEP, to BOTH
+word view, per complete driver step, to BOTH
 
   * the CuPy ARRAY PATH (``stepping.step_D`` -> the driver's own electric
     injection -> ``fill_symmetry_bc_D`` -> ``zero_metal_D`` ->
@@ -20,7 +20,7 @@ word view, PER COMPLETE DRIVER STEP, to BOTH
 
 ``allclose`` appears nowhere.
 
-WHY THE COMPLETE DRIVER STEP AND NOT THE SEAM ALONE. The magnetic twin's gate
+Why the complete driver step and not the seam alone. The magnetic twin's gate
 drives the seam by hand, which is legitimate there: its seam carries nothing. THIS
 seam carries the electric injection on sixteen of sixteen corpus rows, and the
 thing that makes the launch legal is the ``LeadingRepairPlan`` /
@@ -29,7 +29,7 @@ harness that drove ``step_D`` and ``update_E`` by hand would measure the kernel
 and not the composition, so every device row here runs ``FdtdDriver.step`` and
 compares the WHOLE state afterwards.
 
-WHAT THIS GATE REFUSES TO INFER
+What this gate refuses to infer
 ===============================
 
 * **Bytes alone cannot prove the fused path ran.** A silent fallback is
@@ -53,12 +53,12 @@ WHAT THIS GATE REFUSES TO INFER
 * **The subnormal policy is installed, not assumed.** The device legs install
   ``keep`` before the first device compile.
 
-WHAT IT DOES NOT CLAIM. Nothing about throughput. The fusion removes ONE LAUNCH
+What it does not claim. Nothing about throughput. The fusion removes one launch
 and, on a walled run, one host wall pass; it does NOT remove the radial scan
 (``cylindrical_triton.cyl_radial_difference``, column-serial because its float32
 summation order defines the answer), which both compositions launch once per step.
 
-THE FAMILY IS NOT WIRED. ``launch.plan_step`` assigns at most one plan per slot
+The family is not wired. ``launch.plan_step`` assigns at most one plan per slot
 and this product spans five driver call sites. Nothing in ``launch.py`` names it,
 ``fastpath.plan_fast_path`` is unchanged, and no default run can reach it.
 
@@ -96,7 +96,7 @@ FAMILY_MODULE = "meep_gpu/triton_kernels/cylindrical_fused_electric_pair.py"
 
 #: ``(name, cell, m, accurate, z_metallic, pml, steps, courant)``.
 #:
-#: THE COURANT IS PER CASE AND IS NOT DECORATION. ``Grid`` refuses
+#: The Courant is per case and is not decoration. ``Grid`` refuses
 #: ``accurate_fields_near_cylorigin`` above ``1/(|m| + 0.5)`` BY NAME — without the
 #: default treatment's zero rows the near-axis update is unstable there, "a smooth
 #: growing mode rather than a crash" — so the |m| = 3 accurate row cannot run at the
@@ -105,7 +105,7 @@ FAMILY_MODULE = "meep_gpu/triton_kernels/cylindrical_fused_electric_pair.py"
 #: that row alone rather than for the sweep, because a Courant change moves ``dtdx``
 #: and with it every coefficient the other rows compare.
 #:
-#: EVERY AXIS IS A COMPILE-TIME ARM, NOT DECORATION:
+#: Every axis is a compile-time arm, not decoration:
 #:   m class   ``M_ONE`` (|m| = 1) emits the axis-row increment and the ``Dz``
 #:             axis clear; ``M_MANY`` (|m| >= 2) emits the near-axis hold over
 #:             ``ZERO_ROWS`` and NO increment. Different bodies.
@@ -133,7 +133,7 @@ CASES: Tuple[Tuple[str, Tuple[float, float, float], int, bool, bool,
     # the row above.
     ("m3_accurate_z_metallic", (2.0, 0.0, 2.0), 3, True, True,
      {"x": (0, 5), "z": 5}, 10, 0.25),
-    # THE m = 0 ARM UNDER COMPLEX STORAGE (2026-09-04): no i*m/r block, no
+    # The m = 0 arm under complex storage (2026-09-04): no i*m/r block, no
     # increment, the m = 0 axis pair (Dz[0] += 4*Courant*Hp[0]; Dy[0] = 0) applied
     # to complex word pairs. Courant 0.5 is the corpus row's own
     # (examples:dipole_in_vacuum_cyl_off_axis.py), and the third case is that
@@ -150,9 +150,9 @@ CASES: Tuple[Tuple[str, Tuple[float, float, float], int, bool, bool,
      4, 0.5),
 )
 
-#: The CARRY family: the same grids run with a real electric deposit IN THIS SEAM
-#: and the SHIPPED repair bracket installed. THE PRODUCT IS WORTH ZERO CORPUS ROWS
-#: WITHOUT THIS FAMILY AND SIXTEEN WITH IT — all sixteen Dcyl rows declare an
+#: The CARRY family: the same grids run with a real electric deposit in this seam
+#: and the SHIPPED repair bracket installed. The product is worth zero corpus rows
+#: without this family and sixteen with it — all sixteen Dcyl rows declare an
 #: electric source — so these rows are the product, not an extra.
 #:
 #: Three rather than six because the question is about the seam and not about the
@@ -216,11 +216,11 @@ def build_driver(cp, cell, m, accurate, z_metallic, pml_spec, seed: int,
                  electric: bool, courant: float = 0.35):
     """One complex cylindrical PML driver, seeded identically for every route.
 
-    ``electric`` puts a real source IN THIS SEAM, which is the whole carry family.
+    ``electric`` puts a real source in this seam, which is the whole carry family.
     Every route gets the same source so the comparison stays a statement about the
     weld.
 
-    THE INVARIANT-AXIS PEC TRAP IS NOT RE-BOUGHT HERE: phi is the invariant axis
+    The invariant-axis PEC trap is not re-bought here: phi is the invariant axis
     and is left PERIODIC. Declaring it metallic is refused by ``Grid`` by name, and
     a case that tripped that refusal would report a family failure that was really
     a fixture failure.
@@ -242,7 +242,7 @@ def build_driver(cp, cell, m, accurate, z_metallic, pml_spec, seed: int,
     driver.set_epsilon(cp.asarray(epsilon))
     driver.setup_pml(dict(pml_spec))
     if electric:
-        # OFF THE AXIS DELIBERATELY. A deposit at r = 0 lands on the row the per-|m|
+        # Off the axis deliberately. A deposit at r = 0 lands on the row the per-|m|
         # rules rewrite, so a bracket that failed to restore it could be masked by
         # the axis clear rather than measured.
         driver.add_source({"component": "Ez", "frequency": 0.31,
@@ -253,8 +253,8 @@ def build_driver(cp, cell, m, accurate, z_metallic, pml_spec, seed: int,
         host = (rng.uniform(-0.25, 0.25, size=shape)
                 + 1j * rng.uniform(-0.25, 0.25, size=shape)).astype(np.complex64)
         driver.set_field(name, cp.asarray(np.ascontiguousarray(host)))
-    # THE SPLIT-FIELD AUXILIARIES ARE SEEDED TOO, and that is not decoration.
-    # MEASURED ON THE GPU HOST 2026-08-30 (parity/meep_gpu/_scratch/diag_cyl_axis_hold.py):
+    # The split-field auxiliaries are seeded too, and that is not decoration.
+    # Measured on the GPU host 2026-08-30:
     # with `fu_D*` left at its zero initialisation, the |m| >= 2 near-axis hold on
     # the AUXILIARIES is byte-invisible -- `n0 = (fu*km - curl)*si` is exactly +0.0
     # on those rows because `fu` starts at zero and the B-side hold has already
@@ -269,7 +269,7 @@ def build_driver(cp, cell, m, accurate, z_metallic, pml_spec, seed: int,
             host = (rng.uniform(-0.1, 0.1, size=shape)
                     + 1j * rng.uniform(-0.1, 0.1, size=shape)).astype(np.complex64)
             array[...] = cp.asarray(np.ascontiguousarray(host))
-    # SEEDED ON THE E SIDE: an all-zero f_w_E makes the history read
+    # Seeded on the E side: an all-zero f_w_E makes the history read
     # indistinguishable from a zero and disarms the `prev`-ordering mutation on the
     # first step.
     for name in ("f_w_Ex", "f_w_Ey", "f_w_Ez"):
@@ -290,10 +290,10 @@ def build_driver(cp, cell, m, accurate, z_metallic, pml_spec, seed: int,
 #: conductive twin's first campaign reported ``{'reason': 'asymmetric', 'names':
 #: ['_fmp_scratch']}`` as a byte divergence on every case and broke the step loop at
 #: step 1, so every row was scored over ONE step and none of them measured what they
-#: exist to measure. THE ASYMMETRY IS STILL RECORDED — ``inventory_asymmetry_vs_array``
+#: exist to measure. The asymmetry is still recorded — ``inventory_asymmetry_vs_array``
 #: carries it per row — it just no longer masquerades as a divergence.
 #:
-#: THE RULE IS THE LEADING UNDERSCORE, not this list: a private attribute is not
+#: The rule is the leading underscore, not this list: a private attribute is not
 #: physical state, and every PUBLIC volume stays in the comparison. The list is the
 #: tripwire for that rule, so a private name the scan starts dropping is visible.
 PRIVATE_SCRATCH: Tuple[str, ...] = ("_fmp_scratch",)
@@ -435,14 +435,14 @@ def install(driver_module, routes, counter: Dict[str, int], roles: Dict[int, str
 def separate_route(driver):
     """The two separately certified Triton products this launch replaces.
 
-    THE COMPILED CONSTITUTIVE ARITHMETIC IS THE ORDINARY COMPLEX ONE, which is not
+    The compiled constitutive arithmetic is the ordinary complex one, which is not
     an approximation: ``stepping.update_E`` contains zero occurrences of
-    ``cylindrical``, ``is_axis``, ``m`` or ``axis_zero``, and the cylindrical
-    tranche MEASURED that (480/480 rows, 0 differing words) rather than arguing it.
+    ``cylindrical``, ``is_axis``, ``m`` or ``axis_zero``, and the identity rows recorded in
+    ``meep_gpu/triton_kernels/cylindrical_complex.py`` (480/480 rows, 0 differing words) measured that rather than arguing it.
 
-    IT IS REACHED THROUGH THE Dcyl WRAPPER, NOT THROUGH ``complex_fields``, and the
+    It is reached through the Dcyl wrapper, not through ``complex_fields``, and the
     difference is a PREDICATE rather than a kernel:
-    :func:`.complex_fields.plan_complex_constitutive` carries the complex tranche's
+    :func:`.complex_fields.plan_complex_constitutive` carries the complex family's
     BLANKET Dcyl refusal and returns ``None`` on every grid this gate builds —
     measured here on 2026-08-30, where it took down the first campaign at the
     separate-oracle assertion — while
@@ -468,8 +468,8 @@ def separate_route(driver):
     # The three in-between passes stay on the ARRAY PATH here: no Triton product
     # owns the wall clear, and both symmetry fills are dead on a Dcyl grid. All
     # three are counted, so a difference in which of them ran is a counter event
-    # rather than an invisible correction. THE INJECTION ALSO STAYS ON THE ARRAY
-    # PATH, which is what makes this route the right oracle for the carry family:
+    # rather than an invisible correction. The injection also stays on the array
+    # path, which is what makes this route the right oracle for the carry family:
     # the two certified kernels with the driver's own deposit between them.
     return Route({"step_D": curl, "update_E": constitutive})
 
@@ -477,7 +477,7 @@ def separate_route(driver):
 def fused_route(plan, driver=None, sources=()):
     """The fused plan in its two slots, BRACKETED when the seam carries a deposit.
 
-    THE BRACKET IS THE SHIPPED ONE. ``deposit_repair.LeadingRepairPlan`` /
+    The bracket is the shipped one. ``deposit_repair.LeadingRepairPlan`` /
     ``TrailingRepairPlan`` are the exact pair ``launch._install_fused_pair``
     puts in these two slots; a harness that assembled its own could not license the
     one that ships.
@@ -503,11 +503,11 @@ def fused_route(plan, driver=None, sources=()):
 # ===========================================================================
 
 def at_rest_by_the_auxiliary_contract(pml: Any) -> Tuple[str, ...]:
-    """The auxiliary volumes the aligned forms never touch on this run, both seams.
+    """The auxiliary volumes MEEP's per-chunk forms never touch on this run, both seams.
 
     DERIVED, not listed: ``fu`` of a curl target is read and written only where the
     target's chunk carries its dsigu layer, and ``f_w`` of a constitutive component only
-    where its own axis carries one (the auxiliary contract, KERNELS.md section 1 C2). An
+    where its own axis carries one (docs/design/floating-point.md#auxiliary-contract). An
     axis with no absorber on either face (``PML.axis_has_pml``: phi on every Dcyl run, z on
     a periodic one) carries no layer in any chunk, so the target whose dsigu axis it is
     (``cylindrical_triton.DSIG_AXES``) and the component whose own axis it is keep their
@@ -574,7 +574,7 @@ def run_leg(cp, name: str, case, product, mutant: Any = None,
             if bracket:
                 route, leading = fused_route(plan, fused, tuple(fused._sources))
             else:
-                # THE NULL CONTROL. The SAME shipped plan with the bracket removed
+                # The null control. The SAME shipped plan with the bracket removed
                 # — the NoopPlan the False branch would leave in the trailing slot
                 # — injected into anyway. This route MUST diverge.
                 route = Route({key: (plan if key == "step_D"
@@ -649,7 +649,7 @@ def run_leg(cp, name: str, case, product, mutant: Any = None,
             set(final) - set(ever_moved) - set(material) - at_rest)
         row["material_changed"] = sorted(key for key in material
                                          if key in ever_moved)
-        # THE ASYMMETRY IS RECORDED, not compared through. `PRIVATE_SCRATCH`'s
+        # The asymmetry is recorded, not compared through. `PRIVATE_SCRATCH`'s
         # docstring says why the private names are out of the comparison; this row
         # is where a PUBLIC one appearing on one route and not the other becomes
         # visible, and `verdict_of` fails on a non-empty list.
@@ -729,7 +729,7 @@ def verdict_of(row: Dict[str, Any], *, require_identical: bool = True,
 def shipped_block() -> str:
     """The shipped kernel definition, read out of the FILE rather than re-typed.
 
-    RETURNED AT ITS OWN INDENTATION — the kernel is defined inside
+    Returned at its own indentation — the kernel is defined inside
     ``if triton is not None:``, so every body line carries eight spaces. Every
     needle in :data:`MUTATIONS` is written against THIS text.
 
@@ -788,12 +788,12 @@ def _renamed(source: str, suffix: str) -> Tuple[str, str]:
 
 #: Every armed source defect, as DATA: name -> (case, old, new, expectation).
 #:
-#: THE CASE EACH IS SCORED ON IS DECLARED, because ``M_CLASS``, ``BCZ``,
+#: The case each is scored on is declared, because ``M_CLASS``, ``BCZ``,
 #: ``BACKWARD`` and the three ``ZM_*`` flags are ``tl.constexpr`` guards: a needle
 #: armed on a case whose arm the shipped kernel does not compile would rewrite an
 #: unreached line and report UNCAUGHT while measuring nothing.
 MUTATIONS: Dict[str, Tuple[str, str, str, str]] = {
-    # ---- THE SEAM ITSELF ---------------------------------------------------
+    # ---- The seam itself ---------------------------------------------------
     "seam_takes_the_pre_recurrence_curl":
         ("m1_z_metallic", "        src_re = v0_re\n        src_im = v0_im\n",
          "        src_re = curl0_re\n        src_im = curl0_im\n", "catch"),
@@ -804,7 +804,7 @@ MUTATIONS: Dict[str, Tuple[str, str, str, str]] = {
         ("m3_z_metallic",
          "            v2_re = tl.where(near, 0.0, v2_re)\n"
          "            v2_im = tl.where(near, 0.0, v2_im)\n", "", "catch"),
-    # ---- THE WALL CLEAR (ZM_Z; ZM_X/ZM_Y are dead on every Dcyl grid) -------
+    # ---- The wall clear (ZM_Z; ZM_X/ZM_Y are dead on every Dcyl grid) -------
     "zero_metal_dropped":
         ("m1_z_metallic",
          "        if ZM_Z:\n"
@@ -824,7 +824,7 @@ MUTATIONS: Dict[str, Tuple[str, str, str, str]] = {
          "            v1_im = tl.where(at_z, 0.0, v1_im)\n",
          "            v2_re = tl.where(at_z, 0.0, v2_re)\n"
          "            v2_im = tl.where(at_z, 0.0, v2_im)\n", "catch"),
-    # ---- THE CYLINDRICAL CURL ----------------------------------------------
+    # ---- The cylindrical curl ----------------------------------------------
     "imr_partners_swapped":
         ("m1_z_metallic", "            i0_im = r0 * c_re",
          "            i0_im = r0 * a_re", "catch"),
@@ -874,7 +874,8 @@ MUTATIONS: Dict[str, Tuple[str, str, str, str]] = {
     "axis_hold_covers_only_row_zero":
         ("m3_z_metallic", "            near = i < ZERO_ROWS",
          "            near = i == 0", "catch"),
-    # ---- THE FORMS (Appendix A inversion; section 7.2 battery) ---------------
+    # ---- THE FORMS (inverted groupings; per-chunk form battery) ------------
+    # Both classes are defined in docs/development/certification.md.
     "curl_grouping_inverted_to_the_pairwise_one":
         ("m1_z_metallic",
          "        curl1_re = curl_stencil(a_z_re, a_re, c_re, c_r_re, dtdx, pz, pr)",
@@ -905,7 +906,7 @@ MUTATIONS: Dict[str, Tuple[str, str, str, str]] = {
          "                 mask=live)",
          "        tl.store(h0 + 2 * idx, tl.where(dw0, (a_re + kp_0 * src_re) - km_0 * prev_re,"
          " src_re),\n                 mask=live)", "catch"),
-    # ---- THE m = 0 AXIS PAIR (M_ZERO body only) --------------------------------
+    # ---- The m = 0 axis pair (M_ZERO body only) --------------------------------
     "m0_dz_axis_add_dropped":
         ("m0_z_metallic",
          "                v2_re = tl.where(at_r, v2_re + h_re, v2_re)\n"
@@ -920,7 +921,7 @@ MUTATIONS: Dict[str, Tuple[str, str, str, str]] = {
         ("m0_z_periodic",
          "                h_re = tl.cast(tl.cast(b_re, tl.float64) * four, tl.float32)",
          "                h_re = b_re * tl.cast(four, tl.float32)", "catch"),
-    # ---- MEASURED PREDICTED NULLS -----------------------------------------
+    # ---- Measured predicted nulls -----------------------------------------
     "fu_load_unconditional":
         ("m1_z_metallic",
          "        p_re = tl.load(u1 + 2 * idx, mask=live & du1, other=0.0)",
@@ -1058,7 +1059,7 @@ def leg_needle_reachability() -> Dict[str, Any]:
         occurrences = block.count(old) if present else 0
         chain = guard_chain(block, old) if present else []
         holds = guard_chain_holds(chain, context) if present else None
-        # A NEEDLE THAT SWALLOWS ITS OWN ``if`` HAS NO ENCLOSING CHAIN, and the
+        # A needle that swallows its own ``if`` has no enclosing chain, and the
         # reachability question moves INSIDE it — the ``zero_metal_*`` needles carry
         # ``if ZM_Z:`` and the axis-rule ones carry ``if M_CLASS == M_ONE:``. Scored
         # on a case that does not compile them, each would rewrite unreached lines
@@ -1096,16 +1097,16 @@ def leg_needle_reachability() -> Dict[str, Any]:
 
 
 def leg_mutants_compile() -> Dict[str, Any]:
-    """EVERY MUTANT MUST PARSE, and this is checked on the laptop.
+    """Every mutant must parse, and this is checked on the laptop.
 
     A needle that deletes the whole body of an ``if`` leaves an empty block, and the
-    mutant is then an ``IndentationError`` rather than a defect. MEASURED ON
-    THE GPU HOST 2026-08-30: ``m_one_axis_clear_dropped`` did exactly that and killed
+    mutant is then an ``IndentationError`` rather than a defect. Measured on
+    the GPU host 2026-08-30: ``m_one_axis_clear_dropped`` did exactly that and killed
     the campaign 146 seconds in, AFTER thirteen mutations had already been scored —
     so the cost of finding it on a device is the whole run, and the cost of finding
     it here is a syntax parse.
 
-    THIS IS NOT A SUBSTITUTE FOR THE DEVICE LEG. A mutant that parses may still be
+    This is not a substitute for the device leg. A mutant that parses may still be
     unreachable, byte-invisible or wrong about what it edits; those are what
     ``needle_reachability`` and the mutation rows measure. This leg answers one
     question only, and it answers it before a GPU is asked for.
@@ -1126,7 +1127,7 @@ def leg_mutants_compile() -> Dict[str, Any]:
         except SyntaxError as exc:  # noqa: PERF203 - one row per mutation
             rows.append({"mutation": name, "parsed": False,
                          "error": f"{type(exc).__name__}: {exc}"})
-    # AND THE PRISTINE BLOCK ITSELF, so a leg that reported every mutant broken
+    # And the pristine block itself, so a leg that reported every mutant broken
     # because the SHIPPED text stopped parsing says which it was.
     try:
         ast.parse(dedented(block))
@@ -1145,7 +1146,7 @@ def leg_mutants_compile() -> Dict[str, Any]:
 def leg_transcription() -> Dict[str, Any]:
     """The two halves must be the certified kernels' own lines, VERBATIM.
 
-    PARSED OUT OF THE SHIPPED TEXT, never re-implemented — a test that
+    Parsed out of the shipped text, never re-implemented — a test that
     re-implemented the kernel's assembly would MIRROR a planted defect instead of
     executing it.
     """
@@ -1223,7 +1224,7 @@ def leg_transcription() -> Dict[str, Any]:
 def leg_refusal(cp) -> Dict[str, Any]:
     """The source seam, the m split and the polarization clause, measured BY NAME.
 
-    THE ELECTRIC SOURCE IS THE WHOLE PRODUCT HERE. With the deposit repair carried
+    The electric source is the whole product here. With the deposit repair carried
     it is ADMITTED; the clause still consults ``deposit_repair.repairable`` per run,
     and an UNDECLARED source list is still a refusal rather than an assumed ``()``.
     """
@@ -1253,7 +1254,7 @@ def leg_refusal(cp) -> Dict[str, Any]:
     finally:
         driver.close()
 
-    # m = 0 UNDER COMPLEX STORAGE IS ADMITTED (2026-09-04, the M_ZERO arm); the
+    # m = 0 under complex storage is admitted (2026-09-04, the M_ZERO arm); the
     # REAL-storage m = 0 run is still cylindrical_triton's and must be refused BY
     # NAME on the storage clause — the split between the two products moved from
     # m to force_complex_fields, and both directions are measured here.
@@ -1370,7 +1371,7 @@ def run_host_mutations(cp, case, product) -> List[Dict[str, Any]]:
     def half_integer_curl(plan, driver) -> None:
         """``step_D`` reads the INTEGER lattice; hand it the half-integer one.
 
-        THE MIRROR IMAGE OF THE MAGNETIC TWIN'S CHOICE, and a silent half-cell
+        The mirror image of the magnetic twin's choice, and a silent half-cell
         error in the absorber profile that converges to a slightly worse absorber
         and nothing else. This is the one the builder is the single place to get
         wrong.
@@ -1393,7 +1394,7 @@ def run_host_mutations(cp, case, product) -> List[Dict[str, Any]]:
     def epsilon_for_its_inverse(plan, driver) -> None:
         """Bind component 0's inv_eps to the PERMITTIVITY volume instead.
 
-        THE ROTATION THIS REPLACES WAS INERT, and measuring that is why it is gone
+        The rotation this replaces was inert, and measuring that is why it is gone
         rather than merely re-armed: with an ISOTROPIC epsilon the engine hands the
         same array back for all three components (``Fields.has_component_epsilon``
         is False), so rotating the three bindings binds each pointer to the volume
@@ -1427,6 +1428,7 @@ def run_host_mutations(cp, case, product) -> List[Dict[str, Any]]:
 # ===========================================================================
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
+    import neutral_ids  # noqa: PLC0415
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", required=True,
                         help="results DIRECTORY; partial rows land here as they do")
@@ -1487,7 +1489,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             f"measured here")
         log(f"[device] SKIPPED cleanly: {results['skipped']['device']}")
         results["verdict"] = "SKIPPED_DEVICE"
-        # NO DEVICE, NO RELEASE, and all three of the board's conditions fail by
+        # No device, no release, and all three of the board's conditions fail by
         # construction rather than by omission. A laptop run measured no bytes and
         # must never be readable as one that did.
         results["device_status"] = "NO_DEVICE"
@@ -1502,7 +1504,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         flush()
         return 0
 
-    # THE POLICY IS INSTALLED BEFORE ANY DEVICE COMPILE. One authority per process.
+    # The policy is installed before any device compile. One authority per process.
     import gate_triton_complex as shared  # noqa: PLC0415
     results["policy_stamp"] = shared.install_ftz_strip(args.subnormal_policy)
     flush()
@@ -1523,7 +1525,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         flush()
 
     # --- the CARRY family: a real electric deposit IN the seam ---------------
-    # THE PRODUCT IS WORTH ZERO CORPUS ROWS WITHOUT THESE ROWS.
+    # The product is worth zero corpus rows without these rows.
     for index in CARRY_CASES:
         case = CASES[index]
         row = run_leg(cp, "carry", case, product, steps=args.steps,
@@ -1537,7 +1539,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             f"launches={row.get('fused_kernel_launches')}")
         flush()
 
-    # --- the CARRY NULL CONTROL: the same plan, bracket REMOVED -------------
+    # --- the carry null control: the same plan, bracket REMOVED -------------
     # It MUST diverge. A carry family whose null control agrees is a family whose
     # bracket does nothing, and every carry row above would be passing for a reason
     # that has nothing to do with the repair.
@@ -1618,13 +1620,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     })
 
     # ------------------------------------------------------------------
-    # THE RELEASE RECORD, in the shape the fleet's readers require.
+    # The release record, in the shape the fleet's readers require.
     #
     # ``gate_provenance.read_verdict`` normalises the outcome for the campaign
     # driver, and ``build_triton_fusion_matrix``'s GATE_BOUND branch requires ALL
     # of ``device_status == "RUN"``, ``release.released is True`` and ``passed is
-    # True`` before it will credit a cell to this artifact. A FALSE ``released`` IS
-    # THE TRAP THAT BRANCH IS WRITTEN AGAINST: a laptop run that measured no bytes
+    # True`` before it will credit a cell to this artifact. A false ``released`` is
+    # the trap that branch is written against: a laptop run that measured no bytes
     # on any device must not be readable as a release, so the no-device path above
     # writes ``device_status = "NO_DEVICE"`` and ``released = False`` and every one
     # of the three conditions fails by construction.
@@ -1635,7 +1637,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     results["device_status"] = "RUN"
     results["passed"] = results["verdict"] == "PASS"
     results["planted_defect"] = False
-    # THE KEYS THE LEDGER TOOLS READ ride at the top of the block (2026-09-13):
+    # The keys the ledger tools read ride at the top of the block (2026-09-13):
     # ``seed_triton_welds.policy_line`` names the policy from ``resolved`` /
     # ``requested`` and the cache directory from ``cache_dir``, and refused this
     # artifact by name while they sat one level down inside ``stamp``.
@@ -1644,7 +1646,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "policy": args.subnormal_policy,
         "requested": _stamp.get("requested") or args.subnormal_policy,
         "resolved": _stamp.get("resolved") or args.subnormal_policy,
-        "cache_dir": _stamp.get("cache_dir"),
+        "cache_dir": neutral_ids.path(_stamp.get("cache_dir")),
         "stamp": results.get("policy_stamp"),
         "installed_before_the_first_device_compile": True,
     }
@@ -1655,11 +1657,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     }
     results["source_sha256"] = {
         FAMILY_MODULE: sha256_of(os.path.join(API_ROOT, FAMILY_MODULE)),
-        # KEYED BY ITS REPO-RELATIVE PATH, not by the word "gate". Every reader of
+        # Keyed by its repo-relative path, not by the word "gate". Every reader of
         # this map — ``build_triton_fusion_matrix``'s GATE_BOUND branch and the
         # weld-record walk — resolves each key against the tree and re-hashes it,
         # so a key that is not a path resolves to nothing and is reported as DRIFT
-        # on every cut. Measured 2026-08-31: it was, on both of this round's gates.
+        # on every cut. Measured 2026-08-31 on two gates, this one included: it was.
         "parity/meep_gpu/probe_triton_cylindrical_fused_electric_pair.py": sha256_of(os.path.abspath(__file__)),
         "meep_gpu/triton_kernels/cylindrical_complex.py": sha256_of(
             os.path.join(API_ROOT,

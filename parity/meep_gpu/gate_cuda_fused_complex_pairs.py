@@ -1,6 +1,6 @@
 """Byte-identity gate for the FOUR COMPLEX hand-CUDA fused products, on BOTH seams.
 
-WHAT IS UNDER TEST. Four modules, each shipping ONE kernel that performs three driver
+What is under test. Four modules, each shipping ONE kernel that performs three driver
 passes in one launch -- two on the MAGNETIC seam::
 
     step_B (driver.py:3291) -> zero_metal_B (:3295) -> update_H (:3298)
@@ -17,13 +17,13 @@ and two on the ELECTRIC seam::
 * ``cuda_kernels/complex_fused_electric_pair.py`` -- the Cartesian D cell (16);
 * ``cuda_kernels/cylindrical_fused_electric_pair.py`` -- the Dcyl D cell (16).
 
-WHAT THE TWO ELECTRIC PRODUCTS ARE WORTH IS THE BRACKET, NOT THE LAUNCH COUNT. 31 of
+What the two electric products are worth is the bracket, not the launch count. 31 of
 those 32 seam-instances carry an ELECTRIC deposit between the halves, so the fusion
 board priced both cells on the driver fact alone -- 1 and 0 reachable of 16 rows --
 while both were POINTWISE-BUILDABLE. A fitness verdict buys nothing on a cell no
 product occupies, because there is no product to ask about the repair.
 
-ONE FILE FOR ALL FOUR, and that is a decision rather than convenience: they differ in
+One file for all four, and that is a decision rather than convenience: they differ in
 their fixtures, in which certified halves they splice and in WHICH SEAM they span, and
 in NOTHING about how a fused seam is measured. A second copy of the harness would be a
 second place for the launch-counting, the movement floor or the driver-order read to
@@ -31,7 +31,7 @@ drift, and the verdicts would stop being commensurable. ``--family`` picks the p
 every leg below runs identically on any of them.
 
 =============================================================================
-WHAT THE SEAM PARAMETRISATION HAD TO GET RIGHT, AND WHY EACH IS SILENT WHEN WRONG
+What the seam parametrisation had to get right, and why each is silent when wrong
 =============================================================================
 
 * **The passes BEFORE the seam.** Empty on the magnetic seam and the whole B/H half on
@@ -53,7 +53,7 @@ WHAT THE SEAM PARAMETRISATION HAD TO GET RIGHT, AND WHY EACH IS SILENT WHEN WRON
   electric families build with :func:`anisotropic_epsilon` instead.
 
 =============================================================================
-WHY THE COMPARISON IS PER COMPLETE DRIVER STEP
+Why the comparison is per complete driver step
 =============================================================================
 
 The claim is about the SEAM between the halves -- the flux density never leaving a
@@ -66,7 +66,7 @@ corrupted B reaches E on the very next step; the first divergent step is reporte
 rather than a final pass/fail.
 
 =============================================================================
-THE SEVEN THINGS THIS GATE REFUSES TO LET PASS SILENTLY
+The seven things this gate refuses to let pass silently
 =============================================================================
 
 1. **A step this gate invented.** :func:`leg_driver_order` reads ``FdtdDriver.step``'s
@@ -77,16 +77,16 @@ THE SEVEN THINGS THIS GATE REFUSES TO LET PASS SILENTLY
 2. **A silent fallback.** Bytes alone cannot prove the fused kernel ran: an engine
    that never launched it is byte-identical to the oracle BY CONSTRUCTION, because
    the oracle is the array path the same engine would otherwise take. So every case
-   asserts EXACT launch counts from TWO INDEPENDENT COUNTERS -- a proxy installed
+   asserts EXACT launch counts from two independent counters -- a proxy installed
    over the shipped compile memo (``compile_cache._compiled_kernels``, the seam every
    ``_get_kernel`` route passes through) and the launcher's own returned report --
    and requires them to agree, to equal the step budget, and to name ONLY the fused
    kernel. A run that launched ``step_B_pml_complex_bloch`` beside the fused kernel
    is a run where the fusion added a launch instead of removing two.
 
-3. **A vacuous comparison.** Two floors per volume. WHAT MUST MOVE: on the uniform
+3. **A vacuous comparison.** Two floors per volume. What must move: on the uniform
    class every one of the twenty-four stored volumes must differ from its seeded
-   value. WHAT MUST NOT MOVE: the read-only volumes -- the PML coefficient vectors --
+   value. What must not move: the read-only volumes -- the PML coefficient vectors --
    must be bit-unchanged on the device side. Every argument in these signatures is
    ``__restrict__``, and a kernel that wrote through a ``const`` binding is UB NVRTC
    does not diagnose.
@@ -105,13 +105,13 @@ THE SEVEN THINGS THIS GATE REFUSES TO LET PASS SILENTLY
 6. **A predicate that admits what the launch cannot serve.** :func:`leg_refusal`
    builds the configurations each module refuses BY NAME -- a real-storage run, a
    folded grid, a magnetic source with no publishable index, the wrong coordinate
-   system -- and requires the refusal, with the reason recorded. Rule 3 of this
-   round: a predicate admitting a row the launch cannot serve is a silent wrong
+   system -- and requires the refusal, with the reason recorded. A predicate admitting
+   a row the launch cannot serve is a silent wrong
    answer, the one failure mode no bit-comparison catches.
 
 7. **A deposit computed against a pre-injection field.** All four modules declare
-   ``CARRIES_DEPOSIT_REPAIR``. :func:`leg_deposit` runs a real source IN THIS FAMILY'S
-   SEAM through ``deposit_repair``'s two plans and compares against the driver's own
+   ``CARRIES_DEPOSIT_REPAIR``. :func:`leg_deposit` runs a real source in this family's
+   seam through ``deposit_repair``'s two plans and compares against the driver's own
    order, with a NULL CONTROL that removes the repair and MUST diverge. The source's
    ``field_type`` is the seam's own letter: a magnetic source is not in the electric
    seam at all, so a leg on the wrong letter would run a CLEAN seam and report the
@@ -182,20 +182,20 @@ STATE_NAMES: Tuple[str, ...] = tuple(
     + [f"fu_{stem}{axis}" for stem in ("B", "D") for axis in "xyz"]
     + [f"f_w_{stem}{axis}" for stem in ("E", "H") for axis in "xyz"])
 
-#: The stored volumes a NO-ABSORBER family owns. THE TWELVE SPLIT-FIELD AUXILIARIES
-#: ARE ABSENT RATHER THAN UNUSED: without a layer ``Fields`` allocates no ``fu`` and no
+#: The stored volumes a NO-ABSORBER family owns. The twelve split-field auxiliaries
+#: are absent rather than unused: without a layer ``Fields`` allocates no ``fu`` and no
 #: ``f_w`` at all, and both certified halves REFUSE a run where one exists anyway. A
 #: comparison that asked for them would read ``None`` on every array and compare
 #: nothing, which is the vacuity this gate exists to refuse.
 #:
-#: H IS ABSENT FOR THE SAME REASON AND IT IS NOT AN OVERSIGHT: without PML storage
+#: H is absent for the same reason and it is not an oversight: without PML storage
 #: ``Fields`` allocates no separate H at all and ``get_H`` returns the B arrays
 #: themselves (fields.py:1164-1187, measured ``get_H('Hx') is fields.Bx`` on all six
 #: corpus rows), so ``Hx`` is ``None`` on every engine this family builds. Naming it
 #: would compare ``None`` against ``None`` on three of twelve arrays -- three
 #: comparisons that can never fail, in the set that decides the verdict.
 #:
-#: THE POLE BUFFERS ARE ADDED PER FIXTURE, not here: how many there are is a property
+#: The pole buffers are added per fixture, not here: how many there are is a property
 #: of the spec. :func:`state_names_for` is what joins the two.
 NO_PML_STATE_NAMES: Tuple[str, ...] = tuple(
     f"{stem}{axis}" for stem in ("B", "D", "E") for axis in "xyz")
@@ -204,7 +204,7 @@ NO_PML_STATE_NAMES: Tuple[str, ...] = tuple(
 def state_names_for(family: Dict[str, Any], fields: Any = None) -> Tuple[str, ...]:
     """Every array this family's comparison covers, for this engine.
 
-    THE POLE BUFFERS ARE PART OF THE STATE ON A DISPERSIVE FAMILY and are read off the
+    The pole buffers are part of the state on a dispersive family and are read off the
     engine rather than declared: ``update_E`` subtracts them and ``update_P`` advances
     them inside the same driver step, so a weld that corrupted one would reach E on the
     NEXT step through a comparison that never looked. They are named by SLOT
@@ -253,7 +253,7 @@ BAND_MUST_MOVE_BY_SEAM: Dict[str, Tuple[str, ...]] = {
 def band_must_move(family: Dict[str, Any]) -> Tuple[str, ...]:
     """The band class's movement floor for one family.
 
-    DECLARED PER FAMILY WHERE THE SEAM'S ANSWER DOES NOT HOLD. The two seam rows above
+    Declared per family where the seam's answer does not hold. The two seam rows above
     name the split-field auxiliary and the constitutive history, which a NO-ABSORBER
     family does not have -- so requiring them there would fail every case for an array
     that cannot exist rather than for a defect.
@@ -281,7 +281,7 @@ GUARD_OPTIONS: Tuple[str, ...] = ("--fmad=false",)
 
 
 # ---------------------------------------------------------------------------
-# WHAT A COMPLETE STEP IS -- read off the driver, never modelled here
+# What a complete step is -- read off the driver, never modelled here
 # ---------------------------------------------------------------------------
 
 DRIVER_ORDER: Tuple[str, ...] = (
@@ -303,14 +303,14 @@ FUSED_PASSES_BY_SEAM: Dict[str, Tuple[str, ...]] = {
 
 
 def fused_passes(family: Dict[str, Any]) -> Tuple[str, ...]:
-    """The driver passes one launch of this family performs, DECLARED BY THIS GATE.
+    """The driver passes one launch of this family performs, declared by this gate.
 
-    DECLARED HERE AND NOT READ FROM THE MODULE, which is the whole force of
+    Declared here and not read from the module, which is the whole force of
     :func:`leg_driver_order`: that leg requires the module's own ``REPLACES`` to EQUAL
     this tuple, and a gate that derived it from the module would be comparing a value
     with itself.
 
-    A FAMILY MAY DECLARE A SHORTER RUN THAN ITS SEAM'S. The no-absorber product carries
+    A family may declare a shorter run than its seam's. The no-absorber product carries
     no ``zero_metal_D`` -- it refuses every walled run instead -- so its two consults
     are contiguous with nothing between them, and requiring the seam's three passes
     would fail it for a pass it correctly does not perform.
@@ -349,7 +349,7 @@ def array_step(fields, pml) -> None:
 def before_passes(family: Dict[str, Any], fields, pml) -> None:
     """Every driver pass that runs BEFORE this family's seam, in driver order.
 
-    EMPTY ON THE MAGNETIC SEAM AND NOT ON THE ELECTRIC ONE, which is the one ordering
+    Empty on the magnetic seam and not on the electric one, which is the one ordering
     fact a seam-parametrised harness has to get right: ``step_B`` and ``update_H``
     come first in ``FdtdDriver.step``, so a D-side subject that launched before
     running them would be comparing against an oracle a half-step ahead of it. On the
@@ -364,7 +364,7 @@ def before_passes(family: Dict[str, Any], fields, pml) -> None:
 def unfused_passes(family: Dict[str, Any], fields, pml) -> None:
     """Every driver pass AFTER this family's seam that the fused launch did not do.
 
-    THE TWO MIRROR FILLS RUN HERE, and that is not an oversight. They are between the
+    The two mirror fills run here, and that is not an oversight. They are between the
     two fused slots in the driver, so a launch spanning the seam must leave them
     correct -- and on every configuration these predicates admit they are no-ops,
     because all four refuse a folded grid. Running them anyway is what makes that a
@@ -413,7 +413,7 @@ def leg_driver_order(family: Dict[str, Any]) -> Dict[str, Any]:
     span = seam_span(family)
     replaces = tuple(module.REPLACES)
     start = DRIVER_ORDER.index(replaces[0]) if replaces[0] in DRIVER_ORDER else -1
-    # CONTIGUOUS MEANS "FIRST AND LAST OF A RUN OF DRIVER ORDER", and the run is the
+    # Contiguous means "first and last of a run of driver order", and the run is the
     # one the GATE declares rather than the one the module does -- ``replaces ==
     # fused`` above is what ties the module to it. The span is the driver calls
     # between those two, which for a product carrying no in-seam pass is exactly the
@@ -446,24 +446,24 @@ def leg_driver_order(family: Dict[str, Any]) -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# THE TWO FAMILIES
+# The two families
 # ---------------------------------------------------------------------------
 #
 # Everything that differs between the two products lives in one dict each, and every
 # leg below reads it. A leg that special-cased a family in its own body would be a
 # place the two verdicts could stop meaning the same thing.
 
-#: The Cartesian complex fixtures. THE EXTENTS ARE DELIBERATELY UNEQUAL: a cube lets
+#: The Cartesian complex fixtures. The extents are deliberately unequal: a cube lets
 #: an index decomposition swap i and k and stay bit-identical, and this kernel
 #: decomposes a flat thread index into i/j/k and indexes THREE coefficient vectors of
 #: three different lengths with them.
 #:
-#: EVERY AXIS IS WALLED SOMEWHERE and one row is walled NOWHERE. The wall table this
+#: Every axis is walled somewhere and one row is walled NOWHERE. The wall table this
 #: product carries is the B DIAGONAL -- Bx on x, By on y, Bz on z -- so a row that
 #: walled only one axis cannot tell the diagonal from the D-side off-diagonal
 #: complement, and the all-periodic row proves the family is not wall-dependent.
 #:
-#: THE PHASED ROWS ARE THE OTHER HALF OF THIS FAMILY. A Bloch phase reaches only the
+#: The phased rows are the other half of this family. A Bloch phase reaches only the
 #: WRAPPED LANE of the curl, so a phased row exercises ``cshift_up``'s rotation that
 #: no k = 0 row can; and a phase on one axis with walls on another is where a kernel
 #: that applied the rotation to the wrong axis is separable from one that skipped it.
@@ -482,7 +482,7 @@ COMPLEX_SPECS: Tuple[Dict[str, Any], ...] = (
      "k_point": (0.37, 0.0, 0.0), "pml": 2, "cell": (9.0, 10.0, 11.0)},
     {"label": "bloch_xyz", "boundaries": ("periodic", "periodic", "periodic"),
      "k_point": (0.37, -0.21, 0.5), "pml": 2, "cell": (9.0, 10.0, 11.0)},
-    # A PHASE ON ONE AXIS AND WALLS ON THE OTHER TWO: the row where a rotation
+    # A phase on one axis and walls on the other two: the row where a rotation
     # applied to the wrong axis and one skipped altogether are separable.
     {"label": "bloch_y_wall_xz", "boundaries": ("metallic", "periodic", "metallic"),
      "k_point": (0.0, 0.42, 0.0), "pml": 2, "cell": (9.0, 10.0, 11.0)},
@@ -506,7 +506,7 @@ CYLINDRICAL_SPECS: Tuple[Dict[str, Any], ...] = (
      "accurate": False, "absorber": "thick"},
     {"label": "m2_z_metallic", "m": 2, "shape": (9, 1, 11), "z_kind": "metallic",
      "accurate": False, "absorber": "thick"},
-    # ``accurate_fields_near_cylorigin`` DROPS THE ZERO ROWS near the axis, and Grid
+    # ``accurate_fields_near_cylorigin`` drops the zero rows near the axis, and Grid
     # refuses it above courant 1/(|m| + 0.5): without those rows the near-axis update
     # is unstable there, as a smooth growing mode rather than a crash. The bound is
     # the fixture's, not a tuning knob -- 0.4 at |m| = 2 and 0.28 at |m| = 3.
@@ -518,7 +518,7 @@ CYLINDRICAL_SPECS: Tuple[Dict[str, Any], ...] = (
      "accurate": False, "absorber": "thick"},
     {"label": "m1_thin_absorber", "m": 1, "shape": (12, 1, 9), "z_kind": "metallic",
      "accurate": False, "absorber": "thin"},
-    # m = 0 UNDER COMPLEX STORAGE (2026-09-04): the third ``m_class`` arm of the
+    # m = 0 under complex storage (2026-09-04): the third ``m_class`` arm of the
     # certified curl, and the arm the corpus row ``examples:dipole_in_vacuum_cyl_
     # off_axis.py`` needs -- grid (150, 1, 300), m = 0, PML, z metallic, two ELECTRIC
     # sources in the D seam, which is why the m = 0 label rides in both cylindrical
@@ -542,8 +542,8 @@ def case_rng(label: str) -> np.random.Generator:
 def _seed_one_complex(shape, value_class: str, rng, name: str = "seed") -> np.ndarray:
     """One complex64 volume in a value class, as a host array.
 
-    THE TWO PLANES ARE ASSIGNED, NEVER COMBINED AS ``re + 1j*im``. Measured by a
-    sibling tranche before it was reasoned about: ``1j * im`` carries a real part of
+    The two planes are assigned, never combined as ``re + 1j*im``. Measured in
+    ``gate_cuda_complex.py`` before it was reasoned about: ``1j * im`` carries a real part of
     ``0.0 * im``, so ``re + 1j*im`` computes ``(-0.0) + (+0.0) = +0.0`` and DESTROYS
     every negative zero in the plane the zero cross terms act on.
     """
@@ -565,16 +565,16 @@ def _seed_complex_state(fields, grid, value_class: str, rng,
                         names: Sequence[str] = STATE_NAMES) -> Dict[str, np.ndarray]:
     """Seed every complex volume a complete step touches; return the host words.
 
-    ``names`` IS THE FAMILY'S SET. A no-absorber engine allocates no ``fu`` and no
+    ``names`` is the family's set. A no-absorber engine allocates no ``fu`` and no
     ``f_w``, so seeding the default tuple there would raise on twelve arrays that do
     not exist.
 
-    THE TWO PLANES ARE ASSIGNED, NEVER COMBINED AS ``re + 1j*im``. Measured by a
-    sibling tranche before it was reasoned about: ``1j * im`` carries a real part of
+    The two planes are assigned, never combined as ``re + 1j*im``. Measured in
+    ``gate_cuda_complex.py`` before it was reasoned about: ``1j * im`` carries a real part of
     ``0.0 * im``, so ``re + 1j*im`` computes ``(-0.0) + (+0.0) = +0.0`` and DESTROYS
     every negative zero in the plane the zero cross terms act on.
 
-    THE AUXILIARIES START NONZERO: a zero ``fu``/``f_w`` makes ``kms * prev`` exactly
+    The auxiliaries start nonzero: a zero ``fu``/``f_w`` makes ``kms * prev`` exactly
     zero on the first launch whatever ``kms`` holds, so a mis-indexed coefficient
     would only show from launch two.
     """
@@ -591,7 +591,7 @@ def _seed_complex_state(fields, grid, value_class: str, rng,
 def anisotropic_epsilon(fields, grid, rng) -> Dict[str, Any]:
     """Install THREE DISTINCT inverse-permittivity volumes and report them.
 
-    WHY THE ELECTRIC SEAM NEEDS THIS AND THE MAGNETIC ONE DOES NOT. ``update_E``
+    Why the electric seam needs this and the magnetic one does not. ``update_E``
     multiplies the flux density by ``inverse_epsilon_for(component)`` -- three pointers
     THIS family's signature binds, and the one group in it that is NOT ``__restrict__``
     because an isotropic run legitimately hands one allocation three times. On a vacuum
@@ -601,13 +601,13 @@ def anisotropic_epsilon(fields, grid, rng) -> Dict[str, Any]:
     vacuity this track exists to refuse. ``update_H`` has no such factor at all
     (mu = 1 is baked into the choice of source), so the B families need nothing here.
 
-    DIAGONAL ANISOTROPY ONLY. An OFF-DIAGONAL chi1inv row makes ``update_E`` a stencil
+    Diagonal anisotropy only. An OFF-DIAGONAL chi1inv row makes ``update_E`` a stencil
     over the partner components' volumes, which the constitutive half refuses by name
     and the deposit repair refuses by name -- so a fixture carrying one would not be
     admitted at all. ``set_epsilon_volumes`` with three distinct arrays and no row is
     exactly the diagonal case both admit.
 
-    THE VALUES COME OFF THE CASE'S OWN GENERATOR, after the field seeding, so the
+    The values come off the case's own generator, after the field seeding, so the
     three engines a case builds from one label get the SAME material -- a per-build
     random draw would make the three subjects three different runs.
     """
@@ -675,7 +675,7 @@ def build_cylindrical(spec: Dict[str, Any], value_class: str, rng):
         thickness = {"x": (0, max(2, shape[0] // 4)), "z": max(2, shape[2] // 4)}
     pml = PML(grid=grid, thickness=thickness)
     host = _seed_complex_state(fields, grid, value_class, rng)
-    # A SEEDED STATE IS A MID-RUN STATE (``stepping.separate_h_from_b``: "a state seeded
+    # A seeded state is a mid-run state (``stepping.separate_h_from_b``: "a state seeded
     # mid-run carries True"): every engine of a case starts from the seeded H and
     # f_w_H rather than re-starting H from B at its first update_H. MEEP's start of H is
     # the driver smoke's and the chunk-form tests' to measure; here it would re-step
@@ -684,30 +684,30 @@ def build_cylindrical(spec: Dict[str, Any], value_class: str, rng):
     return fields, grid, pml, host
 
 
-#: The complex NO-ABSORBER fixtures. THREE THINGS ARE SWEPT HERE THAT NO OTHER FAMILY
-#: IN THIS FILE SWEEPS, and each is a compile-time or a bit-order axis rather than a
+#: The complex NO-ABSORBER fixtures. Three things are swept here that no other family
+#: in this file sweeps, and each is a compile-time or a bit-order axis rather than a
 #: coefficient:
 #:
-#: * **THE CURL ARM.** This family's certified curl ships TWO kernels -- a plain tail
+#: * **the curl arm.** This family's certified curl ships TWO kernels -- a plain tail
 #:   and a conductive one -- and the weld is built on both. Every corpus row of its
 #:   board cell takes the CONDUCTIVE one, so a sweep that only carried the plain arm
 #:   would gate a product nothing uses; a sweep that only carried the conductive one
 #:   would ship an ungated kernel. Both are here, on phased and unphased rows.
-#: * **THE POLE COUNT.** 0 exercises ``update_E``'s pole-free store, which is a REAL
+#: * **the pole count.** 0 exercises ``update_E``'s pole-free store, which is a REAL
 #:   WRITE (``E = D * inv_eps``) and not a no-op; 1 is the corpus's shape; 2 is what
 #:   makes the LEFT-TO-RIGHT subtraction order observable at all -- with one pole every
 #:   order agrees, and the pre-sum mutation would be inert on every fixture.
-#: * **THE INERT LAYER.** ``pml.is_active`` is False for a zero-thickness PML, so
+#: * **the inert layer.** ``pml.is_active`` is False for a zero-thickness PML, so
 #:   ``stepping`` takes the same tail and the predicate admits it. Swept because "inert
 #:   is the same as absent" is otherwise an inference about ``pml.py``.
 #:
-#: NO WALLED ROW APPEARS, AND THAT IS A REFUSAL RATHER THAN A GAP. The product refuses
+#: No walled row appears, and that is a refusal rather than a gap. The product refuses
 #: every metallic run by name -- it carries no ``zero_metal_D`` -- so a walled fixture
 #: is not a case this gate skipped but a configuration the predicate declines, and it
 #: is exercised in :func:`leg_refusal` as a refusal instead. The cost of that decision
 #: is recorded in the module's own ``REPLACES``: 0 corpus slots.
 #:
-#: THE EXTENTS ARE DELIBERATELY UNEQUAL for the reason the sibling specs give: a cube
+#: The extents are deliberately unequal for the reason the sibling specs give: a cube
 #: lets an index decomposition swap i and k and stay bit-identical.
 NO_PML_COMPLEX_SPECS: Tuple[Dict[str, Any], ...] = (
     {"label": "phased_conductive_2pole", "cell": (9.0, 10.0, 11.0), "dimensions": 3,
@@ -744,19 +744,19 @@ NO_PML_COMPLEX_SPECS: Tuple[Dict[str, Any], ...] = (
 def build_no_pml_complex(spec: Dict[str, Any], value_class: str, rng):
     """One seeded complex NO-ABSORBER engine: ``(fields, grid, layer, host words)``.
 
-    ``enable_pml_storage`` IS NEVER CALLED and that is load-bearing rather than an
+    ``enable_pml_storage`` is never called and that is load-bearing rather than an
     omission: it allocates the ``fu``/``f_w`` auxiliaries, and both certified halves
     REFUSE a run where one exists while the layer is inert. The comparison set
     (:data:`NO_PML_STATE_NAMES`) is the mirror of that fact.
 
-    THE MATERIAL IS ANISOTROPIC AND THE CONDUCTIVITY IS PER COMPONENT, for the reasons
+    The material is anisotropic and the conductivity is per component, for the reasons
     :func:`anisotropic_epsilon` gives: against ones the inverse-permittivity multiply is
     invisible, against one shared volume a component-aliasing defect is invisible, and
     against a constant volume an index error is invisible. Here it is doubly
     load-bearing, because this launcher binds ``inv_eps`` a SECOND time in every unused
     pole slot.
 
-    THE POLE HISTORIES ARE SEEDED NONZERO, including the scratch: it is ``update_P``'s
+    The pole histories are seeded nonzero, including the scratch: it is ``update_P``'s
     OUTPUT and starts as whatever the previous rotation retired, so a kernel that
     failed to write some cells would agree with an oracle that also wrote nothing there.
     """
@@ -809,7 +809,7 @@ def build_no_pml_complex(spec: Dict[str, Any], value_class: str, rng):
 def no_pml_read_only_material(fields) -> Dict[str, Any]:
     """The material volumes a no-absorber launch binds and must not write.
 
-    THE REPLACEMENT FOR :data:`IMMUTABLE_PML` ON THIS FAMILY, and it is a replacement
+    The replacement for :data:`IMMUTABLE_PML` on this family, and it is a replacement
     rather than an omission: with no layer the PML snapshot comes back EMPTY, and a
     read-only check over an empty set reports "nothing drifted" whatever the kernel
     did. Every array here is bound as a pointer to the fused launch -- three inverse
@@ -837,7 +837,7 @@ def no_pml_read_only_material(fields) -> Dict[str, Any]:
 def _no_pml_complex_electric_family() -> Dict[str, Any]:
     """The complex NO-ABSORBER product on the ELECTRIC seam.
 
-    THE SIMPLEST WELD ON THE BOARD and the only one here that refuses an absorber. It
+    The simplest weld on the board and the only one here that refuses an absorber. It
     carries no coefficient vector (there is none without a layer), no split-field
     auxiliary, no sub-lattice pairing and no in-seam pass -- so ``resolve`` returns no
     ``tables`` and no ``walls``, and the legs that read those keys read them with
@@ -861,18 +861,18 @@ def _no_pml_complex_electric_family() -> Dict[str, Any]:
         flags, values = complex_pml_kernels.bloch_phase_arguments(grid, True)
         return {"boundary_codes": complex_pml_kernels.complex_boundary_codes(grid),
                 "phase_flags": flags, "phase_values": values,
-                # THE CURL ARM IS READ FROM THE FIELDS by the certified classifier, not
+                # The curl arm is read from the fields by the certified classifier, not
                 # from the spec: the spec says what the fixture installed and the
                 # classifier says what `_apply_curl` will do with it, and only the
                 # second decides which kernel is correct.
                 "curl_arm": module.no_pml_complex_curl_arm(fields, "step_D"),
                 "dtdx": float(grid.dt / grid.dx),
-                # THE RUN'S CHUNK RECORD: the lifted curl reads its partner-presence
+                # The run's chunk record: the lifted curl reads its partner-presence
                 # word (the one-rank division of the unlayered or inert-layer grid).
                 "chunk_bounds": _device_record(grid, pml)}
 
     def launch(fields, arguments, kernel=None):
-        # THE POLE MUTATION IS RESOLVED HERE, PER LAUNCH, and never baked into the
+        # The pole mutation is resolved here, per launch, and never baked into the
         # resolved arguments -- for the reason the shipped launcher resolves the banks
         # per launch: ``PolarizationState.update`` rotates P/P_prev/scratch on every
         # ``update_P``, so a bank captured once would be a retired history from the
@@ -900,7 +900,7 @@ def _no_pml_complex_electric_family() -> Dict[str, Any]:
     def separate(fields, grid, pml):
         """The certified route: curl, the three in-seam passes, constitutive.
 
-        THE CURL LAUNCHER TAKES ``fields`` FIRST and its own arm classifier decides
+        The curl launcher takes ``fields`` FIRST and its own arm classifier decides
         the tail; handing it ``grid`` is what makes the boundary codes, the BACKWARD
         phase table and ``dtdx`` derived by the same functions the predicate asks, so
         this route and the fused one cannot disagree about them by construction.
@@ -946,7 +946,7 @@ def _no_pml_complex_electric_family() -> Dict[str, Any]:
         # halves refuse a run where one exists anyway.
         "state_names": NO_PML_STATE_NAMES,
         "pole_state": True,
-        # THE CLAUSE IN THE OTHER DIRECTION, declared rather than inferred from the
+        # The clause in the other direction, declared rather than inferred from the
         # family's name: this predicate REQUIRES an inert or absent layer where the
         # four split-field products require an active one, and `leg_refusal` builds
         # both directions off this flag.
@@ -954,13 +954,13 @@ def _no_pml_complex_electric_family() -> Dict[str, Any]:
         "band_must_move": tuple([f"D{axis}" for axis in "xyz"]
                                 + [f"E{axis}" for axis in "xyz"]),
         "read_only_material": no_pml_read_only_material,
-        # ``zero_metal_D`` IS NOT HERE. The product refuses every walled run, so the
+        # ``zero_metal_D`` is not here. The product refuses every walled run, so the
         # two consults are contiguous with nothing between them -- and this tuple is
         # what `leg_driver_order` requires the module's own REPLACES to equal.
         "fused_passes": ("step_D", "update_E"),
         "mutation_labels": ("phased_conductive_2pole", "phased_plain_1pole",
                             "unphased_plain_0pole", "two_d_phased_plain_1pole"),
-        # NO DEPOSIT LEG. This product declares CARRIES_DEPOSIT_REPAIR False and
+        # No deposit leg. This product declares CARRIES_DEPOSIT_REPAIR False and
         # refuses every in-seam electric source, so there is no carried deposit to
         # compare; `leg_source_refusal` measures the refusal AND that it is not
         # decorative, which is what a deposit leg would otherwise have proved.
@@ -991,7 +991,7 @@ def _start_h_before_a_real_single(fields: Any, pml: Any) -> None:
 
 
 def _complex_family() -> Dict[str, Any]:
-    # ONLY THE CuPy-FREE MODULES ARE IMPORTED HERE. The product module takes CuPy
+    # Only the CuPy-free modules are imported here. The product module takes CuPy
     # defensively (its predicate and emitter run at the merge bar) and
     # ``in_seam_coverage`` never touches it, so the source legs -- driver order, the
     # lift -- run on a laptop. Every device-side import is inside a closure the
@@ -1064,7 +1064,7 @@ def _complex_family() -> Dict[str, Any]:
 def _complex_electric_family() -> Dict[str, Any]:
     """The Cartesian complex product on the ELECTRIC seam.
 
-    THE SAME SHAPE AS ITS MAGNETIC TWIN and three arguments apart, each of which
+    The same shape as its magnetic twin and three arguments apart, each of which
     compiles, runs, and is a different engine: the BACKWARD Bloch table
     (``bloch_phase_arguments(grid, True)``: the word above the stored window, ``eikna``,
     where the magnetic twin's is ``conj(eikna)``),
@@ -1076,7 +1076,7 @@ def _complex_electric_family() -> Dict[str, Any]:
     def resolve(fields, grid, pml):
         from meep_gpu.cuda_kernels import complex_pml_kernels  # noqa: PLC0415
 
-        # ``True`` IS THE BACKWARD FLAG, read off complex_emitter.KERNELS['step_D'][1]
+        # ``True`` is the backward flag, read off complex_emitter.KERNELS['step_D'][1]
         # the same way complex_pml_kernels.step_fused_pml_complex reads it. The
         # forward table is the magnetic twin's and is a wrong phase here.
         flags, values = complex_pml_kernels.bloch_phase_arguments(grid, True)
@@ -1162,7 +1162,7 @@ def _cylindrical_family() -> Dict[str, Any]:
     from meep_gpu.cuda_kernels import cylindrical_fused_magnetic_pair as module  # noqa: PLC0415
 
     def resolve(fields, grid, pml):
-        # EVERYTHING THE LAUNCH BINDS IS A READING OF THE FROZEN GRID AND LAYER
+        # Everything the launch binds is a reading of the frozen grid and layer
         # (``resolve_launch_arguments``, the plan's own resolver): the tables, the
         # i*m/r rows, the Courant words, the m class, the scan's division readings, the
         # record, the layer the run's first update_H starts H with.
@@ -1170,7 +1170,7 @@ def _cylindrical_family() -> Dict[str, Any]:
                                                _cylindrical_record(fields, pml))
 
     def launch(fields, arguments, kernel=None):
-        # THE RADIAL DIFFERENCE IS THE LAUNCHER'S OWN FIRST LAUNCH, over the CURRENT
+        # The radial difference is the launcher's own first launch, over the CURRENT
         # Ep: a difference taken once would be a stale field one step later -- the
         # same class of defect as reading a pre-injection B, arriving through a cache
         # instead of a seam.
@@ -1224,7 +1224,7 @@ def _cylindrical_family() -> Dict[str, Any]:
 def _cylindrical_electric_family() -> Dict[str, Any]:
     """The Dcyl complex product on the ELECTRIC seam.
 
-    EVERY CYLINDRICAL QUANTITY HERE IS THE ``step_D`` ONE. The radial sum runs over Hp
+    Every cylindrical quantity here is the ``step_D`` ONE. The radial sum runs over Hp
     rather than Ep, the two i*m/r rows carry the OPPOSITE SIGNS
     (``cylindrical_complex_kernels.IMR_TERMS``), and the axis tail has THREE branches
     rather than one -- Dz alone at |m| = 1, all six volumes at |m| >= 2, and the m = 0
@@ -1238,7 +1238,7 @@ def _cylindrical_electric_family() -> Dict[str, Any]:
                                                _cylindrical_record(fields, pml))
 
     def launch(fields, arguments, kernel=None):
-        # THE RADIAL DIFFERENCE IS THE LAUNCHER'S OWN FIRST LAUNCH, over the CURRENT
+        # The radial difference is the launcher's own first launch, over the CURRENT
         # Hp: a difference taken once would be a stale field one step later.
         return module.launch_cylindrical_fused_electric_pair(fields, arguments, kernel=kernel)
 
@@ -1302,7 +1302,7 @@ def build_cylindrical_electric(spec: Dict[str, Any], value_class: str, rng):
 
 
 # ---------------------------------------------------------------------------
-# THE FIVE RESIDUAL MAGNETIC FAMILIES, 2026-09-02 -- the board's last buildable cells
+# The five residual magnetic families, 2026-09-02 -- the board's last buildable cells
 # ---------------------------------------------------------------------------
 #
 # Two are COMPLEX (folded, beta) and ride this harness natively; three are REAL
@@ -1310,7 +1310,7 @@ def build_cylindrical_electric(spec: Dict[str, Any], value_class: str, rng):
 # machinery is dtype-bound -- the state is compared as raw uint32 words either
 # way.
 #
-# THE TWO FILL-CARRYING FAMILIES DECLARE ALL FIVE PASSES FUSED, so
+# The two fill-carrying families declare all five passes fused, so
 # ``unfused_passes`` runs NEITHER mirror fill on the subject side -- the launch
 # performed them -- while the reference runs the driver's own array passes. That
 # is the whole carry claim, measured per complete step. Their per-case CARRY
@@ -1338,7 +1338,7 @@ FOLDED_COMPLEX_SPECS: Tuple[Dict[str, Any], ...] = (
     {"label": "fold_x_periodic", "boundaries": ("periodic", "metallic", "periodic"),
      "symmetry": (("X", 1),), "k_point": (0.0, 0.0, 0.0), "pml": 2,
      "cell": (10.0, 9.0, 11.0)},
-    # THE COMPOSED CORNER: two folded periodic planes at MIXED phase, so the
+    # The composed corner: two folded periodic planes at MIXED phase, so the
     # doubly imaged ghost carries (-1) x (+1) and a dropped factor moves it.
     {"label": "fold_xy_mixed_phase", "boundaries": ("periodic", "periodic", "metallic"),
      "symmetry": (("X", -1), ("Y", 1)), "k_point": (0.0, 0.0, 0.0), "pml": 2,
@@ -1399,12 +1399,12 @@ CYLINDRICAL_REAL_SPECS: Tuple[Dict[str, Any], ...] = (
 )
 
 SPECIAL_KZ_SPECS: Tuple[Dict[str, Any], ...] = (
-    # Real-storage beta, 2-D. UNFOLDED AND FOLDED SINCE THE 2026-09-02 RESIDUE
-    # ROUND: the weld carries the two mirror fills (the real pair's ported
+    # Real-storage beta, 2-D. Unfolded and folded since 2026-09-02: the weld
+    # carries the two mirror fills (the real pair's ported
     # ownership inversion), so the table serves both sides the way the
     # complex-beta table does. The corpus's one folded row
     # (``eigsrc_kz_1_real_imag``, fold Y, beta 0.2) is the fold shapes' anchor.
-    # NO IN-PLANE k ANYWHERE IN THIS TABLE: the certified real curl refuses a
+    # No in-plane k anywhere in this table: the certified real curl refuses a
     # nonzero Bloch k under real storage by name (the wrapped plane carries a
     # phase real storage cannot hold), and the corpus row carries none -- its
     # 0.332 IS the beta.
@@ -1417,7 +1417,7 @@ SPECIAL_KZ_SPECS: Tuple[Dict[str, Any], ...] = (
     {"label": "skz_wall_xy_thin", "boundaries": ("metallic", "metallic", "periodic"),
      "k_point": (0.0, 0.0, 0.0), "pml": 1, "cell": (12.0, 9.0, 0.0),
      "beta": 0.2},
-    # THE FOLD SHAPES, mirroring COMPLEX_BETA_SPECS' fold rows under real
+    # The fold shapes, mirroring COMPLEX_BETA_SPECS' fold rows under real
     # storage: even and odd stored counts (the far reflect row is n - 3 at an
     # odd full count, which is why the odd fixture exists), an odd mirror
     # phase (+/-1 is exactly representable in real storage), and a wall
@@ -1436,7 +1436,7 @@ SPECIAL_KZ_SPECS: Tuple[Dict[str, Any], ...] = (
      "cell": (12.0, 9.0, 0.0), "beta": 0.2},
 )
 
-#: THE FOUR IN-PLANE IIR STATES OSCILLATE, AND THE FLOOR SAYS SO BY NAME.
+#: The four in-plane IIR states oscillate, and the floor says so by name.
 #: Measured on device before this note was written: on a 2-D grid every legal k
 #: drives only the z-component pair (``bfast_curl_coefficients`` returned
 #: ((0,0),(0,0),(kx,ky)) on the (0.35, 0.21, 0) fixture), so
@@ -1516,7 +1516,7 @@ def build_folded_complex_pair(spec: Dict[str, Any], value_class: str, rng):
     fields = Fields(grid=grid, force_complex_fields=True)
     fields.enable_field_storage()
     fields.enable_pml_storage()
-    # THE FOLDED AXIS TAKES NO ABSORBER (its stored window ends at the mirror);
+    # The folded axis takes no absorber (its stored window ends at the mirror);
     # the unfolded axes take the spec's thickness where they can hold it.
     thickness = tuple((0, 0) if grid.is_mirrored(axis)
                       else (0, 0) if int(grid.shape[axis]) < 2 * spec["pml"] + 2
@@ -1749,7 +1749,7 @@ def _cylindrical_real_refusal_cases(record) -> None:
 def _special_kz_refusal_cases(record) -> None:
     """The special_kz weld's own admission/refusal table.
 
-    THE FOLD IS ADMITTED SINCE 2026-09-02: the weld carries the two mirror
+    The fold is admitted since 2026-09-02: the weld carries the two mirror
     fills (the real pair's ported ownership inversion), so the fold case that
     this table used to hold as the weld's own refusal is now its admission --
     recorded through a REAL folded engine so a predicate that silently kept
@@ -1889,7 +1889,7 @@ def _folded_complex_family() -> Dict[str, Any]:
         "emitter_attribute": "complex_folded_fused_magnetic_pair_source",
         "disjoint": lambda fields, arguments: module.assert_disjoint_bindings(
             fields, arguments["tables"]),
-        # ALL FIVE PASSES ARE FUSED: the two mirror fills are carried by the
+        # All five passes are fused: the two mirror fills are carried by the
         # ownership inversion, so the subject runs NO array pass inside the seam.
         "fused_passes": ("step_B", "fill_symmetry_bc_B", "zero_metal_B",
                          "fill_folded_far_ghosts_B", "update_H"),
@@ -1982,8 +1982,8 @@ def _complex_beta_family() -> Dict[str, Any]:
         "mutation_labels": ("beta_fold_y_periodic_even",
                             "beta_fold_y_periodic_odd", "beta_fold_y_odd_phase",
                             "beta_unfolded_bloch_x", "beta_fold_y_wall_x"),
-        # DEPOSIT LEGS SINCE THE 2026-09-02 FLAG FLIP (fusion-residue audit
-        # §1.3): CARRIES_DEPOSIT_REPAIR went True after the "EigenModeSource
+        # Deposit legs since the 2026-09-02 flag flip: CARRIES_DEPOSIT_REPAIR went True
+        # after the "EigenModeSource
         # publishes no point index" premise was re-measured FALSE of the live
         # tree (the lift synthesises VolumeSource equivalent-current sheets and
         # every source class publishes _point_ix/_point_iy/_point_iz at setup).
@@ -2075,7 +2075,7 @@ def _cylindrical_real_family() -> Dict[str, Any]:
             "meep_gpu.cuda_kernels.cylindrical_real_fused_magnetic_pair",
         "emitter_attribute": "cylindrical_real_fused_magnetic_pair_source",
         "disjoint": lambda fields, arguments: True,
-        # THE CURL IS THE ROOT'S HELPER since the 0.10 forms: the stencil is
+        # The curl is the root's helper since the 1.0 forms: the stencil is
         # ``curl_stencil``'s return lines, each component calls it, and Bz / Dz take
         # dtdx times the radial difference.
         "lift_arithmetic_markers": ("dtdx * (", "shift_up(", "shift_dn(",
@@ -2184,7 +2184,7 @@ def _special_kz_family() -> Dict[str, Any]:
         # The certified curl's arithmetic: MEEP's presence-gated stencil and the six
         # neighbour reads (the root kernels form the curl in ``curl_stencil``).
         "lift_arithmetic_markers": ("curl_stencil(", "shift_up(", "shift_dn("),
-        # ALL FIVE PASSES SINCE 2026-09-02: the weld ported the real pair's fill
+        # All five passes since 2026-09-02: the weld ported the real pair's fill
         # carry, so the two mirror fills are fused rather than refused, and the
         # carry floor is the armed closure on every folded fixture.
         "fused_passes": ("step_B", "fill_symmetry_bc_B", "zero_metal_B",
@@ -2200,8 +2200,8 @@ def _special_kz_family() -> Dict[str, Any]:
             ._update_H_pml_real_kernel_code),
         "mutation_labels": ("skz_periodic", "skz_wall_y", "skz_wall_xy_thin",
                             "skz_fold_y_even", "skz_fold_y_odd"),
-        # DEPOSIT LEGS SINCE THE 2026-09-02 FLAG FLIP (fusion-residue audit
-        # §1.3): the "publishes no point index" premise was re-measured FALSE
+        # Deposit legs since the 2026-09-02 flag flip: the "publishes no point
+        # index" premise was re-measured FALSE
         # of the live tree, so the bracket carries the seam and the legs prove
         # it -- one unfolded fixture, one FOLDED (the repair must image the
         # deposit through the fill closure), the sheet variant on both.
@@ -2294,15 +2294,15 @@ def _bfast_family() -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# THE FIVE RESIDUAL ELECTRIC FAMILIES, 2026-09-02 -- the D-side twins
+# The five residual electric families, 2026-09-02 -- the D-side twins
 # ---------------------------------------------------------------------------
 #
 # Each is its magnetic sibling three seam arguments apart -- the BACKWARD Bloch
 # table where one exists, the mirror-image sub-lattice pairing (``kms_half_*``),
 # and the OFF-DIAGONAL wall table -- plus the three inverse-permittivity
 # pointers only the electric seam binds, which is why every builder installs the
-# anisotropic material. EVERY ROW OF EVERY TWIN'S BOARD CELL DECLARES AN
-# ELECTRIC DEPOSIT INSIDE THE SEAM (measured off the residualwelds census), so
+# anisotropic material. Every row of every twin's board cell declares an
+# electric deposit inside the seam (measured off the residualwelds census), so
 # each family runs deposit legs rather than source-refusal legs: the flag IS the
 # product on these cells.
 
@@ -2338,7 +2338,7 @@ def _folded_electric_refusal_cases(record) -> None:
     fields, pml, grid = build(beta=0.2)
     record("beta_belongs_to_the_beta_weld", "refused", fields, pml, grid, ())
 
-    # THE ELECTRIC SEAM'S OWN TWO: a conductivity re-routes the deposit through
+    # The electric seam's own two: a conductivity re-routes the deposit through
     # _inject_electric_through_conductivity, on which the repair has no verdict;
     # an in-seam D source with no index has nothing the repair can save.
     live, live_pml, live_grid = build()
@@ -2560,7 +2560,7 @@ def _folded_complex_electric_family() -> Dict[str, Any]:
         codes, refusal = complex_folded_kernels.folded_complex_boundary_codes(grid)
         if refusal is not None:
             raise SystemExit(f"the fixture has no folded boundary codes: {refusal}")
-        # ``True`` IS THE BACKWARD FLAG -- the step_D sub-step's own connection.
+        # ``True`` is the backward flag -- the step_D sub-step's own connection.
         flags, values = complex_pml_kernels.bloch_phase_arguments(grid, True)
         return {"tables": module.complex_folded_fused_electric_pair_tables(pml),
                 "boundary_codes": codes,
@@ -2809,7 +2809,7 @@ def _cylindrical_real_electric_family() -> Dict[str, Any]:
             "meep_gpu.cuda_kernels.cylindrical_real_fused_electric_pair",
         "emitter_attribute": "cylindrical_real_fused_electric_pair_source",
         "disjoint": lambda fields, arguments: True,
-        # THE CURL IS THE ROOT'S HELPER since the 0.10 forms: the stencil is
+        # The curl is the root's helper since the 1.0 forms: the stencil is
         # ``curl_stencil``'s return lines, each component calls it, and Bz / Dz take
         # dtdx times the radial difference.
         "lift_arithmetic_markers": ("dtdx * (", "shift_up(", "shift_dn(",
@@ -3019,13 +3019,13 @@ FAMILIES: Dict[str, Callable[[], Dict[str, Any]]] = {
     "complex_electric": _complex_electric_family,
     "cylindrical_electric": _cylindrical_electric_family,
     "no_pml_complex_electric": _no_pml_complex_electric_family,
-    # THE FIVE RESIDUAL MAGNETIC FAMILIES, 2026-09-02.
+    # The five residual magnetic families, 2026-09-02.
     "complex_folded": _folded_complex_family,
     "complex_beta": _complex_beta_family,
     "cylindrical_real": _cylindrical_real_family,
     "special_kz": _special_kz_family,
     "bfast": _bfast_family,
-    # THE FIVE RESIDUAL ELECTRIC FAMILIES, 2026-09-02 (the residue round).
+    # The five residual electric families, added 2026-09-02.
     "folded_complex_electric": _folded_complex_electric_family,
     "complex_beta_electric": _complex_beta_electric_family,
     "cylindrical_real_electric": _cylindrical_real_electric_family,
@@ -3038,7 +3038,7 @@ FAMILIES: Dict[str, Callable[[], Dict[str, Any]]] = {
 # VARIANTS: one product, more than one emitted kernel
 # ---------------------------------------------------------------------------
 #
-# THE FOUR PML PRODUCTS EMIT ONE KERNEL EACH and the no-absorber one emits TWO -- a
+# The four PML products emit one kernel each and the no-absorber one emits TWO -- a
 # plain-tail weld and a conductive-tail weld, because its certified curl half ships
 # both and every corpus row on its cell takes the second. So the source legs and the
 # device mutations are parametrised over VARIANTS, and a family that declares none has
@@ -3067,7 +3067,7 @@ def fused_source(family: Dict[str, Any], variant: Any = None) -> str:
 def kernel_symbol(family: Dict[str, Any], variant: Any = None) -> str:
     """The ``extern "C"`` symbol NVRTC is asked for, per variant.
 
-    A MULTI-VARIANT FAMILY'S ``KERNEL_NAME`` IS A LABEL AND NOT A SYMBOL -- the
+    A multi-variant family's ``KERNEL_NAME`` is a label and not a symbol -- the
     no-absorber module spells it in the bracket form its own arm table uses -- so a
     gate that compiled against ``module.KERNEL_NAME`` would ask NVRTC for a name no
     source declares and fail three frames from the cause.
@@ -3128,7 +3128,7 @@ def compare(left, right, names: Sequence[str] = STATE_NAMES) -> Dict[str, int]:
 def read_only_snapshot(family: Dict[str, Any], fields, pml) -> Dict[str, np.ndarray]:
     """Every volume a run must leave BIT-UNCHANGED, per family.
 
-    THE PML COEFFICIENT VECTORS ARE ONE ANSWER AND NOT THE ONLY ONE. A no-absorber
+    The PML coefficient vectors are one answer and not the only one. A no-absorber
     family has none, and a snapshot that asked for them would come back EMPTY -- a
     check that inspected nothing and reported no drift, which is exactly the vacuity
     this gate refuses everywhere else. That family names its MATERIAL volumes instead:
@@ -3181,11 +3181,11 @@ class _CountingKernel:
 class MemoLaunchCounter:
     """Wrap every memoized device kernel; restore on exit.
 
-    THE MEMO IS THE RIGHT SEAM and it is the shipped one. Every launcher in this
+    The memo is the right seam and it is the shipped one. Every launcher in this
     package reaches its kernel through ``compile_cache.get_or_compile``, which returns
     ``_compiled_kernels[key]`` on a hit, so replacing the stored object counts every
     launch through every shipped route without editing one byte under ``meep_gpu/``.
-    NOTHING IS INSTALLED UNLESS THE MEMO IS ALREADY WARM, which is why every case
+    Nothing is installed unless the memo is already warm, which is why every case
     warms it first: a cold memo would have the factory store a raw kernel and the
     count would read zero for a kernel that ran.
     """
@@ -3227,7 +3227,7 @@ def _memo_key_for_fused(family: Dict[str, Any],
     constants rather than typed, so a renamed kernel is a mismatch the counter reports
     instead of a name this file quietly stops finding.
 
-    THE SYMBOL IS PER VARIANT, and on the no-absorber family that is the difference
+    The symbol is per variant, and on the no-absorber family that is the difference
     between watching the kernel that ran and watching a name nothing compiles: its
     ``KERNEL_NAME`` is the bracket LABEL of two symbols, and its launcher keys the memo
     on whichever one the run's curl arm selected.
@@ -3238,11 +3238,11 @@ def _memo_key_for_fused(family: Dict[str, Any],
 def warm_memo(family: Dict[str, Any], specs: Sequence[Dict[str, Any]]) -> None:
     """Compile and launch every kernel this file drives, once, off the counted path.
 
-    A REFUSED WARM-UP IS FATAL RATHER THAN SILENT: a spec the predicate does not
+    A refused warm-up is fatal rather than silent: a spec the predicate does not
     admit would otherwise reach the product sweep and fail there with a reason about
     coverage, one leg later than the table that was wrong.
 
-    EVERY VARIANT MUST BE REACHED. A multi-variant family whose fixture table drove
+    Every variant must be reached. A multi-variant family whose fixture table drove
     only one of its emitted kernels would leave the other with a cold memo -- so the
     counter would read zero for a kernel that never ran, and the sweep would be gating
     one kernel while shipping two. The check is on the SPECS rather than on the launch,
@@ -3276,10 +3276,10 @@ def run_case(family: Dict[str, Any], spec: Dict[str, Any], value_class: str,
              steps: int, kernel: Optional[Any] = None,
              patch: Optional[Callable[[Dict[str, Any], Any], Dict[str, Any]]] = None,
              label_suffix: str = "", mid_run: bool = False) -> Dict[str, Any]:
-    """Step THREE engines side by side and compare per COMPLETE DRIVER STEP.
+    """Step THREE engines side by side and compare per complete driver step.
 
-    THE THIRD ENGINE IS THE SEPARATE CERTIFIED ROUTE, and it earned its place on
-    2026-08-30 by ATTRIBUTING A DIVERGENCE THAT WAS NOT THIS WELD'S. On the first
+    The third engine is the separate certified route, and it earned its place on
+    2026-08-30 by attributing a divergence that was not this weld's. On the first
     device run the fused route diverged from the array path on every phased
     subnormal-band fixture; the separate certified route diverged in the SAME words,
     on the same cells, with no fused kernel in the picture, and a re-run of
@@ -3292,14 +3292,14 @@ def run_case(family: Dict[str, Any], spec: Dict[str, Any], value_class: str,
     :func:`main`, both routes are bit-identical to the array path on every fixture and
     the certified family's own gate returns 36/36.
 
-    THE THIRD ENGINE STAYS, because that episode is the argument for it: without it
+    The third engine stays, because that episode is the argument for it: without it
     the run would have reported a fused-product defect, and the defect was in neither
     product. It also makes every passing case carry a strictly stronger statement.
 
-    SO THE CASE MEASURES THREE THINGS AND CONFLATES NONE:
+    So the case measures three things and conflates none:
 
-    * ``weld_identity`` -- the fused launch against the SEPARATE CERTIFIED SEQUENCE
-      it replaces, word for word. THIS IS THE PRODUCT'S OWN CLAIM and it is required
+    * ``weld_identity`` -- the fused launch against the separate certified sequence
+      it replaces, word for word. This is the product's own claim and it is required
       unconditionally, on every case and every class. It is a strictly stronger
       comparison than this gate would otherwise make, not a weaker one.
     * ``array_identity`` -- the fused launch against ``stepping``'s eleven passes.
@@ -3313,11 +3313,11 @@ def run_case(family: Dict[str, Any], spec: Dict[str, Any], value_class: str,
     inherited). Nothing is skipped, nothing is tolerated on assertion: an inherited
     divergence is recorded with both word maps so a reader can check the claim.
 
-    ``kernel`` and ``patch`` are THE GATE'S DOORS -- the shipped launcher takes a
+    ``kernel`` and ``patch`` are the gate's doors -- the shipped launcher takes a
     kernel and every resolved argument precisely so a gate can arm a defect. A harness
     that could not hand in its own kernel could not arm a single mutation, and every
     mutation leg would launch the shipped kernel and report the defect as uncaught.
-    THEY REACH THE FUSED ENGINE ONLY: the separate route is never mutated, which is
+    They reach the fused engine only: the separate route is never mutated, which is
     what makes ``weld_identity`` the thing a mutation is scored on.
     """
     started = time.time()
@@ -3344,7 +3344,7 @@ def run_case(family: Dict[str, Any], spec: Dict[str, Any], value_class: str,
     if mid_run:
         for engine in (reference, actual, apart):
             engine.h_separated = True
-    # THE COMPARED SET IS THE FAMILY'S, and on a dispersive family it is read off the
+    # The compared set is the family's, and on a dispersive family it is read off the
     # ENGINE: the pole buffers are part of the state a complete driver step touches.
     names = state_names_for(family, reference)
     case["arrays_compared_by_name"] = list(names)
@@ -3366,7 +3366,7 @@ def run_case(family: Dict[str, Any], spec: Dict[str, Any], value_class: str,
 
     arguments = family["resolve"](actual, grid, pml)
     case["distinct_allocations_checked"] = family["disjoint"](actual, arguments)
-    # ``walls`` IS ABSENT ON A PRODUCT THAT CARRIES NO WALL PASS, and recorded as the
+    # ``walls`` is absent on a product that carries no wall pass, and recorded as the
     # empty tuple rather than as three Falses: three Falses would read as "this launch
     # was told no axis is walled" when in fact it is told nothing, because it refuses
     # every walled run and has no such parameter.
@@ -3392,13 +3392,13 @@ def run_case(family: Dict[str, Any], spec: Dict[str, Any], value_class: str,
     with counter:
         for step in range(1, steps + 1):
             array_step(reference, ref_pml)
-            # THE SEPARATE CERTIFIED ROUTE runs OUTSIDE the launch counter's
+            # The separate certified route runs OUTSIDE the launch counter's
             # bookkeeping question but inside the same loop, so both subjects see the
             # same step number and the same seeded history. Its launches land in the
             # counter too, which is why `other_kernels` below is read from a SECOND
             # counter rather than from this one.
             #
-            # THE PASSES BEFORE THE SEAM RUN FIRST ON BOTH SUBJECTS, and on the
+            # The passes before the seam run first on both subjects, and on the
             # ELECTRIC seam that is the whole B/H half rather than nothing: a D-side
             # subject that launched before running it would be compared against an
             # oracle half a step ahead of it. Empty on the magnetic seam, where this
@@ -3433,7 +3433,7 @@ def run_case(family: Dict[str, Any], spec: Dict[str, Any], value_class: str,
     moved = {name: int(np.count_nonzero(before[name] != words(after[name])))
              for name in names}
     still = sorted(name for name, count in moved.items() if count == 0)
-    # THE AUXILIARY CONTRACT (KERNELS.md section 1, C2): ``fu_*`` and ``f_w_*`` are read
+    # The auxiliary contract (floating-point.md): ``fu_*`` and ``f_w_*`` are read
     # and written only on the cells whose chunk carries their form, so on a grid where
     # no chunk does the array path leaves them at their seed. The floor exempts exactly
     # those, read off the REFERENCE's own movement (never the subject's), and names them.
@@ -3453,7 +3453,7 @@ def run_case(family: Dict[str, Any], spec: Dict[str, Any], value_class: str,
                                       for row in per_step)
     half_identical = complete and all(row["half_differing_words"] == 0
                                       for row in per_step)
-    # AN INHERITED DIVERGENCE IS PROVED, NEVER ASSERTED: the fused route's word map
+    # An inherited divergence is proved, never asserted: the fused route's word map
     # must equal the separate certified route's, array for array and count for count,
     # on every step. "Both are nonzero" would not distinguish a shared inheritance
     # from two different defects that happen to coincide in size.
@@ -3462,7 +3462,7 @@ def run_case(family: Dict[str, Any], spec: Dict[str, Any], value_class: str,
     drifted = read_only_drift(read_only, family, actual, pml)
     memo_name = _memo_key_for_fused(family, variant_for_spec(family, spec))
     fused_launches = fused_counter.named().get(memo_name, 0)
-    # THE TWO COUNTERS MUST AGREE, AND THE PROXY MUST NAME ONLY THIS KERNEL inside the
+    # The two counters must agree, and the proxy must name only this kernel inside the
     # window that holds only the fused launch. A run that launched the certified curl
     # beside the fused kernel added a launch instead of removing two, and
     # `other_kernels` is what says so.
@@ -3529,7 +3529,7 @@ def run_case(family: Dict[str, Any], spec: Dict[str, Any], value_class: str,
 def leg_separate_control(family: Dict[str, Any], spec: Dict[str, Any], steps: int) -> Dict[str, Any]:
     """THREE engines from one seed: array path, separate certified products, fused.
 
-    THE POINT IS NOT THAT THE FUSED ROUTE PASSES -- the product sweep says that. It is
+    The point is not that the fused route passes -- the product sweep says that. It is
     that the SEPARATE certified route also reproduces the array path on this fixture,
     so a divergence in the fused one is attributable to the WELD rather than to either
     half; and that the fused route makes strictly FEWER device launches, counted
@@ -3588,13 +3588,13 @@ def leg_separate_control(family: Dict[str, Any], spec: Dict[str, Any], steps: in
 def leg_lift(family: Dict[str, Any]) -> Dict[str, Any]:
     """Every line of the emitted kernel is certified text or a declared edit.
 
-    THE CLAIM THE MODULES MAKE is that they SPLICE rather than transcribe. This checks
+    The claim the modules make is that they SPLICE rather than transcribe. This checks
     it from the other side: the fused source is diffed against the two certified
     sources line by line, and every line of the fused body that is not in either
     certified body must be accounted for by :data:`LIFT_EDITS`, the signature, or the
     carried in-seam pass.
 
-    A LINE COUNT ALONE WOULD BE VACUOUS, so the leg also asserts that the certified
+    A line count alone would be vacuous, so the leg also asserts that the certified
     ARITHMETIC lines survive: every ``constitutive_apply`` and ``pml_apply`` call, the
     curl groupings, and the masks.
     """
@@ -3615,7 +3615,7 @@ def leg_lift(family: Dict[str, Any]) -> Dict[str, Any]:
           certified_const.splitlines())
       novel = [line for line in fused.splitlines()
                if line not in certified_lines and line.strip()]
-      # EVERY CERTIFIED ARITHMETIC STATEMENT MUST SURVIVE THE SPLICE, and a
+      # Every certified arithmetic statement must survive the splice, and a
       # statement that did not must be one a declared LIFT_EDIT names -- with the
       # EXPRESSION it computed still present verbatim in the fused source. That
       # second half is what keeps the edit list from being an excuse: an edit may
@@ -3666,7 +3666,7 @@ def leg_lift(family: Dict[str, Any]) -> Dict[str, Any]:
                              and len(arithmetic) >= 9)
       ok = ok and block["passed"]
       out["blocks"][key] = block
-    # EVERY EMITTED KERNEL IS DISTINCT. A multi-variant family whose two sources
+    # Every emitted kernel is distinct. A multi-variant family whose two sources
     # collapsed to one string would pass every block above while shipping one kernel
     # under two names -- and on this product that is the plain tail serving a
     # conductive run, which is a wrong answer on every word rather than a crash.
@@ -3713,14 +3713,14 @@ def _certified_curl_source(family: Dict[str, Any]) -> str:
 
 
 # ---------------------------------------------------------------------------
-# The refusals: rule 3 of this round, measured
+# The refusals (item 6 of the module docstring), measured
 # ---------------------------------------------------------------------------
 
 def leg_refusal(family: Dict[str, Any]) -> Dict[str, Any]:
     """Every configuration each module refuses BY NAME, built and refused.
 
-    A PREDICATE ADMITTING A ROW THE LAUNCH CANNOT SERVE IS THE ONE FAILURE MODE NO
-    BIT-COMPARISON CATCHES: the launch would run, produce a number, and be compared
+    A predicate admitting a row the launch cannot serve is the one failure mode no
+    bit-comparison catches: the launch would run, produce a number, and be compared
     against an oracle for a configuration nobody welded. So each refusal is a REAL
     configuration here rather than a stub, and the reason is recorded so a reader can
     check that the refusal names what it refuses.
@@ -3739,7 +3739,7 @@ def leg_refusal(family: Dict[str, Any]) -> Dict[str, Any]:
                        "passed": (not covered) if expectation == "refused"
                                  else bool(covered)})
 
-    # A FAMILY MAY SUPPLY ITS OWN CASE TABLE. The residual magnetic families'
+    # A family may supply its own case table. The residual magnetic families'
     # refusal geometry inverts several of the built-in cases (a REAL-storage run
     # is three of their cells rather than a refusal), so each carries a builder
     # that records its own admissions and refusals through the same ``record``.
@@ -3782,7 +3782,7 @@ def leg_refusal(family: Dict[str, Any]) -> Dict[str, Any]:
     record("real_storage", "refused", real_fields,
            None if no_pml else PML(grid=grid, thickness=2), grid)
 
-    # 2. THE ABSORBER CLAUSE, IN WHICHEVER DIRECTION THIS PRODUCT MAKES IT. The four
+    # 2. The absorber clause, in whichever direction this product makes it. The four
     #    split-field products refuse a run with no active layer; the no-absorber one
     #    ADMITS exactly that and refuses a run that has one. Both directions are
     #    recorded here rather than one, because a predicate that refused BOTH would
@@ -3800,7 +3800,7 @@ def leg_refusal(family: Dict[str, Any]) -> Dict[str, Any]:
         active_fields.enable_pml_storage()
         record("an_active_absorber", "refused", active_fields,
                PML(grid=inert_grid, thickness=2), inert_grid)
-        #    AND PML STORAGE MODE WITH AN INERT LAYER. `enable_pml_storage` is a
+        #    And PML storage mode with an inert layer. `enable_pml_storage` is a
         #    one-way switch that also changes what `get_H` returns, so a curl would
         #    difference a frozen H. The array path has the same hazard; this refuses
         #    the configuration rather than reproducing it.
@@ -3836,14 +3836,14 @@ def leg_refusal(family: Dict[str, Any]) -> Dict[str, Any]:
            else PML(grid=folded_grid, thickness=((2, 2), (0, 2), (2, 2))),
            folded_grid)
 
-    # 4. AN UNDECLARED SOURCE SET. Ignorance is never an empty set: Fields does not
+    # 4. An undeclared source set. Ignorance is never an empty set: Fields does not
     #    hold the source list, so a predicate that inferred "no sources" from not
     #    being told would be over-covering.
     live, live_pml, live_grid = cartesian()
     record("sources_undeclared", "refused", live, live_pml, live_grid, None)
 
-    # 5. AN IN-SEAM SOURCE THAT PUBLISHES NO INDEX. The repair has nothing to save
-    #    and restore, so the deposit cannot be carried. THE FIELD TYPE IS THIS SEAM'S:
+    # 5. An in-seam source that publishes no index. The repair has nothing to save
+    #    and restore, so the deposit cannot be carried. The field type is this seam's:
     #    a magnetic source is not in the electric seam at all and an electric one is
     #    not in the magnetic seam, so a leg that used the wrong letter would record a
     #    predicate ADMITTING a harmless source as if it had refused a fatal one.
@@ -3853,10 +3853,10 @@ def leg_refusal(family: Dict[str, Any]) -> Dict[str, Any]:
     record(f"in_seam_{family['seam']}_source_without_an_index", "refused", live,
            live_pml, live_grid, (_Opaque(),))
 
-    # 5b. A CONDUCTIVITY, ON THE ELECTRIC SEAM ONLY. The driver deposits an electric
+    # 5b. A conductivity, on the electric seam only. The driver deposits an electric
     #     source through `_inject_electric_through_conductivity` (driver.py:3305) when
     #     one is present, which rescales the increment by `condinv`; the repair has no
-    #     verdict on that route. BOTH COMPLEX HALVES ADMIT A CONDUCTIVITY BY NAME, so
+    #     verdict on that route. Both complex halves admit a conductivity by name, so
     #     unlike the real electric pair this refusal is the PRODUCT'S OWN and is the
     #     only thing standing between it and that route.
     if family["seam"] == "D" and not no_pml:
@@ -3869,7 +3869,7 @@ def leg_refusal(family: Dict[str, Any]) -> Dict[str, Any]:
         record("engine_conductivity", "refused", _Conductive(), live_pml, live_grid,
                ())
     elif no_pml:
-        # 5c. THE MIRROR CLAUSE, AND IT IS AN ADMISSION RATHER THAN A REFUSAL. That
+        # 5c. The mirror clause, and it is an admission rather than a refusal. That
         #     driver route runs only `if electric and self.fields.has_conductivity`
         #     (driver.py:3304), and this predicate refuses every electric source
         #     outright, so the route is unreachable and refusing a conductivity would
@@ -3890,7 +3890,7 @@ def leg_refusal(family: Dict[str, Any]) -> Dict[str, Any]:
             "passed": family["module"].no_pml_complex_curl_arm(
                 lossy, "step_D") == "conductive"})
 
-    # 7. THE POSITIVE CONTROL, AND IT IS THIS FAMILY'S OWN FIXTURE. A refusal leg
+    # 7. The positive control, and it is this family's own fixture. A refusal leg
     #    with no admitted case cannot tell a predicate that refuses correctly from
     #    one that refuses everything -- and the control has to be built by the same
     #    builder the product sweep uses, or it tests the other family's predicate.
@@ -3902,7 +3902,7 @@ def leg_refusal(family: Dict[str, Any]) -> Dict[str, Any]:
     record("the_fixture_this_gate_sweeps", "covered", admitted, admitted_pml,
            admitted_grid, ())
 
-    # 8. THE COORDINATE SYSTEM EACH PRODUCT IS NOT FOR -- the clause that keeps the
+    # 8. The coordinate system each product is not for -- the clause that keeps the
     #    two complex products from both claiming one seam.
     cyl_grid = Grid(resolution=1.0, cell_size=(9.0, 0.0, 11.0), cylindrical=True,
                     m=2, boundaries={"z": "metallic"}, courant=0.5, xp=cp)
@@ -3915,7 +3915,7 @@ def leg_refusal(family: Dict[str, Any]) -> Dict[str, Any]:
         record("cylindrical_grid", "refused", cyl, cyl_pml, cyl_grid, ())
     else:
         record("cartesian_grid", "refused", live, live_pml, live_grid, ())
-        # m = 0 SPLITS ON STORAGE ALONE since 2026-09-04. The complex-storage m = 0
+        # m = 0 splits on storage alone since 2026-09-04. The complex-storage m = 0
         # triple is this family's third m_class arm and is ADMITTED -- built by this
         # family's own builder, so the electric product's material and the seam's
         # own fixture shape are the ones the sweep uses; the REAL-storage m = 0
@@ -3949,12 +3949,12 @@ def leg_refusal(family: Dict[str, Any]) -> Dict[str, Any]:
 class _PointSource:
     """A point source at a declared index -- the shape the repair can invert.
 
-    NOT A MOCK OF THE ENGINE'S SOURCE CLASS: it publishes exactly the three attributes
+    Not a mock of the engine's source class: it publishes exactly the three attributes
     ``deposit_repair._deposit_index`` reads and injects exactly the way the driver
     does (``source.inject(fields, time)``), so the repair sees the same thing it sees
     in a real run.
 
-    ``field_type`` IS AN ARGUMENT AND NOT A CLASS CONSTANT, because it is what decides
+    ``field_type`` is an argument and not a class constant, because it is what decides
     which seam the source is in: ``deposit_repair._in_seam_indexed`` reads it, and a
     magnetic source handed to the electric seam is simply not in it -- so a leg built
     on the wrong letter would run a clean seam and report the null control as failing
@@ -3978,8 +3978,8 @@ class _PointSource:
 class _SheetSource:
     """A MULTI-CELL deposit publishing index ARRAYS with per-cell amplitudes.
 
-    THE FLAG-FLIP PREMISE, CARRIED ONTO THE DEVICE LEG: the 2026-09-02 residue
-    round flipped two CARRIES_DEPOSIT_REPAIR flags after re-measuring that the
+    The flag-flip premise, carried onto the device leg: a 2026-09-02 change
+    flipped two CARRIES_DEPOSIT_REPAIR flags after re-measuring that the
     lifted eigenmode sources deposit through equivalent-current SHEETS whose
     source objects publish ``_point_ix/_point_iy/_point_iz`` as flat index
     columns with per-cell amps (``sources._setup_source_points``; the
@@ -4045,19 +4045,19 @@ def leg_deposit(family: Dict[str, Any], spec: Dict[str, Any], steps: int,
                 repaired: bool = True) -> Dict[str, Any]:
     """A real in-seam source in THIS family's seam, carried by the two repair plans.
 
-    THE DRIVER INJECTS BETWEEN THE TWO HALVES -- a magnetic source at driver.py:3293
+    The driver injects between the two halves -- a magnetic source at driver.py:3293
     and an electric one at :3305/:3308 -- so the fused launch computes the constitutive
     half against a pre-injection flux density. The repair saves the deposit's closure
     immediately before the launch and recomputes the constitutive result after the
     driver has injected and cleared walls, which is the only point at which the
     injected field is final and the launch's pre-injection accumulation is still known.
 
-    THE INJECTION INSTANT IS PART OF THE SEAM AND NOT A DETAIL. The electric seam
+    The injection instant is part of the seam and not a detail. The electric seam
     injects at ``when + 0.5*dt`` (driver.py:3303) and the magnetic one at ``when``; a
     leg that used one instant for both would compare two different runs and could pass
     only by cancelling its own error.
 
-    ``repaired=False`` IS THE NULL CONTROL AND MUST DIVERGE. A leg whose control also
+    ``repaired=False`` is the null control and must diverge. A leg whose control also
     passed would mean the repair was doing nothing and the seam had no deposit in it.
     """
     started = time.time()
@@ -4072,16 +4072,16 @@ def leg_deposit(family: Dict[str, Any], spec: Dict[str, Any], steps: int,
     actual, grid, pml, _ = family["build"](spec, "uniform", case_rng(label))
     names = state_names_for(family, reference)
     shape = tuple(int(n) for n in grid.shape)
-    # THREE SOURCES, AND THE SPLIT IS THE POINT.
+    # Three sources, and the split is the point.
     #
-    # ONE LANDS WHERE THE WALL CLEAR WRITES. That is the one asymmetry between the
+    # One lands where the wall clear writes. That is the one asymmetry between the
     # fused route and the driver's -- the kernel clears BEFORE the injection and the
     # driver AFTER it -- and a deposit sweep that avoided the wall could not see it.
     # The component is THIS SEAM'S: on the B side the table is the DIAGONAL, so Bx is
     # wiped at stored cell 0 of a walled x axis; on the D side it is the OFF-DIAGONAL
     # complement, so the component the x wall clears is Dy, never Dx.
     #
-    # TWO LAND WHERE NO WALL CLEARS, and they are what makes the NULL CONTROL able to
+    # Two land where no wall clears, and they are what makes the null control able to
     # diverge at all. Measured 2026-08-30 before this note was written: with both
     # deposits on cleared cells the un-repaired control was BIT-IDENTICAL, because the
     # driver's own wall clear destroys the deposit before the constitutive half ever
@@ -4093,9 +4093,9 @@ def leg_deposit(family: Dict[str, Any], spec: Dict[str, Any], steps: int,
     off_z = min(1, shape[2] - 1)
     on_wall, off_wall_a, off_wall_b = (
         ("Bx", "Bx", "Bz") if seam == "B" else ("Dy", "Dy", "Dz"))
-    # AMPLITUDES FOLLOW THE STORAGE, exactly as leg_source_refusal's do: a
+    # Amplitudes follow the storage, exactly as leg_source_refusal's do: a
     # complex amplitude into a float32 volume is a cast error, not a deposit --
-    # and the residue round put REAL families on this leg for the first time.
+    # and the 2026-09-02 change put REAL families on this leg for the first time.
     is_complex = bool(np.iscomplexobj(to_host(getattr(actual, "Bx"))))
 
     def _amp(re, im):
@@ -4107,7 +4107,7 @@ def leg_deposit(family: Dict[str, Any], spec: Dict[str, Any], steps: int,
                             _amp(-0.19, 0.27)),
                _PointSource(seam, off_wall_b, (off_x, off_y, off_z),
                             _amp(-0.23, 0.4))]
-    # THE SHEET DEPOSIT, where the family declares one: the flag-flip premise
+    # The sheet deposit, where the family declares one: the flag-flip premise
     # (index ARRAYS, per-cell amps) carried as a device measurement rather
     # than a host argument. Recorded per leg so the artifact shows the
     # multi-cell footprint that ran.
@@ -4189,7 +4189,7 @@ def leg_source_refusal(family: Dict[str, Any], spec: Dict[str, Any], steps: int)
     """What :func:`leg_deposit` proves for a product that DOES carry the repair,
     proved for one that deliberately does not.
 
-    ``CARRIES_DEPOSIT_REPAIR = False`` IS A MEASUREMENT ON THIS PRODUCT'S BOARD CELL --
+    ``CARRIES_DEPOSIT_REPAIR = False`` is a measurement on this product's board cell --
     all four of its corpus rows declare a MAGNETIC source and nothing in the D seam --
     and the flag is only SOUND if two things hold, both of which are measured here
     rather than argued:
@@ -4204,7 +4204,7 @@ def leg_source_refusal(family: Dict[str, Any], spec: Dict[str, Any], steps: int)
        a deposit leg's ``repaired=False`` control exists to prevent on the products
        that carry one.
 
-    AND A MAGNETIC SOURCE IS ADMITTED, which is what makes the product serve its cell
+    And a magnetic source is admitted, which is what makes the product serve its cell
     at all: the driver injects it one seam earlier (driver.py:3293) and it is not in
     this seam. Recorded beside the refusal so a reader can see the predicate
     distinguishing rather than refusing everything.
@@ -4224,7 +4224,7 @@ def leg_source_refusal(family: Dict[str, Any], spec: Dict[str, Any], steps: int)
     names = state_names_for(family, reference)
     shape = tuple(int(n) for n in grid.shape)
     off = tuple(min(1, n - 1) for n in shape)
-    # THE SEAM'S OWN LETTER DECIDES WHICH SOURCES ARE IN IT -- this leg served
+    # The seam's own letter decides which sources are in it -- this leg served
     # the D seam alone until the residual B-side families landed, and a B-side
     # run of the electric spelling would have run a CLEAN seam and reported the
     # divergence floor as a defect. Amplitudes follow the storage: a complex
@@ -4328,9 +4328,9 @@ def compile_source(source: str, name: str, options: Sequence[str]):
     return cp.RawKernel(source, name, options=tuple(options))
 
 
-### THE MUTATIONS, EACH WITH AN EXPECTATION AND A LIVENESS
+### The mutations, each with an expectation and a liveness
 #
-# "EVERY MUTATION MUST BE CAUGHT EVERYWHERE" IS FALSE BY CONSTRUCTION HERE, and the
+# "Every mutation must be caught everywhere" is false by construction here, and the
 # first full run measured exactly which legs it is false for: a wall mutation on an
 # unwalled grid changes no byte, and the seam's own register hand-off is a PURE
 # OPTIMISATION whose whole claim is that reading the word back from global memory
@@ -4375,7 +4375,7 @@ def _walls_and_codes_can_differ(family: Dict[str, Any],
                                 spec: Dict[str, Any]) -> bool:
     """Can ``zero_metal_axes`` and the curl's boundary codes disagree here?
 
-    THE ANSWER IS DIFFERENT ON THE TWO FAMILIES, and the first run measured it after
+    The answer is different on the two families, and the first run measured it after
     this function had declared one answer for both.
 
     * Cartesian complex: NO. ``zero_metal_axes`` is ``is_metallic and not
@@ -4394,7 +4394,7 @@ def _walls_and_codes_can_differ(family: Dict[str, Any],
       row 0 of all three components before the wall clear runs. Wiping a row that is
       already zero changes no word. At |m| = 1 the tail does not run at all
       (``m_class`` is 1 and ``zero_rows`` is 0), which is what leaves the leg live.
-    * Dcyl at m = 0 (2026-09-04): DIFFERENT PER SEAM, and the first device run of the
+    * Dcyl at m = 0 (2026-09-04): different per seam, and the first device run of the
       m = 0 arm measured it. On the B seam the m = 0 tail zeroes Br on the axis row
       and a spurious r wall wipes exactly Br there (the DIAGONAL table) -- a row
       already zero, so the leg is inert. On the D seam the tail zeroes Dp and
@@ -4417,8 +4417,8 @@ def _codes_all_periodic_is_live(family: Dict[str, Any],
                                 spec: Dict[str, Any]) -> bool:
     """Where does dropping the metallic ghost rule from the curl's stencil MOVE a word?
 
-    THREE ANSWERS, AND THE THIRD WAS MEASURED BY THE FIRST DEVICE RUN OF THE ELECTRIC
-    FAMILIES rather than reasoned to. This leg used to read "live on every Dcyl fixture,
+    Three answers, and the third was measured by the first device run of the electric
+    families rather than reasoned to. This leg used to read "live on every Dcyl fixture,
     wall or no wall", which is true of the B seam and false of the D seam, and it scored
     UNCAUGHT on ``m3_accurate`` -- correctly, because the mutation there really does
     change no word.
@@ -4430,7 +4430,7 @@ def _codes_all_periodic_is_live(family: Dict[str, Any],
       through ``cshift_up``, whose bc branch is taken at the TOP row (``ia + 1 == na``,
       complex_emitter's ``_TAIL``). No axis tail ever writes that row, so the change
       survives at every |m|.
-    * **Dcyl, ELECTRIC seam** -- live only where z is walled (since the 0.10 per-chunk
+    * **Dcyl, ELECTRIC seam** -- live only where z is walled (since the 1.0 per-chunk
       forms; below, the reading before them). ``step_D``
       reads bc_x through ``cshift_dn``, whose bc branch is taken at ROW 0
       (``ia > 0`` fails), and both of its own ``bc_x == BC_METALLIC`` masks are
@@ -4441,18 +4441,18 @@ def _codes_all_periodic_is_live(family: Dict[str, Any],
       builder: m = 2 gives 2, m = 2 accurate 1, m = 3 accurate 1, m = -2 gives 2), so
       the mutated row is overwritten with exact zero before anything reads it. At
       |m| = 1 the tail zeroes Dz at row 0 ALONE (:588), leaving Dx and Dy to carry it.
-      SINCE THE PER-CHUNK FORMS the r-axis change is unobservable at every m (MEASURED
-      UNCAUGHT on the periodic-z m = 0 and |m| = 1 fixtures, device, keep): Dx reads no
+      Since the per-chunk forms the r-axis change is unobservable at every m (measured
+      uncaught on the periodic-z m = 0 and |m| = 1 fixtures, device, keep): Dx reads no
       r neighbour (its phi partner is absent and its z partner is a z shift); Dy's
       row-0 curl reaches only its own row 0, which the m = 0 rule stores +0, the
       |m| = 1 axis increment replaces and the |m| >= 2 rule zeroes, and no auxiliary
-      is touched on that row (no r layer there; the auxiliary contract, C2); Dz's
+      is touched on that row (no r layer there; the auxiliary contract); Dz's
       curl is the radial difference, whose row 0 no segment writes. Only a z wall's
       code is read where it shows.
 
     * **The real beta D seam (2-D)** -- live where x is walled or y is folded with a
-      PERIODIC termination, MEASURED on MEEP's per-chunk forms (bit_parity_0_10 lane
-      KC7). On the D seam a code enters through ``shift_dn``'s near face (row 0) and
+      Periodic termination, measured on MEEP's per-chunk forms (since
+      1.0). On the D seam a code enters through ``shift_dn``'s near face (row 0) and
       through the masks it keys (row 0 of a metallic axis, the far-ghost row of a
       periodic fold); forced periodic, those rows' curls run, and since the wall pass
       and the fills rewrite their f words a change survives only in an AUXILIARY. A y
@@ -4545,7 +4545,7 @@ HOST_MUTATIONS: Tuple[Dict[str, Any], ...] = (
             "zero_metal_axes, so the leg wipes a plane of Br on every row."},
     {"name": "codes_all_periodic", "expect": "caught_where_live",
      "live": _codes_all_periodic_is_live,
-     # NOT LIVE ANYWHERE ON THE NO-ABSORBER FAMILY, and that is a REFUSAL rather
+     # Not live anywhere on the no-absorber family, and that is a REFUSAL rather
      # than a gap in its fixture table: that product declines every metallic run
      # by name, so no admitted grid carries a metallic code for this leg to drop
      # and no fixture could be built that does. The leg still RUNS on every one of
@@ -4583,7 +4583,7 @@ HOST_MUTATIONS: Tuple[Dict[str, Any], ...] = (
             "B feeding update_H. Inert on a grid with no wall."},
     # ------------------------------------------- the NO-ABSORBER family's own legs
     #
-    # THREE LEGS THAT EXIST NOWHERE ELSE IN THIS FILE, because they arm the two things
+    # Three legs that exist nowhere else in this file, because they arm the two things
     # this product has that no sibling does: a curl half that ships TWO kernels, and a
     # POLE BANK. Neither is reachable through the four legs above -- that product has
     # no coefficient table to swap and no wall flags to rotate -- so a sweep that
@@ -4623,11 +4623,11 @@ HOST_MUTATIONS: Tuple[Dict[str, Any], ...] = (
 def _host_patch(family: Dict[str, Any], name: str, pml: Any) -> Callable[[Dict[str, Any], Any], Dict[str, Any]]:
     """One host-side defect, armed through the shipped launcher's own doors.
 
-    THE TWO SUB-LATTICE SWAPS ARE DERIVED FROM THE FAMILY, never typed, and the first
+    The two sub-lattice swaps are derived from the family, never typed, and the first
     device run of the electric families is why. Until 2026-08-31 this function handed
     the constitutive group ``half_integer=True`` and the curl group ``False`` -- which
     IS the swap on the B/H seam, where the curl reads HALF-INTEGER and ``update_H``
-    INTEGER. THE D/E PAIRING IS THE MIRROR IMAGE, so on the two electric families those
+    INTEGER. The D/E pairing is the mirror image, so on the two electric families those
     same two constants are the SHIPPED tables: the mutation changed no byte, both legs
     scored UNCAUGHT, and the run reported a defect this gate could not see when what it
     had actually done was arm nothing. The shipped sub-lattice is now read from
@@ -4642,7 +4642,7 @@ def _host_patch(family: Dict[str, Any], name: str, pml: Any) -> Callable[[Dict[s
 
     def patch(arguments: Dict[str, Any], grid: Any) -> Dict[str, Any]:
         out = dict(arguments)
-        # THE TABLE COPY IS MADE ONLY WHERE A LEG NEEDS ONE. A product with no
+        # The table copy is made only where a leg needs one. A product with no
         # absorber binds no coefficient vector and its resolver returns no ``tables``
         # key at all, so copying unconditionally would raise before the branch that
         # decides whether this leg is even about a table.
@@ -4666,8 +4666,8 @@ def _host_patch(family: Dict[str, Any], name: str, pml: Any) -> Callable[[Dict[s
             out["boundary_codes"] = tuple(type(c)(0)
                                           for c in arguments["boundary_codes"])
         elif name == "wrong_curl_arm":
-            # THE OTHER ARM, and on this family it is a different KERNEL rather than a
-            # different expansion of one. ONE DIRECTION ONLY, deliberately: a lossless
+            # The other arm, and on this family it is a different KERNEL rather than a
+            # different expansion of one. One direction only, deliberately: a lossless
             # fixture has no conductivity volumes to bind, so asking for the conductive
             # weld there would be a crash rather than a defect. Leaving it alone arms
             # the IDENTITY, which is what the leg's liveness declares -- it is not live
@@ -4679,7 +4679,7 @@ def _host_patch(family: Dict[str, Any], name: str, pml: Any) -> Callable[[Dict[s
         elif name == "pole_counts_zeroed":
             out["poles_mutation"] = "zero"
         elif name == "swap_constitutive_sublattice_real":
-            # DERIVED, NOT TYPED -- the same lesson the complex branch's
+            # Derived, not typed -- the same lesson the complex branch's
             # docstring records: on the B seam the shipped constitutive is
             # INTEGER so the swap hands half-integer, and on the D seam
             # (the 2026-09-02 electric twins) it is the mirror image.
@@ -4710,10 +4710,10 @@ def _host_patch(family: Dict[str, Any], name: str, pml: Any) -> Callable[[Dict[s
 
 
 DEVICE_MUTATIONS: Tuple[Dict[str, Any], ...] = (
-    # ------------------------------------------------ the chunk forms, 0.10
+    # ------------------------------------------------ the chunk forms, 1.0
     #
-    # THE TWO INVERTED GROUPINGS (KERNELS.md section 7.1) AND THE SECTION 7.2 B
-    # BATTERY, on the four families whose halves are the chunk-form, part-wise ones.
+    # The two inverted groupings and the per-chunk form battery (certification.md),
+    # on the four families whose halves are the chunk-form, part-wise ones.
     # Every needle below occurs exactly once in each of the four emitted sources
     # (counted before it was written down).
     {"name": "old_package_curl_grouping",
@@ -4734,38 +4734,38 @@ DEVICE_MUTATIONS: Tuple[Dict[str, Any], ...] = (
      "old": "    cf fprev = dsigu ? cf_load(fu, idx) : cf_zero();",
      "new": "    dsigu = 1;\n    cf fprev = dsigu ? cf_load(fu, idx) : cf_zero();",
      "family": ("complex", "complex_electric", "complex_folded", "folded_complex_electric"), "expect": "caught",
-     "why": "KERNELS.md section 7.2: the whole-grid recurrence on every cell of the "
+     "why": "Per-chunk form battery: the whole-grid recurrence on every cell of the "
             "curl half, the form the family stepped before the chunk forms."},
     {"name": "select_removed_constitutive",
      "old": "    cf prev = dsigw ? cf_load(fw, idx) : cf_zero();",
      "new": "    dsigw = 1;\n    cf prev = dsigw ? cf_load(fw, idx) : cf_zero();",
      "family": ("complex", "complex_electric", "complex_folded", "folded_complex_electric"), "expect": "caught",
-     "why": "KERNELS.md section 7.2: the whole-grid accumulation on every cell of the "
+     "why": "Per-chunk form battery: the whole-grid accumulation on every cell of the "
             "constitutive half."},
     {"name": "auxiliary_stored_on_a_plain_cell_curl",
      "old": "    if (dsigu) cf_store(fu, idx, fu_new);",
      "new": "    cf_store(fu, idx, fu_new);",
      "family": ("complex", "complex_electric", "complex_folded", "folded_complex_electric"), "expect": "caught",
-     "why": "KERNELS.md section 7.2: fu is untouched on a plain cell (the auxiliary "
+     "why": "Per-chunk form battery: fu is untouched on a plain cell (the auxiliary "
             "contract), and every auxiliary is compared."},
     {"name": "auxiliary_stored_on_a_plain_cell_constitutive",
      "old": "    if (dsigw) cf_store(fw, idx, src);",
      "new": "    cf_store(fw, idx, src);",
      "family": ("complex", "complex_electric", "complex_folded", "folded_complex_electric"), "expect": "caught",
-     "why": "KERNELS.md section 7.2: f_w is untouched on a plain cell."},
+     "why": "Per-chunk form battery: f_w is untouched on a plain cell."},
     {"name": "auxiliary_load_unguarded_curl",
      "old": "    cf fprev = dsigu ? cf_load(fu, idx) : cf_zero();",
      "new": "    cf fprev = cf_load(fu, idx);",
      "family": ("complex", "complex_electric", "complex_folded", "folded_complex_electric"), "expect": "inert",
-     "why": "A DECLARED NULL (KERNELS.md section 7.2): the loaded word feeds only the "
+     "why": "A DECLARED NULL (per-chunk form battery): the loaded word feeds only the "
             "layered form, so no stored word changes."},
     {"name": "auxiliary_load_unguarded_constitutive",
      "old": "    cf prev = dsigw ? cf_load(fw, idx) : cf_zero();",
      "new": "    cf prev = cf_load(fw, idx);",
      "family": ("complex", "complex_electric", "complex_folded", "folded_complex_electric"), "expect": "inert",
-     "why": "A DECLARED NULL (KERNELS.md section 7.2): the loaded word feeds only the "
+     "why": "A DECLARED NULL (per-chunk form battery): the loaded word feeds only the "
             "layered form."},
-    # THE SAME BATTERY ON THE FOUR CYLINDRICAL FAMILIES. The complex pairs lift the
+    # The same battery on the four cylindrical families. The complex pairs lift the
     # register-view helpers (pml_apply_reg_pre, constitutive_apply_pre), so their
     # select and constitutive spellings are their own; the real pairs call the root's
     # certified helpers. Every needle below occurs exactly once in each source it
@@ -4788,23 +4788,23 @@ DEVICE_MUTATIONS: Tuple[Dict[str, Any], ...] = (
      "old": "    cf fprev, cf fcur\n) {\n",
      "new": "    cf fprev, cf fcur\n) {\n    dsigu = 1;\n",
      "family": ("cylindrical", "cylindrical_electric"), "expect": "caught",
-     "why": "KERNELS.md section 7.2: the recurrence on every cell of the curl half."},
+     "why": "Per-chunk form battery: the recurrence on every cell of the curl half."},
     {"name": "select_removed_constitutive_cyl",
      "old": "    cf prev, cf fcur, float kps, float kms, int dsigw\n) {\n",
      "new": "    cf prev, cf fcur, float kps, float kms, int dsigw\n) {\n    dsigw = 1;\n",
      "family": ("cylindrical", "cylindrical_electric"), "expect": "caught",
-     "why": "KERNELS.md section 7.2: the accumulation on every cell of the "
+     "why": "Per-chunk form battery: the accumulation on every cell of the "
             "constitutive half."},
     {"name": "auxiliary_stored_on_a_plain_cell_curl_cyl",
      "old": "    if (dsigu) cf_store(fu, idx, fu_new);",
      "new": "    cf_store(fu, idx, fu_new);",
      "family": ("cylindrical", "cylindrical_electric"), "expect": "caught",
-     "why": "C2: fu is written only on the recurrence's cells."},
+     "why": "The auxiliary contract: fu is written only on the recurrence's cells."},
     {"name": "auxiliary_stored_on_a_plain_cell_constitutive_cyl",
      "old": "    if (dsigw) cf_store(fw, idx, src);",
      "new": "    cf_store(fw, idx, src);",
      "family": ("cylindrical", "cylindrical_electric"), "expect": "caught",
-     "why": "C2: f_w is written only on the component's own dsigw cells."},
+     "why": "The auxiliary contract: f_w is written only on the component's own dsigw cells."},
     {"name": "old_package_curl_grouping_real_cyl",
      "old": "dtdx * (((sf - f1) + f2) - ss)",
      "new": "dtdx * ((sf - f1) + (f2 - ss))",
@@ -4821,28 +4821,28 @@ DEVICE_MUTATIONS: Tuple[Dict[str, Any], ...] = (
      "old": "    float fprev = dsigu ? fu[idx] : 0.0f;",
      "new": "    dsigu = 1;\n    float fprev = dsigu ? fu[idx] : 0.0f;",
      "family": ("cylindrical_real", "cylindrical_real_electric"), "expect": "caught",
-     "why": "KERNELS.md section 7.2: the whole-grid recurrence on the curl half."},
+     "why": "Per-chunk form battery: the whole-grid recurrence on the curl half."},
     {"name": "select_removed_constitutive_real_cyl",
      "old": "    float prev = dsigw ? fw[idx] : 0.0f;",
      "new": "    dsigw = 1;\n    float prev = dsigw ? fw[idx] : 0.0f;",
      "family": ("cylindrical_real", "cylindrical_real_electric"), "expect": "caught",
-     "why": "KERNELS.md section 7.2: the whole-grid accumulation on the constitutive "
+     "why": "Per-chunk form battery: the whole-grid accumulation on the constitutive "
             "half."},
     {"name": "auxiliary_stored_on_a_plain_cell_curl_real_cyl",
      "old": "    if (dsigu) fu[idx] = fu_new;",
      "new": "    fu[idx] = fu_new;",
      "family": ("cylindrical_real", "cylindrical_real_electric"), "expect": "caught",
-     "why": "C2: fu is written only on the recurrence's cells."},
+     "why": "The auxiliary contract: fu is written only on the recurrence's cells."},
     {"name": "auxiliary_stored_on_a_plain_cell_constitutive_real_cyl",
      "old": "    if (dsigw) fw[idx] = src;",
      "new": "    fw[idx] = src;",
      "family": ("cylindrical_real", "cylindrical_real_electric"), "expect": "caught",
-     "why": "C2: f_w is written only on the component's own dsigw cells."},
+     "why": "The auxiliary contract: f_w is written only on the component's own dsigw cells."},
     {"name": "auxiliary_load_unguarded_curl_real_cyl",
      "old": "    float fprev = dsigu ? fu[idx] : 0.0f;",
      "new": "    float fprev = fu[idx];",
      "family": ("cylindrical_real", "cylindrical_real_electric"), "expect": "inert",
-     "why": "KERNELS.md section 7.2, a DECLARED NULL: off the dsigu cells the loaded "
+     "why": "Per-chunk form battery, a DECLARED NULL: off the dsigu cells the loaded "
             "word feeds only fu_new, which is neither stored nor selected there."},
     {"name": "sublattice_shadow_real_cyl",
      "old": "kms_int_x[i], in_i_x);",
@@ -4907,7 +4907,7 @@ DEVICE_MUTATIONS: Tuple[Dict[str, Any], ...] = (
             "displacement there. Live at m = 0 only: the guard never runs at "
             "|m| >= 1."},
     {"name": "axis_tail_not_carried",
-     "old": "b0 = cf_zero(); cf_store(Bx, idx, b0);   // THE AXIS TAIL, CARRIED",
+     "old": "b0 = cf_zero(); cf_store(Bx, idx, b0);   // The axis tail, carried",
      "new": "cf_store(Bx, idx, cf_zero());",
      "family": ("cylindrical",), "expect": "caught_where_live",
      "live": lambda family, spec: abs(int(spec["m"])) >= 2,
@@ -4923,7 +4923,7 @@ DEVICE_MUTATIONS: Tuple[Dict[str, Any], ...] = (
      "why": "the half-cell error the kms_int rename exists to prevent, planted in "
             "the DEVICE text rather than in the binding."},
     {"name": "constitutive_reads_curl_sublattice_electric",
-     # THE SAME COLLISION, SPELLED THE OTHER WAY. On the D seam the CURL reads the
+     # The same collision, spelled the other way. On the D seam the CURL reads the
      # INTEGER vector and update_E the HALF-INTEGER one, so the rename that resolves
      # it is `kms_half_*` rather than `kms_int_*` -- the mirror image of the B/H
      # pairing, and a leg that reused the B spelling would needle nothing here.
@@ -4952,7 +4952,7 @@ DEVICE_MUTATIONS: Tuple[Dict[str, Any], ...] = (
 
     # ---------------------------------------------------------------- the D seam
     #
-    # EVERY ONE OF THESE IS ITS OWN LEG RATHER THAN A SHARED SPELLING, and that is
+    # Every one of these is its own leg rather than a shared spelling, and that is
     # forced rather than tidy: the two electric kernels name their carried registers
     # `d*` where the magnetic ones name them `b*`, the wall table they carry is the
     # OFF-DIAGONAL complement so the block a needle has to find holds TWO stores, and
@@ -5011,7 +5011,7 @@ DEVICE_MUTATIONS: Tuple[Dict[str, Any], ...] = (
      "live": lambda family, spec: bool(_spec_walls(family, spec)[2]),
      "why": "the same rotation on the one axis a Dcyl run can wall."},
     {"name": "axis_tail_m2_not_carried_electric",
-     # ANCHORED AS A WHOLE LINE WITH ITS INDENTATION: the same statement appears
+     # Anchored as a whole line with its indentation: the same statement appears
      # inline inside two zero_metal blocks, and only the tail spells it on its own
      # eight-space line.
      "old": "\n        d0 = cf_zero(); cf_store(Dx, idx, d0);\n",
@@ -5023,7 +5023,7 @@ DEVICE_MUTATIONS: Tuple[Dict[str, Any], ...] = (
             "update_E the pre-zeroing displacement on rows [0:zero_rows]."},
     {"name": "axis_tail_m0_not_carried_electric",
      "old": ("if (m_class == 0 && i == 0) {\n"
-             "        // THE AXIS RULE, CARRIED: d2 holds the word this lane stored for Dz.\n"
+             "        // The axis rule, carried: d2 holds the word this lane stored for Dz.\n"
              "        d2 = cf_add(d2, double_product(four_courant, cf_load(Hy, idx)));\n"
              "        cf_store(Dz, idx, d2);\n"
              "        d1 = cf_zero(); cf_store(Dy, idx, d1);\n    }"),
@@ -5045,7 +5045,7 @@ DEVICE_MUTATIONS: Tuple[Dict[str, Any], ...] = (
      "why": "the m = 0 on-axis Dz post-add (stepping._cylindrical_axis_zero_D) removed outright -- the "
             "|m| >= 1 kernel's tail wearing the m = 0 label. Live at m = 0 only."},
     {"name": "axis_tail_m1_not_carried_electric",
-     # THE BRANCH THE B SIDE DOES NOT HAVE. stepping._cylindrical_axis_zero_D zeroes
+     # The branch the B side does not have. stepping._cylindrical_axis_zero_D zeroes
      # Dz on the axis row at |m| = 1 -- the FIELD ONLY, never fu_Dz (:588) -- where
      # _cylindrical_axis_zero_B does nothing at all. A port of the magnetic family
      # would carry one branch and silently drop this one.
@@ -5058,7 +5058,7 @@ DEVICE_MUTATIONS: Tuple[Dict[str, Any], ...] = (
      "why": "THE |m| = 1 BRANCH, UNCARRIED, and the one this family adds over its "
             "magnetic twin. Live at |m| = 1 only: at |m| >= 2 the guard never runs."},
     {"name": "inverse_permittivity_binding_rotated",
-     # THE THREE POINTERS THIS SIGNATURE BINDS THAT THE MAGNETIC ONE DOES NOT, and
+     # The three pointers this signature binds that the magnetic one does not, and
      # the reason the electric fixtures carry an anisotropic material at all: on a
      # vacuum fixture all three are one allocation of ones and this leg is inert.
      "old": "s0 = mul_field_left(s0, inv_eps_0[idx]);",
@@ -5072,7 +5072,7 @@ DEVICE_MUTATIONS: Tuple[Dict[str, Any], ...] = (
 
     # -------------------------------------------------------- the NO-ABSORBER weld
     #
-    # EVERY NEEDLE HERE IS ITS OWN, and none is shared with the four PML legs above,
+    # Every needle here is its own, and none is shared with the four PML legs above,
     # because none of that text exists in this kernel: it carries no ``kms``, no
     # ``sinv``, no ``fu``, no wall block and no ``s0`` temporary. What it carries
     # instead -- the register hand-off through ``minus_poles_reg``, the eight guarded
@@ -5092,7 +5092,7 @@ DEVICE_MUTATIONS: Tuple[Dict[str, Any], ...] = (
             "DIVERGENCE HERE WOULD MEAN THE WELD CHANGED THE ARITHMETIC, which is "
             "exactly what LIFT_EDITS says it does not."},
     {"name": "poles_pre_summed_no_pml",
-     # THE FIRST TWO GUARDED SUBTRACTIONS, TURNED INTO A PRE-SUM. Anchored on both
+     # The first two guarded subtractions, turned into a pre-sum. Anchored on both
      # lines together so the needle cannot attach to one guard and leave the other.
      "old": ("    if (np > 0) s = cf_sub(s, cf_load(p0, idx));\n"
              "    if (np > 1) s = cf_sub(s, cf_load(p1, idx));\n"),
@@ -5106,14 +5106,14 @@ DEVICE_MUTATIONS: Tuple[Dict[str, Any], ...] = (
             "the reason minus_poles subtracts one contributor at a time in "
             "REGISTRATION ORDER. Live at two poles only: with one pole the mutated "
             "branch computes the same single subtraction, and with none neither runs."},
-    # THE CURL HALF'S TWO FORMS (bit_parity_0_10 KERNELS.md sections 7.1 and 7.2), on
+    # The curl half's two forms (the inverted grouping and the form battery), on
     # the lifted ``curl_stencil`` the certified prelude carries once.
     {"name": "curl_regrouped_to_the_old_package_order_no_pml",
      "old": "cf_sub(cf_add(cf_sub(sf, f1), f2), ss)",
      "new": "cf_add(cf_sub(sf, f1), cf_sub(f2, ss))",
      "family": ("no_pml_complex_electric",), "expect": "caught_where_live",
      "live": lambda family, spec: int(spec.get("dimensions", 3)) >= 2,
-     "why": "INVERTED (KERNELS.md section 7.1): the previous package grouping of the "
+     "why": "INVERTED (must be caught): the previous package grouping of the "
             "curl bracket, (g1s - g1) + (g2 - g2s), where MEEP brackets "
             "((g1s - g1) + g2) - g2s. A different float32 number on almost every "
             "cell whose component has both partners -- every component of a 3-D grid, "
@@ -5125,7 +5125,7 @@ DEVICE_MUTATIONS: Tuple[Dict[str, Any], ...] = (
             "sf, f1), f2), ss));",
      "family": ("no_pml_complex_electric",), "expect": "caught_where_live",
      "live": lambda family, spec: int(spec.get("dimensions", 3)) < 3,
-     "why": "KERNELS.md section 7.2 (C5, partner presence): the full bracket taken "
+     "why": "Partner presence (docs/design/floating-point.md#partner-presence): the full bracket taken "
             "over a partner whose derivative axis is invariant. MEEP forms the "
             "one-partner curl there, and (a + g2) - g2 rounds where a does not. Live "
             "only on a grid with an invariant axis (the 2-D and 1-D fixtures); on a "
@@ -5155,7 +5155,7 @@ DEVICE_MUTATIONS: Tuple[Dict[str, Any], ...] = (
             "the PLAIN variant only: the conductive weld reaches its subtraction "
             "through conductive_apply_reg and the needle has no site there."},
     {"name": "inverse_permittivity_binding_rotated_no_pml",
-     # THE SAME DEFECT AS THE PML SIBLINGS' AND A DIFFERENT NEEDLE, because this
+     # The same defect as the PML siblings' and a different needle, because this
      # kernel stores through `h*` and multiplies inside the `cf_store` rather than
      # through an `s0` temporary.
      "old": "        inv_eps_0[idx]));", "new": "        inv_eps_1[idx]));",
@@ -5178,7 +5178,7 @@ DEVICE_MUTATIONS: Tuple[Dict[str, Any], ...] = (
             "rename resolves is the harmless half only because the rename is there."},
     # --------------------------- the cf fill carry's own needles, 2026-09-02
     #
-    # EVERY ONE IS SCORED ONLY WHERE THE PASS IT BREAKS IS LIVE, exactly as the
+    # Every one is scored only where the pass it breaks is live, exactly as the
     # real pair's catalog scores its fills; the liveness reads the SPEC's own
     # fold declaration. The needles anchor component-specific emitted lines, so
     # a moved emitter fails as NEEDLE MISSED rather than arming nothing.
@@ -5249,7 +5249,7 @@ DEVICE_MUTATIONS: Tuple[Dict[str, Any], ...] = (
      "old": "cf g0_yn_v = mul_coefficient_left(phase_x, b0);",
      "new": "cf g0_yn_v = b0;",
      "family": ("complex_folded", "complex_beta"), "expect": "caught_where_live",
-     # LIVE ONLY ON A TWO-PLANE FOLD, which only the folded family's sweep can
+     # Live only on a two-plane fold, which only the folded family's sweep can
      # build: a 2-D beta cell folded on BOTH in-plane axes has no axis left to
      # carry an active absorber, so on the beta family this leg is a permanent
      # null control -- the demand is narrowed to the family that can satisfy
@@ -5310,7 +5310,7 @@ DEVICE_MUTATIONS: Tuple[Dict[str, Any], ...] = (
      "new": "if (wall_y && j == 0) { By[idx] = 0.0f; }",
      "family": ("bfast",), "expect": "caught_where_live",
      "live": lambda family, spec: tuple(spec["boundaries"])[1] == "metallic",
-     # SCORED ON A MID-RUN STATE (bit_parity_0_10 lane KC7). Under MEEP's per-chunk
+     # SCORED ON A MID-RUN STATE (since 1.0). Under MEEP's per-chunk
      # forms the wall row of By is unowned and never written again once cleared, so the
      # register is nonzero only on the first step -- where the launcher's start of H
      # re-steps update_H on the array path over the cleared memory. A run past that
@@ -5467,12 +5467,12 @@ DEVICE_MUTATIONS: Tuple[Dict[str, Any], ...] = (
      "old": "kms_half_x[i]", "new": "kms_x[i]",
      "family": ("folded_complex_electric", "complex_beta_electric"),
      "expect": "caught_where_live",
-     # NARROWED 2026-09-02 FROM AN UNCONDITIONAL "caught", ON A MEASURED
-     # IDENTITY AND NOT ON A PREFERENCE. The first run of this leg reported it
+     # Narrowed 2026-09-02 from an unconditional "caught", on a measured
+     # identity and not on a preference. The first run of this leg reported it
      # UNCAUGHT on `fold_x_periodic` and `fold_xy_mixed_phase` -- and on those
-     # two fixtures, and only those, X IS THE FOLDED AXIS, which
+     # two fixtures, and only those, X is the folded axis, which
      # `build_folded_complex_pair` gives NO ABSORBER by construction
-     # ("THE FOLDED AXIS TAKES NO ABSORBER (its stored window ends at the
+     # ("the folded axis takes no absorber (its stored window ends at the
      # mirror)", :1481-1486). With no absorber on x the half-integer and
      # integer profiles ARE the same vector, so the shadow is the identity on
      # the bits -- there is no half cell to be wrong by. Declaring it live
@@ -5519,7 +5519,7 @@ DEVICE_MUTATIONS: Tuple[Dict[str, Any], ...] = (
      "new": "cf g1_y_v = mul_coefficient_left(phase_y, d1);",
      "family": ("folded_complex_electric", "complex_beta_electric"),
      "expect": "caught_where_live",
-     # NARROWED 2026-09-02 ON A MEASURED IDENTITY. The clause that stood here
+     # Narrowed 2026-09-02 on a measured identity. The clause that stood here
      # said this leg was "inert at phase +1 only at exact zeros", and that is
      # FALSE: `phase_y` is the plane's MIRROR PARITY, +1 or -1 and nothing else
      # (`complex_electric_fill_carry.fills_plan` packs
@@ -5560,7 +5560,7 @@ DEVICE_MUTATIONS: Tuple[Dict[str, Any], ...] = (
      "new": "cf g1_ynx_v = pre1;",
      "family": ("folded_complex_electric", "complex_beta_electric"),
      "expect": "caught_where_live",
-     # LIVE ONLY ON A TWO-PLANE FOLD with the near-x phase odd, which only the
+     # Live only on a two-plane fold with the near-x phase odd, which only the
      # folded family's sweep can build (a 2-D beta cell folded on both
      # in-plane axes has no axis left for an active absorber) -- the same
      # narrowing as the B family's composed leg.
@@ -5701,7 +5701,7 @@ def leg_carry_floor(family: Dict[str, Any], spec: Dict[str, Any], steps: int) ->
       fills SKIPPED -- what the seam would compute if nothing performed them.
 
     Both are compared against the driver's own order over ``steps`` complete
-    steps; the first divergent step is recorded. ON AN UNFOLDED FIXTURE both
+    steps; the first divergent step is recorded. On an unfolded fixture both
     are required INERT instead (the fills are no-ops there), which is what
     stops a degenerate plan from being scored where it means nothing.
     """
@@ -5747,7 +5747,7 @@ def leg_carry_floor(family: Dict[str, Any], spec: Dict[str, Any], steps: int) ->
     def _separate_without_fills(family, fields, grid, pml):
         """The certified singles and the wall pass; the two fills SKIPPED."""
         module_separate = family["separate"]
-        # A FAMILY MAY CARRY ITS OWN NO-FILLS ROUTE (the residue-round families
+        # A family may carry its own no-fills route (the families added 2026-09-02
         # do -- their certified pieces differ per curl), consulted before the
         # original two-family chain so those two stay byte-for-byte the code
         # the 2026-09-02 records ran.
@@ -5804,7 +5804,7 @@ def run_mutations(family: Dict[str, Any], specs: Sequence[Dict[str, Any]],
                   steps: int) -> List[Dict[str, Any]]:
     """Every mutation, armed on every fixture, and scored against its DECLARATION.
 
-    EVERY LEG IS RUN EVERYWHERE, including where it is declared not live: a leg that
+    Every leg is run everywhere, including where it is declared not live: a leg that
     is inert where it should be inert is a measurement, and a leg that MOVED A WORD
     where nothing should have moved is a defect this table would otherwise miss. What
     the liveness decides is the EXPECTATION, never whether the run happens.
@@ -5833,7 +5833,7 @@ def run_mutations(family: Dict[str, Any], specs: Sequence[Dict[str, Any]],
             f"{'' if passed else '  <-- LEG FAILED'}")
         return leg
 
-    # HOST LEGS ARE FAMILY-GATED, exactly as the device legs already were. Four of the
+    # Host legs are family-gated, exactly as the device legs already were. Four of the
     # seven arm a coefficient table or a wall flag that the no-absorber product does
     # not have, and three arm a curl arm and a pole bank that only it has -- so a
     # shared loop would have run four legs that patch a key nothing reads (an INERT
@@ -5848,7 +5848,7 @@ def run_mutations(family: Dict[str, Any], specs: Sequence[Dict[str, Any]],
                             patch=_host_patch(family, mutation["name"], pml),
                             label_suffix=f"|{mutation['name']}")
             legs.append(arm_leg(mutation, spec, case, {"kind": "host"}))
-    # DEVICE LEGS ARE COMPILED PER VARIANT, because a product may emit more than one
+    # Device legs are compiled per variant, because a product may emit more than one
     # kernel and a fixture drives exactly one of them. Compiling once against the
     # first variant and launching it on every fixture would hand a conductive run the
     # plain weld -- a wrong answer scored as if it were the mutation's.
@@ -5860,7 +5860,7 @@ def run_mutations(family: Dict[str, Any], specs: Sequence[Dict[str, Any]],
         missed: List[Any] = []
         for spec in specs:
             variant = variant_for_spec(family, spec)
-            # A LEG MAY DECLARE WHICH VARIANTS IT SCORES ON. The conductive tail's
+            # A leg may declare which variants it scores on. The conductive tail's
             # reassociation has no site in the plain weld, so a needle scored there
             # would report NEEDLE MISSED for a leg that is simply not about that
             # kernel -- which is a different statement from a needle that has gone
@@ -5896,7 +5896,7 @@ def run_mutations(family: Dict[str, Any], specs: Sequence[Dict[str, Any]],
                              f"that changed no byte scores nothing")})
             log(f"    mutation {mutation['name']} [{variant}]: NEEDLE MISSED")
 
-    # A ``caught_where_live`` LEG MUST HAVE BEEN LIVE SOMEWHERE -- checked here, over
+    # A ``caught_where_live`` leg must have been live somewhere -- checked here, over
     # the scored set, rather than left to a reader of the table. ``live_somewhere_on``
     # narrows that demand to the families where the leg CAN be live; a leg that is a
     # measured null control on the other family would otherwise have to be either
@@ -5930,7 +5930,7 @@ def run_mutations(family: Dict[str, Any], specs: Sequence[Dict[str, Any]],
 def save(results: Dict[str, Any], out_path: str) -> None:
     """Re-stamp and rewrite the artifact. Called after EVERY case, not at the end.
 
-    THE STAMP IS TAKEN HERE, at the write, rather than once at startup: every write
+    The stamp is taken here, at the write, rather than once at startup: every write
     site must record what the tree looked like when it was written, and an artifact
     rewritten twenty times from a stamp taken once would carry provenance for a tree
     the later writes did not run against. The temp-and-replace is what keeps an
@@ -5970,7 +5970,7 @@ def summarize(results: Dict[str, Any], steps: int) -> Dict[str, Any]:
             1 for c in cases if c.get("bit_identical")),
         "cases_weld_bit_identical": sum(
             1 for c in cases if c.get("weld_bit_identical")),
-        # THE TWO CLAIMS, KEPT APART. `weld_released` is this product's own: one
+        # The two claims, kept apart. `weld_released` is this product's own: one
         # launch reproduces, word for word, the certified sequence it replaces, on
         # every case and every operand class. `array_identity_released` is the full
         # claim, and it can only hold where the CERTIFIED HALVES themselves reproduce
@@ -5994,7 +5994,7 @@ def summarize(results: Dict[str, Any], steps: int) -> Dict[str, Any]:
             c.get("passed") for c in results.get("separate_controls", [])),
         "deposit_legs_passed": all(d.get("passed")
                                    for d in results.get("deposit", [])),
-        # THE COMPLEMENT LEG, and it is required to have RUN on a family that declares
+        # The complement leg, and it is required to have RUN on a family that declares
         # no repair. A product with CARRIES_DEPOSIT_REPAIR False and no source-refusal
         # leg would have neither half of the deposit question measured: not the carry
         # (it carries none) and not the refusal (nothing asked). ``None`` means the
@@ -6004,7 +6004,7 @@ def summarize(results: Dict[str, Any], steps: int) -> Dict[str, Any]:
             else bool(results.get("source_refusal")
                       and all(d.get("passed")
                               for d in results.get("source_refusal", [])))),
-        # THE CARRY FLOOR (fill-carrying families only): every folded fixture's
+        # The carry floor (fill-carrying families only): every folded fixture's
         # degenerate-carry and no-carry legs DIVERGED (a case where they do not
         # is vacuous and fails), every unfolded fixture's were inert, and at
         # least one folded fixture was scored.
@@ -6016,14 +6016,14 @@ def summarize(results: Dict[str, Any], steps: int) -> Dict[str, Any]:
                       and any(d.get("folded_fixture")
                               for d in results.get("carry_floor", [])))),
     }
-    #: THE WELD'S OWN CLAIM: one launch reproduces, word for word, the certified
+    #: The weld's own claim: one launch reproduces, word for word, the certified
     #: sequence it replaces, on every case and every operand class -- with every
     #: mutation caught on that same comparison, every refusal standing, and the launch
     #: counters agreeing that the fused kernel and nothing else ran.
     verdict["weld_released"] = bool(
         cases and verdict["cases_passed"] == len(cases)
         and verdict["cases_weld_bit_identical"] == len(cases)
-        # EVERY LEG MUST MATCH ITS DECLARATION -- caught where live, inert where
+        # Every leg must match its declaration -- caught where live, inert where
         # declared inert, and live somewhere for every caught_where_live leg. Not
         # "every leg diverged": a wall mutation on an unwalled grid changes no byte
         # by construction, and requiring a divergence there would be requiring the
@@ -6036,7 +6036,7 @@ def summarize(results: Dict[str, Any], steps: int) -> Dict[str, Any]:
         and verdict["deposit_legs_passed"]
         and verdict["source_refusal_legs_passed"] is not False
         and verdict["carry_floor_legs_passed"] is not False)
-    #: THE FULL CLAIM: the fused launch also reproduces ``stepping``'s own eleven
+    #: The full claim: the fused launch also reproduces ``stepping``'s own eleven
     #: passes. It can only hold where the CERTIFIED HALVES do, so it is reported
     #: separately rather than folded into the weld's verdict -- and where it is False
     #: with ``weld_released`` True, ``cases_with_a_divergence_inherited_from_a_certified_half``
@@ -6049,6 +6049,7 @@ def summarize(results: Dict[str, Any], steps: int) -> Dict[str, Any]:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
+    import neutral_ids  # noqa: PLC0415
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--family", choices=sorted(FAMILIES), required=True)
     parser.add_argument("--product", choices=("full", "reduced"), default="full")
@@ -6067,14 +6068,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         # and the host off this payload, and test_certification_metadata is what
         # requires both to have come from the artifact rather than from memory.
         "started_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(started)),
-        "host": __import__("socket").gethostname(),
-        "argv": list(argv or sys.argv[1:]),
+        "host": neutral_ids.machine_id(),
+        "argv": neutral_ids.argv(argv or sys.argv[1:]),
         "steps": args.steps,
         "subnormal_policy": args.subnormal_policy,
     }
     gate_provenance.stamp(results)
 
-    # THE POLICY IS INSTALLED HERE, BEFORE ANY COMPILE, and passing it as a NAME
+    # The policy is installed here, before any compile, and passing it as a NAME
     # would not have been enough. CuPy appends ``-ftz=true`` to every NVRTC compile
     # (compiler.py:552) and ``subnormal_policy`` strips it at that seam; a run that
     # only carried the name would measure FLUSHED bytes and stamp them ``keep``.
@@ -6108,7 +6109,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     }
     results["driver_order"] = leg_driver_order(family)
     log(f"driver order: {'PASS' if results['driver_order']['passed'] else 'FAIL'}")
-    # THE LIFT LEG RUNS BEFORE THE DEVICE CHECK, deliberately: it is a claim about
+    # The lift leg runs before the device check, deliberately: it is a claim about
     # SOURCE TEXT, it needs no CuPy, and a splice that stopped being the certified
     # arithmetic should be caught at the merge bar rather than only on the one host
     # with a GPU.
@@ -6181,7 +6182,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 f"identical={leg.get('bit_identical')}")
             save(results, args.out)
 
-    # THE OTHER HALF OF THE DEPOSIT QUESTION, for a product that declares no repair.
+    # The other half of the deposit question, for a product that declares no repair.
     # A family with `deposit_labels` carries the deposit and proves the carry; a family
     # with `source_refusal_labels` refuses it and proves BOTH the refusal and that the
     # refusal has a consequence. Every family must do one or the other, which
@@ -6225,7 +6226,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if v["cases_with_a_divergence_inherited_from_a_certified_half"]:
         log("INHERITED (a certified half, not this weld): "
             + ", ".join(v["cases_with_a_divergence_inherited_from_a_certified_half"]))
-    # EXIT 0 ON THE WELD'S OWN CLAIM. The full array identity is reported and is what
+    # Exit 0 on the weld's own claim. The full array identity is reported and is what
     # `released` records; it depends on a half this product does not own, and an exit
     # code that conflated the two would report a defect in complex_pml_kernels as a
     # failure of this weld.

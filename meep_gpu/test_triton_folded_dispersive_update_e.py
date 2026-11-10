@@ -83,7 +83,7 @@ def test_the_module_claims_no_fingerprint_entry_and_says_it_is_an_arm():
     """The module shipped unwired and now is an arm, so the claim it carries flips.
 
     It used to have to say "AWAITING WIRING" and to mention no ``fastpath``,
-    because both were true: the closure round did not own ``launch.py`` and could
+    because both were true: the residual closure did not own ``launch.py`` and could
     add no arm. Now ``launch.plan_step`` carries a ``folded dispersive`` arm and
     ``launch.FAMILY_MODULES`` names this module, so the sentence a reader needs is
     the one that says WHERE the arm is and what still holds DISPATCH shut — and

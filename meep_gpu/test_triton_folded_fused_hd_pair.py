@@ -1,7 +1,7 @@
 """Laptop contracts for the Triton FOLDED H->D weld: folded ``update_H`` welded
 into folded ``step_D``.
 
-WHAT THIS SUITE IS FOR. The device gate
+What this suite is for. The device gate
 (``parity/meep_gpu/gate_triton_folded_fused_hd_pair.py``) is what certifies the bytes;
 this suite is the merge bar, and it holds the things that would otherwise only be true
 on a machine nobody runs on the way in:
@@ -104,7 +104,7 @@ def build(symmetry=(("Y", 1),), boundaries=None, thickness=0.2,
           complex_storage=False, sigma=None, nonlinear=False, cell=(1.2, 1.2, 0.0)):
     """A real folded (or unfolded) 2-D grid on NumPy.
 
-    THE ABSORBER GOES ON THE FAR FACE OF A FOLDED AXIS and on both faces of every
+    The absorber goes on the far face of a folded axis and on both faces of every
     other one, which is what a folded run actually carries: the mirror plane is a
     boundary MEEP does not absorb at. Spelling it here rather than passing a scalar
     is what makes ``folded_axis_kinds`` resolve at all -- a layer on the plane face
@@ -240,7 +240,7 @@ def test_the_only_statement_in_the_seam_is_the_magnetic_f_minus_p_restore(produc
     body = text.split("    def step(self", 1)[1].split("\n    def ", 1)[0]
     between = body.split('fast.dispatch("update_H"', 1)[1]
     between = between.split('fast.dispatch("step_D"', 1)[0]
-    # THE TWO FRAGMENTS THE SPLIT LEAVES are the tail and the head of the two consult
+    # The two fragments the split leaves are the tail and the head of the two consult
     # lines themselves; they are dropped by name so what remains is statements.
     statements = [line.strip() for line in between.splitlines()
                   if line.strip() and not line.strip().startswith("#")
@@ -253,7 +253,7 @@ def test_the_only_statement_in_the_seam_is_the_magnetic_f_minus_p_restore(produc
     # not read. No withdraw stands here any more (withdraw_hoist).
     assert all("f_minus_p" in line or line.startswith("if self._stores_H")
                for line in statements), statements
-    # THE FILLS, BY NAME: none of the three folded-relevant passes is in the seam.
+    # The fills, by name: none of the three folded-relevant passes is in the seam.
     for pass_name in ("fill_symmetry_bc_B", "fill_symmetry_bc_D", "zero_metal_B",
                       "zero_metal_D", "fill_folded_far_ghosts_B",
                       "fill_folded_far_ghosts_D"):
@@ -271,19 +271,19 @@ def test_the_three_flags_are_facts_or_measured_verdicts(product):
     """Each flag, with the fact or the verdict that makes it false."""
     from .triton_kernels import launch as triton_launch
 
-    # A FACT ABOUT THE DRIVER: nothing is injected in this seam.
+    # A fact about the driver: nothing is injected in this seam.
     assert product.CARRIES_DEPOSIT_REPAIR is False
     assert product.REPAIR_PATHS == ()
-    # A CONSEQUENCE OF THE NEXT ONE: the hoist branch is unreachable while the
+    # A consequence of the next one: the hoist branch is unreachable while the
     # product is uninstallable, so declaring True would be a claim about wiring that
     # cannot fire.
     assert product.HOISTS_THE_WITHDRAW is False
     assert product.INSTALLABLE is False
     assert FAMILY not in triton_launch.CERTIFIED_FUSED_PRODUCTS
     assert FAMILY not in triton_launch.CERTIFIED_FUSED_PAIR_ARMS
-    # THE REASON NAMES BOTH HALVES.
+    # The reason names both halves.
     reason = product.INSTALLABLE_REASON
-    assert "label" in reason and "ARBITRATION" in reason
+    assert "label" in reason and "arbitration" in reason
     assert "78" in reason
 
 
@@ -291,7 +291,7 @@ def test_every_non_ascii_line_is_the_lifted_bodys_own(product):
     """ASCII everywhere this module writes prose; the lifted body keeps its bytes.
 
     ``symmetry.pml_curl_step_folded``'s mask comments carry four em dashes, and this
-    module's kernel body is that text CHARACTER FOR CHARACTER -- so an ASCII-only
+    module's kernel body is that text character for character -- so an ASCII-only
     rule here would be a rule against the lift. The clause that is actually true is
     asserted instead: every non-ASCII line in this file is a line of the certified
     body it lifts.
@@ -410,7 +410,7 @@ def test_the_folded_decode_anchor_is_the_deeper_one(product, plain):
 
 def test_the_codes_come_from_folded_axis_kinds_and_the_plain_mapping_is_wrong(
         product, symmetry):
-    """MEASURED, not argued: the two triples DIFFER on every folded fixture.
+    """Measured, not argued: the two triples DIFFER on every folded fixture.
 
     ``plan_fused_hd_pair`` builds its triple as ``[1 if kind == "metallic" else 0]``
     over ``_boundary_kinds``. On a folded axis that reports ``"mirror"``, which the
@@ -553,7 +553,7 @@ def test_the_two_h_to_d_products_are_disjoint_in_both_directions(product, plain)
 
 
 def test_an_inactive_absorber_is_named_by_the_constitutive_half_first(product):
-    """THE ORDER IS THE DRIVER'S: ``update_H`` runs first, so it speaks first."""
+    """The order is the driver's: ``update_H`` runs first, so it speaks first."""
     fields, pml = build(thickness=0.0)
     verdict = product.folded_fused_hd_pair_coverage(fields, pml, ())
     assert not verdict.covered
@@ -688,7 +688,7 @@ def test_the_four_ghost_codes_are_the_symmetry_modules_own(product, symmetry):
 # ---------------------------------------------------------------------------
 
 def test_the_composer_is_not_offered_this_product_and_the_reason_is_a_file_boundary():
-    """Read off the tree, so a round that lands the label finds this red."""
+    """Read off the tree, so a change that lands the label finds this red."""
     from .triton_kernels import launch as triton_launch
 
     assert FAMILY not in triton_launch.CERTIFIED_FUSED_PRODUCTS
@@ -758,7 +758,7 @@ def test_every_mutation_needle_resolves_exactly_once(gate, product, plain):
             continue
         armed += 1
         text = texts[spec.get("module", "folded")]
-        # A MUTATION MAY CARRY SEVERAL EDITS -- the paired control that earns a null
+        # A mutation may carry several edits -- the paired control that earns a null
         # is two -- and every needle of every one must resolve exactly once.
         for old_text, _new_text in (spec.get("edits")
                                     or ((spec["old"], spec["new"]),)):

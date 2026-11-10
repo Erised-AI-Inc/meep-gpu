@@ -5,28 +5,28 @@ them fails SILENTLY — a wrong radial weight, a missing wall row or a dropped a
 rule all produce a smooth, plausible, entirely wrong field rather than an error. So
 what is pinned here is chosen by which hazards a byte gate cannot reach:
 
-**1. THE PAIRINGS THAT ARE HALF-CELL ERRORS.** ``ir0`` is 0.0 on the B side and 0.5
+**1. The pairings that are half-cell errors.** ``ir0`` is 0.0 on the B side and 0.5
 on the D side because Ep sits at the node and Hp half a cell out
 (``stepping.step_B`` / ``step_D``); the wall row is the B side's only. Swapping either is a
 half-cell error in the radial ladder, and it is invisible in every test that runs
 one sub-step. They are pinned as TABLES against ``stepping``'s own call sites.
 
-**2. THE EMITTER REUSE, AGAINST THE FUNCTION AND NOT AGAINST A READING OF IT.** The
+**2. The emitter reuse, against the function and not against a reading of it.** The
 whole design rests on compiling the r axis as METALLIC so that
 ``shaders.ownership_mask`` and ``shaders.ghost`` need no cylindrical arm. That is a
 claim about which CELLS get zeroed, so it is checked against
 ``stepping._mask_non_owned_cells`` running on a real Dcyl grid.
 
-**3. THE CLAUSE INVERSIONS**, because a missed inversion costs slots QUIETLY: two
+**3. The clause inversions**, because a missed inversion costs slots QUIETLY: two
 admitters leave a slot unselected and it falls to the array path with no error at
 all. Clause 6 inverted (cylindrical REQUIRED) and clause 14 new (m == 0 REQUIRED)
 are asserted to actually refuse the configurations they name.
 
-**4. THE STRUCTURAL CONTRACTS** that would otherwise be found at compile time or,
+**4. The structural contracts** that would otherwise be found at compile time or,
 worse, at run time: the 31-binding ceiling, the two-launch plan's ORDER, and the
 no-module-level-torch rule that keeps the predicate readable on a host with no GPU.
 
-**5. THE PER-CHUNK RADIAL SUM.** MEEP sums ``f_rderiv_int`` in every structure chunk
+**5. The per-chunk radial sum.** MEEP sums ``f_rderiv_int`` in every structure chunk
 (``stepping.cylindrical_rderiv_difference``); the chunk starts the scan binds are the
 array path's own, and the column walk's restart rule is pinned against one, two and
 three r chunks on both sides.
@@ -372,7 +372,7 @@ def test_a_conductivity_is_refused_on_every_curl_target():
 # ---------------------------------------------------------------------------
 
 def test_the_curl_kernel_fits_under_the_buffer_ceiling():
-    """31 is a MEASURED platform limit and a 32nd binding is a compile error."""
+    """31 is a measured platform limit and a 32nd binding is a compile error."""
     from meep_gpu.metal_kernels.device import MAX_BUFFER_BINDINGS
 
     source = cyl.cylindrical_curl_source("step_D", CODES)
@@ -431,7 +431,7 @@ def test_the_scan_multiplies_rinv_and_never_divides():
 
 
 def test_no_unary_minus_and_no_refuted_negation_spelling():
-    """``0.0f - x`` was MEASURED to miss 257/8,462 words on this backend.
+    """``0.0f - x`` was measured to miss 257/8,462 words on this backend.
 
     The one negation is the certified curl's ``(-dtdx)``, a sign flip; the refuted
     spellings do not appear in the code at all.

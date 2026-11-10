@@ -127,7 +127,7 @@ def test_cuda_gate_exercises_the_composed_m0_slice_and_an_active_axis_source():
     ]
     assert sum(case[-1] for case in probe.CASES) == 26
 
-    # PER CASE, NOT ONE SHARED TABLE. Since the 2026-09-02 dispatch expansion the
+    # Per case, not one shared table. Since the 2026-09-02 dispatch expansion the
     # composer selects the cylindrical real FUSED pair, so the probe pins each case
     # to the exact composition it produces. That is twelve slot assertions where the
     # single `EXPECTED` table this replaced made four, and it is the only form in
@@ -175,7 +175,7 @@ def test_cylindrical_composition_provenance_welds_the_live_central_seam():
     # The run identity, not a Slurm job id: Slurm cannot place this gate on a free
     # device on the certifying box, so it was run directly against a pinned one.
     #
-    # This constant MOVES WITH THE RECORD, and moving it is not a way of making a
+    # This constant moves with the record, and moving it is not a way of making a
     # red test green: the digest assertions below are what carry the weld, and this
     # line only says which run took them. It last moved when the five-family
     # integration recert replaced direct_213162; it moves here because wiring the
@@ -224,7 +224,7 @@ def test_cylindrical_composition_provenance_welds_the_live_central_seam():
             assert drift[name] == live, (
                 f"{name} drifted again after the dispatch shape was recorded; "
                 "re-cut fingerprints.json['driver_dispatch']['source_sha256']")
-            # READ THE CLEARING STATUS, not a proxy for it. This used to assert
+            # Read the clearing status, not a proxy for it. This used to assert
             # what_would_certify_this.status == "NOT RUN", which was a stand-in for
             # "the drift has not been cleared yet" and stopped meaning that the
             # moment the driver-route gate ran (2026-08-15) WITHOUT re-running this
@@ -236,7 +236,7 @@ def test_cylindrical_composition_provenance_welds_the_live_central_seam():
                 f"{name}'s drift is declared but recorded as cleared; re-cut this "
                 "gate's source_sha256 from the run that cleared it instead")
             continue
-        # THE RAW BYTES, WITH NO ALLOWANCE — the same rule as the Metal weld test,
+        # The raw bytes, with no allowance — the same rule as the Metal weld test,
         # and restored here for the same reason. A ``weld_survives_edit`` fall-through
         # stood between these two lines and was removed on 2026-08-29: this gate's
         # record carries neither ``device_sha256`` nor ``code_sha256`` (its digest keys

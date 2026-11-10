@@ -3,8 +3,8 @@
 Everything here runs on a laptop: no GPU, no CuPy, no Triton. What needs hardware —
 byte identity against the array path and against the two separately certified
 complex products this launch replaces — lives in
-``parity/meep_gpu/probe_triton_complex_fused_magnetic_pair.py``, WHICH HAS NEVER
-RUN. That is stated in the module under test and re-stated here, because a test
+``parity/meep_gpu/probe_triton_complex_fused_magnetic_pair.py``, which has never
+run. That is stated in the module under test and re-stated here, because a test
 suite that is green while the device gate is unrun must not be mistaken for a
 certification.
 
@@ -55,7 +55,7 @@ GATE = (API_ROOT / "parity" / "meep_gpu"
 #: The CURRENT census cut. An earlier directory (``..._census_2026-08-19``) carries
 #: the same derivation and the same numbers; its manifest went stale because it
 #: listed the predicate module, which this derivation does not read. A manifest may
-#: not be overwritten, so the round was re-cut with a correctly scoped one.
+#: not be overwritten, so the census was re-cut with a correctly scoped one.
 CENSUS_DIR = (API_ROOT / "parity" / "meep_gpu" / "results"
               / "triton_complex_fused_magnetic_pair_census_2026-08-19T2355")
 
@@ -74,7 +74,7 @@ def build(cell=(3.0, 3.0, 0.0), boundaries="periodic", k_point=(0.23, 0.0, 0.0),
 def residual(verdict):
     """The reasons that are not the NumPy-host backend clause.
 
-    MATCHED ON THE CLAUSE, NOT ON THE WORD 'cupy'. The complex predicates' EXPANSION
+    Matched on the clause, not on the word 'cupy'. The complex predicates' EXPANSION
     refusal names the backend the probe must be for, so a filter on the word swallows
     it — and a refusal that vanishes from the residual is a refusal the caller reads
     as an admission.
@@ -183,7 +183,7 @@ def test_both_symmetry_fills_return_on_the_has_symmetry_guard():
         guard = node.body[first_if]
         assert "has_symmetry" in ast.unparse(guard.test), (name, ast.unparse(guard.test))
         assert isinstance(guard.body[0], ast.Return), name
-        # NOTHING MAY WRITE BEFORE THE GUARD. A local binding (``grid =
+        # Nothing may write before the guard. A local binding (``grid =
         # fields.grid``) is fine; a loop or a subscript store ahead of it would mean
         # the pass touches a volume before deciding whether it should run at all,
         # and this product's whole claim is that it touches none.
@@ -237,7 +237,7 @@ def test_an_electric_source_is_admitted_and_a_magnetic_one_is_refused_by_name():
     # (1) CARRIED since 2026-08-30: a real magnetic deposit in this seam.
     carried = product.complex_fused_magnetic_pair_coverage(
         fields, pml, (magnetic_deposit(fields),))
-    # (2) STILL REFUSED BY NAME: no publishable deposit index.
+    # (2) Still refused by name: no publishable deposit index.
     magnetic = product.complex_fused_magnetic_pair_coverage(
         fields, pml, (Source("B"),))
     assert residual(electric) == []
@@ -270,7 +270,7 @@ def test_an_undeclared_source_list_is_a_refusal_and_not_an_empty_set():
 def test_a_fold_is_refused_by_this_products_own_clause_and_not_only_by_the_halves():
     """The seam clause must name the two passes, not lean on the halves' wording.
 
-    If the complex tranche ever admits a fold, the halves' refusal disappears and
+    If the complex-field kernels ever admit a fold, the halves' refusal disappears and
     this weld would silently swallow two passes that had started doing work. The
     clause is here for that day and the test is what keeps it honest.
     """
@@ -442,25 +442,25 @@ def test_the_module_imports_and_answers_coverage_with_triton_absent(monkeypatch)
 
 
 def test_the_composer_routes_this_product_and_the_driver_seam_released_it():
-    """ROUTED 2026-09-02 by the installer wave, RELEASED 2026-09-13 — both halves.
+    """ROUTED 2026-09-02 by the installer change, RELEASED 2026-09-13 — both halves.
 
     This test replaces the deferral it used to make. Until 2026-09-02 it asserted
     that ``launch.py`` and ``fastpath.py`` named this module NOWHERE, which was the
-    seam that kept a certified-but-unrouted product deferred. The wave routed it:
+    seam that kept a certified-but-unrouted product deferred. The 2026-09-02 change routed it:
     ``launch.CERTIFIED_FUSED_PRODUCTS`` holds its row and
     ``_install_certified_fused_products`` builds it through the shared
     ``_install_fused_pair``, taking both slots only when ``_pair_may_absorb`` finds
     the arm table has already given them to the arms this kernel implements.
 
-    WIRING WAS NOT RELEASING, and this is the file where that sentence ended. It
+    Wiring was not releasing, and this is the file where that sentence ended. It
     was named ``..._and_dispatch_still_refuses_it`` for as long as the label sat
-    outside ``fastpath.RELEASED_FUSED_ARMS``; the 2026-09-13 batch
+    outside ``fastpath.RELEASED_FUSED_ARMS``; the 2026-09-13 release campaign
     (``dispatch_fused_route_2026-09-13_phaseB``) drove the complex pair through the
     driver's own consults and seeded its weld from the 2026-09-12 identity fleet,
     so the label this product writes is now in ``fastpath.RELEASED_FUSED_ARMS`` and
     clause (8) ADMITS the whole plan rather than refusing it.
 
-    THE PARTITION IS STILL EXACTLY ONE OF TWO: the label is in
+    The partition is still exactly one of two: the label is in
     ``ARM_CERTIFICATION`` (its gate has a tracked ledger entry) and out of
     ``PENDING_DEVICE_GATE_ARMS`` (it graduated past the pending rung on release). A
     label released while still pending would be a plan claiming a certification the
@@ -497,7 +497,7 @@ def test_this_module_is_welded_and_the_weld_describes_the_shipped_bytes():
         (PACKAGE_DIR / "fingerprints.json").read_text(encoding="utf-8"))
     weld = fingerprints["triton_complex_fused_magnetic_pair_device_gate"]
     assert weld["status"] == "PASS"
-    # THE RUN FACTS LIVE PER ARCHITECTURE since 0.9.1 (``fastpath.RUNS``): each
+    # The run facts live per architecture since 0.9.1 (``fastpath.RUNS``): each
     # record that still binds this entry's bytes must say which run it was.
     from meep_gpu import fastpath  # noqa: PLC0415
     live = fastpath.live_capabilities(weld)
@@ -505,7 +505,7 @@ def test_this_module_is_welded_and_the_weld_describes_the_shipped_bytes():
     for capability in live:
         run = weld[fastpath.RUNS][capability]
         assert run["artifact_sha256"] and run["recorded_utc"] and run["host"], capability
-    # This weld records THIS TEST FILE's own hash among its sources, so a bytes
+    # This weld records this test file's own hash among its sources, so a bytes
     # check that included the reader would score every edit to the test as a
     # "drift" -- a circular guard. Exclude the test file; the kernel module and
     # the probe (the bytes the gate actually measured) stay guarded, as the two
@@ -524,7 +524,7 @@ def test_the_module_claims_identity_ONLY_through_the_weld_that_measured_it():
     text = pathlib.Path(product.__file__).read_text(encoding="utf-8")
     head = text.split('"""')[1]
     assert "RELEASED 2026-08-20" in head
-    # THE BOUND THAT DID NOT MOVE: a weld licenses a claim, not a dispatch.
+    # The bound that did not move: a weld licenses a claim, not a dispatch.
     assert "NOT WIRED" in head
 
 
@@ -583,8 +583,8 @@ def test_the_gates_predicate_leg_exercises_every_clause_in_both_directions():
         "undeclared_sources", "no_probe_artifact", "no_pml", "metallic_walls_k0",
         "folded_grid"}
     directions = {entry["case"]: entry["expect_admitted"] for entry in row["rows"]}
-    # THE THREE ROWS THE 2026-08-30 CARRY ADDED, asserted by NAME and by direction.
-    # A set equality alone would let a future round rename the carried row to the
+    # The three rows the 2026-08-30 carry added, asserted by NAME and by direction.
+    # A set equality alone would let a future change rename the carried row to the
     # refused one and stay green, so the directions are pinned individually: the
     # deposit is ADMITTED, the source that cannot publish its index is REFUSED, and
     # the deposit is REFUSED AGAIN once the flag is held down.
@@ -609,7 +609,7 @@ def test_the_gates_seam_binding_leg_reads_the_driver_rather_than_remembering_it(
 def test_the_gate_arms_every_mutation_it_declares():
     """A rewrite that matches nothing reports a real defect as uncaught.
 
-    That failure mode is not hypothetical in this tree: the fused-electric round
+    That failure mode is not hypothetical in this tree: the fused-electric pair's gate
     lost its ``kernel=`` argument on the way to the plan and reported 4/4 real
     defects as 120/120 identical. Every rewrite here is applied to the SHIPPED text
     on the laptop, and a zero-hit rewrite fails at the merge bar rather than on the
@@ -628,7 +628,7 @@ def test_the_gate_arms_every_mutation_it_declares():
 def changed_lines(before, after):
     """Indices into ``before`` that a rewrite really replaced or deleted.
 
-    A POSITIONAL zip IS WRONG HERE and was, on 2026-08-20: several rewrites
+    A POSITIONAL zip is wrong here and was, on 2026-08-20: several rewrites
     change the line COUNT — ``m1_wall_clear_dropped`` turns three lines into two
     — so every line after the edit shifts by one and a zip comparison reports
     almost the whole kernel as changed. The guard analysis below then finds some
@@ -653,11 +653,11 @@ def changed_lines(before, after):
 def test_every_mutation_is_scored_on_a_grid_that_ENTERS_the_branch_it_rewrites():
     """A mutation run on a case that cannot see it is a null about the case.
 
-    THIS TEST USED TO BE PER-GRID AND HAD TO BECOME PER-AXIS. It asserted that
+    This test used to be per-grid and had to become per-axis. It asserted that
     the one mutation case carried ``any(kind == "metallic")`` and a nonzero k,
     under the premise that "the mutation leg runs on ONE case — so that case must
     carry both". Both halves were wrong, and the first hid a real defect for four
-    device rounds:
+    device campaigns:
 
       * ``CASES[4]`` (bloch_x_metallic_y) declares ("periodic", "metallic",
         "periodic"). SOME axis is metallic, so the old assertion passed — but
@@ -679,7 +679,7 @@ def test_every_mutation_is_scored_on_a_grid_that_ENTERS_the_branch_it_rewrites()
     def enclosing_guard(index: int) -> str:
         """The guard a changed line sits under — or IS.
 
-        A LINE THAT IS ITSELF AN ``if`` COUNTS AS ITS OWN GUARD, and that is not a
+        A line that is itself an ``if`` counts as its own guard, and that is not a
         nicety. ``m1_wall_clear_dropped`` replaces three lines with two, DELETING
         the ``if ZM_X:`` header; asking for that line's ENCLOSING guard walks out
         to the surrounding scope, which is unguarded, so the mutation reads as
@@ -725,7 +725,7 @@ def test_every_mutation_is_scored_on_a_grid_that_ENTERS_the_branch_it_rewrites()
                     return float(k_point[axis]) != 0.0
             return True                      # unclassified or unguarded: assume live
 
-        # AT LEAST ONE, NOT ALL: most rewrites replace the same text in all three
+        # At least one, not all: most rewrites replace the same text in all three
         # components, so their lines sit under all three axis guards and a grid
         # satisfying one of them makes the mutation live.
         if not any(enterable(guard) for guard in guards):

@@ -1,6 +1,6 @@
 """The COMPLEX no-absorber THREE-SLOT weld: the lift, the predicate, the arbitration.
 
-WHAT THIS FILE CAN AND CANNOT SAY. The weld's ARITHMETIC is a device claim --
+What this file can and cannot say. The weld's ARITHMETIC is a device claim --
 ``parity/meep_gpu/gate_cuda_complex_three_slot_weld.py`` carries it. What a laptop
 can pin is everything whose failure would be SILENT before a device is reached:
 
@@ -194,7 +194,7 @@ def test_a_halves_refusal_arrives_prefixed_with_the_side_that_said_it(xp):
 
 
 def test_an_electric_in_seam_source_is_refused_by_the_d_to_e_half(xp):
-    """THE CLAUSE THAT LICENSES THE SINGLE LAUNCH: no deposit may sit inside the span."""
+    """The clause that licenses the single launch: no deposit may sit inside the span."""
     fields, layer, grid = _fixture(xp, conductive=True)
 
     class _Electric:

@@ -1,8 +1,8 @@
-"""DEVICE LEG DRIVER for :mod:`stress_cuda_end_to_end` — the same rows, the same
+"""Device leg driver for :mod:`stress_cuda_end_to_end` — the same rows, the same
 ``run_row``, plus the three things a device run needs that a laptop run does not.
 
 =============================================================================
-WHY THIS FILE EXISTS RATHER THAN A FLAG
+Why this file exists rather than a flag
 =============================================================================
 
 ``stress_cuda_end_to_end.py`` is complete as an experiment and is NOT edited
@@ -13,7 +13,7 @@ Everything below is ADDITIVE and lives outside it.
 Three things are added, and each answers a question the NumPy leg cannot even
 ask:
 
-1. **THE CERTIFICATION SUBNORMAL POLICY, INSTALLED BEFORE THE FIRST COMPILE.**
+1. **The certification subnormal policy, installed before the first compile.**
    ``fastpath.CERTIFICATION_SUBNORMAL_POLICY`` is ``"keep"`` (fastpath.py:510) and
    the shipped dispatch gate refuses to dispatch under anything else
    (fastpath.py:1085-1092). CuPy appends ``-ftz=true`` to every NVRTC compile, so
@@ -23,9 +23,9 @@ ask:
    subnormal, compile-then-install flushes it and stays flushed
    (probe_fused_kernel_bit_identity.py:4347-4353).
 
-2. **A DEVICE LAUNCH CENSUS, KEYED BY THE DEVICE KERNEL'S OWN NAME.** This is the
+2. **A device launch census, keyed by the device kernel's own name.** This is the
    floor the task set: a harness that silently failed to substitute would report
-   THE ARRAY PATH AGREEING WITH ITSELF, which is the most expensive kind of pass
+   the array path agreeing with itself, which is the most expensive kind of pass
    available here. ``Substitution.dispatches`` counts WRAPPER invocations — it
    proves the driver's module globals were rebound, and it would count exactly the
    same if the wrapper's body never reached a GPU. The census counts
@@ -33,7 +33,7 @@ ask:
    function carries, so a green result is only readable together with a nonzero
    count against ``step_B_pml_real`` / ``step_D_pml_real`` / ``update_*_pml_real``.
 
-   THE SEAM IS ``compile_cache.get_or_compile`` (compile_cache.py:182), because
+   The seam is ``compile_cache.get_or_compile`` (compile_cache.py:182), because
    every kernel family reaches its ``cp.RawKernel`` through it and the three
    families this leg substitutes reach it by MODULE ATTRIBUTE
    (``compile_cache.get_or_compile(...)`` in step_curl_kernels.py:1198,
@@ -42,20 +42,20 @@ ask:
    CuPy extension type whose ``__call__`` cannot be assigned, which is why the
    counter is a forwarding proxy rather than a method patch.
 
-   **THE NAME IS READ OFF THE KERNEL, NOT OFF THE CALL SITE.** The whole occasion
+   **The name is read off the kernel, not off the call site.** The whole occasion
    for this leg is a rename that moved 34 device kernel names, and a census keyed
    by the Python wrapper's name would have reported the same string before and
    after it. ``RawKernel.name`` is the ``extern "C" __global__`` symbol, so the
    census is also the measurement that the RENAMED kernels are the ones that ran.
 
-3. **THE NVRTC BINARY OBSERVER** (``probe_fused_kernel_bit_identity``:4197),
+3. **The NVRTC binary observer** (``probe_fused_kernel_bit_identity``:4197),
    installed BEFORE the policy so the strip wraps it and it records the option
    tuple NVRTC was really given. It answers "did a compiler run at all, and with
    what", which a launch count alone does not: a cache hit above the seam launches
    without compiling.
 
 =============================================================================
-WHAT IT DOES NOT ADD
+What it does not add
 =============================================================================
 
 The rows, the predicate consult, the plan, the wrappers, the inventory, the
@@ -101,7 +101,7 @@ for _path in (_API, _HERE):
 
 
 # ---------------------------------------------------------------------------
-# THE DEVICE LAUNCH CENSUS
+# The device launch census
 # ---------------------------------------------------------------------------
 
 class LaunchCensus:
@@ -113,7 +113,7 @@ class LaunchCensus:
     memoized by ``id`` of the real object so a long run does not build one per
     launch.
 
-    A REFUSAL RATHER THAN A ZERO. ``install`` raises if the seam is not there to
+    A refusal rather than a zero. ``install`` raises if the seam is not there to
     patch: a census that silently observed nothing would report ``{}`` for "the
     kernels never ran" and for "the counter was never wired", and only one of
     those is a finding about the kernels.
@@ -248,7 +248,7 @@ def run_child(label: str, backend: str, steps: int, every: int, defect: str,
                   encoding="utf-8") as handle:
             json.dump(observations, handle, indent=2, default=str)
 
-    # WHAT MAKES THE ROW READABLE AT ALL: the wrapper count and the device count,
+    # What makes the row readable at all: the wrapper count and the device count,
     # side by side. Wrappers fired but no device kernel launched means the leg
     # measured the array path against itself.
     dispatched = sum(int(v) for v in
@@ -268,6 +268,7 @@ def run_child(label: str, backend: str, steps: int, every: int, defect: str,
 # ---------------------------------------------------------------------------
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
+    import neutral_ids  # noqa: PLC0415
     import stress_cuda_end_to_end as stress  # noqa: PLC0415
 
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
@@ -307,7 +308,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return 2
 
     results: Dict[str, Any] = {
-        "what": "THE DEVICE LEG of the end-to-end stress: real corpus rows, the "
+        "what": "The device leg of the end-to-end stress: real corpus rows, the "
                 "shipped CUDA kernels substituted at every admitted slot, the "
                 "certification subnormal policy installed before the first compile, "
                 "and every device launch counted under the device kernel's own name",
@@ -320,12 +321,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "steps": args.steps,
         "checkpoint_every": args.checkpoint_every,
         "subnormal_policy_requested": args.subnormal_policy,
-        "cupy_cache_dir": os.environ.get("CUPY_CACHE_DIR"),
+        "cupy_cache_dir": neutral_ids.path(os.environ.get("CUPY_CACHE_DIR")),
         "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
         "corpus": {"examples_dir": examples_dir, "tests_dir": tests_dir},
         "rows_requested": list(labels),
         "started_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "argv": list(sys.argv),
+        "argv": neutral_ids.argv(sys.argv),
         "python": sys.version.split()[0],
         "subject_before": stress.subject_digest(_API),
         "rows": [],
@@ -405,7 +406,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                                  == results["subject_before"]["manifest_sha256"])
     results["verdict"] = stress.verdict(results["rows"], args.defect)
 
-    # THE SUBSTITUTION FLOOR, taken over the whole run and reported beside the
+    # The substitution floor, taken over the whole run and reported beside the
     # verdict rather than left for a reader to assemble. A row that dispatched
     # wrappers but launched no device kernel is the array path agreeing with
     # itself, and it must not read as evidence.

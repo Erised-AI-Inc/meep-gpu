@@ -244,7 +244,7 @@ def _no_leaked_subnormal_policy(monkeypatch):
     from meep_gpu import subnormal_policy  # noqa: PLC0415
     if subnormal_policy.policy_is_installed():
         subnormal_policy.uninstall_subnormal_policy()
-    # THE FPU TOO. ``uninstall_subnormal_policy`` deliberately leaves the host FPU where
+    # The FPU too. ``uninstall_subnormal_policy`` deliberately leaves the host FPU where
     # it is, and on this Mac the Metal table's flush is driven by ``fesetenv``
     # (``_drive_host_fpu_by_fenv``), so the thread kept flushing after the test: that
     # was the leak, measured -- the probe after it read ``1e-40 * 1 == 0`` with no

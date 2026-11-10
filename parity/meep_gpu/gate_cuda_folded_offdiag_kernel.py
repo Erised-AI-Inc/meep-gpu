@@ -1,12 +1,12 @@
 """Byte-identity gate for the FOLDED off-diagonal ``update_E`` CUDA kernel.
 
-THE CLAIM UNDER TEST. ``meep_gpu/cuda_kernels/folded_offdiag_kernels.py`` emits
+The claim under test. ``meep_gpu/cuda_kernels/folded_offdiag_kernels.py`` emits
 ``update_E_pml_real_folded_offdiag``: the certified off-diagonal
 ``update_E`` with a MIRROR arm in ``coord_dn`` and a parity weight on that lane
 alone. Does it reproduce ``stepping.update_E``, word for word, on a mirror-folded
 grid -- and does it still reduce to the certified family where no axis is folded?
 
-WHY THIS GATE EXISTS AND WHAT SPECIFIED IT. ``coverage.FOLDED_OFFDIAG_ROW_MASK_
+Why this gate exists and what specified it. ``coverage.FOLDED_OFFDIAG_ROW_MASK_
 ADMISSION`` records a 2026-08-20 device sweep of the SHIPPED kernel on folded
 grids: 96/96 identical on the configurations where the fold cannot reach the
 arithmetic, 352/352 divergent on the complementary ones, and every one of the
@@ -16,7 +16,7 @@ counts what it is worth (20 corpus slots, 19 of them reachable). This gate
 measures whether the remedy works.
 
 =============================================================================
-WHAT MAKES A CASE NON-VACUOUS, AND WHAT REFUSES ONE
+What makes a case non-vacuous, and what refuses one
 =============================================================================
 
 A gate that cannot fail certifies nothing, and this sub-step has four ways to
@@ -28,7 +28,7 @@ passed:
 * ``coupling_is_live`` -- ``f_w_Ex - Dx*inv_eps_Ex``, i.e. what the off-diagonal
   rows contributed. A case whose coupling is identically zero is testing the
   certified PLAIN constitutive kernel with extra steps;
-* ``folded_axis_absorbs`` -- ``max|kps-1|``, ``max|kms-1|`` ON THE FOLDED AXIS. A
+* ``folded_axis_absorbs`` -- ``max|kps-1|``, ``max|kms-1|`` on the folded axis. A
   folded axis whose half-integer profile is the identity everywhere cannot
   distinguish a coefficient-index error on the axis the fold moved, which is
   exactly what the retired refusal claimed would go wrong;
@@ -38,7 +38,7 @@ passed:
   the fixture.
 
 =============================================================================
-THE SWEEP'S OWN TWO-SIDEDNESS
+The sweep's own two-sidedness
 =============================================================================
 
 Every case must be BIT-IDENTICAL -- unlike the sweep that specified this work,
@@ -60,7 +60,7 @@ caught, while on an ODD plane it is +1 and dropping it is the identity. A batter
 run at one parity would score it a catch and learn nothing about the SIGN.
 
 =============================================================================
-THE RELEASE VERDICT IS ITSELF FALSIFIED
+The release verdict is itself falsified
 =============================================================================
 
 ``--legs falsify`` re-runs the whole verdict computation over a sweep whose one
@@ -80,7 +80,7 @@ token because CuPy's disk-cache key is computed above the strip seam)::
 
 Laptop (no CUDA). The NumPy backend EXECUTES the emitted device source through
 the slice test module's own evaluator -- one grammar, one copy, imported rather
-than duplicated. IT COMPILES NOTHING AND CERTIFIES NOTHING; what it settles is
+than duplicated. It compiles nothing and certifies nothing; what it settles is
 whether the harness can fail and whether the expression tree is right::
 
     python -u gate_cuda_folded_offdiag_kernel.py --backend numpy \\
@@ -146,7 +146,7 @@ COMPONENTS: Tuple[str, ...] = flat.COMPONENTS
 #: hand-CUDA record is cut at. "Identical for N steps" is a claim about N.
 MULTI_STEP_BUDGET = 60
 
-#: EVERY AXIS IS FOLDED SOMEWHERE, both plane parities appear, both declared
+#: Every axis is folded somewhere, both plane parities appear, both declared
 #: terminations appear on each axis, an odd full count appears, and one, two and
 #: three simultaneous planes all appear. The two UNFOLDED controls carry the
 #: reduction claim.
@@ -193,7 +193,7 @@ FOLD_SPECS: Tuple[Dict[str, Any], ...] = (
      "boundaries": ("periodic", "periodic", "metallic"),
      "cell": (8.0, 12.0, 16.0)},
 
-    # A FOLD BESIDE A LIVE METALLIC WALL, which no other spec here carries: a
+    # A fold beside a live metallic wall, which no other spec here carries: a
     # folded axis always reports ``wm = 0`` (``is_metallic and not is_mirrored``),
     # so a sweep of folded specs alone leaves every wall flag zero and the wall
     # mask untested on a fold. That is exactly the seam
@@ -205,7 +205,7 @@ FOLD_SPECS: Tuple[Dict[str, Any], ...] = (
      "boundaries": ("metallic", "periodic", "periodic"),
      "cell": (8.0, 12.0, 16.0)},
 
-    # TWO PLANES AT ONCE, one termination each way and both the same way.
+    # Two planes at once, one termination each way and both the same way.
     {"label": "fold_XY_mixed", "axes": "XY", "phase": 1,
      "boundaries": ("periodic", "metallic", "periodic"),
      "cell": (16.0, 16.0, 10.0)},
@@ -213,7 +213,7 @@ FOLD_SPECS: Tuple[Dict[str, Any], ...] = (
      "boundaries": ("periodic", "periodic", "periodic"),
      "cell": (16.0, 10.0, 16.0)},
 
-    # THREE PLANES AT ONCE, both terminations. Every one of the six row slots
+    # Three planes at once, both terminations. Every one of the six row slots
     # then takes a ghosted down shift.
     {"label": "fold_XYZ_periodic", "axes": "XYZ", "phase": 1,
      "boundaries": ("periodic", "periodic", "periodic"),
@@ -302,7 +302,7 @@ def _plane_index(axis: int, index: int, shape) -> Tuple[Any, ...]:
 def build(xp, spec: Dict[str, Any], courant: float):
     """A frozen ``(fields, layer, grid)`` triple for one fold spec.
 
-    THE THICKNESS RULE IS THE SIBLING FOLD GATES', not a new one: skip an axis too
+    The thickness rule is the sibling fold gates', not a new one: skip an axis too
     thin to hold a layer, and on a MIRRORED axis ask for the HIGH face only.
     ``PML._resolve_mirror_faces`` refuses a named low face on a folded axis
     outright -- cell 0 is the mirror plane, a boundary condition rather than a
@@ -413,7 +413,7 @@ _SCAFFOLDING: Tuple[str, ...] = (
 def evaluator_blind_lines(text: str) -> List[str]:
     """Lines of an emitted body the NumPy evaluator neither EXECUTES nor pins.
 
-    THE HAZARD THIS EXISTS FOR, measured on the certified family's first laptop
+    The hazard this exists for, measured on the certified family's first laptop
     run: the evaluator is a ``finditer`` over an anchored grammar, so a mutation
     that rewrites a statement into a form the grammar does not match is not
     applied at all -- it is SILENTLY SKIPPED, and the leg then reports a verdict
@@ -452,7 +452,7 @@ def evaluator_blind_lines(text: str) -> List[str]:
 def classify_for_evaluator(pristine: str, mutated: str) -> Dict[str, Any]:
     """Can the NumPy evaluator see this defect at all, and if not, what guards it?
 
-    THIS FAMILY'S EVALUATOR PARSES ITS GHOST RULES rather than transcribing them,
+    This family's evaluator parses its ghost rules rather than transcribing them,
     which is a deliberate difference from the certified slice: ``coord_dn``,
     ``coord_up``, ``ghosted_mirror``, the ghost lanes and ``MIRROR_ROW`` are all
     read out of the emitted text and evaluated, because the mirror arm is the only
@@ -533,14 +533,14 @@ class EvaluatorBackend:
 class KernelBackend:
     """The shipped CuPy launcher, driven through its own gate door.
 
-    THE GUARD AND THE MUTATION BOTH REACH NVRTC THROUGH THE SOURCE-KEYED MEMO:
+    The guard and the mutation both reach NVRTC through the source-keyed memo:
     ``_get_kernel`` keys on ``(name, options, policy, source)``, so overriding
     ``_COMPILE_OPTIONS`` or installing a source override is a MISS and the compiler
     sees the bytes this leg intends. The memo is dropped at both ends anyway,
     because a leg that measured a guard it never applied is a failure family this
     track has three recorded instances of.
 
-    THE SOURCE OVERRIDE GOES THROUGH ``set_kernel_source`` -- the module's own
+    The source override goes through ``set_kernel_source`` -- the module's own
     documented gate door -- rather than by monkeypatching the emitter function,
     which is what the certified family's gate has to do because its launcher calls
     the emitter by name.
@@ -620,7 +620,7 @@ def build_backend(name: str):
 # the wrong tensor in it -- and none would be caught by a magnitude comparison at
 # any tolerance a physicist would accept.
 #
-# THE FIRST FIVE ARE THIS FAMILY'S OWN, and they are the whole reason the file
+# The first five are this family's own, and they are the whole reason the file
 # exists: they are the mirror arm stated wrongly in each of the ways the reading
 # invites. The rest are the certified family's defects re-anchored on this
 # grammar, carried because this kernel emits that arithmetic too and a gate that
@@ -668,7 +668,7 @@ def m_flip_the_parity_sign(text):
 
 
 def m_drop_the_parity_weight(text):
-    """THE SHARPEST DISCRIMINATOR. The weight is ``-phase``: on an EVEN plane it
+    """The sharpest discriminator. The weight is ``-phase``: on an EVEN plane it
     is -1 and dropping it must be caught, on an ODD plane it is +1 and dropping it
     is the identity. Scored per case on the plane parity, so a battery at one
     parity cannot pass this by learning nothing about the sign."""
@@ -743,20 +743,20 @@ def m_drop_the_wall_mask(text):
 def m_hoist_the_coefficient(text):
     """The four-point average times ``u[home]``. The same ALGEBRA only for a
     uniform coefficient, and a different float32 number even then. The family's
-    one genuinely new arithmetic element in the certified round, carried here
+    one genuinely new arithmetic element when it was certified, carried here
     because this kernel emits it."""
     return _replace(_TERM_RETURN, "return (near_pair + far_pair) * u[home];", text)
 
 
 def m_row_in_float32(text):
-    """The row summed and scaled in float32, the package's arithmetic until 0.10."""
+    """The row summed and scaled in float32, the package's arithmetic until 1.0."""
     out, hits = _sub(r"double row_(\w+) = ", r"float row_\1 = ", text)
     out, more = _sub(r"\(0\.25 \* \(double\)term_(\w+)\)", r"(0.25f * term_\1)", out)
     return out, hits + more
 
 
 def m_previous_tail_grouping(text):
-    """The constitutive grouping until 0.10, ``(f + kps*src) - kms*prev`` (the
+    """The constitutive grouping until 1.0, ``(f + kps*src) - kms*prev`` (the
     inversion of the leg that planted MEEP's grouping)."""
     return _replace(
         "float value = dsigw ? (f[idx] + ((kps * src) - (kms * prev))) : src;",
@@ -781,8 +781,8 @@ def m_wrong_own_axis_table(text):
 
 def n_scale_the_quarter_in_float32(text):
     """NULL: the term's float32 sum scaled by ``0.25f`` in float32 and widened. 0.25
-    is an exact power of two, so that is the double scale's word AWAY FROM
-    UNDERFLOW. Armed on the uniform class only, and the record says so rather than
+    is an exact power of two, so that is the double scale's word away from
+    underflow. Armed on the uniform class only, and the record says so rather than
     implying it is a null everywhere."""
     return _sub(r"\(0\.25 \* \(double\)term_(\w+)\)", r"(double)(0.25f * term_\1)",
                 text)
@@ -841,13 +841,13 @@ PARTNER_ARM_MUTATIONS: Tuple[str, ...] = (
 #: where a folded axis is some live component's own axis.
 OWN_ARM_MUTATIONS: Tuple[str, ...] = ("folded_own_axis_wraps",)
 
-#: DEFECTS THAT ARE THE IDENTITY WHEN THE PARITY IS +1, and are therefore
+#: Defects that are the identity when the parity is +1, and are therefore
 #: two-sided in the PLANE PHASE as well as in the fold's role. The weight is
 #: ``-phase`` (fields.py:117 collapsed over the D components), so on an ODD plane
 #: it is exactly ``+1.0`` and any defect that only changes WHICH LANES the weight
 #: multiplies -- or whether it is applied at all -- is bitwise inert there.
 #:
-#: MEASURED, NOT ASSUMED: scoring these as plain partner-arm catches made the
+#: Measured, not assumed: scoring these as plain partner-arm catches made the
 #: first laptop run report three DISCRIMINATOR VIOLATED at 3/8, and the missing
 #: catch in every one was the odd-plane case. That is the leg working on a defect
 #: that is genuinely not one there, and it is why both parities are swept: a
@@ -863,7 +863,7 @@ PARITY_VISIBLE_MUTATIONS: Tuple[str, ...] = (
 #: -- and a folded axis always reports ``wm = 0``, which is why the sweep carries
 #: two fold-beside-a-wall specs so the catch arm is not empty.
 #:
-#: ``invert_the_wall_mask`` IS DELIBERATELY NOT HERE, and the reason is a
+#: ``invert_the_wall_mask`` is deliberately not here, and the reason is a
 #: measurement rather than a reading: the first device run scored it
 #: DISCRIMINATOR VIOLATED at 68/68 because inverting ``(wm && at) ? 0.0f : total``
 #: to ``(wm && at) ? total : 0.0f`` zeroes the coupling EVERYWHERE the select is
@@ -876,8 +876,8 @@ WALL_DISCRIMINATORS: Tuple[str, ...] = ("drop_the_wall_mask",
 #: Host defects: the kernel never chooses these and cannot choose them wrong, but
 #: its caller can. Armed through the launcher's keyword-only gate door.
 #:
-#: ``hand_the_fold_the_metallic_code`` is the SHIPPED CERTIFIED KERNEL'S ONLY
-#: AVAILABLE ANSWER, and it is this gate's two-sidedness: it must be CAUGHT
+#: ``hand_the_fold_the_metallic_code`` is the shipped certified kernel's only
+#: available answer, and it is this gate's two-sidedness: it must be CAUGHT
 #: wherever the mirror ghost is reachable and a NULL where it is not.
 HOST_MUTATIONS: Tuple[str, ...] = ("hand_the_fold_the_metallic_code",
                                    "flip_the_launched_ghost_weights",
@@ -898,7 +898,7 @@ def apply_host_mutation(name: Optional[str], layer, grid, tables, codes, walls,
     if name == "flip_the_launched_ghost_weights":
         return tables, codes, walls, tuple(-w for w in weights)
     if name == "reverse_folded_axis_coefficients":
-        # THE RETIRED REFUSAL, ARMED. "The fold changes the stored extent, and the
+        # The retired refusal, armed. "The fold changes the stored extent, and the
         # extent is what turns a cell index into a coefficient index" was the
         # certified predicate's stated reason for refusing a fold. If that
         # mattered to this sub-step, the coefficient a cell reads on the folded
@@ -937,14 +937,14 @@ def one_case(backend, xp, spec: Dict[str, Any], mask_spec: Dict[str, Any],
              host_mutation: Optional[str] = None) -> Dict[str, Any]:
     """One frozen state, run twice: the array path, then the kernel.
 
-    THE ORACLE IS ``stepping.update_E`` ITSELF on real ``Grid``/``Fields``/``PML``
+    The oracle is ``stepping.update_E`` itself on real ``Grid``/``Fields``/``PML``
     objects with the rows installed through the PUBLIC installer, so the
     install-time validation, the zero-row drop and the stored-E switch are all in
     force. There is no second transcription on the oracle leg to drift.
     """
     started = time.time()
     key = case_key(spec, mask_spec, courant, value_class, guard_label, steps)
-    # A STABLE PER-CASE SEED, from a DIGEST rather than from ``hash()``: Python
+    # A stable per-case seed, from a DIGEST rather than from ``hash()``: Python
     # salts ``hash()`` of a str with PYTHONHASHSEED, so a run seeded from it draws
     # a different fixture every process and a failing case cannot be replayed.
     rng = np.random.default_rng(
@@ -986,7 +986,7 @@ def one_case(backend, xp, spec: Dict[str, Any], mask_spec: Dict[str, Any],
     case["fold_reaches_the_own_arm"] = bool(roles["fold_is_a_live_own_axis"])
     case["wall_mask_bites"] = wall_mask_bites(mask, walls)
 
-    # THE TWO PREDICATES' ANSWERS, recorded rather than acted on. The census asks
+    # The two predicates' answers, recorded rather than acted on. The census asks
     # the composition verdict, and a record that did not carry both could not show
     # that the two families partition this configuration rather than sharing it.
     mine = folded.covers_folded_offdiag_composition(fields, layer, grid)
@@ -1077,7 +1077,7 @@ def one_case(backend, xp, spec: Dict[str, Any], mask_spec: Dict[str, Any],
 def wall_mask_bites(mask: Sequence[int], walls: Sequence[int]) -> bool:
     """Does the metallic wall mask change ANY word on this (mask, grid) pair?
 
-    A LIVE WALL FLAG IS NOT ENOUGH. ``_mask_metallic_wall_coupling`` zeroes face 0
+    A live wall flag is not enough. ``_mask_metallic_wall_coupling`` zeroes face 0
     of the axes on which THE COMPONENT'S Yee shift is 0
     (:data:`coverage.OFFDIAG_WALL_MASK_AXES`), so ``wm_y`` reaches Ex and Ez and
     never reaches Ey. A grid that declares a wall on an axis no live row component
@@ -1114,7 +1114,7 @@ def case_is_valid(case: Dict[str, Any]) -> Tuple[bool, Optional[str]]:
 def case_product(product: str, steps: int) -> List[Dict[str, Any]]:
     """The swept cases, before the guard axis multiplies them.
 
-    THE REDUCED SUBSET IS NAMED, NOT SLICED. A head slice of this list is all X
+    The reduced subset is named, not sliced. A head slice of this list is all X
     folds and no declared wall, which leaves the wall discriminators with one arm
     and every fold-axis question answered on one axis.
     """
@@ -1244,7 +1244,7 @@ def run_sweep(backend, xp, results: Dict[str, Any], out_path: str, product: str,
 # The mutation battery
 # ---------------------------------------------------------------------------
 #
-# SCOPED TO CASES WHOSE UNMUTATED BASELINE WAS BIT-IDENTICAL, read off the sweep
+# Scoped to cases whose unmutated baseline was bit-identical, read off the sweep
 # that just ran rather than tabulated, so no leg can be armed on an arm the device
 # did not actually certify in this same process.
 
@@ -1252,7 +1252,7 @@ def mutation_plan(sweep_cases: Sequence[Dict[str, Any]], product: str
                   ) -> List[Dict[str, Any]]:
     """The (spec, mask) pairs a defect may be planted on.
 
-    THE REDUCED SELECTION IS GREEDY, NOT A HEAD SLICE. Slicing the front of a case
+    The reduced selection is greedy, not a head slice. Slicing the front of a case
     product landed the folded-curl gate's whole battery on its two UNFOLDED
     controls, so its one fold-specific mutation was skipped on every leg and
     scored 0/0 UNCAUGHT -- a harness defect that reads exactly like a kernel
@@ -1443,7 +1443,7 @@ def run_mutations(backend, xp, results: Dict[str, Any], out_path: str,
         if not scored:
             verdict, as_required = "NO LEGS", False
         elif discriminator and not (catch_arm and null_arm):
-            # A DISCRIMINATOR WITH ONE ARM IS NOT A DISCRIMINATOR. Either half
+            # A discriminator with one arm is not a discriminator. Either half
             # alone is consistent with the rule being inert.
             verdict, as_required = "NO DISCRIMINATOR", False
         else:
@@ -1579,7 +1579,7 @@ def build_verdict(results: Dict[str, Any]) -> Dict[str, Any]:
 
 def run_falsification(backend, xp, results: Dict[str, Any], out_path: str,
                       steps: int) -> Dict[str, Any]:
-    """RUN THE VERDICT AGAINST A PLANTED DEFECT AND REQUIRE IT TO REFUSE.
+    """Run the verdict against a planted defect and require it to refuse.
 
     A pass that has never been shown to be refusable is a pass about nothing. The
     defect chosen is the SHIPPED certified kernel's own answer for a folded axis
@@ -1717,7 +1717,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     from meep_gpu.cuda_kernels import offdiag_emitter  # noqa: PLC0415
     results["certified_sibling_corpus_digest"] = offdiag_emitter.corpus_digest()
 
-    # THE ORDER IS THE WHOLE POINT: the observer wraps NVRTC BELOW the strip so it
+    # The order is the whole point: the observer wraps NVRTC BELOW the strip so it
     # records the options NVRTC really received, and the policy installs before
     # the first compile.
     if backend_name == "cupy":
@@ -1739,7 +1739,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if "sweep" in legs:
         run_sweep(backend, xp, results, out_path, product, args.steps, "sweep")
     if "multistep" in legs:
-        # THE PRIMARY GUARD ONLY. The control's job is to show the guard is doing
+        # The primary guard only. The control's job is to show the guard is doing
         # work, and one launch per case already shows it; paying 60x for the same
         # demonstration buys nothing.
         run_sweep(backend, xp, results, out_path,

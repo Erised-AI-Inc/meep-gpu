@@ -5,15 +5,15 @@ One kernel, one coverage predicate, one plan, in one file, on the pattern
 :mod:`offdiag_update_e` and :mod:`symmetry` set between them. This family is
 their intersection, and it exists because the argument that admitted the
 DIAGONAL constitutive product onto a folded grid does not transfer — measured,
-not argued (see THE ELEMENT-WISE ARGUMENT DOES NOT TRANSFER below).
+not argued (see the element-wise argument does not transfer below).
 
-DISPATCH IS NOT WIRED; the PLANNER is, and this paragraph said otherwise for a
-round. The engine's fast-path hook keeps returning ``None`` on every branch and
+Dispatch is not wired; the PLANNER is, and this paragraph once said otherwise.
+The engine's fast-path hook keeps returning ``None`` on every branch and
 nothing here changes that, so no production step reaches this family.
-``plan_step`` composition is NO LONGER DEFERRED: ``launch.py`` carries the two
+``plan_step`` composition is no longer deferred: ``launch.py`` carries the two
 lazy forwarders and the ``folded off-diagonal`` ``update_E`` arm, gated on the
 fold AND on the off-diagonal disjunction, and ``__init__.py`` exports the entry
-points — a later round edited those files, so the sentence that listed them as
+points — a later change edited those files, so the sentence that listed them as
 "imported, never edited" now describes only this module's own restraint at the
 time it was written. ``coverage.py``, ``folded_complex.py``, ``stepping.py``,
 ``fastpath.py`` and ``backends.py`` remain untouched, and this module still
@@ -23,7 +23,7 @@ record inside its results directory. Callers are the gate
 validator (``parity/meep_gpu/validate_folded_offdiag_reference_vs_stepping.py``),
 the planner and the laptop tests.
 
-ONE THING THE WIRING CHANGED FOR THIS FAMILY IN PARTICULAR. ``launch.py``'s
+One thing the wiring changed for this family in particular. ``launch.py``'s
 ``_veto_dropped_offdiagonal_coupling`` refuses any ``update_E`` product that does
 not implement the row term on a grid where the array path forms it; this family's
 arm is one of the two named in ``ROW_PRODUCT_ARMS`` and is therefore exempt.
@@ -31,7 +31,7 @@ Wiring the arm WITHOUT that entry would have had the veto empty the one slot thi
 kernel exists for, reporting "has no row-product term" about a kernel whose whole
 body is that term.
 
-WHY THIS FAMILY EXISTS AT ALL — the two refusals it sits between:
+Why this family exists at all — the two refusals it sits between:
 
 * :func:`offdiag_update_e.offdiag_constitutive_coverage` calls
   ``coverage._grid_reasons`` unmodified (offdiag_update_e.py:647), so clause 5
@@ -43,7 +43,7 @@ WHY THIS FAMILY EXISTS AT ALL — the two refusals it sits between:
 Neither refusal is stale. Each is correct for its own product. The union they
 leave uncovered is this file's.
 
-WHAT IT REPLACES. ``stepping.update_E`` (stepping.py:954) with an active PML,
+What it replaces. ``stepping.update_E`` (stepping.py:954) with an active PML,
 ``fields.has_offdiagonal_epsilon`` True, NOT ``fields.has_nonlinearity``, and at
 least one axis resolving to ``MIRROR`` through ``stepping._boundary_kinds``
 (stepping.py:2192-2197) — the ``elif offdiagonal:`` branch (stepping.py:1001-1008).
@@ -62,13 +62,13 @@ that module's ``_row_add``, imported. The whole delta is what ``_shift_down`` an
 ``_shift_up`` do on a MIRROR axis.
 
 ================================================================================
-THE ELEMENT-WISE ARGUMENT DOES NOT TRANSFER. This is the question the family
+The element-wise argument does not transfer. This is the question the family
 turns on, so it is answered with citations and a discriminating measurement
 rather than by analogy.
 ================================================================================
 
 The diagonal constitutive product was admitted onto a folded grid on exactly one
-argument (symmetry.py:5-7, :318-320): it READS NO NEIGHBOUR, so the fold's ghost
+argument (symmetry.py:5-7, :318-320): it reads no neighbour, so the fold's ghost
 rules cannot reach it, and the only thing the fold changes — the stored extent —
 is already carried by the PML coefficient vectors, which are built at the stored
 length. ``coverage._grid_reasons`` clause 5 (coverage.py:166-175) states the same
@@ -79,7 +79,7 @@ The OFF-DIAGONAL row product reads neighbours (stepping.py:1243-1249), so that
 argument is unavailable and the fold's ghost rule reaches it. It reaches it in
 one place, and NOT in the other, and both halves matter:
 
-1. **THE PARTNER-AXIS DOWN SHIFT IS LIVE ON A FOLD.** ``_shift_down`` is called
+1. **The partner-axis down shift is live on a fold.** ``_shift_down`` is called
    WITH a component name and the plane's parity (stepping.py:1243-1245), so a
    MIRROR partner axis takes stepping.py:1870-1873::
 
@@ -105,7 +105,7 @@ one place, and NOT in the other, and both halves matter:
    over (stepping.py:1279-1281). So "mask fires" and "ghost is live" are the
    same switch, thrown the other way by the fold.
 
-2. **THE OWN-AXIS UP SHIFT IS *NOT* PARITY-WEIGHTED, ON EITHER TERMINATION.**
+2. **The own-axis up shift is *NOT* parity-weighted, on either termination.**
    ``_offdiagonal_terms`` calls ``_shift_up`` with FOUR arguments (stepping.py:
    1248-1249) — no ``component``, no ``mirror_phase``, no ``reflect_row`` — so
    the folded-PERIODIC reflect branch (stepping.py:1819-1827) cannot fire and
@@ -120,18 +120,18 @@ one place, and NOT in the other, and both halves matter:
    ``stepping.py`` and ``driver.py``, not to this family, and this kernel
    reproduces whatever the array path does, byte for byte, either way.
 
-3. **THE STORED EXTENT** is carried exactly as :mod:`symmetry` carries it: the
+3. **The stored extent** is carried exactly as :mod:`symmetry` carries it: the
    PML ``kps``/``kms`` vectors are built at the folded stored length
    (symmetry.py:318-320), so the half-integer coefficient index needs no
    fold-aware change. The predicate proves it (``_coefficient_reasons``) rather
    than assuming it.
 
-4. **THE WALL MASK NEEDS NO CHANGE.** ``offdiag_update_e.wall_mask_axes``
+4. **The wall mask needs no change.** ``offdiag_update_e.wall_mask_axes``
    (offdiag_update_e.py:521-536) already asks the mask's own question,
    ``is_metallic and not is_mirrored``, so a folded axis already compiles to
    ``WM = 0``. It is imported, not restated.
 
-MEASURED (laptop, NumPy, ``validate_folded_offdiag_reference_vs_stepping.py``;
+Measured with NumPy on a laptop (``validate_folded_offdiag_reference_vs_stepping.py``;
 no device, no byte-identity claim about any kernel yet). Same real
 ``Grid``/``Fields``/``PML``, same seeds, same installed rows; only the
 transcription of the two ghost arms varies, against ``stepping.update_E``:
@@ -151,11 +151,11 @@ of the six row slots takes a ghosted down shift), a reduced 2-D run with a fold,
 and Courant 0.5 / 0.35 / 0.3125 — 16 configurations, each byte-identical over
 four chained sub-step calls.
 
-REACHABILITY IS SHARP AT SLOT LEVEL — NOT AT ROW LEVEL — AND ONE SUB-CASE NEEDS
-NO NEW KERNEL. Because the mirror rule enters only through the PARTNER-axis down
+Reachability is sharp at slot level — not at row level — and one sub-case needs
+no new kernel. Because the mirror rule enters only through the PARTNER-axis down
 shift (``_shift_down`` is called with ``axis = partner_axis``, stepping.py:
 1243-1245), a fold on axis ``a`` changes this sub-step's bytes exactly when some
-SURVIVING ROW SLOT TAKES ``E_a`` AS ITS PARTNER. Row ``E_a``'s own slots never
+surviving row slot takes ``E_a`` as its partner. Row ``E_a``'s own slots never
 do, which is where the coarser reading ("some live row is not ``E_a``") comes
 from — but a row can be live through its OTHER slot and never touch the fold,
 and that case is measured, not argued. Same grid, same coefficients, same seeds,
@@ -186,10 +186,10 @@ symmetry.py:713-734) — it is carried as the gate's IDENTITY leg, which is the
 measurement that proves the delta is exactly where this docstring says it is.
 
 ================================================================================
-THE THINGS THAT DECIDE BIT-IDENTITY, each held by the gate rather than assumed
+The things that decide bit-identity, each held by the gate rather than assumed
 ================================================================================
 
-A. **THE MIRROR GHOST WEIGHT IS EXACTLY ``-phase``, ALWAYS.** ``_shift_down``
+A. **The mirror ghost weight is exactly ``-phase``, always.** ``_shift_down``
    passes ``component = "D" + AXIS_NAMES[partner_axis]`` on ``axis =
    partner_axis`` (stepping.py:1243-1245), and every D component has Yee shift 1
    on its OWN axis (fields.py:214-219). ``mirror_parity(c, axis, phase) ==
@@ -200,7 +200,7 @@ A. **THE MIRROR GHOST WEIGHT IS EXACTLY ``-phase``, ALWAYS.** ``_shift_down``
    for the far fill (symmetry.py:368-374). A test pins the collapse against
    ``fields.mirror_parity`` so it cannot drift.
 
-B. **THE WEIGHT IS A RUNTIME f32 SCALAR, NEVER A UNARY MINUS.** Platform fact:
+B. **The weight is a runtime f32 scalar, never a unary minus.** Platform fact:
    Triton 3.1.0's ``semantic.minus`` lowers ``-x`` as ``0.0 - x``, which
    canonicalizes signed zeros — ``-(+0.0)`` becomes ``+0.0`` where IEEE negation
    gives ``-0.0``, and this was measured REACHABLE at driver level, not
@@ -215,7 +215,7 @@ B. **THE WEIGHT IS A RUNTIME f32 SCALAR, NEVER A UNARY MINUS.** Platform fact:
    so the platform fact is re-measured on the class where it can bite instead of
    being inherited.
 
-C. **THE GHOST INDEX IS STORED ROW 2**, ``stepping.MIRROR_SOURCE_INDEX``
+C. **The ghost index is stored row 2**, ``stepping.MIRROR_SOURCE_INDEX``
    (stepping.py:160, ``_mirror_source`` :1582-1588): MEEP's halved origin at
    ``io = -2`` maps the ghost at -1 onto stored cell 2. Restated here rather
    than imported so the module stays engine-import-free at module scope, exactly
@@ -224,7 +224,7 @@ C. **THE GHOST INDEX IS STORED ROW 2**, ``stepping.MIRROR_SOURCE_INDEX``
    that axis by name (through :func:`symmetry.folded_axis_kinds`, which already
    carries the clause, symmetry.py:515-519).
 
-D. **BOTH MIRROR CODES BEHAVE IDENTICALLY IN THIS KERNEL — a PREDICTED NULL
+D. **Both mirror codes behave identically in this kernel — a predicted null
    with a derivation, carried as a null control rather than collapsed.**
    :mod:`symmetry` splits ``MIRROR_METALLIC`` (2) from ``MIRROR_PERIODIC`` (3)
    because the CURL masks a folded-periodic axis's top plane
@@ -238,7 +238,7 @@ D. **BOTH MIRROR CODES BEHAVE IDENTICALLY IN THIS KERNEL — a PREDICTED NULL
    discard that cross-check, and because a plan built here and a plan built
    there must index the SAME table (symmetry.py:108-114).
 
-E. **EVERYTHING ELSE IS :mod:`offdiag_update_e`'S, UNCHANGED**, and is
+E. **Everything else is :mod:`offdiag_update_e`'s, unchanged**, and is
    therefore that family's concern rather than re-litigated here: the
    coefficient multiply sitting BETWEEN the two shifts (that family's m1), the two
    shifts going in OPPOSITE directions (m2), MEEP's double row rounded once with
@@ -249,18 +249,18 @@ E. **EVERYTHING ELSE IS :mod:`offdiag_update_e`'S, UNCHANGED**, and is
    reducing to ``gs*us``. The gate re-runs the ones the fold could plausibly
    perturb and cites that family's gate for the rest.
 
-F. **``ENABLE_FP_FUSION = False`` IS THE CERTIFIED CONFIGURATION.** Measured
-   per tranche: offdiag 0/28 fusion-on rows identical (and nonlinear 0/108,
+F. **``ENABLE_FP_FUSION = False`` is the certified configuration.** Measured
+   per kernel family: offdiag 0/28 fusion-on rows identical (and nonlinear 0/108,
    bfast 0/52, special_kz 24/96, complex 68/68). This family's tail is the same
    multiply-subtract shape and it gains a ghost-lane multiply, so it certifies
    under fusion-off and the gate stamps that.
 
-G. **NO DIVISION ANYWHERE.** No Pade quotient, no ``div_rn`` concern, no
+G. **No division anywhere.** No Pade quotient, no ``div_rn`` concern, no
    host-rounded scalar powers: the coefficients and the inverse epsilon are
    VOLUMES (a scalar inverse epsilon is refused by name). f32 ``/`` lowers to
    ``div.full.f32`` at ~2 ulp and never appears on this path.
 
-H. **NO OVERFLOW NEEDLE PRODUCES A NaN.** A NaN's sign and payload are
+H. **No overflow needle produces a NaN.** A NaN's sign and payload are
    IEEE-unspecified, so extreme-magnitude cases stay finite through the whole
    path and the gate states the bound: with ``|D| <= 1``, ``|u| <= 1`` and
    ``|chi1inv| <= 4``, the row value is bounded by ``|D*us| + 2*0.25*(2|D|)|u|
@@ -287,14 +287,14 @@ scale): serving the parity-weighted reflect row instead changes the bytes.
 Whether the array path or MEEP is right there is not this file's question and
 not this file's to change. This kernel reproduces the array path. The finding
 belongs to ``stepping.py`` and ``driver.py``, alongside
-the STALE DOCSTRING HAZARD :mod:`offdiag_update_e` already records
+the stale-docstring hazard :mod:`offdiag_update_e` already records
 (stepping.py:1219-1220, fields.py:1237-1241 and driver.py:1202-1204 all claim
 the installer refuses folded rows; ``_validated_offdiagonal_rows``,
 fields.py:1262-1310, installs them unchanged, and this whole family exists
 because it does).
 
 ================================================================================
-WHAT IS REFUSED, BY NAME
+What is refused, by name
 ================================================================================
 
 See :func:`folded_offdiag_constitutive_coverage`. In one sentence: everything
@@ -430,7 +430,7 @@ if triton is not None:
         in the OWN-axis coordinate, so the two hit the partner-axis ghost plane
         together.
 
-        ``MG`` IS A CONSTEXPR AND THE ``else`` ARM IS
+        ``MG`` is a constexpr and the ``else`` arm is
         :func:`offdiag_update_e._offdiag_term`'S BODY VERBATIM, on purpose:
         an unfolded partner axis then compiles to the certified kernel's
         instruction sequence by CONSTRUCTION rather than by trusting a compiler
@@ -513,7 +513,7 @@ if triton is not None:
         prev-before-store ordering, the own-axis half-integer coefficient index —
         is that kernel's, unchanged, because the array path's is unchanged.
 
-        THE THREE DIFFERENCES FROM THE CERTIFIED KERNEL, all named:
+        The three differences from the certified kernel, all named:
 
         1. DOWN, on a MIRROR axis (either termination): the ghost lane at face 0
            is redirected to stored row ``MIRROR_ROW`` and weighted by that
@@ -817,16 +817,16 @@ def mirror_ghost_axes(boundary_codes: Sequence[int]) -> Tuple[int, int, int]:
 def mirror_arm_is_reachable(grid: Any, fields: Any) -> Tuple[bool, Tuple[str, ...]]:
     """Can the mirror ghost arm change a byte for THIS (grid, rows) pair?
 
-    The reachability statement of the module docstring, as a function. THE TEST
-    IS AT SLOT LEVEL, NOT ROW LEVEL, and the difference is a measured
+    The reachability statement of the module docstring, as a function. The test
+    is at slot level, not row level, and the difference is a measured
     counterexample rather than a nicety: the mirror rule on axis ``a`` enters
     this sub-step ONLY through the down shift of the PARTNER axis
     (``_shift_down`` is called with ``axis = partner_axis``, stepping.py:
     1243-1245), so a fold on ``a`` is byte-visible iff some SURVIVING row slot
-    takes ``E_a`` AS ITS PARTNER. A row may be live through its OTHER slot and
+    takes ``E_a`` as its partner. A row may be live through its OTHER slot and
     still never touch the fold.
 
-    MEASURED (laptop, NumPy, same grid / coefficients / seeds, flipping only the
+    Measured with NumPy on a laptop (same grid / coefficients / seeds, flipping only the
     folded axis's ghost code, three chained sub-step calls): fold X with the
     single live slot ``Ey <- Ez`` gives MIRROR bytes == METALLIC bytes, i.e.
     UNREACHABLE — while a row-level test ("some live row is not ``Ex``") answers
@@ -839,7 +839,7 @@ def mirror_arm_is_reachable(grid: Any, fields: Any) -> Tuple[bool, Tuple[str, ..
     Returns ``(reachable, notes)``. Not a coverage clause and deliberately not a
     routing rule — routing by predicate order would make the numerical method a
     function of composer order (symmetry.py:713-722). It is what the gate's
-    IDENTITY leg asserts against, and what a later ``plan_step`` round may use
+    IDENTITY leg asserts against, and what a later ``plan_step`` change may use
     to prefer the certified kernel where the two are measured equal.
     """
     notes: List[str] = []
@@ -894,7 +894,7 @@ def _folded_offdiag_grid_reasons(fields: Any, pml: Any, grid: Any) -> List[str]:
     if getattr(xp, "__name__", "") != "cupy":
         reasons.append(f"array module is {getattr(xp, '__name__', xp)!r}, not cupy")
 
-    # 2. Real storage. Complex fold + offdiag is Phase B's, composed with
+    # 2. Real storage. Complex fold + offdiag is left to a separate family, composed with
     #    folded_complex.py; the recurrence has the same shape and the STORAGE
     #    does not, so a complex run stepped as float32 reads the wrong stride.
     if getattr(fields, "force_complex_fields", False):
@@ -968,7 +968,7 @@ def _folded_offdiag_grid_reasons(fields: Any, pml: Any, grid: Any) -> List[str]:
 def folded_offdiag_constitutive_coverage(fields: Any, pml: Any) -> "_coverage.Coverage":
     """May the folded off-diagonal kernel step ``update_E`` for this pair?
 
-    POSITIVE CLAUSES ONLY; a failing clause appends its reason and the scan
+    Positive clauses only; a failing clause appends its reason and the scan
     continues, so a refusal reports everything that disqualified the run rather
     than the first thing.
 
@@ -998,15 +998,15 @@ def folded_offdiag_constitutive_coverage(fields: Any, pml: Any) -> "_coverage.Co
        same installer (fields.py:1296 keeps the caller's array without copying,
        so the alias is reachable without planting).
     e. volume inverse epsilon per component; this kernel carries NO scalar arm.
-    f. layout and the half-integer coefficient tables, at the FOLDED STORED
-       EXTENT — the clause that stops "the vectors are built at the stored
+    f. layout and the half-integer coefficient tables, at the folded stored
+       extent — the clause that stops "the vectors are built at the stored
        length" from being an assumption (symmetry.py:690-694).
     g. **a readable mirror ghost weight on every folded axis.** The weight is a
        RUNTIME argument, so an unreadable plane would launch a NaN rather than
        raise; ``folded_axis_kinds`` already refuses a phase outside +/-1 and
        this clause names the launched value itself.
 
-    ZERO FOLDED AXES IS ADMITTED, and that is not an oversight — it is
+    Zero folded axes is admitted, and that is not an oversight — it is
     :mod:`symmetry`'s own arrangement (symmetry.py:653-659). With every axis
     resolving to PERIODIC/METALLIC the kernel's constexpr branches reduce to the
     certified off-diagonal kernel's exactly, which the gate MEASURES rather than
@@ -1086,7 +1086,7 @@ def folded_offdiag_composition_coverage(fields: Any, pml: Any) -> "_coverage.Cov
     grid so the standalone gate can prove reduction to the certified
     off-diagonal kernel. That is not a routing rule: selecting between two valid
     products by branch order would make the numerical method depend on composer
-    order. This is the verdict a later ``plan_step`` round uses — the same split
+    order. This is the verdict a later ``plan_step`` change uses — the same split
     :func:`symmetry.folded_composition_curl_coverage` makes, for the same
     reason.
     """
@@ -1440,7 +1440,7 @@ def explain_folded_offdiag(fields: Any, pml: Any) -> "_coverage.Coverage":
 
 
 # ---------------------------------------------------------------------------
-# INTEGRATION — what the later wiring round has to do, and nothing more
+# INTEGRATION — the wiring this module left to a later change, and nothing more
 # ---------------------------------------------------------------------------
 #
 # Additive edits to the shared files, which are NOT touched from here:
@@ -1453,13 +1453,13 @@ def explain_folded_offdiag(fields: Any, pml: Any) -> "_coverage.Coverage":
 #                update_E slot, beside symmetry's folded curls and ghost fills.
 #                The composition probe's whole-step byte identity — folded curls
 #                and folded ghost fills composing UNCHANGED over the new
-#                update_E — is the measurement that licenses the branch. IT NOW
-#                EXISTS AND IS GREEN: parity/meep_gpu/probe_triton_folded_
+#                update_E — is the measurement that licenses the branch. It now
+#                exists and is green: parity/meep_gpu/probe_triton_folded_
 #                offdiag_composition.py, 6 cases, 50 complete driver steps,
 #                5,293,056 uint32 words, 0 differing, both armed mutations
 #                caught at step 1.
 #
-#                ONE CONSTRAINT THE WIRING ROUND INHERITS, measured by that
+#                One constraint the wiring change inherits, measured by that
 #                probe and NOT this file's to fix: symmetry.MirrorGhostFillPlan
 #                combines the near and far ghost passes into one launch, while
 #                the driver runs zero_metal_B/D BETWEEN the two fill calls
@@ -1483,4 +1483,4 @@ def explain_folded_offdiag(fields: Any, pml: Any) -> "_coverage.Coverage":
 #                _require_folded_far_face_is_quiet does not cover.
 #
 # Dispatch stays disabled throughout: the engine's fast-path hook returns None
-# on every branch and nothing in this tranche changes that.
+# on every branch and nothing in this module changes that.

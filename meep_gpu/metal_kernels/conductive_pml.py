@@ -5,7 +5,7 @@ conductive target (``stepping._apply_conductive_pml_update``). Unlike no-PML
 conductivity it carries the ``f_cond`` history and selects one of MEEP's four
 conductive PML forms per structure chunk, as ``step_generic.cpp::step_curl`` does.
 
-THE FORM IS CHOSEN PER STRUCTURE CHUNK. Membership is runtime data, never source
+The form is chosen per structure chunk. Membership is runtime data, never source
 text: the kernel binds the chunk record (:func:`meep_gpu.chunk_map.chunk_bounds_record`)
 as ``constant ChunkBounds& cb`` and reads it through the base curl's anchored bounds
 block (:func:`.shaders.curl_bounds_block`), evaluated at the cell's own stored index on
@@ -31,7 +31,7 @@ The increment ``(fcnd' - fcnd)`` is formed FIRST and then added: MEEP's grouping
 ``f_cond`` only on dsig cells (the auxiliary contract), and the curl stencil is MEEP's
 left-to-right bracket, lifted from :func:`.shaders.curl_source` rather than re-spelled.
 
-PER-CHUNK CONDUCTIVITY PRESENCE IS BOUND AS WORDS, beside the record. MEEP deletes a
+Per-chunk conductivity presence is bound as words, beside the record. MEEP deletes a
 chunk's conductivity array when every sample it visits is zero (structure.cpp:883-900),
 and such a chunk steps the lossless forms even where the component is lossy elsewhere
 (``ChunkLayout.conductive_chunks``; ``stepping._apply_conductive_pml_update``'s
@@ -39,7 +39,7 @@ and such a chunk steps the lossless forms even where the component is lossy else
 (:data:`PRESENCE_STRUCT`, last, at :data:`PRESENCE_BUFFER`) and indexes it with the
 cell's chunk code ``lx + 3*ly + 9*lz``, each axis labelled off the chunk record on the
 target's own Yee sub-lattice there -- the off-diagonal family's rule and its device
-text (:mod:`.offdiag_update_e`, KERNELS.md §2's presence extension). A lossy target's
+text (:mod:`.offdiag_update_e`, the chunk record's presence extension). A lossy target's
 cell whose chunk keeps no conductivity steps the lossless forms and leaves ``f_cond``
 alone. The words are built on the host from the array path's own per-cell presence
 (``RegionPlan.conductive_mask``) and checked to expand back to it on every stored
@@ -326,7 +326,7 @@ def conductive_presence_reasons(fields: Any, pml: Any, sub_step: str,
     ``StepContext.chunk_layout``); ``None`` is the one-rank division of the grid and
     layer, the one a driver built without MEEP steps with.
 
-    THE COMPLEX FAMILY'S CLAUSE (:mod:`.complex_conductive_pml`), whose kernels bind no
+    The complex family's clause (:mod:`.complex_conductive_pml`), whose kernels bind no
     presence words. This family binds them and asks :func:`presence_reasons` instead.
     """
     from ..chunk_map import ChunkLayout  # noqa: PLC0415
@@ -429,7 +429,7 @@ def presence_block(backward: bool, codes: Sequence[int],
 
     codes = tuple(int(code) for code in codes)
     targets = CONDUCTIVE_SUB_STEPS["step_D" if backward else "step_B"]
-    lines = ["    // --- the conductivity presence (KERNELS.md §2): bit `code` of each lossy",
+    lines = ["    // --- the conductivity presence: bit `code` of each lossy",
              "    // target's word, `code` the cell's chunk lx + 3*ly + 9*lz read off the",
              "    // chunk record on the target's own Yee sub-lattice per axis. A chunk",
              "    // that keeps no conductivity steps the lossless forms."]
@@ -608,7 +608,7 @@ def metal_conductive_pml_curl_coverage(fields: Any, pml: Any, sub_step: str,
 class MetalConductivePmlCurlPlan(KernelPlan):
     """Persistent-mirror plan for one active-PML conductive curl sub-step.
 
-    THE CHUNK RECORD BINDS AFTER THE SCALARS (:data:`RECORD_BUFFER`), checked against
+    The chunk record binds after the scalars (:data:`RECORD_BUFFER`), checked against
     the plan's shape (:func:`.chunk_bounds.plan_words`) and uploaded once as a
     plan-owned ``int32`` vector on the residency's device, outside the residency
     registry: nothing on the device writes it and nothing on the host reads it back.

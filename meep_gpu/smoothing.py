@@ -20,7 +20,7 @@ The scheme (doc/docs/Subpixel_Smoothing.md, src/anisotropic_averaging.cpp
 of the component being smoothed (``grid_volume::dV(here, smoothing_diameter=1)``) —
 and ``n`` is the unit interface normal.
 
-WHICH HALF OF THAT ACTUALLY RUNS. The anisotropy is real in this module and is checked
+Which half of that actually runs. The anisotropy is real in this module and is checked
 against MEEP value for value, but it is unreachable through
 :meth:`FdtdDriver.set_epsilon_smoothed`: that method requires epsilon to be invariant
 along the smoothed component's own axis ``d``, and BOTH ways this module finds a normal
@@ -40,7 +40,7 @@ needs, and reaching it needs the per-component tensor this engine does not store
 the second-order convergence this module buys is bought for the tangential
 polarization; the normal-direction row entry is verified here and used by nothing yet.
 
-THE NORMAL, AND WHICH VOXELS ARE AVERAGED AT ALL. MEEP takes ``n`` from the gradient of
+The normal, and which voxels are averaged at all. MEEP takes ``n`` from the gradient of
 epsilon integrated against a 50-point degree-11 quadrature rule on a sphere of radius
 ``dx`` about that same point (``material_function::normal_vector`` with
 ``sphere-quad.h``), and this module reproduces that rule, that radius, and MEEP's "the
@@ -50,7 +50,7 @@ returned bit-identical to the unsmoothed path rather than merely close. That sph
 gradient still decides WHICH voxels are averaged; what it no longer decides, under the
 default fill rule, is the answer.
 
-THE FILL FRACTION: TWO RULES, AND WHY THE ANALYTIC ONE IS THE DEFAULT. MEEP has two
+The fill fraction: two rules, and why the analytic one is the default. MEEP has two
 paths of its own. For a geometric object ``meepgeom.cpp eff_chi1inv_matrix`` takes the
 EXACT overlap of the voxel with the object and the EXACT object normal; only for a user
 material function does it fall back to summing samples. This module is only ever given a
@@ -62,7 +62,7 @@ still 2.1e-3 at 256.
 ``fill_rule="planar"`` (the default for a callable epsilon) recovers the geometric path
 instead of the fallback. For an interface that is locally a PLANE inside the voxel — a
 grating, a slab, a photonic crystal, every flat face of anything — both the fill and the
-normal are closed forms once the plane is known, and the plane can be MEASURED out of the
+normal are closed forms once the plane is known, and the plane can be measured out of the
 material function rather than sampled: five columns through the voxel are bisected to
 find where epsilon jumps, four central differences give the slopes and the normal, and
 :func:`cube_plane_fill` integrates the cube exactly. Bisection converges geometrically,
@@ -92,7 +92,7 @@ unsmoothed. Measured: one voxel of a rectangular bar, 17 % filled, 53 % away fro
 analytic value. That case is silent in MEEP; here it is counted as
 ``SmoothedEpsilon.unresolved_fraction``.
 
-WHAT THE ENGINE CAN CONSUME, and the residual that leaves. MEEP stores ``chi1inv``
+What the engine can consume, and the residual that leaves. MEEP stores ``chi1inv``
 per E component as a full symmetric tensor; this engine stores ONE scalar volume
 shared by all three D components (``FdtdDriver.set_epsilon``). :func:`smooth_inverse_epsilon`
 therefore takes the component whose row is wanted and returns that row's DIAGONAL

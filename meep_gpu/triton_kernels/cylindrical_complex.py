@@ -1,7 +1,7 @@
 """COMPLEX cylindrical (Dcyl, complex64 storage at every m) PML curl -- ONE curl kernel,
 the shared radial scan, and no new constitutive kernel.
 
-WHAT IT REPLACES. ``stepping.step_B`` and ``stepping.step_D`` on a Dcyl grid under
+What it replaces. ``stepping.step_B`` and ``stepping.step_D`` on a Dcyl grid under
 complex64 storage (``force_complex_fields=True``) with an active split-field PML, at
 every integer m: the curls, the radial sum, the i*m/r pass, the |m| = 1 axis-row
 increments and the per-|m| axis rules. The real-storage m = 0 run is
@@ -11,19 +11,19 @@ refuses the other's by name. The constitutive sub-steps need no cylindrical kern
 :func:`plan_cylindrical_complex_constitutive` builds
 :class:`.complex_fields.ComplexConstitutivePlan` behind its own predicate.
 
-EVERY STORED PART IS STEPPED WITH REAL OPERANDS ALONE, as MEEP's ``DOCMP`` loop steps
+Every stored part is stepped with real operands alone, as MEEP's ``DOCMP`` loop steps
 ``f[c][0]`` and ``f[c][1]`` (update_eh.cpp:149, step_db.cpp:47): a complex64 volume is a
 float32 word pair at ``2*idx`` / ``2*idx + 1``, every product has a real operand, and no
 complex multiply and no multiply-add appears anywhere in this file. The forms are the
 array path's (:mod:`meep_gpu.stepping` of this tree), transcribed with their grouping:
 
-1. THE RADIAL SUM. Bz's and Dz's WHOLE curl is ``dtdx`` times MEEP's per-chunk radial
+1. The radial sum. Bz's and Dz's WHOLE curl is ``dtdx`` times MEEP's per-chunk radial
    difference of ``f_rderiv_int`` (``stepping.cylindrical_rderiv_difference``,
    step_db.cpp:86-119), computed by :func:`.cylindrical_triton.cyl_radial_difference`
    -- the column-serial scan has one home, and on complex storage each stored part is
    one scan column. The plan launches the scan, then the curl.
 
-2. THE OTHER CURLS (``stepping._curl_from_operands``) through
+2. The other curls (``stepping._curl_from_operands``) through
    :func:`.forms.curl_stencil` with the chunk record's partner-presence word, per part:
    phi is invariant, so Bx/Dx take ``(-dtdx) * (g2s - g2)`` and By/Dy MEEP's
    left-to-right ``dtdx * (((g1s - g1) + g2) - g2s)``. The ownership mask
@@ -45,7 +45,7 @@ array path's (:mod:`meep_gpu.stepping` of this tree), transcribed with their gro
    bound as a ``float64`` vector (:func:`.cylindrical_triton.courant_constants`): a scalar
    kernel argument rides the fp32 ABI and would round them first.
 
-4. THE PML FORMS (``stepping._apply_curl_regions``) through :func:`.forms.curl_form`
+4. The PML forms (``stepping._apply_curl_regions``) through :func:`.forms.curl_form`
    keyed on the chunk record ``cb``, per part: the recurrence on the target's dsigu
    cells, the dsig-only form elsewhere, ``fu`` read and written on the recurrence's
    cells only.
@@ -74,7 +74,7 @@ array path's (:mod:`meep_gpu.stepping` of this tree), transcribed with their gro
    ``stepping._cylindrical_axis_rows``), ``fu`` on every cell of those rows, as the array
    path writes it.
 
-THE r AXIS NEEDS NO GHOST CODE. ``stepping._shift_up``'s CYL_AXIS branch is the metallic
+The r axis needs no ghost code. ``stepping._shift_up``'s CYL_AXIS branch is the metallic
 far-face zero, which a masked load delivers. The near ghost (``r_to_minus_r``) reaches
 only row 0 of a shift-down along r, which only Dy takes (partner Hz), and Dy's r Yee
 shift is 0, so the mask drops that row and the |m| = 1 increment then replaces it. The
@@ -539,7 +539,7 @@ def cyl_complex_pml_curl_step(
 # Coverage — the POSITIVE refusal enumeration
 # ---------------------------------------------------------------------------
 #
-# WRITTEN POSITIVELY AND ENUMERATING. Every requirement is named and checked and
+# Written positively and enumerating. Every requirement is named and checked and
 # coverage is never inferred from the absence of a known blocker — the two worst
 # defects in this project were silent wrong answers, not crashes.
 #
@@ -612,13 +612,13 @@ def _shared_reasons(fields: Any, pml: Any, grid: Any) -> List[str]:
         reasons.append("a magnetic (B) conductivity is installed")
 
     # 5. No dispersion, refused OUTRIGHT: none of the sixteen demand rows carries
-    #    a susceptibility, and complex ADE belongs to a future tranche. The shape
+    #    a susceptibility, and complex ADE here is a separate, unbuilt product. The shape
     #    clauses still run so an unreadable susceptibility is named, not shrugged.
     if getattr(fields, "has_polarizations", False) or (
             getattr(fields, "polarizations", ()) or ()):
         reasons.append(
-            "a susceptibility is registered: complex-storage ADE is a future "
-            "tranche, and no cylindrical corpus row combines the two")
+            "a susceptibility is registered: complex-storage ADE is not yet "
+            "built, and no cylindrical corpus row combines the two")
     reasons.extend(_susceptibility_reasons(fields))
 
     # 6. No instantaneous nonlinearity, no BFAST, no special_kz beta. Grid already
@@ -633,7 +633,7 @@ def _shared_reasons(fields: Any, pml: Any, grid: Any) -> List[str]:
     if float(getattr(grid, "beta", 0.0)) != 0.0:
         reasons.append(f"special_kz beta={getattr(grid, 'beta', 0.0)!r} is nonzero")
 
-    # 7. NO BLOCH PHASE. Dcyl Bloch is z-only in MEEP (grid.py:654-658 refuses a k
+    # 7. No Bloch phase. Dcyl Bloch is z-only in MEEP (grid.py:654-658 refuses a k
     #    on r or phi), none of the sixteen rows carries one, and the kernel
     #    compiles no rotation at all. Admitting a z phase later is a predicate
     #    widening plus a gate row — not a silent extension.
@@ -651,9 +651,9 @@ def _shared_reasons(fields: Any, pml: Any, grid: Any) -> List[str]:
     if not getattr(fields, "stores_E", False):
         reasons.append("E is recomputed from D rather than stored")
 
-    # 9. THE DIVISION'S r CUTS ARE GLOBAL. The radial sum restarts at each chunk's
+    # 9. The division's r cuts are global. The radial sum restarts at each chunk's
     #    first row; a lifted division whose r cuts differ along z keys the array
-    #    path's sum per cell, which the scan's per-row line cannot carry (DESIGN D8).
+    #    path's sum per cell, which the scan's per-row line cannot carry (docs/development/kernel-tables.md#record-layout).
     layout = None
     try:
         layout = getattr(fields, "chunk_layout", None)
@@ -728,17 +728,17 @@ def _cylindrical_geometry_reasons(fields: Any, pml: Any, grid: Any) -> List[str]
         if int(shape[1]) != 1:
             reasons.append(f"phi extent is {shape[1]} cells, not 1 (Dcyl is 2.5-D: "
                            "the exp(i*m*phi) dependence is analytic)")
-        # AT LEAST ONE OFF-AXIS RADIAL ROW. Measured 2026-08-13 on a real
+        # At least one off-axis radial row. Measured 2026-08-13 on a real
         # Grid(cell_size=(1.0, 0, 20), m=1, complex, z metallic) -> shape
         # (1, 1, 20): ``stepping.step_B`` RAISES ``IndexError: index 1 is out of
         # bounds for axis 0 with size 1`` from the |m| = 1 axis increment's
         # ``xp.take(Ez, 1, axis=0)`` (:642), while this predicate admitted the run
         # with no reasons at all. The kernel's matching load — ``off = nyz +
         # j*nz + k`` under ``mask=live`` (:753-755) — is true on every lane of
-        # that grid, so it would read a full plane PAST THE END of Ez and store a
+        # that grid, so it would read a full plane past the end of Ez and store a
         # silently wrong axis row where the array path stops loudly.
         #
-        # AND ON THE GPU BACKEND IT DOES NOT STOP LOUDLY AT ALL. Re-measured on
+        # And on the GPU backend it does not stop loudly at all. Re-measured on
         # the GPU host 2026-08-13 (CuPy 13.5.1, RTX A6000): ``cupy.take`` DOES NOT
         # BOUNDS-CHECK — ``cp.take(a, 1, axis=0)`` on a size-1 axis returns row
         # 0's data instead of raising, so the SAME driver on the SAME grid steps
@@ -751,7 +751,7 @@ def _cylindrical_geometry_reasons(fields: Any, pml: Any, grid: Any) -> List[str]
         # The evidence is the composition probe's ``nr>=2 refusal`` leg, which
         # measures the per-backend behaviour rather than asserting one of them.
         #
-        # WHY THE CLAUSE IS UNCONDITIONAL rather than |m| = 1 only: at |m| >= 2
+        # Why the clause is unconditional rather than |m| = 1 only: at |m| >= 2
         # nr = 1 does not fault, but every row is inside ``ZERO_ROWS`` and the
         # whole volume is held at zero, so the configuration is degenerate in
         # both products; and a clause that has to re-derive the m class is a
@@ -831,7 +831,7 @@ def cylindrical_complex_curl_coverage(fields: Any, pml: Any, sub_step: str) -> C
 def cylindrical_complex_constitutive_coverage(fields: Any, pml: Any, side: str) -> Coverage:
     """May the CERTIFIED ``complex_fields.bloch_constitutive_step`` run here?
 
-    IT NEEDS NO NEW KERNEL, and that is a MEASURED finding rather than an
+    It needs no new kernel, and that is a measured finding rather than an
     assumption: ``stepping.update_H`` (:907-924) and ``stepping.update_E``
     (:926-993) carry no cylindrical branch at all, and the identity leg in the
     module docstring reports **480/480 rows, 0 differing uint32 words** against a

@@ -1,6 +1,6 @@
 """The route-campaign stamps of the three kernel tables, in one module.
 
-WHAT A STAMP NAMES. Each kernel table's release (``fastpath.RELEASED_FUSED_ARMS``,
+What a stamp names. Each kernel table's release (``fastpath.RELEASED_FUSED_ARMS``,
 ``fastpath_cuda.CUDA_RELEASED_FUSED_ARMS``, ``metal_dispatch.METAL_RELEASED_FUSED_ARMS``)
 is cut from one driver-route campaign per compute capability or GPU architecture, all
 under one stamp:
@@ -16,7 +16,7 @@ directory other than the one :func:`route_gate` spells for the device its legs s
 (``fastpath.route_campaign``, ``metal_runs.route_campaign``), and a licence directory
 other than :func:`licence_campaign`, so a record names the run the tree asked for.
 
-WHY THE STAMPS LIVE HERE AND NOT IN THE DISPATCH MODULES. Each stamp used to be a
+Why the stamps live here and not in the dispatch modules. Each stamp used to be a
 constant of its table's dispatch module (``fastpath.py``, ``fastpath_cuda.py``,
 ``metal_dispatch.py``). A gate artifact's import record is every repository module its
 process held, and every gate that plans a driver holds those modules, so a re-route,
@@ -28,7 +28,7 @@ keyed on it. Those labels now name the ledger slot that records the campaign
 (``fastpath.ROUTE_RECORD``, ``fastpath_cuda.CUDA_ROUTE_RECORD``,
 ``metal_dispatch.METAL_ROUTE_RECORD``), and the stamps are here.
 
-WHO READS THIS MODULE. Only code that names a campaign: the record re-cut
+Who reads this module. Only code that names a campaign: the record re-cut
 (``parity/meep_gpu/recut_driver_dispatch_record.py``), the round preflights
 (``parity/meep_gpu/rounds/1.0/legs.py`` and ``metal_round.py``), the dispatch
 reachability the boards cite (``parity/meep_gpu/dispatch_reachability.py``), and the
@@ -40,11 +40,11 @@ file and voids no gate artifact by digest. The route records are voided BY NAME:
 that device (``meep_gpu/test_dispatch_contract.py``), so a table re-routed alone
 (:data:`REROUTED`) changes only that table's name.
 
-THE ROUND'S STAMP IS SET ONCE, AT THE FREEZE. :data:`ROUND` reads :data:`PLACEHOLDER`
+The round's stamp is set once, at the freeze. :data:`ROUND` reads :data:`PLACEHOLDER`
 until the freeze of the round that runs the campaigns is cut. The freeze sets it, one
 line in this file and no other byte of the package::
 
-    ROUND = "2026-10-15_10"        # <date the freeze is cut>_<release label>
+    ROUND = "2026-10-18_101"       # <date the freeze is cut>_<release label>
 
 and moves the stamps of the round before it into :data:`SPENT` (their campaigns ran).
 While it reads the placeholder, every preflight and the re-cut refuse by name
@@ -88,18 +88,22 @@ LICENCE_TABLES: Tuple[str, ...] = ("triton", "cuda")
 #: mistaken for one run under it.
 PLACEHOLDER = "UNSET"
 
-#: THE ROUND'S ONE STAMP, shared by the three tables and by every compute capability and
+#: The round's one stamp, shared by the three tables and by every compute capability and
 #: GPU architecture that drives them (``<stamp>_cc86``, ``<stamp>_applegpu_g13s``).
 #: Set at the freeze; see the module docstring.
-ROUND = "2026-10-15_10"
+ROUND = "2026-10-18_101"
 
-#: A TABLE RE-ROUTED ALONE after the freeze: its route gate fixed and re-run while the
+#: A table re-routed alone after the freeze: its route gate fixed and re-run while the
 #: other tables' campaigns stand. It takes its own stamp here, for example
-#: ``{"metal": "2026-10-13_20"}``, and only its record changes name. Emptied when the
-#: next round sets :data:`ROUND`.
-REROUTED: Mapping[str, str] = {}
+#: ``{"metal": "2026-10-13_20"}``, and only its record changes name. The two NVIDIA
+#: tables are re-routed together, under one stamp, because the chunk tooling reads an
+#: NVIDIA machine's round from both (``chunks.registry_round_stamp``) and the licence is
+#: filed under that stamp. Emptied when the next round sets :data:`ROUND`. Why each entry
+#: was made is in the table's History section below.
+REROUTED: Mapping[str, str] = {"triton": "2026-10-28_101", "cuda": "2026-10-28_101",
+                               "metal": "2026-10-26_101"}
 
-#: CAMPAIGN NAMES THAT MAY NOT BE LAUNCHED OR RECORDED AGAIN, per table: results
+#: Campaign names that may not be launched or recorded again, per table: results
 #: directories a campaign has run in. Keyed by the whole directory name, because one
 #: stamp serves every device (``<stamp>_cc86`` running does not spend ``<stamp>_cc90``);
 #: a stamp whose campaign predates the per-device names spends the stamp itself, which
@@ -114,6 +118,8 @@ SPENT: Mapping[str, Tuple[str, ...]] = {
         "dispatch_fused_route_2026-10-11_10_cc86",
         "dispatch_fused_route_2026-10-13_10_cc86",
         "dispatch_fused_route_2026-10-14_10_cc86",
+        "dispatch_fused_route_2026-10-15_10_cc86",
+        "dispatch_fused_route_2026-10-18_101_cc86",
     ),
     "cuda": (
         "dispatch_fused_route_cuda_2026-09-24_hoist",
@@ -124,6 +130,8 @@ SPENT: Mapping[str, Tuple[str, ...]] = {
         "dispatch_fused_route_cuda_2026-10-11_10_cc86",
         "dispatch_fused_route_cuda_2026-10-13_10_cc86",
         "dispatch_fused_route_cuda_2026-10-14_10_cc86",
+        "dispatch_fused_route_cuda_2026-10-15_10_cc86",
+        "dispatch_fused_route_cuda_2026-10-18_101_cc86",
     ),
     "metal": (
         "dispatch_metal_route_2026-09-25_night",
@@ -134,6 +142,9 @@ SPENT: Mapping[str, Tuple[str, ...]] = {
         "dispatch_metal_route_2026-10-13_10_applegpu_g13s",
         "dispatch_metal_route_2026-10-13_20_applegpu_g13s",
         "dispatch_metal_route_2026-10-14_10_applegpu_g13s",
+        "dispatch_metal_route_2026-10-15_10_applegpu_g13s",
+        "dispatch_metal_route_2026-10-18_101_applegpu_g13s",
+        "dispatch_metal_route_2026-10-25_101_applegpu_g13s",
     ),
 }
 
@@ -255,25 +266,25 @@ if __name__ == "__main__":
 # ---------------------------------------------------------------------------
 #
 # What each table's stamp named, and why it moved, in the words written beside the
-# constant at each move. Moved here verbatim with the constants (2026-10-13, owner
-# ruling R22); "this file" and "this line" in them mean the dispatch module the
+# constant at each move. Moved here verbatim with the constants (2026-10-13, into the
+# route-stamp registry); "this file" and "this line" in them mean the dispatch module the
 # constant then lived in. New moves are recorded below the last paragraph of the
 # table's section.
 #
-# THE TRITON TABLE: fastpath.DRIVER_ROUTE_FUSED_GATE until 2026-10-13.
+# The Triton table: fastpath.DRIVER_ROUTE_FUSED_GATE until 2026-10-13.
 #
-# THE DRIVER-ROUTE GATE FOR THE FUSED ROUTE, and the artifact that released it.
+# The driver-route gate for the fused route, and the artifact that released it.
 # ``parity/meep_gpu/gate_dispatch_fused_route.py``, run 2026-08-30 on the GPU host
 # GPU 6 (RTX A6000, sm_86, Triton 3.1.0, CuPy 13.5.1, MEEP 1.33.0), four legs,
 # all four ``release.released == true``.
 #
-# WHY IT IS NAMED IN PRODUCT CODE. :data:`RELEASED_FUSED_ARMS` below is the first
+# Why it is named in product code. :data:`RELEASED_FUSED_ARMS` below is the first
 # constant in this file that ADMITS rather than refuses, so a reader has to be
 # able to get from the admission to the measurement without being told where to
 # look, and a dispatching run's own artifact has to cite it. The same rule
 # :data:`ARM_CERTIFICATION` follows for a sub-step family, one level up.
 #
-# WHY IT NAMES ``_bind`` AND NOT THE TWO RUNS BEFORE IT. All three released and
+# Why it names ``_bind`` and not the two runs before it. All three released and
 # all three measured a real route; what separates them is WHICH BYTES they ran.
 # ``_seamgate`` reached every arm through ``MEEP_GPU_FUSE_ARMS``, because at the
 # time it ran no arm was released and the switch was the only way in — evidence
@@ -289,8 +300,8 @@ if __name__ == "__main__":
 # (``fingerprints.json`` recorded a fourth, 06cdbf37). ``_bind`` is that run
 # repeated against the bytes that ship, and it adds the case named below.
 #
-# THE ARTIFACT NO LONGER PREDATES THE LINE THAT NAMES IT, and closing that gap is
-# what this round is. The name below, the case list in :data:`RELEASED_FUSED_ARMS`
+# The artifact no longer predates the line that names it, and closing that gap is
+# what this re-route is. The name below, the case list in :data:`RELEASED_FUSED_ARMS`
 # and every other edit landed BEFORE the campaign started, so the four legs each
 # recorded this file at the digest it ships at, and
 # ``fingerprints.json``'s ``driver_dispatch.source_sha256`` is cut from that
@@ -298,7 +309,7 @@ if __name__ == "__main__":
 # each other — record, artifact and tree — so a self-naming citation that goes
 # stale again fails there instead of being argued about in prose.
 #
-# WHY IT MOVED OFF ``_bind``, 2026-09-02, and it is the same rule applied to a
+# Why it moved off ``_bind``, 2026-09-02, and it is the same rule applied to a
 # different file. ``driver.py``'s ``_inject_electric_through_conductivity`` now
 # rescales SPARSELY at the deposit indices the sources publish, where it used to
 # run three whole-volume passes; the passes canonicalised ``-0.0`` to ``+0.0``
@@ -313,7 +324,7 @@ if __name__ == "__main__":
 # sparse rescale moved anything the gate certifies; the artifact it names is the
 # answer, and ``test_dispatch_contract`` is what holds this line to it.
 #
-# WHY IT MOVED AGAIN, 2026-09-02, and this time the run is LARGER rather than
+# Why it moved again, 2026-09-02, and this time the run is LARGER rather than
 # repeated. ``_sparserescale`` drove six cases and released three arms; this one
 # drives nine and releases five. What is new in it, and what each addition is for:
 #
@@ -338,15 +349,15 @@ if __name__ == "__main__":
 #     so releasing 3-D would have cost the one device measurement that the
 #     envelope can say no at all. One corpus seam-instance, weighed against that,
 #     and named here so the trade is legible rather than implied.
-# WHY IT MOVED AGAIN, 2026-09-04, and this time nothing about the release
+# Why it moved again, 2026-09-04, and this time nothing about the release
 # changed — the FILES the release is cited from did. Three of them moved in one
-# round: ``driver.py`` and this file gained the by-name magnetic-half-step
+# change: ``driver.py`` and this file gained the by-name magnetic-half-step
 # consult (:data:`SYNC_UPDATE_H_PASS`), and ``triton_kernels/launch.py`` gained
 # the H_to_D seam row and the neighbouring-seam arbitration rule. All four legs
 # of ``_foldedrelease`` ran the pre-edit bytes, so the citation named a run that
 # had not executed the code citing it — the same defect this line has been moved
 # for twice before, a third file over. This name is the same four-leg protocol
-# repeated against the bytes that ship, with every source edit of the round
+# repeated against the bytes that ship, with every source edit of that change
 # landed BEFORE the campaign started; ``fingerprints.json``'s
 # ``driver_dispatch.source_sha256`` is re-cut from that recording by
 # ``parity/meep_gpu/recut_driver_dispatch_record.py``, which refuses unless leg,
@@ -355,7 +366,7 @@ if __name__ == "__main__":
 # compared case by case rather than assumed equal.
 # RE-RUN 2026-09-07 as `dispatch_fused_route_2026-09-07_cylfinal`, and repointed
 # here, for the reason the paragraph above gives: the cylindrical H_to_D wiring
-# round routed both CuPy-side products through their composers, which edited this
+# change routed both CuPy-side products through their composers, which edited this
 # very file (fastpath.py a5934d2bba7a -> b74a4c1ac90a) and triton_kernels/launch.py.
 # The 09-04 record bound the bytes its own flush leg executed, so leaving the
 # citation here would have the record binding one fastpath.py and the CITED gate
@@ -364,15 +375,15 @@ if __name__ == "__main__":
 # (shipped, harness_keep, flush, shipped_expansion_probe) and its substitution
 # counts reproduce the 09-04 run's case by case. `_syncchannel` is NOT deleted: it
 # stays as the record of what the pre-routing driver did, and neither is
-# `_cylwire`, the first run of this round -- it measured the bytes as they were
+# `_cylwire`, the first run of this re-route -- it measured the bytes as they were
 # BEFORE this constant was repointed, which is the ordering trap the paragraph
 # above names: every source edit of a round must land BEFORE its campaign starts,
 # and editing this line is itself such an edit.
 #
-# WHY IT MOVED, 2026-09-11, and the first thing to say is what this line was NOT
+# Why it moved, 2026-09-11, and the first thing to say is what this line was NOT
 # naming. ``fingerprints.json``'s ``driver_dispatch`` record binds
 # ``dispatch_fused_route_2026-09-08_wired`` — the run cut after the H_to_D wiring
-# round — while this constant still read ``_cylfinal``, so two record welds have
+# change — while this constant still read ``_cylfinal``, so two record welds have
 # been red since 09-08 (``test_the_recorded_dispatch_shape_matches_the_wiring_it_
 # describes``, which compares the two names, and ``test_the_cited_driver_route_
 # gate_ran_the_bytes_the_record_binds``, whose cited directory holds a different
@@ -388,8 +399,8 @@ if __name__ == "__main__":
 # configuration any release gate has driven and the reason ``cylindrical`` leaves
 # the shared envelope for :data:`FUSED_RELEASE_ARM_AXES` below.
 #
-# THE ORDERING RULE IS UNCHANGED AND IS WHAT THIS PARAGRAPH IS FOR. Every source
-# edit of this round — this name, the four :data:`RELEASED_FUSED_ARMS` rows, the
+# The ordering rule is unchanged and is what this paragraph is for. Every source
+# edit of this re-route — this name, the four :data:`RELEASED_FUSED_ARMS` rows, the
 # envelope move, the three :data:`ARM_CERTIFICATION` rows, the three
 # :data:`PENDING_DEVICE_GATE_ARMS` deletions, the route gate's new case and its
 # DRIVE rows — lands BEFORE the campaign starts, so all four legs record this
@@ -398,9 +409,9 @@ if __name__ == "__main__":
 # ``parity/meep_gpu/recut_driver_dispatch_record.py``, which refuses unless leg,
 # leg and tree agree. Between the edit and the recut the two welds above stay
 # red, joined by the three ARM_CERTIFICATION lookups whose ledger entries do not
-# exist yet — that window is named in the campaign log rather than papered over,
+# exist yet — that window is named here rather than papered over,
 # because the alternative is writing a ledger entry by hand, which is the record
-# forgery this campaign forbids. ``_cylfinal`` and ``_wired`` are NOT deleted:
+# forgery the certification process forbids. ``_cylfinal`` and ``_wired`` are NOT deleted:
 # they stay as the record of what the pre-release route did, and their verdicts
 # are compared case by case against this run rather than assumed equal.
 # REPOINTED 2026-09-15 to a FRESH stamp. The ``2026-09-14_weldgrid`` run drove only
@@ -415,14 +426,14 @@ if __name__ == "__main__":
 # while the ``update_E`` arm they need is pending. The widening is reverted, the two
 # cases are ``no-fused-arm`` controls, and that run is kept as the measurement.
 # REPOINTED 2026-09-15 to ``_2026-09-15_gapclose``, before that campaign starts, for
-# ONE batch carrying two changes to this table. (1) It releases ``fused pair D
+# ONE edit carrying two changes to this table. (1) It releases ``fused pair D
 # (complex conductive no-PML)`` on ``complex_no_pml_3d`` (:data:`RELEASED_FUSED_ARMS`,
 # :data:`FUSED_RELEASE_ARM_AXES`, :data:`ARM_CERTIFICATION`, the
 # :data:`PENDING_DEVICE_GATE_ARMS` deletion) and restores that case's Triton DRIVE
-# row. (2) With the 2026-09-15 ruling that lifted ``complex folded off-diagonal`` out
+# row. (2) With the 2026-09-15 decision that lifted ``complex folded off-diagonal`` out
 # of :data:`PENDING_DEVICE_GATE_ARMS`, it widens ``fused pair B (folded complex)``
 # back onto the two off-diagonal folds, which are DRIVE rows again. Every source edit
-# of the batch lands before the new campaign starts, so every leg records this file
+# of the edit lands before the new campaign starts, so every leg records this file
 # at the digest it ships at, and the ``triton_complex_offdiag_device_gate`` re-gate
 # runs on those bytes too. ``_2026-09-15_offdiag`` is NOT deleted: all four of its
 # legs released, and it stays the record of the table before both changes, including
@@ -430,13 +441,13 @@ if __name__ == "__main__":
 # ``pending-device-gate``) on the bytes before the lift.
 #
 # REPOINTED 2026-09-17 to ``_2026-09-17_allpaths``, again before the campaign runs,
-# for the batch that routes the two SCRATCH-OUTPUT OFF-DIAGONAL WELDS. That batch
+# for the edit that routes the two scratch-output off-diagonal welds. That edit
 # adds ``fused pair D (off-diagonal)`` and ``fused pair D (folded off-diagonal)`` to
 # :data:`ARM_CERTIFICATION` and to the certified-product table in
 # ``triton_kernels/launch.py``, and gives :class:`ScratchWeldPairPlan` a ``warm()``
 # that launches once at grid ``(0,)`` without rotating. ``_2026-09-15_gapclose`` is
 # NOT deleted: it stays the record of the table with both welds present, released and
-# DELIBERATELY UNWIRED, which is the control this batch overturns. The stencil gate
+# deliberately not wired, which is the control this edit overturns. The stencil gate
 # is re-run on the bytes this edit ships before the route campaign starts, so the
 # ledger entries these two labels name are cut from the same tree the route records.
 #
@@ -473,13 +484,34 @@ if __name__ == "__main__":
 # the route last ran. ``_2026-10-11_10`` is spent (its campaigns released on the
 # frozen commit before this one) and stays the record of that pass.
 #
-# MOVED 2026-10-13 to this module (owner ruling R22, the route-stamp registry): ROUND is
-# the placeholder until the R22 round's freeze sets it. ``_2026-10-13_10`` is spent (its
+# MOVED 2026-10-13 to this module (the route-stamp registry): ROUND is
+# the placeholder until the 2026-10-14 freeze sets it. ``_2026-10-13_10`` is spent (its
 # campaign released on the frozen commit of the records the series carries).
 #
-# THE HAND-CUDA TABLE: fastpath_cuda.CUDA_DRIVER_ROUTE_FUSED_GATE until 2026-10-13.
+# REROUTED 2026-10-28 to ``2026-10-28_101``, with the hand-CUDA table and the
+# dispatch-by-default licence, while the Metal table keeps its own stamp. The round's
+# compute capability 8.6 route (``dispatch_fused_route_2026-10-18_101_cc86``) and licence
+# (``dispatch_end_to_end_2026-10-18_101``, directory ``_cc86``) released on bytes before
+# the per-vendor and the nearest-architecture dispatch-preference priors moved the
+# preference consult, the second of them ``meep_gpu/fastpath.py`` too, and their
+# default-preference rows read compute capability 8.6 timing records that records
+# re-cut from rows timed on these bytes replace. The route record binds ``fastpath.py``,
+# so ``recut_driver_dispatch_record.py`` refuses those legs: the campaign is never
+# recorded and its name is spent. A licence directory is not a route campaign and is not
+# listed in :data:`SPENT`; with the stamp moved, :func:`licence_refusal` refuses it by
+# name. The route and the licence re-run under this stamp on these bytes, on every
+# compute capability the round certifies, 8.6 and 8.9 among them
+# (``dispatch_fused_route_2026-10-28_101_<device>``, its CUDA twin, and the licence
+# ``dispatch_end_to_end_2026-10-28_101_<device>``). The chunk tooling reads an NVIDIA
+# machine's round from the two NVIDIA stamps (``chunks.round_problems``), so on these
+# bytes ``chunks.py check`` and a chunk launch refuse an NVIDIA index of round
+# ``2026-10-18_101``; ``chunks.py verify``, ``stale`` and ``bind`` do not read the
+# registry, and read such an index as before. Only the route takes the new stamp: the
+# round's NVIDIA gate chunks keep ``2026-10-18_101``.
 #
-# THE CUDA DRIVER-ROUTE GATE, NAMED BEFORE IT RUNS. ``gate_dispatch_fused_route.py
+# The hand-CUDA table: fastpath_cuda.CUDA_DRIVER_ROUTE_FUSED_GATE until 2026-10-13.
+#
+# The CUDA driver-route gate, named before it runs. ``gate_dispatch_fused_route.py
 # --backend cuda`` writes ``results/<this name>/`` with five legs, and
 # ``recut_driver_dispatch_record.py --backend cuda`` refuses to cut the record
 # unless every ``(arm, case, leg)`` row of :data:`CUDA_RELEASED_FUSED_ARMS` appears
@@ -493,7 +525,7 @@ if __name__ == "__main__":
 # ``_2026-09-15_offdiag``: the same cases and legs again, because the Triton
 # off-diagonal fix moved fastpath.py and the route file, both bound by this record.
 # ``dispatch_fused_route_cuda_2026-09-15_weldgrid`` released all five legs and stays.
-# ``_2026-09-15_gapclose``: the same cases and legs again, because one Triton batch
+# ``_2026-09-15_gapclose``: the same cases and legs again, because one Triton change
 # moved fastpath.py and the route file, both bound by this record: the release of
 # ``fused pair D (complex conductive no-PML)``, which restored the Triton
 # ``complex_no_pml_3d`` row, and the lift of ``complex folded off-diagonal`` with the
@@ -502,14 +534,14 @@ if __name__ == "__main__":
 # under default precedence is now a fused label. DRIVE_CUDA's case set is unchanged:
 # the two off-diagonal folds stay out of it (see the note in the route file).
 # ``_2026-09-15_offdiag`` released five legs and stays.
-# ``_2026-09-17_allpaths``: the round the two withdrawn notes above both point at.
-# DRIVE_CUDA's case set CHANGES here for the first time since the target round: the
+# ``_2026-09-17_allpaths``: the re-route the two withdrawn notes above both point at.
+# DRIVE_CUDA's case set CHANGES here for the first time since the 2026-09-14 release: the
 # two off-diagonal folds return (``folded_complex_offdiag_2d`` and
 # ``folded_complex_nobloch_offdiag_2d``), with the
 # :data:`CUDA_OFF_DIAGONAL_CORNERS` entry that bounds them. What that buys is three
 # census instances on B->H, and what it risks is named where the row is written: the
 # arbitration-default-precedence control is a NEW measurement on those grids, because
-# the 2026-09-15 batch moved the Triton table's answer there. ``_2026-09-15_gapclose``
+# the 2026-09-15 change moved the Triton table's answer there. ``_2026-09-15_gapclose``
 # released its legs and stays as the record of the table with the folds held out.
 # ``_2026-09-17_singles2`` released on all five legs and cut the 352 / 597 board; it stays
 # as that record's provenance. ``_2026-09-19_overhead`` is the re-run after the two
@@ -519,7 +551,7 @@ if __name__ == "__main__":
 # ``deposit_repair.py`` and ``fused_pairs.py`` it ran. CORRECTED 2026-09-20: only
 # ``fused_pairs.py`` is BOUND by this record; ``deposit_repair.py`` is recorded in each
 # leg's provenance and bound by no CUDA record (the route gate's own note reads
-# "RECORDED, NOT BOUND"), which the sentence above overstated.
+# "recorded, not bound"), which the sentence above overstated.
 # ``_2026-09-20_restrict`` is the re-run after the deposit repair was restricted to the
 # component the source writes: the bracket a fused pair carries on the source's seam now
 # repairs one target per single-component source instead of three, bit-identical, and
@@ -549,7 +581,7 @@ if __name__ == "__main__":
 # ``_2026-09-27_flip`` (named 2026-09-27, before its campaign) is the re-run after two
 # edits to this file and to ``cuda_kernels/arms.py`` / ``cuda_kernels/registry.py``,
 # none of which adds or changes a kernel. (1) The six certified real-storage in-seam
-# fill kernels (``in_seam_2026-08-21``, re-gated in Round B) are registered as a CUDA
+# fill kernels (``in_seam_2026-08-21``, re-gated on 2026-09-25) are registered as a CUDA
 # fill arm on ``fill_B``/``fill_D`` (``cuda:mirror fill``), so rung 6b stops refusing a
 # real mirror-folded row whole when this table composes without a second table. (2)
 # The three off-diagonal ``update_E`` singles (``cuda:off-diagonal``,
@@ -583,16 +615,23 @@ if __name__ == "__main__":
 # ``_2026-10-11_10`` is spent (its campaign released on the frozen commit before this
 # one) and stays the record of that pass.
 #
-# MOVED 2026-10-13 to this module (owner ruling R22, the route-stamp registry): ROUND is
-# the placeholder until the R22 round's freeze sets it. ``_2026-10-13_10`` is spent (its
+# MOVED 2026-10-13 to this module (the route-stamp registry): ROUND is
+# the placeholder until the 2026-10-14 freeze sets it. ``_2026-10-13_10`` is spent (its
 # campaign released on the frozen commit of the records the series carries).
 #
-# THE METAL TABLE: metal_dispatch.METAL_DRIVER_ROUTE_GATE until 2026-10-13.
+# REROUTED 2026-10-28 to ``2026-10-28_101``, with the Triton table, for the reason given
+# at the end of that table's section: the round's compute capability 8.6 route
+# (``dispatch_fused_route_cuda_2026-10-18_101_cc86``) released on bytes before the
+# nearest-architecture prior moved ``fastpath.py``, which this record binds too, and its
+# default-preference rows read the timing records these bytes replace. Its name is spent,
+# and the route re-runs as ``dispatch_fused_route_cuda_2026-10-28_101_<device>``.
 #
-# THE DRIVER-ROUTE GATE THIS TABLE'S RELEASE IS CUT FROM, named BEFORE the
+# The Metal table: metal_dispatch.METAL_DRIVER_ROUTE_GATE until 2026-10-13.
+#
+# The driver-route gate this table's release is cut from, named BEFORE the
 # campaign runs and not after it.
 #
-# THAT ORDER IS THE TRAP, and the Triton constant records paying for it: every
+# That order is the trap, and the Triton constant records paying for it: every
 # source edit of a round must land BEFORE the round's campaign starts, and editing
 # this line is itself such an edit — so a run that discovers the constant is wrong
 # has to be repeated, not repointed. The campaign driver
@@ -608,14 +647,14 @@ if __name__ == "__main__":
 # ``_2026-09-15_offdiag``: the ``_2026-09-15_weldgrid`` campaign was stopped part-way
 # through its fleet, because the Triton off-diagonal fix moved fastpath.py, which
 # every Metal gate records.
-# ``_2026-09-15_gapclose``: one Triton batch moved fastpath.py again -- the release of
+# ``_2026-09-15_gapclose``: one Triton change moved fastpath.py again -- the release of
 # ``fused pair D (complex conductive no-PML)`` and the lift of ``complex folded
 # off-diagonal`` with the widening of ``fused pair B (folded complex)`` -- which every
 # Metal gate and this table's record bind, so the fleet and the dispatch stage re-run
 # under a fresh name. The ``_2026-09-15_offdiag`` campaign is kept as the record of the
 # tree before it.
 # REPOINTED 2026-09-17 to ``_2026-09-17_envelope``, BEFORE the campaign runs, for the
-# batch that moved ``pml_active`` and ``bfast`` off the shared envelope and onto 29
+# change that moved ``pml_active`` and ``bfast`` off the shared envelope and onto 29
 # per-arm pins (16 added, values read off each arm's own release cases). The
 # constant had read ``_2026-09-15_gapclose`` through the whole 2026-09-17_allpaths
 # campaign, so that campaign's record could never have bound; this one can.
@@ -629,7 +668,7 @@ if __name__ == "__main__":
 # re-run with both repaired.
 # ``_2026-09-19_witness`` refused ONE case on its probe leg, and on the route gate's
 # EXPECTATION rather than on any product: ``complex_no_pml_3d`` (first fused on this
-# round) read DROPPED-BUT-NOT-EXACT on a drop of 3.0 against an expected 1, because
+# re-route) read DROPPED-BUT-NOT-EXACT on a drop of 3.0 against an expected 1, because
 # its unfused ``complex no-PML stored E`` single launches once per component (1800
 # over 600 steps) and the pair folds all three into its one launch -- 8.0 -> 5.0 a
 # step, compiled calls agreeing, byte-identical to the array path. The gate's
@@ -652,15 +691,15 @@ if __name__ == "__main__":
 # REPOINTED 2026-09-30 to ``_2026-09-30_091`` for release 0.9.1, whose certification
 # round re-runs the fleet and the route on the released files.
 # REPOINTED 2026-10-02 to ``_2026-10-02_arch3``, before that campaign runs: the
-# 0.9.1 Metal round never ran, and this one is the first whose welds record the GPU
+# 0.9.1 Metal certification never ran, and this one is the first whose welds record the GPU
 # architecture each ran on, which the route record requires every row to read
 # certified. (``_2026-10-02_arch`` was abandoned during its fleet: its lift legs
 # found no MEEP corpus. ``_2026-10-02_arch2`` was killed 40 gates in, every one
 # released, when the shell that started it exited.)
 # REPOINTED 2026-10-05 to ``_2026-10-05_perarch``, before that campaign runs: the
 # admission reads the per-architecture run records and the route record keeps one
-# run per GPU architecture, so this file moved and the route is re-run on it. THE
-# CONSTANT IS NOW THE STAMP, not the directory: each architecture's campaign writes
+# run per GPU architecture, so this file moved and the route is re-run on it. The
+# constant is now the stamp, not the directory: each architecture's campaign writes
 # its legs under ``results/<metal_runs.route_campaign(this, architecture)>/``
 # (``dispatch_metal_route_2026-10-05_perarch_applegpu_g13s``), the way the NVIDIA
 # constants name ``<stamp>_cc86``, so a second Mac drives the same release on the
@@ -697,7 +736,35 @@ if __name__ == "__main__":
 # release (two legs of four) and is spent. Only the route takes the new stamp: the
 # gate roots of the round stay ``2026-10-13_10``.
 #
-# MOVED 2026-10-13 to this module (owner ruling R22, the route-stamp registry): ROUND is
-# the placeholder until the R22 round's freeze sets it. ``_2026-10-13_10`` and
+# MOVED 2026-10-13 to this module (the route-stamp registry): ROUND is
+# the placeholder until the 2026-10-14 freeze sets it. ``_2026-10-13_10`` and
 # ``_2026-10-13_20`` are spent (the second released on the frozen commit of the records
 # the series carries).
+#
+# REROUTED 2026-10-25 to ``2026-10-25_101`` (the first :data:`REROUTED` entry), while the
+# NVIDIA tables' campaigns of the round stand. The round's held route
+# (``dispatch_metal_route_2026-10-18_101_applegpu_g13s`` on an Apple M1 Max) released its
+# four legs, but every plan it ran recorded Metal frontend metalfe-32023.921.5, and every
+# Metal weld of the bound ledger ran on metalfe-32023.850.10: an operating-system and
+# command-line-tools update moved the frontend after the welds ran.
+# ``recut_driver_dispatch_record.py --backend metal`` refuses to cut a record from rows
+# dispatched on a frontend the cited welds do not certify, and it reads the verdict each
+# plan recorded when it ran, so that campaign can never be recorded and its name is spent.
+# The welds are re-run and re-bound on the current frontend, and the held route re-runs
+# under this stamp (``dispatch_metal_route_2026-10-25_101_applegpu_g13s``). The chunk
+# tooling reads a Mac's round from this table's stamp (``chunks.round_problems``): a
+# chunked round shares its stamp with its route, so on these bytes it refuses a Metal
+# index of round ``2026-10-18_101``.
+#
+# REROUTED 2026-10-26 to ``2026-10-26_101``, while the NVIDIA tables' campaigns of the
+# round stand. The held route of ``2026-10-25_101``
+# (``dispatch_metal_route_2026-10-25_101_applegpu_g13s`` on an Apple M1 Max) released, on
+# bytes whose dispatch preference arbitrated the Metal table by a portable prior derived
+# from NVIDIA records. The prior is now derived per vendor, so an Apple GPU is arbitrated
+# by Apple records alone. That campaign's gates hold the changed module in their run
+# closure and its default-preference rows were arbitrated by the rule that changed, so it
+# is never recorded and its name is spent. The held route re-runs under this stamp
+# (``dispatch_metal_route_2026-10-26_101_applegpu_g13s``), and so do the Metal gate chunks
+# of the re-certification: the chunk tooling's rule that a chunked round shares its stamp
+# with its route holds, so a Metal chunk index is partitioned under ``2026-10-26_101`` and
+# every Metal gate runs again under it.

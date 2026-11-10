@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """DEVICE byte gate: the Triton H->D weld on the two COMPLEX beta cells.
 
-TWO BOARD CELLS, ONE FAMILY, TWO EMITTED KERNELS, FOUR SEAM-INSTANCES::
+Two board cells, one family, two emitted kernels, four seam-instances::
 
     H_to_D  (folded complex   -> folded complex beta PML)  3
     H_to_D  (complex beta run -> complex beta PML)         1
@@ -9,28 +9,28 @@ TWO BOARD CELLS, ONE FAMILY, TWO EMITTED KERNELS, FOUR SEAM-INSTANCES::
 Read off ``results/fusion_matrix_triton_2026-09-07_cyl/fusion_matrix.json``
 (``aggregate.h_to_d_seam.instances``, ``one_per_row`` true, denominator 597).
 
-THE ASYMMETRY IN THE TWO CELL LABELS IS REAL. The folded cell's ``update_H`` arm is
+The asymmetry in the two cell labels is real. The folded cell's ``update_H`` arm is
 ``folded complex`` and NOT "folded complex beta"; the unfolded cell's is ``complex beta
 run``. That is what the two shipped constitutive predicates ARE, and
 ``launch.CERTIFIED_FUSED_PAIR_ARMS`` already carries the same pairing for this cell's
 B->H and D->E siblings. The family's module docstring states it; this gate records the
 resolved variant per fixture so the record answers "which arm pair did this absorb".
 
-WHAT THE FIXTURES MUST BE. Complex storage, ``dimensions=2`` (``grid`` refuses beta off
+What the fixtures must be. Complex storage, ``dimensions=2`` (``grid`` refuses beta off
 an effective-2-D Cartesian grid) and a nonzero ``beta``; the folded variant adds a
 MIRROR axis, and the absorber is spelled per face because the near face of a folded
 axis is the mirror plane rather than a boundary. No layer on z: that axis is
 translationally invariant on a beta run and ``PML.__init__`` refuses one there.
 
-THE BETA PASS IS MEEP'S, PER PART. Both certified curls run the special-kz beta pass
+The beta pass is MEEP's, per part. Both certified curls run the special-kz beta pass
 after every component's curl form, a quarter turn of the partner's parts by ONE real
 word (``special_kz.beta_curl_coefficients``, rounded once on the host, negated on the D
 side), through the additive ladder keyed on the chunk record. The two words are passed
 through, the mutation table arms the B side's words in their place and drops the pass,
-and the form contract is armed on both halves (KERNELS.md 7.1 and 7.2), with MEEP's
+and the form contract is armed on both halves (docs/development/certification.md), with MEEP's
 start of H scored on ``folded_mirror_periodic_first_update``.
 
-THE LEG SET, THE REFERENCE COUNTING AND WHAT IS RECORDED-RATHER-THAN-ASSERTED are the
+The leg set, the reference counting and what is recorded-rather-than-asserted are the
 shared kit's; see :mod:`triton_hd_tail_gate_kit`.
 """
 
@@ -105,7 +105,7 @@ class BetaComplexProduct(kit.Product):
         ("unfolded_pp", {"variant": "beta_complex", "boundaries": {}}),
         ("unfolded_mm", {"variant": "beta_complex",
                          "boundaries": {"x": "metallic", "y": "metallic"}}),
-        # THE RUN'S FIRST update_H on the mutation fixture's grid: unseparated, so
+        # The run's first update_H on the mutation fixture's grid: unseparated, so
         # every arrangement performs MEEP's start of H at step 1 (the array path in
         # update_H, the weld through its start_h scalar). Every fixture above is
         # seeded mid-run.
@@ -164,7 +164,7 @@ class BetaComplexProduct(kit.Product):
             "old": ("        curl2_re = curl_stencil(b_x_re, b2_re, a2_re, a_y_re, dtdx, "
                     "px, py)\n"),
             "new": "        curl2_re = dtdx * ((b_x_re - b2_re) + (a2_re - a_y_re))\n",
-            "why": "INVERTED (KERNELS.md 7.1): Dz's real curl takes the PREVIOUS package "
+            "why": "INVERTED: Dz's real curl takes the PREVIOUS package "
                    "grouping, the pairwise `(g1s - g1) + (g2 - g2s)`, in place of MEEP's "
                    "left-to-right `((g1s - g1) + g2) - g2s` that forms.curl_stencil "
                    "spells",
@@ -236,7 +236,7 @@ class BetaComplexProduct(kit.Product):
             "target": "kernel", "expected": "NULL", "hits": 2,
             "old": "        p_re = tl.load(u0 + 2 * idx, mask=live & du0, other=0.0)\n",
             "new": "        p_re = tl.load(u0 + 2 * idx, mask=live, other=0.0)\n",
-            "why": "PREDICTED NULL (KERNELS.md 7.2, the unconditional auxiliary load): "
+            "why": "PREDICTED NULL (the form battery's unguarded auxiliary load): "
                    "off the dsigu chunk the selected form never consumes fu_Dx and its "
                    "store stays masked; the guard is pinned by the lift",
         },
@@ -282,10 +282,10 @@ class BetaComplexProduct(kit.Product):
                               for axis, phase in spec.get("symmetry") or ()),
         }
 
-    #: THE Z EXTENT IS ZERO, and ``grid`` is what forces it: ``dimensions=2`` makes z
+    #: The Z extent is zero, and ``grid`` is what forces it: ``dimensions=2`` makes z
     #: translationally invariant, and an invariant axis is INFINITE -- a length there
     #: "describes nothing this run can represent" (grid.py:800). Measured on this
-    #: lane's first device smoke, where a 1.2 z extent died before the first step.
+    #: gate's first device smoke, where a 1.2 z extent died before the first step.
     default_cell = (2.0, 2.1, 0.0)
 
     def pml_spec(self, spec: Mapping[str, Any]) -> Any:
@@ -449,7 +449,7 @@ class BetaComplexProduct(kit.Product):
             conditions (a callable ``withdraw``, ``is_integrated``, and at least one
             source point). The third is not decoration: a stand-in without it is
             ADMITTED, and the refusal leg would then be measuring nothing -- caught on
-            this lane's first device smoke, 2026-09-08."""
+            this gate's first device smoke, 2026-09-08."""
 
             component = "Ez"
             is_integrated = True

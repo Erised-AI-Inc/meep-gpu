@@ -1,17 +1,17 @@
 """Complex ``update_E`` welded to complex ``update_P`` — the fourth E->P product.
 
-THE COMPLEX64 SIBLING of :mod:`.fused_ade_chain`, in exactly the relation
+The complex64 sibling of :mod:`.fused_ade_chain`, in exactly the relation
 :mod:`.complex_no_pml_stored_e` has to :mod:`.no_pml_stored_e`: a separate family,
 a separate predicate, the same seam and the same shape. It claims the ONE E->P
 cell that module names as unclaimed — "**complex64 storage** — a separate signature
 and a separate arm; the four ``TestLoadDump.*_3d`` rows are not claimed here"
-(fused_ade_chain.py, "WHAT THIS FAMILY REFUSES").
+(fused_ade_chain.py, "What this family refuses").
 
 ===========================================================================
-WHAT IT IS WORTH: +4 SEAM-INSTANCES OF 387, RECOMPUTED
+What it is worth: +4 seam-instances of 387, recomputed
 ===========================================================================
 
-MEASURED, not inferred from the ranked-gap table's reachable ceiling.
+Measured, not inferred from the ranked-gap table's reachable ceiling.
 ``results/fusion_matrix_metal_2026-08-20_unbuilt_cells/`` re-runs the standing
 CLOSED cut (``results/fusion_matrix_metal_2026-08-20_closed``, 118/387) with this
 product and one other added and nothing else changed; E->P moves 10 -> 14 and the
@@ -29,7 +29,7 @@ The four rows are ``TestLoadDump.test_load_dump_{structure,structure_sharded,
 chunk_layout_file,chunk_layout_sim}_3d``, and they are the SAME four
 :mod:`.complex_conductive_fused_pair` serves at D->E.
 
-THE SEAM IS EMPTY, and that is again the whole reason the product exists.
+The seam is empty, and that is again the whole reason the product exists.
 ``FdtdDriver.step`` runs::
 
     if fast is None or not fast.dispatch("update_E", self.fields):
@@ -41,7 +41,7 @@ Nothing sits between them, which is why the Metal fusion matrix records
 ``E_to_P: 15 instances, 0 blocked by the source seam, CEILING 15``.
 
 ===========================================================================
-WHAT IS FUSED, AND IT IS EXACTLY ONE VALUE
+What is fused, and it is exactly one value
 ===========================================================================
 
 ``update_P``'s drive is ``Fields.drive_field(component)``: without PML that is the
@@ -58,7 +58,7 @@ construction; the gate's ``byte_neutral_control`` leg MEASURES it anyway, per
 complete seam step, because "by construction" is a hypothesis until a comparator
 agrees.
 
-EVERY OTHER LINE IS TRANSCRIBED CHARACTER FOR CHARACTER from the body it replaces,
+Every other line is transcribed character for character from the body it replaces,
 with the pointer renames named below and nothing else. The lines are not restated
 anywhere in this module as data; ``test_metal_complex_fused_ade_chain`` CALLS each
 certified emitter, searches its output for the line, and searches this family's
@@ -66,7 +66,7 @@ output for the same line with the documented rename applied — so the check par
 both sources and mirrors neither.
 
 ===========================================================================
-THE ADE HALF NAMES NO COMPLEX ARM
+The ADE half names no complex arm
 ===========================================================================
 
 The certified complex ADE body is MEEP's ``DOCMP2`` two real passes
@@ -78,17 +78,17 @@ per part) cannot disagree with it inside the one fused scope. There is no arm fo
 the two halves to differ on, and no clause here that checks one.
 
 ===========================================================================
-THE ROTATION, AND WHAT IS MEASURED RATHER THAN INHERITED
+The rotation, and what is measured rather than inherited
 ===========================================================================
 
 ``ade_update_p`` launches once per DRIVEN COMPONENT and the host rotates
 ``P`` / ``P_prev`` / ``_scratch`` after each launch (ade_update_p.py:13-18, the
 three assignments at :353-355 transcribing dispersion.py:689-691). This family
-takes the shape :mod:`.fused_ade_chain` established: ONE LAUNCH PER COMPONENT,
+takes the shape :mod:`.fused_ade_chain` established: one launch per component,
 the rotation left exactly where the certified plan already performs it, so the
 fused kernel inherits no intra-launch alias.
 
-WHAT IS **NOT** INHERITED IS THE LICENCE. ``probe_metal_ade_rotation_seam`` — the
+What is **not** inherited is the licence. ``probe_metal_ade_rotation_seam`` — the
 orbit walk and the per-component-interleave equivalence that
 :mod:`.fused_ade_chain` rests on — SKIPPED this cell by name: "this leg prices the
 two REAL diagonal E bodies; the complex and off-diagonal arms carry different
@@ -109,15 +109,15 @@ So the two facts are re-established here on complex storage:
   launch anyway.
 
 ===========================================================================
-THE POINTER RENAMES, AND WHY THE SCALARS MOVE INTO A STRUCT
+The pointer renames, and why the scalars move into a struct
 ===========================================================================
 
 **POINTER RENAMES.** The E half names its pole buffers ``p0..p7``
 (complex_no_pml_stored_e.py:53-60) and the ADE half names its three volumes
 ``p_now`` / ``p_prev`` / ``p_out`` (ade_update_p.py:69-71). Fused, ``p0`` would
 mean two things in one scope, so the ADE volumes become ``o{k}`` (out), ``q{k}``
-(prev) and ``s{k}`` (sigma) while ``p{k}`` stays the E half's spelling — AND IS
-THE SHARED POINTER. ``p_now`` is not bound a second time: pole ``k``'s ``P[c]`` is
+(prev) and ``s{k}`` (sigma) while ``p{k}`` stays the E half's spelling — and is
+the shared pointer. ``p_now`` is not bound a second time: pole ``k``'s ``P[c]`` is
 the same array the E chain subtracts, so the fused signature binds it once. That
 shared binding is the fusion's whole footprint.
 
@@ -127,10 +127,10 @@ coefficient scalars, the scalar sigmas and ``n_elem`` — 46 bindings at six pol
 against a ceiling of 31. Packing every scalar into ONE ``constant Params&`` — the
 shape :mod:`.fused_dispersive_pair` measured to compile, and the one
 :mod:`.fused_ade_chain` already uses at this seam — brings the same configuration
-to 28. :func:`binding_count` is evaluated BY THE PREDICATE, so a configuration
-over the ceiling is a REFUSAL BY NAME rather than a compile error at plan time.
+to 28. :func:`binding_count` is evaluated by the predicate, so a configuration
+over the ceiling is a refusal by name rather than a compile error at plan time.
 
-**THE PACKER IS IMPORTED, NOT RESPELLED.** :func:`.fused_ade_chain.pack_params`
+**The packer is imported, not respelled.** :func:`.fused_ade_chain.pack_params`
 and :func:`.fused_ade_chain.params_words` lay out exactly the blob this family
 needs, and a second implementation of a measured layout is one more thing to
 drift. ``ny`` and ``nz`` ride along unread: this E body is POINTWISE and has no
@@ -138,7 +138,7 @@ drift. ``ny`` and ``nz`` ride along unread: this E body is POINTWISE and has no
 that does it exists so :data:`.templates.GUARD` below is the certified emitters'
 own text.
 
-THE POLE SLOTS ARE NOT PADDED TO EIGHT. ``complex_no_pml_stored_e`` declares
+The pole slots are not padded to eight. ``complex_no_pml_stored_e`` declares
 ``p0..p7`` always and binds the displacement into the unused slots
 (complex_no_pml_stored_e.py:196). Here the signature declares exactly
 ``pole_count`` slots, because the pad is what puts this over the ceiling. The body
@@ -146,7 +146,7 @@ is already specialised per pole count in the certified family, so nothing about
 the ARITHMETIC changes with the declaration.
 
 ===========================================================================
-WHAT THIS FAMILY REFUSES
+What this family refuses
 ===========================================================================
 
 * **real (float32) storage** — that is :mod:`.fused_ade_chain`'s ``no_pml`` arm,
@@ -440,7 +440,7 @@ def complex_fused_ade_chain_coverage(fields: Any, pml: Any,
     here with that half's reasons, prefixed so a reader can tell which side said
     it — the construction :func:`.fused_ade_chain.fused_ade_chain_coverage` uses.
 
-    THERE IS NO SOURCE CLAUSE, AND THE ABSENCE IS DELIBERATE. Every fused product
+    There is no source clause, and the absence is deliberate. Every fused product
     at the two curl seams must be told the source inventory, because the driver
     injects INSIDE those seams and ignorance is not an empty set. This seam has no
     injection in it at all — ``FdtdDriver.step`` runs ``update_E`` at :3304 and
@@ -455,7 +455,7 @@ def complex_fused_ade_chain_coverage(fields: Any, pml: Any,
     if not polarization.covered:
         reasons.extend(f"ADE half: {reason}" for reason in polarization.reasons)
 
-    # THE SEAM CLAUSE. The per-component interleave is equivalent to the driver's
+    # The seam clause. The per-component interleave is equivalent to the driver's
     # order only while update_E(c) reads NOTHING but component c's own volumes.
     # Both features that break that are already refused by the E half; they are
     # named again because the FACT being asserted is different — this one is about
@@ -471,7 +471,7 @@ def complex_fused_ade_chain_coverage(fields: Any, pml: Any,
             "volumes (stepping.py:991-997), so the per-component interleave is "
             "not the driver's order")
 
-    # THE POLE SETS MUST AGREE, PER COMPONENT. Both are fields.polarizations order
+    # The pole sets must agree, per component. Both are fields.polarizations order
     # filtered by drives(component); a disagreement would pair pole k's
     # displacement subtraction with pole j's recurrence and produce a smooth,
     # plausible, wrong field.
@@ -530,7 +530,7 @@ class MetalComplexFusedAdeChainPlan:
     whole-step arbiter asserts the exact per-cycle launch count on every filled
     slot, and that assertion is what stops a slot passing by not executing.
 
-    THE ROTATION IS PERFORMED HERE, AFTER EACH LAUNCH, and it is the SAME rotation
+    The rotation is performed here, after each launch, and it is the SAME rotation
     ``MetalAdeUpdatePPlan.run`` performs (ade_update_p.py:353-355), which is
     ``dispersion.PolarizationState.update``'s (dispersion.py:689-691).
     """
@@ -563,12 +563,12 @@ class MetalComplexFusedAdeChainPlan:
     def run(self, contract: Optional[str] = None) -> None:
         """One complete E->P seam, in place, against the mirrors.
 
-        THE DESTINATION CHAIN IS RESOLVED AHEAD OF EACH LAUNCH and the reference
+        The destination chain is resolved ahead of each launch and the reference
         rotation applied only AFTER it succeeds — the discipline
         ``MetalAdeUpdatePPlan.run`` states (ade_update_p.py:19-23): caching
         semantic pointers would advance the wrong buffer from launch two onward.
 
-        THE ALIAS CHECK IS NOT DECORATION. The whole licence for this shape is
+        The alias check is not decoration. The whole licence for this shape is
         that a per-component launch never writes a buffer it reads, and the
         rotation moves those identities every step.
         """
@@ -581,8 +581,10 @@ class MetalComplexFusedAdeChainPlan:
                     f"{self.variants}); build it with contract_variants={(mode,)} "
                     f"rather than launching the pinned one")
             component = entry.component
-            poles = [state.P[component] for state in entry.states]
-            prevs = [state.P_prev[component] for state in entry.states]
+            # Resolving which array is current is not a read of its words: the plain dict
+            # subscript keeps a held mirror on the device (barrier.BarrierDict acquires).
+            poles = [dict.__getitem__(state.P, component) for state in entry.states]
+            prevs = [dict.__getitem__(state.P_prev, component) for state in entry.states]
             outs: List[Any] = []
             scratch_of: Dict[int, Any] = {}
             for position, state in enumerate(entry.states):
@@ -695,7 +697,7 @@ def plan_metal_complex_fused_ade_chain(
                 scalar_sigmas.append(float(sigma))
             constants.append(tuple(state.constants))
 
-        # THE PACKER IS THE FLOAT32 FAMILY'S OWN — see the module docstring.
+        # The packer is the float32 family's own — see the module docstring.
         params = pack_params(constants, scalar_sigmas, shape[1], shape[2],
                              int(target.size))
         assert params.size == params_words(len(chain)), (

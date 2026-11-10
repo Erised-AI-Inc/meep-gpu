@@ -11,7 +11,7 @@ declared terminations and both plane parities, Bloch phases on unfolded axes,
 metallic walls, 3-D / 2-D / 1-D shapes, four row masks, three value classes, both
 courants and BOTH float32 subnormal policies.
 
-WHAT THE CORPUS ASKED FOR
+What the corpus asked for
 =========================
 The 2026-08-20 final census leaves 6 of 759 slots unserved, all at ``update_E``,
 and FIVE are this one shape: three under an ACTIVE layer with a mirror fold
@@ -22,7 +22,7 @@ with a nonzero ``k_point`` (``TestMaterialGrid.test_matgrid_3d``,
 on KERNEL SHAPE: "complex64 storage" from the two real off-diagonal families,
 "off-diagonal chi1inv" from the three complex ones.
 
-THE TWO ARMS, AND WHY THEY ARE TWO KERNELS
+The two arms, and why they are two kernels
 ==========================================
 ``update_E`` accumulates onto ``E`` through ``_apply_constitutive_pml`` under a
 layer (stepping.py:1015) and OVERWRITES ``E`` without one (:1022). Binding
@@ -33,7 +33,7 @@ that on the array path (1024 of 1024 float32 words differ on an 8x8x8 fixture);
 this gate carries it as a DEFECT LEG as well, so the split is measured on a device
 and not only on a laptop.
 
-WHAT WOULD MAKE THIS GATE VACUOUS, AND THE FLOORS THAT REFUSE IT
+What would make this gate vacuous, and the floors that refuse it
 ================================================================
 * ``oracle_moved`` -- the array path must change at least one output word from the
   frozen input. A zero-initialised constitutive step leaves every word ``+0.0``
@@ -64,7 +64,7 @@ WHAT WOULD MAKE THIS GATE VACUOUS, AND THE FLOORS THAT REFUSE IT
   against a record with a defect planted in it and the run FAILS if it does not
   flip. A gate whose verdict cannot go red is not a gate.
 
-THERE IS NO NumPy BACKEND, DELIBERATELY
+There is no NumPy backend, deliberately
 =======================================
 ``gate_cuda_complex_no_pml``'s decision and its reason: a NumPy backend costs a
 SECOND TRANSCRIPTION of the kernel on the leg that is supposed to be checking the
@@ -142,7 +142,7 @@ OUTPUTS_PML: Tuple[str, ...] = ("Ex", "Ey", "Ez", "f_w_Ex", "f_w_Ey", "f_w_Ez")
 OUTPUTS_STORE: Tuple[str, ...] = ("Ex", "Ey", "Ez")
 COMPONENTS: Tuple[str, ...] = ("Ex", "Ey", "Ez")
 
-#: 0.5 is exactly representable in float32 and 0.35 is not. ONLY THE SECOND can
+#: 0.5 is exactly representable in float32 and 0.35 is not. Only the second can
 #: distinguish a contracted expression from an uncontracted one, so the unguarded
 #: control is scored at the inexact one. The courant also moves dt, which moves
 #: every PML coefficient, so it is a real second draw of the tables.
@@ -177,7 +177,7 @@ ROW_MASK_SPECS: Tuple[Dict[str, Any], ...] = (
             "role, which is the fold discriminators' NULL arm"},
 )
 
-#: The grids. EVERY AXIS IS FOLDED SOMEWHERE, both declared terminations appear on
+#: The grids. Every axis is folded somewhere, both declared terminations appear on
 #: a fold, both plane parities appear, an odd stored count appears, a Bloch phase
 #: appears BESIDE a fold and on its own, metallic walls appear beside a fold (which
 #: no folded spec gets on its own, because a folded axis always reports ``wm = 0``),
@@ -219,7 +219,7 @@ SPECS: Tuple[Dict[str, Any], ...] = (
     {"label": "pml_fold_Z_periodic_odd_plane", "arm": "pml",
      "cell": (8.0, 12.0, 16.0), "boundaries": ("periodic",) * 3,
      "symmetry": (("Z", -1),), "k_point": (0.0, 0.0, 0.0)},
-    # A FOLD BESIDE A LIVE METALLIC WALL, which no other folded spec carries: a
+    # A fold beside a live metallic wall, which no other folded spec carries: a
     # folded axis always reports wm = 0 (``is_metallic and not is_mirrored``), so a
     # sweep of folded specs alone leaves every wall flag zero and the wall mask
     # untested on a fold.
@@ -235,7 +235,7 @@ SPECS: Tuple[Dict[str, Any], ...] = (
     {"label": "pml_fold_XZ_phased_Y", "arm": "pml", "cell": (16.0, 10.0, 16.0),
      "boundaries": ("periodic",) * 3, "symmetry": (("X", -1), ("Z", 1)),
      "k_point": (0.0, 0.27, 0.0)},
-    # THE PRESENCE CASE (0.10). MEEP deletes a row's chi1inv array in every chunk where
+    # The presence case (since 1.0). MEEP deletes a row's chi1inv array in every chunk where
     # it is identically zero over the samples the chunk allocates and drops its term
     # there, which differs from adding a zero only on a -0 row. ``row_block`` keeps the
     # rows on an interior block, so every chunk that carries a layer deletes them; the
@@ -265,7 +265,7 @@ SPECS: Tuple[Dict[str, Any], ...] = (
     {"label": "store_1d_phased", "arm": "no_pml", "dimensions": 1,
      "cell": (0.0, 0.0, 24.0), "boundaries": ("periodic",) * 3, "symmetry": (),
      "k_point": (0.0, 0.0, 0.35)},
-    # THE INERT LAYER, swept because "inert is the same as absent" is otherwise an
+    # The inert layer, swept because "inert is the same as absent" is otherwise an
     # inference about pml.py: ``_pml_is_active`` is False for a zero-thickness
     # layer, so stepping takes the store branch and the predicate admits it.
     {"label": "store_inert_layer_phased", "arm": "no_pml",
@@ -288,8 +288,8 @@ REDUCED_SPEC_LABELS: Tuple[str, ...] = (
 def _complex_host(shape, value_class: str, rng) -> np.ndarray:
     """One complex64 volume in a value class.
 
-    THE TWO PLANES ARE ASSIGNED, NEVER COMBINED AS ``re + 1j*im``. Measured by the
-    sibling tranche before it was reasoned about: ``1j * im`` carries a real part
+    The two planes are assigned, never combined as ``re + 1j*im``. Measured in
+    ``gate_cuda_complex.py`` before it was reasoned about: ``1j * im`` carries a real part
     of ``0.0 * im``, so ``re + 1j*im`` computes ``(-0.0) + (+0.0) = +0.0`` and
     DESTROYS every negative zero in the plane the zero cross terms act on.
     """
@@ -328,7 +328,7 @@ def build(xp, spec: Dict[str, Any], mask: Sequence[int], courant: float,
     fixture and the kernel fixture the same PROBLEM rather than two draws. The
     two are asserted byte-identical before either is stepped.
 
-    THE THICKNESS RULE IS THE SIBLING FOLD GATES': skip an axis too thin to hold a
+    The thickness rule is the sibling fold gates': skip an axis too thin to hold a
     layer, and on a MIRRORED axis ask for the HIGH face only.
     ``PML._resolve_mirror_faces`` refuses a named low face on a folded axis
     outright -- cell 0 is the mirror plane, a boundary condition rather than a wall
@@ -348,7 +348,7 @@ def build(xp, spec: Dict[str, Any], mask: Sequence[int], courant: float,
         fields.enable_pml_storage()
     shape = tuple(grid.shape)
 
-    # THREE DISTINCT, INHOMOGENEOUS inverse-epsilon volumes drawn away from 1.0.
+    # Three distinct, inhomogeneous inverse-epsilon volumes drawn away from 1.0.
     # Against ones the multiply is invisible; against one shared volume the
     # component-aliasing defect is invisible; against a constant volume a
     # coefficient-index error is invisible. ``coefficient_profile`` is the floor
@@ -363,7 +363,7 @@ def build(xp, spec: Dict[str, Any], mask: Sequence[int], courant: float,
     for slot, (row, partner) in enumerate(coverage.OFFDIAG_ROW_SLOTS):
         if not mask[slot]:
             continue
-        # SPATIALLY VARYING AND STRADDLING ZERO. A uniform coefficient is what
+        # Spatially varying and straddling zero. A uniform coefficient is what
         # makes the REGISTRATION rather than merely the rounding invisible, and the
         # inverse of a real tensor carries NEGATIVE off-diagonals -- a sign error
         # that only shows on one side of zero is exactly what a positive-only draw
@@ -564,7 +564,7 @@ def presence_drops_a_term(fields, record: Sequence[int], codes: Sequence[int],
 def wall_mask_bites(mask: Sequence[int], walls: Sequence[int]) -> bool:
     """Does the metallic wall mask change ANY word on this (mask, grid) pair?
 
-    A LIVE WALL FLAG IS NOT ENOUGH. ``_mask_metallic_wall_coupling`` zeroes face 0
+    A live wall flag is not enough. ``_mask_metallic_wall_coupling`` zeroes face 0
     of the axes on which THE COMPONENT'S Yee shift is 0, so ``wm_y`` reaches Ex and
     Ez and never reaches Ey. A grid that declares a wall on an axis no live row
     component masks against is one where dropping the mask is a genuine NULL.
@@ -636,7 +636,7 @@ def m_drop_the_parity_weight(text):
 
 
 def m_parity_full_complex_product(text):
-    """INVERTED (KERNELS.md section 7.1): the previous family's full complex product.
+    """INVERTED (must be caught): the previous family's full complex product.
 
     The parity times the stored plane is one product per part
     (``part_products.scale``); the previous family spelled it as the complex product
@@ -714,7 +714,7 @@ def m_connect_every_plane(text):
 
 
 def m_old_package_ghost_phase(text):
-    """INVERTED (KERNELS.md section 7.1): the previous package's ghost rule.
+    """INVERTED (must be caught): the previous package's ghost rule.
 
     The phase on the FAR product's wrapped lane (the top plane of the own axis, where
     the up index wraps below the home index) and none on the near product, where
@@ -749,7 +749,7 @@ def m_same_direction_shifts(text):
 
 
 def m_down_ghost_real_plane_only(text):
-    """The METALLIC near ghost cleared on the real plane only -- a MEASURED NULL.
+    """The METALLIC near ghost cleared on the real plane only -- a measured null.
 
     complex64 is float2 and a clear that touches one plane is a known defect class
     in this tree, so this leg was written expecting a catch. The device says
@@ -762,7 +762,7 @@ def m_down_ghost_real_plane_only(text):
     ghost is a cell at which ``_mask_metallic_wall_coupling`` then zeroes the whole
     coupling: the ghost's VALUE cannot reach a stored word.
 
-    WHAT IS STILL LOAD-BEARING, and the legs that measure it: the MASK itself
+    What is still load-bearing, and the legs that measure it: the MASK itself
     (``drop_the_wall_mask``, CAUGHT -- without it the face-0 coupling is
     ``g[home] * u``, and ``g[home]`` is alive beside the wall, which is the
     2.6e-02 the array path's own note records), and the ghosted UP coefficient
@@ -818,7 +818,7 @@ def m_drop_a_row_from_the_volume_sum(text):
 
 
 def m_presence_ignored(text):
-    """INVERTED (KERNELS.md section 7.1): every term added in every chunk.
+    """INVERTED (must be caught): every term added in every chunk.
 
     The previous family added both terms everywhere; MEEP drops a term in a chunk that
     deleted the array (``update_eh.cpp:191-196``), and the presence word says which.
@@ -862,7 +862,7 @@ def m_store_fw_before_reading_prev(text):
 
 
 def m_old_package_constitutive_grouping(text):
-    """INVERTED (KERNELS.md section 7.1): two accumulations where MEEP's
+    """INVERTED (must be caught): two accumulations where MEEP's
     ``step_update_EDHB`` forms the right-hand side first, ``f + ((kps*src) -
     (kms*prev))`` -- a different float32 number on the cells whose chunk carries the
     dsigw layer."""
@@ -873,7 +873,7 @@ def m_old_package_constitutive_grouping(text):
         "mul_coefficient_left(kms, prev))", text)
 
 
-# --- KERNELS.md section 7.2: the B battery on the constitutive chunk forms ------
+# --- the per-chunk form battery on the constitutive chunk forms -----------------
 
 def b_select_removed(text):
     """The whole-grid recurrence: every cell takes the dsigw form whatever its chunk
@@ -883,7 +883,7 @@ def b_select_removed(text):
 
 def b_predicate_on_coefficient_identity(text):
     """The form chosen by the coefficient's value rather than by the chunk's
-    membership, the predicate the family carried until 0.10."""
+    membership, the predicate the family carried before 1.0."""
     return _sub(r"(constitutive_apply\(E[xyz], f_w_E[xyz], idx, src_E[xyz], "
                 r"kps_([xyz])\[([ijk])\], kms_\2\[\3\]), in_h_\2\);",
                 r"\1, ((kps_\2[\3] != 1.0f) || (kms_\2[\3] != 1.0f)));", text)
@@ -994,19 +994,19 @@ SOURCE_MUTATIONS: Dict[str, Callable[[str], Tuple[str, int]]] = {
 
 #: MUST come back UNCAUGHT. Two are bitwise-commutative rewrites of a real line;
 #: three are rewrites of prelude helpers this family compiles and never calls; two
-#: are MEASURED FINDINGS this gate's first device run established, each recorded
+#: are measured findings this gate's first device run established, each recorded
 #: here with the number behind it rather than quietly dropped from the battery.
 #:
-#: ``parity_full_complex_product`` LEFT THIS LIST (bit_parity_0_10 lane KC6): the
+#: ``parity_full_complex_product`` left this list in 1.0: the
 #: previous family's full complex spelling of the mirror parity multiply, armed as
 #: the mutant, was a null on the previous row, whose additions with a normal operand
 #: absorbed the sign of a zero in the ghost. On MEEP's row -- float32 pair sums,
 #: scaled and summed in double, a term absent where its chunk deleted the array --
 #: that sign reaches a stored word: the first device run of the re-derived family
 #: CAUGHT it on the signed-zero class (1 differing word, reduced product, keep
-#: policy). It is must-catch, as every inverted spelling is (KERNELS.md section 7.1).
+#: policy). It is must-catch, as every inverted spelling is (certification.md).
 #:
-#: ``auxiliary_load_unguarded`` -- KERNELS.md section 7.2's declared null: the load
+#: ``auxiliary_load_unguarded`` -- the per-chunk form battery's declared null: the load
 #: feeds only the dsigw form, so no stored word changes.
 #:
 #: ``up_ghost_real_plane_only`` and ``down_ghost_real_plane_only`` -- see each
@@ -1050,7 +1050,7 @@ UP_PHASE_MUTATIONS: Tuple[str, ...] = (
 WALL_MUTATIONS: Tuple[str, ...] = (
     "invert_the_wall_mask", "drop_the_wall_mask", "wall_mask_real_plane_only")
 
-#: Legs whose defect lives in the SIGN OF A ZERO, so the signed-zero value class is
+#: Legs whose defect lives in the sign of a zero, so the signed-zero value class is
 #: the one that can show it. Every other leg prefers the uniform class, where a
 #: fixture is all normal words and an ordinary defect has the most room.
 SIGNED_ZERO_MUTATIONS: Tuple[str, ...] = ("parity_full_complex_product",
@@ -1082,14 +1082,14 @@ HOST_MUTATIONS: Tuple[str, ...] = (
     "transpose_the_boundary_codes", "clear_the_presence_words",
     "record_bound_off_by_one", "record_lattices_swapped")
 
-#: The host mutations that corrupt the chunk record the launch binds (KERNELS.md
-#: section 7.2); the oracle steps the run's own division.
+#: The host mutations that corrupt the chunk record the launch binds (the form
+#: battery's record rows); the oracle steps the run's own division.
 RECORD_HOST_MUTATIONS: Tuple[str, ...] = ("record_bound_off_by_one",
                                           "record_lattices_swapped")
 
 
 def mutated_record(name: str, record: Sequence[int], grid) -> np.ndarray:
-    """``record`` corrupted as KERNELS.md section 7.2 names.
+    """``record`` corrupted as the per-chunk form battery names.
 
     ``record_bound_off_by_one`` moves each layered axis's low run end one row up on
     both lattices (the boundary plane changes form); ``record_lattices_swapped`` hands
@@ -1168,7 +1168,7 @@ def apply_host_mutation(name: Optional[str], layer, grid, arm, tables, codes,
 class KernelBackend:
     """The shipped CuPy launcher, driven through its own gate door.
 
-    THE GUARD AND THE MUTATION BOTH REACH NVRTC THROUGH THE SOURCE-KEYED MEMO:
+    The guard and the mutation both reach NVRTC through the source-keyed memo:
     ``_get_kernel`` keys on ``(name, options, policy, source)``, so overriding
     ``_COMPILE_OPTIONS`` or installing a source override is a MISS and the compiler
     sees the bytes this leg intends. The memo is dropped at both ends anyway,
@@ -1185,7 +1185,7 @@ class KernelBackend:
         self._overridden: List[Tuple[str, Tuple[int, ...], Any]] = []
 
     def set_guard(self, guard: Sequence[str]) -> None:
-        """Install the compile options, and DROP THE MEMO ONLY WHEN THEY MOVE.
+        """Install the compile options, and drop the memo only when they move.
 
         The memo key already carries the option tuple, so a stale entry cannot be
         served to a different guard. Clearing on every case instead would recompile
@@ -1258,7 +1258,7 @@ def case_key(spec, mask_spec, courant, value_class, guard, steps) -> str:
 
 
 def case_seed(key: str) -> int:
-    """A STABLE PER-CASE SEED, from a DIGEST rather than from ``hash()``.
+    """A stable per-case seed, from a DIGEST rather than from ``hash()``.
 
     Python salts ``hash()`` of a str with PYTHONHASHSEED -- measured, one key gave
     four distinct values in four interpreters -- so a hash-seeded gate draws a
@@ -1275,7 +1275,7 @@ def one_case(backend, xp, spec: Dict[str, Any], mask_spec: Dict[str, Any],
              host_mutation: Optional[str] = None) -> Dict[str, Any]:
     """One frozen state, run twice: the array path, then the kernel.
 
-    TWO FIXTURES, NOT ONE FIXTURE RESTORED. Both are built from the same seed and
+    Two fixtures, not one fixture restored. Both are built from the same seed and
     asserted byte-identical; the oracle runs on one and the kernel on the other.
     That is the ADE gate's shape and it removes the whole class of failure where a
     restore reproduced values but not the object graph.
@@ -1296,7 +1296,7 @@ def one_case(backend, xp, spec: Dict[str, Any], mask_spec: Dict[str, Any],
     weights = family.mirror_ghost_weights(grid)
     connections = family.bloch_connection_table(grid)
     flags = connections[0]
-    # THE RUN'S CHUNK RECORD AND PRESENCE WORDS, from the real family's builder
+    # The run's chunk record and presence words, from the real family's builder
     # (offdiag_presence.launch_chunk_arguments through chunk_arguments): the division
     # the array path's update_E reads on this layer.
     record, kept = family.chunk_arguments(kernel_fields, kernel_layer, codes)
@@ -1339,7 +1339,7 @@ def one_case(backend, xp, spec: Dict[str, Any], mask_spec: Dict[str, Any],
     case["fold_reaches_the_own_arm"] = bool(
         case["roles"]["fold_is_a_live_own_axis"])
 
-    # THE CONNECTION TABLES, CROSS-CHECKED against the certified complex curl
+    # The connection tables, cross-checked against the certified complex curl
     # launcher's own spelling: the pair takes the D curl's (eikna), the near product
     # the B curl's (conj(eikna)). Two spellings of one fact are equal only until
     # someone edits one, and the merge bar cannot check this pair because that module
@@ -1354,7 +1354,7 @@ def one_case(backend, xp, spec: Dict[str, Any], mask_spec: Dict[str, Any],
         and tuple(int(f) for f in their_own[0]) == tuple(connections[2])
         and tuple(float(v) for v in their_own[1]) == tuple(connections[3]))
 
-    # THE PREDICATES' ANSWERS, recorded rather than acted on.
+    # The predicates' answers, recorded rather than acted on.
     mine_pml = family.covers_complex_offdiag_pml_update_e(
         kernel_fields, kernel_layer, grid)
     mine_store = family.covers_complex_no_pml_offdiag_update_e(
@@ -1410,7 +1410,7 @@ def one_case(backend, xp, spec: Dict[str, Any], mask_spec: Dict[str, Any],
         int(oracle[name].view(np.float32).size) for name in outputs_for(arm))
     case["oracle_moved"] = moved > 0
 
-    # THE COUPLING MUST BE LIVE: the row product has to differ from the bare
+    # The coupling must be live: the row product has to differ from the bare
     # diagonal somewhere, or no defect in THIS family can bite.
     constitutive = (oracle["f_w_Ex"] if arm == "pml" else oracle["Ex"])
     diagonal = (to_host(oracle_fields.Dx).astype(np.complex128)
@@ -1600,20 +1600,20 @@ def run_sweep(backend, xp, results, out_path, product, steps,
 def _armable(name: str, case: Dict[str, Any]) -> bool:
     """Whether a leg's defect can REACH the grid this case scores on.
 
-    THE DEAD-BRANCH TRAP THIS EXISTS FOR: a mutation can rewrite REAL lines the
+    The dead-branch trap this exists for: a mutation can rewrite REAL lines the
     scored grid never enters, because they sit under a guard that case does not
     take. It then reports UNCAUGHT while measuring nothing. Every leg is checked
     against the CASE, not just against the rewrite count.
     """
     if name == "parity_full_complex_product":
-        # THE SPELLING DIFFERS ONLY ON SIGNED ZEROS, so the leg is armed on the
+        # The spelling differs only on signed zeros, so the leg is armed on the
         # signed-zero class -- the class the difference lives in -- and on a fold
         # the mirror ghost actually reaches. It is must-catch there; arming it
         # anywhere weaker would make a miss a statement about the fixture.
         return (case["fold_reaches_the_partner_arm"]
                 and case["value_class"] == "signed_zero")
     if name in ("drop_the_parity_weight", "weight_every_lane"):
-        # A PARITY OF +1 MAKES BOTH REWRITES NEAR-IDENTITIES. ``return z`` against
+        # A parity of +1 makes both rewrites near-identities. ``return z`` against
         # ``mul_coefficient_left(1.0f, z)`` differs only in the sign of a zero, and
         # a blanket weight of +1.0 is the identity on every normal word. The defect
         # these legs exist for is a DROPPED or MISPLACED parity, and only an ODD
@@ -1648,7 +1648,7 @@ def _armable(name: str, case: Dict[str, Any]) -> bool:
         return case["wall_mask_bites"] and not case["row_block"]
     if name in ("select_removed", "predicate_on_coefficient_identity",
                 "auxiliary_stored_on_a_plain_cell"):
-        # THE CHUNK FORMS NEED A LAYERED DIVISION: with no chunk carrying a layer
+        # The chunk forms need a layered division: with no chunk carrying a layer
         # every cell takes the plain form and the select has nothing to choose.
         return case["arm"] == "pml" and case["layered"]
     if name in PML_ONLY_MUTATIONS:
@@ -1711,12 +1711,12 @@ def mutation_plan(scored: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
                                                + case["roles"]["live_own_axes"])))
                       and (name != "flip_the_parity"
                            or case["fold_reaches_the_partner_arm"])
-                      # A TRANSPOSE OF THREE EQUAL CODES IS THE IDENTITY. On an
+                      # A transpose of three equal codes is the identity. On an
                       # all-periodic grid the rewrite changes no argument and the
                       # NULL would be about the fixture, not the kernel.
                       and (name != "transpose_the_boundary_codes"
                            or len(set(case["codes"])) > 1)
-                      # THE RECORD DECIDES THE CONSTITUTIVE FORM ONLY UNDER A LAYER.
+                      # The record decides the constitutive form only under a layer.
                       and (name not in RECORD_HOST_MUTATIONS
                            or (case["arm"] == "pml" and case["layered"]))]
         plan.append({"mutation": name, "kind": "host",
@@ -1826,13 +1826,13 @@ def mutation_summary(legs: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# THE GUARD, MEASURED RATHER THAN ASSUMED
+# The guard, measured rather than assumed
 # ---------------------------------------------------------------------------
 
 def guard_binary_probe() -> Dict[str, Any]:
     """Do the two option sets compile DIFFERENT PTX for this family's sources?
 
-    WHY THIS LEG EXISTS. Every certified sibling on this track carries an
+    Why this leg exists. Every certified sibling on this track carries an
     ``--fmad=false`` control that DIVERGES: the real off-diagonal family measured
     its unguarded control 0/384 identical, which is what makes the flag
     CORRECTNESS there rather than prudence. On the FIRST device run of this family
@@ -1848,14 +1848,14 @@ def guard_binary_probe() -> Dict[str, Any]:
        ``kps * src`` minus ``kms * prev``, the row's per-part products), so (b) is
        not expected and a run that reports it names the source that refutes it.
 
-    Those are distinguishable AT THE COMPILER, and this leg distinguishes them:
+    Those are distinguishable at the compiler, and this leg distinguishes them:
     it compiles the same source under both option tuples through the same NVRTC
     entry point CuPy uses and hashes the generated PTX. IDENTICAL PTX settles (b)
     -- the case agreement is then a property of the arithmetic and not a
     coincidence -- and DIFFERENT PTX with agreeing cases would be (a) and is
     recorded as such rather than passed over.
 
-    THE FLAG IS KEPT EITHER WAY: MEEP's contraction-off build rounds every product
+    The flag is kept either way: MEEP's contraction-off build rounds every product
     and every sum on its own, and a family that compiled the same bytes under
     different options than its siblings would not be comparable to them.
     """
@@ -1907,7 +1907,7 @@ def build_verdict(results: Dict[str, Any]) -> Dict[str, Any]:
     guarded = sweep.get("per_guard", {}).get("fmad_false", {})
     unguarded = sweep.get("per_guard", {}).get("default_no_options", {})
     control_by_arm = sweep.get("unguarded_inexact_by_arm", {})
-    # LOAD-BEARING ON EVERY TAIL: the unguarded control diverged on at least one
+    # Load-bearing on every tail: the unguarded control diverged on at least one
     # inexact case of each arm. The part-wise body hands the flag multiply-then-add
     # pairs on both tails; a case on which the two compilations happen to round
     # alike is named in ``unguarded_inexact_by_arm`` rather than excused.
@@ -1936,7 +1936,7 @@ def build_verdict(results: Dict[str, Any]) -> Dict[str, Any]:
         "phase_table_agrees_with_complex_pml_kernels": bool(
             sweep.get("phase_table_agrees_with_complex_pml_kernels")),
         "predicates_disjoint": bool(sweep.get("predicates_disjoint")),
-        # THE GUARD AXIS MUST BE SWEPT, and the two explanations of its result must
+        # The guard axis must be swept, and the two explanations of its result must
         # be distinguished. The sibling clause -- "the unguarded control must
         # DIVERGE" -- does not transfer, and pretending it did would be a claim
         # this family's first device run contradicted. What is required here is:
@@ -2038,7 +2038,7 @@ def verdict_flips_against_planted_defect(results: Dict[str, Any]) -> Dict[str, A
 
 
 def save(results: Dict[str, Any], out_path: str) -> None:
-    """Atomic rewrite, STAMPED IMMEDIATELY BEFORE THE WRITE.
+    """Atomic rewrite, stamped immediately before the write.
 
     ``meep_gpu/test_gate_provenance.py`` reads a three-line window above every
     write site rather than the first stamp in the file, because the first
@@ -2074,7 +2074,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if cp is None:
         raise SystemExit("this gate needs CuPy; run it on the device host")
 
-    # THE FLUSH LEG NEEDS MEEP IMPORTED FIRST, and that is a MEASURED REFUSAL
+    # The flush leg needs MEEP imported first, and that is a measured refusal
     # rather than a precaution: ``install_subnormal_policy('flush')`` raises in a
     # process that has not imported MEEP and says why in its own words --
     # ``mp.set_zero_subnormals`` is the only exposure of this process's FTZ/DAZ

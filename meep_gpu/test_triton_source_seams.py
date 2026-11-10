@@ -59,7 +59,7 @@ def test_real_source_objects_partition_the_two_fusion_seams(
 ):
     """Only the family injected inside a pair's seam may refuse that pair.
 
-    THE PARTITION IS STILL THE THING UNDER TEST, and it is asked twice.
+    The partition is still the thing under test, and it is asked twice.
 
     * With the deposit repair NOT declared -- the state every product shipped in
       before ``deposit_repair`` was wired -- the refusal must fall exactly on the
@@ -170,7 +170,7 @@ def test_the_cuda_probe_covers_positive_refusal_and_integrated_source_routes():
         "source_free", "electric", "magnetic", "electric_and_magnetic",
         "integrated_electric", "integrated_magnetic",
     }
-    # THE CLEAN SEAM keeps the sentinel in the second slot; the seam that carries a
+    # The clean seam keeps the sentinel in the second slot; the seam that carries a
     # deposit holds the repair, on the pair whose OWN family was injected and on that
     # pair only. A case that expected NoopPlan where a deposit lands would be asserting
     # byte identity produced by a refused fusion, which measures nothing.

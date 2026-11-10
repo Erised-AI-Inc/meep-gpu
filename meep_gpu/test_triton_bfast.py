@@ -1,4 +1,4 @@
-"""Laptop contracts for the BFAST Triton tranche.
+"""Laptop contracts for the BFAST Triton family.
 
 Everything here runs on the NumPy merge-bar machine: the optional-import
 contract, the predicates' admission AND per-clause refusals on real
@@ -200,11 +200,16 @@ def test_the_fingerprint_welds_are_claimed(bf):
                           .read_text(encoding="utf-8"))
     welds = {name for name in recorded if "bfast" in name}
     assert welds == {
+        "triton_bfast_device_gate",
         "triton_bfast_fused_electric_pair_device_gate",
         "triton_bfast_fused_magnetic_pair_device_gate",
     }, (
-        "Phase B released the BFAST fused pair; each arm seeded its weld in "
-        "the fingerprints.json the dispatch route reads")
+        "The 2026-09-13 release campaign released the BFAST fused pair; each arm seeded its weld in "
+        "the fingerprints.json the dispatch route reads, and the 1.0.1 round's bind seeded the "
+        "family's own fleet weld from its released fleet run")
+    seeded = recorded["triton_bfast_device_gate"]
+    assert "seed_triton_welds.py" in seeded["_seeded"] and seeded["status"] == "PASS", seeded
+    assert "/bfast/" in seeded["runs"]["8.6"]["records"], seeded["runs"]["8.6"]["records"]
 
 
 # ---------------------------------------------------------------------------
@@ -321,7 +326,7 @@ def test_complex_storage_is_refused_by_name(bf):
 
 def test_bloch_k_is_refused_although_the_grid_allows_the_pairing(bf):
     """grid.py:719-724 DELIBERATELY accepts bfast + k_point (independent MEEP
-    constructor slots); Phase A refuses the pairing by name — the composition
+    constructor slots); the real-f32 BFAST curl refuses the pairing by name — the composition
     is the complex family's queue."""
     grid = Grid(resolution=10.0, cell_size=(1.2, 1.0, 1.4), dimensions=3,
                 courant=0.35, bfast_scaled_k=FULL_K, k_point=(0.25, 0.0, 0.0))

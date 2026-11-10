@@ -1,6 +1,6 @@
 """FLOOR 8 — every dispatch total a board publishes equals the measurement.
 
-WHY THIS IS ITS OWN MODULE AND NOT PART OF ``fusion_taxonomy``. It began there, beside
+Why this is its own module and not part of ``fusion_taxonomy``. It began there, beside
 FLOOR 7, which is where it belongs conceptually — and that placement cost a Metal board
 cut. Ten Metal H->D gate artifacts pin ``parity/meep_gpu/fusion_taxonomy.py`` in their
 import closure, so ADDING a function to that module drifted every one of them and
@@ -12,11 +12,11 @@ it is to put the code where it does not sit in a gate's closure. Moving it back 
 ``fusion_taxonomy.py`` to ``257e4e10c93b``, byte-for-byte the digest those ten artifacts
 recorded.
 
-THE SPLIT IS ALSO THE RIGHT ONE ON ITS OWN TERMS. ``fusion_taxonomy`` is the SERVED-axis
+The split is also the right one on its own terms. ``fusion_taxonomy`` is the SERVED-axis
 taxonomy: buckets, the instance ledger, and FLOOR 7 comparing every published served total
 to that ledger. ``served`` and ``served_in_dispatch`` are different numbers with different
 authorities — a served total is DERIVED from the instance ledger, a dispatch total is
-MEASURED off the tree by ``dispatch_reachability.served_in_dispatch`` — so the two floors
+measured off the tree by ``dispatch_reachability.served_in_dispatch`` — so the two floors
 answering to two authorities in two modules is clearer than one module holding both.
 """
 from __future__ import annotations
@@ -27,7 +27,7 @@ __all__ = ["DISPATCH_CONDITION_CONTAINERS", "DISPATCH_HEADLINE_KEYS",
            "dispatch_agreement"]
 
 
-#: THE SAME FLOOR FOR THE OTHER AXIS. ``served`` and ``served_in_dispatch`` are
+#: The same floor for the other axis. ``served`` and ``served_in_dispatch`` are
 #: DIFFERENT NUMBERS -- one licenses a predicate verdict, the other a driver consult --
 #: and :func:`headline_agreement` was only ever told about the first. That gap was not
 #: hypothetical: measured 2026-09-11 on ``fusion_matrix_metal_2026-09-11_dispatch``,
@@ -38,15 +38,15 @@ __all__ = ["DISPATCH_CONDITION_CONTAINERS", "DISPATCH_HEADLINE_KEYS",
 #: ``why_zero`` that was ``None`` and an ``arms`` table that was not empty. Nothing
 #: refused the cut, because every floor the boards had was about the served axis.
 #:
-#: A NAME ADDED TO A BOARD'S HEADLINE FOR ITS DISPATCH TOTAL GOES HERE IN THE SAME
-#: CHANGE, for the reason stated at :data:`SERVED_HEADLINE_KEYS`: the walk cannot see
+#: A name added to a board's headline for its dispatch total goes here in the same
+#: change, for the reason stated at :data:`SERVED_HEADLINE_KEYS`: the walk cannot see
 #: a key it was not told about.
 DISPATCH_HEADLINE_KEYS: Sequence[str] = (
     "served_in_dispatch",                      # dispatch_reachability's own name
     "served_by_a_fused_product_in_dispatch",   # the Metal board's top level
 )
 
-#: SUBTREES WHOSE DISPATCH NUMBER IS A DIFFERENT CONDITION, exempt BY NAME rather
+#: Subtrees whose dispatch number is a different condition, exempt by name rather
 #: than by a predicate over values.
 #:
 #: ``by_default_precedence`` is the CUDA board's by-DEFAULT answer: what dispatches
@@ -90,14 +90,14 @@ def dispatch_agreement(result: Dict[str, Any], measured: Dict[str, Any],
 
     The dispatch sibling of :func:`headline_agreement`, and it compares against a
     different authority for a reason. A served total is DERIVED from the instance
-    ledger, so the ledger is what it must equal. A dispatch total is MEASURED off the
+    ledger, so the ledger is what it must equal. A dispatch total is measured off the
     tree by ``dispatch_reachability.served_in_dispatch`` -- which walks
     ``fastpath.py``'s parse tree, joins each served product to an arm label and asks
     the release table whether that arm dispatches on that row -- so the measurement
     block IS the authority, and what this floor refuses is an artifact that publishes
     any other number for the same question.
 
-    WHY IT IS NOT ENOUGH TO "JUST READ THE MEASUREMENT". Every board already does,
+    Why it is not enough to "just read the measurement". Every board already does,
     somewhere; the defect this closes is a SECOND publication of the same number that
     stopped tracking it. A hardcoded 0 beside a measured 176 is not a stale comment,
     it is the headline a reader quotes, and it survived because no floor on the

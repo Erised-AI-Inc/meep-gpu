@@ -5,7 +5,10 @@
 * the per-row judge, on synthetic words and on a Tier A fixture stepped by the NumPy array
   path, with a planted one-ulp flip that must be caught at its step and component;
 * the leg's output schema, its verdict and exit status, and its resume, with a stub row
-  program standing in for the lift.
+  program standing in for the lift;
+* the rows declared run-to-run variable: the class read off the corpus manifest, the
+  re-runs in fresh processes, their attribution by the source tables each run deposited,
+  and a declared row's recorders (its tables' digest and its own digests).
 """
 
 from __future__ import annotations
@@ -237,7 +240,7 @@ class _FlipOneStoredWord:
         return copy
 
 
-def _fixture_judge(planted=None):
+def _fixture_judge(planted=None, keep_digests=False):
     from meep_gpu import capsule
 
     root = identity.fixtures_root()
@@ -258,7 +261,7 @@ def _fixture_judge(planted=None):
                 stepped = _FlipOneStoredWord(driver, component, step, 0, masks[component])
             judged = l3_row.judge(stepped, {"ref": document}, {"ref": planes}, masks, steps,
                                   mode="keep", enforce_fpu=True,
-                                  fpu_state=identity.subnormal_state)
+                                  fpu_state=identity.subnormal_state, keep_digests=keep_digests)
         finally:
             driver.close()
     judged["compared_steps"] = len(steps)
@@ -267,6 +270,7 @@ def _fixture_judge(planted=None):
 
 def test_the_judge_holds_on_a_fixture_and_catches_a_flip_planted_in_the_driver():
     judged, steps, document = _fixture_judge()
+    assert l3_row.RUN_DIGESTS_KEY not in judged  # kept for a declared row only
     tally = judged["per_set"]["ref"]
     digests = len(steps) * len(identity.COMPONENTS)
     assert (tally["digests"], tally["stored_equal"], tally["reader_equal"]) == (digests,) * 3
@@ -331,10 +335,32 @@ STUB = textwrap.dedent('''
     spec = json.load(open(sys.argv[1]))
     with open(os.environ["STUB_CALLS"], "a") as handle:
         handle.write(spec["label"] + "\\n")
+    if os.environ.get("STUB_SPECS"):
+        with open(os.environ["STUB_SPECS"], "a") as handle:
+            handle.write(json.dumps({"label": spec["label"],
+                                     "declared": spec.get("declared_variable"),
+                                     "attempt": spec.get("attempt")}) + "\\n")
+    # A declared row's run n: STUB_DIFFER_RUNS names the runs that differ against the
+    # primary set, STUB_DIFFER_EVERYWHERE_RUNS those that differ against every set,
+    # STUB_ERROR_RUNS those that error, STUB_TABLE the source-table digest
+    # each run deposits (comma lists; a run beyond STUB_TABLE records no digest).
+    declared = bool(spec.get("declared_variable"))
+    attempt = str(spec.get("attempt"))
+    def runs(name):
+        return [item for item in os.environ.get(name, "").split(",") if item]
+    if declared and attempt in runs("STUB_ERROR_RUNS"):
+        result = {"label": spec["label"], "mode": spec["mode"], "table": spec["table"],
+                  "error": "RuntimeError: a stub error on run " + attempt}
+        json.dump(result, open(spec["out_json"], "w"))
+        print("L3-JSON " + json.dumps(result), flush=True)
+        sys.exit(0)
     rows = {}
     for name in spec["refs"]:
-        differs = spec["label"] == "r_diff" and (name == spec["primary"]
-                                                 or bool(os.environ.get("STUB_DIFFER_EVERYWHERE")))
+        differs = ((spec["label"] == "r_diff" and (name == spec["primary"]
+                                                   or bool(os.environ.get("STUB_DIFFER_EVERYWHERE"))))
+                   or spec["label"] == os.environ.get("STUB_ALSO_DIFFERS")
+                   or (declared and name == spec["primary"] and attempt in runs("STUB_DIFFER_RUNS"))
+                   or (declared and attempt in runs("STUB_DIFFER_EVERYWHERE_RUNS")))
         equal = 23 if differs else 24
         rows[name] = {"digests": 24, "stored_equal": equal, "reader_equal": 24,
                       "planted_flip": {"caught": True, "placed": True}, "first": None}
@@ -352,6 +378,17 @@ STUB = textwrap.dedent('''
                       if k == "CC" or k.startswith(("MEEP_GPU_", "MGPU_SITE_", "CUPY_", "OMP_",
                                                     "PYTHONNOUSERSITE", "TRITON_LIBCUDA_PATH",
                                                     "LD_LIBRARY_PATH"))}}
+    if os.environ.get("STUB_IMPORTS"):
+        digest = ("a" if spec["label"] == "r_hold" else "b") * 64
+        result["imported_source_sha256"] = {"meep_gpu/driver.py": digest,
+                                            "meep_gpu/fastpath.py": "c" * 64}
+    if declared:
+        tables = runs("STUB_TABLE")
+        index = int(attempt) - 1
+        result["attempt"] = int(attempt)
+        result["declared_variable"] = (
+            {"tables": {"sha256": tables[index], "per_source": []}, "solves": []}
+            if index < len(tables) else {"error": "no table digest", "solves": []})
     json.dump(result, open(spec["out_json"], "w"))
     print("L3-JSON " + json.dumps(result), flush=True)
 ''')
@@ -394,7 +431,7 @@ def _fake_record(tmp_path: Path, sets=("linux_flush",), bad_planes=()):
     return path, repo, stub
 
 
-#: The corpus sibling the reference build keeps beside python/ (build_meep_133_record.py).
+#: The corpus sibling the reference build keeps beside python/ (build_meep_reference_record.py).
 SIBLING = "tests/cyl-ellipsoid-eps-ref.h5"
 
 
@@ -458,9 +495,11 @@ def test_the_leg_writes_its_schema_as_rows_land_and_resumes(tmp_path, monkeypatc
         assert json.loads((out / "rows" / f"{row['label']}.json").read_text())["fast_path_report"]
         assert {k for k in row["env"] if k.startswith("MEEP_GPU_")} == {
             "MEEP_GPU_DISPATCH_LOG", "MEEP_GPU_CORPUS_ROOT"}
+        # The rows leave the machine: paths under their labels (neutral_ids.py).
         corpus = (tmp_path / "meep-1.33.0" / "python").resolve()
-        assert row["env"]["MEEP_GPU_CORPUS_ROOT"] == str(corpus)
-        assert row["env"]["MGPU_SITE_MEEP_SOURCE"] == str(corpus.parent)
+        assert row["env"]["MEEP_GPU_CORPUS_ROOT"] == l3_corpus.N.text(str(corpus))
+        assert row["env"]["MGPU_SITE_MEEP_SOURCE"] == l3_corpus.N.text(str(corpus.parent))
+        assert l3_corpus.N.residue(row) == []
         assert row["env"]["CUPY_ACCELERATORS"] == "" and row["env"]["OMP_NUM_THREADS"] == "1"
     verdicts = {row["label"]: row["l3_verdict"] for row in lines}
     assert verdicts == {"r_hold": "holds_dispatched", "r_diff": "differs"}
@@ -475,6 +514,8 @@ def test_the_leg_writes_its_schema_as_rows_land_and_resumes(tmp_path, monkeypatc
     assert summary["by_set"]["linux_flush"]["digests_compared"] == 48
     assert summary["rows_not_holding_against_primary"] == ["r_diff"]
     assert summary["dispatched_by_table"] == {"triton": 2}
+    assert summary["import_records"] == {"rows_with_one": 0, "rows": 2, "files": 0,
+                                         "files_with_two_digests": []}
     assert "repo_at_end" in summary
     leg = json.loads((out / "leg.json").read_text())
     assert leg["args"]["table"] == "triton" and "environment" in leg
@@ -489,6 +530,68 @@ def test_the_leg_writes_its_schema_as_rows_land_and_resumes(tmp_path, monkeypatc
     rc, out = _leg(tmp_path, record, repo, stub, "--table", "triton", "--baseline", "flush")
     assert rc == l3_corpus.EXIT_NOT_HOLDS and len(_calls(tmp_path)) == 2
     assert len((out / "rows.jsonl").read_text().splitlines()) == 2
+
+
+def test_the_summary_counts_the_rows_import_records(tmp_path, monkeypatch):
+    monkeypatch.setenv("STUB_CALLS", str(tmp_path / "calls.txt"))
+    monkeypatch.setenv("STUB_IMPORTS", "1")
+    monkeypatch.setenv("MEEP_GPU_DISPATCH", "0")
+    record, repo, stub = _fake_record(tmp_path)
+    _rc, out = _leg(tmp_path, record, repo, stub, "--table", "triton", "--baseline", "flush")
+    lines = [json.loads(line) for line in (out / "rows.jsonl").read_text().splitlines()]
+    assert all(row[l3_row.IMPORTED_KEY]["meep_gpu/fastpath.py"] == "c" * 64 for row in lines)
+    summary = json.loads((out / "summary.json").read_text())
+    # Three rows ran (r_hold, r_diff, r_bad); r_hold's driver.py digest differs.
+    assert summary["import_records"] == {"rows_with_one": 3, "rows": 3, "files": 2,
+                                         "files_with_two_digests": ["meep_gpu/driver.py"]}
+
+
+def _row_spec(tmp_path: Path) -> Path:
+    spec = tmp_path / "spec.json"
+    spec.write_text(json.dumps({"label": "r_hold", "table": "triton", "mode": "flush",
+                                "out_json": str(tmp_path / "result.json")}))
+    return spec
+
+
+@pytest.mark.parametrize("raises", [False, True])
+def test_the_row_program_writes_its_own_import_record(tmp_path, monkeypatch, capsys, raises):
+    """Every repository module the row's process held, by sha256, keyed as every gate
+    artifact keys it: the row program itself and the reader among them, on the error
+    path too."""
+    def run(spec):
+        if raises:
+            raise RuntimeError("the lift failed")
+        return {"label": spec["label"]}
+
+    monkeypatch.setattr(l3_row, "run", run)
+    assert l3_row.main([str(_row_spec(tmp_path))]) == 0
+    result = json.loads((tmp_path / "result.json").read_text())
+    printed = json.loads(capsys.readouterr().out.strip().splitlines()[-1][len(l3_row.MARK):])
+    assert printed == result
+    assert ("error" in result) is raises
+    record = result[l3_row.IMPORTED_KEY]
+    assert record["parity/meep_gpu/rounds/1.0/l3_row.py"] == hashlib.sha256(
+        (HERE / "l3_row.py").read_bytes()).hexdigest()
+    assert "parity/meep_gpu/gate_provenance.py" in record
+    assert all(path.startswith(("meep_gpu/", "parity/meep_gpu/")) for path in record)
+
+
+def test_a_row_whose_reader_cannot_be_imported_says_so(tmp_path, monkeypatch):
+    import parity.meep_gpu as package  # noqa: PLC0415
+
+    monkeypatch.setattr(l3_row, "run", lambda spec: {"label": spec["label"]})
+    monkeypatch.delattr(package, "gate_provenance", raising=False)
+    monkeypatch.setitem(sys.modules, "parity.meep_gpu.gate_provenance", None)
+    assert l3_row.main([str(_row_spec(tmp_path))]) == 0
+    result = json.loads((tmp_path / "result.json").read_text())
+    assert l3_row.IMPORTED_KEY not in result
+    assert "gate_provenance" in result["import_record_error"]
+
+
+def test_the_row_import_record_uses_the_gate_artifacts_key():
+    from parity.meep_gpu import gate_provenance  # noqa: PLC0415
+
+    assert l3_row.IMPORTED_KEY == gate_provenance.IMPORTED_KEY
 
 
 def _reference_python(tmp_path: Path, compiler: bool = True) -> Path:
@@ -530,12 +633,12 @@ def test_an_nvidia_leg_builds_launchers_with_the_environment_s_compiler(tmp_path
     assert sorted(_calls(tmp_path)) == ["r_bad", "r_diff", "r_hold"]
     for line in (out / "rows.jsonl").read_text().splitlines():
         env = json.loads(line)["env"]
-        assert env["CC"] == str(prefix / "bin" / "x86_64-conda-linux-gnu-cc")
-        assert env["TRITON_LIBCUDA_PATH"] == str(prefix / "lib" / "meep-gpu-libcuda")
+        assert env["CC"] == l3_corpus.N.text(str(prefix / "bin" / "x86_64-conda-linux-gnu-cc"))
+        assert env["TRITON_LIBCUDA_PATH"] == l3_corpus.N.text(str(prefix / "lib" / "meep-gpu-libcuda"))
         assert env["LD_LIBRARY_PATH"].split(":")[0] == env["TRITON_LIBCUDA_PATH"]
     leg = json.loads((out / "leg.json").read_text())
     assert leg["launcher_toolchain"]["cc_source"] == "reference environment"
-    assert leg["environment"]["CC"] == str(prefix / "bin" / "x86_64-conda-linux-gnu-cc")
+    assert leg["environment"]["CC"] == l3_corpus.N.text(str(prefix / "bin" / "x86_64-conda-linux-gnu-cc"))
     # A --clean-env leg gets the toolchain too; the caller's own CC and stub win, with or
     # without --clean-env; a Metal leg gets none.
     def clean(*extra):
@@ -622,8 +725,60 @@ def test_a_row_expected_to_differ_holds_only_as_expected(tmp_path, monkeypatch, 
     assert summary["verdict"] == "DIFFERS" and rc == l3_corpus.EXIT_NOT_HOLDS
 
 
+@pytest.mark.parametrize("table, sets, argv", [
+    ("metal", ("linux_flush", "mac_flush", "linux_keep"),
+     ("--expect-differ", "references", "--expect-differ-holds", "mac_flush")),
+    ("cuda", None, ("--second-reference", "linux_avx2_flush")),
+])
+def test_the_rows_expected_to_differ_name_the_record_as_the_rows_do(tmp_path, monkeypatch, table,
+                                                                    sets, argv):
+    # expected_differ.txt goes back with the round: its header names no local path.
+    monkeypatch.setenv("STUB_CALLS", str(tmp_path / "calls.txt"))
+    if sets:
+        record, repo, stub = _fake_record(tmp_path, sets=sets)
+    else:
+        record, repo, stub = _second_reference_record(tmp_path, mode="flush")
+    _rc, out = _leg(tmp_path, record, repo, stub, "--table", table, "--baseline", "flush", *argv)
+    text = (out / "expected_differ.txt").read_text()
+    assert l3_corpus.N.text(text) == text and l3_corpus.N.text(str(record)) in text
+    assert read_lines(out / "expected_differ.txt") == ["r_diff"]
+
+
 def read_lines(path: Path):
     return [line for line in path.read_text().splitlines() if line and not line.startswith("#")]
+
+
+def _excluded_record(primary_status="holds"):
+    """Three sets; ``r_excl`` is an exclusion on the two Linux sets, measured ``primary_status``
+    under flush and differing under keep, and holds on the Apple set."""
+    sets = {}
+    for name, mode in (("linux_flush", "flush"), ("mac_flush", "flush"), ("linux_keep", "keep")):
+        rows = {"r_hold": {"status": "holds"}, "r_refused": {"status": "refused"}}
+        if name == "mac_flush":
+            rows["r_excl"] = {"status": "holds"}
+        else:
+            status = primary_status if name == "linux_flush" else "differs"
+            rows["r_excl"] = {"status": status, "excluded": "a named exclusion"}
+        sets[name] = {"mode": mode, "rows": rows, "meep_images": {}}
+    return {"sets": sets}
+
+
+@pytest.mark.parametrize("primary_status", ["holds", "differs"])
+@pytest.mark.parametrize("table, baseline", [("triton", "flush"), ("cuda", "flush"),
+                                             ("metal", "flush")])
+def test_an_excluded_row_is_never_planned_whatever_it_measured(table, baseline, primary_status):
+    # An exclusion is planned out by name even where its own process happened to hold, so a
+    # leg never judges it and a set where it differs does not refuse the leg.
+    plan = l3_corpus.plan_rows(_resolved("--table", table, "--baseline", baseline),
+                               _excluded_record(primary_status))
+    assert plan["labels"] == ["r_hold"]
+    assert plan["not_run"] == {"r_refused": "refused", "r_excl": f"excluded ({primary_status})"}
+
+
+def test_an_excluded_row_is_refused_when_named_to_run():
+    with pytest.raises(l3_corpus.Refusal, match="not holding"):
+        l3_corpus.plan_rows(_resolved("--table", "triton", "--baseline", "flush", "--rows", "r_excl"),
+                            _excluded_record())
 
 
 @pytest.mark.parametrize("argv, words", [
@@ -640,6 +795,226 @@ def test_a_leg_the_record_cannot_support_runs_no_row(tmp_path, monkeypatch, argv
     assert rc == l3_corpus.EXIT_REFUSED and _calls(tmp_path) == []
     assert words in (out / "progress.log").read_text()
     assert not (out / "rows.jsonl").exists()
+
+
+# ---------------------------------------------------------------------------------------
+# A second reference build (--second-reference)
+# ---------------------------------------------------------------------------------------
+
+SECOND = "linux_avx2_keep"
+
+
+def _words(mode: str = "keep"):
+    """The MEEP words of each row in each set of a ``mode`` fixture: ``r_hold`` is equal
+    everywhere; ``r_diff`` is host-dependent (the Apple and Linux references differ) and the
+    second Linux build differs on it too; ``r_hd`` is host-dependent and the two Linux
+    builds agree on it."""
+    return {f"linux_{mode}": {"r_hold": "w", "r_diff": "linux", "r_hd": "linux"},
+            f"mac_{mode}": {"r_hold": "w", "r_diff": "apple", "r_hd": "apple"},
+            f"linux_avx2_{mode}": {"r_hold": "w", "r_diff": "second", "r_hd": "linux"}}
+
+
+def _image(name: str) -> str:
+    """A set's stand-in MEEP image digest, distinct per set."""
+    return hashlib.sha256(name.encode()).hexdigest()
+
+
+def _second_reference_record(tmp_path: Path, words=None, sets=None, mode="keep", readers=None,
+                             modes=None):
+    """A ``mode`` record holding ``linux_<mode>``, ``mac_<mode>`` and the second reference,
+    with the three row files of every row at their sha256 (the digests carry ``words`` as
+    the stored digests and ``readers``, default equal everywhere, as the reader digests);
+    ``modes`` names a set recorded in another mode."""
+    words = words or _words(mode)
+    readers = readers or {}
+    ref = tmp_path / "ref"
+    record = {"sets": {}}
+    for name in sets or words:
+        rows = {}
+        for label, word in words[name].items():
+            files = {}
+            for role, file in (("digests", "digests.json"), ("planes", "planes.npy"),
+                               ("result", "result.json")):
+                path = ref / name / label / file
+                path.parent.mkdir(parents=True, exist_ok=True)
+                reader = (readers.get(name) or {}).get(label, "same")
+                path.write_text(json.dumps({"stored": {"0": {"Ez": word}},
+                                            "reader": {"0": {"Ez": reader}}, "role": role}))
+                files[role] = {"file": f"{name}/{label}/{file}", "sha256": _sha(path)}
+            rows[label] = {"status": "holds", "files": files}
+        rows["r_refused"] = {"status": "refused", "reason": "a named refusal"}
+        record["sets"][name] = {"mode": (modes or {}).get(name, mode), "rows": rows,
+                                "meep_images": {"_meep.so": [_image(name)]}}
+    path = ref / "meep_identity_tier_b.json"
+    path.write_text(json.dumps(record))
+    repo = tmp_path / "repo"
+    (repo / "parity" / "meep_gpu").mkdir(parents=True, exist_ok=True)
+    (repo / "parity" / "meep_gpu" / "meep_identity_corpus.py").write_text("")
+    stub = tmp_path / "stub_row.py"
+    stub.write_text(STUB)
+    return path, repo, stub
+
+
+@pytest.mark.parametrize("table", ["triton", "cuda"])
+def test_a_second_reference_leg_judges_both_linux_sets_and_loads_the_second_build(table):
+    args = _resolved("--table", table, "--baseline", "keep", "--second-reference", SECOND)
+    assert (args.set_list, args.primary, args.image_set) == (["linux_keep", SECOND],
+                                                             "linux_keep", SECOND)
+    assert args.expect_differ_holds == SECOND and args.cross_mode == set()
+
+
+@pytest.mark.parametrize("argv, words", [
+    (("--table", "metal", "--baseline", "flush", "--second-reference", "linux_avx2_flush"),
+     "an NVIDIA leg loads"),
+    (("--table", "triton", "--baseline", "keep", "--second-reference", SECOND,
+      "--sets", f"linux_keep,{SECOND}"), "is not given with --sets"),
+    (("--table", "triton", "--baseline", "keep", "--second-reference", SECOND,
+      "--expect-differ", "references", "--expect-differ-holds", SECOND),
+     "is not given with --expect-differ, --expect-differ-holds"),
+    (("--table", "triton", "--baseline", "keep", "--second-reference", "linux_keep"),
+     "is the leg's primary set"),
+    # The new build's images with only the old set judged: the lift would load a MEEP the
+    # leg never judges against.
+    (("--table", "triton", "--baseline", "keep", "--image-set", SECOND),
+     "the image set linux_avx2_keep is not among the sets"),
+    (("--table", "metal", "--baseline", "flush", "--sets", "linux_flush,linux_keep"),
+     "the image set mac_flush is not among the sets"),
+])
+def test_a_second_reference_named_wrongly_is_refused_by_name(argv, words):
+    with pytest.raises(l3_corpus.Refusal, match=re.escape(words)):
+        _resolved(*argv)
+
+
+def test_the_second_build_s_images_are_admitted_only_through_second_reference(tmp_path):
+    # The same sets and image set spelled by hand skip the host-dependence check: refused.
+    record, _repo, _stub = _second_reference_record(tmp_path)
+    args = _resolved("--table", "triton", "--baseline", "keep", "--sets", f"linux_keep,{SECOND}",
+                     "--image-set", SECOND, "--expect-differ", "references",
+                     "--expect-differ-holds", SECOND, "--record", str(record))
+    with pytest.raises(l3_corpus.Refusal, match="admitted only by --second-reference"):
+        l3_corpus.plan_rows(args, json.loads(record.read_text()))
+
+
+def test_a_second_reference_expects_only_its_host_dependent_differences(tmp_path):
+    record, _repo, _stub = _second_reference_record(tmp_path)
+    args = _resolved("--table", "triton", "--baseline", "keep", "--second-reference", SECOND,
+                     "--record", str(record))
+    plan = l3_corpus.plan_rows(args, json.loads(record.read_text()))
+    assert plan["labels"] == ["r_hold", "r_diff", "r_hd"]
+    # r_hd is host-dependent, but the two Linux builds agree on it: it must hold against both.
+    assert plan["expected_differ"] == ["r_diff"]
+    assert plan["meep_images"] == {"_meep.so": [_image(SECOND)]}
+    assert plan["second_reference"] == {
+        "set": SECOND, "of": "linux_keep", "host_dependence": "mac_keep",
+        "rows_expected_to_differ": ["r_diff"],
+        "apple_digests_read": ["mac_keep/r_diff/digests.json"]}
+
+
+@pytest.mark.parametrize("change, words", [
+    # The second build differs on a row the Apple and Linux references agree on.
+    ({"mac_keep": {"r_hold": "w", "r_diff": "linux", "r_hd": "apple"}},
+     "where the record's Apple and Linux references agree"),
+    ({SECOND: {"r_hold": "other", "r_diff": "second", "r_hd": "linux"}},
+     "['r_hold']; a difference there is a finding"),
+])
+def test_a_second_reference_differing_where_the_hosts_agree_is_refused(tmp_path, change, words):
+    record, _repo, _stub = _second_reference_record(tmp_path, {**_words(), **change})
+    args = _resolved("--table", "triton", "--baseline", "keep", "--second-reference", SECOND,
+                     "--record", str(record))
+    with pytest.raises(l3_corpus.Refusal, match=re.escape(words)):
+        l3_corpus.plan_rows(args, json.loads(record.read_text()))
+
+
+def test_a_second_reference_differing_only_in_its_reader_words_is_judged_the_same(tmp_path):
+    # The get_array words count as the stored words do: a reader-only difference on a
+    # host-dependent row is expected, and on a host-agreeing row refuses the leg.
+    readers = {SECOND: {"r_hd": "second"}, "mac_keep": {"r_hd": "apple"}}
+    record, _repo, _stub = _second_reference_record(tmp_path, readers=readers)
+    args = _resolved("--table", "triton", "--baseline", "keep", "--second-reference", SECOND,
+                     "--record", str(record))
+    plan = l3_corpus.plan_rows(args, json.loads(record.read_text()))
+    assert plan["expected_differ"] == ["r_diff", "r_hd"]
+    readers = {SECOND: {"r_hold": "second"}}
+    record, _repo, _stub = _second_reference_record(tmp_path / "agree", readers=readers)
+    args = _resolved("--table", "triton", "--baseline", "keep", "--second-reference", SECOND,
+                     "--record", str(record))
+    with pytest.raises(l3_corpus.Refusal, match=re.escape("['r_hold']; a difference there")):
+        l3_corpus.plan_rows(args, json.loads(record.read_text()))
+
+
+def test_a_second_reference_of_another_mode_is_refused_even_named_cross_mode(tmp_path):
+    record, _repo, _stub = _second_reference_record(tmp_path, modes={SECOND: "flush"})
+    args = _resolved("--table", "triton", "--baseline", "keep", "--second-reference", SECOND,
+                     "--cross-mode-sets", SECOND, "--record", str(record))
+    with pytest.raises(l3_corpus.Refusal, match="the second reference linux_avx2_keep is mode flush"):
+        l3_corpus.plan_rows(args, json.loads(record.read_text()))
+
+
+@pytest.mark.parametrize("damage, words", [
+    ("no_apple_set", "the record holds no mac_keep"),
+    ("apple_digests_edited", "mac_keep r_diff: the digests file's sha256 differs"),
+    ("second_digests_absent", "linux_avx2_keep r_hold: the record names no digests file"),
+])
+def test_a_second_reference_the_record_cannot_show_host_dependent_is_refused(tmp_path, damage,
+                                                                             words):
+    sets = [name for name in _words() if not (damage == "no_apple_set" and name == "mac_keep")]
+    record, _repo, _stub = _second_reference_record(tmp_path, sets=sets)
+    if damage == "apple_digests_edited":
+        (record.parent / "mac_keep" / "r_diff" / "digests.json").write_text("{}")
+    if damage == "second_digests_absent":
+        (record.parent / SECOND / "r_hold" / "digests.json").unlink()
+    args = _resolved("--table", "triton", "--baseline", "keep", "--second-reference", SECOND,
+                     "--record", str(record))
+    with pytest.raises(l3_corpus.Refusal, match=re.escape(words)):
+        l3_corpus.plan_rows(args, json.loads(record.read_text()))
+
+
+def test_a_host_dependent_row_holds_against_the_second_build_as_expected(tmp_path, monkeypatch):
+    # r_diff differs against linux_keep and holds against the second build: expected, a
+    # hold. r_hd and r_hold hold against both.
+    # (A flush leg: a keep leg mints its CuPy cache through the package first.)
+    monkeypatch.setenv("STUB_CALLS", str(tmp_path / "calls.txt"))
+    second = "linux_avx2_flush"
+    record, repo, stub = _second_reference_record(tmp_path, mode="flush")
+    rc, out = _leg(tmp_path, record, repo, stub, "--table", "triton", "--baseline", "flush",
+                   "--second-reference", second)
+    summary = json.loads((out / "summary.json").read_text())
+    assert summary["verdict"] == "HOLDS" and rc == l3_corpus.EXIT_HOLDS
+    assert (summary["primary"], summary["image_set"]) == ("linux_flush", second)
+    assert summary["by_set"]["linux_flush"]["verdicts"] == {"holds": 2, "differs": 1}
+    assert summary["by_set"][second]["verdicts"] == {"holds": 3}
+    assert summary["expected_differ"] == {"rows": ["r_diff"], "holds_against": second,
+                                          "as_expected": ["r_diff"], "not_as_expected": []}
+    assert summary["second_reference"] == {
+        "set": second, "of": "linux_flush", "host_dependence": "mac_flush",
+        "apple_digests_read": ["mac_flush/r_diff/digests.json"]}
+    assert sorted(_calls(tmp_path)) == ["r_diff", "r_hd", "r_hold"]
+    assert read_lines(out / "expected_differ.txt") == ["r_diff"]
+    assert "--second-reference" in (out / "expected_differ.txt").read_text()
+    assert "second reference linux_avx2_flush" in (out / "progress.log").read_text()
+
+
+@pytest.mark.parametrize("everywhere, also, failing, not_as_expected", [
+    # A host-agreeing row that differs against linux_keep: a finding, whatever the second
+    # build says.
+    ("", "r_hold", ["r_hold"], []),
+    # A host-dependent row the Linux builds agree on is not expected to differ.
+    ("", "r_hd", ["r_hd"], []),
+    # The expected row differs against the second build too.
+    ("1", "", [], ["r_diff"]),
+])
+def test_a_second_reference_leg_admits_no_other_difference(tmp_path, monkeypatch, everywhere,
+                                                           also, failing, not_as_expected):
+    monkeypatch.setenv("STUB_CALLS", str(tmp_path / "calls.txt"))
+    monkeypatch.setenv("STUB_DIFFER_EVERYWHERE", everywhere)
+    monkeypatch.setenv("STUB_ALSO_DIFFERS", also)
+    record, repo, stub = _second_reference_record(tmp_path, mode="flush")
+    rc, out = _leg(tmp_path, record, repo, stub, "--table", "cuda", "--baseline", "flush",
+                   "--second-reference", "linux_avx2_flush")
+    summary = json.loads((out / "summary.json").read_text())
+    assert summary["verdict"] == "DIFFERS" and rc == l3_corpus.EXIT_NOT_HOLDS
+    assert summary["rows_not_holding_against_primary"] == failing
+    assert summary["expected_differ"]["not_as_expected"] == not_as_expected
 
 
 # ---------------------------------------------------------------------------------------
@@ -804,9 +1179,677 @@ def test_a_leg_takes_the_recorded_corpus_and_records_it(tmp_path, monkeypatch):
                    "--build-record", str(build))
     leg = json.loads((out / "leg.json").read_text())
     assert leg["corpus"]["source"] == "build record"
-    assert leg["corpus"]["root"] == str(root.resolve())
-    assert leg["environment"]["MEEP_GPU_CORPUS_ROOT"] == str(root.resolve())
-    assert "MEEP corpus " + str(root.resolve()) in (out / "progress.log").read_text()
+    assert leg["corpus"]["root"] == l3_corpus.N.text(str(root.resolve()))
+    assert leg["environment"]["MEEP_GPU_CORPUS_ROOT"] == l3_corpus.N.text(str(root.resolve()))
+    assert l3_corpus.N.residue(leg) == []
+    assert "MEEP corpus " + l3_corpus.N.text(str(root.resolve())) in (out / "progress.log").read_text()
+
+
+# ---------------------------------------------------------------------------------------
+# Rows declared run-to-run variable (an EigenModeSource among the row's sources)
+# ---------------------------------------------------------------------------------------
+
+def _manifest(tmp_path: Path, eigenmode=("r_hold",), blind=()) -> Path:
+    """A corpus manifest naming the fake record's rows, every one with ``mp.Source`` but
+    those in ``eigenmode``, which carry an ``EigenModeSource``; ``blind`` rows carry no
+    ``source_kinds``."""
+    rows = []
+    for label in ("r_hold", "r_diff", "r_bad", "r_refused"):
+        facts = {"src_time_kinds": ["GaussianSource"]}
+        if label not in blind:
+            facts["source_kinds"] = ["EigenModeSource" if label in eigenmode else "Source"]
+        rows.append({"label": label, "facts": facts})
+    path = tmp_path / "corpus_manifest.json"
+    path.write_text(json.dumps({"schema": "meep_gpu.meep_identity_corpus.manifest",
+                                "version": 1, "rows": rows}))
+    return path
+
+
+def _lines(out: Path, label: str):
+    return [row for row in (json.loads(line) for line in
+                            (out / "rows.jsonl").read_text().splitlines())
+            if row["label"] == label]
+
+
+def _variable_leg(tmp_path, monkeypatch, *extra, differ="", tables="", errors="",
+                  manifest=True):
+    """A triton flush leg of r_hold and r_bad, r_hold declared run-to-run variable."""
+    monkeypatch.setenv("STUB_CALLS", str(tmp_path / "calls.txt"))
+    monkeypatch.setenv("STUB_SPECS", str(tmp_path / "specs.jsonl"))
+    monkeypatch.setenv("STUB_DIFFER_RUNS", differ)
+    monkeypatch.setenv("STUB_TABLE", tables)
+    monkeypatch.setenv("STUB_ERROR_RUNS", errors)
+    monkeypatch.delenv("MEEP_IDENTITY_CORPUS_MANIFEST", raising=False)
+    if not (tmp_path / "ref").exists():
+        _fake_record(tmp_path)
+    record, repo, stub = (tmp_path / "ref" / "meep_identity_tier_b.json", tmp_path / "repo",
+                          tmp_path / "stub_row.py")
+    named = ["--corpus-manifest", str(_manifest(tmp_path))] if manifest else []
+    return _leg(tmp_path, record, repo, stub, "--table", "triton", "--baseline", "flush",
+                "--rows", "r_hold,r_bad", *named, *extra)
+
+
+def test_the_variable_class_is_the_table_generator_s_eigenmode_class():
+    # Named by the classifier's one home, never transcribed.
+    from parity.meep_gpu.build_meep_identity_table import source_class  # noqa: PLC0415
+
+    assert l3_corpus.VARIABLE_CLASS == source_class({"source_kinds": ["EigenModeSource"]})
+    assert source_class({"source_kinds": ["EigenmodeSource", "Source"]}) == l3_corpus.VARIABLE_CLASS
+    assert source_class({"source_kinds": ["Source"]}) != l3_corpus.VARIABLE_CLASS
+    assert l3_corpus.VARIABLE_ATTEMPTS == 4
+
+
+def test_the_declared_class_is_read_off_the_manifest(tmp_path, monkeypatch):
+    monkeypatch.setenv("STUB_CALLS", str(tmp_path / "calls.txt"))
+    monkeypatch.setenv("STUB_SPECS", str(tmp_path / "specs.jsonl"))
+    monkeypatch.setenv("STUB_TABLE", "aa")
+    record, repo, stub = _fake_record(tmp_path)
+    manifest = _manifest(tmp_path)
+    rc, out = _leg(tmp_path, record, repo, stub, "--table", "triton", "--baseline", "flush",
+                   "--corpus-manifest", str(manifest))
+    assert read_lines(out / "declared_variable.txt") == ["r_hold"]
+    header = (out / "declared_variable.txt").read_text().splitlines()[0]
+    assert header.startswith("# 1 of 3 planned rows declared run-to-run variable")
+    assert _sha(manifest) in header and l3_corpus.N.text(header) == header
+    specs = [json.loads(line) for line in (tmp_path / "specs.jsonl").read_text().splitlines()]
+    assert {spec["label"]: spec["declared"] for spec in specs} == {
+        "r_hold": True, "r_diff": False, "r_bad": False}
+    assert [spec["attempt"] for spec in specs if spec["label"] == "r_hold"] == [1]
+    leg = json.loads((out / "leg.json").read_text())
+    assert leg["declared_variable"]["rows"] == ["r_hold"]
+    assert leg["declared_variable"]["manifest_sha256"] == _sha(manifest)
+    assert l3_corpus.N.residue(leg) == []
+    summary = json.loads((out / "summary.json").read_text())
+    variable = summary["run_to_run_variable"]
+    assert (variable["read"], variable["rows"], variable["held_first"]) == (True, ["r_hold"],
+                                                                           ["r_hold"])
+    assert variable["class"] == l3_corpus.VARIABLE_CLASS and variable["findings"] == {}
+    line = _lines(out, "r_hold")[0]
+    assert line["attempt"] == 1 and l3_corpus.table_digest(line) == "aa"
+    assert (out / "attempts" / "r_hold.run1.json").is_file()
+    assert (out / "attempts" / "r_hold.run1.log").is_file()
+    # The undeclared row that differs is a finding, read and never run again (a control).
+    assert rc == l3_corpus.EXIT_NOT_HOLDS and summary["rows_not_holding_against_primary"] == ["r_diff"]
+    assert len(_lines(out, "r_diff")) == 1 and "attempt" not in _lines(out, "r_diff")[0]
+    assert "1 declared run-to-run variable" in (out / "progress.log").read_text()
+
+
+def test_a_leg_without_a_manifest_declares_nothing_and_says_so(tmp_path, monkeypatch):
+    monkeypatch.setenv("STUB_ALSO_DIFFERS", "r_hold")
+    rc, out = _variable_leg(tmp_path, monkeypatch, tables="aa,bb", manifest=False)
+    assert rc == l3_corpus.EXIT_NOT_HOLDS
+    text = (out / "declared_variable.txt").read_text()
+    assert read_lines(out / "declared_variable.txt") == []
+    assert text.startswith("# 0 rows declared run-to-run variable: no corpus manifest named")
+    summary = json.loads((out / "summary.json").read_text())
+    assert summary["run_to_run_variable"]["read"] is False
+    assert summary["run_to_run_variable"]["rows"] == []
+    assert summary["rows_not_holding_against_primary"] == ["r_hold"]
+    # Judged by the strict rule: one run, and its spec declares nothing.
+    assert len(_lines(out, "r_hold")) == 1 and _calls(tmp_path).count("r_hold") == 1
+    assert "no row declared run-to-run variable" in (out / "progress.log").read_text()
+
+
+def test_a_manifest_without_source_kinds_refuses_the_leg_by_name(tmp_path, monkeypatch):
+    monkeypatch.setenv("STUB_CALLS", str(tmp_path / "calls.txt"))
+    record, repo, stub = _fake_record(tmp_path)
+    manifest = _manifest(tmp_path, blind=("r_bad",))
+    rc, out = _leg(tmp_path, record, repo, stub, "--table", "triton", "--baseline", "flush",
+                   "--corpus-manifest", str(manifest))
+    assert rc == l3_corpus.EXIT_REFUSED and _calls(tmp_path) == []
+    assert "names no source_kinds for ['r_bad']" in (out / "progress.log").read_text()
+    assert not (out / "rows.jsonl").exists()
+
+
+def test_a_declared_row_holding_on_a_rerun_on_other_tables_holds(tmp_path, monkeypatch):
+    rc, out = _variable_leg(tmp_path, monkeypatch, differ="1", tables="aa,bb")
+    summary = json.loads((out / "summary.json").read_text())
+    assert summary["verdict"] == "HOLDS" and rc == l3_corpus.EXIT_HOLDS
+    lines = _lines(out, "r_hold")
+    assert [line["attempt"] for line in lines] == [1, 2]
+    assert [line["l3_verdict"] for line in lines] == ["differs", "holds_dispatched"]
+    variable = summary["run_to_run_variable"]
+    assert variable["held_on_rerun"] == {"r_hold": {"runs": 2, "tables": ["aa", "bb"],
+                                                    "first_differences": [None]}}
+    assert variable["held_first"] == [] and variable["findings"] == {}
+    assert summary["by_set"]["linux_flush"]["verdicts"] == {"holds": 2}
+    assert summary["rows_not_holding_against_primary"] == []
+    for name in ("r_hold.run1.json", "r_hold.run2.json", "r_hold.run1.log", "r_hold.run2.log"):
+        assert (out / "attempts" / name).is_file()
+    assert json.loads((out / "rows" / "r_hold.json").read_text())["attempt"] == 2
+    progress = (out / "progress.log").read_text()
+    assert "r_hold: declared run-to-run variable and not as required on run 1 of 4" in progress
+    assert "held on a re-run 1 ['r_hold']" in progress
+
+
+def test_a_declared_row_rerun_on_the_same_tables_is_a_finding(tmp_path, monkeypatch):
+    rc, out = _variable_leg(tmp_path, monkeypatch, differ="1", tables="aa,aa")
+    summary = json.loads((out / "summary.json").read_text())
+    assert summary["verdict"] == "DIFFERS" and rc == l3_corpus.EXIT_NOT_HOLDS
+    lines = _lines(out, "r_hold")
+    assert len(lines) == 2
+    assert summary["rows_not_holding_against_primary"] == ["r_hold"]
+    assert "the same source tables gave other words" in \
+        summary["run_to_run_variable"]["findings"]["r_hold"]
+    # The finding is on the row's own last line: its words held, its verdict reads differs.
+    last = lines[-1]
+    assert last["l3_verdicts"]["linux_flush"] == "holds" and last["l3_verdict"] == "differs"
+    assert last[l3_corpus.ATTRIBUTION_KEY]["outcome"] == "differs"
+    assert last[l3_corpus.ATTRIBUTION_KEY]["tables"] == ["aa", "aa"]
+    assert lines[0][l3_corpus.ATTRIBUTION_KEY]["outcome"] == "undecided"
+    assert summary["verdicts_against_primary"] == {"differs": 1, "holds_dispatched": 1}
+    done = json.loads((out / "LEG_DONE").read_text())
+    assert done["verdict"] == "DIFFERS" and set(done["run_to_run_findings"]) == {"r_hold"}
+
+
+def _placed(tmp_path: Path, out: Path, name: str) -> Path:
+    """A new leg directory holding the last line of every label of ``out``, as
+    ``carry.py place`` writes one (``carried_from`` on each line)."""
+    into = tmp_path / name
+    (into / "rows").mkdir(parents=True)
+    rows = {}
+    for line in (out / "rows.jsonl").read_text().splitlines():
+        row = json.loads(line)
+        rows[row["label"]] = row
+    for row in rows.values():
+        row["carried_from"] = {"source": str(out), "state": "CARRY-DIGEST"}
+    (into / "rows.jsonl").write_text("".join(json.dumps(row, sort_keys=True) + "\n"
+                                             for row in rows.values()))
+    return into
+
+
+def test_a_carried_finding_row_does_not_carry_and_stays_a_finding(tmp_path, monkeypatch):
+    import carry  # noqa: PLC0415
+    import plan_carry  # noqa: PLC0415
+
+    rc, out = _variable_leg(tmp_path, monkeypatch, differ="1", tables="aa,aa")
+    finding = _lines(out, "r_hold")[-1]
+    # The carry judge refuses it twice over: its verdict reads differs, and its stamp is not
+    # a hold. A holding row the leg did not declare carries as before.
+    judged = plan_carry.judge_l3_row(finding, tmp_path, {}, None)
+    assert judged["state"] == plan_carry.RERUN_UNRELEASED
+    assert "attribution is 'differs'" in carry.declared_row_problem(finding)
+    held = dict(finding, l3_verdict="holds_dispatched")
+    assert "attribution is 'differs'" in carry.declared_row_problem(held)
+    unstamped = {key: value for key, value in held.items() if key != l3_corpus.ATTRIBUTION_KEY}
+    assert "carries no attribution stamp" in carry.declared_row_problem(unstamped)
+    assert carry.declared_row_problem(_lines(out, "r_bad")[-1]) is None
+    # Placed anyway, as its one last line (a hand-made record: place refuses it), it is
+    # never run again and stays the finding: the leg reads the stamp.
+    into = _placed(tmp_path, out, "placed")
+    rc, _out = _leg(tmp_path, tmp_path / "ref" / "meep_identity_tier_b.json", tmp_path / "repo",
+                    tmp_path / "stub_row.py", "--table", "triton", "--baseline", "flush",
+                    "--rows", "r_hold,r_bad", "--corpus-manifest", str(_manifest(tmp_path)),
+                    "--out", str(into))
+    summary = json.loads((into / "summary.json").read_text())
+    assert summary["verdict"] == "DIFFERS" and rc == l3_corpus.EXIT_NOT_HOLDS
+    assert "the same source tables" in summary["run_to_run_variable"]["findings"]["r_hold"]
+    assert summary["carried"] == ["r_bad", "r_hold"] and _calls(tmp_path).count("r_hold") == 2
+
+
+def test_a_carried_row_that_held_on_a_rerun_keeps_its_runs(tmp_path, monkeypatch):
+    import carry  # noqa: PLC0415
+
+    rc, out = _variable_leg(tmp_path, monkeypatch, differ="1", tables="aa,bb")
+    last = _lines(out, "r_hold")[-1]
+    assert carry.declared_row_problem(last) is None
+    into = _placed(tmp_path, out, "placed")
+    rc, _out = _leg(tmp_path, tmp_path / "ref" / "meep_identity_tier_b.json", tmp_path / "repo",
+                    tmp_path / "stub_row.py", "--table", "triton", "--baseline", "flush",
+                    "--rows", "r_hold,r_bad", "--corpus-manifest", str(_manifest(tmp_path)),
+                    "--out", str(into))
+    summary = json.loads((into / "summary.json").read_text())
+    assert summary["verdict"] == "HOLDS" and rc == l3_corpus.EXIT_HOLDS
+    assert summary["run_to_run_variable"]["held_on_rerun"]["r_hold"]["tables"] == ["aa", "bb"]
+    assert summary["run_to_run_variable"]["held_first"] == []
+
+
+@pytest.mark.parametrize("manifest", ["none", "undeclared"])
+def test_a_finding_row_resumed_without_its_declaration_is_refused(tmp_path, monkeypatch,
+                                                                  manifest):
+    rc, out = _variable_leg(tmp_path, monkeypatch, differ="1", tables="aa,aa")
+    assert rc == l3_corpus.EXIT_NOT_HOLDS
+    leg = (out / "leg.json").read_text()
+    first = (out / l3_corpus.FIRST_START).read_text()
+    assert json.loads(first)["rows"] == ["r_hold"]
+    calls = len(_calls(tmp_path))
+    if manifest == "none":
+        rc, out = _variable_leg(tmp_path, monkeypatch, differ="1", tables="aa,aa",
+                                manifest=False)
+    else:
+        rc, out = _leg(tmp_path, tmp_path / "ref" / "meep_identity_tier_b.json",
+                       tmp_path / "repo", tmp_path / "stub_row.py", "--table", "triton",
+                       "--baseline", "flush", "--rows", "r_hold,r_bad", "--corpus-manifest",
+                       str(_manifest(tmp_path, eigenmode=())))
+    assert rc == l3_corpus.EXIT_REFUSED and len(_calls(tmp_path)) == calls
+    progress = (out / "progress.log").read_text()
+    assert "declared then and not now ['r_hold']" in progress
+    assert "start it with the corpus manifest it started with" in progress
+    assert (out / "leg.json").read_text() == leg  # a refused start writes nothing
+    assert (out / l3_corpus.FIRST_START).read_text() == first
+    assert json.loads((out / "summary.json").read_text())["verdict"] == "DIFFERS"
+    # With the first-start record gone, the rows' own lines still name the declared row.
+    (out / l3_corpus.FIRST_START).unlink()
+    rc, out = _variable_leg(tmp_path, monkeypatch, manifest=False)
+    assert rc == l3_corpus.EXIT_REFUSED
+    assert "declared then and not now ['r_hold']" in (out / "progress.log").read_text()
+    # With its own manifest the resume reads the stamp: still the finding, nothing re-run.
+    rc, out = _variable_leg(tmp_path, monkeypatch, differ="1", tables="aa,aa")
+    assert rc == l3_corpus.EXIT_NOT_HOLDS and len(_calls(tmp_path)) == calls
+    summary = json.loads((out / "summary.json").read_text())
+    assert summary["rows_not_holding_against_primary"] == ["r_hold"]
+
+
+def test_a_declared_run_with_no_table_digest_is_not_attributed(tmp_path, monkeypatch):
+    rc, out = _variable_leg(tmp_path, monkeypatch, differ="1", tables="")
+    summary = json.loads((out / "summary.json").read_text())
+    assert summary["verdict"] == "DIFFERS" and rc == l3_corpus.EXIT_NOT_HOLDS
+    assert "no source-table digest" in summary["run_to_run_variable"]["findings"]["r_hold"]
+
+
+def test_errored_runs_are_not_among_the_four(tmp_path, monkeypatch):
+    # Run 2 errors and stops the runs; after --retry-errors runs 3 to 5 differ: four runs
+    # with words, five lines, and no holding run in 4.
+    rc, out = _variable_leg(tmp_path, monkeypatch, differ="1,3,4,5", errors="2",
+                            tables="aa,bb,cc,dd,ee")
+    assert rc == l3_corpus.EXIT_NOT_HOLDS and len(_lines(out, "r_hold")) == 2
+    variable = json.loads((out / "summary.json").read_text())["run_to_run_variable"]
+    assert variable["findings"] == {} and "no run of 1 held so far" in variable["undecided"]["r_hold"]
+    rc, out = _variable_leg(tmp_path, monkeypatch, "--retry-errors", differ="1,3,4,5",
+                            errors="2", tables="aa,bb,cc,dd,ee")
+    summary = json.loads((out / "summary.json").read_text())
+    assert [line.get("attempt") for line in _lines(out, "r_hold")] == [1, 2, 3, 4, 5]
+    assert _calls(tmp_path).count("r_hold") == 5
+    variable = summary["run_to_run_variable"]
+    assert variable["findings"] == {"r_hold": "no run of 4 held"}
+    assert variable["runs"]["r_hold"] == {"with_words": 4, "errored": 1}
+    assert summary["verdict"] == "DIFFERS" and rc == l3_corpus.EXIT_NOT_HOLDS
+
+
+def test_a_declared_row_s_driver_error_line_names_its_run(tmp_path, monkeypatch):
+    original = l3_corpus.Leg.run_row
+
+    def run_row(self, label, refs):
+        if label == "r_hold":
+            raise RuntimeError("the driver failed")
+        return original(self, label, refs)
+
+    monkeypatch.setattr(l3_corpus.Leg, "run_row", run_row)
+    rc, out = _variable_leg(tmp_path, monkeypatch, tables="aa")
+    line = _lines(out, "r_hold")[-1]
+    assert line["error"].startswith("driver: RuntimeError") and line["attempt"] == 1
+    assert line[l3_corpus.ATTRIBUTION_KEY]["outcome"] == "error"
+    assert rc == l3_corpus.EXIT_NOT_HOLDS
+
+
+def test_a_plan_pass_attributes_nothing(tmp_path, monkeypatch):
+    rc, out = _variable_leg(tmp_path, monkeypatch, "--plan-only", tables="aa")
+    summary = json.loads((out / "summary.json").read_text())
+    assert summary["verdict"] == "PLAN-ONLY" and rc == l3_corpus.EXIT_HOLDS
+    variable = summary["run_to_run_variable"]
+    assert variable["judged"] is False and variable["findings"] == {}
+    assert l3_corpus.ATTRIBUTION_KEY not in _lines(out, "r_hold")[-1]
+
+
+def _manifest_both(tmp_path):
+    return str(_manifest(tmp_path, eigenmode=("r_hold", "r_bad")))
+
+
+def _rows_leg(tmp_path, rows, *extra):
+    return _leg(tmp_path, tmp_path / "ref" / "meep_identity_tier_b.json", tmp_path / "repo",
+                tmp_path / "stub_row.py", "--table", "triton", "--baseline", "flush",
+                "--rows", rows, *extra)
+
+
+def test_a_resume_that_widens_or_narrows_the_planned_rows_is_accepted(tmp_path, monkeypatch):
+    # Both rows declared. Start with r_hold alone, widen to both, narrow to r_bad, then the
+    # full command again: every start is accepted, and the first start's record stands.
+    monkeypatch.setenv("STUB_CALLS", str(tmp_path / "calls.txt"))
+    monkeypatch.setenv("STUB_TABLE", "aa")
+    monkeypatch.delenv("MEEP_IDENTITY_CORPUS_MANIFEST", raising=False)
+    _fake_record(tmp_path)
+    out = tmp_path / "out"
+
+    def start(rows):
+        return _rows_leg(tmp_path, rows, "--corpus-manifest", _manifest_both(tmp_path))[0]
+
+    assert start("r_hold") == l3_corpus.EXIT_HOLDS
+    first = (out / l3_corpus.FIRST_START).read_text()
+    assert json.loads(first)["rows"] == ["r_hold"] and json.loads(first)["planned"] == ["r_hold"]
+    assert start("r_hold,r_bad") == l3_corpus.EXIT_HOLDS
+    assert start("r_bad") == l3_corpus.EXIT_HOLDS
+    assert start("r_hold,r_bad") == l3_corpus.EXIT_HOLDS
+    assert (out / l3_corpus.FIRST_START).read_text() == first
+    assert "REFUSING" not in (out / "progress.log").read_text()
+
+
+def test_a_start_after_a_narrowed_one_keeps_the_first_declaration(tmp_path, monkeypatch):
+    # The first start plans both rows and runs none (STOP); a start narrowed to r_bad runs it;
+    # the first command, with the same manifest, is then accepted and runs r_hold declared.
+    monkeypatch.setenv("STUB_CALLS", str(tmp_path / "calls.txt"))
+    monkeypatch.setenv("STUB_TABLE", "aa")
+    monkeypatch.delenv("MEEP_IDENTITY_CORPUS_MANIFEST", raising=False)
+    _fake_record(tmp_path)
+    manifest = str(_manifest(tmp_path))
+    (tmp_path / "out").mkdir()
+    (tmp_path / "out" / "STOP").write_text("")
+    rc, out = _rows_leg(tmp_path, "r_hold,r_bad", "--corpus-manifest", manifest)
+    assert _calls(tmp_path) == [] and json.loads((out / "summary.json").read_text())["verdict"] \
+        == "INCOMPLETE"
+    (out / "STOP").unlink()
+    rc, out = _rows_leg(tmp_path, "r_bad", "--corpus-manifest", manifest)
+    assert rc == l3_corpus.EXIT_HOLDS and _calls(tmp_path) == ["r_bad"]
+    assert json.loads((out / l3_corpus.FIRST_START).read_text())["rows"] == ["r_hold"]
+    rc, out = _rows_leg(tmp_path, "r_hold,r_bad", "--corpus-manifest", manifest)
+    assert rc == l3_corpus.EXIT_HOLDS and _calls(tmp_path) == ["r_bad", "r_hold"]
+    assert _lines(out, "r_hold")[-1]["attempt"] == 1
+    # Without the manifest that same command is refused by name, before any row runs.
+    rc, out = _rows_leg(tmp_path, "r_hold,r_bad")
+    assert rc == l3_corpus.EXIT_REFUSED and "declared then and not now ['r_hold']" in \
+        (out / "progress.log").read_text()
+
+
+def test_a_carry_whose_plan_drops_a_declared_row_is_accepted(tmp_path, monkeypatch):
+    rc, out = _variable_leg(tmp_path, monkeypatch, differ="1", tables="aa,bb")
+    into = _placed(tmp_path, out, "placed")
+    rc, _out = _rows_leg(tmp_path, "r_bad", "--corpus-manifest", str(_manifest(tmp_path)),
+                         "--out", str(into))
+    summary = json.loads((into / "summary.json").read_text())
+    assert rc == l3_corpus.EXIT_HOLDS and summary["verdict"] == "HOLDS"
+    assert "REFUSING" not in (into / "progress.log").read_text()
+    # A later start that plans the declared row must declare it: its carried line names it
+    # (the first start did not plan it, so only the rows' own lines can say so).
+    rc, _out = _rows_leg(tmp_path, "r_hold,r_bad", "--out", str(into))
+    assert rc == l3_corpus.EXIT_REFUSED
+    assert "plans and does not declare: ['r_hold']" in (into / "progress.log").read_text()
+    rc, _out = _rows_leg(tmp_path, "r_hold,r_bad", "--corpus-manifest", str(_manifest(tmp_path)),
+                         "--out", str(into))
+    assert rc == l3_corpus.EXIT_HOLDS
+
+
+def test_a_placed_finding_of_no_holding_run_is_never_run_again(tmp_path, monkeypatch):
+    rc, out = _variable_leg(tmp_path, monkeypatch, differ="1,2,3,4", tables="aa,bb,cc,dd")
+    assert json.loads((out / "summary.json").read_text())["run_to_run_variable"]["findings"] \
+        == {"r_hold": "no run of 4 held"}
+    calls = _calls(tmp_path).count("r_hold")
+    into = _placed(tmp_path, out, "placed")
+    monkeypatch.setenv("STUB_DIFFER_RUNS", "")  # a fresh run would hold
+    rc, _out = _rows_leg(tmp_path, "r_hold,r_bad", "--corpus-manifest",
+                         str(_manifest(tmp_path)), "--out", str(into))
+    summary = json.loads((into / "summary.json").read_text())
+    assert _calls(tmp_path).count("r_hold") == calls  # not run again
+    assert summary["verdict"] == "DIFFERS" and rc == l3_corpus.EXIT_NOT_HOLDS
+    assert summary["run_to_run_variable"]["findings"] == {"r_hold": "no run of 4 held"}
+    assert summary["run_to_run_variable"]["runs"]["r_hold"] == {"with_words": 4, "errored": 0}
+
+
+def test_a_stop_with_runs_due_leaves_the_leg_incomplete_and_the_row_undecided(tmp_path,
+                                                                             monkeypatch):
+    original = l3_corpus.Leg.run_row
+
+    def run_row(self, label, refs):
+        row = original(self, label, refs)
+        if label == "r_hold":
+            (self.out / "STOP").write_text("")
+        return row
+
+    monkeypatch.setattr(l3_corpus.Leg, "run_row", run_row)
+    rc, out = _variable_leg(tmp_path, monkeypatch, "--parallel", "1", differ="1",
+                            tables="aa,bb")
+    summary = json.loads((out / "summary.json").read_text())
+    assert summary["verdict"] == "INCOMPLETE" and rc == l3_corpus.EXIT_NOT_HOLDS
+    variable = summary["run_to_run_variable"]
+    assert variable["runs_due"] == ["r_hold"] and variable["findings"] == {}
+    assert "r_hold" in variable["undecided"]
+    assert summary["rows_not_holding_against_primary"] == []
+    assert json.loads((out / "LEG_DONE").read_text())["verdict"] == "INCOMPLETE"
+    monkeypatch.setattr(l3_corpus.Leg, "run_row", original)
+    (out / "STOP").unlink()
+    rc, out = _variable_leg(tmp_path, monkeypatch, differ="1", tables="aa,bb")
+    summary = json.loads((out / "summary.json").read_text())
+    assert summary["verdict"] == "HOLDS" and rc == l3_corpus.EXIT_HOLDS
+    assert summary["run_to_run_variable"]["held_on_rerun"]["r_hold"]["tables"] == ["aa", "bb"]
+
+
+def test_an_equal_tables_finding_after_two_earlier_runs(tmp_path, monkeypatch):
+    # Run 1 on aa and run 2 on bb differ, run 3 holds on aa: run 1 used the holding run's
+    # own tables, so the row is a finding (each earlier run is compared, not one of them).
+    rc, out = _variable_leg(tmp_path, monkeypatch, differ="1,2", tables="aa,bb,aa")
+    summary = json.loads((out / "summary.json").read_text())
+    assert summary["verdict"] == "DIFFERS" and rc == l3_corpus.EXIT_NOT_HOLDS
+    assert "the same source tables" in summary["run_to_run_variable"]["findings"]["r_hold"]
+    last = _lines(out, "r_hold")[-1]
+    assert last["attempt"] == 3 and last["l3_verdict"] == "differs"
+    assert last[l3_corpus.ATTRIBUTION_KEY]["tables"] == ["aa", "bb", "aa"]
+
+
+def test_a_finding_on_a_declared_row_expected_to_differ(tmp_path, monkeypatch):
+    # r_diff is expected to differ against linux_flush and hold against mac_flush. Run 1
+    # differs against every set, run 2 is as expected on the same tables: a finding, and the
+    # leg reads DIFFERS though the last run's own verdicts are the expected ones.
+    monkeypatch.setenv("STUB_CALLS", str(tmp_path / "calls.txt"))
+    monkeypatch.setenv("STUB_TABLE", "aa,aa")
+    monkeypatch.setenv("STUB_DIFFER_EVERYWHERE_RUNS", "1")
+    monkeypatch.delenv("MEEP_IDENTITY_CORPUS_MANIFEST", raising=False)
+    record, repo, stub = _fake_record(tmp_path, sets=("linux_flush", "mac_flush", "linux_keep"))
+    rc, out = _leg(tmp_path, record, repo, stub, "--table", "metal", "--baseline", "flush",
+                   "--expect-differ", "references", "--expect-differ-holds", "mac_flush",
+                   "--corpus-manifest", str(_manifest(tmp_path, eigenmode=("r_diff",))))
+    summary = json.loads((out / "summary.json").read_text())
+    assert summary["verdict"] == "DIFFERS" and rc == l3_corpus.EXIT_NOT_HOLDS
+    assert summary["rows_not_holding_against_primary"] == ["r_diff"]
+    assert summary["expected_differ"]["as_expected"] == []
+    assert "the same source tables" in summary["run_to_run_variable"]["findings"]["r_diff"]
+    last = _lines(out, "r_diff")[-1]
+    assert last["l3_verdicts"]["linux_flush"] == "differs" and last["l3_verdicts"]["mac_flush"] \
+        == "holds"
+
+
+def test_a_declared_row_that_never_holds_is_a_finding(tmp_path, monkeypatch):
+    rc, out = _variable_leg(tmp_path, monkeypatch, differ="1,2,3,4", tables="aa,bb,cc,dd")
+    summary = json.loads((out / "summary.json").read_text())
+    assert summary["verdict"] == "DIFFERS" and rc == l3_corpus.EXIT_NOT_HOLDS
+    assert [line["attempt"] for line in _lines(out, "r_hold")] == [1, 2, 3, 4]
+    assert _calls(tmp_path).count("r_hold") == 4
+    assert summary["run_to_run_variable"]["findings"] == {"r_hold": "no run of 4 held"}
+    assert summary["rows_not_holding_against_primary"] == ["r_hold"]
+
+
+def test_an_undeclared_row_that_differs_is_never_rerun(tmp_path, monkeypatch):
+    # r_hold is declared but r_bad is not: r_bad differing is read, never run again.
+    monkeypatch.setenv("STUB_ALSO_DIFFERS", "r_bad")
+    rc, out = _variable_leg(tmp_path, monkeypatch, tables="aa")
+    summary = json.loads((out / "summary.json").read_text())
+    assert summary["verdict"] == "DIFFERS" and rc == l3_corpus.EXIT_NOT_HOLDS
+    assert len(_lines(out, "r_bad")) == 1 and _calls(tmp_path).count("r_bad") == 1
+    assert summary["rows_not_holding_against_primary"] == ["r_bad"]
+    assert summary["run_to_run_variable"]["held_first"] == ["r_hold"]
+
+
+def test_an_errored_run_decides_nothing_and_a_retry_that_holds_holds(tmp_path, monkeypatch):
+    # [error, holds]: the error stops the row's runs as any error does, and is DIFFERS until
+    # --retry-errors runs it again; the error carries no tables, so the run that then holds
+    # is the row's first draw, and holds.
+    rc, out = _variable_leg(tmp_path, monkeypatch, errors="1", tables="aa,bb")
+    summary = json.loads((out / "summary.json").read_text())
+    assert summary["verdict"] == "DIFFERS" and rc == l3_corpus.EXIT_NOT_HOLDS
+    assert len(_lines(out, "r_hold")) == 1 and "r_hold" in summary["errors"]
+    rc, out = _variable_leg(tmp_path, monkeypatch, "--retry-errors", errors="1", tables="aa,bb")
+    summary = json.loads((out / "summary.json").read_text())
+    assert summary["verdict"] == "HOLDS" and rc == l3_corpus.EXIT_HOLDS
+    lines = _lines(out, "r_hold")
+    assert [line.get("attempt") for line in lines] == [1, 2] and "error" in lines[0]
+    assert summary["run_to_run_variable"]["held_first"] == ["r_hold"]
+    assert summary["run_to_run_variable"]["findings"] == {}
+
+
+def test_a_resumed_leg_continues_a_declared_row_s_runs(tmp_path, monkeypatch):
+    monkeypatch.setattr(l3_corpus, "VARIABLE_ATTEMPTS", 2)
+    rc, out = _variable_leg(tmp_path, monkeypatch, differ="1,2", tables="aa,bb,cc")
+    assert rc == l3_corpus.EXIT_NOT_HOLDS and len(_lines(out, "r_hold")) == 2
+    monkeypatch.setattr(l3_corpus, "VARIABLE_ATTEMPTS", 4)
+    rc, out = _variable_leg(tmp_path, monkeypatch, differ="1,2", tables="aa,bb,cc")
+    summary = json.loads((out / "summary.json").read_text())
+    assert summary["verdict"] == "HOLDS" and rc == l3_corpus.EXIT_HOLDS
+    assert [line["attempt"] for line in _lines(out, "r_hold")] == [1, 2, 3]
+    assert summary["run_to_run_variable"]["held_on_rerun"]["r_hold"]["tables"] == ["aa", "bb", "cc"]
+    # r_bad held on its first run and is not run again.
+    assert _calls(tmp_path).count("r_bad") == 1
+    assert "1 declared to run again" in (out / "progress.log").read_text()
+
+
+@pytest.mark.parametrize("everywhere", ["", "1"])
+def test_a_declared_row_expected_to_differ_is_held_to_the_expected_rule(tmp_path, monkeypatch,
+                                                                       everywhere):
+    # r_diff is expected to differ against linux_flush and hold against mac_flush. Differing
+    # as expected is as required on its first run; differing against both sets is not, so it
+    # runs again, and after 4 runs it is not as expected.
+    monkeypatch.setenv("STUB_CALLS", str(tmp_path / "calls.txt"))
+    monkeypatch.setenv("STUB_DIFFER_EVERYWHERE", everywhere)
+    monkeypatch.setenv("STUB_TABLE", "aa,bb,cc,dd")
+    monkeypatch.delenv("MEEP_IDENTITY_CORPUS_MANIFEST", raising=False)
+    record, repo, stub = _fake_record(tmp_path, sets=("linux_flush", "mac_flush", "linux_keep"))
+    rc, out = _leg(tmp_path, record, repo, stub, "--table", "metal", "--baseline", "flush",
+                   "--expect-differ", "references", "--expect-differ-holds", "mac_flush",
+                   "--corpus-manifest", str(_manifest(tmp_path, eigenmode=("r_diff",))))
+    summary = json.loads((out / "summary.json").read_text())
+    if not everywhere:
+        assert summary["expected_differ"]["as_expected"] == ["r_diff"]
+        assert summary["run_to_run_variable"]["held_first"] == ["r_diff"]
+        assert summary["verdict"] == "HOLDS" and rc == l3_corpus.EXIT_HOLDS
+        assert len(_lines(out, "r_diff")) == 1
+    else:
+        assert summary["expected_differ"]["not_as_expected"] == ["r_diff"]
+        assert summary["run_to_run_variable"]["findings"] == {"r_diff": "no run of 4 held"}
+        assert summary["rows_not_holding_against_primary"] == []
+        assert summary["verdict"] == "DIFFERS" and rc == l3_corpus.EXIT_NOT_HOLDS
+        assert len(_lines(out, "r_diff")) == 4
+
+
+def _line(kind, table="aa"):
+    line = {"label": "r", "l3_verdicts": {"p": kind}}
+    if kind == "error":
+        line = {"label": "r", "error": "x"}
+    if table:
+        line["declared_variable"] = {"tables": {"sha256": table}}
+    return line
+
+
+@pytest.mark.parametrize("lines, outcome", [
+    ([_line("holds")], "holds"),
+    ([_line("error", None), _line("holds", "bb")], "holds"),
+    ([_line("differs", "aa"), _line("holds", "bb")], "holds_variable"),
+    ([_line("differs", "aa"), _line("error", None), _line("holds", "bb")], "holds_variable"),
+    ([_line("differs", "aa"), _line("holds", "aa")], "differs"),
+    ([_line("differs", None), _line("holds", "bb")], "differs"),
+    ([_line("differs", "aa"), _line("holds", None)], "differs"),
+    ([_line("differs", "aa"), _line("differs", "bb"), _line("holds", "aa")], "differs"),
+    ([_line("differs", "bb"), _line("differs", "aa"), _line("holds", "aa")], "differs"),
+    ([_line("differs", "aa"), _line("differs", "bb"), _line("holds", "cc")], "holds_variable"),
+    ([_line("differs", "aa")], "undecided"),
+    ([_line("differs", "aa"), _line("differs", "bb")], "undecided"),
+    ([_line("differs", t) for t in ("aa", "bb", "cc", "dd")], "differs"),
+    ([_line("error", None)], "error"),
+])
+def test_the_attribution_rule(lines, outcome):
+    held = lambda line: (line.get("l3_verdicts") or {}).get("p") == "holds"  # noqa: E731
+    assert l3_corpus.attribute(lines, held)[0] == outcome
+
+
+class _Source:
+    def __init__(self, entries):
+        self._src_vol = entries
+
+
+class _OnDevice:
+    """An array as CuPy holds it: ``.get()`` copies it to the host."""
+
+    def __init__(self, array):
+        self._array = array
+
+    def get(self):
+        return self._array
+
+
+class _Tensor:
+    """An array as torch holds it: ``.detach().cpu().numpy()`` copies it to the host."""
+
+    def __init__(self, array):
+        self._array = array
+
+    def detach(self):
+        return self
+
+    def cpu(self):
+        return self
+
+    def numpy(self):
+        return self._array
+
+
+def _tables(amps=(1 + 2j, 3 - 4j), on_device=None):
+    from meep_gpu.sources import SrcVolTable  # noqa: PLC0415
+
+    ix, iy, iz = (numpy.array(v, dtype=numpy.int64) for v in ([1, 2], [0, 0], [3, 4]))
+    amp = numpy.array(amps, dtype=numpy.complex128)
+    if on_device:
+        wrap = _OnDevice if on_device == "cupy" else _Tensor
+        ix, amp = wrap(ix), wrap(amp)
+    driver = type("Driver", (), {})()
+    driver._sources = [_Source((SrcVolTable(ix, iy, iz, amp, 2),)), _Source(())]
+    return l3_row.source_tables(driver)
+
+
+def test_the_row_records_its_source_tables_and_its_own_digests():
+    # The deposit tables' digest: stable, moved by one amplitude, read through .get().
+    first = _tables()
+    assert first == _tables() == _tables(on_device="cupy") == _tables(on_device="torch")
+    assert [s["entries"] for s in first["per_source"]] == [1, 0]
+    moved = _tables(amps=(1 + 2j, complex(3, -numpy.nextafter(4.0, 5.0))))
+    assert moved["sha256"] != first["sha256"]
+    assert moved["per_source"][1] == first["per_source"][1]
+    unbound = type("Driver", (), {})()
+    unbound._sources = [_Source(None)]
+    with pytest.raises(RuntimeError, match="not bound"):
+        l3_row.source_tables(unbound)
+
+    # The run's own digests, on the Tier A fixture: every compared step, every component,
+    # stored and reader, equal to what the judge compared (the fixture holds).
+    judged, steps, document = _fixture_judge(keep_digests=True)
+    assert l3_row.set_verdict(judged, "ref") == "holds"
+    own = judged[l3_row.RUN_DIGESTS_KEY]
+    assert sorted(own, key=int) == [str(step) for step in steps]
+    for step in steps:
+        assert set(own[str(step)]) == set(identity.COMPONENTS)
+        for component, (stored_digest, reader_digest) in own[str(step)].items():
+            assert stored_digest == document["stored"][str(step)][component]
+            assert reader_digest == document["reader"][str(step)][component]
+
+
+def test_the_lift_s_solves_are_watched_and_passed_through():
+    class Edata:
+        freq, group_velocity = 0.15, 0.2846
+
+    class Sim:
+        def get_eigenmode(self, frequency, *args, **kwargs):
+            return Edata()
+
+    sim, sink = Sim(), []
+    restore = l3_row.watch_solves(sim, sink)
+    got = sim.get_eigenmode(0.15, "x", band=1)
+    assert isinstance(got, Edata)
+    assert sink == [{"freq": (0.15).hex(), "group_velocity": (0.2846).hex()}]
+    restore()
+    assert "get_eigenmode" not in vars(sim) and len(sink) == 1
+    sim.get_eigenmode(0.15)
+    assert len(sink) == 1
+
+    # A value that does not read as a float is recorded as such, and the solve still returns.
+    Edata.group_velocity = "not a number"
+    restore = l3_row.watch_solves(sim, sink)
+    assert isinstance(sim.get_eigenmode(0.15), Edata)
+    restore()
+    assert sink[-1]["error"].startswith("ValueError")
 
 
 # ---------------------------------------------------------------------------------------

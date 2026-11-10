@@ -1,13 +1,13 @@
 """The COMPLEX beta H->D weld, read on a host with no device.
 
-EVERY CLAUSE HERE RUNS ON A LAPTOP and none of them is skipped, which is a property of
+Every clause here runs on a laptop and none of them is skipped, which is a property of
 the product rather than of the test: this family's whole transform chain
 (``complex_emitter`` -> ``complex_folded_kernels`` -> ``complex_beta_kernels`` -> this
 weld) is CuPy-free at module scope, so the device text can be emitted and compared
 where there is no device. The byte identity itself is
 ``parity/meep_gpu/gate_complex_beta_fused_hd_pair.py``'s and lives in its artifacts.
 
-THE TWO CENTRAL CLAIMS ARE EQUALITIES:
+The two central claims are equalities:
 
 1. :func:`complex_beta_fused_hd_pair.curl_pieces` applied to the CERTIFIED PLAIN
    complex ``step_D`` text returns exactly what
@@ -15,7 +15,7 @@ THE TWO CENTRAL CLAIMS ARE EQUALITIES:
    CERTIFIED FOLDED text exactly what its ``"folded"`` variant returns -- byte for
    byte, on BOTH arms. The beta weld is therefore the RELEASED, GATED transform plus
    the beta insert.
-2. The two cells this ROUND targeted -- complex beta and real beta -- are TWO
+2. The two cells this change targeted -- complex beta and real beta -- are TWO
    PRODUCTS and not one, and that was measured rather than assumed: the clause below
    compares the two cells' certified ``update_H`` bodies and their two curl preludes
    and requires all four to be different strings.
@@ -84,7 +84,7 @@ def test_the_declaration_is_a_literal_this_files_own_readers_can_see():
 # ---------------------------------------------------------------------------
 
 def test_the_transform_on_the_certified_plain_text_is_the_released_transform():
-    """THE FIRST EQUALITY, byte for byte, on each arm."""
+    """The first equality, byte for byte, on each arm."""
     assert family.curl_pieces(
         complex_emitter.complex_source("step_D")) == \
         released.curl_pieces("plain")
@@ -160,11 +160,11 @@ def test_a_body_that_lost_a_beta_increment_is_refused():
 
 
 # ---------------------------------------------------------------------------
-# ONE PRODUCT PER STORAGE CLASS -- measured, not assumed
+# One product per storage class -- measured, not assumed
 # ---------------------------------------------------------------------------
 
 def test_the_two_beta_cells_share_no_text_and_are_therefore_two_products():
-    """WHY THIS ROUND SHIPPED TWO MODULES RATHER THAN ONE WITH TWO VARIANTS.
+    """Why two modules were shipped rather than one with two variants.
 
     The released complex H->D product covers TWO cells with ONE transform because its
     two cells share their ``update_H`` half EXACTLY and its two ``step_D`` halves are

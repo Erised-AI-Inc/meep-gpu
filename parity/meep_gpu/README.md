@@ -14,7 +14,7 @@ out and how to point its drivers at a machine.
 | `gate_*.py` | Device gates. Each runs a kernel family on a GPU beside the array path and writes `gate.json`. |
 | `probe_*.py`, `measure_*.py`, `replay_*.py`, `stress_*.py` | Measurements and diagnostics behind a gate or a coverage figure. |
 | `recut_metal_gates.sh`, `run_metal_dispatch_campaign.sh` | Drivers of the Metal gate fleet and of the Metal route campaign (`docs/development/certification.md`). |
-| `rounds/`, `build_metal_round_inputs.py` | One directory per certification round on another machine: its driver, and the manifest of the evidence-archive inputs its gates read (the bundles themselves are not committed). The Metal one is packed, verified and unpacked by `build_metal_round_inputs.py`. |
+| `rounds/`, `build_metal_round_inputs.py` | `rounds/1.0` is the certification round for another machine: its drivers, runbook and the manifest of the evidence-archive inputs its gates read (the bundles themselves are not committed; `docs/development/certify-a-new-gpu.md` is the guide). `build_metal_round_inputs.py` packs, verifies and unpacks the inputs bundle of a round directory laid out as the 0.9.x Metal round was (`INPUT_FILES.txt`, `INPUT_DIRS.txt`, `INPUTS_SHA256SUMS`); no round directory in the tree uses it now. |
 | `build_*_fusion_matrix.py`, `build_3d_comparison.py` | Builders of the coverage boards and the throughput table from recorded rows. |
 | `build_parity_board.py`, `parity_board_text.py`, `parity_board_emit.py`, `parity_board_emit.json`, `parity_board_rows.json`, `record_dev_evidence.py`, `parity_board/` | The bit-parity coverage board: per kernel table, how many modules have the chunk-record select, MEEP's A forms, host and device word identity with the array path, development evidence on the device and a certification on the live array-path oracle, and per array-path family, identity with MEEP under each subnormal baseline. The rows are the kernel design's step lists, held as data; every column is read off the tree (the device text each module's builder emits with no device, a recorded run of the module tests, the pending list, the ledgers, the integrators' development-evidence record, the Tier A/C record), and a row or column it cannot measure is refused by name. `outcomes` records a test run against the tree's subject manifest and `build` refuses a record whose subject is not the tree; `record_dev_evidence.py` refuses a device leg whose module subject moved during the run. |
 | `rebind_*.py`, `recut_*.py`, `mint_*.py`, `seed_*.py`, `record_*.py` | Writers of the ledgers under `meep_gpu/*_kernels/`. `record_array_path_oracle.py` writes the array-path fingerprint into all three, and with `--verify` recomputes it and writes nothing. |
@@ -30,9 +30,9 @@ out and how to point its drivers at a machine.
 | `b_battery_states.py` | Constructors of the B battery's gate states: full-volume random states, the planted −0 curl and constitutive cases, the ±0 special-word lattice, and the form-coverage check. |
 | `gate_chunk_records.py` | The chunk records a gate hands a Triton plan it builds from bare arrays, where the harness route has no default: `layer_record`, the one-rank division of an engine layer, for a reference that is the array path on it, and `every_cell_record`, every cell in a layer chunk, for a hand reference that steps the split-field recurrence on every cell. |
 | `test_*.py` | Tests of the harness itself. |
-| `build_meep_133_linux.sh`, `build_meep_133_macos.sh` | The reference environment of each platform, built end to end: the locks, MEEP 1.33.0 (single precision) from the release tarball, the identity corpus and the build's record, see below. |
-| `build_meep_133_record.py` | The build scripts' Python steps: fetch and corpus (with its siblings, and the refresh of an existing prefix's corpus), load commands, the ffmpeg and libcuda links, the programs, the identity verdicts and `reference_build.json`. |
-| `build_meep_133_native.sh` | A native-tuned MEEP build with its build record, a timing control only. |
+| `build_meep_reference_linux.sh`, `build_meep_reference_macos.sh` | The reference environment of each platform, built end to end: the locks, MEEP 1.35.0 (single precision; the release each script names once, in `MEEP_VERSION`) from the release tarball, the identity corpus and the build's record, see below. |
+| `build_meep_reference_record.py` | The build scripts' Python steps: fetch and corpus (with its siblings, and the refresh of an existing prefix's corpus), load commands, the ffmpeg and libcuda links, the programs, the identity verdicts and `reference_build.json`. |
+| `build_meep_reference_native.sh` | A native-tuned MEEP build with its build record, a timing control only. |
 | `meep_identity_smoke.py`, `meep_identity_smoke.json` | MEEP-only digest check of an identity reference: four cases, every stored word hashed, against the recorded digests (written only by its `--mint`). |
 | `meep_identity_tier_c.py` | Tier C of MEEP identity: `compare` lifts a case, steps the lifted driver and MEEP in pair order and compares every stored and `get_array` word in process, with a planted 1-ulp flip; `replay` is Tier A on its output in a process that cannot import MEEP (`docs/development/testing.md`, "MEEP identity"). |
 | `meep_identity_corpus.py` | Table 2's corpus as a Tier C `--cases-file`: `manifest` derives one entry per measured row from the seven legs' `parity.jsonl`, and `build` rebuilds a row as it was measured (capture, capped resolution, step count, grid checked after the lift). |
@@ -41,6 +41,10 @@ out and how to point its drivers at a machine.
 | `record_meep_identity_archive.py`, `test_meep_identity_tier_b.py` | Tier B: judges each corpus row's Tier C output by the Tier A minting criteria (holds, differs, error, refused by name; named exclusions kept apart), archives MEEP's digests, the plane digests, the result and the capsule and currents in the evidence archive with their sha256, and replays the holding capsule rows with no MEEP; the test reads that record back (`evidence_archive`). |
 | `meep_identity_context_l2.py` | Table 2's context column: the whole-field relative L2 (`sweep_corpus_lift_parity.compare_fields`) of the array path against a MEEP that contracts, per corpus row at its N. |
 | `build_meep_identity_table.py` | Table 2 as MEEP identity (`docs/development/meep-identity-corpus.md`), from the Tier B record, the corpus manifest and the context L2 rows: per row and reference "0 of W / 0 of V", the named exclusions and refusals, and L0 between the two reference MEEPs. |
+
+`ledger_states/<table>/<sha256>.json.gz` holds the old ledger states records can still carry
+on, by raw digest (`ledger_scope.py`, which also files one: `python ledger_scope.py archive
+--table <table> <file>`). A commit that moves a ledger carries its state.
 
 Runs write to `results/` in this directory. That tree is not tracked and is not
 part of this repository. Ledgers and messages cite artifacts by their path under
@@ -66,8 +70,8 @@ neutral default.
 | Variable | Meaning | Default |
 |---|---|---|
 | `MGPU_SITE_PYTHON` | Interpreter the drivers launch. It must import `meep`, and `cupy` or `torch` for a device leg. | `python` |
-| `MGPU_SITE_STAGING_ROOT` | Directory under which a round is staged; each driver uses its own subdirectory. | `$HOME/meep_gpu_validation` |
-| `MGPU_SITE_SOURCE_ROOT` | Root of the staged copy of this repository that the round runs. | `<run root>/source`; the two Metal drivers default to the checkout they are in |
+| `MGPU_SITE_STAGING_ROOT` | Directory under which a certification round is staged; each driver uses its own subdirectory. | `$HOME/meep_gpu_validation` |
+| `MGPU_SITE_SOURCE_ROOT` | Root of the staged copy of this repository that the certification round runs. | `<run root>/source`; the two Metal drivers default to the checkout they are in |
 | `MGPU_SITE_MEEP_SOURCE` | A MEEP source checkout. Its `python/examples` and `python/tests` are the corpus the surveys and sweeps read. | `~/meep` |
 
 The names do not begin with `MEEP_GPU_` on purpose. That prefix belongs to the
@@ -124,35 +128,37 @@ host, is:
 
 ## Building the reference MEEP
 
-`build_meep_133_linux.sh` and `build_meep_133_macos.sh` build the one environment
+`build_meep_reference_linux.sh` and `build_meep_reference_macos.sh` build the one environment
 the tests, a certification round and the timing run in on each platform, end to end:
 the conda packages installed without a solve from the platform's lock under
 `environments/locks/` (refused unless the new prefix holds exactly the lock's
-artifacts), MEEP 1.33.0 from the release tarball in single precision, with MPI and
-libGDSII, the PyPI packages from the pip lock, and ffmpeg linked from its pinned wheel,
+artifacts), MEEP 1.35.0 (`MEEP_VERSION`) from the release tarball in single precision,
+with MPI, the PyPI packages from the pip lock, and ffmpeg linked from its pinned wheel,
 into a new Conda environment (`MEEP_ENV_NAME`, default `meep-gpu-ref`, under
 `CONDA_ROOT`). Each script re-runs itself under `env -i`, so nothing of the calling
-shell reaches the build, and refuses by name the knobs it no longer has
-(`MEEP_SIGMA_PATCH`, `MEEP_REFERENCE_SOLVE`, `MEEP_BUILD_ROLE`, `MEEP_FFMPEG`).
+shell reaches the build, bounds the OpenMP threads of the MEEP and NumPy processes it
+runs (`MEEP_GPU_BUILD_THREADS`, default the smaller of 8 and the CPU count), and refuses by
+name the knobs it no longer has (`MEEP_SIGMA_PATCH`, `MEEP_REFERENCE_SOLVE`,
+`MEEP_BUILD_ROLE`, `MEEP_FFMPEG`).
 
 Each builds an **identity reference**, the MEEP the array path is held to word for
 word, and refuses to finish unless it is one. Both compile with
 `-O2 -ffp-contract=off -fno-fast-math`, the Linux script with
 `-march=x86-64 -mtune=generic` beside them; step 8 asserts what the environment claims
-to be (MEEP 1.33.0, single precision, MPI, a GDSII file read, the drift report of
+to be (the MEEP release the script names, single precision, MPI, the drift report of
 `tools/compare_reference_environment.py --require-reference`, and the fused
 multiply-add census of the installed `libmeep` and `_meep`), step 10 runs
 `meep_identity_smoke.py`, which steps MEEP alone on four cases and compares the SHA-256
 of every stored word with `meep_identity_smoke.json`, and step 11 takes the identity
 verdicts in keep and flush. Before building, each keeps the tarball's `python/examples`
-and `python/tests` in `<prefix>/share/meep-gpu-build/meep-1.33.0/python` as the MEEP
+and `python/tests` in `<prefix>/share/meep-gpu-build/meep-<version>/python` as the MEEP
 identity corpus, with the SHA-256 of every file, and beside it the corpus siblings
-(`build_meep_133_record.CORPUS_SIBLINGS`: the files outside `python/` that corpus rows
+(`build_meep_reference_record.CORPUS_SIBLINGS`: the files outside `python/` that corpus rows
 read, found by a grep of the corpus and a file-access trace of every row), and at the end
 writes `<prefix>/share/meep-gpu-build/reference_build.json`, the build's record: the
 tarball's digest, the flags, the census, the corpus list and siblings, the locks' digests,
 the drift verdict and the identity verdicts. `--refresh-corpus` brings an existing
-prefix's corpus to what the build keeps now and rewrites only the record's `corpus` entry. `build_meep_133_native.sh` passes `--timing-control`, under
+prefix's corpus to what the build keeps now and rewrites only the record's `corpus` entry. `build_meep_reference_native.sh` passes `--timing-control`, under
 which the census is recorded and not judged and the digest check is skipped. The digest
 record is written only by `meep_identity_smoke.py --mint`, which steps each case twice
 in two processes and writes nothing unless the first run equals the minting reference's

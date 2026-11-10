@@ -26,6 +26,7 @@ import ctypes.util
 import functools
 import importlib
 import importlib.util
+import inspect
 import sys
 from typing import Any
 
@@ -79,10 +80,38 @@ _FENV_BYTES = 256
 # Set by wrapped compiler entry points so the wrap is applied at most once.
 _GUARD_MARK = "_meep_gpu_keeps_subnormals"
 
-# CuPy's compiler front ends, in every backend it ships. Wrapping the leaves
-# rather than the caching layer keeps the guard on the one operation that parses
-# source; a cache hit never compiles and never needs it.
-_COMPILER_ENTRY_POINTS = ("compile_using_nvrtc", "compile_using_nvcc", "compile_using_hipcc")
+# ---------------------------------------------------------------------------
+# Where the guard goes: the front ends CuPy's compile path calls
+#
+# Every kernel CuPy builds passes through one function per platform in
+# `cupy.cuda.compiler`, its COMPILE PATH: it computes the disk-cache key, serves a
+# hit, and on a miss calls a compiler FRONT END, the function that hands the
+# source to NVRTC (or nvcc, hipcc). The guard wraps the front ends, so it sits on
+# the one operation that parses source; a cache hit never compiles and never
+# needs it. The wrapper is installed on the module, and the compile path looks the
+# front end up there at call time, so the wrapper is what it calls.
+#
+# CuPy renames the front ends. At v13.5.1 `_compile_with_cache_cuda` calls
+# `compile_using_nvrtc`; at v14.2.0 it calls `_compile_using_nvrtc_no_warning`,
+# and `compile_using_nvrtc` became a public wrapper over that (cupy/cuda/compiler.py
+# at both tags). A wrapper on a function the compile path no longer calls installs,
+# reports itself guarded, and never runs. So the front ends are READ OFF the
+# compile path's own code (`compiler_front_ends`) rather than listed, and a CuPy
+# whose compile path calls nothing recognizable is refused by name.
+# ---------------------------------------------------------------------------
+
+#: CuPy's compile path on NVIDIA. It must be readable for any CuPy compile to be guarded.
+CUPY_NVIDIA_COMPILE_PATH = "_compile_with_cache_cuda"
+
+#: Every compile path read for front ends: NVIDIA's, then ROCm's when CuPy has one
+#: (CuPy defines both in every build; only one of them runs on a given machine).
+CUPY_COMPILE_PATHS = (CUPY_NVIDIA_COMPILE_PATH, "_compile_with_cache_hip")
+
+#: What the name of every compiler front end CuPy has shipped carries
+#: (`compile_using_nvrtc`, `compile_using_nvcc`, `compile_using_hipcc`,
+#: `_compile_using_nvrtc_no_warning`). A front end named otherwise is not
+#: recognized, and that is a refusal, never a guess.
+CUPY_FRONT_END_MARK = "compile_using"
 
 _fenv_resolved: tuple[Any, Any] | None = None  # (library, FE_DFL_ENV address) once probed.
 
@@ -218,29 +247,108 @@ def _with_subnormals(function):  # One compiler entry point, guarded and marked.
     return wrapper
 
 
+def names_read(code) -> list[str]:
+    """Every global name a code object reads, its nested functions' included, in order."""
+    names: list[str] = []
+    pending = [code]
+    while pending:
+        current = pending.pop(0)
+        names.extend(current.co_names)
+        pending.extend(const for const in current.co_consts if inspect.iscode(const))
+    return list(dict.fromkeys(names))
+
+
+def compile_path_code(compiler, name: str):
+    """The code of CuPy's compile path ``name``, or why the front ends cannot be read off it.
+
+    Returns ``(code, problem)``. The function is unwrapped first, so a wrapper this
+    package installed over it is not mistaken for CuPy's code. Its code is usable
+    only when it is Python and looks its callees up in the compiler module itself:
+    a hook set on that module is then exactly what the compile path calls.
+    """
+    path = getattr(compiler, name, None)
+    if path is None:
+        return None, f"cupy.cuda.compiler has no {name}"
+    path = inspect.unwrap(path)
+    code = getattr(path, "__code__", None)
+    if code is None:
+        return None, (f"cupy.cuda.compiler.{name} is not a Python function, so the "
+                      f"compiler front end it calls cannot be read off it")
+    if getattr(path, "__globals__", None) is not vars(compiler):
+        return None, (f"cupy.cuda.compiler.{name} does not look its callees up in "
+                      f"cupy.cuda.compiler, so a hook set there would never be called")
+    return code, None
+
+
+def compiler_front_ends(compiler) -> tuple[tuple[str, ...], str | None]:
+    """The compiler front ends CuPy's compile paths call, read off their code.
+
+    Returns ``(front_ends, problem)``: the names to wrap and ``None``, or ``()`` and
+    why none can be trusted. Read from each compile path in
+    :data:`CUPY_COMPILE_PATHS` that exists (NVIDIA's must), keeping the module
+    callables it names whose name carries :data:`CUPY_FRONT_END_MARK`. A front end
+    that only hands over to another one found here is left out: a direct caller
+    reaches the inner one through the module, so it is guarded once, not twice.
+
+    CuPy 13.5.1 reads ``compile_using_nvrtc``, ``compile_using_nvcc`` and
+    ``compile_using_hipcc``; CuPy 14.2.0 reads ``_compile_using_nvrtc_no_warning``,
+    ``compile_using_nvcc`` and ``compile_using_hipcc`` (its ``compile_using_nvrtc``
+    hands over to ``_compile_using_nvrtc_no_warning``).
+    """
+    found: list[str] = []
+    for name in CUPY_COMPILE_PATHS:
+        if name != CUPY_NVIDIA_COMPILE_PATH and getattr(compiler, name, None) is None:
+            continue
+        code, problem = compile_path_code(compiler, name)
+        if problem:
+            return (), problem
+        called = [callee for callee in names_read(code)
+                  if CUPY_FRONT_END_MARK in callee and callable(getattr(compiler, callee, None))]
+        if not called:
+            return (), (f"cupy.cuda.compiler.{name} calls no compiler front end this "
+                        f"package recognizes (none of the names it reads carries "
+                        f"{CUPY_FRONT_END_MARK!r}): the seam has moved")
+        found += [callee for callee in called if callee not in found]
+
+    def hands_over(name: str) -> bool:
+        inner = inspect.unwrap(getattr(compiler, name))
+        code = getattr(inner, "__code__", None)
+        if code is None or getattr(inner, "__globals__", None) is not vars(compiler):
+            return False
+        return any(other in names_read(code) for other in found if other != name)
+
+    return tuple(name for name in found if not hands_over(name)), None
+
+
+def _cupy_compiler(cupy):  # ``cupy.cuda.compiler``, however it is reachable; None if it is not.
+    compiler = getattr(getattr(cupy, "cuda", None), "compiler", None)
+    if compiler is not None:
+        return compiler
+    try:
+        return importlib.import_module("cupy.cuda.compiler")
+    except Exception:
+        return None
+
+
 def guard_kernel_compilation(cupy) -> bool:
-    """Wrap CuPy's compiler front ends so kernel source parses with subnormals intact.
+    """Wrap the front ends CuPy's compile path calls, so source parses with subnormals intact.
 
     Idempotent: a second call finds the wrappers already marked and leaves them
-    alone. Returns whether every front end this CuPy ships is now guarded AND this
+    alone. Returns whether the front ends were found and are now guarded AND this
     host's default floating-point environment is addressable — i.e. whether a
     compile started under MEEP's flush-to-zero mode will actually be protected.
+    When the front ends cannot be found nothing is wrapped
+    (:func:`compiler_front_ends` says why).
     """
-    compiler = getattr(getattr(cupy, "cuda", None), "compiler", None)
+    compiler = _cupy_compiler(cupy)
     if compiler is None:
-        try:
-            compiler = importlib.import_module("cupy.cuda.compiler")
-        except Exception:
-            return False
-    found = False
-    for name in _COMPILER_ENTRY_POINTS:
-        original = getattr(compiler, name, None)
-        if original is None:
-            continue
-        found = True
+        return False
+    front_ends, _problem = compiler_front_ends(compiler)
+    for name in front_ends:
+        original = getattr(compiler, name)
         if not getattr(original, _GUARD_MARK, False):
             setattr(compiler, name, _with_subnormals(original))
-    return found and _fenv()[1] is not None
+    return bool(front_ends) and _fenv()[1] is not None
 
 
 def cupy_available() -> bool:  # Live probe: cupy importable AND a CUDA device present.
@@ -290,7 +398,7 @@ def _missing_metal_dependencies() -> list[str]:
 def missing_dependencies() -> list[str]:  # What this platform's GPU route lacks; [] when a route exists.
     if available_gpu() is not None:
         return []
-    # NEVER EMPTY HERE: this answers why available_gpu() is None, so a read that finds
+    # Never empty here: this answers why available_gpu() is None, so a read that finds
     # nothing missing still names the piece the probe could not confirm.
     if sys.platform == "darwin":
         return _missing_metal_dependencies() or ["mps-device"]
@@ -327,7 +435,8 @@ def resolve_backend(prefer_gpu: bool = False, gpu_id: int = 0) -> tuple[Any, str
     Selecting CuPy also guards its kernel compiler against the subnormal flushing
     MEEP switches on process-wide (see the note at the top of this module). A host
     that is flushing and whose default floating-point environment cannot be
-    addressed is refused rather than left to fail later inside a CCCL header.
+    addressed, or whose CuPy compile path calls no front end this package can find,
+    is refused rather than left to fail later inside a CCCL header.
     """
     if prefer_gpu:
         if _gpu_route(gpu_id) == "metal":
@@ -337,14 +446,20 @@ def resolve_backend(prefer_gpu: bool = False, gpu_id: int = 0) -> tuple[Any, str
         cupy = importlib.import_module("cupy")
         cupy.cuda.Device(gpu_id).use()
         if not guard_kernel_compilation(cupy) and subnormals_flushed():
+            compiler = _cupy_compiler(cupy)
+            problem = ("cupy.cuda.compiler is not importable" if compiler is None
+                       else compiler_front_ends(compiler)[1])
             raise RuntimeError(
                 "This thread is flushing subnormal floating-point values to zero (MEEP sets the "
                 "FTZ and DAZ bits when it initializes), and that could not be suspended for the "
-                "duration of a CuPy kernel compile — either this CuPy exposes none of the "
-                f"compiler entry points this guards ({', '.join(_COMPILER_ENTRY_POINTS)}), or this "
-                "host's default floating-point environment (FE_DFL_ENV) could not be addressed. "
-                "Any kernel whose source includes CCCL's <cuda/std/limits> — CuPy's CUB-backed "
-                "reductions do — then fails to build with 'floating constant is out of range' on "
+                "duration of a CuPy kernel compile — "
+                + (f"the compiler front ends CuPy's compile path calls could not be found "
+                   f"({problem})" if problem else
+                   "this host's default floating-point environment (FE_DFL_ENV) could not be "
+                   "addressed")
+                + ". Any kernel whose source includes CCCL's <cuda/std/limits> — CuPy's "
+                "CUB-backed reductions do — then fails to build with 'floating constant is out of "
+                "range' on "
                 "__FLT_DENORM_MIN__. Run the GPU backend with subnormals kept instead: call "
                 "meep.set_zero_subnormals(False) before the first GPU kernel is compiled."
             )

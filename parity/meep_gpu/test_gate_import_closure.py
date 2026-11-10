@@ -1,6 +1,8 @@
 """A gate's import record is its own dependency set: the dispatch layer only where declared.
 
-WHAT THIS HOLDS (owner ruling R17, bit_parity_0_10 DESIGN.md section 8). A gate artifact's
+What this holds (per-kernel certification: a kernel's bit-identity evidence must not depend
+on unrelated code; docs/development/certification.md, "What a gate's import record
+holds"). A gate artifact's
 import record is every repository module its process held when it wrote the artifact, and the
 rebind tools, the family and composition re-cuts, the bit-identity re-cut, the Metal runner's
 manifest and the three board builders check that WHOLE record against the checkout. When the
@@ -25,6 +27,7 @@ The whole-import checks of the tools are not relaxed by any of this; the records
 
 from __future__ import annotations
 
+import ast
 import os
 import sys
 import time
@@ -223,6 +226,62 @@ def test_every_declared_gate_still_reaches_it(rows):
 def test_the_import_closure_is_inside_the_run_closure(rows, resolver):
     for script in MEASURED_SAMPLE:
         assert rows[script]["import_closure"] <= resolver.run_closure(script), script
+
+
+def _metal_only_target(node):
+    """The :data:`~import_closure.METAL_TABLE_ONLY` file an import statement loads, if any."""
+    if not isinstance(node, ast.ImportFrom):
+        return None
+    names = {alias.name for alias in node.names}
+    module = node.module or ""
+    if module.endswith("metal_dispatch") or "metal_dispatch" in names:
+        return "meep_gpu/metal_dispatch.py"
+    if module.endswith("metal_kernels.corpus") or (module.endswith("metal_kernels") and "corpus" in names):
+        return "meep_gpu/metal_kernels/corpus.py"
+    return None
+
+
+def test_the_package_reaches_the_metal_only_files_through_the_listed_edges():
+    """The stop on an NVIDIA unit's closure is true only while these are the only edges."""
+    found = []
+    for path in sorted(Path(ic.REPO_ROOT, "meep_gpu").rglob("*.py")):
+        rel = path.relative_to(ic.REPO_ROOT).as_posix()
+        if (path.name.startswith("test_") or "/metal_kernels/" in rel
+                or rel in ("meep_gpu/metal_dispatch.py", "meep_gpu/metal_runs.py")):
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        assert not [n for n in tree.body if _metal_only_target(n)], rel
+        for function in ast.walk(tree):
+            if not isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            targets = {_metal_only_target(n) for n in ast.walk(function)} - {None}
+            found.extend((rel, function.name, target) for target in targets)
+            if rel == "meep_gpu/fastpath.py" and targets:
+                guarded = [n for branch in ast.walk(function) if isinstance(branch, ast.If)
+                           and ast.unparse(branch.test) == "table == METAL_TABLE"
+                           for statement in branch.body for n in ast.walk(statement)
+                           if _metal_only_target(n)]
+                assert guarded, function.name
+    assert sorted(found) == sorted(ic.METAL_TABLE_EDGES)
+
+
+def test_nothing_on_the_nvidia_path_imports_the_metal_run_records():
+    for path in sorted(Path(ic.REPO_ROOT, "meep_gpu").rglob("*.py")):
+        rel = path.relative_to(ic.REPO_ROOT).as_posix()
+        if path.name.startswith("test_") or "/metal_kernels/" in rel or rel == "meep_gpu/metal_runs.py":
+            continue
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.ImportFrom):
+                assert "metal_runs" not in {alias.name for alias in node.names}, rel
+                assert not (node.module or "").endswith("metal_runs"), rel
+
+
+def test_no_nvidia_gate_reaches_a_metal_kernel_through_the_ladder(resolver):
+    stop = ic.METAL_TABLE_ONLY
+    for name in ("gate_cuda_fused_magnetic_pair.py", "probe_fused_kernel_bit_identity.py"):
+        script = f"{ic.HARNESS}/{name}"
+        assert "meep_gpu/metal_kernels/ade_update_p.py" in resolver.run_closure(script), name
+        assert "meep_gpu/metal_kernels/ade_update_p.py" not in resolver.run_closure(script, stop), name
 
 
 def test_the_package_function_level_edges_into_the_dispatch_layer_are_the_listed_ones(resolver):

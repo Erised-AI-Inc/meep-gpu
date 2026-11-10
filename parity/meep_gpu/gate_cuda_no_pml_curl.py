@@ -3,14 +3,14 @@
 THE QUESTION
 ============
 ``meep_gpu/cuda_kernels/no_pml_curl.py`` carries three kernels for the curl
-sub-steps of a run with NO ACTIVE ABSORBER. None of them has ever run on a
+sub-steps of a run with no active absorber. None of them has ever run on a
 device. This gate asks, per sub-step and per arm, whether each is byte-identical
 to ``stepping.step_B`` / ``stepping.step_D`` from ONE frozen state -- at one
 launch and at 60 -- across periodic, metallic and mixed walls, a mirror fold at
 both terminations, 1-D / 2-D / 3-D shapes, both float32 subnormal policies, both
 value classes, and both courants.
 
-WHAT COLLAPSES, AND WHAT DOES NOT
+What collapses, and what does not
 =================================
 ``stepping._apply_curl`` (stepping.py:516-582) has four tails. With
 ``_pml_is_active(pml)`` False and ``fields.condfac_for(target)`` None the tail is
@@ -21,9 +21,9 @@ table, ghost rule, MEEP's stencil and its partner-presence forms, wall masks -- 
 verbatim with only the tail replaced and the chunk-record words that choose a PML
 form dropped.
 
-THE STENCIL IS MEEP'S, AND IT READS THE CHUNK RECORD
+The stencil is MEEP's, and it reads the chunk record
 ====================================================
-Since 0.10 the certified pair forms the curl in ``curl_stencil`` (the shared
+Since 1.0 the certified pair forms the curl in ``curl_stencil`` (the shared
 prelude): ``dtdx * (((g1s - g1) + g2) - g2s)`` as C associates ``step_curl``
 (step_generic.cpp:104), and the one-partner forms where a partner's derivative
 axis is invariant (:72-76, :108) -- ``stepping._curl_from_operands``'s forms. These
@@ -31,11 +31,11 @@ kernels carry it verbatim and take which partners are present from the run's chu
 record (``chunk_map.chunk_bounds_record``, word 24), the last argument ``cb``. Each
 case hands the kernel the record of its own one-rank division
 (:func:`case_record`), and the NumPy backend reads the same word. The grouping
-defect is inverted (it plants the pairwise grouping the kernels carried until 0.10)
+defect is inverted (it plants the pairwise grouping the kernels carried until 1.0)
 and stays must-catch; ``full_bracket_over_an_absent_partner`` is the presence
 defect, caught wherever an axis is invariant.
 
-THE THIRD KERNEL EXISTS BECAUSE OF A MEASUREMENT, NOT A READING
+The third kernel exists because of a measurement, not a reading
 ===============================================================
 ``stepping.step_B`` reads its operands through ``_read_component``
 (stepping.py:2892-2908), whose E branch derives ``D * inv_eps`` whenever
@@ -67,7 +67,7 @@ False (pml.py:427-434) and which ``stepping`` therefore routes down the same tai
 A run that swept only one would leave "an inert layer steps like no layer" an
 inference.
 
-WHAT WOULD MAKE THIS GATE VACUOUS, AND THE FLOORS THAT REFUSE IT
+What would make this gate vacuous, and the floors that refuse it
 ================================================================
 * ``oracle_moved`` -- the fraction of output words the array path changed from the
   frozen input. A case that moved nothing is SKIPPED, not passed.
@@ -90,18 +90,18 @@ WHAT WOULD MAKE THIS GATE VACUOUS, AND THE FLOORS THAT REFUSE IT
   against a results record with a defect planted in it, and the run fails if the
   verdict does not flip. A gate whose verdict cannot go red is not a gate.
 
-THE FOUR DEAD-PRELUDE NULLS, WHICH ARE EVIDENCE RATHER THAN BOOKKEEPING
+The four dead-prelude nulls, which are evidence rather than bookkeeping
 ======================================================================
 ``no_pml_curl.py`` shares ``_REAL_PML_PRELUDE`` with the certified pair verbatim,
 so its ``pml_apply`` helper -- the split-field recurrence -- is compiled into every
-kernel here and CALLED BY NONE of them. The shared battery's four ``pml_apply``
+kernel here and called by none of them. The shared battery's four ``pml_apply``
 mutations (``drop_fu_store``, ``read_fprev_after_store``, ``swap_dsig_dsigu``,
 ``reload_fu_from_memory``) therefore arm, at one site each, and MUST come back
 UNCAUGHT. That they do is the measurement that this family's tail really is
 ``target -= curl`` and not the recurrence -- a claim otherwise resting on reading
 the source.
 
-WHY A SUB-STEP GATE AND NOT A WHOLE-STEP ONE
+Why a sub-step gate and not a whole-step one
 ============================================
 A whole-step gate cannot see a mask: the driver's boundary passes overwrite
 exactly the planes a missing mask would corrupt, and the sibling track measured a
@@ -121,7 +121,7 @@ token because CuPy's disk-cache key is computed above the strip seam)::
 
 Laptop (no CUDA). The NumPy backend runs the SAME oracle, the same fixture, the
 same floors and the same HOST mutations against a transcription of the device
-tree. IT COMPILES NOTHING AND CERTIFIES NOTHING -- what it settles is whether the
+tree. It compiles nothing and certifies nothing -- what it settles is whether the
 harness can localize a divergence and whether it can fail::
 
     python -u gate_cuda_no_pml_curl.py --backend numpy --out /tmp/no_pml_curl.json
@@ -250,8 +250,8 @@ VALUE_CLASSES: Tuple[str, ...] = ("uniform", "subnormal_band")
 #: ``--fmad=false`` is carried as CORRECTNESS here, not tuning, and on paper MORE
 #: so on the derived arm than on the stored one: there ``sf - f1`` is a difference
 #: of two PRODUCTS, a textbook fused-multiply-add candidate, while the array path
-#: rounds the multiply and the subtraction separately. THE READING WAS WRONG ABOUT
-#: THIS DEVICE, and the record says so rather than implying evidence it does not
+#: rounds the multiply and the subtraction separately. The reading was wrong about
+#: this device, and the record says so rather than implying evidence it does not
 #: have: measured 2026-08-20 on an RTX A6000 under NVRTC 11.6, the unguarded build
 #: was bit-identical to the guarded one on all 112 comparable cases at the inexact
 #: courant, on every arm. ``guard_control.reading`` reports MEASURED DECORATIVE,
@@ -278,7 +278,7 @@ GUARD_SETS: Tuple[Tuple[str, Tuple[str, ...], bool], ...] = (
 SUBSTITUTIONS: Tuple[str, ...] = ("resolved", "mirror_as_metallic", "all_periodic")
 LICENSED_SUBSTITUTION = "resolved"
 
-#: The grids. EVERY WALL KIND appears, the fold appears at BOTH terminations, and
+#: The grids. Every wall kind appears, the fold appears at BOTH terminations, and
 #: 1-D / 2-D / 3-D shapes all appear -- the corpus's real no-absorber rows are
 #: (1,1,400), (200,200,1), (25,25,1), (100,100,1), (5,5,1) and (1,1,1), so a
 #: 3-D-only sweep would measure a shape family the corpus does not contain.
@@ -292,7 +292,7 @@ SPECS: Tuple[Dict[str, Any], ...] = (
     {"label": "3d_mixed", "cell": (9.0, 10.0, 11.0), "dimensions": 3,
      "boundaries": ("metallic", "periodic", "metallic"), "axes": "", "phase": 1,
      "absorber": "none"},
-    # THE INERT LAYER, on a mixed grid: a PML object present but every face at
+    # The inert layer, on a mixed grid: a PML object present but every face at
     # zero thickness. ``_pml_is_active`` is False, so ``stepping`` takes the same
     # tail -- and the predicate admits it. Swept because "inert is the same as
     # absent" is otherwise an inference about pml.py rather than a measurement.
@@ -367,7 +367,7 @@ def build(xp, spec: Dict[str, Any], courant: float, e_storage: str, rng):
     if e_storage == "stored":
         fields.enable_field_storage()
     else:
-        # THREE DISTINCT, INHOMOGENEOUS inverse-epsilon volumes, drawn away from
+        # Three distinct, inhomogeneous inverse-epsilon volumes, drawn away from
         # 1.0. Against a table of ones the multiply is invisible; against one
         # shared volume the component-aliasing defect is invisible; against a
         # constant volume the wrap's inverse-epsilon index is invisible. Each of
@@ -428,7 +428,7 @@ def advance_sources(fields, sub_step: str, arm: str) -> None:
 
 
 def outputs(sub_step: str, arm: str) -> Tuple[str, ...]:
-    """The three arrays this sub-step writes. THERE IS NO AUXILIARY HERE.
+    """The three arrays this sub-step writes. There is no auxiliary here.
 
     The certified pair compares ``fu`` on every case because a tree that gets the
     field right and the auxiliary wrong is correct for exactly one launch. This
@@ -593,7 +593,7 @@ def _curl_numpy(f1: np.ndarray, sf: np.ndarray, f2: np.ndarray, ss: np.ndarray,
 def _shift_up_numpy(field: np.ndarray, axis: int, bc: int) -> np.ndarray:
     """``shift_up`` from ``_REAL_PML_PRELUDE``: neighbour one up, far-face rule.
 
-    ONLY PERIODIC WRAPS. Both METALLIC and MIRROR_PERIODIC take the zero face,
+    Only periodic wraps. Both METALLIC and MIRROR_PERIODIC take the zero face,
     which is the shipped ternary ``(bc == BC_PERIODIC) ? g[wrap] : 0.0f``.
     """
     shifted = np.roll(field, -1, axis=axis)
@@ -613,7 +613,7 @@ def run_kernel_numpy(sub_step: str, arm: str, fields, codes, dtdx: float, record
                      inverse_epsilon=None) -> None:
     """The device tree, transcribed, in float32 -- the laptop backend.
 
-    THE STENCIL IS ``curl_stencil``'s, MEEP's, and its grouping is load-bearing::
+    The stencil is ``curl_stencil``'s, MEEP's, and its grouping is load-bearing::
 
         both partners:  dtdx * (((sf - f1) + f2) - ss)
         g2 absent:      dtdx * (sf - f1)
@@ -621,16 +621,16 @@ def run_kernel_numpy(sub_step: str, arm: str, fields, codes, dtdx: float, record
 
     with the partners' presence read off the record's presence word, as the kernel
     reads it (:func:`record_presence`). Float addition is not associative: the
-    pairwise ``(sf - f1) + (f2 - ss)`` the kernels carried until 0.10 differs in the
+    pairwise ``(sf - f1) + (f2 - ss)`` the kernels carried until 1.0 differs in the
     last bits, and so does the full bracket over an absent partner.
 
-    THE DERIVED OPERAND IS FORMED FIRST AND SHIFTED AFTER, which is the order
+    The derived operand is formed first and shifted after, which is the order
     ``stepping._read_component`` uses and the order ``derived_up`` implements: the
     far-face ghost of a non-periodic axis is an exact zero rather than the ghost
     cell's product, and a periodic wrap carries the WRAPPED cell's inverse
     epsilon.
 
-    THIS COMPILES NOTHING AND CERTIFIES NOTHING. It cannot see a defect the NVRTC
+    This compiles nothing and certifies nothing. It cannot see a defect the NVRTC
     contraction guard exists for and it is not the shipped bytes. What it settles
     is whether the harness can localize a divergence and whether it can fail.
     """
@@ -711,14 +711,14 @@ def masked_planes_are_live(curls: Dict[str, np.ndarray], sub_step: str, arm: str
                            codes) -> Dict[str, Any]:
     """Every plane the kernel ZEROES must carry a nonzero unmasked curl.
 
-    THIS IS THIS GATE'S REPLACEMENT FOR THE FOLDED SIBLING'S MASK-DELTA FLOOR.
+    This is this gate's replacement for the folded sibling's mask-delta floor.
     Under the licensed substitution the codes ARE the shipped resolution, so the
     mask delta is empty and that floor is vacuous; a mask whose plane carries an
     identically zero curl is a mask no mutation can be scored against, and
     ``drop_metallic_mask`` would come back UNCAUGHT for a reason about the
     fixture.
 
-    IT GATES THE MUTATION LEGS AND NOT THE BASELINE SWEEP, which is a distinction
+    It gates the mutation legs and not the baseline sweep, which is a distinction
     the sibling gates did not need and this one does. A reduced-dimension grid can
     make a mask genuinely unobservable -- on a 1-D z grid ``curl_z = dEy/dx -
     dEx/dy`` is identically zero because both transverse axes are invariant, so
@@ -837,7 +837,7 @@ def _flip_tail_sign(source: str) -> Tuple[str, int]:
 
     The tail IS this family -- everything above it is the certified curl -- so a
     gate that could not catch a wrong sign here would be measuring the sibling's
-    kernel and calling it this one's. MUST BE CAUGHT.
+    kernel and calling it this one's. Must be caught.
     """
     pattern = r"(\b\w+)\[idx\] = \1\[idx\] - curl;"
     return re.subn(pattern, r"\1[idx] = \1[idx] + curl;", source)[0], \
@@ -845,7 +845,7 @@ def _flip_tail_sign(source: str) -> Tuple[str, int]:
 
 
 def _drop_tail_store(source: str) -> Tuple[str, int]:
-    """Never write the target: the whole sub-step becomes a no-op. MUST BE CAUGHT."""
+    """Never write the target: the whole sub-step becomes a no-op. Must be caught."""
     pattern = r"[ ]*(\b\w+)\[idx\] = \1\[idx\] - curl;\n"
     return re.subn(pattern, "", source)[0], len(re.findall(pattern, source))
 
@@ -856,7 +856,7 @@ def _tail_as_fma(source: str) -> Tuple[str, int]:
     ``-1.0f * curl`` is exact (a sign flip) and the fused add rounds once, which
     is what the subtraction does. Its discriminating sibling on the same line is
     :func:`_flip_tail_sign`, which MUST be caught; without the pair, "the tail is
-    right" would rest on a leg nobody showed could fail. MUST BE UNCAUGHT.
+    right" would rest on a leg nobody showed could fail. Must be uncaught.
     """
     pattern = r"(\b\w+)\[idx\] = \1\[idx\] - curl;"
     return re.subn(pattern, r"\1[idx] = __fmaf_rn(-1.0f, curl, \1[idx]);", source)[0], \
@@ -868,7 +868,7 @@ def _drop_derived_inverse_epsilon(source: str) -> Tuple[str, int]:
 
     Invisible against a table of ones, which is why the fixture draws the three
     volumes in [0.2, 0.9) and ``epsilon_profile`` refuses a case where it could
-    not bite. MUST BE CAUGHT.
+    not bite. Must be caught.
     """
     pattern = r"d\[(idx(?: [-+] ia \* stride)?)\] \* ie\[\1\]"
     return re.subn(pattern, r"d[\1]", source)[0], len(re.findall(pattern, source))
@@ -880,8 +880,8 @@ def _derived_operand_order(source: str) -> Tuple[str, int]:
     ``get_E`` writes ``part_products.scale(self.inverse_epsilon_for(component), D)``
     (fields.py:1047), inverse epsilon on the left, and the kernel writes D on the
     left: the order is not arithmetic, and this null is what measures that. Paired
-    with :func:`_drop_derived_inverse_epsilon` on the same expression. MUST BE
-    UNCAUGHT.
+    with :func:`_drop_derived_inverse_epsilon` on the same expression. Must be
+    uncaught.
     """
     pattern = r"d\[(idx(?: [-+] ia \* stride)?)\] \* ie\[\1\]"
     return re.subn(pattern, r"ie[\1] * d[\1]", source)[0], \
@@ -896,7 +896,7 @@ def _alias_derived_inv_eps_to_z(source: str) -> Tuple[str, int]:
     volumes (diagonal anisotropy, or one isotropic geometry sampled at each
     component's own Yee site), and this makes Ex and Ey use Ez's. EXACTLY
     BIT-IDENTICAL under one shared volume, which is why the fixture draws three
-    and ``epsilon_profile`` refuses a case that collapsed them. MUST BE CAUGHT.
+    and ``epsilon_profile`` refuses a case that collapsed them. Must be caught.
     """
     pattern = r"(derived_(?:at|up)\(D[xy], )ie[xy](,)"
     return re.subn(pattern, r"\1iez\2", source)[0], len(re.findall(pattern, source))
@@ -909,7 +909,7 @@ def _derived_far_ghost_wraps(source: str) -> Tuple[str, int]:
     (stepping.py:2079-2080); this makes the helper wrap on every code, which is a
     wrong answer on the far face of every metallic and every folded axis and
     IDENTICAL on an all-periodic grid -- so the leg is scored only where the grid
-    carries a non-periodic code. MUST BE CAUGHT.
+    carries a non-periodic code. Must be caught.
     """
     needle = ("    return (bc == BC_PERIODIC) ? d[idx - ia * stride] * "
               "ie[idx - ia * stride] : 0.0f;\n")
@@ -924,7 +924,7 @@ def _derived_wrap_uses_own_inv_eps(source: str) -> Tuple[str, int]:
     the derive-after-shift defect, localized to the one place the two orders can
     be told apart. Invisible against a constant inverse epsilon; the fixture draws
     an inhomogeneous one and ``epsilon_profile`` refuses a case that did not.
-    MUST BE CAUGHT.
+    Must be caught.
     """
     needle = "d[idx - ia * stride] * ie[idx - ia * stride]"
     replacement = "d[idx - ia * stride] * ie[idx]"
@@ -936,7 +936,7 @@ def _derived_wrap_uses_own_inv_eps(source: str) -> Tuple[str, int]:
 #: axis the absent partner's shifted operand is the partner itself (a one-cell
 #: periodic wrap), so the bracket is ``((a + g2) - g2)``, which rounds where MEEP's
 #: form returns ``a`` (step_generic.cpp:108; ``stepping._curl_from_operands``). The
-#: arm is reached only where some axis is invariant. MUST BE CAUGHT.
+#: arm is reached only where some axis is invariant. Must be caught.
 _FULL_BRACKET_OVER_AN_ABSENT_PARTNER = Needle(
     find="if (pr1) return dtdx * (sf - f1);",
     replace="if (pr1) return dtdx * (((sf - f1) + f2) - ss);",
@@ -968,7 +968,7 @@ def index_decomposition_is_observable(shape) -> bool:
     it. Rather than reason about which shapes those are, both decompositions are
     evaluated over every index and compared.
 
-    MEASURED 2026-08-20 on the GPU host (keep leg, GPU 6, v4): CAUGHT on 16 legs and
+    Measured 2026-08-20 on the GPU host (keep leg, GPU 6, v4): CAUGHT on 16 legs and
     IDENTICAL on the two ``1d_metallic`` ones, shape (1, 1, 24). That is MEEP's
     ``stride(d) = 0`` for a direction it does not have showing up in a mutation
     score, and it gets a NAME (the twin below) rather than a filter, so the
@@ -981,7 +981,7 @@ def index_decomposition_is_observable(shape) -> bool:
     return any(not np.array_equal(a, b) for a, b in zip(c_order, f_order))
 
 
-#: THE THIRD STRUCTURAL NULL. Same transform, the shapes where it cannot bite.
+#: The third structural null. Same transform, the shapes where it cannot bite.
 LOCAL_SOURCE_MUTATIONS["fortran_order_index_decomposition_on_a_flat_grid"] = \
     probe.SOURCE_MUTATIONS["fortran_order_index_decomposition"]
 
@@ -994,11 +994,11 @@ LOCAL_SOURCE_MUTATIONS["full_bracket_over_an_absent_partner"] = \
 LOCAL_SOURCE_MUTATIONS["full_bracket_over_an_absent_partner_on_a_resolved_grid"] = \
     _FULL_BRACKET_OVER_AN_ABSENT_PARTNER
 
-#: THE GROUPING DEFECT'S STRUCTURAL NULL. These kernels carry the certified pair's
+#: The grouping defect's structural null. These kernels carry the certified pair's
 #: prelude verbatim -- ``curl_stencil`` and ``pml_apply`` -- the text the probe's
 #: shared default spells the stencil and recurrence defects on, so those are borrowed
 #: (the stencil grouping inverted: it plants the pairwise grouping these kernels
-#: carried until 0.10, and it stays must-catch; its commuted-scale null; and the four
+#: carried until 1.0, and it stays must-catch; its commuted-scale null; and the four
 #: ``pml_apply`` defects, which edit a helper these kernels compile and never call).
 #: ``regroup_stencil`` edits the both-partner form of ``curl_stencil``, which no
 #: component of a 1-D grid takes (each has at most one partner present), so on such a
@@ -1006,9 +1006,9 @@ LOCAL_SOURCE_MUTATIONS["full_bracket_over_an_absent_partner_on_a_resolved_grid"]
 LOCAL_SOURCE_MUTATIONS["regroup_stencil_where_no_component_has_both_partners"] = \
     probe.SOURCE_MUTATIONS["regroup_stencil"]
 
-#: THE SECOND STRUCTURAL NULL, for the same reason and from the same measurement.
+#: The second structural null, for the same reason and from the same measurement.
 #: ``derived_wrap_uses_own_inv_eps`` edits the PERIODIC branch of ``derived_up``,
-#: which returns ``d[idx - ia*stride] * ie[idx - ia*stride]``. ON AN INVARIANT AXIS
+#: which returns ``d[idx - ia*stride] * ie[idx - ia*stride]``. On an invariant axis
 #: ``ia`` is 0 and ``na`` is 1, so ``idx - ia*stride`` IS ``idx`` and the mutation
 #: rewrites the expression into itself. Measured 2026-08-20 on the GPU host (keep leg,
 #: GPU 6): CAUGHT on six grids and IDENTICAL on the seventh, and the seventh's only
@@ -1018,7 +1018,7 @@ LOCAL_SOURCE_MUTATIONS["regroup_stencil_where_no_component_has_both_partners"] =
 LOCAL_SOURCE_MUTATIONS["derived_wrap_uses_own_inv_eps_on_an_invariant_axis"] = \
     _derived_wrap_uses_own_inv_eps
 
-#: THE SAME TRANSFORM UNDER A SECOND NAME, scored as a NULL on the grids where it
+#: The same transform under a second name, scored as a NULL on the grids where it
 #: is INERT. Measured 2026-08-20 on the GPU host (smoke leg, GPU 6): dropping the zero
 #: far ghost from ``derived_up`` was CAUGHT on ``3d_metallic`` (505 differing
 #: words) and ``3d_mixed`` (370) and came back IDENTICAL on ``fold_Y_periodic``,
@@ -1070,7 +1070,7 @@ SOURCE_MUTATIONS: Tuple[str, ...] = (
     "reload_fu_from_memory",
 )
 
-#: THIS GATE'S NEEDLE TABLE: every armed name, this family's own spellings from
+#: This gate's needle table: every armed name, this family's own spellings from
 #: :data:`LOCAL_SOURCE_MUTATIONS`, and the certified curl's stencil, recurrence, mask
 #: and index defects borrowed from the probe's shared default (``gate_needles.py``).
 #: Built after the last addition to
@@ -1096,14 +1096,14 @@ NULL_SOURCE_MUTATIONS: Tuple[str, ...] = (
 #: UNCAUGHT that is a fact about the fixture, not about the kernel. Each entry is
 #: a predicate over the grid's SHIPPED code triple.
 #:
-#: THIS IS NOT A WAY TO EXCUSE AN UNCAUGHT LEG. Every mutation still has to be
+#: This is not a way to excuse an uncaught leg. Every mutation still has to be
 #: CAUGHT on every leg that does pass its filter, and ``_score`` reports NO LEGS --
 #: never "inert" -- if a filter leaves none. Where a mutation is inert for a
 #: STRUCTURAL reason rather than a fixture one, it is given a second NAME and
 #: scored as a null on exactly those grids (see
 #: ``derived_far_ghost_wraps_on_a_folded_axis``), so the inertness is measured
 #: instead of filtered away.
-#: EACH FILTER TAKES ``(codes, shape)``. The shape is not decoration: an
+#: Each filter takes ``(codes, shape)``. The shape is not decoration: an
 #: INVARIANT axis is always coded PERIODIC and holds one cell, so its wrap
 #: returns the reading cell itself and a mutation of the wrap rewrites an
 #: expression into itself. A filter over the codes alone cannot see that, and it
@@ -1114,7 +1114,7 @@ SOURCE_MUTATION_LEG_FILTER = {
         lambda codes, shape: BC_MIRROR_PERIODIC in codes,
     "drop_folded_periodic_near_mask":
         lambda codes, shape: BC_MIRROR_PERIODIC in codes,
-    # THE ZERO FAR GHOST IS OBSERVABLE ONLY ON A METALLIC AXIS. On a folded
+    # The zero far ghost is observable only on a metallic axis. On a folded
     # PERIODIC one the plane that consumes it is the plane the top-plane mask
     # drops -- measured, see the null leg below.
     "derived_far_ghost_wraps": lambda codes, shape: BC_METALLIC in codes,
@@ -1135,7 +1135,7 @@ SOURCE_MUTATION_LEG_FILTER = {
         lambda codes, shape: index_decomposition_is_observable(shape),
     "fortran_order_index_decomposition_on_a_flat_grid":
         lambda codes, shape: not index_decomposition_is_observable(shape),
-    # THE PRESENCE FORMS. A one-cell axis of these specs is exactly an invariant one
+    # The presence forms. A one-cell axis of these specs is exactly an invariant one
     # (``test_every_spec_one_cell_axis_is_an_invariant_one`` measures it), so the
     # shape says which partners are present: the one-partner arm is reached only
     # where an axis is invariant, and the both-partner form only where two axes are
@@ -1191,7 +1191,7 @@ SOURCE_MUTATION_REQUIRES_ARM: Dict[str, str] = {
 def host_mutated_inverse_epsilon(name: str, fields, grid):
     """The three inverse-epsilon volumes, corrupted. ``None`` where the leg is not derived.
 
-    THIS FAMILY HAS NO COEFFICIENT TABLES -- that absence is the family -- so the
+    This family has no coefficient tables -- that absence is the family -- so the
     certified gates' host mutations (reverse the folded axis's kms, swap the
     sub-lattice) have nothing to corrupt here. The three inverse-epsilon volumes
     ARE this family's host input, and the code triple is the other; both are
@@ -1230,7 +1230,7 @@ def one_case(backend: str, spec: Dict[str, Any], sub_step: str, e_storage: str,
              host_mutation: Optional[str] = None) -> Dict[str, Any]:
     """One frozen state, run twice: the array path, then the kernel.
 
-    THE ORACLE IS ``stepping`` ITSELF on real ``Grid``/``Fields``/``PML`` objects.
+    The oracle is ``stepping`` ITSELF on real ``Grid``/``Fields``/``PML`` objects.
     There is no second transcription on the oracle leg to drift: the kernel is
     compared against the thing it claims to reproduce, byte for byte, from ONE
     frozen state -- oracle runs, state is restored, kernel runs.
@@ -1269,7 +1269,7 @@ def one_case(backend: str, spec: Dict[str, Any], sub_step: str, e_storage: str,
         case["seconds"] = time.time() - started
         return case
 
-    # THE PREDICATE'S ANSWER, recorded rather than acted on. The gate exists to
+    # The predicate's answer, recorded rather than acted on. The gate exists to
     # decide whether it should be believed, so it must not gate the measurement.
     covered, reason = no_pml_curl.covers_no_pml_curl(fields, layer, grid, sub_step)
     case["predicate_today"] = {"covered": bool(covered), "reason": reason,
@@ -1473,7 +1473,7 @@ def scorable_baselines(results: Dict[str, Any]):
     unmutated baseline is bit-identical can answer it: on an arm that already
     diverges every mutation scores CAUGHT for free.
 
-    A TRIPLE WHOSE MASKED PLANES ARE DEAD IS EXCLUDED TOO, and for the opposite
+    A triple whose masked planes are dead is excluded too, and for the opposite
     reason: there every mask mutation scores UNCAUGHT for free. Both exclusions
     are recorded, because "this leg was never asked" and "this leg was asked and
     was inert" are different findings and only one of them is about the kernel.
@@ -1539,7 +1539,7 @@ def run_host_mutations(results: Dict[str, Any], out_path: str, backend: str,
                        product: str, scorable) -> Dict[str, Any]:
     """Corrupt the three inverse-epsilon volumes a launch binds, and re-run.
 
-    DERIVED LEGS ONLY, by construction: the stored arm and ``step_D`` take no
+    Derived legs only, by construction: the stored arm and ``step_D`` take no
     inverse epsilon, so there is nothing on the host to corrupt. That is recorded
     rather than silently skipped -- see :func:`host_mutated_inverse_epsilon`.
     """
@@ -1694,7 +1694,7 @@ def summarize(results: Dict[str, Any]) -> Dict[str, Any]:
 
     reasons: List[str] = []
 
-    # THE THREE ARMS ARE ALL REQUIRED. A run that swept only the stored B arm
+    # The three arms are all required. A run that swept only the stored B arm
     # would release on one of the five reachable corpus slots and say nothing
     # about the four the derived arm carries.
     present_arms = {(c["sub_step"], c["arm"]) for c in scored}
@@ -1717,7 +1717,7 @@ def summarize(results: Dict[str, Any]) -> Dict[str, Any]:
                 f"{licensed['multi_cases'] - licensed['multi_identical']} of "
                 f"{licensed['multi_cases']} cases")
 
-    # BOTH ABSORBER SHAPES must appear somewhere in the licensed sweep, or "an
+    # Both absorber shapes must appear somewhere in the licensed sweep, or "an
     # inert layer steps like no layer" stays an inference about pml.py.
     licensed_absorbers = {c["absorber"] for c in scored
                           if c["substitution"] == LICENSED_SUBSTITUTION}
@@ -1755,7 +1755,7 @@ def summarize(results: Dict[str, Any]) -> Dict[str, Any]:
             reasons.append(f"source mutation {key} is {leg['verdict']} "
                            f"({leg.get('caught')}/{leg.get('ran')})")
 
-    # WHAT A RELEASE RUN MUST CONTAIN AT ALL. Every clause above judges evidence
+    # What a release run must contain at all. Every clause above judges evidence
     # that is present; these two judge its ABSENCE, which is the failure mode a
     # gate cannot see from inside a green summary -- and it is also what keeps the
     # planted-defect check applicable rather than quietly skipped.
@@ -1769,7 +1769,7 @@ def summarize(results: Dict[str, Any]) -> Dict[str, Any]:
             reasons.append("no misdeclaration control was scored; the licensed "
                            "arm's identity is not isolated from the fixture")
 
-    # THE MISDECLARATION CONTROLS. A gate whose deliberate defects also came back
+    # The misdeclaration controls. A gate whose deliberate defects also came back
     # identical would be reporting a property of its fixture, not of the kernel.
     controls: Dict[str, Any] = {}
     for substitution in SUBSTITUTIONS:
@@ -1816,7 +1816,7 @@ def summarize(results: Dict[str, Any]) -> Dict[str, Any]:
         "diverged_by_arm": {
             arm: sum(1 for c in control_diverged if c["arm"] == arm)
             for arm in sorted({c["arm"] for c in comparable})},
-        "reading": ("NOT MEASURED on this run: no unguarded leg was scored where "
+        "reading": ("Not measured on this run: no unguarded leg was scored where "
                     "the guarded leg was identical" if not comparable else
                     "the contraction guard is load-bearing on this family"
                     if control_diverged else
@@ -1861,17 +1861,17 @@ def summarize(results: Dict[str, Any]) -> Dict[str, Any]:
 def verdict_flips_against_planted_defect(results: Dict[str, Any]) -> Dict[str, Any]:
     """Recompute the verdict against a record with a defect planted in it.
 
-    A GATE WHOSE VERDICT CANNOT GO RED IS NOT A GATE. Three independent defects
+    A gate whose verdict cannot go red is not a gate. Three independent defects
     are planted, one at a time, into a COPY of the finished record: a licensed
     case flipped to diverging, a must-be-caught source mutation flipped to
     ESCAPED, and the misdeclaration control flipped to identical. Each must make
     ``released`` False on its own.
 
-    A PLANT THE RECORD CANNOT CARRY IS REPORTED, NOT PASSED AND NOT FAILED. On the
+    A plant the record cannot carry is reported, not passed and not failed. On the
     NumPy backend there are no source mutations to flip, and on ``--product
     reduced`` there is no misdeclaration control; those plants come back
     ``applicable: False`` with the reason, and ``all_flipped`` is over the plants
-    that could be applied. A FULL DEVICE RUN CARRIES ALL THREE -- that is what
+    that could be applied. A full device run carries all three -- that is what
     :func:`summarize`'s mutation and control clauses are for -- so an inapplicable
     plant there is itself a finding, and ``inapplicable`` is printed rather than
     tucked into a boolean.
@@ -1947,6 +1947,7 @@ def save(results: Dict[str, Any], out_path: str) -> None:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
+    import neutral_ids  # noqa: PLC0415
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--backend", choices=("cuda", "numpy"), default="cuda")
     parser.add_argument("--product", choices=("full", "reduced"), default="full")
@@ -1961,8 +1962,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     results: Dict[str, Any] = {
         "gate": "cuda_no_pml_curl",
         "started_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "host": os.uname().nodename,
-        "argv": list(argv if argv is not None else sys.argv[1:]),
+        "host": neutral_ids.machine_id(),
+        "argv": neutral_ids.argv(argv if argv is not None else sys.argv[1:]),
         "backend": args.backend,
         "product": args.product,
         "skip_mutations": bool(args.skip_mutations),

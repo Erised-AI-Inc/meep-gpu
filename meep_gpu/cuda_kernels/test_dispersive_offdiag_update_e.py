@@ -1,37 +1,37 @@
 """The DISPERSIVE off-diagonal ``update_E`` slice, at the merge bar.
 
-WHAT A LAPTOP CAN AND CANNOT SETTLE FOR THIS FAMILY, stated first because the
+What a laptop can and cannot settle for this family, stated first because the
 distinction is the whole reason this file exists beside a device gate.
 
 A byte gate measures whether the COMPILED kernel reproduces ``stepping.update_E``.
-These legs measure whether the EXPRESSION TREE THE EMITTER WROTE reproduces it --
+These legs measure whether the expression tree the emitter wrote reproduces it --
 which is the half a compiler cannot fix, and the half that was wrong in every one
 of the four plain curl kernels when they were first written (0/16 against the
 array path under every option set). If the tree is wrong here it is wrong on the
 device, and it is wrong in a tenth of a second rather than in a device slot.
 
-THE ARITHMETIC LEGS EXECUTE THE EMITTED DEVICE SOURCE. They do not re-implement
+The arithmetic legs execute the emitted device source. They do not re-implement
 it: :func:`evaluate_dispersive_offdiag_source` parses the emitted text over a
 KNOWN GRAMMAR and evaluates its arithmetic lines as float32 expressions, and
 :func:`test_every_line_of_the_device_source_is_executed_or_pinned` fails if a line
 of any emitted source is neither matched by that grammar nor pinned by exact
 string.
 
-WHAT IS NEW IN THIS FAMILY, AND THEREFORE WHAT THESE LEGS ARE FOR. The fold arm
+What is new in this family, and therefore what these legs are for. The fold arm
 is ``folded_offdiag_kernels``', certified 2026-08-20 on an RTX A6000; the row
 product and its tail are ``offdiag_emitter``'s, certified 2026-08-16; the pole
 chain's SHAPE is ``dispersive_kernels``', released 2026-08-20. The new arithmetic
 is exactly one thing:
 
-    THE FOUR GATHERED FIELD READS OF EVERY TENSOR-ROW TERM ARE ``D - sum P``
-    CHAINS OVER THE **PARTNER** COMPONENT'S POLES, AT NEIGHBOURING CELLS,
-    AND THE MIRROR PARITY WEIGHTS THE **FORMED CHAIN**.
+    The four gathered field reads of every tensor-row term are ``D - sum P``
+    chains over the **PARTNER** component's poles, at neighbouring cells,
+    and the mirror parity weights the **formed chain**.
 
 Every leg below is about some part of that sentence, measured against
 ``stepping.update_E`` on a real ``Grid``/``Fields``/``PML`` triple with real
 ``PolarizationState`` objects registered.
 
-NO DEVICE VERDICT IS CLAIMED HERE.
+No device verdict is claimed here.
 ``dispersive_offdiag_update_e.DISPERSIVE_OFFDIAG_ADMISSION["host"]`` is None until
 ``parity/meep_gpu/gate_cuda_dispersive_offdiag.py`` records one, and a leg below
 asserts that this file does not quietly imply otherwise.
@@ -78,7 +78,7 @@ ARITIES = fam.POLE_COUNTS_SWEPT
 CORPUS_ARITY = (1, 1, 1)
 
 #: Fold specs: every axis alone, two planes at once, three at once, and the
-#: unfolded control. EVERY AXIS IS FOLDED SOMEWHERE, because a decomposition
+#: unfolded control. Every axis is folded somewhere, because a decomposition
 #: defect that confuses the slowest coefficient stride with the fastest is only
 #: visible if both are folded in the sweep.
 FOLD_SYMMETRIES = ((), ("x",), ("y",), ("z",), ("x", "y"), ("x", "y", "z"))
@@ -136,8 +136,8 @@ _TERM_CALL = re.compile(
     r"flat\((?P<up>[^)]*), nyz, nz\),\s*"
     r"flat\((?P<corner>[^)]*), nyz, nz\),\s*"
     r"(?P<lane>mg_[xyz]), (?P<weight>gw_[xyz])\);")
-#: The metallic wall-coupling select on one term's float32 sum. BOTH ARMS OF THE
-#: TERNARY ARE PARSED rather than the pristine ``? 0.0f : term`` being anchored, so a
+#: The metallic wall-coupling select on one term's float32 sum. Both arms of the
+#: ternary are parsed rather than the pristine ``? 0.0f : term`` being anchored, so a
 #: leg that INVERTS the select is executed and caught by arithmetic instead of being
 #: silently skipped as an unmatched line.
 _MASK = re.compile(r"term_(?P<tag>\w+) = \((?P<wall>wm_[xyz]) && "
@@ -147,7 +147,7 @@ _MASK = re.compile(r"term_(?P<tag>\w+) = \((?P<wall>wm_[xyz]) && "
 _SRC_MASK = re.compile(r"src_(?P<name>\w+) = \((?P<wall>wm_[xyz]) && "
                        r"(?P<face>at_[xyz])\) \? 0\.0f : src_(?P=name);")
 _LANE = re.compile(r"int (?P<lane>mg_[xyz]) = (?P<expr>[^;]+);")
-#: The diagonal source. THE PLAIN-LOAD ALTERNATIVE IS IN THE GRAMMAR ON PURPOSE:
+#: The diagonal source. The plain-load alternative is in the grammar on purpose:
 #: it is the shape ``folded_offdiag_kernels`` emits, so a leg that plants it here
 #: is caught by ARITHMETIC rather than silently skipped as an unmatched line --
 #: which is the dead-branch hazard this suite's grammar-coverage leg exists for.
@@ -249,13 +249,13 @@ def _pole_names(text):
 def device_helpers(source, ghosted):
     """Every device helper this family EMITS, as POSITIONAL Python callables.
 
-    POSITIONAL IS THE WHOLE POINT. A C call binds arguments by position, so a leg
+    Positional is the whole point. A C call binds arguments by position, so a leg
     that plants ``folded_dispersive_offdiag_term_Ey(Dy, P_Ex_0, ...)`` hands the
     body's ``P_Ey_0`` parameter the wrong array and computes a wrong answer. An
     evaluator that bound by NAME would raise a ``NameError`` instead -- a harness
     failure that looks nothing like the defect and proves nothing about it.
 
-    THE BODIES ARE PARSED AND EVALUATED, not counted or transcribed.
+    The bodies are parsed and evaluated, not counted or transcribed.
     ``sum_then_subtract``, ``drop_one_pole`` and ``reverse_pole_order`` all
     rewrite exactly the chain lines, so an evaluator that reconstructed the chain
     from the pole COUNT would score every one of them UNCAUGHT while measuring
@@ -451,7 +451,7 @@ def evaluate_dispersive_offdiag_source(source, arrays, tables, codes, walls,
         terms[match["tag"]] = helpers[
             f"folded_dispersive_offdiag_term_{match['partner']}"](*arguments)
     for match in _MASK.finditer(body):
-        # THE SELECT IS ALWAYS EVALUATED, never skipped when ``wm`` is 0. Skipping
+        # The select is always evaluated, never skipped when ``wm`` is 0. Skipping
         # it encodes the PRISTINE semantics -- "a dead wall flag changes nothing"
         # -- which is false of an INVERTED select, where a dead flag zeroes the
         # coupling everywhere.
@@ -504,14 +504,14 @@ def evaluate_dispersive_offdiag_source(source, arrays, tables, codes, walls,
 def register_poles(fields, grid, arity, seed=20260820):
     """Build ``max(arity)`` real ``PolarizationState`` objects and seed their P.
 
-    THE ARITY IS BUILT FROM REAL OBJECTS, never faked: a per-component sigma of
+    The arity is built from real objects, never faked: a per-component sigma of
     zero is what ``PolarizationState`` filters on (dispersion.py:641-643), which
     is the engine's own spelling of "this term does not drive that component" and
     is exactly what MEEP's ``needs_P`` / ``trivial_sigma`` pair does. A fixture
     that instead poked ``_driven`` would be measuring an object the engine cannot
     build.
 
-    ``P`` IS SEEDED AWAY FROM ZERO. An all-zero pole chain is a NON-dispersive
+    ``P`` is seeded away from zero. An all-zero pole chain is a NON-dispersive
     case wearing dispersive clothes: every subtraction would be exact, the
     ordering defects would all come back UNCAUGHT, and the reason would be about
     the fixture rather than about the kernel.
@@ -519,7 +519,7 @@ def register_poles(fields, grid, arity, seed=20260820):
     rng = numpy.random.default_rng(seed)
     xp = grid.xp
     kinds = ("lorentzian", "drude")
-    # ARITY (0, 0, 0) STILL REGISTERS ONE STATE, with an all-zero sigma. That is
+    # Arity (0, 0, 0) still registers one state, with an all-zero sigma. That is
     # what the configuration IS: ``fields.polarizations`` truthy (which both
     # non-dispersive off-diagonal predicates refuse on) with a chain of zero on
     # every component (which the array path serves by ALIASING D). A fixture that
@@ -574,7 +574,7 @@ def run_both_paths(mask, arity, symmetry=(), phase=1, termination="periodic",
     sources through their own evaluators on the same frozen state -- the only way
     a reduction leg can compare two trees rather than two runs.
 
-    PLAIN NUMPY, NOT AN ``xp`` FIXTURE: what is measured is a float32 expression
+    Plain NumPy, not an ``xp`` fixture: what is measured is a float32 expression
     tree, which is the same tree whatever allocated the arrays.
     """
     planes = tuple(Mirror(name.upper(), phase) for name in symmetry)
@@ -600,7 +600,7 @@ def run_both_paths(mask, arity, symmetry=(), phase=1, termination="periodic",
     volumes = {name: numpy.asarray(volume).copy()
                for name, volume in displacement["volumes"].items()}
 
-    # WHAT THE OFF-DIAGONAL ROWS ACTUALLY CONTRIBUTED, from the engine's own
+    # What the off-diagonal rows actually contributed, from the engine's own
     # function on the frozen state and over EVERY component -- not from Ex alone.
     # A mask whose only live slot is (Ey, Ez) leaves Ex's coupling identically
     # zero, and a floor that read Ex would refuse a case that is perfectly able
@@ -805,7 +805,7 @@ def test_the_compile_options_match_both_siblings():
 
 
 def test_the_pole_cap_is_this_familys_own_number():
-    """A CAP IS A FACT ABOUT A GATE and a gate answers for one family. Reading
+    """A cap is a fact about a gate and a gate answers for one family. Reading
     ``dispersive_kernels.POLE_COUNT_CAP`` would widen this body -- which gathers
     each pole at four addresses per term -- to arities nobody ran on it."""
     assert fam.POLE_COUNT_CAP == max(max(counts)
@@ -813,7 +813,7 @@ def test_the_pole_cap_is_this_familys_own_number():
     assert fam.POLE_COUNT_CAP <= dispersive_kernels.POLE_COUNT_CAP
     source = MODULE.read_text(encoding="utf-8")
     assert "dispersive_kernels.POLE_COUNT_CAP" not in source.split(
-        "THE COVERAGE PREDICATE")[0].replace(
+        "The coverage predicate")[0].replace(
             "``dispersive_kernels.POLE_COUNT_CAP``", "")
 
 
@@ -943,7 +943,7 @@ def test_only_the_partner_components_get_a_term_helper():
 
 @pytest.mark.parametrize("arity", ARITIES)
 def test_the_corpus_configuration_reproduces_the_array_path(arity):
-    """ONE FOLD PLANE, the corpus row mask, at every swept arity.
+    """One fold plane, the corpus row mask, at every swept arity.
 
     ``examples/absorbed_power_density.py`` is 800 x 402 x 1 with a Y mirror, one
     polarization and row mask (1, 0, 0, 1, 0, 0). This is that shape's arithmetic
@@ -1010,7 +1010,7 @@ def test_zero_arity_on_a_fold_reduces_to_the_folded_family(mask):
     """At arity (0, 0, 0) the emitted tree must be the FOLDED OFF-DIAGONAL
     family's, word for word on the outputs, from the same frozen state.
 
-    MEASURED rather than claimed: the two sources differ in their function NAMES
+    Measured rather than claimed: the two sources differ in their function NAMES
     and in one layer of indirection, so a string comparison would be vacuous while
     an output comparison is not. A susceptibility is still REGISTERED (the
     predicate requires one), it simply drives nothing -- which is exactly the
@@ -1036,7 +1036,7 @@ def test_zero_arity_unfolded_reduces_to_the_certified_offdiagonal_family(mask):
 
 
 def test_a_live_pole_chain_is_NOT_the_folded_familys_answer():
-    """THE DISCRIMINATOR FOR THE TWO REDUCTIONS ABOVE. If the shipped folded
+    """The discriminator for the two reductions above. If the shipped folded
     off-diagonal kernel already reproduced a dispersive run, this family would buy
     nothing and the two reduction legs would be passing for a reason about the
     fixture. It does not: its operands are D and this one's are D - sum P."""
@@ -1049,7 +1049,7 @@ def test_a_live_pole_chain_is_NOT_the_folded_familys_answer():
 
 
 # ==========================================================================
-# THE DEFECTS THE ARITHMETIC LEGS MUST CATCH
+# The defects the arithmetic legs must catch
 # ==========================================================================
 #
 # Every one is a SILENT wrong answer -- a smooth, converged, plausible field with
@@ -1071,7 +1071,7 @@ def _mutate_text(source, needle, replacement):
 
 
 def test_coupling_the_raw_D_instead_of_the_chain_is_caught():
-    """THE MIDDLE REFUSAL, planted. Subtracting the polarization from the diagonal
+    """The middle refusal, planted. Subtracting the polarization from the diagonal
     term while coupling the raw D volumes is the defect the phrase 'update_E's
     source is D - sum P' invites, and it is wrong on every cell where any pole is
     nonzero. The rewrite makes every term helper's four field reads plain loads."""
@@ -1164,7 +1164,7 @@ def test_coupling_the_wrong_components_chain_is_caught():
 
 
 def test_the_own_axis_up_leg_reading_raw_D_instead_of_the_chain_is_caught():
-    """THE HALF-DONE EDIT. ``dmp_ghosted_<c>`` is the OWN-axis up leg of every
+    """The half-done edit. ``dmp_ghosted_<c>`` is the OWN-axis up leg of every
     term. Leaving its interior load as the raw ``D`` while the near leg reads the
     chain is the shape an author reaches by fixing the obvious read and missing
     the gathered one -- and it is wrong on every cell where any pole is nonzero.
@@ -1282,7 +1282,7 @@ def test_pre_accumulating_the_pole_sum_is_a_NULL_at_one_pole():
 
 
 # ==========================================================================
-# THE 0.10 FORMS: the row in double, per-chunk presence, the per-chunk tail
+# THE 1.0 FORMS: the row in double, per-chunk presence, the per-chunk tail
 # ==========================================================================
 
 def test_the_source_carries_the_certified_record_block_and_chunk_lines():
@@ -1326,7 +1326,7 @@ def test_presence_cases_reproduce_the_array_path_with_planted_negative_zeros():
     assert produced == oracle
 
 
-#: The section 7.2 battery on this body, plus the inverted 0.9.2 row forms.
+#: The per-chunk form battery on this body, plus the inverted 0.9.2 row forms.
 #: ``name -> (needle, replacement, run options)``; every row must change a word. The
 #: tail helper's own rows (the 0.9.2 accumulation grouping, the unit-coefficient
 #: plain form) live with the helper: it is the off-diagonal family's extracted bytes,
@@ -1496,7 +1496,7 @@ def test_an_arity_past_the_cap_is_refused_by_name(xp):
 
 
 def test_no_registered_susceptibility_is_refused_to_the_two_siblings(xp):
-    """THE DISJOINTNESS CLAUSE against both NON-dispersive off-diagonal families,
+    """The disjointness clause against both NON-dispersive off-diagonal families,
     spelled on ``fields.polarizations`` being truthy because THAT is the question
     both of them ask. A run carrying a trivial-sigma susceptibility is refused by
     both of them and admitted here, so no slot falls between."""
@@ -1613,7 +1613,7 @@ def test_more_planes_than_the_gate_swept_are_refused_by_name(xp,
 
 
 # ==========================================================================
-# THE LAUNCHER'S OWN REFUSALS
+# The launcher's own refusals
 # ==========================================================================
 
 def test_the_launcher_refuses_both_a_layer_and_an_override(xp):
@@ -1708,7 +1708,7 @@ DISPATCH_SEAM_MODULES = ("fastpath.py", "fastpath_cuda.py")
 def test_only_the_dispatch_seam_names_this_package_and_never_this_family():
     """A predicate returning True licenses a MEASUREMENT, not a choice of arithmetic.
 
-    THE CLAIM NARROWED ON 2026-09-11 AND IT IS STILL A CLAIM. Until Phase 2 nothing
+    The claim narrowed on 2026-09-11 and it is still a claim. Until then nothing
     under ``meep_gpu/`` imported ``cuda_kernels`` at all, and this leg asserted that
     absence. The seam now composes this package as its second table, so the absence
     is gone — but what replaced it is the fact worth holding: the seam is exactly TWO

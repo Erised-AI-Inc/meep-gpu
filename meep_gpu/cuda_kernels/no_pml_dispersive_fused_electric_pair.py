@@ -1,7 +1,7 @@
 """The NO-ABSORBER DISPERSIVE-STORE hand-CUDA fused pair: ``step_D`` -> ``zero_metal_D``
 -> plain stored-E ``update_E``.
 
-THE LAST TWO POINTWISE-BUILDABLE ``D_to_E`` CELLS ON THIS BOARD that are not a stencil
+The last two pointwise-buildable ``D_to_E`` cells on this board that are not a stencil
 and not an arm that launches nothing. Both are occupied by this ONE product, because
 their only difference is a compile-time flag:
 
@@ -19,7 +19,7 @@ SIBLINGS. ``metal_kernels/no_pml_conductive_fused_electric_pair.py`` and
 invention -- CUDA was the only backend without it.
 
 =============================================================================
-BUILT AND RELEASED, AND NOT INSTALLED ON THIS CORPUS -- READ THIS FIRST
+Built and released, and not installed on this corpus -- read this first
 =============================================================================
 
 The arithmetic is gated and RELEASED under both float32 subnormal policies
@@ -27,7 +27,7 @@ The arithmetic is gated and RELEASED under both float32 subnormal policies
 14 cases bit-identical over 60 complete driver steps, 67 of 83 mutation legs caught,
 none unarmed). The predicate admits all three corpus rows and nothing else.
 
-WHAT THE COMPOSER DOES WITH IT IS A DIFFERENT QUESTION, AND THE ANSWER TODAY IS
+What the composer does with it is a different question, and the answer today is
 "NOTHING". This product owns ``step_D`` AND ``update_E``;
 ``cuda_no_pml_fused_polarization_pair`` owns ``update_E`` AND ``update_P``. One slot,
 two claimants. And all THREE rows of this family's two cells are EXACTLY the three
@@ -36,18 +36,18 @@ rows that pair serves at the E->P seam -- measured on the stamped census (each r
 records that pair at 3. So installing here is +3 at D_to_E and -3 at E_to_P: NET ZERO,
 paid for by displacing a released, certified product.
 
-``fused_pairs._later_seam_claimant`` therefore leaves the slot where it was. THAT IS
-NOT A VERDICT ABOUT THIS WELD -- the predicate still admits, the gate still certifies,
+``fused_pairs._later_seam_claimant`` therefore leaves the slot where it was. That is
+not a verdict about this weld -- the predicate still admits, the gate still certifies,
 and the module is ready. What is missing is a reason to prefer this arrangement over
 the one already there, and there are exactly two ways to get one, both a release decision:
 
 * a THREE-SLOT weld, ``step_D`` -> ``update_E`` -> ``update_P``, which would serve
   BOTH seams on these rows (+3 and +3) instead of trading one for the other;
-* a ruling on the seam ORDER in ``install_fused_pairs``, which before 2026-09-02
+* a decision on the seam ORDER in ``install_fused_pairs``, which before 2026-09-02
   decided the trade by walking D_to_E first rather than by comparing what each
   arrangement serves.
 
-THE SAME ARITHMETIC HOLDS FOR TWO PRODUCTS THAT SHIPPED BEFORE THIS ONE --
+The same arithmetic holds for two products that shipped before this one --
 ``cuda_dispersive_fused_electric_pair`` (7 rows against ``cuda_fused_polarization_
 pair``'s same 7) and ``cuda_no_pml_complex_fused_electric_pair`` (4 against
 ``cuda_complex_no_pml_fused_polarization_pair``'s same 4) -- and until 2026-09-02 the
@@ -55,7 +55,7 @@ board counted BOTH sides of every one of those trades. ``_loses_the_shared_slot`
 ``build_cuda_fusion_matrix.py`` is where that over-count was closed.
 
 =============================================================================
-WHY ONE PRODUCT AND NOT TWO, AND WHY THAT IS A MEASUREMENT
+Why one product and not two, and why that is a measurement
 =============================================================================
 
 ``conductive_kernels`` bakes the per-component conductivity into three ``COND``
@@ -73,7 +73,7 @@ which is a lookup rather than a widening. ``fused_pairs.FUSED_PAIR_EXTRA_ARMS`` 
 where the second cell is declared, the mechanism that table exists for.
 
 =============================================================================
-THE SEAM, PASS BY PASS -- what is carried, what is refused, what is inert
+The seam, pass by pass -- what is carried, what is refused, what is inert
 =============================================================================
 
 The driver runs three passes between ``step_D`` and ``update_E``
@@ -99,7 +99,7 @@ comment:
   ``:1516-1517``).
 
 =============================================================================
-THE PLAIN REPAIR, AND WHY THE SPLIT-FIELD ONE WOULD BE WRONG HERE
+The plain repair, and why the split-field one would be wrong here
 =============================================================================
 
 All three corpus rows declare an in-seam electric source (``source_field_types ==
@@ -116,7 +116,7 @@ repair, and ``deposit_repair.repairable`` refuses by name any configuration whos
 recurrence is not among the paths its caller declares -- so a wrong declaration is a
 REFUSAL rather than a silent mis-repair.
 
-THAT REFUSAL IS MEASURED, NOT ASSERTED.
+That refusal is measured, not asserted.
 ``parity/meep_gpu/probe_cuda_no_pml_dispersive_electric_pair.py``'s
 ``split_field_declared`` leg runs this exact product declaring the WRONG path on all
 seven of its configurations and records the named refusal each time, beside a
@@ -124,7 +124,7 @@ seven of its configurations and records the named refusal each time, beside a
 ``unbracketed`` null control that diverges on every one.
 
 =============================================================================
-THE ARITY IS A COMPILE-TIME AXIS ON BOTH SIDES
+The arity is a compile-time axis on both sides
 =============================================================================
 
 This family emits one device string per ``((COND0, COND1, COND2), (n_Ex, n_Ey, n_Ez))``
@@ -134,12 +134,12 @@ a compile-time choice from drifting apart. The pole triple is
 ``dispersive_kernels``': the chain length is baked, a component with no contributor
 forms NO subtraction at all (fields.py:1096-1098 returns the D array itself), and at
 arity ``(0, 0, 0)`` the emitted constitutive lines are character-identical to the
-non-dispersive family's. The ENTRY POINT NAME is fixed and only the parameter list and
+non-dispersive family's. The entry point name is fixed and only the parameter list and
 the chain vary, which is ``ARM_KERNEL_NAMES``' own convention;
 ``compile_cache.kernel_cache_key`` keys the memo on the source.
 
 =============================================================================
-THE ALIASING HAZARD
+The aliasing hazard
 =============================================================================
 
 D appears EXACTLY ONCE in the signature: the curl writes it and the constitutive half
@@ -147,26 +147,26 @@ reads it from a register, so binding it a second time as ``const __restrict__`` 
 be two restrict pointers to one allocation, which NVRTC miscompiles without a
 diagnostic.
 
-THE POLE POINTERS ARE ``__restrict__`` and the three inverse-epsilon ones are not, both
+The pole pointers are ``__restrict__`` and the three inverse-epsilon ones are not, both
 lifted from ``dispersive_kernels.dispersive_source`` rather than decided here: two
 susceptibilities never share a ``P`` buffer (``PolarizationState.__init__`` allocates
 its own, dispersion.py:645-647) while an isotropic run hands ONE inverse-epsilon
 pointer three times (fields.py:1321-1326).
 
-THE CONDUCTIVITY POINTERS ARE NOT ``__restrict__`` EITHER, and that is lifted from
+The conductivity pointers are not ``__restrict__`` either, and that is lifted from
 ``conductive_kernels`` rather than decided here: a run whose three targets share one
 profile hands the same device pointer three times. A LOSSLESS component binds its own
 TARGET array in those two slots, which is that launcher's own convention
 (``step_conductive_curl``) and is safe because ``#if CONDn`` is 0 and the pointer is
 never dereferenced.
 
-THE POLE POINTERS ROTATE. ``PolarizationState.update`` moves ``P``/``P_prev``/scratch
+The pole pointers rotate. ``PolarizationState.update`` moves ``P``/``P_prev``/scratch
 every step (dispersion.py:689-691), so the launcher resolves ``state.P[c]`` immediately
 before each launch through ``dispersive_kernels.resolve_pole_plan`` and never caches a
 view.
 
 =============================================================================
-DISJOINT FROM EVERY OTHER ``step_D`` PRODUCT
+Disjoint from every other ``step_D`` product
 =============================================================================
 
 ``install_fused_pairs`` leaves a seam UNFUSED when two products admit it, so an overlap
@@ -241,7 +241,7 @@ UNCERTIFIED_KERNELS: Dict[str, str] = {}
 #: wiring is ``fused_pairs._install_fused_pair``'s. The flag and the wiring change
 #: together or not at all (``deposit_repair.py:221-226``).
 #:
-#: IT IS THE WHOLE PRODUCT HERE. All three corpus rows this family owns declare an
+#: It is the whole product here. All three corpus rows this family owns declare an
 #: electric deposit inside the seam -- ``source_field_types == ["D"]`` on every one in
 #: the stamped census -- so without the bracket this module would serve ZERO. That is
 #: why ``CARRIES_DEPOSIT_REPAIR`` is asserted as a per-cell MEASUREMENT off the census
@@ -258,7 +258,7 @@ REPAIR_PATHS: Tuple[str, ...] = (_deposit_repair.PLAIN_PATH,)
 
 FAMILY = "cuda_no_pml_dispersive_fused_electric_pair"
 
-#: The kernel's entry-point symbol, spelled once. FIXED ACROSS BOTH COMPILE-TIME AXES
+#: The kernel's entry-point symbol, spelled once. Fixed across both compile-time axes
 #: -- the conductive mask and the pole arity vary the SOURCE, not the name, which is
 #: ``ARM_KERNEL_NAMES``' convention and what lets one certification block cover the
 #: swept corpus.
@@ -344,7 +344,7 @@ __all__ = [
 ]
 
 # =============================================================================
-# THE DEVICE TEXT
+# The device text
 # =============================================================================
 
 _BODY_ANCHOR = "\n) {\n"
@@ -359,7 +359,7 @@ _TARGETS: Tuple[str, ...] = ("Dx", "Dy", "Dz")
 _ELECTRIC: Tuple[str, ...] = ("Ex", "Ey", "Ez")
 
 #: ``stepping._zero_metal``'s component table, restated as (walled-axis flag, that
-#: axis's coordinate, the two components wiped there). THE OFF-DIAGONAL COMPLEMENT:
+#: axis's coordinate, the two components wiped there). The off-diagonal complement:
 #: ``fields.IYEE_SHIFTS`` gives Dx (1,0,0), Dy (0,1,0), Dz (0,0,1), so a D component
 #: has Yee shift 0 on the OTHER TWO axes and TWO components sit on each wall. A pair
 #: that reused the B family's diagonal would clear ONE wrong component and leave two
@@ -375,7 +375,7 @@ _ZERO_METAL_ROWS: Tuple[Tuple[str, str, Tuple[str, ...]], ...] = (
 #: expression is the certified one character for character -- only the store is gone.
 _COND_APPLY_REG = r'''
 #if COND0 || COND1 || COND2
-// conductive_kernels.cond_apply AS A VALUE. Identical arithmetic, no store: the
+// conductive_kernels.cond_apply as a value. Identical arithmetic, no store: the
 // weld clears the register on a metallic wall BEFORE writing it, which is where
 // stepping's own order puts zero_metal_D (driver.py:3310, between the curl and
 // update_E).
@@ -393,7 +393,7 @@ __device__ __forceinline__ float cond_apply_reg(
 #: signature: no arithmetic lives here.
 _SIGNATURE = r'''
 extern "C" __global__ void __NAME__(
-    // THE SHARED VOLUME, BOUND ONCE. The curl half writes it and the constitutive
+    // The shared volume, bound once. The curl half writes it and the constitutive
     // half reads it from a register; binding it a second time as a source would be
     // two pointers to one allocation with a __restrict__ promise on one of them,
     // which is UB and which NVRTC miscompiles without a diagnostic.
@@ -423,7 +423,7 @@ __POLE_PARAMS__    int nx, int ny, int nz, float dtdx,
     // carries no wall (stepping._zero_metal, :2237-2239) and this family refuses a
     // fold outright, so the two can never disagree here.
     int wall_x, int wall_y, int wall_z,
-    // THE CHUNK RECORD (chunk_map.chunk_bounds_record), int32[25]: the lifted curl
+    // The chunk record (chunk_map.chunk_bounds_record), int32[25]: the lifted curl
     // reads its partner-presence word (MEEP's stencil over an invariant axis).
     const int* __restrict__ cb
 ) {
@@ -433,7 +433,7 @@ __POLE_PARAMS__    int nx, int ny, int nz, float dtdx,
 def _certified_halves() -> None:
     """Refuse the emitter BY NAME on a host where the certified text is unreachable.
 
-    THE SPLICE IS THE LIFT, so a missing half is not a degraded emit -- there is
+    The splice is the lift, so a missing half is not a degraded emit -- there is
     nothing to emit. Raising here keeps that fact one frame from the caller.
     :func:`covers_no_pml_dispersive_fused_electric_pair` needs neither module's device
     text and still answers.
@@ -521,7 +521,7 @@ def no_pml_dispersive_fused_electric_pair_signature(counts: Sequence[int]) -> st
     _certified_halves()
     values = dispersive_kernels.normalized_pole_counts(counts)
     source = _SIGNATURE.replace("__NAME__", KERNEL_NAME)
-    # THE CERTIFIED EMITTER'S OWN FUNCTION, called rather than retyped: the pole
+    # The certified emitter's own function, called rather than retyped: the pole
     # parameter names and their __restrict__ decision are that family's, and a copy
     # here would be a second place for the launcher's binding order to drift from.
     source = source.replace("__POLE_PARAMS__",
@@ -540,7 +540,7 @@ def certified_curl_body() -> str:
     the ``COND=(0,0,0)`` build is the certified lossless curl rather than a second
     copy of it.
 
-    THE DEFINES ARE NOT EMITTED HERE. ``kernel_template`` is the text WITHOUT them and
+    The defines are not emitted here. ``kernel_template`` is the text WITHOUT them and
     :func:`no_pml_dispersive_fused_electric_pair_source` prepends the three
     ``#define`` lines, exactly as ``conductive_kernels.kernel_source`` does.
     """
@@ -566,7 +566,7 @@ def certified_curl_body() -> str:
         tail,
     ))
     for index, (axis, target) in enumerate(zip(_CARRIED, _TARGETS)):
-        # BOTH BRANCHES OF THE CERTIFIED #if ARE REWRITTEN, and both are checked. The
+        # Both branches of the certified #if ARE REWRITTEN, and both are checked. The
         # guarded block is conductive_kernels' own text; capturing only one branch
         # would leave the other writing to global memory, where the constitutive half
         # would never read it.
@@ -581,7 +581,7 @@ def certified_curl_body() -> str:
             f"        {target}[idx] = {target}[idx] - curl;\n",
             f"        d_{axis} = {target}[idx] - curl;\n",
             f"target {target}'s plain tail")
-    # NO TAIL MAY SURVIVE UNCAPTURED. A call left storing would put the stepped value
+    # No tail may survive uncaptured. A call left storing would put the stepped value
     # in global memory where the wall clear below could not reach it, and the
     # constitutive half would read a pre-clear volume.
     code = "\n".join(_code_lines(body))
@@ -594,7 +594,7 @@ def certified_curl_body() -> str:
             raise AssertionError(
                 f"a store into {target} survived the capture rewrite; the wall clear "
                 f"below writes the register and this store would race it")
-    # THE STENCIL IS ASSERTED, NOT EDITED. It is the arithmetic this family reuses
+    # The stencil is asserted, not edited. It is the arithmetic this family reuses
     # unchanged -- the certified template's curl_stencil, MEEP's grouping with its
     # forms for an absent partner -- so its survival is a property of the build rather
     # than a claim.
@@ -618,18 +618,18 @@ def zero_metal_carry() -> str:
     components per wall (:data:`_ZERO_METAL_ROWS`). The register is cleared BESIDE the
     store, because the constitutive half below reads the register and not the volume.
 
-    STORED CELL 0 IS THE LOW WALL and the high wall is the zero ghost ``shift_dn``
+    Stored cell 0 is the low wall and the high wall is the zero ghost ``shift_dn``
     already supplies, which is the certified pass's own note.
 
-    NO OWNERSHIP GUARD, AND THAT IS A CONSEQUENCE OF THE FOLD REFUSAL rather than a
+    No ownership guard, and that is a consequence of the fold refusal rather than a
     simplification. The real twin guards this clear on ``own_*`` because a near ghost
     of a cleared cell belongs to its source thread; this family refuses a mirror plane
     outright, so no cell is imaged, every thread owns its own cell, and the guard would
-    be constant-true. A FOLDED METALLIC AXIS CARRIES NO WALL either
+    be constant-true. A folded metallic axis carries no wall either
     (``stepping._zero_metal``'s ``is_metallic and not is_mirrored``, :2237-2239), so
     the wall flags and the boundary codes cannot disagree on any admitted row.
 
-    THE STORE IS HERE, not in the curl body, and that is the whole point of the carry:
+    The store is here, not in the curl body, and that is the whole point of the carry:
     the array path writes D, clears it, and only then reads it, so the one value the
     two consumers see is the POST-clear one.
     """
@@ -675,7 +675,7 @@ def certified_constitutive_body(counts: Sequence[int]) -> str:
         "    // run the predicate admits.\n",
         "the constitutive index decomposition and bounds guard")
 
-    # THE SEAM, one edit per component and the shape of it decided by the ARITY --
+    # The seam, one edit per component and the shape of it decided by the ARITY --
     # because the certified emitter itself emits two different lines. At a non-zero
     # count it opens the chain with `float s_a = Da[idx];`; at zero it forms no
     # intermediate at all and multiplies D directly (fields.py:1096-1098 returns the D
@@ -703,7 +703,7 @@ def certified_constitutive_body(counts: Sequence[int]) -> str:
                 f"{target} survived the seam rewrite; the constitutive half would need "
                 f"D bound a second time, which is the aliasing hazard this signature "
                 f"exists to avoid")
-    # THE DROPPED BOUND, CHECKED ON CODE RATHER THAN ON PROSE: the comment spliced in
+    # The dropped bound, checked on code rather than on prose: the comment spliced in
     # above NAMES n_elem on purpose, so a substring test over the whole body would fire
     # on this module's own explanation.
     survived = [line for line in _code_lines(body) if "n_elem" in line]
@@ -718,7 +718,7 @@ def no_pml_dispersive_fused_electric_pair_source(cond: Sequence[bool],
                                                  counts: Sequence[int]) -> str:
     """The whole fused kernel at one conductive mask and one pole arity.
 
-    THE THREE ``#define`` LINES ARE THIS FILE'S ONLY ADDITION TO THE MASK, exactly as
+    The three ``#define`` lines are this file's only addition to the mask, exactly as
     ``conductive_kernels.kernel_source`` spells it -- and for that function's own
     reason: the conductive tail helper lives INSIDE the emitted text behind
     ``#if COND0 || COND1 || COND2``, so a fully lossless build preprocesses it away AND
@@ -741,7 +741,7 @@ def no_pml_dispersive_fused_electric_pair_source(cond: Sequence[bool],
         certified_constitutive_body(counts),
         "}\n",
     ))
-    # PURE ASCII IS A COMPILE REQUIREMENT, not a style rule; checked here so a mutation
+    # Pure ASCII is a compile requirement, not a style rule; checked here so a mutation
     # leg that inserts a non-ASCII character is refused at emission with the reason
     # instead of at NVRTC three frames away.
     source.encode("ascii")
@@ -777,7 +777,7 @@ def _get_kernel(cond: Sequence[bool], counts: Sequence[int],
                 name: str = KERNEL_NAME):
     """Compile (or fetch) the kernel at one mask and arity.
 
-    ``compile_cache.kernel_cache_key`` keys the memo ON THE SOURCE, so a gate that
+    ``compile_cache.kernel_cache_key`` keys the memo on the source, so a gate that
     mutates the emitted text is a cache MISS and reaches NVRTC -- which is what stops a
     mutation leg from scoring against a kernel it never applied.
     """
@@ -838,15 +838,15 @@ def covers_no_pml_dispersive_fused_electric_pair(
 
     Returns ``(covered, reason)`` with ``reason`` naming the FIRST refusal.
 
-    A CONJUNCTION OVER TWO HALVES, AND NOTHING IS WEAKENED. The constitutive half is
+    A conjunction over two halves, and nothing is weakened. The constitutive half is
     ``dispersive_kernels.covers_no_pml_dispersive_constitutive``, whole. The curl half
-    is a DISJUNCTION over two predicates that CANNOT BOTH HOLD --
+    is a DISJUNCTION over two predicates that cannot both hold --
     ``conductive_kernels.covers_conductive_curl`` requires at least one target to carry
     a sigma and ``no_pml_curl.covers_no_pml_curl`` refuses any target that does -- so
     it is a lookup between two disjoint arms rather than a widening. Both are asked
     whole and the reasons of both are reported when neither admits.
 
-    THE SEAM CLAUSES ARE THIS PREDICATE'S OWN, because there is no sibling product to
+    The seam clauses are this predicate's own, because there is no sibling product to
     delegate them to on this cell: the fold refusal, the wall/fold disjointness and the
     in-seam source routing are asked here, by name.
     """
@@ -867,10 +867,10 @@ def covers_no_pml_dispersive_fused_electric_pair(
         arm = "no_pml"
     _ = arm
 
-    # THE TWO SYMMETRY PASSES. Both return at their first line without a mirror
+    # The two symmetry passes. Both return at their first line without a mirror
     # (stepping.py:1481-1482, :1565-1566). RESTATED HERE rather than inferred from
     # either half's guard: this module's coverage may not be read off another module's,
-    # and if either tranche ever admits a fold this weld would silently swallow two
+    # and if either half ever admits a fold this weld would silently swallow two
     # passes that had started doing work.
     if bool(getattr(grid, "has_symmetry", bool)()):
         return False, ("a mirror plane is active: stepping.fill_symmetry_bc_D "
@@ -882,7 +882,7 @@ def covers_no_pml_dispersive_fused_electric_pair(
                            f"passes image ghost cells inside this seam and this weld "
                            f"carries neither")
 
-    # THE WALL. ``zero_metal_axes`` is the same reading ``in_seam_passes`` takes, so
+    # The wall. ``zero_metal_axes`` is the same reading ``in_seam_passes`` takes, so
     # the flags this predicate admits and the ones the launcher binds are one answer.
     try:
         walls = zero_metal_axes(grid)
@@ -897,11 +897,11 @@ def covers_no_pml_dispersive_fused_electric_pair(
                            f"(:2237-2239) and this weld would clear a plane the array "
                            f"path leaves alone")
 
-    # THE IN-SEAM SOURCE, routed through the repair this family DECLARES. The path
+    # The in-seam source, routed through the repair this family DECLARES. The path
     # matters: ``repairable`` refuses by name any recurrence not among ``paths``, so
     # handing it the default here would refuse every configuration this product exists
     # for -- and handing it the wrong one would MIS-REPAIR rather than refuse.
-    # THE WORDING IS THIS SITE'S OWN, which is what ``seam_source_reasons`` asks for:
+    # The wording is this site's own, which is what ``seam_source_reasons`` asks for:
     # the shared helper decides WHICH sources count as in-seam and whether a deposit
     # is carryable, and each product keeps the text its own gate and tests pin.
     #
@@ -924,7 +924,7 @@ def covers_no_pml_dispersive_fused_electric_pair(
 
 
 # =============================================================================
-# THE LAUNCH
+# The launch
 # =============================================================================
 
 _FIELD_BINDINGS: Tuple[str, ...] = ("Dx", "Dy", "Dz")
@@ -943,7 +943,7 @@ def conductive_bindings(fields: "Fields") -> Tuple[Tuple[Any, ...],
     it is what the predicate reads too -- the discipline that keeps a clause and a
     compile-time choice from drifting apart.
 
-    A LOSSLESS COMPONENT BINDS ITS OWN TARGET ARRAY in both slots, which is
+    A lossless component binds its own target array in both slots, which is
     ``step_conductive_curl``'s own convention: ``#if CONDn`` is 0 for it, so the
     pointer is never dereferenced, and binding a null would be a different kind of
     hazard.
@@ -985,7 +985,7 @@ def assert_disjoint_bindings(fields: "Fields", poles: Sequence[Any],
                              conductivity: Sequence[Any]) -> int:
     """Check the promise every ``__restrict__`` in this signature makes.
 
-    THE RESTRICT GROUP IS: the three D volumes, the three B sources, the three E
+    The restrict group is: the three D volumes, the three B sources, the three E
     volumes and the pole pointers. The inverse-epsilon and conductivity pointers are
     NOT restrict and may legitimately repeat, so they are checked only AGAINST the
     restrict group and never against each other.
@@ -1009,7 +1009,7 @@ def assert_disjoint_bindings(fields: "Fields", poles: Sequence[Any],
                               f"allocation")
             continue
         bound[pointer] = f"pole {index}"
-    # THE NON-RESTRICT GROUPS, ASKED ONE WAY ONLY. A conductivity volume that IS a
+    # The non-restrict groups, asked one way only. A conductivity volume that IS a
     # target array is this launcher's own placeholder convention for a lossless
     # component and is expected; what is not allowed is a non-restrict pointer
     # colliding with a POLE, which is bound restrict.
@@ -1038,11 +1038,11 @@ def launch_no_pml_dispersive_fused_electric_pair(
         kernel: Optional[Any] = None, *, chunk_bounds: Any) -> Dict[str, Any]:
     """All three of :data:`REPLACES` in ONE launch, at this run's mask and arity.
 
-    THE ARGUMENT ORDER IS THE SIGNATURE'S. ``chunk_bounds`` is the run's chunk record on
+    The argument order is the signature's. ``chunk_bounds`` is the run's chunk record on
     the device, required: the lifted curl reads its presence word
     (``step_curl_kernels.chunk_record_argument`` checks it).
 
-    ``kernel`` IS THE GATE'S DOOR, keyword-optional and named for what it is: a gate
+    ``kernel`` is the gate's door, keyword-optional and named for what it is: a gate
     compiles a deliberately broken copy of the shipped source and hands it here. A
     launcher that could not be handed its own kernel could not arm a single mutation.
     """
@@ -1086,7 +1086,7 @@ def run_no_pml_dispersive_fused_electric_pair(
         kernel: Optional[Any] = None) -> Dict[str, Any]:
     """Gate on the predicate, resolve everything from the grid, launch once.
 
-    THE PREDICATE IS ASKED FIRST AND A REFUSAL IS RETURNED, NOT RAISED, because the
+    The predicate is asked first and a refusal is returned, not raised, because the
     caller's correct response to a configuration this product does not carry is the
     array path -- never an exception into a stepper that would otherwise have stepped
     correctly.

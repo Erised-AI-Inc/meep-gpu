@@ -1,32 +1,32 @@
 """What ``dispersive_kernels.py`` must be true of on a laptop, before a device slot is spent.
 
-THREE THINGS THIS FILE PINS, and none of them is "the kernel is right" -- only a
+Three things this file pins, and none of them is "the kernel is right" -- only a
 device gate can say that (``parity/meep_gpu/gate_cuda_dispersive.py``):
 
-1. **THE EMITTED TEXT.** The pole chain is sequential and left-to-right, the
+1. **The emitted text.** The pole chain is sequential and left-to-right, the
    accumulation is two separate statements, ``prev`` is loaded before the store,
    component *c* reads axis *c*'s coefficient vector, and the arity-(0,0,0) body
-   reduces CHARACTER FOR CHARACTER to the certified non-dispersive kernel's three
+   reduces character for character to the certified non-dispersive kernel's three
    source lines. An emitter is a machine that writes kernels; what a reader can
    check by eye on one hand-written body has to be checked mechanically here.
 
-2. **THE PREDICATES' ADMITTED SET, AND ITS DISJOINTNESS.** Every clause is
+2. **The predicates' admitted set, and its disjointness.** Every clause is
    exercised against an object that trips it, by name, and the whole E-side
    family -- the certified diagonal one, the off-diagonal one, the no-PML null
-   one and this file's two -- is checked to admit AT MOST ONE arm per
+   one and this file's two -- is checked to admit at most one arm per
    configuration. Two arms admitting one slot is a widening past the evidence,
    not extra coverage, and the union census reports it as a FINDING.
 
-3. **THE TRANSCRIPTION, MEASURED AGAINST ``stepping`` ITSELF.** A NumPy
+3. **The transcription, measured against ``stepping`` itself.** A NumPy
    transcription of the emitted body is run against ``stepping.update_E`` on real
    ``Grid``/``Fields``/``PML``/``PolarizationState`` objects, bit for bit as
    uint32, at every swept arity on both arms -- and the two pole-order defects
    are planted to show the comparison can FAIL. That last part is the point: the
-   pair is INVISIBLE AT ONE POLE and lethal at two, which is measured here rather
+   pair is invisible at one pole and lethal at two, which is measured here rather
    than quoted, so a gate leg that scored them at a single pole would be caught
    as a harness defect on a laptop instead of shipping as a kernel pass.
 
-WHAT THIS FILE COMPILES: nothing. It imports no CuPy, launches no kernel and
+What this file compiles: nothing. It imports no CuPy, launches no kernel and
 certifies nothing. ``dispersive_kernels`` imports CuPy lazily for exactly this
 reason -- and because the predicate census runs on a laptop too, where a family
 that cannot be imported is counted as a coverage gap it does not have.
@@ -90,7 +90,7 @@ def build(poles=2, pml_on=True, boundaries=("periodic", "periodic", "periodic"),
         kwargs["symmetry"] = [Mirror("XYZ"[axis]) for axis in mirrors]
     grid = Grid(resolution=1.0, cell_size=tuple(cell), boundaries=tuple(boundaries),
                 xp=xp, courant=courant, **kwargs)
-    # THE LOW FACE IS DROPPED ON A MIRRORED AXIS, and not as a fixture nicety:
+    # The low face is dropped on a mirrored axis, and not as a fixture nicety:
     # cell 0 of a folded axis lies ON the mirror plane, which is a boundary
     # condition rather than an outer wall, and ``PML`` refuses a per-side request
     # that names it (pml.py:399-412). A folded case graded from both walls would
@@ -110,7 +110,7 @@ def build(poles=2, pml_on=True, boundaries=("periodic", "periodic", "periodic"),
     rng = np.random.default_rng(seed)
     epsilon, inverse = {}, {}
     for component in ("Ex", "Ey", "Ez"):
-        # THREE INDEPENDENT VOLUMES, never one array bound thrice: binding one is
+        # Three independent volumes, never one array bound thrice: binding one is
         # defect 2 of the complex template, and a fixture that collapsed them
         # could not see it.  Drawn AWAY from 1.0, or dropping the multiply
         # entirely would be bit-identical.
@@ -135,7 +135,7 @@ def build(poles=2, pml_on=True, boundaries=("periodic", "periodic", "periodic"),
     if pml_on:
         names += ["f_w_Ex", "f_w_Ey", "f_w_Ez"]
     for name in names:
-        # THE AUXILIARIES START NONZERO. A zero f_w makes ``kms * prev`` exactly
+        # The auxiliaries start nonzero. A zero f_w makes ``kms * prev`` exactly
         # zero on the first launch whatever kms holds, so a mis-indexed
         # coefficient would only show from step two.
         getattr(fields, name)[...] = rng.uniform(-1.0, 1.0,
@@ -233,7 +233,7 @@ def transcribed_kernel(arm, fields, tables, plan, defect=None):
 
 
 # ---------------------------------------------------------------------------
-# 1. THE EMITTED TEXT
+# 1. The emitted text
 # ---------------------------------------------------------------------------
 
 def test_the_zero_arity_body_reduces_to_the_certified_kernels_own_source_lines():
@@ -298,7 +298,7 @@ def test_component_c_reads_axis_cs_coefficient_vector(counts):
     """``kps_x[i]``, ``kps_y[j]``, ``kps_z[k]`` -- E_CONSTITUTIVE_TERMS, stepping.py:228.
 
     MEEP's ``dsigw`` is the absorption a component accumulates along the
-    direction IT POINTS IN. Every component reading the x table instead is the
+    direction it points in. Every component reading the x table instead is the
     sibling module's "highest-consequence confusion in the file": a smooth,
     converged, entirely wrong absorber, and the gate arms it as
     ``own_axis_to_x_for_all_three``.
@@ -451,7 +451,7 @@ def test_an_uncertified_kernel_has_no_certification_record_block():
         assert name not in blocks, (
             f"{name} is declared UNCERTIFIED and yet certification.json carries a "
             f"block for it; one of the two is describing a run that did not happen")
-    # BLOCKS ARE FAMILY-DATED AND CARRY A certified_kernels LIST; they are NOT keyed by
+    # Blocks are family-dated and carry a certified_kernels list; they are NOT keyed by
     # kernel name. constitutive_2026-08-15 has done it that way since the record existed,
     # so looking the kernel up as a top-level key asked the record a question it never
     # answered -- it only passed while this family had no block at all. The INTENT is
@@ -661,7 +661,7 @@ def test_arm_three_is_the_shipped_ade_predicate_with_one_clause_inverted():
 
 
 def test_arm_three_refuses_a_fields_whose_storage_mode_disagrees_with_its_layer():
-    """THE SINGLE MOST LIKELY SILENT WRONG ANSWER IN DISPERSION, from the other side.
+    """The single most likely silent wrong answer in dispersion, from the other side.
 
     ``drive_field`` returns ``f_w`` in PML storage mode and the stored E without
     it; the two agree EXACTLY outside the absorber, so binding the wrong one
@@ -745,8 +745,8 @@ def test_the_emitted_body_transcribes_to_stepping_update_E_bit_for_bit(arm, pml_
     """ONE frozen state, run twice: the array path, then the transcription.
 
     The oracle is ``stepping`` ITSELF on real objects -- there is no second
-    transcription on the oracle leg to drift. THE NON-VACUITY FLOOR IS PART OF
-    THE TEST: a step that moved no output word is a fixed point, and against a
+    transcription on the oracle leg to drift. The non-vacuity floor is part of
+    the test: a step that moved no output word is a fixed point, and against a
     fixed point a reference with deliberately swapped coefficients still reports
     IDENTICAL. The Triton cylindrical_complex module records exactly that
     failure; half its first cut could not fail.
@@ -815,7 +815,7 @@ def test_the_comparison_can_fail_and_the_pole_defects_are_invisible_at_one_pole(
 def test_the_null_operand_order_control_is_inert_at_every_arity():
     """``inv_eps * s`` versus ``s * inv_eps``: IEEE multiply commutes.
 
-    MUST BE UNCAUGHT, paired with ``drop_inverse_epsilon_dispersive`` above,
+    Must be uncaught, paired with ``drop_inverse_epsilon_dispersive`` above,
     which edits the same expression and must be caught. Without the pair, "the
     operand order is inert" would be a claim about a leg nobody showed could
     fail -- and the array path's order (stepping.py:1011, D on the left) is kept
@@ -847,7 +847,7 @@ def test_the_recorded_gate_verdict_pins_the_emitted_bodies_that_ship_today():
     the emitted device STRINGS, and this digest is taken over every arm at every
     swept arity.
 
-    THE DISTINCTION IS LOAD-BEARING AND WAS EXERCISED ON 2026-08-20: the fold cap
+    The distinction is load-bearing and was exercised on 2026-08-20: the fold cap
     in this module moved from a shared constant to :data:`ADE_FOLD_PLANES_SWEPT`
     AFTER the gate ran, changing the file's sha256 and not one emitted byte. A
     file-hash pin would have read that as a dead verdict; this reads it as what it
@@ -895,7 +895,7 @@ def test_the_gate_verdict_names_an_artifact_and_both_policy_legs():
 
 
 def test_this_familys_fold_cap_is_its_own_gates_number_and_not_a_siblings():
-    """A CAP IS A FACT ABOUT A GATE, and a gate answers for ONE family.
+    """A cap is a fact about a gate, and a gate answers for ONE family.
 
     Measured 2026-08-20: the sibling constitutive record's ``folded_planes_swept``
     went 2 -> 3 when THAT family re-ran with a third plane. This module's clause
@@ -912,7 +912,7 @@ def test_this_familys_fold_cap_is_its_own_gates_number_and_not_a_siblings():
         "raising this means adding a three-plane spec to gate_cuda_dispersive.py, "
         "running it on a device under both float32 policies, and recording what "
         "came back -- not editing the number")
-    # READ OFF THE SYNTAX TREE, not off the text: the module's PROSE names the
+    # Read off the syntax tree, not off the text: the module's PROSE names the
     # sibling record deliberately (that is the whole explanation for why the cap
     # is local), and a substring check would forbid explaining the decision. What
     # must not come back is a REFERENCE -- an import or a load.

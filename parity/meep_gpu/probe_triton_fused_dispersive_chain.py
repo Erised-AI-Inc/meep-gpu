@@ -1,6 +1,6 @@
 """CUDA byte gate for the fused dispersive D/E/ADE chain.
 
-THE CLAIM THIS GATE IS ALLOWED TO SUPPORT: for every configuration the chain
+The claim this gate is allowed to support: for every configuration the chain
 product admits, one launch of ``fused_curl_dispersive_E_ade`` leaves the engine in
 a state that is BIT-IDENTICAL, per complete driver step, to
 
@@ -12,7 +12,7 @@ over every allocated volume: the primaries, the split-field PML auxiliaries, the
 constitutive ``f_w`` history, every pole ``P`` / ``P_prev`` and the shared scratch
 buffer.  Comparison is on the uint32 view.  ``allclose`` appears nowhere.
 
-WHAT THE GATE REFUSES TO INFER.
+What the gate refuses to infer.
 
 * **Bytes alone cannot prove the fused path ran.**  A silent fallback to the array
   path is byte-identical to the array path by construction, so identity is the
@@ -99,7 +99,7 @@ def log(message: str) -> None:
 def save(payload: Dict[str, Any], path: str) -> None:
     """Serialise the payload, provenance-stamped, atomically.
 
-    THE STAMP IS HERE AND NOT AT THE CALL SITES, which is the whole reason this
+    The stamp is here and not at the call sites, which is the whole reason this
     gate could pass while recording nothing about its own bytes. ``main`` calls
     this eleven times as the legs land, and a stamp bolted onto the last call
     would leave every partial artifact — including the one an aborted run leaves
@@ -115,7 +115,7 @@ def save(payload: Dict[str, Any], path: str) -> None:
     temporary = path + ".tmp"
     from gate_provenance import stamp as _stamp_provenance  # noqa: PLC0415
 
-    # THE POLICY STAMP IS RE-READ, NOT CARRIED. Taken once at install time it
+    # The policy stamp is re-read, not carried. Taken once at install time it
     # records ``installed: true`` with ``ftz_removed: 0``, ``nvrtc_calls: 0`` and
     # every Triton counter at zero — because nothing had compiled yet. Measured on
     # the 2026-08-19 08:21Z run of this gate: all ten Triton counters and both CuPy
@@ -196,7 +196,7 @@ def build_driver(cp, boundaries, kind: str, sigma_form: str, seed: int,
         (1.55 + 0.30 * np.sin(index * np.float32(0.027))).astype(np.float32))
     driver.set_epsilon(cp.asarray(epsilon))
     # The absorber is what makes f_w differ from the stored E, which is the whole
-    # reason the drive-field trap is byte-visible.  THICKNESS IS LOAD-BEARING for
+    # reason the drive-field trap is byte-visible.  Thickness is load-bearing for
     # the signed-zero leg and nowhere else: a thin absorber drives the split-field
     # ``kms`` NEGATIVE, and without a negative coefficient a zero-init lattice
     # cannot manufacture a ``-0.0`` at all (the class is unreachable rather than
@@ -356,7 +356,7 @@ AUXILIARY_LINES: Dict[str, Tuple[bool, int]] = {
 def outside_every_layer(driver, names) -> List[str]:
     """The auxiliaries whose record line holds no row of the run's division.
 
-    THE AUXILIARY CONTRACT LEAVES THEM UNTOUCHED: an auxiliary word outside its form's
+    The auxiliary contract leaves them untouched: an auxiliary word outside its form's
     region is never read or written, so on a division that gives a component's layer no
     cell at all (an invariant axis, or an axis with no layer, carries no run) the
     auxiliary keeps its first word for the whole run, on the array path and in the
@@ -383,7 +383,7 @@ def signed_zero_census(state: Dict[str, np.ndarray]) -> Dict[str, int]:
             for name, value in state.items()}
 
 
-#: The volumes the CHAIN KERNEL ITSELF writes.  A negative zero found here was
+#: The volumes the chain kernel itself writes.  A negative zero found here was
 #: MANUFACTURED by the arithmetic under gate; one found in P_prev or the retired
 #: scratch at step 1 was merely the seeding, rotated.  The distinction is the
 #: difference between measuring the kernel and measuring the harness.
@@ -831,7 +831,7 @@ def compile_mutant(source: str, kernel_name: str) -> Any:
 
 
 #: Every mutation is (id, why it is armed, expectation, rewrite).  ``expectation``
-#: is what the design predicts; the artifact records what was MEASURED, and a
+#: is what the design predicts; the artifact records what was measured, and a
 #: predicted null that turns out visible (or the reverse) is reported either way.
 def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, int]]], ...]:
 
@@ -900,8 +900,9 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
         return source.replace(needle, "tl.store(o1 + idx,"), source.count(needle)
 
     def m7_association_changed(source: str) -> Tuple[str, int]:
-        """INVERTED (KERNELS.md section 7.1): the package's previous folded three-term
-        form planted back -- the same algebra, a different float32 number."""
+        """INVERTED (docs/development/certification.md#inverted-grouping-mutations): the
+        package's previous folded three-term form planted back, which must be caught --
+        the same algebra, a different float32 number."""
         pattern = re.compile(
             r"gamma1inv \* \(\(\(pa0 \* two_minus_od\) - \(gamma1 \* h0\)\) \+\s*"
             r"\(omega0dtsqr \* \(sv0 \* src0\)\)\)")
@@ -1125,12 +1126,13 @@ def run_harness_arms(cp, chain_module) -> List[Dict[str, Any]]:
 # ---------------------------------------------------------------------------
 
 def environment(cp) -> Dict[str, Any]:
+    import neutral_ids  # noqa: PLC0415
     import triton  # noqa: PLC0415
 
     properties = cp.cuda.runtime.getDeviceProperties(0)
     return {
         "time": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "host": os.uname().nodename,
+        "host": neutral_ids.machine_id(),
         "python": sys.version.split()[0], "numpy": np.__version__,
         "cupy": cp.__version__, "triton": triton.__version__,
         "device": properties["name"].decode(),
@@ -1167,7 +1169,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     import cupy as cp  # noqa: PLC0415
     from meep_gpu import backends, subnormal_policy  # noqa: PLC0415
 
-    # BEFORE THE FIRST DEVICE COMPILE, and before the chain module is imported.
+    # Before the first device compile, and before the chain module is imported.
     # strict=True: a process that asked to keep and quietly did not is a process
     # whose bytes mean nothing, and this refuses at startup rather than writing an
     # artifact whose policy field is a wish. It is also what enforces the

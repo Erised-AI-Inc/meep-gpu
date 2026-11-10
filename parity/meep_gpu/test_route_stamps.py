@@ -1,7 +1,7 @@
 """The route-stamp registry: one home for the three tables' campaign names, read by no gate.
 
-WHAT THIS HOLDS (``meep_gpu/route_stamps.py``; bit_parity_0_10 DESIGN.md section 8.2, owner
-ruling R22). The three route stamps left the dispatch modules so that a re-route edits one
+What this holds (``meep_gpu/route_stamps.py``, added for the
+1.0 re-certification). The three route stamps left the dispatch modules so that a re-route edits one
 file that no gate's import record holds:
 
 * the registry imports nothing of the package, and no package module imports it;
@@ -16,6 +16,16 @@ file that no gate's import record holds:
   stamp, so the spent list cannot fall behind the records;
 * the two round preflights key on the same names: ``legs.route_campaign_names`` (NVIDIA)
   and ``metal_round.ROUTE_NAMES_PROGRAM`` (Metal) refuse the placeholder and a spent name.
+* the 1.0.1 round's first Metal route campaign, which released on a Metal frontend no
+  bound weld certifies and can never be recorded, stays spent, and the Metal route stage
+  names another campaign that it may launch;
+* its second, which released on bytes whose dispatch preference arbitrated the Metal
+  table by NVIDIA records, stays spent too, and the Metal table's stamp is a third;
+* the round's compute capability 8.6 NVIDIA route campaigns and licence, which released
+  on bytes the dispatch preference has since moved and read timing records these bytes
+  replace, are refused by name, and the two NVIDIA tables share a new stamp under which
+  any compute capability's route and licence may run; the chunk tooling reads that
+  stamp as the NVIDIA round.
 
 The re-cut's refusals by name are driven end to end in ``test_recut_route_status.py`` and
 ``test_recut_metal_runs.py``.
@@ -40,6 +50,7 @@ for _path in (str(HERE), str(ROUND_DIR)):
     if _path not in sys.path:
         sys.path.insert(0, _path)
 
+import chunks as C  # noqa: E402
 import import_closure as ic  # noqa: E402
 import legs as L  # noqa: E402
 import metal_round  # noqa: E402
@@ -366,3 +377,126 @@ def test_the_metal_preflight_refuses_an_unset_or_spent_stamp(monkeypatch, capsys
     assert metal_round.main(["route", "--repo", str(tmp_path), "--stamp", "s",
                              "--results", str(tmp_path), "--logs", str(tmp_path / "logs")]) != 0
     assert launched == []
+
+
+SPENT_METAL_ROUTE = "dispatch_metal_route_2026-10-18_101_applegpu_g13s"
+
+
+def test_the_spent_metal_route_of_the_round_is_refused_and_another_is_named(monkeypatch,
+                                                                            capsys):
+    """The held Metal route of round ``2026-10-18_101`` released its legs, but every plan
+    recorded a Metal frontend that no weld of the bound ledger certifies, so the re-cut
+    refuses its rows and it can never be recorded. Its name is spent, the re-cut and the
+    route stage refuse it by name, and the route stage names another campaign: a fresh
+    stamp (the Metal table's :data:`REROUTED` entry, or a later round's), never the
+    placeholder while the round has a stamp, and never a spent one."""
+    assert SPENT_METAL_ROUTE in route_stamps.SPENT["metal"]
+    refused = route_stamps.campaign_refusal("metal", SPENT_METAL_ROUTE)
+    assert refused and refused.split(":")[0] in (
+        "route_campaign_is_spent", "route_campaign_is_not_this_stamp",
+        "route_stamp_is_unset"), refused
+    facts = _metal_names(monkeypatch, capsys)
+    assert facts["campaign"] != SPENT_METAL_ROUTE, facts
+    assert facts["campaign"] not in route_stamps.SPENT["metal"], facts
+    assert facts["refused"] is None or route_stamps.ROUND == route_stamps.PLACEHOLDER, facts
+
+
+SECOND_SPENT_METAL_ROUTE = "dispatch_metal_route_2026-10-25_101_applegpu_g13s"
+
+
+def test_the_second_metal_route_of_the_round_is_refused_and_another_is_named():
+    """The Metal route re-run under ``2026-10-25_101`` released on bytes whose dispatch
+    preference arbitrated the Metal table by a portable prior derived from NVIDIA records;
+    the prior is now derived per vendor, so that campaign is never recorded. On the
+    registry as committed: both spent Metal routes of the round are spent and refused by
+    name, the Metal table's stamp is neither of theirs, the campaign it names may be
+    launched, and it is not the NVIDIA tables' stamp (they were re-routed on their own,
+    below)."""
+    for spent in (SPENT_METAL_ROUTE, SECOND_SPENT_METAL_ROUTE):
+        assert spent in route_stamps.SPENT["metal"], spent
+        refused = route_stamps.campaign_refusal("metal", spent)
+        assert refused and refused.split(":")[0] in (
+            "route_campaign_is_spent", "route_campaign_is_not_this_stamp"), refused
+    stamp = route_stamps.stamp("metal")
+    assert stamp not in ("2026-10-18_101", "2026-10-25_101", route_stamps.PLACEHOLDER), stamp
+    campaign = f"{route_stamps.route_gate('metal')}_applegpu_g13s"
+    assert campaign == f"dispatch_metal_route_{stamp}_applegpu_g13s"
+    assert campaign not in route_stamps.SPENT["metal"]
+    assert route_stamps.campaign_refusal("metal", campaign) is None
+    assert stamp not in (route_stamps.stamp("triton"), route_stamps.stamp("cuda")), stamp
+
+
+SPENT_NVIDIA_ROUTES = {"triton": "dispatch_fused_route_2026-10-18_101_cc86",
+                       "cuda": "dispatch_fused_route_cuda_2026-10-18_101_cc86"}
+SPENT_NVIDIA_LICENCE = "dispatch_end_to_end_2026-10-18_101"
+
+
+def test_the_nvidia_routes_of_the_round_are_refused_and_both_tables_share_a_new_stamp(
+        monkeypatch):
+    """The round's compute capability 8.6 route campaigns of both NVIDIA tables and its
+    dispatch-by-default licence released on bytes the dispatch-preference priors have
+    since moved (``fastpath.py``, which both route records bind), and their default rows
+    read timing records these bytes replace, so they are never recorded. On the registry
+    as committed: both route campaigns are spent and refused by name, the licence
+    directory is refused as another campaign's, and the two NVIDIA tables share one stamp
+    that is neither the round's, nor the Metal table's, nor any spent campaign's, under
+    which the route campaigns and the licence of any compute capability (8.6, and 8.9
+    certified in the same round) may be launched; the NVIDIA preflight names them."""
+    for table, spent in SPENT_NVIDIA_ROUTES.items():
+        assert spent in route_stamps.SPENT[table], (table, spent)
+        refused = route_stamps.campaign_refusal(table, spent)
+        assert refused and refused.split(":")[0] in (
+            "route_campaign_is_spent", "route_campaign_is_not_this_stamp"), refused
+    for licence in (SPENT_NVIDIA_LICENCE, f"{SPENT_NVIDIA_LICENCE}_cc86"):
+        refused = route_stamps.licence_refusal("triton", licence, "cc86")
+        assert refused and refused.startswith("licence_is_for_another_campaign"), refused
+    stamp = route_stamps.stamp("triton")
+    assert route_stamps.stamp("cuda") == stamp
+    assert route_stamps.REROUTED.get("triton") == route_stamps.REROUTED.get("cuda") == stamp
+    assert stamp not in (route_stamps.ROUND, route_stamps.stamp("metal"),
+                         route_stamps.PLACEHOLDER), stamp
+    for table in route_stamps.TABLES:
+        assert not [name for name in route_stamps.SPENT[table] if stamp in name], table
+    monkeypatch.setattr(fastpath, "primary_table", lambda capability: "triton")
+    for capability, device in (("8.6", "cc86"), ("8.9", "cc89")):
+        facts, problems = L.route_campaign_names(capability)
+        assert problems == [], problems
+        assert facts == {
+            "triton_route_campaign": f"dispatch_fused_route_{stamp}_{device}",
+            "cuda_route_campaign": f"dispatch_fused_route_cuda_{stamp}_{device}",
+            "licence_campaign": f"dispatch_end_to_end_{stamp}"}, facts
+        for table in ("triton", "cuda"):
+            assert facts[f"{table}_route_campaign"] not in route_stamps.SPENT[table]
+            assert route_stamps.campaign_refusal(table, facts[f"{table}_route_campaign"]) \
+                is None
+        licence = L.licence_directory(facts["licence_campaign"], capability)
+        assert licence == f"dispatch_end_to_end_{stamp}_{device}"
+        for table in route_stamps.LICENCE_TABLES:
+            assert route_stamps.licence_refusal(table, licence, device) is None
+
+
+def test_the_chunk_tooling_reads_the_rerouted_nvidia_stamp_as_the_round():
+    """A chunked round shares its stamp with its route (``chunks.round_problems``), so on
+    the registry as committed the NVIDIA round is the two NVIDIA tables' stamp: an NVIDIA
+    index of round ``2026-10-18_101`` is refused by name on every device (and, on compute
+    capability 8.6, as a round whose route has run), an index of the new stamp is not, and
+    a Metal index of the Metal table's stamp is untouched."""
+    stamp, _where = C.registry_round_stamp(ROOT, "nvidia")
+    assert stamp == route_stamps.stamp("triton") == route_stamps.stamp("cuda"), stamp
+    assert stamp != "2026-10-18_101"
+    for device, mode in (("cc86", "certified"), ("cc89", "new")):
+        old = C.make_index("nvidia", "2026-10-18_101", [], {"rule": "test"}, device=device,
+                           device_mode=mode)
+        problems = C.round_problems(ROOT, old)
+        named = [line for line in problems
+                 if f"the index is of round 2026-10-18_101; {C.REGISTRY} names {stamp}" in line]
+        assert len(named) == 2, problems
+        ran = [line for line in problems if "has already run" in line]
+        assert len(ran) == (2 if device == "cc86" else 0), problems
+        assert len(problems) == len(named) + len(ran), problems
+        new = C.make_index("nvidia", stamp, [], {"rule": "test"}, device=device,
+                           device_mode=mode)
+        assert C.round_problems(ROOT, new) == []
+    metal = C.make_index("metal", route_stamps.stamp("metal"), [], {"rule": "test"},
+                         device="applegpu_g13s")
+    assert C.round_problems(ROOT, metal) == []

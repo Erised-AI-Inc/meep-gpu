@@ -103,7 +103,8 @@ import sys
 import time
 from pathlib import Path
 
-from parity.meep_gpu.survey_meep_examples import CHILD_PREAMBLE, _as_text, scratch_workdir
+from parity.meep_gpu.survey_meep_examples import (CHILD_PREAMBLE, _as_text, _neutral_ids,
+                                                  scratch_workdir)
 
 # MEEP's Cartesian component names, and the cylindrical family they map onto. The
 # driver spells a Dcyl run's components in its own Cartesian names (from_meep.py:463
@@ -134,6 +135,13 @@ def looks_like_import_failure(stderr_text: str) -> bool:
 # --- child: capture one script, then lift it (and optionally step it both ways) ------
 
 
+def write_record(out_json: str, record: dict) -> None:
+    """A child's row, written as every record of this sweep is: its paths under their
+    roots' labels and this host's names as its machine id (``neutral_ids.value``). A lift
+    or parity error can name a path; the row leaves the machine."""
+    Path(out_json).write_text(json.dumps(_neutral_ids().value(record)), encoding="utf-8")
+
+
 def capture_simulation(script: str):
     """The survey's own capture, reused verbatim: ``(record, sim, restore)``."""
     namespace: dict = {}
@@ -152,7 +160,8 @@ class ProgressLog:
     def __call__(self, message: str) -> None:
         if not self.path:
             return
-        line = f"[{time.strftime('%H:%M:%S')}] {self.script:<40} +{time.time() - self.started:6.1f}s  {message}\n"
+        line = (f"[{time.strftime('%H:%M:%S')}] {self.script:<40} "
+                f"+{time.time() - self.started:6.1f}s  {_neutral_ids().text(message)}\n")
         with open(self.path, "a", encoding="utf-8") as handle:
             handle.write(line)
             handle.flush()
@@ -318,7 +327,7 @@ def _timing(mp, sim, resolution: float, steps: int, max_steps: int) -> dict:
         "steps_planned": used,
         "max_steps": int(max_steps),
         "signal_reached": bool(used * dt >= signal_time),
-        # HALF A STEP SHORT OF THE BOUNDARY, deliberately. MEEP steps while
+        # Half a step short of the boundary, deliberately. MEEP steps while
         # `round_time() < until` and this driver steps `ceil((until - t)/dt - tol)`
         # times; at `until = N*dt` exactly, whether N*dt lands a bit above or below
         # MEEP's accumulated time is a property of dt's binary representation, so the
@@ -425,7 +434,7 @@ def child_lift(script: str, out_json: str, progress: ProgressLog, *,
     if sim is None:
         record["lifts"] = None
         record["lift_note"] = "the script never built an mp.Simulation to lift"
-        Path(out_json).write_text(json.dumps(record), encoding="utf-8")
+        write_record(out_json, record)
         return
     restore()  # run/init_sim are stubs until here, and the lift calls init_sim.
     import meep_gpu
@@ -461,7 +470,7 @@ def child_lift(script: str, out_json: str, progress: ProgressLog, *,
     record["lift_s"] = round(time.time() - started, 2)
     progress(f"lift: lifts={record.get('lifts')} driver_gpu={record.get('driver_gpu')!r} "
              f"({record['lift_s']} s)")
-    Path(out_json).write_text(json.dumps(record), encoding="utf-8")
+    write_record(out_json, record)
 
 
 def child_parity(script: str, out_json: str, progress: ProgressLog, *,
@@ -475,7 +484,7 @@ def child_parity(script: str, out_json: str, progress: ProgressLog, *,
     progress(f"captured: outcome={record.get('outcome')}")
     if sim is None:
         record["parity"] = "NO-SIMULATION"
-        Path(out_json).write_text(json.dumps(record), encoding="utf-8")
+        write_record(out_json, record)
         return
     restore()
     import meep as mp
@@ -493,7 +502,7 @@ def child_parity(script: str, out_json: str, progress: ProgressLog, *,
         record["parity"] = "TOO-EXPENSIVE"
         record["parity_rel_l2"] = None
         progress(f"TOO-EXPENSIVE: {plan['cells_estimated_used']} cells at res_floor={res_floor}")
-        Path(out_json).write_text(json.dumps(record), encoding="utf-8")
+        write_record(out_json, record)
         return
     already_initialized = getattr(sim, "fields", None) is not None
     plan["already_initialized"] = already_initialized
@@ -531,14 +540,14 @@ def child_parity(script: str, out_json: str, progress: ProgressLog, *,
         record["parity_error"] = str(exc)[:1500]
         record["lifted_step_s"] = round(time.time() - started, 2)
         progress(f"FAILED (lift/step): {type(exc).__name__}")
-        Path(out_json).write_text(json.dumps(record), encoding="utf-8")
+        write_record(out_json, record)
         return
     record["lifted_step_s"] = round(time.time() - started, 2)
     record["driver_steps"] = int(result.steps)
     record["driver_meep_time"] = float(result.meep_time)
     record["grid_shape"] = [int(value) for value in result.driver.shape]
     record["grid_cells"] = int(math.prod(int(value) for value in result.driver.shape))
-    # WHAT STEPPED IT, read off the driver before anything else can refreeze it.
+    # What stepped it, read off the driver before anything else can refreeze it.
     record["driver_gpu"] = result.driver.gpu
     record.update(dispatch_facts(result.driver))
     progress(f"lifted run done: {result.steps} steps, {record['lifted_step_s']} s, "
@@ -548,7 +557,7 @@ def child_parity(script: str, out_json: str, progress: ProgressLog, *,
 
     started = time.time()
     try:
-        sim.run(until=until)  # THE SAME OBJECT, now stepped by CPU MEEP.
+        sim.run(until=until)  # the same object, now stepped by CPU MEEP.
     except BaseException as exc:  # noqa: BLE001
         record["parity"] = "CPU-MEEP-FAILED"
         record["parity_rel_l2"] = None
@@ -556,7 +565,7 @@ def child_parity(script: str, out_json: str, progress: ProgressLog, *,
         record["parity_error"] = str(exc)[:1500]
         result.close()
         progress(f"FAILED (CPU MEEP): {type(exc).__name__}")
-        Path(out_json).write_text(json.dumps(record), encoding="utf-8")
+        write_record(out_json, record)
         return
     record["cpu_meep_s"] = round(time.time() - started, 2)
     record["cpu_meep_time"] = float(sim.round_time())
@@ -582,7 +591,7 @@ def child_parity(script: str, out_json: str, progress: ProgressLog, *,
     finally:
         result.close()
     progress(f"parity={record.get('parity')} rel_l2={record.get('parity_rel_l2')}")
-    Path(out_json).write_text(json.dumps(record), encoding="utf-8")
+    write_record(out_json, record)
 
 
 # --- parent: one subprocess per script, partial results as they land -----------------
@@ -682,7 +691,7 @@ def main() -> int:
 
     host_gpu = None
     if args.dispatch:
-        # A HOST FACT, ANSWERED BEFORE ANYTHING IS WRITTEN: prefer_gpu=True raises on a
+        # A host fact, answered before anything is written: prefer_gpu=True raises on a
         # host with no GPU route, and every child would record that as its own
         # LIFT-FAILED row, a sweep of one host fact repeated per script.
         from meep_gpu import backends  # noqa: PLC0415
@@ -728,7 +737,7 @@ def main() -> int:
     environment["KMP_DUPLICATE_LIB_OK"] = "TRUE"
     environment["MPLBACKEND"] = "Agg"
     environment["PYTHONPATH"] = str(Path(__file__).resolve().parents[2])
-    # THE ENABLE EVERY CHILD GETS. What the child LIFTS decides whether anything can
+    # The enable every child gets. What the child LIFTS decides whether anything can
     # dispatch (the default is the NumPy reference, which never plans); the variable
     # is a veto on a GPU driver only. --dispatch removes it so the prefer_gpu=True
     # children measure the shipped default; the default keeps the 0 the columns have
@@ -740,6 +749,7 @@ def main() -> int:
     dispatch_enable = environment.get("MEEP_GPU_DISPATCH")
 
     def say(message: str) -> None:
+        message = _neutral_ids().text(message)  # the log leaves the machine with the rows
         print(message, flush=True)
         with log_path.open("a", encoding="utf-8") as handle:
             handle.write(message + "\n")
@@ -788,7 +798,7 @@ def main() -> int:
                 status = "timeout"
                 stderr_text = _as_text(expired.stderr)
             if record_path.exists():
-                record = json.loads(record_path.read_text(encoding="utf-8"))
+                record = _neutral_ids().value(json.loads(record_path.read_text(encoding="utf-8")))
                 break
             if status != "timeout" and looks_like_import_failure(stderr_text) and attempt < args.retries:
                 # The engine tree is under concurrent edit; a transient half-written
@@ -797,6 +807,8 @@ def main() -> int:
                     f"in {args.retry_wait:.0f} s")
                 time.sleep(args.retry_wait)
                 continue
+            # Neutral before it is cut: a tail cut first can begin inside a path.
+            stderr_text = _neutral_ids().text(stderr_text)
             record = {
                 "script": name, "stage": args.stage,
                 "outcome": "timeout" if status == "timeout" else "child_died",

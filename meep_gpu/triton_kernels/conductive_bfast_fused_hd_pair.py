@@ -1,6 +1,6 @@
 """The H->D weld on the two real curl tails the Cartesian product does not reach.
 
-ONE PRODUCT, TWO VARIANTS, TWO BOARD CELLS. :mod:`.fused_hd_pair` welds the certified
+One product, two variants, two board cells. :mod:`.fused_hd_pair` welds the certified
 ``update_H`` into the certified LOSSLESS real-PML ``step_D``. Two seam-instances on
 the Triton fusion board sit on the SAME seam with the SAME ``update_H`` half and a
 DIFFERENT ``step_D`` tail, and they are two of the board's last fifteen
@@ -17,10 +17,10 @@ with ``withdraw_in_seam: false``, ``integrated_electric_sources: 0`` and
 ``served_by: null``.
 
 =============================================================================
-WHY THE TWO CELLS ARE ONE PRODUCT, AND IT IS A MEASUREMENT
+Why the two cells are one product, and it is a measurement
 =============================================================================
 
-The ``update_H`` half is the SAME CERTIFIED BODY on both rows, and that is read off
+The ``update_H`` half is the same certified body on both rows, and that is read off
 the two arms' own predicates rather than off the board's cell label:
 
 * the ``ordinary`` arm at ``update_H`` is ``coverage.constitutive_coverage(..., 'H')``
@@ -35,7 +35,7 @@ the two arms' own predicates rather than off the board's cell label:
   :func:`.bfast_curl.plan_bfast_run_constitutive`, returns a
   ``launch.ConstitutivePlan``.
 
-So the two cells differ in the CURL HALF AND NOTHING ELSE. That is the shape
+So the two cells differ in the curl half and nothing else. That is the shape
 ``cuda_kernels.conductive_bfast_fused_hd_pair`` states for the same two cells on the
 CUDA board, and this module takes it: ONE family, ONE predicate that resolves the
 variant off the run, TWO emitted kernels, and :data:`ARMS` plus :data:`EXTRA_ARMS`
@@ -43,8 +43,8 @@ rather than a widened arm value -- the shape
 ``launch.CERTIFIED_FUSED_PAIR_EXTRA_ARMS`` already carries for
 ``folded_complex_fused_magnetic_pair`` and ``no_pml_fused_electric_pair``.
 
-**THE ONE PLACE THIS DIFFERS FROM THOSE TWO EXTRA-ARM ROWS IS NAMED HERE RATHER THAN
-GLOSSED.** Both of those serve their second arm pair with the SAME LAUNCH. This
+**The one place this differs from those two extra-arm rows is named here rather than
+glossed.** Both of those serve their second arm pair with the SAME LAUNCH. This
 product serves its second arm pair with a DIFFERENT KERNEL of the same family, chosen
 by :func:`resolve_variant` off the run's own predicates. One label, two absorb rows,
 two device strings -- and :func:`explain_conductive_bfast_fused_hd_pair` reports which
@@ -52,7 +52,7 @@ variant a configuration resolved to, so "which arm pair did this product absorb"
 answerable from the record.
 
 =============================================================================
-THE SHAPE: SCRATCH OUTPUT AND FOREIGN-CELL RECOMPUTE, UNCHANGED
+The shape: scratch output and foreign-cell recompute, unchanged
 =============================================================================
 
 Both certified ``step_D`` tails read ``H`` at the thread's own cell AND at its three
@@ -68,7 +68,7 @@ neighbour ``B`` where it needs ``B_prev``.
 So, exactly as in :mod:`.fused_hd_pair`:
 
 * **the constitutive half writes nothing in place.** ``H_new`` and ``f_w_H_new`` go to
-  LAUNCH-LOCAL WRITE-ONLY SCRATCH, so ``H``, ``f_w_H`` and ``B`` are pre-launch state
+  launch-local write-only scratch, so ``H``, ``f_w_H`` and ``B`` are pre-launch state
   for the whole dispatch and no program observes another program's store;
 * **every foreign tap is a RECOMPUTE** through :func:`.fused_hd_pair._h_cell` -- the
   certified ``constitutive_step`` body for side ``H``, whole, evaluated at an
@@ -84,45 +84,45 @@ for the reason :mod:`.cylindrical_real_fused_hd_pair` and :mod:`.folded_fused_hd
 give when they import the same two: a second copy is a second place for the lift to
 drift.
 
-**THAT THE TWO TAILS' MAGNETIC ACCESS SHAPE IS THE PLAIN CURL'S IS MEASURED, NOT
-ASSUMED.** :func:`.fused_hd_pair.offset_coordinates` and
+**That the two tails' magnetic access shape is the plain curl's is measured, not
+assumed.** :func:`.fused_hd_pair.offset_coordinates` and
 :func:`.fused_hd_pair.halo_taps` PARSE each certified body's own offset lines and its
 own load lines; :data:`.fused_hd_pair.HALO_TAPS` declares the six shifted operands and
 the parse must produce exactly them or it RAISES. Both tails pass that parse
 unchanged, which is what licenses one weld shape over two kernels.
 
 =============================================================================
-ONE SUB-LATTICE, ONE COEFFICIENT GROUP
+One sub-lattice, one coefficient group
 =============================================================================
 
 ``SUB_STEPS['step_D']['suffix']`` is ``''`` and
 ``coverage.CONSTITUTIVE_SIDES['H']['half_integer']`` is False, so the curl's
-``kms_x/_y/_z`` and the constitutive's ARE THE SAME THREE VOLUMES and the signature
+``kms_x/_y/_z`` and the constitutive's are the same three volumes and the signature
 binds them once. Both suffixes are READ from the shipped tables and their equality is
 ASSERTED in :func:`plan_conductive_bfast_fused_hd_pair` rather than assumed: binding
 the half-integer set instead compiles, launches, converges, and is a half-cell error
 in the absorber profile. The gate arms it as a mutation.
 
 =============================================================================
-WHAT SITS IN THE SEAM
+What sits in the seam
 =============================================================================
 
 :data:`CARRIES_DEPOSIT_REPAIR` is False and it is a FACT rather than a decision:
 nothing is injected between the ``update_H`` consult (driver.py:3311) and the
 ``step_D`` consult (:3315). The one pass that IS there is the electric integrated-
 source withdraw (:3313-3314), and :mod:`..withdraw_hoist` owns it -- one slot, not
-two; a hoist, not a bracket. :data:`HOISTS_THE_WITHDRAW` is False in this round
+two; a hoist, not a bracket. :data:`HOISTS_THE_WITHDRAW` is False as shipped
 because :data:`INSTALLABLE` is False, which makes ``launch._install_fused_pair``'s
 withdraw-hoist branch unreachable for this product; the predicate therefore refuses BY
 NAME every row whose electric withdraw does work.
 
-WHAT THAT COSTS ON THESE TWO CELLS, MEASURED: **nothing**. Both instances carry
+What that costs on these two cells, measured: **nothing**. Both instances carry
 ``integrated_electric_sources: 0`` and ``withdraw_in_seam: false`` on the board. The
 clause is still evaluated on every row rather than assumed away -- ignorance is never
 an empty set, so an undeclared source list is a refusal.
 
 =============================================================================
-THE CONDUCTIVE VARIANT'S OWN THREE FACTS
+The conductive variant's own three facts
 =============================================================================
 
 1. ``f_cond_D*``, ``condfac_*`` and ``condinv_*`` are bound POSITIONALLY, and a
@@ -137,24 +137,24 @@ THE CONDUCTIVE VARIANT'S OWN THREE FACTS
 3. The conductive history is IN-PLACE state read and written at the own cell, so it
    needs no scratch and takes no part in the rotation. :data:`IN_PLACE` says so.
 
-THE BFAST VARIANT'S: ``f_bfast_D*`` are the run's own state arrays, bound
+The BFAST variant's: ``f_bfast_D*`` are the run's own state arrays, bound
 pointer-identically (the driver-sync requirement
 :func:`.bfast_curl.plan_bfast_pml_curl` states), and the six ``k1``/``k2`` scalars come
 from :func:`.bfast_curl.bfast_curl_coefficients` with the GRID'S OWN declared
 invariance flags -- never a shape test -- exactly as the certified plan computes them.
 
 =============================================================================
-IT IS NOT INSTALLED, AND THE REASON HAS TWO HALVES
+It is not installed, and the reason has two halves
 =============================================================================
 
 :data:`INSTALLABLE` is False and :data:`INSTALLABLE_REASON` carries both halves: the
-label the composer would need, and the ARBITRATION, which is MEASURED PER ROW rather
+label the composer would need, and the ARBITRATION, which is measured per row rather
 than asserted. Over the driver's ``step_B - update_H - step_D - update_E`` slot path
 launches are ``4 - (installed pairs)`` and a two-slot H->D product takes one slot from
 EACH neighbour, so installing it is a LOSS where both neighbouring pairs install, a
 TIE where exactly one does, and a GAIN where NEITHER does.
 
-SERVED ON A FUSION BOARD IS PREDICATE ADMISSION, by that board's own definition. A
+Served on a fusion board is predicate admission, by that board's own definition. A
 released product credits its admitted seam-instances while executing NOWHERE, and this
 module says exactly that: it is in no ``fastpath.RELEASED_FUSED_ARMS`` envelope and
 ``fastpath`` never plans it. **No timing exists for this shape and none is licensed by
@@ -191,7 +191,7 @@ FAMILY = "conductive_bfast_fused_hd_pair"
 SLOT = "update_H"
 
 #: The driver call sites ONE launch of this plan performs, in driver order
-#: (driver.py:3311, :3315). NOTHING BETWEEN THEM IS CARRIED.
+#: (driver.py:3311, :3315). Nothing between them is carried.
 REPLACES: Tuple[str, ...] = ("update_H", "step_D")
 
 #: The seam name ``launch.CERTIFIED_FUSED_PAIR_SEAMS`` files this row under, and the
@@ -227,8 +227,8 @@ VARIANT_ARMS: Dict[str, Tuple[str, str]] = {
 ROTATED: Tuple[str, ...] = _plain.ROTATED
 
 #: The volumes the curl half steps IN PLACE, per variant, and it is safe by
-#: construction for every one: the curl reads and writes them at the PROGRAM'S OWN
-#: CELL only (``f0 + idx``, ``u0 + idx``, ``c0 + idx``, ``s0 + idx``).
+#: construction for every one: the curl reads and writes them at the program's own
+#: cell only (``f0 + idx``, ``u0 + idx``, ``c0 + idx``, ``s0 + idx``).
 IN_PLACE_BY_VARIANT: Dict[str, Tuple[str, ...]] = {
     "conductive": _plain.IN_PLACE + ("f_cond_Dx", "f_cond_Dy", "f_cond_Dz"),
     "bfast": _plain.IN_PLACE + ("f_bfast_Dx", "f_bfast_Dy", "f_bfast_Dz"),
@@ -255,8 +255,8 @@ CARRIES_DEPOSIT_REPAIR = False
 #: Which repair the two slots would install. EMPTY: they install none.
 REPAIR_PATHS: Tuple[str, ...] = ()
 
-#: Does this product perform the seam's electric withdraw before its launch? NO in
-#: this round -- see the module docstring. On these two cells that costs nothing:
+#: Does this product perform the seam's electric withdraw before its launch? NO as
+#: shipped -- see the module docstring. On these two cells that costs nothing:
 #: both instances carry no integrated electric source on the board.
 HOISTS_THE_WITHDRAW = False
 
@@ -266,16 +266,16 @@ HOISTS_THE_WITHDRAW = False
 INSTALLABLE = False
 
 INSTALLABLE_REASON = (
-    "THE COMPOSER IS NOT OFFERED THIS PRODUCT AT ALL, and that is the first half of "
+    "The composer is not offered this product at all, and that is the first half of "
     "the reason: routing it through launch._install_certified_fused_products costs a "
     "label, and on this backend a label plan_step can write must also be declared in "
     "the DISPATCHER'S own tables -- outside this package by the one-way rule it "
-    "keeps, and outside the round that built this product. "
+    "keeps, and outside the work that built this product. "
     "parity/meep_gpu/dispatch_reachability.CERTIFIED_BUT_NOT_INSTALLED names them "
     "from the right side of that wall. The flag is what keeps a later edit that "
     "lands those lines from installing the product before a composition gate has "
     "driven it end to end. "
-    "THE SECOND HALF IS THE ARBITRATION, and it is MEASURED PER ROW rather than "
+    "The second half is the arbitration, and it is measured per row rather than "
     "asserted: over the driver's step_B - update_H - step_D - update_E slot path "
     "launches are 4 - (installed pairs) and a TWO-SLOT H->D product takes one slot "
     "from EACH neighbour, so installing it is a LOSS where both neighbouring pairs "
@@ -283,7 +283,7 @@ INSTALLABLE_REASON = (
     "the three each of this family's two corpus rows is comes from that row's OWN "
     "composer slot table and is recorded, row by row, in the lift leg of "
     "parity/meep_gpu/gate_triton_conductive_bfast_fused_hd_pair.py under "
-    "`arbitration_over_the_driven_rows`. WHAT IT MEASURED, stated here rather than "
+    "`arbitration_over_the_driven_rows`. What it measured, stated here rather than "
     "left to be discovered by opening an artifact: BOTH of this family's two driven "
     "corpus rows are a LOSS -- 2 of 2, no TIE, no GAIN -- in "
     "results/triton_conductive_bfast_fused_hd_pair_2026-09-07/keep/lift/. Installing "
@@ -380,7 +380,7 @@ def raw_curl_tail(variant: str) -> str:
 def curl_lift_edits(variant: str) -> Tuple[Tuple[str, str], ...]:
     """The nine ``(old, new)`` replacements one variant's curl half takes, GENERATED.
 
-    THE SAME NINE THE PLAIN PRODUCT TAKES, on both tails, and that is a MEASUREMENT
+    The same nine the plain product takes, on both tails, and that is a MEASUREMENT
     rather than a convenience: three own-cell magnetic loads become the registers this
     launch has already computed, and six shifted loads become a recompute at the cell
     THIS EMITTER'S own index line composed, under THIS EMITTER'S own guard. Both the
@@ -389,7 +389,7 @@ def curl_lift_edits(variant: str) -> Tuple[Tuple[str, str], ...]:
     a tail-specific change to how either is spelled RAISES here instead of quietly
     redirecting a tap to the plain kernel's cell.
 
-    NOTHING IN THE RETURNED PAIRS IS TRANSCRIBED except the call's shape. The ghost
+    Nothing in the returned pairs is transcribed except the call's shape. The ghost
     BRANCH is not touched: a tap the certified ghost rule masked off still serves an
     exact ``+0.0`` -- ``_h_tap`` closes on ``tl.where(valid, value, 0.0)``, which is
     what ``other=0.0`` delivered.
@@ -464,15 +464,15 @@ if triton is not None:  # pragma: no cover - device code, certified by the gate
     PERIODIC = tl.constexpr(0)
     METALLIC = tl.constexpr(1)
 
-    # THE CERTIFIED CONSTITUTIVE, imported as device functions rather than copied.
+    # The certified constitutive, imported as device functions rather than copied.
     # `_h_cell` is `kernels.constitutive_step`'s side-H body as a function of a cell
     # (its lift is machine-checked in `fused_hd_pair` and re-checked by this family's
     # gate), and `_h_tap` is one component of it under the caller's validity flag.
-    # NEITHER TAIL CHANGES IT: both cells' `update_H` arm delegates to the certified
+    # Neither tail changes it: both cells' `update_H` arm delegates to the certified
     # kernel unchanged, which is what makes one constitutive half serve two cells.
     from .fused_hd_pair import _h_cell, _h_tap  # noqa: PLC0415
 
-    # THE CONDUCTIVE RECURRENCE, likewise imported rather than copied.
+    # The conductive recurrence, likewise imported rather than copied.
     # `conductivity._conductive_component` is the four-case recurrence the certified
     # conductive curl calls three times; the lifted body below calls it with the
     # certified body's own arguments, so the branch table, the `tl.where` selection
@@ -911,7 +911,7 @@ def fused_kernel_for(variant: str) -> Any:
 def resolve_variant(fields: Any, pml: Any) -> Tuple[Optional[str], Tuple[str, ...]]:
     """Which variant a run resolves to, or ``(None, reasons)``.
 
-    THE RUN DECIDES, NOT THE CALLER. A configuration is BFAST when the BFAST curl
+    The run decides, not the caller. A configuration is BFAST when the BFAST curl
     predicate admits it at ``step_D`` and conductive when the conductive one does;
     both admitting is a configuration neither certified curl claims alone and is
     refused BY NAME rather than resolved by branch order, because which of the two
@@ -944,7 +944,7 @@ def conductive_bfast_fused_hd_pair_coverage(
     Nothing is weakened: a configuration either half refuses is refused here with that
     half's reasons, prefixed so a reader can tell which side said it.
 
-    THE ORDER IS THE DRIVER'S. The constitutive half is asked FIRST because it runs
+    The order is the driver's. The constitutive half is asked FIRST because it runs
     first (driver.py:3311), so the first refusal a reader sees names the half the
     driver would have reached first.
 
@@ -983,10 +983,10 @@ def conductive_bfast_fused_hd_pair_coverage(
     if not curl.covered:
         reasons.extend(f"curl half: {reason}" for reason in curl.reasons)
 
-    # THE SEAM'S ONE PASS. Nothing is INJECTED between the two consults, so
+    # The seam's one pass. Nothing is INJECTED between the two consults, so
     # `deposit_repair` is not consulted at all. What IS between them is the electric
     # integrated-source withdraw (driver.py:3313-3314), and `withdraw_hoist` owns it.
-    # IGNORANCE IS NEVER AN EMPTY SET: `Fields` does not hold the source list, so a
+    # Ignorance is never an empty set: `Fields` does not hold the source list, so a
     # predicate that inferred "no withdraw stands" from not being told would be the
     # over-covering refusal this clause exists to prevent.
     reasons.extend(_withdraw_hoist.seam_withdraw_reasons(
@@ -1004,7 +1004,7 @@ def conductive_bfast_fused_hd_pair_coverage(
         hoists_the_withdraw=HOISTS_THE_WITHDRAW,
         span=REPLACES))
 
-    # THE FOLD, RESTATED BY NAME. Both halves already refuse a mirror plane, and on
+    # The fold, restated by name. Both halves already refuse a mirror plane, and on
     # THIS seam the reason is not the D->E and B->H pairs': neither fill runs between
     # these two consults, so the H->D seam is fill-FREE on a folded grid. What refuses
     # a fold here is that this product implements arms a folded run does not select.
@@ -1016,7 +1016,7 @@ def conductive_bfast_fused_hd_pair_coverage(
                 f"update_H and `{VARIANT_ARMS[variant][1]}` step_D arms, and a folded "
                 f"run selects folded arms on both slots")
 
-    # THE ROTATION IS THE PRODUCT'S OWN INVARIANT.
+    # The rotation is the product's own invariant.
     for name in ROTATED:
         if getattr(fields, name, None) is None:
             reasons.append(
@@ -1058,7 +1058,7 @@ def explain_conductive_bfast_fused_hd_pair(
 class ConductiveBfastFusedHdPairPlan(_plain.StartsH, ScratchWeldPairPlan):
     """ONE allocation-free launch for ``update_H`` and one of the two ``step_D`` tails.
 
-    THE SIX ROTATING VOLUMES ARE RESOLVED PER LAUNCH, never cached: the plan owns a
+    The six rotating volumes are resolved per launch, never cached: the plan owns a
     twin of each, reads the engine's CURRENT attribute immediately before the launch
     to decide which of the pair is live, and moves the engine's references only after
     the launch returns. A pointer captured at plan time would be one rotation stale --

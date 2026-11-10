@@ -1,6 +1,6 @@
 """Host contracts for Metal's complex folded tensor-row PML ``update_E`` arm.
 
-Under ruling R7 the row is MEEP's double row per part, in software binary64
+The row is MEEP's double row per part, in software binary64
 (:mod:`.metal_kernels.softfp64`), with the real family's per-chunk presence words; the
 Bloch connection lands on the same-index operand's plane 0, as the array path's
 ``_bloch_ghost_operand`` places it. The kernel's PML tail is the per-chunk select; the
@@ -178,7 +178,7 @@ def test_distinct_products_are_refused_by_name(backend_ready, mutation, needle):
                          ids=("unphased", "bloch"))
 def test_an_otherwise_admitted_run_is_admitted_with_or_without_a_bloch_phase(
         backend_ready, k_point):
-    """No ruling refuses the row any more, and the Bloch connection is carried."""
+    """No clause refuses the binary64 row, and the Bloch connection is carried."""
     fields, pml = build(k_point=k_point)
     verdict = family.metal_complex_folded_offdiag_coverage(
         fields, pml, HostResidency(), _record(fields, pml))

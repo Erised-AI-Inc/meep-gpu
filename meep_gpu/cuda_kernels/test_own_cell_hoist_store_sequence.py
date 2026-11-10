@@ -2,7 +2,7 @@
 
 WHAT THE HOIST CLAIMS. Five device texts on this track issue every own-cell word a thread
 reads before the kernel's first store: the fused magnetic pair
-(``fused_magnetic_pair_pml_real``, S3d), the two register-view singles
+(``fused_magnetic_pair_pml_real``), the two register-view singles
 (``update_H_pml_real`` / ``update_E_pml_real``, ``own_cell_hoist.py``) and the Dcyl complex
 magnetic and electric pairs. The claim each module makes is that the
 arithmetic, its parenthesisation, the stores and their order are the certified ones and only
@@ -31,12 +31,12 @@ THE PROPERTY, per kernel, the hoisted text against the certified pre-hoist text:
    array). One issued after the kernel's first store is EXPOSED unless a store by this
    thread to the same address, under a predicate the load's own implies, precedes it: that
    one is a reload of the lane's own write, which the compiler forwards. The hoisted texts
-   must carry 0 exposed loads. The certified texts carry 11 (S3d's pair), 5 per single and
-   22 per cylindrical text, which is the SASS census's base column for the six Round B texts
+   must carry 0 exposed loads. The certified texts carry 11 (the fused magnetic pair), 5 per single and
+   22 per cylindrical text, which is the SASS census's base column for the six texts hoisted on 2026-09-25
    (``cuda_round_b_compose_2026-09-25/compile/own_cell.json``: 5/5/22/22/22/22). The
    reloads are pinned by count rather than hidden: on both Dcyl pairs the i*m/r pass's
    ladder (``fold_apply_reg``) reads back the target and its ``fu`` word pairs its own lane
-   stored in the curl form (12 per text, on both texts; bit_parity_0_10 KC8).
+   stored in the curl form (12 per text, on both texts; the 1.0 cylindrical forms).
 
 Clause 3 is what the hoist is FOR and clauses 1-2 are what it must not break.
 
@@ -52,7 +52,7 @@ and requires each to be caught by the clause named for it -- and the two load de
 INVISIBLE to the other load clause, so neither load clause is redundant.
 
 THE REFERENCE IS FROZEN, AND THAT WAS A CHOICE. The certified pre-hoist texts are
-``own_cell_hoist_reference.json``, five line lists cut from the results rounds that emitted
+``own_cell_hoist_reference.json``, five line lists cut from the runs and changes that emitted
 them (each entry names its ``cut_from``), and each is asserted against a sha256 literal
 below. The alternative -- re-deriving the pre-hoist text at run time -- is available for the
 two singles only: ``own_cell_hoist.unhoisted_kernel_code`` is the inverse every lifter reads,
@@ -77,7 +77,7 @@ counts it reproduces are pinned in :data:`KNOWN` (the design rounds' figures: st
 
 NOTHING HERE COMPILES OR LAUNCHES. The texts are emitted the way the siblings emit them on a
 host with no CuPy: the Dcyl pairs directly (``cylindrical_complex_kernels`` imports CuPy only
-inside functions), the S3d pair and the singles through the three certified modules loaded
+inside functions), the fused magnetic pair and the singles through the three certified modules loaded
 by path under private names with a scoped ``cupy`` stand-in
 (``test_fused_magnetic_pair_fill_carry.py``'s discipline).
 """
@@ -115,9 +115,9 @@ REFERENCE_SHA256 = {
     "fused_magnetic_pair_pml_real":
         "ad9b580e5ce5a72b749ce1812127fa3fe05fa50035335dd2086bb7756088fbf0",
     "update_H_pml_real":
-        "befca96b0260cb297ee872ae2f0f3d2ace20f8425ca285725ea79a73e4be6516",
+        "b086e29c30ee3396a06893e8e106777aa33d7ffbccb4b1f482236bc257afacf4",
     "update_E_pml_real":
-        "c3b8cc7a121f898c7d73e574f644e44a565a97080987144a5057683ae1f3deee",
+        "abbccc97389e914c615b1018996398077678e3f2f5c414dca939df297c652b2b",
     "fused_magnetic_pair_pml_cyl_complex":
         "a68897cbab476de4f2739e67b8ae2a22dc120ed91300b18781fc52f5322ae94b",
     "fused_electric_pair_pml_cyl_complex":
@@ -322,7 +322,7 @@ def _simplify(value, facts):
     other arm), so a select nested under the same condition -- a register loaded under a
     membership flag and read again in the arm that flag selects -- reads as its arm. The
     instrument decided only from the enclosing predicates; the nested case first appears
-    with the per-chunk forms (bit_parity_0_10 KC1), whose loads are guarded.
+    with the 1.0 per-chunk forms, whose loads are guarded.
     """
     if isinstance(value, dict):
         return {k: _simplify(v, facts) for k, v in value.items()}
@@ -463,7 +463,7 @@ class Machine:
     def expr(self, text: str, binding):
         # A wholly parenthesised expression is its inside: a nested select spelled
         # `own_x ? (in_i_x ? H[idx] : 0.0f) : 0.0f` (the fused pair's hoisted loads,
-        # bit_parity_0_10 KC2) reaches here as `(in_i_x ? ...)`, whose ternary sits one
+        # since 1.0) reaches here as `(in_i_x ? ...)`, whose ternary sits one
         # bracket deep. Before this, such a text did not parse at all.
         text = text.strip()
         while text.startswith("(") and _match_close(text, 0, "(", ")") == len(text) - 1:
@@ -811,7 +811,7 @@ class _NumpyWearingCupysName(types.ModuleType):
 
 
 def _certified_by_path() -> dict:
-    """The three certified modules the S3d pair and the singles need, loaded by path under
+    """The three certified modules the fused magnetic pair and the singles need, loaded by path under
     private names with ``cupy`` stubbed only for the duration of the load."""
     previous = sys.modules.get("cupy")
     sys.modules["cupy"] = _NumpyWearingCupysName()
@@ -893,7 +893,7 @@ def test_the_frozen_references_are_the_certified_pre_hoist_texts(reference):
         digest = hashlib.sha256(reference[key].encode("utf-8")).hexdigest()
         assert digest == REFERENCE_SHA256[key] == entry["sha256"], key
         assert f'extern "C" __global__ void {entry["kernel"]}(' in reference[key], key
-        assert entry["cut_from"].startswith("apps/api/parity/meep_gpu/results/"), key
+        assert entry["cut_from"].startswith(("apps/api/parity/meep_gpu/results/", "0.10 lane ")), key
 
 
 @pytest.mark.parametrize("kernel", SINGLES)
@@ -1022,7 +1022,7 @@ def _plant_single(text: str, kernel: str, mutation: str) -> str:
 
 def _plant_product(text: str, family, mutation: str) -> str:
     complex_words = "cf_store(" in text
-    # The real helper's two stores in MEEP's per-chunk forms (bit_parity_0_10 KC1/KC2):
+    # The real helper's two stores in MEEP's per-chunk forms (since 1.0):
     # the auxiliary behind its dsigw flag, the field from the selected form's value.
     aux_store = ("    if (dsigw) cf_store(fw, idx, src);\n" if complex_words
                  else "    if (dsigw) fw[idx] = src;\n")
@@ -1107,12 +1107,12 @@ OFFDIAG = offdiag_emitter.KERNEL_NAME
 #: The pair the 2026-09-28 kernel screen compiled and timed on ``pml_3d`` (all six rows
 #: live): 0 differing words at 512,000, 2,097,152 and 7,077,888 cells. A change to either
 #: text is a change to what was measured, and owes the device a new screen and the family
-#: gate a new run. Re-cut with the 0.10 per-chunk forms (the double row, the presence
+#: gate a new run. Re-cut with the 1.0 per-chunk forms (the double row, the presence
 #: words and the flagged tail); the screen and the gate are owed on these texts.
 OFFDIAG_SCREENED_MASK = (1, 1, 1, 1, 1, 1)
 OFFDIAG_SCREENED_SHA256 = {
-    "certified": "54322f32707f50d6bd8c3f373bd93ceedaa137de809d554dd8e7f151172b8217",
-    "launch": "66d99934225da76cd630453fbade8c1b503ca0e705feb2833963dea53162b42b",
+    "certified": "7ec8cca0de4793c98b229a7bbeedb5bfc52617d72edf9b3eb23b852900c30da0",
+    "launch": "848cdb47cea48d373ec50f7be45ad9cfec93fd176f1965977baf4241c32f2b36",
 }
 
 #: The row masks ``gate_cuda_offdiag.GATE_ROW_MASKS`` sweeps; the planted controls run here.
@@ -1216,7 +1216,7 @@ def test_each_clause_catches_its_planted_defect_on_the_off_diagonal_single(
 
 @pytest.mark.parametrize("kernel", SINGLES)
 def test_the_forward_reproduces_the_shipped_register_view_singles(kernel, hoisted):
-    """The forward spelling is the one Round B spelt by hand, byte for byte."""
+    """The forward spelling is the one spelt by hand in the 2026-09-25 own-cell hoist, byte for byte."""
     statements = own_cell_hoist.unhoisted_kernel_code(hoisted[kernel], kernel, kernel)
     assert own_cell_hoist.hoisted_kernel_code(statements, kernel, kernel) == hoisted[kernel]
 
@@ -1262,7 +1262,7 @@ def test_the_forward_refuses_a_text_its_inverse_would_not_return(hoisted):
         own_cell_hoist.hoisted_kernel_code(crossed, kernel, "crossed")
 
 
-#: The one-form ``constitutive_apply`` every table shipped until 0.10: no membership
+#: The one-form ``constitutive_apply`` every table shipped until 1.0: no membership
 #: flag, the auxiliary read and written on every cell.
 _FLAGLESS_CONSTITUTIVE_APPLY = (
     "__device__ __forceinline__ void constitutive_apply(\n"
@@ -1279,7 +1279,7 @@ _FLAGLESS_CONSTITUTIVE_APPLY = (
 def test_a_text_whose_helper_takes_no_membership_flag_is_refused_by_name():
     """A single not yet stepped to MEEP's per-chunk forms is refused, not hoisted on a
     flag it does not define: the emitted off-diagonal ``update_E`` with the one-form
-    helper it carried until 0.10 put back."""
+    helper it carried until 1.0 put back."""
     certified = offdiag_emitter.offdiag_source(OFFDIAG_SCREENED_MASK)
     helper = own_cell_hoist._helper_text(certified, "constitutive_apply")  # noqa: SLF001
     flagless = certified.replace(helper, _FLAGLESS_CONSTITUTIVE_APPLY, 1)

@@ -13,7 +13,7 @@ The passes are observed rather than re-implemented: the driver's own module-leve
 array functions and ``FastPathPlan.dispatch`` are wrapped, so what this records is
 the sequence the driver actually ran, dispatches included.
 
-WHAT IT MEASURED, 2026-09-11, on the GPU host RTX A6000s (GPUs 1 and 6, Triton table,
+What it measured, 2026-09-11, on the GPU host RTX A6000s (GPUs 1 and 6, Triton table,
 the shipped composition). ``folded_dispersive_2d`` and ``folded_2d`` behave
 IDENTICALLY at every sub-step, at resolution 20 and 30, after the full 1600-step
 ladder:
@@ -31,7 +31,7 @@ ladder:
 So a report of a kernel-vs-array divergence at this site is not a statement about
 any sub-step of the half-step on these shapes. Re-run this before believing one.
 
-Run (the GPU host, one pinned GPU, the route lane's environment)::
+Run (the GPU host, one pinned GPU, the route campaign's environment)::
 
     CUDA_VISIBLE_DEVICES=<idx> python -u parity/meep_gpu/probe_sync_half_step.py \\
         --gpu-id 0 --case folded_dispersive_2d --out <dir>/probe.json
@@ -97,7 +97,7 @@ def main() -> int:
     import gate_dispatch_end_to_end as e2e
     import gate_dispatch_fused_route as route
 
-    # AN NVIDIA PROBE, REFUSED OFF NVIDIA: its legs lift ``prefer_gpu=True``, which
+    # An NVIDIA probe, refused off NVIDIA: its legs lift ``prefer_gpu=True``, which
     # on an Apple GPU resolves Metal drivers this probe's Triton counter cannot see
     # (it would write a stage-by-stage artifact reading 0 launches).
     refusal = e2e.nvidia_host_refusal("probe_sync_half_step.py")
@@ -278,7 +278,7 @@ def main() -> int:
                       if any(isinstance(v, dict) and not v["identical"]
                              for k, v in row.items() if k != "stage")), None)
     report["first_divergent_stage"] = first_bad
-    say(f"{case}: FIRST DIVERGENT STAGE = {first_bad!r}")
+    say(f"{case}: first divergent stage = {first_bad!r}")
     if arguments.out:
         os.makedirs(os.path.dirname(arguments.out), exist_ok=True)
         with open(arguments.out, "w", encoding="utf-8") as handle:

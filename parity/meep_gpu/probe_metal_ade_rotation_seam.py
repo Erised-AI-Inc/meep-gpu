@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""THE ROTATION QUESTION AT THE ``update_E`` -> ``update_P`` SEAM, MEASURED.
+"""The rotation question at the ``update_E`` -> ``update_P`` SEAM, measured.
 
-WHY THIS PROBE EXISTS BEFORE ANY KERNEL. The Metal fusion matrix
+Why this probe exists before any kernel. The Metal fusion matrix
 (``results/fusion_matrix_metal_2026-08-20/fusion_matrix.txt``) prices all five
 E->P cells as FITS on bindings and then declines to call any of them buildable::
 
@@ -26,8 +26,8 @@ LEG 1  interleaving_equivalence
     the ALREADY CERTIFIED Metal products, entry-sliced, on the device, per
     complete step, as uint32 words.  If YES, a fused E->P product does not have to
     bake the rotation at all: it inherits the existing host rotation between
-    per-component launches, and the third option the matrix did not list — ONE
-    COMPONENT PER LAUNCH, ROTATION LEFT WHERE IT IS — is the buildable one.
+    per-component launches, and the third option the matrix did not list — one
+    component per launch, rotation left where it is — is the buildable one.
 
 LEG 2  rotation_orbit_disjointness
     Given that, does the rotation ever place a per-component launch's OUTPUT on
@@ -227,7 +227,7 @@ def run_interleaving_equivalence(label: str, cell: Sequence[float], boundaries: 
                                  steps: int) -> Dict[str, Any]:
     """Does the per-component interleave equal the driver's sub-step order?
 
-    THE COMPARATOR IS NOT A SECOND MODEL OF THE ARITHMETIC. Both sides run the
+    The comparator is not a second model of the arithmetic. Both sides run the
     SAME certified Metal products; the only difference is the ORDER their entries
     are dispatched in. The reference side runs every ``update_E`` entry and then
     every ``update_P`` entry, which is ``driver.step``'s order
@@ -303,7 +303,7 @@ def run_interleaving_equivalence(label: str, cell: Sequence[float], boundaries: 
         if difference:
             break
 
-    # THE NON-VACUITY FLOOR, SPLIT BY ROLE. This walk runs only update_E and
+    # The non-vacuity floor, split by role. This walk runs only update_E and
     # update_P, so B/D/H are the seam's INPUTS and must NOT move while E, f_w_E
     # and every polarization array must. A floor that demanded movement from all
     # 44 arrays would fail on a correct run; one that demanded it from none would
@@ -427,7 +427,7 @@ def leg_rotation_orbit_disjointness() -> Dict[str, Any]:
                     per_component_conflicts.append(
                         {"orbit_position": position, "component": component,
                          "aliased": sorted(reads & writes)})
-            # ALL COMPONENTS IN ONE LAUNCH: the union, which is fused_ade_state.
+            # All components in one launch: the union, which is fused_ade_state.
             reads = {row["p_now"] for row in launches} | {row["p_prev"] for row in launches}
             writes = {row["out"] for row in launches}
             if reads & writes:
@@ -493,7 +493,7 @@ _LOAD_THEN_STORE = """    float v = in0[idx];
 def leg_program_order_under_aliasing() -> Dict[str, Any]:
     """One launch, two bindings, one buffer, one index — what does the load see?
 
-    SCOPE, STATED BEFORE THE NUMBER. This is one toolchain, one trivial body, one
+    Scope, stated before the number. This is one toolchain, one trivial body, one
     grid. It is the same class of evidence ``fused_ade_state``'s note calls "an
     OBSERVATION, not a guarantee", and it is recorded here for the same reason:
     the shape this probe licenses does NOT depend on it, and a reader deciding to
@@ -569,7 +569,7 @@ def fitness_source(fixed_pointers: int, poles: int, volume_sigmas: int,
 def leg_binding_fitness() -> Dict[str, Any]:
     """Compile the real fused signature at each cell's own corpus pole count.
 
-    THE FIXED POINTER COUNTS ARE THE TWO CERTIFIED E BODIES' OWN, not estimates:
+    The fixed pointer counts are the two certified E bodies' own, not estimates:
 
     * no-PML stored E — ``e_out, d_in, inv_e`` = 3 (no_pml_stored_e.py:56-70,
       with the eight-slot pole pad replaced by exactly ``pole_count`` slots,

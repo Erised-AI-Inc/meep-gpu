@@ -1,12 +1,12 @@
 """Merge-bar tests for the Metal COMPLEX radial scan (``cylindrical_complex_scan``).
 
-WHAT THIS SUITE OWNS AND WHAT IT DOES NOT. The BYTES are the device gate's —
+What this suite owns and what it does not. The BYTES are the device gate's —
 ``parity/meep_gpu/gate_metal_cylindrical_complex_scan.py`` launches the kernel against
 ``stepping.cylindrical_rderiv_difference`` and compares uint32 words. What lives here is
 everything true about this kernel WITHOUT a device, plus the smallest non-vacuous device
 check.
 
-THE ONE FACT THIS FILE EXISTS TO PIN: the complex scan IS the real scan with ``float2``
+The one fact this file exists to pin: the complex scan IS the real scan with ``float2``
 registers. The array path forms every step of MEEP's per-chunk radial sum per part
 (``part_products``): the weighted term, the row difference, the product with the
 multiplied ``rinv`` and the running sum are each one rounded real operation per part,

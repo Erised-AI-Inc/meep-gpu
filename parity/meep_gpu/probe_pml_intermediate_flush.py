@@ -1,6 +1,6 @@
 """Is fu_Dz's 1.922e-28 the flush cliff, or an arithmetic difference? Replayed on the HOST.
 
-WHY THIS AND NOT A DEVICE RUN. The question is what MPS's native denormal flushing does to
+Why this and not a device run. The question is what MPS's native denormal flushing does to
 a stored split-field PML INTERMEDIATE. That is answerable without MPS: run the array path
 twice on the same lift -- once as it ships, once with every subnormal INTERMEDIATE of the
 PML recurrence flushed to zero exactly where a flushing executor would flush it -- and see
@@ -73,7 +73,7 @@ def _state(driver):
 
 
 def main() -> int:
-    # THE CASE IS SELECTABLE because the question recurred on a second case. It was
+    # The case is selectable because the question recurred on a second case. It was
     # hardcoded to pml_3d_diagonal when the instrument was built for fu_Dz; the beta
     # electric pair's release on 2026-09-12 put special_kz_2d's fields.Dy over the
     # field ceiling at 1.894e-28 while its own fu_Dy sat at 1.896e-28 UNDER the

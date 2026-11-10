@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """DEVICE byte gate: the Triton H->D weld on a FOLDED COMPLEX grid.
 
-TWO BOARD CELLS, ONE FAMILY, **ONE** EMITTED KERNEL, FIVE SEAM-INSTANCES::
+Two board cells, one family, **one** emitted kernel, five seam-instances::
 
     H_to_D  (folded complex              -> folded complex PML)              2
     H_to_D  (folded complex off-diagonal -> folded complex off-diagonal PML) 3
@@ -9,20 +9,20 @@ TWO BOARD CELLS, ONE FAMILY, **ONE** EMITTED KERNEL, FIVE SEAM-INSTANCES::
 Read off ``results/fusion_matrix_triton_2026-09-07_cyl/fusion_matrix.json``
 (``aggregate.h_to_d_seam.instances``, ``one_per_row`` true, denominator 597).
 
-THE TWO CELLS ARE ONE LAUNCH, and that is the strongest form of the extra-arm claim
+The two cells are one launch, and that is the strongest form of the extra-arm claim
 this package makes: the shipped off-diagonal builders say so in their own words --
 "The kernel and the plan class are K1's, untouched; only the ADMISSION is new". This
 gate therefore drives fixtures of BOTH admissions through the SAME kernel and records
 which admission each resolved to.
 
-WHAT THE FIXTURES MUST BE. Complex storage, at least one MIRROR axis, ``beta == 0``.
+What the fixtures must be. Complex storage, at least one MIRROR axis, ``beta == 0``.
 The near face of a folded axis is the mirror plane, not a boundary, so the absorber is
 spelled per face. Both mirror codes are exercised -- ``MIRROR_PERIODIC`` (whose
 TOP-PLANE ownership mask is a delta the unfolded kernel does not carry) and
 ``MIRROR_METALLIC`` -- because which of the two an axis resolves to is the single
 point of failure in the folded kernel.
 
-WHY THIS GATE COMPARES ``fu_D``. :mod:`.symmetry`'s own docstring says the two folded
+Why this gate compares ``fu_D``. :mod:`.symmetry`'s own docstring says the two folded
 masks are INVISIBLE at whole-step granularity, because the driver's fill passes
 overwrite exactly the planes they protect. That statement is about the TARGET and is
 NOT true of the AUXILIARY: ``curlN`` feeds both ``nN`` (stored to ``fu_D``) and ``vN``
@@ -30,15 +30,15 @@ NOT true of the AUXILIARY: ``curlN`` feeds both ``nN`` (stored to ``fu_D``) and 
 ``fu_D``. Every stored volume the engine allocates is compared, so both mask drops are
 observable, and each is armed.
 
-THE FORMS ARE THE ARRAY PATH'S. Both halves step each stored part with the root's
+The forms are the array path's. Both halves step each stored part with the root's
 forms on the chunk record (the left-to-right stencil with partner presence, the
 chunk-keyed recurrence, the one-add constitutive accumulation, the auxiliary contract on
 ``fu_D`` and on the scratch ``f_w_H``), and the run's first ``update_H`` starts H from B
-(``mirror_periodic_first_update``). The KERNELS.md 7.1 inversions and the 7.2 battery
+(``mirror_periodic_first_update``). The inverted groupings and the per-chunk form battery
 are armed, and the Bloch connection is armed on the one fixture whose PERIODIC axis
 carries a phase.
 
-THE LEG SET, THE REFERENCE COUNTING AND WHAT IS RECORDED-RATHER-THAN-ASSERTED are the
+The leg set, the reference counting and what is recorded-rather-than-asserted are the
 shared kit's; see :mod:`triton_hd_tail_gate_kit`.
 """
 
@@ -118,7 +118,7 @@ class FoldedComplexProduct(kit.Product):
          {"symmetry": (("y", -1),),
           "boundaries": {"x": "metallic", "y": "metallic"},
           "offdiagonal": True}),
-        # THE RUN'S FIRST update_H on the mutation fixture's grid: unseparated, so
+        # The run's first update_H on the mutation fixture's grid: unseparated, so
         # every arrangement performs MEEP's start of H at step 1 (the array path in
         # update_H, the weld through its start_h scalar). Every fixture above is
         # seeded mid-run.
@@ -178,10 +178,10 @@ class FoldedComplexProduct(kit.Product):
             "old": ("        curl2_re = curl_stencil(b_x_re, b2_re, a2_re, a_y_re, dtdx, "
                     "px, py)\n"),
             "new": "        curl2_re = dtdx * ((b_x_re - b2_re) + (a2_re - a_y_re))\n",
-            "why": "INVERTED (KERNELS.md 7.1): Dz's real curl takes the PREVIOUS package "
-                   "grouping, the pairwise `(g1s - g1) + (g2 - g2s)`, in place of MEEP's "
-                   "left-to-right `((g1s - g1) + g2) - g2s` that forms.curl_stencil "
-                   "spells",
+            "why": "INVERTED (docs/development/certification.md#inverted-grouping-mutations): "
+                   "Dz's real curl takes the PREVIOUS package grouping, the pairwise `(g1s - "
+                   "g1) + (g2 - g2s)`, in place of MEEP's left-to-right `((g1s - g1) + g2) - "
+                   "g2s` that forms.curl_stencil spells",
         },
         "b1_whole_grid_recurrence": {
             "target": "kernel", "expected": "CAUGHT", "hits": 1,
@@ -263,9 +263,9 @@ class FoldedComplexProduct(kit.Product):
             "target": "kernel", "expected": "NULL", "hits": 1,
             "old": "        p_re = tl.load(u0 + 2 * idx, mask=live & du0, other=0.0)\n",
             "new": "        p_re = tl.load(u0 + 2 * idx, mask=live, other=0.0)\n",
-            "why": "PREDICTED NULL (KERNELS.md 7.2, the unconditional auxiliary load): "
-                   "off the dsigu chunk the selected form never consumes fu_Dx and its "
-                   "store stays masked; the guard is pinned by the lift",
+            "why": "PREDICTED NULL (the unguarded auxiliary load; "
+                   "docs/development/certification.md#chunk-form-battery): off the dsigu chunk the selected "
+                   "form never consumes fu_Dx and its store stays masked; the guard is pinned by the lift",
         },
         "m_top_plane_mask_dropped": {
             "target": "kernel", "expected": "CAUGHT", "hits": 3,
@@ -277,7 +277,7 @@ class FoldedComplexProduct(kit.Product):
                    "THE ONE THIS GATE'S MUTATION FIXTURE FOLDS (`mirror_periodic` "
                    "carries symmetry ('y', 1) and terminates x with a metallic wall), "
                    "and pointing the same edit at BCX instead measured NULL on this "
-                   "lane's first full campaign -- a dead branch, not a harmless mask; "
+                   "gate's first full campaign -- a dead branch, not a harmless mask; "
                    "the X-axis form is kept below as a declared null with that "
                    "reason. The Metal sibling measured 264 words on this defect after "
                    "COMPLETE driver steps, EVERY one of them in fu_D and none in D -- "
@@ -366,7 +366,7 @@ class FoldedComplexProduct(kit.Product):
     def configure(self, driver: Any, spec: Mapping[str, Any]) -> None:
         """Install an off-diagonal chi1inv row where the fixture asks for one.
 
-        THE ROW IS WHAT MOVES THE ADMISSION, not the launch: the off-diagonal
+        The row is what moves the admission, not the launch: the off-diagonal
         predicate is K1's clause set with the off-diagonal clause INVERTED, and both
         admissions build the same plan around the same kernel.
         """
@@ -375,7 +375,7 @@ class FoldedComplexProduct(kit.Product):
         shape = tuple(int(n) for n in driver.grid.shape)
         xp = driver.xp
         row = xp.asarray(np.full(shape, np.float32(0.08), np.float32))
-        # THE ROWS RIDE WITH THE DIAGONAL, because that is the engine's only door:
+        # The rows ride with the diagonal, because that is the engine's only door:
         # `Fields.set_epsilon_volumes` takes `chi1inv_offdiagonal` and validates it
         # (fields.py:1210-1310), and a row installed any other way would not be the
         # row the array path reads.
@@ -474,7 +474,7 @@ class FoldedComplexProduct(kit.Product):
         for target in range(3):
             if f"g{target} +" in lifted:
                 findings.append(f"g{target} survives below the seam")
-        # EVERY SHIFTED OPERAND IS A PAIR whose two word planes agree on component,
+        # Every shifted operand is a pair whose two word planes agree on component,
         # cell AND guard -- `halo_taps` raises otherwise, and this records what it
         # parsed so a reader sees the six operands rather than trusting the count.
         constitutive_equal = (_complex.certified_constitutive_tail()
@@ -483,7 +483,7 @@ class FoldedComplexProduct(kit.Product):
             findings.append(
                 "the imported complex constitutive lift no longer equals the "
                 "certified body")
-        # THE HELPERS THIS KERNEL MAY REACH, and no other: the connection alone; every
+        # The helpers this kernel may reach, and no other: the connection alone; every
         # other product on complex storage is formed part by part on real words.
         import re as _re  # noqa: PLC0415
 
@@ -546,7 +546,7 @@ class FoldedComplexProduct(kit.Product):
             conditions (a callable ``withdraw``, ``is_integrated``, and at least one
             source point). The third is not decoration: a stand-in without it is
             ADMITTED, and the refusal leg would then be measuring nothing -- caught on
-            this lane's first device smoke, 2026-09-08."""
+            the H->D tail gates' first device smoke, 2026-09-08."""
 
             component = "Ez"
             is_integrated = True

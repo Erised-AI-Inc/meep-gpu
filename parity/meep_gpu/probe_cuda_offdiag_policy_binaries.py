@@ -3,28 +3,28 @@
 The gate is cut twice, once under ``keep`` and once under ``flush``. Two runs that
 agree prove nothing unless the two runs were actually DIFFERENT runs. This is the
 same pair of measurements the curl and the constitutive re-cuts settled, applied
-to ``update_E_pml_real_offdiag`` — and applied PER ROW MASK, because this
+to ``update_E_pml_real_offdiag`` — and applied per row mask, because this
 family's device source is emitted, so "the kernel" is a set of sources sharing one
 name and a policy that changed one of them says nothing about the others.
 
-1. THE CUBIN DIGEST, at the seam the policy acts on.
+1. The cubin digest, at the seam the policy acts on.
    ``install_nvrtc_binary_observer`` wraps ``cupy.cuda.compiler.compile_using_nvrtc``
    BELOW the strip, so it records the option tuple NVRTC really received and the
    sha256 of the bytes it really returned. Each leg runs in its own process with a
    private, COLD, policy-token-carrying ``CUPY_CACHE_DIR``, so CuPy's disk cache —
    keyed ABOVE that seam — cannot serve one policy's binary under the other's name.
 
-   ATTRIBUTION IS BRACKETED, NOT POSITIONAL. The observer sees every NVRTC call in
+   Attribution is bracketed, not positional. The observer sees every NVRTC call in
    the process and CuPy makes several of its own; a verdict taken over all of them
-   measures the wrong thing and measured it wrongly on the constitutive round (two
+   measures the wrong thing and measured it wrongly on the constitutive gate (two
    of CuPy's arithmetic-free compiles were legitimately identical across the
    policies and scored the whole run ``distinct=False``). The observation index is
-   bracketed around each ``_get_kernel`` call, and THE ATTRIBUTE READ IS INSIDE THE
-   BRACKET because ``cp.RawKernel`` construction compiles nothing —
+   bracketed around each ``_get_kernel`` call, and the attribute read is inside the
+   bracket because ``cp.RawKernel`` construction compiles nothing —
    ``RawKernel.kernel`` is lazy and the NVRTC call happens on first access.
 
-2. THE NEEDLE, which is the stronger claim: that the policy reaches THIS FAMILY'S
-   OWN ARITHMETIC — the coupling — rather than merely changing its bytes.
+2. The needle, which is the stronger claim: that the policy reaches this family's
+   own arithmetic — the coupling — rather than merely changing its bytes.
 
    Every D volume is filled with one float32 subnormal ``n = 2**-135``, every
    inverse permittivity and every live row coefficient with exactly 1.0, ``kps``
@@ -41,16 +41,16 @@ name and a policy that changed one of them says nothing about the others.
    "nonzero" — and under ``-ftz=true`` every one of those multiplies flushes and
    the answer is exactly zero.
 
-   AN UNCOUPLED COMPONENT IS THE DISCRIMINATOR. ``Ey`` and ``Ez`` take the plain
+   An uncoupled component is the discriminator. ``Ey`` and ``Ez`` take the plain
    arm on the single-slot mask, so they compute ``n * 1`` and land on ``n``, not
    ``2n``. A leg where the coupled and the uncoupled components agree is reporting
    a fixture in which the coupling never fired, and the coupling is the only thing
    this family adds.
 
-   THE FIXTURE'S OWN NON-VACUITY is read back off the device after the launch: the
+   The fixture's own non-vacuity is read back off the device after the launch: the
    D volumes are read-only to this sub-step, so whatever they hold afterwards is
    what the kernel was given. Built with ``cupy.full(..., needle)`` the needle does
-   NOT survive the trip under a flush policy — measured on the constitutive round,
+   NOT survive the trip under a flush policy — measured on the constitutive gate,
    where the source array read back as exactly zero BEFORE the kernel ran and "the
    kernel flushed it" was a statement about the fixture. The pattern is delivered
    as ``uint32`` and reinterpreted on the device, so no float touches it in flight.
@@ -276,6 +276,7 @@ def _digest_by_variant(leg: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
+    import neutral_ids  # noqa: PLC0415
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", required=True)
     parser.add_argument("--cache-root", required=True,
@@ -309,7 +310,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             env=environment, capture_output=True, text=True)
         elapsed = round(time.time() - started, 2)
         record: Dict[str, Any] = {"leg": f"cold_{policy}", "policy": policy,
-                                  "cache_dir": cache_dir, "cold_cache": True,
+                                  "cache_dir": neutral_ids.path(cache_dir), "cold_cache": True,
                                   "returncode": completed.returncode,
                                   "seconds": elapsed,
                                   "stdout": completed.stdout[-4000:],
@@ -354,7 +355,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 and flush_entry.get("binary_sha256")
                 and keep_entry["binary_sha256"] != flush_entry["binary_sha256"]),
         }
-    # THE SOURCES MUST DIFFER FROM EACH OTHER TOO. If two row masks compiled the
+    # The sources must differ from each other too. If two row masks compiled the
     # same source the sweep is covering one variant and calling it three.
     keep_sources = [(keep_variants.get(f"{KERNEL}|R{''.join(str(f) for f in m)}")
                      or {}).get("source_sha256") for m in MASKS]

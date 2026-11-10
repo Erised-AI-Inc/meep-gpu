@@ -6,7 +6,7 @@ of the Metal family ``metal_kernels/beta_fused_magnetic_pair.py`` certified by
 ``gate_metal_below_the_cut_fused_pairs.py``.
 
 ===========================================================================
-WHAT THE PRODUCT CLAIMS, AND WHAT EACH LEG MEASURES
+What the product claims, and what each leg measures
 ===========================================================================
 
 The claim is narrow and checkable: this kernel is
@@ -20,7 +20,7 @@ three lines ``special_kz.beta_pml_curl_step`` adds to ``kernels.pml_curl_step``.
    ``ast.unparse``d — what is being compared includes the PARENTHESISATION, and
    unparsing re-derives minimal parentheses.
 2. **REDUCTION (device).** ``HAS_BETA = 0`` must reproduce the shipped
-   ``fused_curl_constitutive_B`` BIT FOR BIT over a complete step, on the same
+   ``fused_curl_constitutive_B`` bit for bit over a complete step, on the same
    volumes. This is the transcription claim measured on silicon instead of in
    source text, and it is the leg that would catch a mis-ordered argument in the
    plan's ``run`` that no amount of source diffing can see.
@@ -45,20 +45,20 @@ On the configurations this arm admits the two fill passes are DEAD — clause 5 
 is refused by name; an ELECTRIC source is injected in the D/E half and does not
 disqualify this pair.
 
-WHAT THE CORPUS SAYS, from ``results/fusion_matrix_triton_2026-08-20_closed/`` at
+What the corpus says, from ``results/fusion_matrix_triton_2026-08-20_closed/`` at
 the B->H cell (``real beta PML``, ``real beta run``): ONE seam-instance,
 ``examples:refl-angular-kz2d.py``, ``in_seam_source == false``,
 ``live_in_seam_passes == []``. The ``corpus_admission`` leg re-derives that from
 the census rather than citing it.
 
-THAT ROW IS ALL-PERIODIC WITH ``has_metallic == false``, so the inline
+That row is all-periodic with ``has_metallic == false``, so the inline
 ``zero_metal_B`` carry compiles to three ``False`` flags ON IT. Every wall-clear
 mutation is therefore scored on a WALLED case, where the flags are real —
 otherwise the rewrite would touch lines the scored grid never reaches and report
 UNCAUGHT while measuring nothing.
 
 ===========================================================================
-WHAT THIS GATE REFUSES TO INFER
+What this gate refuses to infer
 ===========================================================================
 
 * **A mutation that does not parse is not a mutation**, and one whose lines the
@@ -137,14 +137,14 @@ CURL_ANCHOR = "curl2 = curl_stencil(b_x, b, a, a_y, dtdx, px, py)"
 
 #: The device cases. ``(name, cell, boundaries, steps)``.
 #:
-#: EVERY CELL IS 2-D WITH A ZERO Z EXTENT, because ``Grid`` refuses beta anywhere
+#: Every cell is 2-D with a zero Z extent, because ``Grid`` refuses beta anywhere
 #: else by name (grid.py:690; MEEP fields.cpp:546-547 aborts on the same
-#: combination). Z THEREFORE STAYS PERIODIC in every case: it is the INVARIANT
+#: combination). Z therefore stays periodic in every case: it is the INVARIANT
 #: axis, and ``Grid`` refuses a PEC on an invariant axis by name (grid.py:842-877)
 #: — a gate that tripped over that would die in the constructor instead of
 #: measuring a wall.
 CASES: Tuple[Tuple[str, Tuple[float, float, float], Any, int], ...] = (
-    # THE CORPUS GEOMETRY: all-periodic, no wall. ZM_* all compile to False and
+    # The corpus geometry: all-periodic, no wall. ZM_* all compile to False and
     # every ghost arm is the periodic wrap — which is exactly what
     # examples:refl-angular-kz2d.py declares.
     ("corpus_periodic", (1.4, 1.0, 0.0), "periodic", 60),
@@ -152,7 +152,7 @@ CASES: Tuple[Tuple[str, Tuple[float, float, float], Any, int], ...] = (
     # are entered. This is the mutation case, for that reason.
     ("wall_xy", (1.4, 1.0, 0.0),
      {"x": "metallic", "y": "metallic", "z": "periodic"}, 60),
-    # ONE WALLED AXIS ONLY: the case where a ROTATED wall table still clears the
+    # One walled axis only: the case where a ROTATED wall table still clears the
     # same NUMBER of planes and clears the wrong one.
     ("wall_x", (1.4, 1.0, 0.0),
      {"x": "metallic", "y": "periodic", "z": "periodic"}, 60),
@@ -212,7 +212,7 @@ def save(payload: Dict[str, Any], path: str) -> None:
     """Serialise the payload, provenance-stamped, atomically."""
     os.makedirs(os.path.dirname(os.path.abspath(path)) or ".", exist_ok=True)
     temporary = path + ".tmp"
-    # THE POLICY STAMP IS RE-READ, NOT CARRIED. Taken once at install time it
+    # The policy stamp is re-read, not carried. Taken once at install time it
     # records every counter at zero, because nothing had compiled yet.
     if "subnormal_policy" in payload:
         try:
@@ -285,7 +285,7 @@ def shipped_body(path: str, name: str, *, with_decorators: bool = False) -> str:
 
     ``with_decorators`` prepends the decorator list, which
     ``ast.get_source_segment`` on a FunctionDef EXCLUDES. Without it a mutant
-    compiled from the segment is a PLAIN PYTHON FUNCTION with no ``[grid]``
+    compiled from the segment is a plain Python function with no ``[grid]``
     launcher, and the first mutation leg dies with "'function' object is not
     subscriptable" — measured 2026-08-20 on the sibling gate.
     """
@@ -632,7 +632,7 @@ def build_driver(cp, cell, boundaries, seed: int, value_class: str,
     epsilon = np.ascontiguousarray(
         (2.25 + 0.30 * np.sin(index * np.float32(0.037))).astype(np.float32))
     driver.set_epsilon(cp.asarray(epsilon))
-    # PER AXIS, NOT SCALAR. On a 2-D cell z is translationally invariant and the
+    # Per axis, not scalar. On a 2-D cell z is translationally invariant and the
     # driver refuses a layer there BY NAME (driver.py:2206): "an invariant axis has
     # no face to absorb at". MEEP drops such a layer silently, so naming X and Y is
     # the same run, said out loud.
@@ -643,7 +643,7 @@ def build_driver(cp, cell, boundaries, seed: int, value_class: str,
         driver.add_source({"component": "Ez", "frequency": 0.31,
                            "center": (0.0, 0.0, 0.0), "width": 0.4})
     seed_values(cp, driver, seed, value_class)
-    # THE FAST PATH IS DISABLED, EXPLICITLY. `FdtdDriver.step` consults `fastpath`
+    # The fast path is disabled, explicitly. `FdtdDriver.step` consults `fastpath`
     # BEFORE the module-level sub-step functions this harness substitutes
     # (driver.py:3281-3282), and the `real beta PML` / `real beta run` arms are
     # WIRED — so on this very family a driver left alone would step `step_B` and
@@ -1028,10 +1028,10 @@ def run_leg(cp, name: str, cell, boundaries, steps: int, product,
         material = [key for key in final if key in MATERIAL]
         row["arrays_total"] = len(final)
         row["arrays_ever_moved"] = len(ever_moved)
-        # THE AUXILIARY CONTRACT'S EXEMPTION. fu_* and f_w_* move only on their
-        # layer's cells (KERNELS.md section 1, C2), so on a 2-D grid the invariant
-        # axis's auxiliaries are inert on EVERY route. An auxiliary the array path
-        # also leaves inert is exempt; every other unmoved array still refuses.
+        # The auxiliary contract's exemption. fu_* and f_w_* move only on their layer's
+        # cells (docs/design/floating-point.md#auxiliary-contract), so on a 2-D grid the
+        # invariant axis's auxiliaries are inert on EVERY route. An auxiliary the array
+        # path also leaves inert is exempt; every other unmoved array still refuses.
         reference_moved = moved(reference_opening, snapshot(cp, reference))
         unmoved = set(final) - set(ever_moved) - set(material)
         row["inert_on_every_route"] = sorted(
@@ -1084,7 +1084,7 @@ def verdict_of(row: Dict[str, Any], *, require_identical: bool = True,
         failures.append(
             f"the fused route reached the array path for an absorbed pass: {fell_back}")
     if require_array_reference:
-        # THE REFERENCE MUST REALLY BE THE ARRAY PATH. `fastpath` is consulted
+        # The reference must really be the array path. `fastpath` is consulted
         # before these functions and the beta arms are WIRED, so a missing count
         # here means the reference stepped on Triton and the comparison compared
         # two Triton routes.
@@ -1097,7 +1097,7 @@ def verdict_of(row: Dict[str, Any], *, require_identical: bool = True,
                     f"{seen} times, expected {steps}: the fast path was not off")
     return (not failures), failures
 # ---------------------------------------------------------------------------
-# THE REDUCTION LEG — HAS_BETA = 0 must BE the shipped ordinary kernel
+# The reduction leg — HAS_BETA = 0 must BE the shipped ordinary kernel
 # ---------------------------------------------------------------------------
 
 def reduction_leg(cp, product, cell, boundaries, steps: int,
@@ -1107,19 +1107,19 @@ def reduction_leg(cp, product, cell, boundaries, steps: int,
     The transcription claim, measured on silicon instead of in source text. Two
     drivers, seeded identically, on a REAL beta run:
 
-    * route A launches THIS product's kernel with ``has_beta = 0``;
-    * route B launches the SHIPPED ``kernels.fused_curl_constitutive_B`` over the
+    * the reduced route launches THIS product's kernel with ``has_beta = 0``;
+    * the shipped route launches the SHIPPED ``kernels.fused_curl_constitutive_B`` over the
       same volumes, through ``launch.plan_fused_pair_from_arrays`` — the bare-array
       route, because ``coverage.fused_pair_coverage`` refuses a beta run by name
       (clause 12) and would return ``None``.
 
-    NEITHER IS COMPARED AGAINST THE ARRAY PATH HERE, deliberately: the array path
+    Neither is compared against the array path here, deliberately: the array path
     really does add the beta term, so both routes must differ from it. What this
     leg measures is that the two KERNELS agree, which is the reduction.
 
-    THE NON-VACUITY FLOOR IS THE OTHER HALF. Two kernels that both did nothing
-    would also agree, so the state must MOVE and route A must additionally be shown
-    to DIFFER from the array path — otherwise ``has_beta = 0`` would be
+    The non-vacuity floor is the other half. Two kernels that both did nothing
+    would also agree, so the state must MOVE and the reduced route must additionally
+    be shown to DIFFER from the array path — otherwise ``has_beta = 0`` would be
     indistinguishable from the shipped beta kernel and this leg would be measuring
     a flag nothing reads.
     """
@@ -1129,7 +1129,7 @@ def reduction_leg(cp, product, cell, boundaries, steps: int,
     )
 
     seed = case_seed("reduction", str(cell), str(boundaries), value_class)
-    # WITH THE ELECTRIC SOURCE, like every other leg. MEASURED 2026-08-21: without
+    # With the electric source, like every other leg. Measured 2026-08-21: without
     # one, the `signed_zero_lattice` class leaves every volume at +-0.0 forever —
     # the curl is a difference of signed zeros and `beta_plus * (+-0.0)` is another
     # signed zero — so HAS_BETA=0 matched the ARRAY PATH as well as the shipped
@@ -1172,7 +1172,7 @@ def reduction_leg(cp, product, cell, boundaries, steps: int,
             [1 if kind == "metallic" else 0 for kind in resolve(grid, pml)],
             zero_metal_axes(grid), grid.dt / grid.dx, num_warps=1,
             chunk_bounds=layer_record(grid, pml))
-        # MEEP'S START OF H, as the product's plan carries it (h_state is the
+        # MEEP's start of H, as the product's plan carries it (h_state is the
         # driver's Fields): the from-arrays route builds a plan that has already
         # started, and the reduction would compare a started kernel with an
         # unstarted one at step 1.
@@ -1214,10 +1214,10 @@ def reduction_leg(cp, product, cell, boundaries, steps: int,
         final = snapshot(cp, reduced)
         ever_moved = moved(opening, final)
         material = [key for key in final if key in MATERIAL]
-        # THE AUXILIARY CONTRACT'S EXEMPTION, as in run_leg. fu_* and f_w_* move
-        # only on their layer's cells (KERNELS.md section 1, C2), so on a 2-D grid
-        # the invariant axis's auxiliaries are inert on EVERY route. An auxiliary the
-        # array path also leaves inert is exempt; every other unmoved array refuses.
+        # The auxiliary contract's exemption, as in run_leg. fu_* and f_w_* move only on
+        # their layer's cells (docs/design/floating-point.md#auxiliary-contract), so on a
+        # 2-D grid the invariant axis's auxiliaries are inert on EVERY route. An auxiliary
+        # the array path also leaves inert is exempt; every other unmoved array refuses.
         reference_moved = moved(reference_opening, snapshot(cp, reference))
         unmoved = set(final) - set(ever_moved) - set(material)
         row["inert_on_every_route"] = sorted(
@@ -1231,10 +1231,10 @@ def reduction_leg(cp, product, cell, boundaries, steps: int,
                 f"HAS_BETA=0 is NOT the shipped fused pair: {row['first_divergence']}")
         if row["arrays_never_moved"]:
             failures.append(f"VACUOUS: {row['arrays_never_moved']} never moved")
-        # THE DISCRIMINATION PRECONDITION, recorded rather than assumed. If
+        # The discrimination precondition, recorded rather than assumed. If
         # HAS_BETA=0 also matches the ARRAY PATH then this value class cannot tell
         # the two kernels apart at all and its agreement is a tautology. That is a
-        # PROPERTY OF THE VALUE CLASS, not a defect, so it is reported as
+        # property of the value class, not a defect, so it is reported as
         # `discriminating: false` with its reason and the gate-level floor demands
         # that at least one class discriminate — a leg that quietly passed on a
         # class measuring nothing is the vacuity trap wearing another coat.
@@ -1266,7 +1266,7 @@ def compile_mutant(source: str, kernel_name: str) -> Any:
               + "PERIODIC = tl.constexpr(0)\n"
               "METALLIC = tl.constexpr(1)\n\n")
     text = header + source.replace(KERNEL_NAME, kernel_name)
-    # A MUTATION THAT DOES NOT PARSE IS NOT A MUTATION. Checked before any device
+    # A mutation that does not parse is not a mutation. Checked before any device
     # is involved, because a SyntaxError inside the loader aborts the whole
     # mutation leg on the first device run.
     ast.parse(text)
@@ -1305,10 +1305,11 @@ def _rewrite_block(source: str, before: Sequence[str],
     return source, 0
 
 
-#: The beta pass's own mutations and the root forms' (KERNELS.md 7.1's inversions and
-#: 7.2's chunk-form battery): ``fold_pass_mutations``' shared spellings, the same text
-#: in every carrier of the pass. Each entry's ``needs`` is checked against the case it
-#: is scored on (:func:`mutation_case_check`).
+#: The beta pass's own mutations and the root forms' (the inverted grouping mutations and
+#: the per-chunk form battery of docs/development/certification.md):
+#: ``fold_pass_mutations``' shared spellings, the same text in every carrier of the pass.
+#: Each entry's ``needs`` is checked against the case it is scored on
+#: (:func:`mutation_case_check`).
 SHARED_MUTATIONS = (fold_passes.beta_mutations(False, False, CURL_ANCHOR)
                     + fold_passes.form_mutations(True))
 _SHARED_ROWS, MUTATION_NEEDS = fold_passes.table(SHARED_MUTATIONS)
@@ -1533,10 +1534,11 @@ def run_refusals(cp, product) -> List[Dict[str, Any]]:
 
 
 def environment(cp: Any = None) -> Dict[str, Any]:
+    import neutral_ids  # noqa: PLC0415
     payload: Dict[str, Any] = {
         "python": sys.version.split()[0],
         "numpy": np.__version__,
-        "argv": list(sys.argv),
+        "argv": neutral_ids.argv(sys.argv),
         "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
     }
     try:
@@ -1595,7 +1597,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "UNRUN — invoked with --no-device; no CUDA leg, mutation or refusal "
             "in this artifact")
         payload["passed"] = all(row["passed"] for row in payload["no_device_legs"])
-        # ``release`` IS THE KEY ``gate_provenance.read_verdict`` CONSULTS FIRST.
+        # ``release`` is the key ``gate_provenance.read_verdict`` consults first.
         payload["release"] = {
             "released": False,
             "reasons": ["the no-device legs passed, but no device leg, mutation or "
@@ -1609,7 +1611,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     from meep_gpu import backends, subnormal_policy  # noqa: PLC0415
 
     if args.subnormal_policy == "flush":
-        # MEASURED REFUSAL, not a precaution: `install_subnormal_policy('flush')`
+        # Measured REFUSAL, not a precaution: `install_subnormal_policy('flush')`
         # raises SubnormalPolicyUnattainable in a process that has not imported
         # MEEP (subnormal_policy.py:1920) because `mp.set_zero_subnormals` is the
         # only exposure of this process's FTZ/DAZ bits the package may use, and it
@@ -1730,7 +1732,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     refusal_ok = all(row.get("passed") for row in payload["refusals"])
 
     def _mutation_ok(row: Dict[str, Any]) -> bool:
-        # A DECLARED NULL MUST BE CONFIRMED, not merely permitted, and a mutation
+        # A declared null must be confirmed, not merely permitted, and a mutation
         # that was never ARMED measured nothing whatever it then reported.
         if row.get("error") is not None:
             return False

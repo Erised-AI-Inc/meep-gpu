@@ -4,7 +4,7 @@ The REAL cylindrical arm's B->H product. Its sibling :mod:`.cylindrical_fused_ma
 takes the complex-storage arm; the two are split by storage, as their single sub-step
 products are.
 
-EVERY ARITHMETIC LINE BELOW IS A VERBATIM COPY of a shipped body. The curl half is
+Every arithmetic line below is a verbatim copy of a shipped body. The curl half is
 :func:`.cylindrical_triton.cyl_pml_curl_step`'s, ``BACKWARD`` arms and all, up to its
 stores: the presence-selected curls, Bz's ``dtdx`` times the radial difference, the
 ownership mask, the chunk-keyed PML forms with the auxiliary contract on ``fu``, and the
@@ -15,15 +15,15 @@ source load replaced by the register the curl half computed. The gate's transcri
 leg (``parity/meep_gpu/probe_triton_cylindrical_real_fused_magnetic_pair.py``) is what
 turns that from a claim into a measurement.
 
-THE RADIAL SCAN IS UPSTREAM OF THE SEAM. The plan launches
+The radial scan is upstream of the seam. The plan launches
 :func:`.cylindrical_triton.cyl_radial_difference` (one
 :class:`.cylindrical_triton.RadialScan`, bound once), then this kernel; no launch
 straddles the scan, and the fusion removes the separate constitutive launch.
 
-THE FIVE PASSES IN THE SEAM. The driver runs ``step_B -> magnetic sources ->
+The five passes in the seam. The driver runs ``step_B -> magnetic sources ->
 fill_symmetry_bc_B -> zero_metal_B -> fill_folded_far_ghosts_B -> update_H``:
 
-* **the magnetic sources -- REFUSED BY NAME** (an undeclared source list is a refusal,
+* **the magnetic sources -- refused by name** (an undeclared source list is a refusal,
   never an assumed empty set): ``driver.step`` injects them between the halves, so a
   fused launch would consume a pre-injection ``B``;
 * **``fill_symmetry_bc_B`` and ``fill_folded_far_ghosts_B`` -- PROVABLY INERT, not
@@ -35,11 +35,11 @@ fill_symmetry_bc_B -> zero_metal_B -> fill_folded_far_ghosts_B -> update_H``:
 
 So :data:`REPLACES` names THREE passes and :data:`INERT_PASSES` the other two.
 
-``BACKWARD`` IS CARRIED AND BOUND TO 0, so the curl half stays a verbatim copy; the
+``BACKWARD`` is carried and bound to 0, so the curl half stays a verbatim copy; the
 wall clear is the B family's rows and the constitutive half is the H side.
 
 DEVICE STATUS. The weld released on 2026-08-20 measured the previous forms and does not
-license this text; certification is owed at the combined device round.
+license this text; certification is owed to a later combined device run.
 """
 # Derived from MEEP (https://github.com/NanoComp/meep).
 # Copyright (C) 2005-2025 Massachusetts Institute of Technology and MEEP contributors.
@@ -378,10 +378,10 @@ def cylindrical_real_fused_magnetic_pair_coverage(fields: Any, pml: Any,
     if grid is None:
         return Coverage(False, tuple(dict.fromkeys(reasons + ["fields carries no grid"])))
 
-    # THE SOURCE SEAM. A magnetic source is injected BETWEEN the two halves
+    # The source seam. A magnetic source is injected BETWEEN the two halves
     # (driver.py:3283-3284), so a fused pair would consume a pre-injection B. An
     # ELECTRIC source is injected in the D/E half and does not disqualify this pair.
-    # IGNORANCE IS NOT AN EMPTY SET: `Fields` does not hold the source list, so a
+    # Ignorance is not an empty set: `Fields` does not hold the source list, so a
     # predicate that inferred "no magnetic source" from not being told would be the
     # over-covering refusal this clause exists to prevent.
     reasons.extend(_deposit_repair.seam_source_reasons(
@@ -397,7 +397,7 @@ def cylindrical_real_fused_magnetic_pair_coverage(fields: Any, pml: Any,
             f"closes"),
         carries_repair=CARRIES_DEPOSIT_REPAIR))
 
-    # THE TWO FILL PASSES MUST BE INERT, not merely absent from this kernel.
+    # The two fill passes must be inert, not merely absent from this kernel.
     # `_fill_symmetry_ghost_cells` (:1437-1439) and `_fill_folded_far_ghosts`
     # (:1516-1517) both return before touching a cell unless `grid.has_symmetry()`.
     # The cylindrical curl predicate already refuses a mirror plane; RESTATED here

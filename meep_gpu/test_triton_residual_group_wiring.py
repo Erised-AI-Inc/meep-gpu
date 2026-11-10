@@ -1,9 +1,9 @@
 """What the residual-group wiring closed, measured through the SHIPPED composer.
 
 Four predicate families and six entry points were built and device-certified by
-the residual-group closure round (2026-08-15) and then reached by nothing: its own
-artifact says "plan_step gains no arm from this round, and the new predicates are
-consulted by nothing". This file is the contract on the round that made them arms.
+the residual-group closure (2026-08-15) and then reached by nothing: its own
+artifact says that ``plan_step`` gained no arm from that closure and that nothing
+consulted the new predicates. This file is the contract on the change that made them arms.
 
 TWENTY-TWO SLOTS, and the accounting is a test rather than a sentence:
 
@@ -14,20 +14,20 @@ TWENTY-TWO SLOTS, and the accounting is a test rather than a sentence:
     group B/H ADE update_P with the absorber INERT        3 rows x 1 =  3
                                                           TOTAL       22
 
-NO NEW KERNEL IS INVOLVED. Every one of these is a CERTIFIED body admitted onto a
+No new kernel is involved. Every one of these is a CERTIFIED body admitted onto a
 configuration a shared clause refused it for, and the identity that licenses each
 was measured on an RTX A6000 over eight complete cycles, non-vacuous on both sides
 with a live signed-zero census, through these builders with these predicates
 unpatched (results/residual_closure_2026-08-15/device/newpred/).
 
-THE RISK THIS FILE IS AIMED AT IS DISJOINTNESS, NOT ARITHMETIC. Every family's
+The risk this file is aimed at is disjointness, not arithmetic. Every family's
 grid-reason list answers the same numbered questions and each carried family
 inverts exactly one, so widening a clause can make TWO arms admit one slot — and
 ``_select_slot`` fails closed on that, leaving the slot UNSELECTED and on the
 array path. That is a silent coverage LOSS, not an error, and it is the failure
 mode the scope change here could plausibly have produced. So the scope change is
 made by ADDING an arm, the incumbent clause is left exactly as it is, and the cost
-of the alternative is MEASURED below rather than argued.
+of the alternative is measured below rather than argued.
 
 Everything runs on the merge-bar laptop with no GPU and no Triton: the predicates
 are real, only the builders are sentinels, and ``grid.xp`` answers to the name the
@@ -187,15 +187,15 @@ def test_the_two_new_family_modules_are_declared_and_no_longer_deferred():
 
 
 # ---------------------------------------------------------------------------
-# THE SCOPE CHANGE: the off-diagonal refusal is scoped to update_E, and stays
+# The scope change: the off-diagonal refusal is scoped to update_E, and stays
 # ---------------------------------------------------------------------------
 #
-# Two backends licensed exactly this. The Triton closure round measured the three
+# Two backends licensed exactly this. The Triton residual closure measured the three
 # certified bodies against ``stepping.py`` on a folded + complex64 + live
 # off-diagonal row grid over eight complete cycles — 0 of 110592 words differing
 # at step_B, step_D and update_H, on the synthetic shape and on two row shapes —
-# and 25041 of 110592 differing at update_E, the largest divergence of the round.
-# The Metal round measured the same nine slots on its own backend as byte-identical
+# and 25041 of 110592 differing at update_E, the largest divergence that closure measured.
+# The Metal port measured the same nine slots on its own backend as byte-identical
 # over 12 complete driver steps and refuses the row at update_E alone.
 
 def test_the_offdiagonal_family_admits_three_substeps_and_refuses_update_E():
@@ -204,7 +204,7 @@ def test_the_offdiagonal_family_admits_three_substeps_and_refuses_update_E():
     ``stepping._offdiagonal_terms`` (S:1190-1225) is reached from ``update_E``
     alone (S:972-979). The curls difference the STORED E and H and read no
     ``chi1inv``; ``update_H`` is B/mu with the PML accumulation and reads none
-    either. THIS TEST FAILS IF THE CLAUSE DRIFTS BACK — either by re-broadening
+    either. This test fails if the clause drifts back — either by re-broadening
     the sibling predicates to refuse the curls, or by narrowing them far enough to
     claim ``update_E``.
     """
@@ -249,7 +249,7 @@ def test_update_E_on_that_grid_selects_the_later_complex_row_product(monkeypatch
 
 def test_narrowing_the_incumbent_clause_would_now_cost_all_twelve_slots(
         monkeypatch):
-    """The alternative repair, MEASURED — this is why the clause is untouched.
+    """The alternative repair, measured — this is why the clause is untouched.
 
     The obvious-looking change is to narrow ``folded_complex._media_reasons``'
     off-diagonal clause in place so the incumbent curl and constitutive
@@ -316,7 +316,7 @@ def test_the_nonlinear_run_admission_does_not_reach_update_E():
 
     The CONTROL leg measured the certified constitutive body at 1536 of 12288
     words differing there. ``nonlinear_constitutive_coverage`` — a separate arm,
-    wired a round earlier — is what covers that slot.
+    wired one change earlier — is what covers that slot.
     """
     import numpy
 
@@ -337,7 +337,7 @@ def test_the_nonlinear_run_admission_does_not_reach_update_E():
 def test_a_nonlinear_grid_still_refuses_opt_in_pair_fusion(monkeypatch):
     """The D-pair COMPOSES update_E, so it may not inherit the curl admission.
 
-    Named in the family's integration note as the warning for this round: a fused
+    Named in the family's integration note as the warning for this wiring: a fused
     D-pair on a nonlinear run is exactly the configuration the CONTROL leg
     measured diverging. ``specialized_family_owns_the_grid`` keeps it out
     structurally, and that has to survive the curls becoming coverable.

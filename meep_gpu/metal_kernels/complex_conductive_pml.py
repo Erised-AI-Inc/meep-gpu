@@ -8,7 +8,7 @@ recurrences consume that result.  The two histories are independent: ``f_cond``
 is read and written only on the cells whose chunk carries the target's dsig
 layer, and ``fu`` only on those whose chunk carries its dsigu layer.
 
-WHICH OF MEEP'S FOUR CASES A CELL TAKES IS ITS CHUNK'S, read from the bound chunk
+Which of MEEP's four cases a cell takes is its chunk's, read from the bound chunk
 record at the cell's own stored index -- the same two memberships the array path
 passes (``dsig_active`` = ``RegionPlan.axis_mask`` on the dsig axis, ``dsigu_active``
 = the curl split), on the target's own Yee lattice. A target without a
@@ -27,7 +27,7 @@ the dsig axis's and ``kms_u``/``sinv_u`` the dsigu axis's:
 The increment ``(fcnd' - fcnd)`` is formed FIRST and then added, MEEP's grouping
 (step_generic.cpp:167, :209), as :mod:`.conductive_pml` forms it on real storage.
 
-PER-CHUNK CONDUCTIVITY PRESENCE IS NOT IN THE RECORD. A chunk whose conductivity
+Per-chunk conductivity presence is not in the record. A chunk whose conductivity
 samples are all zero keeps no conductivity array and steps the lossless forms
 (structure.cpp:883-900, ``ChunkLayout.conductive_chunks``), so this family serves a
 curl sub-step only where every chunk keeps the conductivity of each lossy target and

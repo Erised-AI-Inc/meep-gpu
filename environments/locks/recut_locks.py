@@ -1,22 +1,31 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Re-cut a platform's reference locks: the lock's own packages plus ``additions.json``.
+"""Re-cut a platform's reference locks: the lock's own packages and ``additions.json``.
 
     python environments/locks/recut_locks.py --platform osx-arm64 [--write]
     python environments/locks/recut_locks.py --platform linux-64 [--write]
 
 A reference lock is never re-solved and called the reference (README.md, "When to
-re-cut"). What this tool does instead is ADD: every line of the existing explicit
-conda lock is pinned exactly (``name==version=build``), every package
-``additions.json`` names for the platform is pinned exactly too, and one dry-run
-solve against conda-forge alone, at the lock's host floor, has to return exactly
-that set: no lock package moved to another build, none dropped, and nothing added
-beside the named additions. Anything else is refused by name and nothing is
-written. The solve is also the closure check an explicit install never makes: the
-lock then holds every package its packages depend on.
+re-cut"). What this tool does instead is ADD, and apply the changes a recorded decision names:
+every line of the existing explicit conda lock is pinned exactly
+(``name==version=build``), every package ``additions.json`` names for the platform is
+pinned exactly too, and one dry-run solve against conda-forge alone, at the lock's
+host floor, has to return exactly that set: no lock package moved to another build,
+none dropped, and nothing added beside the named additions. Anything else is refused
+by name and nothing is written. The solve is also the closure check an explicit
+install never makes: the lock then holds every package its packages depend on.
 
-The conda lock keeps its lines byte for byte, in their order, and gains the added
-packages' lines (URL and MD5 as the solve gives them) after them. The pip lock
+An approved change of a locked package is named in ``additions.json`` too, never made by
+hand: an addition with ``replaces`` (``{version, build}``) takes the place of the lock's
+line of that name when the lock holds exactly that build, and a platform's ``removed``
+list (each ``{name, version, build}``) takes the lock's line of that name out when the
+lock holds exactly that build. Each carries the decision it applies (``ruling``). A lock
+that holds the name at any other build is refused, as is a solve that still links a
+removed package.
+
+The conda lock keeps its lines byte for byte, in their order (less the removed ones and
+the replaced ones), and gains the added packages' lines (URL and MD5 as the solve gives
+them) after them. The pip lock
 keeps its pins byte for byte and gains each added wheel pinned by the SHA-256 that
 PyPI's JSON API gives for that exact file. In both files the comment block above
 the generated marker is kept as it is (it is documentation); the block below it,
@@ -168,14 +177,61 @@ def load_additions(lock_dir: str, platform: str) -> dict:
     if spec is None:
         raise Refused(f"{ADDITIONS_FILE} names no additions for {platform}")
     return {"conda": spec.get("conda") or [], "pypi": spec.get("pypi") or [],
+            "removed": spec.get("removed") or [],
             "conda_lock": spec["conda_lock"], "pip_lock": spec["pip_lock"],
             "floor": spec.get("floor") or {}}
 
 
+def replaced_build(item: dict):
+    """``(version, build)`` the addition ``item`` replaces, or None."""
+    replaces = item.get("replaces")
+    if not replaces:
+        return None
+    return (replaces["version"], replaces["build"])
+
+
+def apply_ruled_changes(entries, additions, removed):
+    """The lock's entries less the ``removed`` ones, after checking every approved change
+    against what the lock holds.
+
+    A removal names the build it takes out: the lock holds the name at exactly that build
+    (it is taken out) or not at all (a lock already re-cut). An addition that replaces a
+    build: the lock holds the name at that build (replaced), at the addition's own build (a
+    lock already re-cut) or not at all. Any other build is refused by name.
+    """
+    locked = {entry["name"]: entry for entry in entries}
+    for item in removed:
+        entry = locked.get(item["name"])
+        if entry is not None and (entry["version"], entry["build"]) != (item["version"],
+                                                                         item["build"]):
+            raise Refused(f"{ADDITIONS_FILE} removes {item['name']} {item['version']}="
+                          f"{item['build']}, and the lock holds "
+                          f"{entry['version']}={entry['build']}")
+    for item in additions:
+        old = replaced_build(item)
+        entry = locked.get(item["name"])
+        if old is None or entry is None:
+            continue
+        if (entry["version"], entry["build"]) not in (old, (item["version"], item["build"])):
+            raise Refused(f"{ADDITIONS_FILE} replaces {item['name']} {old[0]}={old[1]} by "
+                          f"{item['version']}={item['build']}, and the lock holds "
+                          f"{entry['version']}={entry['build']}")
+    gone = {item["name"] for item in removed}
+    return [entry for entry in entries if entry["name"] not in gone]
+
+
 # ----------------------------------------------------------------------- solve -----
 def pins_of(entries, additions):
-    """The exact specs the closure solve is given, lock first."""
-    pins = [f"{entry['name']}=={entry['version']}={entry['build']}" for entry in entries]
+    """The exact specs the closure solve is given, lock first: a locked package that an
+    addition replaces is pinned at the addition's build, in the lock's place."""
+    replacing = {item["name"]: item for item in additions if replaced_build(item)}
+    pins = []
+    for entry in entries:
+        item = replacing.get(entry["name"])
+        if item is not None and (entry["version"], entry["build"]) == replaced_build(item):
+            pins.append(f"{item['name']}=={item['version']}={item['build']}")
+        else:
+            pins.append(f"{entry['name']}=={entry['version']}={entry['build']}")
     present = {entry["name"] for entry in entries}
     for item in additions:
         if item["name"] not in present:
@@ -192,7 +248,7 @@ def run_solve(conda: str, platform: str, pins, floor: dict) -> dict:
         environment["CONDA_PLUGINS_USE_SHARDED_REPODATA"] = "true"
         # An empty package cache of the solve's own: the dry run lists under FETCH, with
         # URL and MD5, only what the cache lacks, and an addition already cached there
-        # would come back without them (MEASURED 2026-10-14: libgdsii, cached, refused).
+        # would come back without them (measured 2026-10-14: libgdsii, cached, refused).
         environment["CONDA_PKGS_DIRS"] = os.path.join(scratch, "pkgs")
         for name, value in floor.items():
             environment[name] = str(value)
@@ -211,13 +267,16 @@ def run_solve(conda: str, platform: str, pins, floor: dict) -> dict:
     return solve
 
 
-def judge_solve(entries, additions, solve: dict):
+def judge_solve(entries, additions, solve: dict, removed=()):
     """``(base, added)``: the lock's lines that are not additions, in their order, and
     the additions' ``{name, version, build, md5, url, line}`` in name order.
 
-    Refuses unless the solve returns exactly the lock's packages and the additions:
-    a lock package of another build or missing, an addition of another build, of
-    another file, or missing, or any other package, each named.
+    ``entries`` are the lock's entries with the ``removed`` ones already taken out
+    (:func:`apply_ruled_changes`). Refuses unless the solve returns exactly the lock's
+    packages and the additions: a lock package of another build or missing, an addition
+    of another build, of another file, or missing, a removed package, or any other
+    package, each named. A locked package an addition replaces is judged as the
+    addition.
     """
     if not solve.get("success"):
         raise Refused("the solve failed: " + json.dumps(solve)[:1500])
@@ -230,7 +289,13 @@ def judge_solve(entries, additions, solve: dict):
     findings = []
     wanted = {item["name"]: item for item in additions}
     locked = {entry["name"]: entry for entry in entries}
+    replaced = {name for name, item in wanted.items()
+                if name in locked and replaced_build(item)
+                == (locked[name]["version"], locked[name]["build"])}
+    gone = {item["name"] for item in removed}
     for name, entry in locked.items():
+        if name in replaced:
+            continue
         got = linked.get(name)
         if got is None:
             findings.append(f"{name} {entry['version']}={entry['build']} is in the lock "
@@ -240,6 +305,10 @@ def judge_solve(entries, additions, solve: dict):
                             f"lock, {got[0]}={got[1]} in the solve")
     for name in sorted(set(linked) - set(locked) - set(wanted)):
         version, build = linked[name]
+        if name in gone:
+            findings.append(f"{name} {version}={build} is removed by {ADDITIONS_FILE} "
+                            "and is still in the solve")
+            continue
         findings.append(f"{name} {version}={build} is in the solve and is neither in "
                         f"the lock nor named in {ADDITIONS_FILE}")
     added = []
@@ -262,7 +331,7 @@ def judge_solve(entries, additions, solve: dict):
             findings.append(f"{name}: {url} is not on conda-forge")
             continue
         line = f"{url}#{md5}"
-        if name in locked and locked[name]["line"] != line:
+        if name in locked and name not in replaced and locked[name]["line"] != line:
             findings.append(f"{name}: the lock holds {locked[name]['line']}, the solve "
                             f"gives {line}")
             continue
@@ -312,12 +381,28 @@ def command_line(platform: str) -> str:
     return f"python environments/locks/recut_locks.py --platform {platform} --write"
 
 
-def render_conda(platform: str, prose, base, added, floor) -> str:
+def ruled_text(additions, removed) -> str:
+    """The sentence naming the approved changes ``additions.json`` makes, or ``""``."""
+    parts = []
+    for item in sorted(additions, key=lambda item: item["name"]):
+        old = replaced_build(item)
+        if old:
+            parts.append(f"replaces {item['name']} {old[0]}={old[1]} by "
+                         f"{item['version']}={item['build']} ({item.get('ruling', 'unruled')})")
+    for item in sorted(removed, key=lambda item: item["name"]):
+        parts.append(f"removes {item['name']} {item['version']}={item['build']} "
+                     f"({item.get('ruling', 'unruled')})")
+    return (f"{ADDITIONS_FILE} " + "; ".join(parts) + ".") if parts else ""
+
+
+def render_conda(platform: str, prose, base, added, floor, ruled: str = "") -> str:
     names = ", ".join(entry["name"] for entry in added) or "none"
     floor_text = ", ".join(f"{k}={v}" for k, v in sorted(floor.items())) or "none"
     lines = list(prose) + [MARKER]
     lines += comment(f"{len(base) + len(added)} packages: the {len(base)} lines carried over "
                      f"unchanged, then the {len(added)} that {ADDITIONS_FILE} adds ({names}).")
+    if ruled:
+        lines += comment(ruled)
     lines += comment("Closure: every line pinned as name==version=build, solved with")
     lines += [f"#   conda create --dry-run --json --platform {platform} --override-channels",
               "#     -c conda-forge --no-default-packages --file <the pins>"]
@@ -361,7 +446,10 @@ def recut(platform: str, lock_dir: str = HERE, conda: str | None = None,
         pip_prose, options, pins = read_pip_lock(handle.read())
     say(f"{platform}: the conda lock holds {len(entries)} packages, the pip lock "
         f"{len(pins)} pins; {ADDITIONS_FILE} names {len(additions['conda'])} conda and "
-        f"{len(additions['pypi'])} PyPI additions")
+        f"{len(additions['pypi'])} PyPI additions, "
+        f"{sum(1 for item in additions['conda'] if replaced_build(item))} replacement(s) "
+        f"and {len(additions['removed'])} removal(s)")
+    entries = apply_ruled_changes(entries, additions["conda"], additions["removed"])
     if solve_json:
         with open(solve_json, encoding="utf-8") as handle:
             solve = json.load(handle)
@@ -376,7 +464,8 @@ def recut(platform: str, lock_dir: str = HERE, conda: str | None = None,
             with open(save_solve, "w", encoding="utf-8") as handle:
                 json.dump(solve, handle, indent=1, sort_keys=True)
             say(f"kept the solve in {save_solve}")
-    base_conda, added_conda = judge_solve(entries, additions["conda"], solve)
+    base_conda, added_conda = judge_solve(entries, additions["conda"], solve,
+                                          additions["removed"])
     say(f"the solve is the lock's {len(base_conda)} packages plus {len(added_conda)} "
         f"addition(s): {', '.join(entry['name'] for entry in added_conda) or 'none'}")
     named = {normalize(item["name"]) for item in additions["pypi"]}
@@ -393,7 +482,8 @@ def recut(platform: str, lock_dir: str = HERE, conda: str | None = None,
     base_pip = [pin for pin in pins if pin["name"] not in named]
     say(f"PyPI: {len(base_pip)} pins of the lock plus {len(added_pip)} addition(s)")
     return {conda_path: render_conda(platform, conda_prose, base_conda, added_conda,
-                                     additions["floor"]),
+                                     additions["floor"],
+                                     ruled_text(additions["conda"], additions["removed"])),
             pip_path: render_pip(platform, pip_prose, options, base_pip, added_pip),
             "added_conda": added_conda, "added_pip": added_pip}
 

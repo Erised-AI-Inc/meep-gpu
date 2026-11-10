@@ -4,8 +4,8 @@
 every ``"gate", "metal_..."`` reference of the Metal board, against a round's results, and
 rewrites the table from that measurement. These tests drive it on synthetic results: one
 admissible run is chosen, a flush twin, a drifted run, an unreleased run and a second run
-of the same gate are not, an entry with no run refuses the write (option A1) or is withheld
-by name (option A2), a rerun changes nothing, report mode writes nothing, and every entry of
+of the same gate are not, an entry with no run refuses the write (the default) or is withheld
+by name (``--withhold-unrun``), a rerun changes nothing, report mode writes nothing, and every entry of
 the committed tables is in the shape the rewrite reads.
 """
 from __future__ import annotations
@@ -223,7 +223,7 @@ def test_the_rewrite_writes_the_measured_pointers_into_the_committed_builder():
                                            today="2099-01-02")
     assert summary["repointed"] == len(families) and summary["withheld"] == []
     tool.verify_triton(written, _measured(rows), [])
-    assert "REPOINTED 2099-01-02 TO THE RUNS OF ROUND ``2099-01-02_10``" in written
+    assert "REPOINTED 2099-01-02 to the runs of round ``2099-01-02_10``" in written
     # The written module still parses, and every other assignment is unchanged.
     after, _node = tool._assigned(written, "GATE_BOUND")
     assert after == {f: rows[f]["chosen"] for f in families}
@@ -292,7 +292,7 @@ def test_report_mode_writes_nothing(triton, tmp_path, monkeypatch, capsys):
     shutil.copyfile(triton_board.__file__, copy)
     monkeypatch.setattr(triton_board, "__file__", str(copy))
     before = _sha(copy)
-    assert tool.main(["triton", "--stamp", STAMP]) == 1          # nothing of the round: A1
+    assert tool.main(["triton", "--stamp", STAMP]) == 1          # nothing of the round: refused by default
     assert "would REFUSE" in capsys.readouterr().out
     assert tool.main(["triton", "--stamp", STAMP, "--withhold-unrun",
                       "--json", str(tmp_path / "m.json")]) == 0
@@ -358,6 +358,153 @@ def test_a_metal_reference_without_a_released_zero_drift_run_refuses(tmp_path, p
     assert measured["rows"][f"metal_one_gate_{OLD}"]["state"] == "unresolved"
     with pytest.raises(SystemExit, match="have no released, zero-drift run"):
         tool.rewrite_metal(_metal_text(), measured)
+
+
+# ------------------------------------------------------------- the bind's selection ----
+S1, S2 = "2099-01-02_10_x_m1", "2099-01-02_10_x_m3"
+
+
+def _selection(tmp_path: Path, taken: dict, extra: dict = ()) -> Path:
+    """A selection as ``chunks.py verify --selection`` writes it: per unit the stamp taken,
+    and each candidate's artifacts (``taken``: uid -> (stamp, artifacts); ``extra``: uid ->
+    [(stamp, artifacts)] of candidates not taken)."""
+    units = {}
+    for uid, (stamp, artifacts) in taken.items():
+        others = [{"stamp": s, "artifact_sha256": {a: "0" * 64 for a in arts}}
+                  for s, arts in dict(extra).get(uid, ())]
+        units[uid] = {"selected": stamp, "candidates": others + [
+            {"stamp": stamp, "artifact_sha256": {a: "1" * 64 for a in artifacts}}]}
+    path = tmp_path / "selection.json"
+    path.write_text(json.dumps({"schema": tool.SELECTION_SCHEMA, "units": units,
+                                "selected": {u: s for u, (s, _a) in taken.items()}}))
+    return path
+
+
+def _metal_run_at(results: Path, api: Path, name: str, stamp: str, *, released=True) -> None:
+    source = api / "meep_gpu" / "metal_kernels" / f"{name}.py"
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_text(f"# {name}\n", encoding="utf-8")
+    for at in (OLD, stamp):
+        environment = results / f"metal_environment_{at}"
+        environment.mkdir(parents=True, exist_ok=True)
+        (environment / "start.json").write_text(json.dumps({"architecture": "applegpu_g13s"}))
+    (results / f"{name}_{stamp}").mkdir(parents=True)
+    (results / f"{name}_{stamp}" / "gate.json").write_text(json.dumps({
+        "release": {"released": released}, "source_sha256": {str(source): _sha(source)}}))
+
+
+def _two_metal_runs(tmp_path: Path):
+    """A unit re-run in a later chunk: its first run (not released) and its second
+    (released) both lie among the stamps given; the other gate ran once."""
+    results, api = tmp_path / "results", tmp_path
+    _metal_run_at(results, api, "metal_one_gate", S1, released=False)
+    _metal_run_at(results, api, "metal_one_gate", S2)
+    _metal_run_at(results, api, "metal_cell_gate", S1)
+    return results, api
+
+
+def test_two_metal_runs_of_one_gate_resolve_to_the_run_the_selection_took(tmp_path):
+    results, api = _two_metal_runs(tmp_path)
+    text = _metal_text()
+    alone = tool.measure_metal(text, results, f"{S1},{S2}", api, stamps=[S1, S2])
+    assert alone["rows"][f"metal_one_gate_{OLD}"]["state"] == "unresolved"
+    assert "no selection was given" in alone["rows"][f"metal_one_gate_{OLD}"]["why_not"]
+    selection = _selection(tmp_path, {
+        "metal/gate_metal_one_gate": (S2, [f"metal_one_gate_{S2}/gate.json"]),
+        "metal/gate_metal_cell_gate": (S1, [f"metal_cell_gate_{S1}/gate.json"])},
+        {"metal/gate_metal_one_gate": [(S1, [f"metal_one_gate_{S1}/gate.json"])]})
+    taken = tool.selected_artifacts(selection, [S1, S2])
+    measured = tool.measure_metal(text, results, f"{S1},{S2}", api, stamps=[S1, S2],
+                                  selected=taken)
+    assert measured["rows"][f"metal_one_gate_{OLD}"]["chosen"] == f"metal_one_gate_{S2}"
+    assert measured["counts"] == {"repointed": 2}
+    written, summary = tool.rewrite_metal(text, measured, today="2099-01-02")
+    assert summary["references_moved"] == 3 and f"metal_one_gate_{S1}" not in written
+    # a reference already naming the run the selection did not take moves to the one it took
+    stale = written.replace(f"metal_one_gate_{S2}", f"metal_one_gate_{S1}")
+    again = tool.measure_metal(stale, results, f"{S1},{S2}", api, stamps=[S1, S2],
+                               selected=taken)
+    assert again["rows"][f"metal_one_gate_{S1}"]["chosen"] == f"metal_one_gate_{S2}"
+    # and one naming the run it took is unchanged
+    assert tool.measure_metal(written, results, f"{S1},{S2}", api, stamps=[S1, S2],
+                              selected=taken)["counts"] == {"unchanged": 2}
+
+
+def test_a_selection_that_takes_neither_run_leaves_the_reference_unresolved(tmp_path):
+    results, api = _two_metal_runs(tmp_path)
+    selection = _selection(tmp_path, {
+        "metal/gate_metal_cell_gate": (S1, [f"metal_cell_gate_{S1}/gate.json"])})
+    measured = tool.measure_metal(_metal_text(), results, f"{S1},{S2}", api, stamps=[S1, S2],
+                                  selected=tool.selected_artifacts(selection, [S1, S2]))
+    row = measured["rows"][f"metal_one_gate_{OLD}"]
+    assert row["state"] == "unresolved" and "takes none or both" in row["why_not"]
+
+
+def test_the_selected_run_is_still_checked_like_any_other(tmp_path):
+    """The selection decides between runs; it does not vouch for one: a taken run that is
+    not released still refuses."""
+    results, api = _two_metal_runs(tmp_path)
+    selection = _selection(tmp_path, {
+        "metal/gate_metal_one_gate": (S1, [f"metal_one_gate_{S1}/gate.json"])})
+    measured = tool.measure_metal(_metal_text(), results, f"{S1},{S2}", api, stamps=[S1, S2],
+                                  selected=tool.selected_artifacts(selection, [S1, S2]))
+    row = measured["rows"][f"metal_one_gate_{OLD}"]
+    assert row["state"] == "unresolved" and "release.released" in row["why_not"]
+
+
+def test_two_admissible_triton_runs_resolve_to_the_run_the_selection_took(triton, tmp_path):
+    api, results = triton
+    first = _artifact(api, results, f"triton_fused_hd_pair_{S1}", "keep/gate.json",
+                      "fused_hd_pair")
+    second = _artifact(api, results, f"triton_fused_hd_pair_{S2}", "keep/gate.json",
+                       "fused_hd_pair")
+    bound = {"fused_hd_pair": BOUND["fused_hd_pair"]}
+    assert tool.measure_triton(triton_board, f"{S1},{S2}", bound, stamps=[S1, S2]
+                               )["rows"]["fused_hd_pair"]["state"] == "ambiguous"
+    selection = _selection(tmp_path, {"triton/hd/fused_hd_pair": (
+        S2, [second[len("results/"):]])}, {"triton/hd/fused_hd_pair": [
+            (S1, [first[len("results/"):]])]})
+    taken = tool.selected_artifacts(selection, [S1, S2])
+    row = tool.measure_triton(triton_board, f"{S1},{S2}", bound, stamps=[S1, S2],
+                              selected=taken)["rows"]["fused_hd_pair"]
+    assert row["state"] == "repointed" and row["chosen"] == second
+    # bound to the run the selection did not take: moved to the one it took
+    row = tool.measure_triton(triton_board, f"{S1},{S2}", {"fused_hd_pair": first},
+                              stamps=[S1, S2], selected=taken)["rows"]["fused_hd_pair"]
+    assert row["state"] == "repointed" and row["chosen"] == second
+    # a selection naming neither keeps the refusal
+    neither = tool.selected_artifacts(_selection(tmp_path, {}), [S1, S2])
+    measured = tool.measure_triton(triton_board, f"{S1},{S2}", bound, stamps=[S1, S2],
+                                   selected=neither)
+    measured["selection"] = "selection.json"
+    assert measured["rows"]["fused_hd_pair"]["state"] == "ambiguous"
+    with pytest.raises(SystemExit, match="takes none or several"):
+        tool.rewrite_triton(_builder_text(), measured, withhold=True)
+
+
+def test_a_file_that_is_not_the_binds_selection_is_refused(tmp_path):
+    path = tmp_path / "other.json"
+    path.write_text(json.dumps({"schema": "something/1", "selected": {}}))
+    with pytest.raises(SystemExit, match="is not a selection"):
+        tool.selected_artifacts(path, [S1])
+    outside = _selection(tmp_path, {"metal/gate_metal_one_gate": (
+        S2, [f"metal_one_gate_{S2}/gate.json"])})
+    with pytest.raises(SystemExit, match="not among the stamps given"):
+        tool.selected_artifacts(outside, [S1])
+
+
+def test_the_selection_schema_is_the_rounds():
+    import importlib.util  # noqa: PLC0415
+
+    spec = importlib.util.spec_from_file_location(
+        "chunks_for_schema", HERE / "rounds" / "1.0" / "chunks.py")
+    module = importlib.util.module_from_spec(spec)
+    sys.path.insert(0, str(HERE / "rounds" / "1.0"))
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        sys.path.remove(str(HERE / "rounds" / "1.0"))
+    assert tool.SELECTION_SCHEMA == module.SELECTION_SCHEMA
 
 
 def test_every_committed_metal_gate_reference_is_dated_and_the_census_is_not_one():

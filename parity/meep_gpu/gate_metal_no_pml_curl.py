@@ -308,7 +308,7 @@ def mutation_sources() -> Tuple[Tuple[str, str, bool], ...]:
     # The same form as the reversed difference. In IEEE arithmetic it equals MEEP's on
     # every word but the signed zero of equal neighbours, where (-dtdx) * (+0) is -0 and
     # dtdx * (+0) is +0; compiled for this platform it also differs on random words
-    # (MEASURED: 254 words on the random 2-D state), so it is scored on the planted
+    # (measured: 254 words on the random 2-D state), so it is scored on the planted
     # state only, where either reason catches it.
     reversed_difference = needle(base, "(has_x ? ((-dtdx) * (c_x - c)) : 0.0f)",
                                  "(has_x ? (dtdx * (c - c_x)) : 0.0f)")
@@ -426,6 +426,8 @@ def run_engine_composition(cycles: int, cell_size: Sequence[float] = (1.25, 1.0,
 
 
 def main() -> int:
+    from metal_closed_table import close_table  # noqa: PLC0415
+    close_table()
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", type=Path, required=True,
                         help="Final JSON artifact; a sibling .jsonl is incremental")

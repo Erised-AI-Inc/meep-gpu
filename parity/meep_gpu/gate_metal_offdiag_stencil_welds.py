@@ -1,8 +1,8 @@
 """The device gate for the FOUR Metal off-diagonal STENCIL welds.
 
-WHAT THIS CERTIFIES. Four products landed in one round, and every one of them
+What this certifies. Four products were added together, and every one of them
 closes a cell both fusion boards have carried as ``STRUCTURALLY UNFUSABLE ON ANY
-BACKEND`` for the whole campaign::
+BACKEND`` until these welds were built::
 
     offdiag_fused_electric_pair                 PML x offdiag              8 of 16
     folded_offdiag_fused_electric_pair          folded x folded offdiag    9 of 19
@@ -17,7 +17,7 @@ kernels write ``D``/``fu_D`` to launch-local SCRATCH, re-derive every foreign ta
 from PRE-LAUNCH state, and the launcher rotates the buffers after the launch
 returns. Nothing written is ever read, so no barrier is wanted.
 
-THE COMPARISON IS PER COMPLETE DRIVER STEP, AS uint32 WORDS, over every stored
+The comparison is per complete driver step, as uint32 WORDS, over every stored
 volume a step can touch — never ``allclose``, never a single sub-step — and it is
 taken against BOTH references the standing Metal format requires:
 
@@ -38,7 +38,7 @@ taken against BOTH references the standing Metal format requires:
     D  ceiling           shipped signatures COMPILE at their declared binding
                          counts, every refuted signature is REFUSED, and the
                          pointer ceiling is BISECTED on this host;
-    E  seam refusal      an in-seam ELECTRIC source must be REFUSED BY NAME by
+    E  seam refusal      an in-seam ELECTRIC source must be refused by name by
                          every one of the four predicates. This is the leg that
                          replaces the deposit leg the repairable families carry:
                          ``deposit_repair.repairable`` refuses an off-diagonal
@@ -47,14 +47,14 @@ taken against BOTH references the standing Metal format requires:
                          something a bracket carries. The null is the same
                          configuration with NO source, which must be admitted.
 
-RULING R7: SOFTWARE BINARY64. The four welds' constitutive halves are the singles'
+SOFTWARE BINARY64 (docs/design/floating-point.md). The four welds' constitutive halves are the singles'
 software-binary64 rows (with their presence words in ``Params``), so every leg runs
 for every family, the Bloch-phased folded complex case included: leg A against the
 array path's double row, legs B and the rotation leg against the certified singles
 (the off-diagonal single, the complex no-PML one included, now selected by
 ``plan_step`` on ``update_E``).
 
-ONE SUBNORMAL POLICY, AND THAT IS A PLATFORM FACT RATHER THAN A GAP. The standing
+One subnormal policy, and that is a platform fact rather than a gap. The standing
 format asks for both float32 subnormal policies "where the platform has two".
 Metal has one: it flushes denormals natively and exposes no lever (both denormal
 pragma spellings are compile errors), which is why every Metal predicate REFUSES
@@ -273,7 +273,7 @@ def _folded_complex_source(plan: Any, mode: str) -> str:
                 folded_axes, far_axes, mode))
 
 
-#: THE MUTATIONS EVERY FAMILY CARRIES, spelled against text the shared builder
+#: The mutations every family carries, spelled against text the shared builder
 #: emits so one table serves all four. Each MUST move bytes.
 COMMON_MUTATIONS: Tuple[Tuple[str, str, str], ...] = (
     ("rotation_skipped_in_the_kernel",
@@ -314,7 +314,7 @@ FAMILIES: Tuple[Dict[str, Any], ...] = (
              "    float dfin0 = d0s[ii] + 0.0f * d_final_0("),
             ("split_field_scratch_store_dropped",
              "    n0s[ii] = own.n0; n1s[ii] = own.n1; n2s[ii] = own.n2;\n", ""),
-            # The auxiliary contract (KERNELS.md §1, C2), as the weld carries it: off
+            # The auxiliary contract (docs/design/floating-point.md), as the weld carries it: off
             # the recurrence's cells the rotating fu scratch must hold the
             # pre-launch word. Dropping the carry stores the dsig-only value there.
             ("auxiliary_carry_dropped_on_component_0",
@@ -383,14 +383,14 @@ FAMILIES: Tuple[Dict[str, Any], ...] = (
              -1),
             ("split_field_scratch_store_dropped",
              "    n0s[ii] = own.n0; n1s[ii] = own.n1; n2s[ii] = own.n2;\n", ""),
-            # The auxiliary contract (KERNELS.md §1, C2), as the weld carries it: off
+            # The auxiliary contract (docs/design/floating-point.md), as the weld carries it: off
             # the recurrence's cells the rotating fu scratch must hold the
             # pre-launch word. Dropping the carry stores the dsig-only value there.
             ("auxiliary_carry_dropped_on_component_0",
              "n0 = du0 ? n0 : u0[ii];", "n0 = n0;", -1),
-            # ON A FIXTURE WHERE THE TWO VECTORS DIFFER. A two-axis fold gives x
+            # On a fixture where the two vectors differ. A two-axis fold gives x
             # and y the same extent AND the same one-sided absorber, so `kmx` and
-            # `kmy` are the same words there and the swap is a MEASURED no-op —
+            # `kmy` are the same words there and the swap is a measured no-op —
             # 0 differing words, which would report this mutation as uncaught.
             # `fold_y_3d` is the fixture that separates them (x cross 1.6 with a
             # two-sided layer, y extent 2.0 with a one-sided one).
@@ -489,7 +489,7 @@ FAMILIES: Tuple[Dict[str, Any], ...] = (
         "source": _folded_complex_source,
         "entry": "folded_complex_offdiag_fused_electric_pair_step",
         "mutations": (
-            # THE AUDIT FINDING, RE-POINTED. The array path now spells a complex
+            # The audit finding, re-pointed. The array path now spells a complex
             # parity `part_products.scale(parity, plane)`, one product per part,
             # and the weld follows it. The previous spelling, the full complex
             # product `c_mul((-1, +0), z)`, differs from it on signed-zero pairs;
@@ -506,7 +506,7 @@ FAMILIES: Tuple[Dict[str, Any], ...] = (
              -1),
             ("split_field_scratch_store_dropped",
              "    n0s[ii] = own.n0; n1s[ii] = own.n1; n2s[ii] = own.n2;\n", ""),
-            # The auxiliary contract (KERNELS.md §1, C2), as the weld carries it: off
+            # The auxiliary contract (docs/design/floating-point.md), as the weld carries it: off
             # the recurrence's cells the rotating fu scratch must hold the
             # pre-launch word. Dropping the carry stores the dsig-only value there.
             ("auxiliary_carry_dropped_on_component_0",
@@ -516,8 +516,8 @@ FAMILIES: Tuple[Dict[str, Any], ...] = (
              "device const float* u01 = mpack + prm.off_u02;"),
         ),
         "equivalences": (),
-        # A PREDICTED NULL IS A MEASUREMENT, AND IT IS NOT A DECLARED
-        # EQUIVALENCE. The two spellings are NOT equal in general — the host probe
+        # A predicted null is a measurement, and it is not a declared
+        # equivalence. The two spellings are NOT equal in general — the host probe
         # measures them differing in ten of a hundred engineered signed-zero pairs
         # — but the +1 arm cannot reach such a pair on any fixture this corpus
         # has: a near redirect reads stored cell 2, which the wall clear (stored
@@ -576,7 +576,7 @@ def build_plan(spec: Mapping[str, Any], fields: Any, pml: Any,
 class CountingFunction:
     """A launcher wrapper that counts calls INDEPENDENTLY of the plan.
 
-    TWO COUNTERS OR NONE. ``plan.launches`` is the plan's own tally and a plan
+    Two counters or none. ``plan.launches`` is the plan's own tally and a plan
     that never launched would report zero just as convincingly as one that did;
     this wrapper sits between the plan and the compiled entry point, so a launch
     the plan claims and did not make is a disagreement rather than a matching
@@ -642,7 +642,7 @@ def run_case(spec: Mapping[str, Any], build: Callable[[], Tuple[Any, Any]],
 
     live = live_passes(actual, actual_pml)
     assert live == live_passes(reference, reference_pml)
-    # A REPLACED PASS ABSENT FROM THE LIVE SET IS INERT, NOT MISSING. `zero_metal_D`
+    # A replaced pass absent from the live set is inert, not missing. `zero_metal_D`
     # does no work on a grid with no metallic axis, and `live_sub_steps` leaves it
     # out there; the kernel carries the clear unconditionally (the specialisation
     # emits no guard when no axis is walled), so the two agree. What WOULD be a
@@ -675,7 +675,7 @@ def run_case(spec: Mapping[str, Any], build: Callable[[], Tuple[Any, Any]],
     after = state_of(actual)
     moved = {name: differing(before[name], after[name]) for name in before}
     still = sorted(name for name, count in moved.items() if count == 0)
-    # AN AUXILIARY NO CHUNK WRITES IS NOT A VACUOUS FIXTURE. MEEP's per-chunk forms
+    # An auxiliary no chunk writes is not a vacuous fixture. MEEP's per-chunk forms
     # write `f_w_c` only in chunks carrying c's own-axis layer and `fu_c` only in the
     # chunks its curl's absorbing form steps it, so on a 2-D fixture (no layer on the
     # invariant axis) some auxiliaries stay at their seed in the array path itself,
@@ -855,7 +855,7 @@ def leg_mutation(spec: Mapping[str, Any]) -> Dict[str, Any]:
     for mutation in tuple(spec["mutations"]) + COMMON_MUTATIONS:
         # (label, old, new[, count[, case]]). A PER-MUTATION CASE is not a
         # convenience: an arm whose two operands happen to be equal on the default
-        # fixture is a MEASURED no-op, and moving it to a fixture that separates
+        # fixture is a measured no-op, and moving it to a fixture that separates
         # them is the difference between an armed mutation and a vacuous one.
         label, old, new = mutation[0], mutation[1], mutation[2]
         count = mutation[3] if len(mutation) > 3 else 1
@@ -927,7 +927,7 @@ def leg_mutation(spec: Mapping[str, Any]) -> Dict[str, Any]:
 def leg_rotation(spec: Mapping[str, Any]) -> Dict[str, Any]:
     """The launcher's post-launch rotation, and the two ways it can be wrong.
 
-    NOT A SOURCE MUTATION — this arm exercises the HOST half of the design
+    Not a source mutation — this arm exercises the HOST half of the design
     through the shipped plan object, which is the only half a kernel mutation
     cannot reach:
 
@@ -1007,7 +1007,7 @@ def _volume_source(fields: Any, component: str) -> Any:
 def leg_seam_refusal(spec: Mapping[str, Any]) -> Dict[str, Any]:
     """E: an in-seam ELECTRIC source must be refused BY NAME; none must not.
 
-    THE NULL IS THE SAME CONFIGURATION WITH NO SOURCE. Without it, a predicate
+    The null is the same configuration with no source. Without it, a predicate
     that refused everything would pass this leg.
     """
     build = dict(spec["cases"])[spec["seam_case"]]

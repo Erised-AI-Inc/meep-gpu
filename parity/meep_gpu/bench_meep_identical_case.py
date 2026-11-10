@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """Stock MEEP stepping the IDENTICAL simulation the GPU harness lifts, in Mcell-steps/s.
 
-WHY THIS EXISTS. The stock-MEEP rows behind the 2026-09-22 3-D table timed a different
+Why this exists. The stock-MEEP rows behind the 2026-09-22 3-D table timed a different
 problem from the GPU rows (a 1 um epsilon-12 block, PML 1.0, no monitor, against the
 GPU case's epsilon-9 sphere, PML 0.8, one flux monitor). This bench removes the
 difference at its root: the geometry is NOT re-typed here. The ``mp.Simulation`` is
@@ -13,7 +13,7 @@ geometry digest of the initialised simulation is written into every row, and
 ``digest_harness_lift.py`` computes the same digest on the object the harness lift
 itself initialised.
 
-WHAT IS MEASURED. The stepping rate of the whole grid: cells x steps / wall seconds,
+What is measured. The stepping rate of the whole grid: cells x steps / wall seconds,
 over windows of a fixed number of steps, after ``init_sim`` and a warm-up. The build and
 ``init_sim`` are timed separately and are in no rate. Steps are COUNTED from MEEP's own
 timestep counter (``fields.t``), never assumed. Each window is bracketed by an MPI
@@ -33,17 +33,19 @@ OpenMP threads per rank (``--threads-per-rank``), the binding label the driver p
 given) and the stepper. A comparison reads them to refuse a median that blends two
 configurations.
 
-THREADS PER RANK. MEEP's ``setup()`` forces one OpenMP thread when ``OMP_NUM_THREADS``
+Threads per rank. MEEP's ``setup()`` forces one OpenMP thread when ``OMP_NUM_THREADS``
 is unset, initialises MPI with ``MPI_THREAD_FUNNELED`` when built with OpenMP, and
 threads its step loops inside each chunk (``omp parallel for collapse(3)``). With
 ``--threads-per-rank T`` (T > 1) the bench refuses unless ``OMP_NUM_THREADS`` is T and
 the ``--build-record`` says MEEP's OWN libraries link an OpenMP runtime (a runtime that
 OpenBLAS maps into the process does not count) and, once MEEP is imported, an OpenMP
-runtime is mapped into the process; it records the threads the process
-gained after MPI initialisation and each rank's CPU seconds per wall second over the
-windows, from which ``timing_records.py record-meep`` strikes a row that did not run T.
+runtime is mapped into the process; it records, per rank, the threads gained after a
+baseline taken BEFORE ``import meep`` that were busy over the windows (the import creates
+MPI's helpers and the OpenMP pool in one step, so no later baseline can see the pool
+appear), and each rank's CPU seconds per wall second over the windows, from which
+``timing_records.py record-meep`` strikes a row that did not run T.
 
-WHAT EVERY ROW RECORDS. MEEP version, the single-precision assertion, the MPI rank
+What every row records. MEEP version, the single-precision assertion, the MPI rank
 count (MEEP's and the communicator's), each rank's CPU affinity, thread environment,
 nice level, the launcher line and binding label the driver passed in, the MEEP
 configure line where a config.log is named, sha256 of this file and of the modules the
@@ -297,7 +299,29 @@ def geometry_digest(mp: Any, sim: Any, sample_epsilon: bool = True) -> Dict[str,
         sampled = None
     canonical = json.dumps(facts, sort_keys=True, separators=(",", ":"))
     return {"digest": sha256_text(canonical), "facts": facts,
+            "structural_digest": structural_digest(facts),
             "epsilon_sha256_exact": exact, "epsilon_sampling": sampled}
+
+
+def structural_digest(facts: Dict[str, Any]) -> str:
+    """The digest of the same facts less the two a build's floating-point precision
+    carries: the sampled epsilon's ``dtype`` and its rounded hash (``sha256_rounded``).
+
+    Measured on both hosts (CTXMEEP, 2026-10-17): conda-forge's double-precision MEEP
+    1.33.0 builds ``pml_3d`` at 512,000 cells with 71 of the 73 digest facts equal to the
+    single-precision reference build's -- the same cell, grid, dt, PML, geometry, sources,
+    monitors, epsilon range and cells above 1 -- and only these two differ (float64 against
+    float32, and 72 / 80 cells whose float64 epsilon rounds to another fifth decimal than
+    its float32 cast). Compared only for a DOUBLE-PRECISION labelled context leg; the
+    digest of record is unchanged, and every other row, a single-precision context leg
+    included, is held to it whole."""
+    reduced = dict(facts)
+    epsilon = facts.get("epsilon")
+    if isinstance(epsilon, dict):
+        reduced["epsilon"] = {k: v for k, v in epsilon.items()
+                              if k not in ("dtype", "sha256_rounded")}
+    canonical = json.dumps(reduced, sort_keys=True, separators=(",", ":"))
+    return sha256_text(canonical)
 
 
 # ---------------------------------------------------------------------------
@@ -378,18 +402,38 @@ def box_reading() -> Dict[str, Any]:
     return reading
 
 
-def rank_facts(mp: Any) -> Dict[str, Any]:
+def current_affinity() -> Optional[List[int]]:
     try:
-        affinity: Optional[List[int]] = sorted(os.sched_getaffinity(0))
+        return sorted(os.sched_getaffinity(0))
     except AttributeError:
-        affinity = None
-    return {"rank": int(mp.my_rank()), "pid": os.getpid(), "host": platform.node(),
-            "affinity": affinity, "nice": os.nice(0)}
+        return None
 
 
-def gather_ranks(mp: Any) -> Dict[str, Any]:
+def rank_facts(mp: Any, launched: Optional[List[int]] = None) -> Dict[str, Any]:
+    """This rank's placement. ``affinity`` is the set the LAUNCHER bound the process to,
+    read before ``import meep`` when the caller passes it (``launched``).
+
+    Why before the import (2026-10-17). Importing MEEP starts the OpenMP runtime,
+    and under ``OMP_PROC_BIND=close`` / ``OMP_PLACES=cores`` (a threaded row's
+    environment) it pins the MAIN thread to the first place: read afterwards, a 24 x 2
+    rank bound by Open MPI to cores 0-1 (CPUs 0, 1, 48, 49) reported {0, 48}, one core,
+    and :func:`timing_records.cores_verdict` struck the row for using 24 of 48 cores
+    while both cores ran. The main thread's set after the import is kept beside it.
+
+    The rank's machine is its anonymous id (``neutral_ids.machine_id``: two ranks on one
+    node share it, ranks on two nodes do not) and its pid is not written: the rows leave
+    the machine."""
+    import neutral_ids  # noqa: PLC0415
+    after = current_affinity()
+    return {"rank": int(mp.my_rank()), "host": neutral_ids.machine_id(),
+            "affinity": launched if launched is not None else after,
+            "affinity_read": "before_import_meep" if launched is not None else "after",
+            "affinity_main_thread_after_import": after, "nice": os.nice(0)}
+
+
+def gather_ranks(mp: Any, launched: Optional[List[int]] = None) -> Dict[str, Any]:
     """Every rank's affinity on the master, through the communicator MEEP initialised."""
-    mine = rank_facts(mp)
+    mine = rank_facts(mp, launched)
     try:
         import mpi4py  # noqa: PLC0415
         mpi4py.rc.initialize = False
@@ -484,6 +528,62 @@ def thread_count() -> Optional[int]:
     return max(0, len(lines) - 1) or None
 
 
+#: A thread counts as having RUN in the windows when its CPU seconds over them reach this
+#: share of their wall time. A stepping OpenMP worker reads about 1.0 (measured: 1.996-1.998
+#: CPU seconds per wall second at 2 threads per rank); MPI's helper threads, idle in a
+#: blocking wait, read 0.0 (measured on the GPU host, 2026-10-17).
+BUSY_THREAD_SHARE = 0.5
+
+
+def thread_cpu_seconds() -> Optional[Dict[int, float]]:
+    """CPU seconds (user + system) per thread of this process, from
+    ``/proc/self/task/<tid>/stat``; ``None`` where the platform has no such file."""
+    try:
+        tids = os.listdir("/proc/self/task")
+    except OSError:
+        return None
+    tick = float(os.sysconf("SC_CLK_TCK")) if hasattr(os, "sysconf") else 100.0
+    out: Dict[int, float] = {}
+    for tid in tids:
+        try:
+            with open(f"/proc/self/task/{tid}/stat", "r", encoding="utf-8") as handle:
+                fields = handle.read().rsplit(")", 1)[1].split()
+        except (OSError, IndexError):
+            continue
+        try:
+            out[int(tid)] = (int(fields[11]) + int(fields[12])) / tick
+        except (IndexError, ValueError):
+            continue
+    return out
+
+
+def busy_threads(before: Optional[Dict[int, float]], after: Optional[Dict[int, float]],
+                 wall: float, baseline: Optional[Sequence[int]]) -> Dict[str, Any]:
+    """Which threads RAN over the windows, and how many of them the process gained
+    after the pre-import baseline.
+
+    The baseline is taken before ``import meep``. Importing MEEP initialises MPI and
+    creates the OpenMP pool in one step (measured on the GPU host, 2026-10-17: 1 thread
+    before the import, 3 after it at one thread per rank and 4 at two, unchanged
+    through ``init_sim`` and the steps), so a count read after the import already holds
+    the pool and can never see it added (every hybrid row of the first 1.0 timing read 0
+    added while running 2.0 CPU seconds per wall second). A raw count against that
+    baseline cannot be used either: MPI's helpers (and, on a CUDA-aware MPI, a CUDA
+    thread) are gained too. So a thread counts only if it was gained after the baseline
+    AND was busy for ``BUSY_THREAD_SHARE`` of the windows' wall time.
+    """
+    if before is None or after is None or wall <= 0:
+        return {"available": False}
+    used = {tid: after[tid] - before.get(tid, 0.0) for tid in after}
+    busy = sorted(tid for tid, seconds in used.items()
+                  if seconds >= BUSY_THREAD_SHARE * wall)
+    gained = [tid for tid in busy if baseline is not None and tid not in set(baseline)]
+    return {"available": True, "busy": len(busy), "busy_gained": len(gained),
+            "share": BUSY_THREAD_SHARE, "wall_s": round(wall, 4),
+            "cpu_seconds_per_thread": sorted((round(v, 3) for v in used.values()),
+                                             reverse=True)}
+
+
 def chunk_layout(mp: Any, sim: Any, ranks: int) -> Dict[str, Any]:
     """How MEEP split the grid: chunks, and owned cells per rank (the load balance)."""
     out: Dict[str, Any] = {"num_chunks": None, "cells_per_rank": None}
@@ -547,9 +647,36 @@ def spread(values: Sequence[float]) -> float:
     return (max(values) - min(values)) / median
 
 
+def recorded_environment(environment: Dict[str, Any]) -> Dict[str, Any]:
+    """The environment row as it leaves the machine.
+
+    The launcher's binding report keeps each rank's cores and drops the host name and
+    the pid the launcher prints beside them (``timing_host.recorded_binding_line``); the
+    host is the machine id; every path (the interpreter, MEEP's files, the config.log,
+    the build record, this bench) is under its root's label, a GPU UUID is its card id,
+    and the argument list is ``neutral_ids.argv`` (all through ``neutral_ids.value``)."""
+    import neutral_ids  # noqa: PLC0415
+    import timing_host  # noqa: PLC0415 - the binding report's recorded spelling
+    out = dict(environment)
+    out["host"] = neutral_ids.machine_id()
+    report = out.get("launcher_bindings_report")
+    if isinstance(report, list):
+        out["launcher_bindings_report"] = [timing_host.recorded_binding_line(line)
+                                           for line in report]
+    ranks = out.get("rank_bindings")
+    if isinstance(ranks, list):
+        out["rank_bindings"] = [{k: v for k, v in rank.items() if k != "pid"}
+                                if isinstance(rank, dict) else rank for rank in ranks]
+    if out.get("argv") is not None:
+        out["argv"] = neutral_ids.argv(out["argv"])
+    return neutral_ids.value(out)
+
+
 def append(path: str, row: Dict[str, Any]) -> None:
+    """One row, written as it leaves the machine (``neutral_ids.value``)."""
+    import neutral_ids  # noqa: PLC0415
     with open(path, "a", encoding="utf-8") as handle:
-        handle.write(json.dumps(row, sort_keys=True, default=str) + "\n")
+        handle.write(json.dumps(neutral_ids.value(row), sort_keys=True, default=str) + "\n")
         handle.flush()
         os.fsync(handle.fileno())
 
@@ -615,6 +742,10 @@ def build_parser() -> argparse.ArgumentParser:
                         dest="split_chunks_evenly",
                         help="true or false, set on the simulation before init_sim; "
                              "MEEP's default (true) when not given")
+    parser.add_argument("--context-label", default=None, dest="context_label",
+                        help="time this build as a LABELLED CONTEXT leg (e.g. 'conda-forge "
+                             "MEEP (double precision)'): recorded and reported, never the "
+                             "denominator; admits a double-precision build")
     parser.add_argument("--scope-cpus", type=int, default=None, dest="scope_cpus",
                         help="the CPUs the launching ladder may use (its affinity); a "
                              "rank is 'bound' when its set is narrower; os.cpu_count() "
@@ -636,9 +767,9 @@ def check_threads(threads: Optional[int],
                   build_record: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     """Refuse a threaded row whose environment cannot run the threads it names.
 
-    Run BEFORE MEEP IS IMPORTED, so it reads nothing MEEP's import changes: the thread
-    count the row was started with and the build record. WHETHER MEEP WAS BUILT WITH
-    OPENMP is read from the record's ``openmp``: ``timing_records.py meep-build-record``
+    Run before MEEP is imported, so it reads nothing MEEP's import changes: the thread
+    count the row was started with and the build record. Whether MEEP was built with
+    OpenMP is read from the record's ``openmp``: ``timing_records.py meep-build-record``
     decides it from the libraries MEEP's own images link DIRECTLY. A runtime merely
     MAPPED into the process proves nothing -- an OpenBLAS built with OpenMP maps
     ``libgomp``/``libomp`` into a MEEP that has no threaded loop -- so it never admits
@@ -671,7 +802,7 @@ def check_threads_after_import(threads: Optional[int],
                                check: Dict[str, Any]) -> Dict[str, Any]:
     """The OpenMP runtime a threaded row needs, read AFTER ``import meep``.
 
-    Until the 1.0 round this was read before the import, where MEEP's own library --
+    The first 1.0 timing read this before the import, where MEEP's own library --
     the image that links the runtime -- is not loaded yet: every hybrid MPI x OpenMP
     row refused "no OpenMP runtime is mapped" on a build configured ``--with-openmp``
     that links ``libgomp`` (18 / 18 rows on the GPU host). Read here, its absence
@@ -691,8 +822,20 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if args.windows < 3 and not args.digest_only:
         raise SystemExit(f"--windows must be at least 3; got {args.windows}")
 
-    # NO GPU, BEFORE ANYTHING IS IMPORTED: a MEEP rank must never be a GPU process.
+    # No GPU, before anything is imported: a MEEP rank must never be a GPU process.
     os.environ["CUDA_VISIBLE_DEVICES"] = ""
+    # The thread baseline of record, before ``import meep``: the import creates
+    # MPI's helpers and the OpenMP pool together, so this is the last point before the
+    # pool exists. Which of the threads gained later ran is read per thread over the
+    # windows (:func:`busy_threads`).
+    try:
+        tids_before_import: Optional[List[int]] = sorted(
+            int(t) for t in os.listdir("/proc/self/task"))
+    except OSError:
+        tids_before_import = None
+    threads_before_import = thread_count()
+    # The launcher's placement, before the OpenMP runtime pins the main thread.
+    affinity_at_launch = current_affinity()
     box_at_start = box_reading()
     build_record = read_build_record(args.build_record)
     thread_check = check_threads(args.threads_per_rank, build_record)
@@ -713,10 +856,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             print(f"[{time.strftime('%H:%M:%S')}] {message}", flush=True)
 
     single = bool(mp.is_single_precision())
-    if not single:
+    if not single and not args.context_label:
         raise SystemExit("REFUSING: this MEEP build is double precision "
                          "(is_single_precision() is False); the GPU engine steps "
-                         "float32 and the comparison is single against single")
+                         "float32 and the comparison is single against single. A "
+                         "double-precision build is timed only as a labelled context "
+                         "leg (--context-label), never as a denominator")
     if args.expect_ranks is not None and ranks != args.expect_ranks:
         raise SystemExit(f"REFUSING: asked for {args.expect_ranks} ranks and MEEP "
                          f"counts {ranks}")
@@ -732,9 +877,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         os.makedirs(args.out, exist_ok=True)
     row_id = args.row_id or (f"{args.case}_res{args.res}_r{ranks}_p{args.pass_index}"
                              f"_{int(time.time())}")
-    gathered = gather_ranks(mp)
-    # THE THREAD BASELINE, taken after MPI initialisation (its helper threads are in
-    # it) and before any OpenMP region has run: what OpenMP adds is read against it.
+    gathered = gather_ranks(mp, affinity_at_launch)
+    # The 1.0 thread baseline, read after ``import meep``, kept for continuity with the
+    # rows of the first 1.0 timing. It already holds the OpenMP pool (the import creates it with
+    # MPI's helpers), so it cannot show the pool added; the baseline of record is the one
+    # taken before the import (:func:`busy_threads`).
     threads_at_mpi_init = thread_count() if (args.threads_per_rank or 1) > 1 or \
         os.path.isdir("/proc/self/task") else None
     if gathered.get("communicator_size") not in (None, ranks):
@@ -748,6 +895,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                                 else bool(args.split_chunks_evenly)),
         "stepper": args.stepper, "binding": args.binding_label,
     }
+    if args.context_label:
+        # A context leg: recorded and reported beside the table, never its denominator
+        # (timing_records.record_meep keeps it out of every reference comparison).
+        configuration["context"] = str(args.context_label)
+        configuration["precision"] = "single" if single else "double"
     common = {"row_id": row_id, "tag": args.tag, "case": args.case,
               "resolution": int(args.res), "ranks": ranks, "pass": int(args.pass_index),
               "passes_planned": int(args.passes_planned), "configuration": configuration}
@@ -796,21 +948,24 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         environment["numpy"] = numpy.__version__
     except Exception:  # noqa: BLE001
         environment["numpy"] = None
+    # What the rows write of it: the environment row and every measurement row carry it.
+    environment_written = recorded_environment(environment)
     if master:
-        append(rows_path, {"row": "environment", "utc": utc(), **common, **environment})
+        append(rows_path, {"row": "environment", "utc": utc(), **common,
+                           **environment_written})
     say(f"stock MEEP {mp.__version__} single_precision={single} ranks={ranks} "
         f"binding={args.binding_label} case={args.case} res={args.res} "
         f"pass {args.pass_index}/{args.passes_planned} tag={args.tag} "
         f"build={configuration['build']} threads={configuration['threads_per_rank']} "
         f"split={configuration['split_chunks_evenly']}")
 
-    # BUILD AND INITIALISE, each timed, neither in any rate.
+    # Build and initialise, each timed, neither in any rate.
     mp.all_wait()
     started = time.perf_counter()
     sim, monitors, until = builder(mp, args.res)
     build_seconds = float(mp.max_to_all(time.perf_counter() - started))
     if args.split_chunks_evenly is not None:
-        # READ AT STRUCTURE CREATION (meep/simulation.py passes the attribute into the
+        # Read at structure creation (meep/simulation.py passes the attribute into the
         # structure it builds in init_sim), so it is set between the builder and init.
         sim.split_chunks_evenly = bool(args.split_chunks_evenly)
     mp.all_wait()
@@ -833,6 +988,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     common["cells"] = cells
     common["dimensions"] = int(facts["dimensions"])
     common["geometry_digest"] = digest["digest"]
+    common["geometry_digest_structural"] = digest["structural_digest"]
     setup = {"build_seconds": build_seconds, "init_seconds": init_seconds,
              "monitors_attached": {"dft_objects": len(sim.dft_objects),
                                    "returned_by_builder": len(monitors or []),
@@ -895,6 +1051,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         f"(~{1e3 * per_step:.3f} ms/step, target {args.target_seconds} s)")
 
     windows: List[Dict[str, Any]] = []
+    per_thread_before = thread_cpu_seconds()
     cpu_started = time.process_time()
     wall_started = time.perf_counter()
     for index in range(args.windows):
@@ -915,6 +1072,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             f"({1e3 * entry['seconds_per_step']:.3f} ms/step)")
     wall = time.perf_counter() - wall_started
     over_wall = (time.process_time() - cpu_started) / wall if wall > 0 else 0.0
+    ran = busy_threads(per_thread_before, thread_cpu_seconds(), wall, tids_before_import)
     threads_now = thread_count() if (args.threads_per_rank or 1) > 1 or \
         os.path.isdir("/proc/self/task") else None
     added = (threads_now - threads_at_mpi_init
@@ -926,6 +1084,17 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                         if threads_now is not None else None),
         "omp_threads_added_min": (-int(mp.max_to_all(-float(added)))
                                   if added is not None else None),
+        # The baseline before ``import meep`` and the threads that RAN over the
+        # windows; ``omp_threads_busy_added_min`` is what timing_records judges T by.
+        "threads_baseline": "before_import_meep",
+        "threads_before_import_this_rank": threads_before_import,
+        "busy_threads_this_rank": ran.get("busy"),
+        "busy_thread_share": BUSY_THREAD_SHARE,
+        "busy_threads_min": (-int(mp.max_to_all(-float(ran["busy"])))
+                             if ran.get("available") else None),
+        "omp_threads_busy_added_min": (-int(mp.max_to_all(-float(ran["busy_gained"])))
+                                       if ran.get("available") else None),
+        "cpu_seconds_per_thread_this_rank": ran.get("cpu_seconds_per_thread"),
         "cpu_seconds_over_wall_this_rank": round(over_wall, 4),
         "cpu_seconds_over_wall_min": round(-float(mp.max_to_all(-over_wall)), 4),
         "cpu_seconds_over_wall_max": round(float(mp.max_to_all(over_wall)), 4),
@@ -944,7 +1113,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             timers[name] = {"mean_seconds": sum(spent) / len(spent),
                             "max_seconds": max(spent)}
 
-    # THE MONITOR WAS STEPPED, SHOWN NOT ASSUMED: MEEP's Fourier-transform timer having
+    # The monitor was stepped, shown not assumed: MEEP's Fourier-transform timer having
     # run, or the flux the monitor holds being nonzero. COLLECTIVE: every rank calls.
     fluxes: List[Any] = []
     for item in sim.dft_objects:
@@ -985,9 +1154,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "meep_timers_since_init": timers,
         "geometry": {"digest": digest["digest"],
                      "epsilon_sha256_exact": digest["epsilon_sha256_exact"]},
-        "environment": environment,
+        "environment": environment_written,
         "box_at_end": box_reading(),
-        # THE IMPORT RECORD, IN THE HARNESS (as on every GPU row): the repository
+        # The import record, in the harness (as on every GPU row): the repository
         # modules this rank holds, keyed repo-relative. A MEEP row's holds harness files
         # and no package module, which is what shows the package was not in its process.
         gate_provenance.IMPORTED_KEY: gate_provenance.provenance(),

@@ -1,12 +1,12 @@
 """Merge-bar tests for the Metal FOLDED COMPLEX family — a composition of two.
 
-THE QUESTION THIS FILE ANSWERS IS NOT "IS EACH HALF RIGHT". Both halves are already
+The question this file answers is not "is each half right". Both halves are already
 byte-certified alone: ``complex_fields`` (the complex/Bloch curl and constitutive)
 and ``symmetry`` (the real fold). The question is whether they remain right
 TOGETHER, and the answer is "in three of four places yes, and in the fourth NO" —
 which is exactly why this is a family and not a flag.
 
-**1. THE STRUCTURAL COMPOSITION.** The folded complex curl is
+**1. The structural composition.** The folded complex curl is
 ``complex_fields._CURL_TEMPLATE`` with ONE block inserted at a checked anchor, and
 its ghost gather and cell-0 mask are the CERTIFIED emitters' own output reached by
 mapping every mirror code to ``METALLIC``. Both halves of that are checked by
@@ -16,7 +16,7 @@ The strongest form is here: on an UNFOLDED grid the emitted source must be
 character-identical to ``complex_fields.bloch_curl_source``'s except for an empty
 top-plane block.
 
-**2. THE ONE PLACE THE COMPOSITION CHANGES ARITHMETIC.** Under real storage the
+**2. The one place the composition changes arithmetic.** Under real storage the
 fold's parity is a sign-bit operation and ``symmetry.mirror_ghost_fill`` spells it
 ``-x`` or a plain copy. Under complex64 the array path's ``phase * plane`` is a FULL
 complex multiply by ``(+/-1.0, +0.0)`` with its zero cross terms, and that is NOT the
@@ -26,17 +26,17 @@ counted, at both parities. If that count were ever zero this whole family should
 deleted and ``symmetry.mirror_ghost_fill`` admitted on complex storage instead, so
 the leg asserts it is NOT.
 
-**3. THE SUBNORMAL REACH GOES BACKWARDS**, and that is the composition's doing
+**3. The subnormal reach goes backwards**, and that is the composition's doing
 rather than either port's. ``symmetry.py`` records its FILL as band-safe because it
 performs no arithmetic; making the parity a complex product makes it arithmetic, and
 arithmetic flushes on this backend. Measured here per value class.
 
-**4. THE FOLD'S OWN HAZARDS**, unchanged from the real family and re-run because a
+**4. The fold's own hazards**, unchanged from the real family and re-run because a
 leg carrying one storage proves nothing about the other: the two ownership masks are
 INVISIBLE at whole-step granularity (the fill passes overwrite exactly the planes
 they protect), so the mask leg is a SUB-STEP leg; the mirror plane is written by one
 pass and READ by the next, so the whole-step leg compares per COMPLETE STEP and
-reports the FIRST DIVERGENT STEP; and the two terminations are different kernels.
+reports the first divergent step; and the two terminations are different kernels.
 
 **5. THE DISJOINTNESS**, stated as inversions rather than inherited. This family has
 FOUR neighbours to stay clear of — the plain real families, the folded REAL family,
@@ -145,7 +145,7 @@ def test_the_curl_template_is_the_certified_one_plus_one_block():
 
     The whole composition argument is that this family owns exactly one block of
     device text. Removing that block from the derived template must give back
-    ``complex_fields._CURL_TEMPLATE`` CHARACTER FOR CHARACTER — which is a stronger
+    ``complex_fields._CURL_TEMPLATE`` character for character — which is a stronger
     statement than "it contains the parent's fragments", because it also forbids
     silently dropping one.
     """
@@ -297,7 +297,7 @@ def test_a_parity_outside_plus_or_minus_one_is_refused():
 @pytest.mark.parametrize("axis", (0, 1, 2))
 @pytest.mark.parametrize("family", ("B", "D"))
 def test_the_fill_multiplies_and_never_flips_a_sign(family, axis, pass_name):
-    """EVERY WRITE IS THE ARRAY PATH'S PRODUCT, ONE PER PART.
+    """Every write is the array path's product, one per part.
 
     The array path writes ``part_products.scale(parity, plane)``: a float32 product
     per part, which flushes a subnormal word as every arithmetic does on this backend.
@@ -420,7 +420,7 @@ def test_this_family_refuses_real_storage_and_names_the_real_fold():
 
 
 def test_the_two_fill_arms_can_never_both_admit_because_a_volume_has_one_dtype():
-    """THE GAP CLAUSE 2 DOES NOT CLOSE, CHECKED RATHER THAN ARGUED.
+    """The gap clause 2 does not close, checked rather than argued.
 
     The real fold's fill asks ``force_complex_fields`` and carries NO k clause; this
     family also admits ``has_bloch``. So on a ``has_bloch`` run with
@@ -478,14 +478,14 @@ def test_beta_is_refused_by_name_on_the_arithmetic_slots_and_not_on_the_fill():
     """CLAUSE 8, and the SCOPE of the refusal, which is the interesting half.
 
     A folded complex beta run belongs to ANOTHER family — :mod:`.folded_beta`, which
-    now carries it — so every arithmetic slot must be refused BY NAME AND THE NAME
-    MUST BE THE OWNER'S. The two FILL slots must NOT be refused:
+    now carries it — so every arithmetic slot must be refused by name and the name
+    must be the owner's. The two FILL slots must NOT be refused:
     ``fill_symmetry_bc_*`` copies ``phase * field[2]`` and touches no beta term at
     all, so a beta clause there would refuse a pass beta cannot reach — which is
     also why ``folded_beta`` registers no fill arm and these two slots stay this
     family's.
 
-    THE PIN NAMES THE OWNER RATHER THAN THE ABSENCE. This clause was written as a
+    The pin names the owner rather than the absence. This clause was written as a
     PRE-REGISTERED inversion while nothing carried those slots; when ``folded_beta``
     honoured it, "the folded beta product, which this backend does not carry"
     stopped being true while the refusal itself stayed exactly right. A reader
@@ -524,7 +524,7 @@ def test_the_offdiagonal_row_is_refused_on_the_e_side_only():
 def test_a_bloch_phase_on_the_folded_axis_is_refused_by_name():
     """CLAUSE 9 — this family's own, with no twin in either parent.
 
-    MEASURED WHILE WRITING THIS LEG, and it changes what the clause is FOR: the
+    Measured while writing this leg, and it changes what the clause is FOR: the
     ENGINE ITSELF refuses to construct the configuration. ``Grid`` raises "mirror
     symmetry on the Y axis requires k_point component y = 0" before ``Fields``
     exists, so clause 9 is UNREACHABLE through the engine's own classes, exactly as
@@ -648,11 +648,11 @@ def _complex_folded(**kwargs):
     return matrix.folded(**kwargs)
 
 
-#: THE AXES A BEHAVIOURAL LEG MUST CARRY. The real fold's eight, re-run rather than
+#: The axes a behavioural leg must carry. The real fold's eight, re-run rather than
 #: inherited — a leg carrying one storage proves nothing about the other — PLUS the
 #: two this composition adds and neither parent has.
 #:
-#: THE BLOCH ROWS ARE THE COMPOSITION'S OWN CASE and without them the byte legs would
+#: The Bloch rows are the composition's own case and without them the byte legs would
 #: never launch a folded curl that also ROTATES. Three of the five non-beta folded
 #: complex corpus rows carry a Bloch k on an UNFOLDED axis (``holey-wvg-bands``,
 #: ``triangular_lattice_oblique``, ``binary_grating_special_kz_2_21_2``), and the
@@ -706,7 +706,7 @@ def test_the_folded_complex_curl_reproduces_stepping_bit_for_bit(label, kwargs,
                                                                  sub_step):
     """SUB-STEP granularity, which is where the two ownership masks live.
 
-    THE MASKS ARE INVISIBLE AT WHOLE-STEP GRANULARITY — the driver's fill passes
+    The masks are invisible at whole-step granularity — the driver's fill passes
     overwrite exactly the planes they protect — so a whole-step check certifies a
     mask-less kernel as correct. This leg is the one that can fail on a mask, and it
     runs BOTH terminations because the top-plane mask exists only on MIRROR_PERIODIC.
@@ -741,7 +741,7 @@ def test_the_folded_complex_curl_reproduces_stepping_bit_for_bit(label, kwargs,
 @requires_mps
 @pytest.mark.parametrize("label,kwargs", FOLD_CASES, ids=[c[0] for c in FOLD_CASES])
 def test_the_folded_complex_fill_reproduces_both_array_path_passes(label, kwargs):
-    """THE MIRROR PLANE ITSELF — near and far, in the driver's own X, Y, Z order."""
+    """The mirror plane itself — near and far, in the driver's own X, Y, Z order."""
     fields, pml = _complex_folded(**kwargs)
     for family, near_fill, far_fill in (
             ("B", stepping.fill_symmetry_bc_B, stepping.fill_folded_far_ghosts_B),
@@ -776,12 +776,12 @@ def test_the_folded_complex_fill_reproduces_both_array_path_passes(label, kwargs
 @pytest.mark.parametrize("label,kwargs", FOLD_CASES, ids=[c[0] for c in FOLD_CASES])
 def test_a_complete_step_agrees_and_the_first_divergent_step_is_reported(label,
                                                                         kwargs):
-    """THE WHOLE-STEP LEG — the only one that can see the fold's fourth risk.
+    """The whole-step leg — the only one that can see the fold's fourth risk.
 
     Three failure classes live ONLY in a complete step: a STALE MIRROR, a SEAM, and
     an ACCUMULATING AUXILIARY (``fu_*`` and ``f_w_*`` are STATE, and a kernel right
-    for one launch and wrong forever after is identical in a single-launch leg). THE
-    FOLD ADDS A FOURTH: the folded axis's ghost plane is written by one pass and READ
+    for one launch and wrong forever after is identical in a single-launch leg). The
+    fold adds a fourth: the folded axis's ghost plane is written by one pass and READ
     by the next.
 
     Every slot's launch counter is asserted, because a slot that passes by NOT
@@ -846,7 +846,7 @@ def test_a_complete_step_agrees_and_the_first_divergent_step_is_reported(label,
         if total and first_divergent is None:
             first_divergent = (step, {k: v for k, v in differing.items() if v})
 
-    assert first_divergent is None, (label, "FIRST DIVERGENT STEP", first_divergent,
+    assert first_divergent is None, (label, "first divergent step", first_divergent,
                                      "per-step differing words", per_step)
     moved = sum(_moved(np.zeros_like(getattr(reference_fields, name)),
                        getattr(reference_fields, name))
@@ -935,7 +935,7 @@ def _sign_bit(plane, parity: int):
 
 @requires_mps
 def test_the_parity_multiply_is_not_band_safe_and_the_real_folds_was():
-    """THE REACH REGRESSION THE COMPOSITION CAUSES, per value class.
+    """The reach regression the composition causes, per value class.
 
     ``symmetry.py`` records its fill as band-safe BECAUSE it performs no arithmetic.
     Making the parity a complex product makes it arithmetic, and arithmetic flushes
@@ -982,7 +982,7 @@ def test_the_parity_multiply_is_not_band_safe_and_the_real_folds_was():
                                            (dict(boundaries={"y": "metallic"}),
                                             False)))
 def test_the_top_plane_mask_is_load_bearing_on_mirror_periodic_only(kwargs, caught):
-    """A GATE THAT CANNOT FAIL CERTIFIES NOTHING, and the conditionality is the point.
+    """A gate that cannot fail certifies nothing, and the conditionality is the point.
 
     Dropping the top-plane mask must change bytes on a MIRROR_PERIODIC run and must
     NOT on a MIRROR_METALLIC one, where the emitter produces no mask lines at all.
@@ -1035,7 +1035,7 @@ def test_the_top_plane_mask_is_load_bearing_on_mirror_periodic_only(kwargs, caug
 def test_the_reflect_row_mutation_is_caught_at_an_odd_full_count_only(extent, caught):
     """``stored - 2`` at an even full count and ``stored - 3`` at an odd one.
 
-    At the default extent the wrong ``n - 2`` formula HAPPENS TO BE RIGHT, so a
+    At the default extent the wrong ``n - 2`` formula happens to be right, so a
     matrix carrying only that extent measures nothing about the reflect row. Both
     halves are asserted.
     """
@@ -1122,13 +1122,13 @@ def test_fusing_the_two_fill_passes_per_axis_is_a_measured_null_here():
 
     A component unowned on two axes with DIFFERENT Yee shifts sees near-then-far on
     the array path and would see far-then-near under a fused per-axis launch. The
-    Triton twin measures 5 words on its own engineered states; MEASURED HERE
+    Triton twin measures 5 words on its own engineered states; measured here
     2026-08-16 on the matrix's two-axis folded complex grids, at mixed and matched
     phase, for both families, with random-uniform volumes AND with all four
     signed-zero sign combinations planted on the rows the fill reads: 0 words in
     every cell.
 
-    THAT DOES NOT LICENSE FUSING THE PASSES, and the reason the split is kept is
+    That does not license fusing the passes, and the reason the split is kept is
     INDEPENDENT of this measurement: ``zero_metal_*`` runs BETWEEN them in the driver
     (driver.py:3286 / :3301) and the far pass reads a whole plane the wall clear can
     touch. The ordering question is a second reason that happens to be a null on the
@@ -1222,7 +1222,7 @@ def test_a_flipped_parity_is_caught_on_every_fold_case(label, kwargs):
 
 @requires_mps
 def test_the_coefficient_orientation_is_a_measured_equivalence():
-    """NAMED AS AN EQUIVALENCE RATHER THAN LEFT AS AN UNTESTED BELIEF.
+    """Named as an equivalence rather than left as an untested belief.
 
     The array path spells ``scale(parity, plane)`` — coefficient on the LEFT — and
     the transcription keeps that. IEEE multiplication is commutative, so the swapped

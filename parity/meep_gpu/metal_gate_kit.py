@@ -1,27 +1,27 @@
 """Gate scaffolding shared by the Metal family byte gates.
 
-EXTRACTED BY COPY FROM ``gate_metal_pml.py``, AND THAT GATE IS NOT RE-POINTED AT IT.
+Extracted by copy from ``gate_metal_pml.py``, and that gate is not re-pointed at it.
 The trade is stated rather than assumed:
 
 * **cost** — roughly four hundred duplicated lines that will drift;
-* **benefit** — tranche 1's certification is not reopened as a side effect of a
-  buildout. ``gate_metal_pml.py`` is a certified artifact whose nine legs ran on
+* **benefit** — the first Metal certification is not reopened as a side effect of
+  a buildout. ``gate_metal_pml.py`` is a certified artifact whose nine legs ran on
   2026-08-14; rewriting its plumbing to import this module would make the next
-  green run a statement about NEW code. A follow-on round may re-point it and
+  green run a statement about NEW code. A later certification may re-point it and
   re-cut, as a deliberate re-certification named as such.
 
-WHAT IS HERE is the part that is genuinely family-independent: the atomic writer,
+What is here is the part that is genuinely family-independent: the atomic writer,
 the flushed log, the uint32 word compare, the state digest, the launch counter, the
 mutation harness with its armed / launch-counted / DISARMED / NEEDLE-MISSED
 classification, the vacuity floors, the provenance and fingerprint stamp, and the
 ``--legs`` driver with the exit-75 cannot-certify-here convention.
 
-WHAT IS NOT HERE, deliberately: anything that decides what a family COMPARES. The
+What is not here, deliberately: anything that decides what a family COMPARES. The
 compared set, the seeding, the case matrix and the reference transcription are the
 family's own and are the substance of its claim; a kit that supplied them would let
 a family inherit a claim it never made.
 
-CASE DISCIPLINE THIS KIT ENFORCES RATHER THAN SUGGESTS:
+Case discipline this kit enforces rather than suggests:
 
 * uint32 word equality, never ``allclose`` — :func:`differing`;
 * a mutation that never LAUNCHED is DISARMED and FAILS, and one whose transform
@@ -32,9 +32,9 @@ CASE DISCIPLINE THIS KIT ENFORCES RATHER THAN SUGGESTS:
 * a census of zero is VACUOUS, not passed — :func:`assert_census_floor`;
 * the top-level verdict reads the OUTCOME, not the count. ``compared`` is how many
   comparisons ran; ``certified`` is whether they agreed. The Triton track shipped a
-  round where every compare failed and the artifact still stamped ``passed: true``
-  and exited 0, because the verdict read the count. :func:`summarize` reads both and
-  refuses to stamp a pass on zero comparisons or on any failure.
+  gate whose artifact stamped ``passed: true`` and exited 0 while every compare failed,
+  because the verdict read the count. :func:`summarize` reads both and refuses to
+  stamp a pass on zero comparisons or on any failure.
 """
 
 from __future__ import annotations
@@ -56,7 +56,7 @@ if API_ROOT not in sys.path:
     sys.path.insert(0, API_ROOT)
 
 #: The exit code for "this host cannot certify this claim" — a missing GPU, a torch
-#: without MPS, a policy the executor cannot honour. DISTINCT FROM 1, because "the
+#: without MPS, a policy the executor cannot honour. Distinct from 1, because "the
 #: gate could not run" and "the gate ran and the bytes differ" are different facts
 #: and a CI that conflated them would read an unrunnable gate as a passing one.
 EXIT_CANNOT_CERTIFY = 75
@@ -107,7 +107,7 @@ def provenance(out_dir: str, files: Dict[str, str],
     beside the module files because a kernel source is a GENERATED string: the
     module hash alone would not notice a specialisation whose emitted text changed.
 
-    ``name`` EXISTS BECAUSE THE DEFAULT SILENTLY DESTROYED EVIDENCE. A family's gate
+    ``name`` exists because the default silently destroyed evidence. A family's gate
     and its composition probe write into ONE results directory, and both called this
     with the default file name — so the probe, which runs second and passes no
     ``kernel_sources``, replaced the gate's provenance wholesale. Measured on
@@ -248,7 +248,7 @@ class MutationHarness:
     def verdict(missed: bool, ran: int, launches: int, caught: int) -> str:
         """``missed`` is ANY miss, not only a total one.
 
-        THIS USED TO READ ``missed and ran == 0`` AND THAT WAS A FALSE-PASS PATH.
+        This used to read ``missed and ran == 0`` and that was a false-pass path.
         A mutation swept over two sub-steps (or two sides) whose needle matched in
         only one of them left ``missed=True`` and ``ran=1``, and the verdict came
         back ``CAUGHT 1/1`` — a pass, with the half that was never planted silently
@@ -354,8 +354,8 @@ def summarize(payload: Dict[str, Any], out: str, claim: str, scope: str,
 
     ``compared`` is how many comparisons ran and ``certified`` is whether they all
     agreed. BOTH are required: a gate that stamps ``passed`` from a count alone will
-    pass a round in which every comparison failed (the Triton track shipped exactly
-    that), and a gate that stamps it from an outcome alone will pass a round in
+    pass a run in which every comparison failed (the Triton track shipped exactly
+    that), and a gate that stamps it from an outcome alone will pass a run in
     which nothing was compared.
     """
     ok = bool(certified) and compared > 0

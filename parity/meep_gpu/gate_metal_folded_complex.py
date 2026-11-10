@@ -1,11 +1,11 @@
 """BYTE GATE — the mirror fold under COMPLEX64 storage, on Metal.
 
-WHAT THIS CERTIFIES: that ``metal_kernels.folded_complex``'s three products
-reproduce ``stepping.py`` WORD FOR WORD on a folded complex64 grid — the curl on
+What this certifies: that ``metal_kernels.folded_complex``'s three products
+reproduce ``stepping.py`` word for word on a folded complex64 grid — the curl on
 both sub-steps, the two ghost-fill passes, and the certified complex constitutive
 pair re-admitted over a folded stored extent — per SUB-STEP and per COMPLETE STEP.
 
-WHAT MAKES THIS GATE DIFFERENT FROM ITS TWO PARENTS' GATES, and it is the only
+What makes this gate different from its two parents' gates, and it is the only
 reason the family exists: the fold's parity STOPS BEING A SIGN FLIP under complex
 storage. ``symmetry.mirror_ghost_fill`` spells it ``-x`` or a plain copy, exact on
 this host over every value class; the array path spells ``phase * plane`` with a
@@ -16,7 +16,7 @@ were ever zero this family should be deleted and the real fold's fill admitted o
 complex storage instead, and a gate that did not say so would be certifying a family
 whose reason to exist had evaporated.
 
-THE PER-CHUNK FORMS AND THE PER-PART PARITY (bit_parity_0_10, KERNELS.md §7, step M5).
+The per-chunk forms and the per-part parity (the Metal table's complex kernels).
 The curl is ``complex_fields``' per-chunk template with the top-plane mask, bound to the
 chunk record of the division the array path steps with
 (``gate_chunk_records.layer_record``), and the constitutive is the complex family's.
@@ -28,12 +28,12 @@ only on subnormal words, which a product flushes on this backend and a sign-bit 
 does not -- leg ``band``), the plane-wise and orientation mutations are declared
 equivalences, and the X, Y, Z order is a measured null because a product by +/-1 per
 part commutes exactly. Whether this family's fill should give way to the real fold's on
-complex storage is an owner decision this gate records rather than makes. Where the text
+complex storage is a maintainer's decision this gate records rather than makes. Where the text
 below speaks of the parity as a full complex product with zero cross terms, it
 describes the previous fill.
 
-THE SUBNORMAL PRECONDITION IS LOAD-BEARING HERE IN A WAY IT IS NOT FOR THE REAL
-FOLD. That family records its FILL as band-safe because the fill performs no
+The subnormal precondition is load-bearing here in a way it is not for the real
+fold. That family records its FILL as band-safe because the fill performs no
 arithmetic; making the parity a complex product makes it arithmetic, and arithmetic
 flushes on MPS. The precondition is reported as a WINDOW on TWO axes, because a
 census that reports a scalar licenses nothing about a run whose leading edge sweeps
@@ -47,13 +47,13 @@ the band:
   band and REQUIRES it to fire. Without it, the empty windows next door would be
   indistinguishable from a census that cannot detect anything.
 
-THE FOLD IS MUTATED AS A FOLD, not merely as a kernel. The five defects a mirror is
+The fold is mutated as a fold, not merely as a kernel. The five defects a mirror is
 prone to — mirroring the wrong half, dropping the sign flip, shifting the mirror
 plane by a cell, reading the ghost before it is written, and folding the wrong axis —
-each have their own arm, and the two that are MEASURED NULLS say so with the reason
+each have their own arm, and the two that are measured NULLS say so with the reason
 that makes them null rather than being reported as catches.
 
-THE STATED WEAKNESS, and it is this certification's one gap against the Triton
+The stated weakness, and it is this certification's one gap against the Triton
 twin's: ``torch.mps.compile_shader`` exposes NO DISASSEMBLY. This gate cannot refuse
 a compile whose emitted code violates the policy and cannot establish that the
 contraction guard was obeyed. Every leg here is BEHAVIOURAL — it catches a wrong
@@ -78,7 +78,7 @@ if API_ROOT not in sys.path:
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
-# THE POLICY IS SET BEFORE ANY `meep_gpu` MODULE IS REACHED. On MPS the float32
+# The policy is set before any `meep_gpu` module is reached. On MPS the float32
 # subnormal flush is native and has no lever, so the resolved default `keep` is NOT
 # OFFERABLE and every Metal predicate refuses by name. Setting `flush` is what puts
 # the claim under the CHECKED precondition rather than under a pretence.
@@ -119,8 +119,8 @@ DRIVER_ORDER: Tuple[str, ...] = (
     "step_B", "fill_B_near", "fill_B_far", "update_H",
     "step_D", "fill_D_near", "fill_D_far", "update_E")
 
-#: THE CASE MATRIX. Every axis is here because a mutation is reachable on one value
-#: and a MEASURED NULL on the other:
+#: The case matrix. Every axis is here because a mutation is reachable on one value
+#: and a measured NULL on the other:
 #:
 #:   TERMINATION    MIRROR_PERIODIC carries the top-plane mask AND the far ghost
 #:                  pass; MIRROR_METALLIC carries NEITHER;
@@ -130,11 +130,11 @@ DRIVER_ORDER: Tuple[str, ...] = (
 #:                  flipped-coefficient mutation is reachable on every row;
 #:   FULL COUNT     ``reflect_row`` is ``stored - 2`` at an even full count and
 #:                  ``stored - 3`` at an odd one, so at the default extent the wrong
-#:                  ``n - 2`` formula HAPPENS TO BE RIGHT;
+#:                  ``n - 2`` formula happens to be right;
 #:   FOLDED AXES    a corner unowned on two planes carries the PRODUCT of both
 #:                  parities, and only a MIXED-PHASE pair makes the order question
 #:                  exist at all;
-#:   BLOCH          THIS COMPOSITION'S OWN CASE. Three of the five non-beta folded
+#:   BLOCH          this composition's own case. Three of the five non-beta folded
 #:                  complex corpus rows carry a k on an UNFOLDED axis, and without
 #:                  it no leg here would ever launch a folded curl that also
 #:                  ROTATES. The phase is on x and the fold on y, which is the only
@@ -184,7 +184,7 @@ def tags(fields: Any, pml: Any) -> Tuple[str, ...]:
     found.append("three_d" if int(fields.grid.shape[2]) > 1 else "two_d")
     if getattr(fields.grid, "has_bloch", False):
         found.append("bloch")
-    # DOES ANY COEFFICIENT THIS CASE PASSES ACTUALLY CARRY A NEGATION? The near word
+    # Does any coefficient this case passes actually carry a negation? The near word
     # is `+phase` and the far word is `-phase`, so an EVEN fold with NO far pass
     # passes `+1` everywhere and "drop the sign flip" is the IDENTITY there — not a
     # defect that went uncaught. Measured: without this tag that mutation reports
@@ -329,7 +329,7 @@ def build_fill(fields: Any, family: str, residency: Any,
             text = source_text(key, entry)
             functions[shaders.CONTRACT_OFF][key] = compile_source(
                 text if text is not None else shipped).folded_mirror_fill_complex
-        # NO SEPARATE LAUNCH COUNTER HERE: `FoldedComplexFillPlan` counts its own
+        # No separate launch counter here: `FoldedComplexFillPlan` counts its own
         # launches and the harness reads THAT, so a mutant that never ran is still
         # classified DISARMED rather than passing as uncaught.
         return folded_complex.plan_folded_complex_fill_from_arrays(
@@ -365,7 +365,7 @@ def run_constitutive(fields: Any, pml: Any, side: str) -> Any:
 
 
 def reference_step(fields: Any, pml: Any) -> None:
-    """ONE COMPLETE DRIVER STEP on the array path — FIVE passes per half."""
+    """One complete driver step on the array path — FIVE passes per half."""
     stepping.step_B(fields, pml)
     stepping.fill_symmetry_bc_B(fields)
     stepping.fill_folded_far_ghosts_B(fields)
@@ -490,7 +490,7 @@ def leg_curl(payload: Dict[str, Any], out: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# LEG fill — the mirror plane itself, and THE ONE ARITHMETIC DELTA
+# LEG fill — the mirror plane itself, and the one arithmetic delta
 # ---------------------------------------------------------------------------
 
 def leg_fill(payload: Dict[str, Any], out: str) -> None:
@@ -573,7 +573,7 @@ def leg_constitutive(payload: Dict[str, Any], out: str) -> None:
 # ---------------------------------------------------------------------------
 
 def leg_whole_step(payload: Dict[str, Any], out: str, budget: int = 6) -> None:
-    """Per COMPLETE STEP, reporting the FIRST DIVERGENT STEP.
+    """Per complete step, reporting the first divergent step.
 
     Three failure classes live ONLY here — a STALE MIRROR, a SEAM, and an
     ACCUMULATING AUXILIARY — and the fold adds a fourth: its ghost plane is written
@@ -581,12 +581,12 @@ def leg_whole_step(payload: Dict[str, Any], out: str, budget: int = 6) -> None:
     and wrong per step. Every slot's launch counter is asserted, because a slot that
     passes by NOT EXECUTING is the hollow pass this discipline exists to prevent.
 
-    THE SUBNORMAL CENSUS IS TAKEN PER STEP AND REPORTED AS A WINDOW, and that shape
+    The subnormal census is taken per step and reported as a window, and that shape
     is not cosmetic. Band entry is a RUN-and-WINDOW fact rather than a family fact:
-    measured on the chi3 round, a Q~20 narrow-band Gaussian turn-on drags the leading
+    measured on a chi3 run, a Q~20 narrow-band Gaussian turn-on drags the leading
     edge through the whole band — FIRST subnormal at step 55, LAST at step 3,726,
     then clean for 16,274 more steps. A row recording a scalar count cannot be read
-    for what it covers. A case whose census fires is REFUSED BY NAME and its
+    for what it covers. A case whose census fires is refused by name and its
     comparisons are withheld from the certified total: that is a COVERAGE REFUSAL,
     not a failure, and :func:`leg_precondition` is what proves the detector fires.
     """
@@ -630,7 +630,7 @@ def leg_whole_step(payload: Dict[str, Any], out: str, budget: int = 6) -> None:
             assert plan.launches == budget * (len(plan.near) + len(plan.far))
             assert len(plan.near) > 0, (label, slot)
         refused = bool(fired)
-        # A REFUSAL IS NOT A PASS BY ANOTHER NAME. The byte claim is only withheld
+        # A refusal is not a pass by another name. The byte claim is only withheld
         # where the precondition failed; where it held, a divergence is still a
         # failure and still stops the leg here.
         if not refused:
@@ -663,7 +663,7 @@ def leg_whole_step(payload: Dict[str, Any], out: str, budget: int = 6) -> None:
 
 
 # ---------------------------------------------------------------------------
-# LEG parity — THE COMPOSITION'S OWN DELTA, and it must be nonzero
+# LEG parity — the composition's own delta, and it must be nonzero
 # ---------------------------------------------------------------------------
 
 SIGN_ZERO_PLANTS = np.array(
@@ -674,9 +674,9 @@ SIGN_ZERO_PLANTS = np.array(
 def plant_signed_zeros(fields: Any, names: Sequence[str]) -> int:
     """SPRINKLE all four signed-zero sign combinations ON TOP of the random state.
 
-    TWO PROPERTIES ARE BOTH REQUIRED AND THE FIRST VERSION OF THIS HELPER HAD ONLY
-    ONE. The class must be present — the divergence this family exists for lives
-    entirely in signed zeros — AND NEIGHBOURING ROWS MUST STILL DIFFER, because the
+    Two properties are both required and the first version of this helper had only
+    one. The class must be present — the divergence this family exists for lives
+    entirely in signed zeros — and neighbouring rows must still differ, because the
     reflect-row mutation is "read one row over" and a plant that made rows identical
     turns a real defect into a measured null. Measured while writing this gate: a
     whole-row pattern of period 6 rolled by one row per step moved 12 elements on a
@@ -711,14 +711,14 @@ def sign_bit_spelling(plane: Any, parity: int) -> Any:
 def leg_parity(payload: Dict[str, Any], out: str) -> None:
     """The real fold's sign-bit spelling against the array path's per-part parity product.
 
-    INVERTED WITH THE ARRAY PATH. The array path writes a mirror ghost as one float32
+    Inverted with the array path. The array path writes a mirror ghost as one float32
     product per part by the host-rounded parity word, which is the sign flip (or the
     copy) on every normal word and on both zeros. So the real fold's sign-bit
     spelling must reproduce it on every word of the physical band, signed zeros
     planted -- the previous fill's zero cross terms, which canonicalized a zero's sign,
     are gone. The two differ only on subnormal words (leg ``band``), and whether this
     family's fill should give way to the real fold's on complex storage is recorded as
-    an owner decision, not made here.
+    a maintainer's decision, not made here.
     """
     rows: List[Dict[str, Any]] = []
     for label, _ in CASES:
@@ -791,7 +791,7 @@ def leg_band(payload: Dict[str, Any], out: str) -> None:
     for index, scale in enumerate((1e-30, 1e-34, 1e-38, 1e-40, 1e-44)):
         plane = ((rng.standard_normal(shape) + 1j * rng.standard_normal(shape))
                  * scale).astype(np.complex64)
-        # THE CENSUS IS ON THE OPERAND WORDS THE FILL ACTUALLY READS, not on the
+        # The census is on the operand words the fill actually reads, not on the
         # whole volume, so it is COMMENSURABLE with the divergence count below. A
         # whole-volume census would report a larger number for the same measurement
         # and invite the reader to compare two different things.
@@ -831,8 +831,8 @@ def leg_band(payload: Dict[str, Any], out: str) -> None:
         "window": {"first_fired_index": first_fired, "last_fired_index": last_fired,
                    "first_fired_scale": rows[first_fired]["scale"],
                    "last_fired_scale": rows[last_fired]["scale"]},
-        "note": ("subnormal_operand_words counts the words on the ROW THE FILL "
-                 "READS, doubled for the two shift-0 targets that read it, so it is "
+        "note": ("subnormal_operand_words counts the words on the row the fill "
+                 "reads, doubled for the two shift-0 targets that read it, so it is "
                  "commensurable with `differing`. The two match at every scale: "
                  "every subnormal operand word flushes and nothing else moves. The "
                  "FILL is band-safe on the REAL fold (a sign-bit copy) and is NOT "
@@ -866,8 +866,8 @@ def leg_precondition(payload: Dict[str, Any], out: str, budget: int = 6) -> None
     scaled INTO the band and requires it to fire, so the empty windows next door are
     a measurement rather than a silence.
 
-    THE WINDOW IS THE UNIT, not a count: the row records the first and last step the
-    census fired on, and the scaled cases are REFUSED BY NAME rather than compared.
+    The window is the unit, not a count: the row records the first and last step the
+    census fired on, and the scaled cases are refused by name rather than compared.
     """
     rows: List[Dict[str, Any]] = []
     for label, scale, expect_clean in PRECONDITION_SCALES:
@@ -904,7 +904,7 @@ def leg_precondition(payload: Dict[str, Any], out: str, budget: int = 6) -> None
                 f"refuses the physical band certifies nothing")
         else:
             assert fired, (
-                f"{label}: the census DID NOT FIRE on the scaled control. Every "
+                f"{label}: the census did not fire on the scaled control. Every "
                 f"empty window this gate reports would then be a silence rather "
                 f"than a measurement")
             kit.assert_census_floor(max(per_step), f"{label} control")
@@ -923,12 +923,12 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
                       per_case: Any = None) -> None:
         """One defect over the whole case matrix, on a state that can SHOW it.
 
-        ``plant`` SEEDS THE SIGNED-ZERO CLASS ON THE ROWS THE FILL READS, and it is
-        on by default because of what was MEASURED here: with the matrix's
+        ``plant`` seeds the signed-zero class on the rows the fill reads, and it is
+        on by default because of what was measured here: with the matrix's
         random-uniform volumes the plane-wise-sign-flip mutant is caught on only
         8 of 10 cases, and the two misses are exactly the rows whose random state
-        happens to carry no signed zero where the fill reads. THE DIVERGENCE THIS
-        FAMILY EXISTS FOR LIVES ENTIRELY IN SIGNED ZEROS — the complex product
+        happens to carry no signed zero where the fill reads. The divergence this
+        family exists for lives entirely in signed zeros — the complex product
         canonicalizes them and a sign-bit copy preserves them — so a state without
         them makes a real defect look uncaught. Planting is what makes the needle
         reachable, not what makes it pass: every other mutation here (a flipped
@@ -978,7 +978,7 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
                        extra={"scope": scope, "signed_zeros_planted": plant,
                               "skipped_cases": skipped})
 
-    # 1. THE REAL FOLD'S SIGN-BIT SPELLING, a DECLARED EQUIVALENCE now: the array
+    # 1. The real fold's sign-bit spelling, a DECLARED EQUIVALENCE now: the array
     #    path's parity is a product by +/-1 per part, which is the sign flip (or the
     #    copy) on every normal word and zero. The planted signed zeros are exactly
     #    the class the previous fill's zero cross terms canonicalized.
@@ -997,7 +997,7 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
                 "{ return c < 0.0f ? -z : z; }\n\n"
                 "kernel void folded_mirror_fill_complex("))
 
-    # 2. THE COEFFICIENT IS PASSED, never synthesised: a flipped word must be caught.
+    # 2. The coefficient is passed, never synthesised: a flipped word must be caught.
     def flip(family: str, near: List[Dict[str, Any]],
              far: List[Dict[str, Any]]) -> None:
         for entry in near + far:
@@ -1007,9 +1007,9 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
                   "the parity enters ONLY as a host-rounded passed word, which is "
                   "what makes this reachable at all", transform=flip)
 
-    # 3. THE REFLECT ROW. `stored - 2` at an even full count, `stored - 3` at an odd
+    # 3. The reflect row. `stored - 2` at an even full count, `stored - 3` at an odd
     #    one — so at an EVEN count the wrong formula happens to be right and this is
-    #    a MEASURED NULL there, which is why the matrix carries both.
+    #    a measured NULL there, which is why the matrix carries both.
     def bake_n_minus_two(family: str, near: List[Dict[str, Any]],
                          far: List[Dict[str, Any]]) -> None:
         if not far:
@@ -1037,7 +1037,7 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
                 "{ return c_mul_field_left(z, c); }\n\n"
                 "kernel void folded_mirror_fill_complex("))
 
-    # 5. MIRROR THE WRONG HALF. The near pass writes the GHOST cell 0 from the OWNED
+    # 5. Mirror the wrong half. The near pass writes the GHOST cell 0 from the OWNED
     #    cell 2; the inverse writes owned data from the ghost. This is the defect
     #    that destroys the half the fold is supposed to reconstruct, and it is the
     #    one a per-sub-step comparison of the CURL alone would never see.
@@ -1066,8 +1066,8 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
         "destructive spelling error and is invisible to a curl-only comparison",
         source_text=mirror_wrong_half)
 
-    # 6. SHIFT THE MIRROR PLANE BY ONE CELL, on the NEAR pass. The far pass's own
-    #    version of this is `reflect_row_n_minus_two`, which is REACHABLE ON ONE CASE
+    # 6. Shift the mirror plane by one cell, on the NEAR pass. The far pass's own
+    #    version of this is `reflect_row_n_minus_two`, which is reachable on one case
     #    (it is a measured null at an even full count). The near plane is a compiled
     #    constant on every case, so this is the broad-coverage twin of that needle.
     def shift_mirror_plane(key: str, entry: Dict[str, Any]) -> Optional[str]:
@@ -1086,7 +1086,7 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
         "unlike the far reflect row it is reachable on every case",
         source_text=shift_mirror_plane)
 
-    # 7. DROP THE SIGN FLIP on a mirrored component — force every parity word to
+    # 7. Drop the sign flip on a mirrored component — force every parity word to
     #    +1. SCOPED, because on an EVEN fold with NO far pass every coefficient
     #    ALREADY IS +1 and the mutation is the identity: measured unscoped it reports
     #    CAUGHT 8/10, and the two misses are `metallic_even_3d` and
@@ -1104,7 +1104,7 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
         "word is -phase, so this is reachable wherever EITHER is negative",
         scope="signed_parity", transform=drop_sign_flip)
 
-    # 8. APPLY THE FOLD TO THE WRONG AXIS. The axis picks the plane decomposition,
+    # 8. Apply the fold to the wrong axis. The axis picks the plane decomposition,
     #    the compiled specialisation AND the launch width, so this is the mutation
     #    that proves those three agree with each other rather than merely compiling.
     def wrong_axis(fields: Any) -> Optional[Callable[..., None]]:
@@ -1133,7 +1133,7 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
         "a boundary that has no mirror",
         per_case=wrong_axis)
 
-    # 9. REVERSE THE X, Y, Z FILL ORDER. A DECLARED NULL now, scoped to the one
+    # 9. Reverse the X, Y, Z fill order. A declared null now, scoped to the one
     #    configuration where the order was ever measurable (a doubly-unowned corner
     #    at MIXED phase): a product by +/-1 per part is exact, so the two parities
     #    compose in either order to the same word. The previous fill's complex
@@ -1150,8 +1150,8 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
         "as the array path's by transcription",
         scope="mixed_phase", transform=reverse_axis_order)
 
-    # 10. READ THE GHOST BEFORE IT IS WRITTEN, by swapping the near and far passes.
-    #     A MEASURED NULL on every admitted grid, and that is the POINT: the
+    # 10. Read the ghost before it is written, by swapping the near and far passes.
+    #     A measured null on every admitted grid, and that is the POINT: the
     #     predicate refuses any grid where the far read row is a row the near launch
     #     already wrote (folded_complex.py:1252). This arm is what turns that refusal
     #     from a claim into a check — if a future grid were admitted where the two
@@ -1187,7 +1187,7 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
                    "grid where those alias, so this is a null BECAUSE of a guard "
                    "rather than by luck, and this arm is the guard's check")
 
-    # 11. THE TOP-PLANE MASK, on the CURL. Reachable on MIRROR_PERIODIC and a
+    # 11. The top-plane mask, on the CURL. Reachable on MIRROR_PERIODIC and a
     #    structural null on MIRROR_METALLIC, where the emitter writes no mask at all.
     missed = False
     ran = caught = launches = 0
@@ -1200,7 +1200,7 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
             fields, lambda: stepping.step_D(fields, pml), names)
         kit.assert_moved(moved, f"{case} step_D reference barely moved", floor=64)
         codes, _ = folded_complex.folded_axis_kinds(fields.grid, pml)
-        # THE MUTANT'S PHASE FLAGS ARE THE CASE'S OWN, not a hard-coded (0, 0, 0),
+        # The mutant's phase flags are the case's own, not a hard-coded (0, 0, 0),
         # and getting that wrong would have CONFOUNDED this mutation on the two
         # Bloch rows: a mutant built unphased against a phased reference diverges
         # because it dropped the ROTATION, and the row would have reported CAUGHT
@@ -1232,7 +1232,7 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
                    "the FILL writes it, not the curl; masking it is what makes the "
                    "two agree", extra={"scope": "far"})
 
-    # 11b. THE §7.2 BATTERY ON THE FOLDED CURL (KERNELS.md §7.2): the per-chunk
+    # 11b. The form battery on the folded curl (docs/development/certification.md#chunk-form-battery): the per-chunk
     #     select keyed wrongly, on step_D over every case, against stepping.step_D.
     curl_flags = "    const bool du0 = in_i_z, du1 = in_i_x, du2 = in_i_y;\n"
     battery = (
@@ -1248,7 +1248,7 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
          "fu written outside the recurrence's cells",
          lambda s: needle(s, "    if (du0) { u0[ii] = n0; }\n", "    u0[ii] = n0;\n")),
         ("b7_auxiliary_load_unconditional", False,
-         "DECLARED NULL (KERNELS.md §7.2): an unguarded fu load with the store still "
+         "DECLARED NULL (certification.md#chunk-form-battery): an unguarded fu load with the store still "
          "guarded changes no word",
          lambda s: needle(s, "    float2 p0 = du0 ? u0[ii] : f0[ii];",
                           "    float2 p0u = u0[ii]; float2 p0 = du0 ? p0u : f0[ii];")),
@@ -1284,7 +1284,7 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
                        launches, caught, ran, must_catch, why,
                        extra={"sub_step": "step_D"})
 
-    # 12. READ THE GHOST BEFORE IT IS WRITTEN, at the only granularity where the
+    # 12. Read the ghost before it is written, at the only granularity where the
     #     defect EXISTS — the complete step. Every sub-step kernel here is the
     #     shipped one and every one of them is byte-perfect in isolation; all that
     #     moves is WHEN the fill runs relative to the constitutive pass that reads
@@ -1334,7 +1334,7 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
                    extra={"first_divergent_step_per_case": first_steps,
                           "budget": 6})
 
-    # 13. THE PHASED-AXIS GUARD. A mirror code carrying a Bloch flag must be refused
+    # 13. The phased-axis guard. A mirror code carrying a Bloch flag must be refused
     #    at EMISSION, not merely by the predicate: a mis-baked flag is a plane of
     #    wrong values, not a crash. Recorded as a structural refusal rather than a
     #    byte comparison, because the source cannot be built at all.
@@ -1400,7 +1400,7 @@ def main() -> int:
         for row in payload["legs"].get(key, ()):
             compared += int(row["compared"])
             certified = certified and row["differing"] == 0
-    # A CASE REFUSED ON THE PRECONDITION CONTRIBUTES NO COMPARISONS AND NO VERDICT.
+    # A case refused on the precondition contributes no comparisons and no verdict.
     # Folding it into `certified` either way would be wrong in both directions: as a
     # pass it would certify bytes produced under a condition the claim excludes, and
     # as a failure it would report a coverage boundary as a defect.
@@ -1420,7 +1420,7 @@ def main() -> int:
                "phases, one and two folded axes at mixed phase, both full-count "
                "parities, a Bloch phase on an unfolded axis, 2-D and 3-D; beta, "
                "off-diagonal rows, dispersion, conductivity and cylindrical "
-               "coordinates are OUT OF SCOPE and refused by name"),
+               "coordinates are out of scope and refused by name"),
         stated_weakness=(
             "no generated-code audit exists on this backend: torch.mps.compile_shader "
             "exposes no disassembly, so this gate cannot refuse a compile whose "

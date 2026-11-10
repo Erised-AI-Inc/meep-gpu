@@ -1,6 +1,6 @@
 """Shared machinery of the SCRATCH-OUTPUT off-diagonal D/E welds.
 
-WHAT THIS SUPERSEDES, AND ON WHAT TERMS.
+What this supersedes, and on what terms.
 ``parity/meep_gpu/results/triton_fused_offdiag_electric_2026-08-20`` is THIS
 backend's own recorded refusal of the D->E off-diagonal pair: on an RTX A6000,
 both float32 subnormal policies, a kernel spliced verbatim out of the two
@@ -16,29 +16,29 @@ rather than a device measurement", and the form it derives against is the one
 that still steps D in place, so the halo recompute reads the same clobbered
 ``D[m]``/``fu_D[m]``.
 
-THE DESIGN THIS MODULE CARRIES REMOVES BOTH PREMISES:
+The design this module carries removes both premises:
 
 * the curl half writes ``D_new``/``fu_new`` to LAUNCH-LOCAL SCRATCH and never
   in place, so ``D``/``fu_D``/``H`` are pre-launch state for the whole dispatch;
 * the constitutive half takes its own cell's displacement from registers and
   RE-DERIVES every foreign stencil tap from that pre-launch state through the
-  same inlined :func:`step_cell` body, so NOTHING WRITTEN IS EVER READ;
+  same inlined :func:`step_cell` body, so nothing written is ever read;
 * the in-seam passes the driver runs between ``step_D`` and ``update_E`` are
   carried per cell by a CLOSED FORM over the raw stepped value rather than by a
   second pass;
 * the plan ROTATES the D/fu references after the launch returns.
 
-The closed form is not this lane's invention and was measured before it was
+The closed form is not this module's invention and was measured before it was
 built: ``results/metal_scratch_weld_closed_form_2026-09-01/probe.json`` walked
 ten fixtures two complete steps each and found the per-cell fill/clear
 resolution over the raw stepped D byte-identical to the driver's
 ``fill_D`` / ``zero_metal_D`` / ``fill_folded_far_ghosts_D`` pass order, with
 every reachable null diverging. That is a Metal artifact and certifies nothing
-here; this lane owes its own NumPy probe on its own arms and its own device
+here; this backend owes its own NumPy probe on its own arms and its own device
 gate, and both exist (``parity/meep_gpu/probe_triton_offdiag_scratch_weld.py``,
 ``parity/meep_gpu/gate_triton_offdiag_stencil_welds.py``).
 
-WHY THE ROTATION IS SOUND UNDER DISPATCH. The plan is the only writer of the two
+Why the rotation is sound under dispatch. The plan is the only writer of the two
 buffers it swaps, and it swaps the ENGINE's own attributes so every later pass,
 read-back and monitor sees the freshly written buffer under the engine's own
 name. ``Fields`` holds ``Dx``/``fu_Dx`` as plain attributes and rebuilds
@@ -58,11 +58,11 @@ else), and the two products are routed through ``triton_kernels/launch.py``'s
 certified-product table from the same edit. Three facts carry the rotation
 under dispatch:
 
-* THE WARM NEVER ROTATES AND NEVER COUNTS. It resolves roles, launches once at
+* The warm never rotates and never counts. It resolves roles, launches once at
   grid ``(0,)`` and puts the grid back. ``launches`` counts ``run`` alone, so the
   plan's counter and ``fastpath``'s dispatch counter stay the two independent
   witnesses ``fastpath._plan_launches_of`` reads them as.
-* ONE PLAN ON THESE SHAPES HOLDS A D POINTER FROM BUILD TIME: the mirror-ghost
+* One plan on these shapes holds a D pointer from build time: the mirror-ghost
   fill at ``fill_D`` on a folded grid (``symmetry.MirrorGhostFillPlan`` wraps its
   targets in ``__init__``). It therefore fills the TWIN on alternate steps, which
   moves no byte the step keeps: the next launch rewrites every stored cell of the
@@ -73,7 +73,7 @@ under dispatch:
   on ``folded_offdiag_magnetic_2d``, PASS-FUSED with substitution EXACT over 1999
   steps (6.0 -> 4.0 launches per step), and ``cuda:off-diagonal stencil weld`` on
   ``offdiag_magnetic_2d`` over 2399 steps (4.0 -> 2.0).
-* NO DEPOSIT REPAIR IS BRACKETED AROUND THE LAUNCH: both predicates refuse an
+* No deposit repair is bracketed around the launch: both predicates refuse an
   electric source in the seam (``CARRIES_DEPOSIT_REPAIR`` is False), so no repair
   plan captures a D pointer beside it.
 
@@ -82,7 +82,7 @@ measurement ``fastpath.warm_plan``'s docstring names. For these two kernels the
 stencil gate's ``warm`` device leg takes it before the ledger entry is cut, and the
 Triton route campaign takes it again through ``plan_fast_path``.
 
-WHAT IS LIFTED AND WHAT IS NEW. The curl arithmetic inside each family's
+What is lifted and what is new. The curl arithmetic inside each family's
 ``_step_cell`` is the certified curl kernel's own body between its decode
 prologue and its stores, re-headed as a function of ``(i, j, k, live)`` and
 returning the six registers instead of storing them; :func:`certified_tail` and
@@ -236,19 +236,19 @@ class ScratchWeldPairPlan:
     Subclasses own their kernel and their argument order and implement
     :meth:`_launch`; this base owns the part that is easy to get subtly wrong.
 
-    THE TWIN BUFFERS BELONG TO THE PLAN. The array path never rotates D, so
+    The twin buffers belong to the plan. The array path never rotates D, so
     there is no engine rotation to follow (contrast ``PolarizationState.update``,
     which rotates P and which the ADE plans therefore READ rather than drive).
     Roles are resolved immediately before every launch by reading the engine's
     current attribute, and the engine's references move only after the launch
     call has returned.
 
-    AN ALIASED PAIR IS REFUSED RATHER THAN LAUNCHED. The whole design is that
+    An aliased pair is refused rather than launched. The whole design is that
     nothing written is read; a plan whose scratch and live buffer were the same
     allocation would be the 2026-08-20 in-place weld again, wearing this class's
     name, and would race exactly as that one did.
 
-    THE CHUNK RECORD IS BOUND HERE, ONCE, FOR EVERY WELD. ``chunk_bounds`` is
+    The chunk record is bound here, once, for every weld. ``chunk_bounds`` is
     required (``launch.bind_chunk_bounds``): the base keeps the read-only host copy
     as :attr:`chunk_bounds` and the device copy as ``_cb``, which a subclass's
     :meth:`_launch` passes as its kernel's ``cb`` argument once that kernel keys its
@@ -352,7 +352,7 @@ class ScratchWeldPairPlan:
         attempted and failed, on which the caller unfills the slot before anything
         has been written.
 
-        WHAT IT DOES NOT DO. It never calls :meth:`_rotate`, and it never increments
+        What it does not do. It never calls :meth:`_rotate`, and it never increments
         ``launches``: that counter is the plan's own witness of STEP launches, read
         by ``fastpath._plan_launches_of`` beside the dispatch counter, and a warm that
         counted would put the two witnesses one apart on every dispatched run.

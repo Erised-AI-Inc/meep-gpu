@@ -1,26 +1,26 @@
 """The BFAST hand-CUDA fused pair on the D/E seam: ``step_D`` -> ``zero_metal_D`` -> ``update_E``.
 
-THE BOARD'S CELL: ``D_to_E (cuda_bfast/BFAST, cuda_bfast/BFAST)`` -- 1
+The board's cell: ``D_to_E (cuda_bfast/BFAST, cuda_bfast/BFAST)`` -- 1
 seam-instance of demand, 0 clearing the source seam before this product existed
 (``tests:TestReflectanceAngular.test_reflectance_angular_2_35_7`` declares
 ``source_field_types == ['D']``: an ELECTRIC deposit inside this seam). What
 this module is worth is therefore the BRACKET (:data:`CARRIES_DEPOSIT_REPAIR`):
 without a product on the cell the board prices the row on the driver fact
 alone, whatever the fitness verdict says. It is the ELECTRIC TWIN of the
-2026-09-02 :mod:`.bfast_fused_magnetic_pair`, landed in the residue round that
-priced it (fusion-residue audit §1.3: 12 electric-twin instances), with the
+2026-09-02 :mod:`.bfast_fused_magnetic_pair`, built the same day (an audit of the
+products earlier judged unbuildable counted 12 electric-twin instances), with the
 Metal electric twins as the CARRIES=True shape precedent.
 
-WHAT THE CURL HALF IS: the certified ``step_D_bfast_real`` -- the root real PML
+What the curl half is: the certified ``step_D_bfast_real`` -- the root real PML
 backward curl body with MEEP's BFAST pass after each component's curl
 (``folded_pass.bfast_insert``: the IIR state step into ``fb_D*`` and the folded ladder on
 the word ``pml_apply`` just stored). The pass rides through the register capture: each
 register is the value the LADDER returns (``fold_apply_reg``), because ``update_E`` must
 read D after both passes; the splice asserts the three passes arrived, because a curl
 body without them would compile and be the plain real pair under this family's name.
-The chunk record ``cb`` is decoded ONCE for both halves (bit_parity_0_10 DESIGN.md D10).
+The chunk record ``cb`` is decoded ONCE for both halves.
 
-THE TWO MIRROR FILLS ARE ABSENT BY REFUSAL, twice over: the certified BFAST
+The two mirror fills are absent by refusal, twice over: the certified BFAST
 curl refuses a fold itself (the "folded ghost values are dead" half of the real
 curl's argument does not transfer and has not been measured), and this
 predicate restates the refusal so the guarantee that makes :data:`REPLACES`
@@ -29,12 +29,12 @@ honest does not rest on a clause another module could licence away.
 ``zero_metal_D`` IS CARRIED, and it is the OFF-DIAGONAL table -- two components
 per walled axis -- never the B side's diagonal.
 
-THE ALIASING RULE IS THE SIBLINGS': D is bound EXACTLY ONCE, the three
+The aliasing rule is the siblings': D is bound exactly once, the three
 ``inv_eps`` pointers are deliberately NOT ``__restrict__``, and the constitutive
 ``kms`` is renamed ``kms_half_*`` (the D seam's pairing: curl INTEGER,
 ``update_E`` HALF-INTEGER).
 
-NOTHING HERE IS DISPATCH; :mod:`.fused_pairs` can plan it opt-in only.
+Nothing here is dispatch; :mod:`.fused_pairs` can plan it opt-in only.
 """
 
 from __future__ import annotations
@@ -51,7 +51,7 @@ if TYPE_CHECKING:
     from ..grid import Grid
     from ..pml import PML
 
-# THE CERTIFIED TEXT. ``bfast_curl`` is CuPy-free at module scope (its kernels
+# The certified text. ``bfast_curl`` is CuPy-free at module scope (its kernels
 # compile on demand), so the curl half's source and predicate are importable
 # everywhere; ``constitutive_kernels`` imports CuPy at module scope and is taken
 # defensively.
@@ -120,7 +120,7 @@ except ImportError:  # loaded by path, outside the package
 
 
 # =============================================================================
-# THE PARTITION -- EMPTY ON THE CERTIFIED SIDE UNTIL A GATE MOVES IT
+# The partition -- empty on the certified side until a gate moves it
 # =============================================================================
 
 #: Byte-identical with a gate verdict AND a record behind it.
@@ -136,7 +136,7 @@ CERTIFIED_KERNELS = (
 #: EMPTY since 2026-09-02; what emptied it was the run above, not an argument.
 UNCERTIFIED_KERNELS = {}
 
-#: TRUE, MEASURED OFF THE CELL: the cell's one row declares
+#: True, measured off the cell: the cell's one row declares
 #: ``source_field_types == ['D']`` -- an ELECTRIC deposit between ``step_D``
 #: and ``update_E`` -- so without the bracket this product would serve ZERO
 #: rows and with it the whole cell. The wiring is
@@ -151,7 +151,7 @@ FAMILY = "cuda_bfast_fused_electric_pair"
 KERNEL_NAME = "fused_electric_pair_bfast_real"
 
 #: The driver passes ONE launch performs (driver.py:3302, :3310, :3313). The two
-#: mirror fills are ABSENT BY REFUSAL: the predicate refuses every folded grid.
+#: mirror fills are absent by refusal: the predicate refuses every folded grid.
 REPLACES = ("step_D", "zero_metal_D", "update_E")
 
 #: The sub-step slot the planner holds this on.
@@ -190,7 +190,7 @@ LIFT_EDITS: Tuple[Dict[str, str], ...] = (
     {"line": "    constitutive_apply(Ex, f_w_Ex, idx, src_x, kps_x[i], kms_x[i], in_h_x);",
      "became": "    constitutive_apply(Ex, f_w_Ex, idx, src_x, kps_x[i], "
                "kms_half_x[i], in_h_x);",
-     "why": "ONE RENAME, NO ARITHMETIC. kms_x is the INTEGER sub-lattice for "
+     "why": "One rename, no arithmetic. kms_x is the INTEGER sub-lattice for "
             "the D curl and the HALF-INTEGER one for update_E; a shadow is a "
             "half-cell error in the absorber profile."},
     {"line": "        Dy[base] = 0.0f; Dz[base] = 0.0f;   "
@@ -203,7 +203,7 @@ LIFT_EDITS: Tuple[Dict[str, str], ...] = (
     {"line": "    <step_D_bfast_real's chunk-record block>\n"
              "    <update_E_pml_real's chunk-record block>",
      "became": "    <ONE block, bounds_block.bounds_block(both entry sets, presence xyz)>",
-     "why": "ONE DECODE OF THE RECORD PER KERNEL (DESIGN.md D10): both lifted bodies' "
+     "why": "One decode of the record per kernel: both lifted bodies' "
             "blocks are removed by bounds_block.strip_bounds_block, refused unless each "
             "is exactly the emitter's block for its body, and one block over the union "
             "is emitted directly after the decode."},
@@ -233,7 +233,7 @@ _PML_APPLY_SIGNATURE_REG = "__device__ __forceinline__ float pml_apply_reg(\n"
 _PML_APPLY_STORE = "    f[idx] = value;\n"
 _PML_APPLY_STORE_REG = (
     "    f[idx] = value;\n"
-    "    // THE ONE EDIT TO THIS HELPER'S ARITHMETIC: none. Both forms and the store\n"
+    "    // The one edit to this helper's arithmetic: none. Both forms and the store\n"
     "    // are the certified ones; the value is additionally RETURNED so the\n"
     "    // constitutive half can read it from a register instead of reloading it.\n"
     "    return value;\n")
@@ -264,7 +264,7 @@ CONSTITUTIVE_BLOCK: Tuple[Any, Tuple[int, ...]] = (
 #: the wall flags appended. D appears EXACTLY ONCE.
 _SIGNATURE = r'''
 extern "C" __global__ void fused_electric_pair_bfast_real(
-    // THE SHARED VOLUME, BOUND ONCE. The curl half writes it and the
+    // The shared volume, bound once. The curl half writes it and the
     // constitutive half reads it from a register; a second const __restrict__
     // binding of the same allocation would be UB NVRTC miscompiles silently.
     float* __restrict__ Dx, float* __restrict__ Dy, float* __restrict__ Dz,
@@ -286,7 +286,7 @@ extern "C" __global__ void fused_electric_pair_bfast_real(
     const float* __restrict__ kms_y, const float* __restrict__ sinv_y,
     const float* __restrict__ kms_z, const float* __restrict__ sinv_z,
     // The E constitutive's HALF-INTEGER coefficients, its kms renamed
-    // kms_half_*. THE PAIRING IS THE MIRROR IMAGE OF THE B/H SEAM'S.
+    // kms_half_*. The pairing is the mirror image of the B/H seam's.
     const float* __restrict__ kps_x, const float* __restrict__ kms_half_x,
     const float* __restrict__ kps_y, const float* __restrict__ kms_half_y,
     const float* __restrict__ kps_z, const float* __restrict__ kms_half_z,
@@ -296,7 +296,7 @@ extern "C" __global__ void fused_electric_pair_bfast_real(
     float k1_a, float k2_a, float k1_b, float k2_b, float k1_c, float k2_c,
     // zero_metal_D's walled-axis flags, from in_seam_coverage.zero_metal_axes.
     int wall_x, int wall_y, int wall_z,
-    // THE CHUNK RECORD (chunk_map.chunk_bounds_record), int32[25], decoded once.
+    // The chunk record (chunk_map.chunk_bounds_record), int32[25], decoded once.
     const int* __restrict__ cb
 ) {
 '''
@@ -557,7 +557,7 @@ def covers_bfast_fused_electric_pair(
     if not covered:
         return False, f"constitutive half: {reason}"
 
-    # THE INJECTION ROUTE, REFUSED BY NAME -- the real electric pair's clause.
+    # The injection route, refused by name -- the real electric pair's clause.
     if getattr(fields, "has_conductivity", False):
         return False, ("the engine carries a conductivity, so the driver "
                        "deposits this seam's electric sources through "
@@ -565,7 +565,7 @@ def covers_bfast_fused_electric_pair(
                        "which rescales the increment by condinv; the deposit "
                        "repair has no verdict on that route")
 
-    # THE SOURCE SEAM, CARRIED RATHER THAN REFUSED (CARRIES_DEPOSIT_REPAIR).
+    # The source seam, carried rather than refused (CARRIES_DEPOSIT_REPAIR).
     seam = _deposit_repair.seam_source_reasons(
         fields, sources, 'D',
         undeclared=(
@@ -578,7 +578,7 @@ def covers_bfast_fused_electric_pair(
     if seam:
         return False, seam[0]
 
-    # THE TWO FILLS ARE REFUSED, NOT CARRIED. The certified BFAST curl refuses
+    # The two fills are refused, not carried. The certified BFAST curl refuses
     # a fold itself, so this clause is unreachable today -- and it is still
     # written, so the guarantee that the two fills do nothing inside this seam
     # does not rest on a clause in another module that a future device verdict
@@ -622,8 +622,8 @@ def covers_bfast_fused_electric_pair(
                        f"Dx.shape {extents}; the wall plane is derived from the "
                        f"first and indexed into the second")
 
-    # THE THREE INVERSE-PERMITTIVITY VOLUMES MUST BE ASKABLE AND MATCH THE
-    # SHAPE THIS LAUNCH WALKS.
+    # The three inverse-permittivity volumes must be askable and match the
+    # shape this launch walks.
     accessor = getattr(fields, "inverse_epsilon_for", None)
     if not callable(accessor):
         return False, ("fields does not expose inverse_epsilon_for; update_E's "

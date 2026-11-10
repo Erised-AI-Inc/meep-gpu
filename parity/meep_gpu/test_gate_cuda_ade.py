@@ -1,7 +1,7 @@
 """The ADE CUDA gate's clauses that need no device -- which is most of them.
 
-THE GATE ITSELF NEEDS A GPU FOR ONE THING ONLY: comparing NVRTC's output against
-the array path. Everything that decides WHAT THAT COMPARISON MEANS runs here, and
+The gate itself needs a GPU for one thing only: comparing NVRTC's output against
+the array path. Everything that decides what that comparison means runs here, and
 every one of them fails as a silent wrong ANSWER rather than as a crash:
 
 * whether each planted defect still matches the text it was written against. A
@@ -82,7 +82,7 @@ def base_spec(**overrides):
 
 
 # --------------------------------------------------------------------------
-# THE NEEDLES STILL MATCH THE SHIPPED TEXT
+# The needles still match the shipped text
 # --------------------------------------------------------------------------
 
 @pytest.mark.parametrize("name", sorted(gate.SOURCE_MUTATIONS))
@@ -131,7 +131,7 @@ def test_the_two_nulls_and_their_discriminators_edit_the_same_expressions(device
 
 
 # --------------------------------------------------------------------------
-# THE EVALUATOR REALLY EXECUTES THE TEXT
+# The evaluator really executes the text
 # --------------------------------------------------------------------------
 
 def _evaluator_inputs(shape=(4, 4, 4), seed=7):
@@ -167,7 +167,7 @@ def test_the_evaluator_reads_the_source_rather_than_a_transcription(device_text)
         gate.evaluate_device_source(mutated, arrays, scalars)
         assert not np.array_equal(shipped, arrays["p_out"]), mutation.__name__
 
-    # And the null must really be a null THROUGH THE EVALUATOR, not merely in the
+    # And the null must really be a null through the evaluator, not merely in the
     # text: IEEE multiply commutes bitwise and this is where that is measured.
     arrays = {k: v.copy() for k, v in pristine.items()}
     commuted, _ = gate.n_commute_the_drive_product(device_text[True])
@@ -206,7 +206,7 @@ def test_the_evaluator_refuses_a_statement_it_has_no_grammar_for(device_text):
 
 
 # --------------------------------------------------------------------------
-# THE FOUR FLOORS REFUSE WHAT THEY EXIST TO REFUSE
+# The four floors refuse what they exist to refuse
 # --------------------------------------------------------------------------
 
 def test_the_shipped_fixture_clears_every_floor(backend, xp):
@@ -254,7 +254,7 @@ def test_each_floor_refuses_by_name(floor, fragment):
 
 
 def test_a_launch_that_never_happened_is_refused_even_when_the_bytes_agree():
-    """BYTES ALONE CANNOT PROVE THE KERNEL RAN. Two fixtures seeded identically and
+    """Bytes alone cannot prove the kernel ran. Two fixtures seeded identically and
     a launcher that did nothing differ only in that the oracle moved -- so the
     launch counter is a clause of validity, not a diagnostic."""
     record = {"fixtures_started_identical": True, "oracle_moved": True,
@@ -284,7 +284,7 @@ def test_a_dead_drive_field_is_measured_as_a_dead_drive_term(backend, xp):
 
 
 # --------------------------------------------------------------------------
-# THE PLANTED DEFECTS, THROUGH THE WHOLE HARNESS
+# The planted defects, through the whole harness
 # --------------------------------------------------------------------------
 
 @pytest.mark.parametrize("name", ["add_the_drive_before_the_history",
@@ -337,11 +337,11 @@ def test_the_arming_is_undone_and_the_check_can_fail(backend, device_text):
 
 
 # --------------------------------------------------------------------------
-# THE HOST DEFECTS -- the ones no edit to the device text can reach
+# The host defects -- the ones no edit to the device text can reach
 # --------------------------------------------------------------------------
 
 def test_the_wrong_drive_is_caught_and_is_a_null_where_the_two_agree(backend, xp):
-    """THE CONTROL THIS FAMILY MOST OWES, and its discriminator.
+    """The control this family most owes, and its discriminator.
 
     MEEP's drive is ``f_w`` on the cells whose chunk carries the component's layer and
     the stored E elsewhere, and the two agree EXACTLY off the layer's chunks -- so
@@ -368,7 +368,7 @@ def test_the_wrong_drive_is_caught_and_is_a_null_where_the_two_agree(backend, xp
 
 
 def test_stale_pointers_are_invisible_at_one_launch_and_caught_at_sixty(backend, xp):
-    """THE ROTATION LEG, and the whole reason the multi-step budget is here.
+    """The rotation leg, and the whole reason the multi-step budget is here.
 
     One driven component and one launch: the stale views ARE the fresh ones and the
     defect cannot be seen. Sixty launches: a rotation has happened in between and it
@@ -418,7 +418,7 @@ def test_a_run_with_no_launch_at_all_diverges(backend, xp):
 
 
 def test_allclose_lets_a_real_defect_through(backend, xp, device_text):
-    """The magnitude comparison a byte gate exists to replace, MEASURED.
+    """The magnitude comparison a byte gate exists to replace, measured.
 
     The reassociation is algebraically equal and differs by about one ulp relative
     -- far below ``rtol=1e-5`` -- so a tolerant comparator reports a clean pass on a
@@ -488,7 +488,7 @@ def test_the_multi_step_expectation_refuses_a_leg_missing_a_half():
 
 
 # --------------------------------------------------------------------------
-# NO RUN OFF DEVICE CAN BE MISTAKEN FOR A CERTIFICATION
+# No run off device can be mistaken for a certification
 # --------------------------------------------------------------------------
 
 def test_the_evaluator_backend_certifies_nothing(backend):

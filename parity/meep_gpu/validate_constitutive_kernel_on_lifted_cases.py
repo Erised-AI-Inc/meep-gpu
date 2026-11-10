@@ -9,7 +9,7 @@ steps, on the DRIVER'S OWN arrays, with the DRIVER'S OWN PML tables, Courant
 number and resolved boundaries?
 
 =============================================================================
-WHY THE WHOLE STEP RUNS AND NOT THE SUB-STEP ALONE
+Why the whole step runs and not the sub-step alone
 =============================================================================
 
 ``_apply_constitutive_pml`` writes ``fw[i] = src`` UNCONDITIONALLY. Hold B and D
@@ -21,7 +21,7 @@ same vacuity the synthetic multi-step leg answers by scaling the source by 0.97
 between launches (``probe_fused_kernel_bit_identity.one_constitutive_multi_step``).
 
 On the corpus the faithful perturbation is the simulation itself. Both legs run
-``step_B`` and ``step_D`` FROM THE ARRAY PATH, in MEEP's order
+``step_B`` and ``step_D`` from the array path, in MEEP's order
 (``driver.FdtdDriver.step``: step_B, update_H, step_D, update_E), so B and D
 evolve as a real run evolves them and ``f_w`` genuinely advances. Only the two
 CONSTITUTIVE sub-steps are swapped between the legs, which is what makes a
@@ -29,12 +29,12 @@ divergence attributable to them — and because the curl reads H and E, a wrong
 constitutive bit propagates into the very next sub-step instead of sitting in a
 component nothing consumes.
 
-THE CURL KERNELS ARE DELIBERATELY NOT DISPATCHED HERE. They are certified
+The curl kernels are deliberately not dispatched here. They are certified
 separately and their own lifted leg already covers them; running both pairs at
 once would make a divergence a two-suspect problem.
 
 =============================================================================
-WHAT IS COMPARED, AND THE VACUITY FLOOR
+What is compared, and the vacuity floor
 =============================================================================
 
 Every CuPy array the driver holds (``vars(fields)``), byte for byte, AFTER EVERY
@@ -52,7 +52,7 @@ the pass:
 * ``sources_moved``     — B and D advanced, which is what drives the above.
 
 =============================================================================
-THE GUARD IS AN AXIS HERE, AT CORPUS SCALE
+The guard is an axis here, at corpus scale
 =============================================================================
 
 ``--guard default_no_options`` recompiles the two kernels with NVRTC's default
@@ -61,7 +61,7 @@ Both accumulations and the E side's ``D*inv_eps`` are FMA candidates, so the
 control must DIVERGE; the pass criterion is that it does so on at least one
 inexact-Courant case, and it is a FAILURE of the control if it agrees everywhere.
 
-DO NOT CARRY THE CURL'S REASONING ABOUT COURANT 0.5 OVER TO THIS SUB-STEP. On the
+Do not carry the curl's reasoning about Courant 0.5 over to this sub-step. On the
 curl, ``dtdx`` multiplies the stencil, so at 0.5 the scaling is exact in float32
 and a contracted and an uncontracted expression round identically — which is why
 that leg could not distinguish the guard at 0.5 at all. **This sub-step never
@@ -138,7 +138,7 @@ def load_curl_leg():
 
 #: Attribute-name fragment that marks a SCRATCH buffer rather than state.
 #:
-#: THE ONE ASYMMETRY BETWEEN THE TWO LEGS THAT IS NOT A DEFECT. The array path
+#: The one asymmetry between the two legs that is not a defect. The array path
 #: runs ``_apply_constitutive_pml`` through ``fields.scratch`` (stepping.py:2136)
 #: and the kernel does not, so any scratch buffer left addressable on ``fields``
 #: holds the array leg's last intermediate and the kernel leg's older one. That
@@ -249,7 +249,7 @@ def one_case(name: str, kwargs: Dict[str, Any], probe,
     record["targets_moved"] = moved_targets
     record["targets_moved_count"] = f"{sum(moved_targets.values())}/{len(moved_targets)}"
     record["sources_moved_count"] = f"{sum(moved_sources.values())}/{len(moved_sources)}"
-    # THE VACUITY FLOOR for this sub-step: f_w moved at a step AFTER the first.
+    # The vacuity floor for this sub-step: f_w moved at a step AFTER the first.
     # A frozen source makes f_w a fixed point from launch one, and the whole
     # recurrence would then be compared with its history term inert.
     record["auxiliary_advanced_after_first_step"] = bool(auxiliary_advanced)
@@ -272,7 +272,7 @@ def one_case(name: str, kwargs: Dict[str, Any], probe,
         getattr(fields, key)[...] = value
 
     guard = GUARDS[guard_label]
-    # THE CACHE CLEAR IS LOAD-BEARING, NOT HYGIENE. ``_get_kernel`` builds its
+    # The cache clear is load-bearing, not hygiene. ``_get_kernel`` builds its
     # memo key from the MODULE's own ``_COMPILE_OPTIONS`` — always
     # ``('--fmad=false',)`` — while ``CupyShim`` substitutes the guard's options
     # at the ``cp.RawKernel`` call below it. So the key cannot tell the two guards
@@ -283,7 +283,7 @@ def one_case(name: str, kwargs: Dict[str, Any], probe,
     kernels.cp = probe.CupyShim(guard)
     kernels._clear_kernel_cache()
 
-    # THE DRIVER'S OWN CHUNK RECORD: the kernels choose each cell's form from it, and the
+    # The driver's own chunk record: the kernels choose each cell's form from it, and the
     # array leg chose by the region plan the driver built from the same division.
     record = cupy.asarray(np.ascontiguousarray(driver.chunk_bounds_record(),
                                                dtype=np.int32))
@@ -451,9 +451,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "identical_at_inexact_dtdx": len(inexact_identical),
         "diverged_at_inexact_dtdx": len(inexact) - len(inexact_identical),
         "live": len(live),
-        # THE PRIMARY GUARD must reach total agreement on every covered case.
+        # The primary guard must reach total agreement on every covered case.
         #
-        # THE CONTROL IS SCORED ON WHETHER IT RAN, NOT ON WHETHER IT DIVERGED,
+        # The control is scored on whether it ran, not on whether it diverged,
         # and that is a correction rather than a loosening. The first version
         # required the control to diverge — copied from the curl, where dtdx
         # multiplies the stencil in EVERY cell so stripping the guard moves the
@@ -461,7 +461,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         # kps/kms off the absorber profile, and `pml.py:686` builds the interior
         # as the exact identity kps == kms == 1.0; `fma(1.0f, src, f)` and
         # `f + 1.0f*src` are the same float32, so the contraction is invisible
-        # everywhere except inside the layer. MEASURED: the control agreed on all
+        # everywhere except inside the layer. Measured: the control agreed on all
         # twelve cases at BOTH Courants, and `probe_constitutive_absorber_reach.py`
         # measures the reason — in the 2 warm-up + 8 compared steps the pulse has
         # not reached the absorber, so every cell where a coefficient could bite

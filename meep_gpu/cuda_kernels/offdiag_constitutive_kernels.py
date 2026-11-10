@@ -1,29 +1,29 @@
 """Raw-CUDA off-diagonal (tensor epsilon) electric constitutive sub-step.
 
-THE CHEAPEST ROWS ON THE BOARD. After the real-storage constitutive pair landed,
+The cheapest rows on the board. After the real-storage constitutive pair landed,
 the hand-CUDA track covered 157 of 759 predicate slots and 26 corpus rows at every
 sub-step. The rows this file adds are the only remaining family whose
-configurations the certified CUDA CURL PAIR ALREADY ADMITS: a tensor epsilon
+configurations the certified CUDA curl pair already admits: a tensor epsilon
 changes ``update_E`` and nothing else, because ``stepping._offdiagonal_terms`` is
 reached from ``update_E`` and from ``_nonlinear_constitutive`` and from nowhere
 else. Every row here is one where three of the four sub-steps were already covered
 and exactly one was not.
 
-WHY A NEW MODULE AND NOT AN EDIT. ``step_curl_kernels.py``'s fourteen device
+Why a new module and not an edit. ``step_curl_kernels.py``'s fourteen device
 strings are pinned by digest in ``certification.json`` and asserted by
 ``test_certification_record.py``; ``constitutive_kernels.py``'s two are pinned the
 same way by ``test_constitutive_pml_real.py``. Adding a kernel to either would
 force a record edit that no device run backs. Nothing here changes a byte of
 either.
 
-WHERE THE PIECES LIVE, and why they are split three ways. The DEVICE SOURCE and
+Where the pieces live, and why they are split three ways. The DEVICE SOURCE and
 its emitter are in ``offdiag_emitter.py`` and the PREDICATE is in ``coverage.py``,
 both stdlib-only, because this family's device code is specialized per row mask —
 so the thing a test has to exercise is a FUNCTION, and a function has to be
 imported to be called. This module is the CuPy half: compile, bind, launch. It is
 the slice's public face and re-exports the other two rather than copying them.
 
-WHAT IS TRANSCRIBED, AND FROM WHERE. ``stepping.update_E`` with an active PML,
+What is transcribed, and from where. ``stepping.update_E`` with an active PML,
 ``fields.has_offdiagonal_epsilon`` True and no nonlinearity — the ``elif
 offdiagonal:`` branch. With no poles admitted
 ``displacement_minus_polarization_volumes`` aliases each source to its D primary,
@@ -46,7 +46,7 @@ The seven properties that decide bit-identity are enumerated in
 ``offdiag_emitter.py``, beside the text they are properties of.
 
 =============================================================================
-SPECIALIZATION: WHICH AXES ARE COMPILE-TIME, AND WHY NOT THE SIBLING'S CHOICE
+Specialization: which axes are compile-time, and why not the sibling's choice
 =============================================================================
 
 The sibling Triton kernel carries TWELVE ``tl.constexpr`` axes for this family —
@@ -54,7 +54,7 @@ six row-liveness flags, three boundary codes, three wall-mask flags — a static
 product of 4,096 kernels. Measured over the 186-row corpus, SEVEN are ever
 requested, six restricted to the rows the hand-CUDA curl admits.
 
-This track splits the twelve by WHAT THEY DO TO THE ARITHMETIC. The boundary and
+This track splits the twelve by what they do to the arithmetic. The boundary and
 wall axes are BRANCH axes: they select an index or a predicated zero and change no
 float operation and no association, so they are runtime ``int`` arguments — which
 is not a new bet, it is what the certified ``step_B_pml_real`` already does
@@ -63,7 +63,7 @@ collapse to one source. The six ROW-LIVENESS flags are an ARITY axis: they chang
 how many terms the inner sum has, and therefore its association, so they stay
 compile-time.
 
-THE ARITY AXIS STAYED COMPILE-TIME THIS ROUND, and the two facts behind that point
+The arity axis stays compile-time in this family, and the two facts behind that point
 in opposite directions, so both are stated. The ZERO-PADDING fold — bind a dead
 slot to an all-zero coefficient volume so a dropped term contributes ``+0.0``
 instead of not existing — is measurably NOT bit-identical: ``x + 0.0f`` is the
@@ -72,27 +72,27 @@ identity on the bits for every float32 x EXCEPT ``-0.0f``, which it turns into
 ``total = 0.0f`` accumulator spelling.
 ``test_offdiag_constitutive_pml_real.py`` carries the explicit witness.
 
-A DYNAMIC LOOP is a different fold and IS licensed:
-``the design notes (cuda-kernel-triton-transfer-assessment)`` §3.2 (2026-08-16,
+A dynamic loop is a different fold and IS licensed:
+a device run on an RTX A6000 (2026-08-16,
 ``results/cuda_dynamic_loop_2026-08-16/``) measured a runtime-bounded loop over an
 arity axis bit-identical to the unrolled form at every arity 0-8 — 156/156 cases,
 2,759,094 output words, zero differing words, max ULP 0 — because NVCC unrolls to
 pipeline the loads and leaves the arithmetic a strictly serial dependence chain on
 one accumulator. This family's row accumulation is such a chain, so the axis COULD
-go runtime and this round simply did not take it. Doing so needs all six
+go runtime and this family simply does not take it. Doing so needs all six
 coefficient pointers bound (reintroducing the dead-pointer shape the emitted
 signature removes) and needs the accumulation kept in its OWN accumulator with the
 final ``+ total`` conditional on a non-zero trip count — because the array path
 sums the coupling separately and adds it once (stepping.py:1250 then :1007-1008),
-where §3.2's ``NP`` axis accumulates into the diagonal itself. It would buy one
+where the measured pole-count loop accumulates into the diagonal itself. It would buy one
 compiled source on this corpus instead of two, and one byte-gate variant instead
 of two.
 
-WHAT THE CORPUS DRIVES on this split: the boundary and wall axes cost nothing, and
+What the corpus drives on this split: the boundary and wall axes cost nothing, and
 of the 63 live row masks the 186-row corpus asks for TWO.
 
 =============================================================================
-PLATFORM FACTS THIS FILE DEPENDS ON (CUDA path, adjudicated 2026-08-15)
+Platform facts this file depends on (CUDA path, adjudicated 2026-08-15)
 =============================================================================
 
 * ``--fmad=false`` is CORRECTNESS, not tuning, and the option tuple is SPELLED
@@ -101,7 +101,7 @@ PLATFORM FACTS THIS FILE DEPENDS ON (CUDA path, adjudicated 2026-08-15)
   are the two accumulations of the tail, the ``D * inv_eps`` product, and — new
   here — the two ``pair * coefficient`` products feeding the ``0.25f`` scale. A
   test pins the tuple equal to both siblings'.
-* SIGNED ZERO: CUDA lowers ``-x`` to ``neg.f32``, NOT to ``0.0f - x``, so it does
+* Signed zero: CUDA lowers ``-x`` to ``neg.f32``, NOT to ``0.0f - x``, so it does
   NOT canonicalize signed zeros. This is the OPPOSITE of the sibling track, whose
   ``(a*b)*-1.0`` idiom exists precisely because its platform does. That idiom is
   not ported here and no unary minus appears on any float path. The asymmetry is
@@ -110,7 +110,7 @@ PLATFORM FACTS THIS FILE DEPENDS ON (CUDA path, adjudicated 2026-08-15)
 * DIVISION: none. This family is divide-free, so the one PTX exception on record —
   ptxas expanding ``div.rn.f32`` into a Newton-Raphson sequence whose range checks
   carry ``.FTZ`` in SASS regardless of the PTX modifier — cannot arise.
-* THE DEVICE STRINGS ARE PURE ASCII, a compile requirement rather than a style
+* The device strings are pure ASCII, a compile requirement rather than a style
   rule: ``cupy.cuda.compiler.compile_using_nvrtc`` writes the source through a bare
   ``open(..., 'w')`` (compiler.py:368), so the bytes go through the interpreter's
   LOCALE encoding — ASCII under C/POSIX, which is what a non-interactive shell on
@@ -119,7 +119,7 @@ PLATFORM FACTS THIS FILE DEPENDS ON (CUDA path, adjudicated 2026-08-15)
   emitted source, per row mask.
 
 =============================================================================
-CERTIFIED 2026-08-16. STILL NOT DISPATCHED.
+Certified 2026-08-16. Still not dispatched.
 =============================================================================
 
 ``certification.json``'s ``offdiag_2026-08-16`` block, cut on an RTX A6000 by
@@ -136,14 +136,14 @@ than merely prudent — which is not what the plain constitutive pair measured,
 where the interior coefficients are the exact identity and a contraction is
 invisible outside the layer.
 
-WHAT THE CERTIFICATION DOES NOT SAY. It is a verdict about the EMITTER at the
+What the certification does not say. It is a verdict about the EMITTER at the
 corpus digest the record carries, exercised on four of its 63 row masks; the
 policy probe compiles three and proves each pair of policies produced distinct
 binaries. A mask outside those is covered by the emitter's own tests and by that
 digest, not by a byte gate. No throughput claim is made or possible: the box was
 shared.
 
-THE 0.10 FORMS MOVED THE EMITTER, so that block describes the previous text until the
+The 1.0 forms moved the emitter, so that block describes the previous text until the
 gate is re-run on these bytes: the row is MEEP's double row, each term is added only in
 a chunk that keeps its array, and the tail is the per-chunk constitutive form, all read
 from the run's chunk record and the presence words (``offdiag_emitter``,
@@ -256,7 +256,7 @@ def _clear_kernel_cache() -> int:
 def _get_kernel(row_mask):
     """Compile on first use, memoized on (name, options, policy, source).
 
-    THE ROW MASK REACHES THE KEY THROUGH THE SOURCE, which is already in it, so
+    The row mask reaches the key through the source, which is already in it, so
     two specializations cannot be served each other's binary — and neither can a
     mutation harness that rewrites the emitter's output be served the unmutated
     one. The source is rebuilt per call for the reason both siblings rebuild their
@@ -309,8 +309,8 @@ def offdiag_chunk_arguments(fields: 'Fields', pml: 'PML', codes, record=None) ->
 def _require_no_aliasing(fields: 'Fields', rows) -> None:
     """Outputs pairwise distinct and disjoint from every input volume.
 
-    THE COUPLING IS WHY THIS IS STRONGER THAN THE PLAIN CONSTITUTIVE KERNEL'S
-    NEEDS. That sub-step reads each cell it writes and nothing else, so an alias
+    The coupling is why this is stronger than the plain constitutive kernel's
+    needs. That sub-step reads each cell it writes and nothing else, so an alias
     would be merely wrong; this one re-reads the partner volumes at NEIGHBOUR
     offsets while the outputs are being written, so an alias makes the answer
     depend on block schedule — wrong differently on each run, which no single
@@ -384,7 +384,7 @@ def update_E_offdiag_fused_pml_real(fields: 'Fields', pml: 'PML' = None, *,
                                     chunk_bounds=None, kept=None):
     """``stepping.update_E`` with off-diagonal chi1inv rows, in one launch.
 
-    SUPPLY ``pml`` AND EVERY DERIVED ARGUMENT IS DECIDED HERE — the half-integer
+    Supply ``pml`` and every derived argument is decided here — the half-integer
     tables through :func:`coverage.constitutive_sub_lattice`, the boundary codes
     through ``real_pml_boundary_kinds``, the wall flags through the grid's own
     declaration, and the chunk record and the six presence words through
@@ -393,7 +393,7 @@ def update_E_offdiag_fused_pml_real(fields: 'Fields', pml: 'PML' = None, *,
     caller may keep; the certified sibling's docstring claimed exactly that for a
     year while ``tables`` was a positional parameter passed straight through.
 
-    ``tables``/``codes``/``walls``/``chunk_bounds``/``kept`` ARE THE GATE'S DOOR and
+    ``tables``/``codes``/``walls``/``chunk_bounds``/``kept`` are the gate's door and
     stay, keyword-only: a byte gate feeds synthetic tables no ``PML`` produces, and its
     mutations feed DELIBERATELY WRONG ones — a mis-paired sub-lattice, a dropped wall
     flag, an over-applied one, a swapped ghost rule, a record off by one, a presence

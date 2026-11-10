@@ -13,17 +13,27 @@ What is pinned is behaviour, not code:
 * every other refusal fires on its own defect and commits nothing: a required public
   file that is absent, a public-only file the export would drop, a reference to or a
   digest of an excluded file, a version or date that disagrees, a tag or version the
-  public repository already has, and a message out of the release form.
+  public repository already has, and a message out of the release form;
+* a release ships a timed NVIDIA and a timed Apple dispatch-preference record, read by the
+  exported tree's own ``timed_vendors``: the demo release carries a copy of the package's
+  ``dispatch_preference.py``, the barrier sources a record is cut on, and one sealed record
+  of each vendor, and an export without either, or with one that does not hold on the
+  exported tree or measures no key, is refused by name.
 """
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
+
+from meep_gpu import dispatch_preference as dp
+from meep_gpu.test_dispatch_preference import SLOW_PAIR, _entry, _record
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "tools" / "release" / "export_public.py"
@@ -121,8 +131,55 @@ def citation(version: str = "2.0.0", date: str = "2026-01-02") -> str:
             f'    email: "{email}"\nversion: "{version}"\ndate-released: "{date}"\n')
 
 
+#: The demo package's barrier sources, by package path: what a timing record is cut on.
+BARRIER_SOURCES = {"deposit_repair.py": "REPAIR = 1\n",
+                   "cuda_kernels/fused_pairs.py": "PAIRS = 1\n",
+                   "cuda_kernels/fused_polarization_pair.py": "POLARIZATION = 1\n",
+                   "metal_dispatch.py": "METAL = 1\n",
+                   "metal_kernels/launch.py": "LAUNCH = 1\n",
+                   "metal_kernels/device.py": "DEVICE = 1\n"}
+#: The demo package's two records: one of each vendor, (table, architecture).
+DEMO_RECORDS = {"nvidia": ("triton", "8.6"), "apple": ("metal", "applegpu_g13s")}
+
+
+def _sha256(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def timing_record(table: str, architecture: str, *, sources: dict = BARRIER_SOURCES,
+                  measured: bool = True) -> str:
+    """A sealed record of ``table`` with one key, cut on ``sources``' digests."""
+    digests = {source: [_sha256(sources[dp.SUBJECT_FILES[source]])]
+               for source in dp.SUBJECT_SOURCES_BY_TABLE[table]}
+    barrier = {"sources": sorted(digests), "digests": digests,
+               "rows_not_recording": {source: 0 for source in digests},
+               "allowed_unpinned": []}
+    entry = _entry(**dict(SLOW_PAIR, status="measured" if measured else "unmeasured"))
+    return dp.dumps(_record([entry], table=table,
+                            route=_sha256(sources["deposit_repair.py"]), barrier=barrier,
+                            host=[{"device": "DEMO GPU", "compute_capability": architecture}]))
+
+
+def record_path(vendor: str) -> str:
+    """Where the demo package's record of ``vendor`` sits, as the reader names it."""
+    table, architecture = DEMO_RECORDS[vendor]
+    return Path(dp.record_path(table, architecture, root="meep_gpu")).as_posix()
+
+
+def demo_package() -> dict:
+    """The package files the records check reads: the package's own
+    ``dispatch_preference.py``, the barrier sources and one timed record of each vendor."""
+    files = {"meep_gpu/dispatch_preference.py":
+             (ROOT / "meep_gpu" / "dispatch_preference.py").read_text(encoding="utf-8")}
+    files.update({f"meep_gpu/{name}": text for name, text in BARRIER_SOURCES.items()})
+    for vendor, (table, architecture) in DEMO_RECORDS.items():
+        files[record_path(vendor)] = timing_record(table, architecture)
+    return files
+
+
 def release_files(version: str = "2.0.0", date: str = "2026-01-02") -> dict:
     return {
+        **demo_package(),
         "pyproject.toml": f'[project]\nname = "demo-pkg"\nversion = "{version}"\n',
         "CITATION.cff": citation(version, date),
         "CHANGELOG.md": f"# Changelog\n\n## {version} — the second release ({date})\n\n- more\n",
@@ -353,3 +410,72 @@ def test_a_scratch_directory_that_is_not_empty_cannot_run(repos, capsys):
     (scratch / "left.txt").write_text("from an earlier run\n")
     status, out, report = run(repos, capsys)
     assert status == 2 and report["result"] == "cannot run" and "not empty" in out
+
+
+# ---------------------------------------------------------------------------
+# A release ships a timed NVIDIA and a timed Apple dispatch-preference record
+# ---------------------------------------------------------------------------
+
+
+def test_an_export_without_a_timed_apple_record_is_refused(repos, capsys):
+    amend(repos, {record_path("apple"): None})
+    report = refused(repos, capsys, "records", "no timed apple dispatch-preference record")
+    reasons = report["checks"]["records"]["reasons"]
+    assert len(reasons) == 1 and "no apple record ships" in reasons[0], reasons
+
+
+def test_an_export_without_a_timed_nvidia_record_is_refused(repos, capsys):
+    amend(repos, {record_path("nvidia"): None})
+    report = refused(repos, capsys, "records", "no timed nvidia dispatch-preference record")
+    reasons = report["checks"]["records"]["reasons"]
+    assert len(reasons) == 1 and "no nvidia record ships" in reasons[0], reasons
+
+
+@pytest.mark.parametrize("files, vendors, needle", [
+    ({"meep_gpu/deposit_repair.py": "REPAIR = 2\n"}, ("apple", "nvidia"),
+     "cut on deposit-repair route"),
+    ({"meep_gpu/metal_kernels/launch.py": "LAUNCH = 2\n"}, ("apple",),
+     "its emitters metal_launch moved since it was cut"),
+    ({record_path("nvidia"): timing_record("triton", "8.6", measured=False)}, ("nvidia",),
+     "it measures no key"),
+], ids=["route", "emitters", "unmeasured"])
+def test_an_export_with_a_record_that_does_not_hold_is_refused(repos, capsys, files, vendors,
+                                                               needle):
+    amend(repos, files)
+    report = refused(repos, capsys, "records", needle)
+    reasons = report["checks"]["records"]["reasons"]
+    assert [vendor for vendor in ("apple", "nvidia")
+            if any(f"no timed {vendor} " in reason for reason in reasons)] == list(vendors)
+
+
+def test_an_export_with_both_timed_records_passes_the_check(repos, capsys, tmp_path):
+    status, out, report = run(repos, capsys)
+    assert status == 0, out
+    assert report["checks"]["records"] == {"passed": True, "reasons": []}
+    assert "timed dispatch-preference records: apple, nvidia timed" in out
+    # The check reads the exported tree's own copy of the module, by path
+    tree = repos[2] / "tree"
+    assert export_public.check_records(tree) == []
+    (tree / "meep_gpu" / "dispatch_preference.py").unlink()
+    assert "carries no meep_gpu/dispatch_preference.py" in export_public.check_records(tree)[0]
+
+
+def test_the_records_check_asks_the_exported_trees_own_module(tmp_path, monkeypatch):
+    """The check answers by the release commit's own ``dispatch_preference.py``, loaded by
+    path, never by the module the export runs beside: a tree whose copy gives its own
+    answer is judged by that answer. The copy is registered only while it runs, and no
+    bytecode is written into the exported tree."""
+    package = tmp_path / "tree" / "meep_gpu"
+    package.mkdir(parents=True)
+    (package / "dispatch_preference.py").write_text(
+        "def timed_vendors(root=None):\n"
+        "    return {'apple': {'records': [], 'why_none': 'the answer of this tree'},\n"
+        "            'nvidia': {'records': ['triton_kernels/timing_cc86.json'],\n"
+        "                       'why_none': None}}\n", encoding="utf-8")
+    monkeypatch.setattr(sys, "dont_write_bytecode", False)
+    reasons = export_public.check_records(tmp_path / "tree")
+    assert len(reasons) == 1 and reasons[0].startswith("no timed apple "), reasons
+    assert "(the answer of this tree)" in reasons[0], reasons
+    assert sys.dont_write_bytecode is False
+    assert "_export_dispatch_preference" not in sys.modules
+    assert not list((tmp_path / "tree").rglob("__pycache__"))

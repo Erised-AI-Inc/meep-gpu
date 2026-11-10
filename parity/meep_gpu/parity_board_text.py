@@ -13,11 +13,13 @@ read off its OWN source text instead -- the v1 witness, below:
   PML constitutive accumulation in MEEP's grouping and spells neither in the grouping
   the package shipped through 0.9.2.
 
-THE MODULE'S OWN TEXT, AND NOTHING ELSE. A lifter that derives its device text from a
+The module's own text, and nothing else. A lifter that derives its device text from a
 base module's text at import (an anchored replacement) carries the base's spelling only
 after it has run; reading that would credit a lifter with its base's state, which the
-kernel design calls false (DESIGN.md D10: same-cell fused pairs do NOT inherit with no
-re-cut). So a module is judged only on what its own file spells:
+kernel design rejects (a same-cell fused pair inherits its bases' forms only through
+anchors re-cut for it, one record decode over the union of the bodies' entries:
+docs/development/kernel-tables.md#fused-products-and-the-record). So a module is
+judged only on what its own file spells:
 
 * **CUDA and Metal**: every string constant of the module that is not a docstring (the
   first statement of a module, class or function), with an f-string's interpolated
@@ -31,7 +33,7 @@ re-cut). So a module is judged only on what its own file spells:
 
 Comments and docstrings never count: a module that QUOTES a form in prose spells nothing.
 
-THE WITNESSES ARE STRUCTURAL, NOT TEXTUAL. Every expression is parsed into one small
+The witnesses are structural, not textual. Every expression is parsed into one small
 tree shape (``("bin", op, left, right)`` and friends) for both C and Python, the
 table's complex helpers are read as the operators they implement (``cf_add`` is ``+``,
 ``c_mul_field_left`` is ``*``), and the forms are matched on the tree:
@@ -45,7 +47,9 @@ table's complex helpers are read as the operators they implement (``cf_add`` is 
   MEEP-order constitutive helper.
 
 A coefficient is a leaf whose identifier starts ``kp`` / ``km`` (``kps``, ``kp_0``,
-``kps_x[i]``). Multiplication operand order is free (KERNELS.md C3), so both orders match.
+``kps_x[i]``). Multiplication operand order is free (IEEE-754 multiplication is commutative
+on every non-NaN word, signed zero included: docs/design/floating-point.md#operand-order),
+so both orders match.
 
 Stdlib only: the board must run on a host that imports no device library.
 """

@@ -437,7 +437,7 @@ def test_the_membership_each_form_reads_is_the_region_plans_own_line():
 
 
 def test_every_auxiliary_load_and_store_sits_behind_its_forms_membership():
-    """The auxiliary contract (DESIGN D3) on the device text: ``fu`` is read and
+    """The auxiliary contract (docs/design/floating-point.md#auxiliary-contract) on the device text: ``fu`` is read and
     written only under ``du``, ``f_w`` only under ``dw``. A load outside the guard
     changes no word (a declared null on the gate), so this static needle is what
     pins it."""
@@ -900,7 +900,7 @@ def _engine_case(boundaries=("periodic", "periodic", "periodic"), courant=0.35,
         array = getattr(fields, name, None)
         if array is not None:
             array[...] = (rng.standard_normal(grid.shape) * 0.37).astype(np.float32)
-    # A SEEDED STATE IS A MID-RUN ONE: H was started from B long ago.
+    # A seeded state is a mid-run one: H was started from B long ago.
     fields.h_separated = True
     return grid, fields, pml
 

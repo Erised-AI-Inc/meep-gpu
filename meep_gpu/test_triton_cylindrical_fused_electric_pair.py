@@ -1,15 +1,15 @@
 """The CYLINDRICAL COMPLEX fused ELECTRIC Triton pair, as a laptop can check it.
 
-WHAT THIS SUITE OWNS AND WHAT IT DELIBERATELY DOES NOT. The BYTES are the device
+What this suite owns and what it deliberately does not. The BYTES are the device
 gate's — ``parity/meep_gpu/probe_triton_cylindrical_fused_electric_pair.py`` runs
-three routes in lockstep on CuPy and compares uint32 words PER COMPLETE DRIVER
-STEP, with and without a real electric deposit in the seam, and no assertion here
+three routes in lockstep on CuPy and compares uint32 words per complete driver
+step, with and without a real electric deposit in the seam, and no assertion here
 duplicates that. What lives here is everything true about the family WITHOUT a
 device: what the shipped kernel TEXT says, which configurations the predicate
 refuses and by what name, that the product is not an arm, and the choices a byte
 gate structurally cannot hold.
 
-THE SIX CLAIMS THIS SUITE MAKES THAT THE GATE CANNOT.
+The six claims this suite makes that the gate cannot.
 
 1. **The product is not an arm.** Nothing in ``launch.py`` names this module and
    ``fastpath`` is untouched, so no default run can reach it. That is a property of
@@ -36,7 +36,7 @@ THE SIX CLAIMS THIS SUITE MAKES THAT THE GATE CANNOT.
    against a pre-injection field and report success. The flag is asserted against
    ``test_fused_pair_deposit_wiring``'s own sets rather than restated here.
 
-NO EXPANSION ARM IS ASSERTED HERE, because none remains: the expansion licence, its
+No expansion arm is asserted here, because none remains: the expansion licence, its
 probe artifacts and the arm argument are deleted on all three tables, so every
 complex product has one emitted form. The device gate holds the bytes.
 """
@@ -144,7 +144,7 @@ def test_the_composer_routes_this_product_and_dispatch_admits_it():
     ``_install_fused_pair``, taking both slots only when ``_pair_may_absorb`` finds
     the arm table has already given them to the arms this kernel implements.
 
-    The 2026-09-13 phase-B batch RELEASED it, and the second half is that sentence
+    The 2026-09-13 certification run RELEASED it, and the second half is that sentence
     made checkable from the PRODUCT's side rather than from the composer's: the
     label this product writes is now in ``fastpath.RELEASED_FUSED_ARMS``, so clause
     (8) admits the whole plan; and it carries an ``ARM_CERTIFICATION`` row (its gate
@@ -181,7 +181,7 @@ def test_the_module_makes_no_identity_claim_it_has_not_earned():
 # ---------------------------------------------------------------------------
 
 def test_the_carry_flag_is_true_and_the_wiring_sets_agree_with_it():
-    """FLAG AND WIRING MOVE TOGETHER. A product that declares the flag without the
+    """Flag and wiring move together. A product that declares the flag without the
     ``LeadingRepairPlan``/``TrailingRepairPlan`` bracket computes the constitutive
     half against a pre-injection field and reports success — the exact failure
     ``deposit_repair`` exists to prevent. The wiring sets live in
@@ -195,7 +195,7 @@ def test_the_carry_flag_is_true_and_the_wiring_sets_agree_with_it():
 
 
 def test_an_electric_deposit_is_CARRIED_rather_than_refused():
-    """THE WHOLE PRODUCT. All sixteen Dcyl corpus rows declare an electric source,
+    """The whole product. All sixteen Dcyl corpus rows declare an electric source,
     so with ``carries_repair=False`` this arm admits ZERO rows. The clause still
     consults ``deposit_repair.repairable`` per run — it is a carry, not a waiver."""
     from meep_gpu.sources import ContinuousEnvelope, VolumeSource
@@ -233,7 +233,7 @@ def test_holding_the_carry_flag_False_puts_the_electric_refusal_straight_back(
 
 
 def test_an_undeclared_source_list_is_a_refusal_and_not_an_empty_set():
-    """IGNORANCE IS NEVER AN EMPTY SET. ``Fields`` does not hold the source list, so
+    """Ignorance is never an empty set. ``Fields`` does not hold the source list, so
     a predicate that inferred "no electric source" from not being told would be the
     over-covering refusal this clause exists to prevent."""
     fields, pml = cylindrical(m=1)
@@ -284,7 +284,7 @@ def test_the_kernel_calls_no_complex_multiply_helper():
 # ---------------------------------------------------------------------------
 
 def test_every_certified_curl_statement_appears_in_the_fused_body():
-    """PARSED OUT OF BOTH FILES. A suite that re-implemented the kernel's arithmetic
+    """Parsed out of both files. A suite that re-implemented the kernel's arithmetic
     would MIRROR a planted defect instead of executing it."""
     certified = statements(
         CURL.read_text(encoding="utf-8"),
@@ -300,7 +300,7 @@ def test_every_certified_curl_statement_appears_in_the_fused_body():
 
 
 def test_every_constitutive_statement_of_the_cartesian_weld_appears_here():
-    """``update_E`` carries NO cylindrical branch — the cylindrical tranche measured
+    """``update_E`` carries NO cylindrical branch — the cylindrical family's gate measured
     480/480 rows, 0 differing words — so the constitutive half IS the Cartesian
     D->E weld's, character for character."""
     certified = statements(
@@ -395,7 +395,7 @@ def test_the_wall_clear_takes_the_D_SIDE_map_and_not_the_magnetic_twins():
 
 
 def test_the_predicate_refuses_when_the_baked_wall_map_leaves_the_engines():
-    """THE CLAUSE THAT WOULD HAVE CAUGHT THE CARTESIAN TWIN'S FIRST DEVICE RUN. The
+    """The clause that would have caught the Cartesian twin's first device run. The
     map is re-derived from the shipped ``IYEE_SHIFTS`` on every call; a kernel whose
     baked map disagrees is refused rather than launched."""
     fields, pml = cylindrical(m=1)
@@ -527,7 +527,7 @@ def test_the_kernel_refuses_by_name_without_triton():
 
 
 def test_real_storage_m_zero_is_refused_by_name_it_is_the_other_products_row():
-    """Since 2026-09-04 m = 0 is admitted UNDER COMPLEX STORAGE (the M_ZERO arm);
+    """Since 2026-09-04 m = 0 is admitted under complex storage (the M_ZERO arm);
     the REAL-storage m = 0 run is still ``cylindrical_triton``'s and the refusal
     names the storage flag, not m."""
     fields, pml = cylindrical(m=0, complex_storage=False)
@@ -633,7 +633,7 @@ def test_the_gate_arms_a_needle_for_every_seam_choice_this_suite_pins():
 
 
 def test_the_module_has_no_fingerprints_entry_until_its_gate_has_run():
-    """WHICH BRANCH THIS TAKES IS ASKED STRUCTURALLY, NOT AS A SUBSTRING.
+    """Which branch this takes is asked structurally, not as a substring.
 
     ``product in json.dumps(record)`` also matches PROSE, and on 2026-09-04 it
     did: ``family_recert_2026-08-14``'s ``source_drift_since_recert``

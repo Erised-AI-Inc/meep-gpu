@@ -41,8 +41,9 @@ finally:
     result.close()                                # releases host and device arrays
 ```
 
-Between MEEP's own setup lines it prints, on the certified Apple host in the
-environment of Route 2 (MEEP 1.33.0 from conda-forge, a double-precision build):
+Between MEEP's own setup lines it prints, on the certified M1 Max in the
+environment of Route 2 with the file's earlier pin (MEEP 1.33.0 from conda-forge,
+a double-precision build):
 
 ```text
 supported: True []
@@ -54,7 +55,10 @@ max |Ez|: 1.436076e-01
 
 `step path: fused` means compiled kernels served the run; `step path: array`
 means the array path did, which is a correct run. The last digits of `flux` and
-`max |Ez|` depend on the MEEP build the lift reads from: the recorded output,
+`max |Ez|` depend on the MEEP build the lift reads from. With the environment
+file as it is now (MEEP 1.35.0), the same Mac printed
+`flux: 9.709682e-06 7.775076e-02 -3.753865e-06` and the other lines unchanged
+(2026-10-27). The recorded output,
 `examples/expected/quickstart.txt`, was made against a single-precision MEEP
 built from source and reads `9.709987e-06 7.775076e-02 -3.754030e-06` and
 `1.436078e-01`.
@@ -158,9 +162,9 @@ finally:
 Both entry points run on this host's GPU unless told otherwise:
 <code>lift_simulation</code> and <code>run_on_gpu</code> default to
 <code>prefer_gpu=True</code>. On a host with a CUDA device that is CUDA through
-CuPy. On a host with an Apple GPU it is Metal kernels over NumPy host arrays. A
-host with neither raises, before MEEP initializes anything, and the message
-names <code>prefer_gpu=False</code> as the way out.
+CuPy. On an Apple GPU it is Metal kernels on MPS mirrors of NumPy host arrays,
+held on the GPU by default. A host with neither raises, before MEEP initializes
+anything, and the message names <code>prefer_gpu=False</code> as the way out.
 
 <code>prefer_gpu=False</code> is the NumPy reference: host arrays and the array
 path. It never runs a compiled kernel, whatever the environment says, so it is
@@ -179,6 +183,10 @@ kernels installs its kernel table's float32 subnormal policy for the whole
 process, and the reference takes the host as it finds it, so the two can differ
 in the last bits once values pass through the subnormal range
 ([the floating-point contract](../design/floating-point.md#the-subnormal-policy)).
+A run with an <code>EigenModeSource</code> can also differ between the two for
+another reason: each lift solves the source's mode again through MPB, two solves
+need not agree, and every word the source reaches then differs
+([Compatibility](../guides/compatibility.md#an-eigenmodesource-can-differ-from-meep)).
 On the Apple GPU measured, at 3,600 cells, a default lift and the reference
 produced the same field in 11 of 11 cases compared, none of which reaches that
 range.
@@ -189,11 +197,11 @@ A GPU run is not automatically the faster one. The 1-D example on this page is
 an 80-cell grid, far below every size at which a GPU run has been measured
 ahead; it is here to show the calls, not to be fast.
 
-On an Apple GPU a default lift costs one to two seconds before the second step
-(importing the device library, then planning and compiling the kernels at the
-first step), and each step then costs about 2 ms on a small cell whatever its
-size. Measured on one M1 Max on 2026-09-27, on a loaded host and therefore not a
-timing of record, in vacuum with an absorber on every side and one point source:
+On an Apple GPU, with the pre-1.0 code, a default lift cost one to two seconds
+before the second step (importing the device library, then planning and compiling
+the kernels at the first step), and each step then cost about 2 ms on a small cell
+whatever its size. Measured on one M1 Max on 2026-09-27, on a loaded host and so not
+a timing of record, in vacuum with an absorber on every side and one point source:
 
 | Cells | Default lift against <code>prefer_gpu=False</code> |
 |---|---|
@@ -205,22 +213,22 @@ timing of record, in vacuum with an absorber on every side and one point source:
 | 125,000 (3-D) | level |
 | 216,000 (3-D) | 1.61 times faster |
 
-The crossover on that host is between 102,400 and 230,400 cells in 2-D and near
-125,000 cells in 3-D. Below it, pass <code>prefer_gpu=False</code>, or set
+The crossover on that host was between 102,400 and 230,400 cells in 2-D. On the 1.0 code, in
+another case on the same laptop, a default lift was the faster at 110,592 3-D cells, the smallest
+timed. By the pre-1.0 figures, for the smallest grids pass <code>prefer_gpu=False</code>, or set
 <code>MEEP_GPU_DISPATCH=0</code> to reach the same array path without editing
-the script. On a CUDA device the array path itself runs on the GPU. When to
-expect MEEP itself to be the faster choice is in
-[Will it help?](../guides/will-it-help.md).
+the script. On a CUDA device the array path itself runs on the GPU. When to expect
+MEEP itself to be the faster choice is in [Will it help?](../guides/will-it-help.md).
 
 ## Compiled kernels run by default
 
 Compiled-kernel dispatch is on by default for a driver built with
-<code>prefer_gpu=True</code>, which a default lift is. On a certified NVIDIA
-host, and on any Apple GPU (every one is supported), the example above runs
+<code>prefer_gpu=True</code>, which a default lift is. On a supported NVIDIA
+GPU, and on any Apple GPU (every one is supported), the example above runs
 compiled kernels on every sub-step a certified kernel covers, and the array
-path on the rest; outside the certified environment an Apple GPU run says it
-is not certified
-([Certification on an Apple GPU](../guides/kernel-dispatch.md#certification-on-an-apple-gpu)).
+path on the rest; outside the certified identity a run says it is not certified
+([Certification on an NVIDIA GPU](../guides/kernel-dispatch.md#certification-on-an-nvidia-gpu),
+[Certification on an Apple GPU](../guides/kernel-dispatch.md#certification-on-an-apple-gpu)).
 To force the array path for the whole run, set one environment variable before
 it starts:
 

@@ -20,7 +20,7 @@ directory. Callers are the gate (``parity/meep_gpu/gate_triton_offdiag.py``),
 the composition probe (``probe_triton_offdiag_composition.py``) and the laptop
 tests, nothing else.
 
-WHAT IT REPLACES. ``stepping.update_E`` with an active PML,
+What it replaces. ``stepping.update_E`` with an active PML,
 ``fields.has_offdiagonal_epsilon`` True and NOT ``fields.has_nonlinearity`` -- the
 ``elif offdiagonal:`` branch. With no poles admitted,
 ``displacement_minus_polarization_volumes`` aliases each source to its D primary,
@@ -41,33 +41,33 @@ volumes. Per component ``c`` with own axis ``a`` (``stepping._offdiagonal_terms`
     everywhere else:
         E_c = src;                                          f_w_c keeps its word
 
-THE THINGS THAT DECIDE BIT-IDENTITY, each held by the gate rather than assumed:
+The things that decide bit-identity, each held by the gate rather than assumed:
 
-1. **THE COEFFICIENT MULTIPLY SITS BETWEEN THE TWO SHIFTS**: ``u[i]`` multiplies
-   the two-point partner average AT ITS OWN NODE and ``u[i+s]`` the average at the
+1. **The coefficient multiply sits between the two shifts**: ``u[i]`` multiplies
+   the two-point partner average at its own node and ``u[i+s]`` the average at the
    next node up -- MEEP registers the off-diagonal entry at the component's Yee
    site minus half a cell along its own axis, the integer node
    (anisotropic_averaging.cpp:248-257, ``here - shift1``). A plain
    four-point-average-times-``u[i]`` hoist is the same ALGEBRA only for a uniform
-   coefficient -- and MEASURED bitwise-different even there, because
+   coefficient -- and measured bitwise-different even there, because
    distributivity (``a*u + b*u`` vs ``(a+b)*u``) is not a bitwise identity in f32
    (the laptop test pins the separation). The gate's spatially varying
    coefficient cases are what make the REGISTRATION -- not merely the rounding --
    byte-visible, and its m1 mutation is the hoist.
-2. **THE TWO SHIFTS GO IN OPPOSITE DIRECTIONS** -- half a cell DOWN the partner's
+2. **The two shifts go in opposite directions** -- half a cell DOWN the partner's
    axis on the raw partner volume (``g[i-sx]``), then the already-multiplied
    product half a cell UP the component's own axis (``(pair*u)[i+s]``, which is
    where the corner ``g[(i+s)-sx]`` arises). Per-axis ghost rules compose
    independently on the corner. Taking both shifts the same way is the half-cell
    registration error; the gate's m2 mutation is exactly it.
-3. **THE ROW IS MEEP'S DOUBLE ROW, ROUNDED ONCE.** ``0.25`` is a double literal in
+3. **The row is MEEP's double row, rounded once.** ``0.25`` is a double literal in
    MEEP's ``OFFDIAG`` macro, so each term is the float32 sum widened and scaled in
    double (exact: a power of two), the terms are added to the widened ``gs*us`` in
    double, left to right (offset 1 then 2), and the store rounds once
    (``tl.cast`` to float64 and back; the narrowing is round-to-nearest-even). The
    previous float32 row (``0.25`` in float32, ``diag + total`` in float32) is the
    gate's b3 mutation.
-4. **THE METALLIC WALL-COUPLING MASK** (``_mask_metallic_wall_coupling``): each
+4. **The metallic wall-coupling mask** (``_mask_metallic_wall_coupling``): each
    term's float32 sum is zeroed at FACE 0 of every metallic non-mirrored axis on
    which the component's Yee shift is 0, BEFORE it is scaled and added -- the
    wall's tangential E is never stepped, the diagonal product is already zero
@@ -85,12 +85,12 @@ THE THINGS THAT DECIDE BIT-IDENTITY, each held by the gate rather than assumed:
    own owner volume -- not from the membership record's runs, which are the
    layer's and need not be the chunk cuts. A slot no chunk drops compiles to no
    read at all (the ``P*`` constexprs).
-6. **A COMPONENT WITH NO SURVIVING ROW KEEPS THE PLAIN PRODUCT** -- ``_offdiagonal_terms``
+6. **A component with no surviving row keeps the plain product** -- ``_offdiagonal_terms``
    returns ``None`` and the caller never forms a ``+ 0`` copy. The row-mask
    constexprs compile the 'none' arm to ``gs*us`` itself, and the gate's identity
    leg pins the rows-all-dropped build byte-identical to the root constitutive
    kernel.
-7. **THE CONSTITUTIVE FORM IS PER CHUNK** (:func:`.forms.constitutive_form`, read
+7. **The constitutive form is per chunk** (:func:`.forms.constitutive_form`, read
    from the record's half-integer line of the component's own axis): MEEP's
    accumulation ``E + ((kps*src) - (kms*f_w))`` with ``f_w = src`` on the cells
    whose chunk carries the layer, ``E = src`` elsewhere. ``f_w`` is read and
@@ -101,13 +101,13 @@ THE THINGS THAT DECIDE BIT-IDENTITY, each held by the gate rather than assumed:
    ``semantic.minus`` lowers ``-x`` as ``0.0 - x`` and canonicalizes signed-zero
    addends).
 
-NO DIVISION ANYWHERE. This family returns to the divide-free profile of the
+No division anywhere. This family returns to the divide-free profile of the
 previously certified families — no Pade quotient, no ``div_rn`` concern, and
 no host-rounded scalar powers: the coefficients and the inverse epsilon are
 VOLUMES (a scalar inverse epsilon is refused by name, the certified
 predicate's own clause, coverage.py:649-674).
 
-GHOSTS. Phase A carries exactly the two plain rules of ``_shift_up``
+GHOSTS. This family carries exactly the two plain rules of ``_shift_up``
 (stepping.py:1770) / ``_shift_down`` (:1834): the periodic wrap and the
 metallic zero ghost, per axis, composed independently for the corner. One of
 them is transcription fidelity rather than a byte-observable choice: the
@@ -127,7 +127,7 @@ reduced (n = 1) axis the wrap returns the same plane and the partner pair is
 ``2*g`` — NOT the curl's exact zero — matching MEEP's stride(d)=0 double-read;
 a sweep case pins it.
 
-STALE DOCSTRING HAZARD (code wins, and the refusals leg measures it):
+Stale-docstring hazard (code wins, and the refusals leg measures it):
 stepping.py:1219-1220 claims "a folded axis never reaches this function:
 ``Fields.set_epsilon_volumes`` refuses the combination at install", and
 fields.py:1237-1241 (with driver.py:1202-1204) repeats the claim — but
@@ -135,20 +135,20 @@ fields.py:1237-1241 (with driver.py:1202-1204) repeats the claim — but
 on folded grids, with fold-equivalence measured 8.3e-13..4.7e-12 and pinned by
 ``test_tensor_epsilon.py::test_tensor_fold_equivalence_is_exact``. This Triton
 family refuses folds anyway (the shared extent/coefficient-index clause), so
-the refusal is THIS KERNEL FAMILY'S, not the engine's: the gate's refusals leg
+the refusal is this kernel family's, not the engine's: the gate's refusals leg
 shows the predicate refusing a folded run that stepping demonstrably steps.
 The doc fix belongs in those files.
 
-WHAT IS REFUSED, BY NAME, in :func:`offdiag_constitutive_coverage`: every
+What is refused, by name, in :func:`offdiag_constitutive_coverage`: every
 ``coverage._grid_reasons`` clause IN FORCE and called directly (no clause is
 inverted — the chi2/chi3 clause stays: MEEP's most-general row-product-times-
 Pade case, stepping.py:1095-1116, is a later fused leg with the nonlinear
 family; a nonzero beta is additionally refused by the ENGINE itself for
 real-storage offdiag runs, stepping.py:800-810, MEEP fields.cpp:548-549 — the
 predicate refusal and the engine ValueError are distinct facts the refusals
-leg asserts separately). Complex64 storage is Phase B: the pure-offdiag
+leg asserts separately). Complex64 storage is outside this family: the pure-offdiag
 ``elif`` branch does run unchanged on complex arrays with a real f32
-coefficient, but which family carries that arm is a Phase B decision. Added
+coefficient, but which family carries that arm is not decided here. Added
 E-side clauses, each a silent wrong answer if missing: any registered
 polarization (the source becomes ``D - sum P`` scratch — the ADE/fused
 families'); the INVERTED offdiag clause (at least one surviving row REQUIRED,
@@ -186,7 +186,7 @@ E_TERMS: Tuple[Tuple[str, str, int], ...] = (
 #: order X -> Y -> Z (vec.hpp:586; stepping.py:1235-1237): own axis + 1 first,
 #: own axis + 2 second. Ez therefore takes the Ex-partner volume then the
 #: Ey-partner volume. Unlike the nonlinear family's commutative ``Dsqr``, here
-#: the order BINDS COEFFICIENTS TO PARTNERS — the plan fills the six row slots
+#: the order binds coefficients to partners — the plan fills the six row slots
 #: by this table, and the gate's m3 mutation mispairs them.
 TRANSVERSE_PARTNERS: Tuple[Tuple[int, int], ...] = ((1, 2), (2, 0), (0, 1))
 
@@ -902,7 +902,7 @@ def _row_reasons(fields: Any, shape: Sequence[int]) -> List[str]:
 def offdiag_constitutive_coverage(fields: Any, pml: Any) -> "_coverage.Coverage":
     """May the Triton off-diagonal kernel step ``update_E`` for this pair?
 
-    POSITIVE CLAUSES ONLY; a failing clause appends its reason and the scan
+    Positive clauses only; a failing clause appends its reason and the scan
     continues. The grid clauses are ``coverage._grid_reasons``' — called
     DIRECTLY, not restated, because unlike the nonlinear and beta families
     this predicate inverts NO shared clause: chi2/chi3 stays refused (the
@@ -1276,11 +1276,11 @@ def plan_offdiagonal_constitutive_from_arrays(
 
 
 # ---------------------------------------------------------------------------
-# INTEGRATION — what the later wiring round has to do, and nothing more
+# INTEGRATION — the wiring this module left to a later change, and nothing more
 # ---------------------------------------------------------------------------
 #
-# Additive edits, once the shared files are free (owned by the concurrent
-# session and NOT touched from here):
+# Additive edits to the shared files (coverage.py, __init__.py, fingerprints.json
+# and the engine docstrings), which are NOT touched from here:
 #
 #   coverage.py  constitutive_coverage(side="E")'s offdiag clause
 #                (coverage.py:367-370) stays — it is the DISJOINTNESS seam,
@@ -1300,4 +1300,4 @@ def plan_offdiagonal_constitutive_from_arrays(
 #                rows; the code and the fold-equivalence test are the truth.
 #
 # Dispatch stays disabled throughout: the engine's fast-path hook returns None
-# on every branch and nothing in this tranche changes that.
+# on every branch and nothing in this module changes that.

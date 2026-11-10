@@ -1,8 +1,8 @@
-"""The 1.0 round's check refuses a gate stage whose Triton H->D lift inputs are absent.
+"""The 1.0 certification's check refuses a gate stage whose Triton H->D lift inputs are absent.
 
-WHY THIS FILE EXISTS. The ten Triton H->D hand legs join their corpus rows to a census
+Why this file exists. The ten Triton H->D hand legs join their corpus rows to a census
 and a seam record under ``parity/meep_gpu/results`` (each gate's ``CENSUS`` and
-``SEAM_RECORD``), which a checkout does not carry. On the 1.0 round the census was not
+``SEAM_RECORD``), which a checkout does not carry. In the 1.0 certification the census was not
 staged on the GPU host's certification clone and ``legs.py check`` said CHECK OK: the
 first such leg ran every device leg, then stopped at its lift with "the lift leg needs
 ...", 113 s into a leg priced at 3,052 s, and the other nine would have died the same
@@ -107,7 +107,7 @@ def checked(tmp_path, monkeypatch):
 
 
 def test_the_gate_stage_check_refuses_absent_hd_inputs(checked):
-    """MUST CATCH: on the round's bytes this check said CHECK OK with both absent."""
+    """MUST CATCH: on the 1.0 certification's bytes this check said CHECK OK with both absent."""
     run, _results = checked
     problems, facts = run()
     hd = [p for p in problems if "Triton H->D leg(s)" in p]
@@ -133,7 +133,7 @@ def test_this_checkouts_gate_stage_check_answers_for_its_own_results(tmp_path):
     """MUST CATCH, on the gates' own results root: refused exactly when it lacks them.
 
     A checkout carries no ``results/`` (the CI view), so there the check must refuse;
-    a certification clone with the round's inputs staged must pass it.
+    a certification clone with its inputs staged must pass it.
     """
     corpus = tmp_path / "meep" / "python"
     for name in L.CORPUS_DIRECTORIES:

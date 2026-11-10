@@ -7,7 +7,7 @@ bar. What is pinned:
 * the four declared constitutive edits INVERT to the certified prelude character for
   character, on BOTH variants and BOTH arms;
 * the certified ``cshift_dn`` survives the resolve with its branch, its ghost, its wrap
-  arithmetic and the Bloch rotation ON THE WRAPPED LANE ONLY -- and the FOLDED variant
+  arithmetic and the Bloch rotation on the wrapped lane only -- and the FOLDED variant
   arrives carrying ``complex_folded_kernels``' widened ghost, which is the fact that
   lets one product cover both board cells;
 * every one of the six shifted magnetic taps and six own-cell loads is redirected, and
@@ -18,7 +18,7 @@ bar. What is pinned:
 * the predicate is a CONJUNCTION of the two certified halves' own predicates, selected
   by ``variant_for``, and refuses the seam's withdraw rows by name.
 
-THE HOST IS NOT THE ORACLE FOR THE COMPLEX MULTIPLY. NumPy's ``complex64 * float32``
+The host is not the oracle for the complex multiply. NumPy's ``complex64 * float32``
 and CuPy's differ on the sign of a flushed zero, which is why the emitted text carries
 the emitter's part-wise ``mul_field_left`` (one float32 product per part, the array
 path's ``part_products.scale``) and why the gate runs the earlier full complex
@@ -181,7 +181,7 @@ def test_the_resolved_shift_keeps_the_certified_branches(variant):
     # lives on the operand read at the cell itself (cwindow_reg), never here.
     assert "rotate_field_left" not in helper and "cconnect" not in helper
     assert "cf_load(g" not in helper
-    # THE GHOST IS A CONSTANT, NOT A FIELD: it must not be recomputed.
+    # The ghost is a constant, not a field: it must not be recomputed.
     assert "return cf_zero();" in helper
     if variant == "folded":
         assert "bc == BC_METALLIC || bc == BC_MIRROR_PERIODIC" in helper
@@ -403,7 +403,7 @@ def test_the_two_cells_are_the_ones_the_board_calls_unbuilt():
 
 @pytest.mark.skipif(not _BOARD.is_file(), reason="the standing board is not on this host")
 def test_no_row_of_either_cell_carries_a_standing_withdraw():
-    """What the withdraw refusal costs on these two cells: nothing, MEASURED."""
+    """What the withdraw refusal costs on these two cells: nothing, measured."""
     board = json.loads(_BOARD.read_text(encoding="utf-8"))
     instances = (board.get("h_to_d_seam") or {}).get("instances") or []
     mine = [record for record in instances

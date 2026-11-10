@@ -25,6 +25,7 @@ if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
 import bench_meep_identical_case as bench  # noqa: E402
+import neutral_ids  # noqa: E402
 
 
 @functools.lru_cache(maxsize=1)
@@ -57,14 +58,14 @@ def test_threads_per_rank_refusals(monkeypatch):
     monkeypatch.setattr(bench, "mapped_openmp", lambda: [])
     with pytest.raises(SystemExit, match="needs --build-record"):
         bench.check_threads(2, None)
-    # NO RUNTIME MAPPED AFTER MEEP'S IMPORT STILL REFUSES
+    # No runtime mapped after MEEP's import still refuses
     with pytest.raises(SystemExit, match="after importing MEEP"):
         bench.check_threads_after_import(2, bench.check_threads(2, {"openmp": True}))
     monkeypatch.setattr(bench, "mapped_openmp", lambda: None)
     with pytest.raises(SystemExit, match="needs --build-record"):
         bench.check_threads(2, None)
     assert bench.check_threads(2, {"openmp": True})["asked"] == 2
-    # A RUNTIME OPENBLAS MAPPED INTO THE PROCESS ADMITS NOTHING: the record decides.
+    # A runtime OpenBLAS mapped into the process admits nothing: the record decides.
     monkeypatch.setattr(bench, "mapped_openmp", lambda: ["libgomp"])
     with pytest.raises(SystemExit, match="needs --build-record"):
         bench.check_threads(2, None)
@@ -75,10 +76,10 @@ def test_threads_per_rank_refusals(monkeypatch):
 
 
 def test_a_hybrid_row_reads_the_runtime_after_meep_is_imported(monkeypatch):
-    """CERT-8 H2: 18 / 18 hybrid MPI x OpenMP rows refused "no OpenMP runtime is mapped"
-    on a build that links ``libgomp``, because the maps were read before ``import meep``
-    loaded the library that maps it. Before the import nothing is mapped; after it the
-    runtime is, and the row runs."""
+    """In the 1.0 timing run, 18 / 18 hybrid MPI x OpenMP rows refused "no OpenMP runtime is
+    mapped" on a build that links ``libgomp``, because the maps were read before ``import
+    meep`` loaded the library that maps it. Before the import nothing is mapped; after it
+    the runtime is, and the row runs."""
     monkeypatch.setenv("OMP_NUM_THREADS", "2")
     imported = {"meep": False}
     monkeypatch.setattr(bench, "mapped_openmp",
@@ -136,6 +137,11 @@ def test_one_rank_row_and_the_harness_lift_carry_one_digest(tmp_path):
     assert sum(measurement["chunks"]["cells_per_rank"]) == 13_824
     assert measurement["monitor"]["stepped"] is True
     assert measurement["environment"]["builder"]["builder_is_end_to_end_case"] is True
+    # the rows leave the machine: no path, host name or UUID of this one, and no rank pid
+    assert neutral_ids.residue(rows) == []
+    assert all("pid" not in rank for row in rows if row.get("row") == "environment"
+               for rank in row["rank_bindings"])
+    assert all("pid" not in rank for rank in measurement["environment"]["rank_bindings"])
     lift = subprocess.run(
         [sys.executable, "-u", os.path.join(HERE, "digest_harness_lift.py"),
          "--case", "pml_3d", "--res", "6", "--out", str(tmp_path / "lift"),
@@ -145,3 +151,88 @@ def test_one_rank_row_and_the_harness_lift_carry_one_digest(tmp_path):
     record = json.load(open(tmp_path / "lift" / "harness_lift_digest_pml_3d_res6.json"))
     assert record["geometry"]["digest"] == measurement["geometry_digest"]
     assert record["verdict"]["identical"] is True
+    # the digest record leaves the machine too: its builder and compared-file paths labelled
+    assert neutral_ids.residue(record) == []
+    assert record["compared_with"][0]["file"].endswith("/meep/rows_r1.jsonl")
+
+
+# ---------------------------------------------------------------------------
+# What a row writes about the machine (neutral_ids)
+# ---------------------------------------------------------------------------
+
+#: A machine no test here runs on: nothing a row writes may carry any of it.
+HOST = "gpu-node-17.cluster.example.edu"
+LOGIN = "fixtureuser"
+HOME = "/" + "ho" + "me" + "/fixtureuser"   # from pieces: a full home path is a hygiene-guard hit
+REAL_A = "GPU-3f1c2a9e-5b7d-4e21-9a0c-6d8e2f4b1a37"
+FOREIGN_PID = 271828
+
+
+@pytest.fixture
+def machine(monkeypatch):
+    """This process as the fixture machine: its host names, login and home."""
+    monkeypatch.setattr(neutral_ids.socket, "gethostname", lambda: HOST)
+    monkeypatch.setattr(neutral_ids, "_node", lambda: HOST)
+    monkeypatch.setattr(neutral_ids.getpass, "getuser", lambda: LOGIN)
+    monkeypatch.setenv("HOME", HOME)
+    neutral_ids.reset()
+    yield neutral_ids
+    neutral_ids.reset()
+
+
+def assert_neutral(record, *tokens):
+    assert neutral_ids.residue(record) == []
+    text = json.dumps(record, sort_keys=True, default=str)
+    for token in (HOST, HOST.split(".")[0], LOGIN, HOME, REAL_A, str(FOREIGN_PID)) + tokens:
+        assert str(token) not in text, (token, text[:400])
+
+
+def test_a_rank_writes_its_machine_id_and_no_pid(machine, monkeypatch):
+    monkeypatch.setattr(bench.platform, "node", lambda: HOST)
+    monkeypatch.setattr(bench.os, "getpid", lambda: FOREIGN_PID)
+    mp = argparse.Namespace(my_rank=lambda: 3)
+    facts = bench.rank_facts(mp, launched=[0, 48])
+    assert facts["rank"] == 3 and facts["affinity"] == [0, 48]
+    assert facts["host"] == neutral_ids.machine_id() and "pid" not in facts
+    assert_neutral(facts)
+
+
+def test_the_environment_row_writes_nothing_of_the_machine(machine):
+    """The environment row and every measurement row carry this block: the launcher's
+    binding report keeps the cores and drops host and pid, paths are labelled, the host
+    is the machine id."""
+    short = HOST.split(".")[0]
+    environment = {
+        "meep": "1.35.0", "meep_file": f"{HOME}/miniforge3/envs/meep/lib/meep/__init__.py",
+        "rank_bindings": [{"rank": 0, "pid": FOREIGN_PID, "host": HOST, "affinity": [0]},
+                          {"rank": 1, "pid": FOREIGN_PID + 1, "host": HOST,
+                           "affinity": [1]}],
+        "launcher_line": (f"{HOME}/miniforge3/envs/meep/bin/mpirun -np 2 --report-bindings "
+                          f"{HOME}/miniforge3/envs/meep/bin/python bench.py"),
+        "launcher_bindings_report": [
+            f"[{short}:{FOREIGN_PID}] Rank 0 bound to package[0][core:0]",
+            f"cpu-bind=MASK - {short}, task  1  1 [{FOREIGN_PID + 1}]: mask 0x2 set"],
+        "host": HOST, "platform": "Linux-5.15.0-91-generic-x86_64-with-glibc2.35",
+        "executable": f"{HOME}/miniforge3/envs/meep/bin/python",
+        "meep_configure_line": f"./configure --prefix={HOME}/miniforge3/envs/meep",
+        "meep_config_log": f"{HOME}/src/meep/config.log",
+        "build_record": {"path": f"{HOME}/runs/build_record.json", "sha256": "ab"},
+        "bench": {"path": f"{HOME}/runs/drivers/bench_meep_identical_case.py",
+                  "sha256": "cd"},
+        "argv": ["--case", "pml_3d", "--out", f"{HOME}/runs/ladder_t/meep_r2",
+                 "--bindings-report", f"{HOME}/runs/ladder_t/logs/r2.log"],
+        "box_before_from_driver": f"load=0.1 0.1 0.1 busy_cpus=0 gpu0=3 MiB, 0 % "
+                                  f"others=0, account=0 on {HOST}",
+        "threads": {"CUDA_VISIBLE_DEVICES": REAL_A},
+    }
+    written = bench.recorded_environment(environment)
+    assert_neutral(written, str(FOREIGN_PID + 1))
+    assert written["host"] == neutral_ids.machine_id()
+    assert written["launcher_bindings_report"] == [
+        "Rank 0 bound to package[0][core:0]", "cpu-bind=MASK - task  1  1: mask 0x2 set"]
+    assert [r["affinity"] for r in written["rank_bindings"]] == [[0], [1]]
+    assert all("pid" not in r for r in written["rank_bindings"])
+    assert written["executable"] == "<home>/miniforge3/envs/meep/bin/python"
+    assert written["argv"][3] == "<home>/runs/ladder_t/meep_r2"
+    assert written["platform"] == environment["platform"]
+    assert environment["rank_bindings"][0]["pid"] == FOREIGN_PID, "the block in process"

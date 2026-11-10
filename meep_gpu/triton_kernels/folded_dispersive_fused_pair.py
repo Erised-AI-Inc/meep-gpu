@@ -8,7 +8,7 @@ LARGEST remaining "reachable; NO PRODUCT OCCUPIES THIS CELL — not built" cell 
 Triton board. No sibling on any backend performs this conjunction: it is a genuine
 new weld rather than a port, and both halves were separately certified before it.
 
-WHY NEITHER EXISTING PRODUCT REACHES IT, and neither refusal is wrong
+Why neither existing product reaches it, and neither refusal is wrong
 ====================================================================
 
 * :func:`.folded_fused_pair.folded_fused_pair_coverage` refuses a registered
@@ -25,7 +25,7 @@ So the conjunction belongs to neither file, exactly as
 composed the two ADMISSIONS for the ``update_E`` slot alone; this one welds the
 folded curl to it.
 
-EVERYTHING HERE IS TRANSCRIBED, and every arithmetic line carries its source
+Everything here is transcribed, and every arithmetic line carries its source
 ====================================================================
 
 * the folded ``step_D`` curl, the near fill, the wall clear and the far fill —
@@ -41,7 +41,7 @@ EVERYTHING HERE IS TRANSCRIBED, and every arithmetic line carries its source
 A reader can diff this body against those two and see that nothing moved. If you
 find yourself deriving here, you have taken a wrong turn.
 
-WHAT ACTUALLY MOVES, AND IT IS ONE SUBSTITUTION IN TWO PLACES
+What actually moves, and it is one substitution in two places
 =============================================================
 
 The certified folded body computes the constitutive source as ``v * inv_eps`` at an
@@ -53,7 +53,7 @@ one substitution, made in exactly those two places and nowhere else:
     owned cell   src = (v  - sum P[idx]) * inv_eps[idx]
     ghost cell   src = (gh - sum P[dst]) * inv_eps[dst]
 
-**THE POLES ARE READ AT THE DESTINATION INDEX, NOT AT THE SOURCE LANE'S.** That is
+**The poles are read at the destination index, not at the source lane's.** That is
 the whole content of the ghost half and it is a fact about the array path rather
 than a choice: ``fill_symmetry_bc_D`` and ``fill_folded_far_ghosts_D`` write ``D``
 only (stepping.py:1497-1498, :1529-1532) — they do not touch ``P`` — and
@@ -61,13 +61,13 @@ only (stepping.py:1497-1498, :1529-1532) — they do not touch ``P`` — and
 that cell's own ``P``. Imaging the source lane's poles instead would be a smooth,
 plausible, wrong field on every folded plane, and the gate arms a mutation for it.
 
-THE ORDER IS BIT-LOAD-BEARING. The poles may not be pre-summed and may not be
+The order is bit-load-bearing. The poles may not be pre-summed and may not be
 reordered: either changes float32 rounding at two or more poles, which is why the
 certified body spells eight separate arms and why the gate arms a mutation that
 reverses them. ``dispersive_update_e``'s own recon caught pre-summing 20/20 at two
 poles.
 
-THE FIVE DRIVER PASSES, AND THE SEAM CLAUSES
+The five driver passes, and the seam clauses
 ============================================
 
 Identical to the plain folded pair's, and for identical reasons — the driver runs
@@ -77,7 +77,7 @@ the same five call sites whatever the constitutive source is
 inner passes are CARRIED INLINE; the fourth is the injection, and it is carried by
 the deposit repair.
 
-**CARRIES_DEPOSIT_REPAIR IS TRUE AND THE CELL IS WORTH NOTHING WITHOUT IT.** All
+**CARRIES_DEPOSIT_REPAIR is true and the cell is worth nothing without it.** All
 four corpus rows declare ``source_field_types == ['D']`` — an ELECTRIC source,
 injected between the two halves — so under the source clause as
 :mod:`.complex_conductive_fused_pair` states it (repair False) this arm would admit
@@ -86,7 +86,7 @@ brackets the launch (:class:`.deposit_repair.LeadingRepairPlan` /
 :class:`.deposit_repair.TrailingRepairPlan` through :data:`REPLACES`), never before
 it and never after.
 
-THE REPAIR ALREADY INVERTS THIS CONSTITUTIVE, and that was read rather than
+The repair already inverts this constitutive, and that was read rather than
 assumed: :func:`.deposit_repair.apply` recomputes the D seam as
 ``fields.displacement_minus_polarization(component) * inverse_epsilon_for(component)``
 (deposit_repair.py:551-553) — the dispersive source, not ``D`` — so nothing about
@@ -95,13 +95,13 @@ off-diagonal row, a nonlinear one, a cylindrical ``r = 0`` axis, a fold too shor
 hold the near fill's source row, and an absorber whose split-field recurrence never
 ran.
 
-WHY THERE IS NO STENCIL PROBLEM HERE
+Why there is no stencil problem here
 ====================================
 
 The board refuses eighteen ``D->E`` seam-instances as STRUCTURALLY UNFUSABLE on any
 backend: ``stepping._offdiagonal_terms`` (stepping.py:1235-1253) reads each partner
 component's ``D`` volume at four indices while ``step_D`` writes those volumes in
-place in the first half of the same launch. THIS CONSTITUTIVE IS NOT THAT ONE — it
+place in the first half of the same launch. This constitutive is not that one — it
 is element-wise in ``D`` and element-wise in every ``P`` — so the value stays in a
 register at an owned cell and comes from this lane's own composed ghost at a carried
 one. The off-diagonal row is refused by the E half already
@@ -109,10 +109,10 @@ one. The off-diagonal row is refused by the E half already
 divergence) and is restated here by name, because THIS is the fact that makes the
 cell buildable at all.
 
-**THE POLE ARRAYS ARE READ, NEVER WRITTEN, by either half.** ``update_P`` runs after
+**The pole arrays are read, never written, by either half.** ``update_P`` runs after
 ``update_E`` (driver.py:3306) and is not in this seam; the ``P`` volumes this kernel
 loads are the ones the previous timestep left, exactly as the certified dispersive
-body loads them. That is also why the D STORE IS KEPT: the array path leaves the
+body loads them. That is also why the D store is kept: the array path leaves the
 stepped displacement in the D volume and ``update_P`` reads it next.
 
 NOT WIRED, and not an arm. ``launch.plan_step`` assigns at most one plan per
@@ -246,13 +246,13 @@ if triton is not None:
         can compare it to the certified arms statement for statement rather than to
         four inlined copies of them.
 
-        ``where`` IS THE CELL WHOSE POLES ARE READ, and it is the DESTINATION on
+        ``where`` is the cell whose poles are read, and it is the DESTINATION on
         every call: an owned lane passes its own ``idx``, a carried ghost passes
         ``dst``. The array path's fills write ``D`` and never ``P``
         (stepping.py:1497-1498, :1529-1532), so ``update_E`` at a ghost reads that
         ghost's own poles.
 
-        THE ORDER IS BIT-LOAD-BEARING: the poles may not be pre-summed and may not be
+        The order is bit-load-bearing: the poles may not be pre-summed and may not be
         reordered — either changes float32 rounding at two or more poles. The gate
         arms a mutation that reverses them and one that pre-sums them.
         """
@@ -289,7 +289,7 @@ if triton is not None:
         destination's membership ``dw_d`` (:func:`.forms.constitutive_form`).
 
         ``ghost`` is ALREADY the composed value — parity applied, and the wall clear
-        applied or not according to which fill wrote it. ``D`` IS ON THE LEFT of the
+        applied or not according to which fill wrote it. ``D`` is on the left of the
         inverse-epsilon multiply because the array path writes ``source *
         fields.inverse_epsilon_for(component)``.
         """
@@ -340,7 +340,7 @@ if triton is not None:
         cells, each auxiliary read and written on its own form's cells only, every
         select evaluated where its cell is, a carried ghost included.
 
-        ``BACKWARD`` IS CARRIED AND MUST BE 1, for the folded pair's reason.
+        ``BACKWARD`` is carried and must be 1, for the folded pair's reason.
 
         ``NP0``/``NP1``/``NP2`` are the LIVE pole count per component and are
         ``tl.constexpr``, so the subtraction chain is unrolled at compile time and a
@@ -599,7 +599,7 @@ if triton is not None:
         # and every COMPOSITION of the two, which is what a cell that is a near
         # destination on one axis and a far one on another carries.
         #
-        # THE COMPOSITION IS CHAINED, NOT A PRODUCT OF PARITIES, and on this family
+        # The composition is chained, not a product of parities, and on this family
         # that is a byte-level distinction rather than a stylistic one. The driver
         # runs fill_symmetry_bc_D (:3300), then zero_metal_D (:3301), then
         # fill_folded_far_ghosts_D (:3302), so
@@ -611,22 +611,22 @@ if triton is not None:
         #                                           with NO clear after it, because
         #                                           :3302 is the last pass before
         #                                           update_E;
-        #     a FAR-over-NEAR cell is the far parity times THE NEAR GHOST THIS LANE
+        #     a FAR-over-NEAR cell is the far parity times the near ghost this lane
         #                                           JUST COMPOSED — not the raw
         #                                           product -PH_m * PH_a * v.
         #
-        # MEASURED, NOT ARGUED. parity/meep_gpu/measure_d_side_composition_law.py
+        # Measured, not argued. parity/meep_gpu/measure_d_side_composition_law.py
         # scores this rule and four transcription errors against the array path's
         # own three passes over 156 grid declarations: this rule 156/156, and the
         # four alternatives caught on 84, 36, 36 and 70 cases respectively, with no
         # vacuous case. Reversing either order, or flattening the composite, is one
         # of those four.
         #
-        # THE PARITY IS +PHASE ON A SHIFT-0 COMPONENT AND -PHASE ON A SHIFT-1 ONE
+        # The parity is +phase on a shift-0 component and -phase on a shift-1 one
         # (fields.mirror_parity :117 is `phase * (1 - 2 * iyee)`), so the near carry
         # takes `PH?` and the far carry `-PH?`, and +-1.0 is exact in float32.
         #
-        # THE COEFFICIENT INDEX MOVES ONLY FOR THE FAR HALF. update_E indexes
+        # The coefficient index moves only for the far half. update_E indexes
         # component m on axis m (stepping.E_CONSTITUTIVE_TERMS :227); the near fill
         # images along an axis that is NOT m, so its destination sits at the SAME
         # coefficient index as the lane that owns it and reuses that lane's pair —
@@ -634,7 +634,7 @@ if triton is not None:
         # exactly axis m, so its destination reads kps/kms at the TOP row rather
         # than reusing the source lane's at the reflect row.
         #
-        # THE NEAR SOURCE INDEX IS THE LITERAL 2, as it is in
+        # The near source index is the literal 2, as it is in
         # symmetry.mirror_ghost_fill (`base + 2 * stride`), rather than the named
         # MIRROR_SOURCE_INDEX: a jit body that closes over a module-level Python int
         # is a Triton-version question this file has no way to measure without a
@@ -665,8 +665,8 @@ if triton is not None:
         # under a mask its own axis's constexpr gates, so an axis that carries no
         # fill contributes no lane and no load.
         #
-        # EVERY CARRY MASK IS ANDED WITH THE COMPONENT'S OWN OWNERSHIP MASK, and
-        # that is a DEFECT THE MAGNETIC TWIN'S DEVICE GATE FOUND rather than a
+        # Every carry mask is anded with the component's own ownership mask, and
+        # that is a defect the magnetic twin's device gate found rather than a
         # precaution (its results/run_farcarry2/, 2026-08-20). With two fills a lane
         # can be the SOURCE of one and the DESTINATION of the other: on a grid
         # folding x PERIODIC and y, the lane at (i = rx, j = 0) is the far source
@@ -686,7 +686,7 @@ if triton is not None:
         df_y = (ny - 1 - ry) * nz
         df_z = (nz - 1 - rz)
 
-        # THE THREE-TERM GUARDS ARE PARENTHESISED, AND THAT IS A MEASURED PLATFORM
+        # The three-term guards are parenthesised, and that is a measured platform
         # FACT rather than a style choice: Triton 3.1.0's frontend refuses a chained
         # boolean outright — "chained boolean operators (A or B or C) are not
         # supported; use parentheses to split the chain" — and it refuses at COMPILE
@@ -734,7 +734,7 @@ if triton is not None:
                                       idx + dn_y + dn_z, gv_0yz,
                                       kp_0, km_0, dw0, own0 & near_j & near_k, NP0)
         if FAR_X:
-            # NO ZM AFTER THE PARITY: :3302 is the last pass before update_E, so
+            # No ZM after the parity: :3302 is the last pass before update_E, so
             # the far ghost is -phase times the value standing at its source, which
             # is `v0` read after the clear lines above.
             _carry_ghost_E_dispersive(f0, w0, e0, ie0,
@@ -934,12 +934,12 @@ def folded_dispersive_fused_pair_coverage(fields: Any, pml: Any,
         return Coverage(False,
                         tuple(dict.fromkeys(reasons + ["fields carries no grid"])))
 
-    # THE SOURCE SEAM, and on this cell it is the clause that decides everything. An
+    # The source seam, and on this cell it is the clause that decides everything. An
     # electric source is injected BETWEEN the two halves (driver.py:3294-3299), so a
     # fused pair would consume a pre-injection D. All four corpus rows of this cell
     # declare exactly that, so with CARRIES_DEPOSIT_REPAIR False the arm would admit
     # NOTHING; it is True, and the plan below brackets its launch with the repair.
-    # IGNORANCE IS NEVER AN EMPTY SET: `Fields` does not hold the source list, so an
+    # Ignorance is never an empty set: `Fields` does not hold the source list, so an
     # undeclared `sources` is itself a REFUSAL. A MAGNETIC source is injected in the
     # B/H half and does not disqualify this pair.
     reasons.extend(_deposit_repair.seam_source_reasons(
@@ -960,7 +960,7 @@ def folded_dispersive_fused_pair_coverage(fields: Any, pml: Any,
     reasons.extend(code_reasons)
 
     if codes is not None:
-        # THE FAR FILL IS CARRIED, under exactly the conditions the plain folded
+        # The far fill is carried, under exactly the conditions the plain folded
         # pair's carry rests on — the pass images the top stored slot from
         # stepping._far_reflect_rows' row, and the lane that owns that destination is
         # the one AT the reflect row, so a row outside the allocation is an
@@ -1009,7 +1009,7 @@ def folded_dispersive_fused_pair_coverage(fields: Any, pml: Any,
                     f"plane IS the near fill's read plane "
                     f"(cell {MIRROR_SOURCE_INDEX})")
 
-        # THE NEAR FILL IMAGES STORED CELL 2 FROM THAT CELL'S OWN LANE. BOTH mirror
+        # The near fill images stored cell 2 from that cell's own lane. BOTH mirror
         # codes: the near fill runs on either.
         if len(shape) == 3:
             for axis, code in enumerate(codes):
@@ -1020,7 +1020,7 @@ def folded_dispersive_fused_pair_coverage(fields: Any, pml: Any,
                         f"the near fill images stored cell {MIRROR_SOURCE_INDEX} and "
                         f"this kernel images it from that cell's own lane")
 
-        # THE WALL CLEAR AND THE FILL MUST NOT MEET. CHECKED rather than inferred:
+        # The wall clear and the fill must not meet. CHECKED rather than inferred:
         # an overlap would be a plane of wrong values.
         walls = zero_metal_axes(grid)
         for axis, code in enumerate(codes):
@@ -1047,7 +1047,7 @@ def folded_dispersive_fused_pair_coverage(fields: Any, pml: Any,
             reasons.append(
                 f"grid does not expose {name}; zero_metal_D cannot be carried inline")
 
-    # A SUSCEPTIBILITY IS REQUIRED, restated here as well as in the E half. Without
+    # A susceptibility is required, restated here as well as in the E half. Without
     # one the source is D and the configuration is folded_fused_pair's; two
     # predicates admitting one slot leaves it UNSELECTED and takes the certified
     # fusion off the device along with this one.
@@ -1068,7 +1068,7 @@ def folded_dispersive_fused_pair_coverage(fields: Any, pml: Any,
             "volumes step_D writes in place (stepping.py:1235-1253), and no "
             "grid-wide barrier exists inside one launch")
 
-    # THE POLE COUNTS MUST FIT the kernel's compiled slots. The E half already
+    # The pole counts must fit the kernel's compiled slots. The E half already
     # refuses more than MAX_POLES; evaluated here as well so an over-ceiling
     # configuration is a refusal BY NAME rather than a ValueError at plan time, and
     # so the from-arrays route's ceiling and this one cannot drift apart.
@@ -1097,8 +1097,8 @@ class FoldedDispersiveFusedPairPlan:
     """One allocation-free launch for FIVE of the driver's electric passes.
 
     :class:`.folded_fused_pair.FoldedFusedPairPlan` plus the pole binding, and the
-    binding is the reason this is a class rather than a subclass of that one: THE
-    POLE POINTERS ARE RESOLVED PER LAUNCH, never cached.
+    binding is the reason this is a class rather than a subclass of that one: the
+    pole pointers are resolved per launch, never cached.
     ``PolarizationState.update`` rotates ``P``/``P_prev``/``_scratch`` every step
     (dispersion.py:687-691), so a pointer captured at plan time is one timestep stale
     and stale in a way that still computes. What IS cached is pole ORDER, which is
@@ -1135,7 +1135,7 @@ class FoldedDispersiveFusedPairPlan:
         self.bc = tuple(int(value) for value in bc)
         self.zero_metal = tuple(bool(value) for value in zero_metal)
         self.phases = tuple(int(value) for value in phases)
-        # DERIVED FROM `bc`, NEVER TAKEN AS AN ARGUMENT — the folded pair's rule, and
+        # Derived from `bc`, never taken as an argument — the folded pair's rule, and
         # for its reason: a kernel that masked the top plane on one axis set and
         # imaged the far ghost on another is a plane of wrong values, not a crash.
         self.near = tuple(code in MIRROR_CODES for code in self.bc)

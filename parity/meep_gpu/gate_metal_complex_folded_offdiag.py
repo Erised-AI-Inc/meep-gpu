@@ -5,7 +5,7 @@ This is a sub-step gate: it certifies the exact complex, Bloch, folded ghost,
 off-diagonal Yee average, and stored-E PML arithmetic together.  It does not claim
 that a whole FDTD step is device-resident.
 
-RULING R7: SOFTWARE BINARY64. The row is MEEP's double row per part, formed with
+SOFTWARE BINARY64 (docs/design/floating-point.md#double-precision-on-the-metal-table). The row is MEEP's double row per part, formed with
 ``metal_kernels.softfp64``, with the per-chunk presence words, and the Bloch
 connection on the same-index operand's plane 0 (``stepping._bloch_ghost_operand``).
 Every plan is the ENGINE route's (``plan_metal_complex_folded_offdiag`` with the
@@ -214,7 +214,7 @@ def _mutants(base: str, phased_base: str) -> Dict[str, Tuple[str, Mapping[str, A
             base, tail,
             "    if (dw0) { a0 = f0[ii] + (c_mul_coefficient_left(km_0, src0) - "
             "c_mul_coefficient_left(kp_0, prev0)); }"),
-        # INVERTED (KERNELS.md §7.1): the package's previous grouping.
+        # INVERTED (docs/development/certification.md#inverted-grouping-mutations): the package's previous grouping.
         "previous_accumulation_grouping": _needle(
             base, tail,
             "    if (dw0) { a0 = (f0[ii] + c_mul_coefficient_left(kp_0, src0)) - "
@@ -235,13 +235,13 @@ def _mutants(base: str, phased_base: str) -> Dict[str, Tuple[str, Mapping[str, A
             phased_base,
             "    near_product_00 = (i == 0) ? c_mul(near_product_00, ph[3]) : "
             "near_product_00;\n", ""),
-        # The pre-alignment placement: the phase on the shifted read instead.
+        # The package's previous placement: the phase on the shifted read instead.
         "partner_connection_on_the_shifted_read": _needle(
             phased_base, "    home_10 = (k == 0) ? c_mul(home_10, ph[2]) : home_10;\n"
             "    float2 down_10 = dvz ? g2[i * nyz + j * nzi + dk] : float2(0.0f, 0.0f);",
             "    float2 down_10 = dvz ? g2[i * nyz + j * nzi + dk] : float2(0.0f, 0.0f);\n"
             "    down_10 = (k == 0) ? c_mul(down_10, ph[2]) : down_10;"),
-        # RULING R7's mutation, per part: component 0's row in float32.
+        # The pre-binary64 spelling, per part: component 0's row in float32.
         "float32_row": _float32_row(phased_base),
     }
     out = {label: ("exact", _compiled(source)) for label, source in exact.items()}

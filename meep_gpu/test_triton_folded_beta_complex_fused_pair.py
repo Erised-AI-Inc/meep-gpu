@@ -440,25 +440,25 @@ def test_the_plan_refuses_rather_than_raises_on_a_numpy_host(product):
 # ---------------------------------------------------------------------------
 
 def test_the_composer_routes_this_product_and_the_driver_seam_released_it():
-    """ROUTED 2026-09-02 by the installer wave, RELEASED 2026-09-13 — both halves.
+    """ROUTED 2026-09-02 by the installer change, RELEASED 2026-09-13 — both halves.
 
     This test replaces the deferral it used to make. Until 2026-09-02 it asserted
     that ``launch.py`` and ``fastpath.py`` named this module NOWHERE, which was the
-    seam that kept a certified-but-unrouted product deferred. The wave routed it:
+    seam that kept a certified-but-unrouted product deferred. The 2026-09-02 change routed it:
     ``launch.CERTIFIED_FUSED_PRODUCTS`` holds its row and
     ``_install_certified_fused_products`` builds it through the shared
     ``_install_fused_pair``, taking both slots only when ``_pair_may_absorb`` finds
     the arm table has already given them to the arms this kernel implements.
 
-    WIRING WAS NOT RELEASING, and this is the file where that sentence ended. It
+    Wiring was not releasing, and this is the file where that sentence ended. It
     was named ``..._and_dispatch_still_refuses_it`` for as long as the label sat
-    outside ``fastpath.RELEASED_FUSED_ARMS``; on 2026-09-13 the Phase B batch
+    outside ``fastpath.RELEASED_FUSED_ARMS``; on 2026-09-13 the release campaign
     ``dispatch_fused_route_2026-09-13_phaseB`` drove it through the driver's own
     consults on ``folded_complex_beta_2d`` — the corpus case this product's D seam
     was selected for — so the release names that case and the pending rung no longer
     holds it.
 
-    THE PARTITION IS STILL EXACTLY ONE OF TWO, in the other direction: the label
+    The partition is still exactly one of two, in the other direction: the label
     is in ``ARM_CERTIFICATION`` (its ledger entry was cut by ``seed_triton_welds.py``
     from the 2026-09-12 identity fleet) and out of ``PENDING_DEVICE_GATE_ARMS``.
     Both are asserted rather than one, because a label released while still pending
@@ -478,8 +478,8 @@ def test_the_composer_routes_this_product_and_the_driver_seam_released_it():
     assert label == 'fused pair D (folded complex beta)'
     assert _fastpath.arm_is_fused(label)
     assert label in _fastpath.RELEASED_FUSED_ARMS
-    # THE CASE LIST GREW ON 2026-09-14, and this assertion is re-read off the route
-    # table rather than re-typed: the target round added `folded_complex_beta_bloch_2d`,
+    # The case list grew on 2026-09-14, and this assertion is re-read off the route
+    # table rather than re-typed: the 2026-09-14 change added `folded_complex_beta_bloch_2d`,
     # the bloch-True corner of the same arm, and a hand-typed tuple went stale the day
     # it landed. Every case named here must be a DRIVE row that asks this arm for a
     # DISPATCH, which is the property the release actually rests on.
@@ -522,7 +522,7 @@ def test_the_module_claims_identity_ONLY_through_the_run_that_measured_it(produc
     """RELEASED 2026-09-13: the product carries the weld its gate run measured.
 
     Until the gate released, this asserted the STRICT ABSENCE of a fingerprint while
-    ``DEVICE_STATUS`` said the module had never run. The Phase B batch ran the gate
+    ``DEVICE_STATUS`` said the module had never run. The 2026-09-13 release campaign ran the gate
     on the fleet (``results/triton_fleet_2026-09-13_batch_C``, canonical verdict
     released, source digest bound to this checkout) and ``seed_triton_welds.py`` cut
     the ledger entry from that artifact, so the strict absence inverts to a STRICT

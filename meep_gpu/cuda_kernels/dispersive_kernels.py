@@ -1,6 +1,6 @@
 """The hand-CUDA DISPERSIVE electric constitutive arm -- ``update_E`` where the source is ``D - sum P``.
 
-THREE FAMILIES, ONE FILE, AND THEY ARE NOT THE SAME SUB-STEP AS EACH OTHER
+Three families, one file, and they are not the same sub-step as each other
 =============================================================================
 
 The 2026-08-20 union census
@@ -19,7 +19,7 @@ three of them::
                                         f_w as the drive and drive_field returns
                                         the stored E without one"    <- arm 3
 
-ARM 1 AND ARM 2 ARE DIFFERENT SUB-STEPS, not a flag on one. Read
+Arm 1 and arm 2 are different sub-steps, not a flag on one. Read
 ``stepping.update_E`` (stepping.py:926-993) and the two arms are two branches of
 one ``if``::
 
@@ -40,8 +40,8 @@ kernel that served both behind one flag would be two kernels wearing one name, s
 they are two device strings, and arm 2's predicate refuses an active layer by name
 while arm 1's requires one.
 
-ARM 3 IS NOT A NEW KERNEL AND THIS FILE DOES NOT WRITE ONE. That was the open
-question this round was told to settle by measurement, and the answer is a
+Arm 3 is not a new kernel and this file does not write one. That was the open
+question this family was built to settle by measurement, and the answer is a
 PREDICATE WIDENING over the shipped ``ade_kernels.update_P_pml_real*``
 pair. ``stepping.update_P`` (stepping.py:1360-1384) deletes its ``pml`` argument
 at :1424 -- "the absorber reaches the polarization through W and nowhere else" --
@@ -61,7 +61,7 @@ layerless run, and carries ``arm3_wrong_drive_CONTROL`` -- the same launcher wit
 fail has not shown that binding the right array is what produced the pass.
 
 =============================================================================
-WHAT IS TRANSCRIBED, AND FROM WHERE
+What is transcribed, and from where
 =============================================================================
 
 ``stepping.update_E``'s diagonal dispersive branch, term for term::
@@ -74,16 +74,16 @@ and ``Fields.displacement_minus_polarization`` (fields.py:1079-1105)::
     displacement = getattr(self, 'D' + component[1])
     contributors = [s for s in self.polarizations if s.drives(component)]
     if not contributors:
-        return displacement            # THE D ARRAY ITSELF, aliased, not copied
+        return displacement            # the D array itself, aliased, not copied
     scratch[...] = displacement
     for state in contributors:
         state.subtract_into(component, scratch)   # target -= state.P[component]
     return scratch
 
-FIVE THINGS DECIDE BIT-IDENTITY HERE
+Five things decide bit-identity here
 ------------------------------------
 
-1. THE POLE CHAIN IS SEQUENTIAL AND LEFT-TO-RIGHT, in ``fields.polarizations``
+1. The pole chain is sequential and left-to-right, in ``fields.polarizations``
    order filtered by ``drives``. ``((D - P0) - P1) - P2``, never
    ``D - (P0 + P1 + P2)``. float32 addition is not associative, and the
    pre-accumulated form is the one a reader of the phrase "D minus the sum of the
@@ -94,7 +94,7 @@ FIVE THINGS DECIDE BIT-IDENTITY HERE
    at 20/20 caught with two poles and 0/10 with one --
    ``probe_fused_kernel_bit_identity.DISPERSIVE_SOURCE_MUTATIONS``.)
 
-2. A COMPONENT WITH NO CONTRIBUTOR READS ``D`` DIRECTLY, with no subtraction
+2. A component with no contributor reads ``D`` directly, with no subtraction
    formed at all (fields.py:1096-1098). ``D - 0.0`` is bit-exact for every finite
    value, but ``-0.0 - 0.0`` is ``-0.0`` while not subtracting leaves ``-0.0``
    too, and a subtraction of a zero-valued P array is exact anyway -- so this
@@ -106,7 +106,7 @@ FIVE THINGS DECIDE BIT-IDENTITY HERE
    ``constitutive_kernels._update_E_pml_real_kernel_code``'s and is checked
    as such by ``test_dispersive.py``.
 
-3. ``D`` IS ON THE LEFT OF THE INVERSE-EPSILON MULTIPLY (stepping.py:1011). IEEE
+3. ``D`` is on the left of the inverse-epsilon multiply (stepping.py:1011). IEEE
    multiply commutes, so this is transcription discipline rather than a bit --
    and the gate carries ``inv_eps_left`` as a NULL mutation which MUST come back
    UNCAUGHT, paired with ``drop_inverse_epsilon_dispersive`` on the same
@@ -116,12 +116,12 @@ FIVE THINGS DECIDE BIT-IDENTITY HERE
 4. NO FMA. ``--fmad=false`` is CORRECTNESS, not tuning. Arm 1 has contraction
    candidates per component (``kps * src`` and ``kms * prev`` into the subtraction,
    and that difference into the accumulation); arm 2 has none worth naming, and is
-   compiled under the same tuple. The option tuple is SPELLED IN THIS FILE rather
+   compiled under the same tuple. The option tuple is spelled in this file rather
    than imported, for the reason every sibling spells its own: a bit-identity probe
    loads these modules BY PATH, outside the package, where an import could pick up a
    different tuple than the one a gate compiled.
 
-5. THE POLE POINTERS ARE RESOLVED IMMEDIATELY BEFORE EACH LAUNCH, never cached.
+5. The pole pointers are resolved immediately before each launch, never cached.
    ``PolarizationState.update`` rotates ``P``/``P_prev``/``_scratch`` every step
    (dispersion.py:689-691), so ``state.P[component]`` is a DIFFERENT buffer after
    ``update_P`` runs. A launcher that resolved the pole list once and reused the
@@ -130,7 +130,7 @@ FIVE THINGS DECIDE BIT-IDENTITY HERE
    carries the same hazard in as many words and this one is the other half of it.
 
 =============================================================================
-WHY THE POLE COUNT IS COMPILE-TIME
+Why the pole count is compile-time
 =============================================================================
 
 ``sum P`` is variadic: the corpus rows this arm serves carry 1, 2, 5 and 6
@@ -138,9 +138,9 @@ registered susceptibilities. Three ways to write that, and the choice is not
 taste:
 
 * a device array of pointers plus a count -- one kernel for every arity, but the
-  pointer table has to be REBUILT ON EVERY LAUNCH because the P buffers rotate,
-  which is a device allocation per sub-step per step. That is port-reference
-  defect 5.14 (the complex wrappers' per-launch ``ascontiguousarray``) written
+  pointer table has to be rebuilt on every launch because the P buffers rotate,
+  which is a device allocation per sub-step per step. That is the per-launch
+  allocation defect of the complex wrappers' ``ascontiguousarray``, written
   into a new kernel deliberately;
 * a fixed maximum arity with null pointers for the unused slots -- a branch per
   pole per cell, and a null dereference one predicate bug away;
@@ -153,13 +153,13 @@ already uses for the off-diagonal row mask. The kernel NAME is fixed per arm and
 the SOURCE varies with the triple; ``compile_cache.kernel_cache_key`` keys the
 memo on the source string, so two arities are two entries and never collide.
 
-:data:`POLE_COUNT_CAP` is the ceiling, and it is a MEASURED one rather than an
+:data:`POLE_COUNT_CAP` is the ceiling, and it is a measured one rather than an
 arbitrary one: the gate sweeps every count from 0 to the cap on both arms, so a
 triple within it has been run and a triple past it is refused by name. Raising it
 means sweeping it.
 
 =============================================================================
-WHAT THIS ARM ADMITS THAT ITS SIBLINGS REFUSE, AND WHAT IT REFUSES ANYWAY
+What this arm admits that its siblings refuse, and what it refuses anyway
 =============================================================================
 
 ADMITTED, on the sibling constitutive predicate's OWN measured grounds:
@@ -186,7 +186,7 @@ REFUSED, each with the line behind it:
   stepping.py:1196), so the sub-step stops being element-wise and gains a ghost
   rule. That is ``offdiag_emitter.py``'s kernel shape crossed with this one's
   pole chain, and the shipped CUDA off-diagonal family additionally refuses a
-  fold. THE COST IS EXACTLY ONE SLOT AND IT IS NAMED: ``absorbed_power_density.py``
+  fold. The cost is exactly one slot and it is named: ``absorbed_power_density.py``
   is off-diagonal AND dispersive AND folded, and stays unserved. The Triton
   sibling for it is ``folded_offdiag_dispersive_update_e.py``; nothing on the
   hand-CUDA track carries it and this file does not pretend to.
@@ -196,7 +196,7 @@ REFUSED, each with the line behind it:
   and each would be a second kernel rather than a clause.
 
 =============================================================================
-NOTHING DISPATCHES ANY OF THIS
+Nothing dispatches any of this
 =============================================================================
 
 No module in ``meep_gpu/`` imports ``cuda_kernels`` at all. A predicate returning
@@ -204,7 +204,7 @@ True licenses a MEASUREMENT, not a production step. :data:`CERTIFIED_KERNELS` an
 :data:`UNCERTIFIED_KERNELS` partition the emitted kernel names, and a name in
 neither fails ``test_dispersive.py``.
 
-THIS MODULE IMPORTS NO CuPy AT MODULE SCOPE, deliberately: the predicate census
+This module imports no CuPy at module scope, deliberately: the predicate census
 (``parity/meep_gpu/.../predicate_battery.py``) runs on a laptop with NumPy only,
 and a predicate that cannot be imported there cannot be asked -- which is exactly
 how a family gets counted as a coverage gap it does not have.
@@ -232,7 +232,7 @@ from . import bounds_block, compile_cache
 PML_BOUNDS_ENTRIES: Tuple[Tuple[bool, int], ...] = tuple(
     bounds_block.constitutive_entries(("Ex", "Ey", "Ez")))
 
-#: SIMULTANEOUS MIRROR PLANES THIS FAMILY'S GATE HAS SCORED, and the reason it is
+#: Simultaneous mirror planes this family's gate has scored, and the reason it is
 #: a constant here rather than a read of
 #: :data:`~.coverage.CONSTITUTIVE_FOLD_ADMISSION`.
 #:
@@ -244,7 +244,7 @@ PML_BOUNDS_ENTRIES: Tuple[Tuple[bool, int], ...] = tuple(
 #: been invisible to the census: an over-claim with no measurement anywhere behind
 #: it and nothing to catch it.
 #:
-#: A CAP IS A FACT ABOUT A GATE, and a gate answers for one family. Raising this
+#: A cap is a fact about a gate, and a gate answers for one family. Raising this
 #: one means adding a three-plane spec to ``gate_cuda_ade.py``, running it on a
 #: device under both float32 subnormal policies, and recording what came back.
 ADE_FOLD_PLANES_SWEPT: int = 2
@@ -266,7 +266,7 @@ ARM_KERNEL_NAMES: Dict[str, str] = {
     "no_pml": "update_E_no_pml_real_dispersive",
 }
 
-#: The largest per-component contributor count this family will serve. MEASURED,
+#: The largest per-component contributor count this family will serve. Measured,
 #: not chosen: ``gate_cuda_dispersive.py`` sweeps every count 0..CAP on both arms,
 #: so a triple inside it has been run on a device and a triple past it is refused
 #: by name rather than served on an extrapolation. The corpus's own maximum is 6
@@ -303,7 +303,7 @@ CERTIFIED_KERNELS = (
     "update_E_pml_real_dispersive",
     "update_E_no_pml_real_dispersive",
 )
-#: WHAT THE DEVICE MEASURED, transcribed from the artifact rather than remembered.
+#: What the device measured, transcribed from the artifact rather than remembered.
 #: Two legs, one per float32 subnormal policy, on one RTX A6000 (compute 8.6,
 #: CuPy 13.5.1) with ``CUPY_ACCELERATORS=""`` and a private ``CUPY_CACHE_DIR`` per
 #: policy -- the cache key is computed ABOVE the ``-ftz=true`` strip seam, so a
@@ -342,7 +342,7 @@ GATE_VERDICT: dict = {
 #: annotated assignment is an ``ast.AnnAssign`` which that reader does not match.
 UNCERTIFIED_KERNELS = {}
 # =============================================================================
-# THE DEVICE CODE -- emitted, because the pole arity is a compile-time axis
+# The device code -- emitted, because the pole arity is a compile-time axis
 # =============================================================================
 
 _POLE_CHAIN_NOTE = r'''
@@ -354,18 +354,18 @@ _POLE_CHAIN_NOTE = r'''
 //         scratch -= state.P[component]      // MEEP subtract_P
 //     constitutive = scratch * inv_eps       // :982, D-side on the LEFT
 //
-// so the chain is ((D - P0) - P1) - P2 ... : SEQUENTIAL, LEFT TO RIGHT, in
+// so the chain is ((D - P0) - P1) - P2 ... : sequential, left to right, in
 // fields.polarizations order filtered by drives(). NOT D - (P0 + P1 + ...):
 // float32 addition is not associative and the two agree exactly at one pole,
 // which is why the gate's mutation legs are scored at two and above.
 //
-// A COMPONENT WITH NO CONTRIBUTOR reads D directly and forms no subtraction --
+// A component with no contributor reads D directly and forms no subtraction --
 // fields.py:1096-1098 returns the D array itself, aliased and uncopied. The
 // emitter emits zero subtraction lines for that component, which makes the
 // arity-(0,0,0) body character-identical to the certified non-dispersive
 // kernel's.
 //
-// THE POLE POINTERS ROTATE. PolarizationState.update moves P/P_prev/_scratch
+// The pole pointers rotate. PolarizationState.update moves P/P_prev/_scratch
 // every step (dispersion.py:689-691), so the launcher resolves state.P[c]
 // immediately before each launch and never caches a view.
 '''  # stepping.py live lines for the frozen device-text citation(s) in this string: 968-993->997-1022
@@ -442,7 +442,7 @@ def _source_lines(counts: Sequence[int]) -> str:
     lines: List[str] = []
     for (target, source, axis), count in zip(ELECTRIC_TERMS, values):
         if count == 0:
-            # NO INTERMEDIATE AT ALL, because the array path forms none:
+            # No intermediate at all, because the array path forms none:
             # ``displacement_minus_polarization`` returns the D array ITSELF when
             # nothing drives the component (fields.py:1096-1098). This line is
             # character-identical to the certified non-dispersive kernel's
@@ -460,7 +460,7 @@ def _source_lines(counts: Sequence[int]) -> str:
             continue
         lines.append(f"    float s_{axis} = {source}[idx];")
         for index in range(count):
-            # ONE SUBTRACTION PER CONTRIBUTOR, in order: the array path's
+            # One subtraction per contributor, in order: the array path's
             # `scratch -= state.P[component]` (fields.py:1103), which rounds to
             # float32 at every step exactly as this register does.
             lines.append(f"    s_{axis} = s_{axis} - P_{target}_{index}[idx];")
@@ -475,7 +475,7 @@ def dispersive_source(arm: str, counts: Sequence[int]) -> str:
 
     ``arm`` is ``"pml"`` (stepping.py:1014-1018) or ``"no_pml"`` (:1019-1022).
 
-    THE INVERSE-EPSILON POINTERS ARE NOT ``__restrict__``, deliberately and for
+    The inverse-epsilon pointers are not ``__restrict__``, deliberately and for
     the certified sibling's reason: an isotropic run hands the SAME device
     pointer three times (``Fields.set_isotropic_epsilon_volume``,
     fields.py:1321-1326), and ``restrict`` on mutually aliasing arguments is a
@@ -552,7 +552,7 @@ def dispersive_source(arm: str, counts: Sequence[int]) -> str:
 // than a flag on the PML one: a kernel serving both behind a branch would be two
 // kernels wearing one name.
 //
-// `stores_E` IS THE PRECONDITION, not `has_polarizations`. stepping.py:954
+// `stores_E` is the precondition, not `has_polarizations`. stepping.py:954
 // returns before this branch when E is not stored, and Fields.stores_E
 // (fields.py:999-1006) is what that line reads.
 '''  # stepping.py live lines for the frozen device-text citation(s) in this string: 990-993->1019-1022, 954->983
@@ -600,7 +600,7 @@ def corpus_digest() -> str:
 
 
 # =============================================================================
-# COMPILATION AND LAUNCH -- CuPy is imported HERE, never at module scope
+# Compilation and launch -- CuPy is imported HERE, never at module scope
 # =============================================================================
 
 def _cupy():
@@ -623,7 +623,7 @@ def _clear_kernel_cache() -> int:
 def _get_kernel(arm: str, counts: Sequence[int]):
     """Compile on first use, memoized on (name, options, policy, source).
 
-    THE SOURCE IS EMITTED PER CALL AND THAT IS LOAD-BEARING, for the reason every
+    The source is emitted per call and that is load-bearing, for the reason every
     sibling rebuilds its code map per call: the source is part of the memo key,
     so it has to be built before there is a key to miss on, and a bit-identity
     probe mutates kernels by rewriting the emitted string through
@@ -644,7 +644,7 @@ def _get_kernel(arm: str, counts: Sequence[int]):
         key, lambda: cp.RawKernel(code, func_name, options=_COMPILE_OPTIONS))
 
 
-#: THE GATE'S DOOR into the emitted text. ``None`` in every shipped path; a
+#: The gate's door into the emitted text. ``None`` in every shipped path; a
 #: bit-identity probe assigns a ``(arm, counts, source) -> source`` callable to
 #: plant a defect in a body that does not exist until it is asked for. Sibling
 #: families rewrite a module-level string instead; an emitter has none to rewrite,
@@ -655,7 +655,7 @@ SOURCE_TRANSFORM: Optional[Any] = None
 def dispersive_tables(pml: "Any") -> Dict[str, Any]:
     """The six HALF-INTEGER kps/kms views arm 1 reads, flattened once.
 
-    HALF-INTEGER, NOT INTEGER, and not a caller's choice: ``update_E`` reads the
+    Half-integer, not integer, and not a caller's choice: ``update_E`` reads the
     half-integer sub-lattice (stepping.py:1015, ``half_integer=True``) because an
     E component is half-integer in its own direction. Swapped for the integer
     ones it is a half-cell error in the absorber profile -- converged, smooth and
@@ -691,7 +691,7 @@ def resolve_pole_plan(fields: "Any") -> Dict[str, List[Any]]:
     ``[state for state in self.polarizations if state.drives(component)]``, then
     ``state.P[component]``.
 
-    RESOLVED PER LAUNCH, NEVER CACHED. ``PolarizationState.update`` rotates the
+    Resolved per launch, never cached. ``PolarizationState.update`` rotates the
     three buffers (dispersion.py:689-691), so a plan built before ``update_P``
     names last step's arrays after it. That is stale in a way that still
     computes -- the field stays finite and the spectrum moves -- which is the
@@ -716,7 +716,7 @@ def pole_counts_of(plan: Dict[str, Sequence[Any]]) -> Tuple[int, int, int]:
 def _require_no_aliasing(fields: "Any", plan: Dict[str, Sequence[Any]]) -> None:
     """Every ``__restrict__`` pointer distinct from every other one it may not alias.
 
-    THE PREDICATE ALREADY CHECKED THIS and it is checked again at the launch, for
+    The predicate already checked this and it is checked again at the launch, for
     the shipped ADE launcher's reason: the two answer about different moments.
     The predicate answers about the state as a planner saw it; the pole buffers
     rotate between steps, so what it certified is one permutation and this is the
@@ -844,7 +844,7 @@ def update_E_no_pml_real_dispersive(fields: "Any", pml: "Any" = None, *,
                                     ) -> Dict[str, Any]:
     """Arm 2: ``stepping.update_E`` with NO absorber and stored E, in ONE launch.
 
-    ``pml`` IS ACCEPTED AND UNUSED, which is the array path's own signature:
+    ``pml`` is accepted and unused, which is the array path's own signature:
     ``stepping.update_E`` takes it and, on this branch, never reads it past
     ``_pml_is_active``. It is taken here so every launcher on this track has the
     same shape and so the predicate a caller must consult -- which DOES need the
@@ -890,7 +890,7 @@ def update_E_dispersive(arm: str, fields: "Any", pml: "Any" = None, **kwargs):
 def _shared_dispersive_refusals(fields: Any, grid: Any) -> Any:
     """Every clause both update_E arms refuse on, in a fixed order, or None.
 
-    ONE SPELLING, TWO ARMS. The arms differ in the absorber clause and in what
+    One spelling, two arms. The arms differ in the absorber clause and in what
     storage they require; everything else -- the storage width, the coordinate
     system, the boundary kinds, the fold budget, the features that reach a
     DIFFERENT product -- is the same question with the same line behind it, and
@@ -934,7 +934,7 @@ def _shared_dispersive_refusals(fields: Any, grid: Any) -> Any:
                 f"{ADE_FOLD_PLANES_SWEPT} simultaneous planes, so a "
                 f"{folded}-plane fold would be admitted by argument alone")
     for axis, kind in enumerate(_boundary_kinds_from(facts)):
-        # A FOLD IS ON THIS LIST. This sub-step reads no neighbour and has no
+        # A fold is on this list. This sub-step reads no neighbour and has no
         # ghost rule, so the clause is not load-bearing arithmetic -- it stays so
         # that a ghost rule added to ``Grid`` later is refused because it was
         # never admitted.
@@ -955,7 +955,7 @@ def _shared_dispersive_refusals(fields: Any, grid: Any) -> Any:
                 "constitutive product (stepping.py:999-1000) rather than scaling "
                 "this arm's source")
     if getattr(fields, "has_offdiagonal_epsilon", False):
-        # THE ONE SLOT THIS FAMILY DELIBERATELY LEAVES UNSERVED, named in the
+        # The one slot this family deliberately leaves unserved, named in the
         # header: absorbed_power_density.py is off-diagonal AND dispersive AND
         # folded. The row product reads the OTHER components' D - sum P volumes
         # at neighbouring cells (stepping.py:1001-1008, _offdiagonal_terms :1196),
@@ -978,7 +978,7 @@ def _shared_dispersive_refusals(fields: Any, grid: Any) -> Any:
 def _pole_chain_problem(fields: Any, xp: Any, shape: Tuple) -> Any:
     """Why the ``D - sum P`` chain is not one this arm can bind, or None.
 
-    THE CHAIN IS READ THE WAY THE ARRAY PATH READS IT -- ``state.drives(c)``
+    The chain is read the way the array path reads it -- ``state.drives(c)``
     filtered over ``fields.polarizations`` in order -- because the ORDER is the
     arithmetic here, not merely the membership.
     """
@@ -1023,7 +1023,7 @@ def _pole_chain_problem(fields: Any, xp: Any, shape: Tuple) -> Any:
                     f"{POLE_COUNT_CAP}; the gate swept 0..{POLE_COUNT_CAP} and "
                     f"a longer chain has never been run")
         counts.append(chain)
-    # A CHAIN OF ZERO ON EVERY COMPONENT IS ADMITTED, not refused, and that is a
+    # A chain of zero on every component is admitted, not refused, and that is a
     # DISJOINTNESS decision rather than a generosity: the sibling
     # ``covers_real_pml_constitutive`` refuses on ``fields.polarizations`` being
     # truthy, whether or not any state drives anything, so a run carrying a
@@ -1044,7 +1044,7 @@ def covers_real_pml_dispersive_constitutive(fields: Any, pml: Any,
     active layer -- source ``(D - sum P) * inv_eps`` (stepping.py:1010-1013) into
     ``_apply_constitutive_pml`` (:1016, transcribed at :2112-2145).
 
-    DISJOINT FROM EVERY SIBLING BY CONSTRUCTION, and the census checks it rather
+    Disjoint from every sibling by construction, and the census checks it rather
     than trusting this note:
 
     * ``covers_real_pml_constitutive(side='E')`` refuses ``fields.polarizations``
@@ -1067,7 +1067,7 @@ def covers_real_pml_dispersive_constitutive(fields: Any, pml: Any,
                        "at stepping.py:1022, which is "
                        "covers_no_pml_dispersive_constitutive's arm")
     if not tuple(getattr(fields, "polarizations", ()) or ()):
-        # THE DISJOINTNESS CLAUSE, and it fires first among the feature clauses:
+        # The disjointness clause, and it fires first among the feature clauses:
         # a run with no registered susceptibility is the certified
         # ``covers_real_pml_constitutive`` family's, and two arms admitting one
         # slot is a widening past the evidence, not extra coverage.
@@ -1075,7 +1075,7 @@ def covers_real_pml_dispersive_constitutive(fields: Any, pml: Any,
                        "itself and the run belongs to "
                        "coverage.covers_real_pml_constitutive(side='E')")
     if not getattr(fields, "stores_E", False):
-        # BELT AND BRACES WITH A REASON: an active PML already forces stored E,
+        # Belt and braces with a reason: an active PML already forces stored E,
         # so an edit that ever makes it optional under a layer has to be caught
         # here rather than reaching a kernel that writes an array nobody reads.
         return False, "E is recomputed from D rather than stored"
@@ -1098,7 +1098,7 @@ def covers_real_pml_dispersive_constitutive(fields: Any, pml: Any,
     if problem is not None:
         return False, problem
 
-    # THIS SIDE'S OWN SUB-LATTICE ONLY -- half-integer, stepping.py:1015. Binding
+    # This side's own sub-lattice only -- half-integer, stepping.py:1015. Binding
     # the integer one is a half-cell error in the absorber profile.
     for axis, name in enumerate(("x", "y", "z")):
         for label in ("kps", "kms"):
@@ -1127,7 +1127,7 @@ def covers_no_pml_dispersive_constitutive(fields: Any, pml: Any,
     A STORE. No auxiliary, no coefficient vector, no history, no per-axis index --
     so no kps/kms clause below, and no ``f_w`` array to check.
 
-    THE CLAUSE THIS REPLACES is ``covers_no_pml_null_constitutive``'s::
+    The clause this replaces is ``covers_no_pml_null_constitutive``'s::
 
         "fields.stores_E is True: update_E writes E[...] = (D - sum P) * inv_eps
          (stepping.py:1022) instead of returning at :983 -- that is the STORE arm,
@@ -1138,7 +1138,7 @@ def covers_no_pml_dispersive_constitutive(fields: Any, pml: Any,
     STORES. The two are complementary halves of ``stepping.py:983`` and the
     census checks that no slot is admitted by both.
 
-    ``stores_E`` WITHOUT A POLARIZATION IS REFUSED HERE, and that refusal is a
+    ``stores_E`` without a polarization is refused here, and that refusal is a
     real gap rather than a disjointness artifact: ``Fields.enable_field_storage``
     can be switched on by an off-diagonal or nonlinear configuration too, and
     those reach a different product. A run with stored E, no layer, no
@@ -1230,13 +1230,13 @@ def _inverse_epsilon_problem(fields: Any, xp: Any, shape: Tuple) -> Any:
 
 
 # ---------------------------------------------------------------------------
-# ARM 3 -- the ADE predicate widening. NO NEW KERNEL.
+# Arm 3 -- the ADE predicate widening. No new kernel.
 # ---------------------------------------------------------------------------
 
 def _no_pml_ade_drive_problem(fields: Any, component: str) -> Any:
     """Why ``drive_field(component)`` is not the STORED E this arm binds.
 
-    THE MIRROR IMAGE of ``coverage._ade_drive_problem``, and the asymmetry is the
+    The mirror image of ``coverage._ade_drive_problem``, and the asymmetry is the
     whole content of arm 3. Under an active layer the drive is ``f_w_<c>``;
     without one it is the stored E (fields.py:1140-1163). The two agree EXACTLY
     outside the absorber, so a predicate that checked only "some array exists"
@@ -1275,7 +1275,7 @@ def covers_no_pml_ade_component(fields: Any, pml: Any, grid: Any,
     """Whether the SHIPPED ``update_P_pml_real*`` may advance one (state, component)
     on a run with NO absorber.
 
-    NO NEW KERNEL IS INVOLVED AND THAT IS THE MEASURED FINDING, not an
+    No new kernel is involved and that is the measured finding, not an
     assumption. ``ade_kernels.update_P_fused_pml_real`` binds a drive pair and
     selects between the two per cell from the chunk record (MEEP's per-chunk
     ``w``); without a layer ``ade_kernels.drive_pair`` binds the stored E for both,
@@ -1411,15 +1411,15 @@ def covers_no_pml_ade_update_p(fields: Any, pml: Any, grid: Any) -> tuple:
     """Whether the hand-CUDA ADE family may serve the WHOLE ``update_P`` sub-step
     on a run with no absorber.
 
-    ALL OR NOTHING OVER EVERY STATE AND EVERY DRIVEN COMPONENT, for the sibling
+    All or nothing over every state and every driven component, for the sibling
     predicate's reason and not out of conservatism: ``PolarizationState.update``
-    rotates ONE SHARED SCRATCH from component to component inside a single call
+    rotates one shared scratch from component to component inside a single call
     (dispersion.py:689-691), so a sub-step half on the kernel and half on the
     array path would hand the array path a buffer the kernel had already
     retired. ``update_P`` is ONE slot in the 759-slot denominator and a family
     that serves it has to serve all of it.
 
-    A RUN WITH NO DRIVEN COMPONENT AT ALL IS REFUSED, not admitted as a
+    A run with no driven component at all is refused, not admitted as a
     vacuous pass: ``stepping.update_P`` still iterates and still does nothing,
     but a family claiming a slot on which it would launch zero kernels is
     claiming coverage of a sub-step it never touched -- and the census would

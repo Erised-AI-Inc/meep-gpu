@@ -8,7 +8,7 @@ binding the chunk record of the division the oracle steps with (the one-rank
 region plan; on a folded axis its membership line is the ghost-adjusted one).  Each
 row is durably appended before the next native shader launch. The mutation set is
 the ordinary dispersive gate's (:mod:`gate_metal_dispersive_update_e`): the
-previous accumulation grouping planted (must-catch), the §7.2 battery and the
+previous accumulation grouping planted (must-catch), the per-chunk form battery and the
 record rows.
 """
 

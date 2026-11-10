@@ -13,7 +13,7 @@ complete driver step, both subnormal policies from empty caches, every zero besi
 control that bites). Read the real gate and the kit first; this file states only what
 the complex storage adds.
 
-WHAT THE COMPLEX STORAGE ADDS. Launch 1 is the complex Cartesian weld's constitutive
+What the complex storage adds. Launch 1 is the complex Cartesian weld's constitutive
 block, statement for statement: ``complex_fused_hd_pair._h_cell_complex`` (the root's
 ``constitutive_form`` on each stored part, the chunk record, MEEP's start of H), IMPORTED.
 No complex multiply, no multiply-add and no divide is spelled in this product -- the
@@ -24,7 +24,7 @@ choreography on both word planes, the auxiliary contract on the rotated history,
 start of H, and the scan and curl ordering, through the same host mutations as the real
 gate.
 
-BOTH POLICIES REACH THE COMPOSER. No complex predicate carries a policy clause of its
+Both policies reach the composer. No complex predicate carries a policy clause of its
 own (the clause went with the expansion licence it guarded), so under either policy the
 composer selects this family's neighbours on the seam and every reference is measured;
 ``composer_reachable_under_this_policy`` in the record says so.
@@ -109,10 +109,10 @@ CASES: Tuple[Tuple[str, Dict[str, Any]], ...] = (
                "z_boundary": "metallic"}),
     ("m1_nz1_zp", {"shape": (16, 1), "m": 1, "courant": 0.37, "pml": 3,
                    "z_boundary": "periodic"}),
-    # THE MUTATION CASE: 96 radial rows so the ladder reaches the values where the two
+    # The mutation case: 96 radial rows so the ladder reaches the values where the two
     # wrong divide spellings part from the scaled algorithm (numpy's reciprocal
     # coincides with it wherever d * (1/d) rounds to exactly 1.0, which holds for
-    # every d < 41 -- MEASURED NULL on a 12-row fixture 2026-09-07), and 192 cells so
+    # every d < 41 -- measured NULL on a 12-row fixture 2026-09-07), and 192 cells so
     # the launch is still one program.
     ("m1_nr96_nz2", {"shape": (96, 2), "m": 1, "courant": 0.37, "pml": 3,
                      "z_boundary": "periodic"}),
@@ -120,13 +120,13 @@ CASES: Tuple[Tuple[str, Dict[str, Any]], ...] = (
     # boundaries here, as it does on every corpus row.
     ("m1_nr40_nz32", {"shape": (40, 32), "m": 1, "courant": 0.35, "pml": 4,
                       "z_boundary": "metallic"}),
-    # THE RUN'S FIRST update_H on the mutation case's grid: unseparated, so every
+    # The run's first update_H on the mutation case's grid: unseparated, so every
     # arrangement performs MEEP's start of H at step 1. Every case above is seeded
     # mid-run.
     ("m1_zm_first_update", {"shape": (12, 16), "m": 1, "courant": 0.37, "pml": 3,
                             "z_boundary": "metallic", "h_started": False}),
 )
-#: THE MUTATION CASE: |m| = 1 with a walled z, so both Hx's (r) and Hz's (z) own axes
+#: The mutation case: |m| = 1 with a walled z, so both Hx's (r) and Hz's (z) own axes
 #: carry a layer and the auxiliary-contract rows have dsigw cells to land on; 192 cells,
 #: one program.
 MUTATION_CASE = "m1_zm"
@@ -206,11 +206,11 @@ MUTATIONS: Dict[str, Dict[str, Any]] = {
         "case": MUTATION_CASE,
         "old": "            wi1 + 2 * idx, mask=live & (dw1 == 0), other=0.0)), mask=live)\n",
         "new": "            wi1 + 2 * idx, mask=live, other=0.0)), mask=live)\n",
-        "why": "PREDICTED NULL (KERNELS.md 7.2, the unconditional auxiliary load): the "
-               "pre-launch history word the twin keeps is read on every cell, but on the "
-               "dsigw cells the select takes B and never consumes it, so no word moves. "
-               "The guard is pinned by the lift instead (the store is the Cartesian "
-               "weld's statement)",
+        "why": "PREDICTED NULL (the unguarded auxiliary load; "
+               "docs/development/certification.md#chunk-form-battery): the pre-launch "
+               "history word the twin keeps is read on every cell, but on the dsigw cells "
+               "the select takes B and never consumes it, so no word moves. The guard is "
+               "pinned by the lift instead (the store is the Cartesian weld's statement)",
     },
     "m_rotation_skipped": {
         "target": "host", "host": "rotation_skipped", "expected": "CAUGHT",
@@ -258,7 +258,7 @@ MUTATIONS: Dict[str, Dict[str, Any]] = {
     "m_withdraw_after_step_D": {
         "target": "host", "host": "withdraw_after_step_D", "expected": "CAUGHT",
         "case": MUTATION_CASE,
-        "why": "the seam's one pass on the wrong side of the launch. Since entry 25 that "
+        "why": "the seam's one pass on the wrong side of the launch. Since 1.0 that "
                "pass is the magnetic f_minus_p restore (no electric withdraw stands), "
                "and the withdraw leg drives it moved before the launch, and dropped, on "
                "a fixture carrying integrated electric and magnetic sources; both must "
@@ -471,7 +471,7 @@ class Spec(kit.FamilySpec):
     def transcription(self) -> Tuple[List[str], Dict[str, Any]]:
         findings: List[str] = []
         measures: Dict[str, Any] = {}
-        # THE CONSTITUTIVE IS IMPORTED, NOT COPIED: its lift is the complex Cartesian
+        # The constitutive is imported, not copied: its lift is the complex Cartesian
         # product's, re-checked here because this family launches it.
         certified = complex_fused.certified_constitutive_tail()
         lifted = complex_fused.lifted_constitutive_tail()
@@ -485,7 +485,7 @@ class Spec(kit.FamilySpec):
                 or "def _h_cell_complex(" in text:
             findings.append("the complex constitutive is not imported from "
                             "complex_fused_hd_pair (or a copy is defined here)")
-        # LAUNCH 1 IS THE COMPLEX WELD'S CONSTITUTIVE BLOCK, statement for statement.
+        # LAUNCH 1 is the complex weld's constitutive block, statement for statement.
         certified_block = family.certified_weld_block()
         lifted_block = family.lifted_weld_block()
         measures["launch1_statements"] = len(lifted_block)
@@ -495,13 +495,13 @@ class Spec(kit.FamilySpec):
         if len(lifted_block) < 20:
             findings.append(f"launch 1 is only {len(lifted_block)} statements; the cut "
                             f"anchors have crossed")
-        # NO ARITHMETIC OF ITS OWN: no complex product helper, no multiply-add, no divide.
+        # No arithmetic of its own: no complex product helper, no multiply-add, no divide.
         for needle in ("_mul_", "_rotate_", "_div_", "_connect", "tl.math.", " / "):
             if any(needle in line for line in lifted_block):
                 findings.append(f"launch 1 spells {needle.strip()!r}")
         if family.MULTIPLY_HELPERS != ():
             findings.append(f"MULTIPLY_HELPERS is {family.MULTIPLY_HELPERS}, not empty")
-        # THE RADIAL-SUM DECLARATION IS THE CERTIFIED FAMILY'S OWN TABLE, and the scan
+        # The radial-sum declaration is the certified family's own table, and the scan
         # and the curl are the certified plan's, built by the certified builder.
         spec = cx.PREFIX[family.CURL_SUB_STEP]
         if (family.PREFIX_COMPONENT, float(family.PREFIX_IR0)) != (

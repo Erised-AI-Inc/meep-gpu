@@ -208,7 +208,7 @@ _TEMPORARY: List[str] = []
 #: name -> (needle, replacement). Each needle must occur in the shipped kernel
 #: text, or the case refuses by name rather than launching the shipped kernel.
 SOURCE_MUTATIONS: Dict[str, Any] = {
-    # The inversion (KERNELS.md section 7.1): the previous package grouping.
+    # The previous package grouping (docs/development/certification.md#inverted-grouping-mutations).
     "PREVIOUS_PAIRWISE_GROUPING": (
         "    curl0_re = curl_stencil(c_y_re, c0_re, b0_re, b_z_re, dtdx, py, pz)",
         "    curl0_re = dtdx * ((c_y_re - c0_re) + (b0_re - b_z_re))"),
@@ -238,7 +238,7 @@ def compile_mutated(name: str) -> Any:
     """Compile one mutated copy of the shipped kernel from a real file on disk.
 
     Triton reads a kernel's source through inspect, so exec'd text raises at first
-    launch. THE MODULE NAME MUST NOT START WITH ``triton``: Triton's dependency
+    launch. The module name must not start with ``triton``: Triton's dependency
     finder leaves callees of a ``triton*`` module out of the kernel's cache key, so
     helper-only mutants would key alike and be served one binary (measured on the
     off-diagonal gate, 2026-10-08).
@@ -516,8 +516,8 @@ def validate(payload: Dict[str, Any]) -> Dict[str, Any]:
         reasons.append(f"expected 9 mutations, found {len(mutations)}")
     if len(controls) != 3:
         reasons.append(f"expected 3 controls, found {len(controls)}")
-    # NO DECLARED NULL REMAINS: the two NULL_WRONG_EXPANSION rows were the deleted
-    # expansion licence's opposite arm (entry 89). A NULL_ row appearing again is a
+    # No declared null remains: the two NULL_WRONG_EXPANSION rows were the deleted
+    # expansion licence's opposite arm (deleted in 1.0). A NULL_ row appearing again is a
     # case this verdict does not know how to read.
     if nulls:
         reasons.append(f"expected no declared nulls, found {len(nulls)}")

@@ -10,13 +10,13 @@ gate has RUN is a fact this suite reads out of the module's own
 green laptop suite over an unrun device gate must never be mistaken for a
 certification.
 
-WHAT IS PINNED HERE, and the one thing that is genuinely new on this board:
+What is pinned here, and the one thing that is genuinely new on this board:
 
-* **THE PARITY CHAIN.** The real-storage folded pair composes a destination's
+* **The parity chain.** The real-storage folded pair composes a destination's
   parities into ONE compile-time sign. This kernel applies one host-rounded
   ``+-1.0`` word PER PASS, per stored part, in the driver's own order (the fills'
-  ``part_products.scale``), and these tests read that order OFF THE SHIPPED KERNEL
-  SOURCE and compare it against
+  ``part_products.scale``), and these tests read that order off the shipped kernel
+  source and compare it against
   :func:`~.folded_complex_fused_magnetic_pair.parity_chain` — which is not a
   re-implementation of the arithmetic, it is a statement about which parity word
   each application takes and in what sequence;
@@ -263,7 +263,7 @@ def test_the_parity_coefficient_words_imaginary_half_is_bitwise_zero():
 
 
 # ---------------------------------------------------------------------------
-# THE PARITY CHAIN — the one thing that does not transfer from the real board
+# The parity chain — the one thing that does not transfer from the real board
 # ---------------------------------------------------------------------------
 
 def test_every_carry_block_applies_its_parities_in_the_drivers_own_order():
@@ -440,7 +440,7 @@ def test_the_far_reflect_row_is_a_RUNTIME_argument_and_never_baked():
 def test_REPLACES_names_every_pass_the_kernel_actually_carries():
     """TRAP: a module once carried ``fill_folded_far_ghosts_B`` while its
     ``REPLACES`` tuple said it did not, and a passing test pinned the stale tuple.
-    So the tuple is checked AGAINST THE BODY here, not against a copy of itself.
+    So the tuple is checked against the body here, not against a copy of itself.
     """
     source = kernel_source_no_docstring()
     assert product.REPLACES == ("step_B", "fill_B", "zero_metal_B",
@@ -527,7 +527,7 @@ CURL_LINES = (
 def test_every_curl_line_is_the_certified_folded_complex_curls_own_line():
     """The curl half diffs clean against ``folded_bloch_pml_curl_step``.
 
-    Not a re-derivation: each statement below appears CHARACTER FOR CHARACTER in the
+    Not a re-derivation: each statement below appears character for character in the
     certified emitter, and the certified emitter is read here rather than quoted.
     """
     certified = certified_source("folded_complex.py", "folded_bloch_pml_curl_step")
@@ -914,13 +914,13 @@ def test_the_composer_routes_this_product_and_the_driver_seam_released_it():
     ``_install_fused_pair``, taking both slots only when ``_pair_may_absorb`` finds
     the arm table has already given them to the arms this kernel implements.
 
-    WIRING WAS NOT RELEASING, and this is the file where that sentence ended. It
+    Wiring was not releasing, and this is the file where that sentence ended. It
     was named ``..._and_dispatch_still_refuses_it`` for as long as the label sat
-    outside ``fastpath.RELEASED_FUSED_ARMS``; the 2026-09-13 phase B batch
+    outside ``fastpath.RELEASED_FUSED_ARMS``; the 2026-09-13 certification run
     (``dispatch_fused_route_2026-09-13_phaseB``) drove it through the driver's own
     consults, so the label now names it in ``RELEASED_FUSED_ARMS``. The partition
     is still exactly one of two, in the other direction: the label is in
-    ``ARM_CERTIFICATION`` (its ledger entry was cut from the phase B fleet artifact
+    ``ARM_CERTIFICATION`` (its ledger entry was cut from that run's fleet artifact
     by ``seed_triton_welds.py``) and out of ``PENDING_DEVICE_GATE_ARMS``.
     """
     import pathlib as _pathlib  # noqa: PLC0415
@@ -989,11 +989,11 @@ def test_the_module_imports_and_answers_coverage_with_triton_absent(monkeypatch)
 def test_the_module_has_a_fingerprints_weld_that_pins_these_bytes():
     """RELEASED 2026-09-13, so a byte-identity claim IS now made about this module.
 
-    Until the phase B batch this module carried NO ``fingerprints.json`` entry on
+    Until that certification run this module carried NO ``fingerprints.json`` entry on
     purpose: its licensed bytes are a function of a PROBE-BOUND expansion arm, so a
     checked-in hash would have recorded a choice rather than a measurement, and the
-    binding stood in the gate artifact's own ``source_sha256`` map instead. The
-    batch ran this family's device gate to a release verdict and
+    binding stood in the gate artifact's own ``source_sha256`` map instead. That
+    run took this family's device gate to a release verdict and
     ``seed_triton_welds.py`` cut its weld from the 2026-09-12 identity fleet, keyed
     on the gate and pinning the module's checked-in digests. So "no checked-in hash
     may imply a claim" is now the POSITIVE contract: the ledger carries exactly this
@@ -1031,10 +1031,10 @@ def test_the_module_has_a_fingerprints_weld_that_pins_these_bytes():
             drift.append(relative)
     assert drift == [], ("the weld does not describe these bytes", drift)
 
-    # AND THE RELEASE MEASURED SOMETHING. The weld pins the bytes; the phase-B
+    # And the release measured something. The weld pins the bytes; the 2026-09-13
     # fleet artifact those bytes ran through is what proves the run was clean, and
     # that verification is kept rather than reduced to the weld's one-word status.
-    # RE-POINTED 2026-09-13 to the phase-B fleet (shard C re-gated this probe after
+    # RE-POINTED 2026-09-13 to that run's fleet (shard C re-gated this probe after
     # it learned to record the device identity); the run is device_status RUN,
     # passed, released, and every BYTE leg is bit-identical with the fused kernel
     # launched once per complete step.
@@ -1280,7 +1280,7 @@ def test_an_offdiagonal_chi1inv_row_is_admitted_through_the_second_arm_label():
 
     ``folded_complex_composition_curl_coverage`` refuses an off-diagonal row BY NAME
     — the clause is ``update_E``'s, where the row product reads neighbours through a
-    transverse Yee average (stepping.py:1219-1254). The Triton tranche registers a
+    transverse Yee average (stepping.py:1219-1254). The Triton table registers a
     SECOND family over the SAME kernel and the SAME plan class for exactly those
     rows, and this product takes either admission as a matched pair.
     """

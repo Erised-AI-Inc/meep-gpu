@@ -1,6 +1,6 @@
 """MEASURE the composed ghost value the D seam leaves, before any kernel carries it.
 
-WHY THIS RUNS FIRST. The Triton ``folded_fused_pair`` refuses
+Why this runs first. The Triton ``folded_fused_pair`` refuses
 ``fill_folded_far_ghosts_D`` by name. Carrying it needs a rule for what ONE lane must
 write at every cell the driver's three post-injection D passes touch::
 
@@ -8,7 +8,7 @@ write at every cell the driver's three post-injection D passes touch::
     zero_metal_D       (driver.py:3301)  ->  D[wall]   = 0
     fill_folded_far_ghosts_D (:3302)     ->  D[..-1..] = -phase * D[..r_m..]  on a == m
 
-THE D GEOMETRY INVERTS THE B GEOMETRY and the inversion is not only in which axes
+The D geometry inverts the B geometry and the inversion is not only in which axes
 each fill touches. On the B half ``_zero_metal`` and the NEAR fill act on the same
 cell set (both ``iyee == 0``, i.e. axis ``m``), and a folded axis is never walled, so
 the wall clear can never land on a near destination and the ORDER of parity and clear
@@ -26,10 +26,10 @@ Those differ in exactly the sign bit of a zero, which is a byte difference on th
 uint32 view every gate on this track compares. So a far carry that reuses the near
 carry's composed value — or a composite that multiplies the raw parities together
 instead of chaining through the already-clamped near ghost — is wrong in a way no
-tolerance would show. THIS SCRIPT SETTLES WHICH BY MEASUREMENT rather than by the
+tolerance would show. This script settles which by measurement rather than by the
 paragraph above.
 
-WHAT IT COMPARES. For every case it runs the array path's OWN three passes over a
+What it compares. For every case it runs the array path's OWN three passes over a
 random ``D`` and compares, as uint32 words over the whole volume, against a
 CANDIDATE rule evaluated per destination cell. Two candidates are scored, and the
 second exists to prove the first is not vacuous:
@@ -210,7 +210,7 @@ RULE_HAZARDS: Dict[str, str] = {
 def _candidate(grid: Any, raw: Dict[str, Any], rule: str) -> Dict[str, Any]:
     """Evaluate one composition rule cell by cell, from ``raw`` alone.
 
-    ONE LANE OWNS EVERY GHOST. For component ``m`` the source lane sits at stored
+    One lane owns every ghost. For component ``m`` the source lane sits at stored
     row ``2`` on each near axis it writes and at ``r_m`` on the far axis, and it
     writes every cell that back-substitutes to it. This evaluates that from the
     destination's side, which is the same set read the other way round.

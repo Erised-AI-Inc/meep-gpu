@@ -1,14 +1,14 @@
 """Call the SHIPPED Metal coverage predicates on one lifted (fields, pml, grid) triple.
 
-THE METAL COUNTERPART of ``results/predicate_coverage_2026-08-14_allnine/
-predicate_battery.py``, dropped into a BYTE-IDENTICAL copy of that round's
+The Metal counterpart of ``results/predicate_coverage_2026-08-14_allnine/
+predicate_battery.py``, dropped into a BYTE-IDENTICAL copy of that census's
 ``measure_predicate_coverage.py`` and ``match_param_rows.py`` (sha256 verified at
 copy time) — same lift records, same denominators, same three legs, same corpus.
-Only the SUBJECT differs, which is what makes this round's number commensurable
+Only the SUBJECT differs, which is what makes this census's number commensurable
 with Triton's 702/759 and the hand-CUDA ladder's 157/759 rather than merely
 similar-looking.
 
-TRANCHE 3 ADDS THE THREE FOLDED FAMILIES, and adds them to the ENTRY LIST rather
+The third group of Metal kernel families adds three folded families to the entry list rather
 than relying on ``plan_step`` to find them. The composer reaches every registered
 arm by itself, so the COMPOSED column would have counted the fold whatever this
 file said; the ADMITTED column is a hand-written list of predicates and would
@@ -16,22 +16,22 @@ silently have stayed at eight products while the composer selected eleven. An
 admitted number BELOW its own composed number is the shape that mistake takes, so
 the two lists are kept in step deliberately and the analyzer asserts the direction.
 
-TRANCHE 4 ADDS FOUR MORE — ``cylindrical_complex``, ``cylindrical_real``,
+The fourth group adds four more — ``cylindrical_complex``, ``cylindrical_real``,
 ``folded_beta`` (two arms) and ``nonlinear_constitutive`` — for the same reason and
-with the same hazard. THE ROUTING VERDICTS ARE THE ONES ENTERED, not the wide ones,
-exactly as tranche 3 entered ``folded_composition_curl_coverage`` rather than the
+with the same hazard. The routing verdicts are the ones entered, not the wide ones,
+exactly as the third group entered ``folded_composition_curl_coverage`` rather than the
 fold-optional predicate the gate certifies against: ``folded_beta`` exposes a wide
 curl verdict that admits an UNFOLDED beta run (the shape its gate certifies) and a
 composition verdict with the fold MANDATORY, and counting the wide one here would
 credit this family with every unfolded beta row the composer routes to
 ``special_kz``.
 
-TRANCHE 6 ADDS THE SIXTEEN FAMILIES THE 08-17/08-18 ROUNDS LANDED, and adds
-NOTHING ELSE. The tranche-5 census ran this file unchanged against a tree that had
+The sixth group adds the sixteen families landed on 2026-08-17/18, and adds
+nothing else. The census of the fifth group ran this file unchanged against a tree that had
 grown from sixteen registered families to thirty-two, and its analyzer printed the
-exact shape tranche 3's docstring predicted: ``COMPOSED EXCEEDS ADMITTED — the
+exact shape the third group's docstring predicted: ``COMPOSED EXCEEDS ADMITTED — the
 battery's predicate list is missing a family the arm table carries``. Measured on
-that round's own record (162 rows survived its legs; see the corpus note below):
+that census's own record (162 rows survived its legs; see the corpus note below):
 composed 663/663, admitted 593/663, and the 70-slot difference resolves EXACTLY into
 the arms this entry list never asked about — 15 ``ADE update_P``, 10 ``no-PML
 curl``, 8 ``complex conductive no-PML curl``, 6 ``conductive no-PML curl``,
@@ -42,8 +42,8 @@ curl``, 8 ``complex conductive no-PML curl``, 6 ``conductive no-PML curl``,
 ``folded off-diagonal dispersive PML E`` and ``conductive PML curl``. The entries
 below are those arms and only those arms.
 
-THE ROUTING VERDICT IS AGAIN THE ONE ENTERED, and for these sixteen that is a
-weaker claim than it was for tranches 3 and 4, which is worth stating rather than
+The routing verdict is again the one entered, and for these sixteen that is a
+weaker claim than for the third and fourth groups, which is worth stating rather than
 implying: NONE of them exposes a wide/routing SPLIT. Each registered arm's
 ``_arm_coverage`` closure delegates to exactly ONE public predicate with the arm's
 own slot passed straight through — measured by reading every closure, not by
@@ -52,7 +52,7 @@ there is no wider sibling here to enter by mistake. The two families that DO car
 split (``symmetry``/``folded_complex``'s fold-optional curls and ``folded_beta``'s
 two) were already entered at their composition verdicts and are untouched.
 
-ONE FAMILY IS ENTERED AT THREE SLOTS IT ALREADY HELD. ``nonlinear_constitutive``
+One family is entered at three slots it already held. ``nonlinear_constitutive``
 was entered at ``update_E`` alone, on the argument that the shared clause 10 keeps a
 nonlinear run's curls and ``update_H`` on the array path. That is no longer what the
 tree does: the family registers THREE further arms — ``nonlinear PML curl`` on
@@ -62,30 +62,30 @@ The composer selected all three on this corpus. They are entered here at their o
 predicates, and the family name is unchanged, so a removal check that subtracts
 ``nonlinear_constitutive`` subtracts all four slots together.
 
-``update_P`` IS NO LONGER A NAMED ABSENCE. ``ade_update_p`` registers a WIRED arm on
+``update_P`` is no longer a named absence. ``ade_update_p`` registers a WIRED arm on
 that slot and ``launch.NO_ARM_REASONS`` is now the EMPTY dict — so the block below,
 which read a reason out of that table, was recording ``reason: None`` beside
 ``metal_arm: None`` on all fifteen polarization slots while ``plan_step`` selected
 ``ADE update_P`` on every one of them. The absence has become a product; it is asked
-for like any other. NOTE THE ANALYZER COUPLING: ``analyze_metal_coverage.roll_up``
+for like any other. Note the analyzer coupling: ``analyze_metal_coverage.roll_up``
 hard-codes ``admitted["update_P"] = []`` after the predicate loop, so this entry is
 DISCARDED unless that function is patched in step. Both changes are in this
 directory and neither is sufficient alone.
 
-THE TWO SEAM SLOTS ARE RECORDED AND ARE NOT IN THE DENOMINATOR. ``fill_B`` and
+The two seam slots are recorded and are not in the denominator. ``fill_B`` and
 ``fill_D`` are real slots the composer fills, but the 759-slot denominator is
-``186 x 4 + 15`` and was fixed by the Triton rounds; adding them would make this
-round's number incommensurable with 702/759 and 157/759, which is the whole reason
+``186 x 4 + 15`` and was fixed by the Triton censuses; adding them would make this
+census's number incommensurable with 702/759 and 157/759, which is the whole reason
 the denominator is quoted rather than recomputed. They are reported as their own
 addendum count instead.
 
-THE ONE STRUCTURAL DIFFERENCE FROM BOTH EARLIER ROUNDS, and it is in this track's
+The one structural difference from both earlier censuses, and it is in this track's
 favour rather than a caveat: **nothing is factored out**.
 
-* The Triton round could not run its predicates as written — every one refuses
+* The Triton census could not run its predicates as written — every one refuses
   ``array module is 'numpy', not cupy`` on this host — so its number is "modulo
   that one clause", computed by stripping the string from a returned tuple.
-* The hand-CUDA round could not even do that (its predicate short-circuits), so it
+* The hand-CUDA census could not even do that (its predicate short-circuits), so it
   wrapped the grid in a ``_CupyNamed`` proxy and measured through a shim whose
   soundness it then had to probe per row.
 * The Metal predicates ask for THIS host: NumPy on the host side, torch with MPS
@@ -93,35 +93,35 @@ favour rather than a caveat: **nothing is factored out**.
   so ``covered`` here is the shipped predicate's own verdict on the real target
   and there is no shim, no filter and no soundness question about either.
 
-WHAT IS STILL A CONDITION, stated because it is one. ``MEEP_GPU_SUBNORMAL_POLICY``
+What is still a condition, stated because it is one. ``MEEP_GPU_SUBNORMAL_POLICY``
 must be ``flush``: on MPS the float32 subnormal flush is native and has no lever, so
 the resolved default ``keep`` is NOT OFFERABLE and every Metal predicate refuses by
 name. This module sets it at import — before any ``meep_gpu`` module is reached —
 and RECORDS what it set, because a coverage number measured under a policy the
 artifact does not name is a number about an unknown machine.
 
-WHAT IS COUNTED. Per row and per sub-step:
+What is counted. Per row and per sub-step:
 
 * ``predicates`` — every shipped Metal predicate's own verdict, by family and
   kernel, exactly as the Triton battery records them.
 * ``plan_step`` — what the SHIPPED composer selects per slot, with the arms that
   admitted. This is the number that matters for the composition claim: a predicate
   admitting a slot means a kernel could step it; ``plan_step`` selecting it means
-  the composer WOULD. Unlike the Triton round, the builders run here too, so a slot
-  can be recorded as admitted-but-unbuildable, which is a distinction that round
+  the composer WOULD. Unlike the Triton census, the builders run here too, so a slot
+  can be recorded as admitted-but-unbuildable, which is a distinction that census
   could not make (every Triton builder raises ``ImportError`` on this host).
 * ``update_P`` — ASKED, not asserted. ``ade_update_p`` carries a wired arm on that
   slot, so the fifteen polarization slots are a predicate verdict like every other.
   The per-state list is kept and now records the ARM and the per-component verdict
   instead of a reason read out of an empty table.
 
-THE CORPUS CAVEAT THIS FILE CANNOT FIX, recorded so a number produced with it is not
-misread. The tranche-5 run measured 162 of 186 rows: its directory was copied
+The corpus caveat this file cannot fix, recorded so a number produced with it is not
+misread. The census of the fifth group measured 162 of 186 rows: its directory was copied
 without ``shim/parameterized.py``, so the ``tests_param`` leg's children died at
-``import parameterized`` on all six modules and recovered NOTHING (tranche 4:
-24 rows in 26.7 s; tranche 5: 0 rows in 3.0 s, each module in 0.1 s). Twenty-four
+``import parameterized`` on all six modules and recovered NOTHING (census of the fourth group:
+24 rows in 26.7 s; of the fifth: 0 rows in 3.0 s, each module in 0.1 s). Twenty-four
 rows are therefore recorded ``measured: false, note: "child died"``, the denominator
-computes 663 rather than 759, and the round's headline is not commensurable with
+computes 663 rather than 759, and that census's headline is not commensurable with
 687/759. Copy the shim directory beside this file before running the legs.
 """
 
@@ -135,7 +135,7 @@ _HERE = Path(__file__).resolve().parent
 def _find_api_root(start):
     """Locate the repository root BY NAME, never by depth.
 
-    These harness files were promoted out of a results/ tranche into the parity
+    These harness files were promoted out of a results/ directory into the parity
     dir; a hard-coded ``parents[N]`` silently followed them to the wrong root and
     every child died on ModuleNotFoundError while the parent still wrote a
     full-length census of ``measured: false`` rows.
@@ -183,7 +183,7 @@ def runtime_reasons() -> List[str]:
     from meep_gpu.metal_kernels import coverage  # noqa: PLC0415
     return list(coverage._metal_backend_reasons(_HostGrid()))
 
-# THE POLICY, SET BEFORE ANY meep_gpu MODULE IS REACHED. `flush` is the only value
+# The policy, set before any meep_gpu module is reached. `flush` is the only value
 # the MPS executor can honour; the resolved default `keep` makes every predicate
 # refuse, which would report 0/759 and read as "the port covers nothing".
 os.environ.setdefault("MEEP_GPU_SUBNORMAL_POLICY", "flush")
@@ -324,7 +324,7 @@ def evaluate(driver: Any) -> Dict[str, Any]:
     sources = getattr(driver, "_sources", None)
     states = tuple(getattr(fields, "polarizations", ()) or ())
 
-    # THE RESIDENCY DECLARATION IS PART OF EVERY METAL PREDICATE, and passing None
+    # The residency declaration is part of every Metal predicate, and passing None
     # would make every one of them refuse for a reason that has nothing to do with
     # this corpus. A fresh, empty Residency is exactly what `plan_step` builds for a
     # real composition, so the predicates are asked the question the composer asks.
@@ -347,7 +347,7 @@ def evaluate(driver: Any) -> Dict[str, Any]:
             lambda n=name: beta_bloch_pml_curl_coverage(fields, pml, n, residency))
         add("bfast_curl", "bfast_pml_curl", name,
             lambda n=name: bfast_pml_curl_coverage(fields, pml, n, residency))
-        # THE ROUTING VERDICTS, not the wide ones. Both folded curl families expose
+        # The routing verdicts, not the wide ones. Both folded curl families expose
         # a wide predicate that admits zero folded axes (the gate's subject, where
         # the emitted source reduces to the certified kernel's character for
         # character) and a composition verdict with the fold MANDATORY. Counting the
@@ -360,7 +360,7 @@ def evaluate(driver: Any) -> Dict[str, Any]:
         add("folded_complex", "folded_complex_pml_curl", name,
             lambda n=name: folded_complex_composition_curl_coverage(
                 fields, pml, n, residency))
-        # TRANCHE 4. Both folded-beta arms take the ROUTING verdict, with the fold
+        # Fourth group. Both folded-beta arms take the ROUTING verdict, with the fold
         # MANDATORY, for the reason the comment above gives: the wide verdict
         # admits an unfolded beta run, which the composer routes to `special_kz`.
         add("folded_beta_real", "folded_beta_pml_curl", name,
@@ -375,7 +375,7 @@ def evaluate(driver: Any) -> Dict[str, Any]:
         add("cylindrical_real", "cylindrical_real_curl", name,
             lambda n=name: cylindrical_real_curl_coverage(fields, pml, n,
                                                           residency))
-        # TRANCHE 6, curl slots. Eight arms the composer already selects on this
+        # Sixth group, curl slots. Eight arms the composer already selects on this
         # corpus and this list never asked about. Each is the SINGLE public
         # predicate its registered arm's `_arm_coverage` delegates to, with the
         # slot passed straight through — none of these families exposes a wide
@@ -401,7 +401,7 @@ def evaluate(driver: Any) -> Dict[str, Any]:
         add("complex_dispersive_spine", "complex_dispersive_pml_curl", name,
             lambda n=name: metal_complex_dispersive_pml_curl_coverage(
                 fields, pml, n, residency))
-        # THE NONLINEAR SPINE, and the reason the family now spans four slots
+        # The nonlinear spine, and the reason the family now spans four slots
         # rather than one: `step_B`/`step_D` reuse the certified ordinary PML curl
         # body through a nonlinear-only predicate, because the engine does not read
         # chi2/chi3 in those sub-steps. Same family name as the Pade `update_E`
@@ -443,7 +443,7 @@ def evaluate(driver: Any) -> Dict[str, Any]:
         add("cylindrical_real", "cylindrical_real_constitutive", sub_step,
             lambda s=side: cylindrical_real_constitutive_coverage(fields, pml, s,
                                                                    residency))
-        # TRANCHE 6, both constitutive slots. The complex conductive PML family is
+        # Sixth group, both constitutive slots. The complex conductive PML family is
         # the only new one registered on BOTH sides, and its predicate takes the
         # side the same way the certified pair does.
         add("complex_conductive_pml", "complex_conductive_pml_constitutive",
@@ -451,7 +451,7 @@ def evaluate(driver: Any) -> Dict[str, Any]:
             lambda s=side: metal_complex_conductive_pml_constitutive_coverage(
                 fields, pml, s, residency))
 
-    # TRANCHE 6, update_H ONLY, and the asymmetry is the arm table's rather than a
+    # Sixth group, update_H only, and the asymmetry is the arm table's rather than a
     # choice made here: both families register a magnetic arm on `update_H` and
     # leave `update_E` to a separate module (the dispersive E products below).
     # Their predicates take NO side argument, so entering them in the loop above
@@ -467,7 +467,7 @@ def evaluate(driver: Any) -> Dict[str, Any]:
         lambda: offdiag_constitutive_coverage(fields, pml, residency))
     add("folded_offdiag_constitutive", "folded_offdiag_constitutive", "update_E",
         lambda: folded_offdiag_composition_coverage(fields, pml, residency))
-    # THE PADE BODY IS THIS FAMILY'S update_E ARM. The claim that once stood here —
+    # The Pade body is this family's update_E ARM. The claim that once stood here —
     # that the shared clause 10 keeps a nonlinear run's curls and update_H on the
     # array path, so update_E is its ONE slot — is no longer what the tree does:
     # three nonlinear-only spine arms were added above, and the composer selects
@@ -475,7 +475,7 @@ def evaluate(driver: Any) -> Dict[str, Any]:
     # constrained this family's own spine.
     add("nonlinear_constitutive", "nonlinear_constitutive", "update_E",
         lambda: nonlinear_constitutive_coverage(fields, pml, residency))
-    # TRANCHE 6, update_E. Seven single-slot families, each entered at the one
+    # Sixth group, update_E. Seven single-slot families, each entered at the one
     # public predicate its arm consults. The three dispersive E products and the
     # two stored-E products are disjoint from `constitutive`/`null_constitutive`
     # through the susceptibility and `stores_E` clauses those two already name in
@@ -495,20 +495,20 @@ def evaluate(driver: Any) -> Dict[str, Any]:
         lambda: metal_complex_stored_e_coverage(fields, pml, residency))
     add("complex_no_pml_offdiag_update_e", "complex_no_pml_offdiag", "update_E",
         lambda: metal_complex_no_pml_offdiag_coverage(fields, pml, residency))
-    # THE ONE NEW FAMILY THAT TAKES THE FOLDED COMPLEX ARTIFACT, not the unfolded
+    # The one new family that takes the folded complex artifact, not the unfolded
     # one: its predicate routes through `folded_complex._folded_complex_grid_
     # reasons`, so the record that licences its multiply is the folded fill's. The
     # fold is MANDATORY inside this single predicate (`_requires_a_fold`), so there
     # is no wide sibling to enter here by mistake.
     add("complex_folded_offdiag_update_e", "complex_folded_offdiag", "update_E",
         lambda: metal_complex_folded_offdiag_coverage(fields, pml, residency))
-    # TRANCHE 6, update_P. `ade_update_p` registers a WIRED arm on this slot, so it
+    # Sixth group, update_P. `ade_update_p` registers a WIRED arm on this slot, so it
     # is asked like any other. See the docstring: the analyzer's `roll_up` discards
     # this entry unless it is patched in step.
     add("ade_update_p", "ade_update_p", "update_P",
         lambda: metal_ade_update_p_coverage(fields, pml, residency))
 
-    # THE TWO SEAM SLOTS, in their OWN record. Not appended to `entries`, because
+    # The two seam slots, in their OWN record. Not appended to `entries`, because
     # `entries` is what the analyzer rolls into the 759 denominator and a fill slot
     # is not one of the four sub-step names that denominator is built from. Kept as
     # an addendum so the fold's seam coverage is measured rather than either
@@ -531,18 +531,18 @@ def evaluate(driver: Any) -> Dict[str, Any]:
         fill_results[f"{label}@{slot}"] = dict(
             _verdict(call), family=family, kernel=label, sub_step=slot)
 
-    # --- update_P: A PRODUCT, ASKED PER STATE AND PER COMPONENT ----------------
+    # --- update_P: a product, asked per state and per component ----------------
     #
-    # WHAT CHANGED AND WHY THE OLD BLOCK WAS WRONG RATHER THAN MERELY STALE. It
+    # What changed and why the old block was wrong rather than merely stale. It
     # wrote `metal_arm: None` and read the slot's reason out of
     # `launch.NO_ARM_REASONS` — a table that is now the EMPTY dict, because every
     # STEP_ORDER slot including `update_P` is armed. The `.get` therefore returned
     # None and the record said "no arm, and no reason either", which is the exact
     # shape the original comment was written to prevent ("nobody asked" read as "no
     # product carries this"). `ade_update_p` registers a wired arm; the composer
-    # selected it on all fifteen polarization slots of the tranche-5 corpus.
+    # selected it on all fifteen polarization slots of the fifth group's corpus.
     #
-    # THE PER-COMPONENT VERDICT IS RECORDED BESIDE THE PER-STATE ONE because the
+    # The per-component verdict is recorded beside the per-state one because the
     # family exposes both and they answer different questions: the slot predicate
     # asks whether the recurrence may run at all, the component predicate asks it
     # for one driven field. A state admitted at the slot with a refusing component
@@ -642,8 +642,8 @@ def plan_step_admission(fields: Any, pml: Any, sources: Any
                         ) -> Dict[str, Any]:
     """Run the SHIPPED ``launch.plan_step`` and record what it did, per slot.
 
-    NOTHING IS PATCHED — no gate, no builder, no attribute of the lifted objects,
-    and no clause is filtered out of a returned verdict. Both earlier rounds had to
+    Nothing is patched — no gate, no builder, no attribute of the lifted objects,
+    and no clause is filtered out of a returned verdict. Both earlier censuses had to
     do one of those to get a number at all; this one does not, because the shipped
     predicates ask for the host they are running on.
 

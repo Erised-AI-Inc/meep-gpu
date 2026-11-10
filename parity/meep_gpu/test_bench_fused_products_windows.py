@@ -1,6 +1,7 @@
 """Device-free tests for how the fused-product bench restores, sizes and times its windows.
 
-Added for the 1.0 re-certification round, from the CERT-8 harness findings:
+Added for the 1.0 re-certification round, from what the 1.0 timing run (CERT-8) found in
+the harness; three of the items carry the labels H1, H4 and F5, which the tests below use:
 
 * H1 -- ``thaw`` wrote into a ``numpy.float32`` the state walk had frozen (a dispersive
   leg's recurrence constants) and raised ``TypeError`` on 11 of 74 DRIVE rows;
@@ -96,7 +97,7 @@ class _Driver:
         self.first_long, self.long_seconds = first_long, long_seconds
         self._restored = False
         self._step_count = 0
-        # THE H1 SHAPE: a dispersive leg's polarization holds its recurrence constants
+        # The H1 shape: a dispersive leg's polarization holds its recurrence constants
         # as four ``numpy.float32`` words beside its arrays.
         self.fields = SimpleNamespace(
             Ez=numpy.zeros(32, dtype=numpy.float32),
@@ -299,7 +300,10 @@ def test_a_row_restores_sizes_and_times_every_leg_to_its_target(rig, monkeypatch
     row = _run(rig)
     assert lifted == ["fused", "unfused", "array"]
     assert row["verdict"] == "TIMED", row.get("floors")
-    assert row["floors"]["spread_within_gate"] is True
+    # The window spread is recorded, not a floor: beside the floors, never among them
+    assert "spread_within_gate" not in row["floors"]
+    assert row["window_spread"]["within_reference"] is True
+    assert set(row["window_spread"]["per_leg"]) == {"fused", "unfused", "array"}
     assert row["floors"]["bit_identical"] is True
     assert [w["leg"] for w in row["windows_discarded"]] == ["fused", "unfused", "array"]
     slow = row["windows_discarded"][0]
@@ -312,14 +316,21 @@ def test_a_row_restores_sizes_and_times_every_leg_to_its_target(rig, monkeypatch
         (7.5e-4 * 667 + 9e-3) / 667 / ((7e-4 * 714 + 8.4e-3) / 714), rel=1e-2)
 
 
-def test_no_discard_leaves_the_first_window_in_and_the_gate_strikes_it(rig, monkeypatch):
-    """The control: with ``discard_windows=0`` the same row is struck, as on CERT-8."""
+def test_no_discard_leaves_the_first_window_in_and_the_row_records_its_spread(
+        rig, monkeypatch):
+    """The control: with ``discard_windows=0`` the slow first window stays in and the
+    fused leg's windows spread above 5 %, as in the 1.0 timing, where that struck the row.
+    Under the between-pass gate the spread is recorded with the row and gates nothing: the
+    row is TIMED, and the 5 % gate is the cutters', over the row's passes."""
     _lift(rig, monkeypatch, _legs(
         rig, fused={"per_step": 7e-4, "first_long": 0.07, "long_seconds": 0.25}))
     row = _run(rig, discard_windows=0)
     assert row["windows_discarded"] == []
-    assert row["floors"]["spread_within_gate"] is False
-    assert row["verdict"] == "TIMED-NOT-REPORTABLE"
+    assert row["window_spread"]["per_leg"]["fused"] > bench.WINDOW_SPREAD_REFERENCE
+    assert row["window_spread"]["within_reference"] is False
+    assert row["window_spread"]["max"] == row["per_leg"]["fused"]["spread"]
+    assert "spread_within_gate" not in row["floors"]
+    assert row["verdict"] == "TIMED" and row["reportable"] is True
 
 
 def test_a_gpu_only_row_lifts_one_leg_and_claims_no_ratio(rig, monkeypatch):

@@ -1,7 +1,7 @@
 """The THREE-SLOT weld's device gate: byte identity, launch structure, and the bracket.
 
 =============================================================================
-WHAT IS BEING CERTIFIED, AND WHY NEITHER HALF'S VERDICT COVERS IT
+What is being certified, and why neither half's verdict covers it
 =============================================================================
 
 ``cuda_three_slot_dispersive_weld`` and ``cuda_three_slot_no_pml_dispersive_weld``
@@ -22,14 +22,14 @@ of those is a verdict about this composition, because none of them has host work
 sitting between two device groups that READS the state the second group is about to
 advance. ``deposit_repair.apply`` recomputes the constitutive product through
 ``Fields.displacement_minus_polarization`` (deposit_repair.py:781-782, :922-923),
-which subtracts ``state.P[c]`` AS IT STANDS (fields.py:1096-1105), so the repair is
+which subtracts ``state.P[c]`` as it stands (fields.py:1096-1105), so the repair is
 correct only while P is still P^n. That coupling is what this gate measures.
 
 =============================================================================
-THE COMPARISONS -- FOUR ENGINES, NOT TWO
+The comparisons -- four engines, not two
 =============================================================================
 
-Every product leg compares per COMPLETE DRIVER STEP as uint32 WORDS over every stored
+Every product leg compares per complete driver step as uint32 WORDS over every stored
 field volume AND every ``P``/``P_prev`` buffer, never ``allclose`` (``-0.0 == 0.0``
 lies), against:
 
@@ -48,7 +48,7 @@ and that difference is the entire reason this product exists -- see
 compositions INCLUDING the array path, counted by CUDA graph capture.
 
 =============================================================================
-THREE INDEPENDENT LAUNCH COUNTERS
+Three independent launch counters
 =============================================================================
 
 * the LAUNCHERS' own reports (``run_three_slot_polarization`` returns ``launches``);
@@ -62,7 +62,7 @@ THREE INDEPENDENT LAUNCH COUNTERS
   records why instead of a number.
 
 =============================================================================
-THE DEPOSIT LEGS, WITH THREE CONTROLS THAT MUST NOT PASS
+The deposit legs, with three controls that must not pass
 =============================================================================
 
 ``bracketed``          the composer's own installation. Byte-identical.
@@ -71,7 +71,7 @@ THE DEPOSIT LEGS, WITH THREE CONTROLS THAT MUST NOT PASS
                        ``apply`` reads P^(n+1). MUST DIVERGE -- this is the ordering
                        the off-device probe measured diverging on 6 of 7
                        configurations, and it is the one a reader would reach for.
-``wrong_repair_path``  the arm declaring the other recurrence. MUST BE REFUSED BY NAME.
+``wrong_repair_path``  the arm declaring the other recurrence. Must be refused by name.
 
 Progress is one flushed line per case and the artifact is rewritten after each leg, so
 an interrupted run keeps everything that landed (the progress-reporting rule).
@@ -109,7 +109,7 @@ except ImportError:  # laptop: only the source legs can run
 import gate_provenance  # noqa: E402
 import probe_fused_kernel_bit_identity as probe  # noqa: E402
 
-# THE TWO D->E GATES, IMPORTED FOR THEIR FIXTURES AND COMPARISONS. This product IS
+# The two D->E gates, imported for their fixtures and comparisons. This product IS
 # each of those products with a third slot added, so their build, their pole-aware
 # comparison and their movement floors answer the same questions here. Importing them
 # keeps ONE copy of each: a second transcription of a seeded engine is a second place
@@ -153,7 +153,7 @@ _GATES = {"pml": pml_gate, "no_pml": no_pml_gate}
 class _FixtureGateTable(dict):
     """``_GATE[arm]`` -- the arm's fixture gate, or a refusal naming the arm.
 
-    A CLASS AND ITS INSTANCE NEED DIFFERENT NAMES. Both were ``_GATE`` here, so the
+    A class and its instance need different names. Both were ``_GATE`` here, so the
     instance shadowed the class at import and the class was unreachable by name --
     ``meep_gpu/test_package_boundary.py::test_no_module_binds_one_name_to_two_
     competing_definitions`` refuses that outright, and it is the merge bar.
@@ -267,7 +267,7 @@ def frozen(arm: str, fields, arity) -> Dict[str, np.ndarray]:
 def band_must_move(arm: str) -> Tuple[str, ...]:
     """The volumes the SUBNORMAL-BAND class is held to, PER ARM.
 
-    NOT ONE LIST, and the difference is an allocation fact rather than a preference.
+    Not one list, and the difference is an allocation fact rather than a preference.
     The PML arm's fixture gate declares ``BAND_MUST_MOVE`` (D, fu_D and f_w_E, from
     ``gate_cuda_fused_electric_pair``): under 'flush' a state seeded entirely in the
     band leaves E the identity, while those three families are written
@@ -277,7 +277,7 @@ def band_must_move(arm: str) -> Tuple[str, ...]:
     holds the band class to ``_TARGETS + _ELECTRIC`` because ``update_E`` there is a
     pure overwrite that writes E every step whatever the values are.
 
-    READ FROM EACH SIBLING GATE'S OWN SYMBOLS rather than retyped here, so a floor
+    Read from each sibling gate's own symbols rather than retyped here, so a floor
     this gate holds a product to is the floor that product's own gate declared.
     Asking the no-absorber module for ``BAND_MUST_MOVE`` -- which it does not define,
     and whose PML list names two families it never allocates -- was an AttributeError
@@ -294,7 +294,7 @@ def _arity(spec) -> Tuple[int, int, int]:
 
 
 def fused_passes(arm: str) -> Tuple[str, ...]:
-    """The driver passes this arm's product performs, READ FROM THE MODULE.
+    """The driver passes this arm's product performs, read from the module.
 
     Never transcribed: a gate carrying its own copy of ``REPLACES`` would walk a span
     the product does not claim, and the two would drift silently in either direction.
@@ -303,13 +303,13 @@ def fused_passes(arm: str) -> Tuple[str, ...]:
 
 
 # ---------------------------------------------------------------------------
-# THE THIRD COUNTER -- kernel launches by CUDA graph capture
+# The third counter -- kernel launches by CUDA graph capture
 # ---------------------------------------------------------------------------
 
 class GraphNodeCounter:
     """Count EVERY kernel launch in a span, including CuPy's own elementwise ones.
 
-    THE ONE COUNTER ON THIS TRACK THAT CAN SEE THE ARRAY PATH.
+    The one counter on this track that can see the array path.
     :class:`MemoLaunchCounter` wraps the shipped compile-cache memo, which is exactly
     right for our kernels and blind to a CuPy ufunc; the launch-count claim this
     product is built on is a comparison BETWEEN the array path and the weld, so a
@@ -433,7 +433,7 @@ def _launch_leading(arm: str, fields, arguments: Dict[str, Any],
                     kernel: Optional[Any] = None) -> Dict[str, Any]:
     """GROUP 1: the SHIPPED D->E launcher, called rather than reimplemented.
 
-    THE POLE PLAN IS RE-RESOLVED EVERY STEP, because ``PolarizationState.update``
+    The pole plan is re-resolved every step, because ``PolarizationState.update``
     rotates the buffers (dispersion.py:689-691) and a plan cached across steps names
     last step's arrays -- stale in a way that still computes.
     """
@@ -517,7 +517,7 @@ def certified_singles_step(arm: str, fields, pml, grid, tables) -> None:
 def _no_pml_certified_curl(fields, pml, grid, codes, dtdx, record) -> str:
     """The no-absorber arm's certified ``step_D``, through its own family's launcher.
 
-    WHICH CERTIFIED FAMILY IS ASKED, NOT ASSUMED. The no-absorber ``step_D`` is
+    Which certified family is asked, not assumed. The no-absorber ``step_D`` is
     served by TWO certified families that partition on conductivity:
     ``conductive_kernels`` admits a run where SOME target of this sub-step carries a
     sigma, ``no_pml_curl`` admits the rest, and the two predicates are exact inverses
@@ -527,7 +527,7 @@ def _no_pml_certified_curl(fields, pml, grid, codes, dtdx, record) -> str:
     domain its own predicate admits, and the reference this leg compares against
     would be a composition the array path would never build.
 
-    THIS WAS THE HALF-BUILT ONE. Both names here were invented
+    This was the half-built one. Both names here were invented
     (``step_D_no_pml_conductive``, ``step_D_no_pml_real``); neither exists, and the
     whole no-absorber arm died on an AttributeError the moment
     ``leg_launch_structure`` reached the certified-singles span -- after its entire
@@ -545,7 +545,7 @@ def _no_pml_certified_curl(fields, pml, grid, codes, dtdx, record) -> str:
 
 
 # ---------------------------------------------------------------------------
-# THE PRODUCT LEG
+# The product leg
 # ---------------------------------------------------------------------------
 
 def run_case(arm: str, spec: Dict[str, Any], value_class: str, steps: int,
@@ -589,7 +589,7 @@ def run_case(arm: str, spec: Dict[str, Any], value_class: str, steps: int,
 
     arguments = leading_arguments(arm, grid, pml)
     before = frozen(arm, actual, arity)
-    # WARM THE MEMO ON A THROWAWAY ENGINE FIRST. MemoLaunchCounter wraps the entries
+    # Warm the memo on a throwaway engine first. MemoLaunchCounter wraps the entries
     # ALREADY IN compile_cache._compiled_kernels when it is entered, so a kernel first
     # compiled inside the counted region is launched and NEVER counted -- the counter's
     # own docstring says so, and leg_launch_structure warms for exactly this reason.
@@ -632,7 +632,7 @@ def run_case(arm: str, spec: Dict[str, Any], value_class: str, steps: int,
     identical = (len(per_step) == steps
                  and all(row["differing_words"] == 0 for row in per_step))
     expected_trailing = len(case["driven_components"])
-    # THE SECOND COUNTER, READ BY PREFIX RATHER THAN BY NAME. MemoLaunchCounter keys
+    # The second counter, read by prefix rather than by name. MemoLaunchCounter keys
     # its tally on the COMPILE-CACHE KEY's first element, and this family's key is
     # `three_slot_polarization_real:<component>:<poles>:<sigma kinds>` (the emitter's
     # specialization axes are part of the memo key, so one kernel NAME appears under
@@ -643,7 +643,7 @@ def run_case(arm: str, spec: Dict[str, Any], value_class: str, steps: int,
     memo_trailing = sum(count for key, count in memo_named.items()
                         if key == family(arm).KERNEL_NAME
                         or key.startswith(family(arm).KERNEL_NAME + ":"))
-    # WHEN THE GATE SUPPLIES THE KERNEL THE MEMO CANNOT SEE IT, and that is the
+    # When the gate supplies the kernel the memo cannot see it, and that is the
     # launcher's own contract: `kernel or _get_kernel(...)` never consults the memo
     # when a kernel is handed in, so the honest expectation is ZERO through this
     # counter and the launcher's own report is the only count. Both branches of this
@@ -671,7 +671,7 @@ def run_case(arm: str, spec: Dict[str, Any], value_class: str, steps: int,
             "expected_per_step": 1 + expected_trailing,
             "memo_proxy": memo_named,
             "memo_proxy_total": counter.total,
-            # THE TWO INDEPENDENT COUNTERS, SIDE BY SIDE: the launcher's own report
+            # The two independent counters, side by side: the launcher's own report
             # of how many component launches it issued, and the shipped compile-cache
             # memo's tally of how many times THIS family's kernels were entered.
             "memo_trailing": memo_trailing,
@@ -693,23 +693,23 @@ def _driven_components(fields) -> List[str]:
 
 
 # ---------------------------------------------------------------------------
-# THE LAUNCH STRUCTURE -- the progress-reporting leg, and the reason this product exists
+# The launch structure -- the progress-reporting leg, and the reason this product exists
 # ---------------------------------------------------------------------------
 
 def leg_launch_structure(arm: str, spec: Dict[str, Any], steps: int) -> Dict[str, Any]:
     """FIVE compositions from one seed: all agree word for word, none launches alike.
 
-    THE CLAIM IS MEASURED, NEVER ASSERTED, and it is measured against every
+    The claim is measured, never asserted, and it is measured against every
     composition this product could be compared to rather than the flattering one:
 
       array_path              stepping's eleven passes
       certified_singles       step_D + in-seam passes + update_E + the ADE singles
       d_to_e_weld_plus_ade    the D->E weld + the certified ADE singles
       step_d_plus_e_to_p_weld the certified step_D + in-seam passes + the E->P weld
-                              -- WHAT THE COMPOSER INSTALLS ON THESE ROWS TODAY
+                              -- What the composer installs on these rows today
       three_slot_weld         this product
 
-    IF THE WELD DOES NOT REDUCE LAUNCHES AGAINST ANY OF THEM, THAT IS THE FINDING and
+    If the weld does not reduce launches against any of them, that is the finding and
     it is recorded as such rather than hidden behind the ones it beats.
     """
     from meep_gpu.cuda_kernels import ade_kernels  # noqa: PLC0415
@@ -794,7 +794,7 @@ def leg_launch_structure(arm: str, spec: Dict[str, Any], steps: int) -> Dict[str
              "step_d_plus_e_to_p_weld": span_step_d_plus_e_to_p,
              "three_slot_weld": span_weld}
 
-    # WARM EVERY SPAN ONCE OUTSIDE THE COUNTERS. A cold compile inside a
+    # Warm every span once outside the counters. A cold compile inside a
     # MemoLaunchCounter is a launch that is not counted, and a cold ALLOCATION inside
     # a graph capture is a capture that fails; one warm step fixes both, and the
     # engines are rebuilt afterwards so no span starts from a state another advanced.
@@ -830,7 +830,7 @@ def leg_launch_structure(arm: str, spec: Dict[str, Any], steps: int) -> Dict[str
                       "named": counters[name].named(),
                       "per_step": counters[name].total / max(len(rows), 1)}
 
-    # THE GRAPH COUNTER, on a FRESH set of engines: capture cannot run inside the
+    # The graph counter, on a FRESH set of engines: capture cannot run inside the
     # comparison loop above (each span there advances a state the next step reads),
     # and one captured step is what the per-step claim is about.
     graph_engines = {name: build(arm, spec, "uniform", case_rng(arm, label))
@@ -848,7 +848,7 @@ def leg_launch_structure(arm: str, spec: Dict[str, Any], steps: int) -> Dict[str
                  for row in rows) and len(rows) == steps
     weld_per_step = memo["three_slot_weld"]["per_step"]
 
-    # WHICH COUNTER ANSWERS "DOES IT REDUCE LAUNCHES" DEPENDS ON THE ROW, and reading
+    # Which counter answers "does it reduce launches" depends on the row, and reading
     # the wrong one printed a false statement about the row that matters most.
     # MemoLaunchCounter wraps the shipped compile-cache memo, so it sees OUR kernels
     # and is BLIND to CuPy's own elementwise launches -- the array path therefore
@@ -897,11 +897,11 @@ def leg_launch_structure(arm: str, spec: Dict[str, Any], steps: int) -> Dict[str
 
 
 # ---------------------------------------------------------------------------
-# THE DEPOSIT LEG -- the bracket, and the two orderings that must not pass
+# The deposit leg -- the bracket, and the two orderings that must not pass
 # ---------------------------------------------------------------------------
 
 def leg_deposit(arm: str, spec: Dict[str, Any], steps: int) -> Dict[str, Any]:
-    """The bracket end to end, THROUGH THE SHIPPED COMPOSER, with three controls.
+    """The bracket end to end, through the shipped composer, with three controls.
 
     Reaching for the launchers directly would test the kernels and skip the wiring,
     and the wiring is what this leg exists for: ``arms.plan_step(..., fuse=True)`` is
@@ -951,7 +951,7 @@ def leg_deposit(arm: str, spec: Dict[str, Any], steps: int) -> Dict[str, Any]:
         row["installed_plans"] = list(installed)
         row["selected"] = {slot: composed.selected.get(slot)
                            for slot in ("step_D", "update_E", "update_P")}
-        # WHAT THE COMPOSER MUST HAVE PUT IN THE THREE SLOTS. With no source declared
+        # What the composer must have put in the three slots. With no source declared
         # there is nothing to bracket, so `_install_fused_triple` puts the bare halves
         # in step_D and update_P and a NoopPlan in the absorbed update_E; with one
         # declared, the leading half is wrapped by the save and update_E holds the
@@ -987,7 +987,7 @@ def leg_deposit(arm: str, spec: Dict[str, Any], steps: int) -> Dict[str, Any]:
                         source.inject(actual, when + 0.5 * dt)
                 elif name == "update_E":
                     if mode == "p_before_repair":
-                        # THE ORDERING A READER WOULD REACH FOR, ARMED: the
+                        # The ordering a reader would reach for, armed: the
                         # polarizations advanced at the update_E consult, so
                         # deposit_repair.apply reads P^(n+1) through
                         # displacement_minus_polarization.
@@ -1023,7 +1023,7 @@ def leg_deposit(arm: str, spec: Dict[str, Any], steps: int) -> Dict[str, Any]:
         })
         rows.append(row)
 
-    # THE WRONG REPAIR DECLARATION, refused BY NAME rather than mis-repairing.
+    # The wrong repair declaration, refused by name rather than mis-repairing.
     wrong = _wrong_repair_path(arm, spec)
     rows.append(wrong)
     return {
@@ -1056,13 +1056,13 @@ def _wrong_repair_path(arm: str, spec: Dict[str, Any]) -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# THE REFUSALS AND THE ARBITRATION
+# The refusals and the arbitration
 # ---------------------------------------------------------------------------
 
 def leg_refusal() -> Dict[str, Any]:
     """What each weld refuses BY NAME, and who takes the slots when it does not.
 
-    THE PARTITION IS HALF OF THIS LEG: a configuration is only correctly refused if
+    The partition is half of this leg: a configuration is only correctly refused if
     some other product can take it, and the ones that matter are the two-slot halves
     this product supersedes -- the composer must give the slots to exactly one.
     """
@@ -1088,7 +1088,7 @@ def leg_refusal() -> Dict[str, Any]:
             "reason": str(why), "expect": expect,
             "d_to_e_half_covered": bool(d_to_e), "d_to_e_reason": str(d_reason),
             "e_to_p_half_covered": bool(tail), "e_to_p_reason": str(tail_reason),
-            # THE SUBSET PROPERTY THE SUPERSESSION RULE RESTS ON, per row: where the
+            # The subset property the supersession rule rests on, per row: where the
             # weld admits, BOTH halves must admit. If that ever stopped holding,
             # refusing the shorter span would start costing rows.
             "subset_holds": (not covered) or (bool(d_to_e) and bool(tail)),
@@ -1113,7 +1113,7 @@ def leg_refusal() -> Dict[str, Any]:
         ask(arm, "off_diagonal_chi1inv", spec, (), "refuse",
             mutate=lambda f: pml_gate._WithFlag(f, "has_offdiagonal_epsilon", True))  # noqa: SLF001
 
-    # THE ABSORBER PARTITION: neither weld may admit the other's arm.
+    # The absorber partition: neither weld may admit the other's arm.
     for arm in ARMS:
         spec = dict(specs(arm)[0])
         fields, grid, pml, _ = build(arm, spec, "uniform",
@@ -1126,7 +1126,7 @@ def leg_refusal() -> Dict[str, Any]:
                      "expect": "refuse", "subset_holds": True,
                      "ok": not covered})
 
-    # THE ARBITRATION, THROUGH THE SHIPPED COMPOSER.
+    # The arbitration, through the shipped composer.
     arbitration: List[Dict[str, Any]] = []
     for arm in ARMS:
         spec = dict(specs(arm)[0])
@@ -1186,7 +1186,7 @@ def _drop(body: str) -> Callable[[str], Tuple[str, int]]:
 #: Device-text mutations of the NEW kernel, each with whether it can ever be a null.
 #: ``(label, transform, predicted_null)``.
 #:
-#: EVERY TRANSFORM TAKES THE COMPONENT IT IS MUTATING, and that is not decoration.
+#: Every transform takes the component it is mutating, and that is not decoration.
 #: The emitter names the per-pole parameters after the COMPONENT
 #: (``P_Ex_0``/``P_Ey_0``/``P_Ez_0``, ``_signature``), and the hook below is called
 #: once per component, so a transform that spelled ``P_Ex_0`` outright produced text
@@ -1232,7 +1232,7 @@ SOURCE_MUTATIONS: Tuple[Tuple[str, Callable[[str, str], Tuple[str, int]],
      lambda s, c: needle(s, "float s_1 = ", "float s_1 = s_0; //"),
      "this case drives no component with two or more poles, so there is no s_1 to "
      "collapse onto s_0"),
-    # APPLIED TO THE Ez BODY ONLY, so the label is what the leg does. Left
+    # Applied to the Ez body only, so the label is what the leg does. Left
     # component-blind it dropped the last pole of ALL THREE bodies while calling
     # itself an Ez mutation, and a fixture whose Ez carries one pole would have been
     # scored armed on the strength of the Ex and Ey edits.
@@ -1284,7 +1284,7 @@ HOST_MUTATIONS: Tuple[Tuple[str, Optional[str]], ...] = (
      "the order of states WITHIN one component is not observable in any compared "
      "volume. A confirmed null is the measurement that the state loop may be fused "
      "into one launch"),
-    # THE ONE MUTATION WHOSE VERDICT DEPENDS ON THE ARM, and the reason below is the
+    # The one mutation whose verdict depends on the arm, and the reason below is the
     # NO-PML one. `leg_mutations` supplies `None` on the PML arm instead: there the
     # launcher binds (f_w_<c>, E<c>) and selects per chunk, so binding the stored E
     # for both pointers reads E on the layer's chunks where MEEP reads f_w -- a real
@@ -1298,7 +1298,7 @@ HOST_MUTATIONS: Tuple[Tuple[str, Optional[str]], ...] = (
 def mutated_polarization(arm: str, mutation: str):
     """A LOCAL copy of the shipped second group, with one defect planted.
 
-    THE NO-DEFECT TWIN IS REQUIRED UNCAUGHT FIRST (``mutation == 'none'``): a local
+    The no-defect twin is required uncaught first (``mutation == 'none'``): a local
     copy that diverged on its own would score every defect below as caught while
     measuring nothing about them.
     """
@@ -1360,9 +1360,9 @@ def mutated_polarization(arm: str, mutation: str):
 
 
 def measure_extent_guard_overrun(arm: str) -> Dict[str, Any]:
-    """DOES ``drop_the_extent_guard`` REACH THE DEVICE? Measured, not reasoned about.
+    """Does ``drop_the_extent_guard`` reach the device? Measured, not reasoned about.
 
-    THE PROBLEM THIS SOLVES. Removing ``if (idx >= nx * ny * nz) return;`` comes back a
+    The problem this solves. Removing ``if (idx >= nx * ny * nz) return;`` comes back a
     NULL in the product comparison on every fixture here, and a null with no reason
     is a leg that measured nothing. Two explanations fit and they are not equally
     acceptable: either the surplus lanes never ran (the mutation is UNARMED and the
@@ -1377,12 +1377,12 @@ def measure_extent_guard_overrun(arm: str) -> Dict[str, Any]:
     the buffer this binds is the one this function allocated, which is why the
     experiment is run on synthetic arrays rather than on a fixture's own scratch.
 
-    A ZERO HERE WOULD BE A FAILURE, not a reassurance: it would mean the block
+    A zero here would be a failure, not a reassurance: it would mean the block
     geometry leaves no surplus lane and the mutation cannot be armed on this shape,
-    which is exactly the vacuous fixture the charter refuses.
+    which is exactly the kind of vacuous fixture a gate must refuse.
     """
     module = owner(arm)
-    # A CELL COUNT THAT IS NOT A MULTIPLE OF THE BLOCK, on purpose: 990 = 3*256 + 222
+    # A cell count that is not a multiple of the block, on purpose: 990 = 3*256 + 222
     # is the corpus fixture's own 9*10*11, and an exact multiple would leave no
     # surplus lane to measure. gate_cuda_ade picks its 13x17x11 shape for the same
     # reason (":191-196": an exact multiple "cannot exercise it").
@@ -1419,7 +1419,7 @@ def measure_extent_guard_overrun(arm: str) -> Dict[str, Any]:
         "surplus_lanes_that_wrote": wrote,
         "why": (
             f"the guard was removed and {wrote} of the {span - n_elem} surplus lanes "
-            f"wrote past n_elem, so the mutation REACHES THE DEVICE. It is null in "
+            f"wrote past n_elem, so the mutation reaches the device. It is null in "
             f"the product comparison because those words fall outside every compared "
             f"volume: p_out is the state's own _scratch, shaped exactly n_elem, and "
             f"the overrun lands in the slack of the pooled block rather than in "
@@ -1435,20 +1435,20 @@ def leg_mutations(arm: str, spec: Dict[str, Any], steps: int) -> Dict[str, Any]:
     mutation that applied and did not diverge is a NULL that must carry its reason.
     """
     module = family(arm)
-    # THE MODULE THE TRANSFORM MUST BE PLANTED ON is the one that owns the emitted
+    # The module the transform must be planted on is the one that owns the emitted
     # text, which on the no-absorber arm is the PML twin (`owner`). Planting on
     # `module` there set an attribute nothing reads.
     text_owner = owner(arm)
     started = time.time()
     rows: List[Dict[str, Any]] = []
 
-    # 1. THE DEVICE TEXT.
+    # 1. The device text.
     for label, transform, predicted in SOURCE_MUTATIONS:
         applied = {"count": 0}
 
         def hook(component_index, count, kinds, source, _t=transform,
                  _a=applied, _m=module):
-            # THE COMPONENT THIS BODY IS FOR, read from the module's own term table
+            # The component this body is for, read from the module's own term table
             # rather than from the index, so the name the transform splices is the
             # name the emitter's signature declared for THIS launch.
             target = _m.ELECTRIC_TERMS[component_index][0]
@@ -1475,7 +1475,7 @@ def leg_mutations(arm: str, spec: Dict[str, Any], steps: int) -> Dict[str, Any]:
             "predicted_null": (None if label in _NULL_ONLY_WITHOUT_A_LAYER
                                and arm == "pml" else predicted),
         }
-        # THE ONE NULL THIS LEG EARNS BY MEASUREMENT RATHER THAN BY DECLARATION.
+        # The one null this leg earns by measurement rather than by declaration.
         # Removing the tail guard cannot show up in a volume comparison -- p_out is
         # the state's own _scratch and the surplus lanes write past its last cell --
         # so the null is accepted ONLY if a direct experiment shows those lanes ran.
@@ -1489,9 +1489,9 @@ def leg_mutations(arm: str, spec: Dict[str, Any], steps: int) -> Dict[str, Any]:
                          and (caught or row["predicted_null"] is not None))
         rows.append(row)
 
-    # 2. THE HOST LOOP.
+    # 2. The host loop.
     for label, predicted in HOST_MUTATIONS:
-        # A DEFECT THE SHIPPED LAUNCHER REFUSES IS CAUGHT, NOT A CRASH, and it has to
+        # A defect the shipped launcher refuses is caught, not a crash, and it has to
         # be scored rather than raised through. `drive_from_the_stored_E` substitutes
         # the stored E for `Fields.drive_field`, which on the PML arm is a DIFFERENT
         # array than the certified `f_w_<c>`: `launch_three_slot_polarization_
@@ -1510,7 +1510,7 @@ def leg_mutations(arm: str, spec: Dict[str, Any], steps: int) -> Dict[str, Any]:
             refusal = f"{type(error).__name__}: {error}"
             case = {"bit_identical": False, "refused_by_name": refusal}
         caught = not case.get("bit_identical", False)
-        # THE PREDICTION IS ARM-DEPENDENT for exactly one mutation, and saying so is
+        # The prediction is arm-dependent for exactly one mutation, and saying so is
         # the point: with an INACTIVE layer `Fields.drive_field` hands back the stored
         # E itself (fields.py:1160-1162), so the substitution is the identity and a
         # null is correct; with an ACTIVE one it names `f_w_<c>` and the same edit is
@@ -1541,7 +1541,7 @@ def leg_mutations(arm: str, spec: Dict[str, Any], steps: int) -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# THE STRUCTURAL LEGS
+# The structural legs
 # ---------------------------------------------------------------------------
 
 def leg_driver_order() -> Dict[str, Any]:
@@ -1559,7 +1559,7 @@ def leg_driver_order() -> Dict[str, Any]:
         contiguous = (len(positions) == len(replaces)
                       and positions == list(range(positions[0],
                                                   positions[0] + len(positions))))
-        # THE NO-ABSORBER ARM IS NOT CONTIGUOUS AND MUST NOT BE: its D->E half
+        # The no-absorber arm is not contiguous and must not be: its D->E half
         # REFUSES a mirror plane, so the two symmetry fills are inert on every row it
         # admits and naming them would claim work the launch never has. What IS
         # required of it is that its span be an ordered SUBSEQUENCE ending at
@@ -1628,6 +1628,7 @@ def _subject_digests() -> Dict[str, str]:
 
 
 def main() -> int:
+    import neutral_ids  # noqa: PLC0415
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--out", required=True, help="DIRECTORY for gate.json")
     parser.add_argument("--steps", type=int, default=STEPS)
@@ -1661,8 +1662,8 @@ def main() -> int:
         "legs_requested": list(legs),
         "subnormal_policy": arguments.subnormal_policy,
         "started_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "host": os.uname().nodename,
-        "argv": list(sys.argv[1:]),
+        "host": neutral_ids.machine_id(),
+        "argv": neutral_ids.argv(sys.argv[1:]),
         "question": (
             "does ONE product spanning step_D -> update_E -> update_P leave every "
             "stored volume -- every P and P_prev buffer included -- byte-identical "
@@ -1674,7 +1675,7 @@ def main() -> int:
     }
 
     def save() -> None:
-        # EVERY IMPORTED REPO MODULE'S BYTES, and a mid-run rewrite RAISES rather
+        # Every imported repo module's bytes, and a mid-run rewrite RAISES rather
         # than being merged: measurements taken on either side of a rewrite describe
         # different programs. The shared stamper is the one writer.
         gate_provenance.stamp(record)
@@ -1700,7 +1701,7 @@ def main() -> int:
         emit(json.dumps({"passed": False, "why": record["why"]}))
         return 1
 
-    # THE POLICY GOES IN BEFORE ANY KERNEL IS COMPILED, and the observer goes in
+    # The policy goes in before any kernel is compiled, and the observer goes in
     # before the policy: under 'keep' the policy's strip WRAPS the observer, so what
     # is recorded is the option tuple NVRTC was really given rather than the one this
     # file passed. Both installs are the shared probe's, never a second copy.

@@ -4,28 +4,29 @@
 The record (``meep_gpu/<backend>_kernels/timing_cc<capability>.json``, as
 ``dispatch_preference.record_path`` spells it) is what
 ``meep_gpu/dispatch_preference.py`` consults; its format and the veto rule live there,
-and this file imports both so the two cannot spell an axis two ways. Plan of record:
-``the design notes (meep-gpu-dispatch-preference-plan)``. The record is CUT, never
+and this file imports both so the two cannot spell an axis two ways. How records are
+cut and shipped: ``docs/development/timing.md`` (The cuts). The record is CUT, never
 written by hand, the way ``fingerprints.json`` is cut by a device gate::
 
     python cut_timing_record.py --table triton --rows results/<tree> [--rows ...] \\
         --select-route <id> --out ../../meep_gpu/triton_kernels/timing_cc86.json
     python cut_timing_record.py --check ../../meep_gpu/triton_kernels/timing_cc86.json
+    python cut_timing_record.py --list [--root DIR]
 
 =============================================================================
-WHAT A ROW MUST BE TO FEED A KEY
+What a row must be to feed a key
 =============================================================================
 
 Rows come in two spellings, both read here: ``bench_fused_products.py``'s (one row per
-case, the fused / unfused / array legs inside it) and the repair Phase 0 harness's (one
-row per LEG; a timed leg is paired with the ``singles`` leg of its own point). A row is
-ADMITTED only if
+case, the fused / unfused / array legs inside it) and the deposit-repair timing harness's
+(one row per LEG; a timed leg is paired with the ``singles`` leg of its own point). A row
+is ADMITTED only if
 
 1. its verdict is ``TIMED`` and it passed EVERY floor the bench records, the same-table
    control among them -- a control served by another kernel table compares two tables,
    not a product with what it displaces. A floor that was never recorded did not pass.
-   The within-pass WINDOW spread is no floor (owner ruling R33, 2026-10-16): a row
-   written before it carries ``spread_within_gate`` among its floors and is read as if
+   The within-pass WINDOW spread is no floor (since the between-pass gate, 2026-10-16): a row
+   written before then carries ``spread_within_gate`` among its floors and is read as if
    it did not, and the gate is the BETWEEN-PASS spread (below);
 2. its plan was SERVED by the record's table alone (``substitution.tables_dispatched``,
    what actually dispatched, beside ``drive_table``, which is what was asked for). A
@@ -34,16 +35,24 @@ ADMITTED only if
    a veto, but its ms/step is not this table's and the rule here claims a same-table
    comparison. A row that does not record the field cannot say, and is left out;
 3. it was lifted on the device (``prefer_gpu``): a host smoke row is a harness check;
-4. no foreign process held its device, before or after. The join is by device UUID
+4. no foreign process held its device, before or after. An NVIDIA row is read from its
+   device probe (``box_before``, ``box_after``), joined by device UUID
    (``CUDA_VISIBLE_DEVICES`` index -> ``gpus`` -> ``compute_apps``), NOT the row's own
    ``foreign_compute_apps_on_pinned_gpu``, which compares an index with a UUID and so
-   names every neighbour on any device. A row with no after-probe is admitted, COUNTED
-   and named in its key (``--require-box-after`` refuses it instead);
+   names every neighbour on any device. A Metal row (``drive_table`` metal) carries no
+   such probe: a Mac has one Metal device, and the bench's own host record
+   (``host_before``, ``host_after``) lists every other process found driving it
+   (``foreign_processes``, the bench's process, its ancestors and its children excluded),
+   which is what is read. A host record whose neighbours were not read (no list, the read
+   named under ``unreadable``, or a record taken off macOS, where no read runs) is not
+   read, never clean: the row is left out. A row with no after-probe (``box_after``, or
+   ``host_after`` for a Metal row) is admitted, COUNTED and named in its key
+   (``--require-box-after`` refuses it instead);
 5. it records which ``deposit_repair.py`` it timed.
 
 Everything else is left out BY NAME, in the record (``excluded``) and the report.
 
-THE BETWEEN-PASS GATE (R33). The admitted rows of one case and grid shape, on one
+The between-pass gate (2026-10-16). The admitted rows of one case and grid shape, on one
 deposit-repair program and timed by one instrument (window count and target), are that
 point's passes: a sweep point's p1 and p2, never a DRIVE unit beside them. When there are two or more, the spread of their fused and of their
 baseline rates, (max - min) / median, must be at most 5 % on each leg, or every row of
@@ -58,7 +67,7 @@ and ``--check`` recomputes each by the rule it was cut by, so the 2026-09-21 rec
 recompute byte for byte.
 
 =============================================================================
-ONE RECORD, ONE PROGRAM
+One record, one program
 =============================================================================
 
 The deposit-repair bracket is most of what a bracketed key prices, so rows timed
@@ -67,7 +76,7 @@ read off its own counters -- digest, linear or 3-tuple index, repairs per bracke
 step (3 for the full bracket, 1 once restricted to the written component), whether any
 source was restricted, whether any fell back -- and rows on two routes REFUSE
 (``mixed_repair_route``) unless ``--select-route`` names one, in which case the others
-are left out by name. ONE DIGEST IS NOT ONE ROUTE: the corpus has ``e4f88c1e`` running
+are left out by name. One digest is not one route: the corpus has ``e4f88c1e`` running
 both ``3-per-step:full`` and ``1-per-step:restricted``, so the record carries the whole
 identity (``dispatch_preference.route_id``) and the consult compares all of it.
 
@@ -80,26 +89,68 @@ until ``--allow-unpinned-subject`` names it, and the record then carries the str
 and the consult does not compare that source at all. The bench, ``fastpath`` and
 ``driver`` digests are instruments and are recorded, not compared.
 
-ONE RECORD, ONE ARCHITECTURE, for the same reason one deeper: the ratio a key carries
-was measured on one card's instruction set and occupancy, so rows from two devices
+=============================================================================
+One record, one card
+=============================================================================
+
+One record, one card, for the same reason one deeper: the ratio a key carries was
+measured on one card's instruction set, clocks and occupancy, so rows from two devices
 REFUSE (``mixed_device``) and the capability the surviving rows stamp -- read off the
-rows, never typed -- names the file. ``--out`` must be the name
-``dispatch_preference.record_path`` gives that capability, or the cut refuses
-(``out_names_another_capability``): a record written anywhere else is either a
-measurement no consult can find or one found for the WRONG architecture. And since
-the name carries the capability alone,
-a SECOND CARD of the same architecture would land on the first card's file (H100 PCIe
-and SXM both read 9.0), which ``mixed_device`` cannot see because it only looks inside
-one cut. RECORDS ARE ADDED, NEVER REPLACED: a new architecture's record lands beside
-the others under its own name, a re-cut of an architecture may rewrite only that
-architecture's file from rows of the device that file already names, and a record cut
-on another device is refused with no override (``existing_record_names_another_device``,
-and ``existing_record_unreadable`` when what is there cannot be read to say whose it
-is). The Metal table's records are named for the Apple GPU family its rows stamp
+rows, never typed -- names the architecture in the file name. The card is the exact
+device name the rows stamp (``host[].device``, which a run's dispatch record carries as
+``environment.device.name``), and its SLUG (``dispatch_preference.card_slug``, the
+reader's, so the two cannot spell a card two ways) is that name in lower case with
+every run of characters outside ``[a-z0-9]`` one ``_`` and none at either end:
+``NVIDIA GeForce RTX 3090`` is ``nvidia_geforce_rtx_3090``. Cards match by slug, never
+by prefix or family: an RTX 3090 Ti is not an RTX 3090. Two exact names with one
+slug are two cards, and an architecture's records keep one exact name per slug (the
+second is refused, ``existing_record_names_another_device``), so a slug never stands for
+two cards.
+
+A card's record has two names it may take (:func:`destination`):
+
+* ``<table>_kernels/timing_<arch>.json``, the name ``dispatch_preference.record_path``
+  gives the architecture: its REPRESENTATIVE, the record the dispatch path reads for
+  every card of that architecture that has no record of its own. Which card it is, is
+  data: the record names it in ``host[]``, and the report beside it says so on its
+  ``card:`` line;
+* ``<table>_kernels/timing_<arch>-<slug>.json``, a CARD RECORD beside it
+  (``dispatch_preference.record_path`` with the card), which the dispatch path reads
+  for that card alone. Neither a slug nor an architecture's spelling contains ``-``, so
+  the name parses one way (``dispatch_preference.record_name_parts``), and every
+  ``timing_*.json`` glob in the tree finds it. The reader refuses a card record whose
+  rows name another card (``record_named_for_another_card``).
+
+The first card cut for an architecture lands at the bare name and represents it. A
+re-cut of a card rewrites that card's own file, wherever it sits; another card's cut
+lands beside, under its own card name, and replaces nothing. A cut never retires,
+renames, moves or designates: changing an architecture's representative is a change to
+the tracked records. Retire the representative's record and report, and the chosen
+card's own record and report when it has them (a re-cut goes back to a card's own file
+while it exists), then cut the chosen card's rows, which land at the bare name left
+empty. ``--out`` must be exactly the destination, and anything else is refused by name
+before either file is written: ``out_names_another_capability`` (a name of another
+architecture, or of no record), ``existing_record_names_another_device`` (a file
+holding another card's record; another exact device's record under this card's slug,
+at either name; a file whose rows name more than one device; there is no override),
+``existing_record_unreadable`` (a file at ``--out``, at the bare name or at the card's
+own name that cannot be read to say whose it is), ``out_names_another_card`` (any other
+name; the refusal states the rule), ``card_has_two_records`` (the card is already at
+both names, so neither can be chosen) and ``unnamed_card`` (rows that stamp no device
+name). Records are added, and a cut replaces only its own card's record.
+
+The dispatch path reads a card's own record for that card and the representative for
+every other card of the architecture; an architecture with neither reads the prior of
+its vendor's nearest timed architecture. A package may ship any number of cards'
+records beside a representative, each at the name its content agrees with, one file per
+card per table and architecture (the layout test in
+``meep_gpu/test_dispatch_preference.py``). ``--list`` prints every record under a root
+with its role, card, digest and whether its barriers hold on this tree. The Metal
+table's records are named for the Apple GPU family its rows stamp
 (``timing_applegpu_g13s.json``), by the same rule.
 
 =============================================================================
-A RECORD CUT FROM PART OF A CAMPAIGN NAMES WHAT IT LACKS
+A record cut from part of a campaign names what it lacks
 =============================================================================
 
 With ``--account-for-release`` (the command line's default) the cut reads the table's
@@ -107,17 +158,17 @@ release (``fastpath.RELEASED_FUSED_ARMS``, ``fastpath_cuda.CUDA_RELEASED_FUSED_A
 ``metal_dispatch.METAL_RELEASED_FUSED_ARMS``: each released product and the route
 cases that drive it) and writes ``missing``: every released (product, case) that no
 row it read accounts for, with the reason -- the rows of that case were not timings
-(an ``ERROR`` row, as the 1.0 round's eleven DRIVE rows were), or no row of the case
-was cut at all. A partial set therefore cuts, and says what it owes, where it used to
-leave a record the release check refused. ``--check`` recomputes ``missing`` against
+(an ``ERROR`` row, as eleven DRIVE rows of the first 1.0 timing were), or no
+row of the case was cut at all. A partial set therefore cuts, and says what it owes,
+where it used to leave a record the release check refused. ``--check`` recomputes ``missing`` against
 the release in the tree it runs in, so a release that moved since the cut DIFFERS.
 
 =============================================================================
-WHICH PRODUCT A ROW PRICES
+Which product a row prices
 =============================================================================
 
 A row times a PLAN: every fused product in it against the single arms in the same
-slots. ONE NUMBER CANNOT PRICE TWO PRODUCTS, so:
+slots. One number cannot price two products, so:
 
 * a plan with one fused product prices that product;
 * a plan with several prices only the one that carries the deposit-repair bracket,
@@ -136,8 +187,8 @@ Per class (product, storage, dimensions, susceptibilities, bracketed), the measu
 cell counts are sorted and cut into maximal runs sharing one verdict. A run is then
 TRIMMED to sizes at least ``--min-rows`` rows measured, and that trimmed span is the
 band ``[lo, hi]``, inclusive. The remainder at either end is written as its own
-``unmeasured`` key, with its rows and numbers, so the next round sees what it owes.
-A BAND'S INTERIOR IS INTERPOLATED -- its edges are measured, the sizes between them
+``unmeasured`` key, with its rows and numbers, so the next timing campaign sees what it owes.
+A band's interior is interpolated -- its edges are measured, the sizes between them
 need not be -- which is why an edge must be corroborated: ``fused_spread`` and
 ``baseline_spread`` price the noise inside a window, never the spread BETWEEN
 sessions, and at neighbouring sizes the corpus shows that at the size of the thinnest
@@ -177,22 +228,25 @@ CUT_BY = "parity/meep_gpu/cut_timing_record.py"
 #: median; two is the least that can disagree.
 MIN_ROWS_PER_KEY = 2
 
-#: The floors ``bench_fused_products.run_case`` recorded until owner ruling R33. All
+#: The floors ``bench_fused_products.run_case`` recorded until the between-pass gate. All
 #: seven, by name: a row written before one of them existed did not pass it. What a
-#: record cut by the window rule (:data:`WINDOW_GATE`, every record cut before R33)
+#: record cut by the window rule (:data:`WINDOW_GATE`, every record cut before the between-pass gate)
 #: requires.
 REQUIRED_FLOORS = ("substitution_proved", "bit_identical", "moved_words_positive",
                    "non_finite_zero", "no_compiles_inside_timed_region",
                    "spread_within_gate", "singles_are_the_same_table")
-#: The bench floor that read a leg's within-pass window spread: no floor under R33.
+#: The bench floor that read a leg's within-pass window spread: no floor under the between-pass gate.
 WINDOW_FLOORS = ("spread_within_gate",)
-#: The floors a record cut by the between-pass rule requires: the six that gate.
+#: The floors a record cut by the between-pass rule requires: the six that gate. The
+#: ``_R33`` suffix here and on :data:`RULES_R33`, and the ``PHASE0_`` prefix of
+#: :data:`PHASE0_BASELINE_LEG`, are historical names for the 2026-10-16 between-pass
+#: rule and the deposit-repair timing harness; code and tests read them by name.
 REQUIRED_FLOORS_R33 = tuple(name for name in REQUIRED_FLOORS if name not in WINDOW_FLOORS)
 #: The two rules a record may be cut by, as ``cut.gate`` names them. The window rule is
-#: never stamped: every record cut before R33 carries no ``gate`` and recomputes by it.
+#: never stamped: every record cut before the between-pass gate carries no ``gate`` and recomputes by it.
 WINDOW_GATE, BETWEEN_PASS_GATE = "window", "between_pass"
 GATES = (WINDOW_GATE, BETWEEN_PASS_GATE)
-#: The between-pass spread a point's passes may show (R33): the 5 % gate.
+#: The between-pass spread a point's passes may show: the 5 % gate.
 BETWEEN_PASS_MAX = 0.05
 
 #: Sources whose digest is a POOLING BARRIER (with ``deposit_repair``, which the route
@@ -216,7 +270,7 @@ INSTRUMENT_SOURCES = ("bench", "fastpath", "driver", "phase0_harness")
 
 NOT_RECORDED = dp.NOT_RECORDED
 
-#: The Phase 0 leg every other leg of a point is measured against.
+#: The repair-harness leg every other leg of a point is measured against.
 PHASE0_BASELINE_LEG = "singles"
 
 EXIT_OK, EXIT_DIFFERS, EXIT_REFUSED, EXIT_ARTIFACTS_ABSENT = 0, 1, 2, 3
@@ -290,7 +344,11 @@ def read_files(files: Sequence[str], base: str) -> Tuple[List[Dict[str, Any]],
 # ---------------------------------------------------------------------------
 
 def _box_foreign(box: Mapping[str, Any]) -> Optional[List[str]]:
-    """Foreign compute processes on the row's own device, or None if unreadable."""
+    """Foreign compute processes on the row's own device, or None if unreadable.
+
+    A row's tables name its device by card id and its own process as ``own`` since they
+    leave the machine (``timing_host.recorded_compute_apps``), by raw UUID and pid before:
+    both tables of one row share one spelling, and either is read."""
     visible = str(box.get("CUDA_VISIBLE_DEVICES") or "").split(",")[0].strip()
     gpus = box.get("gpus")
     if not visible or not isinstance(gpus, str) or "compute_apps" not in box:
@@ -305,13 +363,72 @@ def _box_foreign(box: Mapping[str, Any]) -> Optional[List[str]]:
     foreign = []
     for entry in str(box.get("compute_apps") or "").splitlines():
         parts = [part.strip() for part in entry.split(",")]
-        if len(parts) >= 2 and parts[0] == uuid and parts[1] != str(box.get("pid")):
+        if len(parts) >= 2 and parts[0] == uuid and parts[1] not in (
+                "own", str(box.get("pid"))):
             foreign.append(entry.strip())
     return foreign
 
 
+#: The read of the bench's host record that lists the processes driving the Metal device
+#: (``bench_fused_products.host_state``): when it fails it is named under ``unreadable``
+#: and ``foreign_processes`` stays empty, so an empty list alone is no reading.
+HOST_NEIGHBOURS_READ = "neighbours"
+#: The platform on which that read runs; off it the record lists no process and read none.
+HOST_NEIGHBOURS_PLATFORM = "darwin"
+
+
+def _after_probe(row: Mapping[str, Any]) -> str:
+    """The field a row's after-probe of its device is in: ``host_after`` for a Metal row
+    (its host record), ``box_after`` for every other."""
+    return "host_after" if row.get("drive_table") == "metal" else "box_after"
+
+
+def _host_foreign(host: Mapping[str, Any]) -> Optional[List[str]]:
+    """The other processes driving the Metal device, as a Metal row's host record lists
+    them, or None when the record did not read them.
+
+    The bench's own record (``bench_fused_products.host_state``) lists every process
+    found driving the one Metal device, its own process, its ancestors and its children
+    excluded, each by its command. A read that failed is named under ``unreadable`` and
+    leaves the list empty, and off macOS no read runs at all, so either is no reading and
+    never a clean one."""
+    foreign = host.get("foreign_processes")
+    unreadable = host.get("unreadable")
+    if (not isinstance(foreign, list) or not isinstance(unreadable, Mapping)
+            or HOST_NEIGHBOURS_READ in unreadable
+            or host.get("platform") != HOST_NEIGHBOURS_PLATFORM):
+        return None
+    return [str(item) for item in foreign]
+
+
+def _metal_contended(row: Mapping[str, Any], require_after: bool) -> Optional[str]:
+    """:func:`contended` for a Metal row: its neighbours, read from its host record."""
+    marks = []
+    for when in ("host_before", "host_after"):
+        host = row.get(when)
+        if not isinstance(host, Mapping):
+            if when == "host_before":
+                return "contention cannot be read: the row carries no host_before"
+            if require_after:
+                return "the row carries no after-probe of its device"
+            continue
+        foreign = _host_foreign(host)
+        if foreign is None:
+            return (f"contention cannot be read: {when} does not record the processes "
+                    "driving the Metal device")
+        if foreign:
+            marks.append(f"{when.split('_')[1]}: {len(foreign)} foreign process(es) "
+                         "driving the Metal device")
+    return "contended -- " + "; ".join(marks) if marks else None
+
+
 def contended(row: Mapping[str, Any], require_after: bool = False) -> Optional[str]:
-    """Why this row is not a quiet-device measurement, or None if it is one."""
+    """Why this row is not a quiet-device measurement, or None if it is one.
+
+    A Metal row is read from its host record (:func:`_metal_contended`), every other
+    from its device probe, joined by device UUID."""
+    if row.get("drive_table") == "metal":
+        return _metal_contended(row, require_after)
     marks = []
     for when in ("box_before", "box_after"):
         box = row.get(when)
@@ -330,6 +447,47 @@ def contended(row: Mapping[str, Any], require_after: bool = False) -> Optional[s
     return "contended -- " + "; ".join(marks) if marks else None
 
 
+#: THE PREFERENCE RULE: the dispatch preference a fused row's process must have run
+#: under. A row prices the SHAPE RULE'S product against its singles -- that is what a
+#: key is -- and the package default arbitrates those products by the records cut
+#: here, so a fused leg timed under the default may have composed the singles a record
+#: already chose and timed nothing a key can price; a record cut from such rows loses
+#: its own vetoes, and the freeze after it vetoes nothing. So a row is admitted only
+#: when its ``process_environment`` names this value of the package's switch
+#: (``fastpath.PREFERENCE_SWITCH``), which ``bench_fused_products.resolve_preference``
+#: sets and records. A record cut by this rule stamps ``cut.fused_leg_preference``; a
+#: record with no stamp was cut before it and ``--check`` recomputes it without.
+FUSED_LEG_PREFERENCE = "span"
+#: Where a row records the switches its process ran under (the bench's
+#: ``ENVIRONMENT_KEY``).
+ENVIRONMENT_KEY = "process_environment"
+#: The prefix of the refusal the preference rule writes, for a reader matching reasons.
+NOT_THE_SHAPE_RULE = "fused leg not timed under the shape rule"
+
+
+def preference_refusal(row: Mapping[str, Any], required: Optional[str]) -> Optional[str]:
+    """Why this row's fused leg was not timed under ``required``, or None.
+
+    ``required`` None is a record cut before :data:`FUSED_LEG_PREFERENCE` existed, and
+    asks nothing. The switch is the package's, read late like the release. Asked by
+    :func:`gather` after :func:`admission_refusal`, of every row that one admits.
+    """
+    if required is None:
+        return None
+    from meep_gpu import fastpath  # noqa: PLC0415
+
+    switch = fastpath.PREFERENCE_SWITCH
+    if not isinstance(row.get(ENVIRONMENT_KEY), Mapping):
+        return (f"{NOT_THE_SHAPE_RULE}: the row records no {ENVIRONMENT_KEY}, so it "
+                f"cannot say its fused leg ran under {switch}={required}")
+    value = row[ENVIRONMENT_KEY].get(switch)
+    if value != required:
+        return (f"{NOT_THE_SHAPE_RULE}: {ENVIRONMENT_KEY} records {switch}={value!r}, "
+                f"not {required!r}, so the leg may have timed the default's composition "
+                "rather than the product a key prices")
+    return None
+
+
 def _floor_refusal(row: Mapping[str, Any], gate: str = BETWEEN_PASS_GATE) -> Optional[str]:
     floors = row.get("floors") or {}
     window = gate == WINDOW_GATE
@@ -337,8 +495,8 @@ def _floor_refusal(row: Mapping[str, Any], gate: str = BETWEEN_PASS_GATE) -> Opt
     missing = [name for name in required if name not in floors]
     if missing:
         return "floor not recorded: " + ", ".join(missing)
-    # UNDER R33 THE WINDOW FLOOR GATES NOTHING: a row written before the bench moved it
-    # out of its floors is read as one written after.
+    # Under the between-pass gate the window floor gates nothing: a row written before
+    # the bench moved it out of its floors is read as one written after.
     failed = sorted(name for name, passed in floors.items() if passed is not True
                     and (window or name not in WINDOW_FLOORS))
     if failed:
@@ -347,9 +505,9 @@ def _floor_refusal(row: Mapping[str, Any], gate: str = BETWEEN_PASS_GATE) -> Opt
             "fused_and_singles_used_the_same_table") is not True:
         return ("the control did not run the same kernel table as the fused leg "
                 "(substitution.fused_and_singles_used_the_same_table)")
-    # The bench's ``reportable`` is every floor it recorded; under R33 it is re-derived
-    # from the floors that gate, read above, so a pre-R33 row's window floor is not read
-    # back through it.
+    # The bench's ``reportable`` is every floor it recorded; under the between-pass gate
+    # it is re-derived from the floors that gate, read above, so the window floor of a row
+    # written before that gate is not read back through it.
     if window and row.get("reportable") is not True:
         return "the row is not reportable"
     return None
@@ -361,7 +519,7 @@ def admission_refusal(row: Mapping[str, Any], table: str,
     if row.get("drive_table") != table:
         return f"a row of the {row.get('drive_table')!r} table"
     if row.get("legs_mode") == "gpu-only":
-        # ONE LEG, NO SINGLES: such a row says what dispatched and how fast, never what
+        # One leg, no singles: such a row says what dispatched and how fast, never what
         # fusing saved against the singles, which is all a preference record keys on.
         return "a gpu-only row (the fused leg alone): it times no product against its singles"
     if row.get("verdict") != "TIMED" and not (
@@ -414,7 +572,7 @@ def _route_of(leg: Mapping[str, Any], sha: str,
     steps = int(leg.get("steps_per_window") or 0) * int(leg.get("windows") or 0)
     repairs = int(block.get("linear_repairs", 0)) + int(block.get("cells_repairs", 0))
     per_step = round(repairs / steps, 3) if steps else 0.0
-    if patch is not None:            # the Phase 0 harness keeps its own two counters
+    if patch is not None:            # the repair harness keeps its own two counters
         recorded = True
         restricted = int(patch.get("restriction_applied", 0)) > 0
         fell_back = int(patch.get("restriction_fell_back", 0)) > 0
@@ -452,8 +610,8 @@ def instrument_of(row: Mapping[str, Any], fused_leg: Mapping[str, Any]) -> str:
     """The timing instrument a row's fused leg was measured with, as the row records it:
     its window count and the probe floor its window target set (``bench_fused_products.
     size_chunk``: 0.1 of the target, at least 0.05 s). A DRIVE unit and a sweep point of
-    one case and grid shape are two instruments -- and two rows of the round, each with
-    its own passes -- so the between-pass gate never pools them (R33)."""
+    one case and grid shape are two instruments -- and two rows of the campaign, each with
+    its own passes -- so the between-pass gate never pools them."""
     probe = (((row.get("sizing") or {}).get("fused") or {}).get("probe") or {})
     floor = probe.get("min_seconds")
     return (f"windows={fused_leg.get('windows')};probe_min_s="
@@ -508,7 +666,7 @@ def build_measurement(ref: Mapping[str, Any], fused_leg: Mapping[str, Any],
                      for label, slots in products.items()},
         "route": route, "sha": sha, "digests": digests,
         "host": _host_of(plan), "policy": _policy_of(plan),
-        "after_probe": isinstance(row.get("box_after"), Mapping),
+        "after_probe": isinstance(row.get(_after_probe(row)), Mapping),
     }
     if baseline_line is not None:
         measurement["baseline_line"] = baseline_line
@@ -519,7 +677,7 @@ def build_measurement(ref: Mapping[str, Any], fused_leg: Mapping[str, Any],
 
 
 def _rate_spread(milliseconds: Sequence[float]) -> float:
-    """(max - min) / median of the RATES one leg's passes read (R33 spells the gate on
+    """(max - min) / median of the RATES one leg's passes read (the gate is spelled on
     pass rates; a rate is the reciprocal of ms/step)."""
     rates = [1.0 / value for value in milliseconds]
     return (max(rates) - min(rates)) / statistics.median(rates)
@@ -527,9 +685,9 @@ def _rate_spread(milliseconds: Sequence[float]) -> float:
 
 def between_pass(measurements: List[Dict[str, Any]], excluded: List[Dict[str, Any]]
                  ) -> List[Dict[str, Any]]:
-    """The measurements whose point's passes agree (R33), the others left out by name.
+    """The measurements whose point's passes agree, the others left out by name.
 
-    A POINT is a case and grid shape of one source (bench or Phase 0 leg) on ONE
+    A POINT is a case and grid shape of one source (bench or repair-harness leg) on ONE
     deposit-repair program -- the route identity :func:`one_program` compares, else the
     digest of an unbracketed row -- so rows of two routes never pool here, and a
     ``--select-route`` leaves the other route out by its own name, not by this one's --
@@ -558,7 +716,7 @@ def between_pass(measurements: List[Dict[str, Any]], excluded: List[Dict[str, An
         if wide:
             reason = (f"between-pass spread over the {len(members)} passes of this case, "
                       f"grid shape and instrument: {', '.join(wide)} > {BETWEEN_PASS_MAX} "
-                      "(R33)")
+                      "(between-pass gate)")
             for member in members:
                 struck[id(member)] = reason
     for measurement in measurements:
@@ -570,10 +728,12 @@ def between_pass(measurements: List[Dict[str, Any]], excluded: List[Dict[str, An
 
 
 def gather(lines: Sequence[Mapping[str, Any]], table: str, require_after: bool,
-           gate: str = BETWEEN_PASS_GATE
+           gate: str = BETWEEN_PASS_GATE,
+           preference: Optional[str] = FUSED_LEG_PREFERENCE
            ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], Dict[str, int]]:
     """``(measurements, excluded, counts)`` over every line read, duplicates dropped,
-    under ``gate`` (:data:`GATES`): the between-pass rule applies :func:`between_pass`."""
+    under ``gate`` (:data:`GATES`): the between-pass rule applies :func:`between_pass`;
+    ``preference`` is the preference rule (:func:`preference_refusal`)."""
     if gate not in GATES:
         raise CutRefused("unknown_gate", f"{gate!r} is not one of {GATES}")
     seen: Dict[str, Mapping[str, Any]] = {}
@@ -598,7 +758,8 @@ def gather(lines: Sequence[Mapping[str, Any]], table: str, require_after: bool,
             phase0.setdefault((ref["artifact"], str(row.get("case")),
                                json.dumps(row.get("grid_shape"))), []).append(ref)
             continue
-        refusal = admission_refusal(row, table, require_after, gate)
+        refusal = (admission_refusal(row, table, require_after, gate)
+                   or preference_refusal(row, preference))
         if refusal is None:
             legs = row.get("per_leg") or {}
             measurement, refusal = build_measurement(
@@ -612,14 +773,16 @@ def gather(lines: Sequence[Mapping[str, Any]], table: str, require_after: bool,
         base_refs = [r for r in refs if r["row"].get("leg") == PHASE0_BASELINE_LEG]
         base = base_refs[0] if len(base_refs) == 1 else None
         base_refusal = ("the point carries no single baseline leg" if base is None else
-                        admission_refusal(base["row"], table, require_after, gate))
+                        admission_refusal(base["row"], table, require_after, gate)
+                        or preference_refusal(base["row"], preference))
         if base is not None and base["row"].get("drive_table") == table:
             baselines += 1
         for ref in refs:
             row = ref["row"]
             if row.get("leg") == PHASE0_BASELINE_LEG:
                 continue
-            refusal = admission_refusal(row, table, require_after, gate)
+            refusal = (admission_refusal(row, table, require_after, gate)
+                       or preference_refusal(row, preference))
             if refusal is None and base_refusal is not None:
                 refusal = f"baseline leg: {base_refusal}"
             if refusal is None:
@@ -777,7 +940,7 @@ def _stats(rows: Sequence[Mapping[str, Any]]) -> Dict[str, Any]:
         "fused_spread": _rounded(max(row["fused_spread"] for row in rows)),
         "baseline_spread": _rounded(max(row["baseline_spread"] for row in rows)),
     }
-    # ROW BY ROW, each against its own two spreads (dispatch_preference.least_margin):
+    # Row by row, each against its own two spreads (dispatch_preference.least_margin):
     # the pooled extremes above are for reading, and describe no row that was timed.
     stats["veto_margin"] = dp.least_margin(rows)
     stats["slower_beyond_spread"] = stats["veto_margin"] > 0.0
@@ -788,7 +951,7 @@ def attribute(measurements: Sequence[Mapping[str, Any]]
               ) -> Tuple[Dict[Tuple[Any, ...], List[Dict[str, Any]]], int]:
     """``({class: [attributed row]}, rows-times-products not attributed)``.
 
-    ONE NUMBER, ONE PRODUCT. A row prices its plan's sole fused product, or -- when
+    One number, one product. A row prices its plan's sole fused product, or -- when
     the plan holds several -- the one and only one of them that carries the bracket.
     A plan of two clean products prices NEITHER: one joint ratio written into a key
     for each would let a partner that loses veto an innocent product.
@@ -877,9 +1040,9 @@ def band_keys(identity: Tuple[Any, ...], rows: List[Dict[str, Any]],
 
     keys: Dict[str, Dict[str, Any]] = {}
     for index, run in enumerate(runs):
-        # A BAND EDGE IS ITS REACH, AND ONE SESSION MAY NOT SET IT. The run is trimmed
+        # A band edge is its reach, and one session may not set it. The run is trimmed
         # to sizes at least min_rows rows measured; the remainder keeps its rows and
-        # its numbers under its own unmeasured key, so the next round sees what it owes.
+        # its numbers under its own unmeasured key, so the next timing campaign sees what it owes.
         corroborated = [size for size in run if counts[size] >= min_rows]
         lo = corroborated[0] if corroborated else run[0]
         hi = corroborated[-1] if corroborated else run[-1]
@@ -949,18 +1112,21 @@ RULES = {
                    "allowed by name, and is then not compared at all",
 }
 
-#: The rules a record cut by the between-pass gate (R33) states: the window rule's, with
+#: The rules a record cut by the between-pass gate states: the window rule's, with
 #: admission restated and the gate itself named. A record cut by the window rule states
-#: :data:`RULES` byte for byte.
+#: :data:`RULES` byte for byte. A record holds the rule set it was cut by (``rules``), and
+#: ``--check`` recomputes the whole record and compares it byte for byte, so editing
+#: either set breaks the check of every record already cut by it until that record is
+#: re-cut.
 RULES_R33 = dict(
     RULES,
     admission="verdict TIMED or TIMED-NOT-REPORTABLE with every gating floor passed and "
               "all six recorded (the same-table control among them; the within-pass "
-              "window floor of a row written before R33 is not read), the plan's slots "
+              "window floor of a row written before the between-pass gate is not read), the plan's slots "
               "served by this table alone (substitution.tables_dispatched), lifted on "
               "the device, no foreign process on the row's device by UUID before or "
               "after, a recorded deposit_repair digest, and the between-pass gate",
-    between_pass="owner ruling R33 (2026-10-16): the admitted rows of one case, grid "
+    between_pass="the between-pass gate (2026-10-16): the admitted rows of one case, grid "
                  "shape, repair program and timing instrument (window count and the probe "
                  "floor its target sets) are its passes; two or more enter only when the "
                  "spread of their "
@@ -972,6 +1138,43 @@ RULES_R33 = dict(
                   "dispatch_preference spells it",
 )
 
+#: The rules a Metal record states: the between-pass rule's, with admission restated for
+#: the Metal table, whose rows read their neighbours from the bench's host record and
+#: record the Metal launch-rate floor beside the six, and the between-pass sentence
+#: stated without the date the gate was introduced on (a shipped record's sealed text
+#: names no date). Stamped into a Metal record alone (:func:`rules_for`), so
+#: :data:`RULES` and :data:`RULES_R33`, and every NVIDIA record cut by them, recompute
+#: byte for byte; editing this set re-cuts every Metal record.
+RULES_METAL = dict(
+    RULES_R33,
+    admission="verdict TIMED or TIMED-NOT-REPORTABLE with every gating floor passed (the "
+              "Metal launch-rate floor, windows_launched_at_the_proved_rate, among the "
+              "recorded floors) and all six recorded (the same-table control among them; "
+              "the within-pass window floor of a row written before the between-pass gate "
+              "is not read), the plan's slots served by this table alone "
+              "(substitution.tables_dispatched), lifted on the device, no foreign process "
+              "driving the Metal device before or after, read from the row's host record "
+              "(host_before and host_after, foreign_processes; a record that did not read "
+              "them is not read), a recorded deposit_repair digest, and the between-pass "
+              "gate",
+    between_pass="the between-pass gate: the admitted rows of one case, grid shape, repair "
+                 "program and timing instrument (window count and the probe floor its "
+                 "target sets) are its passes; two or more enter only when the spread of "
+                 "their fused and of their baseline rates, (max - min) / median, is at most "
+                 "5 % on each leg, else every row of the point is left out by name; a point "
+                 "timed once has no between-pass spread and is not struck by it",
+)
+
+
+def rules_for(table: str, gate: str) -> Dict[str, str]:
+    """The rule set a record of ``table`` cut under ``gate`` states: :data:`RULES` for
+    the window rule, else :data:`RULES_METAL` for the Metal table and :data:`RULES_R33`
+    for an NVIDIA one. ``--check`` recomputes a record through :func:`cut`, so by the
+    same selection."""
+    if gate == WINDOW_GATE:
+        return RULES
+    return RULES_METAL if table == "metal" else RULES_R33
+
 
 #: Where each table's release lives: (module, name) of ``{product: route cases}``, the
 #: map the dispatch path itself reads. Read only when the release is accounted for.
@@ -982,7 +1185,9 @@ RELEASE_TABLES = {"triton": ("meep_gpu.fastpath", "RELEASED_FUSED_ARMS"),
 #: The admission refusals (:func:`admission_refusal`) that say no timing of this table
 #: was made at all: the bench row is not a timing, is another table's row, or is a host
 #: smoke row. An excluded row of this kind accounts for its case without timing it.
-NOT_A_TIMING = ("verdict ", "a row of the ", "a host smoke row")
+#: A row whose fused leg did not run under the shape rule (:data:`NOT_THE_SHAPE_RULE`)
+#: timed no product a key prices, so it is one of them.
+NOT_A_TIMING = ("verdict ", "a row of the ", "a host smoke row", NOT_THE_SHAPE_RULE)
 
 
 def released_cases(table: str) -> Dict[str, List[str]]:
@@ -1000,7 +1205,7 @@ def missing_from_release(keys: Mapping[str, Mapping[str, Any]],
                          released: Mapping[str, Sequence[str]]) -> List[Dict[str, str]]:
     """Every released (product, case) the record does not account for, with why.
 
-    THE RELEASE CHECK'S OWN RULE (``test_cut_timing_record``): a case is accounted for
+    The release check's own rule (``test_cut_timing_record``): a case is accounted for
     when a key prices a row of it, or when a row of it was timed on this table and
     excluded by name (a floor failed, two tables served the plan); a product is
     accounted for when it is a key, the unpriced partner of a priced product, or every
@@ -1042,17 +1247,28 @@ def cut(table: str, roots: Sequence[str], *, base: str = HERE,
         require_box_after: bool = False,
         allow_unpinned_subject: Sequence[str] = (),
         released: Optional[Mapping[str, Sequence[str]]] = None,
-        gate: str = BETWEEN_PASS_GATE) -> Dict[str, Any]:
+        gate: str = BETWEEN_PASS_GATE,
+        preference: Optional[str] = FUSED_LEG_PREFERENCE,
+        costs: bool = False) -> Dict[str, Any]:
     """The sealed record for ``table`` from every ``rows.jsonl`` under ``roots``.
 
     ``gate`` is the rule the rows are admitted by (:data:`GATES`): the between-pass gate
-    of R33, stamped in ``cut.gate``, or the window floor every record cut before it was
+    of 2026-10-16, stamped in ``cut.gate``, or the window floor every record cut before it was
     cut by, which is not stamped, so such a record recomputes byte for byte.
 
     ``released`` (``{product: [route case]}``, :func:`released_cases`) accounts for the
     release: the record names what it lacks under ``missing``. Absent, nothing is
     accounted and the record carries neither the block nor the parameter, which is how
     every record cut before the block existed recomputes byte for byte.
+
+    ``preference`` is the dispatch preference a fused row must have run under
+    (:data:`FUSED_LEG_PREFERENCE`, stamped in ``cut.fused_leg_preference``); ``None`` is
+    the rule every record cut before it was cut by, which is not stamped.
+
+    ``costs`` stamps the record ``/3`` (``dispatch_preference.SCHEMA_COSTS``): the same
+    keys, plus the size-aware cost points ``dispatch_preference.add_costs`` derives from
+    them, stamped in ``cut.costs``. False writes ``/2``, which is how every record cut
+    before the cost model recomputes byte for byte.
     """
     if table not in dp.TABLES:
         raise CutRefused("unknown_table", f"{table!r} is not one of {dp.TABLES}")
@@ -1062,7 +1278,8 @@ def cut(table: str, roots: Sequence[str], *, base: str = HERE,
     lines, file_table = read_files(files, base)
     if not lines:
         raise CutRefused("no_rows", f"no rows.jsonl line under {list(roots)}")
-    measurements, excluded, counts = gather(lines, table, require_box_after, gate)
+    measurements, excluded, counts = gather(lines, table, require_box_after, gate,
+                                            preference)
     measurements, route = one_program(measurements, excluded, select_route)
     barrier = subject_barrier(table, measurements, allow_unpinned_subject)
     classes, skipped = attribute(measurements)
@@ -1085,8 +1302,7 @@ def cut(table: str, roots: Sequence[str], *, base: str = HERE,
                 "select_route": select_route,
                 "require_box_after": bool(require_box_after),
                 "allow_unpinned_subject": sorted(set(allow_unpinned_subject))},
-        "rules": dict(RULES if gate == WINDOW_GATE else RULES_R33,
-                      min_rows_per_key=int(min_rows)),
+        "rules": dict(rules_for(table, gate), min_rows_per_key=int(min_rows)),
         "route": route,
         "subject_barrier": barrier,
         "host": [json.loads(host) for host in hosts],
@@ -1106,12 +1322,21 @@ def cut(table: str, roots: Sequence[str], *, base: str = HERE,
     }
     if gate != WINDOW_GATE:
         record["cut"]["gate"] = gate
+    if preference is not None:
+        record["cut"]["fused_leg_preference"] = preference
+        record["rules"]["fused_leg_preference"] = (
+            f"a fused row is admitted only when its {ENVIRONMENT_KEY} records the "
+            f"package's dispatch-preference switch set to {preference!r}: the shape "
+            "rule composes its fused leg alone, so the row prices the product a key "
+            "names and not the composition the default arbitrated")
     if released is not None:
         record["cut"]["account_for_release"] = True
         lacking = missing_from_release(keys, excluded, released)
         if lacking:
             record["missing"] = lacking
-    sealed = dp.seal(record)
+    # /3: the same record, stamped and priced by dispatch_preference.add_costs, so a /2
+    # record re-stamped there is byte for byte this cut (cut.costs, rules.costs, costs)
+    sealed = dp.add_costs(record) if costs else dp.seal(record)
     dp.validate(sealed, expect_table=table)
     return sealed
 
@@ -1191,7 +1416,7 @@ def _instances(board: Mapping[str, Any], census: Mapping[str, Mapping[str, Any]]
             if not isinstance(block, Mapping) or not block.get("covered_modulo_backend"):
                 continue
             spans = block.get("spans") or ()
-            # THE BRACKET RULE, CHECKED RATHER THAN ASSUMED. A product carries the
+            # The bracket rule, checked rather than assumed. A product carries the
             # bracket when the field its LEADING slot writes is one a source injects,
             # and configuration.source_field_types spells those fields with the same
             # letters the slots end in. A leading slot that names no such field
@@ -1264,7 +1489,7 @@ def preview(record: Mapping[str, Any], board_path: str,
         out["not_joined_because"] = how
         return out
     out["joined_from"] = how
-    # THE RECORD'S OWN ROUTE AND ARCHITECTURE, because the preview asks what it would
+    # The record's own route and architecture, because the preview asks what it would
     # read IF it were in force on the runs its rows timed; the live route travels
     # beside the answer. The reader pins a record to exactly one capability
     # (dispatch_preference.validate), and cut() validates what it sealed.
@@ -1367,6 +1592,8 @@ def render_report(record: Mapping[str, Any], preview: Optional[Mapping[str, Any]
         f"record_sha256 {record[dp.DIGEST_FIELD]}",
         f"recorded_utc {record['recorded_utc']} (the newest admitted row)",
         f"cut by {record['cut']['by']} from " + ", ".join(record["inputs"]["roots"]),
+        f"card: {', '.join(_device_names(record))} (architecture "
+        f"{', '.join(dp.record_capabilities(record))})",
         f"route {record['route']['id']} -- deposit_repair "
         f"{record['route']['deposit_repair_sha256']}; restriction counters recorded on "
         f"{record['route']['restriction_counters_recorded_on']}",
@@ -1376,7 +1603,7 @@ def render_report(record: Mapping[str, Any], preview: Optional[Mapping[str, Any]
             or "none"),
     ]
     if record["cut"].get("gate") == BETWEEN_PASS_GATE:
-        # A RECORD CUT BEFORE R33 carries no stamp and its report reads as it always did.
+        # A window-rule record carries no stamp and its report reads as it always did.
         out.append("gate: " + record["rules"]["between_pass"])
     barrier = record["subject_barrier"]
     for source in barrier["allowed_unpinned"]:
@@ -1389,7 +1616,7 @@ def render_report(record: Mapping[str, Any], preview: Optional[Mapping[str, Any]
     if live_route is not None and live_route != record["route"]["deposit_repair_sha256"]:
         out += [
             "",
-            "THIS RECORD DESCRIBES A REPAIR ROUTE THAT IS NOT THE ONE IN THE TREE. "
+            "This record describes a repair route that is not the one in the tree. "
             f"meep_gpu/deposit_repair.py digests to {live_route}; every row here timed "
             f"{record['route']['deposit_repair_sha256']}. A consult handed the live "
             "digest answers no_record for every key until rows timed on the live bytes "
@@ -1451,7 +1678,7 @@ def render_report(record: Mapping[str, Any], preview: Optional[Mapping[str, Any]
             out += [f"    {count:4d}  {reason}"
                     for reason, count in preview["no_record"].items()]
             if not preview["join_agrees_with_the_board"]:
-                out.append("  THE JOIN AND THE BOARD DISAGREE on the products marked "
+                out.append("  The join and the board disagree on the products marked "
                            "below, so the preview total is not the board's arithmetic")
             out.append("  product: dispatching on the board / joined / bracketed / "
                        "vetoed / not vetoed / no record")
@@ -1466,77 +1693,248 @@ def render_report(record: Mapping[str, Any], preview: Optional[Mapping[str, Any]
 
 
 # ---------------------------------------------------------------------------
-# Command line
+# One record, one card: the names a record may be written under
 # ---------------------------------------------------------------------------
+#
+# The names are the reader's (``dispatch_preference.record_path``, with its ``card``
+# argument, ``card_slug`` and ``record_name_parts``): the dispatch path reads a card's
+# own record under exactly the name this tool writes it, and nothing here spells one.
 
-def out_capability(table: str, out: str, record: Mapping[str, Any]) -> str:
-    """The capability the admitted rows stamp, once ``--out`` is the name it owns.
+def _device_names(record: Mapping[str, Any]) -> List[str]:
+    """Every device name a record's ``host[]`` rows stamp, as recorded, sorted."""
+    return sorted({str((host or {}).get("device")) for host in record["host"]})
 
-    THE NAME IS PART OF THE RECORD. One record prices one architecture -- rows from
-    two devices already refuse (``mixed_device``) and the reader refuses a record
-    whose rows name any number of capabilities but one -- and the consult looks the
-    file up by :func:`dispatch_preference.record_path`. A record written under another
-    name is a measurement nothing will find, or one that will be found for the wrong
-    architecture; the capability is therefore READ OFF THE ROWS and ``--out`` has to
-    agree with it. The directory is the caller's (a staging tree, a release copy); the
-    basename is the record's.
+
+def record_card(record: Mapping[str, Any]) -> str:
+    """The one card a record's rows ran on: the exact name its ``host[]`` rows stamp.
+
+    A card on two drivers is two host rows and one card; two names are two cards, which
+    the cut already refuses (``mixed_device``); no name is ``unnamed_card``.
     """
-    # cut() seals and then validates, and the reader refuses a record whose rows do
-    # not name exactly ONE compute capability, so there is one to name the file for.
-    capability, = dp.record_capabilities(record)
-    wanted = os.path.basename(dp.record_path(table, capability))
-    if os.path.basename(out) != wanted:
-        raise CutRefused(
-            "out_names_another_capability",
-            f"the admitted rows were timed on architecture {capability}, whose "
-            f"record is named {wanted}; --out names {os.path.basename(out)!r}. The "
-            f"architecture is in the name so that a consult on another architecture "
-            f"cannot find this record at all")
-    return capability
+    names = sorted({str((host or {}).get("device") or "") for host in record["host"]})
+    if len(names) > 1:
+        raise CutRefused("mixed_device", "the admitted rows were timed on more than one "
+                                         f"device: {names}")
+    name = names[0] if names else ""
+    try:
+        dp.card_slug(name)
+    except dp.RecordRefused as refusal:
+        raise CutRefused(refusal.code, f"{refusal.detail}, so the record cannot be "
+                                       "placed") from refusal
+    return name
 
 
 def _devices_named(path: str) -> Optional[List[str]]:
     """The devices the record at ``path`` says it timed, or ``None`` if it cannot say.
 
-    A LENIENT READ on purpose: the only question is whose evidence is about to be
-    overwritten, and a record that fails the reader's other rules still answers it.
-    One that cannot be parsed at all answers nothing, which is its own refusal.
+    A lenient read on purpose: the only question is whose evidence is at that name, and
+    a record that fails the reader's other rules still answers it. One that cannot be
+    parsed at all (or is not there) answers nothing.
     """
     try:
         with open(path, encoding="utf-8") as handle:
-            held = json.load(handle)
-        return sorted({str(host.get("device")) for host in held["host"]})
+            return _device_names(json.load(handle))
     except (OSError, ValueError, TypeError, KeyError, AttributeError):
         return None
 
 
-def refuse_to_replace_another_device(out: str, record: Mapping[str, Any]) -> None:
-    """Refuse to write over a record cut on a DIFFERENT card. There is no override.
+def _card_at(path: str, card: str) -> Optional[str]:
+    """The one card whose record is at ``path``, or None when nothing is there.
 
-    ``mixed_device`` only looks inside one cut, and the file name carries the
-    architecture alone, so a second card of the same architecture would write over
-    the first card's rows with nothing said. RECORDS ARE ADDED, NEVER REPLACED: a
-    re-cut may rewrite the file of the device it names (a records update), and
-    another device's evidence is never retired by a cut.
+    A file there that cannot say it is ONE card's record is refused, whatever ``--out``
+    names: one that does not read as a record (``existing_record_unreadable``), and one
+    whose rows name more than one device (``existing_record_names_another_device``).
+    Either could be any card's, this one's included, so a cut neither writes over it
+    nor places this card's record beside it.
     """
-    if not os.path.exists(out):
-        return
-    held = _devices_named(out)
-    mine = sorted({str((host or {}).get("device")) for host in record["host"]})
-    if held is None:
+    if not os.path.exists(path):
+        return None
+    held = _devices_named(path)
+    if not held:
         raise CutRefused(
             "existing_record_unreadable",
-            f"{out} is already there and does not read as a record, so it cannot say "
-            f"which device it was cut on; this cut timed {mine}. A record is added "
-            f"beside the others and never replaces one")
-    if held != mine:
+            f"{path} is already there and does not read as a record, so it cannot say "
+            f"which card it was cut on, and this cut of {card} can be placed neither over "
+            f"it nor beside it. Restore or retire it first")
+    if len(held) > 1:
         raise CutRefused(
             "existing_record_names_another_device",
-            f"{out} was cut on {held} and these rows were timed on {mine}: the file "
-            f"name carries the architecture, not the card, so this write would "
-            f"replace one card's evidence with another's. A record is added beside the "
-            f"others and never replaces one")
+            f"{path} was cut on {held}, more than one device, so it is not one card's "
+            f"record, and this cut of {card} can be placed neither over it nor beside it")
+    return held[0]
 
+
+def _slug_or_none(name: str) -> Optional[str]:
+    """``name``'s slug, or None for a name that leaves none (it then matches no card)."""
+    try:
+        return dp.card_slug(name)
+    except dp.RecordRefused:
+        return None
+
+
+def destination(table: str, record: Mapping[str, Any], directory: str) -> str:
+    """Where this cut's record of ``table`` is written in ``directory``.
+
+    The bare name (the architecture's representative) when it already holds this card's
+    record; else this card's own name when that file exists (a re-cut rewrites a card's
+    file wherever it sits); else the bare name when nothing is there (the first card cut
+    for an architecture represents it); else this card's own name, beside the
+    representative. Refused first, whatever ``--out`` names: a file at either name that
+    cannot say it is one card's record (:func:`_card_at`); another exact device's record
+    under this card's slug, at this card's own name or as the representative
+    (``existing_record_names_another_device``: two cards, and one architecture's records
+    keep one exact name per slug, so a slug never stands for two cards); and a card
+    already at both names (``card_has_two_records``), since neither could be chosen
+    without hiding the other.
+    """
+    capability, = dp.record_capabilities(record)
+    card = record_card(record)
+    slug = dp.card_slug(card)
+    bare = os.path.join(directory, os.path.basename(dp.record_path(table, capability)))
+    own = os.path.join(directory, os.path.basename(
+        dp.record_path(table, capability, card=card)))
+    at_bare = _card_at(bare, card)
+    at_own = _card_at(own, card)
+    if at_own not in (None, card):
+        raise CutRefused(
+            "existing_record_names_another_device",
+            f"{own}, this card's own name, holds a record cut on {at_own!r}, and these "
+            f"rows were timed on {card!r}: two exact names with the one slug {slug} are "
+            "two cards, and an architecture's records keep one exact name per slug. There "
+            "is no override")
+    if at_bare not in (None, card) and _slug_or_none(at_bare) == slug:
+        raise CutRefused(
+            "existing_record_names_another_device",
+            f"{bare} was cut on {at_bare!r} and these rows were timed on {card!r}: two "
+            f"exact names with the one slug {slug} are two cards, and an architecture's "
+            "records keep one exact name per slug. There is no override")
+    if at_bare == card and at_own == card:
+        raise CutRefused(
+            "card_has_two_records",
+            f"{bare} and {own} both hold a record of {card}: one card has one record, so "
+            "retire one of them before cutting again")
+    if at_bare == card:
+        return bare
+    if at_own is not None:
+        return own
+    if at_bare is None:
+        return bare
+    return own
+
+
+def place(table: str, out: str, record: Mapping[str, Any]) -> str:
+    """The capability the admitted rows stamp, once ``--out`` is this record's destination.
+
+    The name is part of the record. One record prices one card of one architecture --
+    rows from two devices already refuse (``mixed_device``) -- and the consult looks the
+    file up by :func:`dispatch_preference.record_path`. So the architecture is read off
+    the rows, the card off the rows too, and ``--out`` has to be exactly where
+    :func:`destination` puts that card's record in ``--out``'s directory (a staging
+    tree, a release copy): any other name is refused, and the refusal names the right
+    one. Nothing is written by a refusal.
+    """
+    # cut() seals and then validates, and the reader refuses a record whose rows do
+    # not name exactly ONE compute capability, so there is one to name the file for.
+    capability, = dp.record_capabilities(record)
+    card = record_card(record)
+    wanted = destination(table, record, os.path.dirname(out) or ".")
+    named = os.path.basename(wanted)
+    parts = dp.record_name_parts(out)
+    if parts is None or parts[0] != capability:
+        raise CutRefused(
+            "out_names_another_capability",
+            f"the admitted rows were timed on architecture {capability}, on {card}, "
+            f"whose record is named {named} here; --out names "
+            f"{os.path.basename(out)!r}. The architecture is in the name so that a "
+            f"consult on another architecture cannot find this record at all")
+    if os.path.exists(out):
+        held = _devices_named(out)
+        if held is None:
+            raise CutRefused(
+                "existing_record_unreadable",
+                f"{out} is already there and does not read as a record, so it cannot "
+                f"say which device it was cut on; this cut timed {card}, whose record "
+                f"is named {named} here. A cut never writes over a record that cannot "
+                f"say whose it is")
+        if held != [card]:
+            raise CutRefused(
+                "existing_record_names_another_device",
+                f"{out} was cut on {held} and these rows were timed on {[card]}: a cut "
+                f"replaces only its own card's record, and this one's is named {named} "
+                f"here")
+    if os.path.abspath(out) != os.path.abspath(wanted):
+        raise CutRefused(
+            "out_names_another_card",
+            f"--out names {os.path.basename(out)!r}, and the record of {card} on "
+            f"architecture {capability} is named {named} here: the bare name when it "
+            f"already holds this card's record, else the card's own name when that file "
+            f"is there, else the bare name when it is empty, else the card's own name "
+            f"beside it. A cut never moves a card's record: to make this card the "
+            f"representative, retire the representative's record and report, and this "
+            f"card's own if it has them, then cut again")
+    return capability
+
+
+# ---------------------------------------------------------------------------
+# The records under a root
+# ---------------------------------------------------------------------------
+
+def list_records(root: Optional[str] = None) -> int:
+    """One line per record under ``root`` (default: the package): read only.
+
+    Each line names the file's table and architecture, its role (the architecture's
+    ``representative``, the name the dispatch path reads for every card of the
+    architecture with no record of its own; a ``card record`` beside it, which that card
+    alone reads; or ``named for neither``), its exact card and
+    slug, ``record_sha256`` (first 12), ``recorded_utc``, schema, and whether its
+    deposit-repair route and its compared emitters hold on this tree, as the consult
+    compares them. A file the reader refuses is named with its refusal.
+    """
+    if root is None:
+        root = os.path.dirname(os.path.abspath(dp.__file__))
+    files = dp.record_files(root)
+    if not files:
+        say(f"no timing record under {root}")
+        return EXIT_OK
+    live_route = dp.repair_route_sha256()
+    code = EXIT_OK
+    for path in files:
+        name = os.path.relpath(path, root).replace(os.sep, "/")
+        try:
+            record = dp.load_record(path)
+            card = record_card(record)
+        except (dp.RecordRefused, CutRefused) as refusal:
+            say(f"{name}: REFUSED {refusal}")
+            code = EXIT_REFUSED
+            continue
+        table = record["table"]
+        capability, = dp.record_capabilities(record)
+        if os.path.abspath(path) == os.path.abspath(dp.record_path(table, capability,
+                                                                   root=root)):
+            role = "representative"
+        elif os.path.abspath(path) == os.path.abspath(
+                dp.record_path(table, capability, card=card, root=root)):
+            role = "card record"
+        else:
+            role = "named for neither"
+        recorded = record["route"]["deposit_repair_sha256"]
+        live = dp.live_subject_sha256(table)
+        moved = sorted(source for source, digest in dp.compared_emitters(record).items()
+                       if live.get(source) != digest)
+        route = ("route holds: yes" if recorded == live_route else
+                 f"route holds: no ({recorded[:12]} against the live {live_route[:12]})")
+        emitters = ("emitters hold: yes" if not moved else
+                    f"emitters hold: no ({', '.join(moved)} moved)")
+        say(f"{name}: table {table}, architecture {capability}, {role}, card {card} "
+            f"({dp.card_slug(card)}), record_sha256 {record[dp.DIGEST_FIELD][:12]}, "
+            f"recorded_utc {record['recorded_utc']}, schema {record['schema']}, "
+            f"{route}, {emitters}")
+    return code
+
+
+# ---------------------------------------------------------------------------
+# Command line
+# ---------------------------------------------------------------------------
 
 def check(path: str, base: str) -> int:
     """Recompute a record from the artifacts it names; refuse on any difference."""
@@ -1557,11 +1955,14 @@ def check(path: str, base: str) -> int:
         again = cut(parameters["table"], roots, base=base,
                     min_rows=parameters["min_rows"],
                     select_route=parameters["select_route"],
+                    # By the preference rule it was cut by: no stamp predates the rule
+                    preference=parameters.get("fused_leg_preference"),
                     require_box_after=parameters["require_box_after"],
                     allow_unpinned_subject=parameters["allow_unpinned_subject"],
                     released=released,
-                    # BY THE RULE IT WAS CUT BY: no stamp is the window floor (R33)
-                    gate=parameters.get("gate", WINDOW_GATE))
+                    # By the rule it was cut by: no stamp is the window floor
+                    gate=parameters.get("gate", WINDOW_GATE),
+                    costs=bool(parameters.get("costs")))
     except (CutRefused, dp.RecordRefused) as refusal:
         say(f"DIFFERS {path}: the rows on disk no longer cut at all -- {refusal}")
         return EXIT_DIFFERS
@@ -1583,8 +1984,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--rows", action="append", default=[],
                         help="a rows.jsonl, or a directory searched for them; repeatable")
     parser.add_argument("--out", help="the record to write; the report lands beside it. "
-                                      "Its basename is the one dispatch_preference."
-                                      "record_path gives the capability the rows stamp")
+                                      "It is where the rows' card's record goes in its "
+                                      "directory: the name dispatch_preference."
+                                      "record_path gives the capability the rows stamp, "
+                                      "or that name's card record beside it")
     parser.add_argument("--no-account-for-release", dest="account_for_release",
                         action="store_false",
                         help="do not read the table's release; the record then names "
@@ -1604,9 +2007,19 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                         help="what recorded paths are relative to (default: this directory)")
     parser.add_argument("--board", help="a fusion board JSON, for the labelled preview")
     parser.add_argument("--census", help="the census directory, if not the board's own")
+    parser.add_argument("--costs", action="store_true",
+                        help="cut a /3 record: the keys plus per-size cost points, which "
+                             "the dispatch preference reads at the run's own size")
     parser.add_argument("--check", metavar="RECORD",
                         help="recompute RECORD from its artifacts and refuse on a difference")
+    parser.add_argument("--list", action="store_true",
+                        help="print every record under --root with its role, card, digest "
+                             "and whether it holds on this tree; writes nothing")
+    parser.add_argument("--root", help="with --list: the directory laid out as the package "
+                                       "lays its records out (default: the package)")
     args = parser.parse_args(argv)
+    if args.list:
+        return list_records(args.root)
     if args.check:
         return check(args.check, args.base)
     if not (args.table and args.rows and args.out):
@@ -1617,11 +2030,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                      require_box_after=args.require_box_after,
                      allow_unpinned_subject=args.allow_unpinned_subject,
                      released=(released_cases(args.table) if args.account_for_release
-                               else None))
-        # BEFORE ANYTHING IS WRITTEN: the name has to be the one the capability owns,
-        # and whatever is already under it has to be this cut's own device.
-        capability = out_capability(args.table, args.out, record)
-        refuse_to_replace_another_device(args.out, record)
+                               else None),
+                     costs=args.costs)
+        # Before anything is written: the name has to be where this card's record goes,
+        # and whatever is already under it has to be this cut's own card's.
+        capability = place(args.table, args.out, record)
     # dp.RecordRefused is the READER refusing what this tool built (cut seals and then
     # validates). It leaves by the same door as every other refusal, named.
     except (CutRefused, dp.RecordRefused) as refusal:
@@ -1645,7 +2058,17 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     say(report)
     say(f"wrote {args.out} and {stem}.report.txt -- the record of compute capability "
         f"{capability}, which is the architecture its rows ran on and the only one it "
-        f"prices")
+        f"prices, cut on {record_card(record)}")
+    if dp.record_name_parts(args.out)[1] is not None:
+        representative = os.path.basename(dp.record_path(args.table, capability))
+        absent = ("" if os.path.exists(os.path.join(os.path.dirname(args.out),
+                                                     representative))
+                  else ", which is not in this directory: here the architecture has no "
+                       "representative")
+        say(f"{os.path.basename(args.out)} is a card record: the dispatch path reads it "
+            f"for {record_card(record)} alone, and every other card of architecture "
+            f"{capability} reads {representative}, the architecture's "
+            f"representative{absent}")
     return EXIT_OK
 
 

@@ -1,6 +1,6 @@
 """The two in-seam mirror fills, carried inside the fused magnetic launch.
 
-WHAT THIS FILE PINS THAT NO OTHER ONE DOES. Until 2026-08-28
+What this file pins that no other one does. Until 2026-08-28
 ``fused_magnetic_pair`` refused every mirrored axis by name, on a reason that was
 true of the NAIVE carry and only of it: a thread standing on a fill's destination
 would READ a post-curl ``B`` produced by a thread in another block, and an
@@ -19,14 +19,14 @@ turns one refusal into two claims, each of which needs its own measurement:
    run on NumPy so it is merge-bar evidence rather than a device-gated claim.
 
 2. **THE RACE.** No cell is written by two threads, and no cell is left unwritten.
-   Measured off the EMITTED DEVICE TEXT rather than off the Python tables that
+   Measured off the emitted device text rather than off the Python tables that
    produced it: :func:`write_map` scans the kernel body, tracks the guard stack by
    brace depth, and runs every thread of a launch. A carry that raced would show
    as a cell with two writers; a carry that dropped a cell would show as a hole,
    and BOTH directions are asserted, because a kernel that wrote nothing at all
    would pass the first check on its own.
 
-WHY THE FIRST CHECK CANNOT BE SKIPPED EVEN THOUGH A DEVICE GATE EXISTS. The
+Why the first check cannot be skipped even though a device gate exists. The
 device gate compares complete driver steps and would catch a wrong parity -- but
 only on a fixture that drives one. The ordering question the closed form settles
 (the fills are applied axis by axis, the wall clear sits between them, and a
@@ -34,7 +34,7 @@ corner carries the PRODUCT of two parities) is invisible unless two axes are
 folded at once, which is a fixture property, not a kernel property. This file
 sweeps the fold shapes; the device gate measures the bytes.
 
-CUPY IS NOT INSTALLED ON THE MERGE-BAR HOST and this file does not pretend
+CuPy is not installed on the merge-bar host and this file does not pretend
 otherwise. The predicate and the emitter need no device -- the emitter needs only
 the three certified modules' device strings -- so the certified halves are loaded
 BY PATH under private names, with ``cupy`` stubbed only for the duration of that
@@ -70,7 +70,7 @@ WRITTEN_ARRAYS = ("Bx", "By", "Bz", "fu_Bx", "fu_By", "fu_Bz",
                   "Hx", "Hy", "Hz", "f_w_Hx", "f_w_Hy", "f_w_Hz")
 
 #: Each auxiliary, the sub-step and component whose membership run it is stepped on
-#: (the auxiliary contract, bit_parity_0_10 KERNELS.md section 1 C2): fu_B* on the B
+#: (the auxiliary contract): fu_B* on the B
 #: curl's dsigu run, f_w_H* on update_H's dsigw run. Nowhere else does the kernel touch it.
 AUXILIARY_RUNS = {"fu_Bx": ("curl", "Bx"), "fu_By": ("curl", "By"), "fu_Bz": ("curl", "Bz"),
                   "f_w_Hx": ("constitutive", "Hx"), "f_w_Hy": ("constitutive", "Hy"),
@@ -147,7 +147,7 @@ def build(axes: str = "", phases=(), boundaries=None, extent: float = 2.0,
     2.25 the odd one, and :func:`test_the_fold_sweep_reaches_every_shape_the_carry_emits`
     requires both.
 
-    THE GRIDS ARE SMALL ON PURPOSE. :func:`write_map` runs every thread of a launch
+    The grids are small on purpose. :func:`write_map` runs every thread of a launch
     in the interpreter, so the shape is a runtime budget; nothing measured here
     scales with it, because both fills write whole PLANES and a 6-cell axis carries
     the same destination structure a 60-cell one does.
@@ -206,7 +206,7 @@ def _words(array):
 def test_the_closed_form_is_what_the_three_passes_leave(label, kwargs):
     """``carried_destinations``' composition, byte-compared to ``stepping`` itself.
 
-    THE CUDA TWIN OF ``metal_folded_far_carry_2026-08-20/ownership.json``. The
+    The CUDA twin of ``metal_folded_far_carry_2026-08-20/ownership.json``. The
     array path runs its own ``fill_symmetry_bc_B`` -> ``zero_metal_B`` ->
     ``fill_folded_far_ghosts_B`` in DRIVER ORDER (driver.py:3294-3296); the model
     applies the wall clear FIRST and then one composed multiply per destination
@@ -276,7 +276,7 @@ def test_the_closed_form_is_what_the_three_passes_leave(label, kwargs):
 def test_the_fold_sweep_reaches_every_shape_the_carry_emits():
     """The sweep is not vacuous: one, two and three folded axes, both terminations.
 
-    A NULL CONTROL FOR THE PARAMETRISATION ITSELF. The composition question --
+    A null control for the parametrisation itself. The composition question --
     does a corner carry the PRODUCT of two parities -- is invisible with one
     folded axis, so a sweep that happened to build only single folds would agree
     with any closed form at all.
@@ -344,7 +344,7 @@ _PML_APPLY = re.compile(
 #: call's last argument, its dsigw membership flag.
 _CONSTITUTIVE = re.compile(
     r"^\s*constitutive_apply(?:_pre)?\((\w+),\s*(\w+),\s*(\w+),.*,\s*(\w+)\);$")
-#: THE OWN-CELL HOIST: one guarded load of this thread's own word into a pre_*
+#: The own-cell hoist: one guarded load of this thread's own word into a pre_*
 #: register (fu behind its dsigu flag, B behind own_*, f_w_H and H behind own_* and
 #: then the dsigw flag). It writes no memory, and its register is never read by a guard
 #: or an index, so it contributes nothing to the write set.
@@ -377,7 +377,7 @@ def _pythonic(expression: str) -> str:
 def _scan(line, guards):
     """One statement as ``(guards, kind, payload)`` entries. Raises on anything new.
 
-    RAISING IS THE POINT. A statement shape this scanner does not know is a write
+    Raising is the point. A statement shape this scanner does not know is a write
     it might be missing, and a race check that silently skipped a store would
     report "no cell written twice" about a kernel it had not read.
     """
@@ -561,7 +561,7 @@ def _launch_arguments(grid, pml):
 
 @pytest.mark.parametrize("label,kwargs", FOLDS, ids=[row[0] for row in FOLDS])
 def test_no_cell_is_written_by_two_threads(label, kwargs, emitted):
-    """THE RACE PROOF, off the emitted device text and not off the tables.
+    """The race proof, off the emitted device text and not off the tables.
 
     A launch has no grid-wide barrier, so two threads writing one word is not a
     torn value the gate would catch as a divergence -- it is an UNDEFINED one that
@@ -739,13 +739,13 @@ def test_the_write_enumeration_would_catch_a_dropped_ownership_guard(emitted):
 
 
 # ---------------------------------------------------------------------------
-# 3. THE DEVICE TEXT -- the terms that measured zero before this round
+# 3. The device text -- the terms that measured zero before the 2026-08-28 carry
 # ---------------------------------------------------------------------------
 
 def test_the_kernel_now_carries_the_fill_and_reflect_terms(emitted):
     """The fill, the reflect row and the parity are IN the emitted kernel.
 
-    Before this round the board measured ``fill_symmetry=0, fill_folded=0,
+    Before the 2026-08-28 carry the board measured ``fill_symmetry=0, fill_folded=0,
     reflect_row=0`` in this family's device text: the two passes were refused on
     the host and nothing about them reached the kernel. These are the terms that
     were zero.
@@ -858,7 +858,7 @@ def covered(fields, pml, grid):
 
 @pytest.mark.parametrize("label,kwargs", FOLDS, ids=[row[0] for row in FOLDS])
 def test_a_folded_grid_is_admitted_now(label, kwargs, cupy_named_numpy):
-    """The whole point of the round: the fold is no longer a refusal.
+    """The whole point of the carry: the fold is no longer a refusal.
 
     Built on the CuPy-named stand-in because every CUDA predicate's first question
     is whether the array module is CuPy at all, and that is the one thing about the

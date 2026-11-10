@@ -1,6 +1,6 @@
 """One certification record per GPU architecture: is a second one ADDITIVE?
 
-WHAT THIS FILE IS FOR. Each weld in the NVIDIA ledgers keeps one record per compute
+What this file is for. Each weld in the NVIDIA ledgers keeps one record per compute
 capability, holding the facts of the run that certified that architecture and the digest
 of the bytes it certified. Everything below is about the three ways that can go wrong:
 
@@ -30,10 +30,12 @@ from meep_gpu import weld_record_walk as walk
 
 from .test_dispatch_contract import (CountingPlan, assert_the_family_block_is_its_artifacts,
                                      assert_the_family_block_names_its_own_run,
+                                     assert_the_host_is_a_real_card,
                                      certified_envelope_fields, certified_envelope_grid,
                                      certified_envelope_pml, cuda_step_plan,
-                                     cupy_like_grid_with_device, install_composer,
-                                     install_cuda_composer, step_plan, stub_triton)
+                                     cupy_like_grid_with_device, failing_triton_probe,
+                                     install_composer, install_cuda_composer, step_plan,
+                                     stub_triton)
 
 
 @pytest.fixture(autouse=True)
@@ -118,7 +120,7 @@ def test_a_record_stops_being_live_when_the_bytes_it_certified_move():
 
 
 def test_a_second_architecture_on_the_same_bytes_joins_the_first():
-    """THE WHOLE POINT. Certifying 9.0 must not un-certify 8.6."""
+    """The whole point. Certifying 9.0 must not un-certify 8.6."""
     entry = entry_on()
     certify(entry, "8.6", bound_before=None)
     before = copy.deepcopy(entry["runs"]["8.6"])
@@ -245,15 +247,17 @@ def test_a_run_record_keyed_by_something_other_than_a_capability_is_refused():
 
 def test_both_nvidia_tables_derive_the_architecture_they_were_certified_on():
     """DERIVED from the welds, not typed: the hand-typed key it replaced was written
-    by no tool, so a round on another architecture left it saying 8.6 regardless."""
-    assert fastpath.validated_compute_capabilities() == ("8.6",)
-    assert fastpath_cuda.validated_compute_capabilities() == ("8.6",)
+    by no tool, so a certification on another architecture left it saying 8.6 regardless."""
+    # Retires 8.6 alone: the RTX 4080 SUPER's runs bound into these ledgers certify 8.9 too.
+    assert fastpath.validated_compute_capabilities() == ("8.6", "8.9")
+    assert fastpath_cuda.validated_compute_capabilities() == ("8.6", "8.9")
     for table in ("triton", fastpath.CUDA_TABLE):
         report = fastpath.capability_admission(table)
         blocking = {key: state["problem"] for key, state in report["by_key"].items()
                     if state["problem"]}
         assert not blocking, blocking
-        assert report["admitted"] == ("8.6",)
+        # Retires 8.6 alone: each NVIDIA table admits 8.9 from its own 8.9 runs.
+        assert report["admitted"] == ("8.6", "8.9")
 
 
 def test_no_shipped_nvidia_weld_is_left_in_the_shape_this_replaced():
@@ -275,7 +279,8 @@ def test_the_family_record_binds_the_bytes_its_nine_families_re_ran():
     and 22 arms cite it, which would have made the whole container decoration."""
     entry = fastpath._fingerprints("triton")[fastpath.FAMILY_RECERT_GATE]
     assert entry["source_sha256_at_recert"], "it binds no bytes"
-    assert fastpath.live_capabilities(entry) == ("8.6",)
+    # Retires 8.6 alone: the RTX 4080 SUPER re-ran the nine families, so 8.9 is live here too.
+    assert fastpath.live_capabilities(entry) == ("8.6", "8.9")
     moved = copy.deepcopy(entry)
     name = sorted(moved["source_sha256_at_recert"])[0]
     moved["source_sha256_at_recert"][name] = B_DIGEST
@@ -298,9 +303,11 @@ def test_a_family_quotes_the_run_that_certified_THIS_architecture():
     gate's artifact states is the next test's, which needs the evidence archive.
     """
     entry = fastpath._certification_for("complex", capability="8.6")
-    assert entry["capability"] == "8.6" and entry["capabilities_live"] == ["8.6"]
-    assert "A6000" in entry["host"] and entry["recorded_utc"]
+    # Retires ["8.6"]: 8.9 is live on this entry too; the quoted run stays 8.6's.
+    assert entry["capability"] == "8.6" and entry["capabilities_live"] == ["8.6", "8.9"]
+    assert entry["recorded_utc"]
     run = fastpath._fingerprints("triton")[fastpath.FAMILY_RECERT_GATE][fastpath.RUNS]["8.6"]
+    assert_the_host_is_a_real_card(entry["host"], run, "8.6")
     block = run["families"]["complex"]
     assert entry["host"] == run["host"] and entry["recorded_utc"] == run["recorded_utc"]
     assert entry["run_id"] == block["run_id"]
@@ -319,7 +326,7 @@ def test_the_quoted_family_block_is_the_artifact_of_its_own_run():
     code, release, artifact digest, start time and GPU index, and the budget is the
     one the artifact states -- the checks ``test_dispatch_contract`` applies to all
     nine families. Declared under ``[evidence_archive]`` in
-    ``tools/ci/declared_resources.txt``: it reads the round's own artifacts, which a
+    ``tools/ci/declared_resources.txt``: it reads the certification run's own artifacts, which a
     checkout holds only with the archive restored.
     """
     run = fastpath._fingerprints("triton")[fastpath.FAMILY_RECERT_GATE][fastpath.RUNS]["8.6"]
@@ -344,8 +351,29 @@ def test_the_cuda_table_answers_the_same_way():
     assert "capability" not in miss and "no live run" in miss["run_record"]
 
 
-def ledger_also_certified_on(table: str, capability: str, skip: str = None) -> dict:
-    """A copy of a shipped ledger with ``capability`` certified on the same bytes."""
+def record_certified_stack(ledger: dict, capability: str, **values: str) -> dict:
+    """``ledger``, a copy of the Triton ledger, with ``capability``'s certified NVIDIA stack
+    recorded as the bind writes it (``record_nvidia_stack.py``): the stand-in host's 8.6
+    stack, with ``values`` read in its place, axis by axis."""
+    stack = {axis: list(listed)
+             for axis, listed in fastpath.certified_nvidia_stack("8.6").items()}
+    stack.update({axis: [value] for axis, value in values.items()})
+    entry = copy.deepcopy(ledger[fastpath.CERTIFIED_STACK_ENTRY])
+    entry[fastpath.STACK_BY_CAPABILITY][capability] = {
+        "read_from": [f"parity/meep_gpu/results/chunk_cc{capability.replace('.', '')}"
+                      f"_c0/stack/gates_0.json"],
+        "recorded_by": "parity/meep_gpu/record_nvidia_stack.py",
+        "recorded_utc": "2026-09-30T00:00:00Z", "stack": stack}
+    ledger[fastpath.CERTIFIED_STACK_ENTRY] = entry
+    return ledger
+
+
+def ledger_also_certified_on(table: str, capability: str, skip: str = None,
+                             stack: bool = True) -> dict:
+    """A copy of a shipped ledger with ``capability`` certified on the same bytes.
+
+    The Triton ledger also gets ``capability``'s certified NVIDIA stack (``stack``), which
+    the bind of a capability writes there whichever table it binds."""
     ledger = copy.deepcopy(dict(fastpath._fingerprints(table)))
     cited = {gate for _family, gate in fastpath._arm_certification_map(table).values()}
     for key in sorted(cited):
@@ -354,6 +382,8 @@ def ledger_also_certified_on(table: str, capability: str, skip: str = None) -> d
         fastpath.bind_capability(
             ledger[key], bound_before=fastpath.bound_digest(ledger[key]),
             capability=capability, run=run_on(capability))
+    if stack and table == "triton":
+        record_certified_stack(ledger, capability)
     return ledger
 
 
@@ -373,9 +403,10 @@ def certified_on_9_0(monkeypatch):
 
 def test_a_card_every_family_was_re_run_on_dispatches_with_no_opt_in(
         monkeypatch, certified_on_9_0):
-    """The round that certifies 9.0 writes records; nothing else has to change."""
+    """The certification run that certifies 9.0 writes records; nothing else has to change."""
     certified_on_9_0()
-    assert fastpath.validated_compute_capabilities() == ("8.6", "9.0")
+    # Retires ("8.6", "9.0"): 9.0 joins the shipped 8.6 and 8.9, which these ledgers certify.
+    assert fastpath.validated_compute_capabilities() == ("8.6", "8.9", "9.0")
     stub_triton(monkeypatch)
     install_composer(monkeypatch, step_plan({"step_B": CountingPlan("b")},
                                             {"step_B": "PML"}))
@@ -405,10 +436,10 @@ def test_the_cuda_ledger_has_one_reader():
 
 def test_a_cuda_arm_admitted_on_a_new_architecture_quotes_that_architectures_run(
         certified_on_9_0):
-    """The CUDA half of the plan's quote, on the round that certified 9.0.
+    """The CUDA half of the plan's quote, after a certification run on 9.0.
 
     The Triton family quote above was the only one this file checked, and the CUDA
-    quote read its own cache of the ledger: under a round that certified 9.0 it saw
+    quote read its own cache of the ledger: after a certification run on 9.0 it saw
     the 8.6-only file and told the plan "no live run on compute capability 9.0 ...
     admitted by the opt-in" -- a false statement in the dispatch report of a card that
     no opt-in admitted.
@@ -428,13 +459,14 @@ def test_a_cuda_arm_admitted_on_a_new_architecture_quotes_that_architectures_run
 
 def test_one_family_short_refuses_the_card_and_names_the_weld(
         monkeypatch, certified_on_9_0):
-    """A partial round certifies nothing: the arm it did not cover could be the one
+    """A partial certification run certifies nothing: the arm it did not cover could be the one
     serving a slot. Restricted to certified identities, the card is refused and the
     refusal names what would have to be re-run."""
     monkeypatch.setenv(fastpath.HARDWARE_SWITCH, fastpath.HARDWARE_CERTIFIED)
     skipped = "bit_identity_gate"
     certified_on_9_0(skip_triton=skipped)
-    assert fastpath.validated_compute_capabilities() == ("8.6",)
+    # Retires 8.6 alone: the partial 9.0 run adds nothing to the shipped 8.6 and 8.9.
+    assert fastpath.validated_compute_capabilities() == ("8.6", "8.9")
     stub_triton(monkeypatch)
     install_composer(monkeypatch, step_plan({"step_B": CountingPlan("b")},
                                             {"step_B": "PML"}))
@@ -450,11 +482,12 @@ def test_one_family_short_refuses_the_card_and_names_the_weld(
                                    cupy_like_grid_with_device()) is not None
 
 
-def test_one_family_short_drops_the_table_by_default_when_the_other_is_certified(
+def test_one_family_short_composes_beside_the_certified_table_by_default(
         monkeypatch, certified_on_9_0):
-    """By default the partially re-run table is SUPPORTED on 9.0, but the hand-CUDA
-    table is certified there, so rung 4e drops the Triton table by name, with the
-    weld that would have to be re-run, and the hand-CUDA table runs alone, certified."""
+    """By default the partially re-run table is SUPPORTED on 9.0 and the hand-CUDA
+    table is certified there; both compose (there is no rung 4e), the run is
+    uncertified on the Triton table, and its entry names the weld that would have to be
+    re-run."""
     skipped = "bit_identity_gate"
     certified_on_9_0(skip_triton=skipped)
     stub_triton(monkeypatch)
@@ -470,16 +503,14 @@ def test_one_family_short_drops_the_table_by_default_when_the_other_is_certified
     assert plan is not None, fastpath.last_dispatch_report()["refused_because"]
     record = plan.report()
     assert record["decision"] == "dispatched" and record["step_path"] == "fused"
-    assert record["composition"]["tables_dispatched"] == [fastpath.CUDA_TABLE]
-    assert sorted(plan.slots) == ["step_D", "update_E"]
-    assert record["certified"] is True
-    triton = record["tables"]["triton"]
-    assert triton["candidate"] is False
-    assert triton["dropped_for_a_certified_table"] == [fastpath.CUDA_TABLE]
-    assert skipped in triton["welds_without_a_live_run_here"]
-    assert record["uncertified"]["admitted"] == []
-    (dropped,) = record["uncertified"]["dropped"]
-    assert (dropped["table"], dropped["read"]) == ("triton", "9.0")
+    assert record["composition"]["tables_dispatched"] == [fastpath.CUDA_TABLE, "triton"]
+    assert sorted(plan.slots) == ["step_B", "step_D", "update_E"]
+    assert record["certified"] is False
+    assert record["tables"]["triton"] == {"candidate": True, "refused_because": None}
+    assert record["uncertified"]["dropped"] == []
+    (served,) = record["uncertified"]["served"]
+    assert (served["table"], served["read"]) == ("triton", "9.0")
+    assert skipped in served["welds_without_a_live_run_here"]
 
 
 def test_a_supported_card_no_family_ran_on_is_refused_only_when_restricted(
@@ -488,10 +519,11 @@ def test_a_supported_card_no_family_ran_on_is_refused_only_when_restricted(
     stub_triton(monkeypatch)
     install_composer(monkeypatch, step_plan({"step_B": CountingPlan("b")},
                                             {"step_B": "PML"}))
-    grid = cupy_like_grid_with_device(capability=(8, 9), name=b"NVIDIA L40S")
+    # 8.7 retires the L40S's 8.9 as the uncertified example: 8.9 is certified now.
+    grid = cupy_like_grid_with_device(capability=(8, 7), name=b"NVIDIA Jetson AGX Orin")
     monkeypatch.setenv(fastpath.HARDWARE_SWITCH, fastpath.HARDWARE_CERTIFIED)
     assert fastpath.plan_fast_path(object(), object(), grid) is None
-    assert "8.9" in fastpath.last_dispatch_report()["refused_because"]
+    assert "8.7" in fastpath.last_dispatch_report()["refused_because"]
     # By default it runs, uncertified, and names the welds no run covers.
     monkeypatch.delenv(fastpath.HARDWARE_SWITCH)
     plan = fastpath.plan_fast_path(object(), object(), grid)
@@ -503,14 +535,20 @@ def test_a_supported_card_no_family_ran_on_is_refused_only_when_restricted(
 
 def test_an_unsupported_card_no_family_ran_on_is_still_refused(monkeypatch,
                                                               certified_on_9_0):
+    """A card the installed NVRTC cannot target and the installed Triton cannot launch
+    on: the hand-CUDA table refused by name, the Triton table dropped by its probe."""
     certified_on_9_0()
-    stub_triton(monkeypatch)
+    stub_triton(monkeypatch, probe=failing_triton_probe([(10, 0)]))
     install_composer(monkeypatch, step_plan({"step_B": CountingPlan("b")},
                                             {"step_B": "PML"}))
     grid = cupy_like_grid_with_device(capability=(10, 0), name=b"another card")
     assert fastpath.plan_fast_path(object(), object(), grid) is None
-    reason = fastpath.last_dispatch_report()["refused_because"]
-    assert "10.0" in reason and reason.endswith(fastpath.UNSUPPORTED_HINT), reason
+    record = fastpath.last_dispatch_report()
+    reason = record["refused_because"]
+    assert "10.0" in reason, reason
+    cuda = record["tables"][fastpath.CUDA_TABLE]["refused_because"]
+    assert "10.0" in cuda and cuda.endswith(fastpath.UNSUPPORTED_HINT), cuda
+    assert "cannot compile and launch" in record["tables"]["triton"]["refused_because"]
 
 
 # ---------------------------------------------------------------------------
@@ -556,7 +594,7 @@ def _printed_capabilities(row: str):
     cell from reading as "3.1". Any wording that lists them is read, so a row that
     says "8.6, 9.0" or "compute capabilities 8.6 and 9.0" states both -- the first
     form of this parser read only the number directly after the phrase, which
-    turned the first round on a second architecture into a README no wording could
+    turned the first certification on a second architecture into a README no wording could
     satisfy.
     """
     import re  # noqa: PLC0415
@@ -571,8 +609,8 @@ def _readme_mismatches(readme: str):
 
     Each row is keyed to its table by what the row SAYS, never by its position. A
     pairing by sort order put the Triton row against the CUDA table, which passed only
-    while both tables admitted the same architectures -- and the first round that
-    certifies one table and not the other is exactly the round this weld exists for.
+    while both tables admitted the same architectures -- and the first certification that
+    covers one table and not the other is exactly the case this weld exists for.
     """
     rows = [line for line in readme.splitlines()
             if line.startswith("| NVIDIA,") and "compute capabilit" in line]
@@ -613,8 +651,8 @@ def test_the_readme_weld_pairs_each_row_with_its_own_table_when_the_tables_diffe
         monkeypatch):
     """The case the weld is FOR: one table certified on an architecture the other is not.
 
-    A round on a rented card can run the Triton fleet and not the CUDA families, so
-    Triton gaining an architecture CUDA lacks is the likely shape of the next round,
+    A certification on a rented card can run the Triton fleet and not the CUDA families, so
+    Triton gaining an architecture CUDA lacks is the likely shape of the next one,
     not an edge case. Driven with that asymmetry, a correct README has to pass and a
     README that swaps the two rows has to FAIL -- the swap is precisely what a
     sort-order pairing silently accepted.
@@ -652,3 +690,343 @@ def test_the_readme_parser_reads_every_architecture_a_row_lists(cell, expected):
     """
     row = f"| NVIDIA, Triton kernels | {cell} | one card, CuPy 13.5.1 |"
     assert _printed_capabilities(row) == expected, (cell, _printed_capabilities(row))
+
+
+# ---------------------------------------------------------------------------
+# What the documentation states is certified, read against the ledgers
+# ---------------------------------------------------------------------------
+#
+# The README's certified-identity rows have their weld above. The tests below hold the
+# other places the same facts are stated, each of which the certification of another
+# compute capability moves. Every expected value is derived from the ledgers or from the
+# shipped timing records, never typed: a later certification needs no edit here, and a
+# sentence it leaves behind fails by name.
+
+REPOSITORY = pathlib.Path(__file__).resolve().parents[1]
+
+#: A compute capability as the ledgers key one, standing alone in prose.
+CAPABILITY_IN_TEXT = r"(?<![\d.])([1-9][0-9]*\.[0-9])(?![\d.])"
+
+NUMBER_WORDS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6,
+                "seven": 7, "eight": 8, "nine": 9, "ten": 10}
+
+#: The sentences that count the certified compute capabilities.
+COUNT_STATEMENTS = (
+    r"\b(\w+) (?:NVIDIA )?compute capabilit(?:y|ies) and \w+ Apple environments?\b",
+    r"\b(\w+) compute capabilit(?:y|ies) certified\b",
+    r"\bcertified on (\w+) identit(?:y|ies) per table\b",
+    # The kernel-dispatch guide's bullet read "one identity certified" before 8.9.
+    r"\b(\w+) identit(?:y|ies) certified\b",
+)
+
+
+def _admitted(table: str) -> set:
+    return set(fastpath.capability_admission(table)["admitted"] or ())
+
+
+def _certified_capabilities() -> set:
+    """Every compute capability an NVIDIA table admits."""
+    admitted = set()
+    for table in fastpath.NVIDIA_TABLE_PRECEDENCE:
+        admitted |= _admitted(table)
+    return admitted
+
+
+def _flat(text: str) -> str:
+    """``text`` with every run of whitespace one space, so a wrapped sentence reads whole."""
+    return " ".join(text.split())
+
+
+def _documentation() -> dict:
+    """The pages a reader consults for what this release certifies, flattened: README.md,
+    INSTALL.md, AGENTS.md and the manual under docs/. Not CHANGELOG.md, whose entries
+    state what each change did when it was made."""
+    pages = [REPOSITORY / name for name in ("README.md", "INSTALL.md", "AGENTS.md")]
+    pages += sorted((REPOSITORY / "docs").rglob("*.md"))
+    return {page.relative_to(REPOSITORY).as_posix(): _flat(page.read_text(encoding="utf-8"))
+            for page in pages}
+
+
+def test_install_states_the_architectures_the_ledgers_actually_certify():
+    """INSTALL.md's certified-identity table states the README's rows again: each NVIDIA row
+    names exactly the compute capabilities its table's welds admit."""
+    install = (REPOSITORY / "INSTALL.md").read_text(encoding="utf-8")
+    wrong = []
+    for table, label in (("triton", "Triton (NVIDIA)"),
+                         (fastpath.CUDA_TABLE, "hand-written CUDA (NVIDIA)")):
+        rows = [line for line in install.splitlines() if line.startswith(f"| {label} |")]
+        assert len(rows) == 1, f"INSTALL.md holds {len(rows)} rows for {label}: {rows}"
+        printed = _printed_capabilities(rows[0])
+        if printed != _admitted(table):
+            wrong.append((table, sorted(printed), sorted(_admitted(table))))
+    assert wrong == [], ("INSTALL.md prints, per table, what the ledger does not derive "
+                         f"(table, printed, derived): {wrong}")
+
+
+def test_every_count_of_certified_compute_capabilities_is_the_ledgers():
+    """A sentence that counts the certified compute capabilities counts what the welds admit.
+
+    A count can sit under a table that names one capability more and still read the old
+    number. The count must be read in README.md and in INSTALL.md, so a rewording this no
+    longer reads fails here instead of escaping it.
+    """
+    import re  # noqa: PLC0415
+
+    expected = len(_certified_capabilities())
+    found, wrong = set(), []
+    for name, text in _documentation().items():
+        for pattern in COUNT_STATEMENTS:
+            for match in re.finditer(pattern, text, flags=re.IGNORECASE):
+                word = match.group(1).lower()
+                count = int(word) if word.isdigit() else NUMBER_WORDS.get(word)
+                found.add(name)
+                if count != expected:
+                    wrong.append((name, match.group(0)))
+    assert {"README.md", "INSTALL.md"} <= found, (
+        "no count of the certified compute capabilities was read in README.md and "
+        f"INSTALL.md (read in {sorted(found)}); a reworded count must still be read here")
+    assert wrong == [], (
+        f"the welds admit {expected} compute capabilities and these sentences count "
+        f"otherwise: {wrong}")
+
+
+def test_the_new_gpu_guide_shows_the_admission_the_ledgers_derive():
+    """The guide shows what the admission check prints on this release, and what it prints
+    after the bind of a new capability: the first is the welds' admission, the second that
+    admission with exactly one capability added."""
+    import ast  # noqa: PLC0415
+    import re  # noqa: PLC0415
+
+    guide = _flat((REPOSITORY / "docs" / "development" / "certify-a-new-gpu.md").read_text(
+        encoding="utf-8"))
+    derived = {table: _admitted(table) for table in ("triton", fastpath.CUDA_TABLE)}
+    shown = re.findall(r"\bOn [^`]{1,30}? it prints `(\{[^`]*\})`", guide)
+    assert len(shown) == 1, f"the guide shows {len(shown)} outputs of the admission check: {shown}"
+    printed = {table: set(listed) for table, listed in ast.literal_eval(shown[0]).items()}
+    assert printed == derived, (
+        f"the guide prints {shown[0]} for this release; the welds admit {derived}")
+    after = re.findall(r"both tables admitting your capability beside ([^(]*)\(`(\{[^`]*\})`\)",
+                       guide)
+    assert after, "the guide no longer shows what the admission check prints after a bind"
+    for beside, example in after:
+        assert set(re.findall(CAPABILITY_IN_TEXT, beside)) == set().union(*derived.values()), (
+            f"the guide names {beside!r} as the capabilities already admitted; the welds "
+            f"admit {derived}")
+        for table, listed in ast.literal_eval(example).items():
+            added = set(listed) - derived[table]
+            assert derived[table] <= set(listed) and len(added) == 1, (
+                f"after a bind the guide shows {table} admitting {listed}, which is not "
+                f"this release's {sorted(derived[table])} with one capability added")
+
+
+def test_every_certified_capability_has_its_certified_stack_recorded():
+    """A capability the welds admit has the stack its own runs read recorded beside it.
+    Admitted without one, ``MEEP_GPU_HARDWARE=certified`` refuses it by name while every
+    page states it certified."""
+    missing = sorted(capability for capability in _certified_capabilities()
+                     if fastpath.certified_nvidia_stack(capability) is None)
+    assert missing == [], (
+        f"compute capabilities {missing} are admitted with no certified stack recorded "
+        f"({fastpath.CERTIFIED_STACK_ENTRY} in the Triton ledger)")
+
+
+def test_the_readme_names_the_cuda_drivers_each_capability_was_certified_on():
+    """The README's certified-on cell has a part for each compute capability the Triton table
+    admits, and each part names the CUDA drivers that capability's certified stack lists
+    (``13.4`` is driver ``13040``) and no other."""
+    import re  # noqa: PLC0415
+
+    readme = (REPOSITORY / "README.md").read_text(encoding="utf-8")
+    rows = [line for line in readme.splitlines()
+            if line.startswith("| NVIDIA, Triton kernels |")]
+    assert len(rows) == 1, rows
+    printed = {}
+    for part in rows[0].split("|")[3].split(";"):
+        head = re.match(r"\s*([1-9][0-9]*\.[0-9]): (.*)", part)
+        if head:
+            printed[head.group(1)] = {str(int(major) * 1000 + int(minor) * 10)
+                                      for major, minor in re.findall(r"driver (\d+)\.(\d+)",
+                                                                     head.group(2))}
+    assert set(printed) == _admitted("triton"), (
+        f"the certified-on cell has a part for {sorted(printed)}; the Triton table admits "
+        f"{sorted(_admitted('triton'))}")
+    for capability, drivers in sorted(printed.items()):
+        recorded = set((fastpath.certified_nvidia_stack(capability) or {}).get("cuda_driver", ()))
+        assert drivers == recorded, (
+            f"the README names CUDA drivers {sorted(drivers)} for {capability}; its certified "
+            f"stack lists {sorted(recorded)}")
+
+
+def _timed_nvidia_capabilities() -> list:
+    """The compute capabilities the shipped NVIDIA timing records time on this tree."""
+    from meep_gpu import dispatch_preference as dp  # noqa: PLC0415
+
+    root = pathlib.Path(dp.__file__).resolve().parent
+    return sorted({capability for name in dp.timed_vendors()["nvidia"]["records"]
+                   for capability in dp.record_capabilities(dp.load_record(str(root / name)))})
+
+
+def test_a_certified_capability_no_record_times_is_stated_as_reading_the_nearest_one():
+    """Certified is not timed. A certified capability that no shipped record times reads the
+    record of the nearest timed capability (``dispatch_preference.nearest_architecture``).
+    The README says so for each such capability, and every page that says it names the
+    capability the rule reads; a record cut for that capability later makes the sentence
+    false, and this fails on it by name."""
+    import re  # noqa: PLC0415
+
+    from meep_gpu import dispatch_preference as dp  # noqa: PLC0415
+
+    timed = _timed_nvidia_capabilities()
+    assert timed, "no shipped NVIDIA timing record times its capability on this tree"
+    reads = {capability: dp.nearest_architecture("nvidia", capability, timed)[0]
+             for capability in _certified_capabilities() if capability not in timed}
+    stated, wrong = {}, []
+    for name, text in _documentation().items():
+        for capability, read in re.findall(
+                r"[Cc]ompute capability ([1-9][0-9]*\.[0-9]) has no record of its own: its "
+                r"default reads ([1-9][0-9]*\.[0-9])'s", text):
+            stated.setdefault(capability, set()).add(name)
+            if reads.get(capability) != read:
+                wrong.append((name, capability, read,
+                              reads.get(capability, "a record of its own")))
+    assert wrong == [], (
+        "these sentences name the record a capability reads wrongly (page, capability, "
+        f"stated, what the rule reads): {wrong}")
+    unstated = sorted(capability for capability in reads
+                      if "README.md" not in stated.get(capability, ()))
+    assert unstated == [], (
+        f"compute capabilities {unstated} are certified with no timing record of their own, "
+        "and the README does not say whose record their default reads")
+
+
+def test_the_notes_the_docs_quote_name_the_certified_capabilities():
+    """The docs quote the NOTE a supported, uncertified NVIDIA device prints. The capability it
+    reads must be one no table certifies, and the list after ``certified:`` a table's
+    admission, which is what the NOTE prints; certifying the capability an example quotes
+    makes the example false."""
+    import re  # noqa: PLC0415
+
+    quoted = [(name, read, listed) for name, text in _documentation().items()
+              for read, listed in re.findall(
+                  r"NOT CERTIFIED on this host: GPU compute capability ([1-9][0-9]*\.[0-9]) "
+                  r"\(certified: ([^)]*)\)", text)]
+    assert any(name == "README.md" for name, _read, _listed in quoted), (
+        f"the README no longer quotes the NOTE (quoted in {sorted({q[0] for q in quoted})})")
+    tables = [_admitted(table) for table in fastpath.NVIDIA_TABLE_PRECEDENCE]
+    wrong = [(name, read, listed) for name, read, listed in quoted
+             if read in _certified_capabilities()
+             or set(re.findall(CAPABILITY_IN_TEXT, listed)) not in tables]
+    assert wrong == [], (
+        "these quoted NOTEs name a certified capability as uncertified, or a certified list "
+        f"no table admits (page, read, certified list); admitted {tables}: {wrong}")
+
+
+ROUTE_TABLES = ("triton", fastpath.CUDA_TABLE, "metal")
+
+
+def _route_record(table: str) -> dict:
+    """A table's ``driver_dispatch`` record, as the package ships it."""
+    return json.loads((pathlib.Path(fastpath.__file__).resolve().parent / f"{table}_kernels"
+                       / "fingerprints.json").read_text(encoding="utf-8"))["driver_dispatch"]
+
+
+def _route_runs() -> list:
+    """``(table, key)`` for every live route run of the three route records."""
+    return [(table, key) for table in ROUTE_TABLES
+            for key in fastpath.live_capabilities(_route_record(table))]
+
+
+def pytest_generate_tests(metafunc):
+    """The live route runs, read when the tests are collected and not when this module is
+    imported: other test modules import its helpers in processes that must not open a
+    ledger they do not use (``test_ledger_scope``)."""
+    if "route_run" in metafunc.fixturenames:
+        runs = _route_runs()
+        metafunc.parametrize("route_run", runs, ids=[f"{table}-{key}" for table, key in runs])
+
+
+@pytest.mark.parametrize("table", ROUTE_TABLES)
+def test_every_route_run_states_its_own_default_and_no_record_shares_one(table):
+    """The statement of the default (the timing records a route run's legs ran with, what
+    the default read and vetoed, the carry log) is read off one run's legs, so each run
+    keeps its own under ``runs[<key>].dispatch_preference``, and its ``run`` names that
+    run's own campaign. A statement beside the digests was one copy every cut rewrote: the
+    compute capability 8.9 cut replaced 8.6's, and an Apple GPU architecture's cut replaced
+    another's vetoes with its own. No record may carry one there again."""
+    record = _route_record(table)
+    assert "dispatch_preference" not in record, (
+        f"the {table} route record carries a dispatch_preference beside its digests; each "
+        "run's statement belongs in runs[<key>].dispatch_preference")
+    assert fastpath.live_capabilities(record), f"the {table} route record has no live run"
+    for key, run in sorted(record[fastpath.RUNS].items()):
+        statement = run.get("dispatch_preference")
+        assert isinstance(statement, dict) and isinstance(
+            statement.get("shipped_records"), dict), (
+            f"{table} runs[{key!r}] states no default of its own")
+        assert statement.get("run") == run["released_fused_arms"]["gate"], (
+            f"{table} runs[{key!r}] holds the statement of {statement.get('run')!r}, not of "
+            f"its own campaign {run['released_fused_arms']['gate']!r}")
+
+
+def test_every_route_run_pins_every_timing_record_the_package_ships(route_run):
+    """A route run states the default on the timing records the tree shipped when it was
+    cut, and pins each by the sha256 of its bytes
+    (``runs[<key>].dispatch_preference.shipped_records``): the cut refuses a leg that ran on
+    another set unless a carry takes it. The weld walk checks the bytes of each pin and the
+    weld contracts count the pins against a floor; this holds the set per run, so a record
+    added or removed after an architecture's cut leaves that architecture's run owing a
+    re-cut or a carry, which another architecture's cut cannot pay."""
+    from meep_gpu import dispatch_preference as dp  # noqa: PLC0415
+
+    table, key = route_run
+    root = pathlib.Path(dp.__file__).resolve().parent
+    shipped = {f"meep_gpu/{pathlib.Path(path).relative_to(root).as_posix()}"
+               for path in dp.record_files()}
+    run = _route_record(table)[fastpath.RUNS][key]
+    pinned = set(run["dispatch_preference"]["shipped_records"])
+    assert pinned == shipped, (
+        f"the {table} route run runs[{key!r}] pins {sorted(pinned)}; the package ships "
+        f"{sorted(shipped)}")
+
+
+def test_the_dispatch_guide_names_the_go_no_go_of_each_licensed_capability():
+    """The kernel-dispatch guide's certification note says the record behind dispatch on by
+    default was re-cut from a go/no-go. The Triton record carries one licence per compute
+    capability whose primary table it is (``runs[<capability>].dispatch_by_default_licence``),
+    each naming the card it ran on. Here each licence must be present, every verdict a licensing
+    one and at least one case dispatched; the transcription's own rule (at least
+    ``LICENCE_MIN_DISPATCHED`` dispatched, a clean null control over the same cases) is held
+    field by field in test_dispatch_contract.py. The note names each licence's card, reads the
+    go/no-go per capability when there is more than one, and reads each as GO."""
+    import re  # noqa: PLC0415
+
+    record = json.loads((REPOSITORY / "meep_gpu" / "triton_kernels" / "fingerprints.json")
+                        .read_text(encoding="utf-8"))["driver_dispatch"]
+    licensed = sorted(capability for capability in _certified_capabilities()
+                      if fastpath.primary_table(capability) == "triton")
+    assert licensed, "no admitted compute capability has the Triton table as its primary table"
+    cards = {}
+    for capability in licensed:
+        licence = ((record.get(fastpath.RUNS) or {}).get(capability) or {}).get(
+            "dispatch_by_default_licence")
+        assert licence, f"the Triton record carries no go/no-go licence for {capability}"
+        verdicts = set(licence["verdicts"].values())
+        assert verdicts <= {"PASS-DISPATCHED", "PASS-FELL-BACK"} and (
+            "PASS-DISPATCHED" in verdicts), (capability, licence["verdicts"])
+        cards[capability] = " ".join(word for word in licence["device"]["name"].split()
+                                     if word not in ("NVIDIA", "GeForce"))
+    guide = (REPOSITORY / "docs" / "guides" / "kernel-dispatch.md").read_text(encoding="utf-8")
+    start = guide.index("> **Note: Certification status of this release**")
+    note = _flat(" ".join(line.lstrip(">") for line in guide[start:].split("\n\n## ")[0]
+                          .splitlines()))
+    unnamed = sorted((capability, card) for capability, card in cards.items()
+                     if f"on one {card}" not in note)
+    assert unnamed == [], (
+        f"the certification note names no card for these licences (capability, card): {unnamed}")
+    read = re.findall(r"from (its|each compute capability's) go/no-go, (which read GO|each GO)\b",
+                      note)
+    expected = (("each compute capability's", "each GO") if len(licensed) > 1
+                else ("its", "which read GO"))
+    assert read == [expected], (
+        f"the note reads the go/no-go as {read}; the Triton record carries {len(licensed)} "
+        f"licences ({licensed}), each a GO, so it reads {expected}")

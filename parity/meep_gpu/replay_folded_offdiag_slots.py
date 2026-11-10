@@ -1,12 +1,12 @@
 """How many corpus slots the folded off-diagonal arm is worth, replayed off the census.
 
-WHAT THIS ANSWERS. ``gate_cuda_folded_offdiag.py`` measures WHETHER the shipped
+What this answers. ``gate_cuda_folded_offdiag.py`` measures WHETHER the shipped
 CUDA off-diagonal ``update_E`` kernel reproduces ``stepping`` on a fold, and on
-which arm. This answers WHAT THAT ARM IS WORTH, in the currency the plan counts:
+which arm. This answers what that arm is worth, in the currency the plan counts:
 slots of the predicate census, where a slot here is one corpus row's
 ``update_E`` off-diagonal sub-step.
 
-THE ARM IS NARROWER THAN THE CURL'S AND THE CONSTITUTIVE PAIR'S, and the reason
+The arm is narrower than the curl's and the constitutive pair's, and the reason
 is a property of the ROW MASK rather than of the grid: the mirror ghost enters
 this sub-step through exactly one leg, the PARTNER-axis ``_shift_down``
 (stepping.py:1243-1245). So a folded axis that no surviving row slot takes as its
@@ -15,20 +15,20 @@ one plane. The census records the row mask per row
 (``cuda_offdiag.row_mask.mask``), which is exactly the fact the split needs, so
 the partition is measured off the record rather than assumed uniform.
 
-WHY A REPLAY AND NOT A RE-CENSUS. The census
+Why a replay and not a re-census. The census
 (``results/cuda_predicate_coverage_2026-08-16_offdiag``) lifted every corpus row
 into a real ``Grid``/``Fields``/``PML`` triple and recorded, per row, the
 predicate's verdict AND its first refusal string. Re-lifting costs hours and a
 MEEP install. Every clause of ``covers_real_pml_offdiag_constitutive`` above the
 array tail reads facts the record already carries.
 
-THE COUNTS ARE AN UPPER BOUND, and the reason is built into the replay rather
+The counts are an upper bound, and the reason is built into the replay rather
 than only stated: the array, row-volume and coefficient-vector tail cannot be
 replayed from the record -- it carries no dtypes, strides, contiguity or base
 addresses -- so the stand-ins are built to PASS that tail by construction. A row
 whose real arrays would fail it is counted here and would not be served.
 
-THE REPLAY IS VALIDATED BEFORE IT IS USED, on the record's own numbers:
+The replay is validated before it is used, on the record's own numbers:
 
 1. every recorded ``covered_modulo_backend`` verdict must reproduce;
 2. every recorded ``first_refusal`` string must reproduce;
@@ -67,7 +67,7 @@ from meep_gpu.cuda_kernels import coverage  # noqa: E402
 MIRROR_REFUSAL = ("mirror symmetry: the fold changes the stored extent, and the "
                   "extent is what turns a cell index into a coefficient index")
 
-#: HOW MANY SIMULTANEOUS MIRROR PLANES THE GATE ACTUALLY SWEPT. Unlike the
+#: How many simultaneous mirror planes the gate actually swept. Unlike the
 #: constitutive widening, which capped at 2 because its gate stopped there, this
 #: gate sweeps ``fold_XYZ_periodic`` and ``fold_XYZ_metallic``, so nothing on this
 #: corpus is held back for depth.
@@ -86,7 +86,7 @@ class _CupyNamed:
 class _FakeArray:
     """A float32 C-contiguous volume of the recorded shape, WITHOUT allocating it.
 
-    THAT IS THE UPPER BOUND, stated as an object: a corpus row whose real arrays
+    That is the upper bound, stated as an object: a corpus row whose real arrays
     are the wrong dtype, non-contiguous, or aliasing an output is admitted here
     and would be refused in reality.
     """
@@ -131,12 +131,12 @@ class _Grid:
 class _Fields:
     """Everything ``covers_real_pml_offdiag_constitutive`` asks a ``Fields`` for.
 
-    THE ROW SLOTS COME FROM THE RECORD, not from a default: the census stores the
+    The row slots come from the record, not from a default: the census stores the
     six-flag mask under ``cuda_offdiag.row_mask.mask``, and it is the fact the
     fold split turns on. A replay that invented a full tensor would license the
     corpus's folded rows on an arm the measurement never reached.
 
-    EVERY VOLUME GETS A DISTINCT ADDRESS, so the alias clause is exercised as a
+    Every volume gets a distinct address, so the alias clause is exercised as a
     pass rather than skipped: the record cannot say whether a real row volume
     aliases an output, and pretending it does not is part of the upper bound.
     """
@@ -207,7 +207,7 @@ def fold_is_a_live_partner_axis(configuration: Dict[str, Any],
                                 mask: Sequence[int]) -> Tuple[bool, List[int]]:
     """Is a folded axis the PARTNER axis of a surviving row slot?
 
-    THE MIRROR RULE ENTERS ONLY THERE (stepping.py:1243-1245), and a component's
+    The mirror rule enters only there (stepping.py:1243-1245), and a component's
     own axis is never its own partner, so this predicate is exactly "the fold can
     change a byte on the arm the gate licensed". It is the same question the
     gate's :func:`~gate_cuda_folded_offdiag.predicted_diverges` asks of a live
@@ -227,7 +227,7 @@ def widened_verdict(configuration: Dict[str, Any],
                     mask: Sequence[int]) -> Tuple[bool, str]:
     """``covers_real_pml_offdiag_constitutive`` with the fold clause replaced.
 
-    TWO CLAUSES MOVE, and only two:
+    Two clauses move, and only two:
 
     * ``has_symmetry`` / ``mirrored[axis]`` -- were unconditional refusals; become
       a refusal only when a folded axis is some surviving slot's PARTNER axis;
@@ -237,12 +237,12 @@ def widened_verdict(configuration: Dict[str, Any],
       own-axis leg already spells (``_shift_up``'s zero far face,
       stepping.py:1834-1836).
 
-    EVERY OTHER CLAUSE IS THE SHIPPED FUNCTION'S, reached by delegating to it once
+    Every other clause is the shipped function's, reached by delegating to it once
     the fold has been rewritten away. That delegation is what stops this from
     being a second, drifting transcription -- and is why the validation asserts
     agreement on every unfolded row.
 
-    THE REWRITE IS A DEVICE OF THE REPLAY, NOT A PROPOSED CHANGE TO THE GRID. In
+    The rewrite is a device of the replay, not a proposed change to the grid. In
     a real launch the wall flags stay ``is_metallic and not is_mirrored``, which
     is 0 on a folded axis either way; declaring the axis metallic here only
     reaches the boundary-kind clause, which is the one that has no ``mirror``

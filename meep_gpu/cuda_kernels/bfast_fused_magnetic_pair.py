@@ -1,35 +1,35 @@
 """The BFAST hand-CUDA fused pair: ``step_B`` -> ``zero_metal_B`` -> ``update_H``.
 
-THE BOARD'S SMALLEST BUILDABLE CELL: ``B_to_H (cuda_bfast/BFAST, cuda_bfast/
+The board's smallest buildable cell: ``B_to_H (cuda_bfast/BFAST, cuda_bfast/
 BFAST)`` -- 1 seam-instance of demand, 1 clearing the source seam
 (``tests:TestReflectanceAngular.test_reflectance_angular_2_35_7``), carrying
 NOTHING in the seam. Both halves are CERTIFIED singles
 (``cuda_bfast_2026-08-21``, re-gated 2026-08-30); this module is the weld and
 introduces no new arithmetic.
 
-WHAT THE CURL HALF IS: the certified ``step_B_bfast_real`` -- the root real PML curl
+What the curl half is: the certified ``step_B_bfast_real`` -- the root real PML curl
 body with MEEP's BFAST pass after each component's curl (``folded_pass.bfast_insert``:
 the IIR state step into ``fb_B*`` and the folded ladder on the word ``pml_apply`` just
 stored). The pass rides through the register capture: the component's register is the
 value the LADDER returns (``fold_apply_reg``), not the curl's, because ``update_H``
 must read B after both passes. The state pointers and the six host-gated ``(k1, k2)``
 scalars are the certified signature's own inserts, kept; the chunk record ``cb`` is
-decoded ONCE for both halves (bit_parity_0_10 DESIGN.md D10).
+decoded ONCE for both halves.
 
-THE RUN'S FIRST ``update_H`` STARTS H FROM B (``stepping.separate_h_from_b``), as on
+The run's first ``update_H`` starts H from B (``stepping.separate_h_from_b``), as on
 the real pair: when ``fields.h_separated`` is still False the launcher re-steps
 ``update_H`` on the array path right after the kernel (``fused_magnetic_pair.start_of_h``).
 
-NO FILLS ARE CARRIED, AND THE ABSENCE IS A REFUSAL: the certified BFAST curl
+No fills are carried, and the absence is a refusal: the certified BFAST curl
 admits a folded grid (its masks carry the fold arms), so this predicate refuses
 one by name -- the ownership inversion that carries the fills is not ported
 here, and this cell's one row is unfolded.
 
-THE ALIASING RULE IS THE SIBLINGS': B is bound EXACTLY ONCE. The IIR state is
+The aliasing rule is the siblings': B is bound exactly once. The IIR state is
 bound once too, writable, in the curl half only -- ``update_H`` reads nothing
 BFAST-dependent (``covers_bfast_constitutive``'s own finding, gated on device).
 
-NOTHING HERE IS DISPATCH; :mod:`.fused_pairs` can plan it opt-in only.
+Nothing here is dispatch; :mod:`.fused_pairs` can plan it opt-in only.
 """
 
 from __future__ import annotations
@@ -46,7 +46,7 @@ if TYPE_CHECKING:
     from ..grid import Grid
     from ..pml import PML
 
-# THE CERTIFIED TEXT. ``bfast_curl`` is stdlib-only (it reads the shared real
+# The certified text. ``bfast_curl`` is stdlib-only (it reads the shared real
 # prelude off the sibling's source); ``constitutive_kernels`` imports CuPy at
 # module scope and is taken defensively.
 try:
@@ -112,7 +112,7 @@ except ImportError:  # loaded by path, outside the package
 
 
 # =============================================================================
-# THE PARTITION -- EMPTY ON THE CERTIFIED SIDE UNTIL A GATE MOVES IT
+# The partition -- empty on the certified side until a gate moves it
 # =============================================================================
 
 #: Byte-identical with a gate verdict AND a record behind it; empty until the
@@ -129,7 +129,7 @@ CERTIFIED_KERNELS = (
 #: EMPTY since 2026-09-02; what emptied it was the run above, not an argument.
 UNCERTIFIED_KERNELS = {}
 
-#: FALSE, MEASURED OFF THE CELL rather than defaulted: the cell's one row
+#: False, measured off the cell rather than defaulted: the cell's one row
 #: declares ``source_field_types == ['D']`` (the certclose census's own
 #: ``configuration`` block), so the magnetic seam is empty on every reachable
 #: configuration and ``_install_fused_pair`` always takes its ``NoopPlan``
@@ -143,7 +143,7 @@ FAMILY = "cuda_bfast_fused_magnetic_pair"
 KERNEL_NAME = "fused_magnetic_pair_bfast_real"
 
 #: The driver passes ONE launch performs (driver.py:3291, :3295, :3298). The two
-#: mirror fills are ABSENT BY REFUSAL: this predicate refuses every folded grid.
+#: mirror fills are absent by refusal: this predicate refuses every folded grid.
 REPLACES = ("step_B", "zero_metal_B", "update_H")
 
 #: The sub-step slot the planner holds this on.
@@ -190,7 +190,7 @@ LIFT_EDITS: Tuple[Dict[str, str], ...] = (
     {"line": "    <step_B_bfast_real's chunk-record block>\n"
              "    <update_H_pml_real's chunk-record block>",
      "became": "    <ONE block, bounds_block.bounds_block(both entry sets, presence xyz)>",
-     "why": "ONE DECODE OF THE RECORD PER KERNEL (DESIGN.md D10): both lifted bodies' "
+     "why": "One decode of the record per kernel: both lifted bodies' "
             "blocks are removed by bounds_block.strip_bounds_block, refused unless each "
             "is exactly the emitter's block for its body, and one block over the union "
             "is emitted directly after the decode."},
@@ -219,7 +219,7 @@ _PML_APPLY_SIGNATURE_REG = "__device__ __forceinline__ float pml_apply_reg(\n"
 _PML_APPLY_STORE = "    f[idx] = value;\n"
 _PML_APPLY_STORE_REG = (
     "    f[idx] = value;\n"
-    "    // THE ONE EDIT TO THIS HELPER'S ARITHMETIC: none. Both forms and the store\n"
+    "    // The one edit to this helper's arithmetic: none. Both forms and the store\n"
     "    // are the certified ones; the value is additionally RETURNED so the\n"
     "    // constitutive half can read it from a register instead of reloading it.\n"
     "    return value;\n")
@@ -246,7 +246,7 @@ CONSTITUTIVE_BLOCK: Tuple[Any, Tuple[int, ...]] = (
 #: certified position after the auxiliaries.
 _SIGNATURE = r'''
 extern "C" __global__ void fused_magnetic_pair_bfast_real(
-    // THE SHARED VOLUME, BOUND ONCE. The curl half writes it and the
+    // The shared volume, bound once. The curl half writes it and the
     // constitutive half reads it from a register; a second const __restrict__
     // binding of the same allocation would be UB NVRTC miscompiles silently.
     float* __restrict__ Bx, float* __restrict__ By, float* __restrict__ Bz,
@@ -271,7 +271,7 @@ extern "C" __global__ void fused_magnetic_pair_bfast_real(
     float k1_a, float k2_a, float k1_b, float k2_b, float k1_c, float k2_c,
     // zero_metal_B's walled-axis flags, from in_seam_coverage.zero_metal_axes.
     int wall_x, int wall_y, int wall_z,
-    // THE CHUNK RECORD (chunk_map.chunk_bounds_record), int32[25], decoded once.
+    // The chunk record (chunk_map.chunk_bounds_record), int32[25], decoded once.
     const int* __restrict__ cb
 ) {
 '''
@@ -502,7 +502,7 @@ def covers_bfast_fused_magnetic_pair(
     if seam:
         return False, seam[0]
 
-    # THE TWO FILLS ARE REFUSED, NOT CARRIED, and the refusal is stated HERE:
+    # The two fills are refused, not carried, and the refusal is stated HERE:
     # the certified BFAST curl admits a fold, so without this clause the weld
     # would admit a folded row and silently skip the two fills inside its seam.
     mirrored = getattr(grid, "is_mirrored", None)

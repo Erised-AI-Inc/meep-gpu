@@ -1,14 +1,14 @@
 """Rebind ``metal_kernels/fingerprints.json`` to a fresh round of gate artifacts.
 
-WHY THIS EXISTS. A weld entry names the exact bytes its gate executed. When a
+Why this exists. A weld entry names the exact bytes its gate executed. When a
 shared source changes -- ``metal_kernels/launch.py`` is the usual one, pinned by
 39 of the 44 entries -- every weld that pins it is owed a re-run, and the ledger
 is owed the new digests. Re-running the gates is only half of that: until the
-ledger is rebound it still points at the previous round's artifacts, and
+ledger is rebound it still points at the previous certification round's artifacts, and
 ``test_the_metal_welds_are_bound_to_the_live_sources`` correctly refuses the
 tree. The re-gate script had only ever done the first half.
 
-WHAT IT REFUSES TO DO. It does not invent a weld, widen one, or promote a gate
+What it refuses to do. It does not invent a weld, widen one, or promote a gate
 that did not pass. It rebinds an entry only when the fresh artifact for that
 family says ``released`` and ``passed``; anything else is reported and skipped,
 leaving the stale entry in place to keep failing. It also keeps each entry's
@@ -16,26 +16,26 @@ CURATED key set -- the handful of paths that entry chose to pin -- rather than
 replacing it with the artifact's full 42-file import set, because which files a
 weld binds to is a claim someone made, not a thing to regenerate.
 
-ONE RUN RECORD PER GPU ARCHITECTURE. The digests stay beside the entry; the facts
+One run record per GPU architecture. The digests stay beside the entry; the facts
 about the RUN -- its artifact, records line, timestamp, host line, the environment
 record it was read from, its torch, its Metal frontend and its subnormal policy -- go
 into ``runs[<architecture>]`` (``meep_gpu.metal_runs``), and the architecture is READ
 from the campaign's recorded environment (``metal_environment.campaign``), never
 passed in. A campaign without both environment records is refused whole.
 
-That makes a second Apple GPU ADDITIVE: a round on UNCHANGED bytes adds its
+That makes a second Apple GPU ADDITIVE: a certification round on UNCHANGED bytes adds its
 architecture's run beside the ones already there, and the admission certifies every
-architecture all cited welds have a live run for. A round on bytes that MOVED cannot
+architecture all cited welds have a live run for. A certification round on bytes that MOVED cannot
 be additive -- it would leave the other architectures' runs certifying bytes that no
 longer ship -- so that entry is skipped and the other architectures are named;
-``--supersede <architecture>[,...]`` is how a round says those certifications are
+``--supersede <architecture>[,...]`` is how a certification round says those certifications are
 being dropped. An entry still in the one-run shape is refused: run
 ``migrate_metal_runs.py`` first.
 
-A PINNED FILE THAT WAS DELETED IS RETIRED BY NAME. The curated set is kept, so a
+A pinned file that was deleted is retired by name. The curated set is kept, so a
 path the tree no longer holds would make the entry unbindable forever: no fresh
 artifact can record a file that is gone, and the entry is skipped with "artifact
-does not record" in every round. :data:`RETIRED_PINS` names each such path with why
+does not record" in every certification round. :data:`RETIRED_PINS` names each such path with why
 it left. When an entry REBINDS, a retired path is dropped from its curated set
 (both digest maps) and reported as ``RETIRED-PIN``; every other pin is compared
 exactly as before. A drop happens only inside a rebind, never on a skipped entry,
@@ -44,7 +44,7 @@ nothing, if a retired file is back in the checkout, and skips an entry whose fre
 artifact recorded the retired file (that run executed bytes this checkout does not
 hold). This is ``rebind_triton_welds.RETIRED_WELDS``'s rule at the grain of one pin.
 
-A PINNED FILE THE GATE NO LONGER IMPORTS IS RETIRED BY ROW. Some curated sets were cut
+A pinned file the gate no longer imports is retired by row. Some curated sets were cut
 from a gate's whole import record while the package root loaded the driver, the planner
 and the MEEP lift eagerly; since the root binds its names on first use, those files are
 outside the gate's dependency set and no fresh artifact records them.
@@ -55,7 +55,7 @@ rebind only, and refuses where the rule stops holding: the whole run if a row's 
 back in its gate's run closure, the entry if its artifact records the file or disagrees
 with the checkout on any file it recorded.
 
-THE DEVICE TIER IS RE-CUT FROM THE RUN BEING BOUND. An entry that pins ``device_sha256``
+The device tier is re-cut from the run being bound. An entry that pins ``device_sha256``
 (the digests of the shader text its modules emit, ``device_identity.device_digests``) has
 each pinned path re-cut as ``mint_metal_weld.py`` cuts it: ``device_digests`` of the
 path in this checkout, whole, ``{kind, digests}``. The value is taken from the checkout
@@ -66,18 +66,24 @@ digest can be established, SKIPS the entry by name. The pinned path set never mo
 entry without a device tier is never given one, and a rebind never drops a device pin to
 the weaker code tier (:func:`recut_device_tier`).
 
-A RERUN CHANGES NO BYTE. A rebind whose result differs from the entry already in the
+A rerun changes no byte. A rebind whose result differs from the entry already in the
 ledger only in this architecture's ``recorded_utc`` keeps the entry as it stands, so
 a second ``--write`` against the same artifacts leaves the ledger byte-identical.
 
-A CHUNKED ROUND (``--stamps S1,S2,...``, every chunk stamp of a ``rounds/1.0/chunks.py``
+A chunked round (``--stamps S1,S2,...``, every chunk stamp of a ``rounds/1.0/chunks.py``
 index, which ``chunks.py bind`` prints). Each weld's family is looked for under every stamp
 given: found under none, it has no artifact; found under two, the entry is SKIPPED by name
 (the tool never chooses between runs; a superseded chunk's stamp is not passed). Each stamp's
 environment is read from its own records and the run names the stamp it was read from; the
 stamps must name one GPU architecture and one environment, or the run is refused whole.
 
-THE RUN MUST DESCRIBE THE RELEASE TREE. Under any stamp, an artifact whose import record
+Named keys only (``--only KEY,...``). Exactly those ledger keys are rebound; every other
+entry is left as it stands, and a key the ledger does not hold refuses the run before
+anything is read (``rebind_triton_welds.py --only``'s rule). With ``--stamp`` once per
+stamp a chunked bind selected, naming the gates it selected there, a unit run again in a
+later chunk is bound from the run the bind took and from no other.
+
+The run must describe the release tree. Under any stamp, an artifact whose import record
 names a file this checkout holds at other bytes, or no longer holds, is SKIPPED by name
 (``artifact_drift.py``): a chunk certified on an earlier tip binds only where nothing it ran
 has moved since.
@@ -86,6 +92,7 @@ has moved since.
     python rebind_metal_welds.py --stamp 2026-08-27_routing --write    # apply
     python rebind_metal_welds.py --stamp <stamp> --supersede applegpu_g13s --write
     python rebind_metal_welds.py --stamps <stamp>_m0,<stamp>_m1,<stamp>_m2 --write
+    python rebind_metal_welds.py --stamp <stamp>_m1 --only metal_a_device_gate,... --write
 """
 from __future__ import annotations
 
@@ -124,7 +131,7 @@ RESULTS = _HERE / "results"
 
 #: Repository-relative pinned path -> why it is retired.
 #:
-#: A RETIRED PIN IS NOT A MISSING ONE. "artifact does not record <path>" is the right
+#: A retired pin is not a missing one. "artifact does not record <path>" is the right
 #: refusal for a file that still ships (the gate did not run it, so the weld cannot
 #: claim it) and the wrong one for a file deleted from the package: no round can
 #: record it again, so the entry would stay unbindable and stale forever. A path
@@ -138,7 +145,7 @@ RETIRED_PINS = {
     # metal_cylindrical_real_fused_magnetic_pair (*_device_gate) when the licence
     # existed; the licence, its arms and this module were deleted outright.
     "meep_gpu/expansion_refusal.py":
-        "deleted by entry 89-X1 with the expansion licence",
+        "deleted with the complex-multiply expansion licence",
 }
 assert all(name and not name.startswith("/") and why
            for name, why in RETIRED_PINS.items()), RETIRED_PINS
@@ -153,22 +160,23 @@ def retired_files_in_checkout() -> list:
 #: ``(weld key, repository-relative pinned path) -> the gate script(s)`` for a pin the
 #: weld's gate no longer imports.
 #:
-#: WHY THE ROWS EXIST. These three welds' curated sets were cut on 2026-08-21 from the
+#: Why the rows exist. These three welds' curated sets were cut on 2026-08-21 from the
 #: WHOLE import record of their gates' re-runs (each set equals that run's
 #: ``imported_source_sha256`` key set, 43 / 44 / 46 files), when the package root
 #: imported the driver, the planner, the MEEP lift and their dependencies eagerly, so
-#: every record held them. Since the root binds its names on first use (entry 128,
-#: owner ruling R17) a gate's record is its strict dependency set, and these files fall
-#: outside the gates' run closures: no fresh run records them, and without the rows the
-#: entries would be skipped with "artifact does not record" in every round.
+#: every record held them. Since the root binds its names on first use (as of 1.0) a
+#: gate's record is its strict dependency set (docs/development/certification.md, "What a
+#: gate's import record holds"), and these files fall outside the gates' run closures: no
+#: fresh run records them, and without the rows the entries would be skipped with
+#: "artifact does not record" in every certification round.
 #:
-#: GENERATED, NOT TYPED: ``import_closure.py unimported-pins metal`` prints these rows
+#: Generated, not typed: ``import_closure.py unimported-pins metal`` prints these rows
 #: from the checkout, and ``test_rebind_unimported_pins.py`` holds this literal to it both
 #: ways. A row needs BOTH halves of the rule: the file is a module the eager root loaded
 #: (``import_closure.eager_root_modules``), and it lies outside the gate's run closure.
 #: A pin outside the closure that the root did not load is a deliberate pin and stays.
 #:
-#: HOW A ROW ACTS, the same as :data:`RETIRED_PINS`: only inside a rebind, reported as
+#: How a row acts, the same as :data:`RETIRED_PINS`: only inside a rebind, reported as
 #: ``RETIRED-PIN (not imported by <gate>)``, and every other pin compared as strictly as
 #: before. The run is refused, nothing written, if a row's file is back in its gate's run
 #: closure; an entry is skipped if its artifact records a retired file, or if the run
@@ -281,7 +289,7 @@ def recut_device_tier(entry: dict, imported: dict, artifact_name: str) -> tuple:
     ``(None, None)`` for an entry that pins no device tier: a rebind never gives one to an
     entry that had none (that is ``mint_metal_weld.py``'s first cut, never a rebind's).
 
-    THE VALUE IS THE CHECKOUT'S, THE EVIDENCE IS THE RUN'S. A gate artifact records the bytes
+    The value is the checkout's, the evidence is the run's. A gate artifact records the bytes
     the gate imported (``imported_source_sha256``), not the corpus digest of a module's
     emitted shaders, so the digest is recomputed here, the way ``mint_metal_weld.py``
     computes it. That is honest only where the checkout IS what the run imported: each
@@ -396,7 +404,7 @@ def subnormal_policy(entry: dict, architecture: str, fresh: dict,
                      artifact_name: str) -> tuple:
     """``(policy, where it was read from)`` for this architecture's new run, or ``(None, why)``.
 
-    THE LINE IS CARRIED, NOT RETYPED, in this order:
+    The line is carried, not retyped, in this order:
 
     1. this architecture's previous run of the gate: the curated sentences in the
        ledger are claims someone wrote about the gate, and a rebind of the same gate
@@ -436,6 +444,9 @@ def main(argv=None) -> int:
     parser.add_argument("--stamps", default="", metavar="S1,S2,...",
                         help="a chunked round: every chunk stamp (chunks.py bind prints them); "
                              "each family is read from the one stamp that holds it")
+    parser.add_argument("--only", default="", metavar="KEY,...",
+                        help="rebind exactly these ledger keys and leave every other "
+                             "entry as it stands; a key the ledger does not hold refuses")
     parser.add_argument("--write", action="store_true", help="apply (default: report)")
     parser.add_argument(
         "--supersede", default="", metavar="ARCHITECTURE[,...]",
@@ -457,7 +468,7 @@ def main(argv=None) -> int:
             metal_runs.require_architecture(name)
         except metal_runs.ArchitectureRecordError as refused:
             raise SystemExit(f"--supersede: {refused}") from None
-    # A RETIRED FILE THAT EXISTS AGAIN refuses the whole run, before anything is read:
+    # A retired file that exists again refuses the whole run, before anything is read:
     # a pin whose file is in the checkout is re-gated and rebound, never retired, so
     # the table is wrong until someone reviews it.
     back = retired_files_in_checkout()
@@ -466,7 +477,7 @@ def main(argv=None) -> int:
             f"RETIRED_PINS names {back}, but the file is in the checkout ({_API}); a pin "
             f"whose file exists is re-gated and rebound, never retired. Nothing written")
 
-    # ONE ENVIRONMENT PER STAMP, and every stamp must name the same one: a chunked round's
+    # One environment per stamp, and every stamp must name the same one: a chunked round's
     # chunks run on one Mac, and a run record says which stamp's records it was read from.
     hosts = {stamp: metal_environment.host_line(metal_environment.campaign(stamp))
              for stamp in stamps}
@@ -474,7 +485,7 @@ def main(argv=None) -> int:
         raise SystemExit(f"the stamps' environments differ ({hosts}); one rebind binds one "
                          f"GPU architecture and environment. Nothing written")
     host = hosts[stamps[0]]
-    # THE RUN IS KEYED AND DESCRIBED BY PARSING THE LINE IT RECORDS, so the line a
+    # The run is keyed and described by parsing the line it records, so the line a
     # reader sees and the fields the admission compares cannot disagree.
     named = metal_runs.environment_of(host)
     try:
@@ -485,7 +496,7 @@ def main(argv=None) -> int:
     print(f"  writes runs[{architecture!r}]"
           + (f"; supersedes {list(supersede)}" if supersede else ""), flush=True)
     ledger = json.loads(LEDGER.read_text(encoding="utf-8"))
-    # A ROW THE RULE NO LONGER LICENSES refuses the whole run, before any entry is read:
+    # A row the rule no longer licenses refuses the whole run, before any entry is read:
     # a file back in its gate's run closure is a pin to keep, so the table is wrong until
     # someone reviews it.
     stale_rows = unimported_rows_back(ledger)
@@ -496,12 +507,23 @@ def main(argv=None) -> int:
             + ". Regenerate it with import_closure.py unimported-pins metal and review it. "
               "Nothing written")
     keys_before = set(ledger)
+    selected = ({key.strip() for key in args.only.split(",") if key.strip()}
+                if args.only else None)
+    if selected is not None:
+        unknown = selected - set(metal_runs.weld_keys(ledger))
+        if unknown:
+            raise SystemExit(f"--only names {sorted(unknown)}, absent from the ledger's "
+                             f"welds. Nothing written")
     rebound, skipped, missing = [], [], []
+    left = []               # keys --only did not name, left exactly as they stand
     pin_retirements = []    # (key, path, why) per pin dropped by a rebind
     unchanged = set()       # keys whose rebind restated the run already recorded
     device_recuts = []      # (key, path, moved, added, removed) per device path re-cut
 
     for key in metal_runs.weld_keys(ledger):
+        if selected is not None and key not in selected:
+            left.append(key)
+            continue
         entry = ledger[key]
         family = _family_of(key)
         artifact, stamp, holding = _artifact_across(family, stamps)
@@ -514,7 +536,7 @@ def main(argv=None) -> int:
             missing.append((key, family))
             continue
         fresh = json.loads(artifact.read_text(encoding="utf-8"))
-        # THE ARTIFACT'S OWN GPU, WHERE IT NAMES ONE, must be the campaign's: the run is
+        # The artifact's own GPU, where it names one, must be the campaign's: the run is
         # keyed by the environment records, and a gate artifact from another Mac's
         # results/ under this stamp would otherwise be filed under this GPU.
         ran_on = metal_runs.artifact_architecture(fresh)
@@ -537,18 +559,18 @@ def main(argv=None) -> int:
         # canonical_verdict.released = null -- so fall through on null, not just
         # on absence.
         #
-        # NO PRESENT VERDICT MAY SAY FALSE, 2026-08-30, and this is a DEFECT FIX rather
+        # No present verdict may say false, 2026-08-30, and this is a defect fix rather
         # than a tightening for its own sake. The order above was "canonical_verdict
         # first, fall through on null" -- so an artifact whose GATE passed but whose
         # RELEASE was refused rebound anyway, because the first verdict consulted said
-        # True and the second was never read. THE TWO ANSWER DIFFERENT QUESTIONS:
+        # True and the second was never read. The two answer different questions:
         # `canonical_verdict` is the gate's own word on whether its legs passed;
         # `release` is `metal_gate_runner`'s word on whether the bytes that ran were
         # the shipping bytes and the source manifest agreed. A weld binds BYTES, so a
         # refused release is disqualifying no matter how green the legs were.
         #
-        # MEASURED, not hypothetical: this round edited two gate scripts and re-ran
-        # them in place. `metal_gate_runner` refused to release both -- "campaign
+        # Measured, not hypothetical: one certification round edited two gate scripts and
+        # re-ran them in place. `metal_gate_runner` refused to release both -- "campaign
         # source manifest disagrees" -- while both wrote canonical_verdict.released =
         # True, and the previous form of this loop reported all 44 rebound with 0
         # skipped, two of them against artifacts the release contract had rejected.
@@ -571,7 +593,7 @@ def main(argv=None) -> int:
 
         imported = fresh.get("imported_source_sha256") or {}
         pinned = list(entry["source_sha256"])
-        # RETIRED PINS LEAVE THE CURATED SET BY NAME, and only by name: the
+        # Retired pins leave the curated set by name, and only by name: the
         # comparison below is over every other pin, exactly as strict as before.
         unimported = unimported_pins_of(key)
         deleted = [name for name in pinned if name in RETIRED_PINS]
@@ -584,7 +606,7 @@ def main(argv=None) -> int:
                                  f"that run executed a file this checkout no longer "
                                  f"holds, so it cannot bind these bytes"))
             continue
-        # A PIN RETIRED AS NOT IMPORTED MAY NOT BE IN THE RUN'S RECORD, whether the
+        # A pin retired as not imported may not be in the run's record, whether the
         # entry still pins it or an earlier bind dropped it: a run that imported it says
         # the gate needs it, so the row is wrong for this run.
         imported_again = sorted(name for name in unimported if name in imported)
@@ -595,7 +617,7 @@ def main(argv=None) -> int:
                                  f"the gate imports them again; review the table. The entry "
                                  f"is left as it stands"))
             continue
-        # AND THE RUN MUST BE THIS CHECKOUT'S BYTES: the closure that licenses the drop
+        # And the run must be this checkout's bytes: the closure that licenses the drop
         # was read off the checkout's gate, so it speaks for the run only where the run
         # executed the same files.
         if not_imported:
@@ -607,7 +629,7 @@ def main(argv=None) -> int:
                                      + (f" and {len(disagreeing) - 3} more"
                                         if len(disagreeing) > 3 else "")))
                 continue
-        # THE RUN MUST DESCRIBE THE RELEASE TREE: one recorded file at other bytes, or gone,
+        # The run must describe the release tree: one recorded file at other bytes, or gone,
         # and the artifact describes a tree that does not ship (artifact_drift.py).
         moved = artifact_drift.artifact_moved(fresh, _API)
         if moved:
@@ -619,7 +641,7 @@ def main(argv=None) -> int:
             skipped.append((key, f"artifact does not record {unknown}"))
             continue
 
-        # THE SHAPE IS REFUSED BY NAME, not read both ways: an entry still holding its
+        # The shape is refused by name, not read both ways: an entry still holding its
         # run beside the digests is migrated by migrate_metal_runs.py, never here.
         retired = metal_runs.shape_reasons(entry)
         if retired:
@@ -632,7 +654,7 @@ def main(argv=None) -> int:
         if policy is None:
             skipped.append((key, policy_from))
             continue
-        # THE DEVICE TIER, resolved BEFORE the first mutation of ``entry``: a refusal here
+        # The device tier, resolved BEFORE the first mutation of ``entry``: a refusal here
         # must leave the entry exactly as it stands, since ``ledger`` is what gets written.
         device_recut, device_refusal = recut_device_tier(
             entry, imported, f"{artifact.parent.name}/{artifact.name}")
@@ -640,7 +662,7 @@ def main(argv=None) -> int:
             skipped.append((key, device_refusal))
             continue
 
-        # THE BOUND BEFORE THE REWRITE, read while the entry still holds the digests
+        # The bound before the rewrite, read while the entry still holds the digests
         # its existing runs were cut against: it decides whether another
         # architecture's run survives this write.
         before = json.loads(json.dumps(entry))
@@ -673,12 +695,12 @@ def main(argv=None) -> int:
                 entry, bound_before=bound_before, architecture=architecture, run=run,
                 supersede=supersede)
         except metal_runs.ArchitectureRecordError as refused:
-            # THE ENTRY IS PUT BACK: the refusal comes after the pins moved, and the
+            # The entry is put back: the refusal comes after the pins moved, and the
             # ledger object is what gets written if any other key binds.
             ledger[key] = before
             skipped.append((key, str(refused)))
             continue
-        # NO OTHER ARCHITECTURE'S RUN MAY MOVE unless this round superseded it by
+        # No other architecture's run may move unless this rebind superseded it by
         # name -- the survival proof, in the tool rather than in a reviewer's head.
         # An explicit raise, not an ``assert``: ``python -O`` strips asserts, and this
         # is the check that keeps another Mac's certification intact.
@@ -690,21 +712,21 @@ def main(argv=None) -> int:
                 raise SystemExit(f"{key}: the rebind of runs[{architecture!r}] moved "
                                  f"runs[{name!r}], which it did not supersede; nothing "
                                  f"written")
-        # THE PIN SET MOVES ONLY BY THE RETIREMENT: the entry now pins exactly what it
+        # The pin set moves only by the retirement: the entry now pins exactly what it
         # pinned before less the retired paths, in both digest maps.
         for field in ("source_sha256", "code_sha256"):
             if set(entry[field]) != set(pinned) - set(dropping):
                 raise SystemExit(f"{key}: {field} pins {sorted(entry[field])} after the "
                                  f"rebind, not the curated set less {dropping}; nothing "
                                  f"written")
-        # AND THE DEVICE TIER PINS EXACTLY WHAT IT PINNED: re-cut, never widened, never
+        # And the device tier pins exactly what it pinned: re-cut, never widened, never
         # dropped, never added where the entry had none.
         if sorted(entry.get("device_sha256") or {}) != sorted(before.get("device_sha256") or {}):
             raise SystemExit(f"{key}: device_sha256 pins "
                              f"{sorted(entry.get('device_sha256') or {})} after the rebind, "
                              f"not {sorted(before.get('device_sha256') or {})}; nothing written")
         device_recuts.extend((key, *move) for move in _device_moves(before, entry))
-        # A RERUN CHANGES NO BYTE: a rebind that only restated the recorded run keeps
+        # A rerun changes no byte: a rebind that only restated the recorded run keeps
         # the entry as it stands, recording time included.
         if _unchanged_but_the_clock(before, entry, architecture):
             ledger[key] = before
@@ -734,10 +756,12 @@ def main(argv=None) -> int:
               f"  no artifact for {key} (looked for metal_{family}_{stamps[0]}/)", flush=True)
     print(f"\n  {len(rebound)} rebound, {len(skipped)} skipped, {len(missing)} without an artifact"
           f", {len(pin_retirements)} pin(s) retired, {len(unchanged)} unchanged"
-          f", {len({key for key, *_ in device_recuts})} device tier(s) moved",
+          f", {len({key for key, *_ in device_recuts})} device tier(s) moved"
+          + (f", {len(left)} left as they stand (not named by --only)"
+             if selected is not None else ""),
           flush=True)
 
-    # THE KEY SET NEVER MOVES: this tool rebinds entries, it neither adds nor drops one.
+    # The key set never moves: this tool rebinds entries, it neither adds nor drops one.
     if set(ledger) != keys_before:
         raise SystemExit(f"the ledger's keys moved ({sorted(set(ledger) ^ keys_before)}); "
                          f"nothing written")

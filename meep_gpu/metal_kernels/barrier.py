@@ -1,6 +1,6 @@
 """Host READ barriers for held mirrors — the half the seal cannot cover.
 
-THE ASYMMETRY THIS MODULE EXISTS FOR. Under a hold the device owns a volume between
+The asymmetry this module exists for. Under a hold the device owns a volume between
 launches, and there are two ways the host can be wrong about it:
 
 * the host WRITES it — closed, universally and fail-closed, by
@@ -15,7 +15,7 @@ A seal cannot help with the read, because NumPy has no read hook. The intercepti
 has to happen at the attribute that hands the array out, and that is what this
 module installs.
 
-WHY A CLASS SWAP AND NOT AN EDIT TO ``fields.py``. ``Fields`` stores its primaries
+Why a class swap and not an edit to ``fields.py``. ``Fields`` stores its primaries
 as plain instance attributes and declares no ``__slots__``, and a ``property`` is a
 DATA descriptor, so a property defined on a generated subclass outranks the instance
 ``__dict__`` and fires for both ``f.Dx`` and ``getattr(f, "Dx")`` while handing back
@@ -24,7 +24,7 @@ barrier from inside ``metal_kernels`` without touching the engine — which matt
 because ``fields.py`` is pinned by all three ``driver_dispatch`` records and
 ``metal_kernels`` is pinned by one.
 
-WHAT IT DOES NOT REACH, stated because the gap is the risk. A property is an
+What it does not reach, stated because the gap is the risk. A property is an
 attribute hook, so it covers attribute access and nothing else. It does NOT see:
 
 * ``PolarizationState.P[component]`` — a dict subscript, not an attribute. That is
@@ -86,7 +86,7 @@ def _barrier_property(name: str) -> property:
             if mirror is not None and mirror.state == _DEVICE_OWNED:
                 residency.acquire_read(current)
             return current
-            # THE FAST PATH IS THE COMMON PATH and it must not go through
+            # The fast path is the common path and it must not go through
             # ``acquire_read``. A held mirror is ``DEVICE_OWNED`` only between the
             # launch that wrote it and the first host read; every other read finds
             # it clean, and on a held row there are few host reads by construction
@@ -109,7 +109,7 @@ def _barrier_property(name: str) -> property:
         # array's bytes have never been on the device.
         residency = self.__dict__.get(_BARRIER_RESIDENCY)
         if residency is not None and value is not self.__dict__.get(name):
-            # A ROTATION MUST NOT REBIND, and getting this wrong took out every weld
+            # A rotation must not rebind, and getting this wrong took out every weld
             # row in the first held campaign. The weld families do
             # ``setattr(self.fields, name, self.rotated[name])`` inside ``run``, and
             # the array they swap in is ALREADY a registered mirror under its own
@@ -260,7 +260,7 @@ class BarrierDict(dict):
             return self[key]
         return default
 
-    # ONE SUBSCRIPT IS NOT THE ONLY WAY OUT OF A MAPPING, and overriding only
+    # One subscript is not the only way out of a mapping, and overriding only
     # ``__getitem__`` is why seven dispersive rows still diverged after the dict
     # barrier was installed. The end-to-end state walk reads these mappings with
     # ``.items()``; ``dict.items`` is a C-level view that never calls
@@ -331,7 +331,7 @@ def install_dict_barrier(state: Any, residency: Any,
         mapping = getattr(state, attribute, None)
         if not isinstance(mapping, dict) or isinstance(mapping, BarrierDict):
             continue
-        # THE MAP MUST COVER THE WHOLE POOL, NOT THIS DICT'S CURRENT CONTENTS.
+        # The map must cover the whole pool, not this dict's current contents.
         # ``ade_update_p`` rotates a closed 3-cycle over
         # {P[c], P_prev[c], _scratch} after every launch, so the array sitting in
         # ``P['Ex']`` three steps from now is one that is in ``P_prev`` or

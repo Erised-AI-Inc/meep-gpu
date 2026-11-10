@@ -1,6 +1,6 @@
 """The rule: dispatch never runs two executors under disagreeing subnormal policies.
 
-WHY THIS FILE EXISTS. Every per-kernel and composition gate in this package
+Why this file exists. Every per-kernel and composition gate in this package
 installs one float32 subnormal policy before its first compile, so both executors
 are driven to the same one for the whole gate. That is correct for certifying
 arithmetic and it is exactly the condition a user's run did not satisfy: nothing
@@ -22,7 +22,7 @@ So what is pinned here is not "a policy is recorded". It is:
 * and the guard catches a split that is DRIVEN APART deliberately, rather than
   only reporting the happy path.
 
-NOTHING HERE LAUNCHES A KERNEL. These run on the NumPy laptop. The device half —
+Nothing here launches a kernel. These run on the NumPy laptop. The device half —
 the shipped path byte-identical to the kill-switched array path with no harness
 installing anything, and the PTX census showing both executors on one policy — is
 ``parity/meep_gpu/gate_dispatch_end_to_end.py`` and ``probe_ftz_ptx_census.py``.
@@ -81,7 +81,7 @@ def cupy_like_grid():
 def stub_triton(monkeypatch, version="3.1.0"):
     """A Triton the REAL install can be driven onto — see ``governable_triton``.
 
-    IT WAS A BARE ``types.ModuleType``, whose ``__spec__`` is ``None``, and the
+    It was a bare ``types.ModuleType``, whose ``__spec__`` is ``None``, and the
     gate's ``find_spec``-based governance read that raise as "absent". Every test
     in this file that DISPATCHED therefore ran with ``governed_executors ==
     ['host']``: the two executors whose disagreement is the defect were never
@@ -193,7 +193,7 @@ def test_a_refused_configuration_never_installs_anything(monkeypatch):
 
 
 def test_the_install_lands_before_the_first_kernel_compiles(monkeypatch):
-    """THE ORDERING CONSTRAINT, measured rather than argued.
+    """The ordering constraint, measured rather than argued.
 
     Both device executors memoize compiled kernels in process, so a policy
     installed after a compile is not seen by the binary that already exists. The
@@ -240,20 +240,44 @@ def test_a_preinstalled_matching_policy_is_accepted_and_not_reinstalled(monkeypa
 
 
 def test_a_preinstalled_different_policy_refuses_by_name(monkeypatch):
-    """THE DECISION, pinned: refuse, never swap.
+    """THE DECISION, pinned: never swap; refuse for want of evidence only under
+    ``certified``, and refuse a split always.
 
     Uniform-flush is not a split — but it is not the certification either, and
     the module cannot swap in place because binaries compiled under the first
     policy are still reachable (CuPy's cache key is computed above the strip
-    seam). So dispatch takes the array path and says why.
+    seam). Under ``MEEP_GPU_HARDWARE=certified`` dispatch takes the array path and
+    says why. By default the missing per-arm evidence no longer
+    refuses: the policy is kept, and the uniformity rule decides -- here the stand-in
+    policy state drove no executor, which is the split, and that is refused by name.
     """
     monkeypatch.setattr(policy_module, "policy_is_installed", lambda: True)
     monkeypatch.setattr(policy_module, "get_subnormal_policy", lambda: "flush")
     assert plan_on_a_cupy_host(monkeypatch) is None
     record = fastpath.last_dispatch_report()
+    assert "subnormal policy was never driven onto" in record["refused_because"], \
+        record["refused_because"]
+    assert gate_of(record)["policy_evidence"]["certified"] is False
+    assert gate_of(record)["caller_installed_policy"] == "flush"
+    # ``certified``, on a stand-in host whose device and stack are the certified ones
+    # (an unreadable device is refused under that scope before rung 8b is reached).
+    from meep_gpu.test_dispatch_contract import (  # noqa: PLC0415
+        cupy_like_grid_with_device, stand_in_stack)
+
+    monkeypatch.setenv(fastpath.HARDWARE_SWITCH, fastpath.HARDWARE_CERTIFIED)
+    stand_in_stack(monkeypatch)
+    # On a readable 8.6 the shipped ledger may hold flush evidence for this arm; the
+    # refusal under test is the one for an arm that has none.
+    monkeypatch.setattr(fastpath, "policy_evidence_reasons",
+                        lambda arms, table, capability, policy: [
+                            "PML: no run on this GPU released under 'flush'"])
+    assert fastpath.plan_fast_path(object(), object(),
+                                   cupy_like_grid_with_device()) is None
+    record = fastpath.last_dispatch_report()
     reason = record["refused_because"]
-    assert "'flush'" in reason and "'keep'" in reason
+    assert "'flush'" in reason and "'keep'" in reason, reason
     assert "fresh process" in reason
+    assert reason.endswith(fastpath.CERTIFIED_SCOPE_TAIL), reason
     assert record["step_path"] == "array" and record["decision"] == "refused"
     assert gate_of(record)["caller_installed_policy"] == "flush"
 
@@ -307,7 +331,7 @@ def test_the_opt_out_cannot_reach_a_split(monkeypatch):
 
 
 def test_an_executor_left_ungoverned_is_caught(monkeypatch, tmp_path):
-    """THE SHIPPED DEFECT, reconstructed: one executor on the policy, one on its
+    """The shipped defect, reconstructed: one executor on the policy, one on its
     own default. A caller may drive a SUBSET — ``executors=("host","cupy")``
     leaves Triton compiling with no ftz attribute while CuPy is stripped — and
     that is the split with an extra step in front of it.

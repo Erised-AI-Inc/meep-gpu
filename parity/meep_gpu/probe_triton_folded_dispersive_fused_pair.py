@@ -4,7 +4,7 @@ DEVICE STATUS: **UNRUN.** This module is written to be run on a CUDA host with a
     idle device; nothing in this tree may cite it as a release until an artifact
     exists with ``device_status: RUN`` and ``release.released: true``.
 
-THE CLAIM THIS GATE IS ALLOWED TO SUPPORT: for every configuration
+The claim this gate is allowed to support: for every configuration
 :func:`~meep_gpu.triton_kernels.folded_dispersive_fused_pair.folded_dispersive_fused_pair_coverage`
 admits, ONE launch of ``folded_dispersive_fused_curl_constitutive_D`` — bracketed by
 the SHIPPED deposit repair wherever the seam carries an electric deposit — leaves the
@@ -21,11 +21,11 @@ engine in a state that is BIT-IDENTICAL, PER COMPLETE ``driver.step()``, to
     routes because no Triton product owns either,
 
 over every allocated volume: the primaries, the split-field PML auxiliaries, the
-constitutive ``f_w`` history AND EVERY POLE VOLUME — ``P``, ``P_prev`` and the shared
+constitutive ``f_w`` history and every pole volume — ``P``, ``P_prev`` and the shared
 scratch of every registered susceptibility. Comparison is on the uint32 view.
 ``allclose`` appears nowhere.
 
-WHAT IS NEW HERE, AND IT IS THE ONLY THING THAT IS
+What is new here, and it is the only thing that is
 ==================================================
 
 The curl half, the two fills and the wall clear are BYTE-COPIES of
@@ -36,20 +36,20 @@ places, and the second one is the whole hazard:
     owned cell   src = (v  - sum P[idx]) * inv_eps[idx]
     ghost cell   src = (gh - sum P[dst]) * inv_eps[dst]
 
-**THE GHOST READS THE POLES AT ITS OWN INDEX.** The array path's fills write ``D``
+**The ghost reads the poles at its own index.** The array path's fills write ``D``
 and never ``P`` (stepping.py:1497-1498, :1529-1532), and ``update_E`` then runs over
 the whole stored extent, so at an imaged cell it reads that cell's own ``P``. A
 kernel that imaged the SOURCE lane's poles instead would be a smooth, plausible,
 wrong field on every folded plane. :data:`MUTATION_TABLE` arms exactly that
 (``mp1``), plus a reversed chain, a pre-summed chain and a dropped chain.
 
-WHAT THE GATE REFUSES TO INFER
+What the gate refuses to infer
 ==============================
 
 * **Bytes alone cannot prove the fused path ran.** A silent fallback to the array
   path is byte-identical to the array path by construction. Every launch is counted
   through a proxy that owns the kernel object, every substitution is counted per
-  route in the installer, and one ARMED HARNESS MUTATION removes the substitution so
+  route in the installer, and one armed harness mutation removes the substitution so
   the counters — not the bytes — are what catches it.
 * **A no-op agreeing with a no-op is trivially identical.** Every compared array must
   MOVE during the leg; a leg whose electric trio is frozen in all three routes is
@@ -123,7 +123,7 @@ DEFAULT_POLES: Tuple[Tuple[float, float, Tuple[float, float, float]], ...] = (
     (0.91, 0.08, (0.20, 0.45, 0.00)),
 )
 
-#: TWO POLES ON EVERY COMPONENT — (2, 2, 2) — and the ORDER mutations are scored
+#: Two poles on every component — (2, 2, 2) — and the ORDER mutations are scored
 #: here rather than on :data:`DEFAULT_POLES`. A rewrite that swaps the first two arms
 #: is the reversal only where BOTH are live; on a component carrying one pole the
 #: same rewrite reads a dead slot instead, which is a different defect and would let
@@ -141,18 +141,18 @@ ONE_POLE: Tuple[Tuple[float, float, Tuple[float, float, float]], ...] = (
 
 #: (name, cell, boundaries, mirrors, poles, steps).
 #:
-#: THE PARITIES, THE OUTER DECLARATIONS AND THE WALL SET ARE ALL SWEPT, exactly as
+#: The parities, the outer declarations and the wall set are all swept, exactly as
 #: the plain folded pair's gate sweeps them, and for its reasons: an EVEN plane makes
 #: the parity mutations invisible (the multiply is by +1); a folded METALLIC axis
 #: makes every ``FAR_a`` block compile-time absent; and a folded PERIODIC axis beside
 #: a wall is the only shape where the near ghost's parity-then-clear order and the
 #: far ghost's clear-then-parity order can disagree.
 #:
-#: THE Z AXIS IS PERIODIC IN EVERY 2-D CASE, NOT METALLIC. A 2-D cell is
+#: The Z axis is periodic in every 2-D case, not metallic. A 2-D cell is
 #: translationally invariant along z; a metallic declaration there is not a wall but
 #: a polarization filter, and ``Grid`` refuses it by name (grid.py:842-877).
 #:
-#: THE 3-D CASES ARE NOT DECORATION. In a 2-D run z is invariant, so ``FAR_Z``,
+#: The 3-D cases are not decoration. In a 2-D run z is invariant, so ``FAR_Z``,
 #: ``NEAR_Z``, every ``gv_2*`` register, the ``kp_f2``/``km_f2`` pair AND component
 #: 2's whole pole chain at a ghost are compile-time absent — a third of this kernel
 #: would be shipped code no leg executed.
@@ -183,16 +183,16 @@ CASES: Tuple[Tuple[str, Tuple[float, float, float], Any,
     ("one_pole_y_fold", (3.2, 3.0, 0.0),
      {"x": "metallic", "y": "metallic", "z": "periodic"}, (("Y", -1),),
      ONE_POLE, 10),
-    # TWO POLES ON EVERY COMPONENT. The ORDER mutations are scored here; see
+    # Two poles on every component. The ORDER mutations are scored here; see
     # TWO_POLES_EVERYWHERE for why a (2, 1, 1) grid would score them wrong.
     ("two_poles_everywhere_y_fold", (3.2, 3.0, 0.0),
      {"x": "metallic", "y": "metallic", "z": "periodic"}, (("Y", -1),),
      TWO_POLES_EVERYWHERE, 10),
-    # THE 3-D CASES.
+    # The 3-D cases.
     ("xyz_all_folded_3d", (2.0, 2.0, 2.0),
      {"x": "periodic", "y": "periodic", "z": "periodic"},
      (("X", 1), ("Y", -1), ("Z", 1)), DEFAULT_POLES, 10),
-    # A FAR FOLD, A NEAR FOLD AND A WALL AT ONCE — the only shape in which the
+    # A far fold, a near fold and a wall at once — the only shape in which the
     # CHAINED composite and a raw parity product differ, and (with the ODD y plane)
     # the only one on which `m12` is not a structural null.
     ("x_periodic_y_fold_z_wall_3d", (2.0, 2.0, 1.5),
@@ -210,10 +210,10 @@ def case_index(name: str) -> int:
                          f"{[case[0] for case in CASES]}")
 
 
-#: The CARRY family: the same grids run with a real ELECTRIC deposit IN THIS SEAM.
+#: The CARRY family: the same grids run with a real ELECTRIC deposit in this seam.
 #: Named so the two families cannot drift apart.
 #:
-#: THIS IS THE PRODUCT, not an extra. All four corpus rows of this board cell declare
+#: This is the product, not an extra. All four corpus rows of this board cell declare
 #: an electric source, so a gate that only ran the quiet family would certify a
 #: kernel the corpus never reaches. One folded METALLIC grid, one folded PERIODIC
 #: grid (whose far carry images the deposit onto a second plane) and one 3-D grid.
@@ -264,10 +264,10 @@ POLE_MATERIAL_PREFIX = "sigma"
 #: separate routes read the pole volumes directly and never do — and on a CARRY leg
 #: the fused route allocates it too, through ``deposit_repair.apply``. So its
 #: presence differs by ROUTE and by LEG while carrying no state either route reads
-#: across a step. MEASURED on the first device run of this gate: it was the ONLY
+#: across a step. Measured on the first device run of this gate: it was the ONLY
 #: asymmetry, and ``fused_vs_separate_certified_products`` was already ``None``.
 #:
-#: THE RULE IS THE LEADING UNDERSCORE, not this list: a private attribute is not
+#: The rule is the leading underscore, not this list: a private attribute is not
 #: physical state, and every PUBLIC volume stays in the comparison. The list is the
 #: tripwire for that rule, so a private name the scan starts dropping is visible.
 PRIVATE_SCRATCH: Tuple[str, ...] = ("_fmp_scratch",)
@@ -291,7 +291,7 @@ def save(payload: Dict[str, Any], path: str) -> None:
     """Serialise the payload, provenance-stamped, atomically."""
     os.makedirs(os.path.dirname(os.path.abspath(path)) or ".", exist_ok=True)
     temporary = path + ".tmp"
-    # THE POLICY STAMP IS RE-READ, NOT CARRIED. Taken once at install time it records
+    # The policy stamp is re-read, not carried. Taken once at install time it records
     # every counter at zero, because nothing had compiled yet.
     if "subnormal_policy" in payload:
         try:
@@ -319,7 +319,7 @@ def sha256(path: str) -> str:
 
 
 def source_hashes() -> Dict[str, str]:
-    """Every file this run binds itself to, KEYED BY ITS REPO-RELATIVE PATH.
+    """Every file this run binds itself to, keyed by its repo-relative path.
 
     Not by a nickname: every reader of this map — ``build_triton_fusion_matrix``'s
     ``GATE_BOUND`` branch and the weld-record walk — resolves each key against the
@@ -572,7 +572,7 @@ def transcription_leg() -> Dict[str, Any]:
             f"family's Yee shifts put shift 1 on the component's OWN axis only "
             f"(symmetry.py:294-301)")
 
-    # THE ONE SUBSTITUTION, at the owned cell. `(v - sum P) * inv_eps`, with the
+    # The one substitution, at the owned cell. `(v - sum P) * inv_eps`, with the
     # subtraction through the shared helper at THIS lane's own index and D on the
     # LEFT of the multiply (stepping.py:1011-1013).
     for index, register in ((0, "v0"), (1, "v1"), (2, "v2")):
@@ -598,7 +598,7 @@ def transcription_leg() -> Dict[str, Any]:
                 f"the fused body still forms the PLAIN product {register!r}; the "
                 f"dispersive source is (D - sum P), not D")
 
-    # THE POLE CHAIN, against the certified body it transcribes. Eight arms, in
+    # The pole chain, against the certified body it transcribes. Eight arms, in
     # order, each subtracting ONE pole — never pre-summed, never reordered.
     for guard, arm in POLE_ARMS:
         if guard not in poles or arm not in poles:
@@ -646,7 +646,7 @@ def transcription_leg() -> Dict[str, Any]:
                 f"_carry_ghost_E_dispersive drops {line!r}, which the certified "
                 f"folded_fused_pair._carry_ghost_E carries: the only licensed "
                 f"difference between the two is the source line")
-    # THE GHOST READS ITS OWN POLES. `where` is bound to `dst`, never to a source
+    # The ghost reads its own poles. `where` is bound to `dst`, never to a source
     # index — this is the defect the product could have and the one no per-owned-cell
     # comparison would see.
     # The call spans two physical lines, so the ARGUMENT line is checked beside the
@@ -675,7 +675,7 @@ def transcription_leg() -> Dict[str, Any]:
             "the fused body open-codes a ghost store; every imaged cell must go "
             "through _carry_ghost_E_dispersive")
 
-    # THE COEFFICIENT REGISTERS ARE LOADED TWICE, AND THAT IS THE D GEOMETRY.
+    # The coefficient registers are loaded twice, and that is the D geometry.
     for stem, coordinate, top in (("kp0", "i", "top_x"), ("km0", "i", "top_x"),
                                   ("kp1", "j", "top_y"), ("km1", "j", "top_y"),
                                   ("kp2", "k", "top_z"), ("km2", "k", "top_z")):
@@ -689,7 +689,7 @@ def transcription_leg() -> Dict[str, Any]:
                 f"exactly twice — once at {coordinate} for the owned cell and every "
                 f"near-only ghost, once at {top} for the far half")
 
-    # EVERY CARRY PASSES ITS COMPONENT'S OWN POLE GROUP AND ITS OWN COUNT. A carry
+    # Every carry passes its component's own pole group and its own count. A carry
     # that handed component 0's poles to component 2 would be caught on the device
     # only where the two counts differ, which is why it is also read off the text.
     groups = {0: "a0, a1, a2, a3, a4, a5, a6, a7,",
@@ -856,7 +856,7 @@ def predicate_leg() -> Dict[str, Any]:
     finally:
         driver.close()
 
-    # THE PLAN BUILDS, AND IT BUILDS THE PLAN THE ENGINE WOULD. On NumPy the shipped
+    # The plan builds, and it builds the plan the engine would. On NumPy the shipped
     # predicate refuses for the host clause, so the plan builder returns None here by
     # design; what is checked is that it returns None rather than RAISING, which is
     # the contract every builder in this package holds.
@@ -914,7 +914,7 @@ def _census_rows(root: str) -> List[dict]:
 def corpus_admission_leg() -> Dict[str, Any]:
     """The funnel, and whether it lands on the cell the board scored.
 
-    AN ABSENT CENSUS IS NOT AN EMPTY ONE, and the difference is the whole reason this
+    An absent census is not an empty one, and the difference is the whole reason this
     clause exists: a staged tree that did not carry the record would funnel 0 -> 0
     and report "worth zero seam-instances" — a measurement about the staging dressed
     as one about the corpus. Measured on the plain folded pair's first GPU-host run
@@ -953,7 +953,7 @@ def corpus_admission_leg() -> Dict[str, Any]:
             "the two halves admit NO corpus row together: this product is worth "
             "zero seam-instances and should not have been built")
 
-    # THE BOARD'S OWN ANSWER, read rather than re-derived. If the newest cut scored
+    # The board's own answer, read rather than re-derived. If the newest cut scored
     # a different row set into this cell, one of the two derivations is wrong and
     # that matters more than the product.
     board_rows: Optional[List[str]] = None
@@ -971,7 +971,7 @@ def corpus_admission_leg() -> Dict[str, Any]:
         findings.append(
             f"the board at {BOARD} is absent, so the cross-check that this funnel "
             f"lands on the cell the matrix scored could not run")
-    # EVERY ROW OF THIS CELL CARRIES AN ELECTRIC DEPOSIT, which is why
+    # Every row of this cell carries an electric deposit, which is why
     # CARRIES_DEPOSIT_REPAIR is the product rather than one clause of it. Asserted,
     # because a cell that stopped being all-electric would make the carry legs below
     # decoration rather than the point.
@@ -1021,7 +1021,7 @@ def build_driver(cp, cell, boundaries, mirror_specs, poles, seed: int,
             Susceptibility(frequency=frequency, gamma=gamma),
             {component: cp.full(shape, value, dtype=cp.float32)
              for component, value in zip(("Ex", "Ey", "Ez"), sigma_values)})
-    # OFF THE MIRROR PLANE ON EVERY FOLDED AXIS. A point source ON the plane is
+    # Off the mirror plane on every folded axis. A point source ON the plane is
     # refused with a reason on an odd fold (from_meep.py:2686-2698); a quarter of the
     # owned half-width puts it inside the stored half and clear of the absorber,
     # which a folded axis carries on its HIGH face only.
@@ -1036,7 +1036,7 @@ def build_driver(cp, cell, boundaries, mirror_specs, poles, seed: int,
         driver.add_source({"component": "Hz", "frequency": 0.31,
                            "center": tuple(center), "width": 0.4})
     if electric:
-        # THE DEPOSIT THIS PRODUCT EXISTS FOR. Injected BETWEEN the two halves
+        # The deposit this product exists for. Injected BETWEEN the two halves
         # (driver.py:3294-3299), so the fused launch consumes a pre-injection D and
         # the shipped repair is what puts the difference back.
         driver.add_source({"component": "Ez", "frequency": 0.31,
@@ -1050,7 +1050,7 @@ def build_driver(cp, cell, boundaries, mirror_specs, poles, seed: int,
         if array is not None:
             array[...] = cp.asarray(np.ascontiguousarray(
                 rng.uniform(-0.05, 0.05, size=shape).astype(np.float32)))
-    # THE POLES ARE SEEDED NON-ZERO, and that is not cosmetic. Zero is a fixed point
+    # The poles are seeded non-zero, and that is not cosmetic. Zero is a fixed point
     # of the subtraction chain: with P == 0 everywhere the dispersive body and the
     # PLAIN folded body are bitwise equal, every pole mutation is a null, and the
     # gate would certify the wrong kernel.
@@ -1065,7 +1065,7 @@ def build_driver(cp, cell, boundaries, mirror_specs, poles, seed: int,
 def inventory(driver) -> Dict[str, Any]:
     """Every device volume the step can touch, found by scanning rather than listing.
 
-    THE POLE VOLUMES ARE IN IT. They live on the ``PolarizationState`` objects rather
+    The pole volumes are in it. They live on the ``PolarizationState`` objects rather
     than on ``Fields``, so a scan of ``vars(fields)`` alone would leave the arrays
     this kernel loads at eight compiled slots per component OUT of the comparison —
     which is the one place a wrong pole index could hide.
@@ -1074,7 +1074,7 @@ def inventory(driver) -> Dict[str, Any]:
     shape = tuple(fields.grid.shape)
     found: Dict[str, Any] = {}
     for name, value in vars(fields).items():
-        # THE LEADING UNDERSCORE IS THE RULE — see PRIVATE_SCRATCH. A private
+        # The leading underscore is the rule — see PRIVATE_SCRATCH. A private
         # attribute is not physical state; every PUBLIC volume stays in.
         if name.startswith("_"):
             continue
@@ -1150,7 +1150,7 @@ AUXILIARY_LINES: Dict[str, Tuple[bool, int]] = {
 def outside_every_layer(driver, names) -> List[str]:
     """The auxiliaries whose record line holds no row of the run's division.
 
-    THE AUXILIARY CONTRACT LEAVES THEM UNTOUCHED: an auxiliary word outside its form's
+    The auxiliary contract leaves them untouched: an auxiliary word outside its form's
     region is never read or written, so on a division that gives a component's layer no
     cell at all (an invariant axis, or an axis with no layer, carries no run) the
     auxiliary keeps its first word for the whole run, on the array path and in the
@@ -1272,8 +1272,8 @@ def separate_route(driver):
             f"replaces")
     # `zero_metal_D` and `fill_folded_far_ghosts_D` stay on the ARRAY PATH here: no
     # Triton product owns either. Both are counted, so a difference in which of them
-    # ran is a counter event rather than an invisible correction. THE INJECTION ALSO
-    # STAYS ON THE ARRAY PATH, which is what makes this route the right oracle for
+    # ran is a counter event rather than an invisible correction. The injection also
+    # stays on the array path, which is what makes this route the right oracle for
     # the carry family: the certified kernels with the driver's own deposit between
     # them.
     return Route({"step_D": curl, "fill_symmetry_bc_D": fill,
@@ -1283,7 +1283,7 @@ def separate_route(driver):
 def fused_route(plan, driver=None, sources=(), bracket: bool = True):
     """The fused plan in its two slots, BRACKETED when the seam carries a deposit.
 
-    THE BRACKET IS THE SHIPPED ONE. ``deposit_repair.LeadingRepairPlan`` /
+    The bracket is the shipped one. ``deposit_repair.LeadingRepairPlan`` /
     ``TrailingRepairPlan`` are the exact pair ``launch._install_fused_pair`` puts in
     these two slots; a harness that assembled its own could not license the one that
     ships.
@@ -1428,7 +1428,7 @@ def run_leg(cp, name: str, cell, boundaries, mirrors, poles, steps: int, product
         row["arrays_never_moved"] = sorted(
             set(final) - set(ever_moved) - set(material) - set(outside))
         row["material_changed"] = sorted(key for key in material if key in ever_moved)
-        # THE ASYMMETRY IS RECORDED, not compared through. `PRIVATE_SCRATCH`'s note
+        # The asymmetry is recorded, not compared through. `PRIVATE_SCRATCH`'s note
         # says why the private names are out of the comparison; this row is where a
         # PUBLIC one appearing on one route and not the other becomes visible, and
         # `verdict_of` fails on a non-empty list.
@@ -1542,15 +1542,15 @@ def shipped_device_function_sources(product) -> List[Tuple[str, str]]:
 
 def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, int]]], ...]:
     """(id, why it is armed, expectation, rewrite). The artifact records what was
-    MEASURED, never what was expected."""
+    measured, never what was expected."""
 
     # ------------------------------------------------------------------
-    # THE POLE MUTATIONS — this product's own arithmetic, and the only lines in
+    # The pole mutations — this product's own arithmetic, and the only lines in
     # the kernel that are not a byte-copy of a released body.
     # ------------------------------------------------------------------
 
     def mp1_ghost_reads_the_wrong_cells_poles(source: str) -> Tuple[str, int]:
-        """THE DEFECT THIS PRODUCT COULD HAVE. The imaged ghost's pole sum taken at a
+        """The defect this product could have. The imaged ghost's pole sum taken at a
         cell that is NOT its own.
 
         The array path's fills write D and never P (stepping.py:1497-1498,
@@ -1577,7 +1577,7 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
         Algebraically identical and a DIFFERENT float32 number at two or more poles,
         which is why the certified body spells eight separate arms rather than a sum.
 
-        SWAPPING THE FIRST TWO ARMS *IS* THE REVERSAL on a two-pole component, and it
+        Swapping the first two arms *is* the reversal on a two-pole component, and it
         is nothing else on a one-pole one — there the same rewrite would read a DEAD
         slot (the plan binds unused slots to the component's own D volume), which is
         a different defect. :data:`MUTATION_REQUIRES_TWO_POLES_EVERYWHERE` is what
@@ -1598,7 +1598,7 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
         The recon behind ``dispersive_update_e`` caught this 20/20 at two poles, and
         it is the single most plausible "optimisation" a reader could make here.
 
-        NO COMPOUND STATEMENT IS INTRODUCED, and that is deliberate: the two arm
+        No compound statement is introduced, and that is deliberate: the two arm
         BODIES are rewritten in place, so the guards, the indentation and the number
         of compiled arms are untouched and the mutant still imports. On a component
         with two poles the pair computes exactly ``base - (P0 + P1)``; on one with
@@ -1654,7 +1654,7 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
              "idx * 0, own0, NP0)"])
 
     # ------------------------------------------------------------------
-    # THE CARRIED BODY'S MUTATIONS. Every one of these is armed on the copy this
+    # The carried body's mutations. Every one of these is armed on the copy this
     # product makes of `folded_fused_pair`'s released kernel: a copy that drifted
     # would be a NEW defect in a body nothing else re-certifies.
     # ------------------------------------------------------------------
@@ -1713,11 +1713,11 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
     def m6_constitutive_association(source: str) -> Tuple[str, int]:
         """The previous package grouping put back: two accumulations, left to right.
 
-        INVERTED with the alignment (KERNELS.md section 7.1). The shipped form is
-        MEEP's ``f + ((kps*src) - (kms*prev))`` (``forms.constitutive_form``); the
-        mutant is the grouping the kernel carried before it, ``(f + kps*src) -
-        kms*prev``, on the same accumulation cells. Same algebra, different float32
-        rounding."""
+        INVERTED against MEEP's association order, must be caught
+        (docs/development/certification.md#inverted-grouping-mutations). The shipped form
+        is MEEP's ``f + ((kps*src) - (kms*prev))`` (``forms.constitutive_form``); the
+        mutant is the grouping the kernel carried before it, ``(f + kps*src) - kms*prev``,
+        on the same accumulation cells. Same algebra, different float32 rounding."""
         return _rewrite_block(
             source,
             ["a0v = constitutive_form(a0v, prev0, src0, kp_0, km_0, dw0)"],
@@ -1762,7 +1762,7 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
         forward shift could address outside the allocation and be reported as an
         inert defect.
 
-        SCORED ON ONE CALL SITE, not on all seven of component 2's: applying the
+        Scored on one call site, not on all seven of component 2's: applying the
         offset to a FAR destination would read past the allocation rather than at a
         cell this lane already touches."""
         return _rewrite_block(
@@ -1835,7 +1835,7 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
         return source, hits
 
     def m11_commuted_multiply(source: str) -> Tuple[str, int]:
-        """PREDICTED NULL: IEEE multiplication commutes; only the PTX may move.
+        """Predicted null: IEEE multiplication commutes; only the PTX may move.
 
         The accumulation's products now sit inside ``forms.constitutive_form``, so
         the commuted product is the owned cell's ``(D - sum P) * inv_eps``, written
@@ -1846,9 +1846,10 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
                 source.count(needle))
 
     # ------------------------------------------------------------------
-    # THE CHUNK-FORM BATTERY (KERNELS.md 7.2), on both halves. The plain folded
-    # pair probe's battery on the same lines: each rewrite chooses the wrong form for
-    # some cells while every word of arithmetic stays the shipped one.
+    # THE PER-CHUNK FORM BATTERY (docs/development/certification.md#chunk-form-battery),
+    # on both halves. The plain folded pair probe's battery on the same lines: each
+    # rewrite chooses the wrong form for some cells while every word of arithmetic stays
+    # the shipped one.
     # ------------------------------------------------------------------
 
     def b1_whole_grid_recurrence(source: str) -> Tuple[str, int]:
@@ -2090,7 +2091,7 @@ MUTATION_REQUIRES_POLES: Dict[str, int] = {
 
 #: Per mutation: EVERY component must carry at least two poles.
 #:
-#: THE SHARPER HALF OF THE POLE TRAP. ``mp2`` swaps the first two arms and ``mp3``
+#: The sharper half of the pole trap. ``mp2`` swaps the first two arms and ``mp3``
 #: pre-sums them; both are the intended defect exactly where both arms are live. On a
 #: component carrying ONE pole the same rewrite reads a DEAD slot — the plan binds
 #: unused slots to that component's own D volume — which is a different defect, so a
@@ -2123,8 +2124,8 @@ def _assert_the_far_coefficient_actually_moves(case_name: str, cell, boundaries,
                                                mirrors, axis_letter: str) -> None:
     """The far destination's kps/kms pair must not equal its source's.
 
-    A PROPERTY OF THE ABSORBER'S GRADING, not of the case's fold set, so it is
-    MEASURED on the grid the case builds rather than declared. At an even full count
+    A property of the absorber's grading, not of the case's fold set, so it is
+    measured on the grid the case builds rather than declared. At an even full count
     the reflect row is ``n - 2``, the destination is ``n - 1``, and the coefficient
     array holds the same value at both because the not-owned ghost slot copies its
     neighbour — the plain folded pair's gate measured exactly that on 2026-08-21 and
@@ -2304,7 +2305,7 @@ def compile_mutant_with_helpers(kernel_source: str, helper_source: str,
               "constitutive_form, curl_form, curl_stencil, record_in)\n"
               + constants + "\n")
     text = helper_source + "\n\n" + kernel_source
-    # THE HELPERS ARE RENAMED WITH THE KERNEL. Two mutants sharing a helper identity
+    # The helpers are renamed with the kernel. Two mutants sharing a helper identity
     # would be two callers of one cached device body, which is the hazard the kernel
     # rename exists to close, one level down.
     for helper in ("_carry_ghost_E_dispersive", "_subtract_poles_at"):
@@ -2360,7 +2361,7 @@ def run_refusals(cp, product) -> List[Dict[str, Any]]:
          None, lambda fields: (_deposit(fields, "Ez"),)),
         ("undeclared_sources", _CELL, _WALLS, (("Y", 1),), DEFAULT_POLES,
          "was not declared", None),
-        # THE DISJOINTNESS CLAUSE, on the device. Without a pole the source is D and
+        # The disjointness clause, on the device. Without a pole the source is D and
         # the configuration is folded_fused_pair's.
         ("no_susceptibility", _CELL, _WALLS, (("Y", 1),), (),
          "no susceptibility is registered", ()),
@@ -2401,12 +2402,13 @@ def run_refusals(cp, product) -> List[Dict[str, Any]]:
 # ---------------------------------------------------------------------------
 
 def environment(cp: Any = None) -> Dict[str, Any]:
+    import neutral_ids  # noqa: PLC0415
     payload: Dict[str, Any] = {
         "python": sys.version.split()[0],
         "numpy": np.__version__,
-        "argv": list(sys.argv),
+        "argv": neutral_ids.argv(sys.argv),
         "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
-        "cupy_cache_dir": os.environ.get("CUPY_CACHE_DIR"),
+        "cupy_cache_dir": neutral_ids.path(os.environ.get("CUPY_CACHE_DIR")),
     }
     try:
         import triton  # noqa: PLC0415
@@ -2471,7 +2473,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "UNRUN — invoked with --no-device; no CUDA leg, mutation or refusal in "
             "this artifact")
         payload["passed"] = all(row["passed"] for row in payload["no_device_legs"])
-        # ``release`` IS THE KEY ``gate_provenance.read_verdict`` CONSULTS FIRST, and
+        # ``release`` is the key ``gate_provenance.read_verdict`` consults first, and
         # it is set explicitly here because ``passed`` alone would stamp
         # ``released: True`` on an artifact that measured no bytes on any device.
         payload["release"] = {
@@ -2486,7 +2488,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     import cupy as cp  # noqa: PLC0415
     from meep_gpu import backends, subnormal_policy  # noqa: PLC0415
 
-    # BEFORE THE FIRST DEVICE COMPILE. strict=True: a process that asked to keep and
+    # Before the first device compile. strict=True: a process that asked to keep and
     # quietly did not is a process whose bytes mean nothing.
     subnormal_policy.install_subnormal_policy(args.subnormal_policy, cupy=cp,
                                               strict=True)
@@ -2499,7 +2501,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     from meep_gpu.triton_kernels import folded_dispersive_fused_pair as product  # noqa: PLC0415
 
     backends.guard_kernel_compilation(cp)
-    # THE MACHINE AND THE DEVICE, so this artifact can be SEEDED into a weld. The
+    # The machine and the device, so this artifact can be SEEDED into a weld. The
     # weld contract binds a host string to the record's validated Triton and
     # capability lists; `environment()` below records the device but no hostname, and
     # a seeding tool that supplied the missing half would be typing a fact instead of
@@ -2545,8 +2547,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         # and a carry family whose unbracketed twin agreed would be measuring a seam
         # that carried no deposit.
         #
-        # THE LAUNCH FLOOR IS "AT LEAST ONE", NOT THE BUDGET, and the vacuity census
-        # is off — both for the same reason, MEASURED on this gate's first device run
+        # The launch floor is "at least one", not the budget, and the vacuity census
+        # is off — both for the same reason, measured on this gate's first device run
         # rather than foreseen: a leg that must diverge STOPS at the first divergent
         # step, so an exact launch count and a whole-run moved-state census are
         # statements about steps that never ran. On these rows the divergence lands
@@ -2600,7 +2602,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     device_ok = all(row.get("passed") for row in payload["device_legs"])
     refusal_ok = all(row.get("passed") for row in payload["refusals"])
 
-    # A DECLARED NULL MUST BE CONFIRMED, not merely permitted: a null that IS caught
+    # A declared null must be confirmed, not merely permitted: a null that IS caught
     # means the reasoning behind the null is wrong, and that has to fail too. Every
     # mutation must also have been ARMED: a rewrite that hit nothing measured
     # nothing, whatever it then reported.

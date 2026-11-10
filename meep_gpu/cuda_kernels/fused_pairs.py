@@ -1,7 +1,7 @@
 """The hand-CUDA fusion block: a fused product's two slots, and the deposit it carries.
 
-WHAT WAS MISSING, AND WHY IT BLOCKED 58 SEAM-INSTANCES. ``arms.plan_step`` walks
-``STEP_ORDER`` and gives AT MOST ONE arm each slot, so a product whose one launch
+What was missing, and why it blocked 58 seam-instances. ``arms.plan_step`` walks
+``STEP_ORDER`` and gives at most one arm each slot, so a product whose one launch
 spans ``step_B -> [the three in-seam passes] -> update_H`` had nowhere to be: it is
 not a slot arm
 (``registry.NOT_REGISTERED`` says why) and this track had no block that fills two
@@ -12,14 +12,14 @@ slot that restores, so ``fused_magnetic_pair.CARRIES_DEPOSIT_REPAIR`` had to sta
 (``parity/meep_gpu/results/fusion_matrix_cuda_2026-08-28b/board.log``, "THE
 SOURCE-SEAM CEILING"). This module is the two slots.
 
-IT IS A PORT, NOT AN INVENTION. ``metal_kernels/launch._install_fused_pair`` and
+It is a port, not an invention. ``metal_kernels/launch._install_fused_pair`` and
 ``triton_kernels/launch._install_fused_pair`` are the same eleven lines against the
 same shared module, and :func:`_install_fused_pair` below is the third copy, one per
 composer. What differs is only how a CANDIDATE is found, and that difference is
-forced (see THE ONE DIVERGENCE below).
+forced (see the one divergence below).
 
 =============================================================================
-THE TWO SLOTS ARE THE MECHANISM, NOT AN ACCOUNTING DETAIL
+The two slots are the mechanism, not an accounting detail
 =============================================================================
 
 ``step_B`` and ``update_H`` are separate driver consults (``driver.py:3291`` and
@@ -33,7 +33,7 @@ on either:
   injected field is FINAL and the fused launch's pre-injection accumulation is still
   known, because ``LeadingRepairPlan`` captured it at the first consult.
 
-NO DRIVER CHANGE, AND NO DEVICE-WIDE BARRIER. The repair is host-side and sits
+No driver change, and no device-wide barrier. The repair is host-side and sits
 BETWEEN two launches; it adds nothing inside one. What it exploits is that the
 deposit is a sparse scatter (``sources.py:1305``) and the constitutive half has no
 neighbour reads, so the launch may run over the whole grid against an uninjected
@@ -41,12 +41,12 @@ field and a median 0.016% of the cells may be recomputed afterwards
 (``deposit_repair.py:9-21``).
 
 =============================================================================
-THE ONE DIVERGENCE FROM THE METAL BLOCK, AND WHY IT IS FORCED
+The one divergence from the Metal block, and why it is forced
 =============================================================================
 
 Metal finds its candidates by walking ``arms.registered(curl_name)`` for specs whose
 ``replaces`` spans the seam -- its family modules register themselves at import.
-THIS TRACK CANNOT DO THAT, for the reason ``registry.py:12-22`` already gives about
+This track cannot do that, for the reason ``registry.py:12-22`` already gives about
 the arm table: the hand-CUDA family modules ``import cupy`` at module scope, and the
 census that establishes what this composition covers is BACKEND-FREE. A table that
 eagerly imported ``fused_magnetic_pair`` would be unbuildable on the very host the
@@ -57,7 +57,7 @@ is resolved LAZILY, inside the guarded call. Where a product's module cannot be
 imported at all, the seam gets a NAMED REFUSAL -- not an exception, and not a silent
 skip -- which is the same fail-closed answer a refusing predicate gives.
 
-TODAY THE ONE PRODUCT DOES IMPORT ON A CUPY-FREE HOST, and that was the enabling edit
+Today the one product does import on a CuPy-free host, and that was the enabling edit
 rather than a happy accident: ``fused_magnetic_pair`` now takes ``cupy`` and its three
 certified halves defensively, so its PREDICATE -- the part whose failure mode is a
 silent wrong answer -- can be asked, tested and composed on a laptop, while the
@@ -65,7 +65,7 @@ emitter and ``_get_kernel`` refuse by name. So this block plans a real fused sea
 what it cannot do here is LAUNCH one, and no test on this host claims otherwise.
 
 =============================================================================
-WHAT THIS BLOCK MAY NOT DO
+What this block may not do
 =============================================================================
 
 * **It may not claim a slot the arm table refused.** :func:`_pair_may_absorb` is
@@ -86,7 +86,7 @@ WHAT THIS BLOCK MAY NOT DO
   answers disagree; a product that has not declared it refuses every in-seam source
   and never reaches :func:`_install_fused_pair` at all.
 
-NOTHING HERE IS DISPATCH, corrected 2026-09-02.
+Nothing here is dispatch, corrected 2026-09-02.
 ``meep_gpu.fastpath.plan_fast_path`` no longer returns ``None`` on every branch: it
 returns a ``FastPathPlan``, the driver consults it at seven slots, and an opted-in
 run dispatches five cross-sub-step fused products -- through the TRITON seam loop
@@ -119,7 +119,7 @@ __all__ = ["FUSED_PAIR_ARMS", "FUSED_PAIR_EXTRA_ARMS", "FUSED_PAIR_SEAMS",
 
 #: curl slot -> (constitutive slot, the ``deposit_repair`` seam name).
 #:
-#: THE D/E ROW LANDED WITH ``fused_electric_pair`` AND NOT BEFORE IT, which is the
+#: The D/E row landed with ``fused_electric_pair`` and not before it, which is the
 #: rule this table has followed since it was written: an empty row would report "no
 #: candidate" on every configuration for a seam nobody had built anything for, and a
 #: reason that is true of every run reads as a claim about the run. It is the same
@@ -128,9 +128,9 @@ __all__ = ["FUSED_PAIR_ARMS", "FUSED_PAIR_EXTRA_ARMS", "FUSED_PAIR_SEAMS",
 #: selects the ELECTRIC list (``deposit_repair._in_seam_indexed``, where ``pair ==
 #: "B"`` is the magnetic test and everything else is electric).
 #:
-#: THE E->P ROW LANDED 2026-09-01 WITH ``fused_polarization_pair``, under the same
-#: landed-with-its-product rule, and its deposit-list name is ``None`` BECAUSE THE
-#: SEAM HAS NO DEPOSIT LIST TO SELECT: the driver advances the polarizations
+#: The E->P row landed 2026-09-01 with ``fused_polarization_pair``, under the same
+#: landed-with-its-product rule, and its deposit-list name is ``None`` because the
+#: seam has no deposit list to select: the driver advances the polarizations
 #: immediately after ``update_E`` (driver.py:3313 then :3315) with NOTHING between
 #: the two consults -- no injection, no fill, no wall pass. Until that product
 #: landed this table said the row "must not" exist, for exactly that reason read
@@ -142,8 +142,8 @@ __all__ = ["FUSED_PAIR_ARMS", "FUSED_PAIR_EXTRA_ARMS", "FUSED_PAIR_SEAMS",
 #: ``_in_seam_indexed`` any string here would silently select the electric or the
 #: magnetic list -- both injected OUTSIDE this seam -- which is the misclassification
 #: the ``None`` exists to make impossible.
-#: THE H->D ROW LANDED 2026-09-04 AND IT IS THE ONE ROW ON THIS TABLE THAT LANDED
-#: AHEAD OF ITS PRODUCT. The landed-with-its-product rule above was written against
+#: The H->D row landed 2026-09-04 and it is the one row on this table that landed
+#: ahead of its product. The landed-with-its-product rule above was written against
 #: a defect that this loop no longer has: :func:`install_fused_pairs` opens each seam
 #: with ``if not candidates: continue`` and records NOTHING, so a row with no product
 #: is SILENT on every configuration rather than reporting "no candidate" on every
@@ -152,7 +152,7 @@ __all__ = ["FUSED_PAIR_ARMS", "FUSED_PAIR_EXTRA_ARMS", "FUSED_PAIR_SEAMS",
 #: in the tree and pinned by a test before a product can be offered a slot a released
 #: product holds.
 #:
-#: THE ORDER IS LOAD-BEARING AND THE ROW IS APPENDED LAST.
+#: The order is load-bearing and the row is appended last.
 #: :func:`install_fused_pairs` iterates ``.items()`` in dict order and reads the LIVE
 #: ``selected``. Placed first, this seam would be offered ``update_H`` before
 #: ``cuda_fused_magnetic_pair`` was, would find the slot carrying an ARM label rather
@@ -160,7 +160,7 @@ __all__ = ["FUSED_PAIR_ARMS", "FUSED_PAIR_EXTRA_ARMS", "FUSED_PAIR_SEAMS",
 #: displacing a released, gate-passing product on every row that reaches it.
 #: ``test_the_h_to_d_seam_row_is_last`` pins the order with that reason.
 #:
-#: ITS SEAM NAME IS ``withdraw_hoist.SEAM`` AND IT IS NEITHER A FIELD LETTER NOR
+#: Its seam name is ``withdraw_hoist.SEAM`` and it is neither a field letter nor
 #: ``None``, which is a three-way distinction rather than a spelling. ``'B'``/``'D'``
 #: select ``deposit_repair``'s magnetic/electric INJECTION lists; ``None`` (the E->P
 #: row) means the seam is empty, which is the driver's own answer there. This seam is
@@ -189,11 +189,11 @@ FUSED_PAIR_SEAMS: Dict[str, Tuple[str, Optional[str]]] = {
 #: (``registry._TABLE``'s first two rows). The board's rank-1 cell is the same pair
 #: of labels: ``B_to_H (cuda_curl/PML, cuda_constitutive/ordinary)``.
 #:
-#: A family with no row here is REFUSED BY NAME rather than absorbing a slot on a
+#: A family with no row here is refused by name rather than absorbing a slot on a
 #: mapping nobody established -- the same bound Metal's ``FUSED_PAIR_ARMS`` puts in
 #: front of its seam loop.
 #:
-#: THE TWO COMPLEX ROWS LANDED 2026-08-30 with the products themselves, and they are
+#: The two complex rows landed 2026-08-30 with the products themselves, and they are
 #: read from those predicates the same way. ``covers_complex_fused_magnetic_pair``
 #: opens with ``covers_real_pml_complex_curl(..., "step_B")`` and
 #: ``covers_real_pml_complex_constitutive(..., "H")``, which are BOTH the
@@ -204,17 +204,17 @@ FUSED_PAIR_SEAMS: Dict[str, Tuple[str, Optional[str]]] = {
 #: ``cylindrical complex`` arm -- and the same complex constitutive, matching the
 #: rank-1 cell ``B_to_H (cuda_cyl_complex/cylindrical complex, cuda_complex/complex)``.
 #:
-#: THE ELECTRIC ROW LANDED 2026-08-30 and is read the same way:
+#: The electric row landed 2026-08-30 and is read the same way:
 #: ``covers_fused_electric_pair`` opens with ``covers_real_pml_curl(..., "step_D")``
 #: and ``covers_real_pml_constitutive(..., "E")``, which ARE the ``PML`` curl arm's
 #: and the ``ordinary`` constitutive arm's own predicates (``registry._TABLE``'s first
 #: two rows, both of which register on ``step_D``/``update_E`` as well as on the
 #: magnetic slots). The board's ``D_to_E (cuda_curl/PML, cuda_constitutive/ordinary)``
-#: cell is the same pair of labels. IT SHARES ITS TWO LABELS WITH THE REAL MAGNETIC
-#: PAIR AND THAT IS NOT AN AMBIGUITY: the two occupy DIFFERENT seams, and
+#: cell is the same pair of labels. It shares its two labels with the real magnetic
+#: pair and that is not an ambiguity: the two occupy DIFFERENT seams, and
 #: :func:`install_fused_pairs` decides one seam at a time.
 #:
-#: THE TWO COMPLEX ELECTRIC ROWS LANDED 2026-08-30 with their products, and are read
+#: The two complex electric rows landed 2026-08-30 with their products, and are read
 #: off those predicates the same way. ``covers_complex_fused_electric_pair`` opens with
 #: ``covers_real_pml_complex_curl(..., "step_D")`` and
 #: ``covers_real_pml_complex_constitutive(..., "E")``, which are BOTH the
@@ -227,7 +227,7 @@ FUSED_PAIR_SEAMS: Dict[str, Tuple[str, Optional[str]]] = {
 #: its label pair with its magnetic twin, and that is not an ambiguity for the same
 #: reason the real electric row is not: the twins occupy DIFFERENT seams and
 #: :func:`install_fused_pairs` decides one seam at a time.
-#: THE NO-ABSORBER ELECTRIC ROW LANDED 2026-08-31 and is read the same way, off the
+#: The no-absorber electric row landed 2026-08-31 and is read the same way, off the
 #: predicate it conjoins: ``covers_no_pml_complex_fused_electric_pair`` opens with
 #: ``complex_no_pml_kernels.covers_complex_no_pml_curl(..., "step_D")`` and
 #: ``covers_complex_no_pml_stored_e``, which ARE the ``cuda_complex_no_pml`` family's
@@ -236,7 +236,7 @@ FUSED_PAIR_SEAMS: Dict[str, Tuple[str, Optional[str]]] = {
 #: (cuda_complex_no_pml/complex no-PML curl, cuda_complex_no_pml/complex no-PML stored
 #: E)`` cell is the same pair of labels.
 #:
-#: IT SHARES ITS LABEL PAIR WITH NO OTHER ROW, and unlike the three PML rows above it
+#: It shares its label pair with no other row, and unlike the three PML rows above it
 #: does not even need the seam loop's one-seam-at-a-time rule to stay disjoint from
 #: them: the three PML products refuse a run with no ACTIVE absorber by name and this
 #: one requires exactly that, so the four candidates on ``step_D`` partition on a
@@ -245,7 +245,7 @@ FUSED_PAIR_ARMS: Dict[str, Tuple[str, str]] = {
     "cuda_fused_magnetic_pair": ("PML", "ordinary"),
     "cuda_complex_fused_magnetic_pair": ("complex", "complex"),
     "cuda_cylindrical_fused_magnetic_pair": ("cylindrical complex", "complex"),
-    # THE CARTESIAN COMPLEX H->D ROW, 2026-09-07, read off its predicate like every
+    # The Cartesian complex H->D row, 2026-09-07, read off its predicate like every
     # row here: ``covers_complex_fused_hd_pair`` opens with
     # ``covers_real_pml_complex_constitutive(..., "H")`` -- the ``cuda_complex``
     # family's ``complex`` arm at ``update_H`` -- and then asks the certified curl
@@ -263,7 +263,7 @@ FUSED_PAIR_ARMS: Dict[str, Tuple[str, str]] = {
     "cuda_cylindrical_fused_electric_pair": ("cylindrical complex", "complex"),
     "cuda_no_pml_complex_fused_electric_pair":
         ("complex no-PML curl", "complex no-PML stored E"),
-    # THE TWO E->P ROWS, 2026-09-01, read off the predicates they conjoin like
+    # The two E->P rows, 2026-09-01, read off the predicates they conjoin like
     # every row above: ``covers_fused_polarization_pair`` opens with
     # ``covers_real_pml_dispersive_constitutive`` -- the ``cuda_dispersive``
     # family's ``dispersive`` arm at ``update_E`` -- and
@@ -275,7 +275,7 @@ FUSED_PAIR_ARMS: Dict[str, Tuple[str, str]] = {
     "cuda_fused_polarization_pair": ("dispersive", "ADE"),
     "cuda_no_pml_fused_polarization_pair":
         ("no-PML dispersive store", "no-PML ADE"),
-    # THE FIVE RESIDUAL MAGNETIC ROWS, 2026-09-02, read off the predicates they
+    # The five residual magnetic rows, 2026-09-02, read off the predicates they
     # conjoin like every row above. ``covers_complex_folded_fused_magnetic_pair``
     # opens with ``covers_complex_folded_curl(..., "step_B")`` -- the
     # ``cuda_complex_folded`` family's ``folded complex`` arm -- and
@@ -290,8 +290,8 @@ FUSED_PAIR_ARMS: Dict[str, Tuple[str, str]] = {
     "cuda_cylindrical_real_fused_magnetic_pair": ("cylindrical", "ordinary"),
     "cuda_special_kz_fused_magnetic_pair": ("real beta", "real beta"),
     "cuda_bfast_fused_magnetic_pair": ("BFAST", "BFAST"),
-    # THE FIVE ELECTRIC TWINS, 2026-09-02 residue round (fusion-residue audit
-    # §1.3: 12 electric-twin instances), read off the predicates they conjoin
+    # The five electric twins, 2026-09-02 (an audit of the products earlier judged
+    # unbuildable counted 12 electric-twin instances), read off the predicates they conjoin
     # like every row above -- each is its magnetic twin's label pair on the
     # OTHER seam, which is not an ambiguity because install_fused_pairs decides
     # one seam at a time. ``step_D`` becomes a NINE-candidate seam and the
@@ -302,13 +302,13 @@ FUSED_PAIR_ARMS: Dict[str, Tuple[str, str]] = {
     "cuda_cylindrical_real_fused_electric_pair": ("cylindrical", "ordinary"),
     "cuda_special_kz_fused_electric_pair": ("real beta", "real beta"),
     "cuda_bfast_fused_electric_pair": ("BFAST", "BFAST"),
-    # THE THIRD E->P ROW, 2026-09-02: the complex no-absorber polarization pair,
+    # The third E->P row, 2026-09-02: the complex no-absorber polarization pair,
     # read off the ``cuda_complex_no_pml`` family's own two arms at update_E and
     # update_P. Disjoint from the two REAL E->P rows on storage alone: their
     # halves refuse complex64 by name and these require it.
     "cuda_complex_no_pml_fused_polarization_pair":
         ("complex no-PML stored E", "complex no-PML ADE"),
-    # THE TWO STENCIL WELDS, 2026-09-02, and the first rows on this table whose
+    # The two stencil welds, 2026-09-02, and the first rows on this table whose
     # cells the board had recorded UNBUILDABLE. Read off the predicates they
     # conjoin like every row above: ``covers_offdiag_fused_electric_pair`` opens
     # with ``covers_real_pml_curl(..., "step_D")`` -- the ``cuda_curl`` family's
@@ -319,15 +319,15 @@ FUSED_PAIR_ARMS: Dict[str, Tuple[str, str]] = {
     # ``folded off-diagonal`` arm. The board's two STENCIL-BLOCKED D_to_E cells are
     # those two label pairs.
     #
-    # THEY PARTITION AGAINST EACH OTHER AND AGAINST THE SEVEN OTHER step_D ROWS ON
-    # ONE MEASURED BOOLEAN: the unfolded constitutive predicate refuses a fold
+    # They partition against each other and against the seven other step_D rows on
+    # one measured boolean: the unfolded constitutive predicate refuses a fold
     # twice (coverage.py:1755-1791) and the composition predicate REQUIRES one, so
     # no row can be claimed by both -- and both refuse complex storage, beta,
     # BFAST, Dcyl and a nonzero Bloch k, which is how they stay disjoint from the
     # rest. The census's overlap check measures it rather than trusting this note.
     "cuda_offdiag_fused_electric_pair": ("PML", "off-diagonal"),
     "cuda_folded_offdiag_fused_electric_pair": ("PML", "folded off-diagonal"),
-    # THE FOURTH E->P ROW, 2026-09-02, and the last unserved cell on that seam.
+    # The fourth E->P row, 2026-09-02, and the last unserved cell on that seam.
     # Read off the predicate it conjoins like every row above:
     # ``covers_dispersive_offdiag_fused_polarization_pair`` opens with
     # ``covers_real_pml_dispersive_offdiag_constitutive`` -- the
@@ -339,7 +339,7 @@ FUSED_PAIR_ARMS: Dict[str, Tuple[str, str]] = {
     # one's requires one.
     "cuda_dispersive_offdiag_fused_polarization_pair":
         ("dispersive off-diagonal", "ADE"),
-    # THE DISPERSIVE ELECTRIC ROW, 2026-09-02, and the largest single cell left
+    # The dispersive electric row, 2026-09-02, and the largest single cell left
     # unoccupied on any backend when it landed: ``D_to_E (cuda_curl/PML,
     # cuda_dispersive/dispersive)``, 7 corpus rows. Read off the predicate it
     # conjoins like every row above: ``covers_dispersive_fused_electric_pair``
@@ -351,7 +351,7 @@ FUSED_PAIR_ARMS: Dict[str, Tuple[str, str]] = {
     # ``cuda_fused_polarization_pair`` row above, which holds the SAME arm one seam
     # later).
     #
-    # IT PARTITIONS AGAINST ``cuda_fused_electric_pair`` ON ONE MEASURED BOOLEAN and
+    # It partitions against ``cuda_fused_electric_pair`` on one measured boolean and
     # that partition is load-bearing rather than tidy: ``install_fused_pairs`` leaves
     # a seam UNFUSED when two products admit it, so an overlap here would COST the 79
     # rows the real twin serves rather than adding seven. The ordinary constitutive
@@ -362,7 +362,7 @@ FUSED_PAIR_ARMS: Dict[str, Tuple[str, str]] = {
     # from the real twin -- both refuse complex storage, beta, BFAST, Dcyl, an
     # off-diagonal row and an inert absorber by name.
     "cuda_dispersive_fused_electric_pair": ("PML", "dispersive"),
-    # THE NO-ABSORBER DISPERSIVE-STORE ROW, 2026-09-02. Its PRIMARY cell is
+    # The no-absorber dispersive-store row, 2026-09-02. Its PRIMARY cell is
     # ``D_to_E (cuda_conductive/conductive, cuda_no_pml_dispersive/no-PML
     # dispersive store)`` -- 2 corpus rows, ``absorber-1d.py`` and
     # ``TestAbsorber.test_absorber`` -- and the SECOND cell it occupies is
@@ -373,15 +373,15 @@ FUSED_PAIR_ARMS: Dict[str, Tuple[str, str]] = {
     # the two ``step_D`` curl predicates, of which the conductive one is this
     # row's first label.
     #
-    # IT PARTITIONS AGAINST EVERY OTHER ``step_D`` ROW ON THE LAYER. This is the
+    # It partitions against every other ``step_D`` row on the layer. This is the
     # only electric product whose constitutive half REQUIRES an inert absorber
     # (``covers_no_pml_dispersive_constitutive`` refuses an active one by name and
     # every other row's constitutive half requires one), so no run can be claimed
     # by two.
     "cuda_no_pml_dispersive_fused_electric_pair":
         ("conductive", "no-PML dispersive store"),
-    # THE CONDUCTIVE x ORDINARY ROW, 2026-09-02, and the cell this campaign has
-    # called THE SIGNED-ZERO ROW: ``D_to_E (cuda_conductive/conductive,
+    # The conductive x ordinary row, 2026-09-02, and the cell this campaign has
+    # called the signed-zero row: ``D_to_E (cuda_conductive/conductive,
     # cuda_constitutive/ordinary)``, 1 corpus row
     # (``tests:TestAdjointSolver.test_damping``). Read off the predicate:
     # ``covers_conductive_fused_electric_pair`` conjoins
@@ -390,7 +390,7 @@ FUSED_PAIR_ARMS: Dict[str, Tuple[str, str]] = {
     # ``coverage.covers_real_pml_constitutive(side='E')``, which IS the
     # ``cuda_constitutive`` family's ``ordinary`` arm one slot later.
     #
-    # IT PARTITIONS AGAINST ``cuda_fused_electric_pair`` ON THE CONDUCTIVITY, and
+    # It partitions against ``cuda_fused_electric_pair`` on the conductivity, and
     # that partition is load-bearing rather than tidy: an overlap would leave the
     # seam UNFUSED and cost the 79 rows the real twin serves.
     # ``coverage.covers_real_pml_curl`` refuses a target carrying a sigma by name
@@ -398,7 +398,7 @@ FUSED_PAIR_ARMS: Dict[str, Tuple[str, str]] = {
     # row it is disjoint on ``fields.polarizations``, which that row's
     # constitutive half requires and this one's refuses.
     "cuda_conductive_fused_electric_pair": ("conductive", "ordinary"),
-    # THE TWO COMPLEX STENCIL WELDS, 2026-09-02, and the LAST two cells this board
+    # The two complex stencil welds, 2026-09-02, and the LAST two cells this board
     # recorded UNBUILDABLE. Read off the predicates they conjoin like every row
     # above: ``covers_folded_complex_offdiag_fused_electric_pair`` opens with
     # ``complex_folded_kernels.covers_complex_folded_curl(..., "step_D")`` -- the
@@ -408,7 +408,7 @@ FUSED_PAIR_ARMS: Dict[str, Tuple[str, str]] = {
     # no-absorber one conjoins ``covers_complex_no_pml_curl(..., "step_D")`` with
     # ``covers_complex_no_pml_offdiag_update_e``.
     #
-    # THEY PARTITION AGAINST EACH OTHER ON THE ABSORBER, which is the same measured
+    # They partition against each other on the absorber, which is the same measured
     # switch the array path branches on (stepping.py:1015 against :1022): the PML
     # constitutive arm requires an active layer and the store arm requires an inert
     # one, so no run can be claimed by both. Against the ELEVEN other ``step_D``
@@ -420,7 +420,7 @@ FUSED_PAIR_ARMS: Dict[str, Tuple[str, str]] = {
         ("folded complex", "complex off-diagonal PML"),
     "cuda_complex_no_pml_offdiag_fused_electric_pair":
         ("complex no-PML curl", "complex off-diagonal no-PML"),
-    # THE TWO THREE-SLOT ROWS, 2026-09-02, and the first values on this table of
+    # The two three-slot rows, 2026-09-02, and the first values on this table of
     # length THREE. The tuple is still "the arm each slot the product absorbs
     # implements", in the product's own slot order -- there is simply one more slot.
     # Read off the predicates each conjoins exactly like every row above:
@@ -433,13 +433,13 @@ FUSED_PAIR_ARMS: Dict[str, Tuple[str, str]] = {
     # ``_pair_may_absorb`` TWICE for a triple, once per seam it spans, rather than
     # growing a second copy of that clause.
     #
-    # THE NO-ABSORBER ROW'S FIRST LABEL IS ``conductive`` and its SECOND cell --
+    # The no-absorber row's first label is ``conductive`` and its SECOND cell --
     # ``no-PML curl`` at ``step_D`` -- is declared in ``FUSED_PAIR_EXTRA_ARMS``
     # below, exactly as its D->E half declares the same pair of cells.
     "cuda_three_slot_dispersive_weld": ("PML", "dispersive", "ADE"),
     "cuda_three_slot_no_pml_dispersive_weld":
         ("conductive", "no-PML dispersive store", "no-PML ADE"),
-    # THE COMPLEX NO-ABSORBER THREE-SLOT ROW, 2026-09-04, read off the predicates it
+    # The complex no-absorber three-slot row, 2026-09-04, read off the predicates it
     # conjoins like every row above: ``covers_three_slot_complex_no_pml_dispersive_
     # weld`` opens with ``covers_no_pml_complex_fused_electric_pair`` -- itself the
     # ``cuda_complex_no_pml`` family's ``complex no-PML curl`` and ``complex no-PML
@@ -450,7 +450,7 @@ FUSED_PAIR_ARMS: Dict[str, Tuple[str, str]] = {
     # together.
     "cuda_three_slot_complex_no_pml_dispersive_weld":
         ("complex no-PML curl", "complex no-PML stored E", "complex no-PML ADE"),
-    # THE FIRST ROW ON THE H->D SEAM, 2026-09-06, and the first whose FIRST slot is a
+    # The first row on the H->D seam, 2026-09-06, and the first whose FIRST slot is a
     # CONSTITUTIVE sub-step and second a curl -- the tuple order is (first slot's arm,
     # second slot's arm) as everywhere else, so it reads (update_H's arm, step_D's).
     # Read off the predicates it conjoins like every row above:
@@ -463,14 +463,14 @@ FUSED_PAIR_ARMS: Dict[str, Tuple[str, str]] = {
     # RUNTIME boundary code (``BC_MIRROR_PERIODIC``) inside one kernel where Metal and
     # Triton need a separate folded arm.
     #
-    # IT SHARES ITS LABEL PAIR WITH NOTHING, because no other row on this table sits
+    # It shares its label pair with nothing, because no other row on this table sits
     # on the ``update_H`` seam at all: ``install_fused_pairs`` decides one seam at a
     # time and ``update_H`` has exactly one candidate. What it DOES collide with is
     # the released B->H pair's second slot, and that is arbitrated by
     # ``_neighbouring_seam_claimant`` and by the product's own ``INSTALLABLE = False``,
     # not here.
     "cuda_fused_hd_pair": ("ordinary", "PML"),
-    # THE TWO CYLINDRICAL H->D ROWS, 2026-09-07, read off the predicates they
+    # The two cylindrical H->D rows, 2026-09-07, read off the predicates they
     # conjoin like every row above: ``covers_cylindrical_real_fused_hd_pair``
     # opens with ``covers_real_pml_constitutive(..., "H")`` -- the
     # ``cuda_constitutive`` family's ``ordinary`` arm -- and
@@ -485,7 +485,7 @@ FUSED_PAIR_ARMS: Dict[str, Tuple[str, str]] = {
     # one, the Cartesian product refuses Dcyl) and on storage between the two.
     "cuda_cylindrical_real_fused_hd_pair": ("ordinary", "cylindrical"),
     "cuda_cylindrical_fused_hd_pair": ("complex", "cylindrical complex"),
-    # THE TWO BETA H->D ROWS, 2026-09-07, read off their predicates like every row
+    # The two beta H->D rows, 2026-09-07, read off their predicates like every row
     # here. ``covers_special_kz_fused_hd_pair`` opens with
     # ``special_kz_curl.covers_special_kz_constitutive(..., "H")`` and continues into
     # ``covers_special_kz_curl(..., "step_D")`` -- BOTH the ``cuda_special_kz``
@@ -506,7 +506,7 @@ FUSED_PAIR_ARMS: Dict[str, Tuple[str, str]] = {
     # real float32 by name, each naming the other family.
     "cuda_special_kz_fused_hd_pair": ("real beta", "real beta"),
     "cuda_complex_beta_fused_hd_pair": ("complex beta", "complex beta"),
-    # THE TWO REMAINING H->D CELLS, 2026-09-07 -- ONE PRODUCT, TWO ROWS, because a
+    # The two remaining H->D cells, 2026-09-07 -- one product, two rows, because a
     # row here is a (first slot's arm, second slot's arm) PAIR and this product's two
     # variants differ in exactly the second. Read off the predicates it conjoins like
     # every row above: on the conductive variant it opens with
@@ -518,7 +518,7 @@ FUSED_PAIR_ARMS: Dict[str, Tuple[str, str]] = {
     # ``bfast_curl.covers_bfast_curl(..., "step_D")``, which are the two arms the
     # ``cuda_bfast`` family registers.
     #
-    # THE TWO VARIANTS ARE DISJOINT AND IT IS THE SHIPPED PREDICATES THAT MAKE THEM SO,
+    # The two variants are disjoint and it is the shipped predicates that make them so,
     # not a rule here: ``covers_conductive_curl`` delegates every non-conductivity
     # clause to the certified curl predicate on a LOSSLESS proxy, which refuses a
     # BFAST grid by name, and ``covers_bfast_curl`` delegates to the same predicate
@@ -528,7 +528,7 @@ FUSED_PAIR_ARMS: Dict[str, Tuple[str, str]] = {
     # against the four rows above is on the conductivity, on ``grid.bfast_active`` and
     # on the Dcyl grid together, and the board's overlap check measures it.
     #
-    # BOTH DECLARE INSTALLABLE = False, on the same Cartesian ``4 - pairs`` algebra:
+    # Both declare ``INSTALLABLE = False``, on the same Cartesian ``4 - pairs`` algebra:
     # on each cell BOTH neighbours are released products (the certified magnetic pair
     # and the conductive electric pair on one, the two BFAST pairs on the other), so a
     # span taking one slot from each can only tie or lose.
@@ -551,7 +551,7 @@ FUSED_PAIR_ARMS: Dict[str, Tuple[str, str]] = {
 #: The board's cell is ``B_to_H (cuda_curl/PML, cuda_nonlinear/nonlinear)`` -- 2
 #: seam-instances, ``3rd-harm-1d.py`` and ``Test3rdHarm1d.test_3rd_harm_1d``.
 #:
-#: THE SECOND ROW, 2026-09-02, and it is the table's original purpose used for the
+#: The second row, 2026-09-02, and it is the table's original purpose used for the
 #: first time: ONE product occupying TWO board cells. The no-absorber
 #: dispersive-store weld's constitutive half is the same certified kernel on both,
 #: and its curl half is ONE emitter -- ``conductive_kernels`` bakes the
@@ -568,13 +568,13 @@ FUSED_PAIR_ARMS: Dict[str, Tuple[str, str]] = {
 #: cuda_no_pml_dispersive/no-PML dispersive store)`` -- 1 seam-instance,
 #: ``examples:material-dispersion.py``, which is lossless and two-pole.
 #:
-#: THE THIRD ROW, 2026-09-02, is the no-absorber THREE-SLOT weld's, and it is the
+#: The third row, 2026-09-02, is the no-absorber THREE-SLOT weld's, and it is the
 #: second row's fact one slot longer: its group-1 launch IS the no-absorber
 #: dispersive-store D->E kernel, whose ``(False, False, False)`` build is
 #: ``no_pml_curl``'s certified lossless tail character for character, so the same one
 #: product occupies both ``step_D`` cells. The trailing label is unchanged because
 #: the ADE arm does not know about the curl.
-#: THE FOURTH ROW, 2026-09-06, is the H->D weld's nonlinear cell -- 2 seam-instances,
+#: The fourth row, 2026-09-06, is the H->D weld's nonlinear cell -- 2 seam-instances,
 #: ``examples:3rd-harm-1d.py`` and ``tests:Test3rdHarm1d.test_3rd_harm_1d``. On this
 #: backend that widening is not a byte comparison between two emitted texts, because
 #: there is only ONE text: ``nonlinear_constitutive`` ships no ``update_H`` kernel at
@@ -593,7 +593,7 @@ FUSED_PAIR_EXTRA_ARMS: Dict[str, Tuple[Tuple[str, ...], ...]] = {
     "cuda_three_slot_no_pml_dispersive_weld":
         (("no-PML curl", "no-PML dispersive store", "no-PML ADE"),),
     "cuda_fused_hd_pair": (("nonlinear", "PML"),),
-    # THE BFAST VARIANT'S OWN CELL, 2026-09-07. It is an EXTRA row rather than a second
+    # The BFAST variant's own cell, 2026-09-07. It is an EXTRA row rather than a second
     # primary because a primary row is one pair per family and this product's two
     # variants are two pairs; the shape is the same one the nonlinear widening above
     # uses, and for the same reason -- one predicate, two label pairs the composer can
@@ -607,12 +607,12 @@ FUSED_PAIR_EXTRA_ARMS: Dict[str, Tuple[Tuple[str, ...], ...]] = {
 
 
 # =============================================================================
-# THE PLAN-HELD SOURCE, AND WHY THE COMPILED KERNEL IS NOT WHAT IS HELD
+# The plan-held source, and why the compiled kernel is not what is held
 # =============================================================================
 #
-# WHAT THIS REMOVES, 2026-09-19. The first same-table CUDA timing put ``pml_2d``
+# What this removes, 2026-09-19. The first same-table CUDA timing put ``pml_2d``
 # fused at 3.636 ms/step against the certified singles' 0.325 ms/step (the device
-# figures are that round's, not re-measured here), and two host costs paid on EVERY
+# figures are that run's, not re-measured here), and two host costs paid on EVERY
 # launch are this file's.
 #
 # (1) Every plan builder below called its product's launcher without the launcher's
@@ -625,13 +625,13 @@ FUSED_PAIR_EXTRA_ARMS: Dict[str, Tuple[Tuple[str, ...], ...]] = {
 # the tables' own docstrings say is done ONCE per frozen configuration
 # (``fused_magnetic_pair.py:1480``, and the dispersive builder below).
 #
-# MEASURED on the laptop with a stub CuPy and NumPy fields: the magnetic getter
+# Measured on the laptop with a stub CuPy and NumPy fields: the magnetic getter
 # 274.5 us per call, the electric 385.7 us; ``CudaFusedPairPlan.run`` end to end
 # 313 us and 415 us per launch before this change, 15.3 us and 17.1 us after, of
 # which the held acquisition is 2.9 us and 3.7 us and the certified launcher's own
 # argument packing about 11 us.
 #
-# WHY THE SOURCE AND NOT THE KERNEL OBJECT. Both CUDA launch witnesses sit on the
+# Why the source and not the kernel object. Both CUDA launch witnesses sit on the
 # ``compile_cache`` path: ``CudaLaunchCounter.install`` rebinds
 # ``compile_cache.get_or_compile`` to a proxy that counts every call of what it
 # returns (``parity/meep_gpu/gate_dispatch_end_to_end.py:1049-1089``), and
@@ -643,7 +643,7 @@ FUSED_PAIR_EXTRA_ARMS: Dict[str, Tuple[Tuple[str, ...], ...]] = {
 # every launch, through the module attribute rather than an import-time alias, so a
 # proxy installed after this module loaded is still the one called.
 #
-# THE POLICY STAYS ON THE PER-LAUNCH PATH. ``kernel_cache_key`` reads
+# The policy stays on the per-launch path. ``kernel_cache_key`` reads
 # ``compile_policy_token()`` whenever no token is passed (``compile_cache.py:178``),
 # and none is passed here, so a policy installed after the first launch misses the
 # memo and compiles the held text under the new policy -- the same answer the
@@ -651,7 +651,7 @@ FUSED_PAIR_EXTRA_ARMS: Dict[str, Tuple[Tuple[str, ...], ...]] = {
 # freeze was gated on has lapsed (``fastpath.py:3845-3878``), so this is the second
 # of two guards, not the only one.
 #
-# WHY A PLAN-HELD STRING IS NOT A STALE STRING. The getters emit per call so that a
+# Why a plan-held string is not a stale string. The getters emit per call so that a
 # probe that rewrites a certified half is seen by the fused text too
 # (``fused_magnetic_pair.py:1238-1250``). A plan lives for ONE freeze: the driver
 # rebuilds it at every freeze (``driver.py:3266-3271``, re-armed by every
@@ -663,7 +663,7 @@ FUSED_PAIR_EXTRA_ARMS: Dict[str, Tuple[Tuple[str, ...], ...]] = {
 # emitter before a plan first runs is still honoured and a device-free plan build
 # still emits nothing.
 #
-# THE KEY IS THE GETTER'S, COPIED AND PINNED. Each call below passes the name, the
+# The key is the getter's, copied and pinned. Each call below passes the name, the
 # storage flag and the emitter exactly as that product's own ``_get_kernel`` does --
 # including ``fused_electric_pair``'s ``True`` on a real-storage kernel
 # (``fused_electric_pair.py:1265``) -- because a different key would split the memo
@@ -671,7 +671,7 @@ FUSED_PAIR_EXTRA_ARMS: Dict[str, Tuple[Tuple[str, ...], ...]] = {
 # ``test_fused_pair_held_source.py`` pins each covered product's key against its
 # getter's.
 #
-# WHAT IS COVERED AND WHAT IS LEFT, 2026-09-19. Every builder that calls a
+# What is covered and what is left, 2026-09-19. Every builder that calls a
 # ``_held_*`` helper below -- the argument-free getters, the arm-, mask- and
 # arity-keyed ones held per shape, the four off-diagonal welds' text (their
 # resolution is never held), both three-slot welds' LEADING group, and the H->D
@@ -712,7 +712,7 @@ def _held_kernel(held: Dict[str, Any], module: Any, shape: Tuple[Any, ...],
     key = _compile_cache.kernel_cache_key(key_name, is_complex, options, source)
 
     def compile_held() -> Any:
-        # REACHED ONLY ON A MEMO MISS -- after ``warm()`` that is a policy change or a
+        # Reached only on a memo miss -- after ``warm()`` that is a policy change or a
         # first launch with no warm. The module's own ``cp`` where it has one, so a
         # harness that substituted it is honoured; the H/D families import CuPy inside
         # their getter and have no module attribute, and neither does this.
@@ -777,7 +777,7 @@ def _held_offdiag_kernel(held: Dict[str, Any], module: Any, row_mask: Any,
                          is_complex: bool = False) -> Any:
     """:func:`_held_kernel` under an off-diagonal weld's getter's key.
 
-    ONLY THE TEXT IS HELD, NEVER THE RESOLUTION: these resolvers hand out the scratch
+    Only the text is held, never the resolution: these resolvers hand out the scratch
     the launch rotates and read the row volumes fresh (see :func:`_resolved_once`).
     The row mask is resolved per launch, as before, and handed to the getter
     unchanged, so the held shape is that mask. Keys copied from the four getters:
@@ -797,7 +797,7 @@ def _resolved_once(held: Dict[str, Any],
                    ) -> Callable[[Any], Dict[str, Any]]:
     """``resolve`` asked at the first launch and its answer held for the plan's life.
 
-    FOR A RESOLVER WHOSE EVERY ENTRY IS A PURE READING OF THE FROZEN CONFIGURATION, and
+    For a resolver whose every entry is a pure reading of the frozen configuration, and
     only for one: the tables, the boundary codes, the walls, the fills and ``dt/dx``
     are all fixed at the freeze that built this plan
     (``driver.py:3266-3271``), which is what the tables' own docstrings already
@@ -806,7 +806,7 @@ def _resolved_once(held: Dict[str, Any],
     pairs' resolver body costs 17.8 us per call and the held answer 0.08 us, and before
     this it ran on every launch for arguments that never change.
 
-    NOT A PROPERTY OF :meth:`CudaFusedPairPlan.run`, deliberately. A resolver that
+    Not a property of :meth:`CudaFusedPairPlan.run`, deliberately. A resolver that
     hands out state which ROTATES between launches -- the off-diagonal welds' scratch
     (:func:`_offdiag_fused_electric_pair_plan` and its three siblings, which also read
     ``offdiag_row_volumes(ctx.fields)`` fresh) and ``special_kz_fused_hd_pair``'s
@@ -826,13 +826,13 @@ def _resolved_once(held: Dict[str, Any],
 def _fused_magnetic_pair_coverage(context: Any) -> Coverage:
     """``covers_fused_magnetic_pair`` as a ``Coverage``, imported at call time.
 
-    THE REASON IS WRAPPED IN A 1-TUPLE for the reason ``arms.coverage_adapter``
+    The reason is wrapped in a 1-TUPLE for the reason ``arms.coverage_adapter``
     spells out: the shared normaliser iterates ``.reasons``, and a bare string is
     iterable, so a single-string refusal would arrive as one "reason" PER CHARACTER.
     Measured on this tree: ``"no PML"`` came back as six prefixed one-character
     reasons.
     """
-    from .fused_magnetic_pair import (  # noqa: PLC0415 - see THE ONE DIVERGENCE
+    from .fused_magnetic_pair import (  # noqa: PLC0415 - see the one divergence
         covers_fused_magnetic_pair,
     )
 
@@ -849,7 +849,7 @@ def _fused_magnetic_pair_plan(context: Any) -> "CudaFusedPairPlan":
     the kernel module and needs CuPy, and the composition has to be buildable on the
     host that measured it.
     """
-    from .fused_magnetic_pair import (  # noqa: PLC0415 - see THE ONE DIVERGENCE
+    from .fused_magnetic_pair import (  # noqa: PLC0415 - see the one divergence
         FAMILY, KERNEL_NAME, REPLACES,
     )
 
@@ -862,7 +862,7 @@ def _fused_magnetic_pair_plan(context: Any) -> "CudaFusedPairPlan":
         from .in_seam_coverage import zero_metal_axes  # noqa: PLC0415
         from .step_curl_kernels import real_curl_boundary_codes  # noqa: PLC0415
 
-        # THREE READINGS OF THE GRID, AND NO ONE OF THEM IS THE OTHERS. The
+        # Three readings of the grid, and no one of them is the others. The
         # boundary codes are the curl's ghost-rule resolution (where a folded
         # METALLIC axis is indistinguishable from a plain wall); the walls are
         # ``_zero_metal``'s question, with a folded axis EXCLUDED; the fills are
@@ -900,7 +900,7 @@ def _fused_magnetic_pair_plan(context: Any) -> "CudaFusedPairPlan":
 def _fused_hd_pair_coverage(context: Any) -> Coverage:
     """``covers_fused_hd_pair`` as a ``Coverage``, imported at call time.
 
-    THE ONLY PREDICATE IN THIS FILE ASKED ABOUT THE H->D SEAM, and the difference from
+    The only predicate in this file asked about the H->D seam, and the difference from
     every sibling above is what sits between its two consults. Nothing is INJECTED
     there, so it routes its source question through
     ``withdraw_hoist.seam_withdraw_reasons`` rather than through
@@ -919,7 +919,7 @@ def _fused_hd_pair_coverage(context: Any) -> Coverage:
 def _fused_hd_pair_plan(context: Any) -> "CudaFusedPairPlan":
     """The plan object for the H->D weld, built without a device.
 
-    THE SCRATCH IS RESOLVED IN THE CLOSURE, NOT HERE, and that is the same rule every
+    The scratch is resolved in the closure, not here, and that is the same rule every
     plan builder on this table follows: allocating six device volumes needs CuPy and
     the composition has to be buildable on the host that measured it. The rotation
     happens inside :func:`.fused_hd_pair.run_fused_hd_pair`'s own launcher, which is
@@ -986,7 +986,7 @@ def _cylindrical_real_fused_hd_pair_coverage(context: Any) -> Coverage:
 def _cylindrical_real_fused_hd_pair_plan(context: Any) -> "CudaFusedPairPlan":
     """The plan object for the real m = 0 Dcyl H->D product, built without a device.
 
-    THE STATE IS RESOLVED IN THE CLOSURE (six scratch twins, the scan's division readings
+    The state is resolved in the closure (six scratch twins, the scan's division readings
     and buffer, the composition's chunk record) and carried between launches;
     ``run_cylindrical_real_fused_hd_pair`` performs launch 1 (update_H into scratch), the
     radial scan over the scratch Hp, the rotation and the curl -- three launches per run,
@@ -1092,9 +1092,9 @@ def _special_kz_fused_hd_pair_coverage(context: Any) -> Coverage:
 def _special_kz_fused_hd_pair_plan(context: Any) -> "CudaFusedPairPlan":
     """The plan object for the REAL beta H->D weld, built without a device.
 
-    THE SCRATCH IS RESOLVED IN THE CLOSURE, not here: allocating six device volumes
+    The scratch is resolved in the closure, not here: allocating six device volumes
     needs CuPy and the composition has to be buildable on the host that measured it.
-    THE ROTATION HAPPENS INSIDE THE LAUNCH and the retired pair is kept as the next
+    The rotation happens inside the launch and the retired pair is kept as the next
     launch's scratch, which is the choreography every scratch-output weld on this
     track ships.
     """
@@ -1126,7 +1126,7 @@ def _special_kz_fused_hd_pair_plan(context: Any) -> "CudaFusedPairPlan":
     def launch(fields: Any, arguments: Dict[str, Any]) -> Dict[str, Any]:
         from . import special_kz_fused_hd_pair as family  # noqa: PLC0415
 
-        # THE SOURCE IS HELD AND THE RESOLUTION IS NOT: ``resolve`` returns
+        # The source is held and the resolution is not: ``resolve`` returns
         # ``dict(held)`` INCLUDING the scratch this launch rotates, so a resolution held
         # across launches would hand the second launch the FIRST launch's scratch --
         # which the rotation below has made live fields. The held text sits beside it
@@ -1183,7 +1183,7 @@ def _conductive_bfast_fused_hd_pair_coverage(context: Any) -> Coverage:
 def _conductive_bfast_fused_hd_pair_plan(context: Any) -> "CudaFusedPairPlan":
     """The plan object for the conductive/BFAST H->D product, built without a device.
 
-    ONE LAUNCH, and the STATE IS RESOLVED IN THE CLOSURE (the shared coefficient
+    One launch, and the state is resolved in the closure (the shared coefficient
     group, the boundary triple, the BFAST scalars on that variant, and the six scratch
     twins) and carried between launches, because the rotation hands the retired pair
     forward as the next launch's scratch.
@@ -1209,7 +1209,7 @@ def _conductive_bfast_fused_hd_pair_plan(context: Any) -> "CudaFusedPairPlan":
     def launch(fields: Any, arguments: Dict[str, Any]) -> Dict[str, Any]:
         from . import conductive_bfast_fused_hd_pair as family  # noqa: PLC0415
 
-        # THE COSTLIEST EMISSION ON THIS TABLE: 4601 us per getter call, measured
+        # The costliest emission on this table: 4601 us per getter call, measured
         # 2026-09-19 (laptop, stub CuPy, 200 calls). The getter's key is
         # ``(kernel_name(variant), False, _COMPILE_OPTIONS, current_source(variant,
         # cond))`` (conductive_bfast_fused_hd_pair.py:995-997), and ``current_source``
@@ -1234,7 +1234,7 @@ def _conductive_bfast_fused_hd_pair_plan(context: Any) -> "CudaFusedPairPlan":
 def _complex_beta_fused_hd_pair_plan(context: Any) -> "CudaFusedPairPlan":
     """The plan object for the COMPLEX beta H->D weld, built without a device.
 
-    ONE TEXT AND NO VARIANT, unlike the Cartesian complex sibling: the beta family's
+    One text and no variant, unlike the Cartesian complex sibling: the beta family's
     device source IS the folded complex curl with the insert, so a fold is a runtime
     boundary code and ``resolve`` needs nothing from the grid but its codes, phases
     and beta words.
@@ -1273,14 +1273,14 @@ def _complex_beta_fused_hd_pair_plan(context: Any) -> "CudaFusedPairPlan":
 def _complex_fused_hd_pair_coverage(context: Any) -> Coverage:
     """``covers_complex_fused_hd_pair`` as a ``Coverage``, imported at call time.
 
-    THE SECOND PREDICATE IN THIS FILE ASKED ABOUT THE CARTESIAN H->D SEAM, and it
+    The second predicate in this file asked about the Cartesian H->D seam, and it
     routes its source question through ``withdraw_hoist.seam_withdraw_reasons`` for
     the reason ``_fused_hd_pair_coverage`` does: nothing is INJECTED between the
     ``update_H`` and ``step_D`` consults, so what sits there is the electric
     integrated-source WITHDRAW loop (driver.py:3313-3314) and ``deposit_repair`` has
     nothing to say about it.
 
-    ONE PRODUCT, TWO BOARD CELLS. The predicate reads the fold off the grid and asks
+    One product, two board cells. The predicate reads the fold off the grid and asks
     the certified curl predicate the variant selects -- ``covers_real_pml_complex_curl``
     on an unfolded grid, ``complex_folded_kernels.covers_complex_folded_curl`` on a
     folded one -- so the arm row below carries the constitutive label on both slots
@@ -1297,7 +1297,7 @@ def _complex_fused_hd_pair_coverage(context: Any) -> Coverage:
 def _complex_fused_hd_pair_plan(context: Any) -> "CudaFusedPairPlan":
     """The plan object for the complex Cartesian H->D weld, built without a device.
 
-    THE SCRATCH AND THE VARIANT ARE RESOLVED IN THE CLOSURE, not here: allocating six
+    The scratch and the variant are resolved in the closure, not here: allocating six
     device volumes needs CuPy and the composition has to be buildable on the host that
     measured it. ``complex_fused_hd_pair.resolve`` reads the variant off the grid, so
     the text that would be compiled and the predicate that admitted it are decided by
@@ -1333,7 +1333,7 @@ def _complex_fused_hd_pair_plan(context: Any) -> "CudaFusedPairPlan":
 def _fused_electric_pair_coverage(context: Any) -> Coverage:
     """``covers_fused_electric_pair`` as a ``Coverage``, imported at call time.
 
-    THE ONLY PREDICATE IN THIS FILE ASKED ABOUT THE ELECTRIC SEAM, and the difference
+    The only predicate in this file asked about the electric seam, and the difference
     is not cosmetic: it routes its source question through
     ``deposit_repair.seam_source_reasons(..., 'D')``, which selects the sources the
     driver injects between ``step_D`` and ``update_E``. A copy of the magnetic
@@ -1341,7 +1341,7 @@ def _fused_electric_pair_coverage(context: Any) -> Coverage:
     every electric deposit -- the exact defect the shared clause was introduced to
     prevent, recorded in ``fused_magnetic_pair``'s own preamble.
     """
-    from .fused_electric_pair import (  # noqa: PLC0415 - see THE ONE DIVERGENCE
+    from .fused_electric_pair import (  # noqa: PLC0415 - see the one divergence
         covers_fused_electric_pair,
     )
 
@@ -1358,7 +1358,7 @@ def _fused_electric_pair_plan(context: Any) -> "CudaFusedPairPlan":
     the kernel modules and needs CuPy, and the composition has to be buildable on the
     host that measured it.
     """
-    from .fused_electric_pair import (  # noqa: PLC0415 - see THE ONE DIVERGENCE
+    from .fused_electric_pair import (  # noqa: PLC0415 - see the one divergence
         FAMILY, KERNEL_NAME, REPLACES,
     )
 
@@ -1371,7 +1371,7 @@ def _fused_electric_pair_plan(context: Any) -> "CudaFusedPairPlan":
         from .in_seam_coverage import zero_metal_axes  # noqa: PLC0415
         from .step_curl_kernels import real_curl_boundary_codes  # noqa: PLC0415
 
-        # THREE READINGS OF THE GRID, AND NO ONE OF THEM IS THE OTHERS. The boundary
+        # Three readings of the grid, and no one of them is the others. The boundary
         # codes are the curl's ghost-rule resolution (where a folded METALLIC axis is
         # indistinguishable from a plain wall); the walls are ``_zero_metal``'s
         # question, with a folded axis EXCLUDED; the fills are the two mirror passes',
@@ -1408,13 +1408,13 @@ def _fused_electric_pair_plan(context: Any) -> "CudaFusedPairPlan":
 def _dispersive_fused_electric_pair_coverage(context: Any) -> Coverage:
     """``covers_dispersive_fused_electric_pair`` as a ``Coverage``, at call time.
 
-    THE DISPERSIVE TWIN of ``_fused_electric_pair_coverage`` and asked the same way:
+    The dispersive twin of ``_fused_electric_pair_coverage`` and asked the same way:
     its source question routes through ``deposit_repair.seam_source_reasons(..., 'D')``
     (inside the predicate it delegates to), which selects the sources the driver
     injects between ``step_D`` and ``update_E``. Every one of the seven corpus rows
     this product exists for carries such a deposit, so the routing is the product.
     """
-    from .dispersive_fused_electric_pair import (  # noqa: PLC0415 - see THE ONE DIVERGENCE
+    from .dispersive_fused_electric_pair import (  # noqa: PLC0415 - see the one divergence
         covers_dispersive_fused_electric_pair,
     )
 
@@ -1431,7 +1431,7 @@ def _dispersive_fused_electric_pair_plan(context: Any) -> "CudaFusedPairPlan":
     the kernel modules and needs CuPy, and the composition has to be buildable on the
     host that measured it.
 
-    THE POLE PLAN IS RESOLVED INSIDE ``launch``, NOT IN ``resolve``, and that is the
+    The pole plan is resolved inside ``launch``, not in ``resolve``, and that is the
     one place this closure differs from the real twin's.
     ``PolarizationState.update`` rotates ``P``/``P_prev``/scratch every step
     (dispersion.py:689-691), so a chain resolved once at composition time would name
@@ -1452,7 +1452,7 @@ def _dispersive_fused_electric_pair_plan(context: Any) -> "CudaFusedPairPlan":
         from .in_seam_coverage import zero_metal_axes  # noqa: PLC0415
         from .step_curl_kernels import real_curl_boundary_codes  # noqa: PLC0415
 
-        # THE SAME THREE READINGS OF THE GRID the real twin takes, from the same
+        # The same three readings of the grid the real twin takes, from the same
         # module: the boundary codes are the curl's ghost-rule resolution (where a
         # folded METALLIC axis is indistinguishable from a plain wall); the walls are
         # ``_zero_metal``'s question, with a folded axis EXCLUDED; the fills are the
@@ -1468,7 +1468,7 @@ def _dispersive_fused_electric_pair_plan(context: Any) -> "CudaFusedPairPlan":
     def launch(fields: Any, arguments: Dict[str, Any]) -> Dict[str, Any]:
         from . import dispersive_fused_electric_pair as family  # noqa: PLC0415
 
-        # THE ARITY IS READ PER LAUNCH, AS BEFORE, and only the text it selects is held
+        # The arity is read per launch, as before, and only the text it selects is held
         # -- one emission per distinct canonical arity, never one arity standing in for
         # another.
         poles, counts = family.pole_bindings(fields)
@@ -1512,7 +1512,7 @@ def _no_pml_dispersive_fused_electric_pair_plan(context: Any) -> "CudaFusedPairP
     modules and needs CuPy, and the composition has to be buildable on the host that
     measured it.
 
-    THE POLE PLAN AND THE CONDUCTIVITY MASK ARE RESOLVED INSIDE ``launch``, NOT IN
+    The pole plan and the conductivity mask are resolved inside ``launch``, not in
     ``resolve``. ``PolarizationState.update`` rotates ``P``/``P_prev``/scratch every
     step (dispersion.py:689-691), so a chain resolved once at composition time would
     name the first step's arrays forever -- stale in a way that still computes. The
@@ -1529,7 +1529,7 @@ def _no_pml_dispersive_fused_electric_pair_plan(context: Any) -> "CudaFusedPairP
         from .in_seam_coverage import zero_metal_axes  # noqa: PLC0415
         from .step_curl_kernels import real_curl_boundary_codes  # noqa: PLC0415
 
-        # THE SAME TWO READINGS OF THE GRID the real twin takes, from the same
+        # The same two readings of the grid the real twin takes, from the same
         # modules: the boundary codes are the curl's ghost-rule resolution and the
         # walls are ``_zero_metal``'s question. There is no fill plan here because
         # this family refuses a mirror plane. The record carries the curl's
@@ -1574,7 +1574,7 @@ def _conductive_fused_electric_pair_coverage(context: Any) -> Coverage:
 def _conductive_fused_electric_pair_plan(context: Any) -> "CudaFusedPairPlan":
     """The plan object for the conductive D/E product, built without a device.
 
-    THE CONDUCTIVITY MASK IS RESOLVED INSIDE ``launch``, and that is the one place
+    The conductivity mask is resolved inside ``launch``, and that is the one place
     this closure differs from the real twin's: the mask decides which device string
     was compiled, and the three ``f_cond`` histories it selects are ``Fields``
     attributes that a configuration freeze does not pin.
@@ -1696,7 +1696,7 @@ def _cylindrical_fused_magnetic_pair_coverage(context: Any) -> Coverage:
 def _cylindrical_fused_magnetic_pair_plan(context: Any) -> "CudaFusedPairPlan":
     """The plan object for the Dcyl complex B/H product, built without a device.
 
-    TWO LAUNCHES PER STEP: the column-serial radial scan over the CURRENT Ep (per
+    Two launches per step: the column-serial radial scan over the CURRENT Ep (per
     stored part), then the fused kernel. Everything else the launch binds -- the tables,
     the i*m/r rows, the Courant words, the m class, the chunk record, the scan's division
     readings, the layer -- is a reading of the frozen grid and layer
@@ -1733,7 +1733,7 @@ def _cylindrical_fused_magnetic_pair_plan(context: Any) -> "CudaFusedPairPlan":
 def _complex_fused_electric_pair_coverage(context: Any) -> Coverage:
     """``covers_complex_fused_electric_pair`` as a ``Coverage``, at call time.
 
-    THE SEAM ARGUMENT IS ``'D'`` INSIDE THAT PREDICATE and that is the whole reason
+    The seam argument is ``'D'`` inside that predicate and that is the whole reason
     this closure is not the complex MAGNETIC one with a module name changed: the
     magnetic closure's predicate routes its source question through
     ``deposit_repair.seam_source_reasons(..., 'B')``, which would have admitted every
@@ -1765,7 +1765,7 @@ def _complex_fused_electric_pair_plan(context: Any) -> "CudaFusedPairPlan":
         )
         from .in_seam_coverage import zero_metal_axes  # noqa: PLC0415
 
-        # ``True`` IS THE BACKWARD FLAG and it is the one argument here a copy of the
+        # ``True`` is the backward flag and it is the one argument here a copy of the
         # magnetic resolver would get silently wrong: ``step_D`` takes ``cshift_dn``
         # and the connection to the word ABOVE the stored window (``eikna``), where the
         # B curl takes ``conj(eikna)`` (``complex_emitter.KERNELS['step_D'][1]``,
@@ -1800,7 +1800,7 @@ def _complex_fused_electric_pair_plan(context: Any) -> "CudaFusedPairPlan":
 def _no_pml_complex_fused_electric_pair_coverage(context: Any) -> Coverage:
     """``covers_no_pml_complex_fused_electric_pair`` as a ``Coverage``, at call time.
 
-    THE ONLY PRODUCT IN THIS FILE THAT REFUSES AN ACTIVE ABSORBER, which is exactly
+    The only product in this file that refuses an active absorber, which is exactly
     what keeps ``step_D`` a partitioned seam now that it carries four candidates: the
     other three each refuse an INACTIVE layer by name (``coverage.py:1141``,
     ``coverage._complex_grid_refusal``:2785, ``cylindrical_coverage``'s own copy) and
@@ -1819,14 +1819,14 @@ def _no_pml_complex_fused_electric_pair_coverage(context: Any) -> Coverage:
 def _no_pml_complex_fused_electric_pair_plan(context: Any) -> "CudaFusedPairPlan":
     """The plan object for the complex NO-ABSORBER D/E product, built without a device.
 
-    THE CURL ARM IS RESOLVED HERE, and this is the one resolver in this file that has
+    The curl arm is resolved here, and this is the one resolver in this file that has
     to. The certified no-absorber curl ships TWO kernels -- a plain tail and a
     conductive one -- and which a run takes is ``fields.condfac_for``'s answer, read by
     the certified family's own classifier. Every corpus row on this product's cell
     takes the CONDUCTIVE one, so a resolver that defaulted to the plain arm would serve
     the whole cell with the wrong arithmetic rather than serving nothing.
 
-    NO ``tables`` AND NO ``walls`` KEY: this pair reads no coefficient vector (there is
+    No ``tables`` and no ``walls`` key: this pair reads no coefficient vector (there is
     no absorber to have one) and carries no wall pass (its predicate refuses every
     walled run). A resolver that carried an empty one anyway would suggest the launch
     binds something it does not.
@@ -1845,7 +1845,7 @@ def _no_pml_complex_fused_electric_pair_plan(context: Any) -> "CudaFusedPairPlan
             no_pml_complex_curl_arm,
         )
 
-        # ``True`` IS THE D CURL'S TABLE and it is the one argument here a copy of a
+        # ``True`` is the D curl's table and it is the one argument here a copy of a
         # magnetic resolver would get silently wrong: ``step_D`` takes ``cshift_dn``
         # and connects plane 0 with ``eikna`` (``complex_emitter.KERNELS['step_D'][1]``,
         # ``stepping._bloch_ghost_operand``), the B curl with its conjugate. The other
@@ -1860,7 +1860,7 @@ def _no_pml_complex_fused_electric_pair_plan(context: Any) -> "CudaFusedPairPlan
     def launch(fields: Any, arguments: Dict[str, Any]) -> Dict[str, Any]:
         from . import no_pml_complex_fused_electric_pair as family  # noqa: PLC0415
 
-        # THE RESOLUTION IS NOT HELD HERE: the curl arm is ``fields.condfac_for``'s
+        # The resolution is not held here: the curl arm is ``fields.condfac_for``'s
         # answer, read per launch as before. Only the text is held, per tail, under the
         # getter's key: the launcher derives ``conductive = arm == "conductive"`` and
         # its getter names and keys ``kernel_name("conductive" if conductive else
@@ -1897,7 +1897,7 @@ def _cylindrical_fused_electric_pair_coverage(context: Any) -> Coverage:
 def _cylindrical_fused_electric_pair_plan(context: Any) -> "CudaFusedPairPlan":
     """The plan object for the Dcyl complex D/E product, built without a device.
 
-    TWO LAUNCHES PER STEP: the column-serial radial scan over the CURRENT Hp (per
+    Two launches per step: the column-serial radial scan over the CURRENT Hp (per
     stored part), then the fused kernel. Everything else the launch binds -- the tables,
     the i*m/r rows, the Courant words, the m class, the chunk record, the scan's division
     readings, the layer -- is a reading of the frozen grid and layer
@@ -1934,14 +1934,14 @@ def _cylindrical_fused_electric_pair_plan(context: Any) -> "CudaFusedPairPlan":
 def _fused_polarization_pair_coverage(context: Any) -> Coverage:
     """``covers_fused_polarization_pair`` as a ``Coverage``, imported at call time.
 
-    THE FIRST PREDICATE IN THIS FILE ASKED ABOUT THE E->P SEAM. ``sources`` is
+    The first predicate in this file asked about the E->P seam. ``sources`` is
     passed through for uniformity and is INERT inside the predicate -- the driver
     injects nothing between ``update_E`` and ``update_P`` (driver.py:3313/:3315),
     so no source list can put a deposit in this seam; the predicate's docstring
     carries the argument and ``test_fused_polarization_pair.py`` measures the
     inertness in both directions.
     """
-    from .fused_polarization_pair import (  # noqa: PLC0415 - see THE ONE DIVERGENCE
+    from .fused_polarization_pair import (  # noqa: PLC0415 - see the one divergence
         covers_fused_polarization_pair,
     )
 
@@ -1953,7 +1953,7 @@ def _fused_polarization_pair_coverage(context: Any) -> Coverage:
 def _fused_polarization_pair_plan(context: Any) -> "CudaFusedPairPlan":
     """The plan object for the PML E->P product, built without a device.
 
-    THE POLE PLAN IS NOT RESOLVED HERE AND MUST NEVER BE: the P buffers rotate
+    The pole plan is not resolved here and must never be: the P buffers rotate
     per component between this product's own launches, so the launcher resolves
     every pole pointer immediately before each launch
     (``fused_polarization_pair.component_specs``) -- a plan that cached them
@@ -1967,7 +1967,7 @@ def _fused_polarization_pair_plan(context: Any) -> "CudaFusedPairPlan":
     def resolve(ctx: Any) -> Dict[str, Any]:
         from .dispersive_kernels import dispersive_tables  # noqa: PLC0415
 
-        # THE HALF-INTEGER SUB-LATTICE, decided by the certified family's own
+        # The half-integer sub-lattice, decided by the certified family's own
         # resolver (stepping.py:1015): update_E reads it, and the integer views
         # are a half-cell error in the absorber profile. The record chooses each
         # cell's constitutive form.
@@ -2009,7 +2009,7 @@ def _no_pml_fused_polarization_pair_coverage(context: Any) -> Coverage:
 def _no_pml_fused_polarization_pair_plan(context: Any) -> "CudaFusedPairPlan":
     """The plan object for the no-absorber E->P product, built without a device.
 
-    NO ``tables`` KEY: arm 2's store reads no coefficient vector (there is no
+    No ``tables`` key: arm 2's store reads no coefficient vector (there is no
     absorber to have one), and a resolver that carried an empty one anyway would
     suggest the launch binds something it does not. The pole pointers are
     resolved per launch inside the launcher, as in the PML twin.
@@ -2049,7 +2049,7 @@ def _complex_folded_fused_magnetic_pair_coverage(context: Any) -> Coverage:
 def _complex_folded_fused_magnetic_pair_plan(context: Any) -> "CudaFusedPairPlan":
     """The plan object for the FOLDED complex B/H product, built without a device.
 
-    THE BOUNDARY CODES ARE THE FOLD-AWARE RESOLVER'S
+    The boundary codes are the fold-aware resolver's
     (``complex_folded_kernels.folded_complex_boundary_codes``), not the plain
     complex one's -- that one refuses a fold by name, which is correct for a
     kernel with no fold branch and wrong for this one. The fills reading is the
@@ -2120,7 +2120,7 @@ def _complex_beta_fused_magnetic_pair_coverage(context: Any) -> Coverage:
 def _complex_beta_fused_magnetic_pair_plan(context: Any) -> "CudaFusedPairPlan":
     """The plan object for the complex-BETA B/H product, built without a device.
 
-    THE BETA WORDS ARE RESOLVED BY THE CERTIFIED FAMILY'S OWN HELPER
+    The beta words are resolved by the certified family's own helper
     (host-rounded once, the real word's signed zero passed through), so the plan
     and the certified single cannot round differently.
     """
@@ -2190,7 +2190,7 @@ def _cylindrical_real_fused_magnetic_pair_coverage(context: Any) -> Coverage:
 def _cylindrical_real_fused_magnetic_pair_plan(context: Any) -> "CudaFusedPairPlan":
     """The plan object for the REAL Dcyl B/H product, built without a device.
 
-    TWO LAUNCHES PER STEP: the column-serial radial scan over the CURRENT Ep
+    Two launches per step: the column-serial radial scan over the CURRENT Ep
     (``cylindrical_prefix.radial_difference``; its chunk starts and row vectors are
     readings of the frozen division and are held, the difference it writes is not), then
     the fused kernel. The composition's chunk record and the layer the run's first
@@ -2280,7 +2280,7 @@ def _special_kz_fused_magnetic_pair_plan(context: Any) -> "CudaFusedPairPlan":
         codes, refusal = real_curl_boundary_codes(ctx.grid)
         if refusal is not None:
             raise ValueError(f"this grid has no boundary codes: {refusal}")
-        # The fills joined 2026-09-02 with the ported carry (the residue round).
+        # The fills joined 2026-09-02 with the ported carry.
         return {"tables": special_kz_fused_magnetic_pair_tables(ctx.pml),
                 "boundary_codes": tuple(_np.int32(code) for code in codes),
                 "walls": zero_metal_axes(ctx.grid),
@@ -2380,7 +2380,7 @@ def _cylindrical_real_fused_electric_pair_coverage(context: Any) -> Coverage:
 def _cylindrical_real_fused_electric_pair_plan(context: Any) -> "CudaFusedPairPlan":
     """The plan object for the REAL Dcyl D/E product, built without a device.
 
-    TWO LAUNCHES PER STEP: the radial scan over the CURRENT Hp (the ``step_D`` side,
+    Two launches per step: the radial scan over the CURRENT Hp (the ``step_D`` side,
     never the Ep sum), then the fused kernel. The chunk record and the scan's division
     readings are held beside the tables.
     """
@@ -2584,7 +2584,7 @@ def _complex_folded_fused_electric_pair_plan(context: Any) -> "CudaFusedPairPlan
         codes, refusal = folded_complex_boundary_codes(ctx.grid)
         if refusal is not None:
             raise ValueError(f"this grid has no boundary codes: {refusal}")
-        # THE BACKWARD CONNECTION TABLE: `True` is the step_D sub-step's own (the
+        # The backward connection table: `True` is the step_D sub-step's own (the
         # word ABOVE the stored window, eikna), the one argument a copy of the
         # magnetic sibling would get silently wrong.
         flags, values = bloch_phase_arguments(ctx.grid, True)
@@ -2715,7 +2715,7 @@ def _complex_no_pml_fused_polarization_pair_plan(context: Any) -> "CudaFusedPair
 
 
 #: family -> (the curl slot it starts at, its coverage closure, its plan builder).
-#: THREE ROWS SINCE 2026-08-30, and the two new ones are the board's rank-1 and
+#: Three rows since 2026-08-30, and the two new ones are the board's rank-1 and
 #: rank-2 unserved cells rather than variants of the first: the real pair emits
 #: ``step_curl_kernels``/``constitutive_kernels`` text against float32 storage, and
 #: neither complex product shares a byte of it. They register beside it rather than
@@ -2742,7 +2742,7 @@ def _offdiag_fused_electric_pair_coverage(context: Any) -> Coverage:
 def _offdiag_fused_electric_pair_plan(context: Any) -> "CudaFusedPairPlan":
     """The plan object for the UNFOLDED stencil weld, built without a device.
 
-    THE SCRATCH IS RESOLVED ONCE AND HELD IN THIS CLOSURE, which is the one thing
+    The scratch is resolved once and held in this closure, which is the one thing
     this builder does that no earlier product's does. ``resolve_launch_args`` runs on
     every ``run()``, and allocating six full volumes per timestep would be the exact
     cost ``StepScratch``'s own measurement exists to avoid; holding them here makes
@@ -2770,7 +2770,7 @@ def _offdiag_fused_electric_pair_plan(context: Any) -> "CudaFusedPairPlan":
         if "tables" not in held:
             held["tables"] = offdiag_fused_electric_pair_tables(ctx.pml)
             held["scratch"] = offdiag_fused_electric_pair_scratch(ctx.fields)
-        # THREE READINGS OF THE GRID, AND NO ONE OF THEM IS THE OTHERS: the boundary
+        # Three readings of the grid, and no one of them is the others: the boundary
         # codes are the ghost-rule resolution (cross-checked against the
         # constitutive's own reading, which this family binds as one vector), the
         # COUPLING wall mask is _mask_metallic_wall_coupling's question, and the fill
@@ -2809,7 +2809,7 @@ def _offdiag_fused_electric_pair_plan(context: Any) -> "CudaFusedPairPlan":
             arguments["wall_mask"], arguments["fills"], arguments["dtdx"],
             arguments["row_mask"], arguments["rows"], arguments["kept"],
             arguments["chunk_bounds"], kernel=kernel)
-        # THE ROTATION IS PART OF THE LAUNCH, not of the caller. A scratch-output
+        # The rotation is part of the launch, not of the caller. A scratch-output
         # weld that did not rotate would have computed the step and thrown it away,
         # which is precisely the ``rotation_skipped`` null the gate arms.
         held["scratch"] = rotate_into_fields(fields, arguments["scratch"])
@@ -3105,7 +3105,7 @@ def _dispersive_offdiag_fused_polarization_pair_plan(context: Any
                                                      ) -> "CudaFusedPairPlan":
     """The plan object for the off-diagonal E->P weld, built without a device.
 
-    THE TABLES ARE HELD, THE BUFFERS ARE NOT. Coefficient views never move, so
+    The tables are held, the buffers are not. Coefficient views never move, so
     they are resolved once; the polarization buffers ROTATE per component on the
     host and are re-read inside the launch on every call, which is the certified
     ADE launcher's own standing hazard restated -- a plan that cached them "would
@@ -3126,7 +3126,7 @@ def _dispersive_offdiag_fused_polarization_pair_plan(context: Any
             codes = offdiag_e.dispersive_offdiag_boundary_codes(ctx.grid, ctx.pml)
             _record, held["kept"] = offdiag_e.dispersive_offdiag_chunk_arguments(
                 ctx.fields, ctx.pml, codes, ctx.chunk_bounds())
-        # THE LAYER IS PASSED THROUGH: the run asks the predicate first and derives
+        # The layer is passed through: the run asks the predicate first and derives
         # the boundary codes from it, and without it the predicate refuses ("no
         # active PML layer") and the seam's two sub-steps would not be advanced.
         return {"tables": held["tables"], "layer": ctx.pml,
@@ -3137,7 +3137,7 @@ def _dispersive_offdiag_fused_polarization_pair_plan(context: Any
             run_dispersive_offdiag_fused_polarization_pair,
         )
 
-        # THE WHOLE SEAM IN ONE CALL, because the tail launches and the rotations
+        # The whole seam in one call, because the tail launches and the rotations
         # between them are part of what REPLACES declares. A composition that
         # launched only the fused kernel would leave two components unadvanced.
         return run_dispersive_offdiag_fused_polarization_pair(
@@ -3152,18 +3152,18 @@ def _dispersive_offdiag_fused_polarization_pair_plan(context: Any
 
 
 # ---------------------------------------------------------------------------
-# THE THREE-SLOT WELDS, 2026-09-02 -- the first products on this table that own
+# The three-slot welds, 2026-09-02 -- the first products on this table that own
 # THREE driver slots rather than two
 # ---------------------------------------------------------------------------
 #
-# WHY THEY EXIST is :func:`_later_seam_claimant`'s own measured collision: ``update_E``
+# Why they exist is :func:`_later_seam_claimant`'s own measured collision: ``update_E``
 # is the SECOND consult of ``D_to_E`` and the FIRST of ``E_to_P``, so a D->E pair and
 # an E->P pair compete for one slot and the trade is exactly net zero on all ten rows
 # that reach it. That function's docstring names the resolution -- "a THREE-SLOT
 # product spanning ``step_D`` -> ``update_E`` -> ``update_P``, which serves BOTH seams
 # instead of trading one for the other" -- and these two are it.
 #
-# THEIR SHAPE IS DIFFERENT FROM EVERY PAIR ABOVE IN ONE WAY THAT MATTERS: the product
+# Their shape is different from every pair above in one way that matters: the product
 # performs TWO device groups with its OWN host work between them. Group 1 is the
 # shipped D->E launch; then ``deposit_repair.apply`` runs at the ``update_E`` consult,
 # reading ``state.P`` as it stands; then group 2 advances the polarizations. So the
@@ -3177,7 +3177,7 @@ def _dispersive_offdiag_fused_polarization_pair_plan(context: Any
 def _three_slot_dispersive_weld_coverage(context: Any) -> Coverage:
     """``covers_three_slot_dispersive_weld`` as a ``Coverage``, at call time.
 
-    ITS SOURCE QUESTION IS THE D->E HALF'S, asked through the conjunction: that half
+    Its source question is the D->E half's, asked through the conjunction: that half
     routes through ``deposit_repair.seam_source_reasons(..., 'D')`` carrying its own
     ``CARRIES_DEPOSIT_REPAIR`` and the split-field path, which is the declaration this
     weld's module repeats. All ten rows the two three-slot welds exist for carry an
@@ -3195,11 +3195,11 @@ def _three_slot_dispersive_weld_coverage(context: Any) -> Coverage:
 def _three_slot_dispersive_weld_plan(context: Any) -> "CudaFusedTriplePlan":
     """The plan object for the PML three-slot weld, built without a device.
 
-    TWO LAUNCHERS, NOT ONE, and which slot each lands in is the product: the leading
+    Two launchers, not one, and which slot each lands in is the product: the leading
     one is the shipped D->E launch and the trailing one is the polarization advance,
     and ``_install_fused_triple`` puts the deposit repair BETWEEN them.
 
-    NOTHING THAT ROTATES IS RESOLVED HERE. The pole plan and the per-component state
+    Nothing that rotates is resolved here. The pole plan and the per-component state
     lists are read inside each launcher, immediately before the launch that binds
     them: ``PolarizationState.update`` rotates ``P``/``P_prev``/``_scratch`` every
     step AND between this product's own three trailing launches, so a plan that cached
@@ -3220,7 +3220,7 @@ def _three_slot_dispersive_weld_plan(context: Any) -> "CudaFusedTriplePlan":
         from .in_seam_coverage import zero_metal_axes  # noqa: PLC0415
         from .step_curl_kernels import real_curl_boundary_codes  # noqa: PLC0415
 
-        # THE SAME FOUR READINGS OF THE GRID the D->E half's own plan builder takes,
+        # The same four readings of the grid the D->E half's own plan builder takes,
         # from the same modules: sharing them is deliberate, because group 1 IS that
         # product's launch and a second reading is a second thing to drift. The chunk
         # record is the composition's one upload, read by both groups.
@@ -3234,7 +3234,7 @@ def _three_slot_dispersive_weld_plan(context: Any) -> "CudaFusedTriplePlan":
     def launch_leading(fields: Any, arguments: Dict[str, Any]) -> Dict[str, Any]:
         from . import dispersive_fused_electric_pair as leading  # noqa: PLC0415
 
-        # GROUP 1 IS THE D->E PAIR'S OWN LAUNCH, so its held text is that product's,
+        # Group 1 is the D->E pair's own launch, so its held text is that product's,
         # under that product's key; the trailing group's per-component texts are left
         # to their own getter.
         poles, counts = leading.pole_bindings(fields)
@@ -3281,7 +3281,7 @@ def _no_pml_three_slot_dispersive_weld_coverage(context: Any) -> Coverage:
 def _no_pml_three_slot_dispersive_weld_plan(context: Any) -> "CudaFusedTriplePlan":
     """The plan object for the no-absorber three-slot weld, built without a device.
 
-    NO ``tables`` AND NO ``fills`` KEY: the no-absorber D->E half reads no coefficient
+    No ``tables`` and no ``fills`` key: the no-absorber D->E half reads no coefficient
     vector (there is no absorber to have one) and REFUSES a mirror plane, so a
     resolver carrying either would suggest the launch binds something it does not.
     The conductivity mask travels with the pole plan INSIDE the launcher, because the
@@ -3352,7 +3352,7 @@ def _complex_no_pml_three_slot_weld_coverage(context: Any) -> Coverage:
 def _complex_no_pml_three_slot_weld_plan(context: Any) -> "CudaFusedTriplePlan":
     """The plan object for the complex no-absorber three-slot weld.
 
-    ONE DEVICE GROUP, NOT TWO, and that is the product's whole claim: the leading half
+    One device group, not two, and that is the product's whole claim: the leading half
     performs all three sub-steps (three per-component launches, host rotation
     between) and the trailing half is a NO-OP that still answers the ``update_P``
     consult -- a ``False`` there would make the driver advance the polarizations a
@@ -3362,7 +3362,7 @@ def _complex_no_pml_three_slot_weld_plan(context: Any) -> "CudaFusedTriplePlan":
     volumes; the gate measures both orderings identical
     (``p_at_update_P_consult``).
 
-    NOTHING THAT ROTATES IS RESOLVED HERE: the pole buffers are read inside each
+    Nothing that rotates is resolved here: the pole buffers are read inside each
     launch, after the previous component's rotation.
     """
     from .complex_no_pml_three_slot_dispersive_weld import (  # noqa: PLC0415
@@ -3377,7 +3377,7 @@ def _complex_no_pml_three_slot_weld_plan(context: Any) -> "CudaFusedTriplePlan":
             no_pml_complex_curl_arm,
         )
 
-        # ``True`` IS THE D CURL'S TABLE: step_D connects plane 0 with eikna.
+        # ``True`` is the D curl's table: step_D connects plane 0 with eikna.
         flags, values = bloch_phase_arguments(ctx.grid, True)
         return {"boundary_codes": complex_boundary_codes(ctx.grid),
                 "phase_flags": flags, "phase_values": values,
@@ -3398,7 +3398,7 @@ def _complex_no_pml_three_slot_weld_plan(context: Any) -> "CudaFusedTriplePlan":
             chunk_bounds=arguments["chunk_bounds"])
 
     def launch_trailing(_fields: Any, _arguments: Dict[str, Any]) -> Dict[str, Any]:
-        # THE CONSULT IS ANSWERED, NOT LAUNCHED: update_P was advanced inside the
+        # The consult is answered, not launched: update_P was advanced inside the
         # leading group. Returning a report rather than raising is what keeps the
         # driver from running the array path's update_P on top.
         return {"launched": False, "launches": 0, "replaces": ("update_P",),
@@ -3414,12 +3414,21 @@ def _complex_no_pml_three_slot_weld_plan(context: Any) -> "CudaFusedTriplePlan":
         launch_leading=launch_leading, launch_trailing=launch_trailing)
 
 
+def _dispersive_offdiag_division_refusal(context: Any) -> Optional[str]:
+    """The dispersive off-diagonal family's chunk clause, imported on first use."""
+    from .dispersive_offdiag_update_e import (  # noqa: PLC0415 - the arm's own module
+        dispersive_offdiag_division_refusal)
+
+    return dispersive_offdiag_division_refusal(context)
+
+
 #: One row per fused product: its curl slot, label, predicate, builder and family
 #: module. ``chunk_axes`` (on the five off-diagonal and six cylindrical rows) names
 #: the axes along which the product's kernels index MEEP's chunks beyond the
 #: membership runs, exactly as the arm table's rows spell it
 #: (``registry._TABLE``); :func:`install_fused_pairs` asks the chunk-division clause
-#: with it (:func:`_chunk_division_refusal`).
+#: with it (:func:`_chunk_division_refusal`), or the row's ``chunk_clause`` where it
+#: names one, as its arm does.
 FUSED_PRODUCTS: Dict[str, Dict[str, Any]] = {
     "cuda_fused_magnetic_pair": {
         "curl_slot": "step_B",
@@ -3443,7 +3452,7 @@ FUSED_PRODUCTS: Dict[str, Dict[str, Any]] = {
         "module": "cylindrical_fused_magnetic_pair",
         "chunk_axes": CHUNK_AXES_CYLINDRICAL,
     },
-    # THE FIVE RESIDUAL MAGNETIC-SEAM ROWS, 2026-09-02, landed with their
+    # The five residual magnetic-seam rows, 2026-09-02, landed with their
     # products -- the last buildable cells on this board. ``step_B`` becomes an
     # EIGHT-candidate seam, and the disjointness proof is the same measured
     # partition the census's overlap check walks: the real pair refuses
@@ -3490,7 +3499,7 @@ FUSED_PRODUCTS: Dict[str, Dict[str, Any]] = {
         "plan": _bfast_fused_magnetic_pair_plan,
         "module": "bfast_fused_magnetic_pair",
     },
-    # THE FIRST ROW ON ``step_D``. Its ``curl_slot`` is what keeps it out of the
+    # The first row on ``step_D``. Its ``curl_slot`` is what keeps it out of the
     # magnetic loop: the three rows above are skipped when ``install_fused_pairs``
     # reaches ``step_D`` and this one when it reaches ``step_B``, so the two labels it
     # shares with ``cuda_fused_magnetic_pair`` can never make a seam ambiguous.
@@ -3501,7 +3510,7 @@ FUSED_PRODUCTS: Dict[str, Dict[str, Any]] = {
         "plan": _fused_electric_pair_plan,
         "module": "fused_electric_pair",
     },
-    # THE DISPERSIVE TWIN OF THE ROW ABOVE, 2026-09-02, and the two are the closest
+    # The dispersive twin of the row above, 2026-09-02, and the two are the closest
     # pair on this table: one product with one half exchanged, sharing the whole
     # ownership-inversion carry through direct imports rather than a copy. It is
     # ALSO the pair with the tightest disjointness margin, which is why the margin is
@@ -3516,14 +3525,14 @@ FUSED_PRODUCTS: Dict[str, Dict[str, Any]] = {
         "plan": _dispersive_fused_electric_pair_plan,
         "module": "dispersive_fused_electric_pair",
     },
-    # THE TWO NO-ABSORBER / CONDUCTIVE ROWS, 2026-09-02, which close the last
+    # The two no-absorber / conductive rows, 2026-09-02, which close the last
     # POINTWISE-BUILDABLE cells this board had on the D->E seam. Both are the first
     # rows on this table whose curl half is the THREE-HISTORY conductive recurrence,
     # and the first whose predicates were written against a driver that rescales its
     # condinv injection SPARSELY -- the change that made a conductive row servable at
     # all (see each module's docstring).
     #
-    # THE FIRST IS ALSO THE FIRST ROW ANYWHERE ON THIS TABLE TO DECLARE A NON-DEFAULT
+    # The first is also the first row anywhere on this table to declare a non-default
     # ``REPAIR_PATHS``. Its constitutive half runs ``update_E``'s PURE OVERWRITE
     # (stepping.py:1019-1022) rather than the split-field accumulation, so the repair
     # that inverts it is ``deposit_repair.PLAIN_PATH``; ``install_fused_pairs`` reads
@@ -3544,9 +3553,9 @@ FUSED_PRODUCTS: Dict[str, Dict[str, Any]] = {
         "plan": _conductive_fused_electric_pair_plan,
         "module": "conductive_fused_electric_pair",
     },
-    # THE TWO COMPLEX ELECTRIC ROWS, which make ``step_D`` a three-candidate seam the
-    # way ``step_B`` already is. WHAT MAKES THREE ROWS LEGAL IS THE SAME DISJOINTNESS
-    # PROOF the magnetic seam rests on, restated for this seam because it is a
+    # The two complex electric rows, which make ``step_D`` a three-candidate seam the
+    # way ``step_B`` already is. What makes three rows legal is the same disjointness
+    # proof the magnetic seam rests on, restated for this seam because it is a
     # different set of predicates: ``covers_real_pml_curl(..., "step_D")`` refuses
     # complex64 storage by name, ``covers_real_pml_complex_curl`` refuses a run that is
     # neither ``force_complex_fields`` nor Bloch-phased AND refuses a Dcyl grid, and
@@ -3568,9 +3577,9 @@ FUSED_PRODUCTS: Dict[str, Dict[str, Any]] = {
         "module": "cylindrical_fused_electric_pair",
         "chunk_axes": CHUNK_AXES_CYLINDRICAL,
     },
-    # THE FOURTH ``step_D`` ROW, 2026-08-31, and the FIRST product on this track that
-    # refuses an absorber rather than requiring one. THE DISJOINTNESS PROOF IS THE
-    # CHEAPEST ON THE BOARD and it is stated here because it is a different shape from
+    # The fourth ``step_D`` row, 2026-08-31, and the FIRST product on this track that
+    # refuses an absorber rather than requiring one. The disjointness proof is the
+    # cheapest on the board and it is stated here because it is a different shape from
     # the three above: those three partition each other on STORAGE and on the grid
     # (``covers_real_pml_curl`` refuses complex64 by name; ``covers_real_pml_complex_curl``
     # refuses a run that is neither ``force_complex_fields`` nor Bloch-phased AND
@@ -3580,7 +3589,7 @@ FUSED_PRODUCTS: Dict[str, Dict[str, Any]] = {
     # grid. Two admitters would leave the seam UNFUSED naming both, so the partition is
     # what buys the four slots rather than a tidiness.
     #
-    # IT IS ALSO THE FIRST ROW WHOSE MODULE DECLARES ``CARRIES_DEPOSIT_REPAIR = False``
+    # It is also the first row whose module declares ``CARRIES_DEPOSIT_REPAIR = False``
     # -- measured, not defaulted: all four rows of its board cell declare a MAGNETIC
     # source only, so the D seam is empty on every one of them and
     # ``_install_fused_pair`` always takes its ``NoopPlan`` branch here.
@@ -3591,10 +3600,10 @@ FUSED_PRODUCTS: Dict[str, Dict[str, Any]] = {
         "plan": _no_pml_complex_fused_electric_pair_plan,
         "module": "no_pml_complex_fused_electric_pair",
     },
-    # THE TWO ROWS ON ``update_E`` -- the first products on the E->P seam, 2026-09-01,
+    # The two rows on ``update_E`` -- the first products on the E->P seam, 2026-09-01,
     # and the first whose leading slot is a constitutive sub-step rather than a
     # curl (the table's ``curl_slot`` key keeps its name as the SEAM-LEADING
-    # slot). THE DISJOINTNESS PROOF IS THE ABSORBER BOOLEAN, stated at the two
+    # slot). The disjointness proof is the absorber boolean, stated at the two
     # coverage closures: the PML product's halves require an active layer and the
     # no-absorber product's refuse one by name, so no configuration can admit
     # both, and the D_to_E products never collide with either because they bid on
@@ -3613,7 +3622,7 @@ FUSED_PRODUCTS: Dict[str, Dict[str, Any]] = {
         "plan": _no_pml_fused_polarization_pair_plan,
         "module": "fused_polarization_pair",
     },
-    # THE FIVE ELECTRIC TWINS, 2026-09-02 residue round -- each the D-side twin
+    # The five electric twins, 2026-09-02 -- each the D-side twin
     # of a residual magnetic weld, keyed to `step_D` so the label pair it shares
     # with its magnetic twin can never make one seam ambiguous. On EVERY one the
     # flag is the product: every row of every twin's cell declares an ELECTRIC
@@ -3656,8 +3665,8 @@ FUSED_PRODUCTS: Dict[str, Dict[str, Any]] = {
         "plan": _bfast_fused_electric_pair_plan,
         "module": "bfast_fused_electric_pair",
     },
-    # THE THIRD E->P ROW, 2026-09-02: the complex no-absorber polarization pair
-    # over the cells the residue round's fitness entry determined POINTWISE.
+    # The third E->P row, 2026-09-02: the complex no-absorber polarization pair
+    # over the cells the fitness entry of 2026-09-02 determined POINTWISE.
     # Like its two REAL siblings its seam carries nothing (FUSED_PAIR_SEAMS'
     # update_E row is None), so _install_fused_pair always takes the NoopPlan
     # branch here and the module declares CARRIES_DEPOSIT_REPAIR = False.
@@ -3668,7 +3677,7 @@ FUSED_PRODUCTS: Dict[str, Dict[str, Any]] = {
         "plan": _complex_no_pml_fused_polarization_pair_plan,
         "module": "complex_no_pml_fused_polarization_pair",
     },
-    # THE TWO STENCIL WELDS, 2026-09-02, landed with their products -- the first
+    # The two stencil welds, 2026-09-02, landed with their products -- the first
     # products on this table whose board cells were recorded UNBUILDABLE rather
     # than merely unbuilt. ``step_D`` becomes an ELEVEN-candidate seam, and the
     # partition is the measured one the census's overlap check walks: the seven
@@ -3692,7 +3701,7 @@ FUSED_PRODUCTS: Dict[str, Dict[str, Any]] = {
         "module": "folded_offdiag_fused_electric_pair",
         "chunk_axes": CHUNK_AXES_OFFDIAG,
     },
-    # THE LAST UNSERVED E->P CELL, 2026-09-02, landed with its product. The
+    # The last unserved E->P cell, 2026-09-02, landed with its product. The
     # ``update_E`` seam becomes a FOUR-candidate one and the partition is a
     # single measured clause: the three products already there conjoin an
     # update_E half that refuses an off-diagonal chi1inv row BY NAME, and this
@@ -3704,8 +3713,9 @@ FUSED_PRODUCTS: Dict[str, Dict[str, Any]] = {
         "plan": _dispersive_offdiag_fused_polarization_pair_plan,
         "module": "dispersive_offdiag_fused_polarization_pair",
         "chunk_axes": CHUNK_AXES_OFFDIAG,
+        "chunk_clause": _dispersive_offdiag_division_refusal,
     },
-    # THE TWO COMPLEX STENCIL WELDS, 2026-09-02, and the LAST two cells this board
+    # The two complex stencil welds, 2026-09-02, and the LAST two cells this board
     # recorded UNBUILDABLE. ``step_D`` becomes a THIRTEEN-candidate seam and the
     # partition is the measured one the census's overlap check walks: every one of
     # the eleven products already there either refuses complex64 storage BY NAME or
@@ -3729,7 +3739,7 @@ FUSED_PRODUCTS: Dict[str, Dict[str, Any]] = {
         "module": "complex_no_pml_offdiag_fused_electric_pair",
         "chunk_axes": CHUNK_AXES_OFFDIAG,
     },
-    # THE TWO THREE-SLOT WELDS, 2026-09-02, and the first rows on this table
+    # The two three-slot welds, 2026-09-02, and the first rows on this table
     # carrying a ``slots`` key: every other product's span is exactly
     # ``(curl_slot, FUSED_PAIR_SEAMS[curl_slot][0])``, and these two continue past
     # that into ``update_P``. The key is spelled HERE rather than imported from the
@@ -3738,7 +3748,7 @@ FUSED_PRODUCTS: Dict[str, Dict[str, Any]] = {
     # ``test_three_slot_dispersive_weld.py`` pins each row equal to its module's own
     # ``SLOTS``, so the two cannot drift.
     #
-    # THEY BID AT ``step_D`` LIKE THE ELEVEN D->E ROWS ABOVE, and their predicates
+    # They bid at ``step_D`` like the eleven D->E rows above, and their predicates
     # are CONJUNCTIONS of a D->E predicate and an E->P one -- so each one's
     # admission set is a SUBSET of the D->E product it supersedes. That would be
     # two admitters on one seam, which :func:`install_fused_pairs` leaves UNFUSED
@@ -3762,7 +3772,7 @@ FUSED_PRODUCTS: Dict[str, Dict[str, Any]] = {
         "plan": _no_pml_three_slot_dispersive_weld_plan,
         "module": "no_pml_three_slot_dispersive_weld",
     },
-    # THE THIRD THREE-SLOT ROW, 2026-09-04: the COMPLEX no-absorber weld over the
+    # The third three-slot row, 2026-09-04: the COMPLEX no-absorber weld over the
     # four TestLoadDump 3-D rows the real welds' record named as a different shape.
     # It supersedes ``cuda_no_pml_complex_fused_electric_pair`` by the same
     # strict-containment rule and takes ``update_E`` from
@@ -3778,14 +3788,14 @@ FUSED_PRODUCTS: Dict[str, Dict[str, Any]] = {
         "plan": _complex_no_pml_three_slot_weld_plan,
         "module": "complex_no_pml_three_slot_dispersive_weld",
     },
-    # THE FIRST ROW ON THE ``update_H`` SEAM, 2026-09-06, and the only one: the H->D
+    # The first row on the ``update_H`` seam, 2026-09-06, and the only one: the H->D
     # weld is the sole candidate its seam has, so ``install_fused_pairs``'s ambiguity
     # rule can never fire there. ``curl_slot`` is a misnomer on this row and is kept
     # because it is the table's key for "the FIRST slot of the seam this product
     # opens" -- here a CONSTITUTIVE sub-step, which is why the seam's second half is
     # a curl and the tuple order in ``FUSED_PAIR_ARMS`` reads (constitutive, curl).
     #
-    # IT IS REFUSED ON EVERY CONFIGURATION AND THE ROW IS STILL WHAT MAKES THAT TRUE.
+    # It is refused on every configuration and the row is still what makes that true.
     # ``_declared_uninstallable`` reads ``fused_hd_pair.INSTALLABLE`` before the
     # predicate is asked and reports ``INSTALLABLE_REASON`` on every run, so the seam
     # loop names the refusal rather than leaving the product invisible -- and the
@@ -3799,7 +3809,7 @@ FUSED_PRODUCTS: Dict[str, Dict[str, Any]] = {
         "plan": _fused_hd_pair_plan,
         "module": "fused_hd_pair",
     },
-    # THE TWO CYLINDRICAL H->D PRODUCTS, 2026-09-07: two launches each (the
+    # The two cylindrical H->D products, 2026-09-07: two launches each (the
     # certified constitutive recompute plus the fused pre-cumsum increment in the
     # update_H slot, xp.cumsum untouched on the array path, the certified
     # cylindrical curl in step_D). Both declare INSTALLABLE = False, so
@@ -3822,7 +3832,7 @@ FUSED_PRODUCTS: Dict[str, Dict[str, Any]] = {
         "module": "cylindrical_fused_hd_pair",
         "chunk_axes": CHUNK_AXES_CYLINDRICAL,
     },
-    # THE CARTESIAN COMPLEX H->D PRODUCT, 2026-09-07: one launch (the certified
+    # The Cartesian complex H->D product, 2026-09-07: one launch (the certified
     # complex constitutive recompute at the thread's own cell and at every backward
     # neighbour the curl taps, into launch-local scratch, then the certified complex
     # curl, then the H/f_w_H rotation), in TWO variants -- the plain complex curl and
@@ -3837,7 +3847,7 @@ FUSED_PRODUCTS: Dict[str, Dict[str, Any]] = {
         "plan": _complex_fused_hd_pair_plan,
         "module": "complex_fused_hd_pair",
     },
-    # THE TWO BETA H->D PRODUCTS, 2026-09-07: one launch each (the certified
+    # The two beta H->D products, 2026-09-07: one launch each (the certified
     # constitutive at the thread's own cell and at every backward neighbour the curl
     # taps, into launch-local scratch, then the certified BETA step_D body with its
     # twelve magnetic reads redirected, then the H/f_w_H rotation). Both declare
@@ -3846,7 +3856,7 @@ FUSED_PRODUCTS: Dict[str, Dict[str, Any]] = {
     # measured the composer WITH these rows patched in-process and it selects the
     # same composition as without them.
     #
-    # WHAT THEY ADD THAT NO OTHER ROW ON THIS SEAM HAS is the BETA PARTNER: the
+    # What they add that no other row on this seam has is the BETA PARTNER: the
     # analytic d/dz term consumes the SAME-CELL magnetic snapshot, which the array
     # path takes AFTER update_H, so welded it must be the launch's own register.
     # Both modules assert that pairing on every emit and both gates arm it.
@@ -3864,7 +3874,7 @@ FUSED_PRODUCTS: Dict[str, Dict[str, Any]] = {
         "plan": _complex_beta_fused_hd_pair_plan,
         "module": "complex_beta_fused_hd_pair",
     },
-    # THE LAST TWO H->D CELLS, 2026-09-07: ONE launch, TWO variants (the conductive
+    # The last two H->D cells, 2026-09-07: one launch, TWO variants (the conductive
     # four-case PML recurrence and the BFAST insert), the variant read off the run by
     # ``variant_for`` rather than taken from a caller. It declares INSTALLABLE = False,
     # so ``_declared_uninstallable`` refuses it on every configuration before the
@@ -3896,12 +3906,18 @@ def _chunk_division_refusal(context: Any, product: Dict[str, Any]) -> Optional[s
     The same clause every slot arm asks (``arms.coverage_adapter``), with the
     product's own ``chunk_axes``: every product refuses a division no chunk record
     describes, and an off-diagonal or cylindrical product also refuses one whose
-    record does not name its chunks along those axes. Asked HERE as well as at the
-    slots, rather than left to :func:`_spans_may_absorb` (an unselected slot would
+    record does not name its chunks along those axes. A product that names a
+    ``chunk_clause`` is asked that instead, the clause of the arm it conjoins (the
+    dispersive off-diagonal family's presence-word clause). Asked HERE as well as at
+    the slots, rather than left to :func:`_spans_may_absorb` (an unselected slot would
     refuse the product too), so the refusal names the division instead of an absent
     arm.
     """
+    clause = product.get("chunk_clause")
+    if clause is not None:
+        return clause(context)
     return context.chunk_division_refusal(tuple(product.get("chunk_axes", ())))
+
 
 
 class CudaFusedPairPlan:
@@ -3948,7 +3964,7 @@ class CudaFusedPairPlan:
         self.launches = 0
         #: The launcher's OWN report of the last launch it performed -- every
         #: launcher on this track returns ``{"launched", "blocks", "threads", ...}``.
-        #: Kept so :attr:`launch_grid` can answer with a MEASURED grid rather than a
+        #: Kept so :attr:`launch_grid` can answer with a measured grid rather than a
         #: predicted one; ``None`` before the first launch, which is the honest
         #: answer at plan time and is what the dispatch record's
         #: ``programs_per_dispatch`` reports until a step has run.
@@ -3988,12 +4004,12 @@ class CudaFusedPairPlan:
         LAUNCH -- ``LeadingRepairPlan.run`` saves and then calls ``inner.run`` --
         which is what makes the bracket a bracket rather than a label.
 
-        BOTH HALVES OF THE PAIR ARE THE PRODUCT'S OWN. The argument resolution and
+        Both halves of the pair are the product's own. The argument resolution and
         the launcher come from the plan builder together, because they are two ends
         of one signature: a resolution paired with somebody else's launcher binds the
         right values to the wrong parameters.
 
-        THE RESOLVER IS ASKED ON EVERY LAUNCH AND DECIDES WHAT IT RECOMPUTES,
+        The resolver is asked on every launch and decides what it recomputes,
         2026-09-19. A builder whose resolver reads only the frozen configuration
         wraps it in :func:`_resolved_once`; one whose resolver hands out rotating
         scratch or reads the fields does not, and this method treats the two alike,
@@ -4020,7 +4036,7 @@ class CudaFusedPairPlan:
     def launch_grid(self) -> Optional[Tuple[int, ...]]:
         """The single-axis grid the LAST launch actually asked for, or ``None``.
 
-        READ BACK OFF THE LAUNCHER'S REPORT rather than recomputed here. The
+        Read back off the launcher's report rather than recomputed here. The
         dispatch seam reports it as ``programs_per_dispatch`` and uses it to tell "a
         kernel launched" from "a kernel computed over data" -- a distinction a
         predicted grid cannot draw, because the number that matters is the one the
@@ -4036,14 +4052,14 @@ class CudaFusedPairPlan:
     def warm(self) -> Optional[str]:
         """Compile this product's kernel at PLAN TIME, launching nothing.
 
-        WHY A COMPILE AND NOT AN EMPTY-GRID LAUNCH. The Triton mechanism empties a
+        Why a compile and not an empty-grid launch. The Triton mechanism empties a
         launch grid so the JIT compiles at the subscript and enqueues zero programs;
         these kernels are NVRTC sources behind ``compile_cache``, and the compile is
         a separate call that touches no field array at all. So the warm pass here is
         strictly weaker in effect and strictly stronger in safety: nothing is
         enqueued, no argument is resolved, and no per-step behaviour changes.
 
-        RETURNS A REASON instead of raising when the family module exposes no
+        Returns a reason instead of raising when the family module exposes no
         ``_get_kernel``. A raise unfills the slot, which would take a working
         product to the array path over the absence of a warm mechanism; a reason is
         RECORDED as unwarmed, which is the same answer the Triton composer's
@@ -4061,14 +4077,14 @@ class CudaFusedPairPlan:
         if not callable(getter):
             return (f"{self.warm_module} exposes no _get_kernel, so there is no "
                     f"compile this pass can perform ahead of the first launch")
-        # A GETTER THAT NEEDS A SHAPE HAS NO ARGUMENT-FREE COMPILE, and that is a
+        # A getter that needs a shape has no argument-free compile, and that is a
         # REASON, not a failure -- the same answer as a family with no ``_get_kernel``
         # at all, for the same cause. Several families emit their source PER SHAPE
         # (``three_slot_dispersive_weld._get_kernel(component_index, count,
         # sigma_kinds)``; the conductive and complex pairs take an arm), so there is
         # no body to compile until the launch resolves one.
         #
-        # WHAT THIS COST BEFORE IT WAS CHECKED. ``getter()`` raised ``TypeError`` on
+        # What this cost before it was checked. ``getter()`` raised ``TypeError`` on
         # the missing arguments, the exception left ``warm_plan``, rung (9) removed
         # the slot from the dispatch set, and ``_split_pairs`` then refused the WHOLE
         # plan because a three-slot weld holding two of its three slots would skip or
@@ -4106,7 +4122,7 @@ class _TripleHalfPlan:
     one object with one ``run``. This is the adapter: it holds the triple and which
     of its two launchers to call.
 
-    IT DECLARES ``replaces_sub_steps`` AND ``launchable`` ITSELF, delegating to the
+    It declares ``replaces_sub_steps`` and ``launchable`` itself, delegating to the
     triple, and that is not decoration. ``declaring_plan`` follows ``absorbed_by``
     exactly ONE level, so for ``plans['step_D'] = LeadingRepairPlan(half, ...)`` the
     declaring plan IS this object -- read bare it would fall back to "replaces only
@@ -4122,7 +4138,7 @@ class _TripleHalfPlan:
         #: The product that did the work, for a reader inspecting the composition.
         self.absorbed_by = triple
         self.launches = 0
-        #: THIS HALF'S own last launch report. Per half rather than per triple
+        #: This half's own last launch report. Per half rather than per triple
         #: because the two groups ask for different grids, and reporting the
         #: leading group's count for the trailing slot would be a claim about a
         #: launch that did not happen there.
@@ -4163,7 +4179,7 @@ class _TripleHalfPlan:
 class CudaFusedTriplePlan:
     """One fused product holding THREE slots and TWO device groups.
 
-    THE SHAPE THAT IS NEW. Every :class:`CudaFusedPairPlan` is one launch bracketed
+    The shape that is new. Every :class:`CudaFusedPairPlan` is one launch bracketed
     by the repair: save, launch, (the driver's passes), apply -- and nothing of the
     product's runs afterwards. A three-slot weld has a SECOND device group after the
     apply, and the order is load-bearing rather than tidy:
@@ -4237,7 +4253,7 @@ class CudaFusedTriplePlan:
     def run_half(self, which: str, *_args: Any, **_kwargs: Any) -> Dict[str, Any]:
         """One of the two device groups. NEEDS A DEVICE; no plan build calls it.
 
-        THE RESOLVER IS ASKED PER GROUP, exactly as :meth:`CudaFusedPairPlan.run`
+        The resolver is asked per group, exactly as :meth:`CudaFusedPairPlan.run`
         asks it per launch, and what it recomputes is its builder's decision. Nothing
         that rotates is in these arguments -- the pole buffers are read inside each
         launcher, immediately before the launch that binds them -- so the two
@@ -4288,7 +4304,7 @@ def _install_fused_pair(plans: Dict[str, Any], selected: Dict[str, str],
     ``triton_kernels.launch._install_fused_pair`` -- one copy per composer, three
     composers -- so a reader who has understood the protocol on one track has
     understood it on all three, and so ``deposit_repair`` is reached the same way
-    from each. ONE FORCED DIVERGENCE since 2026-09-01: this composer carries the
+    from each. One forced divergence since 2026-09-01: this composer carries the
     E->P seam, which neither sibling has a product on, and that seam's
     ``pair_name`` is ``None`` because the driver injects NOTHING between its two
     consults (driver.py:3313/:3315) -- there is no deposit list for
@@ -4296,15 +4312,15 @@ def _install_fused_pair(plans: Dict[str, Any], selected: Dict[str, str],
     select a list injected OUTSIDE the seam. ``None`` therefore reads as an
     unconditionally empty seam here, which is the driver's own answer.
 
-    THE FLAG IS NOT CHECKED HERE, deliberately, and both siblings say the same: it
+    The flag is not checked here, deliberately, and both siblings say the same: it
     is checked in the family's own coverage predicate, which passes
     ``carries_repair=CARRIES_DEPOSIT_REPAIR`` to
     ``deposit_repair.seam_source_reasons``. A product that has not declared it
     refuses every in-seam source, so a configuration with a deposit never arrives
     here. Checking it twice would let the two answers disagree.
 
-    THE H->D SEAM IS ROUTED TO THE WITHDRAW HOIST, 2026-09-04, AND THE BRANCH IS
-    HERE RATHER THAN IN A FAMILY. Its ``pair_name`` is ``withdraw_hoist.SEAM``,
+    The H->D seam is routed to the withdraw hoist, 2026-09-04, and the branch is
+    here rather than in a family. Its ``pair_name`` is ``withdraw_hoist.SEAM``,
     which is not a ``deposit_repair`` field letter, so there is no deposit list to
     select and no bracket to install; what sits between the two consults is the
     driver's electric ``withdraw`` loop, which a spanning product has to perform
@@ -4315,7 +4331,7 @@ def _install_fused_pair(plans: Dict[str, Any], selected: Dict[str, str],
     here, so the second slot holds the ``NoopPlan`` unconditionally, exactly as the
     E->P row's ``None`` does.
 
-    ``repair_paths`` IS THE INSTALLING PRODUCT'S DECLARATION of which recurrence its
+    ``repair_paths`` is the installing product's declaration of which recurrence its
     repair inverts, threaded here on 2026-09-02 to match
     ``triton_kernels.launch._install_fused_pair``'s signature. It defaults to the
     split-field one -- the only repair that existed before
@@ -4356,10 +4372,10 @@ def _install_fused_triple(plans: Dict[str, Any], selected: Dict[str, str],
                           repair_paths: Sequence[str]) -> None:
     """Put a built THREE-slot product into its three slots, with the repair between.
 
-    THE BRACKET IS :func:`_install_fused_pair`'S, UNCHANGED, over the LEADING half:
+    The bracket is :func:`_install_fused_pair`'s, unchanged, over the LEADING half:
     the save at the first consult, the apply at the second, the driver's
     inject/fill/clear untouched in between. What is added is the third slot, and
-    WHERE IT SITS RELATIVE TO THE BRACKET IS THE PRODUCT: the trailing half goes in
+    where it sits relative to the bracket is the product: the trailing half goes in
     ``update_P``, which the driver consults AFTER ``update_E``, so the polarization
     advance runs after ``deposit_repair.apply`` has read ``state.P`` as P^n.
 
@@ -4370,7 +4386,7 @@ def _install_fused_triple(plans: Dict[str, Any], selected: Dict[str, str],
     over 6 complete driver steps). That is why the third slot is written HERE, beside
     the bracket, rather than by a caller free to order the two differently.
 
-    ``pair_name`` IS THE LEADING SEAM'S, not the trailing one's. A three-slot product
+    ``pair_name`` is the leading seam's, not the trailing one's. A three-slot product
     spans two seams and only the first has an injection in it: the driver puts
     NOTHING between ``update_E`` and ``update_P`` (driver.py:3332/:3334), which is the
     ``None`` in ``FUSED_PAIR_SEAMS``' ``update_E`` row. So exactly one bracket is
@@ -4410,7 +4426,7 @@ def declaring_plan(plan: Any) -> Any:
 def replaced_sub_steps(plans: Dict[str, Any]) -> Tuple[str, ...]:
     """Every driver pass the installed plans perform, in ``STEP_ORDER``-free union.
 
-    A UNION and not a concatenation: both slots of an installed pair report the same
+    A union and not a concatenation: both slots of an installed pair report the same
     ``replaces_sub_steps``, so the pair's passes are counted once.
     """
     from ..triton_kernels.launch import STEP_ORDER  # noqa: PLC0415 - shared order
@@ -4428,7 +4444,7 @@ def replaced_sub_steps(plans: Dict[str, Any]) -> Tuple[str, ...]:
 def _repair_paths_of(product: Dict[str, Any]) -> Tuple[str, ...]:
     """One product's ``REPAIR_PATHS``, imported at call time.
 
-    THE IMPORT IS DEFERRED for the reason every other product import in this file is:
+    The import is deferred for the reason every other product import in this file is:
     the modules pull in kernel families that import CuPy, and ``install_fused_pairs``
     has to run on the merge-bar host. A module that cannot be imported at all is a
     fact the coverage predicate has already reported by the time this is reached --
@@ -4448,7 +4464,7 @@ def _repair_paths_of(product: Dict[str, Any]) -> Tuple[str, ...]:
 def _declared_uninstallable(family: str, product: Dict[str, Any]) -> Optional[str]:
     """``None`` when the product may be installed, else the reason it may not.
 
-    ``INSTALLABLE`` IS A DECLARATION ABOUT THE PRODUCT, NOT ABOUT A RUN, which is why
+    ``INSTALLABLE`` is a declaration about the product, not about a run, which is why
     it is read here and reported on every configuration rather than folded into a
     coverage predicate. A predicate answers "can this weld serve this run" -- a
     question about arithmetic, and the one its gate measures -- and that answer must
@@ -4457,14 +4473,14 @@ def _declared_uninstallable(family: str, product: Dict[str, Any]) -> Optional[st
     arithmetic is certified and the COMPOSITION is refused, on every row, for a
     measured reason of its own.
 
-    IT IS BELT AND BRACES, NOT THE RULE. :func:`_neighbouring_seam_claimant` is what
+    It is belt and braces, not the rule. :func:`_neighbouring_seam_claimant` is what
     a future product spanning more slots needs, and it is what decides the H->D
     seam's refusal from the run. This flag is what keeps a careless edit -- a new
     seam row, a reordered table, a widened arm declaration -- from installing a
     product whose own module says it must not be, and it is what makes the two new
     :data:`_SLOT_OPENS_A_LATER_SEAM` rows safe for the released pairs they neighbour.
 
-    THE IMPORT IS DEFERRED AND GUARDED for the reason :func:`_repair_paths_of`'s is:
+    The import is deferred and guarded for the reason :func:`_repair_paths_of`'s is:
     these modules pull in kernel families that import CuPy and this loop has to run
     on the merge-bar host. A module that cannot be read is INSTALLABLE by default --
     fail-open here is correct because the coverage predicate has already refused an
@@ -4488,7 +4504,7 @@ def _declared_uninstallable(family: str, product: Dict[str, Any]) -> Optional[st
 #: the left closes a seam this table's right-hand seam would have opened, so the two
 #: cannot both be installed on one run.
 #:
-#: THREE ROWS SINCE 2026-09-04, and the sentence this comment used to carry --
+#: Three rows since 2026-09-04, and the sentence this comment used to carry --
 #: "``step_D``, ``step_B`` and ``update_H`` appear in one seam each" -- became FALSE
 #: the day the H->D seam was priced onto the boards and given a row in
 #: :data:`FUSED_PAIR_SEAMS`. It is corrected here rather than left standing, because
@@ -4505,12 +4521,12 @@ def _declared_uninstallable(family: str, product: Dict[str, Any]) -> Optional[st
 #: ``step_B`` is nobody's second slot and ``update_P`` is nobody's first, so those two
 #: are the only slots on the four-slot path that stay out of this table.
 #:
-#: THE TWO NEW ROWS ARE WHY :func:`_declared_uninstallable` EXISTS. Read bare, the
+#: The two new rows are why :func:`_declared_uninstallable` exists. Read bare, the
 #: ``update_H`` row makes :func:`_later_seam_claimant` withhold ``update_H`` from the
 #: RELEASED B->H pair the moment an H->D product admits -- the exact displacement the
 #: seam's key order is pinned to prevent. A product that declares itself
 #: uninstallable claims nothing, so it is not a claimant, and the released pair keeps
-#: its slot. SINCE 2026-09-05 THAT IS BELT AND BRACES RATHER THAN THE GUARD: the B->H
+#: its slot. Since 2026-09-05 that is belt and braces rather than the guard: the B->H
 #: span is an END EDGE of :data:`FUSED_PAIR_SEAMS` by the table's own degrees, so
 #: :func:`_neighbouring_seam_claimant` never asks the question of it at all, whatever
 #: any H->D product declares (measured through the Metal composer on 2026-09-04: a
@@ -4526,7 +4542,7 @@ _SLOT_OPENS_A_LATER_SEAM: Dict[str, str] = {
 def _label_of(family: str, product: Dict[str, Any]) -> str:
     """The literal this product's plan builder passes as ``label=``.
 
-    READ OFF THE TABLE ROW, not off a built plan: the offer is asked BEFORE the
+    Read off the table row, not off a built plan: the offer is asked BEFORE the
     builder runs (that is the whole point of asking it before the predicate), so
     there is no plan to read it from yet. The row and the builder are pinned equal
     by ``test_cuda_certified_fused_products``, which walks the AST of this file, so
@@ -4539,19 +4555,19 @@ def _label_not_offered(label: str,
                        offered: Optional[FrozenSet[str]]) -> Optional[str]:
     """``None`` when this caller will run ``label``, else why the seam stays unfused.
 
-    THE MIRROR OF ``triton_kernels.launch._label_not_offered``, down to the wording,
+    The mirror of ``triton_kernels.launch._label_not_offered``, down to the wording,
     and the wording is load-bearing: the driver-route gate's envelope leg greps for
-    "offered to run" to tell a seam left unfused BY THE OFFER from a seam left
+    "offered to run" to tell a seam left unfused by the offer from a seam left
     unfused by a predicate, and a third spelling would make that classifier report a
     changed refusal rather than the narrowing.
 
-    WHY A CALLER MAY OFFER A SUBSET AT ALL. ``fuse`` says WHETHER to attempt fusion;
+    Why a caller may offer a subset at all. ``fuse`` says WHETHER to attempt fusion;
     a caller that will only RUN some of the products this table can build has no
     other way to say so, and a fused product occupies EVERY slot of its seam -- so an
     un-offered product taking those slots forces the caller to refuse the whole step,
     taking the separate certified arms underneath it down as well.
 
-    ``None`` MEANS NO RESTRICTION, which is the right default for every caller that
+    ``None`` means no restriction, which is the right default for every caller that
     composes in order to INSPECT -- the gates, the probes, the coverage census. They
     ask what the table can build, and an offer they did not make must not narrow it.
     """
@@ -4582,7 +4598,7 @@ def offered_labels(fuse_labels: Any) -> Optional[FrozenSet[str]]:
 def span_of(family: str, product: Dict[str, Any]) -> Tuple[str, ...]:
     """Every slot one product owns, in driver order.
 
-    READ OFF THE TABLE, NEVER INFERRED FROM THE PRODUCT'S CLASS. A pair's span is its
+    Read off the table, never inferred from the product's class. A pair's span is its
     seam's two slots, which is what the ``slots`` key defaults to; a THREE-slot weld
     declares its own and continues past the seam into ``update_P``. The two
     arbitration rules below both ask this question, and a second way of answering it
@@ -4600,23 +4616,23 @@ def _superseded_by_a_longer_span(
 ) -> Dict[str, str]:
     """``{family: refusal}`` for every candidate a LONGER candidate strictly contains.
 
-    WHY THIS EXISTS, 2026-09-02, WITH THE THREE-SLOT WELDS. Their predicates are
+    Why this exists, 2026-09-02, with the three-slot welds. Their predicates are
     CONJUNCTIONS of a D->E predicate and an E->P one, so each one's admission set is
     a SUBSET of the D->E product it supersedes -- and two admitters on one seam is
     what :func:`install_fused_pairs` refuses by leaving the seam UNFUSED naming both.
     Without this rule, landing a three-slot weld would COST the seven and three rows
     its D->E half already serves rather than adding the second seam to them.
 
-    IT IS SLOT ARBITRATION AND NOT A VERDICT ABOUT ARITHMETIC, exactly as
+    It is slot arbitration and not a verdict about arithmetic, exactly as
     :func:`_later_seam_claimant` is: both predicates admit these runs and both gates
     certify them; what is decided here is who gets the slots.
 
-    IT IS NON-LOSSY IN BOTH DIRECTIONS, and that is a property of the CONJUNCTION
+    It is non-lossy in both directions, and that is a property of the CONJUNCTION
     rather than a hope. Where the longer product admits, the shorter one does too, so
     refusing the shorter costs no row; where the longer refuses, it is not a candidate
     at all and the shorter installs exactly as it does today.
 
-    STRICT CONTAINMENT, NOT LENGTH. Two products of different lengths whose spans
+    Strict containment, not length. Two products of different lengths whose spans
     merely overlap are still an AMBIGUITY -- the composer's own refusal, reached
     below -- because neither can serve what the other does.
     """
@@ -4642,13 +4658,13 @@ def _spans_may_absorb(selected: Dict[str, str], span: Sequence[str],
                       arms: Sequence[str]) -> Optional[str]:
     """``None`` when a product may take EVERY slot of its span, else why it may not.
 
-    ONE CALL PER SEAM THE SPAN CROSSES, through the shared
+    One call per seam the span crosses, through the shared
     ``triton_kernels.launch._pair_may_absorb`` -- never a second copy of its clause.
     A two-slot span crosses one seam and this is exactly that function; a THREE-slot
     span crosses two, so it is asked twice, on consecutive slot/arm pairs. The first
     refusal is returned, so the reason names the slot that actually went elsewhere.
 
-    THE ARM TUPLE IS AS LONG AS THE SPAN and that is checked rather than assumed: a
+    The arm tuple is as long as the span and that is checked rather than assumed: a
     row of the wrong length would silently ask about a different seam than the one
     the product spans.
     """
@@ -4673,14 +4689,14 @@ def _later_seam_claimant(plans: Dict[str, Any], reasons: Dict[str, Tuple[str, ..
                          offered: Optional[FrozenSet[str]] = None) -> Optional[str]:
     """The E->P product that would lose ``update_name`` if a D->E pair took it.
 
-    WHY THIS ARBITRATION EXISTS, MEASURED 2026-09-02. A D->E product owns ``step_D``
+    Why this arbitration exists, measured 2026-09-02. A D->E product owns ``step_D``
     AND ``update_E``; an E->P product owns ``update_E`` AND ``update_P``.
     :func:`install_fused_pairs` walks ``FUSED_PAIR_SEAMS`` in order and D_to_E comes
     first, so on any run both admit, the D->E product takes the slot and the E->P one
     is refused with an "arm table gave it elsewhere" reason -- silently trading one
     seam-instance for another.
 
-    ON THIS CORPUS THAT TRADE IS EXACTLY NET ZERO ON BOTH CELLS THAT REACH IT:
+    On this corpus that trade is exactly net zero on both cells that reach it:
 
     * ``cuda_dispersive_fused_electric_pair``'s seven rows (three
       ``stochastic_emitter*``, four ``TestLoadDump.*_2d``) are EXACTLY the seven
@@ -4696,14 +4712,14 @@ def _later_seam_claimant(plans: Dict[str, Any], reasons: Dict[str, Tuple[str, ..
     3). So the D->E product gains what the E->P product loses, and pays for it by
     displacing a RELEASED, certified product.
 
-    THE SEAM IS THEREFORE LEFT WITH THE PRODUCT THAT ALREADY HAD IT. That is a
+    The seam is therefore left with the product that already had it. That is a
     decision about SLOT ARBITRATION and it belongs here rather than in either
     product's predicate: a predicate answers "can this weld serve this run", which is
     a question about arithmetic and is what its gate measures, and the answer must not
     change because a different product exists. Both D->E predicates admit these runs
     and their gates certify them; what this function decides is who gets the slot.
 
-    IT IS NOT A RANKING AND DOES NOT PRETEND TO BE. Where the trade is not net zero --
+    It is not a ranking and does not pretend to be. Where the trade is not net zero --
     a D->E cell with rows no E->P product serves -- this returns ``None`` and the D->E
     product installs as before, which is how
     ``cuda_conductive_fused_electric_pair``'s row (no susceptibility, so no E->P
@@ -4711,7 +4727,7 @@ def _later_seam_claimant(plans: Dict[str, Any], reasons: Dict[str, Tuple[str, ..
     THREE-SLOT product spanning ``step_D`` -> ``update_E`` -> ``update_P``, which
     serves BOTH seams instead of trading one for the other.
 
-    THAT PRODUCT LANDED 2026-09-02, AND ``span`` IS WHAT THIS FUNCTION DOES ABOUT IT.
+    That product landed 2026-09-02, and ``span`` is what this function does about it.
     The withholding above models a TRADE: one seam-instance gained, one lost. A
     product whose OWN span already reaches ``update_P`` makes no trade -- it serves
     the later seam itself -- so there is nothing to withhold and this returns
@@ -4719,10 +4735,10 @@ def _later_seam_claimant(plans: Dict[str, Any], reasons: Dict[str, Tuple[str, ..
     function is about, and a caller free to skip it could skip it for a product that
     really does trade.
 
-    ``span`` DEFAULTS TO EMPTY, which reads as "a product that spans only this seam"
+    ``span`` defaults to empty, which reads as "a product that spans only this seam"
     and preserves every caller written before three slots existed.
 
-    A PRODUCT THAT DECLARES ITSELF UNINSTALLABLE IS NOT A CLAIMANT, 2026-09-04, and
+    A product that declares itself uninstallable is not a claimant, 2026-09-04, and
     that clause is load-bearing rather than tidy. :data:`_SLOT_OPENS_A_LATER_SEAM`
     gained an ``update_H`` row when the H->D seam was priced, which without this
     clause would make the RELEASED B->H pair lose ``update_H`` to a product that can
@@ -4738,7 +4754,7 @@ def _later_seam_claimant(plans: Dict[str, Any], reasons: Dict[str, Tuple[str, ..
             continue
         if _declared_uninstallable(family, product) is not None:
             continue
-        # AN UN-OFFERED PRODUCT IS NOT A CLAIMANT, and that is the same clause as
+        # An un-offered product is not a claimant, and that is the same clause as
         # the uninstallable one above, applied to the same failure. A product this
         # caller will not run can never take the later seam, so withholding a slot
         # in its favour trades a seam-instance the caller HAS for one it cannot
@@ -4758,7 +4774,7 @@ def _later_seam_claimant(plans: Dict[str, Any], reasons: Dict[str, Tuple[str, ..
 def _slot_degrees(seams: Dict[str, Tuple[str, Optional[str]]]) -> Dict[str, int]:
     """How many rows of ``seams`` name each slot -- its degree on the seam path.
 
-    COMPUTED FROM THE TABLE, NEVER SPELLED. :func:`_neighbouring_seam_claimant` asks
+    Computed from the table, never spelled. :func:`_neighbouring_seam_claimant` asks
     its question only of a span whose two END slots both have degree >= 2 -- an
     INTERIOR edge -- and the end/interior split has to follow the table so that a
     row added later moves it without anyone having to remember to.
@@ -4787,7 +4803,7 @@ def _neighbouring_seam_claimant(plans: Dict[str, Any],
                                 ) -> Optional[Tuple[str, str]]:
     """``(claimant, refusal)`` for the product that would lose a slot to this one.
 
-    THE RULE, SINCE 2026-09-05: the question is asked ONLY of a span that is an
+    The rule, since 2026-09-05: the question is asked ONLY of a span that is an
     INTERIOR edge of the seam path -- both of its END slots sit in two or more rows
     of :data:`FUSED_PAIR_SEAMS` -- and such a product is refused where another
     product claims the seam its LAST slot opens. An end-edge span is never asked and
@@ -4797,7 +4813,7 @@ def _neighbouring_seam_claimant(plans: Dict[str, Any],
     is still called here rather than copied, so its released wording and its trade
     model stay exactly what its own measurement licensed.
 
-    WHY THAT IS THE RIGHT SHAPE IS A MATCHING ARGUMENT, not a corpus accident. Over a
+    Why that is the right shape is a matching argument, not a corpus accident. Over a
     path of four slots the maximum matching has size 2 and it is always the two END
     edges; an interior edge belongs to no maximum matching unless both of its
     neighbours are absent. So an end-edge span must never yield, and an interior span
@@ -4814,10 +4830,10 @@ def _neighbouring_seam_claimant(plans: Dict[str, Any],
     ``E_to_P`` (2, 1) are end edges and never yield; ``H_to_D`` (2, 2) is interior
     and yields; and ``D_to_E`` (2, 2) is interior here -- unlike on the three-row
     Metal and Triton tables -- and yields to ``E_to_P``, which is EXACTLY the released
-    2026-09-02 trade ruling, reproduced from the table's degrees rather than
+    2026-09-02 trade decision, reproduced from the table's degrees rather than
     re-litigated.
 
-    WHAT THE GUARD CLOSED was measured 2026-09-04 through the METAL composer: with
+    What the guard closed was measured 2026-09-04 through the METAL composer: with
     the ``update_H`` row in the seam table, the later half ALONE refused the RELEASED
     B->H pair on every row an admitting H->D product reached -- even a stand-in with
     no absorb declaration, which can never install (3 launches / 1 seam against the
@@ -4831,8 +4847,8 @@ def _neighbouring_seam_claimant(plans: Dict[str, Any],
     An earlier-neighbour half was added and then removed on 2026-09-04; the block
     below records what it did and why measurement retired it.
 
-    WHY THE SECOND DIRECTION HAD TO EXIST, AND IT IS ARITHMETIC RATHER THAN A CORPUS
-    ACCIDENT. The driver's slot path here is ``step_B -- update_H -- step_D --
+    Why the second direction had to exist, and it is arithmetic rather than a corpus
+    accident. The driver's slot path here is ``step_B -- update_H -- step_D --
     update_E``: four slots, three seams, and an installed pair is an edge of a
     matching on that path. Launches over those four slots are therefore
 
@@ -4846,7 +4862,7 @@ def _neighbouring_seam_claimant(plans: Dict[str, Any],
     * where exactly one neighbour serves, it ties: 3 launches and one seam either way;
     * where neither serves it would be a gain, and there is no such row.
 
-    GAIN, TIE OR LOSS FOR AN H->D PRODUCT, MEASURED 2026-09-04 at COMPOSER level
+    Gain, tie or loss for an H->D product, measured 2026-09-04 at COMPOSER level
     (predicate AND absorb row) on Metal, over the 179 buildable rows of the 194-row
     ``h_to_d_seam_2026-09-04`` basis (this board's predicate-level join on the same
     basis: ``update_H`` held by a released B->H product on 179 of 179 rows):
@@ -4874,18 +4890,18 @@ def _neighbouring_seam_claimant(plans: Dict[str, Any],
     hard-coded veto: on a run where no neighbour's product admits, this returns
     ``None`` and the product installs.
 
-    IT IS SLOT ARBITRATION AND NOT A VERDICT ABOUT ARITHMETIC, exactly as its two
+    It is slot arbitration and not a verdict about arithmetic, exactly as its two
     siblings are. Every predicate that reaches this point admitted and every gate
     that released one certified it; what is decided here is who gets the slots.
 
-    THE ONLY SHAPE THAT ESCAPES IT is a span that reaches the neighbouring seam
+    The only shape that escapes it is a span that reaches the neighbouring seam
     ITSELF rather than colliding with it -- a four-slot ``step_B -> update_H ->
     step_D -> update_E`` weld in ONE launch, which serves three seams in one launch
     where today's two pairs serve two in two. ``span`` is how that is expressed here,
     the same way :func:`_later_seam_claimant` takes it: a product whose own span
     already covers the neighbouring seam's slots makes no trade and is not withheld.
 
-    THE TWO HALVES CARRY DIFFERENT REASONS AND MUST, because they report different
+    The two halves carry different reasons and must, because they report different
     measurements. The later half's is a TRADE, measured net zero, and its wording is
     the released 2026-09-02 one, unchanged down to the slot it names -- the only edit
     is that the later seam's second slot is now READ off :data:`FUSED_PAIR_SEAMS`
@@ -4894,7 +4910,7 @@ def _neighbouring_seam_claimant(plans: Dict[str, Any],
     half's is a DISPLACEMENT, measured net -1, and says so.
     """
     span = tuple(span) or (curl_name, update_name)
-    # R1: AN END-EDGE SPAN IS NEVER ASKED. The matching argument is in the docstring;
+    # An end-edge span is never asked. The matching argument is in the docstring;
     # the degrees are read off the table so the answer moves with it.
     if _is_end_edge_span(span, FUSED_PAIR_SEAMS):
         return None
@@ -4910,14 +4926,14 @@ def _neighbouring_seam_claimant(plans: Dict[str, Any],
                 f"is left with the product that already serves it. See "
                 f"_later_seam_claimant -- this is slot arbitration, not a verdict "
                 f"about {family}'s arithmetic, which its own gate certifies")
-    # THE EARLIER-NEIGHBOUR HALF WAS REMOVED 2026-09-04, MEASURED, NOT ARGUED. It
+    # The earlier-neighbour half was removed 2026-09-04, measured, not argued. It
     # asked the same question in the other direction -- "does a product claim the seam
     # my FIRST slot closes?" -- and it did two things, both wrong:
     #
     # * it was REDUNDANT where it was meant to help. An H->D span's last slot is
     #   ``step_D``, which opens the D->E seam, so the later half above already names a
     #   D->E claimant and returns before the earlier half is reached.
-    # * it REVERSED A RELEASED RULING where it did fire. The only product class whose
+    # * it reversed a released decision where it did fire. The only product class whose
     #   last slot opens no seam is E->P (``update_P`` is terminal), so the earlier half
     #   fired there and there alone -- refusing the polarization pair because a D->E
     #   product admits, while the later half was already refusing that D->E product
@@ -4925,7 +4941,7 @@ def _neighbouring_seam_claimant(plans: Dict[str, Any],
     #   and the seam went unserved. Measured on a dispersive PML run (poles=2): the
     #   later half names ``cuda_fused_polarization_pair`` for the D->E product, and the
     #   earlier half named ``cuda_dispersive_fused_electric_pair`` for the polarization
-    #   pair. The 2026-09-02 trade ruling gives ``update_E`` to the E->P incumbent, and
+    #   pair. The 2026-09-02 trade decision gives ``update_E`` to the E->P incumbent, and
     #   this function may not re-litigate it from the other side.
     #
     # What the earlier half was FOR -- an H->D product installing on a row where only
@@ -4948,11 +4964,11 @@ def install_fused_pairs(plans: Dict[str, Any],
     predicate that raises is a refusal and a builder that raises or returns ``None``
     leaves the seam unfused with a NAMED reason under ``fused_pair_<family>``.
 
-    TWO ADMITTERS ON ONE SEAM IS AN AMBIGUITY, not a pick, and the wording
+    Two admitters on one seam is an ambiguity, not a pick, and the wording
     deliberately avoids ``_select_slot``'s phrase "admit this configuration" so a
     probe scanning ``reasons`` for an ambiguous SLOT does not report a seam as one.
 
-    ``offered`` IS APPLIED AT TWO POINTS AND THE SECOND IS NOT A DUPLICATE. The first
+    ``offered`` is applied at two points and the second is not a duplicate. The first
     is HERE, in the candidate loop, BEFORE the predicate -- which is a stronger
     placement than the Triton composer's because this composer has clauses that one
     does not. An un-offered product skipped before the predicate can neither
@@ -4963,7 +4979,7 @@ def install_fused_pairs(plans: Dict[str, Any],
     slot from an offered one: the withholding models a net-zero trade between two
     seams, and a trade with a product that cannot install is net -1.
 
-    ``None`` MEANS NO RESTRICTION and composes exactly what this function composed
+    ``None`` means no restriction and composes exactly what this function composed
     before the offer existed, byte for byte -- which is what the coverage census
     asks for and what every gate and probe in the tree passes.
     """
@@ -4973,14 +4989,14 @@ def install_fused_pairs(plans: Dict[str, Any],
             if product["curl_slot"] != curl_name:
                 continue
             key = f"fused_pair_{family}"
-            # THE OFFER IS ASKED FIRST, BEFORE EVERY OTHER CLAUSE, and the position
+            # The offer is asked first, before every other clause, and the position
             # is the point -- see this function's docstring for what the two clauses
             # below would otherwise do with a product the caller cannot run.
             not_offered = _label_not_offered(_label_of(family, product), offered)
             if not_offered is not None:
                 reasons[key] = (not_offered,)
                 continue
-            # THE DECLARATION IS ASKED FIRST, BEFORE THE PREDICATE, and the order
+            # The declaration is asked first, before the predicate, and the order
             # is the point: a missing absorb declaration is a fact about the TABLE,
             # true of every configuration, so it is reported on every configuration.
             # Asking the predicate first would make the reason appear and disappear
@@ -4993,8 +5009,8 @@ def install_fused_pairs(plans: Dict[str, Any],
                     f"a fused product may not substitute a numerical product no arm "
                     f"admitted",)
                 continue
-            # THE PRODUCT'S OWN INSTALLATION DECLARATION, ASKED BESIDE THE ABSORB
-            # ONE AND FOR THE SAME REASON: it is a fact about the PRODUCT, true of
+            # The product's own installation declaration, asked beside the absorb
+            # one and for the same reason: it is a fact about the PRODUCT, true of
             # every configuration, so it is reported on every configuration. See
             # :func:`_declared_uninstallable`.
             uninstallable = _declared_uninstallable(family, product)
@@ -5014,7 +5030,7 @@ def install_fused_pairs(plans: Dict[str, Any],
             candidates.append((family, product, pair_arms))
         if not candidates:
             continue
-        # A LONGER SPAN THAT STRICTLY CONTAINS ANOTHER'S IS NOT AN AMBIGUITY, and it
+        # A longer span that strictly contains another's is not an ambiguity, and it
         # is settled BEFORE the ambiguity check for the reason that check exists: two
         # admitters would leave the seam UNFUSED naming both, which on these cells
         # would cost the ten rows the shorter products already serve. See
@@ -5035,14 +5051,14 @@ def install_fused_pairs(plans: Dict[str, Any],
         family, product, pair_arms = candidates[0]
         key = f"fused_pair_{family}"
         span = span_of(family, product)
-        # THE PRIMARY ROW FIRST, THEN EVERY DECLARED EXTRA, and the pair absorbs
+        # The primary row first, then every declared extra, and the pair absorbs
         # on the FIRST arm pair the table already gave both slots to. At most one
         # can ever match -- the slots hold one selection each -- so the loop is a
         # lookup, not a preference order. A product with no matching declaration
         # is refused with the PRIMARY row's reason, which names the arm the slots
         # actually went to.
         #
-        # A THREE-SLOT PRODUCT IS ASKED THE SAME QUESTION TWICE, once per seam it
+        # A three-slot product is asked the same question twice, once per seam it
         # spans, rather than through a second copy of the clause: a triple absorbs
         # ``step_D``/``update_E`` and ``update_E``/``update_P``, and it may absorb
         # each only where the arm table already gave both slots to the arms its
@@ -5057,7 +5073,7 @@ def install_fused_pairs(plans: Dict[str, Any],
         if refusal is not None:
             reasons[key] = (refusal,)
             continue
-        # A NEIGHBOURING SEAM'S CLAIM, ASKED BEFORE THIS PAIR IS BUILT. See
+        # A neighbouring seam's claim, asked before this pair is built. See
         # :func:`_neighbouring_seam_claimant`: a product owning a slot that another
         # seam's product also needs cannot install without displacing it, and over
         # the four-slot path ``step_B..update_E`` launches are ``4 - #pairs``, so
@@ -5077,23 +5093,23 @@ def install_fused_pairs(plans: Dict[str, Any],
         if builder_refusal is not None:
             reasons[key] = (builder_refusal,)
         elif pair is not None:
-            # THE MODULE'S OWN DECLARATION of which recurrence its repair inverts,
+            # The module's own declaration of which recurrence its repair inverts,
             # read HERE and handed to the installer rather than defaulted there --
             # exactly as ``triton_kernels.launch._certified_fused_product_entry``
             # reads it. A module written before ``deposit_repair.PLAIN_PATH`` existed
             # carries no such attribute and implicitly declares the split-field one,
             # which is what the fallback spells. THE FLAG
-            # (``CARRIES_DEPOSIT_REPAIR``) IS NOT READ HERE, deliberately and as on
+            # (``CARRIES_DEPOSIT_REPAIR``) is not read here, deliberately and as on
             # the other two composers: it is enforced inside the product's own
             # coverage predicate, so checking it twice would let the two answers
             # disagree.
             #
-            # WHICH INSTALLER IS DECIDED BY THE SPAN, not by the plan's class: the
+            # Which installer is decided by the span, not by the plan's class: the
             # table is what declares how many slots a product owns, and reading the
             # object instead would let a builder that returned the wrong shape write
             # two slots for a three-slot product and leave ``update_P`` on the array
             # path while ``replaces`` said the kernel had advanced it.
-            # THE FAMILY MODULE THE WARM PASS COMPILES THROUGH, stamped from the
+            # The family module the warm pass compiles through, stamped from the
             # TABLE ROW rather than asked of the builder: the row already declares
             # it, and a second declaration inside 38 builders would be 38 chances
             # for the two to disagree.

@@ -4,10 +4,10 @@ Hp, the rotation, the cylindrical complex ``step_D`` curl -- three launches per 
 THE CELL: ``H_to_D (cuda_complex/complex, cuda_cyl_complex/cylindrical complex)``, every
 integer m -- 18 seam-instances on the census ``cuda_predicate_coverage_2026-09-06_hd``: 16
 ``buildable_not_built`` and 2 ``withdraw_seam`` (``cylinder_cross_section.py``,
-``zone_plate.py``), which this product REFUSES BY NAME as :mod:`.fused_hd_pair` refuses
+``zone_plate.py``), which this product refuses by name as :mod:`.fused_hd_pair` refuses
 its five.
 
-WHAT THE THREE LAUNCHES ARE. Launch 1 (slot ``update_H``, :data:`KERNEL_NAME`) steps
+What the three launches are. Launch 1 (slot ``update_H``, :data:`KERNEL_NAME`) steps
 ``update_H`` at the thread's own cell into launch-local SCRATCH through
 :mod:`.complex_fused_hd_pair`'s pure cell function -- ``complex_emitter``'s
 ``update_H_pml_complex_bloch`` body lifted, the chunk record decoded at the cell, imported
@@ -17,10 +17,10 @@ part. Then the H/``f_w_H`` bindings rotate against the scratch, and launch 3 is
 ``cylindrical_complex_kernels``' ``cyl_step_D_pml_complex`` over the rotated H with the
 difference handed in.
 
-THE RUN'S FIRST ``update_H`` STARTS H FROM B on the array path BEFORE launch 1
+The run's first ``update_H`` starts H from B on the array path BEFORE launch 1
 (``stepping.separate_h_from_b``), the :mod:`.complex_fused_hd_pair` arrangement.
 
-THE INSTALLATION VERDICT is the real twin's (:mod:`.cylindrical_real_fused_hd_pair`): under
+The installation verdict is the real twin's (:mod:`.cylindrical_real_fused_hd_pair`): under
 MEEP's per-chunk radial sum the D side's own baseline is three launches, this product is
 three, and it ships ``INSTALLABLE = False``. The 0.9.2 product fused the pre-``cumsum``
 increment (CuPy's complex multiply and scaled divide) into launch 1; that stage is gone.
@@ -70,7 +70,7 @@ LAUNCHES_PER_RUN = 3
 
 #: The entry point is NEW with the per-chunk radial sum and no record names it yet: its
 #: 0.9.2 predecessor (``update_H_increment_pml_cyl_complex``) is gone, and the record that
-#: certified it is re-cut in the combined certification round (bit_parity_0_10 CERT-3).
+#: certified it is re-cut in the combined certification round of 1.0 (device gates, CERT-3).
 CERTIFIED_KERNELS = ()
 UNCERTIFIED_KERNELS = {
     "update_H_scratch_pml_cyl_complex":
@@ -94,7 +94,7 @@ INSTALLABLE_REASON = (
     "three launches (update_H, the column-serial scan, step_D) and this product is also "
     "three; the 0.9.2 saving came from fusing the pre-cumsum increment, whose elementwise "
     "passes no longer exist. A two-launch shape (update_H row by row inside the scan) is "
-    "an owner's design ruling. The board credits the cell by predicate admission")
+    "a design decision not yet taken. The board credits the cell by predicate admission")
 
 WHAT_A_RELEASE_DOES_NOT_LICENSE = (
     "SERVED on the fusion board is PREDICATE ADMISSION by the board's own definition, "
@@ -126,13 +126,13 @@ __all__ = [
 
 _SIGNATURE = '''
 extern "C" __global__ void update_H_scratch_pml_cyl_complex(
-    // THE SCRATCH OUTPUTS (float32 word views of complex64), a DIFFERENT allocation
+    // The scratch outputs (float32 word views of complex64), a DIFFERENT allocation
     // from every pre-launch volume below.
     float* __restrict__ Hx_out, float* __restrict__ Hy_out,
     float* __restrict__ Hz_out,
     float* __restrict__ f_w_Hx_out, float* __restrict__ f_w_Hy_out,
     float* __restrict__ f_w_Hz_out,
-    // THE PRE-LAUNCH STATE, read and written by none.
+    // The pre-launch state, read and written by none.
     const float* __restrict__ Hx, const float* __restrict__ Hy,
     const float* __restrict__ Hz,
     const float* __restrict__ f_w_Hx, const float* __restrict__ f_w_Hy,
@@ -146,7 +146,7 @@ extern "C" __global__ void update_H_scratch_pml_cyl_complex(
     const float* __restrict__ kms_z,
     // Extents in COMPLEX CELLS.
     int nx, int ny, int nz,
-    // THE CHUNK RECORD (chunk_map.chunk_bounds_record), int32[25], decoded by the
+    // The chunk record (chunk_map.chunk_bounds_record), int32[25], decoded by the
     // lifted body at the cell it is evaluated for.
     const int* __restrict__ cb
 ) {
@@ -397,7 +397,7 @@ def run_cylindrical_fused_hd_pair(fields: Any, grid: Any, pml: Any, *,
                                   threads: int = _FUSED_THREADS,
                                   rotate: bool = True) -> Dict[str, Any]:
     """Gate on the predicate, resolve once, then launch 1 -> scan -> rotate -> launch 3.
-    A REFUSAL IS RETURNED, NOT RAISED; the keyword doors are the gate's."""
+    A refusal is returned, not raised; the keyword doors are the gate's."""
     covered, reason = covers_cylindrical_fused_hd_pair(
         fields, pml, grid, sources)
     if not covered:

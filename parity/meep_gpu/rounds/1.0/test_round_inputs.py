@@ -1,4 +1,4 @@
-"""The 1.0 round's inputs manifest and the tool that derives, packs and stages it.
+"""The 1.0 certification round's inputs manifest and the tool that derives, packs and stages it.
 
 Host-only, no device and no evidence archive. The committed manifest is held to the code
 both ways: every file it lists outside the Tier B record is one a reader of the round
@@ -12,6 +12,7 @@ from __future__ import annotations
 import ast
 import hashlib
 import io
+import json
 import os
 import re
 import sys
@@ -61,23 +62,32 @@ def test_the_tier_b_part_is_the_record_and_the_row_files_l3_verifies():
     tier_b = [name for name in files if name.startswith(tool.TIER_B + "/")]
     assert tool.TIER_B_RECORD in tier_b
     rows = [name for name in tier_b if name != tool.TIER_B_RECORD]
-    shape = re.compile(r"meep_identity_tier_b/(linux_keep|linux_flush|mac_flush)/"
+    seconds = sorted(tool.SECOND_REFERENCES.values())
+    shape = re.compile(r"meep_identity_tier_b/(linux_keep|linux_flush|mac_flush|mac_keep|"
+                       + "|".join(seconds) + r")/"
                        r"([^/]+)/(keep|flush)/\2/(digests\.json|planes\.npy|result\.json)")
     assert rows and all(shape.fullmatch(name) for name in rows), [
         name for name in rows if not shape.fullmatch(name)][:5]
-    # Every planned row ships its three files in each set it ships in.
     by_row = {}
     for name in rows:
         set_name, label = name.split("/")[1:3]
         by_row.setdefault((set_name, label), set()).add(name.rsplit("/", 1)[1])
-    assert all(found == {"digests.json", "planes.npy", "result.json"}
-               for found in by_row.values())
-    # No leg judges mac_keep, and the Metal leg's three sets hold the same rows.
+    # Every planned row ships its three files in each set a leg judges; mac_keep, which no
+    # leg judges, ships only the digests a second-reference leg reads to show a row
+    # host-dependent.
+    assert all(found == ({"digests.json"} if set_name == "mac_keep"
+                         else {"digests.json", "planes.npy", "result.json"})
+               for (set_name, _label), found in by_row.items())
     sets = {}
     for set_name, label in by_row:
         sets.setdefault(set_name, set()).add(label)
-    assert set(sets) == {"linux_keep", "linux_flush", "mac_flush"}
+    assert set(sets) == {"linux_keep", "linux_flush", "mac_flush", "mac_keep", *seconds}
+    # The Metal leg's three sets hold the same rows, and so does each second reference
+    # beside its own mode's Linux set; mac_keep ships a part of them.
     assert sets["mac_flush"] <= sets["linux_keep"] and sets["mac_flush"] == sets["linux_flush"]
+    for mode, second in tool.SECOND_REFERENCES.items():
+        assert sets[second] == sets[f"linux_{mode}"]
+    assert sets["mac_keep"] and sets["mac_keep"] < sets["linux_keep"]
 
 
 def test_l3_verifies_the_roles_this_tool_ships():
@@ -94,7 +104,9 @@ def test_l3_verifies_the_roles_this_tool_ships():
 def test_the_corpus_manifest_is_derived_from_the_shipped_legs_not_shipped():
     files, _dirs, _sums = tool.read_manifest(ROUND)
     assert all(leg in files for leg in tool.corpus_legs())
-    assert len(tool.corpus_legs()) == 7
+    legs = tool.corpus_legs()
+    assert sum(path.endswith("/parity.jsonl") for path in legs) == 9
+    assert sum(path.endswith("/lift.jsonl") for path in legs) == 2
     assert not any(name.endswith("corpus_manifest.json") for name in files)
 
 
@@ -118,6 +130,67 @@ def test_no_committed_manifest_file_carries_a_host_fact(name):
     homes = ("/" + "Users/", "/" + "home/")
     for pattern in homes + (r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[a-z]{2,}",):
         assert not re.search(pattern, text), f"{name} matches {pattern}"
+
+
+def _tier_b(results: Path, apple_agrees: bool = False) -> None:
+    """A Tier B record under ``results``: the four reference sets and the second reference
+    of each mode, three holding rows each. ``r_same`` is equal everywhere; ``r_host`` is
+    host-dependent (Apple and Linux differ) and the two Linux builds agree on it;
+    ``r_build`` is host-dependent and the two Linux builds differ on it (with
+    ``apple_agrees``, the Apple set equals the Linux one there)."""
+    home = results / tool.TIER_B
+    record = {"sets": {}}
+    for mode in ("keep", "flush"):
+        apple = "x86" if apple_agrees else "arm"
+        words = {f"linux_{mode}": {"r_same": "w", "r_host": "x86", "r_build": "x86"},
+                 f"mac_{mode}": {"r_same": "w", "r_host": "arm", "r_build": apple},
+                 tool.SECOND_REFERENCES[mode]: {"r_same": "w", "r_host": "x86",
+                                                "r_build": "avx2"}}
+        for name, by_label in words.items():
+            rows = {}
+            for label, word in by_label.items():
+                files = {}
+                for role, file in (("digests", "digests.json"), ("planes", "planes.npy"),
+                                   ("result", "result.json")):
+                    relative = f"{name}/{label}/{mode}/{label}/{file}"
+                    data = json.dumps({"stored": {"0": {"Ez": word}}, "reader": {},
+                                       "role": role}).encode()
+                    (home / relative).parent.mkdir(parents=True, exist_ok=True)
+                    (home / relative).write_bytes(data)
+                    files[role] = {"file": relative, "sha256": hashlib.sha256(data).hexdigest()}
+                rows[label] = {"status": "holds", "files": files}
+            record["sets"][name] = {"mode": mode, "rows": rows, "meep_images": {}}
+    (results / tool.TIER_B_RECORD).write_text(json.dumps(record))
+
+
+def test_the_tier_b_part_ships_each_second_reference_and_the_apple_digests_it_reads(tmp_path):
+    _tier_b(tmp_path)
+    shipped = tool.tier_b_inputs(tmp_path)
+    by_set = {}
+    for path in shipped:
+        if path != tool.TIER_B_RECORD:
+            by_set.setdefault(path.split("/")[1], set()).add(path.split("/", 2)[2])
+    assert set(by_set) == {"linux_keep", "linux_flush", "mac_flush", "mac_keep",
+                           *tool.SECOND_REFERENCES.values()}
+    for mode, second in tool.SECOND_REFERENCES.items():
+        assert len(by_set[second]) == 9
+        assert {path.replace(mode, "") for path in by_set[second]} == {
+            path.replace(mode, "") for path in by_set[f"linux_{mode}"]}
+    # No leg judges mac_keep: it ships the one digests file the keep legs read to show
+    # r_build host-dependent, and nothing for r_host, where the Linux builds agree.
+    assert by_set["mac_keep"] == {"r_build/keep/r_build/digests.json"}
+    assert shipped["meep_identity_tier_b/mac_keep/r_build/keep/r_build/digests.json"] == [
+        f"l3_corpus --table {table} --baseline keep --second-reference linux_avx2_keep "
+        f"(host dependence)" for table in ("triton", "cuda")]
+    flush_digests = shipped["meep_identity_tier_b/mac_flush/r_build/flush/r_build/digests.json"]
+    assert "l3_corpus --table metal --baseline flush" in flush_digests
+    assert sum(reader.endswith("(host dependence)") for reader in flush_digests) == 2
+
+
+def test_the_tier_b_part_refuses_a_second_reference_differing_where_the_hosts_agree(tmp_path):
+    _tier_b(tmp_path, apple_agrees=True)
+    with pytest.raises(tool.InputsRefused, match="the record supports no L3 leg"):
+        tool.tier_b_inputs(tmp_path)
 
 
 # ---------------------------------------------------------------------------

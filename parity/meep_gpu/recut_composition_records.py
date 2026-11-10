@@ -1,15 +1,15 @@
 """Re-cut the two COMPOSITION weld records FROM a composition re-run.
 
-WHY THIS EXISTS, and it is the same defect report ``recut_driver_dispatch_record.py``
+Why this exists, and it is the same defect report ``recut_driver_dispatch_record.py``
 opens with. ``fingerprints.json``'s ``cylindrical_composition_gate`` and
 ``symmetry_composition_gate`` each pin a set of source digests, a probe digest, an
 artifact digest and a log digest. Every one of them names bytes that ran on a GPU, so
 none may be re-typed from a laptop -- but until now they were maintained by hand, which
 means they could drift from the tree AND from the run independently, and nothing
-compared the two. The 2026-08-28 round's own ``_this_recut`` prose says as much: the
+compared the two. The 2026-08-28 re-cut's own ``_this_recut`` prose says as much: the
 digests it recorded were the launcher's staged hashes, transcribed.
 
-WHAT IT REFUSES TO DO. It does not release, widen, or invent anything.
+What it refuses to do. It does not release, widen, or invent anything.
 
 * the run directory must hold BOTH legs, each with a ``gate.json`` whose
   ``summary.status`` is ``passed``;
@@ -22,14 +22,14 @@ WHAT IT REFUSES TO DO. It does not release, widen, or invent anything.
 * the probe digest is read from the tree and cross-checked against the one the run
   reported staging.
 
-A RECORD PINS WHAT THE GATE EXECUTED, NOT HOW IT WAS LAUNCHED. The package code, the
+A record pins what the gate executed, not how it was launched. The package code, the
 gate or probe script, the artifact and the log are digested; a site's launch script and
 its batch-scheduler job are not, because this repository does not carry them and no
 reader could check them.
 
 Any of those failing prints the disagreement and exits non-zero with nothing written.
 
-WHICH ARCHITECTURE THE RUN CERTIFIED IS READ, NEVER TYPED. Every run fact goes into
+Which architecture the run certified is read, never typed. Every run fact goes into
 ``entry["runs"][<compute capability>]`` through :func:`meep_gpu.fastpath.bind_capability`,
 and the capability comes from the run itself -- the leg artifact's own identity block,
 or a ``device.json`` written beside it by ``triton_device_identity.py --write``. The
@@ -44,7 +44,7 @@ launcher's logs. That entry is cited by 22 Triton arms, so without a writer for 
 round could ever admit a second architecture: the intersection the admission rests on
 would be missing one key forever.
 
-WHAT IT DELIBERATELY LEAVES ALONE. Every hand-authored key -- ``purpose``,
+What it deliberately leaves alone. Every hand-authored key -- ``purpose``,
 ``dispatch``, ``fusion_boundary``, ``device_policy``, the ``recert_*`` blocks, the
 ``product`` measurement -- is a claim someone made about what the gate MEANS, and is
 asserted byte-identical after the rewrite. Only the digests move at entry level, and
@@ -78,7 +78,7 @@ API = find_api_root(Path(__file__).resolve())
 HERE = API / "parity" / "meep_gpu"
 LEDGER = API / "meep_gpu" / "triton_kernels" / "fingerprints.json"
 
-# THE ENGINE AND THE SIBLING TOOLS BESIDE THIS FILE, not whichever copy is installed.
+# The engine and the sibling tools beside this file, not whichever copy is installed.
 # This tool reads the ledger out of ``API`` and the capability rules out of
 # ``meep_gpu.fastpath``; if those came from two different checkouts the staleness rule
 # would be applied by one tree to another tree's digests. ``HERE`` is for
@@ -108,25 +108,25 @@ def leg_drift(payload: dict, label: str, pinned: Sequence[str] = ()) -> Optional
 
 #: entry key -> (leg directory names this tool accepts, probe path)
 #:
-#: THE SEVEN BELOW ARE THE COMPOSITION AND FUSED-PROBE WELDS, and the five added
+#: The seven below are the composition and fused-probe welds, and the five added
 #: 2026-08-30 are the entries the ``status == "PASS"`` filter used to hide. Each
 #: carries a full device record and a set of pinned source digests, and none is in
 #: ``rebind_triton_welds.py``'s ``CAMPAIGN_DIRS`` -- that table enumerates the 31
-#: PASS welds only, so before this round nothing could re-cut these at all and the
+#: PASS welds only, so until this table named them nothing could re-cut these at all and the
 #: only way to move one was by hand. Every probe path here is read off the entry's own
 #: ``probe`` key, not derived from the leg name.
 #:
-#: TWO LAUNCHERS, TWO DIRECTORY NAMES, 2026-09-30. The private composition launcher
+#: Two launchers, two directory names, 2026-09-30. The private composition launcher
 #: writes the first name of each pair; the SHIPPED fleet driver
 #: (``drive_triton_weld_gates.GATES``) writes the second, and for four of the nine they
 #: differ -- ``engine_route``, ``probe_triton_dispersive_fused_pair``,
-#: ``probe_triton_fused_ade_state`` and ``no_pml``. Only the fleet ships, so a round run
-#: on a rented host could not be consumed at all until both spellings were named here.
+#: ``probe_triton_fused_ade_state`` and ``no_pml``. Only the fleet ships, so a certification
+#: round run on a rented host could not be consumed at all until both spellings were named here.
 #: EXACTLY ONE of a pair may be present in a run: a root holding both is refused by
 #: name rather than resolved by precedence, because which one cut the record is not a
 #: question this tool may answer by sort order.
 #:
-#: THE TWO COLLIDING NAMES ARE SAFE BECAUSE THE ARTIFACT IS CHECKED, not because the
+#: The two colliding names are safe because the artifact is checked, not because the
 #: directory name is trusted. ``drive_triton_weld_gates`` warns that its own ``no_pml``
 #: and ``fused_electric`` rows run the same scripts under non-composition arguments.
 #: Measured 2026-09-30 on ``results/triton_fleet_2026-09-23_sparse``: the fleet's
@@ -170,7 +170,7 @@ LEGS = {
 #: The nine families ``family_recert_2026-08-14`` certifies, which are also nine gate
 #: names in ``drive_triton_weld_gates.GATES`` -- so a fleet campaign re-runs all nine
 #: and ``--family-recert`` can rebuild the record from artifacts instead of from the
-#: retired 2026-08-14 launcher's logs. TYPED HERE AND CHECKED AGAINST THE LEDGER at
+#: retired 2026-08-14 launcher's logs. Typed here and checked against the ledger at
 #: run time (:func:`family_recert`), because a family silently dropped from this tuple
 #: would narrow a 22-arm weld's coverage without any digest changing.
 FAMILY_RECERT_FAMILIES = ("bfast", "complex", "cylindrical_complex", "folded_complex",
@@ -193,7 +193,7 @@ COUNTER = re.compile(r"^\d+/\d+")
 
 #: Curated claims DELIBERATELY RE-CUT from a fresh run, each with the reason.
 #:
-#: THE DEFAULT IS THE OPPOSITE, and it stays the default. A curated block is
+#: The default is the opposite, and it stays the default. A curated block is
 #: carried forward verbatim and the RUN is checked against IT: what a gate
 #: measured is a measurement, and a tool that overwrote it from every fresh
 #: summary would turn "the record describes the run" into "the record is whatever
@@ -202,9 +202,9 @@ COUNTER = re.compile(r"^\d+/\d+")
 #: decision a person makes, in this table, where a reviewer sees it beside what
 #: moved.
 #:
-#: THE ONE ENTRY, 2026-08-30. ``dispersive_fused_pair_gate.product`` says
+#: The one entry, 2026-08-30. ``dispersive_fused_pair_gate.product`` says
 #: ``complete_steps_exact 36/36`` over three named cases at 12 steps each. The
-#: gate GAINED A CASE -- ``two_pole_electric_source``, the in-seam deposit case --
+#: gate gained a case -- ``two_pole_electric_source``, the in-seam deposit case --
 #: and the fresh run measures 48/48 over four. Both halves of that matter: the
 #: total is stale, AND the three per-case lines no longer add up to it, so
 #: carrying the block forward beside freshly bound digests would leave a weld
@@ -221,7 +221,7 @@ CLAIM_RECUTS = {
         "1/1 in_seam_deposit_cases. Carrying 36/36 forward beside fresh digests "
         "would leave a weld whose hashes verify and whose claim is stale, and "
         "whose three 12/12 lines sum to 36 beside a total of 48.",
-    # THE SECOND ENTRY, 2026-08-31. TWO counters move on this block and they move
+    # The second entry, 2026-08-31. TWO counters move on this block and they move
     # for two DIFFERENT reasons, which is why the declaration names both rather
     # than one sentence covering the pair.
     #
@@ -235,7 +235,7 @@ CLAIM_RECUTS = {
     # until the probe's summary was renamed to the record's own field names in the
     # same change, so 2026-08-30's re-run could not report it at all.
     #
-    # `refusals_returned_none` 4/4 -> 3/4. NOT A REGRESSION, and it is the numerator
+    # `refusals_returned_none` 4/4 -> 3/4. Not a regression, and it is the numerator
     # the whole re-cut turns on. `2d_cond_pml` carries `D_conductivity=0.4`, so
     # `fields.condfac_for` answers non-None on Dx/Dy/Dz and None on Bx/By/Bz.
     # `pml_curl_coverage` with NO sub_step takes the conservative aggregate path over
@@ -269,7 +269,7 @@ CLAIM_RECUTS = {
 def released(payload: dict):
     """(verdict, where) over the three spellings these gates actually write.
 
-    ENUMERATED BECAUSE THEY DISAGREE, measured over the seven artifacts:
+    Enumerated because they disagree, measured over the seven artifacts:
     ``canonical_verdict.released`` (dispersive_fused_pair, fused_ade_state,
     fused_electric, no_pml_composition), ``summary.status == "passed"``
     (cylindrical, symmetry, conductivity, source_seams), and
@@ -293,7 +293,7 @@ def released(payload: dict):
 #: Keys the rewrite is allowed to move. Anything else on an entry is asserted
 #: byte-identical afterwards, which is what keeps this a re-cut and not a rewrite.
 #:
-#: ``product`` IS NOT HERE, and the first cut of this tool got that wrong. The record's
+#: ``product`` is not here, and the first cut of this tool got that wrong. The record's
 #: product block reads "1/1: on-axis Ez" where the artifact's summary reads "1/1" --
 #: the record says WHICH source case was non-vacuous and the summary only counts. A
 #: re-cut that overwrote it from the artifact silently deleted the more specific
@@ -338,15 +338,15 @@ FAMILY_SLOT_FIELDS = {"host", "records", "recorded_utc", "families", "_this_recu
 
 #: What a family record says when its gate's artifact states no step budget.
 #:
-#: AN ABSENT BUDGET IS A HANDLED CASE, NOT A REASON TO REFUSE, and the alternative was
+#: An absent budget is a handled case, not a reason to refuse, and the alternative was
 #: measured before this string was written. Of the nine family gates, four state
 #: ``step_budgets`` (complex, cylindrical_complex, bfast, special_kz), one states the
 #: singular ``step_budget`` (folded_complex), one states it under ``provenance``
 #: (no_pml_constitutive) and three state none at all (offdiag, nonlinear,
 #: folded_offdiag) -- measured 2026-09-30 over results/triton_fleet_2026-09-23_sparse,
 #: whose campaign ran all nine. A writer that refused the three would therefore refuse
-#: in EVERY round, which would leave the 22 arms citing this entry unbindable forever
-#: and the Triton table unable to admit a second architecture. The record already reads
+#: in EVERY certification round, which would leave the 22 arms citing this entry unbindable
+#: forever and the Triton table unable to admit a second architecture. The record already reads
 #: this way for three families from the 2026-08-14 launcher, and
 #: ``fastpath._certification_for`` already quotes an absent budget as absent.
 BUDGET_NOT_STATED = (
@@ -365,7 +365,7 @@ BUDGET_NOT_STATED = (
 #: what the driver REQUESTED, which is not what the gate attained, so it is not
 #: substituted here: a record claiming a policy no stamp attests is the forgery this
 #: tool exists to avoid. Refusing instead would make such a family unbindable in
-#: every round -- the same dead end as the step budget. Spellings that DISAGREE are
+#: every certification round -- the same dead end as the step budget. Spellings that DISAGREE are
 #: different: they raise ``PolicyStampConflict`` and the re-cut refuses that family.
 POLICY_NOT_STATED = (
     "not stated by this gate's artifact: it writes no resolved subnormal_policy "
@@ -373,7 +373,7 @@ POLICY_NOT_STATED = (
     "The campaign's requested policy is recorded in the campaign artifact, and a "
     "request is not an attainment.")
 
-#: WHERE A RUN SAYS WHICH DEVICE IT RAN ON is ``triton_device_identity.run_capability``
+#: Where a run says which device it ran on is ``triton_device_identity.run_capability``
 #: and is not restated here. Measured 2026-09-30 over the 09-23 and 09-25 fleets and
 #: the 09-25 composition run: not one composition leg records a compute capability in
 #: its own artifact -- the four probes that write an ``environment`` block record
@@ -460,7 +460,7 @@ def _counters(node, trail=()):
 def claim_disagreements(entry: dict, payload: dict, block: str | None = None):
     """Counters where a curated measurement and the fresh run's summary differ.
 
-    THE COMPARISON IS COUNTERS ONLY, and that narrowing is the check getting
+    The comparison is counters only, and that narrowing is the check getting
     STRONGER rather than weaker. A shared key name does not mean a shared
     meaning: ``controls`` is prose in the record and a list of case names in the
     summary, and ``oracles_per_step`` is prose on both sides whose WORDING
@@ -469,7 +469,7 @@ def claim_disagreements(entry: dict, payload: dict, block: str | None = None):
     someone deletes. What must not move is the measurement: an ``n/m`` counter,
     whose DENOMINATOR is the coverage the weld claims.
 
-    THE JOIN IS THE FIELD NAME, and the denominator that produces is small and
+    The join is the field name, and the denominator that produces is small and
     worth stating rather than implying: 13 counters across the 38 entries whose
     ``records`` line resolves to a payload in this checkout. Most curated fields
     share no name with any summary, so they are not compared here by ANYTHING --
@@ -531,22 +531,22 @@ def per_case_counters(payload: dict):
 
 
 def recut_claim(entry: dict, block: str, payload: dict):
-    """The curated block, RESTATED FROM THE RUN. Returns ``(fresh, moved, why)``.
+    """The curated block, restated from the run. Returns ``(fresh, moved, why)``.
 
     Three mechanical moves and no judgement in any of them:
 
-    1. EVERY SHARED COUNTER FOLLOWS THE RUN, and the record's trailing prose is
+    1. Every shared counter follows the run, and the record's trailing prose is
        kept. ``"36/36"`` beside a measured ``"48/48"`` becomes ``"48/48"``;
        ``"36/36 against both oracles"`` becomes ``"48/48 against both oracles"``.
        The prose is the record's more specific claim and deleting it would be the
        same defect in the other direction. A recorded value that is NOT
        counter-prefixed cannot be split and refuses.
-    2. EVERY COUNTER THE RUN REPORTS AND THE RECORD LACKS IS ADDED, verbatim.
+    2. Every counter the run reports and the record lacks is added, verbatim.
        Without this a gate that grows a leg has its new measurement dropped on
        the floor by the very tool that was told to follow the run --
        ``in_seam_deposit_cases 1/1 (two_pole_electric_source)`` is exactly that
        case here.
-    3. PER-CASE LINES ARE DERIVED FROM THE ARTIFACT'S OWN ``cases`` LIST, one
+    3. Per-case lines are derived from the artifact's own ``cases`` LIST, one
        field per case name, and CROSS-CHECKED against the summary's own total: if
        the per-case numerators and denominators do not sum to it, the derivation
        and the summary disagree and this refuses rather than writing either. That
@@ -626,7 +626,7 @@ def pinned_path(name: str) -> str:
 def read_staged(run: Path) -> Optional[Dict[str, str]]:
     """``{repo-relative path: digest}`` from the run's own staged manifest.
 
-    KEYED BY PATH, NEVER BY BASENAME, and that is a DEFECT FIX rather than a
+    Keyed by path, never by basename, and that is a defect fix rather than a
     tidy-up. This map was ``{basename: digest}``, so every manifest row sharing a
     basename with another collapsed onto one entry and the survivor was decided
     by the manifest's SORT ORDER. Measured 2026-09-08 on
@@ -639,8 +639,8 @@ def read_staged(run: Path) -> Optional[Dict[str, str]]:
     pins was in the manifest at 87f8dee235ed and equalled the tree exactly.
 
     The 2026-09-07 manifest held the same seven rows in the opposite order, so the
-    same last-wins map happened to pick the right file and this tool passed BY
-    ACCIDENT OF ORDERING. A comparison whose answer depends on how a manifest was
+    same last-wins map happened to pick the right file and this tool passed by
+    accident of ordering. A comparison whose answer depends on how a manifest was
     sorted is not a comparison, in either direction: the ordering that refused a
     correct re-cut here could as easily have licensed an incorrect one.
 
@@ -649,9 +649,9 @@ def read_staged(run: Path) -> Optional[Dict[str, str]]:
     """
     manifest = run / "staged_source_sha256.txt"
     if not manifest.is_file():
-        # ABSENT IS NOT AN ERROR ANY MORE, 2026-09-30. No SHIPPED tool writes this
+        # Absent is not an error any more, 2026-09-30. No SHIPPED tool writes this
         # file -- only the private composition launcher does -- so raising here meant
-        # a round driven by the fleet driver could not re-cut a single one of these
+        # a certification round driven by the fleet driver could not re-cut a single one of these
         # nine welds. The caller falls back to each leg artifact's own
         # ``imported_source_sha256`` (:func:`leg_digests`), which is a per-leg
         # manifest rather than a campaign-wide one and therefore cannot stand in for
@@ -746,7 +746,7 @@ def second_policy_leg(run: Path, run_rel: str, leg_names: Sequence[str],
                       policy: str) -> Tuple[Optional[dict], str]:
     """Evidence that a composition weld's leg ALSO released under ``policy``.
 
-    ``run`` is a second composition run of the same legs (the round's ``_flush``
+    ``run`` is a second composition run of the same legs (the certification round's ``_flush``
     composition root). It is evidence only if the leg released, attained ``policy``,
     ran on the bound run's capability, and recorded, in its own manifest, the digest
     the bound run proved equal to the tree for every file the entry pins. Anything
@@ -846,7 +846,7 @@ def derived_host(identity: Dict[str, Any]) -> Tuple[Optional[str], str]:
 
     ``rebind_triton_welds._host_line`` composes it from the merged identity, so a
     composition record and a device gate's record are indistinguishable; this adds the
-    toolchain check. CARRYING THE OLD LINE FORWARD IS THE DEFECT, not the convenience:
+    toolchain check. Carrying the old line forward is the defect, not the convenience:
     a re-run of the same gate on a Triton 3.2 host would otherwise inherit a record
     reading 3.1.0, and the contract test, which greps the carried string, would pass it.
     """
@@ -863,6 +863,31 @@ def derived_host(identity: Dict[str, Any]) -> Tuple[Optional[str], str]:
                       f"cut on an unvalidated toolchain must widen that declaration "
                       f"deliberately, not inherit it from a rebind")
     return host, ""
+
+
+#: The card a host line names, as ``rebind_triton_welds._host_line`` appends it: the
+#: device index the run's ``CUDA_VISIBLE_DEVICES`` held.
+CARD_SUFFIX = re.compile(r" \(GPU [^()]*\)$")
+
+
+def family_host(hosts: Dict[str, str]) -> Tuple[Optional[str], List[str]]:
+    """The host line one family re-certification records, and why there is none.
+
+    The families of one certification round run on whichever cards of the machine are
+    free, so their host lines may differ in the card alone; each family's own record keeps its card
+    (``pinned_gpu_index``). They must agree on everything else (the machine, the device,
+    the capability and the toolchain), which the record then states once: with the
+    card when every family ran on one, without it otherwise."""
+    lines = set(hosts.values())
+    if not lines:
+        return None, []
+    if len(lines) == 1:
+        return next(iter(lines)), []
+    cardless = {name: CARD_SUFFIX.sub("", line) for name, line in hosts.items()}
+    if len(set(cardless.values())) == 1:
+        return next(iter(set(cardless.values()))), []
+    return None, ["the families disagree about the host they ran on (the card aside): "
+                  + "; ".join(f"{name}: {line}" for name, line in sorted(hosts.items()))]
 
 
 def derived_elapsed(payload: dict) -> Optional[str]:
@@ -894,11 +919,11 @@ def apply_updates(ledger: dict, updates: Dict[str, dict], capability: str,
                   supersede: Sequence[str]) -> Tuple[List[str], List[str]]:
     """Move the entry digests and bind ``capability``'s record. ``(notes, problems)``.
 
-    RUN ON A COPY IN REPORT MODE, so a refusal this can only find at bind time -- a
+    Run on a copy in report mode, so a refusal this can only find at bind time -- a
     write that would strand another architecture's record -- is reported before
     ``--write`` rather than after it.
 
-    THE FROZEN SET IS ``ENTRY_MUTABLE`` PLUS WHAT THIS RUN DECLARED, and not one key
+    The frozen set is ``ENTRY_MUTABLE`` plus what this run declared, and not one key
     more. A curated block moves only where ``CLAIM_RECUTS`` names ``(entry, block)``
     AND this run actually re-cut it; a declaration that did not fire leaves the block
     frozen like everything else, so the table cannot become a standing licence for a
@@ -1041,7 +1066,7 @@ def recut_run(run_rel: str, why: str, only: str, supersede: Sequence[str],
     for key, (leg_names, probe_rel) in LEGS.items():
         if key not in selected:
             continue
-        # WHERE THIS KEY'S PROBLEMS START. Until 2026-08-30 the success line below
+        # Where this key's problems start. Until 2026-08-30 the success line below
         # printed unconditionally, so a run whose curated claim had gone stale
         # reported "curated blocks agree with the fresh summary" on one line and
         # the disagreement on another. A tool that says both is a tool whose
@@ -1080,7 +1105,7 @@ def recut_run(run_rel: str, why: str, only: str, supersede: Sequence[str],
                             f"run that did not release")
             continue
 
-        # WHICH ARCHITECTURE THIS LEG RAN ON, read from the run. The legs must agree:
+        # Which architecture this leg ran on, read from the run. The legs must agree:
         # one re-cut describes one campaign, and a record keyed by whichever leg was
         # read last would be a claim about a device nobody chose.
         capability, identity = leg_capability(payload, [directory, run])
@@ -1091,8 +1116,8 @@ def recut_run(run_rel: str, why: str, only: str, supersede: Sequence[str],
             continue
         capabilities[key] = capability
 
-        # EVERY FILE THIS ENTRY PINS MUST BE IN THE RUN'S OWN MANIFEST *AND* MATCH THE
-        # TREE. Missing from the manifest = the run cannot speak for it. Different
+        # Every file this entry pins must be in the run's own manifest *and* match the
+        # tree. Missing from the manifest = the run cannot speak for it. Different
         # from the tree = the run measured bytes that have since moved on.
         manifest, digest_source = leg_digests(payload, staged, directory)
         if manifest is None:
@@ -1117,7 +1142,7 @@ def recut_run(run_rel: str, why: str, only: str, supersede: Sequence[str],
                     f"tree disagree and this record may not be cut against either")
                 continue
             fresh_sources[name] = live
-        # AND BY ITS WHOLE IMPORT RECORD, the pinned files compared just above aside
+        # And by its whole import record, the pinned files compared just above aside
         # (leg_drift): a leg cut on an earlier tip may hold a moved file no pin names.
         drift = leg_drift(payload, f"{run_rel}/{leg}/gate.json", entry["source_sha256"])
         if drift:
@@ -1130,7 +1155,7 @@ def recut_run(run_rel: str, why: str, only: str, supersede: Sequence[str],
             continue
 
         probe = API / probe_rel
-        # A KEY THE RECORD DOES NOT CARRY IS NOT A KEY TO ADD. Which digests an
+        # A key the record does not carry is not a key to add. Which digests an
         # entry pins is a claim someone made; fused_electric_gate's record pins no
         # artifact digest, and inventing one here would widen its weld under cover of
         # a re-cut. The reference set for the RUN facts is every field the entry's
@@ -1181,7 +1206,7 @@ def recut_run(run_rel: str, why: str, only: str, supersede: Sequence[str],
         # used to be carried unconditionally, even from a record bound to other bytes,
         # and that also made the two binding orders of one commit disagree.
 
-        # THE POLICIES THAT RELEASED (``fastpath.CERTIFIED_POLICIES``): this leg's own,
+        # The policies that released (``fastpath.CERTIFIED_POLICIES``): this leg's own,
         # and the flush run's leg of the same name when one is given and speaks for
         # the same bytes and capability. Without it dispatch admits only the install
         # default for the arms this weld certifies.
@@ -1207,7 +1232,7 @@ def recut_run(run_rel: str, why: str, only: str, supersede: Sequence[str],
             "run": run_facts,
             "claims": {},
         }
-        # THE CURATED CLAIM MUST STILL BE TRUE OF THE FRESH RUN. These blocks are
+        # The curated claim must still be true of the fresh run. These blocks are
         # kept verbatim (they are more specific than the artifact's summary), so the
         # run is checked against them rather than the other way round: every counter
         # the two share must agree, and the record's extra prose is allowed to be
@@ -1247,11 +1272,11 @@ def recut_run(run_rel: str, why: str, only: str, supersede: Sequence[str],
         if len(problems) > mark:
             continue
         if recut_notes:
-            # WHAT MOVED GOES INTO THE RECORD, not only into this tool's stdout.
+            # What moved goes into the record, not only into this tool's stdout.
             # A curated measurement that changes without the record saying so is
             # the stale-claim defect with a fresh timestamp on it.
             updates[key]["run"]["_this_recut"] += (
-                " CURATED CLAIM RE-CUT FROM THIS RUN, declared in "
+                " curated claim re-cut from this run, declared in "
                 "recut_composition_records.CLAIM_RECUTS: "
                 + "; ".join(sorted(
                     CLAIM_RECUTS[(key, block)]
@@ -1266,7 +1291,7 @@ def recut_run(run_rel: str, why: str, only: str, supersede: Sequence[str],
               + ("re-cut from the fresh summary" if recut_notes
                  else "agree with the fresh summary"), flush=True)
 
-    # ONE RUN, ONE ARCHITECTURE. Legs that disagree are two campaigns in one
+    # One run, one architecture. Legs that disagree are two campaigns in one
     # directory, and a record keyed by either of them would describe bytes the other
     # leg never ran on.
     if len(set(capabilities.values())) > 1:
@@ -1281,7 +1306,7 @@ def recut_run(run_rel: str, why: str, only: str, supersede: Sequence[str],
             print(f"  {problem}", flush=True)
         return 3
 
-    # --- host_sha256, licensed BY THESE SAME RUNS -------------------------------
+    # --- host_sha256, licensed by these same runs -------------------------------
     #
     # ``host_sha256`` holds ten host files the bit-identity gate certified, and
     # ``test_the_fingerprint_record_matches_the_shipped_host_side`` refuses any drift
@@ -1292,7 +1317,7 @@ def recut_run(run_rel: str, why: str, only: str, supersede: Sequence[str],
     # asserted -- a file may only be re-cut here if BOTH legs above passed and the
     # legs staged exactly the bytes the tree holds.
     #
-    # ONLY A CAMPAIGN-WIDE MANIFEST LICENSES IT, and that is why the per-leg import
+    # Only a campaign-wide manifest licenses it, and that is why the per-leg import
     # fallback is not read here. ``host_sha256`` is a claim about the WHOLE host side,
     # licensed by the composition legs together; a leg's ``imported_source_sha256`` is
     # what that one probe imported, and the two legs that historically carried this
@@ -1305,7 +1330,7 @@ def recut_run(run_rel: str, why: str, only: str, supersede: Sequence[str],
     host_updates: Dict[str, str] = {}
     host = ledger.get("host_sha256") or {}
     for name, digest in host.items():
-        # THE HOST BLOCK IS TRITON_KERNELS AND NOTHING ELSE -- it pins the shipped
+        # The host block is TRITON_KERNELS and nothing else -- it pins the shipped
         # host side of this backend -- so its path is stated rather than searched
         # for. The staged lookup uses the SAME repo-relative path, so the manifest
         # row consulted is the file being hashed and not a namesake elsewhere in
@@ -1316,7 +1341,7 @@ def recut_run(run_rel: str, why: str, only: str, supersede: Sequence[str],
         if live == digest:
             continue
         if staged is None:
-            # REPORTED, NOT REFUSED. A leg's own import set licenses nothing about the
+            # Reported, not refused. A leg's own import set licenses nothing about the
             # shipped host side, so this run may not MOVE the pin -- but it binds no
             # weld either, and refusing here would refuse every run a fleet driver
             # produces (4 of 10 host files have drifted on today's tree, and the
@@ -1347,7 +1372,7 @@ def recut_run(run_rel: str, why: str, only: str, supersede: Sequence[str],
             print(f"  {problem}", flush=True)
         return 3
 
-    # THE BIND RUNS IN BOTH MODES, on a copy when reporting. A write that would strand
+    # The bind runs in both modes, on a copy when reporting. A write that would strand
     # another architecture's record is only discoverable with both bounds in hand, and
     # discovering it after --write would mean discovering it in the ledger.
     capability = next(iter(set(capabilities.values())), "")
@@ -1425,7 +1450,7 @@ def campaign_row(root: Path, gate: str) -> Tuple[Optional[dict], str]:
 def _step_budget(payload: dict) -> Tuple[Any, Optional[str]]:
     """The budget the artifact STATES, and where, or :data:`BUDGET_NOT_STATED`.
 
-    The three places are the three MEASURED ones (see :data:`BUDGET_NOT_STATED`), read
+    The three places are the three measured ones (see :data:`BUDGET_NOT_STATED`), read
     in that order and never searched for recursively: a deep search would pick up any
     block that happens to carry the word and record it as the gate's claim.
     """
@@ -1440,19 +1465,20 @@ def _step_budget(payload: dict) -> Tuple[Any, Optional[str]]:
 
 def family_recert(root_rels: List[str], why: str, supersede: Sequence[str],
                   write: bool, flush_rels: Sequence[str] = ()) -> int:
-    """Rebuild ``family_recert_2026-08-14``'s nine family records FROM A FLEET CAMPAIGN.
+    """Rebuild ``family_recert_2026-08-14``'s nine family records from a fleet campaign.
 
-    WHY THIS MODE EXISTS. Those nine records were transcribed from the 2026-08-14
+    Why this mode exists. Those nine records were transcribed from the 2026-08-14
     launcher's logs, which no longer run, and 22 Triton arms cite the entry -- so under
     per-capability records it was the one cited key nothing could re-cut, and a key with
     no live record for an architecture is a key that keeps the whole table from
     admitting it. The nine families are nine gate names in the SHIPPED fleet driver, so
-    the evidence a round already produces is enough to rebuild the record.
+    the evidence a certification round already produces is enough to rebuild the record.
 
-    WHAT IT REFUSES. A family whose artifact is missing or did not release; a family
+    What it refuses. A family whose artifact is missing or did not release; a family
     whose campaign row is missing or exited non-zero, or whose row names a different
     artifact digest than the file holds; a run whose imported digests differ from the
-    tree; two families disagreeing about the compute capability or the host; two
+    tree; two families disagreeing about the compute capability or the host (the card
+    aside: :func:`family_host`), or stamping two machines; two
     families recording different digests for one file; and a union that does not cover
     every file the entry declares, because the FILE SET is the invariant
     ``test_the_family_modules_drift_declaration_matches_the_shipped_bytes`` enforces and
@@ -1482,7 +1508,7 @@ def family_recert(root_rels: List[str], why: str, supersede: Sequence[str],
         raise SystemExit(f"{key}: {'; '.join(retired)}. This record is still in the "
                          f"pre-2026-09-30 shape; migrate_capability_records.py moves "
                          f"its run facts into runs[<capability>] first")
-    # THE TYPED TUPLE IS CHECKED AGAINST THE RECORD, not trusted. A family dropped from
+    # The typed tuple is checked against the record, not trusted. A family dropped from
     # the tuple would quietly narrow the coverage of a 22-arm weld with every digest
     # still verifying, which is the failure mode this whole file is built around.
     declared = sorted(FAMILY_RECERT_FAMILIES)
@@ -1508,7 +1534,7 @@ def family_recert(root_rels: List[str], why: str, supersede: Sequence[str],
     union: Dict[str, str] = {}
     witness: Dict[str, str] = {}
     for family in FAMILY_RECERT_FAMILIES:
-        # THE FIRST ROOT HOLDING A RELEASED ARTIFACT WINS -- not the first holding a
+        # The first root holding a released artifact wins -- not the first holding a
         # directory, and not the first holding an artifact. The 09-25 fleet's
         # nonlinear leg released=False while the 09-23 fleet's released: picking by
         # directory would bind the record to the run that refused, and reporting
@@ -1567,7 +1593,7 @@ def family_recert(root_rels: List[str], why: str, supersede: Sequence[str],
                             f"imported_source_sha256, so the run says nothing about "
                             f"which bytes it executed")
             continue
-        # THE RUN'S DIGESTS MUST BE THE TREE'S. Everything the gate imported is
+        # The run's digests must be the tree's. Everything the gate imported is
         # compared, not only the thirteen files this entry declares: a recert states
         # "these were the bytes at recert", and a run that executed any other version
         # of the package cannot support that sentence for the files it happens to share.
@@ -1610,7 +1636,7 @@ def family_recert(root_rels: List[str], why: str, supersede: Sequence[str],
         machines[family] = str(identity.get("hostname"))
 
         budget, budget_from = _step_budget(payload)
-        # A CONTRADICTION IS NOT AN ABSENCE. ``None`` means the artifact states no
+        # A contradiction is not an absence. ``None`` means the artifact states no
         # attained policy and is recorded as POLICY_NOT_STATED; spellings that disagree
         # are a defect in the run's own record and stop the re-cut by name.
         try:
@@ -1655,10 +1681,8 @@ def family_recert(root_rels: List[str], why: str, supersede: Sequence[str],
         problems.append("the families disagree about the compute capability: "
                         + ", ".join(f"{name}={cc}"
                                     for name, cc in sorted(capabilities.items())))
-    if len(set(hosts.values())) > 1:
-        problems.append("the families disagree about the host they ran on: "
-                        + "; ".join(f"{name}: {line}"
-                                    for name, line in sorted(hosts.items())))
+    host, disagreement = family_host(hosts)
+    problems += disagreement
     if len(set(machines.values())) > 1:
         problems.append(f"the families stamp {len(set(machines.values()))} machines; one "
                         f"record names one GPU host")
@@ -1673,13 +1697,13 @@ def family_recert(root_rels: List[str], why: str, supersede: Sequence[str],
     moved: Dict[str, Any] = {
         "source_sha256_at_recert": {name: union[name] for name in pinned},
     }
-    # THE DRIFT DECLARATION IS ABOUT BYTES THAT MOVED SINCE THE RECERT. This IS the
-    # recert, and every family's imported digests were just proved equal to the tree,
+    # The drift declaration is about bytes that moved since the re-certification. This IS the
+    # re-certification, and every family's imported digests were just proved equal to the tree,
     # so the declaration is empty by measurement. Its previous contents describe a
     # state that is over and move into a dated log beside it; the walker reads a
     # ``*_recut_log`` key as history, which is what they now are.
     #
-    # ONLY WHEN THERE IS SOMETHING TO MOVE, and that is the additive protocol rather
+    # Only when there is something to move, and that is the additive protocol rather
     # than tidiness: an architecture X is certified by re-running the same tree AFTER
     # the 8.6 re-cut, usually the same day, and the second run finds the declaration
     # already empty. Writing a log unconditionally made that second bind refuse on its
@@ -1707,7 +1731,7 @@ def family_recert(root_rels: List[str], why: str, supersede: Sequence[str],
                     f"contained."),
             "recorded_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         }
-    # THE POLICIES THAT RELEASED (``fastpath.CERTIFIED_POLICIES``), per ENTRY: the one
+    # The policies that released (``fastpath.CERTIFIED_POLICIES``), per ENTRY: the one
     # policy every family attained when they agree, and a second policy only when all
     # nine released under it (:func:`family_policy_evidence`). A family whose stamp
     # names no policy leaves the first map empty, which narrows the licence.
@@ -1733,7 +1757,7 @@ def family_recert(root_rels: List[str], why: str, supersede: Sequence[str],
             print(f"  {key}: flush evidence for all {len(families)} families", flush=True)
     run_facts = {
         "families": {name: families[name] for name in sorted(families)},
-        "host": next(iter(set(hosts.values()))),
+        "host": host,
         "records": (f"{named} -- nine family gate artifacts, one root per family; each "
                     f"family's own root is named in families[<family>].records"),
         "recorded_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),

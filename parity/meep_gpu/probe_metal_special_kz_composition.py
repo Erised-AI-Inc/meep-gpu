@@ -1,12 +1,12 @@
 """What a WHOLE beta step looks like if these curls were wired, and what it costs.
 
 The byte gate certifies two sub-steps in isolation. This probe asks the question a
-gate cannot: what happens across ONE COMPLETE DRIVER STEP — which sub-steps stay on
+gate cannot: what happens across one complete driver step — which sub-steps stay on
 the array path, which mirrors go stale, and whether the residency invariant can be
 held at all. It measures rather than argues, and it is deliberately allowed to
 report a REFUSAL as its answer.
 
-THE THREE MEASUREMENTS:
+The three measurements:
 
 1. **The residency verdict, per storage family, and they DIFFER.** A REAL beta run
    can take all four sub-steps on the device — the curls from this family, the
@@ -15,7 +15,7 @@ THE THREE MEASUREMENTS:
    beta run cannot: no complex constitutive product is certified on this backend,
    so ``update_H``/``update_E`` run on the array path, write ``Hx``/``Ex`` behind
    the mirrors' backs, and the residency clause REFUSES the composition unless the
-   caller declares those sub-steps synced. That asymmetry is the tranche's real
+   caller declares those sub-steps synced. That asymmetry is the family's real
    composition result and it is measured here in both directions.
 
 2. **The seam.** A source injects between ``step_B`` and ``update_H``
@@ -67,7 +67,7 @@ log, save = kit.log, kit.save
 #: own expectation so a change in either is a visible disagreement rather than a
 #: silently updated answer.
 #:
-#: THE WALL PASSES ARE THE SECOND COMPOSITION COST, and this probe found them
+#: The wall passes are the second composition cost, and this probe found them
 #: rather than assuming them: a METALLIC axis puts `zero_metal_B`/`zero_metal_D`
 #: in the live set (stepping.py:2211/:2238, driver.py:3167/:3169), and those write
 #: stored cell 0 of B and D on the array path — behind the mirrors. So a walled
@@ -193,7 +193,7 @@ def leg_whole_step(payload: Dict[str, Any], out: str) -> None:
             getattr(stepping, slot)(fields, pml)
             residency.sync_in()
         residency.sync_out()
-        # THE MIRROR CHECK BELONGS HERE, before the host arrays are rewound for
+        # The mirror check belongs here, before the host arrays are rewound for
         # the oracle: verify() compares device against HOST, and running the array
         # path first would make every mirror look stale for the trivial reason
         # that the host had moved on.
@@ -211,7 +211,7 @@ def leg_whole_step(payload: Dict[str, Any], out: str) -> None:
         row = {"case": case["name"], "complex": case["complex"],
                "device_sub_steps": [s for s in order if plans.get(s) is not None],
                "array_path_sub_steps": [s for s in order if plans.get(s) is None],
-               # RUN BY NEITHER SIDE, and named so the row cannot be read as a
+               # Run by neither side, and named so the row cannot be read as a
                # driver step: the wall passes are live on a metallic axis and no
                # Metal product carries them. The residency leg is where that is
                # accounted for.
@@ -280,7 +280,7 @@ def leg_seam(payload: Dict[str, Any], out: str) -> None:
 def leg_disjointness(payload: Dict[str, Any], out: str) -> None:
     """No configuration admitted by two products, measured in BOTH directions.
 
-    THE TABLE IS MADE WHOLE FIRST (``gate.assert_table_is_whole``), and every arm is
+    The table is made whole first (``gate.assert_table_is_whole``), and every arm is
     consulted — wired, unwired-registered and unregistered. Both corrections were
     forced by measurement rather than taste:
 
@@ -299,7 +299,7 @@ def leg_disjointness(payload: Dict[str, Any], out: str) -> None:
     matrix = list(gate.CASES) + [
         dict(gate.case_named("r1_kz2d_periodic"), name="beta_zero_control",
              beta=0.0),
-        # THE COMPLEX CONTROL. Without it the complex half of this sweep is
+        # The complex control. Without it the complex half of this sweep is
         # vacuous: `complex_fields` refuses every beta run, so "no complex
         # co-admission" would be measured on a table where the only other
         # complex product refuses everything it was asked. On a beta = 0
@@ -331,22 +331,22 @@ def leg_disjointness(payload: Dict[str, Any], out: str) -> None:
         if case["name"] == "beta_zero_control":
             assert admitters["step_B"] == ["wired:pml_curl/PML"], admitters
         elif case["name"] == "complex_beta_zero_control":
-            # THE VACUITY CONTROL for every complex row above: the other complex
+            # The vacuity control for every complex row above: the other complex
             # curl on this slot must ADMIT something, or "exactly one admitter"
             # on the beta rows is an absence of coverage rather than disjointness.
             assert any("complex_fields" in name
                        for name in admitters["step_B"]), admitters
         else:
-            # THE SOLE ADMITTER MUST BE THIS FAMILY. The assertion here read
+            # The sole admitter must be this family. The assertion here read
             # `.startswith("unregistered:")`, which pinned the arm's REGISTRATION
             # TAG rather than its identity and was therefore a statement about a
-            # tranche rather than about coverage: when a later round registered and
+            # development stage rather than about coverage: when a later change registered and
             # wired these arms, the tag became "wired:" and the row failed on the
             # wiring working. What the disjointness sweep actually needs is that
             # exactly one product admits (asserted above) and that it is the beta
             # family (asserted here) — the tag is recorded in the artifact either
             # way, so a reader can still see when it changes.
-            # A NON-EMPTY LIST IS PART OF THE ASSERTION, not a precondition for it:
+            # A non-empty list is part of the assertion, not a precondition for it:
             # `len(names) <= 1` above is satisfied best by a sweep that admits
             # nothing, so the beta rows need a floor or a disabled product reads as
             # a clean disjointness result.
@@ -394,12 +394,12 @@ def main() -> int:
         "headline": ("a REAL beta run composes end to end on the device; a COMPLEX "
                      "one cannot hold its mirrors across the constitutive pair, "
                      "because no complex constitutive product is certified on this "
-                     "backend — the composition gap is the complex tranche's, not "
+                     "backend — the composition gap is the complex-field kernels', not "
                      "beta's"),
         "elapsed_s": round(time.time() - started, 1),
     }
     save(payload, arguments.out)
-    log(f"COMPOSITION PROBE MEASURED in {payload['summary']['elapsed_s']}s -> "
+    log(f"Composition probe measured in {payload['summary']['elapsed_s']}s -> "
         f"{arguments.out}")
     return 0
 

@@ -1,7 +1,7 @@
 """The CYLINDRICAL COMPLEX electric seam in one launch: Dcyl ``step_D`` welded into
 ``update_E`` under complex64 storage, at every m.
 
-THE ELECTRIC TWIN of :mod:`.cylindrical_fused_magnetic_pair`. The two halves are the
+The electric twin of :mod:`.cylindrical_fused_magnetic_pair`. The two halves are the
 shipped bodies -- :func:`.cylindrical_complex.cyl_complex_pml_curl_step` through its
 ``BACKWARD == 1`` arms and :mod:`.complex_fused_electric_pair`'s constitutive half
 (:func:`.complex_fields.bloch_constitutive_step`'s ``SCALE = 1`` arm per part, keyed on
@@ -9,14 +9,14 @@ the chunk record, the source the D register pair times the float32 inverse epsil
 the complex cell index) -- welded by the substitution
 :func:`.kernels.fused_curl_constitutive_D` makes on the real path.
 
-EVERY ARITHMETIC LINE BELOW IS A VERBATIM COPY of one of those bodies; the gate's
+Every arithmetic line below is a verbatim copy of one of those bodies; the gate's
 transcription leg checks it. No product has a complex operand
 (:data:`MULTIPLY_HELPERS` is empty).
 
-THE RADIAL SCAN IS UPSTREAM OF THE SEAM: the plan launches
+The radial scan is upstream of the seam: the plan launches
 :func:`.cylindrical_triton.cyl_radial_difference` (per part), then this kernel.
 
-THE FIVE PASSES IN THE SEAM. ``step_D -> electric sources -> fill_symmetry_bc_D ->
+The five passes in the seam. ``step_D -> electric sources -> fill_symmetry_bc_D ->
 zero_metal_D -> fill_folded_far_ghosts_D -> update_E``: the electric sources are CARRIED
 through the shipped deposit repair (:data:`CARRIES_DEPOSIT_REPAIR`; the leading slot
 saves the stateful words at the deposit points and the trailing slot recomputes them,
@@ -26,7 +26,7 @@ inline on the registers, clearing the two TANGENTIAL D components per walled axi
 (:data:`WALL_CLEARED_COMPONENTS`, re-derived by the predicate).
 
 DEVICE STATUS. NOT RELEASED on this text: any earlier device record measured the
-previous forms, and certification is owed at the combined device round.
+previous forms, and certification is owed to a later combined device run.
 
 Import contract: importable WITHOUT Triton -- the predicates and the plan builder (to
 ``None``) answer on a host without it.
@@ -67,7 +67,7 @@ from .. import deposit_repair as _deposit_repair
 #: declares an electric source, so with the repair off this arm admits zero rows and
 #: the product would exist without serving anything.
 #:
-#: THE PRECONDITION THIS PRODUCT MEETS is that its constitutive half is POINTWISE, on
+#: The precondition this product meets is that its constitutive half is POINTWISE, on
 #: both sides of the step: the diagonal ``update_E`` is ``(D - sum P) * inv_eps`` cell
 #: by cell (``stepping.py:1012-1015``) — and with no polarization registered, which the
 #: clause below requires, ``displacement_minus_polarization`` returns ``D`` unchanged
@@ -82,7 +82,7 @@ from .. import deposit_repair as _deposit_repair
 #: chi2/chi3 — are refused per run by ``deposit_repair.repairable``, which the clause
 #: below CONSULTS rather than assumes.
 #:
-#: IT IS NOT A HINT. A product that passes True without those wrappers computes the
+#: It is not a hint. A product that passes True without those wrappers computes the
 #: constitutive half against a pre-injection field and reports success, which is the
 #: exact failure ``deposit_repair`` exists to prevent. Flag and wiring move together.
 CARRIES_DEPOSIT_REPAIR = True
@@ -125,7 +125,7 @@ BACKWARD = 1
 #: constitutive half and the magnetic twin's.
 SCALE = 1
 
-#: WHICH CURL TARGETS ``zero_metal_D`` CLEARS, PER WALLED AXIS — the map the kernel
+#: Which curl targets ``zero_metal_D`` clears, per walled axis — the map the kernel
 #: BAKES, written here so the predicate can compare it to the engine's own.
 #:
 #: ``stepping._zero_metal`` clears every component whose Yee shift on the walled axis
@@ -135,12 +135,12 @@ SCALE = 1
 #: wall. It is the exact COMPLEMENT of the magnetic twin's map, where a z wall clears
 #: Bz and nothing else.
 #:
-#: ON A Dcyl GRID ONLY THE THIRD ROW CAN FIRE (see :data:`FORBIDDEN_WALL_AXES`), so
+#: ON A Dcyl grid only the third row can fire (see :data:`FORBIDDEN_WALL_AXES`), so
 #: the live entry is ``(0, 1)`` — a z wall clears ``Dx`` and ``Dy``. The other two
 #: rows are written so the diagonal table is legible and so the derivation below
 #: checks all three, not because either can be reached.
 #:
-#: THIS CONSTANT IS A CLAIM ABOUT THE KERNEL, NOT A DERIVATION. It is what the
+#: This constant is a claim about the kernel, not a derivation. It is what the
 #: ``if ZM_*:`` blocks were written to do; :func:`cylindrical_fused_electric_pair_coverage`
 #: recomputes the same map from ``fields.IYEE_SHIFTS`` and refuses when they differ,
 #: which is the only thing standing between a transcription slip here and a plane of
@@ -441,7 +441,7 @@ if triton is not None:
         # --- the seam: stepping.zero_metal_D, between the two sub-steps ---------
         # Applied to the REGISTERS, before both the store and the constitutive read,
         # so the two consumers see the one value the array path leaves in D. BOTH
-        # parts. THE COMPONENT MAP IS THE COMPLEMENT OF THE MAGNETIC TWIN'S:
+        # parts. The component map is the complement of the magnetic twin's:
         # `_zero_metal` clears every component whose Yee shift on the WALLED axis is
         # ZERO, which on the D side is the two TANGENTIAL components
         # (:data:`WALL_CLEARED_COMPONENTS`, re-derived from IYEE_SHIFTS by the
@@ -598,14 +598,14 @@ def cylindrical_fused_electric_pair_coverage(fields: Any, pml: Any,
         return Coverage(False,
                         tuple(dict.fromkeys(reasons + ["fields carries no grid"])))
 
-    # THE SOURCE SEAM. An electric source is injected BETWEEN the two halves
+    # The source seam. An electric source is injected BETWEEN the two halves
     # (driver.py:3296-3299), so a bare fused pair would consume a pre-injection D.
     # A MAGNETIC source is injected in the B/H seam and does not disqualify this
-    # pair. IGNORANCE IS NOT AN EMPTY SET: `Fields` does not hold the source list,
+    # pair. Ignorance is not an empty set: `Fields` does not hold the source list,
     # so a predicate that inferred "no electric source" from not being told would
     # be the over-covering refusal this clause exists to prevent.
     #
-    # THIS IS THE CLAUSE THE WHOLE PRODUCT TURNS ON, and more completely than on
+    # This is the clause the whole product turns on, and more completely than on
     # the Cartesian D->E twin: ALL SIXTEEN Dcyl rows declare an electric source, so
     # with `carries_repair=False` this arm admits ZERO rows. The flag is passed,
     # not assumed: `repairable` still refuses by name every seam it cannot invert.
@@ -622,11 +622,11 @@ def cylindrical_fused_electric_pair_coverage(fields: Any, pml: Any,
             f"closes"),
         carries_repair=CARRIES_DEPOSIT_REPAIR))
 
-    # THE TWO SYMMETRY PASSES. `fill_symmetry_bc_D` (driver.py:3300) and
+    # The two symmetry passes. `fill_symmetry_bc_D` (driver.py:3300) and
     # `fill_folded_far_ghosts_D` (:3302) both return at their first line unless
     # `grid.has_symmetry()` (stepping.py:1481-1482, :1565-1566); `Grid` refuses a
     # mirror on a Dcyl cell outright (grid.py:648-653) and both halves restate
-    # that. RE-CHECKED HERE ANYWAY, not inferred: this module's coverage may not be
+    # that. Re-checked here anyway, not inferred: this module's coverage may not be
     # read off another module's guard, and the cost is one attribute read.
     if _call(grid, "has_symmetry", default=False):
         reasons.append(
@@ -639,7 +639,7 @@ def cylindrical_fused_electric_pair_coverage(fields: Any, pml: Any,
                 f"axis {axis} is folded by a mirror plane: the two symmetry passes "
                 f"in this seam are no longer no-ops and this weld carries neither")
 
-    # THE WALL CLEAR is carried inline, so the grid must be able to answer which
+    # The wall clear is carried inline, so the grid must be able to answer which
     # axes are walled; an unanswerable one compiles to ZM=False and silently skips
     # a plane the array path clears.
     answerable = True
@@ -649,7 +649,7 @@ def cylindrical_fused_electric_pair_coverage(fields: Any, pml: Any,
             reasons.append(
                 f"grid does not expose {name}; zero_metal_D cannot be carried inline")
 
-    # THE WALL TABLE MUST BE THE Dcyl ONE. `Grid` cannot report r or phi walled on
+    # The wall table must be the Dcyl ONE. `Grid` cannot report r or phi walled on
     # a cylindrical cell (module docstring), and ZM_X would compile a clear on the
     # r = 0 row that the per-|m| axis rules own — a zero the array path never
     # writes there. Refused by name rather than compiled.
@@ -663,7 +663,7 @@ def cylindrical_fused_electric_pair_coverage(fields: Any, pml: Any,
                     f"(grid.py:512-514), and the r = 0 clear ZM_X would compile is "
                     f"a row the per-|m| axis rules own")
 
-    # ...AND THE COMPONENT MAP THE CLEAR BAKES MUST BE THE ENGINE'S OWN. Recomputed
+    # ...and the component map the clear bakes must be the engine's own. Recomputed
     # from the shipped ``IYEE_SHIFTS`` by exactly ``_zero_metal``'s rule — shift 0
     # on the walled axis — rather than compared against a second transcription of
     # it. This is the clause that would have refused the map the Cartesian D->E
@@ -694,7 +694,7 @@ def cylindrical_fused_electric_pair_coverage(fields: Any, pml: Any,
             "a susceptibility is registered: this kernel bakes the plain "
             "constitutive product, whose source is D and not (D - sum P)")
 
-    # THE INVERSE-EPSILON VOLUMES ARE READ BY THE KERNEL, so `Fields` must be able
+    # The inverse-epsilon volumes are read by the kernel, so `Fields` must be able
     # to hand one over per target component. The magnetic twin has no counterpart
     # to this clause: its SCALE=0 arm binds the source word views as placeholders
     # and never loads them. An absent accessor here would be a TypeError inside the
@@ -783,7 +783,7 @@ class CylindricalFusedElectricPairPlan:
         self._inv_eps = tuple(CupyPointer(a) for a in inverse_epsilon)
         self._constitutive_coefficients = tuple(
             CupyPointer(_flat(a)) for a in constitutive_coefficients)
-        # THE INT32 WORD BOUND. The kernel addresses words as ``2 * idx`` in int32, so
+        # The int32 word bound. The kernel addresses words as ``2 * idx`` in int32, so
         # the complex cell count must leave room for the doubling. Refused here as well
         # because the from-arrays route runs no predicate at all.
         if 2 * self.n_elem >= 2 ** 31:

@@ -1,13 +1,13 @@
 """Move each Metal weld's run under the GPU architecture it ran on. ONE TIME.
 
-WHY THIS EXISTS. ``metal_kernels/fingerprints.json`` records one run per weld, with
+Why this exists. ``metal_kernels/fingerprints.json`` records one run per weld, with
 the run's facts (``host``, ``records``, ``recorded_utc``, ``artifact_sha256``, ...)
 beside the digests of the bytes it certified. That shape holds one Apple GPU
 architecture: a second Mac's rebind could only replace the first Mac's certification.
 This is the Metal half of ``migrate_capability_records.py``, keyed by the GPU
 architecture (``applegpu_g13s``) instead of a compute capability.
 
-WHAT IT WRITES. Per weld entry, one ``runs[<architecture>]`` record holding the run
+What it writes. Per weld entry, one ``runs[<architecture>]`` record holding the run
 fields (``meep_gpu.metal_runs.RUN_FIELDS``), the torch and Metal frontend the run's
 ``host`` line names, and the digest of the bytes the run certified
 (``fastpath.bound_digest``). The digests stay where they are. The ``driver_dispatch``
@@ -17,12 +17,12 @@ block with ``runs: {}``: this change moves ``metal_dispatch.py``, which that rec
 binds, so the next Metal route campaign writes ``runs[<architecture>]`` from the run
 itself. A ``_architecture_runs_migration`` note records what was done.
 
-WHAT IT REFUSES TO DO. It invents nothing. The architecture, torch and frontend are
+What it refuses to do. It invents nothing. The architecture, torch and frontend are
 READ from each entry's own ``host`` line; an entry whose line does not name all three,
 or that records no run, refuses the whole ledger with nothing written. It refuses a
 ledger it has already migrated and one it would reformat.
 
-WHAT IT CHECKS BEFORE A BYTE IS WRITTEN, entry by entry: the move is reversible
+What it checks before a byte is written, entry by entry: the move is reversible
 (the entry and its run's fields are the entry it started as, and the route record with
 its history block put back is the record it started as); every digest the ledger
 held is still held, and the only digests added are one ``bound_sha256`` per run; each
@@ -333,7 +333,7 @@ def _verify(old: Mapping[str, Any], new: Mapping[str, Any],
             problems.append(f"{key}: not in the per-architecture shape: {reasons}")
     numbers["runs_written"] = len(added)
 
-    # EVERY DIGEST KEPT, AND THE ONLY ONES ADDED ARE THE BOUNDS.
+    # Every digest kept, and the only ones added are the bounds.
     old_digests = collections.Counter(_digests(old))
     new_digests = collections.Counter(_digests(new))
     lost = old_digests - new_digests
@@ -347,7 +347,7 @@ def _verify(old: Mapping[str, Any], new: Mapping[str, Any],
         problems.append(f"the digests added are not exactly one bound_sha256 per run "
                         f"({sum(gained.values())} added, {len(added)} runs)")
 
-    # THE ADMISSION CERTIFIES WHAT IT CERTIFIED BEFORE, weld by weld.
+    # The admission certifies what it certified before, weld by weld.
     after = dict(metal_dispatch.cited_environments(ledger=new, gates=cited))
     for gate in cited:
         wanted = before["per_gate"].get(gate)
@@ -358,7 +358,7 @@ def _verify(old: Mapping[str, Any], new: Mapping[str, Any],
         if [dict(run) for run in runs] != [dict(wanted)]:
             problems.append(f"{gate}: its live runs record {list(runs)}; its host line "
                             f"recorded {wanted}")
-    # AND THROUGH THE ADMISSION ITSELF, where the cited set is the table's: the verdicts
+    # And through the admission itself, where the cited set is the table's: the verdicts
     # metal_dispatch.environment_block would write for a host in that environment.
     uniform = before["uniform"]
     if uniform is not None and cited and set(cited) == set(metal_runs.cited_keys()):
@@ -371,7 +371,7 @@ def _verify(old: Mapping[str, Any], new: Mapping[str, Any],
     numbers["recorded_environments_after"] = metal_dispatch.recorded_environments(
         ledger=new)
 
-    # THE WALKER CLASSIFIES EVERY DIGEST.
+    # The walker classifies every digest.
     found = walk.census(new)
     unclassified = [walk.dotted(f.trail) for f in found if f.rule == walk.UNCLASSIFIED]
     numbers["walker_discovered"] = len(found)
@@ -387,7 +387,7 @@ def _verify(old: Mapping[str, Any], new: Mapping[str, Any],
             if key.startswith(HISTORY_PREFIX) and _HEX.search(json.dumps(block)):
                 problems.append("the dispatch history block carries a digest; a history "
                                 "block states none")
-        # THE ROUTE RECORD'S MOVE IS REVERSIBLE TOO, by the same rebuild the weld
+        # The route record's move is reversible too, by the same rebuild the weld
         # entries get: put every history field back where it came from, drop the
         # container and the note, and the record must be the one this tool read.
         rebuilt = _unmigrate_dispatch(dispatch)

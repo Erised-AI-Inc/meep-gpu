@@ -1,6 +1,6 @@
-"""Run the residual round's OWN predicates and OWN plan builders. Nothing patched.
+"""Run the residual-group families' OWN predicates and OWN plan builders. Nothing patched.
 
-WHY THIS EXISTS SEPARATELY FROM ``probe_residual_group_bodies.py``
+Why this exists separately from ``probe_residual_group_bodies.py``
 -----------------------------------------------------------------
 That probe answers a TRIAGE question — "would the certified body have been exact
 on a configuration its clause refuses?" — and to ask it, it must put the body on a
@@ -8,7 +8,7 @@ configuration the shipped predicate says no to. It does that honestly, with an
 ``admitting`` context manager that replaces the INCUMBENT coverage function in
 front of the INCUMBENT builder.
 
-But the modules this round ships are not those objects. They are NEW predicates
+But the modules that close those groups are not those objects. They are NEW predicates
 (``nonlinear_run_pml_curl_coverage``, ``nonlinear_run_constitutive_coverage``,
 ``no_pml_ade_update_p_coverage``, ``folded_dispersive_constitutive_coverage``,
 ``folded_complex_offdiag_pml_curl_coverage``,
@@ -17,7 +17,7 @@ But the modules this round ships are not those objects. They are NEW predicates
 ``plan_no_pml_ade_update_p``, ``plan_folded_dispersive_constitutive``,
 ``plan_folded_complex_offdiag_pml_curl``,
 ``plan_folded_complex_offdiag_constitutive``). A triage measurement licenses a
-CLAIM ABOUT THE BODY; it does not, on its own, license the OBJECT that will do the
+claim about the body; it does not, on its own, license the OBJECT that will do the
 admitting, because between the two sit the predicate's clause set and the
 builder's array resolution — which is exactly where this campaign's live defects
 have been (a stale pointer cached at build time; a plan built over a ``None``).
@@ -115,7 +115,7 @@ def _configs(xp) -> Dict[str, Callable[[int], Tuple[Any, Any, Dict[str, Any]]]]:
             pml_thickness=0, seed_offset=o),
         "ade_pml": lambda o: bodies.build(xp, poles=1, pml_thickness=2,
                                           seed_offset=o),
-        # (C) fold + pole at update_E, in the round's 3-D fixture and in the shape
+        # (C) fold + pole at update_E, in the triage probe's 3-D fixture and in the shape
         #     of the rows it is claimed for.
         "folded_dispersive": lambda o: bodies.build(
             xp, cell=(1.6, 1.6, 1.6), symmetry=("X",), poles=1, pml_thickness=2,
@@ -200,7 +200,7 @@ def predicate_checks(xp) -> List[Dict[str, Any]]:
     checks.append((
         "INCUMBENT pml_curl_coverage ADMITS the linear run", True,
         lambda: cov.pml_curl_coverage(*cfg("linear"), "step_B")))
-    # The narrowing this round added: an unallocated curl TARGET must be refused.
+    # The narrowing this predicate added: an unallocated curl TARGET must be refused.
     checks.append((
         "nonlinear_run_pml_curl REFUSES an unallocated curl target", False,
         lambda: _with_missing_target("chi", configs, "Bx", "step_B")))
@@ -326,7 +326,7 @@ def _incumbent_ade(pair):
 # ---------------------------------------------------------------------------
 
 def _new_ade_plan(fields, pml):
-    """Every state's certified plan, through THIS ROUND's builder, or None.
+    """Every state's certified plan, through the new builder, or None.
 
     ``plan_no_pml_ade_update_p`` is per state and takes the drive as a callable at
     run time, so the composite mirrors what a dispatcher would install.
@@ -491,7 +491,7 @@ def main(argv) -> int:
         row["builder"] = case["builder"]
         # run_case reports a None plan as "the shipped builder returned None even
         # with its predicate admitting". Here nothing is patched, so a None plan
-        # means the NEW PREDICATE REFUSED — a failed leg, and the message must say
+        # means the new predicate refused — a failed leg, and the message must say
         # which of the two it is.
         if row.get("error", "").startswith("the shipped builder returned None"):
             row["error"] = REFUSED_MESSAGE

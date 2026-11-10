@@ -1,6 +1,6 @@
 """Sub-step byte-identity gate for the SHIPPED CUDA constitutive pair ON A Dcyl GRID.
 
-THE CLAIM UNDER TEST, and it is a claim about a PREDICATE, not about a kernel.
+The claim under test, and it is a claim about a PREDICATE, not about a kernel.
 ``meep_gpu/cuda_kernels/constitutive_kernels.py`` ships two certified kernels,
 ``update_H_pml_real`` and ``update_E_pml_real``, and
 ``complex_pml_kernels.py`` the complex pair. This gate does not change one byte of
@@ -14,7 +14,7 @@ family that shares the predicate's shape. The predicate's own docstring says as
 much in as many words: "The cylindrical half stands, unmeasured and therefore
 refused" (coverage.py:854). This is the measurement.
 
-WHY THE READING SAYS IT IS NOT REQUIRED (every fact read off the source, and
+Why the reading says it is not required (every fact read off the source, and
 checked line by line before this file was written):
 
 1. The sub-step reads NO NEIGHBOUR. ``stepping._apply_constitutive_pml``
@@ -30,14 +30,14 @@ checked line by line before this file was written):
 3. ``_mask_non_owned_cells`` (stepping.py:1912) has exactly three call sites --
    ``step_B`` (:397), ``step_D`` (:479) and ``_bfast_term`` (:929). No
    constitutive function is among them, on any coordinate system.
-4. THE EXTENT MOVES BOTH OPERANDS TOGETHER, which is the refusal's premise and is
+4. The extent moves both operands together, which is the refusal's premise and is
    TRUE. ``PML._compute_coefficients`` builds every kps/kms vector from
    ``grid.nx``/``ny``/``nz`` -- the STORED extent -- and the field arrays are
    allocated on the same ``grid.shape``. On Dcyl the phi axis is invariant with
    n = 1 and r and z are ordinary extents, so the kernel's ``i = idx/(ny*nz)``
    indexes a table of exactly the length the grid left. The premise is true and
    the conclusion does not follow.
-5. The sibling Triton track reached this conclusion first AND MEASURED IT:
+5. The sibling Triton track reached this conclusion first and measured it:
    ``triton_kernels/cylindrical_complex.py`` records 480/480 identity rows with 0
    differing uint32 words for ``update_H``/``update_E`` on complex Dcyl against a
    plain element-wise dsigw reference carrying no cylindrical clause. That is a
@@ -46,7 +46,7 @@ checked line by line before this file was written):
    verdict across backends.
 
 =============================================================================
-WHAT IS ARMED SO THE ADMISSION CANNOT BE A NO-OP
+What is armed so the admission cannot be a no-op
 =============================================================================
 
 ``reverse_radial_axis_coefficients`` is the refusal reason ITSELF armed as a
@@ -58,7 +58,7 @@ absence of evidence. ``radial_axis_absorbs`` is the floor that keeps it
 load-bearing: a profile that is the identity everywhere reverses to itself, and
 such a case is refused before it is scored rather than counted as a miss.
 
-Every other leg is the folded sibling's, unchanged, so the two rounds are
+Every other leg is the folded sibling's, unchanged, so the two gates are
 commensurable to the case: same source mutations, same null pair, same guard
 sets, same value classes, same courant pair.
 
@@ -153,14 +153,14 @@ def state_names(side: str) -> Tuple[str, ...]:
 # ---------------------------------------------------------------------------
 # The case product
 # ---------------------------------------------------------------------------
-# THE CASE TABLE
+# The case table
 # ---------------------------------------------------------------------------
 #
 # Dcyl grids over BOTH z terminations and BOTH |m| classes, plus the Cartesian
 # controls the folded sibling carries so this harness is shown to reproduce the
 # standing result under its own fixture.
 #
-# ``m`` IS SWEPT EVEN THOUGH THIS SUB-STEP CANNOT READ IT. That is the point: the
+# ``m`` is swept even though this sub-step cannot read it. That is the point: the
 # claim is that update_H/update_E are element-wise and carry no cylindrical
 # branch, and a sweep that fixed m at 0 would leave "except at |m| >= 1" open.
 # The |m| classes differ in the CURL (axis-row increment at |m| = 1, near-axis
@@ -203,7 +203,7 @@ CYL_SPECS: Tuple[Dict[str, Any], ...] = (
     {"label": "cyl_m5_z_metallic", "cylindrical": True, "m": 5,
      "z_kind": "metallic", "cell": (14.0, 0.0, 10.0)},
 
-    # ODD CELL COUNTS on both resolved axes, and a shape whose r and z extents
+    # Odd cell counts on both resolved axes, and a shape whose r and z extents
     # differ from every case above: a coefficient-index defect that happens to be
     # invisible at one aspect ratio is not invisible at two.
     {"label": "cyl_m1_odd_counts", "cylindrical": True, "m": 1,
@@ -226,7 +226,7 @@ SIDES: Tuple[str, ...] = ("H", "E")
 
 #: ``--fmad=false`` is CORRECTNESS on this sub-step, not tuning: both
 #: accumulations and the E side's ``D*inv_eps`` are contraction candidates the
-#: array path rounds twice. The control is EXPECTED TO DIVERGE at the inexact
+#: array path rounds twice. The control is expected to diverge at the inexact
 #: courant; if it does not, the guard is decorative here and the record must say
 #: so rather than implying evidence it does not have.
 GUARD_SETS: Tuple[Tuple[str, Tuple[str, ...], bool], ...] = (
@@ -246,7 +246,7 @@ SOURCE_MUTATIONS_BY_SIDE: Dict[str, Tuple[str, ...]] = {
           "fortran_order_index_decomposition", "bind_Ez_inv_eps_for_all_three",
           "inv_eps_left", "commute_constitutive_scale"),
 }
-#: THIS GATE'S NEEDLE TABLE for both sides' defects: each one borrowed from the
+#: This gate's needle table for both sides' defects: each one borrowed from the
 #: probe's shared default until this gate's kernels need a spelling of their
 #: own, which is then an ``own=`` entry here and moves no other gate
 #: (``gate_needles.py``).
@@ -255,7 +255,7 @@ _ARMED: Tuple[str, ...] = tuple(dict.fromkeys(
 SHARED_NEEDLES = gate_needles.gate_table(
     "gate_cuda_cylindrical_constitutive", probe.SOURCE_MUTATIONS, _ARMED)
 
-#: MUST BE UNCAUGHT, each paired with a leg editing the same expression that must
+#: Must be uncaught, each paired with a leg editing the same expression that must
 #: be caught (``drop_inverse_epsilon`` and ``regroup_constitutive``). A gate whose
 #: whole battery must be caught scores identically whether the comparator works or
 #: has degenerated into failing everything.
@@ -300,7 +300,7 @@ class _NumpyWearingCupysName:
 def build(xp, spec: Dict[str, Any], courant: float):
     """A frozen ``(fields, layer, grid)`` triple for one case, Dcyl or Cartesian.
 
-    ON Dcyl, ``Grid`` OWNS THE r AXIS'S BOUNDARY PAIR -- the axis at r = 0 and a
+    On Dcyl, ``Grid`` owns the r axis's boundary pair -- the axis at r = 0 and a
     metallic wall at r_max -- so only z is chosen (grid.py:498-508), and the PML
     is asked for the HIGH r face only for the same reason: cell 0 is the axis, a
     boundary condition rather than a wall. Same rule the sibling Dcyl curl gate
@@ -352,13 +352,13 @@ def install_epsilon(fields, grid, rng) -> None:
 def seed_state(fields, grid, side: str, value_class: str, rng) -> Dict[str, np.ndarray]:
     """Physical-band or subnormal-band values in every array the sub-step touches.
 
-    THE AUXILIARIES START NONZERO in both classes. A zero ``f_w`` makes
+    The auxiliaries start nonzero in both classes. A zero ``f_w`` makes
     ``kms * prev`` exactly zero on the first launch whatever ``kms`` holds, so a
     mis-indexed coefficient would only show from step two -- precisely what the
     multi-step leg exists to catch, and no reason to hide it from the single
     launch as well.
 
-    THE MATERIAL STAYS NORMAL under the band class: driving inverse epsilon into
+    The material stays normal under the band class: driving inverse epsilon into
     the band too would make every product underflow and the leg would measure the
     fixture rather than the policy's reach into this arithmetic.
     """
@@ -426,7 +426,7 @@ def wrong_sub_lattice_tables(side: str, layer) -> Dict[str, Any]:
 
 
 def reversed_radial_axis_tables(side: str, layer, grid) -> Dict[str, Any]:
-    """THE REFUSAL REASON, ARMED. The r axis's profile read backwards.
+    """The refusal reason, armed. The r axis's profile read backwards.
 
     "cylindrical (Dcyl): the axial extent moves every coefficient index" is the
     predicate's stated reason for refusing Dcyl. If that mattered to this
@@ -487,7 +487,7 @@ def run_kernel_cuda(side: str, fields, tables: Dict[str, Any]) -> None:
     from gate_chunk_records import region_plan_record  # noqa: PLC0415
     from meep_gpu.cuda_kernels import constitutive_kernels  # noqa: PLC0415
 
-    # The division of the region plan the oracle stepped with: since 0.10 the kernel
+    # The division of the region plan the oracle stepped with: since 1.0 the kernel
     # chooses each cell's form per structure chunk from its record.
     constitutive_kernels.update_fused_pml_real(
         side, fields, tables=tables, chunk_bounds=cp.asarray(region_plan_record(fields)))
@@ -519,7 +519,7 @@ def run_kernel_numpy(side: str, fields, tables: Dict[str, Any]) -> None:
     length here is ``tables[...]``'s length, i.e. the STORED extent, exactly as
     the device index is bounded by the stored shape.
 
-    THIS COMPILES NOTHING AND CERTIFIES NOTHING. It cannot see a defect the NVRTC
+    This compiles nothing and certifies nothing. It cannot see a defect the NVRTC
     contraction guard exists for, it does not exercise the subnormal policy, and
     it is not the shipped bytes. What it settles is (a) whether the tables at the
     folded extent reproduce ``stepping`` at all and (b) whether this harness can
@@ -628,7 +628,7 @@ def one_case(backend: str, spec: Dict[str, Any], side: str, courant: float,
              host_mutation: Optional[str] = None) -> Dict[str, Any]:
     """One frozen state, run twice: the array path, then the kernel.
 
-    THE ORACLE IS ``stepping`` ITSELF on real ``Grid``/``Fields``/``PML``
+    The oracle is ``stepping`` itself on real ``Grid``/``Fields``/``PML``
     objects. There is no second transcription on the oracle leg to drift: the
     kernel is compared against the thing it claims to reproduce, byte for byte,
     from ONE frozen state -- oracle runs, state is restored, kernel runs.
@@ -655,7 +655,7 @@ def one_case(backend: str, spec: Dict[str, Any], side: str, courant: float,
         "operand_census": operand_census(host),
     }
 
-    # THE PREDICATE'S CURRENT ANSWER, recorded rather than acted on. This gate
+    # The predicate's current answer, recorded rather than acted on. This gate
     # exists to decide whether that answer should change, so it must not be the
     # thing that gates the measurement -- but a record that did not carry it
     # could not show WHICH clause the run was taken against.
@@ -706,7 +706,7 @@ def one_case(backend: str, spec: Dict[str, Any], side: str, courant: float,
     # field right and ``f_w`` wrong is correct for exactly one launch and wrong
     # forever after.
     #
-    # ONE ``Fields`` OBJECT, RUN TWICE FROM THE SAME FROZEN STATE, rather than a
+    # One ``Fields`` object, run twice from the same frozen state, rather than a
     # second object built beside it. Two objects means two epsilon draws unless
     # the volumes are copied across, and a fixture that solved two different
     # problems would report a divergence that says nothing about the kernel.
@@ -976,7 +976,7 @@ def summarize(results: Dict[str, Any]) -> Dict[str, Any]:
         reasons.append(f"multi-step divergence on {len(multi_cases) - len(multi_ok)} "
                        f"of {len(multi_cases)} cases")
 
-    # BOTH z TERMINATIONS AND BOTH |m| CLASSES must have been scored. The z
+    # Both z terminations and both |m| classes must have been scored. The z
     # termination changes the stored extent (one slot past the owned window or
     # not) and is what makes the coefficient vectors structurally different
     # arrays; the |m| classes are what the CURL treats differently, and a sweep
@@ -1011,7 +1011,7 @@ def summarize(results: Dict[str, Any]) -> Dict[str, Any]:
         elif leg["verdict"] not in ("CAUGHT", "NULL CONFIRMED"):
             reasons.append(f"source mutation {key} is {leg['verdict']}")
 
-    # THE GUARD CONTROL, reported rather than gated on. ``--fmad=false`` is
+    # The guard control, reported rather than gated on. ``--fmad=false`` is
     # claimed to be CORRECTNESS on this sub-step; the unguarded leg is expected to
     # DIVERGE at the inexact courant, where a contracted and an uncontracted
     # expression round differently. If it does not, the guard is decorative here
@@ -1024,7 +1024,7 @@ def summarize(results: Dict[str, Any]) -> Dict[str, Any]:
     guard_control = {
         "scored_at_inexact_courant": len(control),
         "diverged": len(control_diverged),
-        # NOT MEASURED is its own reading. The NumPy backend has no compiler to
+        # "NOT MEASURED" is its own reading. The NumPy backend has no compiler to
         # guard, so it scores nothing here, and a run that scored nothing must
         # not read as a run that found nothing.
         "reading": ("NOT MEASURED on this run: no unguarded leg was scored at "
@@ -1077,6 +1077,7 @@ def save(results: Dict[str, Any], out_path: str) -> None:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
+    import neutral_ids  # noqa: PLC0415
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--backend", choices=("cuda", "numpy"), default="cuda")
     parser.add_argument("--product", choices=("full", "reduced"), default="full")
@@ -1094,8 +1095,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     results: Dict[str, Any] = {
         "gate": "cuda_cylindrical_constitutive",
         "started_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "host": os.uname().nodename,
-        "argv": list(argv if argv is not None else sys.argv[1:]),
+        "host": neutral_ids.machine_id(),
+        "argv": neutral_ids.argv(argv if argv is not None else sys.argv[1:]),
         "backend": args.backend,
         "product": args.product,
         "question": ("does covers_real_pml_constitutive's mirror-symmetry refusal "
@@ -1111,7 +1112,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             return 2
         if args.import_meep_for_host_policy:
             results["meep_host_import"] = probe.import_meep_for_host_policy()
-        # THE OBSERVER GOES IN BEFORE THE POLICY, and the order is the design:
+        # The observer goes in before the policy, and the order is the design:
         # under 'keep' the policy's strip wraps this, so it records the option
         # tuple NVRTC was really given (post-strip). Installed afterwards it
         # would sit outside the strip and record the pre-strip tuple -- the one

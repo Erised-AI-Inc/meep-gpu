@@ -6,14 +6,14 @@
         python parity/meep_gpu/record_meep_identity.py --build-record PATH --work DIR \\
             --cases-file parity/meep_gpu/meep_identity_tier_a.py [--mode keep|flush]
 
-WHY ONE MODULE. ``record_meep_identity.py`` mints a mode's whole set in one run and
+Why one module. ``record_meep_identity.py`` mints a mode's whole set in one run and
 replaces that mode's fixtures directory with it, and it reads its cases from one
 ``--cases-file``. Tier A's set is the four probe cases of ``meep_identity_smoke`` (a 2-D
 vacuum and an epsilon-block PML case, a 3-D case with two mirrors at two source widths)
 together with one small row of Table 2's corpus per family the array path transcribes
 (``FAMILY_ROWS``), so the four and the rows are minted together through this module.
 
-HOW A LABEL IS BUILT. A probe label is built by ``meep_identity_smoke.build_case`` and
+How a label is built. A probe label is built by ``meep_identity_smoke.build_case`` and
 stepped to the runner's own step rule (``sweep_corpus_lift_parity._timing`` at 200 steps
 and a 12,000-step ceiling, the rule its stock cases use), so its N is the N the probe
 cases have always been minted at (200, and 375 for ``c``). Every other label is a corpus
@@ -24,7 +24,7 @@ check the digest smoke's record in process; the minting tool runs
 ``meep_identity_smoke.py`` itself before a keep mint from a cases file, so the reference
 MEEP is still judged by it.
 
-THE FAMILY ROWS were chosen from the corpus Tier C run of the 0.10 freeze, among the 91
+The family rows were chosen from the corpus Tier C run of the 1.0 freeze, among the 91
 rows that hold and whose capsule the schema carries (95 more hold but carry DFT monitors,
 which capsule schema 1 refuses): per family, the row with the fewest fixture bytes whose
 capsule, loaded on the NumPy reference with its recorded currents, carries the family

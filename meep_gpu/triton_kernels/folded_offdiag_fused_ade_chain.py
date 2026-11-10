@@ -1,7 +1,7 @@
 """Folded off-diagonal dispersive ``update_E`` welded to ``update_P`` — the
 Triton E->P product for the fold + tensor-epsilon + dispersion intersection.
 
-THE CELL, BY NAME. One corpus row reaches the E->P seam on the folded
+The cell, by name. One corpus row reaches the E->P seam on the folded
 off-diagonal dispersive ``update_E`` body: ``examples:absorbed_power_density.py``
 (a mirror plane, one surviving ``chi1inv`` row, one Lorentz pole, an active
 absorber, boundary kinds ``[periodic, mirror, periodic]``). Its E half is
@@ -15,7 +15,7 @@ product that spans that cell, and it is the LAST buildable, unbuilt seam-instanc
 in the Triton column of the fusion board.
 
 ===========================================================================
-THE SEAM CARRIES NOTHING THE RECURRENCE READS, AND THAT IS WHY THIS PRODUCT EXISTS
+The seam carries nothing the recurrence reads, and that is why this product exists
 ===========================================================================
 
 ``FdtdDriver.step`` runs::
@@ -38,7 +38,7 @@ fusion matrices record ``E->P: 15 instances, 0 blocked by the source seam,
 CEILING 15``.
 
 ===========================================================================
-THE SHAPE: ONE LAUNCH, THE CERTIFIED BODY LIFTED CONTIGUOUSLY, THE ARMS APPENDED
+The shape: one launch, the certified body lifted contiguously, the arms appended
 ===========================================================================
 
 The kernel is :func:`folded_offdiag_dispersive_update_e.folded_offdiag_dispersive_
@@ -52,7 +52,7 @@ signature (the runtime names, the ``constexpr`` names) each to be a prefix of th
 fused lists. What this module adds to the certified text is declared in
 :data:`LIFT_EDITS`, six entries, and nothing else.
 
-WHY THE E HALF IS NOT SPLIT PER COMPONENT. Every certified Triton ``update_E``
+Why the E half is not split per component. Every certified Triton ``update_E``
 writes all three components in one launch, and this body more than any: each
 partner term gathers ``D - sum(P)`` at FOUR neighbour addresses through
 ``_folded_dispersive_term``, on a folded axis including interior stored row 2.
@@ -64,7 +64,7 @@ rotated P slot. Here no rotation happens inside the launch at all — the ADE
 outputs are scratches, every P is read through the pointer the E half bound, and
 the host rotates AFTER the launch returns.
 
-WHY ONE SCRATCH PER DRIVEN COMPONENT. The orbit enumeration that licenses the
+Why one scratch per driven component. The orbit enumeration that licenses the
 shape (``parity/meep_gpu/probe_triton_ade_rotation_shape.py``, LEG 2) is about
 the buffer permutation ``dispersion.PolarizationState.update`` performs and never
 about the body that computes the values, so it transfers here unchanged: the
@@ -76,7 +76,7 @@ read set BY CONSTRUCTION, and :meth:`FoldedOffdiagFusedAdeChainPlan.run` asserts
 that disjointness before every launch, with the row volumes counted among the
 reads (the addition over the chain's inventory).
 
-WHAT IT COSTS: ``K * (d - 1)`` extra float32 field volumes, exactly as the chain
+What it costs: ``K * (d - 1)`` extra float32 field volumes, exactly as the chain
 pays — on the corpus row (K = 1, d = 3) two volumes. The one thing that does NOT
 match the reference after a step is the retired scratch: the reference's single
 ``_scratch`` holds the retired ``P_prev`` of the LAST driven component, the
@@ -86,7 +86,7 @@ and ``P_prev`` per (susceptibility, component) plus the last component's
 scratch, and says so.
 
 ===========================================================================
-WHAT IS FUSED, AND WHY THE POLE IS RE-READ RATHER THAN REGISTER-REUSED
+What is fused, and why the pole is re-read rather than register-reused
 ===========================================================================
 
 * **the drive.** ``update_P``'s drive is ``Fields.drive_field(component)``, which
@@ -107,15 +107,15 @@ WHAT IS FUSED, AND WHY THE POLE IS RE-READ RATHER THAN REGISTER-REUSED
   pole as a null too (its m3). ``p_now`` is therefore NOT a parameter: each pole
   pointer is bound exactly once and both halves read through it.
 
-EVERY OTHER LINE IS TRANSCRIBED FROM THE BODY IT REPLACES, and the transcription
-is CHECKED BY PARSING both sources rather than restated as data here.
+Every other line is transcribed from the body it replaces, and the transcription
+is checked by parsing both sources rather than restated as data here.
 ``test_triton_folded_offdiag_fused_ade_chain`` reads the certified kernels' own
 text with ``ast`` and requires the E body to be a statement-prefix and each ADE
 arm to be ``ade_update_p``'s lines modulo the declared renames; the device gate
 re-runs that check beside the bytes.
 
 ===========================================================================
-SCOPE, AND WHY EACH BOUND IS A REFUSAL BY NAME
+Scope, and why each bound is a refusal by name
 ===========================================================================
 
 * **the E half's own admission, whole.** Real float32 storage, an active PML, a
@@ -143,7 +143,7 @@ NOT WIRED, and dispatch is unchanged. ``launch.plan_step`` does not import this
 module and no arm table names it, exactly as the three other E->P chain products
 are held: :data:`INSTALLABLE` is ``False`` and :data:`INSTALLABLE_REASON` names
 the slot protocol the composer would have to grow. The product exists to be
-MEASURED — ``parity/meep_gpu/gate_triton_folded_offdiag_fused_ade_chain.py`` is
+measured — ``parity/meep_gpu/gate_triton_folded_offdiag_fused_ade_chain.py`` is
 its byte gate — and a default run still steps this seam on the array path.
 """
 
@@ -241,7 +241,7 @@ POLICY: Dict[str, Any] = {
 #: there is no deposit to repair and no repair path to consult.
 CARRIES_DEPOSIT_REPAIR = False
 
-#: THE COMPOSITION IS REFUSED, ON EVERY ROW, FOR A MEASURED REASON OF ITS OWN.
+#: The composition is refused, on every row, for a measured reason of its own.
 #: ``launch._declared_uninstallable`` reads this flag off the module if the
 #: product is ever tabled; until then it is a declaration the laptop test pins.
 INSTALLABLE = False
@@ -266,7 +266,7 @@ INSTALLABLE_REASON = (
 RUNTIME_ARGUMENTS = (3 + 3 + 3 + 3 + 3 * MAX_POLES + 6 + 6 + 3 + 2 + 4
                      + 3 * 7 * CHAIN_MAX_POLES)
 
-#: THE SIX EDITS THIS MODULE MAKES TO THE TEXT IT LIFTS, and nothing else. Each
+#: The six edits this module makes to the text it lifts, and nothing else. Each
 #: ``line`` is a needle in the certified source it came from (the folded
 #: off-diagonal dispersive ``update_E`` body or ``kernels.ade_update_p``) and
 #: each ``became`` a needle in this kernel's text, or a parenthesised note where
@@ -410,7 +410,7 @@ if triton is not None:  # pragma: no cover - device code, certified by the byte 
         """Folded off-diagonal dispersive ``update_E`` welded to ``update_P``:
         both driver passes, ONE grid.
 
-        THE E HALF IS THE CERTIFIED BODY, CONTIGUOUS AND VERBATIM:
+        The E half is the certified body, contiguous and verbatim:
         ``folded_offdiag_dispersive_update_e.folded_offdiag_dispersive_
         constitutive_step``, every statement in order, calling the same JIT helpers
         (``_load_d_minus_p``, ``_folded_dispersive_term``, ``offdiag_update_e.
@@ -422,7 +422,7 @@ if triton is not None:  # pragma: no cover - device code, certified by the byte 
         ordered ``D - P0 - P1 - ...`` subtraction happens INSIDE ``_load_d_minus_p``
         at every gathered address, which is why no pole register is visible here.
 
-        THE ADE HALF IS ``kernels.ade_update_p``, MEEP's expression on the four
+        The ADE half is ``kernels.ade_update_p``, MEEP's expression on the four
         realnum words, one arm per (component, pole slot), appended AFTER component
         2's store so the certified span is unbroken. Exactly two of its loads are
         replaced:
@@ -769,7 +769,7 @@ def folded_offdiag_fused_ade_chain_kernel() -> Any:
 def folded_offdiag_fused_ade_chain_coverage(fields: Any, pml: Any) -> Coverage:
     """May ONE launch span ``update_E`` -> ``update_P`` for this configuration?
 
-    THERE IS NO SOURCE CLAUSE, AND THE ABSENCE IS DELIBERATE. Every other fused
+    There is no source clause, and the absence is deliberate. Every other fused
     product on this backend must be told the source inventory, because the driver
     injects INSIDE its seam and ignorance is not an empty set. This seam has no
     injection in it at all — ``driver.step`` runs ``update_E``, then the electric
@@ -808,7 +808,7 @@ def folded_offdiag_fused_ade_chain_coverage(fields: Any, pml: Any) -> Coverage:
                                for reason in verdict.reasons)
             if component in electric_names:
                 driven_pairs.append((index, state, component))
-        # THE TWO HALVES MUST AGREE ABOUT WHICH COMPONENTS THIS STATE DRIVES.
+        # The two halves must agree about which components this state drives.
         # The E chain subtracts wherever the pole partition lists this state and
         # the ADE half advances wherever `driven()` names it; the two are one
         # attribute in the reference (dispersion.py:652-656) and a disagreement
@@ -823,7 +823,7 @@ def folded_offdiag_fused_ade_chain_coverage(fields: Any, pml: Any) -> Coverage:
                 f"polarization {index}: driven()={tuple(driven)!r} disagrees with "
                 f"the components whose D - sum P chain subtracts it ({subtracted!r})")
 
-    # SOMETHING MUST BE DRIVEN. With no recurrence to weld this product would
+    # Something must be driven. With no recurrence to weld this product would
     # span one sub-step, not two, and that configuration is the E half's own.
     if not driven_pairs:
         reasons.append(
@@ -848,7 +848,7 @@ def folded_offdiag_fused_ade_chain_coverage(fields: Any, pml: Any) -> Coverage:
                     f"the state's own P; the pointer the ADE arm re-reads would "
                     f"be a different array")
 
-    # THE SEAM'S OWN CONDITION, named rather than inherited: the register this
+    # The seam's own condition, named rather than inherited: the register this
     # kernel hands the recurrence is ``src``, which is MEEP's ``w`` on every cell
     # (update_pols.cpp:44, ``w = f_w ? f_w : f`` per chunk): the E half stores it
     # into f_w on the layer's chunks and as the field everywhere else. That is what
@@ -871,7 +871,7 @@ def folded_offdiag_fused_ade_chain_coverage(fields: Any, pml: Any) -> Coverage:
             "layer's chunks, the stored E elsewhere), so another reader would "
             "drive the polarization from a different field")
 
-    # THE EXTENT THE DROPPED ADE GUARD ASSUMED. This kernel emits ONE bounds
+    # The extent the dropped ADE guard assumed. This kernel emits ONE bounds
     # guard — the E half's, over the stored extent — so every recurrence volume
     # must carry exactly that many cells, or the P half would run over a range
     # its own certified kernel would not have.
@@ -918,7 +918,7 @@ def explain_folded_offdiag_fused_ade_chain(fields: Any, pml: Any) -> Coverage:
 class FoldedOffdiagFusedAdeChainPlan:
     """ONE launch that performs two driver passes, plus the reference rotation.
 
-    COMPOSITION OVER THE CERTIFIED E PLAN, NOT A SUBCLASS. The E-half bindings —
+    Composition over the certified E plan, not a subclass. The E-half bindings —
     the boundary-code / wall-axis / ghost-weight validation, the output-alias
     refusal, the ``MAX_POLES`` check, the dead-slot padding and the live pole
     binding's per-launch resolution with its live-P-versus-output refusal — are
@@ -932,7 +932,7 @@ class FoldedOffdiagFusedAdeChainPlan:
     arbiter asserts the exact per-cycle launch count on every filled slot, and that
     assertion is what stops a slot passing by not executing.
 
-    THE ROTATION IS PERFORMED HERE, AFTER THE LAUNCH, and it is
+    The rotation is performed here, after the launch, and it is
     ``dispersion.PolarizationState.update``'s (dispersion.py:687-691) over a
     DIFFERENT buffer set: one scratch per driven component rather than one shared
     per susceptibility. The three-cycle each (susceptibility, component) walks is
@@ -940,13 +940,13 @@ class FoldedOffdiagFusedAdeChainPlan:
     what makes the launch's write set disjoint from its read set. See the module
     docstring for why the chain's orbit enumeration transfers to this body.
 
-    THE POINTERS ARE RESOLVED PER LAUNCH, DELIBERATELY. The rotation moves which
+    The pointers are resolved per launch, deliberately. The rotation moves which
     allocation holds ``P``, ``P_prev`` and each scratch on every step, so a plan
     that cached them would be stale after the FIRST step — and stale in a way that
     still computes, giving a smooth wrong field. The ORDER is cached (it is fixed
     for the run) and re-checked every call by the E half's own ``LivePoleBinding``.
 
-    THIS PLAN OWNS THE ROTATION FOR THE RUN. ``PolarizationState.update`` rotates a
+    This plan owns the rotation for the run. ``PolarizationState.update`` rotates a
     single shared ``_scratch``; interleaving it with this plan would hand one
     component's launch a buffer another slot already owns. ``_scratch`` is kept
     pointing at the FIRST driven component's scratch so the engine object is never
@@ -999,7 +999,7 @@ class FoldedOffdiagFusedAdeChainPlan:
 
         partition = poles_per_component(fields)
         self._order = {name: tuple(states) for name, states in partition.items()}
-        # THE CERTIFIED E PLAN, built with its own argument list. Its pole order
+        # The certified E plan, built with its own argument list. Its pole order
         # is this plan's order — one derivation, so the subtraction slots and the
         # ADE arms cannot disagree about which state sits in which slot.
         self._e = _fod.FoldedOffdiagDispersiveConstitutivePlan(
@@ -1017,8 +1017,8 @@ class FoldedOffdiagFusedAdeChainPlan:
                     f"{CHAIN_MAX_POLES} ADE arms per component and the predicate "
                     f"refuses more")
 
-        # THE READ INVENTORY the alias check holds the ADE outputs against. The
-        # chain's set plus THE SIX ROW VOLUMES: the E half gathers them at
+        # The read inventory the alias check holds the ADE outputs against. The
+        # chain's set plus the six row volumes: the E half gathers them at
         # neighbour offsets while the outputs are being written, so a scratch
         # that IS a row volume would make the answer depend on block schedule.
         read_ids = {id(array) for array in targets + auxiliaries + sources
@@ -1029,7 +1029,7 @@ class FoldedOffdiagFusedAdeChainPlan:
         self._index_of = {id(state): index
                           for index, state in enumerate(self._states)}
 
-        # ONE SCRATCH PER DRIVEN COMPONENT — the shape, allocated. The FIRST driven
+        # One scratch per driven component — the shape, allocated. The FIRST driven
         # component takes the susceptibility's own ``_scratch`` and the rest are
         # new, so the extra is ``K * (d - 1)`` volumes and not ``K * d``; that is
         # the figure the shape probe's LEG 3 costed and this counter reports what
@@ -1115,7 +1115,7 @@ class FoldedOffdiagFusedAdeChainPlan:
     def _check_aliasing(self, chain: Sequence[Sequence[Tuple[Any, ...]]]) -> None:
         """No ADE output is an array this launch reads, and no two share one.
 
-        THE ALIAS CHECK IS NOT DECORATION. The whole licence for this shape is that
+        The alias check is not decoration. The whole licence for this shape is that
         the launch never writes a buffer it reads, and the rotation moves those
         identities every step. The check is O(poles) integer comparisons over lists
         resolved for the launch anyway, and it is what turns the orbit enumeration
@@ -1147,7 +1147,7 @@ class FoldedOffdiagFusedAdeChainPlan:
     def _arguments(self, chain: Sequence[Sequence[Tuple[Any, ...]]]) -> List[Any]:
         """Every runtime argument, in the order the signature declares them.
 
-        THE CERTIFIED RUN'S ORDER FIRST — targets, auxiliaries, sources, inverse
+        The certified run's order first — targets, auxiliaries, sources, inverse
         epsilons, the live pole slots (padded by the certified plan), the six row
         slots, the six coefficient columns, the three ghost weights, the chunk
         record and the row presence, the geometry — read off the composed E plan
@@ -1294,7 +1294,7 @@ def plan_folded_offdiag_fused_ade_chain(fields: Any, pml: Any,
 # ``launch.plan_step`` does not import this module, ``launch.FAMILY_MODULES``
 # does not name it and ``launch.CERTIFIED_FUSED_PRODUCTS`` does not table it, so
 # nothing about any existing arm's behaviour changes and a default run still
-# steps this seam on the array path. The product exists to be MEASURED:
+# steps this seam on the array path. The product exists to be measured:
 # ``parity/meep_gpu/gate_triton_folded_offdiag_fused_ade_chain.py`` is its byte
 # gate. Composition is a separate change with its own disjointness argument,
 # because this product spans TWO slots and the planner's arm table assigns at

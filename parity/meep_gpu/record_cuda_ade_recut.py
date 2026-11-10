@@ -1,6 +1,6 @@
 """Transcribe an ADE ``update_P`` RE-CUT into ``cuda_kernels/certification.json``.
 
-WHY A SECOND RECORDER AND NOT ``record_cuda_regate.py``. That tool describes a
+Why a second recorder and not ``record_cuda_regate.py``. That tool describes a
 campaign whose subdirectories are FAMILIES, each joined to the block whose artifact
 directory has that basename. An ADE re-cut has no family layer: ``run_cuda_ade_recut.sh``
 writes ``<policy>/gate.json`` directly under the campaign, for one family, so the
@@ -11,7 +11,7 @@ declared block must already name this kernel module, these certified kernels and
 these device-source digests, or the run is a new certification rather than a re-cut
 and does not belong in a block that says otherwise.
 
-WHAT A RE-CUT IS FOR. A dated block records what a release was cut against.
+What a re-cut is for. A dated block records what a release was cut against.
 ``test_ade_update_p.py`` then re-checks it against the tree, and a subject that moved
 afterwards has to be DECLARED in ``post_certification_edits`` with the argument for
 why it cannot reach the verdict. That mechanism is a substitute for a run, and it
@@ -21,28 +21,40 @@ answer was to run the gate again rather than write a sixth argument. This tool
 records that run. It does NOT edit the dated block, whose value is precisely that it
 still says what the original release was cut against.
 
-WHAT IT REFUSES TO DO.
+What it refuses to do.
 
-* IT NEVER INVENTS A VERDICT. Both policy legs must carry
+* It never invents a verdict. Both policy legs must carry
   ``canonical_verdict.released`` true. One unreleased leg refuses the whole re-cut.
-* IT NEVER RECORDS A RE-CUT THAT DID NOT RUN ON THE SHIPPING BYTES. The campaign's
+* It never records a re-cut that did not run on the shipping bytes. The campaign's
   own ``SUBJECT_DIGESTS.txt`` is re-hashed against the working tree file by file, and
   the first disagreement is named and refuses. That check is the entire point of the
   block: without it, "re-cut on today's sources" is a sentence rather than a fact.
-* IT NEVER CALLS A NEW CERTIFICATION A RE-CUT. The device-source digests both legs
+* It never calls a new certification a re-cut. The device-source digests both legs
   stamp must equal the ones the declared block already carries. Device code that
   moved means the kernels are not the certified ones, and that is a new block with
   new prose, not this.
-* IT NEVER WRITES OVER A RECORD THAT ALREADY DISAGREES WITH ITS OWN DIRECTORIES, and
+* It never writes over a record that already disagrees with its own directories, and
   never over an existing key.
-* IT DERIVES EVERY FACT AND TYPES NONE. Times, host, device, library versions,
+* It derives every fact and types none. Times, host, device, library versions,
   policies, per-policy counts, gate name and digest, kernels, subject digests and the
   artifact manifest are all read out of the payloads and the tree.
+
+A new certification, when the device strings moved (``--new-certification``). A re-cut
+refuses a run whose device strings differ from the block it re-cuts, and no re-cut can
+then describe the kernels that ship. With the flag the run is recorded as a NEW
+certification of the same family instead: every refusal above stands except that one,
+which turns around (a run whose device strings equal the current certification's is a
+re-cut, and is refused as a new one), and the block names the certification it follows
+(``new_certification_after``) rather than one it re-cuts. The dated block is never
+edited. The family's certifications form a chain, the first release and then each block
+that certifies anew after the one before it; a re-cut re-cuts the head of that chain
+(:func:`current_certification`), which is ``--re-cuts``'s default.
 
 USAGE
 
     python record_cuda_ade_recut.py --campaign results/cuda_ade_recut_2026-09-11T1829
     python record_cuda_ade_recut.py --campaign results/cuda_ade_recut_2026-09-11T1829 --write
+    python record_cuda_ade_recut.py --campaign results/cuda_ade_recut_<stamp> --new-certification --write
 
 EXIT CODE. Non-zero on any refusal, and a refusal is a statement that the run is not
 describable as it stands -- the remedy is another run or a correction to the tree,
@@ -78,6 +90,27 @@ POLICY_LEGS = ("keep", "flush")
 #: per subject, relative to ``the repository root``.
 SUBJECT_MANIFEST = "SUBJECT_DIGESTS.txt"
 
+#: The family's first certification, the release record every later block follows.
+FIRST_CERTIFICATION = "ade_2026-08-19"
+#: The key a new certification names the certification it follows by.
+NEW_CERTIFICATION_KEY = "new_certification_after"
+
+
+def current_certification(record: dict) -> str:
+    """The head of the family's certification chain: :data:`FIRST_CERTIFICATION`, then
+    each block that certifies anew after the one before it (the latest by its recorded
+    time, where two follow one)."""
+    name, seen = FIRST_CERTIFICATION, set()
+    while name not in seen:
+        seen.add(name)
+        later = sorted((str(block.get("recorded_utc") or ""), key)
+                       for key, block in record.items()
+                       if isinstance(block, dict) and block.get(NEW_CERTIFICATION_KEY) == name)
+        if not later:
+            return name
+        name = later[-1][1]
+    raise SystemExit(f"the certification chain from {FIRST_CERTIFICATION} loops at {name}")
+
 
 def _read_subject_manifest(campaign: Path) -> dict:
     """``{repo-relative path: sha256}`` off the campaign's own manifest file."""
@@ -107,10 +140,11 @@ def _subject_drift(subjects: dict) -> list[str]:
 
 
 def _declarations(pairs: list[str], subjects: dict,
-                  device_module: str | None = None) -> tuple[dict, list[dict], list[str]]:
+                  device_module: str | None = None,
+                  new_certification: bool = False) -> tuple[dict, list[dict], list[str]]:
     """``--declare path=why`` -> revision digests and edit entries, plus refusals.
 
-    THE ONE SUBJECT THAT CANNOT AVOID MOVING is this family's own test module: it is
+    The one subject that cannot avoid moving is this family's own test module: it is
     in the gate's subject list, and pointing it at a newly minted block is an edit to
     a subject of that block. There is no run that can precede itself, so this is where
     a DECLARATION is the honest instrument rather than a substitute for one -- and it
@@ -131,7 +165,7 @@ def _declarations(pairs: list[str], subjects: dict,
                             f"only a subject of the run can be declared")
             continue
         if device_module and name == device_module:
-            # THE ONE SUBJECT A DECLARATION CANNOT COVER, refused rather than asserted.
+            # The one subject a declaration cannot cover, refused rather than asserted.
             # Every other subject is host-side: the gate's verdict is about the DEVICE
             # STRINGS, and the only file in the subject list that carries them is the
             # kernel module. An earlier revision wrote "The file carries no device
@@ -156,8 +190,12 @@ def _declarations(pairs: list[str], subjects: dict,
         entries.append({"what": why, "touches_device_code": False,
                         "how_that_was_established": (
                             "record_cuda_ade_recut.py required both policy legs of "
-                            "this run to stamp device-source digests byte-identical "
-                            "to the ones the re-cut block certifies, recomputed this "
+                            "this run to stamp "
+                            + ("one set of device-source digests, the ones this block "
+                               "certifies anew" if new_certification else
+                               "device-source digests byte-identical to the ones the "
+                               "re-cut block certifies")
+                            + ", recomputed this "
                             "file's digest from the tree rather than accepting one, "
                             "and REFUSES a declaration naming the kernel_module -- "
                             "the only subject that carries a device string. So "
@@ -240,26 +278,37 @@ _WHAT_THIS_IS = (
     "policies, against the bytes in the tree TODAY. It adds no kernel, widens no "
     "predicate and closes none of the gaps that block lists; the device strings are "
     "byte-identical to the ones it recorded, which this tool refuses to proceed "
-    "without. WHAT IT SAYS ABOUT SUBJECTS IS IN _subject_sha256_is AND NOWHERE ELSE: "
+    "without. What it says about subjects is in _subject_sha256_is and nowhere else: "
     "an earlier revision of this sentence asserted that EVERY subject hashes to what "
     "the checkout holds, which was the one fact the re-cut exists to state and was "
     "false for any block carrying a declared edit."
 )
 
+_WHAT_THIS_IS_NEW = (
+    "A NEW CERTIFICATION of the ADE update_P kernels, made because their device strings "
+    "moved after the certification it follows (new_certification_after), so no re-cut "
+    "of that block could describe the kernels that ship. The same gate was run on "
+    "device, under both float32 subnormal policies, against the bytes in the tree "
+    "TODAY: the same family, the same certified kernel names, cases, shapes and "
+    "mutation legs, and the device strings it compiled, which are the ones in "
+    "device_source_sha256. What it says about subjects is in _subject_sha256_is."
+)
+
 _WHAT_IT_DOES_NOT_CLAIM = [
-    "IT DOES NOT REPLACE THE DATED BLOCK. That block records what the original "
+    "It does not replace the dated block. That block records what the original "
     "release was cut against, including the post_certification_edits that carried "
     "it between runs, and it keeps its own artifact directory and its own digest. "
     "Read the coverage numbers, the fold accounting and the open gaps there.",
-    "IT IS NOT A COVERAGE CLAIM. Same gate, same cases, same shapes, same mutation "
+    "It is not a coverage claim. Same gate, same cases, same shapes, same mutation "
     "legs. The only new facts are the date and the bytes.",
-    "IT IS NOT A WIRING CLAIM. Certification is a statement about bytes.",
-    "IT TIMES NOTHING. The box is shared and this is a correctness re-cut.",
+    "It is not a wiring claim. Certification is a statement about bytes.",
+    "It times nothing. The box is shared and this is a correctness re-cut.",
 ]
 
 
 def build_block(campaign: Path, payloads: dict, subjects: dict,
-                re_cuts: str, prior: dict, revisions: dict, edits: list) -> dict:
+                re_cuts: str, prior: dict, revisions: dict, edits: list,
+                new_certification: bool = False) -> dict:
     stamps = _stamps(campaign)
     environments = [json.loads(text) for text in sorted(stamps["environment"])]
     environment = environments[0] if len(environments) == 1 else None
@@ -269,10 +318,11 @@ def build_block(campaign: Path, payloads: dict, subjects: dict,
     gate_digests = sorted({payload.get("gate_sha256") for payload in payloads.values()
                            if isinstance(payload.get("gate_sha256"), str)})
     block = {
-        "_what_this_is": _WHAT_THIS_IS,
-        "_what_it_does_NOT_claim": _WHAT_IT_DOES_NOT_CLAIM,
+        "_what_this_is": _WHAT_THIS_IS_NEW if new_certification else _WHAT_THIS_IS,
+        "_what_it_does_NOT_claim": (_WHAT_IT_DOES_NOT_CLAIM[:1] + _WHAT_IT_DOES_NOT_CLAIM[2:]
+                                    if new_certification else _WHAT_IT_DOES_NOT_CLAIM),
         "track": "hand-CUDA",
-        "re_cuts": re_cuts,
+        NEW_CERTIFICATION_KEY if new_certification else "re_cuts": re_cuts,
         "recorded_utc": started[0],
         "_recorded_utc_is": (
             f"the EARLIEST started_utc in the tree, by the convention at the head of "
@@ -293,7 +343,7 @@ def build_block(campaign: Path, payloads: dict, subjects: dict,
         "gate": gates[0] if len(gates) == 1 else gates,
         "gate_sha256": gate_digests[0] if len(gate_digests) == 1 else gate_digests,
         "kernel_module": prior.get("kernel_module"),
-        # DERIVED FROM THE RUN, not copied from the block it re-cuts: the gate stamps
+        # Derived from the run, not copied from the block it re-cuts: the gate stamps
         # the names it actually compiled, and a re-cut that covered a different set is
         # exactly what this block must be able to say. main() refuses when the two
         # legs disagree or when the set is not the one the dated block certified.
@@ -338,8 +388,13 @@ def main(argv=None) -> int:
     parser.add_argument("--campaign", required=True,
                         help="the re-cut directory, e.g. "
                              "results/cuda_ade_recut_2026-09-11T1829")
-    parser.add_argument("--re-cuts", default="ade_2026-08-19",
-                        help="the certification block this run re-cuts")
+    parser.add_argument("--re-cuts", default=None,
+                        help="the certification block this run re-cuts (or, with "
+                             "--new-certification, follows); default: the head of the "
+                             "family's certification chain")
+    parser.add_argument("--new-certification", action="store_true",
+                        help="record a run whose device strings moved as a new "
+                             "certification of the family, following --re-cuts")
     parser.add_argument("--block", default="",
                         help="block key to write (default: the directory basename)")
     parser.add_argument("--declare", action="append", default=[],
@@ -361,12 +416,14 @@ def main(argv=None) -> int:
     record = _record()
     disagreements = record_disagrees_with_its_own_directories(record)
     for line in disagreements:
-        print(f"  RECORD DISAGREES WITH ITS OWN DIRECTORY  {line}", flush=True)
+        print(f"  record disagrees with its own directory  {line}", flush=True)
     if disagreements:
         print("\n  refusing to write into a record that already disagrees with its "
               "own artifacts", flush=True)
         return 1
 
+    if arguments.re_cuts is None:
+        arguments.re_cuts = current_certification(record)
     prior = record.get(arguments.re_cuts)
     if not isinstance(prior, dict):
         print(f"  REFUSED   the record has no block named {arguments.re_cuts!r}",
@@ -393,7 +450,8 @@ def main(argv=None) -> int:
                         f"nothing says which bytes this run read")
     else:
         revisions, edits, declaration_refusals = _declarations(
-            arguments.declare, subjects, prior.get("kernel_module"))
+            arguments.declare, subjects, prior.get("kernel_module"),
+            arguments.new_certification)
         refusals.extend(declaration_refusals)
         for line in _subject_drift(subjects):
             if line.split(":")[0] in revisions:
@@ -416,14 +474,30 @@ def main(argv=None) -> int:
                 f"{sorted(prior.get('certified_kernels') or ())}. A different set is "
                 f"a new certification, not a re-cut of this block.")
         recorded = prior.get("device_source_sha256") or {}
-        for leg, payload in sorted(payloads.items()):
-            for name, digest in sorted(
-                    (payload.get("device_source_sha256") or {}).items()):
-                if name in recorded and recorded[name] != digest:
-                    refusals.append(
-                        f"{leg}/ compiled a DIFFERENT {name}: {digest[:16]} against "
-                        f"{recorded[name][:16]} in {arguments.re_cuts}. That is a new "
-                        f"certification, not a re-cut of this block.")
+        moved = sorted({name for payload in payloads.values()
+                        for name, digest in (payload.get("device_source_sha256")
+                                             or {}).items()
+                        if name in recorded and recorded[name] != digest})
+        strings = {leg: payload.get("device_source_sha256") or {}
+                   for leg, payload in sorted(payloads.items())}
+        if len({json.dumps(table, sort_keys=True) for table in strings.values()}) != 1:
+            refusals.append(f"the two legs compiled different device strings: "
+                            f"{ {leg: sorted(t.items()) for leg, t in strings.items()} }")
+        elif arguments.new_certification and not moved:
+            refusals.append(
+                f"every device string equals the one {arguments.re_cuts} recorded, so this "
+                f"run is a re-cut of that block, not a new certification: run without "
+                f"--new-certification")
+        elif not arguments.new_certification:
+            for leg, payload in sorted(payloads.items()):
+                for name, digest in sorted(
+                        (payload.get("device_source_sha256") or {}).items()):
+                    if name in recorded and recorded[name] != digest:
+                        refusals.append(
+                            f"{leg}/ compiled a DIFFERENT {name}: {digest[:16]} against "
+                            f"{recorded[name][:16]} in {arguments.re_cuts}. That is a new "
+                            f"certification, not a re-cut of this block "
+                            f"(--new-certification records it as one).")
 
     key = arguments.block or campaign.name
     if key in record:
@@ -440,11 +514,11 @@ def main(argv=None) -> int:
         return 1
 
     block = build_block(campaign, payloads, subjects, arguments.re_cuts, prior,
-                        revisions, edits)
+                        revisions, edits, arguments.new_certification)
     print(f"\n  WOULD WRITE certification.json:{key}" if not arguments.write
           else f"\n  WRITING certification.json:{key}", flush=True)
-    print(f"    re-cuts {block['re_cuts']}  on {block['host']}  {block['device']}",
-          flush=True)
+    print(f"    {'follows' if arguments.new_certification else 're-cuts'} "
+          f"{arguments.re_cuts}  on {block['host']}  {block.get('device')}", flush=True)
     print(f"    policies {block['policies_cut_under']}", flush=True)
     for leg in POLICY_LEGS:
         row = block["per_policy"][leg]

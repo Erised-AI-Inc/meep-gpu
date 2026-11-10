@@ -11,7 +11,7 @@ module is the one Metal spelling of the same ladder, for every family that carri
 folded pass (the beta curls, the BFAST curl, and every product that lifts their
 bodies).
 
-IN REGISTER, AFTER THE FORMS, BEFORE THE STORES. A certified curl body ends its
+In register, after the forms, before the stores. A certified curl body ends its
 per-chunk forms with ``n{t}`` (the ``fu`` word the guarded store writes) and ``v{t}``
 (the field word the one-line store writes) in registers. The pass runs between the
 two: it updates ``n{t}`` and ``v{t}`` by name, so the certified store lines are kept
@@ -36,7 +36,7 @@ included), and ``x - (+0)`` is ``x``, so a masked cell keeps its word, ``-0`` in
 ``fu`` is touched on its own cells only: ``n{t}`` is stored only under ``du{t}``.
 Complex storage scales each part by the real coefficient (``part_products.scale``).
 
-WHAT IS CHECKED, NOT ASSUMED. :func:`with_folded_pass` and :func:`insert_folded_pass`
+What is checked, not assumed. :func:`with_folded_pass` and :func:`insert_folded_pass`
 require every anchor they edit to occur exactly once, and :func:`check_forms` requires
 the locals the ladder names (``du{t}``, ``n{t}``, ``v{t}``, the three ``si_*``) to be
 declared by the certified text the pass is inserted into, so an emitter that renamed a
@@ -264,7 +264,7 @@ def insert_split_pass(source: str, block: str, owner: str) -> str:
     after the unique statement declaring that ``v`` (``float v{t} = `` or
     ``float2 v{t} = ``), at its indentation. Every anchor must occur exactly once.
 
-    THE ``fu`` WORD AND THE CURL'S ``n`` ARE TWO REGISTERS HERE. In a split source the
+    The ``fu`` word and the curl's ``n`` are two registers here. In a split source the
     displacement ``v{t}`` is formed AFTER the guarded ``fu`` store, from ``n{t}`` -- the
     curl step's word, which MEEP's curl stores before its pass runs. So the ladder's
     ``fu`` update is written to its own local ``nb{t}`` and the store of target ``t``

@@ -11,7 +11,7 @@ DEVICE STATUS: **RELEASED 2026-08-21**, the GPU host RTX A6000 (physical GPU 1, 
     ``results/triton_folded_complex_fused_magnetic_pair_2026-08-21/keep/gate.json``,
     ``release.released = true``, 0 source drift against the tree.
 
-    SEVEN RUNS, AND THE SIX THAT FAILED ARE WHY THE SEVENTH MEANS ANYTHING. Each
+    Seven runs, and the six that failed are why the seventh means anything. Each
     refusal was a defect in THIS HARNESS rather than in the kernel, and each is
     fixed in place with the measurement that found it written beside it:
 
@@ -31,14 +31,14 @@ DEVICE STATUS: **RELEASED 2026-08-21**, the GPU host RTX A6000 (physical GPU 1, 
     * the separate ORACLE route asked only the plain admission and took the whole
       off-diagonal leg down with it.
 
-    STILL NOT WIRED. A weld licenses a claim, not a dispatch.
+    Still not wired. A weld licenses a claim, not a dispatch.
 
-    THE RELEASE ABOVE PREDATES THE PER-PART ALIGNMENT. The kernel now steps the
+    The release above predates MEEP's per-part forms. The kernel now steps the
     chunk record's forms per stored part and applies each parity word as a real
     scale per part; the release record describes the previous kernel and the gate
-    is re-run on the aligned one at certification.
+    is re-run on the current one at certification.
 
-THE CLAIM THIS GATE IS ALLOWED TO SUPPORT, once it runs: for every configuration
+The claim this gate is allowed to support, once it runs: for every configuration
 :func:`~meep_gpu.triton_kernels.folded_complex_fused_magnetic_pair.folded_complex_fused_magnetic_pair_coverage`
 admits, ONE launch of ``folded_complex_fused_curl_constitutive_B`` leaves the engine
 in a state that is BIT-IDENTICAL, PER COMPLETE ``driver.step()``, to
@@ -58,10 +58,10 @@ constitutive ``f_w`` history. Comparison is on the uint32 view — TWO words per
 complex64 cell. ``allclose`` appears nowhere.
 
 ===========================================================================
-THE ONE THING THIS GATE MEASURES THAT NO SIBLING DOES
+The one thing this gate measures that no sibling does
 ===========================================================================
 
-**THE PARITY CHAIN ORDER.** :mod:`.folded_fused_magnetic_pair` composes a
+**The parity chain order.** :mod:`.folded_fused_magnetic_pair` composes a
 destination's parities into one compile-time ``+-1``; this kernel applies them one
 at a time, in the driver's order, because that is what the array path does. Each
 application is the host-rounded ``+-1.0`` word times each stored part
@@ -83,13 +83,13 @@ The previous kernel's whole-complex parity product (a ``(+-1, +0)`` coefficient
 with its zero cross terms) is what made the order observable at signed zeros.
 
 ===========================================================================
-WHAT THE GATE REFUSES TO INFER
+What the gate refuses to infer
 ===========================================================================
 
 * **Bytes alone cannot prove the fused path ran.** A silent fallback to the array
   path is byte-identical to the array path by construction. Every launch is counted
   through a proxy that owns the kernel object, every substitution is counted per
-  route in the installer, and one ARMED HARNESS MUTATION removes the substitution so
+  route in the installer, and one armed harness mutation removes the substitution so
   the counters — not the bytes — are what catches it.
 * **A no-op agreeing with a no-op is trivially identical.** Every compared array
   must MOVE during the leg; a leg whose magnetic trio is frozen in all three routes
@@ -123,9 +123,9 @@ POLICY, stamped and unchanged: ``num_warps=1`` (the settled cross-sub-step polic
 ``enable_fp_fusion=kernels.ENABLE_FP_FUSION`` (False). This gate does not tune and
 does not time.
 
-THE SUBNORMAL POLICY IS AN ARGUMENT, NOT A DEFAULT DECISION. ``--subnormal-policy``
+The subnormal policy is an argument, not a default decision. ``--subnormal-policy``
 drives every executor before the first device compile and the artifact records the
-stamp. Run it ONCE PER POLICY and keep both artifacts.
+stamp. Run it once per policy and keep both artifacts.
 
 Usage::
 
@@ -169,7 +169,7 @@ for _path in (HERE, API_ROOT):
 
 import flush_vacuity  # noqa: E402 - the flush not-applicable rule, beside this file
 
-#: THE PER-CASE SEED IS A SHA-256 DIGEST OF THE CASE NAME, never ``hash()``.
+#: The per-case seed is a SHA-256 digest of the case name, never ``hash()``.
 #: ``hash()`` of a str is salted per process (PYTHONHASHSEED), so a record naming a
 #: seeded state would not identify the state it measured — two runs of the same
 #: case would seed differently and the artifact could not say which one produced a
@@ -202,12 +202,12 @@ SUBNORMAL_NEEDLES = np.array(
 #: ``(name, dimensions, cell, boundaries, mirrors, k_point, pml, steps)``. A 2-D case
 #: is spelled with ``z = 0.0``.
 #:
-#: THE Z AXIS IS PERIODIC IN EVERY 2-D CASE, NOT METALLIC. These cells are 2-D, so z
+#: The Z axis is periodic in every 2-D case, not metallic. These cells are 2-D, so z
 #: is translationally invariant: MEEP does not loop over it and it carries no
 #: boundary condition. A metallic declaration there is a polarization filter, not a
 #: wall, and ``Grid`` refuses it by name (grid.py:842-877).
 #:
-#: EVERY ROW BELOW IS HERE BECAUSE ``branch_reachability`` DEMANDED IT. The first cut
+#: Every row below is here because ``branch_reachability`` demanded it. The first cut
 #: of this table folded Y in almost every case and carried no Bloch phase and no wall
 #: off the x axis, and that leg counted SIX shipped guards no case compiled — an
 #: unfolded PERIODIC Y, all three phase blocks, and the y and z wall clears. They are
@@ -224,20 +224,20 @@ CASES: Tuple[Tuple[str, int, Tuple[float, float, float], Any,
     # reflect row and the top-plane mask all live. This is the corpus class
     # (``special_kz_2_21_2`` / ``triangular_lattice_oblique``).
     #
-    # MEASURED: stored y = 20 and ``_far_reflect_rows`` answers 18 = stored - 2.
+    # Measured: stored y = 20 and ``_far_reflect_rows`` answers 18 = stored - 2.
     ("y_fold_periodic", 2, (3.2, 3.0, 0.0), "periodic", (("Y", 1),),
      (0.0, 0.0, 0.0), {"x": 5, "y": {"high": 5}}, 10),
-    # An ODD full count on the folded axis, at the SAME stored extent. MEASURED:
+    # An ODD full count on the folded axis, at the SAME stored extent. Measured:
     # stored y = 20 again and the reflect row is 17 = stored - 3. That pair is what
     # makes ``m5_reflect_row_baked`` a real discrimination rather than a shape
     # change: ``ny - 2`` is 18, exactly right on the row above and a whole cell
     # wrong here.
     ("y_fold_periodic_odd", 2, (3.2, 2.9, 0.0), "periodic", (("Y", 1),),
      (0.0, 0.0, 0.0), {"x": 5, "y": {"high": 5}}, 10),
-    # ODD MIRROR PHASE: the parity words are (-1, +0) near and (+1, +0) far.
+    # Odd mirror phase: the parity words are (-1, +0) near and (+1, +0) far.
     ("y_fold_periodic_odd_phase", 2, (3.2, 3.0, 0.0), "periodic", (("Y", -1),),
      (0.0, 0.0, 0.0), {"x": 5, "y": {"high": 5}}, 10),
-    # A FOLD ON X WITH AN UNFOLDED PERIODIC Y — the ghost rule's wrap branch on an
+    # A fold on X with an unfolded periodic Y — the ghost rule's wrap branch on an
     # axis nothing folds, which every Y-folding case leaves uncompiled.
     ("x_fold_periodic_open_y", 2, (3.0, 3.2, 0.0), "periodic", (("X", 1),),
      (0.0, 0.0, 0.0), {"x": {"high": 5}, "y": 5}, 10),
@@ -345,7 +345,7 @@ DEFAULT_MUTATION_CASE = "y_fold_periodic"
 
 #: Which VALUE CLASS each mutation is scored under. Default ``uniform``.
 #:
-#: THE TWO ORDERING MUTATIONS ARE SCORED UNDER ``zero_lattice``: every cell a
+#: The two ordering mutations are scored under ``zero_lattice``: every cell a
 #: ``(+-0, +-0)`` pair, the class at which the previous whole-complex parity product
 #: made the order observable (signed zeros canonicalised by the zero cross terms).
 #: Per part each application is exact, so both are declared nulls, and the null is
@@ -374,21 +374,21 @@ MUTATION_STEPS_FOR: Dict[str, int] = {
 }
 
 #: What establishes that a mutation declared ``unreached`` is a REAL defect. Empty
-#: since the per-part alignment: the two parity-chain mutations it named are nulls
-#: now (``+-1.0`` parity words commute and fold exactly, part by part).
+#: since 1.0 adopted MEEP's per-part forms: the two parity-chain mutations it named
+#: are nulls now (``+-1.0`` parity words commute and fold exactly, part by part).
 #:
 #: ``unreached`` is a third expectation beside ``caught`` and ``null``, and it exists
 #: because collapsing the two is how a gate lies in both directions. A ``null`` says
-#: THE REWRITE CHANGES NOTHING — the defect is not a defect. ``unreached`` says the
+#: the rewrite changes nothing — the defect is not a defect. ``unreached`` says the
 #: defect IS real, names what proves it, and records that THIS gate's device legs do
 #: not reach it.
 #:
-#: THE VERDICT RULE IS NOT SOFTER FOR IT. An ``unreached`` mutation must come back
+#: The verdict rule is not softer for it. An ``unreached`` mutation must come back
 #: UNCAUGHT — a catch means the declaration is stale and the entry must move to
 #: ``caught`` — and it must name its evidence here, or the gate fails.
 MUTATION_EVIDENCE: Dict[str, str] = {}
 
-#: THE METAL BOARD REACHED THE SAME POSITION INDEPENDENTLY, and that is worth having
+#: The Metal board reached the same position independently, and that is worth having
 #: beside the two entries above rather than only in a report.
 #: ``gate_metal_folded_complex_fused_magnetic_pair.py``'s ``NULL_EDITS`` carries
 #: ``parity_chain_order_reversed`` and ``parity_chain_folded_into_one_word`` with the
@@ -416,7 +416,7 @@ SEAM_PASSES: Tuple[str, ...] = (
     "update_H",
 )
 
-#: THERE ARE TWO VOCABULARIES FOR THIS SEAM AND THEY ARE NOT THE SAME LIST. The
+#: There are two vocabularies for this seam and they are not the same list. The
 #: driver binds ``fill_symmetry_bc_B``; the RESIDENCY model
 #: (``metal_kernels.coverage.RESIDENCY_ORDER``:264-268) spells that slot ``fill_B``,
 #: and ``REPLACES`` is declared in the residency spelling because that is what a
@@ -481,7 +481,7 @@ def save(payload: Dict[str, Any], path: str) -> None:
     """Serialise the payload, provenance-stamped, atomically."""
     os.makedirs(os.path.dirname(os.path.abspath(path)) or ".", exist_ok=True)
     temporary = path + ".tmp"
-    # THE POLICY STAMP IS RE-READ, NOT CARRIED. Taken once at install time it
+    # The policy stamp is re-read, not carried. Taken once at install time it
     # records every counter at zero, because nothing had compiled yet — a record
     # that cannot tell an installed policy apart from an inert one.
     if "subnormal_policy" in payload:
@@ -699,7 +699,7 @@ FORBIDDEN_SPELLINGS: Tuple[Tuple[str, str], ...] = (
 def transcription_leg() -> Dict[str, Any]:
     """Every arithmetic line traced back to the shipped source it came from.
 
-    A FUSED PRODUCT IS NOT A RE-DERIVATION. Each region of this kernel must diff
+    A fused product is not a re-derivation. Each region of this kernel must diff
     clean against the certified module it names, and this leg reads BOTH texts off
     the filesystem rather than quoting either.
     """
@@ -730,7 +730,7 @@ def transcription_leg() -> Dict[str, Any]:
                 findings.append(f"the fused body does not carry the certified "
                                 f"constitutive line {line!r} as {bound!r}")
 
-    # THE ONE EDIT TO THE CURL, in both directions.
+    # The one edit to the curl, in both directions.
     for component in range(3):
         certified_load = (f"curl_form(tl.load(f{component} + 2 * idx, mask=live, "
                           f"other=0.0)")
@@ -747,7 +747,7 @@ def transcription_leg() -> Dict[str, Any]:
                 f"{component}: a destination lane would READ a word another lane "
                 f"writes, which is the race the ownership move exists to remove")
 
-    # THE GHOST CONSTITUTIVE IS THE OWNED CELL'S SEQUENCE, MOVED.
+    # The ghost constitutive is the owned cell's sequence, moved.
     order = ("prev_re = tl.load(w + 2 * dst, mask=mask & dw_d",
              "tl.store(w + 2 * dst, ghost_re, mask=mask & dw_d",
              "acc_re = tl.load(h + 2 * dst, mask=mask & dw_d",
@@ -882,7 +882,7 @@ def carry_blocks() -> List[Dict[str, Any]]:
 def parity_chain_leg() -> Dict[str, Any]:
     """The chain each block applies, against the driver order the product declares.
 
-    THE ORDER IS THE DRIVER'S. ``fill_symmetry_bc_B`` (:3285) runs to completion
+    The order is the driver's. ``fill_symmetry_bc_B`` (:3285) runs to completion
     before ``fill_folded_far_ghosts_B`` (:3287), and the far pass applies its axes
     ASCENDING (``stepping._fill_folded_far_ghosts``:1518, :1528). This leg compares
     the SHIPPED sequence against
@@ -928,7 +928,7 @@ def parity_chain_leg() -> Dict[str, Any]:
                 continue
             matched.add(id(hits[0]))
             block = hits[0]
-            # BOTH PARTS TAKE THE SAME CHAIN, ON THE COMPONENT'S OWN REGISTER.
+            # Both parts take the same chain, on the component's own register.
             if block["chain_im"] != block["chain"]:
                 findings.append(
                     f"component {component}, far {subset}, near {carries_near}: the "
@@ -939,7 +939,7 @@ def parity_chain_leg() -> Dict[str, Any]:
                     f"component {component}, far {subset}, near {carries_near}: the "
                     f"chain is applied to {block['operands']}, not to the "
                     f"component's own register")
-            # THE MEMBERSHIP MOVES WITH THE COEFFICIENT.
+            # The membership moves with the coefficient.
             wanted_membership = (f"dw_d{component}" if carries_near
                                  else f"dw{component}")
             if block["membership"] != wanted_membership:
@@ -947,7 +947,7 @@ def parity_chain_leg() -> Dict[str, Any]:
                     f"component {component}, far {subset}, near {carries_near}: the "
                     f"destination takes membership {block['membership']!r}, expected "
                     f"{wanted_membership!r}")
-            # THE COEFFICIENT INDEX MOVES ONLY FOR THE NEAR HALF.
+            # The coefficient index moves only for the near half.
             wanted = f"kp_d{component}" if carries_near else f"kp_{component}"
             if block["coefficient"] != wanted:
                 findings.append(
@@ -955,7 +955,7 @@ def parity_chain_leg() -> Dict[str, Any]:
                     f"the destination takes {block['coefficient']!r}, expected "
                     f"{wanted!r} — update_H indexes component m on axis m and the "
                     f"NEAR fill images along that same axis")
-            # EVERY CARRY MASK IS ANDED WITH THE OWNERSHIP MASK.
+            # Every carry mask is anded with the ownership mask.
             if not block["mask"].startswith(f"own{component} &"):
                 findings.append(
                     f"component {component}: the carry mask {block['mask']!r} is "
@@ -968,7 +968,7 @@ def parity_chain_leg() -> Dict[str, Any]:
                 f"the kernel emits a carry the enumeration does not name: "
                 f"`if {block['guard']}:` -> {block['destination']}")
 
-    # THE FOLDED SPELLING IS ABSENT.
+    # The folded spelling is absent.
     ours = _shipped_text("folded_complex_fused_curl_constitutive_B")
     for left in COEFFICIENT_ARGUMENTS:
         for right in COEFFICIENT_ARGUMENTS:
@@ -1022,7 +1022,7 @@ def parity_chain_reachability_leg() -> Dict[str, Any]:
     """The chain-ORDER question must EXIST on the case it is scored on.
 
     With equal mirror phases on two folded axes the composition commutes
-    bit-exactly (the Triton fill tranche measured 0/128 diverging words at
+    bit-exactly (``gate_triton_folded_complex.py`` measured 0/128 diverging words at
     ``(+1, +1)`` and at ``(-1, -1)``, 8/128 at ``(+1, -1)``), so a two-axis case
     carrying ONE declared phase makes both ordering mutations a null BY
     CONSTRUCTION rather than by measurement. This leg asserts that the cases the
@@ -1101,9 +1101,9 @@ def _words(pair) -> Tuple[int, int]:
 
 
 def parity_chain_associativity_leg() -> Dict[str, Any]:
-    """IS THE ORDERING OBSERVABLE? Measured, on the shipped per-part product.
+    """Is the ordering observable? Measured, on the shipped per-part product.
 
-    THE MEASUREMENT THIS LEG EXISTS FOR. Two armed device mutations re-order and
+    The measurement this leg exists for. Two armed device mutations re-order and
     fold this kernel's parity chain, and both are declared NULLS. A null is only
     honest if the question behind it is settled rather than hidden, so it is settled
     here, at the word layer, on the arithmetic itself rather than on the whole-step
@@ -1116,15 +1116,15 @@ def parity_chain_associativity_leg() -> Dict[str, Any]:
     composing two of them commutes and folds to the bit. This leg sweeps
     :data:`PARITY_WORDS` x the four ``(+-1, +-1)`` coefficient pairs and COUNTS.
 
-    WHAT IT DOES NOT LICENSE. A zero count here says the ORDER is unobservable for
+    What it does not license. A zero count here says the ORDER is unobservable for
     THIS coefficient class on THIS backend — it does not say the kernel may apply
     the passes in any order, and the kernel does not: it transcribes the driver's,
     and :func:`parity_chain_leg` pins that by construction. Nor does it transfer to
     Metal, whose own re-ordering measurement moved 8 of 128 words with a different
     ``c_mul`` spelling and a different negation lowering.
 
-    THE LEG FAILS IF THE COUNT IS NONZERO WHILE THE TABLE DECLARES THOSE MUTATIONS
-    NULL — a declared null must agree with the arithmetic, or one of the two is
+    The leg fails if the count is nonzero while the table declares those mutations
+    null — a declared null must agree with the arithmetic, or one of the two is
     wrong.
     """
     shipped = _shipped_text("folded_complex_fused_curl_constitutive_B")
@@ -1327,15 +1327,15 @@ def case_constexprs(case) -> Dict[str, Any]:
 
 
 def branch_reachability_leg() -> Dict[str, Any]:
-    """SHIPPED CODE NO LEG EXECUTES, counted rather than argued.
+    """Shipped code no leg executes, counted rather than argued.
 
-    THE FINDING THIS LEG EXISTS FOR is the sibling folded gate's: on 2026-08-20 that
-    kernel shipped three-axis blocks and NO DEVICE LEG EVER EXECUTED THEM, because
+    The finding this leg exists for is the sibling folded gate's: on 2026-08-20 that
+    kernel shipped three-axis blocks and no device leg ever executed them, because
     every ``mirrors`` value in the artifact carried at most two folded axes. Byte
     identity over ten steps on ten cases says nothing about a branch none of the ten
     compiled. A case list is not a coverage argument until something counts it.
 
-    THE EVALUATION IS THE ENGINE'S, NOT A MODEL OF IT: the constexprs come from
+    The evaluation is the engine's, not a model of it: the constexprs come from
     :func:`case_constexprs`, which reads them off a real grid, and the guard text
     comes from the shipped source. Neither side is a re-implementation.
     """
@@ -1464,7 +1464,7 @@ def predicate_leg() -> Dict[str, Any]:
             findings.append(f"{name}: no reason contains {needle!r}: {residual[:3]}")
 
     ask("folded_periodic_admitted", True)
-    # THE SECOND ARM LABEL. Two of the four corpus rows this product serves carry an
+    # The second arm label. Two of the four corpus rows this product serves carry an
     # off-diagonal chi1inv row, and `folded_complex_composition_curl_coverage`
     # refuses one BY NAME. They are admitted through `folded_complex_offdiag_*`,
     # over the same kernel and the same plan class, because update_H reads no
@@ -1473,7 +1473,7 @@ def predicate_leg() -> Dict[str, Any]:
     ask("folded_metallic_admitted", True, boundaries="metallic")
     ask("two_folds_admitted", True, mirrors=(("X", 1), ("Y", -1)))
     ask("electric_source_admitted", True, sources=(_Electric(),))
-    # THE 2026-08-31 SPLIT, made in the same edit as the CARRIES_DEPOSIT_REPAIR
+    # The 2026-08-31 split, made in the same edit as the CARRIES_DEPOSIT_REPAIR
     # flip on this module: a magnetic deposit the repair can carry is ADMITTED
     # (it is what discharged the board's one clause-refusal on this family,
     # tests:TestHoleyWvgBands.test_fields_at_kx), and one that cannot publish
@@ -1537,7 +1537,7 @@ def seam_binding_leg() -> Dict[str, Any]:
         findings.append(f"RESIDENCY_ORDER is unreadable: {exc!r}")
 
     body = _shipped_text("folded_complex_fused_curl_constitutive_B")
-    # WHAT THE BODY ACTUALLY CARRIES, keyed in the residency spelling ``REPLACES``
+    # What the body actually carries, keyed in the residency spelling ``REPLACES``
     # uses. TRAP, paid for on this track: a module carried the far fill while its
     # REPLACES tuple said it did not, and a passing test pinned the stale tuple.
     carried = {
@@ -1578,7 +1578,7 @@ def value_class_hosts(names: Sequence[str], shape, rng,
     is where the parity multiply's zero cross terms and the ``* -1.0`` negation
     spelling decide bytes.
 
-    THE AUXILIARIES START NONZERO in the first two classes: a zero ``fu``/``f_w``
+    The auxiliaries start nonzero in the first two classes: a zero ``fu``/``f_w``
     makes ``kms * prev`` exactly zero on the first launch whatever ``kms`` holds,
     which would hide a mis-indexed coefficient until step two.
     """
@@ -1615,8 +1615,8 @@ def value_class_hosts(names: Sequence[str], shape, rng,
 def operand_census(arrays: Dict[str, np.ndarray]) -> Dict[str, int]:
     """How many subnormals, signed zeros and zeros a leg's operands ACTUALLY hold.
 
-    A LEG WHOSE OPERANDS CANNOT CONTAIN THE CLASS IT CLAIMS TO TEST MEASURES
-    NOTHING, and reports a pass while doing it. Classified off the BITS, not by
+    A leg whose operands cannot contain the class it claims to test measures
+    nothing, and reports a pass while doing it. Classified off the BITS, not by
     comparison: ``x < FLT_MIN`` is true for zero too, and ``x == -0.0`` is true for
     ``+0.0``.
     """
@@ -1650,7 +1650,7 @@ def build_driver(cp, case, value_class: str, electric: bool,
     """One folded complex driver, seeded identically for every route.
 
     ``magnetic=True`` (2026-08-31, with the ``CARRIES_DEPOSIT_REPAIR`` flip)
-    adds a REAL magnetic source IN THIS SEAM — the shape the corpus row
+    adds a REAL magnetic source in this seam — the shape the corpus row
     ``tests:TestHoleyWvgBands.test_fields_at_kx`` declares — off the mirror
     plane on every folded axis, exactly like the electric one.
     """
@@ -1679,7 +1679,7 @@ def build_driver(cp, case, value_class: str, electric: bool,
         # not this one. Carrying one is what stops the source clause from being
         # tested only in its refusing direction.
         #
-        # OFF THE MIRROR PLANE ON EVERY FOLDED AXIS. A point Ez at the origin sits
+        # Off the mirror plane on every folded axis. A point Ez at the origin sits
         # ON the plane, and on an ODD fold that is refused with a reason rather than
         # stepped: Ez has parity -1 there and no extent along the folded axis, so
         # the parity condition constrains the profile against itself and admits only
@@ -1691,7 +1691,7 @@ def build_driver(cp, case, value_class: str, electric: bool,
         driver.add_source({"component": "Ez", "frequency": 0.31,
                            "center": tuple(center), "width": 0.4})
     if magnetic:
-        # THE DEPOSIT THIS PRODUCT'S FLAG EXISTS FOR, injected BETWEEN step_B
+        # The deposit this product's flag exists for, injected BETWEEN step_B
         # and update_H (driver.py:3283-3284), off the mirror plane on every
         # folded axis.
         center = [0.0, 0.0, 0.0]
@@ -1818,7 +1818,7 @@ class _Absorbed:
 class _TwoPassFill:
     """The certified complex ghost fill, run as the driver runs it.
 
-    ONE LAUNCH PER FOLDED AXIS PER PASS, in X, Y, Z order, and the two PASSES
+    One launch per folded axis per pass, in X, Y, Z order, and the two PASSES
     separately: ``fill_symmetry_bc_B`` is every folded axis's NEAR plane and
     ``fill_folded_far_ghosts_B`` every folded axis's FAR one, with ``zero_metal_B``
     between them. Fusing them per axis is a DIFFERENT ORDER and a measured different
@@ -1884,7 +1884,7 @@ def separate_route(driver):
     """The three separately certified Triton products this launch replaces."""
     from meep_gpu.triton_kernels import folded_complex  # noqa: PLC0415
 
-    # EITHER MATCHED ADMISSION, and the oracle takes the same one the product does.
+    # Either matched admission, and the oracle takes the same one the product does.
     # `folded_complex.py` registers a second family name over the SAME kernel and the
     # SAME plan class for a run carrying an off-diagonal chi1inv row; a route that
     # only asked the plain builders would refuse the two corpus rows this product
@@ -2089,7 +2089,7 @@ def run_leg(cp, name: str, case, steps: int, product,
         row["arrays_ever_moved"] = len(ever_moved)
         row["arrays_never_moved"] = sorted(
             set(final) - set(ever_moved) - set(material))
-        # THE FLOOR IS RELATIVE TO THE ARRAY PATH, and that is a 2026-08-21
+        # The floor is relative to the array path, and that is a 2026-08-21
         # correction rather than a softening. An absolute "every array moved" floor
         # fails a CORRECT kernel for properties of the configuration: on a 2-D grid
         # seeded to the +-0 lattice and driven by an Ez source the whole TE
@@ -2141,7 +2141,7 @@ def verdict_of(row: Dict[str, Any], *, require_identical: bool = True,
     census = row.get("operand_census") or {}
     for key, minimum in floor.items():
         if int(census.get(key, 0)) < minimum:
-            # UNDER FLUSH THE SUBNORMAL CLASS CANNOT OCCUR, and that is MEASURED
+            # Under flush the subnormal class cannot occur, and that is measured
             # (flush_vacuity: the installed policy, the host FPU at seed time and this
             # census) rather than assumed from the policy's name. Every other floor,
             # and every byte comparison, stands.
@@ -2258,7 +2258,7 @@ def normalise_kernel_text(text: str) -> List[str]:
 def shipped_source_from_file() -> str:
     """The same text :func:`shipped_source` builds, read from the FILE.
 
-    THE MERGE BAR HAS NO TRITON, so ``inspect.getsource(product._carry_ghost_complex
+    The merge bar has no Triton, so ``inspect.getsource(product._carry_ghost_complex
     .fn)`` cannot run there — the whole ``if triton is not None:`` block is skipped
     and the names do not exist. Every check that the mutation table is ARMED, and
     that each mutation is scored on a case which ENTERS the branch it rewrites,
@@ -2316,7 +2316,7 @@ def rewritten_lines(source: str, mutated: str) -> List[int]:
 def compile_mutant(source: str, kernel_name: str) -> Any:
     """Compile a renamed mutant. The rename is what keeps the JIT cache honest.
 
-    THE CONSTEXPR CODES COME FROM ``folded_complex``'S OWN CONSTANTS, not from
+    The constexpr codes come from ``folded_complex``'s own constants, not from
     literals: a renumbering there would give the mutant a different boundary
     vocabulary than the kernel it stands for, with no error at all. The forms and
     the connection are IMPORTED rather than copied, for the reason the shipped
@@ -2359,15 +2359,15 @@ def compile_mutant(source: str, kernel_name: str) -> Any:
 
 def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, int]]], ...]:
     """(id, why it is armed, expectation, rewrite). The artifact records what was
-    MEASURED, never what was hoped."""
+    measured, never what was hoped."""
 
     def m1_parity_chain_reordered(source: str) -> Tuple[str, int]:
         """THE ORDER, reversed on one two-parity chain. DECLARED NULL.
 
         The far axes ascend in the driver (``_fill_folded_far_ghosts``); this applies
         them descending. Per part each application is ``+-1.0`` times the word, which
-        commutes exactly (``parity_chain_associativity_leg`` measures 0 words). THE
-        BLOCK IS COMPONENT 2's ``FAR_X and FAR_Y``, the one this mutation's fold-X +
+        commutes exactly (``parity_chain_associativity_leg`` measures 0 words). The
+        block is component 2's ``FAR_X and FAR_Y``, the one this mutation's fold-X +
         fold-Y case compiles, so the null is measured rather than dead code.
         """
         source, hits = _replace_all(source, "d1r * (d0r * v2_re),",
@@ -2448,7 +2448,7 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
         other; dropping ``own?`` from the carry mask lets it write a composite cell
         from a ``v`` its own mask zeroed.
         """
-        # THE BLOCK IS COMPONENT 2's FAR-ONLY DESTINATION ON X, and the choice is
+        # The block is component 2's far-only destination on X, and the choice is
         # measured rather than free. The lane the defect is about is `(rx, ny - 1,
         # k)`: the far source for Bz on x and itself the far fill's destination on y,
         # excluded by `own2` and by nothing else in this mask. Its stray carry writes
@@ -2563,7 +2563,7 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
             ["pass"])
 
     return (
-        # THE ORDERING IS DECLARED NULL, MEASURED. `parity_chain_associativity_leg`
+        # The ordering is declared null, measured. `parity_chain_associativity_leg`
         # sweeps the per-part product over signed zeros, the subnormal needles and
         # ordinary values and counts 0 words moved by a RE-ORDER or a FOLD: every
         # application is +-1.0 times a stored part. The previous whole-complex
@@ -2686,7 +2686,7 @@ def run_mutations(cp, product, pristine_ptx: Sequence[str]) -> List[Dict[str, An
 def run_refusals(cp, product) -> List[Dict[str, Any]]:
     """Configurations the product must refuse — and one it must now ADMIT.
 
-    THE 2026-08-31 SPLIT, in the same edit as the ``CARRIES_DEPOSIT_REPAIR``
+    The 2026-08-31 split, in the same edit as the ``CARRIES_DEPOSIT_REPAIR``
     flip: the old single ``magnetic_source`` refusal row became two, because
     "a magnetic source in this seam" stopped being a refusal class. One that
     publishes its deposit index is ADMITTED (the repair carries it — the carry
@@ -2742,12 +2742,13 @@ def run_refusals(cp, product) -> List[Dict[str, Any]]:
 # ---------------------------------------------------------------------------
 
 def environment(cp: Any = None) -> Dict[str, Any]:
+    import neutral_ids  # noqa: PLC0415
     payload: Dict[str, Any] = {
         "python": sys.version.split()[0],
         "numpy": np.__version__,
-        "argv": list(sys.argv),
+        "argv": neutral_ids.argv(sys.argv),
         "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
-        "cupy_cache_dir": os.environ.get("CUPY_CACHE_DIR"),
+        "cupy_cache_dir": neutral_ids.path(os.environ.get("CUPY_CACHE_DIR")),
     }
     try:
         import triton  # noqa: PLC0415
@@ -2758,8 +2759,10 @@ def environment(cp: Any = None) -> Dict[str, Any]:
     if cp is not None:
         payload["cupy"] = cp.__version__
         payload["device"] = cp.cuda.runtime.getDeviceProperties(0)["name"].decode()
-        payload["device_uuid"] = str(
-            cp.cuda.runtime.getDeviceProperties(0).get("uuid"))
+        import neutral_ids  # noqa: PLC0415
+        # The card by its id, never its UUID (neutral_ids.card_id).
+        payload["device_uuid"] = neutral_ids.card_id(str(
+            cp.cuda.runtime.getDeviceProperties(0).get("uuid")))
     return payload
 
 
@@ -2826,7 +2829,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "UNRUN — invoked with --no-device; no CUDA leg, mutation or refusal in "
             "this artifact")
         payload["passed"] = all(row["passed"] for row in payload["no_device_legs"])
-        # ``release`` IS THE KEY ``gate_provenance.read_verdict`` CONSULTS FIRST, and
+        # ``release`` is the key ``gate_provenance.read_verdict`` consults first, and
         # it is set explicitly here because ``passed`` alone would stamp
         # ``released: True`` on an artifact that measured no bytes on any device.
         payload["release"] = {
@@ -2841,7 +2844,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     import cupy as cp  # noqa: PLC0415
     from meep_gpu import backends, subnormal_policy  # noqa: PLC0415
 
-    # BEFORE THE FIRST DEVICE COMPILE. strict=True: a process that asked to keep and
+    # Before the first device compile. strict=True: a process that asked to keep and
     # quietly did not is a process whose bytes mean nothing.
     subnormal_policy.install_subnormal_policy(args.subnormal_policy, cupy=cp,
                                               strict=True)
@@ -2939,7 +2942,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     payload["device_legs"].append(row)
     save(payload, args.out)
 
-    # THE IMAGINARY PARITY WORD IS NEVER LAUNCHED. The plan keeps each axis's
+    # The imaginary parity word is never launched. The plan keeps each axis's
     # ``(re, im)`` pair and launches the real word alone (a real scale per part), so
     # a NONZERO imaginary word must change no byte: a declared null, confirmed.
     mixed = CASES_BY_NAME["xy_mixed_phase_periodic"]
@@ -2957,7 +2960,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     save(payload, args.out)
 
     log("\n=== armed kernel mutations ===")
-    # THE TWO READERS OF ONE SOURCE MUST AGREE. The merge bar checks the mutation
+    # The two readers of one source must agree. The merge bar checks the mutation
     # table against `shipped_source_from_file`; this run arms it from `inspect`. If
     # they ever differ, a rewrite can match on the laptop and miss here — the exact
     # way a mutation silently disarms.
@@ -2983,7 +2986,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     device_ok = all(row.get("passed") for row in payload["device_legs"])
     refusal_ok = all(row.get("passed") for row in payload["refusals"])
 
-    # A DECLARED NULL MUST BE CONFIRMED, not merely permitted: under a rule that
+    # A declared null must be confirmed, not merely permitted: under a rule that
     # accepted any expectation other than "caught", moving a stubbornly uncaught
     # mutation to a null spelling would silence it rather than explain it. Every
     # mutation must also have been ARMED — a rewrite that hit nothing measured

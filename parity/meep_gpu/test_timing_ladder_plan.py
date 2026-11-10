@@ -11,6 +11,7 @@ stamp and times compared through placeholders, the box string by its key set (wi
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import subprocess
@@ -23,6 +24,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
+import neutral_ids  # noqa: E402
 import timing_host  # noqa: E402
 import timing_ladder as ladder  # noqa: E402
 import timing_records  # noqa: E402
@@ -106,7 +108,12 @@ def _effective(delta, base):
     return env
 
 
-def test_the_a6000_profile_plans_the_111_rows_of_2026_09_28():
+def test_the_a6000_profile_plans_the_111_rows_of_2026_09_28(monkeypatch):
+    # The profile names the core counts. The process's own topology is withheld: on a
+    # Linux host the ladder would read it, and under a CPU mask narrower than the host
+    # (a NUMA-pinned shard) every MEEP row would carry ``--scope-cpus``, which the
+    # fixture's rows, planned with the whole host in scope, do not.
+    monkeypatch.setattr(ladder, "detect_topology", lambda _p: {"method": None})
     with open(COMMANDS, "r", encoding="utf-8") as handle:
         fixture = json.load(handle)
     config, record = plan_of(A6000_PROFILE)
@@ -168,6 +175,26 @@ def test_the_a6000_profile_plans_the_111_rows_of_2026_09_28():
     assert compared == 101  # 20 GPU rows, 80 MEEP rows and the preflight digest
 
 
+#: The sha256 of the A6000 profile's plan record, serialised as below, as the ladder drew it
+#: before it could plan one side alone (``--ranks none``): a ladder that declares neither
+#: side away plans byte for byte what it planned before.
+A6000_PLAN_SHA256 = "f9a7ca05c46982f90eea081868205c89ee4131248f23d9cf5a29627ad9939803"
+
+
+def test_the_a6000_plan_is_byte_for_byte_the_plan_drawn_before_one_side_could_be_planned(
+        monkeypatch):
+    # The profile names the host; nothing of the host the test runs on enters the plan: on
+    # a Linux host the ladder would read its topology, memory and the profile's account.
+    monkeypatch.setattr(ladder, "detect_platform", lambda: "other")
+    monkeypatch.setattr(ladder, "detect_topology", lambda _p: {"method": None})
+    monkeypatch.setattr(timing_host, "account_uid", lambda _name: None)
+    _config, record = plan_of(A6000_PROFILE)
+    text = json.dumps(record, indent=1, sort_keys=True, default=str)
+    assert len(record["rows"]) == 111
+    assert hashlib.sha256(text.encode("utf-8")).hexdigest() == A6000_PLAN_SHA256
+    assert "none" not in str(record["params"]["RANKS"]["value"]).lower()
+
+
 def test_the_a6000_profile_budget_is_the_2026_09_28_budget():
     _config, record = plan_of(A6000_PROFILE)
     tiers = record["budget_by_tier"]
@@ -187,6 +214,65 @@ def test_new_options_are_absent_at_their_defaults():
 # ---------------------------------------------------------------------------
 # Ranks, keys, cases, controls
 # ---------------------------------------------------------------------------
+
+UNIT = ["--tiers", "preflight digests priority", "--priority-sizes", "512000",
+        "--cases", "pml_3d", "--binding", "bound",
+        "--controls", "threads2,threads4,hwthread,split", "--threaded-reference", "1"]
+
+
+def test_ranks_none_plans_the_gpu_routes_alone():
+    """``--ranks none``: no row that starts MEEP (no rank block, no MEEP control, no
+    preflight MEEP row or digest, no harness-lift digest, no binding probe or check); the
+    preflight is the GPU rows' launch check. Both sides named away is refused."""
+    config, record = plan_of(LINUX + UNIT + ["--tiers",
+                                             "preflight digests bindprobe priority bindcheck",
+                                             "--binding", "probe", "--ranks", "none"])
+    kinds = {(row["tier"], row["kind"]) for row in record["rows"]}
+    # the array control read off the GPU rows (--array-control extract) is a GPU-side row
+    assert kinds == {("preflight", "gpu"), ("priority", "gpu"), ("priority", "control")}
+    assert config.no_meep and config.controls == [] and config.probe_ranks == []
+    assert config.preflight_ranks == [] and config.blocks == ([], [], [])
+    assert sorted(config.controls_omitted) == ["hwthread", "split", "threads2", "threads4"]
+    assert all("--ranks none" in why for why in config.controls_omitted.values())
+    assert ladder.placement_modes(config) == [], "no launcher mode to probe"
+    assert "times neither the GPU routes nor MEEP" in refusal(
+        LINUX + UNIT + ["--ranks", "none", "--routes", "none"])
+    whole, _ = plan_of(LINUX + UNIT)
+    assert not whole.no_meep and ladder.placement_modes(whole)
+
+
+def test_the_two_sides_planned_alone_are_the_whole_plan_between_them():
+    """``--ranks none`` and ``--routes none`` split a ladder's rows between them: every
+    row of the whole plan is planned by exactly one side, with the same key, command,
+    working directory and environment; the array control is read off the GPU rows."""
+    plans = {name: plan_of(LINUX + UNIT + extra)[1]["rows"]
+             for name, extra in (("whole", []), ("gpu", ["--ranks", "none"]),
+                                 ("meep", ["--routes", "none"]))}
+    rows = {name: {row["key"]: row for row in plan} for name, plan in plans.items()}
+    assert all(len(rows[name]) == len(plans[name]) for name in plans), "keys are unique"
+    assert {row["kind"] for row in plans["gpu"]} == {"gpu", "control"}
+    assert {row["kind"] for row in plans["meep"]} == {"meep", "digest", "lift"}
+    assert not set(rows["gpu"]) & set(rows["meep"])
+    assert set(rows["gpu"]) | set(rows["meep"]) == set(rows["whole"])
+    for side in ("gpu", "meep"):
+        for key, row in rows[side].items():
+            ours = rows["whole"][key]
+            assert (row["argv"], row["cwd"], row["env"]) == (
+                ours["argv"], ours["cwd"], ours["env"]), (side, key)
+
+
+def test_the_gpu_routes_alone_ask_the_slurm_check_for_one_process(monkeypatch, tmp_path):
+    """A live Linux run checks its largest MEEP launch against the allocation; the GPU
+    routes alone launch none, so they are checked as one process."""
+    config = config_of(LINUX + UNIT + ["--ranks", "none", "--run-root", str(tmp_path / "r")])
+    asked = []
+    monkeypatch.setattr(ladder, "detect_platform", lambda: "linux")
+    monkeypatch.setattr(timing_host, "affinity", lambda: list(range(96)))
+    monkeypatch.setattr(timing_host, "slurm_refusals",
+                        lambda env, impl, kind, largest, cpus: asked.append(largest) or [])
+    ladder.live_checks(config, resume=False, collect=True, environ={})
+    assert asked == [1]
+
 
 def test_default_rank_blocks():
     assert ladder.default_rank_blocks(48, 96, True) == ([16, 24, 32, 48], [8, 1], [64])
@@ -269,7 +355,11 @@ def test_a_new_case_runs_through_the_wrapper_and_a_builtin_does_not():
     assert all(r["res"] == 10 for r in new)
 
 
-def test_linux_controls_carry_their_configuration():
+def test_linux_controls_carry_their_configuration(monkeypatch):
+    # The core counts and socket count are stated; the process's own topology is
+    # withheld, so a Linux host whose CPU mask holds one thread per core does not
+    # replace the stated two threads per core.
+    monkeypatch.setattr(ladder, "detect_topology", lambda _p: {"method": None})
     environ = dict(LAUNCHING_ENV)
     config, record = plan_of(LINUX + ["--tiers", "priority", "--passes", "1",
                                       "--priority-sizes", "512000", "--meep-build",
@@ -326,7 +416,7 @@ def test_srun_launcher_and_its_flags(monkeypatch):
     meep = [r for r in record["rows"] if r["kind"] == "meep"]
     first = meep[0]["argv"]
     assert first[:4] == ["srun", "--mpi=pmix", "-n", "16"]
-    # BALANCED ACROSS SOCKETS, as the Open MPI rows were: 8 + 8, not 16 on one socket.
+    # Balanced across sockets, as the Open MPI rows were: 8 + 8, not 16 on one socket.
     assert "--cpu-bind=verbose,cores" in first and "--ntasks-per-socket=8" in first
     assert "--ntasks-per-core=1" in first and "--distribution=block:block" in first
     r48 = next(r for r in meep if r["ranks"] == 48)
@@ -393,7 +483,7 @@ def test_a_dry_run_starts_no_process(monkeypatch, capsys):
     record = json.loads(capsys.readouterr().out)
     assert record["total"]["rows"] == 111
     assert ladder.main(MAC + ["--dry-run"]) == 0
-    assert "DRY RUN DONE" in capsys.readouterr().out
+    assert "dry run done" in capsys.readouterr().out
 
 
 def test_params_precedence(tmp_path):
@@ -465,13 +555,19 @@ def test_a_recorder_that_raises_does_not_stop_the_ladder(tmp_path):
     entry, summary = run.record(broken, plan[0])
     assert summary.startswith("RECORDER ERROR TypeError")
     noted = [json.loads(line) for line in open(run.ledger)]
-    assert noted[-1]["ledger"] == "recorder_error" and noted[-1]["run_dir"] == run.out
+    # the ledger leaves the machine: the run directory under its root's label, which a
+    # reader resolves back to the directory on this machine
+    assert noted[-1]["ledger"] == "recorder_error"
+    assert noted[-1]["run_dir"] == neutral_ids.path(run.out)
+    assert os.path.realpath(neutral_ids.resolve(noted[-1]["run_dir"])) == \
+        os.path.realpath(run.out)
 
 
 def test_the_mac_gate_is_calibrated_at_the_start_and_linux_keeps_its_default(tmp_path):
-    """CERT-8 F6: the macOS default CPU gate (1 of 10 busy CPUs) could not open with the
-    owner's session idling at 1.2-2.0. On macOS it is calibrated before the first row,
-    written down, and read back on a resume; Linux keeps 10 % of its logical CPUs."""
+    """The 1.0 Mac timing ladder found that the macOS default CPU gate (1 of 10 busy CPUs)
+    could not open with the user's desktop session idling at 1.2-2.0. On macOS it is
+    calibrated before the first row, written down, and read back on a resume; Linux keeps
+    10 % of its logical CPUs."""
     linux = config_of(LINUX)
     assert linux.cpu_calibration is None and linux.gate.cpu_max == 10
     explicit = config_of(MAC + ["--gate-cpu-max", "2"])
@@ -498,9 +594,9 @@ def test_the_mac_gate_is_calibrated_at_the_start_and_linux_keeps_its_default(tmp
 
 
 def test_a_gpu_only_ladder_times_one_leg_behind_one_identity_row_per_size():
-    """The GPU-only row (CERT-8): the timed GPU rows lift the fused leg alone; each route,
-    case and size is first proved bit-identical by one three-leg identity row with the
-    preflight's short windows; the array control is its own row or none."""
+    """The GPU-only row of the release timing: the timed GPU rows lift the fused leg alone;
+    each route, case and size is first proved bit-identical by one three-leg identity row
+    with the preflight's short windows; the array control is its own row or none."""
     base = LINUX + ["--tiers", "preflight identity priority", "--passes", "3",
                     "--priority-sizes", "512000,2097152", "--controls", "none",
                     "--routes", "default,cuda", "--gpu-legs", "gpu-only"]
@@ -632,8 +728,9 @@ def test_hwthread_key_is_not_doubled():
 
 
 def test_the_hwthread_control_without_a_topology_is_omitted_by_name(monkeypatch):
-    """CERT-8 H3: the control names each rank's hardware thread, so it needs the socket
-    count; without it the control is left out, by name, instead of run doubled up."""
+    """The control names each rank's hardware thread, so it needs the socket count;
+    without it the control is left out, by name, instead of run doubled up (the 1.0
+    NVIDIA timing ladder struck its 64-rank rows for a doubled-up placement)."""
     # On a Linux host the ladder reads that host's own topology, which would supply the
     # count: the topology is withheld here, as in test_srun_launcher_and_its_flags.
     monkeypatch.setattr(ladder, "detect_topology", lambda _p: {"method": None})
@@ -645,7 +742,106 @@ def test_the_hwthread_control_without_a_topology_is_omitted_by_name(monkeypatch)
     assert not [r for r in record["rows"] if r.get("control") == "hwthread"]
 
 
+#: A desktop of 8 performance cores and 24 logical CPUs (hardware threads and efficiency
+#: cores), as its site file states it, timed with a catalog's controls given as flags.
+DESKTOP = [a for a in LINUX if a not in ("48", "96", "--physical-cores", "--logical-cpus")] + [
+    "--tiers", "priority", "--passes", "1", "--priority-sizes", "512000", "--sockets", "1",
+    "--binding", "bound", "--controls", "threads2,threads4,hwthread,split"]
+
+
+def _meep_rows(record):
+    return sorted({(row["control"] or "reference", row["ranks"])
+                   for row in record["rows"] if row["kind"] == "meep"})
+
+
+def test_the_host_s_meep_rank_ceiling_bounds_every_control(monkeypatch, tmp_path):
+    """The host's MEEP rank ceiling (``--meep-rank-ceiling``, which cert8.py hands the MEEP
+    half of a split session from its site file's rank blocks) is the most MEEP ranks any
+    row takes, and the controls a catalog asks for by flag cannot lift it: on the
+    8-performance-core desktop (ceiling 8) the bound-hwthread rows (4P/3 and 2P: 11 and 16
+    ranks) are refused by name and every other control is planned within it. A control
+    with a row inside and a row above keeps the one inside, and the one above is named.
+    The same site file without the ceiling plans as before: a declared rank block is no
+    ceiling of its own."""
+    monkeypatch.setattr(ladder, "detect_topology", lambda _p: {"method": None})
+    site = tmp_path / "desktop.params"
+    site.write_text("PHYSICAL_CORES=8\nLOGICAL_CPUS=24\nRANKS=8|1|\n")
+    config, record = plan_of(DESKTOP + ["--params", str(site), "--meep-rank-ceiling", "8"])
+    assert config.meep_rank_ceiling == 8 and config.controls == ["threads2", "threads4",
+                                                                  "split"]
+    assert _meep_rows(record) == [("reference", 1), ("reference", 8), ("split", 5),
+                                  ("split", 8), ("threads2", 4), ("threads4", 2)]
+    assert config.preflight_ranks == [1, 8] and config.probe_ranks == [5, 8]
+    assert record["resolved"]["meep_rank_ceiling"] == 8
+    why = config.controls_omitted["hwthread"]
+    assert "plan 11, 16 MEEP ranks, above the host's MEEP rank ceiling 8" in why
+    assert "rows_above_rank_ceiling" not in config.controls_omitted
+    # the same site file without the ceiling: the plan as before, hwthread included
+    config, record = plan_of(DESKTOP + ["--params", str(site)])
+    assert config.meep_rank_ceiling is None and "hwthread" in config.controls
+    assert {("hwthread", 11), ("hwthread", 16)} <= set(_meep_rows(record))
+    assert "meep_rank_ceiling" not in record["resolved"] and config.controls_omitted == {}
+    # one row of a control inside the ceiling, one above it
+    config, record = plan_of(DESKTOP + ["--physical-cores", "8", "--logical-cpus", "24",
+                                        "--ranks", "4,12|1|", "--meep-rank-ceiling", "12"])
+    assert ("hwthread", 11) in _meep_rows(record) and ("hwthread", 16) not in _meep_rows(record)
+    assert config.controls_omitted["rows_above_rank_ceiling"] == (
+        "MEEP ranks above the host's MEEP rank ceiling 12 (--meep-rank-ceiling): hwthread@16")
+
+
+@pytest.mark.parametrize("extra, named", [
+    (["--physical-cores", "12", "--ranks", "8|1|"],
+     "the preflight MEEP row runs at the physical cores, 12 (from flag), above the ceiling; "
+     "declare PHYSICAL_CORES at or below 8"),
+    (["--physical-cores", "8", "--ranks", "4,12|1|"],
+     "the rank blocks 4,12|1| (from flag) reach 12 MEEP ranks; declare RANKS at or below"),
+    (["--physical-cores", "8", "--ranks", "8|1|", "--probe-ranks", "6,10"],
+     "the binding probe's ranks 6,10 (from flag) reach 10; declare PROBE_RANKS"),
+    (["--physical-cores", "8"],
+     "the rank blocks 3,4,5,8|1|11 (from derived) reach 11 MEEP ranks"),
+])
+def test_a_meep_row_the_ceiling_cannot_trim_is_refused_by_name(monkeypatch, extra, named):
+    """Under the host's MEEP rank ceiling no MEEP row runs above it: a rank block, the
+    binding probe and the preflight row (at the physical cores, 12 as WSL2 reports the
+    8-performance-core desktop) are refused by name rather than planned, and so is a
+    ceiling below one rank."""
+    monkeypatch.setattr(ladder, "detect_topology", lambda _p: {"method": None})
+    argv = DESKTOP + ["--logical-cpus", "24", "--meep-rank-ceiling", "8"] + extra
+    assert named in refusal(argv)
+    assert "a rank count of 1 or more" in refusal(
+        DESKTOP + ["--physical-cores", "8", "--logical-cpus", "24", "--ranks", "8|1|",
+                   "--meep-rank-ceiling", "0"])
+
+
+#: The A6000 profile's plan record with the rank blocks the GPU host's 1.0.1 site file
+#: declares (``RANKS=32,48||``) and the shipped NVIDIA catalog's ladder flags, on that host's
+#: topology (2 sockets, 2 threads per core), serialised as below, as the ladder drew it
+#: before a host's MEEP rank ceiling existed: a declared rank block sets no ceiling.
+A6000_DECLARED_RANKS_PLAN_SHA256 = (
+    "82c2c4729dc1d7ba9f3a632e80b1d7ca737e8102be54fa51e78d22fe7244e627")
+
+
+def test_a_declared_rank_block_is_no_ceiling_on_the_a6000(monkeypatch, tmp_path):
+    """The GPU host's site file declares the reference rank blocks it times (32 and 48);
+    that is no limit on the host's MEEP ranks, so the catalog's bound-hwthread control is
+    still planned at 64 ranks (96 is above its CPU floor), byte for byte as before."""
+    monkeypatch.setattr(ladder, "detect_platform", lambda: "other")
+    monkeypatch.setattr(ladder, "detect_topology", lambda _p: {"method": None})
+    monkeypatch.setattr(timing_host, "account_uid", lambda _name: None)
+    site = tmp_path / "a6000_ranks.params"
+    site.write_text(open(PARAMS).read() + "RANKS=32,48||\n")
+    catalog = json.load(open(os.path.join(HERE, "rounds", "1.0", "cert8_catalog_nvidia.json")))
+    config, record = plan_of(["--params", str(site), "--sockets", "2", "--threads-per-core",
+                              "2"] + catalog["ladder"]["ladder_args"])
+    assert "meep_rank_ceiling" not in record["resolved"] and "hwthread" in config.controls
+    assert ("hwthread", 64) in _meep_rows(record) and len(record["rows"]) == 101
+    text = json.dumps(record, indent=1, sort_keys=True, default=str)
+    assert hashlib.sha256(text.encode("utf-8")).hexdigest() == A6000_DECLARED_RANKS_PLAN_SHA256
+
+
 def test_a_restricted_affinity_passes_its_scope_to_the_bench(monkeypatch):
+    # Both readings are stated, so the test means the same under any CPU mask the
+    # process itself runs with.
     monkeypatch.setattr(ladder, "detect_topology", lambda _p: {
         "method": "sysfs", "physical_cores": 24, "logical_cpus": 48, "sockets": 1,
         "threads_per_core": 2, "restricted_by_affinity": True, "core_of_cpu": {}})
@@ -655,7 +851,9 @@ def test_a_restricted_affinity_passes_its_scope_to_the_bench(monkeypatch):
                             "--priority-sizes", "512000"])
     meep = next(r for r in record["rows"] if r["kind"] == "meep")
     assert meep["argv"][meep["argv"].index("--scope-cpus") + 1] == "48"
-    monkeypatch.undo()
+    monkeypatch.setattr(ladder, "detect_topology", lambda _p: {
+        "method": "sysfs", "physical_cores": 48, "logical_cpus": 96, "sockets": 1,
+        "threads_per_core": 2, "restricted_by_affinity": False, "core_of_cpu": {}})
     _c, plain = plan_of(LINUX + ["--tiers", "priority", "--passes", "1", "--controls",
                                  "none", "--priority-sizes", "512000"])
     assert all("--scope-cpus" not in (r["argv"] or []) for r in plain["rows"])
@@ -740,3 +938,299 @@ def test_launcher_probe_checks_every_mode_the_plan_uses():
     assert [m for m, _n, _t in modes] == ["bound", "unbound", "over", "bound-hwthread",
                                           "bound-pe"]
     assert dict((m, n) for m, n, _t in modes)["bound"] == 48
+
+
+# ---------------------------------------------------------------------------
+# The extended ladder: context legs, hybrid reference legs, preference legs
+# ---------------------------------------------------------------------------
+
+def test_the_extended_options_add_nothing_at_their_defaults():
+    _config, record = plan_of(A6000_PROFILE)
+    for row in record["rows"]:
+        assert "--context-label" not in (row["argv"] or []), row["key"]
+        assert not any(name.startswith("MEEP_GPU_PREFER")
+                       for name in ((row.get("env") or {}).get("set") or {})), row["key"]
+    assert "context" not in _config.controls
+    assert _config.threaded_reference is False
+
+
+def test_context_legs_are_labelled_controls_and_admit_a_build_without_mpi():
+    config, record = plan_of(LINUX + [
+        "--tiers", "priority", "--passes", "1", "--priority-sizes", "512000",
+        "--controls", "context",
+        "--context-meep", "ctx-native=/opt/native/bin/python",
+        "--context-meep", "ctx-cfdouble=/opt/cf/bin/python,none"])
+    rows = [r for r in record["rows"] if r["kind"] == "meep" and r["control"] == "context"]
+    by_build = {}
+    for row in rows:
+        by_build.setdefault(row["configuration"]["build"], []).append(row)
+    assert sorted(r["ranks"] for r in by_build["ctx-native"]) == [32, 48]
+    assert [r["ranks"] for r in by_build["ctx-cfdouble"]] == [1]
+    native = by_build["ctx-native"][0]
+    assert native["argv"][0] == "/opt/native/bin/mpirun"
+    assert native["argv"][native["argv"].index("--context-label") + 1] == (
+        "native-tuned MEEP (contraction on)")
+    serial = by_build["ctx-cfdouble"][0]
+    assert serial["argv"][0] == "/opt/cf/bin/python"           # no launcher
+    assert serial["argv"][serial["argv"].index("--context-label") + 1] == (
+        "conda-forge MEEP (double precision)")
+    assert serial["binding"] == "serial"
+    # Without a context build the control is omitted BY NAME; an unlabelled name refused.
+    config, _record = plan_of(LINUX + ["--tiers", "priority", "--passes", "1",
+                                        "--priority-sizes", "512000",
+                                        "--controls", "context"])
+    assert "context" in config.controls_omitted
+    assert "no --context-meep" in config.controls_omitted["context"]
+    assert "no label" in refusal(LINUX + ["--controls", "context",
+                                          "--context-meep", "other=/opt/o/bin/python"])
+    config, record = plan_of(LINUX + [
+        "--tiers", "priority", "--passes", "1", "--priority-sizes", "512000",
+        "--controls", "context", "--context-ranks", "1,48",
+        "--context-meep", "mine=/opt/m/bin/python", "--context-label", "mine=my MEEP"])
+    rows = [r for r in record["rows"] if r["kind"] == "meep" and r["control"] == "context"]
+    assert sorted(r["ranks"] for r in rows) == [1, 48]
+
+
+def test_threaded_reference_makes_the_hybrid_rows_reference_legs():
+    _config, record = plan_of(LINUX + ["--tiers", "priority", "--passes", "1",
+                                       "--priority-sizes", "512000", "--controls",
+                                       "threads2,threads4", "--threaded-reference", "1"])
+    hybrid = [r for r in record["rows"] if r["kind"] == "meep"
+              and r["configuration"]["threads_per_rank"] > 1]
+    assert sorted((r["ranks"], r["configuration"]["threads_per_rank"]) for r in hybrid) == [
+        (12, 4), (24, 2)]
+    assert all(r["control"] is None for r in hybrid)
+    _config, record = plan_of(LINUX + ["--tiers", "priority", "--passes", "1",
+                                       "--priority-sizes", "512000", "--controls",
+                                       "threads2,threads4"])
+    hybrid = [r for r in record["rows"] if r["kind"] == "meep"
+              and r["configuration"]["threads_per_rank"] > 1]
+    assert sorted(r["control"] for r in hybrid) == ["threads2", "threads4"]
+
+
+def test_preference_routes_export_the_switch_and_time_the_same_table():
+    config, record = plan_of(LINUX + ["--tiers", "priority", "--passes", "1",
+                                      "--priority-sizes", "512000", "--controls", "none",
+                                      "--routes",
+                                      "default,default_prefoff,cuda,cuda_prefon",
+                                      "--expect-launched", "default_prefoff:pml_3d=triton"])
+    gpu = {r["route"]: r for r in record["rows"] if r["kind"] == "gpu"}
+    assert set(gpu) == {"default", "default_prefoff", "cuda", "cuda_prefon"}
+    assert gpu["default_prefoff"]["table"] == "triton" and gpu["cuda_prefon"]["table"] == "cuda"
+    assert gpu["default_prefoff"]["env"]["set"]["MEEP_GPU_PREFER"] == "span"
+    assert gpu["cuda_prefon"]["env"]["set"]["MEEP_GPU_PREFER"] == "measured"
+    assert gpu["cuda_prefon"]["env"]["set"]["MEEP_GPU_BACKEND_PREFERENCE"] == "cuda"
+    assert "MEEP_GPU_PREFER" not in gpu["default"]["env"]["set"]
+    assert gpu["default_prefoff"]["expected_launched"] == "triton"
+    keys = {r["key"] for r in record["rows"] if r["kind"] == "gpu"}
+    assert len(keys) == 4                                    # distinct rows, distinct keys
+    config, record = plan_of(LINUX + ["--tiers", "priority", "--passes", "1",
+                                      "--priority-sizes", "512000", "--controls", "none",
+                                      "--routes", "default,default_prefoff",
+                                      "--preference-switch", "MEEP_GPU_OTHER",
+                                      "--preference-values", "on=a,off=b"])
+    gpu = {r["route"]: r for r in record["rows"] if r["kind"] == "gpu"}
+    assert gpu["default_prefoff"]["env"]["set"]["MEEP_GPU_OTHER"] == "b"
+    assert "no route 'metal_prefoff'" not in refusal(LINUX + ["--routes", "nosuch_prefoff"])
+    assert "no route 'nosuch_prefoff'" in refusal(LINUX + ["--routes", "nosuch_prefoff"])
+    assert "a MEEP_GPU_* package switch" in refusal(
+        LINUX + ["--routes", "default_prefon", "--preference-switch", "PREFER"])
+    assert "names a route twice" in refusal(LINUX + ["--routes", "default,default"])
+
+
+def test_a_shared_host_floor_omits_the_rows_above_it_by_name():
+    config, record = plan_of(LINUX + ["--tiers", "preflight,priority", "--passes", "1",
+                                      "--priority-sizes", "512000", "--sockets", "2",
+                                      "--controls", "threads2,hwthread",
+                                      "--leave-free-share", "0.25"])
+    ranks = sorted({r["ranks"] * r["configuration"]["threads_per_rank"]
+                    for r in record["rows"] if r["kind"] == "meep"})
+    assert max(ranks) == 64 and 96 not in ranks                  # 72 of 96 CPUs may run
+    assert "96x1" in config.controls_omitted["rows_above_cpu_cap"]
+    _config, record = plan_of(LINUX + ["--tiers", "priority", "--passes", "1",
+                                       "--priority-sizes", "512000", "--sockets", "2",
+                                       "--controls", "hwthread"])
+    assert 96 in {r["ranks"] for r in record["rows"] if r["kind"] == "meep"}
+
+
+def test_a_dispersive_case_scales_its_gpu_and_lift_budgets():
+    config, record = plan_of(LINUX + ["--tiers", "digests,priority", "--passes", "1",
+                                      "--priority-sizes", "7077888", "--controls", "none",
+                                      "--cases", "pml_3d,pml_3d_lorentz"])
+    rows = {(r["case"], r["kind"], r.get("route")): r for r in record["rows"]
+            if r["kind"] in ("gpu", "lift")}
+    for kind, route in (("gpu", "default"), ("lift", None)):
+        plain = rows[("pml_3d", kind, route)]
+        scaled = rows[("pml_3d_lorentz", kind, route)]
+        assert scaled["budget_s"] == 3 * plain["budget_s"], kind
+        assert scaled["timeout_s"] > 2 * plain["timeout_s"], kind
+
+
+def test_a_mac_mpich_context_leg_names_the_libfabric_provider(tmp_path):
+    """On macOS conda-forge's MPICH picks libfabric's sockets provider, whose helper threads
+    spin; the ladder launches it with udp named (measured on an Apple M1 Max), and Open MPI's
+    reference rows keep their flags."""
+    bin_dir = tmp_path / "cf" / "bin"
+    bin_dir.mkdir(parents=True)
+    for name in ("python", "mpiexec", "mpichversion"):
+        (bin_dir / name).write_text("")
+    _config, record = plan_of(MAC + [
+        "--tiers", "priority", "--passes", "1", "--priority-sizes", "512000",
+        "--routes", "none", "--controls", "context", "--context-ranks", "8",
+        "--context-meep", f"ctx-cfdouble={bin_dir / 'python'},{bin_dir / 'mpiexec'}"])
+    rows = [r for r in record["rows"] if r["kind"] == "meep"]
+    context = [r for r in rows if r["control"] == "context"]
+    reference = [r for r in rows if not r["control"]]
+    assert context and reference
+    for row in context:
+        argv = row["argv"]
+        assert argv[0] == str(bin_dir / "mpiexec")
+        assert argv[argv.index("-np") + 2:argv.index("-np") + 6] == [
+            "-genv", "FI_PROVIDER", "udp", "-bind-to"]
+    for row in reference:
+        assert "-genv" not in row["argv"] and "--bind-to" in row["argv"]
+
+
+# ---------------------------------------------------------------------------
+# What the ladder writes about the machine (neutral_ids)
+# ---------------------------------------------------------------------------
+
+#: A machine no test here runs on: nothing the ladder writes may carry any of it.
+HOST = "gpu-node-17.cluster.example.edu"
+LOGIN = "fixtureuser"
+HOME = "/" + "ho" + "me" + "/fixtureuser"   # from pieces: a full home path is a hygiene-guard hit
+REAL_A = "GPU-3f1c2a9e-5b7d-4e21-9a0c-6d8e2f4b1a37"
+FOREIGN_PID = 271828
+
+
+@pytest.fixture
+def machine(monkeypatch):
+    """This process as the fixture machine: its host names, login and home."""
+    monkeypatch.setattr(neutral_ids.socket, "gethostname", lambda: HOST)
+    monkeypatch.setattr(neutral_ids, "_node", lambda: HOST)
+    monkeypatch.setattr(neutral_ids.getpass, "getuser", lambda: LOGIN)
+    monkeypatch.setenv("HOME", HOME)
+    neutral_ids.reset()
+    yield neutral_ids
+    neutral_ids.reset()
+
+
+def assert_neutral(record, *tokens):
+    assert neutral_ids.residue(record) == []
+    text = json.dumps(record, sort_keys=True, default=str)
+    for token in (HOST, HOST.split(".")[0], LOGIN, HOME, REAL_A, str(FOREIGN_PID)) + tokens:
+        assert str(token) not in text, (token, text[:400])
+
+
+def test_the_account_is_counted_by_uid_and_written_as_own_or_other(machine, tmp_path):
+    """The account gate compares uids in process. Unset, it counts this process's own
+    account and never reads the login; a record writes ``own``/``other``, no name."""
+    here = LINUX[:LINUX.index("--platform") + 1] + [ladder.detect_platform()] + \
+        LINUX[LINUX.index("--platform") + 2:]
+    config = config_of(here + ["--run-root", f"{HOME}/meep_gpu_validation"])
+    assert config.values["ACCOUNT"] is None and config.account is None
+    assert config.uid == os.getuid() and config.gate.uid == os.getuid()
+    written = ladder.recorded(config, ladder.plan_record(config, ladder.build_plan(config)))
+    assert written["params"]["ACCOUNT"]["value"] == "own"
+    assert written["resolved"]["gate"]["uid"] == "own"
+    assert written["resolved"]["out"].startswith("<home>/meep_gpu_validation/")
+    assert_neutral(written)
+    other = config_of(here + ["--account", "no-such-user-zz9"])
+    assert ladder.account_label(other) == "unresolved"
+    named = config_of(here + ["--account", str(os.getuid() + 1)])
+    assert ladder.account_label(named) == "other"
+    assert ladder.recorded(named, {"params": {"ACCOUNT": {"value": str(os.getuid() + 1)}}})[
+        "params"]["ACCOUNT"]["value"] == "other"
+
+
+def test_the_environment_and_build_records_the_ladder_writes_name_no_machine(
+        machine, monkeypatch, tmp_path):
+    here = LINUX[:LINUX.index("--platform") + 1] + [ladder.detect_platform()] + \
+        LINUX[LINUX.index("--platform") + 2:]
+    config = config_of(here + ["--run-root", str(tmp_path / "runs"), "--routes", "none",
+                               "--account", str(os.getuid())])
+    run = ladder.Ladder(config, ladder.build_plan(config), resume=False)
+    os.makedirs(run.out)
+    run.keepawake = type("Popen", (), {"pid": FOREIGN_PID,
+                                       "args": ["caffeinate", "-w", str(FOREIGN_PID)]})()
+    monkeypatch.setattr(timing_records, "meep_build_record", lambda python, log, launcher: {
+        "python": f"{HOME}/miniforge3/envs/meep/bin/python", "openmp": True, "probe": {
+            "single_precision": True, "meep_file": f"{HOME}/miniforge3/envs/meep/x.py"},
+        "note": f"built on {HOST}"})
+    captured = {}
+    monkeypatch.setattr(timing_records, "environment_record",
+                        lambda out, **kwargs: captured.update(kwargs, out=out))
+    monkeypatch.setattr(timing_host, "run_text", lambda *a, **k: "mpirun (Open MPI) 4.1.5")
+    run.environment()
+    assert_neutral(captured["params"])
+    assert captured["params"]["ACCOUNT"]["value"] == "own"
+    assert captured["params"]["host"] == neutral_ids.machine_id()
+    assert "pid" not in captured["params"]["keepawake"]
+    for name in os.listdir(os.path.join(run.out, "meep_builds")):
+        with open(os.path.join(run.out, "meep_builds", name), encoding="utf-8") as handle:
+            assert_neutral(json.load(handle))
+    with open(os.path.join(run.out, "params.env"), encoding="utf-8") as handle:
+        params_env = handle.read()
+    assert "ACCOUNT=own" in params_env and str(os.getuid()) not in params_env.split(
+        "ACCOUNT=")[1].split("\n")[0]
+    assert_neutral(params_env)
+
+
+def test_host_identity_is_written_by_id_and_an_older_raw_file_still_resumes(
+        machine, monkeypatch, tmp_path):
+    config = config_of(LINUX + ["--run-root", str(tmp_path / "runs"), "--routes", "none",
+                                "--gpu", REAL_A])
+    monkeypatch.setattr(timing_host, "gpu_uuids", lambda: {"0": REAL_A})
+    run = ladder.Ladder(config, ladder.build_plan(config), resume=False)
+    os.makedirs(run.out)
+    run.check_identity()
+    path = os.path.join(run.out, "host_identity.json")
+    with open(path, encoding="utf-8") as handle:
+        written = json.load(handle)
+    assert written["host"] == neutral_ids.machine_id()
+    assert written["gpu_uuid"] == written["gpu"] == neutral_ids.card_id(REAL_A)
+    assert_neutral(written)
+    ladder.Ladder(config, ladder.build_plan(config), resume=True).check_identity()
+    # a file an older ladder wrote holds the raw node name and UUID: the same machine
+    monkeypatch.setattr(ladder.os, "uname", lambda: type("U", (), {"nodename": HOST})())
+    with open(path, "w", encoding="utf-8") as handle:
+        json.dump({"host": HOST, "platform": "linux", "gpu_uuid": REAL_A}, handle)
+    ladder.Ladder(config, ladder.build_plan(config), resume=True).check_identity()
+    # another card under the same index is refused, whichever spelling the file holds
+    with open(path, "w", encoding="utf-8") as handle:
+        json.dump(dict(written, gpu_uuid=neutral_ids.card_id("GPU-" + "0" * 8 + "-1111-2222-"
+                                                              "3333-444455556666")), handle)
+    with pytest.raises(SystemExit):
+        ladder.Ladder(config, ladder.build_plan(config), resume=True).check_identity()
+
+
+def test_the_progress_log_and_the_box_trace_name_no_machine(machine, tmp_path):
+    log = tmp_path / "progress.log"
+    ladder.Log(str(log)).say(f"row 1/2 START | logs under {HOME}/runs/x on {HOST} "
+                             f"pinned {REAL_A}")
+    assert_neutral(log.read_text())
+
+
+def test_every_driver_a_copy_ladder_runs_carries_its_helpers():
+    """A ``--drivers-mode copy`` ladder runs its drivers from the copy: a driver that
+    imports ``neutral_ids`` needs it copied beside it."""
+    for name in ladder.DRIVER_FILES:
+        with open(os.path.join(HERE, name), encoding="utf-8") as handle:
+            if "import neutral_ids" in handle.read():
+                assert "neutral_ids.py" in ladder.DRIVER_FILES, name
+    assert "neutral_ids.py" in ladder.DRIVER_FILES
+
+
+def test_a_host_named_like_a_case_is_refused_before_anything_is_written(machine,
+                                                                        monkeypatch,
+                                                                        tmp_path):
+    config = config_of(LINUX + ["--run-root", str(tmp_path / "runs")])
+    problems = ladder.live_checks(config, resume=False, collect=True, environ={})
+    assert timing_host.VOCABULARY_REFUSAL not in problems
+    # A route named like a kernel table is a word every record carries and is never
+    # rewritten (neutral_ids.RECORD_WORDS); a case is this run's own word.
+    monkeypatch.setattr(neutral_ids.socket, "gethostname", lambda: config.cases[0])
+    monkeypatch.setattr(neutral_ids, "_node", lambda: config.cases[0])
+    neutral_ids.reset()
+    problems = ladder.live_checks(config, resume=False, collect=True, environ={})
+    assert timing_host.VOCABULARY_REFUSAL in problems

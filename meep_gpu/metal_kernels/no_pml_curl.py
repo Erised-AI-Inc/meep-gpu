@@ -5,7 +5,7 @@ implements the direct branch of ``stepping._apply_curl``: after the shared Yee
 stencil and ownership mask, each target is updated as ``target -= curl``.  There
 is no split-field auxiliary and no PML coefficient.
 
-THE STENCIL IS MEEP'S, character for character the PML curl's
+The stencil is MEEP's, character for character the PML curl's
 (:data:`CURL_STATEMENTS`, the lines ``shaders.curl_source`` emits):
 ``dtdx * (((g1s - g1) + g2) - g2s)`` with both partners, ``dtdx * (g1s - g1)``
 without ``g2`` and ``(-dtdx) * (g2s - g2)`` without ``g1``
@@ -250,7 +250,7 @@ def metal_plain_curl_coverage(fields: Any, pml: Any,
 class MetalPlainCurlPlan(KernelPlan):
     """Persistent-mirror plan for one direct curl sub-step.
 
-    THE CHUNK RECORD BINDS LAST (:data:`RECORD_BUFFER`), checked against the plan's
+    The chunk record binds last (:data:`RECORD_BUFFER`), checked against the plan's
     shape (:func:`.chunk_bounds.plan_words`) and uploaded once as a plan-owned
     ``int32`` vector, as every base plan binds it. ``chunk_bounds`` keeps the host
     words for inspection.

@@ -1,6 +1,6 @@
 """The E->P weld the ROTATION HAZARD refused: monolithic ``update_E``, one component's P.
 
-THE CELL, AND THE REFUSAL THAT NAMED IT. ``E_to_P (cuda_dispersive_offdiag/dispersive
+The cell, and the refusal that named it. ``E_to_P (cuda_dispersive_offdiag/dispersive
 off-diagonal, cuda_ade/ADE)`` is one seam-instance -- ``examples/absorbed_power_
 density.py`` -- and the hand-CUDA board prices it POINTWISE-BUILDABLE and serves it
 with nothing. It is the only ``E_to_P`` cell on the board with no product, and the
@@ -15,8 +15,9 @@ reason is written down in the shipped sibling
      would take a different weld shape (all three components in one launch, which
      the buffer count above refuses), not a wider predicate."
 
-THAT IS A REFUSAL OF THE PER-COMPONENT SPLIT, NOT OF FUSION, and the fusion-residue
-audit (§1.5) says so. This module is the shape it names: ``update_E`` stays
+That is a refusal of the per-component split, not of fusion: its last sentence
+names a different weld shape (all three components in one launch) as what serving
+the cell would take. This module is the shape it names: ``update_E`` stays
 MONOLITHIC -- one launch, all three components, exactly as the certified
 ``update_E_pml_real_folded_offdiag_dispersive`` already is -- and the launch
 additionally carries the ``update_P`` recurrence of ONE component across every state
@@ -24,7 +25,7 @@ that drives it. No rotation happens inside the launch, so no read can land on a
 rotated slot, and the hazard has nothing to attach to.
 
 =============================================================================
-WHY THE BUFFER COUNT DOES NOT REFUSE THIS ONE
+Why the buffer count does not refuse this one
 =============================================================================
 
 The sibling's buffer argument is exact and it is about ``update_P``, not
@@ -36,7 +37,7 @@ the certified ADE kernel's own arrangement, unchanged. The other two components 
 afterwards as certified ADE launches with the host rotation between, exactly as
 ``ade_kernels.update_P_fused_pml_real`` runs them.
 
-WHAT IT IS WORTH, COUNTED RATHER THAN CLAIMED. On this cell's one corpus row the
+What it is worth, counted rather than claimed. On this cell's one corpus row the
 census records ONE polarization state driving all three components, so the array path
 runs ``1 + 3 = 4`` launches on this seam and this weld runs ``1 + 2 = 3``. That is the
 whole saving, and it is the same saving the per-component sibling would have got on
@@ -44,7 +45,7 @@ this configuration (three launches either way) for a far smaller edit to certifi
 text -- the off-diagonal body is lifted WHOLE rather than split three ways.
 
 =============================================================================
-THE SEAM, AND WHY THE HAND-OFF IS EXACT
+The seam, and why the hand-off is exact
 =============================================================================
 
 ``update_P``'s drive for component ``c`` is ``fields.drive_field(c)``, which under an
@@ -55,16 +56,16 @@ the bits, so the register IS the drive; the load is removed and the register use
 same lift :mod:`.fused_polarization_pair` declares. The predicate checks the drive
 identity against the arrays this launch binds rather than assuming it.
 
-THE POLE BUFFER IS THE ALIASING HAZARD HERE, and it is the same one the sibling
+The pole buffer is the aliasing hazard here, and it is the same one the sibling
 records: the E half's ``dmp_<c>`` chain reads ``state.P[c]`` and the P half's
-recurrence reads THE SAME ARRAY as its ``p_now``. Binding one allocation to two
+recurrence reads the same array as its ``p_now``. Binding one allocation to two
 ``__restrict__`` parameters is undefined behaviour NVRTC miscompiles without a
 diagnostic, so each ``P_<c>_<i>`` appears EXACTLY ONCE in the signature -- it is
 already there for the E half -- and the recurrence reads through that parameter. The
 certified ADE kernel's ``p_now`` is therefore not a parameter of this kernel at all.
 
 =============================================================================
-WHAT IS LIFTED AND WHAT IS WRITTEN
+What is lifted and what is written
 =============================================================================
 
 Nothing arithmetic is written here. The E half is
@@ -75,7 +76,7 @@ SIGNATURE SPLICE (the ADE parameters appended to the certified one), the seam li
 and the launcher's choreography. :data:`LIFT_EDITS` is the whole list.
 
 =============================================================================
-NOTHING HERE IS DISPATCH
+Nothing here is dispatch
 =============================================================================
 
 ``meep_gpu.fastpath.plan_fast_path`` still returns ``None`` on every branch.
@@ -111,13 +112,13 @@ try:
 except Exception:  # noqa: BLE001
     dispersive_kernels = None  # type: ignore[assignment]
 
-#: BYTE-IDENTICAL TO THE ARRAY PATH WITH A DEVICE VERDICT BEHIND IT.
+#: Byte-identical to the array path with a device verdict behind it.
 #: ``certification.json``'s ``cuda_dispersive_offdiag_polarization_pair_2026-09-02`` block names the same
 #: two artifacts this line rests on, and ``test_kernel_partition.py`` refuses a
 #: name here that no record block claims.
 #:
-#: THE DECLARATION IS THE FINAL BYTES, AND THAT IS THIS CAMPAIGN'S RULE 4 RATHER
-#: THAN a claim made ahead of its evidence: a gate certifies the module it
+#: The declaration is the final bytes, and that is a certification rule rather
+#: than a claim made ahead of its evidence: a gate certifies the module it
 #: imported, so a module that moved its own name between the two sets AFTER the
 #: run would leave the record bound to bytes that no longer ship -- which is
 #: exactly the drift ``rebind_cuda_welds.py`` exists to catch. The run this line
@@ -194,21 +195,21 @@ LIFT_EDITS: Tuple[Dict[str, str], ...] = (
              "update_E_pml_real_folded_offdiag_dispersive(",
      "became": 'extern "C" __global__ void '
                "dispersive_offdiag_fused_polarization_pair_pml_real(",
-     "why": "THE ENTRY POINT'S NAME, and nothing else on that line. A second kernel "
+     "why": "The entry point's name, and nothing else on that line. A second kernel "
             "wearing the certified one's name would make certification.json's "
             "partition test and any NVRTC binary observation ambiguous about which "
             "body it saw -- the same reason folded_offdiag_kernels states for its "
             "own name."},
     {"line": "    const int* __restrict__ cb\n) {",
      "became": "    const int* __restrict__ cb,\n<the ADE parameters>\n) {",
-     "why": "THE SIGNATURE SPLICE, and the only device text this module writes. The "
+     "why": "The signature splice, and the only device text this module writes. The "
             "certified off-diagonal signature is lifted whole and the recurrence's "
             "outputs, histories, sigmas and scalar coefficients are appended -- one "
             "group per driving state. No arithmetic lives in a signature."},
     {"line": "(the certified update_P, one launch per (state, component))",
      "became": "(ONE component's recurrence inside the update_E launch; the rest "
                "as certified ADE launches with the host rotation between)",
-     "why": "THE SHAPE THE SIBLING'S REFUSAL NAMES. update_E stays MONOLITHIC, so "
+     "why": "The shape the sibling's refusal names. update_E stays MONOLITHIC, so "
             "no rotation happens inside it and its off-diagonal row product cannot "
             "read a rotated P slot -- which is the whole hazard. The buffer count "
             "that refuses advancing three components at once does not arise: one "
@@ -227,7 +228,7 @@ __all__ = [
 
 
 # =============================================================================
-# THE DEVICE CODE
+# The device code
 # =============================================================================
 
 def pole_counts(fields: Any) -> Tuple[int, int, int]:
@@ -245,7 +246,7 @@ def pole_counts(fields: Any) -> Tuple[int, int, int]:
 def fused_component(fields: Any) -> Optional[str]:
     """Which component's recurrence rides inside the launch: the FIRST driven one.
 
-    THE ORDER IS THE CERTIFIED LAUNCHER'S. ``ade_kernels.update_P_fused_pml_real``
+    The order is the certified launcher's. ``ade_kernels.update_P_fused_pml_real``
     visits each state's components in ``state.driven()`` order and rotates between
     them, and this weld preserves that sequence by taking the first component any
     state drives and leaving the rest to run after it. Rotations of DIFFERENT states
@@ -278,7 +279,7 @@ def _ade_parameters(component_index: int, count: int,
                      f"const float* __restrict__ p_prev_{i}, {sigma}")
         lines.append(f"    float two_minus_od_{i}, float gamma1_{i}, "
                      f"float omega0dtsqr_{i}, float gamma1inv_{i},")
-    # THE LAST GROUP CLOSES THE LIST. The certified signature this splices into
+    # The last group closes the list. The certified signature this splices into
     # ended on its own final parameter, so a trailing comma here is a parameter
     # declarator NVRTC expects and never finds.
     return "\n".join(lines).rstrip(",")
@@ -326,7 +327,7 @@ def kernel_source(row_mask: Sequence[int], counts: Sequence[int],
     spliced = certified.replace(
         _SIGNATURE_TAIL,
         "    const int* __restrict__ cb,\n"
-        "    // THE RECURRENCE'S OWN PARAMETERS, one group per driving state.\n"
+        "    // The recurrence's own parameters, one group per driving state.\n"
         "    // p_now is ABSENT: the E half already binds P_<c>_<i> and both halves\n"
         "    // read it through that one parameter, because binding one allocation\n"
         "    // to two __restrict__ pointers is undefined behaviour.\n"
@@ -417,7 +418,7 @@ def covers_dispersive_offdiag_fused_polarization_pair(
 
     Returns ``(covered, reason)`` with ``reason`` naming the FIRST refusal.
 
-    A CONJUNCTION, AND NOTHING IS WEAKENED. The off-diagonal dispersive
+    A conjunction, and nothing is weakened. The off-diagonal dispersive
     constitutive arm's own predicate and the ADE arm's own predicate are both asked
     in full. What this weld ADDS is three clauses: something must be driven, the
     drive identity behind the register hand-off must hold against the arrays this
@@ -445,7 +446,7 @@ def covers_dispersive_offdiag_fused_polarization_pair(
                        "no recurrence to weld: that configuration is the certified "
                        "off-diagonal dispersive update_E alone")
 
-    # THE DRIVE IDENTITY, checked against the arrays THIS launch binds rather than
+    # The drive identity, checked against the arrays THIS launch binds rather than
     # assumed. The register hand-off is exact only while drive_field(c) really is
     # f_w_<c>; on a run where it is the stored E instead, the weld would hand the
     # recurrence a value the array path does not use.
@@ -453,7 +454,7 @@ def covers_dispersive_offdiag_fused_polarization_pair(
     if problem is not None:
         return False, f"the seam register is not the drive: {problem}"
 
-    # THE EXTENT THE DROPPED ADE GUARD ASSUMED. This kernel emits ONE bounds guard
+    # The extent the dropped ADE guard assumed. This kernel emits ONE bounds guard
     # -- the E half's -- so every recurrence volume must carry exactly the stored
     # extent that guard walks, or the P half would run over a range its own
     # certified kernel would not have.
@@ -478,22 +479,18 @@ def covers_dispersive_offdiag_fused_polarization_pair(
                                f"certified update_P guard and may only do so where "
                                f"the two are one number")
 
-    # THE CHUNK-DIVISION CLAUSE, the arm table's own (``arms.coverage_adapter`` with
-    # ``CHUNK_AXES_OFFDIAG``, the ``dispersive off-diagonal`` row's axes), asked of the
-    # run's own division (``arms.StepContext`` handed none reads the division the fields
-    # carry). The update_E half indexes MEEP's chunks on every axis through the record,
-    # and the composer refuses that arm wherever the record does not name them; the
-    # composer installs this weld only over the two arms it selected, so without the
-    # clause the predicate admitted a run the composer can never hand it:
-    # examples/absorbed_power_density.py on the 1.0 census, whose division is not a
-    # {low, interior, high} product along x (the wrapped row 0 reads the low run's
-    # label while its chunk is the high one), and whose update_E steps on the array path
-    # under dispatch. Whether that clause is stricter than this row needs (its presence
-    # words do build on the record) is the clause's question, not this weld's.
-    from .arms import StepContext  # noqa: PLC0415 - the composer's own clause
-    from .chunk_coverage import CHUNK_AXES_OFFDIAG  # noqa: PLC0415
+    # The chunk-division clause, the update_E half's own
+    # (``dispersive_offdiag_update_e.dispersive_offdiag_division_refusal``, the clause the
+    # composer asks of the ``dispersive off-diagonal`` arm), asked of the run's own
+    # division (``arms.StepContext`` handed none reads the division the fields carry).
+    # The composer installs this weld only over the two arms it selected, so the
+    # predicate admits exactly the divisions that arm admits: one whose record names its
+    # chunks, or one whose record describes it and on which this family's presence words
+    # build -- examples/absorbed_power_density.py, whose wrapped row 0 on x reads the low
+    # run's label while its chunk is the high one, carrying the same presence.
+    from .arms import StepContext  # noqa: PLC0415 - the composer's own context
 
-    refusal = StepContext(fields, pml, grid).chunk_division_refusal(CHUNK_AXES_OFFDIAG)
+    refusal = _offdiag_e.dispersive_offdiag_division_refusal(StepContext(fields, pml, grid))
     if refusal is not None:
         return False, refusal
     return True, "covered"
@@ -522,11 +519,11 @@ def launch_dispersive_offdiag_fused_polarization_pair(
         kernel: Optional[Any] = None) -> Dict[str, Any]:
     """The whole ``update_E`` and ONE component's ``update_P``, in ONE launch.
 
-    THE CALLER ROTATES AFTERWARDS, exactly as the certified ADE launcher rotates
+    The caller rotates afterwards, exactly as the certified ADE launcher rotates
     after each of its own launches -- and only once this returns, so a raised launch
     leaves the state as it found it.
 
-    ``kernel`` IS THE GATE'S DOOR: a gate compiles a deliberately broken copy of the
+    ``kernel`` is the gate's door: a gate compiles a deliberately broken copy of the
     shipped source and hands it here. ``kept`` is the six presence words in slot
     order (0 for a dead slot) and ``chunk_bounds`` the device record, both the
     certified off-diagonal dispersive launcher's own arguments.
@@ -620,11 +617,11 @@ def run_dispersive_offdiag_fused_polarization_pair(
         kernel: Optional[Any] = None, rotate: bool = True) -> Dict[str, Any]:
     """Both of :data:`REPLACES`: ONE fused launch, then the remaining recurrences.
 
-    THE PREDICATE IS ASKED FIRST AND A REFUSAL IS RETURNED, NOT RAISED, because the
+    The predicate is asked first and a refusal is returned, not raised, because the
     caller's correct response to a configuration this product does not carry is the
     array path.
 
-    THE TAIL IS THE CERTIFIED LAUNCHER'S OWN LOOP, minus the component the fused
+    The tail is the certified launcher's own loop, minus the component the fused
     launch already advanced: ``ade_kernels``' per-(state, component) launch with the
     slots RE-READ after each rotation. Re-reading is not a precaution -- the three
     buffers rotate per component and a launcher that cached the views "would be

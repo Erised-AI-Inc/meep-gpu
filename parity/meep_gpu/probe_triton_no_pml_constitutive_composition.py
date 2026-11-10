@@ -24,7 +24,7 @@ exactly what closes them.
 THREE LEGS, and which of them can run is decided by the host, never by a flag:
 
 * ``census``      — pure predicate arithmetic over every slot of a whole step, for a
-                    set of representative rows, reported MODULO THE BACKEND CLAUSE so
+                    set of representative rows, reported modulo the backend clause so
                     it is not vacuous on a laptop (every kernel predicate opens with
                     "array module is not cupy"). Produces the whole-step verdict per
                     row and the reason for every uncovered slot. Runs anywhere.
@@ -40,7 +40,7 @@ THREE LEGS, and which of them can run is decided by the host, never by a flag:
 * ``whole_step``  — DEVICE ONLY. The same loop with ``step_B``/``step_D`` additionally
                     served by ``no_pml.plan_plain_curl``, so all four heavy slots are
                     off the array path at once. Requires CuPy AND Triton; on a host
-                    without them the leg is RECORDED AS SKIPPED with its reason and
+                    without them the leg is recorded as skipped with its reason and
                     the artifact says in so many words that no whole-step byte-identity
                     claim has been made. It is not skipped silently and it is not
                     faked.
@@ -145,12 +145,12 @@ policy_stamp = complex_gate.policy_stamp
 #: ``update_P`` is listed because a whole-step claim that quietly omits a slot is not
 #: a whole-step claim.
 #:
-#: ON THE ROWS THIS FAMILY SERVES ``update_P`` IS AN ARRAY-PATH NO-OP OF ITS OWN
+#: On the rows this family serves ``update_P`` is an array-path no-op of its own
 #: (stepping.py:1425-1426, the return before the loop when nothing is registered), and
 #: it COUNTS toward the whole-step verdict — the record used to say "recorded rather
 #: than counted as coverage" while the arithmetic at :whole counted it, and the two
-#: now agree. Counting it is the right reading: "whole step" here means NO HEAVY WORK
-#: IS LEFT ON THE ARRAY PATH, and a slot that returns before its first statement
+#: now agree. Counting it is the right reading: "whole step" here means no heavy work
+#: is left on the array path, and a slot that returns before its first statement
 #: leaves none. What that must never be allowed to mean is "a product covers it", so
 #: every case records the slot's ``product`` string ('array-path no-op ...') and its
 #: own :data:`HEAVY_SLOTS` column beside the whole-step verdict. An absorbing control
@@ -202,14 +202,14 @@ ROWS: Tuple[Dict[str, Any], ...] = (
      "boundaries": {"x": "metallic", "y": "metallic"}, "courant": COURANT_NP2,
      "salt": 43, "expect_whole_step": True,
      "row": "TestMedium.test_check_material_frequencies"},
-    # THE SOURCE IS LOAD-BEARING HERE AND WAS MISSING. On a single periodic voxel
+    # The source is load-bearing here and was missing. On a single periodic voxel
     # every curl difference is a cell against ITSELF, so the curls are identically
     # zero and nothing can move the state but a source. Measured as shipped: 0 of 6
     # words moved across all 24 steps, so this row's "all four heavy slots
     # substituted, bit-identical" was comparing two frozen 6-word states — it passed
     # for the same reason an empty test passes. With the source, Dz moves.
     #
-    # WHAT THIS ROW CAN AND CANNOT SHOW, stated so nobody reads more into it: it is a
+    # What this row can and cannot show, stated so nobody reads more into it: it is a
     # degenerate-shape case. It demonstrates that the substitution stays byte-null
     # where n_a is 1 in every direction; it can NEVER be the evidence that the curls
     # ran, because on one voxel they have nothing to difference. The rows above carry
@@ -491,7 +491,7 @@ def run_constitutive(results: Dict[str, Any], out_path: str, xp: Any,
     log(f"[constitutive:{backend}] source non-vacuity: "
         f"{effect['differing_words']} words differ")
 
-    # THE NEGATIVE CONTROL. Force the nulls into a driver whose layer IS active,
+    # The negative control. Force the nulls into a driver whose layer IS active,
     # past the predicate that forbids it. The same loop must diverge; without this
     # row every "identical" above is unfalsified.
     control_spec = {"name": "negative_control_active_pml", "cell": (1.2, 1.0, 1.4),
@@ -539,7 +539,7 @@ def run_whole_step(results: Dict[str, Any], out_path: str, xp: Any,
                    backend: str) -> Dict[str, Any]:
     """All four heavy slots off the array path at once. Requires CuPy AND Triton.
 
-    NOT SKIPPED SILENTLY. On a host without a device this records why, and the
+    Not skipped silently. On a host without a device this records why, and the
     artifact's top-level claim block says that no whole-step byte-identity result
     exists yet. A leg that quietly disappears reads, later, as a leg that passed.
     """
@@ -595,7 +595,7 @@ def run_whole_step(results: Dict[str, Any], out_path: str, xp: Any,
         swap = _SlotSubstitution(substituted.fields, plans)
         first_divergence = None
         totals = {"differing_words": 0, "total_words": 0, "comparisons": 0}
-        # THE DENOMINATOR AND THE VACUITY GUARD, both of which this leg lacked while
+        # The denominator and the vacuity guard, both of which this leg lacked while
         # carrying the family's largest claim. "Bit-identical over 24 steps" needs the
         # number of words that were actually compared, and — because TWO of the four
         # substituted slots are nulls — it needs proof that the run moved at all. Two
@@ -737,7 +737,7 @@ def validate_payload(payload: Dict[str, Any], backend: str = "numpy",
                     "step_B", "step_D", "update_E", "update_H"]:
                 failures.append(f"whole_step case {case.get('name')} did not substitute "
                                 "all four heavy slots")
-            # THE VACUITY GUARD. Half the substituted slots are nulls, so "identical"
+            # The vacuity guard. Half the substituted slots are nulls, so "identical"
             # is satisfied by two drivers that both sat still. Absent counts as a
             # failure, not as "not checked".
             moved = case.get("reference_state_moved")
@@ -772,12 +772,13 @@ def validate_payload(payload: Dict[str, Any], backend: str = "numpy",
 
 
 def provenance(backend: str) -> Dict[str, Any]:
+    import neutral_ids  # noqa: PLC0415
     import platform  # noqa: PLC0415
 
     return {
         "probe": "no-PML constitutive composition (whole-step question)",
         "backend": backend,
-        "python": sys.executable,
+        "python": neutral_ids.path(sys.executable),
         "platform": platform.platform(),
         "numpy": np.__version__,
         "cupy": getattr(cp, "__version__", None),

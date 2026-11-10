@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""THE update_H -> step_D SEAM, MEASURED PER CORPUS ROW — the probe behind the fourth
+"""The update_H -> step_D seam, measured per corpus row — the probe behind the fourth
 priced seam (``H_to_D``) on the three fusion boards.
 
-WHY THIS FILE EXISTS. The fusion-residue audit (§2) found that the boundary between
+Why this file exists. A review of the boards' denominators found that the boundary between
 ``update_H`` and ``step_D`` was never priced: the three boards price the two
 curl->constitutive seams (B->H, D->E) and the E->P chain seam, and the boundary that
 closes the loop — the magnetic constitutive into the electric curl — sat outside
@@ -23,7 +23,7 @@ MEASURES whether any electric source carries a ``withdraw`` that does work — a
 about the lifted row, not about a name — and records whether the magnetic restore
 runs in the seam.
 
-WHAT IT MEASURES, PER ROW (the ``h_to_d_seam`` block on every census row):
+What it measures, per row (the ``h_to_d_seam`` block on every census row):
 
 - every source the driver holds: its class, component, field type, envelope, MEEP's
   ``is_integrated`` flag, whether it carries no ``withdraw`` at all
@@ -33,16 +33,21 @@ WHAT IT MEASURES, PER ROW (the ``h_to_d_seam`` block on every census row):
   (``withdraw_hoist.standing_withdraws``' rule).
 - whether the array path's ``update_H`` launches anything on this row: the function's
   first statement is ``if not _pml_is_active(pml): return`` (stepping.py), so the fact
-  is read off ``driver.pml`` and then MEASURED by poisoning: B is filled with ones,
+  is read off ``driver.pml`` and then measured by poisoning: B is filled with ones,
   ``update_H`` is run once and every stored H array is compared with its copy. A row
   where no H array changed is a row where the seam has one launch and a non-launch.
 
-HOW IT RUNS. It is a BATTERY for ``measure_predicate_coverage.py`` — the census
+How it runs. It is a BATTERY for ``measure_predicate_coverage.py`` — the census
 driver that lifts every row of the 194-row basis under the interpreter its lift
 record names, one child per row, across the three legs (examples, tests,
 tests_param) with the parameterised leg matched by facts — so the rows here are
 the SAME rows the three boards price, lifted the same way, and nothing about the
-basis is re-derived here. ``SUBJECT_PACKAGE`` is the engine itself (``meep_gpu/*.py``:
+basis is re-derived here. On a host where a recorded interpreter does not exist,
+``--interpreter RECORDED=PATH`` (repeatable) is handed to the census driver for every
+leg, its own explicit remap, keyed by the interpreter as the lift record spells it
+(``<home>/...`` since 1.0, an absolute path before); without it the driver refuses such a
+row by name. What this probe writes names an interpreter only under its root's label
+(``neutral_ids``). ``SUBJECT_PACKAGE`` is the engine itself (``meep_gpu/*.py``:
 the driver and the sources module are the subject) so the census's subject digest
 pins what this probe read. Run without arguments it cuts the three legs, matches the
 parameterised rows and then writes the JOIN:
@@ -53,9 +58,9 @@ parameterised rows and then writes the JOIN:
   re-run here).
 - ``<out>/summary.json`` — the counts, every one with its denominator named.
 
-WHAT IT DOES NOT DO. It runs on the host, on the NumPy array path, and measures
+What it does not do. It runs on the host, on the NumPy array path, and measures
 nothing on a device. Whether a fused ``update_H + step_D`` launch can bracket the
-withdraw byte-identically is the device probe the audit asked for; the boards file
+withdraw byte-identically is a question for a device probe; the boards file
 those rows under ``withdraw_seam`` until that probe exists, and this file is not it.
 
 Progress (the progress-reporting rule): the census driver writes a flushed line per row
@@ -93,7 +98,7 @@ if str(_API) not in sys.path:
 
 RESULTS = _HERE / "results"
 
-#: THE SUBJECT IS THE ENGINE. The census driver digests ``meep_gpu/<SUBJECT_PACKAGE>/*.py``
+#: The subject is the engine. The census driver digests ``meep_gpu/<SUBJECT_PACKAGE>/*.py``
 #: plus the shared engine files; ``.`` makes that ``meep_gpu/*.py`` — driver.py (the seam)
 #: and sources.py (the withdraw) are the files this probe's facts are read from.
 SUBJECT_PACKAGE = "."
@@ -205,7 +210,7 @@ def evaluate(driver: Any) -> Dict[str, Any]:
                                                  if s["withdraw_does_work"]),
         "n_electric_withdraws_that_are_the_no_op": sum(1 for s in electric
                                                        if s["withdraw_is_the_no_op"]),
-        # THE SEAM FACT: does anything step_D reads happen between the two halves?
+        # The seam fact: does anything step_D reads happen between the two halves?
         "withdraw_in_seam": any(s["withdraw_does_work"] for s in electric),
         # The pass that does run there, writing B alone: an integrated magnetic source
         # owning a point, on a row whose H is stored (an active PML).
@@ -292,7 +297,7 @@ _ARMS = {"metal": _metal_arms, "triton": _triton_arms, "cuda": _cuda_arms}
 
 
 def would_be_bucket(block: dict, arms: dict, backend: str) -> str:
-    """The bucket a board files this instance under, from THE ONE RULE the boards use
+    """The bucket a board files this instance under, from the one rule the boards use
     (``h_to_d_seam.classify``), so the summary's tally is checkable against the boards
     instance by instance. No product spans update_H+step_D on any backend, so
     ``served`` never occurs here."""
@@ -303,7 +308,24 @@ def would_be_bucket(block: dict, arms: dict, backend: str) -> str:
                                 f"{backend}_kernels")[0]
 
 
+def join_entry(name: str, row: dict, block: dict, arms: dict) -> dict:
+    """One line of ``h_to_d_seam.jsonl``: a probe row's seam block beside each backend's
+    arms. The row's interpreter is written under its root's label (``neutral_ids.path``):
+    a census cut before 1.0 recorded the absolute path, and the join leaves the machine."""
+    import neutral_ids  # noqa: PLC0415
+
+    return {
+        "label": name, "leg": row["leg"], "row": row["row"],
+        "lift_record": row.get("lift_record"),
+        "interpreter": neutral_ids.path(row.get("interpreter")),
+        "subject_manifest_sha256": row.get("subject_manifest_sha256"),
+        "h_to_d_seam": block, "arms": arms,
+    }
+
+
 def summarize(out: Path, censuses: Dict[str, Path], log) -> int:
+    import neutral_ids  # noqa: PLC0415
+
     probe_rows = {label(r): r for r in rows(out)}
     log(f"probe rows measured: {len(probe_rows)} "
         f"(examples {sum(1 for r in probe_rows.values() if r['leg'] == 'examples')}, "
@@ -341,12 +363,7 @@ def summarize(out: Path, censuses: Dict[str, Path], log) -> int:
                 arms[backend]["would_be_bucket"] = would_be_bucket(block, arms[backend], backend)
             else:
                 arms[backend] = None
-        joined.append({
-            "label": name, "leg": row["leg"], "row": row["row"],
-            "lift_record": row.get("lift_record"), "interpreter": row.get("interpreter"),
-            "subject_manifest_sha256": row.get("subject_manifest_sha256"),
-            "h_to_d_seam": block, "arms": arms,
-        })
+        joined.append(join_entry(name, row, block, arms))
     with (out / "h_to_d_seam.jsonl").open("w", encoding="utf-8") as handle:
         for entry in joined:
             handle.write(json.dumps(entry) + "\n")
@@ -367,7 +384,7 @@ def summarize(out: Path, censuses: Dict[str, Path], log) -> int:
         "basis_missing_from_the_probe": missing_from_probe,
         "probe_only_labels": extra_in_probe,
         "probe_rows_not_measured": unmeasured_probe,
-        "censuses": {b: str(p) for b, p in censuses.items()},
+        "censuses": {b: neutral_ids.path(str(p)) for b, p in censuses.items()},
         "subject_digests": {
             leg: json.loads((out / f"subject_digests_{leg}.json").read_text())
             .get("manifest_sha256")
@@ -463,7 +480,7 @@ def recover_case(out: Path, spec: str, environment: dict, log) -> int:
     """Re-run one tests-leg case alone and append its record, stamped, to tests.jsonl.
 
     The census driver runs a whole module per child and re-runs the survivors one case
-    per child only when an abort cost MORE THAN ONE case; a module that aborts on
+    per child only when an abort cost more than one case; a module that aborts on
     exactly one case leaves that case as ``child died`` with no retry. This is that
     retry, in the driver's own shape (``--child-module`` + ``--child-cases [one]``),
     with the leg's own subject and battery stamps read back from
@@ -489,8 +506,11 @@ def recover_case(out: Path, spec: str, environment: dict, log) -> int:
     log(f"recover {module_name}:{case_id} as a solo child -> {solo_path.name}")
     completed = subprocess.run(command, cwd=str(out), env=environment, check=False,
                                stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+    import neutral_ids  # noqa: PLC0415
+
     if not solo_path.is_file():
-        tail = (completed.stderr or b"").decode("utf-8", "replace")[-600:]
+        # Neutral before it is cut: a tail cut first can begin inside a path.
+        tail = neutral_ids.text((completed.stderr or b"").decode("utf-8", "replace"))[-600:]
         log(f"  recovery FAILED rc={completed.returncode}: no record written; {tail!r}")
         return 4
     rows_recovered = json.loads(solo_path.read_text(encoding="utf-8"))
@@ -501,7 +521,7 @@ def recover_case(out: Path, spec: str, environment: dict, log) -> int:
             row["subject_manifest_sha256"] = digests["manifest_sha256"]
             row["battery_sha256"] = digests["battery_sha256"]
             row["recovered"] = "solo child after the module child aborted on this case"
-            handle.write(json.dumps(row) + "\n")
+            handle.write(json.dumps(neutral_ids.value(row)) + "\n")
             log(f"  recovered {row.get('row')}: measured={row.get('measured')} "
                 f"({row.get('lift_error') or row.get('note') or 'ok'})")
     return 0
@@ -510,7 +530,7 @@ def recover_case(out: Path, spec: str, environment: dict, log) -> int:
 # --- the driver ----------------------------------------------------------------------
 
 
-def main() -> int:
+def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--out", type=Path, default=RESULTS / CAMPAIGN)
     parser.add_argument("--leg", action="append", default=None,
@@ -525,16 +545,29 @@ def main() -> int:
                              "append its record to tests.jsonl; for a case whose "
                              "module child aborted on it and which the driver did not "
                              "retry (it retries only when more than one case is lost)")
+    parser.add_argument("--interpreter", action="append", default=[],
+                        metavar="RECORDED=PATH",
+                        help="passed to the census driver on every leg: run the rows "
+                             "whose lift record names interpreter RECORDED under PATH "
+                             "(the driver's own remap, for a host where RECORDED does "
+                             "not exist)")
     for backend, default in STANDING_CENSUSES.items():
         parser.add_argument(f"--census-{backend}", default=default,
                             help=f"{backend} census directory name under results/")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
+    for item in args.interpreter:
+        recorded, _sep, path = item.partition("=")
+        if not (recorded and path):
+            parser.error(f"--interpreter {item!r}: expected RECORDED=PATH")
     out: Path = args.out
     out.mkdir(parents=True, exist_ok=True)
     log_path = out / "probe.log"
 
+    import neutral_ids  # noqa: PLC0415
+
     def log(message: str) -> None:
-        line = f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] {message}"
+        # The probe log leaves the machine with the join: its lines name directories.
+        line = f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] {neutral_ids.text(message)}"
         print(line, flush=True)
         with log_path.open("a", encoding="utf-8") as handle:
             handle.write(line + "\n")
@@ -550,9 +583,12 @@ def main() -> int:
         for leg in (args.leg or ("examples", "tests", "tests_param")):
             started = time.time()
             log(f"leg {leg} start (battery probe_h_to_d_seam, driver "
-                f"measure_predicate_coverage.py, out {out})")
+                f"measure_predicate_coverage.py, out {out})"
+                + "".join(f", --interpreter {item}" for item in args.interpreter))
             command = [sys.executable, "-u", str(_HERE / "measure_predicate_coverage.py"),
                        "--battery", "probe_h_to_d_seam", "--leg", leg, "--out", str(out)]
+            for item in args.interpreter:
+                command += ["--interpreter", item]
             completed = subprocess.run(command, cwd=str(_API), env=environment, check=False)
             log(f"leg {leg} rc={completed.returncode} ({time.time() - started:.1f} s)")
             if completed.returncode != 0:

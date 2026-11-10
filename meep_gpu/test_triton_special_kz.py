@@ -1,4 +1,4 @@
-"""Laptop contracts for the special_kz (grid.beta) Triton tranche.
+"""Laptop contracts for the special_kz (grid.beta) Triton kernels.
 
 Everything here runs on the NumPy merge-bar machine: the optional-import
 contract, the predicates' admission AND per-clause refusals on real
@@ -97,7 +97,7 @@ def _build(cell_size=(2.0, 1.6, 0.0), pml_thickness=2, complex_storage=False,
     if storage:
         fields.enable_pml_storage()
     # Per-axis thickness: the invariant z axis (n = 1) carries no layer at all,
-    # exactly as the complex tranche's reference builder builds it.
+    # exactly as the complex-field kernels' reference builder builds it.
     if pml_override is not None:
         return fields, PML(grid=grid, thickness=pml_override)
     thickness = tuple(
@@ -181,14 +181,19 @@ def test_the_guard_is_the_packages_one_spelling_and_appears_twice():
     assert code.count(GUARD_SPELLING) == 2
 
 
-def test_no_fingerprint_entry_is_claimed(sk):
+def test_the_one_fingerprint_entry_is_the_seeded_fleet_weld(sk):
+    """The family's weld is the one the 1.0.1 round's bind seeded from its released fleet run
+    (``seed_triton_welds.py``); no other entry claims the family."""
     import json
 
     recorded = json.loads((PACKAGE_DIR / "fingerprints.json")
                           .read_text(encoding="utf-8"))
-    assert not any("special_kz" in name for name in recorded), (
-        "this tranche's provenance lives in the gate's results directory, "
-        "not in the other track's fingerprints.json")
+    assert {name for name in recorded if "special_kz" in name} == {
+        "triton_special_kz_device_gate"}, (
+        "this family's provenance is the fleet run its seeded weld names, and no other entry")
+    seeded = recorded["triton_special_kz_device_gate"]
+    assert "seed_triton_welds.py" in seeded["_seeded"] and seeded["status"] == "PASS", seeded
+    assert "/special_kz/" in seeded["runs"]["8.6"]["records"], seeded["runs"]["8.6"]["records"]
 
 
 # ---------------------------------------------------------------------------
@@ -261,7 +266,7 @@ def test_an_inactive_layer_is_refused(sk):
 
 
 def test_real_offdiagonal_epsilon_with_beta_is_refused_by_name(sk):
-    """§4(f): the implicit-i trick stops cancelling — stepping raises
+    """The implicit-i trick stops cancelling — stepping raises
     (stepping.py:800-810), MEEP aborts (fields.cpp:548-549). Refused for the
     whole real family, and the raise itself is pinned below."""
     fields, pml = _build()
@@ -286,19 +291,19 @@ MIRROR_PML = {"x": {"high": 2}, "y": 2}  # a mirrored axis absorbs high-face onl
 
 
 def test_a_mirror_plane_is_refused_with_the_phase_b_pointer(sk):
-    """Phase A refuses the fold by name; the reason must say where it goes."""
+    """The unfolded kernel refuses the fold by name; the reason must say where it goes."""
     fields, pml = _build(symmetry=("X",), beta=0.2, pml_override=MIRROR_PML)
     reasons = _real_reasons(sk, fields, pml)
     assert any("Phase B" in r for r in reasons), reasons
     cfields, cpml = _build(symmetry=("X",), beta=0.2, complex_storage=True,
                            pml_override=MIRROR_PML)
     creasons = _complex_reasons(sk, cfields, cpml)
-    assert any("complex tranche" in r and "fold" in r.lower()
+    assert any("complex-field kernels" in r and "fold" in r.lower()
                for r in creasons), creasons
 
 
 def test_beta_on_a_3d_grid_is_refused_by_the_grid_itself(sk):
-    """§4(d)/(e): grid.py:668-697, MEEP fields.cpp:546-547 — restated in the
+    """grid.py:668-697, MEEP fields.cpp:546-547 — restated in the
     predicate AND exercised at the constructor."""
     with pytest.raises(ValueError, match="2-D"):
         Grid(resolution=10.0, cell_size=(0.8, 0.8, 0.8), dimensions=3, beta=0.2)
@@ -334,7 +339,7 @@ def test_a_nonlinearity_is_refused(sk, monkeypatch):
 
 
 def test_a_conductivity_is_refused_in_both_directions(sk):
-    """§4 / grouping choice 7: the beta curls refuse conductive targets by
+    """Grouping choice 7 of the kernel module: the beta curls refuse conductive targets by
     name, and the conductive family's own predicate refuses beta — no silent
     overlap in either direction."""
     fields, pml = _build()
@@ -370,7 +375,7 @@ def test_a_missing_condfac_reader_is_refused_not_read_as_no_conductivity(sk):
 def test_a_registered_susceptibility_splits_real_from_complex(sk):
     """Dispersion is ADMITTED by the REAL beta curl (constitutive-only feature,
     the same split the certified real curl makes) and refused OUTRIGHT by the
-    complex variant (complex ADE is a future tranche)."""
+    complex variant (complex ADE is not yet built)."""
     pole = SimpleNamespace(
         driven=lambda: ("Ex",),
         drives=lambda name: name == "Ex",
@@ -383,7 +388,7 @@ def test_a_registered_susceptibility_splits_real_from_complex(sk):
     cfields, cpml = _build(complex_storage=True, beta=0.2)
     cfields.polarizations = [pole]
     creasons = _complex_reasons(sk, cfields, cpml)
-    assert any("future tranche" in r for r in creasons), creasons
+    assert any("not yet built" in r for r in creasons), creasons
 
 
 def test_an_unknown_susceptibility_kind_is_refused(sk):

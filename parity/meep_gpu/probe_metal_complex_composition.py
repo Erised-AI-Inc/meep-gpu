@@ -1,6 +1,6 @@
 """Composition probe for the Metal complex-field / Bloch family.
 
-WHAT A GATE CANNOT ANSWER AND THIS DOES. ``gate_metal_complex.py`` certifies one
+What a gate cannot answer and this does. ``gate_metal_complex.py`` certifies one
 sub-step at a time against ``stepping.py``. A COMPOSITION is a different claim: four
 device sub-steps in a row, sharing ONE residency, with the driver's seam work
 (source fills, wall clears) happening between them on the host. Three things can go
@@ -18,12 +18,12 @@ wrong there that no single-sub-step gate can see:
    probe measures that the refusal is load-bearing by running the seam BOTH ways —
    declared-and-synced (must match the array path) and undeclared (must diverge);
 3. **the zero-init census.** From an all-zero state the array path stores ``-0.0``
-   wherever a thin absorber's deepest ``kms = kappa - sigma`` goes negative. That is
-   the class the Triton complex tranche found REACHABLE at stored bytes, and it is
-   why the negation spelling was load-bearing there. This probe censuses it here so
-   the Metal claim rests on the same measured reachability rather than on Triton's.
+   wherever a thin absorber's deepest ``kms = kappa - sigma`` goes negative. That is the
+   class the Triton complex family's composition probe found REACHABLE at stored bytes, and
+   it is why the negation spelling was load-bearing there. This probe censuses it here
+   so the Metal claim rests on the same measured reachability rather than on Triton's.
 
-NOT A GATE. It writes an artifact and asserts, but its subject is the COMPOSITION
+Not a gate. It writes an artifact and asserts, but its subject is the COMPOSITION
 rather than the arithmetic; the bytes were certified next door. It shares the gate's
 kit.
 
@@ -214,7 +214,7 @@ def case_cycle(payload: Dict[str, Any], out: str, cycles: int = 4) -> None:
 def case_seam(payload: Dict[str, Any], out: str) -> None:
     """A host write between two device sub-steps: declared-and-synced vs not.
 
-    THIS IS WHERE THE RESIDENCY PREDICATE EARNS ITS REFUSAL. The undeclared run must
+    This is where the residency predicate earns its refusal. The undeclared run must
     DIVERGE from the array path — if it did not, the mirror would not be
     load-bearing and the clause would be certifying nothing.
     """
@@ -287,10 +287,10 @@ def case_seam(payload: Dict[str, Any], out: str) -> None:
 def case_zero_init(payload: Dict[str, Any], out: str, cycles: int = 3) -> None:
     """From an all-zero state, with a THIN absorber whose deepest kms is negative.
 
-    THE CLASS THIS MEASURES: a negative coefficient times a quiet ``+0.0`` stores a
+    The class this measures: a negative coefficient times a quiet ``+0.0`` stores a
     ``-0.0``. On the Triton track that class was what made the negation spelling
     load-bearing; here the negation spelling was already refuted directly on the
-    exhaustive table, and this case measures whether the class is REACHED IN A
+    exhaustive table, and this case measures whether the class is reached in a
     COMPOSITION at stored bytes — which is a different question and the one that
     says whether it matters in a run.
 
@@ -372,7 +372,7 @@ def case_residency_model(payload: Dict[str, Any], out: str) -> None:
         verdicts = {
             "undeclared_live": metal_coverage.residency_coverage(
                 residency.names, planned, None, ()),
-            # THE WALLED CASE IS THE POINT of enumerating seam work at all: a
+            # The walled case is the point of enumerating seam work at all: a
             # residency model that listed only the four STEP_ORDER slots would call
             # this covered, and it is not — `zero_metal_B`/`_D` clear stored cell 0
             # on the HOST every sub-step (stepping.py:2211/:2238).

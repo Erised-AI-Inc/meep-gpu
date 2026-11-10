@@ -243,7 +243,7 @@ def validate(payload: Dict[str, Any]) -> Dict[str, Any]:
             reasons.append(f"{row.get('case')}: vacuous")
     if not (payload.get("refusals") or {}).get("all_agree"):
         reasons.append("a refusal predicate disagreed with its expectation")
-    # A RELEASE THAT CANNOT NAME ITS POLICY DOES NOT IDENTIFY ITS BYTES: under keep
+    # A release that cannot name its policy does not identify its bytes: under keep
     # the kernels differ in the subnormal range from a flush run, and the weld cut
     # from this artifact takes its policy from this stamp.
     stamp = payload.get("subnormal_policy") or {}
@@ -293,9 +293,9 @@ def main(argv=None) -> int:
                      f"seconds={row.get('seconds', '?')}")
     payload["cases"] = rows
     payload["refusals"] = refusal_leg()
-    # THE WELD'S TWO IDENTITY FIELDS, written by the run rather than typed into the
+    # The weld's two identity fields, written by the run rather than typed into the
     # ledger afterwards. Until 2026-09-15 this artifact carried neither -- the
-    # batch_D run of 2026-09-13 has no `environment` and no `subnormal_policy` key --
+    # 2026-09-13 fleet run has no `environment` and no `subnormal_policy` key --
     # so triton_complex_offdiag_device_gate read "see artifact" for its policy and
     # rebind_triton_welds.py could derive nothing. Stamped AFTER the legs, while the
     # device is open: the identity then reads the device the cases ran on, and the

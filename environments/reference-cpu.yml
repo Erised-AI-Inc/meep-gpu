@@ -8,8 +8,13 @@
 #   conda activate meep-gpu-reference
 #   python -m pip install .          # from the repository root; no extras
 #
+# Which recipe: neither. It installs no GPU library, so the certified and
+# supported recipes (INSTALL.md, "Certified and supported versions") do not
+# apply. MEEP is conda-forge's double-precision build, which is supported and
+# is not the build the kernels were certified against.
+#
 # What it installs:
-#   MEEP 1.33.0     conda-forge package `pymeep`, serial (no MPI), double precision
+#   MEEP 1.35.0     conda-forge package `pymeep`, serial (no MPI), double precision
 #   Python 3.12
 #   NumPy 2.2
 #
@@ -23,6 +28,6 @@ channels:
   - nodefaults
 dependencies:
   - python=3.12
-  - pymeep=1.33.0=nompi_*
+  - pymeep=1.35.0=nompi_*
   - numpy=2.2
   - pip

@@ -1,7 +1,7 @@
 """The THREE-SLOT weld: ``step_D`` -> ``update_E`` -> ``update_P`` in one product.
 
-THE FIRST PRODUCT ON ANY BACKEND THAT OWNS THREE DRIVER SLOTS, and the reason it
-exists is a MEASURED COLLISION rather than an ambition. ``update_E`` is the SECOND
+The first product on any backend that owns three driver slots, and the reason it
+exists is a measured collision rather than an ambition. ``update_E`` is the SECOND
 consult of the ``D_to_E`` seam and the FIRST of ``E_to_P`` -- the board's own seam
 locator prints ``D_to_E`` ending at driver.py:3332 and ``E_to_P`` beginning at
 driver.py:3332 -- so a two-slot D->E weld and a two-slot E->P weld COMPETE for one
@@ -22,10 +22,10 @@ seam-instances (``D_to_E`` 10/10 and ``E_to_P`` 10/10 where the board carries 0/
 and 10/10 today).
 
 =============================================================================
-WHAT IS LIFTED, AND WHAT LITTLE IS NEW
+What is lifted, and what little is new
 =============================================================================
 
-NEITHER HALF IS RE-DERIVED. The ``step_D`` -> ``update_E`` half is the SHIPPED,
+Neither half is re-derived. The ``step_D`` -> ``update_E`` half is the SHIPPED,
 RELEASED kernel, launched through its own launcher:
 
 * :mod:`.dispersive_fused_electric_pair` (``cuda_dispersive_fused_electric_pair_
@@ -36,14 +36,14 @@ RELEASED kernel, launched through its own launcher:
 
 Not one byte of either is copied here; this module calls them.
 
-THE ONLY NEW DEVICE TEXT IS ONE KERNEL FAMILY, :data:`KERNEL_NAME`, and it is a
-STRICTLY SMALLER LIFT than the shipped E->P weld's. That weld
+The only new device text is one kernel family, :data:`KERNEL_NAME`, and it is a
+strictly smaller lift than the shipped E->P weld's. That weld
 (:mod:`.fused_polarization_pair`) fused ``update_E`` INTO the per-component ADE
 launch and paid for it with two risky edits; this one removes the ``update_E`` half
 entirely, so BOTH of those edits disappear:
 
-* The certified drive SELECT ``float w = dsigw ? drive_w[idx] : drive_e[idx];``
-  COMES BACK. There is no register to hand across a seam here -- the constitutive
+* The certified drive select ``float w = dsigw ? drive_w[idx] : drive_e[idx];``
+  comes back. There is no register to hand across a seam here -- the constitutive
   half ran in a different launch -- so MEEP's per-chunk drive (``f_w`` on the cells
   whose chunk carries the component's layer, the stored E elsewhere) is loaded
   exactly as the certified ADE kernel loads it.
@@ -59,7 +59,7 @@ copied) and its COMPONENT-MAJOR host loop. :data:`LIFT_EDITS` is three rows wher
 that module's is five.
 
 =============================================================================
-THE LAUNCH STRUCTURE: 1 + 3, NOT 4, AND NOT 1
+The launch structure: 1 + 3, not 4, and not 1
 =============================================================================
 
 One ``run`` of this product is FOUR launches in TWO GROUPS with the deposit bracket
@@ -73,8 +73,8 @@ BETWEEN them::
 
     (the driver)      electric inject (:3319/:3322), then the three passes again
 
-    update_E consult  TrailingRepairPlan: deposit_repair.apply(...). NO LAUNCH OF
-                      OURS. P is still P^n here, and that is load-bearing.
+    update_E consult  TrailingRepairPlan: deposit_repair.apply(...). No launch of
+                      ours. P is still P^n here, and that is load-bearing.
 
     update_P consult  LAUNCHES 2, 3, 4 -- one per DRIVEN component, each carrying
                       EVERY driving state's ADE recurrence for that component,
@@ -82,7 +82,7 @@ BETWEEN them::
                       state, only after the launch RETURNS:
                           P[c] <- scratch ; P_prev[c] <- p ; _scratch <- p_prev
 
-THE ONE THING THAT DOES NOT SURVIVE IS THE MEGA-LAUNCH, and it is refused BY
+The one thing that does not survive is the mega-launch, and it is refused BY
 MEASUREMENT rather than by taste. A single kernel spanning ``step_D`` ->
 ``update_E`` -> ``update_P`` computes the ADE recurrence from a PRE-INJECTION drive
 AND advances P before the repair reads it.
@@ -90,19 +90,19 @@ AND advances P before the repair reads it.
 diverges on 6 of its 7 configurations (36, 60, 26, 7, 14 and 12 differing words over
 6 complete driver steps), null only at arity ``(0, 0, 0)`` with the reason recorded.
 
-WHY THE REPAIR MUST SIT BETWEEN THE TWO GROUPS, and why this is the first product on
+Why the repair must sit between the two groups, and why this is the first product on
 this track whose OWN host work sits between its OWN two device groups.
 ``deposit_repair.apply`` recomputes the constitutive product through
 ``Fields.displacement_minus_polarization`` on both of its paths
 (deposit_repair.py:781-782 and :922-923), and that method subtracts ``state.P[c]``
-AS IT STANDS (fields.py:1096-1105). So the repair is correct only while P is still
+as it stands (fields.py:1096-1105). So the repair is correct only while P is still
 P^n. The probe's ``repair_after_p`` ordering -- the polarization advance moved one
 group earlier -- diverges on the same 6 of 7 configurations. Both wrong orders
 compute, converge, and are wrong only at the deposit cells, which is why they are
 armed rather than reasoned about.
 
 =============================================================================
-THE ROTATION IS NOT TOUCHED
+The rotation is not touched
 =============================================================================
 
 It stays exactly where ``ade_kernels.update_P_fused_pml_real`` and
@@ -114,7 +114,7 @@ a register. ``stale_pole_pointers``, ``rotate_before_launch`` and
 ``shared_scratch_all_components`` are armed in the probe and diverge by 27720,
 41580 and 41580 words on the six-pole corpus shape.
 
-THE COMPONENT-MAJOR ORDER IS A MEASUREMENT, NOT A PREFERENCE. The certified ADE
+The component-major order is a measurement, not a preference. The certified ADE
 launcher is STATE-MAJOR (``for state: for component in state.driven()``) and this
 one is component-major; the probe records ``state_order_reversed`` and
 ``component_order_reversed`` as PREDICTED NULLS confirmed on all 7 configurations,
@@ -122,7 +122,7 @@ which is the measurement that every driving state of one component may be fused 
 one launch and that the three component launches may be issued in any order.
 
 =============================================================================
-TWO ARMS, DISJOINT ON THE ABSORBER, IN TWO MODULES
+Two arms, disjoint on the absorber, in two modules
 =============================================================================
 
 ``cuda_three_slot_dispersive_weld`` (this module) welds the PML D->E product to the
@@ -134,7 +134,7 @@ MODULES rather than two families in one because they declare DIFFERENT
 run there -- and ``fused_pairs._repair_paths_of`` reads that declaration off the
 MODULE. One module could not carry two answers.
 
-THE DEVICE TEXT IS ARM-INDEPENDENT and that is a fact rather than a shortcut: the
+The device text is arm-independent and that is a fact rather than a shortcut: the
 ``update_E`` half is gone, so what is left is the certified ADE recurrence, which
 ``covers_real_pml_ade_update_p`` and ``covers_no_pml_ade_update_p`` admit through the
 SAME two kernels (``ade_kernels``' volume and uniform sigma forms). The absorber
@@ -143,7 +143,7 @@ the drive is a bound argument. So :func:`three_slot_polarization_source` takes n
 arm, and the no-absorber module imports this one's emitter whole.
 
 =============================================================================
-HOW THIS PRODUCT AND THE TWO IT SUPERSEDES STAY OUT OF EACH OTHER'S WAY
+How this product and the two it supersedes stay out of each other's way
 =============================================================================
 
 Its predicate is the CONJUNCTION of both shipped predicates, so its admission set is
@@ -163,7 +163,7 @@ this product has already written ``selected['update_E']``, and
 ``_pair_may_absorb`` refuses BY NAME any pair whose slot went to a different arm.
 
 =============================================================================
-NOTHING HERE IS DISPATCH
+Nothing here is dispatch
 =============================================================================
 
 ``meep_gpu.fastpath.plan_fast_path`` composes ``triton_kernels.plan_step`` and
@@ -188,7 +188,7 @@ try:  # a host with no CuPy: the emitter and both predicates still run
 except ImportError:
     cp = None
 
-# THE E->P WELD, IMPORTED FOR ITS CERTIFIED LIFT MACHINERY. ``_pole_block``,
+# The E->P weld, imported for its certified lift machinery. ``_pole_block``,
 # ``_verified_ade_bodies`` and ``_ade_prologue`` read ``ade_kernels``' device strings
 # off the syntax tree and rename them under checked substitutions; they are IMPORTED
 # rather than copied so a drift in the certified ADE text raises in one place.
@@ -228,7 +228,7 @@ except ImportError:  # loaded by path, outside the package
 
 
 # =============================================================================
-# THE PARTITION -- MOVED BY THE GATE, 2026-09-03
+# The partition -- moved by the gate, 2026-09-03
 # =============================================================================
 #
 # Plain assignments with NO type annotation: the partition readers walk the syntax
@@ -261,8 +261,8 @@ CERTIFIED_KERNELS = (
 #: EMPTY since 2026-09-03; what emptied it was the run above.
 UNCERTIFIED_KERNELS = {}
 
-#: Does this product bracket its launches with the deposit repair? TRUE, AND IT IS
-#: THE WHOLE PRODUCT. Every one of the ten rows both cells own carries an ELECTRIC
+#: Does this product bracket its launches with the deposit repair? True, and it is
+#: the whole product. Every one of the ten rows both cells own carries an ELECTRIC
 #: deposit inside the ``step_D`` -> ``update_E`` span (the stamped census's
 #: ``source_field_types``), so without the bracket this weld would serve ZERO. The
 #: flag and the wiring change together or not at all (deposit_repair.py:921-926):
@@ -289,7 +289,7 @@ FAMILY = "cuda_three_slot_dispersive_weld"
 #: device text is character-identical (module docstring).
 KERNEL_NAME = "three_slot_polarization_real"
 
-#: WHICH MODULE OWNS THE EMITTED TEXT AND ITS GATE DOORS -- this one. Both arms
+#: Which module owns the emitted text and its gate doors -- this one. Both arms
 #: launch the SAME device text (module docstring), so :data:`SOURCE_TRANSFORM`,
 #: :func:`_get_kernel` and :func:`_clear_kernel_cache` are module-level state that
 #: exists in exactly ONE place; a gate that assigned a transform to the no-absorber
@@ -322,7 +322,7 @@ ELECTRIC_TERMS = ep.ELECTRIC_TERMS
 #: Every line of certified device text this file did not lift verbatim, with the
 #: reason. DATA, not prose, so a gate can assert the list rather than a docstring.
 #:
-#: THREE ROWS, WHERE :data:`fused_polarization_pair.LIFT_EDITS` HAS FIVE. The two
+#: Three rows, where :data:`fused_polarization_pair.LIFT_EDITS` HAS FIVE. The two
 #: that are gone are the two that carried risk -- the drive register hand-off and the
 #: dropped ADE guard -- and they are gone because the ``update_E`` half is not in this
 #: kernel. Every row below is a NAME or the fusion itself; no arithmetic is edited.
@@ -381,7 +381,7 @@ def _signature(component_index: int, count: int,
                sigma_kinds: Sequence[bool]) -> str:
     """The fused signature for one component and one specialization.
 
-    THE ONLY HAND-WRITTEN DEVICE TEXT IN THIS MODULE, and it is a signature: no
+    The only hand-written device text in this module, and it is a signature: no
     arithmetic lives here. The parameter ORDER is the certified ADE kernel's --
     ``p_out, p_now, p_prev, sigma, drive_w, drive_e, two_minus_od, gamma1,
     omega0dtsqr, gamma1inv, nx, ny, nz, own_axis, cb`` -- with the two drive arrays
@@ -391,7 +391,7 @@ def _signature(component_index: int, count: int,
     """
     target = ELECTRIC_TERMS[component_index][0]
     lines: List[str] = [f'extern "C" __global__ void {KERNEL_NAME}(']
-    # THE DRIVE, BOUND ONCE: the two arrays MEEP's per-chunk w is selected from,
+    # The drive, bound once: the two arrays MEEP's per-chunk w is selected from,
     # f_w_<c> and the stored E<c> under a layer, the stored E<c> twice without one
     # (ade_kernels.drive_pair). Neither is __restrict__, as in the certified kernel.
     lines.append("    const float* drive_w,")
@@ -419,7 +419,7 @@ def three_slot_polarization_source(component_index: int, count: int,
     driving state -- a compile-time axis exactly as it is in the certified ADE
     family, here one flag per pole because one launch carries every driving state.
 
-    A ZERO-POLE COMPONENT EMITS NOTHING AND IS NEVER LAUNCHED: the caller skips it,
+    A zero-pole component emits nothing and is never launched: the caller skips it,
     the way ``ade_kernels.update_P_fused_pml_real`` skips a state that drives
     nothing. Asking for one is a refusal rather than an empty kernel, because an
     empty kernel is a launch that did no work while the counter says one ran.
@@ -431,7 +431,7 @@ def three_slot_polarization_source(component_index: int, count: int,
         raise ValueError(
             "a component with no driving state has no recurrence to emit; the "
             "launcher skips it rather than issuing a kernel that writes nothing")
-    # The certified cap is a MEASURED ceiling; reuse the dispersive family's refusal
+    # The certified cap is a measured ceiling; reuse the dispersive family's refusal
     # verbatim rather than restating a number.
     ep.certified_e.normalized_pole_counts(ep._counts_with(component_index, count))
     kinds = tuple(bool(kind) for kind in sigma_kinds)
@@ -441,12 +441,12 @@ def three_slot_polarization_source(component_index: int, count: int,
             f"compile-time sigma form per driving state, in registration order")
 
     bodies = ep._verified_ade_bodies()
-    # THE CERTIFIED PREFIX, RESTORED WHOLE. The E->P weld had to drop it (an update_E
+    # The certified prefix, restored whole. The E->P weld had to drop it (an update_E
     # body above had already declared ``idx`` and decoded the record); nothing here
     # has, so this is ade_kernels' own guard, decode, record block and drive flag.
     guard = ep._ADE_GUARD
     drive = (
-        "    // THE DRIVE, SELECTED AND LOADED EXACTLY AS THE CERTIFIED KERNEL DOES IT.\n"
+        "    // The drive, selected and loaded exactly as the certified kernel does it.\n"
         "    // stepping.update_P binds fields.drive_field(component) as w: MEEP's w\n"
         "    // per chunk, one load of the two arrays. One load per component rather\n"
         "    // than one per pole: every pole of a component reads the same word, and\n"
@@ -471,7 +471,7 @@ def three_slot_polarization_source(component_index: int, count: int,
                 .replace("blockIdx", "").replace("blockDim", "")
                 .replace("threadIdx", "")):
         raise AssertionError("an unsubstituted placeholder survived the splice")
-    # PURE ASCII IS A COMPILE REQUIREMENT: NVRTC receives these bytes through the
+    # Pure ASCII is a compile requirement: NVRTC receives these bytes through the
     # interpreter's locale encoding.
     source.encode("ascii")
     return source
@@ -500,7 +500,7 @@ def device_sources() -> Dict[str, str]:
 
 
 # =============================================================================
-# COMPILATION AND LAUNCH
+# Compilation and launch
 # =============================================================================
 
 #: NVRTC compile options -- CORRECTNESS, not performance, and identical to every
@@ -511,7 +511,7 @@ _COMPILE_OPTIONS: Tuple[str, ...] = ('--fmad=false',)
 #: Lanes per block, one cell per lane -- the certified ADE geometry.
 _FUSED_THREADS = 256
 
-#: THE GATE'S DOOR into the emitted text. ``None`` in every shipped path; a
+#: The gate's door into the emitted text. ``None`` in every shipped path; a
 #: bit-identity probe assigns a ``(component_index, count, kinds, source) -> source``
 #: callable to plant a defect in a body that does not exist until it is asked for.
 SOURCE_TRANSFORM: Optional[Any] = None
@@ -525,7 +525,7 @@ def _clear_kernel_cache() -> int:
 def _get_kernel(component_index: int, count: int, sigma_kinds: Sequence[bool]):
     """Compile on first use, memoized on (name, options, policy, source).
 
-    THE SOURCE IS EMITTED PER CALL AND THAT IS LOAD-BEARING: it is part of the memo
+    The source is emitted per call and that is load-bearing: it is part of the memo
     key, and a probe mutates this family through :data:`SOURCE_TRANSFORM` -- a body
     memoized at first call would hand back the pre-mutation string forever.
     """
@@ -548,8 +548,8 @@ def _get_kernel(component_index: int, count: int, sigma_kinds: Sequence[bool]):
 def component_specs(fields: Any) -> Dict[str, Dict[str, Any]]:
     """Per component: the driving states, pole count and sigma kinds, RIGHT NOW.
 
-    THE E->P WELD'S OWN RESOLVER, imported rather than copied, so the two products
-    cannot disagree about the bank or its order. RESOLVED PER CALL AND NEVER CACHED:
+    The E->P weld's own resolver, imported rather than copied, so the two products
+    cannot disagree about the bank or its order. Resolved per call and never cached:
     the rotation moves the buffers between component launches, which is the certified
     launchers' standing hazard.
     """
@@ -560,12 +560,12 @@ def assert_disjoint_bindings(fields: Any, arm: str, target: str,
                              states: Sequence[Any]) -> int:
     """Every ``__restrict__`` pointer of ONE component launch distinct from every other.
 
-    CHECKED PER LAUNCH, AFTER THE PREVIOUS COMPONENT'S ROTATION, for the certified
+    Checked per launch, after the previous component's rotation, for the certified
     ADE launcher's reason: the rotation moves three names between launches, so what a
     predicate checked is one permutation and this is the one being run.
 
-    THE GROUP IS SMALLER THAN THE E->P WELD'S BY EXACTLY THE update_E HALF'S
-    BINDINGS: no ``E<c>``, no ``D<c>``, no ``f_w_<c>`` as an output and no
+    The group is smaller than the E->P weld's by exactly the update_E half's
+    bindings: no ``E<c>``, no ``D<c>``, no ``f_w_<c>`` as an output and no
     ``inv_eps``, because this kernel is the recurrence alone. What is left is the
     DRIVE pair -- ``f_w_<c>`` and the stored ``E<c>`` on this arm, the stored
     ``E<c>`` twice on the other, neither ``__restrict__`` -- which must stay distinct
@@ -630,7 +630,7 @@ def _drive_identity_problem(fields: Any, arm: str, target: str) -> Optional[str]
     """Why the bound drive would not be the certified one; ``None`` if it is.
 
     Delegated to the E->P weld's own clause, which asks the same question of the same
-    two arrays. NOT LOAD-BEARING HERE THE WAY IT IS THERE, and that is worth saying:
+    two arrays. Not load-bearing here the way it is there, and that is worth saying:
     that product hands the drive across a seam in a REGISTER, so the identity is what
     makes its arithmetic the certified arithmetic. This one binds
     ``fields.drive_field(c)`` as a pointer, so the certified load happens whatever
@@ -646,7 +646,7 @@ def launch_three_slot_polarization_component(
         kernel: Optional[Any] = None, *, chunk_bounds: Any) -> Dict[str, Any]:
     """ONE component's recurrence launch. The caller rotates afterwards.
 
-    ``kernel`` IS THE GATE'S DOOR, keyword-optional: a gate compiles a deliberately
+    ``kernel`` is the gate's door, keyword-optional: a gate compiles a deliberately
     broken copy of the shipped source and hands it here. A launcher that could not be
     handed its own kernel could not arm a single mutation.
 
@@ -706,9 +706,9 @@ def launch_three_slot_polarization_component(
 def run_three_slot_polarization(fields: Any, arm: str,
                                 kernel: Optional[Any] = None, *,
                                 chunk_bounds: Any) -> Dict[str, Any]:
-    """THE THIRD SLOT: one launch per DRIVEN component, host rotation between.
+    """The third slot: one launch per DRIVEN component, host rotation between.
 
-    THE ROTATION IS TRANSCRIBED, NOT REIMPLEMENTED, from
+    The rotation is transcribed, not reimplemented, from
     ``ade_kernels.update_P_fused_pml_real`` (itself from dispersion.py:689-691)::
 
         state.P[component]      = scratch     # this step's result
@@ -718,10 +718,10 @@ def run_three_slot_polarization(fields: Any, arm: str,
     run once per driving state after each component launch RETURNS, never before, so
     a raised launch leaves the state exactly as it found it.
 
-    EVERY SLOT IS RE-READ AFTER THE PREVIOUS COMPONENT'S ROTATION, through
+    Every slot is re-read after the previous component's rotation, through
     :func:`component_specs` inside the loop.
 
-    A COMPONENT WITH NO DRIVING STATE IS SKIPPED RATHER THAN LAUNCHED EMPTY, exactly
+    A component with no driving state is skipped rather than launched empty, exactly
     as the certified launcher skips a state that drives nothing -- so the launch
     count is the number of DRIVEN components, which is what the arity says and what
     the gate counts.
@@ -760,7 +760,7 @@ def covers_three_slot_dispersive_weld(fields: Any, pml: Any, grid: Any,
                                       sources: Any = None) -> Tuple[bool, str]:
     """May ONE product span ``step_D`` -> ``update_E`` -> ``update_P`` under a PML?
 
-    A CONJUNCTION OF TWO SHIPPED PREDICATES, AND NOTHING IS WEAKENED. The D->E half
+    A conjunction of two shipped predicates, and nothing is weakened. The D->E half
     is ``dispersive_fused_electric_pair.covers_dispersive_fused_electric_pair``
     whole -- which is where the SOURCE question is asked, through
     ``deposit_repair.seam_source_reasons`` with that module's own
@@ -769,12 +769,12 @@ def covers_three_slot_dispersive_weld(fields: Any, pml: Any, grid: Any,
     ``fused_polarization_pair.covers_fused_polarization_pair`` whole. Each refusal is
     prefixed so a reader can tell which side said it.
 
-    THE ADMISSION SET IS THEREFORE A SUBSET OF EACH HALF'S, which is exactly what
+    The admission set is therefore a subset of each half's, which is exactly what
     ``fused_pairs._superseded_by_a_longer_span`` needs: where this product admits,
     the two-slot ones do too, so refusing the shorter span costs nothing and gains
     the second seam.
 
-    NOTHING IS ADDED, AND THAT IS A MEASUREMENT RATHER THAN AN OMISSION. A weld's
+    Nothing is added, and that is a measurement rather than an omission. A weld's
     own clauses are the facts its composition needs that neither half asks; this one
     was written with a coefficient-triple clause and the clause was REMOVED when the
     two halves turned out to ask it already -- ``coverage._ade_coefficient_problem``
@@ -782,7 +782,7 @@ def covers_three_slot_dispersive_weld(fields: Any, pml: Any, grid: Any,
     no-absorber twin (dispersive_kernels.py:1272). Shipping it anyway would have put
     a refusal in this file that claims to be load-bearing and is not.
 
-    THE ONE FACT THIS PRODUCT NEEDS THAT NO PREDICATE CAN EXPRESS is the ORDER of its
+    The one fact this product needs that no predicate can express is the ORDER of its
     two device groups relative to the repair: ``update_P`` must run AFTER
     ``deposit_repair.apply``, because that function subtracts ``state.P[c]`` as it
     stands. That is a property of the WIRING, not of the configuration -- there is no

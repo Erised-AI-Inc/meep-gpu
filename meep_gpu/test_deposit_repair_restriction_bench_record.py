@@ -14,7 +14,7 @@ Pinned here, because this is the file that knows what the counters mean:
   counter added to the cache and not to the record fails here rather than silently;
 * a snapshot/delta over a real bracket carries both counters, with a source that
   restricts and a source that falls back in ONE save;
-* ABSENT IS NOT ZERO -- a leg summed from windows that never recorded the counters (a
+* Absent is not zero -- a leg summed from windows that never recorded the counters (a
   row written before 2026-09-20) gets no entry, not a zero nothing measured;
 * the report says a fallback LOUDLY, says a clean restriction quietly, says nothing for
   an old row, and never changes the route verdict: a full bracket on the linear index
@@ -115,7 +115,7 @@ def test_a_window_records_a_restricted_source_beside_one_that_fell_back(bench):
 
 
 def test_a_leg_whose_windows_never_recorded_the_counters_gets_no_entry(bench):
-    """ABSENT IS NOT ZERO. A window written before the counters existed says nothing
+    """Absent is not zero. A window written before the counters existed says nothing
     about fallbacks, and a summed zero would read as "none happened"."""
     old = {"linear_saves": 6, "linear_repairs": 6, "cells_saves": 0, "cells_repairs": 0,
            "bracketed_slots": ["step_D", "update_E"], "plan_changed_inside_window": False}
@@ -148,7 +148,7 @@ def test_the_report_says_a_fallback_loudly_and_never_changes_the_route_verdict(r
     for route in (_route(), _route(restricted_sources=6, restriction_fallbacks=0),
                   _route(restricted_sources=0, restriction_fallbacks=6)):
         assert report.route_verdict(route) == "linear", route
-    # BOTH ZERO ON A BRACKET THAT RAN is a module that kept neither counter (the bench
+    # Both zero on a bracket that ran is a module that kept neither counter (the bench
     # reads a missing counter as 0): every source of a save is counted one way or the
     # other, so there is nothing to say -- and "0 restricted" would be a false reading.
     unmeasured = report.route_cell(

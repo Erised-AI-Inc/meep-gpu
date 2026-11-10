@@ -284,8 +284,8 @@ def main() -> int:
         },
         "cases": [],
     }
-    # THE CAMPAIGN'S SUBNORMAL POLICY, installed and measured before the first driver
-    # is built and stamped into the artifact (owner ruling R16; composition_policy.py).
+    # The campaign's subnormal policy, installed and measured before the first driver
+    # is built and stamped into the artifact (composition_policy.py).
     refused = stamp_campaign_policy(payload, cp)
     save(payload, args.out)
     if refused:
@@ -306,7 +306,7 @@ def main() -> int:
         "complete_steps_exact": f"{total_steps}/{total_steps}",
         "source_cases_nonvacuous": "1/1",
         "scope": "real m=0 Dcyl; r-high and z PML; axis/metallic/periodic boundary "
-                 "triple; no dispersion. PAIR FUSION IS CERTIFIED, not excluded: since the\n"
+                 "triple; no dispersion. Pair fusion is certified, not excluded: since the\n"
                  "2026-09-02 dispatch expansion the composer selects the cylindrical real\n"
                  "fused pair, and each case is pinned to the exact composition it produces\n"
                  "(the fused pair plan at the curl slot, its NoopPlan partner at the\n"

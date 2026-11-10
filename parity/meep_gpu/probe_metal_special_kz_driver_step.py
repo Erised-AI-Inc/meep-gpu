@@ -1,6 +1,6 @@
 """The Metal special_kz curls inside a REAL ``FdtdDriver.step()``, for a budget.
 
-WHAT THIS MEASURES THAT THE GATE AND THE COMPOSITION PROBE DO NOT.
+What this measures that the gate and the composition probe do not.
 
 ``gate_metal_special_kz`` certifies two sub-steps in ISOLATION, from a seeded
 state, against ``stepping.py``. ``probe_metal_special_kz_composition`` runs the four
@@ -24,13 +24,13 @@ and each is a place a certified kernel can still produce a wrong RUN:
 3. **The budget.** One step cannot show a defect that accumulates. Twenty-four can,
    and the auxiliaries (``fu_*``) are STATE, so a kernel that is right on launch 1
    and wrong forever after only diverges in a multi-step leg.
-4. **That the device path RAN AT ALL.** Every number below would be produced,
+4. **That the device path ran at all.** Every number below would be produced,
    unchanged and green, by a probe whose shim answered ``False`` to every slot and
    let the array path do all the work. The launch counters and the driver-level
    armed mutations are what separate "the Metal kernels reproduce the array path"
    from "the array path reproduces itself".
 
-THE COMPOSITION IS THE DECLARED-SYNC ONE, and the probe holds no mirrors across the
+The composition is the declared-sync one, and the probe holds no mirrors across the
 step. The residency leg of the composition probe measured which slots MUST be synced
 — the wall passes on a metallic axis, the constitutive pair under complex storage,
 and the source fills for both families — so a probe that ran a real driver step while
@@ -39,13 +39,13 @@ Each dispatched slot therefore syncs in, launches, and syncs out. That costs the
 round trip the residency layer exists to avoid; this probe measures CORRECTNESS, and
 the throughput question belongs to a bench, not here.
 
-THE ORACLE IS A SECOND DRIVER, in the same process, same seed, same configuration,
+The oracle is a second driver, in the same process, same seed, same configuration,
 stepping entirely on NumPy. Comparison is uint32 word equality over the FULL STORED
 INVENTORY — every ndarray the ``Fields`` object holds at grid shape, the material
 volumes included, enumerated from the object rather than transcribed, so a volume
 added to the engine joins the comparison instead of quietly escaping it.
 
-STATED, because the artifact inherits it: there is NO PTX-EQUIVALENT AUDIT on this
+STATED, because the artifact inherits it: there is no PTX-equivalent audit on this
 executor (``compile_shader`` exposes no disassembly), so the mutation leg and the
 launch counters are the only arbiters that the device did what the source says.
 
@@ -85,7 +85,7 @@ from meep_gpu.metal_kernels import subnormal, templates  # noqa: E402
 
 log, save, differing = kit.log, kit.save, kit.differing
 
-#: THE STEP BUDGET, STATED. Not a round number for its own sake: 24 steps is six
+#: The step budget, stated. Not a round number for its own sake: 24 steps is six
 #: full periods of the dt=0.034 grid's source at f=1.0 (period 29.4 dt), enough for
 #: the pulse to leave the launch cell, reach the PML and be absorbed, which is the
 #: span over which a stale-auxiliary defect compounds. Every row records the budget
@@ -111,14 +111,14 @@ TALLY = {"compared": 0, "disagreed": 0}
 def inventory(fields: Any, shape: Sequence[int]) -> Tuple[str, ...]:
     """Every ndarray the Fields object holds at grid shape, by name.
 
-    ENUMERATED, NOT TRANSCRIBED. ``gate.STATE`` is a hand-written list of the 24
+    Enumerated, not transcribed. ``gate.STATE`` is a hand-written list of the 24
     volumes a beta step reads or writes; this reads the object and finds 26 — those
     24 plus ``eps``/``inv_eps``. The material volumes are compared too, and they are
     the reason to enumerate rather than transcribe: nothing in a curl should write
     epsilon, so a kernel that scribbles past its target lands there, and a
     transcribed list would be exactly the list that cannot see it.
 
-    BOTH STORAGE SHAPES ARE READ, and the ``__slots__`` branch is not decoration:
+    Both storage shapes are read, and the ``__slots__`` branch is not decoration:
     ``Fields`` carries an instance ``__dict__`` today and the slotted spelling is
     what a memory-conscious refactor would reach for. Reading only one and finding
     nothing is how a "full inventory" silently becomes an empty one — which is
@@ -219,7 +219,7 @@ def compare(got: Dict[str, Any], oracle: Dict[str, Any]) -> Dict[str, int]:
 # Case construction, through the ENGINE'S OWN driver
 # ---------------------------------------------------------------------------
 
-#: A gaussian pulse on each source family. BOTH SEAMS ARE EXERCISED: the magnetic
+#: A gaussian pulse on each source family. Both seams are exercised: the magnetic
 #: current lands between `step_B` and `update_H` and the electric one between
 #: `step_D` and `update_E` (driver.py:3282-3300, MEEP step.cpp:64-100), so a probe
 #: carrying only one would leave half the interleave unmeasured.
@@ -285,21 +285,21 @@ def build_driver(case: Dict[str, Any], sourced: bool = True,
 class MetalShim:
     """A ``FastPathPlan``-shaped object that runs this family's Metal plans.
 
-    THE SEAM IS THE ENGINE'S OWN and nothing about dispatch is changed to use it:
+    The seam is the engine's own and nothing about dispatch is changed to use it:
     ``driver.step`` reads ``self._fast_path`` once per step and consults
     ``fast.dispatch(slot, fields)`` at seven identical sites (driver.py:3281-3305).
     This object answers that call. The shipped planner is untouched, this family
     stays unwired, and the probe is a MEASUREMENT of what wiring it would produce —
     which is the only honest way to run it before the certification exists.
 
-    EVERY DISPATCH IS COUNTED, and the counts are asserted against the budget. Both
+    Every dispatch is counted, and the counts are asserted against the budget. Both
     halves of the answer are recorded: ``dispatched`` (True — the device ran the
     sub-step) and ``declined`` (False — the array path did). A shim that quietly
     declined everything would still produce a green byte comparison, because the
     oracle IS the array path, so the counters are the only thing standing between
     this probe and a pass that measures nothing.
 
-    THE SYNC IS PER DISPATCH, not per step. See the module docstring: the array
+    The sync is per dispatch, not per step. See the module docstring: the array
     passes between the device sub-steps write the volumes the mirrors shadow, so the
     mirrors cannot be held, and the composition probe's residency leg is where that
     is established rather than assumed here.
@@ -401,7 +401,7 @@ def leg_wiring(payload: Dict[str, Any], out: str) -> None:
     ever answers yes, this probe's oracle would be comparing a kernel against a
     kernel and every row below would be meaningless.
 
-    THE REFUSAL REASON IS RECORDED, NOT INFERRED, and it matters that it is: on
+    The refusal reason is recorded, not inferred, and it matters that it is: on
     THIS host the shipped planner refuses first because *the backend is not CuPy*
     — the Triton dispatch route has no MPS arm — which is a fact about the host,
     not about this family. Reading "plan=None" as "the family is unwired" would be
@@ -547,7 +547,7 @@ def leg_driver_steps(payload: Dict[str, Any], out: str) -> None:
                 f"{context}: took {row['steps_taken']} steps against a stated "
                 f"budget of {STEP_BUDGET}")
             kit.assert_moved(moved_total, f"{context} over {STEP_BUDGET} steps")
-            # THE DISPATCH ACCOUNTING, which is what makes the comparison mean
+            # The dispatch accounting, which is what makes the comparison mean
             # anything: every device slot must have been taken by the device on
             # every step of the budget, and the plans' own launch counters must
             # agree with the shim's.
@@ -573,7 +573,7 @@ def leg_driver_steps(payload: Dict[str, Any], out: str) -> None:
 def leg_source_control(payload: Dict[str, Any], out: str) -> None:
     """The sourced run is compared to a SOURCE-FREE one, on both paths.
 
-    THE CONTROL IS THE POINT. From the driver's own zeros a source-free run is
+    The control is the point. From the driver's own zeros a source-free run is
     identically zero forever — the curl of zero is zero and the constitutive read is
     a fixed point — so if the sourced run moved, the sources moved it, and the
     interleave the device sub-steps ran between is real work rather than a fill of
@@ -605,7 +605,7 @@ def leg_source_control(payload: Dict[str, Any], out: str) -> None:
         quiet_array = snapshot(control_array.fields, names)
 
         injected = sum(differing(sourced[n], quiet[n]) for n in names)
-        # THE MATERIAL VOLUMES ARE NONZERO BY CONSTRUCTION and are excluded from
+        # The material volumes are nonzero by construction and are excluded from
         # the quiescence count BY NAME rather than by a threshold: eps and inv_eps
         # are what `set_isotropic_epsilon_volume` wrote, nothing steps them, and
         # counting them made the first run of this leg fail for a reason that had
@@ -791,7 +791,7 @@ DRIVER_MUTATIONS: Dict[str, Dict[str, Any]] = {
             "(beta_minus * a)", "(beta_plus * a)"),
     },
     "d3_whitespace_only": {
-        # THE MUST-NOT-CATCH ROW. Without it, "every mutation was caught" is
+        # The must-not-catch row. Without it, "every mutation was caught" is
         # equally consistent with a comparison that reports divergence for any
         # recompile at all.
         "must_catch": False,
@@ -808,7 +808,7 @@ DRIVER_MUTATIONS: Dict[str, Dict[str, Any]] = {
 def leg_mutations(payload: Dict[str, Any], out: str) -> None:
     """Armed, launch-counted, run through ``driver.step()`` for a short budget.
 
-    A SHORT BUDGET ON PURPOSE, and stated: 4 steps. These rows measure whether the
+    A short budget on purpose, and stated: 4 steps. These rows measure whether the
     device reaches the compared bytes, not how a defect accumulates, and the gate's
     own mutation leg is where the arithmetic is armed exhaustively.
     """
@@ -850,7 +850,7 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
                                    getattr(oracle_driver.fields, n))
                          for n in names))
         launches = sum(counter.launches for counter in counters)
-        # ONE DRIVER RUN IS ONE CASE, and the count says so. The gate's rows are
+        # One driver run is one case, and the count says so. The gate's rows are
         # per sub-step because it launches them in isolation; here both mutated
         # sub-steps run inside the SAME driver run and the comparison is one
         # verdict over one final inventory, so `ran` is 1 and the number of
@@ -879,14 +879,14 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
 def leg_monitors(payload: Dict[str, Any], out: str) -> None:
     """A DFT monitor and a flux monitor over the budget, on both paths.
 
-    THE FIELDS ARE NOT THE DELIVERABLE. A run's answer is what its monitors
+    The fields are not the deliverable. A run's answer is what its monitors
     accumulated, and the monitors are the last thing ``driver.step()`` touches
     (driver.py:3307-3311) — they read the volumes the device wrote, at every step,
     through a completely different code path from the one the byte comparison walks.
     A family that was byte-identical in the arrays and wrong in the readout would
     pass every other leg here.
 
-    THE SAMPLE COUNT IS ASSERTED, not assumed: a monitor that accumulated fewer
+    The sample count is asserted, not assumed: a monitor that accumulated fewer
     steps than the budget agrees with an oracle that also accumulated fewer, and the
     pair would be identical and meaningless. Both counts are recorded and both are
     checked against the budget, and the accumulator is required to be non-vacuous.
@@ -928,7 +928,7 @@ def leg_monitors(payload: Dict[str, Any], out: str) -> None:
         samples = {f"{label}_{kind}": int(monitor._update_calls)  # noqa: SLF001
                    for label, group in monitors.items()
                    for kind, monitor in group.items()}
-        # THE READOUT COMPARISONS COUNT TOO. The summary's `comparisons` is what a
+        # The readout comparisons count too. The summary's `comparisons` is what a
         # reader checks the claim's weight against, and a leg whose comparisons are
         # invisible to the tally understates it — one per DFT component plus one
         # for the spectrum, with their outcome carried into `disagreed`.
@@ -1008,7 +1008,7 @@ def main() -> int:
                 HERE, "gate_metal_special_kz.py"),
             "probe_metal_special_kz_driver_step.py": os.path.abspath(__file__),
         }, kernel_sources=special_kz.enumerate_sources(),
-            # ITS OWN FILE NAME, and not a tidiness preference. This probe shares a
+            # Its own file name, and not a tidiness preference. This probe shares a
             # results directory with the gate and both call `kit.provenance`, whose
             # default name is `provenance.json`; running second with the default
             # OVERWRITES the gate's, which is the evidence-destroying collision

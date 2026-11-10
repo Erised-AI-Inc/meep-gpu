@@ -17,7 +17,7 @@ What IS pinned here:
   wall clear and the constitutive grouping must be the RELEASED
   ``folded_fused_pair`` kernel's, and the pole chain must be
   ``dispersive_update_e.constitutive_step_dispersive``'s eight arms;
-* THE ONE SUBSTITUTION, in both of its two places, and that the ghost's chain is
+* The one substitution, in both of its two places, and that the ghost's chain is
   indexed at ``dst`` — the defect this product could have and the one no comparison
   restricted to owned cells would ever see;
 * every clause of the seam predicate, in both directions, including
@@ -266,9 +266,9 @@ def test_the_flag_is_declared_and_is_passed_to_the_clause_that_reads_it():
 
 
 def test_the_flag_at_False_would_cost_the_whole_cell(monkeypatch):
-    """MEASURED, not asserted: with the flag off, an electric deposit is refused.
+    """Measured, not asserted: with the flag off, an electric deposit is refused.
 
-    This is the trap the round before this one paid for on the Dcyl pair — a module
+    This is the trap the Dcyl pair paid for in the work before this one — a module
     that compiles, passes every other leg and serves nothing at all.
     """
     fields, pml = build()
@@ -619,7 +619,7 @@ def test_the_composer_routes_this_product_and_dispatch_admits_it():
     ``_install_fused_pair``, taking both slots only when ``_pair_may_absorb`` finds
     the arm table has already given them to the arms this kernel implements.
 
-    WIRING WAS NOT RELEASING, and this test was named
+    Wiring was not releasing, and this test was named
     ``..._and_dispatch_still_refuses_it`` for as long as the label sat outside
     ``fastpath.RELEASED_FUSED_ARMS``. This product spent that time refused for a
     reason none of its unreleased siblings carried: it WAS driven. On 2026-09-11
@@ -630,7 +630,7 @@ def test_the_composer_routes_this_product_and_dispatch_admits_it():
     ``synchronize_magnetic_fields``, ``fused_vs_array`` False AND
     ``unfused_vs_array`` False on a leg that installs NO fused product.
 
-    THAT REFUSAL WAS A MISATTRIBUTION, which is why this test asserts the release
+    That refusal was a misattribution, which is why this test asserts the release
     rather than the hold. Re-driven on the real route gate with the arm admitted
     in-process, three times in fresh processes over the full 1600-step ladder, the
     site reads PASS with ``first_divergent_checkpoint`` null and 0 of 41 arrays
@@ -641,9 +641,9 @@ def test_the_composer_routes_this_product_and_dispatch_admits_it():
     which is why both legs appeared to diverge by identical amounts, and why no
     mechanism was ever found (this arm spans ``step_D``/``update_E``, while
     ``synchronize_magnetic_fields`` consults only the magnetic slots). The engine-
-    side ordering fix is a separate round.
+    side ordering fix is separate work.
 
-    THE PARTITION IS STILL EXACTLY ONE OF TWO, in the other direction now: the
+    The partition is still exactly one of two, in the other direction now: the
     label is in ``ARM_CERTIFICATION`` and out of ``PENDING_DEVICE_GATE_ARMS``.
     Both are asserted rather than one, because a label released while the pending
     rung still held it would be a plan claiming a certification the ladder denies.
@@ -651,7 +651,7 @@ def test_the_composer_routes_this_product_and_dispatch_admits_it():
     ``triton_folded_dispersive_fused_pair_device_gate`` existed before the hold was
     lifted, and it is what a dispatching run names.
 
-    WHAT THE RELEASE ROW DOES NOT COVER is asserted too: its
+    What the release row does not cover is asserted too: its
     ``susceptibilities`` axis is pinned at ONE pole, because the route gate's
     Triton envelope witness is the same fold at FIVE and stops witnessing if any
     folded row admits it.

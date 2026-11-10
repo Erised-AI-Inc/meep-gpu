@@ -1,6 +1,6 @@
 """``gate_needles``: what a needle does to a source, and what a gate's table may hold.
 
-Host-only. The tables are the seam a lane re-spells one gate's mutation through
+Host-only. The tables are the seam one gate's mutation is re-spelled through
 without moving another gate's bytes, so the clauses here are the ones that keep that
 seam honest: a needle returns exactly what the hand-written transform it replaced
 returned, a borrowed entry IS the shared default's object, and a table refuses by

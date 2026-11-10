@@ -8,12 +8,12 @@ only the plug: it says how to install Triton's contraction guard, how to launch
 the shipped kernel on the harness's arrays, and how to mutate the shipped kernel
 source.
 
-THE LAUNCH GOES THROUGH THE SHIPPED CODE. ``plan_from_arrays`` builds the same
+The launch goes through the shipped code. ``plan_from_arrays`` builds the same
 ``PmlCurlPlan`` the engine route builds and calls the same ``run``, so the bytes
 the gate certifies are the bytes ``plan_pml_curl`` would launch — not a
 re-implementation written for the harness.
 
-THE MUTATION LEG COMPILES A DERIVED COPY. ``inspect.getsource`` on the shipped
+The mutation leg compiles a derived copy. ``inspect.getsource`` on the shipped
 ``@triton.jit`` function, textually mutated, written to a temporary module and
 imported (Triton parses a kernel through ``inspect.getsource``, so an ``exec``-ed
 function has no source for it to read). The mutated kernel is therefore genuinely
@@ -132,11 +132,11 @@ def launch(sub_step: str, arrays: Dict[str, Any], flat: Dict[str, Any],
     by the caller so the gate can hand over a swapped one), ``zero_metal`` (the
     three wall flags the kernel carries as constexprs) and ``num_warps``.
 
-    ``num_warps`` CHANGES THE COMPILED KERNEL, so it is a gate axis and not a
+    ``num_warps`` changes the compiled kernel, so it is a gate axis and not a
     tuning knob: a value that was never swept is a value the byte gate never
     certified. ``None`` means Triton's default.
 
-    THE CHUNK RECORD IS :func:`gate_chunk_records.every_cell_record`, for every leg:
+    The chunk record is :func:`gate_chunk_records.every_cell_record`, for every leg:
     the probe's hand references step the split-field recurrence on every cell, and
     its synthetic coefficient tables hold a non-unit coefficient on every cell, so
     the division its cases describe is every cell inside a layer chunk. A probe
@@ -191,7 +191,7 @@ def _volume_shape(arrays: Dict[str, Any]) -> Tuple[int, ...]:
 
 #: The curl call (``forms.curl_stencil``), whose grouping is MEEP's left-to-right
 #: ``dtdx * (((g1s - g1) + g2) - g2s)``. The mutation puts the pairwise grouping the
-#: kernels carried before the forms moved into ``forms.py`` back AT THE CALL SITE,
+#: kernels carried before the forms moved into ``forms.py`` back at the call site,
 #: which is a source mutation of the kernel itself and the same defect.
 _STENCIL = re.compile(
     r"curl(?P<t>\d) = curl_stencil\((?P<g1s>\w+), (?P<g1>\w+), (?P<g2>\w+), "
@@ -281,14 +281,14 @@ def _drop_fw_store(source: str) -> Tuple[str, int]:
     """The auxiliary-only defect on this sub-step: ``f_w`` is never written.
 
     ``f`` is right on every single launch — the accumulation reads the register —
-    and ``f_w`` is wrong from the first one. §12.3 measured the identical defect on
-    the curl as 120/120 UNCAUGHT when the auxiliary was not compared.
+    and ``f_w`` is wrong from the first one. This track's curl mutation leg measured
+    the identical defect as 120/120 UNCAUGHT when the auxiliary was not compared.
     """
     return _CONST_FW_STORE.sub("", source), len(_CONST_FW_STORE.findall(source))
 
 
 def _store_fw_before_reading_prev(source: str) -> Tuple[str, int]:
-    """RISK 4: the kernel reads its own write in place of ``fw_previous``.
+    """The kernel reads its own write in place of ``fw_previous``.
 
     ``_apply_constitutive_pml`` copies ``fw`` BEFORE overwriting it, and this is
     what happens when a fused kernel does not: ``prev`` becomes ``src``. Wrong only
@@ -328,7 +328,7 @@ def _drop_inverse_epsilon(source: str) -> Tuple[str, int]:
 # the other three kernels, which is why the gate's drift check is on the TOTAL across
 # attributes rather than per attribute.
 #
-# ONE OF THEM ALSO HITS THE NON-DISPERSIVE KERNELS, and the site counts in the
+# One of them also hits the non-dispersive kernels, and the site counts in the
 # artifact say so rather than the prose claiming otherwise:
 # ``drop_fw_store_dispersive``'s needle is the same masked statement shape
 # ``constitutive_step`` and ``fused_curl_constitutive_B`` write (3 sites each). That
@@ -406,10 +406,11 @@ def _regroup_constitutive_dispersive(source: str) -> Tuple[str, int]:
     The shipped form is MEEP's ``E + ((kps*src) - (kms*prev))`` (``f[i] += X - Y``
     forms the right-hand side first; ``forms.constitutive_form``) on the component's
     dsigw cells and ``src`` elsewhere. The mutant keeps the same cells and the same
-    select and spells the accumulation as the kernel did before the alignment,
+    select and spells the accumulation as the kernel did before it took MEEP's order,
     ``(E + kps*src) - kms*prev``: the same algebra and a different float32 number on
     most PML cells, because the non-representable multiplicands are the PML
-    coefficients themselves (KERNELS.md section 7.1).
+    coefficients themselves. It is one of the inverted grouping mutations and must be
+    caught (docs/development/certification.md#inverted-grouping-mutations).
     """
     return (_DISP_ACCUMULATE.sub(
         lambda m: (f"v{m['t']} = tl.where(dw{m['t']}, ({m['old']} + kp_{m['t']} * "
@@ -436,7 +437,7 @@ def _store_fw_before_reading_prev_dispersive(source: str) -> Tuple[str, int]:
     The array path copies ``fw`` BEFORE overwriting it. A kernel that reads it after
     the store gets ``src`` where ``fw_previous`` belongs — which is what this
     substitutes into the form's ``prev`` argument, without reordering statements, so
-    the mutation leg can count it. Wrong only where ``kms != 0``, i.e. INSIDE THE PML
+    the mutation leg can count it. Wrong only where ``kms != 0``, i.e. inside the PML
     ONLY, so it looks like a slightly worse absorber rather than like a bug.
     """
     return (_DISP_PREV_USE.sub(
@@ -501,7 +502,7 @@ _ZM_AXIS_OF = {"0": "x", "1": "y", "2": "z"}
 
 
 def _reload_B_from_memory(source: str) -> Tuple[str, int]:
-    """THE TRUNCATION QUESTION, asked as a mutation. It MUST come back UNCAUGHT.
+    """The truncation question, asked as a mutation. It MUST come back UNCAUGHT.
 
     Puts the float32 round trip back — the constitutive half re-loads ``B`` from
     the array the curl half just stored, at the same index — while keeping every
@@ -535,7 +536,7 @@ def _drop_zero_metal_inline(source: str) -> Tuple[str, int]:
     Rewritten to ``v0 = v0`` rather than deleted: the statement is the whole body
     of a ``constexpr`` ``if`` and removing it is a syntax error, and a mutation that
     fails to compile measures nothing (the same reason ``_drop_metallic_mask`` is
-    spelled this way). INVISIBLE ON EVERY BENCHMARK CASE — they are all periodic
+    spelled this way). Invisible on every benchmark case — they are all periodic
     under PML, MEEP's default being the Bloch wrap — so this one only bites on a
     walled configuration, which is why the gate builds one.
     """

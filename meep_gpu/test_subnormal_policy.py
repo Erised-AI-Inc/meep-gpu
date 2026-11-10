@@ -9,7 +9,7 @@ package must say so, loudly, rather than run a different policy than the one it
 was asked for, and :func:`test_flush_is_refused_on_a_host_where_meeps_knob_is_a_no_op`
 is that assertion.
 
-THE SAME MACHINE DECIDES THE DEFAULT, AND ONLY ONE SIDE OF THAT IS REACHABLE HERE.
+The same machine decides the default, and only one side of that is reachable here.
 The default request is ``match_meep``, answered by MEASURING what MEEP left this
 host's FPU doing rather than by recognizing a machine string, so on this laptop it
 resolves to ``"keep"`` — verified against real MEEP, in a subprocess, because
@@ -26,7 +26,7 @@ policy is uniform; the parts that need a GPU are covered by
 ``parity/meep_gpu/gate_subnormal_policy.py``, whose case builders are exercised
 here so a broken case cannot reach the device silently.
 
-AND THE IR IS HANDED TO A REAL LLVM PARSER. The Triton fixtures below are the
+And the IR is handed to a real LLVM parser. The Triton fixtures below are the
 shape Triton 3.1.0 actually emits — no attribute group, a ``!dbg`` metadata
 attachment — because an earlier revision's fixtures were shapes Triton never
 emits, all 59 tests passed, and the mechanism aborted the process on the first
@@ -52,6 +52,13 @@ import pytest
 
 import meep_gpu
 from meep_gpu import backends, subnormal_policy as sp
+from meep_gpu.test_backends import (
+    CUPY_14_COMPILER,
+    MOVED_SEAM_COMPILER,
+    NVRTC_FRONT_END,
+    cache_name,
+    cupy_compiler_module,
+)
 
 API_DIR = Path(__file__).resolve().parent.parent
 GATE_PATH = API_DIR / "parity" / "meep_gpu" / "gate_subnormal_policy.py"
@@ -61,13 +68,13 @@ GATE_PATH = API_DIR / "parity" / "meep_gpu" / "gate_subnormal_policy.py"
 def _fresh_policy(monkeypatch):
     """Every test starts with no policy installed AND with the FPU where it found it.
 
-    THE SECOND HALF IS NEW AND IT IS NOT TIDINESS. ``_reset_for_tests`` clears this
+    The second half is new and it is not tidiness. ``_reset_for_tests`` clears this
     module's bookkeeping; it does not put the floating-point environment back,
     because an ATTAINED install deliberately stands — a process that asked to flush
     and got it should keep flushing. That is right in production and wrong in a
     suite: the moment the non-x86 fenv lever landed, any test that installed
     ``flush`` left the FPU flushing for every test after it, and two later tests
-    that compute an exact IEEE keep-word failed IN A FULL-FILE RUN while passing in
+    that compute an exact IEEE keep-word failed in a full-file run while passing in
     isolation. Measured 2026-09-10 on exactly that pair.
 
     A test that leaks process state into its neighbours is the one failure a green
@@ -77,7 +84,7 @@ def _fresh_policy(monkeypatch):
     """
     sp._reset_for_tests()
     flushing_at_entry = backends.subnormals_flushed()
-    # AND WITH NO CuPy CACHE POINTER, where CuPy is installed. A dispatch earlier in
+    # And with no CuPy CACHE POINTER, where CuPy is installed. A dispatch earlier in
     # the session points ``CUPY_CACHE_DIR`` at its keep-policy directory for the rest
     # of the process (``point_cupy_cache_at_keep_policy``), and a ``flush`` install
     # here then refuses that directory by name. Measured in the NVIDIA reference
@@ -96,7 +103,7 @@ def _fresh_policy(monkeypatch):
 def _a_host_with_no_working_lever(monkeypatch):
     """Stand in for a host where NEITHER host lever can flush. Returns MEEP's stub.
 
-    WHY THE TESTS BELOW NEED IT, and it is a change of PREMISE rather than of
+    Why the tests below need it, and it is a change of PREMISE rather than of
     expectation. They were written on this arm64 laptop when ``flush`` was
     genuinely unattainable here: MEEP's ``set_zero_subnormals`` is the
     ``#if HAVE_IMMINTRIN_H`` no-op on this architecture and there was no second
@@ -105,7 +112,7 @@ def _a_host_with_no_working_lever(monkeypatch):
     and offers nothing else — so ``subnormal_policy`` gained the Darwin fenv lever,
     and on this machine the refusal these tests are about no longer happens.
 
-    THE REFUSAL IS STILL A REAL BRANCH and it is still the one that matters: a host
+    The refusal is still a real branch and it is still the one that matters: a host
     with neither lever must refuse rather than half-apply. So the platform is
     ARRANGED instead of assumed — MEEP's knob a no-op, the fenv lever answering
     "did not work" — and the tests keep measuring what they always measured, on
@@ -230,7 +237,7 @@ def test_match_meep_resolves_to_keep_against_real_meep_on_this_host():
 
     Measured here (arm64, MEEP 1.33.0): flushing False before ``import meep``,
     False after, and False again after ``mp.set_zero_subnormals(True)`` — the
-    ``#if HAVE_IMMINTRIN_H`` no-op. THE X86 HALF IS NOT VERIFIABLE ON THIS MACHINE;
+    ``#if HAVE_IMMINTRIN_H`` no-op. The x86 half is not verifiable on this machine;
     the test above pins the mechanism that produces it.
     """
     if importlib.util.find_spec("meep") is None:
@@ -809,7 +816,7 @@ _FAKE_ACCELERATOR_VALUES = {"cub": 1, "cutensor": 2}
 _FAKE_CUB = _FAKE_ACCELERATOR_VALUES["cub"]
 
 
-def _fake_cupy(monkeypatch, tmp_path, accelerators=(_FAKE_CUB,)):
+def _fake_cupy(monkeypatch, tmp_path, accelerators=(_FAKE_CUB,), shape="13", source=""):
     """A CuPy stand-in exposing every seam the policy touches.
 
     ``accelerators`` is what CuPy IMPORTED with, which is the only thing that
@@ -817,7 +824,9 @@ def _fake_cupy(monkeypatch, tmp_path, accelerators=(_FAKE_CUB,)):
     :func:`test_flush_refuses_because_the_runtime_switch_off_does_not_move_the_dispatch`.
     Pass ``()`` for a CuPy that came up under ``CUPY_ACCELERATORS=''``.
 
-    Three of them, all load-bearing: the compiler front end (the option strip),
+    Three of them, all load-bearing: the compiler module (the option strip at the
+    front end its compile path calls, CuPy ``shape``'s stand-in from
+    ``test_backends``; ``calls`` logs the option tuple every front end receives),
     ``_core._accelerator`` (the CUB reduction path, which no compile option can
     reach) and ``_util.clear_memo`` (the in-process kernel cache, which is above
     the disk cache and defeats a late install). Scoped through ``monkeypatch`` and
@@ -827,7 +836,7 @@ def _fake_cupy(monkeypatch, tmp_path, accelerators=(_FAKE_CUB,)):
     calls = []
     state = {"reduction_accelerators": list(accelerators), "memo_cleared": 0}
 
-    def compile_using_nvrtc(source, options=(), *args, **kwargs):
+    def front_end(name, source, options):
         calls.append(tuple(options))
         return "cubin"
 
@@ -847,7 +856,7 @@ def _fake_cupy(monkeypatch, tmp_path, accelerators=(_FAKE_CUB,)):
                 raise ValueError(f"Unknown accelerator: {name}")
         state["reduction_accelerators"] = resolved
 
-    compiler = types.SimpleNamespace(compile_using_nvrtc=compile_using_nvrtc)
+    compiler = cupy_compiler_module(shape, front_end, tmp_path / "cupy_default_cache", source)
     cuda = types.SimpleNamespace(compiler=compiler)
     accelerator = types.SimpleNamespace(
         get_reduction_accelerators=lambda: list(state["reduction_accelerators"]),
@@ -867,7 +876,8 @@ def test_keep_wraps_the_compiler_seam_and_counts_what_it_stripped(monkeypatch, t
 
     report = sp.install_cupy_policy(sp.KEEP, cupy)
     assert report["installed"] is True
-    assert report["wrapped_entry_points"] == ["compile_using_nvrtc"]
+    assert report["wrapped_entry_points"] == [
+        "compile_using_nvrtc", "compile_using_nvcc", "compile_using_hipcc"]
 
     compiler.compile_using_nvrtc("src", ("--fmad=false", "-ftz=true"))
     compiler.compile_using_nvrtc("src", ("--fmad=false",))
@@ -1001,7 +1011,7 @@ def _fake_kernel_module(*, ufunc_memo="_kernel_memo",
 
 def test_keep_drops_the_kernels_a_ufunc_and_an_elementwise_kernel_hold_themselves(
         monkeypatch, tmp_path):
-    """``clear_memo`` is not the whole drop: a ufunc keeps its kernels ON THE OBJECT.
+    """``clear_memo`` is not the whole drop: a ufunc keeps its kernels on the object.
 
     Measured on the GPU host (CuPy 13.5.1): a float32 ``cp.multiply`` compiled before
     a keep install returned 0.0 for 1e-30 * 1e-10 after ``cupy.clear_memo()``, while
@@ -1079,8 +1089,9 @@ def test_uninstalling_the_strip_drops_the_kernels_compiled_under_it(monkeypatch,
     assert restored["cupy_kernels_dropped"] == 1
 
 
+@pytest.mark.parametrize("shape", ["13", "14"])
 def test_keep_folds_its_token_into_cupys_cache_key_and_uninstall_takes_it_out(
-        monkeypatch, tmp_path):
+        shape, monkeypatch, tmp_path):
     """The key is computed above the strip, so the keep token goes into the key itself.
 
     ``extra_source`` is hashed into CuPy's key and handed to no compiler. With the
@@ -1088,28 +1099,179 @@ def test_keep_folds_its_token_into_cupys_cache_key_and_uninstall_takes_it_out(
     the same directory before the install — measured on device: in a keep directory
     minted before the process started, the memo drop alone left 0 of 3 float32
     products keeping, because the recompile read the pre-install binary back.
+
+    Through the compile path's own caller, in both shapes: CuPy 14 dropped the
+    ``cache_dir`` parameter, so a token folded by POSITION would land in ``backend``
+    and every keep compile would raise "Invalid backend".
     """
     cache = tmp_path / f"cupy_cache_{sp.CUPY_CACHE_POLICY_TOKEN}_test"
     cache.mkdir()
     monkeypatch.setenv("CUPY_CACHE_DIR", str(cache))
-    cupy, compiler, _calls, _state = _fake_cupy(monkeypatch, tmp_path)
-    keys = []
-
-    def compile_with_cache(source, options, arch, cache_dir, extra_source=None,
-                           backend="nvrtc", *rest):
-        keys.append(extra_source)
-        return "module"
-
-    compiler._compile_with_cache_cuda = compile_with_cache
+    cupy, compiler, _calls, _state = _fake_cupy(monkeypatch, tmp_path, shape=shape)
     report = sp.install_cupy_policy(sp.KEEP, cupy)
     assert report["cache_key_folded"] is True
-    compiler._compile_with_cache_cuda("src", (), None, None, None, "nvrtc")
-    compiler._compile_with_cache_cuda("src", (), None, None, "headers", "nvrtc")
-    assert keys == [sp.CUPY_KEEP_CACHE_KEY_TOKEN, "headers\n" + sp.CUPY_KEEP_CACHE_KEY_TOKEN]
+    compiler._compile_module_with_cache("src", ("--fmad=false",))
+    compiler._compile_module_with_cache("src", ("--fmad=false",), extra_source="headers")
+    options = ("--fmad=false", "-ftz=true")
+    assert sorted(os.listdir(cache)) == sorted([
+        cache_name("src", options, sp.CUPY_KEEP_CACHE_KEY_TOKEN),
+        cache_name("src", options, "headers\n" + sp.CUPY_KEEP_CACHE_KEY_TOKEN)])
 
     sp.uninstall_subnormal_policy()
-    compiler._compile_with_cache_cuda("src", (), None, None, None, "nvrtc")
-    assert keys[-1] is None
+    compiler._compile_module_with_cache("src", ("--fmad=false",))
+    assert cache_name("src", options, None) in os.listdir(cache)
+
+
+@pytest.mark.parametrize("shape", ["13", "14"])
+def test_keep_strips_the_front_end_the_compile_path_calls(shape, monkeypatch, tmp_path):
+    """The strip must be CALLED by the compile path, not merely installed.
+
+    CuPy 14's compile path calls ``_compile_using_nvrtc_no_warning``; a strip on
+    ``compile_using_nvrtc`` there installs, reports ``installed``, and leaves CuPy's
+    own ``-ftz=true`` on every compile.
+    """
+    cache = tmp_path / f"cupy_cache_{sp.CUPY_CACHE_POLICY_TOKEN}_test"
+    monkeypatch.setenv("CUPY_CACHE_DIR", str(cache))
+    cupy, compiler, calls, _state = _fake_cupy(monkeypatch, tmp_path, shape=shape)
+    report = sp.install_cupy_policy(sp.KEEP, cupy)
+    assert report["attained"] is True and report["installed"] is True
+    assert report["wrapped_entry_points"][0] == NVRTC_FRONT_END[shape]
+    compiler._compile_module_with_cache("src", ("--fmad=false",))
+    compiler._compile_module_with_cache("src2", ("--fmad=false",), backend="nvcc")
+    assert calls == [("--fmad=false",), ("--fmad=false",)]
+    assert sp.cupy_strip_counters() == {"calls": 2, "removed": 2}
+    # A direct call of CuPy 14's public front end is stripped once, through the private one.
+    compiler.compile_using_nvrtc("src3", ("-ftz=true",))
+    assert calls[-1] == () and sp.cupy_strip_counters() == {"calls": 3, "removed": 3}
+
+
+def test_a_late_cache_dir_reaches_cupy_14_which_reads_it_once_at_import(monkeypatch, tmp_path):
+    """CuPy 14 fixes its cache directory when ``cupy.cuda.compiler`` is imported.
+
+    The keep policy's private directory is set AFTER the import (dispatch moves it at
+    the freeze, and its repair moves it again), so on that shape the every-compile
+    read is put back: a compile caches where the variable points NOW, a restore of
+    the variable is followed too, and an uninstall puts CuPy's own backend back.
+    """
+    start = tmp_path / "cupy_cache_at_import"
+    monkeypatch.setenv("CUPY_CACHE_DIR", str(start))
+    cupy, compiler, _calls, _state = _fake_cupy(monkeypatch, tmp_path, shape="14")
+    original = compiler._kernel_cache_backend
+    moved = sp.point_cupy_cache_at_keep_policy(cupy)
+    assert moved["after"] == f"{start}-{sp.CUPY_CACHE_POLICY_TOKEN}"
+    assert moved["cupy_reads_it"]["reads"] == "every compile"
+    assert moved["cupy_reads_it"]["replaced_backend_directory"] == str(start)
+    report = sp.install_cupy_policy(sp.KEEP, cupy)
+    assert report["attained"] is True
+    assert report["cache_dir_read"]["reads"] == "every compile"
+    compiler._compile_module_with_cache("src", ())
+    assert len(os.listdir(moved["after"])) == 1 and not os.listdir(start)
+
+    monkeypatch.setenv("CUPY_CACHE_DIR", str(start))  # the gate's restore of the variable
+    compiler._compile_module_with_cache("src2", ())
+    assert len(os.listdir(start)) == 1
+
+    sp.uninstall_subnormal_policy()
+    assert compiler._kernel_cache_backend is original
+
+
+def test_cupy_13_needs_no_new_reader_because_it_reads_the_variable_every_compile(
+        monkeypatch, tmp_path):
+    cache = tmp_path / f"cupy_cache_{sp.CUPY_CACHE_POLICY_TOKEN}_test"
+    monkeypatch.setenv("CUPY_CACHE_DIR", str(cache))
+    cupy, compiler, _calls, _state = _fake_cupy(monkeypatch, tmp_path, shape="13")
+    report = sp.install_cupy_policy(sp.KEEP, cupy)
+    assert report["cache_dir_read"] == {
+        "reads": "every compile", "reasons": [],
+        "mechanism": "cupy.cuda.compiler.get_cache_dir(), CuPy's own"}
+    assert not hasattr(compiler, sp.CUPY_CACHE_BACKEND)
+
+
+def test_keep_refuses_a_cupy_14_cache_backend_it_did_not_build_by_name(monkeypatch, tmp_path):
+    cache = tmp_path / f"cupy_cache_{sp.CUPY_CACHE_POLICY_TOKEN}_test"
+    monkeypatch.setenv("CUPY_CACHE_DIR", str(cache))
+    cupy, compiler, _calls, _state = _fake_cupy(monkeypatch, tmp_path, shape="14")
+
+    class SharedCache:
+        def load(self, name):
+            return None
+
+        def save(self, name, cubin, source):
+            pass
+
+    custom = SharedCache()
+    compiler._kernel_cache_backend = custom
+    with pytest.raises(sp.SubnormalPolicyUnattainable) as excinfo:
+        sp.install_cupy_policy(sp.KEEP, cupy)
+    assert "CuPy's kernel cache backend is SharedCache, not CuPy's own " \
+           "_DiskKernelCacheBackend" in str(excinfo.value)
+    assert compiler._kernel_cache_backend is custom
+
+
+def test_keep_refuses_by_name_when_the_compile_path_calls_no_known_front_end(
+        monkeypatch, tmp_path):
+    cache = tmp_path / f"cupy_cache_{sp.CUPY_CACHE_POLICY_TOKEN}_test"
+    monkeypatch.setenv("CUPY_CACHE_DIR", str(cache))
+    cupy, compiler, calls, _state = _fake_cupy(
+        monkeypatch, tmp_path, shape="14", source=MOVED_SEAM_COMPILER)
+    with pytest.raises(sp.SubnormalPolicyUnattainable) as excinfo:
+        sp.install_cupy_policy(sp.KEEP, cupy)
+    message = str(excinfo.value)
+    assert "the -ftz=true strip cannot be installed where CuPy compiles" in message
+    assert "_compile_with_cache_cuda calls no compiler front end" in message
+    assert sp.executor_report("cupy")["installed"] is False
+    for name in ("_nvrtc_build", "_nvcc_build", "compile_using_nvrtc",
+                 "_compile_with_cache_cuda"):
+        assert getattr(getattr(compiler, name), sp._POLICY_MARK, None) is None, name
+
+
+def test_flush_names_the_front_end_it_could_not_guard(monkeypatch, tmp_path):
+    monkeypatch.delenv("CUPY_CACHE_DIR", raising=False)
+    cupy, _compiler, _calls, _state = _fake_cupy(
+        monkeypatch, tmp_path, accelerators=(), shape="14", source=MOVED_SEAM_COMPILER)
+    with pytest.raises(sp.SubnormalPolicyUnattainable) as excinfo:
+        sp.install_cupy_policy(sp.FLUSH, cupy)
+    assert ("the compiler front ends CuPy's compile path calls could not be found: "
+            "cupy.cuda.compiler._compile_with_cache_cuda calls no compiler front end"
+            in str(excinfo.value))
+
+
+def test_keep_refuses_a_front_end_whose_options_it_cannot_find(monkeypatch, tmp_path):
+    cache = tmp_path / f"cupy_cache_{sp.CUPY_CACHE_POLICY_TOKEN}_test"
+    monkeypatch.setenv("CUPY_CACHE_DIR", str(cache))
+    swapped = CUPY_14_COMPILER.replace(
+        'def _compile_using_nvrtc_no_warning(source, options=(), arch=None, filename="kern.cu",',
+        'def _compile_using_nvrtc_no_warning(options, source=(), arch=None, filename="kern.cu",')
+    assert swapped != CUPY_14_COMPILER
+    cupy, compiler, _calls, _state = _fake_cupy(monkeypatch, tmp_path, shape="14", source=swapped)
+    with pytest.raises(sp.SubnormalPolicyUnattainable) as excinfo:
+        sp.install_cupy_policy(sp.KEEP, cupy)
+    assert ("cupy.cuda.compiler._compile_using_nvrtc_no_warning takes ['options', 'source'] "
+            "first" in str(excinfo.value))
+    assert getattr(compiler._compile_using_nvrtc_no_warning, sp._POLICY_MARK, None) is None
+
+
+def test_keep_refuses_a_compile_path_whose_key_input_it_cannot_find(monkeypatch, tmp_path):
+    cache = tmp_path / f"cupy_cache_{sp.CUPY_CACHE_POLICY_TOKEN}_test"
+    monkeypatch.setenv("CUPY_CACHE_DIR", str(cache))
+    renamed = CUPY_14_COMPILER.replace("extra_source", "key_source")
+    cupy, _compiler, _calls, _state = _fake_cupy(monkeypatch, tmp_path, shape="14", source=renamed)
+    with pytest.raises(sp.SubnormalPolicyUnattainable) as excinfo:
+        sp.install_cupy_policy(sp.KEEP, cupy)
+    assert ("cupy.cuda.compiler._compile_with_cache_cuda has no extra_source parameter"
+            in str(excinfo.value))
+    assert sp.executor_report("cupy")["cache_key_folded"] is False
+
+
+def test_a_second_policy_is_refused_at_cupy_14s_front_end_too(monkeypatch, tmp_path):
+    cache = tmp_path / f"cupy_cache_{sp.CUPY_CACHE_POLICY_TOKEN}_test"
+    monkeypatch.setenv("CUPY_CACHE_DIR", str(cache))
+    cupy, _compiler, _calls, _state = _fake_cupy(monkeypatch, tmp_path, shape="14")
+    sp.install_cupy_policy(sp.KEEP, cupy)
+    monkeypatch.delenv("CUPY_CACHE_DIR", raising=False)
+    with pytest.raises(sp.SubnormalPolicyLocked) as excinfo:
+        sp.install_cupy_policy(sp.FLUSH, cupy)
+    assert "_compile_using_nvrtc_no_warning" in str(excinfo.value)
 
 
 #: Run in a child process: the suite's own process may already hold a keep-policy
@@ -1342,7 +1504,7 @@ attributes #0 = { mustprogress nofree "no-trapping-math"="true" }
 attributes #1 = { nocallback nofree nosync nounwind }
 '''
 
-#: THE SHAPE TRITON 3.1.0 ACTUALLY EMITS: no attribute group on the define, and a
+#: The shape Triton 3.1.0 ACTUALLY EMITS: no attribute group on the define, and a
 #: ``!dbg`` metadata attachment. Captured from a real ``make_llir`` on the GPU host.
 #: Every fixture in an earlier revision lacked the metadata attachment, all 59
 #: tests passed, and the injector produced IR that aborted LLVM on first contact.
@@ -1456,8 +1618,9 @@ def test_the_install_time_verification_is_what_refuses_a_broken_injector(monkeyp
     assert sp.verify_reflect_rewrite("define void @k() {\n ret void\n}\n")["ok"] is False
 
     monkeypatch.setattr(sp, "inject_denormal_attribute",
-                        lambda text: (text.replace("!dbg !7 {", "!dbg !7 #9 {"),
-                                      {"defines": 1, "groups_extended": 0, "groups_minted": 1}))
+                        lambda text, attribute=None: (
+                            text.replace("!dbg !7 {", "!dbg !7 #9 {"),
+                            {"defines": 1, "groups_extended": 0, "groups_minted": 1}))
     broken = sp.verify_injection()
     assert broken["ok"] is False
     assert any("misplaced" in reason for reason in broken["reasons"])
@@ -1718,27 +1881,98 @@ def test_the_cache_key_carries_the_mechanism_and_not_only_the_policy_name():
     assert sp.mechanism_digest(sp.FLUSH) == baseline
 
 
+#: What a simulated LLVM does with each denormal spelling. Measured on the real
+#: ones (Triton's own ``ptx`` stage, the synthetic FMA module): 3.1.0 flushes under
+#: the string attribute and ABORTS on ``denormal_fpenv``; 3.8.0 ignores the string
+#: attribute and flushes under ``denormal_fpenv``. The other two worlds are the ones
+#: the selection must survive: nothing flushes, and a later LLVM that ignores the
+#: string attribute without reading the first-class one.
+_LLVM_WORLDS = {
+    "3.1": {"string": "flushes", "fpenv": "aborts"},
+    "3.8": {"string": "ignored", "fpenv": "flushes"},
+    "neither": {"string": "ignored", "fpenv": "ignored"},
+    "no_fpenv": {"string": "ignored", "fpenv": "aborts"},
+}
+
+_FAKE_TRITON_FILE = "/fake/site-packages/triton/__init__.py"
+
+
+def _spelling_in(text):
+    """Which denormal spelling this LLVM IR text carries, if any."""
+    if "denormal_fpenv" in text:
+        return "fpenv"
+    if '"denormal-fp-math-f32"' in text:
+        return "string"
+    return None
+
+
+def _fake_lowering(text, world):
+    """The PTX the simulated LLVM emits for an FMA in a module carrying ``text``'s spelling."""
+    spelling = _spelling_in(text)
+    ftz = spelling is not None and _LLVM_WORLDS[world].get(spelling) == "flushes"
+    return (".version 8.3\n.target sm_80\n.visible .entry meep_gpu_denormal_probe(\n)\n{\n"
+            f"\tfma.rn{'.ftz' if ftz else ''}.f32 \t%f4, %f1, %f2, %f3;\n\tret;\n}}\n")
+
+
+def _fake_probe_runner(world, calls, *, file=_FAKE_TRITON_FILE, ptx=None, returncode=None):
+    """Stands in for :func:`sp._run_denormal_probe`: what the probe CHILD would print
+    and return on a simulated LLVM, with no process started. ``calls`` records the
+    spelling of every module the probe was asked to measure."""
+    def run(module_text):
+        spelling = _spelling_in(module_text)
+        calls.append(spelling)
+        if world == "unmeasured":
+            return {"returncode": 1, "stdout": "",
+                    "stderr": "ModuleNotFoundError: No module named 'triton'"}
+        started = sp._DENORMAL_PROBE_STARTED + json.dumps({"version": world, "file": file})
+        if _LLVM_WORLDS[world].get(spelling) == "aborts":
+            return {"returncode": -6, "stdout": started + "\n",
+                    "stderr": "LLVM ERROR: failed to parse IR: unterminated attribute group"}
+        body = _fake_lowering(module_text, world) if ptx is None else ptx
+        result = sp._DENORMAL_PROBE_RESULT + json.dumps(
+            {"version": world, "file": file, "ptx": body})
+        return {"returncode": 0 if returncode is None else returncode,
+                "stdout": started + "\n" + result + "\n", "stderr": ""}
+    return run
+
+
 class _FakeCUDABackend:
     """Enough of Triton's ``CUDABackend`` for the two hooks to be exercised.
 
     The ``llir`` stage returns the shape Triton 3.1.0 really emits, so a wrapper
     that only works on hand-written IR cannot pass here. ``llir_text`` is a class
     attribute so a test can hand the stage a different module — the flagless case
-    is one the policy must handle without refusing a kernel.
+    is one the policy must handle without refusing a kernel. The ``ptx`` stage
+    returns ``metadata["ptx"]`` when a test hands it PTX, and otherwise LOWERS its
+    input the way the simulated LLVM of ``world`` would: ``.ftz`` only when the
+    text carries a spelling that LLVM reads. So a wrapper that injects a spelling
+    the LLVM ignores fails the audit here exactly as it does on the device.
     """
 
     llir_text = _LLIR_TRITON_SHAPE
+    world = "3.1"
 
     def hash(self):
         return "nvidia-86-ptx83"
 
     def add_stages(self, stages, options):
         stages["llir"] = lambda src, metadata: type(self).llir_text
-        stages["ptx"] = lambda src, metadata: metadata["ptx"]
+        stages["ptx"] = lambda src, metadata: (
+            metadata["ptx"] if "ptx" in metadata else _fake_lowering(src, type(self).world))
 
 
-def _install_fake_triton(monkeypatch, policy):
+def _install_fake_triton(monkeypatch, policy, world="3.1"):
+    """A fake Triton on a simulated LLVM (``world``, see :data:`_LLVM_WORLDS`).
+
+    The flush install's spelling probe runs in a child process on a real host;
+    here it is answered by :func:`_fake_probe_runner` for the same world, and the
+    spellings it was asked about land in ``backend.probe_calls``.
+    """
     backend = _FakeCUDABackend
+    calls = []
+    monkeypatch.setattr(backend, "world", world)
+    monkeypatch.setattr(backend, "probe_calls", calls, raising=False)
+    monkeypatch.setattr(sp, "_run_denormal_probe", _fake_probe_runner(world, calls))
     monkeypatch.setattr(sp, "_cuda_backend_class", lambda: backend)
     # Only ``triton`` is faked present. Every other lookup goes to the real
     # ``find_spec``: blanket-faking it hid ``llvmlite`` and disarmed the very
@@ -1748,6 +1982,7 @@ def _install_fake_triton(monkeypatch, policy):
                         lambda name: object() if name == "triton" else real_find_spec(name))
     fake_triton = types.ModuleType("triton")
     fake_triton.__version__ = "3.1.0"
+    fake_triton.__file__ = _FAKE_TRITON_FILE
     monkeypatch.setitem(sys.modules, "triton", fake_triton)
     return backend
 
@@ -1918,6 +2153,376 @@ def test_the_triton_hooks_are_idempotent(monkeypatch):
         assert backend().hash() == once
     finally:
         backend.hash, backend.add_stages = original_hash, original_stages
+
+
+# ---------------------------------------------------------------------------
+# The flush spelling: measured per Triton, in a child process
+# ---------------------------------------------------------------------------
+
+#: The base tree's digests (git archive 57130c67 + the 1.0.1 series to this
+#: point), computed once there. Keep's must never move, and flush's must not
+#: move wherever the string attribute is the spelling selected.
+_BASE_KEEP_DIGEST = "d2e88ea25a6c"
+_BASE_FLUSH_DIGEST = "ac55eb37b54a"
+
+
+def _restoring(backend):
+    return backend.hash, backend.add_stages
+
+
+def test_the_string_attribute_is_selected_where_llvm_reads_it_and_nothing_moves(monkeypatch):
+    """Triton 3.1.0 through 3.7.1: the string attribute flushes, so it is selected,
+    the second spelling is never handed to an LLVM (it aborts 3.1.0's), and the
+    flush cache key is the one the base tree computed."""
+    backend = _install_fake_triton(monkeypatch, sp.FLUSH, world="3.1")
+    original_hash, original_stages = _restoring(backend)
+    try:
+        report = sp.install_triton_policy(sp.FLUSH)
+        assert report["attained"] is True
+        assert backend.probe_calls == ["string"]          # fpenv never measured
+        record = report["denormal_spelling"]
+        assert record["selected"] == sp.TRITON_DENORMAL_ATTRIBUTE
+        assert [v["outcome"] for v in record["verdicts"]] == ["flushes"]
+        assert sp.mechanism_digest(sp.FLUSH) == _BASE_FLUSH_DIGEST
+        assert backend().hash().endswith(f"flush-{_BASE_FLUSH_DIGEST}")
+        stages = {}
+        backend().add_stages(stages, options=None)
+        emitted = stages["llir"]("src", {})
+        assert '"denormal-fp-math-f32"="preserve-sign,preserve-sign"' in emitted
+        assert "denormal_fpenv" not in emitted
+        assert "fma.rn.ftz.f32" in stages["ptx"](emitted, {})   # audited, passes
+    finally:
+        backend.hash, backend.add_stages = original_hash, original_stages
+
+
+def test_denormal_fpenv_is_selected_where_llvm_ignores_the_string_and_is_what_compiles(monkeypatch):
+    """Triton 3.8.0: the string attribute is read and IGNORED (``fma.rn.f32``), so
+    the first-class spelling is measured next, flushes, and is selected — and it is
+    the spelling every compile then carries. A hook that measured it but still
+    injected the string attribute fails the audit on this simulated LLVM exactly
+    as on the device."""
+    backend = _install_fake_triton(monkeypatch, sp.FLUSH, world="3.8")
+    original_hash, original_stages = _restoring(backend)
+    try:
+        report = sp.install_triton_policy(sp.FLUSH)
+        assert report["attained"] is True
+        assert backend.probe_calls == ["string", "fpenv"]
+        record = report["denormal_spelling"]
+        assert record["selected"] == sp.TRITON_DENORMAL_FPENV_ATTRIBUTE
+        assert [v["outcome"] for v in record["verdicts"]] == ["ignored", "flushes"]
+        assert record["verdicts"][0]["fma"] == ["fma.rn.f32"]
+        assert record["verdicts"][1]["fma"] == ["fma.rn.ftz.f32"]
+        assert sp.TRITON_DENORMAL_FPENV_ATTRIBUTE in report["mechanism"]
+        # The key carries the selected spelling, and differs from the string's.
+        fpenv_digest = sp.mechanism_digest(sp.FLUSH, sp.TRITON_DENORMAL_FPENV_ATTRIBUTE)
+        assert fpenv_digest != _BASE_FLUSH_DIGEST
+        assert backend().hash() == (
+            f"nvidia-86-ptx83-{sp.TRITON_HASH_PREFIX}flush-{fpenv_digest}")
+        stages = {}
+        backend().add_stages(stages, options=None)
+        emitted = stages["llir"]("src", {})
+        assert "denormal_fpenv(float: preservesign)" in emitted
+        assert "denormal-fp-math-f32" not in emitted
+        ptx = stages["ptx"](emitted, {})                  # lowered by the simulated LLVM
+        assert "fma.rn.ftz.f32" in ptx
+        assert sp.triton_counters()["ptx_violations"] == 0
+        assert sp.policy_stamp()["executors"]["triton"]["denormal_spelling"]["selected"] == (
+            sp.TRITON_DENORMAL_FPENV_ATTRIBUTE)
+    finally:
+        backend.hash, backend.add_stages = original_hash, original_stages
+
+
+def test_when_no_spelling_flushes_the_audit_still_refuses_by_name(monkeypatch):
+    """Neither spelling flushes: nothing is selected, the string attribute is
+    injected as before, the install is not turned into a raise (a caller's flush
+    install keeps working and the CUDA table serves), and every Triton compile is
+    refused by the audit — naming both measured spellings."""
+    backend = _install_fake_triton(monkeypatch, sp.FLUSH, world="neither")
+    original_hash, original_stages = _restoring(backend)
+    try:
+        report = sp.install_triton_policy(sp.FLUSH)
+        assert report["attained"] is True and report["installed"] is True
+        record = report["denormal_spelling"]
+        assert record["selected"] is None
+        assert record["attribute"] == sp.TRITON_DENORMAL_ATTRIBUTE
+        assert [v["outcome"] for v in record["verdicts"]] == ["ignored", "ignored"]
+        assert backend().hash().endswith(f"flush-{_BASE_FLUSH_DIGEST}")
+        stages = {}
+        backend().add_stages(stages, options=None)
+        emitted = stages["llir"]("src", {})
+        assert '"denormal-fp-math-f32"' in emitted
+        with pytest.raises(sp.SubnormalPolicyUnattainable) as excinfo:
+            stages["ptx"](emitted, {})
+        message = str(excinfo.value)
+        assert "Denormal spelling probe" in message
+        assert sp.TRITON_DENORMAL_ATTRIBUTE in message
+        assert sp.TRITON_DENORMAL_FPENV_ATTRIBUTE in message
+        assert message.count("ignored") >= 2
+    finally:
+        backend.hash, backend.add_stages = original_hash, original_stages
+
+
+def test_a_spelling_the_llvm_cannot_parse_is_an_aborted_child_never_a_selection(monkeypatch):
+    """An LLVM that ignores the string attribute AND cannot parse ``denormal_fpenv``
+    aborts the probe child. The parent reads that as "aborted", selects nothing,
+    and is still alive to say so."""
+    backend = _install_fake_triton(monkeypatch, sp.FLUSH, world="no_fpenv")
+    original_hash, original_stages = _restoring(backend)
+    try:
+        report = sp.install_triton_policy(sp.FLUSH)
+        verdicts = report["denormal_spelling"]["verdicts"]
+        assert [v["outcome"] for v in verdicts] == ["ignored", "aborted"]
+        assert verdicts[1]["returncode"] == -6
+        assert "unterminated attribute group" in verdicts[1]["detail"]
+        assert report["denormal_spelling"]["selected"] is None
+    finally:
+        backend.hash, backend.add_stages = original_hash, original_stages
+
+
+def test_an_unmeasured_probe_never_reaches_the_second_spelling(monkeypatch):
+    """If the child cannot even measure the string attribute, nothing says this
+    LLVM can parse ``denormal_fpenv``, so it is never measured: the string
+    attribute is injected exactly as before and the audit decides."""
+    backend = _install_fake_triton(monkeypatch, sp.FLUSH, world="3.1")
+    calls = []
+    monkeypatch.setattr(sp, "_run_denormal_probe", _fake_probe_runner("unmeasured", calls))
+    original_hash, original_stages = _restoring(backend)
+    try:
+        report = sp.install_triton_policy(sp.FLUSH)
+        assert calls == ["string"]
+        record = report["denormal_spelling"]
+        assert [v["outcome"] for v in record["verdicts"]] == ["unmeasured"]
+        assert record["selected"] is None
+        assert record["attribute"] == sp.TRITON_DENORMAL_ATTRIBUTE
+        assert "No module named 'triton'" in record["verdicts"][0]["detail"]
+        assert report["attained"] is True
+    finally:
+        backend.hash, backend.add_stages = original_hash, original_stages
+
+
+@pytest.mark.parametrize("how", ["no_fma", "other_triton", "died_after_result"])
+def test_a_probe_that_did_not_measure_an_fma_on_this_triton_selects_nothing(monkeypatch, how):
+    """Three ways a probe can return "no violations" without having measured
+    anything: PTX with no f32 FMA in it (an empty audit has no violations), PTX
+    from a different Triton than this process imports, and a child that printed a
+    result and then died. Each is "unmeasured", and none is a selection."""
+    _install_fake_triton(monkeypatch, sp.FLUSH, world="3.8")
+    calls = []
+    runner = {
+        "no_fma": _fake_probe_runner("3.8", calls, ptx=".visible .entry k()\n{\n\tret;\n}\n"),
+        "other_triton": _fake_probe_runner("3.8", calls, file="/elsewhere/triton/__init__.py"),
+        "died_after_result": _fake_probe_runner("3.8", calls, returncode=-11),
+    }[how]
+    monkeypatch.setattr(sp, "_run_denormal_probe", runner)
+    record = sp.select_denormal_spelling()
+    assert [v["outcome"] for v in record["verdicts"]] == ["unmeasured"], record
+    assert record["selected"] is None
+    assert calls == ["string"]
+
+
+def test_a_probe_verdict_carries_no_path_from_the_child(monkeypatch):
+    """A verdict lands in the policy stamp, and the stamp in gate artifacts: the
+    child's message is kept, the host's paths in it are not."""
+    _install_fake_triton(monkeypatch, sp.FLUSH, world="3.8")
+
+    def failed(module_text):
+        return {"returncode": 1, "stdout": "", "stderr": (
+            'Traceback (most recent call last):\n  File "/opt/probe-env/lib/x.py", line 1\n'
+            "FileNotFoundError: [Errno 2] No such file or directory: '/opt/probe-env/bin/ptxas'")}
+
+    monkeypatch.setattr(sp, "_run_denormal_probe", failed)
+    verdict = sp.measure_denormal_spelling(sp.TRITON_DENORMAL_ATTRIBUTE)
+    assert verdict["outcome"] == "unmeasured"
+    assert "FileNotFoundError" in verdict["detail"] and "<path>" in verdict["detail"]
+    assert "/opt" not in json.dumps(verdict) and "probe-env" not in json.dumps(verdict)
+    calls = []
+    monkeypatch.setattr(sp, "_run_denormal_probe", _fake_probe_runner(
+        "3.8", calls, file="/opt/probe-env/elsewhere/triton/__init__.py"))
+    elsewhere = sp.measure_denormal_spelling(sp.TRITON_DENORMAL_ATTRIBUTE)
+    assert elsewhere["outcome"] == "unmeasured"
+    assert "probe-env" not in json.dumps(elsewhere)
+
+
+def test_keep_measures_no_spelling_and_its_report_and_key_are_unchanged(monkeypatch):
+    """Keep injects no attribute, so it must not pay for (or depend on) the probe:
+    a probe runner that raises is never reached, keep's report carries the same
+    keys as before, and keep's cache key is the base tree's."""
+    backend = _install_fake_triton(monkeypatch, sp.KEEP)
+
+    def must_not_run(module_text):
+        raise AssertionError("the spelling probe ran under keep")
+
+    monkeypatch.setattr(sp, "_run_denormal_probe", must_not_run)
+    original_hash, original_stages = _restoring(backend)
+    try:
+        report = sp.install_triton_policy(sp.KEEP)
+        assert report["attained"] is True
+        assert "denormal_spelling" not in report
+        assert sorted(report) == sorted([
+            "executor", "requested", "attained", "installed", "triton_version",
+            "cache_dir", "hash_folded", "verification", "in_process_caches_dropped",
+            "exceptions", "mechanism", "reasons"])
+        assert sp.mechanism_digest(sp.KEEP) == _BASE_KEEP_DIGEST
+        assert sp.mechanism_digest(sp.KEEP, None) == _BASE_KEEP_DIGEST
+        assert backend().hash().endswith(f"keep-{_BASE_KEEP_DIGEST}")
+        assert "_triton_denormal" not in sp._STATE
+    finally:
+        backend.hash, backend.add_stages = original_hash, original_stages
+
+
+def test_the_spelling_is_measured_once_per_process(monkeypatch):
+    backend = _install_fake_triton(monkeypatch, sp.FLUSH, world="3.8")
+    original_hash, original_stages = _restoring(backend)
+    try:
+        first = sp.select_denormal_spelling()
+        assert sp.select_denormal_spelling() is first
+        sp.install_triton_policy(sp.FLUSH)
+        sp.install_triton_policy(sp.FLUSH)
+        assert backend.probe_calls == ["string", "fpenv"]
+        sp._reset_for_tests()                       # an uninstall forgets it
+        assert "_triton_denormal" not in sp._STATE
+        sp.select_denormal_spelling()
+        assert backend.probe_calls == ["string", "fpenv", "string", "fpenv"]
+    finally:
+        backend.hash, backend.add_stages = original_hash, original_stages
+
+
+def test_denormal_fpenv_is_injected_once_and_composes_with_the_string_attribute():
+    """Idempotent by the attribute's own name: a second injection writes nothing,
+    and a group that already carries the string attribute still gains the
+    first-class one (the string form alone is ignored where fpenv is selected)."""
+    fpenv = sp.TRITON_DENORMAL_FPENV_ATTRIBUTE
+    once, counts = sp.inject_denormal_attribute(_LLIR_TRITON_SHAPE, attribute=fpenv)
+    assert counts["groups_minted"] == 1
+    twice, again = sp.inject_denormal_attribute(once, attribute=fpenv)
+    assert twice == once and again["groups_extended"] == 0 and again["groups_minted"] == 0
+    assert once.count("denormal_fpenv") == 1
+    both, extended = sp.inject_denormal_attribute(
+        sp.inject_denormal_attribute(_LLIR_TRITON_SHAPE)[0], attribute=fpenv)
+    assert extended["groups_extended"] == 1
+    group = [line for line in both.splitlines() if line.startswith("attributes #0")][0]
+    assert '"denormal-fp-math-f32"' in group and group.count("denormal_fpenv") == 1
+    define = [line for line in once.splitlines() if line.startswith("define ")][0]
+    assert define.index("#0") < define.index("!dbg")       # the same placement
+
+
+def test_the_probe_module_lands_the_attribute_where_llvm_accepts_it():
+    """The probe module gets its group from the injector, so it exercises the
+    placement every kernel gets; with the string spelling it parses under
+    llvmlite's LLVM too, a third LLVM beside Triton 3.1.0's and 3.8.0's."""
+    text, counts = sp.inject_denormal_attribute(sp.TRITON_DENORMAL_PROBE_LLIR)
+    assert counts == {"defines": 1, "groups_extended": 0, "groups_minted": 1}
+    assert "@meep_gpu_denormal_probe(ptr addrspace(1) %0, float %1, float %2, float %3) #0 {" in text
+    assert "@llvm.fma.f32" in text
+    assert _llvm_rejects(text) is None
+
+
+def test_verification_never_hands_denormal_fpenv_to_llvmlite():
+    """llvmlite carries its own LLVM, which can predate ``denormal_fpenv`` — 0.47.0's
+    LLVM 20.1.8 rejects it, measured — so verifying the selected spelling with it
+    would refuse flush on Triton 3.8.0 on every host that has numba installed. The
+    parse check runs on the string spelling (the grammar slot is the same); the
+    placement check runs on the selected one."""
+    fpenv = sp.TRITON_DENORMAL_FPENV_ATTRIBUTE
+    verification = sp.verify_injection(attribute=fpenv)
+    assert verification["ok"] is True, verification
+    placement = verification["checks"][0]
+    assert placement["ok"] is True and "#0" in placement["define"]
+    if sp._llvm_parser() is not None:
+        assert verification["verified_by"].startswith("llvmlite parse + placement")
+        assert "spelling probe" in verification["verified_by"]
+        error = _llvm_rejects(sp.inject_denormal_attribute(sp._PARSEABLE_SHAPE, attribute=fpenv)[0])
+        if error is None:
+            pytest.skip("this llvmlite's LLVM reads denormal_fpenv; the hazard is absent here")
+        assert "attribute group" in error
+
+
+#: A stand-in Triton package for the probe CHILD: the module paths the child
+#: imports, a ``ptx`` stage that lowers by spelling — and that calls ``os.abort()``
+#: on a spelling its "LLVM" cannot parse, as Triton 3.1.0's does through
+#: ``report_fatal_error``. ``FAKE_TRITON_WORLD`` picks the LLVM: ``string`` reads
+#: the string attribute only (and has 3.1.0's two-argument ``add_stages``),
+#: ``fpenv`` reads ``denormal_fpenv`` only (3.8.0's three-argument one).
+_FAKE_TRITON_PACKAGE = {
+    "triton/__init__.py": '__version__ = "0.0+fake"\n',
+    "triton/backends/__init__.py": "",
+    "triton/backends/compiler.py": (
+        "class GPUTarget:\n"
+        "    def __init__(self, backend, arch, warp_size):\n"
+        "        self.backend, self.arch, self.warp_size = backend, arch, warp_size\n"),
+    "triton/compiler/__init__.py": "",
+    "triton/compiler/compiler.py": (
+        "import os\n"
+        "class Language:\n"
+        "    TRITON = 'triton'\n"
+        "def lower(src):\n"
+        "    world = os.environ['FAKE_TRITON_WORLD']\n"
+        "    if 'denormal_fpenv' in src and world == 'string':\n"
+        "        os.abort()\n"
+        "    ftz = ('denormal_fpenv' in src and world == 'fpenv') or (\n"
+        "        '\"denormal-fp-math-f32\"' in src and world == 'string')\n"
+        "    return ('.visible .entry meep_gpu_denormal_probe()\\n{\\n\\tfma.rn'\n"
+        "            + ('.ftz' if ftz else '') + '.f32 \\t%f4, %f1, %f2, %f3;\\n}\\n')\n"
+        "class Backend:\n"
+        "    def __init__(self, target):\n"
+        "        self.target = target\n"
+        "    def parse_options(self, options):\n"
+        "        return dict(options)\n"
+        "    def add_stages(self, stages, options, *language):\n"
+        "        if (len(language) == 1) != (os.environ['FAKE_TRITON_WORLD'] == 'fpenv'):\n"
+        "            raise TypeError('add_stages() takes a different number of arguments')\n"
+        "        stages['ptx'] = lambda src, metadata: lower(src)\n"
+        "def make_backend(target):\n"
+        "    return Backend(target)\n"),
+    "triton/_C/__init__.py": "",
+    "triton/_C/libtriton.py": (
+        "class llvm:\n"
+        "    @staticmethod\n"
+        "    def init_targets():\n"
+        "        pass\n"),
+}
+
+
+def _fake_triton_on_disk(monkeypatch, tmp_path, world):
+    site = tmp_path / "site"
+    for relative, text in _FAKE_TRITON_PACKAGE.items():
+        path = site / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+    monkeypatch.setenv("PYTHONPATH", os.pathsep.join(
+        [str(site)] + [entry for entry in [os.environ.get("PYTHONPATH")] if entry]))
+    monkeypatch.setenv("FAKE_TRITON_WORLD", world)
+    spec = importlib.util.spec_from_file_location(
+        "triton", site / "triton" / "__init__.py",
+        submodule_search_locations=[str(site / "triton")])
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    monkeypatch.setitem(sys.modules, "triton", module)
+    return module
+
+
+def test_the_real_probe_child_survives_an_llvm_abort_and_selects_by_measurement(monkeypatch, tmp_path):
+    """The child process itself, end to end, on a stand-in Triton on disk: an
+    abort inside the child's "LLVM" is read as "aborted" (and the parent lives),
+    an "LLVM" that reads the string attribute selects it without ever being
+    handed ``denormal_fpenv``, and one that reads only ``denormal_fpenv`` selects
+    that — through both ``add_stages`` arities."""
+    if sys.flags.ignore_environment:
+        pytest.skip("the child is started with -E like this interpreter, so PYTHONPATH cannot reach it")
+    _fake_triton_on_disk(monkeypatch, tmp_path, "string")
+    aborted = sp.measure_denormal_spelling(sp.TRITON_DENORMAL_FPENV_ATTRIBUTE)
+    assert aborted["outcome"] == "aborted", aborted
+    assert aborted["returncode"] not in (0, None)
+    record = sp.select_denormal_spelling()
+    assert [v["outcome"] for v in record["verdicts"]] == ["flushes"], record
+    assert record["selected"] == sp.TRITON_DENORMAL_ATTRIBUTE
+
+    sp._reset_for_tests()
+    _fake_triton_on_disk(monkeypatch, tmp_path, "fpenv")
+    record = sp.select_denormal_spelling()
+    assert [v["outcome"] for v in record["verdicts"]] == ["ignored", "flushes"], record
+    assert record["selected"] == sp.TRITON_DENORMAL_FPENV_ATTRIBUTE
+    assert record["verdicts"][1]["triton"] == "0.0+fake"
 
 
 # ---------------------------------------------------------------------------
@@ -2237,7 +2842,7 @@ def test_a_gate_run_that_measured_nothing_does_not_read_pass(gate, tmp_path):
 # The non-x86 host lever, and the fourth executor
 # ---------------------------------------------------------------------------
 #
-# WHY BOTH ARRIVED TOGETHER. The Metal kernel table can be certified under exactly
+# Why both arrived together. The Metal kernel table can be certified under exactly
 # one float32 subnormal policy — MPS flushes denormals natively and exposes no
 # lever, so ``keep`` is unattainable on that executor — and Apple silicon is where
 # MPS lives. Without a host lever the two halves of a Metal run would be
@@ -2248,7 +2853,7 @@ def test_a_gate_run_that_measured_nothing_does_not_read_pass(gate, tmp_path):
 
 def test_the_fenv_lever_is_tried_only_after_meeps_knob_and_only_if_it_is_needed(
         monkeypatch):
-    """MEEP'S KNOB FIRST, ALWAYS — on x86 nothing about this changes.
+    """MEEP's knob first, always — on x86 nothing about this changes.
 
     ``match_meep`` means matching MEEP, so the mechanism the certified families were
     cut under has to be the one that runs where it works. The second lever is
@@ -2304,7 +2909,7 @@ def test_a_fenv_symbol_this_platform_does_not_export_is_a_refusal_not_a_crash(
 
 def test_a_lever_that_moves_the_fpu_without_attaining_the_policy_restores_it(
         monkeypatch):
-    """THE THIRD STATE THAT BELONGS TO NOBODY, and the reason the restore is unconditional.
+    """The third state that belongs to nobody, and the reason the restore is unconditional.
 
     A header reading cannot settle whether an environment object carries the
     denormal bits on this ABI, so the lever installs a candidate and MEASURES. If
@@ -2570,7 +3175,7 @@ def test_the_mxcsr_lever_declines_off_its_abi_without_touching_the_c_library(mon
 
 
 def test_the_mps_executor_is_asked_only_when_it_is_named(monkeypatch):
-    """``executors`` NAMES THE ARMS TO DRIVE and ``mps`` is not in the default tuple.
+    """``executors`` names the arms to drive and ``mps`` is not in the default tuple.
 
     A process with no MPS device has no business importing the Metal package to be
     told about an arm it never asked for, so the fourth executor is opt-in — and a
@@ -2606,7 +3211,7 @@ def test_the_mps_arm_attains_flush_and_refuses_keep_by_name(monkeypatch):
 def test_a_metal_dispatch_drives_host_and_mps_and_refuses_keep_on_both(monkeypatch):
     """``executors=("host", "mps")`` is what rung 8bM asks for, driven end to end.
 
-    THE ONE-POLICY RULE IS UNCHANGED HERE; only the VALUE is this table's. Under
+    The one-policy rule is unchanged here; only the VALUE is this table's. Under
     ``flush`` both arms attain and ``unattained`` is empty; under ``keep`` the mps
     arm refuses by name and the whole install is refused, which is exactly what
     stops a Metal run from being certified under a split.

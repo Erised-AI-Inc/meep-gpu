@@ -1,12 +1,12 @@
 """The METAL table: its dispatch ladder, its residency seam, and its release rows.
 
-:mod:`meep_gpu.fastpath` decides WHICH KERNEL TABLE may replace array sub-steps.
+:mod:`meep_gpu.fastpath` decides which kernel table may replace array sub-steps.
 On a CuPy engine that is the Triton table and the ladder stays in that file; on a
 NumPy engine with an MPS device it is the Metal table, and the rungs below the
 backend rung live HERE, as does everything that says which Metal products have been
 driven through the driver's consults.
 
-WHY THE METAL RELEASE ROWS ARE NOT IN ``fastpath.py``, which is the whole reason
+Why the Metal release rows are not in ``fastpath.py``, which is the whole reason
 this file exists rather than a section of that one. Every gate artifact in this
 tree records its own provenance by walking ``sys.modules``
 (``parity/meep_gpu/gate_provenance.provenance``), so a module a gate imports is
@@ -22,7 +22,7 @@ one costs nothing today, and from the next Metal campaign onward it is pinned by
 the Metal artifacts and by them alone. That is the honest cost of any Metal-side
 file and it is the cost this file is placed to pay.
 
-WHAT THIS MODULE OWES ``fastpath`` AND WHAT IT BORROWS. It owes: the ladder
+What this module owes ``fastpath`` and what it borrows. It owes: the ladder
 (:func:`decide`), the Metal tables below, and the residency bracket's installation.
 It borrows, by function-local import and never re-implements: ``_axis_reasons``
 (the four kinds of pinned axis), ``_run_shape``, ``_fold_description``,
@@ -30,8 +30,8 @@ It borrows, by function-local import and never re-implements: ``_axis_reasons``
 factored tail ``_finish``. One definition of each decision, two tables it is
 applied to.
 
-THE SEAM THIS FILE WAITS ON. The rung-3 branch that reaches :func:`decide` and the
-per-table plumbing beneath it are a separate batch on ``fastpath.py``. Until it
+The seam this file waits on. The rung-3 branch that reaches :func:`decide` and the
+per-table plumbing beneath it are a separate change to ``fastpath.py``. Until it
 lands, nothing calls this module on the dispatch path and the symbols named below
 are the join:
 
@@ -56,7 +56,7 @@ are the join:
 * ``fastpath._environment_block(grid, table)`` — the Metal half
   of which is :func:`environment_block` here.
 
-IMPORTS NOTHING METAL AND NOTHING TORCH AT MODULE LEVEL. Every reference to
+Imports nothing Metal and nothing torch at module level. Every reference to
 ``metal_kernels`` and to ``torch`` below is function-local, so importing this
 module on a machine with neither costs nothing and pulls in nothing —
 ``test_package_boundary`` measures exactly that kind of needless pull-in.
@@ -80,7 +80,7 @@ TABLE = "metal"
 #: The float32 subnormal policy the Metal table certifies under, and the second
 #: relaxation of the one-policy rule — NOT an exemption from it.
 #:
-#: THE RULE IS UNCHANGED: dispatch never runs two executors under disagreeing
+#: The rule is unchanged: dispatch never runs two executors under disagreeing
 #: policies. What changes is the VALUE, per table, because the value has to be one
 #: BOTH executors can attain. MPS flushes denormals natively and exposes no lever
 #: at all (``metal_kernels/subnormal.py``: both denormal pragma spellings are
@@ -89,7 +89,7 @@ TABLE = "metal"
 #: driven to flush by ``subnormal_policy``'s fenv lever. Under that one policy the
 #: whole run is uniform.
 #:
-#: WHAT A KEEPING HOST WOULD COST, MEASURED 2026-09-10 rather than argued: the
+#: What a keeping host would cost, measured 2026-09-10 rather than argued: the
 #: released pairs are byte-identical to the array path at step 12 and DIVERGE at
 #: step 24 (pml_2d 12 arrays / 108 words on ``fields.Ez``; folded_2d 12 arrays / 48
 #: words), with every differing element inside a few ULP of the subnormal band
@@ -103,7 +103,7 @@ SUBNORMAL_POLICY = "flush"
 #: make an absent optional dependency into a refusal.
 GOVERNED_EXECUTORS: Tuple[str, str] = ("host", "mps")
 
-#: WHERE THIS TABLE'S ROUTE RELEASE IS RECORDED, and what a run record and a refusal
+#: Where this table's route release is recorded, and what a run record and a refusal
 #: cite for it. The campaign driver (``parity/meep_gpu/run_metal_dispatch_campaign.sh``)
 #: writes one campaign per GPU architecture,
 #: ``results/dispatch_metal_route_<stamp>_<architecture>/``, and
@@ -158,7 +158,7 @@ _HOST_ARCHITECTURE = re.compile(r"\b(applegpu_[A-Za-z0-9_]+)")
 _HOST_TORCH = re.compile(r"torch\s+([^\s,]+)")
 _HOST_FRONTEND = re.compile(r"metalfe-([^\s,]+)")
 
-#: THE THREE FACTS THAT MAKE A METAL ENVIRONMENT, each of which changes the code
+#: The three facts that make a Metal environment, each of which changes the code
 #: that runs: the GPU architecture is the unit Metal compiles for, torch supplies
 #: ``mps.compile_shader`` and picks the language version, and the Metal frontend
 #: (one per macOS build, whatever the GPU) turns the source into instructions.
@@ -175,8 +175,8 @@ FAST_MATH = "PYTORCH_MPS_FAST_MATH"
 def frontend_key(value: Optional[str]) -> Optional[str]:
     """One spelling of a Metal frontend version, whichever spelling arrived.
 
-    TWO SPELLINGS OF ONE FACT, AND COMPARING THEM RAW REFUSED THE ONLY CERTIFIED
-    HOST. ``device.metal_frontend_version()`` returns the string the shipped
+    Two spellings of one fact, and comparing them raw refused the only certified
+    host. ``device.metal_frontend_version()`` returns the string the shipped
     compiler library reports — ``"metalfe-32023.850.10"``, prefix included — while
     the ledger's ``host`` line embeds the same value and :data:`_HOST_FRONTEND`
     captures only what follows the prefix, ``"32023.850.10"``. Measured 2026-09-10:
@@ -249,7 +249,7 @@ def cited_environments(ledger: Optional[Mapping[str, Any]] = None,
     (``test_the_shipped_ledger_cites_a_readable_entry_for_every_gate``), not the run;
     :func:`unresolved_certification_rows` refuses a row with no entry at all.
 
-    THE CERTIFIED SET IS READ FROM THE CITED WELDS ONLY. An entry no dispatched arm
+    The certified set is read from the cited welds only. An entry no dispatched arm
     quotes certifies nothing this table runs, so its runs cannot widen what counts as
     certified. ``ledger`` defaults to :func:`fingerprints` and ``gates`` to the welds
     :data:`ARM_CERTIFICATION` cites; the migration tool passes the document it is
@@ -370,9 +370,9 @@ def certified_values(fact: str, architecture: Optional[str] = None, *,
     A candidate is a value some live run of a cited weld recorded: for torch and the
     frontend, a run for ``architecture`` (this host's) where any weld has one, else
     any run. It is listed only when :func:`environment_verdict` says ``True`` for it,
-    so the list obeys the intersection rule the verdict obeys. During a partial round
-    an architecture some cited welds ran on and others did not is therefore NOT
-    listed: naming every architecture any weld recorded would print
+    so the list obeys the intersection rule the verdict obeys. During a partial
+    certification run an architecture some cited welds ran on and others did not is
+    therefore NOT listed: naming every architecture any weld recorded would print
     ``certified: applegpu_g13s, applegpu_g15s`` on the very GPU the verdict has just
     found not certified (measured on a ledger holding the second architecture on 44
     of 45 cited welds).
@@ -393,7 +393,7 @@ def certification_policy() -> str:
     WAITS ON ``fastpath.TABLE_SUBNORMAL_POLICY``. Once that map exists it is the
     single source and this function reports it; until then :data:`SUBNORMAL_POLICY`
     is the only statement there is. The two must agree, and the join is one line in
-    the fastpath batch — ``{"triton": CERTIFICATION_SUBNORMAL_POLICY, "metal":
+    that ``fastpath.py`` change — ``{"triton": CERTIFICATION_SUBNORMAL_POLICY, "metal":
     "flush"}`` — so a disagreement is a typo rather than a decision.
     """
     from . import fastpath  # noqa: PLC0415
@@ -410,7 +410,7 @@ def certification_policy() -> str:
 
 #: Arm label -> ``(family, the key in metal_kernels/fingerprints.json)``.
 #:
-#: A ROW HERE IS A PROMISE THAT THE LOOKUP RESOLVES, exactly as it is on the Triton
+#: A row here is a promise that the lookup resolves, exactly as it is on the Triton
 #: table, and ``test_metal_dispatch`` holds it to that with no exemption: an
 #: artifact whose dispatched arm names a gate that resolves to nothing is the
 #: over-claim this map exists to prevent. The family names are the ARM families
@@ -420,20 +420,20 @@ def certification_policy() -> str:
 #: ``metal_symmetry_device_gate`` — and the row says which family the arm belongs
 #: to so the two facts stay separable.
 #:
-#: THE SINGLE ARMS ARE HERE AND MOST OF THE FUSED LABELS ARE NOT, and the split is
-#: the same one the Triton table makes. A single arm can win a slot on any
-#: dispatching case, so every one of them needs a row. A fused label gets a row only
-#: when it can DISPATCH: the FOURTEEN below are the ones :data:`METAL_RELEASED_FUSED_ARMS`
-#: releases — five of them on a GROUP key, and the ruling is written on the rows —
-#: and every other registry weld label is refused by name at clause 8M before any
-#: certification is looked up. :data:`METAL_PENDING_DEVICE_GATE_ARMS` has been EMPTY
-#: since 2026-09-12: the last two families it held were released on the same ruling.
+#: The single arms are here and most of the fused labels are not, and the split is the
+#: same one the Triton table makes. A single arm can win a slot on any dispatching case,
+#: so every one of them needs a row. A fused label gets a row only when it can DISPATCH:
+#: the FOURTEEN below are the ones :data:`METAL_RELEASED_FUSED_ARMS` releases — five of
+#: them on a GROUP key, and why a group key suffices is written on the rows — and every
+#: other registry weld label is refused by name at clause 8M before any certification is
+#: looked up. :data:`METAL_PENDING_DEVICE_GATE_ARMS` has been EMPTY since 2026-09-12:
+#: the last two families it held were released on the same group-key decision.
 ARM_CERTIFICATION: Mapping[str, Tuple[str, str]] = {
-    # --- THE ELEVEN ARMS THE ALL-PATHS ROUND RELEASES, 2026-09-17. Each gate name is
+    # --- The eleven arms released on 2026-09-17. Each gate name is
     # DERIVED rather than transcribed: it is the ledger entry whose pin set contains
     # that family's own module, read out of metal_kernels/fingerprints.json. Four of
     # the eleven share one entry, which is correct -- metal_residue_fused_pairs and
-    # metal_tranche7_fused_pairs each certified several products in one device round.
+    # metal_tranche7_fused_pairs each certified several products in one device gate run.
     "BFAST fused electric D/E pair": (
         "bfast_fused_electric_pair", "metal_residue_fused_pairs_device_gate"),
     "complex-beta fused electric D/E pair": (
@@ -550,8 +550,8 @@ ARM_CERTIFICATION: Mapping[str, Tuple[str, str]] = {
     "cylindrical m=0 fused electric D/E pair": (
         "cylindrical_real_fused_electric_pair",
         "metal_cylindrical_real_fused_electric_pair_device_gate"),
-    # --- the three cited by a GROUP weld, ruled 2026-09-12 ---------------------
-    # THE RULING AND ITS EVIDENCE, because a group key is a weaker-LOOKING citation
+    # --- the three cited by a GROUP weld, decided 2026-09-12 ------------------
+    # The decision and its evidence, because a group key is a weaker-LOOKING citation
     # and the next reader is owed the reason it is not a weaker one. These three
     # families have no per-family weld; each is bound by a group weld that is PASS.
     # What was checked before citing it:
@@ -607,7 +607,7 @@ ARM_CERTIFICATION: Mapping[str, Tuple[str, str]] = {
 #: EMPTY SINCE 2026-09-12. It held two families whose cells were bound by a GROUP
 #: weld only — ``complex_fused_electric_pair`` and ``folded_complex_fused_pair`` —
 #: while "may the release table cite a group key" was an open question. That call
-#: was taken on 2026-09-12 for three sibling families (the ruling is on their
+#: was taken on 2026-09-12 for three sibling families (the reasoning is on their
 #: :data:`ARM_CERTIFICATION` rows) and applied to these two later the same day,
 #: after the same two facts were checked for them. The table stays, empty, because
 #: the rung that reads it is the right place for the NEXT family that is driven,
@@ -638,12 +638,12 @@ def fused_labels() -> Tuple[str, ...]:
 def fused_arm_constituents() -> Mapping[str, Tuple[str, ...]]:
     """Fused label -> the ARMS its kernel implements, derived from the composer.
 
-    THE SEE-THROUGH THE PENDING RUNG NEEDS. A fused product writes ONE label into
+    The see-through the pending rung needs. A fused product writes ONE label into
     BOTH slots it absorbs, so the arms it substitutes vanish from ``selected`` and a
     rung reading the label alone would pass over them — which is how a wiring edit
     could quietly lift a standing refusal by covering the arms it names.
 
-    DERIVED, NOT TYPED, from ``launch.FUSED_PAIR_ARMS`` plus every
+    Derived, not typed, from ``launch.FUSED_PAIR_ARMS`` plus every
     ``FUSED_PAIR_EXTRA_ARMS`` row, keyed by the registry's label for the family. The
     Triton track keeps this as a literal table and checks it against the composer;
     here the composer IS the table, which is the same invariant with nothing to keep
@@ -671,11 +671,11 @@ def fused_arm_constituents() -> Mapping[str, Tuple[str, ...]]:
 # The release: which fused arms have been driven through the driver seam
 # ---------------------------------------------------------------------------
 
-#: THE FUSED METAL ARMS THAT HAVE BEEN DRIVEN THROUGH THE DRIVER SEAM, and the
+#: The fused Metal arms that have been driven through the driver seam, and the
 #: gate cases each one was driven on. This is the per-arm allow-list clause 8M
 #: reads, and it is the whole of what the Metal table ships enabled.
 #:
-#: WHAT "DRIVEN THROUGH THE SEAM" MEANS HERE, and it is the same sentence the
+#: What "driven through the seam" means here, and it is the same sentence the
 #: Triton table makes: the arm's kernel LAUNCHED from ``FastPathPlan.dispatch`` at
 #: the leading consult inside ``driver.step()``, on a driver lifted by
 #: ``lift_simulation(prefer_gpu=False)`` from a real ``mp.Simulation`` under
@@ -690,7 +690,7 @@ def fused_arm_constituents() -> Mapping[str, Tuple[str, ...]]:
 #: complete step DROPPED by exactly one per pair against a third leg that dispatched
 #: the same slot set with fusion off.
 #:
-#: TYPED ROWS, AND THE ONLY TYPED STATEMENT IN THE WHOLE RELEASE. Everything else
+#: Typed rows, and the only typed statement in the whole release. Everything else
 #: — the record, the weld, the board's numbers — is cut from a run. These rows are
 #: typed because the campaign has to be TOLD which (arm, case) pairs to drive, and
 #: ``recut_driver_dispatch_record.py --backend metal`` refuses to write the record
@@ -699,14 +699,14 @@ def fused_arm_constituents() -> Mapping[str, Tuple[str, ...]]:
 #: mitigation is ``parity/meep_gpu/probe_metal_dispatch_dryrun.py``: the rows are
 #: typed only after a dry run has shown each case dispatching and byte-identical.
 #:
-#: ``pml_3d_diagonal`` IS A DISPATCH CASE ON THIS TABLE and not the envelope
+#: ``pml_3d_diagonal`` is a dispatch case on this table and not the envelope
 #: control, which is where the Metal and Triton gates deliberately differ: measured,
 #: it selects both ordinary pairs and is byte-identical to 192 steps, so
 #: ``dimensions`` is released as ``{1, 2, 3}`` below. The envelope control is
 #: ``pml_3d`` — the SPHERE, whose subpixel averaging writes off-diagonal ``chi1inv``
 #: rows — which is the shape where the release genuinely does not apply.
 #:
-#: NINE CASE NAMES JOINED THIS TABLE ON 2026-09-13 AND NONE OF THEM HAS RUN YET,
+#: Nine case names joined this table on 2026-09-13 and none of them has run yet,
 #: which is stated here rather than left to be discovered. Every one was built and
 #: LIFTED off-device that day against stock MEEP 1.33.0 — so the run shape each one
 #: produces, and therefore the axis value each row below cites, is a measurement —
@@ -763,7 +763,7 @@ METAL_RELEASED_FUSED_ARMS: Mapping[str, Tuple[str, ...]] = {
     "cylindrical complex fused electric D/E pair": ("cylindrical_m1",
                                                     "cylindrical_m0_complex"),
     "conductive fused electric D/E pair": ("conductive_2d",),
-    # WIDENED 2026-09-17 BY THE CONFIRMING PASS, which measured this arm holding
+    # Widened 2026-09-17 by the confirming pass, which measured this arm holding
     # step_D/update_E on all three folded dispersive cases under the release's own
     # offer while the row named one. The other two were always driven; the row simply
     # did not say so, and folded_dispersive_3d's DRIVE row read `pairs: 1` as a
@@ -772,11 +772,11 @@ METAL_RELEASED_FUSED_ARMS: Mapping[str, Tuple[str, ...]] = {
                                          "folded_dispersive5_2d",
                                          "folded_dispersive_3d"),
     "beta fused electric D/E pair": ("special_kz_2d",),
-    # --- THE ALL-PATHS ROUND, 2026-09-17. Eleven arms, each released on the cases the
-    # dry run MEASURED the composer selecting it on, with every axis value below read
+    # --- The 2026-09-17 release. Eleven arms, each released on the cases the
+    # dry run measured the composer selecting it on, with every axis value below read
     # off that case's own ``fastpath._run_shape`` lift rather than transcribed from a
     # sibling row. Six of the eleven became reachable only when their family gained a
-    # ``launch.FUSED_PAIR_ARMS`` row in the same batch: they were certified and welded
+    # ``launch.FUSED_PAIR_ARMS`` row in the same change: they were certified and welded
     # the whole time, and the seam loop had no arm pair to absorb, so it never asked.
     "BFAST fused electric D/E pair": ("bfast_1d",),
     "complex-beta fused electric D/E pair": ("complex_beta_2d",
@@ -794,7 +794,7 @@ METAL_RELEASED_FUSED_ARMS: Mapping[str, Tuple[str, ...]] = {
     "folded beta real fused B/H pair": ("folded_special_kz_2d",),
     "folded beta real fused D/E pair": ("folded_special_kz_2d",),
     "folded off-diagonal fused electric D/E pair": ("folded_offdiag_magnetic_2d",),
-    # THE UNFOLDED TWIN, and the case name is the whole finding of this round's Metal
+    # The unfolded twin, and the case name is the whole finding of that release's Metal
     # dry run. `offdiag_2d` and `pml_3d` are the off-diagonal cases this table already
     # drives and NEITHER can carry this weld: both put an ELECTRIC source in the D->E
     # seam, and `deposit_repair.repairable` refuses an off-diagonal chi1inv
@@ -804,7 +804,7 @@ METAL_RELEASED_FUSED_ARMS: Mapping[str, Tuple[str, ...]] = {
     # release these two welds on, for exactly this reason, and they are new Metal
     # DRIVE cases here.
     "off-diagonal fused electric D/E pair": ("offdiag_magnetic_2d",),
-    # THE TWO COMPLEX NO-ABSORBER ARMS, measured last because they were then
+    # The two complex no-absorber arms, measured last because they were then
     # probe-gated: without the expansion licence (since deleted) the composer refused
     # each half by name, so the first pass over these two cases read
     # SELECTED-NOTHING and said so.
@@ -813,12 +813,12 @@ METAL_RELEASED_FUSED_ARMS: Mapping[str, Tuple[str, ...]] = {
     # from this table, which the confirming pass caught by name: with the arm unoffered
     # the composer kept `no-PML curl` and `no-PML stored E` as singles on
     # no_pml_dispersive_2d while that case's DRIVE row claimed a pair. A release row
-    # and a route row are two halves of one statement and this round had typed one.
+    # and a route row are two halves of one statement and that release had typed one.
     "no-PML fused electric D/E pair": ("no_pml_dispersive_2d",),
     "fused complex conductive no-PML curl -> complex stored E": ("complex_no_pml_3d",),
 }
 
-#: THE AXES EVERY RELEASED METAL ARM WAS DRIVEN ON WITH THE SAME VALUE. Four rows,
+#: The axes every released Metal arm was driven on with the same value. Four rows,
 #: and the table is short on purpose: this backend's released set spans Cartesian,
 #: folded, complex-Bloch and cylindrical shapes, so ``cylindrical``,
 #: ``complex_storage``, ``bloch`` and ``dimensions`` DISAGREE between arms and one
@@ -829,14 +829,14 @@ METAL_RELEASED_FUSED_ARMS: Mapping[str, Tuple[str, ...]] = {
 #: What is left is what every arm agreed on, and each row is a fact about the whole
 #: case set rather than about one case.
 #:
-#: ``off_diagonal_epsilon`` LEFT THIS TABLE ON 2026-09-12 and is a per-arm CORNER
-#: now, because the arms stopped agreeing on it: ``pml_3d`` drives the ORDINARY
-#: MAGNETIC PAIR on a sphere whose chi1inv carries off-diagonal rows (measured: that
+#: ``off_diagonal_epsilon`` left this table on 2026-09-12 and is a per-arm CORNER
+#: now, because the arms stopped agreeing on it: ``pml_3d`` drives the ordinary
+#: magnetic pair on a sphere whose chi1inv carries off-diagonal rows (measured: that
 #: case's run shape reads ``off_diagonal_epsilon=True``) while most released arms
 #: are never driven off-diagonal at all, and a shared row could only have said one
 #: of those.
 #:
-#: THREE ARMS HAVE OFF-DIAGONAL COVERAGE NOW, which is worth stating because the
+#: Three arms have off-diagonal coverage now, which is worth stating because the
 #: sentence here counted ONE until 2026-09-12 and TWO until 2026-09-13, and a reader
 #: who takes a stale count for a structural fact reaches the wrong conclusion about
 #: what is still open. They are the ordinary magnetic pair (``pml_3d``,
@@ -848,7 +848,7 @@ METAL_RELEASED_FUSED_ARMS: Mapping[str, Tuple[str, ...]] = {
 #: exception, so a fused pair on the D side of an off-diagonal grid has never been
 #: admitted here.
 #:
-#: THE SENTENCE THAT ROW USED TO CARRY WAS FALSE, and is recorded here rather than
+#: The sentence that row used to carry was false, and is recorded here rather than
 #: quietly deleted. Until 2026-09-11 it read "and none CAN be on the products
 #: released here: the composer's specialized-family guard refuses every ordinary and
 #: folded pair on a grid with off-diagonal chi1inv rows". That guard is
@@ -862,16 +862,16 @@ METAL_FUSED_RELEASE_ENVELOPE: Tuple[Tuple[str, Any, str], ...] = (
     ("nonlinearity", False, "no nonlinear case was driven"),
 )
 
-#: THE AXES ONE ARM WAS DRIVEN ON, beyond the shared table above.
+#: The axes one arm was driven on, beyond the shared table above.
 #:
-#: THE RULE FOR A ROW HERE, applied uniformly and the same rule the Triton table
+#: The rule for a row here, applied uniformly and the same rule the Triton table
 #: states: an axis is pinned for an arm when that arm's OWN case list drove exactly
 #: one of its values. An axis whose cases drove BOTH values is left out — which is
 #: what the missing ``conductivity`` and ``susceptibilities`` rows on ``fused
 #: magnetic B/H pair`` mean, since ``conductive_2d`` and ``dispersive_2d`` are in
 #: its list and ``pml_2d`` is too.
 #:
-#: AND THE RULE HAS A PRECONDITION THAT COST AN OVER-CLAIM TO LEARN, 2026-09-12.
+#: And the rule has a precondition that cost an over-claim to learn, 2026-09-12.
 #: "Left out because both values were driven" is only sound when the axis is
 #: INDEPENDENT of the others — when driving both values somewhere licenses both
 #: values everywhere. ``conductivity`` and ``susceptibilities`` qualify: the arm
@@ -884,14 +884,14 @@ METAL_FUSED_RELEASE_ENVELOPE: Tuple[Tuple[str, Any, str], ...] = (
 #: whether its two values were driven ACROSS the arm's other axes or only at one
 #: corner of them.
 #:
-#: AN ARM WITH NO ROW FAILS CLOSED (:func:`fused_release_arm_reasons_metal`),
+#: An arm with no row fails closed (:func:`fused_release_arm_reasons_metal`),
 #: because the shared table above is deliberately only the axes every arm agrees
 #: on: an arm missing from here has no statement about the axes that separate the
 #: arms from each other, and admitting on silence is the shape of every over-claim
 #: this file exists to prevent.
 #:
-#: ``susceptibilities`` IS DELIBERATELY UNPINNED ON THE THREE DISPERSIVE-ADJACENT
-#: ROWS — ``fused dispersive D/E pair``, ``folded fused D/E pair`` and, from
+#: ``susceptibilities`` is deliberately unpinned on the three dispersive-adjacent
+#: rows — ``fused dispersive D/E pair``, ``folded fused D/E pair`` and, from
 #: 2026-09-12, ``folded fused dispersive D/E pair`` — and that is an admitted
 #: asymmetry rather than an oversight. ``dispersive_2d``
 #: drives ONE Lorentzian pole while the corpus rows this arm serves carry up to six,
@@ -899,10 +899,10 @@ METAL_FUSED_RELEASE_ENVELOPE: Tuple[Tuple[str, Any, str], ...] = (
 #: composer actually selects it for. It is the Triton table's recorded precedent for
 #: the dispersive fused pair, extended here and recorded as a release decision rather
 #: than presented as a measurement.
-#: THE CORNER EACH ARM'S OWN OFF-DIAGONAL CASES SAT AT, on every axis the arm's row
+#: The corner each arm's own off-diagonal cases sat at, on every axis the arm's row
 #: leaves open. An arm is admitted on an off-diagonal grid only INSIDE its corner.
 #:
-#: WHY THIS IS A TABLE AND NOT A ROW IN :data:`METAL_FUSED_RELEASE_ARM_AXES`.
+#: Why this is a table and not a row in :data:`METAL_FUSED_RELEASE_ARM_AXES`.
 #: ``fastpath._axis_reasons`` asks one question per axis and cannot express a
 #: CONJUNCTION, and off-diagonal coverage is one: it is coverage "at dimensions=3
 #: AND susceptibilities=0 AND conductivity=False", not coverage of the axis. The
@@ -914,19 +914,19 @@ METAL_FUSED_RELEASE_ENVELOPE: Tuple[Tuple[str, Any, str], ...] = (
 #: refusing both cases and losing the axis, or be omitted, admitting every
 #: off-diagonal grid at every corner of the open axes, which is what happened.
 #:
-#: OMISSION IS THE OVER-CLAIM THIS TABLE EXISTS TO STOP, and it was a live one for
-#: the length of one audit. When ``off_diagonal_epsilon`` moved out of the shared
+#: Omission is the over-claim this table exists to stop, and it was a live one for
+#: the length of one review. When ``off_diagonal_epsilon`` moved out of the shared
 #: envelope on 2026-09-12 with no per-arm replacement, ``released_fused_arms_metal``
 #: admitted the magnetic pair on EVERY off-diagonal shape at EVERY dimensionality,
 #: and the shipped composer installed it on a 2-D off-diagonal grid — measured on
 #: device, not argued. The first repair bounded the DIMENSIONALITY alone, which was
-#: the axis the audit caught; the table now records the whole corner, because the
+#: the axis that review caught; the table now records the whole corner, because the
 #: rule that makes omission sound ("both values were driven") has a precondition
 #: the row-table's note states — driven ACROSS the arm's other axes, not at one
 #: corner of them — and a bound that names one axis of the corner is silent about
 #: the rest.
 #:
-#: THE RULE FOR WHAT A CORNER LISTS, and it is checkable: every axis the arm's row
+#: The rule for what a corner lists, and it is checkable: every axis the arm's row
 #: in :data:`METAL_FUSED_RELEASE_ARM_AXES` leaves OPEN — absent, or a set of more
 #: than one value — appears here with the values its off-diagonal cases actually
 #: carried; an axis the row already pins to one value is not repeated, because one
@@ -939,12 +939,12 @@ METAL_FUSED_RELEASE_ENVELOPE: Tuple[Tuple[str, Any, str], ...] = (
 #: exactly one served instance — ``absorbed_power_density.py``, folded,
 #: off-diagonal, one Lorentzian pole — and admits the nineteen beside it.
 #:
-#: AN ARM ABSENT FROM THIS TABLE IS REFUSED ON ANY OFF-DIAGONAL GRID, which is why
+#: An arm absent from this table is refused on any off-diagonal grid, which is why
 #: the other arms carry NO ``off_diagonal_epsilon`` row of their own: absence
 #: here already says it. And an axis of the corner that did not READ refuses too:
 #: admitting on a fact that did not read would assert the fact.
 #:
-#: THE THIRD ENTRY ARRIVED 2026-09-13 and is the step at which the Metal dispatch
+#: The third entry arrived 2026-09-13 and is the step at which the Metal dispatch
 #: count reaches its target. ``folded complex fused B/H pair`` was absent from this
 #: table, so it was refused on EVERY off-diagonal grid — which is the whole of what
 #: kept three served instances (``examples:solve-cw.py``,
@@ -961,11 +961,11 @@ METAL_FUSED_RELEASE_ENVELOPE: Tuple[Tuple[str, Any, str], ...] = (
 #: recovers none, because ``solve-cw.py`` and ``TestArrayMetadata`` are refused
 #: twice over — on ``bloch`` AND on ``off_diagonal_epsilon``.
 #:
-#: WHAT WOULD WIDEN IT: a case at the missing corner. A folded off-diagonal grid
+#: What would widen it: a case at the missing corner. A folded off-diagonal grid
 #: over a susceptibility would put 1 in the folded pair's set; a conductive
 #: off-diagonal grid would put True in the magnetic pair's; a 3-D folded complex
-#: off-diagonal grid would put 3 in the folded complex pair's. NONE OF THE THREE
-#: EXISTS ON THE ROUTE, and the first of them was attempted and could not be built:
+#: off-diagonal grid would put 3 in the folded complex pair's. None of the three
+#: exists on the route, and the first of them was attempted and could not be built:
 #: a folded cylinder over a Lorentzian pole is refused by the lift on stock MEEP
 #: 1.33.0 (``chi1inv`` is non-diagonal at a lattice point, so the susceptibility
 #: sigma cannot be checked there), and neither escape the refusal names
@@ -989,27 +989,27 @@ METAL_OFF_DIAGONAL_CORNERS: Mapping[str, Mapping[str, FrozenSet[Any]]] = {
         "dimensions": frozenset({2}),
         "bloch": frozenset({True, False}),
     },
-    # THE FOURTH ENTRY, 2026-09-17, AND IT IS EMPTY ON PURPOSE. ``folded off-diagonal
+    # The fourth entry, 2026-09-17, and it is empty on purpose. ``folded off-diagonal
     # fused electric D/E pair`` is the one arm here that exists ONLY for off-diagonal
     # grids -- its kernel is the off-diagonal constitutive welded to the folded curl --
     # so ABSENCE from this table would refuse it on every grid it can run on, which is
     # the opposite of what absence means for the three arms above.
     #
-    # EMPTY IS THE COMPLETE ANSWER UNDER THIS TABLE'S OWN RULE rather than a shortcut.
+    # Empty is the complete answer under this table's own rule rather than a shortcut.
     # The rule is that every axis the arm's row in METAL_FUSED_RELEASE_ARM_AXES leaves
     # OPEN appears here with the values its off-diagonal cases carried, and that row
     # leaves nothing open: dimensions 2, fold required, real storage, no Bloch, beta 0,
     # not BFAST, lossless, zero poles, PML active -- every one a single value read off
     # folded_offdiag_magnetic_2d's own lift. There is no axis left for a corner to
-    # bound. If a later round widens any of those rows, the axis it opens must arrive
+    # bound. If a later release widens any of those rows, the axis it opens must arrive
     # here in the same edit, or this entry silently starts admitting a corner nothing
     # drove.
     "folded off-diagonal fused electric D/E pair": {},
-    # AND ITS UNFOLDED TWIN, empty for the same reason: its row pins every axis to a
+    # And its unfolded twin, empty for the same reason: its row pins every axis to a
     # single value read off offdiag_magnetic_2d's lift, so there is no open axis for a
     # corner to bound, and absence would refuse the arm on the only grids it serves.
     "off-diagonal fused electric D/E pair": {},
-    # AND THE COMPLEX UNFOLDED ONE, 2026-09-17, empty for the same reason as the two
+    # And the complex unfolded one, 2026-09-17, empty for the same reason as the two
     # above: its kernel IS the off-diagonal constitutive, and its row pins every axis
     # to a single value read off complex_no_pml_offdiag's lift.
     "complex no-PML off-diagonal fused electric D/E pair": {},
@@ -1017,7 +1017,7 @@ METAL_OFF_DIAGONAL_CORNERS: Mapping[str, Mapping[str, FrozenSet[Any]]] = {
 
 
 METAL_FUSED_RELEASE_ARM_AXES: Mapping[str, Tuple[Tuple[str, Any, str], ...]] = {
-    # --- THE ALL-PATHS ROUND'S ELEVEN, 2026-09-17. Every value below is
+    # --- The eleven arms of the 2026-09-17 release. Every value below is
     # ``fastpath._run_shape`` on that case's own lift (prefer_gpu=False, stock MEEP
     # 1.33.0; the run shape is the lift's and is the same for prefer_gpu=True on an
     # Apple GPU, whose engine is the same NumPy arrays), read back verbatim rather
@@ -1048,10 +1048,10 @@ METAL_FUSED_RELEASE_ARM_AXES: Mapping[str, Tuple[Tuple[str, Any, str], ...]] = {
          "this arm IS the complex beta product; the real spelling routes to the "
          "beta pairs above"),
         ("bloch", frozenset({False, True}),
-         "BOTH VALUES DRIVEN, which is why there are two cases: complex_beta_2d "
+         "Both values driven, which is why there are two cases: complex_beta_2d "
          "lifts bloch False and complex_beta_bloch_2d lifts it True on the same "
          "cell, so the axis is an enumeration on evidence rather than an omission"),
-        ("beta", 0.4, "PINNED TO THE ONE VALUE DRIVEN; both cases run beta=0.4"),
+        ("beta", 0.4, "Pinned to the one value driven; both cases run beta=0.4"),
         ("bfast", False, "neither case is a BFAST grid"),
         ("conductivity", False, "both cases are lossless"),
         ("susceptibilities", 0, "neither case carries a susceptibility"),
@@ -1064,7 +1064,7 @@ METAL_FUSED_RELEASE_ARM_AXES: Mapping[str, Tuple[Tuple[str, Any, str], ...]] = {
         ("complex_storage", True, "this arm IS the complex beta product"),
         ("bloch", frozenset({False, True}),
          "both values driven, as on the electric twin and for the same reason"),
-        ("beta", 0.4, "PINNED TO THE ONE VALUE DRIVEN; both cases run beta=0.4"),
+        ("beta", 0.4, "Pinned to the one value driven; both cases run beta=0.4"),
         ("bfast", False, "neither case is a BFAST grid"),
         ("conductivity", False, "both cases are lossless"),
         ("susceptibilities", 0, "neither case carries a susceptibility"),
@@ -1105,7 +1105,7 @@ METAL_FUSED_RELEASE_ARM_AXES: Mapping[str, Tuple[Tuple[str, Any, str], ...]] = {
         ("conductivity", False, "the Dcyl cases are lossless"),
         ("susceptibilities", 0, "the Dcyl cases carry no susceptibility"),
         # PINNED 2026-09-17 when `pml_active` and `bfast` left the shared envelope.
-        # Values READ OFF THIS ARM'S OWN RELEASE CASES (metal_case_shapes,
+        # Values read off this arm's own release cases (metal_case_shapes,
         # 2026-09-17), not copied from the envelope: a shared axis removed fails
         # OPEN for every arm that does not pin it, and a copied value would admit
         # the arm on evidence it never had.
@@ -1124,7 +1124,7 @@ METAL_FUSED_RELEASE_ARM_AXES: Mapping[str, Tuple[Tuple[str, Any, str], ...]] = {
         ("conductivity", False, "cylindrical_m0 is lossless"),
         ("susceptibilities", 0, "cylindrical_m0 carries no susceptibility"),
         # PINNED 2026-09-17 when `pml_active` and `bfast` left the shared envelope.
-        # Values READ OFF THIS ARM'S OWN RELEASE CASES (metal_case_shapes,
+        # Values read off this arm's own release cases (metal_case_shapes,
         # 2026-09-17), not copied from the envelope: a shared axis removed fails
         # OPEN for every arm that does not pin it, and a copied value would admit
         # the arm on evidence it never had.
@@ -1140,7 +1140,7 @@ METAL_FUSED_RELEASE_ARM_AXES: Mapping[str, Tuple[Tuple[str, Any, str], ...]] = {
         ("bloch", frozenset({False, True}),
          "both values driven: folded_complex_beta_2d False, "
          "folded_complex_beta_bloch_2d True on the same folded cell"),
-        ("beta", 0.4, "PINNED TO THE ONE VALUE DRIVEN; both cases run beta=0.4"),
+        ("beta", 0.4, "Pinned to the one value driven; both cases run beta=0.4"),
         ("bfast", False, "neither case is a BFAST grid"),
         ("conductivity", False, "both cases are lossless"),
         ("susceptibilities", 0, "neither case carries a susceptibility"),
@@ -1152,7 +1152,7 @@ METAL_FUSED_RELEASE_ARM_AXES: Mapping[str, Tuple[Tuple[str, Any, str], ...]] = {
         ("folded", "required", "this arm IS the folded product"),
         ("complex_storage", True, "this arm IS the complex beta product"),
         ("bloch", frozenset({False, True}), "both values driven, as on its B twin"),
-        ("beta", 0.4, "PINNED TO THE ONE VALUE DRIVEN; both cases run beta=0.4"),
+        ("beta", 0.4, "Pinned to the one value driven; both cases run beta=0.4"),
         ("bfast", False, "neither case is a BFAST grid"),
         ("conductivity", False, "both cases are lossless"),
         ("susceptibilities", 0, "neither case carries a susceptibility"),
@@ -1169,7 +1169,7 @@ METAL_FUSED_RELEASE_ARM_AXES: Mapping[str, Tuple[Tuple[str, Any, str], ...]] = {
         ("bloch", False,
          "MEASURED, not assumed: a kz-only k_point on a 2-D cell folds into beta "
          "rather than into Bloch phases, so the run shape reads bloch False"),
-        ("beta", 0.4, "PINNED TO THE ONE VALUE DRIVEN"),
+        ("beta", 0.4, "Pinned to the one value driven"),
         ("bfast", False, "folded_special_kz_2d is not a BFAST grid"),
         ("conductivity", False, "folded_special_kz_2d is lossless"),
         ("susceptibilities", 0, "folded_special_kz_2d carries no susceptibility"),
@@ -1181,7 +1181,7 @@ METAL_FUSED_RELEASE_ARM_AXES: Mapping[str, Tuple[Tuple[str, Any, str], ...]] = {
         ("folded", "required", "this arm IS the folded product"),
         ("complex_storage", False, "this arm IS the REAL beta product"),
         ("bloch", False, "as on its B twin, and for the same measured reason"),
-        ("beta", 0.4, "PINNED TO THE ONE VALUE DRIVEN"),
+        ("beta", 0.4, "Pinned to the one value driven"),
         ("bfast", False, "folded_special_kz_2d is not a BFAST grid"),
         ("conductivity", False, "folded_special_kz_2d is lossless"),
         ("susceptibilities", 0, "folded_special_kz_2d carries no susceptibility"),
@@ -1209,7 +1209,7 @@ METAL_FUSED_RELEASE_ARM_AXES: Mapping[str, Tuple[Tuple[str, Any, str], ...]] = {
         ("cylindrical", False, "complex_no_pml_offdiag is a Cartesian grid"),
         ("folded", None,
          "this is the UNFOLDED complex weld; a mirror plane goes to the folded "
-         "complex off-diagonal arm, which this round does not release"),
+         "complex off-diagonal arm, which is not released here"),
         ("complex_storage", True,
          "this arm IS the complex weld; the real spelling routes to the plain "
          "off-diagonal stencil weld"),
@@ -1282,7 +1282,7 @@ METAL_FUSED_RELEASE_ARM_AXES: Mapping[str, Tuple[Tuple[str, Any, str], ...]] = {
         ("complex_storage", False, "every case that drove it stores real fields"),
         ("bloch", False, "no k_point case drove it"),
         ("beta", 0, "no special-kz case drove it"),
-        # AN INTEGER AXIS IS NOT BINARY (2026-09-13). The 2026-09-12 round's
+        # An integer axis is not binary (2026-09-13). The 2026-09-12 release run's
         # verifier found four TestLoadDump rows carrying FIVE Lorentz poles admitted
         # on evidence of 0 and 1: an omitted count axis admits every count. The
         # driven values are the row, and a pole count no case drove is refused.
@@ -1291,15 +1291,15 @@ METAL_FUSED_RELEASE_ARM_AXES: Mapping[str, Tuple[Tuple[str, Any, str], ...]] = {
          "one pole; dispersive6_2d carries SIX, which is the count the three "
          "stochastic_emitter rows carry, and it lifted off-device 2026-09-13 to "
          "susceptibilities 6 on a (90, 90, 1) grid — driven through the seam by "
-         "the Metal driver-route campaign this batch runs. THE SET IS AN "
-         "ENUMERATION, NOT A RANGE: two, three, four and five poles are refused "
+         "the Metal driver-route campaign. The set is an "
+         "enumeration, not a range: two, three, four and five poles are refused "
          "because no case drove them. And the counts above one are evidenced at "
          "2-D only, since dispersive_2d and dispersive6_2d are both 2-D grids — "
          "measured over this board's 531-instance row set 2026-09-13, no served "
          "instance sits at three dimensions and more than one pole, so nothing is "
          "credited on that corner today"),
         # PINNED 2026-09-17 when `pml_active` and `bfast` left the shared envelope.
-        # Values READ OFF THIS ARM'S OWN RELEASE CASES (metal_case_shapes,
+        # Values read off this arm's own release cases (metal_case_shapes,
         # 2026-09-17), not copied from the envelope: a shared axis removed fails
         # OPEN for every arm that does not pin it, and a copied value would admit
         # the arm on evidence it never had.
@@ -1321,7 +1321,7 @@ METAL_FUSED_RELEASE_ARM_AXES: Mapping[str, Tuple[Tuple[str, Any, str], ...]] = {
          "no case that drove this arm carried a susceptibility; dispersive_2d's D "
          "seam goes to the dispersive fused pair"),
         # PINNED 2026-09-17 when `pml_active` and `bfast` left the shared envelope.
-        # Values READ OFF THIS ARM'S OWN RELEASE CASES (metal_case_shapes,
+        # Values read off this arm's own release cases (metal_case_shapes,
         # 2026-09-17), not copied from the envelope: a shared axis removed fails
         # OPEN for every arm that does not pin it, and a copied value would admit
         # the arm on evidence it never had.
@@ -1337,7 +1337,7 @@ METAL_FUSED_RELEASE_ARM_AXES: Mapping[str, Tuple[Tuple[str, Any, str], ...]] = {
         ("beta", 0, "dispersive_2d is not a special-kz run"),
         ("conductivity", False, "dispersive_2d is lossless"),
         # PINNED 2026-09-17 when `pml_active` and `bfast` left the shared envelope.
-        # Values READ OFF THIS ARM'S OWN RELEASE CASES (metal_case_shapes,
+        # Values read off this arm's own release cases (metal_case_shapes,
         # 2026-09-17), not copied from the envelope: a shared axis removed fails
         # OPEN for every arm that does not pin it, and a copied value would admit
         # the arm on evidence it never had.
@@ -1365,7 +1365,7 @@ METAL_FUSED_RELEASE_ARM_AXES: Mapping[str, Tuple[Tuple[str, Any, str], ...]] = {
         ("beta", 0, "none of the three folded cases is a special-kz run"),
         ("conductivity", False, "none of the three folded cases carries a "
                                 "conductivity"),
-        # AN INTEGER AXIS IS NOT BINARY (2026-09-13): the same correction as the
+        # An integer axis is not binary (2026-09-13): the same correction as the
         # ordinary pair's, on the four five-pole folded TestLoadDump rows.
         ("susceptibilities", frozenset({0, 1, 5}),
          "folded_2d, folded_3d and folded_offdiag_2d carry no susceptibility; "
@@ -1373,12 +1373,12 @@ METAL_FUSED_RELEASE_ARM_AXES: Mapping[str, Tuple[Tuple[str, Any, str], ...]] = {
          "folded_dispersive5_2d carries FIVE, which is the count the four folded "
          "TestLoadDump 2-D rows carry, and it lifted off-device 2026-09-13 to "
          "susceptibilities 5 on an (80, 61, 1) grid under a mirror plane on Y — "
-         "driven through the seam by the Metal driver-route campaign this batch "
-         "runs. AN ENUMERATION, NOT A RANGE: two, three, four and six poles are "
+         "driven through the seam by the Metal driver-route campaign. "
+         "An enumeration, not a range: two, three, four and six poles are "
          "refused because no case drove them, and the 5 is evidenced at 2-D alone "
          "(see the dimensions row above for what that does and does not admit)"),
         # PINNED 2026-09-17 when `pml_active` and `bfast` left the shared envelope.
-        # Values READ OFF THIS ARM'S OWN RELEASE CASES (metal_case_shapes,
+        # Values read off this arm's own release cases (metal_case_shapes,
         # 2026-09-17), not copied from the envelope: a shared axis removed fails
         # OPEN for every arm that does not pin it, and a copied value would admit
         # the arm on evidence it never had.
@@ -1397,7 +1397,7 @@ METAL_FUSED_RELEASE_ARM_AXES: Mapping[str, Tuple[Tuple[str, Any, str], ...]] = {
          "folded_dispersive_2d gives its D seam to the folded dispersive product, "
          "so no case drove THIS arm on a susceptibility"),
         # PINNED 2026-09-17 when `pml_active` and `bfast` left the shared envelope.
-        # Values READ OFF THIS ARM'S OWN RELEASE CASES (metal_case_shapes,
+        # Values read off this arm's own release cases (metal_case_shapes,
         # 2026-09-17), not copied from the envelope: a shared axis removed fails
         # OPEN for every arm that does not pin it, and a copied value would admit
         # the arm on evidence it never had.
@@ -1422,7 +1422,7 @@ METAL_FUSED_RELEASE_ARM_AXES: Mapping[str, Tuple[Tuple[str, Any, str], ...]] = {
          "complex_3d_thinline is a (0, 0, L) cell declared 3-D that MEEP does not "
          "collapse, lifted the same day to dimensions 3 on (1, 1, 275); complex_3d "
          "is a genuine 3-D block, lifted to dimensions 3 on (40, 40, 40). The "
-         "Metal driver-route campaign this batch runs (the directory "
+         "Metal driver-route campaign (the directory "
          "route_stamps.route_gate('metal') names) is what drives all three through "
          "the seam"),
         ("folded", None, "both cases are unfolded; the folded complex grid has its "
@@ -1438,7 +1438,7 @@ METAL_FUSED_RELEASE_ARM_AXES: Mapping[str, Tuple[Tuple[str, Any, str], ...]] = {
         ("conductivity", False, "both cases are lossless"),
         ("susceptibilities", 0, "neither case carries a susceptibility"),
         # PINNED 2026-09-17 when `pml_active` and `bfast` left the shared envelope.
-        # Values READ OFF THIS ARM'S OWN RELEASE CASES (metal_case_shapes,
+        # Values read off this arm's own release cases (metal_case_shapes,
         # 2026-09-17), not copied from the envelope: a shared axis removed fails
         # OPEN for every arm that does not pin it, and a copied value would admit
         # the arm on evidence it never had.
@@ -1455,7 +1455,7 @@ METAL_FUSED_RELEASE_ARM_AXES: Mapping[str, Tuple[Tuple[str, Any, str], ...]] = {
          "(1, 1, 480) grid; complex_3d_thinline is a (0, 0, L) cell declared 3-D "
          "that MEEP does not collapse, lifted to dimensions 3 on (1, 1, 275); "
          "complex_3d is a genuine 3-D block, lifted to dimensions 3 on "
-         "(40, 40, 40). The Metal driver-route campaign this batch runs is what "
+         "(40, 40, 40). The Metal driver-route campaign is what "
          "drives all three through the seam"),
         ("folded", None, "both cases are unfolded; the folded complex grid has its "
                          "own pair, released separately"),
@@ -1466,7 +1466,7 @@ METAL_FUSED_RELEASE_ARM_AXES: Mapping[str, Tuple[Tuple[str, Any, str], ...]] = {
         ("conductivity", False, "both cases are lossless"),
         ("susceptibilities", 0, "neither case carries a susceptibility"),
         # PINNED 2026-09-17 when `pml_active` and `bfast` left the shared envelope.
-        # Values READ OFF THIS ARM'S OWN RELEASE CASES (metal_case_shapes,
+        # Values read off this arm's own release cases (metal_case_shapes,
         # 2026-09-17), not copied from the envelope: a shared axis removed fails
         # OPEN for every arm that does not pin it, and a copied value would admit
         # the arm on evidence it never had.
@@ -1483,12 +1483,12 @@ METAL_FUSED_RELEASE_ARM_AXES: Mapping[str, Tuple[Tuple[str, Any, str], ...]] = {
          "cell asked for with kz_2d='3d', so the z component of its k_point does "
          "NOT lift as a beta and the declared 3 stands: lifted the same day to "
          "dimensions 3 on (90, 62, 1). Both are driven by the Metal driver-route "
-         "campaign this batch runs"),
+         "campaign"),
         ("folded", "required", "this arm IS the folded complex product"),
         ("cylindrical", False, "no Dcyl case drove it"),
         ("complex_storage", True, "complex storage is what makes this the folded "
                                   "COMPLEX product"),
-        # THE bloch PIN LEFT THIS ROW ON 2026-09-13 AND STAYED ON THE D/E TWIN,
+        # The bloch pin left this row on 2026-09-13 and stayed on the D/E twin,
         # which is a deliberate asymmetry and not an oversight. The rule for
         # omitting an axis is that the arm's OWN cases drove both of its values:
         # folded_complex_2d, folded_complex_3d, folded_complex_kz2d_3d and
@@ -1505,7 +1505,7 @@ METAL_FUSED_RELEASE_ARM_AXES: Mapping[str, Tuple[Tuple[str, Any, str], ...]] = {
         ("conductivity", False, "every folded complex case is lossless"),
         ("susceptibilities", 0, "no folded complex case carries a susceptibility"),
         # PINNED 2026-09-17 when `pml_active` and `bfast` left the shared envelope.
-        # Values READ OFF THIS ARM'S OWN RELEASE CASES (metal_case_shapes,
+        # Values read off this arm's own release cases (metal_case_shapes,
         # 2026-09-17), not copied from the envelope: a shared axis removed fails
         # OPEN for every arm that does not pin it, and a copied value would admit
         # the arm on evidence it never had.
@@ -1517,19 +1517,19 @@ METAL_FUSED_RELEASE_ARM_AXES: Mapping[str, Tuple[Tuple[str, Any, str], ...]] = {
          "folded_complex_2d is the 2-D fold; folded_complex_3d is a genuine 3-D "
          "fold, lifted off-device 2026-09-13 to dimensions 3 on (8, 21, 126), and "
          "folded_complex_kz2d_3d is a zero-thickness z cell asked for with "
-         "kz_2d='3d', lifted to dimensions 3 on (90, 62, 1). THE CAVEAT THIS ROW "
-         "CARRIES AND ITS MAGNETIC TWIN DOES NOT: this arm has no device gate file "
-         "of its own — it binds to the tranche-7 GROUP weld, whose four fixtures "
-         "are all 2-D folds — so these two route cases are the FIRST 3-D evidence "
-         "it has ever carried. The magnetic twin is backed by eleven 3-D fixtures "
-         "on its own family gate. If that is ruled too thin for a route case to "
-         "supply alone, withhold this half: the two instances behind it are "
-         "disjoint from every other lever's"),
+         "kz_2d='3d', lifted to dimensions 3 on (90, 62, 1). The caveat this row "
+         "carries and its magnetic twin does not: this arm has no device gate file "
+         "of its own — it binds to the GROUP weld metal_tranche7_fused_pairs_device_gate, "
+         "whose four fixtures are all 2-D folds — so these two route cases are the "
+         "FIRST 3-D evidence it has ever carried. The magnetic twin is backed by "
+         "eleven 3-D fixtures on its own family gate. If that is judged too thin for "
+         "a route case to supply alone, withhold this half: the two instances behind "
+         "it are disjoint from every other lever's"),
         ("folded", "required", "this arm IS the folded complex product"),
         ("cylindrical", False, "no Dcyl case drove it"),
         ("complex_storage", True, "complex storage is what makes this the folded "
                                   "COMPLEX product"),
-        # THE PIN STAYS HERE WHILE THE MAGNETIC TWIN DROPPED IT, 2026-09-13. The
+        # The pin stays here while the magnetic twin dropped it, 2026-09-13. The
         # only unphased folded-complex case on this route is
         # folded_complex_nobloch_offdiag_2d, and it is OFF-DIAGONAL: no D-seam
         # product is admitted on a grid whose chi1inv carries off-diagonal rows, so
@@ -1545,7 +1545,7 @@ METAL_FUSED_RELEASE_ARM_AXES: Mapping[str, Tuple[Tuple[str, Any, str], ...]] = {
         ("conductivity", False, "every folded complex case is lossless"),
         ("susceptibilities", 0, "no folded complex case carries a susceptibility"),
         # PINNED 2026-09-17 when `pml_active` and `bfast` left the shared envelope.
-        # Values READ OFF THIS ARM'S OWN RELEASE CASES (metal_case_shapes,
+        # Values read off this arm's own release cases (metal_case_shapes,
         # 2026-09-17), not copied from the envelope: a shared axis removed fails
         # OPEN for every arm that does not pin it, and a copied value would admit
         # the arm on evidence it never had.
@@ -1563,7 +1563,7 @@ METAL_FUSED_RELEASE_ARM_AXES: Mapping[str, Tuple[Tuple[str, Any, str], ...]] = {
         ("conductivity", False, "the cylindrical case is lossless"),
         ("susceptibilities", 0, "the cylindrical case carries no susceptibility"),
         # PINNED 2026-09-17 when `pml_active` and `bfast` left the shared envelope.
-        # Values READ OFF THIS ARM'S OWN RELEASE CASES (metal_case_shapes,
+        # Values read off this arm's own release cases (metal_case_shapes,
         # 2026-09-17), not copied from the envelope: a shared axis removed fails
         # OPEN for every arm that does not pin it, and a copied value would admit
         # the arm on evidence it never had.
@@ -1583,7 +1583,7 @@ METAL_FUSED_RELEASE_ARM_AXES: Mapping[str, Tuple[Tuple[str, Any, str], ...]] = {
         ("conductivity", False, "cylindrical_m1 is lossless"),
         ("susceptibilities", 0, "cylindrical_m1 carries no susceptibility"),
         # PINNED 2026-09-17 when `pml_active` and `bfast` left the shared envelope.
-        # Values READ OFF THIS ARM'S OWN RELEASE CASES (metal_case_shapes,
+        # Values read off this arm's own release cases (metal_case_shapes,
         # 2026-09-17), not copied from the envelope: a shared axis removed fails
         # OPEN for every arm that does not pin it, and a copied value would admit
         # the arm on evidence it never had.
@@ -1598,12 +1598,12 @@ METAL_FUSED_RELEASE_ARM_AXES: Mapping[str, Tuple[Tuple[str, Any, str], ...]] = {
         ("bloch", False, "conductive_2d carries no k_point"),
         ("beta", 0, "conductive_2d is not a special-kz run"),
         ("conductivity", True,
-         "THE ONLY ARM THAT REQUIRES A LOSS. Its single case installs a "
+         "The only arm that requires a loss. Its single case installs a "
          "D_conductivity and the product exists to own that D curl, so a lossless "
          "grid is not a configuration it was driven on"),
         ("susceptibilities", 0, "conductive_2d carries no susceptibility"),
         # PINNED 2026-09-17 when `pml_active` and `bfast` left the shared envelope.
-        # Values READ OFF THIS ARM'S OWN RELEASE CASES (metal_case_shapes,
+        # Values read off this arm's own release cases (metal_case_shapes,
         # 2026-09-17), not copied from the envelope: a shared axis removed fails
         # OPEN for every arm that does not pin it, and a copied value would admit
         # the arm on evidence it never had.
@@ -1622,14 +1622,14 @@ METAL_FUSED_RELEASE_ARM_AXES: Mapping[str, Tuple[Tuple[str, Any, str], ...]] = {
         ("beta", 0, "none of the three is a special-kz run"),
         ("conductivity", False, "all three are lossless"),
         ("susceptibilities", frozenset({1, 5}),
-         "AN ENUMERATION, NOT A RANGE, and the reason this axis appears at all: "
+         "An enumeration, not a range, and the reason this axis appears at all: "
          "folded_dispersive_2d and folded_dispersive_3d carry ONE pole and "
          "folded_dispersive5_2d carries FIVE. An omitted count axis admits every "
          "count, which is the defect the 2026-09-12 verifier found on the ordinary "
          "magnetic pair; two, three and four poles are refused because no case "
          "drove them"),
         # PINNED 2026-09-17 when `pml_active` and `bfast` left the shared envelope.
-        # Values READ OFF THIS ARM'S OWN RELEASE CASES (metal_case_shapes,
+        # Values read off this arm's own release cases (metal_case_shapes,
         # 2026-09-17), not copied from the envelope: a shared axis removed fails
         # OPEN for every arm that does not pin it, and a copied value would admit
         # the arm on evidence it never had.
@@ -1649,7 +1649,7 @@ METAL_FUSED_RELEASE_ARM_AXES: Mapping[str, Tuple[Tuple[str, Any, str], ...]] = {
          "shape still reads bloch=False, because a kz-only k_point on a 2-D cell "
          "folds into beta rather than into Bloch phases"),
         ("beta", 0.4,
-         "PINNED TO THE ONE VALUE DRIVEN. special_kz_2d runs beta=0.4 and nothing "
+         "Pinned to the one value driven. special_kz_2d runs beta=0.4 and nothing "
          "else on this route, so the axis admits 0.4 and refuses every other beta. "
          "The per-family device gate additionally drove beta_2d, beta_metallic_2d "
          "and beta_negative_2d, so widening this row is available on evidence "
@@ -1658,7 +1658,7 @@ METAL_FUSED_RELEASE_ARM_AXES: Mapping[str, Tuple[Tuple[str, Any, str], ...]] = {
         ("conductivity", False, "special_kz_2d is lossless"),
         ("susceptibilities", 0, "special_kz_2d carries no susceptibility"),
         # PINNED 2026-09-17 when `pml_active` and `bfast` left the shared envelope.
-        # Values READ OFF THIS ARM'S OWN RELEASE CASES (metal_case_shapes,
+        # Values read off this arm's own release cases (metal_case_shapes,
         # 2026-09-17), not copied from the envelope: a shared axis removed fails
         # OPEN for every arm that does not pin it, and a copied value would admit
         # the arm on evidence it never had.
@@ -1671,8 +1671,8 @@ METAL_FUSED_RELEASE_ARM_AXES: Mapping[str, Tuple[Tuple[str, Any, str], ...]] = {
 def fused_release_reasons_metal(shape: Mapping[str, Any]) -> Tuple[str, ...]:
     """Why this configuration is OUTSIDE what the Metal driver-route gate measured.
 
-    Empty means the shared half of the release applies here. FAILS CLOSED ON AN
-    UNREAD FACT, which is the opposite of the device rung's rule and deliberately
+    Empty means the shared half of the release applies here. Fails closed on an
+    unread fact, which is the opposite of the device rung's rule and deliberately
     so: that rung does not refuse a capability it could not read, because refusing
     on an unread fact asserts one; here the decision is an ADMISSION, and admitting
     on an unread fact asserts one.
@@ -1703,11 +1703,11 @@ def fused_release_arm_reasons_metal(shape: Mapping[str, Any],
                 "written down; the shared envelope alone cannot admit it",)
     reasons = list(fastpath._axis_reasons(shape, axes))  # noqa: SLF001
 
-    # THE ONE CONJUNCTION THE ROW VOCABULARY CANNOT SPELL. See
+    # The one conjunction the row vocabulary cannot spell. See
     # METAL_OFF_DIAGONAL_CORNERS for why it is here and not a row: off-diagonal
     # coverage is a CORNER of the axes the row leaves open, and asking the axes
     # independently either refuses every off-diagonal case driven or admits every
-    # one that is not. FAILS CLOSED TWICE: an arm absent from the table is refused
+    # one that is not. Fails closed twice: an arm absent from the table is refused
     # off-diagonal, and so is a run on which any axis of the corner did not read.
     if shape.get("off_diagonal_epsilon"):
         corner = METAL_OFF_DIAGONAL_CORNERS.get(arm)
@@ -1762,7 +1762,7 @@ def metal_toolchain() -> Dict[str, Any]:
                              "device_name": None,
                              "fast_math": os.environ.get(FAST_MATH),
                              "machine": platform.machine()}
-    # THE GPU IS READ BEFORE TORCH, because it needs no torch: a host whose torch
+    # The GPU is read before torch, because it needs no torch: a host whose torch
     # is broken still says which GPU it has.
     try:
         from .metal_kernels import device  # noqa: PLC0415
@@ -1812,7 +1812,7 @@ def environment_block(grid: Any, toolchain: Mapping[str, Any]) -> Dict[str, Any]
     against the runs recorded for THIS architecture, because each architecture's
     run records its own.
 
-    THE ARCHITECTURE IS ALSO WRITTEN AS ``device.compute_capability``, the key
+    The architecture is also written as ``device.compute_capability``, the key
     ``fastpath._finish`` hands to ``fastpath._certification_for``, so each
     dispatched arm quotes the run of the weld that certified it on this GPU (its
     ``host``, ``recorded_utc``, ``records``), and no other architecture's run. The
@@ -1858,7 +1858,7 @@ def environment_block(grid: Any, toolchain: Mapping[str, Any]) -> Dict[str, Any]
     }
 
 
-#: WHY AN UNCERTIFIED METAL ENVIRONMENT RAN, in the words the run's NOTE line uses.
+#: Why an uncertified Metal environment ran, in the words the run's NOTE line uses.
 #: The Metal table runs by default on an environment the cited welds did not record,
 #: and says so; the ``certified`` scope (``fastpath.HARDWARE_SWITCH``) restricts it to
 #: certified ones. On an Apple GPU the reason is that every Apple GPU is SUPPORTED:
@@ -1872,7 +1872,7 @@ UNCERTIFIED_BECAUSE = ("the Metal table runs on environments outside the certifi
 def device_supported(toolchain: Mapping[str, Any]) -> Optional[bool]:
     """Is this GPU one the Metal table SUPPORTS: an Apple GPU? THREE-VALUED.
 
-    SUPPORTED IS NOT CERTIFIED. Every Apple GPU is supported: the same Metal source
+    Supported is not certified. Every Apple GPU is supported: the same Metal source
     compiles for each of them and the kernels are meant to run there. Certified is
     narrower: the environment is one every cited weld measured
     (:func:`environment_verdict`). Read off the architecture Metal names
@@ -1892,7 +1892,7 @@ def device_supported(toolchain: Mapping[str, Any]) -> Optional[bool]:
 # The residency mode: how state gets between the host and the device
 # ---------------------------------------------------------------------------
 
-#: HOW THE METAL RESIDENCY TRANSPORTS STATE, chosen by the environment and DEFAULT
+#: How the Metal residency transports state, chosen by the environment and DEFAULT
 #: HELD. ``held`` lets the device keep the state between launches and makes the
 #: host acquire it -- measured 2026-09-21 on a real pml_2d composition at 2.0 copies
 #: a step against 278, byte-identical over all 24 arrays. ``shipped`` is the bracket
@@ -1900,15 +1900,15 @@ def device_supported(toolchain: Mapping[str, Any]) -> Optional[bool]:
 #: around every launch, the host authoritative at every instant, and 96-98% of the
 #: step.
 #:
-#: HELD IS THE DEFAULT BECAUSE SHIPPED LOSES TO NOT DISPATCHING. The shipped fused
+#: Held is the default because shipped loses to not dispatching. The shipped fused
 #: step fits ``28.16 + 37.61 N`` ms/step against the array path's ``0.71 + 16.65 N``
-#: (N in Mcells; ``the design notes (metal-residency-fix-plan)`` section 1) and the two
+#: (N in Mcells, each a line fitted over the same five sweep sizes) and the two
 #: lines never cross, so a shipped default was a dispatch that was slower than the
 #: array path at every measured size. A configuration a hold cannot serve is
 #: therefore refused to the ARRAY PATH by name at admission
 #: (:func:`_held_admission`), never to shipped.
 #:
-#: BOTH VALUES STAY EXPLICIT because one tree has to run both: the route campaign
+#: Both values stay explicit because one tree has to run both: the route campaign
 #: pins ``held``, and a run that wants the bracket the kernel gates certified under
 #: asks for ``shipped`` by name. Any other spelling is refused by name.
 RESIDENCY_ENV = "MEEP_GPU_METAL_RESIDENCY"
@@ -1996,7 +1996,7 @@ def _arm_residency_hold(residency, fields, synced, step_plan=None, mode=None):
     ``mode`` is the residency mode :func:`decide` already read and admitted at its
     admission rung; ``None`` reads it here (a caller outside the ladder).
 
-    A SYNCED PASS DOES NOT REFUSE THE HOLD, and the first version of this function
+    A synced pass does not refuse the hold, and the first version of this function
     had it the other way round. ``synced`` names the array-path passes this composer
     did not replace and brackets by hand, and refusing on it looked like the safe
     default -- but measured against the route gate it refuses ``pml_2d``, whose only
@@ -2017,15 +2017,15 @@ def _arm_residency_hold(residency, fields, synced, step_plan=None, mode=None):
       hold was armed -- is named in ``barrier``'s own documentation and is why every
       state-collecting caller flushes first.
 
-    So the residual risk is an UNWIRED write site, and that fails closed with a
-    traceback at the offending statement rather than as a wrong field. The
-    enumeration was done by running a held composition and reading what raised.
+    So the residual risk is a write site that bypasses ``host_writes``, and that fails
+    closed with a traceback at the offending statement rather than as a wrong field.
+    The enumeration was done by running a held composition and reading what raised.
     """
     if (mode if mode is not None else _residency_mode()) != RESIDENCY_HELD:
         return (), (), (), []
-    # EVERY SEAM PASS IS SPARSE NOW, so no grid refuses the hold by name: the
+    # Every seam pass is sparse now, so no grid refuses the hold by name: the
     # source deposit, the trailing repair and the metallic wall zero were made
-    # sparse first (plan section 10.6), and the mirror-fold fills, the folded
+    # sparse first, and the mirror-fold fills, the folded
     # far-ghost fills and the cylindrical axis constraint followed once the 2026-09-23
     # preflight showed that holding a third of the case table on the shipped
     # bracket was a demo, not a result. A site not yet sparse still fails CLOSED --
@@ -2034,7 +2034,7 @@ def _arm_residency_hold(residency, fields, synced, step_plan=None, mode=None):
     from . import host_writes  # noqa: PLC0415
     from .metal_kernels import barrier as barrier_module  # noqa: PLC0415
 
-    # SEAL ONLY WHAT THE ENGINE OWNS. A mirror's host array is either a volume the
+    # Seal only what the engine owns. A mirror's host array is either a volume the
     # ENGINE allocated (reachable from ``fields``) or scratch the PLAN allocated in
     # its own builder -- a cylindrical radial prefix, a coefficient pack, a weld
     # twin. The two need opposite treatment, and holding them alike broke the
@@ -2048,7 +2048,7 @@ def _arm_residency_hold(residency, fields, synced, step_plan=None, mode=None):
     # which costs one small copy a launch and cannot be wrong. The engine's volumes
     # are the ones worth holding and the only ones the barrier can reach anyway.
     engine_owned = _engine_owned_names(residency, fields)
-    # CONSTANTS ARE HOISTED REGARDLESS OF WHO OWNS THEM. The engine-owned rule
+    # Constants are hoisted regardless of who owns them. The engine-owned rule
     # exists to keep plan-owned SCRATCH off the hold (the cylindrical prefix is
     # host-written every launch), and it is right about that -- but it also
     # excluded every mirror that lives on ``pml`` rather than ``fields``: the PML
@@ -2077,7 +2077,7 @@ def _arm_residency_hold(residency, fields, synced, step_plan=None, mode=None):
     # pre-swap class, which drops this layer together with the barrier.
     if barriered:
         fields.__class__ = _reset_layer(type(fields))
-    # THE POLARIZATION MAPPINGS NEED THEIR OWN BARRIER and leaving this out cost
+    # The polarization mappings need their own barrier and leaving this out cost
     # every dispersive row in the first held campaign (7 of 42 cases DIVERGED).
     # ``PolarizationState`` is a plain object that is not a ``Fields`` attribute,
     # and its P arrays live in DICTS -- ``dispersion.subtract_into`` reads
@@ -2108,7 +2108,7 @@ def _arm_residency_hold(residency, fields, synced, step_plan=None, mode=None):
             "has_scratch": hasattr(state, "_scratch"),
             "scratch_mirrored": (id(getattr(state, "_scratch", None)) in by_host),
         })
-    # NO ATTRIBUTE IS ATTACHED TO THE PLAN. ``MetalStepPlan`` declares ``__slots__``,
+    # No attribute is attached to the plan. ``MetalStepPlan`` declares ``__slots__``,
     # so stashing the residency on it raises AttributeError INSIDE the freeze -- and
     # a raise there does not merely fail the row: the dispatch refuses to the array
     # path with the subnormal policy already installed, leaving the host FPU in a
@@ -2123,14 +2123,14 @@ def _arm_residency_hold(residency, fields, synced, step_plan=None, mode=None):
 def release_residency_hold(residency, fields) -> tuple:
     """Flush the device's words back, drop EVERY guard, hand the host authority back.
 
-    EVERY CALLER THAT READS STATE OUTSIDE AN ATTRIBUTE MUST CALL THIS FIRST. The
+    Every caller that reads state outside an attribute must call this first. The
     read barrier covers attribute access and the dict barrier covers the
     polarization mappings, but a walk over an instance ``__dict__`` -- which is how
     the end-to-end byte comparison collects state -- reads straight out of the
     mapping with no descriptor and would compare host arrays the device has moved
     past. Flushing first is what makes that comparison mean anything under a hold.
 
-    THE RELEASE IS FULL: the ``Fields`` class swap AND each polarization state's
+    The release is full: the ``Fields`` class swap AND each polarization state's
     dict barrier and ``_scratch`` attribute barrier. Stripping only the first was
     measured silently wrong on ``dispersive_2d`` (200 + 200 steps, reference max|P|
     0.768): the ``P``/``P_prev`` mappings stayed ``BarrierDict``\\ s bound to the
@@ -2144,7 +2144,7 @@ def release_residency_hold(residency, fields) -> tuple:
     through :meth:`BarrierDict.plain`, which acquires every value, and that is a
     no-op only once nothing is ``DEVICE_OWNED``.
 
-    ONLY THIS RESIDENCY'S GUARDS ARE STRIPPED. A barrier bound to a different
+    Only this residency's guards are stripped. A barrier bound to a different
     residency is that residency's to release; stripping it here would leave a live
     hold with no read barrier. Safe to call twice (the second call flushes nothing
     and finds no guard bound to it), and ``fields=None`` -- a driver after
@@ -2182,12 +2182,12 @@ _RESET_LAYERS: Dict[Any, Any] = {}
 def _reset_layer(barriered: Any) -> Any:
     """``barriered`` with one override, ``reset``: release the hold fully, then reset.
 
-    THE ONLY OVERRIDE IS ``reset``. Every other engine mutator either rebinds (the
+    The only override is ``reset``. Every other engine mutator either rebinds (the
     barrier setter handles it), re-plans (the next freeze's
     :func:`_release_prior_hold` handles it), or is refused after the first step by
     the driver API on the array path too.
 
-    THE PROPERTIES ARE COPIED INTO THIS LAYER'S OWN NAMESPACE, because
+    The properties are copied into this layer's own namespace, because
     ``barrier.barriered_names`` reads ``type(instance).__dict__`` only; a layer
     carrying ``reset`` alone would make it report ``()`` for a barriered instance.
     Same class name as the barrier class, so reprs and tracebacks read as before.
@@ -2262,7 +2262,7 @@ def _engine_arrays_raw(fields: Any) -> List[Tuple[str, Any]]:
 def _release_prior_hold(fields: Any, why: str) -> Optional[Dict[str, Any]]:
     """Release, fully, every live hold on this ``Fields``' arrays; report what it did.
 
-    CALLED AT THE TOP OF EVERY METAL FREEZE, before the new ``Residency`` exists.
+    Called at the top of every Metal freeze, before the new ``Residency`` exists.
     ``invalidate_fast_path`` -- the funnel ``set_field``, ``set_epsilon*`` and
     ``add_source`` all pass through -- drops the plan and releases nothing, so the
     next freeze met engine arrays the old residency still sealed: ``arm_hold``
@@ -2274,7 +2274,7 @@ def _release_prior_hold(fields: Any, why: str) -> Optional[Dict[str, Any]]:
     fire -- the first plan in a process is pinned by the frames a lazy import's
     stored traceback keeps alive).
 
-    THE PRIOR RESIDENCY IS FOUND TWO WAYS, and both are needed:
+    The prior residency is found two ways, and both are needed:
 
     * ``barrier_key`` -- the residency the ``Fields`` read barrier acquires through;
     * ``host_writes_identity`` -- any residency the door registry still holds that
@@ -2284,10 +2284,10 @@ def _release_prior_hold(fields: Any, why: str) -> Optional[Dict[str, Any]]:
     Keyed on this ``Fields``' own arrays, so a hold armed by another driver is never
     touched.
 
-    A THIRD CASE IS DETECTED AND DELIBERATELY NOT HEALED: an array whose write flag
+    A third case is detected and deliberately not healed: an array whose write flag
     is down with no live residency holding it. That happens only when a residency
     died without a release -- its barrier key removed or replaced -- and its device
-    words died with it. Unsealing such arrays was MEASURED to turn a loud failure
+    words died with it. Unsealing such arrays was measured to turn a loud failure
     into a silent one: a probe that killed a held residency that way and unsealed
     the orphans completed without raising and differed from the array path on 12 of
     32 arrays (``pml_2d``, 10 + 10 steps; 634-669 of 6000 words each) and on 14 of
@@ -2369,17 +2369,17 @@ def _held_admission(residency: Any, fields: Any, synced: Sequence[str],
     measured size, so a hold refusal that fell to it would be a slowdown presented
     as safety.
 
-    (a) THE SYNCED PASSES must lie inside :data:`HELD_DOOR_WIRED_PASSES`. A PERFORMANCE
+    (a) The synced passes must lie inside :data:`HELD_DOOR_WIRED_PASSES`. A PERFORMANCE
         guard, not a correctness one: an array-path pass outside the set writes a held
         volume through ``stepping._acquire_written``, a whole-volume acquire per
         sub-step, and the array path under a live hold was measured byte-identical.
         Refuses 0 of 179 census rows and 0 of 42 route cases today.
-    (b) EVERY ENGINE-OWNED MIRROR MUST BE SEALABLE, checked dry (``Mirror.sealable``
+    (b) Every engine-owned mirror must be sealable, checked dry (``Mirror.sealable``
         round-trips the write flag and leaves it up). ``arm_hold`` would refuse such a
         name and leave it on the shipped bracket, whose copy-out writes the host
         array; when the array is one a dead residency left sealed that copy-out
         raises mid-step, after the launch.
-    (c) NO POLARIZATION MAPPING MAY ALREADY BE A ``BarrierDict`` bound to a residency
+    (c) No polarization mapping may already be a ``BarrierDict`` bound to a residency
         other than this one. ``install_dict_barrier`` skips such a mapping, so the
         new hold would get no dict barrier and read stale ``P`` -- the partial
         release's silent failure. The backstop that turns a regressed release into a
@@ -2479,8 +2479,8 @@ def decide(record: Dict[str, Any], fields: Any, pml: Any, grid: Any,
     switch, the enable and the backend — are that ladder's and are not repeated
     here.
 
-    EVERY RUNG REFUSES TO THE ARRAY PATH WITH A NAMED REASON AND NONE OF THEM
-    RAISES, which is the contract the Triton ladder states and the one the driver
+    Every rung refuses to the array path with a named reason and none of them
+    raises, which is the contract the Triton ladder states and the one the driver
     depends on: after the freeze there is NO runtime fallback, so a plan that
     reaches ``dispatch`` must be one every rung has already judged.
 
@@ -2497,7 +2497,7 @@ def decide(record: Dict[str, Any], fields: Any, pml: Any, grid: Any,
 
     record["table"] = TABLE
 
-    # (4aM) THE PRIOR HOLD, RELEASED BEFORE ANYTHING ELSE. A re-freeze of a Fields
+    # (4aM) The prior hold, released before anything else. A re-freeze of a Fields
     # some earlier plan held must start from host-authoritative, unsealed arrays --
     # see :func:`_release_prior_hold`. First, so that every refusal below also
     # leaves the array path nothing sealed; and it never raises, like every rung.
@@ -2515,7 +2515,7 @@ def decide(record: Dict[str, Any], fields: Any, pml: Any, grid: Any,
 
     environment = record.setdefault("environment", {})
 
-    # (4M) THE TOOLCHAIN, AVAILABLE. torch supplies the launch path, so the three
+    # (4M) The toolchain, available. torch supplies the launch path, so the three
     # availability reads below are refusals. Which environment the kernels run in
     # is judged after them.
     toolchain = metal_toolchain()
@@ -2537,10 +2537,10 @@ def decide(record: Dict[str, Any], fields: Any, pml: Any, grid: Any,
                          "torch.mps.compile_shader is missing; hand-written Metal "
                          "sources cannot be compiled on this build")
         return None
-    # (4M) THE ENVIRONMENT: GPU architecture, torch and Metal frontend, each judged
+    # (4M) The environment: GPU architecture, torch and Metal frontend, each judged
     # against the live runs every cited weld recorded (:func:`environment_verdict`):
     # the architecture by whether each weld has a run for it, torch and the frontend
-    # against those runs. Fast math is certified only off. BY DEFAULT AN UNCERTIFIED ENVIRONMENT RUNS: a fact
+    # against those runs. Fast math is certified only off. By default an uncertified environment runs: a fact
     # the welds contradict is recorded under ``uncertified.admitted`` (copied to
     # ``uncertified.served`` when the table serves), so the record says
     # ``certified: False`` and the run prints one NOTE line naming it.
@@ -2551,12 +2551,12 @@ def decide(record: Dict[str, Any], fields: Any, pml: Any, grid: Any,
     # Apple's included (recorded ``device_supported: False``): this table refuses
     # nothing for being unsupported.
     architecture = toolchain.get("architecture")
-    # THE NUMBER OF CITED WELDS, not the sum of the rows: a weld with runs for two
+    # The number of cited welds, not the sum of the rows: a weld with runs for two
     # architectures is one row per architecture.
     cited = len(cited_environments())
     strict = fastpath.hardware_scope() == fastpath.HARDWARE_CERTIFIED
     switch = fastpath.HARDWARE_SWITCH
-    # WHETHER THIS TABLE MAY RUN AN UNCERTIFIED ENVIRONMENT, as the record's switch
+    # Whether this table may run an uncertified environment, as the record's switch
     # block states it for the NVIDIA tables; here, every scope but ``certified``.
     record.setdefault("uncertified", {})["allowed"] = not strict
     for fact, what, verdict_key, read in (
@@ -2569,10 +2569,10 @@ def decide(record: Dict[str, Any], fields: Any, pml: Any, grid: Any,
         verdict = environment.get(verdict_key)
         if verdict is True:
             continue
-        # WHAT IS CERTIFIED, as the NOTE line and a refusal name it: only values every
-        # cited weld certifies (:func:`certified_values`), so a partial round never
-        # lists the GPU it has just found not certified. torch and the frontend are
-        # certified PER ARCHITECTURE, so theirs are read off this GPU's runs.
+        # What is certified, as the NOTE line and a refusal name it: only values every
+        # cited weld certifies (:func:`certified_values`), so a partial certification
+        # never lists the GPU it has just found not certified. torch and the frontend
+        # are certified PER ARCHITECTURE, so theirs are read off this GPU's runs.
         values = (["unset"] if fact == "fast_math" else
                   certified_values(fact, architecture))
         if verdict is False:
@@ -2611,14 +2611,14 @@ def decide(record: Dict[str, Any], fields: Any, pml: Any, grid: Any,
             return None
 
     record["subnormal"] = fastpath._subnormal_block()  # noqa: SLF001
-    # THE BLOCK IS THE TRITON CONSTANT'S until ``fastpath._subnormal_block`` grows
+    # The block is the Triton constant's until ``fastpath._subnormal_block`` grows
     # the table argument, so this table's own answer is recorded beside it rather
     # than left to be read wrong. WAITS ON ``fastpath.TABLE_SUBNORMAL_POLICY``.
     record["subnormal"]["certification_policy"] = certification_policy()
     record["subnormal"]["governed_executors"] = list(GOVERNED_EXECUTORS)
     record["run_shape"] = fastpath._run_shape(fields, pml, grid)  # noqa: SLF001
 
-    # (4bM) THE CHUNK DIVISION. MEEP selects every cell's PML form per structure
+    # (4bM) The chunk division. MEEP selects every cell's PML form per structure
     # chunk, and the Metal kernels read the division through one per-axis record.
     # A division that record cannot describe (not separable, or more than two runs
     # on a line) refuses the whole table by name here, before the composer, and the
@@ -2650,27 +2650,53 @@ def decide(record: Dict[str, Any], fields: Any, pml: Any, grid: Any,
     if per_arm and not envelope_reasons:
         fusion["outside_this_arms_own_cases"] = per_arm
 
-    # THE RESIDENCY IS BUILT HERE AND OWNED BY THE PLAN. Every mirror the
+    # The dispatch preference (measured cost), read before the composer so a value
+    # it cannot read refuses by name. Its fused candidates are arbitrated as every
+    # table's are (``fastpath._apply_preference``): by the live Apple GPU family's Metal
+    # timing record, else by the portable prior of Apple records alone (a bracketed seam
+    # at or below the crossover they measured gives way to its certified singles), and
+    # with no Apple record that holds on the tree the shape rule stands.
+    preference, preference_refusal = fastpath.preference_mode()
+    if preference_refusal is not None:
+        fastpath._refuse(record, preference_refusal)  # noqa: SLF001
+        return None
+    fused_set = set(fused_labels())
+
+    # The residency is built here and owned by the plan. Every mirror the
     # composition binds is registered against this object, and the bracket
     # installed below is what keeps the HOST authoritative between launches.
     residency = device.Residency()
     with _composition_window():
-        # THE TWO-PASS SCOUT, AND THE SECOND PASS IS NOT REDUNDANT. The residency
+        # The two-pass scout, and the second pass is not redundant. The residency
         # verdict needs the SYNCED set — which array-path passes this caller
         # brackets with an explicit sync — and that cannot be known until the
         # composer has said which slots are its own. The first call answers that on
         # a throwaway residency; the second is the composition that actually runs.
         #
-        # THE SYNCED SET IS DERIVED THROUGH ``replaces_sub_steps`` AND THAT READ IS
-        # LOAD-BEARING (the rule ``gate_metal_whole_step.covered_passes`` states): a
+        # The synced set is derived through ``replaces_sub_steps`` and that read is
+        # load-bearing (the rule ``gate_metal_whole_step.covered_passes`` states): a
         # fill plan occupies ONE slot and may replace TWO passes — ``fill_B`` and
         # ``fill_folded_far_ghosts_B``, because the driver runs them either side of
         # the wall pass. "Live minus the slots the composer filled" would declare
         # the far pass array-path, bracket a pass that never ran on the host, and
         # report a composition weaker than the one it executed.
-        scout = launch.plan_step(fields, pml, residency=device.Residency(),
-                                 sources=sources, fuse=bool(admitted),
-                                 fuse_labels=admitted, chunk_layout=layout)
+        #
+        # The preference arbitrates the scout. A vetoed product is withheld from the
+        # offer and scouted again on another throwaway residency; the scout that
+        # stands decides the synced set and the offer the composition runs with.
+        def scout_with(offer: Mapping[str, Tuple[str, ...]]) -> Tuple[Any, None]:
+            labels = tuple(offer[TABLE])
+            return launch.plan_step(fields, pml, residency=device.Residency(),
+                                    sources=sources, fuse=bool(labels),
+                                    fuse_labels=labels, chunk_layout=layout), None
+
+        scout, _none = scout_with({TABLE: admitted})
+        scout, offer, _none = fastpath._apply_preference(  # noqa: SLF001
+            record, mode=preference, step_plan=scout,
+            admitted_by_table={TABLE: admitted}, compose=scout_with,
+            table_of=lambda label: TABLE, is_fused=lambda label: label in fused_set,
+            architecture=architecture, opted_in=opted_in)
+        composed_offer = tuple(offer[TABLE])
         covered = set()
         for slot, product in scout.plans.items():
             covered.add(slot)
@@ -2680,20 +2706,21 @@ def decide(record: Dict[str, Any], fields: Any, pml: Any, grid: Any,
         synced = tuple(name for name in live if name not in covered)
         step_plan = launch.plan_step(fields, pml, residency=residency,
                                      sources=sources, synced=synced,
-                                     fuse=bool(admitted), fuse_labels=admitted,
+                                     fuse=bool(composed_offer),
+                                     fuse_labels=composed_offer,
                                      chunk_layout=layout)
     selected = dict(getattr(step_plan, "selected", {}) or {})
     filled = set(getattr(step_plan, "plans", {}) or {})
     record["composition_inputs"] = {"live": list(live), "synced": list(synced),
                                     "scouted_passes": sorted(covered)}
 
-    # (8M) NO FUSION EXCEPT BY NAME. Every Metal fused label refuses the WHOLE plan
+    # (8M) No fusion except by name. Every Metal fused label refuses the WHOLE plan
     # unless the driver-route gate released that exact label for this exact
     # configuration, or this process opted into that exact label. The composition is
     # a cross-sub-step substitution the driver's consults cannot see into, and what
     # licenses one is a gate that drove it through those consults.
     #
-    # SINCE THE COMPOSER IS HANDED ``fuse_labels`` THIS IS A BACKSTOP with no live
+    # Since the composer is handed ``fuse_labels`` this is a backstop with no live
     # path: an un-admitted product is never installed, so its seam keeps the
     # separate certified arms rather than being refused whole with them. The clause
     # stays because "no composer can reach it today" is a fact about the composer.
@@ -2737,7 +2764,7 @@ def decide(record: Dict[str, Any], fields: Any, pml: Any, grid: Any,
                 "arms": driven_arms, "reasons": beyond,
                 "reached_by": fastpath.FUSE_ARMS_SWITCH}
 
-    # (7M) THE NULL DROP, before completeness is judged, and READ OFF THE PLAN
+    # (7M) The null drop, before completeness is judged, and read off the plan
     # rather than matched against a label. ``performs_device_work`` is the
     # composer's own declaration — a null plan runs on neither executor, binds no
     # buffer and writes no host array — and it is read THROUGH the wrapper, because
@@ -2750,7 +2777,7 @@ def decide(record: Dict[str, Any], fields: Any, pml: Any, grid: Any,
                        "performs_device_work", True)}
     dispatchable = filled - set(dropped_null)
 
-    # (7aM) THE PENDING RUNG. A fused label is asked about its CONSTITUENTS as well
+    # (7aM) The pending rung. A fused label is asked about its CONSTITUENTS as well
     # as about itself: a fused product writes one label into both slots it absorbs,
     # so the arms it implements disappear from ``selected`` and a rung reading the
     # label alone would pass over a pending one. A fused label this module cannot
@@ -2819,7 +2846,7 @@ def decide(record: Dict[str, Any], fields: Any, pml: Any, grid: Any,
                          "gate ran")
         return None
 
-    # (8aM) THE RESIDENCY MODE AND, WHEN IT IS HELD, THE HOLD'S ADMISSION -- after
+    # (8aM) The residency mode and, when it is held, the hold's admission -- after
     # every structural refusal above (their wording is what the route gate's
     # classifier reads) and BEFORE rung 8bM, the first rung that changes the
     # process. A misspelled mode read any later escaped the ladder as "internal
@@ -2843,7 +2870,7 @@ def decide(record: Dict[str, Any], fields: Any, pml: Any, grid: Any,
             fastpath._refuse(record, "; ".join(refusals))  # noqa: SLF001
             return None
 
-    # (8bM) THE SUBNORMAL POLICY GATE, last rung before anything would compile and
+    # (8bM) The subnormal policy gate, last rung before anything would compile and
     # first rung that changes the process. It must FOLLOW every structural refusal,
     # because installing a policy moves this process's arithmetic and a
     # configuration that was never going to dispatch has no business having its
@@ -2864,7 +2891,7 @@ def decide(record: Dict[str, Any], fields: Any, pml: Any, grid: Any,
 
         policy_licence = (_policy, certification_policy(), _policy.policy_epoch())
 
-    # (9M) THE WARM PASS, RECORDED RATHER THAN ATTEMPTED. On the Triton table the
+    # (9M) The warm pass, recorded rather than attempted. On the Triton table the
     # warm pass is what turns a compile failure into a plan-time event; on this one
     # every kernel is compiled inside ``plan_step``'s builders through
     # ``device.compile_source``, so a source that will not compile has ALREADY
@@ -2877,7 +2904,7 @@ def decide(record: Dict[str, Any], fields: Any, pml: Any, grid: Any,
                       "a source that will not compile refuses its slot in plan_step"
                 for slot in sorted(dispatchable)}
 
-    # THE RESIDENCY BRACKET, INSTALLED AT PLAN TIME. From here the plans in
+    # The residency bracket, installed at plan time. From here the plans in
     # ``step_plan.plans`` carry their own sync_in/sync_out, so the driver's consult
     # sites, ``FastPathPlan.dispatch`` and ``synchronize_magnetic_fields`` need no
     # residency branch at all: the invariant "the host arrays are authoritative
@@ -2899,7 +2926,7 @@ def decide(record: Dict[str, Any], fields: Any, pml: Any, grid: Any,
         "mirrors": len(residency.names),
         "mirror_names": list(residency.names),
         "synced_passes": list(synced),
-        # COUNTED PER CASE FROM HERE ON. The bracket's cost is per COPY -- 0.217 ms
+        # Counted per case from here on. The bracket's cost is per COPY -- 0.217 ms
         # on this host, size-free at campaign widths -- and until now no artifact
         # recorded how many copies a case performed, so every calibration had to be
         # reconstructed from wall-clock deltas. ``Residency`` already counted them;
@@ -2920,7 +2947,7 @@ def decide(record: Dict[str, Any], fields: Any, pml: Any, grid: Any,
     plan = finish(record=record, step_plan=step_plan, dispatchable=dispatchable,
                   dropped_null=dropped_null, unwarmed=unwarmed, selected=selected,
                   table=TABLE, residency=residency, policy_licence=policy_licence)
-    # THE TAIL CAN STILL REFUSE AFTER THE HOLD WAS ARMED -- "no slot is left
+    # The tail can still refuse after the hold was armed -- "no slot is left
     # carrying a kernel" and the split-pair refusal both come after this ladder
     # sealed the mirrors and installed the barriers, because the record the tail
     # emits carries the residency block. No plan exists to release that hold, so

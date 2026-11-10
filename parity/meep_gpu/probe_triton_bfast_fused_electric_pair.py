@@ -9,7 +9,7 @@ Beta ``step_D`` welded into ``update_E`` — the ELECTRIC twin of
 ``metal_kernels/bfast_fused_electric_pair.py``.
 
 ===========================================================================
-WHAT THE PRODUCT CLAIMS, AND WHAT EACH LEG MEASURES
+What the product claims, and what each leg measures
 ===========================================================================
 
 The claim is narrow and checkable: this kernel is
@@ -20,14 +20,14 @@ ONE ``if HAS_BFAST:`` statement ``bfast_curl.bfast_pml_curl_step`` adds to
 1. **TRANSCRIPTION (no device).** Two EXACT statement-list equalities against the
    shipped sources, read from the FILES so they bite on the merge bar as well as
    here: the kernel minus the BFAST insert IS ``fused_curl_constitutive_D``, and
-   the kernel minus the weld IS ``bfast_pml_curl_step``. THE INSERT IS DERIVED
+   the kernel minus the weld IS ``bfast_pml_curl_step``. The insert is derived
    rather than listed — it is whatever ``bfast_pml_curl_step`` has that
    ``kernels.pml_curl_step`` does not — so a change to the shipped tail moves this
    leg with it instead of needing a hand-maintained list. Neither is ``ast.unparse``d —
    what is being compared includes the PARENTHESISATION, and unparsing re-derives
    minimal parentheses.
 2. **REDUCTION (device).** ``HAS_BFAST = 0`` must reproduce the shipped
-   ``kernels.fused_curl_constitutive_D`` BIT FOR BIT over a complete step, on the
+   ``kernels.fused_curl_constitutive_D`` bit for bit over a complete step, on the
    same volumes. This is the transcription claim measured on silicon instead of in
    source text, and it is the leg that would catch a mis-ordered argument in the
    plan's ``run`` that no amount of source diffing can see.
@@ -58,13 +58,13 @@ family refuses every fold — so the launch spans
 ``step_D``, ``zero_metal_D`` and ``update_E``, with the electric injection carried
 across it by the shipped repair.
 
-WHAT THE CORPUS SAYS, from ``results/fusion_matrix_triton_2026-08-31_folded_disp``
+What the corpus says, from ``results/fusion_matrix_triton_2026-08-31_folded_disp``
 at the D->E cell (``BFAST PML``, ``BFAST run``): ONE seam-instance,
 ``examples:refl-angular-kz2d.py``, ``in_seam_source == true`` and
 ``in_seam_source_blocks == false``. The ``corpus_admission`` leg re-derives that
 from the census rather than citing it.
 
-THAT ROW IS ALL-PERIODIC WITH ``has_metallic == false``, so the inline
+That row is all-periodic with ``has_metallic == false``, so the inline
 ``zero_metal_D`` carry compiles to three ``False`` flags ON IT. Every wall-clear
 mutation is therefore scored on a WALLED case, where the flags are real —
 otherwise the rewrite would touch lines the scored grid never reaches and report
@@ -136,20 +136,20 @@ def bfast_insert() -> List[str]:
 
 #: The device cases. ``(name, cell, boundaries, steps)``.
 #:
-#: EVERY CELL IS 3-D. BFAST's ``k1``/``k2`` are CROSS-GATED on ``grid.is_invariant``
+#: Every cell is 3-D. BFAST's ``k1``/``k2`` are CROSS-GATED on ``grid.is_invariant``
 #: (bfast_curl.py:346-349 — the grid's own declared dimensionality, never a shape
 #: test), so on a 2-D cell the z-invariant axis zeroes two of the six words and the
 #: tail's third target degenerates. A 3-D cell is the only place all six are live.
 CASES: Tuple[Tuple[str, Tuple[float, float, float], Any, int], ...] = (
-    # THE CORPUS GEOMETRY: all-periodic, no wall. ZM_* all compile to False and
+    # The corpus geometry: all-periodic, no wall. ZM_* all compile to False and
     # every ghost arm is the periodic wrap.
     ("corpus_periodic", (0.8, 0.8, 0.8), "periodic", 40),
-    # ALL THREE WALLS LIVE: ZM_X/ZM_Y/ZM_Z fire, every metallic ghost arm is
+    # All three walls live: ZM_X/ZM_Y/ZM_Z fire, every metallic ghost arm is
     # entered, and the ADVANCE mask — which the tail applies BEFORE its state store
     # — is live on every target. This is the mutation case, for that reason.
     ("wall_xyz", (0.8, 0.8, 0.8),
      {"x": "metallic", "y": "metallic", "z": "metallic"}, 40),
-    # ONE WALLED AXIS ONLY: the case where a ROTATED wall table still clears the
+    # One walled axis only: the case where a ROTATED wall table still clears the
     # same NUMBER of planes and clears the wrong ones.
     ("wall_x", (0.8, 0.8, 0.8),
      {"x": "metallic", "y": "periodic", "z": "periodic"}, 40),
@@ -176,8 +176,8 @@ MUTATION_REQUIRES_WALL: Dict[str, Tuple[str, ...]] = {
     "m_wall_clear_after_the_store": ("x",),
 }
 
-#: The CARRY family: the same grids with a real ELECTRIC deposit IN THIS SEAM.
-#: THIS IS THE PRODUCT, not an extra — the cell's only corpus row sources
+#: The CARRY family: the same grids with a real ELECTRIC deposit in this seam.
+#: This is the product, not an extra — the cell's only corpus row sources
 #: electrically. One all-periodic grid (the corpus geometry) and one walled grid,
 #: where the deposit and the wall clear can interact.
 CARRY_CASES: Tuple[str, ...] = ("corpus_periodic", "wall_xyz")
@@ -213,7 +213,7 @@ SEAM_OUTPUTS: Tuple[str, ...] = (
 #: Private ``Fields`` scratch that is NOT physical state. ``_fmp_scratch`` is the
 #: buffer ``Fields.displacement_minus_polarization`` allocates on first use; its
 #: presence differs by ROUTE while carrying no state either route reads across a
-#: step. THE RULE IS THE LEADING UNDERSCORE, not this list.
+#: step. The rule is the leading underscore, not this list.
 PRIVATE_SCRATCH: Tuple[str, ...] = ("_fmp_scratch",)
 
 _TEMPORARY: List[str] = []
@@ -336,12 +336,12 @@ def _clean(lines: Sequence[str]) -> str:
 def body_segments(path: str, name: str) -> List[str]:
     """A shipped kernel's BODY as a list of top-level STATEMENT sources.
 
-    THE GRAIN OF EVERY TRANSCRIPTION COMPARISON IN THIS GATE, and it is a per-LINE
+    The grain of every transcription comparison in this gate, and it is a per-LINE
     comparison that cannot express this product's claim: the BFAST tail contains
     LINES that also appear elsewhere in both bodies — ``if BCY == METALLIC:`` guards
     both the advance mask and the curl mask — so subtracting the tail by text leaves
     orphaned guard headers behind and the equality fails on a body that is correct.
-    MEASURED on this gate 2026-08-31 before the grain was changed. The tail is
+    Measured on this gate 2026-08-31 before the grain was changed. The tail is
     exactly ONE ``ast.If`` node, and at THAT grain the subtraction is exact.
 
     Continuation lines are dedented by the function's own ``col_offset`` so a body
@@ -373,9 +373,9 @@ def body_segments(path: str, name: str) -> List[str]:
 def shipped_source() -> str:
     """The kernel as source text, decorator included — the mutation harness's input.
 
-    THE DECORATOR IS PREPENDED, and it is not cosmetic. ``ast.get_source_segment``
+    The decorator is prepended, and it is not cosmetic. ``ast.get_source_segment``
     on a ``FunctionDef`` EXCLUDES the decorator list, so a mutant compiled from the
-    bare segment is a PLAIN PYTHON FUNCTION with no ``[grid]`` launcher and the first
+    bare segment is a plain Python function with no ``[grid]`` launcher and the first
     mutation leg dies with "'function' object is not subscriptable" — measured
     2026-08-20 on a sibling gate, and again 2026-08-31 on this one.
     """
@@ -462,7 +462,7 @@ def transcription_leg() -> Dict[str, Any]:
         findings.append(f"statements in NEITHER shipped body: "
                         f"{[s[:80] for s in invented]}")
 
-    # THIS IS THE ELECTRIC WELD. A body copied from the magnetic twin would pass
+    # This is the electric weld. A body copied from the magnetic twin would pass
     # every equality above against the WRONG pair of shipped sources.
     if fused == twin:
         findings.append("this kernel is byte-identical to the MAGNETIC twin; the D "
@@ -484,7 +484,7 @@ def transcription_leg() -> Dict[str, Any]:
     if "f_bfast_B" in joined:
         findings.append("this body names a MAGNETIC BFAST state array; the D seam's "
                         "states are f_bfast_D*")
-    # THE PASS FOLLOWS THE FORMS. MEEP's BFAST pass runs on each component right
+    # The pass follows the forms. MEEP's BFAST pass runs on each component right
     # after its curl (step_db.cpp:124-142); the seam's wall clear and update_E follow
     # the whole sub-step.
     if len(tail) == 1:
@@ -605,7 +605,7 @@ def equivalence_leg() -> Dict[str, Any]:
         findings.append("no case was admitted modulo the backend clause: this leg "
                         "measured only refusals and could not see a widening")
 
-    # THE FLAG IS THE PRODUCT, and this leg says so by measurement. With
+    # The flag is the product, and this leg says so by measurement. With
     # CARRIES_DEPOSIT_REPAIR at False the corpus row's own electric source is
     # refused outright and the cell is worth ZERO.
     fields, pml = _laptop_fixture()
@@ -655,7 +655,7 @@ def corpus_admission_leg() -> Dict[str, Any]:
     It is REACHABLE when its in-seam ELECTRIC source is one the repair can carry,
     which is the board's own ``in_seam_source_blocks`` and is read from there.
 
-    AN ABSENT CENSUS IS NOT AN EMPTY ONE: a missing artifact is a REFUSAL here,
+    An absent census is not an empty one: a missing artifact is a REFUSAL here,
     never a funnel of zero reported as a pass.
     """
     findings: List[str] = []
@@ -802,7 +802,7 @@ def seed_values(cp, driver, seed: int, value_class: str) -> None:
     # Written in place here, which is legal for a harness and is what makes the
     # single-launch leg non-vacuous: without a nonzero H the D curl AND the BFAST
     # sums are both exactly zero on step 1.
-    # THE BFAST IIR STATES ARE SEEDED, and that is not thoroughness: with
+    # The BFAST IIR states are seeded, and that is not thoroughness: with
     # `state == 0` the tail's zero-k advance `total - 2*state` loses its second term
     # and every mutation of the state store becomes a null. `bfast_pml_curl_step`'s
     # own docstring names the same requirement.
@@ -831,7 +831,7 @@ def build_driver(cp, cell, boundaries, seed: int, value_class: str,
     index = np.arange(int(np.prod(shape)), dtype=np.float32).reshape(shape)
     # A VARYING epsilon, deliberately, and a DIFFERENT one per component.
     #
-    # BOTH HALVES OF THAT ARE MEASUREMENTS. A uniform material makes a mis-indexed
+    # Both halves of that are measurements. A uniform material makes a mis-indexed
     # coefficient a scaling many wrong transcriptions reproduce; and a material that
     # varies in SPACE but not in COMPONENT makes `ie0` and `ie1` the same volume, so
     # `src0 = v0 * ie1` is a bitwise no-op — measured 2026-08-31, when
@@ -844,11 +844,11 @@ def build_driver(cp, cell, boundaries, seed: int, value_class: str,
         for offset, name in enumerate(("Ex", "Ey", "Ez"))}
     driver.set_epsilon_components({name: cp.asarray(values)
                                    for name, values in epsilon.items()})
-    # ALL THREE AXES: this cell is 3-D, so none of them is invariant and each one
+    # All three axes: this cell is 3-D, so none of them is invariant and each one
     # has a face to absorb at.
     driver.setup_pml({"x": 2, "y": 2, "z": 2})
     if electric:
-        # THE DEPOSIT THIS PRODUCT EXISTS FOR. Injected BETWEEN the two halves
+        # The deposit this product exists for. Injected BETWEEN the two halves
         # (driver.py:3294-3299), so the fused launch consumes a pre-injection D and
         # the shipped repair is what puts the difference back.
         driver.add_source({"component": "Ez", "frequency": 0.31,
@@ -860,7 +860,7 @@ def build_driver(cp, cell, boundaries, seed: int, value_class: str,
         driver.add_source({"component": "Hz", "frequency": 0.31,
                            "center": (0.0, 0.0, 0.0), "width": 0.4})
     seed_values(cp, driver, seed, value_class)
-    # THE FAST PATH IS DISABLED, EXPLICITLY. `FdtdDriver.step` consults `fastpath`
+    # The fast path is disabled, explicitly. `FdtdDriver.step` consults `fastpath`
     # BEFORE the module-level sub-step functions this harness substitutes, and the
     # `BFAST PML` / `BFAST run` arms are WIRED — so a driver left alone would
     # step `step_D` and `update_E` on Triton and the "array path" reference would be
@@ -876,7 +876,7 @@ def inventory(driver) -> Dict[str, Any]:
     shape = tuple(fields.grid.shape)
     found: Dict[str, Any] = {}
     for name, value in vars(fields).items():
-        # THE LEADING UNDERSCORE IS THE RULE — see PRIVATE_SCRATCH.
+        # The leading underscore is the rule — see PRIVATE_SCRATCH.
         if name.startswith("_"):
             continue
         if (getattr(value, "shape", None) == shape
@@ -1011,7 +1011,7 @@ def separate_route(driver):
 
     The three in-seam passes stay on the ARRAY PATH here: no Triton product owns the
     wall clear, and both symmetry fills are no-ops without a mirror plane. All three
-    are COUNTED. THE INJECTION ALSO STAYS ON THE ARRAY PATH, which is what makes
+    are COUNTED. The injection also stays on the array path, which is what makes
     this the right oracle for the carry family: the certified kernels with the
     driver's own deposit between them.
     """
@@ -1034,7 +1034,7 @@ def separate_route(driver):
 def fused_route(plan, driver=None, sources=(), bracket: bool = True):
     """The fused plan in its two slots, BRACKETED when the seam carries a deposit.
 
-    THE BRACKET IS THE SHIPPED ONE. ``deposit_repair.LeadingRepairPlan`` /
+    The bracket is the shipped one. ``deposit_repair.LeadingRepairPlan`` /
     ``TrailingRepairPlan`` are the exact pair ``launch._install_fused_pair`` puts in
     these two slots; a harness that assembled its own could not license the one that
     ships.
@@ -1272,7 +1272,7 @@ def run_leg(cp, name: str, cell, boundaries, steps: int, product,
         row["arrays_ever_moved"] = len(ever_moved)
         row["arrays_never_moved"] = sorted(
             set(final) - set(ever_moved) - set(material))
-        # THE FLOOR IS RELATIVE TO THE ARRAY PATH, and that is a 2026-08-31
+        # The floor is relative to the array path, and that is a 2026-08-31
         # correction rather than a softening. An absolute "every array moved" floor
         # fails a CORRECT kernel for properties of the CONFIGURATION: measured on
         # this gate's single-launch leg, `fu_By` does not move over ONE complete
@@ -1374,7 +1374,7 @@ def verdict_of(row: Dict[str, Any], *, require_identical: bool = True,
             f"the fused route reached the array path for an absorbed pass: "
             f"{fell_back}")
     if require_array_reference:
-        # THE REFERENCE MUST REALLY BE THE ARRAY PATH. `fastpath` is consulted before
+        # The reference must really be the array path. `fastpath` is consulted before
         # these functions and the BFAST arms are WIRED, so a missing count here means
         # the reference stepped on Triton and the comparison compared two Triton
         # routes.
@@ -1389,7 +1389,7 @@ def verdict_of(row: Dict[str, Any], *, require_identical: bool = True,
 
 
 # ---------------------------------------------------------------------------
-# THE REDUCTION LEG — HAS_BFAST = 0 must BE the shipped ordinary kernel
+# The reduction leg — HAS_BFAST = 0 must BE the shipped ordinary kernel
 # ---------------------------------------------------------------------------
 
 def reduction_leg(cp, product, cell, boundaries, steps: int,
@@ -1399,30 +1399,30 @@ def reduction_leg(cp, product, cell, boundaries, steps: int,
     The transcription claim, measured on silicon instead of in source text. Three
     drivers, seeded identically, on a live-shear run:
 
-    * route A launches THIS product's kernel with ``has_bfast = 0``;
-    * route B launches the SHIPPED ``kernels.fused_curl_constitutive_D`` over the
+    * the reduced route launches THIS product's kernel with ``has_bfast = 0``;
+    * the shipped route launches the SHIPPED ``kernels.fused_curl_constitutive_D`` over the
       same volumes, through ``launch.plan_fused_pair_from_arrays`` — the bare-array
       route, because ``coverage.fused_pair_coverage`` refuses a BFAST run by name
       (clause 11) and would return ``None``;
-    * route C is the array path, and is the DISCRIMINATION precondition.
+    * the third route is the array path, and is the DISCRIMINATION precondition.
 
-    NEITHER A NOR B IS COMPARED AGAINST THE ARRAY PATH FOR IDENTITY, deliberately:
+    Neither kernel route is compared against the array path for identity, deliberately:
     the array path really does add the BFAST advance, so both routes must DIFFER
     from it.
     What this leg measures is that the two KERNELS agree, which is the reduction.
 
-    THE NON-VACUITY FLOOR IS THE OTHER HALF. Two kernels that both did nothing would
-    also agree, so the state must MOVE and route A must additionally be shown to
+    The non-vacuity floor is the other half. Two kernels that both did nothing would
+    also agree, so the state must MOVE and the reduced route must additionally be shown to
     DIFFER from the array path — otherwise ``has_bfast = 0`` would be
     indistinguishable from the shipped BFAST kernel and this leg would be measuring
     a flag nothing reads.
 
-    THE STATE ARRAYS ARE THE DISCRIMINATION'S OWN LEVER. At ``HAS_BFAST = 0`` the
+    The state arrays are the discrimination's own lever. At ``HAS_BFAST = 0`` the
     tail is gone, so ``f_bfast_D*`` is never written and the array path's is; the
     seeded non-zero state is what makes that difference a WORD rather than a pair of
     zeros.
 
-    NO ELECTRIC SOURCE HERE. Both routes are unbracketed, so a deposit in the seam
+    No electric source here. Both routes are unbracketed, so a deposit in the seam
     would put both of them one injection behind the array path and the discrimination
     precondition would fire for the wrong reason. The MAGNETIC source keeps the
     fields alive without touching this seam.
@@ -1512,7 +1512,7 @@ def reduction_leg(cp, product, cell, boundaries, steps: int,
         row["arrays_never_moved"] = sorted(
             set(final) - set(ever_moved) - set(material))
 
-        # THE BFAST STATE IS THIS LEG'S LEVER, NOT ITS FLOOR, and that distinction is
+        # The BFAST state is this leg's lever, not its floor, and that distinction is
         # a 2026-08-31 correction. The docstring above says it outright -- "at
         # HAS_BFAST = 0 the tail is gone, so `f_bfast_D*` is never written" -- so an
         # absolute "every array moved" floor asserts the exact opposite of what the
@@ -1576,10 +1576,10 @@ def reduction_leg(cp, product, cell, boundaries, steps: int,
                 f"the reduced route's seam-output movement {row['seam_outputs_moved']}"
                 f" is not the array path's "
                 f"{row['reference_seam_outputs_moved']} less the BFAST state")
-        # THE DISCRIMINATION PRECONDITION, recorded rather than assumed. If
+        # The discrimination precondition, recorded rather than assumed. If
         # HAS_BFAST=0 also matches the ARRAY PATH then this value class cannot tell
         # the two kernels apart at all and its agreement is a tautology. That is a
-        # PROPERTY OF THE VALUE CLASS, not a defect, so it is reported as
+        # property of the value class, not a defect, so it is reported as
         # `discriminating: false` with its reason and the gate-level floor demands
         # that at least one class discriminate.
         row["discriminating"] = row.get("divergence_from_the_array_path") is not None
@@ -1610,7 +1610,7 @@ def compile_mutant(source: str, kernel_name: str) -> Any:
               + "PERIODIC = tl.constexpr(0)\n"
               "METALLIC = tl.constexpr(1)\n\n")
     text = header + source.replace(KERNEL_NAME, kernel_name)
-    # A MUTATION THAT DOES NOT PARSE IS NOT A MUTATION. Checked before any device
+    # A mutation that does not parse is not a mutation. Checked before any device
     # work, so a broken rewrite is reported as unarmed rather than as caught.
     ast.parse(text)
     handle = tempfile.NamedTemporaryFile(
@@ -1630,7 +1630,7 @@ def _rewrite_block(source: str, before: Sequence[str],
                    after: Sequence[str]) -> Tuple[str, int]:
     """Replace a multi-line fragment, matching on the SIGNIFICANT statements only.
 
-    BLANK LINES AND COMMENTS ARE SKIPPED WHEN MATCHING and dropped from the span
+    Blank lines and comments are skipped when matching and dropped from the span
     that is replaced. Without that, a needle spanning two regions of the shipped
     body — the wall clear and the stores after it, say — matches nothing because a
     blank line or an explanatory comment sits between them, and the mutation is
@@ -1649,7 +1649,7 @@ def _rewrite_block(source: str, before: Sequence[str],
         if [lines[index].strip() for index in span] == needle:
             first, last = span[0], span[-1]
             indent = lines[first][:len(lines[first]) - len(lines[first].lstrip())]
-            # THE REPLACEMENT KEEPS ITS OWN RELATIVE INDENTATION and is re-prefixed
+            # The replacement keeps its own relative indentation and is re-prefixed
             # with the matched span's base. Stripping every line to the base instead
             # flattens a nested block, and `if ZM_X:` with its body pulled out to the
             # same column is a mutant that does not PARSE — reported as "armed" by
@@ -1683,12 +1683,13 @@ CASE_CARRIES: Dict[str, Tuple[str, ...]] = {
     "corpus_periodic_single_launch": ("layer",),
 }
 
-#: The BFAST pass's own mutations and the root forms' (KERNELS.md 7.1's inversions and
-#: 7.2's chunk-form battery): ``fold_pass_mutations``' shared spellings, the same text
-#: in every carrier of the pass. The two one-partner entries (``f_plain_branch_keeps_
-#: the_state``, ``f_absent_partner_read``) need a 2-D grid this probe's 3-D cases are
-#: not; they are scored by ``gate_triton_bfast`` on the curl, whose pass this product's
-#: is statement for statement (the transcription leg).
+#: The BFAST pass's own mutations and the root forms' (the inverted grouping mutations and
+#: the per-chunk form battery of docs/development/certification.md):
+#: ``fold_pass_mutations``' shared spellings, the same text in every carrier of the pass.
+#: The two one-partner entries (``f_plain_branch_keeps_the_state``,
+#: ``f_absent_partner_read``) need a 2-D grid this probe's 3-D cases are not; they are
+#: scored by ``gate_triton_bfast`` on the curl, whose pass this product's is statement for
+#: statement (the transcription leg).
 SHARED_MUTATIONS = (
     [entry for entry in fold_passes.bfast_mutations()
      if set(entry[4]) <= {"wall", "layer"}]
@@ -1892,7 +1893,7 @@ def run_mutations(cp, product, pristine_ptx: Sequence[str]) -> List[Dict[str, An
             continue
         case_name, case = mutation_case_for(name)
         row["case"] = case_name
-        # THE CARRY IS ON. A mutation scored without the deposit would leave the
+        # The carry is on. A mutation scored without the deposit would leave the
         # repair's interaction with the mutated register unmeasured on every leg but
         # the carry ones.
         leg = run_leg(cp, f"mutation:{name}", case[1], case[2], MUTATION_STEPS,
@@ -1987,15 +1988,16 @@ def _deposit(driver, component: str):
 # ---------------------------------------------------------------------------
 
 def environment(cp: Any = None) -> Dict[str, Any]:
+    import neutral_ids  # noqa: PLC0415
     import platform  # noqa: PLC0415
 
     out: Dict[str, Any] = {
-        "argv": list(sys.argv),
+        "argv": neutral_ids.argv(sys.argv),
         "python": sys.version.split()[0],
         "platform": platform.platform(),
         "numpy": np.__version__,
         "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
-        "cupy_cache_dir": os.environ.get("CUPY_CACHE_DIR"),
+        "cupy_cache_dir": neutral_ids.path(os.environ.get("CUPY_CACHE_DIR")),
     }
     try:
         import triton  # noqa: PLC0415

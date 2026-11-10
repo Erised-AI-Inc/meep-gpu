@@ -1,12 +1,12 @@
 """The COMPLEX stencil weld's arithmetic, measured on the host before a line of PTX.
 
-WHAT THIS PROBE IS FOR. The CUDA board records two COMPLEX off-diagonal cells as
+What this probe is for. The CUDA board records two COMPLEX off-diagonal cells as
 STENCIL-BLOCKED -- ``D_to_E (cuda_complex_folded/folded complex, cuda_complex_offdiag/
 complex off-diagonal PML)`` (3 demand rows, 1 clearing the source injection) and
 ``D_to_E (cuda_complex_no_pml/complex no-PML curl, cuda_complex_offdiag/complex
 off-diagonal no-PML)`` (2 demand rows, 1 clearing) -- with the verdict "the
 constitutive half reads the curl half's in-place output at a cell this thread does not
-own". That verdict is TRUE OF THE IN-PLACE WELD. It says nothing about the
+own". That verdict is true of the in-place weld. It says nothing about the
 SCRATCH-OUTPUT shape, in which the curl half writes a LAUNCH-LOCAL allocation, the
 constitutive half RECOMPUTES each foreign cell from pre-launch state through the same
 ``__device__`` function, and the launcher rotates the bindings afterwards.
@@ -17,19 +17,19 @@ closed form is not dtype-blind: **every multiply in it changes**, and the change
 exactly the class a float32 probe cannot see.
 
 =============================================================================
-THE THREE COMPLEX FACTS THIS PROBE IS BUILT TO CATCH
+The three complex facts this probe is built to catch
 =============================================================================
 
-1. **THE PARITY IS A FULL COMPLEX PRODUCT, NOT A WORD SCALE.** The array path spells
+1. **The parity is a full complex product, not a word scale.** The array path spells
    a mirror parity ``phase * plane`` with ``phase`` a Python int and ``plane``
    complex64 (stepping.py:1451, :1529-1532); the backend promotes the scalar and runs
    its complex multiply loop, whose zero cross terms carry the OTHER word's sign into
    an addend. A plane-wise ``{re*w, im*w}`` is byte-wrong on signed zeros. Armed here
    as ``parity_as_word_scale``.
-2. **AN EVEN MIRROR MAY NOT BE SKIPPED.** ``1 * z`` is not ``z``: the fused arm's real
+2. **An even mirror may not be skipped.** ``1 * z`` is not ``z``: the fused arm's real
    word is ``fma(1, z.re, (0*z.im) * -1.0f)``, which turns ``re = -0.0`` with a
    negative imaginary part into ``+0.0``. Armed as ``parity_skipped_at_plus_one``.
-3. **THE WALL CLEAR IS BOTH WORDS.** ``stepping._zero_metal`` assigns the INTEGER 0 to
+3. **The wall clear is both words.** ``stepping._zero_metal`` assigns the INTEGER 0 to
    a complex64 array, which is ``(+0.0f, +0.0f)``; a clear that touched only the real
    plane is a known defect class in this tree. Armed as ``clear_real_word_only``.
 
@@ -46,11 +46,11 @@ required:
 * **leg 1, THE DRIVER-ORDER IDENTITY.** Two COMPLETE driver steps, byte for byte as
   uint32 over every stored volume, with the D seam replaced by the closed form. This
   is the claim the product makes.
-* **leg 2, THE ADVERSARIAL RAW.** The three in-seam passes run by ``stepping`` itself
+* **leg 2, the adversarial raw.** The three in-seam passes run by ``stepping`` itself
   on a planted D, against the closed form evaluated on the SAME planted D. Same claim,
   on the input that makes the three facts above decidable.
 
-WHAT IT DOES NOT DO. It is not a gate and certifies nothing: NumPy is not NVRTC, and
+What it does not do. It is not a gate and certifies nothing: NumPy is not NVRTC, and
 the substitution, the launch counts and the device mutation battery belong to
 ``gate_cuda_complex_offdiag_stencil_welds.py``. What it removes is the possibility of
 discovering the ARITHMETIC is wrong from inside a device slot.
@@ -168,7 +168,7 @@ def compare(left: Dict[str, np.ndarray],
 # Seeding: the trap, and the catalogue that springs it
 # ---------------------------------------------------------------------------
 #
-# THE COMPLEX-PARITY TRAP, SPELLED IN CODE. A complex64 plane assembled as
+# The complex-parity trap, spelled in code. A complex64 plane assembled as
 # ``re + 1j*im`` is ITSELF a complex multiply -- ``1j * im`` runs the multiply loop
 # and rewrites zero signs -- so a probe that built its fixtures that way would be
 # measuring a plane it did not intend to write, and every signed-zero question would
@@ -196,7 +196,7 @@ ADVERSARIAL_WORDS: Tuple[Tuple[float, float], ...] = (
 def pack(real: Any, imag: Any) -> np.complex64:
     """A complex64 scalar from two float32 WORDS, with no complex multiply.
 
-    THE TRAP AGAIN, one scalar down: ``real + 1j*imag`` multiplies, and a multiply
+    The trap again, one scalar down: ``real + 1j*imag`` multiplies, and a multiply
     is exactly what rewrites the zero signs this probe exists to watch. numpy
     scalars are immutable, so the words are written into a one-element array's real
     and imaginary VIEWS and the element is read back out.
@@ -208,7 +208,7 @@ def pack(real: Any, imag: Any) -> np.complex64:
 
 
 def seed_state(fields: Any, seed: int) -> None:
-    """Physical-band values in every stored volume, written WORD BY WORD.
+    """Physical-band values in every stored volume, written word by word.
 
     A zero-filled volume agrees with a zero-filled volume, so the identity would be
     vacuous without this. Complex volumes get two INDEPENDENT real draws written
@@ -231,7 +231,7 @@ def seed_state(fields: Any, seed: int) -> None:
 def planted_volume(shape: Tuple[int, int, int], offset: int) -> np.ndarray:
     """A complex64 volume tiled from :data:`ADVERSARIAL_WORDS`, words written direct.
 
-    TILED OVER THE FLAT INDEX so every plane the resolution can touch -- stored row
+    Tiled over the flat index so every plane the resolution can touch -- stored row
     0, stored row ``MIRROR_ROW``, the reflect row, the top plane and the interior --
     carries several entries of the catalogue rather than one; ``offset`` rotates the
     tiling per component so the three do not agree cell for cell.
@@ -274,7 +274,7 @@ def grid_facts(fields: Any) -> Dict[str, Any]:
 # The closed form, PER CELL -- the kernel's complex ``resolve_D``, in Python
 # ---------------------------------------------------------------------------
 #
-# ONE SCALAR FUNCTION, ONE RAW TAP, and every multiply a FULL COMPLEX PRODUCT with
+# One scalar function, one raw tap, and every multiply a full complex product with
 # the coefficient on the LEFT -- ``np.complex64(weight) * value``, which is what
 # ``np.multiply(python_int, complex64)`` runs after promotion and is the array path's
 # own spelling. The three pass applications are the DRIVER'S ORDER (near fill, wall
@@ -554,7 +554,7 @@ def adversarial_leg(fields: Any, facts: Dict[str, Any], seed: int
                     ) -> Dict[str, Any]:
     """The three in-seam passes on a PLANTED D, against the closed form on the same.
 
-    THE CLAIM IS THE SAME as leg 1's and the INPUT is what differs: leg 1's D comes
+    The claim is the same as leg 1's and the INPUT is what differs: leg 1's D comes
     out of ``step_D`` and its words are ordinary normals, while this one's is tiled
     from :data:`ADVERSARIAL_WORDS`, so a signed zero sits under every redirect
     source, every cleared plane and every reflect row. The three complex nulls are
@@ -712,14 +712,14 @@ def run_case(name: str, family: str, build: Callable[[], Tuple[Any, Any]],
          "take from the wrong array",
          halo_source_unstepped=True)
 
-    # ----- THE THREE COMPLEX ARMS, on the adversarial input -----
+    # ----- The three complex arms, on the adversarial input -----
     null("parity_as_word_scale", live["near"] or live["far"],
          "no fold: no parity multiply happens at all on this fixture",
          adversarial_arm=True, parity_as_word_scale=True)
     null("parity_skipped_at_plus_one", live["even"],
          "no EVEN mirror plane on this fixture; the shortcut has nothing to skip",
          adversarial_arm=True, parity_skipped_at_plus_one=True)
-    # THE WALL CLEAR'S SECOND WORD. `clear_real_word_only` writes +0.0f into BOTH
+    # The wall clear's second word. `clear_real_word_only` writes +0.0f into BOTH
     # words here, which is what the array path does -- so on its own it is the
     # IDENTITY and would be a null that always predicts. What makes the question
     # decidable is that the DEVICE gate can bind a clear that leaves the imaginary
@@ -733,7 +733,7 @@ def run_case(name: str, family: str, build: Callable[[], Tuple[Any, Any]],
                   "the truth. Armed on the device gate, where the store is two "
                   "explicit float32 writes",
     }
-    # THE SCRATCH ITSELF IS NOT ARMABLE ON THIS WALK, and saying so is the point --
+    # The scratch itself is not armable on this walk, and saying so is the point --
     # see the real-storage probe's note. The deterministic host analogue is the
     # in-place raster resolution, measured and reported.
     nulls["scratch_aliased_to_storage"] = {
@@ -799,7 +799,7 @@ CASES: Tuple[Tuple[str, str, Callable[[], Tuple[Any, Any]],
     ("F_fold_odd_count", "F",
      lambda: matrix.folded(complex_storage=True, rows=_ALL_ROWS, extent=2.1),
      _ALL_ROWS, dict(near=True, far=True, even=True)),
-    # THE OTHER TERMINATION. A folded METALLIC axis has no far ghost at all
+    # The other termination. A folded METALLIC axis has no far ghost at all
     # (``_stored_past_owned`` is False), so the far machinery is dead and the near
     # fill is the whole of the fold -- a mutation caught on one termination is not
     # caught on the other.
@@ -807,7 +807,7 @@ CASES: Tuple[Tuple[str, str, Callable[[], Tuple[Any, Any]],
      lambda: matrix.folded(boundaries={"y": "metallic"}, complex_storage=True,
                            rows=_ALL_ROWS), _ALL_ROWS,
      dict(near=True, far=False, even=True)),
-    # THE ONE SHAPE THAT ARMS ``clear_order_flipped``: an ODD parity meeting a
+    # The one shape that arms ``clear_order_flipped``: an ODD parity meeting a
     # CLEARED plane, which needs a wall on an axis the fold does not own.
     ("F_fold_odd_walled", "F",
      lambda: matrix.folded(phase=-1, boundaries={"x": "metallic"},
@@ -821,7 +821,7 @@ CASES: Tuple[Tuple[str, str, Callable[[], Tuple[Any, Any]],
      lambda: matrix.folded(complex_storage=True, rows=_ALL_ROWS, depth=1.2),
      _ALL_ROWS, dict(near=True, far=True, even=True)),
     # --- Family N: complex no-PML curl x complex off-diagonal update_E -----------
-    # NO FOLD REACHES THIS FAMILY -- its curl half refuses one by name -- so every
+    # No fold reaches this family -- its curl half refuses one by name -- so every
     # fold arm below is a PREDICTED null with that reason, and the wall clear is the
     # whole of the in-seam work.
     ("N_no_pml_one_row", "N",
@@ -852,7 +852,7 @@ def main() -> int:
     matrix.prepare_environment()
 
     log("=" * 78)
-    log("THE HAND-CUDA COMPLEX STENCIL WELDS -- host arithmetic, no device")
+    log("The hand-CUDA complex stencil welds -- host arithmetic, no device")
     log("=" * 78)
     log(f"policy      : {os.environ['MEEP_GPU_SUBNORMAL_POLICY']}")
     log(f"cases       : {len(CASES)}")

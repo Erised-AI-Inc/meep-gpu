@@ -46,11 +46,23 @@ FORMAT = "capsule_identity/1"
 PERTURBATION = 2.0 ** -20
 
 
+def _neutral_ids():
+    """The record spellings of machine stamps: ``neutral_ids.py`` beside this file. A leg's
+    manifest, the comparison report and the progress log leave the machine, so every path
+    they name is written under its root's label and this host's names as its machine id."""
+    try:
+        import neutral_ids  # noqa: PLC0415
+    except ImportError:  # imported as a package module, not from parity/meep_gpu
+        from parity.meep_gpu import neutral_ids  # noqa: PLC0415
+    return neutral_ids
+
+
 class _Progress:
     def __init__(self, path: str, tag: str):
         self.path, self.tag, self.t0 = path, tag, time.time()
 
     def say(self, text: str) -> None:
+        text = _neutral_ids().text(text)
         line = f"{time.strftime('%H:%M:%S')} +{time.time() - self.t0:8.2f}s [{self.tag}] {text}"
         print(line, flush=True)
         with open(self.path, "a", encoding="utf-8") as handle:
@@ -155,12 +167,15 @@ def _step_rows(driver: Any, schedule: List[int], out: str, progress: _Progress,
 
 
 def _environment() -> Dict[str, Any]:
-    return {"python": sys.executable, "python_version": platform.python_version(),
+    """The leg's environment as its manifest records it: the interpreter under its root's
+    label, and the path-valued variables through ``neutral_ids.environment``."""
+    neutral = _neutral_ids()
+    return {"python": neutral.path(sys.executable), "python_version": platform.python_version(),
             "numpy": numpy.__version__, "machine": platform.machine(), "system": platform.system(),
             "niceness": os.nice(0),
-            "environ": {key: os.environ.get(key) for key in (
+            "environ": neutral.environment({key: os.environ.get(key) for key in (
                 "PYTHONPATH", "MEEP_GPU_DISPATCH", "PYTHONDONTWRITEBYTECODE", "PYTHONPYCACHEPREFIX",
-                "OMP_NUM_THREADS")}}
+                "OMP_NUM_THREADS")})}
 
 
 def _start(out: str, tag: str) -> _Progress:
@@ -174,8 +189,11 @@ def _start(out: str, tag: str) -> _Progress:
 def _finish(out: str, manifest: Dict[str, Any], rc: int) -> int:
     manifest["rc"] = rc
     manifest["finished"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+    # Every path the manifest names (the cases file, the capsule, MEEP's and the package's
+    # files) and an error's text are written neutrally; nothing reads them back as paths
+    # (``compare`` and ``--schedule-from`` take directories and files from the command line).
     with open(os.path.join(out, "manifest.json"), "w", encoding="utf-8") as handle:
-        json.dump(manifest, handle, indent=1, sort_keys=True)
+        json.dump(_neutral_ids().value(manifest), handle, indent=1, sort_keys=True)
     with open(os.path.join(out, "DONE"), "w", encoding="utf-8") as handle:
         handle.write(f"rc={rc}\n")
     return rc
@@ -386,7 +404,7 @@ def compare(args: argparse.Namespace) -> int:
                                            else not report["identical"])
     report["passed"] = passed
     with open(out, "w", encoding="utf-8") as handle:
-        json.dump(report, handle, indent=1, sort_keys=True)
+        json.dump(_neutral_ids().value(report), handle, indent=1, sort_keys=True)
     progress.say(f"identical {report['identical']} (expected {args.expect}); planted caught "
                  f"{report['planted_caught']}; PASSED {passed}")
     return 0 if passed else 1

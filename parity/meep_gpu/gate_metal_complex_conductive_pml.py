@@ -11,7 +11,7 @@ The gate is intentionally narrow: it certifies this one family, not a complete
 driver step or production dispatch.  It also runs only under the explicit MPS
 ``flush`` subnormal policy; every product records a zero subnormal census.
 
-THE PER-CHUNK FORMS (bit_parity_0_10, KERNELS.md §7, steps M4/M5). Each plan binds
+THE PER-CHUNK FORMS (the Metal conductive and complex kernels). Each plan binds
 the chunk record of the division the reference steps with (``gate_chunk_records.
 layer_record``), and a target's case is its chunk's: MEEP's four conductive forms on a
 lossy target, ``f_cond`` only on dsig cells and ``fu`` only on dsigu cells, and a
@@ -20,10 +20,10 @@ census (every conductive form and both lossless forms, on the record it binds), 
 form no product reaches fails the gate, because a mutation of that form would be
 vacuous.
 
-The mutations follow. The grouping mutations are INVERTED (§7.1): the shipped stencil
+The mutations follow. The grouping mutations are INVERTED: the shipped stencil
 and the shipped ``f_cond`` increment ``(fcnd' - fcnd)``, formed first, are MEEP's
 groupings, so ``curl_previous_grouping`` and ``increment_previous_grouping`` plant the
-package's previous groupings and must be caught. The §7.2 battery is armed on the
+package's previous groupings and must be caught. The per-chunk form battery is armed on the
 conductive and lossless tails (``b*``); the record mutations (``b3``, ``b4``) hand the
 shipped kernel a wrong record while the reference steps the true division; the one
 declared null (``b7``, an ``f_cond`` load hoisted above the select with every store
@@ -314,7 +314,7 @@ def mutation_table() -> Dict[str, Dict[str, Any]]:
             "source": _needle(full, "c_mul_coefficient_left(dtdx, ((c_y - c_dy) + b_dz) - b_z)",
                               "c_mul_coefficient_left(dtdx, (c_y - c_dy) + (b_dz - b_z))"),
             "must_catch": True, "mixed": False,
-            "why": "INVERTED (KERNELS.md §7.1): the package's previous pairwise grouping "
+            "why": "INVERTED (docs/development/certification.md#inverted-grouping-mutations): the package's previous pairwise grouping "
                    "(g1s - g1) + (g2 - g2s) planted in place of MEEP's left-to-right "
                    "((g1s - g1) + g2) - g2s, per part"},
         "increment_previous_grouping": {
@@ -326,7 +326,7 @@ def mutation_table() -> Dict[str, Dict[str, Any]]:
                  "float2 fn0 = c_mul_field_left((c_mul_field_left(fp0, km_y) + hn0) - hp0, "
                  "si_y);"))),
             "must_catch": True, "mixed": False,
-            "why": "INVERTED (KERNELS.md §7.1): the package's previous grouping "
+            "why": "INVERTED (certification.md#inverted-grouping-mutations): the package's previous grouping "
                    "((x*kms) + fcnd') - fcnd planted in place of MEEP's increment "
                    "(fcnd' - fcnd) formed first (step_generic.cpp:167, :209), on the "
                    "both-layer and dsig-only forms"},
@@ -417,7 +417,7 @@ def _lattices_swapped(record: Any) -> Any:
     return out
 
 
-#: The record mutations (KERNELS.md §7.2): the kernel is the shipped one and the record
+#: The form battery's record mutations: the kernel is the shipped one and the record
 #: it is handed is not; the reference steps the true division.
 RECORD_MUTATIONS: Dict[str, Tuple[Any, str]] = {
     "b3_bound_off_by_one": (_bound_off_by_one, "a run end one row past the chunk"),

@@ -1,13 +1,13 @@
 """The hand-CUDA ADE ``update_P`` family, checked with no GPU in the room.
 
-WHAT THIS FILE CAN AND CANNOT SAY. ``ade_kernels.py`` imports CuPy at module
+What this file can and cannot say. ``ade_kernels.py`` imports CuPy at module
 scope, so nothing here imports it; the device strings are read off the SYNTAX
 TREE and the predicate is imported from the CuPy-free ``coverage.py``. That
 splits the family's claims cleanly in two:
 
   * the ADMISSION -- which configurations are refused, and by which clause -- is
-    pure decision logic whose failure mode is a SILENT WRONG ANSWER, and it is
-    fully exercised and mutated here, at the merge bar. MEASURED 2026-08-19 by
+    pure decision logic whose failure mode is a silent wrong answer, and it is
+    fully exercised and mutated here, at the merge bar. Measured 2026-08-19 by
     an adversarial sweep that disables one clause at a time: all 38 clauses of
     ``covers_real_pml_ade_component`` and ``covers_real_pml_ade_update_p`` are
     refused by the case that names them, and by no other. Before the sweep, 19
@@ -44,7 +44,7 @@ HERE = pathlib.Path(__file__).parent
 REPO = HERE.parents[1]
 RECORD = HERE / "certification.json"
 
-#: THE BLOCK THAT DESCRIBES THE TREE AS IT SHIPS, which is not the same block as the
+#: The block that describes the tree as it ships, which is not the same block as the
 #: one the original release was cut from. ``ade_2026-08-19`` is the release record and
 #: stays exactly as it was; it carried the tree between runs through
 #: ``post_certification_edits``, each entry an argument for why an edited subject
@@ -53,7 +53,7 @@ RECORD = HERE / "certification.json"
 #: whose whole business is the float32 policy the two legs are cut under, which is the
 #: one kind of edit no prose should be asked to excuse. So the gate was RE-CUT on
 #: device against these bytes (``record_cuda_ade_recut.py``), and this constant names
-#: the block that run produced. It moves with each re-cut, the same way
+#: the block that run produced. It moves with each re-cut (and each new certification,
 #: ``metal_dispatch.METAL_DRIVER_ROUTE_GATE`` does, and for the same reason: the name
 #: of the run a claim rests on belongs in the source, not in a reader's memory.
 SHIPPING_RECORD_BLOCK = "cuda_ade_recut_2026-10-05_cc86_residue"
@@ -122,7 +122,7 @@ def device_sources(source: str) -> dict:
 
 
 # --------------------------------------------------------------------------
-# THE TRANSCRIPTION
+# The transcription
 # --------------------------------------------------------------------------
 
 def test_the_store_is_meeps_grouping_in_the_four_realnum_words():
@@ -182,7 +182,7 @@ def test_the_two_variants_differ_only_in_the_sigma_binding():
 
 
 def test_every_device_string_is_pure_ascii():
-    """A COMPILE REQUIREMENT, not a style rule.
+    """A compile requirement, not a style rule.
 
     ``cupy.cuda.compiler.compile_using_nvrtc`` writes the source through a bare
     ``open(..., 'w')``, so the bytes go through the interpreter's LOCALE
@@ -217,7 +217,7 @@ def test_no_unary_minus_and_no_division_on_any_float_path():
 
 
 # --------------------------------------------------------------------------
-# THE PARTITION AND THE COMPILE OPTIONS
+# The partition and the compile options
 # --------------------------------------------------------------------------
 
 def test_the_family_ships_two_kernels_and_it_is_partitioned():
@@ -304,7 +304,7 @@ def test_every_certified_name_has_a_record_block_behind_it():
         identical, ran = leg["multi_step"].split("/")
         assert identical == ran and int(ran) > 0, (policy, leg["multi_step"])
 
-        # THE GUARD MUST DIVERGE or --fmad=false is decorative here.
+        # The guard must diverge or --fmad=false is decorative here.
         identical, ran = leg["guard_control_identical"].split("/")
         assert int(identical) == 0 < int(ran), (policy, leg["guard_control_identical"])
 
@@ -326,7 +326,7 @@ def test_the_record_block_pins_the_device_strings_that_ship_today():
     that no longer exists. The digests are recomputed from the syntax tree, so a
     changed comment inside a kernel fails here rather than in a device queue.
 
-    READ OFF :data:`SHIPPING_RECORD_BLOCK`, which is the re-cut rather than the dated
+    Read off :data:`SHIPPING_RECORD_BLOCK`, which is the re-cut rather than the dated
     release. The subject half below is the reason: a subject that has moved since its
     gate ran must be DECLARED, and a declaration is an argument where a run would be a
     measurement. Pointing this at the freshest run keeps the declarations for the case
@@ -342,7 +342,7 @@ def test_the_record_block_pins_the_device_strings_that_ship_today():
     for name, text in sources.items():
         assert recorded[name] == hashlib.sha256(text.encode("utf-8")).hexdigest(), (
             f"{name}'s device string is not the one the gate compiled")
-    # MEMBERSHIP AND ORDER, which per-string digests alone do not pin. The dated
+    # Membership and order, which per-string digests alone do not pin. The dated
     # block spelled this as a hash of the two strings concatenated in
     # CERTIFIED_KERNELS order; a gate payload cannot produce that digest, and a
     # recorder that computed it from the tree would be pinning the tree against
@@ -390,22 +390,31 @@ def test_the_shipping_block_is_a_re_cut_of_the_dated_release_and_agrees_with_it(
     the older and :data:`SHIPPING_RECORD_BLOCK` is pointing at the wrong evidence. The
     dated block itself is never edited: it records what the original release was cut
     against, including the post-gate edits that carried it, and that is its whole
-    value.
+    value. A block that certifies anew (``new_certification_after``, written by
+    ``record_cuda_ade_recut.py --new-certification``) follows the block it names with
+    the same module, names, policies and budget, and with device strings that moved:
+    were they all equal it would have been a re-cut.
     """
     import json  # noqa: PLC0415
 
     record = json.loads(RECORD.read_text(encoding="utf-8"))
     shipping = record[SHIPPING_RECORD_BLOCK]
-    dated = record[shipping["re_cuts"]]
+    anew = "new_certification_after" in shipping
+    dated = record[shipping["new_certification_after"] if anew else shipping["re_cuts"]]
     assert shipping["passed"] is True
     assert shipping["kernel_module"] == dated["kernel_module"]
     assert set(shipping["certified_kernels"]) == set(dated["certified_kernels"])
     assert sorted(shipping["policies_cut_under"]) == \
         sorted(dated["policies_cut_under"])
     assert shipping["multi_step_budget"] == dated["multi_step_budget"]
-    for name, digest in shipping["device_source_sha256"].items():
-        assert dated["device_source_sha256"][name] == digest, (
-            f"{name}'s device string moved between the release and the re-cut, so "
+    moved = sorted(name for name, digest in shipping["device_source_sha256"].items()
+                   if dated["device_source_sha256"][name] != digest)
+    if anew:
+        assert moved, ("a new certification whose device strings all equal the block "
+                       "it follows is a re-cut of that block")
+    else:
+        assert not moved, (
+            f"{moved}: device strings moved between the release and the re-cut, so "
             f"this is a new certification rather than a re-measurement")
     # Both legs released, and the unguarded control diverged on both -- without that
     # the guarded 242/242 is a number with nothing to be measured against.
@@ -427,7 +436,7 @@ def test_the_docstring_records_the_verdict_and_what_it_does_not_cover():
     that carries the rotation, and -- because certification is a statement about
     bytes and not about wiring -- that nothing dispatches it.
 
-    AND THE THIN LEG, WITH ITS COUNT. The gate's fold coverage is two guarded
+    And the thin leg, with its count. The gate's fold coverage is two guarded
     single-launch cases on one X plane, with nothing folded in the multi-step leg
     or the mutation battery. The first transcription of this said the gate swept
     unfolded grids ONLY, which the case records disprove -- so the docstring is
@@ -469,7 +478,7 @@ def test_the_compile_options_match_all_three_siblings():
 
 
 # --------------------------------------------------------------------------
-# THE TRANSCRIBED TABLES
+# The transcribed tables
 # --------------------------------------------------------------------------
 
 def test_the_susceptibility_kinds_match_the_engine_and_the_sibling_track():
@@ -521,7 +530,7 @@ def test_the_mirror_admission_record_is_self_consistent():
 
 
 # --------------------------------------------------------------------------
-# THE PREDICATE, AND EVERY CLAUSE MUTATED
+# The predicate, and every clause mutated
 # --------------------------------------------------------------------------
 
 #: The shim's grid, named once so a case that has to construct a volume itself
@@ -537,7 +546,7 @@ class _Raising:
     """An object that raises ``_BOOM`` from whatever the predicate reads.
 
     Iterated for the polarization list and the coefficient triple, read for a
-    dtype as a buffer. A RAISE IS NOT A REFUSAL unless something catches it, and
+    dtype as a buffer. A raise is not a refusal unless something catches it, and
     these are the cases that say which clause catches it.
     """
 
@@ -569,7 +578,7 @@ def _shim(**over):
     which is the same shim the 186-row battery uses: it satisfies the backend
     clause and NOTHING else, so every other clause is exercised for real.
 
-    EVERY KNOB DRIVES EXACTLY ONE CLAUSE, and that is the property the table
+    Every knob drives exactly one clause, and that is the property the table
     below rests on. Two facts a real ``Grid`` always carries together are still
     separate knobs here. ``cylindrical`` and ``axis`` are the case that forced
     it: the shim used to derive ``is_axis(0)`` from ``cylindrical``, so the Dcyl
@@ -717,7 +726,7 @@ def test_a_mirror_fold_is_admitted_and_that_is_the_point():
 #: One case per clause of :func:`coverage.covers_real_pml_ade_component`, each
 #: carrying the WHOLE refusal string that clause and only that clause produces.
 #:
-#: THE STRINGS ARE TRANSCRIBED, not imported or matched by fragment, and that is
+#: The strings are transcribed, not imported or matched by fragment, and that is
 #: the point of the table. A fragment is satisfied by a NEIGHBOUR: measured on
 #: 2026-08-19 by an adversarial sweep that deleted one clause at a time, two of
 #: the nineteen fragment cases still passed with their own clause gone --
@@ -850,7 +859,7 @@ def test_no_two_clauses_are_expected_to_say_the_same_thing():
 
 @pytest.mark.parametrize("label,over,reason", CLAUSE_CASES)
 def test_every_clause_refuses_with_its_own_whole_string(label, over, reason):
-    """One mutation per clause, each required to be caught BY THAT CLAUSE.
+    """One mutation per clause, each required to be caught by that clause.
 
     Asserting only ``not covered`` would pass if an unrelated clause fired
     first, which is how a widened predicate hides: it still refuses the case,
@@ -877,7 +886,7 @@ def test_the_backend_clause_fires_before_anything_else():
 
 
 def test_an_unreadable_grid_is_a_refusal_and_not_a_raise():
-    """A RAISE IS NOT A REFUSAL unless something catches it.
+    """A raise is not a refusal unless something catches it.
 
     The predicate is read by a planner deciding whether to dispatch, so an
     exception escaping it is a crashed run where a fail-closed no was correct.
@@ -1004,7 +1013,7 @@ def test_sigma_is_volume_is_decided_in_exactly_one_place():
 
 
 def test_the_launcher_resolves_pointers_after_the_rotation_not_before():
-    """THE DEFECT A SINGLE-LAUNCH GATE CANNOT SEE, pinned structurally.
+    """The defect a single-launch gate cannot see, pinned structurally.
 
     ``PolarizationState.update`` rotates ``P``/``P_prev``/``_scratch`` per
     component, and the retired history becomes the NEXT component's scratch. A
@@ -1025,7 +1034,7 @@ def test_the_launcher_resolves_pointers_after_the_rotation_not_before():
     component_loop = loops[-1]
     statements = [ast.unparse(node) for node in component_loop.body]
 
-    # THE READS AS WHOLE STATEMENTS, not as substrings of the loop body. Asking
+    # The reads as whole statements, not as substrings of the loop body. Asking
     # whether "state.P[component]" appears anywhere is satisfied by the ROTATION
     # that writes it, so a launcher that cached the views and only wrote them back
     # would pass -- measured, on 2026-08-19: that mutation was MISSED by the
@@ -1058,10 +1067,10 @@ def test_the_launcher_resolves_pointers_after_the_rotation_not_before():
 
 
 # --------------------------------------------------------------------------
-# THE LAUNCH ARGUMENT LIST — the leg that was measured once and thrown away
+# The launch argument list — the leg that was measured once and thrown away
 # --------------------------------------------------------------------------
 #
-# MEASURED 2026-08-19 by an adversarial sweep: 22 mutations against the 38 tests
+# Measured 2026-08-19 by an adversarial sweep: 22 mutations against the 38 tests
 # that shipped with this module left NINE survivors, and every survivor was in
 # ``_launch``. Four are failure modes this module's own docstring calls fatal:
 #
@@ -1124,7 +1133,7 @@ def _executing_kernel(launches):
 def ade_module(monkeypatch):
     """Import ``ade_kernels`` behind a fake ``cupy``.
 
-    THE REASON THIS FIXTURE EXISTS IS THE REASON THE LEG WAS MISSING. This file's
+    The reason this fixture exists is the reason the leg was missing. This file's
     docstring says nothing here imports ade_kernels because it imports CuPy at
     module scope — true, and it is also why ``_launch`` shipped untested while
     four docstring-fatal defects in it passed 38 green tests. ``_launch`` itself
@@ -1185,7 +1194,7 @@ def test_the_launch_argument_list_is_pinned_by_execution(ade_module):
     assert len(launches) == 1, launches
     record_ = launches[0]
 
-    # THE GEOMETRY MUST COVER EVERY ELEMENT. A dropped ceiling leaves a tail
+    # The geometry must cover every element. A dropped ceiling leaves a tail
     # unwritten, which is silent in any test that does not count.
     assert record_["reach"] >= record_["n_elem"], (
         f"launch geometry reaches {record_['reach']} of {record_['n_elem']} "
@@ -1193,7 +1202,7 @@ def test_the_launch_argument_list_is_pinned_by_execution(ade_module):
     assert record_["n_elem"] == out.size and record_["shape"] == shape
     assert record_["own_axis"] == 1
 
-    # P MUST NOT BE WRITTEN IN PLACE: the recurrence reads P and P_prev while
+    # P must not be written in place: the recurrence reads P and P_prev while
     # writing the result, so aliasing the destination onto either input
     # corrupts the read for every later element in the same launch.
     assert not record_["wrote_into_input"], (

@@ -1,6 +1,6 @@
 """The NO-ABSORBER COMPLEX stencil weld: complex no-PML curl x off-diagonal ``update_E``.
 
-THE CELL, AND WHAT WAS RECORDED ABOUT IT. ``D_to_E (cuda_complex_no_pml/complex
+The cell, and what was recorded about it. ``D_to_E (cuda_complex_no_pml/complex
 no-PML curl, cuda_complex_offdiag/complex off-diagonal no-PML)`` carries 2 corpus
 rows -- ``tests:TestMaterialGrid.test_matgrid_3d`` and
 ``tests:TestMaterialGrid.test_subpixel_smoothing`` -- of which ONE clears the source
@@ -12,7 +12,7 @@ module is that shape's no-absorber arm, and :mod:`.folded_complex_offdiag_fused_
 electric_pair` is its folded twin.
 
 =============================================================================
-WHAT IS SHORTER HERE, AND WHAT THAT REMOVES RATHER THAN CHANGES
+What is shorter here, and what that removes rather than changes
 =============================================================================
 
 The seam is SHORTER than the folded twin's rather than differently filled, and every
@@ -40,7 +40,7 @@ difference is a subtraction:
   ``complex_pml_kernels.complex_boundary_codes`` and
   ``complex_offdiag_update_e.complex_offdiag_boundary_codes`` disagree.
 
-WHAT DOES NOT CHANGE is the folded twin's chunk-form binding: one chunk record and
+What does not change is the folded twin's chunk-form binding: one chunk record and
 one connection table serve both halves. The curl reads the record's partner-presence
 word at every cell it is evaluated at (the thread's own and every recomputed one; with
 no absorber no chunk carries a layer, so no membership row is read), and the
@@ -53,7 +53,7 @@ following it -- :mod:`.complex_offdiag_stencil_weld`'s measurements, derived in 
 docstring.
 
 =============================================================================
-THE CONDUCTIVE ARM IS REFUSED BY NAME
+The conductive arm is refused by name
 =============================================================================
 
 ``complex_no_pml_kernels`` emits TWO curl arms, plain and conductive, and this weld
@@ -64,7 +64,7 @@ and the refusal is doubled, because on that route the driver also deposits elect
 sources through ``_inject_electric_through_conductivity``.
 
 =============================================================================
-THE DEPOSIT IS REFUSED, AND THAT IS A MEASUREMENT
+The deposit is refused, and that is a measurement
 =============================================================================
 
 :data:`CARRIES_DEPOSIT_REPAIR` is ``False`` for the real off-diagonal welds' reason
@@ -74,7 +74,7 @@ from THAT cell's displacement, while this constitutive reads its NEIGHBOURS' -- 
 every row of this cell carries one by construction. The ceiling is the rows that
 clear the injection on the driver fact alone: 1 of this cell's 2.
 
-NOTHING HERE IS DISPATCH. ``meep_gpu.fastpath.plan_fast_path`` still returns ``None``
+Nothing here is dispatch. ``meep_gpu.fastpath.plan_fast_path`` still returns ``None``
 on every branch.
 """
 
@@ -107,7 +107,7 @@ except ImportError:  # a host with no CuPy: only the launch is unavailable
 
 
 # =============================================================================
-# THE PARTITION -- EMPTY ON THE CERTIFIED SIDE UNTIL A GATE MOVES IT
+# The partition -- empty on the certified side until a gate moves it
 # =============================================================================
 
 #: Byte-identical with a gate verdict AND a record behind it. RECORDED 2026-09-02 as
@@ -127,7 +127,7 @@ CERTIFIED_KERNELS: Tuple[str, ...] = (
 #: ``parity/meep_gpu/probe_cuda_complex_offdiag_scratch_weld.py``.
 UNCERTIFIED_KERNELS: Dict[str, str] = {}
 
-#: FALSE, and MEASURED off ``deposit_repair.repairable`` rather than chosen -- see
+#: False, and measured off ``deposit_repair.repairable`` rather than chosen -- see
 #: the module docstring. The host suite asserts it against the census for THIS
 #: cell's rows rather than against this comment.
 CARRIES_DEPOSIT_REPAIR = False
@@ -189,13 +189,13 @@ __all__ = [
 
 
 # =============================================================================
-# THE DEVICE CODE
+# The device code
 # =============================================================================
 
 def prelude() -> str:
     """Both certified preludes plus the weld's own helpers, in dependency order.
 
-    THE ORDER IS FORCED AND IS NOT A STYLE CHOICE -- see the folded twin's
+    The order is forced and is not a style choice -- see the folded twin's
     :func:`folded_complex_offdiag_fused_electric_pair.prelude`. Each piece is found
     by an exact anchor in the shared lift rather than by position here.
     """
@@ -216,15 +216,15 @@ def signature(row_mask: Sequence[int]) -> str:
                         for slot, flag in enumerate(mask) if flag])
     return f'''
 extern "C" __global__ void {KERNEL_NAME}(
-    // THE SCRATCH OUTPUTS, as the float32 word views of complex64 volumes. A
-    // DIFFERENT ALLOCATION from the group below -- assert_scratch_is_disjoint
+    // The scratch outputs, as the float32 word views of complex64 volumes. A
+    // different allocation from the group below -- assert_scratch_is_disjoint
     // checks it by base address before every launch -- and that separation is the
     // whole design: nothing this launch reads is ever a word this launch wrote, so
     // every foreign sample is a pure function of unwritten memory rather than a
     // race with another block. THREE, not six: this arm has no auxiliary.
     float* __restrict__ f0_out, float* __restrict__ f1_out,
     float* __restrict__ f2_out,
-    // THE PRE-LAUNCH STATE, read at ANY cell by ANY thread and written by none.
+    // The pre-launch state, read at ANY cell by ANY thread and written by none.
     // The certified curl body's own names, because it is spliced verbatim.
     const float* __restrict__ f0, const float* __restrict__ f1,
     const float* __restrict__ f2,
@@ -256,14 +256,14 @@ extern "C" __global__ void {KERNEL_NAME}(
     // body reads it on the ghost lane; DEAD on every grid this family admits,
     // because its curl half refuses a mirror fold by name.
     float gw_x, float gw_y, float gw_z,
-    // THE PARTNER-AXIS CONNECTION, BOUND ONCE FOR BOTH HALVES: kinds (none, the
+    // The partner-axis connection, bound once for both halves: kinds (none, the
     // unfused product, a negation) and float32 parts. The D curl's operand read
     // at the cell itself and the off-diagonal pair's same-index operand both take
     // the not-owned word ABOVE the stored window, eikna
     // (complex_pml_kernels.bloch_phase_arguments(grid, True)).
     int ph_x, int ph_y, int ph_z,
     float pxr, float pxi, float pyr, float pyi, float pzr, float pzi,
-    // THE OWN-AXIS CONNECTION -- the near product's, conj(eikna), the word BELOW
+    // The own-axis connection -- the near product's, conj(eikna), the word BELOW
     // the window: the constitutive half alone.
     int oh_x, int oh_y, int oh_z,
     float oxr, float oxi, float oyr, float oyi, float ozr, float ozi,
@@ -277,7 +277,7 @@ extern "C" __global__ void {KERNEL_NAME}(
     int reflect_x, int reflect_y, int reflect_z,
     float near_phase_x, float near_phase_y, float near_phase_z,
     float far_phase_x, float far_phase_y, float far_phase_z,
-    // THE RUN'S CHUNK RECORD (chunk_map.chunk_bounds_record), one int32[25]
+    // The run's chunk record (chunk_map.chunk_bounds_record), one int32[25]
     // device vector for both halves: the curl's partner presence at every cell it
     // is evaluated at, the constitutive's chunk labels.
     const int* __restrict__ cb
@@ -311,12 +311,12 @@ def kernel_source(row_mask: Sequence[int]) -> str:
         "    const int i = idx / (ny * nz);",
         "",
         _weld.weld_args_construction(ARM),
-        "    // THE CURL HALF. The result goes to the SCRATCH; there is no",
+        "    // The curl half. The result goes to the SCRATCH; there is no",
         "    // auxiliary on this arm, so the raw call hands back one array.",
         "    cf d_raw[3];",
         "    raw_step_D_cell(i, j, k, weld, d_raw);",
         "",
-        "    // THE IN-SEAM PASSES, resolved for this thread's own cell in the",
+        "    // The in-seam passes, resolved for this thread's own cell in the",
         "    // driver's order. The wall clear is the one with work to do here; the",
         "    // two fill arms are inert because this family's curl half refuses a",
         "    // mirror fold by name. The SAME function the constitutive half calls",
@@ -387,7 +387,7 @@ def covers_complex_no_pml_offdiag_fused_electric_pair(
 
     Returns ``(covered, reason)`` with ``reason`` naming the FIRST refusal.
 
-    A CONJUNCTION, AND NOTHING IS WEAKENED. ``covers_complex_no_pml_curl(step_D)``
+    A conjunction, and nothing is weakened. ``covers_complex_no_pml_curl(step_D)``
     and ``covers_complex_no_pml_offdiag_update_e`` are both asked in full.
     What this predicate ADDS is the seam clauses: the PLAIN curl arm (the
     conductive one is a different certified tail and is refused by name), the fill
@@ -403,7 +403,7 @@ def covers_complex_no_pml_offdiag_fused_electric_pair(
     if not covered:
         return False, f"constitutive half: {reason}"
 
-    # THE PLAIN CURL ARM, AND ONLY IT. complex_no_pml_kernels emits two tails and
+    # The plain curl arm, and only it. complex_no_pml_kernels emits two tails and
     # this weld lifts _curl_source(..., False, ...); a conductive run is a
     # DIFFERENT certified recurrence, and serving it with this one would be a wrong
     # answer rather than a crash. The driver's condinv-scaled electric deposit sits
@@ -416,7 +416,7 @@ def covers_complex_no_pml_offdiag_fused_electric_pair(
                        "_inject_electric_through_conductivity (driver.py:3319), "
                        "which rescales the increment by condinv")
 
-    # THE FILL PLAN MUST BE BUILDABLE, and its refusals are this weld's rather than
+    # The fill plan must be buildable, and its refusals are this weld's rather than
     # inherited: an unreadable plane phase would launch a NaN weight and an axis
     # reported both folded and walled would put the wall clear on a plane MEEP
     # steps. Each is a plane of wrong values rather than a crash, which is why the
@@ -431,7 +431,7 @@ def covers_complex_no_pml_offdiag_fused_electric_pair(
                        "by name, and a folded grid reaching here would mean the two "
                        "readings of the fold had diverged")
 
-    # THE ONE BOUNDARY TRIPLE MUST BE ONE NUMBER BY BOTH ROUTES, and the folded
+    # The one boundary triple must be one number by both routes, and the folded
     # twin is where they are allowed to differ. A disagreement here is a wrong
     # ghost rule on a whole plane rather than a crash.
     try:
@@ -440,7 +440,7 @@ def covers_complex_no_pml_offdiag_fused_electric_pair(
         return False, (f"the boundary triple this launch binds once for both "
                        f"halves: {type(exc).__name__}: {exc}")
 
-    # THE SAME, FOR THE CONNECTION TABLES. The certified curl connects plane 0 with
+    # The same, for the connection tables. The certified curl connects plane 0 with
     # eikna for step_D and the certified constitutive's partner-axis operand takes the
     # same table; the near product's own-axis table is conj(eikna). Binding one where
     # the other belonged is a phase error that leaves every magnitude plausible, and
@@ -451,7 +451,7 @@ def covers_complex_no_pml_offdiag_fused_electric_pair(
         return False, (f"the Bloch table this launch binds once for both halves: "
                        f"{type(exc).__name__}: {exc}")
 
-    # THE SOURCE SEAM, REFUSED RATHER THAN CARRIED -- see CARRIES_DEPOSIT_REPAIR.
+    # The source seam, refused rather than carried -- see CARRIES_DEPOSIT_REPAIR.
     seam = _deposit_repair.seam_source_reasons(
         fields, sources, "D",
         undeclared=(
@@ -489,7 +489,7 @@ def covers_complex_no_pml_offdiag_fused_electric_pair(
 #: The nine pointers this launch binds, in signature order: D (``f0/f1/f2``), the
 #: curl's operands (``g0/g1/g2``) and E.
 #:
-#: THE CURL'S OPERANDS ARE SPELLED AS **B**, NOT H, AND THAT IS NOT A NAMING CHOICE.
+#: The curl's operands are spelled as **B**, not H, and that is not a naming choice.
 #: ``Fields.enable_field_storage`` deliberately does not allocate H without an
 #: absorber -- "``update_H`` writes nothing without PML, so a stored H would sit at
 #: zero for the whole run while ``get_H`` returned it" (fields.py:653-668) -- and
@@ -590,7 +590,7 @@ def complex_no_pml_offdiag_fused_electric_pair_scratch(fields: Any) -> Dict[str,
 def assert_scratch_is_disjoint(fields: Any, scratch: Dict[str, Any]) -> int:
     """No scratch volume is a bound input, and no two restrict arguments alias.
 
-    THE FIRST CHECK IS THE DESIGN, not a convention: if ``f0_out`` were ``Dx`` the
+    The first check is the design, not a convention: if ``f0_out`` were ``Dx`` the
     launch would be the IN-PLACE weld the board refused, and every foreign
     recompute would read words other blocks had already overwritten.
     """
@@ -669,13 +669,13 @@ def launch_complex_no_pml_offdiag_fused_electric_pair(
         row_mask: Sequence[int], rows: Sequence[Any], kept: Sequence[int],
         chunk_bounds: Any,
         kernel: Optional[Any] = None) -> Dict[str, Any]:
-    """All three of :data:`REPLACES` in ONE launch. THE CALLER ROTATES AFTERWARDS.
+    """All three of :data:`REPLACES` in ONE launch. The caller rotates afterwards.
 
     ``kept`` is the six presence words in slot order (the live ones are bound) and
     ``chunk_bounds`` the run's record as one int32[25] device vector
     (``complex_pml_kernels.chunk_record_argument`` checks it).
 
-    ``kernel`` IS THE GATE'S DOOR: a gate compiles a deliberately broken copy of
+    ``kernel`` is the gate's door: a gate compiles a deliberately broken copy of
     the shipped source and hands it here.
     """
     if word_view is None:

@@ -247,7 +247,7 @@ def test_native_gate_is_incremental_and_arms_conductive_failure_modes():
 
 
 # ---------------------------------------------------------------------------
-# MEEP's stencil, the plane-0 connection and the record (bit_parity 0.10)
+# MEEP's stencil, the plane-0 connection and the record (1.0's bit-parity forms)
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("backward", (False, True))
@@ -539,7 +539,7 @@ def test_the_kernel_text_steps_the_array_paths_words_on_the_host(case, planted):
 
 
 def test_the_previous_pairwise_grouping_is_a_different_word_on_the_host():
-    """The inverted mutation (KERNELS.md §7.1) is visible to this comparison."""
+    """The inverted grouping mutation (docs/development/certification.md#inverted-grouping-mutations) is visible to this comparison."""
     _, cell, dimensions, k_point, boundaries, sides = _HOST_CASES[0]
     fields, pml = _host_case(cell, dimensions, k_point, boundaries, sides, False)
     differing, words = _host_compare(fields, pml, previous_grouping=True)

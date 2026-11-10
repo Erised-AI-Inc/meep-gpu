@@ -1,18 +1,18 @@
 """Merge bar for the Metal NO-PML CONSTITUTIVE family.
 
-THE FAMILY SHIPS NO KERNEL, so there is no arithmetic a laptop cannot hold and no
+The family ships no kernel, so there is no arithmetic a laptop cannot hold and no
 part of this file needs a GPU. That is not a shortcut — it is the family's one
 distinguishing property, and it is asserted here rather than assumed: the covered
 arm compiles nothing, launches nothing and binds nothing, so every test below runs
 on a host with no MPS device.
 
-WHAT IS PINNED, in the order the file runs it:
+What is pinned, in the order the file runs it:
 
 1. **the predicate is the SHARED function object**, not a copy. Which
    configurations are null is decided in ``triton_kernels.no_pml_constitutive``
    and nowhere else;
 2. **the clauses**, each one, including the four CONSERVATIVE ones that refuse a
-   configuration on which the null would be byte-exact — CONSTRUCTED AND CALLED
+   configuration on which the null would be byte-exact — constructed and called
    through the Metal wrapper, with the table's ``moved_words`` re-measured against
    ``stepping`` rather than read back from itself;
 3. **the FIFTEEN non-clauses** this family deliberately omits and every kernel
@@ -46,14 +46,14 @@ WHAT IS PINNED, in the order the file runs it:
    make it mean something: the census must be non-empty, and the CONTROLS must
    move bytes and be refused.
 
-THE CHARACTERISTIC FAILURE OF A NULL FAMILY is that it certifies by agreeing with
+The characteristic failure of a null family is that it certifies by agreeing with
 a no-op, so "the bytes matched" is satisfied just as well by a run in which
-NOTHING COULD HAVE MOVED. Every identity test here therefore carries a census
+nothing could have moved. Every identity test here therefore carries a census
 floor, and :func:`test_the_controls_move_bytes_and_are_refused` is the other half:
 on configurations the predicate refuses, the array path must be shown to actually
 write. Without that pair the whole file would pass against an empty ``Fields``.
 
-WHAT THE 2026-08-15 AUDIT FOUND IN THIS FILE, because the same failure mode
+What the 2026-08-15 audit found in this file, because the same failure mode
 applies to a test that measures nothing:
 
 * ``test_the_covered_arm_needs_no_torch_and_no_mps_device`` ended in
@@ -69,7 +69,7 @@ applies to a test that measures nothing:
   of those grids by the no-PML clause alone;
 * three entries in ``METAL_NON_CLAUSES`` had no case anywhere.
 
-AND WHAT THE SECOND PASS FOUND, both of which this file could not have caught as it
+And what the second pass found, both of which this file could not have caught as it
 stood:
 
 * the ``METAL_NON_CLAUSES`` totality assertion ran ONE DIRECTION — every table key
@@ -146,7 +146,7 @@ class QuietLorentzianPole(UnrecognisedPole):
     """A pole of a COVERED kind that drives nothing — the discriminating one.
 
     ``lorentzian`` silences clause 9b, so the only thing left for the sibling to
-    refuse is that a polarization is REGISTERED AT ALL. That is the clause this
+    refuse is that a polarization is registered at all. That is the clause this
     family deliberately does not carry: it asks ``driven()``, because a pole whose
     sigma is identically zero does not switch storage on (driver.py:1542-1547) and
     ``stepping.update_E`` really does return at :954 with a pole in the register.
@@ -166,12 +166,12 @@ def build(cell=(1.2, 1.0, 0.9), boundaries="periodic", courant=COURANT_NP2,
           poles=()):
     """A real Grid/Fields/PML triple, seeded with subnormals and signed zeros.
 
-    ``layer=False`` builds a run with NO ``PML`` OBJECT AT ALL, which is a
+    ``layer=False`` builds a run with NO ``PML`` object at all, which is a
     different configuration from an inert layer even though both reach the same
     ``stepping`` return. Both are exercised, and each case records which it was.
 
     ``conductivity`` and ``noncontiguous`` serve the two non-clauses that had no
-    case anywhere until this round. ``noncontiguous`` rebinds a volume to a reversed
+    case anywhere until the 2026-08-15 audit. ``noncontiguous`` rebinds a volume to a reversed
     VIEW of its own buffer: same bytes, ``_volume_reasons`` reports "is not
     C-contiguous", and ``stepping`` returns before forming an index into it.
     """
@@ -206,7 +206,7 @@ def build(cell=(1.2, 1.0, 0.9), boundaries="periodic", courant=COURANT_NP2,
 def seed_state(fields, grid, seed: int, complex_fields: bool) -> None:
     """Fill every allocated volume non-degenerately.
 
-    THREE CLASSES, DELIBERATELY, and each one is a pass condition somewhere below:
+    Three classes, deliberately, and each one is a pass condition somewhere below:
     ordinary normals, a ``+-0`` lattice, and DENSE SUBNORMALS. The subnormals are
     the class that matters most on this backend — the MPS executor flushes float32
     subnormals natively and has no lever, so any Metal code that touched these
@@ -364,7 +364,7 @@ def test_an_unreadable_flag_is_refused_rather_than_admitted():
 def conservative_needle(name):
     """The exact object each :data:`shared.CONSERVATIVE_CLAUSES` row names.
 
-    CONSTRUCTED AND CALLED, because reading a table is not evidence that the
+    Constructed and called, because reading a table is not evidence that the
     predicate does what the table says.
     """
     if name == "pml_storage_behind_an_inert_layer":
@@ -398,7 +398,7 @@ def conservative_needle(name):
 def test_the_conservative_clause_table_has_the_shape_it_claims():
     """The table only. The MEASUREMENT is the next test, and that split is the point.
 
-    THIS TEST USED TO BE CALLED ``..._says_so_where_it_fires`` AND FIRED NOTHING.
+    This test used to be called ``..._says_so_where_it_fires`` and fired nothing.
     It read ``moved_words`` out of the table and asserted the table's own number
     against itself — no needle built, no predicate called, no ``stepping`` run —
     while its name claimed a property of the reason STRINGS. Measured 2026-08-15,
@@ -450,7 +450,7 @@ def test_every_conservative_clause_is_re_measured_through_the_metal_wrapper(name
 
 
 def test_pml_storage_behind_an_inert_layer_is_refused_conservatively():
-    """The clause tranche-1's gate leg 8 recorded as the reason the null sat out."""
+    """The clause the first Metal certification's gate leg 8 recorded as the reason the null sat out."""
     _, fields, pml = build()
     fields.enable_pml_storage()
     for side in ("H", "E"):
@@ -557,7 +557,7 @@ def test_the_kernel_predicates_refuse_what_the_null_admits_BY_NAME(
         name, kwargs, non_clause, sibling, clause, sides):
     """The other half, and it has to name the clause or it measures nothing.
 
-    This test asserted only ``not covered`` for a round. Measured 2026-08-15: every
+    This test asserted only ``not covered`` at first. Measured 2026-08-15: every
     grid here already carries ``_grid_reasons`` clause 3 ("no active PML layer"),
     the residency clause and six "is not allocated" clauses, so ``not covered``
     would have held with the fold, complex, Bloch, beta and BFAST clauses ALL
@@ -642,7 +642,7 @@ def test_every_non_clause_has_a_case_or_a_named_check():
     assert not orphans, orphans
     for check in NON_CLAUSE_CHECKS.values():
         assert check in globals(), check
-    # THE OTHER DIRECTION, and it is the one that found the last four entries. A
+    # The other direction, and it is the one that found the last four entries. A
     # row naming a key the table does not carry is a case measuring a claim nobody
     # made; the gate's `over_coverage` leg runs the full clause -> table sweep.
     unknown = sorted({row[2] for row in BREADTH if row[2]}
@@ -651,9 +651,9 @@ def test_every_non_clause_has_a_case_or_a_named_check():
 
 
 def test_the_covered_arm_imports_no_torch_in_a_fresh_interpreter():
-    """The only family in this package whose gate needs no device — MEASURED.
+    """The only family in this package whose gate needs no device — measured.
 
-    THIS TEST WAS A TAUTOLOGY. It ended in ``if "torch" not in sys.modules: assert
+    This test was a tautology. It ended in ``if "torch" not in sys.modules: assert
     "torch" not in sys.modules``, which cannot fail; and measured, ``torch`` IS in
     ``sys.modules`` by the time it runs, because the breadth tests above call a
     kernel predicate, so the branch was not even taken. It asserted nothing at all.
@@ -841,7 +841,7 @@ def test_the_covered_sub_step_touches_no_field_array_at_all(
     clause about strides, indices, ghost rules and rounding modes is a clause about
     something that did not happen.
 
-    THE CONTROLS ARE WHAT STOP IT BEING A TAUTOLOGY: on three configurations this
+    The controls are what stop it being a tautology: on three configurations this
     family REFUSES, the same poison must be detected. Without them a poison nothing
     can trip would pass the first three rows.
     """
@@ -860,7 +860,7 @@ def test_the_covered_sub_step_touches_no_field_array_at_all(
 
 
 def test_the_slot_side_table_is_derived_and_not_a_second_literal():
-    """One fact, one home. The literal was a MEASURED, byte-visible hole.
+    """One fact, one home. The literal was a measured, byte-visible hole.
 
     ``NULL_SLOTS`` used to be spelled out beside the imported ``NULL_SIDES``, free
     to drift from it. Measured with the two entries swapped: ``launch.plan_step``
@@ -877,7 +877,7 @@ def test_the_slot_side_table_is_derived_and_not_a_second_literal():
 
 
 def test_a_crossed_slot_side_table_is_refused_rather_than_composed(monkeypatch):
-    """The fail-closed clause, CONSTRUCTED AND CALLED through all three entry points.
+    """The fail-closed clause, constructed and called through all three entry points.
 
     The byte visibility is the point: on a no-PML run with ``stores_E`` the E side
     is NOT null — ``stepping.update_E`` writes at :993 — so a composition that put
@@ -948,7 +948,7 @@ def test_the_crossed_table_leaves_the_slot_on_the_array_path(monkeypatch):
 
 
 def test_the_arm_gate_is_an_optimisation_and_never_a_verdict():
-    """The claim ``_arm_gate``'s docstring makes, MEASURED in both halves.
+    """The claim ``_arm_gate``'s docstring makes, measured in both halves.
 
     "The gate is an optimisation and never the verdict — if the two ever disagreed
     the predicate would win." Measured by computing every registered arm's verdict
@@ -1007,7 +1007,7 @@ def test_the_plan_accepts_every_contraction_mode_and_launches_nothing():
 
 
 def test_the_plan_reports_no_variants_and_no_volumes():
-    """The EMPTY TUPLES ARE THE ANSWER, not missing ones.
+    """The empty tuples are the answer, not missing ones.
 
     ``variants`` empty because the plan holds no source string, so there is no
     compiled variant of one to report; an artifact showing ``('off',)`` would be
@@ -1052,9 +1052,9 @@ def test_an_unknown_side_raises_rather_than_refusing_quietly():
 # 4b. The refusal battery — every path that must NOT be covered, CALLED
 # ---------------------------------------------------------------------------
 #
-# THE PREDICATE IS THE SHARED OBJECT and the Triton suite exercises these, so this
-# battery is not re-deriving the verdicts. What it pins is that the METAL ENTRY
-# POINT reaches every one of them: `metal_null_constitutive_coverage` is what
+# The predicate is the shared object and the Triton suite exercises these, so this
+# battery is not re-deriving the verdicts. What it pins is that the Metal entry
+# point reaches every one of them: `metal_null_constitutive_coverage` is what
 # `arms.py` calls, and a wrapper that swallowed an exception, defaulted an
 # unreadable flag or short-circuited on `residency` would leave the Triton suite
 # green while this package over-covered. Constructed and called, because reading
@@ -1194,9 +1194,9 @@ LIVE_STEP = ("step_B", "update_H", "step_D", "update_E")
 
 
 def test_declaring_a_null_slot_PLANNED_refuses_the_familys_own_configuration():
-    """THE MEASURED DEFECT, pinned so it cannot come back.
+    """The measured defect, pinned so it cannot come back.
 
-    This is what tranche 1 did, having no other set to put a null in, and the
+    This is what the first Metal certification did, having no other set to put a null in, and the
     verdict it produced on the one configuration this family exists for. SIX of the
     nine names it demands per side are ``None`` on such a run — this docstring said
     FOUR, and the count is now measured rather than remembered, by
@@ -1322,7 +1322,7 @@ IDENTITY = (
 
 @pytest.mark.parametrize("name,kwargs", IDENTITY, ids=[n for n, _ in IDENTITY])
 def test_the_covered_arm_leaves_every_live_array_byte_unchanged(name, kwargs):
-    """MULTIPLE FULL CYCLES, not one call, against the ORIGINAL snapshot.
+    """Multiple full cycles, not one call, against the ORIGINAL snapshot.
 
     A sub-step that wrote back exactly what it read would pass a single-call
     identity test and drift on the second. The census floors below are what stop
@@ -1366,7 +1366,7 @@ def test_the_array_path_itself_moves_nothing_on_the_covered_arm(name, kwargs):
 def test_the_seeded_subnormal_and_signed_zero_classes_are_non_vacuous():
     """A census of ZERO is VACUOUS, not passed.
 
-    AND ON THIS BACKEND THE SUBNORMAL CLASS IS THE POINTED ONE. The MPS executor
+    And on this backend the subnormal class is the pointed one. The MPS executor
     flushes float32 subnormals natively and exposes no lever, so any Metal code
     that touched these arrays would destroy them. Byte-identity WITH a nonzero
     subnormal census is a direct measurement that nothing on the device touched
@@ -1401,7 +1401,7 @@ CONTROLS = (
 @pytest.mark.parametrize("name,kwargs,must_move", CONTROLS,
                          ids=[n for n, _, _ in CONTROLS])
 def test_the_controls_move_bytes_and_are_refused(name, kwargs, must_move):
-    """BOTH HALVES ARE PASS CONDITIONS. Either one alone measures nothing.
+    """Both halves are pass conditions. Either one alone measures nothing.
 
     An identity leg with no failing control is decorative: "no bytes moved" would
     be satisfied by a harness that never called anything. So each control asserts
@@ -1436,7 +1436,7 @@ def test_the_stored_e_record_tracks_the_built_sibling_not_a_stale_refusal():
 def test_exactly_one_null_arm_is_registered_per_constitutive_slot():
     """Two arms under one label would make every constitutive slot ambiguous.
 
-    Tranche 1 registered the null arm from ``launch.py`` directly against the
+    The first Metal certification registered the null arm from ``launch.py`` directly against the
     Triton plan builder. This family owns that row now; a leftover second
     registration would not raise — it would silently turn both constitutive slots
     into a two-admitter refusal, which reads as "nothing covers this".

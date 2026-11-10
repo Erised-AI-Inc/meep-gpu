@@ -1,19 +1,19 @@
 """The COMPLEX magnetic seam in one launch: complex ``step_B`` welded into ``update_H``.
 
-The complex/Bloch arm's B->H product. The two halves are the certified complex
-tranche's own kernels — :func:`.complex_fields.bloch_pml_curl_step` on ``step_B``
+The complex/Bloch arm's B->H product. The two halves are the certified complex-storage
+family's own kernels — :func:`.complex_fields.bloch_pml_curl_step` on ``step_B``
 and :func:`.complex_fields.bloch_constitutive_step` on the H side — and the weld
 is the one substitution :func:`.kernels.fused_curl_constitutive_B` makes on the
 real path, done on both float32 word planes.
 
-WHY THE B/H HALF AND NOT THE D/E HALF — measured, from the 186-row census
+Why the B/H half and not the D/E half — measured, from the 186-row census
 ``parity/meep_gpu/results/predicate_coverage_2026-08-16_wired_convention``, read on
 ``covered_modulo_backend`` because that lift ran on NumPy. The seam funnels:
 
     complex D->E   16 halves ->  1 no-electric-source
     complex B->H   16 halves -> 12 no-magnetic-source
 
-THE SOURCE CLAUSE IS THE BINDING ONE ON BOTH HALVES, and on this arm it is far
+The source clause is the binding one on both halves, and on this arm it is far
 kinder to the magnetic side than on the folded one: of the 16 complex/Bloch rows,
 FOUR declare a magnetic source (``oblique-planewave.py``, ``wvg-src.py``,
 ``TestModeDecomposition.test_phase_1``, ``TestWvgSrc.test_wvg_src``) and FIFTEEN
@@ -24,7 +24,7 @@ and the number is an UPPER bound — four clauses of the shipped predicate are n
 evaluable from the census's configuration block, and each can only remove rows.
 
 ===========================================================================
-THE FIVE PASSES IN THE SEAM
+The five passes in the seam
 ===========================================================================
 
 The driver runs five passes between the two halves (driver.py:3281-3288)::
@@ -35,36 +35,36 @@ The driver runs five passes between the two halves (driver.py:3281-3288)::
 Each is answered by name, and two of them are answered DIFFERENTLY here than on
 the folded arm — which is the whole of what is new:
 
-* **the magnetic sources — REFUSED BY NAME.** ``driver.step`` injects them between
+* **the magnetic sources — refused by name.** ``driver.step`` injects them between
   the two halves (driver.py:3283-3284), so a fused pair would consume a
   pre-injection ``B``. Ignorance is never an empty set: ``Fields`` does not hold
   the source list, so an undeclared ``sources`` is a REFUSAL and not an assumed
   ``()``. This is the clause that caps the family, and it is 4 of the 16 rows.
-* **``fill_symmetry_bc_B`` — PROVABLY A NO-OP HERE, not carried and not refused.**
+* **``fill_symmetry_bc_B`` — provably a no-op here, not carried and not refused.**
   ``stepping._fill_symmetry_ghost_cells`` returns at its first line unless
   ``grid.has_symmetry()`` (stepping.py:1481-1482), and BOTH halves' own predicate
   refuses ``has_symmetry`` and every ``is_mirrored`` axis outright
   (``complex_fields._complex_grid_reasons``, complex_fields.py:1715-1719 — "symmetry
   folding is not carried"). So on every configuration this product admits the pass
-  cannot write a word. THE PREDICATE RE-CHECKS IT ANYWAY rather than reading its
-  own coverage off another module's guard: if the complex tranche ever admits a
+  cannot write a word. The predicate re-checks it anyway rather than reading its
+  own coverage off another module's guard: if the complex-storage family ever admits a
   fold, this weld would silently swallow a pass that had started doing work.
 * **``zero_metal_B`` — CARRIED INLINE** (driver.py:3286;
   ``stepping._zero_metal`` :2206-2247), through :func:`.coverage.zero_metal_axes`,
   which is IMPORTED rather than re-spelled. It writes complex zero — ``array[face]
   = 0`` on a complex64 volume — so the register clear is applied to BOTH word
   planes.
-* **``fill_folded_far_ghosts_B`` — PROVABLY A NO-OP HERE**, by the same
+* **``fill_folded_far_ghosts_B`` — provably a no-op here**, by the same
   ``has_symmetry`` guard one level up (``stepping._fill_folded_far_ghosts``,
   stepping.py:1565-1566), and re-checked by the same clause.
 
 ===========================================================================
-WHAT IS NOT NEEDED HERE — the ownership restructure, and why
+What is not needed here — the ownership restructure, and why
 ===========================================================================
 
 The folded arm's fused pair has to move ownership: its near mirror fill reads a
 cell the same launch writes, Triton has no device-wide barrier, and the naive
-carry races on ``B``. NONE OF THAT ARISES ON THIS ARM. Both fills are refused out
+carry races on ``B``. None of that arises on this arm. Both fills are refused out
 of existence by the halves' own symmetry clause, so no lane reads a word another
 lane writes, every store is at ``2*idx``/``2*idx+1``, and the weld is a straight
 one: the constitutive half's ``src`` load is replaced by the register pair the
@@ -74,7 +74,7 @@ bodies plus one register clear, and the gate's transcription leg checks exactly
 that by tracing every arithmetic line back to the shipped source it came from.
 
 ===========================================================================
-THE COMPLEX PRODUCTS
+The complex products
 ===========================================================================
 
 Every real-coefficient product on the complex path is the real scalar times each
@@ -96,7 +96,7 @@ DEVICE STATUS: **RELEASED 2026-08-20**, the GPU host RTX A6000 GPU 7, Triton 3.1
     (``parity/meep_gpu/results/triton_fused_magnetic_pairs_2026-08-20/``). The weld
     is ``triton_complex_fused_magnetic_pair_device_gate`` in ``fingerprints.json``.
 
-    STILL NOT WIRED. A weld licenses the claim, not a dispatch: nothing in a
+    Still not wired. A weld licenses the claim, not a dispatch: nothing in a
     default run reaches this plan. The gate is
 ``parity/meep_gpu/probe_triton_complex_fused_magnetic_pair.py`` and no leg of it
 marked ``device`` has ever executed — this stream was built and laptop-tested
@@ -147,7 +147,7 @@ from .. import deposit_repair as _deposit_repair
 #: forward carry this module's kernel already performs. Metal made the identical flip on
 #: 2026-08-28 for the identical reason.
 #:
-#: THE FLAG IS NOT THE WHOLE CLAIM. It only reaches ``deposit_repair.repairable``, which
+#: The flag is not the whole claim. It only reaches ``deposit_repair.repairable``, which
 #: goes on refusing BY NAME every seam the repair cannot invert -- an off-diagonal
 #: constitutive (a stencil over the curl's own in-place output), a nonlinear one, a
 #: cylindrical r = 0 axis, a fold too short to hold the near fill's source row, and an
@@ -204,7 +204,7 @@ if triton is not None:
     # The same constexpr code as ``complex_fields.METALLIC``, restated for the
     # reason that module restates ``kernels``' — importing a ``tl.constexpr``
     # wrapper and re-wrapping it is not the same object, and the comparison in the
-    # kernel body is against a literal code. ONLY METALLIC IS NAMED: the certified
+    # kernel body is against a literal code. Only metallic is named: the certified
     # complex curl body branches on ``== METALLIC`` and takes periodic as the else,
     # so a ``PERIODIC`` constant here would be a name nothing reads.
     METALLIC = tl.constexpr(1)
@@ -243,7 +243,7 @@ if triton is not None:
         dsigu lines on the half-integer lattice, the constitutive's dsigw lines on the
         integer one) and the curl's partner connection is the curl body's.
 
-        ``BACKWARD`` IS CARRIED AND MUST BE 0: it keeps the curl half a verbatim copy
+        ``BACKWARD`` is carried and must be 0: it keeps the curl half a verbatim copy
         of the certified body. ``start_h`` is MEEP's start of H, as
         :func:`.kernels.constitutive_step` carries it. ``ZM_X``/``ZM_Y``/``ZM_Z`` are
         ``coverage.zero_metal_axes``, the question ``stepping._zero_metal`` asks --
@@ -572,10 +572,10 @@ def complex_fused_magnetic_pair_coverage(fields: Any, pml: Any,
     if grid is None:
         return Coverage(False, tuple(dict.fromkeys(reasons + ["fields carries no grid"])))
 
-    # THE SOURCE SEAM. A magnetic source is injected BETWEEN the two halves
+    # The source seam. A magnetic source is injected BETWEEN the two halves
     # (driver.py:3283-3284), so a fused pair would consume a pre-injection B. An
     # ELECTRIC source is injected in the D/E seam and does not disqualify this
-    # pair. IGNORANCE IS NOT AN EMPTY SET: `Fields` does not hold the source list,
+    # pair. Ignorance is not an empty set: `Fields` does not hold the source list,
     # so a predicate that inferred "no magnetic source" from not being told would
     # be the over-covering refusal this clause exists to prevent. Measured: this
     # clause is what takes the arm from 16 corpus rows to 12.
@@ -592,12 +592,12 @@ def complex_fused_magnetic_pair_coverage(fields: Any, pml: Any,
             f"closes"),
         carries_repair=CARRIES_DEPOSIT_REPAIR))
 
-    # THE TWO SYMMETRY PASSES. `fill_symmetry_bc_B` (driver.py:3285) and
+    # The two symmetry passes. `fill_symmetry_bc_B` (driver.py:3285) and
     # `fill_folded_far_ghosts_B` (:3287) both return at their first line unless
     # `grid.has_symmetry()` (stepping.py:1481-1482, :1565-1566), and BOTH halves
-    # already refuse a symmetry. RE-CHECKED HERE ANYWAY, not inferred: this
+    # already refuse a symmetry. Re-checked here anyway, not inferred: this
     # module's coverage may not be read off another module's guard, and if the
-    # complex tranche ever admits a fold, this weld would silently swallow two
+    # complex-storage family ever admits a fold, this weld would silently swallow two
     # passes that had started doing work. The clause costs one attribute read and
     # is the difference between "no pass runs" and "no pass ran when I last
     # looked".
@@ -612,7 +612,7 @@ def complex_fused_magnetic_pair_coverage(fields: Any, pml: Any,
                 f"axis {axis} is folded by a mirror plane: the two symmetry passes "
                 f"in this seam are no longer no-ops and this weld carries neither")
 
-    # THE WALL CLEAR is carried inline, so the grid must be able to answer which
+    # The wall clear is carried inline, so the grid must be able to answer which
     # axes are walled; an unanswerable one compiles to ZM=False and silently skips
     # a plane the array path clears.
     for name in ("has_metallic", "is_metallic", "is_mirrored"):
@@ -675,7 +675,7 @@ class ComplexFusedMagneticPairPlan:
         self._h_aux = tuple(CupyPointer(_word_view(a)) for a in h_aux)
         self._h_coefficients = tuple(
             CupyPointer(_flat(a)) for a in h_coefficients)
-        # THE INT32 WORD BOUND. The kernel addresses words as ``2 * idx`` in
+        # The int32 word bound. The kernel addresses words as ``2 * idx`` in
         # int32, so the complex cell count must leave room for the doubling —
         # the same halving the complex predicates apply (module docstring of
         # complex_fields, "Word addressing"). Refused here as well because the

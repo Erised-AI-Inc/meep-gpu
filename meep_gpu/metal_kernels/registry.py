@@ -1,6 +1,6 @@
 """The one module that imports every family, so the arm table is COMPLETE.
 
-WHY A MODULE AND NOT A LINE IN ``launch.py``. Two families — :mod:`.complex_fields`
+Why a module and not a line in ``launch.py``. Two families — :mod:`.complex_fields`
 and :mod:`.special_kz` — import ``launch.SUB_STEPS`` at their own module scope, so
 ``launch`` cannot import them back at ITS module scope without a cycle whose
 outcome depends on which of the two a caller reached first. (The failure is not
@@ -10,17 +10,17 @@ first re-enters ``launch``, which then imports a HALF-INITIALISED
 imported from a function body by :func:`.arms.ensure_registered`, has no cycle to
 resolve.
 
-REGISTRATION IS THE IMPORT, NOT A CALL MADE HERE. Every family registers its arms
+Registration is the import, not a call made here. Every family registers its arms
 at its own module scope, so importing it once is what puts its rows in the table
 and Python's module cache is what makes "once" true. This module therefore calls
 nothing: adding a ``register_arms()`` call beside the import would double-register
 and :func:`.arms.register` refuses a duplicate by design.
 
-WHAT IS IN THE TABLE, and what each row is admitted by — measured, not asserted;
+What is in the table, and what each row is admitted by — measured, not asserted;
 see ``parity/meep_gpu/probe_metal_planner_composition.py`` for the sweep and
 ``meep_gpu/test_metal_planner_composition.py`` for the pinned expectations:
 
-TWO COLUMNS, BECAUSE THEY DIFFER. "registered" is the slots an arm holds a row on;
+Two columns, because they differ. "registered" is the slots an arm holds a row on;
 "wins" is the slots its predicate can actually admit. An arm registered on a slot it
 can never win is not dead weight — it is how a refusal gets NAMED instead of being
 left unasked, and ``special_kz_complex`` carries two of them deliberately.
@@ -105,7 +105,7 @@ nonlinear             B, D, H, E    B, D, H, E    chi2/chi3 INSTALLED — the sh
 _constitutive                                     clause 10 INVERTED. ``update_E``
                                                   uses the dedicated Pade body, its
                                                   |D|^2 in software binary64
-                                                  (ruling R7); B/D/H reuse their
+                                                  rather than refused; B/D/H reuse their
                                                   individually
                                                   certified ordinary PML shaders
                                                   through separate nonlinear-only
@@ -145,14 +145,14 @@ folded_beta_complex   all four      all four      ``grid.beta``, under real and
                                                   CERTIFIED bodies under a restated
                                                   predicate — neither the fold nor
                                                   beta reaches ``update_H``/diagonal
-                                                  ``update_E`` at all. NO FILL ARM
-                                                  IS REGISTERED: the two fold
+                                                  ``update_E`` at all. No fill arm
+                                                  is registered: the two fold
                                                   families' fill predicates carry no
                                                   beta clause and already admit
                                                   these rows, so a third arm would
                                                   make both seam slots ambiguous
 fused_dispersive      step_D        NOTHING       the FIRST FUSED product on this
-_pair                 (UNWIRED)     (unwired)     backend, and the one row in this
+_pair                 (wired=False) (unwired)     backend, and the one row in this
                                                   table that is deliberately
                                                   UNSELECTABLE. It spans THREE
                                                   passes — ``step_D``,
@@ -185,15 +185,15 @@ _pair                 (UNWIRED)     (unwired)     backend, and the one row in th
                                                   selection
 ===================== ============= ============= ==============================
 
-THE ROWS ARE CONTRIBUTED BY THE MODULES IN :data:`FAMILY_MODULES` (``launch``
+The rows are contributed by the modules in :data:`FAMILY_MODULES` (``launch``
 registers two of them, ``special_kz`` two and ``folded_beta`` two). The first
 twenty-three were measured 2026-08-16; the real fold's six, the folded complex's six
-and the folded off-diagonal's one landed the same round, the cylindrical complex
-family's four the round after, ``folded_beta``'s EIGHT — two curl pairs and two
+and the folded off-diagonal's one landed at the same time, the cylindrical complex
+family's four next, ``folded_beta``'s EIGHT — two curl pairs and two
 constitutive pairs, and NO fill row — beside them, and ``cylindrical_real``'s FOUR
-in the same tranche as the last two.
+alongside the last two.
 
-THE SWEEP ARTIFACT IS THE AUTHORITY AND NO TOTAL IS SPELLED HERE. It records the
+The sweep artifact is the authority and no total is spelled here. It records the
 table it actually ran against, so a drift between this comment and the package is
 visible in ``composition_sweep.json`` rather than only here — which is how this
 paragraph was caught understating the table by six, and why the count that replaced
@@ -202,10 +202,10 @@ families are landing into is a number that is wrong between commits by
 construction, and a reader who trusts it is worse off than one who reads the
 artifact.
 
-TWO PAIRS IN THIS TABLE ARE DISJOINT THROUGH AN ENGINE COUPLING RATHER THAN AN
-INVERTED CLAUSE, and both are the SAME coupling: ``constitutive`` vs
+Two pairs in this table are disjoint through an engine coupling rather than an
+inverted clause, and both are the SAME coupling: ``constitutive`` vs
 ``offdiag_update_e``, and ``folded`` vs ``folded_offdiag_constitutive``. Each pair
-refuses on the FLAG on one side and requires a LIVE ROW SLOT on the other, and the
+refuses on the FLAG on one side and requires a live row slot on the other, and the
 two agree only because ``has_offdiagonal_epsilon`` is a read-only property over the
 very dict the row accessor reads. The matrix therefore carries a PLANTED
 disagreement for each pair — unreachable on the engine — whose expected outcome is
@@ -217,7 +217,7 @@ one of them the other way. That is why the sweep finds no admitted overlap outsi
 the two planted cases, and why a new family must state its inversion rather than
 inherit disjointness.
 
-NOTHING HERE IS DISPATCH. ``meep_gpu.fastpath.plan_fast_path`` still returns
+Nothing here is dispatch. ``meep_gpu.fastpath.plan_fast_path`` still returns
 ``None`` on every branch; this module decides only what ``plan_step`` may compose.
 """
 
@@ -225,8 +225,8 @@ from __future__ import annotations
 
 from typing import Tuple
 
-# THE IMPORTS ARE THE REGISTRATION. Alphabetical, and `launch` is in the list
-# because it registers the two tranche-1 products (the real PML curl and the
+# The imports are the registration. Alphabetical, and `launch` is in the list
+# because it registers the two original products (the real PML curl and the
 # ordinary constitutive) and calls `no_pml_constitutive.register_arms()`.
 from . import (  # noqa: F401 - imported for the registration side effect
     ade_update_p,

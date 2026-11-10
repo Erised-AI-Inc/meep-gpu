@@ -14,8 +14,8 @@ exits with the status stage's code; ``route`` runs on its own, after the bind):
     nine gates, each defining ``lift_basis`` or built on ``hd_tail_gate_common``)
     computes its own lift basis. An absent input (``lift_host.lift_inputs``: the
     census's three row files and the seam record, none of them shipped) stops the
-    preflight, naming the gate and the file. Each row this host cannot lift (a need its
-    lift record declares, ``lift_host.LIFT_RECORD_NEEDS``, probed absent under
+    preflight, naming the gate and the file. Each row this host cannot lift (a need the
+    row declares, ``lift_host.row_needs``, probed absent under
     ``--python``) is reported by gate and name, as the gate will record it: unlifted on
     this host and out of its denominator. That stops nothing, and neither does a basis
     the child cannot compute while its inputs are present (the gate's leg reports it).
@@ -32,23 +32,24 @@ exits with the status stage's code; ``route`` runs on its own, after the bind):
     ``run_metal_dispatch_campaign.sh`` under held residency, into
     ``results/dispatch_metal_route_<route stamp>/`` (the route constant's stamp and
     this Mac's architecture, which ``recut_driver_dispatch_record.py --backend metal``
-    requires). Its watchdog comes from the MEASURED route walls (:data:`ROUTE_EXPECT`,
+    requires). Its watchdog comes from the measured route walls (:data:`ROUTE_EXPECT`,
     :func:`route_watchdog`; ``--route-timeout-factor``, ``--route-min-timeout``):
     route campaign names are one-shot, so a campaign its watchdog kills needs a new
     route stamp, which is a new freeze.
 ``status``
     released N of D gate artifacts, and the welds the Metal table cites, N of D.
 
-THE MAC IS SHARED (slot v2). With ``--slot-wrapper`` every gate and the whole
+The Mac is shared (slot v2). With ``--slot-wrapper`` every gate and the whole
 route campaign is run through that wrapper with ``--classes`` (default
 ``mac_gpu+mac_cpu``) in ONE call, so the slots are taken all-or-nothing and the one
 GPU slot is never held while a CPU slot is awaited (a nested ``mac_gpu`` then
 ``mac_cpu`` acquisition held the GPU slot idle for hours in a 1.0 pre-certification
 pass). Without it the commands run directly, as on a quiet Mac.
 
-Subnormal policy: flush only (R13: the Apple GPU flushes and exposes no lever).
+Subnormal policy: flush only (the Apple GPU flushes and exposes no lever, so the Metal
+table is certified against the flush baseline alone).
 
-THE MEEP CORPUS the lift legs walk is the MEEP release's ``python/examples`` and
+The MEEP corpus the lift legs walk is the MEEP release's ``python/examples`` and
 ``python/tests``, which the reference environment's build keeps inside the prefix and
 records file by file: the ``corpus`` entry of
 ``<prefix>/share/meep-gpu-build/reference_build.json`` (:data:`BUILD_RECORD`; the prefix
@@ -62,7 +63,7 @@ shadow an import, or the preflight and the fleet stop by name. The root reaches 
 fleet child as ``MEEP_GPU_CORPUS_ROOT``, the variable the gates read first; one exported
 in the calling shell is refused (:data:`SCRUBBED`).
 
-THE USER SITE DIRECTORY IS OFF for every child (``PYTHONNOUSERSITE=1`` in
+The user site directory is off for every child (``PYTHONNOUSERSITE=1`` in
 :meth:`Round.base_env`), as the certification reference runs (``tools/check_install.py``
 notes it otherwise): a distribution there sits on the import path AHEAD of the
 environment's own site-packages. The preflight refuses a child interpreter that still
@@ -85,9 +86,10 @@ index of another architecture or mode (:func:`architecture_problems`). Chunks sh
 Mac GPU through the slot wrapper, one gate at a time. ``status --chunk-index I`` without
 ``--chunk`` reads each gate under the newest launch record that names it; the round's bind is
 ``chunks.py verify --selection F`` then ``chunks.py bind --index I --selection F``
-(``rebind_metal_welds.py --stamp`` once per selected stamp).
+(``rebind_metal_welds.py --stamp`` once per selected stamp, then the ``ledger_scope.py
+archive`` line that files the ledger's new state).
 
-A NEW ARCHITECTURE (``--new-architecture``; an Apple M3 beside the M1 Max): a chunk of an
+A new architecture (``--new-architecture``; an Apple M3 beside the M1 Max): a chunk of an
 index partitioned with ``--new-device`` for this Mac's architecture. The preflight and the
 fleet stage each read this Mac's architecture and hold it to the Metal ledger
 (:meth:`Round.device_problems`): in a chunk, the flag both ways (an architecture the ledger
@@ -114,7 +116,7 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 
-#: 2026-10-04 round walls on one Apple M1 Max (seconds), the 0.9.2 fleet this
+#: 2026-10-04 certification-round walls on one Apple M1 Max (seconds), the 0.9.2 fleet this
 #: driver re-runs. A watchdog is max(900, 4 x this + 600).
 EXPECT = {
     "gate_metal_complex": 23,
@@ -153,10 +155,10 @@ EXPECT = {
 #: measurements already landed.
 LONG = ("gate_metal_fused_hd_pair", "gate_metal_folded_fused_hd_pair",
         "gate_metal_bfast_fused_hd_pair")
-#: THE ROUTE LEGS' MEASURED WALLS (seconds), the four legs of
+#: The route legs' measured walls (seconds), the four legs of
 #: ``run_metal_dispatch_campaign.sh`` (its ``SERIAL_LEGS`` then ``LANE_LEGS``): the 1.0
 #: pre-certification pass's held route campaign on one Apple M1 Max (2026-10-10/11,
-#: series entries 01 to 114, tree 15da8cd4; 3 lanes; every leg released), under host
+#: development tree 15da8cd4; 3 lanes; every leg released), under host
 #: contention -- harness_keep took 6,479 s where an earlier quiet run took 286 s, and the
 #: campaign 12,648 s. Contended walls are over-estimates of a quiet run, which is what a
 #: watchdog base should be. The shell driver's own ``MEASURED_SECONDS`` only orders its
@@ -205,7 +207,7 @@ ROUTE_NAMES_PROGRAM = (
     "print(json.dumps({'arch': a, 'stamp': g, 'campaign': c,\n"
     "                  'refused': s.campaign_refusal('metal', c)}))\n")
 
-#: THE CORPUS RULE IS legs.py's, one home for both round drivers: the reference build
+#: The corpus rule is legs.py's, one home for both round drivers: the reference build
 #: record under the prefix of ``--python`` (``legs.BUILD_RECORD_DIR``, ``legs.BUILD_RECORD``),
 #: whose ``corpus`` entry names the kept MEEP corpus, the sha256 list that pins it and the
 #: siblings beside it, read by ``legs.read_corpus_record`` and checked by
@@ -213,6 +215,11 @@ ROUTE_NAMES_PROGRAM = (
 #: the NVIDIA host.
 from legs import (BUILD_RECORD, BUILD_RECORD_DIR, CORPUS_REFUSED_EXTRAS,  # noqa: E402,F401
                   read_corpus_record, resolve_corpus, sha256_of, verify_corpus)
+import round_status  # noqa: E402  (it loads the record spellings, neutral_ids.py)
+
+#: The record spellings (``parity/meep_gpu/neutral_ids.py``): the round's logs and rows go
+#: back with the results, so they name no machine, account or local path.
+N = round_status.neutral_ids()
 
 #: What the preflight of a chunk runs in the checkout to name this Mac's architecture and
 #: the architectures the Metal ledger admits (``metal_runs.admission_report`` over the welds
@@ -263,7 +270,7 @@ def architecture_problems(index: Mapping[str, Any], architecture: Optional[str],
     return problems
 
 
-#: THE PER-CELL LIFT PREFLIGHT, run as ``--python -c LIFT_CELLS_PROGRAM <this file's
+#: The per-cell lift preflight, run as ``--python -c LIFT_CELLS_PROGRAM <this file's
 #: directory> <harness> <results> <gate stems as JSON>``: :func:`lift_cells_child` in a
 #: child, so the gates' own ``lift_basis`` and ``lift_host`` run under the round's
 #: interpreter, never in this process. Its answer is one ``LIFT_CELLS=<json>`` line.
@@ -294,19 +301,21 @@ class Round:
 
     # ---------------------------------------------------------------- reporting ----
     def say(self, stage: str, message: str) -> None:
-        line = f"{time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())} [{stage}] {message}"
+        line = (f"{time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())} [{stage}] "
+                f"{N.text(message)}")
         print(line, flush=True)
         with (self.logs / "round.log").open("a", encoding="utf-8") as handle:
             handle.write(line + "\n")
 
     def stop(self, stage: str, why: str) -> int:
         self.say(stage, f"STOP: {why}")
-        (self.logs / "STOPPED").write_text(f"{time.strftime('%FT%TZ', time.gmtime())} [{stage}] {why}\n")
+        (self.logs / "STOPPED").write_text(
+            f"{time.strftime('%FT%TZ', time.gmtime())} [{stage}] {N.text(why)}\n")
         return 3
 
     def row(self, row: Dict[str, Any]) -> None:
         with (self.logs / "gates.jsonl").open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps(row, sort_keys=True, default=str) + "\n")
+            handle.write(json.dumps(N.value(row), sort_keys=True, default=str) + "\n")
             handle.flush()
             os.fsync(handle.fileno())
 
@@ -330,7 +339,7 @@ class Round:
         env.update({"MEEP_GPU_SUBNORMAL_POLICY": "flush", "MEEP_GPU_DISPATCH": "0",
                     "MEEP_GPU_METAL_RESIDENCY": "shipped",
                     "MEEP_GPU_GATE_SOURCE_MANIFEST": str(self.root / "source_sha256.txt")})
-        # THE ROUND'S CORPUS, never the calling shell's (SCRUBBED): resolved here, so a
+        # The round's corpus, never the calling shell's (SCRUBBED): resolved here, so a
         # resumed ``all`` that skips the preflight still exports it.
         root = self.corpus()["root"]
         if root:
@@ -405,12 +414,15 @@ class Round:
         log = self.logs / "logs" / f"{label}.log"
         queued = time.time()
         with log.open("w", encoding="utf-8") as handle:
-            handle.write(f"# {time.strftime('%FT%TZ', time.gmtime())} {label}: {' '.join(argv)}\n")
+            handle.write(N.text(f"# {time.strftime('%FT%TZ', time.gmtime())} {label}: "
+                                f"{' '.join(argv)}\n"))
             handle.flush()
+            # The gate's output reaches its log written neutrally (N.copy_lines).
             self.child = subprocess.Popen(self.wrapped(["nice", "-n", "10", "caffeinate", "-i", *argv]
                                                        if shutil.which("caffeinate") else argv),
-                                          cwd=str(self.repo), env=env, stdout=handle,
+                                          cwd=str(self.repo), env=env, stdout=subprocess.PIPE,
                                           stderr=subprocess.STDOUT, start_new_session=True)
+            copier = N.copy_lines(self.child.stdout, handle)
             killed = False
             while True:
                 try:
@@ -422,6 +434,7 @@ class Round:
                     killed = True
                     self.kill_child()
                     break
+            copier.join(timeout=120)
         rc = 124 if killed else self.child.returncode
         self.child = None
         elapsed = round(time.time() - queued, 1)
@@ -476,7 +489,7 @@ class Round:
         return f"the checkout has local changes: {stray[:3]}" if stray else None
 
     def device_problems(self, stage: str) -> List[str]:
-        """THIS MAC'S ARCHITECTURE AGAINST THE METAL LEDGER, read at every stage that runs
+        """This Mac's architecture against the Metal ledger, read at every stage that runs
         gates (the preflight and the fleet, so a fleet launched alone is held to it too).
         A chunk: :func:`architecture_problems` against its index and ``--new-architecture``.
         Unchunked: the ledger must admit the architecture; one it does not admit is new,
@@ -539,7 +552,7 @@ class Round:
                             f"(site.ENABLE_USER_SITE {lines[:1]}) with PYTHONNOUSERSITE=1")
         check = subprocess.run([self.py, "tools/check_install.py", "--require-reference"],
                                cwd=str(self.repo), env=self.base_env(), capture_output=True, text=True)
-        (self.logs / "check_install.out").write_text(check.stdout + check.stderr)
+        (self.logs / "check_install.out").write_text(N.text(check.stdout + check.stderr))
         if check.returncode != 0:
             problems.append(f"tools/check_install.py --require-reference: "
                             f"{(check.stdout + check.stderr).strip().splitlines()[-1:]}")
@@ -631,7 +644,7 @@ class Round:
         why = self.tree_is_the_commit(st)
         if why and not self.args.dry_run_allow:
             return self.stop(st, why)
-        # THE CAMPAIGN NAME IS THE REGISTRY'S (meep_gpu/route_stamps.py), read in the
+        # The campaign name is the registry's (meep_gpu/route_stamps.py), read in the
         # frozen checkout, and a name it refuses stops the stage: the stamp still the
         # placeholder the freeze replaces, or a campaign that has already run.
         names = subprocess.run(
@@ -699,7 +712,7 @@ class Round:
 
 
 # ------------------------------------------------------------------ the lift cells -----
-# THE ROUND'S SIDE OF THE LIFT LEGS. The rule (which interpreter a lift child runs under,
+# the round's side of the lift legs. The rule (which interpreter a lift child runs under,
 # which inputs a basis reads, which rows need what) is ``parity/meep_gpu/lift_host.py``,
 # in the lifting gates' closures; what the round does with it is here, in none, so a
 # change to the preflight re-runs no gate.
@@ -769,7 +782,7 @@ def lift_cells_child(argv: List[str]) -> int:
     for stem in stems:
         source = (harness / f"{stem}.py").read_text(encoding="utf-8")
         entry: Dict[str, Any] = {"kind": lifting_kind(source)}
-        # THE INPUTS ARE NAMED FIRST, off the source: a gate this child cannot import
+        # The inputs are named first, off the source: a gate this child cannot import
         # still has its four files checked.
         names = census_names(source)
         if entry["kind"] is None:
@@ -897,7 +910,7 @@ def apply_chunk(args: argparse.Namespace) -> Optional[str]:
     if getattr(args, "new_architecture", False) and args.stage == "route":
         return ("--new-architecture is a fleet mode: the route stage runs once the bind has "
                 "added the architecture's runs and the ledger admits it")
-    # STATUS READS RUNS, NOT THE PLAN: each gate under the newest launch record that names
+    # Status reads runs, not the plan: each gate under the newest launch record that names
     # it (a unit may be in several chunks), else under the plan's last chunk naming it.
     args.stamp_of = {gate: chunk["stamp"] for chunk in args.chunk_index_data["chunks"]
                      for gate in C.metal_gates(chunk)}
@@ -1009,7 +1022,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             rc = getattr(rnd, f"stage_{stage}")()
             if rc != 0 and stage != "status":
                 return rc
-        # THE LAST STAGE'S CODE: for ``all`` the status stage's, non-zero when a gate of
+        # The last stage's code: for ``all`` the status stage's, non-zero when a gate of
         # the fleet did not release, so a round's exit code is its verdict.
         return rc
     finally:

@@ -1,6 +1,6 @@
 """Does the NO-PML DISPERSIVE-STORE D/E pair's closed form reproduce the driver's seam?
 
-THE CLAIM THIS PROBE STATES AND MEASURES. One launch per cell can perform
+The claim this probe states and measures. One launch per cell can perform
 
     step_D (driver.py:3306, no absorber, with a PER-COMPONENT conductive tail)
     -> zero_metal_D (:3310)
@@ -10,7 +10,7 @@ with the stepped displacement carried in a REGISTER between the three passes, an
 in-seam electric deposit carried across the launch by
 :data:`..deposit_repair.PLAIN_PATH`.
 
-WHY THE REGISTER IS THE WHOLE CLAIM. In the array path ``step_D`` writes D, then
+Why the register is the whole claim. In the array path ``step_D`` writes D, then
 ``zero_metal_D`` writes zeros into D at the wall cells, then ``update_E`` reads D. The
 fused kernel computes the curl into ``v``, clears ``v``, and then does BOTH the store
 and the constitutive read from that one value. The two agree only if the clear
@@ -19,7 +19,7 @@ happens between the curl and both consumers -- which is what
 of this cell's three corpus rows are METALLIC on z, so the wall is live on the corpus
 rather than only in a fixture.
 
-WHAT MAKES THIS CELL'S CONSTITUTIVE HALF DIFFERENT FROM EVERY FUSED PAIR BEFORE IT.
+What makes this cell's constitutive half different from every fused pair before it.
 The layer is INACTIVE, so ``update_E`` takes the PURE OVERWRITE at stepping.py:1022 --
 ``E[...] = (D - sum_n P_n) * inv_eps`` -- with no ``f_w``, no coefficient vector and
 no previous value. That is not the split-field recurrence every shipped CUDA electric
@@ -30,30 +30,30 @@ configuration whose recurrence is not among the paths its caller declares, so th
 declaration is load-bearing rather than descriptive, and the ``split_field_declared``
 leg below MEASURES that refusal instead of asserting it.
 
-THE TWO CURL ARMS ARE ONE EMITTER. ``conductive_kernels`` bakes the per-component
+The two curl arms are one emitter. ``conductive_kernels`` bakes the per-component
 conductivity into three ``COND`` defines and takes the ``#else`` plain tail where a
 component is lossless, so the arity ``(False, False, False)`` build IS the lossless
 no-PML curl. The corpus drives both: ``absorber-1d.py`` and
 ``TestAbsorber.test_absorber`` are conductive on every D component, and
 ``material-dispersion.py`` is lossless. Both are swept here.
 
-WHAT IS COMPARED. Raw uint32 WORDS of every stored volume the seam writes -- ``Dx/Dy/Dz``
+What is compared. Raw uint32 WORDS of every stored volume the seam writes -- ``Dx/Dy/Dz``
 and ``Ex/Ey/Ez`` -- AND every pole buffer (``P`` and ``P_prev`` of every registered
 susceptibility), against the array path's own passes run from identical state, over
 COMPLETE driver steps. Never ``allclose``: ``-0.0 == 0.0`` lies, and the sign of zero
 is precisely the class this campaign has been bitten by.
 
-THERE IS NO ``fu_D`` AND NO ``f_w_E`` ON THIS PATH and their absence is checked rather
+There is no ``fu_D`` and no ``f_w_E`` on this path and their absence is checked rather
 than assumed: ``enable_field_storage`` allocates E WITHOUT ``f_w`` (the plain branch's
 storage), and ``fu_D`` belongs to PML storage this configuration never enables. A case
 that found either allocated would be measuring a different sub-step.
 
-THE POLE VOLUMES ARE SEEDED NON-ZERO, and that is not a detail. Zero is a fixed point
+The pole volumes are seeded non-zero, and that is not a detail. Zero is a fixed point
 of ``s = s - P``: a fixture with zero poles turns every pole mutation into a null and
 would report a green sweep that measured nothing. ``poles_are_live`` is asserted per
 case and a case that cannot arm the pole nulls is recorded VACUOUS rather than passed.
 
-THE ARMED MUTATIONS, each a port a reasonable person would write:
+The armed mutations, each a port a reasonable person would write:
 
   subtract_before_clear  the constitutive consumes the PRE-clear register
   store_before_clear     the store writes the PRE-clear register
@@ -62,10 +62,10 @@ THE ARMED MUTATIONS, each a port a reasonable person would write:
   inv_eps_shared         all three components multiply component x's inverse epsilon
   clear_all_axes         the wall clears every axis rather than the off-diagonal rows
 
-AND THE THREE DEPOSIT LEGS, which are what ``PLAIN_PATH`` is for:
+And the three deposit legs, which are what ``PLAIN_PATH`` is for:
 
   bracketed              save -> launch on an UNINJECTED D -> inject -> clear -> repair
-  unbracketed            the same without the repair -- A NULL CONTROL THAT MUST DIVERGE
+  unbracketed            the same without the repair -- a null control that must diverge
   split_field_declared   the same product declaring the WRONG repair -- must be REFUSED
                          by name rather than mis-repairing
 
@@ -134,7 +134,7 @@ _NULL_REASONS: Dict[str, str] = {
         "no metallic axis has a DIAGONAL component that the off-diagonal rows spare",
 }
 
-#: Configurations. THE FIRST TWO ARE THE CORPUS SHAPES this product's two cells own,
+#: Configurations. The first two are the corpus shapes this product's two cells own,
 #: read off the stamped census (results/cuda_predicate_coverage_2026-09-02_stamped):
 #: absorber-1d.py and TestAbsorber.test_absorber are 1-D on z, METALLIC on z, five
 #: poles per component and conductive on every D component; material-dispersion.py is
@@ -248,7 +248,7 @@ def build(case: Dict[str, Any]):
         if array is None:
             continue
         array[...] = rng.uniform(-1.0, 1.0, size=shape).astype(np.float32)
-    # THE POLE VOLUMES ARE SEEDED NON-ZERO. Zero is a fixed point of ``s = s - P``, so
+    # The pole volumes are seeded non-zero. Zero is a fixed point of ``s = s - P``, so
     # a zero fixture turns every pole mutation into a null and the sweep would measure
     # nothing at all.
     for state in fields.polarizations:
@@ -293,7 +293,7 @@ def pole_volumes(fields: Any) -> List[np.ndarray]:
 def _clear_mask(fields: Any, target: str, all_axes: bool) -> Any:
     """The cells ``zero_metal_D`` holds at zero for one D component.
 
-    READ FROM THE SHIPPED PASS rather than transcribed: the mask is measured by
+    Read from the shipped pass rather than transcribed: the mask is measured by
     running ``stepping.zero_metal_D`` on a volume of ones and seeing which words it
     zeroed. A transcription here could drift from ``_zero_metal``'s own off-diagonal
     rule -- which spares the component parallel to each wall -- and a probe that
@@ -334,7 +334,7 @@ def closed_form(register: Dict[str, np.ndarray], poles: Dict[str, List[np.ndarra
         # reads it again.
         written[target] = value if mutation == "store_before_clear" else cleared
 
-        # THE CONSTITUTIVE READ, from the same cleared register.
+        # The constitutive read, from the same cleared register.
         source_register = value if mutation == "subtract_before_clear" else cleared
         chain = list(poles[component])
         if mutation == "pole_order_reversed":
@@ -384,7 +384,7 @@ def measure(case: Dict[str, Any], steps: int) -> Dict[str, Any]:
         "steps": steps,
     }
 
-    # THE SUB-STEP THIS PROBE CLAIMS TO MEASURE, CHECKED RATHER THAN ASSUMED. An
+    # The sub-step this probe claims to measure, checked rather than assumed. An
     # allocated ``f_w_E*`` or ``fu_D*`` would mean the fixture took the split-field
     # branch and every number below would describe a different recurrence.
     allocated = [name for name in _MUST_BE_ABSENT
@@ -409,7 +409,7 @@ def measure(case: Dict[str, Any], steps: int) -> Dict[str, Any]:
         stepping.update_P(reference, pml)
 
         for label, engine in engines.items():
-            # THE CURL IS THE CERTIFIED PASS, not a second transcription: what this
+            # The curl is the certified pass, not a second transcription: what this
             # probe is about is the composition between it and ``update_E``.
             stepping.step_D(engine, pml)
             register = {name: np.array(getattr(engine, name), copy=True)
@@ -502,7 +502,7 @@ def _fused_order(fields: Any, pml: Any, sources: Sequence[Any], when: float,
 def deposit_legs(case: Dict[str, Any], steps: int = 3) -> Dict[str, Any]:
     """``bracketed`` / ``unbracketed`` / ``split_field_declared`` on one configuration.
 
-    ``unbracketed`` IS A NULL CONTROL THAT MUST DIVERGE: without the repair the fused
+    ``unbracketed`` is a null control that must diverge: without the repair the fused
     launch's constitutive half consumed a pre-injection displacement, so E is wrong at
     every deposit cell. A leg that came back identical would mean the fixture's source
     deposited nothing, and the leg is reported ``vacuous`` in that case rather than
@@ -515,7 +515,7 @@ def deposit_legs(case: Dict[str, Any], steps: int = 3) -> Dict[str, Any]:
     sources = [_source_for(grid)]
     reference_sources = [_source_for(grid)]
 
-    # DOES THE FIXTURE ACTUALLY DEPOSIT? A source whose index is empty makes every leg
+    # Does the fixture actually deposit? A source whose index is empty makes every leg
     # below a null, so the question is asked before the legs are scored.
     probe_fields, probe_grid, _p = build(case)
     probe_source = _source_for(probe_grid)

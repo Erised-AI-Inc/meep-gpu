@@ -4,23 +4,23 @@
 stamp, on any slot and at any time. These tests pin the properties that make that safe
 (host-only: no GPU, no MEEP):
 
-* TWO CHUNKS NEVER COLLIDE ON A NAME: the default partitions of both machines cover every unit,
+* Two chunks never collide on a name: the default partitions of both machines cover every unit,
   their chunk plans together run exactly the legs the unchunked round runs, every root a chunk
   writes is its own and no other chunk's root extends it by ``_``, at eleven chunks (``_c1``
   against ``_c10``), across added and re-partitioned chunks, across two devices of one round,
   and against a foreign root in ``results/``;
-* A UNIT IS JUDGED BY ITS OWN RUNS: ``verify`` takes, per unit, the newest run whose import
+* A unit is judged by its own runs: ``verify`` takes, per unit, the newest run whose import
   record holds on the release tree and whose verdicts pass, reads the units of a run from its
   launch record and never from the index's plan, so re-partitioning the tree's units into any
   chunk sets moves no verdict, and a unit run again alone replaces only its own evidence;
-* A NEW DEVICE IS NEVER SILENT: an index names its device and mode, a launch on another device
+* A new device is never silent: an index names its device and mode, a launch on another device
   is refused by name, and a new device's bind re-points no board;
-* THE BIND BINDS THE SELECTION: one call per selected stamp, with the keys selected there where
+* The bind binds the selection: one call per selected stamp, with the keys selected there where
   the tool takes keys, and a run a tool would bind against the selection named on a STOP line;
   the Triton ``--only`` names only keys the Triton ledger holds, a selected unit whose key it
   lacks named on a REFUSED line, so every line the tool reads passes its ``--only`` guard (on
-  a copy of the R27 round's own index and selection, whose bind named two such keys);
-* A BIND REFUSES AN ARTIFACT WHOSE IMPORT RECORD NO LONGER MATCHES THE TREE: ``chunks.py
+  a copy of the 2026-10-15 round's own index and selection, whose bind named two such keys);
+* A bind refuses an artifact whose import record no longer matches the tree: ``chunks.py
   verify``, the three rebind tools, ``repoint_board_bindings.py --stamps``, and every writer of
   a round record, through the one rule in ``artifact_drift.py``.
 """
@@ -850,6 +850,33 @@ def test_the_metal_rebind_one_stamp_at_a_time_ends_on_the_newest_run(metal_rebin
     capsys.readouterr()
 
 
+def test_the_metal_rebind_binds_only_the_keys_it_is_named(metal_rebind, capsys):
+    """``--only``: per stamp, the gates the bind selected there. A unit run again in a
+    later chunk is bound from the run the selection took, a later run of it the
+    selection did not take is never read, and every other entry stays as it is."""
+    R, api, results, ledger, artifact = metal_rebind
+    artifact("a", S0, {KEPT: _sha(api / KEPT)})
+    artifact("a", S1, {KEPT: _sha(api / KEPT)})            # a later run, not selected
+    artifact("b", S1, {KEPT: _sha(api / KEPT)})
+    before = json.loads(ledger.read_text())
+    assert R.main(["--stamp", S0, "--only", "metal_a_device_gate", "--write"]) == 0
+    assert R.main(["--stamp", S1, "--only", "metal_b_device_gate", "--write"]) == 0
+    out = capsys.readouterr().out
+    assert "1 left as they stand (not named by --only)" in out
+    after = json.loads(ledger.read_text())
+    runs = {key: entry["runs"]["applegpu_g13s"] for key, entry in after.items()}
+    assert f"metal_a_{S0}/" in runs["metal_a_device_gate"]["records"]
+    assert f"metal_b_{S1}/" in runs["metal_b_device_gate"]["records"]
+    # one --only alone leaves the other key byte for byte
+    ledger.write_text(json.dumps(before, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    assert R.main(["--stamp", S1, "--only", "metal_b_device_gate", "--write"]) == 0
+    assert json.loads(ledger.read_text())["metal_a_device_gate"] == \
+        before["metal_a_device_gate"]
+    with pytest.raises(SystemExit, match="absent from the ledger"):
+        R.main(["--stamp", S0, "--only", "metal_a_device_gate,metal_z_device_gate"])
+    capsys.readouterr()
+
+
 def test_the_metal_rebind_refuses_a_moved_record_and_two_runs_of_one_gate(metal_rebind, capsys):
     R, api, results, ledger, artifact = metal_rebind
     before = ledger.read_text()
@@ -949,7 +976,7 @@ def test_the_metal_bind_calls_each_selected_stamp_once_in_launch_order(tmp_path)
     stops = [line for line in lines if line.startswith("# STOP rebind_metal_welds.py")]
     assert len(stops) == 1 and uid in stops[0] and again["stamp"] in stops[0]
     assert f"mv results/{units[uid]['family']}_{again['stamp']}" in stops[0]
-    # A STOP WITHHOLDS THE BIND: no command that writes a ledger is printed beside it.
+    # A STOP withholds the bind: no command that writes a ledger is printed beside it.
     assert C.bind_withheld(lines) and lines[-1].startswith(C.WITHHELD)
     assert not [line for line in lines if line.startswith("python rebind_")]
 
@@ -1074,6 +1101,20 @@ def test_a_new_devices_bind_re_points_no_board(tmp_path):
     assert len(lines) == 1 and lines[0].startswith("no board re-point")
 
 
+def test_the_records_re_point_is_given_the_selection_it_binds(tmp_path):
+    """Given the selection's path, the board re-point takes the run the bind took where a
+    gate has two among the stamps, so no STOP line is needed for it; without it, the
+    printed line is as before."""
+    index, results, units, picked, again, selection = _selected_world("metal", tmp_path)
+    sel = json.loads(selection.read_text())
+    plain = C.records_commands(index, sel, results, REPO)
+    given = C.records_commands(index, sel, results, REPO, str(selection))
+    assert given == [plain[-1] + f" --selection {selection}"]
+    assert not [line for line in given if line.startswith("STOP")]
+    assert C.records_lines(index, sel, results, REPO, str(selection))[-1] == \
+        f"# {given[-1]}"
+
+
 def test_legs_bind_takes_the_chunk_index_and_its_selection_and_refuses_a_metal_one(
         tmp_path, capsys):
     index, results, units, picked, again, selection = _selected_world("nvidia", tmp_path)
@@ -1107,19 +1148,21 @@ def test_the_chunked_bind_ends_as_the_unchunked_bind_does():
 
 
 # ------------------------------ the Triton --only names only keys the ledger holds ------
-#: The R27 round's NVIDIA bind: byte copies of its index and of the selection its verify
-#: wrote, and the lines ``legs.py bind --chunks`` printed from them on the frozen 1.0 tree,
-#: the two paths it was given written ``<index>`` and ``<selection>``. That print named, in
-#: the ``--only`` of two stamps, a ``CAMPAIGN_DIRS`` key the Triton ledger never held, and
-#: ``rebind_triton_welds.py`` refused each of the two lines whole, binding none of its keys.
+#: The 2026-10-15 round's NVIDIA bind (stamp 2026-10-15_10): copies of its index (two chunk
+#: reasons name its records, not their paths) and of the selection its verify wrote, and the
+#: lines ``legs.py bind --chunks`` printed from them on the frozen 1.0 tree, the two paths it was
+#: given written ``<index>`` and ``<selection>``. That print named, in the ``--only`` of two
+#: stamps, a ``CAMPAIGN_DIRS`` key the Triton ledger never held, and ``rebind_triton_welds.py``
+#: refused each line whole, binding none.
 R27 = HERE / "fixtures" / "round_chunks_r27"
 R27_SHA256 = {
-    "INDEX_nvidia.json": "32d89cce2ce7d7847eb33b7753823357b3c03c213dd04cb1b8b3ed6c44c96b94",
+    "INDEX_nvidia.json": "44d90e25dccd5fcb6e96be228851c186ebb04ac63460498f3da2007a1148c881",
     "SELECTION_nvidia.json": "537f0d1e094f9e0b09861b615c391515445e9f51eb418648eb3d6c96c02be869"}
 #: The ledger ``rebind_triton_welds.py`` binds, spelled here rather than read off ``chunks.py``.
 TRITON_LEDGER = REPO / "meep_gpu" / "triton_kernels" / "fingerprints.json"
 TRITON_REBIND = "python rebind_triton_welds.py --campaign"
 REFUSED = "# REFUSED rebind_triton_welds.py --only: "
+VERIFY_LINE = "python rounds/1.0/chunks.py verify "
 _ROOT_STAMP = re.compile(r"results/triton_(?:fleet|offdiag_stencil_welds)_"
                          r"(\d{4}-\d\d-\d\d_\d+_cc\d+_c\d+)(?:_|$)")
 
@@ -1147,11 +1190,11 @@ def _campaign_dirs_by_dir() -> dict:
 
 
 def _r27_bind(tmp_path: Path, write: bool = False):
-    """The R27 selection's bind as ``legs.py bind --chunks`` prints it (head, lines, records
-    lines), from an empty ``results/``, and the round's own print. The round's results held
-    no ``_r`` continuation, one CUDA campaign per stamp and no run a tool would bind against
-    the selection, so the roots its print names follow from the stamps alone: the tree the
-    round ran prints it line for line from an empty ``results/``."""
+    """The bind of the 2026-10-15 round's selection as ``legs.py bind --chunks`` prints it
+    (head, lines, records lines), from an empty ``results/``, and the round's own print. The
+    round's results held no ``_r`` continuation, one CUDA campaign per stamp and no run a tool
+    would bind against the selection, so the roots its print names follow from the stamps
+    alone: the tree the round ran prints it line for line from an empty ``results/``."""
     results = tmp_path / "results"
     results.mkdir(exist_ok=True)
     index = C.read_index(R27 / "INDEX_nvidia.json")
@@ -1162,10 +1205,20 @@ def _r27_bind(tmp_path: Path, write: bool = False):
     return [line.replace(str(path), "<selection>") for line in lines], printed
 
 
+def _stack_line(selection: dict) -> str:
+    """The line that records the device's certified NVIDIA stack, which the round's print
+    predates: one ``--stack`` per selected stamp, in launch order."""
+    stamps = C._ordered(selection, set(selection["selected"].values()))  # noqa: SLF001
+    assert sorted(stamps) == sorted(set(selection["selected"].values()))
+    return ("python record_nvidia_stack.py --capability 8.6 "
+            + " ".join(f"--stack results/chunk_{stamp}/stack" for stamp in stamps))
+
+
 def _expected_bind(printed, selection: dict, held: set) -> list:
     """The round's print with each Triton line's ``--only`` cut to the keys ``held``, the
     selected units whose keys it drops named before it (``("refused", unit, stamp, keys)``),
-    and a line left with no key not printed; every other line exactly as printed."""
+    a line left with no key not printed, and the stack record line right after the verify,
+    before every line that records or rebinds; every other line exactly as printed."""
     by_dir = _campaign_dirs_by_dir()
     refusals: dict = {}
     for uid, unit in sorted({u["id"]: u for u in C.units_for(REPO, "nvidia")}.items()):
@@ -1180,6 +1233,8 @@ def _expected_bind(printed, selection: dict, held: set) -> list:
     for line in printed:
         if not line.startswith(TRITON_REBIND):
             out.append(line)
+            if line.startswith(VERIFY_LINE):
+                out.append(_stack_line(selection))
             continue
         stamp = _line_stamp(line)
         out += [("refused", uid, stamp, lacking) for uid, lacking in refusals.get(stamp, ())]
@@ -1254,7 +1309,8 @@ def test_the_bind_reads_the_ledger_the_triton_rebind_binds(tmp_path):
 def test_the_r27_bind_names_only_keys_the_ledger_holds_and_nothing_else_moves(tmp_path):
     """Every line of the round's print is printed again byte for byte except its Triton
     lines: each names only the keys the ledger holds, after a REFUSED line per selected unit
-    whose key the ledger lacks, and a REFUSED line withholds nothing."""
+    whose key the ledger lacks, and a REFUSED line withholds nothing; the stack record line,
+    which the round predates, comes right after the verify, before every line that writes."""
     lines, printed = _r27_bind(tmp_path)
     selection = json.loads((R27 / "SELECTION_nvidia.json").read_text(encoding="utf-8"))
     _assert_bind(lines, _expected_bind(printed, selection, _ledger_keys()))
@@ -1287,35 +1343,30 @@ def test_a_key_the_ledger_lacks_leaves_its_line_and_a_stamp_left_with_none_print
                    if line.startswith(TRITON_REBIND))
 
 
-def test_the_rounds_two_refused_lines_are_cut_to_what_the_tools_guard_takes(tmp_path,
-                                                                             monkeypatch):
-    """The R27 case on the 1.0 ledger, which holds neither ``triton_bfast_device_gate`` nor
-    ``triton_special_kz_device_gate`` (whether to seed them is a ruling, not a bind): the
-    round's c8 and c11 lines, run as printed, end at the tool's guard naming that key; the
-    bind printed now gives c8 14 of its 15 keys and c11 3 of its 4, its campaign arguments
-    unchanged -- the two lines the round ran by hand instead -- and the tool's guard takes
-    every Triton line it prints."""
+def test_the_rounds_c8_and_c11_lines_bind_whole_on_the_ledger_that_holds_their_keys(
+        tmp_path, monkeypatch):
+    """The 2026-10-15 round's case on the ledger the 1.0.1 round's bind wrote, which holds
+    ``triton_bfast_device_gate`` and ``triton_special_kz_device_gate`` (seeded from that
+    round's released fleet runs; on the 1.0 ledger, which held neither, these two lines were
+    cut and run by hand): the round's c8 and c11 lines, run as printed, pass the tool's
+    guard; the bind printed now gives c8 its 15 keys and c11 its 4, the lines exactly as the
+    round printed them, with no line refused; and the tool's guard takes every Triton line
+    it prints."""
     lines, printed = _r27_bind(tmp_path)
     held = _ledger_keys()
     old = {_line_stamp(line): line for line in printed if line.startswith(TRITON_REBIND)}
     new = {_line_stamp(line): line for line in lines if line.startswith(TRITON_REBIND)}
     c8, c11 = "2026-10-15_10_cc86_c8", "2026-10-15_10_cc86_c11"
-    assert {stamp for stamp, line in old.items() if set(_only(line)) - held} == {c8, c11}
+    assert {stamp for stamp, line in old.items() if set(_only(line)) - held} == set()
     for stamp, key in ((c8, "triton_bfast_device_gate"), (c11, "triton_special_kz_device_gate")):
+        assert key in held and key in _only(old[stamp]), (stamp, key)
         ended = _run_to_the_only_guard(monkeypatch, tmp_path, old[stamp])
-        assert isinstance(ended, SystemExit), ended
-        assert str(ended) == f"--only names ['{key}'], absent from the ledger"
-        assert _only(new[stamp]) == [k for k in _only(old[stamp]) if k != key]
-        assert new[stamp].split(" --only ")[0] == old[stamp].split(" --only ")[0]
-    assert len(_only(new[c8])) == 14 and ",".join(_only(new[c11])) == (
+        assert isinstance(ended, _PastTheOnlyGuard), (stamp, ended)
+        assert new[stamp] == old[stamp], (stamp, new[stamp])
+    assert len(_only(new[c8])) == 15 and ",".join(_only(new[c11])) == (
         "triton_conductive_fused_electric_pair_device_gate,triton_fused_ade_chain_device_gate,"
-        "triton_fused_ade_state_device_gate")
-    refused = [line for line in lines if line.startswith(REFUSED)]
-    assert len(refused) == 2
-    assert (f" triton/fleet/bfast, selected under {c8}, welds triton_bfast_device_gate, "
-            in refused[0])
-    assert (f" triton/fleet/special_kz, selected under {c11}, welds "
-            f"triton_special_kz_device_gate, " in refused[1])
+        "triton_fused_ade_state_device_gate,triton_special_kz_device_gate")
+    assert [line for line in lines if line.startswith(REFUSED)] == []
     assert set(new) == set(old) and len(new) == 7
     for stamp, line in sorted(new.items()):
         ended = _run_to_the_only_guard(monkeypatch, tmp_path, line)
@@ -1333,7 +1384,13 @@ def test_legs_bind_prints_the_r27_bind_and_exits_0(tmp_path, capsys):
     out = [line.replace(str(index), "<index>").replace(str(selection), "<selection>")
            for line in capsys.readouterr().out.splitlines()]
     lines, printed = _r27_bind(tmp_path)
-    assert out == lines and not C.bind_withheld(out) and out[-1] == printed[-1]
+    filed = L.archive_commands(("triton", "cuda"))
+    assert out[-len(filed):] == filed, "the bind ends by filing the ledgers it wrote"
+    out = out[:-len(filed)]
+    # The records-time re-point is given the selection it binds; the round's own print
+    # predates the option, and is otherwise the same line.
+    assert out[:-1] == lines[:-1] and not C.bind_withheld(out)
+    assert lines[-1] == printed[-1] and out[-1] == f"{printed[-1]} --selection <selection>"
 
 
 def test_a_unit_run_again_alone_whose_key_the_ledger_lacks_prints_no_triton_line(
@@ -1502,6 +1559,66 @@ def test_the_triton_rebind_refuses_a_run_whose_record_names_a_moved_file(triton_
         assert rc == 0 and f"rebound   {planted.TKEY}" in out, out
 
 
+def _mixed_entry(api):
+    from seed_triton_welds import MIXED_POLICY_FIELD, MIXED_POLICY_LINE  # noqa: PLC0415
+    entry = planted._triton_entry(api)
+    entry[MIXED_POLICY_FIELD] = "NO POLICY INSTALLED. This gate never calls install_ftz_strip."
+    for run in entry["runs"].values():
+        run["subnormal_policy"] = MIXED_POLICY_LINE
+    return entry
+
+
+def test_a_run_that_installed_its_policy_retires_a_mixed_policy_declaration(
+        triton_rebind, capsys):
+    """The gate installs and stamps its policy now: without the option the rebind refuses
+    the stamped run for an entry declaring it installs none; with it the declaration is
+    dropped and the key bound under the stamped policy, every other field as it was."""
+    from seed_triton_welds import MIXED_POLICY_FIELD  # noqa: PLC0415
+    RT, api, ledger = triton_rebind
+    ledger.write_text(json.dumps({planted.TKEY: _mixed_entry(api)}))
+    before = ledger.read_text()
+    root = planted._triton_campaign(api, planted._triton_live(api))
+    assert RT.main(["--campaign", str(root), "--write"]) == 1
+    assert "policy refused" in capsys.readouterr().out and ledger.read_text() == before
+    assert RT.main(["--campaign", str(root), "--retire-mixed-policy", planted.TKEY,
+                    "--write"]) == 0
+    out = capsys.readouterr().out
+    assert f"RETIRED-DECLARATION  {planted.TKEY}: {MIXED_POLICY_FIELD} dropped" in out, out
+    entry = json.loads(ledger.read_text())[planted.TKEY]
+    assert MIXED_POLICY_FIELD not in entry
+    run = entry["runs"]["8.6"]
+    assert run["subnormal_policy"].split(" ", 1)[0] == "keep"
+    assert set(run["certified_policies"]) == {"keep"}
+    old = json.loads(before)[planted.TKEY]
+    assert entry["status"] == old["status"] and set(entry) == set(old) - {MIXED_POLICY_FIELD}
+
+
+def test_a_mixed_policy_declaration_stands_without_a_stamped_policy(triton_rebind, capsys):
+    from seed_triton_welds import MIXED_POLICY_FIELD  # noqa: PLC0415
+    RT, api, ledger = triton_rebind
+    ledger.write_text(json.dumps({planted.TKEY: _mixed_entry(api)}))
+    before = ledger.read_text()
+    root = planted._triton_campaign(api, planted._triton_live(api))
+    gate = root / "planted" / "gate.json"
+    artifact = json.loads(gate.read_text())
+    artifact.pop("subnormal_policy")
+    gate.write_text(json.dumps(artifact))
+    assert RT.main(["--campaign", str(root), "--retire-mixed-policy", planted.TKEY,
+                    "--write"]) == 1
+    out = capsys.readouterr().out
+    assert f"so its {MIXED_POLICY_FIELD} declaration stands" in out, out
+    assert ledger.read_text() == before
+    # The option names only a key that declares one, and one the run visits.
+    ledger.write_text(json.dumps({planted.TKEY: planted._triton_entry(api)}))
+    with pytest.raises(SystemExit, match="declare no _mixed_policy"):
+        RT.main(["--campaign", str(root), "--retire-mixed-policy", planted.TKEY])
+    ledger.write_text(json.dumps({planted.TKEY: _mixed_entry(api),
+                                  "triton_other_device_gate": planted._triton_entry(api)}))
+    with pytest.raises(SystemExit, match="which --only leaves out"):
+        RT.main(["--campaign", str(root), "--retire-mixed-policy", planted.TKEY,
+                 "--only", "triton_other_device_gate"])
+
+
 @pytest.mark.parametrize("moved", [False, True])
 def test_the_cuda_rebind_refuses_legs_whose_record_names_a_moved_file(tmp_path, monkeypatch,
                                                                       capsys, moved):
@@ -1582,7 +1699,7 @@ def test_the_previous_rounds_records_are_read_per_unit(release):
 # --------------------------------------------------------------------- the command line ---
 def test_extend_places_a_new_unit_in_a_new_chunk_and_plan_writes_its_lanes(tmp_path, capsys):
     index = _index("nvidia")
-    dropped = index["chunks"][3]["units"].pop()                 # as if a lane added a gate
+    dropped = index["chunks"][3]["units"].pop()                 # as if a gate were added later
     path = tmp_path / "index.json"
     C.write_index(path, index)
     assert any("in no chunk" in p for p in C.collisions(C.read_index(path), repo=REPO))
@@ -1651,6 +1768,121 @@ def test_partition_writes_the_device_and_its_mode(tmp_path, capsys):
                 "--round", ROUND_STAMP, "--out", str(tmp_path / "y.json")])
 
 
+BOTH_TABLES = {"triton": ["8.6"], "cuda": ["8.6"]}
+
+
+@pytest.mark.parametrize("machine, device, capability, admission, new, needles", [
+    ("nvidia", "cc86", "8.6", BOTH_TABLES, False, None),
+    ("nvidia", "cc90", "9.0", BOTH_TABLES, True, None),
+    ("nvidia", "cc90", "9.0", BOTH_TABLES, False,
+     ["cc90", "compute capability 9.0", "Triton table admits ['8.6']", "pass --new-device"]),
+    ("nvidia", "cc86", "8.6", BOTH_TABLES, True, ["both NVIDIA ledgers already admit cc86",
+                                                  "run without --new-device"]),
+    # a capability one table admits is in transit: certified needs both, new is refused only
+    # when both admit
+    ("nvidia", "cc90", "9.0", {"triton": ["8.6", "9.0"], "cuda": ["8.6"]}, False,
+     ["pass --new-device"]),
+    ("nvidia", "cc90", "9.0", {"triton": ["8.6", "9.0"], "cuda": ["8.6"]}, True, None),
+    ("metal", "applegpu_g13s", None, ["applegpu_g13s"], False, None),
+    ("metal", "applegpu_g15s", None, ["applegpu_g13s"], True, None),
+    ("metal", "applegpu_g15s", None, ["applegpu_g13s"], False,
+     ["admits ['applegpu_g13s'], not applegpu_g15s", "pass --new-device"]),
+    ("metal", "applegpu_g13s", None, ["applegpu_g13s"], True,
+     ["already admits applegpu_g13s", "run without --new-device"]),
+], ids=["nvidia_certified", "nvidia_new", "nvidia_new_device_missing_flag",
+        "nvidia_certified_device_with_flag", "nvidia_one_table_no_flag", "nvidia_one_table_flag",
+        "metal_certified", "metal_new", "metal_new_device_missing_flag",
+        "metal_certified_device_with_flag"])
+def test_the_device_mode_is_checked_against_what_the_ledgers_admit(machine, device, capability,
+                                                                   admission, new, needles):
+    problems = C.device_mode_problems(machine, device, capability, admission, new)
+    if needles is None:
+        assert problems == []
+    else:
+        assert len(problems) == 1 and all(n in problems[0] for n in needles), problems
+
+
+@pytest.mark.parametrize("machine, device, admission", [
+    ("nvidia", "cc86", None), ("nvidia", "cc86", ["8.6"]), ("metal", "applegpu_g13s", None)],
+    ids=["nvidia_no_answer", "nvidia_wrong_shape", "metal_ledger_cannot_say"])
+def test_a_ledger_that_does_not_answer_is_a_refusal_not_a_certified_index(machine, device,
+                                                                           admission):
+    for new in (False, True):
+        problems = C.device_mode_problems(machine, device, "8.6", admission, new,
+                                          "exit 1: ImportError")
+        assert len(problems) == 1
+        assert "did not say which devices they admit (exit 1: ImportError)" in problems[0]
+
+
+def test_the_ledgers_admission_is_read_from_the_checkout_in_a_child_process(tmp_path):
+    admission, why = C.ledger_admission(REPO, "nvidia")
+    assert why == "" and set(admission) == {"triton", "cuda"}
+    assert all(isinstance(v, list) for v in admission.values())
+    arch, why = C.ledger_admission(REPO, "metal")
+    assert why == "" and isinstance(arch, list)
+    # a directory that is no checkout does not answer, and says why
+    nothing, why = C.ledger_admission(tmp_path, "nvidia")
+    assert nothing is None and why
+    # a package that answers from inside the checkout is read ...
+    fake = tmp_path / "fake"
+    (fake / "meep_gpu").mkdir(parents=True)
+    (fake / "meep_gpu" / "fastpath.py").write_text(
+        "def capability_admission(table):\n    return {'admitted': ['9.9']}\n")
+    (fake / "meep_gpu" / "__init__.py").write_text("")
+    admitted, why = C.ledger_admission(fake, "nvidia")
+    assert why == "" and admitted == {"triton": ["9.9"], "cuda": ["9.9"]}
+    # ... and one imported from outside it (an installed copy) is refused, not read as the
+    # checkout's ledgers
+    (fake / "meep_gpu" / "__init__.py").write_text("__file__ = '/elsewhere/meep_gpu/__init__.py'\n")
+    nothing, why = C.ledger_admission(fake, "nvidia")
+    assert nothing is None and "outside the checkout" in why
+
+
+def test_partition_without_new_device_refuses_a_device_the_ledgers_do_not_admit(tmp_path,
+                                                                                capsys):
+    """The silent case: ``--capability 9.0`` without ``--new-device`` used to write an index
+    that said ``certified``."""
+    out = tmp_path / "index.json"
+    round_stamp = C.registry_round_stamp(REPO, "nvidia")[0] or ROUND_STAMP
+    admitted, _ = C.ledger_admission(REPO, "nvidia")
+    capability = "9.0"
+    assert capability not in admitted["triton"] + admitted["cuda"]
+    with pytest.raises(SystemExit) as raised:
+        C.main(["partition", "--repo", str(REPO), "--machine", "nvidia", "--capability",
+                capability, "--round", round_stamp, "--out", str(out)])
+    assert raised.value.code == 2 and not out.exists()
+    error = capsys.readouterr().err
+    assert "cc90" in error and "pass --new-device" in error
+    # and a device they admit refuses the flag
+    certified = sorted(set(admitted["triton"]) & set(admitted["cuda"]))[0]
+    with pytest.raises(SystemExit):
+        C.main(["partition", "--repo", str(REPO), "--machine", "nvidia", "--capability",
+                certified, "--new-device", "--round", round_stamp, "--out", str(out)])
+    assert not out.exists() and "run without --new-device" in capsys.readouterr().err
+    # the same two refusals on the Metal side
+    architectures, _ = C.ledger_admission(REPO, "metal")
+    with pytest.raises(SystemExit):
+        C.main(["partition", "--repo", str(REPO), "--machine", "metal", "--architecture",
+                "applegpu_g99x", "--round", round_stamp, "--out", str(out)])
+    assert not out.exists() and "pass --new-device" in capsys.readouterr().err
+    with pytest.raises(SystemExit):
+        C.main(["partition", "--repo", str(REPO), "--machine", "metal", "--architecture",
+                architectures[0], "--new-device", "--round", round_stamp, "--out", str(out)])
+    assert not out.exists() and "run without --new-device" in capsys.readouterr().err
+
+
+def test_partition_of_an_admitted_device_writes_a_certified_index(tmp_path):
+    out = tmp_path / "index.json"
+    round_stamp = C.registry_round_stamp(REPO, "nvidia")[0] or ROUND_STAMP
+    admitted, _ = C.ledger_admission(REPO, "nvidia")
+    capability = sorted(set(admitted["triton"]) & set(admitted["cuda"]))[0]
+    assert C.main(["partition", "--repo", str(REPO), "--machine", "nvidia", "--capability",
+                   capability, "--round", round_stamp, "--out", str(out)]) == 0
+    index = C.read_index(out)
+    assert index["device"] == C.device_of_capability(capability)
+    assert index["device_mode"] == "certified"
+
+
 def test_ready_reads_a_changing_file_list_and_the_files_moved_since_a_commit(release, capsys):
     repo, results, index, artifact = release
     tip = _git(repo, "rev-parse", "HEAD")
@@ -1659,7 +1891,7 @@ def test_ready_reads_a_changing_file_list_and_the_files_moved_since_a_commit(rel
     prior = repo.parent / "prior.json"
     prior.write_text(json.dumps({"_stamp": "2099-01-01_10"}))
     listed = repo.parent / "changing.txt"
-    listed.write_text("# open lanes\nmeep_gpu/kernel.py   # the kernel\n")
+    listed.write_text("# files still changing\nmeep_gpu/kernel.py   # the kernel\n")
     out = repo.parent / "ready.json"
     assert C.main(["ready", "--index", str(path), "--repo", str(repo), "--changing-file",
                    str(listed), "--prior-records", str(prior), "--json", str(out)]) == 0
@@ -1730,7 +1962,7 @@ def test_the_cuda_regate_record_refuses_legs_whose_record_names_a_moved_file(
     # main() asks it of the campaign it records.
     monkeypatch.setattr(RR, "_record", lambda: {})
     monkeypatch.setattr(RR, "record_disagrees_with_its_own_directories", lambda record: [])
-    monkeypatch.setattr(RR, "survey", lambda campaign, record: (rows, []))
+    monkeypatch.setattr(RR, "survey", lambda campaign, record, only=None: (rows, []))
     assert RR.main(["--campaign", str(campaign)]) == 1
     assert "meep_gpu/kernel.py (other bytes)" in capsys.readouterr().out
     kernel.unlink()
@@ -1751,6 +1983,58 @@ def test_the_ade_recut_refuses_a_leg_whose_record_names_a_moved_file_unless_decl
         f"{campaign.name}/{leg}/gate.json" for leg in sorted(RA.POLICY_LEGS)]
     assert all("meep_gpu/kernel.py (other bytes)" in line for line in refused)
     assert RA.import_drift(campaign, payloads, {"meep_gpu/kernel.py": _sha(kernel)}) == []
+
+
+def _ade_campaign(api: Path, kernel: Path, name: str, strings: dict) -> Path:
+    campaign = api / "parity" / "meep_gpu" / "results" / name
+    for leg in ("keep", "flush"):
+        (campaign / leg).mkdir(parents=True)
+        (campaign / leg / "gate.json").write_text(json.dumps({
+            **_recorded(kernel), "canonical_verdict": {"released": True, "reasons": []},
+            "kernels": sorted(strings), "device_source_sha256": strings,
+            "started_utc": "2099-01-01T00:00:00Z", "host": "a-machine",
+            "gate": "gate_cuda_ade", "gate_sha256": "9" * 64, "multi_step_budget": 60,
+            "seed": 1, "resolution": 10, "subnormal_policy_stamp": {"policy": leg},
+            "environment": {"device_name": "d", "compute_capability": "8.6",
+                            "cupy_version": "13.5.1", "nvrtc_version": "11.8"}}))
+    (campaign / "SUBJECT_DIGESTS.txt").write_text(f"{_sha(kernel)}  meep_gpu/kernel.py\n")
+    return campaign
+
+
+def test_an_ade_run_whose_device_strings_moved_is_recorded_as_a_new_certification(
+        tmp_path, monkeypatch, capsys):
+    """A re-cut refuses moved device strings; ``--new-certification`` records the run as
+    a new certification that names the one it follows, the dated block untouched, and
+    the next re-cut re-cuts the head of that chain."""
+    import record_cuda_ade_recut as RA  # noqa: PLC0415
+    import record_cuda_regate as RR  # noqa: PLC0415
+    api, kernel = _plant_api(tmp_path)
+    record_path = tmp_path / "certification.json"
+    old = {"update_P_pml_real": "1" * 64, "update_P_pml_real_uniform": "2" * 64}
+    new = dict(old, update_P_pml_real="3" * 64)
+    dated = {"kernel_module": "meep_gpu/kernel.py", "certified_kernels": sorted(old),
+             "device_source_sha256": old, "passed": True}
+    record_path.write_text(json.dumps({RA.FIRST_CERTIFICATION: dated}, indent=1) + "\n")
+    for module in (RA, RR):
+        monkeypatch.setattr(module, "RECORD", record_path)
+    monkeypatch.setattr(RA, "_API", api)
+    first = _ade_campaign(api, kernel, "cuda_ade_recut_2099-01-01_a", new)
+    assert RA.main(["--campaign", str(first)]) == 1
+    assert "(--new-certification records it as one)" in capsys.readouterr().out
+    assert RA.main(["--campaign", str(first), "--new-certification", "--write"]) == 0
+    record = json.loads(record_path.read_text())
+    block = record[first.name]
+    assert block[RA.NEW_CERTIFICATION_KEY] == RA.FIRST_CERTIFICATION and "re_cuts" not in block
+    assert block["device_source_sha256"] == new and block["_what_this_is"].startswith(
+        "A NEW CERTIFICATION")
+    assert record[RA.FIRST_CERTIFICATION] == dated, "the dated block is never edited"
+    assert RA.current_certification(record) == first.name
+    # The next run of the same strings is a re-cut of the head, and refuses as a new one.
+    second = _ade_campaign(api, kernel, "cuda_ade_recut_2099-01-02_a", new)
+    assert RA.main(["--campaign", str(second), "--new-certification"]) == 1
+    assert "is a re-cut of that block, not a new certification" in capsys.readouterr().out
+    assert RA.main(["--campaign", str(second)]) == 0
+    assert f"re-cuts {first.name}" in capsys.readouterr().out
 
 
 @pytest.fixture()
@@ -1830,3 +2114,11 @@ def test_the_route_record_refuses_a_leg_whose_record_names_a_moved_file(tree, ca
                 f"not hold at the recorded bytes: meep_gpu/fastpath.py (other bytes)") in err
     else:
         assert rc == 0, err
+
+
+def test_a_bind_prints_the_lines_that_file_its_ledgers():
+    lines = L.archive_commands(("triton", "cuda"))
+    assert lines == ["python ledger_scope.py archive --table triton "
+                     "../../meep_gpu/triton_kernels/fingerprints.json",
+                     "python ledger_scope.py archive --table cuda "
+                     "../../meep_gpu/cuda_kernels/fingerprints.json"]

@@ -1,0 +1,3351 @@
+{
+ "attribution": {
+  "not_attributed": 51,
+  "why": "rows-times-products left unpriced: a product is priced only as its plan's sole fused product, or as the plan's one bracketed product"
+ },
+ "contention": {
+  "admitted_without_an_after_probe": 0
+ },
+ "cut": {
+  "account_for_release": true,
+  "allow_unpinned_subject": [],
+  "by": "parity/meep_gpu/cut_timing_record.py",
+  "fused_leg_preference": "span",
+  "gate": "between_pass",
+  "min_rows": 2,
+  "require_box_after": false,
+  "select_route": null,
+  "table": "metal"
+ },
+ "excluded": [],
+ "host": [
+  {
+   "backend": "numpy",
+   "backend_version": null,
+   "compute_capability": "applegpu_g13s",
+   "cuda_driver": null,
+   "cuda_runtime": null,
+   "device": "Apple M1 Max",
+   "triton": null
+  }
+ ],
+ "inputs": {
+  "files": [
+   {
+    "path": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__absorber_1d__drive__p1__cbfb1ef0a9/mac2__2026-11-01T09_20_38Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "a3885f74c0c4b8955e82ac878a8468ffe8dbe1846c54a45498c4645d7cc78e8b"
+   },
+   {
+    "path": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__bfast_1d__drive__p1__4a3789facf/mac2__2026-11-01T09_23_28Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "8caad40d00ca2ec9777419809d681c837ca3f428b3d67809fad015d7a2d1ccbe"
+   },
+   {
+    "path": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__bloch_2d__drive__p1__0ce3835ee0/mac2__2026-11-01T09_26_19Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "43c96bdd90e1288bde4318c20cf7be1dbdbc568c30b015061e4a74e2b2fa140a"
+   },
+   {
+    "path": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__complex_1d__drive__p1__78d8e586ca/mac2__2026-11-01T09_30_08Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "2108c33927fbfb74b7e6c211b61f428a5bb3c5f9728cacdd2b66b8db63b8595d"
+   },
+   {
+    "path": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__complex_3d__drive__p1__760e2f3bad/mac2__2026-11-01T09_33_00Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "1bf668fd6eb78f6d1f7f67dae05e5fb2a014038141847b9274842f7e1370b36f"
+   },
+   {
+    "path": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__complex_3d_thinline__drive__p1__2889331dcc/mac2__2026-11-01T09_43_51Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "ec3c60763df70f529a22fd4099dc714b54a3a11421492774090ab326710f761a"
+   },
+   {
+    "path": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__complex_beta_2d__drive__p1__6a32e2b5b2/mac2__2026-11-01T10_19_49Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "02d54013976bf4264a4d8a3e2f99199e0771382e07d9e2994549d8981b4e5d30"
+   },
+   {
+    "path": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__complex_beta_bloch_2d__drive__p1__5b914a116f/mac2__2026-11-01T10_22_40Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "9dcb3f7427b744853aa5303bd63c2db1395f794c116f4b09629105e02a182742"
+   },
+   {
+    "path": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__complex_no_pml_3d__drive__p1__895473d34a/mac2__2026-11-01T10_25_31Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "d76ee09b52108c780a9d90321c1edbf80a2a1f938e9a38ca412d971935b4b472"
+   },
+   {
+    "path": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__complex_no_pml_offdiag__drive__p1__8c1e8de4fb/mac1__2026-10-29T09_22_11Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "c17c40ef5af316120cc2d76648f56f4cc589dfc7c8aeba2c408a68cca814f19a"
+   },
+   {
+    "path": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__complex_nobloch_2d__drive__p1__22d947bd44/mac2__2026-11-01T10_28_23Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "6417621e105338a60af3f3ff4eb1bb4d9f9da56805b7f3c206dd859136b0be7a"
+   },
+   {
+    "path": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__conductive_2d__drive__p1__9ba20d41ee/mac2__2026-11-01T10_31_17Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "db0a8fbd7119b2a44bf8e70f426707e8e6f4e095560fbf1b8d714573f4b016e0"
+   },
+   {
+    "path": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__cylindrical__drive__p1__6437976325/mac2__2026-11-01T10_34_10Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "5ff05b3afda9f0942427c4745515416ac997ebe588b4ee4667b091b94a1a6918"
+   },
+   {
+    "path": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__cylindrical_m0__drive__p1__9013cff2b8/mac2__2026-11-01T10_37_04Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "ae74b95b38e5e0d7780f53e8a6e0509b17d54186280471e9a3e49fa1608451e6"
+   },
+   {
+    "path": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__cylindrical_m0_complex__drive__p1__6c55b1c9f2/mac2__2026-11-01T10_39_59Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "1660b52aec2525ae825a843d6e01c830e505498575fe6b7285a17f675e77dfcd"
+   },
+   {
+    "path": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__cylindrical_m1__drive__p1__2aa5c6203b/mac2__2026-11-01T10_42_52Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "d2569ade7c638f73235c181aab282ec4234e660823be6a212c85aa72af0dc91c"
+   },
+   {
+    "path": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__dispersive6_2d__drive__p1__8bcd2b3141/mac2__2026-11-01T10_45_48Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "9463c9b4d063f289b8b669e180e51ef302e669215be381e8158817c802f2fe45"
+   },
+   {
+    "path": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__dispersive_2d__drive__p1__911144f652/mac2__2026-11-01T10_48_44Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "313cb64714792e468d8888064d5f373ba929c34af5e5a72aa8c95ff253ba882c"
+   },
+   {
+    "path": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__folded_2d__drive__p1__a6c4cfff86/mac2__2026-11-01T10_51_35Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "8eec4e098e36cd4f3dc87dabdc524b91d15e9938edf48adcb553bee7fd7f2eb2"
+   },
+   {
+    "path": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__folded_3d__drive__p1__6e587c8c01/mac2__2026-11-01T10_54_29Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "275c9bae5c898797351b316f9f6d6f784b5b5a43b8ff1c6935a83a83e1996a3b"
+   },
+   {
+    "path": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__folded_complex_2d__drive__p1__aa68eaeb7e/mac2__2026-11-01T10_57_20Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "3f3afb95c47b1289662c631603dc49952ec7488c4c8352c7126a9a53d9009f29"
+   },
+   {
+    "path": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__folded_complex_3d__drive__p1__87d51728bc/mac2__2026-11-01T11_00_11Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "43aa060e37a28828bc7362418f32b06e04357d1df2362bb34d367bf7427b05a7"
+   },
+   {
+    "path": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__folded_complex_beta_2d__drive__p1__a60a453956/mac2__2026-11-01T11_03_04Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "a98995d590067b6d3db9597ba559a5e9fb0439b81d90a404ea0519c85c59c26b"
+   },
+   {
+    "path": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__folded_complex_beta_bloch_2d__drive__p1__1bd543d075/mac2__2026-11-01T11_05_57Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "3263874090edaeea6949c9a00953e248d2e96ea0b8cbb61d0a5663f96f2549fa"
+   },
+   {
+    "path": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__folded_complex_kz2d_3d__drive__p1__92f0cff284/mac2__2026-11-01T11_08_49Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "db76e4dceefa78e1f4f53a6a283b3207340fee5fed55510d3f786dad9751438c"
+   },
+   {
+    "path": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__folded_complex_nobloch_offdiag_2d__drive__p1__8a745f505d/mac1__2026-10-29T10_53_31Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "59238b4fbcb4093f09d8d02148f55b3b9fe8781485ea143dcd68dab927edd64b"
+   },
+   {
+    "path": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__folded_complex_offdiag_2d__drive__p1__338e27c1fa/mac1__2026-10-29T10_56_20Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "f4043f312076d0c919ca8c655ea2c2f011b3594a92435b44c2f3680fbae16af9"
+   },
+   {
+    "path": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__folded_dispersive5_2d__drive__p1__459041e7d2/mac2__2026-11-01T11_11_44Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "0db90377f99443583452c41e6b3c02636e6554a30b67bfeb8b6d4ef57f1ab0bf"
+   },
+   {
+    "path": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__folded_dispersive_2d__drive__p1__103cc19d8a/mac2__2026-11-01T11_14_36Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "5f685b680ebfd86947c7cf9485d2353f68bd2cdf333f7e132c4e0c0271a0239c"
+   },
+   {
+    "path": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__folded_dispersive_3d__drive__p1__13aac8aa96/mac2__2026-11-01T11_17_35Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "c8299069d061c1527fabc9e61b5966a501e71f75ea356460075c82d675559da6"
+   },
+   {
+    "path": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__folded_offdiag_2d__drive__p1__76b808f078/mac1__2026-10-29T11_08_03Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "8113a4da1d84883045e5008ce1a51f458da98066970238fa22be3863e31fa80e"
+   },
+   {
+    "path": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__folded_offdiag_magnetic_2d__drive__p1__7ee05ef3c9/mac1__2026-10-29T11_10_52Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "d997e3c461d1a134b2ef951e55956e063172bf3f569028ef65a35439222193be"
+   },
+   {
+    "path": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__folded_special_kz_2d__drive__p1__1cb0412fdc/mac2__2026-11-01T11_20_27Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "be53fbc14967709e04204f28ddeb9622690adc9a0d349efb00aa5b731d7b1cdd"
+   },
+   {
+    "path": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__magnetic_seam_2d__drive__p1__bda6177ef1/mac2__2026-11-01T11_23_19Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "10a4cb16c6aef3b74094c9f3eac04c911023d02298f944ee6acc6937d700ac92"
+   },
+   {
+    "path": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__magnetic_seam_2d__res130__p1__194839425a/mac2__2026-11-01T11_50_18Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "b3b4d357f79de5f50ffe9ac35bf56a3eac0a714cd8bcbe87dc00fb2ebf126e9a"
+   },
+   {
+    "path": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__magnetic_seam_2d__res130__p2__a6a37745b0/mac2__2026-11-01T12_23_04Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "a95266bce7d75f4529a20a2d77c480c698d7e509475d5edaa77553d12c4a2b29"
+   },
+   {
+    "path": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__magnetic_seam_2d__res200__p1__c720b66021/mac2__2026-11-01T11_55_33Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "3e003aab0f62fa583838898e3982ae359144a787c9113224728015922ddb0f29"
+   },
+   {
+    "path": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__magnetic_seam_2d__res200__p2__b051c6eabb/mac2__2026-11-01T12_14_54Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "6f5ee05efe719d3241ee47d1b23a31fddd9f71f2d325676bd14baba3ed1bb951"
+   },
+   {
+    "path": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__magnetic_seam_2d__res20__p1__4e8357ad98/mac2__2026-11-01T11_40_08Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "feb038dd9b9cf4516d4771ba007428a46ed09ad8e9ea294e83d9985e32ce96b6"
+   },
+   {
+    "path": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__magnetic_seam_2d__res20__p2__f77face804/mac2__2026-11-01T12_39_13Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "4da07960f9d57bb946a70102b3cfcd81e8cd5c05e5f1c2c6204b81a372d40170"
+   },
+   {
+    "path": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__magnetic_seam_2d__res300__p1__9206b4c5a8/mac2__2026-11-01T12_01_03Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "58c6761e65e459a515aa9774a2bff00e316855d48d788217bc3661ecfcafe043"
+   },
+   {
+    "path": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__magnetic_seam_2d__res300__p2__0bc7092729/mac2__2026-11-01T12_09_34Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "75ee5c741a8dfd320143ba606311b47c573a935e39d6eaac8ffe13afea52bc3a"
+   },
+   {
+    "path": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__magnetic_seam_2d__res60__p1__b493ceb867/mac2__2026-11-01T11_45_11Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "3b71875d115a2f5b154ac7ff470d2e2ff1ac678b67f2f24cdd5318d761d0a7b3"
+   },
+   {
+    "path": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__magnetic_seam_2d__res60__p2__004e875736/mac2__2026-11-01T12_34_10Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "64841e715fe2a1c1947690905c9e8857f055cbc18b2a2ede1ae8b570e17038d8"
+   },
+   {
+    "path": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__no_pml_dispersive_2d__drive__p1__4d7a2e0c58/mac2__2026-11-01T11_26_10Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "190f7b04894a6b42f48ef31cbf078b3f88ddf8b7149b7c873e9ab58a11fcbca7"
+   },
+   {
+    "path": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__offdiag_2d__drive__p1__ca7578ec75/mac1__2026-10-29T11_25_20Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "8fd766a972d512eb05f73de17424456334708530027f4f5ff50dc44620af896e"
+   },
+   {
+    "path": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__offdiag_2d__res130__p1__87bb0f6884/mac1__2026-10-29T12_02_52Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "16499b94f4ebd0c809dcc24a7c70e579f2ffe3551812585ffdb4941a3fbb1a73"
+   },
+   {
+    "path": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__offdiag_2d__res130__p2__70eb7c2798/mac1__2026-10-29T12_53_46Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "c9e3e4df4d12df404dab423d0017f215e2be7822a8b9307583b98949c35edc88"
+   },
+   {
+    "path": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__offdiag_2d__res200__p1__b8cd9a8a6f/mac1__2026-10-29T12_13_47Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "4534ef4c2f16012580465995b2499af7087a5738a3c589c72c572058040c1184"
+   },
+   {
+    "path": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__offdiag_2d__res200__p2__b070a8af6f/mac1__2026-10-29T12_45_56Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "98659ba7d470030938e61fcff802a73e8dfdab6ca5bdf659dac73b084f099d43"
+   },
+   {
+    "path": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__offdiag_2d__res20__p1__7bb20851a2/mac1__2026-10-29T11_47_35Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "68d16f64a094811bdce2966257ad95cbccb1ea336ce7dae23d44599aa52fedeb"
+   },
+   {
+    "path": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__offdiag_2d__res20__p2__2333d6f525/mac1__2026-10-29T13_09_00Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "8ea6e2792a3329e84940aa3199442f82fa343c8fbdcde5aedb9aade3ff07005e"
+   },
+   {
+    "path": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__offdiag_2d__res300__p1__c565fab118/mac1__2026-10-29T12_29_13Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "150fb6b957e5302de1a9298023ebb58686e2608b234d4e765806f6d6328c8d85"
+   },
+   {
+    "path": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__offdiag_2d__res300__p2__9ae6032bbf/mac1__2026-10-29T12_37_44Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "fd29a21397e41a51983a57975ef639f85814fc4eb710bc0da1c7b9f5a40c9e97"
+   },
+   {
+    "path": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__offdiag_2d__res60__p1__b1b030cd55/mac1__2026-10-29T11_55_10Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "8d116e5454e1edd176c87973d75071627effa042fe6895e493d357c684a1b506"
+   },
+   {
+    "path": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__offdiag_2d__res60__p2__267de268b0/mac1__2026-10-29T13_01_26Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "166fa04d5854537d5dc39a94d7f06f24b3f0a330c697744412b0b0ebb2eaf003"
+   },
+   {
+    "path": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__offdiag_magnetic_2d__drive__p1__d7a9963a1d/mac1__2026-10-29T11_28_11Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "67177e850ea30e39b5ad0321af73787c463c7efdbf03464c4fc435c8bbe0c215"
+   },
+   {
+    "path": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__pml_1d__drive__p1__7a811e3623/mac2__2026-11-01T11_29_00Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "5b95288b6ff758228b4b1434e9cc6839d55375096dbe0bedd3015280eda90e89"
+   },
+   {
+    "path": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__pml_2d__drive__p1__2522d158a1/mac2__2026-11-01T11_31_52Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "267f3eb0abe4c19e90a02cef519f6e1895897f94f224d22d730c91aa7f1d72e0"
+   },
+   {
+    "path": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__pml_2d__res130__p1__1c2192fa50/mac2__2026-11-01T11_52_53Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "f2b51fa1a0a3f7de10fca78966ded3cae35ba4a464db885dd172a234e3accf53"
+   },
+   {
+    "path": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__pml_2d__res130__p2__c075132ad4/mac2__2026-11-01T12_17_28Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "41f0fcb76fad86eb6e1dc562cf3f6af160c63554714b72dbb5715a62d06f6d97"
+   },
+   {
+    "path": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__pml_2d__res200__p1__68ffb9d54c/mac2__2026-11-01T11_58_13Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "be440dd53d1c4d868c705e28367b00ccb212bbf8567ca0fbf61c649a19881ef4"
+   },
+   {
+    "path": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__pml_2d__res200__p2__30730c6b78/mac2__2026-11-01T12_12_14Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "0b9bb33ef69eccf9c40af8e95163fd35d1ce7cf68e853beb51374c419958750b"
+   },
+   {
+    "path": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__pml_2d__res20__p1__ea1f1981a0/mac2__2026-11-01T11_42_39Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "133123f806e8d54ffc9addea1bc4d09289d0f7cf8972a40ed4a2bcae9f6ae916"
+   },
+   {
+    "path": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__pml_2d__res20__p2__aab2d183dd/mac2__2026-11-01T12_36_42Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "6843cce1e4c5adcad9c960fd00ba9689d3c338a9181ff9da06bcce24cf4b7e51"
+   },
+   {
+    "path": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__pml_2d__res300__p1__3426738c0d/mac2__2026-11-01T12_03_53Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "a19a849d4fed0141855889a8f1500aeec39659ec3bca76e5ea8c7d9aa9d409b2"
+   },
+   {
+    "path": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__pml_2d__res300__p2__ead6ab1ace/mac2__2026-11-01T12_06_43Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "81fdc367d3ec74ded306ea2f41e427e3d42722de0e13050d3eaf846319d3cdc2"
+   },
+   {
+    "path": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__pml_2d__res60__p1__e2f6ed2400/mac2__2026-11-01T11_47_44Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "7c9e7439ef9fe695c9687e9a44ea7793cc7b515bcfe56989301764476e81b75d"
+   },
+   {
+    "path": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__pml_2d__res60__p2__68f6941fcc/mac2__2026-11-01T12_31_38Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "d15b7dcf457e00cc2f33471b6c426173d04a8cce930c221f7741559b2e677c0b"
+   },
+   {
+    "path": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__pml_3d__drive__p1__6ea4a67a11/mac1__2026-10-29T11_36_49Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "8a3b4916cb7fbe1b7df8433aafbea7989de2a11f23f6d78cd1d4d0e3ae6769b0"
+   },
+   {
+    "path": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__pml_3d_diagonal__drive__p1__8af6a03598/mac2__2026-11-01T11_34_44Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "5475899fed44caaac916fef9e2e2e47203e3b69ca40ee36d63aad8d7d821aa58"
+   },
+   {
+    "path": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__special_kz_2d__drive__p1__99c04beb05/mac2__2026-11-01T11_37_36Z.rows.jsonl",
+    "rows": 1,
+    "sha256": "7fa06591df2e5f373d38296e73052e9dccc416e3af41210c6710ce97634d48aa"
+   }
+  ],
+  "roots": [
+   "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__absorber_1d__drive__p1__cbfb1ef0a9/mac2__2026-11-01T09_20_38Z.rows.jsonl",
+   "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__bfast_1d__drive__p1__4a3789facf/mac2__2026-11-01T09_23_28Z.rows.jsonl",
+   "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__bloch_2d__drive__p1__0ce3835ee0/mac2__2026-11-01T09_26_19Z.rows.jsonl",
+   "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__complex_1d__drive__p1__78d8e586ca/mac2__2026-11-01T09_30_08Z.rows.jsonl",
+   "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__complex_3d__drive__p1__760e2f3bad/mac2__2026-11-01T09_33_00Z.rows.jsonl",
+   "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__complex_3d_thinline__drive__p1__2889331dcc/mac2__2026-11-01T09_43_51Z.rows.jsonl",
+   "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__complex_beta_2d__drive__p1__6a32e2b5b2/mac2__2026-11-01T10_19_49Z.rows.jsonl",
+   "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__complex_beta_bloch_2d__drive__p1__5b914a116f/mac2__2026-11-01T10_22_40Z.rows.jsonl",
+   "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__complex_no_pml_3d__drive__p1__895473d34a/mac2__2026-11-01T10_25_31Z.rows.jsonl",
+   "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__complex_no_pml_offdiag__drive__p1__8c1e8de4fb/mac1__2026-10-29T09_22_11Z.rows.jsonl",
+   "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__complex_nobloch_2d__drive__p1__22d947bd44/mac2__2026-11-01T10_28_23Z.rows.jsonl",
+   "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__conductive_2d__drive__p1__9ba20d41ee/mac2__2026-11-01T10_31_17Z.rows.jsonl",
+   "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__cylindrical__drive__p1__6437976325/mac2__2026-11-01T10_34_10Z.rows.jsonl",
+   "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__cylindrical_m0__drive__p1__9013cff2b8/mac2__2026-11-01T10_37_04Z.rows.jsonl",
+   "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__cylindrical_m0_complex__drive__p1__6c55b1c9f2/mac2__2026-11-01T10_39_59Z.rows.jsonl",
+   "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__cylindrical_m1__drive__p1__2aa5c6203b/mac2__2026-11-01T10_42_52Z.rows.jsonl",
+   "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__dispersive6_2d__drive__p1__8bcd2b3141/mac2__2026-11-01T10_45_48Z.rows.jsonl",
+   "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__dispersive_2d__drive__p1__911144f652/mac2__2026-11-01T10_48_44Z.rows.jsonl",
+   "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__folded_2d__drive__p1__a6c4cfff86/mac2__2026-11-01T10_51_35Z.rows.jsonl",
+   "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__folded_3d__drive__p1__6e587c8c01/mac2__2026-11-01T10_54_29Z.rows.jsonl",
+   "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__folded_complex_2d__drive__p1__aa68eaeb7e/mac2__2026-11-01T10_57_20Z.rows.jsonl",
+   "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__folded_complex_3d__drive__p1__87d51728bc/mac2__2026-11-01T11_00_11Z.rows.jsonl",
+   "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__folded_complex_beta_2d__drive__p1__a60a453956/mac2__2026-11-01T11_03_04Z.rows.jsonl",
+   "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__folded_complex_beta_bloch_2d__drive__p1__1bd543d075/mac2__2026-11-01T11_05_57Z.rows.jsonl",
+   "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__folded_complex_kz2d_3d__drive__p1__92f0cff284/mac2__2026-11-01T11_08_49Z.rows.jsonl",
+   "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__folded_complex_nobloch_offdiag_2d__drive__p1__8a745f505d/mac1__2026-10-29T10_53_31Z.rows.jsonl",
+   "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__folded_complex_offdiag_2d__drive__p1__338e27c1fa/mac1__2026-10-29T10_56_20Z.rows.jsonl",
+   "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__folded_dispersive5_2d__drive__p1__459041e7d2/mac2__2026-11-01T11_11_44Z.rows.jsonl",
+   "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__folded_dispersive_2d__drive__p1__103cc19d8a/mac2__2026-11-01T11_14_36Z.rows.jsonl",
+   "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__folded_dispersive_3d__drive__p1__13aac8aa96/mac2__2026-11-01T11_17_35Z.rows.jsonl",
+   "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__folded_offdiag_2d__drive__p1__76b808f078/mac1__2026-10-29T11_08_03Z.rows.jsonl",
+   "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__folded_offdiag_magnetic_2d__drive__p1__7ee05ef3c9/mac1__2026-10-29T11_10_52Z.rows.jsonl",
+   "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__folded_special_kz_2d__drive__p1__1cb0412fdc/mac2__2026-11-01T11_20_27Z.rows.jsonl",
+   "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__magnetic_seam_2d__drive__p1__bda6177ef1/mac2__2026-11-01T11_23_19Z.rows.jsonl",
+   "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__magnetic_seam_2d__res130__p1__194839425a/mac2__2026-11-01T11_50_18Z.rows.jsonl",
+   "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__magnetic_seam_2d__res130__p2__a6a37745b0/mac2__2026-11-01T12_23_04Z.rows.jsonl",
+   "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__magnetic_seam_2d__res200__p1__c720b66021/mac2__2026-11-01T11_55_33Z.rows.jsonl",
+   "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__magnetic_seam_2d__res200__p2__b051c6eabb/mac2__2026-11-01T12_14_54Z.rows.jsonl",
+   "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__magnetic_seam_2d__res20__p1__4e8357ad98/mac2__2026-11-01T11_40_08Z.rows.jsonl",
+   "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__magnetic_seam_2d__res20__p2__f77face804/mac2__2026-11-01T12_39_13Z.rows.jsonl",
+   "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__magnetic_seam_2d__res300__p1__9206b4c5a8/mac2__2026-11-01T12_01_03Z.rows.jsonl",
+   "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__magnetic_seam_2d__res300__p2__0bc7092729/mac2__2026-11-01T12_09_34Z.rows.jsonl",
+   "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__magnetic_seam_2d__res60__p1__b493ceb867/mac2__2026-11-01T11_45_11Z.rows.jsonl",
+   "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__magnetic_seam_2d__res60__p2__004e875736/mac2__2026-11-01T12_34_10Z.rows.jsonl",
+   "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__no_pml_dispersive_2d__drive__p1__4d7a2e0c58/mac2__2026-11-01T11_26_10Z.rows.jsonl",
+   "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__offdiag_2d__drive__p1__ca7578ec75/mac1__2026-10-29T11_25_20Z.rows.jsonl",
+   "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__offdiag_2d__res130__p1__87bb0f6884/mac1__2026-10-29T12_02_52Z.rows.jsonl",
+   "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__offdiag_2d__res130__p2__70eb7c2798/mac1__2026-10-29T12_53_46Z.rows.jsonl",
+   "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__offdiag_2d__res200__p1__b8cd9a8a6f/mac1__2026-10-29T12_13_47Z.rows.jsonl",
+   "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__offdiag_2d__res200__p2__b070a8af6f/mac1__2026-10-29T12_45_56Z.rows.jsonl",
+   "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__offdiag_2d__res20__p1__7bb20851a2/mac1__2026-10-29T11_47_35Z.rows.jsonl",
+   "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__offdiag_2d__res20__p2__2333d6f525/mac1__2026-10-29T13_09_00Z.rows.jsonl",
+   "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__offdiag_2d__res300__p1__c565fab118/mac1__2026-10-29T12_29_13Z.rows.jsonl",
+   "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__offdiag_2d__res300__p2__9ae6032bbf/mac1__2026-10-29T12_37_44Z.rows.jsonl",
+   "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__offdiag_2d__res60__p1__b1b030cd55/mac1__2026-10-29T11_55_10Z.rows.jsonl",
+   "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__offdiag_2d__res60__p2__267de268b0/mac1__2026-10-29T13_01_26Z.rows.jsonl",
+   "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__offdiag_magnetic_2d__drive__p1__d7a9963a1d/mac1__2026-10-29T11_28_11Z.rows.jsonl",
+   "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__pml_1d__drive__p1__7a811e3623/mac2__2026-11-01T11_29_00Z.rows.jsonl",
+   "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__pml_2d__drive__p1__2522d158a1/mac2__2026-11-01T11_31_52Z.rows.jsonl",
+   "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__pml_2d__res130__p1__1c2192fa50/mac2__2026-11-01T11_52_53Z.rows.jsonl",
+   "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__pml_2d__res130__p2__c075132ad4/mac2__2026-11-01T12_17_28Z.rows.jsonl",
+   "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__pml_2d__res200__p1__68ffb9d54c/mac2__2026-11-01T11_58_13Z.rows.jsonl",
+   "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__pml_2d__res200__p2__30730c6b78/mac2__2026-11-01T12_12_14Z.rows.jsonl",
+   "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__pml_2d__res20__p1__ea1f1981a0/mac2__2026-11-01T11_42_39Z.rows.jsonl",
+   "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__pml_2d__res20__p2__aab2d183dd/mac2__2026-11-01T12_36_42Z.rows.jsonl",
+   "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__pml_2d__res300__p1__3426738c0d/mac2__2026-11-01T12_03_53Z.rows.jsonl",
+   "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__pml_2d__res300__p2__ead6ab1ace/mac2__2026-11-01T12_06_43Z.rows.jsonl",
+   "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__pml_2d__res60__p1__e2f6ed2400/mac2__2026-11-01T11_47_44Z.rows.jsonl",
+   "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__pml_2d__res60__p2__68f6941fcc/mac2__2026-11-01T12_31_38Z.rows.jsonl",
+   "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__pml_3d__drive__p1__6ea4a67a11/mac1__2026-10-29T11_36_49Z.rows.jsonl",
+   "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__pml_3d_diagonal__drive__p1__8af6a03598/mac2__2026-11-01T11_34_44Z.rows.jsonl",
+   "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__special_kz_2d__drive__p1__99c04beb05/mac2__2026-11-01T11_37_36Z.rows.jsonl"
+  ],
+  "sha256": "5fe974d0d597464ec2deb6958736035329a5d55259bcb496786ab7aff092b858"
+ },
+ "keys": {
+  "BFAST fused electric D/E pair|real|3|0|bracketed|250-250": {
+   "band": {
+    "hi_cells": 250,
+    "lo_cells": 250
+   },
+   "baseline_ms_per_step": 0.118399,
+   "baseline_spread": 0.00952,
+   "bracketed": true,
+   "dimensions": 3,
+   "displaces": [
+    "BFAST",
+    "BFAST"
+   ],
+   "fused_ms_per_step": 0.933562,
+   "fused_spread": 0.015629,
+   "measurements": [
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__bfast_1d__drive__p1__4a3789facf/mac2__2026-11-01T09_23_28Z.rows.jsonl",
+     "baseline_ms_per_step": 0.118399,
+     "baseline_spread": 0.00952,
+     "case": "bfast_1d",
+     "cells": 250,
+     "co_fused": [],
+     "fused_ms_per_step": 0.933562,
+     "fused_spread": 0.015629,
+     "grid_shape": [
+      1,
+      1,
+      250
+     ],
+     "line": 1,
+     "ratio": 0.126825,
+     "source": "bench",
+     "utc": "2026-11-01T09:22:39Z"
+    }
+   ],
+   "product": "BFAST fused electric D/E pair",
+   "ratio": 0.126825,
+   "ratio_max": 0.126825,
+   "ratio_min": 0.126825,
+   "reason": "no size in it carries 2 rows, so none can set a band edge: 250 (1 row)",
+   "rows": 1,
+   "slots": [
+    "step_D",
+    "update_E"
+   ],
+   "slower_beyond_spread": true,
+   "status": "unmeasured",
+   "storage": "real",
+   "susceptibilities": 0,
+   "veto_margin": 0.848026
+  },
+  "beta fused electric D/E pair|real|2|0|bracketed|14400-14400": {
+   "band": {
+    "hi_cells": 14400,
+    "lo_cells": 14400
+   },
+   "baseline_ms_per_step": 0.111331,
+   "baseline_spread": 0.008923,
+   "bracketed": true,
+   "dimensions": 2,
+   "displaces": [
+    "special_kz real beta",
+    "special_kz real beta"
+   ],
+   "fused_ms_per_step": 0.938219,
+   "fused_spread": 0.026113,
+   "measurements": [
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__special_kz_2d__drive__p1__99c04beb05/mac2__2026-11-01T11_37_36Z.rows.jsonl",
+     "baseline_ms_per_step": 0.111331,
+     "baseline_spread": 0.008923,
+     "case": "special_kz_2d",
+     "cells": 14400,
+     "co_fused": [],
+     "fused_ms_per_step": 0.938219,
+     "fused_spread": 0.026113,
+     "grid_shape": [
+      120,
+      120,
+      1
+     ],
+     "line": 1,
+     "ratio": 0.118662,
+     "source": "bench",
+     "utc": "2026-11-01T11:36:46Z"
+    }
+   ],
+   "product": "beta fused electric D/E pair",
+   "ratio": 0.118662,
+   "ratio_max": 0.118662,
+   "ratio_min": 0.118662,
+   "reason": "no size in it carries 2 rows, so none can set a band edge: 14,400 (1 row)",
+   "rows": 1,
+   "slots": [
+    "step_D",
+    "update_E"
+   ],
+   "slower_beyond_spread": true,
+   "status": "unmeasured",
+   "storage": "real",
+   "susceptibilities": 0,
+   "veto_margin": 0.846302
+  },
+  "complex fused electric D/E pair|complex|1|0|bracketed|480-480": {
+   "band": {
+    "hi_cells": 480,
+    "lo_cells": 480
+   },
+   "baseline_ms_per_step": 0.112537,
+   "baseline_spread": 0.01069,
+   "bracketed": true,
+   "dimensions": 1,
+   "displaces": [
+    "complex/Bloch",
+    "complex/Bloch"
+   ],
+   "fused_ms_per_step": 0.936641,
+   "fused_spread": 0.006571,
+   "measurements": [
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__complex_1d__drive__p1__78d8e586ca/mac2__2026-11-01T09_30_08Z.rows.jsonl",
+     "baseline_ms_per_step": 0.112537,
+     "baseline_spread": 0.01069,
+     "case": "complex_1d",
+     "cells": 480,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "complex fused magnetic B/H pair"
+      }
+     ],
+     "fused_ms_per_step": 0.936641,
+     "fused_spread": 0.006571,
+     "grid_shape": [
+      1,
+      1,
+      480
+     ],
+     "line": 1,
+     "ratio": 0.120149,
+     "source": "bench",
+     "utc": "2026-11-01T09:29:21Z"
+    }
+   ],
+   "product": "complex fused electric D/E pair",
+   "ratio": 0.120149,
+   "ratio_max": 0.120149,
+   "ratio_min": 0.120149,
+   "reason": "no size in it carries 2 rows, so none can set a band edge: 480 (1 row)",
+   "rows": 1,
+   "slots": [
+    "step_D",
+    "update_E"
+   ],
+   "slower_beyond_spread": true,
+   "status": "unmeasured",
+   "storage": "complex",
+   "susceptibilities": 0,
+   "veto_margin": 0.86259
+  },
+  "complex fused electric D/E pair|complex|2|0|bracketed|4800-24000": {
+   "band": {
+    "hi_cells": 24000,
+    "lo_cells": 4800
+   },
+   "baseline_ms_per_step": 0.148679,
+   "baseline_spread": 0.024701,
+   "bracketed": true,
+   "dimensions": 2,
+   "displaces": [
+    "complex/Bloch",
+    "complex/Bloch"
+   ],
+   "fused_ms_per_step": 0.985048,
+   "fused_spread": 0.073014,
+   "measurements": [
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__bloch_2d__drive__p1__0ce3835ee0/mac2__2026-11-01T09_26_19Z.rows.jsonl",
+     "baseline_ms_per_step": 0.118434,
+     "baseline_spread": 0.024701,
+     "case": "bloch_2d",
+     "cells": 4800,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "complex fused magnetic B/H pair"
+      }
+     ],
+     "fused_ms_per_step": 0.937883,
+     "fused_spread": 0.073014,
+     "grid_shape": [
+      40,
+      120,
+      1
+     ],
+     "line": 1,
+     "ratio": 0.126278,
+     "source": "bench",
+     "utc": "2026-11-01T09:25:30Z"
+    },
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__complex_nobloch_2d__drive__p1__22d947bd44/mac2__2026-11-01T10_28_23Z.rows.jsonl",
+     "baseline_ms_per_step": 0.178925,
+     "baseline_spread": 0.01278,
+     "case": "complex_nobloch_2d",
+     "cells": 24000,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "complex fused magnetic B/H pair"
+      }
+     ],
+     "fused_ms_per_step": 1.032213,
+     "fused_spread": 0.017794,
+     "grid_shape": [
+      200,
+      120,
+      1
+     ],
+     "line": 1,
+     "ratio": 0.173341,
+     "source": "bench",
+     "utc": "2026-11-01T10:27:33Z"
+    }
+   ],
+   "product": "complex fused electric D/E pair",
+   "ratio": 0.149809,
+   "ratio_max": 0.173341,
+   "ratio_min": 0.126278,
+   "reason": "no size in it carries 2 rows, so none can set a band edge: 4,800 (1 row); 24,000 (1 row)",
+   "rows": 2,
+   "slots": [
+    "step_D",
+    "update_E"
+   ],
+   "slower_beyond_spread": true,
+   "status": "unmeasured",
+   "storage": "complex",
+   "susceptibilities": 0,
+   "veto_margin": 0.776007
+  },
+  "complex fused electric D/E pair|complex|3|0|bracketed|275-64000": {
+   "band": {
+    "hi_cells": 64000,
+    "lo_cells": 275
+   },
+   "baseline_ms_per_step": 0.125078,
+   "baseline_spread": 0.017312,
+   "bracketed": true,
+   "dimensions": 3,
+   "displaces": [
+    "complex/Bloch",
+    "complex/Bloch"
+   ],
+   "fused_ms_per_step": 0.945805,
+   "fused_spread": 0.026058,
+   "measurements": [
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__complex_3d_thinline__drive__p1__2889331dcc/mac2__2026-11-01T09_43_51Z.rows.jsonl",
+     "baseline_ms_per_step": 0.11195,
+     "baseline_spread": 0.017312,
+     "case": "complex_3d_thinline",
+     "cells": 275,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "complex fused magnetic B/H pair"
+      }
+     ],
+     "fused_ms_per_step": 0.920801,
+     "fused_spread": 0.018844,
+     "grid_shape": [
+      1,
+      1,
+      275
+     ],
+     "line": 1,
+     "ratio": 0.121579,
+     "source": "bench",
+     "utc": "2026-11-01T09:43:03Z"
+    },
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__complex_3d__drive__p1__760e2f3bad/mac2__2026-11-01T09_33_00Z.rows.jsonl",
+     "baseline_ms_per_step": 0.138207,
+     "baseline_spread": 0.00973,
+     "case": "complex_3d",
+     "cells": 64000,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "complex fused magnetic B/H pair"
+      }
+     ],
+     "fused_ms_per_step": 0.970809,
+     "fused_spread": 0.026058,
+     "grid_shape": [
+      40,
+      40,
+      40
+     ],
+     "line": 1,
+     "ratio": 0.142362,
+     "source": "bench",
+     "utc": "2026-11-01T09:32:10Z"
+    }
+   ],
+   "product": "complex fused electric D/E pair",
+   "ratio": 0.13197,
+   "ratio_max": 0.142362,
+   "ratio_min": 0.121579,
+   "reason": "no size in it carries 2 rows, so none can set a band edge: 275 (1 row); 64,000 (1 row)",
+   "rows": 2,
+   "slots": [
+    "step_D",
+    "update_E"
+   ],
+   "slower_beyond_spread": true,
+   "status": "unmeasured",
+   "storage": "complex",
+   "susceptibilities": 0,
+   "veto_margin": 0.82185
+  },
+  "complex no-PML off-diagonal fused electric D/E pair|complex|2|0|clean|625-625": {
+   "band": {
+    "hi_cells": 625,
+    "lo_cells": 625
+   },
+   "baseline_ms_per_step": 0.072372,
+   "baseline_spread": 0.006752,
+   "bracketed": false,
+   "dimensions": 2,
+   "displaces": [
+    "complex no-PML curl",
+    "complex no-PML off-diagonal"
+   ],
+   "fused_ms_per_step": 3.617452,
+   "fused_spread": 0.02547,
+   "measurements": [
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__complex_no_pml_offdiag__drive__p1__8c1e8de4fb/mac1__2026-10-29T09_22_11Z.rows.jsonl",
+     "baseline_ms_per_step": 0.072372,
+     "baseline_spread": 0.006752,
+     "case": "complex_no_pml_offdiag",
+     "cells": 625,
+     "co_fused": [],
+     "fused_ms_per_step": 3.617452,
+     "fused_spread": 0.02547,
+     "grid_shape": [
+      25,
+      25,
+      1
+     ],
+     "line": 1,
+     "ratio": 0.020006,
+     "source": "bench",
+     "utc": "2026-10-29T09:21:27Z"
+    }
+   ],
+   "product": "complex no-PML off-diagonal fused electric D/E pair",
+   "ratio": 0.020006,
+   "ratio_max": 0.020006,
+   "ratio_min": 0.020006,
+   "reason": "no size in it carries 2 rows, so none can set a band edge: 625 (1 row)",
+   "rows": 1,
+   "slots": [
+    "step_D",
+    "update_E"
+   ],
+   "slower_beyond_spread": true,
+   "status": "unmeasured",
+   "storage": "complex",
+   "susceptibilities": 0,
+   "veto_margin": 0.947772
+  },
+  "complex-beta fused electric D/E pair|complex|2|0|bracketed|14400-14400": {
+   "band": {
+    "hi_cells": 14400,
+    "lo_cells": 14400
+   },
+   "baseline_ms_per_step": 0.123305,
+   "baseline_spread": 0.011735,
+   "bracketed": true,
+   "dimensions": 2,
+   "displaces": [
+    "special_kz complex beta",
+    "special_kz complex beta"
+   ],
+   "fused_ms_per_step": 0.962082,
+   "fused_spread": 0.03041,
+   "measurements": [
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__complex_beta_2d__drive__p1__6a32e2b5b2/mac2__2026-11-01T10_19_49Z.rows.jsonl",
+     "baseline_ms_per_step": 0.123621,
+     "baseline_spread": 0.011735,
+     "case": "complex_beta_2d",
+     "cells": 14400,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "complex-beta fused magnetic B/H pair"
+      }
+     ],
+     "fused_ms_per_step": 0.961462,
+     "fused_spread": 0.03041,
+     "grid_shape": [
+      120,
+      120,
+      1
+     ],
+     "line": 1,
+     "ratio": 0.128576,
+     "source": "bench",
+     "utc": "2026-11-01T10:18:59Z"
+    },
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__complex_beta_bloch_2d__drive__p1__5b914a116f/mac2__2026-11-01T10_22_40Z.rows.jsonl",
+     "baseline_ms_per_step": 0.122989,
+     "baseline_spread": 0.007722,
+     "case": "complex_beta_bloch_2d",
+     "cells": 14400,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "complex-beta fused magnetic B/H pair"
+      }
+     ],
+     "fused_ms_per_step": 0.962702,
+     "fused_spread": 0.027323,
+     "grid_shape": [
+      120,
+      120,
+      1
+     ],
+     "line": 1,
+     "ratio": 0.127754,
+     "source": "bench",
+     "utc": "2026-11-01T10:21:50Z"
+    }
+   ],
+   "product": "complex-beta fused electric D/E pair",
+   "ratio": 0.128165,
+   "ratio_max": 0.128576,
+   "ratio_min": 0.127754,
+   "rows": 2,
+   "slots": [
+    "step_D",
+    "update_E"
+   ],
+   "slower_beyond_spread": true,
+   "status": "measured",
+   "storage": "complex",
+   "susceptibilities": 0,
+   "veto_margin": 0.829279
+  },
+  "conductive fused electric D/E pair|real|2|0|bracketed|19200-19200": {
+   "band": {
+    "hi_cells": 19200,
+    "lo_cells": 19200
+   },
+   "baseline_ms_per_step": 0.177645,
+   "baseline_spread": 0.009283,
+   "bracketed": true,
+   "dimensions": 2,
+   "displaces": [
+    "conductive PML curl",
+    "ordinary"
+   ],
+   "fused_ms_per_step": 0.986454,
+   "fused_spread": 0.026963,
+   "measurements": [
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__conductive_2d__drive__p1__9ba20d41ee/mac2__2026-11-01T10_31_17Z.rows.jsonl",
+     "baseline_ms_per_step": 0.177645,
+     "baseline_spread": 0.009283,
+     "case": "conductive_2d",
+     "cells": 19200,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused magnetic B/H pair"
+      }
+     ],
+     "fused_ms_per_step": 0.986454,
+     "fused_spread": 0.026963,
+     "grid_shape": [
+      160,
+      120,
+      1
+     ],
+     "line": 1,
+     "ratio": 0.180085,
+     "source": "bench",
+     "utc": "2026-11-01T10:30:25Z"
+    }
+   ],
+   "product": "conductive fused electric D/E pair",
+   "ratio": 0.180085,
+   "ratio_max": 0.180085,
+   "ratio_min": 0.180085,
+   "reason": "no size in it carries 2 rows, so none can set a band edge: 19,200 (1 row)",
+   "rows": 1,
+   "slots": [
+    "step_D",
+    "update_E"
+   ],
+   "slower_beyond_spread": true,
+   "status": "unmeasured",
+   "storage": "real",
+   "susceptibilities": 0,
+   "veto_margin": 0.783669
+  },
+  "conductive no-PML fused electric D/E pair|real|1|5|bracketed|400-400": {
+   "band": {
+    "hi_cells": 400,
+    "lo_cells": 400
+   },
+   "baseline_ms_per_step": 0.386779,
+   "baseline_spread": 0.023362,
+   "bracketed": true,
+   "dimensions": 1,
+   "displaces": [
+    "conductive no-PML curl",
+    "no-PML stored E"
+   ],
+   "fused_ms_per_step": 2.555757,
+   "fused_spread": 0.005596,
+   "measurements": [
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__absorber_1d__drive__p1__cbfb1ef0a9/mac2__2026-11-01T09_20_38Z.rows.jsonl",
+     "baseline_ms_per_step": 0.386779,
+     "baseline_spread": 0.023362,
+     "case": "absorber_1d",
+     "cells": 400,
+     "co_fused": [],
+     "fused_ms_per_step": 2.555757,
+     "fused_spread": 0.005596,
+     "grid_shape": [
+      1,
+      1,
+      400
+     ],
+     "line": 1,
+     "ratio": 0.151336,
+     "source": "bench",
+     "utc": "2026-11-01T09:19:47Z"
+    }
+   ],
+   "product": "conductive no-PML fused electric D/E pair",
+   "ratio": 0.151336,
+   "ratio_max": 0.151336,
+   "ratio_min": 0.151336,
+   "reason": "no size in it carries 2 rows, so none can set a band edge: 400 (1 row)",
+   "rows": 1,
+   "slots": [
+    "step_D",
+    "update_E"
+   ],
+   "slower_beyond_spread": true,
+   "status": "unmeasured",
+   "storage": "real",
+   "susceptibilities": 5,
+   "veto_margin": 0.819706
+  },
+  "cylindrical complex fused electric D/E pair|complex|2|0|bracketed|6400-6400": {
+   "band": {
+    "hi_cells": 6400,
+    "lo_cells": 6400
+   },
+   "baseline_ms_per_step": 6.75926,
+   "baseline_spread": 0.041847,
+   "bracketed": true,
+   "dimensions": 2,
+   "displaces": [
+    "cylindrical complex",
+    "cylindrical complex"
+   ],
+   "fused_ms_per_step": 7.096113,
+   "fused_spread": 0.053432,
+   "measurements": [
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__cylindrical_m0_complex__drive__p1__6c55b1c9f2/mac2__2026-11-01T10_39_59Z.rows.jsonl",
+     "baseline_ms_per_step": 6.819927,
+     "baseline_spread": 0.012025,
+     "case": "cylindrical_m0_complex",
+     "cells": 6400,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "cylindrical complex fused magnetic B/H pair"
+      }
+     ],
+     "fused_ms_per_step": 7.177714,
+     "fused_spread": 0.029851,
+     "grid_shape": [
+      80,
+      1,
+      80
+     ],
+     "line": 1,
+     "ratio": 0.950153,
+     "source": "bench",
+     "utc": "2026-11-01T10:39:05Z"
+    },
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__cylindrical_m1__drive__p1__2aa5c6203b/mac2__2026-11-01T10_42_52Z.rows.jsonl",
+     "baseline_ms_per_step": 6.698594,
+     "baseline_spread": 0.041847,
+     "case": "cylindrical_m1",
+     "cells": 6400,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "cylindrical complex fused magnetic B/H pair"
+      }
+     ],
+     "fused_ms_per_step": 7.014512,
+     "fused_spread": 0.053432,
+     "grid_shape": [
+      80,
+      1,
+      80
+     ],
+     "line": 1,
+     "ratio": 0.954962,
+     "source": "bench",
+     "utc": "2026-11-01T10:42:00Z"
+    }
+   ],
+   "product": "cylindrical complex fused electric D/E pair",
+   "ratio": 0.952557,
+   "ratio_max": 0.954962,
+   "ratio_min": 0.950153,
+   "rows": 2,
+   "slots": [
+    "step_D",
+    "update_E"
+   ],
+   "slower_beyond_spread": false,
+   "status": "measured",
+   "storage": "complex",
+   "susceptibilities": 0,
+   "veto_margin": -0.050241
+  },
+  "cylindrical m=0 fused electric D/E pair|real|2|0|bracketed|6400-6400": {
+   "band": {
+    "hi_cells": 6400,
+    "lo_cells": 6400
+   },
+   "baseline_ms_per_step": 5.561325,
+   "baseline_spread": 0.026085,
+   "bracketed": true,
+   "dimensions": 2,
+   "displaces": [
+    "cylindrical m=0",
+    "cylindrical m=0"
+   ],
+   "fused_ms_per_step": 3.732222,
+   "fused_spread": 0.012279,
+   "measurements": [
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__cylindrical__drive__p1__6437976325/mac2__2026-11-01T10_34_10Z.rows.jsonl",
+     "baseline_ms_per_step": 5.566026,
+     "baseline_spread": 0.022289,
+     "case": "cylindrical",
+     "cells": 6400,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "cylindrical m=0 fused magnetic B/H pair"
+      }
+     ],
+     "fused_ms_per_step": 3.734971,
+     "fused_spread": 0.007445,
+     "grid_shape": [
+      80,
+      1,
+      80
+     ],
+     "line": 1,
+     "ratio": 1.490246,
+     "source": "bench",
+     "utc": "2026-11-01T10:33:19Z"
+    },
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__cylindrical_m0__drive__p1__9013cff2b8/mac2__2026-11-01T10_37_04Z.rows.jsonl",
+     "baseline_ms_per_step": 5.556624,
+     "baseline_spread": 0.026085,
+     "case": "cylindrical_m0",
+     "cells": 6400,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "cylindrical m=0 fused magnetic B/H pair"
+      }
+     ],
+     "fused_ms_per_step": 3.729473,
+     "fused_spread": 0.012279,
+     "grid_shape": [
+      80,
+      1,
+      80
+     ],
+     "line": 1,
+     "ratio": 1.489922,
+     "source": "bench",
+     "utc": "2026-11-01T10:36:11Z"
+    }
+   ],
+   "product": "cylindrical m=0 fused electric D/E pair",
+   "ratio": 1.490084,
+   "ratio_max": 1.490246,
+   "ratio_min": 1.489922,
+   "rows": 2,
+   "slots": [
+    "step_D",
+    "update_E"
+   ],
+   "slower_beyond_spread": false,
+   "status": "measured",
+   "storage": "real",
+   "susceptibilities": 0,
+   "veto_margin": -0.528286
+  },
+  "folded beta complex fused D/E pair|complex|2|0|bracketed|7440-7440": {
+   "band": {
+    "hi_cells": 7440,
+    "lo_cells": 7440
+   },
+   "baseline_ms_per_step": 0.212614,
+   "baseline_spread": 0.009827,
+   "bracketed": true,
+   "dimensions": 2,
+   "displaces": [
+    "folded beta complex",
+    "folded beta complex"
+   ],
+   "fused_ms_per_step": 1.07091,
+   "fused_spread": 0.023012,
+   "measurements": [
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__folded_complex_beta_2d__drive__p1__a60a453956/mac2__2026-11-01T11_03_04Z.rows.jsonl",
+     "baseline_ms_per_step": 0.212907,
+     "baseline_spread": 0.009827,
+     "case": "folded_complex_beta_2d",
+     "cells": 7440,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "folded beta complex fused B/H pair"
+      }
+     ],
+     "fused_ms_per_step": 1.074734,
+     "fused_spread": 0.021349,
+     "grid_shape": [
+      120,
+      62,
+      1
+     ],
+     "line": 1,
+     "ratio": 0.198102,
+     "source": "bench",
+     "utc": "2026-11-01T11:02:13Z"
+    },
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__folded_complex_beta_bloch_2d__drive__p1__1bd543d075/mac2__2026-11-01T11_05_57Z.rows.jsonl",
+     "baseline_ms_per_step": 0.212321,
+     "baseline_spread": 0.009108,
+     "case": "folded_complex_beta_bloch_2d",
+     "cells": 7440,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "folded beta complex fused B/H pair"
+      }
+     ],
+     "fused_ms_per_step": 1.067086,
+     "fused_spread": 0.023012,
+     "grid_shape": [
+      120,
+      62,
+      1
+     ],
+     "line": 1,
+     "ratio": 0.198973,
+     "source": "bench",
+     "utc": "2026-11-01T11:05:06Z"
+    }
+   ],
+   "product": "folded beta complex fused D/E pair",
+   "ratio": 0.198538,
+   "ratio_max": 0.198973,
+   "ratio_min": 0.198102,
+   "rows": 2,
+   "slots": [
+    "step_D",
+    "update_E"
+   ],
+   "slower_beyond_spread": true,
+   "status": "measured",
+   "storage": "complex",
+   "susceptibilities": 0,
+   "veto_margin": 0.768907
+  },
+  "folded beta real fused D/E pair|real|2|0|bracketed|7440-7440": {
+   "band": {
+    "hi_cells": 7440,
+    "lo_cells": 7440
+   },
+   "baseline_ms_per_step": 0.202223,
+   "baseline_spread": 0.011411,
+   "bracketed": true,
+   "dimensions": 2,
+   "displaces": [
+    "folded beta real",
+    "folded beta real"
+   ],
+   "fused_ms_per_step": 1.033434,
+   "fused_spread": 0.028451,
+   "measurements": [
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__folded_special_kz_2d__drive__p1__1cb0412fdc/mac2__2026-11-01T11_20_27Z.rows.jsonl",
+     "baseline_ms_per_step": 0.202223,
+     "baseline_spread": 0.011411,
+     "case": "folded_special_kz_2d",
+     "cells": 7440,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "folded beta real fused B/H pair"
+      }
+     ],
+     "fused_ms_per_step": 1.033434,
+     "fused_spread": 0.028451,
+     "grid_shape": [
+      120,
+      62,
+      1
+     ],
+     "line": 1,
+     "ratio": 0.195681,
+     "source": "bench",
+     "utc": "2026-11-01T11:19:37Z"
+    }
+   ],
+   "product": "folded beta real fused D/E pair",
+   "ratio": 0.195681,
+   "ratio_max": 0.195681,
+   "ratio_min": 0.195681,
+   "reason": "no size in it carries 2 rows, so none can set a band edge: 7,440 (1 row)",
+   "rows": 1,
+   "slots": [
+    "step_D",
+    "update_E"
+   ],
+   "slower_beyond_spread": true,
+   "status": "unmeasured",
+   "storage": "real",
+   "susceptibilities": 0,
+   "veto_margin": 0.764457
+  },
+  "folded complex fused B/H pair|complex|2|0|clean|4960-6561": {
+   "band": {
+    "hi_cells": 6561,
+    "lo_cells": 4960
+   },
+   "baseline_ms_per_step": 0.283733,
+   "baseline_spread": 0.01486,
+   "bracketed": false,
+   "dimensions": 2,
+   "displaces": [
+    "folded complex",
+    "folded complex"
+   ],
+   "fused_ms_per_step": 0.254396,
+   "fused_spread": 0.012317,
+   "measurements": [
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__folded_complex_offdiag_2d__drive__p1__338e27c1fa/mac1__2026-10-29T10_56_20Z.rows.jsonl",
+     "baseline_ms_per_step": 0.2854,
+     "baseline_spread": 0.012473,
+     "case": "folded_complex_offdiag_2d",
+     "cells": 4960,
+     "co_fused": [],
+     "fused_ms_per_step": 0.25575,
+     "fused_spread": 0.006233,
+     "grid_shape": [
+      80,
+      62,
+      1
+     ],
+     "line": 1,
+     "ratio": 1.115936,
+     "source": "bench",
+     "utc": "2026-10-29T10:55:33Z"
+    },
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__folded_complex_nobloch_offdiag_2d__drive__p1__8a745f505d/mac1__2026-10-29T10_53_31Z.rows.jsonl",
+     "baseline_ms_per_step": 0.282066,
+     "baseline_spread": 0.01486,
+     "case": "folded_complex_nobloch_offdiag_2d",
+     "cells": 6561,
+     "co_fused": [],
+     "fused_ms_per_step": 0.253042,
+     "fused_spread": 0.012317,
+     "grid_shape": [
+      81,
+      81,
+      1
+     ],
+     "line": 1,
+     "ratio": 1.114697,
+     "source": "bench",
+     "utc": "2026-10-29T10:52:44Z"
+    }
+   ],
+   "product": "folded complex fused B/H pair",
+   "ratio": 1.115317,
+   "ratio_max": 1.115936,
+   "ratio_min": 1.114697,
+   "reason": "no size in it carries 2 rows, so none can set a band edge: 4,960 (1 row); 6,561 (1 row)",
+   "rows": 2,
+   "slots": [
+    "step_B",
+    "update_H"
+   ],
+   "slower_beyond_spread": false,
+   "status": "unmeasured",
+   "storage": "complex",
+   "susceptibilities": 0,
+   "veto_margin": -0.141874
+  },
+  "folded complex fused D/E pair|complex|2|0|bracketed|4960-4960": {
+   "band": {
+    "hi_cells": 4960,
+    "lo_cells": 4960
+   },
+   "baseline_ms_per_step": 0.248,
+   "baseline_spread": 0.010267,
+   "bracketed": true,
+   "dimensions": 2,
+   "displaces": [
+    "folded complex",
+    "folded complex"
+   ],
+   "fused_ms_per_step": 1.104309,
+   "fused_spread": 0.005849,
+   "measurements": [
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__folded_complex_2d__drive__p1__aa68eaeb7e/mac2__2026-11-01T10_57_20Z.rows.jsonl",
+     "baseline_ms_per_step": 0.248,
+     "baseline_spread": 0.010267,
+     "case": "folded_complex_2d",
+     "cells": 4960,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "folded complex fused B/H pair"
+      }
+     ],
+     "fused_ms_per_step": 1.104309,
+     "fused_spread": 0.005849,
+     "grid_shape": [
+      80,
+      62,
+      1
+     ],
+     "line": 1,
+     "ratio": 0.224575,
+     "source": "bench",
+     "utc": "2026-11-01T10:56:30Z"
+    }
+   ],
+   "product": "folded complex fused D/E pair",
+   "ratio": 0.224575,
+   "ratio_max": 0.224575,
+   "ratio_min": 0.224575,
+   "reason": "no size in it carries 2 rows, so none can set a band edge: 4,960 (1 row)",
+   "rows": 1,
+   "slots": [
+    "step_D",
+    "update_E"
+   ],
+   "slower_beyond_spread": true,
+   "status": "unmeasured",
+   "storage": "complex",
+   "susceptibilities": 0,
+   "veto_margin": 0.759309
+  },
+  "folded complex fused D/E pair|complex|3|0|bracketed|5580-21168": {
+   "band": {
+    "hi_cells": 21168,
+    "lo_cells": 5580
+   },
+   "baseline_ms_per_step": 0.209014,
+   "baseline_spread": 0.01314,
+   "bracketed": true,
+   "dimensions": 3,
+   "displaces": [
+    "folded complex",
+    "folded complex"
+   ],
+   "fused_ms_per_step": 1.068895,
+   "fused_spread": 0.047628,
+   "measurements": [
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__folded_complex_kz2d_3d__drive__p1__92f0cff284/mac2__2026-11-01T11_08_49Z.rows.jsonl",
+     "baseline_ms_per_step": 0.210453,
+     "baseline_spread": 0.004283,
+     "case": "folded_complex_kz2d_3d",
+     "cells": 5580,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "folded complex fused B/H pair"
+      }
+     ],
+     "fused_ms_per_step": 1.061206,
+     "fused_spread": 0.047628,
+     "grid_shape": [
+      90,
+      62,
+      1
+     ],
+     "line": 1,
+     "ratio": 0.198315,
+     "source": "bench",
+     "utc": "2026-11-01T11:07:59Z"
+    },
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__folded_complex_3d__drive__p1__87d51728bc/mac2__2026-11-01T11_00_11Z.rows.jsonl",
+     "baseline_ms_per_step": 0.207575,
+     "baseline_spread": 0.01314,
+     "case": "folded_complex_3d",
+     "cells": 21168,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "folded complex fused B/H pair"
+      }
+     ],
+     "fused_ms_per_step": 1.076585,
+     "fused_spread": 0.018458,
+     "grid_shape": [
+      8,
+      21,
+      126
+     ],
+     "line": 1,
+     "ratio": 0.192809,
+     "source": "bench",
+     "utc": "2026-11-01T10:59:21Z"
+    }
+   ],
+   "product": "folded complex fused D/E pair",
+   "ratio": 0.195562,
+   "ratio_max": 0.198315,
+   "ratio_min": 0.192809,
+   "reason": "no size in it carries 2 rows, so none can set a band edge: 5,580 (1 row); 21,168 (1 row)",
+   "rows": 2,
+   "slots": [
+    "step_D",
+    "update_E"
+   ],
+   "slower_beyond_spread": true,
+   "status": "unmeasured",
+   "storage": "complex",
+   "susceptibilities": 0,
+   "veto_margin": 0.749774
+  },
+  "folded fused B/H pair|real|2|0|bracketed|9760-9760": {
+   "band": {
+    "hi_cells": 9760,
+    "lo_cells": 9760
+   },
+   "baseline_ms_per_step": 0.264369,
+   "baseline_spread": 0.012464,
+   "bracketed": true,
+   "dimensions": 2,
+   "displaces": [
+    "folded",
+    "folded"
+   ],
+   "fused_ms_per_step": 19.092874,
+   "fused_spread": 0.019358,
+   "measurements": [
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__folded_offdiag_magnetic_2d__drive__p1__7ee05ef3c9/mac1__2026-10-29T11_10_52Z.rows.jsonl",
+     "baseline_ms_per_step": 0.264369,
+     "baseline_spread": 0.012464,
+     "case": "folded_offdiag_magnetic_2d",
+     "cells": 9760,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "folded off-diagonal fused electric D/E pair"
+      }
+     ],
+     "fused_ms_per_step": 19.092874,
+     "fused_spread": 0.019358,
+     "grid_shape": [
+      160,
+      61,
+      1
+     ],
+     "line": 1,
+     "ratio": 0.013846,
+     "source": "bench",
+     "utc": "2026-10-29T11:10:04Z"
+    }
+   ],
+   "product": "folded fused B/H pair",
+   "ratio": 0.013846,
+   "ratio_max": 0.013846,
+   "ratio_min": 0.013846,
+   "reason": "no size in it carries 2 rows, so none can set a band edge: 9,760 (1 row)",
+   "rows": 1,
+   "slots": [
+    "step_B",
+    "update_H"
+   ],
+   "slower_beyond_spread": true,
+   "status": "unmeasured",
+   "storage": "real",
+   "susceptibilities": 0,
+   "veto_margin": 0.954332
+  },
+  "folded fused B/H pair|real|2|0|clean|9760-9760": {
+   "band": {
+    "hi_cells": 9760,
+    "lo_cells": 9760
+   },
+   "baseline_ms_per_step": 0.261883,
+   "baseline_spread": 0.00853,
+   "bracketed": false,
+   "dimensions": 2,
+   "displaces": [
+    "folded",
+    "folded"
+   ],
+   "fused_ms_per_step": 0.234612,
+   "fused_spread": 0.005468,
+   "measurements": [
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__folded_offdiag_2d__drive__p1__76b808f078/mac1__2026-10-29T11_08_03Z.rows.jsonl",
+     "baseline_ms_per_step": 0.261883,
+     "baseline_spread": 0.00853,
+     "case": "folded_offdiag_2d",
+     "cells": 9760,
+     "co_fused": [],
+     "fused_ms_per_step": 0.234612,
+     "fused_spread": 0.005468,
+     "grid_shape": [
+      160,
+      61,
+      1
+     ],
+     "line": 1,
+     "ratio": 1.116237,
+     "source": "bench",
+     "utc": "2026-10-29T11:07:12Z"
+    }
+   ],
+   "product": "folded fused B/H pair",
+   "ratio": 1.116237,
+   "ratio_max": 1.116237,
+   "ratio_min": 1.116237,
+   "reason": "no size in it carries 2 rows, so none can set a band edge: 9,760 (1 row)",
+   "rows": 1,
+   "slots": [
+    "step_B",
+    "update_H"
+   ],
+   "slower_beyond_spread": false,
+   "status": "unmeasured",
+   "storage": "real",
+   "susceptibilities": 0,
+   "veto_margin": -0.130235
+  },
+  "folded fused D/E pair|real|2|0|bracketed|9760-9760": {
+   "band": {
+    "hi_cells": 9760,
+    "lo_cells": 9760
+   },
+   "baseline_ms_per_step": 0.246005,
+   "baseline_spread": 0.010783,
+   "bracketed": true,
+   "dimensions": 2,
+   "displaces": [
+    "folded",
+    "folded"
+   ],
+   "fused_ms_per_step": 1.0785,
+   "fused_spread": 0.02243,
+   "measurements": [
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__folded_2d__drive__p1__a6c4cfff86/mac2__2026-11-01T10_51_35Z.rows.jsonl",
+     "baseline_ms_per_step": 0.246005,
+     "baseline_spread": 0.010783,
+     "case": "folded_2d",
+     "cells": 9760,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "folded fused B/H pair"
+      }
+     ],
+     "fused_ms_per_step": 1.0785,
+     "fused_spread": 0.02243,
+     "grid_shape": [
+      160,
+      61,
+      1
+     ],
+     "line": 1,
+     "ratio": 0.228099,
+     "source": "bench",
+     "utc": "2026-11-01T10:50:46Z"
+    }
+   ],
+   "product": "folded fused D/E pair",
+   "ratio": 0.228099,
+   "ratio_max": 0.228099,
+   "ratio_min": 0.228099,
+   "reason": "no size in it carries 2 rows, so none can set a band edge: 9,760 (1 row)",
+   "rows": 1,
+   "slots": [
+    "step_D",
+    "update_E"
+   ],
+   "slower_beyond_spread": true,
+   "status": "unmeasured",
+   "storage": "real",
+   "susceptibilities": 0,
+   "veto_margin": 0.738688
+  },
+  "folded fused D/E pair|real|3|0|bracketed|33600-33600": {
+   "band": {
+    "hi_cells": 33600,
+    "lo_cells": 33600
+   },
+   "baseline_ms_per_step": 0.242959,
+   "baseline_spread": 0.008502,
+   "bracketed": true,
+   "dimensions": 3,
+   "displaces": [
+    "folded",
+    "folded"
+   ],
+   "fused_ms_per_step": 1.073853,
+   "fused_spread": 0.00776,
+   "measurements": [
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__folded_3d__drive__p1__6e587c8c01/mac2__2026-11-01T10_54_29Z.rows.jsonl",
+     "baseline_ms_per_step": 0.242959,
+     "baseline_spread": 0.008502,
+     "case": "folded_3d",
+     "cells": 33600,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "folded fused B/H pair"
+      }
+     ],
+     "fused_ms_per_step": 1.073853,
+     "fused_spread": 0.00776,
+     "grid_shape": [
+      40,
+      21,
+      40
+     ],
+     "line": 1,
+     "ratio": 0.226249,
+     "source": "bench",
+     "utc": "2026-11-01T10:53:36Z"
+    }
+   ],
+   "product": "folded fused D/E pair",
+   "ratio": 0.226249,
+   "ratio_max": 0.226249,
+   "ratio_min": 0.226249,
+   "reason": "no size in it carries 2 rows, so none can set a band edge: 33,600 (1 row)",
+   "rows": 1,
+   "slots": [
+    "step_D",
+    "update_E"
+   ],
+   "slower_beyond_spread": true,
+   "status": "unmeasured",
+   "storage": "real",
+   "susceptibilities": 0,
+   "veto_margin": 0.757489
+  },
+  "folded fused dispersive D/E pair|real|2|1|bracketed|4880-4880": {
+   "band": {
+    "hi_cells": 4880,
+    "lo_cells": 4880
+   },
+   "baseline_ms_per_step": 0.463573,
+   "baseline_spread": 0.023714,
+   "bracketed": true,
+   "dimensions": 2,
+   "displaces": [
+    "folded",
+    "folded dispersive PML E"
+   ],
+   "fused_ms_per_step": 1.624478,
+   "fused_spread": 0.004835,
+   "measurements": [
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__folded_dispersive_2d__drive__p1__103cc19d8a/mac2__2026-11-01T11_14_36Z.rows.jsonl",
+     "baseline_ms_per_step": 0.463573,
+     "baseline_spread": 0.023714,
+     "case": "folded_dispersive_2d",
+     "cells": 4880,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "folded fused B/H pair"
+      }
+     ],
+     "fused_ms_per_step": 1.624478,
+     "fused_spread": 0.004835,
+     "grid_shape": [
+      80,
+      61,
+      1
+     ],
+     "line": 1,
+     "ratio": 0.285368,
+     "source": "bench",
+     "utc": "2026-11-01T11:13:45Z"
+    }
+   ],
+   "product": "folded fused dispersive D/E pair",
+   "ratio": 0.285368,
+   "ratio_max": 0.285368,
+   "ratio_min": 0.285368,
+   "reason": "no size in it carries 2 rows, so none can set a band edge: 4,880 (1 row)",
+   "rows": 1,
+   "slots": [
+    "step_D",
+    "update_E"
+   ],
+   "slower_beyond_spread": true,
+   "status": "unmeasured",
+   "storage": "real",
+   "susceptibilities": 1,
+   "veto_margin": 0.686083
+  },
+  "folded fused dispersive D/E pair|real|2|5|bracketed|4880-4880": {
+   "band": {
+    "hi_cells": 4880,
+    "lo_cells": 4880
+   },
+   "baseline_ms_per_step": 0.691603,
+   "baseline_spread": 0.009783,
+   "bracketed": true,
+   "dimensions": 2,
+   "displaces": [
+    "folded",
+    "folded dispersive PML E"
+   ],
+   "fused_ms_per_step": 3.216508,
+   "fused_spread": 0.031288,
+   "measurements": [
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__folded_dispersive5_2d__drive__p1__459041e7d2/mac2__2026-11-01T11_11_44Z.rows.jsonl",
+     "baseline_ms_per_step": 0.691603,
+     "baseline_spread": 0.009783,
+     "case": "folded_dispersive5_2d",
+     "cells": 4880,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "folded fused B/H pair"
+      }
+     ],
+     "fused_ms_per_step": 3.216508,
+     "fused_spread": 0.031288,
+     "grid_shape": [
+      80,
+      61,
+      1
+     ],
+     "line": 1,
+     "ratio": 0.215017,
+     "source": "bench",
+     "utc": "2026-11-01T11:10:50Z"
+    }
+   ],
+   "product": "folded fused dispersive D/E pair",
+   "ratio": 0.215017,
+   "ratio_max": 0.215017,
+   "ratio_min": 0.215017,
+   "reason": "no size in it carries 2 rows, so none can set a band edge: 4,880 (1 row)",
+   "rows": 1,
+   "slots": [
+    "step_D",
+    "update_E"
+   ],
+   "slower_beyond_spread": true,
+   "status": "unmeasured",
+   "storage": "real",
+   "susceptibilities": 5,
+   "veto_margin": 0.743912
+  },
+  "folded fused dispersive D/E pair|real|3|1|bracketed|33600-33600": {
+   "band": {
+    "hi_cells": 33600,
+    "lo_cells": 33600
+   },
+   "baseline_ms_per_step": 0.474442,
+   "baseline_spread": 0.006324,
+   "bracketed": true,
+   "dimensions": 3,
+   "displaces": [
+    "folded",
+    "folded dispersive PML E"
+   ],
+   "fused_ms_per_step": 1.63964,
+   "fused_spread": 0.021895,
+   "measurements": [
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__folded_dispersive_3d__drive__p1__13aac8aa96/mac2__2026-11-01T11_17_35Z.rows.jsonl",
+     "baseline_ms_per_step": 0.474442,
+     "baseline_spread": 0.006324,
+     "case": "folded_dispersive_3d",
+     "cells": 33600,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "folded fused B/H pair"
+      }
+     ],
+     "fused_ms_per_step": 1.63964,
+     "fused_spread": 0.021895,
+     "grid_shape": [
+      40,
+      21,
+      40
+     ],
+     "line": 1,
+     "ratio": 0.289358,
+     "source": "bench",
+     "utc": "2026-11-01T11:16:38Z"
+    }
+   ],
+   "product": "folded fused dispersive D/E pair",
+   "ratio": 0.289358,
+   "ratio_max": 0.289358,
+   "ratio_min": 0.289358,
+   "reason": "no size in it carries 2 rows, so none can set a band edge: 33,600 (1 row)",
+   "rows": 1,
+   "slots": [
+    "step_D",
+    "update_E"
+   ],
+   "slower_beyond_spread": true,
+   "status": "unmeasured",
+   "storage": "real",
+   "susceptibilities": 1,
+   "veto_margin": 0.682423
+  },
+  "fused complex conductive no-PML curl -> complex stored E|complex|3|1|clean|13041-13041": {
+   "band": {
+    "hi_cells": 13041,
+    "lo_cells": 13041
+   },
+   "baseline_ms_per_step": 0.229489,
+   "baseline_spread": 0.030806,
+   "bracketed": false,
+   "dimensions": 3,
+   "displaces": [
+    "complex conductive no-PML curl",
+    "complex no-PML stored E"
+   ],
+   "fused_ms_per_step": 0.198205,
+   "fused_spread": 0.041881,
+   "measurements": [
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__complex_no_pml_3d__drive__p1__895473d34a/mac2__2026-11-01T10_25_31Z.rows.jsonl",
+     "baseline_ms_per_step": 0.229489,
+     "baseline_spread": 0.030806,
+     "case": "complex_no_pml_3d",
+     "cells": 13041,
+     "co_fused": [],
+     "fused_ms_per_step": 0.198205,
+     "fused_spread": 0.041881,
+     "grid_shape": [
+      23,
+      21,
+      27
+     ],
+     "line": 1,
+     "ratio": 1.157834,
+     "source": "bench",
+     "utc": "2026-11-01T10:24:41Z"
+    }
+   ],
+   "product": "fused complex conductive no-PML curl -> complex stored E",
+   "ratio": 1.157834,
+   "ratio_max": 1.157834,
+   "ratio_min": 1.157834,
+   "reason": "no size in it carries 2 rows, so none can set a band edge: 13,041 (1 row)",
+   "rows": 1,
+   "slots": [
+    "step_D",
+    "update_E"
+   ],
+   "slower_beyond_spread": false,
+   "status": "unmeasured",
+   "storage": "complex",
+   "susceptibilities": 1,
+   "veto_margin": -0.230521
+  },
+  "fused dispersive D/E pair|real|2|1|bracketed|19200-19200": {
+   "band": {
+    "hi_cells": 19200,
+    "lo_cells": 19200
+   },
+   "baseline_ms_per_step": 0.367246,
+   "baseline_spread": 0.02128,
+   "bracketed": true,
+   "dimensions": 2,
+   "displaces": [
+    "PML",
+    "dispersive PML E"
+   ],
+   "fused_ms_per_step": 1.536175,
+   "fused_spread": 0.025855,
+   "measurements": [
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__dispersive_2d__drive__p1__911144f652/mac2__2026-11-01T10_48_44Z.rows.jsonl",
+     "baseline_ms_per_step": 0.367246,
+     "baseline_spread": 0.02128,
+     "case": "dispersive_2d",
+     "cells": 19200,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused magnetic B/H pair"
+      }
+     ],
+     "fused_ms_per_step": 1.536175,
+     "fused_spread": 0.025855,
+     "grid_shape": [
+      160,
+      120,
+      1
+     ],
+     "line": 1,
+     "ratio": 0.239066,
+     "source": "bench",
+     "utc": "2026-11-01T10:47:50Z"
+    }
+   ],
+   "product": "fused dispersive D/E pair",
+   "ratio": 0.239066,
+   "ratio_max": 0.239066,
+   "ratio_min": 0.239066,
+   "reason": "no size in it carries 2 rows, so none can set a band edge: 19,200 (1 row)",
+   "rows": 1,
+   "slots": [
+    "step_D",
+    "update_E"
+   ],
+   "slower_beyond_spread": true,
+   "status": "unmeasured",
+   "storage": "real",
+   "susceptibilities": 1,
+   "veto_margin": 0.713799
+  },
+  "fused dispersive D/E pair|real|2|6|bracketed|8100-8100": {
+   "band": {
+    "hi_cells": 8100,
+    "lo_cells": 8100
+   },
+   "baseline_ms_per_step": 0.59387,
+   "baseline_spread": 0.020123,
+   "bracketed": true,
+   "dimensions": 2,
+   "displaces": [
+    "PML",
+    "dispersive PML E"
+   ],
+   "fused_ms_per_step": 3.488616,
+   "fused_spread": 0.034456,
+   "measurements": [
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__dispersive6_2d__drive__p1__8bcd2b3141/mac2__2026-11-01T10_45_48Z.rows.jsonl",
+     "baseline_ms_per_step": 0.59387,
+     "baseline_spread": 0.020123,
+     "case": "dispersive6_2d",
+     "cells": 8100,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused magnetic B/H pair"
+      }
+     ],
+     "fused_ms_per_step": 3.488616,
+     "fused_spread": 0.034456,
+     "grid_shape": [
+      90,
+      90,
+      1
+     ],
+     "line": 1,
+     "ratio": 0.170231,
+     "source": "bench",
+     "utc": "2026-11-01T10:44:54Z"
+    }
+   ],
+   "product": "fused dispersive D/E pair",
+   "ratio": 0.170231,
+   "ratio_max": 0.170231,
+   "ratio_min": 0.170231,
+   "reason": "no size in it carries 2 rows, so none can set a band edge: 8,100 (1 row)",
+   "rows": 1,
+   "slots": [
+    "step_D",
+    "update_E"
+   ],
+   "slower_beyond_spread": true,
+   "status": "unmeasured",
+   "storage": "real",
+   "susceptibilities": 6,
+   "veto_margin": 0.77519
+  },
+  "fused electric D/E pair|real|1|0|bracketed|640-640": {
+   "band": {
+    "hi_cells": 640,
+    "lo_cells": 640
+   },
+   "baseline_ms_per_step": 0.145121,
+   "baseline_spread": 0.008978,
+   "bracketed": true,
+   "dimensions": 1,
+   "displaces": [
+    "PML",
+    "ordinary"
+   ],
+   "fused_ms_per_step": 0.945434,
+   "fused_spread": 0.021811,
+   "measurements": [
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__pml_1d__drive__p1__7a811e3623/mac2__2026-11-01T11_29_00Z.rows.jsonl",
+     "baseline_ms_per_step": 0.145121,
+     "baseline_spread": 0.008978,
+     "case": "pml_1d",
+     "cells": 640,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused magnetic B/H pair"
+      }
+     ],
+     "fused_ms_per_step": 0.945434,
+     "fused_spread": 0.021811,
+     "grid_shape": [
+      1,
+      1,
+      640
+     ],
+     "line": 1,
+     "ratio": 0.153497,
+     "source": "bench",
+     "utc": "2026-11-01T11:28:11Z"
+    }
+   ],
+   "product": "fused electric D/E pair",
+   "ratio": 0.153497,
+   "ratio_max": 0.153497,
+   "ratio_min": 0.153497,
+   "reason": "no size in it carries 2 rows, so none can set a band edge: 640 (1 row)",
+   "rows": 1,
+   "slots": [
+    "step_D",
+    "update_E"
+   ],
+   "slower_beyond_spread": true,
+   "status": "unmeasured",
+   "storage": "real",
+   "susceptibilities": 0,
+   "veto_margin": 0.815714
+  },
+  "fused electric D/E pair|real|2|0|bracketed|24000-5400000": {
+   "band": {
+    "hi_cells": 5400000,
+    "lo_cells": 24000
+   },
+   "baseline_ms_per_step": 0.489171,
+   "baseline_spread": 0.049248,
+   "bracketed": true,
+   "dimensions": 2,
+   "displaces": [
+    "PML",
+    "ordinary"
+   ],
+   "fused_ms_per_step": 1.326665,
+   "fused_spread": 0.054753,
+   "measurements": [
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__pml_2d__drive__p1__2522d158a1/mac2__2026-11-01T11_31_52Z.rows.jsonl",
+     "baseline_ms_per_step": 0.158355,
+     "baseline_spread": 0.007427,
+     "case": "pml_2d",
+     "cells": 24000,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused magnetic B/H pair"
+      }
+     ],
+     "fused_ms_per_step": 0.967681,
+     "fused_spread": 0.024391,
+     "grid_shape": [
+      200,
+      120,
+      1
+     ],
+     "line": 1,
+     "ratio": 0.163643,
+     "source": "bench",
+     "utc": "2026-11-01T11:31:01Z"
+    },
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__pml_2d__res20__p1__ea1f1981a0/mac2__2026-11-01T11_42_39Z.rows.jsonl",
+     "baseline_ms_per_step": 0.158051,
+     "baseline_spread": 0.007299,
+     "case": "pml_2d",
+     "cells": 24000,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused magnetic B/H pair"
+      }
+     ],
+     "fused_ms_per_step": 0.981509,
+     "fused_spread": 0.003411,
+     "grid_shape": [
+      200,
+      120,
+      1
+     ],
+     "line": 1,
+     "ratio": 0.161029,
+     "source": "bench",
+     "utc": "2026-11-01T11:42:09Z"
+    },
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__pml_2d__res20__p2__aab2d183dd/mac2__2026-11-01T12_36_42Z.rows.jsonl",
+     "baseline_ms_per_step": 0.1621,
+     "baseline_spread": 0.049248,
+     "case": "pml_2d",
+     "cells": 24000,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused magnetic B/H pair"
+      }
+     ],
+     "fused_ms_per_step": 0.981216,
+     "fused_spread": 0.003989,
+     "grid_shape": [
+      200,
+      120,
+      1
+     ],
+     "line": 1,
+     "ratio": 0.165203,
+     "source": "bench",
+     "utc": "2026-11-01T12:36:11Z"
+    },
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__pml_2d__res60__p1__e2f6ed2400/mac2__2026-11-01T11_47_44Z.rows.jsonl",
+     "baseline_ms_per_step": 0.222495,
+     "baseline_spread": 0.028312,
+     "case": "pml_2d",
+     "cells": 216000,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused magnetic B/H pair"
+      }
+     ],
+     "fused_ms_per_step": 1.05188,
+     "fused_spread": 0.001212,
+     "grid_shape": [
+      600,
+      360,
+      1
+     ],
+     "line": 1,
+     "ratio": 0.211522,
+     "source": "bench",
+     "utc": "2026-11-01T11:47:13Z"
+    },
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__pml_2d__res60__p2__68f6941fcc/mac2__2026-11-01T12_31_38Z.rows.jsonl",
+     "baseline_ms_per_step": 0.221936,
+     "baseline_spread": 0.028223,
+     "case": "pml_2d",
+     "cells": 216000,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused magnetic B/H pair"
+      }
+     ],
+     "fused_ms_per_step": 1.052201,
+     "fused_spread": 0.003232,
+     "grid_shape": [
+      600,
+      360,
+      1
+     ],
+     "line": 1,
+     "ratio": 0.210925,
+     "source": "bench",
+     "utc": "2026-11-01T12:31:07Z"
+    },
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__pml_2d__res130__p1__1c2192fa50/mac2__2026-11-01T11_52_53Z.rows.jsonl",
+     "baseline_ms_per_step": 0.489171,
+     "baseline_spread": 0.008254,
+     "case": "pml_2d",
+     "cells": 1014000,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused magnetic B/H pair"
+      }
+     ],
+     "fused_ms_per_step": 1.329154,
+     "fused_spread": 0.045797,
+     "grid_shape": [
+      1300,
+      780,
+      1
+     ],
+     "line": 1,
+     "ratio": 0.368032,
+     "source": "bench",
+     "utc": "2026-11-01T11:52:20Z"
+    },
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__pml_2d__res130__p2__c075132ad4/mac2__2026-11-01T12_17_28Z.rows.jsonl",
+     "baseline_ms_per_step": 0.497126,
+     "baseline_spread": 0.015455,
+     "case": "pml_2d",
+     "cells": 1014000,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused magnetic B/H pair"
+      }
+     ],
+     "fused_ms_per_step": 1.326665,
+     "fused_spread": 0.047678,
+     "grid_shape": [
+      1300,
+      780,
+      1
+     ],
+     "line": 1,
+     "ratio": 0.374719,
+     "source": "bench",
+     "utc": "2026-11-01T12:16:55Z"
+    },
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__pml_2d__res200__p1__68ffb9d54c/mac2__2026-11-01T11_58_13Z.rows.jsonl",
+     "baseline_ms_per_step": 1.145902,
+     "baseline_spread": 0.002908,
+     "case": "pml_2d",
+     "cells": 2400000,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused magnetic B/H pair"
+      }
+     ],
+     "fused_ms_per_step": 1.923858,
+     "fused_spread": 0.008552,
+     "grid_shape": [
+      2000,
+      1200,
+      1
+     ],
+     "line": 1,
+     "ratio": 0.595627,
+     "source": "bench",
+     "utc": "2026-11-01T11:57:34Z"
+    },
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__pml_2d__res200__p2__30730c6b78/mac2__2026-11-01T12_12_14Z.rows.jsonl",
+     "baseline_ms_per_step": 1.141356,
+     "baseline_spread": 0.006325,
+     "case": "pml_2d",
+     "cells": 2400000,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused magnetic B/H pair"
+      }
+     ],
+     "fused_ms_per_step": 1.923359,
+     "fused_spread": 0.00691,
+     "grid_shape": [
+      2000,
+      1200,
+      1
+     ],
+     "line": 1,
+     "ratio": 0.593418,
+     "source": "bench",
+     "utc": "2026-11-01T12:11:36Z"
+    },
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__pml_2d__res300__p1__3426738c0d/mac2__2026-11-01T12_03_53Z.rows.jsonl",
+     "baseline_ms_per_step": 2.461403,
+     "baseline_spread": 0.006368,
+     "case": "pml_2d",
+     "cells": 5400000,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused magnetic B/H pair"
+      }
+     ],
+     "fused_ms_per_step": 3.02829,
+     "fused_spread": 0.013768,
+     "grid_shape": [
+      3000,
+      1800,
+      1
+     ],
+     "line": 1,
+     "ratio": 0.812803,
+     "source": "bench",
+     "utc": "2026-11-01T12:03:05Z"
+    },
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__pml_2d__res300__p2__ead6ab1ace/mac2__2026-11-01T12_06_43Z.rows.jsonl",
+     "baseline_ms_per_step": 2.461311,
+     "baseline_spread": 0.004279,
+     "case": "pml_2d",
+     "cells": 5400000,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused magnetic B/H pair"
+      }
+     ],
+     "fused_ms_per_step": 3.03656,
+     "fused_spread": 0.054753,
+     "grid_shape": [
+      3000,
+      1800,
+      1
+     ],
+     "line": 1,
+     "ratio": 0.810559,
+     "source": "bench",
+     "utc": "2026-11-01T12:05:55Z"
+    }
+   ],
+   "product": "fused electric D/E pair",
+   "ratio": 0.368032,
+   "ratio_max": 0.812803,
+   "ratio_min": 0.161029,
+   "rows": 11,
+   "slots": [
+    "step_D",
+    "update_E"
+   ],
+   "slower_beyond_spread": true,
+   "status": "measured",
+   "storage": "real",
+   "susceptibilities": 0,
+   "veto_margin": 0.130409
+  },
+  "fused electric D/E pair|real|3|0|bracketed|64000-64000": {
+   "band": {
+    "hi_cells": 64000,
+    "lo_cells": 64000
+   },
+   "baseline_ms_per_step": 0.178012,
+   "baseline_spread": 0.009397,
+   "bracketed": true,
+   "dimensions": 3,
+   "displaces": [
+    "PML",
+    "ordinary"
+   ],
+   "fused_ms_per_step": 0.993219,
+   "fused_spread": 0.014415,
+   "measurements": [
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__pml_3d_diagonal__drive__p1__8af6a03598/mac2__2026-11-01T11_34_44Z.rows.jsonl",
+     "baseline_ms_per_step": 0.178012,
+     "baseline_spread": 0.009397,
+     "case": "pml_3d_diagonal",
+     "cells": 64000,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused magnetic B/H pair"
+      }
+     ],
+     "fused_ms_per_step": 0.993219,
+     "fused_spread": 0.014415,
+     "grid_shape": [
+      40,
+      40,
+      40
+     ],
+     "line": 1,
+     "ratio": 0.179227,
+     "source": "bench",
+     "utc": "2026-11-01T11:33:53Z"
+    }
+   ],
+   "product": "fused electric D/E pair",
+   "ratio": 0.179227,
+   "ratio_max": 0.179227,
+   "ratio_min": 0.179227,
+   "reason": "no size in it carries 2 rows, so none can set a band edge: 64,000 (1 row)",
+   "rows": 1,
+   "slots": [
+    "step_D",
+    "update_E"
+   ],
+   "slower_beyond_spread": true,
+   "status": "unmeasured",
+   "storage": "real",
+   "susceptibilities": 0,
+   "veto_margin": 0.796961
+  },
+  "fused magnetic B/H pair|real|2|0|bracketed|24000-5400000": {
+   "band": {
+    "hi_cells": 5400000,
+    "lo_cells": 24000
+   },
+   "baseline_ms_per_step": 0.353965,
+   "baseline_spread": 0.034975,
+   "bracketed": true,
+   "dimensions": 2,
+   "displaces": [
+    "PML",
+    "ordinary"
+   ],
+   "fused_ms_per_step": 1.312577,
+   "fused_spread": 0.113068,
+   "measurements": [
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__magnetic_seam_2d__drive__p1__bda6177ef1/mac2__2026-11-01T11_23_19Z.rows.jsonl",
+     "baseline_ms_per_step": 0.156432,
+     "baseline_spread": 0.0158,
+     "case": "magnetic_seam_2d",
+     "cells": 24000,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused electric D/E pair"
+      }
+     ],
+     "fused_ms_per_step": 0.95036,
+     "fused_spread": 0.019006,
+     "grid_shape": [
+      200,
+      120,
+      1
+     ],
+     "line": 1,
+     "ratio": 0.164603,
+     "source": "bench",
+     "utc": "2026-11-01T11:22:29Z"
+    },
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__magnetic_seam_2d__res20__p1__4e8357ad98/mac2__2026-11-01T11_40_08Z.rows.jsonl",
+     "baseline_ms_per_step": 0.159329,
+     "baseline_spread": 0.003277,
+     "case": "magnetic_seam_2d",
+     "cells": 24000,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused electric D/E pair"
+      }
+     ],
+     "fused_ms_per_step": 0.980041,
+     "fused_spread": 0.006766,
+     "grid_shape": [
+      200,
+      120,
+      1
+     ],
+     "line": 1,
+     "ratio": 0.162574,
+     "source": "bench",
+     "utc": "2026-11-01T11:39:38Z"
+    },
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__magnetic_seam_2d__res20__p2__f77face804/mac2__2026-11-01T12_39_13Z.rows.jsonl",
+     "baseline_ms_per_step": 0.160136,
+     "baseline_spread": 0.007773,
+     "case": "magnetic_seam_2d",
+     "cells": 24000,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused electric D/E pair"
+      }
+     ],
+     "fused_ms_per_step": 0.968166,
+     "fused_spread": 0.009904,
+     "grid_shape": [
+      200,
+      120,
+      1
+     ],
+     "line": 1,
+     "ratio": 0.165402,
+     "source": "bench",
+     "utc": "2026-11-01T12:38:43Z"
+    },
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__offdiag_magnetic_2d__drive__p1__d7a9963a1d/mac1__2026-10-29T11_28_11Z.rows.jsonl",
+     "baseline_ms_per_step": 0.168563,
+     "baseline_spread": 0.004612,
+     "case": "offdiag_magnetic_2d",
+     "cells": 24000,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "off-diagonal fused electric D/E pair"
+      }
+     ],
+     "fused_ms_per_step": 8.50582,
+     "fused_spread": 0.113068,
+     "grid_shape": [
+      200,
+      120,
+      1
+     ],
+     "line": 1,
+     "ratio": 0.019817,
+     "source": "bench",
+     "utc": "2026-10-29T11:27:22Z"
+    },
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__magnetic_seam_2d__res60__p1__b493ceb867/mac2__2026-11-01T11_45_11Z.rows.jsonl",
+     "baseline_ms_per_step": 0.216616,
+     "baseline_spread": 0.034975,
+     "case": "magnetic_seam_2d",
+     "cells": 216000,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused electric D/E pair"
+      }
+     ],
+     "fused_ms_per_step": 1.038976,
+     "fused_spread": 0.008008,
+     "grid_shape": [
+      600,
+      360,
+      1
+     ],
+     "line": 1,
+     "ratio": 0.20849,
+     "source": "bench",
+     "utc": "2026-11-01T11:44:41Z"
+    },
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__magnetic_seam_2d__res60__p2__004e875736/mac2__2026-11-01T12_34_10Z.rows.jsonl",
+     "baseline_ms_per_step": 0.216808,
+     "baseline_spread": 0.033455,
+     "case": "magnetic_seam_2d",
+     "cells": 216000,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused electric D/E pair"
+      }
+     ],
+     "fused_ms_per_step": 1.040054,
+     "fused_spread": 0.00708,
+     "grid_shape": [
+      600,
+      360,
+      1
+     ],
+     "line": 1,
+     "ratio": 0.208459,
+     "source": "bench",
+     "utc": "2026-11-01T12:33:40Z"
+    },
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__magnetic_seam_2d__res130__p1__194839425a/mac2__2026-11-01T11_50_18Z.rows.jsonl",
+     "baseline_ms_per_step": 0.491121,
+     "baseline_spread": 0.00651,
+     "case": "magnetic_seam_2d",
+     "cells": 1014000,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused electric D/E pair"
+      }
+     ],
+     "fused_ms_per_step": 1.312882,
+     "fused_spread": 0.048876,
+     "grid_shape": [
+      1300,
+      780,
+      1
+     ],
+     "line": 1,
+     "ratio": 0.374079,
+     "source": "bench",
+     "utc": "2026-11-01T11:49:45Z"
+    },
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__magnetic_seam_2d__res130__p2__a6a37745b0/mac2__2026-11-01T12_23_04Z.rows.jsonl",
+     "baseline_ms_per_step": 0.491565,
+     "baseline_spread": 0.013798,
+     "case": "magnetic_seam_2d",
+     "cells": 1014000,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused electric D/E pair"
+      }
+     ],
+     "fused_ms_per_step": 1.312272,
+     "fused_spread": 0.077114,
+     "grid_shape": [
+      1300,
+      780,
+      1
+     ],
+     "line": 1,
+     "ratio": 0.37459,
+     "source": "bench",
+     "utc": "2026-11-01T12:22:30Z"
+    },
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__magnetic_seam_2d__res200__p1__c720b66021/mac2__2026-11-01T11_55_33Z.rows.jsonl",
+     "baseline_ms_per_step": 1.140277,
+     "baseline_spread": 0.006644,
+     "case": "magnetic_seam_2d",
+     "cells": 2400000,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused electric D/E pair"
+      }
+     ],
+     "fused_ms_per_step": 1.914967,
+     "fused_spread": 0.004122,
+     "grid_shape": [
+      2000,
+      1200,
+      1
+     ],
+     "line": 1,
+     "ratio": 0.595455,
+     "source": "bench",
+     "utc": "2026-11-01T11:54:55Z"
+    },
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__magnetic_seam_2d__res200__p2__b051c6eabb/mac2__2026-11-01T12_14_54Z.rows.jsonl",
+     "baseline_ms_per_step": 1.141341,
+     "baseline_spread": 0.008786,
+     "case": "magnetic_seam_2d",
+     "cells": 2400000,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused electric D/E pair"
+      }
+     ],
+     "fused_ms_per_step": 1.900885,
+     "fused_spread": 0.003559,
+     "grid_shape": [
+      2000,
+      1200,
+      1
+     ],
+     "line": 1,
+     "ratio": 0.600426,
+     "source": "bench",
+     "utc": "2026-11-01T12:14:15Z"
+    },
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__magnetic_seam_2d__res300__p1__9206b4c5a8/mac2__2026-11-01T12_01_03Z.rows.jsonl",
+     "baseline_ms_per_step": 2.464256,
+     "baseline_spread": 0.005117,
+     "case": "magnetic_seam_2d",
+     "cells": 5400000,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused electric D/E pair"
+      }
+     ],
+     "fused_ms_per_step": 3.006665,
+     "fused_spread": 0.048939,
+     "grid_shape": [
+      3000,
+      1800,
+      1
+     ],
+     "line": 1,
+     "ratio": 0.819598,
+     "source": "bench",
+     "utc": "2026-11-01T12:00:14Z"
+    },
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__magnetic_seam_2d__res300__p2__0bc7092729/mac2__2026-11-01T12_09_34Z.rows.jsonl",
+     "baseline_ms_per_step": 2.463064,
+     "baseline_spread": 0.00632,
+     "case": "magnetic_seam_2d",
+     "cells": 5400000,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused electric D/E pair"
+      }
+     ],
+     "fused_ms_per_step": 3.010703,
+     "fused_spread": 0.089351,
+     "grid_shape": [
+      3000,
+      1800,
+      1
+     ],
+     "line": 1,
+     "ratio": 0.818103,
+     "source": "bench",
+     "utc": "2026-11-01T12:08:45Z"
+    }
+   ],
+   "product": "fused magnetic B/H pair",
+   "ratio": 0.291285,
+   "ratio_max": 0.819598,
+   "ratio_min": 0.019817,
+   "rows": 12,
+   "slots": [
+    "step_B",
+    "update_H"
+   ],
+   "slower_beyond_spread": true,
+   "status": "measured",
+   "storage": "real",
+   "susceptibilities": 0,
+   "veto_margin": 0.086226
+  },
+  "fused magnetic B/H pair|real|2|0|clean|24000-5400000": {
+   "band": {
+    "hi_cells": 5400000,
+    "lo_cells": 24000
+   },
+   "baseline_ms_per_step": 0.573667,
+   "baseline_spread": 0.034655,
+   "bracketed": false,
+   "dimensions": 2,
+   "displaces": [
+    "PML",
+    "ordinary"
+   ],
+   "fused_ms_per_step": 0.535753,
+   "fused_spread": 0.032651,
+   "measurements": [
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__offdiag_2d__drive__p1__ca7578ec75/mac1__2026-10-29T11_25_20Z.rows.jsonl",
+     "baseline_ms_per_step": 0.168017,
+     "baseline_spread": 0.011375,
+     "case": "offdiag_2d",
+     "cells": 24000,
+     "co_fused": [],
+     "fused_ms_per_step": 0.140427,
+     "fused_spread": 0.013785,
+     "grid_shape": [
+      200,
+      120,
+      1
+     ],
+     "line": 1,
+     "ratio": 1.196468,
+     "source": "bench",
+     "utc": "2026-10-29T11:24:31Z"
+    },
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__offdiag_2d__res20__p1__7bb20851a2/mac1__2026-10-29T11_47_35Z.rows.jsonl",
+     "baseline_ms_per_step": 0.171805,
+     "baseline_spread": 0.012097,
+     "case": "offdiag_2d",
+     "cells": 24000,
+     "co_fused": [],
+     "fused_ms_per_step": 0.143892,
+     "fused_spread": 0.011687,
+     "grid_shape": [
+      200,
+      120,
+      1
+     ],
+     "line": 1,
+     "ratio": 1.193989,
+     "source": "bench",
+     "utc": "2026-10-29T11:47:07Z"
+    },
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__offdiag_2d__res20__p2__2333d6f525/mac1__2026-10-29T13_09_00Z.rows.jsonl",
+     "baseline_ms_per_step": 0.171939,
+     "baseline_spread": 0.005817,
+     "case": "offdiag_2d",
+     "cells": 24000,
+     "co_fused": [],
+     "fused_ms_per_step": 0.143046,
+     "fused_spread": 0.015305,
+     "grid_shape": [
+      200,
+      120,
+      1
+     ],
+     "line": 1,
+     "ratio": 1.201982,
+     "source": "bench",
+     "utc": "2026-10-29T13:08:31Z"
+    },
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__offdiag_2d__res60__p1__b1b030cd55/mac1__2026-10-29T11_55_10Z.rows.jsonl",
+     "baseline_ms_per_step": 0.250079,
+     "baseline_spread": 0.034655,
+     "case": "offdiag_2d",
+     "cells": 216000,
+     "co_fused": [],
+     "fused_ms_per_step": 0.216298,
+     "fused_spread": 0.032651,
+     "grid_shape": [
+      600,
+      360,
+      1
+     ],
+     "line": 1,
+     "ratio": 1.156181,
+     "source": "bench",
+     "utc": "2026-10-29T11:54:41Z"
+    },
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__offdiag_2d__res60__p2__267de268b0/mac1__2026-10-29T13_01_26Z.rows.jsonl",
+     "baseline_ms_per_step": 0.252651,
+     "baseline_spread": 0.018069,
+     "case": "offdiag_2d",
+     "cells": 216000,
+     "co_fused": [],
+     "fused_ms_per_step": 0.217704,
+     "fused_spread": 0.025031,
+     "grid_shape": [
+      600,
+      360,
+      1
+     ],
+     "line": 1,
+     "ratio": 1.160524,
+     "source": "bench",
+     "utc": "2026-10-29T13:00:56Z"
+    },
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__offdiag_2d__res130__p1__87bb0f6884/mac1__2026-10-29T12_02_52Z.rows.jsonl",
+     "baseline_ms_per_step": 0.577549,
+     "baseline_spread": 0.011191,
+     "case": "offdiag_2d",
+     "cells": 1014000,
+     "co_fused": [],
+     "fused_ms_per_step": 0.542264,
+     "fused_spread": 0.007612,
+     "grid_shape": [
+      1300,
+      780,
+      1
+     ],
+     "line": 1,
+     "ratio": 1.065071,
+     "source": "bench",
+     "utc": "2026-10-29T12:02:19Z"
+    },
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__offdiag_2d__res130__p2__70eb7c2798/mac1__2026-10-29T12_53_46Z.rows.jsonl",
+     "baseline_ms_per_step": 0.573667,
+     "baseline_spread": 0.004607,
+     "case": "offdiag_2d",
+     "cells": 1014000,
+     "co_fused": [],
+     "fused_ms_per_step": 0.535753,
+     "fused_spread": 0.008875,
+     "grid_shape": [
+      1300,
+      780,
+      1
+     ],
+     "line": 1,
+     "ratio": 1.070767,
+     "source": "bench",
+     "utc": "2026-10-29T12:53:12Z"
+    },
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__offdiag_2d__res200__p1__b8cd9a8a6f/mac1__2026-10-29T12_13_47Z.rows.jsonl",
+     "baseline_ms_per_step": 1.236762,
+     "baseline_spread": 0.002281,
+     "case": "offdiag_2d",
+     "cells": 2400000,
+     "co_fused": [],
+     "fused_ms_per_step": 1.15702,
+     "fused_spread": 0.00308,
+     "grid_shape": [
+      2000,
+      1200,
+      1
+     ],
+     "line": 1,
+     "ratio": 1.06892,
+     "source": "bench",
+     "utc": "2026-10-29T12:13:08Z"
+    },
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__offdiag_2d__res200__p2__b070a8af6f/mac1__2026-10-29T12_45_56Z.rows.jsonl",
+     "baseline_ms_per_step": 1.226365,
+     "baseline_spread": 0.00389,
+     "case": "offdiag_2d",
+     "cells": 2400000,
+     "co_fused": [],
+     "fused_ms_per_step": 1.152115,
+     "fused_spread": 0.009777,
+     "grid_shape": [
+      2000,
+      1200,
+      1
+     ],
+     "line": 1,
+     "ratio": 1.064447,
+     "source": "bench",
+     "utc": "2026-10-29T12:45:16Z"
+    },
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__offdiag_2d__res300__p1__c565fab118/mac1__2026-10-29T12_29_13Z.rows.jsonl",
+     "baseline_ms_per_step": 2.669777,
+     "baseline_spread": 0.003365,
+     "case": "offdiag_2d",
+     "cells": 5400000,
+     "co_fused": [],
+     "fused_ms_per_step": 2.450944,
+     "fused_spread": 0.004827,
+     "grid_shape": [
+      3000,
+      1800,
+      1
+     ],
+     "line": 1,
+     "ratio": 1.089285,
+     "source": "bench",
+     "utc": "2026-10-29T12:28:21Z"
+    },
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__offdiag_2d__res300__p2__9ae6032bbf/mac1__2026-10-29T12_37_44Z.rows.jsonl",
+     "baseline_ms_per_step": 2.660078,
+     "baseline_spread": 0.006782,
+     "case": "offdiag_2d",
+     "cells": 5400000,
+     "co_fused": [],
+     "fused_ms_per_step": 2.452977,
+     "fused_spread": 0.002073,
+     "grid_shape": [
+      3000,
+      1800,
+      1
+     ],
+     "line": 1,
+     "ratio": 1.084428,
+     "source": "bench",
+     "utc": "2026-10-29T12:36:54Z"
+    }
+   ],
+   "product": "fused magnetic B/H pair",
+   "ratio": 1.089285,
+   "ratio_max": 1.201982,
+   "ratio_min": 1.064447,
+   "rows": 11,
+   "slots": [
+    "step_B",
+    "update_H"
+   ],
+   "slower_beyond_spread": false,
+   "status": "measured",
+   "storage": "real",
+   "susceptibilities": 0,
+   "veto_margin": -0.223487
+  },
+  "fused magnetic B/H pair|real|3|0|clean|110592-110592": {
+   "band": {
+    "hi_cells": 110592,
+    "lo_cells": 110592
+   },
+   "baseline_ms_per_step": 0.250981,
+   "baseline_spread": 0.007573,
+   "bracketed": false,
+   "dimensions": 3,
+   "displaces": [
+    "PML",
+    "ordinary"
+   ],
+   "fused_ms_per_step": 0.218733,
+   "fused_spread": 0.006906,
+   "measurements": [
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__pml_3d__drive__p1__6ea4a67a11/mac1__2026-10-29T11_36_49Z.rows.jsonl",
+     "baseline_ms_per_step": 0.250981,
+     "baseline_spread": 0.007573,
+     "case": "pml_3d",
+     "cells": 110592,
+     "co_fused": [],
+     "fused_ms_per_step": 0.218733,
+     "fused_spread": 0.006906,
+     "grid_shape": [
+      48,
+      48,
+      48
+     ],
+     "line": 1,
+     "ratio": 1.147435,
+     "source": "bench",
+     "utc": "2026-10-29T11:35:54Z"
+    }
+   ],
+   "product": "fused magnetic B/H pair",
+   "ratio": 1.147435,
+   "ratio_max": 1.147435,
+   "ratio_min": 1.147435,
+   "reason": "no size in it carries 2 rows, so none can set a band edge: 110,592 (1 row)",
+   "rows": 1,
+   "slots": [
+    "step_B",
+    "update_H"
+   ],
+   "slower_beyond_spread": false,
+   "status": "unmeasured",
+   "storage": "real",
+   "susceptibilities": 0,
+   "veto_margin": -0.161914
+  },
+  "no-PML fused electric D/E pair|real|2|2|bracketed|14400-14400": {
+   "band": {
+    "hi_cells": 14400,
+    "lo_cells": 14400
+   },
+   "baseline_ms_per_step": 0.297511,
+   "baseline_spread": 0.029852,
+   "bracketed": true,
+   "dimensions": 2,
+   "displaces": [
+    "no-PML curl",
+    "no-PML stored E"
+   ],
+   "fused_ms_per_step": 1.407537,
+   "fused_spread": 0.021731,
+   "measurements": [
+    {
+     "after_probe": true,
+     "artifact": "results/timing_rows_m1max/fused/fused__applegpu_g13s__metal__no_pml_dispersive_2d__drive__p1__4d7a2e0c58/mac2__2026-11-01T11_26_10Z.rows.jsonl",
+     "baseline_ms_per_step": 0.297511,
+     "baseline_spread": 0.029852,
+     "case": "no_pml_dispersive_2d",
+     "cells": 14400,
+     "co_fused": [],
+     "fused_ms_per_step": 1.407537,
+     "fused_spread": 0.021731,
+     "grid_shape": [
+      120,
+      120,
+      1
+     ],
+     "line": 1,
+     "ratio": 0.21137,
+     "source": "bench",
+     "utc": "2026-11-01T11:25:21Z"
+    }
+   ],
+   "product": "no-PML fused electric D/E pair",
+   "ratio": 0.21137,
+   "ratio_max": 0.21137,
+   "ratio_min": 0.21137,
+   "reason": "no size in it carries 2 rows, so none can set a band edge: 14,400 (1 row)",
+   "rows": 1,
+   "slots": [
+    "step_D",
+    "update_E"
+   ],
+   "slower_beyond_spread": true,
+   "status": "unmeasured",
+   "storage": "real",
+   "susceptibilities": 2,
+   "veto_margin": 0.737047
+  }
+ },
+ "pinned_sources": {
+  "bench": [
+   "577bd4db689fe282cb196dbedb1186530a7ca4f7c64dcff5ff178dfa231abc5e"
+  ],
+  "deposit_repair": [
+   "a5e49dfa6ca7f82054d1beb5967e6a12cb9feae6f4bfa0587ce10ca62b9bdd21"
+  ],
+  "driver": [
+   "e72363e8331aa8a137c21dd96c298e66ac3bc7699000bd486f5622fcfa0889bf"
+  ],
+  "fastpath": [
+   "ff652e91abfb8f24a009c9a7ba063e23e8022ca659c24e7224ef928358f2ea50"
+  ],
+  "fused_pairs": [
+   "e51c13f13765554bd8cf4b03427df2b5ec4b310ea92c73dc4a42e29d892a8b60"
+  ],
+  "fused_polarization_pair": [
+   "da6b6e50215728f4a9ec166b41e5b6cff2c9c0827ef3eeb08b8322f03118d402"
+  ],
+  "metal_device": [
+   "b0e128cf828154ef30cf536bd6c7025b6ea2f46f30def16db78a0cd90488d18d"
+  ],
+  "metal_dispatch": [
+   "bdff888020b54229aa1529f5572cf25d6dab9c82703d4c87f814307302118960"
+  ],
+  "metal_launch": [
+   "3e0581edfe7530169b119c2afb4bceb3ed529dcd2494a2b928ed833c229b1919"
+  ],
+  "phase0_harness": [
+   "not recorded"
+  ]
+ },
+ "policy": [
+  "flush"
+ ],
+ "record_sha256": "9b0a09e30f1c058e2e778944f908760f0b448e6a23150bf25c15a1d375fa277f",
+ "recorded_utc": "2026-11-01T12:38:43Z",
+ "route": {
+  "deposit_repair_sha256": "a5e49dfa6ca7f82054d1beb5967e6a12cb9feae6f4bfa0587ce10ca62b9bdd21",
+  "fell_back": false,
+  "id": "a5e49dfa6ca7:linear:1-per-step:restricted",
+  "index": "linear",
+  "repairs_per_bracketed_step": 1.0,
+  "restricted": true,
+  "restriction_counters_recorded_on": "55 of 55 bracketed rows"
+ },
+ "rows": {
+  "admitted": 72,
+  "baseline_legs": 0,
+  "duplicates": 0,
+  "excluded": 0,
+  "read": 72
+ },
+ "rules": {
+  "admission": "verdict TIMED or TIMED-NOT-REPORTABLE with every gating floor passed (the Metal launch-rate floor, windows_launched_at_the_proved_rate, among the recorded floors) and all six recorded (the same-table control among them; the within-pass window floor of a row written before the between-pass gate is not read), the plan's slots served by this table alone (substitution.tables_dispatched), lifted on the device, no foreign process driving the Metal device before or after, read from the row's host record (host_before and host_after, foreign_processes; a record that did not read them is not read), a recorded deposit_repair digest, and the between-pass gate",
+  "attribution": "a row times a plan and prices its SOLE fused product, or -- when the plan holds several -- the one and only one of them carrying the deposit-repair bracket, listing the others under co_fused; a plan whose products are all clean prices none of them",
+  "band": "per class, the sorted measured cell counts are cut into maximal runs with one verdict and each run is trimmed to sizes with at least min_rows rows; a band is [lo_cells, hi_cells] inclusive whose EDGES are those sizes, its INTERIOR is interpolated (a size between the edges need not have been run and the verdict is applied to it), the trimmed remainder and a verdict change between two adjacent sizes are explicit unmeasured keys, and outside the measured sizes there is no key: nothing is extrapolated",
+  "between_pass": "the between-pass gate: the admitted rows of one case, grid shape, repair program and timing instrument (window count and the probe floor its target sets) are its passes; two or more enter only when the spread of their fused and of their baseline rates, (max - min) / median, is at most 5 % on each leg, else every row of the point is left out by name; a point timed once has no between-pass spread and is not struck by it",
+  "bracketed": "whether any slot the product holds is in the fused leg's deposit_repair_route.bracketed_slots",
+  "fused_leg_preference": "a fused row is admitted only when its process_environment records the package's dispatch-preference switch set to 'span': the shape rule composes its fused leg alone, so the row prices the product a key names and not the composition the default arbitrated",
+  "min_rows_per_key": 2,
+  "numbers": "fused and baseline ms/step and ratio are medians over the key's rows; fused_spread and baseline_spread are the largest window spread ((max - min) / median) any feeding row showed on that leg",
+  "one_program": "rows on more than one deposit-repair route (the whole identity: digest, index, repairs per bracketed step, restricted, fell back), fused-pair emitter, subnormal policy or device refuse to pool; a source some rows pinned and others did not refuses until it is allowed by name, and is then not compared at all",
+  "ratio": "baseline ms/step over fused ms/step, per row; above 1 the candidate is faster than what it displaces",
+  "storage": "complex when the run shape's complex_storage is true, else real",
+  "susceptibilities": "the run shape's susceptibilities count, verbatim, as the release tables pin it",
+  "veto": "a row's margin is 1 - (its fused_spread + its baseline_spread) - its ratio; veto_margin is the least margin of the key's rows and slower_beyond_spread is veto_margin > 0: EVERY row is slower by more than its own two spreads",
+  "window_spread": "each row's within-pass window spreads are recorded (fused_spread, baseline_spread) and gate no admission; the veto margin reads them as dispatch_preference spells it"
+ },
+ "schema": "meep_gpu.dispatch_preference.timing/2",
+ "subject_barrier": {
+  "allowed_unpinned": [],
+  "cannot_cover": "a product's own device text comes from a per-product module (cuda_kernels/fused_electric_pair.py, the triton_kernels/ emitters, the Metal kernel sources) and no timing row pins one: this record cannot say which per-product kernel text it timed",
+  "digests": {
+   "fused_pairs": [
+    "e51c13f13765554bd8cf4b03427df2b5ec4b310ea92c73dc4a42e29d892a8b60"
+   ],
+   "metal_device": [
+    "b0e128cf828154ef30cf536bd6c7025b6ea2f46f30def16db78a0cd90488d18d"
+   ],
+   "metal_dispatch": [
+    "bdff888020b54229aa1529f5572cf25d6dab9c82703d4c87f814307302118960"
+   ],
+   "metal_launch": [
+    "3e0581edfe7530169b119c2afb4bceb3ed529dcd2494a2b928ed833c229b1919"
+   ]
+  },
+  "rows_not_recording": {
+   "fused_pairs": 0,
+   "metal_device": 0,
+   "metal_dispatch": 0,
+   "metal_launch": 0
+  },
+  "sources": [
+   "fused_pairs",
+   "metal_dispatch",
+   "metal_launch",
+   "metal_device"
+  ]
+ },
+ "table": "metal"
+}

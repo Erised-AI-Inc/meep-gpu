@@ -12,33 +12,68 @@ run the harness.
 
 ## Certification status of this release
 
-The 1.0 certification round ran on this release's bytes in the two reference
-environments ([The MEEP a round is measured against](#the-meep-a-round-is-measured-against)),
-under the round stamp <code>2026-10-15_10</code>, in chunks. The gates, the binds, the
-route campaigns and the direct corpus check ran on the round's frozen commit. Every file
-the release changes after it, the four ledgers the round's binds and records wrote
-included, is in the run closure of none of the 250 gate and probe scripts, so every
-artifact stands on the released files (an artifact stands where every file its import
-record names is byte-equal).
+The 1.0.1 certification round ran against MEEP 1.35.0 in the two reference environments ([The MEEP a
+round is measured against](#the-meep-a-round-is-measured-against)), in chunks: the NVIDIA device
+gates under the round stamp <code>2026-10-18_101</code>, the NVIDIA route campaigns and the go/no-go
+under <code>2026-10-28_101</code>, the Metal device gates and route campaign under
+<code>2026-10-26_101</code>. Compute capability 8.9 was certified under the same NVIDIA stamps on one RTX 4080 SUPER (CUDA driver 13050, WSL2), its device gates launched on <code>3faaa802</code> and <code>f51f8996</code>, its bind, route campaigns and go/no-go on <code>86006ef3</code>. The NVIDIA host is one RTX 3090 (compute capability 8.6, CUDA driver
+13040, i9-12900K, Windows 11 with WSL2, Ubuntu 24.04), the Apple host one M1 Max (macOS 27.0.1). Apple GPU architecture <code>applegpu_g16g</code> was certified on one M4 (macOS 26.6.2): its device gates and route campaign ran on commit <code>5cd527d3</code>, in the same round as the M1 Max's. The
+NVIDIA gates, binds and route ran before the round's last changes: on commit
+<code>c3e11358efbc</code>, the tip before the 1.0.1 documentation and the version bump, measured on
+a CPU with no GPU, the binds stand (56 of 56 hand-written CUDA and 62 of 68 Triton entries pin the
+tree's bytes, every one of their 56 and 68 run digests live; the 6 Triton entries that do not are
+the uncited ones named under the release's known issues), the three <code>driver_dispatch</code>
+records hold with their bound digests live, the direct corpus check carries 766 of 880 NVIDIA
+row-legs (the rows that held against the primary Linux references; the other 114 differ from them
+as expected, held against the second Linux build's words, and are not carried, having never been
+released against the primary), and the RTX 3090's dispatch checks read valid at 12 of 12 ladder keys
+and 124 of 124 fused keys. The NVIDIA route legs' own carry was not re-read there, their artifacts
+being on the GPU host: that the route stands rests on its record's live bound digest and on no file
+under <code>meep_gpu/</code> but two unpinned test files having moved since the checks. Read later from the compute capability 8.6 legs themselves, that route carries on the bytes shipped here: 8 of 8 legs (Triton 3 of 3, hand-written CUDA 5 of 5). A run
+carries to a new tree by the rules of [Carrying a route campaign or an L3 leg to a new
+tree](#carrying-a-route-campaign-or-an-l3-leg-to-a-new-tree): among them, its import record is at
+the recorded bytes, and of each ledger its device reads only the slice the run read is compared,
+not the whole file, so the rows above stand although the two NVIDIA ledgers' whole-file digests
+moved.
 
 | Item | State |
 |---|---|
-| The device gates (CERT-3) | NVIDIA, one RTX A6000 (compute capability 8.6): 123 of 123 units hold, under <code>keep</code> and <code>flush</code>. Metal, one M1 Max (<code>applegpu_g13s</code>): 62 of 62 units hold, under <code>flush</code> |
-| The kernel ledgers shipped in the package | Bound from those runs: the two NVIDIA ledgers and the CUDA certification record, and the Metal ledger (62 of 62 welds rebound); <code>flush</code> evidence admitted for 75 of 75 Triton arms and 34 of 34 hand-written CUDA arms; the hygiene guard reads the four ledgers CLEAN |
-| The route campaigns and the go/no-go for dispatch on by default (CERT-4) | Released on every table: Triton 3 of 3 legs, hand-written CUDA 5 of 5, Metal 4 of 4 with residency held. The go/no-go: GO, the ship leg 9 of 9 whole simulations dispatched, its null control 9 of 9 on the array path ([Correctness under dispatch](../guides/kernel-dispatch.md#correctness-under-dispatch)) |
+| The device gates (CERT-3) | NVIDIA, one RTX 3090 (compute capability 8.6): 123 of 123 units hold, under <code>keep</code> and <code>flush</code>, every selected run on that card. Metal, one M1 Max (<code>applegpu_g13s</code>, Metal frontend <code>metalfe-32023.921.5</code>, macOS 27.0.1): 62 of 62 units hold, under <code>flush</code>; that Mac has since taken macOS 27.2 (Metal frontend <code>metalfe-32023.922.4</code>), on which the kernels run supported and uncertified until a later release certifies that frontend. An RTX A6000's earlier runs stay beside the RTX 3090's as additional evidence in the stack record (CUDA driver 12030) and the certification blocks of 45 of the 55 CUDA families its chunks re-gated. 6 of the Triton ledger's 68 compute-capability 8.6 runs rest on the RTX A6000 alone and were not re-cut; no arm cites those entries. Compute capability 8.9, one RTX 4080 SUPER: 123 of 123 units hold, under <code>keep</code> and <code>flush</code>, every selected run on that card. GPU architecture <code>applegpu_g16g</code>, one M4 (Metal frontend <code>metalfe-32023.886.1</code>, macOS 26.6.2): 62 of 62 units hold, under <code>flush</code> |
+| The kernel ledgers shipped in the package | Bound from those runs: the two NVIDIA ledgers and the CUDA certification record, and the Metal ledger (62 of 62 welds rebound for each of the two Apple GPU architectures); <code>flush</code> evidence admitted for 75 of 75 Triton arms and 34 of 34 hand-written CUDA arms; the hygiene guard reads the four ledgers CLEAN |
+| The route campaigns and the go/no-go for dispatch on by default (CERT-4) | Released on every table: Triton 3 of 3 legs, hand-written CUDA 4 of 4 and its optional Triton-less leg, Metal 4 of 4 with residency held; on compute capability 8.9, Triton 3 of 3 legs, hand-written CUDA 4 of 4 and its Triton-less leg, and its own go/no-go, GO 9 of 9; on <code>applegpu_g16g</code>, Metal 4 of 4 with residency held. The go/no-go: GO, the ship leg 9 of 9 whole simulations dispatched, its null control 9 of 9 on the array path ([Correctness under dispatch](../guides/kernel-dispatch.md#correctness-under-dispatch)) |
 | The records behind dispatch on by default and the Metal residency default | The three tables' <code>driver_dispatch</code> records, re-cut from those campaigns: the Triton record carries the go/no-go, the Metal record the held residency every leg-case ran under |
-| The coverage boards | Cut by the round: 334, 352 and 327 of 597 seam-instances reachable in dispatch (Triton, CUDA, Metal) ([Coverage](../guides/kernel-dispatch.md#coverage-what-fraction-of-the-fusion-surface-dispatches)) |
-| MEEP identity of the array path (CERT-1, Table 2) | 193, 193, 192 and 192 of 194 corpus simulations on the four references ([Table 2](meep-identity-corpus.md)) |
-| The direct corpus check (CERT-5) | NVIDIA: 192 of 192 rows on each of four legs. Metal: 160 of 160 against the Linux flush reference outside 32 pre-registered rows, 192 of 192 against the Mac flush reference ([L3](#the-direct-corpus-check-against-meep-l3)) |
+| The coverage boards | The 1.0 certification round's cut, which 1.0.1 ships: 334, 352 and 327 of 597 seam-instances reachable in dispatch (Triton, CUDA, Metal) ([Coverage](../guides/kernel-dispatch.md#coverage-what-fraction-of-the-fusion-surface-dispatches)). The 1.0.1 censuses measured 0 flipped coverage flags on 194 of 194 rows per table and one changed hand-written CUDA selection (one example's <code>update_E</code> now selects a fused product); the 1.0.1 cut of the boards is owed with the archived inputs |
+| MEEP identity of the array path (CERT-1, Table 2) | 221, 221, 220 and 220 of 223 corpus simulations on the four references, against MEEP 1.35.0 ([Table 2](meep-identity-corpus.md)). The 1.0 record read 193, 193, 192 and 192 of 194, against MEEP 1.33.0 |
+| The direct corpus check (CERT-5) | NVIDIA, on commit <code>404d432d0b34</code>, on one RTX 3090: 220 of 220 rows hold on each of four legs against the second Linux reference, and against the primary Linux references outside the 28 (<code>keep</code>) and 29 (<code>flush</code>) rows on which the two differ, each as expected, with 0 errors. Metal, under <code>flush</code>, on commit <code>62bc13a989cd</code>, on one M1 Max: 184 of 184 against the Linux flush reference outside 36 pre-registered rows, 220 of 220 against the Mac flush reference; on commit <code>c3e11358efbc</code> the check carries those 184 rows by digest, and the 36 that differ from the Linux reference as expected are not carried. The check did not run on compute capability 8.9 or <code>applegpu_g16g</code>, which are certified by their device gates and route campaigns ([L3](#the-direct-corpus-check-against-meep-l3)) |
 | The ledger-contract tests | The certification suite (pytest marker <code>certification</code>), not run by default and run with <code>-m certification</code>. The tests it still fails on are each declared in <code>tools/ci/pending_certification.txt</code>, under a block that names the step that removes them; on the records' tree the contract files and the listed tests read 0 undeclared failures. See [The certification suite is not run by default](testing.md#the-certification-suite-is-not-run-by-default) |
-| Timing | Not part of certification. The 1.0 timing (CERT-8) ran on this release's bytes on 2026-10-16, after the certification round; its figures and their conditions are in [Will it help?](../guides/will-it-help.md#the-comparison-with-meep). 1.0.0 ships the 2026-09-21 dispatch-preference records, and the records the 1.0 timing cut land in a later 1.0.x release ([Timing is a separate activity](#timing-is-a-separate-activity)) |
+| Timing | Not part of certification ([Timing is a separate activity](#timing-is-a-separate-activity)). 1.0.1 ships dispatch-preference records of both vendors: compute capability 8.6's, cut from one RTX 3090's rows, 90 of 124 admitted (Triton 63 of 67, CUDA 27 of 57), and <code>applegpu_g13s</code>'s, cut from one M1 Max's 72 of 72 admitted rows ([Running the timing ladder](timing.md)). Compute capability 8.9 has no record of its own: its default reads 8.6's bracketed-veto prior, the nearest timed capability's, and never the record itself. GPU architecture <code>applegpu_g16g</code> has no record of its own: its default reads <code>applegpu_g13s</code>'s, the nearest timed Apple architecture, whose prior gives way nowhere: on <code>applegpu_g16g</code> the default dispatches every fused pair the shape rule composes. The Apple 1.0.1 timing against MEEP 1.35.0 is in [Will it help?](../guides/will-it-help.md#the-101-timing-on-the-same-laptop). The NVIDIA dispatch checks, on commit <code>404d432d0b34</code>, on one RTX 3090: 12 of 12 ladder keys and 124 of 124 fused keys collected, and no key owes anything further; launch counters equal the timed row's at 12 of 12 ladder keys; fused verdicts 96 of 124 <code>TIMED</code> and 28 of 124 <code>TIMED-NOT-REPORTABLE</code>. Check rates are not timings. The NVIDIA 1.0.1 timing against MEEP 1.35.0, on one RTX 3090 (compute capability 8.6, i9-12900K, WSL2), from 2026-10-29 to 2026-10-30, 23 of 24 GPU medians entering, is in [Will it help?](../guides/will-it-help.md#the-101-timing-on-one-rtx-3090). The 1.0 timing (CERT-8) ran on 1.0's bytes on 2026-10-16; its figures and their conditions stay in [Will it help?](../guides/will-it-help.md#the-comparison-with-meep) as that record. 1.0.0 shipped the 2026-09-21 dispatch-preference records, and the records that timing cut are retired |
 
-Every GPU but these two runs the kernels by default, uncertified, and a GPU is added by a
-round of its own on these bytes that writes records and no code
-([Certifying a new GPU](certify-a-new-gpu.md)). The round's own record, with each number
-and the record it comes from, is section 12 of
-<code>parity/meep_gpu/rounds/1.0/PRE_CERTIFICATION_STATE.md</code>; the release notes in
-<code>CHANGELOG.md</code> summarise it.
+Other cards of the certified identity read as certified without having been measured; a supported
+GPU of any other identity runs the kernels by default, uncertified, and a GPU is added by a
+certification round of its own on these bytes that writes records and no code ([Certifying a new
+GPU](certify-a-new-gpu.md)). The 1.0 certification round (stamp <code>2026-10-15_10</code>, one RTX
+A6000 and one M1 Max, against MEEP 1.33.0) has its own record, with each number and the record it
+comes from, in section 12 of <code>parity/meep_gpu/rounds/1.0/PRE_CERTIFICATION_STATE.md</code>; the
+release notes in <code>CHANGELOG.md</code> summarise both rounds.
+
+### The stages of a certification round {#certification-stages}
+
+A certification round runs in eight stages, named CERT-1 to CERT-8 in its runbook
+(<code>parity/meep_gpu/rounds/1.0/RUNBOOK.md</code>) and in the records it writes:
+
+| Stage | What it does | Where |
+|---|---|---|
+| CERT-1 | Freezes the tree. Before the freeze the array path holds MEEP identity on the corpus apart from Table 2's named exclusions, the CuPy array path stores the NumPy array path's words, and the gates' hand references are re-validated against the array path on the CPU. At the freeze the array-path oracle and the MEEP-identity fixtures are minted again, the round's route stamp is set, and the hygiene guard reads clean | CPU |
+| CERT-2 | The device smoke: one PML single and one fused pair per table, the first launches in the reference environments | each GPU host |
+| CERT-3 | The device gates: every family gate and composition probe of the three tables, with dispatch pinned off, run in chunks. The bind that follows writes the ledgers from the gates' artifacts | each GPU host |
+| CERT-4 | The route campaigns and the end-to-end go/no-go for dispatch on by default, then the <code>driver_dispatch</code> records, the censuses and the coverage boards cut from them | each GPU host |
+| CERT-5 | The direct corpus check ([L3](#the-direct-corpus-check-against-meep-l3)) | each GPU host |
+| CERT-6 | A new device: another compute capability or Apple GPU architecture ([Certifying a new GPU](certify-a-new-gpu.md)) | the new device |
+| CERT-7 | The test suites in each reference environment ([Running the tests](testing.md)), and the release staging | each host |
+| CERT-8 | Timing, last, on idle hosts, with the MEEP rows re-timed in the same session as the GPU rows ([Running the timing ladder](timing.md)). It is not part of certification | each host, idle |
+
+Nothing from CERT-2 to CERT-7 times anything: those stages are bit-identity checks, and
+a neighbouring process costs them wall time only.
 
 ## What is certified, and against what
 
@@ -68,18 +103,101 @@ moved.
 
 A kernel table is certified on a named toolchain and device identity, and under
 a named subnormal policy. The identity is recorded with the verdict. The two
-NVIDIA tables support compute capability 7.0 to 9.0 (the Triton table with
-Triton 3.1): they run on a supported identity outside the certified one by
-default and record it as uncertified, except that a table certified for the
-device and toolchain runs alone in place of one that is only supported, and they
-refuse an identity outside the supported range by name unless
-<code>MEEP_GPU_HARDWARE=any</code>. The Metal table supports every Apple
+NVIDIA tables support a device the installed toolchain can run them on (the
+hand-CUDA table when CuPy's NVRTC can compile for it, the Triton table when Triton
+3.1 or later launches a probe kernel on it): they run on a supported identity
+outside the certified one by default and record it as uncertified, a supported
+table composing beside a certified one, and they refuse an identity that is not
+supported by name unless <code>MEEP_GPU_HARDWARE=any</code>. The Metal table supports every Apple
 GPU: it runs in any Apple GPU environment and records whether it is the
 certified one. <code>MEEP_GPU_HARDWARE=certified</code> restricts every table to
 certified identities
 ([Certification on an NVIDIA GPU](../guides/kernel-dispatch.md#certification-on-an-nvidia-gpu),
 [Certifying another Apple GPU](#certifying-another-apple-gpu)).
 Supported is not certified: certification is what a round measures.
+
+### The grouping mutations are inverted {#inverted-grouping-mutations}
+
+Before the kernel tables took MEEP's operation order, each gate's grouping mutations
+planted MEEP's grouping in place of the package's, and had to be caught. The shipped
+forms are now MEEP's own ([The per-chunk PML forms](../design/floating-point.md#per-chunk-forms)),
+so each such mutation was re-pointed to plant the package's previous grouping instead,
+and it stays must-catch:
+
+- the curl stencil: the pairwise <code>(g1s - g1) + (g2 - g2s)</code> in place of MEEP's
+  left-to-right <code>((g1s - g1) + g2) - g2s</code>;
+- the constitutive accumulation: <code>(f + kps*src) - kms*prev</code> in place of MEEP's
+  <code>f + ((kps*src) - (kms*prev))</code>;
+- every family's own grouped expressions in the same way (the conductive curl's increment,
+  the folded passes' ladders, the polarization recurrence), each planted in the grouping
+  the package carried before.
+
+Four rules go with the inversion:
+
+- **Shared defaults invert once.** A defect several gates share is spelled once, in the
+  probe's shared default, and armed through each gate's own needle table (above), so
+  inverting the default inverts it for every gate that borrows it. A gate whose kernels
+  need another spelling carries its own entry.
+- **MEEP's grouping is the reference arm.** A hand reference that evaluates more than one
+  grouping (<code>parity/meep_gpu/no_pml_ref.py</code>) takes MEEP's as every consumer's
+  reference, and the package's previous grouping is the control or the planted mutant.
+- **Declared nulls are re-read, not carried over.** A mutation declared to change no word
+  under the old grouping need not change none under the new one. One class is a null by
+  construction: on an invariant axis (phi on a cylindrical grid) a partner difference is an
+  exact <code>+0</code>, so the previous spelling, which reads the absent partner as a
+  difference of a word with itself, equals MEEP's one-partner form except in the sign of a
+  zero curl. Those rows are recorded only or declared null, and their sibling on a target
+  whose two partners are present is must-catch.
+- **Mutations of a retired predicate are retired, not inverted.** A family that keyed its
+  forms on a coefficient's value (<code>kms != 1</code>, and the near-one table that armed
+  its tolerance mutation) now keys them on chunk membership, so the battery's
+  coefficient-identity row ([below](#chunk-form-battery)) replaces those legs.
+
+### The per-chunk form battery {#chunk-form-battery}
+
+Every family gate whose kernels select a form per chunk carries the same must-catch
+battery against that select. Each gate numbers its rows <code>b1</code>,
+<code>b2</code>, ... in its own order and names them for its kernels; the Metal base
+gate's are in <code>parity/meep_gpu/gate_metal_pml.py</code>, and the Metal fused pairs
+reuse them through <code>parity/meep_gpu/metal_fused_battery.py</code>. The classes:
+
+| Mutation | Expected | Why |
+|---|---|---|
+| The select removed: the recurrence (or the accumulation) on every cell, the auxiliary written everywhere | caught | the package's previous whole-grid form; every plain cell changes form |
+| The form keyed on coefficient identity (<code>kms != 1</code>) instead of chunk membership | caught | a cell with sigma exactly zero inside a layer's chunk takes the other form |
+| A run end moved one row (the low run one row longer) | caught | the boundary plane changes form; armed on the record the kernel is handed, not on its text |
+| The integer and half-integer records swapped | caught | the boundary plane moves by one cell; also armed on the record |
+| The dsig and dsigu flags swapped | caught | dsig-only cells and dsigu-only cells trade forms |
+| An auxiliary stored on a plain cell | caught | the array path leaves that word alone ([The auxiliary contract](../design/floating-point.md#auxiliary-contract)) and the gate compares it |
+| The second curl form spelled as the recurrence with <code>fu</code> read as 0 | caught only by a planted case where the coefficients are 1 | it differs at <code>f = -0</code>, <code>curl = +0</code> alone; on dsig-only cells whose coefficients are not 1 it differs everywhere |
+| <code>f = src</code> spelled as the accumulation with <code>kps = 1</code>, <code>kms = 0</code> | caught only by a planted case | it turns <code>src = -0</code> into <code>+0</code> ([Plain forms are output selects](../design/floating-point.md#output-selects-and-signed-zero)) |
+| An auxiliary loaded outside its guard, the store still guarded | declared null: no word changes | the plain forms do not read it; the guard is pinned by a static check of the kernel's text instead |
+| A carried select keyed at the source instead of the destination | declared null | the record is ghost-adjusted, so a ghost row reads its image row's line and keying at the destination equals keying at the image ([Layout of the record](kernel-tables.md#record-layout)) |
+
+Families that bind more than the record add their own rows (a presence word ignored or
+read on the wrong lattice, the conductive chunks ignored, MEEP's start of H dropped from
+a carry). Each leg runs on a random full-volume state, every cell live from step 1, so
+every chunk-boundary plane is exercised at the first launch rather than when a wavefront
+arrives (<code>parity/meep_gpu/b_battery_states.py</code>), and under both subnormal
+policies on the NVIDIA tables and the shipped contraction mode on Metal.
+
+### Form coverage {#form-coverage}
+
+A gate configuration is refused by name unless it reaches every form it claims to test
+(<code>b_battery_states.require_form_coverage</code>, and each gate's own census):
+
+- a nonzero count of cells for every (component, form) class it steps;
+- on each axis and both sub-lattices, cells inside and cells outside the membership run;
+- at least one wrapping axis.
+
+The two signed-zero cases a random state never draws, <code>f = -0</code> with
+<code>curl = +0</code> on a plain curl cell and <code>D = -0</code> on a plain
+constitutive cell, are planted as cases of their own on every table, not only inside the
+battery, and a lattice that places every pair of special words (<code>±0</code>,
+<code>±1</code>, the smallest subnormal of each sign) next to each other along every axis
+reaches the rest. Mutation legs catch at the first launch, so step budgets apply only to
+runs that start from a lift: the route campaigns, the end-to-end go/no-go, the direct
+corpus check and the MEEP-identity tiers.
 
 ## The harness, by script family
 
@@ -96,7 +214,7 @@ record it leaves.
 | <code>bench_*</code> | Throughput | Timing rows with a verdict per row |
 | <code>build_*_fusion_matrix.py</code> | Which seam-instances of the corpus a table's products serve and dispatch | A coverage board |
 | <code>build_parity_board.py</code> | Per kernel table, which modules carry the chunk-record select and MEEP's operation order, and are word-identical to the array path on the host, on the device, and certified on the live array path; per array-path family, which are word-identical to MEEP under each subnormal baseline | The bit-parity board, <code>parity/meep_gpu/parity_board/</code> |
-| <code>record_dev_evidence.py</code> | Development evidence, not certification: an integrator's re-run of a lane's device legs, bound to the module's bytes, its emitted device text and the live array path | <code>parity/meep_gpu/parity_board/dev_evidence.json</code>, read by the board's column (d-dev) only |
+| <code>record_dev_evidence.py</code> | Development evidence, not certification: a re-run of one change's device legs by whoever integrates it, bound to the module's bytes, its emitted device text and the live array path | <code>parity/meep_gpu/parity_board/dev_evidence.json</code>, read by the board's column (d-dev) only |
 | <code>rebind_*</code>, <code>record_*</code>, <code>recut_*</code> | Bind a ledger to the artifacts a campaign left | A ledger entry, derived from the artifacts |
 | <code>recut_metal_gates.sh</code>, <code>run_metal_dispatch_campaign.sh</code> | Drive every Metal gate, or the Metal route campaign | The artifacts of the scripts they drive |
 
@@ -163,6 +281,19 @@ python parity/meep_gpu/import_closure.py bill meep_gpu/fastpath.py
 It lists the gate and probe scripts whose run can import the file (an upper bound read off
 the source: the gate's <code>main</code> and every function it reaches).
 
+A Metal gate that plans a step reads the arm table, and
+<code>metal_kernels.arms.ensure_registered</code> imports every family before the table is
+read. That is right for a run, where selection must not depend on import order, but it puts
+every kernel in the gate's record. So a Metal kernel gate whose record reads the same under
+both tables closes the table first (<code>parity/meep_gpu/metal_closed_table.py</code>): it
+imports the families it certifies and holds no others. 15 of the 33 gates that read the
+table close it. The other 18 stay whole because they check how kernels interact across the
+table (co-admission, a neighbour's refusal, the arbitration, the composition census),
+because a weld pins the registry, or because a child process the gate starts reads the
+complete table, so an edit to any kernel owes those 18.
+<code>parity/meep_gpu/test_metal_closed_arm_table.py</code> pins both lists. The package has
+no closed mode: nothing a run can reach closes the table.
+
 A weld's curated pins can name a file its gate no longer imports: some curated sets were cut
 from import records the eager package root had filled with the driver, the planners and the
 lift. The rebind tools keep curated sets, so such a pin leaves only by a row of the tool's
@@ -182,7 +313,7 @@ a run that is not the checkout's bytes).
 
 ## The ledgers
 
-Seven JSON ledgers ship inside the package and are read at run time:
+Eight JSON ledgers ship inside the package and are read at run time:
 
 | Ledger | Holds |
 |---|---|
@@ -191,7 +322,7 @@ Seven JSON ledgers ship inside the package and are read at run time:
 | <code>meep_gpu/cuda_kernels/certification.json</code> | The hand-written CUDA table's campaign records, including the device source strings |
 | <code>meep_gpu/cuda_kernels/own_cell_hoist_reference.json</code> | The reference record of one hand-written CUDA kernel rewrite |
 | <code>meep_gpu/metal_kernels/fingerprints.json</code> | The Metal table's certification entries and its dispatch record |
-| <code>meep_gpu/triton_kernels/timing_cc86.json</code>, <code>meep_gpu/cuda_kernels/timing_cc86.json</code> | Timing records cut from timing rows, one per compute capability. 1.0.0 ships the 2026-09-21 cut; the 1.0 timing's (2026-10-16) lands in a later 1.0.x release |
+| <code>meep_gpu/triton_kernels/timing_cc86.json</code>, <code>meep_gpu/cuda_kernels/timing_cc86.json</code>, <code>meep_gpu/metal_kernels/timing_applegpu_g13s.json</code> | Timing records cut from timing rows: per architecture a representative, read by every card of it without a record of its own, and any card's own record beside it, read by that card ([Records per card](timing.md#records-per-card)). A GPU of an architecture with neither reads the prior of its vendor's nearest timed architecture. 1.0.0 shipped the 2026-09-21 cut. This release ships one RTX 3090's cut, from its DRIVE and size-sweep rows, and one Apple M1 Max's for the Metal table; the RTX A6000 cut of the 2026-10-16 rows is retired |
 
 Each certification entry binds a gate's verdict to the sha256 digests of the
 source files that produced it. An entry of the two NVIDIA ledgers keeps **one record
@@ -203,9 +334,9 @@ per GPU architecture** it has been run on, under its <code>runs</code> key:
   "status": "PASS",
   "runs": {
     "8.6": {
-      "host": "... NVIDIA RTX A6000, cc 8.6; CuPy 13.5.1; Triton 3.1.0 ...",
+      "host": "... NVIDIA GeForce RTX 3090, cc 8.6; CuPy 13.5.1; Triton 3.1.0 ...",
       "records": "apps/api/parity/meep_gpu/results/triton_fleet_.../complex_no_pml_curl/",
-      "recorded_utc": "2026-09-25T16:09:24Z",
+      "recorded_utc": "2026-10-27T11:36:33Z",
       "bound_sha256": "the digest of the digests above, at the time of that run"
     }
   }
@@ -281,8 +412,8 @@ out-of-plane and BFAST wavevectors, stored-current sources and the deposit repai
 a few complete steps each, in well under a second. The fixture calls no libm function while it steps, uses
 no source envelope, forms no complex product whose rounding depends on the host, and
 runs with subnormals kept, so the fingerprint is a property of the array path and not
-of the host. Complex storage, Bloch phases and cylindrical m &ne; 0 are deferred to a
-later fixture set by name.
+of the host. Complex storage, Bloch phases, cylindrical m &ne; 0 and source envelopes
+are deferred by name, each with the reason the fixture set cannot carry it.
 
 Each weld contract (<code>test_&lt;table&gt;_weld_contract.py</code>) recomputes the
 fingerprint and fails by name, listing the fixture cases whose words moved, when the
@@ -290,6 +421,36 @@ ledger records another one. A comment or docstring edit to the array path leaves
 unchanged. The leaves are written only by <code>record_array_path_oracle.py</code>
 (below); <code>--verify</code> recomputes them and writes nothing, which is how the
 same tree is checked on another host.
+
+### The timing records the default rests on
+
+The dispatch path arbitrates the shape rule's fused products by the timing records the
+tree ships (<code>meep_gpu/&lt;table&gt;_kernels/timing_*.json</code>; see the
+kernel-dispatch guide). So a route campaign runs every leg that asserts a composition
+under the shape rule (<code>MEEP_GPU_PREFER=span</code>), and one more leg per released
+case under the package default (the switch unset), which records the preference block
+its plan wrote: the record each table read with its <code>record_sha256</code>, the
+portable prior when it was asked, and every veto it applied. That leg passes only when
+the plan dispatched, in the default mode, with every record it opened read or absent,
+and a leg releases only when at least one case recorded it. Every leg's
+<code>gate.json</code> states the timing records the tree shipped
+(<code>dispatch_preference</code>). <code>recut_driver_dispatch_record.py</code> refuses
+a campaign whose legs name other bytes than the live tree's, or whose shipped records
+the reader refuses, and files the statement in that architecture's own route run
+(<code>runs[&lt;key&gt;].dispatch_preference</code>, which no other cut rewrites) with
+each timing record as a file-keyed <code>sha256</code> pin, which the weld contracts check
+like every other pin: a record cut again after the route campaign leaves the record
+failing its contract until that architecture's route runs again or is carried.
+
+Which cases a new set of records moves is answered before anything is re-run:
+<code>parity/meep_gpu/plan_changes.py report --campaign triton|cuda|cuda_alone|metal --record FILE</code>
+(<code>cuda_alone</code> is the CUDA campaign's leg on a host without Triton) freezes every route-gate case of the campaign (its DRIVE rows and the timing catalog's size
+sweep) once under the records the tree ships and once under the candidate records laid
+over them, one step each and no timing, on a host with that campaign's GPU, and writes one
+row per case with both canonical plans, their digests and whether the plan changed. A
+plan is reduced to which arm holds each dispatched slot
+(<code>parity/meep_gpu/selected_plan.py</code>, schema <code>meep_gpu.selected_plan/1</code>),
+so its digest moves with what runs and with nothing else.
 
 ## Certifying another compute capability
 
@@ -308,27 +469,27 @@ that safe, and each is a test on a host with no GPU
   are short.
 
 The first such round, an H200 beside the RTX A6000, was prepared on 2026-10-03 for the
-0.9.x code in <code>parity/meep_gpu/rounds/h200_2026-10-03/</code>: the round driver
-<code>run_round.sh</code> that runs step 1's gates on one card, and the manifest of the
-evidence inputs those gates read. The runbooks it follows on a Slurm cluster, for the
-round and for the timing that follows the bind, are kept in the development repository.
+0.9.x code, with a round driver that ran step 1's gates on one card and a manifest of the
+evidence inputs those gates read; the runbooks it followed on a Slurm cluster, for the
+round and for the timing that follows the bind, were kept in the development repository.
 Its bind was held, and no compute capability 9.0 record ships in 1.0: the H200 is
 supported and not certified, and its certification on the 1.0 code is planned for a
-1.0.x release. That directory is a dated record of the 0.9.x procedure: its scripts
-and runbooks name the retired <code>MEEP_GPU_ALLOW_UNCERTIFIED</code>, which 1.0 refuses
-by name, and not <code>MEEP_GPU_HARDWARE</code>, and a 1.0.x round runs from
-<code>parity/meep_gpu/rounds/1.0/</code> instead, chunked, with the new card named as such:
+1.0.x release. That 0.9.x procedure named the retired
+<code>MEEP_GPU_ALLOW_UNCERTIFIED</code>, which 1.0 refuses by name, and not
+<code>MEEP_GPU_HARDWARE</code>, so a 1.0.x certification round runs from
+<code>parity/meep_gpu/rounds/1.0/</code> instead, chunked, with the new card named as
+such:
 <code>chunks.py partition --machine nvidia --capability 9.0 --new-device</code> cuts the
 card's own chunk index, whose stamps carry the card (<code>&lt;round&gt;_cc90_c&lt;k&gt;</code>,
 so no root of it equals or extends a root of the certified card's chunks), and
 <code>round.py launch gates --chunk-index &lt;it&gt; --chunk c&lt;k&gt; --capability 9.0
 --new-capability</code> runs step 1 (<code>rounds/1.0/RUNBOOK.md</code>, CERT-3 on a new
-device). The flag is the round tooling's, not the package's: <code>legs.py check</code>
+device). The flag is the certification tooling's, not the package's: <code>legs.py check</code>
 refuses a gate stage on a capability no table admits without it, refuses it on a capability
 both tables admit, and refuses it on the route stage, so a card is never taken for a new
 one, or for a certified one, silently. An Apple GPU of another architecture takes
 <code>--machine metal --architecture &lt;its architecture&gt; --new-device</code> the same
-way. [Certifying a new GPU](certify-a-new-gpu.md) gives that round step by step for a
+way. [Certifying a new GPU](certify-a-new-gpu.md) gives a new card's certification round step by step for a
 contributor who does not hold the evidence archive: the reference environment, the round's
 inputs bundle, the chunks, the bind that adds the new card's records (run on the
 contributor's own host, and run again by the maintainers from the returned artifacts), the
@@ -337,7 +498,7 @@ route campaigns, sharing a card with another user's idle process, and what to se
 The steps below are in order because the route and licence legs dispatch, and so need
 the architecture already admitted by the records steps 1–2 write. The family gates in
 step 1 do not: see "Which architecture binds first" for what is actually ordered and
-what only looks ordered. On a card of compute capability 7.0 to 9.0 that is not yet
+what only looks ordered. On a supported card that is not yet
 certified, the package dispatches by default, uncertified. So the route gate
 (<code>gate_dispatch_fused_route.py</code>) refuses to start a leg, before its
 directory exists, unless the table under test certifies the card: its compute
@@ -355,19 +516,19 @@ also runs its children with <code>MEEP_GPU_HARDWARE=certified</code>.
 
 | # | Step | Where | Writes |
 |---|---|---|---|
-| 0 | Commit the tree and record the commit. Every architecture in the round runs on these bytes. Then ask whether the tree still supports the records, with the weld contracts: <code>python -m pytest meep_gpu parity/meep_gpu -m certification</code>. Any weld they report as drifted has to be re-run for the architecture already certified FIRST, and bound first, before a second architecture can join it — see "Which architecture binds first" below | laptop | nothing |
+| 0 | Commit the tree and record the commit. Every architecture in the certification round runs on these bytes. Then ask whether the tree still supports the records, with the weld contracts: <code>python -m pytest meep_gpu parity/meep_gpu -m certification</code>. Any weld they report as drifted has to be re-run for the architecture already certified FIRST, and bound first, before a second architecture can join it — see "Which architecture binds first" below | laptop | nothing |
 | 1 | The family gates and composition probes, with dispatch pinned off: the chunks of the card's own index (<code>round.py launch gates --capability 9.0 --new-capability</code>, above). A Triton campaign root carries a <code>device.json</code> naming the card; a CUDA artifact names its own (see "What names the card") | GPU host | run artifacts |
-| 2 | <code>chunks.py verify --selection</code>, which refuses a run whose artifacts stamp another card or whose card cannot be read, then the rebinds <code>chunks.py bind</code> prints (none while a run a tool would bind against the selection stands): <code>record_cuda_regate.py</code> (a block for the card's campaign, beside the others), <code>rebind_triton_welds.py</code>, its bit-identity mode, <code>recut_composition_records.py</code> (including <code>--family-recert</code>) and <code>rebind_cuda_welds.py</code>. Each reads the architecture off the run and adds that record; the bind of a new card re-points no board | laptop | the two <code>fingerprints.json</code>, <code>certification.json</code> |
-| 3 | Check admission before spending another GPU hour: <code>python -c "from meep_gpu import fastpath; print(fastpath.capability_admission('triton'))"</code>. Both tables must list the new architecture, and any entry still short is named | laptop | nothing |
+| 2 | <code>chunks.py verify --selection</code>, which refuses a run whose artifacts stamp another card or whose card cannot be read, then the rebinds <code>chunks.py bind</code> prints (none while a run a tool would bind against the selection stands): <code>record_cuda_regate.py</code> (a block for the card's campaign, beside the others), <code>rebind_triton_welds.py</code>, its bit-identity mode, <code>recut_composition_records.py</code> (including <code>--family-recert</code>), <code>rebind_cuda_welds.py</code> and <code>record_nvidia_stack.py</code>, which the bind prints before every line that records or rebinds: it records the card's certified NVIDIA stack (CuPy, NVRTC, the CUDA runtime and driver, the host, NumPy, the MEEP build) from the stack each gate lane recorded on its card, lists every CUDA driver the lanes ran on with the chunk stamps on each, and refuses lanes that disagree on any other axis. Each reads the architecture off the run and adds that record; the bind of a new card re-points no board | laptop | the two <code>fingerprints.json</code>, <code>certification.json</code> |
+| 3 | Check admission before spending another GPU hour: <code>python -c "from meep_gpu import fastpath; print(fastpath.capability_admission('triton'))"</code>. Both tables must list the new architecture, and any entry still short is named; <code>fastpath.certified_nvidia_stack('9.0')</code> must name the stack the gates ran beside, which the route's admitted-policy legs, under <code>MEEP_GPU_HARDWARE=certified</code>, must run beside too | laptop | nothing |
 | 4 | The route campaigns, from the default, one per table, in the directory <code>&lt;stamp&gt;_cc&lt;capability&gt;</code>, where the stamp is the one <code>meep_gpu/route_stamps.py</code> names for the table (<code>route_stamps.route_gate(&lt;table&gt;)</code>; set once, at the freeze, before the campaigns run); then <code>recut_driver_dispatch_record.py</code>, which refuses any other directory name, an unset stamp and a campaign that has already run | GPU host, then laptop | the dispatch records |
 | 5 | The end-to-end go/no-go, from the default, in <code>route_stamps.licence_campaign("triton")</code> followed by the card's device (<code>dispatch_end_to_end_&lt;stamp&gt;_cc90</code>, one per capability, as <code>round.py launch route</code> names it); its licence is transcribed onto the table that composes first, and the re-cut refuses a licence from any other directory | GPU host, then laptop | the licence |
-| 6 | Optional: the timing record, <code>timing_cc&lt;capability&gt;.json</code> | quiet GPU host | the timing record |
+| 6 | Optional: the timing record. It lands at <code>timing_cc&lt;capability&gt;.json</code> when the architecture has none, and represents it; else beside it as <code>timing_cc&lt;capability&gt;-&lt;card&gt;.json</code>, which that card reads once it ships; either ships as data alone, with no code change ([Records per card](timing.md#records-per-card)) | quiet GPU host | the timing record |
 
 ### Which architecture binds first
 
 **Only the REBIND order is constrained. The gate runs are not.** Step 1 does not go
 through dispatch admission, so its gates run on any card, in any order, on any night,
-and nothing has to be bound before they do (the round tooling asks only that a card the
+and nothing has to be bound before they do (the certification tooling asks only that a card the
 ledgers do not admit be named as new: <code>--new-capability</code>). What a gate produces is an artifact whose
 digests are the bytes it ran; step 2 is a separate, laptop-side act that reads those
 artifacts and writes records.
@@ -398,7 +559,7 @@ invalidate it is the tree moving — a later commit that touches a pinned file r
 every architecture's record for that weld at once, and the gates have to run again on
 the new bytes.
 
-**The first round on a tree has no shortcut.** When the weld contracts in step 0 report
+**The first certification round on a tree has no shortcut.** When the weld contracts in step 0 report
 drift across the cited surface, the architecture already named in the ledger is not
 actually certified for the bytes being shipped, and the round is a full re-run for THAT
 architecture before it is an expansion to any other. <code>--supersede</code> refreshes
@@ -430,13 +591,16 @@ write a file beside it.
 
 ### The toolchain is pinned, and only some tools check it
 
-Install the pinned versions on the GPU host — the ones
-<code>environments/nvidia-linux.yml</code> carries — not the current ones:
+Install the pinned versions on the GPU host — the certified recipe, which the
+extra <code>nvidia-certified</code> and <code>environments/nvidia-linux.yml</code>
+carry (INSTALL.md, "Certified and supported versions") — not the current ones,
+which the default extras install:
 
 | | Pinned to |
 |---|---|
 | Triton | <code>3.1.0</code> (<code>fastpath.validated_triton_versions()</code>) |
-| CuPy | <code>13.5.1</code> (derived from the live records; nothing declares it) |
+| CuPy | <code>13.5.1</code> (the certified NVIDIA stack of 8.6, <code>fastpath.certified_nvidia_stack("8.6")</code>) |
+| PyTorch | <code>2.5.1</code> (the reference lock, <code>environments/locks/meep-gpu-ref-linux-64.pip.txt</code>); it selects Triton's NVIDIA driver and requires Triton 3.1.0 |
 
 What each step-2 tool does with a run on another version:
 
@@ -448,16 +612,16 @@ What each step-2 tool does with a run on another version:
 
 A refusal happens on the laptop, after the GPU hours are spent. Where nothing checks,
 a run on another version binds without complaint, so the pin is the operator's to
-keep: confirm both versions on the GPU host before the first gate, as the round's
-first step. No flag widens either set today; adopting another Triton or CuPy is a
-change to the code, made deliberately, never a rebind option.
+keep: confirm both versions on the GPU host before the first gate, as the certification round's
+first step. No flag of these tools widens either set today; adopting another Triton or
+CuPy is a deliberate change to the repository, never a rebind option.
 
 The coverage census and the dispatch boards carry no device dimension, so a new
 architecture needs neither re-cut.
 
 ### What a round needs beside the checkout
 
-**A clone of this repository is not enough to run a round.** Many gates read measured
+**A clone of this repository is not enough to run a certification round.** Many gates read measured
 inputs that are not committed: the predicate-coverage censuses
 (<code>predicate_coverage_*/</code>, whose <code>examples.jsonl</code> and
 <code>tests*.jsonl</code> the corpus-admission legs count), the fusion boards
@@ -477,17 +641,20 @@ preference to the one the round measures.
 
 ### The MEEP a round is measured against
 
-**Every certification is measured against MEEP 1.33.0 built from source in single
-precision, with MPI and OpenMP**, and every host in a round uses that build. It is the
-MEEP behind every certified kernel and every agreement figure in the manual. conda-forge's
+**Every certification is measured against the MEEP release the build scripts name,
+built from source in single precision, with MPI and OpenMP**, and every host in a certification round
+uses that build: MEEP 1.33.0 for 1.0, MEEP 1.35.0 from 1.0.1 on (each script
+names the release once, in <code>MEEP_VERSION</code> and the tarball's
+<code>MEEP_SHA256</code>). It is the MEEP behind every certified kernel and every agreement
+figure in the manual. conda-forge's
 <code>pymeep</code> is the documented way to *use* the package, but it is a
 double-precision serial build with no single-precision variant, so an architecture
 gated against it would differ from the reference in more than its GPU.
 
 | Host | Builds it |
 |---|---|
-| Linux x86_64 (NVIDIA) | <code>bash parity/meep_gpu/build_meep_133_linux.sh</code>, from the repository root (it clears the environment itself), on top of <code>environments/locks/meep-gpu-ref-linux-64.conda.txt</code> and <code>meep-gpu-ref-linux-64.pip.txt</code>: the environment of the 2026-10-03 RTX A6000 round, with the certified CuPy, PyTorch and Triton, and what only the MEEP identity corpus needs (<code>environments/locks/README.md</code>, "Corpus-only packages") |
-| macOS (Apple silicon) | <code>bash parity/meep_gpu/build_meep_133_macos.sh</code>, from the repository root (it clears the environment itself), on top of <code>environments/locks/meep-gpu-ref-osx-arm64.conda.txt</code> and <code>meep-gpu-ref-osx-arm64.pip.txt</code>: the environment the Metal kernels were certified in on the Apple M1 Max, with the certified PyTorch, and what only the MEEP identity corpus needs (<code>environments/locks/README.md</code>, "Corpus-only packages") |
+| Linux x86_64 (NVIDIA) | <code>bash parity/meep_gpu/build_meep_reference_linux.sh</code>, from the repository root (it clears the environment itself), on top of <code>environments/locks/meep-gpu-ref-linux-64.conda.txt</code> and <code>meep-gpu-ref-linux-64.pip.txt</code>: the environment of the 2026-10-03 RTX A6000 certification round, with the certified CuPy, PyTorch and Triton, and what only the MEEP identity corpus needs (<code>environments/locks/README.md</code>, "Corpus-only packages") |
+| macOS (Apple silicon) | <code>bash parity/meep_gpu/build_meep_reference_macos.sh</code>, from the repository root (it clears the environment itself), on top of <code>environments/locks/meep-gpu-ref-osx-arm64.conda.txt</code> and <code>meep-gpu-ref-osx-arm64.pip.txt</code>: the environment the Metal kernels were certified in on the Apple M1 Max, with the certified PyTorch, and what only the MEEP identity corpus needs (<code>environments/locks/README.md</code>, "Corpus-only packages") |
 
 **The reference is an identity reference.** Its field updates round every operation on
 their own, so the array path can be held to its stored words exactly. That is judged on
@@ -502,7 +669,7 @@ with <code>-march=x86-64 -mtune=generic</code> beside them (baseline x86-64 has 
 multiply-add, and the script refuses flags under which <code>-march</code> is not
 <code>x86-64</code>). On a Mac, clang contracts by default: the MEEP the 0.9.x Metal kernels
 were certified against carries 1,253 fused operations in <code>libmeep</code>, so the Mac's
-certification MEEP is the contraction-off build from the round that certifies 1.0 on. The
+certification MEEP is the contraction-off build from the certification round that certifies 1.0 on. The
 locks are the reference and change only through
 <code>environments/locks/recut_locks.py</code>. A host joining a round checks its MEEP with
 <code>python tools/check_install.py --require-identity-reference keep</code> (INSTALL.md,
@@ -512,22 +679,24 @@ place, not rebuilt.
 Both build from the release tarball, pinned by SHA-256, with
 <code>--enable-shared --enable-single --enable-portable-binary --with-mpi
 --without-scheme</code> (and <code>--with-openmp</code> on Linux, as the NVIDIA reference
-was built). <code>build_meep_133_native.sh</code> runs the same scripts with
+was built). <code>build_meep_reference_native.sh</code> runs the same scripts with
 <code>-O3 -march=native</code> (or <code>-mcpu=native</code> on Apple silicon) into an
 environment of its own: that build is a timing control for the comparison with MEEP
 ([Running the timing ladder](timing.md#the-meep-controls)), never the reference a
 round is measured against, and it fuses, so the scripts record its census without
 judging it (<code>--timing-control "&lt;flags&gt;"</code>). Both work around three defects in that tarball, and both end by asserting
 what they built, because two of those defects fail silently: an out-of-tree
-<code>--enable-single</code> build installs cleanly and is double precision. Each script
-refuses to finish unless MEEP reports 1.33.0, single precision and an MPI build, and the
-GPU libraries are the certified versions. Neither solves its environment: each installs
+<code>--enable-single</code> build installs cleanly and is double precision (still so in
+the 1.35.0 tarball, measured 2026-10-16). Each script refuses to finish unless MEEP reports
+the release the script names, single precision and an MPI build, and the GPU libraries are
+the certified versions. Since 1.35.0 neither requires libGDSII, which MEEP deprecates
+(#3245): neither lock carries it. Neither solves its environment: each installs
 its platform's lock files (an explicit conda lock, every package by URL and MD5, and a
 pip requirements file, every PyPI package by version and wheel hash), refuses to build
 unless the new prefix holds exactly the lock's conda packages, and ends with
 <code>tools/compare_reference_environment.py --require-reference</code>, the comparison
 of every numerics-relevant package with the lock. <code>environments/locks/README.md</code>
-says what each lock reproduces and when it is re-cut: whenever the environment a round
+says what each lock reproduces and when it is re-cut: whenever the environment a certification round
 certifies in changes, in the same change that records the round.
 Each build also keeps the corpus (the tarball's <code>python/examples</code> and
 <code>python/tests</code>, with every file's SHA-256, and beside them the corpus siblings,
@@ -541,10 +710,11 @@ refuse their retired knobs by name (<code>MEEP_REFERENCE_SOLVE</code>,
 <code>MEEP_SIGMA_PATCH</code>, <code>MEEP_BUILD_ROLE</code>, <code>MEEP_FFMPEG</code>);
 <code>build_meep_133_identity.sh</code> is gone, its cleared environment and flags being the
 scripts' own. Both create <code>meep-gpu-ref</code> by default.
-A host joining a round checks its environment with
+A host joining a certification round checks its environment with
 <code>python tools/check_install.py --require-reference</code> before its first gate: it
-fails unless the imported MEEP is 1.33.0, single precision and an MPI build and every
-numerics-relevant package is the lock's.
+fails unless the imported MEEP is the release <code>environments/locks/numerics-relevant.json</code>
+names (1.35.0), single precision and an MPI build and every numerics-relevant package is
+the lock's.
 <code>tools/compare_reference_environment.py</code> alone judges the packages, not MEEP.
 
 **The flush policy needs MEEP to flush.** A flush leg reaches the host's float32
@@ -560,15 +730,15 @@ replay uses it), but the gates take the host's flush from MEEP, the mechanism ME
 own runs use.
 
 <code>parity/meep_gpu/cases.py</code>, the benchmark case builders that three
-composition gates import, is committed: earlier rounds staged it from the archive as a
+composition gates import, is committed: earlier certification rounds staged it from the archive as a
 file the tree did not track, and the records still name it as such.
 
-What a round does NOT need: any edit to the admission code, any new ledger key, or a
+What a certification round does NOT need: any edit to the admission code, any new ledger key, or a
 switch in the package to let an uncertified card run its own certification. A certified
-identity dispatches whether or not it is in the supported range, so a card outside it
+identity dispatches under each value <code>MEEP_GPU_HARDWARE</code> accepts, so a card
 needs no switch once steps 1–2 have certified it. The family gates do not go through
 dispatch admission, so they run on an unadmitted card as they are; only the route and
-licence legs need step 3 to have passed first. The round tooling's
+licence legs need step 3 to have passed first. The certification tooling's
 <code>--new-capability</code> changes no gate and no admission: it is the operator saying
 the card is new, which <code>legs.py check</code> holds to the ledgers in both directions.
 
@@ -579,17 +749,17 @@ the code that runs.
 
 | Fact | How it is read | Certified |
 |---|---|---|
-| GPU architecture | <code>MTLDevice.architecture.name</code>, through the Objective-C runtime with <code>ctypes</code> (no PyTorch, no PyObjC; macOS 14 or later). It is the unit Metal compiles for, and it separates GPU generations that share a Metal GPU family: M3 and M4 are both Apple9 | <code>applegpu_g13s</code>, an Apple M1 Max |
+| GPU architecture | <code>MTLDevice.architecture.name</code>, through the Objective-C runtime with <code>ctypes</code> (no PyTorch, no PyObjC; macOS 14 or later). It is the unit Metal compiles for, and it separates GPU generations that share a Metal GPU family: M3 and M4 are both Apple9 | <code>applegpu_g13s</code>, an Apple M1 Max; <code>applegpu_g16g</code>, an Apple M4 |
 | PyTorch | its version; PyTorch supplies <code>torch.mps.compile_shader</code> | 2.10.0 |
-| Metal frontend | the version of the macOS build's shader compiler: one per macOS build, the same on every Mac on that build | <code>metalfe-32023.850.10</code> |
+| Metal frontend | the version of the macOS build's shader compiler: one per macOS build, the same on every Mac on that build | for <code>applegpu_g13s</code>, <code>metalfe-32023.921.5</code> (macOS 27.0.1; the certified M1 Max's later macOS 27.2 reads <code>metalfe-32023.922.4</code>, supported and uncertified); for <code>applegpu_g16g</code>, <code>metalfe-32023.886.1</code> (macOS 26.6.2) |
 | <code>PYTORCH_MPS_FAST_MATH</code> | the process environment | unset or <code>0</code> |
 
 The first three are typed nowhere. Each weld the Metal table cites
 (<code>metal_dispatch.ARM_CERTIFICATION</code>, 45 welds) keeps one run record per GPU
 architecture it was certified on, <code>runs[&lt;architecture&gt;]</code>, whose
-<code>host</code> line a round writes as
+<code>host</code> line a certification round writes as
 
-    this machine: Apple MPS device applegpu_g13s, torch 2.10.0, metalfe-32023.850.10
+    this machine: Apple MPS device applegpu_g13s, torch 2.10.0, metalfe-32023.921.5
 
 and whose <code>torch</code> and <code>metal_frontend</code> fields are read off that
 line when it is written. A run is **live** while its <code>bound_sha256</code> equals
@@ -608,7 +778,7 @@ it. Fast math is a fixed rule rather than a record: no weld ran with it, and wit
 <code>1</code> PyTorch compiles every Metal source in fast-math mode
 ([Floating-point contract](../design/floating-point.md#fast-math-on-the-metal-table)).
 
-Dispatch does not wait for a round, because every Apple GPU is already
+Dispatch does not wait for a certification round, because every Apple GPU is already
 **supported**: the kernels are meant to run there and run by default. Supported is
 read off this host, not off the welds: <code>environment.device_supported</code> is
 <code>True</code> when Metal names the architecture <code>applegpu_*</code> or, where
@@ -625,11 +795,11 @@ is refused by name and the run takes the array path on the host CPU. A round on
 another Mac is what makes a supported GPU certified, not what lets the kernels run
 there.
 
-A round, in order:
+A certification round, in order:
 
 | # | Step | Writes |
 |---|---|---|
-| 0 | Commit the tree and run the weld contracts, as in step 0 of an NVIDIA round | nothing |
+| 0 | Commit the tree and run the weld contracts, as in step 0 of an NVIDIA certification round | nothing |
 | 1 | On the Mac, with <code>PYTORCH_MPS_FAST_MATH</code> unset: <code>recut_metal_gates.sh</code> with a stamp ([All Metal gates, one tree, one pass](#all-metal-gates-one-tree-one-pass)). It records the environment before the first gate and after the last | the gate artifacts, and <code>results/metal_environment_&lt;stamp&gt;/start.json</code> and <code>end.json</code> |
 | 2 | <code>rebind_metal_welds.py --stamp &lt;stamp&gt;</code>, or <code>mint_metal_weld.py</code> for a family's first weld; then <code>launch.write_fingerprints()</code> | this architecture's run, <code>runs[&lt;architecture&gt;]</code>, in the Metal <code>fingerprints.json</code> |
 | 3 | The Metal route campaign under <code>metal_runs.route_campaign(route_stamps.route_gate("metal"), &lt;architecture&gt;)</code>, then <code>recut_driver_dispatch_record.py --backend metal</code> | this architecture's route run in the dispatch record |
@@ -637,14 +807,15 @@ A round, in order:
 A Mac that does not hold the evidence archive runs step 1 with
 <code>parity/meep_gpu/rounds/1.0/metal_round.py</code> (its RUNBOOK, CERT-3), after
 staging the archive files the Metal gates read and the release tree does not carry
-(the round's inputs bundle, unpacked as the RUNBOOK's preflight says).
+(the certification round's inputs bundle, unpacked as the RUNBOOK's preflight says).
 Among them are the four files every lift leg reads (below); the round's preflight names
 any that is absent, gate by gate, and stops before the first gate. None is measured per
-architecture. [Certifying a new GPU](certify-a-new-gpu.md#part-b-a-new-apple-gpu-architecture)
-gives that round step by step, chunked, for a Mac of an architecture the ledger does not
-admit, with the bind run on that Mac. The 0.9.2 driver in <code>parity/meep_gpu/rounds/metal_2026-10-04/</code>
-is retired: its lift children ran under the interpreters the census recorded, and 1 of
-the 7 digests in its input manifest no longer matches the evidence archive.
+architecture. [Certifying a new GPU](certify-a-new-gpu.md#an-apple-gpu)
+gives the certification round step by step, chunked, for a Mac of an architecture the ledger does not
+admit, with the bind run on that Mac. The round driver of release 0.9.2 is no longer in the
+tree: its lift children ran under the interpreters the census recorded, and 1 of the 7 digests
+in its input manifest no longer matched the evidence archive.
+<code>parity/meep_gpu/rounds/1.0/</code> and the guide above replace it.
 
 What the tools check:
 
@@ -675,7 +846,7 @@ What the tools check:
   whose plan did not read the GPU architecture, PyTorch and the Metal frontend all
   certified; a fact not judged refuses like one not certified. The NVIDIA recut
   refuses a row on an uncertified device the same way. The route campaign therefore
-  runs after the welds it cites are bound, as step 4 of an NVIDIA round follows
+  runs after the welds it cites are bound, as step 4 of an NVIDIA certification round follows
   step 2. It runs under <code>&lt;stamp&gt;_&lt;architecture&gt;</code>, where the
   stamp is <code>route_stamps.route_gate("metal")</code>
   (<code>meep_gpu/route_stamps.py</code>); the recut reads the architecture off every
@@ -735,9 +906,9 @@ named only the GPU architecture, and no arm quoted a run.
 
 **The route record.** The Metal <code>driver_dispatch</code> record keeps one route run
 per architecture: <code>status</code>, <code>legs</code>, <code>records</code>,
-<code>recorded_utc</code>, <code>verdict_read_from</code>, the run's
-<code>gate</code>, <code>artifact</code> and <code>what_was_measured</code> of
-<code>released_fused_arms</code>, and the <code>residency</code> and <code>lift</code>
+<code>recorded_utc</code>, <code>verdict_read_from</code>, the run's <code>gate</code>,
+<code>artifact</code> and <code>what_was_measured</code> of <code>released_fused_arms</code>,
+and the <code>residency</code>, <code>lift</code> and <code>dispatch_preference</code>
 blocks read off the legs (<code>metal_runs.DISPATCH_RUN_FIELDS</code>). The release
 predicate, the slots, <code>subnormal</code> and <code>environments</code> stay at entry
 level. The residency block is the large one: about 217 KB of compact JSON and about
@@ -753,7 +924,7 @@ one it would reformat, and checks before writing, entry by entry: the move is
 reversible (the route record's too), every digest the ledger held is still held and the only ones added are one
 <code>bound_sha256</code> per run, each run is live, each <code>host</code> line is
 carried byte for byte, and every cited weld's live runs record the environment its
-<code>host</code> line recorded. Measured on the ledger of this tree in report mode: 62
+<code>host</code> line recorded. Measured on the ledger it first migrated, in report mode: 62
 of 62 weld entries move, the 1,020 digests are kept and 62 are added (1,082, every one
 classified by the record walker), the cited welds certify
 <code>applegpu_g13s</code>, PyTorch 2.10.0 and frontend 32023.850.10 before and after,
@@ -763,12 +934,12 @@ and the file grows from 710,634 to 758,334 bytes.
 live and no fleet is owed. The admission edit moves <code>metal_dispatch.py</code>,
 which only the Metal dispatch record binds: the record's digests drift, so its contract
 test and the three Metal weld-contract tests that walk those digests were listed in
-<code>tools/ci/pending_certification.txt</code> until the 1.0 round re-cut it. The
+<code>tools/ci/pending_certification.txt</code> until the 1.0 certification round re-cut it. The
 migrated ledger, the admission edit and the writers land together: a migrated ledger
 read by the old admission certifies nothing, and the new admission reading an
 unmigrated ledger judges nothing.
 
-**The 1.0 round, on the Apple M1 Max**, ran one held Metal route campaign,
+**The 1.0 certification round, on the Apple M1 Max**, ran one held Metal route campaign,
 <code>zsh parity/meep_gpu/run_metal_dispatch_campaign.sh --lanes 3
 2026-10-15_10_applegpu_g13s</code> (4 of 4 legs released), then
 <code>recut_driver_dispatch_record.py --backend metal --run
@@ -778,7 +949,7 @@ removed the pending lines above.
 **A second Mac**, on the same commit:
 
 1. Run its fleet (step 1 above, with <code>rounds/1.0/metal_round.py</code>: in a 1.0
-   round, the chunks of an index of its own architecture, <code>chunks.py partition
+   certification round, the chunks of an index of its own architecture, <code>chunks.py partition
    --machine metal --architecture &lt;its architecture&gt; --new-device</code>, whose stamps
    carry the architecture; <code>rounds/1.0/RUNBOOK.md</code>, CERT-3 on a new device) and
    hand its outputs to the host that holds the evidence archive.
@@ -794,10 +965,10 @@ removed the pending lines above.
    fails until it has one: committed alone, this ledger turns the merge bar red.
 3. Copy the rebound ledger, uncommitted, into that Mac's checkout of the same commit
    (the only file that differs from it), and run the route campaign there under
-   <code>2026-10-15_10_&lt;its architecture&gt;</code>. Bring its legs back,
+   <code>2026-10-26_101_&lt;its architecture&gt;</code>. Bring its legs back,
    then, on the rebound ledger:
    <code>recut_driver_dispatch_record.py --backend metal --run
-   dispatch_metal_route_2026-10-15_10_&lt;its architecture&gt;</code>, which adds
+   dispatch_metal_route_2026-10-26_101_&lt;its architecture&gt;</code>, which adds
    its route run beside the first.
 4. Commit the weld runs and the route run together.
 
@@ -811,7 +982,7 @@ files the record binds. If the ledger must be committed before the route run exi
 that commit lists the test above in <code>tools/ci/pending_certification.txt</code>
 and the recut's commit removes it.
 
-If a round on one Mac moves bound bytes, the other architectures' runs are named by
+If a certification round on one Mac moves bound bytes, the other architectures' runs are named by
 the rebind and the recut, and the round either re-runs them on the new bytes or
 supersedes them by name.
 
@@ -822,7 +993,7 @@ cylindrical_real, folded, nonlinear), and the three built on
 <code>hd_tail_gate_common.py</code> (beta_real, beta_complex, folded_complex). The
 complex gate's lift leg runs in process. Rules (<code>parity/meep_gpu/lift_host.py</code>):
 
-* **Every child runs under the gate's own interpreter**, the round's certification
+* **Every child runs under the gate's own interpreter**, the certification
   environment (<code>metal_round.py --python</code>). The interpreter path a census row
   records is kept on the row as <code>recorded_interpreter</code>, provenance only; no
   lift child launches it. (<code>probe_h_to_d_withdraw_order.py</code>, which no round
@@ -834,14 +1005,14 @@ complex gate's lift leg runs in process. Rules (<code>parity/meep_gpu/lift_host.
   <code>results/h_to_d_seam_2026-09-04/h_to_d_seam.jsonl</code>. None ships with the
   release tree. Without <code>tests_param_matched.jsonl</code> the basis used to
   shrink from 145 rows to 130 with no error; now a missing file stops the basis, and
-  <code>metal_round.py preflight</code> stops the round, naming the gate and the file.
-* **Rows that need more than MEEP and the package.** Five of the 145 rows declare it
-  through their census lift record (<code>lift_host.LIFT_RECORD_NEEDS</code>), which
-  names what its rows need between them and holds for each: coupler.py and ring_gds.py
-  (a MEEP built against libGDSII; ring_gds.py also writes its layout with gdspy) declare
-  both; mie_scattering.py, differential_cross_section.py (PyMieScatt) and
-  waveguide_crossing.py (nlopt, autograd) declare all three. A host that lacks one need
-  of a record counts out every row of it. The reference environments carry them
+  <code>metal_round.py preflight</code> stops the certification round, naming the gate and the file.
+* **Rows that need more than MEEP and the package.** Five of the 145 rows, from two
+  census lift records (<code>lift_host.LIFT_RECORD_NEEDS</code>), each declare their own
+  needs (<code>lift_host.LIFT_ROW_NEEDS</code>, read off the MEEP 1.35.0 corpus scripts):
+  coupler.py and ring_gds.py gdstk, with which they read their GDSII layouts;
+  mie_scattering.py and differential_cross_section.py PyMieScatt; waveguide_crossing.py
+  nlopt and autograd. A host that lacks a need counts out the rows that need it and no
+  other. The reference environments carry them
   (<code>environments/locks/README.md</code>), and there all 145 rows lift. On a host
   that lacks a need, the gate probes it under its own interpreter and records each
   affected row under <code>unlifted_on_this_host</code>, with the probe's reason. That
@@ -903,7 +1074,7 @@ take <code>--subnormal-policy</code> and <code>--out</code>.
   <code>--import-meep-for-host-policy</code>, because MEEP's own switch is the
   route to the host processor's flush setting.
 - Set <code>CUPY_ACCELERATORS=</code> (empty) before CuPy is imported, as every lane
-  child of the round does (<code>parity/meep_gpu/rounds/1.0/RUNBOOK.md</code>, "The
+  child of a certification round does (<code>parity/meep_gpu/rounds/1.0/RUNBOOK.md</code>, "The
   child environments"), so no CuPy accelerator backend stands in for the kernels the gate
   launches.
 
@@ -924,7 +1095,7 @@ is not attained, and stamp it as the artifact's <code>subnormal_policy</code>. A
 <code>keep</code> run needs a <code>CUPY_CACHE_DIR</code> carrying
 <code>ftz_stripped</code>, as every keep gate does; the fleet driver sets one per gate. Under
 <code>flush</code> on x86 the cylindrical and symmetry probes need MEEP imported first,
-which the round's flush fleet does for every gate
+which the certification round's flush fleet does for every gate
 (<code>parity/meep_gpu/rounds/1.0/fleet_launch.py --host-import-wrapper</code>); the
 other three import MEEP themselves. That wrapper imports MEEP and nothing else before it
 hands over, because three ADE-chain gates set <code>CUPY_ACCELERATORS</code> themselves
@@ -949,9 +1120,9 @@ floors stand under both policies.
 Triton links its launchers against <code>-lcuda</code> and most driver installations
 provide only <code>libcuda.so.1</code>, so without a directory holding
 <code>libcuda.so</code> **every device leg fails at link time and the gate reports a clean
-SKIP rather than an error** — a round that looks like it ran and certifies nothing. It
+SKIP rather than an error** — a certification round that looks like it ran and certifies nothing. It
 compiles those launchers with <code>$CC</code>, else the first <code>gcc</code> on
-<code>PATH</code>, which is the host's, outside the environment. The round's drivers
+<code>PATH</code>, which is the host's, outside the environment. The certification round's drivers
 (<code>run_lane.py</code>, <code>fleet_launch.py</code>, <code>l3_corpus.py</code>,
 <code>cert8.py</code>) give every child both from the reference environment, unless the
 shell sets them: <code>CC=&lt;prefix&gt;/bin/x86_64-conda-linux-gnu-cc</code> and
@@ -1008,7 +1179,7 @@ legs, in launch order: <code>band_witness</code>, <code>harness_keep</code>,
 <code>route_stamps.route_gate("metal")</code> names, without its
 <code>dispatch_metal_route_</code> prefix, followed by the GPU architecture the Mac's
 fleet recorded: <code>2026-10-15_10_applegpu_g13s</code> on an Apple M1 Max for the
-1.0 round.
+1.0 certification round.
 
 - **Environments are per process.** Each leg is launched with exactly the
   variables it needs, and the script refuses to start if a leg would inherit a
@@ -1022,27 +1193,27 @@ fleet recorded: <code>2026-10-15_10_applegpu_g13s</code> on an Apple M1 Max for 
 - **Exit status.** 0: every leg released. 1: a leg failed, was refused, or is
   unreleased. 2: usage. 3: another live driver holds the campaign. 4: the
   per-leg environments are not isolated.
-- **One residency control cannot bite under held residency** (owner ruling R29).
+- **Under held residency, the sync_in control drops one source deposit's device write.**
   The route gate's residency controls are <code>residency-sync_in-dropped</code>,
   <code>residency-inner-bracket-dropped</code> and
-  <code>residency-verify-after-every-sync_out</code>. The first leaves unclaimed the
-  mirror of the first host write that declares an ownership move through
-  <code>Residency.acquire_write</code>, and under a hold no host write does: the
-  array-path passes beside the kernels write the held volumes through the sparse
-  write paths, which move no ownership. So
-  <code>residency-sync_in-dropped</code> reads <code>NOT-APPLICABLE</code> on every
-  held case, with that reason. In the 1.0 round's campaign
-  (<code>dispatch_metal_route_2026-10-15_10_applegpu_g13s</code>)
-  <code>acquire_write</code> was entered 0 times on 42 of 42 dispatched cases of each
-  dispatch leg, while the sparse write paths counted writes on all 42. On the same cases
-  <code>residency-verify-after-every-sync_out</code> read <code>RESIDENCY-CLEAN</code>, and
-  the other must-diverge control, <code>residency-inner-bracket-dropped</code>, read
-  <code>NOT-APPLICABLE</code> for a reason of the compositions rather than of the hold: 35
-  carry only bracketed wrappers whose pre-launch host work reads the fields, and 7 carry
-  none. The held seam therefore has no must-diverge null of its own in 1.0:
-  its evidence is <code>residency-verify-after-every-sync_out</code> and the byte
-  identity of every case. A null that drops one sparse-door device write and must
-  diverge is a 1.0.1 item; the control and its text are unchanged in 1.0.
+  <code>residency-verify-after-every-sync_out</code>. Under held residency the field
+  mirrors are device-owned between launches, and the array-path passes beside the
+  kernels write them through the residency's sparse write paths, which move no
+  ownership, so there is no upload for the first control to suppress. Its held form
+  drops instead the device write of one source deposit
+  (<code>Residency.subtract_double_index</code>): the first one after the control arms
+  that changes a stored word on a mirror only the device holds. The deposited cells keep
+  the words they held before the source acted, and the run must diverge from its twin
+  (<code>DIVERGED-AS-REQUIRED</code>; <code>NULL-DID-NOT-DIVERGE</code> fails the leg).
+  A deposit that changes no word, or meets a mirror the device does not own, is passed
+  through and counted. The row reads <code>NOT-APPLICABLE</code> only when no deposit
+  changed a word over the armed steps, and <code>NOT-ARMED</code>, which fails the leg,
+  when a host write moved ownership through <code>Residency.acquire_write</code>
+  instead: the held <code>sync_in</code> uploads that write, and this control does not
+  reach it. In the 1.0 certification round's campaign
+  (<code>dispatch_metal_route_2026-10-15_10_applegpu_g13s</code>) the deposit took the
+  device path on every armed step of 42 of 42 dispatched cases, and
+  <code>acquire_write</code> was entered 0 times.
 
 Three lanes is the measured recommendation on one Apple M1 Max (2026-09-20, a
 170 s workload over 4 of the campaign's 42 cases): 14 of 14 concurrent gate
@@ -1057,6 +1228,135 @@ a time, each under both subnormal policies. The route gates are
 <code>gate_dispatch_fused_route.py</code> for the fused products and
 <code>gate_dispatch_end_to_end.py</code> for whole lifted simulations.
 
+### Carrying a route campaign or an L3 leg to a new tree
+
+A timing record cut again after a route campaign (see "The timing records the default
+rests on") does not by itself make the campaign run again: the record is cut again from
+the legs that still hold, carried, and the legs that do not, re-run.
+
+A route leg and an L3 row certify the plans they dispatched, executed by the bytes their
+import record names, so each records its plans and the data its planner read
+(<code>parity/meep_gpu/plan_key.py</code>): every route leg's <code>gate.json</code> holds
+<code>plan_keys</code> (per case, the plan key of the fused, unfused and array legs and of
+the default-preference control; the band-witness leg, which dispatches nothing, holds an
+empty map) and <code>plan_inputs</code> (every shipped timing record and each ledger
+without its <code>driver_dispatch</code> entry, by digest), and every L3 row its plan key
+over the first step, its plan inputs, its device and the versions it ran under
+(<code>plan_toolchain</code>). A plan key is the
+canonical selected plan (<code>meep_gpu.selected_plan/1</code>: which arm holds each slot)
+with the launches each slot made per step.
+
+When the tree moves, <code>parity/meep_gpu/rounds/1.0/carry.py</code> says which legs and
+rows still hold there and which re-run (the rules are
+<code>parity/meep_gpu/plan_carry.py</code>'s). A run holds when its whole import record is
+at the recorded bytes, it ran on the device being certified (named with
+<code>--device</code>, which is required), what it read of the ledgers its device reads is
+unchanged (<code>parity/meep_gpu/ledger_scope.py</code>: the Triton and hand-CUDA ledgers on
+an NVIDIA device, the Metal ledger on an Apple GPU, and those of any table the run records;
+a run records all three views, and a view of the other platform's is not compared), and
+either its timing records are unchanged, no plan of it read one (a leg whose every plan ran
+the shape rule), or a plan pass on the new tree made the same plan for every case or row it
+recorded.
+
+What a run read of a ledger is a slice, cut per device: the bound digest of every entry, and
+for the device alone its run's bound digest and the fields a verdict reads (the keys of
+<code>certified_policies</code> on NVIDIA, <code>torch</code> and <code>metal_frontend</code>
+on Metal), its stack, and whether its Triton is listed. A run records a whole-file digest, so
+the old bytes come from <code>parity/meep_gpu/ledger_states/</code> and the slice is compared
+on both sides. A bind of another device on unchanged bytes moves the file and no slice, and
+the run reads <code>CARRY-SLICE</code>, with <code>set_aside</code> in its proof naming each
+digest and why. The same holds of a timing record the device does not read: another vendor's,
+or another architecture's while an own-architecture record holds at one digest on both sides.
+The own architecture's is always compared, whichever card or table it names, because those
+records pool into one prior. A re-cut takes a <code>CARRY-SLICE</code> leg past a moved timing
+record only if the leg's proof set that record aside by name. An NVIDIA planner does open the Apple record, because the prior
+loads every record of every vendor, and files it under its vendor, so an Apple record reaches
+no NVIDIA plan (<code>parity/meep_gpu/test_ledger_scope.py</code> moves that file's contents
+under the real planner on a stand-in composer). What the file holds is what counts: the reader
+expects no table there, so a record of an NVIDIA table in it does move an NVIDIA plan, and a
+sealed record that <code>dispatch_preference.validate</code> raises on refuses the planner. So
+a record is set aside only when it loads, holds its folder's table and stamps its name's
+architecture, on the live tree; a row's old bytes are not held.
+
+That rule also changes verdicts inside a generation: a write to a device's own runs that
+leaves every value above equal voids nothing (<code>array_path_oracle</code>, a run's
+<code>host</code>). A second card on one capability carries only if it brings both policies
+and no new stack value: keep only, or a driver added to the stack, moves the slice, and since
+no record names a driver or card, every row of that capability re-runs. A re-gate of any entry
+on moved bytes moves its bound digest, and so every device's slice (the uncited welds
+<code>triton_cylindrical_device_gate</code> and <code>triton_no_pml_device_gate</code> already
+disagree with the tree, so a round that re-gates them does this once), which is the only thing
+that shows a file a kernel module reads as text
+(<code>ledger_scope.TEXT_READS</code>) moving: such a file is in no import record. A reader
+whose target is not in the record compares whole if no entry pins it
+(<code>text_read_unpinned</code>) or it is not at the one set of bytes the current entries
+pin (<code>text_read_left_its_pin</code>, an edit nothing re-gated). A pin counts only from an
+entry whose other package pins hold at the tree's bytes: a stale weld's run can still bind its
+digest, so a live run does not show the weld current.
+
+Whatever cannot be proved compares on the whole digest as it always did, and the verdict
+says why under <code>compared_whole</code>: <code>ledger_state_not_archived</code>,
+<code>ledger_state_refused</code>, <code>device_not_placed</code> (a spelling that keys no
+run), <code>device_names_no_run</code>, <code>cited_source_not_in_closure</code>,
+<code>cited_unreadable</code>, <code>live_ledger_unreadable</code> (the package's readers
+refuse it, as they do a byte-order mark or UTF-16), <code>recorder_read_otherwise</code>,
+<code>comparison_failed</code>,
+<code>ledger_marked_unreadable</code>, <code>pin_drift_stated</code> (a weld states that a
+pinned file left its artifact's bytes), <code>text_read_unpinned</code>,
+<code>text_read_left_its_pin</code>,
+<code>slice_moved</code> (with the fields, the pins, and whether only harness files moved),
+and for a timing record <code>comparison_failed</code>,
+<code>timing_name_disagrees_with_stamp</code> (the prior pools by the
+rows' stamp, so a name is never taken on its word), <code>timing_name_on_another_table</code>,
+<code>timing_record_of_another_table</code>, <code>timing_record_refused</code>,
+<code>timing_record_absent</code>, <code>timing_architecture_unreadable</code> and
+<code>own_architecture_not_held</code>. A tree with no archive compares every digest whole.
+The slice is cut for the device the record stamps. A timing row's key states the architecture
+again, so a row whose key and stamp disagree is refused; an L3 row or a route leg states it
+once, so a wrong stamp there is not seen.
+Nothing a tool can do reaches a harness file pinned in a bound digest: a round that edits one
+really does stale every other device on that weld, by the ledger's own rule. Nor does it
+narrow the shared Triton list, which still answers for every capability; a parity test
+refuses a listed version without a run on every admitted capability, so a new Triton needs
+every capability re-run before any is certified on it.
+
+The plan pass is the gate itself under the leg's own arguments with
+<code>--plan-only</code> (the default-preference control alone, one step per case, into
+<code>plans.json</code>; no <code>gate.json</code>), or <code>l3_corpus.py
+--plan-only</code>; it stands for a run only when it is of the same leg at the same
+resolution, in the same environment and toolchain, and, on every case it is compared on,
+recorded the default. An L3 row carries only when it held against its primary set, and
+only into a leg of its own facts (table, baseline, shipped default, sets, primary, image
+set). Everything else re-runs, by name: a moved file, a move in what the device reads of a
+ledger, another device, a changed plan, a leg that did not release or a row that did not
+hold, a run that recorded no plan key, a leg or row in no source, or in two. The Metal campaign carries
+whole or re-runs whole, because its band witness feeds every other leg. With unchanged
+inputs every leg and every row carries, so a campaign is never re-run when nothing
+changed:
+
+```
+python parity/meep_gpu/rounds/1.0/carry.py route --table triton --source <campaign> \
+    --repo <tree> --device cc86 [--plans <plan passes>] --out carry.json
+python parity/meep_gpu/rounds/1.0/carry.py place --carry carry.json --into <new campaign>
+python parity/meep_gpu/recut_driver_dispatch_record.py --run <new campaign> \
+    --carry <new campaign>/CARRY.json
+python parity/meep_gpu/rounds/1.0/carry.py l3 --table triton --baseline keep \
+    --source <leg> --repo <tree> --device cc86 [--plans <plan-pass leg>] --out carry.json
+```
+
+<code>place</code> copies the carried legs byte for byte into a fresh directory (the
+campaign name the route-stamp registry spells), where the route stage run with
+<code>--resume</code> skips them as released and runs only the owed legs; the
+re-cut judges every carried leg again (its files, its import record, its plan pass) and
+logs each leg it took across moved timing records, with its plans, in the run's own
+<code>runs[&lt;key&gt;].dispatch_preference.carry_recut_log</code>; the live records stay the
+checked pins. A leg carried by its plan pass gets the default (records read, vetoes
+applied) as the pass made it on the live records; the log keeps what the leg stated. For
+L3, <code>place</code> seeds a new leg directory with the carried rows (each with
+<code>carried_from</code>), <code>verify</code> re-checks each placed row's bytes and
+leg, and <code>l3_corpus.py --out</code> on it, with the same leg arguments, runs only
+the rest and counts the carried rows in its summary.
+
 ## Binding the ledgers and cutting the boards
 
 After a campaign has released, in this order. Each rebind and recut tool reports
@@ -1066,18 +1366,18 @@ by default and writes only with <code>--write</code>; read its report first.
 |---|---|---|
 | 1 | <code>record_cuda_regate.py</code> | Transcribes a hand-written CUDA campaign into <code>certification.json</code>, every fact derived from the artifacts |
 | 2 | <code>rebind_triton_welds.py</code>, <code>rebind_cuda_welds.py</code>, <code>rebind_metal_welds.py --stamp &lt;stamp&gt;</code> | Rebind each table's certification entries to the campaign's artifacts and digests. The Metal tool reads <code>parity/meep_gpu/results/metal_&lt;family&gt;_&lt;stamp&gt;/</code> and <code>metal_environment_&lt;stamp&gt;/</code>, the layout <code>recut_metal_gates.sh</code> writes when given the stamp, and writes each entry's run under <code>runs[&lt;architecture&gt;]</code>, its <code>host</code> line from the environment records: beside other architectures' runs on unchanged bytes, and on moved bytes only for architectures named with <code>--supersede</code> ([Certifying another Apple GPU](#certifying-another-apple-gpu)). It re-cuts each entry's <code>device_sha256</code> as <code>mint_metal_weld.py</code> cuts it, only where the run imported every pinned module at the checkout's bytes, and otherwise skips the entry by name |
-| 2a | <code>python -c "from meep_gpu.metal_kernels import launch; launch.write_fingerprints()"</code> | Rewrites the Metal table's own source and toolchain digests (the <code>metal_kernels</code> block of its ledger) from the tree. Run it deliberately, once, after the last Metal gate of the round has released: a fingerprint written before the gates that check it certifies nothing, and <code>recut_metal_gates.sh</code> never calls it |
+| 2a | <code>python -c "from meep_gpu.metal_kernels import launch; launch.write_fingerprints()"</code> | Rewrites the Metal table's own source and toolchain digests (the <code>metal_kernels</code> block of its ledger) from the tree. Run it deliberately, once, after the last Metal gate of the certification round has released: a fingerprint written before the gates that check it certifies nothing, and <code>recut_metal_gates.sh</code> never calls it |
 | 3 | <code>recut_composition_records.py</code> | Re-cuts the composition records from a composition re-run, and refuses one whose curated measurement no longer describes the tree |
 | 3a | <code>record_numpy_reference_weld.py</code>, <code>record_specialized_kernel_sources.py --module &lt;module&gt;</code> | Re-record two Triton digests that no gate writes, with no GPU. The first runs the NumPy validator that the D/E record names and records its digest only when the run states the record's own case counts. The second records a specialised module's digest in <code>specialized_kernel_sources</code> only when the module's standalone device weld and its composition weld both have a live record and pin the module's live bytes, so it runs after steps 2 and 3 |
-| 3b | <code>record_array_path_oracle.py</code> | Writes the <code>array_path_oracle</code> leaves of the three ledgers from a run of the fixture set, and refuses a run that leaves a declared form class without a cell, a module that moved during the run, a ledger it would reformat, or a write that would move anything outside the leaves. Run it when the array path is frozen for a round, before the gates: from then on an array-path edit fails the three weld contracts until the tables are certified again. <code>--verify</code> recomputes and compares on any host and writes nothing |
+| 3b | <code>record_array_path_oracle.py</code> | Writes the <code>array_path_oracle</code> leaves of the three ledgers from a run of the fixture set, and refuses a run that leaves a declared form class without a cell, a module that moved during the run, a ledger it would reformat, or a write that would move anything outside the leaves. Run it when the array path is frozen for a certification round, before the gates: from then on an array-path edit fails the three weld contracts until the tables are certified again. <code>--verify</code> recomputes and compares on any host and writes nothing |
 | 4 | <code>recut_driver_dispatch_record.py</code> | Re-cuts a table's dispatch record from a route-gate run, and refuses a row that dispatched on an identity the table's records do not certify: an NVIDIA device, or a Metal GPU architecture, PyTorch or Metal frontend that is not certified or not judged |
 | 5 | <code>cut_timing_record.py</code> | Cuts a table's timing record from timing rows; <code>--check</code> recomputes a record from the rows it names |
-| 5a | <code>repoint_board_bindings.py triton --stamp &lt;stamp&gt;</code>, <code>repoint_board_bindings.py metal --stamp &lt;stamp&gt;</code> | Re-points the Triton board's <code>GATE_BOUND</code> and the Metal board's gate bindings to the round's runs, from a measurement: each binding moves to the one run of its gate in the round that the board's release-binding floor admits with zero drift, and a binding with no such run refuses the write (on the Triton board, <code>--withhold-unrun</code> withholds it by name instead). A run of another device than the one the binding names is refused (<code>--device</code> moves a board to another device on purpose), and so is every run while either device cannot be read, so a second device's round adds ledger records and moves no board. The CUDA board binds through the ledgers and needs none |
+| 5a | <code>repoint_board_bindings.py triton --stamp &lt;stamp&gt;</code>, <code>repoint_board_bindings.py metal --stamp &lt;stamp&gt;</code> | Re-points the Triton board's <code>GATE_BOUND</code> and the Metal board's gate bindings to the certification round's runs, from a measurement: each binding moves to the one run of its gate in the round that the board's release-binding floor admits with zero drift, and a binding with no such run refuses the write (on the Triton board, <code>--withhold-unrun</code> withholds it by name instead). A run of another device than the one the binding names is refused (<code>--device</code> moves a board to another device on purpose), and so is every run while either device cannot be read, so a second device's round adds ledger records and moves no board. In a chunked round (<code>--stamps</code>), <code>--selection</code> names the selection <code>chunks.py verify --selection</code> wrote: where a gate has two runs among the stamps, the run the selection took is the one checked and bound; without it, or where it takes neither, two runs refuse. The CUDA board binds through the ledgers and needs none |
 | 6 | <code>build_triton_fusion_matrix.py</code>, <code>build_cuda_fusion_matrix.py</code>, <code>build_fusion_matrix.py</code> | Cut the coverage boards for the Triton, hand-written CUDA and Metal tables |
 | 6a | <code>build_parity_board.py manifest</code>, then the module test files (every marker), then <code>build_parity_board.py outcomes --junit ... --manifest-before &lt;manifest&gt;</code> and <code>build</code> | Cut the bit-parity board. <code>outcomes</code> refuses a run during which the tree moved, <code>build</code> refuses an outcomes record of another tree ("the outcomes subject and the working tree disagree"), and <code>check</code> refuses a board of another tree. Its CERTIFIED column counts a module only from a ledger entry that records the live array-path oracle and a released run on named hardware, so it reads 0 until step 3b has run on the certified tree. Its development-evidence column (d-dev) is never read by CERTIFIED |
-| 7 | The two test suites | The ledger-contract tests pass when every entry is bound to the files in the tree. Four of them read the round's own records and are listed under <code>evidence_archive</code>: they run only in a checkout where the evidence archive is restored with its marker and the round's new record directories have been added beside the archived ones. In a checkout that holds only the round's records they skip, and the skip reason names the missing marker |
+| 7 | The two test suites | The ledger-contract tests pass when every entry is bound to the files in the tree. Four of them read the certification round's own records and are listed under <code>evidence_archive</code>: they run only in a checkout where the evidence archive is restored with its marker and the round's new record directories have been added beside the archived ones. In a checkout that holds only the round's records they skip, and the skip reason names the missing marker |
 
-Hash the staged tree before a round starts, and check the digests again when it
+Hash the staged tree before a certification round starts, and check the digests again when it
 ends. A gate refuses release when a source file changes during its run, because
 measurements taken on either side of the change describe different programs.
 
@@ -1127,14 +1427,62 @@ loaded are the ones the record names for its set.
   bit-identical to MEEP without kernels. Rows where the two hosts' reference MEEPs
   disagree cannot equal both: <code>--expect-differ references --expect-differ-holds
   mac_flush</code> derives them from the record and counts each as holding when it
-  differs against the primary set and holds against the named one.
+  differs against the primary set and holds against the named one. A row declared
+  run-to-run variable (below) holds only as its runs are attributed.
+- **Rows declared run-to-run variable.** A row whose sources include an
+  <code>EigenModeSource</code> is declared run-to-run variable: the leg reads the class off
+  the corpus manifest (<code>facts.source_kinds</code>, by the classifier Table 2's
+  generator uses) before any row runs and names the rows in
+  <code>declared_variable.txt</code>, 32 of the 220 rows each Linux set of the 1.0.1 record
+  holds. The lift solves their mode again through MPB, whose eigensolver chooses exact or
+  approximate line minimization from <code>clock()</code> timings, so the deposited mode, and
+  MEEP's own, can differ from one process to the next
+  ([Compatibility](../guides/compatibility.md#an-eigenmodesource-can-differ-from-meep)).
+  Such a row records the digest of the source tables its lift deposited and its own digests
+  at every compared step. A run of it that is not as required runs again in a fresh process,
+  up to 4 runs in all that produced words; the row holds when a run holds and every earlier
+  run stepped source tables whose digest differs from the holding run's. An earlier run on
+  the holding run's own tables (the same inputs giving other words), a run without a table
+  digest before the holding one, or no holding run in 4, is a finding, and the leg reads
+  <code>DIFFERS</code>. Each line of such a row carries its attribution, stamped as it lands
+  (<code>l3_attribution</code>), and a holding line that is a finding reads
+  <code>l3_verdict</code> <code>differs</code>, so a resume or a carry (<code>carry.py</code>
+  carries such a row only when its stamp holds, and never runs a placed line again) reads
+  the outcome off the row's last line; a later start must declare what the leg's first start
+  declared over the rows planned at both, or it is refused by name. Every run is
+  kept, and <code>summary.json</code> names the outcome under
+  <code>run_to_run_variable</code>. A row outside the class is judged as before: a difference
+  is a finding, read and not run again.
+  The class retires when a release makes the solve deterministic or reads MEEP's own
+  amplitudes.
+- **A second reference build.** A row refuses unless the MEEP images it loaded are the
+  record's for the leg's image set, and a MEEP built in another environment is other bytes.
+  Another build of the reference recipe is admitted only as a second reference: its own
+  sets, minted by <code>record_meep_identity_archive.py</code> from its own corpus run and
+  written into the record beside the others, never by relabelling its images as another
+  set's. The 1.0.1 record holds one, <code>linux_avx2_keep</code> and
+  <code>linux_avx2_flush</code>, minted on a CPU whose widest vector extension is AVX2
+  (<code>linux_keep</code> and <code>linux_flush</code> were minted on an AVX-512 CPU). On a
+  host whose build loads those images, an NVIDIA leg adds <code>--second-reference
+  linux_avx2_keep</code> (or <code>_flush</code>): it judges <code>linux_&lt;baseline&gt;</code>
+  and the second reference, and the lift loads the second reference's MEEP. The two
+  builds' words agree on every row where the Apple and Linux references agree, and differ
+  on some of the host-dependent rows, the eigenmode solves: their reference words depend
+  on the BLAS kernel family OpenBLAS picks for the reference CPU's vector extensions. Before
+  any row runs the tool requires each row on which the two Linux references differ to be
+  host-dependent in the record (<code>mac_&lt;baseline&gt;</code> differs from
+  <code>linux_&lt;baseline&gt;</code> there), or refuses the leg by name; each such row must
+  then differ against <code>linux_&lt;baseline&gt;</code> and hold against the second
+  reference, and every other row must hold against <code>linux_&lt;baseline&gt;</code>. A
+  later release may pin the recipe's BLAS kernel family, so that one Linux set serves
+  every x86-64 host.
 - **Written as it lands.** One flushed line per row in <code>progress.log</code>, one
   JSON line per row in <code>rows.jsonl</code>, <code>summary.json</code> rewritten after
   every row. A rerun skips the rows already recorded.
 - **Rows the record excludes are not run.** <code>ex.stochastic_emitter</code> is excluded
   from every set (its source draws unseeded random numbers). <code>ex.coupler</code> is
-  excluded from the two Linux sets of the 1.0 record as an expected difference (owner
-  ruling R24), so no leg runs it, every leg's primary set being a Linux one. Its
+  excluded from the Linux sets of the record as an expected difference, so no
+  leg runs it, every leg's primary set being a Linux one. Its
   <code>EigenModeSource</code> is lifted by re-solving the mode with the lift's own
   <code>get_eigenmode</code> call, and on the x86-64 Linux references that solve, and
   under <code>flush</code> MEEP's own, is not bitwise reproducible across processes:
@@ -1143,15 +1491,23 @@ loaded are the ones the record names for its set.
   to 5,051,638 of 44,047,776 stored words, the only lifted inputs that varied between
   processes were the two sources' point amplitudes, and identical lifted inputs with
   identical MEEP words gave identical array-path words in 9 of 9 processes. On the Apple
-  M1 Max it held in 4 of 4 runs. A 1.0.1 release reads MEEP's stored eigenmode amplitudes
-  instead of re-solving
-  ([Compatibility](../guides/compatibility.md#an-eigenmodesource-can-differ-from-meep)).
+  M1 Max it held in 4 of 4 runs. 1.0.1 keeps the re-solve, and the row stays excluded.
+  The 1.0.1 record keeps both exclusions and excludes one more row from every set:
+  <code>test_mode_coeffs</code>'s
+  <code>test_eigenmode_source_with_cylinders</code> differs from step 2 in 3,288,122 to
+  3,300,604 of 22,348,458 stored words (relative L2 about 1.5e-6): MEEP's own words for the
+  row are reproducible between processes, and the lift's re-solve of its
+  <code>EigenModeSource</code> returns a mode that differs from MEEP's own solve in its last
+  bits, by the same count in every process: a deterministic difference, not the run-to-run
+  one above. Its source puts it in the declared class, and the record's exclusion keeps it
+  out of every leg's plan, so no leg declares or runs it.
 
-The 1.0 round's legs, its go/no-go and its environment rules are in
+The 1.0 certification round's legs, its go/no-go and its environment rules are in
 <code>parity/meep_gpu/rounds/1.0/RUNBOOK.md</code> (CERT-5).
 <code>test_l3_corpus.py</code>, beside the tool, tests its arguments, its per-row judge
 (on synthetic words and on a Tier A fixture, each with a planted one-ulp flip it must
-catch) and its output, on any host, with no GPU and no MEEP.
+catch), its output, and the declared rows' re-runs and attribution, on any host, with no
+GPU and no MEEP.
 
 ## Timing is a separate activity
 

@@ -1,11 +1,11 @@
 {
   "schema": 1,
-  "about": "The numerics-relevant set of each certification reference lock: the packages whose builds can change what MEEP or the GPU route computes. tools/compare_reference_environment.py judges every name below against the lock files of its platform (conda packages by version and build, PyPI packages by version, origin and, where pypi_build_tags names one, the wheel's build tag) and does not judge the rest of the lock, the compilers and the tools included: the build scripts' step 1b holds the build to every artifact of the lock, and their step 7 to every pin. Package versions live in the lock files; this file adds only what a lock cannot hold: the MEEP the reference builds from source (meep, judged by tools/check_install.py --require-reference, which imports it), the certified environment's own build of a package the lock takes differently by design (by_design), and wheel build tags. Apart from the numerics sets, corpus_only names what the MEEP identity corpus (Table 2) needs and no field update reads: PyPI packages each platform's pip lock pins (shapely, nlopt, imageio-ffmpeg, whose ffmpeg executable the build scripts link into <prefix>/bin), a conda package each conda lock holds (gdspy), and the PyMieScatt stand-in (built from its pinned sdist and patch by the builder it names, which reads its pins from here). The comparison reports them apart and never counts them in its verdict; --require-pip-lock requires the pip lock's packages and the stand-in, exactly.",
+  "about": "The numerics-relevant set of each certification reference lock: the packages whose builds can change what MEEP or the GPU route computes. tools/compare_reference_environment.py judges every name below against the lock files of its platform (conda packages by version and build, PyPI packages by version, origin and, where pypi_build_tags names one, the wheel's build tag) and does not judge the rest of the lock, the compilers and the tools included: the build scripts' step 1b holds the build to every artifact of the lock, and their step 7 to every pin. Package versions live in the lock files; this file adds only what a lock cannot hold: the MEEP the reference builds from source (meep, judged by tools/check_install.py --require-reference, which imports it), the certified environment's own build of a package the lock takes differently by design (by_design), and wheel build tags. Apart from the numerics sets, corpus_only names what the MEEP identity corpus (Table 2) needs and no field update reads: PyPI packages the pip locks pin (shapely, nlopt, imageio-ffmpeg, whose ffmpeg executable the build scripts link into <prefix>/bin, gdstk and trimesh), conda packages a conda lock holds (none since the MEEP 1.35.0 re-cut), and the PyMieScatt stand-in (built from its pinned sdist and patch by the builder it names, which reads its pins from here). An entry that names its platforms (platforms) applies on those only, for a package one platform's lock carries and the other's does not yet. The comparison reports them apart and never counts them in its verdict; --require-pip-lock requires the pip lock's packages and the stand-in, exactly.",
   "platforms": {
     "osx-arm64": {
       "conda_lock": "meep-gpu-ref-osx-arm64.conda.txt",
       "pip_lock": "meep-gpu-ref-osx-arm64.pip.txt",
-      "basis": "MEASURED 2026-10-03: the libraries the certified libmeep and its Python module load (otool closure), the BLAS/LAPACK and OpenMP runtimes NumPy and MEEP reach, the MPI stack, and the Python numerics. libgdsii added 2026-10-14 by the same rule: the reference MEEP is built with libGDSII, and a libmeep of MEEP 1.33.0 built against conda-forge's libgdsii 0.21 links @rpath/libGDSII.0.dylib directly (otool -L, MEASURED 2026-10-14).",
+      "basis": "MEASURED 2026-10-03: the libraries the certified libmeep and its Python module load (otool closure), the BLAS/LAPACK and OpenMP runtimes NumPy and MEEP reach, the MPI stack, and the Python numerics. libgdsii added 2026-10-14 by the same rule: the reference MEEP is built with libGDSII, and a libmeep of MEEP 1.33.0 built against conda-forge's libgdsii 0.21 links @rpath/libGDSII.0.dylib directly (otool -L, MEASURED 2026-10-14). libgdsii taken out 2026-10-16 with the lock's (the move to MEEP 1.35.0): MEEP 1.35.0's configure links libGDSII only when it finds it, and the reference no longer carries it. libctl moved to 4.7.1 by the same ruling: the version and build are the lock's, which this set judges.",
       "host_floor": {
         "macos": "11.0"
       },
@@ -18,7 +18,6 @@
           "mpb",
           "hdf5",
           "openmpi",
-          "libgdsii",
           "libopenblas",
           "libgfortran5",
           "libgcc",
@@ -63,10 +62,9 @@
         "torch": "2"
       },
       "meep": {
-        "version": "1.33.0",
+        "version": "1.35.0",
         "single_precision": true,
-        "mpi": true,
-        "gdsii": true
+        "mpi": true
       },
       "by_design": {
         "hdf5": {
@@ -81,7 +79,7 @@
     "linux-64": {
       "conda_lock": "meep-gpu-ref-linux-64.conda.txt",
       "pip_lock": "meep-gpu-ref-linux-64.pip.txt",
-      "basis": "The Apple silicon set carried over to the Linux packages (libstdcxx for libcxx, libgomp for llvm-openmp, since the Linux MEEP is configured --with-openmp), the UCX/UCC transports of the Linux Open MPI, and the CUDA libraries of the GPU route; checked 2026-10-03 against readelf -d of the round environment's libmeep.so and _meep.so, whose every NEEDED library belongs to a judged package. libgdsii added 2026-10-14 by the same rule: the reference MEEP is built with libGDSII, which configure adds to the libraries libmeep links (AC_CHECK_LIB(GDSII, libGDSIIExists)); the build records the NEEDED list of the images it made (load_commands.json).",
+      "basis": "The Apple silicon set carried over to the Linux packages (libstdcxx for libcxx, libgomp for llvm-openmp, since the Linux MEEP is configured --with-openmp), the UCX/UCC transports of the Linux Open MPI, and the CUDA libraries of the GPU route; checked 2026-10-03 against readelf -d of the round environment's libmeep.so and _meep.so, whose every NEEDED library belongs to a judged package. libgdsii added 2026-10-14 by the same rule: the reference MEEP is built with libGDSII, which configure adds to the libraries libmeep links (AC_CHECK_LIB(GDSII, libGDSIIExists)); the build records the NEEDED list of the images it made (load_commands.json). libgdsii taken out 2026-10-16 with the lock's (the move to MEEP 1.35.0, MEEP 1.35.0): MEEP's configure links libGDSII only when it finds it, and the reference no longer carries it. libctl moved to 4.7.1 by the same ruling: the version and build are the lock's, which this set judges.",
       "host_floor": {
         "glibc": "2.28"
       },
@@ -94,7 +92,6 @@
           "mpb",
           "hdf5",
           "openmpi",
-          "libgdsii",
           "libopenblas",
           "libgfortran5",
           "libgcc",
@@ -146,10 +143,9 @@
         "triton"
       ],
       "meep": {
-        "version": "1.33.0",
+        "version": "1.35.0",
         "single_precision": true,
-        "mpi": true,
-        "gdsii": true
+        "mpi": true
       },
       "by_design": {}
     }
@@ -178,16 +174,22 @@
         "links": {
           "ffmpeg": "imageio_ffmpeg/binaries"
         }
-      }
-    },
-    "conda": {
-      "gdspy": {
+      },
+      "gdstk": {
         "rows": [
+          "ex.coupler",
           "ex.ring_gds"
         ],
-        "why": "the script imports gdspy to write the GDSII file it reads back through MEEP's libGDSII; PyPI has no wheel of gdspy for either platform, so each conda lock holds conda-forge's build"
+        "why": "at MEEP 1.35.0 both scripts read and write their GDSII geometry with gdstk (#3245), where 1.33.0 used libGDSII and gdspy"
+      },
+      "trimesh": {
+        "rows": [
+          "t.test_mesh.TestMesh.test_from_file"
+        ],
+        "why": "mp.Mesh.from_file reads the mesh file through trimesh (#3197), and the test skips without it; a row of the MEEP 1.35.0 corpus once the re-survey on 1.35.0 captures it"
       }
     },
+    "conda": {},
     "standin": {
       "name": "PyMieScatt",
       "version": "1.8.1.1",

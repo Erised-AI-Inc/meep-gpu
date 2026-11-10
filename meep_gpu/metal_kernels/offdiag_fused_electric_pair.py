@@ -1,6 +1,6 @@
 """The PML ``step_D`` welded into the OFF-DIAGONAL ``update_E`` — one dispatch.
 
-THE FIRST OF THE FOUR STENCIL WELDS, and the first product on either backend to
+The first of the four stencil welds, and the first product on either backend to
 close a cell the boards have called ``STRUCTURALLY UNFUSABLE ON ANY BACKEND``
 since the fusion campaign opened. The 2026-09-01 Metal board scores this cell::
 
@@ -13,7 +13,7 @@ since the fusion campaign opened. The 2026-09-01 Metal board scores this cell::
         step_D writes it in place), and no grid-wide barrier exists inside one
         launch.
 
-BOTH HALVES OF THAT VERDICT ARE ANSWERED, and neither by relaxing anything.
+Both halves of that verdict are answered, and neither by relaxing anything.
 
 **THE STENCIL.** The premise is "the curl writes D IN PLACE", and that is a
 property of the composition rather than of the physics. This kernel does not
@@ -28,13 +28,13 @@ moved to the D seam.
 
 The cost is real and is stated rather than hidden: a live term re-derives up to
 three foreign cells, so a thread runs ``step_cell`` up to thirteen times where
-the separate composition runs it once. THAT IS NOT WHAT THIS PRODUCT IS FOR.
+the separate composition runs it once. That is not what this product is for.
 The campaign's rule is that every buildable fused product is built for coverage
 and that timing chooses routes at the end, never what to build; a cell that has
 been recorded unbuildable on every board for the whole campaign is worth closing
 whether or not the closed form is the fastest route to it.
 
-**THE BINDING CEILING.** 36 pointers is what the two halves need when D is
+**The binding ceiling.** 36 pointers is what the two halves need when D is
 SHARED between them. Not sharing it costs three more (pre-launch and scratch are
 different buffers) and the split field another three, so the honest unpacked
 count is FORTY-TWO — six worse than the verdict the board recorded, and the
@@ -49,7 +49,7 @@ because the shipped :mod:`.coefficient_pack` closes it twice over:
 * ``mpack`` — the NINE read-only MATERIAL VOLUMES: three inverse-epsilon and the
   six off-diagonal ``chi1inv`` rows. Saves eight.
 
-THE SECOND PACK IS A NEW STEP AND ITS COST IS STATED. ``conductive_fused_\
+The second pack is a new step and its cost is stated. ``conductive_fused_\
 electric_pair`` declined to pack volumes beside vectors, on the ground that
 mixing grid-sized members into a per-axis offset table is "a mixed-geometry
 table for no binding need — 29 is already two under the ceiling". Here there IS
@@ -63,7 +63,7 @@ mirrors and once inside the pack. A run whose material volumes dominate its
 footprint pays about nine volumes for this weld; that is the trade, and the
 alternative on this platform is not a cheaper weld but no weld.
 
-**WHAT IS LIFTED.** Neither half is retyped:
+**What is lifted.** Neither half is retyped:
 
 * the curl — :func:`.shaders.curl_source` with ``backward=True``, its body cut
   at the decode anchor and re-headed as an inline function of ``(i, j, k)`` by
@@ -81,16 +81,16 @@ alternative on this platform is not a cheaper weld but no weld.
   :mod:`.fused_electric_pair` carries, reached through ``coverage.zero_metal_axes``
   and ``IYEE_SHIFTS`` rather than spelled again.
 
-THE CLOSED FORM IS MEASURED, twice and independently. Host-side against the
+The closed form is measured, twice and independently. Host-side against the
 array path's own pass order over seventeen fixtures, two complete steps each,
 zero differing uint32 words, with the parity spelling and the multi-axis nesting
 measured at word level and every reachable null diverging
 (``parity/meep_gpu/results/metal_scratch_weld_closed_form_2026-09-01T2``); and
 on device by this family's own gate.
 
-THE SEAM'S OTHER PASSES.
+The seam's other passes.
 
-* **the electric source slot — REFUSED BY NAME, and the refusal is the cell.**
+* **the electric source slot — refused by name, and the refusal is the cell.**
   :data:`CARRIES_DEPOSIT_REPAIR` is **False** and cannot be anything else:
   ``deposit_repair.repairable`` refuses to reconstruct an OFF-DIAGONAL chi1inv
   constitutive by name (deposit_repair.py:98-108), because a point repair
@@ -106,7 +106,7 @@ THE SEAM'S OTHER PASSES.
   (:mod:`.folded_offdiag_fused_electric_pair`), and the predicate says so by
   name rather than leaving a reader to chase a shared grid clause.
 
-**THE PER-CHUNK FORMS AND THE DOUBLE ROW.** Both lifted bodies read the chunk
+**The per-chunk forms and the double row.** Both lifted bodies read the chunk
 record, which rides in ``Params`` (``ChunkBounds cb``, last) and is aliased to ``cb``
 before any lifted text runs; the constitutive half's presence words ride beside it
 (``OffdiagPresence kw``, aliased to ``kw``). ``step_cell`` takes it as a parameter, so the curl's select is
@@ -116,10 +116,10 @@ carry the untouched pre-launch word everywhere else (the scratch rotates in as t
 engine's ``fu``), so the guarded store becomes ``n0 = du0 ? n0 : u0[ii]`` and the
 seam stores ``n0`` on every cell. The constitutive half is
 :func:`.offdiag_update_e.offdiag_source`'s, per-chunk tail, presence and software
-binary64 row (ruling R7) and all -- the helpers are spliced after the contraction
+binary64 row and all -- the helpers are spliced after the contraction
 directive -- and its predicate is part of this one's, prefixed "constitutive half".
 
-NOT WIRED AS AN ARM, for the reason every Metal fused pair records: ``plan_step``
+Not wired as an arm, for the reason every Metal fused pair records: ``plan_step``
 assigns at most one arm per slot and this product spans three. It registers
 ``wired=False`` and reaches its two slots through ``launch.FUSED_PAIR_ARMS``.
 """
@@ -159,9 +159,9 @@ SLOT = "step_D"
 #: admits — the predicate refuses a fold by name.
 REPLACES: Tuple[str, ...] = ("step_D", "zero_metal_D", "update_E")
 
-#: BOTH halves' read-only per-axis coefficient vectors, IN PACK ORDER: the curl's
+#: BOTH halves' read-only per-axis coefficient vectors, in pack order: the curl's
 #: six, then the constitutive's six. Disjointly named, so one prologue re-creates
-#: all twelve under their certified names. THE SAME MEMBERS AND THE SAME ORDER as
+#: all twelve under their certified names. The same members and the same order as
 #: :data:`.conductive_fused_electric_pair.PACKED_VECTORS`.
 PACKED_VECTORS: Tuple[str, ...] = ("kmx", "sinvx", "kmy", "sinvy", "kmz", "sinvz",
                                    "kp0", "km0", "kp1", "km1", "kp2", "km2")
@@ -172,13 +172,13 @@ PACKED_VECTORS: Tuple[str, ...] = ("kmx", "sinvx", "kmy", "sinvy", "kmz", "sinvz
 PACKED_VOLUMES: Tuple[str, ...] = ("e0", "e1", "e2",
                                    "u01", "u02", "u11", "u12", "u21", "u22")
 
-#: FOUR BINDING COUNTS, ALL COMPILED BY THE GATE:
+#: Four binding counts, all compiled by the gate:
 #:
 #: * :data:`SEPARATE_SCALAR_BINDINGS` — 42 pointers + 5 separate scalars.
 #: * :data:`UNPACKED_POINTER_BINDINGS` — 42 pointers + one packed ``Params&``:
 #:   the honest cost of NOT sharing D, six worse than the 36 the board priced.
 #: * :data:`CPACK_ONLY_BINDINGS` — 31 pointers + ``Params``, the shape one pack
-#:   leaves. 32 against a ceiling of 31: OVER BY ONE, and it is the measurement
+#:   leaves. 32 against a ceiling of 31: over by one, and it is the measurement
 #:   that makes the second pack a necessity rather than a preference.
 #: * :data:`PACKED_BINDINGS` — the shipped shape.
 SEPARATE_SCALAR_BINDINGS = 47
@@ -229,7 +229,7 @@ CURL_STORE_EDITS: Tuple[Tuple[str, str], ...] = tuple(
 RECORD_PARAMETER = ", constant ChunkBounds& cb"
 RECORD_ACTUAL = ", cb"
 
-#: ``step_cell``'s pointer parameters, under the CERTIFIED CURL BODY'S OWN NAMES —
+#: ``step_cell``'s pointer parameters, under the certified curl body's own names —
 #: that is what lets the lifted text index ``f0``/``u0``/``g0``/``kmx`` character
 #: for character. The kernel's own names for the same buffers are different (see
 #: :data:`_ACTUALS`) because ``f0`` in the fused signature is an E target.
@@ -316,8 +316,8 @@ kernel void offdiag_fused_electric_pair_step(
     constant Params&    prm     [[buffer(23)]],
     uint idx [[thread_position_in_grid]])
 {
-    // THE SCALARS AND THE TWO PACKS ARE UNPACKED INTO THE CERTIFIED BODIES' OWN
-    // NAMES, once, before any lifted text runs. Everything below is then
+    // The scalars and the two packs are unpacked into the certified bodies' own
+    // names, once, before any lifted text runs. Everything below is then
     // character-for-character what the two certified emitters produce, plus the
     // seam and the redirected displacement reads.
     uint nx = prm.nx, ny = prm.ny, nz = prm.nz, n_elem = prm.n_elem;
@@ -519,7 +519,7 @@ def metal_offdiag_fused_electric_pair_coverage(
     if not electric.covered:
         reasons.extend(f"constitutive half: {reason}" for reason in electric.reasons)
 
-    # THE SOURCE SEAM, and here it is a CEILING rather than a clause a wrapper
+    # The source seam, and here it is a CEILING rather than a clause a wrapper
     # discharges: `deposit_repair.repairable` refuses an off-diagonal chi1inv by
     # name, so a row with an electric source in this seam can never be fused,
     # however the kernel is written.
@@ -540,7 +540,7 @@ def metal_offdiag_fused_electric_pair_coverage(
         return Coverage(False, tuple(dict.fromkeys(
             reasons + ["fields carries no grid"])))
 
-    # THE TWO FILLS. Both halves already refuse a mirror plane; this restates by
+    # The two fills. Both halves already refuse a mirror plane; this restates by
     # NAME what that buys on THIS seam, and names the family that does carry them.
     for axis in range(3):
         mirrored = getattr(grid, "is_mirrored", None)
@@ -580,7 +580,7 @@ PARAMS_ITEMSIZE = 4 * (5 + len(PACKED_VECTORS) + len(PACKED_VOLUMES)
 def params_record_dtype() -> Any:
     """The host record's dtype — scalars, pack offsets, presence words, the record.
 
-    ONE HOME FOR THE LAYOUT. Every member is four bytes wide or a struct of
+    One home for the layout. Every member is four bytes wide or a struct of
     four-byte members, so the natural packing IS Metal's and the offsets are the
     running sum; they are stated explicitly anyway, because a record that agreed
     with the device only by accident is one edit from disagreeing. The presence
@@ -635,7 +635,7 @@ def _params_tensor(shape: Sequence[int], dtdx: float,
                    chunk_bounds: Any, presence: Any) -> Any:
     """The scalars, the two packs' offsets, the presence words and the chunk record.
 
-    PLAN-OWNED AND OUTSIDE THE RESIDENCY REGISTRY, for the reason every fused
+    Plan-owned and outside the residency registry, for the reason every fused
     pair's ``_params_tensor`` gives: :meth:`.Residency.mirror` binds float32 and
     complex64 volumes and refuses anything else by name. ``chunk_bounds`` is checked
     against ``shape`` by :func:`.chunk_bounds.plan_words`, which refuses by name a
@@ -705,7 +705,7 @@ def plan_metal_offdiag_fused_electric_pair(
         volumes.append(name)
         return residency.mirror(name, host, constant=constant)
 
-    # THE ROTATING GROUPS FIRST, in ROTATED_NAMES order: every scratch, then every
+    # The rotating groups first, in ROTATED_NAMES order: every scratch, then every
     # pre-launch buffer. `ScratchWeldPairPlan.run` splices exactly those two
     # groups ahead of `static_args`, so this order IS the signature's.
     twins: Dict[str, Any] = {}
@@ -722,7 +722,7 @@ def plan_metal_offdiag_fused_electric_pair(
     magnetic = [bind(name, getattr(fields, name))
                 for name in SUB_STEPS["step_D"]["sources"]]
 
-    # THE D CURL TAKES THE INTEGER LATTICE and the E constitutive the HALF-INTEGER
+    # The D curl takes the integer lattice and the E constitutive the HALF-INTEGER
     # one (SUB_STEPS['step_D']['suffix'] is '' and the off-diagonal side reads
     # `kps_a_h`/`kms_a_h`). The kernel takes one packed buffer and never asks; the
     # gate carries a host mutation for each group.
@@ -734,7 +734,7 @@ def plan_metal_offdiag_fused_electric_pair(
     cpack, cpack_layout = coefficient_pack.packed_mirror(
         residency, f"{FAMILY}:cpack", np, PACKED_VECTORS, vectors)
 
-    # A DEAD ROW SLOT STILL OCCUPIES ITS PACK MEMBER, because the pack refuses a
+    # A dead row slot still occupies its pack member, because the pack refuses a
     # zero-length member (two offsets would coincide) and the specialisation is
     # what stops the read. The filler is the component's own inverse epsilon: a
     # read-only volume of the right shape that is already resident, so no

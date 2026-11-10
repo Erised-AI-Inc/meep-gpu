@@ -14,13 +14,13 @@ The mutation legs include real defects and measured nulls. Results are rewritten
 atomically after every case and every progress line is flushed (the progress-reporting rule).
 Run only inside a one-GPU Slurm allocation.
 
-THE CAMPAIGN'S SUBNORMAL POLICY. Until the 1.0 certification round this gate installed
+The campaign's subnormal policy. Until the 1.0 certification round this gate installed
 no float32 subnormal policy and stated none: the CuPy oracle flushed (CuPy's default
 ``-ftz=true``) while Triton kept, so its ledger entry declared ``_mixed_policy`` and no
 run could carry evidence for a policy. The two arms that cite it (``fused pair B`` and
 ``fused pair D``) were then refused on every flush dispatch, and with them every plan
 the default precedence composes from them on the route gate's flush legs. The gate now
-does what the five composition gates do (``composition_policy.py``, owner ruling R16):
+does what the five composition gates do (``composition_policy.py``):
 before it builds anything it installs the policy ``MEEP_GPU_SUBNORMAL_POLICY`` names
 (``keep`` when unset) on the host, CuPy and Triton, refuses by name when it is not
 attained, stamps it as ``subnormal_policy``, and confirms at the end of the run that it
@@ -403,10 +403,10 @@ def mutated_source(name: str, source: str) -> Tuple[str, int]:
             source = source.replace(old, "")
             hits += count
     elif name == "regroup_constitutive":
-        # INVERTED (KERNELS.md section 7.1): the shipped form is MEEP's
-        # ``f + ((kps*src) - (kms*prev))`` (``forms.constitutive_form``), so the
-        # mutant puts the two separate accumulations the kernel carried until 0.10
-        # back at the call site, ``(f + kps*src) - kms*prev``, with the same select.
+        # INVERTED (docs/development/certification.md#inverted-grouping-mutations): the shipped
+        # form is MEEP's ``f + ((kps*src) - (kms*prev))`` (``forms.constitutive_form``), so the
+        # mutant puts the two separate accumulations the kernel carried until 1.0 back at the
+        # call site, ``(f + kps*src) - kms*prev``, with the same select.
         hits = len(_CONSTITUTIVE_CALL.findall(source))
         source = _CONSTITUTIVE_CALL.sub(
             lambda m: (f"a{m['t']} = tl.where(dw{m['t']}, ({m['f']} + kp_{m['t']} * "
@@ -480,7 +480,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "base_cases": [],
         "mutations": [],
     }
-    # THE CAMPAIGN'S SUBNORMAL POLICY, installed and measured before the first kernel
+    # The campaign's subnormal policy, installed and measured before the first kernel
     # compiles and stamped into the artifact (composition_policy.py). A refusal writes
     # ``summary.status = refused`` and the run measures nothing.
     refused = stamp_campaign_policy(results, cp)
@@ -550,7 +550,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             f"caught={row['caught']}")
         save(results, out)
 
-    # THE POLICY MUST STILL HOLD at the end of the run, on every executor and on the
+    # The policy must still hold at the end of the run, on every executor and on the
     # host FPU; the stamp is re-taken with the counters the run accumulated.
     refused = confirm_campaign_policy(results)
     if refused:

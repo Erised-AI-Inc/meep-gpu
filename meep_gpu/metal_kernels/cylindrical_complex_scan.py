@@ -12,13 +12,13 @@ else (``float2 * float`` is one rounded product per part on this backend, as the
 scan's ``float * float`` is one). The chunk starts, the row vectors, ``ir0`` and the B
 side's zero wall row are the real family's, imported.
 
-NO PLAN CLASS AND NO ARM. This module is a kernel and its emitter. The product that
+No plan class and no arm. This module is a kernel and its emitter. The product that
 consumes it — the two-launch complex H->D pair (:mod:`.cylindrical_complex_fused_hd_pair`),
 whose leading launch scans the recomputed ``Hy`` — carries its own gate; this one
 certifies the scan alone against ``stepping.cylindrical_rderiv_difference`` CALLED,
 never re-derived.
 
-NO TORCH AT MODULE LEVEL, as everywhere in this package.
+No torch at module level, as everywhere in this package.
 """
 
 # Derived from MEEP (https://github.com/NanoComp/meep).
@@ -52,8 +52,8 @@ BINDINGS = 9
 WELD_OWED: str = ""
 
 #: The edits that turn the real scan's column loop into the complex one, each applied
-#: exactly once per loop where it occurs (:func:`column_scan_loop`). TYPES AND ZERO
-#: LITERALS ONLY: not one operator, operand or paren moves.
+#: exactly once per loop where it occurs (:func:`column_scan_loop`). Types and zero
+#: literals only: not one operator, operand or paren moves.
 FLOAT2_EDITS: Tuple[Tuple[str, str], ...] = (
     ("    out[base] = 0.0f;\n", "    out[base] = float2(0.0f, 0.0f);\n"),
     ("    float w_prev = ", "    float2 w_prev = "),

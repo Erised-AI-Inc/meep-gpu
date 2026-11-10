@@ -2,7 +2,7 @@
 """DEVICE byte gate for the Triton Dcyl m = 0 REAL H->D product:
 ``meep_gpu/triton_kernels/cylindrical_real_fused_hd_pair.py``.
 
-THE FOURTH SEAM ON A CYLINDRICAL ROW, on this backend, for the three real-storage rows
+The fourth seam on a cylindrical row, on this backend, for the three real-storage rows
 of the ``(cylindrical -> cylindrical PML)`` H->D cell. The product is THREE launches:
 launch 1 (slot ``update_H``) evaluates the certified ``update_H`` body at its own cell
 into write-only scratch -- the Cartesian weld's constitutive block, statement for
@@ -10,10 +10,10 @@ statement, with the chunk record and MEEP's start of H; launches 2 and 3 (slot
 ``step_D``) are the certified ``CylindricalCurlPlan`` over the scratch ``H`` -- its
 column-serial radial scan (MEEP's per-chunk ``f_rderiv_int`` of the stepped ``Hy``) and
 its curl; the plan rotates the six ``H``/``f_w_H`` references. Three launches where the
-two certified singles take three: the product is kept, not dispatched, for its form
-alignment.
+two certified singles take three: the product is kept, not dispatched, because its gate
+measures its forms against MEEP's per-chunk arithmetic forms.
 
-THE CLAIM is per COMPLETE DRIVER STEP, as uint32 words over EVERY stored volume, against
+The claim is per complete driver step, as uint32 words over EVERY stored volume, against
 the array path and three more reference engines driven in lockstep from one seed (the
 template's four: array, the two certified singles, the composition the composer installs
 today -- both released cylindrical pairs -- and the same slots unfused), over a stated
@@ -22,15 +22,15 @@ zero beside a control that moves words. Every leg is the H->D template gate's
 (``gate_triton_fused_hd_pair.py``), written once in ``triton_cylindrical_hd_gate_kit.py``,
 plus the cylindrical floors on every product row.
 
-THE ARMED DEFECTS, each required to move words: the stepped H or its history written
+The armed defects, each required to move words: the stepped H or its history written
 into the pre-launch buffer, the history stored on every cell (the 0.9.2 store) or on the
 layer only (the certified single's store copied onto a rotated twin), the start of H not
 forwarded, the rotation skipped, contraction on, the scan skipped, the scan reading the
 pre-launch ``Hy``, scan and curl both over the pre-launch ``H``, the ``ir0 = 0.0`` ladder,
 the constitutive half on the half-integer lattice, the withdraw after ``step_D``. The
-constitutive form battery (KERNELS.md 7.1 and 7.2) runs on ``fused_hd_pair``'s gate,
-on the same ``_h_cell`` bytes this product launches. The byte-neutral edit swaps two
-independent scratch stores.
+constitutive form battery (docs/development/certification.md#inverted-grouping-mutations
+and #chunk-form-battery) runs on ``fused_hd_pair``'s gate, on the same ``_h_cell`` bytes
+this product launches. The byte-neutral edit swaps two independent scratch stores.
 
     CUDA_VISIBLE_DEVICES=<n> CUPY_CACHE_DIR=<empty, token ftz_stripped> \\
       TRITON_CACHE_DIR=<empty> PYTHONPATH=. \\
@@ -181,11 +181,11 @@ MUTATIONS: Dict[str, Dict[str, Any]] = {
         "case": MUTATION_CASE,
         "old": "            wi1 + idx, mask=live & (dw1 == 0), other=0.0)), mask=live)\n",
         "new": "            wi1 + idx, mask=live, other=0.0)), mask=live)\n",
-        "why": "PREDICTED NULL (KERNELS.md 7.2, the unconditional auxiliary load): the "
-               "pre-launch history word the twin keeps is read on every cell, but on the "
-               "dsigw cells the select takes B and never consumes it, so no word moves. "
-               "The guard is pinned by the lift instead (the store is the Cartesian "
-               "weld's statement)",
+        "why": "PREDICTED NULL (the unguarded auxiliary load; "
+               "docs/development/certification.md#chunk-form-battery): the pre-launch "
+               "history word the twin keeps is read on every cell, but on the dsigw cells "
+               "the select takes B and never consumes it, so no word moves. The guard is "
+               "pinned by the lift instead (the store is the Cartesian weld's statement)",
     },
     "m_rotation_skipped": {
         "target": "host", "host": "rotation_skipped", "expected": "CAUGHT",
@@ -238,7 +238,7 @@ MUTATIONS: Dict[str, Dict[str, Any]] = {
     "m_withdraw_after_step_D": {
         "target": "host", "host": "withdraw_after_step_D", "expected": "CAUGHT",
         "case": MUTATION_CASE,
-        "why": "the seam's one pass on the wrong side of the launch. Since entry 25 that "
+        "why": "the seam's one pass on the wrong side of the launch. Since 1.0 that "
                "pass is the magnetic f_minus_p restore (no electric withdraw stands), "
                "and the withdraw leg drives it moved before the launch, and dropped, on "
                "a fixture carrying integrated electric and magnetic sources; both must "
@@ -403,7 +403,7 @@ class Spec(kit.FamilySpec):
     def transcription(self) -> Tuple[List[str], Dict[str, Any]]:
         findings: List[str] = []
         measures: Dict[str, Any] = {}
-        # THE CONSTITUTIVE HALF IS IMPORTED, NOT COPIED: its lift is the Cartesian
+        # The constitutive half is imported, not copied: its lift is the Cartesian
         # product's, re-checked here because this family launches it.
         certified = cartesian.certified_constitutive_tail()
         lifted = cartesian.lifted_constitutive_tail()
@@ -411,7 +411,7 @@ class Spec(kit.FamilySpec):
         if certified != lifted:
             findings.append("fused_hd_pair._h_cell is no longer kernels.constitutive_step's "
                             "own body with the declared edits")
-        # LAUNCH 1 IS THE CARTESIAN WELD'S CONSTITUTIVE BLOCK, statement for statement.
+        # LAUNCH 1 is the cartesian weld's constitutive block, statement for statement.
         certified_block = family.certified_weld_block()
         lifted_block = family.lifted_weld_block()
         measures["launch1_statements"] = len(lifted_block)
@@ -421,13 +421,13 @@ class Spec(kit.FamilySpec):
         if len(lifted_block) < 10:
             findings.append(f"launch 1 is only {len(lifted_block)} statements; the cut "
                             f"anchors have crossed")
-        # NO ARITHMETIC IN THIS MODULE'S KERNEL beyond the imported constitutive: no
+        # No arithmetic in this module's kernel beyond the imported constitutive: no
         # divide, no multiply-add.
         text = Path(family.__file__).read_text(encoding="utf-8")
         for needle in ("tl.math.", " / "):
             if any(needle in line for line in lifted_block):
                 findings.append(f"launch 1 spells {needle.strip()!r}")
-        # THE RADIAL-SUM DECLARATION IS THE CERTIFIED FAMILY'S OWN TABLE, and the
+        # The radial-sum declaration is the certified family's own table, and the
         # scan and the curl are the certified plan's, built by the certified builder.
         spec = cyl.SUB_STEPS[family.CURL_SUB_STEP]
         if (family.PREFIX_COMPONENT, float(family.PREFIX_IR0)) != (
@@ -468,7 +468,7 @@ class Spec(kit.FamilySpec):
         measures: Dict[str, Any] = {}
         curl_text = Path(cyl.__file__).read_text(encoding="utf-8")
         product_text = Path(family.__file__).read_text(encoding="utf-8")
-        # 1. THIS PRODUCT LIFTS NO CURL OR SCAN TEXT: launches 2 and 3 are the certified
+        # 1. This product lifts no curl or scan text: launches 2 and 3 are the certified
         #    plan's, run by its own run().
         for needle in ("curl0 =", "curl1 =", "curl2 =", "def cyl_pml_curl_step",
                        "def cyl_radial_difference", "total + "):
@@ -480,7 +480,7 @@ class Spec(kit.FamilySpec):
             "plan.run(guard)" in product_text)
         if not measures["launches_2_and_3_are_the_certified_plans_run"]:
             findings.append("the plan does not run the certified step_D plan")
-        # 2. THE CURL READS THE SCAN'S DIFFERENCE AT ITS OWN CELL (no radial tap of its
+        # 2. The curl reads the scan's difference at its own cell (no radial tap of its
         #    own), and Dz's curl is zeroed at the axis row by the ownership mask -- read
         #    off the certified text.
         guarded = "curl2 = dtdx * tl.load(rad + idx, mask=live, other=0.0)" in curl_text

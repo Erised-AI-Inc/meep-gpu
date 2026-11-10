@@ -19,7 +19,7 @@ Two layers, in the order a defect would reach them:
    samples) and to 1.4e-06 on ``meep.materials.Au`` (6 poles, resolution 20, cond
    8.57e+02, 14 samples).
 
-THE NEGATIVE CONTROL, and why it is not optional. The whole recovery turns on
+The negative control, and why it is not optional. The whole recovery turns on
 solving for ``c_n = sigma_n * w0_n**2`` rather than for ``sigma_n``. That choice
 looks like a detail and is the difference between a working recovery and a
 confidently wrong one: on ``meep.materials.Au`` the naive basis is singular to
@@ -315,7 +315,7 @@ def test_a_recovered_gain_is_clamped_inside_the_noise_and_refused_beyond_it():
 @requires_meep
 @skip_without_meep
 def test_the_naive_sigma_basis_is_singular_where_the_product_basis_is_not():
-    """THE NEGATIVE CONTROL: solving for sigma directly fails on a real metal.
+    """The negative control: solving for sigma directly fails on a real metal.
 
     Same material, same sampled permittivity, same solver — only the unknown
     changes. Measured on ``meep.materials.Au`` (6 poles, MEEP's Drude idiom

@@ -12,19 +12,19 @@ The mutations are compiled from altered Metal source and must visibly diverge;
 the refusal leg protects the inverse predicate boundary so this family cannot
 silently overlap a lossless ordinary-PML plan.
 
-THE PER-CHUNK FORMS (KERNELS.md §7). The kernel selects MEEP's four conductive forms
+The per-chunk forms (docs/design/floating-point.md#per-chunk-forms). The kernel selects MEEP's four conductive forms
 per structure chunk from the bound chunk record, and each plan here binds the one-rank
 record of its grid (``gate_chunk_records.layer_record``), the division ``stepping``
 steps a bare ``Fields`` with. Each product records its form census (every conductive
 form and both lossless forms on in-run and out-of-run cells). The grouping mutations
-are INVERTED (§7.1): the shipped stencil and the shipped ``f_cond`` increment are
+are INVERTED (docs/development/certification.md#inverted-grouping-mutations): the shipped stencil and ``f_cond`` increment are
 MEEP's groupings, so each mutation plants the package's PREVIOUS grouping and stays
-must-catch. The §7.2 battery is armed on the conductive and lossless tails (``b*``),
+must-catch. The form battery is armed on the conductive and lossless tails (``b*``),
 the record mutations hand the shipped kernel a wrong record, and the one declared null
 (``b7``, an unconditional ``f_cond`` load with every store still guarded) must change
 no word.
 
-THE PER-CHUNK CONDUCTIVITY PRESENCE (KERNELS.md §2's presence extension). Two products
+The per-chunk conductivity presence (docs/development/kernel-tables.md#record-layout). Two products
 keep the conductivity in the interior chunk along x only (``partial`` in
 :func:`build`), so a lossy target steps the lossless forms in the other chunks and the
 plan binds non-trivial presence words; the form census counts those cells, two
@@ -32,7 +32,7 @@ must-catch rows invert the kernel's presence flag and bind the all-kept words on
 state, and the refusal leg requires a record that cannot carry the presence to be
 refused by name. No planted signed-zero leg: every form here is arithmetic on its own inputs
 (the dsig-only form with unit coefficients equals MEEP's plain one on every special
-pair, DESIGN.md D1); the plain output selects are the base gate's
+pair, floating-point.md#unit-coefficient-precondition); the plain output selects are the base gate's
 (``gate_metal_pml.py``, ``planted_zero``).
 """
 
@@ -323,7 +323,7 @@ def _mutation_table() -> Dict[str, Dict[str, Any]]:
             "source": _needles(full, (("dtdx * (((c_y - c) + b) - b_z)",
                                        "dtdx * ((c_y - c) + (b - b_z))"),)),
             "must_catch": True, "mixed": False,
-            "why": "INVERTED (KERNELS.md §7.1): the package's previous pairwise "
+            "why": "INVERTED (certification.md#inverted-grouping-mutations): the package's previous pairwise "
                    "grouping (g1s - g1) + (g2 - g2s) planted in place of MEEP's "
                    "left-to-right ((g1s - g1) + g2) - g2s"},
         "increment_previous_grouping": {
@@ -333,7 +333,7 @@ def _mutation_table() -> Dict[str, Dict[str, Any]]:
                 ("float f0_new = ((f0_previous * km_y) + c0_step) * si_y;",
                  "float f0_new = (((f0_previous * km_y) + c0_new) - c0_previous) * si_y;"))),
             "must_catch": True, "mixed": False,
-            "why": "INVERTED (KERNELS.md §7.1): the package's previous grouping "
+            "why": "INVERTED (certification.md#inverted-grouping-mutations): the package's previous grouping "
                    "((x*kms) + fcnd') - fcnd planted in place of MEEP's increment "
                    "(fcnd' - fcnd) formed first (step_generic.cpp:167, :209)"},
         "dsig_membership_disabled": {
@@ -429,7 +429,7 @@ def _lattices_swapped(record: Any) -> Any:
     return out
 
 
-#: The record mutations (KERNELS.md §7.2): the kernel is the shipped one and the record
+#: The form battery's record mutations: the kernel is the shipped one and the record
 #: it is handed is not; the reference steps the true division.
 RECORD_MUTATIONS: Dict[str, Tuple[Any, str]] = {
     "b3_bound_off_by_one": (_bound_off_by_one, "a run end one row past the chunk"),
@@ -523,7 +523,7 @@ def leg_products(payload: Dict[str, Any], out: str) -> None:
                 f"moved={moved:<7} differing={differences:<4} words={compared} "
                 f"forms_zero={sorted(k for k, v in forms.items() if not v)}")
         assert result["passed"], row
-    # THE FORM CENSUS, over the products: every conductive form and both lossless
+    # The form census, over the products: every conductive form and both lossless
     # forms are reached on some product, or a mutation of that form is vacuous.
     reached: Dict[str, int] = {}
     for row in rows:

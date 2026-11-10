@@ -27,8 +27,8 @@ each with a fresh ``Fields`` — the marginally stable IIR state
    low-order mantissa bits are hot; the loud margin (per-step max |D|) is
    recorded.
 3. ``c3_full_k_3d`` — 12x10x14, PML z, periodic x/y, k = (0.31, 0.17, 0.23)
-   all distinct, RANDOM FIELDS AND RANDOM STATE, Courant 0.35, 10 steps.
-   THE k-indexing needle: the marquee's P-pol content exercises only By/Dz,
+   all distinct, random fields and random state, Courant 0.35, 10 steps.
+   The k-indexing needle: the marquee's P-pol content exercises only By/Dz,
    so this case is what makes the m1/m2 class byte-visible on all six
    targets at composition level.
 4. ``c4_guard_2d`` — DECLARED dimensions=2, k = (0.4, 0, 0), random content
@@ -43,7 +43,7 @@ each with a fresh ``Fields`` — the marginally stable IIR state
    half-step runs the PATCHED step_B/update_H once more, so those slots'
    launch budgets are steps + 1.
 7. ``c7_dft_flux_decimation`` — the standing decimation pattern from the
-   nonlinear/offdiag tranches riding a BFAST run: c3's grid + Gaussian Ex +
+   nonlinear/offdiag composition probes, riding a BFAST run: c3's grid + Gaussian Ex +
    a flux monitor at the engine's automatically resolved decimation
    (recorded), 16 steps, with a source-free control.
 
@@ -62,7 +62,7 @@ through would leave candidate and reference both on the array path and every
 step would pass vacuously, so each patched slot must prove it launched
 exactly its budget.
 
-SUBNORMAL POLICY. This probe runs UNDER THE STRIPPED IEEE-KEEP POLICY — the
+Subnormal policy. This probe runs under the stripped IEEE-keep policy — the
 ship configuration — installed via ``gate_triton_complex.install_ftz_strip``
 BEFORE ``guard_kernel_compilation`` so the guard wraps the strip and both
 apply. Every claim states the policy it was cut under. The BFAST family's
@@ -640,7 +640,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                               "reason": "subnormal policy: "
                                         + "; ".join(residual)}
         save(payload, args.out)
-        log(f"SUBNORMAL POLICY FAILURE AT CLOSE: {residual}")
+        log(f"Subnormal policy failure at close: {residual}")
         return 1
 
     ran = payload["cases"]

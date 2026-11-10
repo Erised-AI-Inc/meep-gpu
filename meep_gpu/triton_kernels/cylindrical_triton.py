@@ -1,6 +1,6 @@
 """The CYLINDRICAL (Dcyl) curl sub-steps at m = 0: a radial scan kernel and a curl kernel.
 
-WHAT IT REPLACES. ``stepping.step_B`` and ``stepping.step_D`` on a Dcyl grid with
+What it replaces. ``stepping.step_B`` and ``stepping.step_D`` on a Dcyl grid with
 ``grid.m == 0``, real storage and an active split-field PML -- the whole sub-step,
 including the radial sum MEEP calls ``f_rderiv_int``. Two ``@triton.jit`` bodies serve
 both sub-steps: :func:`cyl_radial_difference` (the column-serial scan) and
@@ -8,13 +8,13 @@ both sub-steps: :func:`cyl_radial_difference` (the column-serial scan) and
 The complex family (:mod:`.cylindrical_complex`) and the four cylindrical fused pairs
 launch the same scan kernel; it has one home, here.
 
-THE FORMS ARE THE ARRAY PATH'S, AND THE ARRAY PATH'S ARE MEEP'S (1.33.0, single
+The forms are the array path's, and the array path's are MEEP's (1.33.0, single
 precision, no contraction). Every one is read from :mod:`meep_gpu.stepping` of this
 tree and transcribed with its grouping:
 
-* THE RADIAL SUM (``stepping.cylindrical_rderiv_difference``, step_db.cpp:99-119). The
+* The radial sum (``stepping.cylindrical_rderiv_difference``, step_db.cpp:99-119). The
   Z component's update needs ``(1/r)·d(r·Fp)/dr``, and MEEP builds it as a running sum
-  in EVERY STRUCTURE CHUNK over that chunk's own rows::
+  in every structure chunk over that chunk's own rows::
 
       inc[g] = rinv[g-1] * ((Fp[g]*w[g]) - (Fp[g-1]*w[g-1]))       g >= 1
       F_s[s] = +0,  F_s[g] = F_s[g-1] + inc[g]                       g > s
@@ -29,7 +29,7 @@ tree and transcribed with its grouping:
   never a prefix array. ``s`` per target row is
   ``stepping._cylindrical_scan_starts`` (the run's division), bound as an int32 line,
   and its distinct values as the segment list. A division whose r cuts differ along z
-  has no such line and is refused to the array path by name (DESIGN D8).
+  has no such line and is refused to the array path by name (docs/development/kernel-tables.md#record-layout).
 
   The scan is COLUMN-SERIAL: one lane per (phi, z) column -- per stored part, on
   complex storage, because a complex64 volume viewed as float32 words is one column
@@ -48,13 +48,13 @@ tree and transcribed with its grouping:
   phi is invariant, so Bx/Dx take the one-partner form ``(-dtdx) * (g2s - g2)`` and
   By/Dy MEEP's left-to-right ``dtdx * (((g1s - g1) + g2) - g2s)``.
 
-* THE PML FORMS (``stepping._apply_curl_regions``) through :func:`.forms.curl_form`,
+* The PML forms (``stepping._apply_curl_regions``) through :func:`.forms.curl_form`,
   keyed on the chunk record ``cb``: the split-field recurrence on the cells whose
   chunk carries the component's dsigu layer, the dsig-only form elsewhere, and ``fu``
   read and written on the recurrence's cells only (the auxiliary contract). The B
   targets read the half-integer lines, the D targets the integer ones.
 
-* THE OWNERSHIP MASK (``stepping._mask_non_owned_cells``): row 0 of every target whose
+* The ownership mask (``stepping._mask_non_owned_cells``): row 0 of every target whose
   r Yee shift is 0 (MEEP's ``little_owned_corner0`` excludes the axis, which the per-m
   rules own), and cell 0 of the metallic z wall for every target whose z shift is 0.
 
@@ -66,7 +66,7 @@ tree and transcribed with its grouping:
   -- then ``Dp[0] = 0``. The add stays a post-add on the updated field, never folded
   into the curl, as the array path writes it.
 
-THE r_to_minus_r NEAR GHOST IS NOT IMPLEMENTED, and cannot be observed. The only
+The r_to_minus_r near ghost is NOT IMPLEMENTED, and cannot be observed. The only
 targets taking a shift-down along r are Dy (partner Hz) and Dz (whose curl is the
 radial difference and reads no ghost); Dy's r Yee shift is 0, so the ownership mask
 drops its row-0 curl, the only row the near ghost would reach. The kernel serves an
@@ -74,7 +74,7 @@ exact ``+0`` there (a masked load's ``other=``), and no byte gate can certify th
 choice: a mutation that puts a faithful ghost back must come out NOT caught, and if it
 ever comes out caught the ownership mask has broken, not the ghost.
 
-WHAT IS NOT COVERED: m != 0 (complex storage, the i*m/r pass, the per-|m| axis rules;
+What is not covered: m != 0 (complex storage, the i*m/r pass, the per-|m| axis rules;
 :mod:`.cylindrical_complex`), a fold, a conductivity, BFAST, beta, a Bloch phase and a
 nonlinearity. :func:`cylindrical_curl_coverage` names each refusal.
 
@@ -506,7 +506,7 @@ def radial_scan_starts(fields: Any, pml: Any, sub_step: str,
     (:class:`~meep_gpu.chunk_map.ChunkLayoutRefusal`):
 
     * a division whose r cuts differ along z: the array path then keys the sum per
-      cell, which no per-row line describes (DESIGN D8);
+      cell, which no per-row line describes (docs/development/kernel-tables.md#record-layout);
     * a division other than the one the plan's chunk record is built from
       (``chunk_layout``, or the one-rank default when it is None): the kernel's forms
       and its sums would then follow two different divisions.
@@ -624,11 +624,11 @@ class RadialScan:
 # The coverage predicates
 # ---------------------------------------------------------------------------
 #
-# WRITTEN POSITIVELY AND ENUMERATING. Every requirement is named and checked and
+# Written positively and enumerating. Every requirement is named and checked and
 # coverage is never inferred from the absence of a known blocker — the two worst
 # defects in this project were silent wrong answers, not crashes.
 #
-# THEY DO NOT CALL ``coverage._grid_reasons``. That function's clause 6
+# They do not call ``coverage._grid_reasons``. That function's clause 6
 # (coverage.py:172-178) is a BLANKET cylindrical refusal shared by every Cartesian
 # predicate in that file; composing it here would make these predicates vacuously
 # False. Its clauses are restated below, individually, with the cylindrical ones
@@ -814,9 +814,9 @@ def cylindrical_curl_coverage(fields: Any, pml: Any) -> Coverage:
     if not getattr(fields, "stores_E", False):
         reasons.append("E is recomputed from D rather than stored")
 
-    # THE DIVISION'S r CUTS ARE GLOBAL. The radial sum restarts at each chunk's first
+    # The division's r cuts are global. The radial sum restarts at each chunk's first
     # row; a lifted division whose r cuts differ along z keys the array path's sum per
-    # cell, which the scan's per-row line cannot carry (DESIGN D8). Read from the
+    # cell, which the scan's per-row line cannot carry (docs/development/kernel-tables.md#record-layout). Read from the
     # installed division only (the one-rank default is a product layout).
     layout = _installed_layout(fields)
     if layout is not None and len(getattr(layout, "boxes", ())) > 1:
@@ -854,7 +854,7 @@ def cylindrical_curl_coverage(fields: Any, pml: Any) -> Coverage:
 def cylindrical_constitutive_coverage(fields: Any, pml: Any, side: str) -> Coverage:
     """May the EXISTING ``kernels.constitutive_step`` run on a Dcyl grid?
 
-    IT NEEDS NO NEW KERNEL, and that is a finding rather than an assumption:
+    It needs no new kernel, and that is a finding rather than an assumption:
     ``stepping.update_H`` and ``stepping.update_E`` carry NO cylindrical branch at
     all. They are element-wise with per-axis coefficient tables indexed on the
     component's OWN axis, and cylindrical changes nothing there except that axis 1

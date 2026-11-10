@@ -1,6 +1,6 @@
 """Host contract for Metal's complex/Bloch no-PML tensor-row ``update_E``.
 
-Under ruling R7 (software binary64) the family forms the array path's double row per
+In software binary64 (docs/design/floating-point.md#double-precision-on-the-metal-table) the family forms the array path's double row per
 part with the array path's Bloch connection (plane 0 of the same-index operands) and
 the per-chunk presence words, binds the chunk record and the words last, and its arm
 is wired; the weld that lifts it carries the words in ``Params`` before the record.
@@ -194,7 +194,7 @@ def test_the_record_and_the_presence_bind_last():
 
 
 def test_no_ruling_refuses_the_row(backend_ready):
-    """Every clause holds, so the predicate admits: no reason names R7."""
+    """Every clause holds, so the predicate admits: no clause refuses the binary64 row."""
     fields, pml = build()
     verdict = family.metal_complex_no_pml_offdiag_coverage(
         fields, pml, HostResidency(), _record(fields, pml))
@@ -223,7 +223,7 @@ def test_the_structural_clauses_admit_and_bind_in_order(backend_ready):
 
 
 def test_an_unreadable_boundary_rule_is_a_refusal_and_not_a_crash(monkeypatch):
-    """UNREADABLE IS A REFUSAL, NEVER A CRASH — measured on an otherwise REAL grid.
+    """Unreadable is a refusal, never a crash — measured on an otherwise REAL grid.
 
     ``coverage._boundary_kinds`` answers ``None`` for a grid the array path will not
     resolve, and ``complex_no_pml_conductive._base_reasons`` — the clause list this
@@ -313,7 +313,7 @@ def test_a_negated_connection_is_a_per_part_negation_on_plane_zero():
                          ids=("phased", "negated_x"))
 def test_the_double_row_is_the_array_paths_word_on_a_generic_state(monkeypatch,
                                                                    k_point):
-    """THE RULING'S CLAIM, on the device: on a generic complex state, where a float32
+    """The double-row claim, on the device: on a generic complex state, where a float32
     row differs from the array path's double row, the shipped row (Bloch connection
     and presence included) is 0 words from ``stepping.update_E`` per part. The
     ``negated_x`` case puts a phase of -1 on x (k_x * L_x = 1/2)."""

@@ -153,6 +153,22 @@ def _rotated_b_conductivity_medium():
     return medium
 
 
+def _rotated_d_conductivity_medium():
+    """A medium with a rotated ELECTRIC conductivity, built so every release accepts it.
+
+    MEEP 1.35.0's ``mp.Medium.__init__`` raises ``NotImplementedError`` for a nonzero
+    ``D_conductivity_offdiag`` or ``B_conductivity_offdiag`` keyword (MEEP 1.35.0
+    python/geom.py:450-460); the check is in the constructor only, so the attribute
+    assignment below still builds the medium there, as it does on 1.33.0 and 1.34.0,
+    and the lift's refusal is what the case measures. It also leaves the B side at
+    zero on every release, where the 1.33.0 constructor would have copied the D
+    keyword onto it.
+    """
+    medium = mp.Medium(epsilon=2.0)
+    medium.D_conductivity_offdiag = mp.Vector3(0.1, 0.0, 0.0)
+    return medium
+
+
 # --- per-point epsilon routes: the same slab, spelled four ways --------------------
 #
 # One structure — a z-slab of epsilon 6 in vacuum — declared through each of MEEP's
@@ -321,8 +337,8 @@ CASES = {
     # The two configurations the source/absorber guard used to refuse on ANY grid,
     # now admitted on Cartesian grids: the non-integrated deposit is mirrored into
     # f_u wherever MEEP's chunking runs the unsplit recurrence, and the integrated
-    # dipole is withdrawn from D/B before every curl ladder (evidence packet
-    # §1.5-1.7; the guard keeps only its cylindrical arm). Both entries are the
+    # dipole is withdrawn from D/B before every curl ladder (measured against
+    # CPU MEEP; the guard keeps only its cylindrical arm). Both entries are the
     # refusal table's own former cases, unchanged, so the admission is measured on
     # exactly what used to be blocked. Standalone floors on this cell at until = 6:
     # 6.3253e-07 (spanning sheet) and 9.6206e-07 (seam point).
@@ -2461,8 +2477,8 @@ REFUSALS = {
     # `source_spans_the_pml` and `source_on_the_wrapped_pml_seam` moved from this
     # table to parity CASES when the Cartesian defects were fixed and measured (the
     # per-chunk curl form, first as a deposit mirror into f_u and now as the region
-    # plan's dsig-only form, and the integrated-dipole withdraw slot; evidence packet
-    # §1.5-1.7), and `cylindrical_source_in_pml` followed when the Dcyl sweep
+    # plan's dsig-only form, and the integrated-dipole withdraw slot, measured
+    # against CPU MEEP), and `cylindrical_source_in_pml` followed when the Dcyl sweep
     # measured the same truth table transferring, every broken case at the floor.
     # What the sweep
     # found INSTEAD — an integer-r-stencil source reaching the r-max metallic wall,
@@ -2517,7 +2533,7 @@ REFUSALS = {
     # Media differing in chi3 — and it has to be chi3 (or chi2) now, because the three
     # entries this refusal used to be demonstrated on are all recoverable per point:
     # epsilon_diag and epsilon_offdiag off chi1inv at frequency 0, and
-    # D_conductivity_diag off the D row at a nonzero one. MEASURED that chi2/chi3 are
+    # D_conductivity_diag off the D row at a nonzero one. Measured that chi2/chi3 are
     # not: adding chi2=5, chi3=20 to a block moves chi1inv by exactly 0.000e+00 on the
     # E row AND on the D row, at frequency 0 and at 0.9. MEEP keeps them in their own
     # arrays (meep.hpp:591) and publishes no reader for either, so there is nothing to
@@ -2611,9 +2627,8 @@ REFUSALS = {
     # Fields._set_conductivity_side always stored sigma per component — only the
     # driver's public spelling was missing. What stays refused is the ROTATED case,
     # which genuinely has no diagonal representation.
-    "rotated_conductivity": (dict(default_material=mp.Medium(
-        epsilon=2.0, D_conductivity_offdiag=mp.Vector3(0.1, 0.0, 0.0))),
-        "rotated conductivity"),
+    "rotated_conductivity": (dict(default_material=_rotated_d_conductivity_medium()),
+                             "rotated conductivity"),
     "noisy_susceptibility": (dict(default_material=mp.Medium(epsilon=2.0, E_susceptibilities=[
         mp.NoisyLorentzianSusceptibility(frequency=1.0, gamma=0.1, sigma=0.5, noise_amp=0.01)])),
         "NoisyLorentzianSusceptibility"),
@@ -4019,7 +4034,7 @@ def run_gate(case):
             return sim, sim.add_flux(fcen, df, nfreq, *regions)
 
         # The run must outlast the source. A Gaussian at fwidth = 0.3 peaks near t = 17,
-        # and a run stopped at 16 measures the exponential turn-on tail: MEASURED 7.5e-02
+        # and a run stopped at 16 measures the exponential turn-on tail: measured 7.5e-02
         # on the SAME comparison that reads 1.3e-07 at t = 80, for both the single-plane
         # and the summed case alike. The number would have looked like a summation bug.
         until = 80.0
@@ -4788,8 +4803,11 @@ def run_readers(case):
         # NOT a lift measurement. It establishes what MEEP does with an off-diagonal
         # conductivity, which is the premise the D-side and B-side refusals rest on.
         def cell(offdiag=(0.0, 0.0, 0.0), diagonal=0.0):
-            medium = mp.Medium(epsilon=2.0, D_conductivity=diagonal,
-                               D_conductivity_offdiag=mp.Vector3(*offdiag))
+            # Assigned after construction: MEEP 1.35.0's constructor raises for a
+            # nonzero off-diagonal keyword (MEEP 1.35.0 python/geom.py:450-460) and
+            # the attribute is what the conversion reads on every release.
+            medium = mp.Medium(epsilon=2.0, D_conductivity=diagonal)
+            medium.D_conductivity_offdiag = mp.Vector3(*offdiag)
             return mp.Simulation(
                 cell_size=mp.Vector3(4, 4, 0), resolution=20, k_point=False,
                 boundary_layers=[mp.PML(0.5)], default_material=medium,
@@ -4807,16 +4825,26 @@ def run_readers(case):
         report["diagonal_vs_none"] = relative(fields["diagonal"], fields["none"])
         # Which keyword reaches B_conductivity_offdiag depends on the release:
         # python/geom.py:450 assigns it from the D KEYWORD on MEEP 1.33.0 and from
-        # the B keyword on 1.34.0. The release rides back for the parent to judge.
+        # the B keyword on 1.34.0, and MEEP 1.35.0's constructor refuses either
+        # keyword when it is nonzero (MEEP 1.35.0 python/geom.py:450-460). The
+        # release, and for each keyword what the constructor did with it, ride back
+        # for the parent to judge.
         report.update(meep_build())
-        keyword_b = mp.Medium(epsilon=2.0,
-                              B_conductivity_offdiag=mp.Vector3(0.1, 0.0, 0.0))
-        keyword_d = mp.Medium(epsilon=2.0,
-                              D_conductivity_offdiag=mp.Vector3(0.1, 0.0, 0.0))
-        report["b_keyword_reaches_b"] = [
-            float(v) for v in from_meep._vector3(keyword_b.B_conductivity_offdiag)]
-        report["d_keyword_reaches_b"] = [
-            float(v) for v in from_meep._vector3(keyword_d.B_conductivity_offdiag)]
+        for side, keyword in (("b", "B_conductivity_offdiag"), ("d", "D_conductivity_offdiag")):
+            try:
+                built = mp.Medium(epsilon=2.0, **{keyword: mp.Vector3(0.1, 0.0, 0.0)})
+            except NotImplementedError as refusal:
+                report[f"{side}_keyword_refused"] = str(refusal)
+                report[f"{side}_keyword_reaches_b"] = None
+                continue
+            report[f"{side}_keyword_refused"] = None
+            report[f"{side}_keyword_reaches_b"] = [
+                float(v) for v in from_meep._vector3(built.B_conductivity_offdiag)]
+        # The spelling every release accepts: the attribute, assigned after construction.
+        assigned = mp.Medium(epsilon=2.0)
+        assigned.B_conductivity_offdiag = mp.Vector3(0.1, 0.0, 0.0)
+        report["b_attribute_reaches_b"] = [
+            float(v) for v in from_meep._vector3(assigned.B_conductivity_offdiag)]
         return report
     if case in ("dft_array_centred", "dft_array_yee", "dft_array_mirrored"):
         yee = case == "dft_array_yee"
@@ -4909,6 +4937,48 @@ def run_readers(case):
         empty = np.asarray(sim4.get_eigenmode_coefficients(
             mon4, [1], eig_parity=mp.ODD_Z + mp.EVEN_Y).alpha).ravel()
         report["control_unloaded_alpha_max"] = float(np.abs(empty).max())
+        return report
+    if case == "decay_sampling_interval":
+        # MEEP's own stop_when_fields_decayed against FdtdDriver.run's decay keywords on
+        # the same simulation lifted, at MEEP's default interval and at intervals that
+        # skip samples (sampling_interval is new in MEEP 1.34.0; MEEP 1.35.0
+        # python/simulation.py:5778-5840). The probe point is an exact Ez sample of the
+        # resolution-20 lattice, so MEEP's interpolated read and the driver's nearest
+        # point are the same word. MEEP's stop is sim.fields.t; the driver's is its
+        # step count, which the docstring of driver._FieldDecayProbe equates. The window,
+        # 2.01, is not a whole number of steps (dt = 0.025): on a whole number the window
+        # boundary is a tie, which MEEP judges on round_time() in single precision and the
+        # driver on its double time, the one-step window offset its docstring states.
+        import inspect  # noqa: PLC0415
+
+        def decay_sim():
+            return mp.Simulation(
+                resolution=20, cell_size=mp.Vector3(6, 6), boundary_layers=[mp.PML(1.0)],
+                sources=[mp.Source(src=mp.GaussianSource(1.0, fwidth=1.0),
+                                   center=mp.Vector3(), component=mp.Ez)])
+
+        report.update(meep_build())
+        point = (0.5, 0.25, 0.0)
+        takes_interval = "sampling_interval" in inspect.signature(
+            mp.stop_when_fields_decayed).parameters
+        report["meep_takes_sampling_interval"] = takes_interval
+        report["runs"] = {}
+        for interval in ((1, 7, 23) if takes_interval else (1,)):
+            options = {"sampling_interval": interval} if takes_interval else {}
+            sim = decay_sim()
+            sim.run(until_after_sources=mp.stop_when_fields_decayed(
+                2.01, mp.Ez, mp.Vector3(*point), 1e-4, **options))
+            meep_steps = int(sim.fields.t)
+            driver = lift_simulation(decay_sim(), prefer_gpu=False)
+            try:
+                driver.run(until_after_sources=2.01, decay_by=1e-4, decay_component="Ez",
+                           decay_point=point, decay_sampling_interval=interval,
+                           max_time=400.0)
+                engine_steps = int(driver.step_count)
+            finally:
+                driver.close()
+            report["runs"][str(interval)] = {"meep_steps": meep_steps,
+                                             "engine_steps": engine_steps}
         return report
     if case in ("force_diagonal", "force_diagonal_decimated"):
         # MEEP's own test_force.py setup, verbatim: a 2-D Ez Gaussian in a 10x10 cell
@@ -5022,9 +5092,57 @@ def run_readers(case):
     raise SystemExit("unknown readers case: " + case)
 
 
+def _octahedron_mesh(center=(0.13, -0.07, 0.31), half_width=0.6, epsilon=4.0):
+    """A closed octahedron as an mp.Mesh: eight slanted faces, so its subpixel average
+    puts weight in chi1inv's off-diagonal entries. Built on demand, never at import:
+    mp.Mesh is new in MEEP 1.34.0."""
+    a = half_width
+    vertices = [(a, 0, 0), (-a, 0, 0), (0, a, 0), (0, -a, 0), (0, 0, a), (0, 0, -a)]
+    triangles = []
+    for sx in (1, -1):
+        for sy in (1, -1):
+            for sz in (1, -1):
+                ix, iy, iz = (0 if sx > 0 else 1), (2 if sy > 0 else 3), (4 if sz > 0 else 5)
+                # Outward normal by the right-hand rule: an octant reached by an odd
+                # number of reflections reverses the winding.
+                triangles.append((ix, iy, iz) if sx * sy * sz > 0 else (ix, iz, iy))
+    return mp.Mesh(vertices=vertices, triangles=triangles, center=mp.Vector3(*center),
+                   material=mp.Medium(epsilon=epsilon))
+
+
+#: Lift rows whose geometry only some MEEP releases can build: each value builds its
+#: CASES entry when the case is asked for. mp.Mesh (MEEP 1.34.0 and later, and only
+#: where MEEP was built against libctl's make_mesh_with_center) holds the octahedron.
+MESH_CASES = {
+    "mesh_octahedron": lambda: (
+        dict(geometry=[_octahedron_mesh()]), dict(until=3.0), "Ez",
+        {"no_geometry": dict(geometry=[]),
+         # The registration control, as structured_slab's: the same mesh moved half a
+         # cell along z (dz = 0.05 at resolution 10).
+         "half_cell_shifted": dict(geometry=[_octahedron_mesh(center=(0.13, -0.07, 0.36))])},
+    ),
+}
+
+
+def run_mesh(case):
+    """A MESH_CASES row through run_case, or the reason this MEEP cannot build it."""
+    if not hasattr(mp, "Mesh"):
+        return dict(meep_build(), unavailable=(
+            f"MEEP {mp.__version__} has no mp.Mesh (new in MEEP 1.34.0)"))
+    CASES[case] = MESH_CASES[case]()
+    try:
+        data = run_case(case)
+    except NotImplementedError as refusal:  # MEEP built without make_mesh_with_center.
+        return dict(meep_build(), unavailable=str(refusal))
+    data.update(meep_build())
+    return data
+
+
 mode, case, output_path = sys.argv[1], sys.argv[2], sys.argv[3]
 if mode == "parity":
     data = run_case(case)
+elif mode == "mesh":
+    data = run_mesh(case)
 elif mode == "readers":
     data = run_readers(case)
 elif mode == "refusal":
@@ -5182,7 +5300,7 @@ _PARITY_BOUNDS = {
     # fold itself is the control the shape assertion already is: an unfolded lift
     # returns a different array.
     #
-    # THE PARITY NUMBER JITTERS AND THE BAR IS SET FOR IT: six repeat runs measured
+    # The parity number jitters and the bar is set for it: six repeat runs measured
     # 2.19 / 2.36 / 2.42 / 2.51 / 3.71 / 3.93 e-07 where the unfolded twin reproduces
     # 6.22876257082791e-07 to every digit. The MPB solve is iterative and its
     # convergence is not bit-reproducible run to run (the sheet profile moves in its
@@ -5209,7 +5327,7 @@ _PARITY_BOUNDS = {
     "beam_two_d_te": (5e-6, {"flip_other_sheet_signs": 0.5, "plain_ey_sheet": 0.5}),
     "beam_three_d": (1e-6, {"hx_is_ey": 1e-4, "flip_sheet_signs": 0.5,
                             "plain_ex_sheet": 0.5}),
-    # THE SAME BEAM ON REAL STORAGE, CW and pulsed. The bar is the 2-D beam's own 1e-6:
+    # The same beam on real storage, CW and pulsed. The bar is the 2-D beam's own 1e-6:
     # the claim is that `real(A)` costs nothing, so the real case has to hold the bar
     # its complex twin holds, not a looser one. `drop_beam_phase` is the control that
     # earns both — `Re(a)*s` in place of `Re(a*s)`, the one-line "make the amplitude
@@ -5541,7 +5659,7 @@ def test_lifted_simulation_matches_cpu_meep(tmp_path, case):
     right launch at monochromatic steady state — a GaussianSource is neither, and the
     numbers were sampled from t = 0.5 upward for the same reason.
 
-    THE EXACT 2-D BEAM, which is a third mechanism rather than a variant of the two
+    The exact 2-D beam, which is a third mechanism rather than a variant of the two
     above: ``mp.GaussianBeam2DSource`` performs its whole Hankel-function synthesis in
     Python (``get_fields`` -> ``green2d``, source.py:821-1044) and deposits an ordinary
     ``mp.Source`` PAIR carrying ``amp_data``, so this lift CALLS MEEP's synthesis
@@ -5552,13 +5670,13 @@ def test_lifted_simulation_matches_cpu_meep(tmp_path, case):
 
     ``electric_current_only`` is the control that earns it. ``get_equiv_sources``
     returns Love's equivalent PAIR — ``K = nHat x H`` and ``N = -nHat x E``
-    (source.py:786-794) — and MEASURED on this cell, keeping only the electric half
+    (source.py:786-794) — and measured on this cell, keeping only the electric half
     leaves a run with the full signal and the same step count that is 6.89e-01 from
     MEEP: the sheet radiates in BOTH directions at half amplitude. ``beam_3d_instead``
     is the 3-D complex-point-source approximation on the same declaration, 4.38e+00
     away, which is what says this case measures the 2-D synthesis and not "a beam".
 
-    MEEP'S OWN ASSERTIONS on this source are reproduced separately and are the
+    MEEP's own assertions on this source are reproduced separately and are the
     stronger evidence: ``test_gaussianbeam.py::TestGaussianBeamSource.test_gaussian_beam``
     drives 2/2 through this engine (10 000 steps), with MEEP's focus-energy fraction
     coming out at 0.98630 (the 2-D beam) and 0.99062 (the 3-D one) against its own
@@ -5583,7 +5701,7 @@ def test_lifted_simulation_matches_cpu_meep(tmp_path, case):
     sits on the floor the isotropic one already held. ``D_conductivity_offdiag``
     stays refused (``rotated_conductivity``) and genuinely has no diagonal form.
 
-    THE PERFECT ELECTRIC CONDUCTOR, which is not a fourth mechanism at all and that is
+    The perfect electric conductor, which is not a fourth mechanism at all and that is
     the point. ``mp.metal`` is ``Medium(epsilon=-inf)`` where MEEP's ``inf`` is the
     literal 1.0e20, so the medium carries epsilon = -1e20; it stays
     ``material_data::MEDIUM``, ``material_epsmu`` inverts it on the ORDINARY
@@ -5656,7 +5774,7 @@ def test_lifted_simulation_matches_cpu_meep(tmp_path, case):
     the one a lift with a registration slip would reproduce. It sits at 3.46e-01
     and 1.22e-01 against parity numbers six orders of magnitude smaller.
 
-    THE CONTROLS ARE THE TEST. Every one of them is a complete, smooth,
+    The controls are the test. Every one of them is a complete, smooth,
     finite field that a broken converter would return without complaint: the
     Bloch control is the run a converter that accepted ``k_point`` and ignored it
     produces, ``high_face`` is MEEP's High = 0 / Low = 1 enum read the intuitive
@@ -5685,6 +5803,61 @@ def test_lifted_simulation_matches_cpu_meep(tmp_path, case):
             f"{case}: the '{name}' control is only {measured:.3e} away from the lifted field "
             f"(needs > {floor:.0e}). This case cannot distinguish a working lift from one that "
             f"dropped the feature, so its parity number means nothing."
+        )
+
+
+# case -> (parity bound, {control: lower bound the control must EXCEED}), as
+# _PARITY_BOUNDS, for the rows MESH_CASES builds only on a MEEP that has mp.Mesh.
+# Measured on MEEP 1.35.0 single precision (Darwin arm64): parity 0.0, no_geometry
+# 1.10e-01, half_cell_shifted 2.77e-02.
+_MESH_BOUNDS = {
+    "mesh_octahedron": (5e-6, {"no_geometry": 0.05, "half_cell_shifted": 0.005}),
+}
+
+
+@requires_meep
+@skip_without_meep
+@pytest.mark.parametrize("case", sorted(_MESH_BOUNDS))
+def test_a_mesh_geometry_lifts_and_matches_cpu_meep(tmp_path, case):
+    """An ``mp.Mesh`` cell lifts, steps and matches CPU MEEP stepping the same object.
+
+    ``mp.Mesh`` is new in MEEP 1.34.0, and MEEP converts it only when it was built
+    against libctl's ``make_mesh_with_center`` (libctl 4.7.0 and later; MEEP 1.35.0
+    python/typemap_utils.cpp:1033-1039 raises ``NotImplementedError`` otherwise). The
+    lift needs no mesh code of its own: it reads MEEP's stored chi1inv, the slanted
+    faces' off-diagonal entries included, and a mesh takes no bounding-box gate in the
+    per-point medium lookup (``from_meep._libctl_bounding_box``). On a MEEP that
+    cannot build the mesh the child says why and the test skips by name.
+    """
+    bound, control_bounds = _MESH_BOUNDS[case]
+    data = _child(tmp_path, "mesh", case)
+    if data.get("unavailable"):
+        # Only two reasons are legitimate: a MEEP before 1.34.0, which has no mp.Mesh,
+        # and MEEP's own refusal to convert one without libctl's make_mesh_with_center.
+        release = _meep_release(data["meep_version"])
+        assert release < (1, 34, 0) or "make_mesh_with_center" in data["unavailable"], (
+            f"MEEP {data['meep_version']} has mp.Mesh, yet the child reported it unavailable: "
+            f"{data['unavailable']}")
+        pytest.skip(f"[requires_resource][meep_mesh] {data['unavailable']}")
+    print(
+        f"[from_meep] {case:32} MEEP {data['meep_version']} parity {data['parity']!r} "
+        f"controls {data['controls']} steps {data['steps']}",
+        flush=True,
+    )
+    assert data["shape"] == data["reference_shape"], (
+        f"{case}: the lifted array is {data['shape']} where CPU MEEP's is "
+        f"{data['reference_shape']}; the two codes built different grids."
+    )
+    assert data["parity"] is not None and data["parity"] < bound, (
+        f"{case}: complex relative L2 against CPU MEEP is {data['parity']:.3e}, above the "
+        f"{bound:.0e} bar for a structured cell with off-diagonal chi1inv."
+    )
+    for name, floor in control_bounds.items():
+        measured = data["controls"][name]
+        assert measured > floor, (
+            f"{case}: the '{name}' control is only {measured:.3e} away from the lifted field "
+            f"(needs > {floor:.0e}), so this case cannot tell a working lift from one that "
+            f"dropped the mesh."
         )
 
 
@@ -6062,6 +6235,11 @@ def test_a_pml_thinner_than_a_quarter_cell_is_lifted_as_no_pml_at_all(tmp_path):
 #: The MEEP release whose python/geom.py:450 assigns ``B_conductivity_offdiag`` from
 #: the B keyword. 1.33.0 (and 1.31.0) assign it from the D keyword.
 _GEOM_450_CORRECTED_IN = (1, 34, 0)
+#: The MEEP release whose ``mp.Medium.__init__`` raises ``NotImplementedError`` for a
+#: nonzero ``D_conductivity_offdiag`` or ``B_conductivity_offdiag`` keyword (MEEP
+#: 1.35.0 python/geom.py:450-460). Assigning the attribute after construction is
+#: not checked there.
+_GEOM_450_REFUSES_IN = (1, 35, 0)
 
 
 def _meep_release(version) -> tuple:
@@ -6076,10 +6254,10 @@ def _meep_release(version) -> tuple:
 @requires_meep
 @skip_without_meep
 def test_an_offdiagonal_conductivity_never_reaches_meeps_stepper(tmp_path):
-    """The premise both rotated-conductivity refusals rest on, MEASURED not assumed.
+    """The premise both rotated-conductivity refusals rest on, measured not assumed.
 
     The refusal used to argue that a rotated tensor "couples the components in
-    step_D". IT DOES NOT — MEEP never receives it. ``medium_struct`` carries
+    step_D". It does not — MEEP never receives it. ``medium_struct`` carries
     ``D_conductivity_diag`` and ``B_conductivity_diag`` and no off-diagonal at all
     (src/material_data.hpp:78-79), and the Python-to-C++ conversion copies exactly
     those two (python/typemap_utils.cpp:815-816). So the declaration is DISCARDED,
@@ -6094,8 +6272,10 @@ def test_an_offdiagonal_conductivity_never_reaches_meeps_stepper(tmp_path):
     (python/geom.py:450), the D keyword rather than the B one: a
     ``B_conductivity_offdiag=`` argument is silently dropped and a
     ``D_conductivity_offdiag=`` argument silently sets both sides. MEEP 1.34.0 assigns
-    each keyword to its own attribute. A release that behaves otherwise than the NOTE
-    says for it fails here.
+    each keyword to its own attribute. MEEP 1.35.0's constructor refuses either keyword
+    when it is nonzero (``NotImplementedError``, MEEP 1.35.0 python/geom.py:450-460),
+    and an attribute assigned after construction still reaches the medium there. A
+    release that behaves otherwise than the NOTE says for it fails here.
     """
     data = _child(tmp_path, "readers", "conductivity_offdiag_is_discarded_by_meep")
     print(f"[from_meep] offdiag_discard offdiag {data['offdiag_vs_none']:.4e} "
@@ -6111,7 +6291,19 @@ def test_an_offdiagonal_conductivity_never_reaches_meeps_stepper(tmp_path):
         f"zero above means nothing."
     )
     version = data["meep_version"]
-    if _meep_release(version) >= _GEOM_450_CORRECTED_IN:
+    assert data["b_attribute_reaches_b"] == [0.1, 0.0, 0.0], (
+        f"on MEEP {version} an assigned B_conductivity_offdiag attribute does not reach the "
+        f"medium ({data['b_attribute_reaches_b']}); the refusal is reachable by assignment "
+        f"on every release, so this spelling must keep working.")
+    if _meep_release(version) >= _GEOM_450_REFUSES_IN:
+        for side in ("b", "d"):
+            refused = data[f"{side}_keyword_refused"]
+            assert refused is not None and "conductivity_offdiag" in refused, (
+                f"on MEEP {version} mp.Medium({side.upper()}_conductivity_offdiag=...) was "
+                f"not refused by the constructor (it reached {data[f'{side}_keyword_reaches_b']}); "
+                f"the refusal's NOTE says 1.35.0 raises NotImplementedError there. Re-read "
+                f"python/geom.py:450-460.")
+    elif _meep_release(version) >= _GEOM_450_CORRECTED_IN:
         assert data["b_keyword_reaches_b"] == [0.1, 0.0, 0.0], (
             f"on MEEP {version} mp.Medium(B_conductivity_offdiag=...) does not reach the "
             f"attribute ({data['b_keyword_reaches_b']}); the refusal's NOTE says 1.34.0 "
@@ -6129,6 +6321,38 @@ def test_an_offdiagonal_conductivity_never_reaches_meeps_stepper(tmp_path):
             f"on MEEP {version} mp.Medium(D_conductivity_offdiag=...) no longer aliases "
             f"onto B_conductivity_offdiag ({data['d_keyword_reaches_b']}); the refusal's "
             f"NOTE says 1.33.0 and 1.31.0 do (python/geom.py:450). Correct the NOTE.")
+
+
+@requires_meep
+@skip_without_meep
+def test_the_decay_stop_samples_where_meeps_sampling_interval_does(tmp_path):
+    """FdtdDriver.run's ``decay_sampling_interval`` stops on MEEP's step.
+
+    MEEP 1.34.0 gave ``stop_when_fields_decayed`` a ``sampling_interval``: the probe
+    point is read only on steps whose ``fields.t`` is a multiple of it, the window test
+    still runs every step, and the default 1 is the criterion before it (MEEP 1.35.0
+    python/simulation.py:5778-5840). The same simulation is run by MEEP with the
+    criterion and lifted onto the driver with the keyword, at intervals 1, 7 and 23,
+    and the two stop on the same step. On a MEEP whose criterion has no
+    ``sampling_interval`` only the default is compared. The window is not a whole
+    number of steps, so no window boundary is a tie between MEEP's single-precision
+    ``round_time()`` and the driver's double time (the one-step offset
+    ``driver._FieldDecayProbe`` documents).
+    """
+    data = _child(tmp_path, "readers", "decay_sampling_interval")
+    runs = data["runs"]
+    print(f"[from_meep] decay_sampling_interval MEEP {data['meep_version']} {runs}", flush=True)
+    expected = ["1", "7", "23"] if data["meep_takes_sampling_interval"] else ["1"]
+    assert sorted(runs, key=int) == expected, runs
+    for interval, run in runs.items():
+        assert run["engine_steps"] == run["meep_steps"], (
+            f"sampling_interval={interval}: MEEP stopped after {run['meep_steps']} steps and the "
+            f"driver after {run['engine_steps']}; the criterion is not MEEP's.")
+    if data["meep_takes_sampling_interval"]:
+        stops = {run["meep_steps"] for run in runs.values()}
+        assert len(stops) > 1, (
+            f"every interval stopped MEEP on the same step ({stops}); this case cannot tell an "
+            f"interval the driver ignored from one it honoured.")
 
 
 @requires_meep
@@ -6307,7 +6531,7 @@ def test_get_array_phases_the_bloch_duplicate_plane_as_meep_does():
     forms the plane in ``array_slice``'s store (array_slice.cpp:416) from the top
     centred point's double sum times ``shift_phase * phase_shift``, with
     ``shift_phase = prod_d pow(eikna[d], ishift[d])`` in libc++'s arithmetic
-    (loop_in_chunks.cpp:412-417), and rounds once per part. P0-g measured that form
+    (loop_in_chunks.cpp:412-417), and rounds once per part. A check before 1.0 found that form
     value-identical to MEEP on 476,016 duplicate-plane words, where the 0.9.2
     per-axis ``conj(bloch_phase)`` complex64 correction differed in 4,373.
 
@@ -6460,7 +6684,7 @@ def test_run_on_gpu_requires_exactly_one_stopping_condition():
 def test_the_boundary_condition_is_lifted_from_k_point_and_reported_as_a_declaration(tmp_path):
     """``sim.k_point`` decides the whole cell's outer boundary, and the lift says which.
 
-    THE CONDITION IS ALL-OR-NOTHING, because MEEP makes it so:
+    The condition is all-or-nothing, because MEEP makes it so:
     ``Simulation._init_fields`` calls ``fields::use_bloch`` for EVERY direction under a
     plain ``if self.k_point:`` (python/simulation.py), and ``use_bloch`` overwrites both
     faces of the axis it is given with ``Periodic`` (boundaries.cpp). ``k_point=False``,
@@ -6856,11 +7080,17 @@ def test_near2far_stored_weight_is_meeps_signed_zero():
             f"s={sign} w={weight}: the imaginary zero's sign is MEEP's region label; "
             f"built {built.imag!r} where MEEP has {expected[1]!r}"
         )
-    # The two that a promoted (Python) product would collapse together.
+    # The two that a promoted (Python) product would collapse together. Python 3.10 to
+    # 3.13 promote the float and run the full product (+0.0). Python 3.14 multiplies a
+    # real by a complex componentwise, as C++ does (C99 Annex G mixed-mode arithmetic),
+    # so there the plain product already keeps MEEP's sign; the rule stays for the
+    # older interpreters the package supports.
     collapsed = -1.0 * complex(1.0)
-    assert _math.copysign(1.0, collapsed.imag) == +1.0, (
-        "Python's promoted product no longer differs from the componentwise one, so "
-        "this rule has stopped describing anything — re-derive it before deleting."
+    promoted_sign = -1.0 if sys.version_info >= (3, 14) else +1.0
+    assert _math.copysign(1.0, collapsed.imag) == promoted_sign, (
+        "Python's float * complex no longer behaves as this rule assumes for this "
+        "interpreter, so the rule may have stopped describing anything — re-derive it "
+        "before deleting."
     )
 
 
@@ -6943,7 +7173,7 @@ def test_near2far_corner_claimants_are_separated(tmp_path):
       7.47e-03 of absolute error on that single site, and 1.40e-03 in the far field.
     * **complex_weights** — the same cell with region weights ``1+1j`` and ``-1-1j``,
       for which the tangential-pair signs make the two claimants' stored weights
-      identical BIT FOR BIT. No reading of the weight can separate them; only ``vc``
+      identical bit for bit. No reading of the weight can separate them; only ``vc``
       does — measured **1.84e-02** with it dropped and 7.11e-07 with it.
 
     The controls are the wrong implementations re-applied on the same accumulated data,
@@ -7087,7 +7317,7 @@ def test_flux_region_may_extend_along_its_own_normal(tmp_path):
     No special case was needed for it: the ladder treats the normal axis like any other
     and ``FluxMonitor._measure`` already takes one ``dx`` per extended axis, which is
     MEEP's own ``dV0`` rule. Each volume is measured beside the plane it degenerates to.
-    An INFERRED normal with extent still raises, because there the axis would be a guess.
+    An inferred normal with extent still raises, because there the axis would be a guess.
     """
     data = _child(tmp_path, "gate", "flux_region_volume")
 
@@ -7601,7 +7831,7 @@ def test_a_dc_dft_monitor_accumulates_what_meeps_own_accumulator_does(tmp_path):
     integral of the field and needs no new code — what it needed was for the gate and
     ``dft.normalize_frequencies`` to stop refusing it by name.
 
-    THE RESIDUAL IS COMPARED ABSOLUTELY, NOT RELATIVELY, and that is the measurement
+    The residual is compared absolutely, not relatively, and that is the measurement
     rather than a softened bar. On this cell (3x3, resolution 10, eps 2, PML 0.6, a
     Gaussian Ez dipole, 400 steps) the DC bin's own magnitude is 0.0189 while the
     0.8 bin's is 21.4 — a factor of 1100 — because a lossless pulse's time integral
@@ -7616,7 +7846,7 @@ def test_a_dc_dft_monitor_accumulates_what_meeps_own_accumulator_does(tmp_path):
     Quoting only the relative figure would report a DC accumulator as three orders
     worse than an AC one, which it is not.
 
-    THE DECIMATION IS THE ONLY DC-SENSITIVE LINE IN dft.cpp, so both shapes are run.
+    The decimation is the only DC-sensitive line in dft.cpp, so both shapes are run.
     ``fields::add_dft`` sets the automatic factor to
     ``floor(1/(dt*(freq_max+src_freq_max)))`` only when ``freq_max > 0``, and falls
     through to 1 otherwise (dft.cpp:207-210). Measured here: 1 for the DC-only monitor
@@ -7658,7 +7888,7 @@ def test_a_dc_dft_monitor_accumulates_what_meeps_own_accumulator_does(tmp_path):
 def test_point_dft_region_readback_is_finite_at_any_alignment():
     """A POINT dft region reads back finite as-accumulated cells at both alignments.
 
-    The upstream contrast this pins against (port reference §5b, found 2026-08-04):
+    The upstream contrast this pins against (an observation about MEEP, 2026-08-04):
     MEEP 1.29 returns an UNINITIALIZED buffer for a half-cell-aligned point region
     (measured 5.8e+28), and MEEP 1.33 — post-#3010, whose regression test covers
     only 1-D — returns exactly 0+0j in a 2-D cell where the surrounding field is
@@ -7901,7 +8131,7 @@ def test_pack_flux_data_serves_meeps_own_eigenmode_reader(tmp_path, case):
     * a second control, the un-loaded simulation, whose ``alpha`` is 0 + 0j — so a
       passing number cannot be MEEP quietly answering itself.
 
-    THE THREE CASES ARE THREE DIFFERENT CHUNK LISTS, not one setup run three times.
+    The three cases are three different chunk lists, not one setup run three times.
 
     * ``flux_packer`` — no symmetry: one list, ``sn = 0`` throughout.
     * ``flux_packer_mirrored`` — ``add_mode_monitor`` under ``Mirror(Y)``. It sets
@@ -7916,7 +8146,7 @@ def test_pack_flux_data_serves_meeps_own_eigenmode_reader(tmp_path, case):
       the one case that is genuinely ambiguous, a folded monitor against an
       unpolarised mode (mpb.cpp:934-936, ``parity == 0``).
 
-    MEASURED (pristine MEEP 1.33.0 single precision, env ``reference``, NumPy backend;
+    Measured (pristine MEEP 1.33.0 single precision, env ``reference``, NumPy backend;
     both codes stepped 1600 steps to t = 40.0 in every case):
 
     ============================  ======  ========  ========  ========  ========
@@ -7927,7 +8157,7 @@ def test_pack_flux_data_serves_meeps_own_eigenmode_reader(tmp_path, case):
     ``flux_packer_reduced``        84     9.41e-07  6.18e-07  2.59e-07  2.73e-08
     ============================  ======  ========  ========  ========  ========
 
-    THE CONTROL IS WHAT DISTINGUISHES THE THIRD CASE, and its shape is the evidence
+    The control is what distinguishes the third case, and its shape is the evidence
     for taking the measure off the chunk. On the two full-plane lists this engine's
     own region weights reproduce MEEP's stored E exactly — 0 sites differ by more
     than 1e-4 relative — because the two models bracket the SAME region. On the
@@ -8031,13 +8261,13 @@ def test_a_yee_grid_mode_monitor_is_refused_by_name(tmp_path):
 # second.
 _FORCE_PUBLISHED = -0.11039089113393187
 
-# THE PARITY BOUNDS FOLLOW THE PRECISION OF THE MEEP COMPARED WITH. The engine steps
+# The parity bounds follow the precision of the MEEP compared with. The engine steps
 # single precision whatever MEEP was built with; against a double-precision MEEP
 # (every conda-forge pymeep build) the comparison also measures float32 against
 # float64 rounding, which the single-precision bounds were never set for. The child
 # reports the precision it compared with (``meep_precision``).
 #
-# MEASURED against double-precision MEEP (one Apple silicon host, 2026-09-28; 6 runs
+# Measured against double-precision MEEP (one Apple silicon host, 2026-09-28; 6 runs
 # per case: MEEP 1.33.0 double in 2 environments and MEEP 1.34.0 double in 1, 2 runs
 # in each, with NumPy 2.2.6, 2.4.6 and 2.5.3; identical digits in 6 of 6):
 #
@@ -8074,7 +8304,7 @@ def test_a_diagonal_force_region_reproduces_meeps_own_stress_tensor(tmp_path):
     ``YeeRegionDFT.weighted_square`` and not through ``packed`` — the latter would
     apply the weight to the transform and square it.
 
-    MEASURED (pristine MEEP 1.33.0, single precision, env ``reference``; the stopping
+    Measured (pristine MEEP 1.33.0, single precision, env ``reference``; the stopping
     condition is run on the control and its simulation time reused verbatim, so both
     codes step the same span — 4002 steps to t = 100.05):
 
@@ -8089,8 +8319,8 @@ def test_a_diagonal_force_region_reproduces_meeps_own_stress_tensor(tmp_path):
     ``parity/meep_gpu/drive_meep_test_assertions.py``; this test pins the numbers so a
     regression is a failure here rather than a silent drift in that survey.
 
-    THE DECIMATION-1 BOUND IS 2e-07, NOT 1e-07, because the REFERENCE moves between
-    builds and this engine does not. MEASURED on an x86-64 Linux MEEP 1.33.0
+    The decimation-1 bound is 2e-07, not 1e-07, because the REFERENCE moves between
+    builds and this engine does not. Measured on an x86-64 Linux MEEP 1.33.0
     single-precision build (the NVIDIA reference environment): MEEP
     ``-0.11039091094738217``, this engine ``-0.11039092446256414`` -- 1.22e-07
     relative at one OpenMP thread and 1.45e-07 at two. MEEP's own value is 9.61e-08
@@ -8157,7 +8387,7 @@ def test_an_energy_region_straddling_a_mirror_plane_reproduces_meeps_own_densiti
     This engine's reflected gather is that visit, and the region here straddles the
     plane, so a stored-half integral would be visibly short rather than subtly off.
 
-    MEASURED (pristine MEEP 1.33.0, single precision, env ``reference``; both codes
+    Measured (pristine MEEP 1.33.0, single precision, env ``reference``; both codes
     stepped 17334 steps to t = 433.35, MEEP's own ``until_after_sources=100`` end):
 
     * electric  MEEP ``2000.8391586171483``  engine ``2000.83359375``   2.78e-06
@@ -8247,7 +8477,7 @@ _PARITY_TRUTH_TABLE = (
      "off the plane the image is a DISTINCT current, not a canceller; MEEP's folded "
      "run equals its unfolded pair at 2.9e-07 and this engine reproduces it at 9.3e-07"),
     ("eigenmode_sheet_crossing_the_plane", +1, "eigenmode", True,
-     "THE FIVE ROWS. Every EigenModeSource MEEP itself writes drives two sheets the "
+     "The five rows. Every EigenModeSource MEEP itself writes drives two sheets the "
      "plane makes odd (the Love pair, mpb.cpp:886-900), so a per-component rule refuses "
      "all of them; the sheets carry MPB's mode profile and fold correctly, measured "
      "1.0e-06 against CPU MEEP on test_special_kz and test_mode_coeffs"),
@@ -8456,7 +8686,7 @@ def _probe_address_reuse(make, keep=None, attempts=256):
 def test_migrated_monitors_pins_the_address_of_the_meep_monitors_it_holds(kind):
     """The container OWNS its MEEP monitors, so their ids can never be handed out again.
 
-    THE DETERMINISTIC HALF of the two-run defect. The hazard needs an address to be
+    The deterministic half of the two-run defect. The hazard needs an address to be
     recycled; the fix makes recycling impossible rather than making a recycled address
     survivable, so what is asserted here is that the address is never handed out again —
     over 256 fresh allocations of the same class, immediately after every external
@@ -8612,3 +8842,129 @@ def test_two_live_monitors_of_one_run_never_resolve_to_each_other():
         "the mapping protocol stays available for callers that spell the lookup as "
         "`map[id(monitor)]`, and it is safe because the container owns the objects"
     )
+
+
+# --- MEEP 1.35 readers and stop conditions, refused by name (no MEEP needed) ----------
+
+
+def _stop_when_fields_decayed(dt=None, c=None, pt=None, decay_by=None, sampling_interval=1):
+    """A stand-in with MEEP's shape: a factory returning a closure named ``_stop``."""
+    def _stop(sim):
+        return False
+    return _stop
+
+
+def _stop_when_flux_decayed(flux=None, tol=1e-11):
+    def _stop(sim):
+        return False
+    return _stop
+
+
+# MEEP's factories are module-level functions of meep.simulation, so their closures'
+# qualified names are 'stop_when_fields_decayed.<locals>._stop'; the stand-ins above
+# carry the same names.
+_stop_when_fields_decayed.__qualname__ = "stop_when_fields_decayed"
+_stop_when_flux_decayed.__qualname__ = "stop_when_flux_decayed"
+
+
+@pytest.mark.parametrize("keyword", ["until", "until_after_sources"])
+@pytest.mark.parametrize("condition, words", [
+    ("fields", ["stop_when_fields_decayed is not hosted", "decay_sampling_interval",
+                "lift_simulation(sim)"]),
+    ("flux", ["stop_when_flux_decayed is not hosted", "mp.get_fluxes(flux)",
+              "result.get_flux_spectrum(flux)"]),
+    ("callable", ["is not hosted", "stops on a time only"]),
+    ("list", ["a list of stop conditions", "stop_when_fields_decayed, 3.0"]),
+])
+def test_a_stop_condition_is_refused_by_name_before_anything_is_lifted(keyword, condition, words):
+    """``run_on_gpu`` takes a simulation time; a MEEP criterion is refused by name.
+
+    The refusal fires before MEEP is imported or the simulation touched, so it needs no
+    MEEP here, and it names the criterion and what to use instead rather than failing
+    in ``float(until)`` after the lift. MEEP's closures are named ``_stop``; the
+    criterion is the factory in the closure's qualified name.
+    """
+    from .from_meep import run_on_gpu
+
+    def _qualified(factory, *args):
+        closure = factory(*args)
+        closure.__qualname__ = f"{factory.__qualname__}.<locals>._stop"
+        return closure
+
+    value = {
+        "fields": lambda: _qualified(_stop_when_fields_decayed, 50, 4, None, 1e-6),
+        "flux": lambda: _qualified(_stop_when_flux_decayed, object()),
+        "callable": lambda: (lambda sim: True),
+        "list": lambda: [_qualified(_stop_when_fields_decayed, 50, 4, None, 1e-6), 3.0],
+    }[condition]()
+
+    class _Untouchable:  # Any attribute read means the refusal came too late.
+        def __getattr__(self, name):
+            raise AssertionError(f"the simulation was read ({name}) before the refusal")
+
+    with pytest.raises(TypeError) as refused:
+        run_on_gpu(_Untouchable(), **{keyword: value}, prefer_gpu=False)
+    message = str(refused.value)
+    assert message.startswith(f"run_on_gpu takes {keyword} as a simulation time"), message
+    for expected in words:
+        assert expected in message, (expected, message)
+
+
+@pytest.mark.parametrize("kind, words", [
+    ("DftEnergy", ["a DftEnergy is refused", "src/dft.cpp:1307-1319",
+                   "result.get_electric_energy(obj)"]),
+    ("DftFlux", ["a DftFlux is refused", "result.get_flux_spectrum(obj)"]),
+    ("DftForce", ["a DftForce is refused", "result.get_forces(obj)"]),
+    ("DftNear2Far", ["a DftNear2Far is refused", "result.load_near2far(sim, obj)"]),
+    ("Volume", ["a Volume is refused", "not a DFT field monitor"]),
+])
+def test_get_dft_array_reads_dft_fields_only_and_refuses_the_rest_by_name(kind, words):
+    """MEEP 1.35.0 reads an energy monitor through ``get_dft_array``; this reader does not.
+
+    ``GpuRunResult.get_dft_array`` reduces a migrated ``DftFields`` region the way MEEP
+    does. Every other monitor kind is refused by name before any monitor is looked up,
+    with the reader that does serve it, rather than failing on an attribute deep in the
+    reduction.
+    """
+    monitor = type(kind, (), {})()
+
+    class _NoMonitors:  # A lookup here means the kind was not checked first.
+        @property
+        def migrated_monitors(self):
+            raise AssertionError("the monitor was looked up before the kind was checked")
+
+    result = GpuRunResult(driver=_NoMonitors(), steps=0, meep_time=0.0, wall_time_s=0.0)
+    with pytest.raises(TypeError) as refused:
+        result.get_dft_array(monitor, "Ez", 0)
+    message = str(refused.value)
+    assert message.startswith("get_dft_array reads DftFields monitors (sim.add_dft_fields) only"), message
+    for expected in words:
+        assert expected in message, (expected, message)
+
+
+@pytest.mark.parametrize("side", ["D", "B"])
+def test_the_offdiagonal_conductivity_refusal_says_what_each_release_does(side):
+    """The refusal's NOTE names each release's constructor, MEEP 1.35.0's included.
+
+    MEEP 1.35.0's ``mp.Medium.__init__`` raises ``NotImplementedError`` for a nonzero
+    off-diagonal keyword (MEEP 1.35.0 python/geom.py:450-460), so there the refusal is
+    reached only by assigning the attribute after construction; the NOTE says so beside
+    what 1.33.0 and 1.34.0 do. No MEEP is needed: the check reads the medium's
+    attributes, and the stand-in carries the ones it reads.
+    """
+    from types import SimpleNamespace
+
+    from .from_meep import _check_conductivity_of
+
+    def vector(x, y, z):
+        return SimpleNamespace(x=x, y=y, z=z)
+
+    medium = SimpleNamespace(**{f"{side}_conductivity_offdiag": vector(0.1, 0.0, 0.0),
+                                f"{side}_conductivity_diag": vector(0.0, 0.0, 0.0)})
+    reasons: list[str] = []
+    _check_conductivity_of(medium, f"{side}_conductivity", reasons)
+    assert len(reasons) == 1, reasons
+    for words in ("rotated conductivity tensor", "MEEP 1.34.0 assigns each keyword",
+                  "MEEP 1.35.0's constructor raises NotImplementedError",
+                  "reached only by assigning the attribute after construction"):
+        assert words in reasons[0], (words, reasons[0])

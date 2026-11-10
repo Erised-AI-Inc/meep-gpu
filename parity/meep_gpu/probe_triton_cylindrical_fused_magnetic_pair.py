@@ -2,7 +2,7 @@
 """Byte gate for the CYLINDRICAL COMPLEX fused magnetic pair: Dcyl ``step_B``
 welded into ``update_H``.
 
-THE CLAIM THIS GATE IS ALLOWED TO SUPPORT: for every configuration
+The claim this gate is allowed to support: for every configuration
 :func:`~meep_gpu.triton_kernels.cylindrical_fused_magnetic_pair.cylindrical_fused_magnetic_pair_coverage`
 admits, ONE launch of ``cyl_complex_fused_curl_constitutive_B`` leaves the engine
 in a state that is BIT-IDENTICAL — over every compared volume, on the uint32 word
@@ -19,14 +19,14 @@ view — to BOTH
 
 ``allclose`` appears nowhere.
 
-WHAT THIS GATE REFUSES TO INFER
+What this gate refuses to infer
 ===============================
 
 * **Bytes alone cannot prove the fused path ran.** A silent fallback is
   byte-identical to the array path BY CONSTRUCTION. Every launch goes through a
   :class:`~gate_triton_complex.CountingKernel` and every row asserts the exact
   launch count.
-* **A no-op agreeing with a no-op is trivially identical.** EVERY ROW CARRIES A
+* **A no-op agreeing with a no-op is trivially identical.** Every row carries a
   NON-VACUITY FLOOR: the compared state must have MOVED, and on the zero-init rows
   the signed-zero census must be non-zero as well. A zero-initialised constitutive
   leaves every word ``+0.0`` forever, so a deliberately wrong reference still
@@ -47,15 +47,15 @@ WHAT THIS GATE REFUSES TO INFER
   certification round runs the probe once under ``keep`` and once under ``flush``,
   and the two are never averaged. Until 2026-10-10 one process looped over both
   and the second install returned the first's memoised stamp, so every "flush
-  cut" this probe recorded ran under keep (MEASURED on its released artifacts).
+  cut" this probe recorded ran under keep (measured on its released artifacts).
 
-WHAT IT DOES NOT CLAIM. Nothing about throughput. The fusion removes ONE LAUNCH
+What it does not claim. Nothing about throughput. The fusion removes one launch
 and, on a walled run, one host wall pass; it does NOT remove the radial scan
 (``cylindrical_triton.cyl_radial_difference``, column-serial because its float32
 summation order defines the answer), which both compositions launch once per
 step. Every row records the scan launches on both compositions.
 
-THE FAMILY IS NOT WIRED. ``launch.plan_step`` assigns at most one plan per slot
+The family is not wired. ``launch.plan_step`` assigns at most one plan per slot
 and this product spans five driver call sites. Nothing in ``launch.py`` names it,
 ``fastpath.plan_fast_path`` is unchanged, and no default run can reach it.
 
@@ -109,10 +109,10 @@ REQUIRED: Tuple[str, ...] = ("Bx", "By", "Bz", "Hx", "Hy", "Hz")
 #: ``0x80000000`` — the negative-zero word the zero-init census counts.
 NEG_ZERO = 0x80000000
 
-#: The two float32 subnormal policies this probe certifies, ONE PER PROCESS: a run
+#: The two float32 subnormal policies this probe certifies, one per process: a run
 #: cuts the one its campaign names (:func:`campaign_policy`) and refuses any other
-#: name. ``keep`` is the arms' install default; ``flush`` is the certification
-#: round's second campaign. They are never averaged.
+#: name. ``keep`` is the arms' install default; ``flush`` is a certification's
+#: second campaign. They are never averaged.
 POLICIES: Tuple[str, ...] = ("keep", "flush")
 
 
@@ -132,7 +132,7 @@ def campaign_policy() -> str:
 
 #: ``(name, shape, m, courant, z_metallic, accurate, pml_cells, value_class)``.
 #:
-#: EVERY AXIS IS A COMPILE-TIME ARM OR A VALUE CLASS, NOT DECORATION:
+#: Every axis is a compile-time arm or a value class, not decoration:
 #:   m class      ``M_ONE`` emits an axis-row increment and no near-axis hold;
 #:                ``M_MANY`` emits the hold and NO increment. Different bodies.
 #:   m sign       flips the i*m/r coefficient AND the sign of the ``M_ONE``
@@ -160,7 +160,7 @@ CASES: Tuple[Tuple[str, Tuple[int, int, int], int, float, bool, bool, int, str],
     ("m3_subnormal_band",    (13, 1, 11),  3, 0.37, True,  False, 5, "subnormal_band"),
     ("m1_signed_zero_thin",  (20, 1, 24),  1, 0.5,  True,  False, 2, "signed_zero"),
     ("m3_signed_zero_thin",  (20, 1, 24),  3, 0.5,  True,  False, 2, "signed_zero"),
-    # THE m = 0 ARM UNDER COMPLEX STORAGE (2026-09-04): no i*m/r block, no
+    # The m = 0 arm under complex storage (2026-09-04): no i*m/r block, no
     # increment, Bx[0] = 0 on this seam. Courant 0.5 is the corpus row's own
     # (examples:dipole_in_vacuum_cyl_off_axis.py) and the third case is that row's
     # SHAPE (150, 1, 300) with a 50-cell absorber on r-high and z (the lift record
@@ -214,7 +214,7 @@ def build_engine(xp, shape, m, courant, z_metallic, accurate, pml_cells,
     exactly. z is declared explicitly because ``Grid``'s own default is periodic
     and both terminations are in the corpus.
 
-    NOTE THE INVARIANT-AXIS PEC TRAP IS NOT RE-BOUGHT HERE: phi is the invariant
+    Note the invariant-axis PEC trap is not re-bought here: phi is the invariant
     axis and is left PERIODIC. Declaring it metallic is refused by ``Grid`` by name
     (grid.py:842-877), and a case that tripped that refusal would report a family
     failure that was really a fixture failure.
@@ -365,7 +365,7 @@ def nan_census(fields) -> Dict[str, int]:
 def minimum_bound_kms(pml, half_integer: bool) -> float:
     """The smallest ``kms`` word over the sub-lattice the CURL binds.
 
-    THE PRODUCER OF A STORED ``-0.0`` IN A SIGNED-ZERO ROW, and the only one: the
+    The producer of a stored ``-0.0`` in a signed-zero row, and the only one: the
     recurrence is ``fu *= kms; fu -= curl; ...``, so from an all-``+0.0`` state a
     negative-zero word can only appear where some ``kms`` is NEGATIVE. Whether one
     is negative is a property of the ABSORBER THICKNESS, not of the harness, and it
@@ -429,11 +429,11 @@ def separate_seam(fields, pml, curl, constitutive) -> None:
 
 
 def at_rest_by_the_auxiliary_contract(pml: Any) -> Tuple[str, ...]:
-    """The auxiliary volumes the aligned forms never touch on this run, both seams.
+    """The auxiliary volumes MEEP's per-chunk forms never touch on this run, both seams.
 
     DERIVED, not listed: ``fu`` of a curl target is read and written only where the
     target's chunk carries its dsigu layer, and ``f_w`` of a constitutive component only
-    where its own axis carries one (the auxiliary contract, KERNELS.md section 1 C2). An
+    where its own axis carries one (docs/design/floating-point.md#auxiliary-contract). An
     axis with no absorber on either face (``PML.axis_has_pml``: phi on every Dcyl run, z on
     a periodic one) carries no layer in any chunk, so the target whose dsigu axis it is
     (``cylindrical_triton.DSIG_AXES``) and the component whose own axis it is keep their
@@ -505,9 +505,9 @@ def run_case(xp, case, launches: int, policy: str,
     row["negative_zero_census_at_seed"] = negative_zero_census(opening)
     row["subnormal_census_at_seed"] = subnormal_census(opening, opening_sources)
     row["seed_conditions"] = flush_vacuity.seed_conditions()
-    # EVER-MOVED ACROSS THE SEQUENCE, not final-versus-seed.
+    # Ever-moved across the sequence, not final-versus-seed.
     #
-    # MEASURED ON THE GPU HOST 2026-08-20, and it is a harness defect of the class this
+    # Measured on the GPU host 2026-08-20, and it is a harness defect of the class this
     # project has already paid for: on the +-0 lattice `fu_Bz` has a PERIOD-2 orbit
     # (its recurrence is `n2 = (fu*km_x - curl) * si_x` with every operand a signed
     # zero, so the sign map is affine and flips), which returns it to exactly its
@@ -584,7 +584,7 @@ def run_case(xp, case, launches: int, policy: str,
     # THE NON-VACUITY FLOOR. A row whose state never moved compares a no-op with a
     # no-op and passes for a reason that has nothing to do with the kernel.
     #
-    # UNDER FLUSH THE BAND CLASS CANNOT BE SEEDED: every value it draws is subnormal,
+    # Under flush the band class cannot be seeded: every value it draws is subnormal,
     # so the flushing host writes zeros and nothing can move. flush_vacuity MEASURES
     # that (the installed policy, the host FPU at seed time, and a seed census of 0
     # subnormal words) before the row is declared not applicable; under keep, or if
@@ -624,7 +624,7 @@ _TEMPORARY: List[str] = []
 def shipped_block() -> str:
     """The shipped kernel definition, read out of the file rather than re-typed.
 
-    RETURNED AT ITS OWN INDENTATION — the kernel is defined inside
+    Returned at its own indentation — the kernel is defined inside
     ``if triton is not None:``, so every body line carries eight spaces. Every
     needle in :data:`MUTATIONS` is written against THIS text, so a needle and the
     source it edits cannot disagree about indentation; :func:`dedented` is what
@@ -688,19 +688,19 @@ def _renamed(source: str, suffix: str) -> Tuple[str, str]:
 #: it carries a measured reason in :data:`NULL_REASONS` and the leg reports it as
 #: NULL CONFIRMED rather than as a pass.
 #:
-#: THE CASE EACH IS SCORED ON IS DECLARED, because ``M_CLASS`` and ``BCZ`` are
+#: The case each is scored on is declared, because ``M_CLASS`` and ``BCZ`` are
 #: ``tl.constexpr`` guards: a needle armed on a case whose arm the shipped kernel
 #: does not compile would rewrite an unreached line and report UNCAUGHT while
 #: measuring nothing.
 MUTATIONS: Dict[str, Tuple[str, str, str, str]] = {
-    # ---- THE SEAM ITSELF ---------------------------------------------------
+    # ---- The seam itself ---------------------------------------------------
     "seam_takes_pre_recurrence_curl":
         ("m1_z_metallic", "        src_re = v0_re\n        src_im = v0_im\n",
          "        src_re = curl0_re\n        src_im = curl0_im\n", "catch"),
     "seam_takes_the_wrong_component":
         ("m1_z_metallic", "        src_re = v1_re\n        src_im = v1_im\n",
          "        src_re = v0_re\n        src_im = v0_im\n", "catch"),
-    # ---- THE WALL CLEAR (ZM_Z; ZM_X/ZM_Y are dead on every Dcyl grid) -------
+    # ---- The wall clear (ZM_Z; ZM_X/ZM_Y are dead on every Dcyl grid) -------
     "zero_metal_dropped":
         ("m1_z_metallic",
          "        if ZM_Z:\n            v2_re = tl.where(at_z, 0.0, v2_re)\n"
@@ -712,7 +712,7 @@ MUTATIONS: Dict[str, Tuple[str, str, str, str]] = {
     "zero_metal_uses_the_r_row":
         ("m1_z_metallic", "            v2_re = tl.where(at_z, 0.0, v2_re)",
          "            v2_re = tl.where(at_r, 0.0, v2_re)", "catch"),
-    # ---- THE CYLINDRICAL CURL ----------------------------------------------
+    # ---- The cylindrical curl ----------------------------------------------
     "imr_partners_swapped":
         ("m1_z_metallic", "            i0_im = r0 * c_re",
          "            i0_im = r0 * a_re", "catch"),
@@ -757,7 +757,8 @@ MUTATIONS: Dict[str, Tuple[str, str, str, str]] = {
     "axis_hold_covers_only_row_zero":
         ("m3_z_metallic", "            near = i < ZERO_ROWS", "            near = i == 0",
          "catch"),
-    # ---- THE FORMS (Appendix A inversion; section 7.2 battery) ---------------
+    # ---- THE FORMS (inverted groupings; per-chunk form battery) ------------
+    # Both classes are defined in docs/development/certification.md.
     "curl_grouping_inverted_to_the_pairwise_one":
         ("m1_z_metallic",
          "        curl1_re = curl_stencil(a_z_re, a_re, c_re, c_r_re, dtdx, pz, pr)",
@@ -796,7 +797,7 @@ MUTATIONS: Dict[str, Tuple[str, str, str, str]] = {
     "start_of_h_dropped":
         ("m1_z_metallic", "        start = start_h != 0", "        start = start_h != start_h",
          "catch"),
-    # ---- MEASURED PREDICTED NULLS -----------------------------------------
+    # ---- Measured predicted nulls -----------------------------------------
     "phi_partner_forced_present":
         ("m1_z_metallic",
          "        curl0_re = curl_stencil(c_p_re, c_re, b_re, b_z_re, dtdx, pp, pz)",
@@ -817,7 +818,7 @@ MUTATIONS: Dict[str, Tuple[str, str, str, str]] = {
          "                curl0_re = tl.where(at_r, curl0_re - inc_re, curl0_re)\n"
          "                curl0_im = tl.where(at_r, curl0_im - inc_im, curl0_im)",
          "catch"),
-    # ---- THE m = 0 AXIS RULE ON THIS SEAM (M_ZERO body) ----------------------
+    # ---- The m = 0 axis rule on this seam (M_ZERO body) ----------------------
     "m0_bx_axis_zero_dropped":
         ("m0_z_metallic",
          "                v0_re = tl.where(at_r, 0.0, v0_re)\n"
@@ -957,8 +958,8 @@ def leg_needle_reachability() -> Dict[str, Any]:
     ``tl.constexpr`` guard that case does not enter; it then reports UNCAUGHT while
     measuring nothing. This kernel carries FOUR such guards — ``BACKWARD`` (bound
     to 0, so its arms are dead on every case), ``BCZ``, ``M_CLASS`` and the three
-    ``ZM_*`` flags — so the guard chain of every needle is PARSED OUT OF THE
-    SHIPPED TEXT by indentation and evaluated against the case the needle is scored
+    ``ZM_*`` flags — so the guard chain of every needle is parsed out of the
+    shipped text by indentation and evaluated against the case the needle is scored
     on. An unmodelled condition FAILS the leg rather than passing.
 
     A rewrite that DELETES an ``if`` counts as its own guard, so the deletion
@@ -1003,7 +1004,7 @@ def leg_needle_reachability() -> Dict[str, Any]:
 def leg_transcription() -> Dict[str, Any]:
     """The two halves must be the certified kernels' own lines, VERBATIM.
 
-    PARSED OUT OF THE SHIPPED TEXT, never re-implemented — a test that
+    Parsed out of the shipped text, never re-implemented — a test that
     re-implemented the kernel's assembly would MIRROR a planted defect instead of
     executing it. Measured on this project 2026-08-20: three planted assembly
     defects each left 86 of 87 mirrored tests passing.
@@ -1091,7 +1092,7 @@ def leg_transcription() -> Dict[str, Any]:
 def leg_refusal(xp) -> Dict[str, Any]:
     """The source seam, the m split and the geometry split, each measured by name.
 
-    THE SOURCE CLAUSE COSTS THIS FAMILY ZERO CORPUS ROWS — every one of the sixteen
+    The source clause costs this family zero corpus rows — every one of the sixteen
     cylindrical rows declares electric sources only — which is exactly why it has to
     be tested here rather than left to the corpus.
     """
@@ -1117,7 +1118,7 @@ def leg_refusal(xp) -> Dict[str, Any]:
     magnetic_plan = product.plan_cylindrical_fused_magnetic_pair(
         fields, pml, sources=(magnetic,))
 
-    # m = 0 UNDER COMPLEX STORAGE IS ADMITTED (2026-09-04, the M_ZERO arm); the
+    # m = 0 under complex storage is admitted (2026-09-04, the M_ZERO arm); the
     # REAL-storage m = 0 run is still cylindrical_triton's and must be refused BY
     # NAME on the storage clause — the split moved from m to force_complex_fields
     # and both directions are measured here.
@@ -1218,7 +1219,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     budgets = (LAUNCH_BUDGETS if args.launches is None
                else (1, int(args.launches)))
-    # THE CAMPAIGN'S POLICY, INSTALLED ONCE BEFORE ANY DEVICE COMPILE, and every leg
+    # The campaign's policy, installed once before any device compile, and every leg
     # below -- products, refusal, mutations -- runs under it and is labelled with it.
     policy = campaign_policy()
     results["policies"] = [policy]
@@ -1268,7 +1269,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             "arrays_moved": len(row.get("arrays_moved", [])),
             "negative_zero_census_peak": row.get("negative_zero_census_peak"),
             # A CATCH breaks the launch loop at its first divergence, so it owes
-            # AT LEAST ONE launch, not the whole budget; a NULL runs the budget out
+            # at least one launch, not the whole budget; a NULL runs the budget out
             # and owes all of it. Demanding the full budget of a catch scored every
             # caught mutation as a failure — measured on the GPU host 2026-08-20.
             "passed": bool(diverged and row.get("launches_observed", 0) >= 1
@@ -1283,7 +1284,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             f"passed={result_row['passed']}")
         flush()
 
-    # THE PREDICTED NULLS, RE-RUN ON THE SIGNED-ZERO CASE. A null measured only on
+    # The predicted nulls, re-run on the signed-zero case. A null measured only on
     # a random seed is a statement about the seed; these are re-measured where the
     # +-0 class is live and the census proves the row is not vacuous.
     for name in ("axis_increment_accumulates",):
@@ -1291,7 +1292,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         mutated, entry = _renamed(dedented(block.replace(old, new, 1)),
                                   name + "_uniform")
         kernel = compile_mutated(mutated, entry)
-        # THE SAME NEEDLE ON THE UNIFORM CLASS, where it is expected to be NULL. The
+        # The same needle on the uniform class, where it is expected to be NULL. The
         # pair of rows is the measurement: the choice is real and is visible ONLY on
         # the +-0 lattice, so a gate that swept random seeds alone would have
         # reported it uncaught and called the kernel certified.
@@ -1333,7 +1334,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     results["failed_rows"] = [row.get("label", row.get("case", row.get("leg")))
                               for row in rows if not row.get("passed")]
     results["elapsed_seconds"] = time.time() - started
-    # THE POLICY THE WELD IS CUT UNDER, in the key the ledger tools read:
+    # The policy the weld is cut under, in the key the ledger tools read:
     # ``seed_triton_welds.policy_line`` reads a top-level ``subnormal_policy`` block
     # (``resolved`` / ``policy`` / ``cache_dir``) and refused this artifact by name on
     # 2026-09-12 for want of it. The run cuts one policy, so its install stamp is the

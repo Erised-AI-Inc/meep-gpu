@@ -13,8 +13,8 @@ evidence behind the boundary-kind hazard: the complex ``_pml`` kernels hard-code
 "X and Y metallic, Z periodic", and a real case whose axes resolve otherwise is
 where that assumption stops being harmless.
 
-THE COURANT NUMBER IS A GATE AXIS HERE, AND UNTIL 2026-08-15 THIS LEG HAD ONLY
-ONE VALUE OF IT. All six cases of the 2026-08-09/10 run had ``Courant = 0.5``,
+The Courant number is a gate axis here, and until 2026-08-15 this leg had only
+one value of it. All six cases of the 2026-08-09/10 run had ``Courant = 0.5``,
 so every one recorded ``dtdx_float32_exact: true`` — and the kernel module's own
 docstring says what that means: "a dtdx that is a power of two hides the whole
 effect (0.5 scaling is exact, so contracted and uncontracted round identically);
@@ -23,8 +23,8 @@ the realistic case." So the leg that reads as "and it works on real corpus
 problems up to 2560²" could not distinguish ``--fmad=false`` from the default
 options at all. It was real evidence for the ghost rules, the metallic mask and
 the coefficient lattice at corpus scale, and NOT independent evidence for the
-arithmetic guard — which had therefore never been exercised above 64×48×1
-(disposition §1.4).
+arithmetic guard — which had therefore never been exercised above
+64×48×1.
 
 Every case now runs at BOTH: 0.5 (the recorded regime, kept as the control) and
 :data:`INEXACT_COURANT`, which is the synthetic gate's own second value so the
@@ -177,12 +177,12 @@ def one_case(name: str, kwargs: Dict[str, Any], probe,
 
     tables_b = kernels.real_pml_curl_tables(pml, half_integer=True)
     tables_d = kernels.real_pml_curl_tables(pml, half_integer=False)
-    # THE GRID, NOT ``resolved``: a folded axis resolves to "mirror" at both
+    # The grid, not ``resolved``: a folded axis resolves to "mirror" at both
     # terminations and the two need different codes, so the split is asked of the
     # grid (``real_curl_boundary_codes``) rather than of the kind strings.
     codes = kernels.real_curl_boundary_codes(grid)
     dtdx = grid.dt / grid.dx
-    # THE DRIVER'S OWN CHUNK RECORD: the kernels choose each cell's form from it, and the
+    # The driver's own chunk record: the kernels choose each cell's form from it, and the
     # array leg chose by the region plan the driver built from the same division.
     record = cupy.asarray(np.ascontiguousarray(driver.chunk_bounds_record(),
                                                dtype=np.int32))
@@ -201,7 +201,7 @@ def one_case(name: str, kwargs: Dict[str, Any], probe,
     #  1. Zero == zero is bit-identical. If the sub-step moved nothing, the
     #     comparison passes for the wrong reason, so at least one target must
     #     have changed and the largest magnitude in play is recorded.
-    #  2. NOT EVERY COMPONENT IS LIVE. A 2-D Ez (TM) run carries Ez, Hx and Hy
+    #  2. Not every component is live. A 2-D Ez (TM) run carries Ez, Hx and Hy
     #     and holds the other half of the Yee cell at exactly zero forever, so
     #     "every target moved" is false on a perfectly healthy case. The
     #     criterion is therefore how MANY moved, reported per component, with
@@ -235,7 +235,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                              "natively with its own -ftz=true — and the artifact "
                              "records that rather than leaving the question "
                              "unanswerable, which is what the 2026-08-09/10 "
-                             "record silently did (disposition §1.1).")
+                             "record silently did.")
     parser.add_argument("--import-meep-for-host-policy", action="store_true",
                         help="import MEEP before installing the policy, so the "
                              "HOST half of 'flush' is attainable. Measured: "

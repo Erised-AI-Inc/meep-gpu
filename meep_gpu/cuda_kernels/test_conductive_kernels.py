@@ -140,7 +140,7 @@ def words(array) -> numpy.ndarray:
 
 
 # ---------------------------------------------------------------------------
-# 1. THE DEVICE TEXT IS THE SIBLINGS' BYTES
+# 1. The device text is the siblings' bytes
 # ---------------------------------------------------------------------------
 
 def _body(source: str, entry: str) -> str:
@@ -181,7 +181,7 @@ def _strip_guards(body: str, plain_only: bool = True) -> str:
 def test_the_no_pml_templates_are_the_siblings_bytes_plus_a_tail(mine, theirs):
     """Strip the guards and the six added parameters and the sibling comes back.
 
-    THE WHOLE SAFETY ARGUMENT of this family is that the curl is unedited. That is
+    The whole safety argument of this family is that the curl is unedited. That is
     a property of the bytes, so it is measured on the bytes rather than asserted
     in a comment: an equality, not a diff with an allow-list.
     """
@@ -295,7 +295,7 @@ def test_only_the_reachable_tail_helper_is_compiled(name, helper, absent):
 def test_the_forms_are_chosen_by_chunk_membership_not_by_coefficient_identity():
     """MEEP chooses a form per structure chunk; the kernel reads which from data.
 
-    The coefficient-identity predicate this family carried until 0.10
+    The coefficient-identity predicate this family carried until 1.0
     (``kms != 1.0f``) is gone from the text, the helper takes the two membership flags
     and the keep flag, and every call passes the flags the certified decode block
     declares for that target's dsig and dsigu axes on its own sub-lattice
@@ -321,7 +321,7 @@ def test_the_forms_are_chosen_by_chunk_membership_not_by_coefficient_identity():
 
 
 def test_the_auxiliaries_are_touched_only_on_their_forms_cells():
-    """The auxiliary contract (KERNELS.md section 1, C2), pinned on the text.
+    """The auxiliary contract (docs/design/floating-point.md), pinned on the text.
 
     ``u`` is loaded and stored only under ``dsigu`` and ``c`` only under ``dsig``; the
     gate's unguarded-load mutations are declared NULLS (no stored word changes), so
@@ -351,7 +351,7 @@ def test_a_restructured_sibling_fails_loudly_rather_than_silently():
 
 
 # ---------------------------------------------------------------------------
-# 2. THE ARITHMETIC, MEASURED AGAINST ``stepping`` AS UINT32 WORDS
+# 2. The arithmetic, measured against ``stepping`` as uint32 words
 #
 # The reference below is a transcription of the DEVICE text, not a second call
 # into ``stepping``: it forms the curl the way the kernel forms it and then
@@ -519,7 +519,7 @@ def _moved(before, after) -> int:
                                   (True, False, True)],
                          ids=["all", "x_only", "y_only", "z_only", "x_and_z"])
 def test_the_no_pml_conductive_tail_is_stepping_bit_for_bit(sub_step, mask, xp):
-    """ONE KERNEL SERVES A MIXED RUN, and this is the measurement that says so.
+    """One kernel serves a mixed run, and this is the measurement that says so.
 
     A component with no sigma takes ``f - curl`` while its neighbours take
     ``((f*cf) - curl) * ci`` -- inside one sub-step, because ``_apply_curl`` reads
@@ -566,7 +566,7 @@ def test_the_no_pml_conductive_tail_is_stepping_bit_for_bit(sub_step, mask, xp):
 def test_the_four_case_pml_tail_is_stepping_bit_for_bit(sub_step, mask, half_space, xp):
     """MEEP's conductive forms, selected PER CELL, against the array path's copyto.
 
-    THE NON-VACUITY FLOOR IS THE POINT. A layer absorbing on two axes and not on
+    The non-vacuity floor is the point. A layer absorbing on two axes and not on
     the third puts every one of MEEP's four conductive forms somewhere in the volume
     for at least one target; the census below asserts a nonzero cell count in each,
     so a pass cannot mean "one form was right and the other three were never
@@ -634,7 +634,7 @@ def test_the_four_case_pml_tail_is_stepping_bit_for_bit(sub_step, mask, half_spa
 
 
 def test_the_old_increment_grouping_diverges(xp):
-    """The inversion control: the grouping this family carried until 0.10.
+    """The inversion control: the grouping this family carried until 1.0.
 
     Without it, "bit-identical" above could be a statement about a comparator that
     cannot tell two float32 numbers apart. ``((u*km1) + (c' - c)) * si1`` (MEEP's) and
@@ -915,7 +915,7 @@ def test_the_clauses_behind_the_conductivity_one_are_still_reached(xp):
         d_sigma=sigma_map(probe, ("Dx",), rng))
     assert covers(fields, layer, grid, "step_D")[0]
 
-    # THE ARRAY INVENTORY, the delegated predicate's LAST clause. Ex is read by
+    # The array inventory, the delegated predicate's LAST clause. Ex is read by
     # neither this file's conductivity check nor step_D's launcher, so only the
     # delegation can refuse it.
     original = fields.Ex
@@ -978,7 +978,7 @@ def test_admission_record_is_all_or_nothing():
     assert all(record.get(key) is not None for key in claims)
     assert record["source_mutations_escaped"] == 0
     assert record["verdict_flips_against_planted_defect"] is True
-    # THE DIGESTS PIN THE TEMPLATES THAT SHIP TODAY. A record cut against one
+    # The digests pin the templates that ship today. A record cut against one
     # emitter and read beside another is a device verdict for bytes that no longer
     # exist -- and because the templates are BUILT from two siblings' source, an
     # edit over there moves them without anything in this file changing.
@@ -996,7 +996,7 @@ def test_admission_record_is_all_or_nothing():
 
 
 # ---------------------------------------------------------------------------
-# 5. THE GATE'S NUMPY BACKEND, IN THE MERGE BAR
+# 5. The gate's NumPy backend, in the merge bar
 #
 # The device gate is the artifact that certifies this family, and its NumPy leg
 # is a transcription of the SAME device tree this file pins textually. Running a
@@ -1081,7 +1081,7 @@ def test_the_gate_refuses_a_layer_that_reaches_only_some_subchunk_cases(gate):
                                       "record_lattices_swapped",
                                       "conductive_chunks_unbound"])
 def test_the_gate_catches_each_binding_defect_on_the_host(gate, mutation):
-    """The B battery's binding defects (KERNELS.md section 7.2), through the NumPy leg.
+    """The per-chunk form battery's binding defects, through the NumPy leg.
 
     A bound off by one and the two lattices' records swapped move a boundary plane's
     form; the conductive chunks unbound take the conductive form where a chunk keeps
@@ -1103,7 +1103,7 @@ def test_the_gate_catches_each_binding_defect_on_the_host(gate, mutation):
 def test_every_named_mutation_resolves_and_arms(gate):
     """Every name in the battery exists, and arms where the record says it should.
 
-    THIS TEST EXISTS BECAUSE A DEVICE LEG DIED WITHOUT IT. A mutation registered
+    This test exists because a device leg died without it. A mutation registered
     after ``SOURCE_MUTATIONS_ALL`` was built raised ``KeyError`` forty minutes
     into a GPU-host run -- a failure of the battery's own bookkeeping that looks
     nothing like a kernel defect and costs a GPU hour to find. Resolving every

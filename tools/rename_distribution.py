@@ -7,20 +7,20 @@
     python tools/rename_distribution.py --repository-owner ORG --apply  # owner only
     python tools/rename_distribution.py --list-placeholders
 
-WHAT IT CHANGES. The distribution name, which is also the repository name: the
+What it changes. The distribution name, which is also the repository name: the
 ``name`` of ``pyproject.toml``, the extras that refer to the distribution by name,
 the titles of the README, the citation files and the manual, the install lines and
 every repository URL. The current name is read from ``[project] name`` and the
 current repository from ``[project.urls] Repository``; nothing is hard-coded here.
 
-WHAT IT NEVER CHANGES. The import name. ``import meep_gpu`` stays as it is, and so
+What it never changes. The import name. ``import meep_gpu`` stays as it is, and so
 does every ``MEEP_GPU_*`` environment variable: both are part of the certification
 ledgers' path keys and of every user's scripts. The tool does not open any file
 under the package directory or the certification harness, whose bytes the ledgers
 pin by digest, and it does not open the licence texts or the examples' recorded
 output. It reports how often the old name occurs in the trees it did not open.
 
-HOW IT MATCHES. The old name is replaced where it stands as a word, and where it
+How it matches. The old name is replaced where it stands as a word, and where it
 leads or ends a hyphenated name derived from it, such as the name of a conda
 environment. It is not replaced inside a longer run of letters, digits or
 underscores. A file or directory whose own name carries the old name is renamed

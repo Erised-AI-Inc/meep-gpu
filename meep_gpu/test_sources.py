@@ -554,7 +554,7 @@ def test_a_single_cell_axis_folds_both_ends_of_the_stencil_onto_its_one_cell():
     index 0" — so the total is asserted too, and the same request is checked at a face,
     at the sample, and off it. A stencil that folded without summing would leave half.
 
-    THE TOTAL IS ``a**2``, NOT ``a**3``, and that is MEEP's own arithmetic rather than a
+    The total is ``a**2``, NOT ``a**3``, and that is MEEP's own arithmetic rather than a
     weakened bound. ``add_volume_source`` multiplies the amplitude by ``gv.a`` once per
     zero-size direction *except* a direction ``fields::nosize_direction`` reports
     (sources.cpp:482), and a one-pixel PERIODIC axis is exactly what that function
@@ -698,7 +698,7 @@ def test_a_wrapping_axis_and_a_folded_axis_behave_differently_in_one_source():
 def test_continuous_point_source_in_the_discarded_half_is_refused():
     """A CW point used to skip the fold check every other source class runs.
 
-    THE RULE MOVED, and this test with it. It used to require the source ON the
+    The rule moved, and this test with it. It used to require the source ON the
     plane, which was stricter than MEEP by a whole class of run: a folded grid
     stores one quadrant and reconstructs the rest, so a source anywhere in the
     STORED quadrant is two sources in the unfolded domain — which is what
@@ -1866,7 +1866,7 @@ def _meep_placement_oracle(tmp_path, cases):  # Every placement in one CPU-MEEP 
 # label -> (cell size, k_point, source centre). Resolution 10 throughout, so dx = 0.1.
 #
 # 1 x 1 x 2 is nx = ny = 10 and nz = 20 — EVEN. 0.9 x 1 x 1.9 is nx = 9 and nz = 19 —
-# ODD, and MEEP rounds an axis's little corner DOWN TO EVEN, so an odd axis starts half
+# ODD, and MEEP rounds an axis's little corner down to even, so an odd axis starts half
 # a cell higher than -L/2: x runs [-0.4, 0.5] and z runs [-0.9, 1.0]. Every even-count
 # placement is repeated at odd counts because that half-cell registration is invisible
 # to an even-only sweep — this engine has shipped exactly that bug before.
@@ -1919,7 +1919,7 @@ def _placement_field(label):  # Run one placement through the engine and cell-ce
 def test_point_source_placement_matches_cpu_meep_across_a_cell(tmp_path):
     """Sweep a point source face to face across a cell and cross-validate every stop.
 
-    THE REGRESSION THIS PINS. A request in the outer half-cell of a wrapping axis used
+    The regression this pins. A request in the outer half-cell of a wrapping axis used
     to be placed by extrapolating off the end of the array instead of by folding onto
     the lattice, and the negative half of the extrapolation was then dropped by a
     positive-weight filter. Every run completed and returned a smooth, plausible field.
@@ -2096,7 +2096,7 @@ def _refusal(grid, component, center=(0.0, 0.0, 0.0), size=(0.0, 0.0, 0.0), amp_
 def test_the_parity_rule_is_the_profile_not_the_centre(axis, phase):
     """A sheet whose PROFILE is odd about the plane is foldable; a uniform one is not.
 
-    THE PREDICATE WAS THE CENTRE, and that is measurably the wrong question. It judged
+    The predicate was the centre, and that is measurably the wrong question. It judged
     an extended source by where its middle sat, so an ``mp.EigenModeSource`` spanning
     the whole folded axis was refused because its centre happened to lie on the plane
     — costing five of MEEP's own ``python/tests`` cases (``test_mode_coeffs`` x3,
@@ -2224,7 +2224,7 @@ def test_the_parity_refusal_states_meeps_mechanism_and_not_a_cancellation():
 def test_a_source_must_sit_in_the_half_every_active_mirror_plane_stores(axis):
     """The centre rule is per axis. Enumerating X and Y let a Z fold place anywhere.
 
-    THE RULE IS THE STORED HALF, not the plane. It was "on the plane" until the two
+    The rule is the stored half, not the plane. It was "on the plane" until the two
     were measured apart: MEEP adds sources with ``use_symmetry=false``
     (sources.cpp:487) and images them implicitly, so a source anywhere in the stored
     half is a legal declaration — MEEP's folded run with one source at +1.1 equals

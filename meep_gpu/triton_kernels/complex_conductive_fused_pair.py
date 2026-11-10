@@ -1,6 +1,6 @@
 """The complex conductive ``step_D`` welded into complex stored-E ``update_E``.
 
-ONE LAUNCH FOR ALL THREE COMPONENTS, and the displacement never leaves a register.
+One launch for all three components, and the displacement never leaves a register.
 The separate composition for this configuration is TWO launches — one whole-grid
 conductive curl plus one pointwise stored-E — and this is one.
 
@@ -11,7 +11,7 @@ E)``, four corpus rows —
 chunk_layout_sim}_3d`` — measured at ``D->E 4, ceiling 4`` in
 ``parity/meep_gpu/results/fusion_matrix_triton_2026-08-30_electric``.
 
-THE SIBLING IS :mod:`..metal_kernels.complex_conductive_fused_pair`, which serves
+The sibling is :mod:`..metal_kernels.complex_conductive_fused_pair`, which serves
 the same cell 4/4 on Metal and was released 2026-08-29. This module is that
 product's Triton twin: the same two certified halves, the same four refusals in the
 seam, the same priced decision not to carry the wall. Where the two backends differ
@@ -19,7 +19,7 @@ is only in how the arithmetic is spelled — MSL there, ``triton.jit`` here — 
 each half below is transcribed from ITS OWN backend's certified body, never from
 the sibling's.
 
-EVERYTHING HERE IS TRANSCRIBED, and every arithmetic line carries the function it
+Everything here is transcribed, and every arithmetic line carries the function it
 came from:
 
 * the complex conductive D curl —
@@ -36,27 +36,27 @@ A reader can diff this body against those two and see that nothing moved. If you
 find yourself deriving here, you have taken a wrong turn.
 
 ===========================================================================
-THE SEAM, AND WHY IT IS EMPTY ON THIS CELL — the whole design question
+The seam, and why it is empty on this cell — the whole design question
 ===========================================================================
 
 The driver runs FOUR passes between ``step_D`` and ``update_E``
 (driver.py:3293-3304): the electric injection (:3294-3299, which on a conductive
 row takes the ``condinv``-scaled path ``FdtdDriver._inject_electric_through_
 conductivity`` at :3296), ``fill_symmetry_bc_D`` (:3300), ``zero_metal_D`` (:3301)
-and ``fill_folded_far_ghosts_D`` (:3302). THIS FAMILY CARRIES NONE OF THEM. Each is
+and ``fill_folded_far_ghosts_D`` (:3302). This family carries none of them. Each is
 instead refused by a named clause that makes the pass INERT, and that is a
 different and stronger thing than not carrying it:
 
-* **the electric sources — REFUSED BY NAME, and it costs this cell NOTHING.**
+* **the electric sources — refused by name, and it costs this cell NOTHING.**
   The injection lands between the two halves, so a fused pair would consume a
-  pre-injection D. MEASURED COST ON THE CORPUS: ZERO of the four rows — every one
+  pre-injection D. Measured cost on the corpus: zero of the four rows — every one
   of them declares a single MAGNETIC source, which is injected in the B/H seam and
   does not reach this one. That is why :data:`CARRIES_DEPOSIT_REPAIR` is False here
   while the two D->E COMPLEX pairs beside it are True: those cells are all-electric
   and would serve nothing without the repair, and this one is served in full
   without it. Ignorance is still never an empty set: ``Fields`` does not hold the
-  source list, so an undeclared ``sources`` is itself a REFUSAL. THE CONDUCTIVE
-  INJECTION IS THE SAME CLAUSE, not a second one: ``FdtdDriver.step`` guards it
+  source list, so an undeclared ``sources`` is itself a REFUSAL. The conductive
+  injection is the same clause, not a second one: ``FdtdDriver.step`` guards it
   with ``if electric and self.fields.has_conductivity`` (driver.py:3295), so with
   no electric source it cannot run whatever the conductivity is;
 * **``fill_symmetry_bc_D`` — INERT, because a mirror plane is refused.** Both
@@ -66,7 +66,7 @@ different and stronger thing than not carrying it:
   returns at its first line (stepping.py:1481-1482);
 * **``fill_folded_far_ghosts_D`` — INERT for the same reason**
   (stepping.py:1565-1566);
-* **``zero_metal_D`` — REFUSED BY NAME, and the refusal is priced.** It writes zero
+* **``zero_metal_D`` — refused by name, and the refusal is priced.** It writes zero
   into stored cell 0 of every D component whose Yee shift on a walled axis is 0
   (stepping.py:2206-2247), which ``update_E`` then reads.
   :mod:`.complex_fused_electric_pair` and :mod:`.folded_fused_pair` carry it inline
@@ -74,7 +74,7 @@ different and stronger thing than not carrying it:
   measured corpus: all four rows of this cell are
   ``boundary_kinds == ['periodic', 'periodic', 'periodic']``. A widening that buys
   nothing is declined, and the count is recorded so the decision can be revisited
-  when the corpus moves rather than re-argued. THE CLAUSE IS NOT A COMMENT: an
+  when the corpus moves rather than re-argued. The clause is not a comment: an
   unreadable boundary table is a refusal too, because a family that cannot
   establish the pass is inert has not established it.
 
@@ -82,27 +82,27 @@ So under this family's clauses the D->E seam holds NOTHING, which is what makes 
 single launch legitimate rather than merely convenient.
 
 ===========================================================================
-WHY THERE IS NO STENCIL PROBLEM HERE, and why that is not general
+Why there is no stencil problem here, and why that is not general
 ===========================================================================
 
 The fusion matrix refuses EIGHTEEN D->E seam-instances as STRUCTURALLY UNFUSABLE on
 any backend: ``stepping._offdiagonal_terms`` (stepping.py:1235-1253) reads each
 partner component's D volume at FOUR indices while ``step_D`` writes those volumes
 in place in the first half of the same launch, and no grid-wide barrier exists
-inside one launch. THIS CONSTITUTIVE IS NOT THAT ONE. The certified complex stored
+inside one launch. This constitutive is not that one. The certified complex stored
 E reads ``g0 + word`` — its OWN component, at its OWN index, the word the same
 program computed in the curl half — so the value stays in a register and no lane
 reads a word another lane writes. An off-diagonal ``chi1inv`` row is refused by the
 E half already, and restated here by name because THIS is the reason the cell is
 buildable at all.
 
-THE POLE ARRAYS ARE READ, NEVER WRITTEN, by either half. ``update_P`` runs after
+The pole arrays are read, never written, by either half. ``update_P`` runs after
 ``update_E`` (driver.py:3306) and is not in this seam; the ``P`` volumes this
 kernel loads are the ones the previous timestep left, exactly as the certified
 stored-E body loads them.
 
 ===========================================================================
-WHAT MOVES, AND IT IS AT MOST ONE LINE PER COMPONENT
+What moves, and it is at most one line per component
 ===========================================================================
 
 The certified conductive tail ALREADY names the stepped displacement in a
@@ -114,11 +114,11 @@ register::
     if COND0: v0 = _mul_field_left(v0, condinv)
     tl.store(f0 + 2 * idx, v0_re, ...)          # D, after the step
 
-so NOTHING MOVES AT ALL: the constitutive half reads ``v0_re``/``v0_im`` where the
+so nothing moves at all: the constitutive half reads ``v0_re``/``v0_im`` where the
 certified body's :func:`.complex_no_pml_stored_e._subtract_complex_poles` read
 ``tl.load(source + word)``. That single substitution is the whole weld, and it is
 the same one :func:`.kernels.fused_curl_constitutive_D` makes on the real path.
-THE D STORE IS KEPT: the array path leaves the stepped displacement in the D
+The D store is kept: the array path leaves the stepped displacement in the D
 volume and the next timestep's ``update_P`` reads it, so a weld that dropped the
 store would be fusing away a value the run still needs.
 
@@ -258,7 +258,7 @@ def _subtract_complex_poles_in_registers(
     transcription leg can compare it to the certified helper statement for
     statement.
 
-    THE ORDER IS BIT-LOAD-BEARING. The poles may not be pre-summed and may not be
+    The order is bit-load-bearing. The poles may not be pre-summed and may not be
     reordered: either changes float32 rounding at two or more poles, which is why
     the certified body spells eight separate arms and why the gate arms a mutation
     that reverses them.
@@ -320,7 +320,7 @@ def complex_conductive_fused_curl_constitutive_D(
     replaced by the register the tail just produced. Do not flatten the conductive
     passes: each in-place complex64 operation rounds before the next begins.
 
-    ``BACKWARD`` IS CARRIED AND MUST BE 1. It keeps the curl half a verbatim copy of
+    ``BACKWARD`` is carried and must be 1. It keeps the curl half a verbatim copy of
     the certified body rather than a hand-specialised one. It cannot be 0: the B
     half's seam ends at ``update_H``, which is a different constitutive entirely,
     and no product welds this curl to it.
@@ -502,7 +502,7 @@ def complex_conductive_fused_curl_constitutive_D(
         inverse = tl.load(ci2 + idx, mask=live, other=0.0)
         v2_re, v2_im = _mul_field_left(v2_re, v2_im, inverse)
 
-    # THE D STORE IS KEPT. The array path leaves the stepped displacement in the D
+    # The D store is kept. The array path leaves the stepped displacement in the D
     # volume and the NEXT sub-step to read it is update_P (driver.py:3306), which
     # this launch does not span. Dropping the store would fuse away a value the run
     # still needs, which is a different defect from a wrong arithmetic line and one
@@ -580,10 +580,10 @@ def complex_conductive_fused_pair_coverage(fields: Any, pml: Any,
     if not electric.covered:
         reasons.extend(f"E half: {reason}" for reason in electric.reasons)
 
-    # THE SOURCE SEAM, and for this family it is THE clause that costs nothing on
+    # The source seam, and for this family it is THE clause that costs nothing on
     # the measured corpus. An ELECTRIC source is injected BETWEEN the two halves
     # (driver.py:3294-3299), so a fused pair would consume a pre-injection D.
-    # IGNORANCE IS NEVER AN EMPTY SET: `Fields` does not hold the source list, so a
+    # Ignorance is never an empty set: `Fields` does not hold the source list, so a
     # predicate that inferred "no sources" from not being told would be the
     # over-covering refusal this clause exists to prevent. A MAGNETIC source is
     # injected in the B/H half and does NOT disqualify the pair -- which is exactly
@@ -607,7 +607,7 @@ def complex_conductive_fused_pair_coverage(fields: Any, pml: Any,
         return Coverage(False,
                         tuple(dict.fromkeys(reasons + ["fields carries no grid"])))
 
-    # THE TWO FILLS. Both halves already refuse a mirror plane; this restates by
+    # The two fills. Both halves already refuse a mirror plane; this restates by
     # NAME what that refusal buys on THIS seam — a reader should not have to chase a
     # shared grid clause to learn that two driver passes sit between the halves on a
     # folded grid.
@@ -630,7 +630,7 @@ def complex_conductive_fused_pair_coverage(fields: Any, pml: Any,
     # the measured corpus, where all four rows are periodic on all three axes.
     kinds = _boundary_kinds(grid, None)
     if kinds is None:
-        # UNREADABLE IS A REFUSAL, NEVER A CRASH. `_boundary_kinds` returns None for
+        # Unreadable is a refusal, never a crash. `_boundary_kinds` returns None for
         # a grid the array path will not resolve, and a clause that iterated it
         # would raise where the contract says refuse.
         reasons.append(
@@ -654,7 +654,7 @@ def complex_conductive_fused_pair_coverage(fields: Any, pml: Any,
             "volumes step_D writes in place (stepping.py:1235-1253), and no "
             "grid-wide barrier exists inside one launch")
 
-    # THE POLE COUNTS MUST FIT the kernel's compiled slots. The E half already
+    # The pole counts must fit the kernel's compiled slots. The E half already
     # refuses more than MAX_POLES; evaluated here as well so an over-ceiling
     # configuration is a refusal BY NAME rather than a ValueError at plan time, and
     # so the from-arrays route's ceiling and this one cannot drift apart.
@@ -670,7 +670,7 @@ def complex_conductive_fused_pair_coverage(fields: Any, pml: Any,
                 f"{component} is driven by {count} poles, more than the kernel's "
                 f"MAX_POLES={MAX_POLES} compiled slots")
 
-    # THE INVERSE-EPSILON VOLUMES ARE READ BY THE KERNEL, so `Fields` must be able
+    # The inverse-epsilon volumes are read by the kernel, so `Fields` must be able
     # to hand one over per E component. An absent accessor would be a TypeError
     # inside the builder rather than a refusal, which is the wrong way for an
     # uncovered configuration to fail.
@@ -697,7 +697,7 @@ class ComplexConductiveFusedPairPlan:
     RAW: each is float32 with one real coefficient per complex cell, indexed at
     ``+ idx``.
 
-    THE POLE POINTERS ARE RESOLVED PER LAUNCH, never cached, exactly as
+    The pole pointers are resolved per launch, never cached, exactly as
     ``ComplexStoredEPlan`` resolves them: ``PolarizationState.update`` rotates
     ``P``/``P_prev``/scratch, so a pointer captured at plan time would be one
     timestep stale. What IS cached is pole ORDER, which is bit-load-bearing and
@@ -782,7 +782,7 @@ class ComplexConductiveFusedPairPlan:
         self._poles = poles
         self.chunk_bounds, self._cb = bind_chunk_bounds(
             chunk_bounds, self.shape, targets[0], "ComplexConductiveFusedPairPlan")
-        # THE INT32 WORD BOUND. The kernel addresses words as ``2 * idx`` in int32,
+        # The int32 word bound. The kernel addresses words as ``2 * idx`` in int32,
         # so the complex cell count must leave room for the doubling. Refused here
         # as well because the from-arrays route runs no predicate at all.
         if 2 * self.n_elem >= 2 ** 31:

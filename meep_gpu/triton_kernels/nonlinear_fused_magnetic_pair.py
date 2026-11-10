@@ -1,13 +1,13 @@
 """The fused magnetic B/H pair on a NONLINEAR run — admission only, no new kernel.
 
-WHAT THIS MODULE ADDS, AND WHAT IT DELIBERATELY DOES NOT. It adds one predicate,
+What this module adds, and what it deliberately does not. It adds one predicate,
 one plan builder and one checkable identity. It adds NO arithmetic, NO kernel and
 NO plan class: the kernel a covered configuration launches here is
 :func:`.kernels.fused_curl_constitutive_B`, character for character, through
 :class:`.launch.FusedPairPlan` built by :func:`.launch.plan_fused_pair`, because
 on a chi2/chi3 run the B/H seam IS the ordinary one.
 
-THE MEASUREMENT THAT LICENSES THAT IS ALREADY IN THE TREE and is not made here.
+The measurement that licenses that is already in the tree and is not made here.
 ``stepping.step_B`` and ``stepping.update_H`` never read chi2 or chi3 — the Pade
 factor enters ``update_E`` alone (stepping.py:999-1000) — so :mod:`.nonlinear_update_e`
 already ships two SPINE ARMS whose whole content is that fact, both wired into
@@ -22,11 +22,11 @@ already ships two SPINE ARMS whose whole content is that fact, both wired into
 
 So the two halves ``plan_step`` already selects at this cell on a nonlinear row
 are, by construction, the two halves :func:`.kernels.fused_curl_constitutive_B`
-welds. This module applies the same one-clause inversion ONE LEVEL UP — to the
+welds. This module applies the same one-clause inversion one level up — to the
 WELD instead of to each half.
 
 ===========================================================================
-THE CONJUNCTION, AND WHY IT IS EXACT RATHER THAN MERELY PLAUSIBLE
+The conjunction, and why it is exact rather than merely plausible
 ===========================================================================
 
 :func:`.coverage.fused_pair_coverage` is ``pml_curl_coverage(step_B)`` AND
@@ -38,10 +38,10 @@ while forwarding every array, coefficient, boundary, conductivity, dispersion an
 layout fact unchanged — the same idiom
 :class:`.complex_no_pml_conductive._CurlScopeView` uses for its own two masks.
 
-THE PREDICATE HERE IS A CONJUNCTION OF **THREE** THINGS, NOT TWO, and the third is
+The predicate here is a conjunction of **THREE** things, not two, and the third is
 not decoration:
 
-    the two SHIPPED SPINE PREDICATES  AND  ``fused_pair_coverage`` through the view
+    the two shipped spine predicates  and  ``fused_pair_coverage`` through the view
 
 The shipped spine predicates are NARROWER than the shared clauses they restate in
 one measured place — ``nonlinear_run_pml_curl_coverage`` refuses an unallocated
@@ -54,7 +54,7 @@ rather than by inspection, and :func:`nonlinear_fused_magnetic_pair_equivalence`
 states it as a checkable identity that the test module and the device gate both run.
 
 ===========================================================================
-WHAT THE CORPUS SAYS THIS IS WORTH — measured, not argued
+What the corpus says this is worth — measured, not argued
 ===========================================================================
 
 TWO seam-instances, both reachable, from the 186-row Triton census
@@ -73,11 +73,11 @@ rows rather than compiled out; neither is folded, so the two symmetry passes in
 the seam are the no-ops the predicate re-checks below. The matrix's
 ``live_in_seam_passes`` column reads ``['zero_metal_B']`` on both.
 
-THE D/E PARTNER CELL IS WORTH ZERO and is not built: both rows inject
+The D/E partner cell is worth zero and is not built: both rows inject
 ELECTRICALLY between ``step_D`` and ``update_E``, which no fused product on any
 backend can straddle.
 
-THE OTHER BACKEND BUILT THIS FIRST, and its numbers are the ones this follows:
+The other backend built this first, and its numbers are the ones this follows:
 ``metal_kernels/nonlinear_fused_magnetic_pair.py`` (236 lines, the same
 admission-only shape) is certified by
 ``parity/meep_gpu/gate_metal_below_the_cut_fused_pairs.py``.
@@ -220,16 +220,16 @@ def nonlinear_fused_magnetic_pair_coverage(fields: Any, pml: Any,
     3. the inverted chi2/chi3 clause, which is what makes this arm disjoint from
        the ordinary fused pair.
 
-    ``sources`` MUST BE DECLARED, for :func:`.coverage.fused_pair_coverage`'s own
+    ``sources`` must be declared, for :func:`.coverage.fused_pair_coverage`'s own
     reason: ``Fields`` does not hold the source list, so ``None`` is a REFUSAL and
     not an assumed empty set. That clause is what caps this family — it is also
     what a nonlinear corpus row clears, because both such rows source
     electrically.
 
-    THE TWO SYMMETRY PASSES in this seam (driver.py:3285, :3287) return at their
+    The two symmetry passes in this seam (driver.py:3285, :3287) return at their
     first line without ``grid.has_symmetry()`` (stepping.py:1481-1482, :1565-1566),
-    and every clause set above already refuses a mirror plane. RE-CHECKED HERE
-    ANYWAY rather than read off another module's guard: if the nonlinear scope ever
+    and every clause set above already refuses a mirror plane. Re-checked here
+    anyway rather than read off another module's guard: if the nonlinear scope ever
     admits a fold, this weld would silently swallow two passes that had started
     doing work.
     """
@@ -260,7 +260,7 @@ def nonlinear_fused_magnetic_pair_coverage(fields: Any, pml: Any,
     if not weld.covered:
         reasons.extend(f"fused pair: {reason}" for reason in weld.reasons)
 
-    # 2b. THE SOURCE SEAM, ASKED HERE RATHER THAN INHERITED. It used to arrive with
+    # 2b. The source seam, asked here rather than inherited. It used to arrive with
     #     everything else from clause 2, which was right while no product could carry
     #     an in-seam deposit. ``coverage.py`` now declares CARRIES_DEPOSIT_REPAIR, so
     #     what clause 2 returns for a magnetic source is an ADMISSION -- and it is an
@@ -312,7 +312,7 @@ def nonlinear_fused_magnetic_pair_coverage(fields: Any, pml: Any,
 def nonlinear_fused_magnetic_pair_equivalence(fields: Any, pml: Any,
                                               sources: Any = None,
                                               ) -> Dict[str, Any]:
-    """THE IDENTITY THIS MODULE RESTS ON, as a measurement rather than a claim.
+    """The identity this module rests on, as a measurement rather than a claim.
 
     The weld's predicate is the conjunction of its two halves' predicates plus the
     seam clauses, and on a nonlinear run those two halves are the two SHIPPED spine
@@ -358,10 +358,10 @@ def plan_nonlinear_fused_magnetic_pair(fields: Any, pml: Any, sources: Any = Non
                                        chunk_layout: Any = None) -> Any:
     """Build the fused B/H plan for a nonlinear run, or ``None`` when refused.
 
-    THE PLAN CLASS IS THE WELDED FAMILY'S, not a subclass, and THE BINDING LIST IS
-    NOT TRANSCRIBED. :func:`.launch.plan_fused_pair` is called through the same
+    The plan class is the welded family's, not a subclass, and the binding list is
+    not transcribed. :func:`.launch.plan_fused_pair` is called through the same
     :class:`_LinearScopeView`, so every volume, every coefficient table and — the
-    hazard this avoids — the CROSSED SUB-LATTICE PAIRING (``step_B`` reads the
+    hazard this avoids — the crossed sub-lattice pairing (``step_B`` reads the
     HALF-INTEGER ``kms_a_h``/``sinv_a_h`` while ``update_H`` reads the INTEGER
     ``kps_a``/``kms_a``) is chosen by the shipped builder and nowhere else. A
     second spelling of that list here would be a half-cell error in the absorber
@@ -375,14 +375,14 @@ def plan_nonlinear_fused_magnetic_pair(fields: Any, pml: Any, sources: Any = Non
     handed to :func:`.launch.plan_fused_pair`, which binds its record: the shipped
     kernel reads both halves' forms from it.
 
-    THE H STATE IS THE REAL ``Fields``, NOT THE VIEW. :class:`.launch.FusedPairPlan`
+    The H state is the real ``Fields``, not the view. :class:`.launch.FusedPairPlan`
     starts H from B on its first launch of a run and then records that on its
     ``h_state`` (``Fields.h_separated``). The builder is handed the view, whose slots
     hold only the wrapped fields, so the record would be written to an object that
     cannot take it; the plan is therefore re-bound to the fields the view wraps,
     which is where the array path keeps the flag.
 
-    ``kernel`` is THE MUTATION SEAM and it is honoured. ``plan_fused_pair`` takes
+    ``kernel`` is the mutation seam and it is honoured. ``plan_fused_pair`` takes
     no such argument — only ``plan_fused_pair_from_arrays`` does — so it is
     installed onto the built plan's own ``_kernel`` slot, which
     :meth:`.launch.FusedPairPlan.run` reads and which

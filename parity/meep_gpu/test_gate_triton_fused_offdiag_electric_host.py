@@ -93,7 +93,9 @@ def test_every_source_mutation_rewrites_the_subject_and_still_resolves(gate, mut
 
 
 def test_the_curl_mutant_is_the_pre_0_10_pairwise_grouping(gate):
-    """KERNELS.md section 7.1: the shipped stencil is MEEP's, so the mutant is the old one."""
+    """An inverted grouping mutation
+    (docs/development/certification.md#inverted-grouping-mutations): the shipped stencil
+    is MEEP's, so the mutant is the old one."""
     mutated, _ = gate.build_subject_source(mutation="flatten_curl_parens")
     assert "curl0 = dtdx * ((c_y - c) + (b - b_z))" in mutated
     assert "curl0 = curl_stencil(" not in mutated

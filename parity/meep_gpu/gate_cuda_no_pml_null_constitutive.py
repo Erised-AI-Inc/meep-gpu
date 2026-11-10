@@ -1,12 +1,12 @@
 """Device confirmation for the hand-CUDA NO-PML constitutive NULL arm.
 
-WHAT THIS GATE IS FOR, AND WHY IT IS NOT A BIT-IDENTITY SWEEP. The family under test
+What this gate is for, and why it is not a bit-identity sweep. The family under test
 (``meep_gpu/cuda_kernels/no_pml_constitutive.py``) ships NO KERNEL. Without an
 absorber ``stepping.update_H`` returns at stepping.py:944-945 and, with E unstored,
 ``stepping.update_E`` returns at :983-984, so the whole product of the sub-step is a
 ``return``. There is nothing to launch and nothing to compare against a launch.
 
-WHAT CAN STILL BE WRONG IS THE ADMISSION, and it is the only thing that can. A null
+What can still be wrong is the admission, and it is the only thing that can. A null
 that admits ONE configuration on which the array path actually moves is silent
 corruption of the worst kind available in this codebase: the composer skips a
 sub-step that had work to do, and no byte ever disagrees with the wrong answer,
@@ -70,7 +70,7 @@ DISCIPLINE, and where each item lands on a family that computes nothing:
   uses. A refused install exits non-zero rather than running under a policy nobody
   asked for. The arm compiles nothing of its own; the harness does, and the counters
   read the harness.
-* THE FIXTURES ARE IMPORTED, NOT RE-TRANSCRIBED. ``build``, the seeding, the
+* The fixtures are imported, not re-transcribed. ``build``, the seeding, the
   snapshot/diff/census and the three case tables come from
   ``gate_triton_no_pml_constitutive``, which measured them into their present shape
   (including the plant rotation that a 1-voxel corpus row needs). A second copy would
@@ -81,7 +81,7 @@ DISCIPLINE, and where each item lands on a family that computes nothing:
   wrote and fails the run on a contract violation no per-case check can see -- a
   missing leg, a vacuous partition, a mutation that flipped nothing, an engine leg
   whose two arms did not differ.
-* THE ARTIFACT MANIFEST IS CHECKED ON EVERY RUN, and only written when
+* The artifact manifest is checked on every run, and only written when
   ``--write-manifest`` is passed into a directory that has none.
   ``source_sha256.txt`` names the predicate, its suite, ``stepping``, ``coverage``
   (the siblings the partition is measured against) and both gates; a disagreement
@@ -108,7 +108,6 @@ import hashlib
 import importlib.util
 import json
 import os
-import platform
 import sys
 import time
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
@@ -130,7 +129,7 @@ except ImportError:  # The whole gate runs without it; the backend row says so.
 # not for its verdicts. Every assertion below is against the hand-CUDA predicate.
 import gate_triton_no_pml_constitutive as ref  # noqa: E402
 
-# THE SUBNORMAL POLICY COMES FROM THIS TRACK'S OWN SPELLING, not the sibling's. Both
+# The subnormal policy comes from this track's own spelling, not the sibling's. Both
 # exist and both work; ``gate_cuda_folded_constitutive``, ``gate_cuda_ade`` and
 # ``gate_cuda_offdiag`` all drive it through ``probe_fused_kernel_bit_identity``, and
 # a CUDA artifact whose policy block had a different shape from every other CUDA
@@ -168,7 +167,7 @@ SHIPPED_SOURCE = os.path.join(_REPO_API, "meep_gpu", "cuda_kernels",
 MANIFEST_SOURCES: Tuple[str, ...] = (
     "meep_gpu/cuda_kernels/no_pml_constitutive.py",
     "meep_gpu/cuda_kernels/test_no_pml_constitutive.py",
-    # THE SIBLINGS THE PARTITION IS MEASURED AGAINST. Under active edit by other
+    # The siblings the partition is measured against. Under active edit by other
     # work, which is exactly why the artifact has to record WHICH version the
     # overlap leg ran against: "no slot is claimed twice" is a statement about a
     # pair of predicates, and half of that pair lives here.
@@ -199,7 +198,7 @@ def verdict(fields: Any, pml: Any, grid: Any, side: str) -> Tuple[bool, str]:
 # identity / breadth — one shared per-case contract
 # ---------------------------------------------------------------------------
 
-#: THE CENSUS CONTRACT, PER SUBNORMAL POLICY -- and the split is a MEASUREMENT, not
+#: The census contract, per subnormal policy -- and the split is a MEASUREMENT, not
 #: an allowance made for a leg that would not pass.
 #:
 #: The seed plants three classes a null could conceivably disturb: ordinary normals,
@@ -207,17 +206,17 @@ def verdict(fields: Any, pml: Any, grid: Any, side: str) -> Tuple[bool, str]:
 #: SUBNORMALS. Under ``keep`` all three survive into the arrays and all three are
 #: required, because "no bytes moved" is otherwise satisfied by a wall of zeros.
 #:
-#: UNDER ``flush`` THE SUBNORMALS CANNOT SURVIVE THE SEED, and that was measured
+#: UNDER ``flush`` the subnormals cannot survive the seed, and that was measured
 #: here rather than anticipated: ``install_subnormal_policy('flush')`` drives the
 #: HOST FPU through ``mp.set_zero_subnormals``, so the ``1e-45`` and ``-3e-44``
 #: literals are flushed in NumPy, before anything is copied to the device. On
 #: ``plain_3d_np2`` the keep census reads 10080 nonzero / 847 signed zero / 777
 #: subnormal, and the flush census reads 9653 / 1197 / 0 -- and the three numbers
-#: ACCOUNT FOR EACH OTHER EXACTLY: 1197 - 847 = 350 negative subnormals became
+#: account for each other exactly: 1197 - 847 = 350 negative subnormals became
 #: ``-0.0``, 10080 - 9653 = 427 positive ones became ``+0.0``, and 350 + 427 = 777,
 #: the planted count.
 #:
-#: SO THE FLUSH RULE IS STRICTER, NOT LOOSER. It requires ``subnormal_words == 0``,
+#: So the flush rule is stricter, not looser. It requires ``subnormal_words == 0``,
 #: which is a POSITIVE measurement that the installed policy reached the data: a
 #: surviving subnormal under a policy that claims to flush would mean the policy was
 #: installed somewhere the seed does not go. Demanding ``> 0`` there, as the first
@@ -263,7 +262,7 @@ def one_identity_case(spec: Dict[str, Any], xp: Any,
                       rule: str = DEFAULT_CENSUS_RULE) -> Dict[str, Any]:
     """Admit, snapshot, call the array path N times, compare, census. One case.
 
-    IDENTITY AND BREADTH MEET THE SAME CONTRACT THROUGH THIS ONE FUNCTION. The
+    Identity and breadth meet the same contract through this one function. The
     sibling gate recorded that its breadth leg -- where the family's distinguishing
     claim lives -- had once been checked on two counters and a flag, and passed with
     a case that moved 7 words. Both legs go through here so that cannot recur.
@@ -277,7 +276,7 @@ def one_identity_case(spec: Dict[str, Any], xp: Any,
         "courant": repr(spec.get("courant", COURANT_NP2)),
         "np2_courant": bool(spec.get("courant", COURANT_NP2) != COURANT_P2),
         "stores_E": bool(fields.stores_E),
-        # An INERT LAYER PRESENT and NO LAYER AT ALL reach the same ``return`` and
+        # An inert layer present and no layer at all reach the same ``return`` and
         # are different configurations; a row claiming the first must prove a layer
         # was there.
         "pml_object_present": bool(pml is not None),
@@ -426,7 +425,7 @@ def run_controls(results: Dict[str, Any], out_path: str, xp: Any,
         # afterwards"). This is the only leg on which P/P_prev exist at all, so it
         # is the only place that pin can be measured.
         entry["polarization_words_moved"] = polarization_moved
-        # THE SOUNDNESS IMPLICATION, PER SIDE, and it is the whole property this
+        # The soundness implication, per side, and it is the whole property this
         # family can violate: ADMITTED => the array path moved nothing. Its
         # contrapositive is what the control cases are for.
         #
@@ -492,7 +491,7 @@ def _sibling_predicates() -> Dict[str, Callable[..., Any]]:
 class _CupyNamedGrid:
     """A grid presenting CuPy's ``__name__`` for its array module, delegating the rest.
 
-    WHY THE PARTITION LEG NEEDS ONE AND THE REST OF THE GATE DOES NOT. Every sibling
+    Why the partition leg needs one and the rest of the gate does not. Every sibling
     predicate opens with ``backend is not CuPy``, so on a NumPy host all three refuse
     everything for that clause alone and the partition is satisfied VACUOUSLY -- two
     predicates that never admit anything are trivially disjoint. This is the census's
@@ -626,7 +625,7 @@ MUTATIONS: Tuple[Tuple[str, Callable[[str], Tuple[str, int]], Dict[str, Any],
 )
 
 # ---------------------------------------------------------------------------
-# THE MUTATION NEEDLES, AND WHY EACH ONE IS BUILT THE WAY IT IS
+# The mutation needles, and why each one is built the way it is
 #
 # A mutation battery measures a CLAUSE, and in a FIRST-REFUSAL predicate a clause can
 # only be measured on a configuration that trips it ALONE. This was not a design
@@ -765,7 +764,7 @@ class _NullSubstitution:
     module's globals; patching ``stepping``'s would leave the driver holding the
     originals and the leg would silently measure nothing.
 
-    THE PATCH IS PER STEP CALL, not per case, and the substituted function RAISES if
+    The patch is per step call, not per case, and the substituted function RAISES if
     it is ever handed a ``Fields`` other than the one it was built for. The sibling
     gate measured why: its first version patched around BOTH drivers' step calls, so
     the "reference" ran the null too and every case reported 0 differing words --
@@ -843,7 +842,7 @@ def run_engine(results: Dict[str, Any], out_path: str, xp: Any,
         entry["substitution_leaks"] = patch.leaks
         entry["differing_words"] = differing
         entry["reference_step_count"] = int(reference.step_count)
-        # THE ARRAY-PATH DRIVER'S OWN STATE, before the first step against after the
+        # The array-path driver's own state, before the first step against after the
         # last. A null certifies by agreeing with a no-op, so "the two drivers are
         # bit-identical" is satisfied just as well by a run in which NOTHING MOVED.
         # The sibling gate caught a row that had been passing for exactly that
@@ -888,7 +887,7 @@ def validate_payload(payload: Dict[str, Any], backend: str,
                      rule: str = DEFAULT_CENSUS_RULE) -> List[str]:
     """Contract violations no per-case check can see. Empty list means release.
 
-    THE LEG SET IS PART OF THE CONTRACT. An artifact cut with ``--legs identity``
+    The leg set is part of the contract. An artifact cut with ``--legs identity``
     must not be able to record a release: a partial run is a debugging aid, not a
     verdict.
     """
@@ -911,7 +910,7 @@ def validate_payload(payload: Dict[str, Any], backend: str,
                 problems.append(f"{leg}: case {case['name']} compared no words")
             if case["cycles"] < 2:
                 problems.append(f"{leg}: case {case['name']} ran a single cycle")
-            # THE CENSUS RULE IS RE-APPLIED HERE, from the recorded numbers rather
+            # The census rule is re-applied here, from the recorded numbers rather
             # than from the per-case flag: a payload whose cases were scored under
             # one rule and labelled with another cannot pass both checks.
             if case.get("census_rule") != rule:
@@ -923,7 +922,7 @@ def validate_payload(payload: Dict[str, Any], backend: str,
                                 "reproduce from its own recorded numbers")
     identity = payload["identity"][backend]
     if not any(c["pml_object_present"] for c in identity["cases"]):
-        problems.append("identity: no case carried an INERT LAYER OBJECT, so the "
+        problems.append("identity: no case carried an inert layer object, so the "
                         "partition's own boundary was never exercised")
 
     controls = payload["controls"][backend]
@@ -979,7 +978,7 @@ def check_manifest(out_dir: str, write: bool) -> Dict[str, Any]:
     """
     digests = {name: sha256_file(os.path.join(_REPO_API, name))
                for name in MANIFEST_SOURCES}
-    # THE PARENT IS SEARCHED TOO, and that is not a convenience. A run cuts one
+    # The parent is searched too, and that is not a convenience. A run cuts one
     # directory per policy under one artifact root, so the manifest belongs to the
     # ROOT: writing one per policy would let two legs of the same run disagree about
     # what they ran and both call themselves consistent.
@@ -993,7 +992,7 @@ def check_manifest(out_dir: str, write: bool) -> Dict[str, Any]:
                     stored[name.strip()] = digest
         return stored
 
-    # THE WRITE TARGET IS BOUND SEPARATELY FROM THE SEARCH, and that is a repair
+    # The write target is bound separately from the search, and that is a repair
     # rather than a style choice. Binding both to the loop variable made
     # ``--write-manifest`` write to whichever candidate the loop happened to end on
     # -- the PARENT -- so a manifest for one artifact landed in the shared results
@@ -1003,7 +1002,7 @@ def check_manifest(out_dir: str, write: bool) -> Dict[str, Any]:
     # at results/source_sha256.txt instead.
     write_path = os.path.join(out_dir, "source_sha256.txt")
     candidates = [write_path]
-    # THE PARENT IS CONSULTED ONLY FROM A POLICY SUBDIRECTORY. A run lays out one
+    # The parent is consulted only from a policy subdirectory. A run lays out one
     # artifact root with ``keep/`` and ``flush/`` inside it, and those two legs share
     # the root's manifest; every OTHER directory is an artifact root itself and must
     # not inherit anything. Searching the parent unconditionally reached the shared
@@ -1019,7 +1018,7 @@ def check_manifest(out_dir: str, write: bool) -> Dict[str, Any]:
         if not os.path.exists(path):
             continue
         stored = read(path)
-        # A PARENT MANIFEST IS ONLY OURS IF IT NAMES OUR SOURCES. Measured the hard
+        # A parent manifest is only ours if it names our sources. Measured the hard
         # way: an unrelated manifest left in a shared scratch directory by another
         # run was picked up as this gate's own and refused the release, which is the
         # right verdict for the wrong reason -- and the wrong reason would have been
@@ -1040,15 +1039,16 @@ def check_manifest(out_dir: str, write: bool) -> Dict[str, Any]:
 
 
 def provenance(xp: Any, backend: str) -> Dict[str, Any]:
+    import neutral_ids  # noqa: PLC0415
     block: Dict[str, Any] = {
         "utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "host": platform.node(),
+        "host": neutral_ids.machine_id(),
         "python": sys.version.split()[0],
         "numpy": np.__version__,
         "backend": backend,
         "array_module": getattr(xp, "__name__", str(xp)),
         "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
-        "cupy_cache_dir": os.environ.get("CUPY_CACHE_DIR"),
+        "cupy_cache_dir": neutral_ids.path(os.environ.get("CUPY_CACHE_DIR")),
         "shipped_source_sha256": sha256_file(SHIPPED_SOURCE),
         "kernels_in_family": 0,
         "device": None,
@@ -1107,7 +1107,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "identity_cycles": IDENTITY_CYCLES,
         "engine_steps": ENGINE_STEPS,
     }
-    # THE POLICY IS DRIVEN, NOT NARRATED, AND BEFORE ANYTHING COMPILES. This family
+    # The policy is driven, not narrated, and before anything compiles. This family
     # compiles nothing of its OWN -- and the harness is ordinary CuPy work that does.
     # The sibling gate measured exactly that trap: it reported "nvrtc_calls 0" as
     # confirmation that the family compiles nothing, while 48 .cubin files sat beside
@@ -1133,7 +1133,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             log(f"SUBNORMAL POLICY {args.subnormal_policy!r} REFUSED: {exc!r}")
             return 5
 
-    # WHICH CENSUS RULE THIS RUN IS SCORED UNDER, decided once and recorded, so a
+    # Which census rule this run is scored under, decided once and recorded, so a
     # reader never has to infer it from the numbers it produced.
     rule = args.subnormal_policy or DEFAULT_CENSUS_RULE
     results["census_rule"] = rule
@@ -1156,7 +1156,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             runners[leg](results, args.out, xp, backend)
 
     try:
-        # STAMPED AFTER THE LEGS, unconditionally -- including on a run that asked
+        # Stamped after the legs, unconditionally -- including on a run that asked
         # for no policy, where "nothing was installed" is itself the answer.
         results["subnormal_policy_stamp"] = probe.subnormal_policy_stamp(_REPO_API)
     except Exception as exc:  # noqa: BLE001 - a stamp that fails is recorded

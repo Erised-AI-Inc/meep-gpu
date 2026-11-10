@@ -1,6 +1,6 @@
 """The COMPLEX CONDUCTIVE fused Triton pair, as a laptop can check it.
 
-WHAT THIS SUITE OWNS AND WHAT IT DELIBERATELY DOES NOT. The BYTES are the device
+What this suite owns and what it deliberately does not. The BYTES are the device
 gate's — ``parity/meep_gpu/probe_triton_complex_conductive_fused_pair.py`` runs
 three routes in lockstep on CuPy and compares uint32 words PER COMPLETE DRIVER
 STEP, and no assertion here duplicates that. What lives here is everything true
@@ -8,7 +8,7 @@ about the family WITHOUT a device: what the shipped kernel TEXT says, which
 configurations the predicate refuses and by what name, that the product is not an
 arm, and the choices a byte gate structurally cannot hold.
 
-THE FIVE CLAIMS THIS SUITE MAKES THAT THE GATE CANNOT.
+The five claims this suite makes that the gate cannot.
 
 1. **The product is not an arm.** Nothing in ``launch.py`` names this module and
    ``fastpath`` is untouched, so no default run can reach it.
@@ -27,7 +27,7 @@ THE FIVE CLAIMS THIS SUITE MAKES THAT THE GATE CANNOT.
 5. **The pole chain is the certified helper with exactly two lines removed.** The
    order is bit-load-bearing; the weld may not pre-sum or reorder.
 
-NO EXPANSION ARM IS ASSERTED HERE, because none remains: the expansion licence, its
+No expansion arm is asserted here, because none remains: the expansion licence, its
 probe artifacts and the arm argument are deleted on all three tables, so every
 complex product has one emitted form. The device gate holds the bytes.
 """
@@ -114,21 +114,21 @@ def test_backward_matches_the_sub_step_table_and_is_one():
 
 
 def test_the_composer_routes_this_product_and_the_release_names_its_one_case():
-    """ROUTED 2026-09-02 by the installer wave, RELEASED 2026-09-15 on one case — both halves.
+    """ROUTED 2026-09-02 by the installer change, RELEASED 2026-09-15 on one case — both halves.
 
     This test replaces the deferral it used to make. Until 2026-09-02 it asserted
     that ``launch.py`` and ``fastpath.py`` named this module NOWHERE, which was the
-    seam that kept a certified-but-unrouted product deferred. The wave routed it:
+    seam that kept a certified-but-unrouted product deferred. The 2026-09-02 change routed it:
     ``launch.CERTIFIED_FUSED_PRODUCTS`` holds its row and
     ``_install_certified_fused_products`` builds it through the shared
     ``_install_fused_pair``, taking both slots only when ``_pair_may_absorb`` finds
     the arm table has already given them to the arms this kernel implements.
 
-    RELEASED ON ONE CASE SINCE 2026-09-15, and the second half is that sentence made
+    Released on one case since 2026-09-15, and the second half is that sentence made
     checkable from the PRODUCT's side rather than from the composer's. Until then
     this test asserted the label was NOT in ``fastpath.RELEASED_FUSED_ARMS``, which
     was true while the pair weld had no ledger entry. The release names exactly
-    ``complex_no_pml_3d``, the Triton route case restored in the same batch, and the
+    ``complex_no_pml_3d``, the Triton route case restored in that same change, and the
     label now sits in ``ARM_CERTIFICATION`` (the pair weld ``seed_triton_welds.py``
     cuts from the re-run pair gate) and NOT in ``PENDING_DEVICE_GATE_ARMS``; the
     exactly-one-of rule between those two maps is unchanged.
@@ -154,12 +154,12 @@ def test_the_composer_routes_this_product_and_the_release_names_its_one_case():
 
 
 def test_the_carry_flag_is_False_and_the_wiring_sets_say_so():
-    """FLAG AND WIRING MOVE TOGETHER, in both directions.
+    """Flag and wiring move together, in both directions.
 
     This family is served in full WITHOUT the repair — all four corpus rows declare
     a magnetic source only — so the flag is False. Until 2026-09-02 that meant the
     module appeared in NEITHER wiring set, because no composer could install it.
-    The installer wave routed it, so the pair of declarations it now owes is
+    The installer change routed it, so the pair of declarations it now owes is
     "installable, deliberately unbracketed": absent from ``WIRED_FOR_THE_REPAIR``
     and PRESENT in ``ROUTED_WITHOUT_THE_REPAIR``, which is the same pair the Metal
     off-diagonal welds carry.
@@ -197,7 +197,7 @@ def test_the_kernel_calls_no_multiply_helper_outside_the_three_it_declares():
 # ---------------------------------------------------------------------------
 
 def test_every_certified_curl_statement_appears_in_the_fused_body():
-    """PARSED OUT OF BOTH FILES. A suite that re-implemented the kernel's arithmetic
+    """Parsed out of both files. A suite that re-implemented the kernel's arithmetic
     would MIRROR a planted defect instead of executing it."""
     certified = statements(
         CURL.read_text(encoding="utf-8"),
@@ -242,7 +242,7 @@ def test_the_pole_helper_is_the_certified_one_with_exactly_its_two_loads_removed
 
 
 def test_the_pole_arms_appear_in_registration_order_and_are_never_pre_summed():
-    """THE ORDER IS BIT-LOAD-BEARING: pre-summing or reordering changes float32
+    """The order is bit-load-bearing: pre-summing or reordering changes float32
     rounding at two or more poles, which is why the certified body spells eight
     separate arms and why the gate arms a mutation that reverses them."""
     text = body()
@@ -309,7 +309,7 @@ def test_an_undeclared_source_list_is_a_refusal_and_not_an_empty_set():
 
 def test_an_electric_source_is_refused_by_name_citing_the_conductive_injection():
     """The injection lands between the halves, and on a conductive row it takes the
-    ``condinv``-scaled path. THE CONDUCTIVE INJECTION IS THE SAME CLAUSE, not a
+    ``condinv``-scaled path. The conductive injection is the same clause, not a
     second one: ``driver.step`` guards it with ``if electric and
     has_conductivity``, so with no electric source it cannot run at all."""
     from meep_gpu.sources import ContinuousEnvelope, VolumeSource
@@ -328,7 +328,7 @@ def test_an_electric_source_is_refused_by_name_citing_the_conductive_injection()
 
 
 def test_a_magnetic_source_does_NOT_trip_the_source_clause():
-    """THE POLARITY THAT MAKES THIS CELL REACHABLE AT ALL with the flag at False:
+    """The polarity that makes this cell reachable at all with the flag at False:
     all four corpus rows declare a magnetic source, injected in the B/H seam."""
     from meep_gpu.sources import ContinuousEnvelope, VolumeSource
 
@@ -448,7 +448,7 @@ def test_the_gate_scores_every_mutation_on_a_case_that_compiles_its_guards():
 
 
 def test_the_module_is_welded_to_the_bytes_its_gate_executed():
-    """THE WELD LANDED 2026-09-17, and this test turned over with it.
+    """The weld landed 2026-09-17, and this test turned over with it.
 
     It used to assert the ABSENCE of a ``fingerprints.json`` entry, with a
     ``pytest.skip`` as its own escape hatch for the day the gate ran. That day came:

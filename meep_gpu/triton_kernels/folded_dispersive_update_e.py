@@ -1,6 +1,6 @@
 """``update_E`` when a mirror fold AND a susceptibility are live at once.
 
-WHY THIS IS ITS OWN MODULE
+Why this is its own module
 --------------------------
 Two shipped predicates each refuse one half of this configuration, and each
 refusal is correct about its OWN kernel:
@@ -18,7 +18,7 @@ own module rather than a section of ``symmetry.py`` or ``offdiag_update_e.py``.
 Both of those files are also hashed into ``fingerprints.json``'s ``host_sha256``,
 which no laptop may rewrite; a new module carries its own provenance instead.
 
-WHY NO KERNEL IS NEEDED
+Why no kernel is needed
 -----------------------
 The dispersive ``update_E`` body is ELEMENT-WISE: one cell's ``(D - sum P)``
 times one cell's inverse epsilon, then MEEP's ``dsigw`` tail
@@ -28,7 +28,7 @@ STORED EXTENT — and the field arrays, the pole arrays and the PML coefficient
 vectors already carry it. The layout and coefficient clauses below check that by
 name rather than assuming it.
 
-MEASURED, NOT ARGUED. The certified body against ``stepping.update_E``, EIGHT
+Measured, not argued. The certified body against ``stepping.update_E``, EIGHT
 complete cycles, uint32 over the whole stored inventory (fields, PML auxiliaries,
 ``f_w``, every pole's ``P`` and ``P_prev``), with a +-0 lattice held LIVE in ``D``
 through every cycle so the constitutive leg could not pass by being a no-op —
@@ -38,7 +38,7 @@ is reported VACUOUS rather than IDENTICAL::
     C_folded_dispersive_update_E               IDENTICAL   0 / 69120  (>=13824 moved)
     C_folded_dispersive_update_E_ROWSHAPE_2D   IDENTICAL   0 /  9360   (>=1872 moved)
 
-ON TWO SHAPES, and the second one is the point. The first fixture is a synthetic
+On two shapes, and the second one is the point. The first fixture is a synthetic
 3-D box, ``[9,16,16]`` with one mirrored axis — NOT "the corpus configuration",
 which this file used to claim it was. The four rows this admission is for are
 ``TestLoadDump`` 2-D at ``[250,126,1]`` with boundary kinds
@@ -49,8 +49,8 @@ on a 2-D grid with those kinds and a fold, and measures it there too.
 around that one call on both sides. (results/residual_closure_2026-08-15/device/
 bodies/bodies.json; minus0 >= 1728 and >= 234 respectively.)
 
-AND THROUGH THIS MODULE'S OWN BUILDER. Both legs above reach the certified body
-by patching the incumbent predicate. The closure round's second leg builds through
+And through this module's own builder. Both legs above reach the certified body
+by patching the incumbent predicate. The residual closure's second leg builds through
 :func:`plan_folded_dispersive_constitutive` with
 :func:`folded_dispersive_constitutive_coverage` UNPATCHED — a plan of ``None``
 would be a failed leg — and measures the same 0 / 69120 and 0 / 9360
@@ -59,9 +59,9 @@ would be a failed leg — and measures the same 0 / 69120 and 0 / 9360
 Four slots on four rows, each of which reaches FULL whole-step coverage now that
 the arm exists — but all four are ``TestLoadDump`` 2-D cases, which exercise
 load/dump machinery rather than distinct physics, so this closure ranks last of
-the round's four on physics value even though it is the cheapest to state.
+the residual closure's four on physics value even though it is the cheapest to state.
 
-WHAT IS NOT HERE
+What is not here
 ----------------
 No kernel and no arithmetic. The kernel is
 ``dispersive_update_e.constitutive_step_dispersive``, the plan class is
@@ -141,7 +141,7 @@ def folded_dispersive_constitutive_coverage(fields: Any, pml: Any) -> Coverage:
     ``symmetry.folded_constitutive_coverage``). Disjoint from both by
     construction, and tests pin both directions.
 
-    STILL REFUSED HERE, BY NAME, and none of it is implied by the two inversions:
+    Still refused here, by name, and none of it is implied by the two inversions:
 
     * an off-diagonal ``chi1inv`` row. Fold + off-diagonal + dispersion at
       ``update_E`` is a real corpus configuration (``absorbed_power_density.py``)
@@ -310,14 +310,14 @@ def explain_folded_dispersive(fields: Any, pml: Any) -> Coverage:
 # WIRING — the planner seam is IN; dispatch is held shut by its enable
 # ---------------------------------------------------------------------------
 #
-# Added 2026-08-14 by the residual-group closure round, which did not own
-# ``launch.py`` and could add no arm. AS IT NOW STANDS: ``launch.plan_step``'s
+# Added 2026-08-14 by the residual-group closure, which did not own
+# ``launch.py`` and could add no arm. As it now stands: ``launch.plan_step``'s
 # ``update_E`` table carries a ``folded dispersive`` arm gated on
 # ``folded_grid_active and dispersion_active``, the package ``__init__`` exports
 # the predicate and the builder behind the lazy seam, and
 # ``launch.FAMILY_MODULES`` names this module.
 #
-# THE ARM IS ADDITIVE AND REORDERS NOTHING, which is what the two inverted clauses
+# The arm is additive and reorders nothing, which is what the two inverted clauses
 # buy: the ``dispersive`` arm refuses a fold (coverage._grid_reasons clause 5) and
 # the ``folded`` arm refuses a registered susceptibility (symmetry.py:811-813), so
 # this arm can only ever win a slot on which both of them already refused. The
@@ -325,7 +325,7 @@ def explain_folded_dispersive(fields: Any, pml: Any) -> Coverage:
 # shipped composer and asserts the whole ``selected`` dict, which is what turns
 # that from an argument into a measurement.
 #
-# NEITHER INCUMBENT CLAUSE WAS NARROWED, deliberately. Narrowing ``symmetry.py``'s
+# Neither incumbent clause was narrowed, deliberately. Narrowing ``symmetry.py``'s
 # susceptibility clause instead of adding this arm would make TWO predicates admit
 # one slot, and ``_select_slot`` fails closed on that: the slot would be left
 # UNSELECTED and fall to the array path — a silent coverage LOSS, not an error.
@@ -340,7 +340,7 @@ def explain_folded_dispersive(fields: Any, pml: Any) -> Coverage:
 # the composer from the driver, and what holds it shut is
 # ``fastpath.DISPATCH_BY_DEFAULT`` being False.
 #
-# NO ENTRY IN ``fingerprints.json`` IS CLAIMED, deliberately and for the reason
+# No entry in ``fingerprints.json`` IS CLAIMED, deliberately and for the reason
 # that record already states about the families wired on 2026-08-13: provenance
 # for a specialized module lives with its own gate trio, and ``host_sha256`` names
 # bytes that ran on a GPU. This module plans a CERTIFIED kernel, so what its gate

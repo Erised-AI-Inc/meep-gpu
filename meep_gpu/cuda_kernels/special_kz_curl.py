@@ -1,13 +1,13 @@
 """The special_kz (``grid.beta != 0``) curl pair for the hand-CUDA track.
 
-WHAT BETA IS (grid.py:668-697 ``_resolve_beta``; stepping.py:754-811). A 2-D run
+What beta is (grid.py:668-697 ``_resolve_beta``; stepping.py:754-811). A 2-D run
 carries ``exp(i*2*pi*beta*z)`` analytically, so ``d/dz`` on the invariant axis is
 the EXACT factor ``i*2*pi*beta`` -- an ``i*beta*zhat x`` cross product folded into
 the curl (MEEP step_db.cpp:148-176). MEEP calls it ``special_kz`` and reaches it
 from ``mp.Simulation(kz_2d=...)`` on a cell with ``cell_size.z == 0`` and
 ``k_point.z != 0``.
 
-THE FAMILY ADDS ONE TERM TO THE TWO CURL SUB-STEPS AND CHANGES NOTHING ELSE:
+The family adds one term to the two curl sub-steps and changes nothing else:
 
 * call sites -- ``step_B`` (stepping.py:384-391): Bx adds the Ey-CENTRE term at
   sign +1 (:389), By the Ex-CENTRE term at sign -1 (:391), Bz nothing;
@@ -23,16 +23,16 @@ THE FAMILY ADDS ONE TERM TO THE TWO CURL SUB-STEPS AND CHANGES NOTHING ELSE:
 * rounding (stepping.py:811) -- ``partner_values.dtype.type(coefficient)``, rounded
   ONCE on the host, then ``return -(c * partner)``: the negation is of the PRODUCT,
   in curl sign convention, because the caller subtracts;
-* position -- a PASS OF ITS OWN after every component's curl (step_db.cpp:161-175;
+* position -- a pass of its own after every component's curl (step_db.cpp:161-175;
   ``stepping.step_B`` / ``step_D``'s beta loop), through its own additive ladder
   (``stepping._apply_folded_increment``; step_generic.cpp:255-333): ``f += raw*sinv``
   outside the component's dsigu chunks, ``fu += (df = raw*sinv); f += sinv_u*df``
   inside them, MEEP's unowned cells left as they are. Each kernel here is the
   CERTIFIED root curl kernel with that pass inserted after the ``pml_apply`` call of
   the x and y components (``folded_pass.beta_insert``), on the words ``pml_apply``
-  just stored. Until 0.10 the increment was added to the curl before the masks and
-  rode the curl's own recurrence, which is a different number (bit_parity_0_10
-  KERNELS.md section 6);
+  just stored. Until 1.0 the increment was added to the curl before the masks and
+  rode the curl's own recurrence, which is a different number (a different float32
+  word);
 * partner -- the SAME-CELL component snapshot (:293 electric, :408 magnetic). Per
   ``B_CURL_TERMS`` / ``D_CURL_TERMS`` (stepping.py:214-223) every beta partner is a
   CENTRE operand the certified curl already loads: Bx takes ``f2`` (the second
@@ -45,7 +45,7 @@ THE FAMILY ADDS ONE TERM TO THE TWO CURL SUB-STEPS AND CHANGES NOTHING ELSE:
   beta-dependent, which is why :func:`covers_special_kz_constitutive` below is an
   ADMISSION over the CERTIFIED constitutive pair rather than a third kernel.
 
-WHAT THIS IS FOR, stated narrowly and measured. On the 2026-08-20 union census
+What this is for, stated narrowly and measured. On the 2026-08-20 union census
 (``parity/meep_gpu/results/cuda_predicate_coverage_2026-08-20_all_families/``)
 exactly two REAL-storage corpus rows carry a nonzero beta and are refused for it
 at every one of their four sub-steps: ``examples/refl-angular-kz2d.py``
@@ -59,14 +59,14 @@ beta rows in the corpus are COMPLEX storage
 ``TestEigCoeffs.test_binary_grating_special_kz_*``) and are refused by the complex
 family for storage or for the fold, not for beta; nothing here reaches them.
 
-REAL STORAGE ONLY, AND OFF-DIAGONAL EPSILON IS REFUSED BY NAME. With real storage
+Real storage only, and off-diagonal epsilon is refused by name. With real storage
 and a beta run ``stepping._special_kz_beta_term`` RAISES on an off-diagonal
 epsilon (stepping.py:800-810) and MEEP aborts on the same combination
 (fields.cpp:548-549): the implicit i on the TM half cancels only while mu and
 epsilon leave TE and TM uncoupled. The refusal is family-wide rather than E-side
 only, because the run itself dies inside the FIRST beta curl.
 
-NO DISPATCH. Nothing in ``meep_gpu`` imports ``cuda_kernels``; these kernels are
+No dispatch. Nothing in ``meep_gpu`` imports ``cuda_kernels``; these kernels are
 reachable only from ``parity/meep_gpu/gate_cuda_special_kz.py`` and the laptop
 tests, so :func:`covers_special_kz_curl` returning True licenses a MEASUREMENT and
 not a production step.
@@ -156,7 +156,7 @@ def beta_curl_coefficients(beta: float, dt: float) -> Tuple[float, float]:
         coefficient = sign * 2.0 * math.pi * grid.beta * grid.dt   # :770, float64
         partner_values.dtype.type(coefficient)                     # :784, ONE round
 
-    TWO SCALARS, ONE PER SIGN, rather than one negated in the kernel. float64
+    Two scalars, one per sign, rather than one negated in the kernel. float64
     negation and float32 rounding commute exactly, so the two spellings cannot
     differ -- but binding both keeps the transcription literal per call site
     instead of resting on that identity, and it is what the gate's
@@ -173,7 +173,7 @@ def beta_curl_coefficients(beta: float, dt: float) -> Tuple[float, float]:
                  for sign in (1.0, -1.0))
 
 
-# THE DEVICE TEXT IS DERIVED, NOT COPIED. Each kernel is the CERTIFIED root kernel
+# The device text is derived, not copied. Each kernel is the CERTIFIED root kernel
 # (``step_curl_kernels._step_{B,D}_pml_real_kernel_code``, read off the sibling's source
 # as its prelude is) with exactly three anchored edits and nothing else:
 #
@@ -188,12 +188,12 @@ def beta_curl_coefficients(beta: float, dt: float) -> Tuple[float, float]:
 #    folded ladder on the words ``pml_apply`` just stored. The z component gets none:
 #    MEEP's ``cc`` runs over d_c in {X, Y} only.
 #
-# THE ORDER IS MEEP'S. ``step_db`` runs the beta pass after EVERY component's curl; a
+# The order is MEEP's. ``step_db`` runs the beta pass after EVERY component's curl; a
 # thread here runs it right after its own component's curl. The two agree word for word:
 # the beta increment of a B (D) component reads only E (H), which ``step_B`` (``step_D``)
 # never writes, and no other component's pass writes this component's words.
 #
-# SAME SIGNS ON BOTH SIDES: the ``+-1j`` that distinguishes them lives only in complex
+# Same signs on both sides: the ``+-1j`` that distinguishes them lives only in complex
 # storage (``stepping._special_kz_beta_term``), and this family is real. The prelude is
 # the root's, with ``folded_pass.REAL_FOLD_HELPERS`` appended. A moved anchor raises by
 # name at import.
@@ -316,7 +316,7 @@ def set_kernel_source(name: str, source: str) -> None:
     _SOURCES[name] = source
 
 
-#: WHAT HAS BEEN MEASURED ON A DEVICE FOR THIS FAMILY, AND WHAT HAS NOT.
+#: What has been measured on a device for this family, and what has not.
 #:
 #: Filled in from ``parity/meep_gpu/results/cuda_special_kz_2026-08-21_rename_r2/`` -- two
 #: legs, one per float32 subnormal policy, on ONE verified-empty RTX A6000. Both
@@ -329,9 +329,9 @@ SPECIAL_KZ_ADMISSION: Dict[str, Any] = {
                   "parity/meep_gpu/results/cuda_special_kz_2026-08-21_rename_r2/flush/gate.json"),
     "host": "the GPU host",
     "device": "NVIDIA RTX A6000 (cc 8.6), CuPy 13.5.1, NVRTC 11.6",
-    #: WHAT MOVED IN THIS FILE SINCE THE RUN, and why the verdict survives it.
+    #: What moved in this file since the run, and why the verdict survives it.
     #: Declared rather than left to be inferred from a file hash that no longer
-    #: matches, and the survival claim is MEASURED, not argued: the sha256 of every
+    #: matches, and the survival claim is measured, not argued: the sha256 of every
     #: string :func:`kernel_source` returns is a key in BOTH artifacts'
     #: ``nvrtc_binary_report.binary_sha256_by_source``, i.e. a source the gate's own
     #: observer saw handed to NVRTC. ``test_special_kz_bfast_admission.py``
@@ -363,10 +363,10 @@ SPECIAL_KZ_ADMISSION: Dict[str, Any] = {
     "source_mutations_null_confirmed": 10,
     "host_mutations_caught": 5,
     "host_mutations_null_confirmed": 1,
-    # MEASURED, not assumed: at the inexact courant the UNGUARDED build diverged
+    # Measured, not assumed: at the inexact courant the UNGUARDED build diverged
     # on every case where the guarded build was identical.
     "fmad_false_is_load_bearing": {"comparable": 36, "diverged": 36},
-    # A MEASURED REFUSAL, and worth as much as an admission. Swapping the beta
+    # A measured refusal, and worth as much as an admission. Swapping the beta
     # partner for its SHIFTED companion is UNDETECTABLE here: both partners'
     # only shifted companion is the neighbour along Z, and every beta grid has
     # nz == 1, so the two are the same word. Scored 0/12 CAUGHT across both
@@ -392,7 +392,7 @@ SPECIAL_KZ_ADMISSION: Dict[str, Any] = {
 
 
 # ---------------------------------------------------------------------------
-# COMPILATION AND LAUNCH
+# Compilation and launch
 # ---------------------------------------------------------------------------
 #
 # ``cupy`` is imported INSIDE these functions, never at module scope, so the
@@ -487,7 +487,7 @@ def step_special_kz(sub_step: str, fields: Any, tables: Dict[str, Any],
 class _BetaFreeGrid:
     """The run's grid, answering ``beta = 0.0`` and forwarding everything else.
 
-    Satisfying AT THE INPUT the single clause this family inverts is the technique
+    Satisfying at the input the single clause this family inverts is the technique
     ``no_pml_curl._ActiveLayerProxy`` uses and the coverage census uses for the
     CuPy-backend clause, and for the same reason: the shipped predicates
     SHORT-CIRCUIT, so there is no accumulated refusal list to filter afterwards.
@@ -574,13 +574,13 @@ def covers_special_kz_curl(fields: Any, pml: Any, grid: Any, sub_step: str) -> t
 
     ``sub_step`` is ``"step_B"`` or ``"step_D"``. Returns ``(covered, reason)``.
 
-    THE SUB-STEP ARGUMENT IS REQUIRED for the reason
+    The sub-step argument is required for the reason
     :func:`coverage.covers_real_pml_curl`'s is: the conductivity is read PER TARGET
     COMPONENT in ``stepping._apply_curl`` (:479), so a D-side conductivity routes
     ``step_D`` to a recurrence this pair does not implement and leaves ``step_B``
     an ordinary curl.
 
-    DELEGATION, NOT A SECOND CLAUSE SET. Every question except the beta clause is
+    Delegation, not a second clause set. Every question except the beta clause is
     the CERTIFIED curl predicate's, asked through it on a proxy grid whose beta
     reads zero, so this family cannot drift to a weaker standard than the one it
     borrows its arithmetic and its masks from -- and a clause added there is
@@ -604,7 +604,7 @@ def covers_special_kz_constitutive(fields: Any, pml: Any, grid: Any,
     """Whether the CERTIFIED constitutive pair may serve ``update_H``/``update_E``
     on a beta run. ``side`` is ``"H"`` or ``"E"``; returns ``(covered, reason)``.
 
-    THIS FAMILY BUILDS NO CONSTITUTIVE KERNEL, and that is the finding rather than
+    This family builds no constitutive kernel, and that is the finding rather than
     an omission. ``stepping.update_H`` (:907-923) and ``update_E`` (:926-993) reach
     ``_apply_constitutive_pml`` (:2065) and neither they nor it read ``grid.beta``,
     ``bfast_scaled_k`` or any array the beta term writes: beta enters the step loop
@@ -612,13 +612,13 @@ def covers_special_kz_constitutive(fields: Any, pml: Any, grid: Any,
     shipped predicate's with the beta clause inverted, and the ARITHMETIC is
     ``constitutive_kernels``' own, untouched.
 
-    THAT READING IS NOT THE EVIDENCE. ``gate_cuda_special_kz.py`` carries a
+    That reading is not the evidence. ``gate_cuda_special_kz.py`` carries a
     constitutive arm that runs the certified pair against ``stepping.update_H`` /
     ``update_E`` on a grid whose beta is nonzero, at both sub-steps and both
     subnormal policies, and a beta run whose two curls have already moved the
     state. A sub-step admitted because nothing was found to read beta, with no
     device leg, would be admitted by argument from absence -- which is what the
-    Metal track's tranche-6 split (that family's two remaining open slots were
+    split in an earlier Metal census (that family's two remaining open slots were
     exactly one row's constitutive sides, while its two curls were served) exists
     to warn about. The two sub-steps are asked SEPARATELY here for the same reason.
     """

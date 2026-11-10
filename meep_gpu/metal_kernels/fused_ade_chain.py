@@ -1,6 +1,6 @@
 """``update_E`` welded to ``update_P`` — the first fused product at the E->P seam.
 
-THE SEAM IS EMPTY, AND THAT IS THE WHOLE REASON THIS PRODUCT EXISTS.
+The seam is empty, and that is the whole reason this product exists.
 ``driver.step`` runs::
 
     if fast is None or not fast.dispatch("update_E", self.fields):
@@ -15,7 +15,7 @@ the Metal fusion matrix records ``E_to_P: 15 instances, 0 blocked by the source
 seam, CEILING 15``.
 
 ===========================================================================
-THE ROTATION QUESTION, AND THE THIRD ANSWER
+The rotation question, and the third answer
 ===========================================================================
 
 ``ade_update_p`` launches once per DRIVEN COMPONENT and the host rotates
@@ -31,7 +31,7 @@ is an OBSERVATION on one toolchain rather than a language guarantee, and — the
 sentence this family is built around — "Fusing further REQUIRES breaking the chain
 first, not inheriting it."
 
-THERE IS A THIRD ANSWER AND IT IS MEASURED, not argued:
+There is a third answer and it is measured, not argued:
 ``parity/meep_gpu/probe_metal_ade_rotation_seam.py`` /
 ``results/metal_ade_rotation_seam_2026-08-20/``.
 
@@ -47,7 +47,7 @@ THERE IS A THIRD ANSWER AND IT IS MEASURED, not argued:
   ``chi3`` magnitude — both refused by the E half), and ``update_P(state, c)``
   advances only ``P[c]``, so no component's E-side read is disturbed by another
   component's P-side write.
-* **Per component, the rotation is ALIAS-FREE BY CONSTRUCTION.** The rotation is a
+* **Per component, the rotation is alias-free by construction.** The rotation is a
   permutation of ``2d + 1`` buffers for ``d`` driven components, so its orbit is
   FINITE and the probe walks it to closure rather than sampling: at EVERY
   configuration in the orbit, for d = 1, 2, 3, a per-component launch's write set
@@ -58,11 +58,11 @@ THERE IS A THIRD ANSWER AND IT IS MEASURED, not argued:
   at every orbit position for d > 1 — that is ``fused_ade_state``'s alias, and it
   is the thing this shape does not have.
 
-So the answer to the census's open question is: THE HOST ROUND TRIP STAYS, AND IT
-WAS NEVER THE BLOCKER. One launch per component, the rotation left exactly where
+So the answer to the census's open question is: the host round trip stays, and it
+was never the blocker. One launch per component, the rotation left exactly where
 the certified plan already performs it, and the fused kernel inherits no alias.
 
-ONE ALIAS DOES SURVIVE, ACROSS LAUNCHES, AND IT IS INHERITED RATHER THAN NEW.
+One alias does survive, across launches, and it is inherited rather than new.
 Component Ey's launch WRITES the buffer component Ex's launch READ as ``p_prev``
 — that is what the rotation is. It is a write-after-read across two dispatches on
 one MPS stream, which in-order execution settles, and it is EXACTLY the relation
@@ -75,7 +75,7 @@ different animal: no compiler ordering can repair a cross-program-instance race,
 inside a single launch is what ``fused_ade_state``'s note is about.
 
 ===========================================================================
-WHAT IS FUSED, AND IT IS EXACTLY ONE VALUE
+What is fused, and it is exactly one value
 ===========================================================================
 
 ``update_P``'s drive is ``Fields.drive_field(component)``: the stored E without
@@ -97,7 +97,7 @@ reload becomes a register:
   per complete step, because "by construction" is a hypothesis until a comparator
   agrees.
 
-EVERY OTHER LINE IS TRANSCRIBED CHARACTER FOR CHARACTER from the body it replaces.
+Every other line is transcribed character for character from the body it replaces.
 The lines are NOT restated anywhere in this module as data: a second declaration
 of "here are the load-bearing lines" is one more place to drift. Instead
 ``test_metal_fused_ade_chain`` CALLS each certified emitter, searches its output
@@ -105,7 +105,7 @@ for the line, and searches this family's output for the same line with the
 documented rename applied — so the check parses both sources and mirrors neither.
 
 ===========================================================================
-WHY THE POINTER NAMES MOVE, AND WHY THE SCALARS MOVE INTO A STRUCT
+Why the pointer names move, and why the scalars move into a struct
 ===========================================================================
 
 **POINTER RENAMES.** The E half names its pole buffers ``p0..p7``
@@ -113,7 +113,7 @@ WHY THE POINTER NAMES MOVE, AND WHY THE SCALARS MOVE INTO A STRUCT
 its three volumes ``p_now`` / ``p_prev`` / ``p_out`` (ade_update_p.py:64-66).
 Fused, ``p0`` would mean two things in one scope, so the ADE volumes become
 ``o{k}`` (out), ``q{k}`` (prev) and ``s{k}`` (sigma) while ``p{k}`` stays the
-E half's spelling — AND IS THE SHARED POINTER. ``p_now`` is not bound a second
+E half's spelling — and is the shared pointer. ``p_now`` is not bound a second
 time: pole ``k``'s ``P[c]`` is the same array the E chain subtracts, so the fused
 signature binds it once. That shared binding is the fusion's whole footprint.
 
@@ -133,12 +133,12 @@ records as measured to compile — brings the worst corpus configuration to exac
     one pole more (7/7)                         -> 34 bindings            REFUSED
 
 so :func:`binding_count` is evaluated by the predicate and a configuration over
-the ceiling is a REFUSAL BY NAME rather than a compile error at plan time. The
+the ceiling is a refusal by name rather than a compile error at plan time. The
 three-line prologue that copies ``prm.ny`` / ``prm.nz`` / ``prm.n_elem`` back into
 locals exists so :data:`.templates.GUARD` and :data:`.templates.DECODE_IJK` are
 emitted from the CERTIFIED emitters unchanged.
 
-THE POLE SLOTS ARE NOT PADDED TO EIGHT. Both pointwise families declare
+The pole slots are not padded to eight. Both pointwise families declare
 ``p0..p7`` always and bind the displacement into the unused slots
 (no_pml_stored_e.py:213, dispersive_update_e.py:213). Here the signature declares
 exactly ``pole_count`` slots, because the pad is what puts this over the ceiling:
@@ -147,7 +147,7 @@ body is already specialised per pole count in both certified families, so nothin
 about the ARITHMETIC changes with the declaration.
 
 ===========================================================================
-WHAT THIS FAMILY REFUSES
+What this family refuses
 ===========================================================================
 
 * **an off-diagonal chi1inv row or a chi2/chi3** — refused by BOTH E-half
@@ -201,9 +201,9 @@ from .dispersive_update_e import (
 from .folded_dispersive_update_e import folded_dispersive_e_coverage
 from .no_pml_stored_e import metal_stored_e_coverage
 
-#: THREE FAMILY NAMES, ONE MODULE, and the split is forced rather than stylistic.
-#: ``arms`` holds one row per (family, label) and the table's invariant is that NO
-#: SLOT CARRIES TWO ARMS FROM ONE FAMILY (test_metal_planner_composition.py:
+#: Three family names, one module, and the split is forced rather than stylistic.
+#: ``arms`` holds one row per (family, label) and the table's invariant is that no
+#: slot carries two arms from one family (test_metal_planner_composition.py:
 #: ``test_no_slot_carries_two_arms_from_one_family``) — two rows from one family on
 #: one slot would leave that slot permanently UNSELECTED, a family silently
 #: disabling itself. The three E->P cells are three products sharing one builder,
@@ -489,7 +489,7 @@ def fused_ade_chain_source(arm: str, axis: int, pole_count: int,
         # chunk holds, f_w takes the constitutive product and E accumulates
         # f + ((kps*src) - (kms*prev)) (step_generic.cpp:689, :697); everywhere else
         # E IS the product and f_w is neither read nor written.
-        # THE DRIVE NEEDS NO SELECT: MEEP's w is f_w where the chunk keeps one and E
+        # The drive needs no select: MEEP's w is f_w where the chunk keeps one and E
         # elsewhere (update_pols.cpp:44, Fields.drive_field), and both are `src` --
         # f_w is set to it, and the plain E is it. So the register is the drive on
         # every cell.
@@ -576,7 +576,7 @@ def fused_ade_chain_coverage(fields: Any, pml: Any, arm: str,
     here with that half's reasons, prefixed so a reader can tell which side said
     it — the construction ``metal_fused_dispersive_pair_coverage`` uses.
 
-    THERE IS NO SOURCE CLAUSE, AND THE ABSENCE IS DELIBERATE. Every other fused
+    There is no source clause, and the absence is deliberate. Every other fused
     product on this backend must be told the source inventory, because the driver
     injects INSIDE its seam and ignorance is not an empty set. This seam has no
     injection in it at all — ``driver.step`` runs ``update_E`` at :3304 and
@@ -598,7 +598,7 @@ def fused_ade_chain_coverage(fields: Any, pml: Any, arm: str,
     if not polarization.covered:
         reasons.extend(f"ADE half: {reason}" for reason in polarization.reasons)
 
-    # THE SEAM CLAUSE. The per-component interleave is equivalent to the driver's
+    # The seam clause. The per-component interleave is equivalent to the driver's
     # order only while update_E(c) reads NOTHING but component c's own volumes.
     # Both features that break that are already refused by the E half; they are
     # named again because the FACT being asserted is different — this one is about
@@ -614,7 +614,7 @@ def fused_ade_chain_coverage(fields: Any, pml: Any, arm: str,
             "volumes (stepping.py:991-997), so the per-component interleave is "
             "not the driver's order")
 
-    # THE POLE SETS MUST AGREE, PER COMPONENT. Both are fields.polarizations order
+    # The pole sets must agree, per component. Both are fields.polarizations order
     # filtered by drives(component); a disagreement would pair pole k's
     # displacement subtraction with pole j's recurrence and produce a smooth,
     # plausible, wrong field.
@@ -677,7 +677,7 @@ class MetalFusedAdeChainPlan:
     whole-step arbiter asserts the exact per-cycle launch count on every filled
     slot, and that assertion is what stops a slot passing by not executing.
 
-    THE ROTATION IS PERFORMED HERE, AFTER EACH LAUNCH, and it is the SAME rotation
+    The rotation is performed here, after each launch, and it is the SAME rotation
     ``MetalAdeUpdatePPlan.run`` performs (ade_update_p.py:353-355), which is
     ``dispersion.PolarizationState.update``'s (dispersion.py:689-691). It is not
     baked into the kernel and this plan does not want it to be: see the module
@@ -715,12 +715,12 @@ class MetalFusedAdeChainPlan:
     def run(self, contract: Optional[str] = None) -> None:
         """One complete E->P seam, in place, against the mirrors.
 
-        THE DESTINATION CHAIN IS RESOLVED AHEAD OF EACH LAUNCH and the reference
+        The destination chain is resolved ahead of each launch and the reference
         rotation applied only AFTER it succeeds — the discipline
         ``MetalAdeUpdatePPlan.run`` states (ade_update_p.py:19-23): caching
         semantic pointers would advance the wrong buffer from launch two onward.
 
-        THE ALIAS CHECK IS NOT DECORATION. The whole licence for this shape is
+        The alias check is not decoration. The whole licence for this shape is
         that a per-component launch never writes a buffer it reads, and the
         rotation moves those identities every step. The check is O(poles) integer
         comparisons over lists resolved for the launch anyway, and it is what turns
@@ -735,8 +735,10 @@ class MetalFusedAdeChainPlan:
                     f"{self.variants}); build it with contract_variants={(mode,)} "
                     f"rather than launching the pinned one")
             component = entry.component
-            poles = [state.P[component] for state in entry.states]
-            prevs = [state.P_prev[component] for state in entry.states]
+            # Resolving which array is current is not a read of its words: the plain dict
+            # subscript keeps a held mirror on the device (barrier.BarrierDict acquires).
+            poles = [dict.__getitem__(state.P, component) for state in entry.states]
+            prevs = [dict.__getitem__(state.P_prev, component) for state in entry.states]
             outs: List[Any] = []
             scratch_of: Dict[int, Any] = {}
             for position, state in enumerate(entry.states):

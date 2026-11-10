@@ -6,7 +6,7 @@ complex products this launch replaces — lives in
 ``parity/meep_gpu/probe_triton_complex_fused_electric_pair.py``. A green suite here
 is NOT a certification; the module under test says so and so does this file.
 
-THE TWIN IS THE BASELINE, AND THE DIFFERENCES ARE THE POINT. This product is
+The twin is the baseline, and the differences are the point. This product is
 :mod:`meep_gpu.triton_kernels.complex_fused_magnetic_pair` on the other seam, so
 every test that would merely re-run the twin's is written instead as a comparison
 against it — the two predicates must agree everywhere except where the seam differs,
@@ -74,7 +74,7 @@ def build(cell=(3.0, 3.0, 0.0), boundaries="periodic", k_point=(0.23, 0.0, 0.0),
 def residual(verdict):
     """The reasons that are not the NumPy-host backend clause.
 
-    MATCHED ON THE CLAUSE, NOT ON THE WORD 'cupy'. The complex predicates' EXPANSION
+    Matched on the clause, not on the word 'cupy'. The complex predicates' EXPANSION
     refusal names the backend the probe must be for, so a filter on the word swallows
     it — and a refusal that vanishes from the residual is a refusal the caller reads
     as an admission.
@@ -294,7 +294,7 @@ def test_the_wall_clear_is_carried_on_BOTH_word_planes():
 
 
 def test_the_wall_clear_takes_the_D_SIDE_component_map_and_not_the_twins():
-    """THE DEFECT THIS MODULE SHIPPED TO ITS FIRST DEVICE RUN, pinned so it cannot
+    """The defect this module shipped to its first device run, pinned so it cannot
     come back.
 
     ``stepping._zero_metal`` clears every component whose Yee shift on the WALLED
@@ -380,7 +380,7 @@ def test_the_seam_clauses_add_nothing_the_twin_does_not_also_refuse():
 
 
 def test_an_electric_deposit_is_CARRIED_and_a_magnetic_source_is_irrelevant():
-    """THE CLAUSE THE WHOLE PRODUCT TURNS ON, in all three directions.
+    """The clause the whole product turns on, in all three directions.
 
     The driver injects an electric source between the two halves (driver.py:3296)
     and a magnetic one in the B/H seam. A predicate that refused both would be
@@ -395,7 +395,7 @@ def test_an_electric_deposit_is_CARRIED_and_a_magnetic_source_is_irrelevant():
     # (2) a REAL electric deposit in this seam: CARRIED by the repair.
     carried = product.complex_fused_electric_pair_coverage(
         fields, pml, (electric_deposit(fields),))
-    # (3) an electric source that publishes no index: STILL REFUSED BY NAME.
+    # (3) an electric source that publishes no index: still refused by name.
     opaque = product.complex_fused_electric_pair_coverage(
         fields, pml, (Source("D"),))
     assert residual(magnetic) == []
@@ -484,7 +484,7 @@ def test_a_fields_that_cannot_hand_over_inv_eps_is_refused_not_crashed():
 
 def test_a_fold_is_refused_by_this_products_own_clause_and_not_only_by_the_halves():
     """The seam clause must name the two D-side passes, not lean on the halves'
-    wording. If the complex tranche ever admits a fold, the halves' refusal
+    wording. If the complex-field kernels ever admit a fold, the halves' refusal
     disappears and this weld would silently swallow two passes that had started
     doing work."""
     fields, pml = build(boundaries=("metallic", "metallic", "periodic"),
@@ -763,24 +763,24 @@ def test_the_module_imports_and_answers_coverage_with_triton_absent(monkeypatch)
 
 
 def test_the_composer_routes_this_product_and_dispatch_admits_it():
-    """ROUTED 2026-09-02 by the installer wave, and RELEASED at dispatch 2026-09-13.
+    """ROUTED 2026-09-02 by the installer change, and RELEASED at dispatch 2026-09-13.
 
     This test replaces the deferral it used to make. Until 2026-09-02 it asserted
     that ``launch.py`` and ``fastpath.py`` named this module NOWHERE, which was the
-    seam that kept a certified-but-unrouted product deferred. The wave routed it:
+    seam that kept a certified-but-unrouted product deferred. The 2026-09-02 change routed it:
     ``launch.CERTIFIED_FUSED_PRODUCTS`` holds its row and
     ``_install_certified_fused_products`` builds it through the shared
     ``_install_fused_pair``, taking both slots only when ``_pair_may_absorb`` finds
     the arm table has already given them to the arms this kernel implements.
 
-    WIRING WAS NOT RELEASING, and this is the file where that sentence ended. It
+    Wiring was not releasing, and this is the file where that sentence ended. It
     was named ``..._and_dispatch_still_refuses_it`` for as long as the label sat
     outside ``fastpath.RELEASED_FUSED_ARMS``; on 2026-09-13
     ``dispatch_fused_route_2026-09-13_phaseB`` drove it through the driver's own
     consults on ``bloch_2d`` and ``complex_nobloch_2d``, so the label now names
     those cases in ``RELEASED_FUSED_ARMS`` and clause (8) admits the plan.
 
-    THE PARTITION IS STILL EXACTLY ONE OF TWO, in the other direction: the label
+    The partition is still exactly one of two, in the other direction: the label
     is in ``ARM_CERTIFICATION`` (its gate has a tracked ledger entry, cut from this
     campaign's fleet artifact by ``seed_triton_welds.py``) and out of
     ``PENDING_DEVICE_GATE_ARMS`` — the certified-and-released state, not a refusal.
@@ -821,7 +821,7 @@ def test_the_module_makes_no_identity_claim_it_has_not_earned():
 def test_the_docstrings_ceiling_is_the_boards_own_number():
     """The module quotes 16 of 16 for this cell. Re-derived from the board that
     priced it, so the docstring cannot outlive the measurement."""
-    if not BOARD.exists():  # pragma: no cover - the board is cut per round
+    if not BOARD.exists():  # pragma: no cover - the board is cut per certification run
         pytest.skip(f"{BOARD} has not been cut on this host")
     board = json.loads(BOARD.read_text(encoding="utf-8"))
     rows = [row for row in board["aggregate"]["cells"]

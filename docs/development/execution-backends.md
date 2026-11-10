@@ -13,9 +13,9 @@ supported simulation has been lifted.
 |---|---|---|---|
 | NumPy array path | **Active** | Backend-neutral FDTD implementation on CPU arrays; the executable numerical reference. | <code>prefer_gpu=False</code>: the reference, which never dispatches a kernel. Default for <code>FdtdDriver</code> built directly; <code>lift_simulation</code> and <code>run_on_gpu</code> take it by name. Also where an Apple GPU driver steps whatever its kernel table does not serve. |
 | CuPy array path | **Active when available** | The same array implementation on CUDA-resident arrays. CuPy translates its array operations into GPU work. | <code>prefer_gpu=True</code>, the default of <code>lift_simulation</code> and <code>run_on_gpu</code>, with a visible CUDA device. |
-| Triton kernel table | **Dispatch (on by default)** | Compiled GPU sub-steps and fused products operating on the existing CuPy allocations. 30 released arms over 64 arm-case rows. | A CuPy engine with the certified Triton (3.1.0) installed. Composes first. |
-| Hand-written CUDA kernel table | **Dispatch (on by default)** | <code>cp.RawKernel</code> sources behind the same fail-closed seam, with their own certification ledger. 23 released arms over 68 arm-case rows, plus certified single kernels adopted as seam pairs and the symmetry-fill pair. | A CuPy engine. Second behind a validated Triton; first under <code>MEEP_GPU_BACKEND_PREFERENCE=cuda</code>; **alone** where no validated Triton is installed, a composition run on one device for the installation check's simulation, one example and one route leg with Triton withheld from the process (2026-09-29), and not timed. |
-| Metal kernel table | **Dispatch (on by default)** | Hand-written Metal sub-steps launched through <code>torch.mps.compile_shader</code> over persistent device mirrors of NumPy-owned fields. Not a general Torch array backend. 29 released arms over 72 arm-case rows. | <code>prefer_gpu=True</code> on an Apple GPU, every one of which is supported: a **NumPy** engine with an MPS device and <code>torch.mps.compile_shader</code>, in any environment; outside the certified one (GPU architecture <code>applegpu_g13s</code>, torch 2.10.0, Metal frontend <code>metalfe-32023.850.10</code>, fast math off) the run is labelled uncertified, or refused under <code>MEEP_GPU_HARDWARE=certified</code> ([Certification on an Apple GPU](../guides/kernel-dispatch.md#certification-on-an-apple-gpu)). |
+| Triton kernel table | **Dispatch (on by default)** | Compiled GPU sub-steps and fused products operating on the existing CuPy allocations. 30 released arms over 64 arm-case rows. | A CuPy engine with a Triton 3.1 or later (older only under <code>MEEP_GPU_HARDWARE=any</code>) that compiled and launched the health probe on the device; outside the certified identities (Triton 3.1.0 on compute capability 8.6 or 8.9, each beside its certified stack) it runs labelled uncertified, or is refused under <code>MEEP_GPU_HARDWARE=certified</code>. Composes first. |
+| Hand-written CUDA kernel table | **Dispatch (on by default)** | <code>cp.RawKernel</code> sources behind the same fail-closed seam, with their own certification ledger. 23 released arms over 68 arm-case rows, plus certified single kernels adopted as seam pairs and the symmetry-fill pair. | A CuPy engine whose NVRTC can target the device (a device it cannot target only under <code>MEEP_GPU_HARDWARE=any</code>); outside the certified identities (compute capability 8.6 or 8.9, each beside its certified stack) it runs labelled uncertified, or is refused under <code>MEEP_GPU_HARDWARE=certified</code>. Second behind an admitted Triton; first under <code>MEEP_GPU_BACKEND_PREFERENCE=cuda</code>; **alone** where no Triton is admitted, a composition run on one device for the installation check's simulation, one example and one route leg with Triton withheld from the process (31 of 39 cases byte-identical, 6 refusals the leg requires and 2 with no fused arm, 2026-10-28), and not timed. |
+| Metal kernel table | **Dispatch (on by default)** | Hand-written Metal sub-steps launched through <code>torch.mps.compile_shader</code> on MPS mirrors of the engine's NumPy arrays; under the default <code>held</code> residency the device owns each engine volume between launches and its host array is sealed read-only. Not a general Torch array backend. 29 released arms over 72 arm-case rows. | <code>prefer_gpu=True</code> on an Apple GPU, every one of which is supported: a **NumPy** engine with an MPS device and <code>torch.mps.compile_shader</code>, in any environment; outside the certified ones (GPU architecture <code>applegpu_g13s</code> with Metal frontend <code>metalfe-32023.921.5</code>, or <code>applegpu_g16g</code> with Metal frontend <code>metalfe-32023.886.1</code>; each with torch 2.10.0 and fast math off) the run is labelled uncertified, or refused under <code>MEEP_GPU_HARDWARE=certified</code> ([Certification on an Apple GPU](../guides/kernel-dispatch.md#certification-on-an-apple-gpu)). |
 | Kernel-table selector | — | Two switches at two rungs. <code>MEEP_GPU_KERNEL_TABLE</code> names a table within the candidate set the hardware allows; <code>MEEP_GPU_BACKEND_PREFERENCE</code> orders the two tables a CuPy engine has. | A value naming a table this host cannot run is refused **by name**, never answered with a different table. |
 
 Whether a driver plans at all is decided by how it was built. A driver built
@@ -53,8 +53,8 @@ Dispatch is on by default, and <code>MEEP_GPU_DISPATCH=0</code> turns it off. Th
 switch accepts only <code>0</code> and <code>1</code>; any other value is refused by
 name and the run takes the array path. A dispatching run still reaches kernels
 only where a released family covers the configuration on a host its kernel
-table admits (a supported NVIDIA host, compute capability 7.0 to 9.0 with
-Triton 3.1, or any Apple GPU, every one of which is supported; outside the
+table admits (a supported NVIDIA host, one whose installed CuPy or Triton can run
+the table, or any Apple GPU, every one of which is supported; outside the
 certified identity, labelled uncertified);
 everything else stays on the array path, which handles every configuration by
 construction. Whichever happened is
@@ -69,18 +69,19 @@ re-freezes, because the plan is decided once and kept.
 
 ## Coverage, and the number that is not a speed claim
 
-Each table has its own coverage board, over a denominator of **597 seam-instances** on a 194-row basis: Triton 334,
-hand-written CUDA 352, Metal 327. Each board states two qualifiers about itself
-in its <code>dispatch_agreement</code> block (the boards are not published
-with this package):
+Each table has its own coverage board, on a 194-row basis: Triton 334, hand-written CUDA
+352, Metal 327 of 597 seam-instances, the 1.0 certification round's cut (2026-10-15), which
+1.0.1 ships. Each board states two qualifiers about itself in its
+<code>dispatch_agreement</code> block (the boards are not published with this package):
 the figure <code>is_an_upper_bound</code>, and it is a **different number** from
-the board's own count of seam-instances a fused product exists for at all (537,
-538 and 507 of the same 597). Publishing them separately is the point — a product
-existing and a product being reachable in dispatch are different claims. The 1.0
-certification round cut the three boards on the release's bytes (2026-10-15), and
-the dispatch figures need no record outside the package: since the complex-multiply
-expansion licence was deleted in the 1.0 series, the complex families dispatch by
-default.
+the board's own count of seam-instances a fused product exists for at all
+(537, 538 and 507 of 597). Publishing them separately is the point — a product
+existing and a product being reachable in dispatch are different claims. The 1.0.1
+censuses measured 0 flipped coverage flags on 194 of 194 rows per table and one changed
+hand-written CUDA selection, and the 1.0.1 cut of the boards is owed with the archived
+inputs. The dispatch figures need no record outside the package: since the
+complex-multiply expansion licence was deleted in the 1.0 series, the complex families
+dispatch by default.
 
 Each table's <code>fingerprints.json</code> carries a <code>driver_dispatch</code>
 record. That record, not this page's prose, is what a reader checks.
@@ -116,13 +117,13 @@ The hand-written table also adopts two certified real-PML single arms, but only
 as a partnered seam where both partners are launchable and carry a certification
 row. Every other single arm is refused as unlaunchable.
 
-> **Note: Selection is not cost-based**
+> **Note: Measured cost arbitrates the fused slots**
 >
-> An arbitration consult that would choose between admitted products by
-> measured cost is built and pinned by its own test, but it is **not wired**.
-> Today a longer span wins a slot wherever it is admitted, with no size gate.
-> Nothing in this package selects a kernel by timing, and a reader should not
-> infer that it does.
+> By default (<code>MEEP_GPU_PREFER</code> unset or <code>measured</code>) a fused
+> product this GPU's timing record measures slower than the certified single arms it
+> replaces gives way to them, never to the array path, and the run's certification
+> does not change; an architecture with no record takes a prior from its vendor's
+> nearest timed one. <code>MEEP_GPU_PREFER=span</code> restores the longest-span rule.
 
 ## Triton table
 
@@ -169,21 +170,21 @@ name and fall back to the array path.
 ### What the certification record fixes
 
 The shipped fingerprint record certifies **Triton 3.1.0** on the CUDA validation
-host — an NVIDIA RTX A6000, compute capability 8.6. A different installed version
-is a correctness event rather than an automatic upgrade, and the package test
-deliberately fails outside the certified set until the gate is repeated. A
-compute capability outside the validated list is refused **by name** when it can
-be read; a capability that cannot be read is recorded as unknown and not refused,
-because refusing on a fact that was not read would be asserting it.
+hosts — one NVIDIA RTX 3090, compute capability 8.6, with an RTX A6000's earlier runs kept beside
+it, and one RTX 4080 SUPER, compute capability 8.9. Another version is not certified until the gate is repeated on it (the certification suite's
+version test fails on it). By default such a version runs if it is 3.1 or later and launched the
+health probe on the device, recorded <code>certified: False</code> with one NOTE line; an older
+one is refused **by name** unless <code>MEEP_GPU_HARDWARE=any</code>. By default an uncertified
+capability is judged by the same probe, and an unread one is recorded as unknown, not refused.
 
 ### The subnormal question is a policy contract, not a blocker
 
-Subnormal arithmetic is handled as a contract. Each table declares the policy its
-certification was cut under — the two NVIDIA tables under <code>keep</code>, the
-Metal table under <code>flush</code> — and dispatch installs that policy on all
-three executors or refuses by name. <code>MEEP_GPU_SUBNORMAL_INSTALL=0</code>
-does not relax the rule; it only moves the install to the caller, who must have
-installed the certified policy already.
+Subnormal arithmetic is a contract. Dispatch installs <code>keep</code> for the NVIDIA tables
+and <code>flush</code> for the Metal table on every executor it drives, or refuses by name. An
+NVIDIA table instead keeps a caller's <code>flush</code> installed before any kernel compiled,
+if every executor attains it: certified where every dispatched arm released under it on this
+compute capability, else uncertified (refused under <code>MEEP_GPU_HARDWARE=certified</code>).
+<code>MEEP_GPU_SUBNORMAL_INSTALL=0</code> only moves the install to the caller.
 
 Under <code>keep</code> the <code>CUPY_CACHE_DIR</code> in force must carry the
 token <code>ftz_stripped</code> in its path. CuPy computes its cache key above the
@@ -201,8 +202,8 @@ selected by the driver.
 rule as Triton: it can only replace a frozen, explicitly covered sub-step after
 validation against the array path, and any other feature stays on the array path.
 It is now a released, dispatching table with its own certification ledger and
-board. On a CuPy engine it composes second behind a validated Triton, and alone
-where none is installed. Its products include welds wider than a
+board. On a CuPy engine it composes second behind an admitted Triton, and alone
+where none is admitted. Its products include welds wider than a
 pair — three-slot dispersive, off-diagonal stencil, folded complex off-diagonal
 stencil, and a no-absorber three-slot dispersive weld.
 
@@ -259,8 +260,8 @@ What the bracket moves depends on the residency mode
   with no driver change. It is slower than the array path at every size
   measured.
 
-Any other spelling of the variable is refused by name, and the run takes the
-array path.
+Unset or empty means the default. Any other value is matched ignoring case and surrounding
+blanks; one that names neither mode is refused by name, and the run takes the array path.
 
 Three mechanisms keep a supported run whole under a hold. Every Metal freeze
 first releases any earlier hold on the same fields — the flush, the seals, and
@@ -273,10 +274,9 @@ faster choice, and why direct writes into <code>driver.fields</code> are
 unsupported under a hold — are in
 [Compiled-kernel dispatch](../guides/kernel-dispatch.md#the-metal-table-and-held-residency).
 
-The 1.0 certification round certified the held default on the release's bytes:
-the Metal device gates, the Metal route campaign under held residency, the re-cut
-of the Metal dispatch record from it and the coverage board
-([Certification status](certification.md#certification-status-of-this-release)).
+The 1.0.1 certification round certified the held default: the Metal device gates,
+the Metal route campaign under held residency and the re-cut of the Metal dispatch
+record from it ([Certification status](certification.md#certification-status-of-this-release)).
 The table's route gate supports no timing claim, and the Metal
 board's coverage figure is a correctness and reachability number only.
 
@@ -317,11 +317,12 @@ MEEP_GPU_SUBNORMAL_POLICY=flush python -m parity.meep_gpu.recut_metal_corpus \
 
 ### What this table still does not have
 
-1. Throughput evidence beyond one case. The only Metal timings of record are one
-   3-D PML case on one laptop under held residency, at five sizes (the 1.0
-   timing, 2026-10-16), and the route gates support no timing claim; the figures
-   and their limits are in
-   [Will it help?](../guides/will-it-help.md#on-one-apple-m1-max).
+1. Throughput evidence beyond a few cases. The only Metal timings of record against MEEP
+   are on one laptop under held residency: one 3-D PML case at five sizes (the 1.0 timing,
+   2026-10-16) and 3 of 4 cases at three sizes (the 1.0.1 timing). The route gates support
+   no timing claim; the figures and their limits are in
+   [Will it help?](../guides/will-it-help.md#on-one-apple-m1-max) and
+   [the 1.0.1 timing](../guides/will-it-help.md#the-101-timing-on-the-same-laptop).
 2. A corpus re-cut and complete-job validation on the current basis.
 3. A safe process model for MEEP and Torch. On the current development install
    their OpenMP runtimes cannot safely share one test process, so CPU-MEEP
@@ -347,7 +348,7 @@ Choose the narrowest layer that serves the goal:
 - CUDA kernel-performance investigation: use the Triton or hand-written CUDA
   table only behind a fail-closed coverage predicate, and remember that a change
   to the hand-written table is only observable under
-  <code>MEEP_GPU_BACKEND_PREFERENCE=cuda</code> or on a host with no validated
+  <code>MEEP_GPU_BACKEND_PREFERENCE=cuda</code> or on a host with no admitted
   Triton;
 - Apple Silicon kernel work: extend the fail-closed Metal plans and their device
   gates; treat a future general Torch array backend as a separate architectural

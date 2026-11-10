@@ -455,7 +455,7 @@ def _fused_complex_product(array, ix, iy, iz, amps, factor, dt, component, cndin
     """The contracted complex product a fusing host forms: ``fma(ar, cr, -(ai*ci))``.
 
     Spelled with exact rationals so the mutant is the same on every host: NumPy's own
-    complex multiply contracts on some hosts and not on others (phase-0 complex family:
+    complex multiply contracts on some hosts and not on others (1,000,000 random complex64 products:
     491,977 of 2,000,000 words on an AVX-512 x86 host), which would make a battery
     built on it host-dependent.
     """
@@ -1250,7 +1250,7 @@ def test_a_full_width_source_takes_its_lattice_image_as_a_separate_subtraction(s
 
 
 # ---------------------------------------------------------------------------
-# The lift's MEEP src_time (owner ruling R3)
+# The lift's MEEP src_time (lifted runs form their currents through it)
 # ---------------------------------------------------------------------------
 
 class _MeepTime:

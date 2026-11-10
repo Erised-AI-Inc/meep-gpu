@@ -1,7 +1,7 @@
 """ADVERSARIAL: hunt a configuration that DISPATCHES a fused route whose LIVE
 in-seam passes the winning arm does not carry.
 
-THE SHAPE OF THE DEFECT BEING HUNTED. A fused pair occupies TWO driver slots
+The shape of the defect being hunted. A fused pair occupies TWO driver slots
 (``step_B``/``update_H`` or ``step_D``/``update_E``) and performs both in ONE
 launch, at the FIRST consult. Between those two consults ``driver.step`` runs
 four things unconditionally, outside every consult
@@ -20,7 +20,7 @@ all four: the wall clear is carried INSIDE the fused kernel, the two fills are
 excluded by ``FUSED_RELEASE_ENVELOPE``'s ``folded: absent`` rung, and the source
 injection is carried by ``deposit_repair``'s two-consult plans.
 
-WHAT THIS PROBE MEASURES, and why it is not the board's column. The board's
+What this probe measures, and why it is not the board's column. The board's
 ``live_in_seam_passes`` is a DECLARATION — ``metal_kernels/launch.live_sub_steps``
 derives it from the source list and the grid. This probe wraps each of the four
 passes and records whether the call actually CHANGED any word of its family's

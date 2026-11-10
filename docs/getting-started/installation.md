@@ -20,9 +20,9 @@ sends you there; where the two differ, INSTALL.md is right.
 | You already have a MEEP environment and want to keep it | none | [Installing into an existing MEEP environment](https://github.com/Erised-AI-Inc/meep-gpu/blob/main/INSTALL.md#installing-into-an-existing-meep-environment) |
 
 Every environment file installs MEEP from conda-forge, where its Python module is
-published as `pymeep`, pinned to 1.33.0, the release the kernels were certified
-against. MEEP is not on the Python package index, and the package is installed
-from a checkout of the repository.
+published as `pymeep`, pinned to 1.35.0, the release the kernels are certified
+against. MEEP is not on the Python package index. This package is, as `meep-gpu`,
+but the routes install it from a checkout of the repository.
 
 ## The commands, in short
 
@@ -57,12 +57,12 @@ It steps one small simulation on this host's GPU, on the NumPy reference and on
 MEEP, and compares them. It must end with
 `OK: MEEP and meep-gpu work together on this host's GPU.` (on Route 3,
 `OK: MEEP and meep-gpu work together on the NumPy reference.` followed by a
-sentence). A line starting `FAILED:` gives one reason and names the section of
-INSTALL.md to read. On a Mac outside the certified environment the Metal
-kernels run uncertified and the check still ends `OK:`: its GPU line reads
-`supported (every Apple GPU is); NOT certified: the records name another` on
-another Apple GPU, and a `NOTE:` says the Mac's environment is supported but
-not the certified one.
+sentence); any other `OK:` line says where the run stepped instead. A line starting
+`FAILED:` gives one reason and names the section of INSTALL.md to read. On a Mac
+outside the certified environment the Metal kernels run uncertified and the check
+still ends `OK:`: on another Apple GPU its GPU line reads
+`supported (every Apple GPU is); NOT certified: the records name another`, and
+a `NOTE:` says the Mac's environment is supported but not the certified one.
 [The installation check](https://github.com/Erised-AI-Inc/meep-gpu/blob/main/INSTALL.md#the-installation-check)
 says how to read the rest of its output. Its last step compares MEEP and the
 environment with the certification reference of its platform, package by package; that
@@ -92,16 +92,29 @@ Then run the [first lifted simulation](first-lift.md).
   `KMP_DUPLICATE_LIB_OK`
   ([One OpenMP runtime on an Apple silicon Mac](https://github.com/Erised-AI-Inc/meep-gpu/blob/main/INSTALL.md#one-openmp-runtime-on-an-apple-silicon-mac)).
 - **Supported and certified hardware.** The NVIDIA kernels are certified on
-  compute capability 8.6 (Triton 3.1.0, or the hand-written CUDA table), and
-  supported on compute capability 7.0 to 9.0 (Triton 3.1): on a supported device
-  or toolchain that is not certified they run by default, uncertified, and say
-  so; outside that range the run takes the array path. The Metal kernels are supported on every Apple GPU, M1
-  through M5 and later, and run on each by default. They are certified on one
-  environment: GPU architecture `applegpu_g13s` (Apple M1 Max), PyTorch 2.10.0,
-  Metal frontend `metalfe-32023.850.10`, fast math off. Any other Apple GPU,
-  PyTorch version or macOS build runs them uncertified and says so.
+  compute capabilities 8.6 and 8.9 (Triton 3.1.0, or the hand-written CUDA table) beside the
+  stack each was certified on, a single-precision MEEP 1.35.0 included, and
+  supported on any device the installed CuPy or Triton (3.1 or later) can run on:
+  on a supported device or toolchain that is not certified they run by default,
+  uncertified, and say so; on a device neither can run on the run takes the array
+  path unless `MEEP_GPU_HARDWARE=any`. The Metal kernels are supported on every Apple GPU, M1 through M5 and
+  later, and run on each by default. They are certified on two environments: GPU
+  architecture `applegpu_g13s` (Apple M1 Max) with Metal frontend `metalfe-32023.921.5` and `applegpu_g16g` (Apple M4) with
+  `metalfe-32023.886.1`, each with PyTorch 2.10.0 and fast math off. Any other Apple GPU, PyTorch version or
+  macOS build runs them uncertified and says so (macOS 27.2, Metal frontend
+  `metalfe-32023.922.4`, to which the certified M1 Max has since moved, included).
   `MEEP_GPU_HARDWARE=certified` restricts every table to its certified identities
   ([GPUs that are not on the certified list](https://github.com/Erised-AI-Inc/meep-gpu/blob/main/INSTALL.md#gpus-that-are-not-on-the-certified-list)).
+- **Certified and supported versions.** The device libraries come in two
+  recipes. Certified (bit-identical to the reference MEEP on certified
+  hardware, except a run with an `EigenModeSource`, which can differ from MEEP
+  ([Compatibility](../guides/compatibility.md#an-eigenmodesource-can-differ-from-meep));
+  exact pins): the extras `nvidia-certified` and `apple-certified`, and the GPU
+  library versions the environment files install, beside a double-precision MEEP from
+  conda-forge (uncertified on NVIDIA hardware; on a Mac the certified mark does not judge it,
+  so it does not certify identity with that MEEP). Supported (runs the fast path; newer
+  versions are probe-checked at first launch and recorded as not certified): the extras `nvidia`, `nvidia-cuda11` and `apple`. The table is in
+  [Certified and supported versions](https://github.com/Erised-AI-Inc/meep-gpu/blob/main/INSTALL.md#certified-and-supported-versions).
 - **The harness is not needed.** Using the package needs nothing under
   `parity/`: that directory is the certification and benchmark harness, and it is
   not part of the installed distribution.

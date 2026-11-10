@@ -66,7 +66,7 @@ Expanding it per face gives u = (n_pml - j - s/2) / n_pml at the lower wall and
 u = (j + s/2 - (N - n_pml)) / n_pml at the upper one — note the sign of the s/2
 term flips, so the upper face is NOT the index-mirror of the lower face.
 
-TWO QUANTITIES, ONLY ONE OF THEM SNAPPED. MEEP quantizes the layer's extent to a
+Two quantities, only one of them snapped. MEEP quantizes the layer's extent to a
 whole half-cell (that is the whole content of the int() above; the distance n is
 already a whole half-cell because the wall sits on a lattice point), and it
 quantizes nothing else: the profile argument divides by the RAW requested
@@ -494,7 +494,7 @@ class PML:
         half-integer sets, sitting half a cell inside both walls, are. Keep the one
         expression: the per-face algebra is what drifted apart before.
 
-        THE EXTENT AND THE NORMALIZATION MOVE SEPARATELY. Only the numerator is
+        The extent and the normalization move separately. Only the numerator is
         quantized; the denominator and ``prefac`` carry the raw thickness
         (structure.cpp:635,683). What a "reasonable" generalization loses is that ``u``
         is not bounded by 1: it reaches ``N_half / (2 * n_pml)``, which is 1.008755 at
@@ -505,7 +505,7 @@ class PML:
         on either side of a half cell (5.2 rounds its extent down, 5.3 up) rather than
         only half-integers, where a floor() and a ceil() each look right half the time.
 
-        THE EXTENT TEST IS NOT INDEPENDENTLY OBSERVABLE. ``|i - i_wall| < N_half`` is
+        The extent test is not independently observable. ``|i - i_wall| < N_half`` is
         MEEP's own ``x > 0`` (structure.cpp:682) written on the quantized numerator, and
         for the ``u`` above it is the SAME predicate: measured over 1,600,000 samples
         spanning 4000 thicknesses from 0.01 to 40.00 cells, ``distance < extent`` and
@@ -519,7 +519,7 @@ class PML:
         ``u == 0.0`` exactly and ``0.0 ** order`` is 0 for any ``order >= 1``. Keep the
         snapped form because it is MEEP's, not because a test can tell.
 
-        WHOLE CELLS MUST NOT MOVE. ``u`` is written as
+        Whole cells must not move. ``u`` is written as
         ``1 + ((N_half - 2*n_pml) - n) / (2*n_pml)`` rather than as the plainer
         ``(N_half - n) / (2*n_pml)``: for a whole-cell face ``N_half - 2*n_pml`` is
         exactly 0.0 and the rest is the pre-fractional expression operation for
@@ -537,7 +537,7 @@ class PML:
         it against this reassociation, and claiming they do would be claiming a guard
         that is not there.
 
-        WHICH LATTICE POINT INDEX 0 IS (``wraps``). On a wrapping axis MEEP owns the
+        Which lattice point index 0 IS (``wraps``). On a wrapping axis MEEP owns the
         half-cell indices ``1 .. 2*N``, not ``0 .. 2*N - 1``: ``LOOP_OVER_VOL`` runs
         from ``little_owned_corner0(c) = little_corner + 2 - iyee_shift(c)`` to
         ``big_corner()`` (meep/vec.hpp:1102, step_db.cpp:124), so the half-integer

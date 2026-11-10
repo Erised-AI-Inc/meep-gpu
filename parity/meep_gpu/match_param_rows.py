@@ -25,7 +25,7 @@ _HERE = Path(__file__).resolve().parent
 def _find_api_root(start):
     """Locate the repository root BY NAME, never by depth.
 
-    These harness files were promoted out of a results/ tranche into the parity
+    These harness files were promoted out of a results/ directory into the parity
     dir; a hard-coded ``parents[N]`` silently followed them to the wrong root and
     every child died on ModuleNotFoundError while the parent still wrote a
     full-length census of ``measured: false`` rows.
@@ -47,7 +47,7 @@ def key(facts: dict) -> str:
 
 def main(argv=None) -> int:
     # The census directory is an ARGUMENT, not this file's own location. This
-    # script used to live inside the tranche it read; once promoted to the parity
+    # script used to live inside the results directory it read; once promoted to the parity
     # dir, ``_HERE`` silently became the wrong place to look for tests_param.jsonl.
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--census", required=True,

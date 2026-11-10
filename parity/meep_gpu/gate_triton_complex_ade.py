@@ -10,9 +10,9 @@ Lorentz pole, and an inert ``mp.Absorber`` — but are kept as four named cases 
 the released artifact maps one-to-one back to the corpus.  Additional products
 exercise a volume sigma, Drude, a driven-component subset, and two poles.
 
-Four word mutations (one per MEEP realnum word), the package's previous folded
-three-term form planted back into the kernel (the inversion of KERNELS.md section 7.1),
-and a wrong-drive mutation must diverge.  Predicate
+Four word mutations (one per MEEP realnum word), a wrong-drive mutation and the
+package's previous folded three-term form planted back into the kernel
+(docs/development/certification.md#inverted-grouping-mutations) must diverge. Predicate
 refusals cover the adjacent real, active-PML and unstored-E classes.
 Every case emits a flushed progress line and an fsync'd JSONL row as it lands.
 
@@ -375,15 +375,15 @@ def main(argv=None) -> int:
         import gate_triton_complex as G
         from meep_gpu import fastpath
 
-        # ONE SUBNORMAL-POLICY AUTHORITY: THE CAMPAIGN'S. The certification round gates
-        # this family under keep AND under flush (R13), and the fleet driver names the
+        # One subnormal-policy authority: the campaign's. The certification round gates
+        # this family under keep AND under flush, and the fleet driver names the
         # campaign's policy in MEEP_GPU_SUBNORMAL_POLICY, which composition_policy reads
         # (keep or flush; anything else refused by name). Unset, it is the table's own
         # install default, so a bare run still certifies what dispatch installs -- and
-        # the two may not drift apart. (The bare no-argument install_ftz_strip call
-        # resolves MATCH_MEEP by measuring the host, which is 'flush' on x86.) MEASURED:
-        # with the install default named here instead, the flush campaign's run refused
-        # on its own flush cache token before the first product (FPC, 0 of 7).
+        # the two may not drift apart. (The bare no-argument install_ftz_strip call resolves
+        # MATCH_MEEP by measuring the host, which is 'flush' on x86.) measured: with the install
+        # default named here instead, the flush campaign's run refused on its own flush cache
+        # token before the first product (the 2026-10-10 pre-certification flush run: 0 of 7).
         if composition_policy.DEFAULT_POLICY != fastpath.TABLE_SUBNORMAL_POLICY["triton"]:
             raise RuntimeError(
                 f"composition_policy.DEFAULT_POLICY={composition_policy.DEFAULT_POLICY!r} "

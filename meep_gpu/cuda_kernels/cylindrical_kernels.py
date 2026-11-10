@@ -1,6 +1,6 @@
 """CYLINDRICAL (Dcyl) curl sub-steps at m = 0, in hand CUDA -- real float32 storage.
 
-WHAT IT REPLACES. ``stepping.step_B`` and ``stepping.step_D`` on a Dcyl grid with
+What it replaces. ``stepping.step_B`` and ``stepping.step_D`` on a Dcyl grid with
 ``grid.m == 0``, real storage and an active split-field PML: the whole sub-step, in two
 launches -- the radial scan (:mod:`.cylindrical_prefix`, one column-serial kernel) and
 the curl kernel below.
@@ -11,7 +11,7 @@ Cartesian pair refuses cylindrical by name, correctly, because it has no radial
 difference, no axis tail and no double ``4*Courant``.
 
 =============================================================================
-THE FORMS ARE THE ARRAY PATH'S (bit_parity_0_10 KERNELS.md section 1, MEEP 1.33.0 single
+The forms are the array path's (since 1.0; MEEP 1.33.0 single
 precision without contraction), each read from ``stepping`` and transcribed
 =============================================================================
 
@@ -44,7 +44,7 @@ precision without contraction), each read from ``stepping`` and transcribed
    ``4*Courant`` is a different factor wherever Courant is not a float32 word (0.5
    is; 0.3 is not). ``Hy`` is the stored Hp the D side already binds.
 
-WHAT NEEDS NO CODE. ``_shift_up``'s ``CYL_AXIS`` arm is the METALLIC arm (a hard zero
+What needs no code. ``_shift_up``'s ``CYL_AXIS`` arm is the METALLIC arm (a hard zero
 at r_max). ``_shift_down``'s ``CYL_AXIS`` arm (the r_to_minus_r image of row 0) is NOT
 implemented, and cannot be observed: the only targets taking a shift-down along r are
 Dy (partner Hz) and Dz (whose curl is the radial difference and reads no ghost), and
@@ -68,7 +68,7 @@ if TYPE_CHECKING:
     from ..fields import Fields
     from ..pml import PML
 
-# THE PRELUDE IS IMPORTED, NOT COPIED. ``shift_up``, ``shift_dn``, ``curl_stencil`` and
+# The prelude is imported, not copied. ``shift_up``, ``shift_dn``, ``curl_stencil`` and
 # ``pml_apply`` are the root's spellings, and a second copy here would be a second
 # thing to keep in step.
 from .step_curl_kernels import _REAL_PML_PRELUDE, _REAL_PML_THREADS, chunk_record_argument
@@ -80,7 +80,7 @@ from .cylindrical_prefix import radial_difference, radial_scan_device_tables, ra
 
 
 #: The two entry points. The records that certified their 0.9.2 texts are re-cut in
-#: the combined certification round (bit_parity_0_10 CERT-3).
+#: the combined certification round of 1.0 (its device-gate stage, CERT-3).
 CERTIFIED_KERNELS = (
     "cyl_step_B_pml_real",
     "cyl_step_D_pml_real",
@@ -94,7 +94,7 @@ UNCERTIFIED_KERNELS: Tuple[str, ...] = ()
 _COMPILE_OPTIONS = ('--fmad=false',)
 
 # =============================================================================
-# THE B SIDE
+# The B side
 # =============================================================================
 #
 # Bx and By are the root's blocks on the Dcyl term table; Bz's whole curl is dtdx
@@ -127,7 +127,7 @@ extern "C" __global__ void cyl_step_B_pml_real(
     int j = (idx / nz) % ny;
     int i = idx / (ny * nz);
 
-    // THE CHUNK RECORD (chunk_map.chunk_bounds_record): row r of this lattice and axis
+    // The chunk record (chunk_map.chunk_bounds_record): row r of this lattice and axis
     // lies in a chunk that carries the axis's layer iff (a0 <= r < a1) || (b0 <= r < b1).
     const int cbh_x_a0 = cb[12], cbh_x_a1 = cb[13], cbh_x_b0 = cb[14], cbh_x_b1 = cb[15];
     const int in_h_x = (i >= cbh_x_a0 && i < cbh_x_a1) || (i >= cbh_x_b0 && i < cbh_x_b1);
@@ -179,7 +179,7 @@ extern "C" __global__ void cyl_step_B_pml_real(
 
 
 # =============================================================================
-# THE D SIDE
+# The D side
 # =============================================================================
 #
 # Dx and Dy are the root's blocks on the Dcyl term table; Dz's whole curl is dtdx times
@@ -211,7 +211,7 @@ extern "C" __global__ void cyl_step_D_pml_real(
     int j = (idx / nz) % ny;
     int i = idx / (ny * nz);
 
-    // THE CHUNK RECORD (chunk_map.chunk_bounds_record): row r of this lattice and axis
+    // The chunk record (chunk_map.chunk_bounds_record): row r of this lattice and axis
     // lies in a chunk that carries the axis's layer iff (a0 <= r < a1) || (b0 <= r < b1).
     const int cbi_x_a0 = cb[0], cbi_x_a1 = cb[1], cbi_x_b0 = cb[2], cbi_x_b1 = cb[3];
     const int in_i_x = (i >= cbi_x_a0 && i < cbi_x_a1) || (i >= cbi_x_b0 && i < cbi_x_b1);
@@ -445,7 +445,7 @@ def step_cylindrical(fields: 'Fields', pml: 'PML', sub_step: str,
                      tables: dict = None, boundary_codes=None, chunk_bounds=None) -> bool:
     """Step one Dcyl curl sub-step on the device, or return False if not covered.
 
-    FALSE IS THE ONLY REFUSAL: a configuration this pair does not carry falls back to
+    False is the only refusal: a configuration this pair does not carry falls back to
     the array path, never raises into a caller that would otherwise have stepped
     correctly. ``chunk_bounds`` defaults to :func:`device_chunk_record`.
     """

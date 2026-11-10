@@ -1,13 +1,13 @@
 """Did the spine extraction move a single certified kernel byte? Measured, not asserted.
 
-THE REFACTOR THIS ARBITRATES. Tranche 1 shipped the whole Metal host layer in one
-``launch.py``: 812 lines of which the two plan classes duplicated each other almost
-verbatim and ``plan_step`` spelled its arm table as two literal loops. A
-seven-family tree needs a spine, so ``device.py``, ``plans.py``, ``arms.py``,
-``templates.py`` and ``preconditions.py`` were split out and ``launch.py`` re-imports
-them.
+The refactor this arbitrates. The Metal port's first stage shipped the whole Metal
+host layer in one ``launch.py``: 812 lines of which the two plan classes duplicated
+each other almost verbatim and ``plan_step`` spelled its arm table as two literal
+loops. A seven-family tree needs a spine, so ``device.py``, ``plans.py``,
+``arms.py``, ``templates.py`` and ``preconditions.py`` were split out and
+``launch.py`` re-imports them.
 
-THE RISK, STATED PRECISELY. Moving host code cannot change a kernel source unless
+The risk, stated precisely. Moving host code cannot change a kernel source unless
 the emitters themselves changed — but "cannot" is an argument, and this package's
 whole discipline is that arguments about float behaviour get replaced by
 measurements. The certified claim rests on EIGHTEEN specialised source strings whose
@@ -15,7 +15,7 @@ sha256s are recorded in ``results/metal_pml_2026-08-14/provenance.json``, frozen
 certification time. If any one of them moved, the 2026-08-14 gate result no longer
 describes the code in the tree.
 
-WHAT THIS GATE ASSERTS, in two directions, because only the pair is evidence:
+What this gate asserts, in two directions, because only the pair is evidence:
 
 1. **EVERY certified kernel-source sha256 is UNCHANGED.** Compared against the
    frozen artifact, not against a value recomputed today — a baseline computed
@@ -56,13 +56,13 @@ if API_ROOT not in sys.path:
 from meep_gpu.metal_kernels import launch as metal_launch  # noqa: E402
 from meep_gpu.metal_kernels import shaders  # noqa: E402
 
-#: The CERTIFIED artifact. Frozen at tranche 1's certification; the baseline must
-#: come from here rather than from anything this round can recompute.
+#: The CERTIFIED artifact. Frozen at the first Metal certification; the baseline
+#: must come from here rather than from anything this gate can recompute.
 CERTIFIED = os.path.join(HERE, "results", "metal_pml_2026-08-14", "provenance.json")
 
-#: The host modules tranche 1 hashed. Any module ADDED to ``HOST_MODULES`` since is
-#: a new hash rather than a moved one, and is reported separately — a spine module
-#: appearing for the first time is expected, a certified one changing is the event.
+#: The host modules the first Metal certification hashed. Any module ADDED to
+#: ``HOST_MODULES`` since is a new hash rather than a moved one, and is reported
+#: separately — a new spine module is expected, a certified one changing is the event.
 TRANCHE_1_HOST_MODULES: Tuple[str, ...] = ("shaders.py", "coverage.py",
                                            "launch.py", "subnormal.py")
 
@@ -149,21 +149,21 @@ def main() -> int:
                           "now": now, "changed": changed})
         log(f"[host] {name:<18} {'MOVED' if changed else 'unchanged'}")
 
-    # "UNCERTIFIED", NOT "NEW", AND THE DISTINCTION IS THE ONE THAT MATTERS HERE.
+    # "UNCERTIFIED", NOT "NEW", and the distinction is the one that matters here.
     # ``HOST_MODULES`` is derived from the package directory while
     # ``TRANCHE_1_HOST_MODULES`` is a four-name literal, so this list contains every
     # module the certified artifact did not hash — including ``__init__.py``, which
-    # existed at tranche 1 and was simply outside that literal. Calling those "new
-    # spine modules" put a false statement in the artifact, and using their presence
-    # as the vacuity guard made the guard DEAD: the list is non-empty for any tree
-    # with more than four modules in it, permanently and from now on.
+    # existed at the first Metal certification and was simply outside that literal.
+    # Calling those "new spine modules" put a false statement in the artifact, and
+    # using their presence as the vacuity guard made the guard DEAD: the list is
+    # non-empty for any tree with more than four modules, permanently and from now on.
     uncertified = [name for name in metal_launch.HOST_MODULES
                    if name not in TRANCHE_1_HOST_MODULES]
     for name in uncertified:
         host_rows.append({"module": name, "certified": None,
                           "now": module_sha256(name), "changed": None,
                           "note": ("not hashed by the certified artifact; hashed "
-                                   "from this round on. Presence here does NOT "
+                                   "from now on. Presence here does NOT "
                                    "mean the file is new")})
     log(f"[host] {host_moved}/{len(TRANCHE_1_HOST_MODULES)} certified modules "
         f"moved; {len(uncertified)} modules outside the certified set now hashed: "

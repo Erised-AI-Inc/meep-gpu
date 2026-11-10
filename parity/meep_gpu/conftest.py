@@ -51,7 +51,7 @@ def _dispatch_enable_name() -> str:
     spelled = getattr(fastpath, "DISPATCH_ENABLE", _DISPATCH_ENABLE)
     if spelled != _DISPATCH_ENABLE:
         pytest.fail(
-            f"DISPATCH PIN IS STALE: fastpath.DISPATCH_ENABLE is {spelled!r} and "
+            f"Dispatch pin is stale: fastpath.DISPATCH_ENABLE is {spelled!r} and "
             f"parity/meep_gpu/conftest.py pins {_DISPATCH_ENABLE!r}. Rename the pin "
             "(and meep_gpu/conftest.py's) with the variable.")
     return _DISPATCH_ENABLE

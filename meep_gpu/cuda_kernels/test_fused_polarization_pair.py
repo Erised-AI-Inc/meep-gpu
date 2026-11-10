@@ -1,6 +1,6 @@
 """The E->P fused pair: the lift, the predicates, the wiring and the rotation protocol.
 
-WHAT THIS FILE CAN AND CANNOT SAY. The weld's ARITHMETIC is a device claim --
+What this file can and cannot say. The weld's ARITHMETIC is a device claim --
 ``gate_cuda_fused_polarization_pair.py`` carries it, RELEASED 2026-09-01 under
 both float32 subnormal policies (the two ``*_2026-09-01`` blocks in
 ``certification.json``). What a laptop can pin is everything whose failure would
@@ -43,7 +43,7 @@ from .test_dispersive import build
 
 
 # ---------------------------------------------------------------------------
-# 1. THE LIFT
+# 1. The lift
 # ---------------------------------------------------------------------------
 
 def test_the_emitted_chain_is_the_certified_emitters_own_lines():
@@ -108,7 +108,7 @@ def test_the_recurrence_keeps_the_certified_grouping_per_pole():
 
 @pytest.mark.parametrize("arm", ("pml", "no_pml"))
 def test_the_pole_pointer_is_bound_once_and_p_now_is_not_a_parameter(arm):
-    """THE ALIASING ANSWER. The E half's chain and the P half's recurrence read
+    """The aliasing answer. The E half's chain and the P half's recurrence read
     the same allocation, so the signature binds it once and the certified
     ``p_now`` parameter does not exist here."""
     source = family.fused_polarization_pair_source(arm, 0, 2, (True, True))
@@ -162,7 +162,7 @@ def test_the_contraction_guard_is_spelled_here_and_matches_both_halves():
 
 
 # ---------------------------------------------------------------------------
-# 2. THE PREDICATES
+# 2. The predicates
 # ---------------------------------------------------------------------------
 
 def test_the_pml_product_admits_its_cells_configuration():
@@ -206,9 +206,9 @@ def test_the_drive_identity_clause_is_load_bearing_on_both_arms():
     """The register hand-off IS MEEP's drive only while the E half writes the words
     the drive is selected from.
 
-    PML ARM: MEEP's ``w`` is ``f_w`` on the layer's chunks and the stored E elsewhere,
+    PML arm: MEEP's ``w`` is ``f_w`` on the layer's chunks and the stored E elsewhere,
     and the E half stores ``src`` into exactly that word on each form -- so what must
-    hold is that the two arrays are two allocations. NO-LAYER ARM: ``drive_field``
+    hold is that the two arrays are two allocations. No-layer arm: ``drive_field``
     must name the stored E the store writes. The fused kernel binds NO drive pointer
     at all, so the clause is the soundness of the seam, and the launcher re-asks it.
     """
@@ -250,7 +250,7 @@ def test_the_extent_clause_behind_the_dropped_guard_is_load_bearing():
 
 
 def test_the_source_list_is_inert_in_both_directions():
-    """THE DRIVER FACT. Nothing is injected between driver.py:3313 and :3315, so
+    """The driver fact. Nothing is injected between driver.py:3313 and :3315, so
     no source list -- undeclared, empty, electric or magnetic -- may move the
     verdict. This is what test_fused_pairs.py's deposit-wiring suite would call
     an entry TRUE of the product: the B and D products must refuse an undeclared
@@ -287,7 +287,7 @@ def test_carries_deposit_repair_is_false_and_no_repair_wiring_exists():
 
 
 # ---------------------------------------------------------------------------
-# 3. THE WIRING
+# 3. The wiring
 # ---------------------------------------------------------------------------
 
 def test_fusion_is_opt_in_and_the_default_composition_is_unchanged():
@@ -298,13 +298,13 @@ def test_fusion_is_opt_in_and_the_default_composition_is_unchanged():
     assert not [key for key in plan.reasons if key.startswith("fused_pair_")]
 
 
-#: WHERE THIS PAIR STILL INSTALLS, 2026-09-02, and it is a DRIVER FACT rather than a
+#: Where this pair still installs, 2026-09-02, and it is a DRIVER FACT rather than a
 #: contrived fixture. ``cuda_(no_pml_)three_slot_dispersive_weld`` spans ``step_D`` ->
 #: ``update_E`` -> ``update_P`` and, where it admits, takes all three slots -- its
 #: predicate strictly contains this pair's, so ``_superseded_by_a_longer_span`` gives
 #: it the span and ``_pair_may_absorb`` then refuses this pair BY NAME.
 #:
-#: AN UNDECLARED SOURCE LIST IS THE ASYMMETRY, and it is exactly this module's own
+#: An undeclared source list is the asymmetry, and it is exactly this module's own
 #: subject: the D seam has an INJECTION in it, so every product spanning it refuses
 #: ``sources=None`` ("the source set was not declared") and cannot infer an empty
 #: seam from ``Fields``. The E->P seam has none -- the driver puts nothing between
@@ -341,7 +341,7 @@ def test_the_no_pml_seam_fuses_into_its_own_product():
     (True, "three-slot dispersive weld"),
     (False, "no-absorber three-slot dispersive weld")))
 def test_a_declared_source_list_gives_the_span_to_the_three_slot_weld(pml_on, label):
-    """THE OTHER READING, and it is a GAIN for this seam rather than a loss.
+    """The other reading, and it is a GAIN for this seam rather than a loss.
 
     Before the three-slot weld existed, a declared source list on these runs left
     ``update_E`` with this pair and ``step_D`` on the array path -- the D->E product
@@ -350,7 +350,7 @@ def test_a_declared_source_list_gives_the_span_to_the_three_slot_weld(pml_on, la
     are served and this pair is refused BY NAME, with the reason naming the slot
     rather than a trade.
 
-    PINNED HERE, in this module's own file, because "who has update_E" is exactly
+    Pinned here, in this module's own file, because "who has update_E" is exactly
     what this product is about, and a reader arriving from its docstring needs the
     answer to be one grep away.
     """
@@ -411,7 +411,7 @@ def test_a_pair_may_not_claim_slots_the_table_gave_to_other_arms():
 
 
 def test_the_absorb_declaration_matches_the_arms_the_predicates_conjoin():
-    """``FUSED_PAIR_ARMS`` is READ FROM THE PREDICATES, not assigned to them --
+    """``FUSED_PAIR_ARMS`` is read from the predicates, not assigned to them --
     the same pin ``test_fused_pairs.py`` holds on the magnetic product."""
     source = pathlib.Path(family.__file__).read_text(encoding="utf-8")
     tree = ast.parse(source)
@@ -453,7 +453,7 @@ def test_the_product_rows_and_module_constants_agree():
 
 
 # ---------------------------------------------------------------------------
-# 4. THE ROTATION PROTOCOL, WITH A MOCKED KERNEL
+# 4. The rotation protocol, with a mocked kernel
 # ---------------------------------------------------------------------------
 
 class _Recorder:
@@ -474,7 +474,7 @@ class _Recorder:
 
 def test_three_launches_replace_one_plus_three_s_and_the_rotation_is_certified(
         monkeypatch):
-    """THE COUNT AND THE ROTATION. 3 launches whatever the state count, and the
+    """The count and the rotation. 3 launches whatever the state count, and the
     final buffer assignment of every state is EXACTLY the certified
     per-(state, component) sequence's:
 
@@ -564,7 +564,7 @@ def test_run_refuses_an_unknown_arm_rather_than_defaulting():
 
 
 # ---------------------------------------------------------------------------
-# 5. THE PARTITION AND THE RECORD BEHIND IT
+# 5. The partition and the record behind it
 # ---------------------------------------------------------------------------
 
 def test_both_kernels_are_certified_and_the_partition_names_them_exactly():

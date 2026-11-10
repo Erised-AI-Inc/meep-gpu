@@ -1,6 +1,6 @@
 """The THREE-SLOT weld: the lift, the predicates, the supersession and the bracket order.
 
-WHAT THIS FILE CAN AND CANNOT SAY. The weld's ARITHMETIC is a device claim --
+What this file can and cannot say. The weld's ARITHMETIC is a device claim --
 ``parity/meep_gpu/gate_cuda_three_slot_weld.py`` carries it. What a laptop can pin is
 everything whose failure would be SILENT before a device is reached, and on this
 product that set is larger than on any pair, because the product's own host work sits
@@ -58,7 +58,7 @@ def test_every_digest_source_is_ascii_and_declares_one_entry_point():
 
 
 def test_the_certified_drive_select_is_restored_unedited():
-    """THE ROW THAT DISAPPEARED. ``fused_polarization_pair`` had to replace the drive
+    """The row that disappeared. ``fused_polarization_pair`` had to replace the drive
     load with a register hand-off and argue that a float32 word stored and reloaded is
     the identity on the bits. This weld's kernel has no ``update_E`` half above it, so
     the certified select -- MEEP's per-chunk ``w`` -- is spliced whole, ONCE per
@@ -187,7 +187,7 @@ def test_the_two_welds_partition_on_the_absorber_alone():
 
 @pytest.mark.parametrize("pml_on", (True, False))
 def test_the_admission_set_is_a_subset_of_both_halves(pml_on):
-    """THE PROPERTY THE SUPERSESSION RULE RESTS ON, measured rather than argued: this
+    """The property the supersession rule rests on, measured rather than argued: this
     weld's predicate is a conjunction, so wherever it admits, both two-slot products
     it displaces admit too. If that ever stopped holding, refusing the shorter span
     would start costing rows."""
@@ -225,7 +225,7 @@ def test_a_halves_refusal_arrives_prefixed_with_the_side_that_said_it():
 
 
 def test_the_source_list_is_refused_when_undeclared_and_carried_when_declared():
-    """THE D SEAM HAS AN INJECTION IN IT, unlike the E->P seam, so ``sources`` is NOT
+    """The D seam has an injection in it, unlike the E->P seam, so ``sources`` is NOT
     inert here: ``None`` is a refusal and a real electric deposit is CARRIED, through
     the D->E half's own ``deposit_repair.seam_source_reasons`` routing."""
     from ..sources import GaussianEnvelope, VolumeSource
@@ -245,7 +245,7 @@ def test_the_source_list_is_refused_when_undeclared_and_carried_when_declared():
 
 
 def test_the_conjunction_adds_no_clause_of_its_own_and_needs_none():
-    """WRITTEN AS A MEASUREMENT, because this weld shipped with a coefficient-triple
+    """Written as a measurement, because this weld shipped with a coefficient-triple
     clause until the halves turned out to ask it already. Two directions:
 
     * a malformed coefficient triple IS refused, so the fact is covered -- and the
@@ -349,7 +349,7 @@ class _RecordingTriple:
 
 
 def test_the_installer_puts_the_repair_between_the_two_device_groups(monkeypatch):
-    """THE ORDER IS THE PRODUCT. The driver consults step_D, then update_E, then
+    """The order is the product. The driver consults step_D, then update_E, then
     update_P, so the objects the installer writes into those slots decide whether the
     repair reads P^n or P^(n+1). Recorded rather than reasoned about, because the
     wrong order computes."""
@@ -382,8 +382,8 @@ def test_the_installer_puts_the_repair_between_the_two_device_groups(monkeypatch
 
     for slot in ("step_D", "update_E", "update_P"):
         plans[slot].run()
-    # THE SAVE IS BEFORE GROUP 1, THE APPLY IS BETWEEN THE GROUPS, AND GROUP 2 RUNS
-    # LAST. Any other interleaving is one of the probe's diverging orderings.
+    # The save is before group 1, the apply is between the groups, and group 2 runs
+    # last. Any other interleaving is one of the probe's diverging orderings.
     assert log == ["group1", "group2"]
     assert saved == [0], "the deposit was not captured before the first launch"
     assert applied == [1], "the repair did not run between the two device groups"
@@ -501,7 +501,7 @@ def test_supersession_needs_strict_containment_not_merely_a_longer_span():
 
 
 def test_the_later_seam_claimant_still_withholds_from_a_two_slot_product():
-    """THE RULE THAT KEPT THE D->E PAIR OUT IS NOT WEAKENED, only made specific to a
+    """The rule that kept the D->E pair out is not weakened, only made specific to a
     product that trades. Asked with a two-slot span it answers exactly as before."""
     fields, layer, grid = build(poles=2, pml_on=True)
     context = arms.StepContext(fields, layer, grid, ())
@@ -534,7 +534,7 @@ def test_fusion_is_opt_in_and_the_default_composition_is_unchanged():
 
 
 # ---------------------------------------------------------------------------
-# 5. THE PARTITION AND THE RECORD
+# 5. The partition and the record
 # ---------------------------------------------------------------------------
 
 def test_both_modules_name_the_module_that_owns_the_emitted_text():

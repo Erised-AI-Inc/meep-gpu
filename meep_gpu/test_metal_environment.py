@@ -12,6 +12,7 @@ These tests need no GPU except the one that reads this host's architecture.
 
 from __future__ import annotations
 
+import pathlib
 import re
 import sys
 
@@ -21,6 +22,7 @@ from conftest import requires_resource_skip
 
 from meep_gpu import backends, fastpath, metal_dispatch, metal_runs
 from meep_gpu.metal_kernels import device
+from meep_gpu.test_capability_records import NUMBER_WORDS, _documentation
 
 STAMPED = "this machine: Apple MPS device applegpu_g13s, torch 2.10.0, metalfe-32023.850.10"
 
@@ -117,7 +119,7 @@ def test_a_partial_round_does_not_name_the_second_architecture_as_certified(monk
     assert metal_dispatch.certified_values("architecture") == [
         "applegpu_g13s", "applegpu_g15s"]
     assert metal_dispatch.certified_values("torch", "applegpu_g15s") == ["2.10.0"]
-    # RUNS THAT DISAGREE CERTIFY NEITHER VALUE: each is contradicted by the other.
+    # Runs that disagree certify neither value: each is contradicted by the other.
     _cite(monkeypatch, FULL, dict(FULL, torch="2.11.0"))
     assert metal_dispatch.certified_values("torch", "applegpu_g13s") == []
 
@@ -129,10 +131,10 @@ def test_torch_and_the_frontend_are_judged_against_this_architectures_runs(monke
     assert metal_dispatch.environment_verdict("torch", "2.11.0", "applegpu_g15s") is True
     assert metal_dispatch.environment_verdict("torch", "2.11.0", "applegpu_g13s") is False
     assert metal_dispatch.environment_verdict("torch", "2.10.0", "applegpu_g13s") is True
-    # AN ARCHITECTURE NO WELD RAN ON has no run to read torch from: not judged, and
+    # An architecture no weld ran on has no run to read torch from: not judged, and
     # its own verdict is the one that says it is not certified.
     assert metal_dispatch.environment_verdict("torch", "2.10.0", "applegpu_g16x") is None
-    # AN UNREAD ARCHITECTURE is judged against every live run.
+    # An unread architecture is judged against every live run.
     assert metal_dispatch.environment_verdict("torch", "2.10.0") is False
     _cite(monkeypatch, (FULL, SECOND), FULL)
     assert metal_dispatch.environment_verdict("torch", "2.10.0") is True
@@ -161,7 +163,7 @@ def _ledger_with_runs(**runs_by_gate):
 
 
 def test_a_run_whose_bytes_moved_is_not_offered_to_the_admission():
-    """ONE LIVENESS ANSWER: ``fastpath.live_capabilities`` over the entry's bound."""
+    """One liveness answer: ``fastpath.live_capabilities`` over the entry's bound."""
     ledger = _ledger_with_runs()
     assert metal_dispatch.environment_verdict(
         "architecture", "applegpu_g13s", ledger=ledger) is True
@@ -319,3 +321,340 @@ def test_the_metal_verdict_reads_the_gpu_where_the_record_names_one(device_certi
         environment["device_certified"] = device_certified
     record = {"environment": environment, "uncertified": {"admitted": []}}
     assert fastpath._certified_verdict(record, ["metal"]) is verdict  # noqa: SLF001
+
+
+# --- what the documentation says the records certify ------------------------------------
+
+DOCS_ROOT = pathlib.Path(__file__).resolve().parents[1]
+APPLE_ARCHITECTURE = re.compile(r"\bapplegpu_[a-z0-9]+\b")
+
+
+def _doc(name):
+    return (DOCS_ROOT / name).read_text(encoding="utf-8")
+
+
+def _apple_readme_row():
+    """The README's Apple row: ``(identity cell, certified-on cell)``."""
+    rows = [line for line in _doc("README.md").splitlines()
+            if line.startswith("| Apple, Metal kernels |")]
+    assert len(rows) == 1, rows
+    cells = rows[0].split("|")
+    assert len(cells) == 5, rows[0]
+    return cells[2], cells[3]
+
+
+def test_the_readme_states_the_apple_environments_the_metal_ledger_certifies():
+    """The README's Apple row read against the records, as its NVIDIA rows are
+    (``test_capability_records``). The identity cell names every GPU architecture the cited
+    welds certify and no other, with the PyTorch each one's runs certify; the certified-on
+    cell gives each architecture, by name, the Metal frontend its own runs certify. A second
+    Apple GPU's records would otherwise land beside a row that names one, and an
+    architecture re-certified on a later macOS build would leave the row naming the old
+    frontend: both pass every other test.
+    """
+    identity, machines = _apple_readme_row()
+    certified = metal_dispatch.certified_values("architecture")
+    assert certified, "the Metal ledger certifies no GPU architecture"
+    assert sorted(set(APPLE_ARCHITECTURE.findall(identity))) == certified, identity
+    by_architecture = {}
+    for part in machines.split(";"):
+        named = re.match(r"\s*`(applegpu_[a-z0-9]+)`:", part)
+        if named:
+            by_architecture[named.group(1)] = part
+    assert sorted(by_architecture) == certified, machines
+    for architecture in certified:
+        for torch in metal_dispatch.certified_values("torch", architecture):
+            assert f"PyTorch {torch}" in identity, (architecture, torch, identity)
+        frontends = metal_dispatch.certified_values("metal_frontend", architecture)
+        assert frontends, f"no Metal frontend is certified for {architecture}"
+        printed = set(re.findall(r"`metalfe-([0-9][0-9.]*)`", by_architecture[architecture]))
+        assert printed == set(frontends), (architecture, sorted(printed), frontends)
+
+
+#: The documents that quote what the package prints on an Apple GPU it does not certify.
+QUOTED_NOTES = ("README.md", "INSTALL.md", "docs/guides/kernel-dispatch.md")
+NOTE_QUOTE = re.compile(r"GPU architecture (applegpu_[a-z0-9]+) \(certified: ([^)]*)\)")
+REFUSAL_QUOTE = re.compile(r"GPU architecture (applegpu_[a-z0-9]+) is not the one every Metal "
+                           r"weld this table cites ran on \(certified: (\[[^\]]*\])\)")
+
+
+@pytest.mark.parametrize("name", QUOTED_NOTES)
+def test_a_quoted_apple_note_or_refusal_lists_what_the_records_certify(name):
+    """A quoted NOTE line or refusal is text the package prints, so the certified list in
+    it is :func:`metal_dispatch.certified_values` in the form each prints it: joined with
+    commas in a NOTE line (``fastpath._uncertified_note``), as a list in a refusal. The
+    quoted GPU is one the records do not certify, or the quote shows a line no run prints.
+    """
+    text = _doc(name)
+    certified = metal_dispatch.certified_values("architecture")
+    notes, refusals = NOTE_QUOTE.findall(text), REFUSAL_QUOTE.findall(text)
+    assert notes or refusals, f"{name} quotes no Apple NOTE line or refusal"
+    for quoted, listed in notes:
+        assert quoted not in certified, (name, quoted)
+        assert listed == ", ".join(certified), (name, listed, certified)
+    for quoted, listed in refusals:
+        assert quoted not in certified, (name, quoted)
+        assert listed == str(certified), (name, listed, certified)
+
+
+#: One-line statements of the certified Apple set, each found by how its line starts.
+CERTIFIED_SET_LINES = (
+    ("INSTALL.md", "| Metal (Apple) | the certified environment"),
+    ("docs/guides/kernel-dispatch.md", "| GPU architecture | <code>applegpu_"),
+    ("docs/development/certification.md", "| GPU architecture | <code>MTLDevice.architecture"),
+    ("docs/development/certify-a-new-gpu.md", "If `ARCH` reads "),
+    ("docs/reference/glossary.md", "| **Certified environment** |"),
+    ("docs/reference/glossary.md", "| **Certified identity** |"),
+    ("docs/guides/kernel-dispatch.md", "certified side by side; 1.0.1 certifies "),
+    ("docs/development/execution-backends.md", "| Metal kernel table |"),
+    # The new-GPU guide's Apple after-bind example: the runs a new architecture's run is
+    # written beside, and the admission it is listed beside, are the certified set's.
+    ("docs/development/certify-a-new-gpu.md", "beside the `applegpu_"),
+    ("docs/development/certify-a-new-gpu.md", "lists your architecture beside "),
+    # The certified-environment tables' frontend rows, which give each architecture its own.
+    ("docs/development/certification.md", "| Metal frontend | "),
+    ("docs/guides/kernel-dispatch.md", "| Metal frontend | "),
+)
+
+#: A Metal frontend as the documentation writes one: ``metalfe-<version>``, or INSTALL.md's
+#: bare ``Metal frontend <version>``.
+METAL_FRONTEND = re.compile(r"(?:metalfe-|Metal frontend )([0-9]+(?:\.[0-9]+)+)")
+
+
+def _named_set(statement):
+    """The Apple GPU architectures ``statement`` names, sorted, and for each the first Metal
+    frontend written after it and before the next architecture: that is the frontend the
+    statement certifies it with. A later version in the same stretch (the M1 Max's newer
+    macOS, supported and uncertified) is not read."""
+    names = list(APPLE_ARCHITECTURE.finditer(statement))
+    frontends = {}
+    for index, name in enumerate(names):
+        stop = names[index + 1].start() if index + 1 < len(names) else len(statement)
+        frontend = METAL_FRONTEND.search(statement, name.end(), stop)
+        if frontend:
+            frontends.setdefault(name.group(0), frontend.group(1))
+    return sorted({name.group(0) for name in names}), frontends
+
+
+def _assert_names_the_certified_set(where, statement, *, names_required=True):
+    """``statement`` names exactly the architectures the cited welds certify (when it names
+    any, or always when ``names_required``), and, when it names a Metal frontend, names
+    each architecture's own certified frontend."""
+    certified = metal_dispatch.certified_values("architecture")
+    named, frontends = _named_set(statement)
+    if names_required or named:
+        assert named == certified, (where, named, certified, statement)
+    if frontends:
+        wrong = {architecture: frontends.get(architecture) for architecture in certified
+                 if frontends.get(architecture) not in
+                 metal_dispatch.certified_values("metal_frontend", architecture)}
+        assert not wrong, (where, "frontend stated per architecture", wrong, statement)
+
+
+@pytest.mark.parametrize("name, start", CERTIFIED_SET_LINES)
+def test_a_one_line_statement_of_the_certified_apple_set_names_what_the_records_certify(
+        name, start):
+    """Each of these lines states which Apple GPU architectures are certified, and nothing
+    else in the tree checks it: it is read against the cited welds, so a certification that
+    adds or retires an architecture fails here until the line says so. A line that names a
+    Metal frontend gives each architecture the one its own runs certify, so two frontends
+    swapped between architectures, or an older one left beside a re-certified one, fail too.
+    """
+    lines = [line for line in _doc(name).splitlines() if line.startswith(start)]
+    assert len(lines) == 1, (name, start, lines)
+    _assert_names_the_certified_set((name, start), lines[0])
+
+
+#: The end of a sentence in flattened text, or of a table cell.
+SENTENCE_END = re.compile(r"\.(?:\*\*)?\s+(?=[A-Z])|\s\|(?:\s|$)|$")
+
+#: The sentences that count the certified Apple environments. Each is read from the count to
+#: the end of its sentence, wrapped lines joined.
+APPLE_COUNT_STATEMENTS = (
+    r"\bcompute capabilit(?:y|ies) and (\w+) Apple environments?\b",
+    r"\bon Apple, (\w+) certified environments?\b",
+    r"\bcertified (?:on|in) (\w+) environments?: (?:the )?GPU architecture\b",
+    r"\bEvery Apple GPU supported, (\w+) environments? certified\b",
+    r"\band (\w+) (?:is|are) certified \(`applegpu_",
+)
+
+#: The pages a count of the certified Apple environments must be read on.
+APPLE_COUNT_PAGES = ("README.md", "INSTALL.md", "AGENTS.md",
+                     "docs/development/certify-a-new-gpu.md",
+                     "docs/getting-started/installation.md",
+                     "docs/getting-started/reading-what-ran.md",
+                     "docs/guides/kernel-dispatch.md", "docs/guides/will-it-help.md")
+
+
+def _sentence(text, start):
+    return text[start:SENTENCE_END.search(text, start).start()]
+
+
+def test_every_count_of_certified_apple_environments_is_the_metal_ledgers():
+    """A sentence that counts the certified Apple environments counts the architectures the
+    cited welds certify, and the architectures and frontends it goes on to name are those.
+    The NVIDIA count in the same sentence is ``test_capability_records``'s; this is the
+    Apple half. Each sentence is read with its wrapped lines joined, and the count must be
+    read on every page that states one, so a rewording this no longer reads fails here.
+    """
+    certified = metal_dispatch.certified_values("architecture")
+    found, wrong = set(), []
+    for name, text in _documentation().items():
+        for pattern in APPLE_COUNT_STATEMENTS:
+            for match in re.finditer(pattern, text):
+                word = match.group(1).lower()
+                count = int(word) if word.isdigit() else NUMBER_WORDS.get(word)
+                found.add(name)
+                if count != len(certified):
+                    wrong.append((name, match.group(0)))
+                _assert_names_the_certified_set(name, _sentence(text, match.start()),
+                                                names_required=False)
+    missing = sorted(set(APPLE_COUNT_PAGES) - found)
+    assert not missing, (
+        f"no count of the certified Apple environments was read on {missing}; a reworded "
+        "count must still be read here")
+    assert wrong == [], (
+        f"the Metal welds certify {len(certified)} architectures ({certified}) and these "
+        f"sentences count otherwise: {wrong}")
+
+
+#: Statements of the certified Apple set that wrap and count nothing, each found by how it
+#: starts in the flattened page and read to the end of its sentence.
+CERTIFIED_SET_SENTENCES = (
+    ("README.md", "and other Macs whose GPU reports "),
+)
+
+
+@pytest.mark.parametrize("name, start", CERTIFIED_SET_SENTENCES)
+def test_a_wrapped_statement_of_the_certified_apple_set_names_what_the_records_certify(
+        name, start):
+    """As the one-line statements, for a sentence wrapped over several lines."""
+    text = _documentation()[name]
+    assert text.count(start) == 1, (name, start, text.count(start))
+    _assert_names_the_certified_set((name, start), _sentence(text, text.index(start)))
+
+
+def _apple_machines():
+    """The machine each certified architecture was measured on, as the README's Apple row
+    names it in its certified-on cell (``applegpu_g13s: one M1 Max, ...``)."""
+    _identity, machines = _apple_readme_row()
+    named = {}
+    for part in machines.split(";"):
+        machine = re.match(r"\s*`(applegpu_[a-z0-9]+)`: one ([^,]+),", part)
+        if machine:
+            named[machine.group(1)] = machine.group(2).strip()
+    return named
+
+
+#: The sentences that count the machines measured for the records.
+MACHINE_STATEMENTS = (
+    r"\b\w+ machines have been measured for these records:",
+    r"\bon \w+ machines:",
+)
+
+
+def test_every_count_of_the_machines_measured_names_each_certified_apple_machine():
+    """A sentence that counts the machines measured for the records lists them, and the list
+    names the machine each certified Apple architecture was measured on (the README row's,
+    which its own test holds to the records). Its number is not derived: one such sentence
+    counts the RTX A6000 whose runs are kept and the other does not."""
+    machines = _apple_machines()
+    assert sorted(machines) == metal_dispatch.certified_values("architecture"), machines
+    found, wrong = set(), []
+    for name, text in _documentation().items():
+        for pattern in MACHINE_STATEMENTS:
+            for match in re.finditer(pattern, text):
+                found.add(name)
+                sentence = _sentence(text, match.start())
+                unnamed = sorted(machine for machine in machines.values()
+                                 if not re.search(rf"\b(?:the|one) {re.escape(machine)}\b",
+                                                  sentence))
+                if unnamed:
+                    wrong.append((name, unnamed, sentence))
+    assert {"README.md", "INSTALL.md"} <= found, (
+        f"no count of the machines measured was read in README.md and INSTALL.md (read in "
+        f"{sorted(found)})")
+    assert wrong == [], f"these sentences leave out a certified Apple machine: {wrong}"
+
+
+#: The statement that a certified Apple architecture has no timing record of its own, in the
+#: shape of the compute-capability one (``test_capability_records``): the architecture, the
+#: one whose prior its default reads, and whether that prior gives way anywhere. Markdown
+#: pages quote an architecture in backticks, the HTML tables in ``<code>``.
+UNTIMED_APPLE_STATEMENT = re.compile(
+    r"GPU architecture (?:`|<code>)(applegpu_[a-z0-9]+)(?:`|</code>) has no record of its own: "
+    r"its default reads (?:`|<code>)(applegpu_[a-z0-9]+)(?:`|</code>)'s, the nearest timed "
+    r"Apple architecture(, whose prior gives way nowhere)?")
+
+
+def _shipped_prior():
+    """The portable prior the shipped timing records give on this tree, derived as the
+    dispatch path derives it (``fastpath``'s ``the_prior``): every record file loaded, judged
+    against the live deposit-repair route and each table's live subjects."""
+    from meep_gpu import dispatch_preference as dp  # noqa: PLC0415
+
+    root = pathlib.Path(dp.__file__).resolve().parent
+    loaded, refused = [], []
+    for path in dp.record_files(str(root)):
+        name = pathlib.Path(path).relative_to(root).as_posix()
+        try:
+            loaded.append((name, dp.load_record(path)))
+        except dp.RecordRefused as exc:
+            refused.append((name, str(exc)))
+    subjects = {}
+    for table in dp.TABLES:
+        try:
+            subjects[table] = dp.live_subject_sha256(table)
+        except OSError:
+            subjects[table] = {}
+    return dp.portable_prior(loaded, repair_route_sha256=dp.repair_route_sha256(),
+                             subject_sha256_by_table=subjects, refused=refused)
+
+
+def test_a_certified_apple_architecture_no_record_times_is_stated_as_reading_the_nearest_one():
+    """Certified is not timed. A certified Apple architecture that no shipped Metal timing
+    record times reads the bracketed-veto prior of the nearest timed one
+    (``dispatch_preference.nearest_architecture``), never its record. The README says so for
+    each such architecture, by architecture as the compute-capability sentence is
+    (``test_capability_records`` holds that half), and every page that says it names the
+    architecture the rule reads. The sentence says the prior gives way nowhere exactly when
+    the shipped prior of that architecture has no ceiling (its records measure no bracketed
+    veto below their keeps), so a record cut later for the untimed architecture, or a re-cut
+    that gives the nearest one a ceiling, fails here by name. A page that names the nearest
+    timed Apple architecture in a form this does not read fails too.
+    """
+    from meep_gpu import dispatch_preference as dp  # noqa: PLC0415
+
+    root = pathlib.Path(dp.__file__).resolve().parent
+    timed = sorted({architecture for record in dp.timed_vendors()["apple"]["records"]
+                    for architecture in dp.record_capabilities(dp.load_record(str(root / record)))})
+    assert timed, "no shipped Metal timing record times its architecture on this tree"
+    reads = {architecture: dp.nearest_architecture("apple", architecture, timed)[0]
+             for architecture in metal_dispatch.certified_values("architecture")
+             if architecture not in timed}
+    priors = _shipped_prior()["by_vendor"]["apple"]["by_architecture"]
+    stated, wrong = {}, []
+    for name, text in _documentation().items():
+        found = UNTIMED_APPLE_STATEMENT.findall(text)
+        if len(found) != text.count("the nearest timed Apple architecture"):
+            wrong.append((name, "names the nearest timed Apple architecture in a form not read",
+                          text.count("the nearest timed Apple architecture"), len(found)))
+        for architecture, read, nowhere in found:
+            stated.setdefault(architecture, set()).add(name)
+            if reads.get(architecture) != read:
+                wrong.append((name, architecture, read,
+                              reads.get(architecture, "a record of its own")))
+                continue
+            ceiling = (priors.get(read) or {}).get("bracketed_veto_up_to_cells", "no prior")
+            gives_way_nowhere = read in priors and ceiling is None
+            if bool(nowhere) != gives_way_nowhere:
+                wrong.append((name, architecture, read, "prior gives way nowhere stated "
+                              f"{bool(nowhere)}, shipped prior {priors.get(read)}"))
+    assert wrong == [], (
+        "these sentences name the prior an Apple architecture reads wrongly (page, "
+        f"architecture, stated, what the rule and the shipped records give): {wrong}")
+    unstated = sorted(architecture for architecture in reads
+                      if "README.md" not in stated.get(architecture, ()))
+    assert unstated == [], (
+        f"Apple architectures {unstated} are certified with no timing record of their own, "
+        "and the README does not say whose prior their default reads")

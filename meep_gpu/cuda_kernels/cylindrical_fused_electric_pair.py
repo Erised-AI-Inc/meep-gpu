@@ -8,18 +8,18 @@ introduces no arithmetic of its own: every edit is a register capture, a seam, a
 the own-cell hoist, listed in :data:`LIFT_EDITS`. The derivations are
 :mod:`.cylindrical_fused_magnetic_pair`'s, imported: the two pairs lift the same helpers.
 
-WHAT ONE LAUNCH PERFORMS. :data:`REPLACES` is ``step_D`` -> ``zero_metal_D`` ->
+What one launch performs. :data:`REPLACES` is ``step_D`` -> ``zero_metal_D`` ->
 ``update_E``. The radial scan is the curl's own first launch over the current Hp; it hands
 the difference in as ``rad``. The two mirror fills are absent by refusal.
 
-THE REGISTER FOLLOWS EVERY STORE OF D: the PML form, the i*m/r pass on targets 0 and 2,
+The register follows every store of D: the PML form, the i*m/r pass on targets 0 and 2,
 the per-m axis rules (|m| = 1: Dz on the axis row; |m| >= 2: the family on rows
 ``[0, zero_rows)``; m = 0: Dz's double ``4*Courant`` rule and Dp's zero) and the wall pass
 ``zero_metal_D`` (the OFF-DIAGONAL table, two components per walled axis), each a register
 clear or capture beside the certified store. The m = 0 rule adds into the register the
 lane already holds, the word it stored.
 
-THE OWN-CELL HOIST, THE SEAM, THE ALIASING AND THE DEPOSIT REPAIR are the magnetic pair's,
+The own-cell hoist, the seam, the aliasing and the deposit repair are the magnetic pair's,
 on the D side: ``f_w_E`` and E behind the dsigw flag, ``fu_D`` behind the dsigu flag, D
 unguarded; D bound exactly once; ``inv_eps`` bound three times and NOT ``__restrict__``
 (an isotropic run hands one allocation three times). The two halves collide on
@@ -67,11 +67,11 @@ from .. import deposit_repair as _deposit_repair
 
 
 # =============================================================================
-# THE PARTITION -- PLAIN ASSIGNMENTS, NO ANNOTATION
+# The partition -- plain assignments, no annotation
 # =============================================================================
 
 #: The entry point. The record that certified its 0.9.2 text is re-cut in the combined
-#: certification round (bit_parity_0_10 CERT-3).
+#: certification round of 1.0 (its device-gate stage, CERT-3).
 CERTIFIED_KERNELS = (
     "fused_electric_pair_pml_cyl_complex",
 )
@@ -114,7 +114,7 @@ LIFT_EDITS: Tuple[Dict[str, str], ...] = (
             "cf_load(f, idx)); the expression is otherwise the certified one."},
     {"line": "    <the curl body's chunk-record block> + <update_E's>",
      "became": "    <ONE block, bounds_block.bounds_block(both entry sets, presence xyz)>",
-     "why": "one decode of the record for both halves (DESIGN.md D10)."},
+     "why": "one decode of the record for both halves (docs/development/kernel-tables.md)."},
     {"line": "        pml_apply(Dx, fu_Dx, idx, curl, ...);",
      "became": "        d0 = pml_apply_reg_pre(Dx, fu_Dx, idx, curl, ..., pre_fu_0, pre_d_0);",
      "why": "capture the register and take the preloaded words."},
@@ -218,7 +218,7 @@ _AXIS_TAIL_M0 = (
     "    }\n")
 _AXIS_TAIL_M0_CARRIED = (
     "    if (m_class == 0 && i == 0) {\n"
-    "        // THE AXIS RULE, CARRIED: d2 holds the word this lane stored for Dz.\n"
+    "        // The axis rule, carried: d2 holds the word this lane stored for Dz.\n"
     "        d2 = cf_add(d2, double_product(four_courant, cf_load(Hy, idx)));\n"
     "        cf_store(Dz, idx, d2);\n"
     "        d1 = cf_zero(); cf_store(Dy, idx, d1);\n"
@@ -228,7 +228,7 @@ _AXIS_TAIL_M0_CARRIED = (
 #: signature. D appears EXACTLY ONCE.
 _SIGNATURE = r'''
 extern "C" __global__ void fused_electric_pair_pml_cyl_complex(
-    // THE SHARED VOLUME, BOUND ONCE, as the float32 word view of complex64 D.
+    // The shared volume, bound once, as the float32 word view of complex64 D.
     float* __restrict__ Dx, float* __restrict__ Dy, float* __restrict__ Dz,
     float* __restrict__ fu_Dx, float* __restrict__ fu_Dy, float* __restrict__ fu_Dz,
     const float* __restrict__ Hx, const float* __restrict__ Hy,
@@ -256,7 +256,7 @@ extern "C" __global__ void fused_electric_pair_pml_cyl_complex(
     int m_class, int zero_rows,
     // zero_metal_D's three walled-axis flags, from in_seam_coverage.zero_metal_axes.
     int wall_x, int wall_y, int wall_z,
-    // THE CHUNK RECORD (chunk_map.chunk_bounds_record), int32[25].
+    // The chunk record (chunk_map.chunk_bounds_record), int32[25].
     const int* __restrict__ cb
 ) {
 '''
@@ -310,7 +310,7 @@ def hoisted_loads() -> str:
 def _certified_source() -> Any:
     """Refuse the emitter BY NAME where the cylindrical text is unreachable.
 
-    THE SPLICE IS THE LIFT, so a missing half is not a degraded emit -- there is nothing
+    The splice is the lift, so a missing half is not a degraded emit -- there is nothing
     to emit. Raising here keeps that fact one frame from the caller instead of surfacing
     as ``'NoneType' object has no attribute`` inside a string operation.
     :func:`covers_cylindrical_fused_electric_pair` needs none of it and still answers.
@@ -472,7 +472,7 @@ def covers_cylindrical_fused_electric_pair(fields: Any, pml: Any, grid: Any,
 
     Returns ``(covered, reason)`` with ``reason`` naming the FIRST refusal.
 
-    A CONJUNCTION, AND NOTHING IS WEAKENED. A configuration either half's own certified
+    A conjunction, and nothing is weakened. A configuration either half's own certified
     predicate refuses is refused here with that half's reason, prefixed so a reader can
     tell which side said it. What this predicate ADDS is the seam clauses: the source
     slot, the injection ROUTE, the two UNCARRIED fills, and the grid's ability to say
@@ -487,7 +487,7 @@ def covers_cylindrical_fused_electric_pair(fields: Any, pml: Any, grid: Any,
     if not covered:
         return False, f"constitutive half: {reason}"
 
-    # THE TWO FILLS ARE REFUSED, NOT CARRIED. The curl half already refuses every folded
+    # The two fills are refused, not carried. The curl half already refuses every folded
     # grid and Grid refuses a mirror on a Dcyl cell before that; the clause is stated
     # HERE anyway, because REPLACES is a claim about what one launch performed and it
     # may not rest on a clause in another module that a future device verdict could
@@ -509,10 +509,10 @@ def covers_cylindrical_fused_electric_pair(fields: Any, pml: Any, grid: Any,
                        "(driver.py:3309) and fill_folded_far_ghosts_D (:3311) run "
                        "inside this seam and this pair carries neither")
 
-    # THE INJECTION ROUTE, REFUSED BY NAME, and it is a D-seam clause with no B-seam
+    # The injection route, refused by name, and it is a D-seam clause with no B-seam
     # counterpart. `_inject_electric_through_conductivity` (driver.py:3305) snapshots the
     # D components, injects, and rescales only the increment by `condinv` (MEEP
-    # step.cpp:294-317). BOTH COMPLEX HALVES ADMIT A CONDUCTIVITY BY NAME -- it is read
+    # step.cpp:294-317). Both complex halves admit a conductivity by name -- it is read
     # in `stepping._apply_curl` and nowhere else -- so unlike the real electric pair
     # this refusal is not inherited from a half and has to be made here. The deposit
     # repair has never been measured against the scaled route.
@@ -523,8 +523,8 @@ def covers_cylindrical_fused_electric_pair(fields: Any, pml: Any, grid: Any,
                        "rescales the increment by condinv; the deposit repair has no "
                        "verdict on that route")
 
-    # THE SOURCE SEAM, CARRIED RATHER THAN REFUSED. An ELECTRIC source is injected
-    # BETWEEN the two halves (driver.py:3305/:3308). IGNORANCE IS NEVER AN EMPTY SET:
+    # The source seam, carried rather than refused. An ELECTRIC source is injected
+    # BETWEEN the two halves (driver.py:3305/:3308). Ignorance is never an empty set:
     # `Fields` does not hold the source list, so a predicate that inferred "no sources"
     # from not being told would be the over-covering this clause prevents.
     seam = _deposit_repair.seam_source_reasons(
@@ -550,8 +550,8 @@ def covers_cylindrical_fused_electric_pair(fields: Any, pml: Any, grid: Any,
         return False, (f"in_seam_coverage.zero_metal_axes raised on this grid: "
                        f"{type(exc).__name__}: {exc}")
 
-    # THE STORED SHAPE THE KERNEL INDEXES MUST BE THE ONE THE WALL PLANE AND THE RADIAL
-    # DIFFERENCE ARE DERIVED FROM. `nx, ny, nz` come from `fields.Dx.shape`; the wall is
+    # The stored shape the kernel indexes must be the one the wall plane and the radial
+    # difference are derived from. `nx, ny, nz` come from `fields.Dx.shape`; the wall is
     # stored cell 0 of a `grid.stored_cells` axis and the difference is target-shaped.
     try:
         stored = tuple(int(grid.stored_cells(axis)) for axis in range(3))
@@ -564,8 +564,8 @@ def covers_cylindrical_fused_electric_pair(fields: Any, pml: Any, grid: Any,
                        f"{extents}; the wall plane and the radial difference are derived "
                        f"from the first and indexed into the second")
 
-    # THE THREE INVERSE-PERMITTIVITY VOLUMES MUST BE ASKABLE AND MUST MATCH THE SHAPE
-    # THIS LAUNCH WALKS. The constitutive half's own predicate already checks them
+    # The three inverse-permittivity volumes must be askable and must match the shape
+    # this launch walks. The constitutive half's own predicate already checks them
     # against `_grid_facts`' shape; this asks the same question against the extents THIS
     # LAUNCH walks (`fields.Dx.shape`), which is the array the flat idx indexes.
     accessor = getattr(fields, "inverse_epsilon_for", None)

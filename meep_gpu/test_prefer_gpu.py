@@ -4,7 +4,7 @@ The reference never consults a kernel table, whatever the environment says. The
 reference and stub tests run on every host; the tests that need a GPU driver skip by
 declared resource (``mps_device`` / ``gpu_device`` / ``meep``) where it is absent.
 
-THE SUITE'S DISPATCH PIN IS REMOVED HERE. ``conftest.py`` starts every test with
+The suite's dispatch pin is removed here. ``conftest.py`` starts every test with
 ``MEEP_GPU_DISPATCH=0``; the autouse fixture below deletes it (and every other
 switch), so a test that sets nothing measures the SHIPPED default and a test that
 sets a value measures that value. Every test asserts what actually ran --
@@ -201,7 +201,7 @@ def test_certified_only_runs_an_uncertified_toolchain_on_the_host_cpu_and_says_s
     host = real()
     recorded = {"architecture": host["architecture"], "torch": host["version"],
                 "metal_frontend": metal_dispatch.frontend_key(host["metal_frontend"])}
-    # ONE CITED WELD WITH ONE LIVE RUN, for this host's architecture
+    # One cited weld with one live run, for this host's architecture
     # (``metal_dispatch.cited_environments``: ``(gate, runs)``).
     monkeypatch.setattr(metal_dispatch, "cited_environments",
                         lambda ledger=None: (("metal_test_device_gate", (recorded,)),))

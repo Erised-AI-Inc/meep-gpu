@@ -1,6 +1,6 @@
 """Sub-step byte-identity gate for the SHIPPED CUDA COMPLEX constitutive pair ON A Dcyl GRID.
 
-THE CLAIM UNDER TEST, and it is a claim about a PREDICATE, not about a kernel.
+The claim under test, and it is a claim about a PREDICATE, not about a kernel.
 ``meep_gpu/cuda_kernels/complex_pml_kernels.py`` ships ``update_fused_pml_complex``,
 which launches ``update_H_pml_complex_bloch`` /
 ``update_E_pml_complex_bloch`` from ``complex_emitter``'s
@@ -17,10 +17,10 @@ is REAL and stays: ``cshift_up``/``cshift_dn`` are a neighbour stencil and Dcyl
 replaces the radial derivative with a prefix sum and adds the axis-row rules. The
 constitutive sub-step has no neighbour to shift.
 
-WHY THE READING SAYS IT IS NOT REQUIRED HERE (every fact read off the source, and
+Why the reading says it is not required here (every fact read off the source, and
 checked line by line before this file was written):
 
-1. THE SUB-STEP READS NO NEIGHBOUR. ``stepping._apply_constitutive_pml``
+1. The sub-step reads no neighbour. ``stepping._apply_constitutive_pml``
    (stepping.py:2112-2145) is ``fw_previous = fw.copy(); fw[...] = source;
    field += kps*fw; field -= kms*fw_previous`` -- four whole-array operations, no
    shift, no ghost, no mask. Dcyl changes the RADIAL DERIVATIVE and the AXIS ROW;
@@ -33,22 +33,22 @@ checked line by line before this file was written):
 3. ``_mask_non_owned_cells`` (stepping.py:1912) has exactly three call sites --
    ``step_B`` (:397), ``step_D`` (:479) and ``_bfast_term`` (:929). No
    constitutive function is among them, on any coordinate system.
-4. THE EMITTED KERNEL SAYS THE SAME THING IN ITS OWN CHARACTERS.
+4. The emitted kernel says the same thing in its own characters.
    ``complex_emitter._CONSTITUTIVE_TEMPLATE`` takes no ``bc_*``, no ``ph_*``, no
    phase pair and no ``dtdx``: its whole body is three ``constitutive_apply``
    calls on ``kps_x[i]``/``kps_y[j]``/``kps_z[k]``. There is no place in it for a
    ghost rule to be wrong, which is why the fold, the wrap and the axis row cannot
    reach it -- and why the ONLY thing Dcyl could still move is the coefficient
    INDEX, which is what this gate arms.
-5. THE EXTENT MOVES BOTH OPERANDS TOGETHER, which is the refusal's premise where
+5. The extent moves both operands together, which is the refusal's premise where
    it applies to an index at all, and is TRUE. ``PML._compute_coefficients`` builds
    every kps/kms vector from ``grid.nx``/``ny``/``nz`` -- the STORED extent -- and
    the field arrays are allocated on the same ``grid.shape``. On Dcyl the phi axis
    is invariant with n = 1 and r and z are ordinary extents, so the kernel's
    ``i = idx/(ny*nz)`` indexes a table of exactly the length the grid left.
-6. THE REAL PAIR WAS MEASURED ON THIS EXACT QUESTION AND ADMITTED
+6. The real pair was measured on this exact question and admitted
    (:data:`coverage.CONSTITUTIVE_CYLINDRICAL_ADMISSION`, 96/96 on the GPU host,
-   2026-08-20). THAT IS NOT TRANSFERABLE. These are different kernel bytes --
+   2026-08-20). That is not transferable. These are different kernel bytes --
    complex64 word pairs and the zero cross terms -- emitted by a different
    template.
    The sibling Triton track measured its own complex Dcyl constitutive at 480/480
@@ -57,7 +57,7 @@ checked line by line before this file was written):
    one, not to inherit either verdict.
 
 =============================================================================
-WHAT IS ARMED SO THE ADMISSION CANNOT BE A NO-OP
+What is armed so the admission cannot be a no-op
 =============================================================================
 
 ``reverse_radial_axis_coefficients`` is the refusal reason ITSELF armed as a
@@ -68,10 +68,10 @@ it -- and a gate that admits Dcyl without catching this would be admitting on an
 absence of evidence. ``radial_axis_absorbs`` is the floor that keeps it
 load-bearing: a profile that is the identity everywhere reverses to itself, and
 such a case is refused before it is scored rather than counted as a miss. It is
-the same mutation, spelled the same way, as the real pair's round, so the two are
+the same mutation, spelled the same way, as the real pair's gate, so the two are
 commensurable to the case.
 
-THE COMPLEX HALF-PLANE DEFECT CLASS IS ARMED TOO, and it is this family's own.
+The complex half-plane defect class is armed too, and it is this family's own.
 ``complex64`` is a float2 and every store in the emitted kernel is two word
 stores; a store that writes one plane and leaves the other is a real defect class
 in this tree (a wall clear that zeroes only the real plane), and on an
@@ -80,7 +80,7 @@ element-wise sub-step it is the only shape a plane-selective defect can take.
 stores, each crippled to the real plane alone.
 
 ``fold_the_zero_cross_terms`` and ``plane_wise_scaling`` are carried from the
-family's own certified round unchanged, because they are what distinguishes a
+family's own certified gate unchanged, because they are what distinguishes a
 transcribed complex multiply from a plane-wise one, and the ``signed_zero`` value
 class is the one that can see them.
 
@@ -142,7 +142,7 @@ SEED = 20260820
 
 #: Consecutive launches in the multi-step leg. 60 is the budget every certified
 #: hand-CUDA record in this tree is cut at, including the complex family's own
-#: 2026-08-19 release and the real Dcyl constitutive round this gate is derived
+#: 2026-08-19 release and the real Dcyl constitutive gate this one is derived
 #: from. "Identical for N steps" is a claim about N, and the auxiliary ``f_w`` is
 #: STATE: a tree that gets the field right and ``f_w`` wrong is correct for
 #: exactly one launch and wrong forever after.
@@ -176,14 +176,14 @@ def state_names(side: str) -> Tuple[str, ...]:
 
 
 # ---------------------------------------------------------------------------
-# THE CASE TABLE
+# The case table
 # ---------------------------------------------------------------------------
 #
 # Dcyl grids over BOTH z terminations and BOTH |m| classes, plus the Cartesian
-# controls the certified complex round already covers, carried so a divergence in
+# controls the certified complex gate already covers, carried so a divergence in
 # the Dcyl rows cannot be blamed on the fixture.
 #
-# ``m`` IS SWEPT EVEN THOUGH THIS SUB-STEP CANNOT READ IT. That is the point: the
+# ``m`` is swept even though this sub-step cannot read it. That is the point: the
 # claim is that update_H/update_E are element-wise and carry no cylindrical
 # branch, and a sweep that fixed m at 0 would leave "except at |m| >= 1" open. The
 # |m| classes differ in the CURL (axis-row increment at |m| = 1, near-axis zeroing
@@ -198,7 +198,7 @@ def state_names(side: str) -> Tuple[str, ...]:
 # cell counts. Grid owns the r axis's boundary pair -- the axis at r = 0 and a
 # metallic wall at r_max -- so only z is chosen (grid.py:498-508).
 #
-# EVERY CASE IS COMPLEX STORAGE AND UNPHASED, and that is the corpus, not a
+# Every case is complex storage and unphased, and that is the corpus, not a
 # simplification: all sixteen Dcyl complex rows in the 2026-08-20 census carry
 # ``has_bloch`` FALSE and ``force_complex_fields`` TRUE. Dcyl Bloch is z-only in
 # MEEP (grid.py:654-657) and no corpus row uses it; a phased Dcyl case would be
@@ -206,7 +206,7 @@ def state_names(side: str) -> Tuple[str, ...]:
 # kernel takes no phase argument in any event.
 
 CYL_SPECS: Tuple[Dict[str, Any], ...] = (
-    # The Cartesian controls. Already certified by the complex family's own round;
+    # The Cartesian controls. Already certified by the complex family's own gate;
     # carried so a divergence in the Dcyl rows cannot be blamed on the fixture.
     {"label": "cartesian_periodic", "cylindrical": False, "m": 0,
      "boundaries": ("periodic", "periodic", "periodic"), "cell": (8.0, 10.0, 12.0)},
@@ -236,7 +236,7 @@ CYL_SPECS: Tuple[Dict[str, Any], ...] = (
     {"label": "cyl_m5_z_metallic", "cylindrical": True, "m": 5,
      "z_kind": "metallic", "cell": (14.0, 0.0, 10.0)},
 
-    # ODD CELL COUNTS on both resolved axes, and a shape whose r and z extents
+    # Odd cell counts on both resolved axes, and a shape whose r and z extents
     # differ from every case above: a coefficient-index defect that happens to be
     # invisible at one aspect ratio is not invisible at two. 13*1*17 = 221 complex
     # cells is also not a multiple of the 256-lane block, so the tail guard
@@ -257,7 +257,7 @@ INEXACT_COURANT = 0.35
 
 #: ``uniform`` is the physical band. ``subnormal_band`` is what a float32 subnormal
 #: policy decides the fate of.
-#: ``signed_zero`` is the class the ZERO CROSS TERMS exist for, and it is a real
+#: ``signed_zero`` is the class the zero cross terms exist for, and it is a real
 #: operand class rather than a contrivance: a complex word whose real plane is an
 #: exact zero and whose imaginary plane is not is what a flushed subnormal, a
 #: freshly-initialised volume and a wall plane all produce, and it is the only
@@ -269,8 +269,8 @@ SIDES: Tuple[str, ...] = ("H", "E")
 #: ``--fmad=false`` is CORRECTNESS on this sub-step -- both accumulations and the
 #: E side's ``D*inv_eps`` are contraction candidates the array path rounds twice,
 #: and the part-wise body spells each product and each sum on
-#: its own, as MEEP's contraction-off build does. The control is REPORTED, NOT
-#: GATED, as the family's release recorded it (that release's FMA_V1 arm spelled
+#: its own, as MEEP's contraction-off build does. The control is reported, not
+#: gated, as the family's release recorded it (that release's FMA_V1 arm spelled
 #: every product as an explicit ``__fmaf_rn``, which no contraction flag reaches,
 #: and its images came out identical). On the part-wise body a divergent control is
 #: the expected reading and an identical one is the finding; the artifact says which
@@ -310,7 +310,7 @@ def build(xp, spec: Dict[str, Any], courant: float, rng):
     on all sixteen), which is exactly the class ``force_complex_fields`` names and
     half of what the complex family exists for.
 
-    ON Dcyl, ``Grid`` OWNS THE r AXIS'S BOUNDARY PAIR -- the axis at r = 0 and a
+    On Dcyl, ``Grid`` owns the r axis's boundary pair -- the axis at r = 0 and a
     metallic wall at r_max -- so only z is chosen (grid.py:498-508), and the PML
     is asked for the HIGH r face only for the same reason: cell 0 is the axis, a
     boundary condition rather than a wall. Same rule the sibling Dcyl gates use,
@@ -355,21 +355,21 @@ def build(xp, spec: Dict[str, Any], courant: float, rng):
 def seed_state(fields, grid, side: str, value_class: str, rng) -> Dict[str, np.ndarray]:
     """Seed every complex volume the sub-step touches; return the host words.
 
-    THE AUXILIARIES START NONZERO in every class. A zero ``f_w`` makes
+    The auxiliaries start nonzero in every class. A zero ``f_w`` makes
     ``kms * prev`` exactly zero on the first launch whatever ``kms`` holds, so a
     mis-indexed coefficient would only show from step two -- precisely what the
     multi-step leg exists to catch, and no reason to hide it from the single
     launch as well.
 
-    THE MATERIAL STAYS NORMAL under the band class: driving inverse epsilon into
+    The material stays normal under the band class: driving inverse epsilon into
     the band too would make every product underflow and the leg would measure the
     fixture rather than the policy's reach into this arithmetic.
 
-    THE TWO PLANES ARE ASSIGNED, NEVER COMBINED AS ``re + 1j*im``. ``1j * im``
+    The two planes are assigned, never combined as ``re + 1j*im``. ``1j * im``
     carries a real part of ``0.0 * im``, so ``re + 1j*im`` computes
     ``(-0.0) + (+0.0) = +0.0`` and DESTROYS every negative zero in the real plane
     -- and the signed-zero class exists precisely to put them there. Measured on
-    the sibling round before it was reasoned about.
+    the sibling gate before it was reasoned about.
     """
     xp = grid.xp
     shape = tuple(grid.shape)
@@ -459,7 +459,7 @@ def wrong_sub_lattice_tables(side: str, layer) -> Dict[str, Any]:
 
 
 def reversed_radial_axis_tables(side: str, layer, grid) -> Dict[str, Any]:
-    """THE REFUSAL REASON, ARMED. The r axis's profile read backwards.
+    """The refusal reason, armed. The r axis's profile read backwards.
 
     "cylindrical (Dcyl): prefix-sum radial derivative and axis-row rules" is the
     predicate's stated reason for refusing Dcyl. The prefix-sum half cannot reach
@@ -510,7 +510,7 @@ def host_mutated_tables(name: str, side: str, layer, grid) -> Dict[str, Any]:
 # The source mutations this family's constitutive half needs
 # ---------------------------------------------------------------------------
 #
-# SIX ARE THE FAMILY'S OWN, imported from ``gate_cuda_complex`` rather than
+# Six are the family's own, imported from ``gate_cuda_complex`` rather than
 # respelled: a second spelling of a defect the certified record was cut against is
 # one too many, and a rewrite that drifted from the shipped text would report NOT
 # ARMED for a reason about this file. Two are NEW and are this gate's, because the
@@ -519,7 +519,7 @@ def host_mutated_tables(name: str, side: str, layer, grid) -> Dict[str, Any]:
 def m_half_plane_field_store(text: str) -> Tuple[str, int]:
     """Store only the REAL plane of the constitutive result; keep the old imaginary.
 
-    THE COMPLEX FAMILY'S OWN DEFECT CLASS, and on an element-wise sub-step it is
+    The complex family's own defect class, and on an element-wise sub-step it is
     the only shape a plane-selective defect can take. ``complex64`` is a float2 and
     ``cf_store`` is two word stores; a store that writes one plane and leaves the
     other is a real defect in this tree (a wall clear that zeroed only the real
@@ -572,8 +572,8 @@ def n_reload_the_constitutive_store(text: str) -> Tuple[str, int]:
 #: sides -- a mutation whose needle only appears in the curl would report a pass
 #: for a leg that exercised the shipped bytes, which is worse than no leg, and
 #: :func:`constitutive_sites` is what refuses to score such a leg. The two grouping
-#: and product legs are the INVERTED ones (KERNELS.md section 7.1), and the B battery
-#: (section 7.2) is armed on the per-chunk constitutive form.
+#: and product legs are the INVERTED ones (the previous package forms), and the per-chunk form
+#: battery (docs/development/certification.md) is armed on the per-chunk constitutive form.
 SOURCE_MUTATIONS: Dict[str, Callable[[str], Tuple[str, int]]] = {
     "full_complex_coefficient_products":
         base.SOURCE_MUTATIONS["full_complex_coefficient_products"],
@@ -616,7 +616,7 @@ MUTATION_LEGS: Tuple[Dict[str, Any], ...] = (
     {"leg": "s3_old_package_constitutive_grouping",
      "mutation": "old_package_constitutive_grouping", "kind": "source",
      "expect": "caught",
-     "why": "INVERTED (KERNELS.md section 7.1): MEEP's f + ((kps*src) - (kms*prev)) "
+     "why": "INVERTED: MEEP's f + ((kps*src) - (kms*prev)) "
             "is shipped; two accumulations are a different float32 number"},
     {"leg": "s4_store_fw_before_reading_prev",
      "mutation": "store_fw_before_reading_prev", "kind": "source",
@@ -644,21 +644,21 @@ MUTATION_LEGS: Tuple[Dict[str, Any], ...] = (
             "only the field"},
     {"leg": "b1_select_removed", "mutation": "select_removed", "kind": "source",
      "expect": "caught",
-     "why": "KERNELS.md section 7.2: the whole-grid accumulation on every cell, the "
+     "why": "per-chunk form battery: the whole-grid accumulation on every cell, the "
             "form the family stepped before the chunk forms"},
     {"leg": "b2_predicate_on_coefficient_identity",
      "mutation": "predicate_on_coefficient_identity", "kind": "source",
      "expect": "caught",
-     "why": "KERNELS.md section 7.2: the form chosen by the coefficient's value "
+     "why": "per-chunk form battery: the form chosen by the coefficient's value "
             "rather than by the chunk's membership"},
     {"leg": "b4_auxiliary_stored_on_a_plain_cell",
      "mutation": "auxiliary_stored_on_a_plain_cell", "kind": "source",
      "expect": "caught",
-     "why": "KERNELS.md section 7.2: f_w is untouched on a plain cell, and it is "
+     "why": "per-chunk form battery: f_w is untouched on a plain cell, and it is "
             "compared"},
     {"leg": "b5_auxiliary_load_unguarded", "mutation": "auxiliary_load_unguarded",
      "kind": "source", "expect": "uncaught",
-     "why": "A DECLARED NULL (KERNELS.md section 7.2): the loaded word feeds only the "
+     "why": "A DECLARED NULL (per-chunk form battery): the loaded word feeds only the "
             "layered form"},
     {"leg": "h1_reverse_radial_axis_coefficients",
      "mutation": "reverse_radial_axis_coefficients", "kind": "host",
@@ -691,7 +691,7 @@ MUTATION_LEGS: Tuple[Dict[str, Any], ...] = (
 
 #: The specs a mutation leg is scored on. CHOSEN, not sliced off the front of the
 #: case product: a leg taken from the head of the sweep landed entirely on the two
-#: UNFOLDED controls on the sibling round, so the one mutation that only exists on
+#: UNFOLDED controls on the sibling gate, so the one mutation that only exists on
 #: a Dcyl grid was skipped on every leg and scored 0/0 UNCAUGHT. That is a harness
 #: defect that reads exactly like a kernel defect, which is why the selection is
 #: written out and why one Cartesian control is kept in it.
@@ -791,7 +791,7 @@ def one_case(backend, xp, spec: Dict[str, Any], side: str, courant: float,
              multi_step: bool = True) -> Dict[str, Any]:
     """One frozen state, run twice: the array path, then the kernel.
 
-    THE ORACLE IS ``stepping`` ITSELF on real ``Grid``/``Fields``/``PML``
+    The oracle is ``stepping`` itself on real ``Grid``/``Fields``/``PML``
     objects. There is no second transcription on the oracle leg to drift: the
     kernel is compared against the thing it claims to reproduce, word for word,
     from ONE frozen state -- oracle runs, state is restored, kernel runs.
@@ -815,7 +815,7 @@ def one_case(backend, xp, spec: Dict[str, Any], side: str, courant: float,
         "operand_census": word_census(host),
     }
 
-    # THE PREDICATE'S CURRENT ANSWER, recorded rather than acted on. This gate
+    # The predicate's current answer, recorded rather than acted on. This gate
     # exists to decide whether that answer should change, so it must not be the
     # thing that gates the measurement -- but a record that did not carry it could
     # not show WHICH clause the run was taken against.
@@ -867,7 +867,7 @@ def one_case(backend, xp, spec: Dict[str, Any], side: str, courant: float,
     # field right and ``f_w`` wrong is correct for exactly one launch and wrong
     # forever after.
     #
-    # ONE ``Fields`` OBJECT, RUN TWICE FROM THE SAME FROZEN STATE, rather than a
+    # One ``Fields`` object, run twice from the same frozen state, rather than a
     # second object built beside it. Two objects means two epsilon draws unless the
     # volumes are copied across, and a fixture that solved two different problems
     # would report a divergence that says nothing about the kernel.
@@ -972,7 +972,7 @@ def leg_caught(case: Dict[str, Any]) -> bool:
 def _reaches(leg: Dict[str, Any], case: Dict[str, Any]) -> bool:
     """Whether this case is one the leg's defect can be seen on at all.
 
-    A REACH IS A CLAIM AND EACH ONE IS DERIVED, not guessed:
+    A reach is a claim and each one is derived, not guessed:
 
     * ``cylindrical`` -- the mutation edits the RADIAL axis's coefficient vector.
       A Cartesian control has no radial axis and the mutation is the identity
@@ -996,7 +996,7 @@ def adjudicate(leg: Dict[str, Any], cases: Sequence[Dict[str, Any]]) -> Dict[str
 
     NO LEGS is its own verdict, never "as required". A mutation that was never run
     has not been shown inert; it has not been asked. Collapsing the two is how a
-    gate acquires a silent hole, and the sibling round had exactly that: the
+    gate acquires a silent hole, and the sibling gate had exactly that: the
     radial mutation scored 0/0 UNCAUGHT because every selected leg happened to be
     an unfolded control.
     """
@@ -1039,7 +1039,7 @@ def adjudicate(leg: Dict[str, Any], cases: Sequence[Dict[str, Any]]) -> Dict[str
             for c in scored if not leg_caught(c)})
         out["max_differing_words"] = max(
             (c["single_launch"]["differing_floats"] for c in scored), default=0)
-        # A measurement leg passes when it MEASURED something: at least one case
+        # A measurement leg passes when it measured something: at least one case
         # diverged. A leg on which nothing ever diverges is a finding rather than
         # a pass.
         out["as_required"] = bool(caught)
@@ -1052,7 +1052,7 @@ def adjudicate(leg: Dict[str, Any], cases: Sequence[Dict[str, Any]]) -> Dict[str
 def constitutive_sites(transform: Callable[[str], Tuple[str, int]]) -> Dict[str, int]:
     """How many sites the rewrite matches in EACH constitutive source, per side.
 
-    THE BACKEND'S OWN SITE COUNT IS NOT ENOUGH HERE and this is not pedantry.
+    The backend's own site count is not enough here and this is not pedantry.
     ``set_source_transform`` returns the MAXIMUM over all four sub-steps, so a
     mutation that matches only in the CURL comes back with a nonzero count and a
     leg would then be scored on constitutive cases running the SHIPPED bytes --
@@ -1073,10 +1073,10 @@ def run_mutations(backend, xp, results: Dict[str, Any], out_path: str,
                   product: str, policy) -> Dict[str, Any]:
     """Every leg, source and host. A gate that cannot fail certifies nothing.
 
-    THE COMPILE MEMO IS KEYED THROUGH THE SOURCE
+    The compile memo is keyed through the source
     (``compile_cache.kernel_cache_key`` over ``complex_emitter.complex_source``'s
     output), so a mutated body is a miss and reaches the compiler. Every source
-    leg records how many sites the rewrite matched IN EACH CONSTITUTIVE SIDE,
+    leg records how many sites the rewrite matched in each constitutive side,
     because a leg reporting a pass for a mutation it never applied is worse than
     no leg -- three measured instances on the sibling track.
     """
@@ -1151,7 +1151,7 @@ def summarize(results: Dict[str, Any], backend_certifies: bool) -> Dict[str, Any
         reasons.append(f"multi-step divergence on {len(multi_cases) - len(multi_ok)} "
                        f"of {len(multi_cases)} cases")
 
-    # EVERY CASE MUST HAVE BEEN COMPLEX STORAGE. A gate for the complex family
+    # Every case must have been complex storage. A gate for the complex family
     # that quietly built real volumes would be measuring the other kernel, and
     # nothing else in the artifact would say so.
     if any(c["predicate_today"]["reason"].startswith("real float32 storage")
@@ -1159,7 +1159,7 @@ def summarize(results: Dict[str, Any], backend_certifies: bool) -> Dict[str, Any
         reasons.append("a scored case was refused as real float32 storage; the "
                        "fixture did not build complex volumes")
 
-    # BOTH z TERMINATIONS AND BOTH |m| CLASSES must have been scored. The z
+    # Both z terminations and both |m| classes must have been scored. The z
     # termination changes the stored extent (one slot past the owned window or
     # not) and is what makes the coefficient vectors structurally different
     # arrays; the |m| classes are what the CURL treats differently, and a sweep
@@ -1179,7 +1179,7 @@ def summarize(results: Dict[str, Any], backend_certifies: bool) -> Dict[str, Any
         reasons.append("no NEGATIVE m was scored; seven of the sixteen corpus "
                        "rows are m = -1")
 
-    # THE SIGNED-ZERO CLASS MUST HAVE CONTAINED SIGNED ZEROS. Without them the two
+    # The signed-zero class must have contained signed zeros. Without them the two
     # zero-cross-term legs have no reach and their verdicts are about nothing.
     signed = [c for c in scored if c["value_class"] == "signed_zero"]
     negative_zeros = sum(int(c["operand_census"].get("negative_zeros", 0))
@@ -1204,7 +1204,7 @@ def summarize(results: Dict[str, Any], backend_certifies: bool) -> Dict[str, Any
         reasons.append("this backend compiles nothing through NVRTC and certifies "
                        "nothing; a laptop leg measures the transcription only")
 
-    # THE GUARD CONTROL, REPORTED RATHER THAN GATED ON, as the complex family's
+    # The guard control, reported rather than gated on, as the complex family's
     # release recorded it. That release's kernel spelled every product as an
     # explicit __fmaf_rn, so its images came out identical; the part-wise body
     # now leaves the flag contraction candidates, so a divergent
@@ -1275,6 +1275,7 @@ def save(results: Dict[str, Any], out_path: str) -> None:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
+    import neutral_ids  # noqa: PLC0415
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--backend", choices=("cupy", "host", "numpy"),
                         default="cupy")
@@ -1288,7 +1289,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--skip-mutations", action="store_true")
     parser.add_argument("--falsify", default=None, choices=tuple(SOURCE_MUTATIONS),
                         help=("plant this defect for the WHOLE RUN, sweep included, "
-                              "so the RELEASE VERDICT ITSELF is shown to flip. A "
+                              "so the release verdict itself is shown to flip. A "
                               "gate whose individual legs can fail but whose "
                               "verdict cannot has not been shown to be a gate"))
     args = parser.parse_args(argv)
@@ -1298,8 +1299,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     results: Dict[str, Any] = {
         "gate": "cuda_complex_cylindrical_constitutive",
         "started_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "host": os.uname().nodename,
-        "argv": list(argv if argv is not None else sys.argv[1:]),
+        "host": neutral_ids.machine_id(),
+        "argv": neutral_ids.argv(argv if argv is not None else sys.argv[1:]),
         "backend": args.backend,
         "product": args.product,
         "question": ("does covers_real_pml_complex_constitutive's Dcyl refusal "
@@ -1316,7 +1317,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             return 2
         if args.import_meep_for_host_policy:
             results["meep_host_import"] = probe.import_meep_for_host_policy()
-        # THE OBSERVER GOES IN BEFORE THE POLICY, and the order is the design:
+        # The observer goes in before the policy, and the order is the design:
         # under 'keep' the policy's strip wraps this, so it records the option
         # tuple NVRTC was really given (post-strip). Installed afterwards it would
         # sit outside the strip and record the pre-strip tuple -- the one thing
@@ -1341,7 +1342,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     try:
         if args.falsify:
-            # THE VERDICT'S OWN FALSIFICATION LEG. Every mutation leg below shows
+            # The verdict's own falsification leg. Every mutation leg below shows
             # that a LEG can fail; this shows that the RELEASE DECISION can. The
             # defect is planted for the whole run, sweep included, so a run under
             # --falsify that still reported released=True would mean the summary
@@ -1364,7 +1365,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
         backend.set_guard(("--fmad=false",))
         if args.backend == "cupy":
-            # THE COMPILED-IMAGE COMPARISON, which is what makes an identical
+            # The compiled-image comparison, which is what makes an identical
             # output control readable: two bit-identical NVRTC images cannot
             # produce different words, so "inert" and "unmeasured" come apart.
             results["guard_effect"] = backend.guard_effect()

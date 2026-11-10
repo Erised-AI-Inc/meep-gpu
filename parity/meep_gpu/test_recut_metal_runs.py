@@ -5,11 +5,14 @@ every leg's ``provenance.apple_gpu``, refuses a campaign directory other than
 ``metal_runs.route_campaign(route_stamps.route_gate("metal"), <architecture>)``, and
 files the
 route run (its legs, records, timestamp, the run's ``released_fused_arms`` subkeys,
-the residency and the lift) under ``runs[<architecture>]``. A second Mac's cut on the
-same bytes joins the first; a cut on moved bytes refuses to strand another
-architecture's run unless that architecture is superseded by name; a record still in
-the one-run shape is refused. Driven here over campaigns built in the test, against
-the live tree's digests; no GPU and no results tree are read.
+the residency, the lift and the run's statement of the default) under
+``runs[<architecture>]``. A second Mac's cut on the same bytes joins the first and
+leaves the first's run, its statement of the default included, as it was; a cut that
+would change another architecture's run, or write a statement beside the digests, is
+refused by name; a cut on moved bytes refuses to strand another architecture's run unless
+that architecture is superseded by name; a record still in the one-run shape, or carrying
+one shared statement of the default, is refused. Driven here over campaigns built in the
+test, against the live tree's digests; no GPU and no results tree are read.
 """
 
 from __future__ import annotations
@@ -24,6 +27,7 @@ import pytest
 HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
+import gate_dispatch_fused_route as route_gate  # noqa: E402
 import recut_driver_dispatch_record as recut  # noqa: E402
 
 from meep_gpu import fastpath, metal_dispatch, metal_runs, route_stamps  # noqa: E402
@@ -42,7 +46,18 @@ def _live(name: str) -> str:
     return hashlib.sha256(recut._resolve("metal", name).read_bytes()).hexdigest()  # noqa: SLF001
 
 
-def _campaign(results: pathlib.Path, architecture: str, *, legs_on=None) -> str:
+def recorded_default(dispatching: bool, vetoes=()) -> dict:
+    """A leg's ``dispatch_preference`` as the route gate writes it, on the live records,
+    with the default vetoing ``vetoes`` (product labels) on its one case."""
+    rows = ([{"control": "default-preference", "case": "pml_2d",
+              "verdict": route_gate.DEFAULT_PREFERENCE_RECORDED, "records_read": {},
+              "prior_derived_from": [],
+              "vetoes_applied": [{"label": label} for label in vetoes]}]
+            if dispatching else [])
+    return route_gate.dispatch_preference_summary(rows, route_gate.shipped_timing_records())
+
+
+def _campaign(results: pathlib.Path, architecture: str, *, legs_on=None, vetoes=()) -> str:
     """A released four-leg Metal route campaign on the live bytes, as the gate writes it."""
     name = metal_runs.route_campaign(route_stamps.route_gate("metal"), architecture)
     released = metal_dispatch.METAL_RELEASED_FUSED_ARMS
@@ -64,6 +79,9 @@ def _campaign(results: pathlib.Path, architecture: str, *, legs_on=None) -> str:
                 "lift": {"prefer_gpu": True, "driver_gpu": "metal"},
             },
             "arms_driven": arms_driven if dispatching else {},
+            # The timing records the tree ships, stated as the gate states them, with one
+            # case's default recorded on a dispatching leg.
+            "dispatch_preference": recorded_default(dispatching, vetoes),
             "residency": ({case: {"mode": "held", "invariant": "held between launches"}
                            for case in cases} if dispatching else {}),
         }
@@ -72,7 +90,7 @@ def _campaign(results: pathlib.Path, architecture: str, *, legs_on=None) -> str:
             "composition": {"tables_dispatched": ["metal"]},
             "environment": {"device_certified": True, "torch_certified": True,
                             "frontend_certified": True,
-                            # AS THE PLAN WRITES IT since 2026-10-05: the
+                            # As the plan writes it since 2026-10-05: the
                             # architecture is also the key the certification quote
                             # reads (``metal_dispatch.environment_block``).
                             "device": {"architecture": architecture,
@@ -138,7 +156,7 @@ def test_a_cut_files_the_route_run_under_the_architecture_its_legs_recorded(tree
     assert run["residency"]["mode"] == "held"
     assert run["lift"]["per_leg"]["shipped"]["driver_gpu"] == "metal"
     assert run["status"] == "PASS"
-    # THE VERDICT IS THE RUN'S ALONE: every cut files ``status`` under ``runs[<key>]``
+    # The verdict is the run's alone: every cut files ``status`` under ``runs[<key>]``
     # and writes none beside the digests, and the record it writes is one the Metal
     # weld contract's route-record rule accepts, over that contract's own measurements.
     assert "status" not in record
@@ -147,7 +165,7 @@ def test_a_cut_files_the_route_run_under_the_architecture_its_legs_recorded(tree
     assert not {"gate", "artifact", "what_was_measured"} & set(released)
     assert set(released["arms"]) == set(metal_dispatch.METAL_RELEASED_FUSED_ARMS)
     assert "residency" not in record and "lift" not in record
-    # THE ENTRY-LEVEL COPIES SAY WHAT THEY WERE READ FROM AND WHEN: the live runs, as
+    # The entry-level copies say what they were read from and when: the live runs, as
     # of this cut.
     assert "live per-architecture runs" in record["environments"]["read_from"]
     assert "as of this cut" in record["environments"]["read_from"]
@@ -164,6 +182,86 @@ def test_a_second_architecture_on_the_same_bytes_joins_the_first(tree):
     record = _dispatch(ledger)
     assert metal_runs.live_architectures(record) == (G13S, G15S)
     assert record["runs"][G13S] == first
+
+
+def test_two_architectures_whose_defaults_differ_keep_their_own_statements(
+        tree, monkeypatch, capsys):
+    """Two stand-in Apple GPUs whose defaults differ: the first's default gives way on its
+    one case, the second's does not. Each run keeps its own statement of the default, the
+    first's comes through the second's cut byte for byte, and no statement sits beside the
+    digests. Then the fault the shared statement was, planted in the writer: a bind that
+    also files the cut's statement in the other run is refused by name, nothing written."""
+    results, ledger = tree
+    _record(ledger)
+    assert _cut(_campaign(results, G13S, vetoes=("fused pair D",))) == 0
+    first = _dispatch(ledger)["runs"][G13S]
+    assert first["dispatch_preference"]["vetoes_applied"] == {"pml_2d": ["fused pair D"]}
+    second = _campaign(results, G15S)
+    assert _cut(second) == 0
+    record = _dispatch(ledger)
+    assert recut.PREFERENCE_KEY not in record
+    assert record["runs"][G13S] == first
+    statement = record["runs"][G15S]["dispatch_preference"]
+    assert statement["vetoes_applied"] == {}
+    assert statement["run"] == second == record["runs"][G15S]["released_fused_arms"]["gate"]
+    assert first["dispatch_preference"]["run"] != second
+    # The same cut again replaces only its own run.
+    assert _cut(second) == 0
+    assert _dispatch(ledger)["runs"][G13S] == first
+
+    real = metal_runs.bind_architecture
+
+    def shared(entry, **kwargs):
+        staled = real(entry, **kwargs)
+        for run in entry[metal_runs.RUNS].values():
+            run[recut.PREFERENCE_KEY] = kwargs["run"][recut.PREFERENCE_KEY]
+        return staled
+
+    monkeypatch.setattr(metal_runs, "bind_architecture", shared)
+    before = ledger.read_text()
+    assert _cut(second) == 1
+    error = capsys.readouterr().err
+    assert "cut_would_change_another_architecture" in error
+    assert f"runs['{G13S}'] fields ['dispatch_preference']" in error
+    assert ledger.read_text() == before
+
+
+def test_a_cut_that_would_write_a_statement_beside_the_digests_is_refused(
+        tree, monkeypatch, capsys):
+    """The tool checks the record it writes as it checks the one it reads: a planted
+    writer that files the cut's statement in its own run and also beside the digests is
+    refused by name, nothing written."""
+    results, ledger = tree
+    _record(ledger)
+    real = metal_runs.bind_architecture
+
+    def beside(entry, **kwargs):
+        staled = real(entry, **kwargs)
+        entry[recut.PREFERENCE_KEY] = kwargs["run"][recut.PREFERENCE_KEY]
+        return staled
+
+    monkeypatch.setattr(metal_runs, "bind_architecture", beside)
+    before = ledger.read_text()
+    assert _cut(_campaign(results, G13S)) == 1
+    error = capsys.readouterr().err
+    assert "cut_would_write_route_run_fields_at_entry_level" in error
+    assert "'dispatch_preference'" in error
+    assert ledger.read_text() == before
+
+
+def test_a_record_carrying_one_shared_statement_of_the_default_is_refused(tree, capsys):
+    """The shape every cut overwrote: refused by name before any leg is read."""
+    results, ledger = tree
+    _record(ledger)
+    document = json.loads(ledger.read_text())
+    document["driver_dispatch"][recut.PREFERENCE_KEY] = recorded_default(True)
+    ledger.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n")
+    before = ledger.read_text()
+    assert _cut(_campaign(results, G13S)) == 2
+    error = capsys.readouterr().err
+    assert "record_carries_route_run_fields_at_entry_level" in error
+    assert "'dispatch_preference'" in error
+    assert ledger.read_text() == before
 
 
 def test_a_cut_on_moved_bytes_names_the_architecture_it_would_strand(tree, capsys):
@@ -203,7 +301,7 @@ def test_a_record_in_the_one_run_shape_is_refused(tree, capsys):
     assert "run migrate_metal_runs.py first" in capsys.readouterr().err
 
 
-# THE CAMPAIGN NAME IS THE REGISTRY'S, and the cut keys on it (meep_gpu/route_stamps.py).
+# The campaign name is the registry's, and the cut keys on it (meep_gpu/route_stamps.py).
 # Each of these must refuse with nothing written; each is a campaign the legs would
 # otherwise file cleanly (the first test above cuts the same campaign shape).
 

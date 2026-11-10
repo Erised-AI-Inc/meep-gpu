@@ -63,7 +63,7 @@ double, in order, with each leg located by ``locate_point_in_user_volume``
 (boundaries.cpp:203-226) and phased ``S.phase_shift(c, sn) * kphase``. A leg no chunk
 owns reads ``0.0``, as MEEP's does.
 
-STORAGE CONVENTION ON A WRAPPING AXIS. MEEP owns ``(lc, lc + 2N]`` of a Yee-shift-0
+Storage convention on a wrapping axis. MEEP owns ``(lc, lc + 2N]`` of a Yee-shift-0
 component on an unfolded periodic axis, and so does the package's storage
 (``Grid.stored_window_low``): on an axis with a Bloch phase stored cell 0 IS the owned
 top word ``lc + 2N``, and the word at ``lc`` is MEEP's not-owned word, the CONNECT_PHASE
@@ -171,9 +171,9 @@ def sincos(x: float) -> Tuple[float, float]:
     """``(sin x, cos x)`` as MEEP's compiled ``<complex>`` gets them.
 
     libc++'s ``exp(complex)`` and ``polar`` take a ``sin`` and a ``cos`` of one argument,
-    which the compiler fuses into one call: ``__sincos_stret`` on Darwin (MEASURED on
+    which the compiler fuses into one call: ``__sincos_stret`` on Darwin (measured on
     MEEP 1.33.0's ``eikna``: a separate ``sin`` differs in its last bit on 1 of 408 Bloch
-    axes, ``__sincos_stret`` on none), glibc's ``sincos`` elsewhere (INFERRED from
+    axes, ``__sincos_stret`` on none), glibc's ``sincos`` elsewhere (inferred from
     ``__builtin_cexp``; not measured here).
     """
     libm = _libm()
@@ -280,7 +280,7 @@ def cpow_int(x: ComplexParts, n: int) -> ComplexParts:
     """``pow(complex<double>, int)`` as the host's C++ runtime forms it.
 
     libc++ (MEEP built on Apple silicon) has no integer overload: ``pow(x,
-    complex<double>(n))`` is ``exp(y * log(x))`` (measured there, P0-g). ``x = (1, +0)``,
+    complex<double>(n))`` is ``exp(y * log(x))`` (measured there). ``x = (1, +0)``,
     the ``eikna`` of every axis without a Bloch phase, gives ``(1, +0)`` for every ``n``
     (``log`` is ``(0, +0)``, the product ``(+-0, +0)``, and ``exp``'s ``imag == 0``
     branch returns ``(1, copysign(0, +0))``); that case is answered without the math
@@ -290,8 +290,8 @@ def cpow_int(x: ComplexParts, n: int) -> ComplexParts:
     squaring, and ``complex<T>(1) /`` the power for a negative exponent, the division
     being libgcc's ``__divdc3`` (:func:`_divdc3`). The two forms differ in the last bit
     of most phased powers: against a probe compiled by the Linux reference's own
-    toolchain (conda-forge GCC 15.2; parity/meep_gpu/results/bit_parity_0_10/dev/wp/RG/
-    scripts/gpu_host/cpow_check.py), the libstdc++ form here matches 21,000 of 21,000
+    toolchain (conda-forge GCC 15.2,
+    run on the GPU host), the libstdc++ form here matches 21,000 of 21,000
     random unit-modulus cases at n = -3..3 and the libc++ form 6,472. Which runtime is
     the host's: Darwin's is libc++, everything else is taken as libstdc++ (the host rule
     of :func:`sincos`).

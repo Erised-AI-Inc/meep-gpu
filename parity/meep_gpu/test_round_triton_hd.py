@@ -1,8 +1,8 @@
-"""The 1.0 round runs the ten Triton H->D gates, and binds the composition records it re-cuts.
+"""The 1.0 certification runs the ten Triton H->D gates, and binds the composition records it re-cuts.
 
 The Triton board binds its H->D products through ``build_triton_fusion_matrix.GATE_BOUND``,
 which re-hashes each gate's artifact against the tree, so a board cut on a frozen tree needs
-those gates run on it; until the round's leg table held them they ran outside it. These
+those gates run on it; until the 1.0 certification's leg table held them they ran outside it. These
 tests pin the legs (one hand leg per gate under keep, into ``triton_<gate>_<stamp>/keep/``,
 the layout GATE_BOUND names), their prices against the walls they were measured at, the
 step a lane runs for one, the one-shot root names, the corpus check, and the bind's
@@ -31,7 +31,7 @@ import run_lane  # noqa: E402
 #: Walls (seconds) the ten gates were measured at, under keep, every leg, lifts on, each
 #: run released. PRE-CERTIFICATION: the 1.0 pre-certification pass (2026-10-10, two streams
 #: of five on one RTX A6000 beside seven other streams). FROZEN: seven of them re-run on
-#: the frozen tree of the 1.0 round (2026-10-12, two streams on one card). The oracle the
+#: the frozen tree of the 1.0 certification (2026-10-12, two streams on one card). The oracle the
 #: prices are checked against.
 MEASURED_PRECERT_WALLS = {
     "fused_hd_pair": 3052, "folded_fused_hd_pair": 3523, "complex_fused_hd_pair": 1893,

@@ -1,6 +1,6 @@
 """The two COMPLEX off-diagonal SCRATCH-OUTPUT welds, at the merge bar.
 
-WHAT THIS SUITE IS FOR. :mod:`.folded_complex_offdiag_fused_electric_pair` and
+What this suite is for. :mod:`.folded_complex_offdiag_fused_electric_pair` and
 :mod:`.complex_no_pml_offdiag_fused_electric_pair` occupy the last two board cells
 the hand-CUDA fusion matrix recorded UNBUILDABLE. Neither can be launched here --
 there is no CuPy on the merge-bar host -- so what is asserted is everything that
@@ -11,7 +11,7 @@ arithmetic proof is ``probe_cuda_complex_offdiag_scratch_weld.py``'s; this suite
 what stops either from being reached with a module that already disagrees with
 itself.
 
-THE THREE THINGS MOST WORTH PINNING HERE, because each fails SILENTLY:
+The three things most worth pinning here, because each fails SILENTLY:
 
 1. **the constitutive body must carry no volume name this launch does not bind.**
    The flux density is bound ONCE, as the curl's own ``f0``/``f1``/``f2``; a
@@ -107,7 +107,7 @@ def test_every_emitted_source_is_one_pure_ascii_kernel(label, module, arm, prefi
                                                        scratch, replaces):
     """One entry point, this family's name, pure ASCII, no placeholder left.
 
-    ASCII IS A COMPILE REQUIREMENT rather than a style rule: CuPy writes the NVRTC
+    ASCII is a compile requirement rather than a style rule: CuPy writes the NVRTC
     source through a bare ``open(..., 'w')``, so the bytes go through the
     interpreter's LOCALE encoding -- ASCII under C/POSIX, which is what a
     non-interactive shell on the validation host gets. Two em-dashes killed a
@@ -153,7 +153,7 @@ def test_no_device_helper_or_define_is_emitted_twice(label, module, arm, prefix,
 @pytest.mark.parametrize("label,module,arm,prefix,scratch,replaces", FAMILIES)
 def test_the_splice_order_puts_every_definition_before_its_first_use(
         label, module, arm, prefix, scratch, replaces):
-    """THE ORDER IS FORCED, and this is where that is a measurement.
+    """The order is forced, and this is where that is a measurement.
 
     ``resolved_down_sample`` reads ``BC_MIRROR``; ``offdiag_term`` calls
     ``resolved_down_sample``; ``resolve_D_at`` calls ``raw_step_D_cell``, which needs
@@ -209,7 +209,7 @@ def test_the_constitutive_body_binds_no_volume_the_launch_does_not(
         label, module, arm, prefix, scratch, replaces):
     """No ``Dx``/``Dy``/``Dz`` survives outside a comment, on any row mask.
 
-    THE SEAM IS EXACTLY THIS. The certified constitutive opens each component with
+    The seam is exactly this. The certified constitutive opens each component with
     ``cf_load(D*, idx)`` and hands each term its partner VOLUME; the weld replaces
     the first with the register this thread resolved and the second with a component
     TAG plus that partner's register. A surviving name is an unbound identifier at
@@ -226,7 +226,7 @@ def test_the_constitutive_body_binds_no_volume_the_launch_does_not(
 
 
 def test_the_folded_family_reads_its_own_boundary_triple():
-    """THE ONE EDIT THE UNFOLDED SIBLING DOES NOT MAKE, and the count is pinned.
+    """The one edit the unfolded sibling does not make, and the count is pinned.
 
     Every read of the boundary code moves together -- both neighbour-coordinate
     lines, both up-wrap predicates and every term's ``dbc`` argument -- because the
@@ -250,7 +250,7 @@ def test_the_folded_family_reads_its_own_boundary_triple():
 
 
 def test_the_pml_arm_renames_only_the_half_integer_kms():
-    """ONE RENAME, NO ARITHMETIC -- and the integer triple is left alone.
+    """One rename, no arithmetic -- and the integer triple is left alone.
 
     ``kms_*`` is the INTEGER sub-lattice for the D curl and the HALF-INTEGER one for
     ``update_E``. In one scope the bare name collides, and letting one shadow the
@@ -411,7 +411,7 @@ def _folded_complex_fixture(xp=None):
          for n, v in zip(names, (2.0, 2.5, 3.0))},
         chi1inv_offdiagonal={"Ex": {"Ey": xp.full(shape, np.float32(0.25))}})
     fields.enable_pml_storage()
-    # PER AXIS, and per FACE. A two-cell layer does not fit on a zero-extent z, and
+    # Per axis, and per FACE. A two-cell layer does not fit on a zero-extent z, and
     # the folded Y's LOW face is the mirror plane -- a boundary condition, not an
     # absorber -- so the engine refuses a layer there by name.
     return fields, PML(grid=grid,
@@ -436,7 +436,7 @@ def test_the_predicate_is_a_conjunction_that_opens_on_its_curl_half(
 @pytest.mark.parametrize("label,module,arm,prefix,scratch,replaces", FAMILIES)
 def test_carries_deposit_repair_is_the_repair_module_s_own_answer(
         label, module, arm, prefix, scratch, replaces):
-    """FALSE, and MEASURED rather than chosen.
+    """False, and measured rather than chosen.
 
     ``deposit_repair.repairable`` refuses an off-diagonal chi1inv row BY NAME: a
     point repair recomputes E at the deposit cell from THAT cell's displacement,
@@ -592,9 +592,9 @@ _ADMITTED = {"folded": _folded_complex_fixture, "no_pml": _no_pml_complex_fixtur
 @pytest.mark.parametrize("label,module,arm,prefix,scratch,replaces", FAMILIES)
 def test_every_bound_volume_is_allocated_on_a_grid_this_family_serves(
         label, module, arm, prefix, scratch, replaces):
-    """THE LAUNCH'S NINE-OR-FIFTEEN POINTERS RESOLVE, on this family's own storage.
+    """The launch's nine-or-fifteen pointers resolve, on this family's own storage.
 
-    THIS IS THE TEST THAT WAS MISSING. ``_FIELD_BINDINGS`` is a list of ATTRIBUTE
+    This is the test that was missing. ``_FIELD_BINDINGS`` is a list of ATTRIBUTE
     NAMES handed to ``word_view`` one by one, and every other check in this file
     reads the emitted TEXT -- which is identical whether the name resolves to an
     array or to ``None``. The no-absorber family had ``Hx``/``Hy``/``Hz`` here,
@@ -650,7 +650,7 @@ def test_a_fresh_scratch_is_disjoint_from_every_binding(label, module, arm, pref
                                reason="[requires_resource][cupy] the scratch builder "
                                       "allocates on the device and the disjointness "
                                       "check compares device base addresses")
-    # ON THE DEVICE, as a run holds them: the check compares the base address of
+    # On the device, as a run holds them: the check compares the base address of
     # every bound volume, and a host array has none to compare.
     fields, pml = _ADMITTED[label](xp=cupy)
     fresh = getattr(module, f"{module.FAMILY[5:]}_scratch")(fields)

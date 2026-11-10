@@ -2255,8 +2255,8 @@ def test_flux_plane_on_the_last_row_of_centres_averages_across_the_periodic_face
     # 0.5*(Ex[nz-1] + 0) — a different number by exactly the factor the profile's
     # discontinuity sets. (Returning the RAW un-averaged value there instead is
     # what this engine used to do, and it is the measured 2.02x flux defect the
-    # wall-zero plane repaired — see _sliced_component and
-    # the design notes (absorber-placement-evidence) §2.3 row 29.)
+    # wall-zero plane repaired — see the far-plane comment in
+    # dft.py's _sliced_component.)
     clipped = FluxMonitor(grid=grid, frequency=frequency, center=(0.0, 0.0, 1.95),
                           size=plane_size, periodic=(False, False, False))
     assert clipped._wrapped == (False, False, False)
@@ -3126,10 +3126,10 @@ _SAMPLE_SOURCE = {"component": "Ez", "frequency": 1.0, "center": (0.0, 0.0, 0.0)
 def test_a_folded_axis_gets_the_metallic_plane_its_cell_centre_average_needs(axis):
     """A monitor reaching a folded far face must still be CELL-CENTRED on that axis.
 
-    THE DEFECT THIS PINS. `_sliced_component` clips a non-wrapping axis at the last
+    The defect this pins. `_sliced_component` clips a non-wrapping axis at the last
     stored cell, so a region that reaches the folded far face got an extended slice of
     exactly the region's own length; `_apply_yee_interpolation` then found nothing to
-    consume and skipped the average FOR THE WHOLE AXIS. The quadrant came back holding
+    consume and skipped the average for the whole axis. The quadrant came back holding
     raw Yee samples on the folded axis while every other axis was cell-centred, with
     nothing in the shape, dtype or magnitude to say so — and the default whole-grid
     region of every folded run reached that face, so it was the ordinary case rather
@@ -3147,7 +3147,7 @@ def test_a_folded_axis_gets_the_metallic_plane_its_cell_centre_average_needs(axi
     Since the curl takes MEEP's left-to-right bracket, which is not reflection-symmetric
     in rounding (``test_stepping.FOLD_ROUNDING_BOUND``), the unfolded run's two halves
     differ by rounding, so the supplied plane is held to :data:`FOLD_ROUNDING_BOUND`
-    units of 2**-24 of each component's peak (MEASURED 2026-10-06: 1.28, 1.28 and 1.31
+    units of 2**-24 of each component's peak (measured 2026-10-06: 1.28, 1.28 and 1.31
     units on X, Y and Z).
     Both numbers come from THIS process: the pre-fix path is reached by withholding the
     plane, so the cost is measured rather than recalled.
@@ -3805,7 +3805,7 @@ def test_monitor_on_a_derived_E_run_matches_the_materialized_product(
     only legitimate because slicing, `take` and the deferred phase/parity factors are
     all pointwise or index-permuting, so this pins the claim the direct way: the same
     fields, sampled once with E derived and once with the identical product written
-    into storage, must agree BYTE FOR BYTE. A tolerance here would pass on a run that
+    into storage, must agree byte for byte. A tolerance here would pass on a run that
     quietly applied a Bloch factor to epsilon or reordered the phase multiplications.
     """
     del label

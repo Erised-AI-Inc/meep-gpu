@@ -1,14 +1,14 @@
 """BYTE GATE — the REAL cylindrical family (Dcyl, m = 0) on Metal.
 
-WHAT THIS CERTIFIES: that ``metal_kernels.cylindrical_real``'s four products
-reproduce ``stepping.py`` WORD FOR WORD as uint32 on a real float32 Dcyl grid at
+What this certifies: that ``metal_kernels.cylindrical_real``'s four products
+reproduce ``stepping.py`` word for word as uint32 on a real float32 Dcyl grid at
 m = 0 — the two-launch curl (radial scan, then curl) on both sub-steps and the
 CERTIFIED real constitutive pair re-admitted under this family's restated predicate
 — per SUB-STEP **and per COMPLETE STEP**, over a swept case matrix, with the
 transcription choices that decide those words carried as ARMED MUTATIONS rather than
 as comments.
 
-THE ORACLE IS IN-PROCESS NumPy AND THAT IS THIS FAMILY'S WHOLE LICENCE. The engine
+The oracle is in-process NumPy and that is this family's whole licence. The engine
 holds NumPy (``coverage.MIRRORED_HOST_MODULE``), and the array path's radial term
 (``stepping.cylindrical_rderiv_difference``: MEEP's ``f_rderiv_int`` summed in every
 structure chunk from that chunk's first row, ``rinv`` multiplied, and the stencil's
@@ -18,7 +18,7 @@ radial difference has a reproducible oracle here. Leg ``radial`` is that claim,
 measured against the array path's function CALLED with the run's own chunk starts, and
 against ONE radial sum, which must differ on every case (each carries two r chunks).
 
-WHY THE COMPLETE STEP IS THE ARBITER AND NOT A BONUS. Six green per-sub-step
+Why the complete step is the arbiter and not a bonus. Six green per-sub-step
 comparisons say nothing about the object the engine would run. The complete step here
 is the driver's TEN passes (``driver.py:3279-3304``), taken from the composer's own
 residency table and asserted equal to it::
@@ -39,16 +39,16 @@ ONLY there:
   wrote, on the HOST, while the device mirror is authoritative;
 * **an ACCUMULATING AUXILIARY** — ``fu_*`` and ``f_w_*`` are STATE. A kernel right for
   one launch and wrong forever after is identical in a single-launch gate;
-* **THE TWO-LAUNCH ORDER** — this family's curl READS the scan's output, and the scan
+* **the two-launch order** — this family's curl READS the scan's output, and the scan
   is a function of THIS sub-step's source volume. A scan hoisted out of the loop feeds
   the curl the PREVIOUS timestep's radial derivative: a smooth, plausible, entirely
   wrong field rather than an error. Per-slot launch counters assert (24, 12, 12) per
   twelve cycles — total, scan, curl — so no slot may pass by NOT EXECUTING and no
   plan may pass by running the scan once.
 
-WHAT THIS FAMILY'S "m PHASE" AND "ZERO-ROW COUNT" MUTATIONS ARE, stated rather than
-rounded up. At m = 0 the i*m/r coupling and the near-axis zero-row count DO NOT
-EXIST: ``stepping`` adds the coupling only under ``grid.m != 0`` (:347-355, :430-437)
+What this family's "m phase" and "zero-row count" mutations are, stated rather than
+rounded up. At m = 0 the i*m/r coupling and the near-axis zero-row count do not
+exist: ``stepping`` adds the coupling only under ``grid.m != 0`` (:347-355, :430-437)
 and ``_cylindrical_axis_rows`` is ``slice(0, |m|)``, empty at m = 0. A gate that
 claimed to mutate them here would be claiming to mutate nothing. So the STRUCTURAL
 ABSENCE is what is armed: leg ``mutations`` INJECTS an |m| = 1-shaped i*m/r term and
@@ -57,7 +57,7 @@ which turns "this family does not carry them" from an omission a reader must tru
 into a measurement. The m = 0 versus |m| >= 1 SPLIT itself is leg ``split``, at the
 predicate, at the plan and at the composer.
 
-WHAT THIS GATE DOES NOT CERTIFY, each stated rather than papered over:
+What this gate does not certify, each stated rather than papered over:
 
 * **it is BEHAVIOURAL, not generated-code evidence.** ``torch.mps.compile_shader``
   exposes no AIR, no GPU ISA and no optimisation report (``device.py:46-62``), so
@@ -69,14 +69,14 @@ WHAT THIS GATE DOES NOT CERTIFY, each stated rather than papered over:
   the honest third policy value is REFUSE. Every claim rides a CHECKED subnormal-free
   precondition, reported as a WINDOW — ``[first_step, last_step]`` — because band
   entry is a RUN-and-WINDOW fact, not a family fact. A case whose census fires is
-  REFUSED BY NAME and its comparisons are withheld from the certified total: a
+  refused by name and its comparisons are withheld from the certified total: a
   COVERAGE REFUSAL, not a failure;
 * **it makes NO throughput claim.** The scan's dispatch is sized from its OUTPUT
   volume, so ``nr - 1`` threads in every ``nr`` return immediately, and the curl pays
   a second launch per sub-step. This family's number must be measured separately and
   may NOT be inherited from the certified families' benchmark;
 * **it does not re-cut the 759-slot coverage number**, and the Metal-vs-Triton
-  admission diff is REFUSED ON THIS HOST rather than fudged — see leg ``containment``.
+  admission diff is refused on this host rather than fudged — see leg ``containment``.
 
 THE LEGS:
 
@@ -92,7 +92,7 @@ THE LEGS:
                       admission, plus the assertion that this family emits NO
                       constitutive source of its own.
 5.  ``axis``          the r = 0 seam: the far ghost asserted as the SOURCE IDENTITY
-                      it is, the near ghost MEASURED on the array path with the
+                      it is, the near ghost measured on the array path with the
                       substitution count floored, a floor on the ROW-0 words the
                       reference moved, and the DEADNESS of ``b_x`` measured rather
                       than asserted.
@@ -103,7 +103,7 @@ THE LEGS:
                       band, REQUIRED to fire. A precondition never demonstrated to
                       fire is decoration.
 8.  ``split``         the m = 0 versus |m| >= 1 boundary, the Courant clause and the
-                      family's other un-inverted clauses, as REFUSALS BY NAME.
+                      family's other un-inverted clauses, as refusals by name.
 9.  ``containment``   Metal's admitted set beside Triton's, every slot named.
 10. ``mutations``     armed, launch-counted, caught-of-armed reported honestly,
                       including the classes only a complete step can see.
@@ -129,7 +129,7 @@ if API_ROOT not in sys.path:
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
-# THE POLICY IS SET BEFORE ANY `meep_gpu` MODULE IS REACHED, because the predicates
+# The policy is set before any `meep_gpu` module is reached, because the predicates
 # read it at import. On MPS the subnormal flush is native and has no lever, so the
 # resolved default is not offerable and every Metal predicate refuses by name.
 # Setting `flush` is what puts the claim under a CHECKED precondition rather than
@@ -176,7 +176,7 @@ STATE: Tuple[str, ...] = (
 #: ``metal_coverage.RESIDENCY_ORDER``, so the walk and the residency model cannot
 #: disagree about what a step is.
 #:
-#: THE INERT PASSES ARE WALKED ANYWAY. On an unfolded Dcyl grid the two fill passes
+#: The inert passes are walked anyway. On an unfolded Dcyl grid the two fill passes
 #: and the two far-ghost passes return immediately, and dropping them would make this
 #: leg's step a step of the gate's own devising rather than the driver's. They are
 #: recorded as NOT LIVE and their bracket is checked like every other.
@@ -204,7 +204,7 @@ ARITHMETIC_SLOTS: Tuple[str, ...] = ("step_B", "update_H", "step_D", "update_E")
 #: short budget reports as green.
 CYCLES = 12
 
-#: THE CASE MATRIX. Every axis is here because some mutation is REACHABLE on one
+#: The case matrix. Every axis is here because some mutation is REACHABLE on one
 #: value and a structural NULL on the other:
 #:
 #:   RADIAL EXTENT  the scan's trip count is a RUNTIME loop over ``nxi``. Four extents
@@ -231,7 +231,7 @@ CYCLES = 12
 #:                  each other;
 #:   PLANTED ZERO   ``f = -0`` with a curl of exactly ``+0`` on a plain Dy cell, the
 #:                  one state in which MEEP's plain curl form and the recurrence read
-#:                  with ``p := 0`` store different words (KERNELS.md §7.2, ``b8``).
+#:                  with ``p := 0`` store different words (the form battery's ``b8``).
 
 
 def _f32(value: float) -> float:
@@ -297,7 +297,7 @@ def _assert_pass_list() -> None:
 
 
 def plant_signed_zeros(fields: Any) -> int:
-    """Scatter both signed zeros through the stored state, ON THE AXIS ROW especially.
+    """Scatter both signed zeros through the stored state, on the axis row especially.
 
     The axis row and its first neighbour are planted explicitly: ``Dy[r=0] = 0``,
     ``Bx[r=0] = 0`` and three ownership-mask writes all put an exact zero on row 0, and
@@ -322,7 +322,7 @@ def plant_signed_zeros(fields: Any) -> int:
 def build(label: str, seed: int = 99) -> Tuple[Any, Any]:
     """A real Dcyl ``(Fields, PML)`` pair at m = 0, seeded in the PHYSICAL BAND.
 
-    THE SEED COVERS ``fu_*`` AND ``f_w_*`` AS WELL AS THE TWELVE FIELD VOLUMES, and
+    The seed covers ``fu_*`` AND ``f_w_*`` as well as the twelve field volumes, and
     that is not cosmetic. Zero init is a FIXED POINT of the constitutive sub-step and
     a near-fixed-point of the split-field recurrence — a no-op agreeing with a no-op
     is trivially identical — so the auxiliaries carry physical-band values from step
@@ -384,7 +384,7 @@ def dtdx_of(fields: Any) -> float:
 def is_power_of_two(value: float) -> bool:
     """Is this float32 an exact power of two — mantissa bits all zero?
 
-    THE TAG THIS DECIDES IS LOAD-BEARING. Distributing ``dtdx`` over a difference is
+    The tag this decides is load-bearing. Distributing ``dtdx`` over a difference is
     EXACT when ``dtdx`` is a power of two, so ``curl_bz_flat_grouping`` is a
     structural null on such a case; scoping it by this predicate is what stops a
     structural null being reported as a partial catch.
@@ -508,7 +508,7 @@ def run_curl(fields: Any, pml: Any, sub_step: str,
              launches: int = 1, record: Optional[Any] = None) -> Any:
     """Launch this family's curl through the ENGINE route, or with a mutant bound.
 
-    THE MUTANT SEAMS ARE SEPARATE, and dropping either would not be a slowdown but a
+    The mutant seams are separate, and dropping either would not be a slowdown but a
     silent DISARMING: every mutation leg would launch the shipped kernel and report
     its defect as uncaught. The plan is otherwise built exactly as the composer
     builds it, so what is measured is the object the engine would run.
@@ -590,7 +590,7 @@ def walk(fields: Any, pml: Any, plan: Any, residency: Any,
     """One complete driver step, Metal where the composer filled the slot.
 
     A slot the composer did NOT fill runs on the ARRAY PATH and is bracketed with an
-    explicit ``sync_out`` / ``sync_in``. THE BRACKET IS CHECKED INSIDE ITSELF: after
+    explicit ``sync_out`` / ``sync_in``. The bracket is checked inside itself: after
     the ``sync_in`` and before anything else, ``Residency.verify()`` must be clean,
     because that is the one moment at which a host pass that wrote an array nobody
     pushed back is visible. ``unsynced`` removes the bracket for one named pass, which
@@ -661,7 +661,7 @@ def leg_execution(payload: Dict[str, Any], out: str) -> None:
         f"curls). A different count means an axis became a specialisation, or the "
         f"unreachable periodic-r half was enumerated as if it shipped")
 
-    # THE r AXIS IS NOT ENUMERABLE AS PERIODIC AND THE EMITTER SAYS SO BY NAME. A
+    # THE r axis is not enumerable as periodic and the emitter says so by name. A
     # kernel whose far ghost wrapped the outer face onto the axis row is the one
     # wrong answer this family's whole geometry cannot survive, so the refusal is
     # exercised rather than trusted.
@@ -708,7 +708,7 @@ def reference_radial(fields: Any, pml: Any, sub_step: str,
                      one_sum: bool = False) -> Any:
     """``stepping``'s own radial difference for this sub-step — CALLED, never re-derived.
 
-    The B side sums Ep EXTENDED BY ITS ZERO WALL ROW at ``ir0 = 0.0`` and differences
+    The B side sums Ep extended by its zero wall row at ``ir0 = 0.0`` and differences
     forward; the D side sums Hp raw at ``ir0 = 0.5`` and differences backward. The
     chunk starts are the run's (``stepping._cylindrical_scan_starts`` for the
     sub-step's target); ``one_sum`` passes ``None`` instead, one sum from the axis.
@@ -801,7 +801,7 @@ def leg_radial(payload: Dict[str, Any], out: str) -> None:
 def leg_curl(payload: Dict[str, Any], out: str) -> None:
     """Per sub-step, the whole product against ``stepping.step_B`` / ``step_D``.
 
-    THE LAUNCH SPLIT IS ASSERTED, not reported. ``launches`` counts KERNEL launches
+    The launch split is asserted, not reported. ``launches`` counts KERNEL launches
     and one ``run`` owes exactly one scan and one curl; a plan that ran the curl twice
     on a stale radial difference, or the scan and no curl, would otherwise be
     indistinguishable from a plan that ran once correctly.
@@ -900,14 +900,14 @@ def leg_axis(payload: Dict[str, Any], out: str) -> None:
     * the NEAR ghost is NOT. ``_shift_down``'s ``CYL_AXIS`` branch writes the
       ``r_to_minus_r`` image where METALLIC writes zero, and the kernel's claim is
       that the ownership mask zeroes the only row that can consume it. That is a claim
-      about ``stepping.py``, so it is MEASURED on the ARRAY PATH — no Metal involved —
-      by stepping two engines that differ only in that one rule, WITH THE SUBSTITUTION
-      COUNT FLOORED. A count of zero would mean the leg measured nothing; a nonzero
+      about ``stepping.py``, so it is measured on the array path — no Metal involved —
+      by stepping two engines that differ only in that one rule, with the substitution
+      count floored. A count of zero would mean the leg measured nothing; a nonzero
       DIVERGENCE would mean this family must carry the near ghost, and the leg refuses
       rather than relaxing.
 
-    THE THIRD ROW IS A DEADNESS MEASUREMENT AND IT CORRECTS AN EARLIER CLAIM. The
-    build round's mutation table restored the near ghost on ``b_x`` and recorded the
+    The third row is a deadness measurement and it corrects an earlier claim. The
+    gate's first mutation table restored the near ghost on ``b_x`` and recorded the
     resulting null as evidence that the METALLIC substitution is equivalent. Reading
     the emitted source, ``b_x`` is not consumed by ANY curl on EITHER sub-step — both
     sides' z-component curl is ``dtdx`` times the bound radial difference — so that
@@ -916,8 +916,8 @@ def leg_axis(payload: Dict[str, Any], out: str) -> None:
     re-arms the null THERE and pairs it with a mask-dropped twin that must be CAUGHT.
     This row records the deadness itself as a number.
 
-    THE FOURTH ROW IS A VACUITY FLOOR NOBODY ELSE CARRIES: how many words the
-    reference moved ON ROW 0. Every cylindrical addition but the radial sum acts on
+    The fourth row is a vacuity floor nobody else carries: how many words the
+    reference moved on row 0. Every cylindrical addition but the radial sum acts on
     that row, and a matrix whose reference never touched it would certify the r = 0
     machinery by never exercising it.
     """
@@ -970,7 +970,7 @@ def leg_axis(payload: Dict[str, Any], out: str) -> None:
                    "near_ghost_substitutions_fired": fired["count"],
                    "near_ghost_differing": near_ghost,
                    "far_ghost_source_identity": far_identity}
-            # THE NEAR GHOST IS ONLY REACHABLE ON THE D SIDE, and this leg MEASURED
+            # The near ghost is only reachable on the D side, and this leg measured
             # that rather than assuming it: `_shift_down` is called only from the
             # BACKWARD operand path, so step_B — a forward difference throughout —
             # fires the CYL_AXIS branch ZERO times and its null is structural. The
@@ -999,8 +999,8 @@ def leg_axis(payload: Dict[str, Any], out: str) -> None:
                 f"this family would have to carry the r_to_minus_r image — a "
                 f"legitimate outcome, and a refusal rather than a test to relax")
 
-    # THE DEADNESS OF `b_x`, measured rather than asserted: a garbage initialiser on
-    # both sub-steps must change NOTHING, which is what makes the previous round's
+    # The deadness of `b_x`, measured rather than asserted: a garbage initialiser on
+    # both sub-steps must change NOTHING, which is what makes the first mutation table's
     # `b_x` near-ghost null a dead-store fact rather than a masking one.
     deadness: Dict[str, int] = {}
     for label, _ in (CASES[0], CASES[1]):
@@ -1051,9 +1051,9 @@ def leg_whole_step(payload: Dict[str, Any], out: str, budget: int = CYCLES) -> N
     "the plan ran once" and "the scan ran and the curl did not" must be
     distinguishable.
 
-    THE SUBNORMAL CENSUS IS TAKEN PER STEP AND REPORTED AS A WINDOW. Band entry is a
+    The subnormal census is taken per step and reported as a window. Band entry is a
     RUN-and-WINDOW fact: a row recording a scalar count cannot be read for what it
-    covers. A case whose census fires is REFUSED BY NAME and its comparisons are
+    covers. A case whose census fires is refused by name and its comparisons are
     withheld from the certified total — a COVERAGE REFUSAL, not a failure — and
     :func:`leg_precondition` is what proves the detector fires at all.
     """
@@ -1167,9 +1167,9 @@ def leg_whole_step(payload: Dict[str, Any], out: str, budget: int = CYCLES) -> N
 #: something — a detector that fired on everything would refuse the physical band too
 #: and certify nothing.
 #:
-#: THE ``band_edge`` ROW IS RECORDED RATHER THAN ASSERTED, and it is where a WINDOW
+#: The ``band_edge`` row is recorded rather than asserted, and it is where a WINDOW
 #: earns its place over a scalar: the state is scaled UNIFORMLY and the scale itself
-#: is a normal float32, so anything the census finds was reached BY THE RUN — through
+#: is a normal float32, so anything the census finds was reached by the run — through
 #: cancellation in the split-field recurrence and down the radial sums the scan
 #: accumulates — and not by the seeding. A census taken once at step 0 would say
 #: "clean" about a run that is not.
@@ -1189,7 +1189,7 @@ def leg_precondition(payload: Dict[str, Any], out: str, budget: int = 6) -> None
     physical band that window is empty, and an empty window is exactly what a broken
     census also produces. This drives the SAME per-step census over a state scaled
     INTO the band and requires it to fire, so the empty windows next door are a
-    measurement rather than a silence. The scaled rows are REFUSED BY NAME, never
+    measurement rather than a silence. The scaled rows are refused by name, never
     compared.
 
     The ``SubnormalWindow`` control at the end is the second half: it pins that the
@@ -1234,12 +1234,12 @@ def leg_precondition(payload: Dict[str, Any], out: str, budget: int = 6) -> None
                 f"refuses the physical band certifies nothing")
         elif expect_clean is False:
             assert fired, (
-                f"{label}: the census DID NOT FIRE on the scaled control. Every "
+                f"{label}: the census did not fire on the scaled control. Every "
                 f"empty window this gate reports would then be a silence rather "
                 f"than a measurement")
             kit.assert_census_floor(max(per_step), f"{label} control")
 
-    # THE SHIPPED DETECTOR, driven the way the sibling tests drive it: clean, fired,
+    # The shipped detector, driven the way the sibling tests drive it: clean, fired,
     # and VACUOUS are three different outcomes and the third is not a pass.
     fields, _pml = build("wide_metallic", seed=41)
     clean = preconditions.SubnormalWindow(0, 1, per_array_words=64)
@@ -1289,14 +1289,14 @@ def leg_split(payload: Dict[str, Any], out: str) -> None:
     So the m clause is spelled as clause 14 and this is what checks it — at the
     predicate, at the plan and at the composer.
 
-    THE OTHER UN-INVERTED CLAUSES ARE CHECKED HERE TOO, each by the NAME it refuses
+    The other un-inverted clauses are checked here too, each by the NAME it refuses
     under, because a coverage boundary that only exists as prose is a boundary the
     next edit walks through:
 
     * clause 6 — a CARTESIAN grid, which this family's radial substitution would
       silently mis-step;
-    * clause 10 — an installed chi2/chi3, which belongs to the Pade family. THE
-      MAGNITUDE CEILING IS NOT THIS FAMILY'S TO PIN: ``nonlinear_update_e`` carries
+    * clause 10 — an installed chi2/chi3, which belongs to the Pade family. The
+      magnitude ceiling is not this family's to pin: ``nonlinear_update_e`` carries
       the measured ``chi * |chi1inv|^n <= 1e29`` clause and its own gate pins it. Here
       a nonlinearity is refused OUTRIGHT, at any magnitude, which is the stronger
       statement and the one this predicate actually makes;
@@ -1335,7 +1335,7 @@ def leg_split(payload: Dict[str, Any], out: str) -> None:
         m_refusals[str(m)] = per_slot
     record["clause_14_refusals"] = m_refusals
 
-    # 2. THE OTHER DIRECTION: complex storage at m = 0. Clause 2 refuses it by name
+    # 2. The other direction: complex storage at m = 0. Clause 2 refuses it by name
     #    and names the |m| >= 1 family's kernel rather than shrugging.
     complex_fields, complex_pml = matrix.cylindrical(m=0, complex_storage=True)
     verdict = cyl.cylindrical_real_curl_coverage(complex_fields, complex_pml,
@@ -1375,7 +1375,7 @@ def leg_split(payload: Dict[str, Any], out: str) -> None:
     assert not verdict.covered and named, verdict.reasons
     record["clause_3_refusal"] = named
 
-    # 6. THE COURANT CLAUSE. The D side's axis rule is MEEP's double product
+    # 6. The Courant clause. The D side's axis rule is MEEP's double product
     #    4 * Courant * Hp[r=0] rounded once; this backend forms it in float32, which is
     #    the same word only for a float32-word Courant. The sweep's default 0.37 is
     #    not one: step_D is refused by name and step_B, which forms no product with
@@ -1431,11 +1431,11 @@ BACKEND_ONLY_FRAGMENTS: Tuple[str, ...] = (
 def leg_containment(payload: Dict[str, Any], out: str) -> None:
     """Metal-only / Triton-only / both / neither, per slot — and an honest refusal.
 
-    The rule the earlier rounds set: a Metal-only slot is not automatically a defect,
+    The containment rule: a Metal-only slot is not automatically a defect,
     but it is NEVER accepted on argument. So both predicates are asked, per case per
     slot, and the answer is recorded with the exact refusal strings.
 
-    WHAT IS ACTUALLY MEASURABLE HERE IS LESS THAN THAT, and saying so is the point.
+    What is actually measurable here is less than that, and saying so is the point.
     The Triton cylindrical product's predicate carries a BACKEND clause — it requires
     the engine's array module to be CuPy, and this host's engine holds NumPy — so on
     this machine it refuses every row for a reason that has nothing to do with
@@ -1445,7 +1445,7 @@ def leg_containment(payload: Dict[str, Any], out: str) -> None:
     """
     from meep_gpu.triton_kernels import cylindrical_triton as triton_cyl
 
-    # THE TRITON PREDICATE IS NOT SUB-STEP AWARE — ``cylindrical_curl_coverage``
+    # The Triton predicate is not sub-step aware — ``cylindrical_curl_coverage``
     # takes ``(fields, pml)`` and answers for the curl as a whole — so the same
     # verdict is read against both curl slots and the asymmetry is recorded rather
     # than smoothed over. That difference is itself a containment fact: this family's
@@ -1507,7 +1507,7 @@ def leg_containment(payload: Dict[str, Any], out: str) -> None:
         "a case in this gate's own matrix is not admitted by the family under test",
         [r for r in rows if not r["metal_admitted"]][:2])
 
-    # A METAL-ONLY SLOT IS NEVER ACCEPTED ON ARGUMENT. Each one is looked up in THIS
+    # A Metal-only slot is never accepted on argument. Each one is looked up in THIS
     # RUN's whole-step evidence and must carry a complete-step byte comparison that
     # ran, compared something and did not diverge. If the evidence is absent — because
     # the whole-step leg was not run, or the case was refused on the subnormal
@@ -1590,11 +1590,11 @@ def leg_containment(payload: Dict[str, Any], out: str) -> None:
 #: ``must_catch=False`` is a NULL CONTROL — a spelling asserted to be genuinely
 #: equivalent rather than merely untested; ``None`` records the number only.
 #:
-#: The §7.2 battery (``b*``, KERNELS.md) is armed on the curl's per-chunk select, which
+#: The form battery (``b*``, docs/development/certification.md#chunk-form-battery) is armed on the curl's per-chunk select, which
 #: this family lifts from the base curl (``shaders.curl_source``): ``b3``/``b4`` hand
 #: the shipped kernel a wrong record (:data:`RECORD_MUTATIONS`), ``b7`` is the declared
 #: null, ``b8`` runs on the planted ``f = -0`` case. The curl's grouping mutation is
-#: INVERTED (§7.1): the shipped stencil is MEEP's left-to-right bracket, so the row
+#: INVERTED: the shipped stencil is MEEP's left-to-right bracket, so the row
 #: plants the package's previous pairwise grouping and stays must-catch.
 
 #: The per-chunk dsigu select line of each sub-step's curl (B: half-integer lattice).
@@ -1617,7 +1617,7 @@ _BOTH = ("step_B", "step_D")
 SOURCE_MUTATIONS: Tuple[Tuple[str, Tuple[str, ...], Optional[str],
                               Dict[str, Tuple[Tuple[str, str], ...]], Optional[bool],
                               str], ...] = (
-    # ---- THE RADIAL SCAN ---------------------------------------------------
+    # ---- the radial scan ---------------------------------------------------
     ("radial_wall_row_carries_a_value", ("step_B",), None,
      {"scan": (("src[(g + 1) * nyz + base] : 0.0f)",
                 "src[(g + 1) * nyz + base] : 1.0f)"),)}, True,
@@ -1629,13 +1629,13 @@ SOURCE_MUTATIONS: Tuple[Tuple[str, Tuple[str, ...], Optional[str],
      {"scan": (("        if (s != owner) { acc = 0.0f; owner = s; }\n",
                 "        if (s != owner) { owner = s; }\n"),)}, True,
      "ONE radial sum from the axis instead of MEEP's f_rderiv_int per structure chunk "
-     "(step_db.cpp:104-118): the radial analogue of the B select removed. Every case "
+     "(step_db.cpp:104-118): the radial analogue of b1_select_removed. Every case "
      "carries two r chunks (the r layer), so the cut row and every row above it move"),
     ("radial_restart_read_one_row_late", _BOTH, None,
      {"scan": (("        int s = starts[g];\n",
                 "        int s = starts[g > 0 ? g - 1 : 0];\n"),)}, True,
      "the chunk boundary one row off: the sum restarts one row after the chunk's first "
-     "row (the §7.2 bound-off-by-one class, on the radial walk)"),
+     "row (the form battery's bound-off-by-one class, on the radial walk)"),
     ("radial_quotient_divided_in_kernel", ("step_B",), None,
      {"scan": (("float inc = rinv[g] * (w - w_prev);",
                 "float inc = (w - w_prev) / (float(g + 1) - 0.5f);"),)}, True,
@@ -1712,13 +1712,13 @@ SOURCE_MUTATIONS: Tuple[Tuple[str, Tuple[str, ...], Optional[str],
     ("curl1_previous_package_grouping", _BOTH, None,
      {"curl": (("(dtdx * (((a_z - a) + c) - c_x))",
                 "(dtdx * ((a_z - a) + (c - c_x)))"),)}, True,
-     "INVERTED (KERNELS.md §7.1): the package's previous pairwise grouping "
+     "INVERTED (certification.md#inverted-grouping-mutations): the package's previous pairwise grouping "
      "(g1s - g1) + (g2 - g2s) planted in place of MEEP's left-to-right "
      "((g1s - g1) + g2) - g2s on the one target with both partners present"),
     ("curl0_absent_phi_partner_as_a_self_difference", _BOTH, None,
      {"curl": (("(has_z ? ((-dtdx) * (b_z - b)) : 0.0f)",
                 "(has_z ? (dtdx * ((c_y - c) + (b - b_z))) : 0.0f)"),)}, None,
-     "RECORDED ONLY (KERNELS.md Appendix A, the invariant-axis class): the package's "
+     "RECORDED ONLY (certification.md#inverted-grouping-mutations, the invariant-axis class): the package's "
      "previous spelling, the phi partner read as a self-difference on the one-cell "
      "axis, where MEEP's one-partner form is (-dtdx) * (g2s - g2). The two differ only "
      "in the sign of a zero curl"),
@@ -1758,7 +1758,7 @@ SOURCE_MUTATIONS: Tuple[Tuple[str, Tuple[str, ...], Optional[str],
      "(vec.hpp:1100-1104), but on Dy nothing stores the masked word: the m = 0 axis "
      "rule stores Dp[r = 0] = +0 over whatever the form gave (axis_dp_not_zeroed), "
      "and fu_Dy is stored only on Dy's dsigu (r) layer, which row 0 is outside of "
-     "(KERNELS.md §1, C2)"),
+     "(the auxiliary contract; docs/design/floating-point.md#auxiliary-contract)"),
     ("r_ownership_mask_dropped_on_bx", ("step_B",), None,
      {"curl": (("    curl0 = at_x ? 0.0f : curl0;",
                 "    // MUTANT: the r ownership mask on Bx dropped"),)}, True,
@@ -1794,11 +1794,11 @@ SOURCE_MUTATIONS: Tuple[Tuple[str, Tuple[str, ...], Optional[str],
      "THE PAIRED TWIN, A NULL UNDER MEEP'S FORMS: restore the near ghost AND drop the "
      "mask that hides it. Dy's row-0 curl still reaches no stored word: the m = 0 "
      "axis rule stores Dp[r = 0] = +0 over the form's result, and fu_Dy is stored only "
-     "on Dy's dsigu (r) layer, which row 0 is outside of (KERNELS.md §1, C2); see "
+     "on Dy's dsigu (r) layer, which row 0 is outside of (the auxiliary contract); see "
      "r_ownership_mask_dropped_on_dy. The radial twin above keeps the pair's "
      "discrimination on Dz"),
 
-    # ---- THE m = 0 / |m| >= 1 SPLIT, AS STRUCTURAL ABSENCE ------------------
+    # ---- THE m = 0 / |m| >= 1 split, as structural absence ------------------
     ("m0_imr_coupling_injected", ("step_B",), None,
      {"curl": (("    float curl2 = dtdx * rad[ii];\n",
                 "    float curl2 = dtdx * rad[ii];\n"
@@ -1818,10 +1818,10 @@ SOURCE_MUTATIONS: Tuple[Tuple[str, Tuple[str, ...], Optional[str],
                 "    v1 = at_x ? 0.0f : v1;\n    n1 = at_x ? 0.0f : n1;"),)}, False,
      "NULL CONTROL under MEEP's forms. The m = 0 rule zeroes the Dp FIELD on the axis "
      "row and NOT fu_Dp, where the |m| >= 2 rule zeroes both; but fu_Dp is stored only "
-     "on Dy's dsigu (r) layer, which the axis row is outside of (KERNELS.md §1, C2), "
+     "on Dy's dsigu (r) layer, which the axis row is outside of (the auxiliary contract), "
      "so zeroing its register there reaches no stored word"),
 
-    # ---- THE §7.2 BATTERY on the curl's per-chunk select ---------------------
+    # ---- the form battery on the curl's per-chunk select ---------------------
     ("b1_select_removed", _BOTH, None, _select_edit("true", "true", "true"), True,
      "every cell steps the split-field recurrence (the whole-grid form): fu read and "
      "written everywhere"),
@@ -1887,7 +1887,7 @@ def _lattices_swapped(record: Any, shape: Sequence[int]) -> Any:  # noqa: ARG001
     return out
 
 
-#: The record mutations (KERNELS.md §7.2): the kernel is the shipped one and the record
+#: The form battery's record mutations: the kernel is the shipped one and the record
 #: it is handed is not; the reference steps the true division.
 RECORD_MUTATIONS: Tuple[Tuple[str, Callable[[Any, Sequence[int]], Any], str], ...] = (
     ("b3_bound_off_by_one", _bound_off_by_one, "a run end one row past the chunk"),
@@ -2124,7 +2124,7 @@ def apply_host_mutation(kind: str, fields: Any, pml: Any, sub_step: str) -> Any:
         elif kind == "wall":
             saved["wall"] = cyl.PREFIX_WALL_ROW[sub_step]
             cyl.PREFIX_WALL_ROW[sub_step] = cyl.PREFIX_WALL_ROW[other]
-            # NON-VACUITY, ASSERTED RATHER THAN HOPED: the bound weight vector must
+            # Non-vacuity, asserted rather than hoped: the bound weight vector must
             # really carry one more row than it shipped with.
             residency = Residency()
             plan = build_curl_plan(fields, pml, sub_step, residency)
@@ -2263,13 +2263,13 @@ def leg_whole_step_mutations(harness: Any, budget: int = MUTATION_CYCLES) -> Non
         harness.record(label, harness.verdict(False, ran, launches, caught),
                        launches, caught, ran, must_catch, why, extra=record)
 
-    # 1. THE STALE RADIAL DIFFERENCE, and this family is where the class stops being
+    # 1. The stale radial difference, and this family is where the class stops being
     #    abstract. The curl reads what the scan wrote; hoisting the scan out of the
     #    loop is invisible for one launch and wrong forever after.
     def hoist_the_scan(plan: Any) -> Callable[[], None]:
         """Run each curl slot's scan ONCE up front, then only its curl per cycle.
 
-        THE PLAN IS PROXIED RATHER THAN PATCHED, because ``CylindricalRealCurlPlan``
+        The plan is proxied rather than patched, because ``CylindricalRealCurlPlan``
         carries ``__slots__`` and its ``run`` cannot be rebound on the instance —
         which is a good property of the shipped class and not an obstacle worth
         working around destructively. The proxy forwards ``launches`` so the
@@ -2313,7 +2313,7 @@ def leg_whole_step_mutations(harness: Any, budget: int = MUTATION_CYCLES) -> Non
           "sub-step's source volume, so the two launches are ORDERED and the scan owes "
           "one launch per curl. Hoisted out of the loop the curl is fed the PREVIOUS "
           "timestep's radial derivative: a smooth, plausible, entirely wrong field "
-          "rather than an error. A SINGLE-LAUNCH GATE CANNOT SEE THIS AT ALL — with "
+          "rather than an error. A single-launch gate cannot see this at all — with "
           "one launch the hoisted scan IS the right scan — which is why it is armed "
           "here and not above",
           patch=hoist_the_scan,
@@ -2366,6 +2366,13 @@ LEGS: Tuple[Tuple[str, Callable[[Dict[str, Any], str], None]], ...] = (
 
 
 def main(argv: Sequence[str]) -> int:
+    from meep_gpu.metal_kernels import (  # noqa: PLC0415,F401
+        ade_update_p,
+        cylindrical_complex,
+        cylindrical_real,
+    )
+    from metal_closed_table import close_table  # noqa: PLC0415
+    close_table()
     parser = kit.argument_parser(__doc__ or "")
     args = parser.parse_args(list(argv))
     started = time.time()
@@ -2397,7 +2404,7 @@ def main(argv: Sequence[str]) -> int:
         for row in payload["legs"].get(key, ()):
             compared += int(row["compared"])
             certified = certified and row["differing"] == 0
-    # A CASE REFUSED ON THE PRECONDITION CONTRIBUTES NO COMPARISONS AND NO VERDICT.
+    # A case refused on the precondition contributes no comparisons and no verdict.
     # Folding it in either way would be wrong in both directions: as a pass it would
     # certify bytes produced under a condition the claim excludes, and as a failure it
     # would report a coverage boundary as a defect.
@@ -2428,7 +2435,7 @@ def main(argv: Sequence[str]) -> int:
                "Courant that is not a float32 word, |m| >= 1, "
                "complex storage, a Cartesian grid, conductivity, dispersion, "
                "chi2/chi3, BFAST, grid.beta, a Bloch phase, a mirror plane and an "
-               "inactive absorber are OUT OF SCOPE and refused BY NAME by the "
+               "inactive absorber are out of scope and refused by name by the "
                "predicate (leg split)"),
         stated_weakness=(
             "BEHAVIOURAL ONLY: torch.mps.compile_shader exposes no AIR, no GPU ISA "
@@ -2439,7 +2446,7 @@ def main(argv: Sequence[str]) -> int:
             "not re-cut the 759-slot coverage number, and the Metal-vs-Triton "
             "admission diff is REFUSED on this host rather than estimated (leg "
             "containment). At m = 0 the i*m/r phase and the near-axis zero-row count "
-            "DO NOT EXIST, so they are armed as INJECTIONS into the m = 0 body rather "
+            "do not exist, so they are armed as INJECTIONS into the m = 0 body rather "
             "than as edits to terms this kernel carries. All arithmetic claims ride a "
             "CHECKED subnormal-free precondition under the FLUSH policy, the only one "
             "this executor can honour."),

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Native MPS byte gate for the REAL BETA Metal H->D weld, BOTH variants.
 
-ONE PRODUCT, TWO CELLS, measured from one descriptor:
+One product, two cells, measured from one descriptor:
 
     (special_kz real beta -> special_kz real beta)   1 corpus row
         examples:refl-angular-kz2d.py
@@ -11,7 +11,7 @@ ONE PRODUCT, TWO CELLS, measured from one descriptor:
 both ``buildable_not_built`` on ``results/fusion_matrix_metal_2026-09-07_wired`` and
 neither carrying a standing in-seam withdraw.
 
-TWO CORPUS ROWS IS A SMALL DENOMINATOR AND THE ARTIFACT SAYS SO RATHER THAN HIDING IT.
+Two corpus rows is a small denominator and the artifact says so rather than hiding it.
 The lift leg's strength is bounded by the cell it covers, which is why the synthetic
 matrix here is EIGHT fixtures spanning both variants, both beta signs, both mirror
 terminations, a live non-folded wall and an odd full count -- the levers a two-row cell
@@ -26,11 +26,11 @@ state through the same ``h_cell``, steps ``D``/``fu_D`` in place, and rotates th
 ``folded_beta.folded_beta_curl_source`` for ``folded`` -- and ``resolve_variant`` reads
 the fold off the grid.
 
-THE CLAIM IS PER COMPLETE DRIVER STEP, as uint32 WORDS over every stored volume,
+The claim is per complete driver step, as uint32 WORDS over every stored volume,
 never ``allclose``, against the array path, the two CERTIFIED beta singles for the
 resolved variant, ``plan_step(fuse=True)`` and ``plan_step(fuse=False)``.
 
-WHAT SEPARATES THIS GATE FROM ITS COMPLEX TWIN, and it is more than the dtype:
+What separates this gate from its complex twin, and it is more than the dtype:
 
 * **the packed record is the only UNPADDED one of the four H->D welds** -- seven 4-byte
   members at 4-byte alignment, 28 bytes, no tail padding. The probe launches it and
@@ -41,7 +41,7 @@ WHAT SEPARATES THIS GATE FROM ITS COMPLEX TWIN, and it is more than the dtype:
   partners are the same own-cell registers the redirect replaces -- so the same two
   beta mutations exercise a different arithmetic path with the same argument.
 
-WRITTEN FOR THE UNWIRED TREE: every clause that depends on the wiring tables is
+Written before the product was wired: every clause that depends on the wiring tables is
 RECORDED, never asserted.
 
 Progress reporting: one flushed timestamped line per unit of work; every leg appended and fsynced
@@ -59,7 +59,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-# THE POLICY, SET BEFORE ANY meep_gpu MODULE IS REACHED.
+# The policy, set before any meep_gpu module is reached.
 os.environ.setdefault("MEEP_GPU_SUBNORMAL_POLICY", "flush")
 HERE = Path(__file__).resolve().parent
 API_ROOT = next(parent for parent in HERE.parents
@@ -85,8 +85,8 @@ SUBJECT_PACKAGE = "metal_kernels"
 CENSUS = "metal_coverage_2026-09-04_m0complex"
 SEAM_RECORD = "h_to_d_seam_2026-09-04"
 
-#: The board's ``(update_H arm, step_D arm)`` pair per variant -- READ FROM THE
-#: FAMILY, never re-typed here. The cell a gate measures and the cell the family
+#: The board's ``(update_H arm, step_D arm)`` pair per variant -- read from the
+#: family, never re-typed here. The cell a gate measures and the cell the family
 #: claims have to be the same cell, and two spellings of one join key is how they
 #: stop being.
 CELL_ARMS: Dict[str, Tuple[str, str]] = dict(family.VARIANT_CELLS)
@@ -116,7 +116,7 @@ CASES: Tuple[Tuple[str, Dict[str, Any]], ...] = (
           boundaries={"x": "metallic", "y": "metallic"})),
 )
 
-#: ONE OF EACH VARIANT plus the MIRROR_METALLIC fold, for the reason the complex gate
+#: One of each variant plus the MIRROR_METALLIC fold, for the reason the complex gate
 #: gives: two variants are two device strings, and a metallic fold is the only
 #: specialisation on which a folded top plane is STEPPED rather than masked.
 MUTATION_CASES: Tuple[str, ...] = ("plain_2d", "folded_y_periodic_2d",
@@ -195,7 +195,7 @@ def _scratch_history_store_dropped(variant, codes, phased):  # noqa: ANN001
 
 
 def _constitutive_bound_to_the_curl_sinv(variant, codes, phased):  # noqa: ANN001
-    """THE SHARED COEFFICIENT GROUP, BROKEN -- the premise of the 30-pointer shape."""
+    """The shared coefficient group, broken -- the premise of the 30-pointer shape."""
     source = _shipped(variant, codes, phased)
     if "kmx, kmy, kmz, cb)" not in source:
         raise AssertionError("no h_cell call ends with the shared kms group")
@@ -289,13 +289,13 @@ def _host_written_in_place(product, case_name, spec, steps):  # noqa: ANN001
 
 
 def _host_beta_words_magnetic(product, case_name, spec, steps):  # noqa: ANN001
-    """THE BETA COEFFICIENT FROM THE MAGNETIC CONVENTION.
+    """The beta coefficient from the magnetic convention.
 
     Under REAL storage the two conventions coincide: the D side's negation belongs to
     the complex quarter turn and does not apply, so
-    ``beta_curl_coefficients(magnetic=True)`` returns the same two words. THIS
-    MUTATION IS THEREFORE ARMED WITH THE PAIR
-    REVERSED instead -- ``(minus, plus)`` where the plan passes ``(plus, minus)`` --
+    ``beta_curl_coefficients(magnetic=True)`` returns the same two words. This
+    mutation is therefore armed with the pair
+    reversed instead -- ``(minus, plus)`` where the plan passes ``(plus, minus)`` --
     which is the same class of defect (the coefficient the kernel multiplies by is not
     the one the array path rounded for that target) and is the one the real path can
     actually make. The complex twin arms the electric/magnetic convention itself, and
@@ -452,7 +452,7 @@ REFUSALS: Tuple[Dict[str, Any], ...] = (
 # ---------------------------------------------------------------------------
 
 def params_probe() -> Dict[str, Any]:
-    """The 128-byte packed record BOUND TO A LAUNCH, with every field read back.
+    """The 128-byte packed record bound to a launch, with every field read back.
 
     Seven 4-byte members and the chunk record at 4-byte alignment: no padding. That is
     a fact about this struct rather than about the family, so it is measured here --

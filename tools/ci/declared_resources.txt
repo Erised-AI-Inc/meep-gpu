@@ -30,7 +30,7 @@
 #                              checkout, not of an installed wheel.
 #   meep_identity_reference    The imported MEEP is an identity reference in
 #                              keep mode, measured by tools/check_install.py's
-#                              identity check (MEEP 1.33.0 single precision, a
+#                              identity check (MEEP 1.35.0 single precision, a
 #                              build record with a clean fused multiply-add
 #                              census of the loaded images, subnormals kept).
 #                              MEEP_IDENTITY_BUILD_RECORD names the record when
@@ -356,6 +356,7 @@ meep_gpu.test_withdraw_hoist::test_the_recorded_measurement_matches_the_artifact
 parity.meep_gpu.test_cuda_dynamic_loop_arity::test_the_corpus_arity_census_is_rederived_from_the_artifacts
 parity.meep_gpu.test_cut_timing_record::test_the_shipped_record_recuts_byte_for_byte_from_the_rows_on_disk
 parity.meep_gpu.test_fusion_taxonomy::test_the_argument_free_default_census_is_a_cut_record_on_the_194_row_basis
+parity.meep_gpu.test_fusion_taxonomy::test_the_standing_census_is_the_one_this_tree_hashes_to
 parity.meep_gpu.test_fusion_taxonomy::test_the_standing_cuda_census_is_the_one_this_tree_hashes_to
 parity.meep_gpu.test_fusion_taxonomy::test_the_standing_metal_census_carries_the_m0_complex_arm_on_the_off_axis_row
 parity.meep_gpu.test_fusion_taxonomy::test_the_standing_triton_census_admits_the_off_axis_row_to_the_cylindrical_complex_arms
@@ -694,6 +695,7 @@ parity.meep_gpu.test_bench_fused_products_provenance::test_route_counters_move_o
 [single_precision_meep]
 meep_gpu.test_driver_vs_meep::test_a_mirror_folded_real_run_matches_cpu_meep
 meep_gpu.test_driver_vs_meep::test_real_field_mode_matches_cpu_meep_in_its_own_default_mode
+meep_gpu.test_unstored_e_before_the_first_step::test_the_lift_reads_meeps_step_zero_words_of_a_metal_block_with_no_pml
 
 [meep_identity_fixtures]
 meep_gpu.test_meep_identity::test_tier_a_replays_every_meep_digest_from_the_capsule
@@ -704,10 +706,12 @@ meep_gpu.test_meep_identity::test_the_ledger_records_the_live_array_path_oracle
 meep_gpu.test_meep_identity::test_the_fixtures_are_the_files_the_ledger_records_within_budget
 
 [meep_identity_reference]
+parity.meep_gpu.test_lift_host::test_the_row_needs_are_the_corpus_scripts_own
 parity.meep_gpu.test_meep_identity_tier_c::test_tier_c_holds_on_a_probe_case_and_its_replay_reproduces_it
 parity.meep_gpu.test_meep_identity_tier_c::test_the_exact_reader_reads_the_signed_zero_meeps_point_read_drops
 parity.meep_gpu.test_meep_identity_tier_c::test_a_held_b_word_of_a_chunk_whose_b_array_is_its_h_array_reads_meeps_b
 parity.meep_gpu.test_meep_identity_tier_c::test_a_held_b_word_of_a_chunk_that_took_its_own_h_array_this_step_reads_its_image
+parity.meep_gpu.test_meep_identity_tier_c::test_an_unstored_e_holds_against_meep_in_both_modes
 
 [cupy_absent]
 meep_gpu.cuda_kernels.test_fused_pairs::test_a_launch_is_refused_by_name_rather_than_by_attribute_error

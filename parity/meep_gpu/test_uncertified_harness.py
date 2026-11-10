@@ -170,3 +170,137 @@ def test_check_install_says_which_identity_is_outside_the_range():
                            "which only MEEP_GPU_HARDWARE=any runs, so the kernels "
                            "ran uncertified"), note
     assert "MEEP_GPU_HARDWARE=certified" not in note, note
+
+
+def _admitted(*admissions):
+    """The entries the package itself records, through its own admission call."""
+    from meep_gpu import fastpath
+
+    record = {}
+    for args, kwargs in admissions:
+        fastpath._admit_uncertified(record, *args, **kwargs)  # noqa: SLF001
+    return record["uncertified"]["admitted"]
+
+
+def test_check_install_says_a_stack_axis_ran_by_default():
+    """A CUDA driver and a MEEP build off the certified stack run by default.
+
+    The package admits them with its stack reason and no ``supported`` key; the
+    note must not send the reader to MEEP_GPU_HARDWARE=any for them, and keeps the
+    way to refuse them.
+    """
+    from meep_gpu import fastpath
+
+    because = {"because": fastpath.NVIDIA_STACK_BECAUSE}
+    entries = _admitted(
+        (("triton", "CUDA driver", "13040", ["12030"]), because),
+        (("triton", "MEEP build", "1.35.0 double", ["1.35.0 single"]), because),
+        (("cuda", "CUDA driver", "13040", ["12030"]), because))
+    note = check_install.nvidia_uncertified_note(entries, "S")
+    assert note.startswith("CUDA driver 13040 and MEEP build 1.35.0 double are not on "
+                           "the certified list and run by default, so the kernels ran "
+                           "uncertified"), note
+    assert "MEEP_GPU_HARDWARE=any" not in note, note
+    assert note.endswith("Set MEEP_GPU_HARDWARE=certified to run them only on a "
+                         "certified device and toolchain."), note
+
+
+def test_check_install_keeps_the_three_verdicts_apart():
+    from meep_gpu import fastpath
+
+    entries = _admitted(
+        (("triton", "Triton", "3.1.1", ["3.1.0"]),
+         {"because": "Triton 3.1.1 is supported", "supported": True}),
+        (("triton", "CUDA driver", "13040", ["12030"]),
+         {"because": fastpath.NVIDIA_STACK_BECAUSE}),
+        (("cuda", "GPU compute capability", "6.1", ["8.6"]),
+         {"because": "MEEP_GPU_HARDWARE=any runs it", "supported": False}),
+        # Admitted by the any scope with no reason recorded.
+        (("triton", "GPU compute capability", "5.2", ["8.6"]), {}))
+    note = check_install.nvidia_uncertified_note(entries, "S")
+    assert note.startswith(
+        "Triton 3.1.1 is supported but not certified bit-identical; CUDA driver 13040 "
+        "is not on the certified list and runs by default; GPU compute capability 6.1 "
+        "and GPU compute capability 5.2 are outside the supported range, which only "
+        "MEEP_GPU_HARDWARE=any runs, so the kernels ran uncertified"), note
+    assert "MEEP_GPU_HARDWARE=certified" not in note, note
+
+
+def _axis(what, read, certified_values, certified):
+    return {"what": what, "read": read, "certified_values": certified_values,
+            "certified": certified}
+
+
+_STACK_DRIVER = _axis("CUDA driver", "13040", ["12030"], False)
+_STACK_MEEP = _axis("MEEP build", "1.35.0 double", ["1.35.0 single"], False)
+
+
+@pytest.mark.parametrize("stack", [
+    {"capability": "8.6", "axes": {"cuda_driver": _axis("CUDA driver", "12030", ["12030"],
+                                                        True)}},
+    {"capability": "8.6", "axes": {"cuda_driver": _STACK_DRIVER, "meep": _STACK_MEEP}},
+    {"capability": "8.6", "axes": {"cuda_driver": _axis("CUDA driver", None, ["12030"],
+                                                        None)}},
+    {"capability": "8.6", "no_certified_stack": "no record names compute capability 8.6"},
+    {}, None])
+def test_the_check_reads_the_certified_stack_as_the_package_does(stack):
+    """Rung 4c refuses a stack that was read and is not the certified one; the check asks the
+    same question of the block the child reported, without importing the package."""
+    from meep_gpu import fastpath
+
+    refused = bool(stack) and fastpath.certified_stack_refusal(stack) is not None
+    assert check_install.stack_refused_under_certified(stack) is refused
+
+
+def test_the_check_expects_the_array_path_when_certified_refuses_the_stack(monkeypatch,
+                                                                           capsys):
+    """The NOTE's advice, MEEP_GPU_HARDWARE=certified, on a certified GPU and Triton with a
+    CUDA driver and a MEEP build off the certified stack: the package refuses at rung 4c and
+    the run takes the array path, which the check reports and does not call a failure."""
+    import types
+
+    import numpy as np
+
+    report = {
+        "decision": "refused", "step_path": "array", "table": None,
+        "tables_dispatched": None,
+        "refused_because": "the stack the NVIDIA kernels would run beside is not the one "
+                           "they were certified on",
+        "triton": "3.1.0", "triton_certified": True, "triton_supported": None,
+        "cupy": "13.5.1", "device_name": "NVIDIA GPU", "compute_capability": "8.6",
+        "device_certified": True,
+        "device_certified_by_table": {"triton": True, "cuda": True},
+        "device_supported_by_table": {"triton": None, "cuda": None},
+        "stack": {"capability": "8.6",
+                  "axes": {"cuda_driver": _STACK_DRIVER, "meep": _STACK_MEEP}},
+        "certified": None, "uncertified_served": None, "uncertified_dropped": None}
+    facts = {
+        "python": "3.12.16", "system": "Linux x86_64", "numpy": "2.2.6",
+        "environment_variables": {"MEEP_GPU_HARDWARE": "certified"},
+        "meep": {"version": "1.35.0", "single_precision": False, "processes": 1,
+                 "file": "meep", "mpi": False},
+        "names": {"present": 148, "required": 148}, "constants": {"checked": 10},
+        "package": {"file": "meep_gpu"}, "distributions": {"meep-gpu": "1.0.1"},
+        "gpu": {"route": "cuda", "missing": []}}
+    done = types.SimpleNamespace(stdout="", stderr="", returncode=0)
+
+    def run_child(kind, arguments, extra=()):
+        if kind == "facts":
+            return facts, done
+        np.savez(extra[extra.index("--save") + 1], field=np.ones(8, np.float32),
+                 spectrum=np.ones(3))
+        payload = {"leg": kind, "seconds": 0.1, "steps": 240, "field_dtype": "float32",
+                   "finite": True}
+        if kind == "gpu":
+            payload.update(step_path="array", report=report, lift=None)
+        return payload, done
+
+    monkeypatch.setattr(check_install, "run_child", run_child)
+    monkeypatch.setattr(check_install, "torch_openmp", lambda: None)
+    monkeypatch.setattr(check_install, "reference_section", lambda *a, **k: ([], None))
+    arguments = types.SimpleNamespace(gpu_id=0, require_gpu=False, require_reference=False,
+                                      require_identity_reference=None)
+    assert check_install.check(arguments) == 0
+    out = capsys.readouterr().out
+    assert "MEEP_GPU_HARDWARE=certified restricts the NVIDIA kernels" in out, out
+    assert "FAILED" not in out, out

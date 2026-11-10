@@ -3,12 +3,12 @@
 The complex-beta sibling of :mod:`.complex_fused_hd_pair`, on the same seam, with the
 same shape -- ONE launch, scratch output, foreign-cell recompute, a rotation after --
 and the same two flags (:data:`INSTALLABLE` False, :data:`HOISTS_THE_WITHDRAW`
-False). Built in the same round as :mod:`.special_kz_fused_hd_pair`, which is the
+False). Built alongside :mod:`.special_kz_fused_hd_pair`, which is the
 REAL-storage beta H->D weld; the two are SEPARATE PRODUCTS and the module docstring
 says below what was measured to make them so.
 
 =============================================================================
-THE CELL, AND WHY IT IS ONE TEXT RATHER THAN TWO VARIANTS
+The cell, and why it is one text rather than two variants
 =============================================================================
 
 ``parity/meep_gpu/results/fusion_matrix_cuda_2026-09-07_wired/fusion_matrix_cuda.json``,
@@ -19,7 +19,7 @@ THE CELL, AND WHY IT IS ONE TEXT RATHER THAN TWO VARIANTS
   ``tests:TestSpecialKz.test_eigsrc_kz_0_complex`` and the two
   ``tests:TestEigCoeffs.test_binary_grating_special_kz_*`` legs.
 
-THE COMPLEX SIBLING NEEDED TWO VARIANTS AND THIS ONE NEEDS NONE, because
+The complex sibling needed two variants and this one needs none, because
 ``complex_beta_kernels`` already made that decision and recorded the arithmetic
 behind it: its device source is the FOLDED complex curl with the beta insert, so the
 fold branches are RUNTIME boundary codes and are simply dead on an unfolded grid.
@@ -27,7 +27,7 @@ Three of this cell's four rows are folded (Mirror(Y) with a periodic termination
 and one is not, and one text serves all four. :data:`KERNEL_NAME` is therefore a
 single name and :func:`kernel_source` a single string, not a variant map.
 
-THE UPDATE_H HALF IS THE CERTIFIED COMPLEX CONSTITUTIVE, unchanged.
+The update_H half is the certified complex constitutive, unchanged.
 ``complex_beta_kernels`` ships NO constitutive kernel:
 ``covers_complex_beta_constitutive`` is an ADMISSION over the certified complex pair,
 because ``stepping.update_H`` (:907-925) through ``_apply_constitutive_pml`` (:2065)
@@ -39,10 +39,10 @@ ordinary certified complex one. So this weld's constitutive half is byte-for-byt
 :func:`.complex_fused_hd_pair.raw_update_H_cell_source`, REUSED rather than re-lifted.
 
 =============================================================================
-ONE PRODUCT PER STORAGE CLASS, AND THAT WAS MEASURED
+One product per storage class, and that was measured
 =============================================================================
 
-The round that built this module targeted six seam-instances over two cells -- four
+The change that built this module targeted six seam-instances over two cells -- four
 here and two on ``cuda_special_kz/real beta``. The complex H->D product's precedent
 for one-product-two-cells is that its two cells SHARE their H half exactly and its
 two D halves are one text through three anchored deltas. Neither holds across the
@@ -56,7 +56,7 @@ transform over both would have been two transforms wearing one name. TWO PRODUCT
 one per storage class -- 4 instances here, 2 there.
 
 =============================================================================
-THE SHAPE: SCRATCH OUTPUT AND FOREIGN-CELL RECOMPUTE
+The shape: scratch output and foreign-cell recompute
 =============================================================================
 
 Identical in structure AND in justification to :mod:`.complex_fused_hd_pair`, so it
@@ -71,28 +71,28 @@ for the whole launch), every foreign read is a RECOMPUTE of the certified pointw
 ``H``/``f_w_H`` bindings afterwards (:func:`.complex_fused_hd_pair.rotate_into_fields`,
 reused rather than re-spelled).
 
-WHERE THE BLOCH PHASE SITS, AND WHY THE RECOMPUTE DOES NOT CARRY ONE. The phase is
-applied by ``cshift_dn`` to the WRAPPED LANE ONLY and AFTER the load;
+Where the Bloch phase sits, and why the recompute does not carry one. The phase is
+applied by ``cshift_dn`` to the wrapped lane only and AFTER the load;
 :func:`cshift_dn_recompute_source` replaces the LOAD and leaves the branch, the wrap
 arithmetic, the ``ph`` guard and the ``rotate_field_left`` call exactly where the
 certified helper puts them. A recompute that carried a phase of its own, or applied
 one to the near-neighbour branch, would be a band structure that converges to the
-wrong dispersion. THE METALLIC AND MIRROR GHOSTS ARE NOT RECOMPUTED: ``cshift_dn``
+wrong dispersion. The metallic and mirror ghosts are not recomputed: ``cshift_dn``
 returns ``cf_zero()`` on those branches without touching ``g``, and the resolved
 helper keeps that return verbatim.
 
 =============================================================================
-WHAT THIS SEAM ADDS THAT NO OTHER H->D WELD HAS: THE BETA PARTNER
+What this seam adds that no other H->D weld has: the beta partner
 =============================================================================
 
 ``stepping._special_kz_beta_term`` takes the SAME-CELL component snapshot, and in the
 D-side curl that snapshot is already in a register: Dx takes the Hy CENTRE the stencil
 loaded into ``f_2`` and Dy the Hx CENTRE in ``f_1`` (``complex_beta_kernels.BETA_PARTNER``,
 pinned there against ``D_CURL_TERMS``). The array path evaluates ``step_D`` AFTER
-``update_H``, so that snapshot is the POST-``update_H`` magnetic field. Since 0.10 the
+``update_H``, so that snapshot is the POST-``update_H`` magnetic field. Since 1.0 the
 beta increment is MEEP's own pass after the component's curl, ``-quarter_turn(c, g)``
-part by part through its own additive ladder (``folded_pass.complex_beta_insert``;
-bit_parity_0_10 KERNELS.md section 6), and the ladder writes ``D``/``fu_D`` at the
+part by part through its own additive ladder (``folded_pass.complex_beta_insert``),
+and the ladder writes ``D``/``fu_D`` at the
 thread's OWN cell only -- in place, safe by construction, exactly as ``pml_apply`` is.
 
 **Welded, those two registers are this launch's own** ``own_h[1]`` **and**
@@ -105,7 +105,7 @@ the beta pass of targets 0 and 1 one sub-step behind -- converged, plausible and
 wrong -- and it is the armed mutation ``beta_partner_reads_stale_h``.
 
 =============================================================================
-THE ARITHMETIC IS THE CERTIFIED FAMILIES', INCLUDING ITS ARM
+The arithmetic is the certified families', including its arm
 =============================================================================
 
 Every complex operation comes from ``complex_emitter``'s prelude
@@ -115,8 +115,8 @@ Every complex operation comes from ``complex_emitter``'s prelude
 folded ladder ``cfold_apply``), which the certified beta curl carries. NOTHING is
 retyped.
 
-TWO CuPy SPELLINGS MEASURED ON THIS BACKEND ARE RESPECTED RATHER THAN REDISCOVERED
-(``lanes/cyl_round/cupy_probe``, 2026-09-06/07, one RTX A6000, CuPy 13.5.1, both
+Two CuPy spellings measured on this backend are respected rather than rediscovered
+(a CuPy probe, 2026-09-06/07, one RTX A6000, CuPy 13.5.1, both
 float32 subnormal policies):
 
 * ``complex64 * float32`` is the four-product form CONTRACTED by NVRTC. The
@@ -134,13 +134,13 @@ float32 subnormal policies):
 Both facts are armed as gate mutations anyway, on a PLANTED row-0 tiny-normal class:
 a random battery does not exercise the class where the wrong multiply shows.
 
-THE BETA COEFFICIENTS ARE REAL WORDS. ``complex_beta_kernels.beta_curl_coefficients``
+The beta coefficients are real words. ``complex_beta_kernels.beta_curl_coefficients``
 returns two float32 words, one per call site, the D side's negated in double before the
 one rounding: the quarter turn forms no complex coefficient, so there is no real word
 of a complex coefficient whose signed zero could be passed through or synthesised.
 
 =============================================================================
-WHAT SITS IN THE SEAM, AND WHY THIS PRODUCT REFUSES THE WITHDRAW ROWS
+What sits in the seam, and why this product refuses the withdraw rows
 =============================================================================
 
 One statement sits between the two consults: ``for source in electric: getattr(source,
@@ -156,7 +156,7 @@ asked, because a predicate that admitted a configuration it cannot serve would b
 wrong on the first row that acquired an integrated source.
 
 =============================================================================
-IT IS NOT INSTALLED, AND THE REASON IS THE SIBLING'S MEASURED VERDICT
+It is not installed, and the reason is the sibling's measured verdict
 =============================================================================
 
 :data:`INSTALLABLE` is False. Over the driver's ``step_B - update_H - step_D -
@@ -169,20 +169,20 @@ algebra ``fused_hd_pair.INSTALLABLE_REASON`` prices and there is nothing here to
 re-price. What keeps the released B->H pair in its slot is not this flag but
 ``fused_pairs._neighbouring_seam_claimant``'s end-edge guard together with
 ``_spans_may_absorb`` reading the live ``selected``; the flag is belt and braces in
-front of them, and the gate's arbitration leg measures both arrangements THROUGH THE
-SHIPPED COMPOSER rather than assuming either.
+front of them, and the gate's arbitration leg measures both arrangements through the
+shipped composer rather than assuming either.
 
 =============================================================================
-NOT DISPATCHED, AND NOT YET IN THE COMPOSER'S TABLES
+Not dispatched, and not yet in the composer's tables
 =============================================================================
 
 Nothing under ``meep_gpu/`` imports ``cuda_kernels`` outside tests;
 ``fastpath.plan_fast_path`` returns ``None`` on every branch. Beyond that, this
 family is not in ``fused_pairs.FUSED_PRODUCTS``, ``registry`` or ``arms`` at all: the
-wiring is a separate change that a later round applies. The gate PLANS EVERY
-ARRANGEMENT FROM ARRAYS and drives the array path itself; the composer building a
+wiring is a separate change, applied later. The gate plans every
+arrangement from arrays and drives the array path itself; the composer building a
 composition that includes THIS product is measured in-process with the wiring rows
-patched in (the arbitration leg) and awaits the wiring round.
+patched in (the arbitration leg) and awaits that wiring change.
 """
 
 # Derived from MEEP (https://github.com/NanoComp/meep).
@@ -247,7 +247,7 @@ OWN_LOAD_EDITS: int = _chd.OWN_LOAD_EDITS
 #: ``d_c`` in {X, Y} only). A site count is a WELD.
 BETA_INSERT_LINES = 2
 
-#: NOT CERTIFIED YET. The gate for this family is
+#: Not certified yet. The gate for this family is
 #: ``parity/meep_gpu/gate_complex_beta_fused_hd_pair.py`` and its artifacts are
 #: ``parity/meep_gpu/results/complex_beta_fused_hd_pair_2026-09-07/{keep,flush}/gate.json``.
 #: A name moves into the certified set only once ``certification.json`` carries a
@@ -269,7 +269,7 @@ UNCERTIFIED_KERNELS = {
 #: A fact about the driver, not a choice -- see the module docstring.
 CARRIES_DEPOSIT_REPAIR = False
 
-#: Not in this round: the only wiring that performs the hoist is
+#: Not done here: the only wiring that performs the hoist is
 #: ``fused_pairs._install_fused_pair``'s ``withdraw_hoist.SEAM`` branch, which
 #: ``_declared_uninstallable`` makes unreachable for a product declaring INSTALLABLE
 #: False. True here would be a claim about wiring that cannot fire.
@@ -347,7 +347,7 @@ def _curl_source() -> str:
 def constitutive_prelude() -> str:
     """The beta variant's certified prelude with ``constitutive_apply`` made PURE.
 
-    THE PRELUDE IS THE BETA CURL SOURCE'S OWN, which is what carries the folded
+    The prelude is the beta curl source's own, which is what carries the folded
     complex prelude's two deltas -- ``#define BC_MIRROR_PERIODIC 2`` and the widened
     ghost -- AND the beta pass's helpers (``folded_pass.COMPLEX_FOLD_HELPERS``:
     ``beta_increment`` and the ladder ``cfold_apply``) into the weld without this module
@@ -367,7 +367,7 @@ def constitutive_prelude() -> str:
 def cshift_dn_recompute_source() -> str:
     """The certified ``cshift_dn`` with its two leaf LOADS RESOLVED.
 
-    THE BRANCHES AND THE INDEX EXPRESSIONS ARE THE CERTIFIED HELPER'S OWN, parsed out
+    The branches and the index expressions are the certified helper's own, parsed out
     of the prelude this family emits rather than retyped: the near-neighbour branch,
     the ghost return, the wrap arithmetic, the ``ph`` guard and the
     ``rotate_field_left`` call are carried across character for character, and only
@@ -396,7 +396,7 @@ def cshift_dn_recompute_source() -> str:
     end = body.find("}\n")
     if end < 0:
         raise AssertionError("the certified cshift_dn does not close")
-    # EVERYTHING PAST THE CLOSING BRACE IS DROPPED, and dropping it is load-bearing
+    # Everything past the closing brace is dropped, and dropping it is load-bearing
     # rather than tidy: the rest of the prelude is ``pml_apply``,
     # ``constitutive_apply`` and the beta pass's helpers, which
     # :func:`constitutive_prelude` already emits. Carrying them a second time is a
@@ -418,7 +418,7 @@ def cshift_dn_recompute_source() -> str:
             "// RESOLVED: the value the curl needs at a backward neighbour is not a\n"
             "// stored word but update_H's result there, recomputed from pre-launch\n"
             "// state. The branch, the ghost return, the wrap arithmetic and the Bloch\n"
-            "// rotation ON THE WRAPPED LANE ONLY are the certified helper's own -- the\n"
+            "// rotation on the wrapped lane only are the certified helper's own -- the\n"
             "// recompute carries no phase of its own and none is applied to the\n"
             "// near-neighbour branch.\n"
             + _chd._CSHIFT_DN_SIGNATURE_RECOMPUTE + " {\n" + body + "}\n")  # noqa: SLF001
@@ -427,12 +427,12 @@ def cshift_dn_recompute_source() -> str:
 def curl_pieces(source: Optional[str] = None) -> Tuple[str, str]:
     """``(head, tail)`` of a certified complex ``step_D`` body, every H read redirected.
 
-    PARAMETERISED ON THE CURL TEXT, and that parameter is the point rather than a
+    Parameterised on the curl text, and that parameter is the point rather than a
     convenience: applied to ``complex_emitter.complex_source("step_D")`` this
     function returns exactly what ``complex_fused_hd_pair.curl_pieces("plain")``
     returns, and applied to ``complex_folded_kernels.folded_source("step_D")``
     exactly what that function's ``"folded"`` variant returns. Both equalities are
-    asserted BYTE FOR BYTE by ``test_complex_beta_fused_hd_pair.py``, on a host with
+    asserted byte for byte by ``test_complex_beta_fused_hd_pair.py``, on a host with
     no CuPy, so the beta weld is the RELEASED transform plus the two beta assertions
     below -- measured rather than claimed.
 
@@ -465,7 +465,7 @@ def curl_pieces(source: Optional[str] = None) -> Tuple[str, str]:
     cut = body.index(_chd._FIRST_TARGET)  # noqa: SLF001
     head, tail = body[:cut], body[cut:]
 
-    # THE OWN-CELL READS: each centre operand is the certified window of the stored
+    # The own-cell reads: each centre operand is the certified window of the stored
     # word at the cell (``cwindow``), and becomes the same connection of this launch's
     # own register (``cconnect(own_h[c], ...)``) -- the released complex weld's rewrite.
     own = 0
@@ -530,7 +530,7 @@ def curl_pieces(source: Optional[str] = None) -> Tuple[str, str]:
 def _assert_the_beta_partner_is_the_weld_register(tail: str, lifted: bool) -> None:
     """Every surviving beta line consumes a register THIS WELD redirected.
 
-    THE ONE CLAUSE THIS FAMILY OWNS AND NO SIBLING H->D WELD HAS. The beta pass's
+    The one clause this family owns and no sibling H->D weld has. The beta pass's
     partner is the SAME-CELL component snapshot, which the array path evaluates after
     ``update_H``; welded, that snapshot must be this launch's own ``own_h[...]``
     register and never a load of the pre-launch volume. The redirect above rewrites the
@@ -581,7 +581,7 @@ def _assert_the_beta_partner_is_the_weld_register(tail: str, lifted: bool) -> No
             f"wrong on one component")
 
 
-#: THE DECLARATION, SPELLED AS A LITERAL, for the partition reader's strict regex.
+#: The declaration, spelled as a literal, for the partition reader's strict regex.
 _SIGNATURE_HEAD = '\nextern "C" __global__ void fused_hd_pair_pml_complex_beta(\n'
 
 
@@ -598,7 +598,7 @@ _BETA_PARAMETERS = (
 def signature() -> str:
     """The kernel's parameter list: the released complex weld's, plus the beta words.
 
-    THE PARAMETER TEXT IS THE RELEASED PRODUCT'S OWN
+    The parameter text is the released product's own
     (:data:`.complex_fused_hd_pair._SIGNATURE_BODY`) with the two beta words inserted
     after its phase constants, so neither half is retyped and a change to either
     arrives as a failed anchor.
@@ -652,7 +652,7 @@ def kernel_source() -> str:
     return source
 
 
-#: THE ONLY DIVISIONS ANY TEXT THIS FAMILY EMITS MAY CONTAIN: the certified index
+#: The only divisions any text this family emits may contain: the certified index
 #: decode's two INTEGER lines, which turn a flat cell index into the per-axis
 #: coefficient index. Enumerated as exact text rather than filtered by a type
 #: heuristic, so a floating-point divide arriving anywhere -- including inside the
@@ -669,7 +669,7 @@ _PERMITTED_DIVIDES = 2 * len(_PERMITTED_DIVIDE_LINES)
 
 
 def _assert_the_measured_absence_of_a_divide(source: str) -> None:
-    """This family performs NO FLOATING-POINT DIVISION, asserted rather than argued.
+    """This family performs no floating-point division, asserted rather than argued.
 
     ``complex64 / float32`` on this backend is CuPy's SCALED complex/complex algorithm
     with the zero-valued terms kept, NOT numpy's reciprocal multiply -- a spelling
@@ -678,7 +678,7 @@ def _assert_the_measured_absence_of_a_divide(source: str) -> None:
     there is no site; a text that acquired one would have to be measured against that
     algorithm before it could ship, and would not be covered by this family's record.
 
-    THE INTEGER DECODE IS THE ONE EXCEPTION AND IT IS ENUMERATED, not inferred: the
+    The integer decode is the one exception and it is enumerated, not inferred: the
     two lines in :data:`_PERMITTED_DIVIDE_LINES`, twice each (the kernel's own
     preamble and ``raw_update_H_cell``'s lifted copy). Both count is ASSERTED, so a
     dropped decode -- the ``coefficient_index_is_the_threads_own`` defect -- fails
@@ -753,13 +753,13 @@ def _get_kernel(source: Optional[str] = None,
                 options: Optional[Tuple[str, ...]] = None):
     """Compile on first use, memoized in the PACKAGE'S SHARED MEMO.
 
-    THE SHARED MEMO AND NOT A PRIVATE DICT, which is a measurement property rather
+    The shared memo and not a private dict, which is a measurement property rather
     than tidiness: every gate on this track counts launches by wrapping
     ``compile_cache``'s memo, and a family that kept its own dict would be INVISIBLE
     to that counter -- its launches would read as zero and a launch-structure leg
     would pass a weld that never executed.
 
-    THE SOURCE AND THE OPTIONS ARE IN THE KEY, so a mutation harness that handed in a
+    The source and the options are in the key, so a mutation harness that handed in a
     rewritten string cannot be served the shipped binary, the contraction-guard
     control cannot be served the guarded build, and a late policy install cannot be
     served an earlier one. ``cupy`` is imported HERE, never at scope.
@@ -784,7 +784,7 @@ def covers_complex_beta_fused_hd_pair(fields: Any, pml: Any, grid: Any,
                                       sources: Any = None) -> Tuple[bool, str]:
     """May this product span ``update_H`` -> the electric withdraw -> ``step_D`` here?
 
-    A CONJUNCTION OF THE TWO CERTIFIED HALVES' OWN PREDICATES plus this seam's
+    A conjunction of the two certified halves' own predicates plus this seam's
     withdraw clause, the boundary resolution the launch binds and the rotation's six
     volumes -- never a re-derivation of either half's clause set:
 
@@ -795,7 +795,7 @@ def covers_complex_beta_fused_hd_pair(fields: Any, pml: Any, grid: Any,
       row carrying a standing integrated electric withdraw;
     * the rotation: the six volumes :data:`SCRATCH_VOLUMES` names.
 
-    BOTH HALVES ASK THE SAME BETA AND FOLD CLAUSES through
+    Both halves ask the same beta and fold clauses through
     ``complex_beta_kernels._beta_reasons``, and that is deliberate rather than
     redundant: asking twice is what makes a future edit to ONE of the two sub-step
     predicates a visible disagreement here rather than a silent widening.
@@ -823,7 +823,7 @@ def covers_complex_beta_fused_hd_pair(fields: Any, pml: Any, grid: Any,
         span=REPLACES)
     if seam_reasons:
         return False, seam_reasons[0]
-    # THE BOUNDARY RESOLUTION THE LAUNCH BINDS, asked here rather than left to raise
+    # The boundary resolution the launch binds, asked here rather than left to raise
     # at launch time. This family ALWAYS binds the FOLDED complex codes -- its text is
     # the folded one and the fold arms are dead on an unfolded grid -- so the
     # fold-termination cross-check (Grid.stored_cells > Grid.owned_cells against
@@ -837,7 +837,7 @@ def covers_complex_beta_fused_hd_pair(fields: Any, pml: Any, grid: Any,
                        f"{type(error).__name__}: {error}")
     if refusal is not None:
         return False, f"boundary resolution: {refusal}"
-    # THE BETA COEFFICIENTS THIS LAUNCH BINDS, likewise.
+    # The beta coefficients this launch binds, likewise.
     try:
         beta_coefficients(grid)
     except Exception as error:  # noqa: BLE001
@@ -886,16 +886,16 @@ def resolve(fields: Any, grid: Any, pml: Any, *,
     the overrides keep their order): the curl half and every recomputed ``update_H``
     choose their forms from it.
 
-    DERIVED HERE BY THE SAME FUNCTIONS THE CERTIFIED LAUNCHERS ASK, which is what
+    Derived here by the same functions the certified launchers ask, which is what
     makes "the weld and the singles cannot disagree about which sub-lattice, which
     boundary code, which phase or which beta words this seam reads" an enforced
-    property rather than a convention. THE OVERRIDES ARE THE GATE'S DOOR and stay,
+    property rather than a convention. The overrides are the gate's door and stay,
     keyword-only and named for what they are: a gate feeds deliberately wrong tables
     (the swapped sub-lattice), wrong boundary codes (the dropped metallic wall), wrong
     phases (the unconjugated backward factor) and wrong beta words (the swapped
     signs).
 
-    THE kms IDENTITY IS ASSERTED, NOT ASSUMED. ``step_D`` and ``update_H`` both read
+    The kms identity is asserted, not assumed. ``step_D`` and ``update_H`` both read
     the INTEGER sub-lattice, so the curl's ``kms_*`` and the constitutive's are the
     same three device allocations and the signature binds them once. Binding the
     half-integer set instead COMPILES and is a half-cell error in the absorber
@@ -953,7 +953,7 @@ def resolve(fields: Any, grid: Any, pml: Any, *,
                 raise ValueError(
                     f"fields.{name} is not allocated; this weld rotates a scratch "
                     f"shaped like it and has nothing to shape one from")
-            # UNINITIALIZED IS CORRECT: every cell of all six is written by every
+            # Uninitialized is correct: every cell of all six is written by every
             # launch, so there is no cell whose prior contents a reader could observe.
             scratch[name] = cp.empty_like(source)
     return {"tables": tables, "constitutive": constitutive,
@@ -967,7 +967,7 @@ def resolve(fields: Any, grid: Any, pml: Any, *,
 def assert_bindings_are_disjoint(fields: Any, state: Dict[str, Any]) -> int:
     """Every pointer this launch binds ``__restrict__``, checked by base address.
 
-    THE RELEASED COMPLEX WELD'S OWN CHECK, reused rather than re-spelled: this
+    The released complex weld's own check, reused rather than re-spelled: this
     product binds exactly the same pointers, and the four beta words are values rather
     than allocations and add nothing to inspect.
     """
@@ -977,13 +977,13 @@ def assert_bindings_are_disjoint(fields: Any, state: Dict[str, Any]) -> int:
 def launch_complex_beta_fused_hd_pair(fields: Any, state: Dict[str, Any],
                                       kernel: Optional[Any] = None,
                                       threads: int = _FUSED_THREADS) -> Dict[str, Any]:
-    """THE ONE LAUNCH. ``kernel`` and ``threads`` are the gate's doors.
+    """The one launch. ``kernel`` and ``threads`` are the gate's doors.
 
     The argument list is the released complex weld's with the two beta words inserted
     before the chunk record, in the place ``complex_beta_kernels.step_complex_beta``
     binds them on the certified single -- so a reader can diff either pair.
 
-    THE RUN'S FIRST ``update_H`` STARTS H FROM B, as on the released complex weld: when
+    The run's first ``update_H`` starts H from B, as on the released complex weld: when
     ``fields.h_separated`` is still False the start runs on the array path BEFORE the
     launch, with the layer :func:`resolve` bound, and every recompute then reads the
     started state. A state with no layer is refused by name on that launch.

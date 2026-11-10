@@ -367,6 +367,40 @@ def test_family_a_family_that_attained_keep_records_no_flush(tmp_path, monkeypat
     assert evidence is None and reasons == ["offdiag: attained 'keep'"]
 
 
+#: Two host lines of one machine and device, as ``rebind_triton_welds._host_line``
+#: composes them, on two cards.
+_ON_CARD = "the GPU host: NVIDIA RTX A6000, cc 8.6; CuPy 13.5.1; Triton 3.1.0 (GPU {})"
+
+
+def test_the_family_recert_takes_families_run_on_different_cards_of_one_machine():
+    """A certification round runs its family gates on whichever cards are free: host lines that differ
+    in the card alone agree, and the record names the host without a card (each family
+    keeps its own as pinned_gpu_index); one card throughout keeps the line as it is."""
+    import recut_composition_records as R
+
+    one = {name: _ON_CARD.format(6) for name in ("bfast", "complex", "special_kz")}
+    assert R.family_host(one) == (_ON_CARD.format(6), [])
+    several = {"bfast": _ON_CARD.format(6), "complex": _ON_CARD.format(3),
+               "special_kz": _ON_CARD.format(0)}
+    assert R.family_host(several) == (_ON_CARD.format(0)[:-len(" (GPU 0)")], [])
+    assert R.family_host({"bfast": _ON_CARD.format(6), "complex": _ON_CARD[:-9]}) == (
+        _ON_CARD[:-9], [])
+    assert R.family_host({}) == (None, []), "no family names no disagreement"
+
+
+@pytest.mark.parametrize("other", [
+    "the GPU host: NVIDIA H200, cc 9.0; CuPy 13.5.1; Triton 3.1.0 (GPU 3)",
+    "the GPU host: NVIDIA RTX A6000, cc 8.6; CuPy 13.5.1; Triton 3.2.0 (GPU 3)",
+    "the GPU host: NVIDIA RTX A6000, cc 8.6; CuPy 14.0.0 (GPU 3)"])
+def test_the_family_recert_refuses_families_that_differ_beyond_the_card(other):
+    import recut_composition_records as R
+
+    host, problems = R.family_host({"bfast": _ON_CARD.format(6), "complex": other})
+    assert host is None and len(problems) == 1
+    assert problems[0].startswith("the families disagree about the host they ran on "
+                                  "(the card aside): ")
+
+
 def test_composition_flush_arguments_belong_to_their_own_modes():
     import recut_composition_records as R
 
@@ -394,8 +428,10 @@ def _evidence_refusal():
 
 
 def test_route_admitted_needles_match_the_evidence_refusal(monkeypatch):
+    """The evidence refusal is the ``certified`` scope's since FASTAUDIT F7."""
     import gate_dispatch_fused_route as G
 
+    monkeypatch.setenv(fastpath.HARDWARE_SWITCH, fastpath.HARDWARE_CERTIFIED)
     monkeypatch.setattr(fastpath, "policy_evidence_reasons",
                         lambda arms, table, capability, policy: ["PML: no flush run"])
     reason = _evidence_refusal()

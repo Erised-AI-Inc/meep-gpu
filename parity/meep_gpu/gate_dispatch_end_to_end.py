@@ -1,6 +1,6 @@
-"""END TO END: real lifted MEEP simulations, run twice on one device, with kernels ACTUALLY dispatched.
+"""End to end: real lifted MEEP simulations, run twice on one device, with kernels ACTUALLY dispatched.
 
-WHAT NO EARLIER GATE HAS SHOWN. Every certification in ``fingerprints.json`` was
+What no earlier gate has shown. Every certification in ``fingerprints.json`` was
 cut by a probe that installed its plans by monkeypatching ``driver`` module
 globals, and ``driver_dispatch`` says so in as many words: "IT IS NOT A
 CERTIFICATION. No gate in this file was run through these consults." This gate is
@@ -22,7 +22,7 @@ THE PROTOCOL, per case, on ONE device in ONE process::
               snapshot A1 ------- byte-equal? ------ snapshot B1     (THE CLAIM)
               flux spectra  ------ byte-equal? ----- flux spectra
 
-ONE VARIABLE SEPARATES THE LEGS: the kill switch. Both legs set the enable, both
+One variable separates the legs: the kill switch. Both legs set the enable, both
 lift the same way, both step the same driver code on the same device in the same
 process. Under ``--enable-from-default`` both legs REMOVE the enable instead of
 setting it, so the dispatch leg measures the unset default a plain install gets —
@@ -34,7 +34,7 @@ their inputs silently, and a comparison of two runs that never shared a
 starting state measures nothing. It is checked first and a case that fails it is
 reported as a harness failure, not as a divergence.
 
-WHAT MAKES A PASS NON-VACUOUS. A leg that quietly fell back to the array path
+What makes a pass non-vacuous. A leg that quietly fell back to the array path
 matches trivially, and this project has caught that shape of pass repeatedly. So
 "the answers agree" is only half the verdict; the other half is evidence that
 kernels RAN:
@@ -57,11 +57,11 @@ kernels RAN:
 
 Any of those failing is a FAILURE, not a pass with a caveat.
 
-THE NULL CONTROL (``--null-control``) runs the kill switch on BOTH legs, and its
+The null control (``--null-control``) runs the kill switch on BOTH legs, and its
 exit code is a verdict: zero only when every case is PASS-FELL-BACK with no
 divergent checkpoint, i.e. the array path reproduces itself on this host.
 
-A DIVERGENCE IS STOP-AND-REPORT. The comparison never repairs, re-runs, or
+A divergence is stop-and-report. The comparison never repairs, re-runs, or
 loosens a tolerance; it records the arrays that differ, their worst element, and
 stops the case.
 
@@ -112,7 +112,7 @@ _PROGRESS_PATH: Optional[str] = None
 
 #: False only under ``--smoke``, the laptop plumbing run, which lifts the NumPy
 #: reference (no kernel table consulted, whatever the environment says). A gate run
-#: always asks for the device, and ``prefer_gpu=True`` is THIS HOST'S GPU: an
+#: always asks for the device, and ``prefer_gpu=True`` is this host's GPU: an
 #: NVIDIA gate is refused off a CUDA host (:func:`nvidia_host_refusal`), and the
 #: Metal route gate and bench set this True on an Apple GPU and check
 #: ``driver.gpu == "metal"`` after every lift.
@@ -122,7 +122,7 @@ PREFER_GPU: bool = True
 def nvidia_host_refusal(gate: str) -> Optional[str]:
     """Why a non-smoke run of an NVIDIA gate is refused on this host, or ``None``.
 
-    ``prefer_gpu=True`` is THIS HOST'S GPU: CuPy on a CUDA host, and Metal kernels
+    ``prefer_gpu=True`` is this host's GPU: CuPy on a CUDA host, and Metal kernels
     over NumPy host arrays on an Apple GPU. This gate's legs, cases and classifiers
     are the NVIDIA tables', so on a host without a CUDA device a non-smoke run would
     lift Apple GPU drivers and grade them as NVIDIA ones (or, on a host with no GPU
@@ -292,14 +292,14 @@ def collect_state(driver: Any) -> Dict[str, numpy.ndarray]:
     remembering to add it here. The one exclusion is scratch (see
     :data:`SCRATCH_NAMES`).
 
-    A SNAPSHOT THAT ALIASES THE LIVE ARRAY IS NOT A SNAPSHOT, and on a host-backed
+    A snapshot that aliases the live array is not a snapshot, and on a host-backed
     driver this used to return one. ``backends.to_numpy`` copies a device array —
     ``arr.get()`` — but passes a NumPy array straight through, and
     ``ascontiguousarray`` on an already-contiguous array returns that same object.
     So every "before" a NumPy lift took was a live view, and any comparison of a
     before against a later state compared the array with itself.
 
-    MEASURED, on the 2026-09-11 ``--smoke`` rows: ``second_consult_site`` reported
+    Measured, on the 2026-09-11 ``--smoke`` rows: ``second_consult_site`` reported
     ``sync_changed_the_state {'fused': False, 'unfused': False, 'array': False}`` on
     all three cases — a magnetic half-step that advanced B and H and changed nothing
     — beside ``restore_returns_the_state`` all True, which the same aliasing makes
@@ -374,7 +374,7 @@ def _subnormal_forensics(a: numpy.ndarray, b: numpy.ndarray) -> Dict[str, Any]:
                              "dispatch_leg": float(la[0]),
                              "killswitch_leg": float(rb[0]),
                              "both_subnormal_magnitude": bool(subnormal[0])},
-        # THE MAGNITUDE IS THE CLASSIFIER, not the count. A flush-vs-keep split
+        # The magnitude is the classifier, not the count. A flush-vs-keep split
         # first disagrees on a subnormal, but one step later the neighbours that
         # READ that value are normal-magnitude numbers a few ULP apart, so
         # "were they all subnormal?" answers no after a single step and would
@@ -705,7 +705,7 @@ CASES = {
 }
 
 #: What each case is here to exercise. Not a prediction the gate asserts against —
-#: the planner's verdict is MEASURED and recorded per case — but the reason the
+#: the planner's verdict is measured and recorded per case — but the reason the
 #: case is in the list, so a case that stops exercising what it was chosen for is
 #: visible in the artifact rather than silently redundant.
 CASE_INTENT = {
@@ -737,7 +737,7 @@ def _policy_stamp() -> Dict[str, Any]:
 
 
 def _plan_summary(report: Optional[Dict[str, Any]]) -> Dict[str, Any]:
-    """The dispatch facts the round has to record, pulled out of the full artifact."""
+    """The dispatch facts a certification round has to record, pulled out of the full artifact."""
     if report is None:
         return {"report": None}
     slots = report.get("slots", {})
@@ -747,12 +747,12 @@ def _plan_summary(report: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         "decision": report.get("decision"),
         "step_path": report.get("step_path"),
         "refused_because": report.get("refused_because"),
-        # TRUE ON A prefer_gpu=False LIFT, the NumPy reference, whose freeze consults
+        # True on a prefer_gpu=False lift, the NumPy reference, whose freeze consults
         # no kernel table and reads neither the kill switch nor the enable. Only a
         # ``--smoke`` leg is one; the array-leg control reads this to tell it from a
         # GPU driver's refusal.
         "reference_driver": report.get("reference_driver"),
-        # THE ENABLE AS THE RECORD READ IT — variable, value, default, effective —
+        # The enable as the record read it — variable, value, default, effective —
         # on every leg, dispatching or not. It is the only place an artifact can
         # show that a leg measured the unset default a user gets (``value`` None,
         # ``effective`` True) rather than a leg that asked for dispatch.
@@ -831,7 +831,7 @@ def step_leg(case: str, leg: Dict[str, Any], counter: Any,
     driver.run(num_steps=num_steps)
     elapsed = time.time() - started
     after = triton.snapshot()
-    # ACCUMULATED PER CHUNK, never as a delta from one early origin. The two legs
+    # Accumulated per chunk, never as a delta from one early origin. The two legs
     # are stepped alternately across the checkpoint ladder, so a leg's "count
     # since its first chunk" also contains every launch the OTHER leg made in
     # between -- measured, and it made the kill-switch leg report thousands of
@@ -868,7 +868,7 @@ def step_leg(case: str, leg: Dict[str, Any], counter: Any,
             "counts_agree": cuda_chunk["counts_agree"]})
         if len(leg["cuda_chunks"]) == 1:
             cuda.wrap_memo_store()
-        # WHICH WITNESSES WERE ON THE PATH, stated on the leg so the evidence
+        # Which witnesses were on the path, stated on the leg so the evidence
         # clauses can tell "counted zero" from "could not have counted".
         leg["cuda_witness_installed"] = bool(cuda.snapshot().get("installed"))
         leg["triton_witness_installed"] = bool(getattr(triton, "_installed", False))
@@ -951,7 +951,7 @@ def _cuda_witness_failures(leg: Dict[str, Any]) -> List[str]:
 def kernels_actually_ran(leg: Dict[str, Any]) -> Dict[str, Any]:
     """The non-vacuity verdict for the dispatch leg. Every clause is a FAILURE if false.
 
-    THE LAUNCH WITNESSES ASKED ARE THOSE OF THE TABLES THAT SERVED, read off the
+    The launch witnesses asked are those of the tables that served, read off the
     record's ``composition.tables_dispatched``. Asking only the Triton counter is
     not a conservative mistake: a composition the hand-CUDA table served — a host
     without a validated Triton, or ``MEEP_GPU_KERNEL_TABLE=cuda`` — launches no
@@ -959,7 +959,7 @@ def kernels_actually_ran(leg: Dict[str, Any]) -> Dict[str, Any]:
     record names and this gate carries no witness for is a failure rather than a
     pass by omission.
 
-    A LEG STEPPED WITH THE TRITON COUNTER ALONE (no ``cuda_launches``: the probes
+    A leg stepped with the Triton counter alone (no ``cuda_launches``: the probes
     that import this function) keeps exactly the clauses it always had.
     """
     plan = leg["plan"]
@@ -1004,7 +1004,7 @@ def kernels_actually_ran(leg: Dict[str, Any]) -> Dict[str, Any]:
                 slot: (counters.get(slot) or {}).get("programs_per_dispatch")
                 for slot in plan.get("dispatched_slots", [])},
             "triton_launches": leg["triton_launches"],
-            # RECORDED ON EVERY TABLE'S LEG, asked only of the tables that served:
+            # Recorded on every table's leg, asked only of the tables that served:
             # a Triton-served composition may legitimately show hand-CUDA launches
             # (and the reverse), and reading them is for the artifact's reader.
             "cuda_launches": leg.get("cuda_launches")}
@@ -1013,11 +1013,11 @@ def kernels_actually_ran(leg: Dict[str, Any]) -> Dict[str, Any]:
 def killswitch_leg_is_clean(leg: Dict[str, Any]) -> Dict[str, Any]:
     """The control: the kill-switch leg must be the array path and launch NOTHING.
 
-    NOTHING ON EITHER WITNESS when the leg carries both: a kill-switched leg that
+    Nothing on either witness when the leg carries both: a kill-switched leg that
     launched a hand-CUDA kernel is the control failing, whichever table it was.
 
-    WHY THE LEG IS ON THE ARRAY PATH IS PART OF THE CONTROL, and there are two
-    answers. A GPU driver (every gate run) must have been refused AT THE KILL SWITCH,
+    Why the leg is on the array path is part of the control, and there are two
+    answers. A GPU driver (every gate run) must have been refused at the kill switch,
     by name. A ``--smoke`` leg is lifted ``prefer_gpu=False``, the NumPy reference: it
     never plans, so it reads no kill switch and its record carries
     ``reference_driver`` and the reference reason instead. That leg is the array path
@@ -1055,7 +1055,7 @@ def leg_environments(null_control: bool = False,
                      ) -> Tuple[Dict[str, Optional[str]], Dict[str, Optional[str]]]:
     """The dispatch leg's and the kill-switch leg's environments, in that order.
 
-    ONE VARIABLE STILL SEPARATES THE LEGS under ``enable_from_default``: the enable
+    One variable still separates the legs under ``enable_from_default``: the enable
     is REMOVED from both (``None`` pops it) rather than set on one, so the dispatch
     leg measures the unset default a user gets and the kill-switch leg differs from
     it by ``MEEP_GPU_FUSED=0`` alone. The kill switch outranks the enable (rung 1
@@ -1063,7 +1063,7 @@ def leg_environments(null_control: bool = False,
     """
     enable: Optional[str] = None if enable_from_default else "1"
     killswitch_env = {"MEEP_GPU_DISPATCH": enable, "MEEP_GPU_FUSED": "0"}
-    # THE NULL CONTROL runs the kill switch on BOTH legs. Everything else about
+    # The null control runs the kill switch on BOTH legs. Everything else about
     # the protocol is unchanged, so a divergence it reports is one the array path
     # produces against itself -- run-to-run nondeterminism -- and is not
     # attributable to dispatch. Without it, "the legs differ" has two candidate
@@ -1159,7 +1159,7 @@ def run_case(name: str, out_dir: str, gpu_id: int,
     row["observables"] = compare_spectra(a["spectra"], b["spectra"])
     row["killswitch_control"] = killswitch_leg_is_clean(b)
     if null_control:
-        # BOTH LEGS ARE CONTROLS HERE, so both are held to the control's clauses: a
+        # Both legs are controls here, so both are held to the control's clauses: a
         # null run whose first leg launched anything is not the array path against
         # itself, and its "no divergence" would attribute nothing.
         row["null_control_dispatch_leg"] = killswitch_leg_is_clean(a)
@@ -1179,7 +1179,7 @@ def run_case(name: str, out_dir: str, gpu_id: int,
                              "agree exactly because both ran the same code"),
         }
 
-    # THE LADDER IS PART OF THE VERDICT, not a diagnostic beside it. Measured:
+    # The ladder is part of the verdict, not a diagnostic beside it. Measured:
     # ``no_pml_2d`` under the shipped configuration differs in 4 arrays at 64
     # steps and is byte-identical again at 256 and at the end of the run — the
     # disagreement lives in the denormal tail and is absorbed as the source ramps
@@ -1249,29 +1249,29 @@ def _released_cuda_product_modules() -> List[str]:
 class CudaLaunchCounter:
     """Counts REAL hand-CUDA launches, on TWO witnesses that cannot agree by accident.
 
-    THE PROBLEM THIS SOLVES IS THE SAME ONE ``TritonLaunchCounter`` solves, and it
-    is harder here: ``cupy.RawKernel.__call__`` CANNOT BE ASSIGNED (measured —
+    The problem this solves is the same one ``TritonLaunchCounter`` solves, and it
+    is harder here: ``cupy.RawKernel.__call__`` cannot be assigned (measured —
     ``stress_cuda_device_leg.py`` records the TypeError), so there is no single
     interception point at the CuPy level that is known to fire. What there ARE are
     two PROVEN package-seam witnesses, both already used by shipped device
     harnesses, both independent of ``fastpath``'s own bookkeeping:
 
-    * THE COMPILE-CACHE PROXY. ``compile_cache.get_or_compile`` returns the
+    * The compile-cache proxy. ``compile_cache.get_or_compile`` returns the
       ``RawKernel`` every launcher then calls; wrapping the returned object in a
       forwarding proxy counts by DEVICE SYMBOL and records a ``grid[0] == 0``
       launch, which is the distinction between "a kernel launched" and "a kernel
       computed over data" (``stress_cuda_device_leg.LaunchCensus``).
-    * THE MEMO-STORE WRAP. ``compile_cache._compiled_kernels`` holds the memoized
+    * The memo-store wrap. ``compile_cache._compiled_kernels`` holds the memoized
       kernels; wrapping what is already in it after the first warm counts the same
       launches through a different attribute
       (``gate_cuda_fused_magnetic_pair.MemoLaunchCounter``).
 
-    A THIRD WITNESS IS PROBED AND NEVER REQUIRED. A ``cupy.RawKernel`` SUBCLASS
+    A third witness is probed and never required. A ``cupy.RawKernel`` SUBCLASS
     rebound at the module attribute may or may not be constructed by every route;
     the gate runs a twenty-line probe first and RECORDS whether it counted. It is
     used as evidence only if it did.
 
-    ``counts_agree`` IS THE POINT. Two counters that must agree beat one counter
+    ``counts_agree`` is the point. Two counters that must agree beat one counter
     that cannot be wrong, and the array leg must read ZERO on both.
     """
 
@@ -1295,7 +1295,7 @@ class CudaLaunchCounter:
         class _CountingKernel:
             """Forwards every attribute and counts the call. Not a subclass.
 
-            A SUBCLASS WOULD NOT BE CONSTRUCTED by the compile path — the object
+            A subclass would not be constructed by the compile path — the object
             comes back from ``cupy.RawModule`` — so the interception has to be a
             wrapper around what that path already produced.
             """
@@ -1366,7 +1366,7 @@ class CudaLaunchCounter:
                "zero_grid_launches": (after["zero_grid_launches"]
                                       - before["zero_grid_launches"]),
                "by_kernel": {k: v for k, v in by_kernel.items() if v}}
-        # THE TWO WITNESSES MUST AGREE. A proxy total that moved while the memo
+        # The two witnesses must agree. A proxy total that moved while the memo
         # wrap read zero means one of them is not on the path the launches took,
         # which is exactly the vacuity both exist to catch.
         out["counts_agree"] = (out["total"] == out["memo_calls"]
@@ -1408,7 +1408,7 @@ def cuda_witness_is_live(counter: CudaLaunchCounter,
                          before: Any) -> Tuple[bool, str]:
     """``(live, why)``: can the hand-CUDA witness count a launch on THIS host?
 
-    INSTALLED IS NOT LIVE. :meth:`CudaLaunchCounter.install` marks itself installed
+    Installed is not live. :meth:`CudaLaunchCounter.install` marks itself installed
     once its proxy is bound, and ``compile_cache`` imports without CuPy, so
     "installed" held on every host — a laptop with no CUDA included — and the
     refusal for a run with no witness could never fire: a Triton host whose own
@@ -1460,10 +1460,11 @@ def environment_snapshot() -> Dict[str, str]:
 
 
 def _provenance(gpu_id: int) -> Dict[str, Any]:
+    import neutral_ids  # noqa: PLC0415
     import hashlib  # noqa: PLC0415
 
     package = os.path.join(REPO_API, "meep_gpu")
-    # WHAT A DRIVER-ROUTE ARTIFACT HAS TO BIND, and the CUDA half joined it when
+    # What a driver-route artifact has to bind, and the CUDA half joined it when
     # the seam grew its second NVIDIA table. BOTH ``driver_dispatch`` records are
     # cut from runs of this harness, and ``recut_driver_dispatch_record.py``
     # refuses unless every file the record binds carries a digest a LEG recorded —
@@ -1481,7 +1482,7 @@ def _provenance(gpu_id: int) -> Dict[str, Any]:
         path = os.path.join(package, name)
         with open(path, "rb") as handle:
             digests[name] = hashlib.sha256(handle.read()).hexdigest()
-    # ONE SPELLING PER MAP, and it is the package-relative one every key above uses.
+    # One spelling per map, and it is the package-relative one every key above uses.
     # ``_released_cuda_product_modules`` returns repo-relative names, and stamping
     # them unchanged put two spellings in one dict: ``recut_driver_dispatch_record``
     # normalises a bound path to the package-relative form before looking it up, so
@@ -1494,7 +1495,7 @@ def _provenance(gpu_id: int) -> Dict[str, Any]:
             key = name[len("meep_gpu/"):] if name.startswith("meep_gpu/") else name
             with open(path, "rb") as handle:
                 digests[key] = hashlib.sha256(handle.read()).hexdigest()
-    # THE GATE SCRIPTS THE RECORD BINDS, under the repo-relative spelling the ledger
+    # The gate scripts the record binds, under the repo-relative spelling the ledger
     # uses for parity paths (``_leg_key`` passes those through unchanged). The CUDA
     # record binds this campaign's driver, and a record may not bind bytes no leg is
     # recorded as having run -- so the driver must digest itself here rather than
@@ -1507,7 +1508,7 @@ def _provenance(gpu_id: int) -> Dict[str, Any]:
                 digests[name] = hashlib.sha256(handle.read()).hexdigest()
     record: Dict[str, Any] = {
         "utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "host": platform.node(), "machine": platform.machine(),
+        "host": neutral_ids.machine_id(), "machine": platform.machine(),
         "python": sys.version.split()[0],
         "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
         "gpu_id": gpu_id,
@@ -1567,7 +1568,7 @@ def main() -> int:
                              "to one policy. Unset installs nothing, which is what "
                              "a plain lift_simulation run does.")
     parser.add_argument("--smoke", action="store_true",
-                        help="NOT A GATE RUN. Lift the NumPy reference "
+                        help="Not a gate run. Lift the NumPy reference "
                              "(prefer_gpu=False) and tolerate a host with no "
                              "Triton, so the harness's own plumbing can be shaken "
                              "out on a laptop. The reference consults no kernel "
@@ -1585,13 +1586,13 @@ def main() -> int:
     arguments = parser.parse_args()
     global PREFER_GPU
     PREFER_GPU = not arguments.smoke
-    # THE SHIP LEG MINTS THE TRITON dispatch_by_default LICENCE, so a run off an
+    # The ship leg mints the Triton dispatch_by_default LICENCE, so a run off an
     # NVIDIA host is refused before anything is lifted or written.
     refusal = nvidia_host_refusal("gate_dispatch_end_to_end.py") if PREFER_GPU else None
     if refusal:
         print(refusal, file=sys.stderr)
         return 2
-    # READ BEFORE ANYTHING BELOW CAN TOUCH IT: this is the environment the caller
+    # Read before anything below can touch it: this is the environment the caller
     # handed the run, and it is what a licence reader checks for "plain".
     environment_at_start = environment_snapshot()
 
@@ -1601,7 +1602,7 @@ def main() -> int:
               file=sys.stderr)
         return 2
 
-    # EVERY ARGUMENT REFUSAL BEFORE THE OUTPUT DIRECTORY EXISTS. A refusal after
+    # Every argument refusal before the output directory exists. A refusal after
     # ``makedirs`` left ``progress.log`` behind, and the drivers refuse to run into an
     # existing leg directory (the gate appends rows), so a corrected retry into the
     # same --out was then refused too.
@@ -1628,7 +1629,7 @@ def main() -> int:
     _PROGRESS_PATH = os.path.join(arguments.out, "progress.log")
     rows_path = os.path.join(arguments.out, "cases.jsonl")
 
-    # BOTH TABLES' WITNESSES, INSTALLED BEFORE ANY LIFT. A composition the
+    # Both tables' witnesses, installed before any lift. A composition the
     # hand-CUDA table serves launches no Triton kernel, so a run carrying the
     # Triton counter alone read VACUOUS-PASS on it; and a host with no Triton at
     # all is exactly the host whose default composition is CUDA alone. So the run
@@ -1676,9 +1677,11 @@ def main() -> int:
             return 4
     provenance["policy"] = _policy_stamp()
     provenance["null_control"] = bool(arguments.null_control)
+    import neutral_ids  # noqa: PLC0415 - the records leave the machine (neutral_ids.py)
+
     with open(os.path.join(arguments.out, "provenance.json"), "w",
               encoding="utf-8") as handle:
-        json.dump(provenance, handle, indent=1)
+        json.dump(neutral_ids.value(provenance), handle, indent=1)
     say(f"host={provenance['host']} device={provenance['device']} "
         f"triton={provenance['triton']} meep={provenance['meep']} "
         f"policy={provenance['policy']}")
@@ -1704,12 +1707,13 @@ def main() -> int:
         row["case_wall_s"] = round(time.time() - started, 2)
         rows.append(row)
         with open(rows_path, "a", encoding="utf-8") as handle:  # incremental progress reporting
-            handle.write(json.dumps(row, default=str) + "\n")
+            handle.write(json.dumps(neutral_ids.value(json.loads(json.dumps(row, default=str))))
+                         + "\n")
             handle.flush()
         say(f"=== case {index}/{len(names)}: {name} -> {row.get('verdict')} "
             f"({row['case_wall_s']} s) ===")
 
-    # THE NULL CONTROL'S OWN VERDICT, and it is a verdict: every case must be the
+    # The null control's own verdict, and it is a verdict: every case must be the
     # array path against itself (PASS-FELL-BACK) with no checkpoint divergent.
     # Anything else means the array path does not reproduce itself on this host,
     # and then no ship leg's "identical" can be attributed to dispatch.
@@ -1744,14 +1748,15 @@ def main() -> int:
                                                    "PLAN-ONLY")],
         "rows": rows,
     }
-    # THE RUN'S OWN OUTCOME, written beside the rows: the same decision this function
+    # The run's own outcome, written beside the rows: the same decision this function
     # returns its exit code from, so a reader of summary.json does not re-derive it.
     summary["release"] = run_release(summary, plan_only=bool(arguments.plan_only),
                                      smoke=bool(arguments.smoke))
     summary["canonical_verdict"] = _canonical_verdict(summary)
     with open(os.path.join(arguments.out, "summary.json"), "w",
               encoding="utf-8") as handle:
-        json.dump(summary, handle, indent=1, default=str)
+        json.dump(neutral_ids.value(json.loads(json.dumps(summary, default=str))), handle,
+                  indent=1, default=str)
     say(f"SUMMARY {json.dumps(summary['verdicts'])}")
     release = summary["release"]
     outcome = release["outcome"]
@@ -1785,13 +1790,13 @@ def run_release(summary: Dict[str, Any], *, plan_only: bool,
                 smoke: bool) -> Dict[str, Any]:
     """The run's outcome as a ``release`` block: ``released``, ``outcome``, ``reasons``.
 
-    ONE DECISION, IN THE ORDER :func:`main` HAS ALWAYS TAKEN IT, and ``main``'s exit
+    One decision, in the order :func:`main` has always taken it, and ``main``'s exit
     code is read off it: a null control is clean or not; any case outside
     PASS-DISPATCHED / PASS-FELL-BACK / PLAN-ONLY fails the run; a ``--plan-only`` run
     with no failure is complete; a run that dispatched nothing passes only as a
     ``--smoke`` run; otherwise every case passed.
 
-    WHY IT IS WRITTEN DOWN. Until 0.10 the outcome lived only in the exit code and
+    Why it is written down. Until 1.0 the outcome lived only in the exit code and
     the log, so a reader of ``summary.json`` had to re-derive it, and the precert
     pass of 2026-10-09 re-derived it as "every verdict PASS-DISPATCHED or
     PASS-FELL-BACK", which scored the ``--plan-only`` preflight -- whose designed

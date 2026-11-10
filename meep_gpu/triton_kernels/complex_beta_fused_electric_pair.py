@@ -16,17 +16,17 @@ certified and neither is re-derived here:
   :func:`.complex_fused_electric_pair.complex_fused_curl_constitutive_D` already
   makes between exactly those two bodies on a beta = 0 complex run.
 
-SO THIS KERNEL IS ``complex_fused_curl_constitutive_D``, CHARACTER FOR CHARACTER,
-PLUS THE SAME STATEMENTS ``beta_bloch_pml_curl_step`` ADDS TO
+So this kernel is ``complex_fused_curl_constitutive_D``, character for character,
+plus the same statements ``beta_bloch_pml_curl_step`` adds to
 ``bloch_pml_curl_step`` — two scalar word arguments, ``HAS_BETA``, and the beta
 pass after the curl forms and before the stores (MEEP's order: the pass runs after
 every component's curl, step_db.cpp:161-175). The gate's transcription
 leg asserts exactly that, statement by statement, against both shipped sources.
 
-THE PASS is the magnetic twin's, stated once there (module docstring §"THE PASS").
+The pass is the magnetic twin's, stated once there (its module docstring, "THE PASS").
 
 ===========================================================================
-WHAT THE CORPUS SAYS THIS IS WORTH — measured, not argued
+What the corpus says this is worth — measured, not argued
 ===========================================================================
 
 ONE seam-instance, from ``results/fusion_matrix_triton_2026-09-01_foldedbeta``
@@ -42,7 +42,7 @@ is the whole reason this product serves anything: with the flag False the source
 clause refuses the cell's only row.
 
 ===========================================================================
-THE FIVE PASSES IN THE SEAM
+The five passes in the seam
 ===========================================================================
 
 The driver runs five passes between the two halves (driver.py:3292-3304)::
@@ -60,8 +60,8 @@ insert sits entirely INSIDE the curl half and touches no pass:
   :func:`~..deposit_repair.seam_source_reasons` so ``repairable`` decides,
   refusing BY NAME every seam it cannot invert. An undeclared ``sources`` is a
   REFUSAL, never an assumed ``()``.
-* **``fill_symmetry_bc_D`` / ``fill_folded_far_ghosts_D`` — PROVABLY NO-OPS
-  HERE** (stepping.py:1481-1482, :1565-1566 against the family's own fold
+* **``fill_symmetry_bc_D`` / ``fill_folded_far_ghosts_D`` — provably no-ops
+  here** (stepping.py:1481-1482, :1565-1566 against the family's own fold
   refusal), re-checked by this predicate anyway.
 * **``zero_metal_D`` — CARRIED INLINE**, through
   :func:`.coverage.zero_metal_axes`, on BOTH word planes, with the D SIDE'S
@@ -156,9 +156,9 @@ BACKWARD = 1
 #: twin's.
 SCALE = 1
 
-#: WHICH CURL TARGETS ``zero_metal_D`` CLEARS, PER WALLED AXIS — the D side's
+#: Which curl targets ``zero_metal_D`` clears, per walled axis — the D side's
 #: map: the TWO TANGENTIAL components (an x wall clears Dy and Dz and leaves
-#: Dx), the exact complement of the B side's. A CLAIM ABOUT THE KERNEL, not a
+#: Dx), the exact complement of the B side's. A claim about the kernel, not a
 #: derivation: the predicate recomputes the same map from ``fields.IYEE_SHIFTS``
 #: and refuses when they differ — the clause the beta-less twin's first device
 #: run (wrong in both directions at once on every metallic grid) is the measured
@@ -187,7 +187,7 @@ __all__ = [
 if triton is not None:
 
     # The same constexpr code as ``complex_fields.METALLIC``, restated for the
-    # reason that module restates ``kernels``'. ONLY METALLIC IS NAMED: the
+    # reason that module restates ``kernels``'. Only metallic is named: the
     # certified complex curl body branches on ``== METALLIC`` and takes periodic
     # as the else.
     METALLIC = tl.constexpr(1)
@@ -453,7 +453,7 @@ if triton is not None:
         # --- the seam: stepping.zero_metal_D, between the two sub-steps ---------
         # Applied to the REGISTERS, before both the store and the constitutive read,
         # so the two consumers see the one value the array path leaves in D. BOTH
-        # parts. THE COMPONENT MAP IS THE COMPLEMENT OF THE MAGNETIC TWIN'S:
+        # parts. The component map is the complement of the magnetic twin's:
         # `_zero_metal` clears every component whose Yee shift on the WALLED axis is
         # ZERO, which on the D side is the two TANGENTIAL components
         # (:data:`WALL_CLEARED_COMPONENTS`, re-derived from IYEE_SHIFTS by the
@@ -606,8 +606,8 @@ def complex_beta_fused_electric_pair_coverage(fields: Any, pml: Any,
     if grid is None:
         return Coverage(False, tuple(dict.fromkeys(reasons + ["fields carries no grid"])))
 
-    # THE SOURCE SEAM. An electric source is injected BETWEEN the two halves
-    # (driver.py:3296-3299). THIS IS THE CLAUSE THE WHOLE PRODUCT TURNS ON: the
+    # The source seam. An electric source is injected BETWEEN the two halves
+    # (driver.py:3296-3299). This is the clause the whole product turns on: the
     # cell's one corpus row declares an electric source, so with
     # `carries_repair=False` this arm admits nothing. The flag is passed, not
     # assumed: `repairable` still refuses by name every seam it cannot invert.
@@ -624,9 +624,9 @@ def complex_beta_fused_electric_pair_coverage(fields: Any, pml: Any,
             f"closes"),
         carries_repair=CARRIES_DEPOSIT_REPAIR))
 
-    # THE TWO SYMMETRY PASSES — no-ops on every admitted configuration
+    # The two symmetry passes — no-ops on every admitted configuration
     # (stepping.py:1481-1482, :1565-1566 against the family's own fold refusal),
-    # RE-CHECKED HERE ANYWAY rather than read off another module's guard.
+    # Re-checked here anyway rather than read off another module's guard.
     if _call(grid, "has_symmetry", default=False):
         reasons.append(
             "a mirror plane is active: stepping.fill_symmetry_bc_D (driver.py:3300) "
@@ -638,14 +638,14 @@ def complex_beta_fused_electric_pair_coverage(fields: Any, pml: Any,
                 f"axis {axis} is folded by a mirror plane: the two symmetry passes "
                 f"in this seam are no longer no-ops and this weld carries neither")
 
-    # THE WALL CLEAR is carried inline, so the grid must be able to answer which
+    # The wall clear is carried inline, so the grid must be able to answer which
     # axes are walled.
     for name in ("has_metallic", "is_metallic", "is_mirrored"):
         if getattr(grid, name, None) is None:
             reasons.append(
                 f"grid does not expose {name}; zero_metal_D cannot be carried inline")
 
-    # ...AND THE COMPONENT MAP IT BAKES MUST BE THE ENGINE'S OWN. Recomputed from
+    # ...and the component map it bakes must be the engine's own. Recomputed from
     # the shipped ``IYEE_SHIFTS`` by exactly ``_zero_metal``'s rule — shift 0 on
     # the walled axis — rather than compared against a second transcription.
     from ..fields import IYEE_SHIFTS  # noqa: PLC0415
@@ -670,7 +670,7 @@ def complex_beta_fused_electric_pair_coverage(fields: Any, pml: Any,
             "a susceptibility is registered: this kernel bakes the plain "
             "constitutive product, whose source is D and not (D - sum P)")
 
-    # THE INVERSE-EPSILON VOLUMES ARE READ BY THE KERNEL on every launch
+    # The inverse-epsilon volumes are read by the kernel on every launch
     # (SCALE=1), so `Fields` must be able to hand one over per target component.
     if getattr(fields, "inverse_epsilon_for", None) is None:
         reasons.append(
@@ -757,7 +757,7 @@ class ComplexBetaFusedElectricPairPlan:
         self._inv_eps = tuple(CupyPointer(a) for a in inverse_epsilon)
         self._e_coefficients = tuple(
             CupyPointer(_flat(a)) for a in e_coefficients)
-        # THE INT32 WORD BOUND. The kernel addresses words as ``2 * idx`` in
+        # The int32 word bound. The kernel addresses words as ``2 * idx`` in
         # int32, so the complex cell count must leave room for the doubling —
         # the same halving the complex predicates apply (module docstring of
         # complex_fields, "Word addressing"). Refused here as well because the
@@ -852,7 +852,7 @@ def plan_complex_beta_fused_electric_pair(fields: Any, pml: Any, sources: Any = 
         [getattr(fields, name) for name in side_spec["targets"]],
         [getattr(fields, name) for name in side_spec["aux"]],
         [fields.inverse_epsilon_for(name) for name in side_spec["targets"]],
-        # THE MIRROR IMAGE OF THE MAGNETIC TWIN'S CHOICE. The curl takes the
+        # The mirror image of the magnetic twin's choice. The curl takes the
         # INTEGER lattice on step_D (SUB_STEPS['step_D']['suffix'] == "") and the
         # constitutive the HALF-INTEGER one on E (stepping.py:1015 against the D
         # curl's half_integer=False). The kernel takes both and never asks which is

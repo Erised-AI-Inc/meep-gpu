@@ -1,6 +1,6 @@
 """The SCRATCH-OUTPUT lift both COMPLEX off-diagonal D/E welds are built from.
 
-WHY THERE IS A SHARED MODULE AND NOT TWO COPIES, and it is
+Why there is a shared module and not two copies, and it is
 :mod:`.offdiag_stencil_weld`'s reason one storage width over:
 :mod:`.folded_complex_offdiag_fused_electric_pair` and
 :mod:`.complex_no_pml_offdiag_fused_electric_pair` occupy two different board cells
@@ -10,13 +10,13 @@ the one thing this track will not do is let two copies of a resolution drift apa
 Everything that decides a float lives here; each family module owns its predicate, its
 signature, its cell and its record.
 
-NOTHING HERE IMPORTS CuPy. The lift is string work over the certified device text and
+Nothing here imports CuPy. The lift is string work over the certified device text and
 the resolution is emitted from ``fields.IYEE_SHIFTS``, so both are exercisable at the
 merge bar on a laptop -- the rule this package applies to every part whose failure mode
 is a silent wrong answer rather than a crash.
 
 =============================================================================
-THE DESIGN IS THE REAL WELD'S, AND THE RECORDED REFUSAL DOES NOT REACH IT
+The design is the real weld's, and the recorded refusal does not reach it
 =============================================================================
 
 The board records both cells STENCIL-BLOCKED with
@@ -25,17 +25,17 @@ The board records both cells STENCIL-BLOCKED with
      thread does not own. In one launch that cell is written by another block, and
      CUDA offers no grid-wide barrier inside an ordinary launch"
 
--- true, and true OF THE IN-PLACE WELD. :mod:`.offdiag_stencil_weld`'s docstring is
+-- true, and true of the in-place weld. :mod:`.offdiag_stencil_weld`'s docstring is
 where that argument lives and it is not restated here. Both premises go the same way:
 the curl half writes a LAUNCH-LOCAL SCRATCH so ``D``, ``fu_D`` and ``H`` are ``const``
 for the whole launch, and every foreign tap is a RECOMPUTE from that unwritten state
 through :func:`raw_step_D_cell_source`'s lift of the certified complex curl body.
 
 =============================================================================
-WHAT COMPLEX STORAGE CHANGES, AND WHAT WAS MEASURED BEFORE IT WAS SPELLED
+What complex storage changes, and what was measured before it was spelled
 =============================================================================
 
-THE STORAGE ITSELF CHANGES NOTHING ABOUT THE ADDRESSING. A complex64 volume is bound
+The storage itself changes nothing about the addressing. A complex64 volume is bound
 as its float32 word view and every index in this module is a COMPLEX CELL index;
 ``cf_load``/``cf_store`` do the word doubling and nothing else does. The Yee tables,
 the redirect rows, the wall planes and the reflect rows are INDEX facts -- they mention
@@ -43,9 +43,9 @@ no dtype -- so :func:`.offdiag_stencil_weld.near_axes`, ``.far_axis``, ``.clear_
 and ``.fill_plan`` are IMPORTED rather than respelled, and one home keeps the two
 storage widths from disagreeing about which plane is the ghost.
 
-WHAT DOES CHANGE IS EVERY MULTIPLY, AND THERE ARE EXACTLY TWO OF THEM:
+What does change is every multiply, and there are exactly two of them:
 
-1. **THE PARITY IS A PART-WISE SCALE, AT BOTH SIGNS.** The array path writes a mirror
+1. **The parity is a part-wise scale, at both signs.** The array path writes a mirror
    ghost through ``host_writes.copy_face``, which forms ``part_products.scale(phase,
    plane)``: the real part and the imaginary part each multiplied by the float32
    parity, one rounding per part. The emitted line is the certified
@@ -54,13 +54,13 @@ WHAT DOES CHANGE IS EVERY MULTIPLY, AND THERE ARE EXACTLY TWO OF THEM:
    EVERY imaged plane at EVERY sign, so the resolution performs the array path's
    multiply rather than an equivalent rewrite of it (a negation, or no line at +1).
 
-2. **THE WALL CLEAR IS ``cf_zero()``, BOTH WORDS.** ``stepping._zero_metal`` clears
+2. **The wall clear is ``cf_zero()``, both words.** ``stepping._zero_metal`` clears
    through ``host_writes.zero_faces``, which assigns the INTEGER 0 to a complex64
    plane: the pair ``(+0.0f, +0.0f)`` and not a sign-carrying zero. A clear that
    touched only the real plane is a defect class this tree has paid for; the gate
    arms it.
 
-THE ORDER OF THE CLEAR AND THE PARITIES IS LOAD-BEARING. ``mul_coefficient_left(-1.0f,
+The order of the clear and the parities is load-bearing. ``mul_coefficient_left(-1.0f,
 cf_zero())`` is ``(-0.0f, -0.0f)``, so a cleared plane that is then multiplied is NOT
 the cleared plane. The array path's pass order (near fill, wall clear, far fill:
 ``fill_symmetry_bc_D``, ``zero_metal_D``, ``fill_folded_far_ghosts_D``) is therefore
@@ -69,7 +69,7 @@ parity is applied to whatever the clear left. That is the composition
 :mod:`.offdiag_stencil_weld` emits one storage width down.
 
 =============================================================================
-THE TWO ARMS
+The two arms
 =============================================================================
 
 ``pml`` lifts the certified ``pml_apply`` (``complex_emitter``'s, transcribing
@@ -81,14 +81,14 @@ volumes rather than six and the resolution's raw call takes no auxiliary. Both e
 keep the right-hand side, its tree and its operand order character for character --
 what moves is where the value goes.
 
-BOTH ARMS BIND THE SAME CHUNK-FORM PACK. Each family's signature carries the run's
+Both arms bind the same chunk-form pack. Each family's signature carries the run's
 chunk record, the live rows' presence words and the two connection tables under the
 names the pack and the certified constitutive body read, so one derivation serves
 both: the no-absorber curl body decodes only the record's partner-presence word (no
 chunk carries a layer without an absorber), the split-field one its membership rows
 too.
 
-THE OFF-DIAGONAL TERM IS THE CHUNK-FORM ONE (``complex_offdiag_update_e``): MEEP's
+The off-diagonal term is the chunk-form one (``complex_offdiag_update_e``): MEEP's
 double row per part, the per-chunk presence words, and two connection tables -- the
 pair's same-index operand on the PARTNER axis takes ``eikna`` (the D curl's own table,
 so one kernel triple serves both halves) and the near product on the OWN axis takes
@@ -96,7 +96,7 @@ so one kernel triple serves both halves) and the near product on the OWN axis ta
 path (the shifted operands are plain wraps), so the resolution recomputes the stored
 word and the certified term applies the connections itself.
 
-WHAT THIS MODULE DOES NOT DO: it plans nothing and launches nothing.
+What this module does not do: it plans nothing and launches nothing.
 ``meep_gpu.fastpath.plan_fast_path`` still returns ``None`` on every branch, and both
 families are opt-in through ``arms.plan_step(..., fuse=True)``.
 """
@@ -126,7 +126,7 @@ except ImportError:  # loaded by path, outside the package: the host probes
 
     _real_weld = _load("offdiag_stencil_weld")
 
-#: THE INDEX FACTS ARE IMPORTED, NOT RESPELLED. Every one of these is a statement
+#: The index facts are imported, not respelled. Every one of these is a statement
 #: about the Yee lattice or about a driver pass's stored rows, and none of them
 #: mentions a dtype -- so the complex weld asks the same functions the real weld does
 #: and the two storage widths cannot disagree about which plane a fill images.
@@ -212,7 +212,7 @@ _PML_APPLY_PARAMETERS_PURE = (
     "    float kms, float sinv, float kms_u, float sinv_u, int dsigu, cf* fu_out\n)")
 _PML_APPLY_FU_STORE = "    if (dsigu) cf_store(fu, idx, fu_new);\n"
 _PML_APPLY_FU_STORE_PURE = (
-    "    // THE FIRST OF THE TWO STORES, HANDED BACK INSTEAD OF PERFORMED. The\n"
+    "    // The first of the two stores, handed back instead of performed. The\n"
     "    // caller writes it to the SCRATCH volume, so nothing this launch reads\n"
     "    // is ever a word this launch wrote. The scratch replaces the stored split\n"
     "    // field at every cell, so on a cell outside the recurrence's chunks --\n"
@@ -221,7 +221,7 @@ _PML_APPLY_FU_STORE_PURE = (
     "    *fu_out = dsigu ? fu_new : cf_load(fu, idx);\n")
 _PML_APPLY_F_STORE = "    cf_store(f, idx, value);\n"
 _PML_APPLY_F_STORE_PURE = (
-    "    // THE SECOND STORE, LIKEWISE. Same right-hand side, same tree, same\n"
+    "    // The second store, likewise. Same right-hand side, same tree, same\n"
     "    // helpers; the value is RETURNED so the resolution can redirect it, the\n"
     "    // wall clear can replace it with cf_zero() and the constitutive can\n"
     "    // consume it from a register.\n"
@@ -235,7 +235,7 @@ _NO_PML_APPLY = ("__device__ __forceinline__ void no_pml_apply(float* f, int idx
                  "    cf_store(f, idx, cf_sub(cf_load(f, idx), curl));\n"
                  "}\n")
 _NO_PML_APPLY_PURE = (
-    "// THE PURE FORM. Same subtraction, same operand order, same helper; the value\n"
+    "// The pure form. Same subtraction, same operand order, same helper; the value\n"
     "// is RETURNED and the caller writes it to the SCRATCH volume, so no thread in\n"
     "// this launch can observe another thread's store.\n"
     "__device__ __forceinline__ cf no_pml_apply_pure(const float* f, int idx,\n"
@@ -366,7 +366,7 @@ RESOLUTION_LIFT_EDITS: Tuple[Dict[str, str], ...] = (
 def normalized_arm(arm: str) -> str:
     """``"pml"`` or ``"no_pml"``, or a named failure.
 
-    REQUIRED AND NEVER DEFAULTED: the two arms are two different recurrences, and a
+    Required and never defaulted: the two arms are two different recurrences, and a
     wrong one is a wrong answer rather than a crash.
     """
     if arm not in ARMS:
@@ -511,7 +511,7 @@ _PML_WELD_ARGS: Tuple[Tuple[str, str], ...] = (
 def weld_args_fields(arm: str) -> Tuple[Tuple[str, str], ...]:
     """The pack's members for one arm, in emission order.
 
-    THE FIELD AND AUXILIARY POINTERS KEEP THE CERTIFIED CURL BODY'S OWN NAMES
+    The field and auxiliary pointers keep the certified curl body's own names
     (``f0``..``g2``, ``u0``..``u2``): the lifted body is spliced verbatim and reads
     them, so an unpack under any other name would be a rename inside certified text.
     """
@@ -529,7 +529,7 @@ def weld_args_struct(arm: str) -> str:
     """The argument pack, declared."""
     lines = [
         "",
-        "// THE PRE-LAUNCH STATE AND THE RUNTIME PLAN, packed once. Every member is",
+        "// The pre-launch state and the runtime plan, packed once. Every member is",
         "// read-only for the whole launch: that is the property the recompute rests",
         "// on, and binding the field pointers const here is where it is stated in",
         "// the type system rather than in a comment.",
@@ -546,12 +546,12 @@ def weld_args_construction(arm: str, indent: str = "    ",
     """The struct, built from the kernel's own parameters. One line per member.
 
     ``boundary_prefix`` is ``"bc_"`` where one boundary triple serves both halves and
-    ``"bc_"`` still where the constitutive binds its own ``cbc_*``: THE CURL'S TRIPLE
-    IS ALWAYS THE ONE THE PACK CARRIES, because the pack feeds the lifted curl body
+    ``"bc_"`` still where the constitutive binds its own ``cbc_*``: the curl's triple
+    is always the one the pack carries, because the pack feeds the lifted curl body
     and nothing else. It is a parameter so a family that renamed the CURL's triple
     would have to say so here rather than silently pack the constitutive's.
 
-    THE CONNECTION TABLE NEEDS NO ALIAS. The D curl reads the not-owned word ABOVE
+    The connection table needs no alias. The D curl reads the not-owned word ABOVE
     the stored window (``eikna``, ``complex_pml_kernels.bloch_phase_arguments(grid,
     True)``), and the off-diagonal pair's same-index operand reads the same word on
     its partner axis -- ``complex_offdiag_update_e.bloch_connection_table``'s pair
@@ -576,7 +576,7 @@ def weld_args_construction(arm: str, indent: str = "    ",
 def raw_step_D_cell_source(arm: str) -> str:
     """The certified complex ``step_D`` body as a ``__device__`` function of a CELL.
 
-    THE ENTIRE BODY IS LIFTED. Only the two blocks that tie it to a thread index and
+    The entire body is lifted. Only the two blocks that tie it to a thread index and
     the three tail call lines are edited, each through an exact anchor, so a change
     in the certified text is a named failure rather than a silently different kernel.
     The three component blocks -- their stencils, their ghost calls, their phase
@@ -601,7 +601,7 @@ def raw_step_D_cell_source(arm: str) -> str:
                 f"no anchor")
     body = body.replace(
         _THREAD_PREAMBLE,
-        "    // THE CELL ARRIVES AS COORDINATES. The flat index is composed by the\n"
+        "    // The cell arrives as coordinates. The flat index is composed by the\n"
         "    // same layout the certified decode inverts -- in COMPLEX CELLS, which\n"
         "    // is what the strides below are in too; the bounds guard left with the\n"
         "    // thread index, and every caller is either the kernel's own guarded\n"
@@ -636,7 +636,7 @@ def raw_step_D_cell_source(arm: str) -> str:
 
     auxiliary = ", cf* fu_out" if arm == "pml" else ""
     signature = (
-        "\n// The certified complex step_D curl, evaluated at ONE ARBITRARY CELL and\n"
+        "\n// The certified complex step_D curl, evaluated at one arbitrary cell and\n"
         "// storing nothing. This is the function the constitutive half calls for\n"
         "// every foreign sample it needs: a pure function of the pre-launch D"
         + (", fu\n// and H" if arm == "pml" else " and\n// H") + ", none of which "
@@ -668,13 +668,13 @@ def resolution_source(arm: str) -> str:
     standing rule -- one device string per family, so one certification digest covers
     every fold orientation and no per-axis variant can end up pinned that nobody ran.
 
-    THE COMPOSITION IS THE ARRAY PATH'S PASS ORDER and under complex storage it moves
+    The composition is the array path's pass order and under complex storage it moves
     bytes: see this module's docstring. The clear REPLACES the near arm rather than
     following it, because ``mul_coefficient_left(-1.0f, cf_zero())`` is
     ``(-0.0f, +0.0f)`` and the array path's clear is the last thing to touch that
     plane before the far fill reads it.
 
-    THE TWO SAMPLERS ARE THE CHUNK-FORM TERM'S, with the load resolved: the
+    The two samplers are the chunk-form term's, with the load resolved: the
     off-diagonal term reads every foreign D sample as a plain stored word (the
     array path's shifted operands are plain wraps), and applies the partner-axis
     window and the down-sample mirror weight itself -- so ``resolved_pair_window``
@@ -752,8 +752,8 @@ def resolution_source(arm: str) -> str:
         lines = [line for line in lines if line is not None]
         if near:
             lines += [
-                "        // ONE CERTIFIED mul_coefficient_left PER IMAGED PLANE,",
-                "        // NESTED and in X, Y, Z order, because the fill writes",
+                "        // One certified mul_coefficient_left per imaged plane,",
+                "        // nested and in X, Y, Z order, because the fill writes",
                 "        // plane after plane: a corner unowned on two planes carries",
                 "        // the composition of both parities as two separate part-wise",
                 "        // scales, never their pre-multiplied product, and at BOTH",
@@ -784,7 +784,7 @@ def resolution_source(arm: str) -> str:
         "    return resolve_Dz(i, j, k, weld);",
         "}",
         "",
-        "// The same, addressed by the FLAT COMPLEX CELL index the certified",
+        "// The same, addressed by the flat complex cell index the certified",
         "// constitutive body already computes for its taps -- decoded by the layout",
         "// flat() composes.",
         "__device__ __forceinline__ cf resolve_D_at(int comp, int index,",
@@ -807,8 +807,8 @@ def resolution_source(arm: str) -> str:
         "    return cconnect(resolve_D_at(comp, index, weld), pa, pph, pphase);",
         "}",
         "",
-        "// down_sample()'s body with the load resolved and NOTHING ELSE MOVED: the",
-        "// metallic zero, and the mirror weight ON THE GHOST LANE AND NOWHERE ELSE",
+        "// down_sample()'s body with the load resolved and nothing else moved: the",
+        "// metallic zero, and the mirror weight on the ghost lane and nowhere else",
         "// through the certified part-wise scale. No connection: the shifted",
         "// operand is a plain wrap.",
         "__device__ __forceinline__ cf resolved_down_sample(",
@@ -828,7 +828,7 @@ def resolution_source(arm: str) -> str:
 # The constitutive half -- ONE lift, both families
 # ---------------------------------------------------------------------------
 #
-# THE TWO FAMILIES SPLICE THE SAME CONSTITUTIVE TEXT. Unlike the real-storage
+# The two families splice the same constitutive text. Unlike the real-storage
 # welds -- whose two cells take two DIFFERENT certified constitutive modules
 # (``offdiag_constitutive_kernels`` and ``folded_offdiag_kernels``, with different
 # helper names) -- both complex cells take ``complex_offdiag_update_e``, whose two
@@ -996,8 +996,8 @@ def constitutive_body(arm: str, row_mask: Sequence[int],
        one shadow the other is half a cell in the absorber profile rather than a
        compile failure;
     5. where ``boundary_prefix`` is not ``"bc_"`` the constitutive's boundary reads
-       are renamed onto its own triple. THE TWO READINGS GENUINELY DIFFER ON A
-       FOLD -- the curl splits the two terminations and ``update_E`` serves both
+       are renamed onto its own triple. The two readings genuinely differ on a
+       fold -- the curl splits the two terminations and ``update_E`` serves both
        with ``BC_MIRROR`` -- so the folded family binds two triples and the
        unfolded one binds a single triple it cross-checks.
 
@@ -1012,7 +1012,7 @@ def constitutive_body(arm: str, row_mask: Sequence[int],
     _prelude, body = _split_emitted(
         source, f"complex_offdiag_source({arm!r}, {tuple(mask)!r})")
 
-    # (1) THE SHARED PREAMBLE, dropped.
+    # (1) The shared preamble, dropped.
     for anchor, what in ((_CONSTITUTIVE_PREAMBLE, "the thread-index preamble"),
                          (_CONSTITUTIVE_DECODE, "the index decode")):
         if body.count(anchor) != 1:
@@ -1022,7 +1022,7 @@ def constitutive_body(arm: str, row_mask: Sequence[int],
                 f"both halves and cannot drop it from here")
         body = body.replace(anchor, "", 1)
 
-    # (5) THE CONSTITUTIVE'S OWN BOUNDARY TRIPLE, where the family binds two.
+    # (5) The constitutive's own boundary triple, where the family binds two.
     if boundary_prefix != "bc_":
         for axis in "xyz":
             body = re.sub(rf"(?<![A-Za-z0-9_])bc_{axis}(?![A-Za-z0-9_])",
@@ -1066,7 +1066,7 @@ def constitutive_body(arm: str, row_mask: Sequence[int],
         body = close_call_with_the_pack(
             body, f"    cf term_{tag} = offdiag_term(", f"the {coefficient} term")
 
-    # (4) THE SUB-LATTICE RENAME, matched as a WHOLE LINE.
+    # (4) The sub-lattice rename, matched as a WHOLE LINE.
     if arm == "pml":
         for component, term in enumerate(complex_offdiag_update_e.E_TERMS):
             name, _volume, own_axis = term

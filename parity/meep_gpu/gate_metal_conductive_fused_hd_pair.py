@@ -2,7 +2,7 @@
 """Native MPS byte gate for the CONDUCTIVE Metal H->D weld: the ORDINARY ``update_H``
 welded into the CONDUCTIVE ``step_D``.
 
-THE FOURTH ARM PAIR ON THE FOURTH SEAM, and the only weld on this backend whose two
+The fourth arm pair on the fourth seam, and the only weld on this backend whose two
 halves come from DIFFERENT FAMILIES: ``launch.plan_constitutive(..., 'H')`` -- the
 ``ordinary`` arm -- and ``conductive_pml.plan_metal_conductive_pml_curl(..., 'step_D')``
 -- the ``conductive PML curl`` arm. That pairing is not this gate's inference: leg
@@ -16,7 +16,7 @@ registers, RECOMPUTES every one of the conductive curl's six foreign taps from
 pre-launch state, steps ``D``/``fu_D``/``f_cond_D`` in place, and rotates the
 ``H``/``f_w_H`` bindings afterwards.
 
-THE CLAIM IS PER COMPLETE DRIVER STEP -- ``FdtdDriver.step``'s own consult order, with
+The claim is per complete driver step -- ``FdtdDriver.step``'s own consult order, with
 the injection slot, the f_minus_p brackets and the wall clears exactly where the driver
 runs them -- over a stated budget, as uint32 WORDS over every stored volume the engine
 allocates (never ``allclose``: ``-0.0 == 0.0`` lies), against FOUR reference engines
@@ -26,16 +26,16 @@ from one seed:
   2. the CERTIFIED SINGLES -- ``launch.plan_constitutive(..., 'H')`` at ``update_H``
      and ``conductive_pml.plan_metal_conductive_pml_curl(..., 'step_D')`` at
      ``step_D``, two dispatches on the seam;
-  3. the COMPOSITION THE COMPOSER INSTALLS TODAY -- ``plan_step(fuse=True)``. This is
+  3. the composition the composer installs today -- ``plan_step(fuse=True)``. This is
      the reference the arbitration finding rests on, and its slot table is recorded
      per case;
   4. the same slots DISPATCHED UNFUSED -- ``plan_step(fuse=False)``.
 
 =============================================================================
-WHAT IS CONDUCTIVE-SPECIFIC HERE, AND WHY EACH LEG EXISTS
+What is conductive-specific here, and why each leg exists
 =============================================================================
 
-**The second pack is the whole reason this product exists, so it is MEASURED.** With
+**The second pack is the whole reason this product exists, so it is measured.** With
 only the nine read-only per-axis vectors packed the signature is 31 pointers plus one
 ``Params`` = 32, over the platform ceiling by EXACTLY ONE. Leg ``binding_ceiling``
 compiles that shape and requires the failure, beside the 40-binding unpacked shape the
@@ -63,16 +63,16 @@ record, how many cells take each form on each fixture and requires every form to
 non-empty somewhere, because a mutation in a form no cell takes is a mutation nothing
 can catch.
 
-**The groupings are MEEP's, so the grouping mutations are inverted** (KERNELS.md §7.1):
+**The groupings are MEEP's, so the grouping mutations are inverted** (docs/development/certification.md#inverted-grouping-mutations):
 ``curl_previous_grouping``, ``constitutive_previous_accumulation_grouping`` and
 ``conductive_previous_increment_grouping`` each plant the package's PREVIOUS grouping
-and stay must-catch. The §7.2 rows armed on the conductive tail (``b1``, ``b2``,
+and stay must-catch. The form-battery rows armed on the conductive tail (``b1``, ``b2``,
 ``b5``, ``b6``) key the forms wrongly or touch an auxiliary off its cells. The fixture
 is a MID-RUN state (``Fields.h_separated``): the weld does not start H from B, and the
 predicate refuses a run's first ``update_H`` on ``launch.h_start_reasons``' rule.
 
 =============================================================================
-THE FIVE THINGS THIS GATE REFUSES TO LET PASS SILENTLY
+The five things this gate refuses to let pass silently
 =============================================================================
 
 1. **A silent fallback.** Bytes alone cannot prove the fused path ran: an unlaunched
@@ -132,7 +132,7 @@ LEGS
   mutation          every armed shader and host defect, each of which MUST diverge
   disarm            the identical harness, shipped bytes, must not diverge
 
-THE GENERIC MACHINERY IS IMPORTED FROM ``gate_metal_fused_hd_pair`` RATHER THAN COPIED,
+The generic machinery is imported from ``gate_metal_fused_hd_pair`` rather than copied,
 and that is a correctness decision rather than a size one. The driver walk, the
 capture/restore/compare mechanism, the shim that answers the engine's own dispatch
 seam, the two launch counters, the rotation settling, the orphaned-mirror guard and the
@@ -157,7 +157,7 @@ import time
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple
 
-# THE POLICY, SET BEFORE ANY meep_gpu MODULE IS REACHED. Unlike the sibling gates this
+# The policy, set before any meep_gpu module is reached. Unlike the sibling gates this
 # file does NOT force `flush`: the campaign runs it under both policies and a resolved
 # `keep` is expected to refuse every predicate by name, which is itself the measurement
 # leg `policy` records.
@@ -172,7 +172,7 @@ for _path in (str(API_ROOT), str(HERE)):
 
 import numpy as np  # noqa: E402
 
-# THE SIBLING GATE AS A LIBRARY. See the module docstring.
+# The sibling gate as a library. See the module docstring.
 import gate_metal_fused_hd_pair as _shared  # noqa: E402
 
 from meep_gpu import stepping, withdraw_hoist  # noqa: E402
@@ -223,7 +223,7 @@ SYNC_STEPS: Tuple[int, ...] = (3, 7)
 #: The floor a lifted corpus row must reach to count. See the sibling gate's constant.
 LIFT_CLEAN_STEP_FLOOR = 8
 
-#: THE SEED IS SCALED BY 2^80 -- the sibling gate's measurement, reused rather than
+#: The seed is scaled by 2^80 -- the sibling gate's measurement, reused rather than
 #: re-derived: the solver is linear in the field state and every coefficient it
 #: multiplies by is field-independent, so scaling every stored volume by 2^n shifts
 #: each float32 EXPONENT by n and leaves every MANTISSA and every rounding decision
@@ -238,7 +238,7 @@ CONDUCTIVITY = 0.3
 
 #: name -> (boundary keywords, which D targets carry a conductivity).
 #:
-#: ALL EIGHT BOUNDARY SPECIALISATIONS, because the ghost rule is exactly what
+#: All eight boundary specialisations, because the ghost rule is exactly what
 #: specialisation changes and the recompute's guard is what a redirect is most likely
 #: to eat. Plus ONE partly-conductive fixture, which is not a decoration: it is the
 #: only case on which a target's tail is the LOSSLESS three-line form beside two lossy
@@ -254,7 +254,7 @@ CASES: Tuple[Tuple[str, Dict[str, Any]], ...] = tuple(
     ("partly_conductive_mmm",
      {"boundaries": {axis: "metallic" for axis in "xyz"},
       "conductive": (True, False, True)}),
-    # THE PER-CHUNK PRESENCE: every target lossy on the low x layer's rows only, so
+    # The per-chunk presence: every target lossy on the low x layer's rows only, so
     # the 9 low-x chunks of 27 keep the conductivity and every other chunk deletes it
     # (structure.cpp:883-900); the lifted curl tail steps the lossless forms there
     # through the presence words riding in Params (``conductive_pml.presence_words``).
@@ -271,7 +271,7 @@ CASES: Tuple[Tuple[str, Dict[str, Any]], ...] = tuple(
 #: live on every axis.
 MUTATION_CASE = "bc_mmm"
 
-#: THE SECOND MUTATION CASE. On a metallic axis ``stepping._mask_non_owned_cells``
+#: The second mutation case. On a metallic axis ``stepping._mask_non_owned_cells``
 #: zeroes the very curl component the shifted tap feeds, at the very plane where the
 #: ghost is served, so no metallic BOUNDARY VALUE is observable through this kernel's
 #: output. On an all-periodic grid that mask does not fire and cell 0's curl is a live
@@ -310,7 +310,7 @@ ALL_LEGS: Tuple[str, ...] = tuple(leg for group in LEG_GROUPS.values() for leg i
 
 #: The census this gate lifts its corpus rows from, the seam record whose
 #: ``withdraw_in_seam`` flag named the rows the 0.9.2 predicate refused by their standing
-#: withdraw (admitted since entry 25; ``_shared.lift_refusal_accounting``), and the cell.
+#: withdraw (now admitted; ``_shared.lift_refusal_accounting``), and the cell.
 CENSUS = "metal_coverage_2026-09-04_m0complex"
 SEAM_RECORD = "h_to_d_seam_2026-09-04"
 
@@ -324,7 +324,7 @@ PRESENCE_REFUSED = "conductivity presence is refused"
 PRESENCE_UNREADABLE = "per-chunk conductivity presence could not be read"
 CELL_ARMS: Tuple[str, str] = ("ordinary", "conductive PML curl")
 
-#: HOW MANY TIMES ``h_cell(`` APPEARS IN THE SHIPPED SOURCE: one declaration, the
+#: How many times ``h_cell(`` appears in the shipped source: one declaration, the
 #: thread's own cell, and one per shifted magnetic tap. Declared so a lift that
 #: silently stopped redirecting a tap fails the transcription leg rather than
 #: emitting a kernel that reads a pointer the signature does not carry.
@@ -401,7 +401,7 @@ def build_driver(keywords: Mapping[str, Any], seed: int,
     for array in stored_volumes(driver.fields).values():
         array[...] = (0.37 * rng.standard_normal(array.shape)).astype(array.dtype)
         array *= scale
-    # A SEEDED STATE IS A MID-RUN ONE: H was started from B long ago, so
+    # A seeded state is a mid-run one: H was started from B long ago, so
     # ``stepping.separate_h_from_b`` must not run again on it -- the array path would
     # copy B into H and f_w on the dsigw cells at the first update_H, and neither the
     # weld nor any reference arrangement does.
@@ -416,7 +416,7 @@ def build_driver(keywords: Mapping[str, Any], seed: int,
 # ---------------------------------------------------------------------------
 
 def arrangement_singles(driver: Any) -> Arrangement:
-    """Reference 2: the two certified singles, FROM THEIR TWO DIFFERENT FAMILIES."""
+    """Reference 2: the two certified singles, from their two different families."""
     residency = Residency()
     fields, pml = driver.fields, driver.pml
     constitutive = metal_launch.plan_constitutive(fields, pml, "H", residency,
@@ -471,7 +471,7 @@ def arrangement_weld(driver: Any, functions: Optional[Mapping[str, Any]] = None,
             occupant, driver.fields, sources, span=family.REPLACES)
     plans: Dict[str, Any] = {}
     if rest_unfused:
-        # ON THIS ARRANGEMENT'S OWN RESIDENCY: the weld writes D and fu_D IN PLACE and
+        # On this arrangement's own residency: the weld writes D and fu_D IN PLACE and
         # ``update_E`` reads them; a second registry would give that read a different
         # device buffer.
         base, _residency = _shared._composed(driver, fuse=False,  # noqa: SLF001
@@ -528,7 +528,7 @@ def run_product(driver: Any, steps: int,
         legs[name]["dispatched"].get("update_H", 0) == result["steps_stepped"]
         and legs[name]["absorbed"].get("step_D", 0) == result["steps_stepped"]
         for name in ("weld", "weld_seam_only"))
-    # THE SEAM'S OWN OUTPUTS INCLUDE THE CONDUCTIVE HISTORY, which the sibling's do
+    # The seam's own outputs include the conductive history, which the sibling's do
     # not: this weld steps `f_cond_D` in place, so a run where it never moved would be
     # a run where the four-branch tail's own state was never compared.
     seam_outputs = tuple(
@@ -583,7 +583,7 @@ def run_product(driver: Any, steps: int,
 class ConductiveIntermediateCensus(_shared.BaseIntermediateCensus):
     """The sibling census, plus the conductive PML recurrence it deliberately omits.
 
-    WHY THIS SUBCLASS EXISTS, and it is a measured gap rather than a preference.
+    Why this subclass exists, and it is a measured gap rather than a preference.
     ``gate_metal_fused_hd_pair.IntermediateCensus`` models exactly the three helpers the
     ``(ordinary -> PML)`` cell's arithmetic runs through and states plainly that "the
     two conductive paths are COUNTED and not modelled, and a step that reached one
@@ -640,7 +640,7 @@ class ConductiveIntermediateCensus(_shared.BaseIntermediateCensus):
                               scratch=scratch)
             if field_in.dtype != np.float32:
                 return result
-            # THE HELPER'S OWN FORMS, REPLAYED IN float32 ON COPIES, per structure
+            # The helper's own forms, replayed in float32 ON COPIES, per structure
             # chunk on the memberships it was handed. Every named intermediate is
             # censused for the band as it is formed.
             shape = field_in.shape
@@ -698,7 +698,7 @@ class ConductiveIntermediateCensus(_shared.BaseIntermediateCensus):
         return self
 
 
-# THE CENSUS THE SHARED DRIVER USES IS SUBSTITUTED FOR THIS ONE, at module scope and
+# The census the shared driver uses is substituted for this one, at module scope and
 # once. ``_shared.drive`` constructs ``IntermediateCensus()`` by name inside its own
 # loop, so the ONLY seam a gate has for extending the instrument is the attribute the
 # name resolves to -- and extending it is exactly what this fixture needs, because the
@@ -767,7 +767,7 @@ def shader_mutations(codes: Sequence[int],
     def arm(name: str, source: str, why: str) -> None:
         out[name] = (source, why)
 
-    # THE LEGS THIS FAMILY EXISTS FOR: the foreign tap.
+    # The legs this family exists for: the foreign tap.
     arm("foreign_tap_reads_stale_H",
         needle(base, tap, "a_y = vy ? hi0[oy] : 0.0f"),
         "the tap reads the PRE-LAUNCH H at the neighbour instead of recomputing "
@@ -777,7 +777,7 @@ def shader_mutations(codes: Sequence[int],
         "the tap reads the flux density where the curl needs the stepped H")
     arm("foreign_tap_reads_the_scratch_output",
         needle(base, tap, "a_y = vy ? ho0[oy] : 0.0f"),
-        "THE PLANTED RACE: the tap reads another thread's store, which holds either "
+        "The planted race: the tap reads another thread's store, which holds either "
         "the neighbour's new H (if that thread ran first) or two-launches-old scratch")
     arm("halo_recompute_dropped",
         needle(base, tap, "a_y = 0.0f"),
@@ -791,8 +791,8 @@ def shader_mutations(codes: Sequence[int],
         needle(base, "    float a = own.a0, b = own.a1, c = own.a2;\n",
                "    float a = hi0[ii], b = own.a1, c = own.a2;\n"),
         "the curl takes the pre-launch H at its own cell: the seam undone")
-    # THE CONSTITUTIVE HALF, inside h_cell (8-space indent: the lifted body).
-    # INVERTED (KERNELS.md §7.1): the shipped grouping is MEEP's, so the mutation
+    # The constitutive half, inside h_cell (8-space indent: the lifted body).
+    # INVERTED (certification.md#inverted-grouping-mutations): the shipped grouping is MEEP's, so the mutation
     # plants the package's PREVIOUS grouping and stays must-catch.
     arm("constitutive_previous_accumulation_grouping",
         needle(base, _ACCUMULATION_0,
@@ -821,7 +821,7 @@ def shader_mutations(codes: Sequence[int],
                "    wo0[ii] = own.wnext0; wo1[ii] = own.wnext1; wo2[ii] = own.wnext2;\n",
                "    wo1[ii] = own.wnext1; wo2[ii] = own.wnext2;\n"),
         "one split-field history never advances")
-    # THE CURL HALF. INVERTED (KERNELS.md §7.1), as the constitutive grouping is.
+    # The curl half. INVERTED (certification.md#inverted-grouping-mutations), as the constitutive grouping is.
     arm("curl_previous_grouping",
         needle(base, "dtdx * (((c_y - c) + b) - b_z)", "dtdx * ((c_y - c) + (b - b_z))"),
         "the package's previous pairwise grouping (g1s - g1) + (g2 - g2s) planted in "
@@ -873,7 +873,7 @@ def conductive_mutations(codes: Sequence[int],
                "    device const float* cf0 = vpack + prm.off_ci0;\n"),
         "the conductivity factor read at the inverse's offset: the second pack's own "
         "silent wrong answer")
-    # INVERTED (KERNELS.md §7.1): MEEP forms the increment (fcnd' - fcnd) first
+    # INVERTED (certification.md#inverted-grouping-mutations): MEEP forms the increment (fcnd' - fcnd) first
     # (step_generic.cpp:167, :209); this plants the package's previous grouping.
     arm("conductive_previous_increment_grouping",
         needle(base,
@@ -881,7 +881,7 @@ def conductive_mutations(codes: Sequence[int],
                "        float u0_new = (((u0_previous * km_y) + c0_new) - c0_previous) * si_y;\n"),
         "((u*km + fcnd') - fcnd) in place of (u*km + (fcnd' - fcnd)) is a different "
         "float32 number")
-    # THE §7.2 BATTERY ON THE CONDUCTIVE TAIL (KERNELS.md), every row must-catch.
+    # The form battery on the conductive tail (certification.md#chunk-form-battery), every row must-catch.
     arm("b1_select_removed",
         _set_conductive_flags(base, conductive, [("true", "true")] * 3),
         "every lossy cell steps the both-layer form: f_cond and fu written everywhere")
@@ -915,23 +915,23 @@ def predicted_null_mutations(codes: Sequence[int],
     """Armed defects required NOT to fire, each with its reason and its control.
 
     A defect that cannot be observed is a fact about the kernel, and the honest place
-    to record it is a ROW THAT RAN rather than a sentence in a table. These mutants are
+    to record it is a row that ran rather than a sentence in a table. These mutants are
     compiled, installed and launched exactly like the firing ones.
     """
     base = family.conductive_fused_hd_pair_source(codes, conductive)
     out: Dict[str, Tuple[str, str, str]] = {}
     # The former exact-``!= 1.0f`` branch-test null is RETIRED with the predicate it
-    # measured (DESIGN.md D13): the forms are keyed on chunk membership, and keying them
+    # measured (certification.md#inverted-grouping-mutations): the forms are keyed on chunk membership, and keying them
     # on coefficient identity is the must-catch ``b2_predicate_on_coefficient_identity``.
     if all(codes):
-        # THE EDIT MOVES THE GHOST BRANCH, NEVER THE TAKEN ONE. An edit written as
+        # The edit moves the ghost branch, never the taken one. An edit written as
         # `vy ? 1.0f : 0.0f` replaces the RECOMPUTE on every cell where `vy` holds,
         # which is the whole interior -- it fires, correctly, and says nothing about
         # the ghost. Only the `: 0.0f` side is the ghost.
         out["metallic_ghost_replaced_by_the_own_cells_constitutive"] = (
             needle(base, _a_y_fragment(),
                    f"a_y = vy ? {_tap_call('i, sj, k', 0)} : own.a0"),
-            "INERT BY CONSTRUCTION, and it is a property of the ARRAY PATH rather "
+            "Inert by construction, and it is a property of the ARRAY PATH rather "
             "than of this weld. `a_y` feeds curl target 2 and nothing else, and "
             "stepping._mask_non_owned_cells (stepping.py:1940-1948) zeroes that "
             "target wherever j == 0 on a metallic y axis -- which is EXACTLY the "
@@ -1050,7 +1050,7 @@ def leg_driver_order() -> Dict[str, Any]:
 
 
 def leg_arm_pairing() -> Dict[str, Any]:
-    """THE CELL IS THE SHIPPED COMPOSER'S OWN ANSWER, not this gate's inference.
+    """The cell is the shipped composer's own answer, not this gate's inference.
 
     The task this gate closes named the pairing as the thing to think hardest about:
     the ``update_H`` half is the ORDINARY constitutive arm while the ``step_D`` half is
@@ -1070,14 +1070,14 @@ def leg_arm_pairing() -> Dict[str, Any]:
     selected = dict(composed.selected)
     pair = (selected.get("update_H"), selected.get("step_D"))
     halves = {
-        # THE CONSTITUTIVE HALF IS THE ORDINARY ARM'S OWN BODY, admitted here.
+        # The constitutive half is the ordinary arm's own body, admitted here.
         "update_H_ordinary": constitutive_coverage(driver.fields, driver.pml, "H",
                                                    residency).covered,
-        # THE CURL HALF IS THE CONDUCTIVE FAMILY'S, on step_D and NOT on step_B: an
+        # The curl half is the conductive family's, on step_D and NOT on step_B: an
         # electric conductivity is read by the D advance only.
         "step_D_conductive": conductive_pml.metal_conductive_pml_curl_coverage(
             driver.fields, driver.pml, "step_D", residency).covered,
-        # AND THE ORDINARY CURL REFUSES step_D HERE, which is the other half of the
+        # And the ordinary curl refuses step_D HERE, which is the other half of the
         # same measurement: two curl products claiming one slot is how a composer
         # ends up building both.
         "step_D_ordinary_pml": pml_curl_coverage(driver.fields, driver.pml, "step_D",
@@ -1121,7 +1121,7 @@ def leg_transcription(codes: Sequence[int],
     welded = family.conductive_welded_curl_tail(codes, conductive)
     certified_tail = _tail_after_decode(certified_curl)[: -len("}\n")]
 
-    # THE CURL HALF: every line differs only where a magnetic read was redirected.
+    # The curl half: every line differs only where a magnetic read was redirected.
     certified_lines = certified_tail.splitlines()
     welded_lines = welded.splitlines()
     changed = [(a, b) for a, b in zip(certified_lines, welded_lines) if a != b]
@@ -1132,7 +1132,7 @@ def leg_transcription(codes: Sequence[int],
     survives = [f"g{target}[" for target in range(3)
                 if f"g{target}[" in welded]
 
-    # THE CONSTITUTIVE HALF: the lift edits, verified by re-deriving them.
+    # The constitutive half: the lift edits, verified by re-deriving them.
     h_cell = plain.h_cell_function()
     lifted_ok = all(spelling in h_cell for spelling in
                     ("float prev0 = dw0 ? wi0[ii] : 0.0f;", "float src0 = b0[ii];",
@@ -1169,7 +1169,7 @@ def leg_transcription(codes: Sequence[int],
 
 
 def _volume_source(fields: Any, component: str, integrated: bool) -> Any:
-    """THE ENGINE'S OWN SOURCE, not a stand-in.
+    """The engine's own source, not a stand-in.
 
     ``withdraw_hoist._withdraw_does_work`` reads ``_n_source_points``, which only a
     real ``VolumeSource`` publishes -- a duck-typed stub answers 0 and the clause
@@ -1204,7 +1204,7 @@ def leg_refusal() -> Dict[str, Any]:
         driver.fields, driver.pml, (), residency)
     record("the_conductive_fixture", verdict.covered, verdict.reasons, True)
 
-    # 2. THE INVERSION, BOTH WAYS. A lossless grid belongs to `fused_hd_pair`.
+    # 2. The inversion, both ways. A lossless grid belongs to `fused_hd_pair`.
     lossless = build_driver({"boundaries": {}, "conductive": (False, False, False)}, 8)
     verdict = family.metal_conductive_fused_hd_pair_coverage(
         lossless.fields, lossless.pml, (), Residency())
@@ -1227,7 +1227,7 @@ def leg_refusal() -> Dict[str, Any]:
     record("a_magnetic_conductivity_is_refused", verdict.covered, verdict.reasons,
            False)
 
-    # 4. THE SEAM'S ONE PASS. An undeclared source set is not an empty one.
+    # 4. The seam's one pass. An undeclared source set is not an empty one.
     verdict = family.metal_conductive_fused_hd_pair_coverage(
         driver.fields, driver.pml, None, Residency())
     record("an_undeclared_source_set_is_refused", verdict.covered, verdict.reasons,
@@ -1275,7 +1275,7 @@ def leg_arbitration() -> Dict[str, Any]:
         unfused = metal_launch.plan_step(driver.fields, driver.pml,
                                          residency=Residency(), sources=(),
                                          fuse=False)
-        # AND THE SAME QUESTION WITH THE ABSORB ROW APPLIED IN-PROCESS. Without a
+        # And the same question with the absorb row applied in-process. Without a
         # `launch.FUSED_PAIR_ARMS` row the seam loop refuses this product before
         # asking anything about the run, so a refusal measured only that way says
         # nothing about the arbitration. With the row applied the refusal has to move
@@ -1309,7 +1309,7 @@ def leg_arbitration() -> Dict[str, Any]:
                 reason for key, value in plan.reasons.items()
                 if family.FAMILY in key for reason in
                 (value if isinstance(value, (list, tuple)) else [value])][:4],
-            # THE SUBSTANTIVE CLAIM, not a positional one. The two RELEASED
+            # The substantive claim, not a positional one. The two RELEASED
             # neighbours keep the four slots they hold today; which LABEL each wears
             # is the composer's business and is RECORDED rather than asserted, because
             # wiring this product changes labels and not ownership.
@@ -1624,7 +1624,7 @@ def leg_sentinel_members() -> Dict[str, Any]:
 def leg_policy() -> Dict[str, Any]:
     """What the resolved subnormal policy is, and what it does to the predicate.
 
-    RECORDED, NOT ASSERTED. The campaign runs this gate under both policies from
+    Recorded, not asserted. The campaign runs this gate under both policies from
     separate artifact directories; under a resolved ``keep`` the MPS executor cannot
     honour the policy and every Metal predicate refuses BY NAME, which is a measured
     refusal rather than a failure of this product.
@@ -1698,7 +1698,7 @@ def leg_binding_ceiling() -> Dict[str, Any]:
             codes_of(name), conductive_flags(name)))
         shipped[name] = {"compiled": ok, "error": why}
 
-    # AND THE PACKED PROBE LAUNCHES, reading back every Params field.
+    # And the packed probe launches, reading back every Params field.
     launched = _probe_params_readback()
     return {
         "passed": bool(all(not row["compiled"] for row in refuted.values())
@@ -1743,7 +1743,7 @@ def _probe_params_readback() -> Dict[str, Any]:
     expected = [3, 5, 7, 105, np.float32(0.5)] + list(range(11, 11 + len(names)))
     for field, value in zip(scalars, expected):
         record[field] = value
-    # THE CHUNK RECORD RIDES IN Params: 25 distinct words, read back member by member.
+    # The chunk record rides in Params: 25 distinct words, read back member by member.
     bounds = np.arange(200, 200 + len(_cb.MEMBERS), dtype=np.int32)
     record["cb"] = np.frombuffer(bounds.tobytes(), dtype=_cb.record_dtype())
     expected = expected + [int(word) for word in bounds]
@@ -1816,7 +1816,7 @@ def leg_pack_bytes() -> Dict[str, Any]:
         # THE OFFSETS, off the Params record the plan actually built.
         params = plan.static_args[-1].cpu().numpy().tobytes()
         decoded = np.frombuffer(params, dtype=family.params_record_dtype())[0]
-        # THE CHUNK RECORD the plan embedded is the driver's own, word for word.
+        # The chunk record the plan embedded is the driver's own, word for word.
         record_ok = (np.frombuffer(decoded["cb"].tobytes(), dtype=np.int32).tolist()
                      == np.asarray(driver.chunk_bounds_record(), dtype=np.int32).tolist())
         running = 0
@@ -2024,12 +2024,12 @@ def leg_launch_structure(steps: int) -> Dict[str, Any]:
         "what_this_says": (
             f"the weld saves exactly one launch against the two singles at the seam "
             f"and {step_saving:+g} against the composition the composer installs today "
-            f"over the whole step. LAUNCH COUNTS ARE NOT TIME and no timing exists "
+            f"over the whole step. Launch counts are not time and no timing exists "
             f"for this shape"),
     }
 
 
-#: THE SOURCES ARE SCALED WITH THE SEED, and leaving them unscaled DISARMS the
+#: The sources are scaled with the seed, and leaving them unscaled DISARMS the
 #: withdraw leg: an O(1) dipole subtracted from a 2^80 field rounds away entirely, so
 #: neither null control could diverge and the leg would prove nothing while reporting
 #: green. An integrated electric AND an integrated magnetic source: the magnetic one's
@@ -2271,7 +2271,7 @@ def lift_basis(results: Path) -> Tuple[List[dict], Dict[str, Any]]:
             seam_row = seam_rows.get(label, {})
             rows.append({
                 "label": label, "leg": record.get("leg", leg), "row": record["row"],
-                # THE CASE THE CHILD MUST BE ASKED FOR IS NOT ALWAYS THE ROW'S NAME.
+                # The case the child must be asked for is not always the row's name.
                 # A `parameterized`-expanded module is lifted through
                 # `parity/meep_gpu/shim/parameterized.py`, which DELIBERATELY does not
                 # reproduce the upstream method name (re-deriving it would be a guess
@@ -2285,7 +2285,7 @@ def lift_basis(results: Path) -> Tuple[List[dict], Dict[str, Any]]:
                 # the census recorded one, and the LABEL stays the upstream row's.
                 "case": record.get("case") or record["row"],
                 "module": record.get("module") or seam_row.get("module"),
-                # WHERE THE CHILD RUNS: this gate's interpreter. The path the census
+                # Where the child runs: this gate's interpreter. The path the census
                 # recorded is kept as recorded_interpreter and never launched.
                 **lift_host.row_fields(record, seam_row),
                 "grid_cells": record.get("grid_cells"),
@@ -2325,7 +2325,7 @@ def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float
     import lift_host  # noqa: PLC0415
     import measure_predicate_coverage as census  # noqa: PLC0415
 
-    # ABSOLUTE, BEFORE ANYTHING IS BUILT FROM IT: the child runs with ``cwd`` set to
+    # Absolute, before anything is built from it: the child runs with ``cwd`` set to
     # the lift workdir, so a relative artifact path handed to it resolves somewhere
     # that does not exist and the child dies AFTER the lift with the parent recording
     # a right-shaped row that measured nothing.
@@ -2360,7 +2360,7 @@ def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float
         if not link.exists():
             with contextlib.suppress(OSError):
                 link.symlink_to(entry)
-    # THE CENSUS'S OWN SHIM PATH, for the six MEEP test modules that decorate with
+    # The census's own shim path, for the six MEEP test modules that decorate with
     # ``parameterized`` (not installed here). Added ONLY for the modules whose text
     # asks for it, on the census's own test, so no other row's imports change.
     shim_path = Path(census.__file__).resolve().parent / "shim"
@@ -2374,7 +2374,7 @@ def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float
                 encoding="utf-8", errors="replace"):
             needs_shim.add(module_name)
 
-    # WHAT THIS HOST CANNOT LIFT, asked once before any child: the needs the rows
+    # What this host cannot lift, asked once before any child: the needs the rows
     # declare, probed under this interpreter (lift_host).
     host = lift_host.host_check(rows, environment, work)
     if host["unreadable"]:
@@ -2435,7 +2435,7 @@ def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float
                 stderr_text = ((expired.stderr or b"").decode("utf-8", "replace")
                                if expired.stderr else "")
             if not record_path.exists():
-                # STAMPED LIKE ANY OTHER PAYLOAD: this is the record a reader gets
+                # Stamped like any other payload: this is the record a reader gets
                 # when a child produced nothing, which is exactly the case where
                 # "which tree was this?" is the first question.
                 died = {"row": row["row"], "measured": False, "note": note,
@@ -2445,7 +2445,7 @@ def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float
                                        encoding="utf-8")
         payload = json.loads(record_path.read_text(encoding="utf-8"))
         candidates = payload if isinstance(payload, list) else [payload]
-        # THE CHILD REPORTS THE CASE IT RAN, which on a shim-expanded module is the
+        # The child reports the case it ran, which on a shim-expanded module is the
         # `__idx{N}` name and not the upstream row's; match on either.
         wanted = {row["row"], row.get("case") or row["row"]}
         record = next((r for r in candidates
@@ -2469,32 +2469,43 @@ def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float
                       if b.get("predicate_admits"))
     refused = sorted(label for label, b in blocks.items()
                      if b.get("predicate_admits") is False)
+    # A row the identity corpus's manifest retires that reached no predicate verdict is
+    # refused by name with the manifest's reason, never scored as unmeasured
+    # (``lift_host.corpus_refusals``), and is out of the denominator like a row unlifted on
+    # this host.
+    corpus = lift_host.corpus_refusals(HERE / "results", [
+        record for record in measured
+        if "predicate_admits" not in blocks[record["label"]]
+        and record["label"] not in unlifted])
+    refused_by_the_corpus = corpus["refused"]
+    counted_out = len(unlifted) + len(refused_by_the_corpus)
     unmeasured = sorted(label for label, b in blocks.items()
-                        if "predicate_admits" not in b and label not in unlifted)
+                        if "predicate_admits" not in b and label not in unlifted
+                        and label not in refused_by_the_corpus)
     driven = sorted(label for label in admitted if blocks[label].get("driven"))
     passed_rows = sorted(label for label in driven if blocks[label].get("passed"))
-    # THE 0.10 REFUSALS (``_shared.lift_refusal_accounting``): the seam record's
-    # ``withdraw_in_seam`` rows are admitted since entry 25; a row carrying a magnetic
-    # source is refused by ``launch.h_start_reasons``, derived from the row's own
-    # sources, and may carry this product's per-chunk conductivity refusal beside it.
+    # THE REFUSALS (``_shared.lift_refusal_accounting``): the seam record's
+    # ``withdraw_in_seam`` rows are admitted (no engine source stands a withdraw); a
+    # magnetic-source row is refused by ``launch.h_start_reasons``, derived from the row's
+    # own sources, and may carry this product's per-chunk conductivity refusal beside it.
     accounting = _shared.lift_refusal_accounting(
         blocks, facts["rows_with_a_standing_withdraw"],
         further_reasons=(PER_CHUNK_CONDUCTIVITY, PRESENCE_REFUSED, PRESENCE_UNREADABLE))
     expected_refused = accounting["expected_refused_from_the_row_sources"]
     return {
-        # THE DENOMINATOR IS THE CELL'S: every row the standing census puts in this
+        # The denominator is the cell's: every row the standing census puts in this
         # cell must be admitted unless its own sources say the predicate refuses it by
         # name, every admitted row must drive, and every driven row must be
-        # byte-identical over every step its own precondition held for. A CELL WHOSE
-        # EVERY ROW IS REFUSED BY NAME MEASURES NOTHING, and says so: the standing
+        # byte-identical over every step its own precondition held for. A cell whose
+        # every row is refused by name measures nothing, and says so: the standing
         # census puts one row here (``TestAdjointSolver.test_damping``), and the
         # predicate refuses it on both halves -- its magnetic source
         # (``launch.h_start_reasons``) and the per-chunk conductivity -- each derived
         # from the row itself, so the leg passes on the accounting and records
         # ``no_row_drove``, and licenses no corpus row (the base gate's rule for a cell
-        # refused by name). Every admitted row still drives. AT LEAST ONE ROW IS ASKED:
+        # refused by name). Every admitted row still drives. At least one row is asked:
         # a cell whose every row is unlifted on this host measured nothing.
-        "passed": bool(len(blocks) > len(unlifted) and not unmeasured
+        "passed": bool(len(blocks) > counted_out and not unmeasured
                        and accounting["passed"]
                        and driven == admitted
                        and passed_rows == driven
@@ -2509,7 +2520,9 @@ def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float
         "no_row_drove": not driven,
         "unmeasured": unmeasured,
         "unlifted_on_this_host": unlifted,
-        "rows_the_engine_was_asked_about": len(blocks) - len(unlifted),
+        "refused_by_the_corpus_manifest": refused_by_the_corpus,
+        "corpus_manifest": corpus["basis"],
+        "rows_the_engine_was_asked_about": len(blocks) - counted_out,
         "host_capabilities": host,
         "driven": len(driven),
         "driven_and_identical": len(passed_rows),
@@ -2530,7 +2543,7 @@ COVERAGE = family.metal_conductive_fused_hd_pair_coverage
 
 
 def leg_policy_refusal() -> Dict[str, Any]:
-    """UNDER A POLICY THE EXECUTOR CANNOT HONOUR, every fixture is refused BY NAME.
+    """Under a policy the executor cannot honour, every fixture is refused BY NAME.
 
     This is the ``keep`` leg's whole measurement, and it is a measurement rather than a
     skip. MPS flushes float32 denormals natively and exposes no lever -- both denormal
@@ -2616,7 +2629,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         log(f"LEG {leg}: {'PASS' if row.get('passed') else 'FAIL'} "
             f"({time.perf_counter() - started:.1f}s)")
 
-    # A POLICY THIS EXECUTOR CANNOT HONOUR IS MEASURED, NOT SKIPPED. See
+    # A policy this executor cannot honour is measured, not skipped. See
     # `leg_policy_refusal`: under a resolved `keep` the shipped predicate refuses by
     # name on both halves, so the byte legs have nothing to drive and running them
     # would either crash on a refused plan or -- worse -- report a green harness that
@@ -2772,10 +2785,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "what_this_does_not_license": (
             "installing the product (the composer refuses it by name and the "
             "arbitration leg pins that), flipping HOISTS_THE_WITHDRAW (no engine "
-            "source stands a withdraw in this seam since entry 25; the withdraw leg "
+            "source stands a withdraw in this seam; the withdraw leg "
             "measures where the magnetic f_minus_p restore sits, not the flag), any "
             "throughput claim (launch counts are not time, no timing exists for this "
-            "shape, and another Metal lane shared this GPU during the run), a MAGNETIC "
+            "shape, and another Metal job shared this GPU during the run), a MAGNETIC "
             "conductivity, complex conductive storage, an inactive absorber, a folded "
             "or cylindrical or beta or BFAST run, any corpus row while the lift leg "
             "records no_row_drove (its cell's every row refused by name, so the leg "

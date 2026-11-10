@@ -1,6 +1,6 @@
 """Move each weld's run evidence under the capability it ran on. ONE TIME, per ledger.
 
-WHY THIS EXISTS. Both NVIDIA ledgers record one run per weld, with the run's facts
+Why this exists. Both NVIDIA ledgers record one run per weld, with the run's facts
 (``host``, ``records``, ``recorded_utc``, ...) beside the digests of the bytes it
 certified. That shape can hold exactly one architecture: a rebind from a run on another
 compute capability overwrites the evidence and leaves the label, which is how an entry
@@ -8,14 +8,14 @@ comes to say "RTX A6000, cc 8.6" over an artifact from another card. It also mak
 second architecture subtractive -- certifying 9.0 would un-certify 8.6 -- so the
 validated list could never grow.
 
-WHAT IT WRITES. Per entry, one ``runs`` record keyed by the capability that entry's run
+What it writes. Per entry, one ``runs`` record keyed by the capability that entry's run
 reports, holding the run fields and the digest of the bytes they certified
 (``fastpath.bound_digest``). The digests stay where they are. After this, a rebind on
 UNCHANGED bytes adds a capability beside the ones already recorded, and a rebind on bytes
 that MOVED refuses by name rather than stranding the others
 (``fastpath.bind_capability``).
 
-WHAT IT REFUSES TO DO. It invents nothing. The capability is READ -- from the Triton
+What it refuses to do. It invents nothing. The capability is READ -- from the Triton
 entry's own ``host`` line, and from the CUDA campaign block's ``compute_capability`` --
 and an entry whose capability cannot be read, or reads two values, refuses the whole run
 with nothing written. It does not touch the Metal ledger, does not re-cut a digest, and
@@ -149,10 +149,14 @@ def _migrate_dispatch(key: str, entry: Dict[str, Any],
     writes, and the Triton record states that no device run backs it), and the route
     legs live under the gitignored results tree. Both records are already stale against
     the shipped code -- their contract tests are listed as pending -- so the next route
-    campaign writes ``runs[<capability>]`` from the run itself.
+    campaign writes ``runs[<capability>]`` from the run itself. The run's fields are the
+    record-cut tool's (``NVIDIA_ROUTE_RUN_FIELDS``, the run's statement of the default
+    among them), the list ``migrate_metal_runs.py`` reads on the Metal record.
     """
+    sys.path.insert(0, str(_API / "parity" / "meep_gpu"))
+    import recut_driver_dispatch_record as recut             # noqa: PLC0415
     history: Dict[str, Any] = {}
-    for field in fastpath.DISPATCH_RUN_FIELDS:
+    for field in recut.NVIDIA_ROUTE_RUN_FIELDS:
         if field == "released_fused_arms":
             continue
         if field in entry:

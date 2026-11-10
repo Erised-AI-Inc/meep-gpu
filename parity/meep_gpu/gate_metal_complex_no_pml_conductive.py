@@ -12,7 +12,7 @@ decides the stencil form. The cases, the planted signed-zero state and the stenc
 connection and presence mutation rows are the common module's, shared with the
 lossless gate; the conductive rows (the two coefficient volumes swapped, the target
 store dropped) are this gate's own. The flattened-grouping row is inverted to the
-previous pairwise bracket (KERNELS.md §7.1) and stays must-catch.
+previous pairwise bracket (docs/development/certification.md#inverted-grouping-mutations) and stays must-catch.
 """
 
 from __future__ import annotations

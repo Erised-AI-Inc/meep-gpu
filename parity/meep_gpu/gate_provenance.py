@@ -1,6 +1,6 @@
 """What bytes did this gate process actually import?
 
-WHY THIS EXISTS. A device gate's verdict is only worth what the record says it
+Why this exists. A device gate's verdict is only worth what the record says it
 covers, and until now every weld's ``source_sha256`` was transcribed by hand from
 a staged tree chosen by eye. Measured 2026-08-17: the GPU host holds 67 staged trees
 whose kernel modules differ, the digest for ``no_pml_stored_e.py`` was taken from
@@ -14,12 +14,12 @@ reads ``module.__file__`` for modules the interpreter has ALREADY IMPORTED, whic
 is the one description of "the bytes that ran" that cannot be inferred wrongly
 from a path, a cwd, a directory name, or a run's mtime.
 
-WHAT IT DOES NOT DO. It does not prove the kernel LAUNCHED — that is the launch
+What it does not do. It does not prove the kernel LAUNCHED — that is the launch
 counters' job, and the vacuous pass they catch is a different failure. It records
 which source produced the artifact, and — since 2026-09-30 — WHICH DEVICE ran it
 (:data:`DEVICE_KEY`), nothing more.
 
-WHY THE DEVICE IS STAMPED HERE, in the one place every track's save() already
+Why the device is stamped here, in the one place every track's save() already
 passes through, rather than in each gate. A weld's claim is about generated code
 for an ARCHITECTURE, so a per-capability certification record can only be keyed
 off a device the RUN recorded. Measured over the cited CUDA welds: 14 of them are
@@ -31,7 +31,7 @@ campaign recorder's directory-wide survey — a weld inheriting a device it neve
 named. One stamping point closes every such gate at once, whether or not it grows
 an ``environment`` block of its own, and ``rebind_cuda_welds.py`` reads it.
 
-WHAT THAT EDIT COSTS. This file is pinned by 2 Triton welds
+What that edit costs. This file is pinned by 2 Triton welds
 (``triton_dispersive_fused_pair_device_gate``, ``triton_fused_ade_state_device_gate``)
 and 3 Metal ones (``metal_complex_conductive_fused_pair_device_gate``,
 ``metal_complex_no_pml_conductive_device_gate``,
@@ -67,7 +67,7 @@ DEFAULT_ROOTS: Sequence[str] = ("meep_gpu", "parity/meep_gpu")
 #: gates that curate their own binding list already own that name.
 IMPORTED_KEY = "imported_source_sha256"
 
-#: Where the live device lands. A THIRD DISTINCT KEY, and both of the names it is
+#: Where the live device lands. A third distinct key, and both of the names it is
 #: not are names a gate already owns:
 #:
 #: * NOT ``environment``. Most CUDA gates write ``probe.device_info()`` there, and
@@ -147,7 +147,7 @@ def device() -> Dict[str, Any]:
     actually used — and on a host with no CuPy it returns ``None`` without importing
     anything, allocating anything or touching a device's state.
 
-    BOTH THE INDEX AND THE MASK are recorded because they are different facts:
+    Both the index and the mask are recorded because they are different facts:
     ``CUDA_VISIBLE_DEVICES`` names which devices the process can see, and
     ``getDevice()`` is the ordinal INSIDE that mask, so neither alone says which
     card ran. Same pair, same reason, as ``triton_device_identity.device_identity``.
@@ -183,7 +183,7 @@ def stamp(payload: Dict[str, Any], roots: Sequence[str] = DEFAULT_ROOTS
     :data:`VERDICT_KEY`. Each is written where nothing else writes, and each has its
     own merge rule below, because what "re-stamping" means differs per fact.
 
-    A DISTINCT KEY, not ``source_sha256``. Several gates already build a
+    A distinct key, not ``source_sha256``. Several gates already build a
     ``source_sha256`` of their own — a curated list of the files that gate means
     to bind — and that is a DIFFERENT FACT from "every repo module this process
     imported". Measured 2026-08-19: writing to the shared name made
@@ -196,10 +196,13 @@ def stamp(payload: Dict[str, Any], roots: Sequence[str] = DEFAULT_ROOTS
     disagreeing about one key is how a record starts describing a run that never
     happened.
     """
+    # The record spellings are loaded FIRST, so the import record of the first stamp
+    # already holds them and a re-stamp of the same payload records the same set.
+    neutral = _neutral_ids()
     fresh = provenance(roots)
     existing = payload.get(IMPORTED_KEY) or {}
 
-    # THE SET GROWS DURING A RUN, AND THAT IS NOT A CONTRADICTION. Gates call
+    # The set grows during a run, and that is not a contradiction. Gates call
     # save() more than once — folded_offdiag saves inside run_license, mid-run —
     # and Python imports more modules as later legs execute, so a second call
     # legitimately sees MORE files than the first. Measured 2026-08-19: a
@@ -251,7 +254,25 @@ def stamp(payload: Dict[str, Any], roots: Sequence[str] = DEFAULT_ROOTS
     # released as the run completes, and gates save progressively, so the LAST
     # write is the one that describes the finished run.
     payload[VERDICT_KEY] = read_verdict(payload)
+
+    # THE RECORD SPELLINGS. The artifact leaves the machine that ran it, so every string
+    # in it is written as ``neutral_ids`` writes it: no host name (the machine's anonymous
+    # id instead), no GPU UUID (its card id), no account and no local path (paths under
+    # their labels). In place, keeping every container the same object: a gate that goes
+    # on filling a list it put in the payload still fills the payload's list, and a second
+    # stamp of the same payload changes nothing.
+    neutral.neutralize_in_place(payload)
     return payload
+
+
+def _neutral_ids():
+    """``neutral_ids.py`` beside this file, by name or as a package module, whichever way
+    this file itself was imported."""
+    try:
+        import neutral_ids  # noqa: PLC0415
+    except ImportError:
+        from parity.meep_gpu import neutral_ids  # noqa: PLC0415
+    return neutral_ids
 
 #: Where the one readable verdict lands, beside whatever shape the gate already
 #: wrote. Never REPLACES a gate's own key — that key is the gate's authored
@@ -270,7 +291,7 @@ _FAIL_WORDS = {"fail", "failed", "refused", "rejected"}
 def read_verdict(payload: Dict[str, Any]) -> Dict[str, Any]:
     """Did this gate release? One reading, from whichever shape wrote it.
 
-    WHY THIS EXISTS. A gate's verdict was only recoverable by knowing that
+    Why this exists. A gate's verdict was only recoverable by knowing that
     gate's spelling, so "did it release?" could not be answered mechanically
     across the fleet. That is not a cosmetic problem: measured twice on
     2026-08-19, a reader that knew only ``release.released`` reported
@@ -278,7 +299,7 @@ def read_verdict(payload: Dict[str, Any]) -> Dict[str, Any]:
     (it writes ``passed``), and a weld count keyed on ``status == "PASS"``
     silently skipped the three fused records that use neither.
 
-    UNREADABLE IS NOT REFUSED. When no shape is present ``released`` is None,
+    Unreadable is not refused. When no shape is present ``released`` is None,
     never False. A gate whose verdict cannot be read has not failed — it has not
     been read — and collapsing those two is how a green fleet acquires a silent
     hole. Same rule the refusal legs already follow.
@@ -333,14 +354,14 @@ def read_verdict(payload: Dict[str, Any]) -> Dict[str, Any]:
                 return {"released": False, "reasons": _reasons(summary),
                         "read_from": "summary.status"}
 
-    # AN EXPLICIT TOP-LEVEL CLAIM. The CUDA off-diagonal gate writes
+    # An explicit top-level claim. The CUDA off-diagonal gate writes
     # ``certifies: True``. Read before the prose rule because it is a bool.
     certifies = payload.get("certifies")
     if isinstance(certifies, bool):
         return {"released": certifies, "reasons": _reasons(payload),
                 "read_from": "certifies"}
 
-    # A NESTED VERDICT OBJECT. gate_triton_cylindrical writes ``verdict`` as a
+    # A nested verdict object. gate_triton_cylindrical writes ``verdict`` as a
     # DICT carrying ``pass``, not as prose, so the prose rule below skipped it.
     nested_verdict = payload.get("verdict")
     if isinstance(nested_verdict, dict):
@@ -350,7 +371,7 @@ def read_verdict(payload: Dict[str, Any]) -> Dict[str, Any]:
                 return {"released": value, "reasons": _reasons(nested_verdict),
                         "read_from": "verdict." + key}
 
-    # A VALIDATION BLOCK. gate_triton_no_pml writes ``validation.status``.
+    # A validation block. gate_triton_no_pml writes ``validation.status``.
     validation = payload.get("validation")
     if isinstance(validation, dict):
         word = str(validation.get("status", "")).strip().lower()
@@ -361,16 +382,16 @@ def read_verdict(payload: Dict[str, Any]) -> Dict[str, Any]:
             return {"released": False, "reasons": _reasons(validation),
                     "read_from": "validation.status"}
 
-    # A TOP-LEVEL AGGREGATE FLAG. gate_triton_no_pml_constitutive writes ``all_ok``.
+    # A top-level aggregate flag. gate_triton_no_pml_constitutive writes ``all_ok``.
     for key in ("all_ok", "ok"):
         value = payload.get(key)
         if isinstance(value, bool):
             return {"released": value, "reasons": _reasons(payload),
                     "read_from": key}
 
-    # A PROSE VERDICT. Four Metal verdict.json files put a sentence at
+    # A prose verdict. Four Metal verdict.json files put a sentence at
     # ``verdict``: "PASSED", or "CERTIFIED within the gate's declared scope...".
-    # ONLY THE FIRST WORD IS READ, matched exactly. Prose is not a schema, and
+    # Only the first word is read, matched exactly. Prose is not a schema, and
     # substring matching here would read "NOT CERTIFIED" as certified — so
     # anything whose first word is not in the vocabulary stays UNREADABLE rather
     # than being guessed at.
@@ -384,7 +405,7 @@ def read_verdict(payload: Dict[str, Any]) -> Dict[str, Any]:
             return {"released": False, "reasons": [prose.strip()[:200]],
                     "read_from": "verdict(prose)"}
 
-    # A COMPLETED RUN WITH AN EMPTY FAILURE LIST. Used by the subnormal-policy
+    # A completed run with an empty failure list. Used by the subnormal-policy
     # conformance gates. Both halves are required: ``failures == []`` alone could
     # be a run that has not reached anything yet, and this file must not turn an
     # unfinished run into a pass. With ``finished_utc`` present the run declared

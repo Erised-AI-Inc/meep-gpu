@@ -16,16 +16,16 @@ the kernel could not force by construction (tl.math.fma lowering, zero-cross-ter
 survival, helper inlining, the where-select on the wrapped plane, the curl
 grouping) is HELD HERE, empirically, per platform.
 
-WHY SUB-STEP GRANULARITY. The composition probe
+Why sub-step granularity. The composition probe
 (``probe_triton_complex_composition.py``) certifies complete driver steps; this
 gate certifies each sub-step against an in-file transcription of the array path,
 because a whole-step comparison cannot attribute a defect to a sub-step and
 cannot exercise the deliberately wrong configurations (mutations) at all.
 
-SUBNORMAL POLICY — THE STRIP IS THE SHIP CONFIGURATION. CuPy 13.5.1 appends
+Subnormal policy — the strip is the ship configuration. CuPy 13.5.1 appends
 ``-ftz=true`` to every NVRTC compile (cupy/cuda/compiler.py:552), flushing
 float32 subnormals on the device; the engine ships IEEE subnormal-KEEP, the only
-alignment direction (NVRTC rejects a duplicate ``-ftz`` option and Triton has no
+common setting (NVRTC rejects a duplicate ``-ftz`` option and Triton has no
 flush knob — settled in ``results/device_subnormal_policy_2026-08-11/``).
 This gate therefore installs the demonstrated strip — wrap
 ``cupy.cuda.compiler.compile_using_nvrtc``, filter ``-ftz=true``, private
@@ -66,7 +66,7 @@ Legs, in order:
   catch is demanded on a purely imaginary state instead, whose exactly-zero
   real words the mutated phase moves (:data:`ENGINE_PHASE_MUTATION_CASES`).
 
-THE ALIGNED FORMS (bit_parity 0.10, WP KT5). The kernels step MEEP's forms part by
+MEEP's per-chunk forms (since 1.0). The kernels step MEEP's forms part by
 part: every product is a real coefficient times one stored part, the curl is MEEP's
 left-to-right ``((g1s - g1) + g2) - g2s`` with the record's partner presence, each
 cell takes the split-field recurrence or the dsig-only form by its chunk's membership
@@ -420,14 +420,14 @@ def ftz_cache_reasons(cache_dir: Optional[str]) -> List[str]:
 
 
 def install_ftz_strip(policy: Optional[str] = None) -> Dict[str, Any]:
-    """Install THE SUBNORMAL POLICY on every executor, BEFORE any device compile.
+    """Install the subnormal policy on every executor, BEFORE any device compile.
 
     ``policy`` names the request. Omitting it keeps the historical behaviour —
     :data:`~meep_gpu.subnormal_policy.MATCH_MEEP`, resolved by measuring this
     host — which is what every existing caller relies on and what the default
     preserves. Pass a name when the CALLER, not the host, is the authority.
 
-    WHY THE PARAMETER EXISTS (2026-08-17). A gate that installs a policy of its
+    Why the parameter exists (2026-08-17). A gate that installs a policy of its
     own AND calls this function has TWO authorities, and they disagree silently
     whenever the host's measured answer differs from the arms' certification.
     Measured: the complex stored-E gate installed ``keep`` (its arms then carried
@@ -446,7 +446,7 @@ def install_ftz_strip(policy: Optional[str] = None) -> Dict[str, Any]:
     host, CuPy and Triton to the answer through
     :func:`meep_gpu.subnormal_policy.install_subnormal_policy`.
 
-    WITH NO REQUEST the resolution is :data:`~meep_gpu.subnormal_policy.MATCH_MEEP`:
+    With no request the resolution is :data:`~meep_gpu.subnormal_policy.MATCH_MEEP`:
     whatever MEEP itself does to float32 subnormals on THIS host, read off the FPU
     MEEP's own initialization left behind. That is why MEEP is imported first here
     — in a process with no MEEP the question is unmeasurable and falls back to
@@ -461,15 +461,16 @@ def install_ftz_strip(policy: Optional[str] = None) -> Dict[str, Any]:
     when the cache directory would let one policy's binaries serve under the
     other's name — loudly, at startup, before any artifact exists.
     """
+    import neutral_ids  # noqa: PLC0415
     global _FTZ_STRIP
     if _FTZ_STRIP is not None:
         return _FTZ_STRIP
     if cp is None:
-        # A HOST WITH NO CUPY GETS A RECORDED NO-OP, and this early return is
+        # A host with no CuPy gets a recorded no-op, and this early return is
         # load-bearing rather than an optimization. There are no device binaries
         # to govern here, and the alternative — importing MEEP and driving the
         # process FPU — is a side effect with nothing to buy it: measured, it made
-        # the laptop contract tranches install a process-wide policy and import
+        # the host-only contract tests install a process-wide policy and import
         # MEEP, which then broke test_subnormal_policy's own unmeasurable-default
         # tests later in the same pytest session (they assert, correctly, that the
         # suite has not imported MEEP).
@@ -481,7 +482,7 @@ def install_ftz_strip(policy: Optional[str] = None) -> Dict[str, Any]:
                                 "cannot reach a device"}
         return _FTZ_STRIP
     meep_record = ensure_meep_imported_for_policy()
-    # ONE RESOLUTION, USED BY EVERY CLAUSE BELOW. ``policy_resolution`` is asked
+    # One resolution, used by every clause below. ``policy_resolution`` is asked
     # for the CALLER's request, not for a bare re-measurement — otherwise this
     # function carries two authorities of its own: the cache guard on the next
     # line would judge against the host's measured answer while the install two
@@ -494,7 +495,7 @@ def install_ftz_strip(policy: Optional[str] = None) -> Dict[str, Any]:
     resolution = _policy.policy_resolution(policy)
     policy = resolution["policy"]
     cache_dir = os.environ.get("CUPY_CACHE_DIR", "")
-    # UNSET UNDER 'keep' IS DERIVABLE, NOT AN ERROR. The token rule exists because
+    # UNSET UNDER 'keep' is derivable, not an error. The token rule exists because
     # CuPy's cache key is computed above the compile_using_nvrtc seam, so the
     # directory NAME is the only separator between stripped and unstripped
     # binaries — and subnormal_policy.keep_policy_cache_dir already computes a
@@ -527,7 +528,7 @@ def install_ftz_strip(policy: Optional[str] = None) -> Dict[str, Any]:
         "meep_import": meep_record,
         "calls": int(stamp["nvrtc_calls"]),
         "removed": int(stamp["ftz_removed"]),
-        "cache_dir": stamp["cache_dir"],
+        "cache_dir": neutral_ids.path(stamp["cache_dir"]),
         "cache_preexisting": bool(stamp["cache_preexisting"]),
         "cache_dir_derived": derived_cache,  # None when the caller supplied one
 
@@ -628,6 +629,7 @@ def ftz_strip_license_reasons() -> List[str]:
 
 def policy_stamp(backend_name: str) -> Dict[str, Any]:
     """The subnormal-policy record one backend's artifact is stamped with."""
+    import neutral_ids  # noqa: PLC0415
     state = _FTZ_STRIP or {}
     module_stamp = _policy.policy_stamp()
     if backend_name == "numpy":
@@ -666,7 +668,7 @@ def policy_stamp(backend_name: str) -> Dict[str, Any]:
                                               module_stamp["ftz_removed"])),
                  "measured": dict(state.get("measured") or {}),
                  "triton": dict(module_stamp["triton"]),
-                 "cache_dir": state.get("cache_dir", ""),
+                 "cache_dir": neutral_ids.path(state.get("cache_dir", "")),
                  "cache_preexisting": bool(state.get("cache_preexisting")),
                  "unattained": list(module_stamp["unattained"])}
         if state.get("zero_compiles_explained"):
@@ -952,8 +954,8 @@ SHAPES: Tuple[Tuple[int, int, int], ...] = (
 #: (name, boundaries, phases, optional shape restriction). A metallic axis never
 #: carries a phase (grid.py:992-1001; stepping._bloch_phases raises); the
 #: transverse-collapsed configuration is Grid-unreachable TODAY (grid.py:980-991)
-#: but the kernel's n==1 wrap+phase mechanics are the task-#9 lift's substrate,
-#: so the synthetic leg measures them without a Grid.
+#: but the kernel's n==1 wrap+phase mechanics are what a lift of that restriction
+#: would build on, so the synthetic leg measures them without a Grid.
 CONFIGS: Tuple[Dict[str, Any], ...] = (
     {"name": "unphased_all_periodic", "boundaries": (PERIODIC, PERIODIC, PERIODIC),
      "phases": (None, None, None)},
@@ -1256,7 +1258,7 @@ def compile_mutated(source: str, kernel_name: str):
     may not read a plain module global, and the shared forms and record offsets are
     imported, as the module imports them.
 
-    THE MODULE NAME MUST NOT START WITH ``triton``. Triton's dependency finder treats
+    The module name must not start with ``triton``. Triton's dependency finder treats
     every callee whose ``__module__`` starts with its own package name as a builtin
     and leaves it out of the kernel's cache key, so under a ``triton_*`` name a
     mutation that edits only a helper (``_connect``) keys like every other

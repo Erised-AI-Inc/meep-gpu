@@ -1,7 +1,7 @@
 """The BFAST (``grid.bfast_active``) curl family: its predicate, its k assignment,
 its device text, and a behavioural leg that actually steps a grid.
 
-WHAT IS PINNED HERE AND WHAT IS NOT. The BYTE-IDENTITY VERDICT needs a device and
+What is pinned here and what is not. The BYTE-IDENTITY VERDICT needs a device and
 lives in ``parity/meep_gpu/gate_cuda_bfast.py``. What this file pins is the half a
 laptop can reach:
 
@@ -117,7 +117,7 @@ def test_partitions_with_the_certified_family_in_both_directions(xp):
 
 
 def test_refuses_a_mirror_fold_by_name(xp):
-    """THE REFUSAL THAT COSTS NOTHING, AND IS THEREFORE THE ONE TO PIN.
+    """The refusal that costs nothing, and is therefore the one to pin.
 
     The certified pair admits a fold since 2026-08-20 on a device verdict whose
     argument is that the folded ghost VALUES are dead -- a claim about a stencil
@@ -128,7 +128,7 @@ def test_refuses_a_mirror_fold_by_name(xp):
     fields, layer, grid = build(xp, cell=(8.0, 16.0, 12.0),
                                 symmetry=(Mirror("Y", 1),))
     assert grid.is_mirrored(1)
-    # AND NOBODY ELSE PICKS IT UP: the certified pair admits the fold but refuses
+    # And nobody else picks it up: the certified pair admits the fold but refuses
     # the BFAST, so a fold + BFAST slot is served by no family at all. That is the
     # honest state and it is asserted, because "refused here" would otherwise leave
     # open whether the slot quietly fell to the certified kernel.
@@ -313,7 +313,7 @@ _PASS_LINE_PATTERNS = (
 
 @pytest.mark.parametrize("side,letters", [("B", "Bx By Bz"), ("D", "Dx Dy Dz")])
 def test_kernel_is_the_certified_kernel_plus_exactly_the_bfast_insert(side, letters):
-    """THE ANTI-DRIFT TEST. Strip the comments, the fold helpers, the BFAST pass
+    """The anti-drift test. Strip the comments, the fold helpers, the BFAST pass
     statements and the state/scalar parameters, rename the entry point, and what is
     left must be the CERTIFIED ``step_{B,D}_pml_real`` byte for byte.
 
@@ -407,9 +407,9 @@ def gate():
 @pytest.mark.parametrize("sub_step", SUB_STEPS)
 def test_the_transcribed_tree_steps_a_bfast_grid_identically(gate, label, sub_step):
     """The device tree, in float32, against ``stepping`` itself -- uint32 words,
-    FIELD, PML AUXILIARY AND ``f_bfast`` STATE.
+    field, PML auxiliary and ``f_bfast`` state.
 
-    COMPILES NOTHING AND CERTIFIES NOTHING; the byte verdict is the device gate's.
+    Compiles nothing and certifies nothing; the byte verdict is the device gate's.
     The case carries its own floors: the state must start nonzero (or the ``- F_prev``
     term is invisible at launch one), the array path must have moved, and the
     run must differ BOTH from a BFAST-off control and from a zero-k control -- the
@@ -447,7 +447,7 @@ def test_a_planted_k_defect_diverges(gate, mutation):
 @pytest.mark.parametrize("mutation", ["record_bound_off_by_one",
                                       "record_lattices_swapped"])
 def test_a_corrupted_chunk_record_diverges(gate, mutation):
-    """KERNELS.md section 7.2: the record the launch binds, corrupted while the
+    """The per-chunk form battery: the record the launch binds, corrupted while the
     oracle's division is untouched, must move a word -- the per-cell forms are chosen
     by the record and nothing else."""
     spec = next(s for s in gate.BFAST_SPECS if s["label"] == "general_k_periodic")

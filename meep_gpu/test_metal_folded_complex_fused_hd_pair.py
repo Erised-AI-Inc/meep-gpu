@@ -1,6 +1,6 @@
 """Laptop tests for the FOLDED COMPLEX Metal H->D weld.
 
-THE MERGE BAR, NOT THE CERTIFICATION. The byte claim this family owes is a device gate
+The merge bar, not the certification. The byte claim this family owes is a device gate
 that runs complete driver steps and compares uint32 words
 (``parity/meep_gpu/gate_metal_folded_complex_fused_hd_pair.py``); these tests are what
 must stay green on every change, and they are chosen for the defects a byte gate would
@@ -26,17 +26,17 @@ catch LATE, on a configuration nobody sweeps, or not at all:
   ``parity * H[2]``. The literal and the parsed guard are what a redirect eats first;
 * **the binding ceiling**, an EQUALITY here: 31 of 31, no headroom, and the fold adds
   no argument under complex storage either;
-* **the predicate's refusals**, every one answerable without a GPU, INCLUDING BOTH
-  DIRECTIONS of the inverted fold clause -- disjointness is a property of a PAIR of
+* **the predicate's refusals**, every one answerable without a GPU, including both
+  directions of the inverted fold clause -- disjointness is a property of a PAIR of
   predicates and neither one alone can carry it;
-* **the declarations.** Registered UNWIRED and gated on the fold, ``INSTALLABLE``
+* **the declarations.** Registered unwired and gated on the fold, ``INSTALLABLE``
   False on a measured arbitration, ``WELD_OWED`` EMPTY because ``fingerprints.json``
   now carries the ledger entry. Each is a claim a reader will act on.
 
 Everything that needs a device is guarded and skipped, so this file is the merge bar on
 a host with no MPS as well as on this one.
 
-WHAT THIS FILE DOES NOT CLAIM. Nothing here is a byte-identity measurement and nothing
+What this file does not claim. Nothing here is a byte-identity measurement and nothing
 here licenses installing the product. The cell's numbers -- 5 rows in the
 ``(folded complex -> folded complex)`` cell, all five ``buildable_not_built``, 0 of
 them carrying a standing in-seam withdraw -- come from the Metal fusion board
@@ -61,7 +61,7 @@ if _PARITY not in sys.path:
 
 import metal_composition_matrix as matrix  # noqa: E402
 
-# THE PROBE PATHS COME FROM THE SAME PLACE THE PREDICATES READ THEM, so a test cannot
+# The probe paths come from the same place the predicates read them, so a test cannot
 # certify a body the family would not launch, and cannot skip on a host that HAS the
 # artifact merely because nothing exported its path.
 ENVIRONMENT = matrix.prepare_environment()
@@ -149,7 +149,7 @@ def test_the_span_is_the_seam_and_both_seam_flags_are_false_with_a_reason():
     from meep_gpu import withdraw_hoist  # noqa: PLC0415
 
     assert folded.SEAM == withdraw_hoist.SEAM
-    # NOT A CHOICE: nothing is injected between the two consults, so there is no
+    # Not a choice: nothing is injected between the two consults, so there is no
     # deposit to bracket. The withdraw flag IS a choice and its consequence is that
     # the predicate refuses every row with a standing one.
     assert folded.CARRIES_DEPOSIT_REPAIR is False
@@ -169,7 +169,7 @@ def test_the_family_is_welded_and_the_debt_it_replaced_is_kept():
     tree cannot show, and cutting the entry without emptying it leaves a welded family
     still declaring its weld is owed. Both are read off the tree here.
 
-    THE ORDER IS THE POINT. Emptying ``WELD_OWED`` MOVES the module, and the module is
+    The order is the point. Emptying ``WELD_OWED`` MOVES the module, and the module is
     the first pin of its own weld, so ``mint_metal_weld.py`` refuses an artifact whose
     recorded digests have moved. The gate was therefore re-run AGAINST the emptied
     bytes and minted from that artifact. The debt text -- which named the artifact,
@@ -258,7 +258,7 @@ def test_the_curl_lift_moves_exactly_the_nine_magnetic_loads(codes):
     body = parent.split(plain._BODY_ANCHOR, 1)[1][: -len("}\n")]
     prologue, tail = folded.folded_welded_curl_tail(codes, (0, 0, 0))
     parent_lines = body.splitlines()
-    # THE PROLOGUE IS PART OF THE EMISSION and is compared with the body: the weld
+    # The prologue is part of the emission and is compared with the body: the weld
     # splits the certified text at `int nyz = nyi * nzi;` only so that `h_cell` can be
     # called between the two halves, so a comparison that dropped it would report the
     # guard and the whole index decode as "moved".
@@ -347,7 +347,7 @@ def test_both_halves_read_one_sub_lattice_which_is_what_makes_thirty_pointers():
 def test_the_source_decodes_and_carries_exactly_one_contraction_pragma(codes, mode):
     """One pragma, and the text round-trips through UTF-8.
 
-    NOT AN ASCII ASSERTION, and the difference is a measurement rather than a
+    Not an ASCII assertion, and the difference is a measurement rather than a
     relaxation: this weld emits the PLAIN COMPLEX product's template verbatim, and that
     template's comments carry non-ASCII punctuation. Requiring ASCII here would be this
     file asserting something about a file it deliberately does not own. What matters --
@@ -407,7 +407,7 @@ def test_an_unfolded_complex_grid_is_refused_naming_the_plain_product(flush_poli
 
 
 def test_the_plain_complex_product_refuses_this_products_cell(flush_policy):
-    """THE OTHER DIRECTION. Disjointness is a property of a PAIR of predicates."""
+    """The other direction. Disjointness is a property of a PAIR of predicates."""
     fields, pml = _folded_complex_pair()
     verdict = plain.metal_complex_fused_hd_pair_coverage(
         fields, pml, (), _FakeResidency())
@@ -416,7 +416,7 @@ def test_the_plain_complex_product_refuses_this_products_cell(flush_policy):
 
 
 def test_an_undeclared_source_list_is_refused_by_name(flush_policy):
-    """IGNORANCE IS NEVER AN EMPTY SET."""
+    """Ignorance is never an empty set."""
     fields, pml = _folded_complex_pair()
     verdict = folded.metal_folded_complex_fused_hd_pair_coverage(
         fields, pml, None, _FakeResidency())

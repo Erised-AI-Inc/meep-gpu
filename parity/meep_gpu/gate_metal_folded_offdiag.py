@@ -1,16 +1,16 @@
 """BYTE GATE — the FOLDED off-diagonal electric constitutive sub-step, on Metal.
 
-WHAT THIS CERTIFIES: that ``metal_kernels.folded_offdiag_update_e`` reproduces
+What this certifies: that ``metal_kernels.folded_offdiag_update_e`` reproduces
 ``stepping.update_E`` (stepping.py:954, the ``elif offdiagonal:`` branch at :1001-1008)
-WORD FOR WORD on a mirror-folded grid carrying off-diagonal chi1inv rows — per
+word for word on a mirror-folded grid carrying off-diagonal chi1inv rows — per
 SUB-STEP and per COMPLETE STEP — subject to a CHECKED subnormal-free precondition
 that is reported as a WINDOW rather than as a count.
 
-WHY THIS FAMILY NEEDS ITS OWN GATE RATHER THAN INHERITING TWO GREEN ONES. Both
+Why this family needs its own gate rather than inheriting two green ones. Both
 halves are already certified alone (:mod:`.offdiag_update_e` and :mod:`.symmetry`),
 and that is exactly the trap: :func:`symmetry.folded_constitutive_coverage`
 re-admits the CERTIFIED constitutive body onto a folded grid on the single argument
-that the sub-step READS NO NEIGHBOUR, so the fold's ghost rules cannot reach it. The
+that the sub-step reads no neighbour, so the fold's ghost rules cannot reach it. The
 off-diagonal row product DOES read neighbours (stepping.py:1243-1249), so that
 argument is unavailable and the composition is a question, not a corollary. The
 fold reaches this sub-step in ONE role and not the other, and this gate measures
@@ -29,7 +29,7 @@ both halves:
   ``mutations`` arms it on two row sets so the catch is discriminating rather than
   coincidental.
 
-WHAT THE MUTATION LEG COVERS, because a gate that cannot fail certifies nothing.
+What the mutation leg covers, because a gate that cannot fail certifies nothing.
 The five defects a mirror is prone to each have their own arm here, in this
 family's own shape — there is no fill in this family, so each is expressed against
 the in-kernel ghost REDIRECT rather than against a written plane:
@@ -45,7 +45,7 @@ the in-kernel ghost REDIRECT rather than against a written plane:
   fold the wrong axis          the mirror code and the sign are emitted on an
                                UNFOLDED axis while the grid is folded elsewhere.
 
-THE THREE MEASURED NULLS ARE NAMED RATHER THAN ROUNDED UP, and one of them turns a
+The three measured nulls are named rather than rounded up, and one of them turns a
 claim into a check. The own-axis up wrap is a null with the ``Ey`` row dead (that
 pair is what makes the catch discriminating); ``0.0f - x`` is a null on ordinary
 normal data because the term's own sum renormalises, and the VALUE-CLASS leg is what
@@ -55,7 +55,7 @@ byte at all — fold X with the single live slot ``Ey <- Ez``, the measured
 counterexample a row-level reachability test gets wrong. Without that row the SCOPE
 on the corresponding catch would be indistinguishable from a convenient exclusion.
 
-RULING R7: SOFTWARE BINARY64. The row is the certified family's software-binary64
+SOFTWARE BINARY64 (docs/design/floating-point.md). The row is the certified family's software-binary64
 double row (``offdiag_update_e._row_assembly``), with its per-chunk presence words,
 so every leg compares the kernel with ``stepping.py`` on generic states through the
 ENGINE route (``plan_folded_offdiag_constitutive`` with the chunk record of the
@@ -63,7 +63,7 @@ division the oracle steps with). ``b_select`` adds the per-chunk tail and the fo
 on EXACT-ROW states (dyadic words: every float32 operation of the row is exact, so
 a differing word is the tail's or the fold's).
 
-THE STATED WEAKNESS, and it is this certification's one gap against the Triton
+The stated weakness, and it is this certification's one gap against the Triton
 twin's: ``torch.mps.compile_shader`` exposes NO DISASSEMBLY. This gate cannot refuse
 a compile whose emitted code violates the policy and cannot establish that the
 contraction guard was obeyed. Every leg here is BEHAVIOURAL — it catches a wrong
@@ -92,7 +92,7 @@ if API_ROOT not in sys.path:
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
-# THE POLICY IS SET BEFORE ANY `meep_gpu` MODULE IS REACHED. On MPS the float32
+# The policy is set before any `meep_gpu` module is reached. On MPS the float32
 # subnormal flush is native and has no lever, so the resolved default `keep` is NOT
 # OFFERABLE and every Metal predicate refuses by name. Setting `flush` is what puts
 # the claim under the CHECKED precondition rather than under a pretence.
@@ -149,8 +149,8 @@ DRIVER_ORDER: Tuple[str, ...] = (
 #: single slot, and one with none.
 DEFAULT_ROWS: Dict[str, Tuple[str, ...]] = {"Ex": ("Ey", "Ez"), "Ez": ("Ex",)}
 
-#: THE CASE MATRIX. Every axis is here because some mutation is reachable on one
-#: value of it and a MEASURED NULL on the other:
+#: The case matrix. Every axis is here because some mutation is reachable on one
+#: value of it and a measured NULL on the other:
 #:
 #:   TERMINATION    MIRROR_METALLIC is what all 19 corpus rows carry; MIRROR_PERIODIC
 #:                  is the unmeasured twin where the far face is live and the
@@ -232,13 +232,13 @@ def build(axes: str = "Y", phases: Sequence[int] = (1,), boundaries: Any = None,
     SECOND TIME rather than deep-copying: ``Grid`` holds the array module itself and
     a deepcopy raises.
 
-    EVERY VOLUME IS FILLED WITH PHYSICAL-BAND VALUES, and that is the first thing
+    Every volume is filled with physical-band values, and that is the first thing
     this gate establishes rather than an afterthought: zero-init is a FIXED POINT of
     this sub-step (``src = g*u + 0``, ``f += kps*src - kms*prev`` all vanish), so a
     no-op agreeing with a no-op would be trivially identical and would certify
     nothing.
 
-    A SEEDED STATE IS A MID-RUN ONE, so it carries ``Fields.h_separated``, as
+    A seeded state is a mid-run one, so it carries ``Fields.h_separated``, as
     ``matrix``'s builders do. MEEP's start of H and ``f_w`` from B
     (``stepping.separate_h_from_b``, run by the array path's first ``update_H``) is
     long past, and the certified constitutive kernel ``symmetry.plan_folded_constitutive``
@@ -305,10 +305,10 @@ def tags(fields: Any, pml: Any) -> Tuple[str, ...]:
     found.append("three_d" if int(fields.grid.shape[2]) > 1 else "two_d")
     if any(offdiag.wall_mask_axes(fields.grid)):
         found.append("declared_wall")
-    # THE REACHABILITY QUESTION IS ASKED AT SLOT LEVEL, and the family's own helper
+    # The reachability question is asked at slot level, and the family's own helper
     # is what answers it: the mirror rule enters this sub-step ONLY through the DOWN
     # shift of the PARTNER axis (stepping.py:1243-1245), so a fold is byte-visible
-    # iff some SURVIVING row slot takes that axis's field AS ITS PARTNER. A row-level
+    # iff some SURVIVING row slot takes that axis's field as its partner. A row-level
     # test ("some live row is not Ex") gets this wrong on a measured counterexample.
     reachable, _notes = folded.mirror_arm_is_reachable(fields.grid, fields)
     found.append("ghost_reachable" if reachable else "ghost_unreachable")
@@ -413,7 +413,7 @@ def census_window(fields: Any, results: Optional[Dict[str, Any]],
                   step: int) -> Any:
     """One step's census over the operands, the RESULTS and the fold's intermediate.
 
-    THE INTERMEDIATE IS NOT OPTIONAL HERE. The fold puts a deep-PML plane on the far
+    The intermediate is not optional here. The fold puts a deep-PML plane on the far
     face — exactly where tiny magnitudes live — and the ghost lane forms
     ``g[face 0] + w * g[row MIRROR_SOURCE_INDEX]`` on the mirror plane. A
     whole-volume aggregate cannot be moved by a 1e-40 boundary plane, so the
@@ -467,7 +467,7 @@ def window_row(window: Any, fired: bool) -> Dict[str, Any]:
 
 #: The four BC triples the compile sweep drives: the corpus's two (both folded
 #: METALLIC, the shape all 19 rows carry), the unmeasured PERIODIC twin, and an
-#: all-mirror triple. THE ENUMERATION IS WIDER THAN THE REACHABLE SET and this
+#: all-mirror triple. The enumeration is wider than the reachable set and this
 #: artifact must not be read as claiming otherwise: the R01..R22 row-mask pattern the
 #: 19 corpus rows drive is NOT measured anywhere — the predicate-coverage battery
 #: records ``has_offdiagonal_epsilon`` and not the surviving slot set — so the sweep
@@ -561,7 +561,7 @@ def leg_reduction(payload: Dict[str, Any], out: str) -> None:
                                     "from the certified source")
             equal += 1
 
-    # THE FOLDED DIFF, stated as a number rather than as a description: the folded
+    # The folded diff, stated as a number rather than as a description: the folded
     # source against the CERTIFIED source for the same grid with the mirror axis
     # declared METALLIC. Every differing line must be the ghost redirect, the
     # up-validity line beside it, a lane whose sign moved, or the presence block's
@@ -579,7 +579,7 @@ def leg_reduction(payload: Dict[str, Any], out: str) -> None:
         changed = [line for line in difflib.unified_diff(
             base.splitlines(), ours.splitlines(), lineterm="", n=0)
             if line.startswith(("+", "-")) and not line.startswith(("+++", "---"))]
-        # EVERY CHANGED LINE MUST BE ONE OF EXACTLY THREE THINGS, and the check is
+        # Every changed line must be one of exactly three things, and the check is
         # spelled from the emitter's own name tables rather than from a pattern a
         # reader guessed: a line of the GHOST BLOCK of a folded axis (its down index,
         # its down-validity flag or its up-validity flag), a line carrying a
@@ -635,7 +635,7 @@ def leg_byte(payload: Dict[str, Any], out: str) -> None:
     Every case establishes NON-VACUITY FIRST: the array path must have moved words,
     because zero-init is a fixed point of this sub-step and a no-op agreeing with a
     no-op is trivially identical. The subnormal precondition is censused per case
-    and reported as a WINDOW; a case that enters the band is REFUSED BY NAME and its
+    and reported as a WINDOW; a case that enters the band is refused by name and its
     comparisons are withheld from the certified total.
     """
     rows: List[Dict[str, Any]] = []
@@ -686,7 +686,7 @@ def leg_byte(payload: Dict[str, Any], out: str) -> None:
 def plant_signed_zero_lattice(fields: Any, axis: int) -> int:
     """Rows 0 and 1 negative zero, row MIRROR_SOURCE_INDEX positive zero.
 
-    ENGINEERED SO THE SIGN SURVIVES TO THE OUTPUT, which is the whole difficulty.
+    Engineered so the sign survives to the output, which is the whole difficulty.
     ``-x`` and ``0.0f - x`` part company on ``+0.0`` — but ``g[i] + ghost`` washes
     the sign straight back out unless ``g[i]`` is itself ``-0.0``, so a zeroed ghost
     plane ALONE is a measured NULL. With row 0 negative and row 2 positive the pair
@@ -734,8 +734,8 @@ def leg_value_class(payload: Dict[str, Any], out: str) -> None:
 
     Signed zeros are NOT subnormal — the census counts a zero exponent with a
     NONZERO mantissa — so the signed-zero rows sit INSIDE the precondition and their
-    comparisons are certified. The subnormal plane sits outside it and is REFUSED BY
-    NAME, its comparisons withheld: that is a COVERAGE REFUSAL, not a failure, and
+    comparisons are certified. The subnormal plane sits outside it and is refused by
+    name, its comparisons withheld: that is a COVERAGE REFUSAL, not a failure, and
     it is the boundary this backend's native flush imposes.
     """
     rows: List[Dict[str, Any]] = []
@@ -807,7 +807,7 @@ def composed_plans(fields: Any, pml: Any, residency: Any) -> Dict[str, Any]:
 
 
 def reference_step(fields: Any, pml: Any) -> None:
-    """ONE COMPLETE DRIVER STEP on the array path — five passes per half."""
+    """One complete driver step on the array path — five passes per half."""
     stepping.step_B(fields, pml)
     stepping.fill_symmetry_bc_B(fields)
     stepping.fill_folded_far_ghosts_B(fields)
@@ -829,9 +829,9 @@ def walk(plans: Dict[str, Any], order: Sequence[str] = DRIVER_ORDER) -> None:
 
 
 def leg_whole_step(payload: Dict[str, Any], out: str, budget: int = 6) -> None:
-    """Per COMPLETE STEP, reporting the FIRST DIVERGENT STEP.
+    """Per complete step, reporting the first divergent step.
 
-    SIX GREEN SUB-STEP COMPARISONS SAY NOTHING ABOUT THE OBJECT THE ENGINE RUNS.
+    Six green sub-step comparisons say nothing about the object the engine runs.
     Three failure classes live only here — a STALE MIRROR (the engine holds NumPy,
     so a sub-step left on the array path writes the HOST array and a device mirror
     held across it is a smooth, plausible, WRONG field), a SEAM (``zero_metal_B`` /
@@ -844,7 +844,7 @@ def leg_whole_step(payload: Dict[str, Any], out: str, budget: int = 6) -> None:
     Per-slot launch counters are asserted, because a slot that passes by NOT
     EXECUTING is the hollow pass this discipline exists to prevent. The subnormal
     census runs EVERY STEP and is reported as a WINDOW ``[first, last]``: band entry
-    is a RUN-and-WINDOW fact, not a family fact — measured on the chi3 round, a Q~20
+    is a RUN-and-WINDOW fact, not a family fact — measured on a chi3 run, a Q~20
     narrow-band Gaussian turn-on drags the leading edge through the whole band from
     step 55 to step 3,726 and then runs clean for 16,274 more steps, so a row
     recording a scalar count cannot be read for what it covers.
@@ -903,7 +903,7 @@ def leg_whole_step(payload: Dict[str, Any], out: str, budget: int = 6) -> None:
             assert plan.launches == budget * (len(plan.near) + len(plan.far)), (
                 label, slot, plan.launches)
         refused = bool(fired)
-        # A REFUSAL IS NOT A PASS BY ANOTHER NAME. Where the precondition held, a
+        # A refusal is not a pass by another name. Where the precondition held, a
         # divergence is still a failure and still stops the leg here.
         if not refused:
             assert first_divergent is None, (label, first_divergent, per_step)
@@ -958,7 +958,7 @@ def leg_precondition(payload: Dict[str, Any], out: str, budget: int = 6) -> None
     :func:`preconditions.assert_clean_or_refuse` — the helper a gate is supposed to
     call — so it is exercised rather than merely available.
 
-    THE 1e-30 ROW IS THE CLIFF, NOT A THRESHOLD: eight decades below physical the
+    The 1e-30 row is the cliff, not a threshold: eight decades below physical the
     census is still empty, and one decade further it is total.
     """
     rows: List[Dict[str, Any]] = []
@@ -1023,7 +1023,7 @@ def leg_precondition(payload: Dict[str, Any], out: str, budget: int = 6) -> None
         else:
             preconditions.demonstrate_firing(
                 merged, f"folded off-diagonal update_E, {label} control")
-            assert fired, (label, "the census DID NOT FIRE on the scaled control")
+            assert fired, (label, "the census did not fire on the scaled control")
 
 
 # ---------------------------------------------------------------------------
@@ -1078,7 +1078,7 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
         would report its defect as UNCAUGHT, which is the most dangerous false pass
         a mutation leg can produce.
 
-        ``scope`` IS A CONJUNCTION OF TAGS DERIVED FROM THE ENGINE, not a hand-typed
+        ``scope`` is a conjunction of tags derived from the engine, not a hand-typed
         case list, and it is the difference between an honest count and a rounded-up
         one. A defect that does not EXIST on a case — no negated lane to drop, no
         live slot that reads the ghost — reports as uncaught if it is run there, and
@@ -1128,7 +1128,7 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
                                      "differing_per_case": per_case})
 
     # ---------------------------------------------------------------- the fold's
-    # 1. MIRROR THE WRONG HALF. The mirror plane sits at the NEAR face and images
+    # 1. Mirror the wrong half. The mirror plane sits at the NEAR face and images
     #    stored row 2; taking the image from the FAR half reconstructs the half the
     #    fold discarded. In-bounds by construction, so this measures a wrong ANSWER
     #    rather than a wrong ADDRESS.
@@ -1149,7 +1149,7 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
         "io = -2); imaging the far end of the array reconstructs the discarded half",
         scope=("ghost_reachable",))
 
-    # 1b. THE SAME MUTANT WHERE THE GHOST IS UNREACHABLE — a MEASURED NULL, and the
+    # 1b. The same mutant where the ghost is unreachable — a measured NULL, and the
     #     row that turns `mirror_arm_is_reachable` from a claim into a check. The
     #     mirror rule enters this sub-step only through the DOWN shift of the PARTNER
     #     axis, so a fold on an axis no live row slot takes as its partner cannot
@@ -1158,13 +1158,13 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
     source_mutation(
         "mirror_images_the_far_half_where_the_ghost_is_unreachable", wrong_half,
         False,
-        "THE NAMED NULL behind the scope of the row above: fold X with the single "
+        "The named null behind the scope of the row above: fold X with the single "
         "live slot Ey <- Ez takes no live partner on the folded axis, so the mirror "
         "arm is unreachable and the grid is byte-identical to the certified "
         "METALLIC code however the redirect is spelled",
         scope=("ghost_unreachable",))
 
-    # 2. SHIFT THE MIRROR PLANE BY ONE CELL, both ways. `_mirror_source`
+    # 2. Shift the mirror plane by one cell, both ways. `_mirror_source`
     #    (stepping.py:1582-1588) RAISES below three stored cells precisely because
     #    the row is exact; rows 1 and 3 are each a whole cell of the wrong field.
     for offset in (-1, 1):
@@ -1189,7 +1189,7 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
             f"ghost lane is read at all",
             scope=("ghost_reachable",))
 
-    # 3. DROP THE SIGN FLIP on a mirrored component. The sign is a SOURCE
+    # 3. Drop the sign flip on a mirrored component. The sign is a SOURCE
     #    specialisation on this backend (the measured requirement: a RUNTIME weight
     #    flushes every subnormal, a compile-time one is exact), so the mutant is a
     #    different compiled body rather than a different passed word. SCOPED to the
@@ -1210,7 +1210,7 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
         "emitting the un-negated lane there drops the parity entirely",
         scope=("negated", "ghost_reachable"))
 
-    # 4. THE SPURIOUS NEGATION, the other half of the same defect: an ODD plane
+    # 4. The spurious negation, the other half of the same defect: an ODD plane
     #    reduces to the certified text, and negating it invents a parity.
     def add_sign(source: str, spec: Any, codes: Sequence[int],
                    fields: Any) -> str:
@@ -1226,7 +1226,7 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
         "negating it invents a parity the array path does not apply",
         scope=("un_negated", "ghost_reachable"))
 
-    # 5. FOLD THE WRONG AXIS. The axis selects the ghost redirect AND the sign lane
+    # 5. Fold the wrong axis. The axis selects the ghost redirect AND the sign lane
     #    together, so this is the mutation that proves those two agree with each
     #    other rather than merely compiling. The grid stays folded where it is: only
     #    the EMISSION moves, which is the defect a reader would actually write.
@@ -1235,7 +1235,7 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
         row_mask, codes_, walls, negate = spec
         folded_here = folded_axes_of(codes_)
         shape = tuple(int(n) for n in fields.grid.shape)
-        # THE TARGET MUST BE A REAL AXIS WITH ROOM FOR THE IMAGE ROW, or the mutant
+        # The target must be a real axis with room for the image row, or the mutant
         # reads past the buffer and the leg is measuring undefined behaviour rather
         # than a wrong answer. A grid with no such axis DECLINES — that is a
         # structural fact about the grid, not a needle that matched nothing, and the
@@ -1264,7 +1264,7 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
         scope=("ghost_reachable",))
 
     # ------------------------------------------------------- the ghost rule itself
-    # 6/7. THE MIRROR GHOST IS A REDIRECT TO A LIVE INTERIOR PLANE. It is neither the
+    # 6/7. The mirror ghost is a redirect to a live interior plane. It is neither the
     #      metallic mask nor the periodic wrap, and both confusions are one line.
     def as_metallic(source: str, spec: Any, codes: Sequence[int],
                    fields: Any) -> str:
@@ -1298,7 +1298,7 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
         "than a crash",
         scope=("ghost_reachable",))
 
-    # 8. THE SIGN MUST APPLY ON THE GHOST LANE ONLY. Applied to the whole volume it
+    # 8. The sign must apply on the ghost lane only. Applied to the whole volume it
     #    negates every interior cell of the partner term.
     def negate_everything(source: str, spec: Any, codes: Sequence[int],
                    fields: Any) -> str:
@@ -1318,7 +1318,7 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
         "lane negates interior neighbours the array path leaves alone",
         scope=("negated", "ghost_reachable"))
 
-    # 9. THE WALL MASK MUST ABSTAIN ON A FOLD PLANE. Zeroing it the metallic way is
+    # 9. The wall mask must abstain on a fold plane. Zeroing it the metallic way is
     #    the defect stepping.py:1266-1277 measures at 2.0e-02 even / 3.5e-03 odd.
     def mask_the_fold_plane(source: str, spec: Any, codes: Sequence[int],
                    fields: Any) -> str:
@@ -1338,11 +1338,11 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
         "costs a measured 2.0e-02 (stepping.py:1266-1277)",
         scope=("component0_live",))
 
-    # 10/11. THE OWN-AXIS UP SHIFT IS AN EXACT ZERO ON BOTH TERMINATIONS, because
+    # 10/11. The own-axis up shift is an exact zero on both terminations, because
     #        `_offdiagonal_terms` calls `_shift_up` with FOUR arguments (stepping.py:
-    #        1248-1249) so the folded-PERIODIC reflect branch cannot fire. THE PAIR
-    #        IS WHAT MAKES THE CATCH DISCRIMINATING: the same mutant on a row set
-    #        where the folded axis is no live row's OWN axis is a MEASURED NULL, and
+    #        1248-1249) so the folded-PERIODIC reflect branch cannot fire. The pair
+    #        is what makes the catch discriminating: the same mutant on a row set
+    #        where the folded axis is no live row's OWN axis is a measured NULL, and
     #        reporting only the catch would leave a reader unable to tell a
     #        measurement from a coincidence.
     def wrap_own_axis(source: str, spec: Any, codes: Sequence[int],
@@ -1364,12 +1364,12 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
 
     source_mutation(
         "own_axis_up_wraps_with_the_Ey_row_dead", wrap_own_axis, False,
-        "THE NAMED NULL that makes the row above discriminating: with no live row "
+        "The named null that makes the row above discriminating: with no live row "
         "whose OWN axis is the folded one, the wrapped up index is never read",
         cases=(("2d_fold_Y_default_rows", dict(axes="Y", phases=(1,))),))
 
-    # 12/13. THE REFUTED SPELLING. Measured in this family's own term shape over 30
-    #        words: `0.0f - x` misses 12/30 on the GHOST VALUE (10/10 subnormals AND
+    # 12/13. The refuted spelling. Measured in this family's own term shape over 30
+    #        words: `0.0f - x` misses 12/30 on the GHOST VALUE (10/10 subnormals and
     #        2/4 signed zeros) while `-x` is exact — but added to a NORMAL partner
     #        every spelling agrees, because the addition renormalises. So on ordinary
     #        data it is a NULL, and the value class is what gives it reach.
@@ -1401,8 +1401,8 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
         plant=plant_signed_zero_lattice)
 
     # ------------------------------------------------- the whole-step-only defect
-    # 14. READ THE GHOST BEFORE IT IS WRITTEN. Every kernel here is the SHIPPED one
-    #     and each is byte-perfect per sub-step; ONLY THE ORDER MOVES. `update_E`
+    # 14. Read the ghost before it is written. Every kernel here is the SHIPPED one
+    #     and each is byte-perfect per sub-step; only the order moves. `update_E`
     #     reads the D plane the mirror fill writes (stored cell 0 on the folded axis
     #     for the shift-0 components, and the far ghost row on MIRROR_PERIODIC), so
     #     walking it before the fill is a stale read. This is the fold's fourth risk
@@ -1449,7 +1449,7 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
                    extra={"first_divergent_step_per_case": first_steps,
                           "budget": budget})
 
-    # 15. THE EMITTER'S OWN REFUSALS, at the last place they can be seen: a gate
+    # 15. The emitter's own refusals, at the last place they can be seen: a gate
     #     hands the triples straight in, so a sign on an unfolded axis and a wall on
     #     a folded one must be refused by the emitter and not merely by the plan.
     refusals = 0
@@ -1561,7 +1561,7 @@ def main() -> int:
             reasons.append("no MPS device on this host")
     except Exception as exc:  # noqa: BLE001
         reasons.append(f"torch unavailable: {exc!r}")
-    # THE POLICY IS A PRECONDITION OF THE WHOLE ARTIFACT, not of one leg. On MPS the
+    # The policy is a precondition of the whole artifact, not of one leg. On MPS the
     # flush is native and has NO lever, so `keep` is not offerable and the honest
     # third value is REFUSE; a gate that ran anyway would be certifying bytes under
     # a policy the device was never in.
@@ -1584,7 +1584,7 @@ def main() -> int:
                 continue
             compared += int(row["compared"])
             certified = certified and row["differing"] == 0
-    # A CASE REFUSED ON THE PRECONDITION CONTRIBUTES NO COMPARISONS AND NO VERDICT.
+    # A case refused on the precondition contributes no comparisons and no verdict.
     # Folding it into `certified` either way would be wrong in both directions: as a
     # pass it would certify bytes produced under a condition the claim EXCLUDES, and
     # as a failure it would report a coverage boundary as a defect.
@@ -1606,7 +1606,7 @@ def main() -> int:
         payload, out,
         claim=("metal_kernels.folded_offdiag_update_e reproduces stepping.update_E "
                "word for word on a mirror-folded grid carrying off-diagonal chi1inv "
-               "rows (the software-binary64 row of ruling R7, the per-chunk presence "
+               "rows (the software-binary64 row, the per-chunk presence "
                "words and the per-chunk tail), per sub-step and per complete step, "
                "subject to a CHECKED subnormal-free precondition reported as a "
                "window"),
@@ -1616,7 +1616,7 @@ def main() -> int:
                "misses / crosses the fold and all six slots live, 2-D and 3-D. "
                "complex64 storage, a nonzero beta, BFAST, a registered "
                "susceptibility, chi2/chi3, a nonzero k_point and cylindrical "
-               "coordinates are OUT OF SCOPE and refused by name"),
+               "coordinates are out of scope and refused by name"),
         stated_weakness=(
             "no generated-code audit exists on this backend: torch.mps.compile_shader "
             "exposes no disassembly, so this gate cannot refuse a compile whose "

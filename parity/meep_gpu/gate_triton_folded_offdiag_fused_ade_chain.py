@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """CUDA byte gate for the FOLDED OFF-DIAGONAL DISPERSIVE E->P chain.
 
-WHAT IS BEING CERTIFIED, and it is not a sub-step. This product spans TWO driver
+What is being certified, and it is not a sub-step. This product spans TWO driver
 passes — ``update_E`` at driver.py:3304 and ``update_P`` at :3306, with nothing
 between them — over the folded, tensor-epsilon, dispersive constitutive body. A
 per-sub-step comparison could not see it at all: the whole claim is about the
-SEAM. The comparison is therefore per COMPLETE SEAM STEP over a stated budget,
+SEAM. The comparison is therefore per complete seam step over a stated budget,
 against
 
   * the CuPy array path (``stepping.update_E`` then ``stepping.update_P``), and
@@ -17,13 +17,13 @@ against
 over every allocated volume, compared as uint32 WORDS. ``allclose`` appears
 nowhere, and the FIRST divergent step is reported rather than a final pass/fail.
 
-THE EIGHT THINGS THIS GATE REFUSES TO LET PASS SILENTLY:
+The eight things this gate refuses to let pass silently:
 
 1. **A silent fallback.** Bytes alone cannot prove the fused path ran: a plan that
    was never launched is byte-identical to the oracle BY CONSTRUCTION. Every case
    asserts the exact LAUNCH COUNT through a proxy that owns the kernel object, a
-   nonzero ``runs``, one alias check per launch, and a NON-VACUITY FLOOR SPLIT BY
-   ROLE — the arrays this seam WRITES (E, f_w_E, every polarization volume) must
+   nonzero ``runs``, one alias check per launch, and a non-vacuity floor split by
+   role — the arrays this seam WRITES (E, f_w_E, every polarization volume) must
    all have moved, and the arrays it only READS (B, D, H, fu_*, the material, the
    six off-diagonal row volumes) must NOT have.
 2. **A hollow pass.** Source mutations and HOST mutations are armed, and each is
@@ -58,12 +58,12 @@ THE EIGHT THINGS THIS GATE REFUSES TO LET PASS SILENTLY:
    per driven component makes the launch's write set disjoint from its read set at
    every position of the rotation's orbit — the six row volumes the E half gathers
    at neighbour offsets INCLUDED in the read inventory. :func:`leg_shape` walks the
-   orbit to closure THROUGH THE SHIPPED PLAN with the alias check armed, and
+   orbit to closure through the shipped plan with the alias check armed, and
    :func:`leg_plan_refusals` breaks the chain on purpose and requires a refusal.
 8. **A verdict that cannot fail.** ``--plant`` rewrites the SHIPPED kernel source
    for the whole process and the release verdict must come back FAIL.
 
-BOTH FLOAT32 SUBNORMAL POLICIES, ONE PER PROCESS. ``--subnormal-policy`` drives
+Both float32 subnormal policies, one per process. ``--subnormal-policy`` drives
 host, CuPy and Triton before the first device compile, and the runner
 (``run_triton_folded_offdiag_fused_ade_chain_direct.sh``) executes this gate twice
 through the fleet driver with distinct CuPy and Triton cache directories. One
@@ -71,7 +71,7 @@ process per policy is not fastidiousness: CuPy computes its kernel cache key ABO
 the seam where the ``-ftz=true`` strip installs, so a cache shared between the two
 policies serves flushed binaries under the keeping record's name.
 
-THE ARTIFACT IS WRITTEN IN BOTH SHAPES. ``verdict``/``rows``/``counts`` is what a
+The artifact is written in both shapes. ``verdict``/``rows``/``counts`` is what a
 reader and ``rebind_triton_welds`` read; ``device_status``/``release``/``passed``
 is the shape ``build_triton_fusion_matrix``'s GATE_BOUND branch reads, and the
 ``environment`` block carries hostname, device, device_name and
@@ -110,7 +110,6 @@ import inspect
 import json
 import os
 import re
-import socket
 import sys
 import tempfile
 import textwrap
@@ -174,7 +173,7 @@ _TEMPORARY: List[str] = []
 _POLICY: Optional[str] = None
 
 #: Legs whose failure flips the RELEASE verdict. The corpus-lift leg is carried
-#: for a later round and is deliberately not among them: neither Triton chain gate
+#: for a later change and is deliberately not among them: neither Triton chain gate
 #: has one, the row's ADMISSION is measured by the census on the lifted objects,
 #: and its bytes by the scaled shape case below. A non-gating leg that fails is
 #: still reported, under its own key, rather than silently dropped.
@@ -207,14 +206,14 @@ class Case:
     scale: float = 1.0
 
 
-#: THE CASE MATRIX. Eight configurations of ONE cell, chosen so that every
+#: The case matrix. Eight configurations of ONE cell, chosen so that every
 #: constexpr this launch specialises on takes both of its values somewhere: the
 #: fold axis (X and Y), its parity (+1 and -1), the row mask (all six slots and
 #: one), the driven-component count (1 and 3), the pole count (1 and 2 =
 #: CHAIN_MAX_POLES), the sigma kind (scalar, volume, and both in one launch), the
 #: boundary codes (periodic, mirror and metallic) and the wall mask.
 #:
-#: THE LAST ROW IS THE CORPUS ROW'S OWN SHAPE. ``examples:absorbed_power_density
+#: The last row is the corpus row's own shape. ``examples:absorbed_power_density
 #: .py`` is the single seam-instance this product exists for, and the census
 #: records its boundary kinds as ``[periodic, mirror, periodic]`` — so that is what
 #: is carried here, at the row's 2-D cell, rather than the E-half gate's metallic
@@ -263,8 +262,8 @@ def sha256(path: str) -> str:
 def source_hashes() -> Dict[str, str]:
     """The bytes under certification, curated.
 
-    EIGHTEEN PATHS, AND THE TWO E-HALF MODULES ARE WHY THIS PRODUCT IS BOARD-BOUND
-    BY ITS GATE RATHER THAN BY A FINGERPRINT. ``seed_triton_welds.curated_for``
+    Eighteen paths, and the two E-half modules are why this product is board-bound
+    by its gate rather than by a fingerprint. ``seed_triton_welds.curated_for``
     pins the family module, the SHARED set and the parity scripts naming the stem;
     it does not know that this kernel EXECUTES ``_load_d_minus_p`` and
     ``_folded_dispersive_term`` out of ``folded_offdiag_dispersive_update_e.py``
@@ -303,7 +302,7 @@ def source_hashes() -> Dict[str, str]:
 def save(payload: Dict[str, Any], path: str) -> None:
     """Serialise the payload, provenance-stamped, atomically.
 
-    THE STAMP IS HERE AND NOT AT THE CALL SITES. ``main`` calls this after every
+    The stamp is here and not at the call sites. ``main`` calls this after every
     leg, and a stamp bolted onto the last call would leave every partial artifact —
     including the one an aborted run leaves behind, which is the artifact a failure
     is read from — unattributable. The POLICY stamp is RE-READ rather than carried:
@@ -336,7 +335,7 @@ def save(payload: Dict[str, Any], path: str) -> None:
 def _sigma_for(case: Case, order: int, shape, rng, xp) -> Any:
     """One susceptibility's sigma, in the form the case declares.
 
-    THE PER-COMPONENT VALUES ARE DISTINCT ON PURPOSE. Two host mutations — the
+    The per-component values are distinct on purpose. Two host mutations — the
     sigma bound for the wrong component, and the inverse epsilon bound for the
     wrong one — are NULLS wherever the three components share an object, and a
     null scored as an uncaught defect is the worst reading available to either.
@@ -356,7 +355,7 @@ def _sigma_for(case: Case, order: int, shape, rng, xp) -> Any:
 def build(xp, case: Case, seed: int, scale: Optional[float] = None):
     """One seeded engine. Called once per route, identically, from one seed.
 
-    EVERY VOLUME IS FILLED WITH PHYSICAL-BAND VALUES unless a value class says
+    Every volume is filled with physical-band values unless a value class says
     otherwise, and that is the first thing this gate establishes rather than an
     afterthought: a zero-initialised state is a FIXED POINT of this seam — with
     D = P = P_prev = 0 the constitutive gives E = 0 and the recurrence gives P = 0
@@ -415,14 +414,14 @@ def build(xp, case: Case, seed: int, scale: Optional[float] = None):
                            kinds[order % len(kinds)]),
             _sigma_for(case, order, shape, rng, xp), grid, dtype))
 
-    # THE E HALF REQUIRES AN ACTIVE ABSORBER and PML storage: the register this
+    # The E half requires an active absorber and PML storage: the register this
     # kernel hands the recurrence is what it stored to f_w, and without the layer
     # ``drive_field`` returns the stored E instead (fields.py:1160-1162).
     if case.storage == "pml":
         fields.enable_pml_storage()
     else:
         fields.enable_field_storage()
-    # A MIRRORED axis takes the HIGH FACE ONLY: cell 0 lies on the mirror plane,
+    # A MIRRORED axis takes the high face only: cell 0 lies on the mirror plane,
     # which is a boundary condition and not an absorber (pml.py:408 refuses the
     # low face by name). That is the engine's own rule, not a harness convenience.
     request: Dict[str, Any] = {}
@@ -481,7 +480,7 @@ def state_of(fields: Any, plan: Any = None) -> Dict[str, Any]:
     table could not name them without losing the semantic role — which is the one
     thing the comparison is about.
 
-    THE SCRATCH IS THE ONE ASYMMETRY AND IT IS NAMED, NOT DROPPED. The reference
+    The scratch is the one asymmetry and it is named, not dropped. The reference
     keeps ONE retired buffer per susceptibility and this product keeps one per
     driven component (see the module's shape note), so only the LAST driven
     component's is comparable: the reference overwrote the others with the next
@@ -489,7 +488,7 @@ def state_of(fields: Any, plan: Any = None) -> Dict[str, Any]:
     launch overwrites before reading, and pretending otherwise would be comparing
     the harness.
 
-    THE MATERIAL IS IN HERE TOO, per component and per off-diagonal slot. This
+    The material is in here too, per component and per off-diagonal slot. This
     seam reads eleven material volumes and writes none of them, and the movement
     floor can only say so if they are in the inventory.
     """
@@ -572,7 +571,7 @@ def zero_words(state: Dict[str, np.ndarray], negative: bool) -> int:
 def _outside_every_layer(fields: Any, pml: Any) -> List[str]:
     """The ``f_w_E<c>`` whose own-axis record line holds no cell of the run's division.
 
-    THE AUXILIARY CONTRACT LEAVES THEM UNTOUCHED: the E tail reads and writes ``f_w_<c>``
+    The auxiliary contract leaves them untouched: the E tail reads and writes ``f_w_<c>``
     only on the cells whose chunk carries ``c``'s own (dsigw) layer, so on a division
     that gives that layer no cell (an invariant axis, or an axis with no layer) the
     array keeps its first word for the whole run, on the array path and in the kernel
@@ -664,13 +663,13 @@ def _case(label: str) -> Case:
 def run_case(xp, case: Case, leg: str, steps: int, kernel: Any = None,
              patch: Optional[Callable[[Any], Dict[str, Any]]] = None,
              block: Optional[int] = None) -> Dict[str, Any]:
-    """Step the two engines side by side and compare per COMPLETE SEAM STEP."""
+    """Step the two engines side by side and compare per complete seam step."""
     from meep_gpu.triton_kernels import (  # noqa: PLC0415
         folded_offdiag_fused_ade_chain as family,
     )
 
-    # A CLASS PATCH FROM AN EARLIER ROW WOULD MAKE THIS ONE A MEASUREMENT OF THE
-    # WRONG PROGRAM. The two ordering host mutations have to land on the class
+    # A class patch from an earlier row would make this one a measurement of the
+    # wrong program. The two ordering host mutations have to land on the class
     # (the plan declares __slots__), so every entry drains first.
     _drain_undo()
     seed = case_seed(case.label, leg)
@@ -733,7 +732,7 @@ def run_case(xp, case: Case, leg: str, steps: int, kernel: Any = None,
         floor_ok = floor_ok and lattice_live
     band_reach = None
     if banded:
-        # THE BAND IS A CLASS ONLY WHERE THE POLICY LETS ONE EXIST, and this is
+        # The band is a class only where the policy lets one exist, and this is
         # the three-way rule rather than a pass/fail: a row that COULD NOT have
         # reached the class must not be failed for a property of the
         # configuration, and a row that could have and did not must not be
@@ -750,7 +749,7 @@ def run_case(xp, case: Case, leg: str, steps: int, kernel: Any = None,
                       "flushed_by_policy" if _POLICY == "flush" else "VACUOUS")
         census_live = band_reach != "VACUOUS"
         floor_ok = floor_ok and census_live
-    # A UNIFORM ROW WHOSE CENSUS FIRED is a banded row under another name: the
+    # A uniform row whose census fired is a banded row under another name: the
     # value classes are only classes while each one stays in its own band.
     clean = (case.value_class != "uniform") or (max(census_trail or [0]) == 0)
     return {
@@ -817,7 +816,7 @@ def run_block_sweep(xp, case: Case, sizes: Sequence[int], steps: int
 def run_separate_control(xp, case: Case, steps: int) -> Dict[str, Any]:
     """The SEPARATE certified products beside the fused one, on identical state.
 
-    THIS IS THE LEG THAT MAKES "FUSION" A MEASUREMENT RATHER THAN A NAME. Three
+    This is the leg that makes "FUSION" a measurement rather than a name. Three
     engines from one seed: the array path; the two ALREADY CERTIFIED Triton
     products (``folded_offdiag_dispersive_update_e`` on ``update_E`` and
     ``launch.plan_ade_update_p`` on ``update_P``) dispatching the seam as separate
@@ -938,7 +937,7 @@ def _constexpr_names(node: ast.FunctionDef) -> List[str]:
 def kernel_text() -> str:
     """The shipped kernel's EXECUTABLE source, read from the FILE.
 
-    The DOCSTRING IS DROPPED. It names the two loads this kernel eliminates, so a
+    The docstring is dropped. It names the two loads this kernel eliminates, so a
     needle test that read it would be satisfied by prose rather than by code — the
     same reason the laptop test file strips it.
     """
@@ -958,7 +957,7 @@ def kernel_text() -> str:
 def leg_transcription() -> Dict[str, Any]:
     """The E half is the certified body; the ADE half is ``ade_update_p``. PARSED.
 
-    THE MIRRORED EVALUATOR is a defect class this project has paid for: a check
+    The mirrored evaluator is a defect class this project has paid for: a check
     that re-implements a kernel's arithmetic mirrors a defect instead of executing
     it. So nothing here re-derives a line. The certified kernel's own file is
     parsed and its statement list is required to be an AST-IDENTICAL PREFIX of this
@@ -1130,7 +1129,7 @@ def _expected_extra(fields: Any) -> int:
 
 
 def leg_shape(xp) -> Dict[str, Any]:
-    """The rotation orbit, walked to closure THROUGH THE SHIPPED PLAN.
+    """The rotation orbit, walked to closure through the shipped plan.
 
     A product whose whole licence is a buffer-disjointness argument has to have
     that argument checked against the object that allocates the buffers, not
@@ -1263,7 +1262,7 @@ def leg_plan_refusals(xp) -> Dict[str, Any]:
     refusal("the live pole binding sees a different order than the plan was built for",
             "no longer valid", order_changed_under_the_live_binding)
 
-    # THE CAP, AS THE PLAN ENFORCES IT. The predicate refuses a third pole by
+    # The cap, as the plan enforces it. The predicate refuses a third pole by
     # name; this is the second door, on the object that would bind the arms.
     third = dataclasses.replace(_case(MUTATION_CASE), label="three_poles", poles=3)
     _, fields, pml = build(xp, third, case_seed(third.label, "plan_refusals"))
@@ -1283,7 +1282,7 @@ def leg_plan_refusals(xp) -> Dict[str, Any]:
 def leg_refusals(xp) -> Dict[str, Any]:
     """Configurations the product must refuse, on the host's own arrays.
 
-    AND THE TWO DISJOINTNESS DIRECTIONS. ``fused_ade_chain`` must refuse this cell
+    And the two disjointness directions. ``fused_ade_chain`` must refuse this cell
     on ALL THREE of its arms and ``complex_fused_ade_chain`` on storage, or the
     board's at-most-one-E->P-admitter assertion would find a clash on the one row
     this product exists for.
@@ -1425,7 +1424,7 @@ PRECONDITION_SCALES: Tuple[Tuple[str, float, Optional[bool]], ...] = (
 def leg_precondition(xp, case: Case, budget: int = 8) -> Dict[str, Any]:
     """A precondition never demonstrated to FIRE is decoration.
 
-    WHAT THIS LEG MEANS DEPENDS ON THE INSTALLED POLICY, and both meanings are
+    What this leg means depends on the installed policy, and both meanings are
     asserted rather than one being quietly assumed:
 
     * under ``keep`` it is the detector's own calibration — the census stays
@@ -1476,7 +1475,7 @@ def shipped_source(family) -> str:
         inspect.getsource(family.folded_offdiag_fused_ade_chain_step.fn))
 
 
-#: THE MUTANT'S HEADER, AND WHY IT IS NOT ``import triton`` ALONE. This kernel
+#: The mutant's header, and why it is not ``import triton`` ALONE. This kernel
 #: CALLS three JIT helpers and COMPARES against three constexprs that are module
 #: globals of the two certified folded off-diagonal modules — ``@triton.jit``
 #: resolves both kinds through the defining module's globals — so a mutant module
@@ -1545,7 +1544,7 @@ def _replace_block(source: str, needles: Sequence[str],
                    replacement: Sequence[str]) -> Tuple[str, int]:
     """Replace EVERY contiguous run of lines whose STRIPPED text is ``needles``.
 
-    A LINE-WISE NEEDLE CANNOT REACH A WRAPPED CALL. The certified body's partner
+    A line-wise needle cannot reach a wrapped call. The certified body's partner
     terms and masked row sums are multi-line calls whose OPENING line is not
     unique (the ``R01`` branch and the ``R02``-only else branch spell the same
     call), so the anchor is the whole stripped run and the hit count is reported
@@ -1587,7 +1586,7 @@ _EX_ROW_WALL = "at_y, at_z, op, cell0, 0, WM_Y, WM_Z, P01)"
 #: edit lands in and :func:`leg_no_dead_mutations` refuses any the scored case does
 #: not reach — the constexpr chains mean an edit to an unlived slot is emitted
 #: NOWHERE and measures nothing. ``expectation`` is what the design predicts; the
-#: artifact records what was MEASURED, and a predicted null that turns out visible
+#: artifact records what was measured, and a predicted null that turns out visible
 #: (or the reverse) is reported either way.
 def mutation_table() -> Tuple[Tuple[str, str, int, str, str,
                                     Callable[[str], Tuple[str, int]]], ...]:
@@ -1613,8 +1612,8 @@ def mutation_table() -> Tuple[Tuple[str, str, int, str, str,
         return source.replace(needle, "p = tl.load(b0 + idx"), source.count(needle)
 
     def m4_ade_previous_folded_form(source: str) -> Tuple[str, int]:
-        # THE INVERSION (KERNELS.md section 7.1): the package's previous folded
-        # three-term form planted back into every arm.
+        # THE INVERSION (docs/development/certification.md#inverted-grouping-mutations):
+        # the package's previous folded three-term form planted back into every arm.
         needle = "gamma1inv * (((p * two_minus_od) - (gamma1 * q)) + (omega0dtsqr * (s * w)))"
         return (source.replace(needle, (
             "((p * (gamma1inv * two_minus_od)) + ((0.0 - (gamma1inv * gamma1)) * q))"
@@ -1631,7 +1630,7 @@ def mutation_table() -> Tuple[Tuple[str, str, int, str, str,
                          ("two_minus_od = gamma1_a0", "gamma1 = two_minus_od_a0"))
 
     def m7_second_arm_never_runs(source: str) -> Tuple[str, int]:
-        # THE E-CHAIN DROP IS NOT REACHABLE IN THE CALLER, so this is its ADE
+        # The E-chain drop is not reachable in the caller, so this is its ADE
         # twin: the guard is raised past every live count and slot 1's recurrence
         # never advances while the E chain keeps subtracting it — a frozen P. The
         # certified helper's own `if NP > k` links are covered by the E half's
@@ -1661,7 +1660,7 @@ def mutation_table() -> Tuple[Tuple[str, str, int, str, str,
         return _replace_span(source, "tl.store(w0 + idx, src0, mask=live & dw0)", 1,
                              ("pass",))
 
-    # THE SECTION 7.2 BATTERY on the PML tail (the per-chunk constitutive form).
+    # THE PER-CHUNK FORM BATTERY on the PML tail (docs/development/certification.md#chunk-form-battery).
     def b1_fw_stored_on_every_cell(source: str) -> Tuple[str, int]:
         needle = "tl.store(w0 + idx, src0, mask=live & dw0)"
         return (source.replace(needle, "tl.store(w0 + idx, src0, mask=live)"),
@@ -1681,7 +1680,7 @@ def mutation_table() -> Tuple[Tuple[str, str, int, str, str,
                 source.count(needle))
 
     def m14_arm_reads_another_components_drive(source: str) -> Tuple[str, int]:
-        # EZ'S ARMS, READING EX'S DRIVE. The direction matters: an EARLIER
+        # Ez's arms, reading Ex's drive. The direction matters: an EARLIER
         # component reading a LATER one's register is a NameError the compiler
         # refuses, which measures the emission order rather than the seam. This
         # direction compiles and is a wrong answer.
@@ -1775,7 +1774,7 @@ def mutation_table() -> Tuple[Tuple[str, str, int, str, str,
 def leg_no_dead_mutations(xp) -> Dict[str, Any]:
     """Every armed edit must land in a slot the scored case actually carries.
 
-    THE DEAD MUTATION is a defect class this project has paid for: an edit rewrites
+    The dead mutation is a defect class this project has paid for: an edit rewrites
     real lines the scored configuration never emits — here because the ``NP``
     constexpr chain unrolls only the live slots — and then reports UNCAUGHT while
     measuring nothing.
@@ -1912,7 +1911,7 @@ def swap_sigma_between_components(plan: Any) -> Dict[str, Any]:
 def reverse_ade_coefficients_on_Ex(plan: Any) -> Dict[str, Any]:
     """Pair pole k's displacement subtraction with pole j's recurrence.
 
-    THE MISPAIRED ARM. The E chain still subtracts the poles in order; only the
+    The mispaired arm. The E chain still subtracts the poles in order; only the
     coefficients the ADE arms use are reversed, so every arm advances the right
     volume with the wrong susceptibility's constants — smooth, plausible and wrong.
     """
@@ -1985,7 +1984,7 @@ def lie_about_the_sigma_kind(plan: Any) -> Dict[str, Any]:
     return {"flag": "SV_a1 forced to 0 while a pointer is bound"}
 
 
-#: Undo callbacks for the two ordering mutations. THE PLAN DECLARES ``__slots__``,
+#: Undo callbacks for the two ordering mutations. The plan declares ``__slots__``,
 #: so neither ``run`` nor ``_rotate`` can be rebound on an instance and the patch
 #: has to land on the CLASS — which would then outlive its case. Every patch
 #: registers its restore here, :func:`_drain_undo` runs it, and ``run_case`` drains
@@ -2094,7 +2093,7 @@ def leg_corpus_lift(xp, corpus_root: Optional[str], steps: int = 20
     Triton chain gate has such a leg, the row's ADMISSION is what the census
     measures on the lifted objects, and its BYTES are measured by the scaled
     ``absorbed_power_density_shape`` case above. This leg is carried so that a
-    later round can promote it without inventing a harness, and it records SKIPPED
+    later change can promote it without inventing a harness, and it records SKIPPED
     by name when no corpus is staged.
     """
     if not corpus_root:
@@ -2192,7 +2191,7 @@ def environment(xp) -> Dict[str, Any]:
     ``device`` and ``device_name`` carry the SAME string under both spellings: the
     minting tool reads one and the fleet driver's campaign row reads the other.
 
-    THE BLOCK IS THEN HANDED TO ``triton_device_identity.record``, which is the one
+    The block is then handed to ``triton_device_identity.record``, which is the one
     place on this backend that decides the SPELLING. It ``setdefault``s — so every
     value measured below is kept, since this gate measures them from the device it
     launched through — and it NORMALISES ``compute_capability`` to ``"8.6"``,
@@ -2201,14 +2200,15 @@ def environment(xp) -> Dict[str, Any]:
     Two spellings of one architecture is what makes that test decide a gate by
     which reader answered first.
     """
+    import neutral_ids  # noqa: PLC0415
     record: Dict[str, Any] = {
-        "hostname": socket.gethostname(),
+        "hostname": neutral_ids.machine_id(),
         "python": sys.version.split()[0],
         "numpy": np.__version__,
-        "argv": list(sys.argv),
+        "argv": neutral_ids.argv(sys.argv),
         "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
-        "cupy_cache_dir": os.environ.get("CUPY_CACHE_DIR"),
-        "triton_cache_dir": os.environ.get("TRITON_CACHE_DIR"),
+        "cupy_cache_dir": neutral_ids.path(os.environ.get("CUPY_CACHE_DIR")),
+        "triton_cache_dir": neutral_ids.path(os.environ.get("TRITON_CACHE_DIR")),
         # The chain gate's own spellings, kept so a reader of either artifact
         # finds the same fact under the name it knows.
         "CUDA_VISIBLE_DEVICES": os.environ.get("CUDA_VISIBLE_DEVICES"),
@@ -2295,7 +2295,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     xp: Any = np
     if not args.no_device:
-        # CUPY FIXES ITS REDUCTION-ACCELERATOR LIST AT IMPORT, and
+        # CuPy fixes its reduction-accelerator list at import, and
         # ``set_reduction_accelerators([])`` does not move where a reduction is
         # dispatched: measured on device (subnormal_policy.py:1112-1120), ``cp.sum``
         # over one 2^-135 among 4095 zeros returned the KEPT word with the list
@@ -2314,7 +2314,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         from meep_gpu import subnormal_policy  # noqa: PLC0415
 
         xp = cp
-        # THE HOST LEVER. ``MEEP``'s ``set_zero_subnormals`` is the ONLY exposure
+        # The host lever. ``MEEP``'s ``set_zero_subnormals`` is the ONLY exposure
         # of this process's FTZ/DAZ bits this package may use
         # (subnormal_policy.py:1911-1922 refuses without it), so a policy the host
         # is not already sitting on needs MEEP imported first. It is imported ONLY
@@ -2519,7 +2519,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 payload["rows"] = rows
                 save(payload, out)
 
-            # THE DISARM CHECK. The identical harness, the identical case, the
+            # The disarm check. The identical harness, the identical case, the
             # SHIPPED bytes and no patch. A nonzero here would mean every "caught"
             # above is a harness that diverges on its own.
             index += 1

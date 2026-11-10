@@ -109,8 +109,10 @@ on ``driver.sigma_lift`` / :attr:`GpuRunResult.sigma_lift`).
 Both routes read eps as ``1/chi1inv[c][c]``, which holds only where MEEP's tensor is
 diagonal, and both check that at every lattice point of the cell: subpixel averaging
 at any curved or rotated interface (whether or not the shape it bounds is
-dispersive), a medium with a nonzero ``epsilon_offdiag`` and a cylindrical cell all
-put off-diagonal entries there, and each refuses the lift by name. The recovery basis
+dispersive) and a medium with a nonzero ``epsilon_offdiag`` put off-diagonal entries
+there, and each refuses the lift by name. A cylindrical cell is refused before either
+route runs (:func:`_check_structured_sigma_cylindrical`): in a cylindrical structure
+MEEP's nonzero-frequency ``chi1inv`` reads past the end of its own tensor. The recovery basis
 also has no term for the factor a ``D_conductivity`` puts on the permittivity, so the
 gate refuses any nonzero ``D_conductivity`` in such a cell for both routes, since the
 lookup can hand a cell to the inversion at lift time
@@ -140,6 +142,7 @@ from __future__ import annotations
 
 import functools
 import math
+import os
 import platform
 import sys
 import time
@@ -172,6 +175,7 @@ from .absorber import AbsorberLayer
 from .amp_interpolation import amp_func_from_array
 from .chunk_map import ChunkLayout, ChunkLayoutRefusal, announce_non_separable
 from .driver import FdtdDriver, PEC_EPSILON_SENTINEL, is_pec_chi1inv, is_pec_epsilon
+from .fastpath import CERTIFIED_MEEP_BUILDS
 from .gaussian_beam import beam_fields
 from .grid import INVARIANT_AXES_BY_DIMENSIONS, Mirror, meep_cell_count
 from .pml import FaceThickness, half_cell_extent
@@ -231,7 +235,11 @@ class MeepSimulationNotLiftable(ValueError):
     ordinary way still catches it, and its own class so that a caller who wants to
     distinguish "MEEP built something we cannot reproduce" from "this argument is
     malformed" can. ``reasons`` is the same tuple :func:`gpu_compatibility`
-    returns, so the pre-flight check and the failure report never disagree.
+    returns for every refusal the declaration decides, so the pre-flight check and
+    the failure report agree on those. A refusal that needs MEEP's rasterized
+    structure is made by the lift after ``init_sim`` and raised the same way: for
+    one, subpixel averaging that writes off-diagonal ``chi1inv`` rows into a cell
+    whose media differ in their E_susceptibilities.
     """
 
     def __init__(self, reasons: Sequence[str]):
@@ -279,7 +287,7 @@ def collapse_dft_region(region, first_site_doubled, resolution, center, size, in
 
     1. ``dft_chunk::process_dft_component`` (dft.cpp:996-1006, 1013) multiplies each
        sample by ``interp_w = IVEC_LOOP_WEIGHT(s0i, s1i, e0i, e1i, 1.0)``, a copy of
-       the boundary weights with EVERY NON-EMPTY DIRECTION SET TO 1 (dft.cpp:975-985).
+       the boundary weights with every non-empty direction set to 1 (dft.cpp:975-985).
        Only an axis whose requested extent is zero keeps a weight.
     2. ``collapse_array`` (array_slice.cpp:553-594) sums each such axis away, and
        ``get_dft_component_dims`` never gave a rank slot to an axis that came out one
@@ -294,8 +302,8 @@ def collapse_dft_region(region, first_site_doubled, resolution, center, size, in
                                   of a two-site ladder — vec.hpp:372-380),
 
     which for the two cells bracketing an off-lattice coordinate are ``1 - f`` and
-    ``f``: plain linear interpolation onto the requested plane. THE LATTICE IS THE
-    COMPONENT'S OWN. ``loop_in_chunks`` shifts the bracket by
+    ``f``: plain linear interpolation onto the requested plane. The lattice is the
+    component's own. ``loop_in_chunks`` shifts the bracket by
     ``iyee_shift(Centered) - iyee_shift(cgrid)`` before flooring (loop_in_chunks.cpp:350-357),
     and ``add_dft`` passes ``use_centered_grid ? Centered : c`` (dft.cpp:231), so a
     ``yee_grid=True`` monitor brackets on the component's Yee sites. Deriving the
@@ -361,7 +369,7 @@ class MigratedMonitors(Mapping):
     that is load-bearing rather than convenient, the OWNER of a strong reference to
     every MEEP monitor it was built from.
 
-    **THE STRONG REFERENCE IS THE CONTRACT.** An ``id`` is an address, not an identity:
+    **The strong reference is the contract.** An ``id`` is an address, not an identity:
     CPython frees an object and hands the same address to the next allocation of the
     same size. A map that stored only the integer therefore stops describing anything
     the moment its monitors are collected — and the second run of the TWO-RUN
@@ -390,7 +398,7 @@ class MigratedMonitors(Mapping):
     the installed MEEP 1.33.0, ``DftFlux``/``DftNear2Far``/``DftForce``/``DftEnergy``/
     ``DftFields`` all inherit ``object.__hash__`` and would work as keys there. The
     constraint the package writes down (``run_on_gpu``'s ``flux_data`` /
-    ``minus_flux_data`` take a SEQUENCE OF PAIRS rather than a dict) is that MEEP does
+    ``minus_flux_data`` take a sequence of pairs rather than a dict) is that MEEP does
     not promise it in every release, and a pair list does not have to care either way.
     A ``weakref.WeakKeyDictionary`` is not the alternative for a different and stronger
     reason: a weak reference is precisely the one that does NOT pin the address, so it
@@ -402,7 +410,7 @@ class MigratedMonitors(Mapping):
     def __init__(self, pairs: Sequence[tuple[Any, Any]] = ()):
         self._pairs: list[tuple[Any, Any]] = list(pairs)
 
-    # THE TWO LINES THE CLASS EXISTS FOR, kept adjacent and spelled plainly. `add`
+    # The two lines the class exists for, kept adjacent and spelled plainly. `add`
     # stores the MEEP OBJECT (never its `id`), which is the strong reference; `resolve`
     # compares with `is`, so no address enters the lookup. The mutation battery swaps
     # the pair for a `weakref.ref` — every live lookup keeps working and only the
@@ -569,7 +577,7 @@ class GpuRunResult:
 
         Opaque, like MEEP's: hand it to ``run_on_gpu(..., minus_flux_data=[(flux2,
         data)])`` on a later simulation carrying the same flux region. That is the
-        TWO-RUN NORMALIZATION IDIOM — run once without the structure, save, run again
+        two-run normalization idiom — run once without the structure, save, run again
         with it, subtract — transliterated from::
 
             sim.run(...); data = sim.get_flux_data(flux)      # normalization run
@@ -636,7 +644,7 @@ class GpuRunResult:
         loaded data is demonstrably what the reader reads, and any residual is
         attributable to this packer alone.
 
-        THE LAYOUT IS NOT THIS ENGINE'S TO CHOOSE, exactly as in
+        The layout is not this engine's to choose, exactly as in
         :meth:`Near2FarMigration.packed`: it is whatever MEEP's own chunk
         decomposition produced, so it is read off the live object — ``swigobj.E`` and
         ``swigobj.H`` walked through ``next_in_dft``, each chunk's ``is``/``ie``
@@ -736,7 +744,7 @@ class GpuRunResult:
         invariant = tuple(grid.invariant_axes)
         directions = (mp.X, mp.Y, mp.Z)
         mirrored_axes = _grid_mirror_axes(grid)
-        # THE OVERLAP CHECK. MEEP's chunk list is a SUBSET of this engine's plane, not
+        # The overlap check. MEEP's chunk list is a SUBSET of this engine's plane, not
         # necessarily a cover of it: `add_flux` takes `use_symmetry = true`, so the
         # region it registers is `S.reduce`'s half (vec.cpp:1437-1456 halves the
         # flipped direction and doubles the weight), while this monitor holds all of
@@ -887,7 +895,7 @@ class GpuRunResult:
 
         A ``yee_grid=True`` monitor is not a special case of the centred one and the
         difference is not small: the interpolation fraction is measured against the
-        REQUESTED COMPONENT'S OWN Yee lattice (``loop_in_chunks`` builds ``is``/``ie``
+        requested component's own Yee lattice (``loop_in_chunks`` builds ``is``/``ie``
         with ``cgrid = c``, loop_in_chunks.cpp:350-357), not against the cell centres.
         Measured on a 2-D x-y run at resolution 15 with a zero-thickness line monitor
         of Ez: the centred fraction gives **1.67e-01** relative against CPU MEEP and
@@ -903,7 +911,25 @@ class GpuRunResult:
         region indices are already full-domain (they run negative below the plane).
         Calling :meth:`~.dft.DFTMonitor.get_dft_full` on top of that would mirror an
         already-mirrored region.
+
+        Only a ``DftFields`` monitor (``sim.add_dft_fields``) is read here; any other
+        monitor is refused by name (:data:`DFT_ARRAY_REFUSED_MONITORS` says why for each
+        kind). MEEP 1.35.0 reads a ``DftEnergy`` through ``get_dft_array`` as well (a
+        ``fields::get_dft_array(dft_energy, ...)`` overload, MEEP 1.35.0
+        src/dft.cpp:1307-1319): its E and H chunks carry the volume and interpolation
+        weights the energy sum needs, which ``process_dft_component`` reads back per
+        point, and that read is not transcribed here. A migrated energy monitor's
+        spectra are :meth:`get_electric_energy`, :meth:`get_magnetic_energy` and
+        :meth:`get_total_energy`.
         """
+        kinds = [cls.__name__ for cls in type(meep_fields).__mro__]
+        if "DftFields" not in kinds:
+            kind = type(meep_fields).__name__
+            raise TypeError(
+                f"get_dft_array reads DftFields monitors (sim.add_dft_fields) only; a {kind} "
+                f"is refused: " + DFT_ARRAY_REFUSED_MONITORS.get(
+                    kind, "it is not a DFT field monitor this reader can reduce.")
+            )
         migration = self.monitor_for(meep_fields)
         center, size = _monitor_region(meep_fields)
         grid = self.driver.grid
@@ -1048,25 +1074,96 @@ def _lift_say(mp, text: str) -> None:  # One flushed progress line to stderr, un
         print(f"{LIFT_PROGRESS_HEAD}{text}", file=sys.stderr, flush=True)
 
 
-#: The MEEP builds the bulk ``chi1inv`` read runs on, as ``(MEEP version, precision,
-#: platform.system(), platform.machine())``: the certified MEEP (1.33.0, single precision) on
-#: the two platforms the kernel tables are certified on. A stamp is listed only after the bulk
-#: read was compared on it, word for word as uint64, with MEEP's own per-point reader on the
-#: same initialized simulations (every structured row of the MEEP-identity corpus and the
-#: bench's 3-D PML cell at five sizes, each pair of reads in one process), on more than one
-#: build of the stamp; the counts are in the CHANGELOG entry that added the read. Every other
-#: build — another release, a double-precision build such as conda-forge's, another platform
-#: — reads every point one at a time: exact, and as slow as a per-point lift. The bulk read's
-#: sampled self-check guards a listed build; it cannot certify an unlisted one.
-BULK_CHI1INV_BUILDS = frozenset({
-    ("1.33.0", "single", "Darwin", "arm64"),
-    ("1.33.0", "single", "Linux", "x86_64"),
-})
+#: The MEEP builds the bulk ``chi1inv`` read is CERTIFIED on, as ``(MEEP version, precision,
+#: platform.system(), platform.machine())``: the stamps of the certified reference builds,
+#: MEEP 1.35.0 in single precision on the two platforms the kernel tables are certified on
+#: (``parity/meep_gpu/build_meep_reference_macos.sh`` and ``build_meep_reference_linux.sh``),
+#: read off ``fastpath.CERTIFIED_MEEP_BUILDS``, the one place they are declared.
+#: The release's certification, run in those reference environments, establishes the read's
+#: bit identity there; the comparisons of the read with MEEP's own per-point reader, word for
+#: word as uint64, are in the CHANGELOG entries that added the read and moved the reference.
+#:
+#: Supported is not certified, as for the kernel tables' hardware (``fastpath.HARDWARE_SWITCH``).
+#: Every MEEP build is supported: the bulk read runs on every build, another release, a
+#: double-precision build such as conda-forge's and another platform included, guarded by its
+#: sampled self-check, which is denser on a build this list does not name
+#: (:func:`_chi1inv_self_check_plan`). Exact bit identity of the read with MEEP's own reader is
+#: guaranteed only on a listed build: the self-check compares sampled words, and a word it does
+#: not sample is not compared. A lift on an unlisted build records ``certified_build: False``
+#: and prints :data:`CHI1INV_UNCERTIFIED_NOTE_HEAD` once per process;
+#: ``MEEP_GPU_HARDWARE=certified`` refuses the bulk read on it by name, and the read is then
+#: per point, which is exact on every build.
+CERTIFIED_CHI1INV_BUILDS = frozenset(CERTIFIED_MEEP_BUILDS)
+
+#: The head of the line a bulk read on an uncertified MEEP build prints, once per process, on
+#: stderr whatever ``mp.verbosity`` is: the twin of the kernels' uncertified NOTE line
+#: (``fastpath._uncertified_note``).
+CHI1INV_UNCERTIFIED_NOTE_HEAD = "meep_gpu: NOTE the bulk chi1inv read is NOT CERTIFIED on this MEEP build: "
+
+_CHI1INV_NOTES_ANNOUNCED: set = set()
 
 
 def _chi1inv_build_stamp(build: Mapping) -> tuple:  # (version, precision, system, machine)
     return (build.get("meep_version"), build.get("meep_precision"),
             platform.system(), platform.machine())
+
+
+def _chi1inv_build_text(stamp: tuple) -> str:  # "MEEP 1.33.0 single precision on Linux x86_64"
+    version, precision, system, machine = (part if part else "unread" for part in stamp)
+    return f"MEEP {version} {precision} precision on {system} {machine}"
+
+
+def _chi1inv_bulk_admission(stamp: tuple) -> Optional[str]:
+    """Why a lift that did not choose its read path may not take the bulk read, or None.
+
+    By the hardware scope (``fastpath.hardware_scope``), the one reader of
+    ``MEEP_GPU_HARDWARE``, and whether ``stamp`` is in :data:`CERTIFIED_CHI1INV_BUILDS` (a
+    stamp whose precision was not read is never listed):
+
+    * ``supported`` (the default, when unset) and ``any``: the bulk read runs on every build;
+    * ``certified``: it runs on a certified build only, and an uncertified one is refused by
+      name;
+    * any other value is refused by name on every build, certified ones included, as the
+      dispatch ladder refuses it (rung 3b): a value that was typed and not understood is not
+      read as any of the three.
+    """
+    from . import fastpath  # noqa: PLC0415 - imported already, through the driver
+
+    scope = fastpath.hardware_scope()
+    switch = fastpath.HARDWARE_SWITCH
+    if scope is None:
+        return (
+            f"{switch}={os.environ.get(switch)!r} is not an accepted value "
+            f"({' | '.join(fastpath.HARDWARE_VALUES)}; unset means {fastpath.HARDWARE_DEFAULT}), "
+            f"so it admits no bulk read; every point is read one at a time")
+    if scope == fastpath.HARDWARE_CERTIFIED and stamp not in CERTIFIED_CHI1INV_BUILDS:
+        certified = ", ".join(_chi1inv_build_text(item) for item in sorted(CERTIFIED_CHI1INV_BUILDS))
+        return (
+            f"{_chi1inv_build_text(stamp)} is not a certified build of the bulk read "
+            f"(certified: {certified}); {switch}={fastpath.HARDWARE_CERTIFIED} restricts the "
+            f"bulk read to certified MEEP builds")
+    return None
+
+
+def _chi1inv_uncertified_note(stamp: tuple) -> str:
+    """The line a bulk read on an uncertified build prints: what was read and what is certified."""
+    from . import fastpath  # noqa: PLC0415
+
+    certified = ", ".join(_chi1inv_build_text(item) for item in sorted(CERTIFIED_CHI1INV_BUILDS))
+    return (f"{CHI1INV_UNCERTIFIED_NOTE_HEAD}{_chi1inv_build_text(stamp)} (certified: "
+            f"{certified or 'none'}). It ran because every MEEP build is supported and its sampled "
+            f"self-check agreed with MEEP's own reader at every point it read; exact bit identity "
+            f"of the read is guaranteed only on a certified build, and "
+            f"{fastpath.HARDWARE_SWITCH}={fastpath.HARDWARE_CERTIFIED} reads every point one at a "
+            f"time instead, which is exact on every build")
+
+
+def _announce_chi1inv_uncertified(stamp: tuple) -> None:  # Once per distinct line per process.
+    line = _chi1inv_uncertified_note(stamp)
+    if line in _CHI1INV_NOTES_ANNOUNCED:
+        return
+    _CHI1INV_NOTES_ANNOUNCED.add(line)
+    print(line, file=sys.stderr, flush=True)
 
 
 def _component_names(mp, cylindrical: bool = False) -> dict:  # MEEP's component integers -> this engine's names.
@@ -1294,7 +1391,7 @@ def _declared_materials(sim) -> list:  # Every material object the cell names, d
 
 
 def _materials_of(mp, sim) -> list:  # Every material the cell could contain, defaults first.
-    """Every material the cell can hold, AS PLAIN MEDIA, defaults first.
+    """Every material the cell can hold, as plain media, defaults first.
 
     A ``mp.MaterialGrid`` is expanded into its two endpoint media rather than
     carried through as itself, because MEEP never steps a grid either:
@@ -1312,7 +1409,7 @@ def _materials_of(mp, sim) -> list:  # Every material the cell could contain, de
     a grid at all: :func:`_medium_signature` reads ``epsilon_diag`` off its
     argument and a grid has none.
 
-    WHAT THE PAIR DOES NOT SPEAK FOR, and why each is refused rather than
+    What the pair does not speak for, and why each is refused rather than
     approximated (:func:`_check_material_grids`): the per-point ``damping``
     conductivity, which is not a property of either endpoint, and the endpoint
     fields MEEP itself DISCARDS — ``md->medium`` is default-constructed
@@ -1336,7 +1433,7 @@ def _materials_of(mp, sim) -> list:  # Every material the cell could contain, de
 
 # --- per-point epsilon routes ---------------------------------------------------------
 #
-# Four spellings of one thing: a permittivity MEEP evaluates POINT BY POINT into the
+# Four spellings of one thing: a permittivity MEEP evaluates point by point into the
 # structure instead of naming a medium.
 #
 #     mp.Simulation(material_function=f)     f(Vector3) -> mp.Medium
@@ -1348,7 +1445,7 @@ def _materials_of(mp, sim) -> list:  # Every material the cell could contain, de
 # (python/simulation.py:2015-2024) drops whichever is set into `default_material`, and
 # `geom_epsilon::get_material_pt` evaluates the result at every quadrature point.
 #
-# THEY USED TO BE REFUSED BY NAME, on the argument that "this module cannot read the
+# They used to be refused by name, on the argument that "this module cannot read the
 # result back per component". That argument was wrong when it was written and the
 # sibling refusal three lines below it said so: `_lift_epsilon_structured` reads
 # MEEP's OWN rasterized `chi1inv` off `sim.fields`, one Yee point at a time, and never
@@ -1372,7 +1469,7 @@ def _materials_of(mp, sim) -> list:  # Every material the cell could contain, de
 # callable is caught by the probe or not at all. Named in the refusal text, and the
 # reason the probe checks the nonlinear fields too.
 #
-# MEASURED (main reference env, MEEP 1.33.0 single precision, NumPy backend), Linf over
+# Measured (main reference env, MEEP 1.33.0 single precision, NumPy backend), Linf over
 # the whole Ez plane against pristine MEEP stepping the same object for the same
 # `until`, both codes at equal step counts:
 #
@@ -1542,7 +1639,7 @@ def _probe_material_callable(mp, sim, material, label: str) -> list[str]:
 
 
 def _registered_susceptibility_keys(mp, sim) -> frozenset:
-    """The susceptibility poles MEEP will actually BUILD A CHAIN ENTRY FOR.
+    """The susceptibility poles MEEP will actually build a chain entry for.
 
     ``geom_epsilon::add_susceptibilities`` (meepgeom.cpp:1816-1830) discovers poles by
     walking ``geometry``, ``extra_materials`` and ``default_material``, each behind an
@@ -1552,7 +1649,7 @@ def _registered_susceptibility_keys(mp, sim) -> frozenset:
     the point's medium terms against ``current_pol->user_s``, an entry of exactly that
     list. The pole vanishes from the structure entirely.
 
-    MEASURED on ``test_material_dispersion.py``'s own callable (eps 2.25, two
+    Measured on ``test_material_dispersion.py``'s own callable (eps 2.25, two
     Lorentzians), MEEP 1.33.0 single: ``sim.get_epsilon(frequency=0)`` and
     ``get_epsilon(frequency=0.9)`` are both 2.25 with the callable alone; adding the
     same medium to ``extra_materials`` moves eps(0.9) to 3.762491+3.543005e-05j, which
@@ -1851,8 +1948,12 @@ def gpu_compatibility(sim) -> GpuCompatibility:
     rather than from a rasterization. :func:`lift_simulation` calls this first and
     then re-checks the rasterized volume independently, so a material route this
     function does not know about is still caught before a single step is taken.
+    One question only the rasterization answers: whether subpixel averaging writes
+    off-diagonal ``chi1inv`` rows into a cell whose media differ in their
+    E_susceptibilities, which the per-point sigma routes cannot read. ``supported``
+    does not settle it, and the lift refuses such a cell by name after ``init_sim``.
 
-    ONE THING IT DOES CALL: a ``material_function`` / ``epsilon_func`` / callable
+    One thing it does call: a ``material_function`` / ``epsilon_func`` / callable
     material is SAMPLED here, at a bounded lattice of cell-interior points
     (:data:`_MATERIAL_PROBE_SAMPLES`), to ask whether what it returns is a
     permittivity and nothing else. That is the caller's own function running, so it
@@ -1891,7 +1992,7 @@ def _check_simulation_shape(mp, sim, reasons: list[str]) -> None:  # Cell, clock
     cylindrical = dimensions == getattr(mp, "CYLINDRICAL", -2) or sim.is_cylindrical
     if cylindrical:
         # Cylindrical IS lifted: MEEP's Dcyl under the x -> r, y -> phi, z -> z
-        # mapping (the design notes (fdtd-cylindrical-plan)), validated component by
+        # mapping, validated component by
         # component against CPU MEEP in test_cylindrical.py. What the mode cannot
         # serve is refused here by name, mirroring Grid._resolve_cylindrical.
         m_value = getattr(sim, "m", 0)
@@ -2367,7 +2468,7 @@ def _is_quadratic_profile(layer) -> bool:  # Is this MEEP's default pml_profile,
 #: readings, so the case is refused. A ``chunk_layout`` given as a Simulation or a file
 #: is loaded after the halving and lifts.
 #:
-#: MEEP ALSO WRITES A ``BinaryPartition`` BACK onto every simulation whose structure it
+#: MEEP also writes a ``BinaryPartition`` back onto every simulation whose structure it
 #: built with none (simulation.py:2117-2121), after the halving. A simulation whose
 #: structure already exists when it is lifted (a direct ``_init_structure`` before the
 #: lift, as ``test_simulation.py``'s ``test_infer_dimensions`` and
@@ -2409,7 +2510,7 @@ def _unhalved_detail(unfolded, grid_low, user_low) -> str:
             f"structure.gv starts at doubled {grid_low}, the user volume at {user_low}.")
 
 
-def _require_folded_grid_halved(mp, sim, cylindrical: bool) -> None:  # R10, on MEEP's own state.
+def _require_folded_grid_halved(mp, sim, cylindrical: bool) -> None:  # The partition-with-mirrors refusal, on MEEP's own state.
     """Refuse by name a simulation whose declared mirrors MEEP did not fold its grid for.
 
     The gate refuses the one known route there before anything is built
@@ -2419,7 +2520,7 @@ def _require_folded_grid_halved(mp, sim, cylindrical: bool) -> None:  # R10, on 
     symmetry of multiplicity above one while ``structure.gv`` still starts where
     ``user_volume`` does on a mirrored axis, i.e. ``gv.halve()`` never ran for it
     (structure.cpp:109, :160-176). MEEP then steps the whole cell with the mirrors
-    declared and unused (phase 0's P0-e: 0 of 27,027,000 words differ from the same run
+    declared and unused (measured: 0 of 27,027,000 words differ from the same run
     without them) while its readers apply them, which no folded lift describes. A
     partition MEEP wrote back after a halving build passes: its grid is halved. Without
     this the lift still refuses, but later and by its registration pin, which names a
@@ -2435,7 +2536,7 @@ def _require_folded_grid_halved(mp, sim, cylindrical: bool) -> None:  # R10, on 
             f"{PARTITION_WITH_MIRRORS_REASON} ({_unhalved_detail(unfolded, grid_low, user_low)})"])
 
 
-def _partition_with_mirrors_refusal(mp, sim, mirrors) -> str | None:  # R10 at the gate.
+def _partition_with_mirrors_refusal(mp, sim, mirrors) -> str | None:  # The partition-with-mirrors refusal, at the gate.
     """The gate's partition refusal for a mirrored ``sim``, or None when it lifts folded.
 
     Keyed on whether MEEP's grid is, or will be, halved, not on the attribute alone:
@@ -2673,7 +2774,7 @@ def _check_source_profile(mp, sim, source, label: str, reasons: list[str]) -> No
 #
 # GaussianBeam2DSource is a THIRD shape, and it needs no transcription at all: despite
 # the name it is not the 3-D beam but an exact 2-D Hankel-function Green's function
-# performed ENTIRELY IN PYTHON before add_source is reached (`get_fields` ->
+# performed entirely in Python before add_source is reached (`get_fields` ->
 # `green2d`, source.py:821-1044) and then deposited as ordinary mp.Source objects
 # carrying amp_data (`get_equiv_sources`, source.py:780-812). So
 # `_lift_gaussian_beam_2d_source` CALLS MEEP's synthesis — setup work, delegated by
@@ -2770,7 +2871,7 @@ def _fold_drops_source(mp, grid, source, dimensions: int) -> bool:  # Does the f
 def _declared_source_sheets(mp, sim, source, dimensions: int, names: dict) -> list:
     """The (component, has_amp_func) pairs one declaration actually deposits.
 
-    THE GATE USED TO READ ``source.component`` and stop there. For an
+    The gate used to read ``source.component`` and stop there. For an
     ``mp.EigenModeSource`` that attribute is ``ALL_COMPONENTS``, which is not a field
     component at all, so the parity rule never ran on the four sheets MEEP expands it
     into (mpb.cpp:874-900) and the pre-flight said ``supported`` for five of MEEP's
@@ -2919,6 +3020,7 @@ def _check_materials(mp, sim, reasons: list[str]) -> None:  # Every mp.Medium th
         return
     _check_material_grids(mp, sim, reasons)
     _check_structured_conductivity(mp, sim, materials, reasons)
+    _check_structured_sigma_cylindrical(mp, sim, materials, reasons)
     signatures = {_medium_signature(material) for material in materials}
     if len(signatures) > 1:
         # A structured cell is lifted by reading MEEP's own rasterized structure back
@@ -2956,6 +3058,7 @@ def _check_materials(mp, sim, reasons: list[str]) -> None:  # Every mp.Medium th
                         _check_susceptibility(
                             mp, term, f"media[{index}].E_susceptibilities[{tindex}]", reasons)
                 _check_sigma_is_recoverable(mp, materials, reasons)
+                _check_sigma_reads_a_diagonal_tensor(materials, reasons)
             else:
                 reasons.append(
                     f"the cell contains {len(signatures)} distinct media that differ in more than "
@@ -3111,12 +3214,12 @@ def _check_material_grids(mp, sim, reasons: list[str]) -> None:  # What the endp
 
     What the pair cannot speak for is refused here rather than approximated.
 
-    * **``damping`` — NO LONGER REFUSED, and the reason is worth keeping.**
+    * **``damping`` — no longer refused, and the reason is worth keeping.**
       meepgeom.cpp:623-626 adds ``u*(1-u)*damping`` to ``D_conductivity_diag``
       at every point — a conductivity that belongs to neither endpoint and
       varies across the cell. The epsilon lift reads ``chi1inv`` at frequency 0,
       where monitor.cpp never reaches the conductivity branch, so a damped grid
-      lifted through that read alone COMPLETES AND STEPS WRONG rather than
+      lifted through that read alone completes and steps wrong rather than
       failing: measured 1.0531e-02 relative at ``damping=0.3``, 1.7316e-02 at
       ``damping=0.5`` and 9.1963e-02 at ``damping=pi``, every one with the full
       signal and the same step count, against 2.9431e-07 for the identical cell
@@ -3153,7 +3256,7 @@ def _check_material_grids(mp, sim, reasons: list[str]) -> None:  # What the endp
       a SILENT wrong answer in the other direction: ``_lift_material`` installs
       chi2/chi3 from the representative medium, so a grid whose endpoints both
       declare ``chi3`` would run a nonlinear cell that MEEP is stepping linear.
-      MEASURED on a 2x2x4 cell at resolution 10, ``chi3=20`` on both endpoints:
+      Measured on a 2x2x4 cell at resolution 10, ``chi3=20`` on both endpoints:
       MEEP's grid run is BIT-IDENTICAL to the same grid with no chi3 at all
       (0.0000e+00) and bit-identical to a plain ``Medium(epsilon=4)``
       (0.0000e+00), while the plain-medium control ``Medium(chi3=20)`` against
@@ -3199,7 +3302,7 @@ def _check_material_grids(mp, sim, reasons: list[str]) -> None:  # What the endp
                         f"default-constructed (material_data.cpp:47-50) and only "
                         f"E_susceptibilities are merged into it (typemap_utils.cpp:528-547), so "
                         f"only epsilon, sigma and D_conductivity are written per point "
-                        f"(meepgeom.cpp:569-604). The discard is MEASURED on its chi3 instance: "
+                        f"(meepgeom.cpp:569-604). The discard is measured on its chi3 instance: "
                         f"with chi3=20 on both endpoints MEEP's grid run is BIT-IDENTICAL "
                         f"(0.0000e+00) both to the same grid with no chi3 and to a plain "
                         f"Medium(epsilon=4), while the same claim on a plain medium moves "
@@ -3238,11 +3341,50 @@ def _check_structured_conductivity(mp, sim, materials, reasons: list[str]) -> No
         "media differ in D_conductivity_diag, or a MaterialGrid declares a damping "
         "(meepgeom.cpp:623-626). The volume would be recovered by reading MEEP's own "
         "D-row chi1inv back per Yee point (_read_conductivity_volumes), and that read is "
-        "MEASURED on the Cartesian lattice only. Its Dcyl registration is unmeasured, and "
+        "measured on the Cartesian lattice only. Its Dcyl registration is unmeasured, and "
         "a graded loss installed half a cell out steps a smooth, complete, wrong run — "
         "which is the failure this package exists to prevent, so it is refused rather "
         "than attempted. A UNIFORM D_conductivity on a cylindrical cell is unaffected and "
         "still lifts."
+    )
+
+
+def _check_structured_sigma_cylindrical(mp, sim, materials, reasons: list[str]) -> None:
+    """A cylindrical (Dcyl) cell whose media differ in their E_susceptibilities, refused by name.
+
+    Both per-point sigma routes read MEEP's ``get_chi1inv`` at a NONZERO frequency:
+    the lookup checks every point against it and the inversion solves for sigma from
+    it. MEEP answers that query (``structure_chunk::get_chi1inv_at_pt``, MEEP 1.35.0
+    src/monitor.cpp:235-339; 1.33.0 :266-370) by assembling a 3x3 tensor from the
+    Cartesian ``Ex``/``Ey``/``Ez`` rows, which a cylindrical structure does not fill,
+    and then returns ``chi1_inv_tensor[component_index(c) + 3 * d]`` from that
+    nine-entry array (1.35.0 :280 and :336; 1.33.0 :311 and :367). In a cylindrical
+    structure ``d`` is ``R`` or ``P`` (3 or 4, src/meep/vec.hpp:79), so for the r and
+    phi rows the entry read lies past the end of the array: its value is
+    whatever the memory beside it holds, not one MEEP defines. Neither route has a
+    defined number to read, so the cell is refused here, before ``init_sim``, rather
+    than left to whatever that read returns at lift time.
+
+    A cylindrical cell whose media agree on their dispersion is untouched: a single
+    set of susceptibilities is a declaration, not a read, and :func:`_lift_material`
+    installs it; so is one whose media differ only in permittivity, which is read at
+    frequency 0, where MEEP returns its stored ``chi1inv`` word.
+    """
+    if _effective_dimensions(mp, sim) != MEEP_CYLINDRICAL:
+        return
+    if not _media_differ_in_susceptibilities(materials):
+        return
+    reasons.append(
+        "this cylindrical (Dcyl) cell's media differ in their E_susceptibilities, so the "
+        "per-point sigma volumes would be read through MEEP's get_chi1inv at a nonzero "
+        "frequency. In a cylindrical structure MEEP answers that query from a 3x3 tensor "
+        "built from the Cartesian Ex/Ey/Ez rows, which such a structure does not fill, and "
+        "indexes that nine-entry array with the r or phi direction, past its end "
+        "(src/monitor.cpp:336 in MEEP 1.35.0, :367 in 1.33.0), so the value read is not "
+        "one MEEP defines and neither the declared-geometry lookup nor the chi1inv "
+        "inversion can be checked against it. A cylindrical cell whose media share one "
+        "set of E_susceptibilities, or differ only in their permittivity, still lifts; "
+        "otherwise run this simulation on CPU MEEP."
     )
 
 
@@ -3312,6 +3454,47 @@ def _check_sigma_is_recoverable(mp, materials, reasons: list[str]) -> None:
             f"the per-point susceptibility sigma cannot be recovered from chi1inv on this MEEP: "
             f"{refusal}"
         )
+
+
+def _check_sigma_reads_a_diagonal_tensor(materials, reasons: list[str]) -> None:
+    """The lift's diagonal-tensor premise, refused here where the declaration decides it.
+
+    Both per-point sigma routes read the permittivity of a cell whose media differ in
+    their E_susceptibilities as ``1/chi1inv[c][c]``, which is ``eps_cc`` only where
+    MEEP's tensor is diagonal, and both refuse at lift time, after ``init_sim``, at the
+    first lattice point where it is not (:func:`_lookup_sigma_volumes`,
+    :func:`_recover_sigma_volumes`). A medium that declares a nonzero
+    ``epsilon_offdiag`` puts off-diagonal entries in that tensor wherever it lies, with
+    or without subpixel averaging, so for such a cell the lift's answer is known from
+    the declaration and the same refusal is made here, before anything is built:
+    ``gpu_compatibility`` and ``lift_simulation`` then agree on it. Every medium the
+    cell can hold is read, as the rest of this gate reads them (:func:`_materials_of`),
+    so a declared medium is taken to be present.
+
+    Subpixel averaging at a curved or rotated interface is the one source of
+    off-diagonal rows this gate does not decide: whether it writes any depends on
+    where MEEP's rasterization puts the interface and on the permittivity across it
+    (measured on MEEP 1.33.0: a smoothed disc of a different permittivity is refused at
+    lift time, while a smoothed disc of the background's permittivity, a sphere in a
+    1-D cell and a cylinder lying in a 2-D plane all lift), so only the rasterized
+    structure answers it, and the lift's refusal names it.
+    """
+    for index, material in enumerate(materials):
+        offdiag = _vector3(getattr(material, "epsilon_offdiag", (0.0, 0.0, 0.0)))
+        if any(value != 0.0 for value in offdiag):
+            reasons.append(
+                f"media[{index}] declares epsilon_offdiag={offdiag} in a cell whose media "
+                f"differ in their E_susceptibilities. An off-diagonal permittivity puts "
+                f"off-diagonal entries in MEEP's chi1inv tensor wherever that medium lies, "
+                f"with or without subpixel averaging, and both per-point sigma routes (the "
+                f"declared-geometry lookup and the chi1inv inversion) read the permittivity "
+                f"as 1/chi1inv[c][c], which is eps_cc only for a diagonal tensor (MEEP's "
+                f"get_chi1inv inverts the whole 3x3), so the dispersion cannot be lifted "
+                f"and eps_averaging=False does not change that. Give every medium the same "
+                f"E_susceptibilities or a diagonal permittivity; otherwise run this "
+                f"simulation on CPU MEEP."
+            )
+            return
 
 
 def _is_axis_aligned_block(mp, obj) -> bool:  # A Block whose faces are normal to x, y and z.
@@ -3416,12 +3599,12 @@ def _check_conductivity_of(medium, label: str, reasons: list[str]) -> None:  # O
     offdiag = _vector3(getattr(medium, f"{side}_conductivity_offdiag"))
     if any(value != 0.0 for value in offdiag):
         reasons.append(
-            f"{label}_offdiag={offdiag} is a rotated conductivity tensor, and MEEP DOES "
-            f"NOT READ IT. Its C++ medium_struct carries only D_conductivity_diag and "
+            f"{label}_offdiag={offdiag} is a rotated conductivity tensor, and MEEP does "
+            f"not read it. Its C++ medium_struct carries only D_conductivity_diag and "
             f"B_conductivity_diag (material_data.hpp:78-79); the Python-to-C++ conversion "
             f"copies exactly those two and no off-diagonal at all "
             f"(typemap_utils.cpp:815-816), and get_cnd answers per component from the "
-            f"diagonal (meepgeom.cpp:1545-1559). MEASURED on pristine MEEP 1.33.0: a cell "
+            f"diagonal (meepgeom.cpp:1545-1559). Measured on pristine MEEP 1.33.0: a cell "
             f"with D_conductivity_offdiag=(0.5,0,0) steps BIT-IDENTICALLY (0.0000e+00) to "
             f"the same cell without it, while the same 0.5 on the diagonal moves the field "
             f"1.4446e-01. Lifting the declaration verbatim would install a loss MEEP is not "
@@ -3436,7 +3619,10 @@ def _check_conductivity_of(medium, label: str, reasons: list[str]) -> None:  # O
             f"`self.B_conductivity_offdiag = Vector3(*D_conductivity_offdiag)`), so there "
             f"a B_conductivity_offdiag= keyword is silently discarded and a "
             f"D_conductivity_offdiag= keyword sets both; MEEP 1.34.0 assigns each keyword "
-            f"to its own attribute."
+            f"to its own attribute; MEEP 1.35.0's constructor raises NotImplementedError "
+            f"for either keyword when it is nonzero (python/geom.py:450-460 there), so on "
+            f"1.35.0 this refusal is reached only by assigning the attribute after "
+            f"construction."
         )
     diagonal = _vector3(getattr(medium, f"{side}_conductivity_diag"))
     if any(entry < 0.0 for entry in diagonal):
@@ -3500,6 +3686,31 @@ MIGRATABLE_MONITORS: dict[str, str] = {
                  "get_total_energy(obj)",
 }
 
+#: The monitor kinds :meth:`GpuRunResult.get_dft_array` refuses, and why. Each one's
+#: accumulated chunks carry weights (flux, force and energy chunks the volume and
+#: interpolation weights of their reductions, near2far chunks the surface current's
+#: sign and weight) that MEEP's ``process_dft_component`` reads back per point at read
+#: time; that read is transcribed for ``DftFields`` only.
+DFT_ARRAY_REFUSED_MONITORS: dict[str, str] = {
+    "DftEnergy": (
+        "MEEP 1.35.0 reads an energy monitor's E, D, H and B chunks through "
+        "get_dft_array (src/dft.cpp:1307-1319 there), and this engine does not "
+        "transcribe that read; read the migrated monitor's spectra with "
+        "result.get_electric_energy(obj), get_magnetic_energy(obj) or "
+        "get_total_energy(obj), or add a DftFields monitor over the same region."),
+    "DftFlux": (
+        "a flux monitor's chunks are read back through MEEP's weighted "
+        "process_dft_component, which is not transcribed here; read its spectrum with "
+        "result.get_flux_spectrum(obj), or add a DftFields monitor over the same region."),
+    "DftForce": (
+        "a force monitor's chunks are read back through MEEP's weighted "
+        "process_dft_component, which is not transcribed here; read its spectrum with "
+        "result.get_forces(obj), or add a DftFields monitor over the same region."),
+    "DftNear2Far": (
+        "a near2far monitor's chunks hold weighted surface currents, which are not "
+        "read back here; load them into MEEP with result.load_near2far(sim, obj)."),
+}
+
 # The two transverse directions to each near2far normal, in MEEP's cyclic order
 # (near2far.cpp add_dft_near2far). The order is load-bearing twice over: it decides
 # WHICH components are accumulated, and the j index decides each component's sign.
@@ -3513,7 +3724,7 @@ def _near2far_stored_weight(sign: float, weight: complex) -> complex:
     the product goes through ``operator*(const T &, const complex<T> &)`` — it scales
     the real and imaginary parts separately. Python's ``float * complex`` promotes the
     scalar and runs the full complex product ``(ac - bd) + (ad + bc)i`` instead, and
-    the two disagree on the SIGN OF A ZERO: for ``s = -1``, ``w = 1+0j`` the
+    the two disagree on the sign of a zero: for ``s = -1``, ``w = 1+0j`` the
     componentwise form gives ``(-1.0, -0.0)`` — which is what MEEP stores — while the
     promoted form gives ``(-1.0, +0.0)``, because ``-0.0 + 0.0`` is ``+0.0``.
 
@@ -3541,7 +3752,7 @@ def _near2far_source_component(family: str, j: int, transverse: tuple[int, int])
 
 
 def _same_stored_weight(entry_weight: complex, chunk_weight: complex) -> bool:
-    """Is this entry's stored weight MEEP's chunk weight, SIGNED ZEROS INCLUDED?
+    """Is this entry's stored weight MEEP's chunk weight, signed zeros included?
 
     Compared per part rather than through ``abs(a - b)``, because the difference of two
     weights that differ only in the sign of a zero is exactly ``0.0``: ``(1+0j)`` and
@@ -3561,7 +3772,7 @@ def _same_stored_weight(entry_weight: complex, chunk_weight: complex) -> bool:
 class Near2FarMigration:
     """One MEEP ``DftNear2Far`` rebuilt as raw-Yee accumulators on the driver.
 
-    THE TWO THINGS THAT MADE THIS HARD, recorded because both are invisible in a
+    The two things that made this hard, recorded because both are invisible in a
     shape check and cost a long hunt:
 
     1. **MEEP's chunk decomposition owns the layout.** A cell with a PML splits into
@@ -3627,7 +3838,7 @@ class Near2FarMigration:
         Reconstructing it instead — emitting one contiguous box per component — is
         correct only on an unsplit grid. A cell with a PML splits into 27 structure
         chunks here, the near surface spans 6 dft chunks per component, and the
-        concatenation of six sub-boxes has the SAME TOTAL SIZE as one box covering the
+        concatenation of six sub-boxes has the same total size as one box covering the
         same sites. That is why the mistake survives every shape check: totals match,
         and no axis permutation or index offset can reconcile the two.
         """
@@ -3731,7 +3942,7 @@ class Near2FarMigration:
                     stored_weight=None, flips=(), source_component=None) -> numpy.ndarray:
         """This engine's samples for one MEEP chunk, in that chunk's own bounds.
 
-        The accumulator is found by component, SOURCE COMPONENT, STORED WEIGHT and
+        The accumulator is found by component, source component, stored weight and
         containment. Containment because one component appears once per near2far region
         and only the region that actually covers these sites may answer for them. The
         other two because containment alone is ambiguous at a flux-box CORNER: the
@@ -3745,7 +3956,7 @@ class Near2FarMigration:
         Adjacent faces of a box carry OPPOSITE region weights, so at the corner shared
         by a ``weight=+1`` face and a ``weight=-1`` face the two chunks' stored weights
         are ``s1 * (+1)`` and ``s2 * (-1)`` with ``s1 = -s2`` — numerically the same
-        number, differing only in THE SIGN OF THE ZERO IMAGINARY PART, e.g. ``(1+0j)``
+        number, differing only in the sign of the zero imaginary part, e.g. ``(1+0j)``
         against ``(1-0j)``. ``abs(a - b)`` is then exactly ``0.0`` and the first
         containing accumulator answers for both, emitting one face's data twice.
         Measured on antenna-radiation.py: 1.778e-02 on the packed data against
@@ -4197,7 +4408,7 @@ def _check_outputs(sim, reasons: list[str]) -> None:  # Monitors MEEP owns that 
     # lives solely in `_migrate_near2far` lets `gpu_compatibility` report the script as
     # supported and then kills the lift with a bare error, which is the one outcome
     # this pre-flight exists to prevent (the same slip was found on 1-D cells, on
-    # set_boundary, and on Bloch-plus-PML — see the parity matrix's findings).
+    # set_boundary, and on Bloch-plus-PML).
     for monitor in monitors:
         _check_monitor_frequencies(monitor, reasons)
         if type(monitor).__name__ == "DftFields":
@@ -4481,7 +4692,7 @@ def _meep_chunk_weight(chunk, component: str, directions) -> MeepChunkWeight:
 
 
 def _meep_region_extents(grid, size) -> tuple[float, float, float]:
-    """A declared monitor-region size AS MEEP READS IT. Two rules, one home.
+    """A declared monitor-region size as MEEP reads it. Two rules, one home.
 
     **A NEGATIVE component is its own absolute value.** MEEP's Python layer builds a
     region's volume as ``mp.volume(center - size/2, center + size/2)``
@@ -5104,7 +5315,7 @@ def lift_simulation(
     no MEEP state is reset, so the same object can still be run on CPU afterwards
     for a comparison (which is exactly what ``test_from_meep.py`` does).
 
-    THE COST OF A LIFT, measured on one rank (single-precision MEEP 1.33.0, an
+    The cost of a lift, measured on one rank (single-precision MEEP 1.33.0, an
     arm64 host, other work running, ``prefer_gpu=False``; the bench's 3-D PML cell).
     Read one point at a time, a structured lift took 13.76 s at 512,000 cells and
     159.02 s at 7,077,888: 70-83 % of it was MEEP's per-point ``chi1inv`` reader
@@ -5113,9 +5324,12 @@ def lift_simulation(
     (:func:`_lift_epsilon_structured`) takes the same two lifts to 4.50 s and
     28.88 s, of which ``init_sim`` is 3.85 s and 23.43 s; the points it cannot copy
     are still read one at a time, at about 7 us each (38,160 and 220,608 of them).
-    It runs only on a MEEP build it has been compared on word for word
-    (:data:`BULK_CHI1INV_BUILDS`); any other build reads every point one at a time,
-    which is exact and as slow as before. The two compatibility sigma routes stay
+    It runs on every MEEP build, and is certified bit-identical to MEEP's own reader
+    only on the builds it was compared on word for word
+    (:data:`CERTIFIED_CHI1INV_BUILDS`); on any other build its self-check samples
+    more points, the lift records ``certified_build: False`` and prints one NOTE line
+    per process, and ``MEEP_GPU_HARDWARE=certified`` reads every point one at a
+    time instead, which is exact and as slow as before. The two compatibility sigma routes stay
     per point and are slower per point than the ``chi1inv`` reader, since their
     calls go through monitor.cpp's frequency branch and the lookup adds a geometry
     containment test. Unless ``mp.verbosity`` is 0 the lift prints flushed
@@ -5153,8 +5367,10 @@ def lift_simulation(
         double-precision MEEP proceeds and says so once per process on stderr.
         A structured lift also records how it read the permittivity on
         ``driver.chi1inv_read`` (:func:`_lift_epsilon_structured`): the path,
-        the reason a bulk read was not taken, a restart, and per component the
-        points copied in bulk, read one at a time and self-checked.
+        the reason a bulk read was not taken, a restart, whether the MEEP build
+        is certified for the bulk read (``certified_build``), the points the
+        self-check read, and per component the points copied in bulk, read one at
+        a time and self-checked.
 
     Raises:
         MeepSimulationNotLiftable: With every reason :func:`gpu_compatibility`
@@ -5192,7 +5408,7 @@ def lift_simulation(
     verdict = gpu_compatibility(sim)
     if not verdict.supported:
         raise MeepSimulationNotLiftable(verdict.reasons)
-    # THE MEEP BUILD'S PRECISION, read and recorded and never refused. The engine
+    # The MEEP build's precision, read and recorded and never refused. The engine
     # steps single precision whatever it says; a double-precision build is told so
     # once per process, with the agreement to expect.
     build = _meep_build(mp)
@@ -5347,7 +5563,7 @@ def _meep_absent_components(mp, sim, cylindrical: bool) -> tuple:
 def _require_grids_agree(sim, driver) -> None:  # Pin the cell count and the array convention.
     """Refuse unless MEEP's own epsilon array has the shape this grid implies.
 
-    THE REGISTRATION PIN. ``sim.get_array`` puts grid point ``j`` at
+    The registration pin. ``sim.get_array`` puts grid point ``j`` at
     ``axis_origin(d) + (j - 0.5)*dx`` and returns ``n_full + 1`` points on every
     unfolded axis (the extra plane at index 0 being the periodic duplicate of the
     last), which is verified against ``sim.get_array_metadata()``. If MEEP's cell
@@ -5484,7 +5700,7 @@ def _lift_boundaries(sim, dimensions: int = 3):  # sim.k_point -> the driver's o
     which for a 2-D cell is the whole TE polarization; see
     :meth:`~.grid.Grid._require_boundaries_leave_invariant_axes_alone`.
 
-    THE WHOLE CONDITION IS ``sim.k_point``, and it is all-or-nothing because MEEP
+    The whole condition is ``sim.k_point``, and it is all-or-nothing because MEEP
     makes it so. ``fields::fields`` sets ``boundaries[b][d] = Metallic`` on every face
     it has one for (fields.cpp), and the only thing that overwrites it is
     ``fields::use_bloch``, which ``Simulation._init_fields`` calls — for EVERY
@@ -5605,7 +5821,7 @@ def _lift_epsilon(sim, driver, medium) -> None:
     # mean is -1e20, and a tolerance of `1e-5 * harmonic_mean` is then NEGATIVE, so the
     # comparison fires on every input including an exact match — the same sign accident
     # the bulk classifier makes. For a passive dielectric the two spellings are
-    # identical. MEASURED on default_material=mp.metal: get_epsilon reports
+    # identical. Measured on default_material=mp.metal: get_epsilon reports
     # -1.00000002e+20 against the declared -1e+20, a 2e-8 relative gap that is the
     # float32 storage round trip and nothing else.
     if abs(measured - harmonic_mean) > 1e-5 * abs(harmonic_mean):
@@ -5672,7 +5888,7 @@ def _lift_epsilon_structured(mp, sim, driver, materials, progress_cb, routes=(),
     ``dispersion.component_coordinates`` implements. A half-cell slip therefore
     raises here, at setup, instead of running a structure shifted by half a cell.
 
-    THE WALL PLANES. The stored low-boundary rows of a metallic axis are lattice
+    The wall planes. The stored low-boundary rows of a metallic axis are lattice
     points MEEP owns with NO chunk (``grid_volume::owns`` needs ``o > 0``), so
     ``get_chi1inv`` answers its outside-the-cell vacuum default there rather than
     a material — measured, and excluded from BOTH checks that would otherwise
@@ -5702,21 +5918,28 @@ def _lift_epsilon_structured(mp, sim, driver, materials, progress_cb, routes=(),
     double, or its NULL-array default (monitor.cpp:166-185, 271-272). Every other
     point — the unowned wall planes, the low plane of a periodic axis, a folded
     image — is read one at a time, by ``get_chi1inv`` itself, in the loop below.
-    The bulk read runs only on a MEEP build in :data:`BULK_CHI1INV_BUILDS`, where it
-    was compared with ``get_chi1inv`` word for word; on any other build, and when
-    MEEP's chunks cannot be located, every point is read one at a time.
-    ``_bulk_read`` overrides that choice for a comparison: True takes the bulk read
-    on any build, False never does. A sampled self-check compares the bulk words
-    against ``get_chi1inv`` bit for bit (:func:`_chi1inv_bulk_self_check`); any
-    refusal or disagreement warns and restarts the whole read on the per-point
-    path, which is the reference the bulk read must reproduce word for word. The
-    restart continues the caller's progress sequence (``_progress_offset``) rather
-    than starting it again.
+    The bulk read runs on every MEEP build. It is CERTIFIED on a build in
+    :data:`CERTIFIED_CHI1INV_BUILDS`, where it was compared with ``get_chi1inv`` word
+    for word; on any other build it runs as a supported, uncertified read, with the
+    denser self-check (:func:`_chi1inv_self_check_plan`) and the NOTE line
+    (:data:`CHI1INV_UNCERTIFIED_NOTE_HEAD`). Every point is read one at a time when
+    ``MEEP_GPU_HARDWARE`` refuses the bulk read (``certified`` on an uncertified build,
+    or a value it does not accept: :func:`_chi1inv_bulk_admission`) and when MEEP's
+    chunks cannot be located. ``_bulk_read`` overrides that choice for a comparison:
+    True takes the bulk read on any build, False never does. A sampled self-check
+    compares the bulk words against ``get_chi1inv`` bit for bit
+    (:func:`_chi1inv_bulk_self_check`); any refusal or disagreement warns and restarts
+    the whole read on the per-point path, which is the reference the bulk read must
+    reproduce word for word. The restart continues the caller's progress sequence
+    (``_progress_offset``) rather than starting it again.
 
-    WHAT IT RECORDS, on ``driver.chi1inv_read``: ``path`` (``"bulk"`` or
+    What it records, on ``driver.chi1inv_read``: ``path`` (``"bulk"`` or
     ``"per-point"``), ``refusal`` (why the bulk read was not taken, else None),
     ``restarted_by`` (the refusal that restarted the read, else ""), ``stamp`` (the
-    build, as :data:`BULK_CHI1INV_BUILDS` keys it) and per component the bulk fill's
+    build, as :data:`CERTIFIED_CHI1INV_BUILDS` keys it), ``certified_build`` (whether
+    the stamp is listed there: True or False, False for a precision that was not
+    read), ``self_checked_points`` (the points the self-check read, over the three
+    components; 0 on the per-point path) and per component the bulk fill's
     report (points copied, read one at a time, self-checked). A component the bulk
     path can own no point of says why in ``per_point_only``: a cylindrical cell with
     no z extent, for one, has its Er and Ep on the chunk's own low z plane, which no
@@ -5742,17 +5965,17 @@ def _lift_epsilon_structured(mp, sim, driver, materials, progress_cb, routes=(),
         components = {"Ex": mp.Ex, "Ey": mp.Ey, "Ez": mp.Ez}
         ivec = mp.ivec
     declared = [value for material in materials for value in _vector3(material.epsilon_diag)]
-    # THE PERFECT CONDUCTOR IS NOT AN ENDPOINT OF AN AVERAGE, so it comes off both
+    # The perfect conductor is not an endpoint of an average, so it comes off both
     # sides of this test rather than widening it. A PEC cell is not a subpixel average
     # of two materials — MEEP refuses to average one at all (meepgeom.cpp:1093-1094,
     # `is_metal(...) goto noavg`) — so the premise "an average lies between the
     # materials it averages" simply does not speak about it. Left in, the sentinel
     # makes `low` -1e20, and the sampled value fails the tolerance anyway by the
     # float32 round trip: it comes back -1.0000000317344784e+20 against a bound of
-    # -1e+20 with a tolerance of 1e-4 * high. MEASURED firing on the metal cavity.
+    # -1e+20 with a tolerance of 1e-4 * high. Measured firing on the metal cavity.
     declared = [value for value in declared if not is_pec_epsilon(value)]
     low, high = (min(declared), max(declared)) if declared else (0.0, 0.0)
-    # THE ONE CELL WHERE THE DECLARED BRACKET IS NOT A BOUND, and it is MEEP's own
+    # The one cell where the declared bracket is not a bound, and it is MEEP's own
     # arithmetic that breaks it rather than anything here. A MaterialGrid smoothed
     # through `fallback_chi1inv_row` builds its voxel average from
     # `u_proj = tanh_projection(uval + |grad u| * x0, beta, eta)` with x0 running over
@@ -5760,7 +5983,7 @@ def _lift_epsilon_structured(mp, sim, driver, materials, progress_cb, routes=(),
     # so `meps = (1-u)*eps1 + u*eps2` linearly EXTRAPOLATES past both endpoints. The
     # spread test below would then refuse a correctly-read cell.
     #
-    # MEASURED on a 4x4x8 grid ramped 1 -> 6 in z, 2x2x4 cell at resolution 10, against
+    # Measured on a 4x4x8 grid ramped 1 -> 6 in z, 2x2x4 cell at resolution 10, against
     # pristine CPU MEEP stepping the same object: the sampled permittivity reaches 7.71
     # on Ex (the meps row, n_r = 0) and 0.759 on Ez (the 1/minveps row, n_r = 1) — both
     # outside [1, 6] — while the stepped-field parity is 2.5961e-07 with
@@ -5781,7 +6004,7 @@ def _lift_epsilon_structured(mp, sim, driver, materials, progress_cb, routes=(),
     smoothed_grids = [grid for grid in _material_grids_of(mp, sim)
                       if getattr(grid, "do_averaging", False)] if getattr(
                           sim, "eps_averaging", True) else []
-    # THE OTHER CELL WHERE THERE IS NO BRACKET AT ALL. A per-point epsilon route names
+    # The other cell where there is no bracket at all. A per-point epsilon route names
     # no medium — a material_function returns one per POINT, an ndarray and an
     # epsilon_input_file name values rather than materials — so `declared` above speaks
     # only for whatever plain media the cell also happens to declare, and on
@@ -5804,28 +6027,33 @@ def _lift_epsilon_structured(mp, sim, driver, materials, progress_cb, routes=(),
     done = 0
     report_progress = progress_cb
     if progress_cb is not None and _progress_offset:
-        # A RESTART CONTINUES THE PASS: the planes already reported stay reported, so
+        # A restart continues the pass: the planes already reported stay reported, so
         # planes_done never decreases and planes_total grows once, by that many.
         def report_progress(planes_done, planes_total):
             progress_cb(_progress_offset + planes_done, _progress_offset + planes_total)
     build = getattr(driver, "lift_record", None) or _meep_build(mp)
     stamp = _chi1inv_build_stamp(build)
+    # Supported is not certified: every build takes the bulk read unless MEEP_GPU_HARDWARE
+    # refuses it; an uncertified one gets the denser self-check and says so.
+    certified_build = stamp in CERTIFIED_CHI1INV_BUILDS
+    admission = _chi1inv_bulk_admission(stamp) if _bulk_read is None else None
     if _restarted_by:
         chunk_table, bulk_refusal = None, f"restarted per point: {_restarted_by}"
     elif _bulk_read is False:
         chunk_table, bulk_refusal = None, "the per-point read was asked for"
-    elif _bulk_read is None and stamp not in BULK_CHI1INV_BUILDS:
-        chunk_table, bulk_refusal = None, (
-            f"MEEP {stamp[0]} {stamp[1]} precision on {stamp[2]} {stamp[3]} is not a build "
-            f"the bulk read was compared on (BULK_CHI1INV_BUILDS)")
+    elif admission is not None:
+        chunk_table, bulk_refusal = None, admission
     else:
         chunk_table, bulk_refusal = _chi1inv_chunk_table(mp, sim, grid, cylindrical, components, directions)
     record = {"path": "bulk" if chunk_table is not None else "per-point", "refusal": bulk_refusal,
-              "restarted_by": _restarted_by, "stamp": stamp, "components": {}}
+              "restarted_by": _restarted_by, "stamp": stamp, "certified_build": certified_build,
+              "self_checked_points": 0, "components": {}}
     verbose = _lift_verbose(mp)
     read_started = time.perf_counter()
     _lift_say(mp, f"chi1inv read: {record['path']}"
-                  + (f" ({bulk_refusal})" if bulk_refusal else f", {len(chunk_table.chunks)} chunk(s)"))
+                  + (f" ({bulk_refusal})" if bulk_refusal else
+                     f", {len(chunk_table.chunks)} chunk(s), MEEP build "
+                     + ("certified" if certified_build else "supported, UNCERTIFIED, dense self-check")))
     for name in E_COMPONENTS:
         component = components[name]
         own = directions[name]
@@ -5845,7 +6073,8 @@ def _lift_epsilon_structured(mp, sim, driver, materials, progress_cb, routes=(),
         if chunk_table is not None:
             try:
                 pending, read_report = _chi1inv_bulk_fill(
-                    chunk_table, component, own, others, indices, ivec, get_chi1inv, values, coupling)
+                    chunk_table, component, own, others, indices, ivec, get_chi1inv, values, coupling,
+                    certified=certified_build)
             except Exception as error:  # noqa: BLE001 - every bulk failure restarts on the reference
                 # Nothing has been installed yet, so the restart has no side effect to undo.
                 reason = f"{name}: {error}" if isinstance(error, _Chi1invBulkRefused) else (
@@ -5951,7 +6180,11 @@ def _lift_epsilon_structured(mp, sim, driver, materials, progress_cb, routes=(),
     _require_bulk_matches_meep(sim, driver, volumes, declined=declined_any)
     driver.set_epsilon_components(volumes, chi1inv_offdiagonal=coupling_rows or None)
     record["seconds"] = round(time.perf_counter() - read_started, 4)
+    record["self_checked_points"] = sum(int(report.get("self_checked_points", 0))
+                                        for report in record["components"].values())
     driver.chi1inv_read = record
+    if record["path"] == "bulk" and not certified_build:
+        _announce_chi1inv_uncertified(stamp)
 
 
 #: Seconds between the per-point read's own progress lines (rule 7: a long read is never silent).
@@ -6112,7 +6345,8 @@ def _chi1inv_owned(volume: _Chi1invVolume, directions, mp, lattice, axis):
     return inside
 
 
-def _chi1inv_bulk_fill(table, component, own, others, indices, ivec, get_chi1inv, values, coupling):
+def _chi1inv_bulk_fill(table, component, own, others, indices, ivec, get_chi1inv, values, coupling, *,
+                       certified: bool):
     """Copy every point some chunk owns, untransformed, out of MEEP's stored arrays.
 
     THE CONTRACT. ``fields::get_chi1inv(c, d, p, 0)`` first translates a point the
@@ -6130,7 +6364,9 @@ def _chi1inv_bulk_fill(table, component, own, others, indices, ivec, get_chi1inv
     plane of a periodic axis, a folded image — stays ``pending`` for the caller's
     per-point loop. Two chunks owning one point, or a slot outside its array,
     refuses. :func:`_chi1inv_bulk_self_check` then compares sampled words with
-    ``get_chi1inv`` itself and refuses on any difference.
+    ``get_chi1inv`` itself and refuses on any difference; ``certified`` says whether the
+    MEEP build is in :data:`CERTIFIED_CHI1INV_BUILDS`, and an uncertified build gets the
+    denser sample (:func:`_chi1inv_self_check_plan`).
 
     Returns ``(pending, report)``.
     """
@@ -6183,38 +6419,135 @@ def _chi1inv_bulk_fill(table, component, own, others, indices, ivec, get_chi1inv
         raise _Chi1invBulkRefused("two chunks own one point")
     pending = covered == 0
     checked = _chi1inv_bulk_self_check(table, component, own, others, indices, ivec, get_chi1inv,
-                                       values, coupling, blocks, pending)
+                                       values, coupling, blocks, pending, certified=certified)
     return pending, {"path": "bulk", "chunks": len(table.chunks), "blocks": len(blocks),
                      "null_slots": null_slots, "bulk_points": int(pending.size - pending.sum()),
                      "residual_points": int(pending.sum()), "self_checked_points": checked,
                      "chunk_owned_outside_user_volume": beyond_user}
 
 
-def _chi1inv_bulk_self_check(table, component, own, others, indices, ivec, get_chi1inv,
-                             values, coupling, blocks, pending, samples: int = 256) -> int:
-    """Compare bulk words with ``fields::get_chi1inv`` itself, bit for bit, at sampled points.
+#: The self-check on every build (the whole check on a certified one): every copied block's two
+#: diagonal corners, where ``grid_volume::owns`` (chunk and user volume) and
+#: ``grid_volume::index`` must agree with the copy, and a seeded sample of up to
+#: :data:`_SELF_CHECK_SAMPLES` bulk-read points per component.
+_SELF_CHECK_SAMPLES = 256
+_SELF_CHECK_SEED = 20261013
+#: Added on an uncertified build, per copied block: its other corners (``owns`` and ``index``
+#: are then checked at all of them, up to 8); on each of its edges (up to 12) up to
+#: :data:`_DENSE_EDGE_POINTS` points evenly spaced between its corners, the two next to the
+#: corners included, and every point of a shorter edge; and a seeded sample of
+#: ``max(_DENSE_BLOCK_SAMPLES, points // _DENSE_BLOCK_FRACTION)`` of its points (all of them in
+#: a smaller block). Every point of every edge measured 0.9 s against a 2.2 s bulk read at
+#: 2,097,152 cells (27 blocks per component), hence the stride.
+_DENSE_EDGE_POINTS = 16
+_DENSE_BLOCK_SAMPLES = 64
+_DENSE_BLOCK_FRACTION = 4096
+_DENSE_SELF_CHECK_SEED = 20261016
+#: The order the self-check compares the plan's word groups in.
+_SELF_CHECK_GROUPS = ("corners", "samples", "edges", "block_samples")
 
-    Every copied block's two corners, where MEEP's own ``grid_volume::owns`` (chunk
-    and user volume) and ``grid_volume::index`` must agree with the copy, plus a
-    seeded sample of every bulk-read point. All three directions per point, as
-    uint64 bit patterns, so a -0.0 against a 0.0 is a difference. Returns the count.
-    """
+
+def _chi1inv_block_corners(select) -> list:  # A block's corners, as local index triples, distinct.
+    ends = [sorted({0, len(axis) - 1}) for axis in select]
+    return [(a, b, c) for a in ends[0] for b in ends[1] for c in ends[2]]
+
+
+def _chi1inv_block_edges(select) -> list:  # A block's sampled edge points, corners excluded, distinct.
+    ends = [sorted({0, len(axis) - 1}) for axis in select]
     points = []
-    for chunk, select, flat in blocks:
-        for end in (0, -1):
-            position = tuple(int(axis[end]) for axis in select)
-            location = ivec(*(indices[axis][position[axis]] for axis in range(3)))
-            if not (chunk.volume.owns(location) and table.user.volume.owns(location)):
-                raise _Chi1invBulkRefused("grid_volume::owns disagrees at a copied block's corner")
-            if int(chunk.volume.index(component, location)) != int(flat[end, end, end]):
-                raise _Chi1invBulkRefused("grid_volume::index disagrees at a copied block's corner")
-            points.append(position)
+    for along in range(3):
+        first, second = (axis for axis in range(3) if axis != along)
+        interior = len(select[along]) - 2
+        count = min(interior, _DENSE_EDGE_POINTS)
+        steps = sorted({1 + (k * (interior - 1)) // max(count - 1, 1) for k in range(count)})
+        for end_first in ends[first]:
+            for end_second in ends[second]:
+                for step in steps:
+                    local = [0, 0, 0]
+                    local[along], local[first], local[second] = step, end_first, end_second
+                    points.append(tuple(local))
+    return points
+
+
+def _chi1inv_self_check_plan(blocks, pending, *, certified: bool,
+                             samples: int = _SELF_CHECK_SAMPLES) -> dict:
+    """Where the self-check reads, by group: positions into ``pending``'s shape.
+
+    ``structural``: ``(block, local)`` pairs, ``local`` an index triple into the block's
+    selection, at which ``grid_volume::owns`` and ``grid_volume::index`` are asked. The word
+    groups, compared in :data:`_SELF_CHECK_GROUPS` order: ``corners`` (the structural points),
+    ``samples`` (the seeded per-component draw), and on an uncertified build ``edges`` and
+    ``block_samples``.
+
+    A CERTIFIED build reads exactly 1.0's points: every block's two diagonal corners, a block
+    of one point counted twice as 1.0 counted it, then the draw. An UNCERTIFIED build reads
+    those and adds, per block, the other corners, the sampled edge points
+    (:func:`_chi1inv_block_edges`) and the block's own seeded sample; a point is read once, in
+    the first group that holds it.
+    """
+    plan = {"structural": [], "corners": [], "samples": [], "edges": [], "block_samples": []}
+
+    def position(select, local):
+        return tuple(int(select[axis][local[axis]]) for axis in range(3))
+
+    for index, (_chunk, select, _flat) in enumerate(blocks):
+        locals_ = ([(0, 0, 0), (-1, -1, -1)] if certified else _chi1inv_block_corners(select))
+        for local in locals_:
+            plan["structural"].append((index, local))
+            plan["corners"].append(position(select, local))
     candidates = numpy.flatnonzero(~pending.ravel())
     if candidates.size:
-        drawn = numpy.random.default_rng(20261013).choice(
+        drawn = numpy.random.default_rng(_SELF_CHECK_SEED).choice(
             candidates, size=min(samples, candidates.size), replace=False)
-        points.extend(tuple(int(v) for v in numpy.unravel_index(int(point), pending.shape))
-                      for point in drawn)
+        plan["samples"] = [tuple(int(v) for v in numpy.unravel_index(int(point), pending.shape))
+                           for point in drawn]
+    if certified:
+        return plan
+    seen = set(plan["corners"])
+
+    def add(group, point):
+        if point not in seen:
+            seen.add(point)
+            plan[group].append(point)
+
+    drawn, plan["samples"] = plan["samples"], []
+    for point in drawn:
+        add("samples", point)
+    rng = numpy.random.default_rng(_DENSE_SELF_CHECK_SEED)
+    for _chunk, select, _flat in blocks:
+        for local in _chi1inv_block_edges(select):
+            add("edges", position(select, local))
+        shape = tuple(len(axis) for axis in select)
+        total = math.prod(shape)
+        count = min(total, max(_DENSE_BLOCK_SAMPLES, total // _DENSE_BLOCK_FRACTION))
+        for flat_local in rng.choice(total, size=count, replace=False):
+            add("block_samples", position(select, numpy.unravel_index(int(flat_local), shape)))
+    return plan
+
+
+def _chi1inv_bulk_self_check(table, component, own, others, indices, ivec, get_chi1inv,
+                             values, coupling, blocks, pending, samples: int = _SELF_CHECK_SAMPLES, *,
+                             certified: bool) -> int:
+    """Compare bulk words with ``fields::get_chi1inv`` itself, bit for bit, at sampled points.
+
+    At the plan's points (:func:`_chi1inv_self_check_plan`): on a certified build every
+    copied block's two corners, where MEEP's own ``grid_volume::owns`` (chunk and user
+    volume) and ``grid_volume::index`` must agree with the copy, plus a seeded sample of
+    every bulk-read point; on an uncertified build also every block's other corners (owns
+    and index checked there too), points evenly spaced along each of its edges and a seeded
+    sample of its own points. All three directions per point, as uint64 bit patterns, so a -0.0 against a 0.0
+    is a difference. Returns the count of points whose words were compared.
+    """
+    plan = _chi1inv_self_check_plan(blocks, pending, certified=certified, samples=samples)
+    for index, local in plan["structural"]:
+        chunk, select, flat = blocks[index]
+        position = tuple(int(select[axis][local[axis]]) for axis in range(3))
+        location = ivec(*(indices[axis][position[axis]] for axis in range(3)))
+        if not (chunk.volume.owns(location) and table.user.volume.owns(location)):
+            raise _Chi1invBulkRefused("grid_volume::owns disagrees at a copied block's corner")
+        if int(chunk.volume.index(component, location)) != int(flat[local]):
+            raise _Chi1invBulkRefused("grid_volume::index disagrees at a copied block's corner")
+    points = [point for group in _SELF_CHECK_GROUPS for point in plan[group]]
     for position in points:
         location = ivec(*(indices[axis][position[axis]] for axis in range(3)))
         answers = [(values, get_chi1inv(component, own, location, 0).real)]
@@ -6300,7 +6633,7 @@ def _unowned_wall_planes(sim, gv, grid, component, own, indices, values, ivec):
     previously-measured structured lift (vacuum backgrounds, where 1.0 IS the
     declared medium) keeps its installed volumes bit-for-bit.
 
-    Membership is MEASURED per point, not derived from the geometry: only a
+    Membership is measured per point, not derived from the geometry: only a
     candidate that reads exactly 1.0 from ``fields::get_chi1inv`` AND 0.0 from
     ``structure::get_chi1inv`` — which runs the same symmetry loop but neither
     translates across a periodic face (no ``locate_point_in_user_volume``) nor
@@ -6533,14 +6866,14 @@ def _require_bulk_matches_meep(sim, driver, volumes, declined=None) -> None:
     every cell where the three sampled components agree with each other must also
     agree with MEEP's diagnostic, exactly.
 
-    WHAT THIS CHECK IS AND IS NOT, restated after measurement. It is NOT the
+    What this check is and is not, restated after measurement. It is NOT the
     registration pin. The pin is :func:`_lattice_indices`' integer equality
     against ``gv.little_corner() + gv.iyee_shift(c)``, which is what refuses the
     half-cell, whole-cell and off-lattice gates by name (see
     ``test_a_mis_sampled_permittivity_is_caught_before_a_single_step``, whose
     expected messages all come from there). This docstring used to claim it was
     "the registration check the historical half-cell defects would have failed";
-    that claim was MEASURED FALSE on the oblique-waveguide cell (35-degree rotated
+    that claim was measured false on the oblique-waveguide cell (35-degree rotated
     index-3.5 block, 240x240 at resolution 20) with the pin bypassed: a +0.5-cell
     x shift changes 53 of 172800 sampled values and this check does not fire, and a
     +1-cell shift fires only on the wall artifact below (bit-identical error, and
@@ -6550,9 +6883,9 @@ def _require_bulk_matches_meep(sim, driver, volumes, declined=None) -> None:
     handed straight to this function and refused "in the BULK". Whether it also
     catches a shift is geometry-dependent and is not claimed here.
 
-    TWO KNOWN BLIND SPOTS, both deliberate.
+    Two known blind spots, both deliberate.
 
-    THE UNOWNED WALL PLANES, excluded via ``declined``. ``fields::get_chi1inv``
+    The unowned wall planes, excluded via ``declined``. ``fields::get_chi1inv``
     substitutes literal vacuum for a point no chunk ``owns`` (monitor.cpp:181-183,
     "default to vacuum outside computational cell") while ``structure::get_chi1inv``
     returns 0.0 there (monitor.cpp:238), so the global low-boundary plane of a
@@ -6571,7 +6904,7 @@ def _require_bulk_matches_meep(sim, driver, volumes, declined=None) -> None:
     The exclusion gives up 421 checked cells and, on that geometry, no measured
     detection power — the two shift controls above are not caught either way.
 
-    THE ON-LATTICE INTERFACE, left in place as a known false positive: an interface
+    The on-lattice interface, left in place as a known false positive: an interface
     that lands EXACTLY on the Yee sampling planes of a cell defeats the bulk classifier —
     all three per-component samples read the same pure material while MEEP's
     centre diagnostic is subpixel-smoothed, so a genuinely correct lift is
@@ -6659,7 +6992,7 @@ def _require_bulk_matches_meep(sim, driver, volumes, declined=None) -> None:
             numpy.maximum(high, numpy.roll(high, 1, axis)), numpy.roll(high, -1, axis)
         )
     interior = (high.max(axis=0) - low.min(axis=0)) <= 1e-6 * high.max(axis=0)
-    # THE PERFECT-CONDUCTOR NEIGHBOURHOOD, excluded explicitly — the third blind spot,
+    # The perfect-conductor neighbourhood, excluded explicitly — the third blind spot,
     # and the same argument as the unowned wall planes above: the two witnesses cannot
     # agree there, so requiring it requires the impossible. ``fields::get_eps`` is
     # ``nc / sum_c chi1inv(c)`` (monitor.cpp:202-212), a SUM over the electric
@@ -6756,10 +7089,10 @@ def _read_conductivity_volumes(mp, sim, driver, progress_cb=None) -> dict:
     ``D_conductivity=0.7`` block at resolution 20 with the pair w = 0.9, 0.3: recovered
     0.699999988 (float32 storage), worst error 1.19e-08 over the plane, and 1.11e-16
     between the two. The pair is now w = 1e8, 1e20 (``_CONDUCTIVITY_PROBE_FREQUENCIES``):
-    on the six conductive cases of the bit-parity phase 0, every lossy cell's float32
+    on six conductive test cases, every lossy cell's float32
     read is unchanged and every round-off cell of the old pair reads exactly 0.
 
-    THE TWO SELF-CHECKS, because both premises above are places to be confidently
+    The two self-checks, because both premises above are places to be confidently
     wrong and neither is argued into correctness here:
 
     * **The identity check.** ``get_chi1inv(D_c, own, iloc, 0)`` must be exactly 1.0 —
@@ -6775,7 +7108,7 @@ def _read_conductivity_volumes(mp, sim, driver, progress_cb=None) -> dict:
     :class:`~.sigma_lookup.SigmaVerification` refuses, rather than installing a
     doubtful volume.
 
-    WHAT THE READ INCLUDES, and it is not a defect: ``mp.Absorber``. MEEP's
+    What the read includes, and it is not a defect: ``mp.Absorber``. MEEP's
     ``geom_epsilon::conductivity`` adds each absorber face's ramp INTO the same
     ``conductivity[c][d]`` array (meepgeom.cpp:1596-1625), so what comes back is
     material + absorber summed by MEEP itself — measured peak 98.565 on an
@@ -6970,7 +7303,7 @@ SIGMA_ROUTE_INVERSION = "chi1inv inversion"
 # Objects whose containment the lookup will scan per Yee point before handing the
 # cell to the inversion instead.
 #
-# THERE IS NO COST CROSSOVER, and saying otherwise would be the comfortable version.
+# There is no cost crossover, and saying otherwise would be the comfortable version.
 # The lookup asks MEEP's own is_point_in_object once per object per point until one
 # answers yes — a LINEAR scan where MEEP's internal geometry tree is logarithmic —
 # and it still pays for N+1 frequency samples on top, so it is MORE expensive than
@@ -7227,6 +7560,15 @@ def _libctl_bounding_box(mp, obj):
     lies outside it, and it spares that test on the copies nowhere near the point. Any
     other kind takes no gate (None). Returns ``(low, high)`` as two ``(x, y, z)``
     tuples.
+
+    A ``mp.Mesh`` (MEEP 1.34.0 and later, converted only where libctl has
+    ``make_mesh_with_center``, MEEP 1.35.0 python/geom.py:1356-1477) is one of those
+    kinds, deliberately: libctl bounds a mesh by its vertices, which spares the tree
+    search its far copies, and the lookup here asks ``is_point_in_object`` of every
+    copy instead. Where that box would decide a face point of a periodic copy, as a
+    block's does, the two answers can differ, and the per-point check behind the
+    lookup refuses the route (the lift then recovers the sigma by inverting chi1inv);
+    a mesh is never looked up in a box this function invented.
     """
     import math  # noqa: PLC0415
 
@@ -7493,7 +7835,7 @@ def _lookup_sigma_volumes(mp, sim, driver, materials, progress_cb=None) -> tuple
     defect. A cell that fails goes to the inversion, which shares none of these
     dependencies.
 
-    THE OWNERSHIP GATE. ``fields::get_chi1inv`` is two steps: wrap the point into
+    The ownership gate. ``fields::get_chi1inv`` is two steps: wrap the point into
     the user volume along any PERIODIC direction (``locate_point_in_user_volume``,
     boundaries.cpp), then search the chunks for one that ``owns`` the result and,
     finding none, answer *vacuum with no susceptibility* (monitor.cpp:182-184
@@ -7547,20 +7889,14 @@ def _lookup_sigma_volumes(mp, sim, driver, materials, progress_cb=None) -> tuple
     grid = driver.grid
     get_chi1inv = fields.get_chi1inv
     lattice_per_unit = 2.0 * float(sim.resolution)
-    cylindrical = bool(getattr(grid, "cylindrical", False))
-    if cylindrical:
-        # The Dcyl spelling, as in _lift_epsilon_structured: this engine's
-        # (Ex, Ey, Ez) are MEEP's (Er, Ep, Ez), whose component_index is still
-        # (0, 1, 2) — vec.hpp:459-466 — so the sigma row selection is unchanged.
-        directions = {"Ex": mp.R, "Ey": mp.P, "Ez": mp.Z}
-        components = {"Ex": mp.Er, "Ey": mp.Ep, "Ez": mp.Ez}
-        ivec = lambda ix, jy, kz: mp.iveccyl(ix, kz)  # noqa: E731 — the one construction seam.
-    else:
-        directions = {"Ex": mp.X, "Ey": mp.Y, "Ez": mp.Z}
-        components = {"Ex": mp.Ex, "Ey": mp.Ey, "Ez": mp.Ez}
-        ivec = mp.ivec
+    # Cylindrical is refused at the gate (_check_structured_sigma_cylindrical): in a
+    # cylindrical structure MEEP's nonzero-frequency chi1inv, which this check reads,
+    # is not a value MEEP defines.
+    directions = {"Ex": mp.X, "Ey": mp.Y, "Ez": mp.Z}
+    components = {"Ex": mp.Ex, "Ey": mp.Ey, "Ez": mp.Ez}
+    ivec = mp.ivec
     user_volume = fields.user_volume
-    periods = _periodic_lattice_period(user_volume, sim, cylindrical)
+    periods = _periodic_lattice_period(user_volume, sim, False)
     mirrors = tuple(axis for axis in range(3) if grid.is_mirrored(axis))
 
     volumes: dict[str, Any] = {}
@@ -7602,10 +7938,13 @@ def _lookup_sigma_volumes(mp, sim, driver, materials, progress_cb=None) -> tuple
                                 f"and the susceptibility sigma has to be checked against "
                                 f"1/chi1inv[c][c], which is eps_cc only for a diagonal tensor "
                                 f"(monitor.cpp inverts the whole 3x3). Subpixel averaging at a "
-                                f"curved or rotated interface anywhere in the cell writes such "
-                                f"rows, and so do a medium with a nonzero epsilon_offdiag and a "
-                                f"cylindrical cell; each breaks that premise for the lookup and "
-                                f"for the chi1inv inversion alike. The permittivity itself lifts "
+                                f"curved or rotated interface between media of different "
+                                f"permittivity writes such rows, and breaks that premise for the "
+                                f"lookup and for the chi1inv inversion alike; it is the one source "
+                                f"of them gpu_compatibility cannot see before init_sim, because "
+                                f"only MEEP's rasterized structure shows where the averaging "
+                                f"lands (a declared epsilon_offdiag in such a cell is refused "
+                                f"there, by name). The permittivity itself lifts "
                                 f"here — the off-diagonal rows are ingested — but the dispersion "
                                 f"cannot. Where the rows come from subpixel averaging, set "
                                 f"eps_averaging=False or make every shape in the cell an "
@@ -7689,7 +8028,7 @@ def _recover_sigma_volumes(mp, sim, driver, materials, progress_cb=None) -> tupl
       same Yee points — sampled at a nonzero frequency instead of at 0.
     * **``mp.ivec`` must be called with three arguments.** ``mp.ivec(a, b)`` resolves
       to the SWIG ``(ndim, val)`` overload, which yields a vector that reads vacuum
-      everywhere and then segfaults (the design notes (meep-sigma-reader-plan) §7).
+      everywhere and then segfaults.
     * **``get_chi1inv(c, d, iloc, w)`` at nonzero ``w`` returns an entry of the
       INVERSE tensor** — monitor.cpp inverts, adds the susceptibilities, and inverts
       back — so ``1/get_chi1inv(c, own, ...)`` is ``eps_cc`` only where that tensor is
@@ -7720,17 +8059,12 @@ def _recover_sigma_volumes(mp, sim, driver, materials, progress_cb=None) -> tupl
     gv = fields.gv
     grid = driver.grid
     lattice_per_unit = 2.0 * float(sim.resolution)
-    if bool(getattr(grid, "cylindrical", False)):
-        # The Dcyl spelling, as in _lift_epsilon_structured: this engine's
-        # (Ex, Ey, Ez) are MEEP's (Er, Ep, Ez), and a Dcyl ivec is (r, z) with no
-        # phi slot at all.
-        directions = {"Ex": mp.R, "Ey": mp.P, "Ez": mp.Z}
-        components = {"Ex": mp.Er, "Ey": mp.Ep, "Ez": mp.Ez}
-        ivec = lambda ix, jy, kz: mp.iveccyl(ix, kz)  # noqa: E731 — the one construction seam.
-    else:
-        directions = {"Ex": mp.X, "Ey": mp.Y, "Ez": mp.Z}
-        components = {"Ex": mp.Ex, "Ey": mp.Ey, "Ez": mp.Ez}
-        ivec = mp.ivec
+    # Cylindrical is refused at the gate (_check_structured_sigma_cylindrical): in a
+    # cylindrical structure MEEP's nonzero-frequency chi1inv, which this recovery
+    # samples, is not a value MEEP defines.
+    directions = {"Ex": mp.X, "Ey": mp.Y, "Ez": mp.Z}
+    components = {"Ex": mp.Ex, "Ey": mp.Ey, "Ez": mp.Ez}
+    ivec = mp.ivec
     volumes: dict[str, Any] = {}
     total = max(3 * grid.nx, 1)
     done = 0
@@ -7755,9 +8089,12 @@ def _recover_sigma_volumes(mp, sim, driver, materials, progress_cb=None) -> tupl
                                 f"to be recovered from chi1inv. That recovery reads eps_cc as "
                                 f"1/chi1inv[c][c], which holds only for a diagonal tensor "
                                 f"(monitor.cpp inverts the whole 3x3). Subpixel averaging at a "
-                                f"curved or rotated interface anywhere in the cell writes such "
-                                f"rows, and so do a medium with a nonzero epsilon_offdiag and a "
-                                f"cylindrical cell; each breaks that premise. The permittivity "
+                                f"curved or rotated interface between media of different "
+                                f"permittivity writes such rows, and breaks that premise; it is "
+                                f"the one source of them gpu_compatibility cannot see before "
+                                f"init_sim, because only MEEP's rasterized structure shows where "
+                                f"the averaging lands (a declared epsilon_offdiag in such a cell "
+                                f"is refused there, by name). The permittivity "
                                 f"itself lifts here — the off-diagonal rows are ingested — but "
                                 f"the dispersion cannot. Where the rows come from subpixel "
                                 f"averaging, set eps_averaging=False or make every shape in the "
@@ -7880,7 +8217,7 @@ def _resolve_pml_faces(mp, sim, dimensions: int, folded) -> Optional[FaceThickne
     intuitive way puts a one-sided absorber on the opposite face, which produces a
     perfectly stable run against a boundary the user did not ask to absorb.
 
-    THE CELL COUNT IS NOT ROUNDED. ``thickness * resolution`` goes across as it comes
+    The cell count is not rounded. ``thickness * resolution`` goes across as it comes
     out: ``mp.PML(0.5)`` at resolution 71 is 35.5 cells, which MEEP builds and
     :class:`~.pml.PML` now builds too. Rounding it to 35 or 36 — which this converter
     did, behind a refusal, until the layer could carry a fraction — lands 8.75e-04 and
@@ -7900,7 +8237,7 @@ def _resolve_pml_faces(mp, sim, dimensions: int, folded) -> Optional[FaceThickne
     active = False
     for layer in getattr(sim, "boundary_layers", ()) or ():
         if isinstance(layer, mp.Absorber):
-            # AN ABSORBER IS AN mp.PML BY INHERITANCE (python/simulation.py:308) and must
+            # An absorber is an mp.PML by inheritance (python/simulation.py:308) and must
             # be skipped here explicitly. MEEP skips it in exactly this place —
             # `_create_boundary_region_from_boundary_layers` opens with
             # `if isinstance(layer, Absorber): continue` (python/simulation.py:4956) — so
@@ -8126,7 +8463,7 @@ def _check_eigenmode_source(mp, sim, source, label: str, reasons: list) -> None:
         #     out of CPU MEEP's own init_sim for a point AND for a 2x2 volume, at both
         #     a zero and a nonzero eig_kpoint.
         #
-        # TWO SHAPES REACH PAST THAT ABORT, which is why the sentence below claims it
+        # Two shapes reach past that abort, which is why the sentence below claims it
         # for the default path only and carries a second evidence clause:
         #   * an explicit direction=mp.NO_DIRECTION skips the Python-side resolution
         #     entirely and mpb.cpp:876-884 takes the FIRST zero-extent axis. Nothing
@@ -8375,7 +8712,7 @@ def _lift_eigenmode_source(mp, sim, source, dimensions):
     names = _component_names(mp)
     keep = _eigenmode_component_filter(mp, source, dimensions)
 
-    # THE INVARIANT AXIS CARRIES NO OFFSET INTO THE MODE SAMPLE. MEEP's own D2 run
+    # The invariant axis carries no offset into the mode sample. MEEP's own D2 run
     # hands ``eigenmode_amplitude`` a D2 ``vec``, whose LOOP_OVER_DIRECTIONS never
     # visits Z (mpb.cpp:203-208), while ``EigenmodeData.amplitude`` builds a 3-D
     # ``mp.vec(x, y, z)`` from whatever Python passes — so a half-integer-z component's
@@ -8383,7 +8720,7 @@ def _lift_eigenmode_source(mp, sim, source, dimensions):
     # reach the mode as a real z displacement and pick up ``exp(i*2*pi*Gk[2]*pz)``.
     # Gk[2] carries beta (mpb.cpp:394), so the pair of half-cell offsets averages to
     # cos(pi*beta*dx) and the whole injected mode comes out that factor small.
-    # MEASURED on a 2-D epsilon-12 waveguide at resolution 20, best-fit complex scale
+    # Measured on a 2-D epsilon-12 waveguide at resolution 20, best-fit complex scale
     # of the lifted field against CPU MEEP's: 1 - s = 3.088e-05 at kz = 0.05,
     # 4.933e-04 at kz = 0.2 and 1.973e-03 at kz = 0.4 — exactly quadratic in beta and
     # exactly 1 - cos(pi*beta*dx), constant in time (t = 15 and t = 40 agree to five
@@ -8546,13 +8883,13 @@ def _lift_gaussian_beam_source(mp, sim, source, dimensions):
     three of its numeric branches) and the deposition is this package's
     ``_build_source_points``, already the transcription of the same C++ routine.
 
-    THREE THINGS MEEP DOES HERE ARE NOT WHAT A PHYSICIST WOULD WRITE, and each is a
+    Three things MEEP does here are not what a physicist would write, and each is a
     measured fact rather than a reading:
 
     * ``eps`` and ``mu`` come from the INITIALIZED structure at the source centre
       (``fields::get_eps``/``get_mu``, source.py:760-765), not from the default
       medium. They set k, the Rayleigh range and the whole envelope.
-    * ``source.amplitude`` and ``source.amp_func`` are SILENTLY DROPPED — MEEP never
+    * ``source.amplitude`` and ``source.amp_func`` are silently dropped — MEEP never
       passes them (source.py:751-773 builds the beam and calls
       ``add_volume_source(src, where, beam)`` with neither). Measured on CPU MEEP:
       ``amplitude=5.0`` and ``amp_func=lambda p: 3.0`` each leave the deposited
@@ -8727,7 +9064,7 @@ def _check_gaussian_beam_2d_source(mp, sim, source, label: str, reasons: list) -
             f"source.py:822. Install scipy, or use mp.GaussianBeam3DSource."
         )
     if getattr(sim, "symmetries", ()) or ():
-        # THE FOLD SEAM, refused by name rather than half-built. `_check_source_folds`
+        # The fold seam, refused by name rather than half-built. `_check_source_folds`
         # and `_fold_drops_source` run against `sim.sources`, which holds the BEAM
         # object — one declaration with no component — while what is actually deposited
         # is the derived (Ez, Hx) pair, each with its own parity about the plane. The
@@ -8756,7 +9093,7 @@ def _lift_gaussian_beam_2d_source(mp, sim, source, dimensions):
     the deposit is lifted, through the plain-source path that every other ``amp_data``
     source already takes.
 
-    MEASURED on ``test_gaussianbeam.py``'s own configuration (14x14 cell, resolution
+    Measured on ``test_gaussianbeam.py``'s own configuration (14x14 cell, resolution
     25, dpml 2, rot_angle -40, beam_w0 0.8, beam_E0 along z): ``get_equiv_sources``
     returns exactly TWO plain sources — ``mp.Ez`` (an electric current) and ``mp.Hx``
     (a magnetic current) — both on the same 14x0 line at (0, -4, 0), each carrying an
@@ -8765,7 +9102,7 @@ def _lift_gaussian_beam_2d_source(mp, sim, source, dimensions):
     driver through :mod:`.amp_interpolation`, measured bit-identical to MEEP's own
     interpolator (difference exactly 0.0).
 
-    THE PAIR IS THE PHYSICS, not a redundancy. Love's equivalence needs both the
+    The pair is the physics, not a redundancy. Love's equivalence needs both the
     electric current ``K = nHat x H`` and the magnetic current ``N = -nHat x E``
     (source.py:786-794) for the sheet to radiate into one half-space only; deposit
     either alone and the beam launches in BOTH directions at half amplitude, on a run
@@ -8824,13 +9161,13 @@ REALIZABLE_SOURCES: dict = {
 
 
 def _bind_meep_src_time(mp, source, spec: dict, lifted) -> None:  # The lifted source's currents come from MEEP's own src_time.
-    """Bind the simulation's own ``src_time`` to one lifted source (owner ruling R3).
+    """Bind the simulation's own ``src_time`` to one lifted source.
 
     Every current and dipole the lifted run deposits is then MEEP's
     ``src_time::current`` / ``src_time::dipole`` (``sources._MeepSrcTimeBinding``): the
     carrier's words depend on the libm entry and the complex division MEEP's build
-    landed on, which the package cannot see (phase 0, P0-d3). The object is
-    ``source.src.swigobj``, the one MEEP clones into its fields at ``init_sim``
+    landed on, which the package cannot see (on Linux, Python's math.cos / math.sin miss 11 of 8,833 of MEEP's current and dipole rows).
+    The object is ``source.src.swigobj``, the one MEEP clones into its fields at ``init_sim``
     (``src_time::add_to``, sources.cpp:39-52); ``dipole`` and ``current`` are pure
     functions of their arguments, so the clone and the original answer alike.
 
@@ -9137,6 +9474,61 @@ def _load_declared_flux_data(driver, requests: Sequence[tuple[Any, Any]], *, min
             monitor.load_dft_data(data)
 
 
+#: MEEP's termination criteria by name, and what this package offers in their place.
+#: ``run_on_gpu`` takes a simulation time only; a criterion handed to it as ``until``
+#: or ``until_after_sources`` is refused with the entry for its name.
+STOP_CONDITION_REFUSALS: dict[str, str] = {
+    "stop_when_fields_decayed": (
+        "its criterion is FdtdDriver.run's field-decay stop: driver = "
+        "lift_simulation(sim), then driver.run(until_after_sources=dt, decay_by=decay_by, "
+        "decay_component='Ez', decay_point=(x, y, z), decay_sampling_interval="
+        "sampling_interval, max_time=ceiling)"),
+    "stop_when_flux_decayed": (
+        "its criterion reads mp.get_fluxes(flux), MEEP's own DftFlux accumulator, which a "
+        "lifted run never fills (the run accumulates the migrated monitor, read with "
+        "result.get_flux_spectrum(flux)), so it would read zeros and stop on them; run it "
+        "on CPU MEEP, or stop on a simulation time"),
+    "stop_when_energy_decayed": (
+        "its criterion reads MEEP's own energy accumulator, which a lifted run never "
+        "fills; run it on CPU MEEP, or stop on a simulation time"),
+    "stop_when_dft_decayed": (
+        "its criterion reads MEEP's own DFT chunks, which a lifted run never fills; run it "
+        "on CPU MEEP, or stop on a simulation time"),
+    "stop_after_walltime": "stop on a simulation time instead",
+    "stop_on_interrupt": "stop on a simulation time instead",
+}
+
+
+def _stop_condition_refusal(keyword: str, value) -> str:
+    """Why ``run_on_gpu`` refuses ``value`` as its ``keyword``, naming the criterion.
+
+    MEEP's criteria are closures named ``_stop``; the function that built one is the
+    first part of its ``__qualname__`` (``stop_when_fields_decayed.<locals>._stop``).
+    """
+    if isinstance(value, (list, tuple)):
+        named = ", ".join(_stop_condition_name(entry) if callable(entry) else repr(entry)
+                          for entry in value)
+        return (f"run_on_gpu takes {keyword} as a simulation time; a list of stop "
+                f"conditions ({named}) is not hosted. MEEP's run(...) accepts one, and "
+                f"the lifted run stops on a time only.")
+    name = _stop_condition_name(value)
+    reason = STOP_CONDITION_REFUSALS.get(name.split(".", 1)[0])
+    return (f"run_on_gpu takes {keyword} as a simulation time; the stop condition {name} "
+            f"is not hosted"
+            + (f": {reason}." if reason else
+               ": a condition is evaluated against the simulation every step, and the "
+               "lifted run stops on a time only."))
+
+
+def _stop_condition_name(value) -> str:  # 'stop_when_fields_decayed' for MEEP's closure.
+    qualified = str(getattr(value, "__qualname__", "") or getattr(value, "__name__", "")
+                    or type(value).__name__)
+    if ".<locals>." not in qualified:
+        return qualified
+    # The function that built the closure: the last name before its own `<locals>`.
+    return qualified.rsplit(".<locals>.", 1)[0].rsplit(".", 1)[-1]
+
+
 def run_on_gpu(
     sim,
     until: float | None = None,
@@ -9166,6 +9558,11 @@ def run_on_gpu(
     finished. Note this is NOT the driver's keyword of the same name, which is
     ``stop_when_fields_decayed``'s trailing window; for that criterion, lift the
     simulation and call :meth:`~.driver.FdtdDriver.run` yourself.
+
+    Both take a simulation time. A MEEP stop condition (``mp.stop_when_fields_decayed``,
+    ``mp.stop_when_flux_decayed``, any callable, or a list of them) is refused by name
+    before anything is lifted, with what to use instead
+    (:data:`STOP_CONDITION_REFUSALS`).
 
     Args:
         sim: A constructed ``meep.Simulation``.
@@ -9225,6 +9622,8 @@ def run_on_gpu(
     Raises:
         MeepSimulationNotLiftable: Nothing in ``sim`` was run; see
             :func:`gpu_compatibility`.
+        TypeError: ``until`` or ``until_after_sources`` is a stop condition (a callable
+            or a list) rather than a time, raised before anything is lifted.
         ValueError: Neither or both stopping conditions given; or ``prefer_gpu``
             (the default here) with ``gpu_id`` other than 0 on an Apple GPU,
             raised before ``sim.init_sim()``.
@@ -9242,6 +9641,9 @@ def run_on_gpu(
             f"run_on_gpu takes exactly one of until or until_after_sources, got {given or 'none'} "
             f"(MEEP's own run() takes them the same way)."
         )
+    for keyword, value in (("until", until), ("until_after_sources", until_after_sources)):
+        if value is not None and (callable(value) or isinstance(value, (list, tuple))):
+            raise TypeError(_stop_condition_refusal(keyword, value))
     mp = _import_meep()  # For the facade's component table; the lift imports its own.
     driver = lift_simulation(
         sim, prefer_gpu=prefer_gpu, gpu_id=gpu_id, progress_cb=lift_progress_cb

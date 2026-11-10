@@ -502,7 +502,7 @@ def meep_sigma(grid: Grid, pml: PML, axis: str, offset: float) -> numpy.ndarray:
        MEEP's own ``a``, ``dx`` and ``bloc`` rather than this engine's cell counts, so
        the transcription is of the C expression and not of the port.
 
-       ``prefac`` IS TRANSCRIBED, NOT CALLED. Reading it back from ``PML.prefac`` left
+       ``prefac`` is transcribed, not called. Reading it back from ``PML.prefac`` left
        the one fractional quantity with no independent oracle at all: substituting the
        snapped extent for the raw thickness in that divisor passed all 142 tests in this
        file with bit-identical numbers, because ``expected`` was computed with the very
@@ -1235,7 +1235,7 @@ def test_a_whole_cell_layer_is_byte_identical_under_fractional_support(overrides
     quietly move the CPU-MEEP floors recorded in ``FdtdDriver.setup_pml`` (2.9e-07
     uniform, 5.5e-07 one-sided, 4.9e-07 asymmetric).
 
-    WHAT THIS PIN DOES NOT COVER, measured rather than assumed: the double-precision
+    What this pin does not cover, measured rather than assumed: the double-precision
     reassociation above does not reach these bytes. Sigma is stored float32, and over
     4236 whole-cell sigma arrays built both ways — three resolutions, three cell sizes,
     every (low, high) pair up to 8, both Yee offsets — 2952 differ at double and 0 of

@@ -15,7 +15,7 @@ with the conductive gate: the products cover 3-D, 2-D and 1-D grids, a 3-D grid
 storing one cell on a live axis, phased, Brillouin-edge and metallic axes; the
 planted leg requires the shipped kernel to reproduce a state holding ``-0`` on every
 target part; the mutations invert the old flattened-grouping row to the previous
-pairwise bracket (KERNELS.md §7.1) and arm the absent-partner, connection and
+pairwise bracket (docs/development/certification.md#inverted-grouping-mutations) and arm the absent-partner, connection and
 presence rows, each absent-arm row beside a declared-null twin.
 """
 

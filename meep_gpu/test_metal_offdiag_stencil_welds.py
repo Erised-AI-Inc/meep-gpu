@@ -12,16 +12,16 @@ The bytes are the gate's (``parity/meep_gpu/gate_metal_offdiag_stencil_welds.py`
 on this Mac's MPS). What is here is everything answerable without a device run and
 everything that would be a silent widening if it drifted: the declarations, the
 binding counts against the EMITTED text, the pack cross-checks, the forced
-CARRIES flag with the clause that forces it MEASURED rather than cited, the
+CARRIES flag with the clause that forces it measured rather than cited, the
 predicate in both directions, the absorb rows, the registration shape, and the
 two properties the weld's whole design rests on — that the lift is a LIFT, and
 that no displacement read survives the redirect.
 
-THE PER-CHUNK FORMS AND THE DOUBLE ROW. The three PML welds lift bodies that read the
+The per-chunk forms and the double row. The three PML welds lift bodies that read the
 chunk record: it rides in ``Params``, ``step_cell`` takes it, and the curl's guarded
 auxiliary store becomes a register select so the rotating scratch carries the
 pre-launch ``fu`` off the recurrence's cells. Their constitutive halves are the
-singles' software-binary64 rows (ruling R7), whose presence words ride in ``Params``
+singles' software-binary64 rows (docs/design/floating-point.md#double-precision-on-the-metal-table), whose presence words ride in ``Params``
 beside the record.
 """
 
@@ -124,7 +124,7 @@ def test_the_slot_is_the_seams_first_and_replaces_names_the_fold(product):
     assert product.REPLACES[0] == "step_D"
     assert product.REPLACES[-1] == "update_E"
     if product.FAMILY in FOLDED_FAMILIES:
-        # A FOLDED SEAM RUNS BOTH GHOST FILLS between the halves, so a folded
+        # A folded seam runs both ghost fills between the halves, so a folded
         # product that named three passes would be claiming to replace a driver
         # pass it does not carry.
         assert product.REPLACES == ("step_D", "fill_D", "zero_metal_D",
@@ -245,7 +245,7 @@ def test_the_pack_prologue_recreates_every_member_under_its_own_name(product):
 
     source = _emit(product)
     if not hasattr(product, "UNPACKED_POINTERS"):
-        # THE NO-PACK FAMILY IS ASSERTED, NOT SKIPPED: it must bind every member
+        # The no-pack family is asserted, not skipped: it must bind every member
         # SEPARATELY, which is the positive form of "this family packs nothing".
         assert "cpack" not in source and "mpack" not in source
         for label in PACKED_VOLUMES:
@@ -352,7 +352,7 @@ def test_the_rotation_order_must_name_the_twins():
 
 
 # ---------------------------------------------------------------------------
-# The closed form's parity spelling — the audit finding, pinned
+# The closed form's parity spelling — the per-part product, pinned
 # ---------------------------------------------------------------------------
 
 _SPELLING_VALUES = (0.0, -0.0, 1.0, -1.0, 3.4e-38, -3.4e-38, 1e-45, -1e-45,
@@ -420,7 +420,7 @@ def test_the_emitted_parity_lines_are_one_per_axis(product):
     load-bearing rather than stylistic.
     """
     if product.FAMILY not in FOLDED_FAMILIES:
-        # AN UNFOLDED FAMILY EMITS NO PARITY LINE AT ALL, and that is asserted
+        # An unfolded family emits no parity line at all, and that is asserted
         # rather than skipped: a parity in an unfolded kernel would be a redirect
         # to a ghost row the grid does not have.
         source = _emit(product)
@@ -440,7 +440,7 @@ def test_the_emitted_parity_lines_are_one_per_axis(product):
         assert source.count("c_mul_coefficient_left(1.0f, value)") >= 1
         assert "c_mul(float2(" not in source.split("kernel void", 1)[0].split(
             "static inline float2 d_final_0", 1)[-1]
-    # ONE LINE PER AXIS: a corner emits two guarded applications, never one
+    # One line per axis: a corner emits two guarded applications, never one
     # combined product.
     body = source.split("static inline", 1)[1]
     assert "near_x" in body and "near_y" in body
@@ -527,7 +527,7 @@ def test_the_closed_form_artifact_is_the_one_the_modules_cite():
 
 
 # ---------------------------------------------------------------------------
-# The per-chunk forms (the three PML welds) and ruling R7 (all four)
+# The per-chunk forms (the three PML welds) and the software-binary64 row (all four)
 # ---------------------------------------------------------------------------
 
 PML_FAMILIES = ("offdiag_fused_electric_pair",
@@ -579,8 +579,8 @@ def test_the_constitutive_half_is_the_per_chunk_tail(pml_product):
 
 def test_no_ruling_refuses_a_weld_through_its_constitutive_half(softfp64_product,
                                                                matrix):
-    """Ruling R7 chose the software-binary64 row, so the constitutive half refuses
-    nothing by ruling: no reason names R7 or a float64 refusal."""
+    """The double row is formed in software binary64, so the constitutive half refuses
+    nothing: no reason carries the retired float64 refusal's label ("R7") or names float64."""
     from .metal_kernels import complex_no_pml_offdiag_update_e, offdiag_update_e
 
     fields, pml = _fixture(matrix, softfp64_product.FAMILY)

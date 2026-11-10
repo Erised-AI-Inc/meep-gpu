@@ -9,26 +9,26 @@ RUN is a fact this suite reads out of the module's own
 :data:`~.folded_complex_fused_pair.DEVICE_STATUS` rather than assuming: a green laptop
 suite over an unrun device gate must never be mistaken for a certification.
 
-WHAT IS PINNED HERE, and the three things that are genuinely NEW against the two
+What is pinned here, and the three things that are genuinely NEW against the two
 products this one sits between:
 
-* **THE DEPOSIT FLAG IS THE WHOLE CELL.** Both corpus rows declare an ELECTRIC
+* **The deposit flag is the whole cell.** Both corpus rows declare an ELECTRIC
   source, so :data:`~.folded_complex_fused_pair.CARRIES_DEPOSIT_REPAIR` at False
   would take this product from two seam-instances to zero. That is asserted
   DIRECTLY, by flipping the flag and re-asking the predicate, rather than restated
   in prose;
-* **THE D FILL GEOMETRY**, which is the exact inverse of the magnetic twin's: the
+* **The D fill geometry**, which is the exact inverse of the magnetic twin's: the
   near fill takes the TWO axes that are not the component's own and the far fill
   takes its own, so the coefficient index moves for the FAR half here and for the
   NEAR half there;
-* **THE WALL CLEAR SITS INSIDE THE PARITY CHAIN**, which it never does on the B
+* **The wall clear sits inside the parity chain**, which it never does on the B
   side, because on the D family ``_zero_metal``'s rows ARE the near fill's axes.
 
 and, carried over from the magnetic twin because they are equally load-bearing here:
 
 * the parity chain: one host-rounded ``+-1.0`` word per pass, per stored part (the
-  fills' ``part_products.scale``), in the driver's own order, read OFF THE SHIPPED
-  KERNEL SOURCE and compared against :func:`~.folded_complex_fused_pair.parity_chain`;
+  fills' ``part_products.scale``), in the driver's own order, read off the shipped
+  kernel source and compared against :func:`~.folded_complex_fused_pair.parity_chain`;
 * the ownership enumeration: every emitted block's guard, destination offset, mask,
   inverse-epsilon binding and coefficient row, against
   :func:`~.folded_complex_fused_pair.carried_destinations`;
@@ -358,7 +358,7 @@ def test_the_word_table_the_plan_passes_is_zero_only_on_an_unfolded_axis():
 
 
 # ---------------------------------------------------------------------------
-# THE PARITY CHAIN, and the clear that sits inside it
+# The parity chain, and the clear that sits inside it
 # ---------------------------------------------------------------------------
 
 def test_every_carry_block_applies_its_parities_in_the_drivers_own_order():
@@ -667,7 +667,7 @@ CURL_LINES = (
 def test_every_curl_line_is_the_certified_folded_complex_curls_own_line():
     """The curl half diffs clean against ``folded_bloch_pml_curl_step``.
 
-    Not a re-derivation: each statement below appears CHARACTER FOR CHARACTER in the
+    Not a re-derivation: each statement below appears character for character in the
     certified emitter, and the certified emitter is read here rather than quoted.
     The curl arithmetic is the same on both seams — only ``BACKWARD`` differs — so
     these are the twin's lines too, and that is the point.
@@ -1092,7 +1092,7 @@ def test_the_engine_route_and_the_arrays_route_agree_on_the_parity_table():
 
 def test_the_composer_routes_this_product_and_dispatch_now_admits_it():
     """ROUTED 2026-09-02 by the installer wave, and RELEASED at dispatch by the
-    2026-09-13 Phase B batch — both halves.
+    2026-09-13 certification run — both halves.
 
     Until 2026-09-02 this test asserted that ``launch.py`` and ``fastpath.py`` named
     this module NOWHERE, the seam that kept a certified-but-unrouted product deferred.
@@ -1101,7 +1101,7 @@ def test_the_composer_routes_this_product_and_dispatch_now_admits_it():
     ``_install_fused_pair``, taking both slots only when ``_pair_may_absorb`` finds
     the arm table has already given them to the arms this kernel implements.
 
-    The 2026-09-13 Phase B batch then RELEASED it, and the second half is that fact
+    The 2026-09-13 certification run then RELEASED it, and the second half is that fact
     made checkable from the PRODUCT's side rather than from the composer's: the label
     this product writes now sits in ``fastpath.RELEASED_FUSED_ARMS``, so clause (8)
     admits the whole plan; and it still sits in exactly one of ``ARM_CERTIFICATION``
@@ -1164,7 +1164,7 @@ def test_the_module_imports_and_answers_coverage_with_triton_absent(monkeypatch)
                  or key == "triton"
                  or key.endswith("folded_complex_fused_pair")]:
         monkeypatch.delitem(sys.modules, name, raising=False)
-    # RELOADED THROUGH THE PACKAGE, not from a bare file spec: this module's body is
+    # Reloaded through the package, not from a bare file spec: this module's body is
     # a chain of RELATIVE imports, and a spec with no parent package fails on the
     # first one with an ImportError that says nothing about Triton.
     reloaded = importlib.import_module(
@@ -1245,7 +1245,7 @@ def test_the_gates_no_device_legs_all_pass_here():
 def test_every_mutation_declares_one_of_the_permitted_expectations():
     """``caught``, ``null`` or ``unreached``, and the last two must be EARNED.
 
-    THE THREE ARE NOT INTERCHANGEABLE. ``null`` says the rewrite changes nothing —
+    The three are not interchangeable. ``null`` says the rewrite changes nothing —
     the defect is not a defect — and its reason lives in the rewrite's own
     docstring. ``unreached`` says the defect IS real, names what proves it in
     ``MUTATION_EVIDENCE``, and records that this gate's device legs do not reach it;
@@ -1263,7 +1263,7 @@ def test_every_mutation_declares_one_of_the_permitted_expectations():
         if expectation == "unreached":
             evidence = gate.MUTATION_EVIDENCE.get(name)
             assert evidence, name
-            # The evidence must name what MEASURED the defect real, not merely
+            # The evidence must name what measured the defect real, not merely
             # assert that it is.
             assert "parity_chain_associativity_leg" in evidence \
                 or "the same sweep" in evidence, name

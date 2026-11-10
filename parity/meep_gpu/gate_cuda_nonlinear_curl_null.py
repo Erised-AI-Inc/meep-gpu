@@ -1,6 +1,6 @@
 """Sub-step byte-identity gate for the CURL HALVES of a chi2/chi3 run — a NULL.
 
-THE CENSUS REFUSAL THIS ANSWERS, quoted from ``coverage.covers_real_pml_curl``::
+The census refusal this answers, quoted from ``coverage.covers_real_pml_curl``::
 
     instantaneous chi2/chi3: a Pade factor on the constitutive product
 
@@ -10,12 +10,12 @@ instantaneous nonlinearity — ``3rd-harm-1d.py`` and
 (``step_B`` and ``step_D`` on each row; their ``update_H``/``update_E`` are
 already served by ``nonlinear_constitutive.covers_nonlinear_pml_constitutive``).
 
-READ AS A SENTENCE THE REFUSAL IS ABOUT A CONSTITUTIVE PRODUCT, and neither curl
+Read as a sentence the refusal is about a constitutive product, and neither curl
 sub-step forms one. ``stepping.step_B`` (stepping.py:261-376) and ``step_D``
 (:379-457) difference the STORED E and H arrays; the Pade factor
 (:func:`stepping.calc_nonlinear_u`) is applied where E is recovered from D, which
 is ``update_E`` and nowhere else. So the clause looks INHERITED — the same shape
-the 2026-08-20 nonlinear round found on ``update_H``, where the refusal was
+the 2026-08-20 nonlinear gate found on ``update_H``, where the refusal was
 retired after the certified H kernel came back byte-exact on grids carrying a
 live chi and the premise was armed as a defect and caught.
 
@@ -23,7 +23,7 @@ THAT IS A READING. This gate is the measurement, and it has three legs the
 reading does not:
 
 =============================================================================
-LEG 1 — THE STATIC READING, PERFORMED RATHER THAN QUOTED
+Leg 1 — the static reading, performed rather than quoted
 =============================================================================
 
 :func:`chi_reachability` parses ``meep_gpu/stepping.py`` with ``ast``, builds the
@@ -44,7 +44,7 @@ says the oracle's curl cannot see a chi; leg 2 says the kernel reproduces that
 oracle bit for bit on a grid that has one.
 
 =============================================================================
-LEG 2 — THE SHIPPED CURL PAIR, UNCHANGED, ON GRIDS CARRYING A LIVE chi
+Leg 2 — the shipped curl pair, unchanged, on grids carrying a live chi
 =============================================================================
 
 ``step_curl_kernels._step_B_fused_pml_real`` / ``_step_D_fused_pml_real``, not
@@ -53,29 +53,29 @@ one byte changed, compared as raw uint32 against ``stepping.step_B`` /
 subnormal policies, at both courants and in both value classes.
 
 =============================================================================
-LEG 3 — THE PREMISE, ARMED
+Leg 3 — the premise, armed
 =============================================================================
 
 ``chi_pade_scale_the_curl`` rewrites the SHIPPED curl device string so that the
 curl IS scaled by a quotient of the Pade factor's shape. It must be CAUGHT on
 every leg. Without it, a 100%% pass rate on leg 2 is consistent with a comparator
 that sees nothing, and "chi does not reach the curl" would rest on a leg nobody
-showed could fail. It is the exact counterpart of the nonlinear round's
+showed could fail. It is the exact counterpart of the nonlinear gate's
 ``pade_scale_the_H_source``, and it is spelled against this kernel's own text
 rather than borrowed, because the constitutive needle does not appear here.
 
 The rest of the certified curl battery runs beside it — the same shared
-mutations the folded-curl round scored — so the comparator is shown to bite on
+mutations the folded-curl gate scored — so the comparator is shown to bite on
 THESE grids and not only on the ones the certified record was cut against, plus
 the two NULLS a battery needs if it is to distinguish a working comparator from
 one that has degenerated into failing everything.
 
 =============================================================================
-WHAT WOULD MAKE THIS GATE VACUOUS, AND THE FLOORS THAT REFUSE IT
+What would make this gate vacuous, and the floors that refuse it
 =============================================================================
 
-A NULL GATE'S CHARACTERISTIC FAILURE IS A FIXTURE THAT NEVER CARRIED THE THING
-IT CLAIMS DOES NOT MATTER. A grid whose chi is installed but inert would pass
+A null gate's characteristic failure is a fixture that never carried the thing
+it claims does not matter. A grid whose chi is installed but inert would pass
 leg 2 for a reason about the fixture, and the artifact would read exactly like a
 measurement. So:
 
@@ -86,7 +86,7 @@ measurement. So:
   nonlinearity, and past 1/3 the run has left the domain
   ``driver._NonlinearityGuard`` admits, so the case would be certifying
   arithmetic the engine refuses to perform.
-* ``chi_moves_update_E`` — THE DIFFERENTIAL FLOOR, and the one that makes this a
+* ``chi_moves_update_E`` — the differential floor, and the one that makes this a
   measurement rather than a definition. Two triples are built from IDENTICAL rng
   streams, one with the chi and one without, seeded with the same host words, and
   ``stepping.update_E`` is run once on each. The number of differing output words
@@ -99,7 +99,7 @@ measurement. So:
   cannot distinguish a coefficient-index error.
 
 =============================================================================
-WHAT THIS GATE DOES NOT MEASURE
+What this gate does not measure
 =============================================================================
 
 Nothing here touches ``update_E``. The nonlinear CONSTITUTIVE kernel is a
@@ -124,8 +124,8 @@ token because CuPy's disk-cache key is computed above the strip seam)::
 
 Laptop (no CUDA). The NumPy backend runs the SAME oracle, the same fixture, the
 same floors, the same static scan and the same HOST mutations against a
-transcription of the shipped device tree. IT COMPILES NOTHING AND CERTIFIES
-NOTHING::
+transcription of the shipped device tree. It compiles nothing and certifies
+nothing::
 
     python -u gate_cuda_nonlinear_curl_null.py --backend numpy \\
         --out /tmp/nl_curl_local.json
@@ -164,7 +164,7 @@ except ImportError:  # laptop: the transcription and harness legs still run
 import probe_fused_kernel_bit_identity as probe  # noqa: E402
 import gate_needles  # noqa: E402
 import gate_provenance  # noqa: E402
-#: THE CURL MACHINERY IS THE FOLDED GATE'S, imported rather than respelled. A
+#: The curl machinery is the folded gate's, imported rather than respelled. A
 #: second transcription of the device tree, the code triple, the table views and
 #: the auxiliary bookkeeping is a second thing that must be kept in step with the
 #: kernel forever, and the sibling gates' own notes record what a drifted copy
@@ -172,7 +172,7 @@ import gate_provenance  # noqa: E402
 #: the chi: the fixture that installs one, the floors that show it is live, and
 #: the mutation that arms the refusal.
 import gate_cuda_folded_curl as curl  # noqa: E402
-#: THE NONLINEAR FIXTURE IS THE CONSTITUTIVE GATE'S, for the same reason. MEEP's
+#: The nonlinear fixture is the constitutive gate's, for the same reason. MEEP's
 #: both-or-neither chi2/chi3 rule and the chi magnitudes chosen against the pole
 #: guard's derived bound are already written down and already measured there.
 import gate_cuda_nonlinear as nl  # noqa: E402
@@ -204,8 +204,8 @@ SUB_STEPS: Tuple[str, ...] = curl.SUB_STEPS
 # The case product
 # ---------------------------------------------------------------------------
 #
-# THE GRIDS ARE THE NONLINEAR FAMILY'S, NOT THE FOLD FAMILY'S: unfolded, PML
-# active, real storage, every boundary triple the constitutive round swept, and
+# The grids are the nonlinear family's, not the fold family's: unfolded, PML
+# active, real storage, every boundary triple the nonlinear gate swept, and
 # the corpus's own 1-D shape. A fold is refused here by a DIFFERENT clause with
 # its own gate, and mixing the two would make a divergence ambiguous between
 # them.
@@ -249,16 +249,16 @@ _CURL_STATEMENT = re.compile(r"float curl = (curl_stencil\(dtdx, sf, f1, f2, ss,
 
 
 def _chi_pade_scale_the_curl(source: str) -> Tuple[str, int]:
-    """ARM THE REFUSAL: make the certified curl kernel apply a Pade factor.
+    """Arm the refusal: make the certified curl kernel apply a Pade factor.
 
     The census refuses both curl sub-steps for "a Pade factor on the constitutive
     product". Neither ``stepping.step_B`` nor ``step_D`` contains one, so the
     refusal is inherited -- but "the comparator would notice if it did" is a claim
     that has to be shown rather than asserted. This rewrites the curl device
     string so the curl really is scaled by a quotient of the same shape as
-    ``calc_nonlinear_u``'s, and it MUST BE CAUGHT.
+    ``calc_nonlinear_u``'s, and it must be caught.
 
-    THE SHAPE IS THE PADE FACTOR'S, NOT AN ARBITRARY PERTURBATION:
+    The shape is the Pade factor's, not an arbitrary perturbation:
     ``(1 + c2) / (1 + 2*c2)`` with ``c2`` standing in as a multiple of the
     operand, which is what ``calc_nonlinear_u`` computes with ``c2`` built from
     the chi and the displacement. A scale by a constant would be a coarser defect
@@ -277,7 +277,7 @@ def _chi_pade_scale_the_curl(source: str) -> Tuple[str, int]:
     return _CURL_STATEMENT.subn(replacement, source)
 
 
-#: Device-text defects, in the order they are scored: THIS GATE'S NEEDLE TABLE.
+#: Device-text defects, in the order they are scored: this gate's needle table.
 #: The first is this gate's own and is the refusal armed; the rest are the
 #: certified curl battery, borrowed from the probe's shared default until this
 #: gate's kernels need a spelling of their own, which is then an ``own=`` entry
@@ -291,7 +291,7 @@ SOURCE_MUTATIONS = gate_needles.gate_table(
      "drop_fu_store",
      "read_fprev_after_store",
      "fortran_order_index_decomposition",
-     # THE TWO NULLS. A battery whose every leg must be caught scores identically
+     # The two nulls. A battery whose every leg must be caught scores identically
      # whether the comparator works or has degenerated into failing everything.
      "commute_dtdx_scale",
      "reload_fu_from_memory"),
@@ -554,13 +554,13 @@ def seed_electric_state(fields, grid, value_class: str, rng) -> Dict[str, np.nda
 
 def chi_moves_update_E(xp, spec: Dict[str, Any], courant: float,
                        value_class: str, amplitude: str) -> Dict[str, Any]:
-    """THE DIFFERENTIAL FLOOR: does this grid's chi change a single output word?
+    """The differential floor: does this grid's chi change a single output word?
 
     Two triples from IDENTICAL rng streams -- one with the chi installed, one
     without -- seeded with the SAME host words, each stepped once through
     ``stepping.update_E``. The differing output words are counted as raw uint32.
 
-    A NULL GATE'S CHARACTERISTIC FAILURE is a fixture that never carried the
+    A null gate's characteristic failure is a fixture that never carried the
     thing it claims does not matter, and this is the number that refuses it. Zero
     differing words means the chi is inert on this grid and the case would be a
     linear run wearing a nonlinear label -- and it would PASS leg 2 for a reason
@@ -599,12 +599,12 @@ def chi_moves_update_E(xp, spec: Dict[str, Any], courant: float,
     expansion = out.get("expansion")
     out["expansion_in_domain"] = bool(
         expansion is not None and 0.0 < expansion < POLE_EXPANSION_BOUND)
-    # TWO READINGS, NOT ONE, and the split was forced by a measurement rather
+    # Two readings, not one, and the split was forced by a measurement rather
     # than designed in. The first full local run skipped every ``subnormal_band``
     # case here: with every operand between 1e-45 and 1e-38, ``c2`` and ``c3``
     # underflow, ``calc_nonlinear_u`` returns exactly 1.0 on both paths and the
     # chi moves NO word -- 0 of 5760, at expansions around 1e-32. That is the
-    # same fact the constitutive round's header records for its own band class,
+    # same fact the nonlinear gate's header records for its own band class,
     # and collapsing the two into one floor threw away half the sweep.
     #
     # * ``admissible`` -- the chi is installed and the run is inside the domain
@@ -657,8 +657,8 @@ def one_case(backend: str, spec: Dict[str, Any], sub_step: str, courant: float,
              host_mutation: Optional[str] = None) -> Dict[str, Any]:
     """One frozen state, run twice: the array path, then the kernel.
 
-    THE ORACLE IS ``stepping`` ITSELF on real ``Grid``/``Fields``/``PML``
-    objects, and it is the oracle on a grid that CARRIES THE CHI -- which is the
+    The oracle is ``stepping`` ITSELF on real ``Grid``/``Fields``/``PML``
+    objects, and it is the oracle on a grid that carries the chi -- which is the
     whole point. If the array path's curl saw the nonlinearity, the reference
     would move with it and the kernel, which cannot see it, would diverge.
     """
@@ -685,7 +685,7 @@ def one_case(backend: str, spec: Dict[str, Any], sub_step: str, courant: float,
         "operand_census": operand_census(host),
     }
 
-    # THE PREDICATE'S CURRENT ANSWER, recorded rather than acted on. This gate
+    # The predicate's current answer, recorded rather than acted on. This gate
     # exists to decide whether that answer should change, so it must not be the
     # thing that gates the measurement -- but a record that did not carry it
     # could not show WHICH clause the run was taken against.
@@ -716,7 +716,7 @@ def one_case(backend: str, spec: Dict[str, Any], sub_step: str, courant: float,
 
     frozen = curl.snapshot(fields, sub_step)
 
-    # Leg 1: the oracle, ON THE GRID CARRYING THE CHI.
+    # Leg 1: the oracle, on the grid carrying the chi.
     if sub_step == "step_B":
         stepping.step_B(fields, layer)
     else:
@@ -827,7 +827,7 @@ MUTATION_SPEC_LABELS: Tuple[str, ...] = (
     "all_periodic",       # the wrap on every axis
     "all_metallic",       # the wall mask on every axis
     "mixed_pmp",          # one of each
-    "one_dimensional",    # THE CORPUS SHAPE, where two axes are a single cell
+    "one_dimensional",    # The corpus shape, where two axes are a single cell
     "partly_nonlinear",   # a component on MEEP's ``else if (u)`` branch
     "volume_chi",         # a spatially varying chi
 )
@@ -997,7 +997,7 @@ def summarize(results: Dict[str, Any], backend: str) -> Dict[str, Any]:
         reasons.append(f"multi-step divergence on {len(multi_cases) - len(multi_ok)} "
                        f"of {len(multi_cases)} cases")
 
-    # THE LIVE ARM IS WHAT SEPARATES A NULL FROM A TAUTOLOGY, and it is required
+    # The live arm is what separates a null from a tautology, and it is required
     # to be non-empty on EACH curl sub-step rather than over the sweep as a
     # whole. A run whose ``step_D`` cases all landed in the underflowed arm would
     # be releasing that sub-step on a grid whose chi does nothing, and the totals
@@ -1014,7 +1014,7 @@ def summarize(results: Dict[str, Any], backend: str) -> Dict[str, Any]:
         reasons.append("the 1-D corpus shape was never scored with a LIVE chi; "
                        "the rows this gate is about are (1, 1, nz)")
     if skipped:
-        # A SKIP IS NOT A PASS. Every one is reported, and a sweep that skipped a
+        # A skip is not a pass. Every one is reported, and a sweep that skipped a
         # whole spec has not measured it. Only INADMISSIBLE cases can reach here
         # -- the underflowed ones are scored, in their own arm.
         reasons.append(f"{len(skipped)} cases were skipped at the admissibility "
@@ -1029,7 +1029,7 @@ def summarize(results: Dict[str, Any], backend: str) -> Dict[str, Any]:
 
     labels = {c["label"] for c in scored}
 
-    # THE STATIC SCAN, including its positive control.
+    # The static scan, including its positive control.
     scan = results.get("chi_reachability") or {}
     if not scan.get("positive_control", {}).get("found_something"):
         reasons.append("the static scan found no chi symbol in update_E's closure; "
@@ -1053,7 +1053,7 @@ def summarize(results: Dict[str, Any], backend: str) -> Dict[str, Any]:
             reasons.append(f"source mutation {key} is {leg['verdict']} "
                            f"({leg.get('caught')}/{leg.get('ran')})")
 
-    # THE ARMED PREMISE IS A CLAUSE OF ITS OWN, not merely one entry in the
+    # The armed premise is a clause of its own, not merely one entry in the
     # battery. It is the leg that separates "the kernel is exact under a chi"
     # from "this comparator cannot see a Pade factor", and a run in which it was
     # filtered away, unarmed or partial must not release.
@@ -1085,7 +1085,7 @@ def summarize(results: Dict[str, Any], backend: str) -> Dict[str, Any]:
         "scored_at_inexact_courant": len(control),
         "comparable_where_guarded_leg_was_identical": len(comparable),
         "diverged": len(control_diverged),
-        "reading": ("NOT MEASURED on this run: no unguarded leg was scored where "
+        "reading": ("Not measured on this run: no unguarded leg was scored where "
                     "the guarded leg was identical" if not comparable else
                     "the contraction guard is load-bearing on this sub-step"
                     if control_diverged else
@@ -1177,6 +1177,7 @@ def save(results: Dict[str, Any], out_path: str) -> None:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
+    import neutral_ids  # noqa: PLC0415
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--backend", choices=("cuda", "numpy"), default="cuda")
     parser.add_argument("--product", choices=("full", "reduced"), default="full")
@@ -1189,7 +1190,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--skip-mutations", action="store_true")
     parser.add_argument("--falsify", default=None, choices=tuple(SOURCE_MUTATIONS),
                         help=("plant this defect for the WHOLE RUN, sweep included, "
-                              "so the RELEASE VERDICT ITSELF is shown to flip. A "
+                              "so the release verdict itself is shown to flip. A "
                               "gate whose individual legs can fail but whose "
                               "verdict cannot has not been shown to be a gate"))
     args = parser.parse_args(argv)
@@ -1199,8 +1200,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     results: Dict[str, Any] = {
         "gate": "cuda_nonlinear_curl_null",
         "started_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "host": os.uname().nodename,
-        "argv": list(argv if argv is not None else sys.argv[1:]),
+        "host": neutral_ids.machine_id(),
+        "argv": neutral_ids.argv(argv if argv is not None else sys.argv[1:]),
         "backend": args.backend,
         "product": args.product,
         "question": ("does covers_real_pml_curl's instantaneous chi2/chi3 refusal "
@@ -1217,7 +1218,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             return 2
         if args.import_meep_for_host_policy:
             results["meep_host_import"] = probe.import_meep_for_host_policy()
-        # THE OBSERVER GOES IN BEFORE THE POLICY, and the order is the design:
+        # The observer goes in before the policy, and the order is the design:
         # under 'keep' the policy's strip wraps this, so it records the option
         # tuple NVRTC was really given (post-strip). Installed afterwards it
         # would sit outside the strip and record the pre-strip tuple -- the one
@@ -1244,12 +1245,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         f"step_D closure touches {scan['closures']['step_D']['naming_chi']}, "
         f"update_E closure touches "
         f"{len(scan['closures']['update_E']['naming_chi'])} of them")
-    # THE CURL TERM TABLE, pinned against stepping's, so the NumPy transcription
+    # The curl term table, pinned against stepping's, so the NumPy transcription
     # cannot drift from the oracle it is compared with.
     results["curl_terms_vs_stepping"] = curl.check_terms_against_stepping()
     save(results, args.out)
 
-    # IMPORTED ONLY ON THE DEVICE BACKEND. ``step_curl_kernels`` imports ``cupy``
+    # Imported only on the device backend. ``step_curl_kernels`` imports ``cupy``
     # at module scope, so a laptop leg that touched it would die on the import
     # rather than run the transcription it exists to run.
     step_curl_kernels = None
@@ -1262,7 +1263,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                      for name, attribute in attribute_for.items()}
     try:
         if args.falsify:
-            # THE VERDICT'S OWN FALSIFICATION LEG. Every mutation leg shows that a
+            # The verdict's own falsification leg. Every mutation leg shows that a
             # LEG can fail; this shows that the RELEASE DECISION can. The defect is
             # planted for the whole run, sweep included, so a run under --falsify
             # that still reported released=True would mean the summary is not

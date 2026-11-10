@@ -1,20 +1,20 @@
 """The COMPLEX fused E->P chain, as claims a laptop can check without a GPU.
 
-WHAT THIS SUITE OWNS AND WHAT IT DELIBERATELY DOES NOT. The BYTES are the device
+What this suite owns and what it deliberately does not. The BYTES are the device
 gate's — ``parity/meep_gpu/gate_metal_complex_fused_ade_chain.py`` steps two
 engines side by side for sixty complete seam steps and compares uint32 words — and
 no assertion here duplicates that. What lives here is everything true about the
 family WITHOUT a device: what the emitted source says, which configurations the
-predicate refuses and by what name, that the arm is registered UNWIRED, and that
+predicate refuses and by what name, that the arm is registered with ``wired=False``, and that
 the signature respects the platform ceiling by ARITHMETIC.
 
-THE TRANSCRIPTION TESTS PARSE, THEY DO NOT MIRROR. Each one CALLS the certified
+The transcription tests parse, they do not mirror. Each one CALLS the certified
 emitter and searches its output; none re-implements a line. A test that re-derived
 the arithmetic would mirror a defect instead of executing it, which is a failure
 mode this project has measured (three planted assembly defects, 86 of 87 tests
 still green).
 
-THE ADE HALF NAMES NO COMPLEX ARM. Its complex body is MEEP's two real passes,
+The ADE half names no complex arm. Its complex body is MEEP's two real passes,
 each product a real word times one part, with no complex helper; so whichever helper
 body the E half is emitted with cannot disagree with it in the one fused scope. This
 suite pins that absence rather than an arm clause.
@@ -130,7 +130,7 @@ def test_the_helper_block_is_the_certified_emitters_own_text():
 def test_the_body_is_straight_line_so_no_mutation_can_be_dead(poles):
     """Exactly one branch — the ``n_elem`` guard — and no ternary, no loop.
 
-    THE DEAD-BRANCH MUTATION is a defect class this project has paid for: an edit
+    The dead-branch mutation is a defect class this project has paid for: an edit
     can rewrite real lines the scored grid never reaches and report UNCAUGHT while
     measuring nothing. This family cannot have one, and that is asserted from the
     emitted TEXT rather than argued from the source layout.
@@ -253,7 +253,7 @@ def test_the_interleave_clause_refuses_anything_that_couples_components(flag):
     Both features are already refused by the E half, and both are named again
     because the fact asserted here is different: the per-component interleave
     equals the driver's order only while ``update_E(c)`` reads component ``c``
-    alone. That dependency is MEASURED in
+    alone. That dependency is measured in
     ``parity/meep_gpu/probe_metal_eop_interleave_dependency.py``.
     """
     fields = _Fields()
@@ -273,12 +273,12 @@ def test_there_is_no_source_clause_and_the_absence_is_deliberate():
     parameters = inspect.signature(
         family.complex_fused_ade_chain_coverage).parameters
     assert "sources" not in parameters
-    assert "THERE IS NO SOURCE CLAUSE" in (
+    assert "There is no source clause" in (
         family.complex_fused_ade_chain_coverage.__doc__ or "")
 
 
 # ---------------------------------------------------------------------------
-# 6. Registration: the arm exists, is UNWIRED, and cannot be composed
+# 6. Registration: the arm exists, has ``wired=False``, and cannot be composed
 # ---------------------------------------------------------------------------
 
 def test_the_arm_is_registered_unwired_on_the_first_slot_it_spans():

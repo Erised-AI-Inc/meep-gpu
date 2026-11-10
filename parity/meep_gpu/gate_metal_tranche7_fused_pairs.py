@@ -1,6 +1,6 @@
-"""The device gate for the 2026-08-30 Metal fusion tranche — seven new fused pairs.
+"""The device gate for the seven Metal fused pairs added together on 2026-08-30.
 
-WHAT THIS CERTIFIES, AND ON WHAT. Seven products landed in one round, every one of
+What this certifies, and on what. Seven products were added together, every one of
 them a weld across a driver seam:
 
     complex_fused_electric_pair          complex/Bloch      D -> E   (16 corpus rows)
@@ -11,13 +11,13 @@ them a weld across a driver seam:
     folded_beta_real_fused_pair          folded beta real   D -> E   (1)
     folded_beta_real_fused_magnetic_pair folded beta real   B -> H   (1)
 
-THE COMPARISON IS PER COMPLETE DRIVER STEP, AS uint32 WORDS, over every stored volume
+The comparison is per complete driver step, as uint32 WORDS, over every stored volume
 a step can touch — never ``allclose`` and never a single sub-step. A fused pair right
 for one launch and wrong forever after diverges only once ``fu_*`` and ``f_w_*``
 accumulate, which is why the budget is twelve steps and why the B/H half is compared
 on a D/E family (a corrupted E reaches B through ``step_B`` on the very next step).
 
-THE THREE LEGS ARE ARMED, and a case where the negative leg does not diverge is
+The three legs are armed, and a case where the negative leg does not diverge is
 VACUOUS and is reported as such rather than counted:
 
     A  ``identity``   the full mechanism. REQUIRES 0 differing words at every step,
@@ -33,7 +33,7 @@ VACUOUS and is reported as such rather than counted:
                       CARRIES_DEPOSIT_REPAIR without the wrappers", built out of
                       shipped code rather than a hand-written mutant.
 
-THE BINDING CEILING IS COMPILED, NOT ASSERTED. Every family that spells a
+The binding ceiling is compiled, not asserted. Every family that spells a
 ``SEPARATE_SCALAR_BINDINGS`` or split-plane refutation has that source compiled here
 and the FAILURE is required, so "the scalars must ride packed" is a measurement on
 this toolchain rather than arithmetic on a number in a docstring.
@@ -140,7 +140,7 @@ def frozen(fields: Any) -> Dict[str, np.ndarray]:
 
 
 #: The auxiliary volumes the per-chunk forms leave untouched off their forms' cells
-#: (KERNELS.md §1, C2): ``fu_*`` off the recurrence's cells, ``f_w_*`` off the
+#: (the auxiliary contract): ``fu_*`` off the recurrence's cells, ``f_w_*`` off the
 #: accumulation's. Where a component's layer is absent (an invariant axis, an axis with
 #: no absorber) the ORACLE never moves that volume either.
 AUXILIARY_PREFIXES: Tuple[str, ...] = ("fu_", "f_w_")
@@ -187,7 +187,7 @@ def seed_state(fields: Any, seed: int, scale: float = 1.0) -> Any:
             array[...] = (real + 1j * imag).astype(array.dtype)
         else:
             array[...] = real.astype(array.dtype)
-    # THE INVERSE EPSILON IS MADE NON-UNIFORM, identically on both sides, and that is
+    # The inverse epsilon is made non-uniform, identically on both sides, and that is
     # NOT decoration. `metal_composition_matrix._epsilon` fills ONE value per
     # component, so on that fixture a kernel that read the inverse permittivity at the
     # WRONG CELL -- the owning thread's instead of the imaged ghost's -- is
@@ -338,7 +338,7 @@ FAMILIES: Tuple[Dict[str, Any], ...] = (
              "gj_source = gj_source - q0[ii];"),
             ("far_ghost_loses_its_parity", 1,
              "float gf_v = -v1;", "float gf_v = v1;"),
-            # INVERTED (KERNELS.md §7.1): the package's previous groupings, planted
+            # INVERTED: the package's previous groupings, planted
             # where MEEP's now ship. Target 2 differences both 2-D partners; target
             # 1's own axis carries the folded axis's high-face layer.
             ("curl_previous_grouping", 2,
@@ -346,13 +346,13 @@ FAMILIES: Tuple[Dict[str, Any], ...] = (
             ("constitutive_previous_grouping", 1,
              "oacc = e_out[ii] + ((kp1[j] * osrc) - (km1[j] * oprev));",
              "oacc = (e_out[ii] + (kp1[j] * osrc)) - (km1[j] * oprev);"),
-            # THE B BATTERY (KERNELS.md §7.2): each per-chunk select removed.
+            # The per-chunk form battery: each per-chunk select removed.
             ("b1_curl_select_removed", 2,
              "    const bool du2 = in_i_y;", "    const bool du2 = true;"),
             ("b5_constitutive_select_removed", 1,
              "    const bool dw1 = in_h_y;", "    const bool dw1 = true;"),
         ),
-        #: DECLARED EQUIVALENCE, MEASURED RATHER THAN BELIEVED. Reusing the owner
+        #: Declared equivalence, measured rather than believed. Reusing the owner
         #: thread's constitutive coefficient at the FAR ghost is bit-identical on
         #: every folded grid this engine builds -- not because the two cells share an
         #: entry in general, but because the HALF-INTEGER profile the E side reads
@@ -404,7 +404,7 @@ FAMILIES: Tuple[Dict[str, Any], ...] = (
              "float2 g0_j_src = c_mul_field_left(g0_j_v, e0[g0_j_i]);",
              "float2 g0_j_src = c_mul_field_left(g0_j_v, e0[ii]);"),
         ),
-        #: THE SAME MEASURED EQUIVALENCE the dispersive D/E family records: the
+        #: The same measured equivalence the dispersive D/E family records: the
         #: half-integer PML profile saturates over its outermost two cells, so the far
         #: ghost's own entry and its owner's are the same word on every folded grid.
         "equivalences": (
@@ -511,7 +511,7 @@ FAMILIES: Tuple[Dict[str, Any], ...] = (
             ("far_ghost_loses_its_parity", None,
              "float gf_v = -v1;", "float gf_v = v1;"),
         ),
-        #: THE SAME MEASURED EQUIVALENCE the other two D/E folded families record.
+        #: The same measured equivalence the other two D/E folded families record.
         "equivalences": (
             ("far_ghost_reuses_the_owner_coefficient_half_integer_saturates", None,
              "float gf_kp = kp1[(nyi - 1)], gf_km = km1[(nyi - 1)];",
@@ -537,7 +537,7 @@ FAMILIES: Tuple[Dict[str, Any], ...] = (
         ),
         "mutation_case": "fold_y_beta_2d",
         "deposit_case": "fold_y_beta_2d",
-        # AN Hz SOURCE IS REFUSED BY THE ENGINE ON AN EVEN Y PLANE -- that plane makes
+        # An Hz source is refused by the engine on an even Y plane -- that plane makes
         # Ey, Hx and Hz ODD, and a point source with no extent across it can carry no
         # odd parity at all. Hy is the component the plane leaves EVEN, so this is the
         # engine's own answer to "which magnetic component can a point deposit on this
@@ -556,7 +556,7 @@ FAMILIES: Tuple[Dict[str, Any], ...] = (
             ("far_ghost_loses_its_parity", None,
              "float g0_j_v = -v0;", "float g0_j_v = v0;"),
         ),
-        #: DECLARED EQUIVALENCE, MEASURED. The NEAR ghost sits at stored 0 of a folded
+        #: DECLARED EQUIVALENCE, measured. The NEAR ghost sits at stored 0 of a folded
         #: axis and its owner at stored 2, and a folded axis carries its absorber on
         #: the HIGH face only (``stepping._require_consistent_pml``) -- so both cells
         #: are outside the layer and every PML entry there is the identity 1.0, on the
@@ -715,7 +715,7 @@ def _mutated_functions(spec: Mapping[str, Any], plan: Any, target: Optional[int]
                        old: str, new: str) -> Dict[Any, Any]:
     """The shipped source with ONE line replaced, compiled and keyed as the plan keys.
 
-    THE MUTATION SEAM IS THE PLAN'S OWN ``functions`` ARGUMENT, so the broken kernel
+    The mutation seam is the plan's own ``functions`` ARGUMENT, so the broken kernel
     reaches the device through the shipped builder rather than through a second launch
     path this file would own. A family that dispatches per component is keyed
     ``(mode, axis)``; the single-launch families are keyed by mode alone.
@@ -729,8 +729,8 @@ def _mutated_functions(spec: Mapping[str, Any], plan: Any, target: Optional[int]
     source = needle(spec["source"](plan, mode, per_component), old, new)
     function = getattr(compile_source(source), spec["entry"])
     if per_component is not None:
-        # A PER-COMPONENT FAMILY IS KEYED (mode, axis) AND THE OTHER TWO COMPONENTS
-        # MUST STAY SHIPPED. Handing back only the mutated key leaves the plan
+        # A per-component family is keyed (mode, axis) and the other two components
+        # must stay shipped. Handing back only the mutated key leaves the plan
         # builder to compile the rest itself, which is exactly what makes the leg
         # measure ONE line rather than one component.
         return {(mode, per_component): function}
@@ -767,10 +767,10 @@ def leg_mutation(spec: Mapping[str, Any]) -> Dict[str, Any]:
         log(f"    mutation  {spec['name']:38s} {label:40s} "
             f"caught={diverged} words={result.get('differing_words')}")
 
-    # THE DECLARED EQUIVALENCES, run and reported but scored the OTHER way: each must
+    # The declared equivalences, run and reported but scored the OTHER way: each must
     # be bit-identical, because each is a rewrite the fused body makes harmless BY
-    # CONSTRUCTION. `seam_reloads_the_flux_it_just_stored` is the one this tranche
-    # found: the kernel stores `f[ii] = v` immediately before the constitutive half
+    # CONSTRUCTION. `seam_reloads_the_flux_it_just_stored` is the one found while
+    # building these pairs: the kernel stores `f[ii] = v` immediately before the constitutive half
     # reads the register, so reloading the stored word is the same word. Running it
     # is what turns that from a belief into a measurement -- and it is NOT counted as
     # a caught mutation, which is what "a case where B does not diverge is VACUOUS"
@@ -823,12 +823,12 @@ def _withdraw(sources: Sequence[Any], fields: Any) -> None:
 def run_deposit_case(spec: Mapping[str, Any], repair: bool = True, steps: int = STEPS) -> Dict[str, Any]:
     """Complete driver steps with an in-seam source, byte compared.
 
-    THE WALK IS THE DRIVER'S, NOT ``metal_step``'S:
+    The walk is the driver's, not ``metal_step``'S:
 
       * the INJECTION is performed between the fused launch and the repair, because
         that is where the driver performs it;
       * every in-seam pass the driver runs UNCONDITIONALLY — the symmetry fill, the
-        wall clear, the far ghost fill — runs ON THE HOST after the injection, even
+        wall clear, the far ghost fill — runs on the host after the injection, even
         where the kernel carries it inline, because ``driver.step`` runs them behind
         no consult. That is what lets the repair read a final field;
       * the two slots are run as the two separate consults they are.
@@ -858,7 +858,7 @@ def run_deposit_case(spec: Mapping[str, Any], repair: bool = True, steps: int = 
                           f"inject nothing and compare a no-op with a no-op"}
 
     residency = Residency()
-    # THE SHIPPED COMPOSER BUILDS THE PLAN, not this file: reaching for the plan
+    # The shipped composer builds the plan, not this file: reaching for the plan
     # builder directly would test the kernel and skip the wiring, and the wiring is
     # what this leg exists for.
     composed = metal_launch.plan_step(
@@ -999,9 +999,11 @@ def leg_binding_ceiling() -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 def main() -> int:
-    # THE BUDGET IS A MODULE CONSTANT SO EVERY LEG READS ONE NUMBER. A `--steps` that
+    # The budget is a module constant so every leg reads one number. A `--steps` that
     # only reached `run_case` would leave the mutation and deposit legs on the default
     # and the record would name a budget two of the three legs never ran.
+    from metal_closed_table import close_table  # noqa: PLC0415
+    close_table()
     global STEPS
 
     parser = argparse.ArgumentParser()
@@ -1050,7 +1052,7 @@ def main() -> int:
     if "ceiling" in legs:
         record["binding_ceiling"] = leg_binding_ceiling()
 
-    # THE TOOLCHAIN AND THE POLICY, at the top level and spelled the way every other
+    # The toolchain and the policy, at the top level and spelled the way every other
     # Metal gate spells them, because `mint_metal_weld` reads these four keys to build
     # a weld's `host` and `subnormal_policy` lines. Without them the minted entry says
     # "?" for the torch version, the Metal frontend and the subnormal policy -- a
@@ -1064,7 +1066,7 @@ def main() -> int:
     record["verdict"] = "PASS" if all(
         value.get("passed") for value in record["families"].values()) and (
         record.get("binding_ceiling", {}).get("passed", True)) else "FAIL"
-    # THE PROVENANCE STAMP, and why its absence was a defect rather than a style
+    # The provenance stamp, and why its absence was a defect rather than a style
     # difference. Every other Metal gate calls this one line; this gate did not, so
     # its artifact carried no `imported_source_sha256` and no `canonical_verdict`.
     # Both are what the weld tooling reads: `mint_metal_weld` and
@@ -1090,7 +1092,7 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    # ROUTED THROUGH THE RELEASE RUNNER, as every other `gate_metal_*.py` is. Called
+    # Routed through the release runner, as every other `gate_metal_*.py` is. Called
     # bare, `main()` writes a verdict with no `release` block and no runtime source
     # weld, and `metal_gate_runner`'s docstring says why that is not a releasable
     # artifact: the gate's own `source_sha256` "need not name the source path the

@@ -1,6 +1,6 @@
 """The two SCRATCH-OUTPUT stencil welds: lift, predicate, rotation and record.
 
-WHAT THIS FILE SETTLES, and what it deliberately does not. ``offdiag_fused_electric_
+What this file settles, and what it deliberately does not. ``offdiag_fused_electric_
 pair`` and ``folded_offdiag_fused_electric_pair`` are the first products this track
 has put on cells the board recorded UNBUILDABLE, so the questions that decide whether
 they are real are sharper than usual -- and all but one of them are answerable without
@@ -32,14 +32,14 @@ a device:
    ``deposit_repair.repairable`` refuses BY NAME -- so ``True`` could not have been
    declared, whatever a reader might have preferred.
 
-5. **Is the ROTATION invisible to every consumer of D?** The brief for this round
+5. **Is the ROTATION invisible to every consumer of D?** The design of these welds
    required a consumer audit of pointer identity across the step boundary, and a grep
    is not an audit. This file drives a real ``FdtdDriver`` with a source and three
    monitors for several steps, splices in an equivalent rotation at exactly the point
    the launcher rotates, and requires every stored volume AND every monitor
    accumulation to be byte-identical to the unrotated run.
 
-NOTHING HERE COMPILES OR LAUNCHES ANYTHING. The fused kernels' arithmetic is a DEVICE
+Nothing here compiles or launches anything. The fused kernels' arithmetic is a DEVICE
 claim and no test on this host may speak to it
 (``parity/meep_gpu/gate_cuda_offdiag_stencil_welds.py`` is where that is measured);
 the host arithmetic of the RESOLUTION is measured separately and off-device by
@@ -68,7 +68,7 @@ from . import folded_offdiag_fused_electric_pair as folded
 from . import offdiag_fused_electric_pair as flat
 from .test_fused_pairs import _NumpyWearingCupysName
 
-#: The census this round's numbers are read off. Named so a re-cut that moved the
+#: The census this file's numbers are read off. Named so a re-cut that moved the
 #: rows is a NAMED failure here rather than a silently different denominator.
 CENSUS = (pathlib.Path(__file__).resolve().parents[2] / "parity" / "meep_gpu"
           / "results" / "cuda_predicate_coverage_2026-09-02_electrictwins_c")
@@ -159,7 +159,7 @@ def certified(monkeypatch):
 # ---------------------------------------------------------------------------
 
 def test_the_emitters_refuse_by_name_where_the_certified_curl_is_unreachable():
-    """THE SPLICE IS THE LIFT, so a missing half is not a degraded emit.
+    """The splice is the lift, so a missing half is not a degraded emit.
 
     The refusal has to name the module one frame from the caller rather than surface
     as an AttributeError inside a string operation -- and both predicates must still
@@ -245,7 +245,7 @@ def test_the_curl_body_is_lifted_whole_with_only_the_cell_edits(certified):
 @pytest.mark.parametrize("name", sorted(MODULES))
 @pytest.mark.parametrize("mask", MASKS)
 def test_every_flux_density_read_goes_through_the_resolution(certified, name, mask):
-    """THE DESIGN, CHECKED TEXTUALLY. No ``D*[...]`` load may survive below the
+    """The design, checked textually. No ``D*[...]`` load may survive below the
     kernel signature: the constitutive half reads its own cell from a register and
     every foreign cell through ``resolve_D``, and a single surviving direct load
     would be the PRE-launch value where the post-pass one belongs."""
@@ -406,10 +406,10 @@ def test_the_fill_plan_raises_rather_than_planning_what_it_cannot_stand_behind()
     """A launcher handed a grid the predicate would have refused must not quietly
     build a plan for it: the failure mode is a plane of wrong values, not a crash.
 
-    THE THREE CLAUSES ARE NOT EQUALLY REACHABLE and the test says which is which.
+    The three clauses are not equally reachable and the test says which is which.
     An unreadable plane phase is reachable and armed below. The orphan far row --
     a reflect row on an axis with no declared phase -- is reachable and armed. The
-    "folded AND walled" clause is BELT AND BRACES: ``in_seam_coverage.zero_metal_axes``
+    "folded AND walled" clause is belt and braces: ``in_seam_coverage.zero_metal_axes``
     answers ``is_metallic(axis) and not is_mirrored(axis)``, so it can never report a
     mirrored axis as walled, and the clause exists for the day that reader changes.
     Recording that here rather than arming it with a stub that could not occur is the
@@ -424,7 +424,7 @@ def test_the_fill_plan_raises_rather_than_planning_what_it_cannot_stand_behind()
 
 
 # ---------------------------------------------------------------------------
-# 3. THE PREDICATES, ON REAL ENGINE OBJECTS
+# 3. The predicates, on real engine objects
 # ---------------------------------------------------------------------------
 
 def _rows(fields, rows):
@@ -501,7 +501,7 @@ def test_a_run_with_no_off_diagonal_row_is_refused_by_both(xp):
 
 
 def test_an_undeclared_source_set_is_refused_by_both(xp):
-    """IGNORANCE IS NEVER AN EMPTY SET. ``Fields`` does not hold the source list, so
+    """Ignorance is never an empty set. ``Fields`` does not hold the source list, so
     a predicate that inferred "no sources" from not being told would be exactly the
     over-covering the seam clause exists to prevent."""
     fields, layer, grid = _build(xp)
@@ -561,7 +561,7 @@ def test_the_folded_weld_refuses_a_fold_free_grid_in_its_own_words(xp):
 
 
 # ---------------------------------------------------------------------------
-# 4. CARRIES_DEPOSIT_REPAIR, MEASURED OFF THE CENSUS
+# 4. CARRIES_DEPOSIT_REPAIR, measured off the census
 # ---------------------------------------------------------------------------
 
 def _census_rows():
@@ -630,7 +630,7 @@ def test_the_repair_itself_refuses_the_configuration_by_name(xp):
 
 
 # ---------------------------------------------------------------------------
-# 5. THE ROTATION IS INVISIBLE TO EVERY CONSUMER
+# 5. The rotation is invisible to every consumer
 # ---------------------------------------------------------------------------
 
 D_STATE = ("Dx", "Dy", "Dz", "fu_Dx", "fu_Dy", "fu_Dz")
@@ -647,7 +647,7 @@ def _driver_with_monitors(seed):
     driver.add_source({"component": "Ez", "center": (0.0, 0.0, 0.0),
                        "size": (0.0, 0.0, 0.0), "source_type": "gaussian",
                        "frequency": 1.0, "fwidth": 0.4, "amplitude": 1.0})
-    # THREE MONITORS, AND ONE OF THEM READS D DIRECTLY. A rotation the D consumers
+    # Three monitors, and one of them reads D directly. A rotation the D consumers
     # could not see would be an untested claim; the Dx DFT monitor is the consumer
     # this leg exists for.
     driver.add_dft_monitor(frequencies=[1.0], components=("Dx", "Dy"))
@@ -690,7 +690,7 @@ def _monitor_words(driver):
 
 
 def test_rotating_the_flux_density_between_steps_is_invisible_to_every_consumer():
-    """THE CONSUMER AUDIT THE SCRATCH DESIGN RESTS ON, MEASURED RATHER THAN GREPPED.
+    """The consumer audit the scratch design rests on, measured rather than grepped.
 
     The launcher rebinds ``fields.Dx``/``fu_Dx`` (and the other four) to different
     ALLOCATIONS after every launch. That is only sound if nothing in the engine holds
@@ -760,7 +760,7 @@ def test_the_rotation_hands_back_the_retired_pair(name, xp):
 
 
 # ---------------------------------------------------------------------------
-# 6. THE ALIASING CHECK IS THE ONE THAT REFUSES THE IN-PLACE WELD
+# 6. The aliasing check is the one that refuses the in-place weld
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("name", sorted(MODULES))
@@ -815,7 +815,7 @@ def test_a_scratch_that_aliases_the_storage_is_refused_by_name(name, xp):
 
 
 # ---------------------------------------------------------------------------
-# 7. THE WIRING TABLES AGREE, MECHANICALLY
+# 7. The wiring tables agree, mechanically
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("name", sorted(MODULES))

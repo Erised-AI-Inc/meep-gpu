@@ -63,7 +63,7 @@ def added_step(x_ptr):
 
 
 # ---------------------------------------------------------------------------
-# THE RE-CUT IS MINT'S COMPUTATION, ON THE SHIPPED LEDGER
+# The re-cut is mint's computation, on the shipped ledger
 # ---------------------------------------------------------------------------
 
 
@@ -122,7 +122,7 @@ def test_a_device_tier_of_another_shape_refuses():
 
 
 # ---------------------------------------------------------------------------
-# THE RULE, THROUGH main(), ON A TEMPORARY REPOSITORY ROOT
+# The rule, through main(), on a temporary repository root
 # ---------------------------------------------------------------------------
 
 
@@ -210,7 +210,7 @@ def test_write_re_cuts_the_device_tier_whole_and_nothing_else_moves(scratch, cap
                                                        device_digests(api / DEVICE)))}
     assert entry["source_sha256"] == before["source_sha256"]
     assert entry["code_sha256"] == before["code_sha256"]
-    # THE BOUND DIGEST DOES NOT COVER THE DEVICE TIER, so the run stays live.
+    # The bound digest does not cover the device tier, so the run stays live.
     assert entry["runs"]["applegpu_g13s"]["bound_sha256"] == \
         before["runs"]["applegpu_g13s"]["bound_sha256"]
     assert metal_runs.live_architectures(entry) == ("applegpu_g13s",)

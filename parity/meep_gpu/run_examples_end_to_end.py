@@ -4,7 +4,7 @@ The survey (``survey_meep_examples.py``) answers "would the converter accept thi
 script". This answers the harder question: when it accepts one, does it get the
 same answer? Each case builds an ``mp.Simulation`` from an upstream example — the
 example's own geometry, materials, sources, boundaries and resolution — lifts it
-with :func:`meep_gpu.run_on_gpu`, and then runs THAT SAME OBJECT on CPU MEEP.
+with :func:`meep_gpu.run_on_gpu`, and then runs that same object on CPU MEEP.
 The number reported is the complex relative L2 of the whole volume in MEEP's own
 ``sim.get_array`` layout, so a global phase, a half-cell registration slip and a
 dropped boundary plane are all visible.
@@ -307,7 +307,7 @@ def run_case(name: str) -> dict:
     record["cells"] = int(np.prod(result.driver.shape))
     lifted = result.get_array(component)
     started = time.time()
-    sim.run(**run_kwargs)  # THE SAME OBJECT, now stepped by CPU MEEP.
+    sim.run(**run_kwargs)  # the same object, now stepped by CPU MEEP.
     record["cpu_meep_s"] = round(time.time() - started, 2)
     reference = np.asarray(sim.get_array(component=COMPONENTS[component]))
     record["shape"] = list(lifted.shape)

@@ -1,6 +1,6 @@
 """Bind ``cuda_kernels/fingerprints.json`` to the artifacts the CUDA gates left.
 
-WHY THIS EXISTS, AND WHY IT EXISTS NOW. The CUDA track carries
+Why this exists, and why it exists now. The CUDA track carries
 ``cuda_kernels/certification.json``, a hand-written narrative record: 22 dated
 blocks, each with its own key set, each describing one device campaign in prose
 and numbers. It is the richest of the three tracks' records and it is the only
@@ -18,7 +18,7 @@ after the fact, over a ledger that had already accumulated hand-shaped entries.
 Here the tool and the ledger are being created together, so the ledger has no
 history to retrofit and every entry in it was written by this code.
 
-WHAT IT REFUSES TO DO.
+What it refuses to do.
 
 * It never invents a verdict. An entry is written only when EVERY canonical
   policy leg under the block's artifact directory carries
@@ -50,7 +50,7 @@ WHAT IT REFUSES TO DO.
   ``DRIFTED``. Writing a live code digest beside a stale source digest would
   manufacture exactly the licence the clause withholds.
 
-WHAT IT WRITES, AND WHAT IT WILL NOT TOUCH. Two blocks per entry. The mechanical
+What it writes, and what it will not touch. Two blocks per entry. The mechanical
 block is every key without a leading underscore and this tool owns all of it.
 ``_notes`` is a nested object for bespoke narrative; the tool writes it once,
 when it creates an entry, with a pointer to the certification.json block that
@@ -59,7 +59,7 @@ underscore key is likewise left alone. That is the Metal ledger's discipline
 with its underscore-prefixed siblings gathered into one block, so "did a tool
 write this?" is answered by nesting rather than by remembering a naming rule.
 
-BINDING A RE-GATE, added 2026-08-30 — the MISSING WRITER this tool used to be.
+Binding a re-gate, added 2026-08-30 — the missing writer this tool used to be.
 Everything above finds a block's artifacts by asking certification.json where
 that block wrote them. That is the right dependence and it is also why this tool
 could not clear the forty stale pins it had reported since the day it was
@@ -70,19 +70,19 @@ blocker was a missing writer, not a missing measurement.
 ``--campaign <dir>`` binds against such a tree. Three refusals make it safe, and
 each is one half of a failure that has already happened here:
 
-* THE CAMPAIGN MUST BE RECORDED. certification.json must carry a block whose own
+* The campaign must be recorded. certification.json must carry a block whose own
   ``artifacts`` key names that directory and which carries a
   :data:`RE_GATE_KEY` table; ``record_cuda_regate.py`` writes it, and a run that
   happened is what licenses writing it. A weld bound to an unrecorded run points
   at evidence the narrative record has no entry for.
-* THAT BLOCK MUST AGREE WITH ITS DIRECTORY, and so must every other block whose
+* That block must agree with its directory, and so must every other block whose
   directory is on this machine — see
   :func:`record_disagrees_with_its_own_directories`. The first attempt to clear
   this drift installed the fresh legs INTO the dated directories: zero drift, and
   four certification tests red, because a block's ``artifact_sha256`` is computed
   over its own tree. Nothing is installed over anything here; the dated
   directories and their digests are untouched.
-* THE JOIN IS THE RECORD'S CLAIM. Which block each subdirectory re-gated comes
+* The join is the record's claim. Which block each subdirectory re-gated comes
   out of the campaign block's table, never out of string surgery on a name, and
   the re-gate must have cut the SAME canonical legs the entry stands on.
 
@@ -91,7 +91,7 @@ each is one half of a failure that has already happened here:
     python rebind_cuda_welds.py --seed --write   # create the ledger / apply
     python rebind_cuda_welds.py --campaign results/cuda_regate_2026-08-30 --write
 
-ONE RECORD PER COMPUTE CAPABILITY, since 2026-09-30. A weld is a claim about
+One record per compute capability, since 2026-09-30. A weld is a claim about
 generated code for an ARCHITECTURE, so the run facts -- the artifact digest, the
 host, the campaign, the policies, where the verdict was read -- live under
 ``runs[<capability>]`` and only the bytes and the curated claims about them stay
@@ -100,7 +100,7 @@ buys: a second architecture cut on the SAME bytes is additive, and the table's
 admitted set is the intersection of what every cited weld has a live run for
 rather than a number someone typed into the ledger.
 
-The capability is READ FROM THE RUN (:func:`leg_capability`) and cross-checked
+The capability is read from the run (:func:`leg_capability`) and cross-checked
 against the record that names the run (:func:`block_capability`); either absent,
 or the two disagreeing, skips the entry by name. A rebind whose bytes MOVED is
 refused and names the architectures it would strand, because their evidence then
@@ -108,10 +108,10 @@ describes bytes that no longer ship -- re-run them on these bytes (bind last and
 nothing goes stale) or drop them out loud with ``--supersede``. An entry still in
 the pre-migration shape is refused by name, never read both ways.
 
-A PIN THE GATE STOPPED IMPORTING IS RETIRED BY NAME. The curated set is kept, so
+A pin the gate stopped importing is retired by name. The curated set is kept, so
 a file a weld's gate no longer imports would make the entry unbindable forever: no
 fresh run records it, and the entry is skipped with "the artifact does not record"
-in every round although its gate released. :data:`RETIRED_PINS` names each such pin
+in every certification round although its gate released. :data:`RETIRED_PINS` names each such pin
 by ``(weld, path)`` with why it left; the file itself may still ship, and other welds
 may still pin it. When that weld REBINDS, the path leaves its curated set (both
 digest maps) and is reported as ``RETIRED-PIN``; every other pin is compared exactly
@@ -127,7 +127,7 @@ package root and lies outside its gate's run closure. It is empty on this tree; 
 also refuse the run if its file is back in the gate's run closure, and skip an entry whose
 legs disagree with the checkout.
 
-A RERUN CHANGES NO BYTE. A rebind whose result differs from the entry already in the
+A rerun changes no byte. A rebind whose result differs from the entry already in the
 ledger only in this capability's ``recorded_utc`` keeps the entry as it stands, so a
 second ``--write`` against the same campaign leaves the ledger byte-identical.
 
@@ -169,6 +169,7 @@ if str(_HERE) not in sys.path:
 
 import artifact_drift  # noqa: E402
 import gate_provenance  # noqa: E402
+import ledger_scope  # noqa: E402
 import neutral_labels  # noqa: E402
 from meep_gpu import fastpath, subnormal_policy  # noqa: E402
 from meep_gpu.code_identity import code_digest_of_path  # noqa: E402
@@ -197,7 +198,7 @@ CANONICAL_LEG_NAMES = ("gate.json", "cgate.json", "probe.json")
 #: policy legs beside it are the verdict. Every device block in the record is cut
 #: under both policies, so a leg outside these two directories is not one.
 #:
-#: MATCHED BY PREFIX SINCE 2026-09-11, and the reason is a real four-leg layout
+#: Matched by prefix since 2026-09-11, and the reason is a real four-leg layout
 #: rather than tidiness: ``cuda_three_slot_weld_2026-09-03`` writes
 #: ``keep_pml``/``flush_pml``/``keep_no_pml``/``flush_no_pml`` — two products, two
 #: policies each — and an exact-name match reads that directory as having NO
@@ -211,7 +212,7 @@ POLICY_DIRECTORIES = ("keep", "flush")
 def _is_policy_directory(name: str) -> bool:
     """Is ``name`` a policy leg directory? Prefix OR SUFFIX match.
 
-    THE SUFFIX FORM IS WHAT A MULTI-FAMILY CAMPAIGN WRITES. One gate script that
+    The suffix form is what a multi-family campaign writes. One gate script that
     takes ``--family`` puts its legs under ``<family>_<policy>`` -- ``complex_keep``,
     ``complex_electric_flush`` -- so that three families can share one campaign
     directory and one environment stamp, and ``record_fused_complex_pairs.py`` reads
@@ -241,9 +242,15 @@ SHARED_HARNESS_FILES = ("parity/meep_gpu/probe_fused_kernel_bit_identity.py",)
 #: the ledger forever.
 RE_GATE_KEY = "re_gated"
 
+#: The subdirectories a re-gate block claims when it records a NAMED SUBSET of its
+#: campaign (``record_cuda_regate.py --directories``). Absent, the block claims every
+#: subdirectory. Its ``artifact_sha256`` is then taken over these subdirectories only,
+#: and every reader recomputes it over the same set (:func:`block_digest`).
+RECORDED_SUBDIRECTORIES = "recorded_subdirectories"
+
 #: ``(weld key, repository-relative pinned path) -> why the pin is retired``.
 #:
-#: A RETIRED PIN IS NOT A MISSING ONE. "the artifact does not record <path>" is the
+#: A retired pin is not a missing one. "the artifact does not record <path>" is the
 #: right refusal for a file the weld's gate still imports and this run did not (the
 #: weld cannot claim bytes the run did not execute), and the wrong one for a file the
 #: gate stopped importing: no round can record it again, so the entry would stay
@@ -254,21 +261,21 @@ RE_GATE_KEY = "re_gated"
 #: Reviewed by hand, like ``rebind_triton_welds.RETIRED_WELDS``; nothing else drops a
 #: curated pin, and a row whose gate imports the path again refuses its entry by name.
 RETIRED_PINS = {
-    # 2 of the 34 CUDA arms cite this weld. Its gate imported the complex no-PML gate
-    # for the expansion licence's arm choice; 89-X1 (5b73a00) deleted the licence and
-    # the import together. Both legs of the 2026-10-11 re-gate import 50 files, every
-    # other pin among them.
+    # 2 of the 34 CUDA arms cite this weld. Its gate imported the complex no-PML gate for
+    # the complex-multiply expansion licence's arm choice; the change that deleted the
+    # licence removed the import with it. Both legs of the 2026-10-11 re-gate import 50
+    # files, every other pin among them.
     ("cuda_complex_offdiag_stencil_welds_2026-09-17",
      "parity/meep_gpu/gate_cuda_complex_no_pml.py"):
-        "gate_cuda_complex_offdiag_stencil_welds.py stopped importing it in entry "
-        "89-X1, which deleted the complex-multiply expansion licence",
-    # Cited by no arm. 76-KC8 (171e510) re-derived the cylindrical families on the
-    # 0.10 forms and dropped the gate's import of the real-storage gate. Both legs of
+        "gate_cuda_complex_offdiag_stencil_welds.py stopped importing it when "
+        "the complex-multiply expansion licence was deleted",
+    # Cited by no arm. The re-derivation of the cylindrical families on the per-chunk
+    # forms dropped the gate's import of the real-storage gate. Both legs of
     # the 2026-10-11 re-gate import 123 files, every other pin among them.
     ("cuda_cylindrical_fused_hd_pair_2026-09-07",
      "parity/meep_gpu/gate_cuda_cylindrical_real_fused_hd_pair.py"):
-        "gate_cuda_cylindrical_fused_hd_pair.py stopped importing it in entry 76-KC8, "
-        "which re-derived the cylindrical families on the 0.10 forms",
+        "gate_cuda_cylindrical_fused_hd_pair.py stopped importing it when the "
+        "cylindrical families were re-derived on the per-chunk forms",
 }
 assert all(isinstance(key, tuple) and len(key) == 2 and all(key)
            and not key[1].startswith("/") and why
@@ -282,10 +289,10 @@ def retired_pins_of(weld: str) -> dict:
 
 #: ``(weld key, repository-relative pinned path) -> the gate script(s)`` for a pin that is
 #: a module the package root used to load eagerly and that the weld's gate no longer
-#: imports (owner ruling R17: since the root binds its names on first use, a gate's record
-#: is its strict dependency set). The Metal and Triton tools carry the same table.
+#: imports (as of 1.0 the root binds its names on first use, so a gate's record is its
+#: strict dependency set). The Metal and Triton tools carry the same table.
 #:
-#: GENERATED, NOT TYPED: ``import_closure.py unimported-pins cuda`` prints the rows from the
+#: Generated, not typed: ``import_closure.py unimported-pins cuda`` prints the rows from the
 #: checkout and ``test_rebind_unimported_pins.py`` holds this literal to it both ways. It is
 #: EMPTY on this tree: the CUDA welds pin ``cuda_kernels/`` files and harness scripts, and
 #: the one ledger row that pins core modules, ``driver_dispatch``, is the route gate's and
@@ -341,7 +348,7 @@ def _record() -> dict:
 def record_disagrees_with_its_own_directories(record: dict) -> list[str]:
     """Blocks whose declared ``artifact_sha256`` no longer digests their own tree.
 
-    THE GUARD THAT ENCODES THE 2026-08-30 LESSON, and the reason ``--campaign``
+    The guard that encodes the 2026-08-30 lesson, and the reason ``--campaign``
     is safe to have at all. The first attempt to clear this ledger's forty stale
     pins installed the fresh legs INTO each block's dated directory. The ledger
     went to zero drift and FOUR certification tests went red, because every
@@ -364,7 +371,7 @@ def record_disagrees_with_its_own_directories(record: dict) -> list[str]:
         declared = value.get("artifact_sha256")
         if directory is None or not directory.is_dir() or not isinstance(declared, str):
             continue
-        live = manifest_digest(directory)
+        live = block_digest(value, directory)
         if live != declared:
             wrong.append(f"{name}: {directory.name}/ digests to {live[:12]}, "
                          f"the block records {declared[:12]}")
@@ -374,7 +381,7 @@ def record_disagrees_with_its_own_directories(record: dict) -> list[str]:
 def campaign_block(record: dict, campaign: Path) -> tuple[str, dict] | None:
     """The block that RECORDS this campaign, or ``None`` if the record names none.
 
-    A CAMPAIGN THE RECORD DOES NOT NAME IS NOT BINDABLE, and that refusal is the
+    A campaign the record does not name is not bindable, and that refusal is the
     whole design. The gap this closes was never "the tool cannot read a
     directory" -- it is that a weld bound to an unnamed run points at evidence
     the narrative record has no entry for, so a later reader can follow the
@@ -442,7 +449,7 @@ def artifact_directory(block: dict) -> Path | None:
 def canonical_legs(directory: Path, family: str | None = None) -> list[str]:
     """Directory-relative paths of the policy legs, sorted.
 
-    ``family`` SCOPES A SHARED CAMPAIGN DIRECTORY TO ONE BLOCK'S OWN LEGS. Three
+    ``family`` scopes a shared campaign directory to one block's own legs. Three
     families writing into one directory would otherwise give every block six legs,
     and ``read_verdict`` would then refuse each of them unless all three families
     released -- a block about ``complex`` standing on a measurement of
@@ -460,7 +467,7 @@ def canonical_legs(directory: Path, family: str | None = None) -> list[str]:
     )
 
 
-def manifest_digest(directory: Path) -> str:
+def manifest_digest(directory: Path, subdirectories=None) -> str:
     """The record's OWN artifact rule, so the two files cannot disagree.
 
     ``certification.json``'s ``_artifact_sha256_rule`` states it and
@@ -468,13 +475,23 @@ def manifest_digest(directory: Path) -> str:
     directory, sorted by relative POSIX path, one ``'<path> <sha256>'`` line
     each, joined by single newlines, sha256 of the result. A second rule here
     would give the same directory two digests and no way to tell which was
-    wrong.
+    wrong. ``subdirectories`` (a block's :data:`RECORDED_SUBDIRECTORIES`) keeps the
+    same rule over the files under those subdirectories only, paths still relative
+    to ``directory``.
     """
+    roots = ([directory] if subdirectories is None
+             else [directory / name for name in sorted(subdirectories)])
     table = {path.relative_to(directory).as_posix():
              hashlib.sha256(path.read_bytes()).hexdigest()
-             for path in directory.rglob("*.json")}
+             for root in roots for path in root.rglob("*.json")}
     lines = [f"{name} {digest}" for name, digest in sorted(table.items())]
     return hashlib.sha256("\n".join(lines).encode("utf-8")).hexdigest()
+
+
+def block_digest(block: dict, directory: Path) -> str:
+    """:func:`manifest_digest` over what ``block`` claims of ``directory``: the whole
+    directory, or the subdirectories it records (:data:`RECORDED_SUBDIRECTORIES`)."""
+    return manifest_digest(directory, block.get(RECORDED_SUBDIRECTORIES))
 
 
 def read_verdict(directory: Path, legs: list[str]) -> tuple[bool, str]:
@@ -565,7 +582,7 @@ def _stamp(payloads: list[dict], *keys: str) -> list:
 #: ``gate_cuda_complex_offdiag_update_e.py`` and
 #: ``gate_cuda_folded_offdiag_rowmask.py``).
 #:
-#: READING A TOP-LEVEL ``compute_capability`` WAS THE DEFECT. No CUDA gate writes one,
+#: Reading a top-level ``compute_capability`` was the defect. No CUDA gate writes one,
 #: so a cross-check spelled that way returns nothing for every leg and silently
 #: degrades to "unmeasured" -- the shape of failure this ledger exists to end.
 #:
@@ -688,11 +705,11 @@ def seed_key_set(record: dict, name: str, block: dict, imports: dict) -> list[st
     it on every run would let a gate that stopped importing a file quietly stop
     pinning it.
     """
-    # A BLOCK MAY CERTIFY MORE THAN ONE MODULE, and pinning one of them would be
-    # exactly the drift this ledger exists to catch. The 2026-09-02 stencil round
-    # is the first such campaign: one gate, one artifact directory, two kernels in
-    # two family modules plus the shared lift they are both spliced from. A string
-    # stays a string, so every existing entry's key set is unchanged.
+    # A block may certify more than one module, and pinning one of them would be
+    # exactly the drift this ledger exists to catch. The 2026-09-02 stencil-weld
+    # certification is the first such campaign: one gate, one artifact directory, two
+    # kernels in two family modules plus the shared lift they are both spliced from. A
+    # string stays a string, so every existing entry's key set is unchanged.
     declared = block.get("kernel_module") or record.get("kernel_module") or ""
     modules = [declared] if isinstance(declared, str) else list(declared)
     keys = [f"meep_gpu/cuda_kernels/{name.split('/')[-1]}"
@@ -739,6 +756,9 @@ def main(argv=None) -> int:
                              "block from its dated directory -- several of which "
                              "would seed DRIFTED, which is a decision and not a side "
                              "effect.")
+    parser.add_argument("--allow-policy-drop", action="store_true",
+                        help="let a bind replace a capability's run and lose a policy "
+                             "that run holds; refused by name otherwise")
     parser.add_argument("--supersede", default="",
                         help="comma-separated compute capabilities whose run records "
                              "this bind may strand. A rebind on bytes that MOVED "
@@ -762,7 +782,7 @@ def main(argv=None) -> int:
 
     record = _record()
     ledger = json.loads(LEDGER.read_text(encoding="utf-8")) if LEDGER.is_file() else {}
-    # A ROW THE RULE NO LONGER LICENSES refuses the whole run, before any entry is read:
+    # A row the rule no longer licenses refuses the whole run, before any entry is read:
     # a file back in its gate's run closure is a pin to keep, so the table is wrong until
     # someone reviews it.
     stale_rows = unimported_rows_back(ledger)
@@ -773,7 +793,7 @@ def main(argv=None) -> int:
             + ". Regenerate it with import_closure.py unimported-pins cuda and review it. "
               "Nothing written")
     blocks = device_blocks(record)
-    # THE ``driver_dispatch`` BLOCK IS NOT THIS TOOL'S TO WRITE, and saying so here
+    # THE ``driver_dispatch`` block is not this tool's to write, and saying so here
     # rather than relying on it never matching is the point. It is cut ONLY by
     # ``recut_driver_dispatch_record.py --backend cuda``, FROM the campaign's five
     # legs, which refuses unless every leg, every other leg and the live tree agree
@@ -789,19 +809,19 @@ def main(argv=None) -> int:
         raise SystemExit(f"--only names blocks this record does not carry as device "
                          f"blocks: {unknown_only}")
 
-    # NEITHER WRITER RUNS AGAINST A RECORD THAT DISAGREES WITH ITS OWN
-    # DIRECTORIES. See the function's docstring: this is the four-broken-tests
+    # Neither writer runs against a record that disagrees with its own
+    # directories. See the function's docstring: this is the four-broken-tests
     # failure mode, encoded where it bites instead of remembered.
     disagreeing = record_disagrees_with_its_own_directories(record)
     for line in disagreeing:
-        print(f"  RECORD DISAGREES WITH ITS OWN DIRECTORY  {line}", flush=True)
+        print(f"  record disagrees with its own directory  {line}", flush=True)
     if disagreeing:
         print("\n  refusing to bind a weld into a record that no longer describes the "
               "trees it already names. Find out which side moved; do not re-cut a "
               "digest on sight.", flush=True)
         return 1
 
-    # THE CAMPAIGN, resolved and CHECKED AGAINST THE RECORD before any entry is
+    # The campaign, resolved and checked against the record before any entry is
     # touched. ``re_gated`` gives the block-to-subdirectory join as the record's
     # own claim; this tool never derives it from a name.
     campaign, campaign_name, re_gated = None, "", {}
@@ -821,7 +841,7 @@ def main(argv=None) -> int:
                 f"record_cuda_regate.py --campaign results/{campaign.name} --write")
         campaign_name, campaign_declaration = found
         declared = campaign_declaration.get("artifact_sha256")
-        live = manifest_digest(campaign)
+        live = block_digest(campaign_declaration, campaign)
         if declared != live:
             raise SystemExit(
                 f"certification.json:{campaign_name} records artifact_sha256 "
@@ -846,7 +866,7 @@ def main(argv=None) -> int:
             skipped.append((name, "not selected by --only"))
             continue
         if entry is not None:
-            # THE PRE-MIGRATION SHAPE IS REFUSED BY NAME, never read both ways. An
+            # The pre-migration shape is refused by name, never read both ways. An
             # entry with ``host``/``records``/``recorded_utc`` beside its digests
             # describes ONE run as though it described every architecture, and a
             # writer that accepted it would answer "which bytes did this run
@@ -862,7 +882,7 @@ def main(argv=None) -> int:
                                       f"with migrate_capability_records.py --write"))
                 continue
         if RE_GATE_KEY in block:
-            # A RE-GATE CAMPAIGN IS NOT A FAMILY. Its verdict is the family
+            # A re-gate campaign is not a family. Its verdict is the family
             # verdicts it re-cut, each of which owns its own ledger entry, so it
             # owes no weld of its own and is named here rather than reported
             # absent from the ledger on every future run.
@@ -889,7 +909,7 @@ def main(argv=None) -> int:
         legs = (list(entry["legs"]) if entry and entry.get("legs")
                 else canonical_legs(directory, family))
         if campaign is not None:
-            # THE RE-GATE MUST HAVE CUT THE SAME LEGS. ``legs`` is a curated
+            # The re-gate must have cut the same legs. ``legs`` is a curated
             # claim -- which measurements this weld stands on -- and a fresh run
             # that wrote a different set did not re-cut this verdict, it cut
             # another one. Requiring equality rather than containment: a run
@@ -919,7 +939,7 @@ def main(argv=None) -> int:
             skipped.append((name, "the legs record no agreed imported_source_sha256"))
             continue
 
-        # WHICH ARCHITECTURE THIS VERDICT IS ABOUT, read from the run and
+        # Which architecture this verdict is about, read from the run and
         # cross-checked against the record that names the run. Two independent
         # sources, both required: the legs alone could be a tree someone copied
         # under a block that describes another device, and the record alone is a
@@ -942,7 +962,7 @@ def main(argv=None) -> int:
                                   f"run and this tool cannot say which"))
             continue
 
-        # RETIRED PINS LEAVE THE CURATED SET BY NAME, and only by name. Checked against
+        # Retired pins leave the curated set by name, and only by name. Checked against
         # EVERY leg's import record, and whether or not the entry still carries the
         # pin: a leg that recorded one means the gate imports it again, so the row is
         # wrong for this run and the entry is left exactly as it stands. Every other
@@ -965,7 +985,7 @@ def main(argv=None) -> int:
             seed_key_set(record, name, block, imports)
         dropping = [key for key in pinned if key in retiring]
         curated = [key for key in pinned if key not in retiring]
-        # A RETIREMENT BY RETIRED_UNIMPORTED_PINS needs the legs to be this checkout's
+        # A retirement by RETIRED_UNIMPORTED_PINS needs the legs to be this checkout's
         # bytes: the closure that licenses it was read off the checkout's gate.
         not_imported = [key for key in dropping if key in unimported]
         if not_imported:
@@ -983,7 +1003,7 @@ def main(argv=None) -> int:
                                       + (f" and {len(disagreeing) - 3} more"
                                          if len(disagreeing) > 3 else "")))
                 continue
-        # A RE-GATE'S LEGS MUST DESCRIBE THE RELEASE TREE (a chunked round certifies
+        # A re-gate's legs must describe the release tree (a chunked round certifies
         # chunks on earlier tips): one file a leg's record names at other bytes, or gone,
         # and the legs describe a tree that does not ship (artifact_drift.py). Asked of a
         # --campaign rebind only: a dated block's own directory is the record of its day,
@@ -1010,16 +1030,16 @@ def main(argv=None) -> int:
         host = weld_host(payloads, legs, block, name)
 
         policies = _stamp(payloads, "subnormal_policy_install", "policy")
-        # THE RUN THIS WELD READ, spelled so a reader can walk to it. Under
+        # The run this weld read, spelled so a reader can walk to it. Under
         # ``--campaign`` that is the campaign subdirectory and NOT the block's
         # own dated directory, so ``records`` names the tree the digests were
         # actually taken from -- the misattribution the Triton tool wrote twice
-        # in one round by taking the path from one place and the artifact from
+        # in one campaign by taking the path from one place and the artifact from
         # another. ``campaign`` names the certification block that records the
         # run, which is the join back to what it was.
         relative = directory.relative_to(_API / "parity" / "meep_gpu" / "results")
 
-        # THE BOUND, READ BEFORE THE DIGESTS ARE REFRESHED. It is the only moment
+        # The bound, read before the digests are refreshed. It is the only moment
         # both the old and the new answer to "which bytes does this weld bind?" are
         # in hand, and that difference is what decides whether the OTHER
         # architectures' records still describe shipping bytes --
@@ -1048,7 +1068,7 @@ def main(argv=None) -> int:
             "source_sha256": {key: imports[key] for key in curated},
             "status": "PASS" if not moved else "DRIFTED",
         }
-        # THE SPLIT IS DRIVEN BY THE CONSTANT, not merely described by it: the write
+        # The split is driven by the constant, not merely described by it: the write
         # is keyed off :data:`ENTRY_FIELDS`, so a field added on one side and not the
         # other fails loudly here instead of landing on whichever side of the split
         # the dict literal happened to put it -- which is how a run fact ends up
@@ -1058,7 +1078,7 @@ def main(argv=None) -> int:
             raise SystemExit(f"the entry-level write and ENTRY_FIELDS disagree about "
                              f"{disagree}; one of the two was edited alone")
         entry.update({field: refreshed[field] for field in ENTRY_FIELDS})
-        # THE PIN SET MOVES ONLY BY THE RETIREMENT: the entry pins exactly what it
+        # The pin set moves only by the retirement: the entry pins exactly what it
         # pinned before less this weld's retired paths, and the code tier leaves out
         # only the drifted files, which it withholds on every rebind.
         kept = set(pinned) - set(dropping)
@@ -1085,7 +1105,7 @@ def main(argv=None) -> int:
             "verdict_read_from": (f"{relative.as_posix()}/{{{','.join(legs)}}}"
                                   ":canonical_verdict.released"),
         }
-        # WHICH POLICIES RELEASED, from the legs' own stamps: the field dispatch reads
+        # Which policies released, from the legs' own stamps: the field dispatch reads
         # to admit a caller-installed policy other than the install default. Written
         # only when some leg names one, so a run whose legs stamp nothing reads as
         # certifying the install default alone, which is what it was cut under.
@@ -1106,6 +1126,15 @@ def main(argv=None) -> int:
             # ``run_fields=SLOT_FIELDS`` narrows the refusal to THIS table's run set:
             # a field outside it belongs beside the digests or to another track, and
             # fastpath names it rather than writing it into the record.
+            runs = entry.get(fastpath.RUNS)
+            lost = ledger_scope.policies_dropped(
+                runs.get(capability) if isinstance(runs, dict) else None, run,
+                fastpath.CERTIFIED_POLICIES)
+            if lost and not args.allow_policy_drop:
+                raise fastpath.CapabilityRecordError(
+                    f"policy_dropped: this bind replaces the {capability} run and loses "
+                    f"{lost}; pass the campaign that holds them, or --allow-policy-drop to "
+                    f"lose them on purpose")
             staled = fastpath.bind_capability(entry, bound_before=bound_before,
                                               capability=capability, run=run,
                                               run_fields=SLOT_FIELDS,
@@ -1115,7 +1144,7 @@ def main(argv=None) -> int:
             continue
         if staled:
             superseded.append((name, staled))
-        # A RERUN CHANGES NO BYTE: a rebind that only restated the recorded run keeps
+        # A rerun changes no byte: a rebind that only restated the recorded run keeps
         # the entry as it was read, recording time included.
         if before is not None and _unchanged_but_the_clock(before, entry, capability):
             entry = before
@@ -1137,8 +1166,8 @@ def main(argv=None) -> int:
             drifted.append((name, moved))
         ledger[name] = entry
 
-    # EVERY LINE NAMES THE ARCHITECTURE, and the live set beside it, because that is
-    # the question a round asks: which capabilities does this weld still certify?
+    # Every line names the architecture, and the live set beside it, because that is
+    # the question a certification round asks: which capabilities does this weld still certify?
     # A bind that silently replaced one and stranded another would otherwise look
     # exactly like a bind that added one.
     for key, capability, live in created:
@@ -1164,7 +1193,7 @@ def main(argv=None) -> int:
           f"capability's record, {len(pin_retirements)} pin(s) retired, "
           f"{len(unchanged)} unchanged", flush=True)
 
-    # THE KEY SET MOVES ONLY BY WHAT --seed CREATED: a rebind neither adds nor drops a
+    # The key set moves only by what --seed CREATED: a rebind neither adds nor drops a
     # key, and a retirement drops a pin, never an entry.
     grown = keys_before | {key for key, _capability, _live in created}
     if set(ledger) != grown:

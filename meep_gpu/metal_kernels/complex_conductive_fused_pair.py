@@ -1,6 +1,6 @@
 """The complex conductive ``step_D`` welded into complex ``update_E``.
 
-ONE DISPATCH FOR ALL THREE COMPONENTS, and the displacement never leaves a
+One dispatch for all three components, and the displacement never leaves a
 register. The separate composition for this configuration is TWO device dispatches
 for the curl-and-constitutive pair — one whole-grid conductive curl plus THREE
 per-component stored-E launches, four in all; this is ONE.
@@ -10,7 +10,7 @@ It claims the D->E cell the fusion matrix ranks first among Metal's unbuilt cell
 ``TestLoadDump.test_load_dump_{structure,structure_sharded,chunk_layout_file,
 chunk_layout_sim}_3d`` — and ``reach 4 (of 4 rows)``.
 
-EVERYTHING HERE IS TRANSCRIBED, and every arithmetic line carries the file:line it
+Everything here is transcribed, and every arithmetic line carries the file:line it
 came from:
 
 * the complex conductive D curl — LIFTED from the certified emitter's own output
@@ -27,10 +27,10 @@ came from:
   through the part-wise ``float2`` helpers.
 
 ===========================================================================
-WHAT IT IS WORTH: +4 SEAM-INSTANCES OF 387, RECOMPUTED
+What it is worth: +4 seam-instances of 387, recomputed
 ===========================================================================
 
-MEASURED, not inferred from the ranked-gap table's reachable ceiling.
+Measured, not inferred from the ranked-gap table's reachable ceiling.
 ``results/fusion_matrix_metal_2026-08-20_unbuilt_cells/`` re-runs the standing
 CLOSED cut (``results/fusion_matrix_metal_2026-08-20_closed``, 118/387) with this
 product and one other added and nothing else changed; D->E moves 2 -> 6 and the
@@ -50,24 +50,24 @@ is the whole reason this cell was ranked first::
 are among the 29 that are not, because their single source is MAGNETIC.
 
 ===========================================================================
-THE SEAM, AND WHY IT IS EMPTY ON THIS CELL — the whole design question
+The seam, and why it is empty on this cell — the whole design question
 ===========================================================================
 
 The driver runs FOUR passes between ``step_D`` and ``update_E``
 (driver.py:3293-3304): the electric injection (:3294-3299, which on a conductive
 row takes the ``condinv``-scaled path ``FdtdDriver._inject_electric_through_
 conductivity`` at :3296), ``fill_symmetry_bc_D`` (:3300), ``zero_metal_D``
-(:3301) and ``fill_folded_far_ghosts_D`` (:3302). THIS FAMILY CARRIES NONE OF
-THEM. Each is instead refused by a named clause that makes the pass INERT, and
+(:3301) and ``fill_folded_far_ghosts_D`` (:3302). This family carries none of
+them. Each is instead refused by a named clause that makes the pass INERT, and
 that is a different and stronger thing than not carrying it:
 
-* **the electric sources — REFUSED BY NAME.** The injection lands between the two
+* **the electric sources — refused by name.** The injection lands between the two
   halves, so a fused pair would consume a pre-injection D. Ignorance is never an
   empty set: ``Fields`` does not hold the source list, so an undeclared source set
-  is itself a refusal. THE CONDUCTIVE INJECTION IS THE SAME CLAUSE, not a second
+  is itself a refusal. The conductive injection is the same clause, not a second
   one: ``FdtdDriver.step`` guards it with ``if electric and
   self.fields.has_conductivity`` (driver.py:3295), so with no electric source it
-  cannot run whatever the conductivity is. That is MEASURED rather than read off
+  cannot run whatever the conductivity is. That is measured rather than read off
   the guard — ``results/metal_unbuilt_cells_reachability_2026-08-20`` instruments
   the driver on this cell's own configuration (complex storage, an Absorber on
   both halves, k = (0.4, -1.3, 0.7), one Lorentzian, one MAGNETIC source) and
@@ -80,7 +80,7 @@ that is a different and stronger thing than not carrying it:
   returns immediately (stepping.py:1482-1483);
 * **``fill_folded_far_ghosts_D`` — INERT for the same reason.** It runs only on a
   folded PERIODIC axis (``_stored_past_owned``, stepping.py:1503-1518);
-* **``zero_metal_D`` — REFUSED BY NAME, and the refusal is priced.** It writes zero
+* **``zero_metal_D`` — refused by name, and the refusal is priced.** It writes zero
   into stored cell 0 of every D component whose Yee shift on a walled axis is 0
   (stepping.py:2206-2247), which ``update_E`` then reads. :mod:`.fused_dispersive_
   pair` and :mod:`.folded_fused_pair` carry it inline and this family could too —
@@ -96,14 +96,14 @@ So under this family's clauses the D->E seam holds NOTHING, which is what makes 
 single launch legitimate rather than merely convenient.
 
 ===========================================================================
-WHY THERE IS NO STENCIL PROBLEM HERE, and why that is not general
+Why there is no stencil problem here, and why that is not general
 ===========================================================================
 
 The fusion matrix refuses NINETEEN D->E seam-instances as STRUCTURALLY UNFUSABLE
 on any backend: ``stepping._offdiagonal_terms`` (stepping.py:1235-1253) reads each
 partner component's D volume at FOUR indices while ``step_D`` writes those volumes
 in place in the first half of the same launch, and no grid-wide barrier exists
-inside one launch. THIS CONSTITUTIVE IS NOT THAT ONE. The certified complex stored
+inside one launch. This constitutive is not that one. The certified complex stored
 E reads ``d_in[idx]`` — its OWN component, at its OWN index, the word the same
 thread computed in the curl half — so the value stays in a register and no thread
 reads a word another thread writes. An off-diagonal ``chi1inv`` row is refused by
@@ -111,7 +111,7 @@ the E half already, and restated here by name because THIS is the reason the cel
 is buildable at all.
 
 ===========================================================================
-WHAT MOVES, AND IT IS AT MOST ONE LINE PER COMPONENT
+What moves, and it is at most one line per component
 ===========================================================================
 
 The certified conductive tail (:func:`.complex_no_pml_conductive._tail`) ALREADY names
@@ -123,7 +123,7 @@ the stepped displacement::
     value0 = c_mul_field_left(value0, ci0[ii]);
     f0[ii] = value0;
 
-so on a CONDUCTIVE component NOTHING MOVES AT ALL: the constitutive half simply
+so on a CONDUCTIVE component nothing moves at all: the constitutive half simply
 reads ``value0`` where the certified body read ``d_in[idx]``. On a component
 without a conductivity the certified tail is the single line ``f0[ii] = f0[ii] -
 curl0;``, and there the fusion splits it in two — ``float2 value0 = f0[ii] -
@@ -135,14 +135,14 @@ per complete step regardless, because "by construction" is a hypothesis until a
 comparator agrees.
 
 ===========================================================================
-THE POINTER RENAMES, AND WHY THE SCALARS MOVE INTO A STRUCT
+The pointer renames, and why the scalars move into a struct
 ===========================================================================
 
 **POINTER RENAMES.** The curl half keeps its own spelling (``f0..f2``, ``g0..g2``,
 ``cf0..cf2``, ``ci0..ci2``). The constitutive half's three volume names would each
 mean three things in one scope, so they take a component index:
 ``e_out -> e0/e1/e2``, ``inv_e -> iv0/iv1/iv2``, and pole ``k`` of component
-``m`` is ``p{m}_{k}``. ``d_in`` IS NOT BOUND AT ALL — it is ``f{m}``, the volume
+``m`` is ``p{m}_{k}``. ``d_in`` is not bound at all — it is ``f{m}``, the volume
 the curl half just wrote, and that shared binding is the fusion's whole footprint.
 
 **THE SCALARS.** :data:`.device.MAX_BUFFER_BINDINGS` is 31. The certified curl
@@ -154,8 +154,8 @@ scalar into ONE ``constant Params&`` — the shape :mod:`.fused_dispersive_pair`
 measured to compile — brings the same two-pole configuration to 25 and moves the
 ceiling from one pole per component to TWELVE poles in total. The chunk record
 rides in the same ``Params`` (``ChunkBounds cb``, last), so it costs no binding.
-:func:`binding_count` is evaluated BY THE PREDICATE, so a configuration over the
-ceiling is a REFUSAL BY NAME rather than a compile error at plan time.
+:func:`binding_count` is evaluated by the predicate, so a configuration over the
+ceiling is a refusal by name rather than a compile error at plan time.
 
 The eight-line prologue that copies ``prm.nx`` / ``prm.ny`` / ``prm.nz`` /
 ``prm.n_elem`` / ``prm.dtdx`` and rebuilds ``px`` / ``py`` / ``pz`` back into
@@ -168,14 +168,14 @@ members, and the record's 25 members are all 4-byte ints, so the blob stays a fl
 ``float2(re, im)`` — a construction, not an arithmetic operation, so no rounding is
 introduced.
 
-THE POLE SLOTS ARE NOT PADDED TO EIGHT. ``complex_no_pml_stored_e`` declares
+The pole slots are not padded to eight. ``complex_no_pml_stored_e`` declares
 ``p0..p7`` always and binds the displacement into the unused slots
 (complex_no_pml_stored_e.py:196). Here the signature declares exactly the poles
 each component carries, because the pad is what puts this over the ceiling: three
 components padded to eight is 24 pole pointers against the 12 the ceiling allows.
 
 ===========================================================================
-WHAT THIS FAMILY REFUSES
+What this family refuses
 ===========================================================================
 
 Beyond the seam clauses above: an active PML layer, real (float32) storage, a
@@ -331,7 +331,7 @@ __TAIL2__
 
     // --- THE SEAM: driver.py:3293-3304 holds NOTHING under this family's
     //     clauses (no electric source, no mirror, no wall). See the module
-    //     docstring; the reachability is MEASURED, not read off the guard.
+    //     docstring; the reachability is measured, not read off the guard.
 __CONSTITUTIVE__
 }
 """
@@ -510,7 +510,7 @@ def complex_conductive_fused_pair_source(
     tails: Dict[str, str] = {}
     for index in range(3):
         if flags[index]:
-            # THE CONDUCTIVE TAIL ALREADY NAMES THE VALUE. Nothing moves: the
+            # The conductive tail already names the value. Nothing moves: the
             # certified emitter's own text, unchanged (complex_no_pml_conductive._tail).
             tails[f"__TAIL{index}__"] = _tail(index, True)
         else:
@@ -579,10 +579,10 @@ def complex_conductive_fused_pair_coverage(
     if not electric.covered:
         reasons.extend(f"E half: {reason}" for reason in electric.reasons)
 
-    # THE SOURCE SEAM, and for this family it is THE binding clause on the measured
+    # The source seam, and for this family it is THE binding clause on the measured
     # corpus. An ELECTRIC source is injected BETWEEN the two halves
     # (driver.py:3294-3299), so a fused pair would consume a pre-injection D.
-    # IGNORANCE IS NEVER AN EMPTY SET: `Fields` does not hold the source list, so a
+    # Ignorance is never an empty set: `Fields` does not hold the source list, so a
     # predicate that inferred "no sources" from not being told would be the
     # over-covering refusal this clause exists to prevent. A MAGNETIC source is
     # injected in the B/H half and does NOT disqualify the pair -- which is exactly
@@ -604,7 +604,7 @@ def complex_conductive_fused_pair_coverage(
     if grid is None:
         return Coverage(False, tuple(dict.fromkeys(reasons + ["fields carries no grid"])))
 
-    # THE TWO FILLS. Both halves already refuse a mirror plane; this restates by
+    # The two fills. Both halves already refuse a mirror plane; this restates by
     # NAME what that refusal buys on THIS seam — a reader should not have to chase
     # a shared grid clause to learn that two driver passes sit between the halves
     # on a folded grid.
@@ -623,7 +623,7 @@ def complex_conductive_fused_pair_coverage(
     # the measured corpus.
     kinds = _boundary_kinds(grid, None)
     if kinds is None:
-        # UNREADABLE IS A REFUSAL, NEVER A CRASH. `_boundary_kinds` returns None
+        # Unreadable is a refusal, never a crash. `_boundary_kinds` returns None
         # for a grid the array path will not resolve (coverage.py:105-121), and a
         # clause that iterated it would raise where the contract says refuse.
         reasons.append(
@@ -647,7 +647,7 @@ def complex_conductive_fused_pair_coverage(
             "volumes step_D writes in place (stepping.py:1235-1253), and no "
             "grid-wide barrier exists inside one launch")
 
-    # THE POLE COUNTS MUST FIT. Evaluated here so an over-ceiling configuration is
+    # The pole counts must fit. Evaluated here so an over-ceiling configuration is
     # a refusal BY NAME rather than a compile error at plan time.
     try:
         order = _poles(fields)
@@ -685,7 +685,7 @@ class MetalComplexConductiveFusedPairPlan:
     whole-step arbiter asserts the exact per-cycle launch count on every filled
     slot, and that assertion is what stops a slot passing by not executing.
 
-    THE POLE POINTERS ARE RESOLVED AHEAD OF EVERY LAUNCH, not frozen into an
+    The pole pointers are resolved ahead of every launch, not frozen into an
     argument tuple. ``update_P`` rotates which physical allocation holds ``P[c]``
     after each of its own launches (ade_update_p.py:353-355 -> dispersion.py:
     689-691), so a cached pole pointer would subtract the WRONG buffer from step
@@ -736,7 +736,9 @@ class MetalComplexConductiveFusedPairPlan:
                 f"rather than launching the pinned one")
         poles: List[Any] = []
         for entry in self.entries:
-            resolved = [state.P[entry.component] for state in entry.states]
+            # Resolving which array is current is not a read of its words: the plain dict
+            # subscript keeps a held mirror on the device (barrier.BarrierDict acquires).
+            resolved = [dict.__getitem__(state.P, entry.component) for state in entry.states]
             if len(resolved) != self.pole_counts[entry.index]:
                 raise RuntimeError(
                     f"{entry.component} resolved {len(resolved)} poles, not the "

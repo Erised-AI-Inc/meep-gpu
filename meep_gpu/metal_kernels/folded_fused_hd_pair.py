@@ -1,6 +1,6 @@
 """The FOLDED H->D weld: the folded ``update_H`` welded into the folded ``step_D``.
 
-THE SECOND PRODUCT ON THE FOURTH SEAM, and the largest single cell on this backend:
+The second product on the fourth seam, and the largest single cell on this backend:
 ``h_to_d_seam.instances`` files **78** rows under the Metal arm pair
 ``(folded -> folded)`` -- more than the plain product's 49 -- and 75 of them as
 ``buildable_not_built`` (the other 3 as ``withdraw_seam``). :mod:`.fused_hd_pair`
@@ -10,8 +10,8 @@ This module is that second product; the two predicates are disjoint on ONE claus
 inverted (see :func:`metal_folded_fused_hd_pair_coverage` clause 4).
 
 =============================================================================
-THE SEAM IS FILL-FREE ON A FOLDED GRID, AND THAT IS THE WHOLE REASON THIS IS A
-SPLICE RATHER THAN NEW ARITHMETIC
+The seam is fill-free on a folded grid, and that is the whole reason this is a
+splice rather than new arithmetic
 =============================================================================
 
 ``FdtdDriver.step`` (driver.py:3187-3339) runs, in this order::
@@ -30,16 +30,16 @@ SPLICE RATHER THAN NEW ARITHMETIC
     3329  fill_folded_far_ghosts_D      (consult)
     3331  update_E
 
-EVERY B-SIDE FILL, THE WALL CLEAR AND THE FAR PASS RUN BEFORE THE ``update_H``
-CONSULT; EVERY D-SIDE ONE RUNS AFTER THE ``step_D`` CONSULT. So on a folded grid
+Every B-side fill, the wall clear and the far pass run before the ``update_H``
+consult; every D-side one runs after the ``step_D`` consult. So on a folded grid
 this seam carries exactly what the unfolded one carries -- the electric withdraw --
 and nothing else. The ``complex_fill_carry`` / ``carried_destinations`` machinery
 the D->E and B->H folded pairs need (:mod:`.folded_fused_pair`,
-:func:`.offdiag_weld_common.d_final_function`) IS NOT NEEDED HERE and must not be
+:func:`.offdiag_weld_common.d_final_function`) is not needed here and must not be
 imported: a fill carried across this launch would be a pass the driver runs again.
 
 =============================================================================
-WHAT THE FOLD CHANGES IN EACH HALF
+What the fold changes in each half
 =============================================================================
 
 **The constitutive half: nothing.** ``stepping.update_H`` (stepping.py:907-923) is
@@ -64,7 +64,7 @@ both mirror codes to METALLIC -- so on a folded axis the backward ghost is
 ``vN = (sN >= 0) && (sN < nN);`` and the load is ``bN = vN ? gN[oN] : 0.0f;``, an
 exact ``0.0f`` past the mirror plane, NOT the array path's ``parity * field[2]``
 (``stepping._shift_down``, stepping.py:1870-1873). That substitution is legal
-because both ghost values are DEAD IN THE CURL (symmetry.py:30-43): their only
+because both ghost values are dead in the curl (symmetry.py:30-43): their only
 consumer is a plane one of the two ownership masks zeroes.
 ``symmetry.folded_top_plane_mask`` (:528-550) adds ``curlN = last_a ? 0.0f : curlN;``
 for every D target with Yee shift 1 on a MIRROR_PERIODIC axis, and a comment only on
@@ -94,7 +94,7 @@ filled H ghost; every fill-provided value is a ``B`` cell written before the sea
 opened and is therefore a CONST input to this launch.
 
 =============================================================================
-THE SHAPE, AND THE BINDING CEILING IS THE PLAIN PRODUCT'S EXACTLY
+The shape, and the binding ceiling is the plain product's exactly
 =============================================================================
 
 One dispatch. ``REPLACES = ("update_H", "step_D")``; ``SLOT = "update_H"``;
@@ -109,7 +109,7 @@ One dispatch. ``REPLACES = ("update_H", "step_D")``; ``SLOT = "update_H"``;
   + 3 constitutive kps                                                        = 30
 
 plus one ``constant Params&`` = **31 = :data:`.device.MAX_BUFFER_BINDINGS`**, no
-headroom. THE FOLD ADDS NO KERNEL ARGUMENT ON THIS BACKEND and there are four
+headroom. The fold adds no kernel argument on this backend and there are four
 separate reasons, each a fact rather than a preference:
 
 * the mirror codes are a COMPILE-TIME source specialisation
@@ -125,7 +125,7 @@ separate reasons, each a fact rather than a preference:
 * no ghost-source row is needed: the near ghost's source cell is read only by the
   fill, which is not carried.
 
-MEASURED 2026-09-07 on this host, torch MPS: the emitted source is **31 bindings on
+Measured 2026-09-07 on this host, torch MPS: the emitted source is **31 bindings on
 all 13 boundary triples tried** -- every triple the corpus cell carries plus
 ``(P,P,P)``, ``(MM,P,P)``, ``(MP,P,P)``, ``(P,MP,MM)``, ``(MM,MM,M)`` -- and all 13
 COMPILE through ``device.compile_source``. On the unfolded triple ``(P,P,P)`` the
@@ -137,8 +137,8 @@ re-spelled, because the signature IS the same one: 35 separate scalars, 34 unsha
 ``kms``, 32 one-more-pointer. The gate compiles each and requires the failure.
 
 =============================================================================
-WHERE THE CODES COME FROM, AND WHY THAT IS THE ONE THING THIS MODULE CAN GET
-WRONG SILENTLY
+Where the codes come from, and why that is the one thing this module can get
+wrong silently
 =============================================================================
 
 ``codes`` MUST come from ``symmetry.folded_axis_kinds(grid, pml)`` and from nowhere
@@ -152,7 +152,7 @@ are valid codes there). It is therefore a GATE MUTATION (``codes_from_boundary_k
 rather than a comment.
 
 =============================================================================
-WHAT SITS IN THE SEAM, AND WHY THIS PRODUCT REFUSES THE WITHDRAW ROWS
+What sits in the seam, and why this product refuses the withdraw rows
 =============================================================================
 
 :data:`CARRIES_DEPOSIT_REPAIR` is False and it is a FACT about the driver rather than
@@ -170,7 +170,7 @@ wiring that cannot fire, and a product that declared it without the wrapper woul
 the fused launch read a ``D`` still holding the previous step's standing dipole and
 report success.
 
-WHAT THAT COSTS, MEASURED rather than estimated
+What that costs, measured rather than estimated
 (``parity/meep_gpu/results/h_to_d_seam_2026-09-04/h_to_d_seam.jsonl``, joined on the
 Metal arms 2026-09-07): the ``(folded -> folded)`` cell is **78 rows**, of which
 **75** are ``buildable_not_built`` and **3** are ``withdraw_seam`` --
@@ -184,7 +184,7 @@ package the plain module names. One part LANDED on 2026-09-07 -- the
 live INTEGRATED electric source with the hoist in place, requiring both
 ``not_hoisted`` and ``after_step_D`` to diverge.
 
-THE CELL'S SHAPE, measured the same way (the seam census joined against
+The cell's shape, measured the same way (the seam census joined against
 ``results/metal_coverage_2026-09-04_m0complex``, 78 of 78 rows joined). Boundary
 triples, where MM is MIRROR_METALLIC and MP is MIRROR_PERIODIC::
 
@@ -202,7 +202,7 @@ buildable by the same kernel shape -- the partition is by fixture, not by
 weldability -- and all 3 withdraw rows sit in the MP partition.
 
 =============================================================================
-IT IS NOT INSTALLED, AND THE REASON IS A MEASURED VERDICT
+It is not installed, and the reason is a measured verdict
 =============================================================================
 
 :data:`INSTALLABLE` is False. Over the driver's ``step_B - update_H - step_D -
@@ -223,10 +223,10 @@ product without letting it install: the flag stops it first, and with the flag o
 the way ``_pair_may_absorb`` stops it again on the incumbent.
 
 =============================================================================
-WHAT THIS FAMILY DOES NOT CARRY, AND WHAT IT DOES NOT CLAIM
+What this family does not carry, and what it does not claim
 =============================================================================
 
-ONE ARM PAIR ONLY: ``(folded -> folded)``, REAL float32 storage. Complex storage
+One arm pair only: ``(folded -> folded)``, REAL float32 storage. Complex storage
 under a fold is the folded-complex family's; ``beta`` under a fold is
 ``folded_beta``'s; a registered susceptibility or an off-diagonal chi1inv row on
 ``update_E`` are one seam later and do not reach this pair, but an off-diagonal row
@@ -237,20 +237,20 @@ certified predicate. Cylindrical is refused TWICE, by both halves, and permanent
 vanish silently, and ``_mirror_phases`` (:2346-2366) puts ``(-1)**grid.m`` into the
 same slot the mirror phase occupies.
 
-NO TIMING EXISTS FOR THIS SHAPE AND NONE IS LICENSED BY ANYTHING IN THIS MODULE. The
+No timing exists for this shape and none is licensed by anything in this module. The
 fused route does MORE memory traffic than the two singles at the same step-level
 launch count -- three extra pointwise constitutive evaluations per component per
 thread -- and whether the saved launch and the saved ``H`` write-then-read round trip
 pay for that is a hypothesis nobody has measured.
 
-WHAT THE FAMILY'S CREDITED INSTANCES MEAN, stated in the words a search will find:
+What the family's credited instances mean, stated in the words a search will find:
 the board's 75 instances are **served by predicate admission** and nothing more; the
 product **installs on zero rows** by the measured arbitration above; it therefore
 **executes nowhere** outside its own gate and tests; and it licenses **no timing
 claim and no dispatch claim**.
 
 =============================================================================
-REGISTERED AND WELDED, 2026-09-07
+Registered and welded, 2026-09-07
 =============================================================================
 
 This module IS in ``registry.FAMILY_MODULES`` and ``launch.FUSED_PAIR_ARMS`` carries
@@ -289,9 +289,9 @@ SLOT = "update_H"
 #: The driver passes one launch of this plan performs, in driver order
 #: (driver.py:3311, :3315). Declared rather than inferred from the slot name.
 #:
-#: NOTHING BETWEEN THEM IS CARRIED, and on a folded grid there is still only one
+#: Nothing between them is carried, and on a folded grid there is still only one
 #: thing there to carry: the electric withdraw (:3313-3314), which
-#: :data:`HOISTS_THE_WITHDRAW` declines in this round. Both mirror fills, the wall
+#: :data:`HOISTS_THE_WITHDRAW` declines. Both mirror fills, the wall
 #: clear and both far passes sit OUTSIDE this span -- three before ``update_H`` and
 #: three after ``step_D`` -- which is why this weld carries no fill and must not.
 REPLACES: Tuple[str, ...] = ("update_H", "step_D")
@@ -306,13 +306,13 @@ SEAM: str = _withdraw_hoist.SEAM
 #: consult (driver.py:3311) and the ``step_D`` consult (:3315).
 CARRIES_DEPOSIT_REPAIR = False
 
-#: Does this product perform the seam's electric withdraw before its launch? NO in
-#: this round -- see the module docstring. The predicate consequently refuses every
+#: Does this product perform the seam's electric withdraw before its launch? NO,
+#: not yet -- see the module docstring. The predicate consequently refuses every
 #: row with a standing in-seam withdraw BY NAME: 3 of the cell's 78.
 HOISTS_THE_WITHDRAW = False
 
-#: May the composer install this product? NO, on every configuration, for a MEASURED
-#: VERDICT rather than a policy. ``launch._declared_uninstallable`` reads this and
+#: May the composer install this product? NO, on every configuration, for a measured
+#: verdict rather than a policy. ``launch._declared_uninstallable`` reads this and
 #: reports :data:`INSTALLABLE_REASON` on every run.
 INSTALLABLE = False
 
@@ -338,7 +338,7 @@ INSTALLABLE_REASON = (
     "it executes nowhere outside its own gate and tests; and it licenses no timing "
     "claim and no dispatch claim")
 
-#: WHAT A RELEASE STILL OWES. Empty means "this family holds a released device gate";
+#: What a release still owes. Empty means "this family holds a released device gate";
 #: non-empty means it does not, and the string is the debt.
 #: ``test_metal_weld_contract.test_every_metal_family_is_welded`` partitions the
 #: ``gate_metal_*.py`` fleet against ``fingerprints.json`` and requires the declaring
@@ -353,7 +353,7 @@ INSTALLABLE_REASON = (
 #: absorb row emptied this string in the same pass.
 WELD_OWED: str = ""
 
-#: WHAT THE GATE MEASURED, KEPT. The pre-weld declaration is not deleted with the
+#: What the gate measured, kept. The pre-weld declaration is not deleted with the
 #: weld: it is the one-line record of which artifact this family's release rests on,
 #: and a reader who finds an empty ``WELD_OWED`` should still be able to find that
 #: without opening the board. The stamp named here is the RELEASED pre-wire run
@@ -413,7 +413,7 @@ def folded_welded_curl_tail(codes: Sequence[int],
                             contract: str = shaders.CONTRACT_OFF) -> str:
     """The FOLDED ``step_D`` curl body below the decode prologue, H reads redirected.
 
-    THE BODY IS :func:`.fused_hd_pair.welded_curl_tail`'S, WITH ONE SUBSTITUTION:
+    The body is :func:`.fused_hd_pair.welded_curl_tail`'s, with one substitution:
     the source is ``symmetry.folded_curl_source`` rather than ``shaders.curl_source``.
     Everything else -- the decode anchor, the offset parse, the three own-cell load
     edits, the six halo redirects, the final "no ``gN[`` survives" check -- is the
@@ -426,7 +426,7 @@ def folded_welded_curl_tail(codes: Sequence[int],
     index reaches both welds without a second edit -- and a needle that stopped
     matching RAISES here rather than emitting a kernel that reads the wrong volume.
 
-    THE TWO FOLD-SPECIFIC BLOCKS SURVIVE THE LIFT UNTOUCHED and that is a property of
+    The two fold-specific blocks survive the lift untouched and that is a property of
     what they touch rather than an exemption. ``folded_top_plane_mask`` writes
     ``curlN = last_a ? 0.0f : curlN;`` -- no ``gN[`` -- and the widened cell-0 mask
     writes ``curlN = at_a ? 0.0f : curlN;``, likewise. Only the six shifted MAGNETIC
@@ -459,7 +459,7 @@ def folded_welded_curl_tail(codes: Sequence[int],
                 f"the folded curl declares {var} {len(matches)} times; this weld "
                 f"redirects exactly one magnetic load per shifted tap")
         old = matches[0]
-        # THE GUARD AND THE OFFSET ARE BOTH PARSED FROM THE EMITTER'S OWN LINE.
+        # The guard and the offset are both parsed from the emitter's own line.
         head, rest = old.split(" ? ", 1)
         expected = f"g{target}["
         if not rest.startswith(expected) or not rest.endswith(" : 0.0f;\n"):
@@ -490,7 +490,7 @@ def folded_fused_hd_pair_source(codes: Sequence[int],
     product's name ``fused_hd_pair_step`` because the template is the plain
     product's; :func:`compile_folded_fused_hd_pair` is the only caller that names it.
 
-    NO FILL AND NO WALL CLEAR IS CARRIED, and on a folded grid that is a stronger
+    No fill and no wall clear is carried, and on a folded grid that is a stronger
     statement than on an unfolded one: ``fill_symmetry_bc_B``, ``zero_metal_B`` and
     ``fill_folded_far_ghosts_B`` all close BEFORE the ``update_H`` consult
     (driver.py:3305-3310), and their D twins all open AFTER the ``step_D`` consult
@@ -549,14 +549,14 @@ def metal_folded_fused_hd_pair_coverage(fields: Any, pml: Any, sources: Any = No
     clauses. Nothing is weakened: a configuration either half refuses is refused here
     with that half's reasons, prefixed so a reader can tell which side said it.
 
-    THE ORDER IS THE DRIVER'S. The constitutive half is asked FIRST because it runs
+    The order is the driver's. The constitutive half is asked FIRST because it runs
     first (driver.py:3311), so the first refusal a reader sees names the half the
     driver would have reached first -- and on this seam that matters, since the null
     ``update_H`` (an inactive absorber returns before its first statement) is the
     single largest non-fusion reason on the board and belongs to the constitutive
     side.
 
-    THE TWO HALVES ARE DELIBERATELY DIFFERENT PREDICATES rather than one. The folded
+    The two halves are deliberately different predicates rather than one. The folded
     CURL's contract refuses a conductivity on the D targets, because a conductivity
     routes to a different curl recurrence; the folded CONSTITUTIVE's deliberately
     does NOT, because a conductivity does not change ``update_H``
@@ -570,7 +570,7 @@ def metal_folded_fused_hd_pair_coverage(fields: Any, pml: Any, sources: Any = No
     if not magnetic.covered:
         reasons.extend(f"folded constitutive half: {reason}"
                        for reason in magnetic.reasons)
-    # THE RUN'S FIRST update_H, refused on the plain product's rule and in its words:
+    # The run's first update_H, refused on the plain product's rule and in its words:
     # the array path starts H and f_w from B on the dsigw cells there and this weld
     # does not (see fused_hd_pair's docstring).
     reasons.extend(f"folded constitutive half: {reason}"
@@ -579,11 +579,11 @@ def metal_folded_fused_hd_pair_coverage(fields: Any, pml: Any, sources: Any = No
     if not curl.covered:
         reasons.extend(f"folded curl half: {reason}" for reason in curl.reasons)
 
-    # THE SEAM'S ONE PASS. Nothing is INJECTED between the two consults, so
+    # The seam's one pass. Nothing is INJECTED between the two consults, so
     # `deposit_repair` is not consulted at all and a source of either polarity is not
     # this seam's business. What IS between them is the electric integrated-source
-    # withdraw (driver.py:3313-3314), and `withdraw_hoist` owns it. IGNORANCE IS
-    # NEVER AN EMPTY SET: `Fields` does not hold the source list, so a predicate that
+    # withdraw (driver.py:3313-3314), and `withdraw_hoist` owns it. Ignorance is
+    # never an empty set: `Fields` does not hold the source list, so a predicate that
     # inferred "no withdraw stands" from not being told would be the over-covering
     # refusal this clause exists to prevent.
     reasons.extend(_withdraw_hoist.seam_withdraw_reasons(
@@ -606,9 +606,9 @@ def metal_folded_fused_hd_pair_coverage(fields: Any, pml: Any, sources: Any = No
         return Coverage(False,
                         tuple(dict.fromkeys(reasons + ["fields carries no grid"])))
 
-    # THE FOLD, REQUIRED, AND RESTATED AT PRODUCT LEVEL. Both halves already require
+    # The fold, required, and restated at product level. Both halves already require
     # a mirror plane (`symmetry._requires_a_fold`, asked of the grid AND of the
-    # resolved codes). The restatement is so the reason reads AT THE SEAM rather than
+    # resolved codes). The restatement is so the reason reads at the seam rather than
     # only at the arms, and it is the exact mirror image of `fused_hd_pair`'s clause,
     # which refuses a fold naming this product: the two predicates can never both
     # admit, and neither can be widened into the other without making every folded
@@ -623,7 +623,7 @@ def metal_folded_fused_hd_pair_coverage(fields: Any, pml: Any, sources: Any = No
             "selects the `ordinary` update_H and `PML` step_D arms, which is "
             "fused_hd_pair's (ordinary -> PML) cell and its product")
 
-    # THE ROTATION IS THE PRODUCT'S OWN INVARIANT. The plan swaps the ENGINE's
+    # The rotation is the product's own invariant. The plan swaps the ENGINE's
     # references for the six volumes in ROTATED_NAMES after each launch, so those
     # attributes must be settable and must be the arrays the residency mirrored.
     for name in ROTATED_NAMES:
@@ -672,7 +672,7 @@ def plan_metal_folded_fused_hd_pair(
 
     grid = fields.grid
     if codes is None:
-        # FROM `folded_axis_kinds` AND FROM NOWHERE ELSE. It routes the ghost rule
+        # From `folded_axis_kinds` and from nowhere else. It routes the ghost rule
         # through `stepping._boundary_kinds` (where a fold outranks the outer
         # declaration), splits MIRROR through `stepping._stored_past_owned`, and
         # cross-checks that split against `grid.is_metallic` -- two independent
@@ -690,7 +690,7 @@ def plan_metal_folded_fused_hd_pair(
         volumes.append(name)
         return residency.mirror(name, host, constant=constant)
 
-    # THE ROTATING GROUP FIRST, in ROTATED_NAMES order: every scratch, then every
+    # The rotating group first, in ROTATED_NAMES order: every scratch, then every
     # pre-launch buffer. `ScratchWeldPairPlan.run` splices exactly those two groups
     # ahead of `static_args`, so this order IS the signature's.
     twins: Dict[str, Any] = {}
@@ -707,14 +707,14 @@ def plan_metal_folded_fused_hd_pair(
     auxiliary = [bind("fu_" + name, getattr(fields, "fu_" + name))
                  for name in SUB_STEPS["step_D"]["targets"]]
 
-    # ONE SUB-LATTICE, TWO HALVES -- and the fold does not touch it. The PML
-    # coefficient vectors are built at the FOLDED STORED EXTENT already
+    # One sub-lattice, two halves -- and the fold does not touch it. The PML
+    # coefficient vectors are built at the folded stored extent already
     # (symmetry.py:328-332 and the layout clauses in
     # `folded_pml_curl_coverage`/`folded_constitutive_coverage`), so the sharing
     # argument is exactly the plain product's: `SUB_STEPS['step_D']['suffix']` is ''
     # and `CONSTITUTIVE_SIDES['H']['half_integer']` is False, so the curl's kms and
-    # the constitutive's kms are THE SAME THREE VOLUMES. Both suffixes are READ FROM
-    # THE SHIPPED TABLES and their equality is ASSERTED rather than assumed: it is
+    # the constitutive's kms are the same three volumes. Both suffixes are read from
+    # the shipped tables and their equality is ASSERTED rather than assumed: it is
     # the whole premise of the 30-pointer signature, and if either table moved,
     # sharing the group would bind one half's coefficients to the other half's
     # lattice -- a converged, smooth, half-cell-wrong absorber profile.
@@ -777,20 +777,20 @@ def _arm_plan(context: Any, slot: str) -> Optional["_weld.ScratchWeldPairPlan"]:
 def register_arms() -> Tuple[Any, ...]:
     """One row on ``update_H``, ``wired=False``, GATED on the fold.
 
-    REGISTERED SO IT IS ENUMERABLE, NOT SO IT IS SELECTABLE. ``arms.arms_for`` skips
+    Registered so it is enumerable, not so it is selectable. ``arms.arms_for`` skips
     an unwired row so ``plan_step`` cannot select it, while ``arms.registered`` still
     returns it -- which is what lets a composition sweep measure disjointness against
     this predicate instead of assuming it, and what lets
     ``launch._neighbouring_seam_claimant`` see the row when it asks who claims the
     seam ``update_H`` opens.
 
-    THE GATE IS ``symmetry._has_fold`` AND IT IS LOAD-BEARING IN A WAY THE PLAIN
-    PRODUCT'S ROW IS NOT. A gated-out arm contributes NO reason, which is right: on
+    The gate is ``symmetry._has_fold`` and it is load-bearing in a way the plain
+    product's row is not. A gated-out arm contributes NO reason, which is right: on
     an UNFOLDED run ``update_H`` carries four other arms that will speak, and this
     one would only add a refusal about a fold nobody asked for. That is the folded
     family's own convention (symmetry.py:1794-1802) and this row follows it.
 
-    THIS MODULE IS IN ``registry.FAMILY_MODULES`` SINCE 2026-09-07, so a normal
+    This module is in ``registry.FAMILY_MODULES`` since 2026-09-07, so a normal
     composition imports it and this function runs -- the arm reaches the table on
     every run, still ``wired=False`` and still gated on the fold. The registry row
     landed in the same wiring change as the ``launch.FUSED_PAIR_ARMS`` row and the

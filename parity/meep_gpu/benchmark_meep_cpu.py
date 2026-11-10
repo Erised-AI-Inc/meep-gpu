@@ -15,7 +15,6 @@ import json
 import math
 import os
 import platform
-import socket
 import statistics
 import time
 from datetime import datetime, timezone
@@ -199,6 +198,7 @@ def _median(runs: list[dict[str, Any]], key: str) -> float:
 
 
 def main() -> int:
+    import neutral_ids  # noqa: PLC0415
     args = _parse_args()
     rank_count = int(mp.count_processors())
     if args.expected_ranks is not None and rank_count != args.expected_ranks:
@@ -236,7 +236,7 @@ def main() -> int:
             "numpy_version": np.__version__,
         },
         "host": {
-            "hostname": socket.gethostname(),
+            "hostname": neutral_ids.machine_id(),
             "cpu_model": _cpu_model(),
             "logical_cpus_visible_to_rank": (
                 len(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else None

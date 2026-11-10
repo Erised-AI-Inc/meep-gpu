@@ -15,14 +15,14 @@ re-derived here:
 * and the WELD is the one substitution :func:`.kernels.fused_curl_constitutive_D`
   already makes between exactly those two bodies on a BFAST-inactive run.
 
-SO THIS KERNEL IS ``fused_curl_constitutive_D``, STATEMENT FOR STATEMENT, PLUS THE
-SAME ``if HAS_BFAST:`` BLOCK ``bfast_pml_curl_step`` ADDS TO ``pml_curl_step``. A
+So this kernel is ``fused_curl_constitutive_D``, statement for statement, plus the
+same ``if HAS_BFAST:`` BLOCK ``bfast_pml_curl_step`` adds to ``pml_curl_step``. A
 reader must be able to diff this body against those two and see nothing else moved;
 the gate's transcription leg asserts exactly that, as two statement-list equalities
 against both shipped sources.
 
 ===========================================================================
-WHY THIS CELL WAS UNREACHABLE AND IS NOW WORTH ONE
+Why this cell was unreachable and is now worth one
 ===========================================================================
 
 The cell's single corpus row is
@@ -42,7 +42,7 @@ admits ZERO. The MAGNETIC twin keeps the flag at False for the mirror-image reas
 on ITS seam that same row is electric-only.
 
 ===========================================================================
-THE PASS, AND WHERE IT GOES
+The pass, and where it goes
 ===========================================================================
 
 ``stepping._bfast_term`` is MEEP's BFAST pass, which runs per component right after
@@ -65,7 +65,7 @@ curl forms and before the stores. Transcribed from
 * ALL THREE targets run the pass whenever any k component is nonzero. With seeded
   state a zero-k target's ``F = -F_prev`` is byte-visible, so no arm skips it.
 
-**THE D SIDE'S ``k1``/``k2`` ARE THE NEGATED PAIR, and that IS load-bearing here.**
+**The D side's ``k1``/``k2`` are the negated pair, and that is load-bearing here.**
 :func:`.bfast_curl.bfast_curl_coefficients` negates both in host float64 on the
 electric side (``bfast_curl.py:350-351``, MEEP's
 ``if (ft == D_stuff) { k1 = -k1; k2 = -k2; }`` at S:886-887) AND reads a different
@@ -74,11 +74,11 @@ term table (``BFAST_TERMS['step_D']``), so a builder that copied its twin's
 of the beta family, where the flag is inert on real storage, and the host suite
 pins the difference by measurement rather than by assertion.
 
-THE THREE STATE POINTERS ARE THE ENGINE'S OWN ``f_bfast_D*`` ARRAYS, bound
+The three state pointers are the engine's own ``f_bfast_D*`` ARRAYS, bound
 pointer-identically. That is not an optimisation: the driver's flux backup/restore
 mutates them in place (driver.py:4126-4135), so a copy would desynchronise the run.
 
-``HAS_BFAST`` IS CARRIED AND MUST BE 1 on any configuration this product's predicate
+``HAS_BFAST`` is carried and must be 1 on any configuration this product's predicate
 admits — the BFAST family's clause 11 is INVERTED inside ``bfast_pml_curl_coverage``
 (``grid.bfast_active`` required), so a BFAST-inactive run is the ordinary
 :func:`.coverage.fused_pair_coverage`'s and is refused here by name. It is carried
@@ -88,7 +88,7 @@ half a verbatim copy, and it gives the gate a certified-kernel arm
 bit).
 
 ===========================================================================
-THE FIVE PASSES IN THE SEAM
+The five passes in the seam
 ===========================================================================
 
 ``driver.step`` runs five passes between the two halves (driver.py:3292-3304)::
@@ -99,13 +99,13 @@ THE FIVE PASSES IN THE SEAM
 * **the electric sources — CARRIED, through the SHIPPED deposit repair.**
   :class:`.deposit_repair.LeadingRepairPlan` saves the two stateful arrays at the
   deposit points before the launch and :class:`.deposit_repair.TrailingRepairPlan`
-  recomputes them after, in the driver's own order. IGNORANCE IS STILL NEVER AN
-  EMPTY SET: an undeclared ``sources`` is a REFUSAL, and a source that cannot
+  recomputes them after, in the driver's own order. Ignorance is still never an
+  empty set: an undeclared ``sources`` is a REFUSAL, and a source that cannot
   publish the index it writes is refused by name;
-* **``fill_symmetry_bc_D`` and ``fill_folded_far_ghosts_D`` — PROVABLY NO-OPS
-  HERE**, not carried and not refused. Both return at their first line unless
+* **``fill_symmetry_bc_D`` and ``fill_folded_far_ghosts_D`` — provably no-ops
+  here**, not carried and not refused. Both return at their first line unless
   ``grid.has_symmetry()`` (stepping.py:1481-1482, :1565-1566), and the BFAST family
-  refuses every fold. THE PREDICATE RE-CHECKS IT ANYWAY rather than reading its own
+  refuses every fold. The predicate re-checks it anyway rather than reading its own
   coverage off another module's guard;
 * **``zero_metal_D`` — CARRIED INLINE** (driver.py:3301), through
   :func:`.coverage.zero_metal_axes`. SIX ROWS on this side against the magnetic
@@ -113,7 +113,7 @@ THE FIVE PASSES IN THE SEAM
   ``fused_curl_constitutive_D``'s own block and is byte-copied from it.
 
 The corpus row is all-periodic with ``has_metallic == false``, so the inline
-``zero_metal_D`` carry compiles to three ``False`` flags ON THAT ROW; the gate
+``zero_metal_D`` carry compiles to three ``False`` flags on that row; the gate
 scores every wall-clear mutation on a WALLED case instead.
 
 NOT WIRED, and not an arm. ``launch.plan_step`` assigns at most one plan per
@@ -185,7 +185,7 @@ BACKWARD = 1
 #: them do work on an admitted configuration — the two symmetry fills return at
 #: their first line without a mirror plane, which this family refuses outright — and
 #: the inert two are listed anyway: what a launch REPLACES is what the driver would
-#: otherwise have called. THE INJECTION IS NOT ONE OF THE FIVE: it is carried by the
+#: otherwise have called. The injection is not one of the five: it is carried by the
 #: deposit repair bracket around the launch, not by the launch.
 REPLACES: Tuple[str, ...] = ("step_D", "fill_symmetry_bc_D", "zero_metal_D",
                              "fill_folded_far_ghosts_D", "update_E")
@@ -536,12 +536,12 @@ def bfast_fused_electric_pair_coverage(fields: Any, pml: Any,
         return Coverage(False,
                         tuple(dict.fromkeys(reasons + ["fields carries no grid"])))
 
-    # THE SOURCE SEAM, and on this cell it is the clause that decides everything. An
+    # The source seam, and on this cell it is the clause that decides everything. An
     # ELECTRIC source is injected BETWEEN the two halves (driver.py:3294-3299), so a
     # fused pair would consume a pre-injection D. The one corpus row of this cell
     # declares exactly that, so with CARRIES_DEPOSIT_REPAIR False the arm would admit
     # NOTHING; it is True, and the plan below brackets its launch with the repair.
-    # IGNORANCE IS NEVER AN EMPTY SET. A MAGNETIC source is injected in the B/H half
+    # Ignorance is never an empty set. A MAGNETIC source is injected in the B/H half
     # and does not disqualify this pair.
     reasons.extend(_deposit_repair.seam_source_reasons(
         fields, sources, 'D',
@@ -556,8 +556,8 @@ def bfast_fused_electric_pair_coverage(fields: Any, pml: Any,
             f"closes"),
         carries_repair=CARRIES_DEPOSIT_REPAIR))
 
-    # THE TWO SYMMETRY PASSES, re-checked rather than read off another module's
-    # guard: if the BFAST tranche ever admits a fold this weld would silently swallow
+    # The two symmetry passes, re-checked rather than read off another module's
+    # guard: if the BFAST family ever admits a fold this weld would silently swallow
     # two passes that had started doing work.
     if _call(grid, "has_symmetry", default=False):
         reasons.append(
@@ -570,7 +570,7 @@ def bfast_fused_electric_pair_coverage(fields: Any, pml: Any,
                 f"axis {axis} is folded by a mirror plane: the two symmetry passes "
                 f"in this seam are no longer no-ops and this weld carries neither")
 
-    # THE WALL CLEAR is carried inline, so the grid must be able to answer which axes
+    # The wall clear is carried inline, so the grid must be able to answer which axes
     # are walled; an unanswerable one compiles to ZM=False and silently skips a plane
     # the array path clears.
     for name in ("has_metallic", "is_metallic", "is_mirrored"):
@@ -578,7 +578,7 @@ def bfast_fused_electric_pair_coverage(fields: Any, pml: Any,
             reasons.append(
                 f"grid does not expose {name}; zero_metal_D cannot be carried inline")
 
-    # THE INVARIANCE TABLE. The six k1/k2 words are gated on ``grid.is_invariant``
+    # The invariance table. The six k1/k2 words are gated on ``grid.is_invariant``
     # (bfast_curl_coefficients, grid.py:1165-1183 — the grid's OWN declared
     # dimensionality, never a shape test), so a grid that cannot answer it would
     # silently be given the un-gated coefficients.
@@ -587,7 +587,7 @@ def bfast_fused_electric_pair_coverage(fields: Any, pml: Any,
             "grid does not expose is_invariant; the BFAST k1/k2 gating "
             "(bfast_curl_coefficients, grid.py:1165-1183) cannot be resolved")
 
-    # THE INVERSE-EPSILON VOLUMES ARE READ BY THE KERNEL, so `Fields` must be able to
+    # The inverse-epsilon volumes are read by the kernel, so `Fields` must be able to
     # hand one over per E component. An absent accessor would be a TypeError inside
     # the builder rather than a refusal. The MAGNETIC twin needs no such clause:
     # update_H is `H = B` with mu = 1 baked in and binds no inverse volume at all.
@@ -722,9 +722,9 @@ def plan_bfast_fused_electric_pair(fields: Any, pml: Any, sources: Any = None,
     side_spec = CONSTITUTIVE_SIDES[CONSTITUTIVE_SIDE]
     grid = fields.grid
     kinds = resolve(grid, pml)
-    # THE SAME FUNCTION THE CURL PLAN CALLS, with the grid's OWN declared invariance
+    # The same function the curl plan calls, with the grid's OWN declared invariance
     # flags (grid.py:1165-1183 — never a shape test) and the sub-step's side.
-    # `magnetic=False` HERE IS LOAD-BEARING, unlike the beta family's flag: the D
+    # `magnetic=False` here is load-bearing, unlike the beta family's flag: the D
     # side reads BFAST_TERMS['step_D'] and NEGATES both coefficients in host float64
     # (bfast_curl.py:343-351), so a copied `magnetic=True` would hand this product
     # the twin's six words. The host suite measures that the two answers differ.

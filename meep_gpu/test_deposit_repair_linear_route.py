@@ -10,7 +10,7 @@ save 12 -> 6 array ops, apply 30 -> 27 with no whole-volume product, host time p
 ~90 -> ~58 us; a folded grid additionally stops re-running the six boolean-mask gathers of
 the image closure every step.
 
-WHAT THIS FILE HOLDS THAT ``test_deposit_repair.py`` DOES NOT. That file proves the repair
+What this file holds that ``test_deposit_repair.py`` does not. That file proves the repair
 against the driver's own order. This one proves the NEW ROUTE against the OLD ARITHMETIC,
 word for word, on the configurations the new route could get wrong in ways the old one
 could not: a C-order index that aliases a neighbour, a cache that outlives the cell set it
@@ -21,13 +21,13 @@ spells, a gather that returns a view, a fallback that silently becomes the only 
   here so a later edit to the module cannot move both sides of the comparison at once.
   One edit has been made to the frozen copy, with the module's: the constitutive
   grouping (2026-10-06, below).
-* Every comparison asserts WHICH ROUTE RAN, from the plan's counters. A bit-identity
+* Every comparison asserts which route ran, from the plan's counters. A bit-identity
   check against a route that silently fell back to the 3-tuple would pass for the wrong
   reason; the fallback case asserts the opposite.
 * Every comparison is paired with a NULL CONTROL -- the same protocol with the repair
   withheld -- which must diverge, or the comparison cannot see the repair at all.
 
-WHAT CHANGED, 2026-09-19 (reviewer finding F3). Module-level ``save``/``apply`` -- what
+WHAT CHANGED, 2026-09-19 (found in review). Module-level ``save``/``apply`` -- what
 the gates and probes that bracket a launch by hand call -- took the 3-tuple route when
 handed no plan, so those legs certified a route no production installer runs. ``save``
 now builds a ONE-SHOT ``_PreparedCells`` for such a caller and stamps it under
@@ -42,7 +42,7 @@ where there were three -- and keep all three, counted in ``restriction_fallbacks
 the written array cannot be established. Every count pinned here therefore fell from
 three per source to one, and the cases that are ABOUT one entry falling back while the
 others do not now drive a second source on another component, so they still hold both
-kinds of entry. THE FROZEN ARITHMETIC IS HANDED THE SAME TARGETS, from a table spelled in
+kinds of entry. The frozen arithmetic is handed the same targets, from a table spelled in
 this file (:data:`WRITTEN_FIELD`), because this protocol's "after" state is NOISE rather
 than a launch: the full bracket recomputes Ex at an Ez deposit from the saved state and
 lands on the recurrence's value, which the noise is not, so the two would differ at every
@@ -82,7 +82,7 @@ TRIALS = 4
 # ---------------------------------------------------------------------------
 
 
-#: WHICH FIELD A SOURCE COMPONENT'S INJECTION FEEDS, spelled HERE and never read from the
+#: Which field a source component's injection feeds, spelled HERE and never read from the
 #: module under test: ``Ez`` and ``Dz`` both deposit into Dz, whose constitutive result is
 #: Ez (``sources.py:120-133``). A restriction bug in ``deposit_repair`` cannot move this
 #: side of a comparison.
@@ -113,7 +113,7 @@ def _frozen_save(fields, sources, pair, pml, paths, targets_for=None):
     path = deposit_repair._selected_path(pml, paths)
     xp = fields.grid.xp
     saved = {deposit_repair._PATH_KEY: path,
-             # The 0.10 start of H (``deposit_repair._START_KEY``): the launch runs the
+             # The 1.0 start of H (``deposit_repair._START_KEY``): the launch runs the
              # run's first magnetic constitutive.
              deposit_repair._START_KEY: (pair == "B" and path is not deposit_repair.PLAIN_PATH
                                          and not fields.h_separated)}
@@ -138,7 +138,7 @@ def _frozen_save(fields, sources, pair, pml, paths, targets_for=None):
 def _frozen_apply(fields, pml, sources, pair, saved):
     """``deposit_repair._apply_plain`` / ``apply`` at sha256 c1d557040c6d, over whatever
     :func:`_frozen_save` captured: a ``(component, source)`` it did not capture is
-    skipped, and with every target captured nothing is. With the 0.10 constitutive's
+    skipped, and with every target captured nothing is. With the 1.0 constitutive's
     split: a deposit cell whose chunk carries the target's own layer takes the
     accumulation, every other one ``field = fresh`` with its ``fw`` left alone
     (``stepping._apply_constitutive_regions``), read off the same region plan."""
@@ -316,7 +316,7 @@ def _compare(fields, pml, sources, pair, paths, *, trials=TRIALS, seed=20260918,
     from under a cached index -- and returns a callable that undoes it once that leg's
     result is read, so the next leg saves against the arrays the first one did.
 
-    THE FROZEN LEG VISITS THE TARGETS THE SOURCES WRITE (:func:`_written`), as the live
+    The frozen leg visits the targets the sources write (:func:`_written`), as the live
     legs do. It has to: ``after`` is noise, not a launch, so a target the source did not
     write holds a value no recurrence produced and the full bracket would "repair" it to
     something else. See the module docstring, 2026-09-20.
@@ -597,7 +597,7 @@ def _strided(array):
 
 
 def _padded(array):
-    """``array``'s values in a C-contiguous array ONE CELL LONGER on the last axis: every
+    """``array``'s values in a C-contiguous array one cell longer on the last axis: every
     3-tuple index stays in range and addresses the same cell, while a C-order index
     built for the original shape addresses a different one wherever ix or iy > 0."""
     shape = array.shape
@@ -703,7 +703,7 @@ def test_the_plain_path_rides_the_linear_route_on_a_dispersive_row():
 @pytest.mark.parametrize("pair,component", [("D", "Ez"), ("B", "Hz")])
 def test_module_level_save_and_apply_keep_the_shipped_keys_and_values(pair, component):
     """A caller holding no plan -- the gates and probes that call ``save``/``apply``
-    directly -- gets HEAD's keys and values FOR THE COMPONENT THE SOURCE WRITES, plus the
+    directly -- gets HEAD's keys and values for the component the source writes, plus the
     one-shot cache under ``_PREPARED_KEY`` and the per-source targets under
     ``_TARGETS_KEY``, and state that is a COPY. The two unwritten components' keys --
     which HEAD's full bracket carried -- are absent, by name."""
@@ -750,7 +750,7 @@ def test_module_level_save_and_apply_keep_the_shipped_keys_and_values(pair, comp
 ], ids=["split_field_D", "split_field_B", "plain_D"])
 def test_module_level_save_and_apply_report_the_linear_route(pair, component, build,
                                                               paths):
-    """F3, pinned where it lives: the counters of the cache the module-level ``save``
+    """The one-shot fix, pinned where it lives: the counters of the cache the module-level ``save``
     stamps say the LINEAR route ran -- ONE save (none on the plain path, which saves no
     state) and ONE repair, for the one component the source writes, no fallback of
     either kind -- so a gate calling these two functions certifies the route the

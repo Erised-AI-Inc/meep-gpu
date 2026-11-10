@@ -6,7 +6,8 @@ required by name, and declared, as data, what a few corpus rows need beyond MEEP
 checks need no Apple GPU and no MEEP:
 
 * the rule: a row runs under this interpreter whatever the census recorded, and keeps the
-  recorded path as ``recorded_interpreter``; a row's needs come from its lift record;
+  recorded path as ``recorded_interpreter``; a row needs what it declares itself, within
+  its lift record's declaration, which the corpus scripts' own text bears out;
 * the probe, run for real in a child against stand-in modules: present, absent, a MEEP
   build feature reported False, an unreadable answer, an undeclared need;
 * the seven lift sites (the six gates that keep their own ``leg_lift`` and
@@ -19,8 +20,16 @@ checks need no Apple GPU and no MEEP:
   and fails when every row of its cell is unlifted (a leg that asked about nothing);
 * the complex gate, which reads the same four inputs in process, refuses a missing one by
   name;
+* the two CUDA lift legs, driven the same way: a leg whose every row is unlifted or
+  refused by the lifter asked about nothing, and fails, as the Metal legs do;
 * the source guard: no Metal gate or kit launches a recorded interpreter, and the one
-  file in the harness that still does is named.
+  file in the harness that still does is named;
+* the rows the identity corpus retires (``lift_host.corpus_refusals``): a lift-basis row
+  that reaches no predicate verdict and that the corpus manifest retires is refused by name
+  with the manifest's reason and counted out, on the seven Metal sites, the two CUDA legs and
+  three Triton legs; a row that is not retired and reaches no verdict still fails its leg;
+  absent corpus legs retire nothing, an unreadable manifest is named and retires nothing;
+  and a leg whose every row is retired asked about nothing, and fails.
 
 The gates set their subnormal policy in the environment when imported, so the gate checks
 run in a child process with torch made unimportable.
@@ -28,6 +37,7 @@ run in a child process with torch made unimportable.
 
 from __future__ import annotations
 
+import inspect
 import json
 import os
 import subprocess
@@ -43,6 +53,7 @@ if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
 
 import lift_host  # noqa: E402
+import neutral_ids  # noqa: E402
 
 STOCK = "corpus_final_numpy_2026-08-09_monitorfix"
 GDSII = "corpus_final_numpy_2026-08-09_monitorfix_gdsii"
@@ -50,7 +61,7 @@ SIGMA = "corpus_final_numpy_2026-08-09_monitorfix_sigma"
 RECORDED = "/nonexistent/census-host/envs/stock/bin/python"
 RECORDED_SIDE = "/nonexistent/census-host/envs/side/bin/python"
 #: The sites that launch lift children, and the one harness file that still launches the
-#: interpreter a census row recorded (a probe no round runs; it is not changed here).
+#: interpreter a census row recorded (a probe no certification round runs; it is not changed here).
 SITES = ("gate_metal_bfast_fused_hd_pair.py", "gate_metal_conductive_fused_hd_pair.py",
          "gate_metal_cylindrical_real_fused_hd_pair.py", "gate_metal_folded_fused_hd_pair.py",
          "gate_metal_fused_hd_pair.py", "gate_metal_fused_hd_pair_nonlinear.py",
@@ -65,15 +76,14 @@ def test_a_row_runs_under_this_interpreter_whatever_the_census_recorded():
                          ({}, {"interpreter": RECORDED_SIDE, "lift_record": GDSII}),
                          ({}, {})):
         fields = lift_host.row_fields(record, seam)
-        assert fields["interpreter"] == sys.executable, fields
-        assert fields["recorded_interpreter"] == (record.get("interpreter")
-                                                  or record.get("python")
-                                                  or seam.get("interpreter")), fields
+        # Both are written under their roots' labels (they land in gate artifacts).
+        assert fields["interpreter"] == neutral_ids.path(sys.executable), fields
+        assert fields["recorded_interpreter"] == neutral_ids.path(
+            record.get("interpreter") or record.get("python") or seam.get("interpreter")), fields
 
 
 def test_a_rows_needs_are_its_lift_records():
-    assert lift_host.row_fields({"lift_record": GDSII}, {})["lift_needs"] == [
-        "gdspy", "libGDSII"]
+    assert lift_host.row_fields({"lift_record": GDSII}, {})["lift_needs"] == ["gdstk"]
     assert lift_host.row_fields({}, {"lift_record": SIGMA})["lift_needs"] == [
         "PyMieScatt", "nlopt", "autograd"]
     for record in (STOCK, STOCK + "_blocked", None, "corpus_some_other_leg"):
@@ -83,7 +93,92 @@ def test_a_rows_needs_are_its_lift_records():
 def test_every_declared_need_has_a_probe():
     declared = {need for needs in lift_host.LIFT_RECORD_NEEDS.values() for need in needs}
     assert declared == set(lift_host.NEEDS)
-    assert {kind for kind, _name in lift_host.NEEDS.values()} == {"module", "meep"}
+    # Each probe is one of the two kinds the probe program answers.
+    assert {kind for kind, _name in lift_host.NEEDS.values()} <= {"module", "meep"}
+
+
+#: Each row of the two listed lift records, by label, and its record.
+ROWS = {"examples:coupler.py": GDSII, "examples:ring_gds.py": GDSII,
+        "examples:mie_scattering.py": SIGMA,
+        "examples:differential_cross_section.py": SIGMA,
+        "examples:waveguide_crossing.py": SIGMA}
+
+
+def test_each_row_needs_what_its_own_script_needs():
+    def needs(label, record, seam=True):
+        leg, row = label.split(":", 1)
+        census = {"leg": leg, "row": row, "lift_record": record}
+        return lift_host.row_fields(census, {"label": label} if seam else {})["lift_needs"]
+
+    assert needs("examples:coupler.py", GDSII) == ["gdstk"]
+    assert needs("examples:ring_gds.py", GDSII) == ["gdstk"]
+    assert needs("examples:mie_scattering.py", SIGMA) == ["PyMieScatt"]
+    assert needs("examples:differential_cross_section.py", SIGMA, seam=False) == [
+        "PyMieScatt"]
+    assert needs("examples:waveguide_crossing.py", SIGMA) == ["nlopt", "autograd"]
+    # A row of a listed record the table does not name needs all its record declares;
+    # a row of a record that declares nothing needs nothing, whatever its name.
+    assert needs("examples:another.py", SIGMA) == ["PyMieScatt", "nlopt", "autograd"]
+    assert needs("examples:coupler.py", STOCK) == []
+    assert set(lift_host.LIFT_ROW_NEEDS) == set(ROWS)
+    for label, record in ROWS.items():
+        assert set(lift_host.LIFT_ROW_NEEDS[label]) <= set(
+            lift_host.LIFT_RECORD_NEEDS[record]), label
+    assert {need for needs_ in lift_host.LIFT_ROW_NEEDS.values() for need in needs_} == \
+        set(lift_host.NEEDS)
+
+
+def test_a_host_lacking_one_package_counts_out_only_the_rows_that_need_it():
+    rows = [{"label": label, "lift_record": record,
+             "lift_needs": lift_host.row_needs(label, record)}
+            for label, record in ROWS.items()]
+    probed = {"interpreter": "/env/bin/python",
+              "needs": {need: None for need in lift_host.NEEDS}}
+    probed["needs"]["nlopt"] = "ModuleNotFoundError: No module named 'nlopt'"
+    assert list(lift_host.unlifted(rows, probed)) == ["examples:waveguide_crossing.py"]
+    probed["needs"]["nlopt"] = None
+    probed["needs"]["gdstk"] = "ModuleNotFoundError: No module named 'gdstk'"
+    assert list(lift_host.unlifted(rows, probed)) == ["examples:coupler.py",
+                                                      "examples:ring_gds.py"]
+
+
+#: How each need shows in a corpus script's text.
+NEED_IN_TEXT = {"gdstk": "import gdstk", "PyMieScatt": "import PyMieScatt",
+                "nlopt": "import nlopt", "autograd": "from autograd import"}
+
+
+def _corpus_examples():
+    """The examples of the MEEP corpus on this host: the census's (``MEEP_GPU_CORPUS_ROOT``),
+    else the one the reference environment keeps, as its build record names it."""
+    import measure_predicate_coverage as census  # noqa: PLC0415
+
+    candidates = [Path(census.EXAMPLES_DIR)]
+    record = Path(sys.prefix) / "share" / "meep-gpu-build" / "reference_build.json"
+    if record.is_file():
+        root = (json.loads(record.read_text(encoding="utf-8")).get("corpus") or {}).get("root")
+        if root:
+            root = Path(root)
+            candidates.append((root if root.is_absolute() else Path(sys.prefix) / root)
+                              / "examples")
+    return next((path for path in candidates
+                 if all((path / label.split(":", 1)[1]).is_file() for label in ROWS)), None)
+
+
+def test_the_row_needs_are_the_corpus_scripts_own():
+    """Each declared need is in the script's text, and no need the script's text shows
+    is left out. Declared under ``meep_identity_reference``: the reference environment
+    keeps the corpus. The table was read off the MEEP 1.35.0 corpus, so a corpus whose
+    scripts changed fails here until the table is measured again."""
+    examples = _corpus_examples()
+    assert examples is not None, (
+        "no MEEP corpus holding the five rows: neither MEEP_GPU_CORPUS_ROOT nor the "
+        "reference environment's build record names one")
+    for label in ROWS:
+        text = (examples / label.split(":", 1)[1]).read_text(encoding="utf-8")
+        shown = {need for need, needle in NEED_IN_TEXT.items() if needle in text}
+        assert shown == set(lift_host.LIFT_ROW_NEEDS[label]), (
+            f"{label} under {examples} shows {sorted(shown)}; lift_host.LIFT_ROW_NEEDS "
+            f"declares {sorted(lift_host.LIFT_ROW_NEEDS[label])}")
 
 
 def test_the_four_inputs_are_named_and_a_missing_one_is_found(tmp_path):
@@ -104,36 +199,39 @@ def test_the_four_inputs_are_named_and_a_missing_one_is_found(tmp_path):
 # ----------------------------------------------------------------------- the probe ----
 def _stand_ins(directory: Path, libgdsii: bool) -> dict:
     """A directory holding a stand-in ``meep`` (with_libGDSII answering ``libgdsii``) and a
-    stand-in ``gdspy``, and an environment that puts it first on the path."""
+    stand-in ``gdstk``, and an environment that puts it first on the path."""
     directory.mkdir(parents=True, exist_ok=True)
     (directory / "meep.py").write_text(
         f"def with_libGDSII():\n    return {libgdsii!r}\n", encoding="utf-8")
-    (directory / "gdspy.py").write_text("", encoding="utf-8")
+    (directory / "gdstk.py").write_text("", encoding="utf-8")
     return {**os.environ, "PYTHONPATH": str(directory)}
 
 
 def test_the_probe_answers_present_absent_and_a_build_feature(tmp_path, monkeypatch):
     monkeypatch.setitem(lift_host.NEEDS, "absent_module",
                         ("module", "lift_host_no_such_module"))
+    # A MEEP build feature, probed by calling MEEP: no corpus row needs one at 1.35.0.
+    monkeypatch.setitem(lift_host.NEEDS, "libGDSII", ("meep", "with_libGDSII"))
     environment = _stand_ins(tmp_path / "site", libgdsii=False)
-    probed = lift_host.probe(["gdspy", "libGDSII", "absent_module"],
+    probed = lift_host.probe(["gdstk", "libGDSII", "absent_module"],
                              environment=environment, cwd=tmp_path)
-    assert probed["unreadable"] is None and probed["interpreter"] == sys.executable
-    assert probed["needs"]["gdspy"] is None
+    assert probed["unreadable"] is None
+    assert probed["interpreter"] == neutral_ids.path(sys.executable)
+    assert probed["needs"]["gdstk"] is None
     assert probed["needs"]["libGDSII"] == "meep.with_libGDSII() is False in this MEEP build"
     assert probed["needs"]["absent_module"].startswith("ModuleNotFoundError")
-    present = lift_host.probe(["gdspy", "libGDSII"],
+    present = lift_host.probe(["gdstk", "libGDSII"],
                               environment=_stand_ins(tmp_path / "site2", libgdsii=True))
-    assert present["needs"] == {"gdspy": None, "libGDSII": None}
+    assert present["needs"] == {"gdstk": None, "libGDSII": None}
 
 
 def test_an_unreadable_probe_and_an_undeclared_need_are_named(tmp_path):
     silent = tmp_path / "python"
     silent.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
     silent.chmod(0o755)
-    probed = lift_host.probe(["gdspy"], executable=str(silent))
+    probed = lift_host.probe(["gdstk"], executable=str(silent))
     assert probed["needs"] == {} and "printed no answer" in probed["unreadable"]
-    absent = lift_host.probe(["gdspy"], executable=str(tmp_path / "absent"))
+    absent = lift_host.probe(["gdstk"], executable=str(tmp_path / "absent"))
     assert "did not finish" in absent["unreadable"]
     undeclared = lift_host.probe(["no_such_need"])
     assert "declared in no probe" in undeclared["unreadable"]
@@ -163,6 +261,96 @@ def test_a_row_with_an_absent_need_is_named_with_the_reason():
     assert GDSII in named["examples:coupler.py"]
     entry = lift_host.unlifted_entry(rows[0], named["examples:coupler.py"])
     assert entry["measured"] is False and entry["unlifted_on_this_host"]
+
+
+# ------------------------------------------------- the rows the identity corpus retires ----
+def _write_corpus_legs(results, tests, examples, retired, corrupt=False):
+    """The identity corpus's leg files under ``results``: the base legs measure the
+    ``tests`` cases (module ``test_rows.py``) and the ``examples`` scripts, and the
+    re-surveys record each ``retired`` case or script NO-SIMULATION, the verdict MEEP 1.35.0
+    gives the sharded dump/load tests in one process. ``corrupt`` appends a line that is not
+    JSON to the base tests leg."""
+    import json as _json
+    import meep_identity_corpus as _corpus
+    skipped = {"has_simulation": False,
+               "error": "MPI specific test (requires mpirun with more than 1 process)"}
+    files = {}
+    for leg, directory in _corpus.LEGS.items():
+        files[f"{directory}/{_corpus.PARITY_FILE}"] = []
+        if leg in _corpus.RESURVEYS:
+            files[f"{directory}/{_corpus.LIFT_FILE}"] = []
+    [tests_resurvey] = [leg for leg in _corpus.RESURVEYS if _corpus.holds_tests(leg)]
+    [examples_resurvey] = [leg for leg in _corpus.RESURVEYS if not _corpus.holds_tests(leg)]
+    base_tests = f"{_corpus.LEGS['tests']}/{_corpus.PARITY_FILE}"
+    files[base_tests] = [{"module": "test_rows.py", "case": case, "parity": "MEASURED"}
+                         for case in tests]
+    files[f"{_corpus.LEGS['examples/main']}/{_corpus.PARITY_FILE}"] = [
+        {"script": script, "parity": "MEASURED"} for script in examples]
+    files[f"{_corpus.LEGS[tests_resurvey]}/{_corpus.LIFT_FILE}"] = [
+        {"module": "test_rows.py", "case": case, **skipped} for case in tests if case in retired]
+    files[f"{_corpus.LEGS[examples_resurvey]}/{_corpus.LIFT_FILE}"] = [
+        {"script": script, **skipped} for script in examples if script in retired]
+    for rel, rows in files.items():
+        path = results / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        text = "".join(_json.dumps(row) + "\n" for row in rows)
+        path.write_text(text + ("{not json\n" if corrupt and rel == base_tests else ""),
+                        encoding="utf-8")
+
+
+def _tests_row(case, module="test_rows.py"):
+    return {"label": f"tests:{case}", "leg": "tests", "row": case, "module": module}
+
+
+def test_a_lift_rows_corpus_label_is_the_manifests():
+    """Examples by script stem, tests by module stem and the expanded case name the corpus
+    records (not the decorated name a parametrised row was lifted under)."""
+    assert lift_host.corpus_label({"leg": "examples", "row": "coupler.py"}) == "ex.coupler"
+    assert lift_host.corpus_label(
+        {**_tests_row("TestLoadDump.test_load_dump_fields_sharded_2d", "test_dump_load.py")}
+    ) == "t.test_dump_load.TestLoadDump.test_load_dump_fields_sharded_2d"
+    assert lift_host.corpus_label(
+        {"leg": "tests", "row": "TestEigCoeffs.test_oblique_0_0_0",
+         "case": "TestEigCoeffs.test_oblique__idx0", "module": "test_binary_grating.py"}
+    ) == "t.test_binary_grating.TestEigCoeffs.test_oblique_0_0_0"
+
+
+def test_a_retired_row_is_refused_by_name_and_no_other(tmp_path):
+    """The re-survey's verdict on a row an earlier leg measured retires it; the refusal
+    carries that verdict in the manifest's words. A row the manifest keeps is not refused,
+    and neither is a row of a module the corpus does not hold."""
+    results = tmp_path / "results"
+    _write_corpus_legs(results, ["TestRows.test_0", "TestRows.test_1"], ["a.py"],
+                       retired={"TestRows.test_0"})
+    rows = [_tests_row("TestRows.test_0"), _tests_row("TestRows.test_1"),
+            _tests_row("TestRows.test_0", "test_other.py"),
+            {"label": "examples:a.py", "leg": "examples", "row": "a.py"}]
+    answer = lift_host.corpus_refusals(results, rows)
+    assert list(answer["refused"]) == ["tests:TestRows.test_0"], answer
+    reason = answer["refused"]["tests:TestRows.test_0"]
+    assert "NO-SIMULATION" in reason and "requires mpirun with more than 1 process" in reason
+    assert "for the row the tests leg had measured" in reason, reason
+    basis = answer["basis"]
+    assert basis["retired_labels"] == ["t.test_rows.TestRows.test_0"], basis
+    assert basis["absent"] == [] and basis["unreadable"] is None, basis
+    assert len(basis["inputs_sha256"]) == 11, basis
+
+
+def test_absent_or_unreadable_corpus_legs_retire_nothing(tmp_path):
+    """No leg files: nothing retired and the absent files named. A leg file that cannot be
+    read: nothing retired and the reason named. No row to ask about: nothing is read."""
+    row = _tests_row("TestRows.test_0")
+    absent = lift_host.corpus_refusals(tmp_path / "nowhere", [row])
+    assert absent["refused"] == {} and len(absent["basis"]["absent"]) == 11, absent
+    results = tmp_path / "results"
+    _write_corpus_legs(results, ["TestRows.test_0"], [], retired={"TestRows.test_0"},
+                       corrupt=True)
+    unreadable = lift_host.corpus_refusals(results, [row])
+    assert unreadable["refused"] == {}, unreadable
+    assert "could not be derived" in unreadable["basis"]["unreadable"], unreadable
+    assert str(tmp_path) not in unreadable["basis"]["unreadable"], unreadable
+    assert lift_host.corpus_refusals(tmp_path / "nowhere", []) == {"refused": {},
+                                                                  "basis": None}
 
 
 # ---------------------------------------------------------------- the seven sites ----
@@ -201,6 +389,11 @@ _SITES = textwrap.dedent('''
     # refused under the nonlinear gate's block, which still expects a standing withdraw's
     # refusal, and admitted under every other.
     WRITE = {{"on": False}}
+    # A row in SKIP answers as MEEP 1.35.0 answers a sharded dump/load test in one
+    # process: skipped, no simulation, no block.
+    SKIP = set()
+    SKIPPED = {{"measured": False, "has_simulation": False, "outcome": "skipped",
+                "error": "MPI specific test (requires mpirun with more than 1 process)"}}
     PASSING = {{"predicate_admits": True, "predicate_reasons": [], "sources": [],
                "driven": True, "passed": True, "bit_identical": True, "identical": True,
                "steps_compared": 10 ** 6, "words_compared": 1,
@@ -220,8 +413,9 @@ _SITES = textwrap.dedent('''
             return done
         row = (Path(argv[argv.index("--child-script") + 1]).name if "--child-script" in argv
                else json.loads(argv[argv.index("--child-cases") + 1])[0])
-        record = {{"row": row, "measured": True, **{{key: PASSING for key in BLOCKS}},
-                  NONLINEAR: REFUSED if str(row).startswith("gds_") else PASSING}}
+        record = ({{"row": row, **SKIPPED}} if row in SKIP else
+                  {{"row": row, "measured": True, **{{key: PASSING for key in BLOCKS}},
+                   NONLINEAR: REFUSED if str(row).startswith("gds_") else PASSING}})
         Path(argv[argv.index("--out-json") + 1]).write_text(json.dumps(record),
                                                              encoding="utf-8")
         return subprocess.CompletedProcess(command, 0, None, b"")
@@ -232,8 +426,7 @@ _SITES = textwrap.dedent('''
                      "needs": {{n: None for n in lift_host.NEEDS}}}},
         "gdsii_absent": {{"interpreter": sys.executable, "unreadable": None,
                           "needs": {{**{{n: None for n in lift_host.NEEDS}},
-                                     "gdspy": "ModuleNotFoundError: No module named 'gdspy'",
-                                     "libGDSII": "meep.with_libGDSII() is False"}}}},
+                                     "gdstk": "ModuleNotFoundError: No module named 'gdstk'"}}}},
         "unreadable": {{"interpreter": sys.executable, "needs": {{}},
                         "unreadable": "the capability probe printed no answer"}},
     }}
@@ -304,6 +497,8 @@ _SITES = textwrap.dedent('''
                  "census_paths": census_paths,
                  "unlifted": result.get("unlifted_on_this_host"),
                  "asked": result.get("rows_the_engine_was_asked_about"),
+                 "retired": result.get("refused_by_the_corpus_manifest"),
+                 "corpus": result.get("corpus_manifest"),
                  "unmeasured": sorted(unmeasured),
                  "rows": [{{k: r.get(k) for k in ("label", "interpreter", "lift_needs",
                                                   "recorded_interpreter",
@@ -322,14 +517,30 @@ _SITES = textwrap.dedent('''
     for case in ("present", "gdsii_absent"):
         answer_with(ANSWERS[case])
         out[f"{{case}}_passing"] = {{name: run(name, f"{{case}}_passing") for name in SITES}}
-    # EVERY ROW UNLIFTED: every lift record, and a row with none, declares gdspy.
+    # EVERY ROW UNLIFTED: every lift record, and a row with none, declares gdstk.
     declared = dict(lift_host.LIFT_RECORD_NEEDS)
-    lift_host.LIFT_RECORD_NEEDS.update({{record: ("gdspy",) for record in
+    lift_host.LIFT_RECORD_NEEDS.update({{record: ("gdstk",) for record in
                                          (stock, gdsii, sigma, "")}})
     answer_with(ANSWERS["gdsii_absent"])
     out["all_absent_passing"] = {{name: run(name, "all_absent_passing") for name in SITES}}
     lift_host.LIFT_RECORD_NEEDS.clear()
     lift_host.LIFT_RECORD_NEEDS.update(declared)
+    # THE ROWS THE IDENTITY CORPUS RETIRES: every cell's tests row answers skipped, and
+    # the corpus legs retire it, retire another row, cannot be read, or retire every row.
+    answer_with(ANSWERS["present"])
+    cases = [f"TestRows.test_{{k}}" for k in range(len(arms))]
+    scripts = [f"{{stem}}_{{k}}.py" for k in range(len(arms)) for stem in ("plain", "gds", "mie")]
+    SKIP.update(cases)
+    for case, retired, corrupt in (
+            ("retired_passing", set(cases), False),
+            ("retired_elsewhere", {{s for s in scripts if s.startswith("plain_")}}, False),
+            ("corpus_unreadable", set(cases), True)):
+        _write_corpus_legs(results, cases, scripts, retired, corrupt=corrupt)
+        out[case] = {{name: run(name, case) for name in SITES}}
+    SKIP.update(scripts)
+    _write_corpus_legs(results, cases, scripts, set(cases) | set(scripts))
+    out["all_retired"] = {{name: run(name, "all_retired") for name in SITES}}
+    SKIP.clear()
     WRITE["on"] = False
     (results / "census_x" / "tests_param_matched.jsonl").unlink()
     out["missing_input"] = {{name: run(name, "missing_input") for name in SITES}}
@@ -343,7 +554,8 @@ def test_the_seven_lift_sites_launch_this_interpreter_and_count_out_what_the_hos
     environment.update(LIFT_TEST_ROOT=str(tmp_path),
                        MEEP_GPU_CORPUS_ROOT=str(tmp_path / "corpus"),
                        PYTHONDONTWRITEBYTECODE="1")
-    body = _NO_TORCH + _SITES.format(names=(STOCK, GDSII, SIGMA, RECORDED, RECORDED_SIDE))
+    body = (_NO_TORCH + inspect.getsource(_write_corpus_legs)
+            + _SITES.format(names=(STOCK, GDSII, SIGMA, RECORDED, RECORDED_SIDE)))
     done = subprocess.run([sys.executable, "-c", body], cwd=str(API_ROOT), env=environment,
                           capture_output=True, text=True, check=False, timeout=900)
     assert done.returncode == 0, done.stdout[-4000:] + done.stderr[-4000:]
@@ -361,7 +573,7 @@ def test_the_seven_lift_sites_launch_this_interpreter_and_count_out_what_the_hos
         assert len(site["launched"]) == 4, (name, site)
         assert site["unlifted"] == {} and site["asked"] == 4, (name, site)
         for row in site["rows"]:
-            assert row["interpreter"] == parent, (name, row)
+            assert row["interpreter"] == neutral_ids.path(parent), (name, row)
             assert row["recorded_interpreter"] in (RECORDED, RECORDED_SIDE), (name, row)
         assert site["passed"] is False, "children that wrote nothing are unmeasured"
     for name, site in cases["gdsii_absent"].items():
@@ -371,10 +583,10 @@ def test_the_seven_lift_sites_launch_this_interpreter_and_count_out_what_the_hos
         assert list(site["unlifted"]) == [label for label in site["unlifted"]
                                           if label.startswith("examples:gds_")], (name, site)
         assert len(site["unlifted"]) == 1 and site["asked"] == 3, (name, site)
-        assert "gdspy (ModuleNotFoundError" in next(iter(site["unlifted"].values()))
+        assert "gdstk (ModuleNotFoundError" in next(iter(site["unlifted"].values()))
         assert not set(site["unlifted"]) & set(site["unmeasured"]), (name, site)
         [row] = [r for r in site["rows"] if r["unlifted_on_this_host"]]
-        assert row["lift_needs"] == ["gdspy", "libGDSII"], (name, row)
+        assert row["lift_needs"] == ["gdstk"], (name, row)
     for name, site in cases["unreadable"].items():
         assert site["launched"] == [] and site["passed"] is False, (name, site)
         assert site["reason"] == "the capability probe printed no answer", (name, site)
@@ -383,17 +595,249 @@ def test_the_seven_lift_sites_launch_this_interpreter_and_count_out_what_the_hos
         assert len(site["launched"]) == 4 and site["asked"] == 4, (name, site)
         assert site["passed"] is True and site["unmeasured"] == [], (name, site)
     for name, site in cases["gdsii_absent_passing"].items():
-        # THE DENOMINATOR LESS THE ROW COUNTED OUT: three rows asked, one named, a pass.
+        # The denominator less the row counted out: three rows asked, one named, a pass.
         assert len(site["launched"]) == 3 and site["asked"] == 3, (name, site)
         assert len(site["unlifted"]) == 1 and site["unmeasured"] == [], (name, site)
         assert site["passed"] is True, (name, site)
     for name, site in cases["all_absent_passing"].items():
-        # A LEG THAT ASKED ABOUT NO ROW measured nothing, and fails.
+        # A leg that asked about no row measured nothing, and fails.
         assert site["launched"] == [] and site["asked"] == 0, (name, site)
         assert len(site["unlifted"]) == 4, (name, site)
         assert site["passed"] is False, (name, site)
     for name, site in cases["missing_input"].items():
         assert "census_x/tests_param_matched.jsonl" in site.get("exit", ""), (name, site)
+    for name, site in cases["present"].items():
+        # No corpus legs under results: nothing is retired, and the files are named.
+        assert site["retired"] == {} and len(site["corpus"]["absent"]) == 11, (name, site)
+    for name, site in cases["retired_passing"].items():
+        # The retired tests row is refused by name and counted out; the leg passes on the
+        # three rows it asked about.
+        [(label, reason)] = site["retired"].items()
+        assert label.startswith("tests:TestRows.test_"), (name, site)
+        assert "NO-SIMULATION" in reason and "requires mpirun" in reason, (name, reason)
+        assert site["unmeasured"] == [] and site["asked"] == 3, (name, site)
+        assert site["passed"] is True, (name, site)
+    for name, site in cases["retired_elsewhere"].items():
+        # The manifest retires a row that was measured, which is scored as any other; the
+        # skipped tests row it keeps is unmeasured and fails the leg.
+        assert site["retired"] == {}, (name, site)
+        assert [u for u in site["unmeasured"] if u.startswith("tests:")] == site["unmeasured"]
+        assert len(site["unmeasured"]) == 1 and site["passed"] is False, (name, site)
+    for name, site in cases["corpus_unreadable"].items():
+        assert site["retired"] == {} and site["corpus"]["unreadable"], (name, site)
+        assert len(site["unmeasured"]) == 1 and site["passed"] is False, (name, site)
+    for name, site in cases["all_retired"].items():
+        # Every row refused by name: the leg asked about nothing, and fails.
+        assert len(site["retired"]) == 4 and site["asked"] == 0, (name, site)
+        assert site["unmeasured"] == [] and site["passed"] is False, (name, site)
+
+
+# ------------------------------------------------------------- the CUDA lift legs ----
+_CUDA_SITES = textwrap.dedent('''
+    import importlib, json, os, subprocess, sys
+    from pathlib import Path
+
+    root = Path(os.environ["LIFT_TEST_ROOT"])
+    for directory in (root / "corpus" / "examples", root / "corpus" / "tests"):
+        directory.mkdir(parents=True, exist_ok=True)
+    SITES = {"gate_cuda_fused_hd_pair": "cuda_fused_hd_pair_gate",
+             "gate_cuda_conductive_bfast_fused_hd_pair": "cuda_conductive_bfast_fused_hd_pair_gate"}
+    PASSING = {"predicate_admits": True, "predicate_reasons": [], "sources": [],
+               "driven": True, "passed": True, "variant": "v", "steps_compared": 10,
+               "words_compared": 1}
+    UNLIFTED = {"measured": False, "has_simulation": False,
+                "lift_error": "ModuleNotFoundError: No module named 'gdspy'"}
+    ROWS = [{"label": f"examples:{name}", "leg": "examples", "row": name, "module": None,
+             "variant": "v"} for name in ("a.py", "b.py")]
+    CASE = {"answer": {}}
+
+    def answering(command, *args, **kwargs):
+        argv = [str(part) for part in command]
+        out = Path(argv[argv.index("--lift-child-out") + 1])
+        row = Path(argv[argv.index("--lift-child-target") + 1]).name
+        record = dict(CASE["answer"][row], row=row)
+        out.write_text(json.dumps(record), encoding="utf-8")
+        return subprocess.CompletedProcess(command, 0, None, b"")
+
+    subprocess.run = answering
+    result = {}
+    for name, key in SITES.items():
+        module = importlib.import_module(name)
+        module.lift_basis = lambda _results: ([dict(r) for r in ROWS],
+                                              {"rows_with_a_standing_withdraw": []})
+        result[name] = {}
+        for case, answer in (("one_lifted", {"a.py": {"measured": True, key: PASSING},
+                                             "b.py": UNLIFTED}),
+                             ("all_unlifted", {"a.py": UNLIFTED, "b.py": UNLIFTED})):
+            CASE["answer"] = answer
+            leg = module.leg_lift(root / "out" / name / case, 2, None, 5.0, False, None)
+            result[name][case] = {"passed": leg.get("passed"),
+                                  "asked": leg.get("rows_the_engine_was_asked_about"),
+                                  "unlifted": sorted(leg.get("unlifted_on_this_host") or {})}
+    print(json.dumps(result))
+''')
+
+
+def test_a_cuda_lift_leg_that_asked_about_no_row_fails(tmp_path):
+    """The CUDA legs count a row their host cannot lift out of the denominator, as the
+    Metal legs do, and, as the Metal legs do, a leg left with no row asked about has
+    measured nothing and fails (the conductive gate through its per-row variant check,
+    which holds over no row as False)."""
+    environment = {k: v for k, v in os.environ.items() if not k.startswith("MEEP_GPU_")}
+    environment.update(LIFT_TEST_ROOT=str(tmp_path),
+                       MEEP_GPU_CORPUS_ROOT=str(tmp_path / "corpus"),
+                       PYTHONDONTWRITEBYTECODE="1", CUDA_VISIBLE_DEVICES="")
+    body = _NO_TORCH + _CUDA_SITES
+    done = subprocess.run([sys.executable, "-c", body], cwd=str(API_ROOT), env=environment,
+                          capture_output=True, text=True, check=False, timeout=900)
+    assert done.returncode == 0, done.stdout[-4000:] + done.stderr[-4000:]
+    result = json.loads(done.stdout.strip().splitlines()[-1])
+    assert len(result) == 2
+    for name, cases in result.items():
+        assert cases["one_lifted"] == {"passed": True, "asked": 1,
+                                       "unlifted": ["examples:b.py"]}, (name, cases)
+        assert cases["all_unlifted"] == {"passed": False, "asked": 0,
+                                         "unlifted": ["examples:a.py", "examples:b.py"]}, (
+            name, cases)
+
+
+_NVIDIA_RETIRED = textwrap.dedent('''
+    import importlib, json, os, subprocess, sys
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    import lift_host
+
+    root = Path(os.environ["LIFT_TEST_ROOT"])
+    for directory in (root / "corpus" / "examples", root / "corpus" / "tests"):
+        directory.mkdir(parents=True, exist_ok=True)
+    CYLINDRICAL = SimpleNamespace(gate="triton_cylindrical_x",
+                                  policy_reaches_composer=lambda policy: (True, None))
+    # Each lift leg, the block its child writes, and how it is called.
+    SITES = {
+        "gate_cuda_fused_hd_pair": ("cuda_fused_hd_pair_gate", lambda m, out: m.leg_lift(
+            out, 2, None, 5.0, False, None)),
+        "gate_cuda_conductive_bfast_fused_hd_pair": (
+            "cuda_conductive_bfast_fused_hd_pair_gate", lambda m, out: m.leg_lift(
+                out, 2, None, 5.0, False, None)),
+        "cylindrical_hd_gate_common": ("cuda_cylindrical_x_gate", lambda m, out: m.leg_lift(
+            None, "gate_x.py", "cuda_cylindrical_x_gate", out, 2, None, 5.0, False, None,
+            None, False)),
+        "gate_triton_fused_hd_pair": ("triton_fused_hd_pair_gate", lambda m, out: m.leg_lift(
+            out, 2, None, 5.0, False, None, sys.executable)),
+        "gate_triton_folded_fused_hd_pair": (
+            "triton_folded_fused_hd_pair_gate", lambda m, out: m.leg_lift(
+                out, 2, None, 5.0, False, None, sys.executable)),
+        "gate_triton_complex_fused_hd_pair": (
+            "triton_complex_fused_hd_pair_gate", lambda m, out: m.leg_lift(
+                out, 2, None, 5.0, False, None, sys.executable)),
+        "triton_cylindrical_hd_gate_kit": ("triton_cylindrical_x_gate", lambda m, out: m.leg_lift(
+            CYLINDRICAL, Path(m.__file__), out, 2, None, 5.0, False, None, sys.executable)),
+        "triton_hd_tail_gate_kit": ("triton_hd_tail_gate", lambda m, out: m.leg_lift(
+            None, Path(m.__file__), out, 2, None, 5.0, False, None, sys.executable, None)),
+    }
+    PASSING = {"predicate_admits": True, "predicate_reasons": [], "sources": [],
+               "source_facts": [], "driven": True, "passed": True, "variant": "v",
+               "steps_compared": 10 ** 6, "words_compared": 1, "bit_identical": True,
+               "seam_claim": {"identical": True}, "array_path_repeats_itself": True,
+               "every_weld_run_advanced_three_counters": True}
+    SKIPPED = {"measured": False, "has_simulation": False, "outcome": "skipped",
+               "error": "MPI specific test (requires mpirun with more than 1 process)"}
+    ROWS = [{"label": f"examples:{name}", "leg": "examples", "row": name, "module": None,
+             "variant": "v", "withdraw_in_seam": False, "harness_case": None}
+            for name in ("a.py", "b.py")]
+    FACTS = {"rows_with_a_standing_withdraw": [], "rows_in_cell": len(ROWS)}
+    CASE = {"answer": {}, "legs": root / "nowhere"}
+
+    def answering(command, *args, **kwargs):
+        argv = [str(part) for part in command]
+        out = Path(argv[argv.index("--lift-child-out") + 1])
+        flag = "--lift-child-target" if "--lift-child-target" in argv else "--lift-child-script"
+        row = Path(argv[argv.index(flag) + 1]).name
+        out.write_text(json.dumps(dict(CASE["answer"][row], row=row)), encoding="utf-8")
+        return subprocess.CompletedProcess(command, 0, None, b"")
+
+    subprocess.run = answering
+    # The legs read the corpus legs where they read the census; here, the case's own.
+    real = lift_host.corpus_refusals
+    lift_host.corpus_refusals = lambda _results, records: real(CASE["legs"], records)
+
+    def summary(leg):
+        if isinstance(leg, list):  # the tail kit: one row per case and a basis row
+            [basis] = [row for row in leg if row.get("case") == "basis"]
+            failed = sorted(row["case"] for row in leg
+                            if row.get("case") != "basis" and not row["passed"])
+            return {"passed": all(row["passed"] for row in leg), "asked": None,
+                    "refused": basis.get("refused_by_the_corpus_manifest") or {},
+                    "unmeasured": failed, "counted_out": [],
+                    "corpus": basis.get("corpus_manifest") or {}}
+        return {"passed": leg.get("passed"), "asked": leg.get("rows_the_engine_was_asked_about"),
+                "refused": leg.get("refused_by_the_corpus_manifest") or {},
+                "unmeasured": sorted(leg.get("unmeasured", leg.get("rows_unmeasured")) or []),
+                "counted_out": sorted(leg.get("rows_unliftable_on_this_host") or {}),
+                "corpus": leg.get("corpus_manifest") or {}}
+
+    result = {}
+    for name, (key, call) in SITES.items():
+        module = importlib.import_module(name)
+        module.lift_basis = lambda *_args: ([dict(r) for r in ROWS], dict(FACTS))
+        result[name] = {}
+        one = {"a.py": {"measured": True, key: PASSING}, "b.py": SKIPPED}
+        for case, answer, retired in (("retired", one, {"b.py"}),
+                                      ("retired_elsewhere", one, {"a.py"}),
+                                      ("no_corpus_legs", one, None),
+                                      ("all_retired", {"a.py": SKIPPED, "b.py": SKIPPED},
+                                       {"a.py", "b.py"})):
+            CASE["answer"] = answer
+            CASE["legs"] = root / "legs" / name / case
+            if retired is not None:
+                _write_corpus_legs(CASE["legs"], [], ["a.py", "b.py"], retired)
+            got = summary(call(module, root / "out" / name / case))
+            result[name][case] = {**{k: v for k, v in got.items() if k != "corpus"},
+                                  "refused": sorted(got["refused"]),
+                                  "reason": next(iter(got["refused"].values()), None),
+                                  "absent": len(got["corpus"].get("absent") or [])}
+    print(json.dumps(result))
+''')
+
+
+def test_the_nvidia_lift_legs_refuse_a_retired_row_by_name(tmp_path):
+    """The CUDA and Triton lift legs (the two CUDA gates, the CUDA cylindrical kit, the three
+    Triton gates and the two Triton kits), driven on a two-row cell whose second row answers
+    as MEEP 1.35.0 answers a sharded dump/load test in one process: retired by the corpus
+    manifest, it is refused by name and the leg passes on the row it drove; kept by the
+    manifest, or with no corpus legs to read, it is unmeasured and the leg fails; and a leg
+    whose every row is retired drove nothing, and fails."""
+    environment = {k: v for k, v in os.environ.items() if not k.startswith("MEEP_GPU_")}
+    environment.update(LIFT_TEST_ROOT=str(tmp_path),
+                       MEEP_GPU_CORPUS_ROOT=str(tmp_path / "corpus"),
+                       PYTHONDONTWRITEBYTECODE="1", CUDA_VISIBLE_DEVICES="")
+    body = _NO_TORCH + inspect.getsource(_write_corpus_legs) + _NVIDIA_RETIRED
+    done = subprocess.run([sys.executable, "-c", body], cwd=str(API_ROOT), env=environment,
+                          capture_output=True, text=True, check=False, timeout=900)
+    assert done.returncode == 0, done.stdout[-4000:] + done.stderr[-4000:]
+    result = json.loads(done.stdout.strip().splitlines()[-1])
+    assert len(result) == 8
+    for name, cases in result.items():
+        retired = cases["retired"]
+        assert retired["passed"] is True and retired["refused"] == ["examples:b.py"], (
+            name, retired)
+        assert "NO-SIMULATION" in retired["reason"] and retired["unmeasured"] == [], (
+            name, retired)
+        if retired["asked"] is not None:
+            assert retired["asked"] == 1, (name, retired)
+        if "triton" in name and name != "triton_hd_tail_gate_kit":
+            assert retired["counted_out"] == ["examples:b.py"], (name, retired)
+        for case in ("retired_elsewhere", "no_corpus_legs"):
+            kept = cases[case]
+            assert kept["passed"] is False and kept["refused"] == [], (name, case, kept)
+            assert kept["unmeasured"] == ["examples:b.py"], (name, case, kept)
+        assert cases["no_corpus_legs"]["absent"] == 11, (name, cases["no_corpus_legs"])
+        every = cases["all_retired"]
+        assert every["passed"] is False, (name, every)
+        assert every["refused"] == ["examples:a.py", "examples:b.py"], (name, every)
+        if every["asked"] is not None:
+            assert every["asked"] == 0, (name, every)
 
 
 # ------------------------------------------------------------------- the source guard --
@@ -401,21 +845,27 @@ def test_no_lift_site_launches_an_interpreter_read_from_evidence():
     """The seven sites launch ``sys.executable`` and resolve their rows through
     ``lift_host``; the census-path-first expression is gone from every Metal gate and kit.
     ``probe_h_to_d_withdraw_order.py`` is the one harness file that still launches the
-    interpreter a census row recorded: a probe no round runs, left as it is."""
+    interpreter a census row recorded (resolved on this machine from the recorded
+    spelling): a probe no certification round runs."""
     old = 'or seam_row.get("interpreter") or sys.executable'
-    launch = 'command = [row["interpreter"]'
+    launch = 'neutral_ids.resolve(row["interpreter"])'
     resolving = sorted(p.name for p in HERE.glob("*.py") if not p.name.startswith("test_")
                        and "lift_host.row_fields(" in p.read_text(encoding="utf-8"))
     assert tuple(resolving) == SITES
     for name in SITES:
         text = (HERE / name).read_text(encoding="utf-8")
         assert old not in text and launch not in text, name
+        assert 'command = [row["interpreter"]' not in text, name
         assert text.count('command = [sys.executable, "-u",') == 2, name
     launchers = sorted(p.name for p in HERE.glob("*.py") if not p.name.startswith("test_")
                        and launch in p.read_text(encoding="utf-8"))
     assert launchers == [RECORDED_LAUNCHER]
     probe = (HERE / RECORDED_LAUNCHER).read_text(encoding="utf-8")
-    assert '"interpreter": record.get("interpreter") or sys.executable' in probe
+    assert ('"interpreter": record.get("interpreter") or neutral_ids.path(sys.executable)'
+            in probe)
+    # It launches the resolved path, never the recorded spelling itself.
+    assert 'command = [row["interpreter"]' not in probe
+    assert probe.count("command = [interpreter, \"-u\",") == 2
 
 
 def test_the_complex_gate_requires_the_four_inputs_by_name(tmp_path):
@@ -476,6 +926,7 @@ def test_the_nine_cells_on_the_standing_records():
         import importlib, json, sys
         from pathlib import Path
         import hd_tail_gate_common as common
+        import neutral_ids
         results = Path(sys.argv[1])
         direct = ["gate_metal_fused_hd_pair", "gate_metal_bfast_fused_hd_pair",
                   "gate_metal_conductive_fused_hd_pair",
@@ -489,7 +940,8 @@ def test_the_nine_cells_on_the_standing_records():
             rows += (common.lift_basis(module.PRODUCT, results)[0] if name in tail
                      else module.lift_basis(results)[0])
         print(json.dumps({"rows": len(rows),
-                          "parent": sum(r["interpreter"] == sys.executable for r in rows),
+                          "parent": sum(r["interpreter"] == neutral_ids.path(sys.executable)
+                                        for r in rows),
                           "needs": sorted(r["label"] for r in rows if r["lift_needs"])}))
     ''')
     done = subprocess.run([sys.executable, "-c", body, str(HERE / "results")],

@@ -1,13 +1,13 @@
-"""The configuration matrix the Metal composition is MEASURED over.
+"""The configuration matrix the Metal composition is measured over.
 
-ONE DEFINITION, TWO CONSUMERS. ``meep_gpu/test_metal_planner_composition.py`` runs
+One definition, two consumers. ``meep_gpu/test_metal_planner_composition.py`` runs
 this matrix as a pinned expectation that cannot go stale, and
 ``parity/meep_gpu/probe_metal_planner_composition.py`` runs the same matrix as a
 sweep that writes an artifact with the evaluation and overlap counts. Two copies of
 a configuration list is how a test and its artifact quietly stop describing the same
 thing.
 
-WHAT A ROW IS: ``(label, build, expected_selected, expected_ambiguous)``.
+What a row is: ``(label, build, expected_selected, expected_ambiguous)``.
 
 * ``build()`` returns ``(fields, pml)`` from the ENGINE'S OWN classes. Nothing here
   is a duck type except where a row deliberately plants a state the engine cannot
@@ -15,11 +15,11 @@ WHAT A ROW IS: ``(label, build, expected_selected, expected_ambiguous)``.
 * ``expected_selected`` is the EXACT ``MetalStepPlan.selected`` dict — the arm label
   per slot. An empty dict is a legitimate and expected answer: every arm refused,
   the whole step is on the array path, which is always correct.
-* ``expected_ambiguous`` names the slots that must be left UNSELECTED because TWO OR
-  MORE arms admitted. A slot listed here and not ambiguous — or ambiguous and not
+* ``expected_ambiguous`` names the slots that must be left UNSELECTED because two or
+  more arms admitted. A slot listed here and not ambiguous — or ambiguous and not
   listed — is a predicate defect.
 
-WHY THE MATRIX IS BUILT RATHER THAN LIFTED. The corpus battery (the 186-row,
+Why the matrix is built rather than lifted. The corpus battery (the 186-row,
 759-slot measurement) lifts real MEEP scripts and answers "how much of the corpus
 does the composer reach". It cannot answer "do two arms ever admit the same slot",
 because the corpus does not contain the adversarial pairs — a complex BETA run, a
@@ -27,7 +27,7 @@ BFAST run under an inactive absorber, an off-diagonal row planted past the
 installer. Disjointness has to be measured on configurations CONSTRUCTED to be near
 the boundary between two families, which is what this file is.
 
-ONE ENVIRONMENT FACT EVERY CONSUMER MUST SET, a refusal if unset rather than a
+One environment fact every consumer must set, a refusal if unset rather than a
 silent default: ``MEEP_GPU_SUBNORMAL_POLICY=flush`` — on MPS the float32 subnormal
 flush is native and has no lever, so the resolved default ``keep`` is NOT OFFERABLE
 and every Metal predicate refuses by name. Setting ``flush`` is what puts the claim
@@ -69,7 +69,7 @@ def _fill(fields: Any, seed: int = 5) -> Any:
     refuse. The sweep only calls predicates, so this is here so the SAME builders
     can feed the whole-step gate without a second definition drifting from this one.
 
-    A SEEDED STATE IS A MID-RUN ONE: H was started from B long ago, so the state
+    A seeded state is a mid-run one: H was started from B long ago, so the state
     carries ``Fields.h_separated`` (``stepping.separate_h_from_b`` must not run again
     on it, and a base ``update_H`` kernel may take its first update).
     """
@@ -190,7 +190,7 @@ def folded(axis: str = "Y", phase: Any = 1,
     all drive one axis even and the other odd), so a matrix carrying only matched
     phases would miss the case where a doubly-unowned corner's two parities differ.
 
-    ``axis`` may name MORE THAN ONE axis (``"XY"``). Two folded axes is what makes
+    ``axis`` may name more than one axis (``"XY"``). Two folded axes is what makes
     the fill's X, Y, Z ORDER measurable at all: a corner unowned on two planes must
     carry the product of both parities, and with one folded axis every ordering
     question is trivially null.
@@ -198,7 +198,7 @@ def folded(axis: str = "Y", phase: Any = 1,
     ``extent`` decides the FULL COUNT'S PARITY, which decides the reflect row.
     ``_far_reflect_rows`` is ``n_full - stored + 2``, which is ``stored - 2`` at an
     even full count and ``stored - 3`` at an odd one — so at the default 2.0 the
-    wrong ``n - 2`` formula HAPPENS TO BE RIGHT and a gate carrying only that
+    wrong ``n - 2`` formula happens to be right and a gate carrying only that
     extent measures nothing about it. 2.1 gives the odd count where it is a whole
     cell wrong.
 
@@ -428,7 +428,7 @@ def nonlinear(pair: Tuple[Any, Any], scalar: bool = False,
 def plant_rows(pair: Tuple[Any, Any]) -> Tuple[Any, Any]:
     """A live off-diagonal ROW SLOT with ``has_offdiagonal_epsilon`` still False.
 
-    THE ENGINE CANNOT PRODUCE THIS — the flag is a read-only property over the very
+    The engine cannot produce this — the flag is a read-only property over the very
     dict the row accessor reads, so the two move together — and that is exactly why
     it is planted. The ordinary constitutive refuses on the FLAG and the off-diagonal
     family requires a LIVE SLOT, so their disjointness rests on an engine coupling
@@ -493,7 +493,7 @@ Row = Tuple[str, Callable[[], Tuple[Any, Any]], Dict[str, str], Tuple[str, ...]]
 #: Every configuration, with the EXACT selection the shipped composer produces.
 #: Recorded from a run of the sweep on this host and then held as an expectation.
 MATRIX: Tuple[Row, ...] = (
-    # -- the tranche-1 real-field products -----------------------------------
+    # -- the real-field PML products (plain, conductive, dispersive) ---------
     ("cart_pml_real", lambda: cart(),
      dict(step_B="PML", step_D="PML", update_H="ordinary", update_E="ordinary"),
      ()),
@@ -596,7 +596,7 @@ MATRIX: Tuple[Row, ...] = (
      dict(step_B="complex no-PML curl", step_D="complex no-PML curl",
           update_H="no-PML null", update_E="complex no-PML stored E"), ()),
     # The complex no-absorber tensor row owns update_E (its double row per part,
-    # ruling R7's software binary64); the curls and H keep their arms.
+    # in software binary64); the curls and H keep their arms.
     ("nopml_complex_bloch_offdiag", complex_lossless_offdiag_no_pml,
      dict(step_B="complex no-PML curl", step_D="complex no-PML curl",
           update_H="no-PML null", update_E="complex no-PML off-diagonal"), ()),
@@ -644,7 +644,7 @@ MATRIX: Tuple[Row, ...] = (
     ("beta_real_2d_metallic", lambda: flat(beta=0.33, boundaries={"x": "metallic"}),
      dict(step_B="special_kz real beta", step_D="special_kz real beta",
           update_H="special_kz real beta", update_E="special_kz real beta"), ()),
-    # THE COMPLEX BETA ARM GAINED ITS CONSTITUTIVE COMPANION ON 2026-08-19 and this
+    # The complex beta arm gained its constitutive companion on 2026-08-19 and this
     # row grew the two slots it had been missing. Until then the arm was registered
     # as an unconditional refusal so the gap was reported by name; the row listed
     # only the curls, and a whole complex beta step was half on the array path.
@@ -679,7 +679,7 @@ MATRIX: Tuple[Row, ...] = (
      lambda: cart(rows={"Ex": ("Ey", "Ez"), "Ey": ("Ez",)}),
      dict(step_B="PML", step_D="PML", update_H="ordinary",
           update_E="offdiag"), ()),
-    # THE PLANTED DOUBLE-ADMIT. Unreachable on the engine, kept permanently: it is
+    # The planted double-admit. Unreachable on the engine, kept permanently: it is
     # the only configuration on which two wired arms admit one slot, and the point
     # is that the composition REFUSES rather than picking.
     ("offdiag_flag_false_slot_live", lambda: plant_rows(cart()),
@@ -717,7 +717,7 @@ MATRIX: Tuple[Row, ...] = (
     ("fold_real_2d_x", lambda: folded(axis="X"),
      dict(step_B="folded", step_D="folded", update_H="folded", update_E="folded",
           fill_B="mirror fill", fill_D="mirror fill"), ()),
-    # THE WALL SEAM. A folded PERIODIC axis needs the far ghost pass, and
+    # The wall seam. A folded PERIODIC axis needs the far ghost pass, and
     # `zero_metal_*` runs BETWEEN the two fill passes; the curl and constitutive
     # slots are unaffected and still compose, so this row shows the refusal is
     # SCOPED to the two seam slots rather than sinking the run.
@@ -739,7 +739,7 @@ MATRIX: Tuple[Row, ...] = (
     # is installed. A substitution with no throughput benefit, named here rather
     # than discovered later.
     #
-    # THE NULL PAIR WINS update_H/update_E ON A FOLDED RUN, and it was MEASURED
+    # The null pair wins update_H/update_E on a folded run, and it was measured
     # here rather than assumed: `no_pml_constitutive` does not reach
     # `coverage._grid_reasons`, names no fold clause, and admits whenever the
     # absorber is inactive. That is not an ambiguity — the folded constitutive
@@ -751,8 +751,8 @@ MATRIX: Tuple[Row, ...] = (
      dict(fill_B="mirror fill", fill_D="mirror fill",
           update_H="no-PML null", update_E="no-PML null"), ()),
 
-    # -- the fold COMPOSED WITH AN OFF-DIAGONAL ROW ---------------------------
-    # THE INTERSECTION OF TWO CERTIFIED FAMILIES, and the rows are chosen for what
+    # -- the fold composed with an off-diagonal row ---------------------------
+    # The intersection of two certified families, and the rows are chosen for what
     # only the composition can get wrong. `offdiag_update_e` refuses every fold
     # through clause 5 and `folded` refuses every live row because its constitutive
     # body is element-wise, so ONE arm must take `update_E` here and the other five
@@ -762,7 +762,7 @@ MATRIX: Tuple[Row, ...] = (
      dict(step_B="folded", step_D="folded", update_H="folded",
           update_E="folded offdiag",
           fill_B="mirror fill", fill_D="mirror fill"), ()),
-    # THE CORPUS'S OWN SHAPE. All 19 folded off-diagonal corpus rows are 2-D and
+    # The corpus's own shape. All 19 folded off-diagonal corpus rows are 2-D and
     # folded METALLIC, over the two BC triples (METALLIC, MIRROR_METALLIC, PERIODIC)
     # and (MIRROR_METALLIC, MIRROR_METALLIC, PERIODIC). Not one folded PERIODIC row
     # exists, which is why the row above carries the other termination.
@@ -772,7 +772,7 @@ MATRIX: Tuple[Row, ...] = (
      dict(step_B="folded", step_D="folded", update_H="folded",
           update_E="folded offdiag",
           fill_B="mirror fill", fill_D="mirror fill"), ()),
-    # THE ODD PLANE, and the polarity inverts the reading a reader arrives with:
+    # The odd plane, and the polarity inverts the reading a reader arrives with:
     # the ghost weight is `-phase`, so an ODD plane weighs +1 and the emitted term
     # is the CERTIFIED one character for character, while an EVEN plane is the one
     # that needs the negated body.
@@ -780,18 +780,18 @@ MATRIX: Tuple[Row, ...] = (
      dict(step_B="folded", step_D="folded", update_H="folded",
           update_E="folded offdiag",
           fill_B="mirror fill", fill_D="mirror fill"), ()),
-    # A POLE ON TOP: the source becomes (D - sum P) at every tensor-row gather.
-    # The dedicated packed-pole product forms that row (the off-diagonal single's
-    # double row, ruling R7's software binary64) and owns update_E; the folded
-    # B/D/H/fill spine and the ADE recurrence retain their independently verified
-    # slots.
+    # A pole on top: the source becomes (D - sum P) at every tensor-row gather.
+    # The dedicated packed-pole product forms that row (the off-diagonal single's double row,
+    # in software binary64: docs/design/floating-point.md#double-precision-on-the-metal-table)
+    # and owns update_E; the folded B/D/H/fill spine and the ADE recurrence retain their
+    # independently verified slots.
     ("fold_offdiag_2d_dispersive",
      lambda: dispersive(folded(rows={"Ex": ("Ey",)})),
      dict(step_B="folded", step_D="folded", update_H="folded",
           update_E="folded off-diagonal dispersive PML E",
           update_P="ADE update_P", fill_B="mirror fill",
           fill_D="mirror fill"), ()),
-    # THE SECOND PLANTED DOUBLE-ADMIT, and it is the SAME engine coupling as
+    # The second planted double-admit, and it is the SAME engine coupling as
     # `offdiag_flag_false_slot_live` one level down: `folded` refuses on the FLAG
     # and `folded offdiag` requires a LIVE ROW SLOT, and the two agree only because
     # `has_offdiagonal_epsilon` is a read-only property over the very dict the row
@@ -807,8 +807,8 @@ MATRIX: Tuple[Row, ...] = (
      dict(step_B="folded", step_D="folded", update_H="folded",
           fill_B="mirror fill", fill_D="mirror fill"), ()),
 
-    # -- the fold UNDER COMPLEX STORAGE ---------------------------------------
-    # THE COMPOSITION OF TWO CERTIFIED FAMILIES, and the rows are chosen for what
+    # -- the fold under complex storage ---------------------------------------
+    # The composition of two certified families, and the rows are chosen for what
     # only the composition can get wrong. Both parents refuse every one of these BY
     # NAME — `symmetry` on storage, `complex_fields` on the fold — so a row where
     # neither the folded-complex arm nor a refusal appears is a silent coverage loss
@@ -817,7 +817,7 @@ MATRIX: Tuple[Row, ...] = (
      dict(step_B="folded complex", step_D="folded complex",
           update_H="folded complex", update_E="folded complex",
           fill_B="folded complex fill", fill_D="folded complex fill"), ()),
-    # THE OTHER TERMINATION. MIRROR_METALLIC runs no far pass at all, so the fill
+    # The other termination. MIRROR_METALLIC runs no far pass at all, so the fill
     # plan's `far` list is empty and it declares only its own slot in
     # `replaces_sub_steps` — a different residency answer from the row above.
     ("fold_complex_2d_metallic",
@@ -825,7 +825,7 @@ MATRIX: Tuple[Row, ...] = (
      dict(step_B="folded complex", step_D="folded complex",
           update_H="folded complex", update_E="folded complex",
           fill_B="folded complex fill", fill_D="folded complex fill"), ()),
-    # THE ODD PLANE. Under REAL storage this is a different compiled fill, because
+    # The odd plane. Under REAL storage this is a different compiled fill, because
     # the parity is a source specialisation there; under COMPLEX it is the SAME
     # compiled body with a different passed coefficient word, which is the visible
     # consequence of the parity having become arithmetic.
@@ -833,7 +833,7 @@ MATRIX: Tuple[Row, ...] = (
      dict(step_B="folded complex", step_D="folded complex",
           update_H="folded complex", update_E="folded complex",
           fill_B="folded complex fill", fill_D="folded complex fill"), ()),
-    # TWO FOLDED AXES AT MIXED PHASE — the only shape where the X, Y, Z fill order
+    # Two folded axes at mixed phase — the only shape where the X, Y, Z fill order
     # is a real question. Under real storage every fill is a multiply by exactly
     # +/-1 and the order commutes (a measured null); complex multiplication is not
     # associative, so the doubly-unowned corner sees c_y (x) (c_x (x) z) against
@@ -852,7 +852,7 @@ MATRIX: Tuple[Row, ...] = (
      dict(step_B="folded complex", step_D="folded complex",
           update_H="folded complex", update_E="folded complex",
           fill_B="folded complex fill", fill_D="folded complex fill"), ()),
-    # A BLOCH PHASE ON AN UNFOLDED AXIS — THE COMPOSITION'S OWN CASE, and the only
+    # A Bloch phase on an unfolded axis — the composition's own case, and the only
     # fold-plus-phase pairing the engine will build: `Grid` refuses a k component on
     # a mirror plane's own axis outright ("a mirror plane forces the field to be even
     # or odd about it, which only a zero Bloch phase allows"). Three of the five
@@ -863,7 +863,7 @@ MATRIX: Tuple[Row, ...] = (
      dict(step_B="folded complex", step_D="folded complex",
           update_H="folded complex", update_E="folded complex",
           fill_B="folded complex fill", fill_D="folded complex fill"), ()),
-    # AN OFF-DIAGONAL ROW. The dedicated complex folded tensor product owns E;
+    # An off-diagonal row. The dedicated complex folded tensor product owns E;
     # folded complex B/D/H and the two fills remain the verified spine. Three of
     # the eight folded complex corpus rows have this shape.
     ("fold_complex_2d_offdiag",
@@ -871,15 +871,15 @@ MATRIX: Tuple[Row, ...] = (
      dict(step_B="folded complex", step_D="folded complex",
           update_H="folded complex", update_E="complex folded off-diagonal PML E",
           fill_B="folded complex fill", fill_D="folded complex fill"), ()),
-    # A FOLDED COMPLEX BETA RUN — `folded_beta`'s complex arm.
+    # A folded complex beta run — `folded_beta`'s complex arm.
     #
-    # THIS ROW MOVED OUT OF `UNCARRIED` IN THE SAME CHANGE THAT BUILT THE FAMILY,
+    # This row moved out of `UNCARRIED` in the same change that built the family,
     # which is the only way a non-vacuity floor may be moved. Until then it pinned
     # the four arithmetic slots as selecting NOTHING, with the refusal named on both
     # sides (`folded_complex`'s "beta is nonzero", `special_kz`'s "a mirror plane is
     # active"), and that pin was correct: no product carried the intersection.
     #
-    # THE TWO FILL SLOTS ARE UNCHANGED, and that is the point of keeping them
+    # The two fill slots are unchanged, and that is the point of keeping them
     # spelled here. `fill_symmetry_bc_*` copies `phase * field[2]` and touches no
     # beta term, so `folded_complex`'s fill predicate carries NO beta clause and
     # already admitted this row before the family existed. `folded_beta` therefore
@@ -892,7 +892,7 @@ MATRIX: Tuple[Row, ...] = (
      dict(step_B="folded beta complex", step_D="folded beta complex",
           update_H="folded beta complex", update_E="folded beta complex",
           fill_B="folded complex fill", fill_D="folded complex fill"), ()),
-    # THE SAME RUN WITH A BLOCH PHASE ON THE UNFOLDED AXIS — which is what two of
+    # The same run with a Bloch phase on the unfolded axis — which is what two of
     # the four folded-beta corpus rows actually are
     # (`TestEigCoeffs.test_binary_grating_special_kz_*`, kx != 0 on x with the fold
     # on y). It exercises clause 9's THREE questions at once: the phase rides a
@@ -906,12 +906,12 @@ MATRIX: Tuple[Row, ...] = (
           update_H="folded beta complex", update_E="folded beta complex",
           fill_B="folded complex fill", fill_D="folded complex fill"), ()),
 
-    # -- folded_beta, THE REAL ARM -------------------------------------------
-    # A FOLDED REAL BETA RUN. Moved out of `UNCARRIED` in the same change that built
+    # -- folded_beta, the real arm -------------------------------------------
+    # A folded real beta run. Moved out of `UNCARRIED` in the same change that built
     # the family, for the same reason as its complex twin, and it is the row the
     # corpus's `TestSpecialKz.test_eigsrc_kz_1_real_imag` looks like.
     #
-    # THE TWO ARMS BOTH SPEAK ON EVERY SLOT HERE AND EXACTLY ONE ADMITS. The gate
+    # The two arms both speak on every slot here and exactly one admits. The gate
     # `_has_folded_beta` asks only about the fold and beta, deliberately, so the
     # complex arm is CONSULTED on this row and says "storage is real float32" while
     # the real arm is consulted on the row above and says
@@ -921,7 +921,7 @@ MATRIX: Tuple[Row, ...] = (
      dict(step_B="folded beta real", step_D="folded beta real",
           update_H="folded beta real", update_E="folded beta real",
           fill_B="mirror fill", fill_D="mirror fill"), ()),
-    # THE FOLD OVER A METALLIC OUTER DECLARATION — MIRROR_METALLIC rather than
+    # The fold over a metallic outer declaration — MIRROR_METALLIC rather than
     # MIRROR_PERIODIC. `folded_top_plane_mask` emits NOTHING there, because the
     # stored array stops at `big_corner` and the top plane is owned and stepped, so
     # masking it would delete a real cell. A matrix carrying only the periodic
@@ -941,7 +941,7 @@ MATRIX: Tuple[Row, ...] = (
      dict(step_B="folded beta real", step_D="folded beta real",
           update_H="folded beta real", update_P="ADE update_P",
           fill_B="mirror fill", fill_D="mirror fill"), ()),
-    # THE WALLED FOLDED BETA RUN, on both storages. This is the TEN-PASS shape for
+    # The walled folded beta run, on both storages. This is the TEN-PASS shape for
     # this family: `zero_metal_*` sits BETWEEN the near and far ghost passes
     # (driver.py:3285/:3286), so both fold families refuse the two fill slots by
     # name and the four arithmetic slots still compose. It is the row where the
@@ -958,8 +958,8 @@ MATRIX: Tuple[Row, ...] = (
      dict(step_B="folded beta complex", step_D="folded beta complex",
           update_H="folded beta complex", update_E="folded beta complex"), ()),
 
-    # -- THE FOLD AGAINST THE FAMILIES IT MUST REFUSE -------------------------
-    # THE NEGATIVE CONTROLS THE FOLDED ROWS ABOVE DO NOT CARRY. Every row above
+    # -- the fold against the families it must refuse -------------------------
+    # The negative controls the folded rows above do not carry. Every row above
     # puts a folded family beside families that refuse the FOLD; these put it
     # beside the two levers the folded families themselves refuse — BFAST and beta
     # — and the pins record the SCOPE of that refusal, which is the part a reader
@@ -974,7 +974,7 @@ MATRIX: Tuple[Row, ...] = (
     ("fold_real_2d_nonlinear", lambda: nonlinear(folded()),
      dict(fill_B="mirror fill", fill_D="mirror fill"), ()),
 
-    # -- THE FOLD IN THREE DIMENSIONS AND ON EVERY AXIS -----------------------
+    # -- the fold in three dimensions and on every axis -----------------------
     # The corpus's folded rows are not all 2-D and not all folded on Y. The fill's
     # plane-index arithmetic is specialised per axis and the 3-D grid is where a
     # ghost pass writes 192 words rather than 16, so a matrix carrying only the
@@ -989,7 +989,7 @@ MATRIX: Tuple[Row, ...] = (
      lambda: folded(axis="X", boundaries={"x": "metallic"}),
      dict(step_B="folded", step_D="folded", update_H="folded", update_E="folded",
           fill_B="mirror fill", fill_D="mirror fill"), ()),
-    # TWO FOLDED AXES AT MIXED PHASE under REAL storage. The complex row above is
+    # Two folded axes at mixed phase under REAL storage. The complex row above is
     # where the fill ORDER is a live question; this is its control, and it is here
     # because a doubly-unowned corner is a different index path whatever the
     # storage.
@@ -1003,8 +1003,8 @@ MATRIX: Tuple[Row, ...] = (
      dict(step_B="folded", step_D="folded", update_H="folded", update_E="folded",
           fill_B="mirror fill", fill_D="mirror fill"), ()),
 
-    # -- THE FOLDED COMPLEX FAMILY'S OWN BOUNDARIES ---------------------------
-    # THE WALL SEAM, complex side. The mirror image of `fold_real_2d_walled`: the
+    # -- the folded complex family's own boundaries ---------------------------
+    # The wall seam, complex side. The mirror image of `fold_real_2d_walled`: the
     # two fills are refused BY NAME (`zero_metal_*` runs between the passes) while
     # every arithmetic slot still composes. Measured on both storages because the
     # complex fill imports the real family's helper and an import is not a proof
@@ -1021,7 +1021,7 @@ MATRIX: Tuple[Row, ...] = (
     # visible instead of inferred.
     ("fold_complex_2d_conductive", lambda: conductive(folded(complex_storage=True)),
      dict(fill_B="folded complex fill", fill_D="folded complex fill"), ()),
-    # A FOLDED COMPLEX NO-PML RUN — the partial-coverage shape, complex side: the
+    # A folded complex no-PML run — the partial-coverage shape, complex side: the
     # two fills compose and the NULL PAIR takes the constitutive slots, exactly as
     # it does on the real fold.
     ("fold_complex_2d_no_pml", lambda: folded_no_pml(complex_storage=True),
@@ -1034,7 +1034,7 @@ MATRIX: Tuple[Row, ...] = (
      dict(step_B="folded complex", step_D="folded complex",
           update_H="folded complex", update_E="folded complex",
           fill_B="folded complex fill", fill_D="folded complex fill"), ()),
-    # THREE LEVERS AT ONCE: fold, Bloch phase on an unfolded axis, and a live
+    # Three levers at once: fold, Bloch phase on an unfolded axis, and a live
     # off-diagonal row. The same dedicated E body keeps its two phase stages while
     # the folded-complex spine supplies the other five slots.
     ("fold_complex_2d_offdiag_bloch",
@@ -1044,7 +1044,7 @@ MATRIX: Tuple[Row, ...] = (
           update_H="folded complex", update_E="complex folded off-diagonal PML E",
           fill_B="folded complex fill", fill_D="folded complex fill"), ()),
 
-    # -- THE FOLDED OFF-DIAGONAL FAMILY'S OWN BOUNDARIES ----------------------
+    # -- the folded off-diagonal family's own boundaries ----------------------
     ("fold_offdiag_2d_walled",
      lambda: folded(boundaries={"x": "metallic"}, rows={"Ex": ("Ey",)}),
      dict(step_B="folded", step_D="folded", update_H="folded",
@@ -1056,7 +1056,7 @@ MATRIX: Tuple[Row, ...] = (
      dict(step_B="folded", step_D="folded", update_H="folded",
           update_E="folded offdiag",
           fill_B="mirror fill", fill_D="mirror fill"), ()),
-    # A FOLDED OFF-DIAGONAL NO-PML RUN, and the pin records the ONE PLACE the null
+    # A folded off-diagonal no-PML run, and the pin records the ONE PLACE the null
     # pair splits: `update_H` is the null's and `update_E` is NOBODY'S. The null
     # constitutive refuses an off-diagonal row on the E side, the folded
     # off-diagonal arm requires an ACTIVE absorber, and the slot correctly falls to
@@ -1067,12 +1067,12 @@ MATRIX: Tuple[Row, ...] = (
           update_H="no-PML null"), ()),
 
     # -- the chi2/chi3 Pade product -------------------------------------------
-    # The Pade family owns update_E (its |D|^2 in software binary64, ruling R7).
-    # Its nonlinear spine owns the B/D curls
-    # and magnetic constitutive side through THREE separate, inverted admissions:
-    # those sub-steps do not read chi2 or chi3, but the ordinary predicates retain
-    # their global clause so a linear and nonlinear arm cannot co-admit.  This is
-    # an added product rather than a widening of a shared predicate.
+    # The Pade family owns update_E (its |D|^2 in software binary64:
+    # docs/design/floating-point.md#double-precision-on-the-metal-table). Its nonlinear
+    # spine owns the B/D curls and magnetic constitutive side through THREE separate,
+    # inverted admissions: those sub-steps do not read chi2 or chi3, but the ordinary
+    # predicates retain their global clause so a linear and nonlinear arm cannot
+    # co-admit. This is an added product rather than a widening of a shared predicate.
     ("nonlinear_real", lambda: nonlinear(cart()),
      dict(step_B="nonlinear PML curl", step_D="nonlinear PML curl",
           update_H="nonlinear PML magnetic", update_E="nonlinear"), ()),
@@ -1098,7 +1098,7 @@ MATRIX: Tuple[Row, ...] = (
     ("nonlinear_real_walled", lambda: nonlinear(cart(boundaries="metallic")),
      dict(step_B="nonlinear PML curl", step_D="nonlinear PML curl",
           update_H="nonlinear PML magnetic", update_E="nonlinear"), ()),
-    # THE NULL PAIR SPLITS ON A NONLINEAR RUN, and that is this row's whole content.
+    # The null pair splits on a nonlinear run, and that is this row's whole content.
     # Under an inactive absorber `no_pml_constitutive` admits `update_H` — correct,
     # `stepping.update_H` returns at :916-917 — and REFUSES `update_E` by name,
     # because that side's return is not unconditional when a Pade factor is
@@ -1110,13 +1110,13 @@ MATRIX: Tuple[Row, ...] = (
      dict(update_H="no-PML null"), ()),
 
     # -- the cylindrical complex product, |m| >= 1 ----------------------------
-    # MOVED OUT OF `UNCARRIED` IN THE SAME CHANGE THAT MADE THE FAMILY REAL, which
+    # Moved out of `UNCARRIED` in the same change that made the family real, which
     # is the only way a row is allowed to leave that list. ALL FOUR arithmetic
     # slots compose, and the two constitutive ones are the CERTIFIED complex body
     # under a restated predicate rather than new arithmetic — `update_H` and
     # `update_E` carry no cylindrical branch at all.
     #
-    # THE COURANT NUMBER DECIDES THE TWO CURLS. The |m| = 1 axis rule and the m = 0
+    # The Courant number decides the two curls. The |m| = 1 axis rule and the m = 0
     # on-axis Dz increment are MEEP's double products with Courant, rounded once,
     # which this backend forms as a float32 product only when Courant is a float32
     # word; any other Courant is refused BY NAME on the curl that carries the rule
@@ -1128,7 +1128,7 @@ MATRIX: Tuple[Row, ...] = (
     # (CYL_F32_COURANT, the `_f32_courant` twins), where all four slots compose and
     # the curl's own arm is what the row measures.
     #
-    # THE ROWS ARE THE FAMILY'S OWN SPECIALISATION AXES, one row each, so a sweep
+    # The rows are the family's own specialisation axes, one row each, so a sweep
     # that only ever built m = +1 with a metallic z would not measure the
     # composition of the arm the corpus's z-PERIODIC rows or its |m| >= 2 rows take:
     #   BACKWARD  — both sub-steps, every row
@@ -1169,14 +1169,14 @@ MATRIX: Tuple[Row, ...] = (
           update_H="cylindrical complex", update_E="cylindrical complex"), ()),
 
     # -- cylindrical m = 0, real storage: the OTHER cylindrical kernel ---------
-    # THIS ROW MOVED OUT OF `UNCARRIED` IN THE CHANGE THAT MADE THE FAMILY REAL, and
+    # This row moved out of `UNCARRIED` in the change that made the family real, and
     # that direction matters: a row is never moved to turn a red floor green. What
     # it measures now is the separation between the two cylindrical families by
     # STORAGE (clause 2, inverted in both directions): since 2026-09-04 the complex
     # family carries complex64 at every m, so this row and `dcyl_m0_complex` below
     # are the same m under the two storages, and dropping either family's storage
     # clause would turn one of them AMBIGUOUS rather than silently pick one, which
-    # is the outcome the composer is built to produce. (Until that round the pair's
+    # is the outcome the composer is built to produce. (Until 2026-09-04 the pair's
     # separation was a DOUBLE inversion — clause 14 on m as well — and the complex
     # corner below was a named absence.)
     # Both real m = 0 rows take the float32 word of the default Courant: the D side's
@@ -1188,7 +1188,7 @@ MATRIX: Tuple[Row, ...] = (
                                          courant=CYL_REAL_COURANT),
      dict(step_B="cylindrical m=0", step_D="cylindrical m=0",
           update_H="cylindrical m=0", update_E="cylindrical m=0"), ()),
-    # THE FAMILY'S ONE REMAINING SPECIALISATION AXIS, one row so it is driven rather
+    # The family's one remaining specialisation axis, one row so it is driven rather
     # than merely enumerable: BCZ. The r axis is pinned METALLIC by construction (the
     # source emitter REFUSES any other code) and the wall-row arm is decided by the
     # sub-step, so z PERIODIC vs METALLIC is the only compiled axis a configuration
@@ -1198,7 +1198,7 @@ MATRIX: Tuple[Row, ...] = (
                          courant=CYL_REAL_COURANT),
      dict(step_B="cylindrical m=0", step_D="cylindrical m=0",
           update_H="cylindrical m=0", update_E="cylindrical m=0"), ()),
-    # A CONDUCTIVITY ON A CYLINDRICAL RUN — the SCOPE row this family did not have.
+    # A conductivity on a cylindrical run — the SCOPE row this family did not have.
     # A conductivity changes the CURL recurrence only (stepping.py:508), so the two
     # curls fall to the array path and the constitutive pair still composes. The pin
     # records that the refusal is scoped to the two slots that read `condfac_for`
@@ -1207,8 +1207,8 @@ MATRIX: Tuple[Row, ...] = (
      lambda: conductive(cylindrical(m=0, complex_storage=False)),
      dict(update_H="cylindrical m=0", update_E="cylindrical m=0"), ()),
 
-    # -- THE (m, storage) SQUARE'S OTHER TWO CORNERS ---------------------------
-    # `dcyl_m0_complex` MOVED OUT OF `UNCARRIED` ON 2026-09-04, in the same change
+    # -- the (m, storage) square's other two corners ---------------------------
+    # `dcyl_m0_complex` moved out of `UNCARRIED` on 2026-09-04, in the same change
     # that gave the cylindrical complex family its `M_ZERO` arm — the direction a
     # row may move. Until then it was a named absence: the complex family refused
     # m = 0 by name and the real family refused complex64 storage, so this
@@ -1247,14 +1247,14 @@ MATRIX: Tuple[Row, ...] = (
 
     # -- intersections with deliberately partial Metal coverage ----------------
     ("nonlinear_complex", lambda: nonlinear(cart(complex_storage=True)), {}, ()),
-    # THE MAGNITUDE CEILING, AS A COMPOSITION ROW. This is a real chi2/chi3 run on
+    # The magnitude ceiling, as a composition row. This is a real chi2/chi3 run on
     # a grid the family otherwise admits; the ONLY thing refusing it is clause (g),
     # `chi3 * |chi1inv|^3` above 1e29. Carried here so the refusal is measured as a
     # composition outcome — the slot falls to the array path — rather than only as
     # a predicate unit test, because a ceiling that refused in the predicate and
     # was then composed anyway would be the worst of both.
     #
-    # THE VALUE IS COMPUTED AGAINST `_epsilon`, NOT PICKED TO LOOK BIG, and the
+    # The value is computed against `_epsilon`, not picked to look big, and the
     # first spelling of this row got it wrong in the direction that matters: with
     # `chi3 = 1e30` and Ez's installed `chi1inv = 1/3`, the clause quantity is
     # 1e30 * (1/3)^3 = 3.7e28 — UNDER the ceiling — so the row was ADMITTED and the
@@ -1265,7 +1265,7 @@ MATRIX: Tuple[Row, ...] = (
     ("nonlinear_real_above_ceiling", lambda: nonlinear(cart(), chi3=1e32),
      dict(step_B="nonlinear PML curl", step_D="nonlinear PML curl",
           update_H="nonlinear PML magnetic"), ()),
-    # A NONLINEARITY AND A LIVE OFF-DIAGONAL ROW — two `update_E` families in one
+    # A nonlinearity and a live off-diagonal row — two `update_E` families in one
     # run, and the one pairing among them that could have overlapped. Both update_E
     # arms refuse — `nonlinear` because the row product reads neighbours and its
     # Pade body is element-wise, `offdiag_update_e` because clause 10 calls χ²/χ³
@@ -1273,14 +1273,14 @@ MATRIX: Tuple[Row, ...] = (
     ("nonlinear_offdiag", lambda: nonlinear(cart(rows={"Ex": ("Ey",)})),
      dict(step_B="nonlinear PML curl", step_D="nonlinear PML curl",
           update_H="nonlinear PML magnetic"), ()),
-    # A NONLINEARITY AND A POLE. `update_E`'s source becomes (D - sum P) AND carries
+    # A nonlinearity and a pole. `update_E`'s source becomes (D - sum P) AND carries
     # a Pade factor; no product on this backend composes the two at update_E.  The
     # curl and magnetic sides are independent of both features; update_P remains
     # the ADE plan's own slot.
     ("nonlinear_dispersive", lambda: dispersive(nonlinear(cart())),
      dict(step_B="nonlinear PML curl", step_D="nonlinear PML curl",
           update_H="nonlinear PML magnetic", update_P="ADE update_P"), ()),
-    # A NONLINEARITY ON AN UNFOLDED BETA RUN — the beta twin of
+    # A nonlinearity on an unfolded beta run — the beta twin of
     # `fold_real_2d_nonlinear`, and it is here because the two are refused by
     # DIFFERENT clauses: the folded row by clause 5 on the nonlinear side, this one
     # by clause 12. A matrix carrying only the folded pairing would leave the
@@ -1312,21 +1312,21 @@ EXPECTED_WINNERS: Tuple[str, ...] = (
 #: cannot step is the correct answer rather than a violation.
 ARITHMETIC_SLOTS: Tuple[str, ...] = ("step_B", "step_D", "update_H", "update_E")
 
-#: THE OTHER HALF OF THE NON-VACUITY FLOOR, and the half a sweep normally forgets.
+#: The other half of the non-vacuity floor, and the half a sweep normally forgets.
 #: ``EXPECTED_WINNERS`` catches an arm that never fires; this catches an arm that
-#: fires where NO PRODUCT EXISTS. Each row names a family this backend does not
+#: fires where no product exists. Each row names a family this backend does not
 #: carry, and the floor is that NOTHING is selected on any of the four arithmetic
 #: slots — a quiet admission here is a kernel stepping a recurrence it does not
 #: implement, which is a wrong ANSWER rather than a missed opportunity.
 UNCARRIED: Dict[str, str] = {
-    # `dcyl_m1_complex` LEFT THIS LIST when the cylindrical complex family landed,
+    # `dcyl_m1_complex` left this list when the cylindrical complex family landed,
     # `dcyl_m0_real` LEFT IT when the cylindrical REAL family landed, and
     # `dcyl_m0_complex` LEFT IT on 2026-09-04 when the complex family gained its
     # `M_ZERO` arm — each in the SAME change that made the product real, never to
     # make a red floor go green. Three of the (m, storage) square's four corners
     # are now positive pins above, and the two families are separated by STORAGE
     # alone (clause 2, inverted in both directions).
-    # `nonlinear_real` LEFT THIS LIST when the Pade family landed, and the two
+    # `nonlinear_real` left this list when the Pade family landed, and the two
     # rows below stayed — deliberately, and each is refused BY NAME by a clause
     # that family keeps UN-inverted rather than by an omission. Complex storage:
     # MEEP nonlinearizes the two parts independently (the DOCMP split), which is a
@@ -1335,23 +1335,23 @@ UNCARRIED: Dict[str, str] = {
     # refuses a chi2 on a component a plane makes odd (fields.py:887).
     "nonlinear_complex": "chi2/chi3 nonlinear update_E, complex storage",
     "fold_real_2d_nonlinear": "chi2/chi3 nonlinear update_E, folded",
-    # `fold_real_2d_beta` AND `fold_complex_2d_beta` LEFT THIS LIST when
+    # `fold_real_2d_beta` AND `fold_complex_2d_beta` left this list when
     # `folded_beta` landed, in the SAME change that made the family real — which is
     # the only way this floor may be moved. Their rows above now pin all four
     # arithmetic slots to the new arms, and the two BFAST rows below stay because
     # nothing carries a folded BFAST curl: `symmetry` clause 11 and
     # `folded_complex` clause 8 still refuse it by name, and `bfast_curl` still
-    # refuses the fold. THE PARALLEL IS EXACT AND THAT IS WHY THE TWO ARE KEPT
-    # BESIDE EACH OTHER: beta and BFAST are both a term added between the curl and
+    # refuses the fold. The parallel is exact and that is why the two are kept
+    # beside each other: beta and BFAST are both a term added between the curl and
     # the mask, and one of the two is now composed while the other is a named
     # absence. A reader who sees only the green one cannot tell those apart.
     "fold_real_2d_bfast": "folded BFAST",
     "fold_complex_2d_bfast": "folded complex BFAST",
-    # THE SEVEN BELOW WERE ADDED IN THE TRANCHE-4 COMPOSITION ROUND, and adding to
+    # The seven below were added in one change, and adding to
     # this list is the direction that costs nothing to be wrong about: a row here
     # asserts that NOTHING is selected, so a family later built for it fails this
     # floor loudly and gets moved out deliberately, exactly as the four families
-    # that landed this round were. Each was MEASURED to select nothing on all four
+    # that landed in that change were. Each was measured to select nothing on all four
     # arithmetic slots before being written down; none is a guess about a clause.
     #
     # The first is the (m, storage) square's one dead corner (its complex64 m = 0

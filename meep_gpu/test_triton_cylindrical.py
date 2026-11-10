@@ -103,7 +103,7 @@ def restored_module():
     ``importlib.reload`` mutates the module object every other test holds, so an
     absence test without this leaves ``cyl_pml_curl_step`` at None for the rest of
     the session — which on a Triton host turns the source tests into an
-    ``AttributeError`` far from its cause. MEASURED: that is exactly how it failed
+    ``AttributeError`` far from its cause. Measured: that is exactly how it failed
     the first time it ran on the measurement host.
 
     Requested FIRST in the signature so it is set up first and therefore torn down
@@ -384,7 +384,7 @@ def test_one_chunk_along_r_is_the_all_zero_line():
 
 def test_a_start_line_the_scan_cannot_walk_is_refused_by_name():
     """A chunk start above the row that reads its sum, or one start per CELL (a division
-    whose r cuts differ along z, DESIGN D8), is refused rather than launched."""
+    whose r cuts differ along z; see docs/development/kernel-tables.md#record-layout), is refused rather than launched."""
     from meep_gpu.chunk_map import ChunkLayoutRefusal
 
     fields, pml = build()
@@ -464,7 +464,7 @@ def test_a_cartesian_grid_is_refused_by_this_predicate():
 
 
 def test_the_shared_cartesian_predicate_still_refuses_dcyl():
-    """``coverage._grid_reasons`` clause 6 is now LOAD-BEARING IN TWO DIRECTIONS.
+    """``coverage._grid_reasons`` clause 6 is now load-bearing in two directions.
 
     It must keep refusing Dcyl for the Cartesian kernels (whose coefficient index and
     ghost rules are wrong there), and this module must not compose it — composing it
@@ -562,7 +562,7 @@ def test_a_conductivity_on_a_curl_target_is_refused():
 def test_the_existing_constitutive_kernel_is_admitted_on_a_dcyl_grid(side):
     """``update_H``/``update_E`` carry NO cylindrical branch — measured by reading them.
 
-    So the cylindrical tranche is ONE new kernel plus a predicate, not three. The
+    So the cylindrical family is ONE new kernel plus a predicate, not three. The
     byte-level confirmation on a Dcyl grid is a hardware leg and is NOT yet run; the
     module docstring says so in the same words.
     """

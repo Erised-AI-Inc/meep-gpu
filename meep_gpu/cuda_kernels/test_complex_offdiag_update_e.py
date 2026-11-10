@@ -1,20 +1,20 @@
 """The complex x off-diagonal ``update_E`` family: its bytes, clauses and hazards.
 
-WHAT RUNS HERE AND WHAT IS OWED. A kernel has to be launched to be compared and
+What runs here and what is owed. A kernel has to be launched to be compared and
 this host has no CuPy, so the BIT-IDENTITY question belongs to
 ``parity/meep_gpu/gate_cuda_complex_offdiag_update_e.py`` and its numbers land in
 :data:`complex_offdiag_update_e.COMPLEX_OFFDIAG_UPDATE_E_ADMISSION`.
 :func:`test_admission_record_is_all_or_nothing` refuses a half-filled record, so a
 green suite here can never be mistaken for a device verdict.
 
-WHAT DOES RUN HERE is everything whose failure mode is a SILENT WRONG ANSWER that
+What does run here is everything whose failure mode is a silent wrong answer that
 no device would report:
 
-1. **THE ARITHMETIC, WORD FOR WORD AGAINST THE ORACLE.** The EMITTED text is
+1. **The arithmetic, word for word against the oracle.** The EMITTED text is
    executed in float32 NumPy by the interpreter of ``test_complex_chunk_forms.py``
    through the family's own launcher (the run's chunk record, the presence words,
    both connection tables), and :func:`test_structure_matches_the_oracle` compares
-   one launch against ``stepping.update_E`` WORD FOR WORD on real
+   one launch against ``stepping.update_E`` word for word on real
    ``Grid``/``Fields``/``PML`` objects over folds on every axis, both terminations,
    both plane parities, Bloch phases, metallic walls, 3-D / 2-D / 1-D shapes, four
    row masks, two courants and both tails. There is no second transcription to
@@ -22,16 +22,16 @@ no device would report:
    planted defect in them must change a word
    (:func:`test_each_planted_defect_changes_a_word`).
 
-2. **THE TWO-KERNEL DECISION, MEASURED.** The module claims the split-field tail
+2. **The two-kernel decision, measured.** The module claims the split-field tail
    and the direct store are different COMPUTATIONS rather than one computation at
    different coefficients. :func:`test_the_two_tails_are_different_computations`
    measures that on the ARRAY PATH -- one fixture stepped with an inert layer and
    with a synthetic unit-coefficient layer -- and prints the differing word count.
 
-3. **THREE FLOAT32 HAZARDS, MEASURED ON THIS HOST**, each printed with its count.
+3. **Three float32 hazards, measured on this host**, each printed with its count.
    A claim about rounding that no test evaluates is a claim, not a measurement.
 
-4. **THE PREDICATE VERDICT TABLE**, on REAL engine objects rather than
+4. **The predicate verdict table**, on REAL engine objects rather than
    dictionaries, because a dictionary answers the way the test author expected and
    the engine answers the way the engine does.
 
@@ -39,7 +39,7 @@ no device would report:
    sibling at once. Two admitters leave a slot unselected and it falls back to the
    array path: a silent coverage LOSS, not an error.
 
-6. **THE PLATFORM REQUIREMENTS** -- ASCII, no division, no unary minus on a float
+6. **The platform requirements** -- ASCII, no division, no unary minus on a float
    path, no call into the sibling prelude's dead helpers -- which killed sibling
    kernels at their first launch and are cheap to pin.
 """
@@ -110,7 +110,7 @@ def build(*, cell=(8.0, 10.0, 12.0), boundaries=("periodic",) * 3, symmetry=(),
     shape = tuple(grid.shape)
     epsilon, inverse = {}, {}
     for component in ("Ex", "Ey", "Ez"):
-        # THREE DISTINCT, INHOMOGENEOUS volumes drawn away from 1.0. Against ones
+        # Three distinct, inhomogeneous volumes drawn away from 1.0. Against ones
         # the multiply is invisible; against one shared volume a component-aliasing
         # defect is invisible; against a constant volume a coefficient-INDEX error
         # is invisible.
@@ -141,7 +141,7 @@ def build(*, cell=(8.0, 10.0, 12.0), boundaries=("periodic",) * 3, symmetry=(),
             getattr(fields, name)[...] = xp.asarray(numpy.ascontiguousarray(real))
             continue
         host = numpy.empty(shape, dtype=numpy.complex64)
-        # THE TWO PLANES ARE ASSIGNED, NEVER COMBINED AS ``re + 1j*im``: ``1j*im``
+        # The two planes are assigned, never combined as ``re + 1j*im``: ``1j*im``
         # carries a real part of ``0.0 * im``, so the sum computes
         # ``(-0.0) + (+0.0) = +0.0`` and destroys every negative zero.
         host.real = real
@@ -149,7 +149,7 @@ def build(*, cell=(8.0, 10.0, 12.0), boundaries=("periodic",) * 3, symmetry=(),
         getattr(fields, name)[...] = xp.asarray(numpy.ascontiguousarray(host))
     layer = None
     if active:
-        # THE THICKNESS RULE IS THE SIBLING FOLD GATES': skip an axis too thin to
+        # The thickness rule is the sibling fold gates': skip an axis too thin to
         # hold a layer, and on a MIRRORED axis ask for the HIGH face only, because
         # ``PML._resolve_mirror_faces`` refuses a named low face on a folded axis
         # (cell 0 is the mirror plane, a boundary condition rather than a wall).
@@ -162,8 +162,8 @@ def build(*, cell=(8.0, 10.0, 12.0), boundaries=("periodic",) * 3, symmetry=(),
     return fields, layer, grid
 
 
-#: Every structural configuration the evaluator leg sweeps. EVERY AXIS IS FOLDED
-#: SOMEWHERE, both plane parities appear, both declared terminations appear, a
+#: Every structural configuration the evaluator leg sweeps. Every axis is folded
+#: somewhere, both plane parities appear, both declared terminations appear, a
 #: Bloch phase appears on an unfolded axis BESIDE a fold, metallic walls appear,
 #: and 3-D / 2-D / 1-D shapes all appear.
 SPECS = (
@@ -291,7 +291,7 @@ def _differing(want, got):
 
 @pytest.mark.parametrize("spec", SPECS, ids=lambda s: s["label"])
 def test_structure_matches_the_oracle(spec, launcher, monkeypatch):
-    """One launch of the emitted kernel against ``stepping.update_E``, WORD FOR WORD.
+    """One launch of the emitted kernel against ``stepping.update_E``, word for word.
 
     Every row mask of :data:`MASKS` and both courants, on the spec's grid. What it
     settles is the whole silent class -- a partner read at the wrong offset, a ghost
@@ -334,7 +334,7 @@ _DEFECTS = {
         "pml_fold_X_metallic_even", (1, 0, 0, 1, 0, 0),
         lambda text: text.replace("flat(i, dj, k, nyz, nz)", "flat(i, j, k, nyz, nz)"),
         None),
-    # The previous package grouping of the tail (KERNELS.md section 7.1).
+    # The previous package grouping of the tail (an inverted grouping mutation).
     "tail_as_two_accumulations": (
         "pml_unfolded_walls_phased", (1, 1, 1, 1, 1, 1),
         lambda text: text.replace(
@@ -414,7 +414,7 @@ def test_each_planted_defect_changes_a_word(defect, launcher, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# 2. THE TWO-KERNEL DECISION, MEASURED
+# 2. The two-kernel decision, measured
 # ---------------------------------------------------------------------------
 
 def test_the_two_tails_are_different_computations():
@@ -462,7 +462,7 @@ def test_the_array_path_takes_two_different_branches():
     """
     from ..chunk_map import chunk_bounds_record  # noqa: PLC0415
 
-    # A ROW MASK WITH NO Ex SLOT, so Ex's constitutive value IS the bare diagonal
+    # A row mask with no Ex SLOT, so Ex's constitutive value IS the bare diagonal
     # and the residual below is about the TAIL rather than about the coupling.
     mask = (0, 0, 1, 0, 0, 0)
     active_fields, layer, _ = build(cell=(8.0, 8.0, 8.0), active=True, seed=5,
@@ -502,7 +502,7 @@ def test_the_array_path_takes_two_different_branches():
 
 
 # ---------------------------------------------------------------------------
-# 3. THE FLOAT32 HAZARDS, MEASURED ON THIS HOST
+# 3. The float32 hazards, measured on this host
 # ---------------------------------------------------------------------------
 
 def test_the_ghost_coefficient_must_be_zero_not_the_wrapped_value():
@@ -587,7 +587,7 @@ def test_the_wall_mask_clears_both_words():
 
 
 # ---------------------------------------------------------------------------
-# 4. THE EMITTED TEXT
+# 4. The emitted text
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("tail", TAILS)
@@ -668,7 +668,7 @@ def test_the_store_arm_carries_no_split_field_recurrence():
     for mask in MASKS:
         source = family.complex_offdiag_source("no_pml", mask)
         body = source[source.index('extern "C" __global__ void'):]
-        # COMMENTS ARE STRIPPED FIRST. The shared core's comments NAME the
+        # Comments are stripped first. The shared core's comments NAME the
         # split-field arm to say what does not belong here, and a token scan that
         # counted a comment would make the prose unwritable rather than the code
         # safe. The module's own emit-time check is regexed for the same reason.
@@ -782,7 +782,7 @@ def test_an_unknown_tail_is_refused_not_defaulted():
 
 
 # ---------------------------------------------------------------------------
-# 5. THE CONSTANTS, PINNED AGAINST THEIR ONE HOME
+# 5. The constants, pinned against their one home
 # ---------------------------------------------------------------------------
 
 def test_mirror_source_index_equals_steppings():
@@ -828,7 +828,7 @@ def test_the_row_tables_are_the_certified_emitters():
 
 
 # ---------------------------------------------------------------------------
-# 6. THE PHASE TABLE
+# 6. The phase table
 # ---------------------------------------------------------------------------
 
 def test_bloch_connection_table_takes_eikna_on_the_pair_and_its_conjugate_on_the_near_product(
@@ -1087,7 +1087,7 @@ def test_a_cylindrical_grid_is_refused_by_name():
 
 
 # ---------------------------------------------------------------------------
-# 8. THE LAUNCH-ARGUMENT VALIDATION
+# 8. The launch-argument validation
 # ---------------------------------------------------------------------------
 
 def test_launch_validation_refuses_the_four_silent_defects():
@@ -1159,8 +1159,8 @@ def test_no_kernel_wears_a_certified_siblings_name():
     import json  # noqa: PLC0415
 
     record = json.loads((HERE / "certification.json").read_text(encoding="utf-8"))
-    # THIS FAMILY'S OWN BLOCK IS NOT A COLLISION. The clause guards against a SECOND
-    # BODY wearing a name a DIFFERENT certified family already owns; while this family
+    # This family's own block is not a collision. The clause guards against a second
+    # body wearing a name a DIFFERENT certified family already owns; while this family
     # was uncertified, "appears nowhere in the record" and "is owned by nobody else"
     # were the same set, and the cheap spelling was exact. Since
     # complex_offdiag_update_e_2026-08-21 landed, its own certified_kernels list names
@@ -1274,7 +1274,7 @@ def test_the_named_artifacts_carry_the_same_digest_and_verdict():
         assert payload["mutations"]["summary"]["false_positives"] == []
         assert payload["mutations"]["summary"]["unarmed"] == 0
         assert payload["falsification"]["all_flip"] is True
-        # THE GUARD FINDING, read back rather than restated: this family's control
+        # The guard finding, read back rather than restated: this family's control
         # did NOT diverge and the record says so, which is the opposite of every
         # certified sibling's clause and must not be quietly inherited.
         assert payload["guard_binary_probe"]["licensed_arm_ptx_distinct"] is (

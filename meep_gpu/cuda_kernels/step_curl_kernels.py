@@ -7,7 +7,7 @@ MEEP source files:
 - step_generic.cpp: step_update_EDHB function
 
 =============================================================================
-MEEP CURL FORMULA (step_generic.cpp):
+MEEP curl formula (step_generic.cpp):
 =============================================================================
 
     f[i] -= dtdx * (g1[i + s1] - g1[i] + g2[i] - g2[i + s2])
@@ -16,7 +16,7 @@ MEEP iterates over ALL owned cells (PLOOP_OVER_IVECS from is to ie).
 At grid boundaries, g1[i+s1] or g2[i+s2] accesses the ghost zone.
 
 =============================================================================
-STRIDE NEGATION FOR D-FIELDS (step_db.cpp):
+Stride negation for D-fields (step_db.cpp):
 =============================================================================
 
     if (ft == D_stuff) {
@@ -28,7 +28,7 @@ For B-field updates: use forward differences (positive strides)
 For D-field updates: use backward differences (negated strides)
 
 =============================================================================
-BOUNDARY CONDITIONS:
+Boundary conditions:
 =============================================================================
 
 MEEP handles boundary conditions through step_boundaries() calls between
@@ -39,13 +39,13 @@ zero.
 The plain kernels wrap neighbor access with modular indexing (`(i+1) % n`),
 the semantics of cp.roll() in the array path. This matches MEEP's behavior
 when periodic BC are active (e.g. when force_complex_fields=True with default
-k_point=0). NOTE the PML kernels instead clamp the outer X/Y faces
-metallically — WRONG against MEEP's wrap, measured at 6.31e-04 vs 4.00e-07
-relative L2 on the uniform-PML sheet case (stepping.py:110-117); reworking
-that to the wrap is Phase 3 of the revival plan.
+k_point=0). NOTE the complex PML kernels instead clamp the outer X/Y faces
+metallically — WRONG against MEEP's wrap (measured 6.31e-04 vs 4.00e-07 relative
+L2 on the uniform-PML sheet case, stepping.py:110-117) and never reworked to it;
+the real-storage PML kernels below take the boundary kind per axis (``bc_x/bc_y/bc_z``).
 
 =============================================================================
-MIRROR SYMMETRY BOUNDARY CONDITIONS:
+Mirror symmetry boundary conditions:
 =============================================================================
 
 When X-Y mirror symmetry is active, we only compute the positive quadrant.
@@ -62,7 +62,7 @@ For the derivative at i=0:
 MEEP source: symmetry.cpp
 
 =============================================================================
-GPU KERNEL FUSION:
+GPU kernel fusion:
 =============================================================================
 
 Each kernel fuses several CuPy array operations into one launch to cut
@@ -82,8 +82,8 @@ this module lazily, and only on a CuPy backend); the array path in
 ``../stepping.py`` is the reference and the correctness oracle. The in-file
 fallback stepping implementation this file used to carry — a second, drifted
 copy of what ``stepping.py`` now is — was deleted outright, with the
-never-reachable generic kernels, in Phase 0 of
-``the design notes (fdtd-fused-cuda-kernel-plan)``.
+never-reachable generic kernels, before the fused kernels were built; the only
+fallback left anywhere is ``../stepping.py``, the oracle.
 """
 
 import cupy as cp
@@ -145,17 +145,17 @@ except ImportError:  # loaded by path, outside the package: the bit-identity pro
     from meep_gpu.chunk_map import RECORD_WORDS as _CHUNK_RECORD_WORDS
 
 # =============================================================================
-# CERTIFIED, AND DEAD — WHICH OF THE FOURTEEN KERNELS BELOW MAY BE WIRED
+# Certified, and dead — which of the fourteen kernels below may be wired
 # =============================================================================
 #
-# READ THIS BEFORE WIRING ANYTHING FROM THIS FILE. Two of the fourteen kernels
-# are certified. The other twelve are not, and the recommendation of record
-# (``the design notes (cuda-kernel-track-disposition)`` §3) is that they should not
+# Read this before wiring anything from this file. Two of the fourteen kernels
+# are certified. The other twelve are not, and the recommendation of record,
+# made after sizing them against the corpus (below), is that they should not
 # be repaired, not be wired, and not be counted as coverage. They are kept, not
 # deleted, and this block is why the decision is visible here rather than only
 # inside a 2026-08-04 JSON.
 #
-# THE ARITHMETIC ON THE FOUR PLAIN KERNELS, read first-hand out of
+# The arithmetic on the four plain kernels, read first-hand out of
 # ``parity/meep_gpu/results/fused_kernel_bit_identity.json`` (2026-08-04, 64
 # cases: 4 option sets x {step_B, step_D} x {float32, complex64} x 2 shapes x 2
 # dtdx): ``vs_array_order`` is FALSE on all 64 — 0/16 per option set, INCLUDING
@@ -164,11 +164,11 @@ except ImportError:  # loaded by path, outside the package: the bit-identity pro
 # Kernels 5-12 have never been compared to the array path at any tolerance: that
 # record's ``bit_identity`` block contains only ``step_B``/``step_D``.
 #
-# WHAT REPAIRING THEM WOULD BUY. The union of every corpus row the twelve could
+# What repairing them would buy. The union of every corpus row the twelve could
 # EVER serve — if all six documented defects in README.md were fixed and all
 # twelve were certified — is 26 rows of the 186 engine-accepted lifted rows, and
 # a certified Triton family already covers every one of the 26. That ceiling is
-# derived in the disposition §3.1 from
+# derived row by row against the corpus census in
 # ``parity/meep_gpu/results/predicate_coverage_2026-08-14_allnine/``; the covering
 # family is named per kernel below. The cost of the alternative is twelve
 # predicates, twelve gates and twelve mutation batteries, every one device-only.
@@ -194,7 +194,7 @@ CERTIFIED_KERNELS = ("step_B_pml_real", "step_D_pml_real")
 UNCERTIFIED_KERNELS = {}
 
 # =============================================================================
-# FUSED CUDA KERNELS
+# Fused CUDA kernels
 # =============================================================================
 
 
@@ -202,7 +202,7 @@ UNCERTIFIED_KERNELS = {}
 
 
 # =============================================================================
-# SYMMETRY-AWARE FUSED KERNELS
+# Symmetry-aware fused kernels
 # =============================================================================
 #
 # These kernels handle X-Y mirror symmetry boundary conditions:
@@ -223,7 +223,7 @@ UNCERTIFIED_KERNELS = {}
 
 
 # =============================================================================
-# FUSED PML KERNELS
+# Fused PML kernels
 # =============================================================================
 #
 # These kernels combine curl computation + PML update into single kernel launches.
@@ -248,7 +248,7 @@ UNCERTIFIED_KERNELS = {}
 
 
 # =============================================================================
-# SYMMETRY-AWARE FUSED PML KERNELS
+# Symmetry-aware fused PML kernels
 # =============================================================================
 #
 # These kernels combine symmetry BC handling + curl + PML update in single kernel.
@@ -294,17 +294,17 @@ UNCERTIFIED_KERNELS = {}
 #     ptxas — plus 3 ``fma.rn.f32`` NVRTC contracts itself in each complex curl
 #     kernel. With ``--fmad=false`` every f32 op carries ``.rn``, which the PTX
 #     ISA defines as non-contractible, and the ``fma.rn.f32`` count is 0.
-#   * The arithmetic consequence, AND IT IS CONDITIONAL — read the condition, it
+#   * The arithmetic consequence, and it is conditional — read the condition, it
 #     is what the claim rests on. ``--fmad=false`` reaches EXACT bit-identity
-#     against the array path ONLY FOR A KERNEL WHOSE STENCIL IS PARENTHESIZED TO
-#     STEPPING.PY'S TREE. Exactly two of the fourteen kernels below are so
+#     against the array path only for a kernel whose stencil is parenthesized to
+#     stepping.py's tree. Exactly two of the fourteen kernels below are so
 #     parenthesized — ``step_B_pml_real`` and ``step_D_pml_real``
-#     (numbered note 3, "THE STENCIL IS PARENTHESISED TO
+#     (numbered note 4, "The stencil is
 #     ``stepping._curl_from_operands``", in the real-field PML section header
 #     below, for why) — and they are the two in ``CERTIFIED_KERNELS``.
 #     For them the 2026-08-09/10 gate measured 120/120 identical under
 #     ``--fmad=false`` and 0/120 under the default options.
-#     THE FOUR PLAIN KERNELS ARE NOT PARENTHESIZED, AND THEY DO NOT REACH IT:
+#     The four plain kernels are not parenthesized, and they do not reach it:
 #     measured 0/16 against the array path under ``--fmad=false`` and 0/16 under
 #     every other guard tried (``results/fused_kernel_bit_identity.json``,
 #     2026-08-04, ``vs_array_order`` false on all 64 cases). The 16/16 that record
@@ -319,7 +319,7 @@ UNCERTIFIED_KERNELS = {}
 #     Both dtdx values are swept in the 2026-08-04 record above (0.5 and 0.35);
 #     the 2026-08-09/10 PML gate sweeps both at synthetic shapes, but its six
 #     real-corpus lifted cases ran at 0.5 ONLY, so the guard has never been
-#     exercised at corpus scale (disposition §1.4).
+#     exercised at corpus scale.
 #
 # Both ``--fmad=false`` and ``-fmad=false`` are accepted by NVRTC 11.6; all
 # fourteen registered kernels compile with either (``grep -c 'extern "C"
@@ -348,7 +348,7 @@ def _get_kernel(name: str, is_complex: bool = False):
     actually compiled, so neither a late policy install nor a mutated kernel can
     be served an earlier binary (``compile_cache.py``).
 
-    THE CODE MAP IS REBUILT PER CALL AND THAT IS LOAD-BEARING, not an oversight —
+    The code map is rebuilt per call and that is load-bearing, not an oversight —
     it was inside the cache-miss branch until 2026-08-15, and it left because the
     SOURCE is now part of the memo key, so the map has to be read before a key
     exists to miss on. Rebuilding it is what makes a REWRITTEN module-level
@@ -360,7 +360,7 @@ def _get_kernel(name: str, is_complex: bool = False):
     the key at all. ``test_compile_cache.py`` pins it; a memo here would need
     every mutation site in two probes to remember to drop it.
 
-    THE COST, MEASURED RATHER THAN ASSUMED (laptop, 200 000 iterations each):
+    The cost, measured rather than assumed (laptop, 200 000 iterations each):
     the 14-entry map literal is 0.784 us, ``compile_policy_token()`` 0.71 us
     uninstalled / 0.74 us installed, the key build plus memo hit 0.34 us — about
     1.9 us against the 0.042 us of the pre-2026-08-15 ``(name, is_complex)``
@@ -401,7 +401,7 @@ def _get_kernel(name: str, is_complex: bool = False):
 
 
 # =============================================================================
-# REAL-FIELD PML CURL — the configuration 54 of the 57 corpus scripts declare
+# Real-field PML curl — the configuration 54 of the 57 corpus scripts declare
 # =============================================================================
 #
 # Every _pml kernel above is complex-only, so the single most common real
@@ -410,10 +410,10 @@ def _get_kernel(name: str, is_complex: bool = False):
 # ``stepping.step_D`` and nothing else; source injection, zero_metal_*, the
 # symmetry fills, update_H/update_E and update_P keep running on the array path.
 #
-# FIVE THINGS DIFFER FROM THE COMPLEX KERNELS ABOVE, and each of them is a
+# Five things differ from the complex kernels above, and each of them is a
 # wrong answer rather than a crash if it is dropped:
 #
-# 1. THE BOUNDARY KIND IS AN ARGUMENT, NOT A LAYOUT. The complex kernels clamp
+# 1. The boundary kind is an argument, not a layout. The complex kernels clamp
 #    the outer X/Y faces metallically and wrap Z. That is a hard-coded guess:
 #    ``stepping._boundary_kinds`` resolves each axis independently, and an axis
 #    that merely absorbs still WRAPS (an absorber grades a conductivity on top
@@ -421,28 +421,28 @@ def _get_kernel(name: str, is_complex: bool = False):
 #    complex layout is bit-identical on a 2-D XY-PML sheet, where the guess
 #    happens to coincide, and silently wrong on a 3-D run and on every metallic
 #    Z. ``bc_x/bc_y/bc_z`` carry the resolved kind per axis instead.
-# 2. THE METALLIC CURL MASK (``stepping._mask_non_owned_cells``). Cell 0 of a
+# 2. The metallic curl mask (``stepping._mask_non_owned_cells``). Cell 0 of a
 #    component whose Yee shift is 0 on a metallic axis sits ON the wall, which
 #    MEEP never steps. The curl is zeroed there and the recurrence still runs,
 #    so the auxiliary integrates a zero and decays instead of accumulating a
 #    curl assembled from a ghost the cell does not own. ``iyee`` is a
 #    compile-time constant per component, so the mask is one comparison.
-# 3. THE FOLDED-PERIODIC TOP-PLANE MASK, the second half of that same function
+# 3. The folded-periodic top-plane mask, the second half of that same function
 #    and the one this pair carried for its first nine days without. It is
 #    numbered separately because it masks a DIFFERENT plane for a DIFFERENT
 #    reason and the two never coincide — see the block below note 4.
-# 4. THE STENCIL IS ``stepping._curl_from_operands``, which is MEEP's
+# 4. The stencil is ``stepping._curl_from_operands``, which is MEEP's
 #    ``step_curl`` (step_generic.cpp:72-76, :104-108), in ``curl_stencil``:
 #
 #        dtdx * (((sf - f1) + f2) - ss)
 #
 #    with the partner-presence forms for an invariant derivative axis. Float
 #    addition is not associative: the pairwise grouping
-#    ``(sf - f1) + (f2 - ss)`` these kernels carried until 0.10 is a different
+#    ``(sf - f1) + (f2 - ss)`` these kernels carried until 1.0 is a different
 #    float32 number, and so is the full bracket over an absent partner
 #    (``(a + g2) - g2`` rounds where the absent form returns ``a``). The presence
 #    bits come from the chunk record's presence word (``cb[24]``).
-# 5. THE PML FORM IS CHOSEN PER STRUCTURE CHUNK, as MEEP chooses it
+# 5. The PML form is chosen per structure chunk, as MEEP chooses it
 #    (step_db.cpp:56-59): the split-field recurrence on the cells whose chunk
 #    carries the component's dsigu layer, the dsig-only form on the field alone
 #    everywhere else, with ``fu`` read and written only on the recurrence's cells
@@ -457,7 +457,7 @@ def _get_kernel(name: str, is_complex: bool = False):
 # ``(f*kms_u) + fu_new`` are both FMA candidates the array path rounds twice.
 #
 # =============================================================================
-# A MIRROR FOLD — THE THIRD BOUNDARY CODE, AND WHY IT IS ONLY A MASK
+# A mirror fold — the third boundary code, and why it is only a mask
 # =============================================================================
 #
 # ``stepping._boundary_kinds`` (stepping.py:2192-2194) resolves a folded axis to
@@ -466,7 +466,7 @@ def _get_kernel(name: str, is_complex: bool = False):
 # until each half was measured. What the two 2026-08-19/20 device gates found is
 # that only one half reaches an output word:
 #
-# THE GHOST VALUES ARE DEAD. ``stepping._shift_down``'s MIRROR branch writes
+# The ghost values are dead. ``stepping._shift_down``'s MIRROR branch writes
 # ``parity * field[2]`` into stored cell 0 (stepping.py:1870-1873,
 # ``MIRROR_SOURCE_INDEX = 2``) and ``_shift_up``'s writes
 # ``parity * field[reflect_row]`` into the last stored slot of a folded PERIODIC
@@ -479,11 +479,11 @@ def _get_kernel(name: str, is_complex: bool = False):
 # there — the cell the fold's own mask drops. So the parity arithmetic never
 # reaches a surviving word, and ``BC_MIRROR_PERIODIC`` takes the METALLIC zero
 # for both faces rather than carrying a parity this kernel has no per-component
-# constant for. THE ZERO IS NOT THE BOUNDARY CONDITION HERE; the mask is, and
+# constant for. The zero is not the boundary condition here; the mask is, and
 # the two mutations ``drop_folded_periodic_near_mask`` /
 # ``drop_folded_periodic_top_mask`` are what stop that from being an assertion.
 #
-# THE MASK IS NOT DEAD, AND IT SPLITS BY TERMINATION.
+# The mask is not dead, and it splits by termination.
 # ``_mask_non_owned_cells`` zeroes cell 0 on a mirrored axis for every component
 # whose Yee shift there is 0 — which a folded METALLIC axis already inherits from
 # ``BC_METALLIC``, arithmetic identical, and which a folded PERIODIC axis needs
@@ -494,15 +494,15 @@ def _get_kernel(name: str, is_complex: bool = False):
 # Yee shift there is 1. On a folded METALLIC axis that top plane IS stepped and
 # must NOT be masked.
 #
-# THAT SPLIT WAS MEASURED, NOT ARGUED (``gate_cuda_folded_curl.py``,
+# That split was measured, not argued (``gate_cuda_folded_curl.py``,
 # results/cuda_folded_curl_2026-08-19/, the GPU host, 256 cases per policy): with the
 # folded axis handed ``BC_METALLIC``, a folded METALLIC axis was ALREADY exact at
 # 48/48 single-launch and 48/48 at 60 launches under both float32 subnormal
 # policies, and a folded PERIODIC axis diverged 0/64 with 19,649 differing words
 # of which 19,649 lay on the mask-delta plane and ZERO anywhere else — always the
 # same entry, ``(folded axis, -1)``, oracle-masked and kernel-kept. The
-# top-plane branch below is that specification, and nothing else. DO NOT
-# GENERALISE A FOLD VERDICT ACROSS FAMILIES: ``covers_real_pml_constitutive``
+# top-plane branch below is that specification, and nothing else. Do not
+# generalise a fold verdict across families: ``covers_real_pml_constitutive``
 # took the fold for free because its sub-step reads its own cell; a curl reads
 # NEIGHBOURS, and ``covers_real_pml_offdiag_constitutive`` still refuses a fold
 # with no device evidence of its own.
@@ -622,7 +622,7 @@ extern "C" __global__ void step_B_pml_real(
     int j = (idx / nz) % ny;
     int i = idx / (ny * nz);
 
-    // THE CHUNK RECORD (chunk_map.chunk_bounds_record): row r of this lattice and axis
+    // The chunk record (chunk_map.chunk_bounds_record): row r of this lattice and axis
     // lies in a chunk that carries the axis's layer iff (a0 <= r < a1) || (b0 <= r < b1).
     const int cbh_x_a0 = cb[12], cbh_x_a1 = cb[13], cbh_x_b0 = cb[14], cbh_x_b1 = cb[15];
     const int in_h_x = (i >= cbh_x_a0 && i < cbh_x_a1) || (i >= cbh_x_b0 && i < cbh_x_b1);
@@ -716,7 +716,7 @@ extern "C" __global__ void step_D_pml_real(
     int j = (idx / nz) % ny;
     int i = idx / (ny * nz);
 
-    // THE CHUNK RECORD (chunk_map.chunk_bounds_record): row r of this lattice and axis
+    // The chunk record (chunk_map.chunk_bounds_record): row r of this lattice and axis
     // lies in a chunk that carries the axis's layer iff (a0 <= r < a1) || (b0 <= r < b1).
     const int cbi_x_a0 = cb[0], cbi_x_a1 = cb[1], cbi_x_b0 = cb[2], cbi_x_b1 = cb[3];
     const int in_i_x = (i >= cbi_x_a0 && i < cbi_x_a1) || (i >= cbi_x_b0 && i < cbi_x_b1);
@@ -794,7 +794,7 @@ def real_pml_curl_tables(pml: 'PML', half_integer: bool) -> dict:
     Called ONCE per frozen configuration, not per launch. The complex wrappers
     above call ``cp.ascontiguousarray(...ravel())`` on every launch, which is six
     device allocations per sub-step and twelve per timestep for tables that never
-    change (port-reference defect 5.14). ``PML._reshape_for_broadcast`` already
+    change, a recorded defect of the port. ``PML._reshape_for_broadcast`` already
     stores float32 arrays of shape (n,1,1)/(1,n,1)/(1,1,n), so ``reshape(-1)`` is a
     view and this costs nothing to hold.
 
@@ -823,7 +823,7 @@ def real_pml_curl_tables(pml: 'PML', half_integer: bool) -> dict:
 def real_curl_boundary_codes(grid) -> tuple:
     """The three integer codes this pair's kernels take, resolved off the GRID.
 
-    IT TAKES THE GRID, NOT THE KIND STRINGS, and that is the whole reason the
+    It takes the grid, not the kind strings, and that is the whole reason the
     function was replaced rather than extended. ``stepping._boundary_kinds``
     resolves a folded axis to ``"mirror"`` at BOTH terminations (stepping.py:2193
     — the fold outranks the declaration), and the two terminations need DIFFERENT
@@ -856,7 +856,7 @@ def chunk_record_argument(chunk_bounds):
     ``arms.StepContext.chunk_bounds_device`` uploads it once per composition; a gate
     hands its own (``parity/meep_gpu/gate_chunk_records.py``). There is no default: a
     kernel launched without the run's division would step the PML forms of some other
-    one, a silent wrong answer (bit_parity_0_10 DESIGN.md D4, D6).
+    one, a silent wrong answer.
     """
     if chunk_bounds is None:
         raise ValueError("the real-field PML kernels take the run's chunk record "
@@ -929,7 +929,7 @@ def _step_D_fused_pml_real(fields: 'Fields', tables: dict, boundary_codes,
 
 
 # =============================================================================
-# COVERAGE PREDICATE — MOVED
+# Coverage predicate — moved
 # =============================================================================
 #
 # ``covers_real_pml_curl`` and its helpers now live in ``coverage.py``, which

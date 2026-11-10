@@ -12,7 +12,7 @@ comments-only tier. The three that did each hand-rolled a ``specialisations()`` 
 over the same small vocabulary. This is that vocabulary, factored out, so a module
 publishes a corpus by naming its emitter instead of re-deriving an enumeration.
 
-THE DOMAINS ARE CANONICAL, NOT EXHAUSTIVE, and the distinction is the whole safety
+The domains are canonical, not exhaustive, and the distinction is the whole safety
 argument. The enumeration is a FINGERPRINT over a fixed, declared sweep -- a changed
 character anywhere in the emitted text moves the digest -- not a claim that every
 specialisation in it is reachable, gated, or certified. What a gate certified is the
@@ -96,7 +96,7 @@ def corpus_digest_for(emitter: Callable[..., str],
         try:
             source = emitter(*combination)
         except ValueError:
-            # THE EMITTER'S OWN STRUCTURAL REFUSAL, and it belongs in the corpus as an
+            # The emitter's own structural refusal, and it belongs in the corpus as an
             # absence rather than a crash: a Bloch phase on a metallic axis is not a
             # source this family can emit (complex_fields.py:411 refuses it, as
             # stepping._bloch_phases does). Counted, not swallowed -- a module whose
@@ -115,7 +115,7 @@ def corpus_digest_for(emitter: Callable[..., str],
             "parameters": {n: len(d) for n, d in zip(names, domains)}}
 
 
-#: DELIBERATELY NOT PUBLISHED: ``complex_conductive_fused_pair``. Its emitter takes
+#: Deliberately not published: ``complex_conductive_fused_pair``. Its emitter takes
 #: ``pole_counts`` as a THREE-TUPLE, one entry per E component, non-negative and with no
 #: cap stated anywhere in that module (``complex_conductive_fused_pair.py:369-374``). The
 #: full product over even a modest per-entry range is six figures of emissions, so
@@ -149,6 +149,24 @@ def _cylindrical_arms() -> Tuple[Any, ...]:
     return (cylindrical_complex.M_ONE, cylindrical_complex.M_MANY)
 
 
+#: The parameters of the constitutive and mirror-fill emitters, read off each emitter's
+#: own refusal. Without them the sweep refuses those emitters, and a module whose other
+#: emitters were digested would be pinned by those alone: an edit to the refused
+#: emitter's shader text would leave the digest equal. ``side``: the two keys of the
+#: constitutive emitters' ``_CONSTITUTIVE_PRODUCTS`` (``shaders.constitutive_source``,
+#: ``complex_fields.bloch_constitutive_source``). ``axis``, ``pass_name`` and ``shifts``:
+#: the mirror fills (``symmetry.mirror_ghost_fill_source``,
+#: ``folded_complex.folded_mirror_fill_complex_source``) accept an axis 0, 1 or 2, a pass
+#: in ``FILL_PASSES`` and three Yee shifts of 0 or 1; a triple whose pass writes nothing
+#: is the emitter's own refusal and is counted as one. ``phase``: a mirror plane's phase
+#: is +1 or -1. They are literals so that this table imports no emitter module;
+#: ``test_device_identity`` checks them against the emitters' own tables.
+_SIDES: Tuple[str, ...] = ("H", "E")
+_AXES: Tuple[int, ...] = (0, 1, 2)
+_FILL_PASSES: Tuple[str, ...] = ("near", "far")
+_MIRROR_PHASES: Tuple[int, ...] = (1, -1)
+
+
 OVERRIDES: Dict[str, Dict[str, Tuple[Any, ...]]] = {
     "folded_fused_pair": {"codes": _FOLDED_CODES},
     "folded_fused_magnetic_pair": {"codes": _FOLDED_CODES},
@@ -162,8 +180,16 @@ OVERRIDES: Dict[str, Dict[str, Tuple[Any, ...]]] = {
     # resolves and refuses a code that is not a fold. Same override, same
     # reason, as the folded complex parent one line above.
     "folded_beta_complex_fused_magnetic_pair": {"codes": _FOLDED_CODES},
-    "folded_complex": {"codes": _FOLDED_CODES},
+    "folded_complex": {"codes": _FOLDED_CODES, "axis": _AXES, "pass_name": _FILL_PASSES,
+                       "shifts": _FLAG_TRIPLES},
     "folded_beta": {"codes": _FOLDED_CODES},
     "folded_offdiag_update_e": {"codes": _FOLDED_CODES},
     "complex_folded_offdiag_update_e": {"codes": _FOLDED_CODES},
+    # The launch-2 curl re-emits the cylindrical complex curl over the same two closed
+    # axes as ``cylindrical_fused_magnetic_pair`` above.
+    "cylindrical_complex_fused_hd_pair": {"bcz": _CODES, "m_arm": _cylindrical_arms()},
+    "shaders": {"side": _SIDES},
+    "complex_fields": {"side": _SIDES},
+    "symmetry": {"axis": _AXES, "phase": _MIRROR_PHASES, "pass_name": _FILL_PASSES,
+                 "shifts": _FLAG_TRIPLES},
 }

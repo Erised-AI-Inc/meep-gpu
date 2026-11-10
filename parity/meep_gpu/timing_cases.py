@@ -1,6 +1,6 @@
 """The timing cases: one builder per case, read by the GPU bench and the MEEP bench alike.
 
-WHY THIS MODULE EXISTS. The identical-case comparison holds only if both sides build
+Why this module exists. The identical-case comparison holds only if both sides build
 the same ``mp.Simulation``. Until this module, the one case either side could time was
 ``pml_3d``, a 4 um cell that is 78.4 % PML by volume with its electric source off the
 fused seams, so no timing exercised the deposit-repair bracket or a thin absorber. The
@@ -17,12 +17,13 @@ is the unmodified ``bench_fused_products.py``. The new cases live here and nowhe
 else: they are injected into the gates' tables at run time by ``bench_timing_case.py``
 and removed again, so no pinned file changes.
 
-THE BUILDER CONTRACT is the route gates': ``builder(mp, res) -> (sim, [monitors],
+The builder contract is the route gates': ``builder(mp, res) -> (sim, [monitors],
 until)``, with ``sim`` not yet initialised.
 
 IMPORTS. This module imports neither MEEP nor ``meep_gpu`` nor a device library at
-module scope; a builder receives ``mp`` from its caller, and :func:`resolve` imports the
-route gate (which imports neither) only when a built-in name is asked for.
+module scope; a builder receives ``mp`` from its caller, and the route gate (which imports
+neither) is imported only when a built-in name is resolved or a case built on a route-gate
+builder (:func:`route_case`) is built or described.
 """
 
 from __future__ import annotations
@@ -137,6 +138,99 @@ def case_thin_pml_3d_diagonal(mp: Any, res: int = 6) -> Tuple[Any, List[Any], fl
     return sim, [_flux(mp, sim)], THIN_UNTIL
 
 
+# ---------------------------------------------------------------------------
+# The extended ladder's cases: one declared change to a route-gate builder each
+# ---------------------------------------------------------------------------
+#
+# Each builder below calls a route gate's OWN builder (``pml_3d`` or
+# ``pml_3d_diagonal``) and changes one stated thing on the returned simulation before
+# ``init_sim``, so the base geometry is never re-typed and the cell stays the 4 um cube
+# of the 2026-09-28 ladder: resolutions 20 / 32 / 48 hold 512,000 / 2,097,152 /
+# 7,077,888 cells, the sizes of record. Measured on the package's NumPy lift
+# (``test_seams_and_off_diagonal_flag_on_a_numpy_lift``) and per table by the first
+# preflight row of a ladder.
+
+#: The Lorentz medium of ``case_dispersive_2d``: eps_inf 2.25, one pole at 0.4 with
+#: gamma 0.02 and sigma 1.1.
+LORENTZ_EPSILON = 2.25
+LORENTZ_POLE = {"frequency": 0.4, "gamma": 0.02, "sigma": 1.1}
+#: The monitor load of ``pml_3d_monitors``: six flux planes closing a box of half-width
+#: 1 um around the sphere, each at 20 frequencies, and one DFT field plane at z = 0 for
+#: Ex, Ey and Ez at 5 frequencies, on top of ``pml_3d``'s own incident flux plane.
+BOX_HALF_WIDTH = 1.0
+BOX_NFREQ = 20
+FIELD_PLANE_SIZE = (2.4, 2.4, 0.0)
+FIELD_PLANE_NFREQ = 5
+
+
+def route_case(name: str) -> Builder:
+    """A route gate's own builder, imported by name from the harness this module sits
+    in (the gate imports neither MEEP nor the package at module scope)."""
+    root = find_harness_root(HERE)
+    if not root:
+        raise SystemExit(f"REFUSING: no {HARNESS_MARKER} above {HERE}; the base builders "
+                         "are the route gate's, never re-typed")
+    put_on_path(root)
+    import gate_dispatch_fused_route as route  # noqa: PLC0415
+    return route.CASES[name]
+
+
+def case_pml_3d_lorentz(mp: Any, res: int = 20) -> Tuple[Any, List[Any], float]:
+    """``pml_3d_diagonal`` with its slab a Lorentz medium: the dispersive arms in 3-D.
+
+    The slab (1 um in y, through the absorber in x and z) keeps every chi1inv row
+    diagonal. A curved or rotated dispersive body is refused by the 1.0 lift (the sigma
+    check reads 1/chi1inv[c][c], which is eps_cc only for a diagonal tensor), measured
+    on a Lorentz sphere and on the eps-9 sphere beside a Lorentz block. The Ez source is
+    injected in the D seam; whether that seam is FUSED (and so bracketed) is the
+    table's: :data:`TABLE_OVERRIDES` names what each table's smoke measured.
+    """
+    sim, monitors, _until = route_case("pml_3d_diagonal")(mp, res)
+    sim.geometry[0].material = mp.Medium(
+        epsilon=LORENTZ_EPSILON,
+        E_susceptibilities=[mp.LorentzianSusceptibility(**LORENTZ_POLE)])
+    return sim, monitors, 35.0
+
+
+def case_pml_3d_monitors(mp: Any, res: int = 20) -> Tuple[Any, List[Any], float]:
+    """``pml_3d`` with a realistic monitor load: 8 DFT objects where ``pml_3d`` has 1.
+
+    Six separate flux planes (MEEP keeps a multi-region ``add_flux`` as ONE DFT object
+    and the lift as one monitor per plane, so separate planes keep the two counts equal)
+    and one ``add_dft_fields`` plane, every one stepped inside each timed window.
+    """
+    sim, monitors, until = route_case("pml_3d")(mp, res)
+    monitors = list(monitors)
+    fcen, df = 0.4, 0.4
+    for axis in range(3):
+        for sign in (1.0, -1.0):
+            center = [0.0, 0.0, 0.0]
+            center[axis] = sign * BOX_HALF_WIDTH
+            size = [2.0 * BOX_HALF_WIDTH] * 3
+            size[axis] = 0.0
+            monitors.append(sim.add_flux(fcen, df, BOX_NFREQ, mp.FluxRegion(
+                center=mp.Vector3(*center), size=mp.Vector3(*size))))
+    monitors.append(sim.add_dft_fields([mp.Ex, mp.Ey, mp.Ez], fcen, df, FIELD_PLANE_NFREQ,
+                                       center=mp.Vector3(),
+                                       size=mp.Vector3(*FIELD_PLANE_SIZE)))
+    return sim, monitors, until
+
+
+def case_pml_3d_hz(mp: Any, res: int = 20) -> Tuple[Any, List[Any], float]:
+    """``pml_3d`` with an Hz source at the same point: the deposit on the fused B seam.
+
+    The one change to the case of record, so the cost of the B-seam deposit-repair
+    bracket is read against ``pml_3d`` directly: the same plan (fused pair B, the D seam
+    on its off-diagonal singles; measured on the GPU host's smoke 2026-10-17, both NVIDIA
+    tables, 3.0-3.3 launches per step) with the bracket around the B pair.
+    """
+    sim, monitors, until = route_case("pml_3d")(mp, res)
+    sim.sources = [mp.Source(source.src, component=mp.Hz, center=source.center,
+                             size=source.size, amplitude=source.amplitude)
+                   for source in sim.sources]
+    return sim, monitors, until
+
+
 @dataclasses.dataclass(frozen=True)
 class TimingCase:
     """What a case declares about itself, before anything is built.
@@ -157,6 +251,17 @@ class TimingCase:
     off_diagonal_epsilon: bool
     source_component: str
     isolates: str
+    #: The route-gate case the builder changes (``None``: a builder of its own).
+    base: Optional[str] = None
+    #: DFT objects the initialised simulation carries (MEEP's ``sim.dft_objects``).
+    dft_objects: int = 1
+    #: Whether a susceptibility is registered (the dispersive arms run).
+    dispersive: bool = False
+    #: The factor the ladder scales a GPU or lift row's time budget (and so its timeout)
+    #: by: a dispersive lift verifies sigma at every grid point (measured 2026-10-17 at
+    #: 110,592 cells on the GPU host: 10-15 s a leg against 2-6 s for pml_3d; 55 us a cell
+    #: at 512,000 cells on the Mac), which the 1.0 row times do not hold at 7,077,888 cells.
+    budget_scale: float = 1.0
 
     @property
     def pml_fraction_nominal(self) -> float:
@@ -180,7 +285,36 @@ NEW_CASES: Dict[str, TimingCase] = {
         "thin_pml_3d_diagonal", case_thin_pml_3d_diagonal, THIN_CELL, THIN_PML,
         "pml_3d_diagonal", "D", False, "Ez",
         "both ordinary pairs and the D-seam deposit-repair bracket"),
+    # The extended ladder (2026-10-17): the pml_3d cell, so the sizes of record hold.
+    # TEMPLATE pml_3d, NO BRACKET: on the GPU host's smoke (2026-10-17) both NVIDIA
+    # tables compose fused pair B alone on this 3-D dispersive grid (Triton: fused pair B,
+    # PML step_D, dispersive update_E, ADE update_P; CUDA: its fused magnetic pair with the
+    # same Triton singles on the D side), so the Ez deposit is in no fused pair.
+    "pml_3d_lorentz": TimingCase(
+        "pml_3d_lorentz", case_pml_3d_lorentz, (4.0, 4.0, 4.0), 0.8, "pml_3d", None,
+        False, "Ez",
+        "a dispersive medium: pml_3d_diagonal's slab as a Lorentz medium (eps_inf 2.25, "
+        "one pole at 0.4, gamma 0.02, sigma 1.1) through the absorber; fused pair B with "
+        "the dispersive update_E and ADE update_P arms on the D side",
+        base="pml_3d_diagonal", dispersive=True, budget_scale=3.0),
+    "pml_3d_monitors": TimingCase(
+        "pml_3d_monitors", case_pml_3d_monitors, (4.0, 4.0, 4.0), 0.8, "pml_3d", None,
+        True, "Ez",
+        "a monitor load: pml_3d plus six flux planes closing a 2 um box around the "
+        "sphere at 20 frequencies each and one DFT field plane (Ex, Ey, Ez at z = 0, "
+        "2.4 x 2.4 um) at 5 frequencies: 8 DFT objects against pml_3d's 1",
+        base="pml_3d", dft_objects=8),
+    "pml_3d_hz": TimingCase(
+        "pml_3d_hz", case_pml_3d_hz, (4.0, 4.0, 4.0), 0.8, "pml_3d", "B", True, "Hz",
+        "a source on a fused seam: pml_3d with its source an Hz dipole at the same point, "
+        "so the deposit lands between step_B and update_H inside fused pair B (B-seam "
+        "bracket); the D seam keeps pml_3d's off-diagonal singles",
+        base="pml_3d"),
 }
+
+#: The cases the extended CERT-8 ladder adds to ``pml_3d``, in the order the catalogs
+#: name them: dispersive, monitor-heavy, source on a fused seam.
+EXTENDED_LADDER_CASES = ("pml_3d_lorentz", "pml_3d_monitors", "pml_3d_hz")
 
 #: What the built-in cases a ladder may name declare. The builders themselves are
 #: the route gate's and are never re-typed; only these declarations live here.
@@ -196,10 +330,15 @@ BUILTIN_CASES: Dict[str, TimingCase] = {
 #: Per-table changes to a new case's copied DRIVE spec, applied after the copy. Empty
 #: until a preflight on that table measures that a field the gate reads (``pairs``,
 #: ``fills``, ``launches_per_step``, ``collapsed_single_launches_per_step``) differs
-#: from the template's; each entry then names the row that measured it.
+#: from the template's; each entry then names the row that measured it (``measured``,
+#: kept out of the spec). ``expected_repair`` here overrides the case's declared seam for
+#: that table's rows (``None``: no bracket) and is kept out of the spec too.
 TABLE_OVERRIDES: Dict[str, Dict[str, Dict[str, Any]]] = {
     "triton": {}, "cuda": {}, "metal": {},
 }
+#: Keys of a :data:`TABLE_OVERRIDES` entry that describe the case on that table and are
+#: never copied into the DRIVE spec.
+OVERRIDE_META_KEYS = ("expected_repair", "measured")
 
 
 def declared(name: str) -> TimingCase:
@@ -213,13 +352,24 @@ def declared(name: str) -> TimingCase:
                      f"declared cell are {', '.join(known)}")
 
 
+def budget_scale(name: str) -> float:
+    """The case's time-budget factor (1.0 for every built-in case)."""
+    return float(declared(name).budget_scale)
+
+
 def is_builtin(name: str) -> bool:
     return name not in NEW_CASES
 
 
-def expected_repair(name: str) -> Optional[str]:
-    """``None``, ``"B"`` or ``"D"``: the seam the fused leg's bracket must sit on."""
-    return declared(name).expected_repair
+def expected_repair(name: str, table: Optional[str] = None) -> Optional[str]:
+    """``None``, ``"B"`` or ``"D"``: the seam the fused leg's bracket must sit on, on
+    ``table`` when one is named (a measured :data:`TABLE_OVERRIDES` entry may differ from
+    the case's declaration)."""
+    case = declared(name)
+    override = TABLE_OVERRIDES.get(table or "", {}).get(name, {})
+    if "expected_repair" in override:
+        return override["expected_repair"]
+    return case.expected_repair
 
 
 # ---------------------------------------------------------------------------
@@ -330,7 +480,22 @@ def case_identity(name: str) -> Dict[str, Any]:
         "pml_fraction_nominal": round(case.pml_fraction_nominal, 6),
         "off_diagonal_epsilon": case.off_diagonal_epsilon,
         "source_component": case.source_component,
+        "base": case.base,
+        "base_builder_source_sha256": _base_source(case.base),
+        "dft_objects": case.dft_objects,
+        "dispersive": case.dispersive,
     }
+
+
+def _base_source(base: Optional[str]) -> Optional[str]:
+    """The source digest of the route-gate builder a case changes, so a row tells two
+    base definitions apart as it tells two builders apart."""
+    if not base:
+        return None
+    try:
+        return _sha256_source(route_case(base))
+    except (SystemExit, ImportError, KeyError):
+        return None
 
 
 #: The route gate whose ``CASES`` a table's GPU rows build from.
@@ -444,6 +609,8 @@ def drive_spec(table: str, name: str, rows: Dict[str, Dict[str, Any]]) -> Dict[s
     spec["why"] = (f"timing case {name} (timing_cases.py), spec copied from the "
                    f"{table} DRIVE row {case.template!r}: {case.isolates}")
     for key, value in TABLE_OVERRIDES.get(table, {}).get(name, {}).items():
+        if key in OVERRIDE_META_KEYS:
+            continue
         spec[key] = copy.deepcopy(value)
     return spec
 
@@ -463,5 +630,7 @@ def describe(case_names: Sequence[str]) -> List[Dict[str, Any]]:
                      "pml_fraction_nominal": round(case.pml_fraction_nominal, 3),
                      "template": case.template, "expected_repair": case.expected_repair,
                      "source_component": case.source_component,
+                     "base": case.base, "dft_objects": case.dft_objects,
+                     "dispersive": case.dispersive,
                      "isolates": case.isolates})
     return out

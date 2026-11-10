@@ -12,7 +12,7 @@ Two clauses cannot be satisfied on a laptop and are FACTORED OUT rather than dro
 
 Every OTHER refusal is reported as returned.
 
-2026-08-14 ROUND — ALL NINE FAMILIES ARE WIRED. Two things changed here and nothing
+2026-08-14 — all nine families are wired. Two things changed here and nothing
 else did:
 
 * the four families that were absent from the 2026-08-13 battery are now entries
@@ -27,7 +27,7 @@ else did:
 
 :data:`RESERVED_FAMILIES` is empty because no family is held back any more.
 
-2026-08-16 ROUND — THE RESIDUAL-GROUP ADMISSIONS ARE WIRED. One family entry is
+2026-08-16 — the residual-group admissions are wired. One family entry is
 added, ``residual_wired``, and nothing else here changed:
 
 * four predicate families, six entry points, NO new kernel. Each restates a
@@ -59,12 +59,12 @@ SUBJECT_PACKAGE = "triton_kernels"
 BACKEND_CLAUSE_HEAD = "array module is "
 BACKEND_CLAUSE_TAIL = ", not cupy"
 
-#: Families whose predicates exist but are NOT integrated this round. Empty as of
+#: Families whose predicates exist but are NOT integrated yet. Empty as of
 #: 2026-08-14: all nine are wired into ``launch.plan_step``.
 RESERVED_FAMILIES: Tuple[str, ...] = ()
 
 #: The families measured, in the order they were certified. The first five are the
-#: ones the 576/759 number was taken over; the last four are this round's.
+#: ones the 576/759 number was taken over; the last four were wired on 2026-08-14.
 FIVE_WIRED: Tuple[str, ...] = ("complex", "special_kz", "nonlinear", "offdiag", "bfast")
 FOUR_NEW: Tuple[str, ...] = ("folded_complex", "folded_offdiag", "cylindrical_complex",
                              "no_pml_null")
@@ -86,7 +86,7 @@ def strip_backend(reasons: Tuple[str, ...]) -> List[str]:
 
 
 def _verdict(call: Callable[[], Any]) -> Dict[str, Any]:
-    """Call one predicate; a raise is a refusal WITH ITS REASON, never a crash."""
+    """Call one predicate; a raise is a refusal with its reason, never a crash."""
     try:
         coverage = call()
     except BaseException as exc:  # noqa: BLE001 - an unanswerable predicate is a refusal
@@ -176,7 +176,7 @@ def evaluate(driver: Any) -> Dict[str, Any]:
     add("shipped", "dispersive_constitutive", "update_E",
         lambda: dispersive_constitutive_coverage(fields, pml))
 
-    # --- THE FIVE CERTIFIED FAMILIES: standalone, unreachable from plan_step -------
+    # --- The five certified families: standalone, unreachable from plan_step -------
     for name in ("step_B", "step_D"):
         add("complex", "complex_pml_curl", name,
             lambda n=name: complex_pml_curl_coverage(fields, pml, n))
@@ -200,7 +200,7 @@ def evaluate(driver: Any) -> Dict[str, Any]:
     add("offdiag", "offdiag_constitutive", "update_E",
         lambda: offdiag_constitutive_coverage(fields, pml))
 
-    # --- THE FOUR FAMILIES WIRED ON 2026-08-14 -------------------------------------
+    # --- The four families wired on 2026-08-14 -------------------------------------
     # Called through ``launch``'s forwarders — the same functions ``plan_step``'s arms
     # call — so an entry here and its arm ask one function, not two spellings of one.
     # The COMPOSITION verdict is taken where ``plan_step`` takes it (K1's curl, the
@@ -235,7 +235,7 @@ def evaluate(driver: Any) -> Dict[str, Any]:
     add("folded_offdiag", "folded_offdiag_composition", "update_E",
         lambda: launch.folded_offdiag_composition_coverage(fields, pml))
 
-    # --- THE RESIDUAL-GROUP ADMISSIONS, WIRED 2026-08-16 --------------------------
+    # --- The residual-group admissions, wired 2026-08-16 --------------------------
     # Called through ``launch``'s forwarders — the same functions ``plan_step``'s
     # arms call — and asked ONLY at the sub-steps their arms serve. The two
     # constitutive predicates take a ``side`` and refuse ``side='E'`` BY NAME
@@ -268,9 +268,9 @@ def evaluate(driver: Any) -> Dict[str, Any]:
     seam["dispersive_fused_pair_D"] = _verdict(
         lambda: dispersive_fused_pair_coverage(fields, pml, sources))
 
-    # --- 2026-08-30: THE SEVEN FUSED PRODUCTS THE BOARD USED TO TRANSCRIBE --------
+    # --- 2026-08-30: The seven fused products the board used to transcribe --------
     #
-    # WHY THESE ARE HERE, AND WHY IT IS A CORRECTION RATHER THAN AN ADDITION. The
+    # Why these are here, and why it is a correction rather than an addition. The
     # fusion board scored these products from hand-written CLAUSE LADDERS that
     # restated each predicate's conjunction from the ``configuration`` block. A
     # transcription cannot notice when the shipped predicate changes, and one of
@@ -340,7 +340,7 @@ def evaluate(driver: Any) -> Dict[str, Any]:
         ARMS as FUSED_ADE_CHAIN_ARMS, fused_ade_chain_coverage)
     from meep_gpu.triton_kernels.complex_fused_ade_chain import (  # noqa: PLC0415
         complex_fused_ade_chain_coverage)
-    # THE MODULE, NOT THE PACKAGE. ``meep_gpu.triton_kernels.__init__`` does not
+    # The module, not the package. ``meep_gpu.triton_kernels.__init__`` does not
     # export this family (it is deferred — launch.py never imports it), and a
     # package-level import would be an ImportError on a tree where the deferral is
     # working exactly as designed.
@@ -353,7 +353,7 @@ def evaluate(driver: Any) -> Dict[str, Any]:
         lambda: folded_fused_magnetic_pair_coverage(fields, pml, sources))
     seam["complex_fused_magnetic_pair_B"] = _verdict(
         lambda: complex_fused_magnetic_pair_coverage(fields, pml, sources))
-    # THE ELECTRIC TWIN, added 2026-08-30 in the same round that built it. Asked
+    # The electric twin, added 2026-08-30 with the change that built it. Asked
     # ONCE, under the census probe, for the reason the magnetic twin is: its
     # PRODUCT_PROBE_PATTERNS is the BASE four -- the inv_eps multiply its SCALE=1 arm
     # adds is `_mul_field_left`, an orientation the curl half already launches -- so
@@ -363,21 +363,21 @@ def evaluate(driver: Any) -> Dict[str, Any]:
     # per run, which no configuration block carries.
     seam["complex_fused_electric_pair_D"] = _verdict(
         lambda: complex_fused_electric_pair_coverage(fields, pml, sources))
-    # THE Dcyl ELECTRIC TWIN, added 2026-08-30 in the same round that gated it.
+    # The Dcyl electric twin, added 2026-08-30 with the change that gated it.
     # Asked ONCE, under the census probe, for the reason the Cartesian twin is: its
     # PRODUCT_PROBE_PATTERNS is the BASE four — the cylindrical-only orientations
     # are arm-degenerate (their coefficient's real word is a zero) and the E-side
     # `inv_eps` multiply is `_mul_field_left`, which the recurrence above it already
     # launches six times — so it needs no unified-record swap.
     #
-    # THERE IS NO LADDER FOR IT AND THERE NEVER WILL BE. The clause that decides
+    # There is no ladder for it and there never will be. The clause that decides
     # ALL SIXTEEN of its rows consults `deposit_repair.repairable` on the live run,
     # which no configuration block carries: every Dcyl row declares an electric
     # source, so a transcription could only have guessed, and guessing False would
     # have priced the largest cell on the board at zero.
     seam["cylindrical_fused_electric_pair_D"] = _verdict(
         lambda: cylindrical_fused_electric_pair_coverage(fields, pml, sources))
-    # THE COMPLEX CONDUCTIVE no-PML D->E PAIR, added in the same round. Its cell is
+    # The complex conductive no-PML D->E pair, added with the same change. Its cell is
     # the four `TestLoadDump.test_load_dump_*_3d` rows, and unlike the two pairs
     # above it carries NO deposit repair — every one of those rows declares a
     # MAGNETIC source, injected in the other seam — so its source clause costs it
@@ -386,22 +386,22 @@ def evaluate(driver: Any) -> Dict[str, Any]:
     # drift from it.
     seam["complex_conductive_fused_pair_D"] = _verdict(
         lambda: complex_conductive_fused_pair_coverage(fields, pml, sources))
-    # THE FOLDED DISPERSIVE D->E PAIR, added 2026-08-31 in the same round that built
+    # The folded dispersive D->E pair, added 2026-08-31 with the change that built
     # it. Its cell is the four `TestLoadDump.test_load_dump_*_2d` rows — the largest
     # remaining unbuilt cell on this board — and like the two D->E pairs above it
     # carries the deposit repair, because every one of those rows declares an
-    # ELECTRIC source. THERE IS NO LADDER FOR IT AND THERE NEVER WILL BE: the clause
+    # ELECTRIC source. There is no ladder for it and there never will be: the clause
     # that decides all four consults `deposit_repair.repairable` on the live run,
     # which no configuration block carries, and its E half reads live polarization
     # objects the way `fused_ade_chain` does. A transcription could only have
     # guessed, and guessing False would price the cell at zero.
     #
-    # NO PROBE ARGUMENT: this family is REAL-STORAGE throughout — its curl half is
+    # No probe argument: this family is REAL-STORAGE throughout — its curl half is
     # `symmetry.pml_curl_step_folded` and its constitutive half the real dispersive
     # `update_E` — so it launches no complex multiply and needs no expansion licence.
     seam["folded_dispersive_fused_pair_D"] = _verdict(
         lambda: folded_dispersive_fused_pair_coverage(fields, pml, sources))
-    # THE Dcyl m = 0 D->E PAIR, added 2026-08-31 in the same round that built it. Its
+    # The Dcyl m = 0 D->E pair, added 2026-08-31 with the change that built it. Its
     # cell is the three rows TestAdjointSolver.test_adjoint_solver_cyl_n2f_fields_
     # {0_0,1_0} and TestPMLCylindrical.test_pml_cyl_0_0_0 — the same three its
     # MAGNETIC twin serves, on the other seam. Like every D->E pair on this board it
@@ -410,7 +410,7 @@ def evaluate(driver: Any) -> Dict[str, Any]:
     # would serve nothing at all. Recorded rather than transcribed for that reason —
     # the clause consults `deposit_repair.repairable` on the live run.
     #
-    # NO PROBE ARGUMENT: this family is REAL storage at m = 0 throughout.
+    # No probe argument: this family is REAL storage at m = 0 throughout.
     seam["cylindrical_real_fused_electric_pair_D"] = _verdict(
         lambda: cylindrical_real_fused_electric_pair_coverage(fields, pml, sources))
     # ASKED ONCE. The second key it carried (``@unified_expansion``, the verdict under
@@ -418,10 +418,10 @@ def evaluate(driver: Any) -> Dict[str, Any]:
     # expansion record, so it was the same call.
     seam["folded_complex_fused_magnetic_pair_B"] = _verdict(
         lambda: folded_complex_fused_magnetic_pair_coverage(fields, pml, sources))
-    # THE ELECTRIC TWIN OF THE PAIR ABOVE, added 2026-08-31 in the round that built
+    # The electric twin of the pair above, added 2026-08-31 with the change that built
     # it, asked once as the magnetic twin is.
     #
-    # THERE IS NO LADDER FOR IT AND THERE NEVER WILL BE. The clause that decides BOTH
+    # There is no ladder for it and there never will be. The clause that decides BOTH
     # of its rows consults `deposit_repair.repairable` on the live run, which no
     # configuration block carries: both rows declare an electric source, so a
     # transcription could only have guessed, and guessing False would price the cell
@@ -429,11 +429,11 @@ def evaluate(driver: Any) -> Dict[str, Any]:
     # rows are electric-only, so no repair is consulted at all.
     seam["folded_complex_fused_pair_D"] = _verdict(
         lambda: folded_complex_fused_pair_coverage(fields, pml, sources))
-    # THE REAL-BETA ELECTRIC WELD, added 2026-08-31 in the round that built it.
+    # The real-beta electric weld, added 2026-08-31 with the change that built it.
     # ASKED ONCE, and under NO probe at all: this family is REAL storage throughout,
     # so it launches no complex multiply and needs no expansion licence.
     #
-    # THERE IS NO LADDER FOR IT AND THERE NEVER WILL BE, while its MAGNETIC twin is
+    # There is no ladder for it and there never will be, while its MAGNETIC twin is
     # still scored from one. The clause that decides its single row consults
     # `deposit_repair.repairable` on the live run, which no configuration block
     # carries: the row declares an electric source, so a transcription could only
@@ -441,28 +441,28 @@ def evaluate(driver: Any) -> Dict[str, Any]:
     # exactly what the twin's own docstring did before the repair existed.
     seam["beta_fused_electric_pair_D"] = _verdict(
         lambda: beta_fused_electric_pair_coverage(fields, pml, sources))
-    # THE BFAST ELECTRIC WELD, added 2026-08-31 in the round that built it. ASKED
-    # ONCE and under NO probe: real storage throughout. NO LADDER, for the reason
+    # The BFAST electric weld, added 2026-08-31 with the change that built it. Asked
+    # once and under NO probe: real storage throughout. No ladder, for the reason
     # the real-beta twin above has none — the clause that decides its single row
     # consults `deposit_repair.repairable` on the live run, and the row declares an
     # electric source, so a transcription could only have guessed.
     seam["bfast_fused_electric_pair_D"] = _verdict(
         lambda: bfast_fused_electric_pair_coverage(fields, pml, sources))
-    # THE CONDUCTIVE PML ELECTRIC WELD, added 2026-08-31 in the round that built it.
+    # The conductive PML electric weld, added 2026-08-31 with the change that built it.
     # ASKED ONCE and under NO probe: real storage throughout. NO LADDER, for the two
     # reasons the siblings above have none and one of its own — its curl half's
     # `conductive_targets` reads `Fields.condfac_for` PER COMPONENT, so which of the
     # three COND flags is live is a fact about the live object and not about the row.
     seam["conductive_fused_electric_pair_D"] = _verdict(
         lambda: conductive_fused_electric_pair_coverage(fields, pml, sources))
-    # THE NO-ABSORBER STORED-E ELECTRIC WELD, added 2026-08-31 in the round that built
+    # The no-absorber stored-E electric weld, added 2026-08-31 with the change that built
     # it. ASKED ONCE and under NO probe: real storage throughout. NO LADDER, for the
     # reasons its siblings have none and one of its own — its curl half is a
     # DISJUNCTION over the two certified no-absorber curl arms, so a ladder would have
     # to name which arm won on each row, which is a fact about the live object.
     seam["no_pml_fused_electric_pair_D"] = _verdict(
         lambda: no_pml_fused_electric_pair_coverage(fields, pml, sources))
-    # THE TWO SCRATCH-OUTPUT OFF-DIAGONAL WELDS, 2026-09-02. NO PROBE ARGUMENT:
+    # The two scratch-output off-diagonal welds, 2026-09-02. No probe argument:
     # real storage throughout. Asked once each, and there is NO LADDER for either
     # — the clause that decides half their rows consults
     # `deposit_repair.seam_source_reasons` on the LIVE source list, which no
@@ -472,8 +472,8 @@ def evaluate(driver: Any) -> Dict[str, Any]:
         lambda: offdiag_fused_electric_pair_coverage(fields, pml, sources))
     seam["folded_offdiag_fused_electric_pair_D"] = _verdict(
         lambda: folded_offdiag_fused_electric_pair_coverage(fields, pml, sources))
-    # THE TWO FOLDED-BETA WELDS, added 2026-08-31 in the round that built them.
-    # ASKED ONCE EACH and under NO probe: real storage throughout. NO LADDER, for
+    # The two folded-beta welds, added 2026-08-31 with the change that built them.
+    # Asked once each and under NO probe: real storage throughout. No ladder, for
     # the reasons every sibling above has none plus one of this family's own — the
     # clause that decides its single row consults `deposit_repair.repairable` on
     # the live run, whose FOLD clauses read the grid's own fill map
@@ -483,8 +483,8 @@ def evaluate(driver: Any) -> Dict[str, Any]:
         lambda: folded_beta_fused_electric_pair_coverage(fields, pml, sources))
     seam["folded_beta_fused_magnetic_pair_B"] = _verdict(
         lambda: folded_beta_fused_magnetic_pair_coverage(fields, pml, sources))
-    # THE TWO COMPLEX-BETA WELDS, added 2026-09-01 in the round that built them.
-    # ASKED ONCE EACH. NO LADDER, for the reason every recent weld has none:
+    # The two complex-beta welds, added 2026-09-01 with the change that built them.
+    # Asked once each. No ladder, for the reason every recent weld has none:
     # the electric twin's deciding clause consults `deposit_repair.repairable` on
     # the live run, and the magnetic twin's source clause reads the same live
     # objects.
@@ -492,7 +492,7 @@ def evaluate(driver: Any) -> Dict[str, Any]:
         lambda: complex_beta_fused_electric_pair_coverage(fields, pml, sources))
     seam["complex_beta_fused_magnetic_pair_B"] = _verdict(
         lambda: complex_beta_fused_magnetic_pair_coverage(fields, pml, sources))
-    # THE TWO FOLDED COMPLEX-BETA WELDS, added 2026-09-02 with the modules (the
+    # The two folded complex-beta welds, added 2026-09-02 with the modules (the
     # folded half of the same no-admitting-arm residue), asked once each as the
     # beta-less folded complex twins are. NO LADDER for
     # either: the deciding clauses consult `deposit_repair.repairable` on the
@@ -511,12 +511,12 @@ def evaluate(driver: Any) -> Dict[str, Any]:
     seam["complex_fused_ade_chain"] = _verdict(
         lambda: complex_fused_ade_chain_coverage(fields, pml))
 
-    # THE FOLDED OFF-DIAGONAL E->P CHAIN, added 2026-09-10 with the module. ASKED
-    # ONCE, UNDER ONE KEY, and both facts are the product's own rather than this
+    # The folded off-diagonal E->P chain, added 2026-09-10 with the module. Asked
+    # once, under one key, and both facts are the product's own rather than this
     # file's convention: its predicate takes no ``arm`` (there is one body and one
     # admission, unlike ``fused_ade_chain``'s three).
     #
-    # RECORDED ON EVERY ROW, like every other entry in this block. A verdict
+    # Recorded on every row, like every other entry in this block. A verdict
     # present on some rows and absent on others makes the census non-uniform, and
     # the board refuses a non-uniform census rather than counting a cell at zero
     # because nobody asked (build_triton_fusion_matrix's seam-block floor).
@@ -633,7 +633,7 @@ def plan_step_admission(fields: Any, pml: Any, sources: Any) -> Dict[str, Any]:
       the original and returns whatever the original returned. The selection rule
       that decides the slot is the shipped one.
 
-    THE BUILDERS ARE NOT MEASURABLE ON THIS HOST and are not counted. Every kernel
+    The builders are not measurable on this host and are not counted. Every kernel
     builder imports ``triton``, which is absent here, so ``_select_slot`` catches an
     import error and leaves the slot unselected with a named reason. That is why the
     number reported is ADMISSION (what the arm table's predicates said), which is
@@ -712,14 +712,14 @@ def plan_step_admission(fields: Any, pml: Any, sources: Any) -> Dict[str, Any]:
 #
 # Everything above this line is a BYTE-IDENTICAL copy of
 # ``results/predicate_coverage_2026-08-16_wired_convention/predicate_battery.py``
-# (sha256 recorded in the census tranche's PROVENANCE.md, and re-checkable with
+# (sha256 recorded in that census directory's PROVENANCE.md, and re-checkable with
 # ``head -c <n>``). That is deliberate: the 716/759 headline and every earlier
 # Triton census were taken over these exact bytes, and a battery whose entry list
 # has been "tidied" during promotion is no longer commensurable with them -- the
 # one property the whole campaign's ladder rests on.
 #
-# WHY IT WAS PROMOTED. It lived inside a results tranche, so the only way to cut a
-# fresh Triton census was to copy the tranche. Nineteen divergent copies of
+# Why it was promoted. It lived inside a results directory, so the only way to cut a
+# fresh Triton census was to copy the directory. Nineteen divergent copies of
 # ``fusion_matrix.py`` under ``results/`` is what that habit produced on the board
 # side (build_fusion_matrix.py:110-116), and a census battery is the same hazard one
 # layer down. ``measure_predicate_coverage.py --battery triton_predicate_battery``

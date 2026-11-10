@@ -1,7 +1,7 @@
 """Merge-bar tests for the Metal COMPLEX/BLOCH H->D pair
 (``metal_kernels/complex_fused_hd_pair.py``).
 
-WHAT THIS SUITE OWNS AND WHAT IT DOES NOT. The BYTES are the device gate's --
+What this suite owns and what it does not. The BYTES are the device gate's --
 ``parity/meep_gpu/gate_metal_complex_fused_hd_pair.py`` walks the product beside the
 array path and the two certified complex singles for twelve complete driver steps and
 compares uint32 words, over eight synthetic configurations and all 17 corpus rows of
@@ -73,7 +73,7 @@ def test_the_product_spans_the_drivers_h_to_d_seam_and_carries_nothing_else():
     assert tuple(family.REPLACES) == ("update_H", "step_D")
     assert tuple(family.REPLACES) == tuple(withdraw_hoist.SEAM_SPAN)
     assert family.SEAM == withdraw_hoist.SEAM == "H_to_D"
-    # NOTHING IS INJECTED BETWEEN THE TWO CONSULTS, so there is no deposit to bracket;
+    # Nothing is injected between the two consults, so there is no deposit to bracket;
     # what IS there is the electric withdraw, which this product does not perform.
     assert family.CARRIES_DEPOSIT_REPAIR is False
     assert family.HOISTS_THE_WITHDRAW is False
@@ -126,7 +126,7 @@ def test_the_weld_is_owed_and_says_what_a_release_still_owes():
 
 
 def test_the_module_registers_one_unwired_row_on_update_H():
-    """ENUMERABLE, NOT SELECTABLE. ``arms.arms_for`` skips an unwired row so
+    """Enumerable, not selectable. ``arms.arms_for`` skips an unwired row so
     ``plan_step`` cannot select it; ``arms.registered`` still returns it, which is
     what lets the seam loop ask the product and then refuse it on INSTALLABLE."""
     from meep_gpu.metal_kernels import arms as metal_arms
@@ -222,7 +222,7 @@ def test_the_lifted_body_indexes_no_volume_the_fused_signature_renames():
                                           ((1, 1, 1), (0, 0, 0)),
                                           ((0, 1, 0), (1, 0, 1))])
 def test_the_welded_curl_reverses_to_the_certified_text(codes, phased):
-    """THE STRONGEST STATEMENT THIS SUITE CAN MAKE WITHOUT A DEVICE: undo the nine
+    """The strongest statement this suite can make without a device: undo the nine
     declared load redirections and the certified emitter's own body comes back, byte
     for byte -- which says NOTHING ELSE moved."""
     prologue, body = family.welded_curl_tail(codes, phased)
@@ -443,7 +443,7 @@ class _Grid:
 
 
 def test_an_undeclared_source_set_is_refused_rather_than_assumed_empty():
-    """IGNORANCE IS NEVER AN EMPTY SET: ``Fields`` does not hold the source list."""
+    """Ignorance is never an empty set: ``Fields`` does not hold the source list."""
     reasons = withdraw_hoist.seam_withdraw_reasons(
         object(), None, undeclared="the source set was not declared",
         refusal=lambda index, source: "x",
@@ -578,7 +578,7 @@ def test_one_complete_driver_step_is_bit_identical_to_the_array_path():
         assert differing(left, getattr(device_fields, name)) == 0, name
     assert total > 0
 
-    # THE CONTROL THAT BITES: undo the rotation and the H group is the pre-launch one.
+    # The control that bites: undo the rotation and the H group is the pre-launch one.
     for name in family.ROTATED_NAMES:
         current = getattr(device_fields, name)
         setattr(device_fields, name, plan.rotated[name])

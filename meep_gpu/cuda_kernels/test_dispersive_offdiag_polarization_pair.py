@@ -1,6 +1,6 @@
 """The off-diagonal E->P weld: the shape a shipped refusal named, and its lift.
 
-WHAT THIS FILE SETTLES. ``dispersive_offdiag_fused_polarization_pair`` exists because
+What this file settles. ``dispersive_offdiag_fused_polarization_pair`` exists because
 ``fused_polarization_pair``'s own preamble refuses this cell in as many words -- and
 refuses it for the PER-COMPONENT SPLIT, naming the shape that would serve it: "all
 three components in one launch". So the questions here are sharper than usual and all
@@ -28,7 +28,7 @@ of them are answerable without a device:
    The rotation moves three names per component, and a launcher that got the sequence
    wrong would still compute.
 
-NOTHING HERE COMPILES OR LAUNCHES ANYTHING; the arithmetic is a DEVICE claim
+Nothing here compiles or launches anything; the arithmetic is a DEVICE claim
 (``parity/meep_gpu/gate_cuda_dispersive_offdiag_polarization_pair.py``).
 """
 
@@ -67,9 +67,10 @@ _DEFAULT_ROWS = {"Ex": ("Ey",), "Ey": ("Ex",)}
 
 
 #: The corpus row's shape with every resolved axis walled: the one-rank division's record
-#: then names its chunks on every axis, which the off-diagonal families require (the
-#: corpus row's own wrapping axes carry a layer on both faces, and the wrapped row 0
-#: reads the low run's label while its chunk is the high one).
+#: then names its chunks on every axis, which the arm table's general clause requires
+#: (the corpus row's own wrapping axes carry a layer on both faces, and the wrapped row 0
+#: reads the low run's label while its chunk is the high one). This family is admitted
+#: on those wrapping axes too, where its presence words build on the record.
 WALLED = {"x": "metallic", "y": "metallic"}
 
 
@@ -115,11 +116,11 @@ def _source(**kwargs):
 
 
 # ---------------------------------------------------------------------------
-# 1. THE E HALF IS LIFTED WHOLE
+# 1. The E half is lifted whole
 # ---------------------------------------------------------------------------
 
 def test_the_update_e_half_is_the_certified_source_verbatim_but_for_two_edits():
-    """THE WHOLE ARGUMENT FOR THIS WELD. ``update_E`` never splits, so no rotation
+    """The whole argument for this weld. ``update_E`` never splits, so no rotation
     happens inside the launch and the off-diagonal row product cannot read a rotated
     P slot. Every line of the certified emission must therefore survive, except the
     entry-point name and the signature's closing line."""
@@ -158,7 +159,7 @@ def test_the_weld_carries_its_own_entry_point_name():
 
 
 # ---------------------------------------------------------------------------
-# 2. THE P HALF IS THE CERTIFIED RECURRENCE, AND THE SEAM IS A REGISTER
+# 2. The P half is the certified recurrence, and the seam is a register
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("component,target", [(0, "Ex"), (1, "Ey"), (2, "Ez")])
@@ -252,17 +253,110 @@ def test_the_weld_admits_the_corpus_row_shape_where_the_record_names_its_chunks(
     assert weld.pole_counts(fields) == (1, 1, 1)
 
 
-def test_the_corpus_row_shape_on_its_wrapping_axes_is_refused_by_the_chunk_clause(xp):
-    """The composer's own clause, which the composer asks of the update_E arm this weld
-    implements: on the corpus row's periodic x with a layer on both faces the record
-    does not name the chunk the wrapped row 0 belongs to, so neither the arm nor the
-    weld serves it (examples/absorbed_power_density.py on the 1.0 census)."""
+def _drop_offdiag_on_x_chunks(fields, layer, grid, which):
+    """Zero every off-diagonal row on the x-slabs the ``which`` x chunks allocate.
+
+    ``which`` is ``"high"`` (the chunks whose x interval ends at the high wall) or
+    ``"layers"`` (both x layer chunks). MEEP then deletes those arrays in exactly those
+    chunks (``ChunkLayout.offdiag_kept``), so the presence words are not all-kept and
+    the chunk code each cell reads decides what it adds.
+    """
+    from .arms import StepContext  # noqa: PLC0415
+
+    layout = StepContext(fields, layer, grid)._layout()  # noqa: SLF001
+    lows = sorted({lo[0] for lo, _ in layout.boxes})
+    edges = {"high": {lows[-1]}, "layers": {lows[0], lows[-1]}}[which]
+    samples = layout.chunk_samples(0)
+    rows = set()
+    for k, (lo, _hi) in enumerate(layout.boxes):
+        if lo[0] in edges:
+            rows.update(int(r) for r in numpy.flatnonzero(samples[k]))
+    for row in ("Ex", "Ey", "Ez"):
+        for volume in fields.chi1inv_offdiagonal_for(row).values():
+            if volume is not None:
+                volume[sorted(rows), :, :] = 0.0
+    return sorted(rows)
+
+
+def test_the_corpus_row_shape_on_its_wrapping_axes_is_admitted_where_its_presence_builds(xp):
+    """The family's own clause (``dispersive_offdiag_division_refusal``), which the
+    composer asks of the update_E arm this weld implements. On the corpus row's
+    periodic x with a layer on both faces the record does not name the chunk the
+    wrapped row 0 belongs to -- it reads the low run's label while its chunk is the
+    high one -- so the arm table's general clause refuses the division; but this family
+    reads a cell's chunk only through its presence words, which build on that record,
+    so the weld admits it (examples/absorbed_power_density.py)."""
+    from .arms import StepContext  # noqa: PLC0415
+    from .chunk_coverage import CHUNK_AXES_OFFDIAG  # noqa: PLC0415
+
+    for drop in (None, "layers"):
+        fields, layer, grid = _build(xp)
+        if drop:
+            _drop_offdiag_on_x_chunks(fields, layer, grid, drop)
+        context = StepContext(fields, layer, grid)
+        general = context.chunk_division_refusal(CHUNK_AXES_OFFDIAG)
+        assert general.startswith("the chunk division is not a {low, interior, high} "
+                                  "product along x"), general
+        assert offdiag_e.dispersive_offdiag_division_refusal(context) is None
+        covered, why = weld.covers_dispersive_offdiag_fused_polarization_pair(
+            fields, layer, grid, ())
+        assert covered, (drop, why)
+        codes = offdiag_e.dispersive_offdiag_boundary_codes(grid, layer)
+        _record, kept = offdiag_e.dispersive_offdiag_chunk_arguments(
+            fields, layer, codes, context.chunk_bounds())
+        live = [word for word, flag in zip(kept, MASK) if flag]
+        all_kept = (1 << 27) - 1
+        assert all(word == all_kept for word in live) is (drop is None), (drop, kept)
+
+
+def test_a_wrapping_division_whose_wrapped_row_reads_another_presence_is_refused(xp):
+    """The branch that keeps the relaxation honest. With the high x chunk's arrays
+    deleted and the low one's kept, the wrapped row 0 belongs to the high chunk (no term)
+    while its label reads the low one (term): no presence word reproduces the array
+    path's presence there, and the family's clause refuses by the builder's reason."""
+    from .arms import StepContext  # noqa: PLC0415
+
     fields, layer, grid = _build(xp)
+    rows = _drop_offdiag_on_x_chunks(fields, layer, grid, "high")
+    assert 0 in rows, rows
+    refusal = offdiag_e.dispersive_offdiag_division_refusal(StepContext(fields, layer, grid))
+    assert refusal is not None
+    assert refusal.startswith("the chunk division is not a {low, interior, high} product "
+                              "along x"), refusal
+    assert ("presence words, and they do not build on this record: PresenceRefusal"
+            in refusal), refusal
+    assert "disagree on whether their chunk keeps the array" in refusal, refusal
     covered, why = weld.covers_dispersive_offdiag_fused_polarization_pair(
         fields, layer, grid, ())
-    assert not covered
-    assert why.startswith("the chunk division is not a {low, interior, high} product "
-                          "along x"), why
+    assert not covered and why == refusal, why
+
+
+def test_a_division_no_record_describes_is_refused_by_every_arms_reason(xp):
+    """The presence words are read through the record, so a division no record
+    describes is refused before they are asked for, by the reason every arm gives."""
+    from .arms import StepContext  # noqa: PLC0415
+    from .test_chunk_binding import _layout, _product  # noqa: PLC0415
+
+    fields, layer, grid = _build(xp, boundaries=WALLED)
+    tangled = _product(_layout(fields, layer, grid), flip=(0, 0))
+    context = StepContext(fields, layer, grid, chunk_layout=tangled)
+    every_arm = context.chunk_division_refusal()
+    assert every_arm is not None, "the flipped division must have no record"
+    assert offdiag_e.dispersive_offdiag_division_refusal(context) == every_arm
+
+
+def test_only_the_dispersive_offdiag_rows_carry_the_presence_clause():
+    """The relaxation is this family's alone: every other chunk-indexed row (the plain,
+    folded and complex off-diagonal arms and welds, the cylindrical curls) still asks
+    the general clause."""
+    from . import registry  # noqa: PLC0415
+
+    arms_with = sorted((row["family"], row["label"]) for row in registry._TABLE  # noqa: SLF001
+                       if "chunk_clause" in row)
+    assert arms_with == [("cuda_dispersive_offdiag", "dispersive off-diagonal")], arms_with
+    products_with = sorted(name for name, row in fused_pairs.FUSED_PRODUCTS.items()
+                           if "chunk_clause" in row)
+    assert products_with == ["cuda_dispersive_offdiag_fused_polarization_pair"], products_with
 
 
 def test_the_diagonal_polarization_pair_refuses_the_same_row(xp):
@@ -293,7 +387,7 @@ def test_a_run_with_no_driven_component_is_refused_by_name(xp):
     covered, why = weld.covers_dispersive_offdiag_fused_polarization_pair(
         fields, layer, grid, ())
     assert not covered
-    # THE ADE HALF REFUSES FIRST, and that is the conjunction working rather than a
+    # The ADE half refuses first, and that is the conjunction working rather than a
     # missing clause: this weld's own "nothing is driven" clause sits BELOW both
     # halves and is reachable only where they admit. It is written anyway, because
     # ``fused_component`` returning None must never reach the emitter.
@@ -310,7 +404,7 @@ def test_a_mismatched_recurrence_extent_is_refused_by_name(xp):
     covered, why = weld.covers_dispersive_offdiag_fused_polarization_pair(
         fields, layer, grid, ())
     assert not covered
-    # THE CONSTITUTIVE HALF REFUSES THIS ONE FIRST -- it checks the pole volumes
+    # The constitutive half refuses this one first -- it checks the pole volumes
     # against the GRID's shape -- and this weld's own extent clause asks a different
     # question: against the extent the DROPPED ADE guard would have used, which is
     # the size of the array this launch walks. Both are written; the halves are
@@ -319,7 +413,7 @@ def test_a_mismatched_recurrence_extent_is_refused_by_name(xp):
 
 
 # ---------------------------------------------------------------------------
-# 4. THE TAIL AND THE ROTATION
+# 4. The tail and the rotation
 # ---------------------------------------------------------------------------
 
 def test_the_rotation_is_the_certified_three_line_move(xp):

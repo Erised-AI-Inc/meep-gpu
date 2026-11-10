@@ -1,23 +1,23 @@
 """The FOLDED off-diagonal ``update_E`` slice, at the merge bar.
 
-WHAT A LAPTOP CAN AND CANNOT SETTLE FOR THIS FAMILY, stated first because the
+What a laptop can and cannot settle for this family, stated first because the
 distinction is the whole reason this file exists beside a device gate.
 
 A byte gate measures whether the COMPILED kernel reproduces ``stepping.update_E``.
-These legs measure whether the EXPRESSION TREE THE EMITTER WROTE reproduces it --
+These legs measure whether the expression tree the emitter wrote reproduces it --
 which is the half a compiler cannot fix, and the half that was wrong in every one
 of the four plain curl kernels when they were first written (0/16 against the
 array path under every option set). If the tree is wrong here it is wrong on the
 device, and it is wrong in a tenth of a second rather than in a device slot.
 
-THE ARITHMETIC LEGS EXECUTE THE EMITTED DEVICE SOURCE. They do not re-implement
+The arithmetic legs execute the emitted device source. They do not re-implement
 it: :func:`evaluate_folded_source` parses the emitted text over a KNOWN GRAMMAR
 and evaluates its arithmetic lines as float32 expressions, and
 :func:`test_every_line_of_the_device_source_is_executed_or_pinned` fails if a line
 of any emitted source is neither matched by that grammar nor pinned by exact
 string. So "the tests cover the shipped text" is measured rather than hoped.
 
-WHAT IS NEW IN THIS FAMILY, AND THEREFORE WHAT THESE LEGS ARE FOR. Everything
+What is new in this family, and therefore what these legs are for. Everything
 except the mirror arm is ``offdiag_emitter``'s, certified 2026-08-16 on an RTX
 A6000, and is not re-litigated here beyond the reduction leg. The new arithmetic
 is exactly three things:
@@ -35,13 +35,13 @@ Each has a leg that MEASURES it against ``stepping.update_E`` on a real folded
 ``Grid``/``Fields``/``PML`` triple, and a MUTATION leg that plants the wrong
 answer and requires it to be caught.
 
-THE FIXTURE IS THE CERTIFIED SLICE'S, IMPORTED. ``build``, ``install_rows``,
+The fixture is the certified slice's, imported. ``build``, ``install_rows``,
 ``seed_state``, ``_tables_for``, ``_device_arrays``, ``_bits`` and
 ``_advance_sources`` come from ``test_offdiag_constitutive_pml_real`` rather than
 being copied: two fixtures that differ silently would make the reduction leg a
 comparison of two runs instead of of two trees.
 
-NO DEVICE VERDICT IS CLAIMED HERE. ``folded_offdiag_kernels.FOLDED_OFFDIAG_
+No device verdict is claimed here. ``folded_offdiag_kernels.FOLDED_OFFDIAG_
 ADMISSION["host"]`` is None until
 ``parity/meep_gpu/gate_cuda_folded_offdiag_kernel.py`` records one, and a leg
 below asserts that this file does not quietly imply otherwise.
@@ -79,7 +79,7 @@ ROW_MASKS = ((1, 0, 0, 1, 0, 0), (1, 1, 1, 1, 1, 1),
 CORPUS_ROW_MASKS = ((1, 0, 0, 1, 0, 0), (1, 1, 1, 1, 1, 1))
 
 #: Fold specs: every axis alone, two planes at once, three at once, and the
-#: unfolded control. EVERY AXIS IS FOLDED SOMEWHERE, because a decomposition
+#: unfolded control. Every axis is folded somewhere, because a decomposition
 #: defect that confuses the slowest coefficient stride with the fastest is only
 #: visible if both are folded in the sweep.
 FOLD_SYMMETRIES = ((), ("x",), ("y",), ("z",),
@@ -201,11 +201,11 @@ def _as_python(expression):
 def _ghost_rules(source):
     """``MIRROR_ROW``, ``coord_dn`` and ``coord_up``, PARSED out of the emitted text.
 
-    THE CERTIFIED SLICE TRANSCRIBES ITS COORDINATE HELPERS INTO PYTHON AND PINS THE
-    C BY EXACT STRING. That is the right balance for arithmetic another suite has
+    The certified slice transcribes its coordinate helpers into Python and pins the
+    C by exact string. That is the right balance for arithmetic another suite has
     already certified on a device, and the wrong one here: the mirror arm is the
     only new rule in this family, and a leg that plants a wrong mirror arm must be
-    CAUGHT BY ARITHMETIC rather than by a string comparison, or the merge bar is
+    caught by arithmetic rather than by a string comparison, or the merge bar is
     testing that nobody edited the file rather than that the file is right.
     """
     row = _MIRROR_ROW.search(source)
@@ -326,7 +326,7 @@ def evaluate_folded_source(source, arrays, tables, codes, walls, weights, shape,
     for match in _US.finditer(body):
         scalars[f"us_{match['name']}"] = _f32(numpy.asarray(arrays[match["volume"]]))
 
-    # folded_offdiag_term's three arithmetic lines, PARSED AND EVALUATED as
+    # folded_offdiag_term's three arithmetic lines, parsed and evaluated as
     # expressions -- the certified slice's device, extended by two arguments.
     near_text, far_text, term_text = _TERM_BODY.search(source).groups()
 
@@ -414,7 +414,7 @@ def run_both_paths(mask, symmetry=(), phase=1, termination="periodic", steps=2,
     by construction: ``coverage.BC_CODES`` has no ``mirror`` entry and the KeyError
     is deliberately left to escape.
 
-    PLAIN NUMPY, NOT AN ``xp`` FIXTURE: what is measured is a float32 expression
+    Plain NumPy, not an ``xp`` fixture: what is measured is a float32 expression
     tree, which is the same tree whatever allocated the arrays. The backend name
     is the PREDICATE legs' question, not this one's.
     """
@@ -522,7 +522,7 @@ def _assert_floors(floors, folded_expected=True):
 
 
 # ==========================================================================
-# THE TRANSCRIBED CONSTANTS
+# The transcribed constants
 # ==========================================================================
 
 def test_the_mirror_source_row_is_steppings():
@@ -581,7 +581,7 @@ def test_the_compile_options_are_the_certified_siblings_options():
 
 
 def test_the_ghost_weight_is_minus_the_plane_phase_on_every_axis():
-    """THE ONE SIGNED SCALAR THE WHOLE PARITY INPUT COLLAPSES TO.
+    """The one signed scalar the whole parity input collapses to.
 
     ``_shift_down`` is called with ``component = "D" + AXIS_NAMES[partner_axis]``
     on ``axis = partner_axis`` (stepping.py:1243-1245), and every D component has
@@ -637,7 +637,7 @@ def test_an_unreadable_mirror_phase_is_a_nan_the_predicate_names(xp):
 
 
 # ==========================================================================
-# THE DEVICE TEXT
+# The device text
 # ==========================================================================
 
 PINNED_HELPERS = {
@@ -718,7 +718,7 @@ def test_there_are_sixty_three_live_row_masks_and_the_all_dead_one_is_refused():
 
 
 def test_the_boundary_wall_and_weight_axes_are_runtime_arguments():
-    """THE SPECIALIZATION SPLIT, measured. The row mask is the emitter's only
+    """The specialization split, measured. The row mask is the emitter's only
     parameter; the boundary codes, wall flags and ghost weights ride the
     signature. Baked in, the source count would be 64x63x8 and every one of them
     would owe a byte gate."""
@@ -741,7 +741,7 @@ def test_only_the_live_coefficients_are_declared():
 
 
 def test_the_ghost_lane_is_derived_from_the_boundary_code_and_nowhere_else():
-    """ONE FACT, ONE PLACE. The index redirect keys off ``bc_*`` and the parity
+    """One fact, one place. The index redirect keys off ``bc_*`` and the parity
     weight off ``mg_*``; if the two could disagree the kernel would read stored
     row 2 without the parity, or apply the parity to an ordinary neighbour -- a
     plane of wrong values, not a crash. The sibling track carries the same fact
@@ -779,7 +779,7 @@ def test_the_ghost_rules_are_the_three_stepping_branches_and_no_others():
 
 
 def test_every_line_of_the_device_source_is_executed_or_pinned():
-    """NOTHING IN THE SHIPPED TEXT IS NEITHER RUN NOR PINNED.
+    """Nothing in the shipped text is neither run nor pinned.
 
     The evaluator's grammar covers the per-component statements and the ghost
     lanes; the pinned helpers and the extracted sibling blocks cover the prelude;
@@ -896,7 +896,7 @@ _FOLDED_CASES = [(mask, symmetry, phase, termination)
 @pytest.mark.parametrize("mask,symmetry,phase,termination", _FOLDED_CASES)
 def test_the_emitted_source_is_bit_identical_to_stepping_on_a_fold(
         mask, symmetry, phase, termination):
-    """THE MEASUREMENT THIS FAMILY EXISTS FOR.
+    """The measurement this family exists for.
 
     ``stepping.update_E`` on a real folded ``Grid``/``Fields``/``PML`` triple with
     the rows installed through the PUBLIC installer, against the emitted device
@@ -926,7 +926,7 @@ def test_the_transcription_holds_over_the_multi_step_budget():
 
 
 def test_the_two_fold_terminations_are_bit_identical_here():
-    """FACT 3, MEASURED. The curl pair splits a folded PERIODIC axis from a folded
+    """Fact 3, measured. The curl pair splits a folded PERIODIC axis from a folded
     METALLIC one because it masks the folded-periodic top plane and reflects past
     it. ``update_E`` has no ownership mask (``_mask_non_owned_cells`` has three
     call sites and no constitutive function is among them) and, because
@@ -958,7 +958,7 @@ def test_the_two_fold_terminations_are_bit_identical_here():
 ])
 def test_an_unfolded_grid_reduces_to_the_certified_family_bit_for_bit(
         mask, boundaries):
-    """THE REDUCTION, MEASURED RATHER THAN CLAIMED.
+    """The reduction, measured rather than claimed.
 
     With no axis folded every ``mg`` lane is 0, ``ghosted_mirror`` returns
     ``ghosted``'s value BY BRANCH rather than by a multiply a compiler is trusted
@@ -987,12 +987,12 @@ def test_an_unfolded_grid_reduces_to_the_certified_family_bit_for_bit(
 
 
 def test_the_fold_plane_coupling_is_alive_and_is_the_mirror_ghosts():
-    """THE ARM THE CERTIFIED KERNEL CANNOT SERVE, isolated.
+    """The arm the certified kernel cannot serve, isolated.
 
     On a fold whose axis is a live slot's PARTNER, plane 0 of that axis carries a
     coupling computed from ``parity * g[2]``. Handing the kernel METALLIC instead
     -- which is the shipped kernel's only available answer -- must MOVE BYTES, and
-    move them ON THAT PLANE. If it did not, this family would be worth nothing and
+    move them on that plane. If it did not, this family would be worth nothing and
     the 2026-08-20 device sweep would have been measuring noise.
     """
     mask = (1, 0, 0, 1, 0, 0)          # slots (Ex,Ey) and (Ey,Ex): partners Y and X
@@ -1166,7 +1166,7 @@ def test_the_own_axis_defect_discriminates_on_the_role_the_fold_plays(kind):
 
 
 def test_dropping_the_parity_weight_discriminates_on_the_plane_phase():
-    """THE SHARPEST LEG IN THIS FILE, and the reason both parities are swept.
+    """The sharpest leg in this file, and the reason both parities are swept.
 
     The weight is ``-phase``. On an EVEN plane it is -1 and dropping it must be
     caught; on an ODD plane it is +1, dropping it is the identity, and the leg
@@ -1218,7 +1218,7 @@ def test_the_predicted_null_changes_no_bit(kind):
 
 
 def test_weighting_every_lane_is_caught_where_a_lane_is_subnormal():
-    """WHY THE WEIGHT IS A SELECT AND NOT A BLANKET MULTIPLY.
+    """Why the weight is a select and not a blanket multiply.
 
     ``1.0f * x`` is the identity on the bits under ``-ftz=false``, so a blanket
     weight would usually be invisible -- which is exactly why the property is
@@ -1255,7 +1255,7 @@ def test_the_predicate_admits_a_fold_the_certified_one_refuses(xp):
 
 
 def test_the_composition_verdict_requires_a_real_fold(xp):
-    """THE DISJOINTNESS SEAM, as a measurement rather than a policy. The standalone
+    """The disjointness seam, as a measurement rather than a policy. The standalone
     verdict admits an unfolded grid so the reduction leg above can exist; the
     COMPOSITION verdict -- the one the coverage census asks -- does not, so no
     corpus slot can be claimed by two families."""
@@ -1294,7 +1294,7 @@ def test_no_configuration_is_admitted_by_two_families(xp, symmetry, mask):
 class _ThinFold:
     """A grid that reports a folded axis too thin to reflect from.
 
-    MEASURED FIRST: a real ``Grid`` cannot produce one. Folding X at cell sizes
+    Measured first: a real ``Grid`` cannot produce one. Folding X at cell sizes
     1.0, 2.0 and 2.5 gives stored extents 3, 3 and 4, so
     ``shape[axis] <= MIRROR_SOURCE_INDEX`` is LATENT rather than live -- exactly
     the status ``coverage.py``'s fail-closed clauses carry, and stated the same
@@ -1359,7 +1359,7 @@ def test_a_folded_run_with_no_surviving_row_belongs_to_the_plain_pair(xp):
 
 
 def test_the_clause_chain_matches_the_certified_predicate_off_the_fold(xp):
-    """WRITTEN OUT, NOT DELEGATED -- and therefore pinned against drift.
+    """Written out, not delegated -- and therefore pinned against drift.
 
     The certified predicate SHORT-CIRCUITS, so "refused for the fold and nothing
     else" is not a question its return value can answer and delegation would admit
@@ -1512,7 +1512,7 @@ def test_dropping_a_clause_is_caught(case, xp):
 
 
 # ==========================================================================
-# THE LAUNCHER'S OWN REFUSALS -- reachable without a device
+# The launcher's own refusals -- reachable without a device
 # ==========================================================================
 
 def test_the_launcher_refuses_both_a_layer_and_an_override():

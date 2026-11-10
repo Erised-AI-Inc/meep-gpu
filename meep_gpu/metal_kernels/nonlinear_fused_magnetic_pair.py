@@ -1,12 +1,12 @@
 """The fused magnetic B/H pair on a NONLINEAR run — admission only, no new kernel.
 
-WHAT THIS MODULE ADDS, AND WHAT IT DELIBERATELY DOES NOT. It adds one predicate and
+What this module adds, and what it deliberately does not. It adds one predicate and
 one plan builder. It adds NO arithmetic, NO template and NO emitter: the kernel a
 covered configuration compiles here is
 :func:`.fused_magnetic_pair.fused_magnetic_pair_source`, character for character,
 because on a nonlinear run the B/H seam IS the ordinary one.
 
-THE MEASUREMENT THAT LICENSES THAT, and it is already in the tree rather than being
+The measurement that licenses that, and it is already in the tree rather than being
 made here. ``stepping.step_B`` and ``stepping.update_H`` do not read chi2/chi3 — the
 Pade factor enters ``update_E`` alone — so :mod:`.nonlinear_update_e` already ships
 two SPINE ARMS whose whole content is that fact:
@@ -19,11 +19,11 @@ two SPINE ARMS whose whole content is that fact:
 
 So the two halves the planner selects at this cell on a nonlinear row are, already
 and by construction, the two halves :mod:`.fused_magnetic_pair` welds. This module
-is the same one-clause inversion applied ONE LEVEL UP — to the WELD instead of to
+is the same one-clause inversion applied one level up — to the WELD instead of to
 each half — and the view it inverts through is IMPORTED from the spine rather than
 copied, so a change to that view moves all three arms together.
 
-WHY THAT MAKES THE CONJUNCTION EXACT, not merely plausible.
+Why that makes the conjunction exact, not merely plausible.
 :func:`.fused_magnetic_pair.metal_fused_magnetic_pair_coverage` is
 ``pml_curl_coverage(fields, pml, "step_B") AND constitutive_coverage(fields, pml,
 "H")`` plus three seam clauses that read the GRID and the SOURCE LIST — neither of
@@ -32,7 +32,7 @@ conjunction of the two shipped spine predicates plus those seam clauses. There i
 third thing to certify. :func:`nonlinear_fused_magnetic_pair_equivalence` states that
 as a checkable identity and the test module and the device gate both run it.
 
-WHAT THE CORPUS SAYS THIS IS WORTH. Two seam-instances, both reachable, measured at
+What the corpus says this is worth. Two seam-instances, both reachable, measured at
 ``parity/meep_gpu/results/below_the_cut_census_2026-08-20/census.json``:
 ``examples:3rd-harm-1d.py`` and ``tests:Test3rdHarm1d.test_3rd_harm_1d``. Both carry
 an ELECTRIC source only, so the magnetic source seam (driver.py:3283-3284) is clear
@@ -41,9 +41,9 @@ on both; both are all-periodic in x and y with a METALLIC z boundary, so the inl
 compiled out. The D/E partner cell is worth ZERO — both rows inject electrically
 between ``step_D`` and ``update_E`` — and is not built.
 
-REGISTERED UNWIRED, for :mod:`.fused_magnetic_pair`'s reason: the product spans three
-driver passes and ``plan_step`` assigns at most one arm per slot, so there is no slot
-it could claim without a composition rule nothing has measured.
+Registered with ``wired=False``, for :mod:`.fused_magnetic_pair`'s reason: the
+product spans three driver passes and ``plan_step`` assigns at most one arm per slot,
+so there is no slot it could claim without a composition rule nothing has measured.
 """
 
 from __future__ import annotations
@@ -53,7 +53,7 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 from ..triton_kernels.coverage import Coverage
 from . import fused_magnetic_pair, shaders
 from .device import Residency
-# THE SAME VIEW THE TWO SHIPPED SPINE ARMS INVERT THROUGH, imported rather than
+# The same view the two shipped spine arms invert through, imported rather than
 # re-spelled: a second copy could drift from the one the halves are certified under
 # and the conjunction below would stop being exact.
 from .nonlinear_update_e import _LinearScopeView, _nonlinear_spine_reasons
@@ -73,13 +73,13 @@ from .. import deposit_repair as _deposit_repair
 #: seam clause is asked AGAIN in the predicate below, against the real fields and with
 #: this constant.
 #:
-#: WHAT IS MISSING IS THE WIRING AND ONLY THE WIRING. The kernel is byte-identical to
+#: What is missing is the wiring and only the wiring. The kernel is byte-identical to
 #: the welded family's and its constitutive half is just as pointwise -- chi2/chi3
 #: enters ``update_E`` alone (``stepping.py:952-990``) and cannot reach the B/H seam.
 #: Establishing an absorb declaration for this family is the edit that would license
 #: flipping this, and it is a COMPOSITION measurement rather than a repair one.
 #:
-#: BOTH MEASURED CORPUS ROWS ARE UNAFFECTED: ``examples:3rd-harm-1d.py`` and
+#: Both measured corpus rows are unaffected: ``examples:3rd-harm-1d.py`` and
 #: ``tests:Test3rdHarm1d.test_3rd_harm_1d`` carry an ELECTRIC source only, so the
 #: magnetic seam is clear on both and this refusal costs nothing that was ever served.
 CARRIES_DEPOSIT_REPAIR = False
@@ -153,7 +153,7 @@ def metal_nonlinear_fused_magnetic_pair_coverage(
         _LinearScopeView(fields), pml, sources, residency)
     reasons = list(weld.reasons)
 
-    # THE SOURCE SEAM, ASKED HERE RATHER THAN INHERITED. It used to arrive with
+    # The source seam, asked here rather than inherited. It used to arrive with
     # everything else from the delegation, which was right while no product on this
     # track could carry an in-seam deposit. `fused_magnetic_pair` now declares
     # CARRIES_DEPOSIT_REPAIR, so what that predicate returns for a magnetic source is
@@ -162,7 +162,7 @@ def metal_nonlinear_fused_magnetic_pair_coverage(
     # of LeadingRepairPlan / TrailingRepairPlan on this track, and it builds one only
     # for a family that declares CARRIES_DEPOSIT_REPAIR; this one declares False.
     #
-    # THAT SENTENCE USED TO REST ON THE ABSORB TABLE INSTEAD, and it no longer can.
+    # That sentence used to rest on the absorb table instead, and it no longer can.
     # Until 2026-09-17 it read that `launch.FUSED_PAIR_ARMS` "carries a row for
     # `fused_magnetic_pair` and for nothing else, so this family is refused at the
     # absorb table before its predicate is ever asked". That was true and is now
@@ -198,7 +198,7 @@ def metal_nonlinear_fused_magnetic_pair_coverage(
 def nonlinear_fused_magnetic_pair_equivalence(
         fields: Any, pml: Any, sources: Any = None,
         residency: Any = None) -> Dict[str, Any]:
-    """THE IDENTITY THIS MODULE RESTS ON, as a measurement rather than a claim.
+    """The identity this module rests on, as a measurement rather than a claim.
 
     The weld's predicate is the conjunction of its two halves' predicates plus the
     seam clauses, and on a nonlinear run those two halves are the two SHIPPED spine
@@ -250,7 +250,7 @@ def plan_metal_nonlinear_fused_magnetic_pair(
     ``chunk_bounds`` is the run's chunk record, required and FORWARDED to the
     welded family's builder, which checks it against the grid by name.
 
-    THE PLAN CLASS IS THE WELDED FAMILY'S, not a subclass. The two are the same
+    The plan class is the welded family's, not a subclass. The two are the same
     dispatch of the same compiled function over the same buffers; a distinct class
     would give the whole-step arbiter and the composition probe a second type to
     special-case for no measured difference.

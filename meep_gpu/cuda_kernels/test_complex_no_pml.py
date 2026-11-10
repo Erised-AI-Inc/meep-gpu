@@ -1,6 +1,6 @@
 """The complex/no-absorber hand-CUDA family: its bytes, its clauses, its hazards.
 
-WHAT RUNS HERE AND WHAT IS OWED. A kernel has to be launched to be compared, and
+What runs here and what is owed. A kernel has to be launched to be compared, and
 this host has no CuPy, so the bit-identity question belongs to
 ``parity/meep_gpu/gate_cuda_complex_no_pml.py`` and its numbers land in
 :data:`complex_no_pml_kernels.COMPLEX_NO_PML_ADMISSION`.
@@ -17,7 +17,7 @@ no device would report:
    ``complex_emitter``'s own tables and assert the emitted text carries exactly
    them -- so "nothing in the arithmetic moved" is checked rather than reviewed.
 
-2. **The three arithmetic hazards, MEASURED on this host.** Each of the three
+2. **The three arithmetic hazards, measured on this host.** Each of the three
    claims the module makes about float32 -- the conductive order, the pole
    subtraction order, the zero-imaginary product on signed zeros -- is recomputed
    here in NumPy and its word count printed. A claim about rounding that no test
@@ -123,7 +123,7 @@ def shipped():
 
 
 # ===========================================================================
-# 1. THE CURL IS THE CERTIFIED ONE
+# 1. The curl is the certified one
 # ===========================================================================
 
 @pytest.mark.parametrize("key", CURL_KEYS)
@@ -254,11 +254,11 @@ def test_the_builder_refuses_a_template_it_can_no_longer_recognise(monkeypatch):
 
 
 # ===========================================================================
-# 2. THE THREE ARITHMETIC HAZARDS, MEASURED HERE
+# 2. The three arithmetic hazards, measured here
 # ===========================================================================
 
 def test_the_conductive_order_is_load_bearing_and_the_spelling_is_not(capsys):
-    """MEASURED, both halves, because only one of them is a hazard.
+    """Measured, both halves, because only one of them is a hazard.
 
     The module says the ORDER of ``*= condfac; -= curl; *= condinv`` decides bytes
     and that writing the three as one nested C expression does not. Both are
@@ -358,7 +358,7 @@ def test_the_real_coefficient_multiply_is_the_part_wise_product(capsys):
 
 
 # ===========================================================================
-# 3. THE TRANSCRIPTIONS ARE STILL WHERE THIS FILE SAYS THEY ARE
+# 3. The transcriptions are still where this file says they are
 # ===========================================================================
 
 @pytest.mark.parametrize("function,expected", [
@@ -411,7 +411,7 @@ def test_max_poles_matches_the_triton_sibling():
 
 
 # ===========================================================================
-# 4. THE PREDICATE VERDICT TABLE
+# 4. The predicate verdict table
 # ===========================================================================
 
 def _curl(fields, pml, grid, sub_step):
@@ -675,7 +675,7 @@ def test_update_P_never_overlaps_the_real_ade_family(shipped):
 
 
 # ===========================================================================
-# 6. PLATFORM REQUIREMENTS AND THE RECORD
+# 6. Platform requirements and the record
 # ===========================================================================
 
 def test_every_device_string_is_pure_ascii():
@@ -742,8 +742,8 @@ def test_admission_record_is_all_or_nothing():
 def test_the_recon_artifact_this_family_was_designed_from_is_on_disk():
     """The six-row measurement is the whole basis for the kernel split.
 
-    A design read off a projection rather than off the objects is what the brief's
-    own numbers got wrong; the artifact is checked in so a later round can see the
+    A design read off a projection rather than off the objects is what the original
+    estimate got wrong; the artifact is checked in so a later change can see the
     same facts.
     """
     root = (HERE.parents[1] / "parity" / "meep_gpu" / "results"
@@ -758,7 +758,7 @@ def test_the_recon_artifact_this_family_was_designed_from_is_on_disk():
         facts = json.loads(path.read_text(encoding="utf-8"))
         assert facts["fields"]["force_complex_fields"] is True
         assert facts["pml"]["is_none"] is True
-        # THE MEASUREMENT THAT KILLED THE DERIVED-E ARM before it was written.
+        # The measurement that killed the derived-E arm before it was written.
         assert facts["fields"]["stores_E"] is True
         assert facts["fields"]["Ex"] is not None
         conductive += bool(facts["fields"]["has_conductivity"])
@@ -869,7 +869,7 @@ def test_the_recorded_verdict_is_the_artifact_on_disk():
 
 
 def test_the_recorded_kernel_digests_are_the_live_source():
-    """THE DEVICE TEXT IS PINNED BY DIGEST, NOT THE FILE.
+    """The device text is pinned by digest, not the file.
 
     A record written after a gate ran cannot also be inside the bytes that gate
     stamped, and pinning the whole file would make every comment edit read as an
@@ -893,16 +893,16 @@ def test_the_recorded_kernel_digests_are_the_live_source():
 
 
 def test_the_flush_leg_refused_and_the_record_says_so_first():
-    """This round's gate refused flush, and the record must keep saying so first.
+    """The 2026-08-20 gate refused flush, and the record must keep saying so first.
 
     The 2026-08-20 gate ran under 'keep' and refused 'flush' by name, because
     ``update_P``'s fifth expansion orientation was classified only by a keep-cut
     probe record and a licence is policy-conditional. That gap was closed
     2026-08-27 (``cuda_complex_no_pml_2026-08-27`` spans both policies), but the
-    closure lives in ITS record — this round's artifact is immutable and still
+    closure lives in ITS record — the 2026-08-20 artifact is immutable and still
     refuses, so the FIRST entry of ``what_it_does_not_license`` must still name
     the refusal (and now, honestly, the record that superseded it) rather than
-    read as if this round's gate had licensed flush.
+    read as if the 2026-08-20 gate had licensed flush.
     """
     root, _gate = _gate_record()
     flush = json.loads((root / "flush" / "gate.json").read_text(encoding="utf-8"))
@@ -910,11 +910,11 @@ def test_the_flush_leg_refused_and_the_record_says_so_first():
     assert "subnormal policy" in flush["status"]
     assert "sweep" not in flush, "a refused leg must not carry measurements"
     first = family.COMPLEX_NO_PML_ADMISSION["what_it_does_not_license"][0]
-    assert first.startswith("THE FLUSH POLICY")
+    assert first.startswith("The flush policy")
 
 
 def test_the_recorded_slot_delta_is_the_census_artifact():
-    """+20 slots and +4 rows, read back out of the census this round ran.
+    """+20 slots and +4 rows, read back out of the census run for this family.
 
     A slot delta nobody recomputed is the number this project has twice been
     burned by. The controlled comparison -- one analyzer, one record, the family
@@ -932,7 +932,7 @@ def test_the_recorded_slot_delta_is_the_census_artifact():
     assert f"DELTA                       : +{record['slots_gained']} slots, +4 rows" \
         in report
     assert "MATCHES the without-column" in report, (
-        "the without-column must reproduce the closeout round's union, or the "
-        "delta is a difference of two rounds rather than of one predicate")
+        "the without-column must reproduce the closeout census's union, or the "
+        "delta is a difference of two censuses rather than of one predicate")
     assert "disjointness: no slot is admitted by two families" in report
     assert f"cuda_complex_no_pml        {record['slots_gained']} slots" in report

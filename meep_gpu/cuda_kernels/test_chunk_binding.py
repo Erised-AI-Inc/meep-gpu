@@ -17,7 +17,7 @@ one ``int32[25]`` record (``chunk_map.chunk_bounds_record``). What is pinned her
    none.
 4. **The record**: the dispatch record's CUDA row carries the division the table read.
 
-NOTHING HERE COMPILES OR LAUNCHES: the grid is NumPy wearing CuPy's ``__name__``, this
+Nothing here compiles or launches: the grid is NumPy wearing CuPy's ``__name__``, this
 directory's standing stand-in.
 """
 
@@ -101,7 +101,7 @@ def _declaring(plan):
 
 
 # --------------------------------------------------------------------------
-# 1. THE CLAUSE MODULE
+# 1. The clause module
 # --------------------------------------------------------------------------
 
 def test_the_clause_module_pulls_in_no_device_dependency():
@@ -142,7 +142,7 @@ def test_the_owner_label_is_the_run_formula():
 
 
 # --------------------------------------------------------------------------
-# 2. THE DEFAULT
+# 2. The default
 # --------------------------------------------------------------------------
 
 def test_the_one_rank_default_is_read_recorded_and_admitted(xp):
@@ -192,11 +192,11 @@ def test_a_division_for_another_grid_is_refused_by_name(xp):
 
 
 # --------------------------------------------------------------------------
-# 3. THE REFUSALS
+# 3. The refusals
 # --------------------------------------------------------------------------
 
 def test_a_non_separable_division_is_refused_by_every_arm_and_every_product(xp):
-    """R12: no record describes it, so no CUDA kernel steps any of it."""
+    """No record describes it, so no CUDA kernel steps any of it."""
     fields, layer, grid = build(xp, boundaries=METALLIC)
     one_rank = _layout(fields, layer, grid)
     admitted = arms.plan_step(fields, layer, grid, sources=(), fuse=True)
@@ -264,8 +264,8 @@ def test_the_cylindrical_curl_refuses_a_cut_along_r_and_admits_one_along_z(xp):
 def test_a_layer_on_a_wrapping_axis_refuses_the_off_diagonal_arm(xp):
     """The wrapped cell 0 joins the low run while its chunk is the high one.
 
-    KERNELS §2's refusal, inherited: the one-rank record merges the stored cell 0 (the
-    periodic image of the high wall plane, owned by the high chunk) into the low run,
+    The off-diagonal presence mask's refusal, inherited: the one-rank record merges the stored
+    cell 0 (the periodic image of the high wall plane, owned by the high chunk) into the low run,
     so a presence mask indexed off the record would read the low chunk's presence
     there. Curl and constitutive arms read membership only, which the record holds.
     """
@@ -366,7 +366,7 @@ def test_the_two_checks_reproduce_the_shipped_function():
 
 
 # --------------------------------------------------------------------------
-# 4. THE DERIVATION AGREES WITH THE LAYOUT'S OWN
+# 4. The derivation agrees with the layout's own
 # --------------------------------------------------------------------------
 
 @pytest.mark.parametrize("boundaries,symmetry", [
@@ -396,7 +396,7 @@ def test_the_interval_owners_agree_with_the_membership_line(xp, boundaries, symm
 
 
 # --------------------------------------------------------------------------
-# 5. THE BINDING
+# 5. The binding
 # --------------------------------------------------------------------------
 
 def test_the_record_is_uploaded_once_and_bound_by_every_plan(xp):
@@ -433,7 +433,7 @@ def test_a_refused_division_or_a_missing_context_binds_no_record(xp):
 
 
 # --------------------------------------------------------------------------
-# 6. THE DISPATCH RECORD AND THE TABLE'S DECLARATIONS
+# 6. The dispatch record and the table's declarations
 # --------------------------------------------------------------------------
 
 def test_the_dispatch_record_carries_the_division_the_table_read(xp):

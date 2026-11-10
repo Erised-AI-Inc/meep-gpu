@@ -2,10 +2,10 @@
 """CUDA byte gate for the COMPLEX fused E->P chain: complex ``update_E`` welded to
 complex ``update_P``.
 
-WHAT IS BEING CERTIFIED, and it is not a sub-step. This product spans TWO driver
+What is being certified, and it is not a sub-step. This product spans TWO driver
 passes (``update_E`` at driver.py:3304 and ``update_P`` at :3306) with nothing
 between them, so a per-sub-step comparison could not see it at all: the whole claim
-is about the SEAM. The comparison is therefore per COMPLETE SEAM STEP over a stated
+is about the SEAM. The comparison is therefore per complete seam step over a stated
 budget, against
 
   * the CuPy array path (``stepping.update_E`` then ``stepping.update_P``), and
@@ -19,13 +19,13 @@ tell ``-0.0`` from ``+0.0`` in either the real or the imaginary half.
 ``allclose`` appears nowhere, and the FIRST divergent step is reported rather than
 a final pass/fail.
 
-THE SEVEN THINGS THIS GATE REFUSES TO LET PASS SILENTLY:
+The seven things this gate refuses to let pass silently:
 
 1. **A silent fallback.** Bytes alone cannot prove the fused path ran: a plan that
    was never launched is byte-identical to the oracle BY CONSTRUCTION. Every case
    asserts the exact LAUNCH COUNT through a proxy that owns the kernel object, a
-   nonzero ``runs``, one alias check per launch, and a NON-VACUITY FLOOR SPLIT BY
-   ROLE — the arrays this seam WRITES (E, every polarization volume) must all have
+   nonzero ``runs``, one alias check per launch, and a non-vacuity floor split by
+   role — the arrays this seam WRITES (E, every polarization volume) must all have
    moved, and the arrays it only READS (B, D, H, fu_*, the material) must NOT have.
 2. **A hollow pass.** Source mutations and HOST mutations are armed, and each is
    scored CAUGHT or NULL CONFIRMED with its evidence; a mutant that compiled to
@@ -51,14 +51,14 @@ THE SEVEN THINGS THIS GATE REFUSES TO LET PASS SILENTLY:
    per driven component makes the launch's write set disjoint from its read set at
    every position of the rotation's orbit — an argument this family INHERITS from
    the real chain's probe, whose walk never looked at a dtype.
-   :func:`leg_shape` RE-WALKS that orbit to closure THROUGH THE SHIPPED PLAN on
+   :func:`leg_shape` RE-WALKS that orbit to closure through the shipped plan on
    complex64 buffers with the alias check armed, so the inheritance is measured
    rather than asserted, and two host mutations break the chain on purpose and
    require the plan to refuse.
 7. **A verdict that cannot fail.** ``--plant`` rewrites the SHIPPED kernel source
    for the whole process and the release verdict must come back FAIL.
 
-BOTH FLOAT32 SUBNORMAL POLICIES, ONE PER PROCESS. ``--subnormal-policy`` drives
+Both float32 subnormal policies, one per process. ``--subnormal-policy`` drives
 host, CuPy and Triton before the first device compile, and the runner
 (``run_triton_complex_fused_ade_chain_direct.sh``) executes this gate twice with
 distinct CuPy and Triton cache directories. One process per policy is not
@@ -167,7 +167,7 @@ class Case:
     scale: float = 1.0
 
 
-#: THE CASE MATRIX. The corpus cell is measured, not invented:
+#: The case matrix. The corpus cell is measured, not invented:
 #: ``results/predicate_coverage_2026-08-21_eop_chain/`` records the four
 #: ``TestLoadDump.*_3d`` rows as ONE lorentzian susceptibility driving ALL THREE
 #: components under a nonzero ``k_point`` with an inert absorber — which is
@@ -180,7 +180,7 @@ CASES: Tuple[Case, ...] = (
     Case("one_state_three_components_drude", (COMPONENTS,), "drude", True),
     Case("one_state_two_components", (("Ex", "Ey"),), "lorentzian", True),
     Case("one_state_one_component", (("Ez",),), "drude", False),
-    # K = 2 THROUGH DISJOINT COMPONENT SETS. Without this the ``K *`` in the
+    # K = 2 through disjoint component sets. Without this the ``K *`` in the
     # scratch-cost law is never exercised, and the "which state drives which
     # component" host mutation has nothing to swap.
     Case("two_states_disjoint_components", (("Ex", "Ey"), ("Ez",)), "mixed", True),
@@ -236,7 +236,7 @@ def source_hashes() -> Dict[str, str]:
 def save(payload: Dict[str, Any], path: str) -> None:
     """Serialise the payload, provenance-stamped, atomically.
 
-    THE STAMP IS HERE AND NOT AT THE CALL SITES. ``main`` calls this after every
+    The stamp is here and not at the call sites. ``main`` calls this after every
     leg, and a stamp bolted onto the last call would leave every partial artifact —
     including the one an aborted run leaves behind, which is the artifact a failure
     is read from — unattributable.
@@ -267,14 +267,14 @@ def save(payload: Dict[str, Any], path: str) -> None:
 def build(xp, case: Case, seed: int, scale: Optional[float] = None):
     """One seeded engine. Called once per route, identically, from one seed.
 
-    EVERY VOLUME IS FILLED WITH PHYSICAL-BAND VALUES unless a value class says
+    Every volume is filled with physical-band values unless a value class says
     otherwise, and that is the first thing this gate establishes rather than an
     afterthought: a zero-initialised state is a FIXED POINT of this seam — with
     D = P = P_prev = 0 the constitutive gives E = 0 and the recurrence gives P = 0
     forever — so a deliberately wrong kernel compared against a zero oracle reports
     IDENTICAL.
 
-    BOTH HALVES OF EVERY COMPLEX VOLUME ARE FILLED. A run that left every
+    Both halves of every complex volume are filled. A run that left every
     imaginary word at +0.0 would be a real-valued gate wearing a complex dtype, and
     every imaginary-part product would be measured on zeros alone.
     """
@@ -316,7 +316,7 @@ def build(xp, case: Case, seed: int, scale: Optional[float] = None):
                            kinds[order % len(kinds)]),
             sigma, grid, np.complex64))
 
-    # THE ABSORBER IS INERT AND THE STORAGE IS FIELD STORAGE. That is the whole
+    # The absorber is inert and the storage is field storage. That is the whole
     # cell: ``complex_ade``'s drive clause requires ``drive_field`` to hand back
     # the stored E, and ``complex_no_pml_stored_e`` requires no split-field path.
     fields.enable_field_storage()
@@ -367,7 +367,7 @@ def state_of(fields: Any, plan: Any = None) -> Dict[str, Any]:
     table could not name them without losing the semantic role — which is the one
     thing the comparison is about.
 
-    THE SCRATCH IS THE ONE ASYMMETRY AND IT IS NAMED, NOT DROPPED. The reference
+    The scratch is the one asymmetry and it is named, not dropped. The reference
     keeps ONE retired buffer per susceptibility and this product keeps one per
     driven component (see the module's shape note), so only the LAST driven
     component's is comparable: the reference overwrote the others with the next
@@ -514,7 +514,7 @@ def kernel_ptx(jit: Any) -> List[str]:
 def run_case(xp, case: Case, leg: str, steps: int, kernel: Any = None,
              patch: Optional[Callable[[Any], Dict[str, Any]]] = None
              ) -> Dict[str, Any]:
-    """Step the two engines side by side and compare per COMPLETE SEAM STEP."""
+    """Step the two engines side by side and compare per complete seam step."""
     from meep_gpu.triton_kernels import (  # noqa: PLC0415
         complex_fused_ade_chain as family,
     )
@@ -577,7 +577,7 @@ def run_case(xp, case: Case, leg: str, steps: int, kernel: Any = None,
         floor_ok = floor_ok and lattice_live
     band_reach = None
     if banded:
-        # THE BAND IS A CLASS ONLY WHERE THE POLICY LETS ONE EXIST, and this is a
+        # The band is a class only where the policy lets one exist, and this is a
         # three-way rule rather than a pass/fail: a row that COULD NOT have reached
         # the class must not be failed for a property of the configuration, and a
         # row that could have and did not must not be passed.
@@ -586,10 +586,10 @@ def run_case(xp, case: Case, leg: str, steps: int, kernel: Any = None,
                       "flushed_by_policy" if _POLICY == "flush" else "VACUOUS")
         census_live = band_reach != "VACUOUS"
         floor_ok = floor_ok and census_live
-    # A UNIFORM ROW WHOSE CENSUS FIRED is a banded row under another name: the
+    # A uniform row whose census fired is a banded row under another name: the
     # value classes are only classes while each one stays in its own band.
     clean = (case.value_class != "uniform") or (max(census_trail or [0]) == 0)
-    # THE IMAGINARY HALF MUST BE LIVE, or this is a real gate in a complex dtype.
+    # The imaginary half must be live, or this is a real gate in a complex dtype.
     imaginary_live = bool(np.count_nonzero(
         words(getattr(reference, "Ex"))[1::2]))
     return {
@@ -633,7 +633,7 @@ def run_case(xp, case: Case, leg: str, steps: int, kernel: Any = None,
 def run_separate_control(xp, case: Case, steps: int) -> Dict[str, Any]:
     """The SEPARATE certified products beside the fused one, on identical state.
 
-    THIS IS THE LEG THAT MAKES "FUSION" A MEASUREMENT RATHER THAN A NAME. Three
+    This is the leg that makes "FUSION" a measurement rather than a name. Three
     engines from one seed: the array path; the two ALREADY CERTIFIED Triton
     products (``complex_no_pml_stored_e`` on ``update_E`` and ``complex_ade`` on
     ``update_P``) dispatching the seam as separate launches; and the fused product.
@@ -730,7 +730,7 @@ def _normalised(text: str) -> str:
 def leg_transcription() -> Dict[str, Any]:
     """The arithmetic lines equal the CERTIFIED kernels' own, PARSED not mirrored.
 
-    THE MIRRORED EVALUATOR is a defect class this project has paid for: a check
+    The mirrored evaluator is a defect class this project has paid for: a check
     that re-implements a kernel's arithmetic mirrors a defect instead of executing
     it. So nothing here re-derives a line. Each certified kernel's own file is
     parsed, the line is searched for in its body AND in this family's, and the two
@@ -760,7 +760,7 @@ def leg_transcription() -> Dict[str, Any]:
             "agrees": (certified_line in certified_body) and (emitted in fused)})
 
     for index, letter in enumerate("abc"):
-        # THE SUBTRACTION CHAIN. Slots 1-7 keep the certified anonymous spelling;
+        # The subtraction chain. Slots 1-7 keep the certified anonymous spelling;
         # slot 0's load is NAMED, which is the ONE documented edit.
         for slot in range(1, 8):
             row(f"subtract[{letter}{slot}].re", subtract,
@@ -777,7 +777,7 @@ def leg_transcription() -> Dict[str, Any]:
             "real = real - tl.load(p0 + word, mask=live, other=0.0)",
             f"p{letter}0_re = tl.load({letter}0 + word, mask=live, other=0.0)",
             "the load is NAMED so the register is the ADE arm's p_now")
-        # THE CONSTITUTIVE PRODUCT and its store, character for character.
+        # The constitutive product and its store, character for character.
         row(f"constitutive[{index}]", stored,
             f"o{index}_re, o{index}_im = _mul_field_left( s{index}_re, "
             f"s{index}_im, tl.load(e{index} + idx, mask=live, other=0.0))",
@@ -806,7 +806,7 @@ def leg_transcription() -> Dict[str, Any]:
             "s = tl.load(sigma + idx, mask=live, other=0.0)",
             f"s = tl.load(sigma_{letter}0 + idx, mask=live, other=0.0)",
             f"sigma -> sigma_{letter}0")
-        # THE TWO ELIMINATIONS, which are the fusion itself.
+        # The two eliminations, which are the fusion itself.
         row(f"eliminated_drive[{letter}]", ade,
             "w_re = tl.load(drive + word, mask=live, other=0.0)",
             f"w_re = o{index}_re",
@@ -819,9 +819,9 @@ def leg_transcription() -> Dict[str, Any]:
 
 
 def leg_shape(xp) -> Dict[str, Any]:
-    """The rotation orbit, walked to closure THROUGH THE SHIPPED PLAN.
+    """The rotation orbit, walked to closure through the shipped plan.
 
-    THE ARGUMENT IS INHERITED AND THE MEASUREMENT IS NOT.
+    The argument is inherited and the measurement is not.
     ``probe_triton_ade_rotation_shape``'s LEG 2 enumerated this orbit on buffer
     NAMES, so it transfers to complex64 unchanged — but a transferred argument is
     not a measurement, so it is re-walked here on real complex64 engine objects
@@ -1064,7 +1064,7 @@ def mutation_table() -> Tuple[Tuple[str, str, Tuple[str, ...], str, str,
                          ("p_re = pa0_im", "p_im = pa0_re"))
 
     def m6_recurrence_association_broken(source: str) -> Tuple[str, int]:
-        # (a + b) + d  ->  a + (b + d). MEASURED CORRECTION 2026-08-21: the first
+        # (a + b) + d  ->  a + (b + d). Measured CORRECTION 2026-08-21: the first
         # spelling of this edit COMMUTED the outer add (`d_re + out_re`) and the
         # gate reported NULL CONFIRMED on every scored case — correctly, because
         # IEEE-754 addition IS commutative and only associativity fails. A
@@ -1090,8 +1090,8 @@ def mutation_table() -> Tuple[Tuple[str, str, Tuple[str, ...], str, str,
              "b_re, b_im = _mul_coefficient_left(two_minus_od_a0, q_re, q_im)"))
 
     def m16_previous_folded_three_term_form(source: str) -> Tuple[str, int]:
-        # THE INVERSION (KERNELS.md section 7.1): the package's previous form per
-        # part, gamma1inv folded into three coefficients, planted back on Ex's arm.
+        # THE INVERSION (docs/development/certification.md#inverted-grouping-mutations): the package's
+        # previous form per part, gamma1inv folded into three coefficients, planted back on Ex's arm.
         edits = (
             ("b_re, b_im = _mul_coefficient_left(gamma1_a0, q_re, q_im)",
              "b_re, b_im = _mul_coefficient_left(0.0 - (gamma1inv_a0 * gamma1_a0), "
@@ -1123,7 +1123,7 @@ def mutation_table() -> Tuple[Tuple[str, str, Tuple[str, ...], str, str,
         return source.replace(needle, ""), source.count(needle)
 
     def m10_imaginary_store_dropped(source: str) -> Tuple[str, int]:
-        # MEASURED CORRECTION 2026-08-21: the first spelling anchored on the
+        # Measured CORRECTION 2026-08-21: the first spelling anchored on the
         # line's INDENTATION and `shipped_source` is dedented, so the needle
         # matched nothing and the row read NEEDLE-MISSED. The gate refuses an
         # unarmed mutation rather than scoring it, which is why this was a
@@ -1169,7 +1169,7 @@ def mutation_table() -> Tuple[Tuple[str, str, Tuple[str, ...], str, str,
         ("m6_recurrence_association_broken", "Ex", ("uniform",),
          "float addition is not associative in float32", "caught",
          m6_recurrence_association_broken),
-        # SCORED ON BOTH CLASSES. Every complex multiply in this kernel has a REAL
+        # Scored on both classes. Every complex multiply in this kernel has a REAL
         # operand, so the two orientations can only separate where a rounded word
         # changes in the underflow class, not the physical band. Scoring these two
         # on `uniform` alone would report a property of the CASE as a property of
@@ -1220,7 +1220,7 @@ def leg_no_dead_mutations(xp) -> Dict[str, Any]:
     rows = []
     for identifier, component, classes, _why, expectation, _rewrite in mutation_table():
         alive = component in driven
-        # AND THE DECLARED VALUE CLASSES MUST BE REAL ONES. A typo there is not a
+        # And the declared value classes must be real ones. A typo there is not a
         # crash: ``run_case`` would score the row under the uniform rules while the
         # artifact reported it as banded, which is a row measuring one thing and
         # claiming another. :data:`MUTATION_VALUE_CLASSES` is the vocabulary and
@@ -1241,7 +1241,7 @@ def run_mutations(xp, family, pristine_ptx: Sequence[str],
                   steps: int) -> List[Dict[str, Any]]:
     """Every armed edit, on every value class it declares.
 
-    "CAUGHT ANYWHERE IS CAUGHT" and a null is only a null once every class the
+    "Caught anywhere is caught" and a null is only a null once every class the
     edit declares agrees. The ``measure`` expectation is neither: it says the
     design makes no prediction and the artifact records what the device did — used
     for the two edits whose visibility depends on a rounding class rather than on
@@ -1258,7 +1258,7 @@ def run_mutations(xp, family, pristine_ptx: Sequence[str],
             "value_classes": list(classes), "case": base.label,
             "steps_budget": steps}
         if expectation == "dead":
-            # DECLARED DEAD AND NOT RUN. Running it would produce an "UNCAUGHT"
+            # Declared dead and not run. Running it would produce an "UNCAUGHT"
             # that measured nothing, which is exactly the reading this project has
             # paid for once already.
             entry["status"] = "DECLARED DEAD — NOT SCORED"
@@ -1385,10 +1385,10 @@ def reverse_ade_coefficients_on_Ex(plan: Any) -> Dict[str, Any]:
 def swap_inverse_epsilon(plan: Any) -> Dict[str, Any]:
     """Bind Ey's inverse epsilon to Ex's constitutive slot.
 
-    THIS IS A NULL AND THE REASON IS ASSERTED RATHER THAN DISCOVERED. ``build``
+    This is a null and the reason is asserted rather than discovered. ``build``
     installs an ISOTROPIC material through ``set_isotropic_epsilon_volume``, which
     hands all three components ONE array (fields.py:1321-1325), so the swap
-    exchanges two references to the same allocation. MEASURED 2026-08-21: scored
+    exchanges two references to the same allocation. Measured 2026-08-21: scored
     as a predicted CATCH it came back NULL CONFIRMED, which was a fact about the
     fixture. The assertion below is what stops that reading recurring — if a
     future fixture gives the components distinct volumes, this patch stops being a
@@ -1421,7 +1421,7 @@ def lie_about_the_sigma_kind(plan: Any) -> Dict[str, Any]:
 def share_one_scratch_across_components(plan: Any) -> Dict[str, Any]:
     """Undo the shape: point every component's scratch at the first one's.
 
-    THIS IS THE DEFECT THE WHOLE SHAPE ARGUMENT EXISTS TO PREVENT — the reference's
+    This is the defect the whole shape argument exists to prevent — the reference's
     single shared ``_scratch``, which makes the Ey arm's output the Ex arm's
     ``p_prev`` input inside one launch. The plan's alias check must REFUSE it
     before any launch, so this mutation is expected to be caught as an ERROR
@@ -1441,7 +1441,7 @@ def share_one_scratch_across_components(plan: Any) -> Dict[str, Any]:
 HOST_MUTATIONS: Dict[str, Tuple[Callable[[Any], Dict[str, Any]], str]] = {
     "sigma_bound_to_the_wrong_component": (swap_sigma_between_components, "caught"),
     "ade_coefficients_reversed_on_Ex": (reverse_ade_coefficients_on_Ex, "caught"),
-    # NULL BY THE FIXTURE, asserted in the patch. See swap_inverse_epsilon.
+    # Null by the fixture, asserted in the patch. See swap_inverse_epsilon.
     "inverse_epsilon_bound_for_the_wrong_component": (swap_inverse_epsilon,
                                                       "null"),
     "a_volume_sigma_declared_scalar": (lie_about_the_sigma_kind, "caught"),
@@ -1450,10 +1450,10 @@ HOST_MUTATIONS: Dict[str, Tuple[Callable[[Any], Dict[str, Any]], str]] = {
 }
 
 
-#: THE VERDICT'S OWN TEST. Each entry replaces the SHIPPED kernel process-wide; the
+#: The verdict's own test. Each entry replaces the SHIPPED kernel process-wide; the
 #: verdict must flip to FAIL. Run with ``--plant <name>`` and require a nonzero exit.
 PLANTED: Dict[str, Tuple[Tuple[str, str], ...]] = {
-    # MEASURED CORRECTION 2026-08-21. The first entry here re-associated nothing:
+    # Measured CORRECTION 2026-08-21. The first entry here re-associated nothing:
     # it COMMUTED the outer add, the planted run came back PASS, and the runner's
     # own "ABORT-CLASS RESULT: the planted defect PASSED" fired. A verdict test
     # that cannot fail is the defect it exists to detect, so the edit was replaced
@@ -1749,7 +1749,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 payload["rows"] = rows
                 save(payload, out)
 
-            # THE DISARM CHECK. The identical harness, the identical case, the
+            # The disarm check. The identical harness, the identical case, the
             # SHIPPED bytes and no patch. A nonzero here would mean every "caught"
             # above is a harness that diverges on its own.
             index += 1

@@ -8,7 +8,7 @@ product is emitted to JSONL, flushed, and fsynced before the next product starts
 The result is bound to the exact host planner, gate, and specialized Metal source
 bytes.
 
-The mutation legs (KERNELS.md §7.1, §7.2): the previous package form -- the three
+The mutation legs (see certification.md): the previous package form -- the three
 folded coefficients and its three-term grouping -- is planted and must be caught,
 as are the other groupings and dropped terms; under an absorber the drive select is
 removed both ways, inverted and keyed on the wrong lattice, and the bound record is
@@ -90,7 +90,7 @@ def _planted(source: str, needle: str, replacement: str) -> str:
 def mutation_sources() -> Dict[str, str]:
     """Arithmetic mutants of the no-absorber real body, each must-catch.
 
-    ``previous_folded_three_term_form`` is the inverted mutation (KERNELS.md §7.1):
+    ``previous_folded_three_term_form`` is the inverted mutation (certification.md):
     the package's previous spelling, three coefficients folded from MEEP's four
     (``c_now = gamma1inv*two_minus_od``, ``c_prev = -(gamma1inv*gamma1)``,
     ``c_drive = gamma1inv*omega0dtsqr``) and its left-associated three-term sum.
@@ -140,8 +140,8 @@ def select_mutation_sources(axis: int) -> Dict[str, str]:
     }
 
 
-#: The record mutations (§7.2's off-by-one row): the kernel binds the true record
-#: transformed, the oracle steps the true division.
+#: The record mutations (the per-chunk form battery's off-by-one row): the kernel
+#: binds the true record transformed, the oracle steps the true division.
 def _record_moved(word: int, delta: int):
     def mutate(record: np.ndarray, axis: int) -> np.ndarray:
         moved = np.array(record, copy=True)
@@ -228,7 +228,7 @@ def build(*, shape: Sequence[int], active_pml: bool, complex_storage: bool,
         fields.polarizations.append(state)
 
     if active_pml:
-        # THE REGION PLAN A DRIVER INSTALLS WITH THE LAYER: the one-rank division of
+        # The region plan a driver installs with the layer: the one-rank division of
         # this grid and absorber, which Fields.drive_field (the oracle's drive) reads.
         stepping._region_plan(fields, pml)
     for component in ("Ex", "Ey", "Ez"):
@@ -325,7 +325,7 @@ def compare_states(reference: Fields, actual: Fields) -> tuple[int, int]:
 
 
 # ---------------------------------------------------------------------------
-# THE ROTATION LEG — a HOST defect, and the one this family's fused successor
+# The rotation leg — a HOST defect, and the one this family's fused successor
 # will be built on top of
 # ---------------------------------------------------------------------------
 #
@@ -339,13 +339,13 @@ def compare_states(reference: Fields, actual: Fields) -> tuple[int, int]:
 #
 # so no shader mutation can reach it and, before this leg, NOTHING here pinned it.
 #
-# WHY IT MATTERS NOW. A fused kernel folds update_P into the launch that produced
+# Why it matters now. A fused kernel folds update_P into the launch that produced
 # its drive field, and its whole aliasing discipline exists because that rotation
 # makes one arm's destination another arm's source. Fusing on top of a sub-step
 # gate that never planted a rotation defect would inherit an assumption nobody
 # measured.
 #
-# IT DOES NOT HIDE HERE, AND THAT IS A MEASURED DIFFERENCE FROM THE CUDA TWIN.
+# It does not hide here, and that is a measured difference from the CUDA twin.
 # On CUDA (2026-08-19) a stale-pointer defect moved 0 of 7293 words at ONE launch
 # and 7293 of 7293 at sixty, so that gate needs a budget to see it. This gate does
 # not: ``compare_states`` compares P, P_prev AND _scratch (see :227-229), so a
@@ -354,7 +354,7 @@ def compare_states(reference: Fields, actual: Fields) -> tuple[int, int]:
 #     freeze_rotation   8415 differing words at 1 cycle and at 5 - identical
 #     double_rotation   6732 at 1 cycle, 8415 at 5
 #
-# The one-cycle number is therefore recorded as EVIDENCE ABOUT THE COMPARATOR, not
+# The one-cycle number is therefore recorded as evidence about the comparator, not
 # as a discriminator: a leg that fires at one cycle here means the comparator
 # reaches the rotated state, which is the stronger position. The borrowed CUDA
 # premise ("must be inert at one cycle") was wrong for this backend and is not
@@ -452,7 +452,7 @@ def run_product(case: Dict[str, Any], cycles: int, seed: int) -> Dict[str, Any]:
 def drive_forms(fields: Fields, pml: PML) -> Dict[str, Any]:
     """Per driven component under an absorber: (f_w cells, stored-E cells) the select reads.
 
-    The form-coverage rule (DESIGN.md D13): a PML case must step both drive forms.
+    The form-coverage rule (certification.md): a PML case must step both drive forms.
     """
     if not (pml is not None and pml.is_active):
         return {}
@@ -594,7 +594,7 @@ def main() -> int:
             emit(handle, record)
             records.append(record)
 
-        # THE ROTATION LEG, with its own discriminator. Each defect must be
+        # The rotation leg, with its own discriminator. Each defect must be
         # CAUGHT at the gate's budget and INERT at one cycle: that pair is what
         # makes the budget the thing doing the catching rather than the
         # arithmetic, and it is the only leg in this gate that reaches the host

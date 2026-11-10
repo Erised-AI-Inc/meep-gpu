@@ -12,9 +12,11 @@ quoted, not recomputed:
   — MEEP's example corpus. The stock leg holds 57 rows that built an
   ``mp.Simulation``, 52 engine-accepted. The campaign's three sibling legs lifted the
   examples the stock interpreter cannot: ``_blocked`` (3 rows whose scripts take
-  argv), ``_gdsii`` (2 rows needing ``gdspy``) and ``_sigma`` (3 rows needing the
-  patched σ-reader). 60 distinct scripts are accepted across the four; see
-  ``EXAMPLES_LIFTS`` for how they are unioned and under which interpreter each runs.
+  argv), ``_gdsii`` (2 rows needing a MEEP built against libGDSII, one of them also
+  ``gdspy``) and ``_sigma`` (3 rows needing ``PyMieScatt``, or ``nlopt`` and
+  ``autograd``; ``lift_host.LIFT_ROW_NEEDS`` names each row's). 60 distinct scripts are
+  accepted across the four; see ``EXAMPLES_LIFTS`` for how they are unioned and under
+  which interpreter each runs.
 * ``parity/meep_gpu/results/meep_python_tests_2026-08-09_monitorfix/lift.jsonl``
   — MEEP's ``python/tests`` corpus, 324 case rows, 134 engine-accepted (133 of which
   actually lifted; ``TestLDOS.test_ldos_3D`` was above that survey's lift-cell cap).
@@ -22,8 +24,8 @@ quoted, not recomputed:
 194 = 60 + 134 is the headline from 2026-09-03; this run re-lifts them and reports
 what the predicates say, per row and per sub-step. It was 186 = 52 + 134 before,
 because this driver read only the stock leg while the campaign's own sibling legs had
-accepted eight more scripts — priced as +16 seam-instances per backend by the
-fusion-residue audit (``the design notes (meep-gpu-fusion-residue-audit)`` §8).
+accepted eight more scripts — priced at +16 seam-instances per backend, a denominator
+of 403 rather than 387 per backend.
 
 Every row is stamped with ``subject_manifest_sha256`` (a digest over the battery's
 subject package plus the shared engine files, computed once before any leg runs) and
@@ -63,7 +65,7 @@ if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
 #: The package root that makes ``parity.meep_gpu.*`` and ``meep_gpu.*`` importable.
 #: Found BY NAME, never by depth: this file has already moved once (out of a
-#: results/ tranche into the parity dir), and a hard-coded ``parents[N]`` followed
+#: results/ campaign subtree into the parity dir), and a hard-coded ``parents[N]`` followed
 #: it silently -- every child then died on ModuleNotFoundError while the parent
 #: still wrote a full-length jsonl of ``measured: false`` rows that looks like a
 #: census. Refuse to run rather than resolve to the wrong root.
@@ -81,7 +83,7 @@ _API = _find_api_root(_HERE)
 if str(_API) not in sys.path:
     sys.path.insert(0, str(_API))
 
-#: WHICH BACKEND'S PREDICATES THIS CENSUS CALLS. The lift, the corpus, the three
+#: Which backend's predicates this census calls. The lift, the corpus, the three
 #: legs, the param match and the 194 = 60 + 134 denominator are backend-independent
 #: -- only the battery differs -- which is exactly what makes a Metal number and a
 #: Triton number commensurable rather than merely similar-looking. Selected by
@@ -100,7 +102,9 @@ def _battery_module(module_name: str):
     # The battery must have come from THIS directory, not from some other entry on
     # PYTHONPATH that happens to carry the name. A census attributed to the wrong
     # battery is unfalsifiable after the fact, so the file is reported on every run.
-    print(f"[battery] {module_name} -> {getattr(module, '__file__', '?')}", flush=True)
+    import neutral_ids  # noqa: PLC0415
+    print(f"[battery] {module_name} -> {neutral_ids.path(getattr(module, '__file__', '?'))}",
+          flush=True)
     return module
 
 
@@ -153,7 +157,12 @@ def preflight_runtime(interpreter: str, battery: str, environment: dict,
     except subprocess.TimeoutExpired:
         return [f"runtime preflight under {interpreter} timed out after {timeout:g} s"]
     if completed.returncode != 0:
-        tail = completed.stderr.decode("utf-8", "replace")[-600:].strip()
+        import neutral_ids  # noqa: PLC0415
+        # Neutral before it is cut: a tail cut first can begin inside a path, where no
+        # label is recognised any more. The interpreter in the reason stays as executed
+        # (it is this process's own fact); a record writes the reason through
+        # neutral_ids.text (runtime_refusal, log).
+        tail = neutral_ids.text(completed.stderr.decode("utf-8", "replace"))[-600:].strip()
         return [f"runtime preflight under {interpreter} exited {completed.returncode}: "
                 f"{tail or 'no stderr'}"]
     for line in completed.stdout.decode("utf-8", "replace").splitlines():
@@ -165,16 +174,86 @@ def preflight_runtime(interpreter: str, battery: str, environment: dict,
 
 
 def runtime_refusal(name: str, interpreter: str, origin: str, reasons: list) -> dict:
-    """The row record for a refusal BY NAME: which interpreter, named by which record, why."""
+    """The row record for a refusal BY NAME: which interpreter, named by which record, why.
+
+    Written neutrally (``neutral_ids``): the interpreter under its root's label, and every
+    reason through ``text``, since a preflight reason names the interpreter it ran."""
+    import neutral_ids  # noqa: PLC0415
+
+    reasons = [neutral_ids.text(str(reason)) for reason in reasons]
     return {"row": name, "measured": False,
-            "note": (f"subject runtime unavailable under {interpreter} (named by "
-                     f"{origin}): " + "; ".join(reasons)),
-            "runtime_reasons": list(reasons)}
+            "note": (f"subject runtime unavailable under {neutral_ids.path(interpreter)} "
+                     f"(named by {origin}): " + "; ".join(reasons)),
+            "runtime_reasons": reasons}
+
+
+def interpreter_for(recorded, stock_python, remap: dict, own: str = None) -> str:
+    """The interpreter a row whose lift record names ``recorded`` runs under, on THIS machine.
+
+    The stock leg's rows run under this process's own interpreter (``own``); any other row
+    under ``--interpreter RECORDED=PATH``'s PATH, else under the recorded path itself with
+    its labels expanded here (``neutral_ids.resolve``). Recorded spellings are compared with
+    recorded spellings: ``recorded``, ``stock_python`` and the remap's keys are all as the
+    lift records wrote them (``<home>/...`` since 1.0, an absolute path before), never
+    against a path on this machine. A record cut before the labels holds the absolute
+    path; its remap may be keyed by that path or by its labelled spelling (the one every
+    note this driver writes names)."""
+    import neutral_ids  # noqa: PLC0415
+
+    if recorded == stock_python:
+        return own or sys.executable
+    for key in (recorded, neutral_ids.path(recorded)):
+        if key in remap:
+            return neutral_ids.resolve(remap[key])
+    return neutral_ids.resolve(recorded)
+
+
+def choose_examples_interpreters(lifts, remap: dict, own: str = None) -> dict:
+    """``{script: (interpreter, lift record, recorded)}`` over ``lifts``, the examples
+    lift records' ``(relative path, accepted rows)`` in ``EXAMPLES_LIFTS`` order, stock
+    first; a script is taken from the first record that accepts it (:data:`EXAMPLES_LIFTS`).
+    ``interpreter`` is what a row is executed under here (:func:`interpreter_for`),
+    ``recorded`` what its lift record names, the key ``--interpreter`` remaps."""
+    chosen: dict = {}
+    stock_python = None
+    for position, (relative, accepted) in enumerate(lifts):
+        origin = Path(relative).parent.name
+        if position == 0:
+            pythons = sorted({row.get("python") for row in accepted}, key=str)
+            if len(pythons) != 1:
+                raise SystemExit(
+                    f"{relative} records {pythons} as its interpreter; the stock "
+                    f"leg must name exactly one so its rows can run under this "
+                    f"process's own")
+            stock_python = pythons[0]
+        for row in accepted:
+            if row["script"] in chosen:
+                continue
+            recorded = row.get("python")
+            chosen[row["script"]] = (interpreter_for(recorded, stock_python, remap, own),
+                                     origin, recorded)
+    return chosen
+
+
+def census_row(record: dict, *, leg: str, lift_record: str, interpreter: str,
+               subject: dict) -> dict:
+    """One examples-leg row as the census writes it: the child's record with the leg's
+    stamps, the interpreter it ran under spelled under its root's label, and every string
+    neutral (``neutral_ids.value``): a lift error or a stderr tail can name a path."""
+    import neutral_ids  # noqa: PLC0415
+
+    record = dict(record)
+    record["leg"] = leg
+    record["lift_record"] = lift_record
+    record["interpreter"] = neutral_ids.path(interpreter)
+    record["subject_manifest_sha256"] = subject["manifest_sha256"]
+    record["battery_sha256"] = subject["battery_sha256"]
+    return neutral_ids.value(record)
 
 
 # --- the subject digest ----------------------------------------------------------------
 #
-# WHAT IT PINS. The predicates and the composer are read from the kernels package the
+# What it pins. The predicates and the composer are read from the kernels package the
 # battery measures, and the engine facts from a handful of shared engine files. A row
 # records one digest over all of them so a board that mixes this census's selection with
 # a fresh read of device code can refuse when the two describe different trees
@@ -220,6 +299,26 @@ def battery_imports(battery: Path, package: str) -> list:
     return sorted(names)
 
 
+def _neutral_path(value: str) -> str:
+    import neutral_ids  # noqa: PLC0415
+
+    return neutral_ids.path(value)
+
+
+def _neutral_value(value):
+    import neutral_ids  # noqa: PLC0415
+
+    return neutral_ids.value(value)
+
+
+def _neutral_tail(text: str, size: int) -> str:
+    """The last ``size`` characters of a child's stderr, neutral BEFORE it is cut: a tail
+    cut first can begin inside a path, where no label is recognised any more."""
+    import neutral_ids  # noqa: PLC0415
+
+    return neutral_ids.text(text or "")[-size:]
+
+
 def subject_digest(api_root: Path, package: str, battery: Path) -> dict:
     """sha256 of every subject file, plus one digest over the whole manifest.
 
@@ -239,13 +338,13 @@ def subject_digest(api_root: Path, package: str, battery: Path) -> dict:
     return {"files": entries,
             "file_count": len(entries),
             "manifest_sha256": hashlib.sha256(manifest.encode("utf-8")).hexdigest(),
-            "battery": str(battery),
+            "battery": _neutral_path(str(battery)),
             "battery_sha256": _sha256(battery),
             "battery_imports": battery_imports(battery, package),
             "scope": [glob, *SUBJECT_EXTRA]}
 
 
-#: THE EXAMPLES DENOMINATOR: the 2026-08-09 corpus campaign's four example legs, stock
+#: The examples denominator: the 2026-08-09 corpus campaign's four example legs, stock
 #: first. A script accepted in more than one record is taken from the first that
 #: accepts it; a record's non-accepted rows are never consulted, so a stock-leg row
 #: that failed for want of ``gdspy`` cannot shadow the ``_gdsii`` leg's accepted lift
@@ -277,6 +376,11 @@ TESTS_DIR = (os.path.join(_CORPUS_ROOT, "tests") if _CORPUS_ROOT
              else os.path.join(os.environ.get("MGPU_SITE_MEEP_SOURCE", os.path.join(os.path.expanduser("~"), "meep")), "python", "tests"))
 
 def log(path: Path, message: str) -> None:
+    """One flushed line to stdout and to the leg log, written neutrally: the log leaves
+    the machine with the census, and its lines name interpreters and directories."""
+    import neutral_ids  # noqa: PLC0415
+
+    message = neutral_ids.text(message)
     print(message, flush=True)
     with path.open("a", encoding="utf-8") as handle:
         handle.write(message + "\n")
@@ -289,6 +393,14 @@ def _evaluate(battery: str, driver) -> dict:
 
 
 # --- children ------------------------------------------------------------------------
+
+
+def _write_child(out_json: str, payload) -> None:
+    """A child's record (or a module's rows), written neutrally: a lift or battery error
+    can name a path, and the per-row file leaves the machine with the census."""
+    import neutral_ids  # noqa: PLC0415
+
+    Path(out_json).write_text(json.dumps(neutral_ids.value(payload)), encoding="utf-8")
 
 
 def child_examples(script: str, out_json: str, progress: str, battery: str) -> None:
@@ -306,7 +418,7 @@ def child_examples(script: str, out_json: str, progress: str, battery: str) -> N
     if sim is None:
         record["measured"] = False
         record["note"] = "no mp.Simulation to lift"
-        Path(out_json).write_text(json.dumps(record), encoding="utf-8")
+        _write_child(out_json, record)
         return
     restore()
     import meep_gpu
@@ -317,7 +429,7 @@ def child_examples(script: str, out_json: str, progress: str, battery: str) -> N
     except BaseException as exc:  # noqa: BLE001
         record["measured"] = False
         record["lift_error"] = f"{type(exc).__name__}: {exc}"[:600]
-        Path(out_json).write_text(json.dumps(record), encoding="utf-8")
+        _write_child(out_json, record)
         mark(f"LIFT FAILED {type(exc).__name__}")
         return
     record["lift_s"] = round(time.time() - started, 2)
@@ -334,7 +446,7 @@ def child_examples(script: str, out_json: str, progress: str, battery: str) -> N
             driver.close()
         except BaseException:  # noqa: BLE001
             pass
-    Path(out_json).write_text(json.dumps(record), encoding="utf-8")
+    _write_child(out_json, record)
     mark(f"measured={record.get('measured')} ({record.get('lift_s')} s lift)")
 
 
@@ -412,7 +524,7 @@ def child_tests(module_path: str, wanted: list, out_json: str, progress: str,
         rows.append(record)
         mark(f"{case_id}: measured={record.get('measured')} "
              f"({record.get('lift_s')} s lift)")
-    Path(out_json).write_text(json.dumps(rows), encoding="utf-8")
+    _write_child(out_json, rows)
 
 
 # --- parent --------------------------------------------------------------------------
@@ -438,9 +550,10 @@ def main() -> int:
     parser.add_argument("--interpreter", action="append", default=None,
                         metavar="RECORDED=PATH",
                         help="run rows whose lift record names interpreter RECORDED "
-                             "under PATH instead. An explicit remap for another host; "
-                             "without it a missing recorded interpreter is refused by "
-                             "name, never substituted")
+                             "under PATH instead. RECORDED is spelled as the record "
+                             "spells it, labels included (<home>/...). An explicit "
+                             "remap for another host; without it a missing recorded "
+                             "interpreter is refused by name, never substituted")
     parser.add_argument("--runtime-preflight", action="store_true",
                         help="child mode: print the battery's runtime_reasons() for "
                              "THIS interpreter as one RUNTIME_REASONS_JSON= line and "
@@ -511,32 +624,20 @@ def main() -> int:
 
     started = time.time()
     if args.leg == "examples":
+        # --interpreter RECORDED=PATH is keyed by the RECORDED spelling, as the lift
+        # records wrote it (``<home>/...`` since 1.0, an absolute path before).
         remap = dict(item.split("=", 1) for item in (args.interpreter or []))
-        chosen: dict = {}          # script -> (interpreter, lift record it came from)
-        stock_python = None
-        for position, relative in enumerate(EXAMPLES_LIFTS):
-            origin = Path(relative).parent.name
+        lifts = []
+        for relative in EXAMPLES_LIFTS:
             accepted = [row for row in (
                 json.loads(line) for line in (api_root / relative).read_text(
                     encoding="utf-8").splitlines() if line.strip())
                 if row.get("accepted") is True]
-            if position == 0:
-                pythons = sorted({row.get("python") for row in accepted})
-                if len(pythons) != 1:
-                    raise SystemExit(
-                        f"{relative} records {pythons} as its interpreter; the stock "
-                        f"leg must name exactly one so its rows can run under this "
-                        f"process's own")
-                stock_python = pythons[0]
-            added = 0
-            for row in accepted:
-                if row["script"] in chosen:
-                    continue
-                recorded = row.get("python")
-                interpreter = (sys.executable if recorded == stock_python
-                               else remap.get(recorded, recorded))
-                chosen[row["script"]] = (interpreter, origin)
-                added += 1
+            lifts.append((relative, accepted))
+        chosen = choose_examples_interpreters(lifts, remap)
+        for relative, accepted in lifts:
+            origin = Path(relative).parent.name
+            added = sum(1 for item in chosen.values() if item[1] == origin)
             log(log_path, f"  {origin:<52} {len(accepted):>3} accepted, "
                           f"{added:>2} new scripts")
         names = sorted(chosen)
@@ -566,7 +667,7 @@ def main() -> int:
                       f"{len(EXAMPLES_LIFTS)} lift records (denominator "
                       f"{Path(EXAMPLES_LIFTS[0]).parent.name}*)")
         for index, name in enumerate(names, start=1):
-            interpreter, origin = chosen[name]
+            interpreter, origin, recorded = chosen[name]
             record_path = per_row / f"{Path(name).stem}.json"
             if args.resume and record_path.exists():
                 continue
@@ -576,10 +677,12 @@ def main() -> int:
                 # name rather than run it under another interpreter: the record says
                 # which one lifted it, and a census that quietly ran it elsewhere
                 # would still be full-length and right-shaped.
+                # The remap is keyed by the spelling the lift record holds, under its
+                # labels (interpreter_for accepts that key for an unlabelled record too).
                 record = {"row": name, "measured": False,
                           "note": (f"interpreter missing: {interpreter} (named by "
-                                   f"{origin}; pass --interpreter {interpreter}=PATH "
-                                   f"to remap)")}
+                                   f"{origin}; pass --interpreter "
+                                   f"{_neutral_path(recorded)}=PATH to remap)")}
             elif preflighted.get(interpreter):
                 # The interpreter exists but cannot evaluate the battery: refused BY
                 # NAME, with the reasons, rather than run into a row of unanimous
@@ -610,12 +713,9 @@ def main() -> int:
                     record = {"row": name, "measured": False,
                               "note": ("child died" if status == "ok"
                                        else "child timeout"),
-                              "stderr_tail": stderr_text[-1200:]}
-            record["leg"] = "examples"
-            record["lift_record"] = origin
-            record["interpreter"] = interpreter
-            record["subject_manifest_sha256"] = subject_before["manifest_sha256"]
-            record["battery_sha256"] = subject_before["battery_sha256"]
+                              "stderr_tail": _neutral_tail(stderr_text, 1200)}
+            record = census_row(record, leg="examples", lift_record=origin,
+                                interpreter=interpreter, subject=subject_before)
             with jsonl.open("a", encoding="utf-8") as handle:
                 handle.write(json.dumps(record) + "\n")
                 handle.flush()
@@ -680,13 +780,13 @@ def main() -> int:
                        in (wanted[module_name] if wanted[module_name] != ["*"] else [])
                        if case_id not in seen]
 
-            # ONE ABORT MUST NOT COST A WHOLE MODULE. MEEP calls abort() on some
+            # One abort must not cost a whole module. MEEP calls abort() on some
             # errors, which kills the child outright -- so a single bad case took
             # every other case in the same module down with it and they were all
             # recorded as "child died". test_simulation.py lost 21 rows that way,
             # and the fusion board FAILED CLOSED because its cross-check against
             # the standing per-product record could not reconcile 37 against 45.
-            # Re-run the survivors ONE CASE PER CHILD, so an abort costs exactly
+            # Re-run the survivors one case per child, so an abort costs exactly
             # the case that aborted.
             if missing and len(missing) > 1:
                 log(log_path, f"      {module_name}: child died with {len(missing)} "
@@ -723,14 +823,14 @@ def main() -> int:
                              "measured": False,
                              "note": ("child died" if status == "ok"
                                       else "child timeout"),
-                             "stderr_tail": stderr_text[-1200:]})
+                             "stderr_tail": _neutral_tail(stderr_text, 1200)})
             with jsonl.open("a", encoding="utf-8") as handle:
                 for row in rows:
                     row["leg"] = args.leg
                     row.setdefault("module", module_name)
                     row["subject_manifest_sha256"] = subject_before["manifest_sha256"]
                     row["battery_sha256"] = subject_before["battery_sha256"]
-                    handle.write(json.dumps(row) + "\n")
+                    handle.write(json.dumps(_neutral_value(row)) + "\n")
                 handle.flush()
             measured = sum(1 for row in rows if row.get("measured"))
             denominator = ("all" if wanted[module_name] == ["*"]

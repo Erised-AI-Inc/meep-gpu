@@ -1,6 +1,6 @@
 """Both driver-route gates record the deposit-repair bracket's bytes, off-device.
 
-WHY THIS FILE EXISTS. The byte-parity evidence behind ``served_in_dispatch`` on a
+Why this file exists. The byte-parity evidence behind ``served_in_dispatch`` on a
 bracketed seam is taken with ``deposit_repair.LeadingRepairPlan`` /
 ``TrailingRepairPlan`` wrapped around the fused launch, and until 2026-09-19 neither
 route gate named ``meep_gpu/deposit_repair.py`` in the curated
@@ -10,7 +10,7 @@ only in the top-level ``imported_source_sha256`` (``c1d55704``), and the curated
 (39 keys per fused-route leg, 11 per Metal leg) did not. This pins the curated block,
 host-only, so the bracket cannot quietly leave it again.
 
-WHAT A PASS DOES NOT LICENSE. It says the block RECORDS the bracket. No
+What a pass does not license. It says the block RECORDS the bracket. No
 ``driver_dispatch`` record binds it: the recut binds the key set of the record it cuts
 (``recut_driver_dispatch_record.py:310``), so whether a record should is the record
 release decision, and binding it needs a campaign run with this block.
@@ -61,7 +61,7 @@ def test_the_fused_route_block_records_the_bracket_at_the_live_digest(no_device)
     assert digests.get("deposit_repair.py") == _live("deposit_repair.py"), (
         "the fused-route gate's curated block does not carry the live "
         "deposit_repair.py digest")
-    # ONE SPELLING PER MAP: the package-relative key, never the repo-relative one.
+    # One spelling per map: the package-relative key, never the repo-relative one.
     assert "meep_gpu/deposit_repair.py" not in digests
     # The composer the bracket installs through, digested by the end-to-end list.
     assert digests.get("cuda_kernels/fused_pairs.py") == _live(

@@ -224,7 +224,7 @@ def normalize_frequencies(
         # plus/minus-omega near2far pair in dipole_in_vacuum_cyl_off_axis.py
         # depends on.
         #
-        # ZERO IS ADMITTED TOO, and it needs no branch anywhere. ``update_dft`` builds
+        # Zero is admitted too, and it needs no branch anywhere. ``update_dft`` builds
         # ``dft_phase[i] = polar(1.0, omega[i]*time) * scale`` with NO test on omega
         # (dft.cpp:266-269) and accumulates the same multiply-add; at omega = 0 the
         # phase factor is exactly 1 and the accumulator is a running time integral of
@@ -401,6 +401,8 @@ def _raw_factors(fields, name):
             xp = fields.grid.xp
             return (xp.broadcast_to(xp.zeros((), dtype=displacement.dtype),
                                     displacement.shape),)
+        if fields.e_reads_d:
+            return (displacement,)  # E is D's storage before the first step.
         inverse = fields.inverse_epsilon_for(name)
         if getattr(inverse, "shape", None) == getattr(displacement, "shape", None):
             return (displacement, inverse)
@@ -422,7 +424,7 @@ def _sliced_factors_product(fields, name, index):
     """
     from . import host_writes  # noqa: PLC0415
 
-    # THE ORIGINAL PATH WHEN NOTHING HOLDS. Reproducing ``component_factors`` raw
+    # The original path when nothing holds. Reproducing ``component_factors`` raw
     # is only worth anything under a held residency, and the device-free tests
     # hand this function stub ``Fields`` objects that carry ``sliced_component``
     # and nothing else; asking those for ``_stored_E`` is an AttributeError. So
@@ -468,8 +470,8 @@ def _sliced_component(fields, grid, component, region, periodic=(False, False, F
     (`_append_reflected_planes`) — the same neighbour the field readback
     (`readback._up`) supplies there. Either plane is appended for the same reason the periodic
     plane is fetched above: without it the extended slice has the region's own
-    length, `_apply_yee_interpolation` finds nothing to consume, and THE AVERAGE IS
-    DROPPED FOR THE WHOLE AXIS — the quadrant then holds raw Yee samples on the
+    length, `_apply_yee_interpolation` finds nothing to consume, and the average is
+    dropped for the whole axis — the quadrant then holds raw Yee samples on the
     folded axis while every other axis is cell-centred, and nothing about the array
     says so. Measured on a 3 x 3 x 2 cell at resolution 10 with an X mirror, the
     default whole-grid monitor, against the same cells of the unfolded run: Ey
@@ -499,7 +501,7 @@ def _sliced_component(fields, grid, component, region, periodic=(False, False, F
     # wall read 2.02x MEEP (worst rel 1.02e+00; 4.6e-01 / 6.6e-01 at z = 1.90 /
     # 1.925), and every full-width transverse extent read ~1e-02 — repaired to
     # 4e-08 … 2e-07 by this one condition with the periodic twin and the low-wall
-    # planes unmoved (the design notes (absorber-placement-evidence) §2.3, §3.3).
+    # planes unmoved (fourteen configurations measured against ``mp.get_fluxes``).
     terminated = [axis for axis in reaches_far_face if not periodic[axis]]
     metallic = [axis for axis in terminated
                 if not _axis_is_mirrored(grid, axis) or grid.is_metallic(axis)]
@@ -524,7 +526,7 @@ def _sliced_component(fields, grid, component, region, periodic=(False, False, F
     # where E is derived, indexing the two FACTORS beats forming the product over the
     # whole grid. Here the axes are taken one at a time, so the factors are carried in
     # lockstep and multiplied once the last axis is gathered. The Bloch phases are held
-    # back to the same point IN THE SAME ORDER: each one depends on its own axis alone,
+    # back to the same point in the same order: each one depends on its own axis alone,
     # and a `take` along a different axis cannot permute that axis, so deferring them
     # multiplies every cell by the same factors in the same sequence.
     layers = fields.component_factors(component)
@@ -774,7 +776,7 @@ def _cylindrical_ring_weights(origin_doubled, parity, start, count, weights, dx)
         dV0 *= 2 * pi * fabs((S.transform(chunks[i]->gv[isc], sn) + shift).in_direction(R));
 
     so ``dV = inva**n_extent * 2*pi*(r(isc) + loop_i2 * inva)`` — the plain Cartesian
-    ``dV0`` times ``2*pi*r`` at THIS SAMPLE'S OWN RADIUS, advancing one cell per row
+    ``dV0`` times ``2*pi*r`` at this sample's own radius, advancing one cell per row
     from the radius of the chunk's first sample. `update_dft` then folds it in through
     ``IVEC_LOOP_WEIGHT(s0, s1, e0, e1, dV0 + dV1*loop_i2)`` (dft.cpp:277).
 
@@ -835,7 +837,7 @@ def _axis_origin_doubled(grid, axis):
 
     Defers to `Grid.origin_doubled`, which is the one definition; the fallback is
     for the stub grids in test_dft.py, which model the registration conventions and
-    carry no methods. MEEP's `center_origin` rounds the cell count DOWN TO EVEN, so
+    carry no methods. MEEP's `center_origin` rounds the cell count down to even, so
     a centred axis starts at `-(n_full - n_full % 2)` — `-L/2` only for an even
     count — and a symmetry-halved axis at -2, placing cell 0 across the mirror
     plane (MEEP vec.cpp `halve()` / `icenter()`). Every axis halves the same way,
@@ -965,8 +967,8 @@ def _lattice_gather_device(grid, axis, first_cell, cell_count, phase, iyee_shift
     ``_sliced_component``'s wrapping branch and therefore ran on EVERY timestep, per
     component, per wrapping axis. Two things there cost more than they look:
 
-      * ``[complex(phase) ** int(shift) for shift in shifts]`` is a PYTHON LOOP OVER
-        THE AXIS LENGTH — the only true per-cell Python loop left anywhere in the
+      * ``[complex(phase) ** int(shift) for shift in shifts]`` is a Python loop over
+        the axis length — the only true per-cell Python loop left anywhere in the
         per-timestep path. Measured 45 us at span 241, 199 us at 1201 and 826 us at
         4801, i.e. 0.17 us per cell, and it does not shrink on a GPU because none of
         it is array work.
@@ -1010,7 +1012,7 @@ def folded_axis_sites(
 ):
     """Map requested Yee sites on a mirror-folded axis onto stored rows — MEEP's sn loop.
 
-    THE ONE TRANSCRIPTION of how ``loop_in_chunks`` serves a monitor site the fold
+    The one transcription of how ``loop_in_chunks`` serves a monitor site the fold
     did not store, fixed at registration time exactly as MEEP fixes it: the chunk a
     site lands in, the symmetry image ``sn`` that reaches it and the sign that image
     carries are all decided in ``fields::add_dft`` (dft.cpp:231) before a single
@@ -1519,7 +1521,7 @@ def _gathered_component(fields, grid, component, gather, region):
             # The extended list was clipped at a far face that cannot be continued —
             # `_register_volume` builds it as `arange(low, min(high + 1, stored))` — so
             # without a plane appended here `_apply_yee_interpolation` finds nothing to
-            # consume and DROPS THE AVERAGE FOR THE WHOLE AXIS, not just its last cell.
+            # consume and drops the average for the whole axis, not just its last cell.
             #
             # This used to require `_axis_is_mirrored`, and the missing half — a plain
             # NON-mirrored axis terminated by a wall — is the same defect
@@ -1741,7 +1743,7 @@ class YeeRegionDFT:
                 )
             stored = _axis_cell_count(self.grid, axis)
             if start + count == stored + 1 and self.grid.is_metallic(axis):
-                # THE PEC WALL ROW MEEP OWNS PAST THE STORED INTERIOR. On a
+                # The PEC wall row MEEP owns past the stored interior. On a
                 # metallic axis MEEP's owned corner for a shift-0 component is one
                 # site ABOVE the last interior one — the wall itself — and that site
                 # is identically zero for the tangential field a PEC wall holds
@@ -2437,7 +2439,7 @@ class DFTMonitor:
         folded in Y, so unfolding Y multiplies the already-phased X half by
         `parity_y` and the doubly mirrored corner ends up carrying
         `parity_x * parity_y`. That reproduces the hand-written four-quadrant
-        version BIT FOR BIT, overlapping writes included — the same unfolding
+        version bit for bit, overlapping writes included — the same unfolding
         the field readback (`readback._unfold`) applies to the field arrays.
 
         Args:
@@ -3295,7 +3297,7 @@ class FluxMonitor:
     def load_minus_dft_data(self, data: FluxDftData) -> None:
         """``load_dft_data`` then negate, MEEP's ``load_minus_flux_data``.
 
-        THE MINUS CONVENTION, which is the whole normalization idiom and is easy to
+        The minus convention, which is the whole normalization idiom and is easy to
         get quietly wrong. MEEP's ``Simulation.load_minus_flux_data``
         (``python/simulation.py:3642-3649``) loads the saved transform and then calls
         ``flux.scale_dfts(complex(-1.0))``, so the accumulator STARTS the second run
@@ -3373,7 +3375,7 @@ class EnergyMonitor:
     copies the volume list unchanged (dft.cpp:723) — and ``add_dft``'s
     ``loop_in_chunks`` still runs with ``use_symmetry = true``, so MEEP visits each
     image of the region. This engine's ``_register_volume`` reflected gather is the
-    same visit, and the folded case is the one that was MEASURED (see the class's
+    same visit, and the folded case is the one that was measured (see the class's
     test): test_dft_energy's region straddles its ``Mirror(Y)`` plane.
 
     **A region ``weight`` is IGNORED, because MEEP ignores it.** ``add_dft_energy``
@@ -4028,7 +4030,7 @@ class Near2FarMonitor:
             # dft.cpp:268-270), and that is the path the mp.Simulation migration
             # takes for a negative-frequency near2far — MEEP then evaluates the far
             # field itself via load_near2far. This class's own evaluators
-            # (green3d / _greencyl) are transcribed and MEASURED at omega > 0 only,
+            # (green3d / _greencyl) are transcribed and measured at omega > 0 only,
             # so a negative frequency is refused here rather than radiated unpinned.
             raise ValueError(
                 f"Near2FarMonitor evaluates far fields with Green's functions measured at "
@@ -5084,7 +5086,7 @@ def _is_closed_box(patches, tolerance: float = 1e-9) -> bool:
 # integrate_field_function` and the five ``*_in_box`` measures of
 # src/energy_and_flux.cpp) all read the same sites.
 #
-# THE ONE THING THAT IS NOT THE DFT MONITORS' PATH, and the reason this exists at all:
+# The one thing that is not the DFT monitors' path, and the reason this exists at all:
 # ``loop_in_chunks`` is called with ``cgrid``, and ``cgrid`` is Centered only when the
 # requested components do NOT all share a Yee shift (integrate.cpp:135-143). A pair like
 # (Ex, Dx) DOES share one, so ``electric_energy_in_box`` loops the component's own raw
@@ -5440,7 +5442,7 @@ def _material_trace(fields, grid, component: str, axes):
     factors of four cancel and the expression below is the same quantity in the same
     order.
 
-    MEASURED against MEEP on test_wvg_src's eps=12 waveguide cell (16 x 8, resolution 10,
+    Measured against MEEP on test_wvg_src's eps=12 waveguide cell (16 x 8, resolution 10,
     subpixel smoothing on): **exact to 1.2e-09 or better** on every volume that stops
     short of the cell's outermost row — a slab through the waveguide, an off-grid box, a
     flat line inside the 0.1-thick air slot — and **2.4e-03** on the WHOLE cell.

@@ -1,6 +1,6 @@
 """CUDA gate for the fused dispersive D-curl / electric-constitutive pair.
 
-THE SOURCE CASE. Until 2026-08-27 every case here was source-free, because the product
+The source case. Until 2026-08-27 every case here was source-free, because the product
 refused any row carrying an electric source: the driver injects it between ``step_D`` and
 ``update_E``, which is inside the seam this pair closes. ``dispersive_fused_pair`` now
 declares ``CARRIES_DEPOSIT_REPAIR``, so ``launch._install_fused_pair`` brackets its launch
@@ -54,7 +54,7 @@ CASES = (
      ((0.55, 0.03, (0.30, 0.25, 0.20)),
       (0.83, 0.07, (0.20, 0.15, 0.00)),
       (1.05, 0.09, (0.10, 0.00, 0.00))), 12, ()),
-    # THE DEPOSIT CASE. Two poles so the pole-aware constitutive half is doing real
+    # The deposit case. Two poles so the pole-aware constitutive half is doing real
     # work, and a metallic x so the inline wall clear is live in the same seam the
     # repair spans.
     ("two_pole_electric_source", ("metallic", "periodic", "periodic"),
@@ -77,7 +77,7 @@ def log(message: str) -> None:
 def save(payload: Dict[str, Any], path: str) -> None:
     """Serialise the payload, provenance-stamped, atomically.
 
-    THE STAMP IS HERE AND NOT AT THE CALL SITES, for the reason already written
+    The stamp is here and not at the call sites, for the reason already written
     down on the chain gate: ``main`` calls this five times as the cases land, and
     a stamp bolted onto the last call would leave every partial artifact — the
     one an aborted run leaves behind, which is the artifact a failure is read
@@ -229,7 +229,7 @@ def run_case(cp, name, boundaries, pole_specs, steps,
             "step_D": "PmlCurlPlan", "update_E": "DispersiveConstitutivePlan",
             "update_P": "list",
         }
-        # WITH AN ELECTRIC SOURCE the dispersive pair still owns both slots, but the
+        # With an electric source the dispersive pair still owns both slots, but the
         # objects in them are the repair's: the LeadingRepairPlan saves E and f_w_E at
         # the deposit points and then launches DispersiveFusedPairPlan, and the
         # TrailingRepairPlan recomputes them after the driver has injected. Pinning
@@ -339,7 +339,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     import cupy as cp  # noqa: PLC0415
     from meep_gpu import backends, subnormal_policy  # noqa: PLC0415
 
-    # BEFORE THE FIRST DEVICE COMPILE. strict=True: a process that asked to keep
+    # Before the first device compile. strict=True: a process that asked to keep
     # and quietly did not is a process whose bytes mean nothing. It is also what
     # enforces the CUPY_CACHE_DIR token rule — CuPy's cache key is computed ABOVE
     # the seam the -ftz strip installs at, so a directory shared with a flush run

@@ -2,9 +2,9 @@
 
 NINE certified families are now CONSULTED by the central composer: complex/Bloch,
 special_kz (real and complex), chi2/chi3 ``update_E``, off-diagonal ``update_E``,
-BFAST, and — added in the round this file's later sections pin — the folded
-complex cluster (K1/K2/K3a/K3b plus its constitutive arms), folded off-diagonal
-``update_E``, complex Dcyl, and the NULL constitutive family, whose product
+BFAST, and — added by the second wiring change, which this file's later sections
+pin — the folded complex cluster (K1/K2/K3a/K3b plus its constitutive arms), folded
+off-diagonal ``update_E``, complex Dcyl, and the NULL constitutive family, whose product
 launches nothing at all. Each was certified on its own device gate against a
 hand-composed set of plans; what no prior artifact measures is the composer
 itself: that the planner, given a configuration, admits exactly one product per
@@ -20,7 +20,7 @@ The device half of the evidence — that the planner's chosen products then step
 byte-identically to the array path — is a separate probe on a CUDA host, and
 this module deliberately does not stand in for it.
 
-THIS MODULE DOES NOT DISPATCH. It asks the composer directly and never steps a
+This module does not dispatch. It asks the composer directly and never steps a
 driver through ``meep_gpu.fastpath.plan_fast_path``, which is where dispatch is
 decided — on by default since 2026-09-27, and pinned at the one test below that
 reaches it (``test_dispatch_is_wired_and_on_by_default_with_the_veto_above_it``).
@@ -79,7 +79,7 @@ CURL_PREDICATES = {
 }
 
 #: The two ghost-fill arms. ``fill_B``/``fill_D`` went through the arm table in
-#: the same round that added the complex-storage fill: before that the block
+#: the same change that added the complex-storage fill: before that the block
 #: consulted ONE predicate and was the last place here that could have picked a
 #: second admitting product by position.
 FILL_PREDICATES = {
@@ -474,8 +474,8 @@ def test_the_previously_certified_selections_still_hold(monkeypatch):
     assert plan.reasons == {}
 
 
-#: The five families the earlier round wired, with the configuration each owns
-#: and the arms it must still win. THE REGRESSION SURFACE OF THIS ROUND: adding
+#: The five families wired first, with the configuration each owns and the arms
+#: it must still win. The regression surface of the second wiring change: adding
 #: six curl arms, two fill arms and eight constitutive arms is only safe if none
 #: of them changes any of these.
 PREVIOUSLY_CERTIFIED = (
@@ -497,8 +497,8 @@ def test_the_five_already_wired_families_select_exactly_what_they_did(
         monkeypatch, label, configuration, curl, update_h, update_e):
     """Every previously certified selection, re-asserted against fifteen arms.
 
-    Each row admits ONLY the arms that family owned before this round. If any new
-    arm were consulted where it does not apply, it would either win the slot
+    Each row admits ONLY the arms that family owned before the second wiring change.
+    If any new arm were consulted where it does not apply, it would either win the slot
     (wrong product) or co-admit and leave it unselected (lost coverage) — both
     show up here as a ``selected`` dict that is not the one the family's own gate
     certified.
@@ -602,7 +602,7 @@ def test_each_new_arm_pair_also_fails_closed_when_both_admit(
 @pytest.mark.parametrize("slot,side", [("update_H", "H"), ("update_E", "E")])
 def test_a_null_plan_never_displaces_a_kernel_and_a_kernel_never_displaces_a_null(
         monkeypatch, slot, side):
-    """THE RULE SECTION C OF THE DESIGN EXISTS FOR, pinned so it cannot be relaxed.
+    """The rule section C of the design exists for, pinned so it cannot be relaxed.
 
     ``no-PML null`` is the only arm in the table whose product LAUNCHES NOTHING,
     and it is the one arm a reader is most tempted to give a preference rule.
@@ -700,7 +700,7 @@ def test_a_row_planted_past_the_installer_is_consulted_not_suppressed(monkeypatc
     So the gate is the DISJUNCTION, the ambiguity survives, and the slot goes to
     the array path. A mutant gate that reads only the flag fails here.
 
-    WHO CAN PRODUCE THE DISAGREEMENT is pinned separately, against the engine's
+    Who can produce the disagreement is pinned separately, against the engine's
     own class, by
     ``test_the_engine_cannot_produce_a_flag_false_live_row`` — not the engine,
     but every harness that builds a ``Fields`` double, which is what this module
@@ -772,8 +772,8 @@ def test_an_offdiagonal_flag_with_no_live_row_is_refused_by_every_arm(monkeypatc
      (), "no chi2/chi3 is installed"),
     ("offdiag_rows_possible", "offdiag_update_e", "offdiag_constitutive_coverage",
      (), "no off-diagonal chi1inv row survived"),
-    # The four families this round wired. Three reuse an existing gate, so the
-    # implication that needs checking is the one against THEIR clause, not
+    # The four families the second wiring change wired. Three reuse an existing
+    # gate, so the implication that needs checking is the one against THEIR clause, not
     # against the clause the gate was written for.
     ("complex_storage_active", "folded_complex",
      "folded_complex_composition_curl_coverage", ("step_B",),
@@ -896,7 +896,7 @@ def test_the_update_E_refusal_still_reports_the_two_shipped_products_first(
     them must be gated off and contribute NOTHING — not an empty string, not a
     prefix, nothing.
 
-    THE FOURTEENTH AND FIFTEENTH ARE CONSULTED AND ARE SUPPOSED TO BE. ``pml=object()`` cannot
+    The fourteenth and fifteenth are consulted and are supposed to be. ``pml=object()`` cannot
     answer ``is_active``, and an unreadable layer CONSULTS the null arm
     (``absorber_inactive``) rather than being assumed active — so the null arm
     refuses it by name and appends one entry. That is the whole change to this
@@ -922,8 +922,8 @@ def test_the_update_E_refusal_still_reports_the_two_shipped_products_first(
         "no-PML null: fields carries no grid",
     )
     # The H side's ``ordinary`` arm stays UNPREFIXED — that is what it reported
-    # before this round and retrofitting a prefix is a behaviour change with no
-    # gate behind it — so the null arm's entry is the only labelled one here.
+    # before the second wiring change, and retrofitting a prefix is a behaviour change
+    # with no gate behind it — so the null arm's entry is the only labelled one here.
     assert plan.reasons["update_H"] == (
         "ordinary reason",
         "no-PML null: fields carries no grid",
@@ -933,7 +933,7 @@ def test_the_update_E_refusal_still_reports_the_two_shipped_products_first(
 def test_no_new_arm_appears_in_the_folded_or_cylindrical_refusals(monkeypatch):
     """The two certified composition doubles, re-read against fifteen arms.
 
-    WHAT CHANGED AND WHY, stated rather than papered over. Both doubles pass
+    What changed and why, stated rather than papered over. Both doubles pass
     ``pml=object()``, which cannot answer ``is_active``, so the NULL arm is
     consulted on both (an unreadable layer consults its arm) and refuses by name.
     That is one new labelled entry per constitutive slot and it is correct.
@@ -1077,19 +1077,19 @@ def test_a_builder_returning_none_leaves_its_slot_unselected(monkeypatch):
 def test_opt_in_fusion_cannot_eat_the_seam_a_specialized_family_owns(monkeypatch):
     """The E-SIDE seam only, since the 2026-09-13 split — and BOTH halves pinned.
 
-    THE GUARD USED TO BE BLANKET and is now keyed on the constitutive side.
+    The guard used to be blanket and is now keyed on the constitutive side.
     ``has_offdiagonal_epsilon`` sat in the ``specialized_family_owns_the_grid``
     disjunction, so an off-diagonal grid refused EVERY opt-in pair one branch
     early. It now sits in ``off_diagonal_owns_update_e``, which ``plan_step``
     applies only where ``spec["constitutive"] == "E"``.
 
-    THE NARROWING IS READ OFF THE KERNELS, not argued: ``FUSED_PAIRS["B"]`` is
+    The narrowing is read off the kernels, not argued: ``FUSED_PAIRS["B"]`` is
     constitutive "H"; ``plan_fused_pair`` passes the inverse-epsilon volumes only
     when the constitutive side is "E"; and ``kernels.fused_curl_constitutive_B``
     carries no inverse-epsilon pointer in its signature at all — so an off-diagonal
     chi1inv cannot change one value the B seam computes.
 
-    BOTH HALVES ARE PINNED BECAUSE EITHER COULD REGRESS: the D pair and the
+    Both halves are pinned because either could regress: the D pair and the
     dispersive D/E pair must still be refused BY NAME (their reason text is
     unchanged on purpose — it is the string the frozen gate artifacts under
     ``parity/meep_gpu/results`` recorded), and the magnetic pair must still be
@@ -1115,10 +1115,10 @@ def test_opt_in_fusion_cannot_eat_the_seam_a_specialized_family_owns(monkeypatch
                                    fuse=True, sources=())
 
     assert plan.selected["update_E"] == "off-diagonal"
-    # THE SEAM THE FAMILY OWNS: still refused by name, on both D-side pairs.
+    # The seam the family owns: still refused by name, on both D-side pairs.
     for key in ("fused_pair_D", "fused_pair_dispersive_D"):
         assert any("specialized" in reason for reason in plan.reasons[key]), key
-    # THE MAGNETIC SEAM: composed now, and carrying NO refusal at all.
+    # The magnetic seam: composed now, and carrying NO refusal at all.
     assert plan.selected["step_B"] == "fused pair B"
     assert plan.selected["update_H"] == "fused pair B"
     assert isinstance(plan.plans["update_H"], launch_module.NoopPlan)
@@ -1221,9 +1221,9 @@ def test_a_bfast_run_produces_no_slot_outside_the_drivers_step_order(monkeypatch
 #: two admitters and leave the slot UNSELECTED — taking the certified curl off the
 #: device along with the fusion that displaced it.
 #:
-#: THAT REASON WAS ABOUT A ROUTE NONE OF THEM WAS EVER GOING TO TAKE, which the two
+#: That reason was about a route none of them was ever going to take, which the two
 #: folded pairs had already demonstrated when they left this tuple on 2026-08-27. A
-#: fused pair is NOT AN ARM: it never registers on a slot, ``_select_slot`` never
+#: fused pair is not an arm: it never registers on a slot, ``_select_slot`` never
 #: sees it, and it is reached only from the opt-in ``fuse`` block, where
 #: ``_pair_may_absorb`` lets it take two slots exactly when the arm table has
 #: already given both to the arms its kernel implements. The two-admitter hazard
@@ -1235,15 +1235,15 @@ def test_a_bfast_run_produces_no_slot_outside_the_drivers_step_order(monkeypatch
 #: directions (installed, and refused at dispatch because unreleased).
 #:
 #: ``no_pml_ade`` and ``folded_dispersive_update_e`` were here while their
-#: admissions shipped unwired — the round that built them did not own ``launch.py``
-#: and could add no arm — and they left when they became arms. (The same round's
+#: admissions shipped unwired — the change that built them did not own ``launch.py``
+#: and could add no arm — and they left when they became arms. (The same change's
 #: other two closures live inside family modules that were already arms, so they
 #: never appeared here.)
 #:
 #: Every entry below is a claim about ``launch.py`` and is read off it by
 #: :func:`test_the_deferred_modules_are_still_not_arms`.
 NOT_AN_ARM = (
-    # THE FOUR E->P CHAIN PRODUCTS. Each spans ``update_E`` -> ``update_P``, and
+    # The four E->P chain products. Each spans ``update_E`` -> ``update_P``, and
     # that seam differs from the pair seam in three ways at once: its second slot
     # holds a LIST of per-susceptibility plans rather than a plan, its first slot
     # is a CONSTITUTIVE sub-step rather than a curl, and their builders take the
@@ -1258,7 +1258,7 @@ NOT_AN_ARM = (
     # is left is the slot protocol, and that is a composition somebody builds
     # deliberately. 15 seam-instances (10 + 4 + 0 + 1) are priced here.
     #
-    # ``folded_offdiag_fused_ade_chain`` joined them in the round that built it
+    # ``folded_offdiag_fused_ade_chain`` joined them in the change that built it
     # (2026-09-10) and narrows the account by one clause: its builder takes NO
     # arm — one body, one admission — so of the three differences above only the
     # SLOT PROTOCOL applies to it, which is the difference that was never about
@@ -1266,14 +1266,14 @@ NOT_AN_ARM = (
     # and the last buildable E->P cell on the Triton board.
     "fused_ade_chain", "complex_fused_ade_chain", "fused_dispersive_chain",
     "folded_offdiag_fused_ade_chain",
-    # THE SCRATCH-OUTPUT WELDS' SHARED BASE. ``offdiag_scratch_weld`` is NOT A
-    # PRODUCT AT ALL: it is the plan base (the post-launch rotation and, since
+    # The scratch-output welds' shared base. ``offdiag_scratch_weld`` is not a
+    # product at all: it is the plan base (the post-launch rotation and, since
     # 2026-09-15, the ``warm`` that never rotates) and the machine-checked lift
     # helpers the two off-diagonal D->E welds and their probe import. It ships no
     # kernel, no predicate and no arm, and ``launch.py`` reaches it only through
     # those two product modules, so there is nothing for the planner to consult.
     #
-    # THE TWO WELDS THEMSELVES LEFT THIS TUPLE ON 2026-09-15. They were the only
+    # The two welds themselves left this tuple on 2026-09-15. They were the only
     # PAIR-shaped products the 2026-09-02 installer wave did not route, and the
     # reason was THE ROTATION rather than the slot arithmetic or the certification:
     # with no ``warm`` on the base, ``fastpath.warm_plan`` fell to
@@ -1283,8 +1283,8 @@ NOT_AN_ARM = (
     # and ``test_triton_certified_fused_products.test_the_two_scratch_output_welds_warm_without_rotating``
     # reads the mechanism off the tree in its new direction.
     "offdiag_scratch_weld",
-    # THE H->D WELD, 2026-09-06, AND THE REASON IS A FILE BOUNDARY RATHER THAN THE
-    # ARITHMETIC OR THE SLOT PROTOCOL. ``fused_hd_pair`` is pair-shaped: it spans two
+    # The H->D weld, 2026-09-06, and the reason is a file boundary rather than the
+    # arithmetic or the slot protocol. ``fused_hd_pair`` is pair-shaped: it spans two
     # adjacent slots, it takes a source list, ``launch.CERTIFIED_FUSED_PAIR_SEAMS``
     # already carries the ``update_H -> step_D`` row it would fill, and
     # ``_install_fused_pair`` already routes that row to ``withdraw_hoist``. What
@@ -1293,11 +1293,11 @@ NOT_AN_ARM = (
     # ``plan_step`` can write must also appear in ``fastpath.FUSED_ARM_CONSTITUENTS``
     # (the see-through the pending-gate rung reads, asserted by
     # ``test_triton_certified_fused_products``) and in ``PENDING_DEVICE_GATE_ARMS``
-    # until a ledger entry exists. Both live in ``meep_gpu/fastpath.py``, which this
-    # round does not own, so the product ships with its predicate, its plan, its
-    # tests and its device gate, and the composer is not offered it.
+    # until a ledger entry exists. Both live in ``meep_gpu/fastpath.py``, which the
+    # change that built it does not own, so the product ships with its predicate,
+    # its plan, its tests and its device gate, and the composer is not offered it.
     #
-    # NOTHING ABOUT THE COMPOSITION TURNS ON THAT. The product declares
+    # Nothing about the composition turns on that. The product declares
     # ``INSTALLABLE = False`` for a measured verdict of its own
     # (``fused_hd_pair.INSTALLABLE_REASON``): over ``step_B - update_H - step_D -
     # update_E`` launches are ``4 - (installed pairs)`` and this span takes one slot
@@ -1306,13 +1306,13 @@ NOT_AN_ARM = (
     # rather than asserted, by
     # ``test_triton_fused_hd_pair.test_the_composer_refuses_this_product_on_both_brakes``
     # and by the gate's arbitration leg, both of which inject the row in process
-    # instead of editing a file this round does not own.
+    # instead of editing a file the change that built it does not own.
     "fused_hd_pair",
-    # THE 2026-09-07 H->D TAIL. Five more families on the same seam, for the same
+    # The 2026-09-07 H->D tail. Five more families on the same seam, for the same
     # reason and no other: routing any of them costs a composer LABEL, and on this
     # backend a label `plan_step` can write must also appear in
     # `fastpath.FUSED_ARM_CONSTITUENTS` and in `PENDING_DEVICE_GATE_ARMS` until a
-    # ledger entry exists -- both in `meep_gpu/fastpath.py`, which the round that
+    # ledger entry exists -- both in `meep_gpu/fastpath.py`, which the change that
     # built them does not own. Each declares `INSTALLABLE = False` besides.
     #
     # `nonlinear_fused_hd_pair` is listed here for a WEAKER reason than the other
@@ -1324,16 +1324,16 @@ NOT_AN_ARM = (
     "conductive_bfast_fused_hd_pair", "beta_real_fused_hd_pair",
     "folded_complex_fused_hd_pair", "beta_complex_fused_hd_pair",
     "nonlinear_fused_hd_pair",
-    # THE FOLDED H->D WELD, 2026-09-07, here for the SAME file boundary and no other.
+    # The folded H->D weld, 2026-09-07, here for the same file boundary and no other.
     # ``folded_fused_hd_pair`` is pair-shaped exactly as ``fused_hd_pair`` is -- the
     # same two adjacent slots, the same ``CERTIFIED_FUSED_PAIR_SEAMS['update_H']`` row,
     # the same ``withdraw_hoist`` routing -- so what routing it costs is the same LABEL
-    # in ``meep_gpu/fastpath.py``, which the round that built it does not own. It
+    # in ``meep_gpu/fastpath.py``, which the change that built it does not own. It
     # covers the largest cell this board carried unbuilt, ``(update_H folded ->
     # step_D folded PML)``: 78 seam-instances of a 597 denominator on
     # ``results/fusion_matrix_triton_2026-09-07_cyl``, 75 ``buildable_not_built``.
     #
-    # ITS ARBITRATION IS MEASURED, AND TWO DIFFERENT NUMBERS ARE IN CIRCULATION FOR IT.
+    # Its arbitration is measured, and two different numbers are in circulation for it.
     # The gate's own lift leg prices the DRIVEN rows at loss 55 / tie 19 / gain 0
     # (``results/triton_folded_fused_hd_pair_2026-09-07/keep/gate.json``,
     # ``arbitration_counts``, over 74 driven rows) and that is the figure to quote. A
@@ -1381,7 +1381,7 @@ def _kernel_helper_imports():
 
 
 def test_every_module_in_the_package_is_accounted_for_by_one_declaration():
-    """THE ACCOUNT IS EXHAUSTIVE, in both directions, or it measures nothing.
+    """The account is exhaustive, in both directions, or it measures nothing.
 
     The version this replaces asserted that every DECLARED family exists on disk
     and that ``RESERVED_FAMILIES`` is empty, then claimed in its own docstring
@@ -1425,7 +1425,7 @@ def test_every_module_in_the_package_is_accounted_for_by_one_declaration():
 #: What a family module may NOT claim about the planner once it is an arm. Each
 #: needle is a present-tense structural assertion about ``launch.py`` — a file
 #: the family module does not own — and every one of them was shipped FALSE by
-#: the round that wired these four families, in the same commit that made them
+#: the change that wired these four families, in the same commit that made them
 #: false.
 UNWIRED_CLAIMS = (
     "is not consulted by ``launch.plan_step``",
@@ -1435,8 +1435,8 @@ UNWIRED_CLAIMS = (
     "not performed this round",
     "WIRING — none, deliberately",
     "nothing below has been done",
-    # The residual-closure round's spelling of the same claim: a section header
-    # naming work a LATER round owes ``launch.py``. Once the arm exists the header
+    # The residual closure's spelling of the same claim: a section header
+    # naming work a later change owes ``launch.py``. Once the arm exists the header
     # is a false statement about a file the module does not own.
     "AWAITING WIRING",
     "added no arm to ``plan_step``. What the coordinated wiring round has to do",
@@ -1448,12 +1448,12 @@ UNWIRED_CLAIMS = (
     "no_pml_constitutive",
     # The two the residual-group wiring moved out of NOT_AN_ARM. Each shipped
     # with an "AWAITING WIRING" block that told a reader, in present tense, what
-    # a later round would have to do to ``launch.py`` — true when written, false
+    # a later change would have to do to ``launch.py`` — true when written, false
     # the moment the arm landed. This is the seam that reads the claim from the
     # planner's side.
     "folded_dispersive_update_e", "no_pml_ade",
-    # A family since the chi2/chi3 tranche, but its update_H and curl admissions
-    # were unwired until the same round, and its integration block described them
+    # A family since the chi2/chi3 certification, but its update_H and curl admissions
+    # were unwired until that same wiring, and its integration block described them
     # in the imperative.
     "nonlinear_update_e",
     "complex_no_pml_curl", "complex_no_pml_conductive",
@@ -1494,7 +1494,7 @@ def test_the_deferred_modules_are_still_not_arms():
     """
     source = (PACKAGE_DIR / "launch.py").read_text(encoding="utf-8")
     for name in NOT_AN_ARM:
-        # AS A TOKEN, NOT A SUBSTRING. ``fused_hd_pair`` is deferred while the two
+        # As a token, not a substring. ``fused_hd_pair`` is deferred while the two
         # cylindrical H->D products (``cylindrical_fused_hd_pair``,
         # ``cylindrical_real_fused_hd_pair``) are routed since 2026-09-07, and the
         # deferred name is a suffix of both routed ones; a substring check would
@@ -1531,7 +1531,7 @@ def test_every_family_module_is_imported_only_from_inside_a_function_body():
         assert family not in module_scope, f"{family} is imported at module scope"
 
 
-#: Which family modules each family module pulls in AT ITS OWN MODULE SCOPE.
+#: Which family modules each family module pulls in at its own module scope.
 #: Three of the four newly wired families restate or import a certified base:
 #: importing them is importing those too, and no lazy forwarder can undo that.
 #: Declared here so the import-closure test stays exact rather than being
@@ -1627,7 +1627,7 @@ def test_a_family_module_is_imported_only_when_its_gate_is_on(
     # Saved and RESTORED rather than re-imported, for the reason spelled out on
     # ``test_the_package_still_imports_none_of_the_nine_families_eagerly``.
     #
-    # THE PACKAGE ATTRIBUTE IS RESTORED TOO, and leaving it out was a real leak
+    # The package attribute is restored too, and leaving it out was a real leak
     # rather than tidiness. ``plan_step``'s re-import inside the window rebinds
     # ``meep_gpu.triton_kernels.folded_complex`` (the ATTRIBUTE) to a throwaway
     # module object, while ``sys.modules`` gets the original back — so afterwards
@@ -1736,7 +1736,7 @@ def test_the_package_still_imports_none_of_the_nine_families_eagerly():
     Wiring the planner is exactly the change that would break this, because it
     is the change that gives the package a reason to name those modules.
 
-    THE ORIGINAL MODULE OBJECTS ARE PUT BACK, not re-imported. Re-importing makes
+    The original module objects are put back, not re-imported. Re-importing makes
     a NEW module object with new classes, and any test elsewhere in the suite
     holding a reference to the old one then fails an ``isinstance`` for reasons
     that have nothing to do with what it measures. Restoring the objects keeps
@@ -1839,8 +1839,8 @@ class NamedAsCupy:
 
     ``_grid_reasons`` clause 1 refuses anything whose ``grid.xp.__name__`` is not
     ``"cupy"``, so on the merge-bar host every real predicate would refuse at the
-    first clause and every case below would be vacuous. THE NAME IS THE ONLY
-    FAKE: every attribute is NumPy's, the arrays are real, and the clauses that
+    first clause and every case below would be vacuous. The name is the only
+    fake: every attribute is NumPy's, the arrays are real, and the clauses that
     follow — layout, dtype, contiguity, boundary kinds, coefficient tables, row
     slots — are evaluated against them.
     """
@@ -1890,7 +1890,7 @@ def no_absorber_objects():
 
 
 def install_sentinel_builders(monkeypatch):
-    """Replace every BUILDER with a sentinel. EVERY PREDICATE STAYS REAL.
+    """Replace every BUILDER with a sentinel. Every predicate stays real.
 
     The builders are what need Triton and a device; the predicates are what this
     file is about. Splitting them at the module seam is what lets the shipped
@@ -1905,7 +1905,7 @@ def install_sentinel_builders(monkeypatch):
             # chosen once for the whole sub-step inside the polarization block.
             "plan_no_pml_ade_update_p", "plan_complex_ade_update_p"]:
         if builder == "plan_null_constitutive":
-            # THE ONE BUILDER LEFT REAL. Every other one launches a kernel and
+            # The one builder left real. Every other one launches a kernel and
             # needs Triton and a device; this one allocates nothing, imports
             # nothing and returns a NullConstitutivePlan, so replacing it would
             # only hide the one plan object this file can legitimately inspect.
@@ -1951,7 +1951,7 @@ def flag_blind_fields_class():
 
 def test_an_ordinary_grid_selects_the_shipped_products_with_every_real_predicate(
         monkeypatch):
-    """THE NON-VACUITY CONTROL for everything in this section.
+    """The non-vacuity control for everything in this section.
 
     Real predicates, real arrays, one faked backend name: the shipped PML curls
     and the ordinary constitutive product must win all four slots, unopposed and
@@ -2017,7 +2017,7 @@ def test_the_array_path_forms_the_row_product_only_under_the_FLAG():
 
 def test_a_flag_blind_live_row_is_NOT_vetoed_because_nothing_is_dropped(
         monkeypatch):
-    """The half of the trigger the wiring round shipped without, pinned.
+    """The half of the trigger the wiring change shipped without, pinned.
 
     This configuration — BFAST on, a live ``ROW_SLOTS[0]`` volume, the
     off-diagonal FLAG blinded False — used to be the veto's headline case: the
@@ -2047,7 +2047,7 @@ def test_a_flag_blind_live_row_is_NOT_vetoed_because_nothing_is_dropped(
 
 def test_a_flag_true_live_row_still_vetoes_a_product_that_would_drop_it(
         monkeypatch):
-    """THE OVER-COVER THIS SECTION EXISTS FOR, on the half that is real.
+    """The over-cover this section exists for, on the half that is real.
 
     Same shape as the case above with the FLAG left alone: the array path forms
     the row product here (512 of 1536 words, measured above), so a flag-reading
@@ -2123,7 +2123,7 @@ def test_a_vetoed_update_E_takes_its_fused_pair_curl_with_it():
     overwritten by the very product it refused. And when the vetoed ``update_E``
     was absorbed, the curl slot that carried it goes too.
 
-    DRIVEN AT THE VETO rather than through ``plan_step``, because since the
+    Driven at the veto rather than through ``plan_step``, because since the
     trigger gained its flag half the two cannot meet in one composition — see
     the test below, which pins that instead of leaving it implied. The absorbed
     shape is still the one the fusion block builds: a ``NoopPlan`` whose
@@ -2153,14 +2153,14 @@ def test_opt_in_fusion_and_the_veto_can_no_longer_meet_in_one_composition(
         monkeypatch):
     """A structural consequence of the flag half, pinned rather than assumed.
 
-    THE CLAIM SURVIVED THE 2026-09-13 SPLIT BUT ITS MECHANISM CHANGED, and this
+    The claim survived the 2026-09-13 split but its mechanism changed, and this
     docstring is rewritten rather than the assertions relaxed. It used to read: the
     veto needs ``has_offdiagonal_epsilon`` True, and that same attribute refuses
     EVERY opt-in pair by name, so the two can never meet. The second half is no
     longer true — ``off_diagonal_owns_update_e`` refuses only the E-side pair, so
     the magnetic pair composes here.
 
-    WHAT KEEPS THEM APART NOW IS THE VETO'S OWN FIRST LINE:
+    What keeps them apart now is the veto's own first line:
     ``if selected.get("update_E") in ROW_PRODUCT_ARMS: return``. That tuple
     contains ``None``, and on this configuration nothing wins ``update_E`` at all
     (only PML and ordinary are admitted), so the veto EARLY-RETURNS and has
@@ -2180,12 +2180,12 @@ def test_opt_in_fusion_and_the_veto_can_no_longer_meet_in_one_composition(
 
     plan = launch_module.plan_step(fields, object(), fuse=True, sources=())
 
-    # THE VETO EARLY-RETURNED, which is what keeps it away from the fused pair
+    # The veto early-returned, which is what keeps it away from the fused pair
     # below: nothing wins ``update_E`` on this configuration (only PML and ordinary
     # are admitted), and ``None`` is a MEMBER of ``ROW_PRODUCT_ARMS`` — the tuple
     # the veto's own first line tests.
     assert plan.selected.get("update_E") in launch_module.ROW_PRODUCT_ARMS
-    # THE E-SIDE SEAM is still refused by name...
+    # The E-side seam is still refused by name...
     assert any("specialized family owns this grid" in reason
                for reason in plan.reasons["fused_pair_D"])
     # ...while the magnetic pair COMPOSES, carrying no refusal at all. Before the
@@ -2200,7 +2200,7 @@ def test_opt_in_fusion_and_the_veto_can_no_longer_meet_in_one_composition(
 
 
 def test_the_engine_cannot_produce_a_flag_false_live_row():
-    """The reachability the gate's docstring rests on, MEASURED on the real class.
+    """The reachability the gate's docstring rests on, measured on the real class.
 
     ``has_offdiagonal_epsilon`` is a read-only property returning
     ``bool(self._chi1inv_offdiagonal)`` and ``chi1inv_offdiagonal_for`` reads the
@@ -2236,15 +2236,15 @@ def test_the_engine_cannot_produce_a_flag_false_live_row():
 # ---------------------------------------------------------------------------
 
 def test_the_folded_row_product_survives_the_veto_that_exists_to_protect_it():
-    """THE ONE PRE-EXISTING BUG THIS WIRING WOULD HAVE TRIPPED, pinned.
+    """The one pre-existing bug this wiring would have tripped, pinned.
 
     ``_veto_dropped_offdiagonal_coupling`` refuses an ``update_E`` product that
     reads the off-diagonal FLAG instead of counting live ROW SLOTS. Its exemption
-    list held two entries — ``None`` and ``off-diagonal`` — and the arm this
-    round adds counts slots exactly as ``off-diagonal`` does. Without the third
-    entry the veto fires on the very product that implements the row term, empties
-    the slot, and reports "has no row-product term" about a kernel whose whole
-    body is that term.
+    list held two entries — ``None`` and ``off-diagonal`` — and the
+    ``folded off-diagonal`` arm counts slots exactly as ``off-diagonal`` does.
+    Without the third entry the veto fires on the very product that implements
+    the row term, empties the slot, and reports "has no row-product term" about
+    a kernel whose whole body is that term.
 
     It would have been silent: the slot falls to the array path, which is the
     correct answer, so only the reasons record would have been wrong — and wrong
@@ -2745,12 +2745,12 @@ DEGENERATE_CASES = degenerate_cases()
 def test_plan_step_never_raises_on_a_degenerate_object(label, build, kwargs):
     """The contract, fuzzed. NO STUBS: real predicates, real builders, no Triton.
 
-    Nine of these made the composer raise before this round's guards — from the
+    Nine of these made the composer raise before these guards were added — from the
     gate block, the folded ghost-fill block, the fusion block and the
     polarization loop, none of which was inside a try/except. A crash where the
     array path was the right answer is strictly worse than a refusal.
 
-    ``replaces == ()`` WAS PART OF THIS CONTRACT AND IS NOT ANY MORE, for a
+    ``replaces == ()`` was part of this contract and is not any more, for a
     reason that is a verdict rather than a concession. Every case here passes
     ``pml=None``, and ``pml=None`` IS an inactive layer — ``stepping.update_H``
     really does return at :916-917 on it — so the null family covers ``update_H``
@@ -2872,7 +2872,7 @@ def test_a_fused_pair_may_not_substitute_a_product_another_arm_won(monkeypatch):
 
 def test_the_dispersive_pair_still_fuses_the_configuration_its_gate_measured(
         monkeypatch):
-    """THE POSITIVE CONTROL for the absorb rule: it must not narrow a gated case.
+    """The positive control for the absorb rule: it must not narrow a gated case.
 
     ``probe_triton_dispersive_fused_pair`` runs ordinary PML grids carrying poles,
     where ``step_D`` is won by the ``PML`` arm and ``update_E`` by the
@@ -3140,7 +3140,7 @@ def test_every_drifted_host_file_is_named_in_the_pending_recut_record():
         live = hashlib.sha256(path.read_bytes()).hexdigest()
         if live == digest:
             continue
-        # ONE HOME FOR THE RULE (device_identity.py:209), and the SAME call the
+        # One home for the rule (device_identity.py:209), and the SAME call the
         # weld test in test_triton_kernels makes. That is the point: this test
         # exists to explain that test's red, so the two must mean the same thing
         # by "drifted". An edit the shared rule clears is not a red weld and owes
@@ -3161,7 +3161,7 @@ def test_every_drifted_host_file_is_named_in_the_pending_recut_record():
 def test_the_pending_recut_record_says_what_bounds_dispatch_now():
     """The claim that bounds the drift's blast radius, pinned to the shipped file.
 
-    It used to be "dispatch is not wired at all". The driver-seam round wired it,
+    It used to be "dispatch is not wired at all". The driver-seam change wired it,
     so the bound moved to the ENABLE, and the record said "WIRED BUT OFF BY
     DEFAULT". That stopped being true when ``DISPATCH_BY_DEFAULT`` turned on, so
     the claim is now bound to the constant it restates: the ledger and the code
@@ -3239,7 +3239,7 @@ def test_dispatch_is_wired_and_on_by_default_with_the_veto_above_it(monkeypatch)
 
 
 # ---------------------------------------------------------------------------
-# C20 — THE DISJOINTNESS SWEEP: at most one admitter per slot, on real objects
+# C20 — the disjointness sweep: at most one admitter per slot, on real objects
 # ---------------------------------------------------------------------------
 #
 # The claim the whole fifteen-arm table rests on is that no two arms admit the
@@ -3250,7 +3250,7 @@ def test_dispatch_is_wired_and_on_by_default_with_the_veto_above_it(monkeypatch)
 # It runs in about a fifth of a second on the merge-bar host with no GPU and no
 # Triton.
 #
-# WHY THE ADMITTER COUNT IS OBSERVABLE THROUGH ``plan_step``: a slot with two or
+# Why the admitter count is observable through ``plan_step``: a slot with two or
 # more admitters is left UNSELECTED with an "ambiguous" reason naming every one
 # of them (clause (b)). So "exactly one admitter" is "selected", "none" is
 # "unselected with named refusals", and "two or more" is "unselected AND
@@ -3258,7 +3258,7 @@ def test_dispatch_is_wired_and_on_by_default_with_the_veto_above_it(monkeypatch)
 # pins the disjointness AND the routing at once, and it cannot drift from
 # launch.py's arm table the way a second copy of that table in this file would.
 #
-# THE BACKEND CLAUSE IS NEUTRALISED, not ignored: ``grid.xp`` answers to the name
+# The backend clause is neutralised, not ignored: ``grid.xp`` answers to the name
 # "cupy" (``NamedAsCupy``) so every predicate's clause 1 passes and the clauses
 # that follow are evaluated against real arrays. On a device every run is CuPy
 # and that clause distinguishes nothing, so passing it here is what makes the
@@ -3494,7 +3494,7 @@ def absorber_free_dispersive(conductive=False):
                                 for n in names})
     if conductive:
         # What mp.Absorber actually installs. Measured as making no difference to
-        # this sub-step (0 of 7680 words over the closure round's cycles), so it
+        # this sub-step (0 of 7680 words over the residual closure's cycles), so it
         # is here to keep that admission non-vacuous rather than to change it.
         fields.set_d_conductivity(numpy.full(grid.shape, 0.2, numpy.float32))
         fields.set_b_conductivity(numpy.full(grid.shape, 0.2, numpy.float32))
@@ -3715,7 +3715,7 @@ SWEEP = (
           fill_B="folded complex fill", fill_D="folded complex fill",
           update_H="folded complex", update_E="folded complex"), ()),
 
-    # THE TWO ROWS THE VETO EXEMPTION EXISTS FOR: `folded off-diagonal` wins
+    # The two rows the veto exemption exists for: `folded off-diagonal` wins
     # update_E and must SURVIVE `_veto_dropped_offdiagonal_coupling`.
     ("fold_real_offdiag_full",
      lambda: fold(complex_storage=False, dimensions=3,
@@ -3729,15 +3729,15 @@ SWEEP = (
      dict(step_B="folded PML", step_D="folded PML", fill_B="mirror fill",
           fill_D="mirror fill", update_H="folded",
           update_E="folded off-diagonal"), ()),
-    # THE SCOPE CHANGE, MEASURED. This row used to read "UNCOVERED BY DESIGN:
+    # The scope change, measured. This row used to read "UNCOVERED BY DESIGN:
     # folded_complex refuses off-diagonal ... so nothing admits either curl or
     # either constitutive slot", and three of those four refusals were over-broad:
     # the row product lives in update_E alone (stepping._offdiagonal_terms,
     # S:1190-1225, reached from S:972-979) and the certified bodies were measured
     # BYTE-IDENTICAL on the other three over eight complete cycles, on this shape
-    # and on two row shapes. The Metal round measured the same nine slots
+    # and on two row shapes. The Metal port's gates measured the same nine slots
     # independently. So the three sub-steps are covered by the sibling arms and
-    # update_E was the remaining 25041/110592-word divergence in that round; the
+    # update_E was the remaining 25041/110592-word divergence in that measurement; the
     # complex row-product family below is the new product that now owns it.
     ("fold_complex_offdiag",
      lambda: fold(complex_storage=True, dimensions=3, rows={"Ex": ("Ey",)}),
@@ -3832,7 +3832,7 @@ SWEEP = (
     ("dcyl_m3_complex", lambda: dcyl(m=3),
      dict(step_B="cylindrical complex PML", step_D="cylindrical complex PML",
           update_H="cylindrical complex", update_E="cylindrical complex"), ()),
-    # m = 0 UNDER COMPLEX STORAGE resolves to the cylindrical complex arms since
+    # m = 0 under complex storage resolves to the cylindrical complex arms since
     # 2026-09-04 (cylindrical_complex.M_ZERO); the real-storage m = 0 triple above
     # still resolves to cylindrical_triton's, and the split is by storage.
     ("dcyl_m0_complex", lambda: dcyl(m=0, complex_storage=True),
@@ -3842,7 +3842,7 @@ SWEEP = (
      lambda: dcyl(shape=(1, 1, 20), m=1, pml_cells={"x": (0, 0), "z": 4}),
      {}, ()),
 
-    # THE TWO PLANTED DOUBLE-ADMITS. Both fail closed with the ambiguity naming
+    # The two planted double-admits. Both fail closed with the ambiguity naming
     # both claimants, and the folded one reproduces the unfolded shape exactly
     # rather than introducing a new one.
     ("offdiag_flag_false_slot_live", lambda: plant_rows(cart()),
@@ -3860,7 +3860,7 @@ SWEEP = (
      dict(step_B="folded PML", step_D="folded PML", fill_B="mirror fill",
           fill_D="mirror fill", update_H="folded"), ()),
 
-    # THE OTHER TWO RESIDUAL-GROUP ADMISSIONS, on doubles that carry REAL poles.
+    # The other two residual-group admissions, on doubles that carry REAL poles.
     # ``fold_real_dispersive`` above uses ``_sweep_pol``, whose state has no
     # buffers, so it cannot reach either family's real clauses — these rows are
     # what make those two arms non-vacuous in this sweep.
@@ -3904,8 +3904,8 @@ def test_every_slot_resolves_to_at_most_one_product_on_real_objects(
     """The disjointness measurement, as a test that cannot go stale.
 
     ``selected`` says a slot had EXACTLY ONE admitter and names it. A slot that
-    is absent from ``selected`` and carries an "ambiguous" reason had TWO OR
-    MORE. Any slot in ``ambiguous`` that is not declared here — or any declared
+    is absent from ``selected`` and carries an "ambiguous" reason had two or
+    more. Any slot in ``ambiguous`` that is not declared here — or any declared
     one that stops being ambiguous — is a predicate defect and fails here.
     """
     import numpy

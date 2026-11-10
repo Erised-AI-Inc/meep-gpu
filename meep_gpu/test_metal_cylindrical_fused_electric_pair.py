@@ -1,14 +1,14 @@
 """The Metal Dcyl complex-storage fused ELECTRIC weld (m = 0 and |m| >= 1), as
 claims a laptop can check.
 
-WHAT THIS SUITE OWNS AND WHAT IT DELIBERATELY DOES NOT. The BYTES are the device
+What this suite owns and what it deliberately does not. The BYTES are the device
 gate's — ``parity/meep_gpu/gate_metal_cylindrical_fused_electric_pair.py`` steps
 engines side by side for twelve complete steps and compares uint32 words. No assertion
 here duplicates that. What lives here is everything true about this family WITHOUT a
 device.
 
-THE CELL IS THE LARGEST ONE ON THE METAL BOARD — 16 reachable D->E seam-instances,
-more than any other gap — and until this round it carried the verdict ``UNFUSABLE ON
+The cell is the largest one on the Metal board — 16 reachable D->E seam-instances,
+more than any other gap — and until 2026-08-31 it carried the verdict ``UNFUSABLE ON
 METAL``: 33 pointers against a 30-pointer ceiling, over by THREE. Its magnetic twin
 sits at EXACTLY 31 bindings with zero headroom, and the E side's three inverse-epsilon
 volumes are what push it over. What cleared it is
@@ -218,7 +218,7 @@ def test_every_specialisation_a_shipped_plan_can_emit_binds_the_same_count():
 
 
 def test_the_unpacked_shape_is_over_the_ceiling_by_EXACTLY_THREE():
-    """THE MEASUREMENT THE PACK EXISTS FOR, taken off the refuted emitters' own text.
+    """The measurement the pack exists for, taken off the refuted emitters' own text.
 
     33 pointers plus one packed ``Params&`` is 34 bindings against a ceiling of 31.
     That is the board's ``UNFUSABLE ON METAL`` verdict for this cell restated as
@@ -244,7 +244,7 @@ def test_the_pack_saves_five_pointers_and_the_cell_needed_three():
 
 
 def test_the_same_pack_clears_the_m0_sibling_which_was_over_by_one():
-    """ONE TECHNIQUE, TWO CELLS — which is what makes packing a tool here rather than
+    """One technique, two cells — which is what makes packing a tool here rather than
     a rescue for one signature."""
     from meep_gpu.metal_kernels import cylindrical_real_fused_electric_pair as m0
 
@@ -317,7 +317,7 @@ def test_the_arm_is_registered_UNWIRED_and_carries_its_absorb_row():
     assert len(rows) == 1, rows
     assert rows[0].slot == family.SLOT == "step_D"
     assert rows[0].wired is False
-    # THE MODULE NAME, NOT THE FAMILY NAME. They differ on this one product — the
+    # The module name, not the family name. They differ on this one product — the
     # module is `cylindrical_fused_electric_pair.py` and the arm family it registers
     # is `cylindrical_complex_fused_electric_pair`, exactly as on its magnetic twin.
     assert "cylindrical_fused_electric_pair" in registry.FAMILY_MODULES
@@ -372,7 +372,7 @@ def test_REPLACES_names_three_passes_and_the_injection_is_not_one_of_them():
 def _executable_text(path) -> str:
     """A module's source with comments and docstrings removed.
 
-    ONE HOME FOR A RULE THIS PACKAGE ALREADY WROTE DOWN
+    One home for a rule this package already wrote down
     (``test_triton_kernels.code_of``): the prose in these modules NAMES the things
     they must not touch — that is how a reader learns which track is wired and
     which is not — so an ownership check that greps the RAW file fires on its own
@@ -395,8 +395,8 @@ def _executable_text(path) -> str:
 #: path segment of the LEDGER it reads per table
 #: (``os.path.join(..., "metal_kernels", "fingerprints.json")``).
 #:
-#: THE BARE "metal_kernels IS ABSENT" ASSERTION RETIRED WITH THE SECOND KERNEL
-#: TABLE, and flipping it to "is present" would have been the wrong repair: "the
+#: The bare "metal_kernels is absent" assertion retired with the second kernel
+#: table, and flipping it to "is present" would have been the wrong repair: "the
 #: file mentions the package somewhere" says nothing about whether THIS module is
 #: reachable, which is the whole subject. What replaced it is stronger than either
 #: spelling. ``fastpath`` reaches the Metal table through the sibling
@@ -427,8 +427,8 @@ def _metal_kernels_modules_named_in(text):
 def _fastpath_code_outside_the_pending_reasons() -> str:
     """``fastpath.py``'s executable text with ``PENDING_DEVICE_GATE_ARMS`` blanked.
 
-    WHY THE CARVE-OUT IS STRUCTURAL AND NOT A SUBSTRING ALLOWANCE. This check asks
-    whether DISPATCH names a METAL module. Since the 2026-09-02 product wave,
+    Why the carve-out is structural and not a substring allowance. This check asks
+    whether DISPATCH names a METAL module. Since 2026-09-02,
     ``PENDING_DEVICE_GATE_ARMS`` carries, per refused label, the path of the TRITON
     gate artifact whose release has no ledger entry yet — and several of those
     Triton products share a bare name with a Metal one
@@ -436,7 +436,7 @@ def _fastpath_code_outside_the_pending_reasons() -> str:
     substring check therefore fired on the OTHER track's artifact path while no
     executable reference to this package had moved at all.
     
-    So the reason strings are removed by their OWN ASSIGNMENT NODE rather than by
+    So the reason strings are removed by their own assignment node rather than by
     matching their text, and everything else in the file is still searched: an
     import, a table row, a call — any real naming of a Metal module — fails
     exactly as before.
@@ -499,9 +499,9 @@ def test_the_released_artifact_is_in_the_tree_and_says_it_released():
     products = [row for row in payload["rows"] if row["leg"] == "product"]
     assert len(products) == 9
     assert all(row["differing_words"] == 0 for row in products)
-    # THE PREFIX PRE-PASS IS PART OF THE CONTRACT, asserted per case.
+    # The prefix pre-pass is part of the contract, asserted per case.
     assert all(row["prefix_syncs"] == 12 for row in products)
-    # THE m = 0 ARM IS DRIVEN, not inferred from the |m| >= 1 rows.
+    # The m = 0 arm is driven, not inferred from the |m| >= 1 rows.
     m_zero = [row for row in products if row["m_arm"] == cylindrical_complex.M_ZERO]
     assert len(m_zero) == 3 and all(row["zero_rows"] == 0 for row in m_zero)
 
@@ -569,7 +569,7 @@ def test_the_artifact_measured_the_fusion_and_caught_every_other_defect():
     payload = json.loads(ARTIFACT.read_text(encoding="utf-8"))
     controls = [r for r in payload["rows"] if r["leg"] == "separate_control"]
     assert controls and all(r["dispatches_removed_per_step"] == 1 for r in controls)
-    # AND THE SCAN IS NOT WHAT THE FUSION REMOVED: both sides pay it every step.
+    # And the scan is not what the fusion removed: both sides pay it every step.
     assert all(r["separate_prefix_syncs"] == r["fused_prefix_syncs"] == 12
                for r in controls)
     walled = [r for r in controls if r["label"] == "m1_z_metallic"]
@@ -582,7 +582,7 @@ def test_the_artifact_measured_the_fusion_and_caught_every_other_defect():
                if r.get("expectation", "caught") == "caught")
     assert all(r["caught"] is False for r in mutations
                if r.get("expectation") == "null")
-    # THE m = 0 ARM'S OWN DEFECTS are armed on the m = 0 case, and its one declared
+    # The m = 0 arm's own defects are armed on the m = 0 case, and its one declared
     # null — the in-kernel `4.0f * dtdx` spelling — is CONFIRMED null, not assumed.
     m_zero = [r for r in mutations if r.get("case") == "m0_z_metallic"]
     assert len(m_zero) >= 5

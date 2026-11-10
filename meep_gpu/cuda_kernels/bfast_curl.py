@@ -1,6 +1,6 @@
 """The BFAST (``grid.bfast_active``) curl pair for the hand-CUDA track.
 
-WHAT BFAST IS (stepping.py:826-932; MEEP step_db.cpp:129-142 +
+What BFAST is (stepping.py:826-932; MEEP step_db.cpp:129-142 +
 step_generic.cpp:335-471). The broadband fixed-angle source technique is the
 time-sheared substitution ``t -> t - k.r/c``, under which a planewave at a FIXED
 incidence angle is transversely uniform at EVERY frequency, so plain periodic
@@ -9,7 +9,7 @@ boundaries are exact for a whole band. In the stepper it is exactly::
     dB/dt = -curl(E) + d/dt (k x E)
     dD/dt = +curl(H) - d/dt (k x H)
 
-THE ARITHMETIC, TRANSCRIBED (``stepping._bfast_term`` and ``_apply_folded_increment``).
+The arithmetic, transcribed (``stepping._bfast_term`` and ``_apply_folded_increment``).
 MEEP's ``step_db`` runs, per component, ``STEP_CURL`` and then ``STEP_BFAST`` on the same
 component (step_db.cpp:124-142): a pass of its own after the curl, over the SAME four
 operands the curl gathered, through its own additive ladder. With both partners::
@@ -27,16 +27,16 @@ With neither partner MEEP steps no such component. The state and the increment a
 written on MEEP's owned cells only. Each kernel here is the CERTIFIED root curl kernel
 with that pass inserted after each component's ``pml_apply`` call
 (``folded_pass.bfast_insert``), on the words ``pml_apply`` just stored: a float32 stored
-and reloaded is the identity on the bits, so the pass's roundings are MEEP's. Until 0.10
+and reloaded is the identity on the bits, so the pass's roundings are MEEP's. Until 1.0
 the increment was added to the curl before the masks and rode the curl's own recurrence,
-which is a different number (bit_parity_0_10 KERNELS.md section 6).
+which is a different number.
 ``F_n = S_n - F_{n-1}`` with
 output ``F_n - F_{n-1}`` is the z-domain filter ``(1 - z^-1)/(1 + z^-1)`` -- the
 Tustin derivative -- so ``raw`` is ``dt * d/dt`` of the two-point average, and
 NO ``dtdx`` and no explicit ``dt`` appear anywhere: MEEP passes ``dtdx`` to
 ``step_bfast`` and the body never reads it.
 
-WHY THE SUM AND NOT THE DIFFERENCE, and why that matters to a kernel: the curl
+Why the sum and not the difference, and why that matters to a kernel: the curl
 DIFFERENCES the same operands and BFAST SUMS them, so an invariant axis (whose
 shifted operand is the cell itself) contributes an exact zero to the curl and
 ``2*g`` here. That is the single easiest place to lose the term silently, and it is
@@ -57,14 +57,14 @@ wrong pair of components, silently, which is why MEEP wrote its "puts k1 in
 direction of g2" comments and why :data:`BFAST_TERMS` is pinned against
 ``stepping.B_CURL_TERMS`` by the laptop test rather than trusted.
 
-THE STATE IS THE HAZARD. ``f_bfast_*`` is a per-component IIR state whose
+The state is the hazard. ``f_bfast_*`` is a per-component IIR state whose
 homogeneous mode ``(-1)^n`` is UNDAMPED forever, so a kernel that gets the field
 right and the state wrong is correct for exactly one launch and wrong from the
 second. The state is therefore an OUTPUT this family's gate compares on every case,
 beside the field and the PML auxiliary -- and it is stored on MEEP's owned cells only,
 because MEEP writes ``F`` only inside its owned-cell loop.
 
-WHAT THIS IS FOR, stated narrowly and measured. On the 2026-08-20 union census
+What this is for, stated narrowly and measured. On the 2026-08-20 union census
 exactly ONE corpus row carries BFAST and is refused for it at every one of its four
 sub-steps: ``tests/TestReflectanceAngular.test_reflectance_angular_2_35_7``
 (``bfast_scaled_k = (0.8169576958985646, 0, 0)``, 1x1x1800, all-periodic, no fold,
@@ -72,7 +72,7 @@ courant 0.10567952354605308, real storage). Replaying it with the BFAST clause
 satisfied at the input measured every other clause of both shipped real-storage
 predicates already passing, so this family's ceiling is 4 slots and not more.
 
-THE FOLD IS REFUSED BY NAME, and that costs nothing. The certified curl pair
+The fold is refused by name, and that costs nothing. The certified curl pair
 admits a mirror fold since 2026-08-20 on a device verdict of its own, but that
 verdict is about a stencil that DIFFERENCES its ghosts; BFAST SUMS them, so the
 "the folded ghost values are dead" half of the argument does not transfer and would
@@ -196,7 +196,7 @@ def bfast_curl_coefficients(grid: Any, sub_step: str
         if not magnetic: k1, k2 = -k1, -k2          # MEEP's ft == D_stuff
         ... dtype.type(k1) * (...)                  # :890-891, ONE round each
 
-    THE INVARIANCE GATES ARE HOST-SIDE and that is the transcription's point: they
+    The invariance gates are host-side and that is the transcription's point: they
     are ``figure_out_step_plan``'s ``have_p``/``have_m`` (fields.cpp:428-455), false
     exactly when the derivative direction is not one the grid resolves. The curl
     would swallow that case by itself -- an invariant axis makes its DIFFERENCE an
@@ -226,7 +226,7 @@ def bfast_curl_coefficients(grid: Any, sub_step: str
     return tuple(out)
 
 
-# THE DEVICE TEXT IS DERIVED, NOT COPIED. Each kernel is the CERTIFIED root kernel
+# The device text is derived, not copied. Each kernel is the CERTIFIED root kernel
 # (``step_curl_kernels._step_{B,D}_pml_real_kernel_code``, read off the sibling's source
 # as its prelude is) with exactly three anchored edits and nothing else:
 #
@@ -365,7 +365,7 @@ def set_kernel_source(name: str, source: str) -> None:
     _SOURCES[name] = source
 
 
-#: WHAT HAS BEEN MEASURED ON A DEVICE FOR THIS FAMILY, AND WHAT HAS NOT.
+#: What has been measured on a device for this family, and what has not.
 #:
 #: Filled in from ``parity/meep_gpu/results/cuda_bfast_2026-08-21_rename_r2/`` -- two legs,
 #: one per float32 subnormal policy, on ONE verified-empty RTX A6000. Both
@@ -377,9 +377,9 @@ BFAST_ADMISSION: Dict[str, Any] = {
                   "parity/meep_gpu/results/cuda_bfast_2026-08-21_rename_r2/flush/gate.json"),
     "host": "the GPU host",
     "device": "NVIDIA RTX A6000 (cc 8.6), CuPy 13.5.1, NVRTC 11.6",
-    #: WHAT MOVED IN THIS FILE SINCE THE RUN, and why the verdict survives it.
+    #: What moved in this file since the run, and why the verdict survives it.
     #: Declared rather than left to be inferred from a file hash that no longer
-    #: matches, and the survival claim is MEASURED, not argued: the sha256 of every
+    #: matches, and the survival claim is measured, not argued: the sha256 of every
     #: string :func:`kernel_source` returns is a key in BOTH artifacts'
     #: ``nvrtc_binary_report.binary_sha256_by_source``, i.e. a source the gate's own
     #: observer saw handed to NVRTC. ``test_special_kz_bfast_admission.py``
@@ -395,7 +395,7 @@ BFAST_ADMISSION: Dict[str, Any] = {
     "value_classes": ("uniform", "subnormal_band"),
     "multi_step_budget": 60,
     # The CURL, per policy: 48 scored cases, all bit-identical at one launch and
-    # at 60 -- FIELD, PML AUXILIARY AND ``f_bfast`` IIR STATE, the state compared
+    # at 60 -- field, PML auxiliary and ``f_bfast`` iir state, the state compared
     # as an output on every case.
     "curl_cases_scored": 48,
     "curl_single_launch_identical": 48,
@@ -427,7 +427,7 @@ BFAST_ADMISSION: Dict[str, Any] = {
 
 
 # ---------------------------------------------------------------------------
-# COMPILATION AND LAUNCH
+# Compilation and launch
 # ---------------------------------------------------------------------------
 #
 # ``cupy`` is imported INSIDE these functions, never at module scope, so the
@@ -519,7 +519,7 @@ def step_bfast(sub_step: str, fields: Any, tables: Dict[str, Any],
 class _BfastFreeGrid:
     """The run's grid, answering ``bfast_active = False`` and forwarding the rest.
 
-    Satisfying AT THE INPUT the single clause this family inverts -- the technique
+    Satisfying at the input the single clause this family inverts -- the technique
     ``no_pml_curl._ActiveLayerProxy`` uses, and for the same reason: the shipped
     predicates SHORT-CIRCUIT, so there is no accumulated refusal list to filter
     afterwards. ``grid.bfast_active`` is read in exactly one place in each shipped
@@ -609,13 +609,13 @@ def covers_bfast_curl(fields: Any, pml: Any, grid: Any, sub_step: str) -> tuple:
 
     ``sub_step`` is ``"step_B"`` or ``"step_D"``. Returns ``(covered, reason)``.
 
-    THE SUB-STEP ARGUMENT IS REQUIRED for the reason
+    The sub-step argument is required for the reason
     :func:`coverage.covers_real_pml_curl`'s is -- the conductivity is read PER
     TARGET COMPONENT (stepping.py:508) -- and for a second reason of this family's
     own: the IIR state is per sub-step, so ``step_B`` and ``step_D`` do not stand or
     fall on the same arrays.
 
-    DELEGATION, NOT A SECOND CLAUSE SET. Every question except the BFAST clause and
+    Delegation, not a second clause set. Every question except the BFAST clause and
     the state inventory is the CERTIFIED curl predicate's, asked through it on a
     proxy grid whose ``bfast_active`` reads False.
     """
@@ -632,14 +632,14 @@ def covers_bfast_constitutive(fields: Any, pml: Any, grid: Any, side: str) -> tu
     """Whether the CERTIFIED constitutive pair may serve ``update_H``/``update_E``
     on a BFAST run. ``side`` is ``"H"`` or ``"E"``; returns ``(covered, reason)``.
 
-    THIS FAMILY BUILDS NO CONSTITUTIVE KERNEL. ``stepping.update_H`` (:907-923) and
+    This family builds no constitutive kernel. ``stepping.update_H`` (:907-923) and
     ``update_E`` (:926-993) reach ``_apply_constitutive_pml`` (:2065) and none of
     them reads ``grid.bfast_scaled_k`` or any ``f_bfast_*`` array: BFAST enters the
     step loop at stepping.py:392-396 and :475-478 and nowhere else. So the admission
     is the shipped predicate's with the BFAST clause inverted, and the ARITHMETIC is
     ``constitutive_kernels``' own, untouched.
 
-    THAT READING IS NOT THE EVIDENCE, and the state is why it must not be. BFAST is
+    That reading is not the evidence, and the state is why it must not be. BFAST is
     the one auxiliary in this stepper whose homogeneous mode never decays, so a
     constitutive sub-step that touched it -- or that a BFAST run's own history moved
     differently -- would be wrong from launch two rather than launch one.
@@ -647,7 +647,7 @@ def covers_bfast_constitutive(fields: Any, pml: Any, grid: Any, side: str) -> tu
     whose BFAST is live and whose curls have already advanced the state, and the two
     sides are asked SEPARATELY.
 
-    The BFAST STATE INVENTORY IS NOT ASKED HERE. These sub-steps do not read or
+    The BFAST state inventory is not asked here. These sub-steps do not read or
     write ``f_bfast_*``, so requiring it would refuse a configuration on the absence
     of an array the sub-step never touches -- the same mistake in the other
     direction from admitting one by attribute absence.

@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
 """Chunked certification: any set of a round's gate units runs as a chunk, on any slot.
 
-WHY. Under per-kernel certification (R17) an artifact is valid wherever every file in its
+Why. Under per-kernel certification (a gate's import record is its own dependency set, so
+no kernel's evidence depends on another kernel's code: ``docs/development/certification.md``,
+"What a gate's import record holds") an artifact is valid wherever every file in its
 import record, and every curated pin of the ledger entry it binds, is byte-equal in the
-release tree. That is a property of the run of ONE UNIT, not of the batch it ran in. So any
+release tree. That is a property of the run of one unit, not of the chunk it ran in. So any
 subset of units can run as a chunk at any time and on any machine slot, a single unit can run
 again alone, the plan can be re-partitioned freely, and nothing about one unit's run can
 invalidate another's. This module is the bookkeeping that makes that safe: which units exist,
 the one-shot names a chunk writes, readiness, and how the bind takes, per unit, the newest run
 that holds on the release tree.
 
-THE INDEX. One JSON file per machine and device (schema ``meep_gpu.cert_chunks/2``), kept
-outside the tracked files: ``machine`` (``nvidia``: the CUDA and Triton CERT-3 fleet;
+The index. One JSON file per machine and device (schema ``meep_gpu.cert_chunks/2``), kept
+outside the tracked files: ``machine`` (``nvidia``: the CUDA and Triton device-gate fleet;
 ``metal``: the Metal fleet), ``device``, ``device_mode``, ``round``, ``next_k``, the current
 plan ``chunks`` and the ``retired`` chunks a re-partition dropped before they launched. Each
 chunk is an id (``c<k>`` on NVIDIA, ``m<k>`` on Metal), its stamp and its UNITS. ``partition``
@@ -19,7 +21,7 @@ writes an index once; ``add``, ``relaunch``, ``extend`` and ``repartition`` chan
 ``<index>.lock``. A chunk id is allocated once from ``next_k`` and never reused, so a stamp is
 one-shot. A unit may be in several chunks: each launch is one more run of it.
 
-A UNIT is the smallest piece of evidence that binds on its own, both policies together:
+A unit is the smallest piece of evidence that binds on its own, both policies together:
 
 * ``cuda/<subdirectory>``: a whole CUDA campaign subdirectory, keep and flush (a
   certification block claims a whole subdirectory, and the rebind requires the legs the
@@ -30,17 +32,20 @@ A UNIT is the smallest piece of evidence that binds on its own, both policies to
   policies each; ``triton/hd/<gate>``: one H->D hand leg (keep only, as ``legs.py`` runs it);
 * ``metal/<gate stem>``: one Metal gate (flush only, as ``metal_round.py`` runs it).
 
-THE DEVICE. An index certifies one device: ``cc<major><minor>`` on NVIDIA (the suffix
+The device. An index certifies one device: ``cc<major><minor>`` on NVIDIA (the suffix
 ``fastpath.route_campaign`` gives a route campaign: ``cc86``, ``cc90``) and the GPU
 architecture on Metal (``metal_runs.route_campaign``'s suffix: ``applegpu_g13s``).
 ``device_mode`` is ``certified`` for a device the ledgers already admit and ``new`` for one
 they hold no live record for (an H200 at compute capability 9.0, an Apple M3): ``partition
 --new-device`` writes it, and the round drivers refuse an index whose mode does not match the
 ledgers or the flag they were given (``legs.py check --new-capability``, ``round.py
---new-capability``), so a new device is never admitted silently. A new device's bind adds
-records beside the certified ones and re-points no board (:func:`records_commands`).
+--new-capability``), so a new device is never admitted silently. ``partition`` reads the same
+ledgers from the checkout (:func:`ledger_admission`) and refuses by name a device they hold no
+live record for when ``--new-device`` is not passed, and a device they admit when it is
+(:func:`device_mode_problems`). A new device's bind adds records beside the certified ones and
+re-points no board (:func:`records_commands`).
 
-STAMPS. ``<round>_<device>_<letter><k>``: the round from the route-stamp registry
+Stamps. ``<round>_<device>_<letter><k>``: the round from the route-stamp registry
 (``meep_gpu/route_stamps.py``; ``partition --round`` while it still reads its placeholder, and
 the freeze then sets ``ROUND`` to that stamp), the device, the chunk id. Every results root a
 chunk writes is a function of its stamp alone (:func:`chunk_roots`), so two chunks of any
@@ -50,7 +55,7 @@ continuations, ``_flush`` twins, the board re-point's ``<base>_<stamp>_<suffix>`
 :func:`collisions` refuses an equal root and the prefix case, within the index and against the
 roots present under ``results/``.
 
-READINESS (``ready``). A chunk is READY when its closure holds none of the changing files.
+Readiness (``ready``). A chunk is READY when its closure holds none of the changing files.
 Its closure is the union, over its units, of the static run closure of every script the unit
 runs (``import_closure.py``, read from the tip being certified), the files the unit's
 artifacts bind by argument (a ``--module`` kernel file, the ADE re-cut's subject manifest),
@@ -58,16 +63,16 @@ the curated pins of every ledger entry whose gate the unit runs, and, where the 
 reader still misses a reach through the package root's ``_LAZY`` table, the files the
 previous round's artifacts of the same unit recorded (``records``). ``stale`` asks, per unit
 of each launched chunk, whether a file of that closure moved since the chunk's launch tip;
-``add --units`` re-runs such units alone. Both read CHECKOUT FILES only: an environment
+``add --units`` re-runs such units alone. Both read checkout files only: an environment
 change (a rebuilt reference environment, another MEEP) moves no file they read and reads 0
 stale, so it is never their bill; a round in a new environment re-runs under a new round stamp.
 
-THE LAUNCH RECORD. A launched chunk writes ``results/chunk_<stamp>/LAUNCH.json`` (schema
+The launch record. A launched chunk writes ``results/chunk_<stamp>/LAUNCH.json`` (schema
 ``meep_gpu.cert_chunk_launch/2``: machine, device, round, chunk, stamp, units, tip, tree, utc)
 beside its artifacts; a resume must match it. It is the authority on what ran under a stamp:
 :func:`verify` reads the units from it, never from the index's plan.
 
-VERIFY (per unit, ``verify``). A unit's CANDIDATES are the launches, of every chunk the index
+Verify (per unit, ``verify``). A unit's CANDIDATES are the launches, of every chunk the index
 ever allocated (current or retired), whose record lists it. A candidate HOLDS when it left an
 artifact, every artifact's import record names only files the release tree holds at the
 recorded bytes (``artifact_drift.py``, the rule the rebind tools apply too) or, with no whole
@@ -85,7 +90,7 @@ moves no verdict.
 ``--against F`` judges again, writes nothing and exits 1 when the choice, or the bytes of a
 selected run, moved since ``F`` was written.
 
-THE BIND (``bind --selection F``) prints the commands that bind exactly that selection; nothing
+The bind (``bind --selection F``) prints the commands that bind exactly that selection; nothing
 here writes a ledger. A tool that takes a key list (``rebind_triton_welds.py --only``) is
 called once per selected stamp with the keys of the units selected there that the checkout's
 Triton ledger holds: the tool refuses a whole ``--only`` that names a key the ledger lacks,
@@ -198,6 +203,99 @@ def device_problems(machine: str, device: Any) -> List[str]:
     return []
 
 
+#: What a partition asks the checkout about its ledgers, in a child process that imports the
+#: checkout's own package (never this tool's): the compute capabilities each NVIDIA table's
+#: ledger admits, or the architectures the Metal ledger admits (``None`` when it cannot be
+#: read), and the file the package was imported from, so a child that reached an installed
+#: copy instead of the checkout is refused. One JSON line on stdout. Neither program imports
+#: a GPU library.
+ADMISSION_PROGRAMS = {
+    "nvidia": ("import json, os\n"
+               "import meep_gpu\n"
+               "from meep_gpu import fastpath\n"
+               "print(json.dumps({'package': os.path.realpath(meep_gpu.__file__),\n"
+               "                  'admission': {t: list(fastpath.capability_admission(t)\n"
+               "                                        .get('admitted') or ())\n"
+               "                                for t in ('triton', 'cuda')}}))\n"),
+    "metal": ("import json, os\n"
+              "import meep_gpu\n"
+              "from meep_gpu import metal_runs as r\n"
+              "ledger = json.load(open('meep_gpu/metal_kernels/fingerprints.json'))\n"
+              "admitted = r.admission_report(ledger, r.cited_keys())['admitted']\n"
+              "print(json.dumps({'package': os.path.realpath(meep_gpu.__file__),\n"
+              "                  'admission': None if admitted is None else list(admitted)}))\n")}
+
+
+def ledger_admission(repo: Path, machine: str) -> Tuple[Any, str]:
+    """``(admission, "")`` as the checkout's ledgers state it (:data:`ADMISSION_PROGRAMS`), or
+    ``(None, why not)`` when the checkout would not answer or the child imported the package
+    from somewhere else. NVIDIA: ``{"triton": [...], "cuda": [...]}``; Metal: the list of
+    architectures, or None when the ledger cannot say."""
+    repo = Path(repo).resolve()
+    env = dict(os.environ, PYTHONPATH=str(repo), PYTHONNOUSERSITE="1",
+               PYTHONDONTWRITEBYTECODE="1")
+    try:
+        done = subprocess.run([sys.executable, "-c", ADMISSION_PROGRAMS[machine]],
+                              cwd=str(repo), env=env, capture_output=True, text=True,
+                              timeout=600)
+    except (OSError, subprocess.SubprocessError) as exc:
+        return None, f"{type(exc).__name__}: {exc}"[:300]
+    try:
+        answer = json.loads(done.stdout.strip().splitlines()[-1])
+        package, admission = answer["package"], answer["admission"]
+    except (ValueError, IndexError, KeyError, TypeError):
+        last = (done.stderr.strip().splitlines() or ["no output"])[-1]
+        return None, f"exit {done.returncode}: {last}"[:300]
+    if not Path(package).is_relative_to(repo):
+        return None, ("the interpreter imports meep_gpu from outside the checkout (an "
+                      "installed copy): name the checkout on PYTHONPATH, or partition from a "
+                      "checkout that holds the package")
+    return admission, ""
+
+
+def device_mode_problems(machine: str, device: str, capability: Optional[str],
+                         admission: Any, new_device: bool, why_unread: str = "") -> List[str]:
+    """Why ``--new-device`` (or its absence) is wrong for ``device`` against the ledgers.
+
+    The mode is said, never inferred, and it is checked here against what the ledgers hold,
+    as ``legs.py check`` (``--new-capability``) and ``metal_round.architecture_problems``
+    (``--new-architecture``) check it at launch: a device the ledgers hold no live record for
+    needs ``--new-device`` (an index written without it would claim to certify a device the
+    ledgers already admit, and every record cut from it would be read that way); a device
+    they admit refuses the flag. NVIDIA: both tables must admit the capability for a
+    certified device, and ``--new-device`` is refused only when both do (a capability one
+    table admits is in transit between the two). ``admission`` None means the checkout did
+    not answer (``why_unread``)."""
+    if admission is None or (machine == "nvidia" and not isinstance(admission, dict)):
+        detail = why_unread or "no answer"
+        return [f"the checkout's ledgers did not say which devices they admit ({detail}), so "
+                f"whether {device} is a new device cannot be checked: partition with the "
+                f"interpreter the round runs under, from a checkout that imports"]
+    if machine == "nvidia":
+        listed = {table: list(admission.get(table) or ()) for table in ("triton", "cuda")}
+        admitting = [table for table, caps in listed.items() if capability in caps]
+        said = f"the Triton table admits {listed['triton']}, the CUDA table {listed['cuda']}"
+        if not new_device and len(admitting) < 2:
+            return [f"{device} (compute capability {capability}) is not admitted by both NVIDIA "
+                    f"ledgers ({said}): it is a device they hold no live record for, so pass "
+                    f"--new-device (the index then says device_mode new, and the round drivers "
+                    f"are run with --new-capability)"]
+        if new_device and len(admitting) == 2:
+            return [f"--new-device: both NVIDIA ledgers already admit {device} (compute "
+                    f"capability {capability}; {said}): it is a certified device, so run "
+                    f"without --new-device"]
+        return []
+    admitted = list(admission)
+    if not new_device and device not in admitted:
+        return [f"the Metal ledger admits {admitted}, not {device}: it is an architecture it "
+                f"holds no live run for, so pass --new-device (the index then says "
+                f"device_mode new, and the round driver is run with --new-architecture)"]
+    if new_device and device in admitted:
+        return [f"--new-device: the Metal ledger already admits {device} ({admitted}): it is a "
+                f"certified architecture, so run without --new-device"]
+    return []
+
+
 # ------------------------------------------------------------------------ stamps -------
 #: The route-stamp registry, and the tables whose stamp names each machine's round.
 REGISTRY = "meep_gpu/route_stamps.py"
@@ -240,7 +338,7 @@ def round_problems(repo: Path, index: Mapping[str, Any]) -> List[str]:
 
     Refused: no registry; a registry stamp other than the index's round (once the freeze
     has set one, the chunks and the route campaigns share it); a round whose route
-    campaign has already run ON THIS DEVICE (``route_stamps.SPENT``: one route campaign per
+    campaign has already run on this device (``route_stamps.SPENT``: one route campaign per
     stamp and device, and a chunked round shares its stamp with them). A registry still
     reading the placeholder is not a refusal: the chunks run before the freeze, which must
     set ``ROUND`` to the index's round.
@@ -653,6 +751,20 @@ def launch_root(stamp: str) -> str:
     return f"chunk_{stamp}"
 
 
+def stack_root(stamp: str) -> str:
+    """Where a chunk's lanes record the NVIDIA stack they ran beside, one ``<lane>.json``
+    each (``run_lane.py``): inside the chunk's own root, so it adds no one-shot root."""
+    return f"{launch_root(stamp)}/stack"
+
+
+def device_capability(device: str) -> str:
+    """``cc86`` -> ``8.6``, ``cc120`` -> ``12.0``: the capability an NVIDIA index's device names."""
+    digits = device[2:] if device.startswith("cc") else ""
+    if len(digits) < 2 or not digits.isdigit():
+        raise ValueError(f"{device!r} is not an NVIDIA device of an index (cc<major><minor>)")
+    return f"{int(digits[:-1])}.{digits[-1]}"
+
+
 def _git(repo: Path, *args: str) -> Optional[str]:
     done = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True)
     return done.stdout.strip() if done.returncode == 0 else None
@@ -864,9 +976,13 @@ def unit_closure(unit: Mapping[str, Any], resolver, pins: Mapping[str, Mapping[s
                  prior: Optional[Mapping[str, Any]] = None) -> Dict[str, Set[str]]:
     """``file -> why the unit's evidence depends on it``."""
     out: Dict[str, Set[str]] = {}
+    # A unit of the NVIDIA fleet runs on an NVIDIA table, which never enters the Metal ladder.
+    # A tip older than the stop has neither the list nor the argument.
+    stop = (() if unit["kind"] == "metal_gate"
+            else getattr(resolver, "METAL_TABLE_ONLY", ()))
     for script in unit["scripts"]:
         if resolver.exists(script):
-            for name in resolver.run_closure(script):
+            for name in resolver.run_closure(script, *((stop,) if stop else ())):
                 out.setdefault(name, set()).add(f"run closure of {script}")
         else:
             out.setdefault(script, set()).add("a script the unit runs, absent from the tip")
@@ -1343,7 +1459,7 @@ def judge_candidate(unit: Mapping[str, Any], launch: Mapping[str, Any], repo: Pa
         return dict(row, state="REFUSED", why="; ".join(
             artifact_drift.refusal(b["artifact"], b["moved"], repo) for b in bad[:2])
             + (f"; and {len(bad) - 2} more artifact(s)" if len(bad) > 2 else ""))
-    # THE DEVICE IS READ, NEVER ASSUMED: a run that says nothing about what it ran on is
+    # The device is read, never assumed: a run that says nothing about what it ran on is
     # not taken, whatever its stamp's name says.
     devices, device_from = run_devices(index["machine"], found, results, stamp, launch_devices,
                                        unit)
@@ -1628,7 +1744,10 @@ def nvidia_bind_commands(index: Mapping[str, Any], results: Path, index_path: st
     """The NVIDIA bind of exactly ``selection``, in ``legs.bind_plan``'s order.
 
     First the verify that wrote the selection (re-runnable; a different answer means the
-    results moved). Then the CUDA campaigns the selection draws from, recorded and rebound
+    results moved). Then the certified NVIDIA stack of the device, from the stack every
+    selected stamp's lanes ran beside, before any line that records or rebinds: a stack the
+    record tool refuses stops the bind before anything is bound to it. Then the CUDA
+    campaigns the selection draws from, recorded and rebound
     one at a time in launch order, and the ADE re-cut from its selected stamp; the Triton
     rebind once per selected stamp with ``--only`` the keys of the units selected there that
     the Triton ledger holds (a selected unit whose key it lacks named on a REFUSED line); the
@@ -1642,6 +1761,18 @@ def nvidia_bind_commands(index: Mapping[str, Any], results: Path, index_path: st
     chosen: Dict[str, str] = dict(selection["selected"])
     out = [f"python rounds/1.0/chunks.py verify --index {index_path} --repo ../.. "
            f"--results results --against {selection_path}"]
+    # The certified NVIDIA stack of the device, from the stack every selected stamp's lanes
+    # ran beside, SECOND, right after the verify and before every line that records or
+    # rebinds: a new device's is added, a certified device's is kept or given another CUDA
+    # driver, and a stack the tool refuses (lanes that disagree on any other axis, a
+    # recorded driver dropped) is refused before a rebind has written anything a run on it
+    # produced. Only the verify, which writes nothing, comes before it; the bind is never run
+    # under set -e, so the order is what keeps a refusal ahead of the writers.
+    stacks = _ordered(selection, set(chosen.values()))
+    if stacks:
+        out.append(f"python record_nvidia_stack.py --capability "
+                   f"{device_capability(index['device'])} "
+                   + " ".join(f"--stack results/{stack_root(s)}" for s in stacks) + w)
     # CUDA: whole campaigns, one per stamp the selection draws a subdirectory from.
     cuda_stamps = _ordered(selection, (s for uid, s in chosen.items()
                                        if units[uid]["kind"] == "cuda_subdir"))
@@ -1834,14 +1965,16 @@ def metal_bind_commands(index: Mapping[str, Any], results: Path, index_path: str
 
 
 def records_commands(index: Mapping[str, Any], selection: Mapping[str, Any],
-                     results: Optional[Path] = None, repo: Optional[Path] = None) -> List[str]:
+                     results: Optional[Path] = None, repo: Optional[Path] = None,
+                     selection_path: Optional[str] = None) -> List[str]:
     """The records-time board re-point over the selected stamps.
 
     Only an index of a CERTIFIED device re-points a board: the boards credit one run per
     product, and a new device's runs are certified by the records its bind ADDS beside the
     certified device's, so they never replace the runs a board names. ``repoint_board_bindings``
-    refuses two admissible runs of one gate among the stamps it is given; a unit the
-    selection holds a second such run of is named on a STOP line."""
+    refuses two admissible runs of one gate among the stamps it is given unless it is given
+    the selection (``selection_path``), which names the run the bind took; without it, a
+    unit the selection holds a second such run of is named on a STOP line."""
     board = "triton" if index["machine"] == "nvidia" else "metal"
     if index["device_mode"] == "new":
         return [f"no board re-point: {index['device']} is a new device, certified by the "
@@ -1849,7 +1982,7 @@ def records_commands(index: Mapping[str, Any], selection: Mapping[str, Any],
                 f"device's runs"]
     stamps = _ordered(selection, selection["selected"].values())
     lines = []
-    if results is not None:
+    if results is not None and selection_path is None:
         repo = Path(repo) if repo is not None else HARNESS.parents[1]
         kinds = ("triton_hd",) if board == "triton" else ("metal_gate",)
         for uid, unit in sorted({u["id"]: u for u in units_for(repo, index["machine"])}.items()):
@@ -1862,15 +1995,18 @@ def records_commands(index: Mapping[str, Any], selection: Mapping[str, Any],
                              f"under {admissible}, two of the stamps given; set the "
                              f"unselected ones aside first")
     return lines + [f"python repoint_board_bindings.py {board} --stamps {','.join(stamps)} "
-                    f"--device {index['device']}"]
+                    f"--device {index['device']}"
+                    + (f" --selection {selection_path}" if selection_path else "")]
 
 
 def records_lines(index: Mapping[str, Any], selection: Mapping[str, Any],
-                  results: Optional[Path] = None, repo: Optional[Path] = None) -> List[str]:
+                  results: Optional[Path] = None, repo: Optional[Path] = None,
+                  selection_path: Optional[str] = None) -> List[str]:
     """The records-time lines both bind printers end with (``chunks.py bind`` and
     ``legs.py bind --chunks``), commented out: they run at the RECORDS stage."""
     return ["# records time (RECORDS stage), after the bind:"] + [
-        f"# {line}" for line in records_commands(index, selection, results, repo)]
+        f"# {line}" for line in records_commands(index, selection, results, repo,
+                                                  selection_path)]
 
 
 def bind_commands(index: Mapping[str, Any], results: Path, index_path: str,
@@ -1888,7 +2024,7 @@ def bind_commands(index: Mapping[str, Any], results: Path, index_path: str,
             f"{len(selection['selected'])} unit(s) from "
             f"{len(set(selection['selected'].values()))} stamp(s); "
             + ", ".join(f"{k} {v}" for k, v in sorted(selection["counts"].items()))]
-    # A STOP WITHHOLDS THE BIND. A STOP line names a run a tool would bind against the
+    # A STOP withholds the bind. A STOP line names a run a tool would bind against the
     # selection (or a command that cannot be ordered to bind it); printing the commands
     # after it would leave the selection to whoever reads the comments, and a shell that
     # runs the output top to bottom skips them. So nothing that writes a ledger is printed
@@ -1967,7 +2103,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                    help="metal: the GPU architecture (applegpu_g13s)")
     p.add_argument("--new-device", action="store_true",
                    help="the device is one the ledgers hold no live record for (an H200, an "
-                        "Apple M3): written into the index, which every driver then checks")
+                        "Apple M3): written into the index, which every driver then checks; "
+                        "required for such a device and refused for one the ledgers admit")
     p.add_argument("--out", required=True)
     p.add_argument("--chunks", type=int, default=None)
     p.add_argument("--round", default=None,
@@ -2068,6 +2205,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         except ValueError as refused:
             ap.error(str(refused))
         bad = device_problems(args.machine, device)
+        if bad:
+            ap.error(bad[0])
+        admission, unread = ledger_admission(repo, args.machine)
+        bad = device_mode_problems(args.machine, device, args.capability, admission,
+                                   args.new_device, unread)
         if bad:
             ap.error(bad[0])
         stamp, where = registry_round_stamp(repo, args.machine)
@@ -2203,7 +2345,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         withheld = bind_withheld(lines)
         if not withheld:
             lines += records_lines(index, read_selection(Path(args.selection), index),
-                                   results, repo)
+                                   results, repo, args.selection)
+            lines += L.archive_commands(("metal",) if index.get("machine") == "metal"
+                                        else ("triton", "cuda"))
         for line in lines:
             print(line, flush=True)
         return 1 if withheld else 0

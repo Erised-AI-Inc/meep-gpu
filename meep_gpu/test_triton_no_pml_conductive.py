@@ -10,7 +10,7 @@ and what this file carries — is the whole arithmetic, because the tail is thre
 in-place float32 passes and there is nothing about them a NumPy host cannot round
 exactly the same way.
 
-THE THREE LOAD-BEARING LEGS, and each one is written so it CAN fail:
+The three load-bearing legs, and each one is written so it CAN fail:
 
 1. **The transcription.** :func:`reference_curl_step` is the kernel body written
    in NumPy from the same lines, and it is pinned uint32-for-uint32 against the
@@ -249,10 +249,10 @@ def reference_curl_step(fields, sub_step, *, cond=None, tail="conductive",
             return (-dtdx) * (g2s - g2)
         return numpy.zeros_like(g1)
 
-    if group == "meep":  # stepping._curl_from_operands, DO NOT REGROUP
+    if group == "meep":  # stepping._curl_from_operands, do not regroup
         curls = [meep(*operands_, present[axes[0]], present[axes[1]])
                  for operands_, axes in stencils]
-    elif group == "pairwise":  # THE MUTATION: the package grouping before alignment
+    elif group == "pairwise":  # The mutation: the grouping used before MEEP's order
         curls = [dtdx * ((g1s - g1) + (g2 - g2s))
                  for (g1s, g1, g2, g2s), _axes in stencils]
     elif group == "full_bracket":  # THE MUTATION: presence ignored
@@ -337,7 +337,7 @@ def test_the_reference_body_is_byte_identical_to_the_array_path(case, sub_step):
 
 #: mutation -> (reference kwargs, the fixture it can actually bite on).
 #:
-#: THREE OF THESE ARE SHAPE-DEPENDENT AND SAY SO, because a battery run only on the
+#: Three of these are shape-dependent and say so, because a battery run only on the
 #: shape being unblocked certifies a mutated body:
 #:
 #: * ``drop_ownership_mask`` edits cells the mask zeroes, and the mask only fires
@@ -426,9 +426,9 @@ def measure_incumbent_divergence(fields, pml, sub_step):
 ])
 def test_the_incumbent_plain_tail_diverges_on_every_conductive_case(case, kwargs,
                                                                    sub_step):
-    """GROUP (H)'s CURLS, SETTLED WITHOUT A DEVICE.
+    """Group (H)'s curls, settled without a device.
 
-    The closure round measured group (E) DIVERGENT at both curls and ASSUMED group
+    The residual closure measured group (E) DIVERGENT at both curls and ASSUMED group
     (H) diverges for the same reason; it never measured (H)'s curls directly. This
     is that measurement, and it needs no GPU because the tail is three float32
     passes. If it ever comes back IDENTICAL, ``no_pml_conductive`` is closing a gap
@@ -470,7 +470,7 @@ def test_the_module_records_the_divergence_it_claims_to_close(npc):
         else:
             assert entry["verdict"] == "DIVERGENT" and entry["differing"] > 0, name
     assert any(k.startswith("H_") for k in cases), (
-        "no group (H) case is recorded, so the assumption the closure round left "
+        "no group (H) case is recorded, so the assumption the residual closure left "
         "open is still an assumption")
 
 

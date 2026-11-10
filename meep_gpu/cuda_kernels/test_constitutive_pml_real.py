@@ -1,6 +1,6 @@
 """The real-storage constitutive slice: its predicate, its partition, its device text.
 
-THE BIT-IDENTITY GATE LIVES ELSEWHERE — it needs a device and a sweep, so it is
+The bit-identity gate lives elsewhere — it needs a device and a sweep, so it is
 ``parity/meep_gpu/probe_fused_kernel_bit_identity.py --track hand --experiments
 constitutive,constitutive_multistep``. What is pinned HERE is everything about
 this slice that can be decided without a GPU, which after ``coverage.py`` went
@@ -21,17 +21,17 @@ CuPy-free is most of it:
     certified with a record or listed as owing the gate. Right now all of it is
     the second kind, and the file says so.
 
-WHY THE DEVICE-TEXT ASSERTIONS ARE TEXTUAL. ``constitutive_kernels`` imports
+Why the device-text assertions are textual. ``constitutive_kernels`` imports
 ``cupy`` at module scope because it holds ``cp.RawKernel`` objects, so importing
 it on this laptop is impossible. The kernel strings are still just text in a
 file, and the defects that would silently break the sub-step — the grouping the
-file carried until 0.10, a store before the load, a dropped inverse epsilon, the
+file carried until 1.0, a store before the load, a dropped inverse epsilon, the
 accumulation run on every cell — are all visible in that text. Which cells take
 which form is executed against ``stepping`` in ``test_root_chunk_forms.py``. ``test_certification_record.py`` established the pattern (it evaluates
 the sibling module's device strings from the syntax tree without importing it);
 this file reuses it.
 
-THE BACKEND STAND-IN, AND WHAT IT IS NOT. Off device the fixture hands ``Grid``
+The backend stand-in, and what it is not. Off device the fixture hands ``Grid``
 a module that is NumPy wearing CuPy's ``__name__``, because the predicate's first
 question is whether the backend is CuPy at all. Everything else it reads — dtype,
 shape, contiguity, the PML vectors, the grid's own boundary resolution — is
@@ -72,7 +72,7 @@ RECORD = HERE / "certification.json"
 
 #: The multi-step budget this pair was gated at, and the one the laptop
 #: expression-tree comparison runs at. 60 because the sibling Triton track
-#: MEASURED 8, 10 and 6 consecutive steps all passing a divergence that 40 did
+#: measured 8, 10 and 6 consecutive steps all passing a divergence that 40 did
 #: not (triton_kernels/fingerprints.json, bit_identity_gate.legs.whole_step).
 MULTI_STEP_BUDGET = 60
 
@@ -182,12 +182,12 @@ _SHARED_GOLDEN = {
     "covered_m_m_p": (True, "covered"),
     "covered_m_m_m": (True, "covered"),
     "covered_m_p_m": (True, "covered"),
-    # THE WIDENING. A conductivity disqualifies the CURL and leaves both
+    # The widening. A conductivity disqualifies the CURL and leaves both
     # constitutive sub-steps alone; see test_a_conductive_run_is_covered_here.
     "conductivity": (True, "covered"),
     "complex_storage": (
         False, "complex64 storage: the recurrence is the same but the storage is not"),
-    # THE 2026-08-19 WIDENING. A fold used to be refused here on the reading
+    # The 2026-08-19 widening. A fold used to be refused here on the reading
     # that "the extent is what turns a cell index into a coefficient index"; the
     # device gate ran the shipped pair on 96 folded cases per policy at 112/112
     # bit-identical and the reading did not survive it. Every fold shape the gate
@@ -301,7 +301,7 @@ def configuration(case: str, side: str, xp):
         return build(xp, symmetry=("z",),
                      boundaries=("periodic", "periodic", "metallic"))
     if case == "mirror_two_planes":
-        # A DOUBLED cell on the folded axes, one terminated each way. At the
+        # A doubled cell on the folded axes, one terminated each way. At the
         # table's default 8 the fold leaves a stored extent below ``build``'s
         # six-cell floor and the layer comes back inactive, which would score
         # this row on "no active PML layer" and say nothing about the fold.
@@ -456,7 +456,7 @@ _UNREACHED_REFUSALS = (
     "fields does not expose inverse_epsilon_for",
     'is None"',
     "raised {exc!r}",
-    # THE PLANE CAP, since 2026-08-20. ``folded`` counts mirrored axes out of
+    # The plane cap, since 2026-08-20. ``folded`` counts mirrored axes out of
     # ``range(3)`` and the cap is 3, so ``folded > cap`` cannot be true on any
     # grid this engine can build. The clause is kept rather than deleted because
     # it is what makes the predicate read the record's number rather than restate
@@ -598,7 +598,7 @@ _SYNTHETIC_CASES = tuple(_SYNTHETIC_GOLDEN) + tuple(_SYNTHETIC_REASON_PREFIX)
 @pytest.mark.parametrize("case", _SYNTHETIC_CASES)
 def test_the_predicate_refuses_rather_than_raising_on_an_object_that_cannot_answer(
         case, side, xp):
-    """A RAISE IS NOT A REFUSAL, applied everywhere instead of at one call site.
+    """A raise is not a refusal, applied everywhere instead of at one call site.
 
     ``coverage.py`` states the rule in as many words and wrapped exactly one call
     (``inverse_epsilon_for``). Constructed and measured: a grid whose ``is_axis``
@@ -841,7 +841,7 @@ def test_the_launcher_and_the_predicate_ask_the_same_function_for_the_pairing():
     ``constitutive_tables_for`` removes the argument by asking
     ``constitutive_sub_lattice``, which is what the predicate asks.
 
-    AND THE LIVE ENTRY POINT HAS TO REACH IT, which is the half this test used to
+    And the live entry point has to reach it, which is the half this test used to
     miss. It inspected ``constitutive_tables_for`` — a function that, until
     2026-08-15, had no callers anywhere in the repository. The only path that ever
     launches these kernels is ``update_fused_pml_real``, and it took ``tables`` as
@@ -953,7 +953,7 @@ STDLIB_ONLY = {"__future__", "typing"}
 def device_free_import_report(source: str) -> dict:
     """Every way this module could acquire a dependency, as one report.
 
-    THE GUARD THIS REPLACES MISSED FIVE OF SEVEN ARMED MUTATIONS. It filtered
+    The guard this replaces missed five of seven armed mutations. It filtered
     ``isinstance(node, ast.ImportFrom) and node.level == 0``, so every RELATIVE
     import was invisible: ``from .step_curl_kernels import _get_kernel`` (that
     module does ``import cupy as cp`` at module scope), ``from ..stepping import
@@ -984,7 +984,7 @@ def device_free_import_report(source: str) -> dict:
 
 
 def test_the_predicate_module_still_pulls_in_no_device_dependency():
-    """The round's own precondition, re-checked after this slice landed.
+    """The predicate module's own precondition, re-checked after this slice landed.
 
     ``coverage.py`` grew a second predicate. One ``import cupy`` in it and every
     test in this file and in the curl slice's collapses back to a sanctioned
@@ -1124,7 +1124,7 @@ def test_the_record_backs_every_certified_kernel():
         armed = per_policy["armed_mutation_accounting"]
         assert armed["legs_reporting_a_verdict_for_a_mutation_never_compiled"] == []
 
-        # THE GUARD MUST BE SHOWN TO BE LOAD-BEARING, and this is where the
+        # The guard must be shown to be load-bearing, and this is where the
         # evidence lives: the SYNTHETIC gate sweeps both option sets, and the
         # unguarded one must fail essentially everywhere. Without this the
         # 120/120 is a number with no scale.
@@ -1135,7 +1135,7 @@ def test_the_record_backs_every_certified_kernel():
             f"{guards['default_no_options']['identical']} cases under {policy}; "
             f"--fmad=false is then decorative and the guarded pass says nothing")
 
-    # THE CORPUS GUARD CONTROL IS NOT ASSERTED TO DIVERGE, and that is a measured
+    # The corpus guard control is not asserted to diverge, and that is a measured
     # correction rather than a missing check. It was written expecting divergence,
     # by analogy with the curl; it agreed on all twelve cases at both Courants.
     # The reason is structural: pml.py:686 builds the interior as the exact
@@ -1177,7 +1177,7 @@ def test_the_grouping_is_meeps_right_hand_side_first():
     ``f + ((kps*src) - (kms*prev))``: MEEP's step_update_EDHB forms the right-hand
     side first (step_generic.cpp:689, :697), and so do both branches of
     ``stepping._apply_constitutive_pml``. The two accumulations left to right,
-    ``((f + kps*src) - kms*prev)``, which this file carried until 0.10, is a
+    ``((f + kps*src) - kms*prev)``, which this file carried until 1.0, is a
     different float32 number.
     """
     prelude = device_sources(kernel_source())["_update_H_pml_real_kernel_code"]
@@ -1260,7 +1260,7 @@ def test_each_component_reads_its_own_axis_coefficient_table():
     """NOTE 2, the highest-consequence confusion in the file, pinned at last.
 
     MEEP's ``dsigw`` is the absorption a component accumulates along the direction
-    IT POINTS IN (``H_CONSTITUTIVE_TERMS`` / ``E_CONSTITUTIVE_TERMS``,
+    it points in (``H_CONSTITUTIVE_TERMS`` / ``E_CONSTITUTIVE_TERMS``,
     stepping.py:227-228): component 0 reads ``kps_x``/``kms_x``, 1 the ``_y`` pair,
     2 the ``_z`` pair. Confuse it with the dsig/dsigu cycle the CURL recurrence
     uses and the result is a smooth, converged, entirely wrong absorber — the
@@ -1300,7 +1300,7 @@ def test_the_linear_index_is_decomposed_for_c_contiguous_storage():
     coefficient each component reads — the same silent-absorber class as the axis
     mapping, and the gate mutation ``fortran_order_index_decomposition``.
 
-    THE SAME THREE LINES APPEAR IN THE CERTIFIED CURL KERNELS, which is how that
+    The same three lines appear in the certified curl kernels, which is how that
     mutation turned out to resolve on all four gated kernels and to have been
     armed against none of them.
     """
@@ -1349,7 +1349,7 @@ def test_the_e_kernel_binds_three_inverse_epsilon_pointers():
 def test_the_e_source_keeps_steppings_operand_order():
     """``D * inv_eps``, D on the left (stepping.py:1011) — transcription discipline.
 
-    INERT ON THE BITS and pinned anyway: float32 multiply is bitwise commutative
+    Inert on the bits and pinned anyway: float32 multiply is bitwise commutative
     and the sibling track measured this exact null at 30/30 identical
     (``inv_eps_left``). What it buys is that a reader comparing this line to
     ``stepping.py`` sees the same expression, not a reordered one they then have
@@ -1385,7 +1385,7 @@ def test_the_h_source_is_b_with_no_permeability_volume():
 
 
 def test_every_device_string_is_pure_ascii():
-    """MEASURED FAILURE, on device, 2026-08-15: a comment em-dash made the E
+    """Measured failure, on device, 2026-08-15: a comment em-dash made the E
     kernel uncompilable.
 
     ``cupy.cuda.compiler.compile_using_nvrtc`` writes the source to a ``.cu``
@@ -1515,7 +1515,7 @@ def test_the_probe_can_load_the_kernel_module_by_path():
 # --------------------------------------------------------------------------
 # The arithmetic, measured against stepping.py — on a laptop, in float32.
 #
-# THE BYTE GATE NEEDS A GPU AND THIS DOES NOT. What the gate measures is whether
+# The byte gate needs a GPU and this does not. What the gate measures is whether
 # the COMPILED kernel reproduces the array path; what these measure is whether
 # the EXPRESSION TREE the kernel is written in reproduces it, which is the half a
 # compiler cannot fix and the half that is wrong in every one of the four plain
@@ -1560,7 +1560,7 @@ def _kernel_tree(field, fw, source, kps, kms):
 
 
 def _previous_tree(field, fw, source, kps, kms):
-    """The grouping this file carried until 0.10: ``(f + kps*src) - kms*prev``. The control."""
+    """The grouping this file carried until 1.0: ``(f + kps*src) - kms*prev``. The control."""
     prev = fw.copy()
     fw[...] = source
     a = field + kps * source
@@ -1593,7 +1593,7 @@ def _bytes(array) -> bytes:
 def _run(tree, steps: int, state, coefficients):
     """``steps`` consecutive sub-steps, returning the final (field, fw) bits.
 
-    MULTI-STEP BECAUSE THE AUXILIARY IS STATE. A tree that gets ``field`` right
+    Multi-step because the auxiliary is state. A tree that gets ``field`` right
     and ``fw`` wrong is correct for exactly one launch and wrong forever after,
     and a single-shot comparison cannot see it.
     """
@@ -1653,9 +1653,9 @@ def test_the_scratch_branch_of_the_array_path_is_the_same_tree():
 
 
 def test_the_previous_grouping_diverges_at_these_operands():
-    """THE VACUITY CONTROL. Without it the test above measures nothing.
+    """The vacuity control. Without it the test above measures nothing.
 
-    ``(f + kps*src) - kms*prev`` is the tree this file carried until 0.10. If it
+    ``(f + kps*src) - kms*prev`` is the tree this file carried until 1.0. If it
     agreed with the array path at these operands, then so would anything, and the
     pass above would be a statement about the seed rather than about the
     transcription.
@@ -1669,14 +1669,14 @@ def test_the_previous_grouping_diverges_at_these_operands():
 
 
 def test_a_unit_coefficient_does_not_hide_this_groupings_divergence():
-    """MEASURED, AND IT CORRECTS AN ASSUMPTION CARRIED OVER FROM THE CURL LEG.
+    """Measured, and it corrects an assumption carried over from the curl leg.
 
     The curl gate's rule is that an exactly-representable scale hides the effect:
     a Courant of 0.5 makes ``dtdx * curl`` exact, so contracted and uncontracted
-    round identically and the guard becomes untestable (§1.4 — the reason that
+    round identically and the guard becomes untestable (the reason that
     leg's six lifted corpus cases, all at 0.5, could not distinguish it).
 
-    THAT RULE DOES NOT TRANSFER TO THIS SUB-STEP, and this test is the
+    That rule does not transfer to this sub-step, and this test is the
     measurement. What the previous grouping changes here is the association of
     the two ADDITIONS — ``((f + s) - p)`` against ``f + (s - p)`` — and that is a
     different float32 number whatever the coefficients are. Setting
@@ -1717,7 +1717,7 @@ def test_the_e_side_source_product_is_bit_identical_either_way():
 
 
 # --------------------------------------------------------------------------
-# THE INDEXING, measured — the half the legs above provably could not reach.
+# The indexing, measured — the half the legs above provably could not reach.
 #
 # Everything before this point compares ONE component under coefficients
 # broadcast on axis 0, so the y and z tables are never indexed and neither the
@@ -1742,7 +1742,7 @@ def _index_volumes(shape, order: str):
 
         int k = idx % nz;  int j = (idx / nz) % ny;  int i = idx / (ny * nz);
 
-    The Fortran order is the mutation. It is IN BOUNDS ON EVERY SHAPE — ``idx % nx``
+    The Fortran order is the mutation. It is in bounds on every shape — ``idx % nx``
     is below ``nx``, and ``idx / (nx*ny)`` is below ``nz`` because
     ``idx < nx*ny*nz`` — which is why the gate mutation is spelled this way rather
     than by swapping ``i`` and ``k`` in place: a decomposition that read PAST a
@@ -1862,7 +1862,7 @@ def test_the_column_major_decomposition_diverges_and_stays_in_bounds(shape):
 
 
 def test_the_one_component_legs_above_provably_cannot_see_the_axis_mapping():
-    """WHY THIS SECTION EXISTS, stated as a measurement rather than as a claim.
+    """Why this section exists, stated as a measurement rather than as a claim.
 
     ``_seeded`` broadcasts on axis 0 and steps ONE component, which is component 0
     — and component 0 reads ``kps_x`` under the shipped mapping AND under the
@@ -1896,7 +1896,7 @@ def test_the_one_component_legs_above_provably_cannot_see_the_axis_mapping():
 
 
 # --------------------------------------------------------------------------
-# The two required predicate mutations (R4). Applied to the REAL source.
+# The two required predicate mutations. Applied to the REAL source.
 # --------------------------------------------------------------------------
 
 def mutated_predicate(*patterns: str):
@@ -1947,7 +1947,7 @@ def test_the_fold_is_admitted_and_the_admission_is_not_an_accident(side, xp):
     thing: the fold is ADMITTED, and re-adding any ONE of those statements is a
     NARROWING that must show up as a refusal.
 
-    THE MUTATION IS THE OLD CLAUSE. Re-inserting it is the edit a reader who
+    The mutation is the old clause. Re-inserting it is the edit a reader who
     knows the curl family and not the gate would make on sight, so it is the
     edit worth arming — and each of the three is armed separately, because the
     old refusal was stated three times and a narrowing only has to land once.
@@ -1959,7 +1959,7 @@ def test_the_fold_is_admitted_and_the_admission_is_not_an_accident(side, xp):
         f"({reason}); the fold admission CONSTITUTIVE_FOLD_ADMISSION records has "
         f"been narrowed and the census slot count no longer describes it")
 
-    # THE MARKER MOVED when the cylindrical clause was removed on 2026-08-20
+    # The marker moved when the cylindrical clause was removed on 2026-08-20
     # (CONSTITUTIVE_CYLINDRICAL_ADMISSION). Anchored on the fold-count clause
     # instead, which is the nearest statement that is still about the fold -- and
     # which this test is about. A marker that no longer matches fails loudly here
@@ -1989,7 +1989,7 @@ def test_the_fold_is_admitted_and_the_admission_is_not_an_accident(side, xp):
         assert not still_covered, (
             f"re-adding {label} did NOT refuse the folded grid, so this leg is "
             f"measuring nothing and the admission is unpinned in that direction")
-        # THE REASON, not merely a refusal: each leg's inserted clause carries a
+        # The reason, not merely a refusal: each leg's inserted clause carries a
         # distinct string, so a refusal from some OTHER clause would pass a
         # verdict-only check while measuring nothing about the one named.
         assert why == expected, (
@@ -2027,7 +2027,7 @@ def test_mutation_drop_the_dispersion_refusal_is_caught(xp):
 
 
 # --------------------------------------------------------------------------
-# THE 2026-08-19 FOLD ADMISSION — the clause, its data, and what did NOT move
+# The 2026-08-19 fold admission — the clause, its data, and what did NOT move
 # --------------------------------------------------------------------------
 
 def test_the_admitted_boundary_kinds_carry_the_fold_and_the_axis():
@@ -2042,7 +2042,7 @@ def test_the_admitted_boundary_kinds_carry_the_fold_and_the_axis():
     family reads like the curl's — costs 128 slots for the fold and 32 more for
     Dcyl, so it fails here rather than only in a census nobody re-runs.
 
-    THE ADE FAMILY IS NO LONGER REQUIRED TO MATCH. It did while both lists were
+    The ADE family is no longer required to match. It did while both lists were
     (PERIODIC, METALLIC, MIRROR); the constitutive pair has now been measured on
     a kind the ADE pair has not, and asserting they are equal would force the
     unmeasured one to move with the measured one. What is asserted instead is the
@@ -2066,7 +2066,7 @@ def test_the_fold_plane_cap_is_the_number_the_gate_swept():
     as a changed message rather than as silence.
     """
     table = coverage.CONSTITUTIVE_FOLD_ADMISSION
-    # THE NUMBER MUST BE A RUN'S, and the run is named. Raised 2 -> 3 on
+    # The number must be a run's, and the run is named. Raised 2 -> 3 on
     # 2026-08-20 by adding three fold_XYZ_* specs and RE-CUTTING; the block below
     # is that run, and the cap has to equal what its cases actually reached rather
     # than what its spec tuple listed.
@@ -2082,7 +2082,7 @@ def test_the_fold_plane_cap_is_the_number_the_gate_swept():
     counted = {int(k) for k in
                block["fold_structure_swept"]["cases_by_number_of_fold_planes"]}
     assert max(counted) == table["folded_planes_swept"], (counted, table)
-    # THE CORPUS ROW THE CAP USED TO COST, and what it costs now.
+    # The corpus row the cap used to cost, and what it costs now.
     assert table["slots_refused_for_a_third_fold_plane"] == 0
     assert table["row_with_three_fold_planes"] == "TestLDOS.test_ldos_3D"
     source = inspect.getsource(coverage.covers_real_pml_constitutive)
@@ -2163,7 +2163,7 @@ def test_the_fold_admission_names_a_record_block_that_reports_a_pass():
     assert block["host"] == table["host"]
     assert list(block["folded_terminations_swept"]) == \
         list(table["folded_terminations_swept"])
-    # THE BLOCK'S PLANE COUNT AND THE CAP ARE NOW ONE RUN'S. The superseded
+    # The block's plane count and the cap are now one run's. The superseded
     # 2026-08-19 sweep stopped at two; this block reached three, which is where the
     # cap comes from and what
     # ``test_the_fold_plane_cap_is_the_number_the_gate_swept`` reads. The <= clause
@@ -2181,21 +2181,21 @@ def test_the_fold_admission_names_a_record_block_that_reports_a_pass():
         assert leg["single_launch_identical"] == table["identical_single_launch"]
         assert leg["multi_step_identical"] == table["identical_at_sixty_launches"]
         assert leg["multi_step_launches_each"] == MULTI_STEP_BUDGET, policy
-        # THE GUARD IS EVIDENCE, NOT DECORATION.
+        # The guard is evidence, not decoration.
         guard = leg["guard_control"]
         assert guard["scored_at_inexact_courant"] > 0 and \
             guard["diverged"] == guard["scored_at_inexact_courant"], policy
-        # THE FOLD-SPECIFIC MUTATION — the refusal armed as a defect. Without it
+        # The fold-specific mutation — the refusal armed as a defect. Without it
         # "the fold does not move the coefficient index" rests on a leg nobody
         # showed could fail on a folded grid.
         reversed_leg = leg["host_mutations"]["reverse_folded_axis_coefficients"]
         assert reversed_leg["verdict"] == "CAUGHT", policy
         assert reversed_leg["caught"] == reversed_leg["ran"] > 0, policy
-        # AND A MUTATION THAT MUST BE UNCAUGHT, or the battery scores the same
+        # And a mutation that must be uncaught, or the battery scores the same
         # whether the comparator works or fails everything.
         null = leg["source_mutations"]["E:commute_constitutive_scale"]
         assert null["verdict"] == "NULL CONFIRMED" and null["caught"] == 0, policy
-    # THE FOLD STRUCTURE, COUNTED. The block's own census of what was folded has
+    # The fold structure, counted. The block's own census of what was folded has
     # to agree with the cap the predicate reads, and every folded axis set in it
     # has to be within that cap — a widening whose evidence is described rather
     # than counted is how the sibling ADE block shipped a fold claim its case
@@ -2208,7 +2208,7 @@ def test_the_fold_admission_names_a_record_block_that_reports_a_pass():
         f"says its sweep reached {block['folded_planes_swept']}")
     assert set(structure["folded_axis_terminations"]) == \
         set(table["folded_terminations_swept"])
-    # EVERY AXIS FOLDED SOMEWHERE: a sweep carrying one folded axis proves
+    # Every axis folded somewhere: a sweep carrying one folded axis proves
     # nothing about the other two, since the coefficient index is a different
     # stride on each.
     folded_axes = {axis for key in structure["cases_by_folded_axis_set"]
@@ -2220,12 +2220,12 @@ def test_the_fold_admission_names_a_record_block_that_reports_a_pass():
     assert structure["multi_step_launches_on_every_folded_case"] == \
         [MULTI_STEP_BUDGET]
 
-    # THE FLOOR THAT REFUSES A VACUOUS VERDICT: on the folded axis the absorber
+    # The floor that refuses a vacuous verdict: on the folded axis the absorber
     # must actually absorb, or a coefficient-index error there is invisible.
     low, high = block["per_policy"]["keep"]["folded_axis_absorbs_deviation_range"]
     assert low > 0.0 and high >= low
 
-    # AND THE SUBJECTS, INCLUDING THE GATE ITSELF. This block licenses a
+    # And the subjects, including the gate itself. This block licenses a
     # widening rather than certifying a kernel, so what has to stay put is the
     # instrument: an edited gate is a different experiment, and a kernel module
     # edited after the run is a verdict about bytes that no longer ship. A
@@ -2239,7 +2239,7 @@ def test_the_fold_admission_names_a_record_block_that_reports_a_pass():
         live = hashlib.sha256(path.read_bytes()).hexdigest()
         if live == recorded:
             continue
-        # ONE HOME FOR THE RULE (device_identity.py:209). A subject whose edit
+        # One home for the rule (device_identity.py:209). A subject whose edit
         # cannot reach the device -- device source unchanged where the file
         # carries some, prose only where it carries none -- needs no
         # declaration; there is nothing for a declaration to say. The helper
@@ -2271,7 +2271,7 @@ def test_the_sibling_predicates_did_not_widen_with_this_one(side, xp):
     kernels and nothing else, so copying the widening across is the obvious edit
     for a reader who sees three predicates with one shape.
 
-    THE CURL NOW HAS ITS OWN VERDICT AND ITS OWN DEVICE CODE, and neither came
+    The curl now has its own verdict and its own device code, and neither came
     from here. Measured on the GPU host (results/cuda_folded_curl_2026-08-19/ and its
     2026-08-20 re-run): a folded METALLIC axis was bit-identical in the SHIPPED
     curl pair with nothing written, 48/48 at one launch AND at 60 under both
@@ -2281,7 +2281,7 @@ def test_the_sibling_predicates_did_not_widen_with_this_one(side, xp):
     taking the fold for free, the other paying device code for half of it — is the
     whole reason no family may inherit another's fold verdict.
 
-    THE GUARD STILL BITES, and it caught a real leak the same day: the folded
+    The guard still bites, and it caught a real leak the same day: the folded
     resolution was first written into ``_boundary_kinds_from`` - "one copy, two
     callers" - which widened THIS pair as a side effect, with no device evidence
     for the configurations it admitted. This test failed, and the fix was to scope
@@ -2310,11 +2310,11 @@ def test_the_sibling_predicates_did_not_widen_with_this_one(side, xp):
     assert coverage.CURL_FOLD_ADMISSION["planes_round_artifacts"] != \
         coverage.CONSTITUTIVE_FOLD_ADMISSION["planes_round_artifacts"]
 
-    # AND TWO FAMILIES THAT DID NOT MOVE WITH THEM, which is where the guard now
+    # And two families that did not move with them, which is where the guard now
     # bites. Both were one shared constant away from being widened for free on
     # 2026-08-20, and both were pinned to their OWN gate's number instead.
     #
-    # THE ADE update_P FAMILY read this record's cap directly until that day. Its
+    # The ADE update_P FAMILY read this record's cap directly until that day. Its
     # gate has never scored a three-plane case, and the corpus drives no
     # three-plane dispersive row -- so inheriting the raise would have bought zero
     # slots and been invisible to the census: an over-claim with nothing anywhere
@@ -2331,7 +2331,7 @@ def test_the_sibling_predicates_did_not_widen_with_this_one(side, xp):
     assert refusal is not None and "3 mirror planes at once" in refusal, refusal
     assert "this family's gate" in refusal, refusal
 
-    # THE NO-ABSORBER CURL delegates to covers_real_pml_curl and would have
+    # The no-absorber curl delegates to covers_real_pml_curl and would have
     # inherited BOTH of that predicate's 2026-08-20 widenings. Its own gate stops
     # at two planes and installs no chi, so it now states both refusals itself.
     from . import no_pml_curl  # noqa: PLC0415
@@ -2341,7 +2341,7 @@ def test_the_sibling_predicates_did_not_widen_with_this_one(side, xp):
     covered, why = no_pml_curl.covers_no_pml_curl(_fields3, None, three, "step_B")
     assert not covered and "3 mirror planes at once" in why, why
 
-    # THE OFF-DIAGONAL HAS NO FOLD EVIDENCE AT ALL and must still refuse: its row
+    # The off-diagonal has no fold evidence at all and must still refuse: its row
     # product reads neighbouring cells of the OTHER components' volumes, which is
     # precisely what a fold changes, and no gate has ever run it folded. This is
     # the clause that keeps the guard meaningful now that two of the three families
@@ -2371,7 +2371,7 @@ def test_the_widening_did_not_open_the_offdiagonal_disjointness_seam(xp):
 
 
 # --------------------------------------------------------------------------
-# THE SLOT COUNT, RE-DERIVED FROM THE CENSUS RECORD RATHER THAN QUOTED
+# The slot count, re-derived from the census record rather than quoted
 # --------------------------------------------------------------------------
 #
 # ``CONSTITUTIVE_FOLD_ADMISSION`` carries two numbers that describe a corpus:
@@ -2501,7 +2501,7 @@ def _census_rows():
 def test_the_fold_admission_slot_counts_recompute_from_the_census(xp):
     """Both numbers in the table, re-derived by running the SHIPPED predicate.
 
-    THE REPLAY VALIDATES ITSELF FIRST. Every row the census recorded with a
+    The replay validates itself first. Every row the census recorded with a
     refusal OTHER than the retired fold one must come back with that same string,
     and every row it recorded as covered must still be covered — 372 verdicts,
     reproduced through stand-ins built from the record's own ``configuration``
@@ -2509,7 +2509,7 @@ def test_the_fold_admission_slot_counts_recompute_from_the_census(xp):
     drifted from what the battery measured would fail as a disagreement rather
     than quietly move the count.
 
-    IT IS AN UPPER BOUND AND THE TABLE SAYS SO. The stand-ins answer the array
+    It is an upper bound and the table says so. The stand-ins answer the array
     and coefficient-vector questions by construction, because the record does not
     carry them. What is measured here is exactly the decision logic above that
     tail — which is where the fold clause lives.
@@ -2551,8 +2551,8 @@ def test_the_fold_admission_slot_counts_recompute_from_the_census(xp):
         f"only {reproduced} verdicts were reproducible, so the validation leg is "
         f"too thin to license the count")
 
-    # EVERY SLOT GAINED MUST HAVE BEEN REFUSED BY THE FOLD CLAUSE AND NOTHING
-    # ELSE. This is what separates a widening from a leak: a slot that used to be
+    # Every slot gained must have been refused by the fold clause and nothing
+    # else. This is what separates a widening from a leak: a slot that used to be
     # refused for dispersion or complex storage and is now admitted would mean
     # some other clause stopped firing, and the totals alone cannot see that.
     leaked = [(name, sub_step, first) for name, sub_step, first, _ in gained
@@ -2560,7 +2560,7 @@ def test_the_fold_admission_slot_counts_recompute_from_the_census(xp):
     assert not leaked, (
         f"{len(leaked)} slots were gained for a reason that is NOT the retired "
         f"fold refusal, so the widening reaches further than the fold: {leaked[:5]}")
-    # WHAT A GAINED ROW MAY BE. Two widenings have landed, so a gained row must be
+    # What a gained row may be. Two widenings have landed, so a gained row must be
     # PML-active real storage that is EITHER folded (2026-08-19) OR cylindrical
     # (2026-08-20) -- and nothing else. Complex storage is not admitted by either:
     # the complex pair is a different kernel and the Dcyl gate did not score it.
@@ -2572,7 +2572,7 @@ def test_the_fold_admission_slot_counts_recompute_from_the_census(xp):
     assert not unfolded, (
         f"slots were gained on rows that are neither folded nor cylindrical, "
         f"PML-active, real-storage runs: {unfolded[:5]}")
-    # THE PLANE CAP APPLIES TO THE FOLDED GAINS ONLY. A Dcyl row is not folded,
+    # The plane cap applies to the folded gains only. A Dcyl row is not folded,
     # so its plane count is 0 and including it would let an empty set of folded
     # gains pass this check by dilution.
     planes = {sum(configuration["mirrored"])
@@ -2582,7 +2582,7 @@ def test_the_fold_admission_slot_counts_recompute_from_the_census(xp):
         "folded_planes_swept"], (
         f"a slot was gained on a row folded across {max(planes)} planes and the "
         f"gate swept fewer")
-    # AND THE CAP IS NOT DECORATION: the corpus really does drive a row at the
+    # And the cap is not decoration: the corpus really does drive a row at the
     # count the cap names, so a cap raised without a gate leg would be visible
     # here as an admitted row rather than only as a changed constant.
     assert max(planes) == coverage.CONSTITUTIVE_FOLD_ADMISSION[
@@ -2591,7 +2591,7 @@ def test_the_fold_admission_slot_counts_recompute_from_the_census(xp):
         f"{coverage.CONSTITUTIVE_FOLD_ADMISSION['folded_planes_swept']}; the cap "
         f"is wider than anything it was priced against")
 
-    # TWO WIDENINGS, ONE ARITHMETIC. The fold table's slots_after is the Dcyl
+    # Two widenings, one arithmetic. The fold table's slots_after is the Dcyl
     # table's slots_before, so the chain has to close end to end: a number that
     # only checked the latest link would let an earlier one drift unnoticed.
     fold = coverage.CONSTITUTIVE_FOLD_ADMISSION
@@ -2601,12 +2601,12 @@ def test_the_fold_admission_slot_counts_recompute_from_the_census(xp):
         f"and the fold admission says it left {fold['slots_after']}; the two "
         f"widenings no longer compose")
 
-    # EACH GAIN ATTRIBUTED TO THE WIDENING THAT CAUSED IT, not to the total. A
+    # Each gain attributed to the widening that caused it, not to the total. A
     # fold gain and a Dcyl gain are different measurements behind different
     # gates, and a count that pooled them could not tell one shrinking from the
     # other growing.
     #
-    # THREE WIDENINGS NOW, and the third is split OUT OF the fold count rather
+    # Three widenings now, and the third is split OUT OF the fold count rather
     # than folded into it: the 2026-08-19 gate swept at most two simultaneous
     # planes, so the rows it licensed are the folded rows with one or two, and the
     # 2026-08-20 re-cut is what licensed the third. Pooling them would let a
@@ -2630,13 +2630,13 @@ def test_the_fold_admission_slot_counts_recompute_from_the_census(xp):
     assert by_widening["third_plane"] == \
         fold["planes_round_slots_after"] - fold["planes_round_slots_before"], (
         f"{by_widening['third_plane']} slots were gained on rows folded across "
-        f"three planes and the plane round describes "
+        f"three planes and the third-plane widening describes "
         f"{fold['planes_round_slots_after'] - fold['planes_round_slots_before']}")
-    # THE CHAIN CLOSES END TO END: the plane round starts where the Dcyl one
+    # The chain closes end to end: the third-plane widening starts where the Dcyl one
     # stopped, so a number that only checked the latest link cannot let an earlier
     # one drift.
     assert fold["planes_round_slots_before"] == dcyl["slots_after"], (
-        f"the plane round says it started from "
+        f"the third-plane widening says it started from "
         f"{fold['planes_round_slots_before']} slots and the Dcyl admission says "
         f"it left {dcyl['slots_after']}; the widenings no longer compose")
 
@@ -2682,10 +2682,10 @@ def test_the_third_fold_plane_bought_exactly_what_the_table_says(xp):
                 lost += 1
                 rows_lost.add(row["row"])
     table = coverage.CONSTITUTIVE_FOLD_ADMISSION
-    # THE RAISE IS WORTH WHAT THE OLD CAP COST, and the row is the same one.
+    # The raise is worth what the old cap cost, and the row is the same one.
     assert lost == 2, (
         f"lowering the cap to 2 loses {lost} slots; the 2026-08-19 record priced "
         f"the third plane at 2 and the two must agree or one of them is stale")
     assert rows_lost == {table["row_with_three_fold_planes"]}, rows_lost
-    # AND NOTHING IS REFUSED FOR IT ANY MORE, which is the table's own number.
+    # And nothing is refused for it any more, which is the table's own number.
     assert table["slots_refused_for_a_third_fold_plane"] == 0

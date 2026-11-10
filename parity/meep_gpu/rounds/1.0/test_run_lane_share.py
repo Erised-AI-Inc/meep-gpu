@@ -1,4 +1,4 @@
-"""A shared card, by opt-in only (``run_lane.py --share-idle-foreign``; owner ruling R28).
+"""A shared card, by opt-in only (``run_lane.py --share-idle-foreign``).
 
 Host-only: ``nvidia-smi`` is a fake that answers each query from a table. Without the flag a
 card holding any compute app is never taken, as before. With it, the card the flag names is
@@ -87,7 +87,7 @@ def test_the_named_idle_pid_admits_its_card_with_the_memory_there(tmp_path, monk
 
 @pytest.mark.parametrize("smi, needle", [
     (FakeSmi(sm={IDLE_PID: 3}), "computing"),
-    (FakeSmi(apps={IDLE_PID: 4970, 999: 800}), "[999] not named"),
+    (FakeSmi(apps={IDLE_PID: 4970, 999: 800}), "1 compute app(s) not named"),
     (FakeSmi(free=8000), "free memory 8000 MiB below 8492 MiB"),
     (FakeSmi(util=4), "card utilisation 4 %"),
 ], ids=["named_pid_computing", "unnamed_pid", "memory_short", "card_busy"])
@@ -109,10 +109,17 @@ def test_a_shared_card_is_taken_on_two_readings_and_recorded(tmp_path, monkeypat
                  need=8492, want=SHARED_CARD)
     assert lane.take_gpu() is True
     assert lane.gpu == SHARED_CARD
+    # The LOCAL lock keeps the comparison keys (the UUID, the named pid, the card's id
+    # beside its UUID); the lane's log, which goes back with the round, names the card by
+    # its id and counts the foreign app.
     label = (tmp_path / "locks" / "gpu_lock_7" / "label").read_text()
     assert f"shared={SHARED_UUID}:{IDLE_PID}" in label
+    card = (tmp_path / "locks" / "gpu_lock_7" / "card").read_text().split()
+    assert card == [run_lane.N.card_id(SHARED_UUID), SHARED_UUID]
     log = (tmp_path / "lane" / "progress.log").read_text()
-    assert f"SHARED CARD {SHARED_CARD} ({SHARED_UUID})" in log and str(IDLE_PID) in log
+    assert (f"SHARED CARD {SHARED_CARD} ({run_lane.N.card_id(SHARED_UUID)}): 1 foreign "
+            f"compute app(s), 4970 MiB") in log
+    assert SHARED_UUID not in log and str(IDLE_PID) not in log
     lane.release()
     assert not (tmp_path / "locks" / "gpu_lock_7").exists()
 

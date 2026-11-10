@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 """Native MPS byte gate for the Metal H->D weld: ``update_H`` welded into ``step_D``.
 
-THE FOURTH SEAM'S FIRST DEVICE GATE ON THIS BACKEND, and the first Metal fused-pair
+The fourth seam's first device gate on this backend, and the first Metal fused-pair
 gate whose subject is a product the composer must NOT install. That shapes every leg:
 the arithmetic is certified the way the sibling gates certify theirs, and the
-arbitration -- who holds ``update_H`` -- is MEASURED here as a fact about what the
+arbitration -- who holds ``update_H`` -- is measured here as a fact about what the
 shipped composer builds, never asserted from a docstring.
 
-WHAT IS BEING CERTIFIED. ``meep_gpu/metal_kernels/fused_hd_pair.py`` computes the
+What is being certified. ``meep_gpu/metal_kernels/fused_hd_pair.py`` computes the
 ``update_H`` constitutive into launch-local SCRATCH, takes its own cell's magnetic
 field from registers, RECOMPUTES every one of the curl half's six foreign taps from
 pre-launch state, steps ``D``/``fu_D`` in place, and rotates the ``H``/``f_w_H``
-bindings afterwards. The claim is per COMPLETE DRIVER STEP -- ``FdtdDriver.step``'s
+bindings afterwards. The claim is per complete driver step -- ``FdtdDriver.step``'s
 own consult order, sources withdrawn and injected where the driver does it, fills and
 wall clears where the driver runs them -- over a stated budget of steps, as uint32
 WORDS over EVERY stored volume the engine allocates (primaries, split-field PML
@@ -20,7 +20,7 @@ lies), against FOUR reference engines from one seed:
 
   1. the ARRAY PATH -- ``stepping``'s passes under the driver's own loop;
   2. the CERTIFIED SINGLES -- ``update_H`` then ``step_D`` as two dispatched plans;
-  3. the COMPOSITION THE COMPOSER INSTALLS ON THESE ROWS TODAY -- ``plan_step(fuse=
+  3. the composition the composer installs on these rows today -- ``plan_step(fuse=
      True)``'s own plans, which on every row this product reaches puts the released
      B->H fused magnetic pair in ``step_B``/``update_H`` and the certified ``step_D``
      (bare, or inside the released D->E pair) after it. This is the reference the
@@ -32,16 +32,16 @@ All four must agree with the weld word for word. What differs is the LAUNCH COUN
 which ``launch_structure`` reports twice over (the plans' own counters and an
 independent wrapper around every compiled function) at the seam AND over the whole
 step -- where the honest number is that the weld does NOT reduce the step's launches
-against the composition installed today. That is the arbitration ruling reproduced
-as a measurement rather than re-litigated.
+against the composition installed today. That is the measured verdict behind the
+product's ``INSTALLABLE = False``, reproduced rather than re-argued.
 
-THE SUBNORMAL POLICY IS A PRECONDITION, NOT A DEFAULT. The MPS executor flushes
+The subnormal policy is a precondition, not a default. The MPS executor flushes
 denormals natively and exposes no lever, so ``flush`` is the one policy it honours;
-a run whose resolved policy is ``keep`` is REFUSED BY NAME (``coverage.py`` clause 4)
+a run whose resolved policy is ``keep`` is refused by name (``coverage.py`` clause 4)
 and recorded as refused rather than run. Every product row censuses the oracle's own
 state for subnormal words and reports it.
 
-AND THE FLUSH PRECONDITION HAS TWO HALVES SINCE 2026-09-06, because one of them was
+And the flush precondition has two halves since 2026-09-06, because one of them was
 blind. The stored-state census sees a subnormal only once one is WRITTEN, and the IEEE
 underflow flag beside it fires only when a result is tiny AND INEXACT -- so an
 intermediate that is tiny and EXACT, which is what the difference of two nearby normals
@@ -56,8 +56,8 @@ and asserts its model reproduces what the helper produced, and stops the walk on
 same rule the stored census stops it on. Measured over six corpus rows, it fires on the
 same step the stored census does on five and one step earlier on the sixth.
 
-TWO OTHER DISPOSITIONS A LIFTED ROW CAN TAKE, both measured rather than named. A row
-whose SOURCE WAVEFORM IS NOT A FUNCTION OF TIME hands each of the five arrangements a
+Two other dispositions a lifted row can take, both measured rather than named. A row
+whose source waveform is not a function of time hands each of the five arrangements a
 different current, so byte identity across them is undefined by construction rather
 than false: :func:`waveform_determinism` asks the engine's own accessor twice at the
 same instant over the whole budget and refuses such a row inside the cell's
@@ -147,10 +147,10 @@ LEGS
                      predicted-null entries recorded with their reason, never dropped
   disarm             the identical harness, shipped bytes, must not diverge
 
-THE PER-CHUNK FORMS (KERNELS.md §7). Both halves take the base kernels' per-chunk
+The per-chunk forms (docs/design/floating-point.md). Both halves take the base kernels' per-chunk
 forms, so the grouping mutations are INVERTED: each plants the package's PREVIOUS
 grouping (``curl_previous_grouping``, ``constitutive_previous_accumulation_grouping``)
-and stays must-catch. The §7.2 battery is armed on both halves of the weld
+and stays must-catch. The per-chunk form battery is armed on both halves of the weld
 (:func:`b_battery`, record mutations in :data:`HOST_MUTATIONS`), its two declared
 nulls are scored on agreeing with a firing control (:func:`b_battery_inert`), and the
 carried select's keying is a predicted null with its reason. The synthetic fixture is a
@@ -179,7 +179,7 @@ import time
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
-# THE POLICY, SET BEFORE ANY meep_gpu MODULE IS REACHED. `flush` is the only value
+# The policy, set before any meep_gpu module is reached. `flush` is the only value
 # the MPS executor can honour; a resolved `keep` refuses every predicate by name.
 os.environ.setdefault("MEEP_GPU_SUBNORMAL_POLICY", "flush")
 HERE = Path(__file__).resolve().parent
@@ -223,7 +223,7 @@ STEPS = 60
 #: measured to persist and not to be a one-step transient.
 SYNC_STEPS: Tuple[int, ...] = (3, 7)
 
-#: HOW MANY CLEAN COMPLETE STEPS A LIFTED CORPUS ROW MUST REACH TO COUNT.
+#: How many clean complete steps a lifted corpus row must reach to count.
 #:
 #: The synthetic fixture's amplitude is this gate's to choose, so it is placed clear
 #: of the denormal band for the whole budget (:data:`SEED_SCALE_BITS`). A lifted row's
@@ -251,7 +251,7 @@ CASES: Tuple[Tuple[str, Dict[str, Any]], ...] = tuple(
 #: kernel can emit is present and the metallic ghost rule is live on every axis.
 MUTATION_CASE = "bc_mmm"
 
-#: THE SECOND MUTATION CASE, and it is not a duplicate of the first. On a metallic
+#: The second mutation case, and it is not a duplicate of the first. On a metallic
 #: axis ``stepping._mask_non_owned_cells`` zeroes the very curl component the shifted
 #: tap feeds, at the very plane where the ghost is served, so no metallic BOUNDARY
 #: VALUE is observable in this kernel's output. On an all-periodic grid that mask does
@@ -282,7 +282,7 @@ PML_CELLS = 2
 #: Per-component permittivity, ``metal_composition_matrix._epsilon``'s own values.
 EPSILON: Dict[str, float] = {"Ex": 2.0, "Ey": 2.5, "Ez": 3.0}
 
-#: THE SEED IS SCALED BY 2^80, AND THE EXPONENT IS THE MEASUREMENT.
+#: The seed is scaled by 2^80, and the exponent is the measurement.
 #:
 #: This gate's budget is SIXTY complete steps and its fixture is a seeded,
 #: source-free run inside an absorber, so the state DECAYS. Measured 2026-09-05 on
@@ -295,7 +295,7 @@ EPSILON: Dict[str, float] = {"Ex": 2.0, "Ey": 2.5, "Ez": 3.0}
 #: eight cases, in every arrangement that dispatches ``step_B`` and in none that
 #: leaves it on the array path.)
 #:
-#: A POWER OF TWO IS WHY THIS IS NOT A TUNED FIXTURE. The solver is linear in the
+#: A power of two is why this is not a tuned fixture. The solver is linear in the
 #: field state and every coefficient it multiplies by -- ``kms``, ``sinv``, ``kps``,
 #: ``dtdx``, the inverse permittivity -- is field-independent, so scaling every stored
 #: volume by 2^n shifts each float32 EXPONENT by n and leaves every MANTISSA and every
@@ -324,7 +324,7 @@ ALL_LEGS: Tuple[str, ...] = tuple(leg for group in LEG_GROUPS.values() for leg i
 
 #: The census this gate lifts its corpus rows from, and the seam record whose
 #: ``withdraw_in_seam`` flag named the rows the 0.9.2 predicate refused by their standing
-#: withdraw. Since entry 25 those rows are admitted; the rows the predicate must refuse
+#: withdraw. Since integrated sources enter through ``f_minus_p`` those rows are admitted; the rows the predicate must refuse
 #: are derived from each row's own sources (:func:`lift_refusal_accounting`).
 CENSUS = "metal_coverage_2026-09-04_m0complex"
 SEAM_RECORD = "h_to_d_seam_2026-09-04"
@@ -361,8 +361,8 @@ def differing(left: Any, right: Any) -> int:
 
 _RESET_VOLUMES: Optional[Tuple[str, ...]] = None
 
-#: PRIVATE SCRATCH ON ``Fields``, WHICH IS NOT STATE, AND THE RULE IS THE LEADING
-#: UNDERSCORE rather than this tuple -- which is recorded so the artifact can name
+#: Private scratch on ``Fields``, which is not state, and the rule is the leading
+#: underscore rather than this tuple -- which is recorded so the artifact can name
 #: what the rule excluded on the fixture it ran.
 #:
 #: ``_fmp_scratch`` and ``_fmp_scratch_by_component`` are the buffers
@@ -377,7 +377,7 @@ _RESET_VOLUMES: Optional[Tuple[str, ...]] = None
 #: four and three words, in a buffer no route reads, on rows whose whole engine state
 #: was byte-identical on every arrangement.
 #:
-#: THE PREMISE IS NOT ASSERTED HERE, IT IS MEASURED: ``leg_private_scratch`` poisons
+#: The premise is not asserted here, it is measured: ``leg_private_scratch`` poisons
 #: the buffer before a complete step on a dispersive driver and requires every stored
 #: volume to come back byte-identical, with the poison's disappearance as the
 #: non-vacuity witness that the buffer was exercised at all.
@@ -387,7 +387,7 @@ PRIVATE_SCRATCH: Tuple[str, ...] = ("_fmp_scratch", "_fmp_scratch_by_component")
 def reset_declared_volumes() -> Tuple[str, ...]:
     """Every array ``Fields.reset`` zeroes, read out of ``fields.py``'s own text.
 
-    DERIVED, NOT TRANSCRIBED: a volume added to the engine joins the comparison
+    Derived, not transcribed: a volume added to the engine joins the comparison
     without an edit here, and a list here could go stale while looking complete.
     Private scratch is dropped by the leading-underscore rule (:data:`PRIVATE_SCRATCH`),
     which is why a name is excluded by an argument rather than by being forgotten.
@@ -505,7 +505,7 @@ def autopsy(reference: Mapping[str, Any], other: Mapping[str, Any],
                 "reference_word": f"0x{a_word:08x}", "other_word": f"0x{b_word:08x}",
                 "reference": a_value, "other": b_value,
                 "reference_class": _classify(a_word), "other_class": _classify(b_word),
-                # THE SIGNED-MAGNITUDE DISTANCE, which is the ulp distance for two
+                # The signed-magnitude distance, which is the ulp distance for two
                 # words of the same sign and is reported as-is otherwise.
                 "word_distance": abs(a_word - b_word),
                 "same_sign": (a_word >> 31) == (b_word >> 31)})
@@ -556,7 +556,7 @@ def build_driver(keywords: Mapping[str, Any], seed: int,
     for array in stored_volumes(driver.fields).values():
         array[...] = (0.37 * rng.standard_normal(array.shape)).astype(array.dtype)
         array *= scale
-    # A SEEDED STATE IS A MID-RUN ONE: H was started from B long ago, so
+    # A seeded state is a mid-run one: H was started from B long ago, so
     # ``stepping.separate_h_from_b`` must not run again on it -- the array path would
     # copy B into H and f_w on the dsigw cells at the first update_H and no kernel
     # (and no reference arrangement) does. The composition matrix's seeds carry the
@@ -589,7 +589,7 @@ class ABSORBED:
 class SyncedPlan:
     """A device plan bracketed by the residency's host->device / device->host copies.
 
-    THE BRACKET SITS IMMEDIATELY AROUND THE LAUNCH and nowhere else, because two
+    The bracket sits immediately around the launch and nowhere else, because two
     wrappers in this composition do HOST work before their launch --
     ``LeadingRepairPlan`` saves the deposit points and ``LeadingWithdrawPlan``
     performs the seam's electric withdraw -- and the launch must read the host state
@@ -648,19 +648,19 @@ def declaring(plan: Any) -> Any:
 class Shim:
     """A ``FastPathPlan``-shaped object that runs this gate's plans inside the driver.
 
-    THE SEAM IS THE ENGINE'S OWN: ``driver.step`` reads ``self._fast_path`` once per
+    The seam is the engine's own: ``driver.step`` reads ``self._fast_path`` once per
     step and consults ``fast.dispatch(slot, fields)``; ``synchronize_magnetic_fields``
     consults it again under the by-name channel ``update_H_synchronize``. This object
     answers both. The shipped planner is untouched.
 
-    THE SYNC CHANNEL IS ANSWERED BY THE CONTAINMENT RULE, READ OFF ``fastpath``: a
+    The sync channel is answered by the containment rule, read off ``fastpath``: a
     plan may run inside the magnetic half-step only when every slot it spans is one
     the half-step itself runs (``SYNC_PATH_SLOTS``). A weld spanning ``step_D`` is
     refused by its span. ``sync_hazard=True`` is the ARMED arm of the sync leg: the
     plan answers the consult anyway, which is what a product that did not decline
     would do, and the leg requires the divergence in ``D``.
 
-    EVERY ANSWER IS COUNTED. A shim that quietly declined everything would still
+    Every answer is counted. A shim that quietly declined everything would still
     produce a green byte comparison, because the oracle IS the array path.
     """
 
@@ -756,7 +756,7 @@ def count_functions(plan: Any) -> List[CountingFunction]:
 def settle_rotation(plan: Any, fields: Any, originals: Mapping[str, Any]) -> int:
     """After a step that rotated, put the ENGINE's references back on the seed arrays.
 
-    THE WELD SWAPS ``fields.Hx`` AND ITS TWIN AFTER EVERY LAUNCH, and that is the
+    The weld swaps ``fields.Hx`` and its twin after every launch, and that is the
     product's own certified choreography. But this gate drives FIVE arrangements on
     ONE driver, and the other four bound their device mirrors to the seed arrays by
     identity; a rotation left standing at the end of a step would leave them writing
@@ -780,7 +780,7 @@ def settle_rotation(plan: Any, fields: Any, originals: Mapping[str, Any]) -> int
 def rotating_owners(shim: Optional[Shim]) -> Tuple[Any, ...]:
     """Every distinct plan in this shim that rotates one of the ENGINE's volumes.
 
-    DERIVED FROM THE SHIM, never listed by the caller, and that is the repair for a
+    Derived from the shim, never listed by the caller, and that is the repair for a
     measured defect. This gate used to hand ``rotating`` in by hand, and only the
     weld arrangement handed anything: the WELD is not the only rotating product a
     step can carry. ``plan_step`` installs the off-diagonal fused electric pair on
@@ -819,7 +819,7 @@ def orphaned_mirrors(arrangements: Mapping[str, "Arrangement"],
                      fields: Any) -> List[str]:
     """Every MIRRORED volume the engine has stopped naming, across all arrangements.
 
-    THE HAZARD IS AN ORPHANED MIRROR, NOT A RENAME. A device mirror is registered
+    The hazard is an orphaned mirror, not a rename. A device mirror is registered
     once per name against the host array it shadows (``device.Residency.mirror``) and
     syncs THAT array for the life of the residency, so a rotation left standing at the
     end of a step leaves a later arrangement launching against a buffer nobody reads
@@ -830,8 +830,8 @@ def orphaned_mirrors(arrangements: Mapping[str, "Arrangement"],
     This asks the mirrors themselves: for every name any arrangement's residency
     binds, is the array it binds still the one the engine names?
 
-    THAT IS A DIFFERENT QUESTION FROM "did any name's array object change", which is
-    what this gate scored until 2026-09-06 and which the ENGINE'S OWN RECURRENCE
+    That is a different question from "did any name's array object change", which is
+    what this gate scored until 2026-09-06 and which the engine's own recurrence
     answers yes to. ``PolarizationState.step`` (dispersion.py:679-691) rotates three
     buffers per driven component every step BY DESIGN -- this step's result is written
     into the scratch, the scratch takes the array that held ``P_prev``, and the names
@@ -871,7 +871,7 @@ class Arrangement:
         self.residency = residency
         self.counters: List[CountingFunction] = []
         if shim is not None:
-            # ONCE PER DECLARING OWNER, never once per slot. A fused pair occupies
+            # Once per declaring owner, never once per slot. A fused pair occupies
             # BOTH slots of its seam, so walking slots wraps that owner's function
             # table twice -- the second wrapper counting the first -- and the
             # independent counter then reports exactly twice the launches the plans
@@ -922,7 +922,7 @@ def _composed(driver: Any, fuse: bool,
               residency: Optional[Residency] = None) -> Tuple[Any, Residency]:
     """``plan_step`` on this driver, on ``residency`` or on a fresh one.
 
-    ONE ARRANGEMENT IS ONE RESIDENCY, and that is not bookkeeping. The registry's
+    One arrangement is one residency, and that is not bookkeeping. The registry's
     whole purpose is that every plan touching a volume binds the SAME device tensor
     (device.py:157-164): ``step_B`` writes ``Bx`` where ``update_H`` reads it, and
     this weld writes ``D`` in place where ``update_E`` reads it. An arrangement whose
@@ -941,7 +941,7 @@ def _composed(driver: Any, fuse: bool,
 def arrangement_composition(driver: Any, fuse: bool) -> Arrangement:
     """References 3 (``fuse=True``, the composer's own installation) and 4 (unfused).
 
-    THE SHIPPED COMPOSER BUILDS THE PLANS, not this file: reaching for the family
+    The shipped composer builds the plans, not this file: reaching for the family
     builders would measure the kernels and skip the composition, and the
     composition is what the arbitration finding is about. Its slot table and its
     refusal of THIS product are recorded on the arrangement.
@@ -997,7 +997,7 @@ def arrangement_weld(driver: Any, functions: Optional[Mapping[str, Any]] = None,
             occupant, driver.fields, sources, span=family.REPLACES)
     plans: Dict[str, Any] = {}
     if rest_unfused:
-        # ON THIS ARRANGEMENT'S OWN RESIDENCY -- see :func:`_composed`. The weld
+        # On this arrangement's own residency -- see :func:`_composed`. The weld
         # writes D and fu_D IN PLACE and ``update_E`` reads them; a second registry
         # here would give that read a different device buffer.
         base, _base_residency = _composed(driver, fuse=False, residency=residency)
@@ -1019,7 +1019,7 @@ def arrangement_weld(driver: Any, functions: Optional[Mapping[str, Any]] = None,
 def subnormal_words(array: Any) -> int:
     """How many float32 words of ``array`` are in the denormal band, off the BITS.
 
-    A VIEW, NOT A COPY, and on this leg that is a working-set decision rather than a
+    A view, not a copy, and on this leg that is a working-set decision rather than a
     micro-optimisation: the census runs on every intermediate of every helper call of
     every reference step, and the corpus carries an 11.2-million-cell row whose six
     arrangement snapshots already dominate this process's memory. Reading the words
@@ -1035,11 +1035,11 @@ def subnormal_words(array: Any) -> int:
 class IntermediateCensus:
     """Every float32 intermediate the reference step forms, censused for the band.
 
-    WHY THIS EXISTS, MEASURED RATHER THAN ARGUED. This gate's standing precondition
+    Why this exists, measured rather than argued. This gate's standing precondition
     censuses the STORED volumes after each reference step, on the rule that MPS
     flushes the float32 denormal band natively and NumPy does not, so past the first
     banded step no byte claim can be made. That census can only see a subnormal once
-    one is WRITTEN TO A STORED VOLUME -- and the flush that decides a comparison need
+    one is written to a stored volume -- and the flush that decides a comparison need
     not leave one there.
 
     On ``examples:gaussian-beam.py`` at step 50 and
@@ -1062,12 +1062,12 @@ class IntermediateCensus:
     underflow only when a result is tiny AND INEXACT, and the difference of two nearby
     normals into the subnormal range is EXACT.
 
-    THE ARITHMETIC IS NOT TRANSCRIBED ON TRUST. Each wrapper recomputes the helper's
+    The arithmetic is not transcribed on trust. Each wrapper recomputes the helper's
     own chain in float32 from the operands and compares its result to what the helper
     actually produced; a mismatch RAISES, so a census that stopped modelling the
     engine fails loudly instead of quietly censusing the wrong expression.
 
-    WHAT IT COVERS is the three helpers the ``(ordinary -> PML)`` cell's arithmetic
+    What it covers is the three helpers the ``(ordinary -> PML)`` cell's arithmetic
     runs through. The two conductive paths are COUNTED and not modelled, and a step
     that reached one reports ``covered`` False rather than a census it did not take.
     """
@@ -1118,7 +1118,7 @@ class IntermediateCensus:
             out = original_curl(operands, dtdx, presence, scratch=scratch)
             if out.dtype != np.float32:
                 return out
-            # EACH INTERMEDIATE IS RELEASED AS SOON AS THE NEXT ONE HOLDS ITS VALUE.
+            # Each intermediate is released as soon as the next one holds its value.
             # Holding the whole chain at once triples this process's peak on the
             # corpus's largest row for no measurement. The chain is MEEP's bracket
             # left to right, ``((g1s - g1) + g2) - g2s`` (step_generic.cpp:104), or
@@ -1230,7 +1230,7 @@ class IntermediateCensus:
                 "covered": self.uncovered_calls == 0}
 
 
-#: THE CLASS A SIBLING GATE EXTENDS, bound once and never rebound. ``drive`` constructs
+#: The class a sibling gate extends, bound once and never rebound. ``drive`` constructs
 #: ``IntermediateCensus()`` by name, so a sibling extends the instrument by rebinding
 #: that name at module scope -- and a gate run directly executes its own module twice,
 #: as ``__main__`` and again under the runner's mangled name
@@ -1265,7 +1265,7 @@ def drive(driver: Any, arrangements: Mapping[str, Arrangement], steps: int,
     step (the sync leg's accessor call); its return value is recorded.
     """
     seed = capture(driver)
-    # THE ARRAY OBJECT THE ENGINE NAMES FOR EACH STORED VOLUME, BEFORE ANY LAUNCH.
+    # The array object the engine names for each stored volume, before any launch.
     # Every arrangement's device mirrors are bound to these by identity, and
     # ``capture`` reads whatever ``fields`` names at the end of a step, so a rotation
     # a step leaves standing silently decouples the two: the launch writes the array
@@ -1287,7 +1287,7 @@ def drive(driver: Any, arrangements: Mapping[str, Arrangement], steps: int,
     lazily: List[str] = []
     census_per_step: List[Dict[str, int]] = []
     steps_done = 0
-    # STEPPED IS NOT COMPARED. The banded step is taken -- every arrangement advances
+    # Stepped is not compared. The banded step is taken -- every arrangement advances
     # through it -- and then refused as a comparison, so the launch counters answer to
     # this number and the byte claim answers to ``steps_done``. Scoring the counters
     # against the compared count would report the weld as having missed a launch it
@@ -1301,7 +1301,7 @@ def drive(driver: Any, arrangements: Mapping[str, Arrangement], steps: int,
                 lazily.extend(restore(driver, states[name]))
                 install(driver, arrangement.shim)
                 if name == reference:
-                    # THE ORACLE'S ARITHMETIC, NOT ONLY ITS STATE. The stored-state
+                    # The oracle's arithmetic, not only its state. The stored-state
                     # census below sees a subnormal only once one is WRITTEN; a
                     # product that underflows and is then added to a normal word
                     # leaves no subnormal behind, and the two executors still part
@@ -1315,7 +1315,7 @@ def drive(driver: Any, arrangements: Mapping[str, Arrangement], steps: int,
                         if kind == "underflow":
                             underflowed = True
 
-                    # AND THE INTERMEDIATES, WHICH NEITHER OF THE OTHER TWO SEES.
+                    # And the intermediates, which neither of the other two sees.
                     # See :class:`IntermediateCensus`: an intermediate that is tiny
                     # and EXACT raises no IEEE flag and leaves no subnormal in a
                     # stored volume, and it is what put two corpus rows 1-2 ULP apart.
@@ -1342,8 +1342,8 @@ def drive(driver: Any, arrangements: Mapping[str, Arrangement], steps: int,
                     orphaned[name] = sorted(set(orphaned[name]) | set(orphans))
                 states[name] = capture(driver)
             steps_stepped = step
-            # THE PRECONDITION IS TAKEN PER STEP, BEFORE THE COMPARISON, AND THE
-            # ORDER IS THE WHOLE POINT. Byte identity on this backend is claimed
+            # The precondition is taken per step, before the comparison, and the
+            # order is the whole point. Byte identity on this backend is claimed
             # subject to the oracle's state staying out of the float32 denormal band
             # -- MPS flushes natively and NumPy does not. A census read after the
             # comparison would still RECORD the banded step's comparison, and that
@@ -1352,7 +1352,7 @@ def drive(driver: Any, arrangements: Mapping[str, Arrangement], steps: int,
             # entitled to look for. The banded step is counted and named; it is not
             # compared, and nothing past it is measurable.
             #
-            # THE BAND IS ENTERED IN TWO PLACES AND BOTH STOP THE WALK. The stored
+            # The band is entered in two places and both stop the walk. The stored
             # census is the state the step left behind; the intermediate census is the
             # arithmetic that produced it. A flushed intermediate moves a stored word
             # by one or two units in the last place while leaving nothing subnormal
@@ -1381,8 +1381,8 @@ def drive(driver: Any, arrangements: Mapping[str, Arrangement], steps: int,
                     "step": step,
                     "differing_words": int(sum(difference.values())),
                     "differing_volumes": difference}
-                # AND AGAINST ONE OTHER ARRANGEMENT, WHICH SEPARATES TWO FINDINGS THE
-                # ARRAY-PATH COMPARISON ALONE CONFLATES. Every dispatched arrangement
+                # And against one other arrangement, which separates two findings the
+                # array-path comparison alone conflates. Every dispatched arrangement
                 # shares this gate's non-seam plans, so a defect in a REFERENCE shows
                 # up on the weld's row too and reads as "the weld disagrees". The
                 # weld against the certified singles is device-to-device under one
@@ -1392,7 +1392,7 @@ def drive(driver: Any, arrangements: Mapping[str, Arrangement], steps: int,
                     against = compare_snapshots(states[secondary], states[name])
                     row[f"differing_words_vs_{secondary}"] = int(sum(against.values()))
                     row[f"differing_volumes_vs_{secondary}"] = against
-                # THE FIRST DIVERGENCE IS TRANSCRIBED, ONCE PER ARRANGEMENT. A count
+                # The first divergence is transcribed, once per arrangement. A count
                 # cannot tell a flushed subnormal from a wrong answer, and this gate
                 # has already had to attribute one divergence to the executor's flush
                 # policy rather than to a weld. Recording the words at the moment they
@@ -1430,7 +1430,7 @@ def drive(driver: Any, arrangements: Mapping[str, Arrangement], steps: int,
     for name, rows in per_step.items():
         first = next((row["step"] for row in rows if row["differing_words"]), None)
         legs[name] = {
-            # "NO STEP THAT WAS COMPARED DISAGREED", and the BUDGET is a separate
+            # "no step that was compared disagreed", and the BUDGET is a separate
             # question the caller settles. A walk stops for two different reasons --
             # a divergence, or the oracle entering the denormal band, past which
             # nothing is measurable -- and folding the step count in here would make
@@ -1507,7 +1507,7 @@ def drive(driver: Any, arrangements: Mapping[str, Arrangement], steps: int,
                                         in left_rotated.items() if volumes},
         "mirrored_volumes_left_orphaned": {name: volumes for name, volumes
                                            in orphaned.items() if volumes},
-        # THE VERDICT IS THE ORPHAN CHECK, NOT THE RENAME. See :func:`orphaned_mirrors`
+        # The verdict is the orphan check, not the rename. See :func:`orphaned_mirrors`
         # for why, and for the measurement that separated the two.
         "every_arrangement_gave_the_engine_its_volumes_back": not any(
             orphaned.values()),
@@ -1581,7 +1581,7 @@ def shader_mutations(codes: Sequence[int]) -> Dict[str, Tuple[str, str]]:
     def arm(name: str, source: str, why: str) -> None:
         out[name] = (source, why)
 
-    # THE LEGS THIS FAMILY EXISTS FOR: the foreign tap.
+    # The legs this family exists for: the foreign tap.
     arm("foreign_tap_reads_stale_H",
         needle(base, _A_Y, "    float a_y = vy ? hi0[oy] : 0.0f;\n"),
         "the tap reads the PRE-LAUNCH H at the neighbour instead of recomputing "
@@ -1591,7 +1591,7 @@ def shader_mutations(codes: Sequence[int]) -> Dict[str, Tuple[str, str]]:
         "the tap reads the flux density where the curl needs the stepped H")
     arm("foreign_tap_reads_the_scratch_output",
         needle(base, _A_Y, "    float a_y = vy ? ho0[oy] : 0.0f;\n"),
-        "THE PLANTED RACE: the tap reads another thread's store, which holds either "
+        "The planted race: the tap reads another thread's store, which holds either "
         "the neighbour's new H (if that thread ran first) or two-launches-old scratch")
     arm("halo_recompute_dropped",
         needle(base, _A_Y, "    float a_y = 0.0f;\n"),
@@ -1603,8 +1603,8 @@ def shader_mutations(codes: Sequence[int]) -> Dict[str, Tuple[str, str]]:
     arm("own_cell_reads_stale_H_not_the_register",
         needle(base, "    float a   = own.a0;\n", "    float a   = hi0[ii];\n"),
         "the curl takes the pre-launch H at its own cell: the seam undone")
-    # THE CONSTITUTIVE HALF, inside h_cell (8-space indent: the lifted body).
-    # INVERTED (KERNELS.md §7.1): the shipped grouping is MEEP's, so the mutation
+    # The constitutive half, inside h_cell (8-space indent: the lifted body).
+    # INVERTED: the shipped grouping is MEEP's, so the mutation
     # plants the package's PREVIOUS grouping and stays must-catch.
     arm("constitutive_previous_accumulation_grouping",
         needle(base, _ACCUMULATION_0,
@@ -1627,7 +1627,7 @@ def shader_mutations(codes: Sequence[int]) -> Dict[str, Tuple[str, str]]:
     arm("constitutive_coefficient_index_moved_off_the_own_axis",
         needle(base, "        float kp_0 = kp0[i], km_0 = kmx[i];\n",
                "        float kp_0 = kp0[j], km_0 = kmx[j];\n"),
-        "THE CONTROL FOR THE PREDICTED NULL BELOW: the dsigw index is the component's "
+        "The control for the predicted null below: the dsigw index is the component's "
         "OWN axis; moved to another axis it is a silent half-cell error and MUST fire")
     arm("h_store_dropped",
         needle(base, "    ho0[ii] = own.a0; ho1[ii] = own.a1; ho2[ii] = own.a2;\n",
@@ -1638,7 +1638,7 @@ def shader_mutations(codes: Sequence[int]) -> Dict[str, Tuple[str, str]]:
                "    wo0[ii] = own.wnext0; wo1[ii] = own.wnext1; wo2[ii] = own.wnext2;\n",
                "    wo1[ii] = own.wnext1; wo2[ii] = own.wnext2;\n"),
         "one split-field history never advances")
-    # THE CURL HALF. INVERTED (KERNELS.md §7.1), as the constitutive grouping is.
+    # The curl half. INVERTED, as the constitutive grouping is.
     arm("curl_previous_grouping",
         needle(base, "dtdx * (((c_y - c) + b) - b_z)", "dtdx * ((c_y - c) + (b - b_z))"),
         "the package's previous pairwise grouping (g1s - g1) + (g2 - g2s) planted in "
@@ -1673,7 +1673,7 @@ def _set_flags(source: str, line: str, stem: str, values: Sequence[str],
 
 
 def b_battery(base: str) -> Dict[str, Tuple[str, str]]:
-    """KERNELS.md §7.2's must-catch rows, armed on BOTH halves of one fused source.
+    """The per-chunk form battery's must-catch rows, armed on BOTH halves of one fused source.
 
     ``base`` is a shipped weld source (plain or folded): the curl half's flags line
     and stores sit at the kernel's 4-space indent, the constitutive half's inside
@@ -1731,7 +1731,7 @@ def b_battery(base: str) -> Dict[str, Tuple[str, str]]:
 
 
 def b_battery_inert(base: str) -> Dict[str, Tuple[str, str, str]]:
-    """The battery's two DECLARED NULLS (KERNELS.md §7.2): armed, launched, scored on agreeing.
+    """The battery's two DECLARED NULLS: armed, launched, scored on agreeing.
 
     Each names the firing row that reaches the same rule where it IS observable. The
     guards they remove are traffic, not words, and are pinned statically by the
@@ -1756,7 +1756,7 @@ def b_battery_inert(base: str) -> Dict[str, Tuple[str, str, str]]:
 def periodic_wrap_mutations(codes: Sequence[int]) -> Dict[str, Tuple[str, str]]:
     """The boundary defects only an ALL-PERIODIC specialisation can carry.
 
-    WHY THIS SET EXISTS AT ALL, and it is a measurement rather than a preference.
+    Why this set exists at all, and it is a measurement rather than a preference.
     The metallic ghost's VALUE is unobservable through ``step_D``'s output: every
     shifted tap along an axis feeds the ONE curl component
     ``stepping._mask_non_owned_cells`` zeroes at index 0 of that same axis, and on a
@@ -1791,7 +1791,7 @@ def inert_mutations(codes: Sequence[int]) -> Dict[str, Tuple[str, str, str]]:
     """Armed defects required NOT to fire, each with its reason and its control.
 
     A defect that cannot be observed is a fact about the kernel, and the honest place
-    to record it is a ROW THAT RAN rather than a sentence in a table. These mutants
+    to record it is a row that ran rather than a sentence in a table. These mutants
     are compiled, installed and launched exactly like the firing ones; the leg scores
     them on AGREEING, and requires the named control -- which reaches the same rule
     where it IS observable -- to have fired.
@@ -1801,7 +1801,7 @@ def inert_mutations(codes: Sequence[int]) -> Dict[str, Tuple[str, str, str]]:
         "metallic_ghost_replaced_by_the_own_cells_constitutive": (
             needle(base, _A_Y,
                    f"    float a_y = vy ? {_tap_call('i, sj, k', 0)} : own.a0;\n"),
-            "INERT BY CONSTRUCTION, and it is a property of the ARRAY PATH rather "
+            "Inert by construction, and it is a property of the ARRAY PATH rather "
             "than of this weld. `a_y` feeds `curl2` and nothing else, and "
             "`stepping._mask_non_owned_cells` (stepping.py:1940-1948) zeroes curl2 "
             "wherever j == 0 on a metallic y axis -- which is exactly the plane where "
@@ -1967,8 +1967,8 @@ def rebind_static(plan: Any, slots: Sequence[int], tensors: Sequence[Any]) -> No
     plan.static_args = tuple(static)
 
 
-# THE LAUNCHER SEAM'S SIGNATURE IS ``(plan, residency, pml)`` AND THE THIRD ARGUMENT
-# IS NOT A CONVENIENCE. Two of these defects rebind an absorber coefficient group and
+# The launcher seam's signature is ``(plan, residency, pml)`` and the third argument
+# is not a convenience. Two of these defects rebind an absorber coefficient group and
 # so need the PML the plan was built on. That used to be looked up in a module dict
 # keyed by ``id(plan)`` which was filled AFTER the launcher had already run, so the
 # lookup resolved only when CPython happened to reuse a freed plan's id -- which is to
@@ -2146,7 +2146,7 @@ def leg_transcription(codes: Sequence[int]) -> Dict[str, Any]:
     accumulations_verbatim = all(
         f"        if (dw{t}) {{ a{t} = hi{t}[ii] + ((kp_{t} * src{t}) - (km_{t} * prev{t})); }}"
         in source for t in range(3))
-    # EVERY NEEDLE IN THE FILE, RESOLVED. Each builder raises unless its needle
+    # Every needle in the file, resolved. Each builder raises unless its needle
     # matched exactly once, so reaching the end of each call IS the assertion; the
     # names are recorded so a needle that stopped being armed is visible in the
     # record rather than only in a traceback.
@@ -2166,12 +2166,12 @@ def leg_transcription(codes: Sequence[int]) -> Dict[str, Any]:
         anchors["byte_neutral_control"] = True
     except AssertionError:
         anchors["byte_neutral_control"] = False
-    # THE CONSTITUTIVE LIFT, COUNTED BOTH WAYS, AGAINST THE DECLARED TABLE. Every
+    # The constitutive lift, counted both ways, against the declared table. Every
     # entry of `CONSTITUTIVE_LIFT_EDITS` is a per-COMPONENT edit and there are three
     # components, so the certified body must lose exactly three lines per declared
     # edit and gain three per declared edit that REWRITES rather than deletes.
     #
-    # ONE ENTRY IS EXCLUDED BY NAME, WITH ITS REASON: the decode edit
+    # One entry is excluded by name, with its reason: the decode edit
     # (``int k = ii % nzi; ...``) describes text ABOVE the anchor both sides are cut
     # at, so it can appear in neither list. Excluding it by shape rather than by
     # position keeps the arithmetic tied to the table.
@@ -2284,7 +2284,7 @@ def leg_refusal() -> Dict[str, Any]:
     cylindrical = cover(cyl_fields, cyl_pml, (), Residency())
     inactive_fields, inactive_pml = matrix.cart(pml=0)
     inactive = cover(inactive_fields, inactive_pml, (), Residency())
-    # THE RUN'S FIRST update_H: the same fixture before H was started from B. The
+    # The run's first update_H: the same fixture before H was started from B. The
     # magnetic source is this seam's business exactly once, and the refusal names
     # the start the weld does not perform.
     first_fields, first_pml = matrix.cart(boundaries={"x": "metallic"})
@@ -2391,7 +2391,7 @@ def leg_arbitration(keywords: Mapping[str, Any]) -> Dict[str, Any]:
     product is refused BY NAME, its label appears in no slot, and launches over
     ``step_B..update_E`` are two.
 
-    THE ABSORB ROW IS REQUIRED PRESENT, NOT ABSENT, AND THAT IS THE STRONGER CLAIM.
+    The absorb row is required present, not absent, and that is the stronger claim.
     Until 2026-09-05 this product had no ``FUSED_PAIR_ARMS`` row, so the seam loop
     refused it before ever asking anything about the run -- a refusal that says
     nothing about arbitration. The row landed, so the loop now ASKS this product and
@@ -2399,7 +2399,7 @@ def leg_arbitration(keywords: Mapping[str, Any]) -> Dict[str, Any]:
     would be measuring the tree of the day before and would pass on a product the
     composer never considered.
 
-    AND THE SECOND BRAKE IS DRIVEN RATHER THAN CITED. Shipped, the reason recorded is
+    And the second brake is driven rather than cited. Shipped, the reason recorded is
     the product's own ``INSTALLABLE = False`` -- a fact about the product, reported on
     every configuration, which is the FIRST brake and the only one a shipped run can
     reach. With the flag held out of the way the composer must STILL refuse, this
@@ -2508,16 +2508,16 @@ def purity_ledger(fields: Any, pml: Any) -> Dict[str, Any]:
 def leg_seed_scale() -> Dict[str, Any]:
     """The 2^80 seed scale changes no mantissa, and the fixture then clears the budget.
 
-    THREE CLAIMS, ALL MEASURED ON THE ARRAY PATH, so none of them is about a device.
+    Three claims, all measured on the array path, so none of them is about a device.
 
-    1. AT THE COMPOSITION MATRIX'S OWN AMPLITUDE THE FIXTURE ENTERS THE BAND inside
+    1. At the composition matrix's own amplitude the fixture enters the band inside
        the budget. If it did not, the scale would be an unexplained decoration, so the
        leg requires the unscaled run to fail the precondition and records the step.
-    2. AT 2^80 IT DOES NOT, for every step of the budget, and the peak magnitude is
+    2. At 2^80 it does not, for every step of the budget, and the peak magnitude is
        recorded so "further from the band" cannot quietly mean "near the other end of
        the range".
-    3. THE TWO RUNS ARE THE SAME ARITHMETIC. Every step, over every stored volume, the
-       scaled state must equal the unscaled state times 2^80 BIT FOR BIT -- compared as
+    3. The two runs are the same arithmetic. Every step, over every stored volume, the
+       scaled state must equal the unscaled state times 2^80 bit for bit -- compared as
        uint32 words -- for as long as the unscaled run stays out of the band. That is
        the claim the scale rests on, and it is a comparison rather than an argument
        about linearity. Past the unscaled run's first banded step the equality is not
@@ -2563,7 +2563,7 @@ def leg_seed_scale() -> Dict[str, Any]:
         }
         log(f"    seed_scale {name} unscaled_banded_at={plain_band} "
             f"scaled_banded_at={scaled_band} peak={peak:.3e} mismatch={mismatch}")
-    # NECESSITY IS A CLAIM ABOUT THE FIXTURE SET, NOT ABOUT EVERY CASE IN IT. Only a
+    # Necessity is a claim about the fixture set, not about every case in it. Only a
     # run that decays into the band needs the scale, and the two cases here decay at
     # different rates -- the walled one bands inside the budget and the all-periodic
     # one does not. Requiring it of every case would fail for the case that needed the
@@ -2617,7 +2617,7 @@ SCRATCH_POISON = np.float32(-1.0e30)
 
 
 def leg_private_scratch() -> Dict[str, Any]:
-    """The premise under :data:`PRIVATE_SCRATCH`, MEASURED on a dispersive driver.
+    """The premise under :data:`PRIVATE_SCRATCH`, measured on a dispersive driver.
 
     ``stored_volumes`` drops every leading-underscore name on the rule that
     ``Fields``'s private scratch is not state. That is a claim about the engine, and
@@ -2682,7 +2682,7 @@ def leg_private_scratch() -> Dict[str, Any]:
                 for name, array in private_buffers(poisoned.fields).items()}
     difference = compare_snapshots(capture(clean), capture(poisoned))
 
-    # THE NULL CONTROL: THE SAME POISON, IN A VOLUME THAT IS STATE. Without it a green
+    # The null control: the same poison, in a volume that is state. Without it a green
     # result above is equally consistent with a poison this comparison cannot see at
     # all -- a wrong dtype, a buffer the fill missed, a snapshot taken too early. The
     # control puts the identical word into ``Dz`` at the identical moment and requires
@@ -2840,7 +2840,7 @@ def _one_launch(driver: Any, functions: Optional[Mapping[str, Any]] = None
 
 
 def leg_planted_zero() -> Dict[str, Any]:
-    """The two signed-zero forms only a planted -0 reaches (KERNELS.md §7.2, DESIGN D13).
+    """The two signed-zero forms only a planted -0 reaches (docs/development/certification.md).
 
     ONE LAUNCH, against ``stepping.update_H`` then ``stepping.step_D`` on an identically
     seeded and planted engine, on the all-periodic case (no ownership mask, no wall).
@@ -2998,11 +2998,11 @@ def all_arrangements(driver: Any, functions: Optional[Mapping[str, Any]] = None,
 
     ``weld`` is the subject in a fully dispatched composition: the seam is the fused
     launch and every other slot carries the unfused single ``plan_step(fuse=False)``
-    selects. ``weld_seam_only`` is the same launch with every other slot LEFT ON THE
-    ARRAY PATH, which is the ``singles`` composition with the two halves welded.
+    selects. ``weld_seam_only`` is the same launch with every other slot left on the
+    array path, which is the ``singles`` composition with the two halves welded.
 
-    THE SECOND ONE EXISTS BECAUSE THE FIRST SHARES ITS NON-SEAM PLANS WITH A
-    REFERENCE. Measured 2026-09-05 on ``examples:cavity_arrayslice.py``: the
+    The second one exists because the first shares its non-seam plans with a
+    reference. Measured 2026-09-05 on ``examples:cavity_arrayslice.py``: the
     ``unfused`` composition disagreed with the array path at step 1 by 16 words in
     ``D``/``fu_D`` while ``singles`` and ``composition_today`` did not -- and because
     the weld arrangement borrows exactly those plans, its row disagreed too and read
@@ -3049,7 +3049,7 @@ def race_observable(driver: Any) -> Tuple[bool, List[str]]:
 def contract_untouched_auxiliaries(driver: Any) -> Tuple[str, ...]:
     """The auxiliary volumes the auxiliary contract never touches on this driver.
 
-    KERNELS.md §1, C2: an ``fu_`` word is read and written only where its component's
+    docs/design/floating-point.md: an ``fu_`` word is read and written only where its component's
     dsigu layer is carried, an ``f_w_`` word only where its own (dsigw) layer is -- on
     the record's membership lines, half-integer for the B curl and ``update_E``,
     integer for the D curl and ``update_H``. A volume whose line is empty on every row
@@ -3090,7 +3090,7 @@ def run_product(driver: Any, steps: int, progress: Optional[Callable[[str], None
 
     ``require_full_budget`` is True for the SYNTHETIC fixture, whose amplitude this
     gate chooses (:data:`SEED_SCALE_BITS`) precisely so the flush precondition holds
-    for the whole budget. It is False for a LIFTED CORPUS ROW, whose state is the
+    for the whole budget. It is False for a lifted corpus row, whose state is the
     row's own: a run driven from the engine's zeros has a wavefront whose leading
     cells are arbitrarily small, so it enters the float32 denormal band on its own
     schedule and no byte claim can be made past that step. There the budget is every
@@ -3112,13 +3112,13 @@ def run_product(driver: Any, steps: int, progress: Optional[Callable[[str], None
         legs[name]["dispatched"].get("update_H", 0) == result["steps_stepped"]
         and legs[name]["absorbed"].get("step_D", 0) == result["steps_stepped"]
         for name in ("weld", "weld_seam_only"))
-    # THE FLOOR, AND WHICH ONE DEPENDS ON WHERE THE STATE CAME FROM.
+    # The floor, and which one depends on where the state came from.
     #
     # ``all`` is the SYNTHETIC fixture's floor: every stored volume is seeded with
     # physical-band noise, so every one of them must move or the comparison is a
     # no-op agreeing with a no-op.
     #
-    # ``seam`` is the LIFTED CORPUS ROW's, and the difference is physics rather than
+    # ``seam`` is the lifted corpus row's, and the difference is physics rather than
     # leniency. A lifted row starts at the engine's own zeros and is driven by its
     # own sources, so a component the row's polarization never excites is identically
     # zero for the whole run -- a 2-D TM row moves Ez, Hx and Hy and nothing else, and
@@ -3139,14 +3139,14 @@ def run_product(driver: Any, steps: int, progress: Optional[Callable[[str], None
         floor = not (set(result["arrays_that_never_moved"]) - set(exempt))
     else:
         floor = bool(seam_outputs) and sum(seam_moved.values()) > 0
-    # A ROTATION LEFT STANDING VOIDS EVERY COMPARISON AFTER IT, IN BOTH DIRECTIONS.
+    # A rotation left standing voids every comparison after it, in both directions.
     # The arrangements' mirrors are bound to the engine's arrays by identity and
     # ``capture`` reads the names, so an orphaned volume can manufacture a divergence
     # (measured) and can equally manufacture an agreement between two arrangements
     # that both wrote an array nobody read. Scored, never inferred from the byte
     # result.
     settled = bool(result["every_arrangement_gave_the_engine_its_volumes_back"])
-    # THE PRECONDITION HAS TO HAVE BEEN TAKEN, NOT ONLY TO HAVE HELD. A step whose
+    # The precondition has to have been taken, not only to have held. A step whose
     # arithmetic ran through a helper the intermediate census does not model was
     # compared without half of its precondition, and a byte result taken there is a
     # claim the gate cannot support -- so it fails rather than passing quietly.
@@ -3289,7 +3289,7 @@ def leg_sync(driver: Any, steps: int) -> Dict[str, Any]:
     }
 
 
-#: THE SOURCES ARE SCALED WITH THE SEED, and leaving them unscaled DISARMS this leg.
+#: The sources are scaled with the seed, and leaving them unscaled DISARMS this leg.
 #:
 #: Measured 2026-09-05 on the withdraw this leg used to drive, and it holds for the
 #: f_minus_p words it drives now: the seeded state carries :data:`SEED_SCALE_BITS`, and
@@ -3352,7 +3352,7 @@ def seam_restore_leg(driver: Any, coverage: Callable[..., Any], weld: Arrangemen
 
     ``driver`` carries the integrated sources (electric and magnetic) and an active
     absorber; ``coverage`` is the product's predicate; ``weld`` is the force-installed
-    arrangement. SINCE ENTRY 25 NO WITHDRAW STANDS IN THIS SEAM: an integrated source's
+    arrangement. No withdraw stands in this seam: an integrated source's
     dipole enters through ``f_minus_p`` around each constitutive consult, and the one
     statement between the ``update_H`` and ``step_D`` consults is the MAGNETIC restore,
     which writes B alone (``withdraw_hoist.SEAM_PASS``) and runs only where H is stored.
@@ -3429,7 +3429,7 @@ def seam_restore_leg(driver: Any, coverage: Callable[..., Any], weld: Arrangemen
         "seam_pass": dict(withdraw_hoist.SEAM_PASS),
         "superseded_campaign": dict(withdraw_hoist.MEASUREMENT),
         "what_this_licenses": (
-            "this weld beside the 0.10 seam pass on this device: with integrated "
+            "this weld beside the 1.0 seam pass on this device: with integrated "
             "sources through f_minus_p, the launch spanning update_H and step_D leaves "
             "the magnetic restore after step_D and is byte-identical to the driver's "
             "order, while both orderings the commutation does not license diverge. It "
@@ -3481,9 +3481,9 @@ def _child_progress(message: str) -> None:
 
 
 def waveform_determinism(driver: Any, steps: int) -> Dict[str, Any]:
-    """Is every source's waveform a FUNCTION OF TIME? Measured, never assumed.
+    """Is every source's waveform a function of time? Measured, never assumed.
 
-    THE COMPARISON THIS GATE MAKES PRESUMES IT. ``drive`` steps five arrangements
+    The comparison this gate makes presumes it. ``drive`` steps five arrangements
     from ONE captured seed, one after another, and holds them to the same bytes.
     That is a claim about the arrangements only where the row's own inputs are the
     same for each of them -- and a source whose waveform is not a function of ``t``
@@ -3500,7 +3500,7 @@ def waveform_determinism(driver: Any, steps: int) -> Dict[str, Any]:
     ``GaussianSource`` and are not affected -- which is exactly why the disposition is
     a measurement and not a list of file names.)
 
-    THE PROBE IS THE ENGINE'S OWN ACCESSOR, twice at the same argument, over the
+    The probe is the engine's own accessor, twice at the same argument, over the
     times this row would be driven at. ``current`` is pure on every deterministic
     envelope -- it is a closed-form waveform (sources.py:1448-1449 and each
     subclass's override) -- so a row that passes is untouched by having been asked.
@@ -3584,7 +3584,7 @@ def evaluate(driver: Any) -> Dict[str, Any]:
         block["why_not_driven"] = (f"{cells} cells exceeds MEEP_GPU_HD_GATE_MAX_CELLS="
                                    f"{max_cells}; refused rather than run partially")
         return {"metal_fused_hd_pair_gate": block}
-    # THE ROW'S INPUTS MUST BE THE SAME FOR EVERY ARRANGEMENT, AND THAT IS MEASURED.
+    # The row's inputs must be the same for every arrangement, and that is measured.
     # See :func:`waveform_determinism`. A row that fails it is refused BY NAME with
     # the values that refused it, stays in the cell's denominator, and is never
     # scored as a divergence -- the comparison it would fail is undefined for it.
@@ -3597,7 +3597,7 @@ def evaluate(driver: Any) -> Dict[str, Any]:
         _child_progress(f"REFUSED as undefined: {determinism['reason'][:160]}")
         return {"metal_fused_hd_pair_gate": block}
     block["driven"] = True
-    # THE FLOOR IS THE LEG'S, NOT THE ROW'S. A row answers for what it measured --
+    # The floor is the leg's, not the row's. A row answers for what it measured --
     # byte identity over every step it compared, the launch counters, the movement --
     # and whether that was ENOUGH is a judgement about the cell, made once, where the
     # rows below the floor can be named together rather than each reported as a
@@ -3611,7 +3611,7 @@ def evaluate(driver: Any) -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# The lift's refusal accounting on the 0.10 source path (every Metal H->D gate)
+# The lift's refusal accounting on the 1.0 source path (every Metal H->D gate)
 # ---------------------------------------------------------------------------
 
 #: The words every ``launch.h_start_reasons`` refusal for a magnetic source carries
@@ -3643,18 +3643,18 @@ def h_start_lead() -> str:
 def lift_refusal_accounting(blocks: Mapping[str, Mapping[str, Any]],
                             withdraw_rows: Iterable[str] = (),
                             further_reasons: Sequence[str] = ()) -> Dict[str, Any]:
-    """Which lifted rows the predicate must refuse on the 0.10 source path, and whether
+    """Which lifted rows the predicate must refuse on the 1.0 source path, and whether
     it refused exactly those, by name.
 
-    ENTRY 25 REMOVED THE REFUSAL THIS ACCOUNTING USED TO READ. Before it an engine
+    Moving integrated sources to ``f_minus_p`` removed the refusal this accounting used to read. Before it an engine
     integrated electric source stood a withdraw in the seam, the predicate refused its
     rows by that withdraw, and the seam record's ``withdraw_in_seam`` flag named them.
-    Since it such a source enters through ``f_minus_p`` and stands none
+    Since then such a source enters through ``f_minus_p`` and stands none
     (``withdraw_hoist.standing_withdraws`` answers ``()``), so those rows
     (``withdraw_rows``) are ADMITTED and driven like any other, and a refusal naming a
     standing withdraw is a failure.
 
-    THE REFUSAL THAT REPLACED IT is ``metal_kernels.launch.h_start_reasons``: the array
+    The refusal that replaced it is ``metal_kernels.launch.h_start_reasons``: the array
     path's first ``update_H`` starts H and ``f_w`` from B on the dsigw cells
     (``stepping.separate_h_from_b``) and a base kernel steps the forms alone, so a row
     whose sources deposit into B before that update is refused at plan time. The rows
@@ -3736,7 +3736,7 @@ def lift_basis(results: Path) -> Tuple[List[dict], Dict[str, Any]]:
     chose for each row -- never from a list here. The seam record supplies each
     row's module and lift record and its ``withdraw_in_seam`` flag, which names the
     rows the 0.9.2 predicate refused by their standing withdraw and which, since
-    entry 25, it must admit. ``lift_host`` supplies the interpreter (this one; the
+    integrated sources enter through ``f_minus_p``, it must admit. ``lift_host`` supplies the interpreter (this one; the
     recorded path is provenance), the row's declared needs, and the four input
     files, each required by name.
     """
@@ -3762,7 +3762,7 @@ def lift_basis(results: Path) -> Tuple[List[dict], Dict[str, Any]]:
             rows.append({
                 "label": label, "leg": record.get("leg", leg), "row": record["row"],
                 "module": record.get("module") or seam_row.get("module"),
-                # WHERE THE CHILD RUNS: this gate's interpreter. The path the census
+                # Where the child runs: this gate's interpreter. The path the census
                 # recorded is kept as recorded_interpreter and never launched.
                 **lift_host.row_fields(record, seam_row),
                 "grid_cells": record.get("grid_cells"),
@@ -3796,11 +3796,12 @@ def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float
     being recorded as the unmeasured row it was. Measured 2026-09-06 on
     ``examples:grating2d_triangular_lattice.py``, the corpus's 11.2-million-cell row.
     """
+    import neutral_ids  # noqa: PLC0415
     import gate_provenance  # noqa: PLC0415
     import lift_host  # noqa: PLC0415
     import measure_predicate_coverage as census  # noqa: PLC0415
 
-    # ABSOLUTE, BEFORE ANYTHING IS BUILT FROM IT. The child runs with ``cwd`` set to
+    # Absolute, before anything is built from it. The child runs with ``cwd`` set to
     # the lift workdir, so a relative artifact or progress path handed to it resolves
     # somewhere that does not exist -- and the child then dies AFTER the lift, with
     # the parent recording a right-shaped row that measured nothing. Measured
@@ -3840,7 +3841,7 @@ def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float
         if not link.exists():
             with contextlib.suppress(OSError):
                 link.symlink_to(entry)
-    # THE CENSUS'S OWN PATH, FOR THE MODULES THAT NEED IT. Six MEEP test modules
+    # The census's own path, for the modules that need it. Six MEEP test modules
     # decorate with ``parameterized``, which is not installed here; the census runs
     # them with ``parity/meep_gpu/shim`` ahead of the API root
     # (``measure_predicate_coverage.py``'s ``tests_param`` leg) and lifted them. This
@@ -3861,7 +3862,7 @@ def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float
         if module_file.is_file() and "import parameterized" in module_file.read_text(
                 encoding="utf-8", errors="replace"):
             needs_shim.add(module_name)
-    # WHAT THIS HOST CANNOT LIFT, asked once before any child: the needs the rows
+    # What this host cannot lift, asked once before any child: the needs the rows
     # declare, probed under this interpreter (lift_host).
     host = lift_host.host_check(rows, environment, work)
     if host["unreadable"]:
@@ -3917,7 +3918,7 @@ def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float
                 stderr_text = ((expired.stderr or b"").decode("utf-8", "replace")
                                if expired.stderr else "")
             if not record_path.exists():
-                # STAMPED LIKE ANY OTHER PAYLOAD. This is the record a reader gets
+                # Stamped like any other payload. This is the record a reader gets
                 # when a child produced nothing, which is exactly the case where
                 # "which tree was this?" is the first question -- the 2026-09-05
                 # unmeasured row was a MISSING IMPORT in the parent's environment, and
@@ -3948,22 +3949,33 @@ def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float
     admitted = sorted(label for label, b in blocks.items() if b.get("predicate_admits"))
     refused = sorted(label for label, b in blocks.items()
                      if b.get("predicate_admits") is False)
-    # THE DENOMINATOR IS THE CELL'S, EXCEPT ON A DELIBERATE SUBSET. A ``--lift-only``
+    # The denominator is the cell's, except on a deliberate subset. A ``--lift-only``
     # run measures the rows it names and must be scoreable on them; the FULL run is
     # the one whose pass condition carries the cell's own 49, less the rows named
     # ``unlifted_on_this_host`` (never launched, each with its reason), and
     # ``rows_in_cell`` is reported either way so a subset can never read as the cell.
     # The refusals are scored on the rows measured either way (:func:`lift_refusal_accounting`): the
-    # rows the seam record flags ``withdraw_in_seam`` are admitted since entry 25, and
+    # rows the seam record flags ``withdraw_in_seam`` are admitted since integrated sources enter through ``f_minus_p``, and
     # the rows carrying a magnetic source are refused by ``launch.h_start_reasons``.
     accounting = lift_refusal_accounting(blocks, facts["rows_with_a_standing_withdraw"])
     refused_by_the_withdraw = accounting["refused_by_a_standing_withdraw"]
     expected_refused = accounting["expected_refused_from_the_row_sources"]
+    # A row the identity corpus's manifest retires that reached no predicate verdict is
+    # refused by name with the manifest's reason, never scored as unmeasured
+    # (``lift_host.corpus_refusals``), and is out of the cell's denominator like a row
+    # unlifted on this host.
+    corpus = lift_host.corpus_refusals(HERE / "results", [
+        record for record in measured
+        if "predicate_admits" not in blocks[record["label"]]
+        and record["label"] not in unlifted])
+    refused_by_the_corpus = corpus["refused"]
+    counted_out = len(unlifted) + len(refused_by_the_corpus)
     unmeasured = sorted(label for label, b in blocks.items()
-                        if "predicate_admits" not in b and label not in unlifted)
+                        if "predicate_admits" not in b and label not in unlifted
+                        and label not in refused_by_the_corpus)
     driven = sorted(label for label in admitted if blocks[label].get("driven"))
     passed_rows = sorted(label for label in driven if blocks[label].get("passed"))
-    # THE THIRD DISPOSITION, AND IT IS A MEASUREMENT RATHER THAN AN EXEMPTION. A row
+    # The third disposition, and it is a measurement rather than an exemption. A row
     # whose source waveform is not a function of time hands each arrangement a
     # different current, so the comparison this leg makes is undefined for it -- not
     # failed. It stays in ``admitted`` and therefore in the cell's denominator, it is
@@ -3977,7 +3989,7 @@ def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float
                   if not blocks[label].get("driven") and label not in undefined}
     composer_refuses = all(blocks[label].get("composer_refuses_this_product")
                            for label in admitted)
-    # THE THREE OUTCOMES A DRIVEN ROW CAN HAVE, AND ONLY ONE OF THEM IS A FAILURE.
+    # The three outcomes a driven row can have, and only one of them is a failure.
     #
     #   diverged          the weld or a reference disagreed on a step the flush
     #                     precondition held for. That is what this gate exists to
@@ -3992,7 +4004,7 @@ def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float
     #   cleared_the_floor byte-identical over at least the floor.
     diverged = sorted(label for label in driven
                       if not blocks[label].get("bit_identical"))
-    # WHICH SIDE OF THE COMPARISON MOVED. A row where the weld still agrees with the
+    # Which side of the comparison moved. A row where the weld still agrees with the
     # certified singles but some arrangement disagrees with the array path is a
     # finding about a REFERENCE composition on that row, not about this weld, and the
     # record has to say so -- it still fails the leg, because a gate whose references
@@ -4018,16 +4030,16 @@ def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float
     # cell this leg has not really measured, whatever its zero divergences say. Half
     # is the bar, and the count is reported either way.
     majority_cleared = len(cleared) * 2 >= len(driven) if driven else False
-    # AND THE UNDEFINED ROWS ARE BOUNDED. A disposition that can grow without limit is
+    # And the undefined rows are bounded. A disposition that can grow without limit is
     # an escape hatch; this one may take at most a tenth of the cell, and the leg fails
     # if it grows past that rather than reporting a shrinking measurement as a pass.
     # The cell here is the rows the engine was asked about: a row unlifted on this host
-    # is out of every denominator, this one included.
-    undefined_within_bounds = len(undefined) * 10 <= facts["rows_in_cell"] - len(unlifted)
+    # or retired from the corpus is out of every denominator, this one included.
+    undefined_within_bounds = len(undefined) * 10 <= facts["rows_in_cell"] - counted_out
     return {
         "passed": bool(measured and not unmeasured
                        and (not only and len(admitted) + len(refused)
-                            == facts["rows_in_cell"] - len(unlifted)
+                            == facts["rows_in_cell"] - counted_out
                             or bool(only))
                        and accounting["passed"]
                        and not not_driven
@@ -4051,7 +4063,9 @@ def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float
         "rows_measured": len(measured),
         "rows_unmeasured": unmeasured,
         "unlifted_on_this_host": unlifted,
-        "rows_the_engine_was_asked_about": len(blocks) - len(unlifted),
+        "refused_by_the_corpus_manifest": refused_by_the_corpus,
+        "corpus_manifest": corpus["basis"],
+        "rows_the_engine_was_asked_about": len(blocks) - counted_out,
         "host_capabilities": host,
         "admitted": len(admitted),
         "admitted_rows": admitted,
@@ -4086,7 +4100,7 @@ def leg_lift(out_dir: Path, steps: int, max_cells: Optional[int], timeout: float
             row["label"] for row in rows if row.get("module") in needs_shim),
         "words_compared": int(sum(blocks[label].get("words_compared", 0) for label in driven)),
         "steps": steps,
-        "rows_jsonl": str(lift_dir / "rows.jsonl"),
+        "rows_jsonl": neutral_ids.path(str(lift_dir / "rows.jsonl")),
     }
 
 
@@ -4125,7 +4139,7 @@ def _mutation_row(name: str, result: Mapping[str, Any], why: str,
     first = weld["first_divergence"]
     in_place_first = next((row["step"] for row in weld["per_step"] if in_place_words(row)),
                           None)
-    # THE PRECONDITION IS PART OF "CAUGHT". A walk that stopped because the oracle
+    # The precondition is part of "CAUGHT". A walk that stopped because the oracle
     # entered the denormal band has fewer rows than the budget, which makes
     # ``identical`` False for every arrangement -- so a banded run would report every
     # mutant as caught and the shipped kernel as diverging. The census is asserted
@@ -4139,7 +4153,7 @@ def _mutation_row(name: str, result: Mapping[str, Any], why: str,
             "first_divergence": first, "first_divergence_in_place": in_place_first,
             "differing_volumes": weld["differing_volumes_final"],
             "launches": weld["launches"],
-            # NO REFERENCE DIVERGED IN THE STEPS THAT RAN. Not ``identical``, which
+            # No reference diverged in the steps that ran. Not ``identical``, which
             # additionally requires the full budget: a caught mutant stops the walk
             # at its first divergence, so ``identical`` would read False for every
             # reference on every caught row and look like a three-way disagreement.
@@ -4221,7 +4235,7 @@ def main() -> int:
 
     with jsonl.open("w", encoding="utf-8") as handle:
         if not report["admitted"]:
-            # REFUSED BY NAME, NEVER RUN: a keep-resolved process cannot certify bytes
+            # Refused by name, never run: a keep-resolved process cannot certify bytes
             # under a policy the device was never in.
             add("policy", "resolved_subnormal_policy_refused",
                 {"passed": False, "refused": True, "report": report})
@@ -4300,7 +4314,7 @@ def main() -> int:
                 result = run_product(build_driver(cases[MUTATION_CASE], 95000), args.steps,
                                      functions=functions)
                 add("mutation", name, _mutation_row(name, result, why))
-            # THE PERIODIC SET, ON THE PERIODIC CASE. Armed against a different
+            # The periodic set, on the periodic case. Armed against a different
             # specialisation because it is a different specialisation's line: the
             # metallic kernel clamps where this one wraps.
             for name, (source, why) in periodic_mutants.items():
@@ -4310,7 +4324,7 @@ def main() -> int:
                 row = _mutation_row(name, result, why)
                 row["case"] = PERIODIC_MUTATION_CASE
                 add("mutation", name, row)
-            # THE HOST DEFECTS, WITHOUT THE EARLY STOP. ``rotation_skipped`` makes TWO
+            # The host defects, without the early stop. ``rotation_skipped`` makes TWO
             # claims at two different steps -- every volume at 1, the in-place
             # displacement at 2 -- and a walk that stopped at the first divergence
             # could never reach the second one, so it would report the harder half as
@@ -4324,7 +4338,7 @@ def main() -> int:
                                          and row["first_divergence_in_place"] == 2)
                     row["expected"] = {"first_divergence": 1, "first_divergence_in_place": 2}
                 add("mutation", name, row)
-            # THE ARMED DEFECTS REQUIRED NOT TO FIRE. Scored on AGREEING, with the
+            # The armed defects required not to fire. Scored on AGREEING, with the
             # named control's own outcome carried on the row: an inert mutant whose
             # control did not fire is a hole rather than a fact about the kernel.
             for name, (source, reason, control) in inert.items():
@@ -4443,7 +4457,7 @@ def main() -> int:
         "what_this_does_not_license": (
             "installing the product (the composer refuses it by name and the arbitration "
             "leg pins that), flipping HOISTS_THE_WITHDRAW (no engine source stands a "
-            "withdraw in this seam since entry 25; the withdraw leg measures where the "
+            "withdraw in this seam since integrated sources enter through f_minus_p; the withdraw leg measures where the "
             "magnetic f_minus_p restore sits, not the flag), any throughput claim "
             "(launch counts are not time), "
             "the (folded -> folded) cell, cylindrical storage, the nonlinear widening "

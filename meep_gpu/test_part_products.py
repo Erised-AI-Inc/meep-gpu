@@ -4,7 +4,7 @@ What each pins:
 
 * a real coefficient times complex64 storage is one float32 product per part -- equal to
   the part products themselves, including the sign of zero that NumPy's complex multiply
-  against ``(k + 0j)`` gets wrong (MEASURED in phase 0: ``kap - sig < 0`` times ``+0``);
+  against ``(k + 0j)`` gets wrong (measured before 1.0: ``kap - sig < 0`` times ``+0``);
 * real storage takes the plain ufunc, so a real run's words cannot move;
 * the coefficient is MEEP's ``realnum``: a scalar rounds to the part dtype, a float64
   array or a complex coefficient is refused by name;

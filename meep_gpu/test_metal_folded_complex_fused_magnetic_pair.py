@@ -1,17 +1,17 @@
 """The folded COMPLEX fused magnetic Metal kernel, as claims a laptop can check without a GPU.
 
-WHAT THIS SUITE OWNS AND WHAT IT DELIBERATELY DOES NOT. The BYTES are the device
+What this suite owns and what it deliberately does not. The BYTES are the device
 gate's — ``parity/meep_gpu/gate_metal_folded_complex_fused_magnetic_pair.py`` steps
 two engines side by side for twelve complete steps over eleven configurations and
 compares uint32 words, and no assertion here duplicates that. What lives here is
 everything true about the family WITHOUT a device: what the emitted source says, which
 configurations the predicate refuses and by what name, that the arm is registered
-UNWIRED, and that the plan binds the lattice each half is supposed to take.
+unwired, and that the plan binds the lattice each half is supposed to take.
 
-THE FIVE CLAIMS THIS SUITE MAKES THAT THE GATE CANNOT.
+The five claims this suite makes that the gate cannot.
 
 1. That the product is invisible to ``plan_step`` — a property of the TABLE, and the
-   whole reason this family may land beside the wired tree without touching it.
+   whole reason this family may land beside the wired families without touching it.
 2. That the near-fill geometry is the B one and NOT the D one: a component is a ghost
    destination on its OWN axis alone. That is the single most likely slip in porting
    this product from :mod:`~meep_gpu.metal_kernels.folded_fused_pair`.
@@ -62,7 +62,7 @@ def source(codes=CODES, phased=PHASED, walls=WALLS,
 
 
 def _mask_lines(text: str) -> str:
-    """The body's TOP-PLANE CURL MASK lines, as text — empty when it carries none.
+    """The body's top-plane curl mask lines, as text — empty when it carries none.
 
     Read off the emitted source rather than spelled, so this cannot agree with a
     kernel that spelled the mask wrongly; ``symmetry.folded_top_plane_mask`` is the
@@ -154,7 +154,7 @@ def test_the_ghost_write_is_the_certified_folded_complex_fills_own_line(axis):
     assert record["identical"], record["rows"]
     for row in record["rows"]:
         assert "c_mul_coefficient_left(" in row["emitted"], row
-        # THE COEFFICIENT IS ON THE LEFT, which is the array path's `phase * plane`.
+        # The coefficient is on the left, which is the array path's `phase * plane`.
         # The destination index carries the transcription's own SYNTHETIC tag — a
         # placeholder that exists only inside the comparison, so it is read off the
         # record rather than spelled. The emitter's real tags name the ghost's axes
@@ -163,18 +163,18 @@ def test_the_ghost_write_is_the_certified_folded_complex_fills_own_line(axis):
         prefix, call = row["emitted"].split(" = ", 1)
         tag = f"g{row['target']}_t"
         if row["role"] == "last":
-            # THE LAST APPLICATION WRITES THE GHOST CELL, which is the certified fill's
+            # The last application writes the ghost cell, which is the certified fill's
             # one-line shape exactly.
             assert prefix == f"f{row['target']}[{tag}_i]", prefix
         else:
-            # AN EARLIER ONE WRITES THE CARRY REGISTER, because the array path's
+            # An earlier one writes the carry register, because the array path's
             # corresponding pass writes a memory cell the next pass then reads. Only
             # the FIRST link declares it.
             assert prefix == (("float2 " if row["role"] == "earlier" else "")
                               + f"{tag}_v"), (row["role"], prefix)
         assert call.startswith(f"c_mul_coefficient_left(mp{axis},"), call
 
-    # THE THREE ROLES ARE ALL PRESENT, or the loop above measured one shape and
+    # The three roles are all present, or the loop above measured one shape and
     # reported on three.
     assert {row["role"] for row in record["rows"]} == {"last", "earlier", "continued"}
 
@@ -183,7 +183,7 @@ def test_the_ghost_write_is_the_certified_folded_complex_fills_own_line(axis):
 def test_the_far_ghost_write_is_the_certified_FAR_fills_own_line(axis):
     """The far pass's twin of the check above — and it is NOT the near line moved.
 
-    THE FOURTH LIFT, carried since 2026-08-21. The certified far fill changes the
+    The fourth lift, carried since 2026-08-21. The certified far fill changes the
     DESTINATION row as well as the source (``last`` imaged from ``reflect_row``, not
     ``0`` imaged from ``2``) and it takes the OTHER of
     ``mirror_parity_coefficients``' two words, because ``mirror_parity`` is
@@ -199,7 +199,7 @@ def test_the_far_ghost_write_is_the_certified_FAR_fills_own_line(axis):
         assert call.startswith(f"c_mul_coefficient_left(fp{axis},"), call
         assert f"(mp{axis}," not in row["emitted"], row
 
-    # AND THE TWO PASSES TOUCH DISJOINT COMPONENTS ON ONE AXIS. A B component's Yee
+    # And the two passes touch disjoint components on one axis. A B component's Yee
     # shift on a given axis is 0 or 1, never both, so no component is a near and a far
     # destination along the SAME axis — which is why the chain's entries are distinct
     # axes and `parity_chain` can order them at all.
@@ -213,12 +213,12 @@ def test_an_empty_near_pass_is_refused_by_the_certified_emitter_not_measured_emp
         monkeypatch):
     """A fill comparison over an empty row set reports as a pass; something must raise.
 
-    THIS TEST DRIVES THE REAL PATH rather than restating the condition. Every axis
+    This test drives the real path rather than restating the condition. Every axis
     images exactly one B component under the shipped Yee table, so the empty case is
     unreachable through it; the way to reach it is to hand the family a target triple
     whose Yee shift on the axis is 1 everywhere, which is what the monkeypatch does.
 
-    WHAT IT MEASURES, and the answer is not the one the checker's own guard expects:
+    What it measures, and the answer is not the one the checker's own guard expects:
     :func:`.folded_complex.folded_mirror_fill_complex_source` refuses FIRST, by name —
     "an empty fill launch is a no-op that a before/after comparison reports as a pass"
     — so :func:`near_fill_transcription`'s own empty-row raise is a SECOND line of
@@ -245,7 +245,7 @@ def test_an_empty_near_pass_is_refused_by_the_certified_emitter_not_measured_emp
 def test_a_component_is_a_ghost_destination_on_its_own_axis_alone(target, name):
     """``iyee[Bm][a] == 0`` iff ``a == m`` — the B family's whole fill geometry.
 
-    THE MOST LIKELY SLIP IN THE PORT. On the D family the near fill touches the two
+    The most likely slip in the port. On the D family the near fill touches the two
     axes that are NOT the component's own; getting it backwards here would image the
     wrong plane on every folded run and would still compile, still run, and still look
     converged.
@@ -294,7 +294,7 @@ def test_the_imaged_ghost_reads_its_own_coefficient_pair_at_index_zero():
     assert "c_mul_coefficient_left(kp_0, o0_src)" in text
     assert "c_mul_coefficient_left(g0_n_kp, g0_n_src)" in text
 
-    # THE FAR SIDE IS THE OPPOSITE CLAIM AND IT IS ASSERTED HERE, not left to the
+    # The far side is the opposite claim and it is asserted here, not left to the
     # gate: a far ghost sits at the SAME coefficient index as the thread that owns it,
     # so reloading at 0 there would apply the mirror plane's absorber profile to the
     # top plane. The gate's `far_ghost_reloads_the_near_coefficient` mutation is the
@@ -309,10 +309,10 @@ def test_the_ghost_carve_out_makes_the_source_thread_the_owner():
     """``if (!(m == 0))`` on the destination and ``if (m == 2)`` on the source.
 
     The restructure exists to remove a cross-thread read: the cell the fill writes is
-    OWNED BY THE THREAD THAT COMPUTES ITS SOURCE, so no thread forms a displacement
+    owned by the thread that computes its source, so no thread forms a displacement
     from a word another thread is writing in the same launch.
 
-    THE CARVE-OUT GREW A SECOND DISJUNCT WITH THE FAR CARRY, and that is asserted
+    The carve-out grew a second disjunct with the far carry, and that is asserted
     below rather than left to the gate: on a folded PERIODIC axis the TOP plane is a
     ghost destination too, so a carve-out that still named only cell 0 would let the
     top-plane thread store its own displacement over the image the source thread
@@ -416,13 +416,13 @@ def test_a_folded_periodic_axis_is_ADMITTED_and_its_far_fill_CARRIED():
     assert family.REPLACES == ("step_B", "fill_B", "zero_metal_B",
                                "fill_folded_far_ghosts_B", "update_H")
 
-    # 2. THE FAR FILL FIRES, on the axes the module's own table names and no others.
+    # 2. The far fill fires, on the axes the module's own table names and no others.
     far = tuple(family.far_fill_axes(periodic, target) for target in range(3))
     assert far == ((1,), (0,), (0, 1)), far
     assert "_fill_folded_far_ghosts" in text
     assert "== reflect_x" in text and "== reflect_y" in text
 
-    # 3. THE TOP-PLANE MASK CAME WITH IT — the second obligation. Both directions:
+    # 3. The top-plane mask came with it — the second obligation. Both directions:
     # present on the periodic body, absent on the metallic one where the top plane is
     # an owned cell and masking it would delete a real value.
     assert "curl0 = last_y ? float2(0.0f, 0.0f) : curl0;" in text
@@ -486,7 +486,7 @@ def test_the_params_record_is_one_hundred_and_eighty_four_bytes_with_the_float2_
     uints, a float, the three int reflect rows and the 100-byte chunk record:
     24 + 24 + 32 + 100 = 180, padded by Metal to 184.
 
-    IT WAS 72 BEFORE THE FAR CARRY. The three FAR parity words and the three runtime
+    It was 72 before the far carry. The three FAR parity words and the three runtime
     reflect rows are what grew it, and they are what let the carry cost NO BINDING —
     so the itemsize and the binding count are the two halves of one claim and both are
     pinned here. Stated explicitly in the dtype so the record cannot drift into
@@ -500,11 +500,11 @@ def test_the_params_record_is_one_hundred_and_eighty_four_bytes_with_the_float2_
                            "nx", "ny", "nz", "n_elem", "dtdx", "rx", "ry", "rz", "cb")
     assert [dtype.fields[name][1] for name in dtype.names] == [
         0, 8, 16, 24, 28, 32, 36, 40, 44, 48, 52, 56, 60, 64, 68, 72, 76, 80]
-    # THE float2 MEMBERS COME FIRST -- the packing rule the unfolded sibling measured
+    # The float2 members come first -- the packing rule the unfolded sibling measured
     # on this toolchain: no scalar may sit before the last float2.
     assert dtype.fields["pz"][1] < dtype.fields["m0"][1]
 
-    # AND THE CARRY IS FREE AT THE CEILING. The reflect rows and far parities ride in
+    # And the carry is free at the ceiling. The reflect rows and far parities ride in
     # this record, so the shipped signature is the unfolded pair's exactly.
     assert family.PACKED_BINDINGS == unfolded.PACKED_BINDINGS == 28
     assert family.PACKED_BINDINGS < 31
@@ -528,7 +528,7 @@ def test_the_family_replaces_five_driver_passes_in_driver_order():
 
 
 def test_the_arm_is_registered_and_unwired():
-    """THE CLAIM THAT LETS THIS LAND BESIDE THE WIRED TREE.
+    """The claim that lets this land beside the wired families.
 
     ``plan_step`` assigns at most one arm per slot and this product spans four, so
     there is no slot it could claim without a composition rule nothing has measured.

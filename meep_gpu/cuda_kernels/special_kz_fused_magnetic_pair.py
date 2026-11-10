@@ -1,15 +1,15 @@
 """The SPECIAL_KZ hand-CUDA fused pair: all five passes of the folded magnetic seam.
 
-THE BOARD'S CELL: ``B_to_H (cuda_special_kz/real beta, cuda_special_kz/real
-beta)`` -- 2 seam-instances of demand, BOTH clearing the source seam since the
-2026-09-02 residue round (``examples:refl-angular-kz2d.py`` carries nothing in
+The board's cell: ``B_to_H (cuda_special_kz/real beta, cuda_special_kz/real
+beta)`` -- 2 seam-instances of demand, BOTH clearing the source seam since
+2026-09-02 (``examples:refl-angular-kz2d.py`` carries nothing in
 the seam at all; ``tests:TestSpecialKz.test_eigsrc_kz_1_real_imag`` deposits its
 lifted eigenmode sheets between the halves, which the deposit repair carries --
 see :data:`CARRIES_DEPOSIT_REPAIR` -- and is folded, which the ported fill carry
 serves). Both halves are CERTIFIED singles (``cuda_special_kz_2026-08-21``,
 re-gated 2026-08-30); this module is the weld and introduces no new arithmetic.
 
-WHAT THE CURL HALF IS: the certified ``step_B_special_kz_real`` -- the root real PML
+What the curl half is: the certified ``step_B_special_kz_real`` -- the root real PML
 curl body with MEEP's beta pass after the x and y components' curls
 (``folded_pass.beta_insert``: ``-(c * g)`` on the partner's stored word and the folded
 ladder on the word ``pml_apply`` just stored; ``grid.beta != 0`` under REAL storage,
@@ -17,11 +17,11 @@ MEEP's "implicitly store i*(TM fields)" trick, the coefficient host-rounded once
 ``special_kz_curl.beta_curl_coefficients``). The pass rides through the register
 capture: the x and y registers are the values the LADDER returns (``fold_apply_reg``),
 because ``update_H`` and the fills must read B after both passes. The chunk record
-``cb`` is decoded ONCE for both halves (bit_parity_0_10 DESIGN.md D10), and the run's
+``cb`` is decoded ONCE for both halves, and the run's
 first ``update_H`` starts H from B on the array path (``fused_magnetic_pair.start_of_h``).
 
-THE TWO MIRROR FILLS ARE CARRIED SINCE 2026-09-02, BY THE REAL PAIR'S OWN
-MACHINERY. The fold refusal that stood here rested on "a cell whose one folded
+The two mirror fills are carried since 2026-09-02, by the real pair's own
+machinery. The fold refusal that stood here rested on "a cell whose one folded
 row cannot clear the source seam anyway" -- and that premise fell with the
 deposit-repair flag (the row's eigenmode sheets DO publish point indices; see
 :data:`CARRIES_DEPOSIT_REPAIR`). The carry is IMPORTED from
@@ -33,9 +33,9 @@ and the beta statements ride through the capture untouched. One spelling of the
 carry, two real-storage products; where the certified sources genuinely share
 the spelling, so do the welds.
 
-THE ALIASING RULE IS THE SIBLINGS': B is bound EXACTLY ONCE.
+The aliasing rule is the siblings': B is bound EXACTLY ONCE.
 
-NOTHING HERE IS DISPATCH; :mod:`.fused_pairs` can plan it opt-in only.
+Nothing here is dispatch; :mod:`.fused_pairs` can plan it opt-in only.
 """
 
 from __future__ import annotations
@@ -52,7 +52,7 @@ if TYPE_CHECKING:
     from ..grid import Grid
     from ..pml import PML
 
-# THE CERTIFIED TEXT AND THE SHARED CARRY. ``special_kz_curl`` is stdlib-only (it
+# The certified text and the shared carry. ``special_kz_curl`` is stdlib-only (it
 # reads the shared real prelude off the sibling's source), so the curl half is
 # importable everywhere; ``fused_magnetic_pair`` -- the real pair whose ownership
 # inversion this weld splices -- takes its own CuPy-bound halves defensively and
@@ -125,13 +125,13 @@ except ImportError:  # loaded by path, outside the package
 
 
 # =============================================================================
-# THE PARTITION -- EMPTY ON THE CERTIFIED SIDE UNTIL A GATE MOVES IT
+# The partition -- empty on the certified side until a gate moves it
 # =============================================================================
 
 #: Byte-identical with a gate verdict AND a record behind it.
-#: TWO RECORDS STAND BEHIND THIS ONE NAME AND THE LATER ONE IS THE LIVE BYTES'.
+#: Two records stand behind this one name and the later one is the live bytes'.
 #: ``cuda_special_kz_fused_magnetic_pair_2026-09-02`` certified the THREE-PASS
-#: weld; the residue round then ported the real pair's fill carry and the
+#: weld; a later change on 2026-09-02 ported the real pair's fill carry and the
 #: deposit bracket into this module, which CHANGES the emitted device text, so
 #: the five-pass weld was gated in its own right and recorded as
 #: ``cuda_special_kz_fused_magnetic_pair_2026-09-02_fillcarry``. Neither
@@ -150,7 +150,7 @@ CERTIFIED_KERNELS = (
 #: EMPTY since 2026-09-02; what emptied it was the run above, not an argument.
 UNCERTIFIED_KERNELS = {}
 
-#: TRUE, RE-MEASURED 2026-09-02 (fusion-residue audit §1.3): the False that
+#: True, re-measured 2026-09-02: the False that
 #: stood here rested on the premise that ``eigsrc_kz_1_real_imag`` "deposits
 #: through an ``EigenModeSource``, which publishes no point index" -- FALSE of
 #: the live tree. ``EigenModeSource`` never reaches the driver:
@@ -226,7 +226,7 @@ LIFT_EDITS: Tuple[Dict[str, str], ...] = (
     {"line": "    field[_face(axis, 0)] = phase * field[_face(axis, 2)]   "
              "(stepping._write_mirror_ghost)",
      "became": "the SOURCE thread at stored 2 writes stored 0 from its register",
-     "why": "THE OWNERSHIP INVERSION, imported from fused_magnetic_pair: the "
+     "why": "The ownership inversion, imported from fused_magnetic_pair: the "
             "destination thread would have to read a word another block writes "
             "in this launch; the source thread already holds it. Same parity, "
             "same destination cell, same order relative to the wall clear."},
@@ -239,7 +239,7 @@ LIFT_EDITS: Tuple[Dict[str, str], ...] = (
     {"line": "    <step_B_special_kz_real's chunk-record block>\n"
              "    <update_H_pml_real's chunk-record block>",
      "became": "    <ONE block, fused_magnetic_pair.union_bounds_block()>",
-     "why": "ONE DECODE OF THE RECORD PER KERNEL (DESIGN.md D10): both lifted bodies' "
+     "why": "One decode of the record per kernel: both lifted bodies' "
             "blocks are removed by bounds_block.strip_bounds_block and the real pair's "
             "union block is emitted directly after the decode. A ghost the carry "
             "steps takes the membership of the row its coefficient entry is read at "
@@ -260,7 +260,7 @@ __all__ = [
 
 
 # =============================================================================
-# THE LIFT
+# The lift
 # =============================================================================
 
 _GLOBAL_MARKER = 'extern "C" __global__ void '
@@ -291,7 +291,7 @@ _CARRIED: Tuple[str, ...] = ("x", "y", "z")
 #: carry it feeds is imported from there.
 _SIGNATURE = r'''
 extern "C" __global__ void fused_magnetic_pair_special_kz_real(
-    // THE SHARED VOLUME, BOUND ONCE. The curl half writes it and the
+    // The shared volume, bound once. The curl half writes it and the
     // constitutive half reads it from a register; a second const __restrict__
     // binding of the same allocation would be UB NVRTC miscompiles silently.
     float* __restrict__ Bx, float* __restrict__ By, float* __restrict__ Bz,
@@ -316,7 +316,7 @@ extern "C" __global__ void fused_magnetic_pair_special_kz_real(
     float beta_plus, float beta_minus,
     // zero_metal_B's walled-axis flags, from in_seam_coverage.zero_metal_axes.
     int wall_x, int wall_y, int wall_z,
-    // THE TWO FILLS' RUNTIME PLAN, from in_seam_coverage.mirror_fill_phases and
+    // The two fills' runtime plan, from in_seam_coverage.mirror_fill_phases and
     // .folded_far_rows -- the real pair's own tail. `near_a` is 1 on a
     // MIRROR-folded axis, where fill_symmetry_bc_B images stored 0 from stored
     // 2. `reflect_a` is fill_folded_far_ghosts_B's image row on a folded
@@ -326,7 +326,7 @@ extern "C" __global__ void fused_magnetic_pair_special_kz_real(
     int near_x, int near_y, int near_z,
     int reflect_x, int reflect_y, int reflect_z,
     float phase_x, float phase_y, float phase_z,
-    // THE CHUNK RECORD (chunk_map.chunk_bounds_record), int32[25], decoded once.
+    // The chunk record (chunk_map.chunk_bounds_record), int32[25], decoded once.
     const int* __restrict__ cb
 ) {
 '''
@@ -512,7 +512,7 @@ def covers_special_kz_fused_magnetic_pair(
         fields: Any, pml: Any, grid: Any, sources: Any = None) -> Tuple[bool, str]:
     """May ONE launch span the five passes of :data:`REPLACES`?
 
-    A CONJUNCTION over the special_kz family's two certified predicates -- which
+    A conjunction over the special_kz family's two certified predicates -- which
     REQUIRE ``grid.beta != 0`` under real storage, the clause that keeps this
     product disjoint from the real pair (refuses beta) and from every complex
     product (real storage) -- plus the seam clauses: the source slot (carried,
@@ -541,7 +541,7 @@ def covers_special_kz_fused_magnetic_pair(
     if seam:
         return False, seam[0]
 
-    # THE TWO FILLS, CARRIED SINCE 2026-09-02 by the real pair's ownership
+    # The two fills, carried since 2026-09-02 by the real pair's ownership
     # inversion. What the carry does NOT reach is refused BY NAME, through the
     # fills' own predicates -- `in_seam_coverage` is the single place each
     # fill's clauses live, so a clause added there reaches this seam without a
@@ -581,7 +581,7 @@ def covers_special_kz_fused_magnetic_pair(
         return False, (f"in_seam_coverage.zero_metal_axes raised on this grid: "
                        f"{type(exc).__name__}: {exc}")
 
-    # THE THREE CLAUSES THE CARRY ADDS, the real pair's own list restated.
+    # The three clauses the carry adds, the real pair's own list restated.
     for axis in range(3):
         if folded[axis] and bool(walls[axis]):
             return False, (
@@ -609,7 +609,7 @@ def covers_special_kz_fused_magnetic_pair(
 
 
 # =============================================================================
-# THE LAUNCH
+# The launch
 # =============================================================================
 
 _FIELD_BINDINGS: Tuple[str, ...] = (

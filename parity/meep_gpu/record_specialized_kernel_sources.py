@@ -3,7 +3,7 @@
     python record_specialized_kernel_sources.py --module no_pml.py
     python record_specialized_kernel_sources.py --module no_pml.py --write
 
-WHAT IT WRITES. ``specialized_kernel_sources[<module>].sha256`` in
+What it writes. ``specialized_kernel_sources[<module>].sha256`` in
 ``meep_gpu/triton_kernels/fingerprints.json``: the index of which kernel each
 specialised Triton module holds, and the sha256 of that module. The module tests
 (``test_triton_no_pml.py``, ``test_triton_conductivity.py``) hold the digest against
@@ -32,7 +32,7 @@ The table is typed rather than derived from the file name, as
 would derive the digest from a run of something else, and nothing downstream could
 tell. A module without a row is refused by name.
 
-WHAT ELSE IT CHECKS. The index entry keeps its fields (``kernel``, ``sha256``), and
+What else it checks. The index entry keeps its fields (``kernel``, ``sha256``), and
 its ``kernel`` must still be defined in the module (``def <kernel>(``). The ledger
 must round-trip byte for byte through the binders' serialisation
 (``json.dumps(indent=2, sort_keys=True)`` plus a newline). After the change, in

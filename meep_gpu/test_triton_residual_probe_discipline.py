@@ -1,10 +1,10 @@
-"""Laptop contracts for the residual-round PROBES' own measurement discipline.
+"""Laptop contracts for the residual-closure PROBES' own measurement discipline.
 
 A probe that measures the wrong thing does not fail — it publishes. Every defect
 this file pins was live in a shipped artifact whose table read as a clean pass,
 and each was invisible because the number it reported was plausible:
 
-* the vacuity gate bracketed the WHOLE CYCLE LOOP, so ``perturb``'s writes counted
+* the vacuity gate bracketed the whole cycle loop, so ``perturb``'s writes counted
   as sub-step movement. A completely dead update still reported thousands of moved
   words, because the perturbation footprint contains most sub-steps' targets;
 * ``perturb`` added a delta over the whole D volume, and ``-0.0 + x`` is ``x``, so
@@ -85,7 +85,7 @@ def test_the_signed_zero_lattice_survives_every_perturbation(probe, complex_stor
 
     The failure this replaces reported the census taken at SEED and never looked
     again; the lattice was empty from the first cycle onward, and every
-    constitutive leg was seeded-zero-vacuous by the round's own rule while
+    constitutive leg was seeded-zero-vacuous by the closure's own rule while
     reporting ``vacuous: false``.
     """
     fields, _pml, _notes = probe.build(numpy, complex_storage=complex_storage,
@@ -295,7 +295,7 @@ def test_the_new_gate_sources_use_the_shared_whole_inventory_probe():
 
 
 # ---------------------------------------------------------------------------
-# The new-predicate probe measures the round's OWN objects
+# The new-predicate probe measures the objects the closure itself shipped
 # ---------------------------------------------------------------------------
 
 def test_every_new_builder_is_exercised_by_the_new_predicate_probe(newpred):
@@ -304,7 +304,7 @@ def test_every_new_builder_is_exercised_by_the_new_predicate_probe(newpred):
 
     The triage probe patches the INCUMBENT predicate in front of the INCUMBENT
     builder, which is the only honest way to ask its question and licenses a
-    claim about the kernel body alone. Every builder this round added must
+    claim about the kernel body alone. Every builder the residual closure added must
     therefore appear in a leg of its own.
     """
     cases = newpred.build_cases(numpy)

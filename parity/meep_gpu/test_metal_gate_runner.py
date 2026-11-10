@@ -22,7 +22,7 @@ def _source(path: Path, text: str = "answer = 42\n") -> Path:
 _WRITER_IMPORT = "from metal_gate_runner import run_current_measurement"
 _WRITER_EXIT = "raise SystemExit(run_current_measurement(__file__, sys.argv[1:]))"
 
-#: A FLOOR, NOT AN EQUALITY, and the distinction is the whole point of this
+#: A floor, not an equality, and the distinction is the whole point of this
 #: comment. This assertion read ``== 30`` while the tree held 42 gates, and
 #: because it sat on line 2 of the test body the per-gate contract below — the
 #: assertions this test exists for — NEVER RAN. Twelve gates, including several
@@ -40,7 +40,7 @@ _GATE_FLOOR = 42
 def test_every_checked_in_metal_gate_uses_the_universal_measurement_writer():
     gates = runner.discover_gates()
 
-    # THE CONTRACT FIRST, AND OVER EVERY DISCOVERED GATE. Collected rather than
+    # The contract first, and over every discovered gate. Collected rather than
     # asserted per gate so one offender cannot hide the others behind it — the
     # same reason this test's own count must not stand in front of the loop.
     offenders = {}
@@ -74,7 +74,7 @@ def test_no_metal_gate_escapes_discovery_by_being_named_off_pattern():
     So this asks the question from the other side: every file here that both is
     named like a gate AND routes through the universal writer must be discovered.
 
-    PROBES ARE EXCLUDED BY MEASUREMENT, not by assumption: on 2026-08-21 exactly
+    Probes are excluded by measurement, not by assumption: on 2026-08-21 exactly
     two non-gate files carried the writer's exit line — this test module, which
     holds it as a string literal, and probe_metal_eop_interleave_dependency.py, a
     probe that legitimately routes through the same writer. Probes are a different
@@ -103,9 +103,11 @@ def test_runtime_digests_follow_module_file_after_import_not_the_cwd(tmp_path: P
     module.__file__ = str(imported)
     recorded = runner.runtime_source_sha256(
         gate_path=gate, modules=(module,), root=root)
-    assert recorded[str(imported)] == hashlib.sha256(imported.read_bytes()).hexdigest()
-    assert str(gate) in recorded
-    assert all(Path(path).is_absolute() for path in recorded)
+    # Named relative to the API root: the artifact leaves the machine and names no local path.
+    assert recorded["meep_gpu/actual_module.py"] == hashlib.sha256(imported.read_bytes()).hexdigest()
+    assert "parity/gate.py" in recorded
+    assert not any(Path(path).is_absolute() for path in recorded)
+    assert not any(str(tmp_path) in path for path in recorded)
 
 
 def test_finalize_replaces_legacy_source_labels_and_welds_runtime_bytes(tmp_path: Path):
@@ -125,8 +127,9 @@ def test_finalize_replaces_legacy_source_labels_and_welds_runtime_bytes(tmp_path
 
     assert payload["release"] == {"released": True, "reasons": []}
     assert payload["gate_reported_source_sha256"] == {"family": "old"}
-    assert payload["source_sha256"][str(family)] == hashlib.sha256(family.read_bytes()).hexdigest()
-    assert payload["weld"]["passed"] is True
+    assert payload["source_sha256"]["meep_gpu/family.py"] == hashlib.sha256(
+        family.read_bytes()).hexdigest()
+    assert payload["weld"]["passed"] is True and payload["weld"]["manifest"] == "source_sha256.txt"
     assert (artifact.parent / "source_sha256.txt").is_file()
     assert runner.check_artifact_weld(payload, root=root) == []
 
@@ -174,7 +177,23 @@ def test_runner_intercepts_direct_main_and_writes_a_release_artifact(tmp_path: P
     assert runner.run_current_measurement(gate, ("--out", str(artifact))) == 0
     payload = json.loads(artifact.read_text(encoding="utf-8"))
     assert payload["release"]["released"] is True
-    assert payload["source_sha256"][str(gate)] == hashlib.sha256(gate.read_bytes()).hexdigest()
+    assert payload["source_sha256"]["parity/gate.py"] == hashlib.sha256(gate.read_bytes()).hexdigest()
+
+
+def test_the_weld_refuses_an_absolute_or_outside_source(tmp_path: Path):
+    """A recorded source is named relative to the API root; an absolute path (an older
+    runner's spelling) or a file outside the root is refused by name."""
+    root = tmp_path / "api"
+    family = _source(root / "meep_gpu" / "family.py", "value = 7\n")
+    digest = hashlib.sha256(family.read_bytes()).hexdigest()
+    assert runner.check_artifact_weld({"source_sha256": {"meep_gpu/family.py": digest}},
+                                      root=root) == []
+    absolute = runner.check_artifact_weld({"source_sha256": {str(family): digest}}, root=root)
+    assert absolute and "absolute path" in absolute[0] and str(tmp_path) not in absolute[0]
+    _source(tmp_path / "elsewhere.py", "value = 7\n")
+    outside = runner.check_artifact_weld({"source_sha256": {"../elsewhere.py": digest}},
+                                         root=root)
+    assert outside and "below API root" in outside[0]
 
 
 def test_runner_normalizes_the_whole_step_directory_output(tmp_path: Path,

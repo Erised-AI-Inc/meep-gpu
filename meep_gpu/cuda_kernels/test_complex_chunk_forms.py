@@ -1,13 +1,13 @@
 """The CUDA complex singles transcribe the array path's part-wise, per-chunk forms, read off
 their text.
 
-WHAT THIS FILE SETTLES, ON A HOST WITH NO DEVICE. The four complex PML kernels
+What this file settles, on a host with no device. The four complex PML kernels
 (``complex_emitter``: ``step_B`` / ``step_D`` / ``update_H`` / ``update_E`` under complex64
 storage) form every product part by part, choose MEEP's PML form per structure chunk from
 the run's chunk record ``cb``, and take MEEP's not-owned word on plane 0 of a Bloch-phased
-axis (bit_parity_0_10 DESIGN.md D1, D6, D10, D11, D16; ``stepping._apply_curl_regions``,
+axis (``stepping._apply_curl_regions``,
 ``_apply_constitutive_regions``, ``_bloch_ghost_operand``; ``part_products``). Each kernel is
-LAUNCHED THROUGH ITS OWN LAUNCHER (``complex_pml_kernels.step_fused_pml_complex`` /
+launched through its own launcher (``complex_pml_kernels.step_fused_pml_complex`` /
 ``update_fused_pml_complex``, loaded with NumPy wearing CuPy's name), whose compiled kernel is
 replaced by an interpreter that EXECUTES the emitted device text in float32 NumPy -- its
 helpers too, from their own text -- so the launcher's argument order, its table and record
@@ -24,8 +24,8 @@ membership run for each component it should, the connection kinds it is built to
 that the sub-step moved its field (a vacuity floor). A battery of planted defects -- each a
 rewrite of one emitted text or one host binding -- must change a word.
 
-THE INTERPRETER is the root lane's (``test_root_chunk_forms.Interpreter``, with the
-fused-pair lane's stores at an evaluated index), extended here to the complex family's word
+The interpreter is the root kernels' (``test_root_chunk_forms.Interpreter``, with the
+fused pairs' stores at an evaluated index), extended here to the complex family's word
 pair: a ``cf`` value with ``.re`` / ``.im`` members, declared, assigned member by member,
 returned from a helper and selected by the conditional operator. Anything else still
 raises, so the grammar cannot grow a construct nothing executes.
@@ -683,22 +683,22 @@ def _rewrite(text: str, old: str, new: str) -> str:
 
 
 TEXT_DEFECTS = {
-    # The previous package grouping of the stencil (KERNELS.md section 7.1).
+    # The previous package grouping of the stencil (an inverted grouping mutation).
     "pairwise_stencil": (("step_B", "step_D"), "walls3d",
                          "cf_sub(cf_add(cf_sub(sf, f1), f2), ss)",
                          "cf_add(cf_sub(sf, f1), cf_sub(f2, ss))"),
-    # The select removed: the whole-grid recurrence (section 7.2).
+    # The select removed: the whole-grid recurrence (the per-chunk form battery).
     "select_removed": (("step_B", "step_D"), "walls3d",
                        "int dsigu\n) {\n", "int dsigu_ignored\n) {\n    int dsigu = 1;\n"),
-    # The plain constitutive as an accumulation (section 7.2, planted zeros).
+    # The plain constitutive as an accumulation (the per-chunk form battery, planted zeros).
     "plain_constitutive_accumulated": (("update_H", "update_E"), "walls3d",
                                        "int dsigw\n) {\n",
                                        "int dsigw_ignored\n) {\n    int dsigw = 1;\n"),
-    # The auxiliary stored on a plain cell (section 7.2).
+    # The auxiliary stored on a plain cell (the per-chunk form battery).
     "aux_stored_off_the_run": (("step_B", "step_D"), "walls3d",
                                "    if (dsigu) cf_store(fu, idx, fu_new);\n",
                                "    cf_store(fu, idx, fu_new);\n"),
-    # The previous constitutive grouping (section 7.1 inversion).
+    # The previous constitutive grouping (an inverted grouping mutation).
     "constitutive_regrouped": (("update_H", "update_E"), "walls3d",
                                "cf_add(cf_load(f, idx), cf_sub(mul_coefficient_left(kps, src), "
                                "mul_coefficient_left(kms, prev)))",
@@ -1136,7 +1136,7 @@ FOLDED_FUSED_CASES: Dict[str, Tuple] = {
     "ff_x_deep": ((9.0, 10.0, 11.0), "X", 1, ("periodic",) * 3, (0, 0, 0),
                   ((0, 5), (2, 2), (2, 2)), False),
     # The same grid on a lifted division: its membership line copies the near ghost's
-    # image row onto the ghost row (chunk_map, D5), where the one-rank line does not.
+    # image row onto the ghost row (chunk_map's ghost rule), where the one-rank line does not.
     "ff_x_deep_lifted": ((9.0, 10.0, 11.0), "X", 1, ("periodic",) * 3, (0, 0, 0),
                          ((0, 5), (2, 2), (2, 2)), True),
 }
@@ -1294,8 +1294,8 @@ OFFDIAG_CASES: Dict[str, Tuple] = {
                    (0.19, 0.0, 0.0), True, (1, 1, 1, 1, 1, 1), True),
     "od_corpus3d": ((8.0, 9.0, 10.0), 3, ("periodic", "periodic", "metallic"), (),
                     (0.05, 0.11, 0.0), True, (1, 0, 0, 1, 0, 0), False),
-    # A walled fold (the one-rank record names its chunks; KC0's product rule refuses a
-    # periodic fold with a layer for this family).
+    # A walled fold (the one-rank record names its chunks; the {low, interior, high}
+    # product rule refuses a periodic fold with a layer for this family).
     "od_fold_walled": ((9.0, 10.0, 11.0), 3, ("metallic",) * 3, (("Y", -1),), (0, 0, 0),
                        True, (1, 1, 1, 1, 1, 1), False),
     # No absorber: the store arm. The Brillouin edge on x (a negation), 2-D.

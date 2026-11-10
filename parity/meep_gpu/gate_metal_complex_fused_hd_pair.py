@@ -1,10 +1,10 @@
 """Byte gate for the Metal COMPLEX/BLOCH H->D pair: complex ``update_H`` welded into
 complex ``step_D``, one dispatch, scratch output and the post-launch rotation.
 
-THE CLAIM THIS GATE IS ALLOWED TO SUPPORT: for every configuration
+The claim this gate is allowed to support: for every configuration
 :func:`~meep_gpu.metal_kernels.complex_fused_hd_pair.metal_complex_fused_hd_pair_coverage`
 admits, ONE dispatch of ``complex_fused_hd_pair_step`` followed by the H/f_w_H
-rotation leaves the engine in a state that is BIT-IDENTICAL, PER COMPLETE DRIVER STEP,
+rotation leaves the engine in a state that is bit-identical, per complete driver step,
 to
 
   * the NumPy array path (``stepping.update_H`` then ``stepping.step_D``, inside the
@@ -16,7 +16,7 @@ to
 over every stored volume, compared as uint32 words. ``allclose`` appears nowhere, and
 every "0 differing words" in this artifact stands beside a control that BITES.
 
-WHAT IS NEW AND MEASURED HERE, beyond what the two certified singles already carry:
+What is new and measured here, beyond what the two certified singles already carry:
 the SEAM. The curl half's own-cell magnetic operand is the register the constitutive
 half just produced, and each of its six BACKWARD taps is a RECOMPUTE of the certified
 complex ``update_H`` at the neighbour cell from PRE-LAUNCH state. Legs ``product`` and
@@ -71,21 +71,21 @@ THE LEGS
                       equivalence
  13  disarm           the shipped bytes through the mutation path must NOT diverge
 
-THE PER-CHUNK FORMS (bit_parity_0_10, KERNELS.md §7, step M5). Both halves lift the
-aligned complex emitters: the recomputed ``update_H`` selects its form on the dsigw
-membership OF THE CELL IT IS EVALUATED AT (its bounds block takes the record as a
+The per-chunk forms (the Metal table's complex kernels). Both halves lift the
+complex emitters in MEEP's order: the recomputed ``update_H`` selects its form on the dsigw
+membership of the cell it is evaluated at (its bounds block takes the record as a
 parameter), and the scratch takes the pre-launch ``f_w`` on a cell outside the dsigw
 chunks; the curl half takes the per-chunk forms on the integer record. Every plan binds
 the chunk record of the division the array path steps with
 (``gate_chunk_records.layer_record``), carried in ``Params``. The grouping and product
-mutations are INVERTED (§7.1): each plants the package's PREVIOUS spelling and stays
-must-catch, the §7.2 battery is armed on both halves with its two declared nulls, and the
+mutations are INVERTED: each plants the package's PREVIOUS spelling and stays
+must-catch, the per-chunk form battery is armed on both halves with its two declared nulls, and the
 record rows are host defects. The connection's operand order is a declared equivalence
 now: with every product and sum rounded on its own it moves no word.
 
 Progress reporting: one flushed line per case, every row appended and fsynced as it lands.
 
-THIS GATE IS ALSO A CENSUS BATTERY (``SUBJECT_PACKAGE``, :func:`evaluate`,
+This gate is also a census battery (``SUBJECT_PACKAGE``, :func:`evaluate`,
 :func:`runtime_reasons`), so ``measure_predicate_coverage.py --battery
 gate_metal_complex_fused_hd_pair`` can re-lift a corpus row in its own interpreter and
 run this product's identity on it. Leg ``corpus_rows`` does not use that route: it
@@ -224,9 +224,9 @@ def config(name: str) -> Tuple[str, Tuple[float, float, float], Any,
 # ---------------------------------------------------------------------------
 
 def complex_from_planes(real: Any, imag: Any) -> Any:
-    """Build a complex64 array from two float32 planes THROUGH THE WORD VIEW.
+    """Build a complex64 array from two float32 planes through the word view.
 
-    ``real + 1j*imag`` DESTROYS THE SIGN OF ZEROS in ``imag``: ``1j`` is a complex128
+    ``real + 1j*imag`` destroys the sign of zeros in ``imag``: ``1j`` is a complex128
     scalar, so the product is a full complex multiply whose imaginary part comes out
     ``-0.0`` regardless of what ``imag`` held -- measured while writing
     ``gate_metal_complex``, where it classified NumPy as matching no expansion arm.
@@ -260,7 +260,7 @@ def build_from_grid(grid: Any, seed: int,
                     value_class: str = values.UNIFORM) -> Tuple[Any, Any]:
     """Fields (complex storage, PML storage) and a PML, seeded in the physical band.
 
-    THE SPLIT-FIELD AND AUXILIARY VOLUMES ARE SEEDED TOO. A zero auxiliary is a fixed
+    The split-field and auxiliary volumes are seeded too. A zero auxiliary is a fixed
     point of the split-field recurrence for one step and would hide a wrong
     coefficient index; ``f_w_H`` in particular is what the constitutive half reads
     before it writes, and the whole scratch design turns on that read coming from the
@@ -286,7 +286,7 @@ def build_from_grid(grid: Any, seed: int,
             continue
         real = (rng.standard_normal(grid.shape) * np.float32(0.37)).astype(np.float32)
         imag = (rng.standard_normal(grid.shape) * np.float32(0.29)).astype(np.float32)
-        # A SPRINKLE OF SIGNED ZEROS IN THE UNIFORM CLASS TOO. The complex helpers'
+        # A sprinkle of signed zeros in the uniform class too. The complex helpers'
         # zero cross terms only misbehave where an operand plane is an exact zero, and
         # a purely random band would leave that whole family of defects unarmed on the
         # class the product leg runs.
@@ -295,7 +295,7 @@ def build_from_grid(grid: Any, seed: int,
         imag.reshape(-1)[3::19] = np.float32(-0.0)
         imag.reshape(-1)[11::29] = np.float32(0.0)
         array[...] = complex_from_planes(real, imag)
-    # A SEEDED STATE IS A MID-RUN ONE: H was started from B long ago, so
+    # A seeded state is a mid-run one: H was started from B long ago, so
     # ``stepping.separate_h_from_b`` must not run on it again -- the array path would
     # copy B into H and f_w on the dsigw cells at the first update_H, and the weld
     # refuses that update by name (``launch.h_start_reasons``).
@@ -408,7 +408,7 @@ class ProductEngine:
     def run_seam(self) -> None:
         self.plan.run()
         if not self.rotate:
-            # THE IN-PLACE NULL CONTROL: put the engine's references back on the
+            # The in-place null control: put the engine's references back on the
             # pre-launch buffers, so the next launch and the host read the stale H.
             for name in family.ROTATED_NAMES:
                 current = getattr(self.fields, name)
@@ -524,7 +524,7 @@ def leg_binding_ceiling(payload: Dict[str, Any], out: str) -> None:
     row["shipped"] = {"text_bindings": text_bindings, "compiled": ok,
                       "error": error}
     log(f"[binding_ceiling] shipped bindings={text_bindings} compiled={ok}")
-    # THE BISECT, ON THE SHIPPED SHAPE: 21 float2 volumes and a growing real group,
+    # The bisect, on the shipped shape: 21 float2 volumes and a growing real group,
     # packed Params. 28..31 must compile and 32..34 must not.
     for reals in range(len(family._REAL_VECTORS) - 3,  # noqa: SLF001
                        len(family._REAL_VECTORS) + 4):  # noqa: SLF001
@@ -590,7 +590,7 @@ def leg_binding_ceiling(payload: Dict[str, Any], out: str) -> None:
 def _arithmetic_lines(text: str) -> List[str]:
     """The lines that decide a bit in the constitutive half, comments stripped.
 
-    THE COEFFICIENT LOADS ARE DELIBERATELY NOT IN HERE. ``km_0 = km0[i]`` becomes
+    The coefficient loads are deliberately not in here. ``km_0 = km0[i]`` becomes
     ``km_0 = kmx[i]`` under the declared lift edits -- a pointer rename onto the SAME
     volume, since both halves share one sub-lattice -- so including it would make this
     comparison fail for the one reason the edit table already accounts for. The loads
@@ -610,7 +610,7 @@ def leg_lift(payload: Dict[str, Any], out: str) -> None:
     certified = complex_fields.bloch_constitutive_source("H")
     certified_tail = certified.split(family.DECODE_END, 1)[1][: -len("}\n")]
     tail = family.certified_complex_constitutive_tail()
-    # RE-DERIVE THE LIFT FROM THE DECLARED EDIT TABLE and require equality: the table
+    # Re-derive the lift from the declared edit table and require equality: the table
     # in the module is then DATA the gate checks, not prose beside the code.
     rederived = certified_tail
     edits: List[Tuple[str, str]] = [
@@ -638,7 +638,7 @@ def leg_lift(payload: Dict[str, Any], out: str) -> None:
         assert rederived.count(old) == 1, old
         rederived = rederived.replace(old, new)
 
-    # THE CURL HALF, MEASURED BY REVERSAL. The nine redirections are undone on the
+    # The curl half, measured by reversal. The nine redirections are undone on the
     # emitted body and the result must be the certified emitter's own text, byte for
     # byte -- which is a stronger statement than "the redirections were applied": it
     # says NOTHING ELSE moved.
@@ -738,7 +738,7 @@ def leg_driver_order(payload: Dict[str, Any], out: str) -> None:
         "installable": family.INSTALLABLE,
         "weld_owed_nonempty": bool(family.WELD_OWED),
         # WIRED 2026-09-07, so this pin INVERTED with the wiring: the row is now
-        # registered on ``update_H`` and it is registered UNWIRED, which is the
+        # registered on ``update_H`` and it is registered unwired, which is the
         # property that matters. A registered row is what lets the seam loop ASK the
         # product (through its ``FUSED_PAIR_ARMS`` absorb row) and then refuse it on
         # INSTALLABLE; ``wired=False`` is what keeps ``plan_step`` from selecting it
@@ -1160,12 +1160,12 @@ def _run_spelling(helpers: str, operation: str, z: Any, p: Any, c: Any) -> np.nd
 
 
 def leg_helper_spellings(payload: Dict[str, Any], out: str) -> None:
-    """The three load-bearing complex spellings, RE-MEASURED at the helper.
+    """The three load-bearing complex spellings, RE-measured at the helper.
 
-    WHY THIS LEG EXISTS BESIDE THE MUTATION LEG, and it is a finding rather than
+    Why this leg exists beside the mutation leg, and it is a finding rather than
     bookkeeping. A whole-step walk and an operand table are DIFFERENT INSTRUMENTS. The
     zero cross terms and the negation spelling differ from the shipped ones only in the
-    SIGN OF AN EXACTLY-ZERO word, and a complete driver step then subtracts, scales and
+    sign of an exactly-zero word, and a complete driver step then subtracts, scales and
     accumulates that word: the curl differences two operands and the split-field
     recurrence adds into a register, and IEEE addition does not preserve a lone
     negative zero through either. So a step-level mutation can measure INERT on a
@@ -1183,7 +1183,7 @@ def leg_helper_spellings(payload: Dict[str, Any], out: str) -> None:
     z_real = complex_from_planes(real[:, 0], real[:, 1])
     p_real = np.zeros_like(z_real)
     c_real = np.ascontiguousarray(real[:, 2])
-    # RE-POINTED WITH THE PART-WISE HELPERS: the shipped real-coefficient products are
+    # Re-pointed with the part-wise helpers: the shipped real-coefficient products are
     # one float32 product per part and the connection is MEEP's unfused product, so
     # the refuted spellings measured here are the PREVIOUS ones -- NumPy's complex
     # multiply against (c + 0j) with its zero cross terms, on both orientations, and
@@ -1235,7 +1235,7 @@ def leg_helper_spellings(payload: Dict[str, Any], out: str) -> None:
         "finding": (
             "the three refuted spellings ARE discriminating at the helper, on the "
             "exhaustive sign/zero table, on this host and this toolchain. Whether a "
-            "given one also moves a stored word through a COMPLETE DRIVER STEP is the "
+            "given one also moves a stored word through a complete driver step is the "
             "mutation leg's separate measurement, and the two can disagree: a "
             "sign-of-zero difference in an intermediate does not survive the curl's "
             "difference or the split-field accumulation"),
@@ -1323,7 +1323,7 @@ def cell_rows() -> Tuple[List[dict], Dict[str, Any]]:
 
 
 def census_grid(row: dict) -> Tuple[Any, Dict[str, Any]]:
-    """Rebuild one census row's Grid BY THE ENGINE'S OWN RULE, and report the inputs.
+    """Rebuild one census row's Grid by the engine's own rule, and report the inputs.
 
     NOT by dividing the recorded shape by the resolution. That route silently maps a
     zero-extent axis of a ``dimensions = 3`` run onto an INVARIANT axis, and the engine
@@ -1352,7 +1352,7 @@ def census_grid(row: dict) -> Tuple[Any, Dict[str, Any]]:
     cell_size = facts.get("cell_size")
     route = "meep_cell_size"
     if not cell_size:
-        # NO RECORDED CELL: fall back to the shape, and SAY SO on the row, because the
+        # No recorded cell: fall back to the shape, and say so on the row, because the
         # two routes are not the same reconstruction.
         route = "shape_over_resolution"
         cell_size = [0.0 if shape[axis] == 1 else shape[axis] / resolution
@@ -1435,7 +1435,7 @@ def drive_corpus_row(row: dict, steps: int, seed: int) -> Dict[str, Any]:
                          "reference_subnormal_words": band, "moved_words": moved})
         assert not stale, (row["label"], step, stale)
         assert product.plan.launches == step, (row["label"], step)
-    # THE SUBNORMAL BAND IS A REFUSAL ON THIS EXECUTOR, PER STEP, NOT A DIVERGENCE.
+    # The subnormal band is a refusal on this executor, per step, not a divergence.
     # MPS flushes subnormal intermediates; a row whose REFERENCE enters that band is
     # outside what a byte comparison can decide here, and is recorded as such inside
     # the denominator rather than scored either way.
@@ -1502,8 +1502,8 @@ def leg_corpus_rows(payload: Dict[str, Any], out: str) -> None:
 def leg_arbitration(payload: Dict[str, Any], out: str) -> None:
     """What the SHIPPED composer installs on this cell's neighbouring seams TODAY.
 
-    The measurement behind :data:`INSTALLABLE_REASON`. This product is NOT registered
-    in this round, so it cannot be one of the answers -- what is measured is how many
+    The measurement behind :data:`INSTALLABLE_REASON`. This product declares
+    ``INSTALLABLE = False``, so it cannot be one of the answers -- what is measured is how many
     fused pairs the composer installs over ``step_B..update_E`` without it, which is
     exactly the number a product spanning ``update_H``/``step_D`` would have to beat.
     """
@@ -1600,7 +1600,7 @@ def kernel_mutations() -> Tuple[Tuple[str, Callable[[str], str],
              "        if (dw0) { a0 = (hi0[ii] + c_mul_coefficient_left(kp_0, src0)) - "
              "c_mul_coefficient_left(km_0, prev0); }\n"), True,
          values.UNIFORM,
-         "INVERTED (KERNELS.md §7.1): the package's previous grouping ((f + kps*src) "
+         "INVERTED (docs/development/certification.md#inverted-grouping-mutations): the package's previous grouping ((f + kps*src) "
          "- kms*prev) planted in place of MEEP's f + ((kps*src) - (kms*prev))"),
         ("connection_operands_swapped",
          lambda s: kit.needle(s, "b_dx = c_mul(b, px);", "b_dx = c_mul(px, b);"),
@@ -1651,7 +1651,7 @@ def kernel_mutations() -> Tuple[Tuple[str, Callable[[str], str],
              "    return float2(fma(c, z.x, -(0.0f * z.y)),\n"
              "                  fma(c, z.y,  (0.0f * z.x)));"), True,
          values.PM_ZERO_LATTICE,
-         "INVERTED (KERNELS.md §7.1): the previous coefficient-left product with its zero "
+         "INVERTED (certification.md#inverted-grouping-mutations): the previous coefficient-left product with its zero "
          "cross terms. Its difference is the sign of an exactly-zero word, which an "
          "addition with an exact-zero partner keeps, so the planted +-0 lattice catches "
          "it (3 of 3 launches; it was record-only while the reading was that the "
@@ -1697,7 +1697,7 @@ def _flags(line: str, stem: str, values_: Sequence[str]) -> Callable[[str], str]
 
 
 def b_battery() -> Tuple[Tuple[str, Callable[[str], str], Optional[bool], str, str], ...]:
-    """KERNELS.md §7.2 on both halves: the curl's flags at the kernel's indent, the
+    """The per-chunk form battery on both halves: the curl's flags at the kernel's indent, the
     recomputed update_H's inside ``h_cell`` (eight spaces). Must-catch on the uniform
     class (which seeds signed zeros), the two declared nulls scored on agreeing."""
     u = values.UNIFORM
@@ -1717,7 +1717,7 @@ def b_battery() -> Tuple[Tuple[str, Callable[[str], str], Optional[bool], str, s
         ("b7_auxiliary_load_unconditional",
          lambda s: kit.needle(s, "    float2 p0 = du0 ? u0[ii] : f0[ii];",
                               "    float2 p0u = u0[ii]; float2 p0 = du0 ? p0u : f0[ii];"),
-         False, u, "DECLARED NULL (KERNELS.md §7.2): an unguarded fu load with the store "
+         False, u, "DECLARED NULL (certification.md#chunk-form-battery): an unguarded fu load with the store "
                    "still guarded changes no word"),
         ("b8_plain_curl_through_the_recurrence",
          lambda s: kit.needle(kit.needle(
@@ -1742,7 +1742,7 @@ def b_battery() -> Tuple[Tuple[str, Callable[[str], str], Optional[bool], str, s
         ("b12_constitutive_load_unconditional",
          lambda s: kit.needle(s, "        float2 prev0 = dw0 ? wi0[ii] : float2(0.0f, 0.0f);",
                               "        float2 prev0 = wi0[ii];"), False, u,
-         "DECLARED NULL (KERNELS.md §7.2): prev is consumed only on the accumulation's "
+         "DECLARED NULL (certification.md#chunk-form-battery): prev is consumed only on the accumulation's "
          "cells"),
         ("b13_plain_constitutive_through_the_accumulation",
          lambda s: kit.needle(s, "        float2 a0 = src0;\n",
@@ -1752,7 +1752,7 @@ def b_battery() -> Tuple[Tuple[str, Callable[[str], str], Optional[bool], str, s
          values.PM_ZERO_LATTICE,
          "H = B spelled as the accumulation with kps = 1, kms = 0 on zeroed inputs: "
          "wrong on every -0 part of B a plain cell carries into update_H. Planted by the "
-         "+-0 lattice (KERNELS.md §7.2): on the uniform class step_B leaves no plain "
+         "+-0 lattice (certification.md#chunk-form-battery): on the uniform class step_B leaves no plain "
          "cell's B at -0, so the walk measures nothing there (0 of 3 launches)"),
     )
 
@@ -1952,6 +1952,14 @@ def evaluate(driver: Any) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 def main(argv: Sequence[str]) -> int:
+    from meep_gpu.metal_kernels import (  # noqa: PLC0415,F401
+        complex_fields,
+        complex_fused_electric_pair,
+        complex_fused_hd_pair,
+        complex_fused_magnetic_pair,
+    )
+    from metal_closed_table import close_table  # noqa: PLC0415
+    close_table()
     parser = kit.argument_parser(__doc__ or "")
     args = parser.parse_args(list(argv))
     started = time.time()
@@ -2067,7 +2075,7 @@ def main(argv: Sequence[str]) -> int:
             "configuration (shape, boundary kinds, k_point, resolution, Courant) and "
             "does NOT re-run the row's own script: its materials, sources, absorber "
             "thickness and geometry are the synthetic fixture's. INSTALLABLE is False "
-            "and the product is NOT REGISTERED in this round, so it executes nowhere "
+            "and the composer never installs it, so it executes nowhere "
             "outside this gate and its tests, and no dispatch or timing claim is "
             "licensed. The subnormal band is a per-step refusal on this executor, not "
             "a divergence. The folded complex, cylindrical complex and complex beta "

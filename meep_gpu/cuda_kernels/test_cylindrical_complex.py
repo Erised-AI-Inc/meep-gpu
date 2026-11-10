@@ -1,6 +1,6 @@
 """The CUDA COMPLEX cylindrical (Dcyl, |m| >= 1) curl slice: predicate, text, constants.
 
-THE BIT-IDENTITY GATE LIVES ELSEWHERE -- it needs a device and a sweep, so it is
+The bit-identity gate lives elsewhere -- it needs a device and a sweep, so it is
 ``parity/meep_gpu/gate_cuda_cylindrical_complex.py``. What is pinned HERE is the rest
 of the slice's silent-failure surface, and every failure below is a plausible, smooth,
 WRONG field rather than a crash:
@@ -8,29 +8,29 @@ WRONG field rather than a crash:
 * THE PREDICATE. Every configuration it refuses would be mis-stepped if it leaked, so
   the refusals are mutated and every mutation must be caught. A predicate no mutation
   exercises is indistinguishable from one that returns True.
-* THE THREE-WAY DISJOINTNESS. There are now THREE Dcyl-or-complex curl pairs and each
+* The three-way disjointness. There are now THREE Dcyl-or-complex curl pairs and each
   of the other two must STILL refuse what this one admits -- the real Dcyl pair by
   storage, the Cartesian complex pair by coordinates -- and this one must refuse what
   they admit. If adding this pair widened either, a run would reach a kernel with the
   wrong stride or the wrong arithmetic. Asserted in both directions on real objects.
-* THE DEVICE TEXT. Five things separate this pair from the certified complex Cartesian
+* The device text. Five things separate this pair from the certified complex Cartesian
   one, four of them ARITHMETIC (the radial difference the scan supplies, the i*m/r
   pass and its ordering against the recurrence and the mask, the |m| = 1 curl-row
   replacement, the per-|m| axis rules). The gate can see a wrong answer; only a text
   pin can see a grouping change that is exact at one Courant and wrong at another, or
   an ordering that happens to be invisible on every case the sweep reaches.
-* THE PRELUDE IS IMPORTED, NOT COPIED. The certified complex strings are this family's
+* The prelude is imported, not copied. The certified complex strings are this family's
   whole non-cylindrical body; a second copy would drift and would silently un-arm the
   shared mutation battery, whose needles are those exact characters.
-* THE HOST-SIDE CONSTANTS. ``imr_rinv_row`` and ``axis_courant_words`` re-derive the
+* The host-side constants. ``imr_rinv_row`` and ``axis_courant_words`` re-derive the
   array path's i*m/r ``rinv`` row and its axis rules' double factors, whose words are
   load-bearing down to the sign of a zero. They are checked against ``stepping``'s
   own values by CALLING both, not by reading either.
-* THE ARGUMENT ORDER. The kernel signature and the launcher's tuple are two lists that
+* The argument order. The kernel signature and the launcher's tuple are two lists that
   must agree; ``RawKernel`` does not check, so a swapped pair is a wrong answer at a
   wrong pointer.
 
-THE SOURCE IS IMPORTED, NOT READ WITH ``ast``, and that is why
+The source is imported, not read with ``ast``, and that is why
 ``cylindrical_complex_kernels`` imports CuPy LAZILY: its device text is built from the
 imported prelude, so there is no module-level string for ``ast`` to read, and the
 merge bar is a machine with no GPU. The module's own docstring gives the argument.
@@ -269,7 +269,7 @@ def test_the_shared_helpers_this_module_borrows_all_still_exist():
 
 
 # --------------------------------------------------------------------------
-# THE THREE-WAY DISJOINTNESS -- in both directions, on real objects
+# The three-way disjointness -- in both directions, on real objects
 # --------------------------------------------------------------------------
 
 @pytest.mark.parametrize("m", [0, 1, -1, 3])
@@ -854,7 +854,7 @@ def test_the_imr_term_table_is_the_one_stepping_applies():
 def _executable_text(path) -> str:
     """A module's source with comments and docstrings removed.
 
-    ONE HOME FOR A RULE THIS PACKAGE ALREADY WROTE DOWN
+    One home for a rule this package already wrote down
     (``test_triton_kernels.code_of``): the prose in these modules NAMES the things
     they must not touch — that is how a reader learns which track is wired and
     which is not — so an ownership check that greps the RAW file fires on its own
@@ -876,8 +876,8 @@ def _executable_text(path) -> str:
 def test_nothing_in_the_engine_imports_this_package():
     """This FAMILY is not reachable from the seam, which is narrower than it was.
 
-    ``fastpath`` composes the hand-CUDA table as its second kernel table since Phase
-    2, so "the engine never names ``cuda_kernels``" stopped being true — and the
+    ``fastpath`` composes the hand-CUDA table as its second kernel table since
+    2026-09-11, so "the engine never names ``cuda_kernels``" stopped being true — and the
     clause that replaced it is about THIS module rather than about the package: the
     seam reaches the table through ``cuda_kernels.arms``, which selects a family by
     predicate, and no file in the engine may name a family module directly. A

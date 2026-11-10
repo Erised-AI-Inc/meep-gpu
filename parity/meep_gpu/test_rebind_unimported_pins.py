@@ -1,6 +1,6 @@
 """A curated pin the old eager package root left behind leaves its weld by a generated row.
 
-WHAT THIS HOLDS (owner ruling R17, bit_parity_0_10 DESIGN.md sections 8 and 8.1). While the
+What this holds (per-kernel certification, in 1.0 since 2026-10-12). While the
 package root imported its 23 submodules eagerly, every gate's import record held the driver,
 the dispatch planner and the MEEP lift, and some welds' curated pin sets were cut from those
 records. The root now binds its names on first use, so those gates' records no longer hold
@@ -87,7 +87,7 @@ def generated(resolver, ledgers):
 
 
 # ---------------------------------------------------------------------------
-# THE TABLES AGAINST THE GENERATOR AND THE SHIPPED LEDGERS
+# The tables against the generator and the shipped ledgers
 # ---------------------------------------------------------------------------
 
 
@@ -183,9 +183,10 @@ def test_deliberate_pins_outside_a_gate_closure_are_kept(ledgers, resolver):
 
 def test_no_kernel_weld_outside_the_declared_gates_pins_the_planner_or_the_driver(ledgers,
                                                                                   resolver):
-    """R17's direct consequence, read on the curated pins once the rows apply: a weld that
-    still pins fastpath.py or driver.py names a DECLARED dispatch, route, composition or
-    driver gate whose run closure holds the file (``import_closure.py bill FILE``)."""
+    """Per-kernel certification's direct consequence, read on the curated pins once the rows
+    apply: a weld that still pins fastpath.py or driver.py names a DECLARED dispatch, route,
+    composition or driver gate whose run closure holds the file (``import_closure.py bill
+    FILE``)."""
     for table, ledger in ledgers.items():
         rows = TOOLS[table].RETIRED_UNIMPORTED_PINS
         for key, entry in ledger.items():
@@ -204,7 +205,7 @@ def test_no_kernel_weld_outside_the_declared_gates_pins_the_planner_or_the_drive
 
 
 # ---------------------------------------------------------------------------
-# THE GENERATOR ON PLANTED TREES
+# The generator on planted trees
 # ---------------------------------------------------------------------------
 
 
@@ -279,7 +280,7 @@ def test_the_cli_prints_the_rows_as_the_literal_spells_them(tmp_path, capsys):
 
 
 # ---------------------------------------------------------------------------
-# THE RUN CLOSURE'S DEFERRED TABLE ENTRIES (the bound the rule reads)
+# The run closure's deferred table entries (the bound the rule reads)
 # ---------------------------------------------------------------------------
 
 HARNESS_TABLE = (
@@ -346,7 +347,7 @@ def test_the_import_closure_does_not_move(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# THE RULE THROUGH main(): METAL
+# The rule through main(): METAL
 # ---------------------------------------------------------------------------
 
 STAMP = "2026-10-12_test"
@@ -547,7 +548,7 @@ def test_metal_the_deleted_file_rule_is_unchanged_beside_the_rows(metal, capsys)
 
 
 # ---------------------------------------------------------------------------
-# THE RULE THROUGH main(): TRITON
+# The rule through main(): TRITON
 # ---------------------------------------------------------------------------
 
 TKEY = "triton_planted_device_gate"
@@ -674,7 +675,7 @@ def test_triton_a_non_retired_missing_pin_still_refuses(triton, capsys):
 
 
 # ---------------------------------------------------------------------------
-# THE RULE THROUGH main(): CUDA (the planted root of test_rebind_cuda_pin_retirement)
+# The rule through main(): CUDA (the planted root of test_rebind_cuda_pin_retirement)
 # ---------------------------------------------------------------------------
 
 CDRIVER = "meep_gpu/driver.py"
@@ -730,3 +731,21 @@ def test_cuda_a_run_that_is_not_this_checkout_refuses_the_entry(cuda, capsys):
     out = capsys.readouterr().out
     assert f"SKIPPED  {cuda_plant.WELD}: retiring ['{CDRIVER}'] needs the legs to be this" in out
     assert cuda.text() == text
+
+
+def test_triton_a_bind_that_loses_a_policy_the_run_holds_is_refused_by_name(triton, capsys):
+    """A flush campaign that was not given is no reason to lose the flush evidence on file."""
+    api, ledger = triton
+    entry = _triton_entry(api)
+    entry["runs"]["8.6"][fastpath.CERTIFIED_POLICIES] = {"flush": {}, "keep": {}}
+    text = json.dumps({TKEY: entry})
+    ledger.write_text(text)
+    root = _triton_campaign(api, _triton_live(api))
+    assert _triton_run(root, "--write") == 1
+    out = capsys.readouterr().out
+    assert "policy_dropped" in out and "['flush']" in out, out
+    assert ledger.read_text(encoding="utf-8") == text
+    assert _triton_run(root, "--write", "--allow-policy-drop") == 0
+    capsys.readouterr()
+    written = json.loads(ledger.read_text(encoding="utf-8"))[TKEY]["runs"]["8.6"]
+    assert sorted(written[fastpath.CERTIFIED_POLICIES]) == ["keep"]

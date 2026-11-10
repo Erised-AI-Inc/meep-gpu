@@ -1,38 +1,38 @@
 """The Metal composer's two-slot protocol, and the deposit repair riding it.
 
 ``test_fused_pair_deposit_wiring.py`` proves the protocol on the Triton composer and
-``test_deposit_repair.py`` proves the arithmetic against the driver's own order. THIS
-FILE PROVES THE METAL TRACK IS WIRED TO THE SAME MODULE, and it proves it through
+``test_deposit_repair.py`` proves the arithmetic against the driver's own order. This
+file proves the Metal track is wired to the same module, and it proves it through
 ``metal_kernels.launch.plan_step`` rather than by calling the installer directly --
 because the claim that matters is not "the function exists" but "a Metal composition
 can reach it".
 
-WHAT WAS MISSING AND WHAT LANDED. Every Metal fused product registers ``wired=False``
+What was missing and what landed. Every Metal fused product registers ``wired=False``
 on the FIRST slot of the seam it spans and declares the rest through
 ``replaces_sub_steps``; nothing on this track had ever written the SECOND slot on a
 pair's behalf, so ``metal_kernels/launch.py`` carried no reference to
 ``deposit_repair`` at all. It now carries ``_install_fused_pair``, the same shape as
 the Triton composer's, reached from the opt-in ``fuse`` block.
 
-THE FLAG IS NOW TRUE ON ALL FIVE FAMILIES THE SEAM LOOP CAN REACH AND FALSE ON THE
-OTHER SEVEN WELDS, and this suite reads the shipped values rather than patching them
+The flag is now true on all five families the seam loop can reach and false on the
+other seven welds, and this suite reads the shipped values rather than patching them
 into place. The repair cases run against the SHIPPED ``True``; the monkeypatch that remains runs the other way, holding
 ``CARRIES_DEPOSIT_REPAIR`` at ``False`` for one case so the refusal prose every other
 Metal family still returns stays measured. Those two directions together are the whole
 claim: the wiring is in place, the flag turns it on, and the False branch is still the
 flat refusal it always was.
 
-WHICH FAMILIES MAY CARRY IT. ``launch.FUSED_PAIR_ARMS`` bounds the seam loop's reach:
+Which families may carry it. ``launch.FUSED_PAIR_ARMS`` bounds the seam loop's reach:
 a Metal weld with no row there is refused at the absorb table before its predicate is
 asked, so a family flipping the flag without gaining a row would be declaring a
 bracket the loop refuses to build. That is why the sweep at the bottom of this file is
 derived from that table rather than typed. The table holds five rows as of 2026-08-28
 — ``fused_magnetic_pair``, the two folded pairs, ``complex_fused_magnetic_pair`` and
-``fused_dispersive_pair`` — and ROUTING IS STILL NOT REPAIRING: the two decisions stay
+``fused_dispersive_pair`` — and routing is still not repairing: the two decisions stay
 separate even now that all five rows have made both, which is what
 :data:`ROUTED_WITHOUT_THE_REPAIR` keeps a place for.
 
-THE FOUR FAMILIES ADDED ON 2026-08-28. Two are unfolded and each brings a constitutive
+The four families added on 2026-08-28. Two are unfolded and each brings a constitutive
 half ``deposit_repair`` had never reconstructed — complex64 storage on the B seam, and a
 live pole on the D seam. The other two are the FOLDED pair, and what they brought is a
 seam that runs ``fill_symmetry_bc_*`` and ``fill_folded_far_ghosts_*`` between the halves:
@@ -45,7 +45,7 @@ to the deposit index); what is measured HERE is the other half of the same claim
 Metal composition actually reaches the bracket on the configurations those families
 serve.
 
-WHY A MAGNETIC SOURCE. ``fused_magnetic_pair`` is the one Metal fused product whose
+Why a magnetic source. ``fused_magnetic_pair`` is the one Metal fused product whose
 absorb declaration is READ rather than guessed -- its predicate is literally the
 ``PML`` curl arm's and the ``ordinary`` constitutive arm's, and the ``cart_pml_real``
 matrix row records those two labels winning ``step_B`` and ``update_H``. The driver
@@ -123,7 +123,7 @@ def test_the_two_arms_this_pair_absorbs_really_do_win_their_slots():
 
 
 def test_the_flag_is_true_as_shipped_and_this_family_can_actually_be_bracketed():
-    """THE FLAG AND THE WIRING, ASSERTED TOGETHER, which is the rule
+    """The flag and the wiring, asserted together, which is the rule
     ``deposit_repair`` states: True without the wrappers is the exact defect it
     exists to prevent. On this track the wrappers are built by the seam loop in
     ``_install_fused_pairs``, and the families that loop can reach are bounded by
@@ -138,7 +138,7 @@ def test_the_flag_is_true_as_shipped_and_this_family_can_actually_be_bracketed()
 #: with the reason each is held there. Routing and repairing are two decisions and
 #: this is the list where they come apart.
 #:
-#: THE FOLDED PAIR WAS THE ONLY ENTRY AND IT IS GONE, 2026-08-28. Both folded families
+#: The folded pair was the only entry and it is gone, 2026-08-28. Both folded families
 #: were given an absorb row on 2026-08-27 so a CLEAN folded seam could fuse, and neither
 #: could carry the repair: a folded seam also runs ``fill_symmetry_bc_*`` and
 #: ``fill_folded_far_ghosts_*`` AFTER the injection (driver.py:3293-3295, :3308-3311),
@@ -147,13 +147,13 @@ def test_the_flag_is_true_as_shipped_and_this_family_can_actually_be_bracketed()
 #: extending the saved and restored set to the closure of the images, both directions
 #: measured in ``test_deposit_repair.py``, and both flags flipped in the same edit.
 #:
-#: EMPTY IS A MEASUREMENT HERE, NOT AN OMISSION: the assertion below is an equality
+#: Empty is a measurement here, not an omission: the assertion below is an equality
 #: against ``FUSED_PAIR_ARMS`` minus the flipped set, so a Metal family that gains an
 #: absorb row without flipping — or that flips without one — fails by name whether this
 #: tuple is empty or not. A family arriving here again is a decision somebody has to
 #: write down beside it.
 #:
-#: THE 2026-09-01 RESIDUE ROUND'S MAGNETIC BETA-COMPLEX PAIR IS THAT FAMILY, and the
+#: The magnetic beta-complex pair of 2026-09-01 is that family, and the
 #: decision is a census measurement rather than a caution: its one reachable corpus
 #: row (``tests:TestSpecialKz.test_special_kz``) declares ``source_field_types ==
 #: ["D"]`` — electric deposits only — so its ``step_B``/``update_H`` seam contains
@@ -161,11 +161,11 @@ def test_the_flag_is_true_as_shipped_and_this_family_can_actually_be_bracketed()
 #: measured value (``test_metal_residue_fused_pairs.py::
 #: test_the_carries_flag_is_the_census_measurement`` asserts exactly this against
 #: the census row). The row's D seam deposit is carried by the ELECTRIC twin
-#: (``beta_complex_fused_electric_pair``, flag True, same round). The unrouted
+#: (``beta_complex_fused_electric_pair``, flag True, landed the same day). The unrouted
 #: magnetic pairs with False flags (``bfast_fused_magnetic_pair``,
 #: ``beta_fused_magnetic_pair``) never arrive here because they hold no
 #: ``FUSED_PAIR_ARMS`` row at all.
-#: THE FOUR STENCIL WELDS OF 2026-09-01 ARE THE OTHER FOUR, and their decision is
+#: The four stencil welds of 2026-09-01 are the other four, and their decision is
 #: FORCED rather than measured per row: an OFF-DIAGONAL chi1inv constitutive is one
 #: of the two shapes ``deposit_repair.repairable`` refuses BY NAME
 #: (deposit_repair.py), because a point repair recomputes E at the deposit cell from
@@ -176,7 +176,7 @@ def test_the_flag_is_true_as_shipped_and_this_family_can_actually_be_bracketed()
 #: product can ever reach there. Measured, with its admitting control, in
 #: ``test_metal_offdiag_stencil_welds.py::
 #: test_the_carries_flag_is_false_and_the_clause_that_forces_it_is_measured`` and
-#: again on device by that round's gate (leg ``seam_refusal``).
+#: again on device by those welds' own gate (leg ``seam_refusal``).
 ROUTED_WITHOUT_THE_REPAIR: tuple = (
     "beta_complex_fused_magnetic_pair",
     "offdiag_fused_electric_pair",
@@ -219,18 +219,18 @@ ROUTED_WITHOUT_THE_REPAIR: tuple = (
     # ones open AFTER the step_D consult, so nothing is injected between the halves
     # and nothing is imaged across the launch either. Each absorb row lets the seam
     # loop ASK the product; each then refuses it on INSTALLABLE = False, on an
-    # arbitration MEASURED through the shipped composer on that product's own eight
+    # arbitration measured through the shipped composer on that product's own eight
     # gate fixtures (a LOSS on 8 of 8, a TIE on 0, a GAIN on 0).
     "folded_complex_fused_hd_pair",
     "beta_complex_fused_hd_pair",
     "beta_real_fused_hd_pair",
-    # 2026-09-08, THE SEAM'S LAST TWO METAL CELLS. The same seam and the same fact
+    # 2026-09-08, the seam's last two Metal cells. The same seam and the same fact
     # about the driver a seventh and eighth time -- nothing is injected between the
     # update_H and step_D consults, so CARRIES_DEPOSIT_REPAIR = False is a statement
     # about driver.py rather than about either family
     # (conductive_fused_hd_pair.py:198, bfast_fused_hd_pair.py:177) -- and each
     # absorb row is what lets the seam loop ASK the product before it refuses it on
-    # INSTALLABLE = False. THE TWO ARBITRATIONS DIFFER and both were measured through
+    # INSTALLABLE = False. The two arbitrations differ and both were measured through
     # the shipped composer: on an electric-conductivity run BOTH neighbours serve
     # (the released conductive_fused_electric_pair on step_D/update_E and
     # fused_magnetic_pair on step_B/update_H, because the magnetic curl there is the
@@ -239,14 +239,14 @@ ROUTED_WITHOUT_THE_REPAIR: tuple = (
     # span is a TIE, which the released precedent resolves for the incumbent.
     "conductive_fused_hd_pair",
     "bfast_fused_hd_pair",
-    # 2026-09-17, THE THREE FAMILIES THE ALL-PATHS ROUND ROUTED. Each was CERTIFIED
+    # 2026-09-17, the three families the all-paths change routed. Each was CERTIFIED
     # and carried a released weld while holding no row in `FUSED_PAIR_ARMS`, so the
     # seam loop had no arm pair to absorb and could never ask the product at all --
     # `dispatch_reachability.metal_certified_but_not_installed` reported all three in
     # those words, and the board measured the cost at 25 census instances.
     #
-    # THE FLAG IS FALSE ON ALL THREE, AND EACH MODULE ALREADY CARRIED THE MEASUREMENT
-    # BEFORE THE ROW DID. The two Dcyl magnetic pairs sit on the B->H seam, where the
+    # The flag is false on all three, and each module already carried the measurement
+    # before the row did. The two Dcyl magnetic pairs sit on the B->H seam, where the
     # driver injects a MAGNETIC source between the two consults (driver.py:3283-3284);
     # `cylindrical_fused_magnetic_pair.py:705` records the corpus cost as ZERO because
     # all sixteen cylindrical rows declare electric sources only, and
@@ -269,7 +269,7 @@ def test_no_other_metal_family_declares_the_repair():
     """The absorb table BOUNDS what may be flipped, so the two are asserted against
     each other rather than each against a typed list.
 
-    THE DIRECTION THAT IS A DEFECT is a family declaring the repair that the seam
+    The direction that is a defect is a family declaring the repair that the seam
     loop cannot install: it would run unbracketed. That direction stays exact. The
     other direction — a routable family that deliberately does NOT carry the repair
     — became real on 2026-08-27 and is enumerated in
@@ -279,7 +279,7 @@ def test_no_other_metal_family_declares_the_repair():
     import ast
     import pathlib
 
-    # KEYED BY THE ARM FAMILY NAME, NOT BY THE MODULE STEM, and the difference is
+    # Keyed by the arm family name, not by the module stem, and the difference is
     # real rather than pedantic: `FUSED_PAIR_ARMS` is keyed by `FAMILY`, and the two
     # DIVERGE on the Dcyl complex products — module
     # `cylindrical_fused_electric_pair.py`, family
@@ -337,7 +337,7 @@ def test_fuse_defaults_off_and_leaves_both_slots_on_their_separate_products():
 # ---------------------------------------------------------------------------
 
 def test_a_sourceless_seam_fills_both_slots_and_reports_both_in_replaces():
-    """THE FAIL-CLOSED HALF OF THE CONTRACT. A pair that owned only ``step_B``
+    """The fail-closed half of the contract. A pair that owned only ``step_B``
     would tell a reader -- and the residency verdict -- that ``update_H`` ran on
     the array path, when the kernel performed it inside the same launch."""
     _fields, plan = _plan((), fuse=True)
@@ -360,7 +360,7 @@ def test_the_absorbed_slot_declares_the_pairs_passes_not_its_own_name():
 
 
 def test_the_composer_credits_the_pairs_wall_clear_to_the_kernel_that_performs_it():
-    """THE ACCOUNTING, ASSERTED ON THE COMPOSER'S OUTPUT rather than on the helper.
+    """The accounting, asserted on the composer's output rather than on the helper.
 
     A METALLIC configuration is what makes this measurable: ``zero_metal_B`` is then
     LIVE and the pair carries it (``REPLACES``). The residency verdict names every
@@ -390,7 +390,7 @@ def test_the_composer_credits_the_pairs_wall_clear_to_the_kernel_that_performs_i
 # ---------------------------------------------------------------------------
 
 def test_an_in_seam_deposit_is_refused_by_name_while_the_flag_is_false(monkeypatch):
-    """THE FALSE BRANCH, which is still what the other eleven Metal families return.
+    """The false branch, which is still what the other eleven Metal families return.
 
     Held at False by monkeypatch now that this family ships True -- the same code
     path in the opposite direction, and the reason is the product's own prose, which
@@ -411,7 +411,7 @@ def test_an_in_seam_deposit_is_refused_by_name_while_the_flag_is_false(monkeypat
 
 
 def test_an_in_seam_deposit_lands_the_two_repair_plans_in_the_two_slots():
-    """THE ONE THIS FILE EXISTS FOR: the Metal composer reaches ``deposit_repair``.
+    """The one this file exists for: the Metal composer reaches ``deposit_repair``.
 
     Run against the SHIPPED flag. It used to patch ``CARRIES_DEPOSIT_REPAIR`` on the
     module object to reach this branch; the flip made the patch a no-op, and reading
@@ -497,7 +497,7 @@ ROUTED_2026_08_28 = (
     ("fused_dispersive_pair", "step_D", "update_E", "D",
      lambda: matrix.dispersive(matrix.cart()), _electric_source,
      ("PML", "dispersive PML E")),
-    # THE TWO FOLDED FAMILIES, same day, once `deposit_repair.repair_cells` closed the
+    # The two folded families, same day, once `deposit_repair.repair_cells` closed the
     # fill images. Their configuration is the one thing new here: on `matrix.folded()`
     # the seam carries `fill_symmetry_bc_*` and `fill_folded_far_ghosts_*` between the
     # halves, so a bracket that landed but repaired only the deposit index would be
@@ -614,7 +614,7 @@ def test_a_specialized_family_owning_the_curl_keeps_the_pair_out_by_predicate():
 
 
 def test_a_pair_may_not_absorb_a_slot_the_arm_table_left_unselected():
-    """THE ABSORB CLAUSE, on the case it exists for: an AMBIGUOUS constitutive slot.
+    """The absorb clause, on the case it exists for: an AMBIGUOUS constitutive slot.
 
     A second admitter is planted on ``update_H``, so ``_select_slot`` leaves that
     slot empty by clause (b) -- the array path, which is always correct. The fused
@@ -658,7 +658,7 @@ def test_the_undeclared_weld_sweep_is_not_empty():
     """A parametrisation over an empty list passes without running, so the list is
     asserted non-empty here rather than trusted below.
 
-    THE FLOOR IS ON THE POPULATION, NOT ON THE SWEEP, since 2026-08-27. It used to
+    The floor is on the population, not on the sweep, since 2026-08-27. It used to
     read ``>= 12``, which is the number that was undeclared on the day it was
     written; routing two families moved two of them into ``FUSED_PAIR_ARMS`` and
     would have failed a bound that cannot tell "a weld disappeared" from "a weld was
@@ -734,7 +734,7 @@ def test_the_h_to_d_row_names_the_withdraw_seam_and_not_a_deposit_list():
 def test_the_h_to_d_seam_is_installed_through_the_withdraw_hoist_not_the_deposit_bracket():
     """``_install_fused_pair`` routes the seam NAME, so both tracks read one protocol.
 
-    THE BRANCH IS IN THE INSTALLER AND NOT IN A FAMILY -- the same argument that
+    The branch is in the installer and not in a family -- the same argument that
     keeps the deposit bracket out of the families. A family free to decide which
     mechanism its seam carries is a family that can decide wrong, and the wrong
     answer here (the deposit bracket, on a seam with no injection) computes and
@@ -751,7 +751,7 @@ def test_the_h_to_d_seam_is_installed_through_the_withdraw_hoist_not_the_deposit
     assert isinstance(plans["update_H"], withdraw_hoist.LeadingWithdrawPlan)
     assert plans["update_H"].span == ("update_H", "step_D")
     assert plans["update_H"].placement == withdraw_hoist.BEFORE_UPDATE_H
-    # NO TRAILING PLAN: nothing is injected here, so the second slot holds the no-op
+    # No trailing plan: nothing is injected here, so the second slot holds the no-op
     # sentinel and never ``TrailingRepairPlan``.
     assert isinstance(plans["step_D"], NoopPlan)
     assert not isinstance(plans["step_D"], deposit_repair.TrailingRepairPlan)
@@ -769,7 +769,7 @@ def test_the_only_h_to_d_bidder_is_registered_and_installs_on_nothing(monkeypatc
     product bids, the seam loop ASKS it, and the composition is unchanged, held out by
     TWO independent brakes that are each driven here.
 
-    THE TWO BRAKES. The product declares ``INSTALLABLE = False`` with the measured
+    The two brakes. The product declares ``INSTALLABLE = False`` with the measured
     verdict as its reason -- a fact about the PRODUCT, reported on every
     configuration. And with that flag out of the way (flipped here, on the live
     module) it is STILL refused, by ``_pair_may_absorb`` naming the released B->H
@@ -781,17 +781,17 @@ def test_the_only_h_to_d_bidder_is_registered_and_installs_on_nothing(monkeypatc
     """
     bidders = [spec for spec in arms.registered("update_H")
                if spec.is_weld and "step_D" in spec.replaces]
-    # TEN BIDDERS SINCE THE 2026-09-08 WIRING ROUND: three from 2026-09-06 (the
+    # Ten bidders since the 2026-09-08 wiring change: three from 2026-09-06 (the
     # Cartesian product, the Dcyl m = 0 one and the Dcyl complex one), the two wired
     # earlier that day (the FOLDED Cartesian product and the COMPLEX/Bloch Cartesian
     # one), the three tails of 2026-09-07 -- the FOLDED COMPLEX one and the two BETA
-    # ones -- and the seam's last two cells this round closed, the CONDUCTIVE one and
+    # ones -- and the seam's last two cells that change closed, the CONDUCTIVE one and
     # the BFAST one. They partition the seam by storage, fold, beta, conductivity,
     # ``grid.bfast_active`` and coordinate system, each through its own half's
     # predicate, so no configuration admits two of them; the Cartesian real unfolded
     # one is what this test drives, and its own cell is what ``matrix.cart()`` builds.
     #
-    # THE TWO BETA BIDDERS EACH COVER TWO CELLS through ONE arm row: their predicate
+    # The two beta bidders each cover two cells through ONE arm row: their predicate
     # resolves the variant from the grid FIRST and asks only that variant's two
     # parent predicates, so the partition is exclusive inside the family as well as
     # between families. Their second cell is a ``FUSED_PAIR_EXTRA_ARMS`` row.
@@ -801,7 +801,7 @@ def test_the_only_h_to_d_bidder_is_registered_and_installs_on_nothing(monkeypatc
         "conductive_fused_hd_pair", "cylindrical_complex_fused_hd_pair",
         "cylindrical_real_fused_hd_pair", "folded_complex_fused_hd_pair",
         "folded_fused_hd_pair", "fused_hd_pair"], bidders
-    # THE PARTITION, ASSERTED RATHER THAN DESCRIBED, and over the CELLS rather than
+    # The partition, asserted rather than described, and over the CELLS rather than
     # the families: every (constitutive arm, curl arm) pair any bidder may absorb --
     # its primary ``FUSED_PAIR_ARMS`` row plus each ``FUSED_PAIR_EXTRA_ARMS`` row --
     # is distinct across the whole seam, so an eleventh bidder colliding with one of
@@ -812,7 +812,7 @@ def test_the_only_h_to_d_bidder_is_registered_and_installs_on_nothing(monkeypatc
         cells.extend(launch.FUSED_PAIR_EXTRA_ARMS.get(spec.family, ()))
     assert len(cells) == len(set(cells)), sorted(
         cell for cell in set(cells) if cells.count(cell) > 1)
-    # AND THE COMPOSITION CLAIM THE TEST'S NAME MAKES, over all ten rather than only
+    # And the composition claim the test's name makes, over all ten rather than only
     # the one it then drives: none of them is wired, and every one is refused on its
     # own ``INSTALLABLE = False`` before any configuration is asked.
     assert not [spec.family for spec in bidders if spec.wired]
@@ -836,7 +836,7 @@ def test_the_only_h_to_d_bidder_is_registered_and_installs_on_nothing(monkeypatc
     assert reason and reason[0].startswith(
         "fused_hd_pair declares INSTALLABLE = False: "), reason
 
-    # THE SECOND BRAKE, ARMED: drop the flag and the composition does not move.
+    # The second brake, armed: drop the flag and the composition does not move.
     monkeypatch.setattr(hd, "INSTALLABLE", True)
     assert launch._declared_uninstallable(bidder) is None
     fields, pml = matrix.cart()
@@ -859,7 +859,7 @@ def test_the_neighbouring_seam_rule_refuses_a_product_that_would_take_a_released
     a neighbouring seam can only tie or lose. The claimant is the D->E pair, named
     through the seam this span's LAST slot opens: an earlier-neighbour half naming
     the B->H pair was added and retired on 2026-09-04, because the only product class
-    it could actually fire on was E->P, where it reversed a released ruling. The
+    it could actually fire on was E->P, where it reversed a released decision. The
     control is the SAME question asked on a seam with no neighbouring bidder.
     """
     fields, pml = matrix.cart()
@@ -888,10 +888,10 @@ def test_the_neighbouring_seam_rule_refuses_a_product_that_would_take_a_released
 
 
 # ---------------------------------------------------------------------------
-# THE END-EDGE GUARD, 2026-09-05 -- both directions, driven through the composer
+# The end-edge guard, 2026-09-05 -- both directions, driven through the composer
 # ---------------------------------------------------------------------------
 #
-# WHAT WAS MISSING, AND WHY EVERY TEST BELOW ASSERTS BOTH SIDES. Until this round the
+# What was missing, and why every test below asserts both sides. Until 2026-09-05 the
 # tests of the neighbouring-seam rule asserted who was WITHHELD and never who
 # INSTALLS. Measured on 2026-09-04 through this composer: with the ``update_H`` seam
 # row in the table, registering an H->D stand-in whose predicate admits cost the
@@ -899,7 +899,7 @@ def test_the_neighbouring_seam_rule_refuses_a_product_that_would_take_a_released
 # absorb declaration, which can never install (arrangement F: 3 launches / 1 seam
 # against the shipped 2 / 2 on the 155-row ``cart_pml_real`` cell) -- and the only
 # thing standing in the way was ``fused_hd_pair``'s own ``INSTALLABLE = False``. The
-# guard is R1: a span is asked the question only when both of its END slots have
+# guard is the end-edge rule: a span is asked the question only when both its END slots have
 # degree >= 2 in ``FUSED_PAIR_SEAMS``; the tie on the 22 rows where only the B->H
 # pair serves is then resolved by ``_pair_may_absorb`` reading the live ``selected``
 # after that pair installs first. Each test below asserts the installed side in the
@@ -1022,7 +1022,7 @@ ROW_CLASSES = {
 
 
 def test_slot_degrees_are_read_off_the_table_and_name_the_end_edges():
-    """THE GUARD IS DERIVED, NOT SPELLED. This is what fails the day a fifth seam row
+    """The guard is derived, not spelled. This is what fails the day a fifth seam row
     is priced without thinking about position."""
     degrees = launch._slot_degrees(launch.FUSED_PAIR_SEAMS)
     assert degrees == {"step_B": 1, "update_H": 2, "step_D": 2, "update_E": 1}, degrees
@@ -1055,7 +1055,7 @@ def test_an_end_edge_span_is_never_asked_even_when_an_interior_claimant_admits()
 
 
 def test_registering_a_claimant_that_cannot_install_changes_nothing():
-    """ARRANGEMENT F, THE INVARIANT STATED AS A PROPERTY: a registered stand-in whose
+    """Arrangement F, the invariant stated as a property: a registered stand-in whose
     predicate ADMITS and which cannot install (no absorb row) leaves the number of
     installed pairs -- and every slot's owner -- exactly as shipped, on a both-install
     fixture and on an only-B->H one. It was red on 2026-09-04: 3 / 1 against 2 / 2,
@@ -1122,7 +1122,7 @@ def test_the_h_to_d_span_yields_or_installs_by_row_class(row_class):
 
 
 def test_the_h_to_d_seam_row_order_is_what_resolves_the_tie_for_the_released_incumbent():
-    """THE CONSEQUENCE THE ORDER TEST ABOVE PINS BY POSITION ALONE, MEASURED.
+    """The consequence the order test above pins by position alone, measured.
 
     Under the end-edge guard the key order no longer decides anything on a row where
     BOTH incumbents install (the B->H pair is never asked; the stand-in is refused by

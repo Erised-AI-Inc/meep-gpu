@@ -1,7 +1,7 @@
 """Behaviour pins for :mod:`readback`: MEEP's field readback, word for word.
 
 What is pinned, and against what (NumPy only, no MEEP: the word compare against MEEP
-itself is the bit-parity harness's, ``parity/meep_gpu`` of the 0.10 plan):
+itself is the bit-parity harness's, ``parity/meep_gpu``):
 
 * the centred sum is MEEP's left-to-right association, ``((a + b) + c) + d`` and
   ``((a + b) + a) + b`` for one averaged axis (array_slice.cpp:413-415), in the
@@ -154,7 +154,7 @@ def test_b_reads_the_owners_h_where_h_aliases_b(integrated_hz, first_step):
     it its own H (``have_f_minus_p``), and the plane reads B again.
 
     After the run's first step a chunk with H of its own still holds the zero it was
-    allocated with at its not-owned B points (MEASURED on MEEP 1.33.0's own chunk words,
+    allocated with at its not-owned B points (measured on MEEP 1.33.0's own chunk words,
     Dcyl PML corner: +0 where the owner holds -0 at step 1, the owner's word from step 2):
     the low x-PML chunk's word at the periodic low corner, the high x-PML chunk's word at
     its face with the interior, and with the integrated source the interior chunk's face
@@ -250,7 +250,7 @@ def test_the_cylindrical_centred_sum_takes_z_before_r():
 def test_the_bloch_phase_is_meeps_eikna_word_for_word():
     """MEEP's ``eikna = exp(I * kk * ((2*pi/a) * n))``, read from MEEP 1.33.0's own memory.
 
-    Two axes of the 408 measured (bit_parity_0_10 WP AP2): one where a separate ``sin``
+    Two axes of the 408 measured for the readback change: one where a separate ``sin``
     is a bit off MEEP's fused ``__sincos_stret``, one where the 0.9.2 association
     ``exp(2j*pi*k*L)`` is.
     """

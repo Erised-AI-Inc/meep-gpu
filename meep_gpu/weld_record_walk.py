@@ -1,6 +1,6 @@
 """Find EVERY digest in a weld record, wherever it lives, and say what decides its fate.
 
-WHY THIS EXISTS. FIVE times now a check in this tree has covered less than it appeared
+Why this exists. FIVE times now a check in this tree has covered less than it appeared
 to, and every one of them was the same mistake wearing a different hat:
 
     a status filter hid 88 pinned pairs (31 of them live drifts) for eleven days;
@@ -10,8 +10,8 @@ to, and every one of them was the same mistake wearing a different hat:
     66 ``host_sha256`` digests were EXCLUDED as "checked elsewhere", and on the
         Triton side "elsewhere" made a weaker claim than the exclusion did.
 
-THE FIFTH SUB-FORM, and it is the one this round removes: AN EXCLUSION IS ONLY AS
-GOOD AS ITS PREMISE, and a premise nobody checks is the same defect as a filter
+The fifth sub-form, and it is the one this module removes: an exclusion is only as
+good as its premise, and a premise nobody checks is the same defect as a filter
 nobody counted. Every exclusion below rests on a claim about the world —
 "this file is not in this checkout", "these digests are recomputed by that test
 over there" — and until 2026-08-30 not one of those claims was asserted. Two were
@@ -31,14 +31,14 @@ already false or weaker than written:
     :func:`premise_violations` decides mechanically, so a staged file that gets
     committed stops being excludable instead of staying quiet.
 
-The 2026-08-30 round removed the *status* filter and asserted the denominator, which was
+The 2026-08-30 work removed the *status* filter and asserted the denominator, which was
 right and was not enough: the replacement still walked a FIXED SHAPE — top-level entry,
 then ``source_sha256``, then a sibling ``<name>_sha256`` beside a ``<name>`` — so a digest
 one level deeper, or inside a list, or under a key spelling nobody anticipated, was still
 invisible. Naming the next hiding place and patching it is how a defect CLASS survives
 being fixed four times.
 
-THE RULE THAT REPLACES THE SHAPE. Recurse the whole record — dicts and lists, at any
+The rule that replaces the shape. Recurse the whole record — dicts and lists, at any
 depth — and collect every 64-hex string with the path it was found at. Then EVERY digest
 is either
 
@@ -51,12 +51,12 @@ no third outcome and no predicate that quietly drops a digest. A new key spellin
 leave coverage — it arrives as an unclassified digest that somebody has to write a rule
 for, in the same change, where a reviewer sees it.
 
-WHAT THIS MODULE DOES NOT DO. It does not read the tree and it does not decide whether a
+What this module does not do. It does not read the tree and it does not decide whether a
 record is honest. :func:`census` classifies; the contract tests compare. That split is
 deliberate: the classifier consults no digest and no file, so it cannot be steered toward
 a shape that happens to pass.
 
-ONE RECORD IN EACH LEDGER IS NOT A WELD: a table's ``driver_dispatch`` record, whose
+One record in each ledger is not a weld: a table's ``driver_dispatch`` record, whose
 verdict belongs to the route runs filed under ``runs[<key>]``. :func:`route_record_problems`
 states the one rule all three weld contracts hold it to. Like :func:`compare`, it decides
 only from what the caller passes in: liveness, drift and shape are measured by the
@@ -147,7 +147,7 @@ def dotted(trail: Tuple[Any, ...]) -> str:
 def discover(node: Any, trail: Tuple[Any, ...] = ()) -> Iterator[Tuple[Tuple[Any, ...], str]]:
     """Every 64-hex string in ``node``, at any depth, through dicts AND lists.
 
-    THE WHOLE POINT IS THAT THIS KNOWS NOTHING about weld records. It does not look for
+    The whole point is that this knows nothing about weld records. It does not look for
     ``source_sha256``, it does not stop at a level, and it does not skip a container it
     does not recognise. A digest cannot escape it by being somewhere new; it can only
     escape by not being a 64-hex string, and a record that stops spelling digests in hex
@@ -167,7 +167,7 @@ def discover(node: Any, trail: Tuple[Any, ...] = ()) -> Iterator[Tuple[Tuple[Any
 # THE RULES — every one of them named, and every name carrying its reason
 # ---------------------------------------------------------------------------
 #
-# ORDER IS THE RULE, not an implementation detail, and it runs from the most specific
+# Order is the rule, not an implementation detail, and it runs from the most specific
 # claim to the least. The historical containers come FIRST because they hold digests
 # whose inner shape is identical to a live one — ``superseded_runs[0].source_sha256`` is
 # a ``source_sha256`` map in every respect except that the record says out loud it is not
@@ -191,12 +191,12 @@ RULE_REASONS: Dict[str, str] = {
         "adapter the gate ran. Compared raw, same rule: a gate script that changes "
         "underneath a weld rewrites the result while every source digest still verifies.",
     TIER_RAW + ":parent_key_named_pin":
-        "a block keyed BY THE FILE, carrying a bare 'sha256' inside it — the shape "
+        "a block keyed by the file, carrying a bare 'sha256' inside it — the shape "
         "specialized_kernel_sources uses. The subject is the parent key, so nothing "
         "names a path and the old sibling rule could not see these at all. Compared raw.",
     TIER_RAW + ":host_side_digest_map":
         "a host_sha256 map: filename -> sha256 of the host module the gate shipped. "
-        "CHECKED HERE SINCE 2026-08-30, and it was excluded before that on the "
+        "Checked here since 2026-08-30, and it was excluded before that on the "
         "strength of a citation. The old reason said these were 'recomputed against "
         "the tree already' by the track's kernels test, and on the Triton side that "
         "test recomputes them THROUGH device_identity.weld_survives_edit — the "
@@ -209,8 +209,8 @@ RULE_REASONS: Dict[str, str] = {
         "different, allowance-bearing claim for its own purpose — two claims, not "
         "two spellings of one.",
     TIER_CODE + ":code_digest_map":
-        "a code_sha256 map: path -> code_identity.code_digest of the file. THE RULE IS "
-        "THAT IT RECOMPUTES AGAINST THE TREE, and it is compared to the live file's "
+        "a code_sha256 map: path -> code_identity.code_digest of the file. The rule is "
+        "that it recomputes against the tree, and it is compared to the live file's "
         "CODE, never to the file's source digest. Those two tiers MAY differ, and "
         "exactly one thing makes that legitimate: a comment or docstring edit since the "
         "gate ran, which is the whole clause code_identity licenses. Every other "
@@ -229,8 +229,8 @@ RULE_REASONS: Dict[str, str] = {
         "why_superseded, that the run 'certified the previous bytes and is kept "
         "verbatim; it is not the record of the shipped host side any more'. Comparing "
         "them to the tree would assert a claim the record explicitly withdraws, and the "
-        "only way to clear the resulting red would be to delete the history. THE "
-        "EXCLUSION IS EARNED, NOT FREE: see test_triton_weld_contract.py::"
+        "only way to clear the resulting red would be to delete the history. The "
+        "exclusion is earned, not free: see test_triton_weld_contract.py::"
         "test_a_historical_exclusion_is_earned_by_a_live_checked_claim.",
     "historical_recert_snapshot":
         "under a *_at_recert key: the digests as they were when an earlier run was "
@@ -245,7 +245,7 @@ RULE_REASONS: Dict[str, str] = {
         "a staging_only_file block. The record declares this file untracked — staged on "
         "the device host and never committed — so there is nothing in this checkout to "
         "compare it to. Clearing it means tracking the file, not editing the digest. "
-        "THE PREMISE IS ASSERTED: the block names its path, and premise_violations "
+        "The premise is asserted: the block names its path, and premise_violations "
         "requires that path to be absent from this checkout, so the day the file is "
         "committed the exclusion expires loudly instead of covering a live digest.",
     "run_bound_digest":
@@ -272,7 +272,7 @@ RULE_REASONS: Dict[str, str] = {
     "array_path_oracle_provenance":
         "inside an array_path_oracle leaf's provenance_code_sha256 map: the "
         "code_identity digest of each array-path module the fingerprint was minted from. "
-        "REPORTED, NOT JUDGED, by design. The judged value is the fingerprint, which moves "
+        "Reported, not judged, by design. The judged value is the fingerprint, which moves "
         "on an arithmetic change; comparing these to the tree would turn the tripwire red "
         "on a refactor that changes no word, which is why the map is never spelled "
         "code_sha256 (that spelling is the checked code tier).",
@@ -280,7 +280,7 @@ RULE_REASONS: Dict[str, str] = {
         "an artifact_sha256 or log_sha256: the digest of a run artifact or log under the "
         "gitignored parity/meep_gpu/results/ tree. It cannot be recomputed from a clean "
         "checkout, so requiring it would make this laptop test depend on which results "
-        "tree happens to be on the machine. WHAT IS ACTUALLY CHECKED, stated narrowly "
+        "tree happens to be on the machine. What is actually checked, stated narrowly "
         "because the previous wording ('that artifacts exist and are named is checked') "
         "claimed more than any test made good on: each track asserts that the field is "
         "PRESENT and sha256-SHAPED on the entries its metadata tier covers — the PASS "
@@ -300,9 +300,11 @@ RULE_REASONS: Dict[str, str] = {
         "asserted rather than trusted: see test_metal_weld_contract.py::"
         "test_the_generated_slot_delegation_is_real_and_admits_no_allowance.",
     "out_of_tree_sibling_path":
-        "a <name>/<name>_sha256 pair whose path is absolute, under ~, or under the "
-        "gitignored parity/meep_gpu/results/ tree. Not in this checkout by construction "
-        "— and THE PREMISE IS ASSERTED rather than assumed: premise_violations requires "
+        "a <name>/<name>_sha256 pair whose path is absolute, under ~, under a neutral "
+        "label's root (<staging-root>/, <home>/, <tmp>/: the same paths as written once a "
+        "record names no machine's directories), or under the gitignored "
+        "parity/meep_gpu/results/ tree. Not in this checkout by construction "
+        "— and the premise is asserted rather than assumed: premise_violations requires "
         "each such path to be either outside this repo entirely or under the gitignored "
         "results tree, so a repo-relative path that comes back into the checkout stops "
         "being excludable instead of escaping on a prefix.",
@@ -312,8 +314,8 @@ RULE_REASONS: Dict[str, str] = {
         "only under the gitignored parity/meep_gpu/results/ tree — they were never "
         "committed — so a clean checkout has nothing to compare. The digests are kept "
         "because they name the bytes that placed the gates; cleared by committing the "
-        "drivers, never by deleting the digests. NO PREMISE IS ASSERTED FOR THIS RULE "
-        "AND THAT IS STATED RATHER THAN GLOSSED: the block keys a BARE BASENAME "
+        "drivers, never by deleting the digests. No premise is asserted for this rule "
+        "and that is stated rather than glossed: the block keys a bare basename "
         "('chain.sh') and names no directory, so 'this path is absent from the "
         "checkout' is not a question this record can be asked. Widening it to 'no file "
         "of that name exists anywhere' would be a predicate past what is built. The "
@@ -337,7 +339,15 @@ RULE_REASONS: Dict[str, str] = {
 #: being present on whichever machine ran the gate.
 GITIGNORED_PREFIX = "parity/meep_gpu/results/"
 
-#: EXCLUSIONS WHOSE PREMISE IS A CLAIM ABOUT THIS CHECKOUT, and which
+#: The roots a neutral label writes a recorded path under, so that a record names no
+#: machine's directories (``parity/meep_gpu/neutral_ids.py``: ``STAGING_ROOT``, ``HOME``,
+#: ``TMP``; a harness test holds the two equal). A path under one of them is outside this
+#: checkout by construction, as the ``~/...`` path it replaced was: the label pass that
+#: rewrites a ledger's home-relative launcher paths as ``<staging-root>/...`` must not turn
+#: them into repo-relative pins that name no file here.
+NEUTRAL_ROOTS: Tuple[str, ...] = ("<staging-root>/", "<home>/", "<tmp>/")
+
+#: Exclusions whose premise is a claim about this checkout, and which
 #: :func:`premise_violations` therefore decides mechanically instead of taking on
 #: trust. Both of these say, in different words, "there is nothing here to
 #: compare to". That is a fact about the tree, it can stop being true — a staged
@@ -352,14 +362,14 @@ GITIGNORED_PREFIX = "parity/meep_gpu/results/"
 #: covered here through the sibling shape.
 PREMISE_ABSENT_FROM_TREE = ("staging_only_file", "out_of_tree_sibling_path")
 
-#: EXCLUSIONS WHOSE DIGESTS ARE CLAIMED TO BE COVERED SOMEWHERE ELSE, mapped to
+#: Exclusions whose digests are claimed to be covered somewhere else, mapped to
 #: the test that is supposed to cover them. This is the CITATION register, and it
 #: is a register rather than a phrase in a docstring because the distinction it
 #: draws is one string-sniffing cannot: several reasons above cross-reference a
 #: test (``historical_superseded_run`` points at the legs that EARN it), and only
 #: the entries here say "these digests are compared over there instead of here".
 #:
-#: THE RULE THAT GOES WITH IT. A contract may leave a rule's digests unchecked
+#: The rule that goes with it. A contract may leave a rule's digests unchecked
 #: only if the rule is in this map AND that contract asserts the citation — the
 #: delegate exists, still makes the comparison, and admits no allowance the
 #: exclusion does not. Anything else is checked in the record that makes the
@@ -378,7 +388,7 @@ def premise_violations(found: List["Found"], is_file: Callable[[str], bool],
                        inside_repo: Callable[[str], bool]) -> List[Tuple[str, str, str]]:
     """``(where, subject, why)`` for every exclusion whose premise no longer holds.
 
-    THE ARGUMENT THIS FUNCTION MAKES. An exclusion is a decision not to compare a
+    The argument this function makes. An exclusion is a decision not to compare a
     digest, and every one of them below rests on a reason. Two of those reasons
     are claims about this checkout rather than about the record, and a claim about
     the world that nothing evaluates is exactly the shape of the four defects this
@@ -412,8 +422,9 @@ def premise_violations(found: List["Found"], is_file: Callable[[str], bool],
                                  "checkout — the exclusion has expired; check the "
                                  "digest, do not delete it"))
             continue
-        # out_of_tree_sibling_path
-        if f.subject.startswith(GITIGNORED_PREFIX):
+        # out_of_tree_sibling_path. A neutral label's root names no directory of this
+        # checkout, so a path under it cannot come back into it.
+        if f.subject.startswith((GITIGNORED_PREFIX,) + NEUTRAL_ROOTS):
             continue
         if inside_repo(f.subject) and is_file(f.subject):
             problems.append((where, f.subject,
@@ -439,7 +450,7 @@ def _classify(trail: Tuple[Any, ...], parent: Any) -> Tuple[str, Optional[str],
     """``(rule, tier, subject, kernel)`` for one discovered digest.
 
     ``parent`` is the dict or list the digest sits directly in, needed only for the
-    sibling-pin shape. NO DIGEST IS CONSULTED and no file is read: classification is a
+    sibling-pin shape. No digest is consulted and no file is read: classification is a
     fact about the record's structure, so it cannot be aimed at an outcome.
     """
     leaf = trail[-1] if trail else None
@@ -454,7 +465,7 @@ def _classify(trail: Tuple[Any, ...], parent: Any) -> Tuple[str, Optional[str],
     if any(k.endswith("_recut_log") or k == "source_drift_since_recert" for k in keys):
         return "historical_recut_log", None, None, None
     if "staging_only_file" in keys:
-        # THE SUBJECT IS CARRIED so the premise can be decided. The block is
+        # The subject is carried so the premise can be decided. The block is
         # {path, sha256, why}; without the path the exclusion would rest on a
         # claim about a file nobody could name, which is where the last four
         # defects lived.
@@ -511,7 +522,7 @@ def _classify(trail: Tuple[Any, ...], parent: Any) -> Tuple[str, Optional[str],
         stem = leaf[: -len("_sha256")] if leaf.endswith("_sha256") else "path"
         sibling = parent.get(stem) if stem else None
         if isinstance(sibling, str):
-            if sibling.startswith(("~", "/")) or sibling.startswith(GITIGNORED_PREFIX):
+            if sibling.startswith(("~", "/", GITIGNORED_PREFIX) + NEUTRAL_ROOTS):
                 return "out_of_tree_sibling_path", None, sibling, None
             return TIER_RAW + ":sibling_script_pin", TIER_RAW, sibling, None
         # --- the block-keyed-by-file shape: <file>: {sha256: ...} ---
@@ -611,7 +622,7 @@ def compare(found: List[Found], resolve: Callable[[str], Any],
 
 
 # ---------------------------------------------------------------------------
-# THE ROUTE RECORD: a table's driver_dispatch entry, which is not a weld
+# The route record: a table's driver_dispatch entry, which is not a weld
 # ---------------------------------------------------------------------------
 
 #: The one verdict a route run may record and still license what it released.
@@ -621,7 +632,7 @@ ROUTE_RUN_PASS = "PASS"
 def route_run_problems(record: Any, live: Sequence[str]) -> List[str]:
     """Why a ``driver_dispatch`` record's route runs do not carry it. Empty means they do.
 
-    THE RECORD IS NOT A WELD. It pins the dispatch wiring's bytes, and its verdict is the
+    The record is not a weld. It pins the dispatch wiring's bytes, and its verdict is the
     route campaign's, filed per environment under ``runs[<key>]`` (a compute capability
     on the NVIDIA tables, a GPU architecture on Metal) by
     ``recut_driver_dispatch_record.py``. So it is asked two things about those runs:
@@ -665,9 +676,9 @@ def route_record_problems(record: Any, live: Sequence[str], moved: Sequence[str]
                 file that moved since the cut is reported here even while the run
                 stays live;
       (d)       ``stranded``: the contract's shape reasons over the route-run fields
-                (``fastpath.DISPATCH_RUN_FIELDS``, ``metal_runs.DISPATCH_RUN_FIELDS``).
-                ``status`` is one of them, so an entry-level status is refused: the
-                verdict has one home, the run that measured it.
+                (the record-cut tool's ``NVIDIA_ROUTE_RUN_FIELDS``,
+                ``metal_runs.DISPATCH_RUN_FIELDS``). ``status`` and each run's statement
+                of the default are among them, so each is refused beside the digests.
 
     ``moved`` and ``stranded`` are required: a default of nothing would let a caller
     skip a clause and still read as having checked it.

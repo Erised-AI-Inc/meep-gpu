@@ -47,7 +47,7 @@ reference, which never consults a kernel table.
 
 from __future__ import annotations
 
-# THE PUBLIC NAMES ARE BOUND ON FIRST USE (PEP 562), NOT AT IMPORT. ``import meep_gpu``
+# The public names are bound on first use (PEP 562), not at import. ``import meep_gpu``
 # loads this file and nothing else from the package; ``meep_gpu.FdtdDriver``, ``from
 # meep_gpu import lift_simulation`` and ``from meep_gpu import *`` import the defining
 # module then, exactly as an eager import would have, and bind the name here so the

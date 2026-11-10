@@ -3,10 +3,10 @@
 Both halves are already byte-certified on this backend alone: :mod:`.complex_fields`
 (the complex/Bloch curl and constitutive) and :mod:`.symmetry` (the real fold's curl,
 fill and constitutive admission). This module is what happens when they meet, and the
-whole point of writing it as a family rather than as a flag is that MEETING IS NOT
-FREE: one of the two halves stops being a transcription and becomes new arithmetic.
+whole point of writing it as a family rather than as a flag is that meeting is not
+free: one of the two halves stops being a transcription and becomes new arithmetic.
 
-WHAT COMPOSES, AND IT IS MOST OF THE FAMILY:
+What composes, and it is most of the family:
 
 * the CURL. ``symmetry.py``'s argument for why a fold changes nothing arithmetic in
   the curl is an OWNERSHIP argument, not a storage argument, and it transfers
@@ -29,7 +29,7 @@ WHAT COMPOSES, AND IT IS MOST OF THE FAMILY:
 * the ownership masks, the ghost rule, the Bloch phase block, the plane-index decode
   and the fold's own axis-entry table, all IMPORTED from the two parents.
 
-WHAT CHANGES UNDER COMPLEX STORAGE, and it is exactly one thing: the ghost fill is
+What changes under complex storage, and it is exactly one thing: the ghost fill is
 ARITHMETIC. The array path writes a mirror ghost as ``part_products.scale(parity,
 plane)`` (``stepping._write_mirror_ghost`` / ``_fill_folded_far_ghosts`` through
 ``host_writes.copy_face``): the parity ``+/-1`` rounded to the part dtype, times each
@@ -40,14 +40,14 @@ the sign flip on every normal word and zero, and on a subnormal word it flushes 
 any arithmetic does on this backend; the array path's NumPy product flushes the same
 words under the flush host policy, which is the policy these kernels run under.
 
-THE FILL'S SUBNORMAL REACH IS THE CURL'S. The real fold's fill copies words and is
+The fill's subnormal reach is the curl's. The real fold's fill copies words and is
 band-safe where its curl is not; this one multiplies, so it rides the same
 subnormal-free precondition (or flush policy) as the curl. The fold is also the
 configuration most likely to reach the band -- a folded run puts a deep-PML plane on
 the far face, and the two fill passes read and write exactly those planes -- so any
 census this family takes reports the WINDOW (first step, last step), not a count.
 
-THE X, Y, Z FILL ORDER IS KEPT. With the parity a product by +/-1 per part the
+The X, Y, Z fill order is kept. With the parity a product by +/-1 per part the
 composition at a doubly-unowned corner commutes exactly, so the order is the array
 path's by transcription rather than by necessity; the plan applies the axes in X, Y,
 Z order and holds the two passes separately, because the driver runs
@@ -57,27 +57,27 @@ touch. :class:`FoldedComplexFillPlan` inherits :class:`.symmetry.MirrorGhostFill
 refusal of the one configuration where the fused ``run()`` would differ (a live far
 pass on a grid with a live ``zero_metal`` axis).
 
-THE CURL AND THE CONSTITUTIVE ARE THE COMPLEX FAMILY'S. :func:`folded_bloch_curl_source`
+The curl and the constitutive are the complex family's. :func:`folded_bloch_curl_source`
 is ``complex_fields``' template with the top-plane mask inserted, so it carries the
 chunk record, the per-chunk PML forms, the presence-keyed stencil and the plane-0
 Bloch connection of the unfolded kernel unchanged; a folded axis carries no phase.
 
-THERE IS NO GENERATED-CODE AUDIT ON THIS BACKEND. ``torch.mps.compile_shader``
+There is no generated-code audit on this backend. ``torch.mps.compile_shader``
 exposes no disassembly, so the byte legs and the mutation legs are the only arbiters
 and they are BEHAVIOURAL: they catch a wrong answer, not a wrong instruction.
 
 ===========================================================================
-THE INVERTED CLAUSES — four families to stay disjoint from, not one
+The inverted clauses — four families to stay disjoint from, not one
 ===========================================================================
 
 ``registry.py``'s contract is that every family's grid-reason list carries the same
-numbered questions and answers exactly one of them THE OTHER WAY, and that a new
+numbered questions and answers exactly one of them the other way, and that a new
 family STATES its inversion rather than inheriting disjointness. This family is the
 hardest case in the package so far, because it is a product of two levers and each
 lever has a family on each side of it. Every clause below is spelled in
 :func:`_folded_complex_grid_reasons` with the number it carries there.
 
-CLAUSE 2 (storage) INVERTS AGAINST THE REAL FAMILIES, INCLUDING THE REAL FOLD:
+Clause 2 (storage) inverts against the real families, including the real fold:
 
 * ``coverage._grid_reasons`` clause 2 refuses complex storage, which covers
   ``pml_curl`` and ``constitutive``; ``bfast_curl``, ``offdiag_update_e`` and
@@ -87,7 +87,7 @@ CLAUSE 2 (storage) INVERTS AGAINST THE REAL FAMILIES, INCLUDING THE REAL FOLD:
   predicate do the same;
 * HERE complex64 is REQUIRED — ``force_complex_fields`` OR a nonzero ``k_point``.
 
-  THE TWO SPELLINGS OF CLAUSE 2 ARE NOT THE SAME PREDICATE and the gap was checked
+  The two spellings of clause 2 are not the same predicate and the gap was checked
   rather than assumed. The real fold asks ``force_complex_fields`` alone; this family
   also admits ``has_bloch``. A run with ``has_bloch`` and ``force_complex_fields``
   False is therefore not separated by clause 2 in both directions — it is separated
@@ -98,7 +98,7 @@ CLAUSE 2 (storage) INVERTS AGAINST THE REAL FAMILIES, INCLUDING THE REAL FOLD:
   concrete run, because a volume has one dtype. The composition sweep MEASURES that
   rather than trusting this paragraph.
 
-CLAUSE 5 (fold) INVERTS AGAINST THE UNFOLDED COMPLEX FAMILY:
+Clause 5 (fold) inverts against the unfolded complex family:
 
 * ``complex_fields._complex_grid_reasons`` refuses a fold by name — "a mirror plane
   is active (symmetry folding is not carried)" plus one line per folded axis;
@@ -110,23 +110,23 @@ CLAUSE 5 (fold) INVERTS AGAINST THE UNFOLDED COMPLEX FAMILY:
   on composer order. :func:`folded_complex_composition_curl_coverage` is the routing
   verdict.
 
-CLAUSE 8 (beta) INVERTS AGAINST :mod:`.folded_beta`, WHICH NOW CARRIES THOSE SLOTS:
+Clause 8 (beta) inverts against :mod:`.folded_beta`, which now carries those slots:
 
 * ``special_kz``'s two arms refuse a fold by name (special_kz.py:838-845 real,
   :1055-1060 complex), so a folded beta run is refused there;
 * HERE ``grid.beta`` must be ZERO, refused by name, and the message says whose it is.
-  THIS PARAGRAPH WAS A PRE-REGISTERED INVERSION and :mod:`.folded_beta` honoured it
+  This paragraph was a pre-registered inversion and :mod:`.folded_beta` honoured it
   rather than re-spelling the question the other way: that module's complex arm
   requires a fold AND a nonzero beta, so the two are separated by BOTH clauses in
   both directions and the sweep measures no admitted overlap.
 
-CLAUSE 6 (row product) INVERTS AGAINST THE FOLDED COMPLEX OFF-DIAGONAL FAMILY, WHICH
-IS ALSO NOT BUILT. The E side refuses an installed off-diagonal chi1inv row by name;
+Clause 6 (row product) inverts against the folded complex off-diagonal family, which
+is also not built. The E side refuses an installed off-diagonal chi1inv row by name;
 the CURL admits it, because the row product's whole effect is inside ``update_E``
 (stepping.py:1001-1008) — the same per-sub-step split ``complex_fields`` makes.
 ``offdiag_update_e`` cannot take those rows either (it refuses complex storage), so
-``update_E`` on a folded complex off-diagonal run is uncovered WITH A REASON FROM
-BOTH SIDES.
+``update_E`` on a folded complex off-diagonal run is uncovered with a reason from
+both sides.
 
 CLAUSE 4 (cylindrical) is refused TWICE, for ``symmetry.py``'s three-way reason:
 ``_boundary_kinds`` puts ``is_axis`` AHEAD of ``is_mirrored`` (stepping.py:2191-2196)
@@ -134,7 +134,7 @@ so a folded r axis would report CYL_AXIS and the fold would vanish silently, and
 ``_mirror_phases`` (stepping.py:2346-2366) puts ``(-1)**grid.m`` into the SAME SLOT
 the mirror phase occupies. The grid flag alone is not the inversion.
 
-CLAUSE 9 (Bloch on a folded axis) IS THIS FAMILY'S OWN AND HAS NO TWIN. A folded axis
+Clause 9 (Bloch on a folded axis) is this family's own and has no twin. A folded axis
 may carry NO phase and NO k component, zone edge included:
 ``stepping._bloch_phases`` raises ("a mirror plane reflects rather than repeating")
 and ``driver._require_bloch_is_representable`` (driver.py:1047-1075) refuses the
@@ -145,7 +145,7 @@ a fold and ``symmetry`` never sees a phase — so it is the one clause the compo
 had to add rather than restate.
 
 ===========================================================================
-WHAT THIS FAMILY DOES NOT CLAIM, each by name rather than by omission
+What this family does not claim, each by name rather than by omission
 ===========================================================================
 
 A nonzero ``grid.beta`` (:mod:`.folded_beta`'s complex arm, which carries it);
@@ -190,7 +190,7 @@ from .coverage import _metal_backend_reasons, _residency_declaration_reasons
 from .device import Residency, compile_source
 from .plans import KernelPlan
 
-# ONE DEFINITION, IMPORTED FROM THE TWO PARENTS. Every name below is a fact this
+# One definition, imported from the two parents. Every name below is a fact this
 # family must not re-derive: the four boundary codes and their MIRROR split, the
 # halved-origin source index, the Yee-shift table, the fill families and passes, the
 # reflect-row reader, the fold classifier, the reduced-code mapping the certified
@@ -285,7 +285,7 @@ __TOP_MASK__
 def folded_curl_template() -> str:
     """``complex_fields._CURL_TEMPLATE`` with ONE slot inserted, and nothing else.
 
-    DERIVED RATHER THAN COPIED, and that is the composition made structural. A copy
+    Derived rather than copied, and that is the composition made structural. A copy
     would be a second home for twenty-three bindings, the ghost gather, the Bloch
     rotation, the curl grouping and the split-field recurrence — every one of which
     is certified in the parent and none of which the fold changes. Deriving means an
@@ -319,7 +319,7 @@ def folded_bloch_curl_source(codes: Sequence[int], backward: bool,
     fold's single point of failure and backwards on one axis is a plane of wrong
     values. ``phased`` is the per-axis Bloch flag.
 
-    THE THREE FOLD DELTAS OVER THE CERTIFIED COMPLEX CURL, and all three are
+    The three fold deltas over the certified complex curl, and all three are
     expressed as calls rather than as copied text: (1) both mirror codes take the
     METALLIC ghost branch and (2) the cell-0 mask widens from ``== METALLIC`` to
     ``!= PERIODIC`` — which are the SAME statement once every non-periodic code is
@@ -329,7 +329,7 @@ def folded_bloch_curl_source(codes: Sequence[int], backward: bool,
     Yee shift is 1 there, which is :func:`.symmetry.folded_top_plane_mask` with the
     complex zero. Nothing arithmetic changes.
 
-    A PHASED AXIS MUST BE PLAIN PERIODIC. A mirror code carrying a Bloch flag is
+    A phased axis must be plain periodic. A mirror code carrying a Bloch flag is
     refused HERE as well as by the predicate, because a mis-baked flag is a plane of
     wrong values rather than a crash and this is the last place it can be seen.
     ``phased`` is the per-axis connection kind (``complex_fields.CONNECT_KINDS``).
@@ -391,7 +391,7 @@ def compile_folded_bloch_curl(codes: Sequence[int], backward: bool,
 
 
 # ---------------------------------------------------------------------------
-# K2 — the folded complex ghost fill, THE ONE ARITHMETIC DELTA
+# K2 — the folded complex ghost fill, the one arithmetic delta
 # ---------------------------------------------------------------------------
 
 #: ONE family's ghost plane on ONE axis for ONE pass, in one launch.
@@ -429,7 +429,7 @@ kernel void folded_mirror_fill_complex(
     // assumes, is that those rows are DISTINCT and that the far pass's read row is
     // not a row the near launch already wrote.
     //
-    // THE CELL ARITHMETIC IS THE REAL FILL'S, UNCHANGED. Binding `float2` rather
+    // The cell arithmetic is the real fill's, unchanged. Binding `float2` rather
     // than a word view is what makes that true: the Triton twin steps complex64 as
     // float32 word pairs and has to address `2*off` and `2*off + 1`, which halves
     // its int32 element bound; here the index is a CELL index and the bound is the
@@ -469,19 +469,19 @@ def folded_mirror_fill_complex_source(axis: int, pass_name: str,
                                       contract: str = shaders.CONTRACT_OFF) -> str:
     """One (axis, pass, Yee-shift triple) specialisation of the fill.
 
-    ``shifts`` is the three targets' Yee shift ON THIS AXIS, in kernel argument order
+    ``shifts`` is the three targets' Yee shift on this axis, in kernel argument order
     — ``TARGET_IYEE[name][axis]`` for the family's three components. It is not free:
     ``(family, axis)`` determines it, and :func:`fill_axis_entries` reads it off the
     table.
 
-    THE NEAR PASS writes stored cell 0 from stored cell ``MIRROR_SOURCE_INDEX`` (= 2)
+    The near pass writes stored cell 0 from stored cell ``MIRROR_SOURCE_INDEX`` (= 2)
     for every component whose shift here is ZERO — MEEP's
     ``little_owned_corner0(c) = little_corner + 2 - iyee_shift(c)``, which on a halved
-    grid (``io = -2``) excludes cell 0 for exactly the shift-0 components. THE FAR
-    PASS writes the last stored slot from ``reflect_row`` for every component whose
+    grid (``io = -2``) excludes cell 0 for exactly the shift-0 components. The far
+    pass writes the last stored slot from ``reflect_row`` for every component whose
     shift here is ONE, and runs only on a folded PERIODIC axis.
 
-    THE MULTIPLY IS ``c_mul_coefficient_left(c, plane)``: the array path's
+    The multiply is ``c_mul_coefficient_left(c, plane)``: the array path's
     ``part_products.scale(parity, plane)``, one float32 product per part. The operand
     order is the array path's spelling and moves no bit (IEEE multiplication is
     commutative).
@@ -593,7 +593,7 @@ def _reachable_phase_flags(codes: Sequence[int]) -> Tuple[Tuple[int, int, int], 
 #
 # The clause numbering mirrors `complex_fields._complex_grid_reasons` so the two can
 # be diffed. Clause 2 is that module's own INVERSION (complex storage required) and
-# is KEPT; clause 5 is INVERTED AGAINST IT (a fold is required where it refuses one);
+# is KEPT; clause 5 is inverted against it (a fold is required where it refuses one);
 # clause 8's beta half is kept and clause 9 is NEW. Clause 4's boundary whitelist is
 # REPLACED by `folded_axis_kinds` rather than widened — widening the shared
 # `COVERED_BOUNDARIES` tuple would silently admit folds into every plain arm at once.
@@ -643,8 +643,8 @@ def _folded_phase_reasons(grid: Any, kinds: Optional[Sequence[str]],
 
     Three questions, and the third has no twin in either parent. A phased axis must
     resolve PERIODIC (``stepping._bloch_phases`` raises otherwise, S:2346-2360); a
-    metallic axis must carry a k component of exactly 0; and NO FOLDED AXIS MAY CARRY
-    ANY PHASE OR ANY NONZERO k COMPONENT, zone edge included, because
+    metallic axis must carry a k component of exactly 0; and no folded axis may carry
+    any phase or any nonzero k COMPONENT, zone edge included, because
     ``driver._require_bloch_is_representable`` (driver.py:1047-1075) refuses the
     configuration outright and a kernel cannot lift what the array path will not run.
 
@@ -654,7 +654,7 @@ def _folded_phase_reasons(grid: Any, kinds: Optional[Sequence[str]],
     """
     reasons: List[str] = []
     if kinds is None:
-        # UNRESOLVED IS A REFUSAL, NOT A SKIP. Returning an empty list here would
+        # Unresolved is a refusal, not a skip. Returning an empty list here would
         # make an unreadable boundary table look like a phase-free one, which is the
         # admission-by-absence this whole clause list refuses everywhere else.
         return ["boundary kinds could not be resolved for this grid, so per-axis "
@@ -767,7 +767,7 @@ def _folded_complex_grid_reasons(fields: Any, pml: Any, grid: Any, residency: An
     if getattr(fields, "has_polarizations", False) or (
             getattr(fields, "polarizations", ()) or ()):
         reasons.append("a susceptibility is registered: complex-storage ADE is a "
-                       "later tranche, folded or not")
+                       "separate, unbuilt product, folded or not")
     reasons.extend(_susceptibility_reasons(fields))
 
     # 8. No nonlinearity, no BFAST, and — INVERTED against the folded beta family,
@@ -815,17 +815,17 @@ def _stored_extent_reasons(codes: Optional[Sequence[int]],
 
 def folded_complex_pml_curl_coverage(fields: Any, pml: Any, sub_step: str,
                                      residency: Any = None) -> Coverage:
-    """May the folded complex curl step this (fields, pml, sub_step)? THE WIDE VERDICT.
+    """May the folded complex curl step this (fields, pml, sub_step)? The wide verdict.
 
-    ZERO FOLDED AXES IS ADMITTED HERE, and that is not an oversight: with every axis
+    Zero folded axes is admitted here, and that is not an oversight: with every axis
     resolving to PERIODIC/METALLIC, :func:`folded_bloch_curl_source` reduces to
-    ``complex_fields.bloch_curl_source``'s output CHARACTER FOR CHARACTER except for
+    ``complex_fields.bloch_curl_source``'s output character for character except for
     an empty top-plane block, which is a property a gate MEASURES rather than a claim.
-    THIS VERDICT MUST NOT BE REGISTERED ON A SLOT — it would make every unfolded
+    This verdict must not be registered on a slot — it would make every unfolded
     complex row ambiguous against the certified family.
     :func:`folded_complex_composition_curl_coverage` is the routing verdict.
 
-    OFF-DIAGONAL EPSILON IS ADMITTED HERE and refused by the E-side constitutive
+    Off-diagonal epsilon is admitted here and refused by the E-side constitutive
     predicate: the row product's whole effect is inside ``update_E``
     (stepping.py:1001-1008). The same per-sub-step split ``complex_fields`` makes.
     """
@@ -861,7 +861,7 @@ def folded_complex_pml_curl_coverage(fields: Any, pml: Any, sub_step: str,
 
 def folded_complex_composition_curl_coverage(fields: Any, pml: Any, sub_step: str,
                                              residency: Any = None) -> Coverage:
-    """THE ROUTING VERDICT — the wide one with a fold MANDATORY.
+    """The routing verdict — the wide one with a fold MANDATORY.
 
     The one clause that separates this family from ``complex_fields`` on the two curl
     slots, spelled as its own function so a reader can see the inversion in one
@@ -894,14 +894,14 @@ def folded_complex_constitutive_coverage(fields: Any, pml: Any, side: str,
     folded extent and the coefficient lengths explicitly instead of weakening that
     family globally.
 
-    THE FOLD REACHES THIS SUB-STEP THROUGH EXACTLY ONE THING: THE STORED EXTENT.
+    The fold reaches this sub-step through exactly one thing: the stored extent.
     ``update_H`` (stepping.py:907-924) and the diagonal ``update_E`` (:1012-1020) are
     three ``_apply_constitutive_pml`` calls over integer-position coefficients, with
     no shift helper, no ghost and no ownership mask. The PML coefficient vectors are
     already built at the folded stored extent, and the layout clauses below are where
     that stops being an assumption.
 
-    THE E SIDE REFUSES WHAT CHANGES WHAT ``source`` IS, each naming its owner: an
+    The E side refuses what changes what ``source`` is, each naming its owner: an
     off-diagonal chi1inv row (the row product READS NEIGHBOURS through
     ``_shift_down``/``_shift_up``, and on a fold the partner-axis down shift is a
     LIVE interior plane — the folded complex off-diagonal product, unbuilt here), and
@@ -949,10 +949,10 @@ def folded_complex_constitutive_coverage(fields: Any, pml: Any, side: str,
 def folded_complex_fill_coverage(fields: Any, family: str, residency: Any = None) -> Coverage:
     """May the folded complex fill write this family's ghost planes?
 
-    NARROWER THAN THE CURL'S PREDICATE AND INDEPENDENT OF IT: this pass reads no
+    Narrower than the curl's predicate and independent of it: this pass reads no
     coefficient, no source and no PML, so it has no Courant number, no sub-lattice
     and no absorber clause — ``fill_symmetry_bc_*`` runs whether or not an absorber
-    is installed. A PARTIAL FOLD COVERAGE IS THEREFORE LEGAL AND HAPPENS, exactly as
+    is installed. A partial fold coverage is therefore legal and happens, exactly as
     it does for the real fold: on a folded complex no-PML run these two slots are
     covered while every curl and constitutive slot is on the array path.
 
@@ -960,7 +960,7 @@ def folded_complex_fill_coverage(fields: Any, family: str, residency: Any = None
     k on the folded axis, a stored extent that can hold both planes, a reflect row on
     every folded PERIODIC axis.
 
-    THE WALL SEAM IS REFUSED BY NAME, through the REAL family's own helper. The
+    The wall seam is refused by name, through the REAL family's own helper. The
     reason is identical and the helper is imported rather than restated:
     ``zero_metal_*`` runs BETWEEN the two fill passes (driver.py:3286 / :3301) and
     the far pass reads a
@@ -1021,7 +1021,7 @@ def folded_complex_fill_coverage(fields: Any, family: str, residency: Any = None
                                f"reflect row from stepping._far_reflect_rows")
                 continue
             row = int(row)
-            # THE SAME THREE CHECKS THE REAL FILL MAKES, and for the same reasons:
+            # The same three checks the real fill makes, and for the same reasons:
             # the row must be inside the allocation and below the plane the far pass
             # writes; it must not be stored cell 0, which the NEAR launch has already
             # written by the time the far launch runs; and an extent this small makes
@@ -1062,7 +1062,7 @@ class FoldedComplexPmlCurlPlan(KernelPlan):
 
     ``complex_fields.ComplexPmlCurlPlan``'s bindings EXACTLY — the fold adds no
     argument, because the stored extent is what carries it — over a different kernel.
-    DELIBERATELY A SIBLING RATHER THAN A SUBCLASS: the two hold the same argument
+    Deliberately a sibling rather than a subclass: the two hold the same argument
     tuple and launch different compiled functions, and a subclass would inherit
     nothing but the risk that a future edit to the parent's ``__init__`` silently
     rebinds this one.
@@ -1206,17 +1206,17 @@ def plan_folded_complex_pml_curl_from_arrays(
 class FoldedComplexFillPlan:
     """One family's COMPLEX mirror ghost planes, as one launch per (pass, folded axis).
 
-    DELIBERATELY A SIBLING OF :class:`.plans.KernelPlan` RATHER THAN A SUBCLASS, for
+    Deliberately a sibling of :class:`.plans.KernelPlan` rather than a subclass, for
     :class:`.symmetry.MirrorGhostFillPlan`'s reason: that base's whole contract is
     that ``run`` unpacks ONE argument tuple and calls ONE function, and this plan
     cannot honour it — the array path applies the axes in X, Y, Z ORDER and ordering
     inside one dispatch is not something a grid of threads can promise.
 
-    THE ORDER IS THE ARRAY PATH'S. Every fill is a product by exactly +/-1 per part,
+    The order is the array path's. Every fill is a product by exactly +/-1 per part,
     so a corner unowned on two axes carries the product of both parities in either
     order; the plan keeps the X, Y, Z order by transcription.
 
-    THE TWO PASSES ARE SEPARATE ATTRIBUTES, NOT ONE LIST, for two reasons that stack:
+    The two passes are separate attributes, not one list, for two reasons that stack:
     ``zero_metal_*`` runs between them in the driver (driver.py:3286 / :3301), and a
     component unowned on two axes with DIFFERENT Yee shifts sees near-then-far on the
     array path where a fused per-axis launch would give it far-then-near.
@@ -1224,7 +1224,7 @@ class FoldedComplexFillPlan:
     live — which :func:`folded_complex_fill_coverage` refuses to admit otherwise —
     and :meth:`run_near` / :meth:`run_far` are what a driver adapter places.
 
-    ``replaces_sub_steps`` IS DECLARED, NOT INFERRED. The composer reads it to learn
+    ``replaces_sub_steps`` is declared, not inferred. The composer reads it to learn
     that a plan filling ``fill_B`` also performs ``fill_folded_far_ghosts_B`` on the
     device, which is a residency fact no slot name carries.
     """
@@ -1327,7 +1327,7 @@ def _fill_functions(entries: Sequence[Dict[str, Any]],
                     contract_variants: Sequence[str]) -> Dict[str, Dict[str, Any]]:
     """Compile one entry point per distinct (axis, pass, shifts) key.
 
-    NOT KEYED ON THE PHASE, and that is the visible consequence of the parity being a
+    Not keyed on the phase, and that is the visible consequence of the parity being a
     passed word rather than a compiled constant: two folded axes with opposite
     declared phases share one compiled body here, where the REAL fold compiles two.
     """
@@ -1446,7 +1446,7 @@ def plan_folded_complex_constitutive(fields: Any, pml: Any, side: str,
 # WIRING — six arms over six slots
 # ---------------------------------------------------------------------------
 #
-# WHAT SEPARATES THEM, per slot, and every one of these is a clause that names the
+# What separates them, per slot, and every one of these is a clause that names the
 # other family rather than an omission:
 #
 #   step_B / step_D    `coverage._grid_reasons` clause 2 refuses complex storage
@@ -1467,7 +1467,7 @@ def plan_folded_complex_constitutive(fields: Any, pml: Any, side: str,
 #                      run gets a named refusal rather than the composer's "nobody
 #                      asked".
 #
-# REGISTERED-BUT-CANNOT-WIN IS NOT USED HERE, and the absence is worth stating.
+# Registered-but-cannot-win is not used here, and the absence is worth stating.
 # `registry.py` keeps `registered` and `wins` separate so a missing capability gets
 # NAMED at composition time instead of falling silently to the array path, and this
 # family would have used it if a slot's product were unported. Every slot it claims
@@ -1485,7 +1485,7 @@ def _has_complex_fold(context: Any) -> bool:
     read of the grid and never the predicate itself — on an unfolded run this family
     should be silent on the four slots where OTHER arms will speak.
 
-    THE FILL SLOTS ARE NOT GATED (see :func:`register_arms`), so this asks only about
+    The fill slots are not gated (see :func:`register_arms`), so this asks only about
     the fold and not about storage: an arm that is consulted must be free to say
     "storage is real float32", which is the sentence that makes the inversion visible.
     """
@@ -1531,7 +1531,7 @@ def _fill_arm_plan(context: Any, slot: str) -> Optional[FoldedComplexFillPlan]:
 def register_arms() -> Tuple[Any, ...]:
     """This family's six arms: two curls, the certified complex pair, two fills.
 
-    THE FILL ARMS ARE UNGATED AND THE OTHER FOUR ARE NOT, for the reason
+    The fill arms are ungated and the other four are not, for the reason
     :mod:`.symmetry` states and this family inherits: on ``step_B``/``step_D`` and
     ``update_H``/``update_E`` five other families speak, so a silent folded-complex
     arm on an unfolded run costs a reader nothing. On ``fill_B``/``fill_D`` there are

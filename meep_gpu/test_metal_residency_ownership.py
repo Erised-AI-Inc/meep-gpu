@@ -1,6 +1,6 @@
 """The ownership machine behind held mirrors: states, the seal, and the two doors.
 
-WHAT THESE PIN AND WHY EACH ONE EXISTS. The shipped bracket copies every mirror
+What these pin and why each one exists. The shipped bracket copies every mirror
 both ways around every launch, so the host is authoritative at every instant and
 ownership needs no tracking. Measured 2026-09-21 on this host that transport is
 96-98% of the whole step (``pml_2d``: 69 copies a launch at 0.217 ms each against
@@ -571,7 +571,7 @@ def test_the_double_deposit_door_forms_the_difference_word_for_word_on_both_side
     Three states: DEVICE_OWNED (the device alone changes; a gather reads the
     difference back), CLEAN_BOTH (both sides move and stay equal), and nothing held
     (plain NumPy). Under a hold the residency's own door (``subtract_double_index``)
-    forms the difference ON THE DEVICE in software binary64 -- no gather, one
+    forms the difference on the device in software binary64 -- no gather, one
     ``door_scatter_sub`` launch -- and every state stores the same words. Signed zeros
     are in the data (``0 - 0``, ``-0 - 0``, ``-0 - (-0)``).
     """

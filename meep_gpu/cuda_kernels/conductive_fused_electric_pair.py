@@ -1,6 +1,6 @@
 """The CONDUCTIVE hand-CUDA fused pair: ``step_D`` -> ``zero_metal_D`` -> ``update_E``.
 
-THE BOARD'S CELL is ``D_to_E (cuda_conductive/conductive, cuda_constitutive/ordinary)``
+The board's cell is ``D_to_E (cuda_conductive/conductive, cuda_constitutive/ordinary)``
 and it owns exactly one corpus row -- ``tests:TestAdjointSolver.test_damping`` -- read
 from ``parity/meep_gpu/results/fusion_matrix_cuda_2026-09-02_tierfix``'s
 ``taxonomy.instances.buildable_not_built``. Both halves were already CERTIFIED
@@ -17,7 +17,7 @@ curl is the THREE-HISTORY conductive-PML recurrence instead of the two-history r
 one. The constitutive half is the same certified ``update_E_pml_real``.
 
 =============================================================================
-THIS IS THE SIGNED-ZERO ROW, AND WHAT MADE IT SERVABLE
+This is the signed-zero row, and what made it servable
 =============================================================================
 
 ``FdtdDriver._inject_electric_through_conductivity`` scales an injected current by
@@ -30,14 +30,14 @@ launch computing E from pre-rewrite values diverged in words no repair could rea
 THAT is why the fused electric pairs on three backends refused conductive rows by name,
 and why this cell stood empty on every backend until 2026-09-01.
 
-THE DRIVER NO LONGER DOES THAT. It snapshots the target at the deposit cells the
+The driver no longer does that. It snapshots the target at the deposit cells the
 sources publish (``deposit_repair._deposit_index`` reads the same tables) and replays
 the rescale per deposit cell in the retired passes' exact operand order -- exact at
 every deposit cell, untouched everywhere else, and closer to stock MEEP, which scales
 only the injected current at the source's own points. Triton's and Metal's refusal
 clauses were lifted on that measurement, and this family is built on it.
 
-RE-MEASURED FOR THIS PRODUCT RATHER THAN INHERITED.
+Re-measured for this product rather than inherited.
 ``parity/meep_gpu/probe_cuda_conductive_electric_pair.py``'s ``rescale`` leg drives the
 SHIPPED method on a fixture seeded with all four word classes and an exactly-zero curl
 (so a ``-0.0`` survives ``step_D`` to the injection point) and measures that NOT ONE
@@ -48,13 +48,13 @@ The classifier admits the SUBNORMAL class too and records it ``predicted_null`` 
 its reason (NumPy does not flush subnormals, so only a device run can arm that half;
 the published CuPy figure is 68 subnormal beside 54 signed-zero of 588).
 
-WHAT SURVIVES IS THE DRIVER'S OWN FALLBACK. A scaled source publishing NO deposit table
+What survives is the driver's own fallback. A scaled source publishing NO deposit table
 (no ``_point_ix``) still takes the whole-volume passes, because an unnameable deposit
 must still be scaled. No in-tree electric source class is one; the clause below stays
 for the duck-typed stranger, and it is a TRUE refusal rather than a leftover.
 
 =============================================================================
-THE SEAM, PASS BY PASS
+The seam, pass by pass
 =============================================================================
 
 * **the electric injection -- CARRIED, through the SPLIT-FIELD deposit repair.** The
@@ -69,7 +69,7 @@ THE SEAM, PASS BY PASS
   plane is REFUSED**, by name, as on both siblings. The corpus row has no symmetry.
 
 =============================================================================
-THE CONDUCTIVE MASK IS A COMPILE-TIME AXIS
+The conductive mask is a compile-time axis
 =============================================================================
 
 ``conductive_kernels`` bakes the per-component conductivity into three ``COND`` defines
@@ -79,13 +79,13 @@ This family emits one device string per mask, and the mask comes from
 which is the discipline that keeps a clause and a compile-time choice from drifting
 apart.
 
-THE FULLY LOSSLESS MASK IS NOT EMITTED, and that is a refusal rather than an omission:
+The fully lossless mask is not emitted, and that is a refusal rather than an omission:
 ``covers_conductive_curl`` refuses a run where no target carries a sigma BY NAME, and
 that run belongs to :mod:`.fused_electric_pair`. Emitting ``(0, 0, 0)`` here would be a
 body no admitted configuration can reach.
 
 =============================================================================
-THE ALIASING HAZARD
+The aliasing hazard
 =============================================================================
 
 D appears EXACTLY ONCE in the signature, for :mod:`.fused_electric_pair`'s reason: the
@@ -93,7 +93,7 @@ curl writes it and the constitutive half reads it from a register, so binding it
 second time as ``const __restrict__`` would be two restrict pointers to one allocation,
 which NVRTC miscompiles without a diagnostic.
 
-THE CONDUCTIVITY POINTERS ARE NOT ``__restrict__``, and that is a DELIBERATE DEPARTURE
+The conductivity pointers are not ``__restrict__``, and that is a deliberate departure
 from the certified curl's own signature, which does mark them so. A run whose three
 targets share one conductivity profile hands the same device pointer three times
 (``Fields.set_d_conductivity`` installs ONE volume and ``condfac_for`` returns it for
@@ -102,12 +102,12 @@ mask of three identical read-only pointers is never written through. This family
 strictly less than the certified one promises, which is sound in that direction and not
 the other; :func:`assert_disjoint_bindings` checks them against the restrict group.
 
-THE INVERSE-EPSILON POINTERS ARE NOT ``__restrict__`` either, lifted from the certified
+The inverse-epsilon pointers are not ``__restrict__`` either, lifted from the certified
 ``update_E`` rather than decided here: an isotropic run hands the same pointer three
 times (fields.py:1321-1326).
 
 =============================================================================
-DISJOINT FROM THE REAL TWIN BY ONE MEASURED CLAUSE
+Disjoint from the real twin by one measured clause
 =============================================================================
 
 ``install_fused_pairs`` leaves a seam UNFUSED when two products admit it, so an overlap
@@ -211,7 +211,7 @@ REPLACES: Tuple[str, ...] = ("step_D", "zero_metal_D", "update_E")
 SLOT = "step_D"
 
 #: The conductive masks this family emits for a digest, and the ones its gate sweeps.
-#: ``(False, False, False)`` IS ABSENT DELIBERATELY -- see the module docstring: that
+#: ``(False, False, False)`` is absent deliberately -- see the module docstring: that
 #: run is refused by ``covers_conductive_curl`` and belongs to the real twin, so
 #: emitting it would be a body no admitted configuration can reach. ``(T, T, T)`` is
 #: the corpus row's own mask.
@@ -240,7 +240,7 @@ LIFT_EDITS: Tuple[Dict[str, str], ...] = (
      "to": "float pml_apply_reg(...) { ... return value; }  /  "
            "float cond_pml_apply_reg(...) { ... return value; }",
      "why": "the stepped displacement is CARRIED in a register instead of being "
-            "written and read back. THE AUXILIARY STORES STAY: fu and f_cond are the "
+            "written and read back. The auxiliary stores stay: fu and f_cond are the "
             "curl's own histories, zero_metal_D does not touch them, and update_E "
             "does not read them"},
     {"what": "cond_pml_apply's non-conductive arm (a chunk that keeps no conductivity)",
@@ -257,7 +257,7 @@ LIFT_EDITS: Tuple[Dict[str, str], ...] = (
     {"what": "the two bodies' chunk-record blocks",
      "from": "<step_D_pml_conductive's block>  /  <update_E_pml_real's block>",
      "to": "<ONE block, bounds_block.bounds_block(both entry sets, presence xyz)>",
-     "why": "ONE DECODE OF THE RECORD PER KERNEL (bit_parity_0_10 DESIGN.md D10). The "
+     "why": "One decode of the record per kernel. The "
             "D curl reads the integer record (each component's dsig and dsigu axes) "
             "and update_E the half-integer one (each component's own axis). Both "
             "bodies' blocks are removed by bounds_block.strip_bounds_block (refused "
@@ -303,7 +303,7 @@ __all__ = [
 ]
 
 # =============================================================================
-# THE DEVICE TEXT
+# The device text
 # =============================================================================
 
 _BODY_ANCHOR = "\n) {\n"
@@ -328,7 +328,7 @@ _ZERO_METAL_ROWS: Tuple[Tuple[str, str, Tuple[str, ...]], ...] = (
 )
 
 #: The two certified curl helpers and the edits that turn each into a value the seam
-#: can carry. THE AUXILIARY STORES ARE UNTOUCHED in both: ``fu`` and ``f_cond`` are the
+#: can carry. The auxiliary stores are untouched in both: ``fu`` and ``f_cond`` are the
 #: curl's own histories, ``zero_metal_D`` does not write them (it writes D alone,
 #: stepping.py:2206-2247) and ``update_E`` does not read them, so they stay exactly
 #: where the certified helper puts them.
@@ -338,7 +338,7 @@ _PML_APPLY_SIGNATURE_REG = "__device__ __forceinline__ float pml_apply_reg(\n"
 #: rewritten inside its own helper's text (:func:`_helper_span`).
 _HELPER_STORE = "    f[idx] = value;\n"
 _PML_APPLY_STORE_REG = (
-    "    // THE ONE EDIT TO THIS HELPER: the value, both forms and the auxiliary store\n"
+    "    // The one edit to this helper: the value, both forms and the auxiliary store\n"
     "    // are the certified ones; the displacement is RETURNED rather than stored so\n"
     "    // the weld can clear it on a metallic wall before storing it, which is where\n"
     "    // driver.py:3310 puts zero_metal_D.\n"
@@ -352,7 +352,7 @@ _COND_PML_APPLY_PLAIN = ("        pml_apply(f, u, idx, curl, km1, si1, km2, si2,
 _COND_PML_APPLY_PLAIN_REG = (
     "        return pml_apply_reg(f, u, idx, curl, km1, si1, km2, si2, dsigu);\n")
 _COND_PML_APPLY_STORE_REG = (
-    "    // THE ONE EDIT TO THIS HELPER, and it is the SELECTED FORM that is returned\n"
+    "    // The one edit to this helper, and it is the SELECTED FORM that is returned\n"
     "    // rather than stored -- the per-chunk choice, its flags and both history\n"
     "    // stores above are the certified ones, untouched.\n"
     "    return value;\n")
@@ -366,7 +366,7 @@ _HISTORY_STORES: Tuple[str, ...] = ("    if (dsigu) fu[idx] = fu_new;\n",
 #: signature: no arithmetic lives here.
 _SIGNATURE = r'''
 extern "C" __global__ void __NAME__(
-    // THE SHARED VOLUME, BOUND ONCE. The curl half writes it and the constitutive
+    // The shared volume, bound once. The curl half writes it and the constitutive
     // half reads it from a register; binding it a second time as a source would be
     // two pointers to one allocation with a __restrict__ promise on one of them,
     // which is UB and which NVRTC miscompiles without a diagnostic.
@@ -402,12 +402,12 @@ extern "C" __global__ void __NAME__(
     // (fields.py:1321-1326).
     const float* inv_eps_Ex, const float* inv_eps_Ey, const float* inv_eps_Ez,
     int nx, int ny, int nz, float dtdx,
-    // THE CURL'S COEFFICIENTS, on the INTEGER sigma sub-lattice (step_D, half_integer
+    // The curl's coefficients, on the INTEGER sigma sub-lattice (step_D, half_integer
     // False).
     const float* __restrict__ kms_x, const float* __restrict__ sinv_x,
     const float* __restrict__ kms_y, const float* __restrict__ sinv_y,
     const float* __restrict__ kms_z, const float* __restrict__ sinv_z,
-    // THE CONSTITUTIVE'S COEFFICIENTS, on the HALF-INTEGER one (stepping.py:986).
+    // The constitutive's coefficients, on the HALF-INTEGER one (stepping.py:986).
     // kms is RENAMED because the bare name collides with the curl's above and the
     // two are different sub-lattices -- a half-cell error, not a crash.
     const float* __restrict__ kps_x, const float* __restrict__ kms_half_x,
@@ -418,9 +418,9 @@ extern "C" __global__ void __NAME__(
     // carries no wall (stepping._zero_metal, :2237-2239) and this family refuses a
     // fold outright, so the two can never disagree here.
     int wall_x, int wall_y, int wall_z,
-    // THE CHUNK RECORD (chunk_map.chunk_bounds_record), int32[25]: which cells take
+    // The chunk record (chunk_map.chunk_bounds_record), int32[25]: which cells take
     // which PML form, per sub-lattice and axis, and the partner-presence word. ONE
-    // decode serves both halves (DESIGN.md D10).
+    // decode serves both halves.
     const int* __restrict__ cb
 ) {
 '''  # stepping.py live lines for the frozen device-text citation(s) in this string: 986->1015
@@ -535,7 +535,7 @@ def conductive_fused_electric_pair_prelude() -> str:
         (_COND_PML_APPLY_PLAIN, _COND_PML_APPLY_PLAIN_REG,
          "its non-conductive arm"),
         (_HELPER_STORE, _COND_PML_APPLY_STORE_REG, "its closing store")))
-    # THE HISTORY STORES SURVIVE, and that is checked rather than trusted: fu and
+    # The history stores survive, and that is checked rather than trusted: fu and
     # f_cond are the curl's own state and a rewrite that swallowed them would leave
     # the recurrence one step behind on every cell, which no seam test would notice.
     for store in _HISTORY_STORES:
@@ -564,7 +564,7 @@ def certified_curl_body() -> str:
         raise AssertionError(
             "the certified curl body no longer decodes i on its own line; the carried "
             "registers have nowhere to be declared")
-    # ONE DECODE OF THE CHUNK RECORD (D10): the curl body's own block is removed and
+    # One decode of the chunk record: the curl body's own block is removed and
     # the real twin's union block, which also carries update_E's entries, takes its
     # place.
     body = bounds_block.strip_bounds_block(
@@ -581,7 +581,7 @@ def certified_curl_body() -> str:
         "    float d_z = 0.0f;\n",
         tail,
     ))
-    # BOTH BRANCHES OF THE CERTIFIED #if ARE REWRITTEN, matched as WHOLE LINES so a
+    # Both branches of the certified #if are rewritten, matched as whole lines so a
     # moved argument list is a named failure rather than a partial substitution.
     for index, (axis, target) in enumerate(zip(_CARRIED, _TARGETS)):
         for helper in ("cond_pml_apply", "pml_apply"):
@@ -593,7 +593,7 @@ def certified_curl_body() -> str:
                 raise AssertionError(
                     f"the certified curl body no longer closes target {target}'s "
                     f"{helper} on one line ({call!r})")
-            # THE ARGUMENT LIST IS CARRIED WHOLE. Only the callee's NAME changes and a
+            # The argument list is carried whole. Only the callee's NAME changes and a
             # destination is prepended -- every operand, its order and the coefficient
             # indices are the certified ones. Slicing the arguments off by an offset
             # would silently drop the leading ones on any call whose spelling moved.
@@ -624,11 +624,11 @@ def zero_metal_carry() -> str:
     """``zero_metal_D`` (driver.py:3310), carried between the two halves.
 
     The register is cleared BESIDE the store, because the constitutive half reads the
-    register and not the volume. NO OWNERSHIP GUARD, and that is a consequence of the
+    register and not the volume. No ownership guard, and that is a consequence of the
     fold refusal rather than a simplification: this family refuses a mirror plane
     outright, so no cell is imaged and every thread owns its own.
 
-    ``fu`` AND ``f_cond`` ARE NOT CLEARED, and that is the array path's own behaviour:
+    ``fu`` and ``f_cond`` are not cleared, and that is the array path's own behaviour:
     ``stepping._zero_metal`` writes the D components alone (:2206-2247). A carry that
     cleared the histories too would damp the absorber differently at every wall cell.
     """
@@ -669,12 +669,12 @@ def certified_constitutive_body() -> str:
             "the certified constitutive body no longer decodes i on its own line; the "
             "duplicate decomposition cannot be identified")
     # Its chunk-record block goes with the decode: the union block above decodes
-    # update_E's entries too (D10).
+    # update_E's entries too.
     body = bounds_block.strip_bounds_block(body, "_update_E_pml_real_kernel_code",
                                            *real.CONSTITUTIVE_BLOCK)
     tail = body.split(_DECODE_END, 1)[1]
 
-    # THE SEAM. ONE TOKEN PER LINE is substituted and the rest of the certified
+    # The seam. One token per line is substituted and the rest of the certified
     # statement -- the operand order, the inv_eps index and the line's own annotation
     # -- is left exactly as it stands.
     for axis, target in zip(_CARRIED, _TARGETS):
@@ -702,7 +702,7 @@ def certified_constitutive_body() -> str:
                 f"would need D bound a second time, which is the aliasing hazard this "
                 f"signature exists to avoid")
 
-    # THE ONE RENAME, on one line each.
+    # The one rename, on one line each.
     for target, (axis, coordinate) in enumerate(zip(_CARRIED, _COORDINATE)):
         prefix = f"    constitutive_apply(E{axis}, f_w_E{axis}, idx, src_{axis}, "
         call = _line_starting(tail, prefix, f"E{axis}'s constitutive_apply")
@@ -728,7 +728,7 @@ def conductive_fused_electric_pair_source(
         cond: Sequence[bool], keep: Sequence[bool] = (True, True, True)) -> str:
     """The whole fused kernel at one conductive mask and one keep mask.
 
-    THE ``#define`` LINES ARE THIS FILE'S ONLY ADDITION TO THE MASKS, exactly as
+    The ``#define`` lines are this file's only addition to the masks, exactly as
     ``conductive_kernels.kernel_source`` spells them, and for that function's own
     reason: the conductive tail helper lives INSIDE the emitted text behind
     ``#if COND0 || COND1 || COND2``, so a gate that mutates the emitted source reaches
@@ -789,7 +789,7 @@ def _get_kernel(cond: Sequence[bool], keep: Sequence[bool] = (True, True, True),
                 name: str = KERNEL_NAME):
     """Compile (or fetch) the kernel at one mask.
 
-    ``compile_cache.kernel_cache_key`` keys the memo ON THE SOURCE, so a gate that
+    ``compile_cache.kernel_cache_key`` keys the memo on the source, so a gate that
     mutates the emitted text is a cache MISS and reaches NVRTC.
     """
     if cp is None:
@@ -837,14 +837,14 @@ def covers_conductive_fused_electric_pair(fields: Any, pml: Any, grid: Any,
 
     Returns ``(covered, reason)`` with ``reason`` naming the FIRST refusal.
 
-    A CONJUNCTION, AND NOTHING IS WEAKENED. The curl half is
+    A conjunction, and nothing is weakened. The curl half is
     ``conductive_kernels.covers_conductive_curl``, whole -- which REQUIRES a target
     carrying a sigma and so partitions this family from :mod:`.fused_electric_pair`,
     whose curl predicate refuses one by name. The constitutive half is
     ``coverage.covers_real_pml_constitutive(side='E')``, whole -- which refuses
     ``fields.polarizations`` truthy and so partitions it from the dispersive pair.
 
-    THE SEAM CLAUSES ARE THIS PREDICATE'S OWN: the fold refusal, the wall/fold
+    The seam clauses are this predicate's own: the fold refusal, the wall/fold
     disjointness, the whole-volume-rescale fallback and the in-seam source routing.
     """
     covered, reason = _conductive_predicate()(fields, pml, grid, "step_D")
@@ -854,7 +854,7 @@ def covers_conductive_fused_electric_pair(fields: Any, pml: Any, grid: Any,
     if not covered:
         return False, f"ordinary constitutive half: {reason}"
 
-    # THE TWO SYMMETRY PASSES. Both return at their first line without a mirror
+    # The two symmetry passes. Both return at their first line without a mirror
     # (stepping.py:1481-1482, :1565-1566). RESTATED HERE rather than inferred from
     # either half's guard, as on both siblings.
     if bool(getattr(grid, "has_symmetry", bool)()):
@@ -880,11 +880,11 @@ def covers_conductive_fused_electric_pair(fields: Any, pml: Any, grid: Any,
                            f"(:2237-2239) and this weld would clear a plane the array "
                            f"path leaves alone")
 
-    # THE DRIVER'S WHOLE-VOLUME FALLBACK, refused by name. See the module docstring:
+    # The driver's whole-volume fallback, refused by name. See the module docstring:
     # the sparse replay is what made this cell servable, and a scaled source that
     # publishes NO deposit table still takes the three whole-volume passes, which
     # rewrite -0.0 to +0.0 at every cell of the component and not only at the deposit.
-    # A point repair cannot reconstruct that. NO IN-TREE ELECTRIC SOURCE CLASS IS ONE;
+    # A point repair cannot reconstruct that. No in-tree electric source class is one;
     # the clause stays for the duck-typed stranger.
     for index, source in enumerate(_deposit_repair.in_seam_sources(
             tuple(sources) if sources is not None else (), "D")):
@@ -901,7 +901,7 @@ def covers_conductive_fused_electric_pair(fields: Any, pml: Any, grid: Any,
                 f"D{component[1] if component else '*'} and not only at the deposit, "
                 f"and a point repair cannot reconstruct that")
 
-    # THE WORDING IS THIS SITE'S OWN, which is what ``seam_source_reasons`` asks for:
+    # The wording is this site's own, which is what ``seam_source_reasons`` asks for:
     # the shared helper decides WHICH sources count as in-seam and whether a deposit
     # is carryable, and each product keeps the text its own gate and tests pin.
     reasons = _deposit_repair.seam_source_reasons(
@@ -940,7 +940,7 @@ _CONSTITUTIVE_TABLE_KEYS: Tuple[str, ...] = (
 def conductive_fused_electric_pair_tables(pml: "PML") -> Dict[str, Dict[str, Any]]:
     """Both coefficient groups, built once per frozen configuration.
 
-    THE TWO SUB-LATTICES ARE THE POINT. ``step_D`` reads the INTEGER one
+    The two sub-lattices are the point. ``step_D`` reads the INTEGER one
     (``half_integer=False``) and ``update_E`` the HALF-INTEGER one (stepping.py:1015);
     binding either group where the other belongs is a half-cell error in the absorber
     profile, not a crash. The real twin's tables are reused whole -- its constitutive
@@ -953,7 +953,7 @@ def conductive_bindings(fields: "Fields") -> Tuple[Tuple[Any, ...], Tuple[Any, .
                                                    Tuple[bool, bool, bool]]:
     """``(condfac + condinv, the three f_cond histories, the COND mask)``.
 
-    A LOSSLESS COMPONENT BINDS ITS OWN TARGET ARRAY in all three slots, which is
+    A lossless component binds its own target array in all three slots, which is
     ``conductive_kernels.step_conductive_curl``'s own convention: ``#if CONDn`` is 0
     for it, so those pointers are never dereferenced.
     """
@@ -1006,7 +1006,7 @@ def assert_disjoint_bindings(fields: "Fields", tables: Dict[str, Dict[str, Any]]
                              histories: Sequence[Any]) -> int:
     """Check the promise every ``__restrict__`` in this signature makes.
 
-    THE RESTRICT GROUP IS: the nine curl volumes, the three ``f_cond`` histories, the
+    The restrict group is: the nine curl volumes, the three ``f_cond`` histories, the
     six electric volumes and both coefficient groups. The inverse-epsilon and
     conductivity pointers are NOT restrict and may legitimately repeat, so they are
     checked only AGAINST the restrict group.
@@ -1061,9 +1061,9 @@ def launch_conductive_fused_electric_pair(
         keep_masks: Sequence[Any] = (None, None, None)) -> Dict[str, Any]:
     """All three of :data:`REPLACES` in ONE launch, at this run's masks.
 
-    ``kernel`` IS THE GATE'S DOOR, keyword-optional and named for what it is.
+    ``kernel`` is the gate's door, keyword-optional and named for what it is.
 
-    ``chunk_bounds`` IS THE RUN'S CHUNK RECORD ON THE DEVICE, required and keyword-only
+    ``chunk_bounds`` is the run's chunk record on the device, required and keyword-only
     (one contiguous ``int32[25]`` vector, ``chunk_map.chunk_bounds_record``): both halves
     choose MEEP's per-chunk forms from it, and a launch without it is refused by name.
     ``keep`` and ``keep_masks`` are :func:`conductive_keeps`' answer; ``keep`` must be
@@ -1107,7 +1107,7 @@ def run_conductive_fused_electric_pair(
         kernel: Optional[Any] = None) -> Dict[str, Any]:
     """Gate on the predicate, resolve everything from the grid, launch once.
 
-    THE PREDICATE IS ASKED FIRST AND A REFUSAL IS RETURNED, NOT RAISED, because the
+    The predicate is asked first and a refusal is returned, not raised, because the
     caller's correct response to a configuration this product does not carry is the
     array path.
     """

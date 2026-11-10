@@ -1,11 +1,11 @@
 """The CUDA real fused pairs transcribe the array path's per-chunk PML forms, read off their text.
 
-WHAT THIS FILE SETTLES, ON A HOST WITH NO DEVICE. The fused magnetic pair
+What this file settles, on a host with no device. The fused magnetic pair
 (``fused_magnetic_pair``: ``step_B`` -> the two B fills -> ``zero_metal_B`` -> ``update_H``)
 and the fused electric pair (``fused_electric_pair``: ``step_D`` -> the D fills ->
 ``zero_metal_D`` -> ``update_E``) are spliced from the root kernels, which choose MEEP's PML
-form per structure chunk from the run's chunk record (bit_parity_0_10 DESIGN.md D1, D5,
-D10, D11). Each emitted device text is EXECUTED in float32 NumPy by the root kernels' own
+form per structure chunk from the run's chunk record (docs/development/kernel-tables.md).
+Each emitted device text is EXECUTED in float32 NumPy by the root kernels' own
 interpreter (``test_root_chunk_forms.Interpreter``, extended here to stores at an index
 other than the lane's own, which the fill carries make) over a seeded full-volume state,
 and every array of the ``Fields`` is compared word for word (sign of zero included) with the
@@ -26,7 +26,7 @@ should, and that the sub-steps moved their fields (a vacuity floor). A set of pl
 defects, each a rewrite of one emitted text, must change a word; the declared nulls must
 not.
 
-THE INTERPRETER IS THE ROOT LANE'S, with one extension: a store's index is evaluated rather
+The interpreter is the root suite's, with one extension: a store's index is evaluated rather
 than required to be the lane's own (``Bx[gx_n_i] = gx_n_v;``, and the certified helpers
 called at a ghost index). Lanes execute in lockstep, so a cross-lane read-after-write that
 a device would race on is not modelled here: that property is the write enumeration's
@@ -168,7 +168,7 @@ CASES: Dict[str, Tuple] = {
                     (("X", 1),), ((0, 5), (2, 2), (2, 2)), None),
     # The same grid on a lifted division (the one-rank boxes, read the way a lift's
     # are): its membership line copies the near ghost's image row onto the ghost row
-    # (chunk_map, D5), where the one-rank line (chunk_map.one_rank_line) does not.
+    # (chunk_map), where the one-rank line (chunk_map.one_rank_line) does not.
     "fold_x_deep_lifted": ((9.0, 10.0, 11.0), 3, ("periodic", "periodic", "periodic"),
                            (("X", 1),), ((0, 5), (2, 2), (2, 2)), "lifted"),
 }
@@ -481,7 +481,7 @@ DEFECTS = {
     "near_ghost_keyed_at_the_source": (
         "B", "int gx_n_w = (0 >= cbi_x_a0 && 0 < cbi_x_a1) || (0 >= cbi_x_b0 && 0 < cbi_x_b1);",
         "int gx_n_w = in_i_x;", "fold_x_deep", True, True),
-    # The auxiliary stored on a plain cell at the own cell: C2's contract breaks.
+    # The auxiliary stored on a plain cell at the own cell: the auxiliary contract breaks.
     "electric_auxiliary_stored_on_a_plain_cell": (
         "D", "    if (dsigw) fw[idx] = src;\n", "    fw[idx] = src;\n",
         "walls3d", True, True),
@@ -497,7 +497,7 @@ DEFECTS = {
         "(ny - 1 >= cbh_y_b0 && ny - 1 < cbh_y_b1));", "fold_y_periodic", True, True),
     # --- declared nulls --------------------------------------------------------------
     # The same source keying on the LIFTED division of the same grid: its line copies the
-    # image row onto the ghost row (D5), so the two rows read one flag.
+    # image row onto the ghost row, so the two rows read one flag.
     "near_ghost_keyed_at_the_source_on_a_lifted_division": (
         "B", "int gx_n_w = (0 >= cbi_x_a0 && 0 < cbi_x_a1) || (0 >= cbi_x_b0 && 0 < cbi_x_b1);",
         "int gx_n_w = in_i_x;", "fold_x_deep_lifted", True, False),

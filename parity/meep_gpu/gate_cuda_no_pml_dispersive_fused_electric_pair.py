@@ -1,6 +1,6 @@
 """Byte-identity gate for the NO-ABSORBER DISPERSIVE-STORE hand-CUDA electric pair.
 
-WHAT IS UNDER TEST. ``meep_gpu/cuda_kernels/no_pml_dispersive_fused_electric_pair.py``:
+What is under test. ``meep_gpu/cuda_kernels/no_pml_dispersive_fused_electric_pair.py``:
 ONE kernel performing three driver passes in one launch, on a run with no absorber, a
 registered susceptibility and stored E::
 
@@ -8,7 +8,7 @@ registered susceptibility and stored E::
     -> zero_metal_D (:3310)
     -> plain stored-E update_E (:3313, stepping.py:1019-1022)
 
-THE TWO CELLS ARE THE LAST POINTWISE-BUILDABLE ``D_to_E`` CELLS THIS BOARD HAD, and
+The two cells are the last pointwise-buildable ``D_to_E`` cells this board had, and
 ONE product occupies both::
 
     (cuda_conductive/conductive,   cuda_no_pml_dispersive)  2 rows
@@ -18,18 +18,18 @@ All three rows carry an ELECTRIC DEPOSIT inside the seam, so the deposit legs ar
 a side observation: without the bracket this product serves ZERO.
 
 =============================================================================
-THE TWO THINGS THIS GATE MEASURES THAT NO OTHER CUDA GATE DOES
+The two things this gate measures that no other CUDA gate does
 =============================================================================
 
-1. **THE PLAIN DEPOSIT REPAIR.** Every shipped CUDA electric weld inverts the
+1. **The plain deposit repair.** Every shipped CUDA electric weld inverts the
    SPLIT-FIELD recurrence ``field + kps*fresh - kms*fw_prev``. This cell's layer is
    INERT, so ``update_E`` is a PURE OVERWRITE with no ``f_w`` at all, and the module
    declares ``REPAIR_PATHS = (deposit_repair.PLAIN_PATH,)``. :func:`leg_deposit`
    measures the bracket end to end AND scores two controls: the unbracketed launch,
    which must DIVERGE, and the same product declaring the SPLIT-FIELD path, which must
-   be REFUSED BY NAME rather than mis-repair.
+   be refused by name rather than mis-repair.
 
-2. **ONE EMITTER SERVING BOTH CURL ARMS.** ``conductive_kernels`` bakes the
+2. **One emitter serving both curl arms.** ``conductive_kernels`` bakes the
    per-component conductivity into three ``COND`` defines and takes the certified
    lossless tail behind ``#else``, so the ``(False, False, False)`` build IS
    ``no_pml_curl``'s ``step_D_no_pml_real``. Both builds are swept, and
@@ -43,7 +43,7 @@ against the driver's own pass order, six armed mutations, every null reasoned, a
 three deposit legs green. This gate answers them about the COMPILED kernel.
 
 =============================================================================
-WHY THE COMPARISON IS PER COMPLETE DRIVER STEP, WITH THE POLE VOLUMES IN IT
+Why the comparison is per complete driver step, with the pole volumes in it
 =============================================================================
 
 Two engines are built from one seed and stepped side by side; the two are compared as
@@ -53,16 +53,16 @@ closes the step from the stored E -- on the plain path ``Fields.drive_field`` re
 the STORED E rather than ``f_w`` (fields.py:1160-1162) -- so a wrong constitutive
 product reaches ``P`` on the same step and ``D`` on the next.
 
-THE POLE VOLUMES ARE SEEDED NON-ZERO and a case whose poles are all zero FAILS: zero
+The pole volumes are seeded non-zero and a case whose poles are all zero FAILS: zero
 is a fixed point of ``s = s - P``, so a zero-seeded fixture turns every pole mutation
 into a null and would report a green sweep that measured nothing.
 
-THERE IS NO ``f_w_E`` AND NO ``fu_D`` ON THIS PATH, and their absence is asserted per
+There is no ``f_w_E`` and no ``fu_D`` on this path, and their absence is asserted per
 case rather than assumed. A fixture that found either allocated would be measuring the
 split-field recurrence, which is a different sub-step and a different product.
 
 =============================================================================
-WHAT THIS GATE REFUSES TO LET PASS SILENTLY
+What this gate refuses to let pass silently
 =============================================================================
 
 1. A step this gate invented -- the driver-order leg reads ``FdtdDriver.step``'s
@@ -97,7 +97,7 @@ for _path in (str(_HERE), str(_REPO_API)):
 
 import probe_fused_kernel_bit_identity as probe  # noqa: E402
 
-# THE REAL TWIN'S GATE, IMPORTED FOR ITS SHARED MACHINERY. A second transcription of
+# The real twin's gate, imported for its shared machinery. A second transcription of
 # the driver's pass list is a second place for this gate to walk an order the driver
 # does not.
 import gate_cuda_fused_electric_pair as base  # noqa: E402
@@ -154,7 +154,7 @@ MOVEMENT_FLOOR_NOTE = (
 
 CELL: Tuple[float, float, float] = (9.0, 10.0, 11.0)
 
-#: The sweep. THE FIRST TWO ROWS ARE THE CORPUS SHAPES the two cells own, read off the
+#: The sweep. The first two rows are the corpus shapes the two cells own, read off the
 #: stamped census: absorber-1d.py and TestAbsorber.test_absorber are conductive on
 #: every D component with five poles and METALLIC on z, and material-dispersion.py is
 #: LOSSLESS with two poles and periodic on all three. The rest exist to arm mutations
@@ -222,7 +222,7 @@ def seeded_hosts(names: Sequence[str], value_class: str, shape, rng
                  ) -> Dict[str, np.ndarray]:
     """One host array per name, in the requested value class.
 
-    THE BASE GATE'S OWN TWO CLASSES, over THIS family's name set (which carries the
+    The base gate's own two classes, over THIS family's name set (which carries the
     pole buffers and carries no ``fu``/``f_w``). The subnormal band is
     ``probe.subnormal_band_hosts``' rather than a second construction: the point of
     that class is the float32 flush-to-zero policy, and two generators for it would be
@@ -243,7 +243,7 @@ def leg_driver_order(replaces: Sequence[str]) -> Dict[str, Any]:
     is what the source says, and a gate that imported the module to ask would be
     asking a different object than the one a reader checks.
 
-    CONTIGUITY IS WHAT THE VERDICT REQUIRES. A gap would be a driver pass the launch
+    Contiguity is what the verdict requires. A gap would be a driver pass the launch
     skipped while the array path performed it -- and on this family the run is
     ``step_D -> zero_metal_D -> update_E``, which is contiguous only because the two
     symmetry fills between them are INERT on every row this product admits (it refuses
@@ -267,7 +267,7 @@ def leg_driver_order(replaces: Sequence[str]) -> Dict[str, Any]:
     positions = [found.index(name) for name in declared if name in found]
     subsequence = (len(positions) == len(declared)
                    and positions == sorted(positions))
-    # THE FILLS ARE THE ONLY PASSES ALLOWED INSIDE THE RUN, and only because this
+    # The fills are the only passes allowed inside the run, and only because this
     # family refuses a fold: without a mirror both return at their first line
     # (stepping.py:1481-1482, :1565-1566), so the launch skips nothing the array path
     # would have done.
@@ -297,7 +297,7 @@ def leg_driver_order(replaces: Sequence[str]) -> Dict[str, Any]:
 def competing_step_D_products(fields, pml, grid, sources) -> List[str]:
     """Every OTHER ``step_D`` product whose predicate admits this fixture.
 
-    TWO ADMITTERS ON ONE SEAM leave it UNFUSED naming both, so an overlap does not add
+    Two admitters on one seam leave it UNFUSED naming both, so an overlap does not add
     coverage -- it COSTS whatever the other product was serving. Asked over the whole
     table rather than against a hand-picked neighbour, so a product landing later
     cannot quietly overlap this one.
@@ -380,8 +380,8 @@ def build(spec: Dict[str, Any], value_class: str, rng):
     fields.enable_field_storage()
     pml = PML(grid=grid, thickness=0)
 
-    # ONE SEEDING CALL over every volume the comparison covers, so the value class is
-    # applied uniformly. THE POLE VOLUMES ARE IN IT and are seeded NON-ZERO: zero is a
+    # One seeding call over every volume the comparison covers, so the value class is
+    # applied uniformly. The pole volumes are in it and are seeded NON-ZERO: zero is a
     # fixed point of ``s = s - P``, so a zero-seeded chain turns every pole mutation
     # into a null.
     pole_slots = tuple(f"{attribute}_{component}_{index}"
@@ -443,7 +443,7 @@ def run_case(spec: Dict[str, Any], value_class: str, steps: int,
              walls_patch: Optional[Callable[[Sequence[int], Any], Sequence[int]]] = None,
              plan_patch: Optional[Callable[[Dict[str, Any]], Dict[str, Any]]] = None,
              label_suffix: str = "") -> Dict[str, Any]:
-    """Step two engines side by side and compare per COMPLETE DRIVER STEP."""
+    """Step two engines side by side and compare per complete driver step."""
     from meep_gpu.cuda_kernels import dispersive_kernels  # noqa: PLC0415
     from meep_gpu.cuda_kernels import in_seam_coverage, step_curl_kernels  # noqa: PLC0415
     from meep_gpu.cuda_kernels import (  # noqa: PLC0415
@@ -467,7 +467,7 @@ def run_case(spec: Dict[str, Any], value_class: str, steps: int,
     case["distinct_inverse_epsilon_allocations"] = len({
         int(actual.inverse_epsilon_for(c).data.ptr) for c in _ELECTRIC})
 
-    # THE SUB-STEP THIS GATE CLAIMS TO MEASURE, CHECKED RATHER THAN ASSUMED.
+    # The sub-step this gate claims to measure, checked rather than assumed.
     allocated = [name for name in MUST_BE_ABSENT
                  if getattr(actual, name, None) is not None]
     case["unexpectedly_allocated"] = allocated
@@ -498,7 +498,7 @@ def run_case(spec: Dict[str, Any], value_class: str, steps: int,
         case["why"] = f"the predicate refused this fixture: {reason}"
         return case
 
-    # NO OTHER step_D PRODUCT MAY ADMIT THIS FIXTURE. Two admitters leave the seam
+    # No other step_D product may admit this fixture. Two admitters leave the seam
     # UNFUSED naming both, so an overlap costs coverage rather than adding it.
     overlaps = competing_step_D_products(actual, pml, grid, ())
     case["competing_products"] = overlaps
@@ -544,7 +544,7 @@ def run_case(spec: Dict[str, Any], value_class: str, steps: int,
     with counter:
         for step in range(1, steps + 1):
             array_step(reference, ref_pml)
-            # THE POLE PLAN IS RE-RESOLVED EVERY STEP: PolarizationState.update
+            # The pole plan is re-resolved every step: PolarizationState.update
             # rotates the buffers (dispersion.py:689-691) and a cached plan names
             # last step's arrays -- stale in a way that still computes.
             live = dispersive_kernels.resolve_pole_plan(actual)
@@ -653,7 +653,7 @@ def leg_separate_control(spec: Dict[str, Any], steps: int) -> Dict[str, Any]:
     fused_counter = MemoLaunchCounter()
     for _step in range(steps):
         array_step(reference, ref_pml)
-        # EACH COMPOSITION RUNS AT step_D'S POSITION IN THE DRIVER'S ORDER, not before
+        # Each composition runs at step_D's position in the driver's order, not before
         # the whole walk. The first cut of this leg ran the D/E work first and then
         # every other pass, which puts step_B and update_H AFTER the displacement they
         # feed -- and BOTH compositions then diverged from the array path in exactly
@@ -662,7 +662,7 @@ def leg_separate_control(spec: Dict[str, Any], steps: int) -> Dict[str, Any]:
         for name in DRIVER_ORDER:
             if name == "step_D":
                 with separate_counter:
-                    # THE CERTIFIED CURL FOR THIS SPEC'S ARM, and the branch is the
+                    # The certified curl for this spec's arm, and the branch is the
                     # point of this control rather than a convenience.
                     # `covers_conductive_curl` REFUSES a run where no target carries a
                     # sigma, so launching the conductive family on the lossless spec
@@ -721,8 +721,8 @@ def leg_deposit(spec: Dict[str, Any], steps: int) -> Dict[str, Any]:
                              -> repair, byte-identical to the driver's own order.
     ``unbracketed``          the same without the repair. MUST DIVERGE -- the fused
                              launch consumed a pre-injection displacement.
-    ``split_field_declared`` the same product declaring the WRONG repair. MUST BE
-                             REFUSED BY NAME -- the split-field inverse would write an
+    ``split_field_declared`` the same product declaring the WRONG repair. Must be
+                             refused by name -- the split-field inverse would write an
                              answer the step never computed.
     """
     from meep_gpu.cuda_kernels import in_seam_coverage, step_curl_kernels  # noqa: PLC0415
@@ -746,11 +746,11 @@ def leg_deposit(spec: Dict[str, Any], steps: int) -> Dict[str, Any]:
     reference, ref_grid, ref_pml, ref_sources = engine("reference")
     dt = float(ref_grid.dt)
 
-    # DOES THE FIXTURE ACTUALLY DEPOSIT? A source whose deposit never moves a word
+    # Does the fixture actually deposit? A source whose deposit never moves a word
     # makes every leg below a null, so the question is asked before the legs are
-    # scored -- and it is asked AT THE TIMES THE LEGS THEMSELVES USE.
+    # scored -- and it is asked at the times the legs themselves use.
     #
-    # THAT LAST CLAUSE IS NOT PEDANTRY. The first cut probed a single hardcoded
+    # That last clause is not pedantry. The first cut probed a single hardcoded
     # t = 0.5, and this source's carrier has period 1/frequency = 1.0, so every
     # half-integer time is an exact ZERO of its amplitude: the probe reported
     # `deposited_words = 0` and declared three perfectly good legs vacuous. Sampling
@@ -775,7 +775,7 @@ def leg_deposit(spec: Dict[str, Any], steps: int) -> Dict[str, Any]:
         refusal = None
         for step in range(steps):
             when = (step + 0.5) * dt
-            # THE FUSED ROUTE RUNS AT step_D'S POSITION, with every other driver pass
+            # The fused route runs at step_D's position, with every other driver pass
             # in its own place around it -- the same walk `run_case` uses, and the one
             # the reference below performs.
             for name in DRIVER_ORDER:
@@ -792,7 +792,7 @@ def leg_deposit(spec: Dict[str, Any], steps: int) -> Dict[str, Any]:
                         fields, codes, walls, dtdx, poles, counts, conductivity, cond,
                         chunk_bounds=chunk_record(grid, pml))
                     cp.cuda.runtime.deviceSynchronize()
-                    # THE DRIVER'S OWN SEAM, between the two consults: inject, then
+                    # The driver's own seam, between the two consults: inject, then
                     # the wall clear that sits behind no consult at all.
                     for source in sources:
                         source.inject(fields, when)
@@ -803,7 +803,7 @@ def leg_deposit(spec: Dict[str, Any], steps: int) -> Dict[str, Any]:
                     run_pass(name, fields, pml)
             if refusal is not None:
                 break
-        # THE ENGINE IS KEPT AND COMPARED AFTER THE REFERENCE HAS RUN. The first cut
+        # The engine is kept and compared after the reference has run. The first cut
         # compared here, inside this loop -- against a reference still sitting at its
         # initial state, because its own run is below -- so all three legs reported
         # every word of every array differing and the leg still passed, because the
@@ -832,7 +832,7 @@ def leg_deposit(spec: Dict[str, Any], steps: int) -> Dict[str, Any]:
                                                     arity).values()))}
               for tag, entry in legs.items()}
     row["legs"] = scored
-    # THE FLOOR, AND ITS FIRST CLAUSE IS THE ONE THAT WAS MISSING. A leg that ran the
+    # The floor, and its first clause is the one that was missing. A leg that ran the
     # bracket and diverged is a FAILURE, not a leg that "ran"; without this clause the
     # first cut reported OK while the bracketed route differed in every word of every
     # array. The other three clauses are the controls: the repair must not refuse the
@@ -890,7 +890,7 @@ def _always(spec) -> bool:
 SOURCE_MUTATIONS: Tuple[Tuple[str, Tuple[str, str, int], Optional[bool],
                               Callable[[Dict[str, Any]], bool]], ...] = (
     # --- THE SEAM, and this is what the fusion is ----------------------------
-    # THE CHAIN OPENS ON THE REGISTER, NOT ON A RELOAD OF THE VOLUME -- and this leg
+    # The chain opens on the register, not on a reload of the volume -- and this leg
     # is a CONFIRMED NULL rather than a caught defect, deliberately. By the time the
     # constitutive body runs, the store above has already written the CLEARED register
     # into D, so `Dx[idx]` and `d_x` hold the same word and the substitution is the
@@ -903,22 +903,22 @@ SOURCE_MUTATIONS: Tuple[Tuple[str, Tuple[str, str, int], Optional[bool],
      lambda spec: _driven(0)(spec) and (_wall("y")(spec) or _wall("z")(spec))),
     ("seam_takes_the_wrong_component",
      ("    float s_x = d_x;", "    float s_x = d_y;", 1), True, _driven(0)),
-    # --- BOTH BRANCHES OF THE CERTIFIED #if ----------------------------------
-    # THE CONDUCTIVE TAIL. Dropping the condinv factor is the whole conductivity.
+    # --- Both branches of the certified #if ----------------------------------
+    # The conductive tail. Dropping the condinv factor is the whole conductivity.
     ("conductive_tail_drops_condinv",
      ("    return ((f[idx] * cf[idx]) - curl) * ci[idx];",
       "    return (f[idx] * cf[idx]) - curl;", 1), True, _conductive),
     ("conductive_tail_drops_condfac",
      ("    return ((f[idx] * cf[idx]) - curl) * ci[idx];",
       "    return (f[idx] - curl) * ci[idx];", 1), True, _conductive),
-    # THE LOSSLESS TAIL, armed on the rows whose mask takes it. A table that armed
+    # The lossless tail, armed on the rows whose mask takes it. A table that armed
     # only the conductive branch would leave material-dispersion.py's arithmetic
     # unmeasured.
     ("plain_tail_adds_instead_of_subtracting",
      ("        d_x = Dx[idx] - curl;", "        d_x = Dx[idx] + curl;", 1), True,
      _lossless),
-    # --- THE CHAIN'S ORDER AND SHAPE -----------------------------------------
-    # SEQUENTIAL, LEFT TO RIGHT: ((D - P0) - P1). float32 addition is not
+    # --- The chain's order and shape -----------------------------------------
+    # Sequential, left to right: ((D - P0) - P1). float32 addition is not
     # associative, so summing first is a different number -- and only at two poles or
     # more, which is why the applicability predicate asks for two.
     ("chain_summed_then_subtracted",
@@ -945,11 +945,11 @@ SOURCE_MUTATIONS: Tuple[Tuple[str, Tuple[str, str, int], Optional[bool],
      ("    float src_x = s_x * inv_eps_Ex[idx];",
       "    float src_x = s_x * inv_eps_Ez[idx];", 1), True,
      lambda spec: _anisotropic(spec) and _driven(0)(spec)),
-    # --- THE WALL CARRY ------------------------------------------------------
+    # --- The wall carry ------------------------------------------------------
     ("wall_clear_uses_the_b_diagonal",
      ("if (wall_x && i == 0) { d_y = 0.0f; d_z = 0.0f; }",
       "if (wall_x && i == 0) { d_x = 0.0f; }", 1), True, _wall("x")),
-    # THE CLEAR MUST REACH THE REGISTER, and this is where that ordering IS
+    # The clear must reach the register, and this is where that ordering IS
     # observable. Clearing the VOLUME instead leaves the register uncleared, the store
     # below then writes the uncleared value back over the zero, and BOTH consumers see
     # a wall cell the array path holds at zero. (The first cut tried to arm the same
@@ -1005,7 +1005,7 @@ def compile_source(source: str, options: Sequence[str]):
 # ---------------------------------------------------------------------------
 
 def save(results, path):
-    """Serialise the payload, WELDED TO THE BYTES THIS PROCESS IMPORTED.
+    """Serialise the payload, welded to the bytes this process imported.
 
     ``gate_provenance.stamp`` records a sha256 for every repo module the running
     interpreter actually loaded, under its own key. That is what
@@ -1080,7 +1080,7 @@ def _score(results, out_path, steps, specs_by_label, table, key, runner):
             if case is None:
                 legs.append({"spec": spec_label, "applicable": True, "armed": False})
                 continue
-            # A CASE THAT NEVER REACHED A COMPARISON IS NOT A VERDICT. It is recorded
+            # A case that never reached a comparison is not a verdict. It is recorded
             # unmeasured and FAILS the leg, because a mutation table with an
             # unmeasurable row is a table whose denominator is wrong.
             if "bit_identical" not in case:
@@ -1161,7 +1161,7 @@ def summarize(results: Dict[str, Any], steps: int) -> Dict[str, Any]:
     masks = sorted({tuple(case["cond_mask"]) for case in product
                     if "cond_mask" in case})
     arities = sorted({tuple(case["arity"]) for case in product if "arity" in case})
-    # A PARTIAL RUN MAY NOT REPORT ITSELF RELEASED. ``--only`` exists for re-running one
+    # A partial run may not report itself released. ``--only`` exists for re-running one
     # leg during development, and every skipped leg leaves an EMPTY list whose ``all()``
     # is True -- so without this a two-leg smoke run would carry
     # ``canonical_verdict.released`` and the record writer would transcribe it as a
@@ -1210,6 +1210,7 @@ def summarize(results: Dict[str, Any], steps: int) -> Dict[str, Any]:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
+    import neutral_ids  # noqa: PLC0415
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", required=True, help="FILE to write gate.json to")
     parser.add_argument("--steps", type=int, default=STEPS)
@@ -1229,8 +1230,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "subject": "meep_gpu/cuda_kernels/no_pml_dispersive_fused_electric_pair.py",
         "kernel": "no_pml_dispersive_fused_electric_pair_real",
         "started_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "host": os.uname().nodename,
-        "argv": list(argv if argv is not None else sys.argv[1:]),
+        "host": neutral_ids.machine_id(),
+        "argv": neutral_ids.argv(argv if argv is not None else sys.argv[1:]),
         "question": ("does ONE launch of no_pml_dispersive_fused_electric_pair_real leave every stored volume -- the pole buffers included -- byte-identical to stepping's step_D -> zero_metal_D -> plain stored-E update_E inside a complete driver step, on BOTH curl arms, and with an electric source deposited in the seam carried by the PLAIN repair?"),
         "subnormal_policy": arguments.subnormal_policy,
         "steps": arguments.steps,
@@ -1240,7 +1241,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     }
     if arguments.import_meep_for_host_policy:
         results["meep_host_import"] = probe.import_meep_for_host_policy()
-    # THE OBSERVER GOES IN BEFORE THE POLICY: under 'keep' the policy's strip wraps
+    # The observer goes in before the policy: under 'keep' the policy's strip wraps
     # it, so it records the option tuple NVRTC was really given.
     results["nvrtc_observer"] = probe.install_nvrtc_binary_observer()
     results["subnormal_policy_install"] = probe.install_subnormal_policy_for_run(
@@ -1297,7 +1298,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         run_host_mutations(results, out_path, arguments.steps, specs_by_label)
 
     results["summary"] = summarize(results, arguments.steps)
-    # THE LEDGER'S OWN KEY, spelled here rather than left to a reader of ``summary``:
+    # The ledger's own key, spelled here rather than left to a reader of ``summary``:
     # ``rebind_cuda_welds`` binds a weld only where every canonical policy leg carries
     # ``canonical_verdict.released`` true, and it treats a MISSING key as "no verdict"
     # rather than as a failure. A gate reporting its release under some other name

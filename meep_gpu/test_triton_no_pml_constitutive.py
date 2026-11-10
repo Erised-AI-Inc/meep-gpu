@@ -1,6 +1,6 @@
 """Merge-bar tests for :mod:`meep_gpu.triton_kernels.no_pml_constitutive`.
 
-THIS FAMILY SHIPS NO KERNEL, and that changes what a laptop suite is FOR here.
+This family ships no kernel, and that changes what a laptop suite is FOR here.
 For every other module in this package the laptop holds the predicate while a CUDA
 host holds the arithmetic. There is no arithmetic to hold: ``stepping.update_H``
 returns at stepping.py:1229-1230 and ``stepping.update_E`` returns at
@@ -174,7 +174,7 @@ def _differing_words(before, after):
 def _seed_state(fields, seed=SEED):
     """Fill every live array with normals + a signed-zero plane + dense subnormals.
 
-    THREE CLASSES ON PURPOSE. The bulk is ordinary normals; the negative zeros are
+    Three classes on purpose. The bulk is ordinary normals; the negative zeros are
     the class ``rng.uniform`` provably cannot produce and the exact class that
     separates a plain store from ``kernels.constitutive_step``'s accumulation; the
     subnormals are the class CuPy flushes and Triton keeps. No inf and no NaN — a
@@ -312,9 +312,9 @@ def test_the_module_ships_no_kernel_and_no_launch_surface():
     other module in this package carries. This test is what turns "they forgot" into
     a failure instead of a quiet gap.
     """
-    # EXECUTABLE TEXT ONLY, and that means string CONSTANTS are stripped too, not
+    # Executable text only, and that means string CONSTANTS are stripped too, not
     # just docstrings. This module's prose names the surface it does not have — the
-    # WIRING note describes the seam a later round adds, and ``STORED_E_ARM`` is a
+    # WIRING note describes the seam a later change adds, and ``STORED_E_ARM`` is a
     # RECORD whose values quote the kernel body Arm S would need, ``tl.store``
     # included. Grepping the raw file (or even ``code_of``'s output) would fire on
     # the module's own documentation of what it deliberately did not build.
@@ -352,7 +352,7 @@ def test_the_module_imports_nothing_but_coverage_from_the_package():
 
 
 def test_the_family_is_wired_into_the_planner_but_reaches_no_dispatch():
-    """THE ROUND THAT WIRED IT RAN, so this measures the new claim, not the old.
+    """The wiring change has landed, so this measures the new claim, not the old.
 
     ``launch.plan_step`` owns the ``update_H``/``update_E`` selection and now
     consults this family behind ``absorber_inactive`` — the gate that transcribes
@@ -389,7 +389,7 @@ def test_the_family_is_wired_into_the_planner_but_reaches_no_dispatch():
             f"{name} is consulted by plan_step but not exported")
         assert callable(getattr(package, name)), name
 
-    # THE DISPATCH CLAIM MOVED, and only here. ``fastpath.py`` dispatches the
+    # The dispatch claim moved, and only here. ``fastpath.py`` dispatches the
     # track now, so it NAMES this family: its run artifact reports which
     # certification each arm rides on, and the null arm is the one it DROPS
     # before dispatching (both sides of that slot are empty). What it must still
@@ -956,11 +956,11 @@ def test_the_plans_run_body_is_the_counter_and_nothing_else():
     advancing its own counter is work the array path does not do, and a hook that
     currently does nothing is a hook a later edit fills in.
 
-    ITS RELATIONSHIP TO THE GATE'S m3 IS NOT WHAT THIS DOCSTRING USED TO SAY. It read
+    Its relationship to the gate's m3 is not what this docstring used to say. It read
     as "the merge-bar twin of m3, which arms exactly that edit"; m3 in fact injected a
     method whose body was ``pass``, moved 0 words, and reported a ``hasattr`` check —
     true by construction of its own edit — as its flip. So this AST pin was the ONLY
-    evidence in the tranche about the shipped body, and it is the lowest rank this
+    evidence in the family's certification about the shipped body, and it is the lowest rank this
     package recognises. m3 now binds the ``Fields`` and clears ``Bx``, and is caught
     by the gate's own uint32 identity comparison
     (``test_the_m3_mutant_really_writes_and_the_shipped_run_body_does_not``). This
@@ -1109,7 +1109,7 @@ def test_binding_the_certified_accumulation_to_a_store_canonicalises_signed_zero
 
 
 # ---------------------------------------------------------------------------
-# THE REFERENCE LEG — the null against real ``stepping``, over multiple cycles
+# The reference leg — the null against real ``stepping``, over multiple cycles
 # ---------------------------------------------------------------------------
 
 IDENTITY_CYCLES = 4
@@ -1642,7 +1642,7 @@ def test_the_gates_device_path_asks_the_driver_for_a_device_rather_than_relabell
     slurm's ``set -euo pipefail`` that aborted the job before its only GPU leg.
 
     What is pinned is that the request goes to the ENGINE and that it cannot degrade
-    silently. THE REFUSAL THAT FIRES DEPENDS ON THE HOST, and this test used to assert
+    silently. The refusal that fires depends on the host, and this test used to assert
     only the laptop's one, which made it fail on the only kind of machine the device
     leg can run on (measured on the GPU host, 2026-08-13: 1 of 2 suite failures there):
 
@@ -1698,7 +1698,7 @@ def test_the_policy_stamp_is_taken_after_the_legs_and_not_only_before_them(tmp_p
     ``nvrtc_calls: 0, ftz_removed: 0`` whatever ran afterwards, and this family's own
     docstring then cited that zero as confirmation that it "compiles nothing".
 
-    MEASURED on the GPU host, 2026-08-13: the CuPy run that printed ``nvrtc_calls: 0``
+    Measured on the GPU host, 2026-08-13: the CuPy run that printed ``nvrtc_calls: 0``
     left 48 ``.cubin`` files in its own private ``CUPY_CACHE_DIR``. The family's
     PRODUCT does compile nothing — it ships no kernel — but the gate's harness is
     ordinary CuPy elementwise work and the controls leg does real active-PML
@@ -1759,7 +1759,7 @@ def test_the_byte_identity_claim_is_derived_from_the_backend_that_ran(tmp_path):
 def test_the_gate_reads_and_writes_its_own_source_under_an_ascii_process_locale():
     """The mutation battery could not run on ANY CUDA host, and this is the pin.
 
-    MEASURED on the GPU host, 2026-08-13, in one process:
+    Measured on the GPU host, 2026-08-13, in one process:
     ``locale.getpreferredencoding(False)`` is ``UTF-8`` at start, still ``UTF-8``
     after ``import cupy``, and ``ANSI_X3.4-1968`` after the first device allocation —
     CUDA context initialisation calls ``setlocale`` and resets ``LC_CTYPE``. Every
@@ -1817,7 +1817,7 @@ def test_the_inert_layer_case_really_installs_an_inert_layer(family):
     identical ``arrays_compared``, identical census. ``setup_pml(0.0)`` could not have
     produced it either (driver.py:2162-2166 raises on a request that absorbs nowhere).
     The clause this family calls its load-bearing partition test — a layer PRESENT and
-    inactive — was measured by no byte-level leg anywhere in the tranche.
+    inactive — was measured by no byte-level leg anywhere in the family's certification.
     """
     gate = _load_gate()
     spec = [case for case in gate.IDENTITY_CASES
@@ -1848,7 +1848,7 @@ def test_the_overlap_leg_consults_every_constitutive_predicate_in_the_package():
     assert failures == {}, failures
     assert set(predicates) == declared
 
-    # DISCOVERY IS FAIL-CLOSED, AND IT IS NOT BY NAME.
+    # Discovery is fail-closed, and it is not by name.
     #
     # This test used to look for functions ending in ``constitutive_coverage``.
     # Measured 2026-08-17: THREE constitutive predicates across two wired
@@ -1913,8 +1913,8 @@ def test_the_overlap_leg_consults_every_constitutive_predicate_in_the_package():
             if not (isinstance(node, ast.FunctionDef)
                     and node.name.endswith("_coverage")):
                 continue
-            # PRIVATE HELPERS ARE NOT SLOT PREDICATES, and cannot be: the overlap
-            # leg looks its siblings up by MODULE AND PUBLIC NAME, so a leading
+            # Private helpers are not slot predicates, and cannot be: the overlap
+            # leg looks its siblings up by module and public name, so a leading
             # underscore is already outside the set it can consult. The only one
             # in the package today is fused_ade_chain._ade_coverage, a selector
             # that RETURNS one of the two update_P predicates the marker below
@@ -2210,7 +2210,7 @@ def test_the_probes_contract_catches_a_hollow_whole_step_leg(label, mutate, expe
     ("whole_step_skipped_silently",
      lambda p: p["whole_step"]["numpy"].pop("blockers"),
      "skipped without recording why"),
-    # THE LEG THAT DISAPPEARS ENTIRELY. The guard used to fire only when the block
+    # The leg that disappears entirely. The guard used to fire only when the block
     # EXISTED and lacked blockers, so ``--legs census,constitutive`` — which produces
     # no whole_step block at all — passed with no statement about the device leg.
     # Measured before the fix: removing the block, and removing its backend row, both
@@ -2251,7 +2251,7 @@ def test_the_probe_enumerates_every_slot_of_a_whole_step():
     it closes, ``stepping.update_P`` returns at stepping.py:1992-1993 because nothing
     is registered.
 
-    THE RECORD AND THE ARITHMETIC NOW AGREE ABOUT IT. The probe used to say that no-op
+    The record and the arithmetic now agree about it. The probe used to say that no-op
     was "recorded rather than counted as coverage" while the whole-step conjunction
     counted it — visible in the artifact as an absorbing control reporting
     ``cov ['update_P']``. Counting it is the right reading of "whole step" ("no heavy

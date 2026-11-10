@@ -10,7 +10,7 @@ chunk record: ``f_w`` on the cells whose chunk carries the component's own layer
 the stored E elsewhere (update_pols.cpp:44).
 
 =============================================================================
-WHY THIS FAMILY GETS ITS OWN GATE FILE
+Why this family gets its own gate file
 =============================================================================
 
 ``gate_cuda_offdiag.py`` is the structural reference and this file follows it
@@ -34,7 +34,7 @@ this file's legs exist only because of that:
   the select removed), and their shared null where the two arrays are equal
   (``h2``).
 
-WHICH CALLER EACH LEG DRIVES, because it is not one caller. The two primary legs
+Which caller each leg drives, because it is not one caller. The two primary legs
 (single-launch and multi-step) drive the SHIPPED ``update_P_fused_pml_real``,
 aliasing check and all. The mutation legs drive ``run_shipped``, a transcription
 of it in this file -- because a HOST defect lives in the caller and there is no
@@ -43,7 +43,7 @@ real launcher and through the transcription, so the two are welded by measuremen
 rather than by inspection.
 
 =============================================================================
-THE ORACLE IS THE ARRAY PATH ITSELF
+The oracle is the array path itself
 =============================================================================
 
 ``stepping.update_P`` on real ``Grid``/``Fields``/``PML``/``PolarizationState``
@@ -54,9 +54,9 @@ binds it. Each fixture carries the one-rank region plan of its grid and layer
 ``w`` and whose record (``gate_chunk_records.region_plan_record``) the kernel
 decodes.
 
-TWO FIXTURES, NOT ONE FIXTURE AND A RESTORE. The sibling gates freeze one state,
+Two fixtures, not one fixture and a restore. The sibling gates freeze one state,
 run the oracle, restore, and run the kernel. That does not work here: the sub-step
-PERMUTES WHICH ARRAY OBJECT SITS IN WHICH SLOT, so "restore" would have to undo a
+permutes which array object sits in which slot, so "restore" would have to undo a
 rotation as well as a write, and a restore that got the permutation wrong would
 silently compare two different arrangements. Two fixtures built from the same seed
 avoid the question -- and the gate does not assume they came out identical, it
@@ -69,7 +69,7 @@ comparator appears exactly once, in a harness leg that COUNTS how many cases of 
 real defect walk through it.
 
 =============================================================================
-A GATE THAT CANNOT FAIL CERTIFIES NOTHING -- THE FOUR FLOORS
+A gate that cannot fail certifies nothing -- the four floors
 =============================================================================
 
 Recorded per case, so non-vacuity is a property of the RECORD rather than of a
@@ -88,14 +88,14 @@ passed:
 * ``oracle_all_finite`` -- an unstable susceptibility that overflows to inf makes
   every word agree for a reason that has nothing to do with the kernel.
 
-Plus ``launches == expected_launches`` on every certifying case: BYTES ALONE
-CANNOT PROVE THE KERNEL RAN. Two fixtures seeded identically and a kernel that
+Plus ``launches == expected_launches`` on every certifying case: bytes alone
+cannot prove the kernel ran. Two fixtures seeded identically and a kernel that
 never launched differ only in that the oracle moved -- which is why the launch
 counter is asserted per case AND why leg ``x1`` runs the whole comparison with the
 launch suppressed and REQUIRES divergence.
 
 =============================================================================
-THE MUTATIONS, AND THE DISARM CHECK
+The mutations, and the disarm check
 =============================================================================
 
 Source defects are planted by assigning over the module-level device strings --
@@ -313,7 +313,7 @@ def _susceptibility(kind: str, index: int) -> Susceptibility:
 def build(xp, spec: Dict[str, Any], seed: int):
     """One complete ``(fields, layer, grid)`` triple, seeded deterministically.
 
-    THE DRIVE AND THE STORED E ARE SEEDED APART unless the case asks otherwise.
+    The drive and the stored E are seeded apart unless the case asks otherwise.
     Inside a PML they genuinely differ -- the stored E has had the absorbing
     accumulation applied and ``f_w`` has not (fields.py:1140-1163) -- and a fixture
     that seeded them alike would make the wrong-drive control a null for a reason
@@ -343,7 +343,7 @@ def build(xp, spec: Dict[str, Any], seed: int):
     layer = PML(grid=grid, thickness=tuple(thickness))
     fields = Fields(grid=grid)
     fields.enable_pml_storage()
-    # THE DIVISION BOTH SIDES STEP WITH: the one-rank region plan of this grid and
+    # The division both sides step with: the one-rank region plan of this grid and
     # layer, installed before anything reads the drive. The oracle's drive_field
     # composes MEEP's per-chunk w from it, and the kernel decodes its record.
     stepping._region_plan(fields, layer)
@@ -358,7 +358,7 @@ def build(xp, spec: Dict[str, Any], seed: int):
                 # components it carries.
                 sigma[component] = 0.0
             elif spec["sigma_form"] == "volume":
-                # THE MATERIAL STAYS NORMAL under the band class, deliberately.
+                # The material stays normal under the band class, deliberately.
                 # Driving sigma into the band too would underflow every product and
                 # the leg would measure the fixture rather than the policy's reach.
                 sigma[component] = xp.asarray(
@@ -400,7 +400,7 @@ def build(xp, spec: Dict[str, Any], seed: int):
                 np.ascontiguousarray(host[f"P{index}_{component}"]))
             state.P_prev[component][...] = xp.asarray(
                 np.ascontiguousarray(host[f"Q{index}_{component}"]))
-        # THE SCRATCH IS SEEDED NONZERO. It is this launch's OUTPUT and it starts as
+        # The scratch is seeded nonzero. It is this launch's OUTPUT and it starts as
         # whatever the previous rotation retired; leaving it at zero would let a
         # kernel that failed to write some cells agree with an oracle that also
         # wrote nothing there.
@@ -520,7 +520,7 @@ def _evaluator_arguments(text: str, arrays: Dict[str, Any],
 def evaluator_blind_lines(text: str) -> List[str]:
     """What of a device body the NumPy evaluator cannot execute; empty when it can.
 
-    THE HAZARD THIS EXISTS FOR is the one the sibling gate measured: a mutation that
+    The hazard this exists for is the one the sibling gate measured: a mutation that
     rewrites a statement into a form the evaluator does not model must not be scored
     as if it had been applied. The evaluator is the shared kernel-text interpreter
     (``meep_gpu.cuda_kernels.test_root_chunk_forms``), which RAISES on any construct
@@ -630,7 +630,7 @@ class EvaluatorBackend:
 class KernelBackend:
     """The shipped CuPy launcher, driven through the module's own doors.
 
-    THE GUARD AND THE MUTATION BOTH REACH NVRTC THROUGH THE SOURCE-KEYED MEMO.
+    The guard and the mutation both reach NVRTC through the source-keyed memo.
     ``compile_cache.kernel_cache_key`` keys on ``(name, is_complex, options,
     policy, source)``, so overriding ``_COMPILE_OPTIONS`` or assigning over a
     device string is a MISS and the compiler sees the bytes this leg intends. The
@@ -797,7 +797,7 @@ def run_stale_pointers(backend, fields, drives, record, steps: int) -> int:
     still done correctly -- only the ARITHMETIC uses stale views -- so the defect
     is a smooth, converged, entirely wrong polarization rather than a crash.
 
-    ITS DISCRIMINATOR IS THE SHAPE OF ITS OWN VERDICT: with ONE driven component
+    Its discriminator is the shape of its own verdict: with ONE driven component
     and ONE launch the stale views ARE the fresh ones and this is a null. It is
     caught only where a rotation has happened in between, which is what makes the
     multi-step leg a statement about the rotation.
@@ -902,7 +902,7 @@ def m_add_the_drive_before_the_history(text: str) -> Tuple[str, int]:
 
 
 def m_folded_three_term_form(text: str) -> Tuple[str, int]:
-    """THE INVERTED MUTATION (KERNELS.md section 7.1): the 0.9.2 package form.
+    """The inverted mutation (the previous package grouping, must-catch): the 0.9.2 form.
 
     ``((p * c_now) + (c_prev * q)) + (c_drive * (s * w))`` with ``gamma1inv`` folded
     into the three constants -- formed here in float32 from MEEP's four words -- which
@@ -959,7 +959,7 @@ def m_drop_sigma(text: str) -> Tuple[str, int]:
 
 
 def m_drive_f_w_on_every_cell(text: str) -> Tuple[str, int]:
-    """THE SELECT REMOVED: ``f_w`` read as the drive on every cell (the 0.9.2 form).
+    """The select removed: ``f_w`` read as the drive on every cell (the 0.9.2 form).
 
     MEEP's ``w`` is ``f_w`` only in a chunk that carries the component's own layer
     (update_pols.cpp:44); elsewhere ``update_E`` stored the constitutive product in E
@@ -1112,7 +1112,7 @@ def one_case(backend, xp, spec: Dict[str, Any], guard_label: str,
     reference, ref_layer, grid, _ = build(xp, spec, seed)
     actual, act_layer, _grid2, host = build(xp, spec, seed)
 
-    # THE FIXTURES ARE MEASURED IDENTICAL, NOT ASSUMED IDENTICAL. Two builds from
+    # The fixtures are measured identical, not assumed identical. Two builds from
     # one seed is a claim about the draw order, and a claim is a hypothesis until
     # measured.
     before_ref = fixture_hosts(reference)
@@ -1350,7 +1350,7 @@ def run_bytes(backend, xp, results: Dict[str, Any], out_path: str,
     for guard_label, guard, _primary in swept:
         for spec in plan:
             index += 1
-            # THE SHIPPED ENTRY POINT, not the transcription. The two primary legs
+            # The shipped entry point, not the transcription. The two primary legs
             # plant nothing, so there is no reason for them to drive anything but
             # ``update_P_fused_pml_real`` itself -- with its aliasing check, its
             # coefficient check and its own rotation. ``run_shipped`` exists only
@@ -1427,15 +1427,15 @@ MUTATION_LEGS: Tuple[Dict[str, Any], ...] = (
             "was asked for"},
     {"leg": "m7_folded_three_term_form", "mutation": "folded_three_term_form",
      "kind": "source", "expect": "caught",
-     "why": "THE INVERTED MUTATION (KERNELS.md section 7.1): the 0.9.2 package "
+     "why": "THE INVERTED MUTATION (the previous package grouping): the 0.9.2 package "
             "grouping ((p*c_now) + (c_prev*q)) + (c_drive*(s*w)) with gamma1inv "
             "folded into the three constants. It must stay must-catch now that the "
             "shipped form is MEEP's."},
     {"leg": "b1_drive_f_w_on_every_cell", "mutation": "drive_f_w_on_every_cell",
      "kind": "source", "expect": "caught",
-     "why": "THE SELECT REMOVED (section 7.2): f_w read as the drive everywhere, "
+     "why": "THE SELECT REMOVED (per-chunk form battery): f_w read as the drive everywhere, "
             "the 0.9.2 form. Off the layer's chunks f_w is stale state and E is the "
-            "constitutive product."},
+            "constitutive product. See docs/development/certification.md#chunk-form-battery."},
     {"leg": "b2_drive_flag_bound_off_by_one",
      "mutation": "drive_flag_bound_off_by_one", "kind": "source", "expect": "caught",
      "why": "a record bound off by one row: the boundary plane takes the other "
@@ -1588,7 +1588,7 @@ def run_mutations(backend, xp, results: Dict[str, Any], out_path: str,
                 blind.extend(evaluator_blind_lines(text))
         before_compiles = len(backend.compile_log())
 
-        # THE EVALUATOR BACKEND CANNOT SEE EVERY DEFECT, and a leg it cannot see
+        # The evaluator backend cannot see every defect, and a leg it cannot see
         # must SAY so rather than score a number.
         skip_reason = None
         if not backend.certifies and blind:
@@ -1617,7 +1617,7 @@ def run_mutations(backend, xp, results: Dict[str, Any], out_path: str,
                     record["refused_because"] = why
                     cases.append(record)
 
-        # DID THE MUTATED BYTES REACH THE COMPILER? Apply-time text matching is
+        # Did the mutated bytes reach the compiler? Apply-time text matching is
         # necessary and not sufficient: between the rewrite and NVRTC sit a memo
         # that has to miss and a disk cache that has to not answer.
         compiles = backend.compile_log()[before_compiles:]
@@ -1698,6 +1698,7 @@ LEG_NAMES = ("bytes", "multistep", "mutations")
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
+    import neutral_ids  # noqa: PLC0415
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", required=True)
     parser.add_argument("--backend", default="auto",
@@ -1727,7 +1728,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "gate": "cuda_ade_update_p",
         "kernels": ["update_P_pml_real", "update_P_pml_real_uniform"],
         "started_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "host": os.uname().nodename,
+        "host": neutral_ids.machine_id(),
         "backend": backend_name,
         "certifies": backend_name == "cupy",
         "product": product,
@@ -1743,7 +1744,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             name: probe.source_digest(os.path.join(_REPO_API, "meep_gpu", name))
             for name in ("dispersion.py", "stepping.py", "fields.py")},
         "gate_sha256": probe.source_digest(os.path.abspath(__file__)),
-        # SET FALSE BEFORE ANYTHING RUNS. ``save`` stamps a canonical verdict on
+        # Set False before anything runs. ``save`` stamps a canonical verdict on
         # every write, and ``gate_provenance.read_verdict`` reads this key before it
         # falls back to ``certifies`` -- which says only that the backend COULD
         # certify. Without this, an artifact from a run that died mid-leg would read
@@ -1751,7 +1752,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "passed": False,
     }
 
-    # THE ORDER IS THE WHOLE POINT: the observer wraps NVRTC BELOW the strip so it
+    # The order is the whole point: the observer wraps NVRTC BELOW the strip so it
     # records the options NVRTC really received, and the policy installs before the
     # first compile. Install-then-compile keeps a planted subnormal;
     # compile-then-install flushes it and stays flushed through a cache clear.
@@ -1778,7 +1779,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if "bytes" in legs:
         run_bytes(backend, xp, results, out_path, product, args.steps, "bytes")
     if "multistep" in legs:
-        # THE PRIMARY GUARD ONLY. The control's job is to show the guard does work,
+        # The primary guard only. The control's job is to show the guard does work,
         # and one launch per case already shows it; paying 60x for the same
         # demonstration buys nothing, and this leg's cost is what a device slot is
         # spent on.
@@ -1814,7 +1815,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "mutation_legs_as_required": mutations.get("legs_as_required"),
         "all_mutation_legs_as_required": mutations.get("all_legs_as_required"),
         "every_leg_disarmed": mutations.get("every_leg_disarmed"),
-        # ON A CERTIFYING BACKEND THIS MUST BE ZERO: the compiler executes every
+        # On a certifying backend this must be zero: the compiler executes every
         # line, so no defect is invisible for a reason belonging to the harness.
         "mutation_legs_not_measurable":
             mutations.get("legs_not_measurable_on_this_backend"),

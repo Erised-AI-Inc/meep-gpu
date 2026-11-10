@@ -1,5 +1,5 @@
 {
- "_what": "The hygiene guard's rules (tools/ci/check_hygiene.py). Names are listed as salted sha256 digests of their lower-cased words, never in plain text; `python tools/ci/check_hygiene.py digest --class CLASS TEXT` prints a new entry. Every allowlist entry names its rule and carries its reason.",
+ "_what": "The hygiene guard's rules (tools/ci/check_hygiene.py). Names are listed as salted sha256 digests of their lower-cased words, never in plain text; `python tools/ci/check_hygiene.py digest --class CLASS TEXT` prints a new entry. Every allowlist entry names its rule and carries its reason; a dev_jargon entry names a file and the sha256 of each line it allows. A pending declaration names a ledger value by key path and digest, or a tool-written tracked file by the sha256 of its whole content, with its hits and the tool that clears them.",
  "salt": "meep_gpu.hygiene.v1:",
  "names": [
   {
@@ -110,6 +110,118 @@
     "user"
    ],
    "reason": "the placeholder home the timing fixtures and their test carry (0.9.2 shipped 100 such paths, the export recipe's scan section 4); it names no account"
+  },
+  {
+   "id": "jargon.row_mask_names",
+   "rule": "dev_jargon",
+   "path": "parity/meep_gpu/gate_triton_offdiag.py",
+   "lines": [
+    "4b4958992bd7ad0e107ca4d886880db86df29743dc74f1348fd7c49b352e0f48",
+    "6818d470f57b9bb8fcb6a4fd13777be3cf81b1664ac4dbe57aa90556a655343b",
+    "f690c9144b1ce647c13dd8890fb8943b25eb6320340aeb0beab70eb9a6dea8ff"
+   ],
+   "reason": "the off-diagonal row-mask names R11, R12 and R22 (row, partner) in the comments of the three single-partner arms they select; the Triton kernels declare the same names as constexpr flags. Technical names, not ruling numbers"
+  },
+  {
+   "id": "jargon.special_kz_case_label",
+   "rule": "dev_jargon",
+   "path": "parity/meep_gpu/gate_triton_special_kz.py",
+   "lines": [
+    "2772565bb0d1a04a041fce7281ba22d584e9a14a3f93b1359b6bf8b77a7fc302"
+   ],
+   "reason": "the gate's own case label: its module docstring names its legs' cases R1 to R9 and C1 to C5, the identity leg is case R5, and the leg's failure message carries that label"
+  }
+ ],
+ "pending": [
+  {
+   "id": "tracked.board_rows",
+   "leg": "tracked",
+   "path": "parity/meep_gpu/parity_board_rows.json",
+   "rule": "dev_jargon",
+   "hits": 41,
+   "file_sha256": "06bc275e35cafb2fc22dcd1e20bed51f5423d3bc2e3055d2e18c2cb02e9cf4d3",
+   "until": "the rows file re-derived from the kernel-table design with its notes and source labels restated in plain words (it binds that design's digests, so it is re-cut where the design is kept, never edited by hand here); then the board re-cut below, and then delete this declaration",
+   "reason": "the coverage board's row data: notes and source labels written during development cite the private design documents' sections, decision numbers and work items"
+  },
+  {
+   "id": "tracked.board",
+   "leg": "tracked",
+   "path": "parity/meep_gpu/parity_board/board.json",
+   "rule": "dev_jargon",
+   "hits": 34,
+   "file_sha256": "5f8c40a139a75a0a018763442f7ad83ab059dcc0188be7e8b344ad0763cc2e86",
+   "until": "the board re-cut (python parity/meep_gpu/build_parity_board.py build), in one of two orders: restate the rows file first, re-cut, and delete this declaration and tracked.board_md; or, when the board must be re-cut before the rows are restated (a change that moves its subject manifest, this one included), re-declare both in the same change with the re-cut files' sha256 and the hit counts the guard reports, because the jargon they carry is still the rows'. Until the rows are restated, the second order is the one that keeps the guard green",
+   "reason": "the coverage board as its builder wrote it: it copies the rows file's notes and names the pending list's kernel steps"
+  },
+  {
+   "id": "tracked.board_md",
+   "leg": "tracked",
+   "path": "parity/meep_gpu/parity_board/board.md",
+   "rule": "dev_jargon",
+   "hits": 2,
+   "file_sha256": "f1cfc955297efaf801f8ffc30c7263a7e60a5ba9e197c0e6037f64e636b205e2",
+   "until": "the same board re-cut, which writes this page with board.json and in the same order (its count falls on a re-cut: the builder already writes the baselines line and the n/a cells in plain words); then delete this declaration or re-declare it with tracked.board",
+   "reason": "the coverage board's page, generated with board.json from the same rows and the same builder"
+  },
+  {
+   "id": "tracked.dev_evidence",
+   "leg": "tracked",
+   "path": "parity/meep_gpu/parity_board/dev_evidence.json",
+   "rule": "dev_jargon",
+   "hits": 22,
+   "file_sha256": "80dd2fc2982713c1578006fbf20d00cc07a19b21354d9072189cb7c33be9331d",
+   "until": "the records written again by parity/meep_gpu/record_dev_evidence.py with a neutral recorded_by label; then delete this declaration",
+   "reason": "development evidence records whose recorded_by field and notes name the integration batch that re-ran them"
+  },
+  {
+   "id": "tracked.hoist_reference",
+   "leg": "tracked",
+   "path": "meep_gpu/cuda_kernels/own_cell_hoist_reference.json",
+   "rule": "dev_jargon",
+   "hits": 20,
+   "file_sha256": "f534d8673237be5a90d9fda064a882d352fc179ccdc227f4f3c472c67d405b38",
+   "until": "the reference re-minted by its cutting tool with neutral cut_from and recut_by text, in one change with the accepted cut_from prefixes of meep_gpu/cuda_kernels/test_own_cell_hoist_store_sequence.py; then delete this declaration and tracked.hoist_reference_test",
+   "reason": "the own-cell hoist reference texts: their cut_from and recut_by provenance names the development work items that cut them"
+  },
+  {
+   "id": "tracked.hoist_reference_test",
+   "leg": "tracked",
+   "path": "meep_gpu/cuda_kernels/test_own_cell_hoist_store_sequence.py",
+   "rule": "dev_jargon",
+   "hits": 1,
+   "file_sha256": "23aa8f9c4262ad78c1ea47cc6318bda8ec6e930585dc325aa21b7fced27b62e4",
+   "until": "the hoist reference's re-mint, which changes the accepted prefix in the same change; then delete this declaration",
+   "reason": "the test accepts the cut_from prefix the reference still carries; changing the test alone fails it"
+  },
+  {
+   "id": "tracked.round_chunk_fixture",
+   "leg": "tracked",
+   "path": "parity/meep_gpu/fixtures/round_chunks_r27/INDEX_nvidia.json",
+   "rule": "dev_jargon",
+   "hits": 3,
+   "file_sha256": "44d90e25dccd5fcb6e96be228851c186ebb04ac63460498f3da2007a1148c881",
+   "until": "the fixture copied again from a round index written in plain words, with its digest pin in parity/meep_gpu/test_round_chunks.py; then delete this declaration",
+   "reason": "a byte copy of the chunk index of the 1.0 round of 2026-10-15, pinned by digest; five of its reasons carry ruling labels, three naming the round and two the card-sharing decision, and the rule counts the three that name the round"
+  },
+  {
+   "id": "tracked.lock_linux",
+   "leg": "tracked",
+   "path": "environments/locks/meep-gpu-ref-linux-64.conda.txt",
+   "rule": "dev_jargon",
+   "hits": 3,
+   "file_sha256": "26d3d11a122d47abea6cf687e30bc62b19862a909c5a677d6dce038b89e65e51",
+   "until": "the lock re-cut by environments/locks/recut_locks.py once its generated header names each ruled change in plain words rather than by the label in additions.json's ruling field (the tool renders that field in parentheses today); then delete this declaration",
+   "reason": "the lock's generated header, which recut_locks.py writes from additions.json: each ruled replacement and removal carries its ruling label in parentheses"
+  },
+  {
+   "id": "tracked.lock_osx",
+   "leg": "tracked",
+   "path": "environments/locks/meep-gpu-ref-osx-arm64.conda.txt",
+   "rule": "dev_jargon",
+   "hits": 3,
+   "file_sha256": "4c5078721821d620ee20ee848d1e5700a8c646bc661d09178bd2f378efd29da1",
+   "until": "the lock re-cut by environments/locks/recut_locks.py once its generated header names each ruled change in plain words rather than by the label in additions.json's ruling field (the tool renders that field in parentheses today); then delete this declaration",
+   "reason": "the lock's generated header, which recut_locks.py writes from additions.json: each ruled replacement and removal carries its ruling label in parentheses"
   }
  ]
 }

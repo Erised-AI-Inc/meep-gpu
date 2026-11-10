@@ -6,7 +6,7 @@ of the Metal family ``metal_kernels/bfast_fused_magnetic_pair.py`` certified by
 ``gate_metal_below_the_cut_fused_pairs.py``.
 
 ===========================================================================
-WHAT THE PRODUCT CLAIMS, AND WHAT EACH LEG MEASURES
+What the product claims, and what each leg measures
 ===========================================================================
 
 The claim is narrow and checkable: this kernel is
@@ -16,14 +16,14 @@ The claim is narrow and checkable: this kernel is
 
 1. **TRANSCRIPTION (no device).** Two EXACT statement-list equalities against the
    shipped sources, read from the FILES so they bite on the merge bar as well as
-   here. THE GRAIN IS A TOP-LEVEL ``ast`` STATEMENT, NOT A LINE, and that is not a
+   here. The grain is a top-level ``ast`` statement, not a line, and that is not a
    convenience: the BFAST tail CONTAINS lines that also appear elsewhere in both
    bodies (``if BACKWARD:``, ``if BCX == METALLIC:``), so a flat line subtraction
    would leave those orphans behind and could not express the equality at all. The
    tail is exactly ONE ``If`` node. Nothing is ``ast.unparse``d — what is compared
    includes the PARENTHESISATION.
 2. **REDUCTION (device).** ``HAS_BFAST = 0`` must reproduce the shipped
-   ``fused_curl_constitutive_B`` BIT FOR BIT over a complete step, on the same
+   ``fused_curl_constitutive_B`` bit for bit over a complete step, on the same
    volumes. The transcription claim measured on silicon instead of in source text,
    and the leg that would catch a mis-ordered argument in the plan's ``run`` that
    no source diff can see.
@@ -34,7 +34,7 @@ The claim is narrow and checkable: this kernel is
    volume, in three value classes.
 
 ===========================================================================
-THE SEAM, AND THE THREE STATE VOLUMES
+The seam, and the three state volumes
 ===========================================================================
 
 ``driver.step`` runs, in order (driver.py:3282-3289)::
@@ -46,14 +46,14 @@ On the configurations this arm admits the two fill passes are DEAD —
 ``bfast_curl._bfast_grid_reasons`` refuses every fold — so the launch spans
 ``step_B``, ``zero_metal_B`` and ``update_H``.
 
-**THE ``f_bfast_B*`` STATES ARE PART OF THE COMPARED INVENTORY.** They are the
+**The ``f_bfast_B*`` states are part of the compared inventory.** They are the
 BFAST IIR history, mutated IN PLACE and pointer-identically because the driver's
 flux backup/restore depends on it (driver.py:4126-4135). The state scan picks them
 up automatically (it enumerates every grid-shaped volume on ``Fields``) and
 :data:`REQUIRED` names them, so a rename cannot drop them out of the comparison
 silently. A leg where they did not MOVE fails the non-vacuity floor.
 
-WHAT THE CORPUS SAYS, from ``results/fusion_matrix_triton_2026-08-20_closed/`` at
+What the corpus says, from ``results/fusion_matrix_triton_2026-08-20_closed/`` at
 the B->H cell (``BFAST PML``, ``BFAST run``): ONE seam-instance,
 ``tests:TestReflectanceAngular.test_reflectance_angular_2_35_7``,
 ``in_seam_source == false``, ``live_in_seam_passes == []``. It is all-periodic with
@@ -62,7 +62,7 @@ the B->H cell (``BFAST PML``, ``BFAST run``): ONE seam-instance,
 WALLED case, where the flags are real.
 
 ===========================================================================
-WHAT THIS GATE REFUSES TO INFER
+What this gate refuses to infer
 ===========================================================================
 
 * **A mutation that does not parse is not a mutation**, and one whose lines the
@@ -129,14 +129,14 @@ BFAST_K: Tuple[float, float, float] = (0.13, -0.4, 0.07)
 #: dimensionality restriction, and a 3-D cell lets every wall be real (declaring an
 #: INVARIANT axis metallic is refused by Grid by name, grid.py:842-877).
 CASES: Tuple[Tuple[str, Tuple[float, float, float], Any, int], ...] = (
-    # THE CORPUS GEOMETRY: all-periodic, no wall — what
+    # The corpus geometry: all-periodic, no wall — what
     # tests:TestReflectanceAngular.test_reflectance_angular_2_35_7 declares.
     ("corpus_periodic", (1.0, 1.1, 1.2), "periodic", 60),
-    # EVERY WALL LIVE: all three ZM planes, all three metallic ghost arms, and the
+    # Every wall live: all three ZM planes, all three metallic ghost arms, and the
     # BFAST advance's OWN ownership mask (a separate block from the curl's). This
     # is the mutation case, for that reason.
     ("wall_xyz", (1.0, 1.1, 1.2), "metallic", 60),
-    # ONE WALLED AXIS: where a ROTATED wall table still clears the same NUMBER of
+    # One walled axis: where a ROTATED wall table still clears the same NUMBER of
     # planes and clears the wrong one.
     ("wall_z", (1.0, 1.1, 1.2),
      {"x": "periodic", "y": "periodic", "z": "metallic"}, 60),
@@ -153,8 +153,8 @@ SEAM_PASSES: Tuple[str, ...] = (
     "update_H",
 )
 
-#: Names that MUST appear in the scanned state inventory. THE THREE ``f_bfast_B*``
-#: STATES ARE IN IT: they are the IIR history this kernel advances in place, and a
+#: Names that MUST appear in the scanned state inventory. The three ``f_bfast_B*``
+#: states are in it: they are the IIR history this kernel advances in place, and a
 #: comparison that lost them would certify a kernel that never touched them.
 REQUIRED = (
     "Bx", "By", "Bz", "Dx", "Dy", "Dz", "Ex", "Ey", "Ez", "Hx", "Hy", "Hz",
@@ -200,7 +200,7 @@ def save(payload: Dict[str, Any], path: str) -> None:
     """Serialise the payload, provenance-stamped, atomically."""
     os.makedirs(os.path.dirname(os.path.abspath(path)) or ".", exist_ok=True)
     temporary = path + ".tmp"
-    # THE POLICY STAMP IS RE-READ, NOT CARRIED. Taken once at install time it
+    # The policy stamp is re-read, not carried. Taken once at install time it
     # records every counter at zero, because nothing had compiled yet.
     if "subnormal_policy" in payload:
         try:
@@ -264,7 +264,7 @@ def shipped_body(path: str, name: str, *, with_decorators: bool = False) -> str:
 
     ``with_decorators`` prepends the decorator list, which
     ``ast.get_source_segment`` on a FunctionDef EXCLUDES. Without it a mutant
-    compiled from the segment is a PLAIN PYTHON FUNCTION with no ``[grid]``
+    compiled from the segment is a plain Python function with no ``[grid]``
     launcher, and the first mutation leg dies with "'function' object is not
     subscriptable" — measured 2026-08-20 on a sibling gate.
     """
@@ -299,7 +299,7 @@ def shipped_body(path: str, name: str, *, with_decorators: bool = False) -> str:
 def body_segments(path: str, name: str) -> List[str]:
     """A shipped kernel's BODY as a list of top-level STATEMENT sources.
 
-    THE GRAIN OF EVERY TRANSCRIPTION COMPARISON IN THIS GATE. A per-LINE
+    The grain of every transcription comparison in this gate. A per-LINE
     comparison cannot express this product's claim: the BFAST tail contains lines
     that also appear elsewhere in both bodies, so subtracting them by text would
     leave orphans. The tail is exactly ONE ``ast.If`` node.
@@ -386,7 +386,7 @@ def transcription_leg() -> Dict[str, Any]:
         findings.append(f"statements in NEITHER shipped body: "
                         f"{[s[:80] for s in invented]}")
 
-    # THE PASS FOLLOWS THE FORMS. MEEP's BFAST pass runs on each component right
+    # The pass follows the forms. MEEP's BFAST pass runs on each component right
     # after its curl (step_db.cpp:124-142); the seam's wall clear and update_H follow
     # the whole sub-step.
     if len(tail) == 1:
@@ -587,7 +587,7 @@ def seed_values(cp, driver, seed: int, value_class: str) -> None:
         driver.set_field(name, cp.asarray(draw()))
     # E, H and the BFAST states are DERIVED or internal and `set_field` refuses
     # them by name (driver.py:3909). Written in place here, which is legal for a
-    # harness. SEEDING THE STATES IS LOAD-BEARING, not tidiness: the tail's advance
+    # harness. Seeding the states is load-bearing, not tidiness: the tail's advance
     # is `total - 2.0*state`, so a zero state hides the `-2*state` term entirely
     # and the mutation that drops it would come back UNCAUGHT.
     for name in ("Ex", "Ey", "Ez", "Hx", "Hy", "Hz",
@@ -621,7 +621,7 @@ def build_driver(cp, cell, boundaries, seed: int, value_class: str,
         driver.add_source({"component": "Ez", "frequency": 0.31,
                            "center": (0.0, 0.0, 0.0), "width": 0.4})
     seed_values(cp, driver, seed, value_class)
-    # THE FAST PATH IS DISABLED, EXPLICITLY — the `BFAST PML` / `BFAST run` arms
+    # The fast path is disabled, explicitly — the `BFAST PML` / `BFAST run` arms
     # are WIRED, so a driver left alone would step this very family on Triton and
     # the "array path" reference would be no such thing (driver.py:3281-3282).
     driver.invalidate_fast_path()
@@ -1080,7 +1080,7 @@ def verdict_of(row: Dict[str, Any], *, require_identical: bool = True,
                     f"{seen} times, expected {steps}: the fast path was not off")
     return (not failures), failures
 # ---------------------------------------------------------------------------
-# THE REDUCTION LEG — HAS_BFAST = 0 must BE the shipped ordinary kernel
+# The reduction leg — HAS_BFAST = 0 must BE the shipped ordinary kernel
 # ---------------------------------------------------------------------------
 
 def reduction_leg(cp, product, cell, boundaries, steps: int,
@@ -1090,18 +1090,18 @@ def reduction_leg(cp, product, cell, boundaries, steps: int,
     The transcription claim, measured on silicon instead of in source text. Three
     drivers, seeded identically, on a REAL BFAST run:
 
-    * route A launches THIS product's kernel with ``has_bfast = 0``;
-    * route B launches the SHIPPED ``kernels.fused_curl_constitutive_B`` over the
+    * the reduced route launches THIS product's kernel with ``has_bfast = 0``;
+    * the shipped route launches the SHIPPED ``kernels.fused_curl_constitutive_B`` over the
       same volumes, through ``launch.plan_fused_pair_from_arrays`` — the bare-array
       route, because ``coverage.fused_pair_coverage`` refuses a BFAST run by name
       and would return ``None``.
 
-    NEITHER IS COMPARED AGAINST THE ARRAY PATH HERE, deliberately: the array path
+    Neither is compared against the array path here, deliberately: the array path
     really does fold the tail in, so both routes must differ from it. What this leg
     measures is that the two KERNELS agree.
 
-    THE DISCRIMINATION PRECONDITION IS THE OTHER HALF. Two kernels that both did
-    nothing would also agree, so route A must additionally DIFFER from the array
+    The discrimination precondition is the other half. Two kernels that both did
+    nothing would also agree, so the reduced route must additionally DIFFER from the array
     path; otherwise ``has_bfast = 0`` is indistinguishable from the shipped BFAST
     kernel on this value class and the leg measured a tautology. That is a property
     of the VALUE CLASS, so it is reported as ``discriminating`` per class with a
@@ -1148,7 +1148,7 @@ def reduction_leg(cp, product, cell, boundaries, steps: int,
             [1 if kind == "metallic" else 0 for kind in resolve(grid, pml)],
             zero_metal_axes(grid), grid.dt / grid.dx, num_warps=1,
             chunk_bounds=layer_record(grid, pml))
-        # MEEP'S START OF H, as the product's plan carries it (h_state is the
+        # MEEP's start of H, as the product's plan carries it (h_state is the
         # driver's Fields): the from-arrays route builds a plan that has already
         # started, and the reduction would compare a started kernel with an
         # unstarted one at step 1.
@@ -1170,7 +1170,7 @@ def reduction_leg(cp, product, cell, boundaries, steps: int,
             after_reference = snapshot(cp, reference)
             after_shipped = snapshot(cp, shipped)
             after_reduced = snapshot(cp, reduced)
-            # THE BFAST STATES ARE EXCLUDED FROM THIS ONE COMPARISON, by name.
+            # The BFAST states are excluded from this one comparison, by name.
             # `has_bfast = 0` does not touch them and the shipped ordinary kernel
             # has no pointer to them at all, while the ARRAY-path reference on the
             # same seed advances them — so comparing them here would measure the
@@ -1282,11 +1282,12 @@ CASE_CARRIES: Dict[int, Tuple[str, ...]] = {
     0: ("layer",), 1: ("wall", "layer"), 2: ("wall", "layer"), 3: ("layer",),
 }
 
-#: The BFAST pass's own mutations and the root forms' (KERNELS.md 7.1's inversions and
-#: 7.2's chunk-form battery): ``fold_pass_mutations``' shared spellings, the same text
-#: in every carrier of the pass. The two one-partner entries need a 2-D grid this
-#: probe's 3-D cases are not; ``gate_triton_bfast`` scores them on the curl, whose pass
-#: this product's is statement for statement (the transcription leg).
+#: The BFAST pass's own mutations and the root forms' (the inverted grouping mutations and
+#: the per-chunk form battery of docs/development/certification.md):
+#: ``fold_pass_mutations``' shared spellings, the same text in every carrier of the pass.
+#: The two one-partner entries need a 2-D grid this probe's 3-D cases are not;
+#: ``gate_triton_bfast`` scores them on the curl, whose pass this product's is statement
+#: for statement (the transcription leg).
 SHARED_MUTATIONS = (
     [entry for entry in fold_passes.bfast_mutations()
      if set(entry[4]) <= {"wall", "layer"}]
@@ -1523,10 +1524,11 @@ def run_refusals(cp, product) -> List[Dict[str, Any]]:
 
 
 def environment(cp: Any = None) -> Dict[str, Any]:
+    import neutral_ids  # noqa: PLC0415
     payload: Dict[str, Any] = {
         "python": sys.version.split()[0],
         "numpy": np.__version__,
-        "argv": list(sys.argv),
+        "argv": neutral_ids.argv(sys.argv),
         "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
     }
     try:
@@ -1597,7 +1599,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     from meep_gpu import backends, subnormal_policy  # noqa: PLC0415
 
     if args.subnormal_policy == "flush":
-        # MEASURED REFUSAL: `install_subnormal_policy('flush')` raises in a process
+        # Measured REFUSAL: `install_subnormal_policy('flush')` raises in a process
         # that has not imported MEEP (subnormal_policy.py:1920) because
         # `mp.set_zero_subnormals` is the only exposure of this process's FTZ/DAZ
         # bits the package may use, and it will not import MEEP itself. A parity

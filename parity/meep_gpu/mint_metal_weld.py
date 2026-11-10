@@ -1,6 +1,6 @@
 """Mint the FIRST weld entry for a Metal family, from that family's gate artifact.
 
-WHY THIS EXISTS, AND WHY IT IS NOT PART OF ``rebind_metal_welds.py``. That script
+Why this exists, and why it is not part of ``rebind_metal_welds.py``. That script
 refuses, by design, to "invent a weld": it rebinds an entry that already exists and
 keeps the CURATED path set someone chose for it. That refusal is correct and worth
 keeping -- a rebinder that could also create entries would be one edit away from
@@ -8,7 +8,7 @@ minting a weld for a gate nobody read. But a NEW family has no entry to rebind, 
 ``test_every_metal_family_is_welded`` requires one, so the first entry has to come
 from somewhere. It comes from here, and from the artifact rather than from a hand.
 
-WHAT IT REFUSES TO DO:
+What it refuses to do:
 
 * mint against an artifact that is not RELEASED and does not read PASS;
 * mint over an entry that already exists, unless ``--replace`` is passed AND that
@@ -20,10 +20,10 @@ WHAT IT REFUSES TO DO:
   entry goes without one, which leaves the strict byte rule in force rather than
   substituting something weaker.
 
-EVERY FIELD IS DERIVED. Nothing here is typed by a person except the ``--purpose``
+Every field is derived. Nothing here is typed by a person except the ``--purpose``
 line and the curated path list, and both are arguments rather than literals.
 
-THE RUN GOES UNDER ITS GPU ARCHITECTURE. The entry carries the digests, the purpose and
+The run goes under its GPU architecture. The entry carries the digests, the purpose and
 the status; the run's facts go into ``runs[<architecture>]`` (``meep_gpu.metal_runs``),
 keyed by the architecture the campaign's environment record names. A ``--replace``
 keeps the other architectures' runs and refuses, naming them, when the bytes it binds
@@ -71,7 +71,7 @@ RESULTS = _HERE / "results"
 #: Campaign leg directories, in the order a weld should prefer them when a family's
 #: run directory holds legs rather than one artifact.
 #:
-#: THE ORDER IS THE ARGUMENT. A multi-leg campaign has one leg whose licence is the
+#: The order is the argument. A multi-leg campaign has one leg whose licence is the
 #: SHIPPED behaviour — the harness installs nothing and the ladder does its own work
 #: — and the others are controls around it (a policy installed from outside, a
 #: policy the table refuses). A weld binds the bytes
@@ -84,7 +84,7 @@ CAMPAIGN_LEGS = ("shipped", "harness_flush")
 def _artifact_for(family: str, stamp: str) -> Path:
     directory = RESULTS / f"metal_{family}_{stamp}"
     if not directory.is_dir():
-        # A DISPATCH CAMPAIGN IS NOT NAMED metal_<family>_<stamp>. The driver-route
+        # A dispatch campaign is not named metal_<family>_<stamp>. The driver-route
         # campaign writes results/<family>_<stamp>/<leg>/gate.json — its gate is
         # deliberately outside the gate_metal_* glob and its --out is a leg
         # directory — and the family it welds under is already spelled
@@ -167,7 +167,7 @@ def main(argv=None) -> int:
         artifact = _artifact_for(args.family, args.stamp)
     fresh = json.loads(artifact.read_text(encoding="utf-8"))
 
-    # NO PRESENT VERDICT MAY SAY FALSE. The same defect fix `rebind_metal_welds.py`
+    # No present verdict may say false. The same defect fix `rebind_metal_welds.py`
     # carries, and for the same reason: `canonical_verdict` is the gate's word on its
     # legs and `release` is the runner's word on the BYTES, so consulting the first and
     # falling through only on null lets an artifact with a refused release mint a weld
@@ -196,7 +196,7 @@ def main(argv=None) -> int:
         architecture = metal_runs.require_architecture(named["architecture"])
     except metal_runs.ArchitectureRecordError as refused:
         raise SystemExit(f"the campaign's environment cannot key a run: {refused}") from None
-    # THE ARTIFACT'S OWN GPU, WHERE IT NAMES ONE, must be the campaign's, as in
+    # The artifact's own GPU, where it names one, must be the campaign's, as in
     # ``rebind_metal_welds.py``: the run is keyed by the environment records.
     ran_on = metal_runs.artifact_architecture(fresh)
     if ran_on is not None and ran_on != architecture:
@@ -250,7 +250,7 @@ def main(argv=None) -> int:
     }
     run = {
         "artifact_sha256": hashlib.sha256(artifact.read_bytes()).hexdigest(),
-        # THE PATH RELATIVE TO ``results``, NOT THE PARENT'S BARE NAME. A campaign
+        # The path relative to ``results``, not the parent's bare name. A campaign
         # that separates its policies puts the artifact at
         # ``metal_<family>_<stamp>/flush/gate.json``, and the bare name is then
         # ``flush`` -- so the record said "results/flush/" and named no family at
@@ -260,7 +260,7 @@ def main(argv=None) -> int:
                     f"{artifact.parent.relative_to(RESULTS)}/ - "
                     f"{fresh.get('records', '?')} records"),
         "recorded_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        # THE CAMPAIGN'S RECORDED ENVIRONMENT, not the artifact's own toolchain keys:
+        # The campaign's recorded environment, not the artifact's own toolchain keys:
         # 19 of 62 gates write neither, and none wrote the GPU architecture, which
         # ``metal_dispatch`` certifies a weld for beside torch and the frontend. The
         # run is keyed by the architecture the line names and records the torch and
@@ -274,7 +274,7 @@ def main(argv=None) -> int:
         # tails gates under ``subnormal_policy_report``. Reading only the first
         # wrote a literal "?" into three ledger entries -- a weld whose policy line
         # says nothing, which is the one field a reader consults to know WHICH
-        # arithmetic the entry binds. A REPORT IS READ BY ITS POLICY VALUE
+        # arithmetic the entry binds. A report is read by its policy value
         # (``metal_runs.artifact_policy``): formatting the mapping whole wrote its
         # Python repr into twelve entries, and the line is quoted into every
         # dispatched arm's record.
@@ -299,7 +299,7 @@ def main(argv=None) -> int:
         print("  NOTE: no device digest could be established for this module; the "
               "entry keeps the strict byte rule", flush=True)
 
-    # THE OTHER ARCHITECTURES' RUNS ARE KEPT on a re-mint, under the staleness rule:
+    # The other architectures' runs are kept on a re-mint, under the staleness rule:
     # bytes that moved strand them, so they are named and refused unless superseded.
     bound_before = None
     if key in ledger:

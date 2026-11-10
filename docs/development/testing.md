@@ -43,19 +43,39 @@ writes a JUnit report per suite and then accepts only the declared failures:
 failure in the reports is listed in <code>tools/ci/pending_certification.txt</code>.
 
 Before the suites, the workflow runs the hygiene guard, which fails the job on a
-host name, account name, local path or personal e-mail address in a tracked file
-or in the coverage board's subject:
+host name, account name, local path, personal e-mail address or private evidence
+path (a path into the development repository's evidence tree, its working and record
+directories or a certification round's staging directory) in a tracked file or in the coverage
+board's subject:
 
     python tools/ci/check_hygiene.py --legs tracked,subject
 
 Its third leg, <code>--legs ledgers</code>, reads the four certification ledgers,
-which the bind and record tools write; <code>parity/meep_gpu/test_check_hygiene.py</code>
-runs all three legs as tests.
+which the bind and record tools write, and refuses a home-relative path there too. A
+ledger hit that only the next bind's tool can clear is declared in
+<code>tools/ci/hygiene_rules.json</code>'s <code>pending</code> list, printed
+<code>PENDING</code> and not counted; once the tool has cleared it the declaration reads
+<code>STALE</code> and is deleted. Its fourth, <code>--legs ledger_states</code>, reads the
+archived ledger states (<code>parity/meep_gpu/ledger_states/</code>), decompressed, by the
+same rules: gzip hides them from <code>tracked</code>, and neutralizing one would change the
+digest it answers for, so a state that fails is left out of the archive and its rows compare
+whole. <code>parity/meep_gpu/test_check_hygiene.py</code> runs all four legs as tests.
+
+The same guard refuses development jargon in every file the public repository exports
+(its class <code>dev_jargon</code>): a citation of the private design documents the
+kernel tables were developed from, a decision or ruling number, a work-item, lane or
+integration-batch label, the prototype phase's labels, and the release's working name
+<code>0.10</code> used as a label. It passes the technical uses those words share
+(residency and chunk ownership, MEEP's dimension names D1 to D3, the displacement field
+and the D-seams, the off-diagonal row-mask names, the certification stages, record
+names under <code>results/</code>). A line it must keep, such as a gate's own case
+label, is allowlisted by the file and the line's sha256; a file a tool writes is
+declared pending by the sha256 of its whole content until its tool re-cuts it.
 
 ## On an NVIDIA host
 
 CI runs the suites with no GPU library. On a host with CuPy, Triton and an NVIDIA
-device (the certification round's CERT-7), run them in that platform's reference
+device (the certification round's test-suite stage, [CERT-7](certification.md#certification-stages)), run them in that platform's reference
 environment (<code>environments/locks/</code>, linux-64), from a clean clone, with:
 
 - **the user site directory off**: <code>PYTHONNOUSERSITE=1</code>, or
@@ -73,13 +93,13 @@ environment (<code>environments/locks/</code>, linux-64), from a clean clone, wi
 - **no <code>MEEP_GPU_*</code> variable** in the shell (each suite's
   <code>conftest.py</code> pins <code>MEEP_GPU_DISPATCH=0</code> itself);
 - **one card**, <code>CUDA_VISIBLE_DEVICES=&lt;card&gt;</code>, held for the run's
-  duration on a shared host as the round's lanes hold theirs;
+  duration on a shared host as a certification round's lanes hold theirs;
 - **the environment's C compiler for Triton's launchers**:
   <code>CC=&lt;prefix&gt;/bin/x86_64-conda-linux-gnu-cc</code>. Triton compiles a launcher
   for each kernel with <code>$CC</code>, else the first <code>gcc</code> on
   <code>PATH</code>: without it the host's own compiler builds them, outside the
   environment, and a host without one fails at the first launch ("Failed to find C
-  compiler"). The round's drivers set it themselves;
+  compiler"). The certification round's drivers set it themselves;
 - **the libcuda link** the driver does not install (it ships only
   <code>libcuda.so.1</code>, and Triton links <code>-lcuda</code>): the environment's
   build makes it on a host with a driver, in <code>&lt;prefix&gt;/lib/meep-gpu-libcuda</code>
@@ -87,7 +107,7 @@ environment (<code>environments/locks/</code>, linux-64), from a clean clone, wi
   on <code>TRITON_LIBCUDA_PATH</code> and first on <code>LD_LIBRARY_PATH</code>.
 
 Then the three pytest runs and <code>check_failures.py</code>, as
-[CI runs them](#running-them-as-ci-does). The 1.0 round measured this on 2026-10-13
+[CI runs them](#running-them-as-ci-does). The 1.0 certification round measured this on 2026-10-13
 (one RTX A6000, compute capability 8.6, the linux-64 reference environment, no
 evidence archive): 468 failed of 17,965 run, 39 of them listed in
 <code>tools/ci/pending_certification.txt</code> and 429 not. Each of the 429 is a
@@ -99,10 +119,10 @@ where CuPy or Triton is present; 18 fixtures that hand host arrays to a CuPy lau
 install the keep policy directly without a cache directory the package minted; 7 that
 depend on session order; 4 that assume Triton or a device is absent; 1 that finds the
 host's own <code>ffmpeg</code>; and 1 at a relative difference of 1.22e-7 against its
-1e-7 single-precision bound on that host's MEEP. Until those tests are fixed or
-declared, <code>check_failures.py</code> does not pass on an NVIDIA host, and its
-failures are read cause by cause. A run at two OpenMP threads read 14 more failures,
-every one a MEEP oracle child that aborted.
+1e-7 single-precision bound on that host's MEEP. A run at two OpenMP threads read 14
+more failures, every one a MEEP oracle child that aborted. In the 1.0.1 run below with
+the RTX 3090 visible, 6 failures are not listed, all one assumption about the host's
+locale, so <code>check_failures.py</code> still does not pass on an NVIDIA host.
 
 ## Dispatch is pinned off in the suites
 
@@ -159,25 +179,60 @@ too, so a run of one module while editing can show a failure listed in
 <code>tools/ci/pending_certification.txt</code>. That failure is expected, and
 it is not fixed by regenerating a ledger.
 
-The 1.0 certification round bound the records of this release on its bytes
-([Certification status](certification.md#certification-status-of-this-release)),
-and its records entry removed from <code>tools/ci/pending_certification.txt</code>
-the 21 entries its records turned green, of 56. The 35 that stay are records the
-round's tools did not re-cut, or contracts that wait on a later step; each is
-declared under a block that names the step that removes it. The suite's failures
-are reported, not skipped and not marked as expected failures, and
+The 1.0 certification round's records entry removed from
+<code>tools/ci/pending_certification.txt</code> the 21 entries its records turned green, of
+56. After the 1.0.1 round's records
+([Certification status](certification.md#certification-status-of-this-release)) the list
+held 37 ids; it holds 35 since the two digest-walk controls were re-pinned to plant two
+levels past the deepest real digest and passed again (2 of 2 failing before and passing
+after, in the CI view). The 35 are records the certification round's tools did not re-cut,
+contracts that wait on a later step, or a family gate the round did not run; each is
+declared under a block that names the step that removes it. The suite's failures are
+reported, not skipped and not marked as expected failures, and
 <code>tools/ci/check_failures.py</code> accepts exactly those listed there. A
 failure of the default run is never on that list: it is a defect, or a resource
 the test does not declare.
 
 ## What a run of the suites showed in the 0.9.0 preview
 
-The 1.0 suites run per environment on the release tip (CERT-7) after this page was
-written; their counts are owed to a documentation update. What follows is the 0.9.0
-preview's measurement, kept for its method.
+The 1.0.1 suites ([CERT-7](certification.md#certification-stages)) ran on commit
+<code>c3e11358efbc</code>, the tip before the 1.0.1 documentation and the version bump, each
+from a fresh archive of that commit with no evidence archive:
+
+- **The Apple reference environment** (MEEP 1.35.0 single precision, PyTorch 2.10.0), on one M1
+  Max under macOS 27.2 (Metal frontend <code>metalfe-32023.922.4</code>, on which the Metal
+  kernels run uncertified), with the Apple GPU visible: package suite 15,692 passed, 0 failed
+  and 501 skipped of 16,193 (3,182 of the 3,495 tests of its <code>test_metal_*</code> modules
+  passed, the rest skipped by a declared resource); identity 62 of 62 passed; harness suite
+  4,208 passed, 0 failed and 26 skipped of 4,234; certification suite 334 passed, 33 failed and
+  16 skipped of 383. In all, 33 failed of 20,329 run and 543 skipped by a declared resource; 33
+  of 33 failures are among the 35 listed ids and 0 of 33 name the Metal frontend, and
+  <code>check_failures.py</code> passes. <code>examples/run_examples.py --check</code> passes
+  with the package on the import path, as an editable install puts it.
+- **The continuous-integration job's view** (no MEEP, no GPU visible), on the RTX 3090 host's
+  CPU under Python 3.10: package suite 14,444 passed and 1,635 skipped of 16,079; identity 62
+  of 62 passed, with NumPy's AVX-512, AVX2 and FMA3 loops disabled; harness suite 4,127 passed
+  and 107 skipped of 4,234; certification suite 334 passed, 33 failed and 19 skipped of 386. In
+  all, 33 failed of 19,000 run and 1,761 skipped by a declared resource, 33 of 33 among the 35
+  listed; <code>check_failures.py</code> passes, and the wheel holds 0 harness files. On
+  <code>404d432d0b34</code> the same view read 35 failed of 18,582, among the 37 ids then
+  listed: the re-pin of the two digest-walk controls removed those 2.
+- **The Linux reference environment, with the RTX 3090 visible:** package 15,413 passed, 6 failed
+  and 1,091 skipped of 16,510; harness 4,178 passed, 0 failed and 56 skipped of 4,234; certification
+  334 passed, 33 failed and 19 skipped of 386. In all, 39 failed of 19,964 run and 1,166 skipped by
+  a declared resource; 33 of the 39 are among the 35 listed ids, so <code>check_failures.py</code>
+  refuses the run on the other 6. Those 6 are one assumption about the host, not a wrong answer from
+  the package or a kernel (the release notes' Known issues): each test reads a file without naming
+  its encoding after the GPU stack has left the process locale at <code>C</code>, so the read
+  decodes as ASCII and stops at the first non-ASCII character; they pass in the job's view above.
+  <code>examples/run_examples.py --check</code> passes, its GPU runs byte-identical to the array
+  path under <code>keep</code>. The run used the environment
+  <code>docs/development/testing.md</code> prescribes for an NVIDIA host.
+
+What follows is the 0.9.0 preview's measurement, kept for its method.
 
 Measured on 2026-09-28 on one Apple silicon host, one suite at a time, on a
-build of this release made before its last edits, whose code differs from the
+build of that preview made before its last edits, whose code differs from the
 published files only in comments, docstrings, the text of messages and record
 notes, the names of two tests, one provenance string and one synthetic test
 value. The fixes that make the suites pass on Linux and under Python 3.10 came
@@ -191,17 +246,17 @@ test short:
 | conda-forge MEEP 1.33.0 (double precision), no GPU library | 12,405 passed, 0 failed, 936 skipped, of 13,341 run | 679 passed, 0 failed, 15 skipped, of 694 run | the same 44 |
 | neither MEEP nor a GPU library | 11,985 passed, 0 failed, 1,356 skipped, of 13,341 run | 662 passed, 0 failed, 32 skipped, of 694 run | the same 44 |
 
-The package suite collects 13,815 tests and the harness suite 695; the 362 and 1
-not run by default are the certification suite. Without PyTorch, three package
-modules (115 tests) skip whole at collection and report one result each, so the
-package suite reports 13,341 results there. Every skip names its resource; 444
-of them in the package suite are tests that read the evidence archive of the
+The package suite collected 13,815 tests and the harness suite 695; the 362 and 1
+not run by default were the certification suite. Without PyTorch, three package
+modules (115 tests) skipped whole at collection and reported one result each, so the
+package suite reported 13,341 results there. Every skip named its resource; 444
+of them in the package suite were tests that read the evidence archive of the
 certification campaigns, which this repository does not carry. The 44 failures of
-the certification suite are record contracts: 40 state that a record no longer
-matches the published files (a digest, a weld or a fingerprint that moved, or a
-dispatch record cut before dispatch became the default), and 4 are contracts of the
-two timing records that disagree with those records in the source the release
-was made from as well. The examples and the installation check pass on the same
+the certification suite were record contracts: 40 stated that a record no longer
+matched the published files (a digest, a weld or a fingerprint that moved, or a
+dispatch record cut before dispatch became the default), and 4 were contracts of the
+two timing records that disagreed with those records in the source the release
+was made from as well. The examples and the installation check passed on the same
 files.
 
 <code>tools/ci/pending_certification.txt</code> is the authority for which
@@ -222,7 +277,7 @@ why:
 | <code>mps_device</code> | PyTorch is installed and reports a usable Apple GPU (MPS). A test that asserts the Metal kernels dispatch needs nothing more: every Apple GPU is supported, and by default they dispatch on it in any environment, certified or not. Run the suite without <code>MEEP_GPU_HARDWARE=certified</code> in the shell: no conftest pins it, and it refuses an environment that is not certified or cannot be judged |
 | <code>single_precision_meep</code> | MEEP is a single-precision build: the test compares with MEEP at single-precision bounds, or asserts that MEEP returns float32 arrays |
 | <code>meep_identity_fixtures</code> | The Tier A fixtures of MEEP identity are present and their ledger reads: <code>parity/meep_gpu/fixtures/meep_identity/meep_identity.json</code> ([MEEP identity](#meep-identity)). A checkout carries them; an installed wheel does not. <code>MEEP_IDENTITY_FIXTURES</code> names another directory |
-| <code>meep_identity_reference</code> | The imported MEEP is an identity reference in keep mode, measured by <code>tools/check_install.py</code>'s identity check: MEEP 1.33.0 single precision, a build record describing the loaded images, a clean fused multiply-add census of them, re-run, subnormals kept after MEEP's switch, and the math library the record pins. <code>MEEP_IDENTITY_BUILD_RECORD</code> names the record when it is not in the MEEP prefix |
+| <code>meep_identity_reference</code> | The imported MEEP is an identity reference in keep mode, measured by <code>tools/check_install.py</code>'s identity check: MEEP 1.35.0 single precision, a build record describing the loaded images, a clean fused multiply-add census of them, re-run, subnormals kept after MEEP's switch, and the math library the record pins. <code>MEEP_IDENTITY_BUILD_RECORD</code> names the record when it is not in the MEEP prefix |
 | <code>cupy_absent</code> | CuPy is not installed. The test exercises the arm a CuPy-free host takes, such as a refusal by name where the device library cannot be imported, which a host with CuPy cannot reach |
 | <code>triton_absent</code> | Triton is not installed. The test exercises the arm a Triton-free host takes, such as a kernel accessor or a composer that refuses by name without Triton |
 
@@ -337,7 +392,7 @@ words at step 0 and at the last step, with a planted one-bit flip. Its
 
 MEEP identity is the property that every stored float32 word of the twelve field
 components (real and imaginary parts, the sign of zero included) on the cells MEEP owns
-or stores as a wall equals the word of MEEP 1.33.0 single precision built without
+or stores as a wall equals the word of MEEP 1.35.0 single precision built without
 contraction, at every compared step, and that every word <code>get_array</code>
 returns equals MEEP's. It is tested in three tiers, with one schema
 (<code>meep_gpu/meep_identity.py</code>):
@@ -346,7 +401,7 @@ returns equals MEEP's. It is tested in three tiers, with one schema
 |---|---|---|---|---|
 | **A**, replay | <code>meep_gpu/test_meep_identity.py</code>, fixtures in <code>parity/meep_gpu/fixtures/meep_identity/</code> (outside the wheel) | Loads each minted case's capsule with its recorded source currents injected, steps it with no MEEP, and compares the digest of every component at every compared step with MEEP's | The default package suite, every CI job | Skips by <code>meep_identity_fixtures</code> (an installed wheel) |
 | **B**, the corpus record | The evidence archive (<code>parity/meep_gpu/results/meep_identity_tier_b/</code>), written by <code>parity/meep_gpu/record_meep_identity_archive.py</code> | Per reference (host and subnormal mode), every corpus row's Tier C verdict, MEEP's digests and plane digests, and the capsule and currents where the schema carries the row; <code>test_meep_identity_tier_b.py</code> reads every file back, requires every row that is not a named exclusion to hold or be refused by name, and replays the smallest rows with no MEEP | Archive hosts | Skips by <code>evidence_archive</code> |
-| **C**, the MEEP lane | <code>parity/meep_gpu/meep_identity_tier_c.py</code>, <code>record_meep_identity.py</code> | Lifts a case, steps the lifted driver and MEEP in pair order, compares every word in process, and mints Tier A | A host with an identity-reference MEEP | <code>test_meep_identity_tier_c.py</code>'s live test skips by <code>meep_identity_reference</code> |
+| **C**, the live comparison with MEEP | <code>parity/meep_gpu/meep_identity_tier_c.py</code>, <code>record_meep_identity.py</code> | Lifts a case, steps the lifted driver and MEEP in pair order, compares every word in process, and mints Tier A | A host with an identity-reference MEEP | <code>test_meep_identity_tier_c.py</code>'s live test skips by <code>meep_identity_reference</code> |
 
 **The digests.** One digest per (case, compared step, component): the SHA-256 of the
 component's words as little-endian 32-bit words, in the stored array's C order,
@@ -413,7 +468,11 @@ keep MEEP's point read.
 
 **The corpus.** <code>parity/meep_gpu/meep_identity_corpus.py</code> is a
 <code>--cases-file</code> holding Table 2's measured rows: <code>manifest</code> derives
-its manifest from the seven 2026-08-09 legs' <code>parity.jsonl</code> files, and each row
+its manifest from the seven 2026-08-09 legs' <code>parity.jsonl</code> files and the MEEP
+1.35.0 re-surveys' <code>lift.jsonl</code> and <code>parity.jsonl</code>
+(<code>RESURVEYS</code>: a re-survey adds the rows it measured that no earlier leg did,
+must reproduce the run of a row it measured again, and retires a row it could not build,
+naming it with its verdict), and each row
 is rebuilt the way it was measured (captured by the corpus harnesses' own code from
 <code>MGPU_SITE_MEEP_SOURCE</code>, the row's capped resolution, its step count, its grid
 checked after the lift). Rows whose capsule the schema cannot carry (DFT monitors) are
@@ -432,7 +491,7 @@ one small corpus row per family the array path transcribes (<code>FAMILY_ROWS</c
 built by the corpus module, which needs <code>MEEP_IDENTITY_CORPUS_MANIFEST</code> and
 <code>MGPU_SITE_MEEP_SOURCE</code> at mint time; the replay needs neither). The keep set is
 minted on Apple silicon against the contract-off reference. The flush set is minted on
-x86-64 Linux against the Linux reference (MEEP 1.33.0 single precision, MEEP's own flush
+x86-64 Linux against the Linux reference (MEEP 1.35.0 single precision, MEEP's own flush
 on import, <code>OMP_NUM_THREADS=1</code>; the Linux MEEP passes the identity check in
 flush with a build record written by
 <code>timing_records.py meep-build-record --require-identity</code>). The minting tool's
@@ -440,11 +499,13 @@ replay runs in a process that cannot import MEEP; it reaches flush through the p
 x86-64 glibc lever (MXCSR FTZ and DAZ set on the replaying thread, the two bits MEEP's
 switch sets), so the tool judges the replay exactly as it judges a keep one. Both sets
 hold the same eight cases: 39,991,116 stored and 65,610,420 reader words equal to MEEP's
-in each, 2,318,064 bytes (keep) and 2,318,104 bytes (flush), 4,636,168 of the 5 MB budget.
+in each, 2,318,215 bytes (keep) and 2,318,241 bytes (flush), 4,636,456 of the 5 MB budget.
 Both sets were re-minted on the frozen 1.0 bytes (2026-10-11), again at the freeze after
-per-kernel certification (2026-10-12), whose lift moved, again at the R22 freeze
-(2026-10-14), whose lift, capsule module and deposit moved, and again at the R27 freeze
-(2026-10-15), in the new reference environments. Each replays
+per-kernel certification (2026-10-12), whose lift moved, again at the freeze of
+2026-10-14, whose lift, capsule module and deposit moved, again at the freeze of
+2026-10-15, in the new reference environments, again at the 1.0.1 freeze
+(2026-10-19), against MEEP 1.35.0, and again at its second freeze (2026-10-22), whose
+capsule module, fields and driver moved. Each replays
 bit-identically, with MEEP not importable, on x86-64 Linux (flush under the lever) and
 on Apple silicon (flush under FZ): 16 of 16 rows on each host.
 
@@ -467,8 +528,11 @@ measured status beside its reason, archives the row's files in the runner's layo
 their sha256, and with <code>--replay</code> replays the holding capsule rows with no MEEP.
 MEEP's words are not archived: the runner never writes them. <code>meep_identity_context_l2.py</code>
 measures Table 2's one remaining number, now context: the whole-field relative L2 of the
-array path against the certification MEEP of the Mac lock, which contracts multiplies and
-adds, so where a row holds it is MEEP's own build-to-build spread.
+array path against the MEEP of the interpreter it runs under. It was measured against the
+Mac lock's MEEP 1.33.0 of that time, which contracted multiplies and adds, so where a row
+held it was MEEP's own build-to-build spread. The Mac lock's MEEP 1.35.0 does not contract,
+and 1.0.1's Table 2 was cut with no such rows: its "now" column reads <code>-</code> on 223
+of 223 rows.
 <code>build_meep_identity_table.py</code> writes
 [Table 2: MEEP identity on the corpus](meep-identity-corpus.md) from those records alone:
 per row and reference "0 of W / 0 of V" (or the differing counts), the ghost words
@@ -503,7 +567,11 @@ or in <code>flush</code>, which exists only on x86 at <code>OMP_NUM_THREADS=1</c
 (MEEP's <code>set_zero_subnormals(True)</code>). <code>compare</code> also runs
 <code>flush</code> on Apple silicon: MEEP and the package step under FZ, installed on the
 stepping thread by the package's lever (<code>subnormal_policy</code>), which stores the
-x86 flush reference's words (R13); the stored-word reads leave the mode, so a subnormal
+x86 flush reference's words (measured: MEEP on Apple silicon, stepped with FZ set on its
+stepping thread, equals the Linux MEEP under flush in all 72,801,288 compared words); the
+package's words are taken in the mode, as its own step reads them (an <code>E</code> a run
+does not store, with no PML and no susceptibility, is <code>D * inv_eps</code> formed by the
+read), and the stored-word reads leave the mode, so a subnormal
 word is never read as zero. A set is judged only in its mode: the
 replay drives the host to it, through MEEP's switch when MEEP is imported and, with no
 MEEP imported, the package's own lever (Darwin's flush environment on Apple silicon, FZ;
@@ -511,7 +579,9 @@ MXCSR FTZ and DAZ through glibc's <code>fenv_t</code> on x86-64 Linux), measures
 every compared step, and refuses by name otherwise, naming the system, on any other
 platform. A flush set replayed on x86-64 Linux is the array path under FTZ and DAZ, the
 reference's own mode, judged for identity; replayed on Apple silicon it is the Mac array
-path under FZ judged against the x86 flush reference, row by row (owner ruling R13).
+path under FZ judged against the x86 flush reference, row by row: arm64's FZ and x86's
+FTZ round a band of tiny products differently, so a claim against the Linux flush
+reference is made per row, by comparing words.
 
 **What goes red, and when.** Tier A goes red when the array path moves a word on a
 minted case. <code>test_the_ledger_records_the_live_array_path_oracle</code> goes red

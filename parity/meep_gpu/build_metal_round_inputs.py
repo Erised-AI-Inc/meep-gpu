@@ -1,6 +1,6 @@
 """Pack, verify and unpack the evidence-archive inputs of a Metal certification round.
 
-A Metal round on a Mac that does not hold the evidence archive reads a few measured
+A Metal certification round on a Mac that does not hold the evidence archive reads a few measured
 records from ``parity/meep_gpu/results/`` that the repository does not carry. A round
 directory under ``parity/meep_gpu/rounds/`` names them:
 
@@ -265,7 +265,7 @@ def unpack(round_dir: Path, bundle: Path, results: Path) -> Tuple[int, int]:
     if problems:
         raise InputsRefused("the bundle does not verify: " + "; ".join(problems))
     files, _dirs, sums = read_manifest(round_dir)
-    # EVERY REFUSAL BEFORE THE FIRST WRITE, so a refused unpack leaves results/ as it
+    # Every refusal before the first write, so a refused unpack leaves results/ as it
     # found it rather than half-filled.
     absent: List[str] = []
     for name in files:
@@ -339,7 +339,7 @@ def main(argv: Sequence[str] = ()) -> int:
             parser.error(f"{arguments.action} needs --bundle")
         if arguments.action == "verify":
             problems = verify_bundle(round_dir, arguments.bundle)
-            # THE SAME DIGEST CHECK ``unpack`` MAKES: a bundle whose members verify but
+            # The same digest check ``unpack`` MAKES: a bundle whose members verify but
             # whose digest is not the committed one was not cut for this manifest.
             found = sha256_file(arguments.bundle)
             expected = committed_bundle_digest(round_dir)

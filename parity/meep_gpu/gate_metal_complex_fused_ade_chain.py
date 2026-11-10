@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
 """Native MPS byte gate for the COMPLEX fused E->P chain: ``update_E`` -> ``update_P``.
 
-WHAT IS BEING CERTIFIED, and it is not a sub-step. This product spans TWO driver
+What is being certified, and it is not a sub-step. This product spans TWO driver
 passes (``update_E`` at driver.py:3304 and ``update_P`` at :3306) with nothing
 between them, so a per-sub-step comparison could not see it at all: the whole claim
-is about the SEAM. The comparison is therefore per COMPLETE SEAM STEP over a stated
+is about the SEAM. The comparison is therefore per complete seam step over a stated
 budget, against an array-path oracle running the identical two passes, with the
 first divergent step reported rather than a final pass/fail.
 
-THE SEVEN THINGS THIS GATE REFUSES TO LET PASS SILENTLY:
+The seven things this gate refuses to let pass silently:
 
 1. **A silent fallback.** Bytes alone cannot prove the fused path ran: a plan that
    was never launched is byte-identical to the oracle BY CONSTRUCTION. So every
    case asserts the exact LAUNCH COUNT (``launches_per_run`` x steps), a nonzero
-   ``runs``, an ``alias_checks`` count equal to the launches, and a NON-VACUITY
-   FLOOR SPLIT BY ROLE — the arrays this seam WRITES (E, every polarization array)
+   ``runs``, an ``alias_checks`` count equal to the launches, and a non-vacuity
+   floor split by role — the arrays this seam WRITES (E, every polarization array)
    must all have moved, and the arrays it only READS (B, D, H) must NOT have.
 2. **A hollow pass.** Source mutations and HOST mutations are armed, and each must
    be CAUGHT — or, where an edit is provably a no-op on the scored configuration,
@@ -43,10 +43,10 @@ THE SEVEN THINGS THIS GATE REFUSES TO LET PASS SILENTLY:
    is exempt from the movement floor (a zero state is a fixed point of this seam)
    and is instead required to carry BOTH signs of zero in the reference output, so
    a uint32 compare is actually discriminating something; the subnormal band is
-   REFUSED BY NAME and its census required to FIRE, which is what makes the empty
+   refused by name and its census required to FIRE, which is what makes the empty
    censuses next door a measurement rather than a silence.
 
-BOTH SUBNORMAL POLICIES, AS FAR AS THIS BACKEND HAS THEM. MPS flush is native and
+Both subnormal policies, as far as this backend has them. MPS flush is native and
 has NO LEVER (metal_kernels/subnormal.py:6-13), so ``keep`` is not a second
 comparison but a REFUSAL, and leg ``policy`` requires the plan to be refused BY
 NAME under it rather than silently downgraded.
@@ -158,7 +158,7 @@ class Case:
     value_class: str = "uniform"
 
 
-#: THE CASE MATRIX. The corpus row is FIRST and named as such; the rest widen the
+#: The case matrix. The corpus row is FIRST and named as such; the rest widen the
 #: pole count and the sigma kind up to the binding ceiling, so the ceiling leg's
 #: arithmetic is exercised by a running case and not only by a compile.
 CASES: Tuple[Case, ...] = (
@@ -214,7 +214,7 @@ def build(case: Case, seed: int, scale: float = 1.0
           ) -> Tuple[Grid, Fields, Optional[PML]]:
     """One seeded engine. Called twice per comparison, identically, for both sides.
 
-    EVERY VOLUME IS FILLED WITH PHYSICAL-BAND VALUES unless a value class says
+    Every volume is filled with physical-band values unless a value class says
     otherwise, and that is the first thing this gate establishes rather than an
     afterthought: a zero-initialised state is a FIXED POINT of this seam — with
     D = P = P_prev = 0 the constitutive gives E = 0 and the recurrence gives
@@ -251,7 +251,7 @@ def build(case: Case, seed: int, scale: float = 1.0
         # multiply. Exempt from the movement floor by construction; the floor it
         # answers to instead is "the reference output carries BOTH signs".
         #
-        # THE POLARIZATIONS ARE SEEDED +0 ON BOTH PLANES, AND THAT IS LOAD-BEARING
+        # The polarizations are seeded +0 on both planes, and that is load-bearing
         # rather than tidy. The E half's chain is `source = d_in - p0 - p1 ...`,
         # and IEEE subtraction of equal signed zeros gives +0: seeding P with the
         # SAME lattice wipes the sign out of `source` on the first pole and leaves
@@ -259,7 +259,7 @@ def build(case: Case, seed: int, scale: float = 1.0
         # of this leg reported three live arm-spelling defects as UNCAUGHT while
         # measuring nothing. `(-0) - (+0)` is `-0`, so the lattice survives the
         # chain at any pole count.
-        # THE PLANES ARE ASSIGNED THROUGH THE .real/.imag VIEWS, not composed with
+        # The planes are assigned through the .real/.imag VIEWS, not composed with
         # `real + 1j * imaginary`. That composition is a complex MULTIPLY and an
         # ADD, and it silently loses the sign of a zero: measured on this host, it
         # turned every intended -0.0 imaginary word into +0.0 and left the lattice
@@ -392,7 +392,7 @@ def run_case(case: Case, leg: str, steps: int,
              functions: Optional[Mapping[Tuple[str, int], Any]] = None,
              patch: Optional[Callable[[Any, Any, Residency], None]] = None,
              ) -> Dict[str, Any]:
-    """Step the two engines side by side and compare per COMPLETE SEAM STEP."""
+    """Step the two engines side by side and compare per complete seam step."""
     seed = case_seed(case.label, leg)
     _, reference, reference_pml = build(case, seed)
     _, actual, actual_pml = build(case, seed)
@@ -487,14 +487,14 @@ def run_case(case: Case, leg: str, steps: int,
 def run_separate_control(case: Case, steps: int) -> Dict[str, Any]:
     """The SEPARATE certified complex products beside the fused one, on identical state.
 
-    THIS IS THE LEG THAT RE-ESTABLISHES THE INHERITED LICENCE. The orbit walk in
+    This is the leg that re-establishes the inherited licence. The orbit walk in
     ``probe_metal_ade_rotation_seam`` skipped complex storage by name, so the claim
     that a per-component ``update_E(c)`` -> ``update_P(*, c)`` interleave is the
     DRIVER's order (all of ``update_E``, then all of ``update_P``) is not inherited
     here — it is measured. Three engines from one seed: the array path; the two
     ALREADY CERTIFIED complex Metal products (``complex_no_pml_stored_e`` for
     ``update_E`` and ``ade_update_p`` for ``update_P``) dispatching the seam as
-    separate launches IN DRIVER ORDER; and the fused product. All three must agree
+    separate launches in driver order; and the fused product. All three must agree
     word for word at every complete seam step.
 
     The separate side is not a strawman: it is exactly what ``plan_step`` composes
@@ -608,7 +608,7 @@ def leg_binding_ceiling() -> Dict[str, Any]:
 def leg_single_guard() -> Dict[str, Any]:
     """The emitted kernel has EXACTLY ONE branch, so no mutation can be dead.
 
-    THE DEAD-BRANCH MUTATION is a defect class this project has already paid for:
+    The dead-branch mutation is a defect class this project has already paid for:
     an edit can rewrite real lines the scored grid never reaches, because they sit
     under a guard that case does not enter, and then report UNCAUGHT while
     measuring nothing. This family cannot have one — its whole body is straight
@@ -619,7 +619,7 @@ def leg_single_guard() -> Dict[str, Any]:
     count be exactly one rather than "one plus whatever the helpers add"; the
     helper text is measured separately here rather than assumed.
 
-    WHICH HELPERS THE BODY CALLS IS ALSO MEASURED, and it is what stops the OTHER
+    Which helpers the body calls is also measured, and it is what stops the OTHER
     half of the dead-code trap. The helper block is emitted VERBATIM from
     :func:`.templates.complex_helpers` — the certified emitters' own text — but this
     kernel invokes only ``c_mul_field_left`` (the E half's ``D * inv_eps``): the ADE
@@ -664,7 +664,7 @@ def leg_single_guard() -> Dict[str, Any]:
 def leg_transcription() -> Dict[str, Any]:
     """The arithmetic lines equal the CERTIFIED emitters' own, PARSED not mirrored.
 
-    THE MIRRORED EVALUATOR is the second defect class this project has paid for:
+    The mirrored evaluator is the second defect class this project has paid for:
     a test that re-implements a kernel's assembly mirrors a defect instead of
     executing it. So nothing here re-derives a line. Each certified emitter is
     CALLED, its output is searched for the line, this family's output is searched
@@ -722,7 +722,7 @@ def leg_transcription() -> Dict[str, Any]:
             "rename": "(none)",
             "agrees": wanted in certified_e and wanted in fused})
 
-    # --- THE ONE LINE THIS FAMILY REWRITES, stated rather than hidden ---------
+    # --- The one line this family rewrites, stated rather than hidden ---------
     split_source = "    e_out[idx] = c_mul_field_left(source, inv_e[idx]);"
     rows.append({
         "line": "constitutive_split",
@@ -790,7 +790,7 @@ def leg_ade_half_calls_no_helper() -> Dict[str, Any]:
 
 
 def leg_policy() -> Dict[str, Any]:
-    """``keep`` must be REFUSED BY NAME; ``flush`` must admit.
+    """``keep`` must be refused by name; ``flush`` must admit.
 
     MPS flush is native and has NO LEVER (metal_kernels/subnormal.py:6-13), so
     "both policies" cannot mean two comparisons here. It means: the policy this
@@ -833,7 +833,7 @@ def leg_policy() -> Dict[str, Any]:
 #: Scale, and what the per-step census MUST do at it: ``True`` stay clean,
 #: ``False`` fire. The clean rows are what make the firing rows mean something —
 #: a detector that fired on everything would refuse the physical band too and
-#: certify nothing. The banded rows are REFUSED BY NAME, never compared.
+#: certify nothing. The banded rows are refused by name, never compared.
 PRECONDITION_SCALES: Tuple[Tuple[str, float, Optional[bool]], ...] = (
     ("physical", 1.0, True),
     ("small_normal", 1e-25, True),
@@ -890,24 +890,24 @@ def shader_mutations(shape: Sequence[Tuple[int, int, Tuple[bool, ...]]]
                      ) -> Dict[str, Dict[Tuple[str, int], Any]]:
     """Source defects, each a plausible transcription slip.
 
-    ARMED ON THE X COMPONENT ONLY for the per-pole edits, with the other two axes
+    Armed on the X component only for the per-pole edits, with the other two axes
     keeping the shipped bytes: that is what makes a caught mutation evidence about
     the MUTATED LINE rather than about the harness. (The three helper-block edits
     are necessarily whole-kernel: the helpers are file scope.) Each edit is
     required to CHANGE the source — a no-op edit would report the shipped kernel as
     an uncaught defect, which is the name-drift trap.
 
-    EVERY EDIT SITS ON A LINE THE SCORED CASE EXECUTES. There is exactly one
+    Every edit sits on a line the scored case executes. There is exactly one
     branch in this kernel (leg ``single_guard`` measures that), so no armed line
     can sit under a guard the scored grid does not enter.
     """
     axis, poles, flags = next(row for row in shape if row[0] == 0)
     base = family.complex_fused_ade_chain_source(poles, flags)
     edits: Dict[str, str] = {
-        # THE SEAM ITSELF: feed update_P the pre-inverse-epsilon displacement.
+        # The seam itself: feed update_P the pre-inverse-epsilon displacement.
         "seam_takes_the_pre_constitutive_source":
             base.replace("float2 w = e;", "float2 w = source;"),
-        # INVERTED (KERNELS.md §7.1): the shipped recurrence is MEEP's two real
+        # INVERTED (docs/development/certification.md#inverted-grouping-mutations): the shipped recurrence is MEEP's two real
         # passes on its four float32 constants; this plants the package's previous
         # spelling -- three coefficients folded from the four and the three-term
         # sum, each product per part -- and stays must-catch.
@@ -960,7 +960,7 @@ def shader_mutations(shape: Sequence[Tuple[int, int, Tuple[bool, ...]]]
 
 def byte_neutral_control(shape: Sequence[Tuple[int, int, Tuple[bool, ...]]]
                          ) -> Dict[Tuple[str, int], Any]:
-    """THE ONE ARMED EDIT REQUIRED TO BE UNCAUGHT, and it is scored on that.
+    """The one armed edit required to be uncaught, and it is scored on that.
 
     The whole claim of this fusion is that it removes a round trip and changes no
     arithmetic: the ADE half reads a REGISTER where the certified composition read
@@ -1062,7 +1062,7 @@ HOST_MUTATIONS: Dict[str, Tuple[Callable[[Any, Any, Residency], None], str]] = {
 }
 
 
-#: THE PLANTED DEFECTS. A mutation leg proves that ONE case diverges when ONE
+#: The planted defects. A mutation leg proves that ONE case diverges when ONE
 #: kernel is wrong; it does not prove the gate's RELEASE VERDICT can fail. These
 #: edits are applied to the family's SHIPPED emitter for the whole process, on
 #: EVERY component, so the complete gate — product, separate control, value
@@ -1136,7 +1136,7 @@ def main() -> int:
         log(f"PLANTED DEFECT {args.plant!r}: the verdict below MUST be FAIL")
 
     mutation_case = _case(MUTATION_CASE)
-    # UNDER A PLANTED DEFECT THE MUTATION LEGS ARE MEANINGLESS and are skipped by
+    # Under a planted defect the mutation legs are meaningless and are skipped by
     # name rather than run: they would compare defective bytes against defective
     # bytes, and one armed edit IS the planted one, which the name-drift guard
     # correctly refuses as a no-op. What must flip is the verdict of the legs that
@@ -1257,7 +1257,7 @@ def main() -> int:
                          "launches": result.get("launches")})
             emit(handle, rows[-1])
 
-        # THE DISARM CHECK. The identical harness, the identical case, the SHIPPED
+        # The disarm check. The identical harness, the identical case, the SHIPPED
         # bytes and no host patch. A nonzero here would mean every "caught" above
         # is a harness that diverges on its own.
         if args.plant is None:

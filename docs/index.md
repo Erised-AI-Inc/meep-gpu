@@ -8,7 +8,7 @@ or Apple GPU. MEEP keeps the setup and the post-processing.
 
 </div>
 
-**Status: beta (1.0.0).** This is the version the accompanying paper cites.
+**Status: beta (1.0.1).** The accompanying paper cites this release.
 Interfaces and record formats may still change in later releases.
 
 meep-gpu (import name `meep_gpu`) is an add-on for MEEP users, distributed under
@@ -22,8 +22,8 @@ analysis that does not execute in the timestep loop.
 It is aimed at large three-dimensional problems run without a cluster. One
 simulation runs on one GPU; on a GPU cluster, run one simulation per GPU. There
 is no multi-GPU domain decomposition, and a lift under MPI is refused by name.
-Expect no gain over MEEP on two-dimensional problems or on small grids, which
-have not been timed against MEEP on a matched problem;
+Expect no gain over MEEP on two-dimensional problems, which have not been timed
+against MEEP on a matched problem, or on small 3-D grids;
 [Will it help?](guides/will-it-help.md) states what has been measured and what
 each expectation rests on.
 
@@ -104,9 +104,9 @@ host and never runs a compiled kernel, whatever the environment says.
 A GPU request, <code>prefer_gpu=True</code>, runs on this host's GPU, and it is
 what <code>lift_simulation(sim)</code> and <code>run_on_gpu(sim, ...)</code>
 request when nothing else is passed. On a host with a live CUDA device that is
-CuPy. On a host with an Apple GPU it is Metal kernels over NumPy host arrays. On
-a host with neither it raises, naming <code>prefer_gpu=False</code>; it never
-quietly becomes the reference. A small cell steps faster on the reference; see
+CuPy. On a host with an Apple GPU it is Metal kernels on MPS mirrors of NumPy arrays.
+On a host with neither it raises, naming <code>prefer_gpu=False</code>; it never
+quietly becomes the reference. Measured on one Apple GPU, on pre-1.0 code:
 [Small cells are faster on the reference](getting-started/first-lift.md#small-cells-are-faster-on-the-reference).
 
 Each time step is seven sub-steps. **Compiled kernels** serve the sub-steps they
@@ -117,23 +117,24 @@ are **on by default** for a <code>prefer_gpu=True</code> driver, and
 hardware, not a preference, decides which table can serve a run:
 
 - a driver built with <code>prefer_gpu=True</code> on a CUDA device gets the two
-  NVIDIA tables, or the hand-written CUDA table alone when no validated Triton
+  NVIDIA tables, or the hand-written CUDA table alone when no usable Triton
   is installed;
 - a driver built with <code>prefer_gpu=True</code> on an Apple GPU gets the
   Metal table; the sub-steps no kernel covers run on the host CPU, and the run
   says so on stderr and in <code>driver.fast_path_report()</code>;
 - a driver built with <code>prefer_gpu=False</code> never consults a table.
 
-On NVIDIA hardware, a device of compute capability 7.0 to 9.0 (with Triton 3.1)
+On NVIDIA hardware, a device the installed toolchain can run the kernels on (a CuPy
+whose NVRTC targets it, or Triton 3.1 or later that launches a probe kernel on it)
 is supported: the kernels run on it whether or not it is certified, and a run
-outside the certified identity says so; a device or toolchain outside that range
-is refused by name, and its run takes the array path, unless
+outside the certified identity says so; a device no table can run on is refused by
+name, and its run takes the array path, unless
 <code>MEEP_GPU_HARDWARE=any</code>
 ([Certification on an NVIDIA GPU](guides/kernel-dispatch.md#certification-on-an-nvidia-gpu)).
 Every Apple GPU is supported: the
 Metal kernels run on it whether or not the environment (the GPU architecture,
 PyTorch, the Metal frontend of the macOS build, and
-<code>PYTORCH_MPS_FAST_MATH</code>) is the certified one, and a run outside it
+<code>PYTORCH_MPS_FAST_MATH</code>) is a certified one, and a run outside it
 says so;
 <code>MEEP_GPU_HARDWARE=certified</code> restricts every table to its
 certified identities ([Certification on an Apple GPU](guides/kernel-dispatch.md#certification-on-an-apple-gpu)).
@@ -141,15 +142,15 @@ certified identities ([Certification on an Apple GPU](guides/kernel-dispatch.md#
 happened and why.
 
 Kernel results are bit-identical to the package's own array path on the same
-host, under the subnormal policy the kernel table is certified for; on an Apple
-GPU outside the certified environment, where the Metal kernels also run, no gate
-has measured it. Bit identity is not identity with MEEP: agreement with MEEP is
-measured separately, as a tolerance.
+host, under the subnormal policy the kernel table is certified for; on a supported
+identity outside the certified one, where the kernels also run by default, the
+certification records hold no run that measured it. Bit identity is not identity
+with MEEP: agreement with MEEP is measured separately.
 See the [floating-point contract](design/floating-point.md).
 
 None of this is a general Torch array backend. The Metal table holds the field
-volumes on the device between launches by default, which wins on larger grids
-but not on small 2-D ones. Read
+volumes on the device between launches by default, which wins on larger grids;
+on small 2-D ones a default lift lost to the reference on pre-1.0 code. Read
 [compiled-kernel dispatch](guides/kernel-dispatch.md) before running on an Apple
 host.
 

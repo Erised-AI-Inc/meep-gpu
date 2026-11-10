@@ -1,7 +1,7 @@
 """Hardware preconditions for a bit-identical fused CUDA curl fast path.
 
-Phase 1 of ``the design notes (fdtd-fused-cuda-kernel-plan)`` gates the fused
-kernels on **bit-identity** against the CuPy array path (plan section 3.2). Two
+The fused CUDA kernels are gated on **bit-identity** against the CuPy array path
+(digest equality over every live field volume, per configuration). Two
 hardware-level facts have to be measured on the GPU before that gate can mean
 anything, and neither can be settled by reading source:
 
@@ -11,7 +11,7 @@ anything, and neither can be settled by reading source:
    actually differ?) and is it *sufficient* (does it alone reach bit-identity?).
 2. **Curl associativity.** ``stepping._curl_from_operands`` forms the stencil
    as MEEP's ``step_curl`` does, ``dtdx * (a - b + c - d)`` associated left to
-   right as ``((a - b) + c) - d`` (step_generic.cpp:104). Until 0.10 the array
+   right as ``((a - b) + c) - d`` (step_generic.cpp:104). Until 1.0 the array
    path contracted it pairwise, ``dtdx * ((a - b) + (c - d))``. Float addition
    is not associative, so these differ in the last bits even with FMA off.
 
@@ -29,7 +29,7 @@ The reference is computed twice per case:
 * ``array_order``    — ``dtdx * (((sf - f) + s) - ss)``, stepping.py's contract
   and MEEP's (with the one-partner forms where a partner is absent).
 * ``pairwise_order`` — ``dtdx * ((sf - f) + (s - ss))``, the package's grouping
-  until 0.10, evaluated with the same CuPy array ops.
+  until 1.0, evaluated with the same CuPy array ops.
 
 Comparing against both separates the two effects: if the kernel matches
 ``pairwise_order`` bitwise but not ``array_order``, associativity is the only
@@ -318,7 +318,7 @@ def reference_shift(xp: Any, field: Any, axis: int, boundary: str,
 
 #: The two curl groupings a reference can be asked for. ``array_order`` is the
 #: contract (MEEP's, which the array path forms); ``pairwise_order`` is the grouping
-#: the package carried until 0.10, a control the kernel must NOT reproduce.
+#: the package carried until 1.0, a control the kernel must NOT reproduce.
 CURL_GROUPINGS: Tuple[str, ...] = ("array_order", "pairwise_order")
 
 
@@ -341,7 +341,7 @@ def reference_curl(xp: Any, first: Any, second: Any, first_axis: int,
     neither the curl is an exact ``+0``. The full bracket over an absent partner
     is not the one-partner word: ``(a + g2) - g2`` rounds twice more.
 
-    ``pairwise_order`` is the package's grouping before 0.10,
+    ``pairwise_order`` is the package's grouping before 1.0,
     ``dtdx * ((shifted_first - first) + (second - shifted_second))`` over both
     partners whatever the presence. Float addition is not associative, so the
     control separates an associativity regression from everything else the gate
@@ -419,7 +419,7 @@ def reference_dsig_only(field: Any, curl: Any, kms: Any, sinv: Any) -> Any:
 # The chunk record — which cells take which PML form
 # ---------------------------------------------------------------------------
 #
-# Since 0.10 a cell's PML form is chosen per structure chunk, as MEEP chooses it
+# Since 1.0 a cell's PML form is chosen per structure chunk, as MEEP chooses it
 # (step_db.cpp:56-59, update_eh.cpp:162-170): the split-field recurrence and the
 # dsigw accumulation run only on the cells whose chunk carries the layer, and the
 # dsig-only curl and ``f = src`` everywhere else, with the auxiliary untouched
@@ -675,7 +675,7 @@ def flatten_coefficients(coefficients: Dict[str, Any]) -> Dict[str, Any]:
 
     Flattened ONCE here and handed to the launcher, never per launch: the complex
     wrappers' ``ascontiguousarray(...ravel())`` is six device allocations a
-    sub-step for tables that never change (port-reference defect 5.14).
+    sub-step for tables that never change (a defect of the original GPU code).
     ``reshape(-1)`` on an (n,1,1) array is a view, which the assertions confirm
     rather than assume.
     """
@@ -703,10 +703,10 @@ PML_FIELD_NAMES: Tuple[str, ...] = (
 #: signed zero either. A verdict from it says nothing about the value class the
 #: float32 subnormal policy governs — so the 120/120 could be re-cut under
 #: ``flush`` and under ``keep`` and return 120/120 twice, establishing nothing
-#: about the policy (disposition §1.4, §1.1).
+#: about the policy (and the 2026-08-09/10 record names no policy at all).
 #:
-#: ``subnormal_band`` is the class the dispersive leg has carried since its
-#: recon, ported here. It seeds every field IN the band rather than constructing
+#: ``subnormal_band`` is the class the dispersive leg has carried since its first
+#: measurements, ported here. It seeds every field IN the band rather than constructing
 #: a cancellation into it, because a curl has no cancellation of its own to
 #: exploit: two float32 neighbours near 1.0 are at least one ulp (~6e-8) apart, so
 #: no seeding around a normal base can drive ``sf - f1`` below FLT_MIN. Values
@@ -715,7 +715,7 @@ PML_FIELD_NAMES: Tuple[str, ...] = (
 #: sixteen is forced to an exact zero, a NEGATIVE zero, the smallest normal or the
 #: largest subnormal.
 #:
-#: THE TWO VERDICTS ARE REPORTED SEPARATELY and only the normal-number one gates,
+#: The two verdicts are reported separately and only the normal-number one gates,
 #: exactly as on the dispersive leg and for the same measured reason: in the
 #: subnormal band it is the ARRAY PATH, not the kernel, that leaves IEEE (CuPy
 #: appends ``-ftz=true`` to every NVRTC compile), so folding the two into one
@@ -792,12 +792,12 @@ def make_pml_fields(shape: Tuple[int, int, int], rng,
 def operand_census(arrays: Dict[str, np.ndarray]) -> Dict[str, int]:
     """How many subnormals, signed zeros and zeros a leg's operands ACTUALLY hold.
 
-    A LEG WHOSE OPERANDS CANNOT CONTAIN THE CLASS IT CLAIMS TO TEST MEASURES
-    NOTHING, and reports a pass while doing it. That is not hypothetical here:
+    A leg whose operands cannot contain the class it claims to test measures
+    nothing, and reports a pass while doing it. That is not hypothetical here:
     the whole reason the 2026-08-09/10 certification says nothing about the
     subnormal policy is that its only operand class was ``uniform(-1, 1)``, which
     provably draws no subnormal and no signed zero — so it would have returned
-    120/120 under either policy (disposition §1.4).
+    120/120 under either policy.
 
     Classified off the BITS, not by comparison: ``x < FLT_MIN`` is true for zero
     too, and ``x == -0.0`` is true for ``+0.0``. Exponent field zero with a
@@ -931,14 +931,14 @@ def one_case(module, options: Sequence[str], label: str,
     rng = np.random.default_rng(SEED)
     arrays = make_fields(shape, dtype, rng)
 
-    # RETIRED 2026-08-26, AND REFUSED BY NAME RATHER THAN LEFT TO AttributeError.
+    # RETIRED 2026-08-26, and refused by name rather than left to AttributeError.
     # This leg drove ``_step_B_fused`` / ``_step_D_fused``, the all-periodic triple-curl
     # launchers over two of the twelve kernels INHERITED from the original meep_gpu
     # bundle (commit 2cd0921, 2026-07-31). Those twelve were deleted: every surface they
     # targeted is reimplemented in this package's own modules, and the upstream
     # repository still exists separately as a build reference.
     #
-    # WHAT THIS LEG ESTABLISHED IS NOT LOST, because it was never this probe that kept
+    # What this leg established is not lost, because it was never this probe that kept
     # it true. Its two findings -- that NVRTC's default FMA contraction breaks
     # bit-identity against the array path, and that the curl's associativity differs
     # from ``stepping.py``'s grouping -- are permanently expressed as
@@ -1063,13 +1063,13 @@ MULTI_STEP_COUNT = 8
 #: consecutive steps all passed a divergence that 40 did not"
 #: (``triton_kernels/fingerprints.json``, ``bit_identity_gate.legs.whole_step._why_60``).
 #: A CUDA record quoting 8 sits below a budget the sibling track has already
-#: measured to be blind. Worse, the tranche's own laptop leg
+#: measured to be blind. Worse, the family's own laptop leg
 #: (``test_constitutive_pml_real.py``) runs its expression-tree comparison at 60,
 #: so before this the leg measuring the EXPRESSION TREE ran at 60 and the leg
 #: measuring the COMPILED KERNEL ran at 8.
 CONSTITUTIVE_MULTI_STEP_COUNT = 60
 
-#: Consecutive launches in the REAL-FIELD PML CURL multi-step leg — the one this
+#: Consecutive launches in the real-field PML curl multi-step leg — the one this
 #: track's certification quotes. Raised from 8 on 2026-08-15.
 #:
 #: 8 is not a budget, it is a blind spot, and the sibling track measured it:
@@ -1132,7 +1132,7 @@ class HandTrackAdapter:
         sibling to exist — and because on a host with no CuPy neither module
         imports at all, which is exactly the state every laptop is in.
 
-        A LATE LOAD MUST NOT ESCAPE THE SWEPT GUARD, and that is not hypothetical:
+        A late load must not escape the swept guard, and that is not hypothetical:
         the ``cgate`` leg arms no source mutation, so nothing calls
         :meth:`source_attributes` and this module first loads INSIDE
         :meth:`launch`, i.e. after ``begin_guard`` has already installed the shim
@@ -1140,7 +1140,7 @@ class HandTrackAdapter:
         compile the constitutive kernels under the FILE's own option tuple while
         the artifact reported the swept one — and the ``default_no_options``
         control would silently run with ``--fmad=false``, turning a 0/N control
-        into an N/N one. Same failure family as §13.4's three: a leg reporting a
+        into an N/N one. Same failure family as three earlier harness defects: a leg reporting a
         result for a condition it never applied.
         """
         if self._constitutive is None:
@@ -1180,8 +1180,8 @@ class HandTrackAdapter:
         BOTH modules get the shim and both get the cache drop. Installing it on
         one only would leave the other compiling under the file's own options
         while the artifact reported the swept ones — a leg measuring a guard it
-        never applied, which is the failure family §13.4 records three instances
-        of.
+        never applied, which is the failure family of three earlier harness
+        defects.
         """
         for module in self._modules():
             module.cp = CupyShim(guard)
@@ -1247,7 +1247,7 @@ class HandTrackAdapter:
     def chunk_record(arrays: Dict[str, Any], target: str) -> Any:
         """The chunk record this track launches the pair with: every cell in a layer chunk.
 
-        Since 0.10 the pair chooses each cell's PML form from the run's chunk record
+        Since 1.0 the pair chooses each cell's PML form from the run's chunk record
         (``chunk_map.chunk_bounds_record``) and takes no default. This track's
         coefficient tables are not 1 anywhere, so the division they admit is every cell
         inside (:func:`gate_record`, ``gate_chunk_records.every_cell_record`` of the
@@ -1356,7 +1356,7 @@ class ExternalTrackAdapter:
     def mutated_kernels(self) -> Dict[str, Any]:
         """The currently-mutated kernel per PLAN CLASS, for the whole-step leg.
 
-        WITHOUT THIS THE WHOLE-STEP LEG IS DISARMED, and it was — measured. The
+        Without this the whole-step leg is disarmed, and it was — measured. The
         source-mutation machinery routes a mutated kernel through the
         ``plan_*_from_arrays(kernel=...)`` argument, which only the synthetic legs
         use; ``plan_step`` builds engine-route plans that hold ``kernel=None`` and
@@ -1364,7 +1364,7 @@ class ExternalTrackAdapter:
         unmutated code and reported a pass: ``reload_B_from_memory_but_shift``, a
         defect the synthetic leg catches 0/60, came back **30/30 identical** here.
 
-        That is the third instance of §13.4's family in this file (the dropped
+        That is the third instance of the same failure family in this file (the dropped
         ``kernel=`` argument, the host mutation plumbed into one leg and not the
         other, and now this), and the same sentence applies: a leg that reports a
         pass for a mutation it never applied is worse than no leg.
@@ -1515,7 +1515,7 @@ def run_pml_bit_identity(adapter, results: Dict[str, Any], out_path: str,
 def summarize_pml(cases: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
     """Pass counts as N/N per guard, never as the word 'matches'.
 
-    THE PASS IS THE NORMAL-NUMBER ONE and the block says so out loud. The
+    The pass is the normal-number one and the block says so out loud. The
     subnormal-band class is counted beside it, per guard and overall, because in
     that band it is the array path — not the kernel — that leaves IEEE, and a
     single boolean over both classes would report a kernel defect that is not
@@ -1731,17 +1731,17 @@ def run_pml_multi_step(adapter, results: Dict[str, Any], out_path: str,
                        steps: int = PML_MULTI_STEP_COUNT) -> Dict[str, Any]:
     """``steps`` consecutive sub-steps per shape, byte-compared at EVERY step.
 
-    THE AUXILIARY IS STATE. A kernel that gets ``f`` right and ``fu`` wrong is
+    The auxiliary is state. A kernel that gets ``f`` right and ``fu`` wrong is
     correct for exactly one launch and wrong forever after, and a single-shot
     comparison cannot see it. Sources are held fixed (the constitutive
     sub-steps are not part of this slice), so ``fu`` compounds its own history
     and any divergence in it grows rather than cancels.
 
-    ``steps`` IS A COVERAGE AXIS, not a runtime knob — see
+    ``steps`` is a coverage axis, not a runtime knob — see
     :data:`PML_MULTI_STEP_COUNT`. The 2026-08-09/10 record was cut at 8, which the
     sibling track has since measured to be blind to a divergence 40 catches.
 
-    THIS LEG STAYS ON THE UNIFORM OPERAND CLASS, deliberately. The recurrence
+    This leg stays on the uniform operand class, deliberately. The recurrence
     decays ``fu`` by ``sinv`` every step with the sources held fixed, so a run
     seeded in the subnormal band walks both sides to zero within a few steps and
     the remaining fifty-odd comparisons are zero against zero — bit-identical, and
@@ -1862,9 +1862,9 @@ def one_pml_multi_step(adapter, shape, boundaries, dtdx, sub_step, compare_fu,
 # refuses must not be half-fused by this kernel. It also changes the real
 # coefficient tables (a metallic axis carries a wall), so it is not inert.
 #
-# THE COURANT AXIS IS NOT DECORATION HERE EITHER, and it enters differently
+# The Courant axis is not decoration here either, and it enters differently
 # from the curl's. This sub-step has no dtdx scalar; the non-representable
-# multiplicands are the PML coefficients themselves — which §12.2 measured to be
+# multiplicands are the PML coefficients themselves — which was measured to be
 # the real source of the contraction discrepancy on the curl too. The Courant
 # reaches them through the dt/2 factor baked into the stored sigma, so the real
 # layer is built at BOTH 0.5 and 0.35 and the two produce genuinely different
@@ -1894,22 +1894,22 @@ def constitutive_names(side: str) -> Tuple[Tuple[str, ...], Tuple[str, ...], Tup
 #: How the CONSTITUTIVE leg's arrays are drawn, and it is a COVERAGE AXIS for the
 #: same measured reason it is one on the curl (:data:`PML_VALUE_CLASSES`).
 #:
-#: THIS LEG HAD ONLY ``uniform`` UNTIL 2026-08-15, and that made the two-policy
+#: This leg had only ``uniform`` UNTIL 2026-08-15, and that made the two-policy
 #: run the gate's own docstring prescribes — once under ``flush``, once under
-#: ``keep``, "the two verdicts side by side are what closes §1.1" — agree BY
+#: ``keep``, "the two verdicts side by side ... are the evidence" — agree BY
 #: CONSTRUCTION. Measured over the four swept shapes and both sides before the
 #: change: 1,907,550 float32 operands and intermediates, 0 subnormals, 0 signed
 #: zeros, 0 zeros, smallest magnitude anywhere 4.49e-06 against a smallest normal
 #: of 1.175e-38 — thirty-two orders of margin. Two runs of that establish nothing
 #: about the policy and cost two device slots to say so.
 #:
-#: THE COEFFICIENTS STAY NORMAL in both classes, and so does inverse epsilon. They
+#: The coefficients stay normal in both classes, and so does inverse epsilon. They
 #: are an absorber profile and a material, not field state; what the policy
 #: decides the fate of is the recurrence, and driving ``kps`` into the band would
 #: make ``kps * src`` an underflow to zero on both sides — a comparison of two
 #: zeros, which is the vacuity this file counts rather than a measurement.
 #:
-#: THE TWO VERDICTS ARE REPORTED SEPARATELY and only the normal-number one gates,
+#: The two verdicts are reported separately and only the normal-number one gates,
 #: exactly as on the curl and the dispersive legs: in the band it is the ARRAY
 #: PATH, not the kernel, that leaves IEEE.
 CONSTITUTIVE_VALUE_CLASSES: Tuple[str, ...] = ("uniform", "subnormal_band")
@@ -1929,7 +1929,7 @@ def constitutive_field_hosts(shape: Tuple[int, int, int], side: str, rng,
     ``kms * fw_previous`` exactly zero on the first launch whatever ``kms`` is, so
     a mis-indexed coefficient would only show from step two.
 
-    THE THREE INVERSE-EPSILON VOLUMES ARE DRAWN INDEPENDENTLY, and that is
+    The three inverse-epsilon volumes are drawn independently, and that is
     load-bearing rather than incidental: binding one volume for all three
     components is defect 2 of the complex template (it passes ``fields.inv_eps``,
     the Ez view, fields.py:1259-1260), it is EXACTLY bit-identical under an
@@ -1996,7 +1996,7 @@ def layer_constitutive_coefficients(pml, half_integer: bool) -> Dict[str, Any]:
 
 #: The two constitutive groupings. ``array_order`` is the contract (MEEP's, which
 #: the array path forms); ``regrouped`` is the association the package carried
-#: until 0.10, a control the kernel must NOT reproduce.
+#: until 1.0, a control the kernel must NOT reproduce.
 CONSTITUTIVE_GROUPINGS: Tuple[str, ...] = ("array_order", "regrouped")
 
 
@@ -2017,7 +2017,7 @@ def reference_constitutive_forms(field: Any, fw: Any, source: Any, kps: Any, kms
     constitutive, update_eh.cpp:162-170) and ``fw`` keeps its word (the auxiliary
     contract). ``inside`` None is every cell inside.
 
-    ``grouping="regrouped"`` is the package's association until 0.10,
+    ``grouping="regrouped"`` is the package's association until 1.0,
     ``(field + kps * fw) - kms * fw_previous``, carried so a failure separates
     associativity from everything else in one read — the role
     ``pairwise_order`` plays in the curl leg.
@@ -2216,11 +2216,11 @@ def run_constitutive_bit_identity(adapter, results: Dict[str, Any], out_path: st
     """The constitutive gate: shapes x boundary sets x Courants x sides x tables x value classes.
 
     PASS is every NORMAL-NUMBER case bit-identical to ``array_order`` on BOTH the
-    target and the auxiliary. §12.3 measured a dropped auxiliary store at 120/120
+    target and the auxiliary. A dropped auxiliary store was measured at 120/120
     UNCAUGHT on the curl when ``fu`` was not compared; ``f_w`` is this sub-step's
     ``fu`` and the identical blindness applies.
 
-    THE VALUE CLASS IS A SWEPT AXIS (:data:`CONSTITUTIVE_VALUE_CLASSES`) and the
+    The value class is a swept axis (:data:`CONSTITUTIVE_VALUE_CLASSES`) and the
     band's count is reported beside the pass rather than folded into it. Without
     it this leg's operands provably could not reach the band, so the two-policy
     run the gate is specified to be cut under would return the same number twice.
@@ -2293,7 +2293,7 @@ def run_constitutive_multi_step(adapter, results: Dict[str, Any], out_path: str,
     for exactly one launch and wrong forever after — measured on the curl at
     120/120 blind to a single-launch, target-only comparison.
 
-    THE SOURCE MOVES BETWEEN SUB-STEPS, and it has to. This leg used to hold it
+    The source moves between sub-steps, and it has to. This leg used to hold it
     fixed and claim in this docstring that ``f_w`` therefore "compounds its own
     history"; the recurrence writes ``fw[i] = src`` unconditionally, so a FIXED
     source drives ``f_w`` to a fixed point after launch one and 59 of 60 launches
@@ -2301,7 +2301,7 @@ def run_constitutive_multi_step(adapter, results: Dict[str, Any], out_path: str,
     changed against the previous step at step 1 only, and ``f_w == source``
     exactly at every step. In a real run the curl writes B/D before each
     constitutive call, so perturbing it here is the faithful thing as well as the
-    load-bearing one — the same move the tranche's laptop sibling already makes
+    load-bearing one — the same move the family's laptop sibling already makes
     (``test_constitutive_pml_real.py::_run``).
     """
     guard_label, guard, _ = adapter.guard_sets[0]
@@ -2397,13 +2397,13 @@ def one_constitutive_multi_step(adapter, shape, side, compare_fw, comparator,
     source_names = constitutive_names(side)[2]
     auxiliary_advanced = False
     for step in range(1, CONSTITUTIVE_MULTI_STEP_COUNT + 1):
-        # THE SOURCE MOVES. ``fw[i] = src`` is unconditional, so a fixed source
+        # The source moves. ``fw[i] = src`` is unconditional, so a fixed source
         # makes ``f_w`` a fixed point from launch one and every later launch adds
         # no state. ``kernel_state`` shares the source arrays with ``arrays`` (only
         # targets and auxiliaries were copied), so scaling in place perturbs the
         # reference and the kernel identically — which is what keeps this a
         # comparison rather than a divergence the harness manufactured. 0.97 is
-        # the tranche's laptop sibling's factor; over 60 steps it stays normal.
+        # the family's laptop sibling's factor; over 60 steps it stays normal.
         for name in source_names:
             arrays[name] *= np.float32(0.97)
         previous_auxiliaries = {name: reference_state[name].copy()
@@ -2453,10 +2453,10 @@ def one_constitutive_multi_step(adapter, shape, side, compare_fw, comparator,
 #     prev = f_w_c ; f_w_c = src
 #     E_c  = (E_c + kps_h[a]*src) - kms_h[a]*prev
 #
-# THREE AXES ARE IN THE PRODUCT HERE THAT ARE IN NO OTHER LEG, and each one is a
+# Three axes are in the product here that are in no other leg, and each one is a
 # defect family that only exists once a pole list enters the sub-step:
 #
-# * POLE COUNT PER COMPONENT, including a component with NONE. ``sigma_is_trivial``
+# * Pole count per component, including a component with NONE. ``sigma_is_trivial``
 #   (dispersion.py:600) drops any component whose sigma is identically zero, so a
 #   real anisotropic material gives Ex, Ey and Ez different subsets — and a kernel
 #   that carries one pole list for all three is wrong SILENTLY. ``(1, 0, 2)`` is in
@@ -2464,11 +2464,11 @@ def one_constitutive_multi_step(adapter, shape, side, compare_fw, comparator,
 # * MULTI-POLE ARITHMETIC. ``D - (P0 + P1)`` is a different float32 number from
 #   ``(D - P0) - P1``, so the pre-summed design — the one anyone writes from the
 #   docstring sentence — is a real defect, and it is INVISIBLE at one pole. The
-#   recon measured both mutations at 20/20 caught on two poles and 0/10 at one.
+#   Measured: both mutations caught 20/20 on two poles and 0/10 at one.
 # * VALUE CLASS. Every other leg in this file seeds ``uniform(-1, 1)``, which
 #   cannot produce a subnormal or a signed zero. ``D - sum P`` is a CANCELLATION
 #   between two nearly equal volumes and is the only one of its kind in the step;
-#   plan §16 traced the whole fast path's first divergence to a subnormal in
+#   the whole fast path's first divergence was traced to a subnormal in
 #   ``f_w_Ez``, which is the array THIS sub-step writes. So the leg carries a
 #   second value class that constructs the cancellation deliberately, and the two
 #   verdicts are reported SEPARATELY. A verdict from the uniform class alone is a
@@ -2488,9 +2488,9 @@ DISPERSIVE_POLE_COUNTS: Tuple[Tuple[int, int, int], ...] = (
     (1, 1, 1), (2, 2, 2), (3, 2, 1), (1, 0, 2), (6, 6, 6))
 
 #: How the seeded arrays are drawn. ``uniform`` is every other leg's class and
-#: reaches NORMAL NUMBERS ONLY. ``cancellation`` constructs ``D`` and ``P`` so the
+#: reaches normal numbers only. ``cancellation`` constructs ``D`` and ``P`` so the
 #: difference lands in and around the subnormal band, and injects exact zeros and
-#: negative zeros — the value classes §16's divergence actually lives in.
+#: negative zeros — the value classes the fast path's measured divergence lives in.
 DISPERSIVE_VALUE_CLASSES: Tuple[str, ...] = ("uniform", "cancellation")
 
 
@@ -2515,8 +2515,8 @@ def make_dispersive_fields(shape: Tuple[int, int, int], counts: Sequence[int],
     1e-45 to 1e-30, so ``D - sum P`` lands in and around the subnormal band; on top
     of that, one cell in sixteen is forced to an exact zero, a negative zero, the
     smallest normal, or the largest subnormal, in D, in the poles and in ``f_w``.
-    THE POINT IS NOT REALISM — it is that the gate's verdict otherwise says nothing
-    about the band plan §16 measured the divergence in.
+    The point is not realism — it is that the gate's verdict otherwise says nothing
+    about the band the fast path's divergence was measured in.
     """
     targets = tuple(t[0] for t in DISPERSIVE_TERMS)
     sources = tuple(t[1] for t in DISPERSIVE_TERMS)
@@ -2551,7 +2551,7 @@ def make_dispersive_fields(shape: Tuple[int, int, int], counts: Sequence[int],
     if value_class == "cancellation":
         # Exact zeros, negative zeros and the two ends of the subnormal boundary,
         # sprinkled into every array the sub-step reads or writes. CuPy's own
-        # flush-to-zero is a measurement hazard here (plan §16.5), which is why the
+        # flush-to-zero is a measurement hazard here (its reductions flush too), which is why the
         # comparison stays bytewise and never asks for a magnitude.
         specials = np.array([0.0, -0.0, np.float32(1.1754944e-38),
                              np.float32(1.1754942e-38), np.float32(1e-45),
@@ -2591,7 +2591,7 @@ def reference_dispersive_constitutive_step(arrays: Dict[str, Any],
     * ``"reversed"``   — the pole list walked backwards.
 
     Both are bit-identical to the array order at ONE pole and differ at two or
-    more, which is the measured signature (recon: 20/20 and 0/10 respectively) and
+    more, which is the measured signature (caught 20/20 on two poles, 0/10 at one) and
     is what makes the multi-pole rows of the sweep load-bearing rather than
     decorative.
 
@@ -2758,8 +2758,8 @@ def summarize_dispersive(cases: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
     """Pass counts per guard AND per value class, never merged into one number.
 
     The split is the point. ``uniform`` is a verdict about NORMAL NUMBERS and
-    ``cancellation`` is a verdict about the band plan §16 measured the fast path's
-    divergence in; a single N/N over both would let one hide inside the other, and
+    ``cancellation`` is a verdict about the band the fast path's divergence was measured
+    in; a single N/N over both would let one hide inside the other, and
     the word "bit-identical" would then be doing work it has not earned.
     """
     summary = summarize_pml(cases)
@@ -2786,8 +2786,8 @@ def run_dispersive_constitutive_bit_identity(
     """The dispersive gate: shapes x boundary sets x Courants x pole sets x value classes.
 
     PASS is every primary-guard case bit-identical to ``array_order`` on BOTH the
-    target and the auxiliary — and the auxiliary half is not a formality here. §12.3
-    measured a dropped auxiliary store at 120/120 UNCAUGHT on the curl when ``fu``
+    target and the auxiliary — and the auxiliary half is not a formality here. A dropped
+    auxiliary store measured 120/120 UNCAUGHT on the curl when ``fu``
     was not compared, and ``f_w_E`` is worse than the curl's ``fu``: it is what
     ``Fields.drive_field`` hands ``update_P``, so a wrong ``f_w`` is a wrong
     polarization from the next sub-step onwards while ``E`` still reads correct.
@@ -2862,8 +2862,8 @@ def run_dispersive_constitutive_multi_step(adapter, results: Dict[str, Any],
     forever after. Sources and poles are held fixed, so ``f_w`` compounds its own
     history and a divergence grows rather than cancelling.
 
-    THE STEP BUDGET IS A COVERAGE AXIS, not a runtime knob: 8, 10 and 60 steps all
-    passed for the existing kernels and 40 and 67 did not (plan §14.5, §16). It is
+    The step budget is a coverage axis, not a runtime knob: 8, 10 and 60 steps all
+    passed for the existing kernels and 40 and 67 did not (measured 2026-08-10). It is
     therefore an argument, and the artifact records it.
     """
     guard_label, guard, _ = adapter.guard_sets[0]
@@ -2914,7 +2914,7 @@ def one_dispersive_multi_step(adapter, shape, counts, value_class, compare_fw,
     coefficients = synthetic_constitutive_coefficients(cp, shape, True)
     # Every host mutation must be plumbed into EVERY leg it applies to. Measured
     # twice in this project: a leg that reports a pass for a mutation it never
-    # applied is worse than no leg (§13.4, §15.8).
+    # applied is worse than no leg.
     if host_mutation == "swap_constitutive_sublattice":
         kernel_coefficients = synthetic_constitutive_coefficients(cp, shape, False)
     elif host_mutation == "swap_kps_kms":
@@ -2976,14 +2976,14 @@ def one_dispersive_multi_step(adapter, shape, counts, value_class, compare_fw,
 # in the array path that value made a round trip through float32 memory with
 # ``zero_metal_B`` writing over one plane of it on the way.
 #
-# THREE COMPARISONS PER CASE, not two, and the third is the one that makes the
+# Three comparisons per case, not two, and the third is the one that makes the
 # other two readable:
 #
 #   fused vs two kernels  — does removing the round trip change any bit?
 #   fused vs array path   — the verdict that matters (the reference transcription)
 #   two kernels vs array  — the control: the unfused composition still holds
 #
-# The auxiliaries are compared throughout. §12.3 and §13.3 both measured a real
+# The auxiliaries are compared throughout. The curl and constitutive gates both measured a real
 # defect passing 120/120 when only the primary was compared, one sub-step apart,
 # and a fused kernel writes FOUR auxiliaries (fu_B* and f_w_H*) rather than three.
 
@@ -3212,7 +3212,7 @@ def run_fused_pair_bit_identity(adapter, results: Dict[str, Any], out_path: str,
                                 num_warps: Optional[int] = None) -> Dict[str, Any]:
     """The full product for the fused pair, under every guard set.
 
-    THE PRODUCT IS 64 CASES, NOT 128, and the difference is not a trim: there is
+    The product is 64 cases, not 128, and the difference is not a trim: there is
     exactly one fused pair (the magnetic one), so the ``sub_step`` axis that
     doubles the curl and constitutive products does not exist here. Every other
     axis is the shared one — four shapes, four boundary sets, both Courants, both
@@ -3404,8 +3404,8 @@ def run_fused_pair_multi_step(adapter, results: Dict[str, Any], out_path: str,
 # the first configuration this track covers end to end and the first number that
 # is a whole-step measurement rather than a projection from a sub-step share.
 #
-# WHAT IS AND IS NOT CLAIMED. Dispatch is NOT wired: ``fastpath.plan_fast_path``
-# still returns None on every branch and this round does not touch it. The
+# What is and is not claimed. Dispatch is NOT wired: ``fastpath.plan_fast_path``
+# still returns None on every branch and this probe does not touch it. The
 # substitution below is performed by the harness, on the driver module's own
 # names, which is what makes it a MEASUREMENT of the composed path rather than a
 # claim that the engine takes it. When dispatch lands, this leg is the regression
@@ -3417,7 +3417,7 @@ def run_fused_pair_multi_step(adapter, results: Dict[str, Any], out_path: str,
 
 WHOLE_STEP_COUNT = 10
 #: Every array ``FdtdDriver.step`` may write, by name. A whole-step gate that
-#: compares the primaries only is blind to exactly what §12.3 measured on the
+#: compares the primaries only is blind to exactly what was measured on the
 #: curl: the auxiliaries are state, and a kernel that gets ``f`` right and its
 #: auxiliary wrong is correct for one step and wrong forever after.
 WHOLE_STEP_ARRAYS = (
@@ -3439,12 +3439,12 @@ def build_whole_step_driver(repo_root: str, shape, courant: float, boundaries,
     ``inv_eps`` multiply is not the identity, and sigma is a VOLUME so the ADE
     kernel's ``SIGMA_IS_VOLUME`` arm is the one under test.
 
-    ``seed_auxiliaries`` SEEDS ``fu_B*`` TOO, AND IT IS NOT COSMETIC. MEASURED on
+    ``seed_auxiliaries`` SEEDS ``fu_B*`` too, and it is not cosmetic. Measured on
     this harness: with the split-field auxiliary starting at zero, a metallic
     wall's B plane is identically zero for every step — the ownership mask makes
     ``curl0`` zero at cell 0, so ``fu`` there stays at whatever it started as and
     the recurrence returns ``B * kms * sinv`` on a B the previous wipe already
-    zeroed. ``zero_metal_B`` is then a NO-OP FROM STEP ONE, and a whole-step leg
+    zeroed. ``zero_metal_B`` is then a no-op from step one, and a whole-step leg
     cannot see it being dropped: ``drop_zero_metal_inline`` came back 60/60
     UNCAUGHT on the unseeded driver. ``stepping.zero_metal_B``'s own docstring
     records the same thing from the other side — deleting the call survived the
@@ -3503,7 +3503,7 @@ def whole_step_state(driver) -> Dict[str, Any]:
 def install_triton_substeps(driver_module, plan, owner, mutation: Optional[str] = None):
     """Point the driver module's sub-step names at the plan, and hand back the undo.
 
-    SCOPED TO ONE ``Fields``, and that is not a nicety. The substitution seam is the
+    Scoped to one ``Fields``, and that is not a nicety. The substitution seam is the
     driver MODULE's globals, which every ``FdtdDriver`` in the process shares — so an
     unscoped patch sends the reference driver's steps through the plan too, and
     through a plan whose cached device pointers belong to the OTHER driver's arrays.
@@ -3511,8 +3511,8 @@ def install_triton_substeps(driver_module, plan, owner, mutation: Optional[str] 
     per timestep and every array diverged at step 1, which reads exactly like a
     broken kernel and is not one.
 
-    ``mutation='drop_update_P'`` is spec §G.m10: dispatch the covered sub-steps and
-    silently drop one from the array path — the "coverage is a set" mis-plumbing.
+    ``mutation='drop_update_P'`` dispatches the covered sub-steps and silently drops
+    one from the array path — the "coverage is a set" mis-plumbing.
     It must diverge at step 1.
     """
     names = ("step_B", "step_D", "update_H", "update_E", "update_P")
@@ -3532,7 +3532,7 @@ def install_triton_substeps(driver_module, plan, owner, mutation: Optional[str] 
             if mutation == "replace_nothing":
                 # The null control: the wrapper is installed on every name and
                 # delegates on every name. Anything that diverges under it is the
-                # harness, which is exactly what §13.4's third defect looked like.
+                # harness, which is exactly what the unscoped-substitution defect looked like.
                 entry = None
             if entry is None:
                 return originals[name](fields, pml)
@@ -3584,12 +3584,12 @@ def run_whole_step(results: Dict[str, Any], out_path: str, repo_root: str,
     the other with the driver module's sub-step names pointed at the plan. Every
     state array is compared as BYTES after every step.
 
-    ``steps_budget`` IS A COVERAGE AXIS, not a runtime knob. §14.5 measured a
-    divergence that 8, 10 and 6 consecutive steps all passed and 40 did not:
+    ``steps_budget`` is a coverage axis, not a runtime knob. Measured: 8, 10 and 6
+    consecutive steps all passed a divergence that 40 did not:
     "identical for N steps" is a claim about N. The fused-pair gate runs 60.
 
     ``fuse=True`` asks ``plan_step`` for the cross-sub-step pair. It is off by
-    default because the composed-but-unfused plan is the control this round is
+    default because the composed-but-unfused plan is the control the fused pair is
     measured against, and both must keep running from the same harness.
     """
     if repo_root not in sys.path:
@@ -3701,22 +3701,22 @@ def run_whole_step(results: Dict[str, Any], out_path: str, repo_root: str,
 # returns True. Every entry here must be verified CAUGHT (or, for the two
 # harness mutations, verified to make a real defect go UNCAUGHT).
 #
-# THE SHARED DEFAULT. Each defect is a ``gate_needles.Needle``: one rewrite of
+# The shared default. Each defect is a ``gate_needles.Needle``: one rewrite of
 # the device text, held as data, with its account in ``why``. This table is the
 # default a gate BORROWS a shared defect from, and no gate arms it directly: each
 # builds its own table with ``gate_needles.gate_table`` (the hand track's is
 # :data:`HAND_NEEDLES`, below). Re-spelling a defect for one gate's kernels is
 # an ``own=`` entry in THAT gate's table and moves no other gate's bytes.
 #
-# THE CURL AND CONSTITUTIVE DEFECTS ARE SPELLED ON THE REAL-PML PAIR'S TEXT since
-# 0.10 (bit_parity_0_10 DESIGN.md D12, KERNELS.md section 7.1). The pair forms the
+# The curl and constitutive defects are spelled on the real-PML pair's text since
+# 1.0 (one needle table per gate, the grouping mutations inverted). The pair forms the
 # stencil in ``curl_stencil``, in MEEP's grouping, and chooses each cell's PML form
 # per structure chunk through the membership flag ``pml_apply`` and
 # ``constitutive_apply`` take last, and every kernel a gate arms these defects on
 # carries those lines character for character (``gate_needle_anchors.json`` pins each
 # gate's site counts), so every such gate borrows them from here. The two GROUPING
 # defects are INVERTED: the shipped grouping is MEEP's, so each plants the grouping
-# the kernels carried until 0.10, and each stays must-catch.
+# the kernels carried until 1.0, and each stays must-catch.
 # ``parity/meep_gpu/test_mutation_anchors.py`` checks every table against the
 # recorded site counts on every test run.
 # ---------------------------------------------------------------------------
@@ -3731,7 +3731,7 @@ SOURCE_MUTATIONS: Dict[str, Needle] = {
             ``curl_stencil`` writes step_curl's stencil as C associates it
             (step_generic.cpp:104), which the array path forms too
             (``stepping._curl_from_operands``). The pairwise grouping is what the pair
-            carried until 0.10 and a different float32 number. One site per kernel: the
+            carried until 1.0 and a different float32 number. One site per kernel: the
             helper. Reached only where both partners are present. MUST BE CAUGHT.
             """)),
     "drop_metallic_mask": Needle(
@@ -3859,7 +3859,7 @@ SOURCE_MUTATIONS: Dict[str, Needle] = {
 
             MEEP's step_update_EDHB forms the right-hand side first
             (step_generic.cpp:689, :697), and so does ``stepping._apply_constitutive_pml``.
-            The two accumulations left to right are what the pair carried until 0.10 and
+            The two accumulations left to right are what the pair carried until 1.0 and
             a different float32 number. One site per kernel string (the shared
             prelude). MUST BE CAUGHT.
             """)),
@@ -3986,21 +3986,21 @@ SOURCE_MUTATIONS: Dict[str, Needle] = {
             entirely and could never see it. MUST BE CAUGHT.
             """)),
 }
-#: THE HAND TRACK'S TABLE: the real-PML pair in ``step_curl_kernels.py`` and
+#: The hand track's table: the real-PML pair in ``step_curl_kernels.py`` and
 #: ``constitutive_kernels.py``. :class:`HandTrackAdapter` arms it. Every entry is
 #: borrowed from the shared default, which is spelled on this pair's text.
 HAND_NEEDLES = gate_needles.gate_table(
     "probe_fused_kernel_bit_identity:hand", SOURCE_MUTATIONS, tuple(SOURCE_MUTATIONS))
-#: ``inv_eps_left`` MUST BE UNCAUGHT and ``commute_constitutive_scale`` MUST BE
-#: UNCAUGHT, each paired with a defect on the same expression that must be caught
+#: ``inv_eps_left`` must be uncaught and ``commute_constitutive_scale`` must be
+#: uncaught, each paired with a defect on the same expression that must be caught
 #: (``drop_inverse_epsilon`` and ``regroup_constitutive`` respectively). A leg
 #: reporting either as CAUGHT is reporting a defect in the kernel or in the
 #: harness, not a working gate — and a battery of only-must-be-caught mutations
 #: scores identically whether the comparator works or has degenerated into
 #: failing everything.
 CONSTITUTIVE_NULL_MUTATIONS = ("inv_eps_left", "commute_constitutive_scale")
-#: ``commute_dtdx_scale`` MUST BE UNCAUGHT and ``reload_fu_from_memory`` MUST BE
-#: UNCAUGHT — the curl leg's answer to the clause the sibling record carries as
+#: ``commute_dtdx_scale`` must be uncaught and ``reload_fu_from_memory`` must be
+#: uncaught — the curl leg's answer to the clause the sibling record carries as
 #: ``mutations_that_must_be_UNCAUGHT`` and this one had none of. A leg reporting
 #: either as CAUGHT is reporting a defect in the kernel or in the harness, not a
 #: working gate. Each is paired with a leg on the same expression that must be
@@ -4017,8 +4017,8 @@ CONSTITUTIVE_SOURCE_MUTATIONS = (
     "drop_fw_store",                 # the auxiliary-only defect
     "store_fw_before_reading_prev",  # the aliasing trap the array path's copy prevents
     "drop_inverse_epsilon",          # E side: source becomes D instead of D*inv_eps
-    # THE TWO INDEXING DEFECTS, added 2026-08-15. Everything above edits the
-    # ARITHMETIC; nothing edited WHICH COEFFICIENT A CELL READS, which the
+    # The two indexing defects, added 2026-08-15. Everything above edits the
+    # ARITHMETIC; nothing edited which coefficient a cell reads, which the
     # kernel's own note 2 calls the highest-consequence confusion in the file and
     # which is the only defect on this list that produces a converged, smooth,
     # entirely wrong absorber rather than a visibly broken field.
@@ -4032,14 +4032,14 @@ CONSTITUTIVE_SOURCE_MUTATIONS = (
 #: Defects that only exist once two sub-steps share one launch. The first is not a
 #: defect at all and is listed anyway, deliberately — see the note below.
 FUSED_PAIR_SOURCE_MUTATIONS = (
-    "reload_B_from_memory",           # THE TRUNCATION QUESTION, asked as a mutation
+    "reload_B_from_memory",           # the truncation question, asked as a mutation
     "reload_B_from_memory_but_shift",  # ...and its discriminating control
     "drop_zero_metal_inline",         # the wall wipe the seam has to carry
     "zero_metal_only_on_the_store",   # ...carried for B but not for the H read
     "hoist_constitutive_above_curl_store",  # the ordering; a NULL mutation, see below
 )
-#: ``reload_B_from_memory`` MUST BE UNCAUGHT and ``hoist_constitutive_above_curl_store``
-#: MUST BE UNCAUGHT. Both are here because a claim that they cannot matter is worth
+#: ``reload_B_from_memory`` must be uncaught and ``hoist_constitutive_above_curl_store``
+#: must be uncaught. Both are here because a claim that they cannot matter is worth
 #: more measured than argued:
 #:
 #: * the reload puts the float32 round trip back while keeping the fusion. On
@@ -4059,7 +4059,7 @@ FUSED_PAIR_NULL_MUTATIONS = ("reload_B_from_memory",
 #: gate owns the list; each track owns the spelling.
 #:
 #: The first two are the ones a reader of the docstring sentence "E = (D - sum P) *
-#: inv_eps" will write by accident, and both are INVISIBLE AT ONE POLE — measured
+#: inv_eps" will write by accident, and both are invisible at one pole — measured
 #: 20/20 caught at two poles and 0/10 at one. A leg that reports them caught on a
 #: single-pole row is reporting a harness defect, not a working gate.
 DISPERSIVE_SOURCE_MUTATIONS = (
@@ -4071,7 +4071,7 @@ DISPERSIVE_SOURCE_MUTATIONS = (
     "drop_inverse_epsilon_dispersive",  # source becomes (D - sum P), unscaled
     "inv_eps_left",                   # a NULL: float32 multiply IS commutative
 )
-#: ``inv_eps_left`` MUST BE UNCAUGHT. ``inv_eps * s`` versus ``s * inv_eps`` was
+#: ``inv_eps_left`` must be uncaught. ``inv_eps * s`` versus ``s * inv_eps`` was
 #: measured bitwise identical on 30/30 real-engine cases; the array path's operand
 #: order is kept for transcription discipline, not because it changes a bit. A leg
 #: that reports this CAUGHT is comparing something other than bytes.
@@ -4086,14 +4086,14 @@ HOST_MUTATIONS = ("integer_coefficients_on_B", "metallic_as_periodic",
 #: Whole-step mutations: defects in the COMPOSITION rather than in any one kernel.
 #: ``replace_nothing`` is the NULL CONTROL: the substitution machinery is installed
 #: and every sub-step delegates, so a divergence under it is the harness's, not a
-#: kernel's. §13.4's third defect is why that control exists at all.
+#: kernel's. The unscoped-substitution defect is why that control exists at all.
 WHOLE_STEP_MUTATIONS = ("drop_update_P", "replace_nothing")
 
 
 def apply_source_mutation(adapter, name: str) -> Dict[str, Any]:
     """Rewrite the track's kernel sources and report how many sites were hit.
 
-    A track now exposes MORE THAN ONE kernel source, and a mutation aimed at one
+    A track now exposes more than one kernel source, and a mutation aimed at one
     kernel legitimately matches nothing in the others — the regroup needle for the
     constitutive kernel does not appear in the curl. So the drift check is on the
     TOTAL: a mutation that matched nothing ANYWHERE has drifted away from every
@@ -4156,7 +4156,7 @@ def apply_source_mutation(adapter, name: str) -> Dict[str, Any]:
 def armed_mutation_accounting(adapter, armed: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     """Did the mutated bytes actually reach the COMPILER, or only the text?
 
-    THE DEFECT THIS EXISTS FOR is a leg that reports a pass for a mutation it
+    The defect this exists for is a leg that reports a pass for a mutation it
     never applied — indistinguishable, in a summary, from a leg that applied it
     and found nothing. The sibling track hit it three times, and only caught it
     because ``install_mutated_kernels()`` reports its re-point count.
@@ -4181,7 +4181,7 @@ def armed_mutation_accounting(adapter, armed: Optional[Dict[str, Any]]) -> Dict[
     rather than a zero, because a zero here would read as "the mutation never
     landed", which is the exact wrong conclusion to draw from a missing counter.
 
-    EVERY LOADED MODULE'S LOG IS READ, NOT JUST THE CURL'S. MEASURED FAILURE,
+    Every loaded module's log is read, not just the curl's. Measured FAILURE,
     2026-08-15, on the constitutive pair's first gate run: every source-mutation
     leg reported ``0 out of 0 kernel constructions`` and was refused. Both kernel
     modules are loaded BY PATH by this probe, so each one takes the ImportError
@@ -4237,7 +4237,7 @@ def armed_mutation_accounting(adapter, armed: Optional[Dict[str, Any]]) -> Dict[
 def compile_to_ptx(code: str, options: Sequence[str], arch: str = "compute_86") -> str:
     """Real PTX text for one kernel, straight from NVRTC.
 
-    ``cupy.cuda.compiler.compile_using_nvrtc(..., arch=None)`` DOES NOT RETURN
+    ``cupy.cuda.compiler.compile_using_nvrtc(..., arch=None)`` does not return
     PTX. On CuPy 13.5.1 it returns a 2-tuple whose first element is a CUBIN —
     an ELF binary — so counting ``"fma.rn.f32"`` in ``str()`` of it returns 0
     for every kernel under every compile option, which is exactly what this
@@ -4314,7 +4314,7 @@ def run_ptx_probe(module, results: Dict[str, Any]) -> None:
 def save(results: Dict[str, Any], out_path: str) -> None:
     """Atomic rewrite, with the bytes THIS process imported recorded first.
 
-    THE THIRD WRITER. gate_triton_complex.save and metal_gate_kit.save already
+    The third writer. gate_triton_complex.save and metal_gate_kit.save already
     stamp; this one is bound by gate_cuda_offdiag as ``save = probe.save``, so
     without this the CUDA track wrote verdicts with no record of the source behind
     them while satisfying a ratchet that only checked for an IMPORT of a stamping
@@ -4357,13 +4357,13 @@ def subnormal_policy_stamp(repo_root: str) -> Dict[str, Any]:
     The 2026-08-09/10 hand-CUDA artifact names none — ``grep -ric`` for
     ``subnormal|ftz|denormal|policy`` over its five files returned 0 on all five,
     and its ``environment`` block has no policy field of any kind. That is the
-    live gap in §1.1 of the disposition, and it is a gap in the ARTIFACT before
+    live gap in the hand-CUDA certification, and it is a gap in the ARTIFACT before
     it is a gap in the kernel: CuPy appends ``-ftz=true`` to every NVRTC compile
-    and ``subnormal_policy`` strips it at the ``compile_using_nvrtc`` seam, so
+    and ``subnormal_policy`` strips it at the NVRTC front-end seam, so
     the same source compiles to two different binaries and the record could not
     even be filtered by which.
 
-    READ, NOT DRIVEN — driving is :func:`install_subnormal_policy_for_run`, and
+    Read, not driven — driving is :func:`install_subnormal_policy_for_run`, and
     only when ``--subnormal-policy`` asks for it. This says what the process it
     ran in was doing, including "nothing was installed", which is itself the
     answer for a run that took CuPy's default (which is to flush). The stamp carries
@@ -4393,7 +4393,28 @@ def subnormal_policy_stamp(repo_root: str) -> Dict[str, Any]:
     return record
 
 
-#: Every ``compile_using_nvrtc`` call this process made, innermost: the OPTIONS
+def nvrtc_front_end(cupy_compiler: Any) -> str:
+    """The NVRTC compiler front end CuPy's compile path calls, by name.
+
+    Read off the compile path's own code by ``meep_gpu.backends.compiler_front_ends``,
+    the seam the package's compile guard and ``keep`` strip install at:
+    ``compile_using_nvrtc`` on CuPy 13, ``_compile_using_nvrtc_no_warning`` on CuPy 14
+    (whose public ``compile_using_nvrtc`` hands over to it). A spy set on any other
+    name installs and is never called, so a seam that cannot be located is a refusal.
+    """
+    from meep_gpu import backends  # noqa: PLC0415
+
+    front_ends, problem = backends.compiler_front_ends(cupy_compiler)
+    nvrtc = [name for name in front_ends if "nvrtc" in name]
+    if problem or len(nvrtc) != 1:
+        raise RuntimeError(
+            "the NVRTC front end of CuPy's compile path cannot be located: "
+            + (problem or f"the front ends read are {list(front_ends)}"))
+    return nvrtc[0]
+
+
+#: Every call of the NVRTC front end (:func:`nvrtc_front_end`) this process made,
+#: innermost: the OPTIONS
 #: the real compiler received and the sha256 of the BYTES it handed back.
 _NVRTC_OBSERVATIONS: List[Dict[str, Any]] = []
 
@@ -4401,15 +4422,15 @@ _NVRTC_OBSERVATIONS: List[Dict[str, Any]] = []
 def install_nvrtc_binary_observer() -> Dict[str, Any]:
     """Fingerprint the BYTES NVRTC returns, at the seam the policy acts on.
 
-    WHY THE COMPILE LOG IS NOT ENOUGH. ``compile_cache.compile_log()`` records the
+    Why the compile log is not enough. ``compile_cache.compile_log()`` records the
     sha256 of the SOURCE handed to each ``cp.RawKernel`` construction, which
-    settles the armed-mutation question (§1.5) and settles nothing about the
+    settles the armed-mutation accounting and settles nothing about the
     policy: both policies compile the SAME source, so both legs' compile logs
-    agree by construction. The §1.2 question is whether two policies produced two
+    agree by construction. The two-binaries question is whether two policies produced two
     distinct BINARIES or whether one binary was served twice, and only the
     compiler's own output answers it.
 
-    WHERE THIS SITS, AND WHY THAT IS THE WHOLE DESIGN. It is installed BEFORE
+    Where this sits, and why that is the whole design. It is installed BEFORE
     ``install_subnormal_policy_for_run``, so under ``"keep"`` the policy's strip
     wraps THIS and this becomes the innermost layer — it therefore sees the
     option tuple AFTER ``-ftz=true`` was removed, i.e. what NVRTC was really
@@ -4427,10 +4448,10 @@ def install_nvrtc_binary_observer() -> Dict[str, Any]:
     failure this observer exists to detect rather than cause. Only ``__name__``
     is copied.
 
-    A CUBIN HASH IS EVIDENCE OF DISTINCTNESS, NOT OF A COMPILE. CuPy's disk cache
+    A cubin hash is evidence of distinctness, not of a compile. CuPy's disk cache
     is keyed above this seam, so a cache hit never reaches here at all — which is
     why each leg takes a private, policy-token-carrying ``CUPY_CACHE_DIR``
-    (§1.2). With that in place a hit is impossible across legs, so two legs
+    of its own. With that in place a hit is impossible across legs, so two legs
     reporting different digests for one kernel proves two binaries, and two legs
     reporting the SAME digest proves the bytes genuinely do not depend on the
     policy. Both are real results; neither can be read off a source hash.
@@ -4441,9 +4462,14 @@ def install_nvrtc_binary_observer() -> Dict[str, Any]:
     except Exception as exc:  # noqa: BLE001
         record["why"] = f"cupy.cuda.compiler unreachable: {type(exc).__name__}: {exc}"
         return record
-    original = getattr(cupy_compiler, "compile_using_nvrtc", None)
+    try:
+        seam = nvrtc_front_end(cupy_compiler)
+    except RuntimeError as exc:
+        record["why"] = str(exc)
+        return record
+    original = getattr(cupy_compiler, seam, None)
     if not callable(original):
-        record["why"] = "cupy.cuda.compiler has no compile_using_nvrtc to observe"
+        record["why"] = f"cupy.cuda.compiler has no {seam} to observe"
         return record
 
     def observed(source, options=(), *args, **kwargs):
@@ -4472,13 +4498,12 @@ def install_nvrtc_binary_observer() -> Dict[str, Any]:
         })
         return result
 
-    observed.__name__ = getattr(original, "__name__", "compile_using_nvrtc")
-    cupy_compiler.compile_using_nvrtc = observed
+    observed.__name__ = getattr(original, "__name__", seam)
+    setattr(cupy_compiler, seam, observed)
     record.update(installed=True,
-                  seam="cupy.cuda.compiler.compile_using_nvrtc",
+                  seam=f"cupy.cuda.compiler.{seam}",
                   layer="innermost (installed before any policy strip)")
-    log("[observer] NVRTC binary observer installed at "
-        "cupy.cuda.compiler.compile_using_nvrtc")
+    log(f"[observer] NVRTC binary observer installed at cupy.cuda.compiler.{seam}")
     return record
 
 
@@ -4507,7 +4532,7 @@ def nvrtc_binary_report() -> Dict[str, Any]:
 def import_meep_for_host_policy() -> Dict[str, Any]:
     """Import MEEP so the HOST half of a ``flush`` policy can be attained.
 
-    MEASURED REFUSAL, not a precaution. ``install_subnormal_policy('flush')``
+    Measured REFUSAL, not a precaution. ``install_subnormal_policy('flush')``
     raises ``SubnormalPolicyUnattainable`` in a process that has not imported
     MEEP, and says why in its own words: ``mp.set_zero_subnormals`` is the only
     exposure of this process's FTZ/DAZ bits the package may use, and
@@ -4516,13 +4541,13 @@ def import_meep_for_host_policy() -> Dict[str, Any]:
     Its instruction to a caller that needs flush is exactly this: "Import MEEP
     before installing the policy."
 
-    A PARITY PROBE MAY DO WHAT THE PACKAGE MAY NOT. The boundary protects
+    A parity probe may do what the package may not. The boundary protects
     ``meep_gpu/**``, which ships; this file is a comparator that already runs
     against MEEP-derived oracles. Doing it here, explicitly and recorded, is what
     lets the flush leg exist at all — the alternative is a run that requested
     flush, was refused, and reported nothing.
 
-    WHY IT IS NOT UNCONDITIONAL. Importing MEEP initializes MPI and moves the
+    Why it is not unconditional. Importing MEEP initializes MPI and moves the
     host FPU, so a ``keep`` leg that imported it would differ from a ``keep`` leg
     that did not for reasons unrelated to the kernel. The caller asks only when
     the RESOLVED policy needs the host to flush.
@@ -4548,7 +4573,7 @@ def import_meep_for_host_policy() -> Dict[str, Any]:
 def install_subnormal_policy_for_run(policy: str, repo_root: str) -> Dict[str, Any]:
     """DRIVE the float32 subnormal policy, before anything has compiled.
 
-    THE ORDER IS THE WHOLE POINT and it was measured on device with this exact
+    The order is the whole point and it was measured on device with this exact
     kernel: install-then-compile kept a planted ``0x00004000`` in ``fu_Bx``;
     compile-then-install flushed it and stayed flushed even through
     ``_clear_kernel_cache()``. So this runs before the first ``cp.RawKernel``,
@@ -4575,6 +4600,7 @@ def install_subnormal_policy_for_run(policy: str, repo_root: str) -> Dict[str, A
 
 def write_provenance(directory: str, args, results: Dict[str, Any]) -> str:
     """Everything needed to say WHICH bytes produced this verdict, on which device."""
+    import neutral_ids  # noqa: PLC0415
     path = os.path.join(directory, "PROVENANCE.txt")
     environment = results.get("environment", {})
     lines = [
@@ -4594,7 +4620,7 @@ def write_provenance(directory: str, args, results: Dict[str, Any]) -> str:
         f"cuda_runtime          {environment.get('cuda_runtime_version')}",
         f"driver                {environment.get('driver_version')}",
         f"python                {environment.get('python')}",
-        f"hostname              {os.uname().nodename}",
+        f"hostname              {neutral_ids.machine_id()}",
         f"source_mutation       {args.source_mutation or '<none>'}",
         f"host_mutation         {args.host_mutation or '<none>'}",
         f"comparator            {'np.allclose' if args.allclose else 'bytes'}",
@@ -4608,8 +4634,10 @@ def write_provenance(directory: str, args, results: Dict[str, Any]) -> str:
         f"pml_value_classes     {','.join(results.get('pml_value_classes', ()))}",
         f"pml_multi_step_budget {results.get('pml_multi_step_budget')}",
     ]
+    # The record leaves the machine: every line written neutrally (module and probe paths,
+    # the interpreter, the cache directory under their labels).
     with open(path, "w") as handle:
-        handle.write("\n".join(lines) + "\n")
+        handle.write(neutral_ids.text("\n".join(lines)) + "\n")
     return path
 
 
@@ -4653,7 +4681,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--fuse", action="store_true",
                         help="ask plan_step for the cross-sub-step fused pair; off "
                              "by default because the unfused composition is the "
-                             "control this round is measured against")
+                             "control the fused pair is measured against")
     parser.add_argument("--num-warps", type=int, default=None,
                         help="warps per fused-pair program. CHANGES THE COMPILED "
                              "KERNEL, so it is a gate axis: a value that was never "
@@ -4925,7 +4953,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     log(f"[mutate] armed accounting: "
         f"{json.dumps(results['mutation']['armed_accounting'])}")
     results["subnormal_policy"] = subnormal_policy_stamp(repo_root)
-    # The §1.2 evidence: which BYTES this leg's policy actually produced. Written
+    # The two-binaries evidence: which BYTES this leg's policy actually produced. Written
     # after every leg has run, so it covers every compile the run took.
     results["nvrtc_binaries"] = nvrtc_binary_report()
     log(f"[observer] nvrtc calls={results['nvrtc_binaries']['nvrtc_calls_observed']} "
@@ -4973,7 +5001,7 @@ def pml_verdict(results: Dict[str, Any]) -> Dict[str, Any]:
     for summary in (multi, constitutive_multi, fused_multi, whole):
         if summary:
             checks.append(bool(summary.get("all_steps_identical")))
-    # THE CONSTITUTIVE MULTI-STEP LEG'S OWN VACUITY FLOOR. ``fw[i] = src`` is
+    # The constitutive multi-step leg's own vacuity floor. ``fw[i] = src`` is
     # unconditional, so a leg whose source never moves drives ``f_w`` to a fixed
     # point after launch one and its remaining launches add no state — measured:
     # ``f_w`` changed against the previous step at step 1 only, and equalled the
@@ -4983,7 +5011,7 @@ def pml_verdict(results: Dict[str, Any]) -> Dict[str, Any]:
     if constitutive_multi:
         checks.append(bool(constitutive_multi.get(
             "auxiliary_advanced_past_the_first_step")))
-    # THE DISPERSIVE LEG'S PASS IS THE NORMAL-NUMBER ONE, AND THE VERDICT SAYS SO.
+    # The dispersive leg's pass is the normal-number one, and the verdict says so.
     # Its seed carries a deliberate cancellation class that lands in the subnormal
     # band, where the ARRAY PATH — not the kernel — leaves IEEE: CuPy flushes a
     # subnormal result to zero and NumPy and Triton both keep it (measured, this
@@ -5016,7 +5044,7 @@ def pml_verdict(results: Dict[str, Any]) -> Dict[str, Any]:
             f"{constitutive.get('primary_identical', 0)}/"
             f"{constitutive.get('primary_ran', 0)}") if constitutive else None,
         "_constitutive_single_launch_is_the_normal_number_class": True,
-        # THE BAND COUNT, published beside the pass and not folded into it — the
+        # The band count, published beside the pass and not folded into it — the
         # same split the curl and dispersive legs carry, for the same measured
         # reason (in the band it is the ARRAY PATH that leaves IEEE). Before this
         # existed the constitutive leg had no value-class axis at all, so the

@@ -1,6 +1,6 @@
 """The MIRROR FOLD under complex64 storage -- the hand-CUDA curl pair, no CuPy.
 
-WHAT THIS FAMILY IS. Complex64 field storage under a real (split-field) PML on a
+What this family is. Complex64 field storage under a real (split-field) PML on a
 grid that carries a MIRROR FOLD. ``coverage.covers_real_pml_complex_curl`` and
 ``coverage.covers_real_pml_complex_constitutive`` both refuse that configuration
 by name -- "mirror symmetry: different ghost rule, a parity mask and two fill
@@ -9,7 +9,7 @@ boundary codes (``BC_PERIODIC``, ``BC_METALLIC``) and no fold branch at all, so 
 folded axis has nowhere to go. THE REAL curl pair does carry the fold, since
 2026-08-19/20; this module is that same delta applied to the complex bytes.
 
-WHAT IT IS WORTH, MEASURED. On the 2026-08-20 union census
+What it is worth, measured. On the 2026-08-20 union census
 (``parity/meep_gpu/results/cuda_predicate_coverage_2026-08-20_closeout/``) the
 fold clause is the FIRST refusal on 32 unserved slots over 8 complex-storage rows.
 Closing the fold ALONE does not buy 32, and the census says so: three of those
@@ -29,7 +29,7 @@ rows also carry ``grid.beta`` (refused for beta by an earlier clause -- they are
   an in-plane kx) -- 3 slots each, because all three carry an off-diagonal
   ``chi1inv`` and ``update_E`` is refused for it whatever the fold does.
 
-THE THREE DELTAS, AND NOTHING ELSE
+The three deltas, and nothing else
 =============================================================================
 
 The device source is ``complex_emitter.complex_source`` TRANSFORMED, not rewritten:
@@ -46,13 +46,13 @@ kernel with one fold branch missing.
    carries the slot past MEEP's owned window (``stepping._stored_past_owned``,
    stepping.py:1503-1518). A folded METALLIC axis is handed ``BC_METALLIC`` and
    gets no code of its own.
-2. **THE GHOST IS THE METALLIC ZERO.** ``cshift_up`` / ``cshift_dn`` return
+2. **The ghost is the metallic zero.** ``cshift_up`` / ``cshift_dn`` return
    ``cf_zero()`` on the new code, exactly as they do on ``BC_METALLIC``. That is
    NOT the boundary condition -- ``stepping._shift_down``'s MIRROR branch writes
    ``parity * field[2]`` (stepping.py:1870-1873) and ``_shift_up``'s writes
    ``parity * field[reflect_row]`` (:1819-1827) -- it is a value whose only
-   consumer plane is dropped by delta 3. See THE GHOST IS DEAD below.
-3. **THE MASK SPLITS BY TERMINATION.** ``stepping._mask_non_owned_cells``
+   consumer plane is dropped by delta 3. See "The ghost is dead" below.
+3. **The mask splits by termination.** ``stepping._mask_non_owned_cells``
    (:1865-1902) zeroes cell 0 on a mirrored axis for every component whose Yee
    shift there is 0 -- which a folded METALLIC axis inherits from ``BC_METALLIC``
    and a folded PERIODIC one needs stated -- and, ONLY where
@@ -61,7 +61,7 @@ kernel with one fold branch missing.
    character transcription of the real pair's, ``0.0f`` read as ``cf_zero()``, and
    ``test_complex_folded.py`` pins it against ``step_curl_kernels.py``'s text.
 
-THE GHOST IS DEAD, AND WHY THAT ARGUMENT TRANSFERS TO COMPLEX STORAGE
+The ghost is dead, and why that argument transfers to complex storage
 =============================================================================
 
 The real pair's fold verdict rests on an OWNERSHIP argument, not an arithmetic
@@ -80,7 +80,7 @@ say out loud: under complex storage "an exact zero" is the word pair
 ``complex_emitter``'s own ``cf_zero`` docstring records the array path assigning
 (``stepping.py:1832``, :1943, the INTEGER 0 into a complex64 array).
 
-AN ARGUMENT IS NOT A MEASUREMENT. The real pair's split was measured on a device
+An argument is not a measurement. The real pair's split was measured on a device
 before it was written (``gate_cuda_folded_curl.py``, 256 cases per policy: a
 folded METALLIC axis handed ``BC_METALLIC`` was ALREADY exact 48/48, a folded
 PERIODIC one diverged 0/64 with all 19,649 differing words on the mask-delta
@@ -89,7 +89,7 @@ same claim under complex storage is "an ARGUMENT plus a hand check" until its ow
 sweep runs. :data:`FOLDED_COMPLEX_ADMISSION` is where this family's device verdict
 goes, and until it carries one, nothing here is certified.
 
-A FOLDED AXIS MAY NOT CARRY A BLOCH PHASE, AND THIS FAMILY CHECKS IT
+A folded axis may not carry a Bloch phase, and this family checks it
 =============================================================================
 
 ``stepping._shift_up`` (:1765-1783) and ``_shift_down`` (:1815-1826) are mutually
@@ -107,7 +107,7 @@ would be applied to a plane the mask is about to drop -- silent on the interior.
 Every corpus row this family serves has k = 0 on its folded axis, so the clause
 costs 0 slots and buys the one thing a predicate is for.
 
-THE CONSTITUTIVE SIDES BUILD NO KERNEL, AND THAT IS THE FINDING
+The constitutive sides build no kernel, and that is the finding
 =============================================================================
 
 ``stepping.update_H`` (:907-925) and ``update_E`` (:926-995) reach
@@ -120,7 +120,7 @@ and no ``dtdx``, so there is no place in it for a fold to be wrong. So
 complex constitutive pair with the fold clause inverted, exactly as
 ``special_kz_curl.covers_special_kz_constitutive`` is over the real one.
 
-THAT READING IS NOT THE EVIDENCE. ``gate_cuda_complex_folded.py`` carries a
+That reading is not the evidence. ``gate_cuda_complex_folded.py`` carries a
 constitutive arm that runs the shipped complex pair against ``stepping.update_H``
 / ``update_E`` on FOLDED complex grids whose two curls have already moved the
 state. A sub-step admitted because nothing was found to read the fold, with no
@@ -129,7 +129,7 @@ device leg, is admitted by argument from absence.
 NO DISPATCH. Nothing in ``meep_gpu`` imports ``cuda_kernels``, so a True from the
 predicates below licenses a MEASUREMENT and not a production step.
 
-NOTHING HERE IMPORTS CUPY OR NUMPY AT MODULE SCOPE, so the predicates and the
+Nothing here imports CuPy or NumPy at module scope, so the predicates and the
 emitter stay callable on the census laptop.
 """
 
@@ -237,7 +237,7 @@ def fold_mask_lines(axes: Sequence[str], target: int) -> str:
     COMPLEMENT, which is what makes the two arms per-axis complements and is why no
     component ever carries both on the same axis.
 
-    THE TWO ORDERS ARE DIFFERENT AND BOTH ARE TRANSCRIBED. The shift-0 lines keep
+    The two orders are different and both are transcribed. The shift-0 lines keep
     ``_MASK_AXES``' own (alphabetical) order, because the METALLIC half of them IS
     ``complex_emitter``'s existing block and this function only appends to it; the
     shift-1 lines run in ``cycle_direction``'s order from the target's own axis --
@@ -274,11 +274,11 @@ def fold_mask_lines(axes: Sequence[str], target: int) -> str:
     return "\n".join(lines)
 
 
-#: WHAT EACH DELTA REPLACES AND HOW MANY SITES IT MUST FIND. The tuple is
+#: What each delta replaces and how many sites it must find. The tuple is
 #: ``(label, old, new, expected sites)``; the mask deltas are appended per
 #: sub-step in :func:`_deltas_for`, because they differ by target.
 #:
-#: A SITE COUNT IS A WELD. ``complex_emitter`` is a sibling under active
+#: A site count is a weld. ``complex_emitter`` is a sibling under active
 #: development; if one of these anchors moves, the transform must FAIL rather than
 #: emit a kernel with one fold branch missing -- which compiles, runs, and is wrong
 #: on one plane of one component.
@@ -403,15 +403,15 @@ def corpus_digest() -> str:
     return digest.hexdigest()
 
 
-#: WHAT HAS BEEN MEASURED ON A DEVICE FOR THIS FAMILY, AND WHAT HAS NOT.
+#: What has been measured on a device for this family, and what has not.
 #:
-#: EMPTY OF A VERDICT UNTIL THE GATE RUNS. A family whose record says "passed"
+#: Empty of a verdict until the gate runs. A family whose record says "passed"
 #: because its author expected it to is worse than one that says nothing, so this
 #: carries the fields and ``released`` is False until
 #: ``parity/meep_gpu/gate_cuda_complex_folded.py`` fills them from an artifact.
 FOLDED_COMPLEX_ADMISSION: Dict[str, Any] = {
     "gate": "parity/meep_gpu/gate_cuda_complex_folded.py",
-    # RELEASED ON DEVICE, 2026-09-01: the GPU host, one RTX A6000 (cc 8.6, CuPy
+    # Released on device, 2026-09-01: the GPU host, one RTX A6000 (cc 8.6, CuPy
     # 13.5.1, NVRTC 11.6), under BOTH float32 subnormal policies, the arm bound
     # from the per-policy expansion probe (FMA_V1 both). The ``device_leg`` block
     # below carries the numbers, read off the two artifacts; the ``host_leg``
@@ -443,7 +443,7 @@ FOLDED_COMPLEX_ADMISSION: Dict[str, Any] = {
         "mutation_legs_caught": 15,
         "mutation_legs_null_confirmed": 2,
         "mutation_legs_uncaught_or_unarmed": 0,
-        # THE CONSTITUTIVE SIDES DEFERRED, AND THAT IS THE PARTITION WORKING: all
+        # The constitutive sides deferred, and that is the partition working: all
         # 32 cases per side named coverage.covers_real_pml_complex_constitutive's
         # own fold admission (2026-08-20), whose verdict is that family's gate's.
         "constitutive_cases_deferred": {"H": 32, "E": 32},
@@ -463,7 +463,7 @@ FOLDED_COMPLEX_ADMISSION: Dict[str, Any] = {
         "folded_periodic_cases": 48,
         "folded_metallic_cases": 16,
         "differing_words": 0,
-        # THE FOLD'S OWN LIVENESS FLOOR, per case: re-launching fold-blind (the
+        # The fold's own liveness floor, per case: re-launching fold-blind (the
         # folded axis handed BC_PERIODIC, which is what "no fold branch" means)
         # must change the answer, or the case measures the certified pair.
         "fold_is_live_floor": "asserted per case; no case was skipped for it",
@@ -471,7 +471,7 @@ FOLDED_COMPLEX_ADMISSION: Dict[str, Any] = {
         "mutation_legs_caught": 15,
         "mutation_legs_null_confirmed": 2,
         "mutation_legs_uncaught_or_unarmed": 0,
-        # THE FOLD ARGUMENT, MEASURED RATHER THAN ASSERTED. Letting
+        # The fold argument, measured rather than asserted. Letting
         # BC_MIRROR_PERIODIC fall through to the PERIODIC wrap -- so the ghost
         # carries the opposite face instead of the zero the mask makes irrelevant
         # -- changed NO output word on 12 folded-periodic legs. That is
@@ -492,7 +492,7 @@ FOLDED_COMPLEX_ADMISSION: Dict[str, Any] = {
     },
     #: SLOTS, recomputed from the census record by
     #: parity/meep_gpu/results/cuda_predicate_coverage_2026-08-20_complexfoldbeta/
-    #: replay_over_closeout.py and then RE-MEASURED by the union analyzer run
+    #: replay_over_closeout.py and then re-measured by the union analyzer run
     #: positionally over the patched copy, so before and after come from one
     #: instrument. 10 slots on 5 rows -- step_B and step_D only, because the
     #: certified complex constitutive pair now serves the other two sub-steps.
@@ -535,12 +535,12 @@ FOLDED_COMPLEX_ADMISSION: Dict[str, Any] = {
 class _FoldFreeGrid:
     """The run's grid, answering "no fold" and forwarding everything else.
 
-    Satisfying AT THE INPUT the clauses this family inverts is the technique
+    Satisfying at the input the clauses this family inverts is the technique
     ``special_kz_curl._BetaFreeGrid`` and ``no_pml_curl._ActiveLayerProxy`` use, and
     for the same reason: the shipped predicates SHORT-CIRCUIT, so there is no
     accumulated refusal list to filter afterwards.
 
-    TWO METHODS ARE OVERRIDDEN AND THE CHOICE IS LOAD-BEARING. ``has_symmetry`` and
+    Two methods are overridden and the choice is load-bearing. ``has_symmetry`` and
     ``is_mirrored`` are the two ``coverage._grid_facts`` reads that carry the fold
     (:669, :671), and inverting them makes a folded axis resolve to its DECLARED
     kind -- PERIODIC or METALLIC -- through ``_boundary_kinds_from``. That is what
@@ -577,7 +577,7 @@ def folded_complex_boundary_codes(grid: Any) -> Tuple[Any, Any]:
 
     Returns ``(codes, refusal)`` with exactly one of them None.
 
-    DELEGATED TO ``coverage.real_curl_boundary_codes`` RATHER THAN SPELLED AGAIN,
+    Delegated to ``coverage.real_curl_boundary_codes`` rather than spelled again,
     and that is not tidiness: that function carries
     ``coverage._fold_termination_problem``, the CROSS-CHECK between
     ``Grid.stored_cells > Grid.owned_cells`` and ``Grid.is_metallic`` which decides
@@ -595,22 +595,22 @@ def _fold_reasons(fields: Any, grid: Any) -> Any:
 
     Four, each of which is a wrong answer rather than a crash if it is dropped:
 
-    1. **A FOLD MUST BE ACTIVE.** An unfolded complex run belongs to the certified
+    1. **A fold must be active.** An unfolded complex run belongs to the certified
        ``covers_real_pml_complex_curl``; admitting one here would put two families
        on one slot, which the union census reports as a FINDING rather than as
        extra coverage.
-    2. **THE FOLD'S TERMINATION MUST BE DECIDABLE AND SELF-CONSISTENT**, through
+    2. **The fold's termination must be decidable and self-consistent**, through
        :func:`folded_complex_boundary_codes`. A grid that cannot say whether it
        stores the slot past MEEP's owned window cannot be given a top-plane mask
        decision, and two routes to that fact that DISAGREE mean neither may be
        trusted.
-    3. **NO BLOCH PHASE ON A FOLDED AXIS.** ``stepping._shift_up`` /
+    3. **No Bloch phase on a folded axis.** ``stepping._shift_up`` /
        ``_shift_down`` apply the wrap factor on the PERIODIC arm and the parity on
        the MIRROR arm, exclusively; there is no run in which both happen. Read as
        a nonzero k COMPONENT and, separately, as a non-None ``bloch_phase`` --
        both, because they are two routes to the same fact and a grid whose two
        answers differ is a grid neither may be trusted on.
-    4. **THE PHASE READER MUST BE READABLE.** An unreadable phase table is not an
+    4. **The phase reader must be readable.** An unreadable phase table is not an
        unphased one; admitting one would let the launcher's
        ``bloch_phase_arguments`` raise where a fail-closed "no" was right.
     """
@@ -667,7 +667,7 @@ def _fold_reasons(fields: Any, grid: Any) -> Any:
 def _already_served(admits: bool, family: str) -> Any:
     """The refusal a family owes when a SHIPPED sibling already serves the slot.
 
-    THE PARTITION IS ENFORCED BY CONSTRUCTION HERE, not by a reading of what the
+    The partition is enforced by construction here, not by a reading of what the
     siblings happen to refuse today. Measured 2026-08-20, mid-session: the certified
     complex constitutive pair gained ``admit_fold=True`` -- a device verdict of its
     own (:data:`coverage.COMPLEX_CONSTITUTIVE_FOLD_ADMISSION`) -- while this family
@@ -688,14 +688,14 @@ def covers_complex_folded_curl(fields: Any, pml: Any, grid: Any, sub_step: str) 
 
     ``sub_step`` is ``"step_B"`` or ``"step_D"``. Returns ``(covered, reason)``.
 
-    DELEGATION, NOT A SECOND CLAUSE SET. Every question except the fold is the
+    Delegation, not a second clause set. Every question except the fold is the
     CERTIFIED complex curl predicate's, asked through it on a proxy grid that
     reports no fold, so this family cannot drift to a weaker standard than the one
     it borrows its arithmetic from -- and a clause added there (the conductivity
     split, the halved int32 bound, the volume and coefficient-vector tail) is
     inherited here rather than silently skipped.
 
-    THE SUB-STEP ARGUMENT IS REQUIRED for the reason the certified predicate's is:
+    The sub-step argument is required for the reason the certified predicate's is:
     ``stepping._apply_curl`` reads ``fields.condfac_for(term.target)`` PER TERM
     (stepping.py:508), so a D-side conductivity routes ``step_D`` to the
     three-history conductive-PML recurrence and leaves ``step_B`` an ordinary curl.
@@ -720,13 +720,13 @@ def covers_complex_folded_constitutive(fields: Any, pml: Any, grid: Any, side: s
 
     ``side`` is ``"H"`` or ``"E"``; returns ``(covered, reason)``.
 
-    THIS FAMILY BUILDS NO CONSTITUTIVE KERNEL -- see the module docstring for why,
+    This family builds no constitutive kernel -- see the module docstring for why,
     and for why that reading is gated on a device rather than trusted. The two
     sides are asked SEPARATELY because the E side refuses things the H side does
     not (an off-diagonal ``chi1inv``, a registered polarization), which is the same
     per-sub-step split the real track makes.
 
-    AND ON 2026-08-20 IT BECAME WORTH NOTHING, which is the honest state rather than
+    And on 2026-08-20 it became worth nothing, which is the honest state rather than
     a reason to keep the arm. ``coverage.covers_real_pml_complex_constitutive``
     gained ``admit_fold=True`` on its own device verdict
     (:data:`coverage.COMPLEX_CONSTITUTIVE_FOLD_ADMISSION`: 180/180 per policy on 156
@@ -754,7 +754,7 @@ def covers_complex_folded_constitutive(fields: Any, pml: Any, grid: Any, side: s
 
 
 # ---------------------------------------------------------------------------
-# COMPILATION AND LAUNCH
+# Compilation and launch
 # ---------------------------------------------------------------------------
 #
 # ``cupy`` is imported INSIDE these functions, never at module scope, so the

@@ -1,6 +1,6 @@
 """The Metal Dcyl m = 0 fused H->D pair, as claims a laptop can check.
 
-WHAT THIS SUITE OWNS AND WHAT IT DELIBERATELY DOES NOT. The BYTES are the device gate's
+What this suite owns and what it deliberately does not. The BYTES are the device gate's
 -- ``parity/meep_gpu/gate_metal_cylindrical_real_fused_hd_pair.py`` walks six engines
 through complete driver steps and compares uint32 words. No assertion here duplicates
 that. What lives here is everything true about this family WITHOUT a device:
@@ -13,14 +13,14 @@ that. What lives here is everything true about this family WITHOUT a device:
   real family's spelling, which the complex family must INVERT;
 * that the binding counts the module spells are the counts its emitter produces, and
   that the headroom it declares is the ceiling minus that count;
-* that the arm is registered UNWIRED on ``update_H`` replacing both seam slots, holds no
+* that the arm is registered unwired on ``update_H`` replacing both seam slots, holds no
   absorb row and no registry row yet, declares itself uninstallable and declares its
   weld owed with the artifact named -- the partition ``test_metal_weld_contract`` reads;
 * that the predicate refuses what it must refuse, by name;
 * that its cell is the three corpus rows the census selects ``cylindrical m=0`` on both
   seam slots, measured off the census rather than argued from the names.
 
-THE CORPUS DEMAND: 3 H->D seam-instances (``tests:TestAdjointSolver.test_adjoint_solver_
+The corpus demand: 3 H->D seam-instances (``tests:TestAdjointSolver.test_adjoint_solver_
 cyl_n2f_fields_0_0``, ``..._1_0``, ``tests:TestPMLCylindrical.test_pml_cyl_0_0_0``), the
 whole ``cylindrical m=0 -> cylindrical m=0`` cell on every board, each with an electric
 source whose withdraw is the no-op.

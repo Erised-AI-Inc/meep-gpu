@@ -1,14 +1,14 @@
-"""THE FIRST TIMING THE HAND-WRITTEN CUDA KERNELS HAVE EVER HAD.
+"""The first timing the hand-written CUDA kernels have ever had.
 
 =============================================================================
-THE QUESTION, AND THE ONE IT IS NOT
+The question, and the one it is not
 =============================================================================
 
-``the design notes (meep-gpu-vs-cpu-throughput)`` answered GPU-vs-CPU
-for this engine on one host, and it says three times over that every one of its
+The same-machine CPU-vs-GPU throughput benchmark answered GPU-vs-CPU
+for this engine on one host, and every one of its
 105 rows is the **array path** with **no fused kernel dispatched**
-(``step_path == "array"``, its §6). ``the design notes (meep-gpu-array-path-throughput)`` is the
-NumPy half. Neither file, and nothing else in this tree, has ever put a
+(``step_path == "array"``). The array-path throughput benchmark is the
+NumPy half. Neither benchmark, and nothing else in this tree, has ever put a
 stopwatch on the hand-written CUDA kernels under ``meep_gpu/cuda_kernels/``.
 
 The comparison never made is ARRAY PATH -> HAND KERNELS, same host, same shapes,
@@ -22,19 +22,19 @@ same precision, per sub-step. That is what this file measures, and nothing else:
   stop claiming it. A seam-fused CUDA product does not exist and is not timed.
 
 =============================================================================
-FOUR HAZARDS, AND WHAT THIS FILE DOES ABOUT EACH
+Four hazards, and what this file does about each
 =============================================================================
 
-1. **CUPY LAUNCHES ARE ASYNCHRONOUS.** ``driver.run()`` does not synchronize and
+1. **CuPy launches are asynchronous.** ``driver.run()`` does not synchronize and
    neither does a kernel launch, so a timer stopped at the call's return measures
    SUBMISSION. Every window here brackets an explicit
    ``cp.cuda.runtime.deviceSynchronize()`` before ``t0`` and again before ``t1``
-   -- the same discipline ``the design notes (meep-gpu-vs-cpu-throughput)`` §2.1 states for its
+   -- the same discipline the CPU-vs-GPU throughput benchmark states for its
    own windows. The sync before ``t0`` is what keeps an earlier pass's queued
    work out of this window.
 
-2. **NOTHING DISPATCHES THESE KERNELS.** ``fastpath.plan_fast_path`` carries no
-   hand-CUDA branch (``coverage.py`` header: "THIS IS NOT WIRED TO DISPATCH"), so
+2. **Nothing dispatches these kernels.** ``fastpath.plan_fast_path`` carries no
+   hand-CUDA branch (``coverage.py`` header: "this is not wired to dispatch"), so
    a harness that silently failed to substitute would time the ARRAY PATH TWICE
    and report 1.00x, or a ratio drawn from noise. The substitution is therefore
    ASSERTED, not assumed, and by the strongest instrument available: the shipped
@@ -56,17 +56,17 @@ FOUR HAZARDS, AND WHAT THIS FILE DOES ABOUT EACH
    and the NVRTC observer's call count is read BEFORE and AFTER every timed
    region: ``compiles_inside_timed_region`` is on every row and must be 0.
 
-4. **A SHARED, CONTENDED BOX.** Measured on the GPU host: free
+4. **A shared, contended box.** Measured on the GPU host: free
    memory, not load average, gates whether a GPU-host timing means anything (35x
    spread at 3 GB free against 4.6 % with headroom). This file therefore probes
    the box before and after, and runs a VARIANCE PRECONDITION -- one fixed window
-   repeated ``--precondition-repeats`` times -- and REFUSES TO REPORT NUMBERS if
+   repeated ``--precondition-repeats`` times -- and refuses to report numbers if
    the spread exceeds ``--precondition-max-spread``. A refusal carrying the
    variance figure is a real result; a number taken under contention is worse
    than none.
 
 =============================================================================
-WHAT IS INSIDE THE TIMER AND WHAT IS DELIBERATELY OUTSIDE
+What is inside the timer and what is deliberately outside
 =============================================================================
 
 **Inside:** ``k`` consecutive calls of one sub-step and nothing else --
@@ -94,7 +94,7 @@ per-launch synchronizing variant is measured separately as
 in the ratio.
 
 =============================================================================
-WHY THESE SHAPES
+Why these shapes
 =============================================================================
 
 Drawn from the corpus, never invented: ``stress_cuda_scale.select_subjects``
@@ -107,7 +107,7 @@ the top and loses at the median is the EXPECTED shape -- the crossover is the
 useful number, so the small end is not decoration.
 
 =============================================================================
-NON-VACUITY: WHAT MAKES A NUMBER HERE MEAN ANYTHING
+Non-vacuity: what makes a number here mean anything
 =============================================================================
 
 Three floors per case, all recorded:
@@ -189,17 +189,22 @@ VALUE_CLASS = "uniform"
 # ---------------------------------------------------------------------------
 
 def save(payload: Dict[str, Any], path: str) -> None:
-    """Atomic rewrite, so an interrupted run leaves a readable artifact."""
+    """Atomic rewrite, so an interrupted run leaves a readable artifact. Written as it
+    leaves the machine (``neutral_ids.value``: paths under their root's label, GPU UUIDs
+    as card ids, host names as the machine id)."""
+    import neutral_ids  # noqa: PLC0415
     tmp = path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as handle:
-        json.dump(payload, handle, indent=2, sort_keys=True, default=str)
+        json.dump(neutral_ids.value(payload), handle, indent=2, sort_keys=True, default=str)
         handle.write("\n")
     os.replace(tmp, path)
 
 
 def append_jsonl(path: str, row: Dict[str, Any]) -> None:
+    """One row, written as it leaves the machine (``neutral_ids.value``)."""
+    import neutral_ids  # noqa: PLC0415
     with open(path, "a", encoding="utf-8") as handle:
-        handle.write(json.dumps(row, sort_keys=True, default=str) + "\n")
+        handle.write(json.dumps(neutral_ids.value(row), sort_keys=True, default=str) + "\n")
         handle.flush()
         os.fsync(handle.fileno())
 
@@ -235,12 +240,19 @@ def _run(command: Sequence[str]) -> str:
 def box_state() -> Dict[str, Any]:
     """What the machine was doing, probed rather than assumed.
 
-    FREE MEMORY IS THE GATE, not load average: this project measured a 35x
+    Free memory is the gate, not load average: this project measured a 35x
     timing spread at 3 GB free against 4.6 % with headroom. Both are recorded,
     and so is every GPU's memory and every foreign compute process, because a
     neighbour that lands on the pinned device mid-run is the failure this probe
     exists to catch on the second call.
+
+    Written as it leaves the machine (``timing_host.recorded_*``): every UUID in the
+    ``gpus`` and ``compute_apps`` tables and in a UUID pin is its card id, and an app is
+    ``own`` (this process) or ``other`` with its memory, never its pid. The foreign apps
+    on the pinned GPU are matched on the RAW tables here, in process, and written as
+    ``<card id>, <used memory>``: their count and memory, neither pid nor UUID.
     """
+    import timing_host  # noqa: PLC0415 - the recorded spellings of the box tables
     state: Dict[str, Any] = {"utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
     try:
         state["loadavg"] = list(os.getloadavg())
@@ -258,18 +270,19 @@ def box_state() -> Dict[str, Any]:
         state["mem_total_gb"] = round(meminfo.get("MemTotal", 0) / 1e6, 1)
         state["mem_free_gb"] = round(meminfo.get("MemFree", 0) / 1e6, 1)
         state["mem_available_gb"] = round(meminfo.get("MemAvailable", 0) / 1e6, 1)
-    state["gpus"] = _run(["nvidia-smi", "--query-gpu=index,uuid,memory.used,"
-                          "utilization.gpu", "--format=csv,noheader"])
-    state["compute_apps"] = _run(["nvidia-smi", "--query-compute-apps=gpu_uuid,pid,"
-                                  "used_memory", "--format=csv,noheader"])
+    gpus = _run(["nvidia-smi", "--query-gpu=index,uuid,memory.used,"
+                 "utilization.gpu", "--format=csv,noheader"])
+    apps = _run(["nvidia-smi", "--query-compute-apps=gpu_uuid,pid,"
+                 "used_memory", "--format=csv,noheader"])
     pinned = os.environ.get("CUDA_VISIBLE_DEVICES", "<unset>")
-    state["CUDA_VISIBLE_DEVICES"] = pinned
-    state["pid"] = os.getpid()
-    # A NEIGHBOUR THAT LANDS ON THE PINNED DEVICE MID-RUN is what the second call
+    state["gpus"] = timing_host.recorded_gpus(gpus)
+    state["compute_apps"] = timing_host.recorded_compute_apps(apps, os.getpid())
+    state["CUDA_VISIBLE_DEVICES"] = timing_host.recorded_device(pinned)
+    # A neighbour that lands on the pinned device mid-run is what the second call
     # of this probe exists to catch, so it is extracted rather than left for a
     # reader to spot in a csv blob. Our own pid is excluded by number.
     foreign: List[str] = []
-    for line in str(state["compute_apps"]).splitlines():
+    for line in str(apps).splitlines():
         parts = [p.strip() for p in line.split(",")]
         if len(parts) < 2 or not parts[0].startswith("GPU-"):
             continue
@@ -280,7 +293,7 @@ def box_state() -> Dict[str, Any]:
                 continue
         except ValueError:
             pass
-        foreign.append(line)
+        foreign.append(timing_host.recorded_foreign_app(line))
     state["foreign_compute_apps_on_pinned_gpu"] = foreign
     return state
 
@@ -319,7 +332,7 @@ class _CountingKernel:
 class _NullKernel(_CountingKernel):
     """Counts and returns; the device is never asked to do anything.
 
-    THE HOST-SIDE HALF OF THE LAUNCHER, ISOLATED. At the corpus's small end a
+    The host-side half of the launcher, isolated. At the corpus's small end a
     sub-step costs microseconds and the Python around the launch is a real share
     of it -- ``_get_kernel`` rebuilds its 14-entry code map and its policy token
     on EVERY call by design (``step_curl_kernels._get_kernel``'s own docstring
@@ -339,7 +352,7 @@ class _NullKernel(_CountingKernel):
 class LaunchCounter:
     """Wrap every memoized device kernel; restore on exit.
 
-    THE MEMO IS THE RIGHT SEAM. Both shipped launchers get their kernel from
+    The memo is the right seam. Both shipped launchers get their kernel from
     ``compile_cache.get_or_compile``, which returns ``_compiled_kernels[key]`` on
     a hit -- so replacing the stored object counts every launch through the
     shipped path without editing one byte under ``meep_gpu/``. Nothing is
@@ -361,7 +374,7 @@ class LaunchCounter:
         return self
 
     def __exit__(self, *exc: Any) -> None:
-        # ONLY THIS OBJECT'S OWN PROXIES ARE UNWOUND. A key that appeared while
+        # Only this object's own proxies are unwound. A key that appeared while
         # the proxy was installed -- a compile inside the region -- is left
         # alone rather than dropped; clearing the whole memo would silently cost
         # the next case a recompile and put it inside a later timed window.
@@ -447,7 +460,7 @@ def build_case(backend: str, family: str, sub_step: str, subject: Dict[str, Any]
                 constitutive_kernels.update_fused_pml_real(
                     side, fields, tables=tables)
     else:
-        # THE LAPTOP LEG COMPILES NOTHING AND LAUNCHES NOTHING. It times the
+        # The laptop leg compiles nothing and launches nothing. It times the
         # gates' validated NumPy transcription against the array path so the
         # harness's plumbing -- planning, restore, window sizing, the floors --
         # is known to run and to fail before a device slot is spent. It licenses
@@ -478,7 +491,7 @@ def make_sync(backend: str) -> Callable[[], None]:
 
 def timed_window(leg: Callable[[], None], launches: int,
                  sync: Callable[[], None]) -> float:
-    """One window. THE SYNC BEFORE ``t0`` IS AS LOAD-BEARING AS THE ONE BEFORE ``t1``.
+    """One window. The sync before ``t0`` is as load-bearing as the one before ``t1``.
 
     Without the first, a previous leg's still-queued work drains inside this
     window and is charged to it; without the second the window measures launch
@@ -497,7 +510,7 @@ def size_window(leg: Callable[[], None], sync: Callable[[], None],
     """How many launches land near ``target_seconds``, measured not assumed.
 
     A short TIMED calibration, after warmup, exactly as
-    ``the design notes (meep-gpu-vs-cpu-throughput)`` §2.3 sizes its own windows -- and for the
+    the CPU-vs-GPU throughput benchmark sizes its own windows -- and for the
     reason that campaign gives: an earlier harness that folded probe and
     calibration together inflated its per-step estimate by 3.3x and produced
     0.02 s windows, and the CPU-baseline campaign found its spread blowing up in
@@ -798,7 +811,7 @@ def run_case(backend: str, family: str, sub_step: str, subject: Dict[str, Any],
 def _libcuda() -> Any:
     """The CUDA DRIVER library this process already has loaded.
 
-    THE DRIVER API AND NOT THE RUNTIME'S, for two measured reasons. (i) CuPy 13.5
+    The driver API and not the runtime's, for two measured reasons. (i) CuPy 13.5
     on this host links cudart STATICALLY into
     ``cupy_backends/cuda/api/runtime...so`` -- there is no ``libcudart`` mapping
     at all, and the symbols are not exported from that object either (probed:
@@ -815,7 +828,7 @@ def _libcuda() -> Any:
         path = line.rstrip().split(" ")[-1]
         if "libcuda.so" in os.path.basename(path):
             lib = ctypes.CDLL(path)
-            # ARGTYPES ARE NOT OPTIONAL HERE. Without them ctypes passes a Python
+            # Argtypes are not optional here. Without them ctypes passes a Python
             # int as a 32-bit C int, which truncates every 64-bit handle; the
             # first version of this probe did exactly that and the process died
             # inside cuGraphNodeGetType with no traceback.
@@ -841,17 +854,17 @@ GRAPH_NODE_TYPES = {0: "kernel", 1: "memcpy", 2: "memset", 3: "host",
 def graph_node_census(leg: Callable[[], None]) -> Dict[str, Any]:
     """Capture ONE call of ``leg`` into a CUDA graph and count its kernel nodes.
 
-    WHY A GRAPH AND NOT A COUNTER. The memo proxy in :class:`LaunchCounter`
+    Why a graph and not a counter. The memo proxy in :class:`LaunchCounter`
     counts launches through THIS PACKAGE's kernels, which is exactly what the
     substitution proof needs and exactly what cannot see the array path: CuPy's
     elementwise kernels and ufuncs are C-extension types with no Python call to
     wrap. Stream capture records every launch on the stream regardless of who
     issued it, and ``cuGraphGetNodes`` then counts them -- so the array path's
-    launch count is MEASURED by the driver rather than inferred from its cost,
+    launch count is measured by the driver rather than inferred from its cost,
     and the hand leg's count is confirmed by an instrument that knows nothing
     about the memo the other proof wraps.
 
-    IT IS A BEST-EFFORT PROBE AND IT RUNS LAST. Capture refuses a stream that
+    It is a best-effort probe and it runs last. Capture refuses a stream that
     allocates through ``cudaMalloc`` or synchronizes, so a path that misses in
     CuPy's memory pool fails here for a reason that is not about launches. The
     failure is recorded with its reason and nothing else in the artifact depends
@@ -869,7 +882,7 @@ def graph_node_census(leg: Callable[[], None]) -> Dict[str, Any]:
     graph = ctypes.c_void_p(0)
     try:
         with stream:
-            # Warm the pool ON THIS STREAM first: the first pass allocates, and an
+            # Warm the pool on this stream first: the first pass allocates, and an
             # allocation inside capture is what makes capture refuse.
             for _ in range(3):
                 leg()
@@ -984,12 +997,12 @@ def variance_precondition(backend: str, large: Dict[str, Any],
                           max_spread: float) -> Dict[str, Any]:
     """Two fixed windows, repeated, and only ONE of them can refuse the run.
 
-    THIS IS A REFUSAL INSTRUMENT AND NOT A WARMUP. A number taken on a contended
+    This is a refusal instrument and not a warmup. A number taken on a contended
     box is worse than no number, because it looks like a measurement -- the
     project's own finding is that free memory, not load average, gates whether a
     GPU-host timing means anything, at a 35x spread when it is short.
 
-    **TWO PROBES, BECAUSE THE TWO ENDS MEASURE DIFFERENT THINGS, and reading a
+    **Two probes, because the two ends measure different things, and reading a
     small-shape wobble as contention would refuse a quiet box.** At the corpus's
     LARGE end a window is device work: hundreds of milliseconds of arithmetic
     per launch, with the host doing almost nothing, so anything that moves it is
@@ -1086,6 +1099,7 @@ def summarize(results: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
+    import neutral_ids  # noqa: PLC0415
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--backend", choices=("cuda", "numpy"), default="cuda")
     parser.add_argument("--corpus-dir", default=None)
@@ -1123,14 +1137,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                      "array path, per sub-step, per corpus shape, same host, "
                      "same precision"),
         "started_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "host": os.uname().nodename,
-        "argv": list(argv if argv is not None else sys.argv[1:]),
+        "host": neutral_ids.machine_id(),
+        "argv": neutral_ids.argv(argv if argv is not None else sys.argv[1:]),
         "backend": args.backend,
         "window_stream": stream_path,
         "does_not_measure": [
             "any fused product: the CUDA package has no seam-fused kernel",
             "any whole-step or end-to-end speedup: only the sub-steps below",
-            "GPU vs CPU: that is the design notes (meep-gpu-vs-cpu-throughput), not re-derived here",
+            "GPU vs CPU: that is the CPU-vs-GPU throughput benchmark, not re-derived here",
             "any MPI comparison",
         ],
     }
@@ -1289,7 +1303,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     results["finished_utc"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     save(results, args.out)
 
-    # ---- THE MECHANISM, MEASURED LAST -------------------------------------
+    # ---- The mechanism, measured last -------------------------------------
     # Stream capture is a best-effort probe and it can leave a stream unusable
     # when it refuses, so it runs after every timed number is on disk.
     if args.backend == "cuda" and not args.skip_census:

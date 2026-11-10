@@ -74,9 +74,9 @@ weld contracts before and after the edit:
     grep -lE '"([^"]*/)?driver\.py"' meep_gpu/*_kernels/*.json
     python -m pytest meep_gpu/test_metal_weld_contract.py meep_gpu/test_triton_weld_contract.py meep_gpu/test_cuda_weld_contract.py -q
 
-They fail in this preview, but each failure reports how many pinned files have
-drifted, as N of D, and names each drifted file with its ledger entry. A count
-that rises after your edit means the edit touched a pinned file.
+Only the Triton contract fails, on its 4 pending tests. A failure counts the stale
+digests (N of D in 3 of the 4) and names the first few with their ledger entries;
+a count that rises after your edit means the edit touched a pinned file.
 
 A pull request with such an edit leaves the ledgers as they are. It names the
 drifted entries and says either that re-certification is needed and was not
@@ -128,13 +128,20 @@ Code, comments and documentation are neutral and technical. Names are renamed
 outright, with no alias left behind. A test, gate or benchmark that can run for
 more than about a minute prints a flushed line of progress per unit of work.
 
-No host names, account names, local paths or personal e-mail addresses in any
-tracked file: write "the GPU host" or "this machine", write a staged path as
-`<staging-root>/...`, and cite evidence by a neutral name. The hygiene guard
+No host names, account names, local paths, personal e-mail addresses or paths
+into the development repository's private evidence in any tracked file: write "the
+GPU host" or "this machine", write a staged path as `<staging-root>/...`, and cite
+evidence by a neutral name, never by its private path. The hygiene guard
 enforces it on every tracked file, the certification ledgers and the coverage
 board's subject:
 
     python tools/ci/check_hygiene.py --legs tracked,subject
+
+Write for a reader of this repository. A comment, docstring or page says what was
+decided, measured or required, and why, or points to a page under `docs/`; it does not
+cite the private design documents the package was developed from, a work-item, lane,
+batch or ruling label, or the release's working name `0.10`. The same guard refuses
+them (its `dev_jargon` class) in every file the public repository exports.
 
 ## Names
 

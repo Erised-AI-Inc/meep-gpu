@@ -1,4 +1,4 @@
-"""Complex-field (force_complex_fields / Bloch k_point) PML curl + constitutive tranche.
+"""Complex-field (force_complex_fields / Bloch k_point) PML curl + constitutive kernels.
 
 WIRED, as of the plan_step integration. ``launch.plan_step`` calls
 :func:`complex_pml_curl_coverage` and :func:`complex_constitutive_coverage`
@@ -14,7 +14,7 @@ its own provenance record inside its results directory instead — so an edit he
 invalidates no recorded certification through that mechanism, and the gate is the
 only thing that can re-establish one.
 
-WHAT THIS IS FOR. Seven corpus scripts demand it, and only seven: five Bloch-phase
+What this is for. Seven corpus scripts demand it, and only seven: five Bloch-phase
 runs (refl-angular.py, antenna_pec_ground_plane_1D.py, binary_grating_oblique.py,
 mode_coeff_phase.py, oblique-planewave.py) and two complex-storage-at-k=0 runs
 (wvg-src.py, solve-cw.py — only its complex-storage class; the mirror stays with
@@ -34,7 +34,7 @@ is words ``2*w`` and ``2*w + 1``):
 * :func:`bloch_constitutive_step` — complex ``update_H`` / ``update_E`` (dsigw).
   The constitutive sub-step never sees the wrap, so it takes NO phase.
 
-WHY THE PLANE TRANSCRIPTION IS LEGAL (from source): every recurrence on the
+Why the plane transcription is legal (from source): every recurrence on the
 complex step path has real coefficients — curl (stepping.py:1648-1683),
 split-field PML (:1952-1982), constitutive dsigw (:2112-2143) — and the imaginary
 plane enters ONLY through the Bloch wrap multiply (:1767-1771 up / :1818-1822
@@ -44,7 +44,7 @@ stepping.py:41-50 states this and adds the load-bearing invariant: ``inv_eps``
 and every PML coefficient are float32 in BOTH storage modes (fields.py:571-573
 against fields.py:1203-1204).
 
-WHY IT IS NOT BYTE-TRIVIAL, and what the kernels step (MEEP's own forms, which
+Why it is not byte-trivial, and what the kernels step (MEEP's own forms, which
 the array path steps too):
 
 1. MEEP stores each complex field as two ``realnum`` arrays and steps them with
@@ -70,7 +70,7 @@ the array path steps too):
    ``f + ((kps * src) - (kms * prev))`` on the accumulation's cells, ``src``
    elsewhere. ``update_H`` starts from ``B`` on MEEP's first step (``start_h``).
 
-WHAT IS TRANSCRIBED, and from where (stepping.py unless noted):
+What is transcribed, and from where (stepping.py unless noted):
 
 * term table            ``B_CURL_TERMS`` / ``D_CURL_TERMS`` (:213-223)
 * ghost rule            ``_shift_up`` (:1723) / ``_shift_down`` (:1787),
@@ -92,7 +92,7 @@ WHAT IS TRANSCRIBED, and from where (stepping.py unless noted):
 * phase value           ``grid.bloch_phase`` (grid.py:1011-1017): exp(2*pi*i*k*L),
                         Brillouin edge EXACTLY -1+0j
 
-GROUPING CHOICES THE GATE MUST HOLD (Triton gives no way to force them):
+Grouping choices the gate must hold (Triton gives no way to force them):
 
 * No multiply-add contraction: ``enable_fp_fusion=False`` on every launch, and the
   gate reads ``fma.f32`` out of the PTX and requires none.
@@ -755,7 +755,7 @@ def _complex_grid_reasons(fields: Any, pml: Any, grid: Any, *,
     #    (stepping._bloch_phases raises there, stepping.py:2401-2415; the grid
     #    guarantees it, grid.py:973-1001 — re-checked because a mis-bound PH
     #    constexpr is a plane of wrong values, not a crash), and a metallic axis
-    #    must carry a k component of exactly 0. has_bloch FALSE IS ADMITTED: with
+    #    must carry a k component of exactly 0. has_bloch false is admitted: with
     #    PH*=0 the kernel must reduce to the plain complex path, and the gate's
     #    unphased rows are that reduction measured. The phase is read
     #    DEFENSIVELY, not through ``_call``: an unreadable phase is not an
@@ -818,13 +818,13 @@ def _complex_grid_reasons(fields: Any, pml: Any, grid: Any, *,
                     f"stepping is a separate, unbuilt product")
 
     # 7. No dispersion, refused OUTRIGHT: none of the nine demand scripts carries
-    #    a susceptibility, and complex ADE belongs to a future tranche. The shape
+    #    a susceptibility, and complex ADE is not yet built. The shape
     #    clauses still run so an unreadable susceptibility is named, not shrugged at.
     if getattr(fields, "has_polarizations", False) or (
             getattr(fields, "polarizations", ()) or ()):
         reasons.append(
-            "a susceptibility is registered: complex-storage ADE is a future "
-            "tranche, and no corpus script combines dispersion with complex fields")
+            "a susceptibility is registered: complex-storage ADE is not yet "
+            "built, and no corpus script combines dispersion with complex fields")
     reasons.extend(_susceptibility_reasons(fields))
 
     # 8. No instantaneous nonlinearity (Pade factor + the DOCMP split,

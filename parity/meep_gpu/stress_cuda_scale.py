@@ -1,7 +1,7 @@
 """SCALE stress leg for the certified hand-CUDA families: the corpus's real shapes.
 
 =============================================================================
-WHAT THIS IS FOR, AND WHAT IT IS NOT
+What this is for, and what it is not
 =============================================================================
 
 The 26 gates under ``parity/meep_gpu/`` establish byte identity against
@@ -11,7 +11,7 @@ and subnormal-band value classes. Every one of them does it on a fixture the
 size of a postage stamp: ``(13,11,9)``, ``(32,32,32)``, ``(64,48,1)``,
 ``(17,5,3)``.
 
-THE CORPUS DOES NOT LOOK LIKE THAT. Measured off
+The corpus does not look like that. Measured off
 ``results/cuda_predicate_coverage_2026-08-20_closed/`` (186 rows, the record the
 759/759 coverage claim is cut from):
 
@@ -42,23 +42,23 @@ questions a postage stamp cannot:
    cells is not evidence at 11,245,000: the block count, the top lane's ``int
    idx``, and the guard's own ``nx * ny * nz`` are all recomputed and checked.
 4. MEMORY. The largest row is order a gigabyte of float32 volumes before any
-   auxiliary. Every case predicts its footprint from a MEASURED words-per-cell
+   auxiliary. Every case predicts its footprint from a measured words-per-cell
    and SKIPS WITH A REASON rather than dying in the allocator, and every device
    run records peak device memory so a future reader knows what the leg needs.
 
-IT IS NOT A CERTIFICATION. It changes no predicate, no kernel and no record. It
+It is not a certification. It changes no predicate, no kernel and no record. It
 adds one axis -- shape -- to legs that already exist, and its NumPy arm compiles
 nothing and certifies nothing (see below).
 
 =============================================================================
-WHY THE SUBJECT IS TWO FAMILIES AND NOT TWENTY-TWO
+Why the subject is two families and not twenty-two
 =============================================================================
 
 The two families that carry the corpus's LARGEST admitted rows are also the two
 whose kernels are certified: ``covers_real_pml_curl`` (step_B/step_D, 249
 admitted slots, top row 11,245,000 cells) and ``covers_real_pml_constitutive``
 (update_H/update_E, 209 slots, same top row). Both already have a gate with a
-transcribed NumPy arm, and this file IMPORTS THOSE ARMS rather than writing a
+transcribed NumPy arm, and this file imports those arms rather than writing a
 third spelling of the same device tree -- the sibling gates' rule, for the same
 reason: a harness that owns its own transcription of a kernel can drift from the
 kernel and report the drift as a kernel property.
@@ -69,7 +69,7 @@ Every other family's largest admitted row is smaller, and the ones that are not
 ``not_established`` rather than silently omitted.
 
 =============================================================================
-WHAT MAKES THIS LEG ABLE TO FAIL
+What makes this leg able to fail
 =============================================================================
 
 * NON-VACUITY PER CHECKPOINT, not once at the end. ``oracle_moved`` is measured
@@ -81,13 +81,13 @@ WHAT MAKES THIS LEG ABLE TO FAIL
   the first differing checkpoint is then re-run and compared word-for-word with
   ``probe.bit_compare`` so the record carries the ULP gap and the component, not
   just a boolean.
-* PARTIAL RESULTS AS THEY LAND. One JSON line per checkpoint into
+* Partial results as they land. One JSON line per checkpoint into
   ``<out>.checkpoints.jsonl``, flushed, plus an atomic rewrite of the artifact
   after every case (the progress-reporting rule).
 * SEEDS FROM A DIGEST, never ``hash()``. ``hash()`` of a tuple containing a
   string is salted by PYTHONHASHSEED, so a hash-seeded case cannot be replayed
   from its own record.
-* PLANTED DEFECTS WHOSE VERDICT IS SHAPE-DEPENDENT, and that is the whole
+* Planted defects whose verdict is shape-dependent, and that is the whole
   argument of this file. ``guard_truncated_to_int16`` is what
   ``if (idx >= (short)(nx*ny*nz)) return;`` would do: at the gate fixtures'
   1,287 cells it is a NO-OP and MUST come back NULL; at 22,500 cells and above
@@ -121,7 +121,7 @@ token because CuPy's disk-cache key is computed above the strip seam)::
 ``--product reduced`` is the shrunk form: the three largest shapes only, one
 sub-step per family, one value class, one policy.
 
-THE NumPy ARM COMPILES NOTHING AND CERTIFIES NOTHING. It cannot see a defect the
+The NumPy arm compiles nothing and certifies nothing. It cannot see a defect the
 NVRTC contraction guard exists for and it does not exercise the subnormal policy.
 What it settles is whether the fixture, the predicate, the index arithmetic, the
 launch geometry, the memory budget and the comparator all hold at corpus scale,
@@ -222,7 +222,7 @@ GATE_FIXTURE_SHAPE: Tuple[int, int, int] = (13, 11, 9)
 # The families
 # ---------------------------------------------------------------------------
 #
-# Each family is the SIBLING GATE'S OWN entry points, bound here. Nothing in this
+# Each family is the sibling gate's own entry points, bound here. Nothing in this
 # file transcribes a kernel: ``run_kernel_numpy`` and ``run_kernel_cuda`` are the
 # gates', ``build`` and ``seed_state`` are the gates', and the oracle is
 # ``stepping`` itself. What this file owns is the SHAPE the fixture is built at.
@@ -302,7 +302,7 @@ REDUCED_SUB_STEP: Dict[str, str] = {"curl": "step_B", "constitutive": "update_E"
 def shipped_launch_facts(relative_path: str, threads_symbol: str) -> Dict[str, Any]:
     """Block size, guard expression and index form, regexed from the kernel module.
 
-    READ AS TEXT, NOT IMPORTED. ``constitutive_kernels`` and ``step_curl_kernels``
+    Read as text, not imported. ``constitutive_kernels`` and ``step_curl_kernels``
     both ``import cupy`` at module scope (constitutive_kernels.py:143), so on the
     laptop -- which is where this leg is validated -- importing them is not
     available. The three facts this leg needs about the launch are lexical, and a
@@ -318,7 +318,7 @@ def shipped_launch_facts(relative_path: str, threads_symbol: str) -> Dict[str, A
     threads = sorted({int(v) for v in re.findall(
         r"^\s*(?:threads|_CONSTITUTIVE_THREADS|_REAL_PML_THREADS) = (\d+)\s*$",
         source, re.M)})
-    # THE MODULE'S OWN BLOCK-SIZE SYMBOL MUST BE PRESENT BY NAME. Without this the
+    # The module's own block-size symbol must be present by name. Without this the
     # regex above would happily report ``[256]`` from a bare ``threads = 256``
     # inside some other launcher while the certified pair's own constant had been
     # renamed or deleted, and the leg would check a geometry belonging to a
@@ -346,7 +346,7 @@ def shipped_launch_facts(relative_path: str, threads_symbol: str) -> Dict[str, A
 def launch_geometry(cells: int, threads: int) -> Dict[str, Any]:
     """``blocks = ceil(cells/threads)`` and every int it makes the device form.
 
-    THE THREE THINGS A POSTAGE STAMP CANNOT SHOW, all of them here:
+    The three things a postage stamp cannot show, all of them here:
 
     * ``blocks`` against CUDA's gridDim.x ceiling. 11,245,000 cells is 43,926
       blocks -- comfortably inside 2**31-1, and comfortably OUTSIDE the 65,535
@@ -399,7 +399,7 @@ def index_expression_bounds(shape: Tuple[int, int, int], threads: int,
     ``idx + (na-1)*sx````shift_dn``'s periodic wrap-back           (prelude)
     ``2*idx + 1``      the complex arm's word offset               (coverage:2872)
 
-    ``idx + sx`` IS LISTED AT ITS SYNTACTIC WORST CASE, ``cells - 1 + ny*nz``,
+    ``idx + sx`` is listed at its syntactic worst case, ``cells - 1 + ny*nz``,
     not at the largest value it can actually reach. The branch guarantees
     ``ia + 1 < na`` before forming it, so the reachable maximum is ``cells - 1``;
     the syntactic one is carried because it is what the compiler is entitled to
@@ -436,7 +436,7 @@ def decomposition_is_exact(shape: Tuple[int, int, int],
                            chunk: int = 4_194_304) -> Dict[str, Any]:
     """``k = idx%nz; j = (idx/nz)%ny; i = idx/(ny*nz)`` in int32, over EVERY index.
 
-    EXHAUSTIVE, NOT SAMPLED, and chunked so an 11-million-cell grid costs a
+    Exhaustive, not sampled, and chunked so an 11-million-cell grid costs a
     bounded working set rather than a 90 MB int64 temporary per term. Two things
     are checked at every index:
 
@@ -572,7 +572,7 @@ def spec_from_configuration(row: Dict[str, Any], label: str,
     shape. A case that silently ran a neighbouring shape would be reporting a
     number about a grid the corpus does not contain.
 
-    THE MIRROR PHASE IS NOT IN THE RECORD. ``configuration`` carries ``mirrored``
+    The mirror phase is not in the record. ``configuration`` carries ``mirrored``
     but not the phase, so +1 is a fixture choice and is declared as one; it enters
     the ghost fill, which is a separate driver pass from every sub-step here.
     """
@@ -631,7 +631,7 @@ def select_subjects(rows: List[Dict[str, Any]], family: str, sub_step: str,
                     top_n: int) -> List[Dict[str, Any]]:
     """The largest admitted shapes for this slot, plus the median and the gate fixture.
 
-    THE SMALL END IS NOT DECORATION. Every shape-dependent defect in this file has
+    The small end is not decoration. Every shape-dependent defect in this file has
     a threshold, and a sweep that only ran the big shapes could report "CAUGHT"
     without ever showing that the same defect is INVISIBLE at the size the
     existing gates run -- which is the entire claim this leg exists to make.
@@ -669,7 +669,7 @@ def select_subjects(rows: List[Dict[str, Any]], family: str, sub_step: str,
     # selection stops one row above 220x1840x1 -- so the two corners are selected
     # by name.
     #
-    # THE CORNERS ARE SEARCHED AMONG THE LARGE ROWS ONLY -- the admitted rows at
+    # The corners are searched among the large rows only -- the admitted rows at
     # or above the 75th percentile of cell count. Searched over the whole set, the
     # widest single axis in the curl family is ``3rd-harm-1d.py`` at (1,1,2500):
     # a 2,500-cell 1-D run whose aspect is extreme and whose SIZE is a fifth of
@@ -743,7 +743,7 @@ def select_subjects(rows: List[Dict[str, Any]], family: str, sub_step: str,
 def measure_words_per_cell(family: str, sub_step: str) -> Dict[str, Any]:
     """How many float32 words per cell this family's fixture allocates.
 
-    MEASURED on an 8x8x8 build of the same family rather than counted off a list
+    Measured on an 8x8x8 build of the same family rather than counted off a list
     of array names, so an array added to ``Fields`` later is included without
     anyone remembering to add it here. The number is then multiplied by the case's
     cell count to PREDICT the footprint, which is what makes "skip with a reason"
@@ -861,13 +861,13 @@ def apply_partial_cover(xp, fields, before: Dict[str, np.ndarray],
                         names: Sequence[str], threshold: int) -> int:
     """Restore every output word at flat index >= ``threshold`` to its pre-launch value.
 
-    THIS IS THE DEFECT, EXACTLY. A lane that returns early before touching memory
+    This is the defect, exactly. A lane that returns early before touching memory
     leaves the word it owns exactly as the previous launch left it, and that is
     what this does -- from the state snapshotted immediately before the launch, so
     a multi-launch leg accumulates the defect the way a real one would rather than
     reverting to the frozen state each time.
 
-    It is applied to the KERNEL PASS ONLY. The oracle is ``stepping``, untouched.
+    It is applied to the kernel pass only. The oracle is ``stepping``, untouched.
     """
     changed = 0
     for name in names:
@@ -947,11 +947,11 @@ def one_case(backend: str, family: str, sub_step: str, subject: Dict[str, Any],
              ) -> Dict[str, Any]:
     """One frozen state at one corpus shape, run twice, compared at every checkpoint.
 
-    THE ORACLE IS ``stepping`` ITSELF on real ``Grid``/``Fields``/``PML`` objects,
+    The oracle is ``stepping`` ITSELF on real ``Grid``/``Fields``/``PML`` objects,
     and the kernel arm is the SIBLING GATE'S runner. There is no transcription in
     this file to drift.
 
-    ONE ``Fields`` OBJECT, RUN TWICE FROM THE SAME FROZEN STATE. Two objects would
+    ONE ``Fields`` object, run twice from the same frozen state. Two objects would
     mean two epsilon draws unless copied across, and at 11 million cells it would
     also mean a second gigabyte. The oracle pass records a digest per checkpoint;
     the kernel pass records the same digests; the first checkpoint whose digests
@@ -978,7 +978,7 @@ def one_case(backend: str, family: str, sub_step: str, subject: Dict[str, Any],
         "mirror_phase_is_a_fixture_choice": spec["phase"],
     }
 
-    # THE MEMORY GATE COMES FIRST, before anything is allocated. A case that
+    # The memory gate comes first, before anything is allocated. A case that
     # cannot fit is a SKIP WITH A REASON; dying in the allocator would take the
     # artifact and every case after it down with it.
     predicted = predicted_bytes(cells, words_per_cell["total_words_per_cell"])
@@ -995,7 +995,7 @@ def one_case(backend: str, family: str, sub_step: str, subject: Dict[str, Any],
         case["seconds"] = time.time() - started
         return case
 
-    # THE LAUNCH GEOMETRY AND THE INDEX ARITHMETIC, both before the fixture: they
+    # The launch geometry and the index arithmetic, both before the fixture: they
     # are properties of the shape, they cost nothing, and a shape that fails
     # either one should be recorded as failing it rather than as an allocation.
     case["launch_geometry"] = launch_geometry(cells, threads)
@@ -1026,7 +1026,7 @@ def one_case(backend: str, family: str, sub_step: str, subject: Dict[str, Any],
     covered, reason = FAMILIES[family]["predicate"](fields, layer, grid, sub_step)
     case["predicate_today"] = {"covered": bool(covered), "reason": reason,
                                "predicate": FAMILIES[family]["predicate_name"]}
-    # THE PREDICATE GATES THIS LEG, unlike the gates that exist to change one.
+    # The predicate gates this leg, unlike the gates that exist to change one.
     # This file is not asking whether a refusal is deserved; it is asking whether
     # an ADMITTED configuration survives its own size. A case the predicate
     # refuses for anything but the backend clause is not this leg's business.
@@ -1218,15 +1218,15 @@ def _is_backend_clause(reason: Any) -> bool:
 class _ShapeSubstituted:
     """A real object, answering one question differently: its shape.
 
-    WHY A PROXY AND NOT A FABRICATION. The int32 clause refuses a cell count no
-    machine can allocate -- 2**31 float32 words is 8.6 GB PER ARRAY and the
+    Why a proxy and not a fabrication. The int32 clause refuses a cell count no
+    machine can allocate -- 2**31 float32 words is 8.6 GB per array and the
     fixture holds two dozen -- so the clause cannot be reached by building the
     grid it describes. Every OTHER clause the predicate evaluates is answered here
     by a REAL ``Grid``/``Fields``/``PML`` built at a small shape; only the extent
     is substituted. That keeps the instrument one substitution away from the
     thing it measures instead of a hand-written stand-in for all of it.
 
-    WHAT MAKES IT CREDIBLE IS THE SOUNDNESS LEG, not this docstring:
+    What makes it credible is the soundness leg, not this docstring:
     :func:`standin_soundness` sets the substituted shape EQUAL to the real shape
     and requires the proxy's verdict to equal the real objects' verdict, at every
     shape the sweep ran. A disagreement anywhere marks the bound leg UNSOUND and
@@ -1329,7 +1329,7 @@ class _PmlProxy(_ShapeSubstituted):
         value = getattr(object.__getattribute__(self, "_target"), item)
         shape = object.__getattribute__(self, "_shape")
         if hasattr(value, "dtype") and getattr(value, "ndim", None) == 3:
-            # THE AXIS COMES FROM THE NAME, NOT FROM THE BROADCAST SHAPE. Reading
+            # The axis comes from the name, not from the broadcast shape. Reading
             # it off the shape -- "the first axis whose extent is not 1" -- is
             # correct on a fixture whose every axis is thicker than one cell and
             # WRONG on a 2-D corpus row: a z vector on a grid with nz = 1 is
@@ -1370,7 +1370,7 @@ def standin_soundness(family: str, sub_step: str, fields, layer, grid,
 
 def bisect_predicate_cell_bound(family: str, sub_step: str, fields, layer,
                                 grid) -> Dict[str, Any]:
-    """The first cell count at which the predicate flips, MEASURED not quoted.
+    """The first cell count at which the predicate flips, measured not quoted.
 
     A ``(1, 1, n)`` extent is used so the search moves one number: the shape's
     product is ``n``, so a bisection on ``n`` is a bisection on the cell count and
@@ -1530,7 +1530,7 @@ def build_plan(rows: List[Dict[str, Any]], product: str, top_n: int,
                     plan.append({"family": family, "sub_step": sub_step,
                                  "subject": subject, "courant": INEXACT_COURANT,
                                  "value_class": value_class})
-            # THE EXACT COURANT, on the largest shape only. Multiplying every
+            # The exact Courant, on the largest shape only. Multiplying every
             # 11-million-cell case by a second courant buys a repetition of an
             # answer, not a second question -- but a sweep that never ran the
             # exactly-representable one could not say the shape result is
@@ -1577,7 +1577,7 @@ def run_defects(results: Dict[str, Any], out_path: str, backend: str,
                 emit) -> Dict[str, Any]:
     """Every planted defect at every selected shape, scored against its ARITHMETIC.
 
-    THE EXPECTATION IS COMPUTED, NOT ASSERTED BY HAND. Each defect has a threshold
+    The expectation is computed, not asserted by hand. Each defect has a threshold
     that is a function of the shape, so "must be caught here and must be null
     there" falls out of the shape rather than out of a list somebody maintained.
     A defect whose measured verdict disagrees with its threshold is a HARNESS
@@ -1615,7 +1615,7 @@ def run_defects(results: Dict[str, Any], out_path: str, backend: str,
             threshold = case["defect_threshold"]
             case["expected_to_bite"] = bool(threshold is not None
                                             and threshold < cells)
-            # HOW MUCH OF THE VOLUME THE DEFECT LEAVES ALONE, and it matters.
+            # How much of the volume the defect leaves alone, and it matters.
             # A "total" cover -- threshold 0, nothing written at all -- is caught
             # by any comparator that looks at one word, so a defect leg made
             # entirely of total covers would not show that the comparison reaches
@@ -1673,9 +1673,9 @@ def run_size_independent_control(results: Dict[str, Any], out_path: str,
                                  memory_budget: int,
                                  words: Dict[Tuple[str, str], Dict[str, Any]],
                                  emit) -> Dict[str, Any]:
-    """The sibling gates' own sub-lattice mutation, at every shape. MUST BE CAUGHT.
+    """The sibling gates' own sub-lattice mutation, at every shape. Must be caught.
 
-    WITHOUT THIS THE DEFECT LEG PROVES LESS THAN IT LOOKS. A shape-dependent
+    Without this the defect leg proves less than it looks. A shape-dependent
     defect that is caught at 11 million cells and null at 1,287 is consistent with
     a comparator that only wakes up when the array is large. A defect that is
     size-INDEPENDENT and is caught at both ends separates the two readings, and it
@@ -1744,7 +1744,7 @@ def _bound_probe_fixture(family: str, sub_step: str, cell: Tuple[float, float, f
 
 #: The cross-substitution pairs. Each is ``(cell_A, cell_B)``: the proxy stands on
 #: a REAL fixture built at A, wears B's extent, and its verdict must equal a REAL
-#: fixture built at B. IDENTITY SUBSTITUTION ALONE IS NOT ENOUGH -- a proxy that
+#: fixture built at B. Identity substitution alone is not enough -- a proxy that
 #: ignored the substitution entirely would pass it 100%.
 CROSS_SUBSTITUTION_PAIRS: Tuple[Tuple[Tuple[float, float, float],
                                       Tuple[float, float, float]], ...] = (
@@ -1766,7 +1766,7 @@ def run_bound_legs(results: Dict[str, Any], out_path: str,
                    words: Dict[Tuple[str, str], Dict[str, Any]]) -> Dict[str, Any]:
     """The int32 clause, bisected -- after the stand-in is shown to be transparent.
 
-    THE ORDER IS THE ARGUMENT. A bisection on a proxy is a claim about the proxy
+    The order is the argument. A bisection on a proxy is a claim about the proxy
     unless the proxy is first shown to answer as the real objects do, so two
     soundness arms run before any bound is reported:
 
@@ -1926,7 +1926,7 @@ def summarize(results: Dict[str, Any]) -> Dict[str, Any]:
         reasons.append(f"divergence on {len(scored) - len(identical)} of "
                        f"{len(scored)} cases: {diverged[:4]}")
 
-    # THE ASPECT CORNERS MUST HAVE BEEN SCORED, not merely planned. A scale claim
+    # The aspect corners must have been scored, not merely planned. A scale claim
     # that rests only on the largest grids is a claim about cell count; the
     # decomposition question is about the SHAPE, and a run whose corner cases all
     # skipped would carry no evidence on it.
@@ -1992,7 +1992,7 @@ def summarize(results: Dict[str, Any]) -> Dict[str, Any]:
                            f"{leg.get('measured_bound')}, not the transcribed "
                            f"{TRANSCRIBED_INT32_CELL_BOUND}")
 
-    # THE DEFECT LEG'S OWN NON-VACUITY. A run in which no planted defect was ever
+    # The defect leg's own non-vacuity. A run in which no planted defect was ever
     # expected to bite has not shown the harness can fail; it has shown the
     # harness was never asked to.
     bit_expected = sum(leg.get("expected_to_bite", 0)
@@ -2000,7 +2000,7 @@ def summarize(results: Dict[str, Any]) -> Dict[str, Any]:
     if results.get("scale_defects") and bit_expected == 0:
         reasons.append("no planted defect was expected to bite at any scored "
                        "shape; this run did not demonstrate that the leg can fail")
-    # AND AT LEAST ONE OF THEM MUST HAVE BEEN A PARTIAL COVER. A battery whose
+    # And at least one of them must have been a partial cover. A battery whose
     # every biting leg wrote nothing at all is caught by a comparator that looks
     # at one word; a partial cover is the only arm that shows the comparison
     # reaches the tail of an eleven-million-cell volume.
@@ -2011,10 +2011,10 @@ def summarize(results: Dict[str, Any]) -> Dict[str, Any]:
                        "showed the comparison reaching the tail of a volume whose "
                        "head was left exact")
 
-    # NOT `released`. A STRESS HARNESS IS NOT A GATE, and the distinction is not
+    # Not `released`. A stress harness is not a gate, and the distinction is not
     # cosmetic: gate_provenance.stamp() copies a `released` field into
     # canonical_verdict, which is what read_verdict() — and therefore every weld
-    # test in this package — treats as "this run licensed something". MEASURED
+    # test in this package — treats as "this run licensed something". Measured
     # 2026-08-20: on `--backend numpy`, with no device in the process at all, this
     # function returned released=true and the stamped artifact carried
     # canonical_verdict {released: true}. A laptop transcription check was
@@ -2065,6 +2065,7 @@ def summarize(results: Dict[str, Any]) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
+    import neutral_ids  # noqa: PLC0415
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--backend", choices=("cuda", "numpy"), default="cuda")
     parser.add_argument("--product", choices=("full", "reduced"), default="full")
@@ -2092,8 +2093,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "leg": "stress_cuda_scale",
         "dimension": "B / SCALE",
         "started_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "host": os.uname().nodename,
-        "argv": list(argv if argv is not None else sys.argv[1:]),
+        "host": neutral_ids.machine_id(),
+        "argv": neutral_ids.argv(argv if argv is not None else sys.argv[1:]),
         "backend": args.backend,
         "product": args.product,
         "question": ("do the certified hand-CUDA kernels still reproduce the "
@@ -2189,7 +2190,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         f"largest={verdict['largest_scored_cells']:,} cells")
     for reason in verdict["reasons"]:
         log(f"[finding]   - {reason}")
-    # EXIT 0 EVEN WITH FINDINGS, matching the sibling harnesses. A finding is
+    # Exit 0 even with findings, matching the sibling harnesses. A finding is
     # something to read, not a failed gate; a non-zero exit here would make a
     # stress run look like a merge-bar failure to any caller that only reads the
     # status. Non-zero is reserved for the harness being unable to MEASURE — which

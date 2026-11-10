@@ -4,7 +4,7 @@ DEVICE STATUS: **UNRUN.** This module is written to be run on a CUDA host with a
     idle device; nothing in this tree may cite it as a release until an artifact
     exists with ``device_status: RUN`` and ``release.released: true``.
 
-THE CLAIM THIS GATE IS ALLOWED TO SUPPORT: for every configuration
+The claim this gate is allowed to support: for every configuration
 :func:`~meep_gpu.triton_kernels.cylindrical_real_fused_electric_pair.cylindrical_real_fused_electric_pair_coverage`
 admits, ONE launch of ``cyl_real_fused_curl_constitutive_D`` — bracketed by the
 SHIPPED deposit repair wherever the seam carries an electric deposit — leaves the
@@ -22,7 +22,7 @@ over every allocated volume: the primaries, the split-field PML auxiliaries and 
 constitutive ``f_w`` history. Comparison is on the uint32 view. ``allclose`` appears
 nowhere.
 
-WHAT IS NEW HERE AGAINST THE MAGNETIC TWIN
+What is new here against the magnetic twin
 ==========================================
 
 :mod:`meep_gpu.triton_kernels.cylindrical_real_fused_magnetic_pair` released
@@ -40,17 +40,17 @@ time is everything that is compile-time absent at ``BACKWARD = 0``:
   against the magnetic twin's three;
 * the constitutive half's inverse-permittivity multiply — the ``SCALE = 1`` arm.
 
-...and **THE DEPOSIT REPAIR**, which the magnetic twin does not carry at all. All
+...and **the deposit repair**, which the magnetic twin does not carry at all. All
 three corpus rows of this cell declare an ELECTRIC source, injected between the two
 halves, so the CARRY family below is the product rather than an extra.
 
-WHAT THE GATE REFUSES TO INFER
+What the gate refuses to infer
 ==============================
 
 * **Bytes alone cannot prove the fused path ran.** A silent fallback to the array
   path is byte-identical to the array path by construction. Every launch is counted
   through a proxy that owns the kernel object, every substitution is counted per
-  route in the installer, and one ARMED HARNESS MUTATION removes the substitution so
+  route in the installer, and one armed harness mutation removes the substitution so
   the counters — not the bytes — are what catches it.
 * **A no-op agreeing with a no-op is trivially identical.** Every compared array must
   MOVE during the leg; a leg whose electric trio is frozen in all three routes is
@@ -119,7 +119,7 @@ _TEMPORARY: List[str] = []
 #: grid outright, so every admitted configuration is walled on z and ``ZM_Z`` fires
 #: on every one. :func:`structural_walls_leg` measures that rather than asserting it.
 #:
-#: THE COURANT NUMBERS ARE SWEPT and three of the four are not powers of two: the PML
+#: The Courant numbers are swept and three of the four are not powers of two: the PML
 #: coefficients are the family of non-representable multiplicands the curl's
 #: association mutations need in order to be visible at all.
 CASES: Tuple[Tuple[str, Tuple[float, float, float], float, float, int], ...] = (
@@ -129,8 +129,8 @@ CASES: Tuple[Tuple[str, Tuple[float, float, float], float, float, int], ...] = (
     ("coarse", (2.6, 0.0, 2.6), 6.0, 0.4472135954999579, 10),
 )
 
-#: The CARRY family: the same grids run with a real ELECTRIC deposit IN THIS SEAM.
-#: Named so the two families cannot drift apart. THIS IS THE PRODUCT, not an extra —
+#: The CARRY family: the same grids run with a real ELECTRIC deposit in this seam.
+#: Named so the two families cannot drift apart. This is the product, not an extra —
 #: all three corpus rows of this cell declare an electric source, so a gate that only
 #: ran the quiet family would certify a kernel the corpus never reaches.
 CARRY_CASES: Tuple[str, ...] = ("square_res10", "short_wide")
@@ -168,7 +168,7 @@ MATERIAL = ("eps", "inv_eps")
 #: through ``stepping.update_E``, so its presence differs by route and by leg while
 #: carrying no state either route reads across a step.
 #:
-#: THE RULE IS THE LEADING UNDERSCORE, not this list: a private attribute is not
+#: The rule is the leading underscore, not this list: a private attribute is not
 #: physical state, and every PUBLIC volume stays in the comparison.
 PRIVATE_SCRATCH: Tuple[str, ...] = ("_fmp_scratch",)
 
@@ -217,7 +217,7 @@ def sha256(path: str) -> str:
 
 
 def source_hashes() -> Dict[str, str]:
-    """Every file this run binds itself to, KEYED BY ITS REPO-RELATIVE PATH."""
+    """Every file this run binds itself to, keyed by its repo-relative path."""
     names = (
         "meep_gpu/triton_kernels/cylindrical_real_fused_electric_pair.py",
         "meep_gpu/triton_kernels/cylindrical_real_fused_magnetic_pair.py",
@@ -401,7 +401,7 @@ def transcription_leg() -> Dict[str, Any]:
             findings.append(
                 f"kernels.constitutive_step no longer contains {line!r}")
 
-    # THE WALL CLEAR IS THE D FAMILY'S SIX ROWS, not the B family's three. A body
+    # The wall clear is the D family's six rows, not the B family's three. A body
     # carrying three would be clearing the NORMAL component on each axis instead of
     # the two tangential ones.
     clears = [line for line in fused
@@ -412,7 +412,7 @@ def transcription_leg() -> Dict[str, Any]:
             f"the fused body carries {len(clears)} wall-clear rows, fewer than the "
             f"{len(ZERO_METAL_LINES)} zero_metal_D writes for the D family")
 
-    # NO BOUNDARY CONSTEXPRS. The Dcyl declaration is compiled in; a BC branch here
+    # No boundary constexprs. The Dcyl declaration is compiled in; a BC branch here
     # would mean this body serves a declaration the predicate refuses.
     for needle in ("BCX", "BCY", "BCZ", "PERIODIC", "METALLIC", "MIRROR"):
         if any(needle in line for line in fused):
@@ -579,7 +579,7 @@ def structural_walls_leg() -> Dict[str, Any]:
     ``kernels.fused_curl_constitutive_D``'s. Two of them can never be entered on a
     Dcyl grid — the r axis carries its own boundary pair rather than a declared PEC,
     and phi is the one-cell invariant axis, which ``Grid`` refuses a PEC on by name
-    (grid.py:842-877). THAT IS MEASURED HERE, over a sweep, and it is what licenses
+    (grid.py:842-877). That is measured here, over a sweep, and it is what licenses
     the mutation table to arm ``ZM_Z`` alone.
     """
     from meep_gpu.triton_kernels.coverage import zero_metal_axes  # noqa: PLC0415
@@ -646,7 +646,7 @@ def predicate_leg() -> Dict[str, Any]:
     _grid, fields, pml = _dcyl((2.0, 0.0, 2.0), 10.0, 0.5)
     coverage = product.cylindrical_real_fused_electric_pair_coverage
     record("dcyl_m0_no_sources", coverage(fields, pml, ()), True)
-    # THE ADMITTING DIRECTION, TWICE. A MAGNETIC source is injected in the B/H half
+    # The admitting direction, twice. A MAGNETIC source is injected in the B/H half
     # and must not disqualify this pair; and the ELECTRIC deposit — which all three
     # corpus rows carry — is ADMITTED because the repair carries it.
     record("dcyl_m0_magnetic_source", coverage(fields, pml, (_Source("B"),)), True)
@@ -716,7 +716,7 @@ def _census_rows(root: str) -> List[dict]:
 def corpus_admission_leg() -> Dict[str, Any]:
     """The funnel, and whether it lands on the cell the board scored.
 
-    AN ABSENT CENSUS IS NOT AN EMPTY ONE: a staged tree that did not carry the record
+    An absent census is not an empty one: a staged tree that did not carry the record
     would funnel 0 -> 0 and report "worth zero seam-instances" — a measurement about
     the staging dressed as one about the corpus.
     """
@@ -767,7 +767,7 @@ def corpus_admission_leg() -> Dict[str, Any]:
         findings.append(
             f"the board at {BOARD} is absent, so the cross-check that this funnel "
             f"lands on the cell the matrix scored could not run")
-    # EVERY ROW OF THIS CELL CARRIES AN ELECTRIC DEPOSIT, which is why
+    # Every row of this cell carries an electric deposit, which is why
     # CARRIES_DEPOSIT_REPAIR is the product rather than one clause of it.
     if both and len(electric) != len(both):
         findings.append(
@@ -808,7 +808,7 @@ def build_driver(cp, cell, resolution, courant, seed: int, electric: bool,
         driver.add_source({"component": "Hy", "frequency": 0.31,
                            "center": (0.25 * cell[0], 0.0, 0.0), "width": 0.4})
     if electric:
-        # THE DEPOSIT THIS PRODUCT EXISTS FOR. Injected BETWEEN the two halves
+        # The deposit this product exists for. Injected BETWEEN the two halves
         # (driver.py:3294-3299), so the fused launch consumes a pre-injection D and
         # the shipped repair is what puts the difference back. All three corpus rows
         # of this cell carry exactly one.
@@ -835,7 +835,7 @@ def inventory(driver) -> Dict[str, Any]:
     shape = tuple(fields.grid.shape)
     found: Dict[str, Any] = {}
     for name, value in vars(fields).items():
-        # THE LEADING UNDERSCORE IS THE RULE — see PRIVATE_SCRATCH.
+        # The leading underscore is the rule — see PRIVATE_SCRATCH.
         if name.startswith("_"):
             continue
         if (getattr(value, "shape", None) == shape
@@ -976,7 +976,7 @@ def separate_route(driver):
     # `zero_metal_D` and both fills stay on the ARRAY PATH here: no Triton product
     # owns the wall clear, and the two fills are inert. All three are counted, so a
     # difference in which of them ran is a counter event rather than an invisible
-    # correction. THE INJECTION ALSO STAYS ON THE ARRAY PATH, which is what makes
+    # correction. The injection also stays on the array path, which is what makes
     # this route the right oracle for the carry family: the two certified kernels
     # with the driver's own deposit between them.
     return Route({"step_D": curl, "update_E": constitutive})
@@ -989,7 +989,7 @@ def fused_route(plan, driver=None, sources=(), bracket: bool = True):
     rather than leaving them on the array path is what turns that claim into a byte
     measurement.
 
-    THE BRACKET IS THE SHIPPED ONE. ``deposit_repair.LeadingRepairPlan`` /
+    The bracket is the shipped one. ``deposit_repair.LeadingRepairPlan`` /
     ``TrailingRepairPlan`` are the exact pair ``launch._install_fused_pair`` puts in
     these two slots; a harness that assembled its own could not license the one that
     ships. ``bracket=False`` is the NULL CONTROL and it must diverge.
@@ -1015,11 +1015,11 @@ def fused_route(plan, driver=None, sources=(), bracket: bool = True):
 # ---------------------------------------------------------------------------
 
 def at_rest_by_the_auxiliary_contract(pml: Any) -> Tuple[str, ...]:
-    """The auxiliary volumes the aligned forms never touch on this run, both seams.
+    """The auxiliary volumes MEEP's per-chunk forms never touch on this run, both seams.
 
     DERIVED, not listed: ``fu`` of a curl target is read and written only where the
     target's chunk carries its dsigu layer, and ``f_w`` of a constitutive component only
-    where its own axis carries one (the auxiliary contract, KERNELS.md section 1 C2). An
+    where its own axis carries one (docs/design/floating-point.md#auxiliary-contract). An
     axis with no absorber on either face (``PML.axis_has_pml``: phi on every Dcyl run, z on
     a periodic one) carries no layer in any chunk, so the target whose dsigu axis it is
     (``cylindrical_triton.DSIG_AXES``) and the component whose own axis it is keep their
@@ -1268,7 +1268,7 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
         are not touched: their constexprs are structurally false, and a rewrite of a
         dead branch reports "uncaught" while measuring nothing.
 
-        NO ``if`` IN THE REPLACEMENT: ``_rewrite_block`` indents every replacement
+        No ``if`` in the replacement: ``_rewrite_block`` indents every replacement
         line to the block's first line, so a compound statement in position 0
         produces an empty suite and the mutant fails to IMPORT. The assignments are
         pure identities with no arithmetic, so a signed zero survives them."""
@@ -1367,11 +1367,11 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
         :func:`_assert_the_material_actually_varies` measures that variation on the
         grid the case builds rather than assuming it.
 
-        ``idx - 1`` IS IN BOUNDS EVERYWHERE THE MASK ADMITS, and lane 0 is masked
+        ``idx - 1`` is in bounds everywhere the mask admits, and lane 0 is masked
         off rather than dereferenced. A FORWARD shift would read one float past the
         allocation on the last lane, which is a fault reported as an inert defect.
 
-        WHY NOT MASKING LANE 0 ALONE, which is what the first cut of this mutation
+        Why not masking lane 0 ALONE, which is what the first cut of this mutation
         did: it came back UNCAUGHT on the device, and the reason was measured rather
         than guessed. Stored cell 0 is r = 0 AND z = 0, where component 0's curl is
         already zeroed by the ownership mask and its ``v0`` cleared again by
@@ -1383,9 +1383,10 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
             ["src0 = v0 * tl.load(ie0 + idx - 1, mask=live & (idx > 0), other=0.0)"])
 
     def m9_constitutive_association(source: str) -> Tuple[str, int]:
-        """THE INVERSION (Appendix A): the PREVIOUS package grouping put back,
-        ``(f + kps*src) - kms*prev`` in place of MEEP's ``f + ((kps*src) - (kms*prev))``
-        on the accumulation's cells. Same algebra, different float32 rounding."""
+        """THE INVERSION (docs/development/certification.md#inverted-grouping-mutations):
+        the PREVIOUS package grouping put back, ``(f + kps*src) - kms*prev`` in place of
+        MEEP's ``f + ((kps*src) - (kms*prev))`` on the accumulation's cells. Same algebra,
+        different float32 rounding."""
         return _rewrite_block(
             source,
             ["a0 = constitutive_form(tl.load(e0 + idx, mask=live & dw0, other=0.0),",
@@ -1569,7 +1570,7 @@ def _contains_run(haystack: Sequence[str], needle: Sequence[str]) -> bool:
 def _assert_no_dead_branch_rewrites(source: str) -> List[str]:
     """No rewrite may change a line whose enclosing constexpr is structurally false.
 
-    COMPARED AS TEXT, NOT BY LINE INDEX, and that is a correction rather than a
+    Compared as text, not by line index, and that is a correction rather than a
     style: several of these rewrites replace a two-line block with one line, so every
     later line SHIFTS. An index-based comparison then reports a rewrite located
     BEFORE a dead block as having touched it — measured here on
@@ -1703,12 +1704,13 @@ def run_refusals(cp, product) -> List[Dict[str, Any]]:
 # ---------------------------------------------------------------------------
 
 def environment(cp: Any = None) -> Dict[str, Any]:
+    import neutral_ids  # noqa: PLC0415
     payload: Dict[str, Any] = {
         "python": sys.version.split()[0],
         "numpy": np.__version__,
-        "argv": list(sys.argv),
+        "argv": neutral_ids.argv(sys.argv),
         "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
-        "cupy_cache_dir": os.environ.get("CUPY_CACHE_DIR"),
+        "cupy_cache_dir": neutral_ids.path(os.environ.get("CUPY_CACHE_DIR")),
     }
     try:
         import triton  # noqa: PLC0415
@@ -1717,7 +1719,7 @@ def environment(cp: Any = None) -> Dict[str, Any]:
     except Exception as exc:  # noqa: BLE001
         payload["triton"] = f"absent: {exc!r}"
     if cp is not None:
-        # THE CUPY VERSION IS PART OF THE CLAIM, not decoration: everything
+        # The CuPy version is part of the claim, not decoration: everything
         # downstream of the radial prefix scan is bit-identical only for a given
         # `cupy.cumsum` summation order.
         payload["cupy"] = cp.__version__
@@ -1800,7 +1802,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         cylindrical_real_fused_electric_pair as product)
 
     backends.guard_kernel_compilation(cp)
-    # THE MACHINE AND THE DEVICE, so this artifact can be SEEDED into a weld. The
+    # The machine and the device, so this artifact can be SEEDED into a weld. The
     # weld contract binds a host string to the record's validated Triton and
     # capability lists; `environment()` below records the device but no hostname, and
     # a seeding tool that supplied the missing half would be typing a fact instead of

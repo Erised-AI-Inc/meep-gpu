@@ -1,6 +1,6 @@
 """Which configurations the CUDA in-seam passes may serve — with no CuPy in sight.
 
-THE THREE PASSES, AND WHY THEY NEEDED A MODULE OF THEIR OWN. Between a curl and
+The three passes, and why they needed a module of their own. Between a curl and
 the constitutive update that closes it the driver runs three host-side passes
 (driver.py:3284-3286 on the B side, :3300-3302 on the D side)::
 
@@ -18,23 +18,23 @@ comment, and one refusal string in ``coverage.py``, read rather than counted.
 Every CUDA sub-step therefore returned to the host between the curl and the
 constitutive, by construction.
 
-WHAT THIS DOES NOT DO. It does not fuse anything, and nothing here brings a fused
+What this does not do. It does not fuse anything, and nothing here brings a fused
 CUDA product one launch closer on its own. It supplies the PARTS such a product
 would have to absorb, each measured against ``stepping`` on its own.
 
-NOTHING HERE IMPORTS CUPY, NUMPY OR THE KERNEL MODULE, for the reason the sibling
+Nothing here imports CuPy, NumPy or the kernel module, for the reason the sibling
 ``coverage.py`` states in its own header: the predicate is the part whose failure
-mode is a SILENT WRONG ANSWER rather than a crash, so it has to be importable,
+mode is a silent wrong answer rather than a crash, so it has to be importable,
 exercisable and mutable on a laptop.
 
-A SEPARATE FILE FROM ``coverage.py``, DELIBERATELY. That file's bytes are pinned
+A separate file from ``coverage.py``, deliberately. That file's bytes are pinned
 by digest in thirty-seven places in ``certification.json`` — every gate that ever
 ran recorded the coverage source it imported — and a new predicate landing there
-would move a digest no device run of this tranche backs. Nothing in this file
+would move a digest no device run of these passes backs. Nothing in this file
 changes a byte of that one.
 
 =============================================================================
-THE TRANSCRIPTIONS, WITH THE LINE THEY CAME FROM
+The transcriptions, with the line they came from
 =============================================================================
 
 * :func:`zero_metal_axes`      ``stepping._zero_metal`` (stepping.py:2206-2247)
@@ -44,7 +44,7 @@ THE TRANSCRIPTIONS, WITH THE LINE THEY CAME FROM
                                ``stepping._stored_past_owned`` (:1454-1469) and
                                ``stepping._far_reflect_rows`` (:1661-1692)
 
-THE PARITY IS ONE SIGNED NUMBER PER PLANE, AND THAT IS MEASURED, NOT ASSERTED.
+The parity is one signed number per plane, and that is measured, not asserted.
 ``fields.mirror_parity(c, axis, phase) == phase * (1 - 2 * IYEE_SHIFTS[c][axis])``
 over all 12 components x 3 axes x 2 phases — 72 combinations, 0 mismatches,
 re-measured on this laptop before this file was written and pinned by
@@ -53,7 +53,7 @@ shift on the folded axis is 0, so their parity is ``+phase``; the FAR fill only
 ever touches shift-1 components, so theirs is ``-phase``. One signed float per
 launch is the whole parity input.
 
-WHICH COMPONENTS EACH PASS TOUCHES, AND THE INVERSION BETWEEN THE FAMILIES.
+Which components each pass touches, and the inversion between the families.
 ``IYEE_SHIFTS`` (fields.py:214-219) makes the B/D families exact opposites::
 
     Bx (0,1,1)   By (1,0,1)   Bz (1,1,0)   -> shift 0 on its OWN axis only
@@ -69,38 +69,38 @@ near fill  (== 0)    component ``a`` (one)      components != ``a`` (two)
 far fill   (== 1)    components != ``a`` (two)  component ``a`` (one)
 ===================  =========================  =========================
 
-THE D SIDE'S FAR FILL IS NOT THE B SIDE'S MIRRORED. The near fill reaches two
+The D side's far fill is not the B side's mirrored. The near fill reaches two
 components on D and one on B, and the far fill flips it — which is exactly the
 inversion the fused track measured this week and the reason the D column above is
 transcribed from ``IYEE_SHIFTS`` afresh rather than derived from the B one.
 
 =============================================================================
-WHAT IS REFUSED, BY NAME
+What is refused, by name
 =============================================================================
 
 Enumerated positively. A feature that lands after this is written is refused
 because it was never admitted, not admitted because nobody remembered to refuse
 it.
 
-* COMPLEX STORAGE. A Bloch run stores complex64 and these kernels index float32.
+* Complex storage. A Bloch run stores complex64 and these kernels index float32.
   This is the largest single gap and it is stated rather than discovered.
-* THE CYLINDRICAL RADIAL AXIS. ``stepping._mirror_phases`` (:2291-2311) puts
+* The cylindrical radial axis. ``stepping._mirror_phases`` (:2291-2311) puts
   ``(-1)**grid.m`` in the same slot as a mirror plane's declared phase, so the
   near fill runs on ``r`` with a phase that is not +/-1 at odd ``m`` and whose
   per-component sign rule is ``r_to_minus_r_symmetry``'s, not
   ``mirror_parity``'s. Different arithmetic, refused by name.
-* A MIRRORED AXIS WITH NO DECLARED PHASE. ``stepping._symmetry_phase`` (:2402)
+* A mirrored axis with no declared phase. ``stepping._symmetry_phase`` (:2402)
   raises there rather than folding with the even default; so does this.
-* A FOLDED AXIS WHOSE TWO TERMINATION ROUTES DISAGREE. ``is_metallic`` and
+* A folded axis whose two termination routes disagree. ``is_metallic`` and
   ``stored_cells > owned_cells`` are two independent readings of one fact
   (``stepping._stored_past_owned``); a disagreement means one has drifted and
   neither may be trusted, and the consequence is a ghost plane written where MEEP
   steps the plane. Same cross-check, and the same reasoning, as
   ``coverage._fold_termination_problem``.
-* ANYTHING BUT A C-CONTIGUOUS 3-D FLOAT32 ARRAY on the family's three components.
+* Anything but a C-contiguous 3-D float32 array on the family's three components.
   The kernels do their own index arithmetic from ``(nx, ny, nz)``.
 
-NOTHING DISPATCHES THESE KERNELS. No module in ``meep_gpu/`` imports
+Nothing dispatches these kernels. No module in ``meep_gpu/`` imports
 ``cuda_kernels`` at all (``test_package_boundary.py`` pins the absence in both
 directions), so a predicate here is a statement about what the kernels must not
 be asked to serve, not about any run.
@@ -188,7 +188,7 @@ def zero_metal_axes(grid: Any) -> Tuple[bool, bool, bool]:
     ``grid.has_metallic``, then clears stored cell 0 on every axis that is
     ``is_metallic(axis) and not is_mirrored(axis)``.
 
-    A FOLDED METALLIC AXIS IS EXCLUDED AND THAT IS THE WHOLE POINT OF THE
+    A folded metallic axis is excluded and that is the whole point of the
     ``not is_mirrored`` TERM. ``grid_volume::halve`` moves such an axis's origin
     to ``io = -2``, so its stored cell 0 sits a full cell BELOW the mirror plane
     and holds the parity-weighted ghost the near fill writes there — not a wall.
@@ -213,7 +213,7 @@ def mirror_fill_phases(grid: Any) -> Tuple[Optional[int], Optional[int], Optiona
     ``_mirror_phases`` entry is None, i.e. an unfolded one, and the whole pass
     returns early unless ``grid.has_symmetry()``.
 
-    THE CYLINDRICAL SLOT IS NOT READ HERE. ``_mirror_phases`` puts ``(-1)**m``
+    The cylindrical slot is not read here. ``_mirror_phases`` puts ``(-1)**m``
     in the same tuple position for the radial axis; :func:`refusals` rejects such
     a grid before this is called, so a float never reaches a caller expecting
     +/-1.
@@ -232,7 +232,7 @@ def stored_past_owned(grid: Any) -> Tuple[Optional[bool], ...]:
     stored_cells(axis) > owned_cells(axis)``, true on a folded PERIODIC axis at
     either full-count parity and nowhere else.
 
-    ONE DELIBERATE DIVERGENCE, the same one ``coverage._stored_past_owned_from``
+    One deliberate divergence, the same one ``coverage._stored_past_owned_from``
     makes: a grid that cannot answer comes back None rather than False. The
     engine's False there is a convenience for the stub grids in
     ``test_stepping.py``; here it would classify a folded PERIODIC axis as having
@@ -258,14 +258,14 @@ def folded_far_rows(grid: Any) -> Tuple[Optional[int], Optional[int], Optional[i
     ``stepping._far_reflect_rows`` (:1661-1692): ``n_full - stored_cells + 2`` on
     an axis that is mirrored and NOT metallic, None on every other.
 
-    THE ROW IS NOT ALWAYS ``n - 2``, and that is the whole reason this is derived
+    The row is not always ``n - 2``, and that is the whole reason this is derived
     rather than baked. ``big_corner`` IS the second mirror at an even full count
     (image at slot ``n - 2``) and one half-cell above it at an odd one (slot
     ``n - 3``). Writing the fixed ``n - 2`` reflects about the window top instead
     of about the mirror — a whole cell wrong on every odd-count run, which is
     what ``reflect_row_n_minus_two`` plants on the gate.
 
-    ONLY THE AXES ``_fill_folded_far_ghosts`` ACTUALLY VISITS get a row: that
+    Only the axes ``_fill_folded_far_ghosts`` actually visits get a row: that
     pass iterates ``_stored_past_owned`` axes (:1518), not every mirrored one, so
     a folded METALLIC axis is None here twice over — once by
     ``_far_reflect_rows``' own metallic clause and once by never being visited.
@@ -459,9 +459,9 @@ def refusals(fields: Any, grid: Any) -> Dict[str, Dict[str, Any]]:
 
 
 def plan(pass_name: str, grid: Any) -> Tuple[Dict[str, Any], ...]:
-    """The launches one pass needs on this grid, IN THE ORDER THE ARRAY PATH APPLIES THEM.
+    """The launches one pass needs on this grid, in the order the array path applies them.
 
-    ONE LAUNCH PER FOLDED AXIS FOR THE TWO FILLS, IN X, Y, Z ORDER, and that
+    One launch per folded axis for the two fills, in X, Y, Z order, and that
     order is load-bearing rather than cosmetic. ``_fill_symmetry_ghost_cells``
     walks ``for term ... for axis in range(3)``, so a component unowned on two
     planes has its corner written twice and ends up carrying the PRODUCT of both
@@ -475,7 +475,7 @@ def plan(pass_name: str, grid: Any) -> Tuple[Dict[str, Any], ...]:
     matching the array path is what makes that a measurement about a
     configuration rather than a property leaned on.)
 
-    ZERO_METAL IS ONE LAUNCH FOR ALL THREE AXES, and that is not the same choice
+    ZERO_METAL is one launch for all three axes, and that is not the same choice
     made lazily. Its write is the constant ``+0.0f`` and it reads nothing, so two
     axes' planes commute exactly — a cell on both is written zero twice. There is
     no corner to order.

@@ -1,6 +1,6 @@
-"""THE D->E OFF-DIAGONAL FUSED PAIR: a MEASURED REFUSAL, not a product.
+"""The D->E off-diagonal fused pair: a measured refusal, not a product.
 
-WHAT WAS ASKED. Weld the D curl into the off-diagonal ``update_E`` — the two
+What was asked. Weld the D curl into the off-diagonal ``update_E`` — the two
 cells that rank 3rd and 4th on the Triton fusion matrix by REACHABLE demand
 (``results/fusion_matrix_triton_2026-08-20/fusion_matrix.json``)::
 
@@ -10,12 +10,12 @@ cells that rank 3rd and 4th on the Triton fusion matrix by REACHABLE demand
 17 seam-instances of 387, and they would have been the FIRST at D->E on Triton
 (which serves 0 of 186 there today).
 
-WHAT THIS GATE MEASURES INSTEAD. That no such product can exist, on Triton or on
+What this gate measures instead. That no such product can exist, on Triton or on
 any other backend, for a reason that is structural rather than a matter of
 effort, bindings or scope:
 
-    **THE OFF-DIAGONAL CONSTITUTIVE ARM IS A STENCIL OVER THE CURL ARM'S OWN
-    IN-PLACE OUTPUT.**
+    **The off-diagonal constitutive arm is a stencil over the curl arm's own
+    in-place output.**
 
 ``stepping._offdiagonal_terms`` (stepping.py:1235-1253) reads each PARTNER's D
 volume at FOUR indices — its own, one down the partner axis, one up the
@@ -37,7 +37,7 @@ index expressions), NOT A DEVICE MEASUREMENT; only the plain-load form is
 executed below.
 
 ===========================================================================
-THE DISCRIMINATING EXPERIMENT
+The discriminating experiment
 ===========================================================================
 
 An assembled fused kernel that disagrees with its reference proves nothing on
@@ -60,7 +60,7 @@ two, and the release verdict is their CONJUNCTION:
       sinv exactly 1.0). The racy read then returns the same bits whether it
       lands before or after the neighbour's store. MUST be bit-identical — this
       is what certifies the weld's ARITHMETIC, deterministically, without any
-      assumption about intra-CTA visibility. The precondition is MEASURED
+      assumption about intra-CTA visibility. The precondition is measured
       (``curl_is_identity_holds``), never assumed.
   S1  THE SUBJECT. The same kernel, same shape, real random H and real
       coefficients. MUST NOT be bit-identical, and its differing-word count MUST
@@ -72,7 +72,7 @@ difference between C3 and S1 is whether the neighbour's stored value CHANGED,
 which is the claim.
 
 ===========================================================================
-WHAT THIS GATE DOES NOT CLAIM
+What this gate does not claim
 ===========================================================================
 
 * It does not claim a seam-instance. The delta is ZERO and the fusion matrix is
@@ -80,7 +80,7 @@ WHAT THIS GATE DOES NOT CLAIM
 * It does not claim anything about Metal. Metal's own matrix already refuses
   both cells on the binding ceiling ([34, 36] pointers against 30); that is a
   SECOND and INDEPENDENT refusal and the count is not the operative one.
-* The SUBJECT KERNEL IS NOT A PRODUCT AND IS NOT SHIPPED. It lives in this file,
+* The subject kernel is not a product and is not shipped. It lives in this file,
   is assembled by splicing the two shipped bodies (with a declared rename map
   that is reversed and byte-checked), and exists only to be refuted.
 
@@ -181,7 +181,7 @@ def case_rng(*labels: Any) -> np.random.Generator:
 
 
 # ===========================================================================
-# LEG 0 — THE STRUCTURAL CENSUS, parsed from the shipped sources
+# LEG 0 — the structural census, parsed from the shipped sources
 # ===========================================================================
 #
 # THE MIRRORED-EVALUATOR TRAP (measured 2026-08-20: three planted assembly
@@ -263,7 +263,7 @@ def _offset_of(arg: ast.AST, pointers: Sequence[str]) -> Optional[str]:
 def _store_offsets(node: ast.FunctionDef) -> List[str]:
     """Every ``tl.store(P + EXPR, ...)`` offset in the kernel.
 
-    THIS IS THE KERNEL'S OWN DEFINITION OF "THE CELL I AM RESPONSIBLE FOR", read
+    This is the kernel's own definition of "the cell I am responsible for", read
     out of the kernel rather than assumed. A pointwise constitutive arm loads
     its source at exactly these; a stencil loads somewhere else as well. Using
     the kernel's own store set as the yardstick means the census needs no
@@ -342,7 +342,7 @@ def stencil_census() -> Dict[str, Any]:
         if node is None:
             # NAME DRIFT: a marker that matches nothing must SAY SO, never
             # silently disable the check it feeds.
-            row["status"] = "KERNEL NAME NOT FOUND — census cannot classify"
+            row["status"] = "kernel name not found — census cannot classify"
             rows.append(row)
             continue
         params = [a.arg for a in node.args.args]
@@ -390,7 +390,7 @@ def stencil_census() -> Dict[str, Any]:
             continue
         node = _find_function(ast.parse(path.read_text(encoding="utf-8")), kernel)
         if node is None:
-            entry["status"] = "KERNEL NAME NOT FOUND"
+            entry["status"] = "kernel name not found"
             curls.append(entry)
             continue
         targets = ("f0", "f1", "f2")
@@ -427,7 +427,7 @@ def stencil_census() -> Dict[str, Any]:
 # THE SUBJECT — assembled by SPLICING the two shipped bodies, and checked back
 # ===========================================================================
 #
-# ASSEMBLE FROM CERTIFIED ARITHMETIC, VERBATIM. Not a re-derivation and not a
+# Assemble from certified arithmetic, verbatim. Not a re-derivation and not a
 # transcription: the two halves are cut out of their own source files and the
 # only edits are (i) a declared token rename, because both kernels spell their
 # parameters f0/g0/e0 and the fused signature needs one name apiece, and (ii)
@@ -586,11 +586,11 @@ def build_subject_source(pointwise_variant: bool = False,
                                "report a null while measuring nothing")
 
     if mutation == "flatten_curl_parens":
-        # INVERTED (KERNELS.md section 7.1). The shipped curl is MEEP's left-to-right
-        # ``dtdx * (((c_y - c) + b) - b_z)`` (``forms.curl_stencil``, every partner
-        # present on this gate's grids), so the mutant puts the pairwise grouping the
-        # kernel carried until 0.10, ``dtdx * ((c_y - c) + (b - b_z))``, back at the
-        # call site of component 0: a DIFFERENT float32 number on random H.
+        # INVERTED (docs/development/certification.md#inverted-grouping-mutations). The shipped
+        # curl is MEEP's left-to-right ``dtdx * (((c_y - c) + b) - b_z)`` (``forms.curl_stencil``,
+        # every partner present on this gate's grids), so the mutant puts the pairwise grouping
+        # the kernel carried until 1.0, ``dtdx * ((c_y - c) + (b - b_z))``, back at the call site
+        # of component 0: a DIFFERENT float32 number on random H.
         before = curl_half
         curl_half = curl_half.replace(
             "curl0 = curl_stencil(c_y, c, b, b_z, dtdx, py, pz)",
@@ -736,7 +736,7 @@ def run_subject(kernel: Any, arrays: Dict[str, Any],
     if not any(row_mask):
         raise ValueError("no row slot survives; the subject would be the "
                          "diagonal pair")
-    # THE SAME DIVISION AS THE TWO-LAUNCH ROUTE, bound by the shipped binders: every
+    # The same division as the two-launch route, bound by the shipped binders: every
     # cell in every layer (both halves take the recurrence and the accumulation on
     # every cell) and every row term added on every cell (one chunk: no presence
     # varies, so the segment lines are never read).
@@ -968,7 +968,7 @@ def one_leg(label: str, shape: Tuple[int, int, int], boundaries, block: int,
                    zero_rows, repeat)
     state = host_state(shape, rng, value_class)
     if curl_identity and value_class == "signed_zero_lattice":
-        # MEASURED, first device run: the recurrence normalises a -0.0 in D to
+        # Measured, first device run: the recurrence normalises a -0.0 in D to
         # +0.0 (``(-0.0 + 0.0) - 0.0`` is ``+0.0``), so a signed-zero lattice on
         # D makes the curl-identity precondition unsatisfiable and the leg
         # reports nothing. The lattice is therefore carried on the arrays the
@@ -983,7 +983,7 @@ def one_leg(label: str, shape: Tuple[int, int, int], boundaries, block: int,
     if curl_identity:
         # The curl half is made the identity on D and fu_D: uniform H so every
         # operand difference is an exact 0.0 under the periodic wrap, fu_D = +0,
-        # kms = sinv = 1. MEASURED below, not assumed.
+        # kms = sinv = 1. Measured below, not assumed.
         for name in H_NAMES:
             state[name] = np.full(shape, np.float32(0.375), dtype=np.float32)
         for name in FU_NAMES:
@@ -1064,7 +1064,7 @@ def one_leg(label: str, shape: Tuple[int, int, int], boundaries, block: int,
     case["non_vacuous"] = all(moved.values())
 
     if curl_identity:
-        # MEASURED precondition, not assumed: D and fu_D must come back bitwise
+        # Measured precondition, not assumed: D and fu_D must come back bitwise
         # unchanged, or the control is not the control it claims to be.
         held = all(
             probe.to_host(plain_arrays[name]).tobytes() == before[name].tobytes()
@@ -1080,7 +1080,7 @@ def one_leg(label: str, shape: Tuple[int, int, int], boundaries, block: int,
     case["differing_floats"] = int(
         case["fused_vs_two_launch"].get("differing_floats", -1))
     if not case["bit_identical"]:
-        # WHAT THE DISAGREEMENT IS MADE OF. A zero row coefficient does not
+        # What the disagreement is made of. A zero row coefficient does not
         # fully mask the racy read: ``near * (+0.0)`` carries the SIGN of
         # ``near``, so a stale operand of the opposite sign yields ``-0.0``
         # where the reference has ``+0.0`` and that survives ``diag + total``
@@ -1199,7 +1199,7 @@ def run_device_legs(payload: Dict[str, Any], out: Path,
             record("S2_single_program", cases)
 
     # --- M: mutations, source and host ---------------------------------------
-    # EVERY MUTATION IS SCORED ON A LEG THAT ENTERS THE GUARD IT REWRITES.
+    # Every mutation is scored on a leg that enters the guard it rewrites.
     # A mutation scored on a case that never reaches the rewritten line reports
     # UNCAUGHT while measuring nothing (the dead-branch trap this project has
     # already paid for), so the guard is named beside each one and the case is
@@ -1259,7 +1259,7 @@ def run_device_legs(payload: Dict[str, Any], out: Path,
             f"diff={case.get('differing_floats')}")
         record("M_mutations", cases)
 
-    # --- P: THE PLANTED DEFECT that must FLIP the release verdict ------------
+    # --- P: the planted defect that must FLIP the release verdict ------------
     cases = []
     for block in (64, 256):
         for repeat in range(repeats):
@@ -1320,7 +1320,7 @@ def verdict(legs: Dict[str, List[Dict[str, Any]]]) -> Dict[str, Any]:
     clauses = {
         "C1 the pointwise control is bit-identical everywhere":
             _all(c1, "bit_identical", True),
-        # C2 IS NOT AN EXACT CONTROL AND THE GATE SAYS SO. A +0.0 coefficient
+        # C2 is not an exact control and the gate says so. A +0.0 coefficient
         # zeroes the MAGNITUDE of the racy operand but not its SIGN, and a
         # -0.0 total survives `diag + total` wherever diag is itself a zero —
         # which the subnormal band produces by underflow. So the clause is not
@@ -1334,8 +1334,8 @@ def verdict(legs: Dict[str, List[Dict[str, Any]]]) -> Dict[str, Any]:
             _all(c3, "bit_identical", True),
         "C3 the curl-identity precondition held":
             _all(c3, "curl_is_identity_holds", True),
-        # A CLAUSE THAT PASSES BECAUSE CASES WERE EXCLUDED IS THE VACUITY
-        # HAZARD IN ANOTHER COAT. Under the FLUSH policy ``D * 1.0`` flushes a
+        # A clause that passes because cases were excluded is the vacuity
+        # hazard in another coat. Under the FLUSH policy ``D * 1.0`` flushes a
         # subnormal to zero, so the curl half is not the identity and the whole
         # subnormal_band cut of C3 refuses itself by name. That is the right
         # answer, and it means C3 must be shown to have run on more than one
@@ -1473,10 +1473,17 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     # occupancy at start is recorded rather than assumed.
     try:
         import subprocess  # noqa: PLC0415
-        payload["nvidia_smi_compute_apps_at_start"] = subprocess.run(
+        import neutral_ids  # noqa: PLC0415
+        lines = subprocess.run(
             ["nvidia-smi", "--query-compute-apps=gpu_uuid,pid,used_memory",
              "--format=csv,noheader"], capture_output=True, text=True,
             timeout=30).stdout.strip().splitlines()
+        # Each compute app as its card's id and its memory: a process id names another
+        # account's process, and a UUID names the card (neutral_ids.py).
+        payload["nvidia_smi_compute_apps_at_start"] = [
+            f"{neutral_ids.card_id(parts[0])}, {parts[-1]}"
+            for parts in ([p.strip() for p in line.split(",")] for line in lines)
+            if len(parts) >= 3]
     except Exception as exc:  # noqa: BLE001
         payload["nvidia_smi_compute_apps_at_start"] = f"unreadable: {exc!r}"
     log(f"subnormal policy: {payload['subnormal_policy'].get('policy')!r}")

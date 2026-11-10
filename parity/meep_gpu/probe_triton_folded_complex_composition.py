@@ -1,4 +1,4 @@
-"""Complete-driver composition gate for Phase B — the fold under complex storage.
+"""Complete-driver composition gate for the fold under complex storage.
 
 The sub-step gate (``gate_triton_folded_complex.py``) certifies each kernel
 against an in-file transcription. This complementary probe asks the COMPOSITION
@@ -8,7 +8,7 @@ delegations installed by monkeypatch — production dispatch untouched,
 reproduce the array-path driver EXACTLY after every step, for a STATED number of
 steps, sources, PML, boundary fills and metal zeroing included?
 
-THE DRIVER ORDER IS FIVE SLOTS PER HALF, NOT THREE (driver.py:3206-3226, read
+The driver order is five slots per half, not three (driver.py:3206-3226, read
 from source; ``symmetry.py:44`` cites a stale ``driver.py:3163-3183`` and names
 three):
 
@@ -25,7 +25,7 @@ separately rather than one fused per-axis launch: measured, fusing them reorders
 the doubly-unowned corner of a component that is NEAR on one folded axis and FAR
 on another, and complex float multiplication is not associative.
 
-TWO ASSERTION LAYERS, because one is measurably blind. ``special_kz.py:311-320``
+Two assertion layers, because one is measurably blind. ``special_kz.py:311-320``
 records that an inlined helper's spelling once made the STORED layer blind to a
 class the PRODUCT layer caught, so every case is compared
 
@@ -35,18 +35,18 @@ class the PRODUCT layer caught, so every case is compared
   output words DIRECTLY, so the fill's complex product is visible before any
   downstream rounding can hide it.
 
-EVERY SOURCE IS PROVEN NON-VACUOUS against a source-free control: the injected
+Every source is proven non-vacuous against a source-free control: the injected
 bytes must DIFFER, or the case measured a quiet grid and its source clause is
 worthless.
 
-ZERO-INIT + SIGNED-ZERO CENSUS IS MANDATORY for a complex tranche. One case
+Zero-init + signed-zero census is mandatory for a complex-storage family. One case
 initialises every array to ``+0.0`` under a thin absorber whose deepest
 ``kms = kappa - sigma`` goes NEGATIVE, and counts ``0x80000000`` words after
 every step. A census of 0 FAILS the case as VACUOUS: random-seeded states are
 provably blind to the signed-zero class, and device runs proved that class
 reachable at the driver level.
 
-SUBNORMAL POLICY. This probe runs UNDER THE STRIPPED IEEE-KEEP POLICY — the ship
+Subnormal policy. This probe runs under the stripped IEEE-keep policy — the ship
 configuration — installed via ``gate_triton_complex.install_ftz_strip`` BEFORE
 any CuPy compile, never re-implemented here and never as a ``-ftz=false`` user
 option (NVRTC rejects the duplicate).

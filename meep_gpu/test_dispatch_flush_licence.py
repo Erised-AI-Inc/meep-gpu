@@ -1,16 +1,16 @@
 """The flush dispatch licence on the NVIDIA tables: admitted per arm, on evidence.
 
-WHAT CHANGED. Until 0.10 every NVIDIA family's dispatch licence was ``keep`` only:
+WHAT CHANGED. Until 1.0 every NVIDIA family's dispatch licence was ``keep`` only:
 rung 8b refused any plan in a process whose caller had installed ``flush``, so a
 user comparing against an unmodified x86 MEEP (which flushes) got the array path,
-and the certification round's flush legs measured the array path against itself.
+and the certification run's flush legs measured the array path against itself.
 :data:`fastpath.TABLE_DISPATCH_POLICIES` now names the policies a table may
 dispatch under, and :func:`fastpath.policy_evidence_reasons` admits one that is
 not the table's install default only when EVERY arm the plan dispatches has a run
 on this GPU's compute capability whose :data:`fastpath.CERTIFIED_POLICIES` names
 it. The rebind tools write that field from released legs; nothing else does.
 
-WHAT DID NOT CHANGE, and is pinned here so it cannot move by accident:
+What did not change, and is pinned here so it cannot move by accident:
 
 * dispatch still INSTALLS the table's install default (``keep`` on NVIDIA,
   ``flush`` on Metal) when nothing is installed;
@@ -19,8 +19,8 @@ WHAT DID NOT CHANGE, and is pinned here so it cannot move by accident:
 * a caller-installed admitted policy WITHOUT evidence for every arm is refused
   by name, naming the arm, and nothing compiles.
 
-NOTHING HERE LAUNCHES A KERNEL. The device half is the route gate's ``flush`` /
-``cuda_flush`` legs, which the round runs after the rebind has written the
+Nothing here launches a kernel. The device half is the route gate's ``flush`` /
+``cuda_flush`` legs, which a certification run executes after the rebind has written the
 evidence (``parity/meep_gpu/rounds/1.0/RUNBOOK.md``).
 """
 
@@ -260,9 +260,26 @@ def test_nothing_installed_still_installs_keep(monkeypatch):
 
 
 def test_a_caller_flush_without_evidence_refuses_naming_the_arm(monkeypatch):
+    """Under ``certified`` only: the default runs it uncertified, which
+    ``test_nvidia_fast_default`` pins."""
+    from meep_gpu.test_dispatch_contract import (  # noqa: PLC0415
+        cupy_like_grid_with_device, stand_in_stack)
+
     governable_triton(monkeypatch)
     install_caller_flush()
-    assert plan_on_a_governed_host(monkeypatch) is None
+    monkeypatch.setenv(fastpath.HARDWARE_SWITCH, fastpath.HARDWARE_CERTIFIED)
+    stand_in_stack(monkeypatch)
+    # On a readable 8.6 the shipped ledger may hold flush evidence for this arm; the
+    # refusal under test is the one for an arm that has none.
+    monkeypatch.setattr(fastpath, "policy_evidence_reasons",
+                        lambda arms, table, capability, policy: [
+                            "PML: no run on this GPU released under 'flush'"])
+    import meep_gpu.triton_kernels as package  # noqa: PLC0415
+
+    monkeypatch.setattr(package, "plan_step", lambda f, p, **kwargs: step_plan(
+        {"step_B": CountingPlan("b")}, {"step_B": "PML"}))
+    assert fastpath.plan_fast_path(object(), object(),
+                                   cupy_like_grid_with_device()) is None
     report = fastpath.last_dispatch_report()
     gate = gate_of(report)
     assert gate["policy_evidence"]["policy"] == "flush"

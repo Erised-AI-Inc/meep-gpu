@@ -6,7 +6,7 @@ subject to a declared and CHECKED subnormal-free precondition** (leg
 identity through 1e-30 and total divergence at 1e-38, so a tolerance would be
 either meaninglessly loose or would falsely admit the divergent case.
 
-THE ORACLE IS IN PROCESS. ``stepping.step_B(fields, pml)`` and the Metal launch run
+The oracle is in process. ``stepping.step_B(fields, pml)`` and the Metal launch run
 in ONE process against ONE seed on real ``Grid``/``Fields``/``PML`` objects, and the
 array path IS the reference: it steps MEEP's per-chunk forms and runs the beta
 coupling as MEEP's own pass after every component's curl (``_apply_folded_increment``),
@@ -28,7 +28,7 @@ THE LEGS, and what each is FOR beyond the standard discipline:
                  real and complex constitutive kernels under restated predicates,
                  against stepping.py, four cycles, isolated from the curls. The
                  complex half was a predicted null until 2026-08-19
-  guard          the contraction directive, MEASURED, PER ARM: the contract=fast
+  guard          the contraction directive, measured, per arm: the contract=fast
                  build must diverge on both storages (the pass's multiply-subtract
                  shapes and the forms' are contractable in both)
   signed_zero    +-0 lattice seeding with a census floor (the beta term is a pure
@@ -41,7 +41,7 @@ THE LEGS, and what each is FOR beyond the standard discipline:
                  position folded back into the curl, the mask, the ladder's dsig
                  and dsigu stages, fu leaking onto a plain cell), the per-chunk
                  form battery of the certified curl the source is derived from
-                 (KERNELS.md 7.2), the two record mutations, and the host's own
+                 (docs/development/certification.md), the two record mutations, and the host's own
                  choices (sub-lattice, conjugation, the coefficient's dt)
   refusals       every named refusal, including the two the ENGINE ITSELF raises
                  (offdiag+beta, beta off 2-D) rather than only the predicate's.
@@ -51,24 +51,24 @@ THE LEGS, and what each is FOR beyond the standard discipline:
   engine         engine-route plans + the disjointness sweep against every arm in
                  the tree, in both directions, and WHICH arm the shipped composer
                  selects per slot
-  shipped        THE COMPOSER'S OWN PLAN against stepping.py, 4 cycles. Added when
+  shipped        the composer's own plan against stepping.py, 4 cycles. Added when
                  the family was WIRED into `launch.plan_step`: that made a third
                  route to a beta kernel user-reachable, and `engine` checks only
                  WHICH arm it picks, not what the picked plan computes
 
-WHAT IS COMPARED: uint32 word equality on float32 and complex64 storage, never
+What is compared: uint32 word equality on float32 and complex64 storage, never
 ``allclose``. The compared arrays are the sub-step's TARGETS **and** its
 AUXILIARIES (``fu_*``) — the auxiliaries are STATE, so a kernel that is right for
 one launch and wrong forever after only diverges in a multi-cycle leg.
 
-NaN AND OVERFLOW NEEDLES ARE EXCLUDED, on this track as on Triton's: NaN sign and
+NaN and overflow needles are excluded, on this track as on Triton's: NaN sign and
 payload are IEEE-unspecified and measure the toolchain's mood.
 
-STATED WEAKNESS, unchanged from tranche 1 and repeated because a claim inherits
-it: there is NO PTX-EQUIVALENT AUDIT on this executor. ``compile_shader`` exposes
+STATED WEAKNESS, carried over from the earlier Metal kernel gates and repeated because a claim inherits
+it: there is no PTX-equivalent audit on this executor. ``compile_shader`` exposes
 no disassembly, so the mutation legs and this gate are the only arbiters.
 
-WHAT THIS GATE DOES NOT RUN, and where it is run instead. Every leg here launches a
+What this gate does not run, and where it is run instead. Every leg here launches a
 sub-step in ISOLATION from a seeded state. It never calls ``FdtdDriver.step()``, so
 the driver's interleave — sources injecting at both seams, the metallic wall passes,
 the symmetry and folded-ghost fills, all of it array-path work between the device
@@ -119,9 +119,9 @@ from gate_chunk_records import layer_record  # noqa: E402
 log, save, differing = kit.log, kit.save, kit.differing
 words = kit.words
 
-#: THE VERDICT READS BOTH A COUNT AND AN OUTCOME. `compared` is how many
+#: The verdict reads both a count and an outcome. `compared` is how many
 #: comparisons ran and `certified` is whether they all agreed; a gate that stamped
-#: `passed` from either alone would pass a round in which every comparison failed,
+#: `passed` from either alone would pass a run in which every comparison failed,
 #: or one in which nothing was compared. Both are accumulated here and handed to
 #: `kit.summarize`.
 TALLY = {"compared": 0, "disagreed": 0}
@@ -166,8 +166,8 @@ CASES: Tuple[Dict[str, Any], ...] = (
     {"name": "c3_brillouin_edge_metallic_y", "beta": 0.2, "courant": 0.35,
      "complex": True, "k": (0.25, 0.0, 0.0),
      "boundaries": ("periodic", "metallic", "periodic")},
-    # THE TWO ROWS BELOW WERE ADDED BECAUSE THE MATRIX ABOVE LEFT THE SECOND
-    # IN-PLANE AXIS UNMEASURED ON BOTH ARMS, and the enumeration had drifted with
+    # The two rows below were added because the matrix above left the second
+    # in-plane axis unmeasured on both arms, and the enumeration had drifted with
     # it (`special_kz._emittable_bloch_specialisations`).
     #
     # r4: a metallic Y. Every real case above walls X or nothing, so `curl1` — the
@@ -178,7 +178,7 @@ CASES: Tuple[Dict[str, Any], ...] = (
     {"name": "r4_metallic_y_kz2d", "beta": BETA_KZ2D, "courant": 0.34,
      "complex": False, "k": (0.0, 0.0, 0.0),
      "boundaries": ("periodic", "metallic", "periodic")},
-    # c4: TWO LIVE BLOCH PHASES, both general (neither 1+0j nor -1+0j). Every
+    # c4: two live Bloch phases, both general (neither 1+0j nor -1+0j). Every
     # complex case above rotates at most ONE wrapped plane, so `_phase_lines`'
     # per-axis operand table (x -> b_x/c_x, y -> a_y/c_y) was only ever half
     # exercised, and the guard leg's NAIVE control had no row where two general
@@ -192,7 +192,7 @@ CASES: Tuple[Dict[str, Any], ...] = (
 def case_named(name: str) -> Dict[str, Any]:
     """One case BY NAME.
 
-    THE LEGS USED TO INDEX ``CASES`` POSITIONALLY — ``CASES[1]`` was the mutation
+    The legs used to index ``CASES`` POSITIONALLY — ``CASES[1]`` was the mutation
     substrate, ``CASES[4]`` the complex one, ``CASES[0]``/``CASES[3]`` the refusals'
     fixtures. Inserting a row anywhere but the end silently re-points every one of
     them, and the artifact still records a green mutation leg against whatever case
@@ -205,7 +205,7 @@ def case_named(name: str) -> Dict[str, Any]:
 
 
 #: Configurations where the ownership mask is LIVE, which is what makes the beta
-#: term's POSITION (before the mask) byte-visible. PINNED BY NAME: on an all
+#: term's POSITION (before the mask) byte-visible. Pinned by name: on an all
 #: periodic grid nothing is masked, the position mutation is byte-invisible, and a
 #: position leg run only there would pass while measuring nothing.
 MASKED_CASES: Tuple[str, ...] = ("r2_metallic_x_negative_beta",
@@ -281,7 +281,7 @@ def build(case: Dict[str, Any], seed: int = SEED, scale: float = 1.0,
             array[...] = _complex_of(host, imag)
         else:
             array[...] = host
-    # A SEEDED STATE IS A MID-RUN ONE: H was started from B long ago, so
+    # A seeded state is a mid-run one: H was started from B long ago, so
     # ``stepping.separate_h_from_b`` must not run on it again -- the array path would
     # copy B into H and f_w on the dsigw cells at the first update_H, and no kernel
     # this gate launches does (``launch.h_start_reasons``).
@@ -321,7 +321,7 @@ def boundary_codes(grid, pml) -> Tuple[int, int, int]:
 
 
 def curl_coefficients(pml, suffix: str) -> Dict[str, Any]:
-    """The PML vectors AS THE ARRAY PATH HOLDS THEM — broadcast-shaped per axis.
+    """The PML vectors as the array path holds them — broadcast-shaped per axis.
 
     The reference transcription applies them with ``*=``, which needs the (nx,1,1)
     / (1,ny,1) / (1,1,nz) shapes; flattening them here would broadcast every axis
@@ -341,7 +341,7 @@ def flat_coefficients(pml, suffix: str) -> Dict[str, Any]:
 def oracle_after(fields, pml, base: Dict[str, Any], sub_step: str) -> Dict[str, Any]:
     """``stepping``'s own answer for one sub-step from ``base``; ``fields`` ends at ``base``.
 
-    The array path is the aligned oracle: its first PML sub-step installs the one-rank
+    The array path, in MEEP's per-chunk forms and order, is the oracle: its first PML sub-step installs the one-rank
     region plan the device legs bind as their chunk record (:func:`layer_record`).
     """
     restore(fields, base)
@@ -506,7 +506,7 @@ def leg_identity(payload: Dict[str, Any], out: str) -> None:
     Two halves and both matter:
 
     1. the REAL arm's ``HAS_BETA=0`` build against ``shaders.curl_source`` — the
-       kernel tranche 1 certified — launched on the same seeds through the
+       kernel already certified — launched on the same seeds through the
        certified plan. This is what makes "the beta kernel adds a term" a
        measurement rather than a description: everything ELSE in the body is
        pinned to already-certified bytes;
@@ -609,7 +609,7 @@ def leg_constitutive(payload: Dict[str, Any], out: str) -> None:
     comparison, where a constitutive defect and a curl defect would be
     indistinguishable; this leg isolates it.
 
-    THE COMPLEX HALF USED TO BE A PREDICTED NULL HERE, because the complex
+    The complex half used to be a predicted null here, because the complex
     constitutive companion did not exist and the leg recorded the refusal instead of
     measuring anything. It exists as of 2026-08-19 —
     ``complex_fields.ComplexConstitutivePlan`` under a one-clause restatement — so
@@ -639,7 +639,7 @@ def leg_constitutive(payload: Dict[str, Any], out: str) -> None:
                 f"{case['name']}/{slot}: the restated predicate ADMITS this beta "
                 f"run but the plan builder refused it")
         for cycle in range(CYCLES):
-            # THE CURL RUNS BETWEEN THE CONSTITUTIVE COMPARISONS, on the array path.
+            # The curl runs between the constitutive comparisons, on the array path.
             # Without it the second launch of update_H reads the state the first
             # one produced, the recurrence walks toward its own fixed point, and by
             # cycle three the comparison is between two nearly-still arrays. The
@@ -688,7 +688,7 @@ def leg_guard(payload: Dict[str, Any], out: str) -> None:
     On Metal this is a SOURCE variant rather than a launch keyword, so the two modes
     are two compiled kernels and the plan holds one per mode. Both arms carry
     contractable shapes: the forms' ``(p * km) - curl`` and the pass's
-    ``v - (si * df)``, spelled per part on the complex arm. THE FLOOR IS PER ARM: a
+    ``v - (si * df)``, spelled per part on the complex arm. The floor is per arm: a
     single sum would be satisfied by one storage while the other sat at zero.
     """
     rows: List[Dict[str, Any]] = []
@@ -769,12 +769,12 @@ def _seed_signed_zero_lattice(fields, grid, complex_storage: bool) -> Dict[str, 
 def leg_signed_zero(payload: Dict[str, Any], out: str) -> None:
     """A ±0 lattice through the beta term, census-floored.
 
-    The beta term is a PURE SCALAR-BY-FIELD PRODUCT, so a ±0 partner flows through
+    The beta term is a pure scalar-by-field product, so a ±0 partner flows through
     it unchanged into the recurrence — which makes this family's signed-zero class
     reachable from the seeding alone, unlike the constitutive sub-step (a fixed
     point of zero init). A census of zero is VACUOUS, not passed.
 
-    THE LATTICE IS PER VOLUME, and it was not. Every volume used to be seeded from
+    The lattice is per volume, and it was not. Every volume used to be seeded from
     an identical expression, so ``Ex == Ey == Ez == Bx == ...`` held exactly and the
     leg could not tell the beta term's two partners apart at all — ``beta_plus * b``
     and ``beta_minus * a`` read the same words — nor could it see a source-pointer
@@ -832,7 +832,7 @@ SUBNORMAL_SCALES = (("physical", 1.0, True), ("small_normal", 1e-20, True),
                     ("subnormal_band", 1e-38, False))
 
 
-#: Which cases the census runs over — ONE PER STORAGE FAMILY, and that is the
+#: Which cases the census runs over — one per storage family, and that is the
 #: correction. The leg used to run the real metallic case alone, so the complex
 #: arm's operands, results and beta intermediate were never censused at all while
 #: the claim covered complex64 storage. The complex intermediate is the one that
@@ -874,7 +874,7 @@ def leg_precondition(payload: Dict[str, Any], out: str) -> None:
     field near the bottom of the normal range can be pushed into the band by the
     term alone, with every stored array clean.
 
-    BOTH STORAGE FAMILIES ARE CENSUSED (:data:`PRECONDITION_CASES`). A claim that
+    Both storage families are censused (:data:`PRECONDITION_CASES`). A claim that
     names complex64 storage and censused only float32 would be stating a
     precondition it had checked on half its own scope.
     """
@@ -1180,7 +1180,7 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
 
     Four groups: the beta pass's own defects on each storage; the per-chunk form
     battery of the certified curl the source is derived from
-    (:mod:`metal_fused_battery`, KERNELS.md 7.2), whose needles resolve in the derived
+    (:mod:`metal_fused_battery`), whose needles resolve in the derived
     source because its forms ARE the certified text; the record mutations (the kernel
     right, the record it is handed wrong); and the host's own choices -- the Yee
     sub-lattice, the step_D connection, the coefficient's dt -- each a silent wrong
@@ -1344,7 +1344,7 @@ def leg_refusals(payload: Dict[str, Any], out: str) -> None:
     # 8. off-diagonal epsilon + beta in REAL storage: the predicate refuses AND
     #    the ENGINE RAISES. Both are recorded; the second is the stronger fact.
     #
-    # THE INSTALLATION IS A HARD PRECONDITION, not a best effort. This block used to
+    # The installation is a hard precondition, not a best effort. This block used to
     # call a method that does not exist on Fields, catch the AttributeError, record
     # it as a `note` and CONTINUE — so clause 12b was never put to the predicate,
     # the engine was never asked to raise, and the gate's own scope line still said
@@ -1456,9 +1456,9 @@ def leg_refusals(payload: Dict[str, Any], out: str) -> None:
 #: or because nobody imported it — would report "no co-admission" over a smaller
 #: table and look identical to a sweep that measured everything.
 #:
-#: THIS IS A FLOOR AND NO LONGER THE WHOLE TABLE, and the difference is the defect
+#: This is a floor and no longer the whole table, and the difference is the defect
 #: this constant caused. It was written as the complete expected membership while
-#: ``special_kz`` and ``bfast_curl`` were unregistered; when a later round WIRED
+#: ``special_kz`` and ``bfast_curl`` were unregistered; when a later change WIRED
 #: them, the literal still described the old tree. The floor cannot notice a family
 #: that JOINS, so :func:`assert_table_is_whole` now derives the rest from the
 #: modules' own ``ARMS`` tuples — every arm a family declares must be findable in
@@ -1474,10 +1474,10 @@ EXPECTED_REGISTERED_FAMILIES: Dict[str, Tuple[str, ...]] = {
 
 #: Modules that declare a module-level ``ARMS`` tuple, DISCOVERED rather than named.
 #:
-#: THE LITERAL THIS REPLACES READ ``("special_kz", "bfast_curl")`` AND WAS A
-#: DOUBLE-COUNT WAITING FOR A WIRING. It meant "families that register NOTHING",
+#: The literal this replaces read ``("special_kz", "bfast_curl")`` and was a
+#: double-count waiting for a wiring. It meant "families that register NOTHING",
 #: and :func:`unregistered_arms` fed its entries into the sweep as a second,
-#: supposedly disjoint source. Measured 2026-08-15, after another round wired this
+#: supposedly disjoint source. Measured 2026-08-15, after a later change wired this
 #: family: ``arms.registered('step_B')`` and ``special_kz.ARMS`` return THE SAME
 #: ``ArmSpec`` OBJECTS, so every beta case reported ``step_B`` co-admitted by
 #: ``['wired:special_kz_real/...', 'unregistered:special_kz_real/...']`` — one arm,
@@ -1494,7 +1494,7 @@ def arm_declaring_modules() -> Tuple[str, ...]:
 def load_every_family() -> Tuple[str, ...]:
     """Import every family module, so the arm registry is a fact and not a side effect.
 
-    THE REGISTRY'S MEMBERSHIP IS AN IMPORT SIDE EFFECT and this leg used to inherit
+    The registry's membership is an import side effect and this leg used to inherit
     whatever the gate happened to have imported. Measured 2026-08-15 from this
     gate's own import set: ``arms.registered('step_B')`` returned ``[pml_curl]``
     alone — ``complex_fields`` registers on all four slots and ``offdiag_update_e``
@@ -1550,7 +1550,7 @@ def weld_admitters(names: List[str]) -> List[str]:
 
 
 def admitters_for(slot: str, context: Any) -> List[str]:
-    """Every product that admits this slot — WIRED, UNWIRED-REGISTERED and UNREGISTERED.
+    """Every product that admits this slot — wired, unwired-registered and unregistered.
 
     Unwired arms are consulted rather than skipped, and that is the correction that
     matters most here: the pair most likely to collide on a curl slot is THIS
@@ -1559,7 +1559,7 @@ def admitters_for(slot: str, context: Any) -> List[str]:
     but it is RECORDED as an admitter string so a predicate that started raising
     cannot pass as a refusal without appearing in the artifact.
 
-    EACH ARM APPEARS AT MOST ONCE. :func:`unregistered_arms` subtracts the registry
+    Each arm appears at most once. :func:`unregistered_arms` subtracts the registry
     by object identity, so a family that both declares and registers its arms — as
     this one now does — contributes one row and not two. Before that subtraction
     every beta case failed the disjointness assertion against ITSELF.
@@ -1574,7 +1574,7 @@ def admitters_for(slot: str, context: Any) -> List[str]:
             names.append(f"{spec.family}/{spec.label}:RAISED {exc!r}")
             continue
         if getattr(verdict, "covered", False):
-            # A WELD IS TAGGED APART FROM A PEER, and not by ``wired``. A weld
+            # A weld is tagged apart from a peer, and not by ``wired``. A weld
             # replaces a whole seam and its predicate CONTAINS the wired arm's by
             # construction, so it always co-admits with the arm it welds; a peer
             # replaces one slot and two peers on a slot is the over-covering
@@ -1613,7 +1613,7 @@ def assert_table_is_whole(payload: Dict[str, Any]) -> Dict[str, Any]:
     third state, and a declared arm that is neither is an arm the composer will
     never consult and no sweep would notice.
 
-    THE SWEEP MUST ALSO SEE THIS FAMILY. The old form asserted a non-empty
+    The sweep must also see this family. The old form asserted a non-empty
     unregistered list to guarantee that; now that this family registers, the same
     guarantee is spelled directly against the registry.
     """
@@ -1733,13 +1733,13 @@ def leg_engine(payload: Dict[str, Any], out: str) -> None:
                 f"{case['name']}: {slot} is admitted by WELD(s) {welds} while no "
                 f"peer arm admits it; the weld covers a configuration no certified "
                 f"sub-step arm covers")
-        # THE VACUITY FLOOR, without which `<= 1` passes hardest when the sweep is
+        # The vacuity floor, without which `<= 1` passes hardest when the sweep is
         # broken. Zero admitters satisfies the disjointness assertion perfectly, so
         # a product switched off by its harness STRENGTHENS the green. Every case
         # in CASES is a beta run this
         # family covers on both curl slots, so anything less than one admitter
         # there means the sweep measured a product it had switched off.
-        # COUNTED OVER PEERS, for the same reason the disjointness above is: a weld
+        # Counted over peers, for the same reason the disjointness above is: a weld
         # co-admits by construction, so counting it here would make "exactly one"
         # unsatisfiable on any slot a weld covers. The floor's PURPOSE is unchanged
         # — zero peers still means the sweep switched off the product it measures.
@@ -1773,14 +1773,14 @@ def leg_engine(payload: Dict[str, Any], out: str) -> None:
             plan_object.run()
             assert plan_object.launches == 1
         residency.sync_out()
-        # THE ASSERTION HERE USED TO BE ITS OWN INVERSE, and the change is a fact
+        # The assertion here used to be its own inverse, and the change is a fact
         # about the tree rather than a relaxation. It read `slot not in
         # shipped.replaces` — "clause 12 refuses every shipped arm on a beta run" —
-        # which was true only while this family was UNWIRED. A later round wired it,
+        # which was true only while this family was unwired. A later change wired it,
         # so the shipped composer now selects THIS family on both curl slots, and
         # the old form would have failed on the wiring working. The replacement is
-        # strictly stronger: the slot must be filled, and it must be filled BY THIS
-        # FAMILY. "Something replaced step_B" would still pass if the plain curl had
+        # strictly stronger: the slot must be filled, and it must be filled by this
+        # family. "Something replaced step_B" would still pass if the plain curl had
         # started admitting beta runs, which is the actual hazard clause 12 guards.
         for slot in ("step_B", "step_D"):
             assert slot in shipped.replaces, (
@@ -1798,7 +1798,7 @@ def leg_engine(payload: Dict[str, Any], out: str) -> None:
         row["shipped_selected"] = {slot: shipped.selected.get(slot)
                                    for slot in ("step_B", "step_D",
                                                 "update_H", "update_E")}
-        # THE CONSTITUTIVE HALF IS NO LONGER ASYMMETRIC, and this block is where
+        # The constitutive half is no longer asymmetric, and this block is where
         # that shows up as a composition fact rather than as prose. Until 2026-08-19
         # a complex beta run kept its constitutive pair on the array path — there
         # was no complex companion — and this asserted the EMPTY list, with a
@@ -1891,7 +1891,7 @@ def leg_engine(payload: Dict[str, Any], out: str) -> None:
 def leg_shipped(payload: Dict[str, Any], out: str) -> None:
     """The plan ``launch.plan_step`` SELECTS, against ``stepping.py``, 4 cycles.
 
-    THIS LEG EXISTS BECAUSE THE FAMILY WAS WIRED, and until it was, nothing needed
+    This leg exists because the family was wired, and until it was, nothing needed
     it. Three routes reach a beta kernel and this gate previously certified two:
     ``plan_*_from_arrays`` (every other leg's route, and the mutation seam) and
     ``plan_beta_*`` from the engine's own objects (``leg_engine``). The third is
@@ -1902,16 +1902,16 @@ def leg_shipped(payload: Dict[str, Any], out: str) -> None:
     coefficient block from the wrong sub-step's suffix — would have passed every
     leg in this file while a user got wrong bytes.
 
-    IT IS NOT A DUPLICATE OF ``leg_reference``: that leg builds the plan itself, so
+    It is not a duplicate of ``leg_reference``: that leg builds the plan itself, so
     the two agree only if the composer's binding matches the harness's. Here the
     harness supplies the SEEDS and nothing else, and the composer supplies the plan.
 
-    THE COMPARED SET AND THE DISCIPLINE ARE THE FAMILY'S USUAL ONES: uint32 words
+    The compared set and the discipline are the family's usual ones: uint32 words
     over targets AND auxiliaries, the device's own answer fed back so cycle N+1
     starts from device state, and `assert_moved` on every row so a no-op cannot
     agree with a no-op.
 
-    IT SWEEPS ALL FOUR SUB-STEPS AS OF 2026-08-19, not just the two curls. Before
+    It sweeps all four sub-steps as of 2026-08-19, not just the two curls. Before
     that a complex beta run had no constitutive companion, so half the whole step
     was on the array path and there was nothing for the composer to be checked on;
     the curl-only sweep was the honest shape. Now both constitutive slots compose on
@@ -2000,13 +2000,13 @@ REQUIRED = tuple(name for name, _ in LEGS)
 def weld_state() -> Dict[str, Any]:
     """The LIVE host/kernel weld, and whether the checked-in one still describes it.
 
-    TWO DIFFERENT FACTS, and conflating them is how a certified artifact stops
+    Two different facts, and conflating them is how a certified artifact stops
     naming the bytes it certified. ``fingerprints.json`` records what was last
     welded DELIBERATELY; this record is what THIS run actually launched. They
     normally coincide and the interesting case is when they do not.
 
-    A DRIFT IS RECORDED, NOT FAILED, and the asymmetry is deliberate. This gate
-    launches the live tree and hashes it, so a host module edited by another round
+    A drift is recorded, not failed, and the asymmetry is deliberate. This gate
+    launches the live tree and hashes it, so a host module edited by another change
     leaves the claim well defined — it is a claim about the tree as it stands, and
     re-running the gate is the correct response to the edit, not refusing to run.
     What would be dishonest is minting a green artifact whose only byte record is a
@@ -2043,7 +2043,7 @@ def weld_state() -> Dict[str, Any]:
         "drifted_kernel_sources": sources,
         "reads_as": (
             "the live hashes are what this run certified; a drifted HOST module "
-            "means another round edited the tree after the weld was cut, and a "
+            "means another change edited the tree after the weld was cut, and a "
             "drifted KERNEL SOURCE would mean a shipped specialisation changed "
             "without the weld being re-cut — a correctness event, not a "
             "bookkeeping one"),
@@ -2062,7 +2062,7 @@ def main() -> int:
     kernel_dir = os.path.join(API_ROOT, "meep_gpu", "metal_kernels")
     payload: Dict[str, Any] = {
         "environment": environment,
-        # THE CLAIM IS ONLY AS GOOD AS THE PRECONDITION IT WAS CERTIFIED UNDER.
+        # The claim is only as good as the precondition it was certified under.
         "subnormal_policy": subnormal.mps_policy_report(),
         "provenance": kit.provenance(out_dir, {
             "stepping.py": os.path.join(API_ROOT, "meep_gpu", "stepping.py"),
@@ -2078,11 +2078,11 @@ def main() -> int:
             "metal_kernels/coverage.py": os.path.join(kernel_dir, "coverage.py"),
             "metal_kernels/preconditions.py": os.path.join(kernel_dir,
                                                            "preconditions.py"),
-            # THE PLANNER IS IN THIS FAMILY'S PATH AND WAS NOT HASHED. `leg_engine`
+            # The planner is in this family's path and was not hashed. `leg_engine`
             # calls `launch.plan_step` and asserts on `shipped.replaces` in BOTH
             # directions, and `arms`/`registry` decide the table that sweep is run
             # against — so their bytes decide a verdict this artifact stamps.
-            # Measured 2026-08-15: `launch.py` was edited by a concurrent round
+            # Measured 2026-08-15: `launch.py` was edited by a concurrent change
             # AFTER the checked-in weld was cut, and neither the hand-listed
             # provenance above nor `kernel_sources` (unchanged — no shipped
             # specialisation moved) could see it. `weld` below is the general fix;

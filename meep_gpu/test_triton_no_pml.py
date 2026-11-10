@@ -7,7 +7,7 @@ measured verdict and the source it was measured on cannot drift apart, (b) that
 the optional dependency stays optional, and (c) the predicate itself, which is
 pure Python and is the half that decides whether a wrong answer is possible.
 
-THE SHIPPED MODULE OWNS THE OPTIONAL-DEPENDENCY BOUNDARY. It installs an
+The shipped module owns the optional-dependency boundary. It installs an
 unlaunchable sentinel when Triton is absent, leaving the pure-Python predicate and
 refusal path usable on every host. The kernel body is never executed here and
 could not be — there is no device. Separate tests block Triton at import time,
@@ -159,7 +159,7 @@ def test_the_no_pml_composition_fingerprint_names_the_exact_gated_bytes():
     specialized = record["specialized_kernel_sources"]["no_pml.py"]
     assert specialized["kernel"] == "plain_curl_step"
     live = hashlib.sha256(MODULE_PATH.read_bytes()).hexdigest()
-    # ONE HOME FOR THE RULE (device_identity.py:209). The kernel this entry pins
+    # One home for the rule (device_identity.py:209). The kernel this entry pins
     # is a ``@triton.jit`` body plus the constants it reads, and the test above
     # already holds that segment against KERNEL_SOURCE_SHA256 -- so an edit the
     # shared rule proves reaches neither leaves the record true. False for

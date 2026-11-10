@@ -2,7 +2,7 @@
 """Time the seam-fused products against the certified single arms they replace.
 
 =============================================================================
-THE QUESTION, AND THE THREE IT IS NOT
+The question, and the three it is not
 =============================================================================
 
 ``bench_cuda_kernels_vs_array.py`` timed the hand-written CUDA kernels against
@@ -13,11 +13,11 @@ now: the three kernel tables ship seam-fused products, the driver dispatches
 them by release rather than by opt-in, and nothing in this tree has ever put a
 stopwatch on one.
 
-The comparison never made is FUSED PRODUCT -> THE CERTIFIED SINGLES IT REPLACES,
+The comparison never made is fused product -> the certified singles it replaces,
 on the shipped route, over the whole step. That is what this file measures:
 
-* not GPU vs CPU (``the design notes (meep-gpu-vs-cpu-throughput)`` answered it, and this file
-  does not re-derive it),
+* not GPU vs CPU (the same-machine CPU-vs-GPU throughput benchmark answered it, and this
+  file does not re-derive it),
 * not a per-sub-step kernel ratio (the 08-21 campaign answered that, and a fused
   product does not HAVE a sub-step to isolate -- that is what fusing means),
 * not a corpus-wide or end-to-end claim: the cases timed here are the route
@@ -25,7 +25,7 @@ on the shipped route, over the whole step. That is what this file measures:
   distinct compositions, not a sample drawn from the corpus by frequency.
 
 =============================================================================
-THE THREE LEGS, AND WHY THE MIDDLE ONE IS THE SUBJECT
+The three legs, and why the middle one is the subject
 =============================================================================
 
 A fused product P occupies two or more slots that the certified SINGLE arms
@@ -37,7 +37,11 @@ the route gate proves bit-identical:
 * ``fused``   -- the shipped route. ``MEEP_GPU_FUSE_ARMS`` UNSET for a release
                  case, so clause (8) admits the arm and the leg measures the
                  path a user takes. An opt-in case names its arms, because there
-                 the switch is the only route (``_fuse_env``'s own rule).
+                 the switch is the only route (``_fuse_env``'s own rule). The
+                 dispatch preference is the shape rule's (``MEEP_GPU_PREFER=span``,
+                 :func:`resolve_preference`): the leg times the product the release
+                 admits, which the package default gives way to its singles where
+                 a timing record prices it slower, and a row prices that trade.
 * ``unfused`` -- ``MEEP_GPU_FUSE_ARMS`` = the package's veto token. Every
                  certified single arm dispatches; nothing fuses. THIS IS THE
                  DENOMINATOR the speedup is quoted against.
@@ -50,10 +54,10 @@ A ratio against ``array`` is also recorded, and is the number comparable to the
 that.
 
 =============================================================================
-WHAT WOULD MAKE THE NUMBER A LIE, AND THE FLOOR AGAINST EACH
+What would make the number a lie, and the floor against each
 =============================================================================
 
-1. **THE PRODUCT NEVER DISPATCHED.** A leg that silently fell to the array path
+1. **The product never dispatched.** A leg that silently fell to the array path
    would be timed against itself and report 1.00x, or noise. Two independent
    instruments, and BOTH must agree:
 
@@ -71,7 +75,7 @@ WHAT WOULD MAKE THE NUMBER A LIE, AND THE FLOOR AGAINST EACH
    A row failing either is marked ``substitution_proved: false`` and its ratios
    are recorded but NOT reported as a speedup.
 
-2. **THE LEGS RAN DIFFERENT ARITHMETIC.** Every window starts from ONE frozen
+2. **The legs ran different arithmetic.** Every window starts from ONE frozen
    state -- fields, PML, and ``step_count``, which is what ``driver.time`` is a
    property of, so restoring it restores the SOURCE PHASE too. A restore that
    left the clock running would have each window injecting a different source
@@ -80,29 +84,36 @@ WHAT WOULD MAKE THE NUMBER A LIE, AND THE FLOOR AGAINST EACH
    own precondition), and the fused and array legs are compared word-for-word
    AFTER the last one.
 
-3. **THE WINDOW MEASURED SUBMISSION.** CuPy launches are asynchronous. Every
+3. **The window measured submission.** CuPy launches are asynchronous. Every
    window brackets an explicit device synchronize before ``t0`` and again before
    ``t1`` -- the 08-21 hazard 1, and the sync before ``t0`` is what keeps the
    previous leg's queued work out of this window.
 
-4. **A COMPILE LANDED INSIDE THE TIMER.** Warmup runs outside every timer and is
+4. **A compile landed inside the timer.** Warmup runs outside every timer and is
    long enough to reach every kernel the window will. The instrument is the
    launch counters' own kernel-name set: a name appearing inside a timed window
    that warmup never saw is a first launch, hence a compile.
    ``new_kernels_inside_timed_region`` is on every row and must be 0.
 
-5. **ORDER, NOT FUSION, MOVED THE NUMBER.** A box that drifts warmer or a
+5. **Order, not fusion, moved the number.** A box that drifts warmer or a
    neighbour that lands mid-run charges whichever leg ran second. Windows
    alternate AB/BA across repeats, so a monotone drift cancels to first order,
-   and ``spread`` (the sibling campaigns' (max-min)/median) gates every leg.
+   and ``spread`` (the sibling campaigns' (max-min)/median over a leg's windows) is
+   recorded on every leg, in ``per_leg`` and in ``window_spread``. It gates nothing
+   (the between-pass gate, 2026-10-16): a figure is a median of pass medians, so a leg
+   enters on the spread of its PASS rates, which the cutters read over a row's
+   passes (``timing_rows.py``, ``cut_timing_record.py``). Until then a leg whose
+   windows spread above 5 % made the row ``TIMED-NOT-REPORTABLE``; on the Mac's
+   2026-10-16 ladder that floor struck medians that reproduced across passes to
+   0.16-2.44 %, its window jitter coming from one-window blips.
 
-6. **THE STEP LOOP WAS NOT WHAT RAN.** DFT and flux monitors accumulate inside
+6. **The step loop was not what ran.** DFT and flux monitors accumulate inside
    ``driver.run`` and are host work no fused kernel touches. They are DETACHED
    for the timed windows and reattached after, identically on all three legs;
    every row records ``monitors_detached`` and the counts. The subject is the
    step path, and a monitor left attached dilutes every ratio toward 1.
 
-7. **THE ROW CANNOT SAY WHICH CODE IT TIMED.** Added 2026-09-19. Two host-overhead
+7. **The row cannot say which code it timed.** Added 2026-09-19. Two host-overhead
    fixes landed that day -- ``deposit_repair.py``'s linear-index repair route and
    ``cuda_kernels/fused_pairs.py`` holding source/arguments per plan -- and the
    2026-09-17 rows carry no digest, so a row timed after them could not be told
@@ -119,7 +130,7 @@ WHAT WOULD MAKE THE NUMBER A LIE, AND THE FLOOR AGAINST EACH
    three-target bracket is a sound measurement of a bracket that did not get cheaper.
 
 =============================================================================
-THE METAL TABLE (2026-09-20), AND WHAT EACH FLOOR MEANS ON IT
+The Metal table (2026-09-20), and what each floor means on it
 =============================================================================
 
 ``--drive-table metal`` named a case list from this file's first day and every
@@ -133,7 +144,7 @@ grid size, against an array step of ~0.5 ms; the expected honest row is a fused
 step FAR SLOWER than the array path, and this file's job is to be able to say so
 with the same floors rather than to refuse the measurement.
 
-1. **Substitution** is proved by the ROUTE GATE'S OWN PROOF, imported and not
+1. **Substitution** is proved by the route gate's own proof, imported and not
    re-spelt: ``gate_dispatch_metal_route.MetalLaunchCounter`` (two counts of one
    event -- ``KernelPlan.launches`` and a ``CountingFunction`` on every compiled
    callable, with owners it could not wrap reported), ``substitution_proof`` (EXACT
@@ -184,7 +195,7 @@ read False; ``smoke`` is its own field on both. A ``prefer_gpu=False`` lift is n
 the NumPy reference, which never dispatches, so it cannot be a timed leg.
 
 =============================================================================
-WHAT A ROW HERE LICENSES
+What a row here licenses
 =============================================================================
 
 One host, one GPU, single precision, the shipped dispatch route, the step loop
@@ -215,7 +226,7 @@ import statistics
 import subprocess
 import sys
 import time
-from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple
 
 import numpy
 
@@ -256,7 +267,7 @@ def table_module(name: str) -> Any:
 def metal_host_refusal() -> Optional[str]:
     """Why ``--drive-table metal`` cannot run on this host, or ``None`` on an Apple GPU.
 
-    ``prefer_gpu=True`` is THIS HOST'S GPU: on a CUDA host the legs would lift CuPy
+    ``prefer_gpu=True`` is this host's GPU: on a CUDA host the legs would lift CuPy
     drivers and time the NVIDIA tables under Metal labels, and on a host with no GPU
     the first lift raises. Refused up front, by name, before a row is written.
     """
@@ -351,7 +362,7 @@ def freeze(driver: Any) -> Dict[str, Any]:
     and left the clock running would have window two injecting a different sample
     of the same source, which is a different problem timed under the same name.
 
-    AND THE CLOCK IS ENOUGH, which was checked rather than assumed: every
+    And the clock is enough, which was checked rather than assumed: every
     ``inject`` computes ``self.current(time, dt)`` from the time it is handed and
     keeps no accumulator, so a source has no state of its own to restore. The
     arrays are enough for everything else for a stronger reason -- this walk is
@@ -360,7 +371,7 @@ def freeze(driver: Any) -> Dict[str, Any]:
     correctness instrument, not a gap this file opened. Dispersive cases are
     covered: ``fields.polarizations[i]`` sits at depth 3 of a walk that goes to 5.
 
-    A NUMPY SCALAR IS A VALUE, NOT STORAGE, and is frozen as one (``scalars``). The
+    A NumPy scalar is a value, not storage, and is frozen as one (``scalars``). The
     walk admits anything with a dtype, a shape and a size, and since the bit-parity
     recurrence constants (``dispersion.realnum_constants``) a dispersive leg's
     ``fields.polarizations[i].constants`` holds four ``numpy.float32`` words. Such a
@@ -393,11 +404,11 @@ def _residency_of(driver: Any) -> Any:
 
 
 def thaw(driver: Any, frozen: Dict[str, Any]) -> None:
-    """Restore the frozen state, THROUGH THE RESIDENCY when one is holding.
+    """Restore the frozen state, through the residency when one is holding.
 
     ``live_arrays`` walks ``__dict__``, which no read barrier covers, and this
     function writes through what it returns. Under a held residency that is the
-    exact hole the plan's section 4.5 named: the arrays are SEALED, so the first
+    hole a write past the read barrier opens: the arrays are SEALED, so the first
     write raised ``assignment destination is read-only`` on the first held bench
     run (2026-09-22, ``pml_3d``, ``size_chunk`` -> ``thaw``). Acquiring each
     array for write lifts its seal, marks it HOST_OWNED so the next launch syncs
@@ -408,7 +419,7 @@ def thaw(driver: Any, frozen: Dict[str, Any]) -> None:
     # driver a bare namespace), and on it a plain host write is exactly right.
     acquire = getattr(_residency_of(driver), "acquire_write", None)
     live = live_arrays(driver)
-    # THE SCALARS ARE CHECKED, NEVER WRITTEN (:func:`freeze`). One a step rebound to
+    # The scalars are checked, never written (:func:`freeze`). One a step rebound to
     # another value cannot be restored through the walk, so the window would start
     # from a state the frozen one is not: refused by name, before any array is written.
     rebound = sorted(name for name, value in (frozen.get("scalars") or {}).items()
@@ -432,7 +443,7 @@ def thaw(driver: Any, frozen: Dict[str, Any]) -> None:
 def moved_words(driver: Any, frozen: Dict[str, Any]) -> int:
     """Differing BYTES between the frozen state and the live one.
 
-    THE FLOOR IS ``> 0``. A window that advanced the clock and moved no bits did
+    The floor is ``> 0``. A window that advanced the clock and moved no bits did
     not step: it is the shape a silently-refused plan takes when the refusal
     happens below the dispatch report, and it would otherwise be timed and
     reported as the fastest row in the table.
@@ -441,7 +452,7 @@ def moved_words(driver: Any, frozen: Dict[str, Any]) -> int:
     live = live_arrays(driver)
     total = 0
     for name, values in frozen["arrays"].items():
-        # VIEWED AS BYTES, NOT AS uint32. The comparator upstream can assume a
+        # Viewed as bytes, not as uint32. The comparator upstream can assume a
         # 4-byte field dtype because it only ever walks fields; this walk also
         # reaches PML flags and index arrays, and an int8 or bool among them makes
         # a uint32 view raise rather than compare. Bytes answer the only question
@@ -450,7 +461,7 @@ def moved_words(driver: Any, frozen: Dict[str, Any]) -> int:
         b = xp.ascontiguousarray(live[name]).reshape(-1).view(xp.uint8)
         total += int(xp.count_nonzero(a != b))
     for name, value in (frozen.get("scalars") or {}).items():
-        # ON THE HOST: a scalar is a host value whatever ``xp`` is.
+        # On the host: a scalar is a host value whatever ``xp`` is.
         a = numpy.asarray(value).reshape(-1).view(numpy.uint8)
         b = numpy.asarray(live.get(name, value)).reshape(-1).view(numpy.uint8)
         total += (int(numpy.count_nonzero(a != b)) if a.shape == b.shape
@@ -473,7 +484,7 @@ def non_finite(driver: Any) -> int:
 def _loaded_mps() -> Optional[Any]:
     """``torch.mps`` when torch is ALREADY imported and the device is there, else None.
 
-    READ OUT OF ``sys.modules``, NEVER IMPORTED. The Metal table imports torch when it
+    Read out of ``sys.modules``, never imported. The Metal table imports torch when it
     builds a plan, so a process in which that table served has it loaded; a process in
     which it is not loaded queued nothing on the device, and importing it here to find
     that out would cost a Linux GPU host an import it has no use for.
@@ -505,7 +516,7 @@ def sync_for(driver: Any) -> Callable[[], None]:
     caller passed: Triton and hand-CUDA both step CuPy arrays, so a sync chosen
     by backend name would need two spellings for one fact.
 
-    A HOST LIFT IS NOT THEREBY DEVICE-FREE, which is what this function assumed
+    A host lift is not thereby device-free, which is what this function assumed
     until 2026-09-20. The Metal table steps a NumPy engine and launches on an MPS
     device beside it, so ``xp`` reads ``numpy`` on the one table whose launches are
     asynchronous AND invisible to the array module. A host lift in a process with
@@ -630,7 +641,7 @@ def parse_thermal(text: str) -> Dict[str, Any]:
 def foreign_device_processes(ps_text: str, own_pid: int) -> List[str]:
     """Every OTHER process driving the Metal device, from ``ps -axo pid=,ppid=,command=``.
 
-    EXCLUDED BY NUMBER: this process, its children (the sleep-assertion tool the
+    Excluded by number: this process, its children (the sleep-assertion tool the
     driver prefixes leaves a helper child holding this process's own argv) and its
     ANCESTORS. The last was measured on the first device run: the shell that launched
     the bench carries the bench's whole command line in its own, matched the pattern,
@@ -651,6 +662,17 @@ def foreign_device_processes(ps_text: str, own_pid: int) -> List[str]:
     return [f"{pid} {ppid} {command[:200]}" for pid, ppid, command in table
             if pid not in mine and ppid != own_pid
             and _DEVICE_NEIGHBOURS.search(command)]
+
+
+def recorded_neighbour(line: str) -> str:
+    """One :func:`foreign_device_processes` line as a record writes it: the program and the
+    harness script :data:`_DEVICE_NEIGHBOURS` matched (``neutral_ids.process_label``); the
+    pid, the parent's pid and the arguments are dropped."""
+    import neutral_ids  # noqa: PLC0415
+    parts = str(line).split(None, 2)
+    command = parts[2] if len(parts) == 3 and parts[0].isdigit() else str(line)
+    matched = _DEVICE_NEIGHBOURS.search(command)
+    return neutral_ids.process_label(command, matched and matched.group())
 
 
 #: ``sysctl`` lives in ``/usr/sbin``, which the reference environment's ``PATH``
@@ -682,12 +704,17 @@ def host_state() -> Dict[str, Any]:
     a thermal limit, and it shares its one device with whatever else is driving it.
     Each is one cheap platform report, read OUTSIDE every timer, before and after each
     case. Off this platform every field reads None and no command runs.
+
+    Written as it leaves the machine: the node as the machine id, and each neighbour
+    driving the device by its command alone (through ``neutral_ids.text``), never its
+    pid or its parent's: the count is what a reader reads.
     """
+    import neutral_ids  # noqa: PLC0415
     model, cpu = _static_host_facts()
     state: Dict[str, Any] = {
         "utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "platform": sys.platform, "machine": platform.machine(),
-        "node": platform.node(), "model": model, "cpu": cpu,
+        "node": neutral_ids.machine_id(), "model": model, "cpu": cpu,
         "cpu_count": os.cpu_count(), "power_source": None, "on_ac_power": None,
         "battery_percent": None, "powermode": None, "low_power_mode": None,
         "cpu_speed_limit": None, "thermal_report": None, "foreign_processes": [],
@@ -703,8 +730,9 @@ def host_state() -> Dict[str, Any]:
               lambda text: {"powermode": parse_powermode(text)}),
              ("thermal", ("pmset", "-g", "therm"), parse_thermal),
              ("neighbours", ("ps", "-axo", "pid=,ppid=,command="),
-              lambda text: {"foreign_processes":
-                            foreign_device_processes(text, os.getpid())}))
+              lambda text: {"foreign_processes": [
+                  recorded_neighbour(line)
+                  for line in foreign_device_processes(text, os.getpid())]}))
     for name, command, parse in reads:
         try:
             state.update(parse(_read_command(command)))
@@ -787,7 +815,7 @@ def provenance(table: Optional[str] = None) -> Dict[str, Any]:
     modules are imported once: a file edited mid-campaign changes the tree, not the
     code the process is running.
 
-    GIT IS BEST-EFFORT AND NEVER FATAL. A campaign staged by ``tar`` over ``ssh`` onto
+    Git is best-effort and never fatal. A campaign staged by ``tar`` over ``ssh`` onto
     the GPU host has no ``.git`` at all, so ``head`` is None there and ``error`` says
     why; the digests still stand, and are the fact that matters -- ``HEAD`` alone
     cannot say which bytes a dirty tree ran. ``dirty`` is None per path when git could
@@ -814,11 +842,11 @@ def provenance(table: Optional[str] = None) -> Dict[str, Any]:
         paths[key] = os.path.relpath(path, REPO_API) if inside else path
     git: Dict[str, Any] = {"head": None, "dirty": {}, "porcelain": {}, "error": None}
     try:
-        # THE CHECKOUT MUST BE THIS TREE'S OWN. ``git -C`` walks up to the first
+        # The checkout must be this tree's own. ``git -C`` walks up to the first
         # repository above it, so a tree copied INTO another checkout -- a timing
         # ladder's snapshot under a results directory -- answered with the enclosing
-        # repository's HEAD and ran ``git status`` there (the 1.0 round's Mac ladder
-        # recorded an unrelated commit on its step-0 row). That repository does not
+        # repository's HEAD and ran ``git status`` there (the first 1.0 timing's
+        # Mac ladder recorded an unrelated commit on its step-0 row). That repository does not
         # track this tree's copy of the bench, which is the test: an untracked bench
         # means the HEAD found is not the code that ran, and none is recorded.
         _git("ls-files", "--error-unmatch", "--", os.path.join(REPO_API, BENCH_RELATIVE))
@@ -849,8 +877,13 @@ def provenance(table: Optional[str] = None) -> Dict[str, Any]:
             git["porcelain"][key] = status
     git["any_dirty"] = (None if git["error"] is not None
                         else any(bool(v) for v in git["dirty"].values()))
-    return {"sha256": sha, "paths": paths, "not_imported": not_imported,
-            "git": git,
+    # A source outside the tree is named by its absolute path in process (git reads it
+    # there); the record writes it under its root's label (``neutral_ids.path``).
+    import neutral_ids  # noqa: PLC0415
+    return {"sha256": sha, "paths": {key: neutral_ids.path(value)
+                                     for key, value in paths.items()},
+            "not_imported": neutral_ids.value(not_imported),
+            "git": neutral_ids.value(git),
             "utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
 
 
@@ -954,7 +987,7 @@ def repair_route_total(entries: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
     out: Dict[str, Any] = {name: sum(int(e.get(name, 0)) for e in entries)
                            for name in REPAIR_COUNTERS}
     for name in RESTRICTION_COUNTERS:
-        # ABSENT IS NOT ZERO: windows that never recorded the counter sum to no entry.
+        # Absent is not zero: windows that never recorded the counter sum to no entry.
         if any(name in e for e in entries):
             out[name] = sum(int(e.get(name, 0)) for e in entries)
     seen: List[str] = []
@@ -993,7 +1026,7 @@ ONLY_ARMS: List[str] = []
 def default_reached_by(module: Any) -> str:
     """The route this table reaches a fused arm by when a DRIVE row does not say.
 
-    READ OFF THE TABLE'S OWN ``_fuse_env``, because the two disagree and both are
+    Read off the table's own ``_fuse_env``, because the two disagree and both are
     right: the NVIDIA gate defaults to the opt-in (the switch was the only route until
     the release), the Metal gate to ``release`` (its envelope admits the whole released
     set and the opt-in is the exception). A default spelled here instead ran every
@@ -1025,8 +1058,14 @@ def leg_env(module: Any, spec: Dict[str, Any],
         # removes every one. Measured 2026-09-17: a leg asked for `fused pair B`
         # alone installed `['fused pair B', 'fused pair D']` exactly as before.
         # The narrowing is done by :func:`narrowed_release` around the plan freeze.
-        return module._fuse_env(spec["arms"],
-                                spec.get("reached_by", default_reached_by(module)))
+        env = module._fuse_env(spec["arms"],
+                               spec.get("reached_by", default_reached_by(module)))
+        # THE DISPATCH PREFERENCE IS THE CAMPAIGN'S (:func:`campaign_preference`), and
+        # it overrides whatever the gate's leg names, so the value a row records is
+        # the value its fused leg ran under.
+        preference = campaign_preference()
+        env[preference["variable"]] = preference["value"]
+        return env
     if label == "unfused":
         return module.unfused_env()
     return dict(module.ARRAY_ENV)
@@ -1044,27 +1083,98 @@ def launch_witnessed(row: Dict[str, Any]) -> bool:
 
 
 def total_launches(delta: Dict[str, Any]) -> int:
-    """BOTH witnesses summed. ``reference_cuda_no_unfused_baseline``: a table's own
+    """BOTH witnesses summed (the CUDA table has no unfused baseline): a table's own
     counter sees only its own launches, and a weld that trades launches across
     tables moves each one in a direction that means nothing on its own."""
     return int(delta["triton"]["total"]) + int(delta["cuda"]["total"])
 
 
 def plan_of(leg: Dict[str, Any]) -> Dict[str, Any]:
-    return e2e._plan_summary(leg["driver"].fast_path_report())
+    """The leg's plan summary, as the route gates read it, plus its preference block.
+
+    ``e2e._plan_summary`` keeps the plan's slots, arms and composition; the dispatch
+    record's ``preference`` block (the mode, the timing records each table read with
+    their ``record_sha256``, every candidate and whether a veto applied) is copied
+    beside them here, so a row says which dispatch preference its fused leg was
+    composed under, in the plan's own words.
+    """
+    report = leg["driver"].fast_path_report() or {}
+    summary = e2e._plan_summary(report)
+    summary["preference"] = json.loads(json.dumps(report.get("preference"), default=str))
+    return summary
+
+
+#: THE DISPATCH PREFERENCE THIS CAMPAIGN TIMES ITS FUSED LEGS UNDER, decided once by
+#: :func:`main` (:func:`resolve_preference`) and read by :func:`leg_env`.
+PREFERENCE: Optional[Dict[str, Any]] = None
+
+#: The value of the package's dispatch-preference switch under which the shape rule
+#: composes alone: the fused products the release admits, in the slots the shape rule
+#: gives them, with no timing record consulted.
+SHAPE_RULE_PREFERENCE = "span"
+
+
+def resolve_preference(environ: Optional[Mapping[str, str]] = None) -> Dict[str, Any]:
+    """Which dispatch preference the fused legs are timed under, and why.
+
+    A ROW PRICES THE SHAPE RULE'S PRODUCT AGAINST ITS SINGLES, which is what a timing
+    record keys and what the package's default arbitrates with. Under the default a
+    product a record vetoes composes its singles instead, so a fused leg timed under
+    the default would never time a vetoed product again, the next cut would lose its
+    veto, and the next freeze would veto nothing. So with the switch unset the fused
+    legs run under :data:`SHAPE_RULE_PREFERENCE`. A value the process environment
+    sets is honoured, because a caller asking for the default on purpose (a timing
+    ladder's preference-on leg) is asking a different question; the row records it,
+    and the record cutter refuses such a row by name.
+
+    The switch's name and its values are the package's
+    (``fastpath.PREFERENCE_SWITCH``, ``fastpath.PREFERENCE_MODES``); a value the
+    package would refuse is refused here, before anything is lifted.
+    """
+    from meep_gpu import fastpath as fp  # noqa: PLC0415 - late, like every package read
+
+    environ = os.environ if environ is None else environ
+    switch = fp.PREFERENCE_SWITCH
+    asked = (environ.get(switch) or "").strip()
+    value, source = ((asked, "the process environment") if asked
+                     else (SHAPE_RULE_PREFERENCE, "the bench's default: the shape rule"))
+    if value not in fp.PREFERENCE_MODES:
+        raise SystemExit(f"{switch}={value!r} is not one of "
+                         f"{', '.join(fp.PREFERENCE_MODES)}: the fused legs cannot be "
+                         "timed under a preference the package refuses")
+    return {"variable": switch, "value": value, "source": source}
+
+
+def campaign_preference() -> Dict[str, Any]:
+    """The campaign's preference, resolved from the environment if :func:`main` has not."""
+    return PREFERENCE if PREFERENCE is not None else resolve_preference()
+
+
+def export_preference() -> Dict[str, Any]:
+    """Decide the campaign's preference once and put it in the process environment.
+
+    Exported rather than only passed to the fused leg, so every leg's plan freeze
+    reads the same value whichever leg ran before it, and the row's
+    ``process_environment`` records it, which is what the record cutter admits a row
+    on.
+    """
+    global PREFERENCE
+    PREFERENCE = resolve_preference()
+    os.environ[PREFERENCE["variable"]] = PREFERENCE["value"]
+    return PREFERENCE
 
 
 @contextlib.contextmanager
 def narrowed_release(keep: Sequence[str]):
     """Admit only ``keep`` from the released set, for as long as the block runs.
 
-    THE ONLY SEAM THAT CAN DO THIS. Dispatch admits
+    The only seam that can do this. Dispatch admits
     ``set(opted_in) | set(released)``, so the environment can add arms or veto all
     of them and nothing in between; a proper subset has to come from the released
     tuple itself. This narrows it in the harness's own process for the plan-freeze
     only, and restores it in a ``finally`` so one case cannot leak into the next.
 
-    Held for the FUSED LEG'S FIRST STEP and no longer, because that is when the
+    Held for the fused leg's first step and no longer, because that is when the
     plan freezes: after it the leg keeps running the plan it was given, so the
     windows measure a genuine one-pair composition while dispatch is back to its
     shipped self for every other leg and case.
@@ -1117,7 +1227,7 @@ def slot_map_substitution(fused: Dict[str, Any], unfused: Dict[str, Any],
         by_arm.setdefault(arm, []).append(slot)
     welded = {arm: sorted(slots) for arm, slots in by_arm.items()
               if len(slots) > 1 and arm not in set(unfused_arms.values())}
-    # PER LEG, NOT UNIONED -- see :func:`substitution` for the defect a union hid.
+    # Per leg, not unioned -- see :func:`substitution` for the defect a union hid.
     by_leg = {}
     for _name, _leg in (("fused", fused), ("unfused", unfused), ("array", array)):
         _comp = (_leg["plan"].get("composition") or {})
@@ -1147,7 +1257,7 @@ def solo_slot_map(spec: Dict[str, Any], fused: Dict[str, Any]) -> Dict[str, Any]
     replaced anything: a GPU-only row carries no ratio against the singles and no
     bit-identity verdict.
 
-    A FUSED PRODUCT HOLDS A SEAM: two slots ADJACENT in the step (:data:`SLOTS`). One
+    A fused product holds a seam: two slots ADJACENT in the step (:data:`SLOTS`). One
     arm named on two slots is not enough by itself -- a single arm serves several,
     ``PML`` on ``step_B`` and ``step_D`` -- and the comparative proof could exclude it
     because the singles leg named it too; with no singles leg, adjacency is the rule.
@@ -1177,13 +1287,13 @@ def substitution(fused: Dict[str, Any], unfused: Dict[str, Any],
                  array: Dict[str, Any]) -> Dict[str, Any]:
     """Did the fused product actually replace the singles? Two instruments, both binding.
 
-    The scoping memory asks where ``REPLACES`` lives -- a module constant on the
-    CUDA track, a runtime property on Triton's plan -- and the question dissolves
-    at this seam: the fused leg's slot->arm map and the unfused leg's ARE the
-    substitution. Diffing the two measured maps needs no declaration to be true,
-    and cannot be stale the way a constant can.
+    Where ``REPLACES`` lives -- a module constant on the CUDA track, a runtime
+    property on Triton's plan -- is a question that dissolves at this seam: the
+    fused leg's slot->arm map and the unfused leg's ARE the substitution. Diffing
+    the two measured maps needs no declaration to be true, and cannot be stale the
+    way a constant can.
 
-    THE NVIDIA SPELLING. The Metal table's is :meth:`MetalWitness.substitution`,
+    The NVIDIA spelling. The Metal table's is :meth:`MetalWitness.substitution`,
     which starts from the same slot map and proves the launches with the route
     gate's own proof.
     """
@@ -1193,7 +1303,7 @@ def substitution(fused: Dict[str, Any], unfused: Dict[str, Any],
     unfused_lps = unfused["warm_launches_per_step"]
     array_lps = array["warm_launches_per_step"]
 
-    # ASK THE TABLE THAT SERVED, NOT THE BACKEND THE RUN WAS STARTED FOR. The two
+    # Ask the table that served, not the backend the run was started for. The two
     # launch counters this harness carries are the Triton and hand-CUDA ones; a
     # composition served by neither has no launch witness at all, and on the first
     # host smoke run that is exactly what happened -- the METAL table served, both
@@ -1203,14 +1313,14 @@ def substitution(fused: Dict[str, Any], unfused: Dict[str, Any],
     # no floor: it makes an un-instrumented row indistinguishable from a refused
     # one. So the witness is asked whether it was present, and the check is only
     # binding when it was.
-    # PER LEG, NOT UNIONED. The union hid the defect that made this clause
+    # Per leg, not unioned. The union hid the defect that made this clause
     # necessary: on 2026-09-17 ``pml_2d`` timed a fused leg served by the CUDA table
     # against a "singles" leg served by the TRITON table, and the union reported
     # ['cuda', 'triton'] as though one composition had used both.
     #
-    # WHY THE LEGS DIVERGE, and it is a documented property rather than an engine
-    # bug: ``reference_cuda_no_unfused_baseline`` -- THE CUDA TABLE HAS NO UNFUSED
-    # BASELINE. Veto its fused arms and it offers nothing, so dispatch falls through
+    # Why the legs diverge, and it is a documented property rather than an engine
+    # bug: the CUDA table has no unfused baseline. Veto its fused arms and it
+    # offers nothing, so dispatch falls through
     # to the Triton table's SINGLE arms. The ratio is then CUDA-fused against
     # Triton-singles, which compares two tables and says nothing about fusing.
     served = set(out["tables_dispatched"])
@@ -1246,7 +1356,7 @@ def residency_syncs(driver: Any) -> Optional[Tuple[int, ...]]:
     if residency is None:
         return None
     try:
-        # COPIES, NOT JUST CALLS. ``syncs_in``/``syncs_out`` count bracket
+        # Copies, not just calls. ``syncs_in``/``syncs_out`` count bracket
         # INVOCATIONS, which under a hold is the wrong quantity entirely: a held
         # ``sync_in`` that finds every mirror clean still increments, so a row can
         # read 2 syncs/step while moving nothing. What the 0.217 ms/copy cost
@@ -1268,7 +1378,7 @@ HOST_AUTHORITATIVE = "host-authoritative between launches"
 def residency_facts(leg: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """The residency mode and mirror set this leg's plan installed, or None.
 
-    COPIED FROM THE PLAN'S OWN RECORD (``fast_path_report()["residency"]``), so the
+    Copied from the plan's own record (``fast_path_report()["residency"]``), so the
     mode a row names is the one the ladder stated when it froze and not a constant
     typed here. The byte counts are what one bracket copies: every mirror in, every
     non-constant mirror out.
@@ -1299,7 +1409,7 @@ def residency_facts(leg: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 class ShaderCompileCounter:
     """Counts calls to ``torch.mps.compile_shader``: the platform's compile entry point.
 
-    OUTSIDE THE PACKAGE, which is what the launch witness on this table cannot be
+    Outside the package, which is what the launch witness on this table cannot be
     (the route gate says so of its own counter). ``metal_kernels.device
     .compile_source`` looks the function up on ``torch.mps`` at call time, and so
     does every other caller, so replacing the attribute counts every shader compile
@@ -1351,7 +1461,7 @@ class NvidiaWitness:
         self.counters = counters
 
     def install(self) -> List[str]:
-        # CONSTRUCTED IS NOT INSTALLED, and the difference is silent. `LaunchCounters`
+        # Constructed is not installed, and the difference is silent. `LaunchCounters`
         # builds both witnesses but installs NEITHER -- `TritonLaunchCounter.__init__`
         # sets `_installed = False` and installation is its own call. A harness that
         # only constructs them reads 0.0 launches on every leg, which the substitution
@@ -1360,7 +1470,7 @@ class NvidiaWitness:
         # the structural instruments passed and the launch witness alone failed, which
         # is the shape this exact omission makes.
         #
-        # A WITNESS THAT CANNOT ATTACH IS RECORDED, NOT FATAL. `triton.install()`
+        # A witness that cannot attach is recorded, not fatal. `triton.install()`
         # imports triton, which a host without it does not have; that is a fact about
         # the box, not a reason to refuse to time anything. Which witnesses came up is
         # written into every row, so a launch floor that could not be evaluated is
@@ -1405,7 +1515,7 @@ class NvidiaWitness:
         driver.run(num_steps=steps)
         sync_for(driver)()
         measured = self.measure(before, self.snapshot())
-        # THE MEMO WITNESS IS ATTACHED AFTER THE FIRST WARM, never before: it wraps what
+        # The memo witness is attached after the first warm, never before: it wraps what
         # is already inside ``compile_cache._compiled_kernels``, and before a warm pass
         # that store is empty, so wrapping it early wraps nothing. The route gate calls
         # this at the same point for the same reason.
@@ -1457,7 +1567,7 @@ def windows_launched_at_the_proved_rate(legs: Dict[str, Dict[str, Any]],
     re-frozen between the proof and the window holds owners the witness never
     attached to, so BOTH counts read zero there: without this floor a fused leg that
     launched nothing the witness could see would be timed, pass the compile floor
-    (zero new names) and enter the table. NO WINDOWS IS NOT A PASS.
+    (zero new names) and enter the table. No windows is not a pass.
     """
     if not windows:
         return False
@@ -1475,7 +1585,7 @@ def windows_launched_at_the_proved_rate(legs: Dict[str, Dict[str, Any]],
 class MetalWitness:
     """The route gate's ``MetalLaunchCounter`` and proofs, behind the same five reads.
 
-    EVERYTHING THAT DECIDES ANYTHING HERE IS IMPORTED FROM
+    Everything that decides anything here is imported from
     ``gate_dispatch_metal_route``: the counter and its ``attach`` (launches AND
     compiled calls, owners it could not wrap reported per leg), ``step_leg`` (the
     chunk record its proofs read), ``steady_state_rate``, ``substitution_proof``,
@@ -1491,7 +1601,7 @@ class MetalWitness:
         self.module = module
         self.counter = counter if counter is not None else module.MetalLaunchCounter()
         self.compiles = ShaderCompileCounter()
-        #: THE POSITIVE CONTROL for the compile floor: what the first leg's PLAN BUILD
+        #: The positive control for the compile floor: what the first leg's plan build
         #: cost in compiles. The floor requires zero inside every timed window, which a
         #: witness that never attached satisfies as readily as a window that compiled
         #: nothing; the freeze is where this table compiles, so a first warm pass
@@ -1525,7 +1635,7 @@ class MetalWitness:
     def row_stamp(self) -> Dict[str, Any]:
         """What every row carries about the device and the compile witnesses.
 
-        THE COMPILE FIGURES ARE CUMULATIVE, read at row time: the floor this table
+        The compile figures are cumulative, read at row time: the floor this table
         cares most about is a ZERO, and a zero proves nothing about an instrument that
         was never installed. A row whose ``attached`` reads False, or whose counts have
         not moved since the campaign started, is a row whose compile floor was not
@@ -1631,7 +1741,7 @@ class MetalWitness:
                 f"launch witness attaches after the first, and got {steps}")
         started = time.time()
         driver = leg["driver"]
-        # THE WHOLE WARM PASS IS BRACKETED, the freeze step included, and it is the
+        # The whole warm pass is bracketed, the freeze step included, and it is the
         # only pass in a case that SHOULD compile: the plan is built here, and on this
         # table a plan build is a shader compile and a memo entry. Its counts are the
         # positive control the timed windows' zeroes are read against, so they cover
@@ -1662,6 +1772,9 @@ class MetalWitness:
             f"launches/step={leg['warm_launches_per_step']} compiled calls/step="
             f"{leg['warm_compiled_calls_per_step']} functions={len(measured['kernels'])} "
             f"mirrors={mirrors} ({time.time() - started:.1f} s)")
+        # THE ROW'S PLAN IS :func:`plan_of`'S on this table too: the gate's ``step_leg``
+        # keeps the summary alone, and the row carries the preference block beside it.
+        leg["plan"] = plan_of(leg)
         return leg["plan"]
 
     def substitution(self, spec: Dict[str, Any], fused: Dict[str, Any],
@@ -1775,7 +1888,7 @@ CALIBRATION_STEPS = 4
 #: not free and is not paid by the steps it precedes evenly: on a held Metal residency
 #: :func:`thaw` marks every restored mirror host-owned, so the first launch after it
 #: copies them all up (33 copies on ``pml_3d``), and on every table the first launches
-#: after a restore find cold caches. The 1.0 round sized windows from three 4-step
+#: after a restore find cold caches. The first 1.0 timing sized windows from three 4-step
 #: calibrations that each carried that cost, and over-read the device step 3.2-4.9x on
 #: the Mac (12 s windows asked, 2.5-3.7 s run). The discard keeps it out of the probe.
 PROBE_DISCARD_STEPS = 4
@@ -1797,8 +1910,8 @@ PROBE_MAX_ROUNDS = 8
 PROBE_REPEATS = 3
 
 #: The default ``--step-cap``: a bound against a probe that read nothing, not the
-#: bound a window meets. The 1.0 round's 4,000 bound windows at 2.6 s where 12 s was
-#: asked (110,592 cells on the Mac); a window's length is the target's to set.
+#: bound a window meets. The first 1.0 timing's 4,000 bound windows at 2.6 s
+#: where 12 s was asked (110,592 cells on the Mac); a window's length is the target's to set.
 DEFAULT_STEP_CAP = 2_000_000
 
 
@@ -1856,12 +1969,12 @@ def window(case: str, leg: Dict[str, Any], frozen: Dict[str, Any], counter: Any,
     thaw(driver, frozen)
     e2e._apply_env(leg)
     before = witness.snapshot()
-    # BESIDE THE LAUNCH WITNESS, OUTSIDE THE TIMER: ``timed_window`` times only the
+    # Beside the launch witness, outside the timer: ``timed_window`` times only the
     # lambda, and a snapshot is a walk over a handful of slots. Per window rather
     # than cumulative, so calibration, warmup and the identity pass are excluded
     # exactly as they are from the launch counts.
     route_before = repair_snapshot(driver)
-    # THE PLAN OBJECT, HELD, NOT ITS ADDRESS. A plan re-frozen inside a window re-runs
+    # The plan object, held, not its address. A plan re-frozen inside a window re-runs
     # the ladder and rebuilds its kernels -- on the Metal table that is where every
     # compile happens -- and a window containing a re-freeze timed the freeze. The
     # driver DROPS the plan (``driver.py:3112``: ``_fast_path = None``, stale) before
@@ -1891,7 +2004,7 @@ def window(case: str, leg: Dict[str, Any], frozen: Dict[str, Any], counter: Any,
              "deposit_repair_route": route}
     entry.update(witness.window_fields(measured, chunk))
     if syncs_before is not None and syncs_after is not None:
-        # THE BRACKETS THIS WINDOW PAID FOR. One per dispatched plan call on the Metal
+        # The brackets this window paid for. One per dispatched plan call on the Metal
         # table -- every mirror in, the launch, a device sync, every non-constant
         # mirror out -- and the cost the route campaign measured at ~15 ms apiece.
         entry["residency_syncs"] = {"in": syncs_after[0] - syncs_before[0],
@@ -1961,12 +2074,12 @@ def run_case(case: str, spec: Dict[str, Any], module: Any, table: str,
     witness = as_witness(counter)
     row: Dict[str, Any] = {
         "case": case, "drive_table": table,
-        # WHAT THIS ROW CAN SAY. A ``gpu-only`` row lifts the fused leg alone: it times
+        # What this row can say. A ``gpu-only`` row lifts the fused leg alone: it times
         # the route a user takes and proves what dispatched, and carries no ratio
         # against the singles and no bit-identity verdict, which need the other legs.
         "legs_mode": legs_mode, "legs_timed": list(labels),
         "arms_requested": spec["arms"], "pairs_expected": spec.get("pairs"),
-        # THE ROUTE THE LEG WILL TAKE, from the same place the leg's environment takes
+        # The route the leg will take, from the same place the leg's environment takes
         # it (:func:`default_reached_by`), so the row cannot name one and run the other.
         "seam": spec.get("seam"),
         "reached_by": spec.get("reached_by", default_reached_by(module)),
@@ -1981,7 +2094,7 @@ def run_case(case: str, spec: Dict[str, Any], module: Any, table: str,
 
     builder = module.CASES[case]
     say(f"{case}: lifting three legs")
-    # LIFTED ONE AT A TIME INTO A DICT THAT ALREADY EXISTS. As a comprehension this
+    # Lifted one at a time into a dict that already exists. As a comprehension this
     # leaked: a lift that raised on leg two or three left ``legs`` UNBOUND, so the
     # ``finally`` below -- which is what closes the drivers -- was never entered and
     # the legs already on the device were never released. One case failing that way
@@ -1994,7 +2107,7 @@ def run_case(case: str, spec: Dict[str, Any], module: Any, table: str,
                                       leg_env(module, spec, label),
                                       counter, gpu_id, res)
             if table == "metal":
-                # A HARNESS DEFECT, NOT A CASE'S: it stops the campaign (SystemExit
+                # A harness defect, not a case's: it stops the campaign (SystemExit
                 # is not an ``Exception``), after closing what was already lifted.
                 try:
                     require_metal_leg(case, legs[label])
@@ -2011,7 +2124,7 @@ def run_case(case: str, spec: Dict[str, Any], module: Any, table: str,
                 pass
         row["verdict"] = "ERROR"
         row["error"] = f"{type(error).__name__}: {error}"
-        # THE TRACEBACK IS RECORDED, as the route gate's ERROR rows already do. A
+        # The traceback is recorded, as the route gate's ERROR rows already do. A
         # message alone -- "assignment destination is read-only" -- names the
         # exception and not the site, and under a residency hold the site IS the
         # finding: the seal fires at exactly the statement that wrote a held
@@ -2062,17 +2175,17 @@ def run_case(case: str, spec: Dict[str, Any], module: Any, table: str,
                                witness.substitution(spec, legs["fused"],
                                                     legs["unfused"], legs["array"]))
         if not row["substitution"]["proved"]:
-            say(f"{case}: SUBSTITUTION NOT PROVED "
+            say(f"{case}: substitution not proved "
                 f"{row['substitution']['checks']} — timing anyway, not reported")
         if witness.records_host:
             row["residency"] = {label: leg.get("residency")
                                 for label, leg in legs.items()}
-        # WHAT THE WINDOW EDGES CALL, read off a driver rather than assumed from the
+        # What the window edges call, read off a driver rather than assumed from the
         # table's name, and what that call costs when the queue is already empty.
         edge = sync_for(legs["fused"]["driver"])
         row["sync"] = {"call": sync_name(legs["fused"]["driver"]),
                        "idle_seconds": idle_sync_seconds(edge)}
-        # THE POLICY EVERY WINDOW RAN UNDER. Installed lazily, by the first dispatching
+        # The policy every window ran under. Installed lazily, by the first dispatching
         # leg's plan freeze; all three legs are primed before any window, so by here
         # it is whatever the timed windows will see -- the array leg's included, which
         # on a flushing table is the difference between a fast step and subnormal
@@ -2080,8 +2193,8 @@ def run_case(case: str, spec: Dict[str, Any], module: Any, table: str,
         # were compiled before the install.
         row["subnormal_policy"] = policy_brief()
 
-        # SIX COPIES OF THE FIELDS, NOT THREE, AND THE CASE IS PRICED BEFORE THEY
-        # ARE TAKEN. Three legs are already resident; freezing each doubles that,
+        # Six copies of the fields, not three, and the case is priced before they
+        # are taken. Three legs are already resident; freezing each doubles that,
         # because the AB/BA loop interleaves the legs and every one of them needs
         # its own frozen state available for the whole loop. On a 3-D case that is
         # enough to run a device out of memory partway through a campaign, which
@@ -2101,7 +2214,7 @@ def run_case(case: str, spec: Dict[str, Any], module: Any, table: str,
                 f"{human(memory_budget)} budget")
             return row
 
-        # THE FROZEN STATE IS A WARM ONE, not the lift's. A window started from
+        # The frozen state is a warm one, not the lift's. A window started from
         # the lifted zeros would time kernels reading zeros, and the subnormal
         # work this engine's own cliff control exists for never happens.
         frozen = {label: freeze(leg["driver"]) for label, leg in legs.items()}
@@ -2123,14 +2236,14 @@ def run_case(case: str, spec: Dict[str, Any], module: Any, table: str,
             row["monitors_attached"] = {label: {} for label in legs}
         row["monitors_mode"] = monitors_mode
         try:
-            # ONE CHUNK PER LEG, NOT ONE FOR THE CASE. Measured on the first host
+            # One chunk per leg, not one for the case. Measured on the first host
             # smoke run: a chunk sized on the fused leg gave the array leg an
             # 0.002 s window -- deep inside the sub-second regime rung 5's spread
             # gate exists to keep windows out of -- and its spread failed the gate
             # on a leg that was simply too fast for the fused leg's chunk. Sizing
             # each leg to the same TARGET SECONDS puts every window in the regime
             # the gate was drawn for, and the ratio is then taken between
-            # SECONDS PER STEP, which is chunk-independent by construction.
+            # seconds per step, which is chunk-independent by construction.
             sizing = {label: size_chunk(legs[label], frozen[label],
                                         sync_for(legs[label]["driver"]),
                                         target_seconds, step_cap)
@@ -2142,8 +2255,8 @@ def run_case(case: str, spec: Dict[str, Any], module: Any, table: str,
                     f"(~{1e3 * sizing[label]['calibration_per_step_seconds']:.3f} "
                     f"ms/step)")
 
-            # THE FIRST FULL-LENGTH WINDOW OF EACH LEG IS RUN AND DISCARDED. Measured on
-            # the 1.0 round (the GPU host, Triton route, 512,000 cells): window 0 of the
+            # The first full-length window of each leg is run and discarded. Measured in
+            # the first 1.0 timing (the GPU host, Triton route, 512,000 cells): window 0 of the
             # fused leg read 0.715-0.734 ms/step against 0.683-0.699 in windows 1-5 on
             # all three passes, enough to fail the 5 % within-leg gate by itself, and
             # 51 % on the base commit. Every window after the first, whichever leg
@@ -2189,7 +2302,7 @@ def run_case(case: str, spec: Dict[str, Any], module: Any, table: str,
                         witness.compile_events(w)
                         for w in windows if w["leg"] == label),
                     "launches_per_step": per_step_total(windows, label, "launches"),
-                    # ON ALL THREE LEGS, though only the fused one can bracket: the
+                    # On all three legs, though only the fused one can bracket: the
                     # singles and the array leg reading ``bracketed_slots: []`` is
                     # the record checking itself.
                     "deposit_repair_route": repair_route_total(
@@ -2211,7 +2324,7 @@ def run_case(case: str, spec: Dict[str, Any], module: Any, table: str,
                     per_leg[label]["residency_syncs_per_step"] = (
                         {way: sum(b[way] for b in bracketed) / float(steps)
                          for way in ("in", "out")} if bracketed and steps else None)
-                    # THE NUMBER A HELD ROW IS ATTRIBUTED BY. A held bracket still
+                    # The number a held row is attributed by. A held bracket still
                     # increments ``syncs`` on every launch while copying nothing, so
                     # syncs/step cannot distinguish "the hold is working" from "the
                     # hold is armed and moving everything anyway". Copies/step can,
@@ -2227,7 +2340,7 @@ def run_case(case: str, spec: Dict[str, Any], module: Any, table: str,
             for label, leg in legs.items():
                 reattach_monitors(leg["driver"], held[label])
 
-        # RUNG 2, SECOND HALF, AND IT IS ITS OWN PASS NOW. While one chunk served
+        # Rung 2, second half, and it is its own pass now. While one chunk served
         # the case, every leg ended the last window at the same step and the
         # identity check was free. Per-leg chunks end them at DIFFERENT steps, and
         # comparing those would compare two different simulation times and call
@@ -2235,7 +2348,7 @@ def run_case(case: str, spec: Dict[str, Any], module: Any, table: str,
         # all three legs restored to the one frozen state and advanced the SAME
         # number of steps, outside every timer.
         if solo:
-            # NO IDENTITY PASS: there is no second leg to compare with. The floors read
+            # No identity pass: there is no second leg to compare with. The floors read
             # the fused leg where the last timed window left it.
             row["bit_identity"] = {
                 "fused_vs_array_identical": None, "measured": False,
@@ -2268,24 +2381,25 @@ def run_case(case: str, spec: Dict[str, Any], module: Any, table: str,
             "bit_identical": None if solo else bool(identity["identical"]),
             "moved_words_positive": all(v > 0 for v in row["moved_words"].values()),
             "non_finite_zero": all(v == 0 for v in row["non_finite"].values()),
-            # WHAT A COMPILE IS belongs to the device family: a kernel name first
+            # What a compile is belongs to the device family: a kernel name first
             # seen inside the window on the NVIDIA tables; on the Metal table that,
             # a shader compile, a grown compile memo or a re-frozen plan.
             "no_compiles_inside_timed_region": all(
                 v["compile_events_inside_timed_region"] == 0 for v in per_leg.values()),
-            "spread_within_gate": all(v["spread"] <= SPREAD_GATE
-                                      for v in per_leg.values()),
-            # THE CONTROL MUST BE THE SAME TABLE'S SINGLES. Without this a row whose
+            # The control must be the same table's singles. Without this a row whose
             # control fell through to the OTHER table reports a table comparison
             # under a fusion heading, with every other floor green -- which is
             # exactly what the first CUDA rows of this campaign did.
             "singles_are_the_same_table": None if solo else row["substitution"][
                 "fused_and_singles_used_the_same_table"],
         }
-        # A GPU-ONLY ROW HAS NO SECOND LEG: the two comparative floors are absent from
+        # A GPU-only row has no second leg: the two comparative floors are absent from
         # it, not passed, and its ``bit_identity`` says so.
         row["floors"] = {k: v for k, v in floors.items() if v is not None or not solo}
         row["floors"].update(witness.extra_floors(legs, windows))
+        # The window spread is recorded, not a floor: beside the floors, never
+        # among them, so no reader that counts failed floors can strike a row for it.
+        row["window_spread"] = window_spread(per_leg)
         # PER STEP, so a ratio is not an artefact of two legs having been given
         # different chunks.
         fused_step = per_leg["fused"]["median_seconds_per_step"]
@@ -2324,17 +2438,37 @@ def run_case(case: str, spec: Dict[str, Any], module: Any, table: str,
 # The campaign
 # ---------------------------------------------------------------------------
 
-#: (max-min)/median a leg's windows may show and still be reported. The sibling
-#: campaigns' figure: the CPU baseline found its spread blowing up below a second
-#: of window, which is why ``--target-seconds`` defaults well above that.
-SPREAD_GATE = 0.05
+#: The within-pass window spread a leg is READ AGAINST: (max-min)/median over its timed
+#: windows. The sibling campaigns' figure: the CPU baseline found its spread blowing up
+#: below a second of window, which is why ``--target-seconds`` defaults well above that.
+#: Until 2026-10-16 a leg above it failed the row's floor ``spread_within_gate``; since
+#: the between-pass gate it is recorded beside every row (:func:`window_spread`) and gates
+#: nothing, and the 5 % gate is the spread of a leg's pass rates over a row's passes.
+WINDOW_SPREAD_REFERENCE = 0.05
+
+#: What :func:`window_spread` writes into every row as its rule.
+WINDOW_SPREAD_RULE = ("recorded, gates nothing (the between-pass gate): a GPU leg enters on "
+                      "the spread of its pass rates, (max - min) / median over the row's "
+                      "passes, at most 5 %")
+
+
+def window_spread(per_leg: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
+    """Every leg's within-pass window spread, against the reference, as the row records
+    it: never a floor, so the row's verdict does not depend on it."""
+    spreads = {label: leg.get("spread") for label, leg in sorted(per_leg.items())}
+    known = [value for value in spreads.values() if isinstance(value, (int, float))]
+    return {"per_leg": spreads, "max": max(known) if known else None,
+            "reference": WINDOW_SPREAD_REFERENCE,
+            "within_reference": bool(known) and len(known) == len(spreads)
+            and all(value <= WINDOW_SPREAD_REFERENCE for value in known),
+            "rule": WINDOW_SPREAD_RULE}
 
 
 def selected_cases(backend: str, only: Sequence[str],
                    skip: Sequence[str]) -> List[str]:
     """The route gate's own DRIVE rows that the release actually dispatches.
 
-    THE CASE TABLE IS NOT RE-TYPED HERE, and that is the whole reason this file
+    The case table is not re-typed here, and that is the whole reason this file
     can be written before the route campaigns land: ``DRIVE``/``DRIVE_CUDA`` are
     read at run time, so a row the campaign withdraws stops being timed without
     an edit, and a row it adds starts being timed without one. A benchmark that
@@ -2438,7 +2572,7 @@ def estimate(cases: Sequence[str], table_rows: Dict[str, Dict[str, Any]],
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    # WHICH TABLE'S DRIVE ROWS TO TIME, WHICH IS NOT WHICH TABLE SERVES. The first
+    # Which table's drive rows to time, which is not which table serves. The first
     # host smoke run made the distinction concrete: it read the Triton DRIVE rows
     # and the METAL table served every slot, because the case list and the
     # dispatch decision are answered by different things. What served is measured
@@ -2452,7 +2586,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--case", action="append", default=[],
                         help="time only this DRIVE case (repeatable)")
     parser.add_argument("--skip", action="append", default=[])
-    # EVEN, AND THE PARITY IS THE POINT. Rung 5 cancels a monotone drift by
+    # Even, and the parity is the point. Rung 5 cancels a monotone drift by
     # running the legs forward on even passes and reversed on odd ones, which only
     # balances if there are as many of each: five repeats give three forward
     # orderings and two reversed, so the leg that runs last carries an extra
@@ -2486,14 +2620,14 @@ def build_parser() -> argparse.ArgumentParser:
                         dest="memory_budget_bytes",
                         help="refuse a case whose three frozen legs exceed this; "
                              "0 disables the check")
-    # THE ROUTE GATE'S OWN SPELLING (``gate_dispatch_fused_route.py``'s
+    # The route gate's own spelling (``gate_dispatch_fused_route.py``'s
     # ``e2e.PREFER_GPU = not arguments.smoke``): ``--smoke`` on an NVIDIA table lifts
     # the NumPy reference (``prefer_gpu=False``), which consults no kernel table on
     # any host, so no leg dispatches and only the harness's own plumbing is
     # exercised. A smoke row is a check of the harness, never a GPU timing, and every
     # row records ``prefer_gpu`` and ``smoke`` so it cannot be mistaken for one. The
     # Metal table always lifts an Apple GPU driver (``prefer_gpu=True``), smoke or not.
-    # WHAT A USER EXPERIENCES IS THE DILUTED RATIO. Detaching monitors is right for
+    # What a user experiences is the diluted ratio. Detaching monitors is right for
     # measuring the STEP PATH -- the work is identical on all three legs, so it adds
     # the same constant to numerator and denominator and dilutes every ratio toward
     # 1 without biasing it. But a real run HAS monitors, and the number that belongs
@@ -2532,7 +2666,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                          f"got {args.repeats}")
     metal = args.drive_table == "metal"
     if metal and args.only_arm:
-        # THE ABLATION HAS NO SEAM ON THIS TABLE. ``narrowed_release`` narrows
+        # The ablation has no seam on this table. ``narrowed_release`` narrows
         # ``fastpath.RELEASED_FUSED_ARMS``; the Metal ladder admits from
         # ``metal_dispatch.METAL_RELEASED_FUSED_ARMS`` and never reads it, so the leg
         # would install its whole release and be recorded as the ablation.
@@ -2543,7 +2677,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         raise SystemExit(f"--warm-steps must be at least 2 on the Metal table: its "
                          f"launch witness attaches after the first step, so a one-step "
                          f"warm pass has no steady state; got {args.warm_steps}")
-    # LIFTED AS AN APPLE GPU DRIVER ON THE METAL TABLE, ALWAYS, as the route gate
+    # Lifted as an Apple GPU driver on the Metal table, always, as the route gate
     # lifts it: ``prefer_gpu=True`` resolves this host's GPU, which on an Apple GPU is
     # Metal kernels over NumPy host arrays. A ``prefer_gpu=False`` lift is the NumPy
     # reference and never plans, so it is only what an NVIDIA table's ``--smoke``
@@ -2556,6 +2690,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     # it is still set for the two NVIDIA tables; Metal's gate has no such global.
     route.BACKEND = args.drive_table if not metal else "triton"
     cases = selected_cases(args.drive_table, args.case, args.skip)
+    import timing_host  # noqa: PLC0415 - the host-name collision every writer refuses
+    if timing_host.vocabulary_collisions([args.drive_table] + list(cases)):
+        raise SystemExit(f"REFUSING: {timing_host.VOCABULARY_REFUSAL}")
     if args.estimate:
         priced = estimate(cases, drive_rows(args.drive_table), args.repeats,
                           args.target_seconds, args.warm_steps,
@@ -2571,9 +2708,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             say(f"ESTIMATE   {case}: {priced['per_case_seconds'][case]:.0f} s "
                 f"({priced['cost_source'][case]})")
         return 0
-    # THE HOST MUST OWN THE TABLE IT TIMES, checked before a row is written (an
+    # The host must own the table it times, checked before a row is written (an
     # estimate, above, lifts nothing and is answered on any host). ``prefer_gpu=True``
-    # is THIS HOST'S GPU, so a lift succeeding says nothing about which table it
+    # is this host's GPU, so a lift succeeding says nothing about which table it
     # reached: off an Apple GPU the Metal table is refused, and off a CUDA host the
     # two NVIDIA tables are -- there the legs would lift Apple GPU drivers and write
     # rows stamped ``drive_table`` triton or cuda that the Metal table served.
@@ -2587,6 +2724,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         refusal = None
     if refusal:
         raise SystemExit(refusal)
+    # THE DISPATCH PREFERENCE IS DECIDED ONCE AND EXPORTED, before anything is lifted
+    # (:func:`export_preference`).
+    preference = export_preference()
+    say(f"dispatch preference: {preference['variable']}={preference['value']} "
+        f"({preference['source']})")
     os.makedirs(args.out, exist_ok=True)
     rows_path = os.path.join(args.out, "rows.jsonl")
     say(f"BENCH FUSED PRODUCTS drive_table={args.drive_table} gpu={args.gpu} "
@@ -2599,7 +2741,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     ONLY_ARMS = list(args.only_arm)
     if ONLY_ARMS:
         say(f"ABLATION: the fused leg installs only {ONLY_ARMS} (opt-in route)")
-    # THE LAUNCH WITNESS BELONGS TO THE DEVICE FAMILY. The two NVIDIA tables share
+    # The launch witness belongs to the device family. The two NVIDIA tables share
     # ``e2e.LaunchCounters``; the Metal table's is the route gate's own counter, which
     # reads nothing the NVIDIA one patches. Which witnesses came up is written into
     # every row (see :meth:`NvidiaWitness.install` for why a witness that cannot
@@ -2611,7 +2753,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     try:
         return _campaign(args, cases, module, rows_table, counter, rows_path)
     finally:
-        # THE COMPILE WITNESS REPLACES A PLATFORM ENTRY POINT; it is put back however
+        # The compile witness replaces a platform entry point; it is put back however
         # the campaign ends.
         counter.uninstall()
 
@@ -2662,14 +2804,18 @@ def loaded_libraries() -> Dict[str, str]:
 
 
 def process_environment() -> Dict[str, Any]:
+    """The switches of this process's environment, as a record writes them: a value that
+    is a path by its last component, and every other value through ``neutral_ids.text``
+    (a ``CUDA_VISIBLE_DEVICES`` that pins a GPU by UUID is written as its card id)."""
+    import neutral_ids  # noqa: PLC0415
     out: Dict[str, Any] = {}
     for name, value in sorted(os.environ.items()):
         if name in RECORDED_PATH_LISTS:
-            out[name] = [os.path.basename(part.rstrip(os.sep))
+            out[name] = [neutral_ids.text(os.path.basename(part.rstrip(os.sep)))
                          for part in value.split(os.pathsep) if part]
         elif name.startswith(RECORDED_ENVIRONMENT):
-            out[name] = (os.path.basename(value.rstrip(os.sep)) if os.sep in value
-                         else value)
+            out[name] = neutral_ids.text(os.path.basename(value.rstrip(os.sep))
+                                         if os.sep in value else value)
     return out
 
 
@@ -2677,8 +2823,9 @@ def _campaign(args: Any, cases: Sequence[str], module: Any,
               rows_table: Dict[str, Dict[str, Any]], counter: Any,
               rows_path: str) -> int:
     """Every case in order, each row appended as it lands, then the summary."""
-    # AFTER THE WITNESSES, so the modules the digests describe are the ones already
+    # After the witnesses, so the modules the digests describe are the ones already
     # imported for this run; :func:`provenance` imports any that are not yet.
+    import neutral_ids  # noqa: PLC0415
     stamp = provenance(args.drive_table)
     say(f"provenance: HEAD={(stamp['git']['head'] or 'unknown')[:12]} "
         f"dirty={stamp['git']['any_dirty']} "
@@ -2697,7 +2844,7 @@ def _campaign(args: Any, cases: Sequence[str], module: Any,
                            discard_windows=args.discard_windows,
                            legs_mode=args.legs)
         except Exception as error:  # noqa: BLE001
-            # A CASE THAT DIES DOES NOT TAKE THE CAMPAIGN WITH IT. Progress reporting's other
+            # A case that dies does not take the campaign with it. Progress reporting's other
             # half: every row lands as it is measured, so a failure eight cases in
             # keeps the seven before it.
             row = {"case": case, "drive_table": args.drive_table,
@@ -2707,21 +2854,22 @@ def _campaign(args: Any, cases: Sequence[str], module: Any,
                    "utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
             say(f"{case}: ERROR {type(error).__name__}: {error}")
         row["elapsed_s"] = round(time.time() - started, 1)
-        # HERE, NOT IN ``run_case``: this is the one line every row passes through,
+        # Here, not in ``run_case``: this is the one line every row passes through,
         # the early SKIP/ERROR returns and the row the ``except`` above builds included.
         row["provenance"] = stamp
         row["prefer_gpu"] = bool(e2e.PREFER_GPU)
-        # ITS OWN FIELD SINCE 2026-09-20. ``prefer_gpu`` False used to MEAN a smoke
+        # Its own field since 2026-09-20. ``prefer_gpu`` False used to MEAN a smoke
         # row; Metal rows written before 2026-09-27 were lifted ``prefer_gpu=False``
         # under the enable and are not smoke rows (from that date they read True), so
         # the report reads this where it is present.
         row["smoke"] = bool(args.smoke)
+        row["fused_leg_preference"] = dict(campaign_preference())
         row.update(counter.row_stamp())
         # THE IMPORT RECORD, IN THE HARNESS: the sha256 of every repository module this
         # process holds when the row is written, keyed repo-relative by the rule every
         # gate artifact uses (``gate_provenance.IMPORTED_KEY``), so ``artifact_drift``
         # and ``timing_rows.py`` read a timing row as they read a gate. It replaces the
-        # external exit hook the 1.0 round put on the rows' path. A campaign of several
+        # external exit hook the first 1.0 timing put on the rows' path. A campaign of several
         # cases holds every module an earlier case loaded too: a superset, which can
         # only re-time more, never less. Beside it, what the hook and its joiner kept
         # with it: the ledgers the tables read, the libraries loaded, the switches set.
@@ -2734,11 +2882,11 @@ def _campaign(args: Any, cases: Sequence[str], module: Any,
         say(f"=== case {index}/{len(cases)} done in {row['elapsed_s']} s "
             f"-> {row['verdict']} ===")
 
-    # A GPU-ONLY ROW CARRIES NO RATIO (``ratios`` None) and enters no fusion median;
+    # A GPU-only row carries no ratio (``ratios`` None) and enters no fusion median;
     # it is counted among the reportable rows, which is what its floors say it is.
     reportable = [r for r in rows if r.get("reportable")]
     compared = [r for r in reportable if r.get("ratios")]
-    # THE MEDIANS ARE OVER WITNESSED ROWS ONLY. ``launch_witness_available`` False
+    # The medians are over witnessed rows only. ``launch_witness_available`` False
     # means the launch clauses were never evaluated -- the slot map proved the plans
     # differ and no counter saw a launch -- so the row keeps its own ratio, which is a
     # real measurement of seconds, and enters no median, which would otherwise be a
@@ -2769,15 +2917,32 @@ def _campaign(args: Any, cases: Sequence[str], module: Any,
             statistics.median([r["ratios"]["array_over_fused"] for r in witnessed])
             if witnessed else None),
         "witnesses": list(WITNESSES), "smoke": bool(args.smoke),
+        "fused_leg_preference": dict(campaign_preference()),
         "floors_failed": {r["case"]: [k for k, v in r["floors"].items() if not v]
                           for r in rows if r.get("floors") and not r.get("reportable")},
-        "argv": sys.argv[1:],
+        "argv": neutral_ids.argv(sys.argv[1:]),
         "prefer_gpu": bool(e2e.PREFER_GPU),
         "provenance": stamp,
     }
     save(summary, os.path.join(args.out, "summary.json"))
     say(f"SUMMARY {json.dumps({k: summary[k] for k in ('cases_attempted', 'cases_timed', 'cases_reportable', 'median_fused_vs_singles', 'median_fused_vs_array')})}")
-    return 0 if summary["cases_reportable"] else 1
+    return exit_status(rows)
+
+
+#: The verdicts of a case timed to the end, reportable or struck by its floors.
+TIMED_VERDICTS = ("TIMED", "TIMED-NOT-REPORTABLE")
+
+
+def exit_status(rows: Sequence[Dict[str, Any]]) -> int:
+    """0 when every case given was timed to the end, else 1.
+
+    A row struck by its floors (``TIMED-NOT-REPORTABLE``) is a finished measurement:
+    its record keeps the legs and says which floor struck it, and the cuts read that
+    status. So it exits 0, like a reportable row, and a driver that re-runs failed
+    units does not re-time it. An error, a case too large to time, a harness failure,
+    or no case at all exits 1."""
+    timed = [row for row in rows if row.get("verdict") in TIMED_VERDICTS]
+    return 0 if rows and len(timed) == len(rows) else 1
 
 
 if __name__ == "__main__":

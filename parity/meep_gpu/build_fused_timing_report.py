@@ -1,21 +1,22 @@
 #!/usr/bin/env python
 """Turn ``bench_fused_products`` rows into the benchmark document, and nothing else.
 
-THE ROWS ARE THE EVIDENCE; THIS IS A VIEW OF THEM. Every number here is read out
+The rows are the evidence; this is a view of them. Every number here is read out
 of ``rows.jsonl`` and none is computed from anything else, so the document cannot
 drift from the run that produced it -- the failure mode the sibling benchmark
 documents avoid by being generated rather than transcribed.
 
-WHAT IT REFUSES TO PRINT. A row whose floors did not all pass is NOT given a
+What it refuses to print. A row whose floors did not all pass is NOT given a
 speedup column. It is listed, by name, under the floor it failed, because a case
 that could not be measured is a fact about the campaign and hiding it would make
 the table read as complete when it is not. The within-pass window spread is no
-floor (owner ruling R33, 2026-10-16): it is recorded on every row and gates nothing,
-and a row written before the bench moved it out of its floors is read here as one
-written after (:func:`reportable`). ``reference_census_refuse_unmeasurable
-_rows_by_name`` is the same rule one layer up.
+floor (since 2026-10-16; ``docs/development/timing.md``, "The gate of record"): it is
+recorded on every row and gates nothing, and a row written before the bench moved it
+out of its floors is read here as one written after (:func:`reportable`). The coverage
+census applies the same rule one layer up: a row it cannot measure is refused by name,
+not scored.
 
-TWO POPULATIONS, NEVER ONE MEDIAN (2026-09-20). Rows the METAL table served are a
+Two populations, never one median (2026-09-20). Rows the METAL table served are a
 different kind of measurement from rows the two NVIDIA tables served -- a host
 engine with device mirrors and a residency bracket around every launch, on a
 laptop, against device arrays on a GPU host -- so they get a section, a table and a
@@ -40,19 +41,20 @@ def load(path: str) -> List[Dict[str, Any]]:
         return [json.loads(line) for line in handle if line.strip()]
 
 
-#: The bench floor that read a leg's within-pass window spread until owner ruling R33.
+#: The bench floor that read a leg's within-pass window spread until 2026-10-16.
 WINDOW_FLOORS = ("spread_within_gate",)
 
 
 def gating_floors(row: Dict[str, Any]) -> Dict[str, Any]:
-    """A row's floors without the window floor: the ones that gate under R33."""
+    """A row's floors without the window floor: the ones that gate since 2026-10-16."""
     return {name: value for name, value in (row.get("floors") or {}).items()
             if name not in WINDOW_FLOORS}
 
 
 def reportable(row: Dict[str, Any]) -> bool:
-    """Every floor that gates passed (R33), read off the floors themselves, so a row
-    the bench marked not reportable for its window spread alone reads reportable."""
+    """Every floor that gates passed (the window floor is not one since 2026-10-16), read
+    off the floors themselves, so a row the bench marked not reportable for its window
+    spread alone reads reportable."""
     if not row.get("floors"):
         return bool(row.get("reportable"))
     floors = gating_floors(row)
@@ -90,7 +92,7 @@ RESTRICTION_COUNTERS = ("restricted_sources", "restriction_fallbacks")
 def is_smoke(row: Dict[str, Any]) -> bool:
     """Is this a ``--smoke`` row: a check of the harness, never a timing?
 
-    ``smoke`` IS ITS OWN FIELD SINCE 2026-09-20 and is read where a row has it. Before
+    ``smoke`` is its own field since 2026-09-20 and is read where a row has it. Before
     then ``prefer_gpu`` False MEANT smoke, because only ``--smoke`` lifted on the host
     array module; a Metal row written before 2026-09-27 was lifted ``prefer_gpu=False``
     under the enable by design and is a real measurement, so the old reading would
@@ -180,7 +182,7 @@ def provenance_lines(rows: Sequence[Dict[str, Any]]) -> List[str]:
                 f"`meep_gpu/deposit_repair.py` {_short(only)}; git HEAD "
                 f"{', '.join(_short(h) if h != 'unknown' else h for h in heads)}; "
                 f"working tree dirty for a pinned path: {'/'.join(dirty)}.")
-    # A ``--smoke`` ROW IS A CHECK OF THE HARNESS, never a GPU timing: it lifts the
+    # A ``--smoke`` row is a check of the harness, never a GPU timing: it lifts the
     # NumPy reference. :func:`is_smoke` reads the row's own ``smoke`` field, and an
     # explicit ``prefer_gpu`` False only on rows older than that field.
     smoke = sum(1 for r in rows if is_smoke(r))
@@ -268,7 +270,7 @@ def route_cell(row: Dict[str, Any]) -> str:
 def route_lines(rows: Sequence[Dict[str, Any]]) -> List[str]:
     """Per row with a timed fused leg: did the bracket take the linear route?
 
-    EVERY TIMED ROW, not only the reportable ones -- a refused row's bracket ran the
+    Every timed row, not only the reportable ones -- a refused row's bracket ran the
     same code, and whether it took the fast route is a fact about that code.
     """
     timed = [r for r in rows if ((r.get("per_leg") or {}).get("fused"))]
@@ -314,10 +316,12 @@ def pinned_device(box: Dict[str, Any]) -> Optional[str]:
     ``CUDA_VISIBLE_DEVICES`` may be a UUID, in which case it IS the answer, or an
     index, in which case the row's own ``nvidia-smi --query-gpu=index,uuid,…`` listing
     resolves it. Unset, or naming a device the listing does not carry, answers None:
-    the process saw every device on the box and no app on it can be excluded.
+    the process saw every device on the box and no app on it can be excluded. A row
+    written since the box tables leave the machine names each device by its card id
+    (``c-...``) in the pin, the listing and the foreign apps alike, so the join holds.
     """
     pin = str(box.get("CUDA_VISIBLE_DEVICES") or "").strip()
-    if pin.startswith("GPU-"):
+    if pin.startswith(("GPU-", "c-")):
         return pin
     for line in str(box.get("gpus") or "").splitlines():
         parts = [part.strip() for part in line.split(",")]
@@ -329,13 +333,15 @@ def pinned_device(box: Dict[str, Any]) -> Optional[str]:
 def foreign_on_the_pinned_device(box: Dict[str, Any]) -> Tuple[List[str], str]:
     """The compute apps this row shared its OWN device with, and how sure that is.
 
-    THE PROBE'S FIELD IS NOT FILTERED WHEN THE PIN IS AN INDEX. ``box_state`` drops
+    The probe's field is not filtered when the pin is an index. ``box_state`` drops
     apps on other devices only when ``CUDA_VISIBLE_DEVICES`` starts with ``GPU-``, so
     on an eight-GPU host pinned to ``0`` the field it calls
     ``foreign_compute_apps_on_pinned_gpu`` lists every compute app on the machine. Each
     line is ``gpu_uuid, pid, used_memory``, so the device is right there to compare
     against, and this does the comparison the name promises. Where the pin cannot be
-    resolved, every app counts and the caller says so in the mark.
+    resolved, every app counts and the caller says so in the mark. A row whose box
+    leaves the machine writes each line ``<card id>, <used memory>`` (no pid, no UUID):
+    the device is still its first field.
     """
     apps = list(box.get("foreign_compute_apps_on_pinned_gpu") or [])
     device = pinned_device(box)
@@ -353,8 +359,8 @@ def contended(row: Dict[str, Any]) -> Optional[str]:
     if either saw a foreign process on the device this row was using.
     """
     marks = []
-    # ``box_*`` IS THE GPU HOST'S PROBE (an NVIDIA row): every compute app the driver
-    # reported, narrowed here to the device this row had. ``host_*`` IS THE LAPTOP'S
+    # ``box_*`` is the GPU host's probe (an NVIDIA row): every compute app the driver
+    # reported, narrowed here to the device this row had. ``host_*`` is the laptop's
     # (a Metal row): every other process found driving the one Metal device -- a route
     # campaign, a fleet recut, a second bench -- which needs no narrowing.
     for when in ("box_before", "box_after", "host_before", "host_after"):
@@ -432,7 +438,7 @@ def control_note(row: Dict[str, Any]) -> str:
 def per_launch(row: Dict[str, Any], leg: str) -> Optional[float]:
     """Milliseconds per device launch on this leg, or None if unwitnessed.
 
-    WHERE THE COST IS, which the per-step column cannot say. A fused product that
+    Where the cost is, which the per-step column cannot say. A fused product that
     is slower per STEP while issuing FEWER launches is not launch-bound -- the
     launches it does issue are individually more expensive. Dividing one measured
     column by the other separates "too many launches" from "each launch costs too
@@ -446,7 +452,7 @@ def per_launch(row: Dict[str, Any], leg: str) -> Optional[float]:
 
 
 def table(rows: Sequence[Dict[str, Any]], show_src: bool = False) -> List[str]:
-    # ``src`` ONLY WHEN THE ROWS MIX PROVENANCES: a column that reads the same on
+    # ``src`` only when the rows mix provenances: a column that reads the same on
     # every row carries nothing the header has not said once.
     lines = ["| case | grid | fused ms/step | singles ms/step | array ms/step "
              "| vs singles | vs array | ms/launch fused:singles | pairs "
@@ -464,7 +470,7 @@ def table(rows: Sequence[Dict[str, Any]], show_src: bool = False) -> List[str]:
             f"| {1e3 * per['unfused']['median_seconds_per_step']:.3f} "
             f"| {1e3 * per['array']['median_seconds_per_step']:.3f} "
             f"| {('**%.2fx**' % row['ratios']['unfused_over_fused']) if same_table(row) else '— (%s)' % control_note(row)} "
-            # THREE PLACES BECAUSE THIS RATIO GOES BELOW ONE. Two places printed
+            # Three places because this ratio goes below one. Two places printed
             # the 1-D smoke row's 0.0057 as "0.01x", which reads as a near-tie
             # between paths that differ by a factor of 178.
             f"| {row['ratios']['array_over_fused']:.3f}x "
@@ -634,7 +640,7 @@ def sweep_lines(after: List[Dict[str, Any]], before: List[Dict[str, Any]]) -> Li
                        f"{min(loses):,}")
         else:
             verdict = f"alternates around its singles ({len(wins)} of {len(grp)} sizes ahead)"
-        # THE FLAT FLOOR, derived: the sizes over which the fused step stays within 10%
+        # The flat floor, derived: the sizes over which the fused step stays within 10%
         # of its smallest value -- the host-bound regime -- and the range it spans.
         fastest = min(per_step(r, "fused") for r in grp)
         flat = [r for r in grp if per_step(r, "fused") <= 1.10 * fastest]
@@ -653,7 +659,7 @@ def sweep_lines(after: List[Dict[str, Any]], before: List[Dict[str, Any]]) -> Li
         "`TrailingRepairPlan.apply` after the driver's inject); a seam-swap ablation "
         "proved the cost follows the SOURCE'S seam and neither kernel is slow "
         "(`results/fused_ablation_2026-09-17_seamswap/`, `fused_ablation2_...`). The "
-        "2026-09-19 round rewrote the bracket onto a linear index cached per plan "
+        "2026-09-19 change rewrote the bracket onto a linear index cached per plan "
         "(bit-identical: 0 of 84,449,844 words against the previous arithmetic) and "
         "stopped the CUDA products re-emitting their kernel source on every launch; "
         "the `before` column is the same sweep on the earlier bytes. What remains of "
@@ -747,7 +753,7 @@ def metal_table(rows: Sequence[Dict[str, Any]]) -> List[str]:
             f"| {1e3 * per['array']['median_seconds_per_step']:.3f} "
             f"| {('**%.2fx**' % row['ratios']['unfused_over_fused']) if same_table(row) else '— (%s)' % control_note(row)} "
             f"| {row['ratios']['array_over_fused']:.3f}x "
-            # AN UNWITNESSED ROW'S ZEROES ARE NOT LAUNCH COUNTS, and are not printed.
+            # An unwitnessed row's zeroes are not launch counts, and are not printed.
             f"| {'%g : %g' % (lps.get('fused') or 0, lps.get('unfused') or 0) if seen else 'no witness'} "
             f"| {'—' if not seen or f is None or u is None else '%.3f : %.3f' % (f, u)} "
             f"| {facts.get('mirrors', '—')} | {moved} "
@@ -761,7 +767,7 @@ def metal_section(rows: Sequence[Dict[str, Any]],
     """Everything the document says about rows the Metal table served.
 
     ``rows`` is every Metal-population row, ``good`` those that passed the floors that
-    apply to any measurement. EVERY FIGURE AND EVERY FACT BELOW IS READ OFF THE ROWS --
+    apply to any measurement. Every figure and every fact below is read off the rows --
     the residency mode is the string the plan recorded when it froze, the sync call is
     the one the bench recorded making, the power source is what the host probe read --
     so a campaign run under another residency mode, or on mains, renders as that.
@@ -794,7 +800,7 @@ def metal_section(rows: Sequence[Dict[str, Any]],
             f"NVIDIA counter can see a Metal launch. Their substitution rests on the "
             f"slot map alone, their launch columns read *no witness*, and they enter "
             f"no headline figure.", ""]
-    # THE MEDIAN IS A QUIET-BOX NUMBER OR IT IS NOTHING. This host has ONE device and
+    # The median is a quiet-box number or it is nothing. This host has ONE device and
     # shares it with whatever else is driving it, so a contended row is a row about a
     # busy machine; averaged in, it moves the headline by an amount nobody can
     # subtract. The two are reported the way the CPU baseline reports its pair --
@@ -860,7 +866,7 @@ def metal_section(rows: Sequence[Dict[str, Any]],
         out += ["No Metal row passed every floor; the refusals are listed below and "
                 "none of them is a measurement.", ""]
 
-    # THE RESIDENCY CONTEXT, which is what a Metal number is a number ABOUT.
+    # The residency context, which is what a Metal number is a number ABOUT.
     basis = good or timed
     if basis:
         invariants = sorted({_residency(r).get("invariant") for r in basis
@@ -944,7 +950,7 @@ def gpu_only(row: Dict[str, Any]) -> bool:
 def render(rows: List[Dict[str, Any]], title: str,
            sweep: Sequence[Dict[str, Any]] = (),
            sweep_before: Sequence[Dict[str, Any]] = ()) -> str:
-    # GPU-ONLY ROWS ARE LEFT OUT BY NAME: they time the fused leg alone and carry no
+    # GPU-only rows are left out by name: they time the fused leg alone and carry no
     # ratio against the singles this document is about.
     left_out = [r for r in rows if gpu_only(r)]
     rows = [r for r in rows if not gpu_only(r)]
@@ -959,7 +965,7 @@ def render(rows: List[Dict[str, Any]], title: str,
         r.get("ratios") and r.get("floors")
         and all(v for k, v in gating_floors(r).items()
                 if k not in ("singles_are_the_same_table",)))]
-    # AND TWO DEVICE FAMILIES. Rows the Metal table served get their own section
+    # And two device families. Rows the Metal table served get their own section
     # (:func:`metal_section`); ``good`` and ``fusion`` below are the NVIDIA rows, so
     # the headline median is over exactly the rows it was over before a Metal row
     # existed.
@@ -994,7 +1000,7 @@ def render(rows: List[Dict[str, Any]], title: str,
         "substitution was proved, the fused leg was bit-identical to the array "
         "path, every leg moved bits and produced no non-finite value, and no kernel "
         "compiled inside a timed window. Every leg's within-window spread is "
-        "recorded and gates nothing (owner ruling R33): a figure's stability is "
+        "recorded and gates nothing (since 2026-10-16): a figure's stability is "
         "read across passes, where the cutters apply the 5 % gate. A SIXTH floor "
         "governs the `vs singles` column alone — the control "
         "must have run the same kernel table as the subject — so a row can be a "
@@ -1002,7 +1008,7 @@ def render(rows: List[Dict[str, Any]], title: str,
         "",
     ]
     out += provenance_lines(rows) + [""]
-    # OVER THE NVIDIA POPULATION, because this decides the NVIDIA table's shape: how
+    # Over the NVIDIA population, because this decides the NVIDIA table's shape: how
     # many PROGRAMS its rows were timed on, which splits its headline into per-digest
     # buckets and adds the `src` column. A Metal row pins its own sources and is timed
     # on another machine, so its digest differs as a matter of course; counted here it
@@ -1012,7 +1018,7 @@ def render(rows: List[Dict[str, Any]], title: str,
 
     if good:
         out += ["## Fused products against the certified singles they replace", ""]
-        # THE HEADLINE IS COMPUTED PER PROGRAM, never over two. Rows timed on
+        # The headline is computed per program, never over two. Rows timed on
         # different deposit_repair bytes are different programs -- the 2026-09-19
         # repair changed the bracket's cost by an order of magnitude at large grids --
         # so a mixed set gets one headline per digest bucket, and a ``--smoke`` row
@@ -1076,7 +1082,7 @@ def render(rows: List[Dict[str, Any]], title: str,
 
     out += sweep_lines(list(sweep), list(sweep_before))
 
-    # WHAT THE DOCUMENT LICENSES, stated in the document rather than left to the
+    # What the document licenses, stated in the document rather than left to the
     # reader -- the shape every benchmark in this tree carries.
     out += [
         "## What these rows license, and what they do not", "",
@@ -1089,11 +1095,11 @@ def render(rows: List[Dict[str, Any]], title: str,
         "often a shape occurs in it;",
         "- an end-to-end or application speedup. Monitors are detached and the "
         "window is the step loop;",
-        "- a GPU-vs-CPU claim, which the design notes (meep-gpu-vs-cpu-throughput) answer and "
+        "- a GPU-vs-CPU claim, which the same-machine CPU-vs-GPU throughput benchmark answers and "
         "this campaign does not re-derive;",
         "- anything about a case not in the table, including the cases listed as "
         "refused above;",
-        # THE ROUTE IS RECORDED, NOT FLOORED, so what it licenses has to be said here.
+        # The route is recorded, not floored, so what it licenses has to be said here.
         "- a statement about the linear-index deposit repair "
         "(`deposit_repair.py`, 2026-09-18/19) from any row whose `repair route` does "
         "not read `linear`. A row reading *3-tuple fallback* or *mixed* is a sound "
@@ -1104,7 +1110,7 @@ def render(rows: List[Dict[str, Any]], title: str,
         "quoted below (*Where the two-pair overhead lives*) were measured on "
         "2026-09-17 rows, before the linear route, and describe that code;",
     ]
-    # THE NEXT THREE PARAGRAPHS QUOTE THE NVIDIA CAMPAIGN'S OWN FIGURES (its cell
+    # The next three paragraphs quote the NVIDIA campaign's own figures (its cell
     # counts, its spread at a fixed size, the 2026-08-21 kernel rows), so they are
     # printed where an NVIDIA row is and not over a document of Metal rows alone.
     if len(metal_rows) < len(rows):
@@ -1146,7 +1152,7 @@ def render(rows: List[Dict[str, Any]], title: str,
             "the array leg is this table's own host engine, stepped in the same "
             "process under the same subnormal policy, and is the reference the fused "
             "arithmetic is proved identical to.", ""]
-    # THE CUDA CLAUSE IS NOT OPTIONAL AND IS NOT TYPED IN. Every CUDA row describes
+    # The CUDA clause is not optional and is not typed in. Every CUDA row describes
     # a path a user reaches ONLY by setting the preference: under the SHIPPED
     # precedence the release-gated Triton table composes first and holds every slot
     # both admit, which is why the board's own

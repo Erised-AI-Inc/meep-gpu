@@ -1,6 +1,6 @@
 """Complex/Bloch no-PML tensor-row ``update_E`` on Metal.
 
-**THE ROW IS MEEP'S DOUBLE ROW, PER PART, IN SOFTWARE BINARY64 (ruling R7).** MEEP
+**The row is MEEP's double row, per part, in software binary64 (docs/design/floating-point.md#double-precision-on-the-metal-table).** MEEP
 steps the two parts of a complex field separately with the same real coefficients
 (``DOCMP``, update_eh.cpp:149), so each part's row is :mod:`.offdiag_update_e`'s:
 ``widen(gs*us)`` per part, each live term's float32 pair sum per part wall-masked
@@ -10,7 +10,7 @@ double operation through :mod:`.softfp64` with ``fz = true``. The row text is
 :mod:`.complex_folded_offdiag_update_e`'s, with no fold. A component with no live
 row keeps the float32 ``gs*us``.
 
-**THE BLOCH CONNECTION IS THE ARRAY PATH'S.** On a phased periodic axis the shifted
+**The Bloch connection is the array path's.** On a phased periodic axis the shifted
 reads are plain wraps and the connection lands on the SAME-INDEX operand's plane 0
 (``stepping._bloch_ghost_operand``): the partner pair's own word ``g[i]`` on the
 partner axis's plane 0 takes ``eikna`` (``dp{a}``, the backward side of
@@ -21,14 +21,14 @@ copy, a per-part negation, or the unfused ``c_mul(word, phase)``
 (:func:`.complex_fields.connection`). The far product is the plain up-shift of the
 unconnected product.
 
-**PRESENCE IS PER CHUNK (KERNELS.md §2).** The chunk record binds at
+**Presence is per chunk (docs/development/kernel-tables.md#record-layout).** The chunk record binds at
 :data:`RECORD_BUFFER` and the six 27-bit presence words last at
 :data:`PRESENCE_BUFFER`; the kernel reads them through
 :func:`.offdiag_update_e.presence_block`, and the host builds them from the array
 path's presence (:func:`.offdiag_update_e.presence_for`). A run without an absorber
 steps one chunk unless the driver installed a division, so its words are all-kept.
 
-THERE IS NO PER-CHUNK CONSTITUTIVE SELECT HERE. A constitutive sub-step without an
+There is no per-chunk constitutive select here. A constitutive sub-step without an
 absorber carries no ``dsigw`` layer in any chunk, so ``E = src`` is the only form;
 the record serves the presence labels only.
 
@@ -501,7 +501,7 @@ def _arm_gate(context: Any) -> bool:
 def register_arms() -> Tuple[Any, ...]:
     from . import arms  # noqa: PLC0415
 
-    # Wired: the row is the array path's double row per part (ruling R7, software
+    # Wired: the row is the array path's double row per part (in software
     # binary64), with the array path's Bloch connection and per-chunk presence.
     return (arms.register(
         family=FAMILY, slot=SLOT, label="complex no-PML off-diagonal",

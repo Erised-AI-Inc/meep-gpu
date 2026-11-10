@@ -1,12 +1,12 @@
 """Array packing on Metal, as claims a laptop can check.
 
-WHAT THIS SUITE OWNS. :mod:`meep_gpu.metal_kernels.coefficient_pack` puts several
+What this suite owns. :mod:`meep_gpu.metal_kernels.coefficient_pack` puts several
 read-only coefficient vectors in ONE Metal buffer and addresses them by element
 offsets carried in the kernel's ``Params`` struct. That buys back buffer bindings on a
 platform whose ceiling is 31 (``device.MAX_BUFFER_BINDINGS``), and it is the reason
 the Dcyl m = 0 D->E pair — 31 pointers unpacked, one over — exists at all.
 
-WHAT IT DELIBERATELY DOES NOT OWN. Whether the packed kernel computes the same
+What it deliberately does not own. Whether the packed kernel computes the same
 NUMBERS is the device gate's
 (``parity/meep_gpu/gate_metal_cylindrical_real_fused_electric_pair.py``, legs
 ``pack_identity``, ``binding_ceiling`` and the eleven OFFSET mutations). No assertion
@@ -14,7 +14,7 @@ here duplicates that. What lives here is everything true about the packer WITHOU
 device: the layout arithmetic, the refusals, the emitted MSL text, and the two
 invariants a wrong pack would break silently.
 
-THE ONE DESIGN RULE THIS SUITE PINS: a pack is READ-ONLY. There is no writer-side
+The one design rule this suite pins: a pack is READ-ONLY. There is no writer-side
 API, ``packed_mirror`` registers ``constant=True``, and a family that wanted to fold a
 device-written scratch volume into a pack would have to add the capability rather than
 call an existing one. The cylindrical radial prefix is the live example and it keeps
@@ -156,7 +156,7 @@ def test_a_pack_of_a_different_LENGTH_under_one_name_is_refused_too():
 
 
 def test_the_pack_is_registered_as_a_CONSTANT_mirror():
-    """READ-ONLY BY CONSTRUCTION. Nothing on the device writes a pack, so nothing
+    """Read-only by construction. Nothing on the device writes a pack, so nothing
     needs syncing out — and a family that folded a device-written scratch volume in
     would have to change this call rather than reuse it."""
     residency = Residency(device="cpu")
@@ -202,7 +202,7 @@ def test_the_record_dtype_matches_the_struct_field_order():
 
 
 def test_the_prologue_recreates_each_vector_under_its_own_name():
-    """THE WHOLE POINT: the lifted bodies are not forked.
+    """The whole point: the lifted bodies are not forked.
 
     After these lines ``kmx`` is a ``device const float*`` exactly as it was when it
     had its own ``[[buffer(n)]]``, so every certified line that indexes it is

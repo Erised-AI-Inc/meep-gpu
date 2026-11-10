@@ -40,15 +40,15 @@ measurement artifact the repository does not carry is skipped by a declared
 resource, and the summary lists each resource with its count. See
 [Running the tests](../development/testing.md).
 
-There are two device lanes, not one. CUDA conformance and benchmarks run on a
-CUDA host; the Metal table has its own Apple-GPU gate lane. A CPU-only
+Device validation runs in two places, not one. CUDA conformance and benchmarks run on a
+CUDA host; the Metal table's gates run on an Apple GPU. A CPU-only
 developer should still run the NumPy and CPU-MEEP checks.
 
 > **Warning: Expected failures in this release**
 >
 > The ledger-contract tests compare the source digests recorded in the
-> kernel ledgers with the files in the tree. The 1.0 certification round bound
-> the ledgers on this release's bytes; the tests that still fail are each
+> kernel ledgers with the files in the tree. The 1.0.1 certification round bound
+> the ledgers; the tests that still fail are each
 > declared in <code>tools/ci/pending_certification.txt</code>, with the step
 > that removes it. They form the
 > certification suite (pytest marker <code>certification</code>), which a run
@@ -70,8 +70,8 @@ throughput result:
 - **Route gates** drive each fused product through the driver's own consults and
   byte-compare whole runs against the array path, with per-step launch counts
   proving the substitution actually occurred.
-- **Per-family device gates** certify each family's arithmetic under both
-  subnormal policies, each paired with a null control that must be able to fail.
+- **Per-family device gates** certify each family's arithmetic under both subnormal policies
+  on NVIDIA and <code>flush</code> on Metal, with a null control that must be able to fail.
 
 Each gate record states its own limit: it covers the arms it drove, on the
 configurations it ran, under the policy it recorded — and nothing about an arm it
@@ -86,8 +86,8 @@ table-selection rule, the coverage boards and their denominators, and how to rea
 
 ## A default lift on a small cell
 
-The default is chosen for the jobs a GPU is for. On a small cell it is the
-slower choice, so pass <code>prefer_gpu=False</code> there. Both step the same
+The default is chosen for the jobs a GPU is for. On the smallest cells pass
+<code>prefer_gpu=False</code>, faster there on pre-1.0 code (below). Both step the same
 equations: at 3,600 cells on the Apple GPU measured, Ez after 200 steps was
 bit-identical between the default lift and the reference in 11 of 11 real-field
 cases compared. The two run under different subnormal policies, so that
@@ -111,15 +111,15 @@ of three runs):
 | 125,000 (3-D) | 2.40 | 2.47 | level |
 | 216,000 (3-D) | 2.51 | 4.06 | 1.61 times faster |
 
-The crossover is between 102,400 and 230,400 cells in 2-D and near 125,000
-cells in 3-D. A default lift also pays about one to two seconds once, in the
-lift and the first step.
+On the pre-1.0 code measured, the crossover was between 102,400 and 230,400 cells
+in 2-D and near 125,000 cells in 3-D. A default lift also paid about one to two
+seconds once, in the lift and the first step.
 
 These are not timings of record and support no claim beyond their own rows: one
 host, loaded by other work while they were taken, one case family, two passes in
-2-D and one in 3-D. Another 3-D measurement on the same laptop, of a different
-case with a different instrument, read a lower cost per step at a similar size;
-the two have not been reconciled. No CUDA host has been measured this way.
+2-D and one in 3-D. No CUDA host has been measured this way. On the 1.0 code the
+3-D crossover is below 110,592 cells, the smallest grid of the 1.0 timing of another
+case on the same laptop ([On one Apple M1 Max](will-it-help.md#on-one-apple-m1-max)).
 
 ## Benchmark fairly
 
@@ -167,8 +167,10 @@ the certified single arms they replace are measured separately; the figures and
 the size dependence are in
 [Compiled-kernel dispatch](kernel-dispatch.md#what-fusing-buys-and-at-which-size).
 The short version: on the NVIDIA tables a two-pair plan loses to its own
-certified single arms below a crossover between 2.4 and 5.4 million cells
-(measured 2026-10-16, on this release's bytes), and the Metal table's coverage
+certified single arms, on one RTX A6000 below a crossover between 2.4 and 5.4
+million cells (measured 2026-10-16, on the bytes of 1.0) and on the RTX 3090, whose
+rows the shipped records are cut from, at every swept size up to 5.4 million cells; and the
+Metal table's coverage
 figure supports no timing claim at all.
 
 The timing harness that produced those rows ships in the repository under

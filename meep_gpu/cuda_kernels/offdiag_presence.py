@@ -8,7 +8,7 @@ update_eh.cpp:191-196). The array path reads the verdict per cell
 (``Fields.offdiag_presence``, ``stepping._offdiagonal_terms``). Dropping and adding a
 zero differ only when the row so far is ``-0``, which is reachable.
 
-THE DEVICE RULE (``offdiag_emitter.PRELUDE``: ``chunk_row``, ``chunk_label``,
+The device rule (``offdiag_emitter.PRELUDE``: ``chunk_row``, ``chunk_label``,
 ``chunk_keeps``). A kernel learns which chunk a cell belongs to from the run's chunk
 record ``cb``: along each axis, on the component's own Yee sub-lattice there, the label
 ``chunk_coverage.chunk_owner_label`` reads (0 in the low run, 2 in the high run, 1
@@ -18,17 +18,17 @@ is ``lx + 3*ly + 9*lz``, and the term is added where bit ``code`` of the row's 2
 PRESENCE WORD is set. One word per (row, partner) slot, in ``coverage.OFFDIAG_ROW_SLOTS``
 order: :func:`presence_words`.
 
-WHY THE WORD IS BUILT FROM THE ORACLE'S OWN VOLUME AND CHECKED, rather than derived from
+Why the word is built from the oracle's own volume and checked, rather than derived from
 the per-chunk verdicts. The array path's presence is a per-cell volume read through its
 own chunk division (``stepping._chunk_layout``); the kernel's is a per-chunk bit read
 through the record the composition binds. The builder reads the first, groups its cells
-by the code the device rule gives them, and REFUSES BY NAME a code whose cells disagree
+by the code the device rule gives them, and refuses by name a code whose cells disagree
 -- so a launch either reproduces the array path's presence on every stored cell, ghost
 and wall rows included, or does not happen. A division whose record does not name its
 chunks (not a ``{low, interior, high}`` product along an axis) is refused there, and so
 is a layout the oracle reads that is not the record's.
 
-NUMPY ONLY; no CuPy. The launchers call it once per frozen configuration.
+NumPy only; no CuPy. The launchers call it once per frozen configuration.
 """
 
 from __future__ import annotations

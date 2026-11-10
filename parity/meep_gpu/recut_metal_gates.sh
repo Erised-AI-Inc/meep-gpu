@@ -1,21 +1,21 @@
 #!/bin/zsh
 # Re-cut EVERY Metal gate on one tree, in one pass, and record what each returned.
 #
-# WHY A SCRIPT RATHER THAN A LIST IN A REPORT. "Every gate was re-cut" is a claim
+# Why a script rather than a list in a report. "Every gate was re-cut" is a claim
 # about all discovered processes; running them by hand is how one gets missed and the
 # report still says fifteen. This enumerates `gate_metal_*.py` from the DIRECTORY
 # rather than from a literal list, so a gate added later is re-cut by the same
 # command without anyone remembering to add it — and a gate that vanishes shows up
 # as a shorter run rather than as a silently unchecked one.
 #
-# ORDER MATTERS OUTSIDE THIS FILE: `write_fingerprints` must run AFTER the last gate,
+# Order matters outside this file: `write_fingerprints` must run AFTER the last gate,
 # deliberately and separately, because a fingerprint cut before the gates that check
 # it certifies nothing. This script never calls it.
 #
 # progress reporting: one flushed line per gate as it lands, plus a per-gate log, so the state
 # of a fifteen-gate run is readable from the filesystem while it is still running.
 #
-# THE OPTIONAL SECOND ARGUMENT IS A REBIND STAMP, and it exists because the artifact
+# The optional second argument is a rebind stamp, and it exists because the artifact
 # LAYOUT is a contract rather than a convenience. `rebind_metal_welds.py` resolves a
 # family's fresh artifact as `results/metal_<family>_<stamp>/`, and this script's own
 # default layout — `<root>/gate_metal_<family>/` — is not that. A campaign that re-cut
@@ -24,7 +24,7 @@
 # somebody writes beside it. With a stamp, each gate lands in
 # `results/metal_<family>_<stamp>/gate.json` and `<root>` keeps only the logs.
 #
-# THE LIFT LEGS (lift_host.py). Nine `*_fused_hd_pair` gates re-lift corpus rows, each
+# The lift legs (lift_host.py). Nine `*_fused_hd_pair` gates re-lift corpus rows, each
 # row in a child under $PY, never under an interpreter a census row records. They read
 # the 2026-09-04 census and seam records under results/, which the release tree does not
 # carry (a missing one stops the lift basis by name), and the MEEP corpus named by
@@ -46,7 +46,7 @@ export KMP_DUPLICATE_LIB_OK=TRUE
 export MPLBACKEND=Agg
 export PYTHONPATH="$API"
 export MEEP_GPU_SUBNORMAL_POLICY=flush
-# THE DISPATCH PIN (2026-09-27): fastpath.DISPATCH_BY_DEFAULT is True, so an unset
+# The dispatch pin (2026-09-27): fastpath.DISPATCH_BY_DEFAULT is True, so an unset
 # MEEP_GPU_DISPATCH now dispatches, and the gates here step NumPy reference drivers
 # that must stay on the array path -- on this Mac an unpinned one plans through the
 # Metal table. Exported here, beside the policy, so the fleet is pinned whoever calls
@@ -61,7 +61,7 @@ SUMMARY="$ROOT/recut_summary.txt"
 : > "$SUMMARY"
 
 fail=0
-# THE ENVIRONMENT THE WELDS WILL NAME, recorded before the first gate and after the
+# The environment the welds will name, recorded before the first gate and after the
 # last: the GPU architecture, torch and Metal frontend `metal_dispatch` certifies a
 # weld for. `rebind_metal_welds.py` writes each weld's host line from these two
 # records and refuses a campaign whose records are missing or disagree.
@@ -82,7 +82,7 @@ run_gate() {
   log="$ROOT/$name.log"
   started=$(date +%s)
   if [[ -n "$STAMP" ]]; then
-    # THE REBIND LAYOUT: results/metal_<family>_<stamp>/, which is what
+    # The rebind layout: results/metal_<family>_<stamp>/, which is what
     # `rebind_metal_welds._artifact_for` looks for. `${name#gate_}` is the family
     # prefixed with `metal_`, which is exactly how the ledger keys are spelled.
     dir="$RESULTS/${name#gate_}_$STAMP"

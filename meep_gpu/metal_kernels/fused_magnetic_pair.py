@@ -1,7 +1,7 @@
 """The THIRD fused Metal kernel: ``step_B`` welded into ``update_H``.
 
-THE MAGNETIC HALF of :mod:`.fused_dispersive_pair`, and the first fused product on
-this backend whose seam is the B/H one. ONE DISPATCH FOR ALL THREE COMPONENTS: the
+The magnetic half of :mod:`.fused_dispersive_pair`, and the first fused product on
+this backend whose seam is the B/H one. One dispatch for all three components: the
 plain magnetic constitutive carries no pole buffers and no inverse-mu volume, so
 the whole B half fits in a single launch — 27 pointers plus one packed
 ``constant Params&``, 28 of the 31 bindings the platform allows (see "THE
@@ -10,8 +10,8 @@ dispatches (the certified curl, then the certified constitutive) plus one host
 wall pass on a walled run; this is ONE, and the flux density never leaves a
 register.
 
-EVERYTHING HERE IS TRANSCRIBED, and the two halves are not re-spelled at all —
-they are SPLICED FROM THE CERTIFIED EMITTERS' OWN OUTPUT:
+Everything here is transcribed, and the two halves are not re-spelled at all —
+they are spliced from the certified emitters' own output:
 
 * the B curl half — :func:`.shaders.curl_source` with ``backward=False``
   (shaders.py:242-260), whose body is lifted verbatim by
@@ -34,7 +34,7 @@ exactly that, because a construction is a hypothesis until something compares th
 strings.
 
 ===========================================================================
-THE SEAM, AND WHAT SITS INSIDE IT — measured from the driver, not assumed
+The seam, and what sits inside it — measured from the driver, not assumed
 ===========================================================================
 
 The driver runs FOUR passes between ``step_B`` and ``update_H``
@@ -42,7 +42,7 @@ The driver runs FOUR passes between ``step_B`` and ``update_H``
 ``step_B`` -> MAGNETIC SOURCES -> ``fill_symmetry_bc_B`` -> ``zero_metal_B`` ->
 ``fill_folded_far_ghosts_B`` -> ``update_H``.
 
-**THE MAGNETIC SOURCE SLOT IS REAL, AND IT IS THE BINDING CLAUSE OF THIS FAMILY.**
+**The magnetic source slot is real, and it is the binding clause of this family.**
 This is worth stating plainly because the opposite was believed when this module
 was scoped: the B/H seam was expected to be empty, on the grounds that the D/E
 seam's source injection is what caps the first two fused pairs. It is not empty.
@@ -53,7 +53,7 @@ there — ``step_db(B_stuff)``, ``step_source(B_stuff)``, ``step_boundaries(B_st
 pre-injection B, which on a run with a magnetic current is a phase error of the
 same class the driver's docstring measures at 1.6e-01 against CPU MEEP.
 
-So the clause is REFUSED BY NAME, exactly as the electric clause is on the D side,
+So the clause is refused by name, exactly as the electric clause is on the D side,
 and with the polarity flipped: an ELECTRIC source is injected in the D/E half and
 does NOT disqualify this pair.
 
@@ -96,10 +96,10 @@ the whole reason 27 rather than 30.
 :data:`.device.MAX_BUFFER_BINDINGS` — buffer attribute indices must be 0..30 and a
 32nd binding is a COMPILE ERROR. Packing the five scalars into one
 ``constant Params&`` buys back four slots and lands at 28. Both halves of that are
-MEASURED by the gate's ``binding_ceiling`` leg: the 32-binding signature must FAIL
+measured by the gate's ``binding_ceiling`` leg: the 32-binding signature must FAIL
 and the packed 28-binding one must COMPILE, LAUNCH and read every field back.
 
-THE CHUNK RECORD RIDES IN THE SAME STRUCT. Both lifted bodies select their
+The chunk record rides in the same struct. Both lifted bodies select their
 forms per structure chunk (``stepping._apply_curl_regions``,
 ``_apply_constitutive_regions``) through the anchored bounds block KM1 put in each
 certified emitter, and that block reads ``cb.``. The base singles bind the record as
@@ -117,7 +117,7 @@ Python float and NumPy's weak promotion casts that double to float32,
 the same bits again.
 
 ===========================================================================
-THE TWO YEE SUB-LATTICES, AND WHY THEY ARE CROSSED HERE
+The two Yee sub-lattices, and why they are crossed here
 ===========================================================================
 
 The B curl reads the HALF-INTEGER split-field coefficients ``kms_a_h``/``sinv_a_h``
@@ -138,7 +138,7 @@ composer cannot select it, the disjointness sweep can still enumerate it, and no
 existing arm's behaviour changes. ``meep_gpu.fastpath.plan_fast_path`` still
 returns ``None`` on every branch.
 
-WHAT THE CORPUS SAYS THIS IS WORTH, measured rather than argued, from the 186-row
+What the corpus says this is worth, measured rather than argued, from the 186-row
 census (``parity/meep_gpu/results/metal_coverage_recut_2026-08-16``):
 
     admit BOTH halves (pml_curl@step_B and constitutive@update_H)   46 rows
@@ -147,8 +147,8 @@ census (``parity/meep_gpu/results/metal_coverage_recut_2026-08-16``):
 
 so the magnetic-source clause costs 22 of the 46, and 24 is what this family can
 reach. Beside it, the same census gives the D/E plain seam 26 rows admitting both
-halves and 0 surviving its electric-source clause. THE B SIDE IS WORTH 24 ROWS
-AGAINST THE D SIDE'S 0 — the seam being cheaper is real and is the reason this
+halves and 0 surviving its electric-source clause. The B side is worth 24 rows
+against the D side's 0 — the seam being cheaper is real and is the reason this
 product exists — but it is 24 and not the 45 that the count of
 ``pml_curl@step_D`` admissions suggested before the source slot was read out of
 the driver. That number is reported beside the gate rather than left to be
@@ -185,7 +185,7 @@ from .. import deposit_repair as _deposit_repair
 #: ``TrailingRepairPlan`` in the SECOND (``update_H``), which recomputes them after the
 #: driver has injected (``driver.py:3283-3284``), filled symmetry and cleared walls.
 #:
-#: THE PRECONDITION THIS PRODUCT MEETS is that its constitutive half is POINTWISE.
+#: The precondition this product meets is that its constitutive half is POINTWISE.
 #: ``update_H`` is ``H = B/mu`` with mu = 1, cell by cell: one
 #: ``_apply_constitutive_pml(H, B, kps, kms, f_w_H)`` per component and nothing else
 #: (``stepping.py:947-951``), and the fused kernel's own half reads the register
@@ -195,12 +195,12 @@ from .. import deposit_repair as _deposit_repair
 #: ``constitutive = fields.B*`` with the same ``_constitutive_coefficients(pml, axis,
 #: half_integer=False)`` and the same operand order -- from the final injected B.
 #:
-#: THE TWO NON-POINTWISE CONFIGURATIONS deposit_repair refuses by name -- an
+#: The two non-pointwise configurations deposit_repair refuses by name -- an
 #: off-diagonal chi1inv row and an instantaneous chi2/chi3 -- are ELECTRIC properties
 #: of ``update_E`` and cannot reach this seam; the clause below consults
 #: ``deposit_repair.repairable`` per run rather than assuming that.
 #:
-#: THE WALL CLEAR IS WHY THE REPAIR NEEDS NO WALL HANDLING. This kernel carries
+#: The wall clear is why the repair needs no wall handling. This kernel carries
 #: ``zero_metal_B`` inline and therefore clears BEFORE the injection, where the driver
 #: clears after it (``driver.py:3295``) -- but that host pass is unconditional rather
 #: than behind a ``dispatch`` consult, so by the second consult B is already injected,
@@ -208,7 +208,7 @@ from .. import deposit_repair as _deposit_repair
 #: walled cell is therefore recomputed from the zero the host clear left, which is what
 #: the array path computes too.
 #:
-#: IT IS NOT A HINT. A product that passes True without those wrappers computes the
+#: It is not a hint. A product that passes True without those wrappers computes the
 #: constitutive half against a pre-injection field and reports success, which is the
 #: exact failure ``deposit_repair`` exists to prevent. Flag and wiring move together,
 #: and ``gate_metal_fused_magnetic_pair.py`` leg ``deposit`` measures the pair: it
@@ -291,13 +291,13 @@ kernel void fused_magnetic_pair_step(
     constant Params&    prm     [[buffer(27)]],
     uint idx [[thread_position_in_grid]])
 {
-    // THE FIVE SCALARS ARE UNPACKED INTO THE CERTIFIED BODIES' OWN NAMES, once,
+    // The five scalars are unpacked into the certified bodies' own names, once,
     // before any of the lifted text runs. Everything below this line is then
     // character-for-character what `shaders.curl_source` and
     // `shaders.constitutive_source` emit, plus the wall clear.
     uint nx = prm.nx, ny = prm.ny, nz = prm.nz, n_elem = prm.n_elem;
     float dtdx = prm.dtdx;
-    // THE CHUNK RECORD rides in the same struct (no binding to spare), and this one
+    // The chunk record rides in the same struct (no binding to spare), and this one
     // line gives the lifted bounds blocks the `cb` they read.
 __RECORD_ALIAS__
 
@@ -366,7 +366,7 @@ def certified_constitutive_body(contract: str = shaders.CONTRACT_OFF) -> str:
     * the decode prologue is dropped (the curl half already emitted it);
     * the three targets ``f0``/``f1``/``f2`` become ``h0``/``h1``/``h2``.
 
-    THE SOURCE LINES ARE NOT EDITED HERE. ``float src0 = g0[ii];`` is left standing
+    The source lines are not edited here. ``float src0 = g0[ii];`` is left standing
     and :func:`fused_magnetic_pair_source` is what turns it into the register — so
     the seam is one visible substitution in one place, not a rename that quietly
     also moved it.
@@ -540,7 +540,7 @@ def metal_fused_magnetic_pair_coverage(fields: Any, pml: Any, sources: Any = Non
     it. That is the construction
     :func:`.fused_dispersive_pair.metal_fused_dispersive_pair_coverage` uses.
 
-    WHAT A BORROWER OF THIS PREDICATE INHERITS, and it is not the seam verdict.
+    What a borrower of this predicate inherits, and it is not the seam verdict.
     :mod:`.nonlinear_fused_magnetic_pair` delegates every non-nonlinear question
     here. While :data:`CARRIES_DEPOSIT_REPAIR` was False that was harmless: this
     predicate refused every in-seam source and so did the borrower. It is now True,
@@ -560,10 +560,10 @@ def metal_fused_magnetic_pair_coverage(fields: Any, pml: Any, sources: Any = Non
     if not magnetic.covered:
         reasons.extend(f"constitutive half: {reason}" for reason in magnetic.reasons)
 
-    # THE SOURCE SEAM, and for this family it is the BINDING clause on the measured
+    # The source seam, and for this family it is the BINDING clause on the measured
     # corpus. A MAGNETIC source is injected BETWEEN the two halves
     # (driver.py:3283-3284), so a fused pair would consume a pre-injection B.
-    # IGNORANCE IS NEVER AN EMPTY SET: `Fields` does not hold the source list, so a
+    # Ignorance is never an empty set: `Fields` does not hold the source list, so a
     # predicate that inferred "no sources" from not being told would be the
     # over-covering refusal this clause exists to prevent. An ELECTRIC source is
     # injected in the D/E half and does NOT disqualify the pair.
@@ -583,7 +583,7 @@ def metal_fused_magnetic_pair_coverage(fields: Any, pml: Any, sources: Any = Non
     if grid is None:
         return Coverage(False, tuple(dict.fromkeys(reasons + ["fields carries no grid"])))
 
-    # THE TWO FILLS. Both halves already refuse a mirror plane (coverage.py clause
+    # The two fills. Both halves already refuse a mirror plane (coverage.py clause
     # 5), so this restates by NAME what that refusal buys on THIS seam — a reader
     # should not have to chase a shared grid clause to learn that two driver passes
     # sit between the halves on a folded grid.
@@ -604,7 +604,7 @@ def metal_fused_magnetic_pair_coverage(fields: Any, pml: Any, sources: Any = Non
             reasons.append(
                 f"grid does not expose {name}; zero_metal_B cannot be carried inline")
 
-    # THE RUN'S FIRST update_H. The array path starts H and f_w from B on the dsigw
+    # The run's first update_H. The array path starts H and f_w from B on the dsigw
     # cells at that update (stepping.separate_h_from_b) and the lifted H body does
     # not, so this pair takes that update only where the start cannot change a word:
     # the base single's own clause (launch.h_start_reasons), asked with no source
@@ -675,7 +675,7 @@ def _params_tensor(shape: Sequence[int], dtdx: float, device: str, *,
     The record is :func:`.chunk_bounds.pack` of the validated ``int32[25]`` words,
     embedded at byte 20 (every member is four bytes, so the struct has no padding).
 
-    PLAN-OWNED AND OUTSIDE THE RESIDENCY REGISTRY, for the reason
+    Plan-owned and outside the residency registry, for the reason
     :func:`.folded_fused_pair._params_tensor` gives: :meth:`.Residency.mirror` binds
     float32 and complex64 volumes and refuses anything else BY NAME, because a
     wider element silently reinterprets. This record is neither — it is a packed
@@ -738,7 +738,7 @@ def plan_metal_fused_magnetic_pair(
         volumes.append(name)
         return residency.mirror(name, host, constant=constant)
 
-    # THE ORDER HERE IS THE SIGNATURE'S ORDER and nothing else keeps them in step,
+    # The order here is the signature's order and nothing else keeps them in step,
     # so the groups are built in the order the kernel declares them.
     flux = [bind(name, getattr(fields, name)) for name in ("Bx", "By", "Bz")]
     auxiliary = [bind("fu_" + name, getattr(fields, "fu_" + name))
@@ -747,7 +747,7 @@ def plan_metal_fused_magnetic_pair(
     magnetic = [bind(name, getattr(fields, name)) for name in ("Hx", "Hy", "Hz")]
     workspace = [bind("f_w_" + name, getattr(fields, "f_w_" + name))
                  for name in ("Hx", "Hy", "Hz")]
-    # THE B CURL TAKES THE HALF-INTEGER LATTICE and the H constitutive the INTEGER
+    # The B curl takes the half-integer lattice and the H constitutive the INTEGER
     # one (launch.py:109-124; CONSTITUTIVE_SIDES['H']['half_integer'] is False).
     # That is the OPPOSITE pairing to the D/E pair, and the kernel cannot tell —
     # the gate carries a host mutation for each group.
@@ -799,7 +799,7 @@ def _arm_plan(context: Any, slot: str) -> Optional[MetalFusedMagneticPairPlan]:
 def register_arms() -> Tuple[Any, ...]:
     """One row on ``step_B``, ``wired=False``.
 
-    THE FLAG IS THE WHOLE COMPOSITION STORY. ``plan_step`` assigns at most one arm
+    The flag is the whole composition story. ``plan_step`` assigns at most one arm
     per slot and this product spans three, so there is no slot it could claim
     without a composition rule nothing has measured — the same open question the
     two D-side fused pairs record. Registering unwired keeps it ENUMERABLE for the

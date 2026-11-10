@@ -17,7 +17,7 @@ auxiliary, over several consecutive sub-steps.
 It is a small probe on purpose. The gate is the gate; this only asserts that the
 thing the gate certified is the thing the engine would build.
 
-WHAT IT RELEASES ON, added 2026-08-31, and it had none before that. The artifact
+What it releases on, added 2026-08-31, and it had none before that. The artifact
 stated ``probe``/``cases``/``summary`` and no verdict in any of the seven spellings
 ``gate_provenance.read_verdict`` knows, so a run that passed and a run nobody could
 read were the same artifact, and ``recut_composition_records.released()`` scored it
@@ -33,7 +33,7 @@ compared as uint32; the builder agreeing with its own named-sub-step predicate o
 every case; no case erroring; and at least one case on each side of the coverage
 boundary, so a run whose case list failed to lift cannot report 0/0 and release.
 
-``refusals_returned_none`` IS RECORDED AND IS NOT A RELEASE CLAUSE. It counts the
+``refusals_returned_none`` is recorded and is not a release clause. It counts the
 cases where the plain PML curl builder declines BOTH curls, and since the conductive
 PML family landed it is 3/4 by design: ``2d_cond_pml`` carries a D-side conductivity
 only, so ``pml_curl_coverage`` refuses it in AGGREGATE and admits its ``step_B``, and
@@ -82,7 +82,7 @@ WHOLE_STEPS = 6
 #: that must return None rather than a plan.
 #:
 #: ``2d_dispersive`` MOVED HERE from the refusal list by the composability pass.
-#: The curl refused any registered susceptibility until this round; it no longer
+#: The curl refused any registered susceptibility until that pass; it no longer
 #: does, because the curl differences the STORED E and H and never reads a
 #: polarization. It is the case the widening exists for, and it is the one this
 #: probe has to show taking the path rather than being argued into it.
@@ -96,7 +96,7 @@ REFUSAL_CASES = (("2d_plain", {"res": 40, "n": 16}),
                  ("cylindrical", {"res": 80, "r": 8.0, "z": 8.0}))
 #: Every array a whole step may write, plus each pole's P and P_prev. A composed
 #: gate that compares the primaries only is blind to a dropped auxiliary store —
-#: measured at 120/120 uncaught on the curl (plan §12.3).
+#: measured at 120/120 uncaught on the curl.
 WHOLE_STEP_ARRAYS = (
     "Bx", "By", "Bz", "Dx", "Dy", "Dz", "Ex", "Ey", "Ez", "Hx", "Hy", "Hz",
     "fu_Bx", "fu_By", "fu_Bz", "fu_Dx", "fu_Dy", "fu_Dz",
@@ -139,7 +139,7 @@ def composed_whole_step(name: str, kwargs: Dict[str, Any], cp) -> Dict[str, Any]
     this is the leg that has to show the composition surviving a real script's
     step order rather than a harness's.
 
-    THE SUBSTITUTION IS SCOPED TO ONE ``Fields``. The seam is the driver module's
+    The substitution is scoped to one ``Fields``. The seam is the driver module's
     globals, which every driver in the process shares; an unscoped patch sends the
     reference driver through a plan holding the other driver's device pointers and
     every array diverges at step 1 for a reason that has nothing to do with the
@@ -247,9 +247,9 @@ def one_case(name: str, kwargs: Dict[str, Any]) -> Dict[str, Any]:
                 for index, state in enumerate(driver.fields.polarizations)
                 for component in state.driven()},
         }
-        # THE BUILDER, ASKED PER CURL SUB-STEP, ON EVERY CASE.
+        # The builder, asked per curl sub-step, on every case.
         #
-        # WHY THE AGGREGATE ANSWER IS NOT THE PER-SUB-STEP ANSWER, and it is not a
+        # Why the aggregate answer is not the per-sub-step answer, and it is not a
         # subtlety this probe may keep collapsing. `pml_curl_coverage(fields, pml)`
         # with no `sub_step` takes the CONSERVATIVE AGGREGATE path — coverage.py's
         # clause 8 tests all six of CURL_TARGETS and says so in as many words:
@@ -259,7 +259,7 @@ def one_case(name: str, kwargs: Dict[str, Any]) -> Dict[str, Any]:
         # `plan_pml_curl` is a builder, so it asks for its own named sub-step
         # (launch.py:1351-1352, `return None` iff THAT sub-step's verdict refuses).
         #
-        # MEASURED ON `2d_cond_pml`, on a lifted `mp.Simulation` rather than argued
+        # Measured on `2d_cond_pml`, on a lifted `mp.Simulation` rather than argued
         # from the source: its medium carries `D_conductivity=0.4`, so
         # `fields.condfac_for` answers non-None on Dx/Dy/Dz and None on Bx/By/Bz. The
         # aggregate verdict refuses, naming exactly the three D targets; the
@@ -268,15 +268,15 @@ def one_case(name: str, kwargs: Dict[str, Any]) -> Dict[str, Any]:
         # step_D, and `all(... is None)` over both is False for a configuration the
         # composition serves in full.
         #
-        # THAT IS WHY `plan_is_none` BELOW IS KEPT EXACTLY AS IT WAS AND A SECOND,
-        # SHARPER COUNTER IS ADDED BESIDE IT rather than silently redefined. The old
+        # That is why `plan_is_none` below is kept exactly as it was and a second,
+        # sharper counter is added beside it rather than silently redefined. The old
         # counter still means what it always meant — "both curls declined" — and its
         # numerator moving is a fact about the TREE (the conductive PML family landed
         # between the 2026-08-11 certified run and now), not about this run. Quietly
         # changing what a counter counts under an unchanged name is the drift this
         # whole apparatus exists to prevent.
         #
-        # THE NEW COUNTER IS STRICTLY STRONGER THAN THE OLD, in two ways. It is an
+        # The new counter is strictly stronger than the old, in two ways. It is an
         # EQUIVALENCE, so it also catches the direction `all(... is None)` never
         # looked at — a builder returning None where its own predicate ADMITS, which
         # is a silent coverage loss rather than a wrong step. And it is asked on ALL
@@ -389,7 +389,7 @@ def main(argv=None) -> int:
     os.makedirs(os.path.dirname(os.path.abspath(args.out)) or ".", exist_ok=True)
 
     def save():
-        # STAMPED BEFORE EVERY WRITE, like the fourteen probes already wired to it.
+        # Stamped before every write, like the fourteen probes already wired to it.
         # `stamp` records the sha256 of every module under `meep_gpu` and
         # `parity/meep_gpu` that THIS PROCESS imported, and normalises whatever
         # verdict shape the payload carries into `canonical_verdict`. Until this
@@ -404,8 +404,8 @@ def main(argv=None) -> int:
             json.dump(results, handle, indent=2)
         os.replace(tmp, args.out)
 
-    # THE CAMPAIGN'S SUBNORMAL POLICY, installed and measured before the first lift and
-    # stamped into the artifact (owner ruling R16; composition_policy.py). MEEP is
+    # The campaign's subnormal policy, installed and measured before the first lift and
+    # stamped into the artifact (composition_policy.py). MEEP is
     # imported first because every case lifts a MEEP simulation, and importing MEEP
     # flushes the host: after a keep install it would leave the run flushing.
     import cupy as cp  # noqa: PLC0415
@@ -445,9 +445,9 @@ def main(argv=None) -> int:
     refused = [c for c in cases if c.get("covered") is False]
     composed = [c for c in cases if c.get("whole_step")]
     matched = [c for c in cases if c.get("builder_matches_its_predicate")]
-    # THE COUNTER NAMES ARE THE WELD RECORD'S FIELD NAMES, and that is load-bearing
+    # The counter names are the weld record's field names, and that is load-bearing
     # rather than cosmetic. `recut_composition_records.claim_disagreements` joins a
-    # curated block to a fresh summary BY FIELD NAME; while this probe spelled them
+    # curated block to a fresh summary by field name; while this probe spelled them
     # `covered_identical` and `whole_step_identical`, the record's
     # `covered_curl_identical` and `covered_whole_step_identical` shared a name with
     # nothing and so were compared against the run by NOTHING. Two claims move from
@@ -467,7 +467,7 @@ def main(argv=None) -> int:
         "replaces_by_case": {c["case"]: c.get("replaces") for c in cases},
     }
 
-    # THE RELEASE CONDITION, STATED RATHER THAN INFERRED FROM THE COUNTERS.
+    # The release condition, stated rather than inferred from the counters.
     #
     # This probe had none, and inferring one was the trap: "every counter is n/n"
     # would refuse this run, because `refusals_returned_none` is 3/4 BY DESIGN since
@@ -476,7 +476,7 @@ def main(argv=None) -> int:
     # not more conservative than no rule — it is wrong in the direction that blocks
     # correct work, and it would have to be relaxed the first time someone looked.
     #
-    # WHAT THE RELEASE RESTS ON is the arithmetic: every covered case bit-identical
+    # What the release rests on is the arithmetic: every covered case bit-identical
     # on the curl legs, every composed case bit-identical over WHOLE_STEPS complete
     # driver steps with every array compared as uint32, and the builder agreeing with
     # its own named-sub-step predicate on every case. `refusals_returned_none` is
@@ -484,7 +484,7 @@ def main(argv=None) -> int:
     # the plain family still declines, and the tree is free to move it by growing a
     # product without that being a regression in anything this probe measures.
     #
-    # THE VACUITY CLAUSES ARE NOT DECORATION. A run whose case list failed to lift
+    # The vacuity clauses are not decoration. A run whose case list failed to lift
     # would otherwise report 0/0 on every counter and release on all of them.
     reasons: List[str] = []
     errored = [c["case"] for c in cases if c.get("error")]
@@ -526,14 +526,14 @@ def main(argv=None) -> int:
         if not case.get("builder_matches_its_predicate"):
             reasons.append(f"{case['case']}: plan_pml_curl and pml_curl_coverage "
                            f"disagree per sub-step: {case.get('per_sub_step')}")
-        # A SUB-STEP THE COMPOSITION DROPPED WITHOUT SAYING WHY. Empty today on every
+        # A sub-step the composition dropped without saying why. Empty today on every
         # case, and kept because an empty reason tuple beside a missing sub-step is a
         # silent fall-back — the one shape a `replaces` list cannot report.
         for sub_step, named in (case.get("refusals") or {}).items():
             if not named:
                 reasons.append(f"{case['case']}: {sub_step} left the composition with "
                                f"no named reason")
-    # THE POLICY STILL HOLDS: the stamp is a claim about the whole run (re-stamped here
+    # The policy still holds: the stamp is a claim about the whole run (re-stamped here
     # with the compile counters the run accumulated).
     reasons += [f"subnormal policy: {reason}" for reason in end_of_run_reasons(results)]
     results["summary"]["status"] = "passed" if not reasons else "failed"

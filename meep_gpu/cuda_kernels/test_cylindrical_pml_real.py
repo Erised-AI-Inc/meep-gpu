@@ -1,6 +1,6 @@
 """The CUDA cylindrical (Dcyl, m = 0) curl slice: its predicate, its scan's host side, its text.
 
-THE WORD-FOR-WORD CHECK OF THE TEXT AGAINST THE ARRAY PATH is ``test_cylindrical_chunk_forms``
+The word-for-word check of the text against the array path is ``test_cylindrical_chunk_forms``
 (the kernels executed by an interpreter, launched through their own launchers); the device
 gate is ``parity/meep_gpu/gate_cuda_cylindrical_real.py``. What is pinned HERE is the rest of
 the slice's silent-failure surface, and every one of these failures is a plausible, smooth,
@@ -10,15 +10,15 @@ WRONG field rather than a crash:
   refusals are mutated and every mutation must be caught.
 * THE NON-WIDENING. ``coverage.covers_real_pml_curl`` -- the CARTESIAN predicate -- must
   STILL refuse Dcyl, and this pair's predicate every Cartesian grid.
-* THE DEVICE TEXT. What separates this pair from the root Cartesian one: Bz's and Dz's whole
+* The device text. What separates this pair from the root Cartesian one: Bz's and Dz's whole
   curl is ``dtdx`` times the scan's radial difference, and the m = 0 axis rules run after
   the PML forms with MEEP's double ``4*Courant`` product. Pinned as text because a regrouped
   or float32 spelling is exact at some Courant numbers.
-* THE ARGUMENT ORDER. The kernel signature and the launcher's tuple are two lists that must
+* The argument order. The kernel signature and the launcher's tuple are two lists that must
   agree; CuPy's ``RawKernel`` does not check.
-* THE SCAN'S HOST SIDE. Its row vectors and chunk starts are the array path's own.
+* The scan's host side. Its row vectors and chunk starts are the array path's own.
 
-THE SOURCE IS READ WITH ``ast`` RATHER THAN IMPORTED: ``cylindrical_kernels`` imports
+The source is read with ``ast`` rather than imported: ``cylindrical_kernels`` imports
 ``cupy`` at module scope. The predicate and the scan's host side live in CuPy-free siblings
 and ARE imported. Off device the fixture hands ``Grid`` NumPy wearing CuPy's ``__name__``,
 because the predicate's first question is whether the backend is CuPy at all.
@@ -431,7 +431,7 @@ def test_no_axis_of_a_dcyl_grid_stores_past_its_owned_window(xp):
     """The far-face clause the kernel does NOT reproduce, shown unreachable here.
 
     ``_mask_non_owned_cells``' second arm zeroes the LAST stored slot of a folded
-    PERIODIC axis, and that is the divergence the folded CUDA round measured. A Dcyl
+    PERIODIC axis, and that is the divergence the folded CUDA curl gate measured. A Dcyl
     grid has no fold — the predicate refuses one — so the clause cannot fire, and this
     asserts that on the real grid rather than reasoning about it.
     """
@@ -462,7 +462,7 @@ def test_bz_takes_dtdx_times_the_radial_difference():
     """Bz's whole curl is ``dtdx * rad`` -- ``part_products.scale(dtdx, radial)``, one
     product -- where ``rad`` is the scan's radial difference of Ep's per-chunk sum.
 
-    PINNED AS TEXT because a distributed or a re-grouped spelling is exact whenever
+    Pinned as text because a distributed or a re-grouped spelling is exact whenever
     ``dtdx`` is a power of two, which a fixture without a non-power-of-two Courant cannot
     see. The Cartesian Bz stencil must be gone from the Bz block (``Ey`` is still read raw
     by Bx, so the assertion is scoped to the block).

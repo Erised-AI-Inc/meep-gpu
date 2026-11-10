@@ -262,11 +262,11 @@ def test_the_gates_reference_is_bit_identical_to_stepping(shape, target):
 def test_the_gates_reference_bites_when_the_grouping_is_flattened():
     """The negative control for the test above, on NumPy alone.
 
-    The increment added in two operations (``((u*km1) + c_new) - c``, the grouping
-    the kernel carried before the alignment) and ``(((f*km2) + u_new) - u)``
-    flattened to ``((f*km2) + (u_new - u))`` are each a different float32 number. If
-    either matched, the byte comparison above would be comparing two spellings of
-    the same expression and proving nothing.
+    The increment added in two operations (``((u*km1) + c_new) - c``, the grouping the
+    kernel carried before it adopted MEEP's per-chunk arithmetic forms and association
+    order) and ``(((f*km2) + u_new) - u)`` flattened to ``((f*km2) + (u_new - u))``
+    are each a different float32 number. If either matched, the byte comparison above
+    would be comparing two spellings of the same expression and proving nothing.
     """
     from meep_gpu.stepping import _apply_conductive_pml_update
 
@@ -310,7 +310,7 @@ def test_the_gates_reference_bites_when_the_grouping_is_flattened():
 
 
 def test_the_auxiliary_loads_sit_under_their_guards():
-    """The two declared nulls of KERNELS.md section 7.2, pinned by needle instead.
+    """The two declared nulls of the per-chunk form battery, pinned by needle instead.
 
     An unconditional ``fu`` or ``f_cond`` load moves no stored word (the loaded value
     reaches a store only on the cells its guard admits), so no byte gate can see one;
@@ -488,7 +488,7 @@ def test_conductive_sub_steps_reports_the_subset():
 
 
 def test_a_mixed_per_component_conductivity_is_admitted_and_reported_per_component():
-    """RISK 4 in its positive form. ``Dy`` lossless beside two lossy neighbours.
+    """Per-component conductivity, the admitted case. ``Dy`` lossless beside two lossy neighbours.
 
     ``_apply_curl`` reads ``condfac_for`` PER COMPONENT (stepping.py:508-537), so
     this configuration steps ``Dy`` through the plain recurrence and its

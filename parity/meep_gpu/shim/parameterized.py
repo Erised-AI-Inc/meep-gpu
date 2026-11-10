@@ -4,9 +4,9 @@ The package is not installed in this environment and the harness installs none, 
 the six MEEP test modules that decorate with ``@parameterized.parameterized.expand``
 cannot be imported — 24 of the 134 engine-accepted rows, and they are exactly the
 special_kz / Bloch-k / mirror rows the newly certified families exist for. Skipping
-them would understate precisely what this round measures.
+them would understate precisely what this leg measures.
 
-WHAT IS REPRODUCED, AND WHAT IS NOT.
+What is reproduced, and what is not.
 
 Reproduced: the semantics that select a run — one generated method per tuple in the
 decorator's list, in list order, called as ``func(self, *tuple)``. Every module in
@@ -19,7 +19,7 @@ guess is not allowed to decide which recorded row a measurement belongs to. The 
 here are named ``{func}__idx{N}`` — unmistakably this file's naming — and each carries
 its parameter tuple on ``__parameterized_args__``.
 
-IDENTITY IS THEREFORE MEASURED, NOT NAMED. The analysis matches each generated case to
+Identity is therefore measured, not named. The analysis matches each generated case to
 a row of the 2026-08-09 lift record by exact equality of the ``_facts`` block —
 cell size, resolution, Courant, k_point, source and boundary kinds, symmetry kinds,
 geometry and DFT counts — computed by the survey harness's own ``_facts`` function on

@@ -15,7 +15,7 @@ REAL ``meep_gpu.pml.PML`` layer and a REAL ``Fields``. The NumPy and CuPy legs o
 the array path are already bit-identical to each other (``test_backends``), so an
 agreement measured here holds on the device.
 
-Since 0.10 every PML form is chosen per structure chunk. Each reference is handed
+Since 1.0 every PML form is chosen per structure chunk. Each reference is handed
 the chunk record of the region plan the array path stepped with
 (``gate_chunk_records.region_plan_record``: the one-rank division of the grid and
 layer, which a driver built without MEEP steps with), so the comparison also pins
@@ -246,7 +246,7 @@ def one_case(shape, boundaries, dtdx, sub_step) -> Dict[str, Any]:
     # NEGATIVE CONTROL. An agreement is only evidence if a disagreement was
     # reachable: re-run the transcription with the ONE thing the gate exists to
     # pin changed — the stencil regrouped to the pairwise association the package
-    # carried until 0.10 — and require that it does NOT match. At dtdx = 0.5 the
+    # carried until 1.0 — and require that it does NOT match. At dtdx = 0.5 the
     # scaling is exact in binary and the two groupings can legitimately coincide,
     # which is precisely why 0.35 is in the sweep; the control is therefore only
     # asserted there.
@@ -339,7 +339,7 @@ def one_constitutive_case(shape, boundaries, courant, side) -> Dict[str, Any]:
 
     # NEGATIVE CONTROL: the regrouped association must NOT match. Unlike the curl's
     # control this one is asserted at BOTH Courants, because the non-representable
-    # multiplicands here are the PML coefficients themselves (§12.2) and not the
+    # multiplicands here are the PML coefficients themselves and not the
     # Courant scaling — there is no exact-in-binary case to exempt.
     control = {name: before[name].copy() for name in targets + auxiliaries}
     probe.reference_constitutive_step(side, arrays, control, coefficients, "regrouped",
@@ -421,7 +421,7 @@ def one_dispersive_case(shape, boundaries, courant, counts) -> Dict[str, Any]:
     records ``asserted`` per control so the distinction is in the record rather than
     in a reader's head.
 
-    ``P`` IS ALSO COMPARED, and it must be UNCHANGED: ``update_E`` consumes the
+    ``P`` is also compared, and it must be UNCHANGED: ``update_E`` consumes the
     polarization and ``update_P`` advances it (stepping.py:954 then :1389). A kernel
     or a transcription that advanced P here would be wrong in a way that still
     produces a smooth field.

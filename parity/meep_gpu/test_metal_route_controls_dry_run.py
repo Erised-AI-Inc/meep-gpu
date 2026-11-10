@@ -1,7 +1,7 @@
 """The route gate's controls dry run reads every case's wrappers before a freeze.
 
-WHY THIS FILE EXISTS. The 2026-10-13 round's held Metal route campaign failed 2 of its
-4 legs on ``residency-inner-bracket-dropped``: series entry 134 had put
+Why this file exists. The 2026-10-13 certification run's held Metal route campaign failed 2 of its
+4 legs on ``residency-inner-bracket-dropped``: the start-of-H change had put
 ``launch.StartOfHPlan`` into the plans of ``special_kz_2d`` and ``bfast_1d``, the
 control armed on it and read NULL-DID-NOT-DIVERGE, and the route smoke before the
 freeze had run two OTHER cases, on which the control could not arm. The control's
@@ -116,7 +116,7 @@ def test_the_chains_name_every_wrapper_down_to_the_occupant():
 
 
 def test_a_wrapper_no_ruling_names_is_reported_by_slot(monkeypatch):
-    """MUST CATCH: entry 134's wrapper, unknown to the controls, refuses before a freeze."""
+    """MUST CATCH: the start-of-H wrapper, unknown to the controls, refuses before a freeze."""
     rulings = dict(metal_route.ROUTE_WRAPPER_RULINGS)
     rulings.pop("StartOfHPlan")
     monkeypatch.setattr(metal_route, "ROUTE_WRAPPER_RULINGS", rulings)
@@ -150,7 +150,7 @@ def test_each_state_implies_the_class_the_gate_reads_from_it(name, state, expect
 
 
 def test_a_plan_shape_the_reference_never_graded_is_a_move():
-    """MUST CATCH: the shape the round's route campaign met, against the leg before it."""
+    """MUST CATCH: the shape the 2026-10-13 route campaign met, against the leg before it."""
     reference = {("special_kz_2d", PLACEMENT): {
         "verdict": "NOT-APPLICABLE",
         "state": {"armed": False, "slots": [], "read_only_slots": ["step_D"],

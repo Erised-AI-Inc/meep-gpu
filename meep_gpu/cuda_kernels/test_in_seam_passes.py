@@ -1,6 +1,6 @@
 """The laptop merge bar for the CUDA in-seam passes.
 
-WHAT THIS FILE CAN AND CANNOT SETTLE. It never launches a kernel -- there is no
+What this file can and cannot settle. It never launches a kernel -- there is no
 CuPy on the machine that runs the merge bar -- so it settles nothing about
 bit-identity. What it settles is everything a device gate would have to ASSUME:
 
@@ -104,7 +104,7 @@ class _NumpyWearingCupysName(types.ModuleType):
 # The grid battery
 # ---------------------------------------------------------------------------
 #
-# EVERY AXIS IS FOLDED SOMEWHERE, EVERY AXIS IS WALLED SOMEWHERE, both fold
+# Every axis is folded somewhere, every axis is walled somewhere, both fold
 # terminations appear, both plane phases appear, and both full-count parities
 # appear on a folded PERIODIC axis. A battery carrying one of each proves nothing
 # about the other.
@@ -179,7 +179,7 @@ def test_the_family_components_are_the_names_stepping_uses():
 
     ``stepping._zero_metal`` is handed ``B_COMPONENTS``/``D_COMPONENTS``; the two
     fills walk ``B_CURL_TERMS``/``D_CURL_TERMS`` and take ``term.target``. That
-    they are the same six arrays IN THE SAME ORDER is what lets one table serve
+    they are the same six arrays in the same order is what lets one table serve
     all three passes, and it is checked rather than assumed.
     """
     assert in_seam_coverage.FAMILY_COMPONENTS["B"] == tuple(stepping.B_COMPONENTS)
@@ -279,7 +279,7 @@ def test_stored_past_owned_agrees_with_stepping(grid):
 
 
 def test_far_reflect_rows_agree_with_stepping_on_the_axes_the_pass_visits(grid):
-    """Ours is the engine's, MASKED BY THE VISIT LIST.
+    """Ours is the engine's, masked by the visit list.
 
     ``_far_reflect_rows`` reports a row on every folded non-metallic axis;
     ``_fill_folded_far_ghosts`` only iterates ``_stored_past_owned`` axes. The two
@@ -298,7 +298,7 @@ def test_far_reflect_rows_agree_with_stepping_on_the_axes_the_pass_visits(grid):
 def test_the_image_row_is_stored_minus_two_at_even_and_minus_three_at_odd(grid):
     """The fact a baked ``n - 2`` hides behind at one count parity.
 
-    MEASURED here rather than quoted: the row is ``stored - 2`` when the FULL
+    Measured here rather than quoted: the row is ``stored - 2`` when the FULL
     count is even and ``stored - 3`` when it is odd, which is why the gate carries
     both parities and plants ``reflect_row_n_minus_two``.
     """
@@ -526,7 +526,7 @@ def test_a_module_that_has_drifted_from_the_gated_bytes_declares_the_edit():
     """
     live = hashlib.sha256(KERNEL_MODULE.read_bytes()).hexdigest()
     for block in in_seam_blocks():
-        # ONE HOME FOR THE RULE (device_identity.py:209). A drift the shared rule
+        # One home for the rule (device_identity.py:209). A drift the shared rule
         # can prove harmless -- the device source NVRTC compiles is untouched --
         # needs neither a fresh revision digest nor an edit entry, because
         # nothing a reader could act on has moved. The helper returns False for
@@ -566,7 +566,7 @@ def test_the_record_names_an_artifact_tree_that_exists_and_reports_a_release():
 
 
 def test_the_record_does_not_claim_a_fusion():
-    """The one over-claim this tranche is positioned to invite.
+    """The one over-claim this port is positioned to invite.
 
     Porting the in-seam passes is the PREREQUISITE for a fused CUDA pair and is
     not a fused pair. A record that let the two blur would be read, later, as
@@ -633,7 +633,7 @@ def test_no_device_string_contains_a_contractible_expression():
     carried for consistency with the track rather than for correctness -- which is
     a claim about the TEXT and is checked as one.
     """
-    # THE INDEX ARITHMETIC IS INTEGER and is not a contraction candidate at all:
+    # The index arithmetic is integer and is not a contraction candidate at all:
     # ``(t / nz) * (ny * nz) + (t % nz)`` lowers to integer ops, and NVRTC's
     # ``--fmad`` governs float multiply-add only. So the scan is restricted to the
     # FLOAT-VALUED statements -- the ones mentioning ``phase``, ``parity`` or a

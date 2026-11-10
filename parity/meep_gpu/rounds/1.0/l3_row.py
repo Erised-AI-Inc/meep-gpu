@@ -5,7 +5,7 @@ stepped. ``l3_corpus.py`` runs one of these per row, each in a process of its ow
 
     python -s -u l3_row.py SPEC.json
 
-SPEC (written by ``l3_corpus.py``):
+Spec (written by ``l3_corpus.py``):
 
 * ``label``: the corpus row;
 * ``table``: ``triton`` (the NVIDIA default precedence), ``cuda``
@@ -18,7 +18,12 @@ SPEC (written by ``l3_corpus.py``):
 * ``primary``: the set the row's top-level figures describe;
 * ``image_set`` and ``meep_images``: the set whose MEEP the lift must load, and its
   ``{image: [sha256, ...]}``;
-* ``cases_file``: the corpus module; ``out_json``: where the result goes.
+* ``cases_file``: the corpus module; ``out_json``: where the result goes;
+* ``plan_only`` (optional): lift, check the row against the sets as below, take ONE step
+  and record the plan; nothing is judged (``l3_corpus.py --plan-only``);
+* ``declared_variable`` (optional): the leg declares the row run-to-run variable (its
+  source includes an ``EigenModeSource``), so the row also records what the lift deposited
+  and its own words (below); ``attempt``: which run of the row this is.
 
 Every judging function is the tree's own, called unmodified:
 ``meep_identity_tier_c.load_cases`` / ``build_case`` (the corpus module's build,
@@ -28,7 +33,7 @@ Every judging function is the tree's own, called unmodified:
 ``meep_gpu.install_subnormal_policy``, ``meep_gpu.lift_simulation`` (``prefer_gpu=True``,
 ``MEEP_GPU_DISPATCH`` unset) and ``sweep_corpus_lift_parity.dispatch_facts``.
 
-ORDER: NumPy, then MEEP; the loaded MEEP images against the image set's; the subnormal
+Order: NumPy, then MEEP; the loaded MEEP images against the image set's; the subnormal
 policy, then the host FPU measured in it; the row built by the corpus module; the lift on
 this host's GPU (``driver.gpu`` must be the table's); the row's own ``after_lift`` check;
 N from the row's ``steps_planned``, which must equal every judged set's N and schedule,
@@ -41,8 +46,33 @@ the plane the word lies in, or the comparison is not shown able to fail. The dis
 record is read after the first step (the configuration freeze is inside ``step()``) and
 at the end, with the plan's launch counters.
 
+The plan. After the first step the row records the plan it dispatched in the canonical
+form (``plan_key``, ``parity/meep_gpu/plan_key.py``: the slot selection and the launches
+per step, over that one step), the data the planner read (``plan_inputs``: the timing
+records and the ledgers, by digest) and the versions it ran under (``plan_toolchain``),
+so a row can be carried to a tree whose timing records moved when its plan, asked again
+there, is the same (``carry.py``).
+
+A declared row (``declared_variable``). The lift solves an ``EigenModeSource``'s mode again
+through MEEP's ``get_eigenmode`` (MPB), and MPB's eigensolver chooses exact or approximate
+line minimization from ``clock()`` timings, so the deposited mode can differ from one
+process to the next. Such a row records, read only: around the lift, each solve's
+frequency and group velocity in hex (:func:`watch_solves`, the values pass through
+unchanged); after the first step, the sha256 of every source's bound deposit tables
+(:func:`source_tables`), under :data:`DECLARED_KEY`; and at every compared step its own
+stored and reader digests (:data:`RUN_DIGESTS_KEY`), so two runs of the row can be compared
+word for word. A recorder that fails writes ``{"error": ...}`` there and the row is still
+judged; ``l3_corpus.py`` then does not attribute it.
+
 Prints one flushed progress line per compared step and, last, one line ``L3-JSON {...}``
 with the row's result, which it also writes to ``out_json``.
+
+The import record. The result carries ``imported_source_sha256`` (:data:`IMPORTED_KEY`):
+the sha256 of every repository module this process holds once the row has run and its
+driver is closed, keyed repository-relative as every gate artifact keys it
+(``gate_provenance.provenance``). It is taken on every path, an error included, so a row
+is bound by the bytes it ran from its own output. A row whose reader could not be
+imported says why under ``import_record_error``.
 """
 
 from __future__ import annotations
@@ -73,6 +103,16 @@ RECORDED_ENV = ("MEEP_GPU_BACKEND_PREFERENCE", "MEEP_GPU_DISPATCH", "MEEP_GPU_FU
                 "MEEP_GPU_KERNEL_TABLE", "CUPY_ACCELERATORS", "CUDA_VISIBLE_DEVICES",
                 "OMP_NUM_THREADS", "CUPY_CACHE_DIR", "TRITON_CACHE_DIR", "PYTHONPATH",
                 "PYTHONNOUSERSITE")
+
+#: Where the row's import record lands: ``gate_provenance.IMPORTED_KEY``, the key every
+#: gate artifact and timing row uses.
+IMPORTED_KEY = "imported_source_sha256"
+
+#: Where a declared row records what the lift deposited: ``{"tables": source_tables(...),
+#: "solves": [...]}`` (or ``{"error": ...}``).
+DECLARED_KEY = "declared_variable"
+#: Where a declared row keeps its own digests: ``{step: {component: [stored, reader]}}``.
+RUN_DIGESTS_KEY = "run_digests"
 
 #: The most differing steps a set keeps in full; the count is always kept.
 DIFFERING_KEPT = 40
@@ -133,6 +173,79 @@ def counter_sums(counters: Optional[Mapping[str, Any]]) -> Dict[str, Any]:
     return {"dispatches": dispatches, "plan_launches": plan_launches,
             "plan_launches_unknown_slots": unknown,
             "launched_slot_backends": backends, "launched_slot_arms": arms}
+
+
+# ---------------------------------------------------------------------------------------
+# A declared row's recorders (read only)
+# ---------------------------------------------------------------------------------------
+
+def _host(array: Any) -> Any:
+    """A bound deposit table's array on the host, wherever it lives: CuPy (``.get()``),
+    torch (a held Metal residency) or NumPy as it is."""
+    if hasattr(array, "get") and not isinstance(array, dict):
+        return array.get()
+    if hasattr(array, "detach"):
+        return array.detach().cpu().numpy()
+    return array
+
+
+def source_tables(driver: Any) -> Dict[str, Any]:
+    """The sha256 of every source's bound deposit tables, in the driver's order.
+
+    Each source's ``_src_vol`` entries are digested in order, each as ``ix``, ``iy`` and
+    ``iz`` (little-endian int64) then ``amps`` (little-endian complex128): the whole lot
+    as ``sha256`` and each source's alone under ``per_source``. Read after the first step,
+    when the tables are bound; a source whose tables are not bound raises, so the caller
+    records why instead of a digest."""
+    import hashlib  # noqa: PLC0415
+
+    import numpy  # noqa: PLC0415
+
+    total = hashlib.sha256()
+    per: List[Dict[str, Any]] = []
+    for source in driver._sources:  # noqa: SLF001 - read only
+        entries = getattr(source, "_src_vol", None)
+        if entries is None:
+            raise RuntimeError(f"a {type(source).__name__}'s deposit tables are not bound "
+                               f"after the first step")
+        one = hashlib.sha256()
+        for entry in entries:
+            for array, dtype in ((entry.ix, "<i8"), (entry.iy, "<i8"), (entry.iz, "<i8"),
+                                 (entry.amps, "<c16")):
+                data = numpy.ascontiguousarray(numpy.asarray(_host(array)), dtype=dtype).tobytes()
+                one.update(data)
+                total.update(data)
+        per.append({"type": type(source).__name__, "entries": len(entries),
+                    "sha256": one.hexdigest()})
+    return {"sha256": total.hexdigest(), "per_source": per}
+
+
+def watch_solves(sim: Any, sink: List[Dict[str, str]]) -> Callable[[], None]:
+    """Record each ``sim.get_eigenmode`` call's frequency and group velocity, in hex, in
+    ``sink`` (or why they could not be read); the solve's result passes through unchanged.
+    Returns the function that puts the simulation's own method back (called once the lift
+    is done)."""
+    had_own = "get_eigenmode" in vars(sim)
+    original = sim.get_eigenmode
+
+    def solve(*args: Any, **kwargs: Any) -> Any:
+        edata = original(*args, **kwargs)
+        try:
+            sink.append({name: float(getattr(edata, name)).hex()
+                         for name in ("freq", "group_velocity") if hasattr(edata, name)})
+        except Exception as exc:  # noqa: BLE001 - recorded; the solve still returns
+            sink.append({"error": f"{type(exc).__name__}: {exc}"})
+        return edata
+
+    sim.get_eigenmode = solve
+
+    def restore() -> None:
+        if had_own:
+            sim.get_eigenmode = original
+        else:
+            del sim.get_eigenmode
+
+    return restore
 
 
 # ---------------------------------------------------------------------------------------
@@ -208,13 +321,16 @@ def judge(driver: Any, documents: Mapping[str, Mapping[str, Any]],
           planes_of: Mapping[str, Any], masks: Mapping[str, Any], steps: Sequence[int], *,
           mode: str, enforce_fpu: bool, fpu_state: Callable[[], Mapping[str, Any]],
           after_first_step: Optional[Callable[[Any], Any]] = None,
-          progress: Optional[Callable[[str], None]] = None, label: str = "") -> Dict[str, Any]:
+          progress: Optional[Callable[[str], None]] = None, label: str = "",
+          keep_digests: bool = False) -> Dict[str, Any]:
     """Step ``driver`` through the compared ``steps`` and judge every set at each of them.
 
     The words are digested once per compared step and compared with every set in
     ``documents``. ``fpu_state`` is measured at every compared step; with ``enforce_fpu``
     a mode other than ``mode`` stops the row by name. ``after_first_step`` is called once,
-    after the first ``driver.step()``."""
+    after the first ``driver.step()``. With ``keep_digests`` the run's own stored and
+    reader digests of every component at every compared step are returned under
+    :data:`RUN_DIGESTS_KEY`."""
     from meep_gpu import meep_identity as identity  # noqa: PLC0415
 
     names = list(documents)
@@ -223,6 +339,7 @@ def judge(driver: Any, documents: Mapping[str, Mapping[str, Any]],
     plane_steps = {name: [int(step) for step in documents[name]["planes"]["steps"]]
                    for name in names}
     fpu_modes: List[List[Any]] = []
+    own: Dict[str, Dict[str, List[str]]] = {}
     facts_first = None
     first_called = False
 
@@ -243,6 +360,10 @@ def judge(driver: Any, documents: Mapping[str, Mapping[str, Any]],
             raise RuntimeError(f"the FPU is {now['mode']} at step {target}, not {mode}")
         with_planes = any(int(target) in plane_steps[name] for name in names)
         found = identity.step_digests(driver, masks, planes=with_planes)
+        if keep_digests:
+            own[str(int(target))] = {component: [found.stored[component],
+                                                 found.reader[component]]
+                                     for component in identity.COMPONENTS}
         for name in names:
             compare_step(documents[name], planes_of[name], plane_steps[name], found, target,
                          tallies[name], flips[name], flipped)
@@ -252,10 +373,13 @@ def judge(driver: Any, documents: Mapping[str, Mapping[str, Any]],
                                  f"{tallies[name]['reader_equal']} of {tallies[name]['digests']}"
                                  for name in names)
                      + f" ({time.time() - STARTED:.1f} s)")
-    return {"per_set": {name: dict(tallies[name], planted_flip=flips[name]) for name in names},
-            "fpu_checks": len(fpu_modes), "fpu_modes": fpu_modes,
-            "fpu_steps_in_mode": sum(1 for _step, seen in fpu_modes if seen == mode),
-            "dispatch_after_first_step": facts_first}
+    judged = {"per_set": {name: dict(tallies[name], planted_flip=flips[name]) for name in names},
+              "fpu_checks": len(fpu_modes), "fpu_modes": fpu_modes,
+              "fpu_steps_in_mode": sum(1 for _step, seen in fpu_modes if seen == mode),
+              "dispatch_after_first_step": facts_first}
+    if keep_digests:
+        judged[RUN_DIGESTS_KEY] = own
+    return judged
 
 
 # ---------------------------------------------------------------------------------------
@@ -321,6 +445,7 @@ def run(spec: Mapping[str, Any]) -> Dict[str, Any]:
     import meep_gpu
     from meep_gpu import meep_identity as identity
     from parity.meep_gpu import meep_identity_tier_c as tier_c
+    from parity.meep_gpu import plan_key
     from parity.meep_gpu.meep_identity_smoke import load_tool
     from parity.meep_gpu.sweep_corpus_lift_parity import dispatch_facts
 
@@ -358,7 +483,7 @@ def run(spec: Mapping[str, Any]) -> Dict[str, Any]:
         result["error"] = "this MEEP is not a single-precision build"
         return result
 
-    # THE POLICY FIRST, MEEP imported: the host lever is MEEP's own switch.
+    # The policy first, MEEP imported: the host lever is MEEP's own switch.
     if shipped:
         result["installed_policy"] = "nothing installed by the caller (the shipped default)"
     else:
@@ -389,13 +514,25 @@ def run(spec: Mapping[str, Any]) -> Dict[str, Any]:
             return result
         documents[name], planes_of[name] = document, recorded_planes
 
+    declared = bool(spec.get(DECLARED_KEY))
+    if declared:
+        result["attempt"] = spec.get("attempt")
     cases = tier_c.load_cases(spec["cases_file"])
     sim = tier_c.build_case(cases, mp, label)
+    solves: List[Dict[str, str]] = []
+    restore = watch_solves(sim, solves) if declared else None
     lift_started = time.time()
-    driver = meep_gpu.lift_simulation(sim, prefer_gpu=True)
+    try:
+        driver = meep_gpu.lift_simulation(sim, prefer_gpu=True)
+    finally:
+        if restore is not None:
+            restore()
     result["lift_seconds"] = round(time.time() - lift_started, 3)
     try:
         result["driver_gpu"] = driver.gpu
+        if driver.gpu == "metal":
+            from meep_gpu.metal_kernels import device as metal_device  # noqa: PLC0415
+            result["apple_gpu"] = plain(metal_device.apple_gpu_identity())
         if driver.gpu != table["driver_gpu"]:
             result["error"] = (f"the lift resolved driver.gpu = {driver.gpu!r}, not "
                                f"{table['driver_gpu']!r}")
@@ -427,7 +564,31 @@ def run(spec: Mapping[str, Any]) -> Dict[str, Any]:
             f"stored {result['grid_shape']}, {len(steps)} compared steps to N = {n_steps}; "
             f"sets {sets}")
 
+        def record_plan(lifted: Any) -> None:
+            result[plan_key.KEY_FIELD] = plan_key.key(plain(lifted.fast_path_report() or {}),
+                                                      int(lifted.step_count))
+            result[plan_key.INPUTS_FIELD] = plan_key.plan_inputs()
+            result[plan_key.TOOLCHAIN_FIELD] = plan_key.toolchain()
+
+        if spec.get("plan_only"):
+            driver.step()
+            record_plan(driver)
+            result.update({"plan_only": True, "n_steps": n_steps, "storage": storage,
+                           "dispatch_after_first_step": plain(dispatch_facts(driver))})
+            say(f"{label}: plan only, {result[plan_key.KEY_FIELD]['digest']}")
+            return result
+
         def first_facts(lifted: Any) -> Any:
+            record_plan(lifted)
+            if declared:
+                try:
+                    result[DECLARED_KEY] = {"tables": source_tables(lifted), "solves": solves}
+                except Exception as exc:  # noqa: BLE001 - recorded; the row is still judged
+                    result[DECLARED_KEY] = {"error": f"{type(exc).__name__}: {exc}",
+                                            "solves": solves}
+                say(f"{label}: run {spec.get('attempt')}, source tables "
+                    f"{(result[DECLARED_KEY].get('tables') or {}).get('sha256')}, "
+                    f"{len(solves)} solve(s)")
             facts = plain(dispatch_facts(lifted))
             say(f"{label}: after step 1 step_path={facts['step_path']} "
                 f"table={facts['dispatch']['table']} dispatched "
@@ -439,7 +600,8 @@ def run(spec: Mapping[str, Any]) -> Dict[str, Any]:
         step_started = time.time()
         judged = judge(driver, documents, planes_of, masks, steps, mode=mode,
                        enforce_fpu=not shipped, fpu_state=identity.subnormal_state,
-                       after_first_step=first_facts, progress=say, label=label)
+                       after_first_step=first_facts, progress=say, label=label,
+                       keep_digests=declared)
         facts_end = plain(dispatch_facts(driver))
         report = plain(driver.fast_path_report() or {})
         counters = report.get("launch_counters")
@@ -466,6 +628,18 @@ def run(spec: Mapping[str, Any]) -> Dict[str, Any]:
     return result
 
 
+def import_record() -> Dict[str, Any]:
+    """The process's import record, taken now: ``{IMPORTED_KEY: {path: sha256}}`` and the
+    CUDA device it held (``stamped_device``, unreadable on a host without CuPy), or
+    ``{"import_record_error": why}`` when the reader cannot be imported."""
+    try:
+        from parity.meep_gpu import gate_provenance  # noqa: PLC0415
+    except Exception as exc:  # noqa: BLE001 - recorded beside the row, never fatal to it
+        return {"import_record_error": f"{type(exc).__name__}: {exc}"}
+    return {IMPORTED_KEY: gate_provenance.provenance(),
+            gate_provenance.DEVICE_KEY: gate_provenance.device()}
+
+
 def main(argv: Optional[Sequence[str]] = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     if len(argv) != 1:
@@ -481,6 +655,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         result = {"label": spec.get("label"), "mode": spec.get("mode"),
                   "table": spec.get("table"), "error": f"{type(exc).__name__}: {exc}",
                   "seconds": round(time.time() - STARTED, 3)}
+    result.update(import_record())
     text = json.dumps(result, sort_keys=True, default=str)
     with open(spec["out_json"], "w", encoding="utf-8") as handle:
         handle.write(text + "\n")

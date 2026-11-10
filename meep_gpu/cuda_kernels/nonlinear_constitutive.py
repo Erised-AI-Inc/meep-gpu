@@ -1,6 +1,6 @@
 """The INSTANTANEOUS chi2/chi3 constitutive family, in raw CUDA.
 
-THE REFUSAL THIS FILE ANSWERS, quoted from the census
+The refusal this file answers, quoted from the census
 (``parity/meep_gpu/results/cuda_predicate_coverage_2026-08-20_all_families``)::
 
     instantaneous chi2/chi3: a Pade factor replaces the constitutive product
@@ -10,7 +10,7 @@ fires it on BOTH sides, ``update_H`` and ``update_E``, for the two corpus rows
 that carry a nonlinearity -- ``3rd-harm-1d.py`` and
 ``Test3rdHarm1d.test_3rd_harm_1d``. Four slots.
 
-THE REFUSAL IS TWO CLAIMS, AND THEY ARE NOT THE SAME CLAIM. Read off
+The refusal is two claims, and they are not the same claim. Read off
 ``stepping.py``:
 
 * **On update_E it is TRUE.** ``stepping.update_E`` branches at :969-971 into
@@ -29,11 +29,11 @@ THE REFUSAL IS TWO CLAIMS, AND THEY ARE NOT THE SAME CLAIM. Read off
   ``calc_nonlinear_u`` or ``_nonlinear_displacement``; none of those names occurs
   between :907 and :923. The module header says so in its own words
   (stepping.py:26-28): "An instantaneous nonlinearity ... lives entirely inside
-  ``update_E``". So the H side needs NO NEW KERNEL -- the certified
+  ``update_E``". So the H side needs no new kernel -- the certified
   ``update_H_pml_real`` is already the whole sub-step -- and what it needs
   is a PREDICATE that says so.
 
-THAT ASYMMETRY IS WHY THIS FILE HAS TWO ARMS AND ONE KERNEL:
+That asymmetry is why this file has two arms and one kernel:
 
 * **Arm E (KERNEL).** ``update_E_pml_real_nonlinear``, transcribed below.
 * **Arm H (NULL WIDENING).** No kernel. :func:`covers_real_pml_nonlinear_constitutive`
@@ -45,7 +45,7 @@ THAT ASYMMETRY IS WHY THIS FILE HAS TWO ARMS AND ONE KERNEL:
   kernel nonlinear and must be CAUGHT) so that the null is a measurement and not
   a blind spot.
 
-DISJOINTNESS IS BY CONSTRUCTION, NOT BY ARRANGEMENT. Every other constitutive
+Disjointness is by construction, not by arrangement. Every other constitutive
 predicate in this package refuses a nonlinearity by name; this one REQUIRES one.
 ``covers_real_pml_constitutive`` (coverage.py:1056), ``covers_real_pml_offdiag_constitutive``
 (:1226), the ADE arm (:1590) and the no-PML null (:1916) all fire on
@@ -55,7 +55,7 @@ report an overlap for this family unless one of those clauses is deleted, and
 ``test_nonlinear_constitutive.py`` pins the complementarity directly.
 
 =============================================================================
-WHAT IS TRANSCRIBED, AND FROM WHERE
+What is transcribed, and from where
 =============================================================================
 
 ``stepping.update_E`` (stepping.py:926-993) with ``nonlinear`` true, no
@@ -86,7 +86,7 @@ Python ``if``; this kernel makes it with a runtime flag, so the NL=0 arm is the
 certified expression tree character for character.
 
 =============================================================================
-THE SEVEN THINGS THAT DECIDE BIT-IDENTITY HERE
+The seven things that decide bit-identity here
 =============================================================================
 
 The first three are the certified constitutive pair's notes and are unchanged
@@ -94,14 +94,14 @@ The first three are the certified constitutive pair's notes and are unchanged
 coefficient index is the component's OWN axis, and ``prev`` is read before ``fw``
 is written. This family adds four of its own.
 
-4. **THE FOUR-CORNER ASSOCIATION IS MEEP C's, LEFT TO RIGHT.**
+4. **The four-corner association is MEEP C's, left to right.**
    ``stepping._nonlinear_transverse_sums`` adds the four corners in the order MEEP
    C reads them, ``((g[i] + g[i+s]) + g[i-s1]) + g[i+(s-s1)]``
    (step_generic.cpp:646-648), each addition one float32 rounding, and so does
    ``four_point_sum`` below. The array path paired the corners,
-   ``(g[i] + g[i-s1]) + (g[i+s] + g[i+s-s1])``, until bit_parity_0_10 put it in
+   ``(g[i] + g[i-s1]) + (g[i+s] + g[i+s-s1])``, until 1.0 put it in
    MEEP's arithmetic: against MEEP 1.33.0 single precision built without
-   contraction (phase-0 leg P0-h, the four unfolded nonlinear cases) the pair form
+   contraction (measured before the change, the four unfolded nonlinear cases) the pair form
    moved 79,850 to 2,056,001 stored words on three of them and this order none on
    any. The BYTE ARBITER is still ``stepping.py``, which now carries MEEP's order;
    the gate's ``four_point_pair_association`` mutation puts the old pairing back
@@ -115,20 +115,20 @@ is written. This family adds four of its own.
    ``+0.0f`` for ``g[i+s]`` and for the corner, which is what ``_shift_up``'s
    zero face writes.
 
-5. **THE TWO SHIFTS GO IN OPPOSITE DIRECTIONS.** Half a cell DOWN the partner's
+5. **The two shifts go in opposite directions.** Half a cell DOWN the partner's
    own axis, half a cell UP this component's axis (stepping.py:1160-1171 states
    the geometry: for Ez at ``(x_i, y_j, z_k+1/2)`` the partner Dx sits at
    ``(x_i+1/2, y_j, z_k)``). Taking both the same way round is a half-cell
    registration error that survives every scalar test; the gate carries
    ``dsqr_same_direction_shifts`` for exactly it.
 
-6. **THE DIVISION IS THE ONLY QUOTIENT ON THIS TRACK, AND IT IS SPELLED
+6. **The division is the only quotient on this track, and it is spelled
    ``__fdiv_rn``.** ``constitutive_kernels.py``'s header records the one PTX
    exception this package knows of: ptxas expands ``div.rn.f32`` into a
    Newton-Raphson sequence whose range checks carry ``.FTZ`` in SASS regardless
    of the PTX modifier, so a PTX audit does NOT fully enforce a subnormal *keep*
    policy where a division appears. That note ends "if a future constitutive
-   variant ever divides ... that exception applies to it". THIS IS THAT VARIANT.
+   variant ever divides ... that exception applies to it". This is that variant.
 
    What the exception can and cannot reach is a question about the OPERANDS, and
    it is measured rather than argued. Both quotient operands are sums anchored at
@@ -149,7 +149,7 @@ is written. This family adds four of its own.
    so the gate probes it (``plain_division``, reported as a spelling probe with a
    reading, exactly as the contraction guard's control is reported).
 
-7. **DSQR IS FORMED IN DOUBLE AND ROUNDED ONCE, AS MEEP's C EVALUATES IT.** In
+7. **Dsqr is formed in double and rounded once, as MEEP's C evaluates it.** In
    ``gs*gs + 0.0625*(g1s*g1s + g2s*g2s)`` (step_generic.cpp:646-654) the two
    squares and their sum are ``realnum`` (float) operations, but ``0.0625`` is a
    double literal: the scale and the add that follows are double operations, and
@@ -159,7 +159,7 @@ is written. This family adds four of its own.
    ``0.0625 = 2^-4`` (exact in double), added once in double and rounded once to
    nearest back to float (``__double2float_rn``). Against the float32 form this
    moves ``Dsqr`` only where the exact ``0.0625*t`` lies below float32's normal
-   range (P0-h: 12,568,559 of 396,821,530 operand pairs differ, 0 outside that
+   range (host check: 12,568,559 of 396,821,530 operand pairs differ, 0 outside that
    band), so it reaches a stored E word only when ``chi3`` is large enough to lift
    such a ``Dsqr`` into ``c3``. Under a flushing policy the float32 form drops that
    term to zero instead, which changes ``Dsqr`` only where ``gs*gs`` is still normal.
@@ -171,30 +171,30 @@ is written. This family adds four of its own.
    not change it: the product ``0.0625*t`` is exact.
 
 =============================================================================
-PLATFORM FACTS INHERITED FROM THE CERTIFIED PAIR
+Platform facts inherited from the certified pair
 =============================================================================
 
 * ``--fmad=false`` is CORRECTNESS. Every one of ``g1s*g1s + g2s*g2s``,
   ``(1 + c2) + 2*c3``, ``(1 + 2*c2) + 3*c3`` and both tail accumulations is a
   contraction candidate the array path rounds twice.
-* THE DEVICE STRINGS ARE PURE ASCII. ``cupy.cuda.compiler`` writes the source
+* The device strings are pure ASCII. ``cupy.cuda.compiler`` writes the source
   through the interpreter's locale encoding, which is ASCII in a non-interactive
   shell on the validation host; two em-dashes in a comment killed a kernel at
   first launch on 2026-08-15. ``test_nonlinear_constitutive.py`` performs the
   encode itself rather than trusting a reading.
-* SIGNED ZERO is NOT canonicalized on this path (``-x`` lowers to ``neg.f32``),
+* Signed zero is NOT canonicalized on this path (``-x`` lowers to ``neg.f32``),
   and this kernel is written so that it never depends on the answer: the
   subtraction is spelled ``a - kms*prev``, and no addend is negated.
 
 =============================================================================
-WHAT THIS IS NOT
+What this is not
 =============================================================================
 
-NOTHING DISPATCHES THIS. No module in ``meep_gpu/`` imports ``cuda_kernels`` at
+Nothing dispatches this. No module in ``meep_gpu/`` imports ``cuda_kernels`` at
 all (``test_package_boundary.py`` pins the absence in both directions), so a
 predicate returning True here licenses a MEASUREMENT and not a production step.
 
-THE OFF-DIAGONAL NONLINEAR CASE IS REFUSED, and by a line rather than by
+The off-diagonal nonlinear case is refused, and by a line rather than by
 omission: MEEP's most general branch scales the WHOLE row product, coupling
 included, ``fw = (gs*us + OFFDIAG + OFFDIAG) * u`` (stepping.py:1095-1099,
 :1075-1080). That is a fused nonlinear+offdiag kernel and it is not this one.
@@ -202,7 +202,7 @@ included, ``fw = (gs*us + OFFDIAG + OFFDIAG) * u`` (stepping.py:1095-1099,
 its side (coverage.py:1226) and this refuses the coupling from ours, so the pair
 is disjoint in both directions.
 
-COMPLEX STORAGE IS REFUSED. MEEP's ``DOCMP`` loop runs the whole nonlinear
+Complex storage is refused. MEEP's ``DOCMP`` loop runs the whole nonlinear
 recovery once per Cartesian part (update_eh.cpp:149), so ``u`` is built from real
 parts alone and again from imaginary parts alone (stepping.py:1110-1116). That is
 two Pade evaluations per component and a different kernel.
@@ -270,7 +270,7 @@ CERTIFIED_KERNELS: Tuple[str, ...] = ("update_E_pml_real_nonlinear",)
 #: which that reader does not match.
 UNCERTIFIED_KERNELS = {}
 
-#: THE GATE VERDICT, and what it does and does not license.
+#: The gate verdict, and what it does and does not license.
 #:
 #: Cut 2026-08-20 on the GPU host, ONE verified-empty RTX A6000 (index 5), under BOTH
 #: float32 subnormal policies, with the two policies proven to have compiled
@@ -278,7 +278,7 @@ UNCERTIFIED_KERNELS = {}
 #: binaries per policy, with ``all_ftz_true_reached_nvrtc`` False under ``keep``
 #: (the strip removed ``-ftz=true`` from every call) and True under ``flush``.
 #:
-#: ARM E is the kernel; ARM H is the certified ``update_H_pml_real``, run
+#: Arm E is the kernel; arm H is the certified ``update_H_pml_real``, run
 #: unchanged on grids carrying a live chi -- its byte count is included below and
 #: its refusal premise was armed (``pade_scale_the_H_source``, CAUGHT 6/6).
 NONLINEAR_CONSTITUTIVE_CERTIFICATION: Dict[str, Any] = {
@@ -327,7 +327,7 @@ NONLINEAR_CONSTITUTIVE_CERTIFICATION: Dict[str, Any] = {
         "nothing in this expression to reach, because both quotient operands are "
         "sums anchored at 1.0"),
     "flush_annihilates_a_subnormal_chi_volume": (
-        "MEASURED: under meep_x86_flush a float32 chi VOLUME drawn in the "
+        "Measured: under meep_x86_flush a float32 chi VOLUME drawn in the "
         "subnormal band rounds to zero on the host, so Fields.set_nonlinear_volumes "
         "sees a trivial pair and drops it (fields.py:879-880) and the run is "
         "LINEAR. Those 4 cases are SKIPPED under flush and this predicate refuses "
@@ -335,11 +335,11 @@ NONLINEAR_CONSTITUTIVE_CERTIFICATION: Dict[str, Any] = {
     "slot_delta": (
         "+4 on the 759-slot census: 557/759 -> 561/759, recomputed by "
         "parity/meep_gpu/results/cuda_nonlinear_slot_recount_2026-08-20/"
-        "recount_cuda_nonlinear_slots.py, disjointness clean. ROWS COVERED AT "
-        "EVERY SUB-STEP is unchanged at 110: the CURL's own chi2/chi3 clause "
+        "recount_cuda_nonlinear_slots.py, disjointness clean. Rows covered at "
+        "every sub-step is unchanged at 110: the CURL's own chi2/chi3 clause "
         "still refuses step_B and step_D on both rows, and that is a different "
         "family's refusal"),
-    # WHAT THE VERDICT IS PINNED TO, and it is deliberately NARROWER than the file
+    # What the verdict is pinned to, and it is deliberately NARROWER than the file
     # hash. ``certified_module_sha256`` stops matching the moment anyone fixes a
     # typo in a docstring, which makes it useless as a pin on the thing that
     # actually decides the verdict. What NVRTC compiles is the kernel source
@@ -359,7 +359,7 @@ NONLINEAR_CONSTITUTIVE_CERTIFICATION: Dict[str, Any] = {
                   "device string moved"),
          "touches_device_code": False,
          "why_the_verdict_survives": (
-             "MEASURED, not asserted: the sha256 of _NONLINEAR_PRELUDE and of "
+             "Measured, not asserted: the sha256 of _NONLINEAR_PRELUDE and of "
              "_update_E_pml_real_nonlinear_kernel_code are byte-identical "
              "between the staged tree the gate compiled on the GPU host and the file "
              "that ships here (408fa79f... and 8cde0fe2...), and only the module "
@@ -377,7 +377,7 @@ NONLINEAR_CONSTITUTIVE_CERTIFICATION: Dict[str, Any] = {
              "It does not survive -- it was RE-EARNED. Every scored number came "
              "back unchanged (112/108 cases, 56/54 electric and magnetic, "
              "1113600/1067520 words, 0 differing, 24 caught, 5 null-confirmed, "
-             "183 legs, 60 launches). TWO MEASUREMENTS MOVED and they are recorded "
+             "183 legs, 60 launches). Two measurements moved and they are recorded "
              "above as measured rather than carried over: max_pade_departure and "
              "max_expansion, which under the 2026-08-20 run differed between the "
              "policies (0.1349/0.1365 and 0.2547/0.2166) and now agree across them "
@@ -389,27 +389,27 @@ NONLINEAR_CONSTITUTIVE_CERTIFICATION: Dict[str, Any] = {
              "(separate processes by construction) had been drawing DIFFERENT case "
              "sets. Identical maxima across the policies is that reseed working"),
          "revision_sha256": None},
-        {"what": ("2026-10-07: bit_parity_0_10 lanes KC1 and KC1n moved the device "
-                  "strings. KC1: update_E_pml_real_nonlinear reads the chunk record "
+        {"what": ("2026-10-07: MEEP's per-chunk forms moved the device "
+                  "strings. First, update_E_pml_real_nonlinear reads the chunk record "
                   "cb and its constitutive tail takes MEEP's per-chunk forms "
                   "(accumulation where the chunk carries the own-axis layer, f = src "
-                  "elsewhere). KC1n: four_point_sum adds the corners left to right in "
+                  "elsewhere). Second, four_point_sum adds the corners left to right in "
                   "MEEP's order and Dsqr is formed in double and rounded once "
-                  "(nonlinear_dsqr), the forms stepping takes since 16-AP6h"),
+                  "(nonlinear_dsqr), the forms stepping takes since 1.0"),
          "touches_device_code": True,
          "why_the_verdict_survives": (
              "It does not survive. Every number above was measured on the 2026-08-21 "
              "bytes against the 0.9.2 array path; the re-cut is owed on a CUDA host "
-             "against the aligned array path (bit_parity_0_10 certification). "
-             "device_source_sha256 and certified_module_sha256 above are left as the "
-             "gate recorded them"),
+             "against the array path with MEEP's per-chunk arithmetic forms and association "
+             "order (the 1.0 certification). device_source_sha256 and certified_module_sha256 "
+             "above are left as the gate recorded them"),
          "revision_sha256": None},
     ),
     "dependency_drift_during_the_run": (
         "coverage.py was edited by a concurrent session BETWEEN the sync and the "
         "end of the run (f005a08d... on the staged tree, 892fea8f... here), so "
         "the shared clause helpers this predicate composes from are worth "
-        "checking rather than assuming. MEASURED: all sixteen symbols this module "
+        "checking rather than assuming. Measured: all sixteen symbols this module "
         "reads -- PERIODIC, MIRROR, METALLIC, CYL_AXIS, BC_CODES, "
         "CONSTITUTIVE_SIDES, _backend, _grid_facts, _stored_past_owned_from, "
         "_boundary_kinds_from, _array_problem, _coefficient_vector_problem, "
@@ -421,7 +421,7 @@ NONLINEAR_CONSTITUTIVE_CERTIFICATION: Dict[str, Any] = {
         "recount and the merge-bar suite both ran against the SHIPPING coverage.py "
         "and agree with the device leg on the predicate's verdicts"),
     "limits": (
-        "NOTHING DISPATCHES THIS. No module in meep_gpu/ imports cuda_kernels at "
+        "Nothing dispatches this. No module in meep_gpu/ imports cuda_kernels at "
         "all, so the verdict is a statement about two kernels and not about any "
         "run. It says nothing about a fold, a cylindrical grid, complex storage, "
         "a Bloch phase, a registered polarization or an off-diagonal chi1inv row "
@@ -469,7 +469,7 @@ POLE_EXPANSION_BOUND = 1.0 / 3.0
 
 
 # =============================================================================
-# THE DEVICE CODE
+# The device code
 # =============================================================================
 
 # The tail is the certified constitutive pair's, character for character, so
@@ -496,7 +496,7 @@ __device__ __forceinline__ void constitutive_apply(
     f[idx] = value;
 }
 
-// stepping._nonlinear_transverse_sums: MEEP's association, LEFT TO RIGHT
+// stepping._nonlinear_transverse_sums: MEEP's association, left to right
 // (step_generic.cpp:646-648):  ((g[i] + g[i+s]) + g[i-s1]) + g[i+(s-s1)].
 // `o_c` is this cell, `o_u` the own-axis neighbour above (g[i+s]), `o_d` the
 // partner-axis neighbour below (g[i-s1]), `o_ud` the corner that took both shifts
@@ -544,14 +544,14 @@ __device__ __forceinline__ float pade_u(
 }
 '''  # stepping.py live lines for the frozen device-text citation(s) in this string: 996-1027->1141-1172
 
-# THE E SIDE. Half-integer coefficients (stepping.py:1015), THREE inverse-epsilon
+# The E side. Half-integer coefficients (stepping.py:1015), THREE inverse-epsilon
 # pointers (never fields.inv_eps, which is the Ez view, fields.py:1259-1260), and
 # per-component chi2/chi3 that may each be a volume or a uniform scalar --
 # ``Fields._coerce_nonlinear_value`` (fields.py:929-945) accepts both, and MEEP
 # stores a zero partner for whichever of the pair the caller did not supply
 # (structure.cpp:815-826), so a chi3-only medium arrives here as chi2 == 0.0.
 #
-# THE THREE SOURCES ARE FORMED BEFORE ANY STORE, and here that is load-bearing
+# The three sources are formed before any store, and here that is load-bearing
 # rather than incidental: the transverse average READS the other two components'
 # D volumes, so a store into D would reach a later operand. It does not -- this
 # sub-step reads D and inv_eps and writes E and f_w_E, four disjoint sets -- but
@@ -585,7 +585,7 @@ extern "C" __global__ void update_E_pml_real_nonlinear(
     int j = (idx / nz) % ny;
     int i = idx / (ny * nz);
 
-    // THE CHUNK RECORD (chunk_map.chunk_bounds_record): row r of this lattice and axis
+    // The chunk record (chunk_map.chunk_bounds_record): row r of this lattice and axis
     // lies in a chunk that carries the axis's layer iff (a0 <= r < a1) || (b0 <= r < b1).
     const int cbh_x_a0 = cb[12], cbh_x_a1 = cb[13], cbh_x_b0 = cb[14], cbh_x_b1 = cb[15];
     const int in_h_x = (i >= cbh_x_a0 && i < cbh_x_a1) || (i >= cbh_x_b0 && i < cbh_x_b1);
@@ -606,7 +606,7 @@ extern "C" __global__ void update_E_pml_real_nonlinear(
     int dj = j - 1, uj = j + 1;
     int dk = k - 1, uk = k + 1;
     bool dvx = true, uvx = true, dvy = true, uvy = true, dvz = true, uvz = true;
-    // An invalid neighbour is CLAMPED IN BOUNDS and gated by its flag, never
+    // An invalid neighbour is clamped in bounds and gated by its flag, never
     // left negative and guarded by a ternary alone: a predicated load may be
     // issued for a branch whose value is discarded, and a negative offset is an
     // unmapped address rather than a discarded value.
@@ -744,7 +744,7 @@ def _clear_kernel_cache() -> int:
 def _get_kernel(name: str):
     """Compile on first use, memoized on (name, options, policy, source).
 
-    THE CODE MAP IS REBUILT PER CALL and that is load-bearing for the same reason
+    The code map is rebuilt per call and that is load-bearing for the same reason
     it is in the sibling modules: the source is part of the memo key, and the gate
     mutates kernels by assigning over the module-level source string. A map
     memoized at first call would hand back the pre-mutation string forever -- a
@@ -762,7 +762,7 @@ def _get_kernel(name: str):
 
 
 # =============================================================================
-# THE PLAN
+# The plan
 # =============================================================================
 
 def nonlinear_bindings(fields: 'Fields') -> Dict[str, Any]:
@@ -774,7 +774,7 @@ def nonlinear_bindings(fields: 'Fields') -> Dict[str, Any]:
     (stepping.py:1100-1102). This resolves the three-way choice ONCE, on the
     host, and the kernel takes it as flags.
 
-    A SCALAR IS ROUNDED ON THE HOST, ONCE. ``np.float32(value)`` is the same
+    A scalar is rounded on the host, once. ``np.float32(value)`` is the same
     rounding NumPy performs when the Python float meets the float32 array in
     ``gs * chi2`` (weak promotion: a Python float does not widen a float32
     array). An unused pointer slot is bound to the component's own D array and
@@ -821,7 +821,7 @@ def update_E_fused_pml_real_nonlinear(fields: 'Fields', pml: 'PML' = None, *,
                                       chunk_bounds: Any = None) -> None:
     """``stepping.update_E`` under a PML with chi2/chi3 installed, in one launch.
 
-    ``tables``, ``codes`` and ``bindings`` are THE GATE'S DOOR, keyword-only and
+    ``tables``, ``codes`` and ``bindings`` are the gate's door, keyword-only and
     named for what they are: the gate feeds deliberately mis-paired coefficient
     tables and swapped chi operands, and a launcher that could only derive them
     correctly could not arm those mutations. Supplying ``pml`` derives the tables
@@ -884,7 +884,7 @@ def update_E_fused_pml_real_nonlinear(fields: 'Fields', pml: 'PML' = None, *,
 
 
 # =============================================================================
-# THE PREDICATE
+# The predicate
 # =============================================================================
 
 def _nonlinearity_installed(fields: Any) -> bool:
@@ -927,14 +927,14 @@ def covers_real_pml_nonlinear_constitutive(fields: Any, pml: Any, grid: Any,
     reference to the nonlinearity -- see the module header, and see the gate,
     which measures it rather than arguing it.
 
-    EVERY CLAUSE OF ``coverage.covers_real_pml_constitutive`` IS RESTATED, with
+    Every clause of ``coverage.covers_real_pml_constitutive`` is restated, with
     exactly three differences, and each is written out so the diff is readable:
 
     1. **The chi2/chi3 clause is INVERTED.** That predicate refuses a
        nonlinearity; this one requires it. The two are therefore complementary on
        that clause and cannot both admit a slot, which is what keeps the census's
        disjointness check clean without a coordinating edit to either file.
-    2. **A FOLD AND THE CYLINDRICAL AXIS ARE REFUSED** where the sibling admits
+    2. **A fold and the cylindrical axis are refused** where the sibling admits
        them (``CONSTITUTIVE_FOLD_ADMISSION`` / ``CONSTITUTIVE_CYLINDRICAL_ADMISSION``).
        Those admissions were measured for an ELEMENT-WISE sub-step that reads no
        neighbour. This one reads four corners of two partner volumes, so a fold's
@@ -946,11 +946,11 @@ def covers_real_pml_nonlinear_constitutive(fields: Any, pml: Any, grid: Any,
        component parity, so ``_shift_up`` is called with ``reflect_row`` unset and
        keeps the zero face -- and the driver refuses that combination rather than
        serving the zero as an answer, stepping.py:1785-1791.)
-    3. **THE CHI OPERANDS ARE CHECKED**, which that predicate has no reason to:
+    3. **The chi operands are checked**, which that predicate has no reason to:
        each of the six entries must be a float32 C-contiguous volume of the grid's
        shape or a finite scalar.
 
-    THE POLE GUARD IS NOT A CLAUSE. ``stepping.nonlinear_margin`` (:1315-1357) is
+    The pole guard is not a clause. ``stepping.nonlinear_margin`` (:1315-1357) is
     sampled OUTSIDE the step loop by ``driver._NonlinearityGuard`` and is unchanged
     by this kernel; a predicate that re-derived it here would be a second guard
     that can disagree with the first.
@@ -1016,7 +1016,7 @@ def covers_real_pml_nonlinear_constitutive(fields: Any, pml: Any, grid: Any,
         if problem is not None:
             return False, problem
     if side == "E":
-        # THE THREE D VOLUMES ARE READ AS NEIGHBOURS, not only at ``idx``, so all
+        # The three D volumes are read as neighbours, not only at ``idx``, so all
         # three must exist and be this grid's shape even for a run whose
         # nonlinearity lives on one component. ``spec["sources"]`` already checked
         # them; what follows is the epsilon and the chi operands.

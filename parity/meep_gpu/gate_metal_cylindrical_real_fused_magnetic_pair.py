@@ -1,10 +1,10 @@
 """Byte gate for the Metal Dcyl m = 0 fused magnetic pair: ``step_B`` into ``update_H``.
 
-THE CLAIM THIS GATE IS ALLOWED TO SUPPORT: for every configuration
+The claim this gate is allowed to support: for every configuration
 :func:`~meep_gpu.metal_kernels.cylindrical_real_fused_magnetic_pair.metal_cylindrical_real_fused_magnetic_pair_coverage`
 admits, the device radial scan followed by ONE dispatch of
 ``cyl_real_fused_magnetic_pair_step`` leaves the engine in a state that is
-BIT-IDENTICAL, PER COMPLETE STEP, to
+bit-identical, per complete step, to
 
   * the CuPy-free NumPy array path (``stepping.step_B`` / ``zero_metal_B`` /
     ``update_H``, plus the rest of the composer's live pass set), and
@@ -31,7 +31,7 @@ THE LEGS
   8  refusal              the source seam and the fold, each measured by name
   9  disarm               the same harness, shipped bytes, must not diverge
 
-WHAT THE GATE REFUSES TO INFER
+What the gate refuses to infer
 
 * **A no-op agreeing with a no-op is trivially identical.** Every compared volume
   must MOVE during a case, and the fixture seeds the ``fu_*`` and ``f_w_*``
@@ -119,14 +119,14 @@ STATE_NAMES: Tuple[str, ...] = tuple(
 
 #: name -> the grid this case builds.
 #:
-#: WHAT THE ROWS CARRY BETWEEN THEM:
+#: What the rows carry between them:
 #:
 #:   THE z DECLARATION   a metallic z emits the ``Bz`` wall-clear row and puts
 #:                       ``zero_metal_B`` in the composer's live set; a PERIODIC z
 #:                       emits no clear at all and drops the pass. Both are admitted
 #:                       on this backend (unlike the Triton twin, which pins the
 #:                       Dcyl declaration), so both are walked.
-#:   THE COURANT NUMBER  three of the four are NOT powers of two, which is the family
+#:   The Courant number  three of the four are NOT powers of two, which is the family
 #:                       of non-representable multiplicands the association defects
 #:                       need in order to be visible at all.
 #:   THE SHAPE           square, tall-and-thin and short-and-wide, because the radial
@@ -173,7 +173,7 @@ def words(array: Any) -> np.ndarray:
 
 
 def floor_violations(moved: Mapping[str, int], pml: Any) -> List[str]:
-    """The vacuity floor under the auxiliary contract (KERNELS.md §1, C2).
+    """The vacuity floor under the auxiliary contract (docs/design/floating-point.md#auxiliary-contract).
 
     ``f_w_{H,E}c`` is touched only where c's own axis (its dsigw) carries a layer and
     ``fu_{B,D}c`` only where its dsigu axis, ``(c + 2) % 3``, does, by the array path
@@ -214,13 +214,13 @@ def build(label: str, seed: int, value_class: str = values.UNIFORM,
           scale: float = 1.0) -> Tuple[Any, Any]:
     """One seeded Dcyl m = 0 engine. Called twice (or three times) per case.
 
-    THE SEED COVERS ``fu_*`` AND ``f_w_*`` AS WELL AS THE TWELVE FIELD VOLUMES, and
+    The seed covers ``fu_*`` AND ``f_w_*`` as well as the twelve field volumes, and
     that is not cosmetic. Zero init is a FIXED POINT of the constitutive sub-step and
     a near-fixed-point of the split-field recurrence — a no-op agreeing with a no-op
     is trivially identical — so the auxiliaries carry physical-band values from step
     zero and the vacuity floor below has something to measure.
 
-    IT ALSO DECIDES WHETHER THE CURL'S OWNERSHIP MASK IS OBSERVABLE. Measured on the
+    It also decides whether the curl's ownership mask is observable. Measured on the
     Triton twin's first device run: with the ELECTRIC constitutive history left at
     zero, ``Ep`` is exactly ``+0.0`` on both planes the mask touches — the m = 0 axis
     rule sets ``Dp[0] = 0`` and ``zero_metal_D`` clears ``Dy`` at z = 0 — so the mask
@@ -251,7 +251,7 @@ def build(label: str, seed: int, value_class: str = values.UNIFORM,
         pml = PML(grid=grid, thickness={"x": (0, max(2, shape[0] // 4)),
                                         "z": max(2, shape[2] // 4)})
 
-    # A SEEDED STATE IS A MID-RUN ONE: the run's first update_H, which starts H and
+    # A seeded state is a mid-run one: the run's first update_H, which starts H and
     # f_w from B on the dsigw cells (stepping.separate_h_from_b), is behind it. The
     # composition matrix records the same for its own fixtures; that first update is
     # refused by name instead (leg refusal).
@@ -345,7 +345,7 @@ def metal_step(fields: Any, pml: Any, dispatch: Mapping[str, Any],
 
 def leg_subnormal_ladder(label: str, seed: int,
                          budget: int = 4) -> Dict[str, Any]:
-    """THE EMPTY CENSUS, TURNED INTO A MEASUREMENT.
+    """The empty census, turned into a measurement.
 
     Every product row in this file reports ``reference_subnormals: 0`` and
     ``subnormal_free: true`` under policy ``flush``. Read alone that is a SILENCE:
@@ -354,7 +354,7 @@ def leg_subnormal_ladder(label: str, seed: int,
     This leg is the difference — not a second byte comparison, which MPS cannot
     give, but the precondition FIRING.
 
-    THE ORACLE ALONE runs here, seeded at each rung of
+    The oracle alone runs here, seeded at each rung of
     :data:`metal_value_classes.PRECONDITION_SCALES` and stepped through the same
     live pass list, with the same census the product rows report taken after
     every step. Nothing is compared against the device and the artifact says so:
@@ -434,7 +434,7 @@ def run_case(label: str, seed: int, steps: int,
     launches_ok = (plan.runs == len(per_step)
                    and plan.launches == plan.launches_per_run * len(per_step)
                    and plan.scan_launches == plan.fused_launches == len(per_step))
-    # THE FLOOR, AND WHICH ONE DEPENDS ON THE VALUE CLASS. The uniform class must
+    # The floor, and which one depends on the value class. The uniform class must
     # move every compared array or the comparison is a no-op agreeing with a
     # no-op. The +-0 lattice answers to the SIGN floor instead: the REFERENCE
     # OUTPUT must carry BOTH bit patterns, which is what makes a uint32 compare of
@@ -481,7 +481,7 @@ def run_case(label: str, seed: int, steps: int,
 def run_separate_control(label: str, seed: int, steps: int) -> Dict[str, Any]:
     """The SEPARATE certified products beside the fused one, same state.
 
-    THIS IS THE LEG THAT MAKES "FUSION" A MEASUREMENT RATHER THAN A NAME. Three
+    This is the leg that makes "FUSION" a measurement rather than a name. Three
     engines from one seed: the array path, the two ALREADY CERTIFIED Metal products
     stepping the same seam with the wall clear left on the HOST between them, and the
     fused product. All three must agree word for word at every complete step, and the
@@ -489,7 +489,7 @@ def run_separate_control(label: str, seed: int, steps: int) -> Dict[str, Any]:
     between the compositions shows up at all, since a correct fusion is byte-neutral
     by construction.
 
-    THE SEPARATE SIDE IS THREE DISPATCHES AND THE FUSED SIDE IS TWO. Both compute the
+    The separate side is three dispatches and the fused side is two. Both compute the
     same radial scan; what the fusion removes is the constitutive dispatch and the
     ``B`` round trip in front of it.
     """
@@ -593,31 +593,31 @@ def shader_mutations(codes: Sequence[int],
     verified present before it is applied — an absent needle raises here rather than
     silently arming nothing.
 
-    THE MUTATION CASE'S GEOMETRY, which is what makes each of these reachable: z
+    The mutation case's geometry, which is what makes each of these reachable: z
     walled (so the ``Bz`` clear row is emitted), r pinned METALLIC (so the axis ghost
     and the r ownership mask are live), and square (so the coefficient-index defect
-    reads in bounds). The §7.2 battery on the curl's per-chunk select is the single
+    reads in bounds). The form battery on the curl's per-chunk select is the single
     product's (``gate_metal_cylindrical_real``); this pair lifts that body verbatim
     (leg ``transcription``).
     """
     base = family.cylindrical_real_fused_magnetic_pair_source(codes, walls)
     edits: Dict[str, str] = {
-        # THE SEAM ITSELF: take the curl instead of the recurrence's output.
+        # The seam itself: take the curl instead of the recurrence's output.
         "seam_takes_pre_recurrence_curl":
             needle(base, "float src0 = v0;", "float src0 = curl0;"),
-        # THE SEAM, WRONG COMPONENT. Bx's constitutive source is v0, not v1.
+        # The seam, wrong component. Bx's constitutive source is v0, not v1.
         "seam_takes_the_wrong_component":
             needle(base, "float src1 = v1;", "float src1 = v0;"),
-        # THE WALL CLEAR, DROPPED. z is the walled axis on the mutation case, and Bz
+        # The wall clear, dropped. z is the walled axis on the mutation case, and Bz
         # is the component whose z Yee shift is 0.
         "zero_metal_dropped":
             needle(base, "    v2 = at_z ? 0.0f : v2;\n", ""),
-        # THE WALL TABLE IS THE DIAGONAL FOR B. Clearing v0 on the z wall instead of
+        # The wall table is the diagonal for B. Clearing v0 on the z wall instead of
         # v2 is the D-side table's shape and the single most likely porting slip.
         "zero_metal_uses_the_d_side_table":
             needle(base, "    v2 = at_z ? 0.0f : v2;",
                    "    v0 = at_z ? 0.0f : v0;"),
-        # THE WALL CLEAR AFTER THE CONSTITUTIVE READ. B ends up right and H does not,
+        # The wall clear after the constitutive read. B ends up right and H does not,
         # which is the seam's ORDER rather than the clear's existence.
         "zero_metal_after_the_constitutive_read":
             needle(base, "    v2 = at_z ? 0.0f : v2;\n"
@@ -626,40 +626,40 @@ def shader_mutations(codes: Sequence[int],
         # THE m = 0 AXIS RULE, dropped (stepping._cylindrical_axis_zero_B:661-662).
         "axis_rule_dropped":
             needle(base, "    v0 = at_x ? 0.0f : v0;\n", ""),
-        # Bz's CURL IS dtdx TIMES THE RADIAL DIFFERENCE, not the generic stencil.
+        # Bz's curl is dtdx times the radial difference, not the generic stencil.
         "bz_curl_is_the_generic_one":
             needle(base, "    float curl2 = dtdx * rad[ii];",
                    "    float curl2 = dtdx * (((b_x - b) + a) - a_y);"),
-        # THE RADIAL TERM NEGATED: Bz's whole curl changes sign.
+        # The radial term negated: Bz's whole curl changes sign.
         "bz_radial_term_negated":
             needle(base, "    float curl2 = dtdx * rad[ii];",
                    "    float curl2 = (-dtdx) * rad[ii];"),
-        # THE RADIAL DIFFERENCE read at the z neighbour (in bounds).
+        # The radial difference read at the z neighbour (in bounds).
         "radial_read_one_cell_over":
             needle(base, "dtdx * rad[ii];", "dtdx * rad[(ii + 1) % int(n_elem)];"),
-        # THE OWNERSHIP MASK, dropped on the r axis — a different pass from both the
+        # The ownership mask, dropped on the r axis — a different pass from both the
         # wall clear and the axis rule, on the same row.
         "ownership_mask_dropped":
             needle(base, "    curl0 = at_x ? 0.0f : curl0;\n", ""),
-        # INVERTED (KERNELS.md §7.1): the package's previous pairwise grouping
+        # INVERTED (docs/development/certification.md#inverted-grouping-mutations): the package's previous pairwise grouping
         # planted in place of MEEP's left-to-right bracket, on target 1, whose pair
         # (z, r) is live on both sides.
         "curl_previous_package_grouping_on_a_live_pair":
             needle(base, "dtdx * (((a_z - a) + c) - c_x)",
                    "dtdx * ((a_z - a) + (c - c_x))"),
-        # THE INVARIANT-AXIS TERM (Appendix A): target 0's phi partner is ABSENT
+        # The invariant-axis term (certification.md#inverted-grouping-mutations): target 0's phi partner is ABSENT
         # (MEEP's one-partner form (-dtdx) * (g2s - g2)); the package's previous
         # spelling kept it as a self-difference on the one-cell axis. Declared a NULL
         # — see the expectation table below.
         "curl_invariant_term_kept_as_a_self_difference":
             needle(base, "(has_z ? ((-dtdx) * (b_z - b)) : 0.0f)",
                    "(has_z ? (dtdx * ((c_y - c) + (b - b_z))) : 0.0f)"),
-        # THE ONE-PARTNER FORM'S SIGN, flipped: loud, where the spelling above differs
+        # The one-partner form's sign, flipped: loud, where the spelling above differs
         # only on a signed zero.
         "one_partner_form_sign_flipped":
             needle(base, "(has_z ? ((-dtdx) * (b_z - b)) : 0.0f)",
                    "(has_z ? (dtdx * (b_z - b)) : 0.0f)"),
-        # THE RECURRENCE PAIRS are vec.hpp's cycle_direction: target 0 takes (y, z).
+        # The recurrence pairs are vec.hpp's cycle_direction: target 0 takes (y, z).
         "recurrence_axis_pair_swapped":
             needle(base, "float n0 = ((p0 * km_y) - curl0) * si_y;",
                    "float n0 = ((p0 * km_z) - curl0) * si_z;"),
@@ -678,7 +678,7 @@ def shader_mutations(codes: Sequence[int],
         "constitutive_coefficients_exchanged":
             needle(base, "a0 = h0[ii] + ((kp_0 * src0) - (km_0 * prev0));",
                    "a0 = h0[ii] + ((km_0 * src0) - (kp_0 * prev0));"),
-        # INVERTED (KERNELS.md §7.1): the package's previous constitutive grouping
+        # INVERTED (certification.md#inverted-grouping-mutations): the package's previous constitutive grouping
         # ((f + kps*src) - kms*prev) planted in place of MEEP's f + ((kps*src) -
         # (kms*prev)).
         "constitutive_previous_package_grouping":
@@ -695,11 +695,11 @@ def shader_mutations(codes: Sequence[int],
 
 #: Mutation id -> what it is DECLARED to do. Anything not named here must be CAUGHT.
 #:
-#: A DECLARED NULL MUST BE CONFIRMED, not merely permitted: a null that IS caught
+#: A declared null must be confirmed, not merely permitted: a null that IS caught
 #: means the reasoning behind it is wrong, and that has to fail too.
 #:
 #: ``curl_invariant_term_kept_as_a_self_difference`` is the one entry, and it is a
-#: MEASUREMENT rather than a concession (KERNELS.md Appendix A, the invariant-axis
+#: MEASUREMENT rather than a concession (certification.md#inverted-grouping-mutations, the invariant-axis
 #: rows). phi has n = 1 on a Dcyl grid, so ``(c_y - c)`` is an exact ``+0.0`` and the
 #: package's previous spelling ``dtdx * ((c_y - c) + (b - b_z))`` equals MEEP's
 #: one-partner form ``(-dtdx) * (b_z - b)`` on every word but a zero curl's sign,
@@ -1123,7 +1123,7 @@ def main() -> int:
             rows.append(row)
             emit(handle, row)
 
-        # THE SECOND VALUE CLASS, on every product row, and then the band.
+        # The second value class, on every product row, and then the band.
         for offset, (name, _keywords) in enumerate(CASES):
             index += 1
             row = {"index": index, "total": total, "leg": "value_class",
@@ -1154,7 +1154,7 @@ def main() -> int:
                      **leg_refusal()})
         emit(handle, rows[-1])
 
-        # THE ONE ARMED EDIT REQUIRED TO BE UNCAUGHT. Scored on NOT diverging.
+        # The one armed edit required to be uncaught. Scored on NOT diverging.
         index += 1
         result = run_case(MUTATION_CASE, 71000, args.steps, fused_function=neutral)
         row = {"index": index, "total": total, "leg": "byte_neutral_control",
@@ -1197,7 +1197,7 @@ def main() -> int:
             rows.append(row)
             emit(handle, row)
 
-        # THE DISARM CHECK. The identical harness, the identical case, the SHIPPED
+        # The disarm check. The identical harness, the identical case, the SHIPPED
         # bytes and no host patch. A nonzero here would mean every "caught" above is
         # a harness that diverges on its own.
         index += 1

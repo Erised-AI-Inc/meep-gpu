@@ -1,18 +1,18 @@
 """The two 2026-08-20 admission records, and whether they still describe the files.
 
-WHY A SEPARATE FILE. ``special_kz_curl.SPECIAL_KZ_ADMISSION`` and
+Why a separate file. ``special_kz_curl.SPECIAL_KZ_ADMISSION`` and
 ``bfast_curl.BFAST_ADMISSION`` are the ONLY places either family states what a
 device measured. A record is worth exactly as much as the guarantee that it was
 not written about a different program, and there are two ways that guarantee goes
 silently:
 
-* THE FILE CHANGES AFTER THE GATE RAN. The gate stamps
+* The file changes after the gate ran. The gate stamps
   ``imported_source_sha256`` with the sha256 of every repo module the process
   imported (``gate_provenance``), so the artifact carries the bytes it measured.
   Comparing that against the file on disk is the whole check, and it is the one
   that caught a mis-transcribed digest on the sibling track.
 
-  A FILE HASH IS TOO WIDE TO BE THE ONLY PIN, and it was the only one here until
+  A file hash is too wide to be the only pin, and it was the only one here until
   2026-08-28. It stops matching the moment anyone adds a comment, which trains the
   next reader either to re-cut a device gate over a docstring or to stop believing
   the clause. What decides the verdict is the string NVRTC compiles, and these two
@@ -23,7 +23,7 @@ silently:
   admitted only on a MEASUREMENT -- every shipped device string is one the gate
   itself compiled, on every leg -- plus a declared edit in the module's own
   admission record saying so. A declaration alone admits nothing.
-* THE RECORD SAYS SOMETHING THE ARTIFACT DOES NOT. A hand-copied case count that
+* The record says something the artifact does not. A hand-copied case count that
   drifts from the JSON is a claim with no measurement behind it, which is worse
   than no claim.
 
@@ -69,12 +69,12 @@ def test_the_gate_measured_the_bytes_that_ship(module, record, filename,
                                                _kind, _cases):
     """The artifact's own provenance stamp against the file on disk.
 
-    THE DIGEST IS THE GATE'S, not a transcription: ``gate_provenance.stamp``
+    The digest is the gate's, not a transcription: ``gate_provenance.stamp``
     records ``module.__file__`` for every repo module the gate process imported,
     which is the one description of "the bytes that ran" that cannot be inferred
     wrongly from a path or a directory name.
 
-    A MOVED FILE HASH IS NOT AUTOMATICALLY A MOVED PROGRAM, and the fall-back is a
+    A moved file hash is not automatically a moved program, and the fall-back is a
     measurement rather than an allowance --
     :func:`test_a_declared_edit_that_moves_a_device_string_is_still_caught` is the
     control that shows it can still fail.
@@ -129,7 +129,7 @@ def test_the_record_reproduces_the_artifacts_numbers(module, record, _filename,
             assert entry["cases"] == record["constitutive_cases_scored"][side]
             assert entry["single"] == count
             assert entry["multi"] == count
-        # TWO BLOCKS, TWO FACTS. ``subnormal_policy_stamp`` is what the process
+        # Two blocks, two facts. ``subnormal_policy_stamp`` is what the process
         # RESOLVED to; ``subnormal_policy_install`` is what installing it actually
         # attained, per executor. A run whose stamp names a policy that some
         # executor did not reach measured a different arithmetic from the one the
@@ -218,7 +218,7 @@ def test_the_bfast_record_still_refuses_the_fold():
 
 
 def test_the_special_kz_record_carries_the_measured_inert_mutation():
-    """The one MEASURED REFUSAL this round produced: swapping the beta partner for
+    """The one measured refusal the special_kz gate produced: swapping the beta partner for
     its shifted companion is undetectable on any grid the family can be handed,
     because that companion is the neighbour along the invariant axis and every
     beta grid has nz == 1. Recorded as a fact, not deleted as a nuisance."""

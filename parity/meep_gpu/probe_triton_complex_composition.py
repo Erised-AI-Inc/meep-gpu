@@ -42,7 +42,7 @@ random-seeded certification provably could not see:
    ``-0.0`` words on the array path (NumPy census 2026-08-12: 224 words
    on every ODD step across fu_Bx/fu_Bz/fu_Dx/fu_Dz/Bz/f_w_Hz, 0 on even —
    the -0 feeds back as ``-0 * negative = +0`` — hence the ODD budget). Since
-   the per-part alignment (bit_parity 0.10) the array path forms every such
+   the 1.0 move to MEEP's per-part forms the array path forms every such
    product part by part, so BOTH words of the cell are -0 (566 words, 283
    cells, on every odd step): the discriminating class is now the cell whose
    imaginary word is -0 beside a -0 real word, which a whole-complex product
@@ -53,8 +53,8 @@ random-seeded certification provably could not see:
    both axes, thin 3-cell x/y absorber graded under the phased wrap. Every
    quiet read of a connected plane is a connection event: the phase product's
    real word ``(a*re) - (b*im)`` is ``-0 - +0 = -0`` where a fused, negated
-   addend would store +0 (counted per step, required > 0; since the alignment
-   the connection sits on the UNSHIFTED operand's plane 0 in both directions).
+   addend would store +0 (counted per step, required > 0; since the 1.0 move to
+   MEEP's forms the connection sits on the UNSHIFTED operand's plane 0 in both directions).
 10. ``edge_sparse_y``           — the Brillouin edge on y (k = 0.25, L = 2:
    ``grid.bloch_phase`` is exactly -1, MEEP's NEGATION), 3-D between metallic
    x and z walls under their layers, seeded SPARSE: most words are zeros of
@@ -88,7 +88,7 @@ exactly that many steps — 2d_pml certified 60/60 first differed at step 67);
 unbuffered per-case progress; atomic JSON rewrite per case; own provenance
 record (``fingerprints.json`` is another track's file and is only HASHED).
 
-SUBNORMAL POLICY. This probe runs UNDER THE STRIPPED IEEE-KEEP POLICY — the
+Subnormal policy. This probe runs under the stripped IEEE-keep policy — the
 ship configuration — installed via the gate's ``install_ftz_strip`` (wrap
 ``cupy.cuda.compiler.compile_using_nvrtc``, filter ``-ftz=true``, private
 policy-suffixed ``CUPY_CACHE_DIR``) BEFORE ``guard_kernel_compilation`` so the
@@ -565,7 +565,7 @@ def run_case(cp, name, dimensions, cell, boundaries, k_point, pml_spec,
             # implement only the non-integrated path and carry no mutable
             # per-step state (``_applied_dipole`` is VolumeSource's,
             # sources.py:2027). A compare on that attribute measured
-            # 0j == 0j unconditionally (2026-08-11 vacuity audit) — a
+            # 0j == 0j unconditionally on 2026-08-11 — a
             # decorative field recorded as if measured — so it was dropped;
             # a source's entire per-step effect is in the field arrays the
             # 24-array uint32 compare covers.
@@ -1045,7 +1045,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                               "reason": "subnormal policy: "
                                         + "; ".join(residual)}
         save(payload, args.out)
-        log(f"SUBNORMAL POLICY FAILURE AT CLOSE: {residual}")
+        log(f"Subnormal policy failure at close: {residual}")
         return 1
 
     ran = [row for row in payload["cases"] if not row.get("skipped")]

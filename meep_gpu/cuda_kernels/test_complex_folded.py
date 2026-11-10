@@ -1,23 +1,23 @@
 """The MIRROR FOLD under complex64 storage: its deltas, its predicate, its behaviour.
 
-WHAT IS PINNED HERE AND WHAT IS NOT. The BYTE-IDENTITY VERDICT needs a device and
+What is pinned here and what is not. The BYTE-IDENTITY VERDICT needs a device and
 lives in ``parity/meep_gpu/gate_cuda_complex_folded.py``. What this file pins is
 the half of the family's silent-failure surface a laptop can reach, and every one
 of these failures is a plausible, smooth, WRONG field rather than a crash:
 
-* THE DELTAS. The device source is ``complex_emitter``'s transformed, so the whole
+* The deltas. The device source is ``complex_emitter``'s transformed, so the whole
   claim "no arithmetic change at all" is checkable by diff -- and is checked, line
   by line, against the certified source. A delta whose anchor has moved must FAIL
   here, on a laptop, rather than emit a kernel with one fold branch missing.
-* THE MASK BLOCK, character for character against the REAL curl pair's, which is
+* The mask block, character for character against the REAL curl pair's, which is
   where the fold's device verdict already lives. A mask is the whole of what this
   family adds; a transcription of it that is "equivalent" rather than equal is a
   second spelling of the one rule the real gate measured.
-* THE PREDICATE, whose admissions must not overlap the certified complex pair's --
+* The predicate, whose admissions must not overlap the certified complex pair's --
   two families on one slot is a widening the union census reports as a FINDING --
   and whose refusals (a phase on a folded axis, an undecidable fold termination)
   are configurations the array path does not express.
-* THE BEHAVIOUR. The EMITTED device text, executed in float32 NumPy by the
+* The behaviour. The EMITTED device text, executed in float32 NumPy by the
   interpreter of ``test_complex_chunk_forms.py`` through the family's own launcher
   (``step_folded_complex``, with the run's chunk record), is stepped against
   ``stepping.step_B`` / ``step_D`` on real FOLDED complex grids and compared as
@@ -25,7 +25,7 @@ of these failures is a plausible, smooth, WRONG field rather than a crash:
   text, the answer diverges. A test that only checks verdict strings cannot tell a
   working kernel from one that returns its input.
 
-WHAT THE HOST LEG CANNOT SEE, stated rather than papered over: it compiles
+What the host leg cannot see, stated rather than papered over: it compiles
 nothing, so it cannot see an NVRTC contraction or a lost signed zero under a
 compiler's rewriting. Those are the device gate's questions. What this leg
 settles is the arithmetic the text spells -- every part-wise product, the chunk
@@ -102,7 +102,7 @@ CURL_ARRAYS = {
 def seed(fields, grid, names, rng):
     """Physical-band complex values in every array the sub-step touches.
 
-    THE AUXILIARIES START NONZERO: a zero ``fu`` makes ``kms * prev`` exactly zero
+    The auxiliaries start nonzero: a zero ``fu`` makes ``kms * prev`` exactly zero
     on the first launch whatever ``kms`` holds, which would hide a mis-indexed
     coefficient until step two.
     """
@@ -162,24 +162,24 @@ FOLD_SPECS = (
     {"label": "fold_Y_periodic_odd_plane", "cell": (8.0, 16.0, 0.0), "axes": "Y",
      "phase": -1, "boundaries": ("periodic", "periodic", "periodic"),
      "k": (0.0, 0.0, 0.0)},
-    # AN ODD FULL COUNT on the folded axis. ``_stored_past_owned`` holds at BOTH
+    # An odd full count on the folded axis. ``_stored_past_owned`` holds at BOTH
     # parities and what moves is the IMAGE ROW -- n_full 16 reflects stored-2 and
     # n_full 15 reflects stored-3 (measured on real Grid objects) -- so a family
     # that swept only the even arm would have baked ``n - 2`` without knowing it.
     {"label": "fold_Y_periodic_odd_count", "cell": (8.0, 15.0, 0.0), "axes": "Y",
      "phase": 1, "boundaries": ("periodic", "periodic", "periodic"),
      "k": (0.0, 0.0, 0.0)},
-    # A PHASE ON AN UNFOLDED AXIS, beside a fold on another: the corpus's
+    # A phase on an unfolded axis, beside a fold on another: the corpus's
     # TestHoleyWvgBands / binary-grating class, and the case where a kernel that
     # applied the wrap factor on the folded axis would show.
     {"label": "fold_Y_periodic_kx", "cell": (8.0, 16.0, 0.0), "axes": "Y",
      "phase": 1, "boundaries": ("periodic", "periodic", "periodic"),
      "k": (0.31, 0.0, 0.0)},
-    # THE SLOWEST-STRIDE AXIS, where an index defect that confused a plane with its
+    # The slowest-stride axis, where an index defect that confused a plane with its
     # neighbour would move with the stride.
     {"label": "fold_X_periodic", "cell": (16.0, 8.0, 0.0), "axes": "X", "phase": 1,
      "boundaries": ("periodic", "periodic", "periodic"), "k": (0.0, 0.0, 0.0)},
-    # TWO PLANES AT ONCE, METALLIC -- solve-cw.py's class.
+    # Two planes at once, metallic -- solve-cw.py's class.
     {"label": "fold_XY_metallic", "cell": (16.0, 16.0, 0.0), "axes": "XY",
      "phase": 1, "boundaries": ("metallic", "metallic", "periodic"),
      "k": (0.0, 0.0, 0.0)},
@@ -201,7 +201,7 @@ def build_spec(spec, courant=0.5, beta=0.0):
 
 
 # ---------------------------------------------------------------------------
-# THE DELTAS
+# The deltas
 # ---------------------------------------------------------------------------
 
 def _real_kernel_mask_blocks():
@@ -354,7 +354,7 @@ def test_the_folded_ghost_takes_the_metallic_zero_on_both_shift_helpers():
 
 
 # ---------------------------------------------------------------------------
-# THE BEHAVIOUR
+# The behaviour
 # ---------------------------------------------------------------------------
 
 #: Each fold mask arm as the emitted text spells its lines, by the boundary code and
@@ -417,7 +417,7 @@ def test_the_folded_curl_reproduces_stepping_word_for_word(spec, sub_step, launc
                                                            monkeypatch):
     """THE leg. The emitted device text against ``stepping`` on a folded grid.
 
-    NON-VACUITY FLOORS, both asserted rather than hoped for:
+    Non-vacuity floors, both asserted rather than hoped for:
 
     * the array path must MOVE state -- a comparison of two unchanged volumes
       passes for a kernel that does nothing;
@@ -443,7 +443,7 @@ def test_the_folded_curl_reproduces_stepping_word_for_word(spec, sub_step, launc
         f"{differing_words(oracle, mine, outputs)} words differ")
 
 
-#: WHICH MASK ARM IS LIVE ON WHICH TERMINATION -- the split the real gate measured,
+#: Which mask arm is live on which termination -- the split the real gate measured,
 #: restated as an expectation this file checks rather than as prose. A folded
 #: PERIODIC axis takes ``BC_MIRROR_PERIODIC`` and needs BOTH mirror arms; a folded
 #: METALLIC axis takes ``BC_METALLIC``, whose cell-0 arm it already had, and must
@@ -459,7 +459,7 @@ def test_the_fold_mask_arms_are_live_exactly_where_the_termination_says(spec, la
                                                                         monkeypatch):
     """Each arm is shown to reach a word -- and to reach NONE where it must not.
 
-    THE HALF THAT IS EASY TO FORGET is the second one. A family that masked the top
+    The half that is easy to forget is the second one. A family that masked the top
     plane on a folded METALLIC axis too would still reproduce every folded-PERIODIC
     fixture, and would silently drop a plane MEEP steps. So this asserts the FULL
     matrix on the emitted text: rewriting a live arm out must change words, and
@@ -529,7 +529,7 @@ def test_the_mirror_ghost_the_array_path_writes_is_nonzero_and_still_dead(spec):
 
 
 # ---------------------------------------------------------------------------
-# THE PREDICATE
+# The predicate
 # ---------------------------------------------------------------------------
 
 def _ask(predicate, fields, layer, grid, key):
@@ -565,7 +565,7 @@ class _GridWithCupysName:
 def test_the_families_partition_a_folded_complex_row(spec):
     """Disjointness, per slot: EXACTLY ONE family may serve it -- whichever one.
 
-    THE TEST IS THE PARTITION, NOT THE OWNERSHIP, and that distinction was bought
+    The test is the partition, not the ownership, and that distinction was bought
     on 2026-08-20, when ``coverage.covers_real_pml_complex_constitutive``
     gained ``admit_fold=True`` on a device verdict of its own, and every folded
     ``update_H`` slot became a slot two predicates admitted. A test that asserted
@@ -745,7 +745,7 @@ def test_a_grid_that_cannot_answer_is_refused_rather_than_raising():
 def test_the_admission_record_claims_nothing_it_has_not_measured():
     """A family record that says "passed" before its gate ran is worse than none.
 
-    RELEASED ON DEVICE 2026-09-01, and the pins below moved WITH the release --
+    Released on device 2026-09-01, and the pins below moved WITH the release --
     the two-part-edit discipline this test exists for. Until that run this test
     pinned ``released`` False and empty ``artifacts``; now it pins the device
     leg's own numbers, their internal consistency, and the partition move that
@@ -762,11 +762,11 @@ def test_the_admission_record_claims_nothing_it_has_not_measured():
     assert record["gate"].endswith("gate_cuda_complex_folded.py")
     assert any("nothing in meep_gpu imports cuda_kernels" in line
                for line in record["what_it_does_not_license"])
-    # THE PARTITION MOVED WITH THE RELEASE, or "certified" is a word someone typed.
+    # The partition moved with the release, or "certified" is a word someone typed.
     assert folded.CERTIFIED_KERNELS == ("step_B_pml_complex_folded",
                                         "step_D_pml_complex_folded")
     assert folded.UNCERTIFIED_KERNELS == {}
-    # THE DEVICE LEG'S NUMBERS MUST BE INTERNALLY CONSISTENT: a record whose arms
+    # The device leg's numbers must be internally consistent: a record whose arms
     # do not add up to its case count is a record nobody re-derived.
     device = record["device_leg"]
     assert (device["folded_periodic_cases"] + device["folded_metallic_cases"]
@@ -783,7 +783,7 @@ def test_the_admission_record_claims_nothing_it_has_not_measured():
         "the constitutive sides defer BY NAME to the certified complex pair's "
         "fold admission; a scored count here would mean this family measured a "
         "slot it does not own")
-    # THE HOST LEG STAYS, as the transcription record it always was, and its
+    # The host leg stays, as the transcription record it always was, and its
     # numbers must still be internally consistent.
     host = record["host_leg"]
     assert host["artifact"].endswith("gate.json")

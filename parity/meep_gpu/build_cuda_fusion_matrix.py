@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""THE CUDA FUSION BOARD — which (curl, constitutive) pair each corpus row drives at
+"""The CUDA fusion board — which (curl, constitutive) pair each corpus row drives at
 each fusable seam on the HAND-CUDA track, and whether that pair could be welded into
 one launch at all.
 
-WHY THIS IS NOT ``build_fusion_matrix.py`` WITH A DIFFERENT CENSUS
+Why this is not ``build_fusion_matrix.py`` with a different census
 ==================================================================
 
 The Metal board (``build_fusion_matrix.py``, beside this file) asks three questions
@@ -13,7 +13,7 @@ pair, and whether the fused signature FITS the platform's binding ceiling. Since
 shipped, and this board was re-pointed at it. The other two still change, and the
 third dissolves:
 
-1. **THERE IS A COMPOSER NOW, AND ITS SELECTION IS THE CELL.** Until 2026-08-28
+1. **There is a composer now, and its selection is the cell.** Until 2026-08-28
    ``meep_gpu/cuda_kernels/`` had no ``arms.py`` and no ``registry``, so this board
    derived a cell from which shipped PREDICATE admitted the row at a slot and proved
    that well defined by measuring the predicates disjoint. Both modules now ship
@@ -23,7 +23,7 @@ third dissolves:
    authoritative cell is the arm it selects and this walk would report a shape the
    engine does not run."* This is that re-point.
 
-   A cell is now **the ARM the composer selects at that slot**, read from the CUDA
+   A cell is now **the arm the composer selects at that slot**, read from the CUDA
    census's ``plan_step.selected`` / ``selected_family`` / ``selected_kernel``, which
    is the same column the Metal board reads on its own track. The refusal directions
    invert with it: the script now REFUSES if the composer modules are ABSENT (the
@@ -42,7 +42,7 @@ third dissolves:
    ``cuda_dispersive``, ``cuda_complex_beta``, …) now appear in the cells, because the
    composer selects them.
 
-2. **THERE IS ONE FUSED PRODUCT, AND THIS BOARD NOW COUNTS IT.**
+2. **There is one fused product, and this board now counts it.**
    ``fused_magnetic_pair.py`` welds ``step_B_pml_real``, the three in-seam passes and
    ``update_H_pml_real`` into one launch. Two device releases stand behind it, both
    under both float32 subnormal policies: ``cuda_fused_magnetic_pair_2026-08-27``
@@ -67,14 +67,14 @@ third dissolves:
    unchanged: **which seams a product COULD be built for, ranked by how many corpus
    rows would use it.**
 
-3. **THE FITNESS VERDICT IS NOT A BINDING COUNT.** Metal's ceiling is
+3. **The fitness verdict is not a binding count.** Metal's ceiling is
    ``MAX_BUFFER_BINDINGS = 31`` and its per-cell verdict is arithmetic on pointer
    counts. CUDA has no such ceiling that binds: the kernel parameter space is 4KB
    (32,764 bytes on sm_70+), and the widest kernel in this package is nowhere near it.
    The CUDA verdict is **POINTWISE vs STENCIL**:
 
        Fusing a curl into the constitutive that follows it puts both programs in ONE
-       launch. The curl writes B (or D) IN PLACE. If the constitutive half then reads
+       launch. The curl writes B (or D) in place. If the constitutive half then reads
        that same volume ONLY at the cell the thread owns, every read is of a value
        that thread itself just wrote, and the weld is a register hand-off — POINTWISE,
        and buildable. If the constitutive half reads a NEIGHBOUR of that volume, it is
@@ -83,7 +83,7 @@ third dissolves:
        schedule. STENCIL, and not buildable byte-identically without cooperative
        groups (which caps the grid at the resident-block count).
 
-   That verdict is MEASURED from the emitted device code, not read off a kernel name:
+   That verdict is measured from the emitted device code, not read off a kernel name:
    :func:`analyze_kernel_reads` strips C comments, finds the thread's own flat
    index, walks every array subscript in the kernel text and through every
    ``__device__`` helper reachable from it — resolving helper index parameters to
@@ -96,7 +96,7 @@ third dissolves:
    reproduce. A family whose source this script cannot select is UNDETERMINED and is
    said so — never guessed.
 
-THE SEAM, NOT THE SLOT
+The seam, not the slot
 ======================
 
 Unchanged from the Metal board, and for the same driver reason. A fused product
@@ -115,7 +115,7 @@ counted the same way the 759-slot denominator adds the polarization sub-step onl
 where it exists: 194 x 2 + 15 = 403 on the 2026-09-03 basis (186 x 2 + 15 = 387 on
 every board before it). Both counts are read from the census, not spelled.
 
-WHAT THIS BOARD READS — ONE CENSUS, NO JOIN
+What this board reads — one census, no join
 ============================================
 
 The CUDA census (``results/cuda_predicate_coverage_2026-08-28b/`` and later) lifted
@@ -132,10 +132,10 @@ that one record:
     electric, which decides the SOURCE-SEAM CEILING. A property of the LIFTED MEEP
     SCRIPT, not of a backend.
   * ``plan_step.live`` — which in-seam driver passes actually run on the row. The
-    Metal board MEASURED that deriving this from the boundary triple is wrong on 32
+    Metal board measured that deriving this from the boundary triple is wrong on 32
     and 85 rows respectively, so it is READ rather than re-derived.
 
-UNTIL 2026-08-28 THE LAST TWO WERE JOINED OUT OF ``metal_coverage_tranche6_2026-08-19``
+Until 2026-08-28 the last two were joined out of ``metal_coverage_tranche6_2026-08-19``
 because the CUDA census recorded neither. The promoted battery
 (``cuda_predicate_battery.py``) now records both on every CUDA row, so the join is
 GONE — and its removal is checked rather than assumed: this script refuses unless
@@ -181,28 +181,40 @@ HERE = Path(__file__).resolve().parent
 RESULTS = HERE / "results"
 #: ``the repository root`` — this file sits at ``parity/meep_gpu/``.
 REPO_ROOT = HERE.parents[1]
+
+
+def _repo_named(path: Any) -> str:
+    """A directory the board was cut from, named relative to the checkout
+    (``parity/meep_gpu/results/<name>``): the board leaves the machine, and a reader at the
+    checkout's root still finds the directory."""
+    import neutral_ids  # noqa: PLC0415
+
+    try:
+        return Path(path).resolve().relative_to(REPO_ROOT.resolve()).as_posix()
+    except ValueError:
+        return neutral_ids.path(str(path))
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
 
-# SERVED IN DISPATCH, measured rather than read off ``certification.json``'s
+# Served in dispatch, measured rather than read off ``certification.json``'s
 # ``dispatch`` block. That block records whether anyone wired the product into a
 # planner; the question here is whether the DISPATCHER can select it, and the two
 # stopped being the same question on 2026-08-29. See ``dispatch_reachability``.
 import dispatch_reachability as _reach  # noqa: E402
 
-# THE RECONCILED BUCKET NAMES AND THE THREE TIERS, shared with the Metal and Triton
-# boards (release decision R1/R2, 2026-09-02). One name list in one file is what stops a
+# The reconciled bucket names and the three tiers, shared with the Metal and Triton
+# boards (both reconciled 2026-09-02). One name list in one file is what stops a
 # fourth vocabulary growing back; the module also carries the floors that make the
 # decomposition and the served total REFUSABLE rather than merely printed.
 import dispatch_agreement  # FLOOR 8; see its docstring for why it is not in fusion_taxonomy
 import fusion_taxonomy  # noqa: E402
-# THE FOURTH SEAM, update_H -> step_D (2026-09-04): one pricing rule for the three
+# The fourth seam, update_H -> step_D (2026-09-04): one pricing rule for the three
 # boards, off the probe artifact and the driver's own text. See h_to_d_seam.py.
 import h_to_d_seam  # noqa: E402
 
-# THE NEAR FILL'S SOURCE ROW IS READ, NOT SPELLED, exactly as the two sibling boards
+# The near fill's source row is read, not spelled, exactly as the two sibling boards
 # read it: `_deposit_is_repairable_like_for_like` mirrors `deposit_repair.repairable`'s
 # too-short-fold refusal, and `deposit_repair._folded_seam_reasons` compares against
 # `stepping.MIRROR_SOURCE_INDEX`. A board that spelled the number would keep answering
@@ -226,7 +238,7 @@ DRIVER = PACKAGE / "driver.py"
 #: Overridable so a fresh census can be measured against without editing this file.
 #:
 #: MOVED 2026-08-29 to the census the tree actually matches. The previous default,
-#: ``cuda_predicate_coverage_2026-08-28b``, predates the fill-carry round, so
+#: ``cuda_predicate_coverage_2026-08-28b``, predates the fill-carry change, so
 #: :func:`subject_pin` refused every argument-free run by name — fail-closed and
 #: correct, but it meant the board could not be built without knowing which env var
 #: to set, and the last three cuts all set it. The pin still guards: if this default
@@ -243,7 +255,7 @@ DRIVER = PACKAGE / "driver.py"
 #: against a live recomputation over all 69 subject files before this default moved.
 #: The pin still guards -- a stale default refuses rather than pairing a stale selection
 #: with a fresh read of the device code.
-#: MOVED A THIRD TIME LATER THE SAME DAY, and the refusal is what moved it:
+#: Moved a third time later the same day, and the refusal is what moved it:
 #: `meep_gpu/cuda_kernels/fused_electric_pair.py` and its suite landed, the subject
 #: manifest went from 69 files to 71, and the argument-free run refused by name rather
 #: than pricing a fresh read of the device code against the previous selection. The
@@ -252,47 +264,47 @@ DRIVER = PACKAGE / "driver.py"
 #: (`9451c431b4c9…`) checked against a live recomputation over all 71 subject files
 #: before this default moved.
 #:
-#: ITS DRIVER IS THE TRANCHE COPY BESIDE IT, NOT `parity/meep_gpu/measure_predicate_coverage.py`,
+#: Its driver is the copy beside it, not `parity/meep_gpu/measure_predicate_coverage.py`,
 #: and that is a fact worth writing down rather than rediscovering: the promoted driver
 #: has gained a `--battery` switch and a by-name root resolver but LOST the
 #: `subject_manifest_sha256` stamp, so a census cut with it records `None` on every row
 #: and `subject_pin` below refuses it -- correctly, and for a reason that reads as
 #: drift. Every CUDA census this board can consume is cut with the copy that stamps.
-#: SO IT STOOD UNTIL 2026-09-03: the promoted driver now computes the subject digest
+#: So it stood until 2026-09-03: the promoted driver now computes the subject digest
 #: once before any leg and stamps every row with it beside ``battery_sha256`` (an
 #: unpinned census is refused), and ``_extended`` below was cut with it -- no driver
 #: copy sits beside that record, and its example rows name the interpreter each ran
 #: under, which only the promoted driver records.
-#: MOVED A FOURTH TIME ON 2026-08-31, and by the same rule as the three before it: two
+#: Moved a fourth time on 2026-08-31, and by the same rule as the three before it: two
 #: more products landed in ``meep_gpu/cuda_kernels/`` (``complex_fused_electric_pair.py``
 #: and ``cylindrical_fused_electric_pair.py``, plus their suite), ``SUBJECT_GLOB`` is
 #: ``meep_gpu/cuda_kernels/*.py``, so the subject manifest went from 71 files to 74 and
 #: the argument-free run refused BY NAME rather than pricing a fresh read of the device
 #: code against the previous selection. The census cut with them is
 #: ``cuda_predicate_coverage_2026-08-31_complexelectric``: the same three legs and the
-#: same 211 rows, cut with the same tranche-copy driver (the one that STAMPS
+#: same 211 rows, cut with the same census-directory copy of the driver (the one that STAMPS
 #: ``subject_manifest_sha256``) and reading the live battery beside it, which gained the
 #: two new fused-product columns in the same edit.
-#: MOVED A FIFTH TIME ON 2026-08-31, by the same rule as the four before it: one more
+#: Moved a fifth time on 2026-08-31, by the same rule as the four before it: one more
 #: product landed in ``meep_gpu/cuda_kernels/`` (``no_pml_complex_fused_electric_pair.py``
 #: plus its suite), ``SUBJECT_GLOB`` is ``meep_gpu/cuda_kernels/*.py``, so the subject
 #: manifest moved again and the previous selection is not a reading of THIS device
 #: code. The census cut with it is ``cuda_predicate_coverage_2026-09-01_eppair2``:
-#: the same three legs and the same 211 rows, cut with the same tranche-copy driver
+#: the same three legs and the same 211 rows, cut with the same census-directory driver copy
 #: (the one that STAMPS ``subject_manifest_sha256``) and reading the live battery
 #: beside it, which gained the eighth and ninth fused-product columns -- the two
 #: E->P products -- in the same campaign that certified them.
-#: MOVED A SIXTH TIME ON 2026-09-01 (the certification-close round), same rule:
+#: Moved a sixth time on 2026-09-01, same rule:
 #: the folded-complex and complex-beta curl pairs moved into CERTIFIED_KERNELS,
 #: ``covers_fused_magnetic_pair`` gained the measured nonlinear-H widening, and
 #: the ``cuda_cylindrical`` registry row's kernel label was corrected to the
 #: entry point its module ships (``fused_cyl_{slot}_pml_real``), so the subject
 #: manifest and the selected-kernel labels both moved. The census cut with it is
 #: ``cuda_predicate_coverage_2026-09-01_certclose``: same three legs, same
-#: tranche-copy stamping driver, same live battery (no new product columns --
-#: this round certified halves and widened one predicate; it shipped no new
+#: census-directory stamping driver, same live battery (no new product columns --
+#: that change certified halves and widened one predicate; it shipped no new
 #: fused product).
-#: MOVED A SEVENTH TIME ON 2026-09-02 (the residual-welds round), same rule as
+#: Moved a seventh time on 2026-09-02, same rule as
 #: every move before it: the five residual fused magnetic products landed in
 #: ``meep_gpu/cuda_kernels/`` (six modules -- the shared cf fill carry and the
 #: five welds -- plus their suite), ``SUBJECT_GLOB`` is
@@ -300,28 +312,28 @@ DRIVER = PACKAGE / "driver.py"
 #: argument-free run refused BY NAME rather than pricing a fresh read of the
 #: device code against the previous selection. The census cut with them is
 #: ``cuda_predicate_coverage_2026-09-02_residualwelds``: the same three legs and
-#: the same 211 rows, cut with the same tranche-copy stamping driver, reading
+#: the same 211 rows, cut with the same census-directory stamping driver, reading
 #: the live battery beside it, which gained the five new fused-product columns
 #: in the same campaign that certified them (10 released legs on the GPU host,
 #: results/cuda_fused_residual_*_2026-09-02/).
-#: MOVED AN EIGHTH TIME ON 2026-09-02 (the residue round), by the rule that has
+#: Moved an eighth time on 2026-09-02, by the rule that has
 #: moved it every time before: SEVEN more modules landed in
 #: ``meep_gpu/cuda_kernels/`` -- the shared D-side complex carry, the five
 #: ELECTRIC twins and the complex no-absorber E->P weld -- plus their suite, so
 #: ``SUBJECT_GLOB`` went from 85 files to 93 and the argument-free run refused
 #: BY NAME rather than pricing a fresh read of this device code against the
-#: previous selection. Two of the standing modules also moved in the same round
+#: previous selection. Two of the standing modules also moved in the same change
 #: (``complex_beta_`` and ``special_kz_fused_magnetic_pair``, whose
 #: ``CARRIES_DEPOSIT_REPAIR`` was re-measured TRUE and whose blocked rows the
 #: board therefore now credits), which is a second, independent reason the old
 #: selection could not be paired with this tree. The census cut with them is
 #: ``cuda_predicate_coverage_2026-09-02_electrictwins``: the same three legs and
-#: the same 211 rows, cut with the same tranche-copy stamping driver, reading
+#: the same 211 rows, cut with the same census-directory stamping driver, reading
 #: the live battery beside it, which gained the six new fused-product columns in
 #: the same campaign that certified them (results/cuda_residue_*_2026-09-02/ and
 #: the re-gate tree results/cuda_regate_2026-09-02_residue/).
-#: MOVED A NINTH TIME LATER THE SAME DAY, and what moved it is worth recording
-#: because the first cut MEASURED it: the E->P weld's
+#: Moved a ninth time later the same day, and what moved it is worth recording
+#: because the first cut measured it: the E->P weld's
 #: ``_drive_identity_problem`` established "update_P reads what update_E wrote"
 #: only through ``array.data.ptr``, a CuPy attribute, so on the backend-free
 #: census all four rows of its cell refused with a reason about the drive
@@ -337,13 +349,13 @@ DRIVER = PACKAGE / "driver.py"
 #: TWO manifests and neither is a reading of one tree. The refusal is the
 #: mechanism working -- the remedy is a cut over a quiescent tree, which
 #: ``_c`` is, and never a relaxed pin.)
-#: 2026-09-02, THE STENCIL ROUND: ``_stencilwelds`` re-cuts the same 186 rows over a
+#: 2026-09-02, the stencil welds: ``_stencilwelds`` re-cuts the same 186 rows over a
 #: tree carrying the two off-diagonal stencil welds and the off-diagonal E->P weld,
 #: with the three new fused columns the battery now asks. It is cut over a QUIESCENT
 #: tree -- the modules' CERTIFIED_KERNELS declarations were their final bytes before
 #: both the gate campaign and this census -- so its rows carry ONE subject manifest,
 #: which is what the pin below requires and what ``_electrictwins_b`` failed.
-#: MOVED A TENTH TIME ON 2026-09-03, and for the first time by the CORPUS as well as
+#: Moved a tenth time on 2026-09-03, and for the first time by the CORPUS as well as
 #: the subject. The corpus: eight example scripts the 2026-08-09 campaign accepted in
 #: its _blocked/_gdsii/_sigma legs had gone unpriced on every board because the
 #: census driver named only the stock leg's lift record;
@@ -401,7 +413,7 @@ DRIVER = PACKAGE / "driver.py"
 #: ``H_to_D (cuda_complex/complex, cuda_complex_folded/folded complex)``, ONE product
 #: over both -- and 0 instances moved by the census anywhere else.
 #:
-#: ``_wired`` (no digit) IS A COMPLETE CENSUS AND NOT THIS ONE. It was cut on the same
+#: ``_wired`` (no digit) is a complete census and not this one. It was cut on the same
 #: battery two hours earlier, before ``cuda_kernels/test_fused_hd_pair.py`` took the
 #: fourth-candidate edit the wiring makes true; that file is inside ``SUBJECT_GLOB``, so
 #: the subject moved (0d263ec4... -> f295d0d4...) and :func:`subject_pin` refuses
@@ -423,18 +435,18 @@ DRIVER = PACKAGE / "driver.py"
 #: battery bytes ``_wired2`` used (c95f1cb6...), so the predicate answers are asked by
 #: the same instrument and only the tree underneath them changed.
 #:
-#: THE SUBJECT PIN IS NOT THE ONLY GATE, AND CLEARING IT EXPOSES THE OTHER ONE. This
+#: The subject pin is not the only gate, and clearing it exposes the other one. This
 #: board's :data:`FUSED_PRODUCT_COLUMNS` declares 36 columns; a census cut with the
 #: battery above answers 35. ``cuda_conductive_bfast_fused_hd_pair`` -- the module and
 #: the column here both landed with the wiring -- has no column in
 #: ``cuda_predicate_battery.py``, which last moved the day before, so
-#: :func:`_fused_verdicts` refuses every argument-free run by name. NO CENSUS CAN FIX
-#: THAT: the battery has to gain the column first, and the census after it. The refusal
+#: :func:`_fused_verdicts` refuses every argument-free run by name. No census can fix
+#: that: the battery has to gain the column first, and the census after it. The refusal
 #: is the correct one to be left standing meanwhile -- a board that inferred the missing
 #: column would be reporting an answer nobody measured.
 #:
 #: MOVED AGAIN 2026-09-08 TO ``cuda_predicate_coverage_2026-09-08_board``, and the move
-#: is the block above being CLEARED THE ONLY WAY IT SAID IT COULD BE. The battery gained
+#: is the block above being cleared the only way it said it could be. The battery gained
 #: the ``cuda_conductive_bfast_fused_hd_pair`` column -- asked without a licence and off
 #: the seam string ``update_H -> step_D``, exactly as its sibling ``cuda_fused_hd_pair``
 #: is -- and this census was cut AFTER it, so the 36th answer is measured rather than
@@ -445,11 +457,11 @@ DRIVER = PACKAGE / "driver.py"
 #: required rather than a re-read of ``_merge``. ``_merge`` stays selectable by name as
 #: the record of the 35-column instrument.
 #: MOVED AGAIN 2026-09-11, by the same rule and for the same cause. The dispatch
-#: round edited `cuda_kernels/fused_pairs.py` (the warm pass) and `fastpath_cuda.py`
+#: wiring edited `cuda_kernels/fused_pairs.py` (the warm pass) and `fastpath_cuda.py`
 #: (the release table), both of which are in the 125-file subject set, so
 #: `subject_pin` refused `_2026-09-08_board` BY NAME rather than pairing that cut's
 #: recorded selection with a fresh read of this tree's device code.
-#: MOVED A THIRD TIME the same day, to `_certified`. The five kernels the 09-11
+#: Moved a third time the same day, to `_certified`. The five kernels the 09-11
 #: campaign released were moved from `UNCERTIFIED_KERNELS` into `CERTIFIED_KERNELS`
 #: in four `cuda_kernels` modules AFTER `_tables` was cut, and the partition test
 #: beside them was inverted to match -- five of the 125 subject files, which
@@ -457,17 +469,17 @@ DRIVER = PACKAGE / "driver.py"
 #: itself measures which corpus rows drive which slots and is unchanged by a
 #: certification list, but pairing a recorded selection with a fresh POINTWISE /
 #: STENCIL read of a tree it was not cut against is exactly the pairing the pin
-#: exists to refuse. MOVED A FOURTH TIME to `_shipping`, for the recursive reason
+#: exists to refuse. Moved a fourth time to `_shipping`, for the recursive reason
 #: this subject set makes unavoidable: `cuda_kernels/test_ade_update_p.py` is BOTH a
 #: census subject and the test that names the ADE record block, so pointing it at the
 #: re-cut moved a subject of the census that had just been cut. The census is cut LAST
-#: in a round, after every `cuda_kernels/*.py` edit has landed.
-#: MOVED A FIFTH TIME, to `_2026-09-14_weldgrid`, cut after the complex no-absorber
+#: in a certification round, after every `cuda_kernels/*.py` edit has landed.
+#: Moved a fifth time, to `_2026-09-14_weldgrid`, cut after the complex no-absorber
 #: three-slot weld's launch-grid repair moved a `cuda_kernels` subject. Every cut since
 #: (`fusion_matrix_cuda_2026-09-14_weldgrid`, `_2026-09-15_weldgrid`, `_2026-09-15_offdiag`)
 #: already named it through MEEP_GPU_CUDA_CENSUS while this default still named
 #: `_shipping`, whose recorded subject no longer matches the tree.
-#: MOVED A SIXTH TIME, to `_2026-09-15_epsfix`, and this one RECOVERS A ROW rather than
+#: Moved a sixth time, to `_2026-09-15_epsfix`, and this one recovers a row rather than
 #: following an edit. `_2026-09-14_weldgrid` carries
 #: `test_simulation.py::TestSimulation.test_epsilon_input_file` as `measured: false,
 #: note: child died`, which is why this table's denominator read 594 against the other
@@ -480,7 +492,7 @@ DRIVER = PACKAGE / "driver.py"
 #: 346-of-594 cut; exactly one row's `measured` flag moved and both subject-digest
 #: manifests are byte-identical.
 #:
-#: THE COPY IS SELECTIVE, AND THE FIRST ONE THAT WAS NOT DOUBLE-COUNTED. `_epsfix` (kept
+#: The copy is selective, and the first one that was not double-counted. `_epsfix` (kept
 #: beside this one as the record of the mistake) was a straight copy, and the resume ran
 #: `test_simulation.py` as ONE child, writing a module-level `per_row_tests/
 #: test_simulation.json` holding all 21 rows BESIDE the 20 per-case records the original
@@ -490,11 +502,11 @@ DRIVER = PACKAGE / "driver.py"
 #: so the module-level record is the only one for that module and the row basis reads the
 #: 194 the other two backends carry.
 #:
-#: A CRASH-RECOVERED MODULE IS THE SHAPE TO WATCH: `measure_predicate_coverage.py`
+#: A crash-recovered module is the shape to watch: `measure_predicate_coverage.py`
 #: retries one case per child when a module child dies, and a later `--resume` of the same
 #: module writes the module-level record without removing the per-case ones.
 #:
-#: AND `--resume` APPENDS TO THE LEG JSONL RATHER THAN REPLACING ROWS. That, not the
+#: And `--resume` appends to the leg jsonl rather than replacing rows. That, not the
 #: per-case records, is what actually double-counted: `tests.jsonl` went 134 -> 155 lines
 #: and 20 rows appeared twice, so `_legs` returned 214 entries over 194 distinct labels.
 #: `_epsfix` and `_epsfix2` are both wrong for this reason and are kept only as the record
@@ -503,33 +515,33 @@ DRIVER = PACKAGE / "driver.py"
 #: appended exactly one row per case -- 194 entries, 194 distinct, no duplicates.
 #:
 #: `_2026-09-19_singles` REPLACES it as the default, cut fresh (no resume, no copy) over
-#: the same 194-row basis after the singles round moved `arms.py` and `registry.py` and
-#: the allpaths round moved the rest of the subject: 60 examples + 134 tests, 179
+#: the same 194-row basis after one change moved `arms.py` and `registry.py` and
+#: another moved the rest of the subject: 60 examples + 134 tests, 179
 #: measured, the same 15 parameterised rows recovered by `match_param_rows.py` (24 of 25,
 #: as `_epsfix3`). The corpus is MEEP 1.33.0 WITH its sibling `tests/` directory, pulled
 #: to a path outside `/tmp`. `_epsfix3` stays as the provenance of the 348 / 597 board.
 #: `_2026-09-19_overhead` REPLACES `_singles` the same day, cut by the same driver on
 #: the same basis (60 + 134 rows, 179 measured, 24 of 25 param rows matched) after the
-#: overhead round moved `cuda_kernels/fused_pairs.py` inside the subject.
+#: fused-path host-overhead change moved `cuda_kernels/fused_pairs.py` inside the subject.
 #: `_2026-09-19_adeparse` REPLACES `_overhead` the same day, same driver and basis (60 +
 #: 134 rows, 179 measured, 24 of 25 param rows matched), after the certified-ADE reader
 #: in `cuda_kernels/fused_polarization_pair.py` stopped re-parsing `ade_kernels.py` per
 #: emission and `cuda_kernels/test_ade_strings_parse_cache.py` joined the subject. The
 #: board it cuts (`fusion_matrix_cuda_2026-09-19_adeparse`) differs from `_overhead`'s
 #: only in `census` and `subject_pin`: 352 / 597 in dispatch, 532 served.
-#: THE DEFAULT MOVED AGAIN 2026-09-23, to ``cuda_predicate_coverage_2026-09-23_sparse``:
+#: The default moved again 2026-09-23, to ``cuda_predicate_coverage_2026-09-23_sparse``:
 #: the sparse-transport pass moved `stepping.py` and the two CUDA no-PML modules, seven
 #: of the 127 subjects, so the 09-19 census no longer hashes to this tree. Same corpus,
 #: same 194 rows / 179 measured / 15 unmeasured / 0 duplicate labels; the board it cuts
 #: (`fusion_matrix_cuda_2026-09-23_sparse_b`) reads 352 / 597 in dispatch, 532 served
 #: -- unchanged, which is the expected reading of a change that moves transport and
 #: not what dispatches.
-#: THE DEFAULT MOVED AGAIN 2026-09-26, to ``cuda_predicate_coverage_2026-09-25_roundb``,
-#: the census Round B was certified on. Against ``_2026-09-23_sparse`` 89 of its 127
+#: The default moved again 2026-09-26, to ``cuda_predicate_coverage_2026-09-25_roundb``,
+#: the census of the tree re-certified on 2026-09-25. Against ``_2026-09-23_sparse`` 89 of its 127
 #: subjects changed and four were added (`cuda_kernels/own_cell_hoist.py` and the three
 #: hoist tests beside it), so this tree's 131 subject files hash to ``239fd3ed...`` and
 #: :func:`subject_pin` refused the old default by name. ``_2026-09-24_hoist`` was never
-#: the default -- its board was cut through MEEP_GPU_CUDA_CENSUS, as Round B's was --
+#: the default -- its board was cut through MEEP_GPU_CUDA_CENSUS, as the 2026-09-25 board's was --
 #: and no longer hashes to this tree either: 88 of its 127 subjects changed, the same
 #: four were added. The battery digest moved with it (``750bc6e4...`` ->
 #: ``71fb17c5...``) on line-number citations in its prose only. Same corpus and basis:
@@ -572,7 +584,7 @@ def _legs(directory: Path) -> List[dict]:
 
 
 def rows() -> Tuple[List[dict], Dict[str, dict]]:
-    """The CUDA census rows, and the engine facts read OUT OF THE SAME ROWS.
+    """The CUDA census rows, and the engine facts read out of the same rows.
 
     NO JOIN. Until 2026-08-28 ``source_field_types`` and ``plan_step.live`` were
     joined out of ``metal_coverage_tranche6_2026-08-19`` because the CUDA census
@@ -627,7 +639,7 @@ def rows() -> Tuple[List[dict], Dict[str, dict]]:
 def subject_pin(record: List[dict]) -> Dict[str, Any]:
     """The census's subject digest, RE-COMPUTED against the live tree.
 
-    WHY A BOARD NEEDS THIS AND THE CENSUS DID NOT. The census measured predicates
+    Why a board needs this and the census did not. The census measured predicates
     and asked the composer, both against the tree it ran on, and recorded
     ``subject_manifest_sha256`` so its own numbers could be pinned to it. This board
     mixes two clocks: the CELLS come from that recorded selection, while the FITNESS
@@ -667,15 +679,15 @@ def subject_pin(record: List[dict]) -> Dict[str, Any]:
 
 #: The subject, spelled exactly as ``measure_predicate_coverage.py`` spells it. Kept
 #: as two constants rather than imported because the census harness is COPIED into
-#: each tranche directory and importing one tranche's copy would pin this board to
-#: that tranche.
+#: each census's results directory and importing one directory's copy would pin this
+#: board to that census.
 #: The census columns carrying each SHIPPED fused product's own per-row verdict.
 #: THREE SINCE 2026-08-30, and it became a tuple rather than a widened string when
 #: the second and third landed: a board that read one column and reported it as "what
 #: the shipped products serve" would report the two complex products' cells as
 #: unserved forever, which is a wrong number about a cell somebody built.
 #:
-#: EACH IS ITS OWN PREDICATE'S ANSWER, asked by the census on every row and counted
+#: Each is its own predicate's answer, asked by the census on every row and counted
 #: here -- never a restatement of its clauses, which could admit a row the launch
 #: cannot serve. A census that could not ask one is a REFUSAL here, not a zero.
 #:
@@ -690,7 +702,7 @@ def subject_pin(record: List[dict]) -> Dict[str, Any]:
 #: takes complex64 on a Dcyl grid at |m| >= 1. The overlap check below walks every
 #: (row, seam) pair and RAISES on a double admission, so the partition is measured on
 #: this census rather than inherited from the predicates' prose.
-#: THE SEVENTH COLUMN LANDED 2026-08-31 with the complex NO-ABSORBER electric weld,
+#: The seventh column landed 2026-08-31 with the complex NO-ABSORBER electric weld,
 #: and it is the first product on this board that refuses an absorber rather than
 #: requiring one -- which is what makes ``step_D`` a FOUR-candidate seam without
 #: making any configuration ambiguous. The overlap check below walks every (row, seam)
@@ -724,7 +736,7 @@ FUSED_PRODUCT_COLUMNS: Tuple[str, ...] = (
     "cuda_cylindrical_real_fused_magnetic_pair",
     "cuda_special_kz_fused_magnetic_pair",
     "cuda_bfast_fused_magnetic_pair",
-    # TWENTY SINCE 2026-09-02 (the residue round): the five ELECTRIC TWINS of
+    # TWENTY SINCE 2026-09-02: the five ELECTRIC TWINS of
     # the residual magnetic welds -- `step_D` becomes a NINE-candidate seam,
     # partitioned the way `step_B`'s eight already are plus the absorber
     # boolean -- and the THIRD E->P product, the complex no-absorber
@@ -737,7 +749,7 @@ FUSED_PRODUCT_COLUMNS: Tuple[str, ...] = (
     "cuda_special_kz_fused_electric_pair",
     "cuda_bfast_fused_electric_pair",
     "cuda_complex_no_pml_fused_polarization_pair",
-    # TWENTY-TWO SINCE 2026-09-02 (the stencil round): the two SCRATCH-OUTPUT
+    # TWENTY-TWO SINCE 2026-09-02: the two SCRATCH-OUTPUT
     # welds on the two off-diagonal D_to_E cells this board had recorded
     # STENCIL-BLOCKED. They are the first products here whose cells carried an
     # UNBUILDABLE verdict rather than merely no product, and the verdict is not
@@ -762,7 +774,7 @@ FUSED_PRODUCT_COLUMNS: Tuple[str, ...] = (
     # an overlap here would not be a duplicate count, it would leave the seam
     # UNFUSED and cost the 79 rows `cuda_fused_electric_pair` serves.
     "cuda_dispersive_fused_electric_pair",
-    # TWENTY-FIVE AND TWENTY-SIX: the two CONDUCTIVE-CURL electric welds, which take
+    # Twenty-five and twenty-six: the two CONDUCTIVE-CURL electric welds, which take
     # the last three POINTWISE-BUILDABLE `D_to_E` seam-instances this board had. The
     # first occupies TWO cells with one product -- `conductive_kernels` bakes the
     # per-component conductivity into three COND defines and the (0,0,0) build IS the
@@ -781,7 +793,7 @@ FUSED_PRODUCT_COLUMNS: Tuple[str, ...] = (
     # carrying a sigma BY NAME) and from the dispersive one by `fields.polarizations`.
     "cuda_no_pml_dispersive_fused_electric_pair",
     "cuda_conductive_fused_electric_pair",
-    # TWENTY-NINE AND THIRTY, 2026-09-02: the two THREE-SLOT welds, and the first
+    # Twenty-nine and thirty, 2026-09-02: the two THREE-SLOT welds, and the first
     # columns on this board whose `spans` names three slots. They are the only
     # products that occupy BOTH sides of the shared `update_E` slot -- which is
     # exactly the collision `_loses_the_shared_slot` was added to model, and the
@@ -792,7 +804,7 @@ FUSED_PRODUCT_COLUMNS: Tuple[str, ...] = (
     #   cuda_three_slot_no_pml_dispersive_weld    3 rows (absorber-1d,
     #                                             TestAbsorber, material-dispersion)
     #
-    # THEY DO NOT COLLIDE WITH THE D->E PRODUCTS THEY SUPERSEDE, and that is read
+    # They do not collide with the D->E products they supersede, and that is read
     # from the composer rather than decided here: each weld's predicate is a
     # CONJUNCTION of a D->E predicate and an E->P one, so its admission set is a
     # subset of each, and `fused_pairs._superseded_by_a_longer_span` refuses the
@@ -809,7 +821,7 @@ FUSED_PRODUCT_COLUMNS: Tuple[str, ...] = (
     # one product on both sides of the shared slot, refused nowhere by
     # `_loses_the_shared_slot` because the same column serves both seams.
     "cuda_three_slot_complex_no_pml_dispersive_weld",
-    # TWENTY-SEVEN AND TWENTY-EIGHT: the two COMPLEX SCRATCH-OUTPUT welds, which take
+    # Twenty-seven and twenty-eight: the two COMPLEX SCRATCH-OUTPUT welds, which take
     # the LAST two cells this board recorded UNBUILDABLE -- `D_to_E
     # (cuda_complex_folded, cuda_complex_offdiag/complex off-diagonal PML)` and
     # `D_to_E (cuda_complex_no_pml, cuda_complex_offdiag/complex off-diagonal
@@ -825,7 +837,7 @@ FUSED_PRODUCT_COLUMNS: Tuple[str, ...] = (
     # absorber. The overlap check below measures all of it on this census.
     "cuda_folded_complex_offdiag_fused_electric_pair",
     "cuda_complex_no_pml_offdiag_fused_electric_pair",
-    # THE FIRST COLUMN ON THE FOURTH SEAM, 2026-09-06. ``cuda_fused_hd_pair`` spans
+    # The first column on the fourth seam, 2026-09-06. ``cuda_fused_hd_pair`` spans
     # ``update_H`` -> ``step_D`` -- constitutive then curl, the other way round from
     # every column above -- so ``_seams_of_span`` resolves it to ``H_to_D`` through
     # :data:`SPANNABLE_SEAM_SLOTS` and it is the column that lets this board answer
@@ -834,37 +846,37 @@ FUSED_PRODUCT_COLUMNS: Tuple[str, ...] = (
     # above spans a different pair, so the overlap check below has nothing to resolve
     # there and measures that rather than assuming it.
     #
-    # CREDITING IT IS NOT SAYING IT RUNS. Its module declares INSTALLABLE = False and
+    # Crediting it is not saying it runs. Its module declares INSTALLABLE = False and
     # ``fused_pairs._declared_uninstallable`` refuses it on every configuration; the
     # H_to_D block records that declaration beside the count, because SERVED on this
     # board is PREDICATE ADMISSION and a reader is owed both facts in one place.
     "cuda_fused_hd_pair",
-    # THE SECOND AND THIRD COLUMNS ON THE FOURTH SEAM, 2026-09-07: the two
+    # The second and third columns on the fourth seam, 2026-09-07: the two
     # cylindrical H->D products, spanning ``update_H`` -> ``step_D`` on the two
     # cells the board had recorded buildable_not_built (3 real m = 0 rows, 16
     # complex rows) plus the 2 withdraw rows they refuse by name. ``update_H``
     # becomes a three-candidate seam partitioned on the Dcyl grid and on storage;
     # the overlap check below measures that on the census rather than assuming it.
-    # CREDITING THEM IS NOT SAYING THEY RUN: both declare INSTALLABLE = False, and
+    # Crediting them is not saying they run: both declare INSTALLABLE = False, and
     # the H_to_D block records the declaration beside the count.
     "cuda_cylindrical_real_fused_hd_pair",
     "cuda_cylindrical_fused_hd_pair",
-    # THE FOURTH COLUMN ON THE FOURTH SEAM, 2026-09-07: the CARTESIAN COMPLEX H->D
+    # The fourth column on the fourth seam, 2026-09-07: the Cartesian complex H->D
     # product, over the two cells this board had left ``buildable_not_built`` there
     # -- ``H_to_D (cuda_complex/complex, cuda_complex/complex)`` and ``H_to_D
-    # (cuda_complex/complex, cuda_complex_folded/folded complex)``. ONE COLUMN COVERS
-    # BOTH, and that is read off the predicate rather than declared here: it reads the
+    # (cuda_complex/complex, cuda_complex_folded/folded complex)``. One column covers
+    # both, and that is read off the predicate rather than declared here: it reads the
     # fold off the grid and asks the certified curl predicate its VARIANT selects
     # (``covers_real_pml_complex_curl`` unfolded, ``complex_folded_kernels.
     # covers_complex_folded_curl`` folded), so the two cells resolve through the
     # composer's own selection at ``step_D`` and never through a second column.
     # ``update_H`` becomes a FOUR-candidate seam, partitioned on storage and on the
     # Dcyl grid; the overlap check below measures that on this census rather than
-    # assuming it. CREDITING IT IS NOT SAYING IT RUNS: the module declares
+    # assuming it. Crediting it is not saying it runs: the module declares
     # INSTALLABLE = False and the H_to_D block records the declaration beside the
     # count.
     "cuda_complex_fused_hd_pair",
-    # THE FIFTH COLUMN ON THE FOURTH SEAM, 2026-09-07, and the one that takes this
+    # The fifth column on the fourth seam, 2026-09-07, and the one that takes this
     # board's buildable_not_built H->D bucket to zero outside the beta cluster:
     # the conductive and BFAST curl tails, ONE product over the two cells
     # H_to_D (cuda_constitutive/ordinary, cuda_conductive/conductive) and
@@ -872,7 +884,7 @@ FUSED_PRODUCT_COLUMNS: Tuple[str, ...] = (
     # tests:TestAdjointSolver.test_damping and
     # tests:TestReflectanceAngular.test_reflectance_angular_2_35_7.
     #
-    # ONE COLUMN COVERS BOTH, read off the predicate rather than declared here: it
+    # One column covers both, read off the predicate rather than declared here: it
     # resolves the VARIANT from the run (grid.bfast_active and fields.condfac_for,
     # the two readers the array path itself uses) and then asks the pair of certified
     # predicates that variant selects, so the two cells resolve through the composer's
@@ -881,10 +893,10 @@ FUSED_PRODUCT_COLUMNS: Tuple[str, ...] = (
     # on the conductivity, on BFAST and on the Dcyl grid together, and the overlap
     # check below measures it on this census rather than assuming it.
     #
-    # CREDITING IT IS NOT SAYING IT RUNS: the module declares INSTALLABLE = False and
+    # Crediting it is not saying it runs: the module declares INSTALLABLE = False and
     # the H_to_D block records the declaration beside the count.
     "cuda_conductive_bfast_fused_hd_pair",
-    # THIRTY-SEVEN AND THIRTY-EIGHT, 2026-09-08: the two BETA H->D welds, which take
+    # Thirty-seven and thirty-eight, 2026-09-08: the two BETA H->D welds, which take
     # the last six seam-instances this board carried as buildable_not_built. Both
     # released on 2026-09-07 under both policies with every corpus row of their cells
     # driven bit-identical (4 of 4 and 2 of 2); they were uncounted only because
@@ -901,7 +913,7 @@ SUBJECT_EXTRA = ("meep_gpu/stepping.py", "meep_gpu/fields.py",
 def selection(row: dict, slot: str) -> Optional[dict]:
     """THE CELL: the arm the composer selected at ``slot``, or ``None`` if it refused.
 
-    THE COMPOSER WAS ASKED BEHIND THE CENSUS'S CuPy-BACKEND SHIM, AND THAT IS NOT A
+    The composer was asked behind the census's CuPy-BACKEND shim, and that is not a
     CHOICE. Every shipped hand-CUDA predicate opens with a clause refusing a non-CuPy
     array module and the census ran on a NumPy host, so a composer asked with the real
     grid selects almost nothing — the census records the real-grid composition beside
@@ -972,7 +984,7 @@ IN_SEAM_CUDA_KERNEL: Dict[str, str] = {
 def locate_the_seams() -> Dict[str, dict]:
     """Find each seam's call sites in ``driver.py`` and report the span.
 
-    DERIVED, BECAUSE THE TRANSCRIPTION IS ALREADY STALE. The Metal board spells
+    Derived, because the transcription is already stale. The Metal board spells
     ``driver.py:3281-3306`` and cites ``:3283-3284`` for the magnetic injection.
     Against this tree those numbers are nine lines short, because the integrated
     sources' withdraw loop landed between them. A board whose central structural
@@ -982,7 +994,7 @@ def locate_the_seams() -> Dict[str, dict]:
     source = DRIVER.read_text()
     text = source.splitlines()
 
-    # THE TIMESTEP IS FOUND BY ast, NOT BY A LINE GUESS, AND THAT MATTERS: the driver
+    # The timestep is found by ast, not by a line guess, and that matters: the driver
     # carries TWO dispatch-guarded step_B call sites. One is the timestep (`step`,
     # the method the run loop calls); the other is `synchronize_magnetic_fields`,
     # a half-step the driver runs to co-locate H with E for a monitor. Their seams
@@ -1048,7 +1060,7 @@ def locate_the_seams() -> Dict[str, dict]:
 
 
 # ---------------------------------------------------------------------------
-# THE CUDA SURFACE — READ FROM THE MODULES BY ast, NEVER IMPORTED
+# The CUDA surface — read from the modules by ast, never imported
 # ---------------------------------------------------------------------------
 # cupy is not installed on the authoring host and importing these modules would
 # fail; more to the point, a board that IMPORTS the thing it audits can be moved by
@@ -1105,7 +1117,7 @@ def cuda_surface() -> Dict[str, Any]:
 def composer_layer() -> Dict[str, Any]:
     """The composer must be PRESENT — this board reads what it selected.
 
-    THE CHECK RUNS THE OTHER WAY NOW. Until 2026-08-28 this function refused if any
+    The check runs the other way now. Until 2026-08-28 this function refused if any
     composer module APPEARED, because a cell was then the family whose predicate
     admitted the row and a composer arriving would have made that walk wrong. It
     arrived, the board refused, and this is the re-point: the cell is the arm, so the
@@ -1118,8 +1130,8 @@ def composer_layer() -> Dict[str, Any]:
                      if not (CUDA_KERNELS / name).exists())
     if missing:
         raise SystemExit(
-            f"cuda_kernels/ is missing {missing}. A cell on this board is the ARM "
-            f"THE COMPOSER SELECTS, read from the census's plan_step.selected; with "
+            f"cuda_kernels/ is missing {missing}. A cell on this board is the arm "
+            f"the composer selects, read from the census's plan_step.selected; with "
             f"no composer in the tree that column describes a package this one is "
             f"not, and the POINTWISE/STENCIL verdict measured from this tree's "
             f"device code would be paired with it. Point --out at a tree that ships "
@@ -1132,7 +1144,7 @@ def composer_layer() -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# THE FITNESS VERDICT — POINTWISE vs STENCIL, MEASURED FROM THE DEVICE CODE
+# The fitness verdict — pointwise vs stencil, measured from the device code
 # ---------------------------------------------------------------------------
 
 _BLOCK_COMMENT = re.compile(r"/\*.*?\*/", re.S)
@@ -1160,7 +1172,7 @@ def _strip_comments(source: str) -> str:
 def cuda_literals(path: Path) -> List[Tuple[int, str]]:
     """Every string constant in a module that carries CUDA device code.
 
-    ONE-LINE LITERALS ARE EXCLUDED, and the exclusion is a measurement rather than a
+    One-line literals are excluded, and the exclusion is a measurement rather than a
     convenience: ``offdiag_emitter.py:449`` is the single line
     ``extern "C" __global__ void (\\w+)\\(`` — a PYTHON REGEX the module uses to read
     its own kernel names back out. It carries the ``__global__`` marker and is not
@@ -1200,7 +1212,7 @@ def _units(source: str, body: str) -> Dict[str, dict]:
     hands them to ``offdiag_term``, which hands them to ``ghosted``, which is the
     only place an array is actually subscripted with them. A one-level call-site
     check finds ``offdiag_term``'s ``g[home]``, sees ``home`` bound to the flat
-    index, and pronounces the kernel POINTWISE. It was MEASURED doing exactly that
+    index, and pronounces the kernel POINTWISE. It was measured doing exactly that
     on this corpus before this function existed.
     """
     units: Dict[str, dict] = {"__kernel__": {"params": [], "body": body}}
@@ -1235,11 +1247,11 @@ def _matching(source: str, at: int) -> Optional[int]:
 #: form, not a neighbour. See :func:`_interleaved`.
 _INTERLEAVED = re.compile(r"^(\d+)\s*\*\s*([A-Za-z_]\w*)(?:\s*\+\s*(\d+))?$")
 
-#: THE E->P SEAM COSTS MORE THAN ITS BUCKET SUGGESTS, and the board does not price it.
-#: MEASURED 2026-08-31, on CUDA's own sources rather than inherited from the Metal board:
+#: The E->P seam costs more than its bucket suggests, and the board does not price it.
+#: Measured 2026-08-31, on CUDA's own sources rather than inherited from the Metal board:
 #: ``update_E`` runs "in one launch" for all three components
-#: (cuda_kernels/constitutive_kernels.py:506), while ``update_P`` runs ONE LAUNCH PER
-#: COMPONENT because its three buffers rotate per component INSIDE one call and "the
+#: (cuda_kernels/constitutive_kernels.py:506), while ``update_P`` runs one launch per
+#: component because its three buffers rotate per component INSIDE one call and "the
 #: retired history becomes the NEXT component's scratch" (ade_kernels.py:414-424); the
 #: launcher re-reads every slot after the previous component's rotation, and a launcher
 #: that cached the views "would be stale from the second component of the first step,
@@ -1307,7 +1319,7 @@ def _interleaved(expr: str, safe: set) -> Optional[Tuple[int, int, str]]:
 #: case, from the coordinate arithmetic the helpers perform, which no interpolation
 #: can hide. Left OPAQUE instead of same-cell, every ``kps_{axis}[{index}]``
 #: coefficient read would be reported as a neighbour and the off-diagonal family
-#: would earn the right verdict for entirely the wrong reason — MEASURED doing
+#: would earn the right verdict for entirely the wrong reason — measured doing
 #: exactly that before this token was made same-cell.
 _FSTRING_TOKEN = "FSTRING_INTERPOLATION"
 
@@ -1345,7 +1357,7 @@ def _flatten_fstring(node: ast.JoinedStr) -> str:
 def _imported_preludes(tree: ast.AST) -> List[Tuple[int, str]]:
     """Device preludes a module IMPORTS from a sibling and concatenates into a kernel.
 
-    THE FOURTH SOURCE OF DEVICE TEXT, and the one a per-module literal walk cannot see.
+    The fourth source of device text, and the one a per-module literal walk cannot see.
     ``cylindrical_kernels.py`` compiles ``_REAL_PML_PRELUDE + r'''...'''`` with the
     prelude imported from ``step_curl_kernels`` (``from .step_curl_kernels import
     _REAL_PML_PRELUDE``), so ``shift_up`` and ``shift_dn`` -- the helpers that read
@@ -1354,7 +1366,7 @@ def _imported_preludes(tree: ast.AST) -> List[Tuple[int, str]]:
     the kernel body calls helpers that do not exist, and the cylindrical curl measures
     POINTWISE: a false POINTWISE, the error this board treats as the dangerous one. It
     DID once the radial difference left the kernel body for ``cylindrical_prefix.py``'s
-    column-serial scan (bit_parity_0_10) and took the body's only direct neighbour read
+    column-serial scan (1.0) and took the body's only direct neighbour read
     with it.
 
     Narrow by construction: a name bound by a RELATIVE ``from .<sibling> import`` at
@@ -1400,14 +1412,14 @@ def _imported_preludes(tree: ast.AST) -> List[Tuple[int, str]]:
 def device_text(module: str) -> Dict[str, Any]:
     """A module's device code, split into preludes, kernel bodies and fragments.
 
-    THE THIRD BUCKET IS WHY THIS FUNCTION EXISTS. ``offdiag_emitter.py`` does not
+    The third bucket is why this function exists. ``offdiag_emitter.py`` does not
     hold its kernel as one string: the template carries ``__SRC_Ex__`` placeholders
-    and ``_component_source`` assembles the component bodies LINE BY LINE out of
+    and ``_component_source`` assembles the component bodies line by line out of
     f-strings, so the only place ``offdiag_term(volume, coefficient, idx, flat(di,
     j, k, ...), ...)`` ever appears is a Python list comprehension. A collector that
     looks only for string constants carrying ``__global__`` sees the template, misses
     every neighbour read, and reports the off-diagonal family — the one family whose
-    stencil is the whole reason this column exists — as POINTWISE. It was MEASURED
+    stencil is the whole reason this column exists — as POINTWISE. It was measured
     doing exactly that before the fragment bucket was added.
 
     Docstrings are excluded by identity, not by heuristic: this module's own prose
@@ -1438,7 +1450,7 @@ def device_text(module: str) -> Dict[str, Any]:
         elif marked and multiline:
             preludes.append((lineno, text))
         elif ";" in text or re.search(r"\b\w+\s*\($", text.strip()):
-            # A C STATEMENT FRAGMENT. The trailing-open-paren form is the first line
+            # A C statement fragment. The trailing-open-paren form is the first line
             # of a multi-line call the emitter splits across list entries, which is
             # how offdiag_term's four index arguments arrive.
             fragments.append((lineno, text))
@@ -1466,7 +1478,7 @@ def _shifted_coordinate_helpers(units: Dict[str, dict],
                                 reachable: set) -> List[dict]:
     """Reachable helpers that CONSTRUCT a coordinate off this thread's own.
 
-    THE SECOND DETECTOR, AND ON ONE FAMILY IT IS THE ONLY ONE THAT WORKS. The
+    The second detector, and on one family it is the only one that works. The
     subscript fixpoint follows an index expression to the array it subscripts; it
     cannot follow one that a PYTHON emitter built and interpolated whole.
     ``offdiag_emitter._term_lines`` does precisely that — ``f"        {down},"``,
@@ -1503,7 +1515,7 @@ def _shifted_coordinate_helpers(units: Dict[str, dict],
     return found
 
 
-#: THE DETECTOR'S OWN CONTROLS, run every time before any verdict is reported.
+#: The detector's own controls, run every time before any verdict is reported.
 #: A read-pattern detector that silently degrades is worse than none: this board's
 #: whole ranking is downstream of it, and a false POINTWISE invites work that cannot
 #: be built byte-identically. Each control has an answer that is settled
@@ -1718,7 +1730,7 @@ def analyze_kernel_reads(spec: Dict[str, Any]) -> Dict[str, Any]:
         kernel_text = "\n".join(
             body for _lineno, body in chosen_bodies + chosen_fragments)
     else:
-        # BODY MODE RECONSTRUCTS THE TEMPLATE. Each declared splice is filled from
+        # Body mode reconstructs the template. Each declared splice is filled from
         # the named fragment literal, so what is analysed is the text NVRTC would
         # see rather than a template with holes in it. Any hole left unfilled and
         # undeclared refuses below: code spliced into it was not measured, and a
@@ -1904,19 +1916,19 @@ def _split_args(text: str) -> List[str]:
 
 
 # ---------------------------------------------------------------------------
-# THE FITNESS SOURCE — WHICH DEVICE CODE A SELECTED KERNEL IS
+# The fitness source — which device code a selected kernel is
 # ---------------------------------------------------------------------------
 
 #: The composer's arm table, read out of ``registry.py`` by ``ast``.
 #:
-#: DERIVED, NOT TRANSCRIBED, and for the reason the seam locator is: the table moves.
+#: Derived, not transcribed, and for the reason the seam locator is: the table moves.
 #: Returned as ``{(family, arm_label, slot): {noun, kernel, predicate_module}}`` with
 #: the ``{slot}`` format placeholder resolved, which is exactly the string the
 #: composer records as ``plan_step.selected_kernel``. That equality is CHECKED
 #: against the census below rather than trusted — a census cut against a different
 #: registry would otherwise be read as if it described this one.
 #:
-#: THE ARM LABEL IS PART OF THE KEY, and (family, slot) alone is not: registry.py:288
+#: The arm label is part of the key, and (family, slot) alone is not: registry.py:288
 #: and :297 register TWO arms of ``cuda_complex_offdiag`` at ``update_E`` — a PML
 #: tail and a no-PML tail — shipping different kernels. Keyed on the pair, one would
 #: silently shadow the other and the cross-check would report drift that is not there.
@@ -1951,7 +1963,7 @@ def registry_arms() -> Dict[Tuple[str, str, str], dict]:
         for key, value in zip(element.keys, element.values):
             name = getattr(key, "value", None)
             if isinstance(value, ast.Name):
-                # ONLY `slots` IS RESOLVED THROUGH A NAME. The other keys that carry
+                # ONLY `slots` is resolved through a name. The other keys that carry
                 # one (`license`, which names a LICENSE_* constant) are not read by
                 # this board and are kept as the identifier rather than resolved, so
                 # a new constant cannot stop the run over a field nothing here uses.
@@ -1990,7 +2002,7 @@ def registry_arms() -> Dict[Tuple[str, str, str], dict]:
 #: (there is no literal to match), which is why the complex families need the
 #: explicit body selection rather than a name lookup.
 #:
-#: THE TWO BLOCH CONSTITUTIVE LABELS ARE MEASURED ON THE EMITTED TEXT, the source the
+#: The two Bloch constitutive labels are measured on the emitted text, the source the
 #: shipped launcher compiles: ``complex_pml_kernels`` hands NVRTC
 #: ``complex_emitter.complex_source(sub_step)``, which fills every splice point of
 #: ``_CONSTITUTIVE_TEMPLATE`` (``__NAME__``, ``__EPS_PARAMS__``, ``__SCALE__``, the
@@ -2012,7 +2024,7 @@ FITNESS_SOURCE_BY_LABEL: Dict[str, dict] = {
         "import": "meep_gpu.cuda_kernels.complex_emitter",
         "function": "complex_source",
         "variants": (("update_E",),)},
-    # THE FIVE EMITTED-TEXT LABELS, 2026-09-02 residue round (audit §1.5 stage 1).
+    # The five emitted-text labels, added 2026-09-02 so their cells get a fitness verdict.
     # Each names a family whose kernel exists only as EMITTED text -- f-string
     # assembly (dispersive_source) or __NAME__/__SIGMA__ substitution -- so
     # neither mode="module" (no declared kernel names) nor mode="body" (no
@@ -2072,7 +2084,7 @@ def fitness_source(label: Optional[str],
                    declared: Dict[str, List[str]]) -> Optional[dict]:
     """The device code a selected kernel label IS, or ``None`` if it is not settled.
 
-    THE RESOLUTION, IN ORDER, AND IT REFUSES RATHER THAN GUESSING:
+    The resolution, in order, and it refuses rather than guessing:
 
     1. A label in :data:`NULL_PLAN_LABELS` launches nothing — handled by the caller.
     2. A label in :data:`FITNESS_SOURCE_BY_LABEL` takes that spec. These are the
@@ -2112,7 +2124,7 @@ def fitness_source(label: Optional[str],
 def _installable_declaration(column: str) -> Dict[str, Any]:
     """What a spanning product's own module says about being INSTALLED.
 
-    READ OFF THE SOURCE, not by import: the family modules import CuPy at scope and
+    Read off the source, not by import: the family modules import CuPy at scope and
     this board runs on a host with none. A product may hold a released device gate and
     still be refused by the composer on every configuration -- that is a statement
     about the COMPOSITION, and a board that credited its predicate without carrying it
@@ -2156,11 +2168,11 @@ SEAM_SLOTS = {"B_to_H": ("step_B", "update_H"),
               "D_to_E": ("step_D", "update_E"),
               "E_to_P": ("update_E", "update_P")}
 
-#: THE FOURTH SEAM IS SPANNABLE BUT IS NOT IN THE LEDGER, and holding it in a second
+#: The fourth seam is spannable but is not in the ledger, and holding it in a second
 #: table is the whole point rather than an oversight. :data:`SEAM_SLOTS` is the
 #: THREE-SEAM LEDGER's own table -- every per-cell walk, every ceiling, every bucket
 #: and the 403-instance denominator in this file are built over it, cell by cell as
-#: (curl arm, constitutive arm) -- and ``H_to_D`` is priced ROW BY ROW by the shared
+#: (curl arm, constitutive arm) -- and ``H_to_D`` is priced row by row by the shared
 #: ``h_to_d_seam.price`` instead, which is why the board's PRICED denominator is
 #: ``403 + one instance per row``. Adding a fourth row to SEAM_SLOTS would put the
 #: seam through the cell walk as well and count it twice.
@@ -2174,7 +2186,7 @@ SPANNABLE_SEAM_SLOTS = dict(
 
 
 # ---------------------------------------------------------------------------
-# THE SOURCE-SEAM CEILING
+# The source-seam ceiling
 # ---------------------------------------------------------------------------
 
 def no_magnetic_source(facts: dict) -> bool:
@@ -2190,7 +2202,7 @@ SOURCE_SEAM_CLAUSE: Dict[str, Callable[[dict], bool]] = {
     "B_to_H": no_magnetic_source, "D_to_E": no_electric_source}
 
 
-# --- THE IN-SEAM DEPOSIT, READ FROM THE SHIPPED FLAG RATHER THAN TRANSCRIBED ---
+# --- The in-seam deposit, read from the shipped flag rather than transcribed ---
 #
 # The two clauses above are a DRIVER FACT and they stay one: the driver deposits
 # between the halves, so a launch that spans the deposit consumes a pre-injection
@@ -2202,7 +2214,7 @@ SOURCE_SEAM_CLAUSE: Dict[str, Callable[[dict], bool]] = {
 # routes its source question through `deposit_repair.seam_source_reasons(...,
 # carries_repair=<module>.CARRIES_DEPOSIT_REPAIR)`.
 #
-# THE SIBLING BOARD ALREADY MADE THIS MISTAKE AND FIXED IT: its 2026-08-27 02:38 cut
+# The sibling board already made this mistake and fixed it: its 2026-08-27 02:38 cut
 # transcribed `no_magnetic_source` for every B-side product and kept printing that
 # refusal after `metal_kernels/fused_magnetic_pair.py:204` had stopped making it
 # (`build_fusion_matrix.py:524-539`). So the credit here IMPORTS the shipped module
@@ -2220,7 +2232,7 @@ SOURCE_SEAM_CLAUSE: Dict[str, Callable[[dict], bool]] = {
 PRODUCT_ON_CELL: Dict[Tuple[str, str, str], str] = {
     ("B_to_H", "cuda_curl/PML", "cuda_constitutive/ordinary"):
         "meep_gpu.cuda_kernels.fused_magnetic_pair",
-    # THE TWO COMPLEX CELLS, ADDED 2026-08-30 WITH THE PRODUCTS THAT OCCUPY THEM.
+    # The two complex cells, added 2026-08-30 with the products that occupy them.
     # Each row is read from that product's own FUSED_PAIR_ARMS entry -- the arm
     # labels the composer must already have selected before the pair may absorb the
     # two slots -- so a row here can never name a cell the installer would refuse.
@@ -2228,7 +2240,7 @@ PRODUCT_ON_CELL: Dict[Tuple[str, str, str], str] = {
         "meep_gpu.cuda_kernels.complex_fused_magnetic_pair",
     ("B_to_H", "cuda_cyl_complex/cylindrical complex", "cuda_complex/complex"):
         "meep_gpu.cuda_kernels.cylindrical_fused_magnetic_pair",
-    # THE FIRST ELECTRIC ROW, ADDED 2026-08-30 WITH ITS PRODUCT, and the one whose
+    # The first electric row, added 2026-08-30 with its product, and the one whose
     # effect on the ceiling is the point rather than a side effect: 75 of this cell's
     # 79 rows carry an electric deposit, so before the row the whole cell was priced
     # at 4 reachable on the driver fact alone. `covers_fused_electric_pair` opens with
@@ -2237,7 +2249,7 @@ PRODUCT_ON_CELL: Dict[Tuple[str, str, str], str] = {
     # the same pair `fused_pairs.FUSED_PAIR_ARMS` records for it.
     ("D_to_E", "cuda_curl/PML", "cuda_constitutive/ordinary"):
         "meep_gpu.cuda_kernels.fused_electric_pair",
-    # THE TWO COMPLEX ELECTRIC ROWS, ADDED 2026-08-31 WITH THEIR PRODUCTS, and the
+    # The two complex electric rows, added 2026-08-31 with their products, and the
     # pair whose effect on the ceiling is the entire point. Before them these two
     # cells were priced on the driver fact alone at 1 and 0 reachable of 16 rows each
     # -- 31 of the 32 seam-instances carry an electric deposit -- while both were
@@ -2255,7 +2267,7 @@ PRODUCT_ON_CELL: Dict[Tuple[str, str, str], str] = {
         "meep_gpu.cuda_kernels.complex_fused_electric_pair",
     ("D_to_E", "cuda_cyl_complex/cylindrical complex", "cuda_complex/complex"):
         "meep_gpu.cuda_kernels.cylindrical_fused_electric_pair",
-    # THE NO-ABSORBER ELECTRIC ROW, ADDED 2026-08-31 WITH ITS PRODUCT, and the one row
+    # The no-absorber electric row, added 2026-08-31 with its product, and the one row
     # here whose credit is ZERO by construction rather than large: all four of this
     # cell's rows declare `source_field_types == ['B']`, so the cell already priced at
     # 4 of 4 reachable on the driver fact alone and the module declares
@@ -2270,17 +2282,17 @@ PRODUCT_ON_CELL: Dict[Tuple[str, str, str], str] = {
     # `complex_no_pml_kernels.covers_complex_no_pml_curl(..., "step_D")` and
     # `covers_complex_no_pml_stored_e` -- the `cuda_complex_no_pml` family's own two
     # arms on these slots.
-    # REPOINTED 2026-09-04 TO THE COMPLEX THREE-SLOT WELD, which is the product the
+    # Repointed 2026-09-04 to the complex three-slot weld, which is the product the
     # composer now installs on this cell: its span STRICTLY CONTAINS the pair's, so
-    # `fused_pairs._superseded_by_a_longer_span` gives it the slots. THE CREDIT DOES
-    # NOT MOVE and that is checkable: both modules declare CARRIES_DEPOSIT_REPAIR
+    # `fused_pairs._superseded_by_a_longer_span` gives it the slots. The credit does
+    # not move and that is checkable: both modules declare CARRIES_DEPOSIT_REPAIR
     # False and the seam is empty on every row of the cell (magnetic source only),
     # so the number this row yields is the same whichever module it names.
     ("D_to_E", "cuda_complex_no_pml/complex no-PML curl",
      "cuda_complex_no_pml/complex no-PML stored E"):
         "meep_gpu.cuda_kernels.complex_no_pml_three_slot_dispersive_weld",
-    # THE TWO E->P ROWS, ADDED 2026-09-01 WITH THEIR PRODUCTS, and the rows whose
-    # deposit credit is zero BY DRIVER CONSTRUCTION rather than by measurement:
+    # The two E->P rows, added 2026-09-01 with their products, and the rows whose
+    # deposit credit is zero by driver construction rather than by measurement:
     # `SOURCE_SEAM_CLAUSE` has no E_to_P entry because the driver injects nothing
     # between update_E and update_P (driver.py:3313/:3315), so every instance
     # already clears on the driver fact and `clears_source_seam` returns before
@@ -2297,7 +2309,7 @@ PRODUCT_ON_CELL: Dict[Tuple[str, str, str], str] = {
     # `covers_real_pml_ade_update_p` -- the `cuda_dispersive/dispersive` and
     # `cuda_ade/ADE` labels of this cell -- and its no-absorber twin with the
     # `cuda_no_pml_dispersive` and `cuda_no_pml_ade` families' own predicates.
-    # THE FIVE RESIDUAL MAGNETIC ROWS, ADDED 2026-09-02 WITH THEIR PRODUCTS --
+    # The five residual magnetic rows, added 2026-09-02 with their products --
     # the last buildable cells on this board. Each row is read from that
     # product's own FUSED_PAIR_ARMS entry, which is itself read from the
     # predicate it conjoins, so a row here can never name a cell the installer
@@ -2321,9 +2333,9 @@ PRODUCT_ON_CELL: Dict[Tuple[str, str, str], str] = {
     ("E_to_P", "cuda_no_pml_dispersive/no-PML dispersive store",
      "cuda_no_pml_ade/no-PML ADE"):
         "meep_gpu.cuda_kernels.fused_polarization_pair",
-    # THE FIVE ELECTRIC-TWIN ROWS AND THE THIRD E->P ROW, ADDED 2026-09-02 WITH
-    # THEIR PRODUCTS (the residue round; fusion-residue audit §1.3's 12
-    # electric-twin instances and §1.5's determined E->P cell). Each row is
+    # The five electric-twin rows and the third E->P row, added 2026-09-02 with
+    # their products (12 electric-twin instances, and the E->P cell whose fitness
+    # the emitted-text labels above determined). Each row is
     # read from that product's own FUSED_PAIR_ARMS entry, which is itself read
     # from the predicate it conjoins, so a row here can never name a cell the
     # installer would refuse. On every ELECTRIC row the repair credit is the
@@ -2349,7 +2361,7 @@ PRODUCT_ON_CELL: Dict[Tuple[str, str, str], str] = {
     ("E_to_P", "cuda_complex_no_pml/complex no-PML stored E",
      "cuda_complex_no_pml/complex no-PML ADE"):
         "meep_gpu.cuda_kernels.complex_no_pml_fused_polarization_pair",
-    # THE TWO STENCIL ROWS, ADDED 2026-09-02 WITH THEIR PRODUCTS -- and the only
+    # The two stencil rows, added 2026-09-02 with their products -- and the only
     # rows on this table whose cells this board had recorded UNBUILDABLE. The
     # verdict is NOT relaxed and the `fitness_rule` below is NOT edited: STENCIL
     # stays the fitness of both constitutive kernels, because it is a true reading
@@ -2359,10 +2371,10 @@ PRODUCT_ON_CELL: Dict[Tuple[str, str, str], str] = {
     # in-place output: it writes a launch-local scratch, recomputes each foreign
     # sample from pre-launch D/fu/H through the same __device__ function, and
     # rotates the D bindings after the launch. The board therefore reports these
-    # two cells as SERVED BY A PRODUCT while still reporting their constitutive
+    # two cells as served by a product while still reporting their constitutive
     # fitness as STENCIL, which is the honest pair of facts.
     #
-    # THE REPAIR CREDIT IS ZERO ON BOTH, and by two independent routes that agree:
+    # The repair credit is zero on both, and by two independent routes that agree:
     # each module declares CARRIES_DEPOSIT_REPAIR = False, and
     # `_deposit_is_repairable` above refuses the D seam on
     # `has_offdiagonal_epsilon` -- which every row of both cells carries, since
@@ -2381,22 +2393,22 @@ PRODUCT_ON_CELL: Dict[Tuple[str, str, str], str] = {
         "meep_gpu.cuda_kernels.offdiag_fused_electric_pair",
     ("D_to_E", "cuda_curl/PML", "cuda_folded_offdiag/folded off-diagonal"):
         "meep_gpu.cuda_kernels.folded_offdiag_fused_electric_pair",
-    # THE LAST UNSERVED E->P CELL, ADDED 2026-09-02 WITH ITS PRODUCT. The board
+    # The last unserved E->P cell, added 2026-09-02 with its product. The board
     # already priced it POINTWISE-BUILDABLE and recorded a `hazard` beside the
     # verdict; that hazard names the per-component SPLIT (launch y reading a P
     # slot launch x's rotation had already moved), and this product does not
     # split -- update_E stays monolithic and one component's recurrence rides
     # inside it, so no rotation happens within the launch. Its deposit credit is
-    # zero BY DRIVER CONSTRUCTION, like the three E->P rows above it: nothing is
+    # zero by driver construction, like the three E->P rows above it: nothing is
     # injected between driver.py:3313 and :3315.
     ("E_to_P", "cuda_dispersive_offdiag/dispersive off-diagonal", "cuda_ade/ADE"):
         "meep_gpu.cuda_kernels.dispersive_offdiag_fused_polarization_pair",
-    # THE DISPERSIVE ELECTRIC ROW, ADDED 2026-09-02 WITH ITS PRODUCT, and the
+    # The dispersive electric row, added 2026-09-02 with its product, and the
     # largest single cell this table has ever gained: `D_to_E (cuda_curl/PML,
     # cuda_dispersive/dispersive)` carries 7 corpus rows and was the biggest
     # POINTWISE-BUILDABLE cell no product occupied on ANY backend.
     #
-    # THE REPAIR CREDIT IS THE WHOLE CELL, not part of it. All 7 rows declare an
+    # The repair credit is the whole cell, not part of it. All 7 rows declare an
     # electric deposit inside the seam (`source_field_types == ['D']` on six and ten
     # D sources on stochastic_emitter.py, measured off the stamped census), so
     # `demand_rows_clearing_the_source_seam` was 0 of 7 before this row: the
@@ -2413,18 +2425,18 @@ PRODUCT_ON_CELL: Dict[Tuple[str, str, str], str] = {
     # would refuse: `covers_dispersive_fused_electric_pair` opens with
     # `coverage.covers_real_pml_curl(..., "step_D")` and
     # `dispersive_kernels.covers_real_pml_dispersive_constitutive`.
-    # REPOINTED 2026-09-02 TO THE THREE-SLOT WELD, which is the product the composer
+    # Repointed 2026-09-02 to the three-slot weld, which is the product the composer
     # now installs on this cell: its span STRICTLY CONTAINS the pair's, so
     # `fused_pairs._superseded_by_a_longer_span` gives it the slots and refuses the
-    # pair by name. THE CREDIT DOES NOT MOVE and that is checkable rather than
+    # pair by name. The credit does not move and that is checkable rather than
     # asserted -- both modules declare CARRIES_DEPOSIT_REPAIR True and both declare
     # the SPLIT-FIELD path, and the weld's flag IS the pair's, inherited with the
     # D->E half it welds. What changes is only which module this table names, which
     # is the one thing it is for.
     ("D_to_E", "cuda_curl/PML", "cuda_dispersive/dispersive"):
         "meep_gpu.cuda_kernels.three_slot_dispersive_weld",
-    # THE TWO NO-ABSORBER DISPERSIVE-STORE CELLS, ADDED 2026-09-02, AND THEIR ABSENCE
-    # UNTIL THEN WAS A MEASUREMENT RATHER THAN AN OMISSION -- one this round closes.
+    # The two no-absorber dispersive-store cells, added 2026-09-02, and their absence
+    # until then was a measurement rather than an omission -- one this change closes.
     #
     # `meep_gpu.cuda_kernels.no_pml_dispersive_fused_electric_pair` exists, is gated
     # and is RELEASED under both float32 subnormal policies
@@ -2436,13 +2448,13 @@ PRODUCT_ON_CELL: Dict[Tuple[str, str, str], str] = {
     #   `cuda_no_pml_fused_polarization_pair` owns update_E AND update_P;
     #   `install_fused_pairs` gives a slot to ONE product and walks D_to_E first.
     #
-    # ALL THREE ROWS of these two cells (absorber-1d.py, TestAbsorber.test_absorber,
+    # All three rows of these two cells (absorber-1d.py, TestAbsorber.test_absorber,
     # material-dispersion.py) are EXACTLY the three rows the E_to_P cell
     # `cuda_no_pml_dispersive x cuda_no_pml_ade` is served on. So a row naming the
     # PAIR was +1 at D_to_E and -1 at E_to_P: NET ZERO, paid for by displacing a
     # released product.
     #
-    # WHAT THE THREE-SLOT WELD CHANGES IS THAT THERE IS NO LONGER A TRADE. It owns
+    # What the three-slot weld changes is that there is no longer a trade. It owns
     # step_D, update_E AND update_P, so the same three rows are served at BOTH seams,
     # and `_loses_the_shared_slot` withholds nothing from a product that serves both
     # sides itself. The rows below therefore name the weld -- read from its own
@@ -2461,7 +2473,7 @@ PRODUCT_ON_CELL: Dict[Tuple[str, str, str], str] = {
     ("D_to_E", "cuda_no_pml_curl/no-PML curl",
      "cuda_no_pml_dispersive/no-PML dispersive store"):
         "meep_gpu.cuda_kernels.no_pml_three_slot_dispersive_weld",
-    # THE TWO E_to_P ROWS ABOVE ARE NOT REPOINTED, and that is deliberate. The
+    # The two E_to_P rows above are not repointed, and that is deliberate. The
     # three-slot welds serve those cells too, on exactly the rows they admit -- but
     # `cuda_(no_pml_)fused_polarization_pair` still serves every OTHER row of them,
     # and this table maps a cell to ONE module. The E->P seam has no
@@ -2469,12 +2481,12 @@ PRODUCT_ON_CELL: Dict[Tuple[str, str, str], str] = {
     # and :3334), so the module named there is never read for a repair credit and
     # naming either is the same number; the pair is kept because it is the product
     # that covers more of the cell.
-    # THE CONDUCTIVE x ORDINARY CELL, ADDED 2026-09-02 WITH ITS PRODUCT -- the
+    # The conductive x ordinary cell, added 2026-09-02 with its product -- the
     # SIGNED-ZERO row, 1 corpus row (tests:TestAdjointSolver.test_damping), which
     # declares BOTH a D and a B source and so was 0 of 1 clearing the seam before
     # this row.
     #
-    # IT WAS UNPRICEABLE RATHER THAN UNBUILT UNTIL 2026-09-01. The driver applied its
+    # It was unpriceable rather than unbuilt until 2026-09-01. The driver applied its
     # condinv scaling as three WHOLE-VOLUME passes, which rewrite -0.0 to +0.0 at
     # every cell of the component and not only at the deposit; a point repair cannot
     # reconstruct that, so no product could have occupied this cell and a row here
@@ -2484,7 +2496,7 @@ PRODUCT_ON_CELL: Dict[Tuple[str, str, str], str] = {
     # publishing no deposit table, which no in-tree source class is.
     ("D_to_E", "cuda_conductive/conductive", "cuda_constitutive/ordinary"):
         "meep_gpu.cuda_kernels.conductive_fused_electric_pair",
-    # THE TWO COMPLEX STENCIL CELLS, ADDED 2026-09-02 WITH THEIR PRODUCTS -- the
+    # The two complex stencil cells, added 2026-09-02 with their products -- the
     # LAST two rows on this table whose cells this board had recorded UNBUILDABLE,
     # and the same treatment the two REAL stencil rows above got: the verdict is NOT
     # relaxed and `fitness_rule` is NOT edited. STENCIL stays the fitness of
@@ -2495,10 +2507,10 @@ PRODUCT_ON_CELL: Dict[Tuple[str, str, str], str] = {
     # IN-PLACE output: it writes a launch-local scratch, recomputes each foreign
     # sample from pre-launch D/fu/H through the same __device__ function, and rotates
     # the D bindings after the launch. The board therefore reports these two cells as
-    # SERVED BY A PRODUCT while still reporting their constitutive fitness as
+    # served by a product while still reporting their constitutive fitness as
     # STENCIL, which is the honest pair of facts.
     #
-    # THE REPAIR CREDIT IS ZERO ON BOTH, by two independent routes that agree: each
+    # The repair credit is zero on both, by two independent routes that agree: each
     # module declares CARRIES_DEPOSIT_REPAIR = False, and `_deposit_is_repairable`
     # refuses the D seam on `has_offdiagonal_epsilon` -- which every row of both
     # cells carries, since the constitutive arms REQUIRE a surviving off-diagonal
@@ -2563,7 +2575,7 @@ def clears_source_seam(seam: str, facts: dict, configuration: dict,
     implements, the repair: the module's own constant decides, never a boolean typed
     here, because a second copy is exactly what went stale on the sibling board.
 
-    THIS IS THE PRODUCT-AWARE READING and it stays. It answers "can a product that
+    This is the product-aware reading and it stays. It answers "can a product that
     EXISTS TODAY serve this instance", which is the right question for this board's
     ranked build list and the only reading ``probe_cuda_source_seam_blockage`` can
     split into its A/B/C groups. It is NOT the right question for a ceiling, and
@@ -2588,18 +2600,18 @@ def _deposit_is_repairable_like_for_like(seam: str, configuration: dict) -> bool
     for a ceiling, where the fold refusals are the difference between "no repair can
     carry this" and "no product carries it yet".
 
-    TWO ARE D-SIDE ONLY. An off-diagonal chi1inv row makes ``update_E`` a stencil
+    Two are D-side only. An off-diagonal chi1inv row makes ``update_E`` a stencil
     over the PARTNER components' volumes at shifted indices (stepping.py:1228-1251),
     so no repair over the deposit points can reconstruct it; an instantaneous
     chi2/chi3 is not the linear accumulation the repair inverts.
 
-    TWO ARE ABOUT THE FOLD and apply to either seam: the cylindrical r = 0 axis,
+    Two are about the fold and apply to either seam: the cylindrical r = 0 axis,
     whose below-axis ghost is the r_to_minus_r image rather than the near fill's
     cell 0 <- cell 2, and a folded axis storing no more than
     :data:`NEAR_SOURCE_INDEX` cells, where the row the near fill images does not
     exist.
 
-    MEASURED ON THIS CORPUS (2026-09-02): the two fold clauses refuse NOTHING the
+    Measured on this corpus (2026-09-02): the two fold clauses refuse NOTHING the
     two D-side clauses do not already refuse -- 24 blocked either way, per seam as
     well as in total. They are carried anyway, because a clause that decides nothing
     on today's corpus is exactly the clause a later corpus needs and nobody
@@ -2626,20 +2638,20 @@ def _deposit_is_repairable_like_for_like(seam: str, configuration: dict) -> bool
 
 def clears_source_seam_like_for_like(seam: str, facts: dict,
                                      configuration: dict) -> bool:
-    """THE RECONCILED SOURCE-SEAM RULE (release decision R3), identical on all three
+    """The reconciled source-seam rule (settled 2026-09-02), identical on all three
     boards: does the DEPOSIT ITSELF put this instance beyond any fused product?
 
-    THE COUNTING-RULE DELTA, AND WHY IT IS ONE. Until 2026-09-02 this board answered
+    The counting-rule delta, and why it is one. Until 2026-09-02 this board answered
     that question with :func:`clears_source_seam`, which additionally requires that a
     product ALREADY OCCUPY the cell and declare ``CARRIES_DEPOSIT_REPAIR``. The
     sibling boards ask only ``deposit_repair.repairable``. Both are defensible
     questions and they are DIFFERENT questions, so their answers -- 45 blocked here
     against 24 there -- were never a capability difference between the backends, and
     summing or comparing the three ceilings was reading three different measurements
-    as one. The 2026-09-02 audit established that; this function is the like-for-like
-    rule it called for.
+    as one. That was established on 2026-09-02; this function is the like-for-like
+    rule that finding called for.
 
-    WHAT IT COSTS TO GET IT WRONG IN EITHER DIRECTION. Reading the product-aware
+    What it costs to get it wrong in either direction. Reading the product-aware
     number as a ceiling says an instance can NEVER be served when what is true is
     that nobody has built its product yet -- it prices future work as impossible.
     Reading the seam-level number as today's reach says the opposite. So both are
@@ -2657,14 +2669,14 @@ def clears_source_seam_like_for_like(seam: str, facts: dict,
 
 # ---------------------------------------------------------------------------
 # ---------------------------------------------------------------------------
-# THE BINDING WALK THIS BOARD DID NOT HAVE
+# The binding walk this board did not have
 # ---------------------------------------------------------------------------
 #
-# WHAT IT CLOSES, MEASURED. The Triton board runs fifty-two binding checks and
+# What it closes, measured. The Triton board runs fifty-two binding checks and
 # ``build_fusion_matrix._assert_every_credit_is_bound_to_released_bytes`` refuses to
 # credit a product whose released bytes have moved; this board ran ZERO.
 #
-# RE-MEASURED 2026-09-11 BY RUNNING THIS WALK, which is the only number that should
+# Re-measured 2026-09-11 by running this walk, which is the only number that should
 # be quoted here. Against ``results/fusion_matrix_cuda_2026-09-09_close``, whose
 # ``headline.served_by_product`` carries 532 instances over 32 columns (the seven
 # H->D columns INCLUDED at the same counts the ``h_to_d_seam`` block re-reports):
@@ -2675,7 +2687,7 @@ def clears_source_seam_like_for_like(seam: str, facts: dict,
 # (47 instances) are bound only at the weaker GATE tier — an artifact whose legs
 # still hash to the tree, with no entry in the ledger the weld contract walks.
 #
-# TWO EARLIER NUMBERS HERE WERE WRONG, EACH IN ITS OWN WAY, and both are recorded
+# Two earlier numbers here were wrong, each in its own way, and both are recorded
 # rather than quietly replaced because each was published somewhere a reader may
 # still be holding. "218 of the 705" added the 173 H->D instances to a 532 that
 # already contained them and assembled its numerator by hand from a column list.
@@ -2689,7 +2701,7 @@ def clears_source_seam_like_for_like(seam: str, facts: dict,
 # reconstruct — and so does a board quoting a withheld count from a check that
 # could not fail.
 #
-# IT WITHHOLDS WITH A NAMED REASON AND NEVER RAISES, which is the Triton pattern and
+# It withholds with a named reason and never raises, which is the Triton pattern and
 # is load-bearing on a FIRST bound cut: a refusal would make the board un-buildable
 # until every column had a weld, which is a campaign away.
 
@@ -2731,7 +2743,7 @@ def _artifact_binding(module: str) -> Optional[Dict[str, Any]]:
     shared compile seam and harness, the gate script — and rehashes each against
     the checkout.
 
-    THE HELPERS ARE THE REBIND TOOL'S OWN, imported rather than re-implemented. Two
+    The helpers are the rebind tool's own, imported rather than re-implemented. Two
     readers of one artifact layout that drift apart is how a board starts crediting
     a product the tool that binds it refuses: this board's verdict and that tool's
     refusal must be the same question asked twice, not two questions that usually
@@ -2798,7 +2810,7 @@ def _artifact_binding(module: str) -> Optional[Dict[str, Any]]:
 def release_binding_report(products: Sequence[str]) -> Dict[str, Any]:
     """Per served product: which record binds its bytes, and does that record hold?
 
-    TWO REGISTRIES ARE WALKED, because this track has two and they pin different
+    Two registries are walked, because this track has two and they pin different
     things. ``cuda_kernels/fingerprints.json`` is the WELD ledger — one entry per
     released campaign, pinning the source it executed; ``certification.json`` is the
     NARRATIVE record, whose blocks name an artifact DIRECTORY, and it is the legs in
@@ -2808,7 +2820,7 @@ def release_binding_report(products: Sequence[str]) -> Dict[str, Any]:
     reported as DRIFTED. Both are WITHHELD states, and both carry the list of files
     that moved rather than a bare verdict.
 
-    THE SECOND REGISTRY IS JOINED ON ``kernel_module``, NOT ON THE COLUMN NAME, and
+    The second registry is joined on ``kernel_module``, not on the column name, and
     that is the whole reason this walk finds anything. Every block key in
     ``certification.json`` is DATED (``cuda_conductive_fused_electric_pair_2026-09-02b``)
     while a board column is not, so a ``blocks.get(column)`` lookup matches nothing
@@ -2819,7 +2831,7 @@ def release_binding_report(products: Sequence[str]) -> Dict[str, Any]:
     asks the same question of both registries: do the bytes this evidence names
     still hash to what the checkout holds?
 
-    THE DISPATCH BINDING IS THE SECOND HALF. The CUDA ``driver_dispatch`` block pins
+    The dispatch binding is the second half. The CUDA ``driver_dispatch`` block pins
     the seam (``fastpath.py``, ``driver.py``, ``fields.py``, ``fastpath_cuda.py``,
     the composer and every released arm's module); a drift there means the record
     describes a seam the tree no longer has, and ``served_in_dispatch`` is reported
@@ -2839,7 +2851,7 @@ def release_binding_report(products: Sequence[str]) -> Dict[str, Any]:
     except Exception as exc:  # noqa: BLE001
         blocks = {"_unreadable": repr(exc)}
 
-    # WHICH LEDGER ENTRY BINDS WHICH PRODUCT, joined on the entry's own
+    # Which ledger entry binds which product, joined on the entry's own
     # ``kernel_module`` rather than on a name: the entry declares which file it
     # certified, and a name match would credit ``cuda_fused_hd_pair`` to
     # ``cuda_fused_magnetic_pair``'s weld on a shared prefix.
@@ -2856,7 +2868,7 @@ def release_binding_report(products: Sequence[str]) -> Dict[str, Any]:
         module = _product_module(column)
         keys = sorted(by_module.get(module, ()))
         if not keys:
-            # NO WELD — SO ASK THE OTHER REGISTRY, which on this track pins files the
+            # No weld — so ask the other registry, which on this track pins files the
             # ledger pins zero times. A block whose artifact legs still hash to the
             # checkout is a byte binding: the gate imported those bytes and released
             # on them, and the only thing the missing ledger entry costs is the
@@ -2935,7 +2947,7 @@ def release_binding_report(products: Sequence[str]) -> Dict[str, Any]:
             "record still holds against this checkout. The Triton board has run "
             "this walk since 2026-09-02; this board ran zero binding checks until "
             "2026-09-11, which is why the withheld list below is long on its first "
-            "cut rather than a regression. TWO TIERS OF BOUND: `fingerprint` is a "
+            "cut rather than a regression. Two tiers of bound: `fingerprint` is a "
             "ledger weld, `gate` is an artifact whose released legs still hash to "
             "the tree but which the ledger carries no entry for — evidence, one "
             "tier weaker, and `rebind_cuda_welds --seed` is what promotes it."),
@@ -2946,7 +2958,7 @@ def release_binding_report(products: Sequence[str]) -> Dict[str, Any]:
         "dispatch_binding": dispatch_block,
         "applied_to_the_served_headline": False,
         "why_not_applied_yet": (
-            "THE WALK IS PUBLISHED BEFORE IT IS DEDUCTED, deliberately and for one "
+            "The walk is published before it is deducted, deliberately and for one "
             "cut only. `served` on this board is cross-checked three ways (the "
             "per-cell ledger, the row walk and the taxonomy's own grouping) and "
             "deducting a withheld product silently would make those three disagree "
@@ -2968,9 +2980,9 @@ def main() -> int:
     started = time.time()
 
     print("=" * 78, flush=True)
-    print("THE CUDA FUSION BOARD", flush=True)
+    print("The CUDA fusion board", flush=True)
     print("=" * 78, flush=True)
-    print(f"census      : {CENSUS}", flush=True)
+    print(f"census      : {_repo_named(CENSUS)}", flush=True)
 
     composer = composer_layer()
     print(f"\ncomposer layer: required {list(COMPOSER_MODULES)} in cuda_kernels/ — "
@@ -2982,7 +2994,7 @@ def main() -> int:
           f"{len(surface['per_module'])} modules by ast", flush=True)
 
     seams = locate_the_seams()
-    print("\n--- THE SEAMS, LOCATED IN driver.py ---------------------------------",
+    print("\n--- The seams, located in driver.py ---------------------------------",
           flush=True)
     for seam, spec in seams.items():
         print(f"  {seam:8s} {spec['curl_call']} -> [{spec['between_summary']}] -> "
@@ -2999,7 +3011,7 @@ def main() -> int:
     print(f"  engine facts : source_field_types and plan_step.live read from THESE "
           f"rows; no join with the Metal census", flush=True)
 
-    # THE COMPOSER'S OWN LABELS, CROSS-CHECKED AGAINST THE ARM TABLE IN THIS TREE.
+    # The composer's own labels, cross-checked against the arm table in this tree.
     # The census recorded selected_kernel; registry.py declares the same string for
     # the same (family, slot). If they disagree the census was cut against a
     # different registry and its selections do not describe the package whose device
@@ -3033,7 +3045,7 @@ def main() -> int:
           f"label", flush=True)
 
     # ------------------------------------------------- what the composer SELECTED
-    print("\n--- WHAT THE COMPOSER SELECTS PER SLOT (the cell) -------------------",
+    print("\n--- What the composer selects per slot (the cell) -------------------",
           flush=True)
     slot_pick: Dict[str, Dict[str, Optional[dict]]] = {}
     slot_refusal: Dict[str, Dict[str, dict]] = {}
@@ -3055,13 +3067,13 @@ def main() -> int:
         print(f"  {slot:9s} " + "  ".join(f"{k}={n}" for k, n in counts.most_common()),
               flush=True)
 
-    # THE REFUSAL CENSUS REPLACES THE DISJOINTNESS PROOF. With no composer a cell was
+    # The refusal census replaces the disjointness proof. With no composer a cell was
     # only well defined if at most one family admitted a slot, so this board measured
     # that and raised on an overlap. The composer is fail-closed — arms.py refuses an
     # ambiguous slot rather than picking by table order — so an overlap now shows up
     # as a REFUSAL of kind `ambiguous` instead of a silently-arbitrary cell. It is
     # still fatal at a slot a seam needs, for the same reason it always was.
-    print("\n--- THE COMPOSER'S REFUSALS (its own words; the old disjointness proof "
+    print("\n--- The composer's refusals (its own words; the old disjointness proof "
           "is now this) ---", flush=True)
     refusal_kinds: Dict[str, collections.Counter] = {
         slot: collections.Counter() for slot in SLOTS}
@@ -3090,11 +3102,11 @@ def main() -> int:
           "fact, not an undefined cell", flush=True)
 
     # ------------------------------------------------- the per-kernel fitness
-    # KEYED ON THE SELECTED KERNEL, NOT ON THE FAMILY. A family may ship a different
+    # keyed on the selected kernel, not on the family. A family may ship a different
     # body per slot: cuda_nonlinear plans update_E_pml_real_nonlinear on the electric
     # side and reuses the ordinary update_H_pml_real on the magnetic one, and a
     # family-keyed verdict would give one of the two the other's read pattern.
-    print("\n--- THE FITNESS VERDICT, MEASURED FROM THE DEVICE CODE --------------",
+    print("\n--- The fitness verdict, measured from the device code --------------",
           flush=True)
     print("  POINTWISE = the constitutive half reads the curl's in-place output ONLY",
           flush=True)
@@ -3159,7 +3171,7 @@ def main() -> int:
         if verdict == "UNDETERMINED":
             print(f"        {fitness[kernel]['why']}", flush=True)
 
-    # THE E->P SEAM EXISTS ONLY WHERE A POLARIZATION DOES.
+    # THE E->P seam exists only where a polarization does.
     has_polarization = {f"{r['leg']}:{r['row']}":
                         int(r["configuration"]["n_polarizations"]) > 0
                         for r in record}
@@ -3200,7 +3212,7 @@ def main() -> int:
             }
         per_row.append(entry)
 
-    # ------------------------------------------- THE FOURTH SEAM, update_H -> step_D
+    # ------------------------------------------- The fourth seam, update_H -> step_D
     # One instance per row (2026-09-04). The two halves are the composer's own picks
     # this walk already read — update_H is B_to_H's constitutive half, step_D is
     # D_to_E's curl half — and the null verdict is the NULL_PLAN_LABELS test the
@@ -3243,23 +3255,23 @@ def main() -> int:
                 f"{curl_arm['family']}/{curl_arm['arm']}" if curl_arm else None,
                 f"{const_arm['family']}/{const_arm['arm']}" if const_arm else None))
 
-    # ------------------------------------------------- WHAT A SHIPPED PRODUCT SERVES
+    # ------------------------------------------------- What a shipped product serves
     #
-    # THE COLUMN IS THE SHIPPED PREDICATE'S OWN ANSWER, RECORDED PER ROW. It is read
+    # The column is the shipped predicate's own answer, recorded per row. It is read
     # here and not re-derived: ``covers_fused_magnetic_pair`` decides what one launch
     # of ``fused_magnetic_pair_pml_real`` may span, and a board that restated the
     # clauses could admit a row the launch cannot serve -- which is a silent wrong
     # answer, the worst outcome this board has available.
     #
-    # THIS COLUMN READ ZERO UNTIL 2026-08-28, TWICE OVER AND FOR TWO DIFFERENT
-    # REASONS. Until the product existed there was nothing to count. Then the product
+    # This column read zero until 2026-08-28, twice over and for two different
+    # reasons. Until the product existed there was nothing to count. Then the product
     # existed but imported CuPy at module scope, so the census could not ASK it on a
     # NumPy host and recorded ``askable: false`` -- and this board still printed a
     # hard-coded 0 with a note saying no module emits such a kernel, which had stopped
     # being true. Both are now closed: the module takes CuPy defensively, the census
     # asks the predicate on every row, and the number below is that answer counted.
     #
-    # ``covered_modulo_backend`` IS THE RIGHT COLUMN and the raw one is carried
+    # ``covered_modulo_backend`` is the right column and the raw one is carried
     # beside it. Every CUDA predicate's first clause is "is the array module CuPy",
     # which a NumPy census host fails by construction; the composer cells above are
     # read through the same shim, so mixing the two readings would price the seam
@@ -3290,7 +3302,7 @@ def main() -> int:
     def _seams_of_span(column: str, span: Tuple[str, ...]) -> Tuple[str, ...]:
         """Every seam a declared span covers, in ``SPANNABLE_SEAM_SLOTS`` order.
 
-        A TWO-SLOT SPAN IS EXACTLY ONE SEAM and that was the only shape this board
+        A two-slot span is exactly one seam and that was the only shape this board
         had until 2026-09-02. A THREE-SLOT span -- ``step_D``/``update_E``/
         ``update_P`` -- covers TWO, because ``update_E`` is the second consult of
         ``D_to_E`` and the first of ``E_to_P``. It is read as CONSECUTIVE PAIRS of
@@ -3335,15 +3347,15 @@ def main() -> int:
                                 for seam in seams}))
 
     def _serving_products(label: str, seam: str) -> Tuple[str, ...]:
-        """Which shipped products admit this row at this seam. USUALLY AT MOST ONE.
+        """Which shipped products admit this row at this seam. Usually at most one.
 
         The composer refuses a seam TWO products claim rather than picking by table
         order (``fused_pairs.install_fused_pairs``), so an overlap here is not a
         richer answer -- it is a seam that would be left UNFUSED. It is returned as a
         tuple rather than collapsed so the overlap can be counted and raised on.
 
-        WITH ONE EXCEPTION, AND IT IS READ FROM THE COMPOSER RATHER THAN INVENTED
-        HERE, 2026-09-02. A three-slot weld's predicate is the CONJUNCTION of a D->E
+        With one exception, and it is read from the composer rather than invented
+        here, 2026-09-02. A three-slot weld's predicate is the CONJUNCTION of a D->E
         predicate and an E->P one, so wherever it admits, the two-slot D->E product
         it supersedes admits too -- two columns, one seam, on every row the weld
         serves. ``fused_pairs._superseded_by_a_longer_span`` refuses the SHORTER span
@@ -3374,29 +3386,29 @@ def main() -> int:
     def _loses_the_shared_slot(label: str, seam: str) -> bool:
         """Does a LATER seam's product take this row's shared slot from ``seam``?
 
-        THE BOARD DID NOT ASK THIS UNTIL 2026-09-02 AND WAS OVER-COUNTING BY IT.
+        The board did not ask this until 2026-09-02 and was over-counting by it.
         ``_serving_products`` is per seam, and the overlap check above is per seam
         too, so a row admitted by a D->E product AND an E->P product was credited
         TWICE -- once at each seam -- while the composer installs exactly one.
 
-        MEASURED WHEN THIS WAS ADDED, on the stamped census:
+        Measured when this was added, on the stamped census:
 
           cuda_dispersive_fused_electric_pair            7 rows
           cuda_fused_polarization_pair                   the SAME 7
           cuda_no_pml_complex_fused_electric_pair        4 rows
           cuda_complex_no_pml_fused_polarization_pair    the SAME 4
-          cuda_no_pml_dispersive_fused_electric_pair     3 rows (landed this round)
+          cuda_no_pml_dispersive_fused_electric_pair     3 rows (landed when this was added)
           cuda_no_pml_fused_polarization_pair            the SAME 3
 
         Fourteen seam-instances of apparent coverage that are one-for-one trades.
 
-        WHICH SIDE LOSES IS READ FROM THE COMPOSER, NOT DECIDED HERE.
+        Which side loses is read from the composer, not decided here.
         ``fused_pairs._later_seam_claimant`` leaves the shared slot with the product
         that already serves it -- the E->P one -- so the D->E side is what this
         withholds. A board that picked its own winner would be re-deriving a composer
         decision instead of reading it.
 
-        A PRODUCT THAT SERVES BOTH SEAMS ITSELF MAKES NO TRADE, 2026-09-02, and that
+        A product that serves both seams itself makes no trade, 2026-09-02, and that
         is the whole point of the three-slot welds. This asks whether any product
         serving the LATER seam is one that ALSO serves the earlier one; if the same
         column is on both sides there is nothing to withhold, and withholding anyway
@@ -3417,7 +3429,7 @@ def main() -> int:
         return bool(_serving_products(label, seam)) and not _loses_the_shared_slot(
             label, seam)
 
-    # TWO PRODUCTS ADMITTING ONE ROW AT ONE SEAM IS A REFUSAL, NOT A GAIN, and it is
+    # Two products admitting one row at one seam is a refusal, not a gain, and it is
     # checked here rather than assumed from the predicates being disjoint by design:
     # the real pair refuses complex64 storage, the complex pair refuses a Dcyl grid
     # and a real run, and the cylindrical pair REQUIRES Dcyl at |m| >= 1 -- but a
@@ -3429,7 +3441,7 @@ def main() -> int:
                 if len(products := _serving_products(label, seam)) > 1}
     if overlaps:
         raise SystemExit(
-            f"{len(overlaps)} rows are admitted by MORE THAN ONE fused product at "
+            f"{len(overlaps)} rows are admitted by more than one fused product at "
             f"one seam: {dict(list(overlaps.items())[:5])}. install_fused_pairs "
             f"leaves such a seam UNFUSED naming both, so counting either as served "
             f"would be reporting a launch that cannot happen")
@@ -3444,7 +3456,7 @@ def main() -> int:
         driver_ceiling[seam] = sum(
             1 for e in per_row if seam in e["seams"]
             and (clause is None or clause(engine_facts[e["row"]])))
-    print("\n--- THE SOURCE-SEAM CEILING (a driver fact, not a kernel clause) -----",
+    print("\n--- The source-seam ceiling (a driver fact, not a kernel clause) -----",
           flush=True)
     print(f"  source field types across the corpus: "
           f"{ {str(k): v for k, v in kinds.items()} }", flush=True)
@@ -3461,7 +3473,7 @@ def main() -> int:
                   f"the driver fact alone", flush=True)
 
     # ------------------------------------------------- the in-seam carry
-    print("\n--- WHAT A FUSED LAUNCH WOULD HAVE TO CARRY IN REGISTERS -------------",
+    print("\n--- What a fused launch would have to carry in registers -------------",
           flush=True)
     print("  liveness READ from the SAME census's plan_step.live (an engine fact); "
           "the CUDA", flush=True)
@@ -3499,7 +3511,7 @@ def main() -> int:
          const_kernel), labels in by_cell.items():
         reaching = [lab for lab in labels if _row_clears(entry_of[lab], seam)]
         reachable = len(reaching)
-        # WHAT THE WELD WOULD HAVE TO CARRY, PER CELL. The reachable count is the
+        # What the weld would have to carry, per cell. The reachable count is the
         # market; it is NOT the count of rows a first product could take. A fused
         # launch swallows whatever driver passes sit inside the seam, so a row
         # running two of them needs those two carried in registers before it can be
@@ -3522,12 +3534,12 @@ def main() -> int:
             "example_rows": sorted(labels)[:3],
             "example_rows_with_nothing_to_carry": sorted(
                 lab for lab in reaching if not live_of[(lab, seam)])[:3],
-            # WHAT A SHIPPED PRODUCT SERVES AT THIS CELL, read off the census's own
+            # What a shipped product serves at this cell, read off the census's own
             # record of the shipped predicate. Counted over the REACHING rows, so a
             # row the source seam already excluded cannot be claimed here.
             "served_by_a_shipped_product": sum(
                 1 for lab in reaching if _served(lab, seam)),
-            # THE PRODUCT NAMED HERE IS THE ONE THE CENSUS SAYS ADMITS THESE ROWS,
+            # The product named here is the one the census says admits these rows,
             # never a guess from the cell's arm labels: a cell is served by whichever
             # shipped predicate answered yes on its reaching rows, and the overlap
             # check above has already refused the case where that is more than one.
@@ -3536,7 +3548,7 @@ def main() -> int:
                  for product in _serving_products(lab, seam)), None),
         }
         if curl_arm_key is None or const_arm_key is None:
-            # THE COMPOSER'S OWN WORDS, NOT A DESCRIPTION OF THEM. A cell with an
+            # The composer's own words, not a description of them. A cell with an
             # unselected half groups every row the composer refused there, and the
             # refusals need not share a kind, so all of them are carried.
             missing = []
@@ -3568,7 +3580,7 @@ def main() -> int:
         verdict = fitness.get(const_kernel, {})
         kind = verdict.get("verdict", "UNDETERMINED")
         cell["constitutive_fitness"] = kind
-        # WHICH SHIPPED MODULE, IF ANY, OCCUPIES THIS CELL. Read from the one table
+        # Which shipped module, if any, occupies this cell. Read from the one table
         # that maps a cell to a product, the same reading `clears_source_seam` makes
         # for the repair credit, so the verdict and the ceiling cannot disagree
         # about whether there is a product here.
@@ -3576,7 +3588,7 @@ def main() -> int:
         cell["fitness_evidence"] = verdict.get("reads_off_this_thread_cell") or []
         cell["fitness_measured_on"] = verdict.get("body_at")
         cell["fitness_source"] = verdict.get("source")
-        # THE HALVES ARE THE COMPOSER'S KERNEL LABELS, and the registry's own
+        # The halves are the composer's kernel labels, and the registry's own
         # docstring records that several of them are DESCRIPTIONS rather than entry
         # points — `fused_step_B_(no_)pml_conductive` names two kernels and a choice.
         # A label with no counterpart in the certified/uncertified partition is
@@ -3613,9 +3625,9 @@ def main() -> int:
                 "by another block, and CUDA offers no grid-wide barrier inside an "
                 "ordinary launch — only cooperative groups, which caps the grid at "
                 "the resident-block count. Not weldable byte-identically as an "
-                "ordinary launch. MEASURED from the device code, not inferred from "
+                "ordinary launch. Measured from the device code, not inferred from "
                 "the family's name")
-            # WHERE A PRODUCT OCCUPIES THE CELL, THE BOARD SAYS BOTH FACTS. The
+            # Where a product occupies the cell, the board says both facts. The
             # fitness verdict above is NOT relaxed and the constitutive kernel is
             # still STENCIL — that is a true reading of its device text, and this
             # board's `fitness_rule` is unchanged. What the sentence overreached on
@@ -3659,7 +3671,7 @@ def main() -> int:
                 "register hand-off and needs no barrier")
             cell["hazard"] = (
                 "__restrict__ ALIASING: the curl's output volume and the "
-                "constitutive's input volume are THE SAME ALLOCATION. Binding it as "
+                "constitutive's input volume are the same allocation. Binding it as "
                 "two __restrict__ pointers is undefined behaviour and NVRTC may "
                 "miscompile it silently. The fused signature must bind the shared "
                 "volume ONCE. complex_emitter.py:509-511 already declines "
@@ -3749,7 +3761,7 @@ def main() -> int:
                     if k == "NOT A FUSION CANDIDATE")
     undetermined = sum(v for seam in buckets for k, v in buckets[seam].items()
                        if k == "UNDETERMINED")
-    # SERVED, TOTALLED THE SAME WAY THE BUCKETS ARE: over the cells' own per-cell
+    # Served, totalled the same way the buckets are: over the cells' own per-cell
     # counts, which were taken over the REACHING rows. It is a SUBSET of the
     # reachable ceiling and never a bucket beside it -- a served seam-instance is
     # still POINTWISE-BUILDABLE, and adding it to the decomposition would double-count.
@@ -3759,7 +3771,7 @@ def main() -> int:
             served_by_product[cell["served_by"]] += cell["served_by_a_shipped_product"]
     served_by_product = dict(served_by_product)
     served_total = sum(served_by_product.values())
-    # THE OTHER HALF OF "SERVED": whether the DISPATCHER could select any of it.
+    # The other half of "SERVED": whether the DISPATCHER could select any of it.
     # Zero on CUDA, and the zero is a structural measurement rather than this
     # board's own ``wired: false`` restated — ``fastpath.plan_fast_path`` imports
     # ``triton_kernels`` and nothing else, so no CUDA product is reachable from the
@@ -3789,7 +3801,7 @@ def main() -> int:
             f"the per-cell served counts total {served_total} but the row walk finds "
             f"{served_cross_check}; two spellings of one question disagree and no "
             f"number here may be used until they do not")
-    # THE FLOOR IS THE TWO BUCKETS A PRODUCT MAY OCCUPY, and it was one until
+    # The floor is the two buckets a product may occupy, and it was one until
     # 2026-09-02. The old form compared SERVED against POINTWISE alone, on the
     # premise that "a shipped product cannot serve a seam this board prices as
     # unweldable" -- true of the IN-PLACE weld the STENCIL verdict measures, and
@@ -3812,30 +3824,30 @@ def main() -> int:
             f"no bucket and would have vanished from the decomposition. Ledger: "
             f"{ {s: dict(c) for s, c in buckets.items()} }")
 
-    # ------------------------------------------------- THE RECONCILED TAXONOMY
-    # THE SAME EIGHT NAMES THE METAL AND TRITON BOARDS EMIT (release decision R1; the
+    # ------------------------------------------------- The reconciled taxonomy
+    # The same eight names the Metal and Triton boards emit (one shared list since 2026-09-02; the
     # eighth, withdraw_seam, arrived with the H_to_D seam on 2026-09-04), filed
     # over the SAME instances the ledger above walks. The ledger is kept unchanged
     # and is not replaced: it is this board's own vocabulary -- cell verdicts read
     # from device text -- and its sentences are what the sub-reasons below carry.
     #
-    # TWO THINGS DIFFER FROM THE LEDGER, BOTH RELEASE DECISIONS, BOTH COUNTED BELOW
-    # RATHER THAN ASSERTED:
+    # Two things differ from the ledger, both release decisions, both counted below
+    # rather than asserted:
     #
-    #   R3. The source seam is asked LIKE FOR LIKE -- `clears_source_seam_like_for_
-    #       like`, the seam-level rule the sibling boards ask -- instead of the
-    #       product-aware `clears_source_seam` the ledger uses. That is the whole of
-    #       this board's 342-against-363 divergence and it was never a capability
-    #       difference. The product-aware number is NOT discarded: it is what the
+    #   SOURCE SEAM (the board's ``r3_like_for_like_source_seam`` block). It is asked LIKE
+    #       FOR LIKE -- `clears_source_seam_like_for_like`, the seam-level rule the sibling
+    #       boards ask -- instead of the product-aware `clears_source_seam` the ledger uses.
+    #       That is the whole of this board's 342-against-363 divergence and it was never a
+    #       capability difference. The product-aware number is NOT discarded: it is what the
     #       ledger above still reports and what the ranked build list is ordered by.
     #
-    #   R4. `not_fusion_surface` is asked FIRST, ahead of the source seam. This board
-    #       folded null-constitutive instances into its source bucket wherever the
-    #       deposit blocked them, which prices an obstruction that obstructs nothing:
-    #       where the constitutive half launches nothing there is no weld for a
-    #       deposit to sit inside.
+    #   PRECEDENCE (the board's ``r4_precedence_move`` block, instances in ``r4_moved_rows``).
+    #       `not_fusion_surface` is asked FIRST, ahead of the source seam. This board folded
+    #       null-constitutive instances into its source bucket wherever the deposit blocked
+    #       them, which prices an obstruction that obstructs nothing: where the constitutive
+    #       half launches nothing there is no weld for a deposit to sit inside.
     #
-    # SERVED IS ASKED THE WAY THE LEDGER ASKS IT and is not re-derived: `_served` is
+    # Served is asked the way the ledger asks it and is not re-derived: `_served` is
     # the census's record of the shipped predicate's own answer. Widening the source
     # clause cannot add a served instance -- a predicate that admits a row already
     # asked `deposit_repair` about it through `seam_source_reasons` -- and the floor
@@ -3845,7 +3857,7 @@ def main() -> int:
         priced=priced,
         rows=len(record),
         platform_note=(
-            "CUDA HAS NO ANALOGUE OF METAL'S ARGUMENT-TABLE CEILING, and this zero "
+            "CUDA has no analogue of Metal's argument-table ceiling, and this zero "
             "is measured rather than skipped: CUDA passes kernel arguments in a "
             "32,764-byte parameter space and the widest kernel in this tree spends "
             "256 bytes of it, so no cell on this board is ever refused for the "
@@ -3875,7 +3887,7 @@ def main() -> int:
                 lfl_blocked[seam] += 1
             if verdict == "NOT A FUSION CANDIDATE":
                 if not clears_lfl or not _row_clears(entry, seam):
-                    # R4's move, recorded per instance rather than as a total: the
+                    # The precedence move, recorded per instance rather than as a total: the
                     # ledger prices this one as source-blocked and it has no weld
                     # for the deposit to obstruct.
                     r4_moved_rows.append({"row": entry["row"], "seam": seam})
@@ -3923,7 +3935,7 @@ def main() -> int:
                     if const_arm is None else block["curl_refusal"]
                 taxonomy.add(
                     "missing_half", seam, entry["row"],
-                    f"A KERNEL COVERAGE GAP, NOT A FUSION REFUSAL: the composer "
+                    f"A kernel coverage gap, not a fusion refusal: the composer "
                     f"selects no arm at {missing_slot} on this row, so there is no "
                     f"second kernel to weld and the array path steps the slot",
                     {"missing_slot": missing_slot,
@@ -3950,7 +3962,7 @@ def main() -> int:
                     "launch that cell is written by another block, and CUDA offers "
                     "no grid-wide barrier inside an ordinary launch — only "
                     "cooperative groups, which caps the grid at the resident-block "
-                    "count. MEASURED from the device code by analyze_kernel_reads, "
+                    "count. Measured from the device code by analyze_kernel_reads, "
                     "not inferred from the family's name. A SCRATCH-OUTPUT weld is "
                     "not blocked by this and none occupies this cell yet",
                     {"kind": "stencil"})
@@ -3969,7 +3981,7 @@ def main() -> int:
     # per-backend predicate into a rule three boards share. h_to_d_seam.price NAMES the
     # rows a board leaves unanswered rather than pricing them as unbuilt.
     #
-    # THE VERDICT IS THE PREDICATE'S, AND THE SHARED RULE DEFINES IT THAT WAY: a served
+    # The verdict is the predicate's, and the shared rule defines it that way: a served
     # H_to_D instance is a shipped product whose OWN predicate admits that row. It is
     # NOT a claim that the product installs, and on this board it does not: the one
     # product spanning this seam declares INSTALLABLE = False and
@@ -3979,7 +3991,7 @@ def main() -> int:
     # actually give to one of them, and this seam's product is given no slot at all, so
     # withholding on that ground would be modelling an arbitration that never runs.
     #
-    # NO `credit_withheld` KEY ON THIS BOARD (2026-09-10). `h_to_d_seam.price` accepts
+    # NO `credit_withheld` key on this board (2026-09-10). `h_to_d_seam.price` accepts
     # a withheld credit (the board's reason sentence) beside served_by, and this board
     # has nothing to withhold on -- it carries no per-product byte binding at all
     # (`subject_pin` and the registry arm cross-check are its only tree-vs-record
@@ -4001,7 +4013,7 @@ def main() -> int:
             f"`served_total` — the per-cell served counts, cross-checked against the "
             f"row walk, plus the H_to_D seam's served ({h_to_d_block['served']} of "
             f"{h_to_d_block['instances_priced']}; {h_to_d_block['served_note']})"))
-    # THE PER-PRODUCT LEDGER OVER ALL FOUR SEAMS, read off the taxonomy's own grouping
+    # The per-product ledger over all four seams, read off the taxonomy's own grouping
     # of the served instances — and cross-checked against the two walks it must
     # agree with: the three-seam cell ledger product by product, and the H_to_D
     # block's per-product rows. A product credited by the taxonomy that neither walk
@@ -4018,9 +4030,9 @@ def main() -> int:
             f"{_expected_ledger}; the served instances and the walks that credit "
             f"them disagree about which product serves what.")
 
-    # WHAT R3 AND R4 EACH MOVED, COUNTED AND NOT ESTIMATED. Two rulings act on the
+    # What the two rules each moved, counted and not estimated. Both act on the
     # same bucket and their effects overlap, so reporting only the net change would
-    # hide which ruling did what. The ledger's own source bucket is the baseline.
+    # hide which rule did what. The ledger's own source bucket is the baseline.
     _ledger_blocked = sum(c["blocked by the source injection in the seam"]
                           for c in buckets.values())
     _lfl_total = sum(lfl_blocked.values())
@@ -4053,8 +4065,8 @@ def main() -> int:
             "instances": r4_moved_rows,
             "what_it_is": (
                 "instances this board's own ledger filed as blocked by the source "
-                "injection and whose constitutive sub-step launches NOTHING. Under "
-                "R4 an instance is counted in its most fundamental bucket: where "
+                "injection and whose constitutive sub-step launches NOTHING. Under the "
+                "precedence rule an instance is counted in its most fundamental bucket: where "
                 "there is no second kernel to weld, the deposit obstructs nothing"),
             "the_ledger_still_says": {
                 "source_blocked": _ledger_blocked,
@@ -4070,23 +4082,23 @@ def main() -> int:
         raise SystemExit(
             f"the ledger and the reconciled taxonomy do not reconcile: the ledger "
             f"reports {null_plan} null-constitutive outside its source bucket, "
-            f"R4 moves {len(r4_moved_rows)} into it and the H_to_D seam's null "
+            f"precedence moves {len(r4_moved_rows)} into it and the H_to_D seam's null "
             f"update_H adds {_h_to_d_null}, but the taxonomy files "
             f"{taxonomy_block['buckets']['not_fusion_surface']}. One of the two "
             f"walks is reading a different corpus.")
     taxonomy_block.update(reconciled)
     taxonomy.report(lambda line: print(line, flush=True))
-    print(f"\n  R3 LIKE-FOR-LIKE SOURCE SEAM: this board's product-aware rule "
+    print(f"\n  Like-for-like source seam: this board's product-aware rule "
           f"blocks {_ledger_blocked}; the reconciled seam-level rule blocks "
           f"{_lfl_total}, freeing {_ledger_blocked - _lfl_total} instance(s). The "
           f"ceiling moves {seam_instances - _ledger_blocked} -> "
           f"{seam_instances - _lfl_total} and becomes comparable with the sibling "
           f"boards for the first time.", flush=True)
-    print(f"  R4 PRECEDENCE: {len(r4_moved_rows)} instance(s) move from "
+    print(f"  PRECEDENCE: {len(r4_moved_rows)} instance(s) move from "
           f"source_seam_unbracketable to not_fusion_surface.", flush=True)
 
     # ------------------------------------- what this board cannot be asked
-    # DERIVED FROM THE SELECTION, NOT FROM A TABLE. A kernel this board never prices
+    # derived from the selection, not from a table. A kernel this board never prices
     # is one no arm the composer selected on any corpus row names. That set moves
     # with the corpus and with the registry, so it is computed rather than listed:
     # the entry points reachable from the selected labels (with the `fused_` wrapper
@@ -4103,7 +4115,7 @@ def main() -> int:
     unasked = sorted(set(surface["certified"]) - asked_kernels - in_seam)
     unasked_uncertified = sorted(set(surface["uncertified"]) - asked_kernels)
     print("\n" + "=" * 78, flush=True)
-    print("WHAT THIS BOARD CANNOT BE ASKED", flush=True)
+    print("What this board cannot be asked", flush=True)
     print("=" * 78, flush=True)
     print(f"  the composer selected {len(selected_kernels)} distinct kernel labels "
           f"across the corpus: {sorted(selected_kernels)}", flush=True)
@@ -4115,8 +4127,8 @@ def main() -> int:
           f"({len(unasked_uncertified)}):", flush=True)
     for kernel in unasked_uncertified:
         print(f"      {kernel:38s} {surface['uncertified'][kernel]}", flush=True)
-    # A SEAM WHOSE EVERY CELL IS "NO ARM SELECTED" IS NOT NECESSARILY A SEAM WITH
-    # NO CANDIDATE — it may be a seam whose slot no arm is registered on at all.
+    # A seam whose every cell is "NO ARM SELECTED" is not necessarily a seam with
+    # no candidate — it may be a seam whose slot no arm is registered on at all.
     # Derived, so it moves with the registry rather than being a maintained sentence.
     unpriceable: Dict[str, dict] = {}
     for seam, (curl_slot, const_slot) in SEAM_SLOTS.items():
@@ -4158,7 +4170,7 @@ def main() -> int:
 
     result = {
         "board": "hand-CUDA fusion board",
-        "census": str(CENSUS),
+        "census": _repo_named(CENSUS),
         "engine_facts_read_from_the_same_census": [
             "configuration.source_field_types", "plan_step.live"],
         "engine_facts_joined_from": None,
@@ -4195,11 +4207,11 @@ def main() -> int:
             f"{len(record)} rows x 1 constitutive->curl seam (H->D) = {priced} "
             f"PRICED, with the seam line numbers LOCATED in driver.py at run time "
             f"rather than transcribed (the H->D span by h_to_d_seam.driver_seam_fact)."),
-        # THE FOURTH SEAM'S OWN BLOCK: what sits between the halves (located in
+        # The fourth seam's own block: what sits between the halves (located in
         # driver.py at cut time), the probe it was priced from, its buckets and its
         # instances. The ledger, cells and headline counts above stay three-seam.
         "h_to_d_seam": h_to_d_block,
-        # THE BINDING WALK, published beside the credits it is about rather than in
+        # The binding walk, published beside the credits it is about rather than in
         # a companion artifact: a reader who takes `served` away from this file must
         # take the withheld list with it. See :func:`release_binding_report` for
         # what "bound" means on each of this track's TWO registries and why the
@@ -4286,14 +4298,14 @@ def main() -> int:
         },
         "cells_ranked_by_demand": cells,
         "ledger": {seam: dict(counter) for seam, counter in buckets.items()},
-        # PER PRODUCT OVER ALL FOUR SEAMS since 2026-09-06: the three-seam cell
+        # Per product over all four seams since 2026-09-06: the three-seam cell
         # ledger plus the H_to_D block's own per-product rows, so this sums to the
         # served headline. Read from the taxonomy's served ledger, which groups the
         # very instances the headline counts.
         "served_ledger": served_ledger,
         "served_ledger_three_seam": served_by_product,
         "reachable_seam_instances": total_reachable,
-        # THE RECONCILED DECOMPOSITION, in full and under the key the Metal and
+        # The reconciled decomposition, in full and under the key the Metal and
         # Triton boards use. The ledger above is unchanged and stays: this is the
         # translation, not a replacement, and every reconciled bucket carries this
         # board's own prose beneath it as the sub-reason.
@@ -4302,11 +4314,11 @@ def main() -> int:
             "denominator": priced,
             "denominator_three_seam_ledger": seam_instances,
             "reachable_after_the_source_seam": total_reachable,
-            # THE RECONCILED CEILING (R3), beside the product-aware one this board
+            # The reconciled (like-for-like) ceiling, beside the product-aware one this board
             # has always published. They answer different questions and are labelled
             # with them; only the reconciled one is comparable with the sibling
-            # boards, and comparing the other one is what the 2026-09-02 audit found
-            # three boards doing.
+            # boards, and comparing the other one is what the three boards were doing
+            # before 2026-09-02.
             "reachable_after_the_source_seam_like_for_like":
                 seam_instances - sum(lfl_blocked.values()),
             "source_seam_rule_reconciled": reconciled["r3_like_for_like_source_seam"],
@@ -4327,7 +4339,7 @@ def main() -> int:
             "null_constitutive_no_second_kernel": null_plan,
             "undetermined": undetermined,
             "buckets_total_the_reachable_ceiling": classified == total_reachable,
-            # DERIVED FROM THE INSTANCE LEDGER, 2026-09-06. Through the `_hd` cut
+            # Derived from the instance ledger, 2026-09-06. Through the `_hd` cut
             # this key carried `served_total`, the three-seam cell ledger's total,
             # while the taxonomy summed four seams — 359 beside 483 in one artifact.
             # It is now the count of instances the taxonomy filed served (and
@@ -4391,7 +4403,7 @@ def main() -> int:
           f"ledger: {served_total} on the three-seam ledger + "
           f"{h_to_d_block['served']} H_to_D; per product {served_ledger})", flush=True)
     print(f"  BUCKET FLOOR: {classified} == {total_reachable} reachable", flush=True)
-    print("\n  THE RANKED BUILDABLE LIST:", flush=True)
+    print("\n  The ranked buildable list:", flush=True)
     rank = 0
     for cell in cells:
         if not cell["verdict"].startswith("POINTWISE-BUILDABLE"):
@@ -4407,7 +4419,7 @@ def main() -> int:
     # instance ledger's count — refused, not recorded, where one is not.
     result["headline_agreement"] = fusion_taxonomy.headline_agreement(
         result, taxonomy_block, "cuda")
-    # AND THE SAME FLOOR ON THE DISPATCH AXIS. `served` and `served_in_dispatch` are
+    # And the same floor on the dispatch axis. `served` and `served_in_dispatch` are
     # different numbers, and until 2026-09-11 only the first had a floor -- which is
     # how the Metal board came to publish a hardcoded dispatch 0 beside its own
     # measured 176 in one artifact. `dispatch_agreement` reads the measurement as the
@@ -4423,7 +4435,10 @@ def main() -> int:
           f"{len(result['headline_agreement']['paths_checked'])} published paths, "
           f"all derived from the instance ledger", flush=True)
     out = out_dir / "fusion_matrix_cuda.json"
-    out.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
+    # The board leaves the machine: every string in it written neutrally (neutral_ids.py).
+    import neutral_ids  # noqa: PLC0415
+
+    out.write_text(json.dumps(neutral_ids.value(result), indent=2, sort_keys=True) + "\n")
     print(f"\nwrote {out}  ({result['elapsed_s']} s)", flush=True)
     return 0
 

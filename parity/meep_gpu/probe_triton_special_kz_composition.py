@@ -27,7 +27,7 @@ dispersion case, and one 64-step long leg on each of the two marquee cases:
 7. ``c2_special_kz_marquee`` — beta = -0.39073112848927377 + in-plane Bloch
    kx = 0.9205048534524404 (test_special_kz's own numbers), Courant 0.35,
    source-free. MARQUEE: also run 64 steps.
-8. ``r7_lorentz_pole``       — one Lorentz pole + beta (R7): the beta curls
+8. ``r7_lorentz_pole``       — one Lorentz pole + beta: the beta curls
    and the beta-run update_H serve the step; ``update_P`` and the dispersive
    ``update_E`` stay the driver's OWN array path (a registered polarization is
    refused by the beta-run E-side predicate exactly as the shipped predicate
@@ -48,7 +48,7 @@ module globals) would leave candidate and reference both on the array path
 and every step would pass vacuously, so each patched slot must prove it
 launched exactly once per complete step.
 
-SUBNORMAL POLICY. This probe runs UNDER THE STRIPPED IEEE-KEEP POLICY — the
+Subnormal policy. This probe runs under the stripped IEEE-keep policy — the
 ship configuration — installed via ``gate_triton_complex.install_ftz_strip``
 BEFORE ``guard_kernel_compilation`` so the guard wraps the strip and both
 apply; every claim states the policy it was cut under.
@@ -223,7 +223,7 @@ def build_plans(driver, complex_storage: bool,
                 driver.fields, driver.pml, "E"),
         }
     if lorentz_pole:
-        # R7: a registered polarization means update_E's source is (D - sum P)
+        # Case r7: a registered polarization means update_E's source is (D - sum P)
         # — the beta-run E-side predicate refuses it exactly as the shipped
         # one does, and the driver's own array path serves update_E/update_P.
         refused = plans.pop("update_E")
@@ -617,7 +617,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                               "reason": "subnormal policy: "
                                         + "; ".join(residual)}
         save(payload, args.out)
-        log(f"SUBNORMAL POLICY FAILURE AT CLOSE: {residual}")
+        log(f"Subnormal policy failure at close: {residual}")
         return 1
 
     ran = payload["cases"]

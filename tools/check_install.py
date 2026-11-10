@@ -26,7 +26,9 @@ What it does, in order:
    an NVIDIA GPU, per kernel table, and the Triton version; on a Mac, each fact of
    the Metal environment: GPU architecture, PyTorch, Metal frontend), whether
    compiled kernels served the default run and whether that run is certified,
-   where that run stepped, and whether the three runs agree;
+   where that run stepped, how the lift read MEEP's permittivity (the read path,
+   the MEEP build, and whether that build is certified for the bulk read), and
+   whether the three runs agree;
 7. compares this environment with the certification reference of its platform:
    first MEEP itself against the build the reference names (version, precision,
    MPI), then, through tools/compare_reference_environment.py and the lock files
@@ -40,7 +42,9 @@ whose stored words the array path is held to. That is a property of the MEEP
 build and of the host, so it is read in a process of its own that imports NumPy
 and MEEP and nothing else, and the check stops there unless every point holds:
 
-- MEEP is the reference's build (1.33.0, single precision, MPI);
+- MEEP is the reference's build (1.35.0, single precision, MPI), as the lock
+  files under environments/locks/ name it (numerics-relevant.json; libGDSII is
+  no longer part of it);
 - the build record beside it (<prefix>/share/meep-gpu-build/build_record.json,
   or the file --identity-build-record names) describes the very images this
   process loads (their sha256), and its fused multiply-add census is clean;
@@ -77,7 +81,7 @@ Options:
 
 Only the documented surface of meep_gpu is used: available_gpu,
 missing_dependencies, gpu_compatibility, run_on_gpu, the result object, and the
-driver's active_step_path and fast_path_report().
+driver's active_step_path, fast_path_report() and chi1inv_read.
 """
 
 from __future__ import annotations
@@ -94,8 +98,9 @@ import tempfile
 import time
 
 #: MEEP releases this package has been run against (INSTALL.md, "Tested MEEP
-#: versions and builds", says what was run on each).
-TESTED_MEEP_VERSIONS = ("1.33.0", "1.34.0")
+#: versions and builds", says what was run on each). The certification reference's
+#: release (numerics-relevant.json) is one of them.
+TESTED_MEEP_VERSIONS = ("1.33.0", "1.34.0", "1.35.0")
 #: The message of the linker when Triton cannot link its launcher against the
 #: NVIDIA driver library (``-lcuda`` needs a file named ``libcuda.so``).
 LIBCUDA_LINK_ERROR = re.compile(r"cannot find -lcuda|libcuda\.so[^\n]*(?:not found|cannot)")
@@ -975,7 +980,8 @@ def summarize_report(report):
         "device_supported": environment.get("device_supported"),
         "device_certified_by_table": environment.get("device_certified_by_table"),
         "device_supported_by_table": environment.get("device_supported_by_table"),
-        "supported_ranges": environment.get("supported_ranges"),
+        "supported_by": environment.get("supported_by"),
+        "stack": environment.get("stack"),
         "certified_compute_capabilities":
             environment.get("validated_compute_capabilities_by_table"),
         "recorded_environments": environment.get("recorded_environments"),
@@ -985,6 +991,52 @@ def summarize_report(report):
         "uncertified_served": (report.get("uncertified") or {}).get("served"),
         "uncertified_dropped": (report.get("uncertified") or {}).get("dropped"),
     }
+
+
+#: The scalar fields of driver.chi1inv_read this check carries out of the child: the
+#: read path, why the bulk read was not taken or was restarted, the MEEP build as the
+#: lift stamps it, whether that build is certified for the bulk read, how many points
+#: the bulk read's self-check compared, and the read's seconds. A field the package
+#: does not record is left out.
+LIFT_FIELDS = ("path", "refusal", "restarted_by", "stamp", "certified_build",
+               "self_checked_points", "seconds")
+
+
+def summarize_lift(record) -> dict | None:
+    """The parts of driver.chi1inv_read this check prints, or None when there is none."""
+    if not isinstance(record, dict):
+        return None
+    lift = {}
+    for key in LIFT_FIELDS:
+        if key not in record:
+            continue
+        value = record[key]
+        lift[key] = list(value) if isinstance(value, tuple) else value
+    return lift
+
+
+def describe_lift(lift) -> str:
+    """One line on how the lift read MEEP's permittivity, from summarize_lift's dict."""
+    if not lift:
+        return "permittivity read: not recorded (the run recorded no chi1inv read)"
+    stamp = lift.get("stamp") or ()
+    build = (f"MEEP {stamp[0]} {stamp[1]} precision on {stamp[2]} {stamp[3]}"
+             if len(stamp) == 4 else "this MEEP build")
+    if lift.get("path") == "bulk":
+        text = f"permittivity read in bulk from {build}"
+    else:
+        why = lift.get("restarted_by") or lift.get("refusal")
+        text = (f"permittivity read one point at a time from {build}"
+                + (f" ({why})" if why else ""))
+    certified = lift.get("certified_build")
+    if certified is True:
+        return text + "; that build is certified for the bulk read"
+    if certified is False:
+        checked = lift.get("self_checked_points")
+        return (text + "; that build is NOT certified for the bulk read"
+                + (f" (its sampled self-check compared {checked:,} points with MEEP's "
+                   "own reader)" if isinstance(checked, int) and checked > 0 else ""))
+    return text + "; whether that build is certified is not recorded by this package"
 
 
 def child_leg(leg: str, save: str, gpu_id: int) -> int:
@@ -1024,6 +1076,7 @@ def child_leg(leg: str, save: str, gpu_id: int) -> int:
             payload["driver_gpu"] = result.driver.gpu
             payload["step_path"] = result.driver.active_step_path
             payload["report"] = summarize_report(result.driver.fast_path_report())
+            payload["lift"] = summarize_lift(getattr(result.driver, "chi1inv_read", None))
         finally:
             result.close()
     payload["field_dtype"] = str(field.dtype)
@@ -1187,24 +1240,56 @@ def nvidia_runs(certified, supported, value) -> bool:
     return supported is True or value == "any"
 
 
+def stack_refused_under_certified(stack) -> bool:
+    """Does MEEP_GPU_HARDWARE=certified refuse the NVIDIA kernels for this stack?
+
+    Rung 4c of the package (``fastpath.certified_stack_refusal``), asked of the stack
+    block the child read, since this process imports neither MEEP nor the package: a
+    block that was read is refused when it cannot be judged or one of its axes (the CUDA
+    driver, the MEEP build, ...) is not the certified one, whatever the device and the
+    Triton version read. An empty block is not judged there, so it is not refused here.
+    """
+    if not stack:
+        return False
+    if stack.get("no_certified_stack"):
+        return True
+    return any(axis.get("certified") is not True
+               for axis in (stack.get("axes") or {}).values())
+
+
 def nvidia_uncertified_note(entries, section) -> str:
     """The NOTE for an NVIDIA run that dispatched uncertified, from what was served.
 
-    Names each identity read with its own verdict: supported but not certified, or
-    outside the supported range (which only MEEP_GPU_HARDWARE=any runs). An
-    identity two tables share is named once.
+    Names each identity read with the verdict the package recorded for it: supported
+    but not certified (``supported: True``), which runs by default; not on the
+    certified list and never judged against a supported range (no ``supported`` key,
+    with the reason the package gives: an axis of the certified stack such as the
+    CUDA driver or the MEEP build, a float32 subnormal policy, or an identity that
+    could not be checked), which also runs by default; or outside the supported
+    range (``supported: False``, or an entry the ``any`` scope admitted without a
+    reason), which only MEEP_GPU_HARDWARE=any runs. An identity two tables share is
+    named once.
     """
-    supported, outside = [], []
+    supported, by_default, outside = [], [], []
     for entry in entries:
         name = f"{entry.get('what')} {entry.get('read')}"
-        group = supported if entry.get("supported") is True else outside
-        if name not in supported + outside:
+        if entry.get("supported") is True:
+            group = supported
+        elif entry.get("supported") is False or not entry.get("because"):
+            group = outside
+        else:
+            group = by_default
+        if name not in supported + by_default + outside:
             group.append(name)
     clauses = []
     if supported:
         clauses.append(f"{' and '.join(supported)} "
                        f"{'is' if len(supported) == 1 else 'are'} supported but not "
                        "certified bit-identical")
+    if by_default:
+        clauses.append(f"{' and '.join(by_default)} "
+                       f"{'is' if len(by_default) == 1 else 'are'} not on the certified "
+                       f"list and {'runs' if len(by_default) == 1 else 'run'} by default")
     if outside:
         clauses.append(f"{' and '.join(outside)} "
                        f"{'is' if len(outside) == 1 else 'are'} outside the supported "
@@ -1374,7 +1459,8 @@ def check(arguments) -> int:
         raise Failure("MEEP cannot be imported by this Python.", SECTION_NEED)
     meep = facts["meep"]
     tested = meep["version"] in TESTED_MEEP_VERSIONS
-    releases = " and ".join(TESTED_MEEP_VERSIONS)
+    releases = (", ".join(TESTED_MEEP_VERSIONS[:-1]) + " and " + TESTED_MEEP_VERSIONS[-1]
+                if len(TESTED_MEEP_VERSIONS) > 1 else TESTED_MEEP_VERSIONS[0])
     say(f"   version    {meep['version']}"
         + ("  (a tested version)" if tested
            else f"  (NOT a tested version; {releases} are)"))
@@ -1532,7 +1618,7 @@ def check(arguments) -> int:
                 say(f"   PYTORCH_MPS_FAST_MATH  {report.get('fast_math')}: "
                     + ("off" if report.get("fast_math_certified")
                        else "fast-math kernels, which no certification ran"))
-            # THE METAL KERNELS RUN ON AN UNCERTIFIED ENVIRONMENT BY DEFAULT, and are
+            # The Metal kernels run on an uncertified environment by default, and are
             # expected to unless the shell restricts them to certified ones; then all
             # three facts must be certified.
             if variables.get(HARDWARE_SWITCH) == "certified":
@@ -1578,7 +1664,7 @@ def check(arguments) -> int:
             else:
                 say(f"   Triton           {report.get('triton')}: "
                     f"{mark(report.get('triton_certified'), report.get('triton_supported'))}")
-            # THE KERNELS ARE EXPECTED wherever one table may run on what was read:
+            # The kernels are expected wherever one table may run on what was read:
             # certified, or supported and not restricted by MEEP_GPU_HARDWARE=certified,
             # or anything read under =any.
             if by_table:
@@ -1593,6 +1679,8 @@ def check(arguments) -> int:
                 certified = any(runnable)
             else:
                 certified = report.get("device_certified") is not False
+            if switch == "certified" and stack_refused_under_certified(report.get("stack")):
+                certified = False
             served_entries = report.get("uncertified_served") or []
             if report.get("certified") is False:
                 notes.append(nvidia_uncertified_note(served_entries, SECTION_UNCERTIFIED))
@@ -1625,7 +1713,7 @@ def check(arguments) -> int:
             say(f"      {line[:600]}")
         switched_off = (variables.get("MEEP_GPU_DISPATCH") == "0"
                         or variables.get("MEEP_GPU_FUSED") == "0")
-        # A SCOPE THE PACKAGE REFUSES is answered before any table: the run takes the
+        # A scope the package refuses is answered before any table: the run takes the
         # array path whatever the device, so no kernel is expected and the note names
         # the variable rather than the device.
         scope_refusal = hardware_switch_refusal(variables)
@@ -1653,6 +1741,11 @@ def check(arguments) -> int:
                          "MEEP_GPU_HARDWARE=any runs the kernels on it, "
                          "uncertified (INSTALL.md, "
                          f"\"{SECTION_UNCERTIFIED}\").")
+
+    # How the lift read MEEP's permittivity. Every lifting run reads it the same way, so
+    # the default run's record is printed where there is one, else the reference's.
+    lifted = results["gpu"] if route else results["reference"]
+    say(f"   lift             {describe_lift(lifted.get('lift'))}")
 
     failures = []
     for (first, second), (field, spectrum) in differences.items():

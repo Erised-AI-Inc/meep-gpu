@@ -15,12 +15,12 @@ production dispatch remains disabled.
   ``stepping.fill_folded_far_ghosts_{B,D}`` for ONE family on ONE axis, in one
   launch instead of up to six strided whole-plane assignments.
 
-WHY THE CURL NEEDS ALMOST NOTHING (measured, not argued). A fold changes the
+Why the curl needs almost nothing (measured, not argued). A fold changes the
 ghost rule on the folded axis: the near face becomes ``parity * field[2]``
 (``stepping._shift_down`` :1787, source index ``MIRROR_SOURCE_INDEX = 2``) and
 the far face becomes ``parity * field[reflect_row]`` on a folded PERIODIC axis
-(``stepping._shift_up`` :1723) or an exact zero on a folded METALLIC one. BOTH
-GHOST VALUES ARE DEAD IN THE CURL: their only consumer is the plane the
+(``stepping._shift_up`` :1723) or an exact zero on a folded METALLIC one. Both
+ghost values are dead in the curl: their only consumer is the plane the
 ownership mask (``stepping._mask_non_owned_cells`` :1865) zeroes.
 
     * ``_shift_down`` is used by ``step_D`` only (``stepping._curl_operands``
@@ -40,7 +40,7 @@ enters the curl at all. That equivalence was measured at sub-step granularity, o
 both terminations, with the far face driven live, before this file was written;
 the gate re-measures it (``parity/meep_gpu/gate_triton_symmetry.py``).
 
-THE MASKS ARE INVISIBLE AT WHOLE-STEP GRANULARITY. The driver's fill passes
+The masks are invisible at whole-step granularity. The driver's fill passes
 (``driver.py:3163-3183``) overwrite exactly the planes the two masks protect, so
 a kernel carrying NEITHER mask is bytewise-identical after a complete step. A
 whole-step in-session check therefore certifies a mask-less symmetry kernel as
@@ -54,7 +54,7 @@ outside this composed slice.  Dispatch stays disabled regardless: the subnormal
 question that blocks the shipped kernels blocks this one too, and a folded run
 puts a deep-PML plane on the far face, which is exactly where tiny magnitudes live.
 
-WHAT THE GATE MEASURED (``parity/meep_gpu/gate_triton_symmetry.py``, one clear
+What the gate measured (``parity/meep_gpu/gate_triton_symmetry.py``, one clear
 RTX A6000, Triton 3.1.0 / CuPy 13.5.1 / NumPy 2.2.6, artifact
 ``parity/meep_gpu/results/triton_symmetry_2026-08-10/``):
 
@@ -198,9 +198,9 @@ if triton is not None:  # pragma: no cover - device code, gated by the shared pr
         ``stepping._stored_past_owned``, and it is the single point of failure in
         this file: backwards on one axis is a plane of wrong values, not a crash.
 
-        TWO DIFFERENCES FROM THE SHIPPED KERNEL, both named:
+        Two differences from the shipped kernel, both named:
 
-        1. Both mirror codes take the METALLIC GHOST BRANCH — mask the
+        1. Both mirror codes take the metallic ghost branch — mask the
            out-of-range neighbour, serve ``other=0.0``. That is not the array
            path's ghost VALUE on a fold (``_shift_down`` :1787 serves
            ``parity * field[2]``; ``_shift_up`` :1723 serves
@@ -218,7 +218,7 @@ if triton is not None:  # pragma: no cover - device code, gated by the shared pr
         and ``_boundary_kinds`` resolves exactly those three to a non-periodic
         kind (the cylindrical one is refused by the predicate).
 
-        THE CURL AND THE FORMS ARE THE ROOT KERNEL'S, read through the same record.
+        The curl and the forms are the root kernel's, read through the same record.
         The presence word picks the curl expression (:func:`.forms.curl_stencil`) and
         the membership line of the target's dsigu axis, on the target's own
         sub-lattice, picks the form (:func:`.forms.curl_form`): the split-field
@@ -413,7 +413,7 @@ if triton is not None:  # pragma: no cover - device code, gated by the shared pr
             far:   field[-1] = -phase * field[reflect_row]    # Yee shift 1 here,
                                                               # folded PERIODIC only
 
-        THE TWO PARITIES ARE ``+PHASE`` AND ``-PHASE`` AND NOTHING ELSE.
+        The two parities are ``+phase`` and ``-phase`` and nothing else.
         ``fields.mirror_parity(c, axis, phase) == phase * (1 - 2 * iyee[c][axis])``
         (fields.py:117), verified exhaustively over 12 components x 3 axes x 2
         phases; the near fill only ever touches shift-0 components and the far
@@ -421,19 +421,19 @@ if triton is not None:  # pragma: no cover - device code, gated by the shared pr
         entire parity input. The multiply is by exactly +/-1.0, which is exact in
         float32 for every input including subnormals and signed zeros.
 
-        ``reflect_row`` IS A RUNTIME SCALAR AND MUST COME FROM
+        ``reflect_row`` is a runtime scalar and must come from
         ``stepping._far_reflect_rows`` (:1661), ``n_full - stored + 2``. It is
         ``stored - 2`` at an even full count and ``stored - 3`` at an odd one;
         baking ``n - 2`` reflects about the window top instead of about the second
         mirror, which is a whole cell wrong on every odd-count run.
 
-        ONE LAUNCH PER AXIS AND PASS. The array path applies the axes in X, Y, Z
+        One launch per axis and pass. The array path applies the axes in X, Y, Z
         order so a corner unowned on two planes carries the product of both
         parities (``_fill_symmetry_ghost_cells``' docstring), and ordering inside a
         launch is not something a grid of programs can promise — so the plan holds
         a list of axes and walks it in that order, once for each pass.
 
-        WHETHER THE ORDER CHANGES THE BYTES WAS MEASURED, NOT ASSUMED, and the
+        Whether the order changes the bytes was measured, not assumed, and the
         answer is no: every fill is a multiply by exactly +/-1 from a plane no
         other axis's fill writes, so two axes' fills COMMUTE bitwise and the
         doubly-unowned corner comes out ``phase_x * phase_y * f[2, 2]`` either way
@@ -503,7 +503,7 @@ def folded_axis_kinds(grid: Any, pml: Any) -> Tuple[Optional[Tuple[int, int, int
                                                     Tuple[str, ...]]:
     """The per-axis boundary constexprs, or ``None`` plus the reasons.
 
-    THE CLASSIFICATION IS THE SINGLE POINT OF FAILURE IN THIS FILE, so it is
+    The classification is the single point of failure in this file, so it is
     derived from the engine's own functions and cross-checked against a second
     one rather than re-derived here:
 
@@ -685,13 +685,13 @@ def folded_pml_curl_coverage(fields: Any, pml: Any) -> Coverage:
     through :func:`folded_axis_kinds`. Everything the shipped predicate refuses is
     refused here too, re-stated rather than inherited.
 
-    WHAT THIS ADMITS, in one sentence: a real-field Cartesian CuPy run under an
+    What this admits, in one sentence: a real-field Cartesian CuPy run under an
     active split-field PML, at k = 0 on every axis, with no conductivity, no
     nonlinearity, no BFAST, no special_kz, no complex storage, whose susceptibilities
     (if any) are electric lorentzian/drude poles, and with up to three axes folded
     by an even or odd mirror plane over a periodic or metallic outer declaration.
 
-    WHAT IT STILL REFUSES BY NAME, beyond the shipped predicate's list: a
+    What it still refuses by name, beyond the shipped predicate's list: a
     cylindrical grid (folded or not), a nonzero ``k_point`` on ANY axis
     (``parallel-wvgs-force`` in the corpus), a folded axis with two or fewer
     stored cells, and a folded axis whose two routes to "periodic or metallic"
@@ -700,7 +700,7 @@ def folded_pml_curl_coverage(fields: Any, pml: Any) -> Coverage:
     ``sources._validate_symmetry_parity``, and monitors in the discarded half are
     handled by the readback path.
 
-    ZERO FOLDED AXES IS ADMITTED, and that is not an oversight. With every axis
+    Zero folded axes is admitted, and that is not an oversight. With every axis
     resolving to ``PERIODIC``/``METALLIC`` the kernel's constexpr branches reduce
     to the shipped kernel's exactly, which is a property the gate measures rather
     than a claim: the unfolded rows of the sweep are the shipped kernel's own gate
@@ -1140,14 +1140,14 @@ def plan_folded_from_arrays(sub_step: str, arrays: Dict[str, Any],
 
 
 class MirrorGhostFillPlan:
-    """One family's mirror ghost fills, as launches PER FOLDED AXIS, near then far.
+    """One family's mirror ghost fills, as launches per folded axis, near then far.
 
     Holds an entry per folded axis in X, Y, Z order — the order
     ``_fill_symmetry_ghost_cells`` and ``_fill_folded_far_ghosts`` apply them in, so
     a corner unowned on two planes carries the product of both parities. There is no
     single-launch form, deliberately (see :func:`mirror_ghost_fill`).
 
-    THE NEAR PASS AND THE FAR PASS ARE SEPARATE CALLS, :meth:`run_near` and
+    The near pass and the far pass are separate calls, :meth:`run_near` and
     :meth:`run_far`, as the driver's two consults of the fill sub-step are: the fill
     slot's consult runs the near pass (``fill_symmetry_bc_*``), the driver then runs
     the wall clear behind no consult, and the folded-far consult runs the far pass

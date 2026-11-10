@@ -25,7 +25,7 @@ Public surface, named exactly as MEEP names it (``python/simulation.py`` class
   handed to a run loop, collecting the point field each step and analysing at the
   end into ``h.modes``. Sources must be off while it collects, exactly as in MEEP.
 
-WHY NOT AN FFT. A discrete Fourier transform resolves two lines only if they are
+Why not an FFT. A discrete Fourier transform resolves two lines only if they are
 farther apart than 1/T for a record of length T. Filter diagonalization fits the
 *model* instead of the spectrum, so two modes 1/50th of a Fourier bin apart come
 out to twelve digits from the same record (``test_harminv.py`` pins that case).
@@ -59,7 +59,7 @@ basis takes about six seconds and 350 MB, which is nothing beside the FDTD run t
 produced it. The trial-frequency Vandermonde is built in blocks so its footprint
 does not grow with the record.
 
-DELIBERATE DIFFERENCES FROM THE harminv C LIBRARY. Two, both documented because
+Deliberate differences from the harminv C LIBRARY. Two, both documented because
 this is a reimplementation from the published method and not a transcription of
 that library's source:
 
@@ -115,7 +115,7 @@ signal produces; the truncation to ``mxbands``; and the final sort by |freq|.
 An all-zero record returns no modes rather than dividing by zero, as it does
 there.
 
-WHAT A REAL FDTD RECORD RETURNS. With MEEP's default thresholds this returns
+What a real FDTD record returns. With MEEP's default thresholds this returns
 MORE modes than the C library does — six against one on the cavity record above.
 The extra five are the SVD-truncation's near-null-space vectors: they carry
 amplitudes seven orders below the genuine mode and errors seven orders above it,
@@ -125,7 +125,7 @@ Sort by ``abs(mode.amp)``, or set ``rel_amp_thresh``, or screen on ``err``. The
 same rank reduction is what recovers a second mode at 1e-4 of the dominant
 amplitude where the C library reports only the strong one; this is its cost.
 
-WHAT REFUSES RATHER THAN GUESSES. A record shorter than the requested basis, an
+What refuses rather than guesses. A record shorter than the requested basis, an
 inverted or empty band, a non-finite sample (a diverged run), a non-1-D input or
 a non-positive dt all raise ValueError. Two degenerate eigenvector cases are
 reported with ``err = inf`` and zero amplitude so the screening drops them,
@@ -138,7 +138,7 @@ frequency and the right Q with an amplitude a million times the signal and a
 small error estimate, which is the exact shape of a plausible wrong answer. CPU
 MEEP returns nothing for that record and neither does this.
 
-HOST-SIDE BY CHOICE. The record is one scalar per step, so this module is plain
+Host-side by choice. The record is one scalar per step, so this module is plain
 NumPy: it copies a device array to the host once, through ``backends.to_numpy``,
 and does the linear algebra there. Nothing is gained by keeping an nf x nf
 eigenproblem on the GPU, and LAPACK on the host is the reference path that makes
@@ -598,7 +598,7 @@ class Harminv:
     finishes, fills ``h.modes`` with :class:`Mode` records. Keep a reference to the
     instance — the results live on it, exactly as in MEEP.
 
-    Only analyse data taken AFTER THE SOURCES ARE OFF. A driven signal is not a sum
+    Only analyse data taken after the sources are off. A driven signal is not a sum
     of free decaying modes and the fit will report the source, not the cavity.
 
     The six screening thresholds are instance attributes with MEEP's defaults, so

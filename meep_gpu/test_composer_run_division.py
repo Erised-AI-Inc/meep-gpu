@@ -8,7 +8,7 @@ near the fold plane. MEEP's own division of that run (the lift installs it,
 one-rank rule does (``chunk_map.one_rank_line`` documents the departure on a folded
 axis with a high-face layer), so the two records differ by one row on each lattice.
 
-THE DISAGREEMENT IT CAUSED. The arms' off-diagonal presence clauses read the array
+The disagreement it caused. The arms' off-diagonal presence clauses read the array
 path's presence through ``stepping._chunk_layout``, which is the run's own division,
 while a composer handed no division read the one-rank one. On this row the presence
 then matched no word of the one-rank record (the Metal arm: "2020 of 2040" cells of
@@ -37,7 +37,7 @@ flags the lift recorded):
    composer's chunk-division clause, so it no longer admits a run whose ``update_E`` arm
    the composer refuses (``examples/absorbed_power_density.py`` on the 1.0 census).
 
-NOTHING HERE LAUNCHES, and only the Metal composer's test compiles (it is the one test
+Nothing here launches, and only the Metal composer's test compiles (it is the one test
 that needs the Apple GPU). The CUDA composer is asked through a grid whose array module
 answers ``cupy``, as the census asks it.
 """
@@ -268,15 +268,19 @@ def test_a_driver_without_a_lift_still_reads_the_one_rank_default():
 
 def test_the_dispersive_offdiag_polarization_pair_asks_the_composers_chunk_clause():
     """The CUDA E->P weld admitted ``examples/absorbed_power_density.py`` on the 1.0
-    census while the composer refused the ``update_E`` arm it implements there, on the
-    run's own division ("not a {low, interior, high} product along x"), so the board
-    credited a weld the composer never installs. The predicate now asks the arm's
-    clause: on the weld's own corpus-shaped fixture, walled so the one-rank record names
-    its chunks, it admits; with a division whose record cannot name its chunks along x
-    installed (an interior cut, as a lift installs one), it refuses with the composer's
-    own text."""
+    census while the composer refused the ``update_E`` arm it implements there, so the
+    board credited a weld the composer never installs. The predicate asks the arm's own
+    clause, and both now ask the family's presence-word clause
+    (``dispersive_offdiag_update_e.dispersive_offdiag_division_refusal``): on a division
+    whose record cannot name its chunks along x (an interior cut, as a lift installs
+    one) the weld and the arm are admitted while the presence words build, and both
+    refuse by the same text when the two chunks the cut leaves under one label disagree
+    on whether they keep the off-diagonal array."""
+    import numpy  # noqa: PLC0415
+
     from .cuda_kernels import arms  # noqa: PLC0415
     from .cuda_kernels import dispersive_offdiag_fused_polarization_pair as weld  # noqa: PLC0415
+    from .cuda_kernels import dispersive_offdiag_update_e as offdiag_e  # noqa: PLC0415
     from .cuda_kernels.chunk_coverage import CHUNK_AXES_OFFDIAG  # noqa: PLC0415
     from .cuda_kernels.test_chunk_binding import _layout, _product  # noqa: PLC0415
     from .cuda_kernels.test_dispersive_offdiag_polarization_pair import (  # noqa: PLC0415
@@ -289,13 +293,41 @@ def test_the_dispersive_offdiag_polarization_pair_asks_the_composers_chunk_claus
     assert covered, why
     split = _product(_layout(fields, layer, grid), extra_cuts={0: (0,)})
     fields.install_chunk_layout(split)
+    context = arms.StepContext(fields, layer, grid, chunk_layout=split)
+    general = context.chunk_division_refusal(CHUNK_AXES_OFFDIAG)
+    assert general is not None and "product along x" in general, general
     covered, why = weld.covers_dispersive_offdiag_fused_polarization_pair(
         fields, layer, grid, ())
-    assert covered is False
-    clause = arms.StepContext(fields, layer, grid, chunk_layout=split
-                              ).chunk_division_refusal(CHUNK_AXES_OFFDIAG)
-    assert clause is not None and why == clause, (why, clause)
-    assert "not a {low, interior, high} product along x" in why
+    assert covered, why
+    plan = arms.plan_step(fields, layer, grid, sources=())
+    assert plan.selected.get("update_E") == "dispersive off-diagonal", (
+        plan.selected, plan.reasons.get("update_E"))
+    # Offered fusion, the composer installs the weld over the two arms it selected: the
+    # product's own row asks the same clause (``fused_pairs._chunk_division_refusal``).
+    fused = arms.plan_step(fields, layer, grid, sources=(), fuse=True)
+    assert fused.selected.get("update_E") == fused.selected.get("update_P") == \
+        "dispersive off-diagonal polarization pair", (fused.selected, fused.reasons)
+
+    # One of the two chunks the cut leaves under one label deletes the array (a fresh
+    # triple, so nothing derived from the first composition is carried over).
+    fields, layer, grid = _build(_NumpyWearingCupysName(), boundaries=WALLED)
+    split = _product(_layout(fields, layer, grid), extra_cuts={0: (0,)})
+    fields.install_chunk_layout(split)
+    samples = split.chunk_samples(0)
+    highs = sorted({lo[0] for lo, _ in split.boxes})
+    cut = [k for k, (lo, _hi) in enumerate(split.boxes) if lo[0] == highs[-2]]
+    rows = sorted({int(r) for k in cut for r in numpy.flatnonzero(samples[k])})
+    for component in ("Ex", "Ey", "Ez"):
+        for volume in fields.chi1inv_offdiagonal_for(component).values():
+            if volume is not None:
+                volume[rows, :, :] = 0.0
+    context = arms.StepContext(fields, layer, grid, chunk_layout=split)
+    clause = offdiag_e.dispersive_offdiag_division_refusal(context)
+    assert clause is not None and clause.startswith(general), clause
+    assert "PresenceRefusal" in clause, clause
+    covered, why = weld.covers_dispersive_offdiag_fused_polarization_pair(
+        fields, layer, grid, ())
+    assert covered is False and why == clause, (why, clause)
     # The composer, handed nothing, refuses the arm the weld implements by that text.
     plan = arms.plan_step(fields, layer, grid, sources=())
     assert "update_E" not in plan.selected

@@ -1,6 +1,6 @@
 """The folded fused ELECTRIC Metal pair — the D-side twin, and the file it never had.
 
-THIS SUITE WAS MISSING. ``metal_kernels/folded_fused_pair.py`` is RELEASED, is
+This suite was missing. ``metal_kernels/folded_fused_pair.py`` is RELEASED, is
 credited 2 seam-instances on the 2026-08-20 closed Metal board, and had no laptop
 test file of its own — its only appearance anywhere in ``meep_gpu/test_*.py`` was
 one incidental line in the magnetic twin's suite, checking that the two families
@@ -33,7 +33,7 @@ them. Specifically —
    holding the shipped flag False brings the old refusal straight back. All three
    directions are measured, because the admission alone could equally mean the clause
    was dropped.
-4. **The arm is registered UNWIRED**, so ``plan_step`` cannot select it.
+4. **The arm is registered unwired**, so ``plan_step`` cannot select it.
 5. **The per-chunk forms are lifted, not retyped.** The curl head and its form
    statements are the certified folded D curl's own text (two lines through the
    declared :data:`~meep_gpu.metal_kernels.folded_fused_pair.LIFT_EDITS`), the E half
@@ -155,7 +155,7 @@ def test_the_fixture_really_builds_both_terminations():
     assert CODE_MIRROR_PERIODIC not in metallic, metallic
     assert CODE_MIRROR_METALLIC not in periodic, periodic
 
-    # AND THE DIRECTION. Every top-plane leg below passes BACKWARD, and passing the
+    # And the direction. Every top-plane leg below passes BACKWARD, and passing the
     # magnetic twin's would mask the twin's planes and agree with itself.
     from meep_gpu.metal_kernels.symmetry import SUB_STEPS
 
@@ -170,10 +170,10 @@ def test_a_folded_periodic_axis_is_ADMITTED_and_its_D_side_far_fill_CARRIED():
     NAME on a folded PERIODIC axis. The pass is carried inline as of 2026-08-21, so
     what a laptop can still decide is that the retirement is COHERENT: the predicate
     admits, the declaration claims the pass, and the emitter actually writes it. A
-    round that moved any one of the three alone leaves either a plan that dies late
+    change that moved any one of the three alone leaves either a plan that dies late
     or a covered_passes claim the bytes do not honour.
 
-    THE PASS NAME IS STILL THE POINT. The magnetic twin carries ``_B``; a family
+    The pass name is still the point. The magnetic twin carries ``_B``; a family
     that declared the other one has copied a neighbour rather than read the driver.
     """
     fields, pml = build(boundaries="periodic")
@@ -185,7 +185,7 @@ def test_a_folded_periodic_axis_is_ADMITTED_and_its_D_side_far_fill_CARRIED():
                                "fill_folded_far_ghosts_D", "update_E")
     assert "fill_folded_far_ghosts_B" not in family.REPLACES
 
-    # 2. THE CARRY FIRES, and only on the termination that has a far ghost. The
+    # 2. The carry fires, and only on the termination that has a far ghost. The
     # destination set is read off the module rather than spelled: a literal here
     # would be a second transcription of the Yee table this family is keyed on.
     periodic, metallic = codes("periodic"), codes("metallic")
@@ -211,7 +211,7 @@ def test_a_folded_periodic_axis_is_ADMITTED_and_its_D_side_far_fill_CARRIED():
     assert "== reflect_" in text, text
     assert "_fill_folded_far_ghosts" in text, "the block cites the pass it carries"
 
-    # AND THE METALLIC SOURCE MUST NOT CARRY IT. A far-fill block emitted where
+    # And the metallic source must not carry it. A far-fill block emitted where
     # `_stored_past_owned` is false images a plane the array path never touches.
     # The reflect rows are UNPACKED unconditionally (they ride in `Params` on every
     # configuration), so the discriminator is the guarded block, not the binding.
@@ -227,11 +227,11 @@ def test_only_a_CARRY_could_have_retired_the_clause_no_half_ever_refused_it():
     however live it looks, and one whose configurations a half already refuses can
     be deleted with no verdict changing. Both halves are asked the same question on
     the same object here. Both ADMIT a folded PERIODIC axis, so the refusal lived
-    only in the product — which is exactly why the 2026-08-21 round had to CARRY
-    ``fill_folded_far_ghosts_D`` to retire it, and why a round that had merely
+    only in the product — which is exactly why the 2026-08-21 change had to CARRY
+    ``fill_folded_far_ghosts_D`` to retire it, and why a change that had merely
     deleted the clause would have shipped a seam that skips the pass.
 
-    THE OTHER TERMINATION IS THE NON-VACUITY LEG and it is kept: the product must
+    The other termination is the non-vacuity leg and it is kept: the product must
     admit metallic too, or the periodic admission above is a comparison against a
     fixture that admits everything.
     """
@@ -248,9 +248,9 @@ def test_only_a_CARRY_could_have_retired_the_clause_no_half_ever_refused_it():
 def test_the_source_builder_admits_the_same_configuration_the_predicate_does():
     """A predicate that admits what the emitter raises on is a plan that dies late.
 
-    The two used to AGREE BY REFUSING and now agree by ADMITTING; what is pinned is
+    The two used to agree by refusing and now agree by ADMITTING; what is pinned is
     the agreement, which is the property that survives either side of the carry. A
-    round that had retired the predicate's clause and left the emitter raising would
+    change that had retired the predicate's clause and left the emitter raising would
     pass a coverage sweep and die at compile time on a real corpus row.
     """
     for boundaries in ("periodic", "metallic"):
@@ -264,7 +264,7 @@ def test_the_source_builder_admits_the_same_configuration_the_predicate_does():
             built = False
         assert admitted is built is True, (boundaries, admitted, built)
 
-    # THE EMITTER STILL REFUSES WHAT IT CANNOT BUILD, so this is not agreement by
+    # The emitter still refuses what it cannot build, so this is not agreement by
     # having no clause left: a folded axis with an undeclared parity is still a
     # compile-time specialisation this family cannot default.
     with pytest.raises(ValueError):
@@ -278,8 +278,8 @@ def test_the_source_builder_admits_the_same_configuration_the_predicate_does():
 def test_the_carry_takes_the_top_plane_mask_WITH_the_far_fill_not_just_the_fill():
     """The far fill AND the folded curl's top-plane mask.
 
-    THIS IS THE OBLIGATION A CARRY OF ``fill_folded_far_ghosts_D`` DOES NOT
-    DISCHARGE ON ITS OWN, and it is the leg that decides whether the 2026-08-21
+    This is the obligation a carry of ``fill_folded_far_ghosts_D`` does not
+    discharge on its own, and it is the leg that decides whether the 2026-08-21
     retirement was a carry or a deletion. ``symmetry.folded_top_plane_mask``
     (symmetry.py:528-552)
     is ``_mask_non_owned_cells``' top-plane arm: on a folded PERIODIC axis the last
@@ -305,9 +305,9 @@ def test_the_carry_takes_the_top_plane_mask_WITH_the_far_fill_not_just_the_fill(
         "that termination would buy only the far fill and this family's docstring "
         "would be wrong about what its clause discharges")
 
-    # AND THE FUSED BODY MUST CARRY IT WHERE IT IS REACHABLE AND NOWHERE ELSE.
+    # And the fused body must carry it where it is reachable and nowhere else.
     # BOTH directions are asserted because each catches the opposite half-done
-    # round: a periodic body with no mask is a carry that took the fill and left a
+    # change: a periodic body with no mask is a carry that took the fill and left a
     # plane of unmasked cells behind, and a metallic body WITH one masks a plane
     # that is owned and stepped, deleting a real cell.
     metallic_text = family.folded_fused_pair_source(codes("metallic"), PHASES, WALLS)
@@ -345,7 +345,7 @@ def test_the_two_seams_mask_DIFFERENT_planes():
 # ---------------------------------------------------------------------------
 
 def test_an_electric_deposit_is_CARRIED_since_the_fill_images_are_repaired():
-    """WHAT ``CARRIES_DEPOSIT_REPAIR = True`` BUYS THIS FAMILY, on a real deposit.
+    """What ``CARRIES_DEPOSIT_REPAIR = True`` buys this family, on a real deposit.
 
     The driver injects an electric source between ``step_D`` and ``update_E``
     (driver.py:3301-3307) — inside THIS seam — and a magnetic one inside the twin's.
@@ -369,7 +369,7 @@ def test_an_electric_deposit_is_CARRIED_since_the_fill_images_are_repaired():
 
 
 def test_an_electric_source_that_publishes_no_deposit_index_is_still_refused():
-    """THE OTHER DIRECTION, and it is what keeps the admission above honest.
+    """The other direction, and it is what keeps the admission above honest.
 
     The repair carries a deposit by saving and restoring the cells it writes, so a
     source that never says which cells those are cannot be carried at any closure.
@@ -402,7 +402,7 @@ def test_the_flag_is_what_admits_the_deposit_and_holding_it_false_refuses_by_nam
 
 
 def test_an_undeclared_source_list_is_a_refusal_and_not_an_empty_set():
-    """IGNORANCE IS NOT AN EMPTY SET, and inferring one is the over-covering
+    """Ignorance is not an empty set, and inferring one is the over-covering
     refusal this clause exists to prevent: ``Fields`` does not hold the source
     list, so not being told is not being told nothing is there."""
     fields, pml = build()
@@ -416,7 +416,7 @@ def test_the_arm_is_registered_UNWIRED_so_plan_step_cannot_select_it():
     assert family.FAMILY in registered, sorted(registered)
     assert registered[family.FAMILY].wired is False
 
-    # ENUMERABLE BUT NOT SELECTABLE, and both halves matter: `arms.families_on`
+    # Enumerable but not selectable, and both halves matter: `arms.families_on`
     # must still see it (the disjointness sweep walks that list) while `arms_for`,
     # which is what `plan_step` consults, filters on `spec.wired` and cannot.
     assert family.FAMILY in arms.families_on(family.SLOT)

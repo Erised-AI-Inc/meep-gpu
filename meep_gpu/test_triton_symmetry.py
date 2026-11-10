@@ -220,7 +220,7 @@ def test_a_folded_metallic_axis_stores_exactly_its_owned_cells(extent):
 
 
 def test_the_reflect_row_is_two_below_the_top_at_even_and_three_at_odd():
-    """THE ONLY PLACE THE COUNT PARITY STILL SHOWS. Baking ``n - 2`` is a cell wrong.
+    """The only place the count parity still shows. Baking ``n - 2`` is a cell wrong.
 
     ``_far_reflect_rows`` is ``n_full - stored + 2``: the ghost images about the
     SECOND MIRROR, which is ``big_corner`` itself at an even full count and half a

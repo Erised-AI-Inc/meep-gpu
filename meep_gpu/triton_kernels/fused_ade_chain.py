@@ -1,6 +1,6 @@
 """``update_E`` welded to ``update_P`` — the Triton product at the E->P seam.
 
-THE SEAM CARRIES NOTHING THE RECURRENCE READS, AND THAT IS WHY THIS PRODUCT EXISTS.
+The seam carries nothing the recurrence reads, and that is why this product exists.
 ``driver.step`` runs::
 
     if fast is None or not fast.dispatch("update_E", self.fields):
@@ -21,7 +21,7 @@ on this board has a driver pass inside it that a fused kernel must either carry 
 0 blocked by the source seam, CEILING 15``.
 
 ===========================================================================
-THE ROTATION QUESTION, AND WHY TRITON'S ANSWER IS NOT METAL'S
+The rotation question, and why Triton's answer is not Metal's
 ===========================================================================
 
 ``ade_update_p`` launches once per DRIVEN COMPONENT and the host rotates
@@ -48,7 +48,7 @@ SHARED scratch — and its own note records the cost: arm 1's OUTPUT buffer IS a
 toolchain rather than a language guarantee, and "Fusing further REQUIRES breaking
 the chain first, not inheriting it."
 
-THIS PRODUCT TAKES THE THIRD, WHICH IS THE ONE THAT NOTE ASKS FOR: **one scratch
+This product takes the third, which is the one that note asks for: **one scratch
 per DRIVEN COMPONENT** instead of one shared per susceptibility. The same orbit
 enumeration walked to closure (LEG 2, d = 1, 2, 3) finds:
 
@@ -59,14 +59,14 @@ enumeration walked to closure (LEG 2, d = 1, 2, 3) finds:
 
 The shared-scratch shape conflicts at EVERY position of the orbit for d > 1 —
 that is ``fused_ade_state``'s alias, reproduced from the reference's own rotation.
-The per-component-scratch shape is ALIAS-FREE AT EVERY POSITION, FOR EVERY d, and
+The per-component-scratch shape is alias-free at every position, for every d, and
 its orbit is 3 rather than ``2d + 1`` because the permutation decomposes into d
 independent 3-cycles. So this launch's write set is disjoint from its read set BY
 CONSTRUCTION rather than by an observation about one compiler's reordering, and
 :meth:`FusedAdeChainPlan.run` ASSERTS that disjointness before every launch rather
 than trusting the argument.
 
-WHAT IT COSTS, MEASURED (LEG 3): ``K * (d - 1)`` extra float32 field volumes — the
+What it costs, measured (leg 3): ``K * (d - 1)`` extra float32 field volumes — the
 reference allocates one scratch per susceptibility (dispersion.py:646-650) and
 this allocates one per driven component. Over the ten E->P rows this serves that
 is +4 at K=2 (``material-dispersion.py``), +10 at K=5 (``absorber-1d.py``,
@@ -76,7 +76,7 @@ extra arithmetic, and the values left in ``P`` and ``P_prev`` after the rotation
 are the reference's, which is what the byte gate compares. ``extra_scratch_
 volumes`` on the plan reports the number the run actually paid.
 
-THE RETIRED SCRATCH IS THE ONE THING THAT DOES *NOT* MATCH THE REFERENCE, and it
+The retired scratch is the one thing that does *NOT* match the reference, and it
 is named here rather than discovered by a comparator. After a step the reference's
 single ``_scratch`` holds the retired ``P_prev`` of the LAST driven component;
 this plan's per-component scratches hold the retired ``P_prev`` of EACH. The two
@@ -87,7 +87,7 @@ The gate compares ``P`` and ``P_prev`` per (susceptibility, component) plus the
 last component's scratch, and says so.
 
 ===========================================================================
-WHAT IS FUSED, AND IT IS EXACTLY TWO LOADS PER POLE PER CELL
+What is fused, and it is exactly two loads per pole per cell
 ===========================================================================
 
 * **the drive.** ``update_P``'s drive is ``Fields.drive_field(component)``: the
@@ -103,15 +103,15 @@ load of the same address is the identity, and the register reused is the one the
 eliminated load would have produced. That is an argument for why byte identity is
 EXPECTED, not evidence that it holds; the device gate is what decides it.
 
-EVERY OTHER LINE IS TRANSCRIBED FROM THE BODY IT REPLACES, and the transcription
-is CHECKED BY PARSING both sources rather than restated as data here — a second
+Every other line is transcribed from the body it replaces, and the transcription
+is checked by parsing both sources rather than restated as data here — a second
 copy of "the load-bearing lines" is one more place to drift.
 ``test_triton_fused_ade_chain`` reads the certified kernels' own text with ``ast``
 and requires each arithmetic line to appear in this kernel modulo the documented
 renames, and the device gate re-runs that check beside the bytes.
 
 ===========================================================================
-SCOPE, AND WHY EACH BOUND IS A REFUSAL BY NAME
+Scope, and why each bound is a refusal by name
 ===========================================================================
 
 * **real float32 only.** The four ``TestLoadDump.*_3d`` rows are complex64; their
@@ -204,7 +204,7 @@ __all__ = [
 #: ``dispersive_update_e``'s; the kernel carries both behind the ``PML``
 #: constexpr, so one specialisation per arm and nothing shared at runtime.
 #:
-#: ``folded`` IS NOT A THIRD BODY. It is the dispersive body under
+#: ``folded`` is not a third body. It is the dispersive body under
 #: ``folded_dispersive_update_e``'s ADMISSION — a real fold REQUIRED where the
 #: unfolded predicate refuses one, and nothing else different. That module is
 #: itself "no kernel and no arithmetic" over ``dispersive_update_e``
@@ -344,7 +344,7 @@ if triton is not None:  # pragma: no cover - device code, certified by the byte 
     ):
         """``update_E`` welded to ``update_P``: both driver passes, ONE grid.
 
-        THE E HALF IS THE CERTIFIED BODY. ``PML`` selects which one: with it set
+        The E half is the certified body. ``PML`` selects which one: with it set
         the lines are ``dispersive_update_e.constitutive_step_dispersive``'s
         (dispersive_update_e.py:207-230 per component), with it clear they are
         ``no_pml_stored_e.stored_e_constitutive_step``'s (no_pml_stored_e.py:
@@ -352,7 +352,7 @@ if triton is not None:  # pragma: no cover - device code, certified by the byte 
         chain those kernels carry, over the same eight slots, so a component with
         no pole compiles to exactly its certified non-dispersive body.
 
-        TWO REGISTERS ARE NAMED THAT THE CERTIFIED NO-PML BODY DID NOT NAME, and
+        Two registers are named that the certified no-PML body did not name, and
         they are the whole fusion:
 
         * ``src{c}`` — the constitutive product. The dispersive body already names
@@ -374,9 +374,9 @@ if triton is not None:  # pragma: no cover - device code, certified by the byte 
         until a comparator agrees, and the device gate measures it per complete
         seam step against both the array path and the separate certified products.
 
-        THE ARMS ARE ORDER-INDEPENDENT AND NOTHING IS HOISTED. Every ADE arm
-        writes ``p_out_{L}{k}``, which is that susceptibility's scratch FOR THAT
-        COMPONENT — one per driven component rather than one shared per
+        The arms are order-independent and nothing is hoisted. Every ADE arm
+        writes ``p_out_{L}{k}``, which is that susceptibility's scratch for that
+        component — one per driven component rather than one shared per
         susceptibility. The launch's write set is therefore disjoint from its read
         set at every position of the rotation's orbit, for every pole count, which
         is what ``parity/meep_gpu/probe_triton_ade_rotation_shape.py`` walked to
@@ -849,11 +849,11 @@ def _ade_coverage(fields: Any, pml: Any, arm: str, state: Any,
                   component: str) -> Coverage:
     """The ADE-half predicate this arm's absorber state selects.
 
-    THE TWO ARE NOT INTERCHANGEABLE AND THE DIFFERENCE IS THE DRIVE.
+    The two are not interchangeable and the difference is the drive.
     ``coverage.ade_update_p_coverage`` requires ``f_w_<component>`` to exist,
     because under an absorber that is what ``Fields.drive_field`` returns;
     ``no_pml_ade.no_pml_ade_update_p_coverage`` inverts exactly that clause and
-    requires ``drive_field`` to hand back the stored E BY IDENTITY. Asking the
+    requires ``drive_field`` to hand back the stored E by identity. Asking the
     wrong one of a run would admit a configuration whose register is the wrong
     field — "the single most likely silent wrong answer in dispersion"
     (fields.py:1149-1156), which agrees everywhere except inside the absorber.
@@ -866,7 +866,7 @@ def _ade_coverage(fields: Any, pml: Any, arm: str, state: Any,
 def fused_ade_chain_coverage(fields: Any, pml: Any, arm: str) -> Coverage:
     """May ONE launch span ``update_E`` -> ``update_P`` for this configuration?
 
-    THERE IS NO SOURCE CLAUSE, AND THE ABSENCE IS DELIBERATE. Every other fused
+    There is no source clause, and the absence is deliberate. Every other fused
     product on this backend must be told the source inventory, because the driver
     injects INSIDE its seam and ignorance is not an empty set. This seam has no
     injection in it at all — ``driver.step`` runs ``update_E``, then the electric
@@ -909,7 +909,7 @@ def fused_ade_chain_coverage(fields: Any, pml: Any, arm: str) -> Coverage:
             if not verdict.covered:
                 reasons.extend(f"ADE half {index}.{component}: {reason}"
                                for reason in verdict.reasons)
-        # THE TWO HALVES MUST AGREE ABOUT WHICH COMPONENTS THIS STATE DRIVES.
+        # The two halves must agree about which components this state drives.
         # The E chain subtracts wherever `drives(component)` is True and the ADE
         # half advances wherever `driven()` lists it; the two are one attribute in
         # the reference (dispersion.py:652-656) and a disagreement would subtract a
@@ -940,7 +940,7 @@ def fused_ade_chain_coverage(fields: Any, pml: Any, arm: str) -> Coverage:
                     f"the state's own P; the register the ADE arm reuses would be "
                     f"a different array")
 
-    # THE SEAM'S OWN CONDITION, named rather than inherited: the register this
+    # The seam's own condition, named rather than inherited: the register this
     # kernel hands the recurrence is ``src``, which is MEEP's ``w`` on every cell
     # (update_pols.cpp:44, ``w = f_w ? f_w : f`` per chunk) because the PML tail
     # stores it into ``f_w`` on the layer's chunks and as the field everywhere else.
@@ -985,7 +985,7 @@ class FusedAdeChainPlan:
     arbiter asserts the exact per-cycle launch count on every filled slot, and that
     assertion is what stops a slot passing by not executing.
 
-    THE ROTATION IS PERFORMED HERE, AFTER THE LAUNCH, and it is
+    The rotation is performed here, after the launch, and it is
     ``dispersion.PolarizationState.update``'s (dispersion.py:687-691) over a
     DIFFERENT buffer set: one scratch per driven component rather than one shared
     per susceptibility. The three-cycle each (susceptibility, component) walks is
@@ -993,13 +993,13 @@ class FusedAdeChainPlan:
     what makes the launch's write set disjoint from its read set. See the module
     docstring for the orbit enumeration that licenses the shape.
 
-    THE POINTERS ARE RESOLVED PER LAUNCH, DELIBERATELY. The rotation moves which
+    The pointers are resolved per launch, deliberately. The rotation moves which
     allocation holds ``P``, ``P_prev`` and each scratch on every step, so a plan
     that cached them would be stale after the FIRST step — and stale in a way that
     still computes, giving a smooth wrong field. The ORDER is cached (it is fixed
     for the run) and re-checked every call by the E arm's own ``LivePoleBinding``.
 
-    THIS PLAN OWNS THE ROTATION FOR THE RUN. ``PolarizationState.update`` rotates
+    This plan owns the rotation for the run. ``PolarizationState.update`` rotates
     a single shared ``_scratch``; interleaving it with this plan would hand one
     component's launch a buffer another slot already owns. ``_scratch`` is kept
     pointing at the FIRST driven component's scratch so the engine object is never
@@ -1066,7 +1066,7 @@ class FusedAdeChainPlan:
             self._coefficients = tuple(pointer(_flat(array)) for array in columns)
             read_ids.update(id(array) for array in auxiliaries + columns)
         else:
-            # NO AUXILIARY AND NO COEFFICIENT COLUMNS EXIST on this path, and the
+            # No auxiliary and no coefficient columns exist on this path, and the
             # ``PML`` constexpr is what stops the kernel reading them — but a
             # pointer argument still has to type, and a null makes the launcher's
             # failure a TypeError far from its cause. Dx, for the reason the pole
@@ -1089,7 +1089,7 @@ class FusedAdeChainPlan:
         self._index_of = {id(state): index
                           for index, state in enumerate(self._states)}
 
-        # ONE SCRATCH PER DRIVEN COMPONENT — the shape, allocated. The FIRST driven
+        # One scratch per driven component — the shape, allocated. The FIRST driven
         # component takes the susceptibility's own ``_scratch`` and the rest are
         # new, so the extra is ``K * (d - 1)`` volumes and not ``K * d``; that is
         # the figure the shape probe's LEG 3 costed and this counter reports what
@@ -1175,7 +1175,7 @@ class FusedAdeChainPlan:
     def _check_aliasing(self, chain: Sequence[Sequence[Tuple[Any, ...]]]) -> None:
         """No ADE output is an array this launch reads, and no two share one.
 
-        THE ALIAS CHECK IS NOT DECORATION. The whole licence for this shape is that
+        The alias check is not decoration. The whole licence for this shape is that
         the launch never writes a buffer it reads, and the rotation moves those
         identities every step. The check is O(poles) integer comparisons over lists
         resolved for the launch anyway, and it is what turns the orbit enumeration
@@ -1341,7 +1341,7 @@ def plan_fused_ade_chain(fields: Any, pml: Any, arm: str,
 # ``launch.plan_step`` does not import this module and ``launch.FAMILY_MODULES``
 # does not name it, so nothing about any existing arm's behaviour changes and a
 # default run still steps this seam on the array path. The product exists to be
-# MEASURED: ``parity/meep_gpu/gate_triton_fused_ade_chain.py`` is its byte gate,
+# measured: ``parity/meep_gpu/gate_triton_fused_ade_chain.py`` is its byte gate,
 # ``results/triton_fused_ade_chain_2026-08-21/`` is the run that released it, and
 # ``results/fusion_matrix_triton_2026-08-21_ade_chain/`` is where its corpus reach
 # is scored. Composition is a separate change with its own disjointness argument,

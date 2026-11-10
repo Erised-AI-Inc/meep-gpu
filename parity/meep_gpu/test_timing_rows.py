@@ -105,6 +105,7 @@ def release_tree(tmp_path, overrides=None):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text)
     (root / "meep_gpu/cuda_kernels/certification.json").write_text(json.dumps(LEDGER))
+    (root / "meep_gpu/cuda_kernels/fingerprints.json").write_text(json.dumps(LEDGER))
     (root / "meep_gpu/triton_kernels/fingerprints.json").write_text(json.dumps({}))
     return str(root)
 
@@ -195,7 +196,7 @@ def test_a_gpu_leg_carries_the_5_percent_gate_and_its_median():
 
 
 def test_meep_pass_spread_is_recorded_and_never_gated():
-    """Owner ruling: MEEP's own pass spread strikes nothing. A 12 % spread enters the
+    """MEEP's own pass spread strikes nothing. A 12 % spread enters the
     median with its status; a pass struck for what is not spread is left out by name."""
     leg = meep_leg([420.0, 470.0, 440.0], 8)
     assert leg["status"] == "ungated" and leg["median"] == 440.0
@@ -267,7 +268,8 @@ def test_an_intruded_row_and_a_row_without_its_environment_are_refused(tmp_path)
                       environment={"reference": None})
     selection = TR.select(TR.load_store(store_of(tmp_path, [intruded, bare])), root)
     assert "intruded" in selection[intruded["key"]]["assessments"][0]["refused"][0]
-    assert "R27" in selection[bare["key"]]["assessments"][0]["refused"][0]
+    assert "no reference environment build record" in selection[bare["key"]][
+        "assessments"][0]["refused"][0]
     # a legacy import may admit the second, by name; never the first
     allowed = TR.select(TR.load_store(str(tmp_path / "store")), root,
                         allow_unrecorded_environment=True)
@@ -311,9 +313,9 @@ def test_a_key_in_another_spelling_is_refused():
 
 
 def test_a_row_without_its_host_gates_is_refused_and_a_hand_collected_row_too(tmp_path):
-    """R18 as evidence: a row is cut only when its unit opened on a quiet window of two
-    clear readings and was watched while it ran. A row collected by hand has neither
-    and is kept, never cut; so is one whose window saw an intrusion."""
+    """An idle box as evidence: a row is cut only when its unit opened on a quiet window
+    of two clear readings and was watched while it ran. A row collected by hand has
+    neither and is kept, never cut; so is one whose window saw an intrusion."""
     root = release_tree(tmp_path)
     cases = {
         "no_window": gates_with(quiet=None),
@@ -331,7 +333,8 @@ def test_a_row_without_its_host_gates_is_refused_and_a_hand_collected_row_too(tm
     for name, row in rows.items():
         item = selection[row["key"]]
         assert item["selected"] is None and item["owed"] == "a re-time", name
-        assert any("R18" in why for why in item["assessments"][0]["refused"]), name
+        assert any("otherwise idle box" in why
+                   for why in item["assessments"][0]["refused"]), name
     assert "collected by hand" in selection[rows["by_hand"]["key"]]["assessments"][0][
         "refused"][0]
 
@@ -558,7 +561,7 @@ def test_a_ledger_change_owes_a_dispatch_check_and_never_hides(tmp_path):
     kernel text and may change what dispatches. A row that recorded it is owed a
     dispatch check (a row with no launch counters a re-time), never left valid."""
     root = release_tree(tmp_path)
-    ledger = "meep_gpu/cuda_kernels/certification.json"
+    ledger = "meep_gpu/cuda_kernels/fingerprints.json"
     held = TR.artifact_drift._sha256(__import__("pathlib").Path(root) / ledger)
     row = ladder_row(512000, "s1", "2026-10-20T10:00:00Z", arms=(ELECTRIC,))
     row["processes"][0][TR.DATA_KEY] = {ledger: held}
@@ -590,7 +593,7 @@ def test_a_ledger_change_owes_a_dispatch_check_and_never_hides(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# Shape: one record per table per architecture, added never replaced; missing keys
+# Shape: one record per table, architecture and card, never replacing another card's; missing keys
 # ---------------------------------------------------------------------------
 
 def fused_row(tmp_path, store, *, case, architecture, session, ended, verdict="TIMED",
@@ -625,8 +628,9 @@ RELEASED = {"fused pair D": ["pml_2d", "absorber_1d"], "fused pair B": ["pml_2d"
 
 
 def test_a_partial_set_names_its_missing_keys_instead_of_failing(tmp_path):
-    """H1: a released case whose only rows are ERROR rows. The record is cut from the
-    rest and names what it lacks, by product and case, with the rows' own reason."""
+    """A released case whose only rows are ERROR rows (as a harness defect left eleven
+    cases of the 2026-10-13 fused-product timing). The record is cut from the rest and
+    names what it lacks, by product and case, with the rows' own reason."""
     root = release_tree(tmp_path)
     store = str(tmp_path / "store")
     for index in (1, 2):
@@ -648,7 +652,7 @@ def test_a_partial_set_names_its_missing_keys_instead_of_failing(tmp_path):
 
 
 def test_a_catalog_key_never_timed_is_named_and_never_dropped(tmp_path):
-    """A cut from part of the round: the table names every catalog key with no valid
+    """A cut from part of a timing run: the table names every catalog key with no valid
     measured row, never timed included; the records name every catalog fused key of
     their table and architecture without one, and a table the catalog names that no
     row reaches is named as not cut."""
@@ -701,7 +705,7 @@ def test_a_catalog_key_never_timed_is_named_and_never_dropped(tmp_path):
 
 
 def test_a_ratio_of_a_session_without_a_go_variance_does_not_enter(tmp_path):
-    """R18: the variance precondition stays in force. A session timed with
+    """The variance precondition stays in force. A session timed with
     ``--no-variance`` prints its ratios and none of them enters."""
     root = release_tree(tmp_path)
     row = ladder_row(512000, "s1", "2026-10-20T10:00:00Z",
@@ -715,6 +719,10 @@ def test_a_ratio_of_a_session_without_a_go_variance_does_not_enter(tmp_path):
 
 
 def test_a_second_architecture_is_added_beside_the_first_and_never_replaces_it(tmp_path):
+    """A second architecture lands at its own name, and a second CARD of the first
+    architecture beside the first card's record, under its own card name: the first card
+    stays the architecture's representative, at the name the reader opens, byte for
+    byte. A re-cut of the second card rewrites its own file."""
     root = release_tree(tmp_path)
     store = str(tmp_path / "store")
     for architecture in (ARCH, OTHER_ARCH):
@@ -735,19 +743,88 @@ def test_a_second_architecture_is_added_beside_the_first_and_never_replaces_it(t
                              base=str(tmp_path), released=released)
     assert sorted(os.path.basename(r["path"]) for r in results) == [
         "timing_cc86.json", "timing_cc90.json"]
+    assert {r["card"] for r in results} == {"EXAMPLE GPU"}
     assert open(first, "rb").read() == before, "a re-cut of the same rows is the same file"
     assert dp.record_capabilities(dp.load_record(
         dp.record_path("triton", OTHER_ARCH, root=out))) == (OTHER_ARCH,)
-    # a cut whose rows ran on another card of the first architecture is refused
+    # a cut whose rows ran on another card of the first architecture lands beside the
+    # first card's record, under its own card name, and replaces nothing
     other_card = str(tmp_path / "store2")
     for index in (1, 2):
         fused_row(tmp_path / "x", other_card, case="pml_2d", architecture=ARCH,
                   session=f"o{index}", ended=f"2026-10-2{index}T10:00:00Z",
                   device="ANOTHER GPU", pass_index=index)
-    refused = TR.cut_records(TR.select(TR.load_store(other_card), root), out,
+    beside, = TR.cut_records(TR.select(TR.load_store(other_card), root), out,
                              base=str(tmp_path), released=released)
-    assert "existing_record_names_another_device" in refused[0]["refused"]
+    card_file = os.path.join(os.path.dirname(first), "timing_cc86-another_gpu.json")
+    assert beside.get("refused") is None, beside
+    assert beside["path"] == card_file and beside["card"] == "ANOTHER GPU"
+    assert dp.record_path("triton", ARCH, root=out) == first
     assert open(first, "rb").read() == before
+    assert open(card_file[:-5] + ".report.txt").read().splitlines()[4] == (
+        "card: ANOTHER GPU (architecture 8.6)")
+    held = open(card_file, "rb").read()
+    # a re-cut of the second card, from a store with one more pass, rewrites its own file
+    fused_row(tmp_path / "x", other_card, case="pml_2d", architecture=ARCH, session="o3",
+              ended="2026-10-23T10:00:00Z", device="ANOTHER GPU", pass_index=3)
+    again, = TR.cut_records(TR.select(TR.load_store(other_card), root), out,
+                            base=str(tmp_path), released=released)
+    assert again["path"] == card_file and again.get("refused") is None
+    assert open(card_file, "rb").read() != held
+    assert open(first, "rb").read() == before
+    assert sorted(name for name in os.listdir(os.path.dirname(first))
+                  if name.endswith(".json")) == ["timing_cc86-another_gpu.json",
+                                                 "timing_cc86.json", "timing_cc90.json"]
+    # a third card whose name has the second's slug is another card, and is refused
+    collides = str(tmp_path / "store3")
+    for index in (1, 2):
+        fused_row(tmp_path / "y", collides, case="pml_2d", architecture=ARCH,
+                  session=f"c{index}", ended=f"2026-10-2{index}T10:00:00Z",
+                  device="Another-GPU", pass_index=index)
+    held = open(card_file, "rb").read()
+    refused, = TR.cut_records(TR.select(TR.load_store(collides), root), out,
+                              base=str(tmp_path), released=released)
+    assert refused["refused"].startswith("existing_record_names_another_device"), refused
+    assert card_file in refused["refused"], "the refusal names the file it is about"
+    assert open(card_file, "rb").read() == held and open(first, "rb").read() == before
+
+
+def test_an_unreadable_file_at_the_architectures_name_refuses_the_cut(tmp_path):
+    """A file at the representative's name that cannot say whose record it is could be
+    this card's own, damaged: the cut is written neither over it nor beside it."""
+    root = release_tree(tmp_path)
+    store = str(tmp_path / "store")
+    for index in (1, 2):
+        fused_row(tmp_path, store, case="pml_2d", architecture=ARCH, session=f"s{index}",
+                  ended=f"2026-10-2{index}T10:00:00Z", pass_index=index)
+    out = str(tmp_path / "package")
+    bare = dp.record_path("triton", ARCH, root=out)
+    os.makedirs(os.path.dirname(bare))
+    with open(bare, "w") as handle:
+        handle.write("not a record")
+    refused, = TR.cut_records(TR.select(TR.load_store(store), root), out,
+                              base=str(tmp_path), released={"triton": RELEASED})
+    assert refused["refused"].startswith("existing_record_unreadable"), refused
+    assert refused["path"] == bare
+    assert os.listdir(os.path.dirname(bare)) == ["timing_cc86.json"]
+
+
+def test_a_store_whose_rows_name_two_cards_is_refused_and_writes_nothing(tmp_path):
+    """One store, one card: the rows of one table and architecture selected from a store
+    that holds two cards' rows are not one card's evidence, and the cut says so."""
+    root = release_tree(tmp_path)
+    store = str(tmp_path / "store")
+    for case, device in (("pml_2d", "EXAMPLE GPU"), ("absorber_1d", "ANOTHER GPU")):
+        for index in (1, 2):
+            fused_row(tmp_path, store, case=case, architecture=ARCH,
+                      session=f"{case}_s{index}", ended=f"2026-10-2{index}T10:00:00Z",
+                      device=device, pass_index=index)
+    out = tmp_path / "package"
+    refused, = TR.cut_records(TR.select(TR.load_store(store), root), str(out),
+                              base=str(tmp_path), released={"triton": RELEASED})
+    assert refused["refused"].startswith("mixed_device"), refused
+    assert "card" not in refused
+    assert not out.exists()
 
 
 def test_the_command_line_cutter_has_no_override_for_another_device(tmp_path, capsys):
@@ -797,7 +874,7 @@ def test_ladder_records_read_the_ledger_and_the_row_files(tmp_path):
     bench["plans"]["fused"]["families"] = {
         "cuda:fused magnetic pair": {"family": "fm", "gate": "cuda_magnetic_gate"}}
     bench[TR.IMPORTED_KEY] = imported(ALL_LOADED)
-    bench[TR.DATA_KEY] = {"meep_gpu/cuda_kernels/certification.json": "2" * 64}
+    bench[TR.DATA_KEY] = {"meep_gpu/cuda_kernels/fingerprints.json": "2" * 64}
     meep_rows = ladder / "meep" / "rows.jsonl"
     write_jsonl(meep_rows, [{"row": "measurement", "row_id": f"r32_p{p}",
                              TR.IMPORTED_KEY: {"parity/meep_gpu/timing_cases.py": "1" * 64}}
@@ -857,15 +934,16 @@ def test_ladder_records_read_the_ledger_and_the_row_files(tmp_path):
     assert gpu[TR.DATA_KEY] == bench[TR.DATA_KEY], "the ledgers ride beside the record"
     path = TR.write_record(str(tmp_path / "store"), record)
     assert TR.load_store(str(tmp_path / "store"))[0]["_path"] == path
-    # R5: the same directory read as a LATER session (a ladder resumed across sessions,
-    # or collected under bounds it did not run in) carries legs of another session
+    # One session: the same directory read as a LATER session (a ladder resumed across
+    # sessions, or collected under bounds it did not run in) carries legs of another session
     later = dict(session, id="s2", started_utc="2026-10-20T10:01:30Z")
     resumed = TR.ladder_records(str(ladder), session=later, architecture=ARCH,
                                 environment=ENVIRONMENT, gates=GATES,
                                 unit={"name": "u", "rc": 0})[0]
     assert resumed["gates"]["session_mismatch"]
-    assert any("another session" in why and "R5" in why for why in TR.refusals(resumed))
-    # A STANDALONE ARRAY CONTROL (``--array-control row``) is a process of the row that
+    assert any("another session" in why and "timed in one session" in why
+               for why in TR.refusals(resumed))
+    # A standalone array control (``--array-control row``) is a process of the row that
     # ran the package; ``gpu_array_control.py`` writes no import record, so the row is
     # refused by name rather than admitted on the GPU processes' records alone
     control_rows = ladder / "array_control" / "pass1" / "pml_3d_res80" / "rows.jsonl"
@@ -950,7 +1028,7 @@ def test_the_fused_report_is_a_view_of_the_selected_rows(tmp_path):
 
 def test_the_bench_records_the_ledgers_libraries_and_switches_beside_its_import_record(
         monkeypatch):
-    """What the 1.0 round's exit hook and its joiner kept beside the import record is
+    """What the 1.0 timing run's exit hook and its joiner kept beside the import record is
     the bench's own now: the ledgers of every kernel table whose modules the process
     holds, the libraries it loaded, and its switches, a path by its last component (a
     record names no machine)."""
@@ -980,7 +1058,7 @@ def test_the_bench_records_the_ledgers_libraries_and_switches_beside_its_import_
 
 
 # ---------------------------------------------------------------------------
-# One environment per cut (R27)
+# One environment per cut
 # ---------------------------------------------------------------------------
 
 def rebuilt_environment(tmp_path):
@@ -996,10 +1074,10 @@ def rebuilt_environment(tmp_path):
 
 def test_rows_of_two_environments_never_pool_and_a_rebuild_owes_every_row(
         tmp_path, capsys):
-    """R27: an environment is no file of the import record. Rows timed before and after
+    """An environment is no file of the import record. Rows timed before and after
     a rebuild of the reference environment ran two programs although every import
     record matches the tree: no table, record or report pools them, and naming the
-    round's environment makes every row of the other one stale and owed a re-time."""
+    timing run's reference environment makes every row of the other one stale and owed a re-time."""
     root = release_tree(tmp_path)
     path, rebuilt = rebuilt_environment(tmp_path)
     before = ladder_row(512000, "s1", "2026-10-20T10:00:00Z")
@@ -1022,11 +1100,11 @@ def test_rows_of_two_environments_never_pool_and_a_rebuild_owes_every_row(
                   str(catalog), "--architecture", ARCH, "--out-md", md, "--out-json", js]
     assert TR.main(table_args) == 2
     assert "REFUSED" in capsys.readouterr().out and not os.path.exists(js)
-    # the round's environment named: the older row is stale, owed a re-time, and named
+    # the timing run's environment named: the older row is stale, owed a re-time, and named
     selection = TR.select(TR.load_store(store), root, environment=TR.file_sha256(path))
     stale = selection[before["key"]]
     assert stale["owed"] == "a re-time" and stale["selected"] is None
-    assert "reference environment moved (R27)" in stale["assessments"][0]["stale"][0]
+    assert "reference environment moved" in stale["assessments"][0]["stale"][0]
     assert selection[after["key"]]["owed"] == "nothing"
     table = TR.cut_ladder_table(selection, ARCH)
     assert [row["key"] for row in table["rows"]] == [after["key"]]
@@ -1103,7 +1181,7 @@ def test_a_dispatch_check_of_another_environment_is_no_witness(tmp_path):
     item = TR.select(TR.load_store(store), root, environment=environment)[magnetic["key"]]
     assert item["owed"] == "a dispatch check"
     assert item["assessments"][0]["dispatch_check"]["check"] is None
-    # the same check in the round's environment is the witness
+    # the same check in the timing run's reference environment is the witness
     TR.write_record(store, dict(check, environment=rebuilt,
                                 session=dict(check["session"], id="c2")))
     item = TR.select(TR.load_store(store), root, environment=environment)[magnetic["key"]]
@@ -1148,11 +1226,14 @@ def test_a_release_drive_table_with_no_sweep_and_no_rows_is_named_not_cut(tmp_pa
 
 
 # ---------------------------------------------------------------------------
-# R33: the 5 % gate is the between-pass spread; the window spread is recorded
+# The gate of record: the 5 % gate is the between-pass spread; the window spread is recorded
 # ---------------------------------------------------------------------------
+# The ``r33`` helpers and test names below (``r33_passes``, ``r33_row``, ``r33_table``,
+# ``pre_r33_leg``) are named for the same 2026-10-16 change as ``timing_rows.r33_strike``.
 
-#: The strike a ladder wrote, before R33, on a pass the bench made TIMED-NOT-REPORTABLE
-#: for its within-pass window spread alone (``timing_records.record_gpu``).
+#: The strike a ladder wrote, before the between-pass gate took effect (2026-10-16), on
+#: a pass the bench made TIMED-NOT-REPORTABLE for its within-pass window spread alone
+#: (``timing_records.record_gpu``).
 WINDOW_STRIKE = "TIMED-NOT-REPORTABLE: floors failed ['spread_within_gate']"
 
 
@@ -1163,7 +1244,8 @@ def r33_passes(rates, windows, struck=None):
 
 
 def pre_r33_leg(passes):
-    """A GPU leg as a ladder collected it before R33: struck by any struck pass."""
+    """A GPU leg as a ladder collected it before the between-pass gate took effect
+    (2026-10-16): struck by any struck pass."""
     reasons = [f"pass {p['pass']}: {p['struck']}" for p in passes if p.get("struck")]
     rates = [p["rate"] for p in passes]
     return {"median": sorted(rates)[len(rates) // 2], "passes": passes,
@@ -1188,9 +1270,10 @@ def r33_table(tmp_path, records):
 
 def test_a_row_whose_windows_jitter_10_percent_but_whose_passes_agree_within_1_percent_enters(
         tmp_path):
-    """R33: passes 2000 / 2010 / 1995 (0.75 % between passes), windows 10 % / 2 % / 10 %.
-    The row enters whether its ladder struck the jittery passes (written before R33) or
-    not (written after), and the window spreads are printed beside it."""
+    """Passes 2000 / 2010 / 1995 (0.75 % between passes), windows 10 % / 2 % / 10 %.
+    The row enters whether its ladder struck the jittery passes (written before the
+    between-pass gate took effect, 2026-10-16) or not (written after), and the window
+    spreads are printed beside it."""
     rates, windows = (2000.0, 2010.0, 1995.0), (0.10, 0.02, 0.10)
     before = r33_row(512000, "s1", pre_r33_leg(
         r33_passes(rates, windows, struck={1: WINDOW_STRIKE, 3: WINDOW_STRIKE})))
@@ -1208,7 +1291,7 @@ def test_a_row_whose_windows_jitter_10_percent_but_whose_passes_agree_within_1_p
 
 
 def test_a_row_whose_passes_disagree_by_6_percent_is_struck(tmp_path):
-    """R33: passes 2000 / 2120 / 2060 spread 5.8 % between passes, with every window
+    """Passes 2000 / 2120 / 2060 spread 5.8 % between passes, with every window
     within 1 %: the leg is struck by the gate, printed with its median, and its ratio
     does not enter."""
     leg = TR.leg_median(r33_passes((2000.0, 2120.0, 2060.0), (0.01, 0.01, 0.01)), "gpu")
@@ -1236,8 +1319,9 @@ def test_meep_is_never_struck_for_its_spread_under_r33(tmp_path):
 
 
 def test_the_window_spread_still_appears_in_the_record_and_the_table(tmp_path):
-    """Every pass of a record keeps its fused leg's window spread and, since R33, every
-    leg's; the cut keeps them per pass with their largest, and the table prints them."""
+    """Every pass of a record keeps its fused leg's window spread and, since the
+    between-pass gate took effect (2026-10-16), every leg's; the cut keeps them per pass
+    with their largest, and the table prints them."""
     ladder = tmp_path / "ladder_s1_u01"
     bench = fixtures.bench_row(case="pml_3d", table="cuda")
     bench[TR.IMPORTED_KEY] = imported(ALL_LOADED)
@@ -1274,15 +1358,16 @@ def test_the_window_spread_still_appears_in_the_record_and_the_table(tmp_path):
     assert TR.GATE_RULE in table["rules"]["gate_rule"] and table["rules"]["pre_r33"]
     text = TR.render_table(table)
     assert "| fused window spreads |" in text and "| 9.00 % / 3.00 % |" in text
-    assert "R33" in text
+    assert "the between-pass gate (2026-10-16)" in text
 
 
 def test_a_row_cuts_to_one_verdict_whichever_side_of_r33_it_was_written_on(tmp_path):
     """The cut reads the passes, never the status a ladder baked into the record: a row
-    collected before R33 (window-only strikes, its leg struck) and one collected after
-    (no such strike) with the same rates and window spreads read the same median,
-    spreads, status, gate and ratio. A strike naming another floor keeps that floor;
-    every other strike stands; reading a strike twice changes nothing."""
+    collected before the between-pass gate took effect (2026-10-16; window-only strikes,
+    its leg struck) and one collected after (no such strike) with the same rates and
+    window spreads read the same median, spreads, status, gate and ratio. A strike naming
+    another floor keeps that floor; every other strike stands; reading a strike twice
+    changes nothing."""
     rates, windows = (1360.6, 1363.2, 1364.7), (0.042, 0.015, 0.007)
     passes = r33_passes(rates, windows, struck={1: WINDOW_STRIKE, 2: WINDOW_STRIKE})
     old, new = pre_r33_leg(passes), TR.leg_median(r33_passes(rates, windows), "gpu")
@@ -1311,9 +1396,9 @@ def test_a_row_cuts_to_one_verdict_whichever_side_of_r33_it_was_written_on(tmp_p
 
 
 def test_a_fused_row_struck_for_its_window_spread_alone_reads_reportable(tmp_path):
-    """A pre-R33 bench row whose only failed floor is the window floor: its record's
+    """A bench row whose only failed floor is the window floor: its record's
     legs read as passing the floors that gate, and the dispatch-preference record cut
-    from it admits it (R33, ``cut_timing_record``)."""
+    from it admits it (the gate of record, ``cut_timing_record``)."""
     store = str(tmp_path / "store")
     path = fused_row(tmp_path, store, case="pml_2d", architecture=ARCH, session="s1",
                      ended="2026-10-21T10:00:00Z")
@@ -1334,3 +1419,466 @@ def test_a_fused_row_struck_for_its_window_spread_alone_reads_reportable(tmp_pat
     assert {leg["gate"] for leg in record["legs"]["per_leg"].values()} == {
         "passed the bench's floors"}
     assert cut.admission_refusal(old, "triton", False) is None
+
+
+def test_ladder_records_open_the_row_files_a_neutral_ledger_names(tmp_path):
+    """The ladder's ledger leaves the machine, so its recorder writes every path under
+    its root's label (``timing_records.append``); the records are cut on the machine that
+    ran it, and open each row file through ``neutral_ids.resolve``."""
+    import neutral_ids  # noqa: PLC0415
+    import timing_records  # noqa: PLC0415
+
+    ladder = tmp_path / "ladder_s1_u01"
+    bench = fixtures.bench_row(case="pml_3d", table="cuda")
+    bench[TR.IMPORTED_KEY] = imported(ALL_LOADED)
+    gpu_rows = ladder / "gpu_cuda" / "pass1" / "pml_3d_res80" / "rows.jsonl"
+    write_jsonl(gpu_rows, [bench])
+    meep_rows = ladder / "meep" / "rows.jsonl"
+    write_jsonl(meep_rows, [{"row": "measurement", "row_id": "r32_p1",
+                             TR.IMPORTED_KEY: {"parity/meep_gpu/timing_cases.py": "1" * 64}}])
+    common = {"tier": "priority", "case": "pml_3d", "cells_planned": 512000, "pass": 1,
+              "run_dir": str(ladder), "struck": None}
+    ledger = str(ladder / "ladder_rows.jsonl")
+    timing_records.append(ledger, dict(common, ledger="gpu", index=1, route="cuda",
+                                       utc="2026-10-20T10:01:00Z", rows_file=str(gpu_rows),
+                                       measured={"legs": {"fused": {
+                                           "mcell_steps_per_s": 2000.0, "spread": 0.01}}}))
+    timing_records.append(ledger, dict(common, ledger="meep", index=2, ranks=32,
+                                       row_id="r32_p1", utc="2026-10-20T10:01:10Z",
+                                       rows_file=str(meep_rows),
+                                       configuration={"build": "reference"},
+                                       measured={"mcell_steps_per_s": 500.0,
+                                                 "spread": 0.02}))
+    written = [json.loads(line) for line in open(ledger, encoding="utf-8")]
+    assert written[0]["rows_file"] == neutral_ids.path(str(gpu_rows))
+    assert neutral_ids.residue(written) == []
+    session = {"id": "s1", "started_utc": "2026-10-20T10:00:00Z",
+               "ended_utc": "2026-10-20T11:00:00Z"}
+    record, = TR.ladder_records(str(ladder), session=session, architecture=ARCH,
+                                environment=ENVIRONMENT, gates=GATES,
+                                unit={"name": "u", "rc": 0})
+    artifacts = {p["role"]: p["artifact"] for p in record["processes"]}
+    assert artifacts == {"gpu:cuda:p1": "gpu_cuda/pass1/pml_3d_res80/rows.jsonl",
+                         "meep:meep@32:p1": "meep/rows.jsonl"}
+    assert all(p[TR.IMPORTED_KEY] for p in record["processes"]), \
+        "every row file the neutral ledger names was opened"
+
+
+# ---------------------------------------------------------------------------
+# The split ladder: one row from a GPU half and a MEEP half
+# ---------------------------------------------------------------------------
+
+def write_ladder(ladder, *, gpu=True, meep=True, utc=None, driver="LADDER = 1\n",
+                 rates=((2000.0, 500.0), (2020.0, 560.0)), case="pml_3d", tier="priority",
+                 cells=512000, architecture=None):
+    """A ladder directory as ``timing_ladder.py`` writes one: its ledger, the GPU rows'
+    bench lines and the MEEP rows' measurement lines, and its snapshot's ladder driver.
+    ``gpu`` and ``meep`` say which sides it timed: a whole ladder times both, a split
+    unit's halves one each (``--ranks none``, ``--routes none``)."""
+    bench = fixtures.bench_row(case=case, table="cuda")
+    for plan in bench["plans"].values():
+        if architecture:
+            plan["environment"]["device"]["compute_capability"] = architecture
+    bench["plans"]["fused"]["launch_counters"] = {
+        "step_B": {"arm": "cuda:fused magnetic pair", "backend": "cuda", "dispatches": 6}}
+    bench["plans"]["fused"]["families"] = {
+        "cuda:fused magnetic pair": {"family": "fm", "gate": "cuda_magnetic_gate"}}
+    bench[TR.IMPORTED_KEY] = imported(ALL_LOADED)
+    bench[TR.DATA_KEY] = {"meep_gpu/cuda_kernels/fingerprints.json": "2" * 64}
+    meep_rows = ladder / "meep" / "rows.jsonl"
+    if meep:
+        write_jsonl(meep_rows, [{"row": "measurement", "row_id": f"r32_p{p}",
+                                 TR.IMPORTED_KEY: {"parity/meep_gpu/timing_cases.py": "1" * 64}}
+                                for p in (1, 2)])
+    ledger = []
+    for p, (gpu_rate, meep_rate) in enumerate(rates, 1):
+        when = utc or f"2026-10-20T10:0{p}:00Z"
+        common = {"tier": tier, "case": case, "utc": when, "cells_planned": cells, "pass": p}
+        if gpu:
+            gpu_rows = ladder / "gpu_cuda" / f"pass{p}" / f"{case}_res80" / "rows.jsonl"
+            write_jsonl(gpu_rows, [bench])
+            ledger += [
+                dict(common, ledger="gpu", index=10 * p, route="cuda",
+                     rows_file=str(gpu_rows), struck=None,
+                     measured={"legs": {"fused": {"mcell_steps_per_s": gpu_rate,
+                                                  "spread": 0.01}}}),
+                dict(common, ledger="array_control", index=10 * p + 2,
+                     mcell_steps_per_s_mean=300.0, sources=[{"spread": 0.03}])]
+        if meep:
+            ledger.append(dict(common, ledger="meep", index=10 * p + 1, ranks=32,
+                               row_id=f"r32_p{p}", rows_file=str(meep_rows), struck=None,
+                               configuration={"build": "reference", "threads_per_rank": 1},
+                               measured={"mcell_steps_per_s": meep_rate, "spread": 0.02}))
+    write_jsonl(ladder / "ladder_rows.jsonl", ledger)
+    snapshot = ladder / "tree" / "parity" / "meep_gpu"
+    snapshot.mkdir(parents=True, exist_ok=True)
+    (snapshot / "timing_ladder.py").write_text(driver)
+    return str(ladder)
+
+
+SPLIT_SESSION = {"id": "s1", "started_utc": "2026-10-20T10:00:00Z",
+                 "ended_utc": "2026-10-20T11:00:00Z"}
+
+
+def held(side, mask):
+    """A half as the session records it: run once, exited 0, its mask set, read back and
+    the only one its readings saw."""
+    return {"side": side, "unit": f"u01_ladder_pml_3d_priority_{side}",
+            "ladder": f"ladder_s1_u01_{side}", "attempt": 1, "rc": 0,
+            "started_utc": "2026-10-20T10:00:30Z", "ended_utc": "2026-10-20T10:30:00Z",
+            "vm_affinity": {"declared": mask, "before": "0xffffff", "set": "ok",
+                            "read_back": mask, "read": [mask]}}
+
+
+def split_block(order=("gpu", "meep")):
+    masks = {"gpu": "0x999988", "meep": "0xffffff"}
+    return {"rule": "two child runs", "order": list(order),
+            "halves": [held(side, masks[side]) for side in order]}
+
+
+#: The gates of a split session: its declared VM affinity (the Windows side's rule) and
+#: the masks it held for its GPU and MEEP halves.
+SPLIT_GATES = dict(GATES, windows={"applied": True, "host": "WSL2", "vm_affinity": "0x999988"},
+                   split_ladder={"gpu": "0x999988", "meep": "0xffffff",
+                                 "meep_source": "cleared: every one of Windows' 24 logical "
+                                                "CPUs"})
+
+
+def split_record(tmp_path, split=None, meep_driver="LADDER = 1\n", meep=True, gates=None):
+    gpu = write_ladder(tmp_path / "ladder_s1_u01_gpu", meep=False)
+    half = write_ladder(tmp_path / "ladder_s1_u01_meep", gpu=False, meep=meep,
+                        driver=meep_driver)
+    records = TR.split_ladder_records(gpu, half, session=SPLIT_SESSION, architecture=ARCH,
+                                      environment=ENVIRONMENT,
+                                      gates=SPLIT_GATES if gates is None else gates,
+                                      unit={"name": "u01", "rc": 0},
+                                      split=split_block() if split is None else split)
+    return records
+
+
+def test_a_split_unit_composes_one_row_of_the_whole_ladders_shape(tmp_path):
+    """The GPU half's legs and the MEEP half's legs, each read where its ladder wrote it,
+    make the record one ladder of both sides makes, plus the ``split`` block: the same
+    key, legs, launch counters and processes (each artifact under its half's directory),
+    and the drivers once."""
+    whole, = TR.ladder_records(write_ladder(tmp_path / "ladder_s1_u01"),
+                               session=SPLIT_SESSION, architecture=ARCH,
+                               environment=ENVIRONMENT, gates=GATES,
+                               unit={"name": "u01", "rc": 0})
+    record, = split_record(tmp_path)
+    assert set(record) == set(whole) | {"split"}
+    assert record["key"] == whole["key"] and record["legs"] == whole["legs"]
+    assert record["launch_counters"] == whole["launch_counters"]
+    assert record["legs"]["gpu"]["cuda"]["median"] == 2010.0
+    assert record["legs"]["meep"]["meep@32"]["median"] == 530.0
+    assert record["legs"]["array"]["median"] == 300.0
+    roles = sorted(p["role"] for p in record["processes"])
+    assert roles == sorted(p["role"] for p in whole["processes"])
+    artifacts = {p["role"]: p["artifact"] for p in record["processes"]}
+    assert artifacts["gpu:cuda:p1"] == "ladder_s1_u01_gpu/gpu_cuda/pass1/pml_3d_res80/rows.jsonl"
+    assert artifacts["meep:meep@32:p2"] == "ladder_s1_u01_meep/meep/rows.jsonl"
+    assert artifacts["ladder"] == "drivers"
+    assert record["split"]["halves_with_rows"] == ["gpu", "meep"]
+    assert record["split"]["drivers_differ"] == []
+    assert record["split"]["order"] == ["gpu", "meep"]
+    assert TR.refusals(record) == []
+    path = TR.write_record(str(tmp_path / "store"), record)
+    assert TR.load_store(str(tmp_path / "store"))[0]["_path"] == path
+
+
+def _split_without(field, value):
+    split = split_block()
+    if field == "order":
+        split["halves"] = split["halves"][:1]
+        split["not_run"] = {"side": "meep", "why": "the gpu half exited rc 4"}
+        return split, "the halves run were ['gpu'], not one GPU half and one MEEP half"
+    half = split["halves"][1 if field.startswith("meep") else 0]
+    name = field.split(":", 1)[1]
+    if name == "rc":
+        half["rc"] = value
+        return split, f"split: the {half['side']} half exited rc {value}"
+    half["vm_affinity"] = dict(half["vm_affinity"], **{name: value})
+    if name == "read":
+        return split, f"saw the VM affinity {value}, not its declared"
+    if name == "declared":
+        return split, "the MEEP half ran under the GPU half's VM affinity 0x999988"
+    return split, f"split: the {half['side']} half's VM affinity was not held"
+
+
+@pytest.mark.parametrize("field, value", [
+    ("order", None), ("gpu:rc", 4), ("meep:rc", 1),
+    ("gpu:set", "error Win32Exception 5"), ("meep:read_back", "0x0"),
+    ("gpu:read", ["0x999988", "0xffffff"]), ("meep:read", ["0x999988", "0xffffff"]),
+    ("meep:declared", "0x999988")])
+def test_a_split_row_is_refused_unless_both_halves_held_their_own_masks(
+        tmp_path, field, value):
+    """Each clause by name: one half run (the other not, after a failure), a half that
+    exited non-zero, a mask whose set failed or did not read back, a reading that saw
+    another mask during a half, the MEEP half under the GPU half's mask."""
+    split, named = _split_without(field, value)
+    if field == "meep:declared":
+        split["halves"][1]["vm_affinity"]["read_back"] = value
+        split["halves"][1]["vm_affinity"]["read"] = [value]
+    record, = split_record(tmp_path, split)
+    why = TR.refusals(record)
+    assert any(named in reason for reason in why), why
+
+
+def test_a_split_row_whose_halves_ran_other_drivers_or_wrote_no_row_is_refused(tmp_path):
+    record, = split_record(tmp_path / "drivers", meep_driver="LADDER = 2\n")
+    assert record["split"]["drivers_differ"] == ["parity/meep_gpu/timing_ladder.py"]
+    assert any("ran different ladder drivers: parity/meep_gpu/timing_ladder.py" in why
+               for why in TR.refusals(record))
+    record, = split_record(tmp_path / "rows", meep=False)
+    assert record["split"]["halves_with_rows"] == ["gpu"]
+    assert record["legs"]["meep"] == {}
+    assert any("the meep half recorded no row of this key" in why
+               for why in TR.refusals(record))
+
+
+def _session_gates(declared="0x999988", gpu="0x999988", meep="0xffffff", masks=True):
+    gates = dict(GATES, windows={"applied": True, "host": "WSL2", "vm_affinity": declared})
+    if declared is None:
+        gates["windows"] = {"applied": False, "skipped": "not a WSL2 host"}
+    if masks:
+        gates["split_ladder"] = {"gpu": gpu, "meep": meep, "meep_source": "cleared"}
+    return gates
+
+
+def _halves_at(gpu, meep):
+    split = split_block()
+    for half, mask in zip(split["halves"], (gpu, meep)):
+        half["vm_affinity"] = dict(half["vm_affinity"], declared=mask, read_back=mask,
+                                   read=[mask])
+    return split
+
+
+@pytest.mark.parametrize("halves, gates, named", [
+    # The GPU half under the cleared mask and the MEEP half under the declared one, each
+    # set, read back and read alone: the masks swapped between the sides.
+    (("0xffffff", "0x999988"), {}, [
+        "split: the gpu half ran under VM affinity 0xffffff, not the session's gpu mask "
+        "0x999988",
+        "split: the meep half ran under VM affinity 0x999988, not the session's meep mask "
+        "0xffffff",
+        "split: the GPU half ran under VM affinity 0xffffff, not the session's declared VM "
+        "affinity 0x999988",
+        "split: the MEEP half ran under the session's declared VM affinity 0x999988, under "
+        "which MEEP is never timed"]),
+    # The session's own masks agree with the halves, and neither GPU mask is the declared
+    # one: the MEEP half ran under the declared mask, the GPU half under another.
+    (("0x1", "0x999988"), {"gpu": "0x1", "meep": "0x999988"}, [
+        "split: the GPU half ran under VM affinity 0x1, not the session's declared VM "
+        "affinity 0x999988",
+        "split: the MEEP half ran under the session's declared VM affinity 0x999988, under "
+        "which MEEP is never timed"]),
+    # A MEEP half under a mask that is not the one the session held for MEEP.
+    (("0x999988", "0xfffff0"), {}, [
+        "split: the meep half ran under VM affinity 0xfffff0, not the session's meep mask "
+        "0xffffff"]),
+    # No masks recorded by the session, or no declared mask to bind the GPU half to.
+    (("0x999988", "0xffffff"), {"masks": False}, [
+        "split: the session recorded no split ladder masks (gates.split_ladder), so neither "
+        "half's mask is bound to the session's"]),
+    (("0x999988", "0xffffff"), {"declared": None}, [
+        "split: the GPU half ran under VM affinity 0x999988, not the session's declared VM "
+        "affinity None"]),
+])
+def test_a_split_row_is_refused_unless_each_half_ran_under_the_sessions_mask(
+        tmp_path, halves, gates, named):
+    """Each half's mask is bound to the session's, not only to itself: the GPU half under
+    the declared VM affinity and the session's GPU mask, the MEEP half under the session's
+    MEEP mask and never under the declared one. Each clause by name, and no other split
+    refusal."""
+    record, = split_record(tmp_path, _halves_at(*halves), gates=_session_gates(**gates))
+    why = [reason for reason in TR.refusals(record) if reason.startswith("split:")]
+    assert why == named, why
+    bound, = split_record(tmp_path / "bound", _halves_at("0x999988", "0xffffff"))
+    assert TR.refusals(bound) == []
+
+
+def test_every_ratio_of_a_split_row_is_labelled_split(tmp_path):
+    """The table cut from a split row is the table of a whole one, every ratio labelled
+    split with the two masks and the order; a table with no split row carries no label
+    and no split rule."""
+    root = release_tree(tmp_path)
+    plain = ladder_row(512000, "s0", "2026-10-20T09:00:00Z")
+    record, = split_record(tmp_path)
+    record["processes"] = plain["processes"]   # the synthetic release tree's own modules
+    table = TR.cut_ladder_table(TR.select(TR.load_store(store_of(tmp_path, [record])), root),
+                                ARCH)
+    line, = table["rows"]
+    label = ("split: the GPU legs under VM affinity 0x999988 and the MEEP legs under "
+             "0xffffff, timed as two child runs of one session, gpu then meep")
+    assert line["split"] == label and table["rules"]["split"] == TR.SPLIT_RULE
+    assert line["ratios"]["cuda"]["ratio"] == pytest.approx(2010.0 / 530.0, abs=1e-4)
+    assert line["ratios"]["cuda"]["split"] is True and line["ratios"]["cuda"]["enters"]
+    assert line["ratios"]["cuda"]["why"].endswith(label)
+    text = TR.render_table(table)
+    assert "(split)" in text and "Split rows: " + TR.SPLIT_RULE in text
+    whole = TR.cut_ladder_table(TR.select(TR.load_store(store_of(tmp_path / "w", [plain])),
+                                          root), ARCH)
+    assert "split" not in whole["rules"] and "split" not in whole["rows"][0]
+    assert not any("split" in ratio for ratio in whole["rows"][0]["ratios"].values())
+    assert "(split)" not in TR.render_table(whole)
+
+
+# ---------------------------------------------------------------------------
+# What a record may name, and a split unit as the ledger builders read it
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("text, local", [
+    ("/" + "ho" + "me" + "/someone/env/bin/python", True),     # a home, by its shape
+    ("-I" + "/" + "Us" + "ers" + "/someone/env/include", True),
+    ("C:\\" + "Us" + "ers" + "\\someone\\x", True),               # a Windows profile
+    ("~/runs/x", True),
+    ("/scratch/project/envs/ref/bin/python", True),               # under no label
+    ("x GPU-3f1c2a9e-5b7d-4e21-9a0c-6d8e2f4b1a37 y", True),       # a card's UUID
+    ("<home>/miniforge3/envs/ref/bin/python", False),
+    ("-L<home>/env/lib -Wl,-rpath,<home>/env/lib", False),
+    ("--prefix=<home>//miniforge3/envs/ref", False),             # a labelled path, continued
+    ("/usr/lib/x86_64-linux-gnu/libm.so.6", False),               # a system directory
+    ("/proc/meminfo", False),
+    ("Report bugs to https://www.open-mpi.org/community/help/", False),
+    ("ladder_s1_u01_gpu/gpu_cuda/pass1/rows.jsonl", False),       # relative
+    ("1695, 9501, P2", False),
+])
+def test_local_paths_finds_what_names_a_machines_files(text, local):
+    """A row record's check (``local_paths``): an absolute path outside the system
+    directories, a home directory, a path under ``~/`` and what neutral_ids would rewrite
+    are found, as a value and as a key; the labels, the system directories, a URL and a
+    relative path are not."""
+    assert TR.local_paths({"value": text}) == ([text] if local else [])
+    assert TR.local_paths({text: 1}) == ([text] if local else [])
+    assert TR.local_paths([[text]]) == ([text] if local else [])
+
+
+def test_a_host_name_in_a_record_is_a_local_name(monkeypatch):
+    import neutral_ids  # noqa: PLC0415
+
+    monkeypatch.setattr(neutral_ids, "_host_names", lambda: ("labdesk7",))
+    assert TR.local_paths({"note": "timed on labdesk7"}) == ["timed on labdesk7"]
+
+
+def _written(tmp_path, record, name="store"):
+    return TR.write_record(str(tmp_path / name), record)
+
+
+def test_split_rows_reads_the_unit_its_records_name(tmp_path):
+    """The records of a split unit, any of its keys: the halves' ladders, the masks, the
+    order and the label, bound to the session's masks; refused by name otherwise."""
+    record, = split_record(tmp_path / "a")
+    unit = TR.split_rows([_written(tmp_path, record)])
+    assert unit["ladders"] == {"gpu": "ladder_s1_u01_gpu", "meep": "ladder_s1_u01_meep"}
+    assert unit["masks"] == {"gpu": "0x999988", "meep": "0xffffff"}
+    assert unit["order"] == ["gpu", "meep"] and unit["session"] == "s1"
+    assert unit["label"] == TR.split_label(record["split"]) and unit["rule"] == TR.SPLIT_RULE
+    assert unit["keys"] == [record["key"]] and unit["record_sha256"] == [
+        TR.seal(record)[TR.DIGEST_FIELD]]
+
+
+def _refusal(paths):
+    with pytest.raises(TR.RowRefused) as refused:
+        TR.split_rows(paths)
+    return refused.value.code, str(refused.value)
+
+
+def test_split_rows_refuses_by_name(tmp_path):
+    record, = split_record(tmp_path / "a")
+    good = _written(tmp_path, record)
+    assert _refusal([])[0] == "no_split_row"
+    # a whole ladder's row
+    whole, = TR.ladder_records(write_ladder(tmp_path / "w"), session=SPLIT_SESSION,
+                               architecture=ARCH, environment=ENVIRONMENT, gates=GATES,
+                               unit={"name": "u01", "rc": 0})
+    assert _refusal([_written(tmp_path, whole, "whole")])[0] == "not_a_split_row"
+    # the halves not under the session's masks
+    swapped, = split_record(tmp_path / "b", _halves_at("0xffffff", "0x999988"))
+    code, text = _refusal([_written(tmp_path, swapped, "swapped")])
+    assert code == "split_row_refused" and "not the session's gpu mask 0x999988" in text
+    # edited after it was written
+    edited = json.load(open(good))
+    edited["split"]["order"] = ["meep", "gpu"]
+    path = tmp_path / "edited.json"
+    path.write_text(json.dumps(edited))
+    assert _refusal([str(path)])[0] == "record_digest_mismatch"
+    # two records of different units
+    other, = split_record(tmp_path / "c", split_block(order=("meep", "gpu")))
+    code, text = _refusal([good, _written(tmp_path, other, "other")])
+    assert code == "split_rows_differ"
+
+
+@pytest.mark.parametrize("change, named", [
+    ({"watcher": dict(SPLIT_GATES["watcher"], intrusions=[
+        {"utc": "2026-10-20T10:10:00Z", "why": "a foreign process on the device"}])},
+     "intruded: the watcher saw 1 intrusion(s)"),
+    ({"quiet": []}, "no quiet window of two clear readings"),
+    ({"watcher": {}}, "no watcher readings while the unit ran"),
+    ({"session_mismatch": ["ladder_rows.jsonl:3"]},
+     "another session: 1 ledger entr(y/ies) of this row were written outside"),
+])
+def test_split_rows_refuses_what_every_cut_of_the_store_refuses(tmp_path, change, named):
+    """A split row whose masks hold but that no cut of the row store would take (an
+    intruded watcher, no quiet window, no watcher readings, ledger entries of another
+    session) reaches no builder's table either: refused by name, with the cut's reason."""
+    record, = split_record(tmp_path / "a")
+    assert TR.split_rows([_written(tmp_path, record, "clean")])["keys"] == [record["key"]]
+    record["gates"] = dict(record["gates"], **change)
+    assert any(named in reason for reason in TR.refusals(record))
+    code, text = _refusal([_written(tmp_path, record)])
+    assert code == "split_row_refused" and named in text
+
+
+def test_rule_two_does_not_walk_through_the_table_completion():
+    # Through the registry every arm would own every kernel, and any kernel edit would
+    # re-time every row of the table.
+    attribution = TR.Attribution(REPO_ROOT)
+    owned = attribution.kernel_deps(["meep_gpu/metal_kernels/launch.py"])
+    assert "meep_gpu/metal_kernels/arms.py" in owned
+    assert "meep_gpu/metal_kernels/registry.py" not in owned
+    assert "meep_gpu/metal_kernels/ade_update_p.py" not in owned
+
+
+def test_rule_two_keeps_every_metal_arm_its_own_module():
+    # An entry may pin launch.py as its only kernel file, so its family module is reached
+    # through its gate script once the walk stops at the registry. Read off the live table,
+    # because a row's arm owning its own text is what the rule is for.
+    from meep_gpu import metal_dispatch  # noqa: PLC0415
+    from meep_gpu.metal_kernels import arms  # noqa: PLC0415
+
+    arms.ensure_registered()
+    attribution = TR.Attribution(REPO_ROOT)
+    missing, checked = [], 0
+    for spec in arms.registered():
+        row = metal_dispatch.ARM_CERTIFICATION.get(spec.label)
+        if row is None:
+            continue
+        checked += 1
+        owned, _rule = attribution.arm_files("metal", row[1])
+        module = spec.coverage.__module__.replace(".", "/") + ".py"
+        if owned is not None and module not in owned:
+            missing.append((spec.label, module))
+    assert checked > 100
+    assert missing == []
+
+
+def test_rule_two_still_walks_a_real_edge_between_two_families():
+    # The planted control: the ADE arm imports the shared spine it builds from.
+    attribution = TR.Attribution(REPO_ROOT)
+    owned = attribution.kernel_deps(["meep_gpu/metal_kernels/fused_ade_chain.py"])
+    assert "meep_gpu/metal_kernels/fused_ade_chain.py" in owned
+    assert "meep_gpu/metal_kernels/ade_update_p.py" in owned
+
+
+def test_status_names_the_moved_ledger_digests_no_state_answers_for():
+    selection = {"k": {"owed": "a dispatch check", "assessments": [
+        {"status": "check_owed", "session": "s", "refused": [], "stale": [], "exempt": {},
+         "set_aside": {"meep_gpu/cuda_kernels/fingerprints.json": {"why": "slice_equal",
+                                                                   "recorded": "a" * 64},
+                       "meep_gpu/cuda_kernels/certification.json": {"why": "unread",
+                                                                    "recorded": "c" * 64}},
+         "compared_whole": {"meep_gpu/triton_kernels/fingerprints.json": {
+             "why": "ledger_state_not_archived", "recorded": "b" * 64}}}]}}
+    last = TR._status_lines(selection)[-1]  # noqa: SLF001
+    assert last.startswith("ledger states not archived: 1 of 2 moved ledger digests")
+    assert "b" * 64 in last and "a" * 64 not in last

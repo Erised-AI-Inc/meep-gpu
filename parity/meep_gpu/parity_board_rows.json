@@ -3,15 +3,15 @@
  "version": 1,
  "about": "The rows of the bit-parity coverage board (build_parity_board.py): every module of the three kernel tables' step lists, and the array-path families judged against MEEP. Structure only; no entry is a verdict.",
  "source": {
-  "step_lists": "results/bit_parity_0_10/design/KERNELS.md section 8, with DESIGN.md D27's moves. Section 8 names two groups by count; they are enumerated from design/checks/critique_kernels/step_coverage_{cuda,metal}.log: CUDA C9's 'other 8 nopml modules', Metal M12's '13 none(plain-form) modules', and the 9 Metal host modules D27 assigns to KM0.",
-  "kinds": "host: steps C0, T0, M0 (no device form); a_only: C9, T10, M12 and CUDA complex_no_pml_kernels (no absorber, so no B select); unchanged: the CUDA modules section 8 lists as unchanged; kernel: every other row.",
-  "families": "results/bit_parity_0_10/DESIGN.md section 2.5 (the families, their phase-0 tokens and work packages); the base row is WPs AP3-AP5 and the mirror-symmetry row is AP4's ghost rule (D5).",
+  "step_lists": "the 0.10 kernel design's module order, with the 0.10 design's dependency moves. The module order names two groups by count; they are enumerated from the design's CUDA and Metal step-coverage logs: CUDA C9's 'other 8 nopml modules', Metal M12's '13 none(plain-form) modules', and the 9 Metal host modules the dependency moves assign to KM0.",
+  "kinds": "host: steps C0, T0, M0 (no device form); a_only: C9, T10, M12 and CUDA complex_no_pml_kernels (no absorber, so no B select); unchanged: the CUDA modules the module order lists as unchanged; kernel: every other row.",
+  "families": "the 0.10 design's array-path families (their phase-0 tokens and work packages); the base row is WPs AP3-AP5 and the mirror-symmetry row is AP4's ghost rule (a ghost row takes its image row's membership).",
   "sha256": {
-   "results/bit_parity_0_10/design/KERNELS.md": "c09a6207c4cfe41a8d8f720798e36befb44898a174cabf5733ceb5c068ddeab6",
-   "results/bit_parity_0_10/DESIGN.md": "d0d1586fa941db3541b52341416090ad7de24a8412c0848b86cfb04c4d60b386",
-   "results/bit_parity_0_10/design/checks/critique_kernels/step_coverage_cuda.log": "8398eb5e80c37a584aff4278dc429aae34e824f7393b902f0796f35ec0492af0",
-   "results/bit_parity_0_10/design/checks/critique_kernels/step_coverage_metal.log": "83a18e2a00f055142717977119560f0d39d40000faaf3b92c54f961a2afba088",
-   "results/bit_parity_0_10/design/checks/critique_kernels/step_coverage_triton.log": "56a17602ae67a3b4d05151a5f542af84add71d60326212817154ac2a8a21dc50"
+   "the 0.10 kernel design": "c09a6207c4cfe41a8d8f720798e36befb44898a174cabf5733ceb5c068ddeab6",
+   "the 0.10 design": "d0d1586fa941db3541b52341416090ad7de24a8412c0848b86cfb04c4d60b386",
+   "the 0.10 design's CUDA step-coverage log": "8398eb5e80c37a584aff4278dc429aae34e824f7393b902f0796f35ec0492af0",
+   "the 0.10 design's Metal step-coverage log": "83a18e2a00f055142717977119560f0d39d40000faaf3b92c54f961a2afba088",
+   "the 0.10 design's Triton step-coverage log": "56a17602ae67a3b4d05151a5f542af84add71d60326212817154ac2a8a21dc50"
   }
  },
  "tables": {

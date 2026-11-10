@@ -1,7 +1,7 @@
 """Byte gate for the Metal COMPLEX radial scan — ``cyl_complex_rderiv_difference``
 against ``stepping.cylindrical_rderiv_difference`` on complex64 storage.
 
-THE CLAIM THIS GATE IS ALLOWED TO SUPPORT: at every radial extent of the sixteen
+The claim this gate is allowed to support: at every radial extent of the sixteen
 ``cylindrical complex`` H->D corpus rows on the Metal board, at both ``ir0`` values the
 array path uses (0.0 with the zero wall row and a forward difference on the B side, 0.5
 raw with a backward difference on the D side), over four value classes and two chunk
@@ -11,7 +11,7 @@ that is BIT-IDENTICAL, as uint32 words, to ``stepping.cylindrical_rderiv_differe
 CALLED on the same complex64 input with the same chunk starts — never re-derived,
 never approximated, ``allclose`` nowhere.
 
-WHAT THE KERNEL IS: MEEP's ``f_rderiv_int`` summed per part in every structure chunk
+What the kernel is: MEEP's ``f_rderiv_int`` summed per part in every structure chunk
 from that chunk's first row, ``rinv`` multiplied (the double quotient stored as a
 realnum), and the stencil's difference of two partial sums stored. The complex loop is
 the real scan's with ``float2`` registers (``cylindrical_complex_scan.FLOAT2_EDITS``);
@@ -43,7 +43,7 @@ THE LEGS
                      fast-contraction variant (recorded)
   7  disarm          the shipped bytes through the same harness path must not diverge
 
-WHAT THE GATE REFUSES TO INFER
+What the gate refuses to infer
 
 * **A no-op agreeing with a no-op is trivially identical.** Every case must produce a
   floor of nonzero output words, and the +-0 lattice — whose output is all zeros by the
@@ -77,7 +77,7 @@ for _path in (API_ROOT, HERE):
     if _path not in sys.path:
         sys.path.insert(0, _path)
 
-# THE POLICY IS SET BEFORE ANY `meep_gpu` MODULE IS REACHED, because the predicates
+# The policy is set before any `meep_gpu` module is reached, because the predicates
 # read it at import. On MPS the flush is native and has no lever; setting `flush` puts
 # the claim under a CHECKED precondition rather than a pretence.
 os.environ.setdefault("MEEP_GPU_SUBNORMAL_POLICY", "flush")
@@ -102,7 +102,7 @@ from meep_gpu.metal_kernels.device import (  # noqa: E402
 
 log, save, differing, words = kit.log, kit.save, kit.differing, kit.words
 
-#: THE SIXTEEN ROWS, keyed by the census record's own row name, with the board label
+#: The sixteen rows, keyed by the census record's own row name, with the board label
 #: where it differs and the census grid shape ``(nr, ny, nz)``. Transcribed from
 #: ``results/metal_coverage_2026-09-04_m0complex`` and cross-checked against it by leg
 #: ``corpus_shapes`` whenever that record is on this host. ``ny`` is 1 on every row, so
@@ -723,7 +723,7 @@ def leg_mutations(payload: Dict[str, Any], out: str, cases: Sequence[Case]) -> N
             "compared_words": total_words,
             "out_of_scope_cases_not_caught": uncaught_out_of_scope})
 
-    # THE CONTRACTION GUARD, recorded: the shipped source rebuilt with the fast mode.
+    # The contraction guard, recorded: the shipped source rebuilt with the fast mode.
     # `acc + rinv * (w - w_prev)` is a multiply-add the compiler may fuse under fast
     # contraction; whichever way it lands is recorded, not asserted.
     fast: Dict[str, kit.Counter] = {

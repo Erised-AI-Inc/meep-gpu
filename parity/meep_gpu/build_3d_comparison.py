@@ -1,13 +1,13 @@
 """One table, two hosts: this package's routes beside stock MEEP, in Mcell-steps/s.
 
-WHY ONE SCRIPT. The comparison is run on two machines -- an NVIDIA host (one RTX
-A6000 beside up to 96 Xeon cores) and an Apple host (an M1 Max, Metal beside 8
-performance cores) -- and it is only comparable if every column means the same
-thing on both. So both hosts' rows go through this one reader, which takes the
+Why one script. The comparison is run on two machines -- an NVIDIA host and an
+Apple host, each a GPU beside its own CPU cores -- and it is only comparable if
+every column means the same thing on both. So both hosts' rows go through this
+one reader, which takes the
 same inputs from each: ``bench_fused_products`` rows for our routes and the stock-MEEP
 bench's ``rows_r<N>.jsonl`` for MEEP at N ranks. Nothing is transcribed by hand.
 
-A RATIO IS FORMED ONLY BETWEEN TWO TIMINGS OF THE SAME SIMULATION. Until 2026-10-02 this
+A ratio is formed only between two timings of the same simulation. Until 2026-10-02 this
 reader paired a GPU row with a MEEP row by cell count alone, and the 2026-09-22 MEEP
 rows it paired timed a different problem (a 1 um epsilon-12 block, PML 1.0, no monitor)
 from the GPU rows' ``pml_3d`` at the same cell counts. Now a GPU row and a MEEP size
@@ -25,7 +25,7 @@ pair only when
 * MEEP's best rank count at that size passes the 5 % gate (every pass's within-window
   spread, and the spread of its pass medians).
 
-Otherwise the pair is REFUSED BY NAME, both values still shown and its ratio cell
+Otherwise the pair is refused by name, both values still shown and its ratio cell
 reading ``refused: <reason>``:
 
 =====================================  ===============================================
@@ -55,30 +55,42 @@ reading ``refused: <reason>``:
                                        5 % gate; it is never replaced by the next one
 =====================================  ===============================================
 
-MEEP ROWS THAT FAILED A FLOOR are dropped before any median: a row the bench struck
+MEEP rows that failed a floor are dropped before any median: a row the bench struck
 (its monitor not stepped) or whose monitor shows no sign of having been stepped.
 
 The summary line reads "paired k of D; refused m of D" and the exit status is non-zero
 when m > 0.
 
-WHAT EACH COLUMN IS.
-* ``MEEP@N``  stock MEEP 1.33.0 at N MPI ranks, single precision, its own step loop:
+A SPLIT LADDER UNIT (``rounds/1.0/cert8.py --split-ladder``) times its GPU legs and its
+MEEP legs in two ladders of one session, under two VM affinity masks that only the
+session's row records hold. Its routes come from the GPU half's ladder and its MEEP rows
+and digests from the MEEP half's, and ``--split-row`` names the store's row record of the
+unit (``timing_rows.split_rows``): the record is refused by name unless both halves held
+the session's masks (``timing_rows.split_refusals``), and so is a directory that is not
+under the half's ladder the record names. Every ratio is then labelled ``(split)``, with
+the two masks and the order in the JSON. Directories that are the two halves of a split
+unit (the routes from a ladder that planned no MEEP row, the MEEP rows from one that
+planned no GPU row) are refused by name without ``--split-row``: their ratio would read as
+one ladder's.
+
+What each column is.
+* ``MEEP@N``  stock MEEP at N MPI ranks, single precision, its own step loop:
               the MEDIAN over the passes (fresh processes) that (case, cells, ranks)
               carries.
 * ``array``   our engine's host array path (NumPy on the Apple host, CuPy on NVIDIA).
 * ``<route>`` our fused dispatch route on the named kernel table, monitors ATTACHED --
-              the number a user experiences, which is the conservative one. ONE GPU PASS
-              PER ROUTE DIRECTORY: the last row of each case directory is read, so a
+              the number a user experiences, which is the conservative one. One GPU pass
+              per route directory: the last row of each case directory is read, so a
               route directory is one pass; ``build_identical_case_table.py`` reads every
               pass of a ladder.
-* ``vs best`` the route against MEEP's fastest rank count AT THAT SIZE, never against
+* ``vs best`` the route against MEEP's fastest rank count at that size, never against
               one rank. A ratio against a configuration nobody runs is not a claim.
 * ``verdict`` the bench's own: only ``TIMED`` rows are citable. Rows that failed a
               floor are shown, struck through in the notes, and never enter a ratio.
 
 Usage:
   build_3d_comparison.py --host <label> --routes <name>=<dir> [...] --meep <dir>
-      --digests <dir> --out <md> [--json <json>]
+      --digests <dir> --out <md> [--json <json>] [--split-row RECORD [...]]
 """
 
 from __future__ import annotations
@@ -88,7 +100,10 @@ import glob
 import json
 import os
 import statistics
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+import sys
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
+
+HERE = os.path.dirname(os.path.abspath(__file__))
 
 #: Every reason a pair can be refused for, in the order they are checked.
 REFUSAL_REASONS = ("case-label-mismatch", "meep-configurations-mixed",
@@ -184,9 +199,11 @@ def read_digests(directory: Optional[str]) -> Dict[Tuple[str, int], Dict[str, An
             raise SystemExit(f"REFUSING: two harness-lift digest files disagree for {key}: "
                              f"{found[key]['file']} and {path}")
         verdict = record.get("verdict") or {}
+        # The file as the directory read names it: a table that quotes it leaves the
+        # machine, so no absolute path.
         found[key] = {"digest": digest, "resolution": record.get("resolution"),
-                      "file": os.path.abspath(path),
-                      # A LIFT WHOSE DRIVER DISAGREED WITH THE MEEP OBJECT is kept, so the
+                      "file": os.path.relpath(path, directory).replace(os.sep, "/"),
+                      # A lift whose driver disagreed with the MEEP object is kept, so the
                       # pair can be refused by name, and never pairs.
                       "driver_agrees": verdict.get("driver_agrees") is True,
                       "builder_source_sha256": (record.get("builder") or {}).get(
@@ -293,6 +310,65 @@ def rate(cells: int, ms: Optional[float]) -> Optional[float]:
     return None if not ms else cells / (ms * 1e-3) / 1e6
 
 
+def ladder_side(directory: str) -> Optional[str]:
+    """``gpu`` when ``directory`` lies in a ladder that planned no MEEP row
+    (``--ranks none``), ``meep`` when in one that planned no GPU row (``--routes none``):
+    the halves of a split ladder unit, as the ladder's ``environment.json`` resolved its
+    parameters. ``None`` for a whole ladder, or none found within three levels up."""
+    here = os.path.abspath(directory)
+    for _ in range(4):
+        found = os.path.join(here, "environment.json")
+        if os.path.isfile(found):
+            try:
+                with open(found, "r", encoding="utf-8") as handle:
+                    params = (json.load(handle) or {}).get("params") or {}
+            except (OSError, ValueError, AttributeError):
+                return None
+
+            def value(name: str) -> str:
+                return str((params.get(name) or {}).get("value") or "").strip().lower()
+            return "gpu" if value("RANKS") == "none" else (
+                "meep" if value("ROUTES") == "none" else None)
+        here = os.path.dirname(here)
+    return None
+
+
+def split_unit(paths: Sequence[str], routes: Mapping[str, str], meep: str,
+               digests: Optional[str], flags: Optional[Mapping[str, str]] = None
+               ) -> Dict[str, Any]:
+    """The split ladder unit ``paths`` (``--split-row``, the store's row records of it)
+    name, read by ``timing_rows.split_rows``: refused by name unless every cut of the row
+    store admits it (both halves held the session's masks among them), and unless every
+    route directory lies under the GPU half's ladder and the MEEP rows and digests under
+    the MEEP half's. ``flags`` names the caller's own options in a refusal (``routes``,
+    ``meep``; this builder's ``--routes NAME`` and ``--meep`` by default). Returns what
+    labels every ratio."""
+    flags = dict({"routes": "--routes {name}", "meep": "--meep"}, **(flags or {}))
+    if HERE not in sys.path:
+        sys.path.insert(0, HERE)
+    import timing_rows  # noqa: PLC0415 - the row store's rules, one spelling
+
+    try:
+        unit = timing_rows.split_rows(paths)
+    except timing_rows.RowRefused as refusal:
+        raise SystemExit(f"REFUSING: --split-row: {refusal}")
+
+    def under(directory: Optional[str], side: str) -> bool:
+        parts = os.path.normpath(os.path.abspath(directory or "")).split(os.sep)
+        return unit["ladders"][side] in parts
+
+    wrong = [flags["routes"].format(name=name) for name, directory in sorted(routes.items())
+             if not under(directory, "gpu")]
+    wrong += [] if under(meep, "meep") else [flags["meep"]]
+    wrong += [] if digests is None or under(digests, "meep") else ["--digests"]
+    if wrong:
+        raise SystemExit(f"REFUSING: --split-row names the GPU half's ladder "
+                         f"{unit['ladders']['gpu']} and the MEEP half's "
+                         f"{unit['ladders']['meep']}; {', '.join(wrong)} not under its "
+                         "half's ladder: the two halves of one unit are paired, or none")
+    return unit
+
+
 def pair_reasons(gpu_case: str, cells: int,
                  meep: Dict[Tuple[str, int], Dict[int, Dict[str, Any]]],
                  digests: Dict[Tuple[str, int], Dict[str, Any]],
@@ -354,8 +430,10 @@ def pair_reasons(gpu_case: str, cells: int,
 
 def build(host: str, routes: Dict[str, Dict[Tuple[str, int], Dict[str, Any]]],
           meep: Dict[Tuple[str, int], Dict[int, Dict[str, Any]]],
-          digests: Dict[Tuple[str, int], Dict[str, Any]]
+          digests: Dict[Tuple[str, int], Dict[str, Any]],
+          split: Optional[Mapping[str, Any]] = None
           ) -> Tuple[List[str], Dict[str, Any]]:
+    """The table; ``split`` (:func:`split_unit`) labels every ratio of a split unit."""
     ranks = sorted({n for by in meep.values() for n in by})
     cases = sorted({case for case, _c in meep} | {case for r in routes.values()
                                                     for case, _c in r})
@@ -425,8 +503,11 @@ def build(host: str, routes: Dict[str, Dict[Tuple[str, int], Dict[str, Any]]],
                     else:
                         paired += 1
                         route_entry["vs_best_meep"] = fused / best
-                        ratios.append(f"**{fused / best:.2f}×**" if citable
-                                      else f"~~{fused / best:.2f}×~~")
+                        ratios.append((f"**{fused / best:.2f}×**" if citable
+                                       else f"~~{fused / best:.2f}×~~")
+                                      + (" (split)" if split else ""))
+                        if split:
+                            route_entry["split"] = True
                 else:
                     ratios.append("—")
                 if not citable:
@@ -439,10 +520,10 @@ def build(host: str, routes: Dict[str, Dict[Tuple[str, int], Dict[str, Any]]],
             entries.append(entry)
         record["sections"][case] = entries
         lines.append("")
-    lines.append("MEEP@N is stock MEEP 1.33.0 single precision at N MPI ranks, the median over "
+    lines.append("MEEP@N is stock MEEP single precision at N MPI ranks, the median over "
                  "the passes each (case, cells, ranks) carried. `array` is our host array "
                  "path. Route columns are the fused dispatch route with monitors attached, "
-                 "ONE GPU PASS PER ROUTE DIRECTORY (the last row of each case directory); "
+                 "one GPU pass per route directory (the last row of each case directory); "
                  "`vs best` is against MEEP's fastest rank count at that size, formed only "
                  "when the case labels and the geometry digests of the two sides agree.")
     multi = sorted((case, c, n, g["passes"]) for (case, c), by in meep.items()
@@ -453,6 +534,13 @@ def build(host: str, routes: Dict[str, Dict[Tuple[str, int], Dict[str, Any]]],
                      + ", ".join(f"{case} {c:,}@{n} x{k}" for case, c, n, k in multi) + ".")
     if notes:
         lines += ["", "**Rows that are not citable:**"] + [f"- {n}" for n in notes]
+    if split:
+        # Every ratio above is of a split unit: its two halves, masks and order, and the
+        # rule a split row is read by.
+        record["split"] = {name: split[name] for name in (
+            "label", "masks", "order", "ladders", "keys", "record_sha256", "rule")}
+        lines += ["", f"**Split**: every ratio marked (split) is of one split ladder unit, "
+                      f"{split['label']}; {split['rule']}."]
     summary = f"paired {paired} of {considered}; refused {refused} of {considered}"
     lines += ["", f"**Pairs**: {summary}."]
     record.update({"paired": paired, "refused": refused, "denominator": considered,
@@ -472,14 +560,27 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                              "refused as gpu-digest-missing")
     parser.add_argument("--out", required=True)
     parser.add_argument("--json", default=None)
+    parser.add_argument("--split-row", nargs="+", default=None, dest="split_row",
+                        metavar="RECORD",
+                        help="the row store's record(s) of a split ladder unit whose GPU "
+                             "half the routes and whose MEEP half the MEEP rows come from: "
+                             "every ratio is labelled split, and refused by name unless "
+                             "both halves held the session's masks")
     args = parser.parse_args(argv)
 
-    routes = {}
-    for pair in args.routes:
-        name, directory = pair.split("=", 1)
-        routes[name] = read_route(directory)
+    directories = dict(pair.split("=", 1) for pair in args.routes)
+    split = None
+    if args.split_row:
+        split = split_unit(args.split_row, directories, args.meep, args.digests)
+    elif any(ladder_side(d) == "gpu" for d in directories.values()) and \
+            ladder_side(args.meep) == "meep":
+        raise SystemExit("REFUSING: the routes come from a ladder that planned no MEEP row "
+                         "and the MEEP rows from one that planned no GPU row: the two "
+                         "halves of a split ladder unit, whose ratios are labelled split. "
+                         "Name the unit's row record with --split-row")
+    routes = {name: read_route(directory) for name, directory in directories.items()}
     lines, record = build(args.host, routes, read_meep(args.meep),
-                          read_digests(args.digests))
+                          read_digests(args.digests), split)
     with open(args.out, "w", encoding="utf-8") as handle:
         handle.write("\n".join(lines) + "\n")
     if args.json:

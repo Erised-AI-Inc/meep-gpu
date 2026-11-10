@@ -1,6 +1,6 @@
-"""Phase B — the mirror FOLD under complex64 storage and under ``grid.beta``.
+"""Folded kernels — the mirror FOLD under complex64 storage and under ``grid.beta``.
 
-DISPATCH IS WIRED AND ON BY DEFAULT for a ``prefer_gpu=True`` driver; the
+Dispatch is wired and on by default for a ``prefer_gpu=True`` driver; the
 PLANNER is wired outright. ``fastpath.plan_fast_path`` is consulted by the
 driver, and what bounds dispatch is the ENABLE (``fastpath.DISPATCH_BY_DEFAULT``
 is True; ``MEEP_GPU_DISPATCH=0`` turns it off for a run) together with each
@@ -18,7 +18,7 @@ gate (``parity/meep_gpu/gate_triton_folded_complex.py``), the composition probe
 (``probe_triton_folded_complex_composition.py``), the planner and the laptop
 tests.
 
-WHAT THIS IS FOR. Three lifted corpus rows demand it and only three —
+What this is for. Three lifted corpus rows demand it and only three —
 ``eigsrc_0_complex`` (2-D 14x14 res 30, Mirror(Y) +1, beta = 0.2, complex
 storage, a LIVE PML on the folded axis), and the two binary-grating special_kz
 rows ``special_kz_0_13_2`` / ``special_kz_1_17_7`` (Mirror(Y) +1 with an
@@ -50,7 +50,7 @@ the increment masked by the curl's own ownership clauses (both arms under a fold
 subtracted through a ladder of its own (``stepping._apply_folded_increment``,
 :func:`.forms.fold_ladder`), on the chunk record's forms.
 
-WHY THE FOLDED CURL NEEDS NO PARITY ARITHMETIC UNDER COMPLEX STORAGE.
+Why the folded curl needs no parity arithmetic under complex storage.
 ``symmetry.py``'s argument is an OWNERSHIP argument, not a storage argument, and
 it transfers verbatim: ``_shift_down``'s near ghost ``parity * field[2]``
 (stepping.py:1871-1872) lands at stored cell 0, whose target has Yee shift 0
@@ -58,7 +58,7 @@ there, which the cell-0 arm of ``_mask_non_owned_cells`` (S:1898-1902,
 ``is_mirrored or is_metallic or is_axis``) zeroes; ``_shift_up``'s far ghost
 ``parity * field[reflect_row]`` (S:1778-1779) lands at the last stored slot,
 whose target has Yee shift 1 there, which the top-plane arm (S:1887-1897, gated
-on ``_stored_past_owned``) zeroes ON A FOLDED PERIODIC AXIS ONLY. On a folded
+on ``_stored_past_owned``) zeroes on a folded periodic axis only. On a folded
 METALLIC axis that top plane IS stepped and the ghost must be exactly zero —
 under complex storage that means the ``(+0.0, +0.0)`` word pair which ``other=0.0``
 already delivers on BOTH word loads (complex_fields.py:364-365 states the same
@@ -69,7 +69,7 @@ MIRROR_PERIODIC). That is an ARGUMENT plus a hand check, where ``symmetry.py``
 earned the same claim for real storage by MEASUREMENT before it was written —
 so the gate's synthetic sub-step sweep is a precondition here, not a formality.
 
-THE GHOST FILL'S PARITY MULTIPLY IS PER PART. ``stepping._write_mirror_ghost``
+The ghost fill's parity multiply is per part. ``stepping._write_mirror_ghost``
 and ``_fill_folded_far_ghosts`` write ``parity * plane`` through
 ``host_writes.copy_face``, which forms it with ``part_products.scale``: the Python
 int rounded to the part dtype and each stored part multiplied by it, as MEEP's
@@ -82,7 +82,7 @@ coefficient promoted to ``(+-1, +0)``, with its zero cross terms) diverges from 
 in 8/128 engineered words at BOTH parities; that product is the gate's inverted
 headline mutation.
 
-THE X, Y, Z FILL ORDER AND THE TWO PASSES COMMUTE BITWISE. Every fill is a
+The X, Y, Z fill order and the two passes commute bitwise. Every fill is a
 multiply of each part by exactly +-1, so the doubly-unowned corner sees
 ``c_y * (c_x * z)`` and ``c_x * (c_y * z)`` as the same word, and a fused per-axis
 launch stores what the two passes store: ``symmetry.py``'s real-storage commute
@@ -91,7 +91,7 @@ the array path's order (near pass, then the far pass after the driver's wall
 clear, X, Y, Z within each), and the gate records the commute as two structural
 nulls (``reverse_axis_order``, ``fuse_fill_passes``) rather than assuming it.
 
-WHY THE BETA MASK IS LOAD-BEARING UNDER A FOLD. The beta increment is masked with
+Why the beta mask is load-bearing under a fold. The beta increment is masked with
 the curl's own ownership clauses (``stepping._mask_non_owned_cells``) before the pass's
 ladder subtracts it, and the fold WIDENS that mask from METALLIC-only at cell 0 to
 non-PERIODIC at cell 0 PLUS MIRROR_PERIODIC at the top plane. Beta touches targets 0 and 1 only.
@@ -103,7 +103,7 @@ leave it live on the mirror plane and on the far ghost plane, invisible in the
 interior. That is the gate's ``b_increment_unmasked`` and ``b_top_plane_mask_dropped``
 needles.
 
-FOLD x BLOCH DO NOT INTERACT AT THE WRAPPED PLANE. ``driver._require_bloch_is_
+Fold x Bloch do not interact at the wrapped plane. ``driver._require_bloch_is_
 representable`` (driver.py:1040-1120) refuses a nonzero k on a mirror plane's OWN
 axis in the Brillouin zone INTERIOR and refuses the zone EDGE too (MEEP #3155
 supports it; this engine has not implemented the full-cell period).
@@ -114,7 +114,7 @@ and NO wrap factor — and ``_far_reflect_rows`` (:1677-1681) states the same. S
 check it and the predicate refuses it. The two phases compose only across
 DIFFERENT axes, multiplicatively, with no cross term.
 
-THE BETA PARTNER IS UNTOUCHED BY THE FOLD. ``stepping._special_kz_beta_term``
+The beta partner is untouched by the fold. ``stepping._special_kz_beta_term``
 (:727-784) takes a SAME-CELL center snapshot (S:293 electric / S:408 magnetic) —
 no shift helper, no ghost rule, no reflect row — so no fold ghost value and no
 parity ever multiplies it, and the Bloch connection applies to SHIFTED operands
@@ -123,7 +123,7 @@ symmetry_bc_D`` overwrites cell 0 with ``parity * cell 2``, and cell 2 already
 carries its own beta increment — a composed-layer fact for the gate, not an
 in-kernel coupling.
 
-EXTENTS AND REFLECT ROWS, MEASURED ON REAL ``Grid`` OBJECTS (grid.py:1276-1311).
+Extents and reflect rows, measured on real ``Grid`` objects (grid.py:1276-1311).
 A folded PERIODIC axis stores exactly owned + 1 at BOTH count parities: n_full 20
 -> owned 11 / stored 12 / reflect 10 = stored-2; 21 -> 12/13/10 = stored-3; 22 ->
 12/13/11 = stored-2; 23 -> 13/14/11 = stored-3. A folded METALLIC axis stores
@@ -136,12 +136,12 @@ stored-3 on y). ``reflect_row`` therefore stays a RUNTIME scalar read from
 ``stepping._far_reflect_rows``; baking ``n - 2`` is a whole cell wrong at an odd
 full count.
 
-GROUPING CHOICES ``stepping.py`` DOES NOT FORCE (the gate holds all of them):
+Grouping choices ``stepping.py`` does not force (the gate holds all of them):
 
 1. ``CODE_PERIODIC``/``CODE_METALLIC``/``CODE_MIRROR_METALLIC``/
    ``CODE_MIRROR_PERIODIC``, ``MIRROR_SOURCE_INDEX`` and ``TARGET_IYEE`` are
    RESTATED here, never imported from ``symmetry.py`` (that file belongs to the
-   symmetry tranche and is read-only for this one), and a laptop test pins every
+   symmetry kernels and is read-only here), and a laptop test pins every
    spelling equal to ``symmetry.py``'s AND to ``kernels.py``'s — the discipline
    ``symmetry.py`` itself used against ``kernels.py``.
 2. The near/far parity coefficients are HOST-ROUNDED: the entries carry
@@ -150,7 +150,7 @@ GROUPING CHOICES ``stepping.py`` DOES NOT FORCE (the gate holds all of them):
    pass — there is no imaginary coefficient word in the kernel to synthesise.
 3. The fill multiplies each stored part by the parity word, one float32 product
    per part, as MEEP's connection forms it.
-4. ONE LAUNCH PER FOLDED AXIS, in X, Y, Z order, held as a list the plan walks
+4. One launch per folded axis, in X, Y, Z order, held as a list the plan walks
    (the array path's order, though the per-part fill commutes, see above).
 5. The fill kernel carries NO ``PHASE`` constexpr. The parity enters only as the
    passed coefficient word, so the identity-shortcut mutant (the multiply
@@ -175,14 +175,14 @@ GROUPING CHOICES ``stepping.py`` DOES NOT FORCE (the gate holds all of them):
     ``-0.0``) and ``symmetry.mirror_ghost_fill_coverage`` carries no beta clause,
     so it already admits a beta run. Nothing in ``symmetry.py`` is edited, and a
     laptop test PINS that predicate's verdict on a folded real beta grid so the
-    coupling is visible if the symmetry tranche's owner adds a beta clause.
+    coupling is visible if ``symmetry.py``'s owner adds a beta clause.
 11. Fusion configuration: every launch goes out at ``enable_fp_fusion =
     ENABLE_FP_FUSION`` (fusion-OFF), which the artifact states — a
     multiply-subtract tail's bytes change with the setting.
 12. The curl predicates check the NAMED SUB-STEP'S nine volumes, not all
     eighteen as a set (``coverage.py:306-315``'s "coverage is a set, not a la
     carte"). That is the per-sub-step scoping the certified complex and beta
-    tranches already use; every pointer the launched kernel touches is still
+    kernels already use; every pointer the launched kernel touches is still
     checked, and the engine route allocates all eighteen together
     (``Fields.enable_pml_storage``) so no engine-built configuration changes
     verdict. A hand-built run missing the OTHER sub-step's volumes is admitted
@@ -191,8 +191,8 @@ GROUPING CHOICES ``stepping.py`` DOES NOT FORCE (the gate holds all of them):
     stored-cell clause, ``last`` vs ``reflect_row <= stored - 2`` through the
     reflect-row bounds clause), never assumed.
 
-DRIFT FOUND WHILE ESTABLISHING THIS (report only; ``symmetry.py`` is read-only
-for this tranche). ``symmetry.py:44`` cites the driver's fill passes as
+Drift found while establishing this (report only; ``symmetry.py`` is read-only
+for this module). ``symmetry.py:44`` cites the driver's fill passes as
 ``driver.py:3163-3183``; they are now at ``driver.py:3206-3226``, and the range
 names three slots where the driver has FIVE per half — the magnetic half is
 step_B(3206) -> inject(3207-3208) -> fill_symmetry_bc_B(3209) -> zero_metal_B(3210)
@@ -280,7 +280,7 @@ from .special_kz import (  # noqa: E402 - this package's own module
 # The constants the kernel and the host agree on — RESTATED, never imported
 # ---------------------------------------------------------------------------
 #
-# ``symmetry.py`` belongs to the symmetry tranche and is read-only for this one,
+# ``symmetry.py`` belongs to the symmetry kernels and is read-only for this module,
 # so its four codes, its mirror source index and its Yee-shift table are restated
 # here and PINNED EQUAL by ``test_triton_folded_complex`` — against BOTH
 # ``symmetry.py`` and ``kernels.py``. That is exactly the discipline
@@ -646,7 +646,7 @@ def folded_bloch_pml_curl_step(
 
 
 # ---------------------------------------------------------------------------
-# K2 — the folded complex ghost fill (THE ONE ARITHMETIC DELTA)
+# K2 — the folded complex ghost fill (the one arithmetic delta)
 # ---------------------------------------------------------------------------
 
 @triton.jit
@@ -673,7 +673,7 @@ def folded_mirror_ghost_fill_complex(
         far:   field[-1] = (-phase) * field[reflect_row]    # Yee shift 1 here,
                                                             # folded PERIODIC only
 
-    THE PARITY MULTIPLY IS PER PART: ``part_products.scale`` rounds the Python int to
+    The parity multiply is per part: ``part_products.scale`` rounds the Python int to
     the part dtype and multiplies each stored part by it, as MEEP's connection
     multiplies each ``realnum`` part (a ``-1`` connection is a unary minus per part,
     boundaries.cpp:359-366). ``x * (+1.0)`` and ``x * (-1.0)`` are exact on every word,
@@ -683,7 +683,7 @@ def folded_mirror_ghost_fill_complex(
     Z within each). The coefficient words are host-rounded and passed
     (:func:`mirror_parity_coefficients`).
 
-    ``reflect_row`` IS A RUNTIME SCALAR and must come from
+    ``reflect_row`` is a runtime scalar and must come from
     ``stepping._far_reflect_rows``, ``n_full - stored + 2``: ``stored - 2`` at an even
     full count and ``stored - 3`` at an odd one.
 
@@ -999,13 +999,13 @@ def folded_beta_bloch_pml_curl_step(
     HAS_BETA: tl.constexpr,           # compiled-in only for beta != 0 runs
     BLOCK: tl.constexpr,
 ):
-    """K1 plus ``special_kz.beta_bloch_pml_curl_step``'s beta pass, per part.
+    """The folded Bloch curl plus ``special_kz.beta_bloch_pml_curl_step``'s beta pass, per part.
 
     :func:`folded_bloch_pml_curl_step`'s body, character for character, plus the
     complex beta pass after the six part forms and before the stores: the negated
     quarter turn of the CENTER partner's parts by the side's real word, masked to
-    ``(+0, +0)`` by K1's two ownership blocks, through the beta ladder per part. No
-    complex product is formed. ``HAS_BETA = 0`` builds K1 exactly.
+    ``(+0, +0)`` by the folded curl's two ownership blocks, through the beta ladder per part. No
+    complex product is formed. ``HAS_BETA = 0`` builds the folded curl exactly.
     """
     idx = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     live = idx < n_elem
@@ -1330,7 +1330,7 @@ def folded_axis_kinds(grid: Any, pml: Any) -> Tuple[Optional[Tuple[int, int, int
                                                     Tuple[str, ...]]:
     """The per-axis boundary constexprs, or ``None`` plus the reasons.
 
-    THE CLASSIFICATION IS THE SINGLE POINT OF FAILURE IN THIS FILE, so it is
+    The classification is the single point of failure in this file, so it is
     derived from the engine's own functions and cross-checked against a second
     one rather than re-derived:
 
@@ -1460,12 +1460,12 @@ def _cylindrical_reasons(grid: Any) -> List[str]:
 
 def _absorber_reasons(pml: Any) -> List[str]:
     """No active PML means the plain path is the bit-identical one; this whole
-    tranche is the split-field product. A PML on the LOW face of a folded axis, or
+    family is the split-field product. A PML on the LOW face of a folded axis, or
     one that thinks a folded axis wraps, raises inside
     ``stepping._require_consistent_pml`` (S:2250-2288) — a refusal, not a crash —
     and surfaces here through ``_boundary_kinds`` returning None."""
     if pml is None or not getattr(pml, "is_active", False):
-        return ["no active PML layer (this tranche implements the split-field "
+        return ["no active PML layer (this family implements the split-field "
                 "path only)"]
     return []
 
@@ -1474,7 +1474,7 @@ def _media_reasons(fields: Any, grid: Any, targets: Sequence[str]) -> List[str]:
     """Conductivity, dispersion, nonlinearity, off-diagonal epsilon, BFAST.
 
     A missing or non-callable ``condfac_for`` is refused OUTRIGHT — the complex
-    tranche's stricter reading (complex_fields.py:186-201): inferring "no
+    field kernels' stricter reading (complex_fields.py:186-201): inferring "no
     conductivity" from the ABSENCE of the reader is admission by attribute
     absence, the exact reasoning coverage exists to refuse.
     """
@@ -1492,7 +1492,7 @@ def _media_reasons(fields: Any, grid: Any, targets: Sequence[str]) -> List[str]:
                 continue
             if conductive:
                 reasons.append(
-                    f"a conductivity is installed on {target}: this tranche "
+                    f"a conductivity is installed on {target}: this family "
                     f"transcribes the plain split-field recurrence only, and "
                     f"conductivity.py's own predicates refuse beta — no silent "
                     f"overlap in either direction")
@@ -1521,7 +1521,7 @@ def _media_reasons(fields: Any, grid: Any, targets: Sequence[str]) -> List[str]:
 
 def _complex_phase_reasons(grid: Any, kinds: Optional[Sequence[str]],
                            codes: Optional[Sequence[int]]) -> List[str]:
-    """Per-axis Bloch legality, INCLUDING the fold clause this tranche adds.
+    """Per-axis Bloch legality, INCLUDING the fold clause this family adds.
 
     A phased axis must resolve PERIODIC (stepping._bloch_phases raises there);
     a metallic axis must carry k = 0; an unreadable phase is refused, never
@@ -1598,7 +1598,7 @@ def _complex_fold_grid_reasons(fields: Any, pml: Any, grid: Any,
     if getattr(xp, "__name__", "") != "cupy":
         reasons.append(f"array module is {getattr(xp, '__name__', xp)!r}, not cupy")
 
-    # 2 (INVERTED, as the complex tranche inverts it). Complex64 storage REQUIRED.
+    # 2 (INVERTED, as the complex-field kernels invert it). Complex64 storage REQUIRED.
     if not (getattr(fields, "force_complex_fields", False)
             or getattr(grid, "has_bloch", False)):
         reasons.append(
@@ -1625,8 +1625,8 @@ def _complex_fold_grid_reasons(fields: Any, pml: Any, grid: Any,
     if getattr(fields, "has_polarizations", False) or (
             getattr(fields, "polarizations", ()) or ()):
         reasons.append(
-            "a susceptibility is registered: complex-storage ADE is a future "
-            "tranche, and no folded complex corpus row carries one")
+            "a susceptibility is registered: complex-storage ADE is not yet "
+            "built, and no folded complex corpus row carries one")
 
     return reasons, codes
 
@@ -1634,7 +1634,7 @@ def _complex_fold_grid_reasons(fields: Any, pml: Any, grid: Any,
 def folded_complex_pml_curl_coverage(fields: Any, pml: Any, sub_step: str) -> Coverage:
     """May :func:`folded_bloch_pml_curl_step` (K1) step this configuration?
 
-    ZERO FOLDED AXES IS ADMITTED here, deliberately and for ``symmetry.py``'s
+    Zero folded axes is admitted here, deliberately and for ``symmetry.py``'s
     reason: with every axis resolving to PERIODIC/METALLIC the constexpr branches
     reduce to ``complex_fields.bloch_pml_curl_step``'s exactly, and the gate
     MEASURES that reduction rather than claiming it. Which of the two a composed
@@ -1798,8 +1798,8 @@ def folded_beta_bloch_pml_curl_coverage(fields: Any, pml: Any, sub_step: str) ->
     beta = 0 run belongs to K1). The effective-2-D clause is restated from
     ``special_kz`` rather than inferred from the Grid constructor's guard.
 
-    A FOLD IS MANDATORY, for K3a's reason: without it this predicate and
-    ``special_kz.beta_bloch_pml_curl_coverage`` were MEASURED to admit the same
+    A fold is mandatory, for K3a's reason: without it this predicate and
+    ``special_kz.beta_bloch_pml_curl_coverage`` were measured to admit the same
     unfolded complex beta grid, and no equivalence leg needs the unfolded case
     here (``run_identity``'s HAS_BETA=0 reduction runs on a FOLDED grid).
     """
@@ -1893,14 +1893,14 @@ def folded_beta_pml_curl_coverage(fields: Any, pml: Any,
 
     The folded REAL clause set with the beta clause INVERTED.
 
-    A FOLD IS MANDATORY, unlike K1's standalone verdict. K1 admits an unfolded
+    A fold is mandatory, unlike K1's standalone verdict. K1 admits an unfolded
     grid deliberately so its gate can prove reduction to the certified unfolded
     kernel, and pushes the routing question into
     :func:`folded_complex_composition_curl_coverage`. This predicate has no such
     equivalence leg — ``symmetry.pml_curl_step_folded`` is the beta = 0 folded
     real product and ``special_kz.beta_pml_curl_step`` is the UNFOLDED beta one —
     so admitting an unfolded grid claims territory ``special_kz`` already owns.
-    MEASURED before the clause was added: on ``Grid(cell_size=(1.6,1.6,0.0),
+    Measured before the clause was added: on ``Grid(cell_size=(1.6,1.6,0.0),
     dimensions=2, boundaries='periodic', beta=0.2)`` with no symmetry, this
     predicate and ``special_kz.beta_pml_curl_coverage`` BOTH returned an empty
     reason list — the admitted overlap the module's own wiring note argues cannot
@@ -1999,7 +1999,7 @@ def mirror_parity_coefficients(phase: int) -> Tuple[Tuple[float, float],
     numpy.float32 preserves the zero's sign and Triton types a Python float
     argument as fp32, so the words the kernel receives are the array path's bits.
 
-    ONE PROPERTY OF THIS FUNCTION IS LOAD-BEARING ELSEWHERE. ``complex64(±1)``
+    One property of this function is load-bearing elsewhere. ``complex64(±1)``
     has an imaginary word of BITWISE ``0x00000000`` — not merely equal to zero,
     but the exact pattern a literal ``+0.0`` produces — at both mirror phases and
     for the near and the far coefficient alike. The byte gate's
@@ -2227,7 +2227,7 @@ class FoldedMirrorGhostFillComplexPlan:
     (driver.py:3209-3211 / :3222-3224), so a composed plan must call the two
     halves separately and must not fuse across that seam.
 
-    THE SPLIT FOLLOWS THE DRIVER, not the arithmetic. Per stored part every fill
+    The split follows the driver, not the arithmetic. Per stored part every fill
     is ``+-1.0`` times the word, exact, so near-then-far and far-then-near store the
     same words (the gate's ``fuse_fill_passes`` and ``reverse_axis_order`` are
     structural nulls, as ``symmetry.MirrorGhostFillPlan``'s fused passes are for
@@ -2703,7 +2703,7 @@ def plan_folded_beta_run_constitutive(fields: Any, pml: Any, side: str,
 # ``chi1inv`` at all; ``update_H`` is ``B``/``mu`` with the PML accumulation and
 # reads no ``chi1inv`` either.
 #
-# THE CLAUSE'S REACHABILITY ARGUMENT DOES NOT SURVIVE, and that is worth
+# The clause's reachability argument does not survive, and that is worth
 # recording because it was the leading hypothesis going in. The clause cites
 # ``_special_kz_beta_term`` (S:773-783) and MEEP ``fields.cpp:548-549`` as
 # refusing "the same pairing". They do not: both refuse BETA plus an off-diagonal
@@ -2728,7 +2728,7 @@ def plan_folded_beta_run_constitutive(fields: Any, pml: Any, side: str,
 #                                                  the largest divergence of the
 #                                                  round
 #
-# ON THREE SHAPES, and that is not decoration. That fixture is a synthetic 3-D box,
+# On three shapes, and that is not decoration. That fixture is a synthetic 3-D box,
 # ``[9,16,16]`` with ONE mirrored axis and no phase — it is NOT the corpus
 # configuration, which this comment used to claim it was. The rows are 2-D and
 # carry more: ``test_array_metadata`` and ``solve-cw.py`` fold TWO axes at
@@ -2742,8 +2742,8 @@ def plan_folded_beta_run_constitutive(fields: Any, pml: Any, side: str,
 # 258 and 504 respectively — the +-0 lattice is held live through every cycle, and
 # a constitutive leg whose census reaches zero is reported VACUOUS.)
 #
-# AND THROUGH THIS MODULE'S OWN BUILDERS. The nine legs above reach the certified
-# bodies by patching the INCUMBENT predicate. The closure round's second leg builds
+# And through this module's own builders. The nine legs above reach the certified
+# bodies by patching the INCUMBENT predicate. The 2026-08-15 residual-closure run's second leg builds
 # through ``plan_folded_complex_offdiag_pml_curl`` and
 # ``plan_folded_complex_offdiag_constitutive`` with their OWN predicates unpatched
 # — a plan of None would be a failed leg — and measures the same nine identities
@@ -2781,7 +2781,7 @@ def _offdiag_media_reasons(fields: Any, grid: Any,
                 continue
             if conductive:
                 reasons.append(
-                    f"a conductivity is installed on {target}: this tranche "
+                    f"a conductivity is installed on {target}: this family "
                     f"transcribes the plain split-field recurrence only")
     if getattr(fields, "has_magnetic_conductivity", False):
         reasons.append("a magnetic (B) conductivity is installed")
@@ -2840,8 +2840,8 @@ def _complex_fold_offdiag_grid_reasons(fields: Any, pml: Any, grid: Any,
     if getattr(fields, "has_polarizations", False) or (
             getattr(fields, "polarizations", ()) or ()):
         reasons.append(
-            "a susceptibility is registered: complex-storage ADE is a future "
-            "tranche (the ADE launch raises KeyError: 'complex64' — an unbuilt "
+            "a susceptibility is registered: complex-storage ADE is not yet "
+            "built (the ADE launch raises KeyError: 'complex64' — an unbuilt "
             "kernel, not a rounding gap), and no folded complex off-diagonal "
             "corpus row carries one")
     return reasons, codes
@@ -2851,7 +2851,7 @@ def folded_complex_offdiag_pml_curl_coverage(fields: Any, pml: Any, sub_step: st
     """May K1 step a folded COMPLEX run that also carries an off-diagonal row?
 
     K1's clause set with the off-diagonal clause INVERTED and nothing else
-    changed. A REAL FOLD IS REQUIRED here — unlike
+    changed. A real fold is required here — unlike
     :func:`folded_complex_pml_curl_coverage`, which admits an unfolded grid so
     its own gate can measure the reduction to the unfolded kernel. This predicate
     has no such equivalence leg to prove, and admitting an unfolded grid would
@@ -2896,7 +2896,7 @@ def folded_complex_offdiag_pml_curl_coverage(fields: Any, pml: Any, sub_step: st
 def folded_complex_offdiag_constitutive_coverage(fields: Any, pml: Any, side: str) -> Coverage:
     """May the certified complex constitutive kernel step ``update_H`` here?
 
-    ``side='H'`` ONLY. ``side='E'`` is REFUSED BY NAME rather than raised — it is
+    ``side='H'`` ONLY. ``side='E'`` is refused by name rather than raised — it is
     a real side of a real sub-step, it is simply the one the row product enters,
     and the measurement that says so is 25041 of 110592 words differing over eight
     complete cycles. The certified
@@ -3030,12 +3030,12 @@ def explain_folded_complex(fields: Any, pml: Any, sub_step: str = "step_B") -> C
 # stands: ``launch.plan_step`` consults these predicates through lazy forwarders,
 # each arm gated on the fold (and on complex storage or beta where the family
 # requires it), and the package ``__init__`` exports the entry points behind the
-# same lazy seam. ``fastpath.plan_fast_path`` is untouched BY THIS FILE — but it
+# same lazy seam. ``fastpath.plan_fast_path`` is untouched by this file — but it
 # no longer returns None on every branch, so the sentence that used to sit here
 # was carrying a retired claim: dispatch is held shut by
 # ``fastpath.DISPATCH_BY_DEFAULT``, not by the absence of a caller.
 #
-# WHAT MADE THE DEFERRAL SAFE IS ALSO WHAT MAKES THE WIRING SAFE, and it is worth
+# What made the deferral safe is also what makes the wiring safe, and it is worth
 # keeping rather than deleting: ``coverage._grid_reasons``' fold/complex/beta
 # clauses and ``complex_fields``' fold refusal refuse every configuration these
 # predicates admit, so no shipped predicate admits a configuration this one also
@@ -3058,8 +3058,8 @@ def explain_folded_complex(fields: Any, pml: Any, sub_step: str = "step_B") -> C
 # eagerly imports only ``coverage``, so the direct import is safe on a
 # Triton-less host).
 #
-# THE OFF-DIAGONAL SIBLINGS ARE WIRED TOO (added 2026-08-14 by the residual-group
-# closure round, which did not own ``launch.py``; made arms in the round after it):
+# The off-diagonal siblings are wired too (added 2026-08-14 by the residual-group
+# closure work, which did not own ``launch.py``; made arms in the change after it):
 #
 #   folded_complex_offdiag_pml_curl_coverage      step_B, step_D
 #                                                 -> arm "folded complex off-diagonal PML"
@@ -3073,7 +3073,7 @@ def explain_folded_complex(fields: Any, pml: Any, sub_step: str = "step_B") -> C
 # ``TestHoleyWvgBands.test_fields_at_kx`` and ``solve-cw.py``, none of them
 # TestLoadDump.
 #
-# WHAT THAT MAKES OF ``_media_reasons``' OFF-DIAGONAL CLAUSE, which is left EXACTLY
+# What that makes of ``_media_reasons``' off-diagonal clause, which is left EXACTLY
 # as it is: the FAMILY now refuses an off-diagonal row at ``update_E`` ALONE, which
 # is where the row product lives, instead of across all four sub-steps. The clause
 # is not narrowed in place, and narrowing it would be the wrong repair — the

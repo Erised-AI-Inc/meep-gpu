@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
-"""THE COMPLEX FUSED ELECTRIC PAIR GATE — complex ``step_D`` welded into ``update_E``.
+"""The complex fused electric pair gate — complex ``step_D`` welded into ``update_E``.
 
 Does ONE launch of ``complex_fused_curl_constitutive_D`` leave the engine
 BIT-IDENTICAL, per COMPLETE driver step, to both the CuPy array path and the two
 separately certified Triton products it replaces — over every allocated volume,
 compared as uint32 words?
 
-THE TWIN'S GATE IS THE TEMPLATE AND THE DIFFERENCES ARE THE POINT.
+The twin's gate is the template and the differences are the point.
 ``probe_triton_complex_fused_magnetic_pair.py`` asks the same question on the B/H
 seam. Three things are genuinely different here, and each gets its own machinery
 rather than being folded into an existing leg:
 
-1. **THE SOURCE IS IN THIS SEAM.** The driver injects the electric list between
+1. **The source is in this seam.** The driver injects the electric list between
    ``step_D`` and ``update_E`` (driver.py:3296-3299). On the magnetic gate the
    electric source was carried purely as a source the pair may ignore; here it is
    the thing the product must survive. So the device side runs TWO families of
@@ -24,15 +24,15 @@ rather than being folded into an existing leg:
    before the ``f_w`` store. Three mutations exist for that arm alone — dropped,
    word-doubled, and applied on the wrong side of the store — because none of them
    is visible to any check the magnetic twin carries.
-3. **THE COEFFICIENT LATTICES ARE MIRRORED.** The curl takes the INTEGER lattice
+3. **The coefficient lattices are mirrored.** The curl takes the INTEGER lattice
    and the constitutive the HALF-INTEGER one, the opposite pair from the twin. A
    swap is a half-cell error in the absorber profile: converged, smooth and wrong,
    and invisible outside the PML.
 
-Correctness only. NOTHING HERE IS TIMED and no throughput claim is admissible.
+Correctness only. Nothing here is timed and no throughput claim is admissible.
 Dispatch stays disabled: ``launch.plan_step`` does not know this module exists.
 
-WHAT THIS GATE CANNOT DECIDE, known before the run rather than discovered after:
+What this gate cannot decide, known before the run rather than discovered after:
 ``m4_phase_dropped_on_x`` is invisible at k = 0 and ``m8_imaginary_plane_...`` is
 invisible on a quiet imaginary plane, so both are scored on a case carrying a
 nonzero k; ``m1_wall_clear_dropped`` is invisible without a metallic x, so it is
@@ -73,7 +73,7 @@ SEED = 20260830
 _TEMPORARY: List[str] = []
 
 #: (name, dimensions, cell, boundaries, k_point, pml, steps). Every case stores
-#: complex fields. THE SET IS SWEPT AND NEITHER AXIS IS DECORATION: a k = 0 case is
+#: complex fields. The set is swept and neither axis is decoration: a k = 0 case is
 #: what makes the phase-skip reduction to the plain complex path measurable, a
 #: phased case is the only place the rotation mutations have anywhere to be caught,
 #: and a case with real METALLIC walls is the only place the wall-clear mutations
@@ -95,8 +95,8 @@ CASES: Tuple[Tuple[str, int, Tuple[float, float, float], Any,
 #: The CARRY family: the same grids, run with a real electric deposit in the seam
 #: and the SHIPPED repair bracket installed. Three rather than five because the
 #: question they answer is about the seam and not about the boundary sweep — one
-#: phased, one k = 0 walled, one phased-and-walled. THE PRODUCT IS WORTH ONE
-#: CORPUS ROW WITHOUT THIS FAMILY AND SIXTEEN WITH IT.
+#: phased, one k = 0 walled, one phased-and-walled. The product is worth one
+#: corpus row without this family and sixteen with it.
 CARRY_CASES: Tuple[int, ...] = (0, 3, 4)
 
 #: Steps per armed mutation. A mutation needing more than this to become
@@ -124,7 +124,7 @@ REQUIRED = (
 #: it is two absent ones (the vacuity floor and ``material_changed``), which is
 #: what ``_assert_material_names_are_real`` exists to stop.
 #:
-#: ON THIS SIDE ``inv_eps`` IS ALSO A KERNEL INPUT, read by the SCALE=1 arm. That
+#: On this side ``inv_eps`` is also a kernel input, read by the SCALE=1 arm. That
 #: makes the read-only assertion stronger here than on the twin, not weaker: a
 #: kernel that wrote through its epsilon pointer would be caught by the same check
 #: that catches a kernel writing its own material.
@@ -346,7 +346,7 @@ WELD_LINES = (
 #: zero, so a transcription that cleared only the real plane is wrong exactly where
 #: the imaginary part is nonzero at a wall.
 #:
-#: THESE SIX LINES ARE NOT A STYLE CHOICE. The first device run of this gate carried
+#: These six lines are not a style choice. The first device run of this gate carried
 #: the twin's ``ZM_X -> v0`` map and came back with ``Dx`` differing on both metallic
 #: cases in opposite directions — 140 words zeroed that should not have been, 72 left
 #: live that should have been cleared — while every periodic case was bit-identical
@@ -406,7 +406,7 @@ def transcription_leg() -> Dict[str, Any]:
                 f"stepping._zero_metal writes COMPLEX zero and both planes must be "
                 f"cleared")
 
-    # THE WELD REPLACED A LOAD, AND THE LOAD MUST BE GONE. If the constitutive half
+    # The weld replaced a load, and the load must be gone. If the constitutive half
     # still read D from memory, the "fusion" would be a launch-count optimisation
     # with a live re-read — a different kernel with a different hazard. TWO is the
     # right count and not one: the curl half loads each source component's real and
@@ -422,7 +422,7 @@ def transcription_leg() -> Dict[str, Any]:
                 f"component's two words once and the constitutive half must read D "
                 f"from the register, not from memory")
 
-    # THE inv_eps INDEX IS NEVER DOUBLED. One real coefficient per complex cell; a
+    # The inv_eps index is never doubled. One real coefficient per complex cell; a
     # ``2 * idx`` here reads the imaginary neighbour's coefficient into the real
     # plane, which is smooth, converged and wrong.
     doubled = [line for line in fused
@@ -432,7 +432,7 @@ def transcription_leg() -> Dict[str, Any]:
             f"the inv_eps load is word-doubled: {doubled}; inv_eps is float32 with "
             f"one coefficient per COMPLEX cell and is indexed at + idx")
 
-    # THE BAKED WALL MAP IS THE ENGINE'S OWN. Recomputed here from IYEE_SHIFTS by
+    # The baked wall map is the engine's own. Recomputed here from IYEE_SHIFTS by
     # `_zero_metal`'s rule, so a body whose `if ZM_*:` blocks drifted back to the
     # magnetic twin's `axis d -> component d` fails at the MERGE BAR rather than on
     # a metallic device case. The shipped predicate carries the same clause; this is
@@ -460,7 +460,7 @@ def transcription_leg() -> Dict[str, Any]:
                     f"component {component} at {coordinate}, but _zero_metal's rule "
                     f"says {'it should' if expected else 'it should not'}")
 
-    # THE SCALE ARM MUST BE GUARDED, not inlined. The constexpr IS the transcription
+    # The scale arm must be guarded, not inlined. The constexpr IS the transcription
     # boundary: an inlined multiply is a hand-specialised body and this leg could no
     # longer compare it to one certified function.
     if not any(line == "if SCALE:" for line in fused):
@@ -468,7 +468,7 @@ def transcription_leg() -> Dict[str, Any]:
             "the fused body has no `if SCALE:` guard; the constitutive half is no "
             "longer a transcription of bloch_constitutive_step's own arm")
 
-    # NO MULTIPLY OUTSIDE THE THREE DECLARED HELPERS. A fourth would be a fourth
+    # No multiply outside the three declared helpers. A fourth would be a fourth
     # operand orientation, and this product's whole helper claim is that it adds
     # none.
     helpers = sorted({name for name in product.MULTIPLY_HELPERS
@@ -527,7 +527,7 @@ def _build_complex(cell, boundaries, k_point, mirrors=(), thickness=0.4,
                 symmetry=tuple(Mirror(axis, phase) for axis, phase in mirrors))
     fields = Fields(grid=grid, force_complex_fields=True)
     fields.enable_pml_storage()
-    # A NON-TRIVIAL EPSILON, AND IT IS NOT DECORATION. ``Fields`` starts at
+    # A non-trivial epsilon, and it is not decoration. ``Fields`` starts at
     # eps = 1 everywhere, so ``inverse_epsilon_for`` returns exactly 1.0 and EVERY
     # inv_eps flip becomes a multiply by one — measured: the
     # ``inv_eps_applied_after_the_history_store`` knob below reported INVISIBLE on
@@ -594,19 +594,19 @@ def _welded_seam(fields, pml, driver_module, *, wall: str = "before",
                  scale: str = "before_the_store") -> None:
     """The FUSED semantics, spelled with array ops so a laptop can execute them.
 
-    THIS IS NOT THE KERNEL AND DOES NOT PRETEND TO BE. It cannot see a memory
+    This is not the kernel and does not pretend to be. It cannot see a memory
     hazard, a register reuse or a rounding order inside one launch — those are the
     device gate's to measure. What it CAN decide is the DESIGN question the weld
     answers: which value reaches ``update_E``, and in which order relative to the
     wall clear, the ``f_w`` history read and — new on this side — the ``inv_eps``
     multiply.
 
-    ``scale`` IS THE E-SIDE KNOB THE TWIN HAS NO COUNTERPART FOR. The shipped
+    ``scale`` is the E-side knob the twin has no counterpart for. The shipped
     ``bloch_constitutive_step`` scales BEFORE the ``f_w`` store, so the history
     holds ``D * inv_eps``; scaling after it stores ``D`` instead, which is wrong
     only where ``kms != 0``, i.e. inside the PML, and only from the SECOND step.
 
-    THE TWO SYMMETRY FILLS ARE SIMPLY ABSENT HERE. That is the module's central
+    The two symmetry fills are simply absent here. That is the module's central
     claim and this leg is where it is measured: on an unfolded complex run the
     five-pass array path and this three-pass emulation must be BIT-IDENTICAL, and
     the folded control must separate.
@@ -632,7 +632,7 @@ def _welded_seam(fields, pml, driver_module, *, wall: str = "before",
         scaled = part_products.scale(fields.inverse_epsilon_for(component), source)
         # The history holds D * inv_eps under the correct order; the scale-after-
         # the-store flip leaves the UNSCALED displacement in it while the kps term
-        # still consumes the scaled one. THE kms TERM IS THE WHOLE DEFECT and is
+        # still consumes the scaled one. The kms term is the whole defect and is
         # not re-scaled here.
         stored = scaled if scale == "before_the_store" else source
         if history == "read_then_write":
@@ -805,7 +805,7 @@ def predicate_leg() -> Dict[str, Any]:
     def residual(verdict) -> List[str]:
         """The reasons that are not the NumPy-host backend clause.
 
-        MATCHED ON THE CLAUSE, NOT ON THE WORD 'cupy'. A filter on the word would
+        Matched on the clause, not on the word 'cupy'. A filter on the word would
         also swallow any other clause that names a backend, and a refusal that
         vanishes from the residual is a refusal the leg reports as an admission.
         """
@@ -825,10 +825,10 @@ def predicate_leg() -> Dict[str, Any]:
     bloch, bloch_pml = _build_complex((3.0, 3.0, 0.0), "periodic",
                                       (0.23, 0.0, 0.0))
     record("bloch_no_sources", coverage(bloch, bloch_pml, ()), True)
-    # THE OTHER SEAM'S SOURCE is not this pair's business at all.
+    # The other seam's source is not this pair's business at all.
     record("bloch_magnetic_source",
            coverage(bloch, bloch_pml, (_Source("B"),)), True)
-    # THE IN-SEAM ELECTRIC DEPOSIT IS CARRIED. This is the row that takes the
+    # The in-seam electric deposit is carried. This is the row that takes the
     # product from one corpus row to sixteen.
     record("bloch_electric_deposit_is_carried",
            coverage(bloch, bloch_pml, (_deposit(bloch, "Ey"),)),
@@ -979,7 +979,7 @@ def build_driver(cp, dimensions, cell, boundaries, k_point, pml_spec, seed: int,
                  electric: bool):
     """One complex-storage PML driver, seeded identically for every route.
 
-    ``electric`` puts a real source IN THIS SEAM. On the magnetic twin's gate the
+    ``electric`` puts a real source in this seam. On the magnetic twin's gate the
     equivalent flag put one in the other seam and was free; here it is the whole
     carry family, and every route gets the same source so the comparison stays a
     statement about the weld.
@@ -1005,7 +1005,7 @@ def build_driver(cp, dimensions, cell, boundaries, k_point, pml_spec, seed: int,
         host = (rng.uniform(-0.25, 0.25, size=shape)
                 + 1j * rng.uniform(-0.25, 0.25, size=shape)).astype(np.complex64)
         driver.set_field(name, cp.asarray(np.ascontiguousarray(host)))
-    # SEEDED ON THE E SIDE, not the H side: an all-zero f_w_E makes the history
+    # Seeded on the E side, not the H side: an all-zero f_w_E makes the history
     # read indistinguishable from a zero and disarms m6 on the first step.
     for name in ("f_w_Ex", "f_w_Ey", "f_w_Ez"):
         array = getattr(driver.fields, name, None)
@@ -1073,7 +1073,7 @@ AUXILIARY_LINES: Dict[str, Tuple[bool, int]] = {
 def outside_every_layer(driver, names) -> List[str]:
     """The auxiliaries whose record line holds no row of the run's division.
 
-    THE AUXILIARY CONTRACT LEAVES THEM UNTOUCHED: an auxiliary word outside its form's
+    The auxiliary contract leaves them untouched: an auxiliary word outside its form's
     region is never read or written, so on a division that gives a component's layer
     no cell at all (a 2-D case layering y only gives fu_Bx, fu_By, f_w_Hx, f_w_Hz none)
     the auxiliary keeps its first word for the whole run, on the array path and in the
@@ -1200,8 +1200,8 @@ def separate_route(driver):
     # The three seam passes stay on the ARRAY PATH here: no Triton product owns the
     # wall clear, and both symmetry fills are no-ops on every admitted case. All
     # three are counted, so a difference in which of them ran is a counter event
-    # rather than an invisible correction. THE INJECTION ALSO STAYS ON THE ARRAY
-    # PATH, which is what makes this route the right oracle for the carry family:
+    # rather than an invisible correction. The injection also stays on the array
+    # path, which is what makes this route the right oracle for the carry family:
     # it is the two certified kernels with the driver's own deposit between them.
     return Route({"step_D": curl, "update_E": constitutive})
 
@@ -1209,7 +1209,7 @@ def separate_route(driver):
 def fused_route(plan, driver=None, sources=()):
     """The fused plan in its two slots, BRACKETED when the seam carries a deposit.
 
-    THE BRACKET IS THE SHIPPED ONE. ``deposit_repair.LeadingRepairPlan`` /
+    The bracket is the shipped one. ``deposit_repair.LeadingRepairPlan`` /
     ``TrailingRepairPlan`` are the exact pair ``launch._install_fused_pair``
     (launch.py:1663-1668) puts in these two slots; a harness that assembled its own
     could not license the one that ships.
@@ -1419,8 +1419,8 @@ def compile_mutant(source: str, kernel_name: str) -> Any:
     The connection helper and the shared forms are IMPORTED into the mutant's
     namespace rather than copied, for the same reason the shipped module imports
     them: a second spelling is a second place to be wrong, and a mutant carrying its
-    own copy would no longer be testing the shipped arithmetic. THE MODULE NAME MUST
-    NOT START WITH ``triton``: Triton's dependency finder leaves every callee whose
+    own copy would no longer be testing the shipped arithmetic. The module name must
+    not start with ``triton``: Triton's dependency finder leaves every callee whose
     ``__module__`` starts with its package name out of the kernel's cache key, so a
     helper-only mutant could be served another mutant's binary (measured on the
     off-diagonal gate, 2026-10-08).
@@ -1450,13 +1450,13 @@ def compile_mutant(source: str, kernel_name: str) -> Any:
 
 
 def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, int]]], ...]:
-    """(id, why it is armed, expectation, rewrite). The artifact records what was MEASURED."""
+    """(id, why it is armed, expectation, rewrite). The artifact records what was measured."""
 
     def m1_wall_clear_dropped(source: str) -> Tuple[str, int]:
         """The wall clear not carried: MEEP's step_boundaries(D_stuff), undone.
 
         Visible only where the walls are real, which is what the metallic cases in
-        CASES exist for. NO ``if`` IN THE REPLACEMENT: ``_rewrite_block`` indents
+        CASES exist for. No ``if`` in the replacement: ``_rewrite_block`` indents
         every replacement line to the block's first line, so a compound statement
         in position 0 produces an empty suite and the mutant fails to IMPORT —
         recorded as unarmed, not as a caught defect."""
@@ -1483,7 +1483,7 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
         return source, hits
 
     def m13_wall_clear_takes_the_magnetic_maps_component(source: str) -> Tuple[str, int]:
-        """THE DEFECT THIS PRODUCT ACTUALLY SHIPPED TO ITS FIRST DEVICE RUN, armed
+        """The defect this product actually shipped to its first device run, armed
         so it can never come back unnoticed.
 
         The magnetic twin's map is ``axis d -> component d``; the D side's is the
@@ -1521,7 +1521,7 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
         return _rewrite_block(source, ["if CNX:"], ["if 0:"])
 
     def m14_connection_on_the_old_wrapped_plane(source: str) -> Tuple[str, int]:
-        """INVERSION (Appendix A): the x connection on the LAST plane, where the
+        """INVERSION: the x connection on the LAST plane, where the
         rolled operand used to carry the phase, instead of the unshifted operand's
         plane 0."""
         hits = 0
@@ -1532,7 +1532,7 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
         return source, hits if hits == 4 else 0
 
     def a1_pairwise_stencil(source: str) -> Tuple[str, int]:
-        """INVERSION (Appendix A): the previous pairwise grouping
+        """INVERSION: the previous pairwise grouping
         ``(g1s - g1) + (g2 - g2s)`` in place of MEEP's left-to-right stencil."""
         needle = "curl2_re = curl_stencil(b_x_re, b2_re, a2_re, a_y_re, dtdx, px, py)"
         return (source.replace(needle,
@@ -1540,7 +1540,7 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
                 source.count(needle))
 
     def a2_whole_grid_recurrence(source: str) -> Tuple[str, int]:
-        """INVERSION (Appendix A): the split-field recurrence on every cell, the
+        """INVERSION: the split-field recurrence on every cell, the
         previous whole-grid form, instead of each chunk's own."""
         hits = 0
         for needle in ("du0 = record_in(cb, lattice + 8, k)",
@@ -1551,7 +1551,7 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
         return source, hits if hits == 3 else 0
 
     def a3_constitutive_old_grouping(source: str) -> Tuple[str, int]:
-        """INVERSION (Appendix A): the previous two-accumulation grouping
+        """INVERSION: the previous two-accumulation grouping
         ``(f + kps*src) - kms*prev`` in place of MEEP's ``f + ((kps*src) -
         (kms*prev))``, on component 1's real part (component 1's own axis, y, is
         the one the 2-D scoring case layers)."""
@@ -1600,7 +1600,7 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
     def m6_history_read_after_write(source: str) -> Tuple[str, int]:
         """f_w read AFTER it is written: wrong only where kms != 0, i.e. in the PML.
 
-        THE REWRITE APPENDS A RE-READ RATHER THAN MOVING THE ORIGINAL LOAD, and the
+        The rewrite appends a re-read rather than moving the original load, and the
         difference is not cosmetic. The magnetic twin can move its load because its
         six statements are one contiguous run at one indent; on this side the
         ``if SCALE:`` block sits between the load and the store, and
@@ -1609,7 +1609,7 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
         suite, and a rewrite stopping short of it moves the load two statements
         later WITHOUT crossing the store.
 
-        THAT IS EXACTLY WHAT THE FIRST VERSION OF THIS MUTATION DID. It matched, it
+        That is exactly what the first version of this mutation did. It matched, it
         was reported ARMED, and it was semantically a no-op: measured UNCAUGHT on
         the GPU host 2026-08-30 (run_elecpair2) while every other mutation was caught.
         A rewrite that matches is not a rewrite that means anything, and the
@@ -1703,7 +1703,7 @@ def mutation_table() -> Tuple[Tuple[str, str, str, Callable[[str], Tuple[str, in
         return _scale_after_store(source)
 
     def m9_commuted_multiply(source: str) -> Tuple[str, int]:
-        """PREDICTED NULL: IEEE multiplication commutes; the connection's real
+        """Predicted null: IEEE multiplication commutes; the connection's real
         product spelled operand-first. Only the PTX may move. It is the control that
         says a caught mutation means something."""
         return n1_store_order(source)
@@ -1785,7 +1785,7 @@ def _scale_after_store(source: str) -> Tuple[str, int]:
 
 #: Mutation id -> the CASES index whose grid carries the branch it rewrites.
 #:
-#: THERE IS NO SINGLE CASE THAT SERVES THEM ALL. A wall-clear mutation needs a
+#: There is no single case that serves them all. A wall-clear mutation needs a
 #: METALLIC x, and a phase mutation needs a NONZERO k, and CASES carries no grid
 #: with both. Naming the case per mutation is what resolves that; asserting one
 #: case covers everything is what hid the twin's uncaught m1 on 2026-08-20.
@@ -1929,16 +1929,17 @@ def environment(cp: Any = None) -> Dict[str, Any]:
     because Triton generates PTX for an ARCHITECTURE and a weld cut on an
     undeclared one must fail until the declaration is widened deliberately.
     """
+    import neutral_ids  # noqa: PLC0415
     import socket  # noqa: PLC0415
 
     payload: Dict[str, Any] = {
-        "hostname": socket.gethostname(),
+        "hostname": neutral_ids.machine_id(),
         "python": sys.version.split()[0],
         "numpy": np.__version__,
-        "argv": list(sys.argv),
+        "argv": neutral_ids.argv(sys.argv),
         "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
-        "cupy_cache_dir": os.environ.get("CUPY_CACHE_DIR"),
-        "triton_cache_dir": os.environ.get("TRITON_CACHE_DIR"),
+        "cupy_cache_dir": neutral_ids.path(os.environ.get("CUPY_CACHE_DIR")),
+        "triton_cache_dir": neutral_ids.path(os.environ.get("TRITON_CACHE_DIR")),
     }
     try:
         import triton  # noqa: PLC0415
@@ -2002,7 +2003,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "UNRUN — invoked with --no-device; no CUDA leg, mutation or refusal "
             "in this artifact")
         payload["passed"] = all(row["passed"] for row in payload["no_device_legs"])
-        # ``release`` IS THE KEY ``gate_provenance.read_verdict`` CONSULTS FIRST,
+        # ``release`` is the key ``gate_provenance.read_verdict`` consults first,
         # and it is set explicitly here because ``passed`` alone would stamp
         # ``released: True`` on an artifact that measured no bytes on any device.
         payload["release"] = {
@@ -2017,7 +2018,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     import cupy as cp  # noqa: PLC0415
     from meep_gpu import backends, subnormal_policy  # noqa: PLC0415
 
-    # BEFORE THE FIRST DEVICE COMPILE. strict=True: a process that asked to keep and
+    # Before the first device compile. strict=True: a process that asked to keep and
     # quietly did not is a process whose bytes mean nothing.
     subnormal_policy.install_subnormal_policy(args.subnormal_policy, cupy=cp,
                                               strict=True)
@@ -2093,7 +2094,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     device_ok = all(row.get("passed") for row in payload["device_legs"])
     refusal_ok = all(row.get("passed") for row in payload["refusals"])
 
-    # A DECLARED NULL MUST BE CONFIRMED, not merely permitted. Under a weaker rule
+    # A declared null must be confirmed, not merely permitted. Under a weaker rule
     # any expectation other than "caught" passes unconditionally, so moving a
     # stubbornly uncaught mutation to a null spelling would silence it rather than
     # explain it. Every mutation must also have been ARMED: a rewrite that hit

@@ -7,9 +7,9 @@ the package root before itself, so an eager root put the driver, the dispatch pl
 MEEP lift into every process that touched a kernel, and every gate's import record held them
 (``parity/meep_gpu/test_gate_import_closure.py`` holds the records to the gates' real needs).
 
-Two halves are held here. THE PUBLIC SURFACE is the eager one's: the same names, the same
+Two halves are held here. The public surface is the eager one's: the same names, the same
 objects, ``dir()``, the submodules an eager import left bound on the package, and the lazy
-``__version__``. NOTHING IS DECIDED AT IMPORT, so binding a name later decides nothing
+``__version__``. Nothing is decided at import, so binding a name later decides nothing
 differently: no module of the package reads the environment, installs or reads a subnormal
 policy, or probes a backend at import, read off the source; and in a fresh interpreter the
 host's floating-point state and the policy stamp are the same whichever order the modules

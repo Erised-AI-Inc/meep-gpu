@@ -1,6 +1,6 @@
 """The NO-PML constitutive family on Metal: a predicate over a sub-step that does nothing.
 
-THE FINDING, STATED FIRST, BECAUSE IT DECIDES WHAT THIS FILE IS. This family ships
+The finding, stated first, because it decides what this file is. This family ships
 NO KERNEL — no Metal source, no ``compile_shader`` call, no dispatch, no buffer
 binding. Under an inactive absorber ``stepping.update_H`` returns at
 stepping.py:944-945 and ``stepping.update_E`` at stepping.py:983-984, before either
@@ -8,24 +8,24 @@ one reads an array. There is no arithmetic to transcribe, no grouping to hold, n
 coefficient to index and no float to round, so there is nothing for the contraction
 directive, the signed-zero rules or the select-instead-of-min rules to be about.
 
-WHAT THAT MAKES THE CLAIM. A planner-level substitution, and it is only meaningful
+What that makes the claim. A planner-level substitution, and it is only meaningful
 because the gate ALSO proves the step MOVED STATE. A null agreeing with a no-op is
 trivially identical — that pass condition, added late on the Triton track, caught a
 live row (``material_dispersion_user_material_1voxel``) that had been certifying two
 frozen states. The discipline is what ports here, not just the predicate.
 
-WHY THIS FILE EXISTS AT ALL, WHEN THE PREDICATE IS ALREADY BACKEND-FREE
+Why this file exists at all, when the predicate is already backend-free
 ======================================================================
 ``triton_kernels.no_pml_constitutive.null_constitutive_coverage`` carries no
 backend clause by design — a product that launches nothing is correct on NumPy —
-and tranche 1's ``launch.plan_step`` therefore consumed it VERBATIM and recorded
-that the family "needed zero Metal work". That was true of the PREDICATE and false
-of the COMPOSITION, and the difference was measured on this host rather than
-argued:
+and in the Metal port's first stage ``launch.plan_step`` therefore consumed it
+VERBATIM and recorded that the family "needed zero Metal work". That was true of
+the PREDICATE and false of the COMPOSITION, and the difference was measured on
+this host rather than argued:
 
-**THE RESIDENCY VERDICT FALSELY REFUSED THE ONE CONFIGURATION THIS FAMILY EXISTS
-FOR.** Measured 2026-08-15, on the exact ``no_pml_no_storage`` case tranche 1's
-gate leg 8 builds::
+**The residency verdict falsely refused the one configuration this family exists
+for.** Measured 2026-08-15, on the exact ``no_pml_no_storage`` case the Metal port's
+first-stage gate leg 8 builds::
 
     replaces            ('update_H', 'update_E')
     selected            {'update_H': 'no-PML null', 'update_E': 'no-PML null'}
@@ -36,8 +36,8 @@ gate leg 8 builds::
                                'Dx','Dy','Dz') carry no mirror
 
 SIX of those nine names per side are NOT ALLOCATED on such a run at all. This
-paragraph said FOUR for a round, which was a count nobody had taken; the number is
-now MEASURED through :func:`..coverage.sub_step_volumes` against the fixture the
+paragraph said FOUR for a time, which was a count nobody had taken; the number is
+now measured through :func:`..coverage.sub_step_volumes` against the fixture the
 gate builds (2026-08-15)::
 
     update_H   9 volumes, 6 unallocated: Hx Hy Hz f_w_Hx f_w_Hy f_w_Hz
@@ -48,11 +48,11 @@ E is served on demand as ``D * inv_eps`` and is not stored either; ``f_w_*`` is
 allocated only by ``enable_pml_storage``. ``Bx/By/Bz`` and ``Dx/Dy/Dz`` are the only
 volumes that exist, so the refusal demanded mirrors of arrays that do not exist for
 TWO THIRDS of the names it listed, for a sub-step that binds no buffer. It is
-recorded in the tranche-1 artifact as ``residency_covered: false`` on that row, and
-the gate passed anyway because leg 8 records the field without asserting it. The
-gate's ``residency`` leg now COUNTS the unallocated set per side instead of sampling
-three names out of it, so this number is re-measured on every cut rather than read
-back from here.
+recorded in the first-stage gate artifact as ``residency_covered: false`` on
+that row, and the gate passed anyway because leg 8 records the field without
+asserting it. The gate's ``residency`` leg now COUNTS the unallocated set per side
+instead of sampling three names out of it, so this number is re-measured on every
+cut rather than read back from here.
 
 The defect is in the residency MODEL, not in the predicate: ``planned`` meant "runs
 on the device against the mirror", and a null runs on neither. :func:`..coverage.residency_reasons`
@@ -60,7 +60,7 @@ now takes a fourth declared set, ``null``, whose members neither REQUIRE a mirro
 (they bind nothing) nor STALE one (they write nothing) — and this module is where
 the composition that declares it lives.
 
-THE OTHER THREE METAL-SPECIFIC GROUNDS, each a real difference and none of them
+The other three Metal-specific grounds, each a real difference and none of them
 about arithmetic:
 
 1. **The plan protocol.** Every Metal plan is launched as ``run(contract=None)``,
@@ -80,12 +80,12 @@ about arithmetic:
 3. **The subnormal precondition is satisfied VACUOUSLY, and on Metal that claim
    has teeth.** The MPS executor flushes float32 subnormals natively and exposes
    no lever (``subnormal.mps_policy_reasons``), so any Metal code that touched a
-   field array carrying subnormals would destroy them. This family's gate SEEDS
-   DENSE SUBNORMALS deliberately and shows byte-identity anyway — which is a
+   field array carrying subnormals would destroy them. This family's gate seeds
+   dense subnormals deliberately and shows byte-identity anyway — which is a
    direct measurement that nothing on the device touched the arrays, and is a
    stronger statement here than the same leg makes on a keep-policy host.
 
-WHAT IS IMPORTED AND NEVER RE-DERIVED
+What is imported and never re-derived
 =====================================
 The predicate itself. :func:`null_constitutive_coverage` below IS
 ``triton_kernels.no_pml_constitutive.null_constitutive_coverage`` — the same
@@ -97,7 +97,7 @@ asserts the identity so a copy cannot appear. So are :data:`NULL_SIDES`,
 :func:`stored_e_constitutive_reasons`. Nothing about which configurations are null
 is decided twice.
 
-THE ONE MEASUREMENT EVERY NON-CLAUSE RESTS ON, and it was a READING until
+The one measurement every non-clause rests on, and it was a READING until
 2026-08-15. "A sub-step that returns before its first statement reads no pointer"
 was transcribed from stepping.py:944-945 / :983-984 and never executed. It is now
 executed: the gate's ``over_coverage`` leg REBINDS every allocated field volume to
@@ -123,7 +123,7 @@ in hand every entry below is a consequence rather than an argument — a sub-ste
 that provably touches no field array cannot be wrong about a stride, an index, a
 ghost rule or a rounding mode.
 
-THE NON-CLAUSES, NAMED, because every other predicate in this package carries them
+The non-clauses, named, because every other predicate in this package carries them
 and a reader who does not find them here must be told it was deliberate. There are
 FIFTEEN and they are enumerated in :data:`METAL_NON_CLAUSES`; this prose said FOUR
 while the table held eleven, which is the same false-count defect the Triton file
@@ -156,13 +156,13 @@ prose — is what the gate reads:
   a cylindrical, a complex, a Bloch, a beta, a BFAST, a conductive, a
   non-contiguous, a chi3 and an unrecognised-pole configuration rather than
   leaving it as an argument, and it measures the SIBLING half too: the Metal
-  kernel predicate must refuse each of those grids NAMING THE CLAUSE this family
+  kernel predicate must refuse each of those grids naming the clause this family
   drops. Asserting only that the sibling refused would have been vacuous — every
   one of these grids is already refused by ``_grid_reasons`` clause 3 ("no active
   PML layer"), which fires whatever the fold clause does. That is the Metal
   analogue of the Triton suite's ``_residual()`` helper, and it was missing here.
 
-THE LAST FOUR ENTRIES WERE MISSING UNTIL 2026-08-15, and the way they were missing
+The last four entries were missing until 2026-08-15, and the way they were missing
 is the finding rather than the entries. The table's totality assertion ran in ONE
 DIRECTION — every table key must have a case — so a clause the siblings really fire
 on a configuration this family ADMITS could simply never be written down and
@@ -175,7 +175,7 @@ admitted, 0 words moved). The gate's ``over_coverage`` leg now runs that sweep a
 FAILS on any sibling reason it cannot map to a table key, which is the direction
 that was missing.
 
-ONE CANDIDATE WAS REFUTED RATHER THAN ADDED, and it is recorded because a reader
+One candidate was refuted rather than added, and it is recorded because a reader
 will ask: the GHOST-RULE clause (``axis 1 boundary 'mirror' is outside ('periodic',
 'metallic')``) looks like a twelfth omission and is not an independent one.
 ``COVERED_BOUNDARIES`` is ``('periodic', 'metallic')`` and the only other kinds
@@ -185,14 +185,14 @@ respectively on every configuration that reaches them. Measured over the whole
 sweep: the ghost clause never appears without one of those two. It is subsumed,
 not omitted, and the ``over_coverage`` leg maps it onto them by name.
 
-ARM S IS NOT BUILT IN THIS NULL-FAMILY MODULE, and the imported record is about the
+Arm S is not built in this null-family module, and the imported record is about the
 Triton sibling that originated it. Metal's own stored-E product now lives separately
 in :mod:`.no_pml_stored_e`; keeping it there preserves this module's invariant that a
 null plan contains no arithmetic. A stored-E plan has a different residency table
 (it writes E without ``f_w_E``), so it must remain a distinct family rather than a
 flag on this one.
 
-DISPATCH IS NOT WIRED. ``meep_gpu.fastpath.plan_fast_path`` returns ``None`` on
+Dispatch is not wired. ``meep_gpu.fastpath.plan_fast_path`` returns ``None`` on
 every branch and this module does not touch it, exactly as on the Triton track
 through all nine of its families.
 """
@@ -205,8 +205,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional, Sequence, Tuple
 
-# ONE DEFINITION, IMPORTED. Nothing about which configurations are null is decided
-# in this file; see the module docstring's "WHAT IS IMPORTED AND NEVER RE-DERIVED".
+# One definition, imported. Nothing about which configurations are null is decided
+# in this file; see the module docstring's "what is imported and never re-derived".
 from ..triton_kernels.no_pml_constitutive import (  # noqa: F401 - re-exported
     CONSERVATIVE_CLAUSES,
     NULL_SIDES,
@@ -237,8 +237,8 @@ __all__ = [
 #: The arm registry keys on SLOTS and ``NULL_SIDES`` keys on SIDES, so one of the
 #: two tables has to do the translation somewhere visible.
 #:
-#: DERIVED, NOT SPELLED, AND THAT CHANGED 2026-08-15 BECAUSE THE LITERAL WAS A
-#: MEASURED, BYTE-VISIBLE HOLE. It used to read ``{"update_H": "H", "update_E":
+#: Derived, not spelled, and that changed 2026-08-15 because the literal was a
+#: measured, byte-visible hole. It used to read ``{"update_H": "H", "update_E":
 #: "E"}`` — a SECOND literal beside the imported ``NULL_SIDES``, free to drift from
 #: it. Measured with the two values swapped: ``launch.plan_step`` on a no-PML run
 #: with ``stores_E`` True filled the ``update_E`` SLOT with a null plan whose own
@@ -255,15 +255,15 @@ NULL_SLOTS: Dict[str, str] = {
 #: refusal would be FALSE where it fired. FIFTEEN of them, and the count is here
 #: rather than in the prose above because the prose got it wrong.
 #:
-#: RECORDED AS DATA BECAUSE THE GATE READS IT, and that sentence only became true
-#: this round. It previously claimed "the gate's ``breadth`` leg iterates it: an
-#: entry with no case in the leg is a claim nothing measured", while the leg
-#: iterated a separate six-case literal — measured 2026-08-15: six of the eleven
-#: entries then present (``conductivity``, ``cylindrical_axis``, ``layout``,
+#: Recorded as data because the gate reads it, and that sentence only became true
+#: when this note was written. It previously claimed "the gate's ``breadth`` leg
+#: iterates it: an entry with no case in the leg is a claim nothing measured", while
+#: the leg iterated a separate six-case literal — measured 2026-08-15: six of the
+#: eleven entries then present (``conductivity``, ``cylindrical_axis``, ``layout``,
 #: ``metal_backend``, ``residency_declaration``, ``subnormal_policy``) had no case
 #: anywhere, so the table's own stated discipline was exactly what it was not doing.
 #:
-#: BOTH DIRECTIONS ARE CHECKED NOW, and only one of them was:
+#: Both directions are checked now, and only one of them was:
 #:
 #: * TABLE -> CASE. ``gate...leg_breadth`` asserts every key names either a grid
 #:   case in the sweep or the check that covers it. An entry with neither FAILS.
@@ -359,7 +359,7 @@ METAL_NON_CLAUSES: Dict[str, str] = {
 def slot_side_reasons(slot: str) -> Tuple[str, ...]:
     """Does the slot->side table agree with the side->slot table it is derived from?
 
-    A BOOKKEEPING CLAUSE, NOT A PHYSICS ONE, and it lives here rather than in the
+    A bookkeeping clause, not a physics one, and it lives here rather than in the
     predicate for that reason: the shared predicate answers "is this SIDE null on
     this run", and it has no way to know which SLOT the composer is about to put the
     answer in. Crossing those two is a silent, byte-visible over-coverage — measured
@@ -394,7 +394,7 @@ def metal_null_constitutive_coverage(fields: Any, pml: Any, side: str,
                                      ) -> Coverage:
     """The shared predicate, under the signature the Metal arm registry calls.
 
-    ``residency`` and ``contract_variants`` are ACCEPTED AND IGNORED, and that is
+    ``residency`` and ``contract_variants`` are accepted and ignored, and that is
     the whole Metal content of this function — see :data:`METAL_NON_CLAUSES`
     entries ``residency_declaration`` and ``metal_backend`` for why ignoring each
     of them is CORRECT rather than lax. They are in the signature so this family's
@@ -418,7 +418,7 @@ def metal_null_constitutive_coverage(fields: Any, pml: Any, side: str,
 class MetalNullConstitutivePlan:
     """The plan for a sub-step that does nothing: it also does nothing.
 
-    IT DOES NOT SUBCLASS :class:`..plans.KernelPlan`, and the reason is that the
+    It does not subclass :class:`..plans.KernelPlan`, and the reason is that the
     base's ``run`` is exactly wrong here. ``KernelPlan.run`` looks the requested
     contraction mode up in ``_functions`` and RAISES when it is absent — which is
     the right contract for a kernel plan, because a guard selector that silently
@@ -434,7 +434,7 @@ class MetalNullConstitutivePlan:
     happened, over there". This one means "there was no work", which is a different
     fact about the run and must not be reported as the first.
 
-    ``runs`` IS LOAD-BEARING FOR THE GATE rather than for the engine. A leg that
+    ``runs`` is load-bearing for the gate rather than for the engine. A leg that
     certifies "the plan reproduced the array path" by comparing bytes is trivially
     satisfied by a plan that was never invoked. On a kernel family the launch
     counter is the evidence; here there is no launch, so this is.
@@ -470,7 +470,7 @@ class MetalNullConstitutivePlan:
     def variants(self) -> Tuple[str, ...]:
         """Which contraction modes this plan can launch: none, because it has no source.
 
-        The EMPTY TUPLE IS THE ANSWER, not a missing one. A kernel plan reports the
+        The empty tuple is the answer, not a missing one. A kernel plan reports the
         modes it compiled; this plan has no source string, so there is no variant
         of one to report, and an artifact that showed ``('off',)`` here would be
         claiming a compiled guard that does not exist.
@@ -481,7 +481,7 @@ class MetalNullConstitutivePlan:
     def volumes(self) -> Tuple[str, ...]:
         """Which mirrored volumes this plan binds: none.
 
-        THE RESIDENCY CONSEQUENCE, and the reason this attribute is spelled out on
+        The residency consequence, and the reason this attribute is spelled out on
         a plan that binds nothing. A null neither requires a mirror nor stales one,
         so it belongs in ``residency_reasons``'s ``null`` set rather than its
         ``planned`` set. Reported as a declaration on the plan so a composer reads
@@ -554,13 +554,13 @@ class MetalNullConstitutiveStepPlan:
         ``zero_metal_D`` and ``fill_folded_far_ghosts_D`` (driver.py:3290-3302,
         between the ``update_H`` call at :3289 and the ``update_E`` call at :3304),
         and
-        every one of them is a no-op TO A PLAN THAT PERFORMS NO OPERATION — the
+        every one of them is a no-op to a plan that performs no operation — the
         reordering is of this plan past them, not of them past each other, and a
         call that neither reads nor writes commutes with anything. It still counts
         both, so a caller can prove it ran.
 
-        THE LINE NUMBERS ARE THE MEASURED ONES. This docstring cited
-        ``driver.py:3212-3225`` for a round; those lines are inside
+        The line numbers are the measured ones. This docstring cited
+        ``driver.py:3212-3225`` for a time; those lines are inside
         ``FdtdDriver.step``'s own DOCSTRING, not its body, so the citation pointed a
         reader at prose about MEEP's source slots rather than at the calls it named.
         """
@@ -604,10 +604,10 @@ def plan_metal_null_constitutive_step(fields: Any, pml: Any,
                                       ) -> MetalNullConstitutiveStepPlan:
     """Ask both sides independently, and answer the residency question correctly.
 
-    THE RESIDENCY VERDICT IS THE POINT. Both null slots are declared through
+    The residency verdict is the point. Both null slots are declared through
     ``residency_coverage``'s ``null`` set rather than its ``planned`` set, because
     a null neither binds a mirror nor writes a host array. Declared as ``planned``
-    — which is what tranche 1's composer did, having no other set to put them in —
+    — what the first-stage composer did, having no other set to put them in —
     the verdict REFUSES the family's own configuration, naming volumes that a
     no-PML run does not allocate. Measured, and quoted in the module docstring.
 
@@ -693,7 +693,7 @@ def _arm_plan(context: Any, slot: str) -> Optional["MetalNullConstitutivePlan"]:
 def _arm_gate(context: Any) -> bool:
     """Consult this arm only when the layer is inert.
 
-    A GATE, NOT A COVERAGE CLAUSE, and the distinction is deliberate: it decides
+    A gate, not a coverage clause, and the distinction is deliberate: it decides
     whether the arm is CONSULTED, and it reads the LAYER rather than the fields,
     which is the one cheap structural question askable before any predicate runs.
     The predicate then asks ``pml.is_active`` again through
@@ -709,7 +709,7 @@ def _arm_gate(context: Any) -> bool:
 def register_arms() -> Tuple[Any, ...]:
     """Register both null slots with :mod:`..arms`.
 
-    THE ARM GETS NO PREFERENCE OF ANY KIND, in either direction. A null preferred
+    The arm gets no preference of any kind, in either direction. A null preferred
     over a kernel silently deletes a real sub-step; a kernel preferred over the
     null launches the ``dsigw`` accumulation on a step that allocates no ``f_w_*``
     at all. Two admitters leave the slot unselected naming both, which is the

@@ -7,7 +7,7 @@ reachable from the driver. It is the test-support object the MEEP-identity tiers
 built on: a lift is made once where MEEP is installed, and the capsule is then stepped
 on any host, against stored MEEP digests, without MEEP.
 
-WHAT IS CARRIED. Two things, both needed:
+What is carried. Two things, both needed:
 
 * The CONSTRUCTION LOG: the :class:`FdtdDriver` constructor call and, in order, every
   configuration call the lift made on the driver (:data:`CONSTRUCTION_CALLS`), with
@@ -28,7 +28,7 @@ amplitude a caller's function produced, comes back as the minting host stored it
 :attr:`Capsule.load_report` counts the arrays and scalars whose rebuilt value differed
 from the stored one before the paste. That count is reported, not judged.
 
-FLOATS ARE BIT PATTERNS. Every float and complex scalar is written as the hexadecimal
+Floats are bit patterns. Every float and complex scalar is written as the hexadecimal
 of its IEEE-754 bytes and read back with :func:`struct.unpack`, so no decimal is parsed:
 a decimal parsed under a flushing FPU loses its subnormals.
 
@@ -48,7 +48,7 @@ capsule steps only with a currents table. It is a test double at the source-time
 not a driver option: the source classes, their ``inject`` and every other method are
 untouched, so the dispatch planner's source checks read the same objects.
 
-WHAT IS REFUSED, BY NAME. When writing: a driver not built under
+What is refused, by name. When writing: a driver not built under
 :func:`recording_construction`; any monitor (DFT, flux, energy, force, near-to-far),
 which this schema does not carry; a closed driver; synchronized magnetic fields; an
 object of a class from outside this package; and a callable that was not recorded or
@@ -58,7 +58,7 @@ recorded one, a rebuilt object graph of another shape, and a custom waveform, or
 source whose currents came from MEEP's own ``src_time``, loaded without a currents
 table.
 
-THE CHUNK DIVISION. The lift installs MEEP's division with ``set_chunk_layout``, a
+The chunk division. The lift installs MEEP's division with ``set_chunk_layout``, a
 construction call: the capsule carries the :class:`~.chunk_map.ChunkLayout` it was given
 (boxes, per-chunk PML flags, axis frames, faces and membership lines), the loader replays
 it, and the loaded driver steps the lifted simulation's own division. When the minting
@@ -150,13 +150,15 @@ LIFT_ATTRIBUTES: Tuple[str, ...] = ("lift_record", "sigma_lift", "migrated_monit
 #: ``src_time`` (``_meep_src_time``), which is MEEP's object and cannot leave the
 #: process. The writer lists the sources that held
 #: one (``provenance["source_times_from_meep"]``), and the loader refuses to build such
-#: a capsule without a currents table.
+#: a capsule without a currents table. ``Fields.e_reads_d`` (a read of an unstored E serves
+#: D's words before the first step) is not carried either: the loader derives it from the
+#: carried ``step_count`` (:meth:`Capsule.build_driver`).
 NOT_CARRIED = frozenset({
     "xp", "gpu", "scratch", "_scratch", "_fmp_scratch", "_fmp_scratch_by_component",
     "_fast_path", "_fast_path_stale", "_fast_path_record", "_point_stencils", "_h_alias_cache",
     "_default_chunk_layout", "_chunk_record", "_cache", "_region_plan",
     "_installed_chunk_layout", "_offdiag_presence",
-    "_src_vol_key", "_src_vol", "_src_geometry", "_meep_src_time",
+    "_src_vol_key", "_src_vol", "_src_geometry", "_meep_src_time", "e_reads_d",
 })
 #: Driver lists that must be empty: this schema carries no monitor.
 MONITOR_ATTRIBUTES: Tuple[str, ...] = (
@@ -890,6 +892,10 @@ class Capsule:
                     setattr(driver, name, _Decoder(self).decode(stored_driver["s"][name]))
             reconciler = _Reconciler(self)
             reconciler.reconcile(driver, stored_driver, "driver")
+            # Construction set it; a state past its first step has formed E (Fields.e_reads_d).
+            # A D seeded by set_field before the first step is carried as state, so its
+            # rebuilt driver reads E as D's words until it steps, as MEEP's E is D's storage.
+            driver.fields.e_reads_d = driver.step_count == 0
             self.load_report = reconciler.report()
             if currents is not None:
                 install_currents(driver, currents)

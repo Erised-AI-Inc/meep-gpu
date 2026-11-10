@@ -5,20 +5,20 @@ contents are that module's, unchanged in behaviour, with exactly one deliberate
 addition (:class:`Mirror` now carries a DTYPE rather than coercing to float32).
 ``launch.py`` re-imports the names, so the certified launch path is the same path.
 
-WHY THE EXTRACTION IS A FINGERPRINT EVENT and was done deliberately rather than
+Why the extraction is a fingerprint event and was done deliberately rather than
 avoided: ``compute_fingerprints`` hashes the HOST modules beside the kernel sources,
 because the host chooses the Yee sub-lattice, binds the coefficient pointers and
 decides the specialisation constants — each of those a silent wrong answer if it
 changes and none of them visible in a kernel source. Moving code between host
 modules therefore moves host hashes. The re-cut records that the delta was
-HOST-MODULE HASHES ONLY, with every kernel-source hash unchanged, and that
+host-module hashes only, with every kernel-source hash unchanged, and that
 comparison is better evidence of byte-neutrality than not refactoring would have
 produced.
 
-NO TORCH AT MODULE LEVEL. Every torch import sits inside the function that needs it,
+No torch at module level. Every torch import sits inside the function that needs it,
 so a predicate-only host with no GPU can still import this package.
 
-THE RESIDENCY LAYER HAS NO TRITON COUNTERPART. The CuPy path is zero copy —
+The residency layer has no Triton counterpart. The CuPy path is zero copy —
 ``CupyPointer`` renames an existing device allocation and the kernel writes the
 engine's own array in place. On this host the engine holds NumPy and a torch MPS
 tensor is a separate allocation, so a plan owns persistent device MIRRORS of the
@@ -30,7 +30,7 @@ is valid only while nothing else writes the host array. See
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from . import softfp64
 
@@ -79,7 +79,7 @@ _LAUNCH_OBSERVER: Optional[Any] = None
 class _WatchedLibrary:
     """A compiled library whose kernels report their operands before launching.
 
-    WHY THE LIBRARY AND NOT THE PLAN. The obvious place for a "the tensors this
+    Why the library and not the plan. The obvious place for a "the tensors this
     launch binds are the ones it declared" check is the plan's argument tuple, and
     that place does not work: ``_args`` is assigned in exactly ONE location
     (``plans.KernelPlan.__init__``) and **25 of the real launching plan classes
@@ -95,7 +95,7 @@ class _WatchedLibrary:
     (``compile_source(...).fused_electric_pair_step``). That attribute access is the
     one choke point the whole arm table passes through, so the wrapper goes here.
 
-    WHAT IT CATCHES that the per-plan read/write declaration cannot: a launch that
+    What it catches that the per-plan read/write declaration cannot: a launch that
     binds a device tensor which is NOT a registered mirror at all. That is the
     mechanism by which a volume gets written without ever appearing in a family's
     ``volumes`` list — a plan-owned pack or scratch allocated in the builder and
@@ -144,7 +144,7 @@ class LaunchAudit:
         #: ``reads``/``writes`` declaration produces, and the one that must not be
         #: allowed to surface as a wrong field 138,447 steps later.
         #:
-        #: WHY A DECLARATION CANNOT BE TRUSTED WITHOUT THIS. A 49-family audit
+        #: Why a declaration cannot be trusted without this. A 49-family audit
         #: (2026-09-21) found 28 families writing mirrors that are absent from their
         #: own ``volumes`` list, and an adversarial pass overturned the read/write
         #: split on 4 more — all four by the same mechanism, a mirror whose role
@@ -229,7 +229,7 @@ def _is_device_tensor(value: Any) -> bool:
 def install_launch_observer(observer: Optional[Any]) -> Optional[Any]:
     """Install (or clear) the launch observer; returns the previous one.
 
-    CLEARS THE LIBRARY CACHE, because a library handed out before the observer was
+    Clears the library cache, because a library handed out before the observer was
     installed is the bare object and would not report. The cache is a build-time
     convenience only (its own docstring says so), so dropping it costs a
     recompilation per source and never changes what a kernel does.
@@ -253,9 +253,9 @@ MAX_BUFFER_BINDINGS = 31
 #: The only two element widths a Metal kernel in this package can bind, and the
 #: ONE place that pairing is written down: ``float32`` binds ``device float*`` and
 #: ``complex64`` binds ``device float2*`` (measured 0/16,384 words against NumPy on
-#: this host). Anything else is REFUSED BY NAME in :meth:`Residency.mirror`.
+#: this host). Anything else is refused by name in :meth:`Residency.mirror`.
 #:
-#: THE REFUSAL IS NOT DEFENSIVE TIDINESS, IT IS A MEASURED SILENT WRONG ANSWER.
+#: The refusal is not defensive tidiness, it is a measured silent wrong answer.
 #: Before it existed, ``mirror(name, host, dtype=numpy.complex128)`` produced a
 #: ``torch.complex128`` tensor on ``mps:0``, bound it to a ``device float2*``
 #: signature, and the launch SUCCEEDED — the kernel read one 128-bit cell as two
@@ -268,7 +268,7 @@ MAX_BUFFER_BINDINGS = 31
 BINDABLE_DTYPES: Tuple[str, ...] = ("float32", "complex64")
 
 
-#: THE THREE OWNERSHIP STATES a mirror can be in, and the invariant each one names.
+#: The three ownership states a mirror can be in, and the invariant each one names.
 #: They exist because the shipped bracket answers the ownership question by brute
 #: force — it copies every mirror both ways around every launch, so the host is
 #: authoritative at every instant and nothing has to be tracked. Measured
@@ -309,7 +309,7 @@ class Mirror:
     never need a sync out, and marking them says so rather than leaving a reader to
     infer it from the kernel signature.
 
-    ``dtype`` IS CARRIED, NOT COERCED. The float32 families mirror float32 and the
+    ``dtype`` is carried, not coerced. The float32 families mirror float32 and the
     complex families mirror complex64: a ``torch`` complex64 tensor binds directly to
     a Metal ``device float2*`` (measured 0/16,384 words against NumPy on this host),
     and the dispatch is then sized in COMPLEX CELLS, which is exactly the element
@@ -344,7 +344,7 @@ class Mirror:
         always be made writeable again — ``setflags(write=True)`` raises
         ``ValueError`` when the base is itself read-only. Sealing such an array
         would strand it, so a mirror that cannot round-trip its own flag is
-        REFUSED FROM THE HOLD by name rather than sealed and hoped for.
+        refused from the hold by name rather than sealed and hoped for.
         """
         host = self.host
         flags = getattr(host, "flags", None)
@@ -360,7 +360,7 @@ class Mirror:
     def seal(self) -> None:
         """Take the host array's write flag down.
 
-        THIS IS THE ONLY FAIL-CLOSED GUARD IN EITHER MODE. Every in-tree mutation
+        This is the only fail-closed guard in either mode. Every in-tree mutation
         of a mirrored volume is ``arr = getattr(fields, name)`` followed by an
         in-place write, and no property getter can tell a read from a
         read-modify-write — so unsealing on read would make every one of those
@@ -368,7 +368,7 @@ class Mirror:
         :meth:`Residency.acquire_write`; a site that does not raises
         ``ValueError: assignment destination is read-only`` the first time it runs.
         It does NOT close a write through a view taken before the seal — see
-        ``Residency.acquire_write``'s note and the plan's section 4.7.
+        ``Residency.acquire_write``'s note, which names the measured hole.
         """
         if self.constant or self.sealed:
             return
@@ -385,7 +385,7 @@ class Mirror:
     def index_view(self) -> Any:
         """The tensor as an index target: itself for float32, its (N, 2) real view for complex64.
 
-        MPS HAS NO COMPLEX INDEX OPS. ``index_fill_(): Complex types are yet not
+        MPS has no complex index ops. ``index_fill_(): Complex types are yet not
         supported`` is what the first complex family under a hold raised
         (``complex_nobloch_2d``, 2026-09-23), and ``index_copy_``/``index_select`` sit
         behind the same gap. Indexing the interleaved float32 view on dim 0 moves the
@@ -403,7 +403,7 @@ class Mirror:
     def sync_in(self) -> None:
         """Host -> device, into the existing allocation.
 
-        LIFTS ITS OWN SEAL for the duration, like :meth:`sync_out`, and for a
+        Lifts its own seal for the duration, like :meth:`sync_out`, and for a
         narrower reason: nothing here writes the host, but ``ascontiguousarray``
         returns the SAME array when it is already contiguous and correctly typed,
         and ``torch.from_numpy`` on a non-writeable array emits "PyTorch does not
@@ -429,7 +429,7 @@ class Mirror:
     def sync_out(self) -> None:
         """Device -> host, IN PLACE, so the engine's references stay valid.
 
-        LIFTS ITS OWN SEAL. ``self.host[...] = ...`` is a host write like any
+        Lifts its own seal. ``self.host[...] = ...`` is a host write like any
         other, so a sealed mirror would refuse the very copy that makes it clean
         again; the flag goes down again afterwards so the guard survives the sync.
         """
@@ -465,15 +465,15 @@ class Mirror:
 
 #: The sparse doors as Metal kernels: one thread per index, ``width`` floats per row
 #: (1 for a float32 mirror, 2 for the ``(N, 2)`` real view a complex64 mirror indexes
-#: through -- see :meth:`Mirror.index_view`). The copy and zero doors are DATA
-#: MOVEMENT ONLY: no arithmetic, so the words written are the words given. The
+#: through -- see :meth:`Mirror.index_view`). The copy and zero doors are data
+#: movement only: no arithmetic, so the words written are the words given. The
 #: subtract door is the source deposit's one statement, MEEP's ``f = float(double(f) -
 #: x)``, carried in software binary64 (:mod:`.softfp64`): integer arithmetic only, so
 #: no float mode of the device reaches it. Duplicates in an index set are unordered
 #: exactly as ``index_copy_`` left them (the callers' tables are unique by
 #: construction).
 #:
-#: WHY NOT THE TORCH INDEX OPS THEY REPLACE, measured on this host (2026-09-24,
+#: Why not the torch index ops they replace, measured on this host (2026-09-24,
 #: 160^3 float32 volume, ``parity/meep_gpu/results/round_2026-09-24_night_drivers/
 #: bench_scatter_sizes.json``): ``index_copy_`` is SERIAL in the index count --
 #: 1.2 ms at 1 cell, 3.7 ms at 160, 21 ms at 1,600 and 338 ms at a 25,600-cell
@@ -589,6 +589,120 @@ def _door_kernels() -> Any:
     return library
 
 
+#: The largest source deposit, in points, whose binary64 payload reaches the device as
+#: KERNEL ARGUMENTS rather than as an uploaded tensor.
+#:
+#: WHY, measured on this host (2026-10-16, torch 2.10.0, M1 Max): an uploaded payload is
+#: a CPU-to-MPS ``Tensor.to`` and that copy waits for the queue -- an upload and its
+#: launch took 202-244 us with the queue idle and 2,422-4,554 us behind 20 queued
+#: launches, and on a held ``pml_3d`` step at 110,592 cells it was 352-442 us of a
+#: 532-625 us step while the source was on. A Python ``int`` list handed to a
+#: ``torch.mps.compile_shader`` kernel is bound with ``setBytes`` when the launch is
+#: ENCODED: the bytes are copied then (a list changed after the call is not seen), the
+#: launch is ordered against the work queued ahead of it like any other, and nothing
+#: waits -- 5.6-29.6 us of host time at 1-512 words behind the same 20 launches. The words
+#: are the same int64 bit patterns the tensor carried, bound to the same ``device const
+#: ulong*`` parameters of the same ``door_scatter_sub``, so the kernel source is unchanged
+#: and every word the door forms is the word it formed before; measured exact on random
+#: int64 patterns, both extremes and ``-0.0``'s pattern at 1-2,048 words.
+#:
+#: WHY 512: Metal's documentation gives ``setBytes`` data under 4 KB (512 int64 words),
+#: and a bound is REAL on this host: a 4,096-word list ABORTED the process
+#: (exit 134, nothing raised to Python) where 2,048 passed. A larger deposit -- a plane or
+#: eigenmode source over many cells -- keeps the uploaded payload and counts in
+#: :attr:`Residency.deposit_uploads`.
+#:
+#: Why not a non-blocking upload: ``Tensor.to(device, non_blocking=True)`` does not wait,
+#: but it reads the host bytes when the queue reaches the copy, not at the call -- on this
+#: host 8 of 8, 4,096 of 4,096 and 131,072 of 131,072 words read a change made to the
+#: NumPy source after the call returned. Using it safely needs a ring of host buffers held
+#: until a completion is known, and a slip in that bookkeeping is a silently wrong field.
+DEPOSIT_ARGUMENT_WORDS = 512
+
+#: Whether this process's Metal launcher binds a Python ``int`` list to a kernel buffer
+#: argument, decided ONCE by :func:`_argument_payloads`; absent until asked.
+_ARGUMENT_PAYLOADS: Dict[str, bool] = {}
+
+
+def _argument_payloads() -> bool:
+    """Does ``door_scatter_sub`` accept its payloads as ``int`` lists in this process?
+
+    PyTorch 2.10.0, the certified launcher, does. A launcher that does not raises at
+    argument binding, before anything is encoded; this asks once, by a one-thread launch
+    of the deposit door itself on a scratch word nothing reads, with one-word lists (never
+    near the abort bound above), and every later deposit takes the answer. A refusal
+    leaves the uploaded payload in place, the form the door had before.
+    """
+    known = _ARGUMENT_PAYLOADS.get("mps")
+    if known is None:
+        import torch  # noqa: PLC0415
+
+        scratch = torch.zeros(1, dtype=torch.float32, device="mps")
+        index = torch.zeros(1, dtype=torch.int64, device="mps")
+        try:
+            _door_kernels().door_scatter_sub(scratch, index, [0], [0], 1, 1, 1, threads=1)
+            known = True
+        except (RuntimeError, TypeError, ValueError):
+            known = False
+        _ARGUMENT_PAYLOADS["mps"] = known
+    return known
+
+
+#: The largest sparse SCATTER, in float32 words (one per float32 cell, two per complex64
+#: cell), whose payload reaches the device as KERNEL ARGUMENTS rather than as an uploaded
+#: tensor -- :data:`DEPOSIT_ARGUMENT_WORDS`'s transport, applied to :meth:`Residency.scatter`.
+#:
+#: WHY: the deposit-repair bracket of a fused pair whose seam carries the source writes the
+#: repaired words back with one scatter a step (``deposit_repair.apply``), and its uploaded
+#: payload was the same blocking CPU-to-MPS copy the deposit used to be. Measured on this
+#: host (2026-10-16, torch 2.10.0, M1 Max; ``door_scatter_copy`` itself): a scatter
+#: carrying its payload as arguments took 9.9-30.6 us of host time at 1-512 words, the
+#: uploaded form 200-269 us with the queue idle and 2,361-4,167 us behind 20 queued
+#: launches.
+#:
+#: How, and why not a float list: ``door_scatter_copy`` reads ``device const float*``, and
+#: the launcher binds a Python ``int`` list as int64 words, so the float32 words go PACKED
+#: two to an int64 (low word first, one zero word padding an odd count, never read): the
+#: bytes bound ARE the float32 words, and the kernel source is unchanged. Measured exact at
+#: 1-1,024 rows, widths 1 and 2, on random patterns, both zeros, infinities, subnormals and
+#: quiet and signalling NaNs with payloads. A Python FLOAT list is not exact: it came back
+#: with every signalling NaN quieted (``7f800001`` -> ``7fc00001``).
+#:
+#: WHY 1,024 WORDS: 512 int64 words, the same 4 KB bound as :data:`DEPOSIT_ARGUMENT_WORDS`.
+#: A larger scatter -- a whole face, say -- keeps the upload and counts in
+#: :attr:`Residency.scatter_uploads`.
+SCATTER_ARGUMENT_WORDS = 1024
+
+
+def _packed_words(payload: Any) -> List[int]:
+    """A float32 or complex64 payload's float32 words as int64 ``int``s, two words to each."""
+    import numpy as np  # noqa: PLC0415
+
+    words = np.ascontiguousarray(payload).reshape(-1).view(np.uint32)
+    if words.size % 2:
+        words = np.concatenate([words, np.zeros(1, dtype=np.uint32)])
+    return words.view(np.int64).tolist()
+
+
+#: Whether :meth:`Residency.gather` READS AHEAD: a run of device gathers the host issues back
+#: to back is remembered, and the next run that starts with the same read takes the whole
+#: run off the device in ONE transfer. Off, every gather is one blocking transfer, as in 1.0.
+#:
+#: WHY: every device-to-host read is a blocking ``Tensor.cpu()``, a command-buffer round
+#: trip of its own even when the queue is empty. The host readers of a held step read in
+#: fixed runs -- a flux monitor's update reads its six tangential components one after the
+#: other (``dft._sliced_factors_product``), the deposit repair's save reads the field and
+#: its ``f_w`` at the deposit cells, ``deposit_repair._fresh_at`` reads D and each P -- and
+#: nothing between two reads of a run touches the device. Measured on a held ``pml_3d``
+#: (2026-10-16, the flux-monitor reads of that step): the six reads of one flux update batched into
+#: one transfer returned the same words and saved 1,115-1,301 us an update.
+#:
+#: Why here and not in the callers: announcing the batch would move ``dft.py`` and
+#: ``host_writes.py``, which the NVIDIA tables' records pin; this module is the Metal
+#: residency's own. The rule that keeps it exact is :meth:`Residency._read_fence`.
+READ_AHEAD = True
+
+
 def _rows_width(view: Any) -> int:
     """Floats per indexed row of an index view: 1 for float32, 2 for the complex real view."""
     return int(view.shape[1]) if view.dim() == 2 else 1
@@ -598,7 +712,9 @@ def _scatter_rows(view: Any, index: Any, values_dev: Any) -> None:
     """``view[index] = values_dev`` on whichever device holds the view.
 
     The Metal door on MPS; ``index_copy_`` elsewhere (the CPU twin a gate builds),
-    which is the op this replaces and whose words it reproduces.
+    which is the op this replaces and whose words it reproduces. On MPS ``values_dev`` is
+    a tensor on the view's device or the payload's words packed as an ``int`` list
+    (:data:`SCATTER_ARGUMENT_WORDS`), which the launcher binds as kernel arguments.
     """
     n = int(index.numel())
     if n == 0:
@@ -606,8 +722,9 @@ def _scatter_rows(view: Any, index: Any, values_dev: Any) -> None:
     if view.device.type != "mps":
         view.index_copy_(0, index, values_dev)
         return
-    _door_kernels().door_scatter_copy(view, index, values_dev.contiguous(), n,
-                                      _rows_width(view), threads=n)
+    if not isinstance(values_dev, list):
+        values_dev = values_dev.contiguous()
+    _door_kernels().door_scatter_copy(view, index, values_dev, n, _rows_width(view), threads=n)
 
 
 def _subtract_double_rows(view: Any, index: Any, re_dev: Any, im_dev: Any, flush: bool) -> None:
@@ -617,8 +734,10 @@ def _subtract_double_rows(view: Any, index: Any, re_dev: Any, im_dev: Any, flush
     twin a gate builds -- the array path's own statements on the host's float64 unit, one
     subtraction and one rounding per word, the imaginary column of a complex64 row against
     ``im_dev``; they run in the host FPU's mode, which is what ``flush`` reports. The
-    payloads are the binary64 values as int64 bit patterns. Duplicate indices are the
-    caller's to refuse, as for :func:`_scatter_rows`.
+    payloads are the binary64 values as int64 bit patterns: tensors on the view's device,
+    or on MPS ``int`` lists the launcher binds as kernel arguments
+    (:data:`DEPOSIT_ARGUMENT_WORDS`). Duplicate indices are the caller's to refuse, as for
+    :func:`_scatter_rows`.
     """
     n = int(index.numel())
     if n == 0:
@@ -676,14 +795,14 @@ def _zero_rows_multi(views: Sequence[Any], index: Any, segments: Any,
 class Residency:
     """The persistent device mirrors one composition's plans share.
 
-    THE POINT IS SHARING. ``step_B`` writes ``Bx`` and ``update_H`` reads it at the
+    The point is sharing. ``step_B`` writes ``Bx`` and ``update_H`` reads it at the
     same index; if each plan mirrored ``Bx`` privately the second launch would read
     the first one's stale bytes and the field would be smooth, plausible and wrong.
     So a mirror is registered once, by name, and every plan that touches that volume
     binds the SAME tensor — which is why a plan built with no residency is a
     coverage refusal rather than a plan with a private copy.
 
-    THE COST THIS BUYS BACK, measured on this host: a host-to-device-and-back round
+    The cost this buys back, measured on this host: a host-to-device-and-back round
     trip of the six in-place volumes costs 12x-64x the kernel it surrounds. That is
     the number the design exists for; it is not an argument.
 
@@ -696,7 +815,9 @@ class Residency:
     __slots__ = ("device", "_mirrors", "syncs_in", "syncs_out", "held", "hoisted",
                  "generation", "copies_in", "copies_out", "flushes",
                  "sparse_gathers", "sparse_scatters", "sparse_zeros", "zero_launches",
-                 "double_subtracts", "_index_cache", "_zero_set_cache", "__weakref__")
+                 "double_subtracts", "deposit_uploads", "gather_reads", "gathers_ahead",
+                 "scatter_uploads", "_index_cache", "_zero_set_cache", "_read_run",
+                 "_read_plans", "_read_ahead", "__weakref__")
 
     def __init__(self, device: str = "mps") -> None:
         self.device = device
@@ -719,7 +840,7 @@ class Residency:
         #: package and it needs no ownership tracking, because the device never
         #: writes them.
         #:
-        #: IT DOES NEED AN INVALIDATION HOOK, and this is it: a hoisted constant is
+        #: It does need an invalidation hook, and this is it: a hoisted constant is
         #: SEALED like any held mirror, so ``set_epsilon_volumes`` or
         #: ``set_isotropic_epsilon_volume`` rewriting a coefficient volume after
         #: plan freeze RAISES instead of leaving the device on stale material for
@@ -754,12 +875,35 @@ class Residency:
         #: :meth:`zero_index` and one per :meth:`zero_index_sets` group (a Metal
         #: launch each on MPS). The batched wall clear is read off this counter.
         self.zero_launches = 0
-        #: Source deposits formed ON THE DEVICE by :meth:`subtract_double_index` (one
+        #: Source deposits formed on the device by :meth:`subtract_double_index` (one
         #: ``door_scatter_sub`` launch each on MPS): each is a deposit that used to cost a
         #: sparse gather -- a blocking device-to-host read -- and a scatter, and now costs
         #: neither. A deposit on a host-current mirror is formed on the host and counts as
         #: a sparse scatter instead.
         self.double_subtracts = 0
+        #: Device deposits whose binary64 payload crossed as an UPLOADED TENSOR: a
+        #: host-to-device copy that waits for every launch queued ahead of it, measured
+        #: at 352-442 us a step at 110,592 cells (see :data:`DEPOSIT_ARGUMENT_WORDS`). A
+        #: deposit of up to that many points carries its payload as kernel arguments
+        #: instead and does not count here, so a held step with the source on reads 0.
+        self.deposit_uploads = 0
+        #: Device-to-host TRANSFERS :meth:`gather` performed: one per gather read alone,
+        #: one per run read ahead (:data:`READ_AHEAD`). :attr:`sparse_gathers` still counts
+        #: one per gather answered from the device, so the two differ by exactly the
+        #: gathers answered from a run read ahead, :attr:`gathers_ahead`.
+        self.gather_reads = 0
+        self.gathers_ahead = 0
+        #: Scatters to a device mirror whose payload crossed as an UPLOADED TENSOR, a copy
+        #: that waits for the queue; up to :data:`SCATTER_ARGUMENT_WORDS` words it crosses
+        #: as kernel arguments and does not count here.
+        self.scatter_uploads = 0
+        #: The read-ahead's state (:meth:`gather`): the current run of device gathers
+        #: (``None``, or ``[fence, [(mirror, linear), ...]]``); the runs remembered, keyed
+        #: by the ids of their first ``(mirror, linear)``; and what the current run read
+        #: ahead, per ``(mirror, linear)`` id pair, in the order it will be asked for.
+        self._read_run: Optional[List[Any]] = None
+        self._read_plans: Dict[Tuple[int, int], Tuple[Tuple[Any, Any], ...]] = {}
+        self._read_ahead: Dict[Tuple[int, int], List[Tuple[Any, ...]]] = {}
         #: Device index tensors, keyed by the id() of the host index array and
         #: holding a reference to it so the id cannot be reused while cached. The
         #: deposit tables and the source point lists are built once and reused
@@ -774,7 +918,7 @@ class Residency:
     def _targets(self, target: Any) -> Tuple[Mirror, ...]:
         """The mirrors one acquire call refers to, resolved by name OR by array.
 
-        NAME-KEYED OWNERSHIP IS WRONG FOR THE WELD FAMILIES and that is measured,
+        Name-keyed ownership is wrong for the weld families and that is measured,
         not feared: ``offdiag_weld_common.py`` does
         ``setattr(self.fields, name, self.rotated[name])`` INSIDE ``run``, every
         launch, so after an odd number of launches the mirror registered as ``Dx``
@@ -850,6 +994,7 @@ class Residency:
         ``arr = getattr(f, name); arr += ...`` in the tree silent. Callers that
         intend to write say so with :meth:`acquire_write`.
         """
+        self._end_read_run()
         mirrors = self._targets(target)
         for mirror in mirrors:
             if mirror.state == DEVICE_OWNED:
@@ -870,13 +1015,14 @@ class Residency:
         ``HOST_OWNED`` so the next launch that declares this mirror a read syncs it
         back in.
 
-        THE ONE HOLE, MEASURED: sealing a parent array does not seal a view a
+        The one hole, measured: sealing a parent array does not seal a view a
         caller took EARLIER. Both in-tree stashers are safe — the deposit repair
         saves fancy-index copies and the magnetic backup is ``copy=True`` — so the
         residual is caller code that stashes a slice and writes through it later.
         Only :meth:`verify` catches that, which is why the flush-then-verify form
         stays in the gate and in debug mode.
         """
+        self._end_read_run()
         mirrors = self._targets(target)
         for mirror in mirrors:
             if mirror.state == DEVICE_OWNED:
@@ -931,13 +1077,126 @@ class Residency:
         hold the host array is stale by design, so the read goes to the tensor; when
         the host is current (CLEAN_BOTH or HOST_OWNED) the host copy is read
         directly, which is free.
+
+        A device read is a blocking transfer, so device reads issued back to back are
+        READ AHEAD (:data:`READ_AHEAD`): such a run is remembered by its first
+        ``(mirror, linear)``, and when a later run starts with the same read the whole
+        remembered run comes off the device in one transfer and the rest of it is answered
+        from that batch -- the same words, data movement only. :meth:`_read_fence` is what
+        may answer from a batch and what may not.
         """
         mirror = self._by_host_identity(array)
         if mirror is None or mirror.state != DEVICE_OWNED:
             source = array if mirror is None else mirror.host
             return source.reshape(-1)[linear]
         self.sparse_gathers += 1
+        if not READ_AHEAD:
+            return self._read_one(mirror, linear)
+        fence = self._read_fence()
+        run = self._read_run
+        if run is not None and run[0] != fence:
+            self._end_read_run()
+            run = None
+        if run is not None:
+            run[1].append((mirror, linear))
+            value = self._answer_ahead(mirror, linear)
+            return self._read_one(mirror, linear) if value is None else value
+        self._read_run = [fence, [(mirror, linear)]]
+        plan = self._read_plans.get((id(mirror), id(linear)))
+        if plan is not None and plan[0][0] is mirror and plan[0][1] is linear:
+            return self._read_run_ahead(plan)
+        return self._read_one(mirror, linear)
+
+    # -- the read-ahead: one transfer for a run of host reads --------------------
+
+    def _read_fence(self) -> Tuple[Any, ...]:
+        """Everything that moves when a device word or an ownership state can have moved.
+
+        The rule that keeps the read-ahead exact. A gather may be answered from a batch
+        read earlier only if no device write and no ownership change happened since the
+        batch was read. Two guards say so, each enough on its own for the writes this
+        module issues: every other public method of this class ENDS the run first
+        (:meth:`_end_read_run`, dropping whatever was read ahead), and every gather in a
+        run compares this tuple with the one taken when the run began -- the state
+        generation, every bracket and door counter, and the registry's size (door writes
+        to a device-owned mirror move no ``generation``, so ``generation`` alone would not
+        do). A third guard, per answered read, covers a torch op on a mirror's tensor made
+        outside this class: the tensor object and its ``_version`` must be the ones read
+        (a ``compile_shader`` launch moves no ``_version``, but every kernel launch on a
+        mirror goes through ``sync_in``/``sync_out``, which end the run). Any mismatch
+        reads the gather alone, as 1.0 did.
+        """
+        return (self.generation, self.syncs_in, self.syncs_out, self.copies_in,
+                self.copies_out, self.flushes, self.sparse_scatters, self.sparse_zeros,
+                self.zero_launches, self.double_subtracts, self.deposit_uploads,
+                self.scatter_uploads, len(self._mirrors))
+
+    def _end_read_run(self) -> None:
+        """Close the current run of device gathers: remember it, drop what it read ahead."""
+        run = self._read_run
+        if run is not None and len(run[1]) > 1:
+            head = run[1][0]
+            if len(self._read_plans) >= 64:
+                self._read_plans.clear()
+            self._read_plans[(id(head[0]), id(head[1]))] = tuple(run[1])
+        self._read_run = None
+        self._read_ahead.clear()
+
+    def _read_one(self, mirror: Any, linear: Any) -> Any:
+        """One gather, one transfer: the 1.0 read."""
+        self.gather_reads += 1
         return self._to_host(mirror, mirror.index_view().index_select(0, self._device_index(linear)))
+
+    def _read_run_ahead(self, plan: Tuple[Tuple[Any, Any], ...]) -> Any:
+        """Read the remembered run ``plan`` in ONE transfer; return its first read's values.
+
+        Only reads of mirrors the device owns NOW are taken (a host-current mirror is read
+        on the host by :meth:`gather`, and its device tensor may be the stale side). Each
+        read is the index view's ``index_select``, flattened (a complex mirror's view is
+        ``(N, 2)`` float32), and the reads are concatenated and copied out once.
+        """
+        import torch  # noqa: PLC0415
+
+        picked = []
+        taken = []
+        for mirror, linear in plan:
+            if mirror.state != DEVICE_OWNED or self._mirrors.get(mirror.name) is not mirror:
+                continue
+            rows = mirror.index_view().index_select(0, self._device_index(linear))
+            picked.append(rows.reshape(-1))
+            taken.append((mirror, linear, int(rows.numel()), mirror.tensor,
+                          mirror.tensor._version))
+        if len(taken) < 2:
+            first_mirror, first_linear = plan[0]
+            return self._read_one(first_mirror, first_linear)
+        flat = torch.cat(picked).cpu().numpy()
+        self.gather_reads += 1
+        start = 0
+        values = []
+        for mirror, linear, size, tensor, version in taken:
+            words = flat[start:start + size].copy()
+            start += size
+            if mirror.tensor.is_complex():
+                words = words.view(mirror._numpy_dtype())
+            values.append((mirror, linear, tensor, version, words))
+        first = values[0][4]
+        for entry in values[1:]:
+            key = (id(entry[0]), id(entry[1]))
+            self._read_ahead.setdefault(key, []).append(entry)
+        return first
+
+    def _answer_ahead(self, mirror: Any, linear: Any) -> Any:
+        """The values of a read the current run read ahead, or None to read it alone."""
+        queue = self._read_ahead.get((id(mirror), id(linear)))
+        if not queue:
+            return None
+        held_mirror, held_linear, tensor, version, words = queue.pop(0)
+        if (held_mirror is not mirror or held_linear is not linear
+                or mirror.tensor is not tensor or tensor._version != version):
+            self._read_ahead.clear()
+            return None
+        self.gathers_ahead += 1
+        return words
 
     def scatter(self, array: Any, linear: Any, values: Any) -> None:
         """Write ``values`` at flat indices ``linear`` -- to whichever side is current.
@@ -956,10 +1215,13 @@ class Residency:
         a device ``index_copy_`` with duplicates is unordered, so a duplicate would be
         the one place the two could disagree. The seam tables are unique by
         construction (one entry per cell) and the caller checks once per table.
-        """
-        import numpy as np  # noqa: PLC0415
-        import torch  # noqa: PLC0415
 
+        The device write is ``door_scatter_copy``; its payload crosses as kernel arguments
+        up to :data:`SCATTER_ARGUMENT_WORDS` words, so a small scatter encodes one launch
+        and waits for nothing, and as an uploaded tensor beyond that (a copy that waits
+        for the queue, counted in :attr:`scatter_uploads`). Both carry the same words.
+        """
+        self._end_read_run()
         mirror = self._by_host_identity(array)
         if mirror is None:
             array.reshape(-1)[linear] = values
@@ -989,19 +1251,23 @@ class Residency:
         host FPU is in at the call, and the two states it can meet are served as
         :meth:`scatter` serves them:
 
-        * DEVICE_OWNED: ``door_scatter_sub`` forms the difference ON THE DEVICE, from the
+        * DEVICE_OWNED: ``door_scatter_sub`` forms the difference on the device, from the
           device's words, in software binary64 (:mod:`.softfp64`). The host stays stale and
           sealed and the state does not move. Until this door existed the cells were
           gathered to the host -- one blocking device-to-host read per deposit per step --
           subtracted in NumPy and scattered back: the same words, and the read is gone.
+          The payload (``real64``/``imag64`` as binary64 bit patterns) crosses as kernel
+          arguments up to :data:`DEPOSIT_ARGUMENT_WORDS` points, so the deposit encodes
+          one launch and waits for nothing; a larger table uploads it as a tensor, which
+          waits for the queue, and counts in :attr:`deposit_uploads`.
         * otherwise the host copy is current: the difference is formed there by the array
           path's own statement and written to both sides, so no state moves.
 
-        THE MODE IS MEASURED AT EVERY CALL (``backends.subnormals_flushed``), never
+        The mode is measured at every call (``backends.subnormals_flushed``), never
         assumed. A Metal composition runs under ``flush`` and the dispatch drives the host
         there, so a held deposit is that mode's arithmetic -- a subnormal stored word or
         payload reads as a signed zero, and a result whose exact value is below 2**-126 is
-        a signed zero, decided before rounding (P0-d1's band) -- while a host left keeping
+        a signed zero, decided before rounding (measured on the Apple GPU) -- while a host left keeping
         gets gradual underflow, because that is what the array path's statement does on it.
 
         ``linear`` must not repeat an index: MEEP's loop subtracts a repeated point twice
@@ -1011,6 +1277,7 @@ class Residency:
         import numpy as np  # noqa: PLC0415
         import torch  # noqa: PLC0415
 
+        self._end_read_run()
         from .. import backends, host_writes  # noqa: PLC0415
 
         mirror = self._by_host_identity(array)
@@ -1030,20 +1297,30 @@ class Residency:
             raise ValueError("complex64 storage needs imag(A) as well as real(A)")
         index = self._device_index(linear)
         n = int(index.numel())
+        device = mirror.tensor.device
+        as_arguments = (device.type == "mps" and n <= DEPOSIT_ARGUMENT_WORDS
+                        and _argument_payloads())
 
         def payload(values: Any) -> Any:
             # A fresh, writable float64 copy (a broadcast view is read-only, and torch
-            # warns on a non-writable source), uploaded as its int64 bit patterns: MPS
+            # warns on a non-writable source), carried as its int64 bit patterns: MPS
             # has no float64 tensors, and the door reads the words, not the values.
+            # Up to DEPOSIT_ARGUMENT_WORDS points the patterns go as kernel arguments
+            # (bound when the launch is encoded; nothing waits for the queue), beyond
+            # that as an uploaded tensor (a copy that waits for the queue).
             words = np.array(np.broadcast_to(np.asarray(values, dtype=np.float64), (n,)),
                              dtype=np.float64).view(np.int64)
-            return torch.from_numpy(words).to(mirror.tensor.device)
+            if as_arguments:
+                return words.tolist()
+            return torch.from_numpy(words).to(device)
 
         real = payload(real64)
         imaginary = payload(imag64) if complex_words else real
         _subtract_double_rows(mirror.index_view(), index, real, imaginary,
                               backends.subnormals_flushed())
         self.double_subtracts += 1
+        if not as_arguments and device.type != "cpu":
+            self.deposit_uploads += 1
 
     def zero_index(self, array: Any, linear: Any) -> None:
         """Write zero at flat indices ``linear``, same ownership rule as :meth:`scatter`.
@@ -1055,6 +1332,7 @@ class Residency:
         fill is a single kernel (``door_scatter_zero``; ``index_fill_`` paid a fixed
         0.2-0.3 ms a call on this host). Bit-exact by construction; zero is zero.
         """
+        self._end_read_run()
         mirror = self._by_host_identity(array)
         if mirror is None:
             array.reshape(-1)[linear] = 0
@@ -1092,6 +1370,7 @@ class Residency:
         More than :data:`ZERO_DOOR_BUFFERS` mirrored arrays in one call is REFUSED
         before anything is written.
         """
+        self._end_read_run()
         mirrored = []    # (array, linear, slot) for every pair this residency mirrors
         unmirrored = []  # (array, linear) for every pair it does not
         mirrors = []     # one per distinct mirrored array, in first-appearance order
@@ -1169,7 +1448,7 @@ class Residency:
                    scale: Any = 1) -> None:
         """``destination.flat[dst] = scale * source.flat[src]`` -- on the device when it owns both.
 
-        THE FOLD FILLS' SHAPE: one wall face copied from another face of the same (or a
+        The fold fills' shape: one wall face copied from another face of the same (or a
         sibling) array, times a parity of +1 or -1. Under a hold this is two device
         index ops and no transfer at all; the whole-volume form it replaces synced
         both faces' volumes down and back up. Bit-exact by construction for a +-1
@@ -1182,6 +1461,7 @@ class Residency:
         """
         import numpy as np  # noqa: PLC0415
 
+        self._end_read_run()
         dst = self._by_host_identity(destination)
         src = self._by_host_identity(source)
         if dst is None:
@@ -1219,6 +1499,7 @@ class Residency:
         same product with ``mul`` then ``index_add_`` -- two separate ops, so no fused
         multiply-add can contract them, and the words match.
         """
+        self._end_read_run()
         dst = self._by_host_identity(destination)
         src = self._by_host_identity(source)
         current = self.gather(destination, dst_linear) if dst is not None else destination.reshape(-1)[dst_linear]
@@ -1236,15 +1517,27 @@ class Residency:
             out = np.ascontiguousarray(out).view(mirror._numpy_dtype()).reshape(-1)
         return out
 
-    @staticmethod
-    def _payload(mirror: Any, values: Any) -> Tuple[Any, Any]:
-        """``values`` as the mirror's dtype (host) and as the index view's dtype (device)."""
+    def _payload(self, mirror: Any, values: Any) -> Tuple[Any, Any]:
+        """``values`` as the mirror's dtype (host) and as the device door takes them.
+
+        On MPS, up to :data:`SCATTER_ARGUMENT_WORDS` float32 words, the door takes the
+        payload's words packed as an ``int`` list (:func:`_packed_words`), bound when the
+        launch is encoded; otherwise a tensor of the index view's dtype, uploaded (counted
+        in :attr:`scatter_uploads` off the CPU twin). Either form carries the words of the
+        same host ``payload``.
+        """
         import numpy as np  # noqa: PLC0415
         import torch  # noqa: PLC0415
 
         payload = np.ascontiguousarray(values, dtype=mirror._numpy_dtype()).reshape(-1)
+        device = mirror.tensor.device
+        words = payload.size * (2 if np.iscomplexobj(payload) else 1)
+        if device.type == "mps" and words <= SCATTER_ARGUMENT_WORDS and _argument_payloads():
+            return payload, _packed_words(payload)
         view = payload.view(np.float32).reshape(-1, 2) if np.iscomplexobj(payload) else payload
-        return payload, torch.from_numpy(np.ascontiguousarray(view)).to(mirror.tensor.device)
+        if device.type != "cpu":
+            self.scatter_uploads += 1
+        return payload, torch.from_numpy(np.ascontiguousarray(view)).to(device)
 
     def _host_write(self, mirror: Any, linear: Any, values: Any) -> None:
         """Write the host side of a mirror at flat indices, lifting the seal around it."""
@@ -1269,6 +1562,7 @@ class Residency:
         """
         import numpy as np  # noqa: PLC0415
 
+        self._end_read_run()
         mirror = self._mirrors.get(name)
         if mirror is None:
             raise KeyError(f"cannot rebind {name!r}: it is not registered")
@@ -1291,14 +1585,15 @@ class Residency:
     def flush(self, names: Optional[Sequence[str]] = None) -> Tuple[str, ...]:
         """Device -> host for every DEVICE_OWNED mirror; returns what moved.
 
-        THE HOLD'S ESCAPE HATCH, and three separate rules need it: the re-plan
+        The hold's escape hatch, and three separate rules need it: the re-plan
         (a new plan build mirrors host arrays that are stale by however many steps
         the device has been holding), the magnetic-synchronization consult (the
-        driver dispatches a half-step and then averages ON THE HOST), and the
+        driver dispatches a half-step and then averages on the host), and the
         acceptance instruments (flush, then assert ``verify()`` empty over ALL
         names — a device write the machine believed clean is never flushed and so
         shows up).
         """
+        self._end_read_run()
         moved = []
         for name in (self.names if names is None else tuple(names)):
             mirror = self._mirrors[name]
@@ -1333,6 +1628,7 @@ class Residency:
         material rewrite raise instead of silently stranding the device on old
         coefficients.
         """
+        self._end_read_run()
         refused = []
         held = set(self.held)
         hoisted = set(self.hoisted)
@@ -1342,7 +1638,7 @@ class Residency:
             if mirror is None:
                 refused.append(name)
                 continue
-            # AN ALIAS OF AN ALREADY-SEALED ARRAY IS HOLDABLE, and missing this
+            # An alias of an already-sealed array is holdable, and missing this
             # refused two real mirrors when it was first run:
             # ``set_isotropic_epsilon_volume`` hands back ONE array under three
             # names, so after ``inv_eps_Ex`` is sealed the array's write flag is
@@ -1375,6 +1671,7 @@ class Residency:
 
     def release_hold(self) -> None:
         """Flush everything the device owns, unseal every mirror, drop the hold."""
+        self._end_read_run()
         self.flush()
         for mirror in self._mirrors.values():
             if mirror.sealed:
@@ -1405,6 +1702,7 @@ class Residency:
         import numpy as np  # noqa: PLC0415
         import torch  # noqa: PLC0415
 
+        self._end_read_run()
         resolved = np.float32 if dtype is None else np.dtype(dtype).type
         if np.dtype(resolved).name not in BINDABLE_DTYPES:
             raise ValueError(
@@ -1440,6 +1738,7 @@ class Residency:
         return tuple(sorted(self._mirrors))
 
     def tensor(self, name: str) -> Any:
+        self._end_read_run()
         return self._mirrors[name].tensor
 
     def tensor_for_host(self, host: Any) -> Any:
@@ -1453,6 +1752,7 @@ class Residency:
         data, but a mutable physical state with two different device tensors has no
         unambiguous producer and is therefore refused rather than guessed.
         """
+        self._end_read_run()
         matches = [mirror.tensor for mirror in self._mirrors.values()
                    if mirror.host is host]
         if not matches:
@@ -1467,7 +1767,7 @@ class Residency:
     def host(self, name: str) -> Any:
         """The HOST array a registered mirror shadows, or ``None`` if unregistered.
 
-        EXISTS FOR PLAN-OWNED SCRATCH, and the case that needed it is real. Every
+        Exists for plan-owned scratch, and the case that needed it is real. Every
         volume the first families mirrored belonged to the ENGINE, so a builder
         always had the array in hand and one name always meant one array. A family
         whose plan owns a scratch volume — the cylindrical radial prefix and its two
@@ -1503,6 +1803,7 @@ class Residency:
         write goes through :meth:`acquire_write` and every mirror that does not is
         sealed and raises.
         """
+        self._end_read_run()
         for name in (self.names if names is None else tuple(names)):
             mirror = self._mirrors[name]
             if name in self.held or name in self.hoisted:
@@ -1520,7 +1821,7 @@ class Residency:
     def sync_out(self, names: Optional[Sequence[str]] = None) -> None:
         """Device -> host for the named non-constant mirrors.
 
-        THE DRAIN IS PAID ONLY WHEN A COPY-OUT FOLLOWS IT. With no hold armed
+        The drain is paid only when a copy-out follows it. With no hold armed
         (the shipped bracket) it is unconditional and comes FIRST, once, before
         any copy, exactly as it always was. Under a hold it runs only when some
         named mirror is neither held nor constant -- the one case in which this
@@ -1528,7 +1829,7 @@ class Residency:
         NO host wait at all: it marks and seals, and returns with the launch still
         queued.
 
-        WHY THE WAIT WAS THE COST UNDER A HOLD, measured (the counted profile of
+        Why the wait was the cost under a hold, measured (the counted profile of
         2026-09-24, ``results/round_2026-09-24_night_drivers/
         run_profile_held_step.driver.log``, SUMMARY lines): on ``pml_3d`` held +
         sparse, ``copies_out`` was 0 on every launch and the three
@@ -1538,7 +1839,7 @@ class Residency:
         "0.000 ms" figure (2026-09-21) was the drain of an EMPTY queue and said
         nothing about a drain behind a queued launch.
 
-        WHY IT IS SAFE TO SKIP. torch's MPS backend has one stream per process
+        Why it is safe to skip. torch's MPS backend has one stream per process
         (``MPSStreamImpl::getInstance``), so a compiled kernel launch and every
         later device index op or copy on the same tensors are encoded on one
         command queue in program order; and every device->host read this layer
@@ -1557,6 +1858,7 @@ class Residency:
         """
         import torch  # noqa: PLC0415
 
+        self._end_read_run()
         selected = self.names if names is None else tuple(names)
         if not self.held or any(
                 name not in self.held and not self._mirrors[name].constant
@@ -1586,6 +1888,7 @@ class Residency:
         """
         import torch  # noqa: PLC0415
 
+        self._end_read_run()
         torch.mps.synchronize()
         out: Dict[str, int] = {}
         for name, mirror in self._mirrors.items():

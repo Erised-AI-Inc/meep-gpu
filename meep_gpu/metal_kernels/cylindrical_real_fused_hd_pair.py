@@ -9,7 +9,7 @@ PML, and an electric ``GaussianPulsedSource`` whose withdraw is the no-op -- so 
 runs between the two consults on any of them (driver.py:3311-3315).
 
 ===========================================================================
-WHY THIS SEAM WAS FILED AS PERMANENTLY REFUSED, AND WHY THAT WAS WRONG HERE
+Why this seam was filed as permanently refused, and why that was wrong here
 ===========================================================================
 
 :mod:`.fused_hd_pair` refuses cylindrical by name: the cylindrical ``step_D`` differences
@@ -22,18 +22,18 @@ is a strictly serial walk -- :mod:`.cylindrical_real` ships it as a gated device
 (``cyl_rderiv_difference``) reproducing the array path word for word. So the premise does
 not hold on this backend, and the seam is reachable with the shape below.
 
-WHAT IS GENUINELY HARD ABOUT THIS SEAM, and it is one thing: the radial sum's SOURCE is
+What is genuinely hard about this seam, and it is one thing: the radial sum's SOURCE is
 what the seam's first half WRITES. ``stepping.step_D`` sums ``magnetic["Hy"]`` at
 ``ir0 = 0.5``, and under an active PML ``get_H`` returns the STORED H -- ``update_H``'s own
 output. A single launch would have every thread's Dz depend on every ``Hy[r' <= r]`` of
 its chunk's column as written by other threads in the same launch. The sum cannot be
 collapsed to a local halo either: the difference of two rounded partial sums is not the
 rounded increment in float32, so a halo weld would be bit-right on most cells and
-bit-wrong on a sparse, data-dependent set. THE UNIT OF RECOMPUTE IS A WHOLE RADIAL
-COLUMN.
+bit-wrong on a sparse, data-dependent set. The unit of recompute is a whole radial
+column.
 
 ===========================================================================
-THE SHAPE: TWO LAUNCHES, ZERO FOREIGN READS OF ANYTHING THIS PRODUCT WRITES
+The shape: two launches, zero foreign reads of anything this product writes
 ===========================================================================
 
 **Launch 1** occupies ``update_H``. Every thread computes its own cell's H pointwise
@@ -63,7 +63,7 @@ The launcher ROTATES the six ``H``/``f_w_H`` references between the two launches
 is :class:`.offdiag_weld_common.ScratchWeldPairPlan`'s certified choreography one seam
 over.
 
-WHY THE RECOMPUTED ``Hy`` IS THE POINTWISE ``Hy`` TO THE BIT. ``update_H`` is pointwise
+Why the recomputed ``Hy`` is the pointwise ``Hy`` to the bit. ``update_H`` is pointwise
 (stepping.py:907-923 through ``_apply_constitutive_pml``, :2112-2143): the stepped value
 at a cell is a pure function of state this launch does not write, evaluated twice by one
 inline function with the contraction pragma on. The gate does not take that on
@@ -74,7 +74,7 @@ synced host ``Hy``; the null control runs the shipped scan over the PRE-launch `
 must differ.
 
 ===========================================================================
-LAUNCHES, COST, BINDINGS
+Launches, cost, bindings
 ===========================================================================
 
 * **Launches at the seam: 3 -> 2.** The separate certified composition is ``update_H``
@@ -93,18 +93,18 @@ LAUNCHES, COST, BINDINGS
   own ``'buffer' attribute parameter is out of bounds``.
 
 ===========================================================================
-WHAT SITS IN THE SEAM
+What sits in the seam
 ===========================================================================
 
 Nothing is INJECTED between the two consults (the electric injection is one seam later,
 the magnetic one seam earlier), so :data:`CARRIES_DEPOSIT_REPAIR` is False as a fact about
 the driver and :mod:`..deposit_repair` is not consulted. The one pass there is the electric
 integrated-source withdraw, owned by :mod:`..withdraw_hoist`; :data:`HOISTS_THE_WITHDRAW`
-is False in this round, so a row with a standing withdraw is refused BY NAME. None of the
+is False, so a row with a standing withdraw is refused BY NAME. None of the
 cell's three rows has one.
 
 ===========================================================================
-NOT INSTALLED, AND THE REASON IS MEASURED ARBITRATION -- A TIE, NOT A LOSS
+Not installed, and the reason is measured arbitration -- a tie, not a loss
 ===========================================================================
 
 :data:`INSTALLABLE` is False. What the composer installs on these rows TODAY, measured
@@ -118,11 +118,11 @@ no absorb row and does not install. This product would replace ``update_H`` +
 TIE at the step level, one seam served either way, and the released precedent gives a
 tie to the incumbent: the D->E pair installs first (``FUSED_PAIR_SEAMS`` order) and
 holds ``step_D``, so ``_pair_may_absorb`` refuses this product by name. Under the
-owner's standing rule the priced predicate gap is closed regardless, as
+project's rule *close all fusion gaps regardless* the priced predicate gap is closed, as
 :mod:`.fused_hd_pair` closed its 47.
 
 ===========================================================================
-STANDALONE IN THIS ROUND: registered UNWIRED, no absorb row, no board row
+Standalone, not yet wired: ``wired=False``, no absorb row, no board row
 ===========================================================================
 
 This module registers ``wired=False`` on ``update_H`` and is reached by no composer
@@ -130,11 +130,11 @@ table yet. The rows that reach it -- ``registry.FAMILY_MODULES``,
 ``launch.FUSED_PAIR_ARMS`` (``("cylindrical m=0", "cylindrical m=0")``),
 ``build_fusion_matrix.PRODUCTS`` / ``RELEASE_BINDING`` and the ``fingerprints.json`` weld
 entry ``mint_metal_weld.py`` derives from the gate artifact -- are edits to existing
-modules that three in-flight gate campaigns pin, and they are written as
-``lanes/cyl_round/metal_m0/wiring.patch`` rather than applied. :data:`WELD_OWED` says so
-in the words ``test_metal_weld_contract`` reads.
+modules that three in-flight gate campaigns pin, and they are written as a separate
+wiring patch rather than applied. :data:`WELD_OWED` says so in the words
+``test_metal_weld_contract`` reads.
 
-WHAT THIS MODULE DOES NOT CARRY: complex64 cylindrical storage (the |m| >= 1 rows and the
+What this module does not carry: complex64 cylindrical storage (the |m| >= 1 rows and the
 m = 0 complex arm belong to the complex family, whose scan must spell the divide as a
 RECIPROCAL MULTIPLY -- the spelling INVERTS between the two families, measured), any
 |m| >= 1 coupling, a fold, beta, BFAST, conductivity, an inactive absorber, a standing
@@ -202,14 +202,14 @@ IR0: float = PREFIX_IR0[CURL_SUB_STEP]
 #: consults, so there is no deposit in this seam to carry.
 CARRIES_DEPOSIT_REPAIR = False
 
-#: Does this product perform the seam's electric withdraw before its launch? NO in this
-#: round. The only wiring that performs it is ``launch._install_fused_pair``'s
+#: Does this product perform the seam's electric withdraw before its launch? NO, not
+#: yet. The only wiring that performs it is ``launch._install_fused_pair``'s
 #: ``withdraw_hoist.SEAM`` branch, which this product does not reach (no absorb row,
 #: :data:`INSTALLABLE` False), so True here would claim a wrapper that cannot fire. The
 #: predicate refuses every row with a standing withdraw by name; the cell has none.
 HOISTS_THE_WITHDRAW = False
 
-#: May the composer install this product? NO, on a MEASURED arbitration verdict: on
+#: May the composer install this product? NO, on a measured arbitration verdict: on
 #: every row this predicate reaches, BOTH neighbouring seams are now held by released
 #: fused pairs, and this product would take one slot from each.
 INSTALLABLE = False
@@ -228,11 +228,11 @@ INSTALLABLE_REASON = (
     "(2): 5 launches over step_B..update_E; this product in its place would be 2 + 2 + "
     "1 = 5. A TIE at the step level and one seam served either way, resolved for the "
     "incumbent as the released precedent resolves every tie.\n\n"
-    "RE-MEASURED 2026-09-17, AND IT IS NO LONGER A TIE. The sentence that used to "
+    "Re-measured 2026-09-17, and it is no longer a tie. The sentence that used to "
     "close this reason -- 'the B->H cylindrical twin holds no absorb row and does not "
     "install here, so no row is a loss and none is a gain' -- was a statement about "
-    "the composer's tables rather than about this product, and the all-paths batch "
-    "changed it: cylindrical_real_fused_magnetic_pair gained a "
+    "the composer's tables rather than about this product, and a later change to those "
+    "tables changed it: cylindrical_real_fused_magnetic_pair gained a "
     "launch.FUSED_PAIR_ARMS row, and the 2026-09-17 arbitration leg measures BOTH "
     "seams fused (step_B/update_H on 'cylindrical m=0 fused magnetic B/H pair', "
     "step_D/update_E on 'cylindrical m=0 fused electric D/E pair'). Installing this "
@@ -245,18 +245,18 @@ INSTALLABLE_REASON = (
     "which the family's own gate certifies on its fixture and over the cell's three "
     "lifted rows")
 
-#: THE WELD IS OWED TO THE WIRING ROUND, and this constant is how the fleet partition
+#: The weld is owed to the wiring change, and this constant is how the fleet partition
 #: (``test_metal_weld_contract.test_every_metal_family_is_welded``) is told so. The
 #: gate ran and RELEASED on this host --
 #: parity/meep_gpu/results/metal_cylindrical_real_fused_hd_pair_2026-09-06_cyl/gate.json
 #: -- but a weld entry lives in ``metal_kernels/fingerprints.json``, an existing record
-#: this round may not edit while three gate campaigns pin its bytes. What a release
-#: still owes: ``mint_metal_weld.py --family cylindrical_real_fused_hd_pair --stamp
-#: 2026-09-06_cyl`` against that artifact, the ``registry.FAMILY_MODULES`` row, the
-#: ``launch.FUSED_PAIR_ARMS`` row, the board's ``PRODUCTS``/``RELEASE_BINDING`` rows --
-#: all written in lanes/cyl_round/metal_m0/wiring.patch -- and then emptying this
-#: string in the same edit as the mint, which drifts the artifact's raw digest of this
-#: file and so is followed by a re-gate into a fresh directory.
+#: the change adding this family may not edit while three gate campaigns pin its bytes.
+#: What a release still owes: ``mint_metal_weld.py --family
+#: cylindrical_real_fused_hd_pair --stamp 2026-09-06_cyl`` against that artifact, the
+#: ``registry.FAMILY_MODULES`` row, the ``launch.FUSED_PAIR_ARMS`` row, the board's
+#: ``PRODUCTS``/``RELEASE_BINDING`` rows -- all written as a separate wiring patch -- and
+#: then emptying this string in the same edit as the mint, which drifts the artifact's
+#: raw digest of this file and so is followed by a re-gate into a fresh directory.
 WELD_OWED: str = ""
 
 #: The rotating volumes, in SIGNATURE ORDER: the three stored magnetic fields then the
@@ -280,8 +280,8 @@ HEADROOM = MAX_BUFFER_BINDINGS - CONSTITUTIVE_BINDINGS
 
 #: Every line of the certified SCAN text this product does not lift verbatim, with the
 #: reason. DATA, so the gate's transcription leg can assert the list and a needle that
-#: stopped matching RAISES rather than leaving a stale read standing. THERE IS NO
-#: ARITHMETIC IN THIS TABLE: the two edits replace a memory read with the recompute of
+#: stopped matching RAISES rather than leaving a stale read standing. There is no
+#: arithmetic in this table: the two edits replace a memory read with the recompute of
 #: the same value; the weight multiply, the increment's ``rinv`` multiply, the chunk
 #: restart, the serial accumulation and the stored difference are untouched.
 SCAN_LIFT_EDITS: Tuple[Dict[str, str], ...] = (
@@ -396,7 +396,7 @@ kernel void cyl_real_hd_constitutive_prefix(
     uint idx [[thread_position_in_grid]])
 {
     uint nx = prm.nx, ny = prm.ny, nz = prm.nz, n_elem = prm.n_elem;
-    // THE CHUNK RECORD rides in the struct; `h_cell` evaluates membership from it at
+    // The chunk record rides in the struct; `h_cell` evaluates membership from it at
     // the cell it steps.
 __RECORD_ALIAS__
     // The dispatch is sized from the first tensor argument's element count, so a
@@ -566,10 +566,10 @@ def metal_cylindrical_real_fused_hd_pair_coverage(
     if not curl.covered:
         reasons.extend(f"cylindrical curl half: {reason}" for reason in curl.reasons)
 
-    # THE SEAM'S ONE PASS. Nothing is INJECTED between the two consults, so
+    # The seam's one pass. Nothing is INJECTED between the two consults, so
     # `deposit_repair` is not consulted at all; what IS between them is the electric
     # integrated-source withdraw (driver.py:3313-3314), and `withdraw_hoist` owns it.
-    # IGNORANCE IS NEVER AN EMPTY SET: `Fields` does not hold the source list, so a
+    # Ignorance is never an empty set: `Fields` does not hold the source list, so a
     # predicate that inferred "no withdraw stands" from not being told would be the
     # over-covering refusal this clause exists to prevent.
     reasons.extend(_withdraw_hoist.seam_withdraw_reasons(
@@ -590,7 +590,7 @@ def metal_cylindrical_real_fused_hd_pair_coverage(
     if grid is None:
         return Coverage(False, tuple(dict.fromkeys(reasons + ["fields carries no grid"])))
 
-    # THE RUN'S FIRST update_H. The array path starts H and f_w from B on the dsigw
+    # The run's first update_H. The array path starts H and f_w from B on the dsigw
     # cells at that update (stepping.separate_h_from_b) and h_cell does not, so this
     # product takes that update only where the start cannot change a word: the base
     # single's own clause (launch.h_start_reasons), in its own words.
@@ -598,7 +598,7 @@ def metal_cylindrical_real_fused_hd_pair_coverage(
     reasons.extend(f"cylindrical constitutive half: {reason}"
                    for reason in h_start_reasons(fields, sources))
 
-    # THE ROTATION IS THE PRODUCT'S OWN INVARIANT. The plan swaps the ENGINE's
+    # The rotation is the product's own invariant. The plan swaps the ENGINE's
     # references for the six volumes in ROTATED_NAMES between its two launches, so
     # those attributes must be settable and must be the arrays the residency mirrored.
     for name in ROTATED_NAMES:
@@ -622,14 +622,14 @@ class MetalCylindricalRealFusedHdPairPlan:
     reading what launch 1 wrote. The divergence is stated here rather than hidden
     behind an overridden ``run``.
 
-    THE ORDER IS THE CONTRACT. Launch 2 reads the radial difference and the H launch 1
+    The order is the contract. Launch 2 reads the radial difference and the H launch 1
     writes, and
     both are functions of THIS step's B -- so launch 2 hoisted ahead of launch 1, or
     launch 2 bound to the pre-launch H, feeds the curl the PREVIOUS half-step's magnetic
     field: a smooth, plausible, entirely wrong field rather than an error, and a gate
     mutation rather than a comment.
 
-    ``launches`` COUNTS KERNEL LAUNCHES, NOT ``run`` CALLS, and it is two per cycle.
+    ``launches`` counts kernel launches, not ``run`` CALLS, and it is two per cycle.
     :attr:`constitutive_launches` and :attr:`curl_launches` are carried apart so a gate
     can assert that BOTH advanced and no slot passed by not executing.
     """
@@ -754,7 +754,7 @@ class MetalCylindricalRealFusedHdPairPlan:
         static = self._curl_static
         self.launches += 1
         self.curl_launches += 1
-        # THE CURL'S ARGUMENT ORDER IS THE CERTIFIED EMITTER'S: D, fu_D, H, the six
+        # The curl's argument order is the certified emitter's: D, fu_D, H, the six
         # coefficient vectors, the five scalars, the radial difference, the axis
         # scalar and the chunk record. `magnetic` is spliced into the H slot;
         # everything else is static for the life of the plan.
@@ -776,7 +776,7 @@ class MetalCylindricalRealFusedHdPairPlan:
         # to the freshly written buffers; the pre-launch buffers become the plan's
         # twins and will be next run's scratch.
         self.rotate()
-        # LAUNCH 2 READS WHAT LAUNCH 1 WROTE: the scratch tensors, now the engine's H.
+        # Launch 2 reads what launch 1 wrote: the scratch tensors, now the engine's H.
         self.launch_curl(writes[:3], contract)
 
     def describe(self) -> str:
@@ -798,7 +798,7 @@ def params_record_dtype() -> Any:
 def _params_tensor(shape: Sequence[int], device: str, *, chunk_bounds: Any) -> Any:
     """The four extents and the chunk record as one 116-byte device record.
 
-    PLAN-OWNED AND OUTSIDE THE RESIDENCY REGISTRY, for the reason every fused pair's
+    Plan-owned and outside the residency registry, for the reason every fused pair's
     ``_params_tensor`` gives: :meth:`.Residency.mirror` binds float32 and complex64
     volumes only.
     """
@@ -870,7 +870,7 @@ def plan_metal_cylindrical_real_fused_hd_pair(
         volumes.append(name)
         return residency.mirror(name, host, constant=constant)
 
-    # THE ROTATING GROUP FIRST, in ROTATED_NAMES order: every scratch, then every
+    # The rotating group first, in ROTATED_NAMES order: every scratch, then every
     # pre-launch buffer, resolved per launch by `resolve`. The twins are registered
     # here and never bound by position.
     twins: Dict[str, Any] = {}
@@ -880,7 +880,7 @@ def plan_metal_cylindrical_real_fused_hd_pair(
         twin, _mirror = _weld.scratch_twin(residency, name, host)
         twins[name] = twin
 
-    # ONE SUB-LATTICE, TWO HALVES: `SUB_STEPS['step_D']['suffix']` is '' and
+    # One sub-lattice, two halves: `SUB_STEPS['step_D']['suffix']` is '' and
     # `CONSTITUTIVE_SIDES['H']['half_integer']` is False, so the curl's kms and the
     # constitutive's kms are the SAME three volumes. Both launches bind them; the
     # equality is ASSERTED because binding the half-integer set instead is a smooth,
@@ -900,7 +900,7 @@ def plan_metal_cylindrical_real_fused_hd_pair(
     kms = [bind(f"pml:kms_{axis}{suffix}", getattr(pml, f"kms_{axis}{suffix}"),
                 constant=True) for axis in "xyz"]
 
-    # THE RADIAL DIFFERENCE IS PLAN-OWNED SCRATCH, registered NON-CONSTANT (the device
+    # The radial difference is plan-owned scratch, registered NON-CONSTANT (the device
     # writes it) through `scratch_mirror`, which REUSES the array already bound under
     # the name so this plan and the certified step_D curl plan may share one.
     radial_host, radial = scratch_mirror(
@@ -984,11 +984,11 @@ def _arm_plan(context: Any, slot: str
 def register_arms() -> Tuple[Any, ...]:
     """One row on ``update_H``, ``wired=False``.
 
-    REGISTERED SO IT IS ENUMERABLE, NOT SO IT IS SELECTABLE: ``arms.arms_for`` skips an
+    Registered so it is enumerable, not so it is selectable: ``arms.arms_for`` skips an
     unwired row so ``plan_step`` cannot select it, while ``arms.registered`` still
     returns it for the disjointness sweep. The seam loop reaches it only through a
-    ``launch.FUSED_PAIR_ARMS`` row it does not hold yet (lanes/cyl_round/metal_m0/
-    wiring.patch), and would then refuse it on :data:`INSTALLABLE` and on arbitration.
+    ``launch.FUSED_PAIR_ARMS`` row it does not hold yet (a separate wiring patch
+    carries it), and would then refuse it on :data:`INSTALLABLE` and on arbitration.
     """
     from . import arms  # noqa: PLC0415
 

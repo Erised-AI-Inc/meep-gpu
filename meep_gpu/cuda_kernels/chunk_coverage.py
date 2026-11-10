@@ -9,7 +9,7 @@ device vector per composition (``arms.StepContext.chunk_bounds_device``, the ker
 (``arms.StepContext.chunk_facts``), whether a kernel may be handed that record:
 
 * every arm refuses a division no record describes — not separable along an axis, or
-  a line with more than two runs (owner ruling R12: the array path's mask route steps
+  a line with more than two runs (the array path's mask route steps
   it);
 * the families that index MEEP's chunks beyond the membership runs — the off-diagonal
   presence masks and the cylindrical r prefix, each row declaring ``chunk_axes`` —
@@ -17,7 +17,7 @@ device vector per composition (``arms.StepContext.chunk_bounds_device``, the ker
   one to one along those axes (:func:`chunk_owner_label`,
   :func:`chunk_product_problem`).
 
-A SIBLING OF ``coverage.py``, UNDER THE SAME DISCIPLINE, AND NOT A SECTION OF IT.
+A sibling of ``coverage.py``, under the same discipline, and not a section of it.
 Nothing here imports beyond ``__future__`` and ``typing`` (the same AST check
 ``coverage.py`` is held to pins it, ``test_chunk_binding.py``), so the clause is
 evaluable on a host with no GPU. It is not in ``coverage.py`` because that file is
@@ -26,7 +26,7 @@ pinned by the CUDA ledger's certification blocks (``subject_sha256`` /
 would have drifted every block that pins it for no change in what those blocks
 certify.
 
-THE ORDER IN AN ARM. ``arms.coverage_adapter`` asks this clause after the family's own
+The order in an arm. ``arms.coverage_adapter`` asks this clause after the family's own
 predicate admits, so a configuration a family refuses keeps the family's reason and
 the coverage census's attribution moves only where the division is the question.
 ``fused_pairs.install_fused_pairs`` asks it of every admitted fused product, with the
@@ -42,17 +42,17 @@ from typing import Any, Dict, Mapping, Optional, Sequence, Set, Tuple
 # The chunk division (one clause for every arm, and one for the chunk-indexed few)
 # ---------------------------------------------------------------------------
 #
-# THE RECORD IS WHAT A KERNEL READS, so it is what this clause judges. A CUDA
+# The record is what a kernel reads, so it is what this clause judges. A CUDA
 # kernel learns which PML form a cell steps from one int32 vector, laid out by
 # ``chunk_map.chunk_bounds_record``: per (Yee sub-lattice, axis) the membership
 # runs ``[a0, a1) U [b0, b1)`` of the chunks that carry that axis's layer, then a
 # partner-presence word. A division that no such record describes -- one that is
 # not separable along an axis (the owner's flag depends on another coordinate), or
 # a line with more than two runs -- is stepped on the array path's mask route and
-# refused by every kernel (owner ruling R12). The record builder's own refusal is
+# refused by every kernel. The record builder's own refusal is
 # the reason, verbatim, so the array path and this table name the same defect.
 #
-# TWO FAMILIES READ MORE THAN MEMBERSHIP. MEEP deletes an off-diagonal chi1inv
+# Two families read more than membership. MEEP deletes an off-diagonal chi1inv
 # array in every chunk where it is identically zero and drops the term there
 # (anisotropic_averaging.cpp:316-320, update_eh.cpp:191-196), so the off-diagonal
 # kernels index a per-chunk presence mask; and MEEP's cylindrical ``f_rderiv_int``
@@ -156,7 +156,7 @@ def chunk_division_refusal(facts: Mapping[str, Any],
 
     * ``problem``: the composer could not derive a division at all;
     * ``record_refusal``: no ``int32[25]`` record describes it (not separable along
-      an axis, or more than two runs on a line) -- every arm (owner ruling R12);
+      an axis, or more than two runs on a line) -- every arm;
     * ``product_problems[axis]`` for each axis in ``chunk_axes``: the record's run
       labels do not name the chunk intervals along it -- only the families that
       index chunks (the off-diagonal and cylindrical ones) ask.

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """``bench_fused_products.py`` on a timing case that is not one of the route gates' rows.
 
-WHY A WRAPPER. ``bench_fused_products.py`` is the timing harness of record and its bytes
+Why a wrapper. ``bench_fused_products.py`` is the timing harness of record and its bytes
 are pinned; it times a case only when the case is in its table module's ``CASES`` and a
 ``dispatch`` row of the drive table (``selected_cases``). The cases of
 ``timing_cases.py`` are neither, by design: they are defined once, in a file no ledger
@@ -22,7 +22,7 @@ length of one ``bench_fused_products.main(argv)`` call and no longer:
 
 and removes all three in ``finally``, on a normal return and on an exception alike.
 
-REFUSED BY NAME: a built-in case (the GPU row of a built-in case IS
+Refused by name: a built-in case (the GPU row of a built-in case IS
 ``bench_fused_products.py``, unwrapped, so its command stays the 2026-09-28 command),
 and a name that already exists in the table's ``CASES`` or drive rows.
 

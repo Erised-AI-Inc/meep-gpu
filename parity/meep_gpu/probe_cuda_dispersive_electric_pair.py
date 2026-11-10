@@ -1,17 +1,17 @@
 """Does the DISPERSIVE D/E pair's closed form reproduce the driver's five in-seam passes?
 
-THE CLAIM THIS PROBE STATES AND MEASURES. One launch per cell can perform
+The claim this probe states and measures. One launch per cell can perform
 
     step_D (driver.py:3302) -> fill_symmetry_bc_D (:3309) -> zero_metal_D (:3310)
     -> fill_folded_far_ghosts_D (:3311) -> pole-aware update_E (:3313)
 
 with the displacement carried in a register, the two mirror fills carried by the
 OWNERSHIP INVERSION (the source thread writes each imaged ghost), and the ordered
-``D - sum_n P_n`` chain evaluated AT THE CELL EACH ``constitutive_apply`` WRITES --
+``D - sum_n P_n`` chain evaluated at the cell each ``constitutive_apply`` WRITES --
 which for a ghost is the DESTINATION's pole words and the DESTINATION's inverse
 epsilon, not the source thread's own.
 
-WHY THAT LAST CLAUSE IS THE WHOLE PROBE. ``fused_electric_pair`` already carries the
+Why that last clause is the whole probe. ``fused_electric_pair`` already carries the
 three middle passes for the NON-dispersive constitutive half, and
 ``probe_cuda_electric_fill_carry_order.py`` measured that composition. Adding poles
 adds a per-cell volume the E half reads that the fills DO NOT image: the array path's
@@ -32,18 +32,18 @@ CUDA's ``covers_real_pml_dispersive_constitutive`` ADMITS a fold (up to
 the CUDA product carries what neither sibling does and this arithmetic has never been
 measured anywhere.
 
-WHAT IS COMPARED. Raw uint32 WORDS of every stored volume the seam writes -- ``Dx/Dy/Dz``,
+What is compared. Raw uint32 WORDS of every stored volume the seam writes -- ``Dx/Dy/Dz``,
 ``fu_Dx/fu_Dy/fu_Dz``, ``Ex/Ey/Ez``, ``f_w_Ex/f_w_Ey/f_w_Ez`` -- against the array
 path's own five passes run from identical state, over COMPLETE steps. Never
 ``allclose``: ``-0.0 == 0.0`` lies, and the sign of zero is exactly the class of
 divergence the near-fill ordering produces.
 
-THE POLE VOLUMES ARE SEEDED NON-ZERO, and that is not a detail. Zero is a fixed point
+The pole volumes are seeded non-zero, and that is not a detail. Zero is a fixed point
 of ``s = s - P``: a fixture with zero poles turns every pole mutation into a null and
 would report a green sweep that measured nothing. ``poles_are_live`` is asserted per
 case and a case that cannot arm the pole nulls is recorded VACUOUS rather than passed.
 
-THE SIX ARMED MUTATIONS, each a port a reasonable person would write:
+The six armed mutations, each a port a reasonable person would write:
 
   poles_at_source        the ghost chain subtracts the SOURCE thread's poles
   inv_eps_at_source      the ghost source multiplies the SOURCE thread's inverse epsilon
@@ -133,7 +133,7 @@ _NULL_REASONS: Dict[str, str] = {
         "reflect row and the top plane",
 }
 
-#: Configurations. THE FIRST TWO ARE THE CORPUS SHAPES this cell actually owns, read
+#: Configurations. The first two are the corpus shapes this cell actually owns, read
 #: off the stamped census: the three stochastic_emitter rows are all-periodic with an
 #: active layer, and the four TestLoadDump rows are metallic on x, mirror-folded on y
 #: and periodic on z. The rest exist to arm mutations those two cannot.
@@ -157,7 +157,7 @@ CASES: Tuple[Dict[str, Any], ...] = (
     {"label": "fold_y_odd_wall_z", "cell": (9., 10., 11.),
      "boundaries": ("periodic", "periodic", "metallic"), "symmetry": (("Y", -1),),
      "pml": 2, "arity": (2, 2, 2),
-     "why": "THE CROSS TERM: Dx folded on y at an ODD phase and walled on z, so its "
+     "why": "The cross term: Dx folded on y at an ODD phase and walled on z, so its "
             "near ghost lands in the cleared plane -- arms near_post_clear"},
     {"label": "fold_x_deep_pml", "cell": (9., 10., 11.),
      "boundaries": ("periodic",) * 3, "symmetry": (("X", 1),),
@@ -191,7 +191,7 @@ def build(case: Dict[str, Any]):
                 xp=np, courant=0.5)
     fields = Fields(grid=grid)
     fields.enable_pml_storage()
-    # A FOLDED AXIS TAKES ITS ABSORBER ON THE HIGH FACE ONLY: cell 0 lies ON the mirror
+    # A folded axis takes its absorber on the high face only: cell 0 lies ON the mirror
     # plane, a boundary condition rather than an outer wall (pml.py:399-412).
     folded = {"XYZ".index(axis) for axis, _phase in case["symmetry"]}
     if isinstance(case["pml"], int):
@@ -231,7 +231,7 @@ def build(case: Dict[str, Any]):
                  for axis, name in enumerate(_ELECTRIC)}
         fields.polarizations.append(
             PolarizationState(term, sigma, grid, fields._field_dtype()))
-    # THE POLE VOLUMES ARE SEEDED NON-ZERO. Zero is a fixed point of `s = s - P`, so a
+    # The pole volumes are seeded non-zero. Zero is a fixed point of `s = s - P`, so a
     # zero fixture turns every pole mutation into a null and the sweep would measure
     # nothing at all.
     for state in fields.polarizations:
@@ -273,7 +273,7 @@ def closed_form(pre: Dict[str, np.ndarray], state: Dict[str, np.ndarray],
     ``f + ((kps*src) - (kms*prev))`` with ``f_w = src`` -- and False elsewhere, where
     ``f = src`` and ``f_w`` is untouched.
 
-    ONE ARRAY OP PER EMITTED LINE, in the order the emitted blocks run them, and the
+    One array op per emitted line, in the order the emitted blocks run them, and the
     ownership guard is the mask those blocks nest inside. The WRITE COUNT per cell is
     returned beside the volumes: the carry's whole legality argument is that every
     destination word is written by exactly one thread, and a probe that compared only
@@ -376,7 +376,7 @@ def closed_form(pre: Dict[str, np.ndarray], state: Dict[str, np.ndarray],
             volume[destination_key] = np.where(
                 own_source, value, volume[destination_key]).astype(np.float32)
 
-            # update_E AT THE GHOST. The pole words and the inverse epsilon are the
+            # update_E at the ghost. The pole words and the inverse epsilon are the
             # DESTINATION's -- the array path evaluates displacement_minus_polarization
             # cell by cell over the whole volume, so the ghost cell subtracts its own P.
             pole_key = source_key if mutation == "poles_at_source" else destination_key
@@ -449,7 +449,7 @@ def measure(case: Dict[str, Any], steps: int) -> Dict[str, Any]:
         "steps": steps,
     }
     if not live:
-        # A FIXTURE THAT CANNOT ARM A NULL IS VACUOUS AND FAILS (rule 6).
+        # A fixture that cannot arm a null is vacuous and fails (rule 6).
         result["fixture_error"] = ("the pole volumes are all zero, so every pole "
                                    "mutation is a null and this case measures nothing")
         result["elapsed_s"] = round(time.time() - started, 3)
@@ -471,7 +471,7 @@ def measure(case: Dict[str, Any], steps: int) -> Dict[str, Any]:
         stepping.update_P(reference, pml)
 
         for label, engine in engines.items():
-            # THE CURL IS THE CERTIFIED PASS, not a second transcription: what this
+            # The curl is the certified pass, not a second transcription: what this
             # probe is about is the composition between step_D and update_E.
             stepping.step_D(engine, pml)
             engine_pre = {name: np.array(getattr(engine, name), copy=True)

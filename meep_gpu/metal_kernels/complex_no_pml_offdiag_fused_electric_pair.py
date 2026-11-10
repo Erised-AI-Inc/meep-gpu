@@ -1,6 +1,6 @@
 """The complex no-PML ``step_D`` welded into the complex OFF-DIAGONAL ``update_E``.
 
-THE ONE STENCIL WELD THAT NEEDS NO PACK, and the cheapest evidence that the
+The one stencil weld that needs no pack, and the cheapest evidence that the
 scratch design is the answer to the boards' ``STRUCTURALLY UNFUSABLE`` verdict
 rather than the binding ceiling being it. The 2026-09-01 Metal board scores this
 cell::
@@ -12,19 +12,19 @@ cell::
         binding verdict had it been buildable: FITS — 24..24, NOT BUILT
         verdict: STRUCTURALLY UNFUSABLE ON ANY BACKEND (the stencil)
 
-THIS CELL ALWAYS FITTED. Nothing about the ceiling ever refused it: the board
+This cell always fitted. Nothing about the ceiling ever refused it: the board
 priced it two under and refused it purely on the stencil, so it is the clean
 separation of the two obstructions. The scratch weld costs three more pointers
 than the shared-D count the board used (pre-launch D and scratch D are different
 buffers) and the shipped signature is 21 pointers plus ``Params`` —
-:data:`PACKED_BINDINGS` = 22, nine under the ceiling, WITH NO COEFFICIENT PACK
-AT ALL. Its two siblings need one pack each for the PML vectors and a second for
+:data:`PACKED_BINDINGS` = 22, nine under the ceiling, with no coefficient pack
+at all. Its two siblings need one pack each for the PML vectors and a second for
 the material volumes; this family has no PML at all, so there is nothing to pack
 and packing anyway would duplicate nine volumes on the device for no binding
 need — the rule :mod:`.conductive_fused_electric_pair` states and this family is
 the one that gets to follow it.
 
-WHAT THE NO-PML SHAPE REMOVES, and it is more than the vectors:
+What the no-PML shape removes, and it is more than the vectors:
 
 * **no split field.** ``step_D`` here is ``D = D - curl`` (no
   ``_apply_pml_update`` recurrence), so there is no ``fu_D`` to write and no
@@ -39,14 +39,14 @@ WHAT THE NO-PML SHAPE REMOVES, and it is more than the vectors:
   the fused kernel must not write to a register the struct returns. That is the
   second form :func:`.offdiag_weld_common.lift_curl_tail` documents.
 
-THE DECODE ANCHOR IS THE COMPLEX ONE. Both complex emitters put ``int nxi =
+The decode anchor is the complex one. Both complex emitters put ``int nxi =
 int(nx);`` and ``int nyz = nyi * nzi;`` BELOW the ``int i = plane / nyi;`` line
 that ends the real emitters' prologue, so cutting at the real anchor would make
 the helper redeclare ``nyz`` and read an ``nx`` it has no parameter for. The
 curl is cut after ``int nyz = nyi * nzi;`` and the constitutive's seam splices
 after ``int nxi = int(nx), nyz = nyi * nzi;``.
 
-THE BLOCH PHASES ARE SIX SEPARATE ``float2`` SCALARS and stay separate: the curl
+The Bloch phases are six separate ``float2`` SCALARS and stay separate: the curl
 reads its own wrapped-lane phases (``px``/``py``/``pz``, backward) and the
 constitutive reads a DOWN set and an UP set (``dpx``.. / ``upx``..), because the
 row product's two shifts go in opposite directions. All nine ride in ``Params``
@@ -57,17 +57,17 @@ CARRIES_DEPOSIT_REPAIR IS FALSE and is forced by the off-diagonal constitutive,
 exactly as on the three siblings. That is the distance between this cell's 2 rows
 and its 1.
 
-THE CHUNK RECORD AND THE PRESENCE WORDS. The lifted lossless curl reads the
+The chunk record and the presence words. The lifted lossless curl reads the
 partner-presence word of the chunk record (:mod:`.complex_no_pml_conductive`), so the
 record rides last in ``Params`` (``ChunkBounds cb``), is aliased before the body and
 is passed to ``step_cell`` and every ``d_final_c`` as their last parameter: the
 stencil form is evaluated at the cell being stepped, a re-derived foreign cell
 included. The lifted constitutive half is the single's software-binary64 row per part
-(ruling R7, :mod:`.complex_no_pml_offdiag_update_e`); its six presence words ride in
+(:mod:`.complex_no_pml_offdiag_update_e`); its six presence words ride in
 ``Params`` before the record (``OffdiagPresence kw``, aliased to ``kw``), so the lifted
 presence block reads one name in both kernels.
 
-NOT WIRED AS AN ARM; reached through ``launch.FUSED_PAIR_ARMS``.
+Not wired as an arm; reached through ``launch.FUSED_PAIR_ARMS``.
 """
 
 # Derived from MEEP (https://github.com/NanoComp/meep).
@@ -248,7 +248,7 @@ def certified_curl_body(codes: Sequence[int], phased: Sequence[int],
         codes, bool(SUB_STEPS["step_D"]["backward"]), phased, contract)
     tail = _weld.lift_curl_tail(source, store_edits=CURL_STORE_EDITS,
                                 decode_end=CURL_DECODE_END)
-    # THE LOSSLESS ARM READS NO CONDUCTIVITY, and this asserts it rather than
+    # The lossless arm reads no conductivity, and this asserts it rather than
     # assuming it: the shared complex stencil DECLARES cf0..ci2 at every
     # specialisation and this family omits them from the helper's parameters, so
     # a specialisation that started reading one would be a compile error at best
@@ -439,7 +439,7 @@ PARAMS_ITEMSIZE = 216
 def params_record_dtype() -> Any:
     """The host record — THE NINE ``float2`` MEMBERS FIRST, itemsize 216.
 
-    ONE HOME FOR THE LAYOUT, for the reason
+    One home for the layout, for the reason
     :func:`.complex_fused_electric_pair.params_record_dtype` gives: getting it
     wrong is a silent wrong answer rather than a crash. Nine ``float2`` at 8-byte
     alignment fill 0..71, the four uints and ``dtdx`` fill 72..91, the six presence
@@ -542,7 +542,7 @@ def plan_metal_complex_no_pml_offdiag_fused_electric_pair(
     stored = [_complex_mirror(residency, name, getattr(fields, name))
               for name in electric]
     volumes.extend(electric)
-    # THE MAGNETIC SOURCE IS CANONICALISED, not read off `fields.Hx`. In a no-PML
+    # The magnetic source is canonicalised, not read off `fields.Hx`. In a no-PML
     # step `Fields.get_H("Hx")` returns the live `Bx` allocation, so binding the
     # logical name would either mirror a `None` or make a SECOND device copy of a
     # volume the B curl already wrote — `_source_binding` is the seam the certified
@@ -555,7 +555,7 @@ def plan_metal_complex_no_pml_offdiag_fused_electric_pair(
     inverse = [residency.mirror(f"inv_eps_{name}:{FAMILY}",
                                 fields.inverse_epsilon_for(name), constant=True)
                for name in electric]
-    # A DEAD ROW SLOT STILL BINDS: the specialisation is what stops the read, the
+    # A dead row slot still binds: the specialisation is what stops the read, the
     # buffer argument still has to bind, and the component's own inverse epsilon
     # is a resident read-only volume of the right shape.
     component_of_slot = tuple(

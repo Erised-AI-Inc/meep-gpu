@@ -1,17 +1,17 @@
 """The COMPLEX fused magnetic Metal kernel, as claims a laptop can check without a GPU.
 
-WHAT THIS SUITE OWNS AND WHAT IT DELIBERATELY DOES NOT. The BYTES are the device
+What this suite owns and what it deliberately does not. The BYTES are the device
 gate's — ``parity/meep_gpu/gate_metal_complex_fused_magnetic_pair.py`` steps two
 engines side by side for twelve complete steps and compares uint32 words, and no
 assertion here duplicates that. What lives here is everything true about the family
 WITHOUT a device: what the emitted source says, which configurations the predicate
-refuses and by what name, that the arm is registered UNWIRED, and that the plan binds
+refuses and by what name, that the arm is registered unwired, and that the plan binds
 the lattice each half is supposed to take.
 
-THE THREE CLAIMS THIS SUITE MAKES THAT THE GATE CANNOT.
+The three claims this suite makes that the gate cannot.
 
 1. That the product is invisible to ``plan_step`` — a property of the TABLE, and the
-   whole reason this family may land beside the wired tree without touching it.
+   whole reason this family may land beside the wired families without touching it.
 2. That the wall-clear table is THE DIAGONAL and its zero is a COMPLEX zero. The gate
    measures that the shipped kernel is right; only a table-level assertion says that
    the D-side family's table is the WRONG one here, which is the single most likely
@@ -162,7 +162,7 @@ def test_the_inline_wall_clear_is_the_b_yee_shift_table(walled, expected):
 
 
 def test_the_b_table_is_the_complement_of_the_d_table():
-    """THE SINGLE MOST LIKELY SLIP in porting this product from its D-side sibling.
+    """The single most likely slip in porting this product from its D-side sibling.
 
     The D side clears the OFF-diagonal (Dy/Dz on an x wall); B clears the diagonal.
     Asserted against the real twin's own table so the two cannot drift into agreement.
@@ -265,7 +265,7 @@ def _seam_reasons(sources):
 
 
 def test_a_magnetic_source_is_carried_by_name_and_an_electric_one_is_not_this_seam():
-    """THE POLARITY IS THE WHOLE POINT of preferring this seam over the D-side one,
+    """The polarity is the whole point of preferring this seam over the D-side one,
     and it survives the 2026-08-28 flip.
 
     ``CARRIES_DEPOSIT_REPAIR`` is now True, so a magnetic source is no longer refused
@@ -403,7 +403,7 @@ def test_the_plan_declares_every_pass_it_performs():
 def test_float2_is_forced_the_split_plane_form_cannot_be_built():
     """Thirty field planes plus twelve coefficients is over the ceiling ALONE.
 
-    Whether it FAILS TO COMPILE is a device measurement and belongs to the gate's
+    Whether it fails to compile is a device measurement and belongs to the gate's
     ``binding_ceiling`` leg; what belongs here is that the signature this suite and
     that leg talk about is the same one, and that it is over the documented limit.
     """

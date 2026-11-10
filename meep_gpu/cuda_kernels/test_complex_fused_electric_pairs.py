@@ -1,6 +1,6 @@
 """The two COMPLEX hand-CUDA fused pairs on the ELECTRIC seam: predicate, lift, protocol.
 
-WHAT THIS FILE SETTLES. ``complex_fused_electric_pair`` and
+What this file settles. ``complex_fused_electric_pair`` and
 ``cylindrical_fused_electric_pair`` put the ``cuda_complex`` and ``cuda_cyl_complex``
 families on ``step_D -> zero_metal_D -> update_E``. Between them they occupy the
 board's two largest D cells that no product occupied
@@ -31,11 +31,11 @@ an admitted row can never see, is:
    both overwrite D after the recurrence.
 
 4. **Does the two-consult protocol reproduce the driver's own order, bit for bit,
-   UNDER COMPLEX STORAGE?** ``test_deposit_repair``'s ``COMPLEX_CASES`` drive the B
+   under complex storage?** ``test_deposit_repair``'s ``COMPLEX_CASES`` drive the B
    seam only; the D seam under complex64 is what these two products need and had no
    case anywhere.
 
-NOTHING HERE COMPILES OR LAUNCHES ANYTHING. Each fused kernel's arithmetic is a DEVICE
+Nothing here compiles or launches anything. Each fused kernel's arithmetic is a DEVICE
 claim and no test on this host may speak to it (``parity/meep_gpu/
 gate_cuda_fused_complex_pairs.py`` is where that is measured); what is settled here is
 the predicate, the lift and the protocol.
@@ -79,7 +79,7 @@ def build_cartesian(xp, *, boundaries=("metallic", "periodic", "periodic"),
                     symmetry=(), cell=(8.0, 9.0, 10.0), complex_storage=True):
     """A frozen ``(fields, pml, grid)`` triple the Cartesian complex D/E pair admits.
 
-    THE EXTENTS ARE DELIBERATELY UNEQUAL: a cube lets an index decomposition swap i and
+    The extents are deliberately unequal: a cube lets an index decomposition swap i and
     k and stay identical, and this seam indexes three coefficient vectors of three
     different lengths.
     """
@@ -137,7 +137,7 @@ def magnetic_source(grid, component="Hz"):
 class _ArrayPair:
     """Stands in for the fused kernel: curl + wall clear + constitutive in one object.
 
-    THE THING UNDER TEST IS THE PROTOCOL, NOT THE KERNEL -- the same stand-in the two
+    The thing under test is the protocol, not the kernel -- the same stand-in the two
     sibling files use, with ``REPLACES`` read from the module rather than transcribed,
     so a pass added to or dropped from that tuple changes this stand-in without an edit
     here.
@@ -160,7 +160,7 @@ class _ArrayPair:
 
 
 # --------------------------------------------------------------------------
-# 1. THE DECLARATIONS, AND THE WIRING THEY MAY NOT DRIFT FROM
+# 1. The declarations, and the wiring they may not drift from
 # --------------------------------------------------------------------------
 
 @pytest.mark.parametrize("name", sorted(FAMILIES))
@@ -209,7 +209,7 @@ def test_the_replaced_passes_are_a_run_of_the_drivers_own_order(name):
 
 
 #: Which two arm predicates each product's own predicate conjoins, and the label pair
-#: ``FUSED_PAIR_ARMS`` must therefore record. READ FROM THE PREDICATE by ``ast`` below,
+#: ``FUSED_PAIR_ARMS`` must therefore record. Read from the predicate by ``ast`` below,
 #: not assigned to it: if a predicate ever conjoined different arms, absorbing those two
 #: slots would substitute a numerical product no arm admitted.
 CONJOINED = {
@@ -253,7 +253,7 @@ def test_each_new_product_shares_its_labels_only_with_its_own_magnetic_twin():
              "cuda_complex_fused_magnetic_pair"),
             ("cuda_cylindrical_fused_electric_pair",
              "cuda_cylindrical_fused_magnetic_pair"),
-            # THE FIVE ELECTRIC TWINS, 2026-09-02 (the residue round): each is
+            # The five electric twins, 2026-09-02 (products once judged unbuildable): each is
             # its magnetic twin's label pair on the other seam, the same
             # different-curl-slot keying that makes the sharing safe.
             ("cuda_complex_folded_fused_electric_pair",
@@ -286,7 +286,7 @@ def test_each_new_product_shares_its_labels_only_with_its_own_magnetic_twin():
     # eight-way partition plus the absorber boolean. Nine products, nine
     # DISTINCT label pairs.
     #
-    # 9 -> 11 LATER THAT DAY with the two STENCIL WELDS, which are the first
+    # 9 -> 11 later that day with the two STENCIL WELDS, which are the first
     # `step_D` products taking an OFF-DIAGONAL constitutive arm. They have no
     # magnetic twin either -- `update_H` reads nothing off-diagonal
     # (stepping.py:907-923), so there is no off-diagonal constitutive arm on the B
@@ -305,7 +305,7 @@ def test_each_new_product_shares_its_labels_only_with_its_own_magnetic_twin():
     # three-history conductive-PML recurrence"), and the only two whose curl half is
     # not one of the real/complex/cylindrical families.
     #
-    # 14 -> 16 ON 2026-09-02 with the two COMPLEX STENCIL WELDS, which close the
+    # 14 -> 16 ON 2026-09-02 with the two complex stencil welds, which close the
     # last two cells this board recorded UNBUILDABLE. They are the first `step_D`
     # products taking a COMPLEX OFF-DIAGONAL constitutive arm, and like the two real
     # stencil welds they have no magnetic twin -- `update_H` reads nothing
@@ -317,7 +317,7 @@ def test_each_new_product_shares_its_labels_only_with_its_own_magnetic_twin():
     # `test_complex_offdiag_stencil_welds.py` measures their wiring on fixtures with
     # complex storage and the rows installed, which this file's do not have.
     #
-    # THE SECOND ASSERTION IS THE ONE THAT MATTERS AND IT IS UNCHANGED IN FORM:
+    # The second assertion is the one that matters and it is unchanged in form:
     # sixteen products, sixteen DISTINCT label pairs. Two products sharing a pair
     # could both be given the seam by the arm table, and `install_fused_pairs` would
     # then leave it UNFUSED naming both -- a coverage loss, not a duplicate count.
@@ -333,7 +333,7 @@ def test_each_new_product_shares_its_labels_only_with_its_own_magnetic_twin():
     # ambiguity: `_superseded_by_a_longer_span` settles a strictly-contained span
     # BEFORE the ambiguity check, by giving the slots to the longer one.
     #
-    # THE ASSERTION IS THEREFORE SPLIT rather than relaxed. The sixteen two-slot
+    # The assertion is therefore split rather than relaxed. The sixteen two-slot
     # products must still carry sixteen DISTINCT pairs -- two of THOSE sharing one
     # would leave the seam UNFUSED naming both, which is the coverage loss this
     # measures. The two three-slot welds are asserted separately, and what is
@@ -369,13 +369,13 @@ def test_each_new_product_shares_its_labels_only_with_its_own_magnetic_twin():
 
 
 # --------------------------------------------------------------------------
-# 2. THREE PRODUCTS ON ONE SEAM, AND THE DISJOINTNESS THAT LETS THEM COEXIST
+# 2. Three products on one seam, and the disjointness that lets them coexist
 # --------------------------------------------------------------------------
 
 def _electric_seam_admitters(fields, layer, grid):
     """Which shipped products admit this configuration at ``step_D``, by name.
 
-    ALL FOUR ARE ASKED, not only the two this file owns. The no-absorber product landed
+    All four are asked, not only the two this file owns. The no-absorber product landed
     on 2026-08-31 and is asked here rather than only in its own file, because the three
     fixtures below are exactly the shapes it must NOT take -- each carries an active
     layer -- and a disjointness measured over a subset of the candidates would report
@@ -398,7 +398,7 @@ def _electric_seam_admitters(fields, layer, grid):
 
 
 def test_exactly_one_product_admits_each_of_the_three_electric_fixtures(xp):
-    """TWO ADMITTERS ON ONE SEAM IS A REFUSAL, NOT A GAIN.
+    """Two admitters on one seam is a refusal, not a gain.
 
     Measured on the three shapes the corpus actually drives at this seam rather than
     read off the three predicates' prose: a real run, a Cartesian complex run, and a
@@ -418,7 +418,7 @@ def test_exactly_one_product_admits_each_of_the_three_electric_fixtures(xp):
 
 
 # --------------------------------------------------------------------------
-# 3. THE PREDICATE — WHAT IT ADMITS, AND WHAT IT REFUSES BY NAME
+# 3. The predicate — what it admits, and what it refuses by name
 # --------------------------------------------------------------------------
 
 @pytest.mark.parametrize("name", sorted(FAMILIES))
@@ -469,7 +469,7 @@ def test_a_source_that_hides_the_index_it_writes_is_refused_by_name(name, xp):
 
 @pytest.mark.parametrize("name", sorted(FAMILIES))
 def test_an_undeclared_source_set_is_still_a_refusal(name, xp):
-    """IGNORANCE IS NEVER AN EMPTY SET. ``Fields`` does not hold the source list, so a
+    """Ignorance is never an empty set. ``Fields`` does not hold the source list, so a
     predicate that inferred "no sources" from not being told would over-cover every row
     in the corpus that has one -- which on these two cells is 31 of 32."""
     fields, layer, grid = BUILD[name](xp)
@@ -480,7 +480,7 @@ def test_an_undeclared_source_set_is_still_a_refusal(name, xp):
 
 @pytest.mark.parametrize("name", sorted(FAMILIES))
 def test_a_conductivity_is_refused_because_the_driver_deposits_it_differently(name, xp):
-    """THE CLAUSE NEITHER HALF MAKES, and therefore the one this file has to pin.
+    """The clause neither half makes, and therefore the one this file has to pin.
 
     ``covers_real_pml_complex_constitutive`` ADMITS a conductivity by name -- it is read
     in ``stepping._apply_curl`` and nowhere else -- so unlike the real electric pair
@@ -538,7 +538,7 @@ def test_a_folded_axis_is_refused_at_all(xp, axis, mirror):
 @pytest.mark.parametrize("name", sorted(FAMILIES))
 def test_the_products_own_fold_clause_is_reached_and_names_both_fills(name, xp,
                                                                       monkeypatch):
-    """THE CLAUSE THAT KEEPS ``REPLACES`` HONEST, EXERCISED rather than read.
+    """The clause that keeps ``REPLACES`` honest, exercised rather than read.
 
     ``fill_symmetry_bc_D`` (driver.py:3309) and ``fill_folded_far_ghosts_D`` (:3311) run
     INSIDE this seam and neither is carried. The curl half already refuses a fold, so
@@ -643,7 +643,7 @@ def test_the_cartesian_product_refuses_a_dcyl_grid_and_the_dcyl_one_requires_it(
 
 
 # --------------------------------------------------------------------------
-# 4. THE LIFT — THE CERTIFIED TEXT, AND THE EDITS THAT ARE NOT VERBATIM
+# 4. The lift — the certified text, and the edits that are not verbatim
 # --------------------------------------------------------------------------
 
 def _source(name):
@@ -660,11 +660,11 @@ ENTRY = {"cartesian": "fused_electric_pair_pml_complex(",
 
 @pytest.mark.parametrize("name", sorted(FAMILIES))
 def test_the_shared_flux_density_is_bound_exactly_once(name):
-    """THE ALIASING HAZARD. Two ``__restrict__`` pointers to one allocation is UB that
+    """The aliasing hazard. Two ``__restrict__`` pointers to one allocation is UB that
     NVRTC miscompiles without a diagnostic, so the constitutive half must have no D
     source pointers at all -- which is only true if the seam removed all three loads."""
     source = _source(name)
-    # SPLIT AT THE ENTRY POINT, not at the first ``\n) {``: the prelude's own device
+    # Split at the entry point, not at the first ``\n) {``: the prelude's own device
     # helpers (``cshift_dn`` above all) close their parameter lists the same way, so a
     # split at the first terminator would inspect the helper library instead of the
     # fused body.
@@ -674,7 +674,7 @@ def test_the_shared_flux_density_is_bound_exactly_once(name):
         bound = signature.count(f" {target},") + signature.count(f" {target}\n")
         assert bound == 1, f"{target} is bound {bound} times in the signature"
     body = after_entry.split("\n) {", 1)[1]
-    # THE CONSTITUTIVE HALF'S THREE RELOADS ARE THE WHOLE HAZARD, and they are the
+    # The constitutive half's three reloads are the whole hazard, and they are the
     # certified lines the seam replaced. ``cf_load(g*)`` on its own is NOT the test: on
     # the Cartesian product ``g0/g1/g2`` is H, the CURL's own operand group, and the
     # curl half loads it legitimately.
@@ -688,7 +688,7 @@ def test_the_shared_flux_density_is_bound_exactly_once(name):
 
 @pytest.mark.parametrize("name", sorted(FAMILIES))
 def test_the_seam_reads_the_register_and_keeps_the_certified_operand_order(name):
-    """``D * inv_eps`` with D ON THE LEFT (stepping.py:1011), and the register in place
+    """``D * inv_eps`` with D on the left (stepping.py:1011), and the register in place
     of the reload. A float32 multiply is commutative on the bits, but the certified text
     is what this family lifts and a reordered operand is an edit with no LIFT_EDITS row."""
     source = _source(name)
@@ -700,7 +700,7 @@ def test_the_seam_reads_the_register_and_keeps_the_certified_operand_order(name)
 
 @pytest.mark.parametrize("name", sorted(FAMILIES))
 def test_the_constitutive_half_reads_the_half_integer_sub_lattice(name):
-    """THE COLLISION THAT MATTERS. ``kms_a`` is the INTEGER vector for the D curl and
+    """The collision that matters. ``kms_a`` is the INTEGER vector for the D curl and
     the HALF-INTEGER one for ``update_E``; letting one shadow the other compiles
     perfectly and is half a cell wrong in the absorber profile."""
     source = _source(name)
@@ -796,7 +796,7 @@ def test_the_carried_wall_table_agrees_with_the_certified_pass(name):
 def _string_constants(module_name):
     """Every module-level ``name = <string expression>`` in one sibling, by ``ast``.
 
-    THE CERTIFIED TEXT WITHOUT THE DEVICE LIBRARY, AND WITHOUT A SKIP. Several siblings
+    The certified text without the device library, and without a skip. Several siblings
     import CuPy at module scope, so on the merge-bar host they cannot be imported -- and
     a test that skipped for that reason would leave the SPLICE, the part of these
     products that can be silently wrong, unchecked everywhere a laptop runs.
@@ -828,7 +828,7 @@ def _string_constants(module_name):
 
 
 def test_the_cylindrical_axis_tail_is_carried_on_both_branches():
-    """THE EDIT THIS FAMILY ADDS, and the one a Cartesian port would silently omit.
+    """The edit this family adds, and the one a Cartesian port would silently omit.
 
     ``stepping._cylindrical_axis_zero_D`` runs AFTER the recurrence with TWO branches:
     Dz alone at |m| = 1 (the field only, never fu_Dz) and all six volumes on rows
@@ -841,7 +841,7 @@ def test_the_cylindrical_axis_tail_is_carried_on_both_branches():
     assert "if (m_class == 1 && i == 0) {\n        d2 = cf_zero(); cf_store(Dz, idx, d2);\n    }" in tail
     for index, volume in enumerate(("Dx", "Dy", "Dz")):
         assert f"d{index} = cf_zero(); cf_store({volume}, idx, d{index});" in tail
-    # THE THREE fu STORES KEEP THE CERTIFIED SPELLING AND GET NO REGISTER CLEAR: there
+    # The three fu stores keep the certified spelling and get no register clear: there
     # is no fu register and the constitutive half never reads one. Writing one would be
     # device text with nothing behind it.
     for volume in ("fu_Dx", "fu_Dy", "fu_Dz"):
@@ -875,7 +875,7 @@ def test_the_emitted_source_is_pure_ascii(name):
 
 
 def test_the_cylindrical_emitter_refuses_by_name_where_the_text_is_unreachable():
-    """THE SPLICE IS THE LIFT, so a missing half is not a degraded emit. The refusal has
+    """The splice is the lift, so a missing half is not a degraded emit. The refusal has
     to name the module, one frame from the caller, rather than surface as an
     AttributeError inside a string operation -- and the predicate must still answer.
     ``cylindrical_complex_kernels`` imports CuPy lazily, so on a real host it is never
@@ -905,10 +905,10 @@ def test_the_walls_the_predicate_admits_are_the_walls_the_launch_binds(name, xp)
 
 
 # --------------------------------------------------------------------------
-# 4b. THE THREE LAUNCH ARGUMENTS THAT ARE SILENT WHEN WRONG
+# 4b. The three launch arguments that are silent when wrong
 # --------------------------------------------------------------------------
 #
-# THESE CANNOT BE EXECUTED ON THIS HOST and are read from the SOURCE instead, which is
+# These cannot be executed on this host and are read from the SOURCE instead, which is
 # a deliberate second-best with a reason: ``complex_pml_kernels`` imports CuPy at module
 # scope, so every resolver that binds a phase table or a constitutive table refuses here
 # by name. Each of the three is ALSO armed as a device mutation in
@@ -989,7 +989,7 @@ def test_the_cylindrical_resolver_binds_the_step_D_scan_and_imr_rows():
     for module, function in ((cylindrical, "run_cylindrical_fused_electric_pair"),
                              (fused_pairs, "_cylindrical_fused_electric_pair_plan")):
         assert _call_arguments(module, function, "resolve_launch_arguments")
-    # NOT VACUOUS: the two sub-steps really do carry different terms.
+    # Not vacuous: the two sub-steps really do carry different terms.
     assert (certified.IMR_TERMS["step_D"] != certified.IMR_TERMS["step_B"])
     from .cylindrical_prefix import PREFIX_COMPONENT  # noqa: PLC0415
 
@@ -1002,7 +1002,7 @@ def test_both_launchers_bind_the_inverse_permittivity_through_the_per_component_
     uncertified complex kernels in ``step_curl_kernels`` carry."""
     for module in FAMILIES.values():
         tree = ast.parse(pathlib.Path(module.__file__).read_text(encoding="utf-8"))
-        # ATTRIBUTE ACCESS, not a text grep: both modules name ``fields.inv_eps`` in
+        # Attribute access, not a text grep: both modules name ``fields.inv_eps`` in
         # prose to say what they must not bind, and a grep would read the warning as
         # the defect.
         attributes = {node.attr for node in ast.walk(tree)
@@ -1013,7 +1013,7 @@ def test_both_launchers_bind_the_inverse_permittivity_through_the_per_component_
 
 
 # --------------------------------------------------------------------------
-# 5. THE TWO-CONSULT PROTOCOL, UNDER COMPLEX STORAGE
+# 5. The two-consult protocol, under complex storage
 # --------------------------------------------------------------------------
 #
 # ``test_deposit_repair.COMPLEX_CASES`` drives the B seam under complex64 only. The D
@@ -1029,7 +1029,7 @@ GRIDS = ((1.2, 1.2, 0.0), (1.0, 1.0, 1.0))
 
 @pytest.mark.parametrize("cell", GRIDS, ids=("2d", "3d"))
 def test_the_two_slots_consulted_as_the_driver_consults_them_match_the_array_path(cell):
-    """THE ONE THAT MATTERS, and the only numeric claim this file makes.
+    """The one that matters, and the only numeric claim this file makes.
 
     Two independently seeded copies of the same COMPLEX-STORAGE state. One is stepped in
     the DRIVER'S order -- curl, inject, fill, clear, far fill, constitutive. The other
@@ -1038,7 +1038,7 @@ def test_the_two_slots_consulted_as_the_driver_consults_them_match_the_array_pat
     inject/fill/clear, then the repair at the second. Every word of every array is
     compared as raw bytes, so "close" is not a passing answer.
 
-    THE ELECTRIC SEAM'S INJECTION IS AT ``when + 0.5*dt`` (driver.py:3303), not at
+    The electric seam's injection is at ``when + 0.5*dt`` (driver.py:3303), not at
     ``when``, and ``_reference`` is the shared helper that knows it -- a protocol test
     that injected at the wrong instant would compare two different runs and could pass
     only by cancelling its own error.
@@ -1129,7 +1129,7 @@ def test_the_second_slot_refuses_when_the_first_never_ran():
 
 
 # --------------------------------------------------------------------------
-# 6. THE BLOCK, DRIVEN THROUGH THE COMPOSER
+# 6. The block, driven through the composer
 # --------------------------------------------------------------------------
 
 @pytest.mark.parametrize("name,label", (

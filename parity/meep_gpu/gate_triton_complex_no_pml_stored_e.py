@@ -307,7 +307,7 @@ def validate(payload: Dict[str, Any]) -> Dict[str, Any]:
                 f"{row.get('prediction')}")
         if row.get("vacuous"):
             reasons.append(f"{row.get('case')}: vacuous")
-    # ABSENT IS NOT FAILED. Added 2026-08-17 after this exact confusion cost a
+    # Absent is not failed. Added 2026-08-17 after this exact confusion cost a
     # reader real time: a setup error aborts before ``refusals`` is ever
     # assigned, and ``payload.get("refusals") or {}`` then made every clause
     # below read False and emit its measured-sounding verdict. A run whose
@@ -348,16 +348,16 @@ def main(argv=None) -> int:
         import gate_triton_complex as G
         from meep_gpu import fastpath
 
-        # ONE SUBNORMAL-POLICY AUTHORITY, AND IT IS THIS LINE: THE CAMPAIGN'S.
+        # One subnormal-policy authority, and it is this line: the campaign's.
         #
-        # The certification round gates this family under keep AND under flush
-        # (R13); the fleet driver names the campaign's policy in
+        # The certification round gates this family under keep AND under flush,
+        # MEEP's two references; the fleet driver names the campaign's policy in
         # MEEP_GPU_SUBNORMAL_POLICY and composition_policy.requested_policy reads it
         # (keep or flush, anything else refused by name). Unset, it is the table's own
-        # install default -- asserted equal below, so a bare run cannot drift from
-        # what dispatch installs. MEASURED: with the install default named here
-        # whatever the campaign asked, the flush campaign's run refused on its own
-        # flush cache token before the first product (FPC, 0 of 7).
+        # install default -- asserted equal below, so a bare run cannot drift from what
+        # dispatch installs. Measured: with the install default named here whatever the
+        # campaign asked, the flush campaign's run refused on its own flush cache token
+        # before the first product (the 2026-10-10 pre-certification flush run: 0 of 7).
         #
         # History of this line:
         #

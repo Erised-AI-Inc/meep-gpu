@@ -10,8 +10,9 @@
         [--date YYYY-MM-DD] [--recorded-by LABEL] [--note TEXT]
     python parity/meep_gpu/record_dev_evidence.py check
 
-WHO WRITES IT. An integrator, when it re-runs a lane's device legs at integration. A lane
-measures on its own base; the integrator measures on the tree that lands, and that is the
+Who writes it. An integrator: a contributor who re-runs a change's device legs while
+integrating it. The change was first measured on the tree it was developed on; the
+integrator measures on the tree that lands, and that is the
 only measurement this record holds. Column (d-dev) of ``build_parity_board.py`` reads it;
 columns (d) and (e) never do: a certification round re-gates and re-mints the ledgers,
 and nothing here stands in for that.
@@ -25,7 +26,7 @@ the working tree disagree"), because then the words describe no tree. The board 
 record only while its subject is the live one, so a later edit drops it with nobody
 having to remember to.
 
-WHAT A RECORD HOLDS: table, module, backend, subnormal baseline, words compared, words
+What a record holds: table, module, backend, subnormal baseline, words compared, words
 differing, the gate or smoke that compared them, the subject, the date and the host
 CLASS -- a GPU model or an Apple GPU family, never a host name (one that names this
 machine is refused). Optionally the artifact's path and sha256 and the integrator's label.
@@ -52,7 +53,7 @@ if str(_HERE) not in sys.path:
 import build_parity_board as board  # noqa: E402
 import parity_board_emit as emit  # noqa: E402
 
-ABOUT = ("DEVELOPMENT EVIDENCE, NOT CERTIFICATION. Integrators record here the device legs "
+ABOUT = ("Development evidence, not certification. Integrators record here the device legs "
          "they re-ran at integration (record_dev_evidence.py). Column (d-dev) of the "
          "bit-parity board counts a record only while its subject -- the module's bytes, its "
          "emitted device text and the array path -- is the live one. Columns (d) and (e) "
@@ -137,7 +138,9 @@ def make_record(root: Path, arguments: Mapping[str, Any], subject_before: Mappin
     baseline = arguments["baseline"]
     if baseline not in board.BASELINES[table]:
         raise EvidenceRefusal(f"the {table} table is judged under {board.BASELINES[table]} "
-                              f"only (owner ruling R13), not {baseline!r}")
+                              f"only (a table is judged under both subnormal baselines "
+                              f"where its hardware supports both; the Apple GPU flushes "
+                              f"natively, so Metal has flush alone), not {baseline!r}")
     compared = _integer(arguments["words_compared"], "words compared")
     differing = _integer(arguments["words_differing"], "words differing")
     if compared <= 0:

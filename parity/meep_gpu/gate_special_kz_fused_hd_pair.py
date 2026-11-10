@@ -2,7 +2,7 @@
 
 ONE CUDA kernel welding ``stepping.update_H`` into the special_kz ``stepping.step_D``
 under REAL float32 storage on a ``grid.beta != 0`` run, measured BIT-IDENTICAL as
-uint32 words per COMPLETE DRIVER STEP against FOUR independent arrangements of the
+uint32 words per complete driver step against FOUR independent arrangements of the
 seam, under both float32 subnormal policies, on synthetic fixtures and on the two
 lifted corpus rows of its cell.
 
@@ -17,9 +17,9 @@ THE CELL
 
 Those are the only two REAL-storage beta rows in the corpus. The other four beta rows
 are complex storage and belong to ``gate_complex_beta_fused_hd_pair.py``, the sibling
-gate built in the same round over the same shared kit.
+gate built alongside this one over the same shared kit.
 
-THE FOUR REFERENCES, and what each one rules out
+The four references, and what each one rules out
 =============================================================================
 ``array``               ``stepping``'s own ten passes. THE ORACLE.
 ``singles``             the certified ``update_H_pml_real`` and
@@ -37,19 +37,19 @@ THE FOUR REFERENCES, and what each one rules out
 Plus ``weld_composed`` on the launch-structure leg only: the weld with its two
 neighbours as certified singles, so launch counts compare like with like.
 
-WHAT THIS SEAM ADDS THAT NO SIBLING H->D GATE CAN MEASURE
+What this seam adds that no sibling H->D gate can measure
 =============================================================================
-THE BETA PARTNER. ``stepping._special_kz_beta_term`` consumes the SAME-CELL magnetic
+The beta partner. ``stepping._special_kz_beta_term`` consumes the SAME-CELL magnetic
 snapshot, which the array path takes AFTER ``update_H``; welded, that snapshot must be
 this launch's own ``own_h[...]`` register. ``beta_partner_reads_stale_h`` is the armed
 defect: it reverts target 0's beta partner to a load of the PRE-launch volume and
 leaves every own-cell load of the curl alone, so the beta pass of one component is one
 sub-step behind and nothing else is. Every magnitude stays plausible.
 
-WHAT THE ARITHMETIC LEGS ADD, AND WHAT THEY RECORD AS ABSENT
+What the arithmetic legs add, and what they record as absent
 =============================================================================
 This family is REAL float32 throughout: ``complex64 * float32``'s contracted
-four-product form -- the spelling the complex families must get right -- HAS NO SITE
+four-product form -- the spelling the complex families must get right -- has no site
 here, and neither does any division (the reciprocal the recurrence needs is ``sinv``,
 computed host-side by ``PML``). Both absences are ASSERTED against the emitted text
 rather than omitted, because a reader arriving from the complex or cylindrical H->D
@@ -58,15 +58,15 @@ products will look for each. What IS live is ``--fmad=false``: the beta pass's l
 contracts, and the attribution sub-leg requires the guarded and unguarded builds to
 differ.
 
-NOT WIRED, AND THE ARBITRATION LEG SAYS SO IN BOTH ARRANGEMENTS
+Not wired, and the arbitration leg says so in both arrangements
 =============================================================================
 The family is not in ``fused_pairs.FUSED_PRODUCTS`` / ``registry`` / ``arms`` yet; the
-wiring is a separate change. Every arrangement here is PLANNED FROM ARRAYS by this
+wiring is a separate change. Every arrangement here is planned from arrays by this
 gate and the array path is driven by this gate. The ``arbitration`` leg measures the
 composer AS SHIPPED and again WITH the wiring rows patched in-process, and it ASSERTS
 the substantive claims only -- refused BY NAME, the refusal names ``INSTALLABLE =
 False``, the selection unchanged, both released neighbours keeping their slots --
-while RECORDING the positional ones, which a wiring round inverts by design.
+while RECORDING the positional ones, which a wiring change inverts by design.
 """
 
 # Derived from MEEP (https://github.com/NanoComp/meep).
@@ -117,7 +117,7 @@ CORPUS_BETA = 0.3321611318837033
 #: shifted tap's PERIODIC WRAP is observable at all, because on a metallic axis the
 #: ownership mask zeroes the very curl the wrapped tap feeds.
 #:
-#: EVERY FIXTURE CARRIES A NONZERO BETA and the builder refuses one that does not: a
+#: Every fixture carries a nonzero beta and the builder refuses one that does not: a
 #: beta-free grid measures a kernel this cell does not contain. The invariant z axis is
 #: forced periodic by ``Grid`` at ``dimensions=2``, so no fixture walls or folds it.
 SPECS: Tuple[Dict[str, Any], ...] = (
@@ -166,7 +166,7 @@ REDUCED_LABELS: Tuple[str, ...] = ("periodic", "periodic_negative_beta", "walls_
 # ---------------------------------------------------------------------------
 
 DEVICE_MUTATIONS: Dict[str, Dict[str, Any]] = {
-    # ---- THE BETA CLAUSES: this seam's own, and the reason the product exists ----
+    # ---- the beta clauses: this seam's own, and the reason the product exists ----
     "beta_partner_reads_stale_h": {
         "old": "        float inc_beta = owned_cell ? (-(beta_plus * f2)) : 0.0f;",
         "new": "        float inc_beta = owned_cell ? (-(beta_plus * Hy[idx])) : 0.0f;",
@@ -214,7 +214,7 @@ DEVICE_MUTATIONS: Dict[str, Dict[str, Any]] = {
         "live_on": "every fixture",
     },
     "beta_on_the_third_component": {
-        # TARGET 2 (Dz) GETS A BETA PASS IT MUST NOT HAVE. MEEP's ``cc`` loop runs
+        # TARGET 2 (Dz) gets a beta pass it must not have. MEEP's ``cc`` loop runs
         # over ``d_c`` in {X, Y} only (step_db.cpp:161-175), so the third component
         # carries no analytic term at all. The anchor is target 2's own absorber line,
         # which is unique.
@@ -248,7 +248,7 @@ DEVICE_MUTATIONS: Dict[str, Dict[str, Any]] = {
                 "fold it reaches fu_Dy in the x layer"),
         "live_on": "fold_y_even (a periodic-terminated y fold with an x layer)",
     },
-    # ---- THE WELD CLAUSES: the shape, shared with the released real sibling ----
+    # ---- the weld clauses: the shape, shared with the released real sibling ----
     # (``gate_cuda_fused_hd_pair.DEVICE_MUTATIONS``' spellings: the two welds splice
     # one constitutive half and one curl transform.)
     "foreign_tap_reads_stale_H": {
@@ -299,7 +299,7 @@ DEVICE_MUTATIONS: Dict[str, Dict[str, Any]] = {
                 "race to depend on"),
         "live_on": "every fixture with an active absorber (kms != 0)",
     },
-    # INVERTED (bit_parity_0_10 KERNELS.md section 7.1): the shipped accumulation IS
+    # INVERTED: the shipped accumulation IS
     # MEEP's grouping, f + ((kps*src) - (kms*prev)), so the must-catch edit installs the
     # package's old grouping, two separate left-to-right accumulations.
     "accumulation_regrouped_to_the_old_package_order": {
@@ -312,11 +312,11 @@ DEVICE_MUTATIONS: Dict[str, Dict[str, Any]] = {
                 "rather than as a bug"),
         "live_on": "every fixture with an active absorber",
     },
-    # --- MEEP's per-chunk forms (KERNELS.md section 7.2, the B battery) ---------------
+    # --- MEEP's per-chunk forms (the per-chunk form battery) --------------------------
     "constitutive_auxiliary_stored_on_a_plain_cell": {
         "old": "    *fw_out = dsigw ? src : fw[idx];",
         "new": "    *fw_out = src;",
-        "why": ("the auxiliary contract (C2): off the dsigw run the array path leaves "
+        "why": ("the auxiliary contract: off the dsigw run the array path leaves "
                 "f_w_H untouched, and the rotation makes the scratch the live f_w_H, so "
                 "a scratch word written with B there is a changed f_w_H word"),
         "live_on": "every fixture with an active absorber and a plain cell",
@@ -567,7 +567,7 @@ class SpecialKzAdapter(kit.Adapter):
     def leg_transcription(self) -> Dict[str, Any]:
         """Is every welded byte the certified family's, and does the lift INVERT?
 
-        SIX CHECKS AND ONE EQUALITY. The equality is the strongest thing this leg has
+        Six checks and one equality. The equality is the strongest thing this leg has
         and it is a NEW measurement rather than a restatement: this family's curl
         transform applied to the CERTIFIED (beta-free) ``step_D_pml_real`` text
         returns exactly what the RELEASED ``fused_hd_pair.welded_curl_tail`` returns,
@@ -772,9 +772,9 @@ class SpecialKzAdapter(kit.Adapter):
         return record
 
     def leg_spelling(self) -> Dict[str, Any]:
-        """``float32 / float32`` and ``complex64 * float32``, RECORDED AS ABSENCES.
+        """``float32 / float32`` and ``complex64 * float32``, recorded as absences.
 
-        THE MEASURED FACTS THIS FAMILY MUST RESPECT AND DOES NOT EXERCISE. On this
+        The measured facts this family must respect and does not exercise. On this
         backend ``complex64 * float32`` is the CONTRACTED four-product form and
         ``complex64 / float32`` is CuPy's SCALED complex/complex algorithm -- neither
         is the numpy spelling, and carrying one backend's or one storage class's
@@ -888,7 +888,7 @@ class SpecialKzAdapter(kit.Adapter):
                             "apart; only the host transcription can be wrong here, "
                             "which is why this is a HOST mutation")}
         if name == "drop_the_metallic_wall_code":
-            # SCORED ON A WALLED FIXTURE, and the fixture is chosen rather than
+            # Scored on a walled fixture, and the fixture is chosen rather than
             # inherited: binding every axis PERIODIC on an already-periodic grid
             # changes nothing at all, and this mutation came back UNCAUGHT on the
             # kit's first host-mutation smoke because it ran on ``periodic``.
@@ -954,7 +954,7 @@ class SpecialKzAdapter(kit.Adapter):
 
 
 LICENCES_WHAT = (
-    "ONE CUDA kernel measured byte-identical, per COMPLETE DRIVER STEP and as uint32 "
+    "ONE CUDA kernel measured byte-identical, per complete driver step and as uint32 "
     "words over every stored volume, to four independent arrangements of the "
     "update_H -> step_D seam on a REAL float32 special_kz (grid.beta != 0) run, at "
     "every block size and at three seed scales, on the fixtures and corpus rows this "

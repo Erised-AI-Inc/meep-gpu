@@ -1,6 +1,6 @@
 """The ADE ``update_P`` recurrence when the split-field absorber is INERT.
 
-WHY THIS MODULE EXISTS AND WHY IT IS NOT IN ``coverage.py``
+Why this module exists and why it is not in ``coverage.py``
 ----------------------------------------------------------
 :func:`coverage.ade_update_p_coverage` covers exactly this sub-step and refuses
 this configuration for ONE clause (coverage.py:584-587)::
@@ -30,7 +30,7 @@ here with that one clause inverted rather than weakened there — the house
 pattern ``folded_constitutive_coverage`` and ``nonlinear_update_e``'s
 ``_nonlinear_grid_reasons`` established. The incumbent's refusals all stay true.
 
-MEASURED, NOT ARGUED
+Measured, not argued
 --------------------
 Certified body against ``dispersion.PolarizationState.update``, EIGHT complete
 cycles, uint32 over the whole stored inventory
@@ -43,9 +43,9 @@ footprint::
     H_ade_update_p_conductive_no_pml    IDENTICAL      0 / 7680   (>=3072 moved)
     B_ade_wrong_drive_CONTROL           DIVERGENT   3072 / 15360
 
-AND THROUGH THIS MODULE'S OWN BUILDER. Those three reach the certified body by
+And through this module's own builder. Those three reach the certified body by
 patching the incumbent predicate, which licenses a claim about the kernel, not
-about the admission below. The closure round's second leg builds through
+about the admission below. The residual closure's second leg builds through
 :func:`plan_no_pml_ade_update_p` with :func:`no_pml_ade_update_p_coverage`
 UNPATCHED — a plan of ``None`` would be a failed leg — and measures the same
 (results/residual_closure_2026-08-15/device/newpred/new_predicates.json)::
@@ -66,7 +66,7 @@ conductive no-PML curl and a STORE arm for ``update_E``, neither of which is
 built, and both of which DIVERGED (1536/4608 per curl sub-step; 1536/7680 on the
 store arm).
 
-WHAT IS NOT HERE
+What is not here
 ----------------
 No kernel and no arithmetic. The kernel is ``kernels.ade_update_p``, the plan is
 ``launch.AdeUpdatePPlan``, both untouched and both already certified; only the
@@ -135,7 +135,7 @@ def _inert_layer_reasons(fields: Any, pml: Any, component: str) -> List[str]:
        sub-step — which is how a dispatcher picks a body by ordering. Disjoint by
        construction, and the CONTROL leg says what the wrong pick costs: 3072 of
        15360 words;
-    b. ``Fields`` must not be in PML STORAGE MODE either. ``enable_pml_storage``
+    b. ``Fields`` must not be in PML storage mode either. ``enable_pml_storage``
        is a one-way switch (fields.py:678-721) that sets ``_pml_active`` — the
        flag ``drive_field`` branches on. A ``Fields`` switched on while the layer
        handed to the stepper is inert would drive P from ``f_w``, which
@@ -219,7 +219,7 @@ def no_pml_ade_update_p_coverage(fields: Any, pml: Any, state: Any,
       exactly ``grid.shape``;
     * a ``sigma`` that is neither a scalar nor a volume.
 
-    CONDUCTIVITY IS ADMITTED, deliberately and by measurement. ``mp.Absorber``
+    Conductivity is admitted, deliberately and by measurement. ``mp.Absorber``
     installs one and it enters the CURL sub-steps
     (``stepping._apply_conductive_update``, S:1938-1951), never this one; the
     conductive fixture measured 0 of 7680 words differing over four cycles with a
@@ -270,7 +270,7 @@ def no_pml_ade_update_p_coverage(fields: Any, pml: Any, state: Any,
     elif getattr(getattr(state, "grid", None), "dt", dt) != dt:
         reasons.append("the state's coefficients were built for a different dt")
 
-    # THE INVERTED CLAUSE.
+    # The inverted clause.
     reasons.extend(_inert_layer_reasons(fields, pml, component))
 
     # Without an absorber ``update_E`` writes the stored E only when ``stores_E``
@@ -331,7 +331,7 @@ def plan_no_pml_ade_update_p(fields: Any, pml: Any, state: Any,
                              block: Optional[int] = None) -> Any:
     """A CERTIFIED ADE plan for an absorber-free run, or None.
 
-    ALL OR NOTHING PER STATE, for ``launch.plan_ade_update_p``'s reason and not a
+    All or nothing per state, for ``launch.plan_ade_update_p``'s reason and not a
     new one: ``PolarizationState.update`` rotates a SHARED scratch buffer from
     component to component inside one call, so covering two of three components
     and leaving the third to the array path would interleave two rotations over
@@ -367,15 +367,15 @@ def explain_no_pml_ade(fields: Any, pml: Any, state: Any,
 # WIRING — the planner seam is IN; dispatch is held shut by its enable
 # ---------------------------------------------------------------------------
 #
-# Added 2026-08-14 by the residual-group closure round, which did not own
-# ``launch.py`` and could add no arm. AS IT NOW STANDS: ``launch.plan_step``'s
+# Added 2026-08-14 by the residual-group closure, which did not own
+# ``launch.py`` and could add no arm. As it now stands: ``launch.plan_step``'s
 # ``update_P`` block decides its ADE family ONCE for the whole sub-step, from the
 # two predicates rather than from builder order, and this one owns the slot where
 # the incumbent refuses for the drive-field clause. The package ``__init__``
 # exports the predicate and the builder behind the same lazy seam, and
 # ``launch.FAMILY_MODULES`` names this module.
 #
-# WHY THE PREDICATES ARE CONSULTED THERE AT ALL, when the block is builder-first
+# Why the predicates are consulted there at all, when the block is builder-first
 # everywhere else: a builder-first FALLBACK would silently prefer the incumbent if
 # both families ever admitted, which is ``plan_step``'s clause (b) failure mode
 # spelled "pick by order". Both verdicts are taken before anything is built, and a
@@ -386,7 +386,7 @@ def explain_no_pml_ade(fields: Any, pml: Any, state: Any,
 # active layer BY NAME, so a closed gate can only ever remove a refusal.
 #
 # ``coverage.py`` was deliberately NOT narrowed. Its clause :584-587 could be
-# rewritten to say the drive field must be ``f_w`` only WHEN THE LAYER IS ACTIVE,
+# rewritten to say the drive field must be ``f_w`` only when the layer is active,
 # and that would make this module's restatement redundant — but it would also make
 # the two predicates admit the SAME configuration, which the composer fails closed
 # on. The scope change is made by adding an arm, never by widening one.

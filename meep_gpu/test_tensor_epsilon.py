@@ -483,7 +483,7 @@ def test_tensor_fold_equivalence_holds_to_rounding(kind):
     Both coefficient parities under Mirror(X), separately and together:
 
     * ``even`` — chi_yz (neither index on the fold axis), uniform-symmetric,
-      NONZERO ON THE PLANE. This is the case the fold-plane mask would destroy:
+      nonzero on the plane. This is the case the fold-plane mask would destroy:
       zeroing the coupling there the way the metallic rule does costs 2.0e-02.
     * ``odd`` — chi_xy (one index on the fold axis), an odd smooth function of x
       vanishing on the plane, as any structure symmetric under the fold must.
@@ -493,7 +493,7 @@ def test_tensor_fold_equivalence_holds_to_rounding(kind):
     the curl takes MEEP's left-to-right bracket, which is not reflection-symmetric in
     rounding (``test_stepping.FOLD_ROUNDING_BOUND``), the full domain's two halves
     differ by rounding and the bound is :data:`FOLD_ROUNDING_BOUND` units of 2**-24 of
-    the run's peak (MEASURED 2026-10-06: 4.7e-08 / 3.6e-08 / 3.3e-08, that is 0.78 /
+    the run's peak (measured 2026-10-06: 4.7e-08 / 3.6e-08 / 3.3e-08, that is 0.78 /
     0.60 / 0.55 units).
     The folded driver's rows are the stored-half WINDOW of the full driver's
     arrays, so the comparison carries bitwise-identical coefficients and

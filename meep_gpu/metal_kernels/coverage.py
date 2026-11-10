@@ -3,9 +3,9 @@
 The predicates are written POSITIVELY, for the same reason the Triton ones are:
 almost everything these kernels do not carry produces a *silent wrong answer*
 rather than a crash. A refusal reports EVERY disqualifying clause, not the first,
-and coverage is A SET PER SUB-STEP, not per run.
+and coverage is a set per sub-step, not per run.
 
-NOTHING NUMERICAL IS RE-DERIVED HERE. Every leaf helper and every constant table
+Nothing numerical is re-derived here. Every leaf helper and every constant table
 is IMPORTED from :mod:`meep_gpu.triton_kernels.coverage` — one definition, not a
 copy: :func:`_boundary_kinds` (the one place the predicates consult the array
 path, deliberately, so the fold/declaration precedence is not transcribed twice),
@@ -14,27 +14,27 @@ path, deliberately, so the fold/declaration precedence is not transcribed twice)
 :func:`zero_metal_axes`, and the tables ``COVERED_BOUNDARIES``, ``CURL_TARGETS``,
 ``CURL_SUB_STEPS``, ``B_SOURCES``, ``D_SOURCES``, ``CONSTITUTIVE_SIDES``.
 
-WHAT IS RE-IMPLEMENTED, AND ONLY THAT: :func:`_grid_reasons`. Its twelve-clause
+What is re-implemented, and only that: :func:`_grid_reasons`. Its twelve-clause
 list is backend-free in eleven of them; clause 1 is ``xp.__name__ != "cupy"``,
 which is the wrong question on a host whose engine holds NumPy and whose device
 memory is a torch MPS tensor. So the clause list is written out again with clause
 1 replaced by :func:`_metal_backend_reasons`, and clauses 2-12 transcribed
 verbatim.
 
-THE DUPLICATION IS A STATED DEBT WITH A DISCHARGE PLAN. It exists because
-``triton_kernels/`` is read-only this round, and the honest interim is
+The duplication is a stated debt with a discharge plan. It exists because
+``triton_kernels/`` was read-only when this module was written, and the honest interim is
 duplicate-plus-pin rather than a string filter over the Triton list — a filter is
 an inference from a literal, and it would SILENTLY MISS a clause later added on
 the Triton side, which is the exact over-covering failure this file exists to
 prevent. ``test_metal_kernels.test_grid_reasons_match_the_triton_clause_list``
 runs BOTH functions over a shared configuration matrix and asserts the reason sets
 are equal once each side's own backend clause is removed, so drift fails a test in
-either direction. NAMED END STATE, to be done when the fence lifts: hoist the
+either direction. Named end state, to be done when the fence lifts: hoist the
 shared clause body into a backend-neutral ``meep_gpu/kernel_coverage.py`` that both
 packages import, and DELETE the duplicate outright — no alias, no re-export, no
 deprecated wrapper (the rename-outright rule).
 
-THE RESIDENCY CLAUSE IS GENUINELY NEW (:func:`residency_reasons`). The CuPy path
+The residency clause is genuinely new (:func:`residency_reasons`). The CuPy path
 is zero copy, so a Triton plan's arrays ARE the engine's arrays and no such
 invariant exists. Here a plan owns persistent device mirrors, and a mirror is
 valid only while nothing else writes the host array. Any array-path sub-step that
@@ -168,7 +168,7 @@ def _grid_reasons(fields: Any, pml: Any, grid: Any) -> List[str]:
                 reasons.append(f"axis {axis} boundary {kind!r} is outside {COVERED_BOUNDARIES}")
 
     # 5. No mirror plane anywhere: a fold changes the ghost rule, adds a parity mask
-    #    at cell 0, adds two driver passes to the loop, and CHANGES THE STORED EXTENT.
+    #    at cell 0, adds two driver passes to the loop, and changes the stored extent.
     if _call(grid, "has_symmetry", default=False):
         reasons.append("a mirror plane is active (symmetry folding is not carried)")
     for axis in range(3):
@@ -221,7 +221,7 @@ def _grid_reasons(fields: Any, pml: Any, grid: Any) -> List[str]:
 #: model that enumerated only the seven ``STEP_ORDER`` slots would hold a mirror
 #: across a wall clear it never saw.
 #:
-#: THE TWO FAR-GHOST ENTRIES WERE MISSING AND THAT WAS BLOCKING, not cosmetic. One
+#: The two far-ghost entries were missing and that was blocking, not cosmetic. One
 #: complete magnetic half is FIVE passes, not three — ``step_B`` -> inject ->
 #: ``fill_symmetry_bc_B`` -> ``zero_metal_B`` -> ``fill_folded_far_ghosts_B`` ->
 #: ``update_H`` (driver.py:3282-3287; the electric half at :3293-3302) — and the
@@ -305,8 +305,8 @@ def sub_step_volumes(sub_step: str) -> Tuple[str, ...]:
     """Every volume one sub-step touches, read or written — ONCE EACH.
 
     Deduplicated, in writes-then-reads order. Every sub-step but one has disjoint
-    read and write sets, so this is a no-op for them; the far ghost passes IMAGE A
-    STORED ROW OF THE ARRAY THEY WRITE (stepping.py:1529-1532), so their two sets
+    read and write sets, so this is a no-op for them; the far ghost passes image a
+    stored row of the array they write (stepping.py:1529-1532), so their two sets
     are the same three volumes and a naive concatenation would report each name
     twice in a refusal message. The de-duplication is here rather than in
     :func:`residency_reasons` so every caller sees one list.
@@ -332,7 +332,7 @@ def residency_reasons(mirrored: Optional[Sequence[str]],
 
     THE INVARIANT: a mirror is valid only while nothing else writes the host array.
     So for every sub-step that is LIVE for this run and touches a mirrored volume,
-    one of three things must be true — the sub-step is IN THE PLAN (it runs on the
+    one of three things must be true — the sub-step is in the plan (it runs on the
     device, against the mirror), the caller has DECLARED that it brackets that
     sub-step with an explicit sync out and back, or the sub-step is NULL (it
     performs no operation at all, so it writes nothing to go stale). Anything else
@@ -356,12 +356,12 @@ def residency_reasons(mirrored: Optional[Sequence[str]],
     the historical table remains the fail-closed fallback; with a declaration,
     every planned slot must be present and only its declared mirrors are required.
 
-    ``null`` IS THE THIRD CASE, AND IT WAS ADDED BECAUSE THE MODEL WITHOUT IT WAS
-    MEASURABLY WRONG. ``planned`` means "runs on the device, against the mirror".
+    ``null`` is the third case, and it was added because the model without it was
+    measurably wrong. ``planned`` means "runs on the device, against the mirror".
     The no-PML null family's plans run on NEITHER: ``stepping.update_H`` returns at
     stepping.py:944-945 and ``update_E`` at :983-984 without reading an array, so
     the plan binds no buffer and writes no host volume. Declared as ``planned`` —
-    which is the only set tranche 1's composer had for them — the verdict refused
+    the only set the first-stage composer had for them — the verdict refused
     the family's own configuration::
 
         update_H is planned but ('Hx','Hy','Hz','f_w_Hx','f_w_Hy','f_w_Hz',

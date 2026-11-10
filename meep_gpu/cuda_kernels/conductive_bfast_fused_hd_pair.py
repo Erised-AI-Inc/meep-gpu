@@ -1,6 +1,6 @@
 """The H->D weld on the two curl tails the Cartesian product does not reach.
 
-ONE PRODUCT, TWO VARIANTS, TWO BOARD CELLS. :mod:`.fused_hd_pair` welds the certified
+One product, two variants, two board cells. :mod:`.fused_hd_pair` welds the certified
 ``update_H`` into the certified LOSSLESS real-PML ``step_D``. Two seam-instances on the
 CUDA fusion board sit on the same seam with the same ``update_H`` half and a DIFFERENT
 ``step_D`` tail, and until this module they were the board's last two
@@ -11,7 +11,7 @@ CUDA fusion board sit on the same seam with the same ``update_H`` half and a DIF
     H_to_D (cuda_bfast/BFAST          -> cuda_bfast/BFAST)              1 instance
         tests:TestReflectanceAngular.test_reflectance_angular_2_35_7
 
-THE PAIRING IS REAL AND IT WAS CHECKED AGAINST THE CERTIFIED ARMS, not against the
+The pairing is real and it was checked against the certified arms, not against the
 board's cell label. ``parity/meep_gpu/results/h_to_d_seam_2026-09-04/h_to_d_seam.jsonl``
 records, per row, the ENTRY POINT each half resolves to on this backend::
 
@@ -27,14 +27,14 @@ board label is not a mislabel. What the same record ALSO shows, and what decided
 module's shape, is that the BFAST cell's ``update_H`` half is that SAME certified
 body: ``bfast_curl`` ships no constitutive kernel at all and
 ``covers_bfast_constitutive`` admits the shipped one with the BFAST clause inverted
-(that module's own docstring). The two cells therefore differ in the CURL HALF AND
-NOTHING ELSE, which is exactly the shape ``certification.json``'s
+(that module's own docstring). The two cells therefore differ in the curl half and
+nothing else, which is exactly the shape ``certification.json``'s
 ``cuda_complex_fused_hd_pair_2026-09-07`` block states for the complex H->D product --
 one transform emitting two device strings, with ``resolve`` reading the variant off
 the run rather than taking it from a caller.
 
 =============================================================================
-THE SHAPE: SCRATCH OUTPUT AND FOREIGN-CELL RECOMPUTE, UNCHANGED
+The shape: scratch output and foreign-cell recompute, unchanged
 =============================================================================
 
 Both certified ``step_D`` tails read ``H`` at the thread's own cell AND at three
@@ -43,7 +43,7 @@ transforming ``step_curl_kernels``' own ``_step_D_pml_real_kernel_code`` (the
 conductive one at :mod:`.conductive_kernels`'s ``_pml_template``) or by splicing the
 BFAST insert into a copy of it (:mod:`.bfast_curl`'s ``_step_D_bfast_real_kernel_code``),
 so the stencil, the ghost rule, the ownership mask and the operand grouping are the
-certified pair's in both. MEASURED on the emitted text rather than read off that
+certified pair's in both. Measured on the emitted text rather than read off that
 history: six own-cell magnetic loads and six ``shift_dn`` taps in each, asserted per
 emit (:data:`OWN_LOAD_EDITS`, :data:`HALO_TAPS`).
 
@@ -58,8 +58,8 @@ The hazard and its removal are therefore :mod:`.fused_hd_pair`'s, verbatim:
   on;
 * the launcher then ROTATES the ``H``/``f_w_H`` bindings against the scratch.
 
-WHAT EACH VARIANT ADDS, AND WHY IT IS SAFE IN PLACE. Both tails write a THIRD per-cell
-history beside ``D`` and ``fu_D``, and both write it at the THREAD'S OWN CELL ONLY:
+What each variant adds, and why it is safe in place. Both tails write a THIRD per-cell
+history beside ``D`` and ``fu_D``, and both write it at the thread's own cell only:
 
 * ``conductive`` -- ``cond_pml_apply`` (conductive_kernels.py's
   ``_COND_PML_APPLY_PRELUDE``) reads ``f[idx]``, ``u[idx]``, ``c[idx]``, ``cf[idx]``,
@@ -76,7 +76,7 @@ for the same reason it holds on the lossless one, and the launcher's
 :func:`assert_bindings_are_disjoint` refuses a binding that would break it.
 
 =============================================================================
-THE VARIANT IS READ OFF THE RUN, AND THE TWO ARE DISJOINT BY MEASUREMENT
+The variant is read off the run, and the two are disjoint by measurement
 =============================================================================
 
 :func:`variant_for` asks the two questions the array path asks -- ``grid.bfast_active``
@@ -86,7 +86,7 @@ place a conductivity is read) -- and returns ``"bfast"``, ``"conductive"``, or a
 REFUSAL. It never returns a default: a run that is both, or neither, is a run this
 product must not bind, and a reader that guessed would compile the wrong tail.
 
-THE TWO ARE DISJOINT AND THAT IS A PROPERTY OF THE SHIPPED PREDICATES, not of this
+The two are disjoint and that is a property of the shipped predicates, not of this
 file: ``covers_conductive_curl`` delegates every non-conductivity clause to
 ``coverage.covers_real_pml_curl`` on a LOSSLESS proxy, which refuses a BFAST grid by
 name; ``covers_bfast_curl`` delegates every non-BFAST clause to the same predicate on
@@ -96,7 +96,7 @@ module's gate drives that as a leg (``refusal``: ``conductive_and_bfast_together
 rather than asserting it here.
 
 =============================================================================
-WHAT SITS IN THE SEAM, AND WHAT THIS PRODUCT DOES WITH IT
+What sits in the seam, and what this product does with it
 =============================================================================
 
 :data:`CARRIES_DEPOSIT_REPAIR` is False and it is a FACT rather than a decision:
@@ -113,13 +113,13 @@ same wiring consequence: the only wiring that performs the hoist is
 so the predicate refuses BY NAME every row with a standing integrated electric
 withdraw.
 
-WHAT THAT COSTS ON THESE TWO CELLS IS ZERO, MEASURED rather than assumed. The seam
+What that costs on these two cells is zero, measured rather than assumed. The seam
 record's own columns for the two rows read ``withdraw_in_seam: false`` and
 ``n_electric_withdraws_that_do_work: 0`` (``h_to_d_seam_2026-09-04``), so this clause
 refuses nothing either cell contains.
 
 =============================================================================
-IT IS NOT INSTALLED, AND THE ARBITRATION IS MEASURED THROUGH THE COMPOSER
+It is not installed, and the arbitration is measured through the composer
 =============================================================================
 
 :data:`INSTALLABLE` is False. The Cartesian algebra :mod:`.fused_hd_pair` prices
@@ -129,14 +129,14 @@ or lose -- and on BOTH of this product's cells the two neighbours EXIST as certi
 products on this backend: :mod:`.conductive_fused_electric_pair` holds
 ``step_D``/``update_E`` on a conductive row, and :mod:`.bfast_fused_magnetic_pair` and
 :mod:`.bfast_fused_electric_pair` hold the two seams either side on a BFAST row. The
-flag ships False FIRST and the arbitration is then MEASURED through the shipped
+flag ships False FIRST and the arbitration is then measured through the shipped
 composer (``arms.plan_step(..., fuse=True)``), which is the gate's ``arbitration``
 leg: it reports which product won each slot, that this one is refused BY NAME, that
 the refusal names ``INSTALLABLE`` False, and that the released neighbours keep the
 slots they had.
 
 =============================================================================
-WHAT THIS FAMILY DOES NOT CARRY
+What this family does not carry
 =============================================================================
 
 Every other configuration is refused through the two halves' OWN certified predicates,
@@ -148,7 +148,7 @@ BFAST variant (``bfast_curl``'s clause 4, refused by name because BFAST SUMS the
 ghosts the certified fold verdict DIFFERENCES), and any grid whose two halves resolve
 different boundary triples.
 
-THE FOLD IS ADMITTED ON THE CONDUCTIVE VARIANT and by the two halves' own device
+The fold is admitted on the conductive variant and by the two halves' own device
 verdicts rather than by argument: ``coverage.CONSTITUTIVE_FOLD_ADMISSION`` for the
 constitutive half and ``BC_MIRROR_PERIODIC`` for the curl, whose mask split was
 measured by ``gate_cuda_folded_curl.py``. The seam is fill-FREE on a folded grid --
@@ -157,7 +157,7 @@ and ``fill_D`` opens one seam later (:3324-3330) -- so no ghost plane is rewritt
 between the two consults this launch spans.
 
 =============================================================================
-NOTHING DISPATCHES THIS
+Nothing dispatches this
 =============================================================================
 
 ``meep_gpu.fastpath.plan_fast_path`` builds ``triton_kernels`` plans and never names
@@ -165,7 +165,7 @@ this package. This module ships a predicate, an emitter and a launcher; once wir
 ``fused_pairs`` can plan it opt-in (``arms.plan_step(..., fuse=True)``) and refuses to
 INSTALL it on the declaration above, so no shipped code path launches it.
 
-LAPTOP-EVALUABLE BY CONSTRUCTION. Every certified string this file splices is READ
+Laptop-evaluable by construction. Every certified string this file splices is READ
 with :mod:`ast` out of the sibling that owns it, the technique
 ``bfast_curl._sibling_prelude`` and ``conductive_kernels._pml_sibling_source`` already
 use, so the whole emitter -- not just the predicate -- answers on a host with no CuPy
@@ -227,7 +227,7 @@ SLOT = "update_H"
 
 #: The driver passes ONE launch performs, in driver order (driver.py:3311, :3315).
 #: Nothing between them is carried -- the electric withdraw is the only statement
-#: there and :data:`HOISTS_THE_WITHDRAW` declines it in this round.
+#: there and :data:`HOISTS_THE_WITHDRAW` declines it.
 REPLACES: Tuple[str, ...] = ("update_H", "step_D")
 
 #: The seam ``fused_pairs.FUSED_PAIR_SEAMS`` files this row under, spelled through
@@ -268,15 +268,15 @@ ACTIVE_LAYER_ONLY: bool = True
 #: ``ast.AnnAssign`` the plain-assignment readers do not match.
 UNCERTIFIED_KERNELS = {}
 
-#: BYTE-IDENTICAL TO FOUR INDEPENDENT ARRANGEMENTS OF THE SEAM, WITH A DEVICE VERDICT
-#: BEHIND IT AND A RECORD BEHIND THE VERDICT. ``certification.json``'s
+#: Byte-identical to four independent arrangements of the seam, with a device verdict
+#: behind it and a record behind the verdict. ``certification.json``'s
 #: ``cuda_conductive_bfast_fused_hd_pair_2026-09-07`` block names the two artifacts
 #: these lines rest on (``parity/meep_gpu/results/
 #: cuda_conductive_bfast_fused_hd_pair_2026-09-07/{keep,flush}/gate.json``, both
 #: released on all sixteen clauses), and ``test_kernel_partition.py`` refuses a name
 #: here that no record block claims.
 #:
-#: THE CAMPAIGN WAS CUT AGAINST THE BYTES WITH THESE NAMES STILL UNCERTIFIED, which the
+#: The campaign was cut against the bytes with these names still uncertified, which the
 #: record states in its ``post_campaign_source_edits`` table: the partition sets are
 #: read off the syntax tree and are not part of any emitted device string, so the
 #: digests the record binds at NVRTC are unchanged by this move -- but the module's own
@@ -289,7 +289,7 @@ CERTIFIED_KERNELS: Tuple[str, ...] = (
 #: Nothing is injected between the two consults, so there is no deposit to bracket.
 CARRIES_DEPOSIT_REPAIR = False
 
-#: Not in this round -- see the module docstring. The predicate refuses every row with
+#: Not done here -- see the module docstring. The predicate refuses every row with
 #: a standing integrated electric withdraw BY NAME, which on this product's two cells
 #: costs zero rows.
 HOISTS_THE_WITHDRAW = False
@@ -311,7 +311,7 @@ INSTALLABLE_REASON = (
     "launches / 1 seam either way) or LOSE (both install: 2 pairs -> 1, one more "
     "launch and one fewer seam served). The only strictly additive shape on this path "
     "is a four-slot step_B -> update_H -> step_D -> update_E weld, which is not built "
-    "here. THE FLAG IS NOT THE MEASUREMENT: this product ships INSTALLABLE False "
+    "here. The flag is not the measurement: this product ships INSTALLABLE False "
     "first and its gate's arbitration leg then asks the SHIPPED composer what it "
     "selects, records that this product is refused by name with this reason, and "
     "records that the released neighbours keep their slots")
@@ -432,7 +432,7 @@ def _the_line_starting(body: str, prefix: str, what: str) -> str:
 #: order and by group. DATA, so the transcription leg can assert the emitted parameter
 #: list is exactly the certified one plus these and in no other respect changed.
 #:
-#: THE CERTIFIED LIST IS CARRIED ACROSS VERBATIM, which is this product's own
+#: The certified list is carried across verbatim, which is this product's own
 #: strengthening of the sibling's hand-written signature: ``Hx``/``Hy``/``Hz`` are
 #: already ``const float* __restrict__`` in both certified curl signatures and are
 #: exactly the pre-launch magnetic field the recompute needs, so they are not moved,
@@ -465,13 +465,13 @@ CURL_LIFT_EDITS: Tuple[Dict[str, str], ...] = (
     {"line": "    int idx = blockIdx.x * blockDim.x + threadIdx.x; ... "
              "int i = idx / (ny * nz);",
      "became": "(kept, verbatim, as the fused kernel's own preamble)",
-     "why": "NOT AN EDIT. The fused kernel keeps the CURL's preamble and decode as "
+     "why": "Not an edit. The fused kernel keeps the CURL's preamble and decode as "
             "its own -- one bounds guard, one decode -- and the constitutive half's "
             "copy is dropped instead. Splicing both would redeclare idx, i, j and k "
             "and the kernel would not compile."},
     {"line": "        cond_pml_apply(D*, fu_D*, fc*, cf*, ci*, idx, curl, ...);",
      "became": "(kept, verbatim -- the conductive variant's tail)",
-     "why": "NOT AN EDIT, and listed because a reader will look for one. The "
+     "why": "Not an edit, and listed because a reader will look for one. The "
             "four-case conductive PML recurrence, its exact `!= 1.0f` partition and "
             "its three store predicates are conductive_kernels' own and reach this "
             "kernel unread and unrewritten. It touches f[idx], u[idx] and c[idx] and "
@@ -480,7 +480,7 @@ CURL_LIFT_EDITS: Tuple[Dict[str, str], ...] = (
     {"line": "        float inc_bfast = bfast_pass(fb_D*, idx, ...);  /  "
              "fold_apply(D*, fu_D*, idx, inc_bfast, ...);",
      "became": "(kept, verbatim -- the BFAST variant's pass)",
-     "why": "NOT AN EDIT either. MEEP's BFAST pass after the component's curl, its "
+     "why": "Not an edit either. MEEP's BFAST pass after the component's curl, its "
             "ownership flag (the curl's own mask lines), the IIR store and the folded "
             "ladder are bfast_curl's own. The state, the field and its auxiliary are "
             "read and written at idx and nowhere else."},
@@ -495,7 +495,7 @@ def constitutive_prelude() -> str:
     """``constitutive_kernels._REAL_CONSTITUTIVE_PRELUDE`` with the helper made PURE.
 
     :func:`.fused_hd_pair.constitutive_prelude`'s four anchored edits, applied to the
-    certified text READ rather than imported and through THAT MODULE'S OWN anchor
+    certified text READ rather than imported and through that module's own anchor
     constants -- so a change to either side's spelling is a named failure here rather
     than two preludes that quietly differ. :func:`sibling_agreement` checks the result
     against the sibling's own on any host where the sibling can emit.
@@ -546,7 +546,7 @@ def raw_update_H_cell_source() -> str:
     """The certified ``update_H_pml_real`` body as a ``__device__`` function of a CELL.
 
     :func:`.fused_hd_pair.raw_update_H_cell_source`, over text read rather than
-    imported. THE ENTIRE BODY IS LIFTED: only the thread preamble and the three
+    imported. The entire body is lifted: only the thread preamble and the three
     ``constitutive_apply`` call lines are edited, each through an exact anchor. The
     decode, the component-to-axis pairing and the ``B*[idx]`` sources arrive character
     for character.
@@ -560,10 +560,10 @@ def raw_update_H_cell_source() -> str:
                        "_update_H_pml_real_kernel_code")
     body = _needle(
         body, _hd._THREAD_PREAMBLE,  # noqa: SLF001
-        "    // THE CELL ARRIVES AS A FLAT INDEX. The bounds guard left with the\n"
+        "    // The cell arrives as a flat index. The bounds guard left with the\n"
         "    // thread index: every caller is either the kernel's own guarded thread\n"
         "    // or an index the certified shift_dn composed, which that helper's own\n"
-        "    // branch keeps inside the volume. The DECODE BELOW STAYS -- it is what\n"
+        "    // branch keeps inside the volume. The decode below stays -- it is what\n"
         "    // indexes the absorber profile at the recomputed cell rather than at\n"
         "    // the thread's own.\n",
         "the constitutive body's thread preamble")
@@ -587,7 +587,7 @@ def raw_update_H_cell_source() -> str:
         body = body.replace(line, captured, 1)
 
     signature_text = (
-        "\n// The certified update_H_pml_real, evaluated at ONE ARBITRARY CELL and\n"
+        "\n// The certified update_H_pml_real, evaluated at one arbitrary cell and\n"
         "// storing nothing. This is the function the curl half calls for every\n"
         "// foreign tap it needs: a pure function of H, f_w_H and B, none of which\n"
         "// this launch writes, so a foreign evaluation cannot depend on which block\n"
@@ -616,8 +616,8 @@ def shift_dn_recompute_source() -> str:
     """The certified ``shift_dn`` with its two leaf loads RESOLVED.
 
     :func:`.fused_hd_pair.shift_dn_recompute_source`, over the certified prelude read
-    rather than imported. THE BRANCHES AND THE INDEX EXPRESSIONS ARE THE CERTIFIED
-    HELPER'S OWN, parsed out of its text: everything left of ``g[`` is carried across
+    rather than imported. The branches and the index expressions are the certified
+    helper's own, parsed out of its text: everything left of ``g[`` is carried across
     verbatim, the expression inside the brackets is taken as written, and the exact
     ``0.0f`` the metallic and mirror-periodic ghosts read is untouched.
     """
@@ -672,7 +672,7 @@ def shift_dn_recompute_source() -> str:
 def sibling_agreement() -> Dict[str, Any]:
     """This file's four lifted pieces against :mod:`.fused_hd_pair`'s own.
 
-    THE WELD BETWEEN THE TWO PRODUCTS, CHECKED RATHER THAN ASSERTED. The sibling reads
+    The weld between the two products, checked rather than asserted. The sibling reads
     the certified text by IMPORT and this file by :mod:`ast`, so the two routes are
     independent; where the sibling can emit, every piece must agree byte for byte.
     Returns ``{"available": False, ...}`` on a host where it cannot, which is a
@@ -863,13 +863,13 @@ def welded_curl_pieces(variant: str,
 def signature(variant: str, parameters: str) -> str:
     """The kernel's parameter list: the certified curl's, carried across VERBATIM.
 
-    THE CERTIFIED LIST IS NOT RETYPED. ``parameters`` arrives from
+    The certified list is not retyped. ``parameters`` arrives from
     :func:`welded_curl_pieces` as the exact characters between the certified entry
     point's declaration and its body anchor, and this function only puts three groups
     around it: the six scratch outputs in front, the six pre-launch constitutive
     inputs behind them, and ``update_H``'s three ``kps`` volumes at the end.
 
-    THE ``kms`` GROUP IS BOUND ONCE FOR BOTH HALVES because both read the INTEGER Yee
+    The ``kms`` group is bound once for both halves because both read the INTEGER Yee
     sub-lattice -- and that is ASSERTED at plan time (:func:`resolve`) rather than
     assumed, because binding the half-integer set instead compiles and is a half-cell
     error in the absorber profile rather than a failure.
@@ -881,7 +881,7 @@ def signature(variant: str, parameters: str) -> str:
     name = kernel_name(variant)
     return (f'''
 extern "C" __global__ void {name}(
-    // THE SCRATCH OUTPUTS. A DIFFERENT ALLOCATION from every pre-launch pointer below
+    // The scratch outputs. A different allocation from every pre-launch pointer below
     // -- assert_bindings_are_disjoint checks it by base address before every launch --
     // and that separation is the whole design: nothing this launch reads is ever a
     // word this launch wrote, so the curl half's foreign taps are a pure function of
@@ -896,7 +896,7 @@ extern "C" __global__ void {name}(
     const float* __restrict__ f_w_Hz,
     const float* __restrict__ Bx, const float* __restrict__ By,
     const float* __restrict__ Bz,
-    // ---- THE CERTIFIED {CERTIFIED_CURL[variant]} PARAMETER LIST, VERBATIM ----
+    // ---- The certified {CERTIFIED_CURL[variant]} parameter list, verbatim ----
 '''
             + parameters
             + ''',
@@ -945,7 +945,7 @@ def kernel_source(variant: str,
             + pieces["head"] + weld + pieces["tail"] + "}\n")
 
 
-#: The gate's mutation seam: ``(variant, mask) -> source``. A MUTABLE MODULE GLOBAL on
+#: The gate's mutation seam: ``(variant, mask) -> source``. A mutable module global on
 #: purpose, and read on EVERY call, so a rewritten body is a memo miss and reaches
 #: NVRTC. A map memoized at first call would hand back the pre-mutation bytes forever
 #: -- "a leg reporting a pass for a mutation it never applied", the defect this track
@@ -1013,7 +1013,7 @@ def _get_kernel(variant: str, cond: Optional[Tuple[bool, bool, bool]] = None,
                 keep: Optional[Tuple[bool, bool, bool]] = None):
     """Compile on first use, memoized on (name, options, policy, source).
 
-    THE SOURCE IS IN THE KEY, so a mutation harness that handed in a rewritten string
+    The source is in the key, so a mutation harness that handed in a rewritten string
     cannot be served the shipped binary and a late policy install cannot be served an
     earlier one. ``cupy`` is imported HERE, never at scope.
     """
@@ -1037,12 +1037,12 @@ def _clear_kernel_cache() -> int:
 def variant_for(fields: Any, grid: Any) -> Tuple[Optional[str], Optional[str]]:
     """``(variant, refusal)`` -- which curl tail this run takes, or why neither.
 
-    READ FROM THE RUN, never chosen by a caller, and through the two readers the ARRAY
-    PATH itself uses: ``grid.bfast_active`` is the only switch stepping.py:392/:475
+    Read from the run, never chosen by a caller, and through the two readers the array
+    path itself uses: ``grid.bfast_active`` is the only switch stepping.py:392/:475
     reads for the BFAST term, and ``fields.condfac_for`` is the only place
     ``_apply_curl`` reads a conductivity (stepping.py:508).
 
-    NEITHER IS A DEFAULT. A run that is both is refused -- and is a run BOTH certified
+    Neither is a default. A run that is both is refused -- and is a run BOTH certified
     predicates already refuse, so there is no cell for it -- and a run that is neither
     belongs to :mod:`.fused_hd_pair`, whose lossless tail this product must not
     displace.
@@ -1087,7 +1087,7 @@ def covers_conductive_bfast_fused_hd_pair(fields: Any, pml: Any, grid: Any,
     Returns ``(covered, reason)`` with ``reason`` naming the FIRST refusal, this
     directory's convention.
 
-    A CONJUNCTION OF THE TWO ARMS THE CENSUS RECORDS ON THESE CELLS, and nothing is
+    A conjunction of the two arms the census records on these cells, and nothing is
     weakened. The variant is resolved first, because it decides WHICH pair of
     predicates answers:
 
@@ -1099,11 +1099,11 @@ def covers_conductive_bfast_fused_hd_pair(fields: Any, pml: Any, grid: Any,
       ``bfast_curl.covers_bfast_curl(..., "step_D")``, which are the two arms the
       ``cuda_bfast`` family registers.
 
-    THE ORDER IS THE DRIVER'S: the constitutive half is asked FIRST because it runs
+    The order is the driver's: the constitutive half is asked FIRST because it runs
     first (driver.py:3311), so the first refusal a reader sees names the half the
     driver would have reached first.
 
-    WHAT THIS ADDS to the two halves: the seam's own withdraw clause, the shared
+    What this adds to the two halves: the seam's own withdraw clause, the shared
     boundary-triple check, the active-layer requirement the conductive variant's
     signature rests on, and the rotation's requirement that the six magnetic volumes
     be allocated attributes this weld may rebind.
@@ -1120,7 +1120,7 @@ def covers_conductive_bfast_fused_hd_pair(fields: Any, pml: Any, grid: Any,
         return False, f"constitutive half ({variant}): {reason}"
 
     if variant == "conductive":
-        # THE ACTIVE LAYER IS THIS PRODUCT'S OWN CLAUSE and it is asked BEFORE the
+        # The active layer is this product's own clause and it is asked BEFORE the
         # curl predicate, which admits both layers. Without an absorber the array path
         # takes a different tail and the certified family a different kernel -- one
         # with no f_cond history and no split-field pair -- so this signature has
@@ -1140,10 +1140,10 @@ def covers_conductive_bfast_fused_hd_pair(fields: Any, pml: Any, grid: Any,
     if not covered:
         return False, f"curl half ({variant}): {reason}"
 
-    # THE SEAM'S ONE PASS. Nothing is INJECTED between the two consults, so
+    # The seam's one pass. Nothing is INJECTED between the two consults, so
     # `deposit_repair` is not consulted at all. What IS between them is the electric
     # integrated-source withdraw (driver.py:3313-3314), and `withdraw_hoist` owns it.
-    # IGNORANCE IS NEVER AN EMPTY SET: `Fields` does not hold the source list, so a
+    # Ignorance is never an empty set: `Fields` does not hold the source list, so a
     # predicate that inferred "no withdraw stands" from not being told would be the
     # over-covering refusal this clause exists to prevent.
     seam_reasons = _withdraw_hoist.seam_withdraw_reasons(
@@ -1163,7 +1163,7 @@ def covers_conductive_bfast_fused_hd_pair(fields: Any, pml: Any, grid: Any,
     if seam_reasons:
         return False, seam_reasons[0]
 
-    # ONE BOUNDARY TRIPLE FOR BOTH HALVES, CHECKED. Both certified curl launchers
+    # One boundary triple for both halves, checked. Both certified curl launchers
     # resolve it through `coverage.real_curl_boundary_codes`, which fails closed and
     # returns the refusal rather than raising.
     codes, refusal = _coverage.real_curl_boundary_codes(grid)
@@ -1174,7 +1174,7 @@ def covers_conductive_bfast_fused_hd_pair(fields: Any, pml: Any, grid: Any,
         return False, (f"the curl's boundary resolution returned {codes!r}, which is "
                        f"not the per-axis triple this launch binds")
 
-    # THE SUB-LATTICE, ASSERTED RATHER THAN ASSUMED. This kernel binds ONE kms group
+    # The sub-lattice, asserted rather than assumed. This kernel binds ONE kms group
     # for both halves, which is only correct while step_D's curl and update_H read the
     # SAME Yee sub-lattice. Both read the integer positions today. If either moved,
     # sharing the group would bind one half's coefficients to the other half's lattice
@@ -1184,7 +1184,7 @@ def covers_conductive_bfast_fused_hd_pair(fields: Any, pml: Any, grid: Any,
                        "step_D's curl reads the integer one; this weld binds ONE kms "
                        "group for both halves and may only do so while they agree")
 
-    # THE ROTATION IS THE PRODUCT'S OWN INVARIANT. The launcher swaps the ENGINE's
+    # The rotation is the product's own invariant. The launcher swaps the ENGINE's
     # references for the six volumes in SCRATCH_VOLUMES after every launch, so those
     # attributes must exist and be allocated.
     for name in SCRATCH_VOLUMES:
@@ -1218,7 +1218,7 @@ def resolve(fields: Any, grid: Any, pml: Any, *,
     masks bound as ``ck<n>`` where a chunk keeps none), read from the run when not
     given -- the certified launcher's own arrangement.
 
-    DERIVED HERE BY THE SAME FUNCTIONS THE CERTIFIED LAUNCHERS ASK, which is what makes
+    Derived here by the same functions the certified launchers ask, which is what makes
     "the weld and the singles cannot disagree about which sub-lattice, which boundary
     code or which BFAST coefficient this seam reads" an enforced property rather than
     a convention:
@@ -1232,11 +1232,11 @@ def resolve(fields: Any, grid: Any, pml: Any, *,
       ``bfast_curl.bfast_curl_coefficients(grid, "step_D")``, whose host-side
       invariance gates are the transcription's whole point.
 
-    THE SHARED ``kms`` IS CHECKED BY POINTER, not assumed: the two groups must be the
+    The shared ``kms`` is checked by pointer, not assumed: the two groups must be the
     same allocations, or this signature's single binding is one half's coefficients on
     the other half's lattice.
 
-    THE OVERRIDES ARE THE GATE'S DOOR and stay, keyword-only and named for what they
+    The overrides are the gate's door and stay, keyword-only and named for what they
     are: a gate feeds deliberately wrong tables, wrong boundary codes and wrong BFAST
     coefficients and requires each to diverge.
     """
@@ -1300,7 +1300,7 @@ def resolve(fields: Any, grid: Any, pml: Any, *,
                 raise ValueError(
                     f"fields.{name} is not allocated; this weld rotates a scratch "
                     f"shaped like it and has nothing to shape one from")
-            # UNINITIALIZED IS CORRECT. Every cell of all six is written by every
+            # Uninitialized is correct. Every cell of all six is written by every
             # launch, so there is no cell whose prior contents a reader could observe.
             scratch[name] = cp.empty_like(source)
 
@@ -1315,7 +1315,7 @@ def resolve(fields: Any, grid: Any, pml: Any, *,
 
 
 def assert_bindings_are_disjoint(fields: Any, state: Dict[str, Any]) -> int:
-    """THE CHECK THE WHOLE DESIGN RESTS ON, plus the ordinary restrict promise.
+    """The check the whole design rests on, plus the ordinary restrict promise.
 
     Two things, and the first is not a convention:
 
@@ -1327,7 +1327,7 @@ def assert_bindings_are_disjoint(fields: Any, state: Dict[str, Any]) -> int:
        to one object is UB whatever the route to it, and NVRTC reorders across it
        without a diagnostic.
 
-    THE SHARED ``kms`` GROUP IS THE ONE DELIBERATE COINCIDENCE and is bound ONCE, so
+    The shared ``kms`` group is the one deliberate coincidence and is bound ONCE, so
     it is visited once and is not a collision. A LOSSLESS COMPONENT'S ``cf``/``ci``/
     ``fc`` placeholder is the target volume itself -- the certified launcher's own
     convention, since the preprocessor guarantees the pointer is never dereferenced --
@@ -1383,7 +1383,7 @@ def assert_bindings_are_disjoint(fields: Any, state: Dict[str, Any]) -> int:
 def _launch_arguments(fields: Any, state: Dict[str, Any]) -> List[Any]:
     """The argument tuple, in the emitted signature's own order.
 
-    WRITTEN OUT RATHER THAN ASSEMBLED FROM A TABLE, and the order is the certified
+    Written out rather than assembled from a table, and the order is the certified
     launcher's with this weld's three groups around it: a reordering here is a wrong
     launch that no source digest could catch.
     """
@@ -1432,9 +1432,9 @@ def launch_conductive_bfast_fused_hd_pair(fields: Any, state: Dict[str, Any], *,
                                           kernel: Optional[Any] = None,
                                           threads: int = _FUSED_THREADS
                                           ) -> Dict[str, Any]:
-    """Both of :data:`REPLACES` in ONE launch. THE CALLER ROTATES AFTERWARDS.
+    """Both of :data:`REPLACES` in ONE launch. The caller rotates afterwards.
 
-    ``kernel`` IS THE GATE'S DOOR, keyword-optional and named for what it is: a gate
+    ``kernel`` is the gate's door, keyword-optional and named for what it is: a gate
     compiles a deliberately broken copy of the shipped source and hands it here. A
     launcher that could not be handed its own kernel could not arm a single mutation.
 
@@ -1442,7 +1442,7 @@ def launch_conductive_bfast_fused_hd_pair(fields: Any, state: Dict[str, Any], *,
     answer does NOT depend on which block ran first, and a block size that never moves
     cannot expose the opposite.
 
-    THE RUN'S FIRST ``update_H`` STARTS H FROM B, as on the released weld
+    The run's first ``update_H`` starts H from B, as on the released weld
     (``fused_hd_pair.launch_fused_hd_pair``): when ``fields.h_separated`` is still
     False the start runs on the array path BEFORE the launch, with the layer
     :func:`resolve` bound, and every recompute then reads the started state.
@@ -1496,7 +1496,7 @@ def run_conductive_bfast_fused_hd_pair(fields: Any, grid: Any, pml: Any,
                                        rotate: bool = True) -> Dict[str, Any]:
     """Gate on the predicate, resolve everything from the run, launch once, rotate.
 
-    THE PREDICATE IS ASKED FIRST AND A REFUSAL IS RETURNED, NOT RAISED, because the
+    The predicate is asked first and a refusal is returned, not raised, because the
     caller's correct response to a configuration this product does not carry is the
     array path -- never an exception into a stepper that would otherwise have stepped
     correctly.

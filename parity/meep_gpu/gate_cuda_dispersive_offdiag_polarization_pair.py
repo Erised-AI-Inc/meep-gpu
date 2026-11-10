@@ -1,12 +1,12 @@
 """Byte-identity gate for the off-diagonal E->P weld the rotation hazard refused.
 
-WHAT IS UNDER TEST. ``meep_gpu/cuda_kernels/dispersive_offdiag_fused_polarization_
+What is under test. ``meep_gpu/cuda_kernels/dispersive_offdiag_fused_polarization_
 pair.py``: ONE launch performing the WHOLE off-diagonal dispersive ``update_E``
 (driver.py:3313) and the ``update_P`` recurrence (:3315) of one component across every
 state that drives it, followed by the remaining components as certified ADE launches
 with the host rotation between.
 
-THE CELL IT TAKES, AND THE REFUSAL IT ANSWERS. ``E_to_P
+The cell it takes, and the refusal it answers. ``E_to_P
 (cuda_dispersive_offdiag/dispersive off-diagonal, cuda_ade/ADE)`` is one seam-instance
 -- ``examples/absorbed_power_density.py`` -- the cell this weld was built for. (Since
 1.0 the composer refuses that row's update_E arm, and the weld with it, by the chunk
@@ -18,8 +18,8 @@ sibling refuses the cell by name, and refuses the PER-COMPONENT SPLIT specifical
      so the weld would diverge, and diverge in a way that still computes."
 
 This product does not split. ``update_E`` stays monolithic, so no rotation happens
-inside the launch and the off-diagonal row product has no rotated slot to read. THE
-MUTATION ``rotate_before_launch`` REBUILDS THE HAZARD -- it moves the rotation to
+inside the launch and the off-diagonal row product has no rotated slot to read. The
+mutation ``rotate_before_launch`` rebuilds the hazard -- it moves the rotation to
 before the launch, which is exactly the state the split would have produced -- and if
 it is not caught, this gate cannot tell the two shapes apart and its S1 means nothing.
 
@@ -28,7 +28,7 @@ THE BAR
 =============================================================================
 
 The same one the stencil welds are held to, and this file imports their harness
-rather than restating it: per COMPLETE DRIVER STEP over all stored volumes as raw
+rather than restating it: per complete driver step over all stored volumes as raw
 uint32 words, 60 steps, both float32 subnormal policies, both value classes, every
 block size, launch counts from two independent counters, read-only volumes bit
 unchanged, and a two-sided mutation battery -- with a CONFIRMED NULL that is the
@@ -43,22 +43,24 @@ structural null on that arm by the array path's region plan (``STRUCTURAL_NULLS`
 run, and required identical; every other arm must still catch it, and a fixture that
 carries the layer is in the sweep for each fused component.
 
-THE DOMAIN: EVERY FIXTURE IS A DIVISION THE COMPOSER CAN HAND THIS WELD. The weld's
-update_E half indexes MEEP's chunks on every axis through the chunk record, so its
-predicate ends on the composer's own clause
-(``arms.StepContext.chunk_division_refusal(CHUNK_AXES_OFFDIAG)``, the clause the
-composer asks of the ``dispersive off-diagonal`` arm and of this product), and the
-composer installs the weld only over the two arms it selected. On an axis that wraps
-AND carries a layer the record's run labels do not name the chunk intervals (on x the
-wrapped row 0 joins the low run while its chunk is the high one, as on
-absorbed_power_density's x), so dispatch never hands the weld such a division and a
-fixture there certifies nothing dispatch can reach. Every axis that carries a layer is
-therefore walled; a wrapping axis is in the sweep only without a layer (``bare``),
-which is how the fold's periodic termination stays swept
-(``periodic_terminated_fold_three_d``); and ``leg_refusal`` measures the weld refusing
-the corpus row's wrapping division with the composer's own reason.
+The domain: every fixture is a division the composer can hand this weld. The weld's
+predicate ends on the clause the composer asks of the ``dispersive off-diagonal`` arm
+and of this product (``dispersive_offdiag_update_e.dispersive_offdiag_division_refusal``),
+and the composer installs the weld only over the two arms it selected. The family reads
+a cell's chunk only through its per-chunk presence words, so the clause admits a
+division the record describes wherever those words build on it, including one whose
+run labels do not name its chunk intervals: on an axis that wraps AND carries a layer
+the wrapped row 0 joins the low run while its chunk is the high one, as on
+absorbed_power_density's x. The walled fixtures sweep the weld's own axes; a wrapping
+axis without a layer (``bare``) keeps the fold's periodic termination swept
+(``periodic_terminated_fold_three_d``); and ``wrapping_layers_interior_offdiag`` is the
+corpus row's own division, with the off-diagonal arrays deleted in both x layer chunks
+as on absorbed_power_density, so the presence words select per chunk and the wrapped
+row 0 reads its presence through the low run's label. ``leg_refusal`` measures the weld
+admitting that division and refusing, by the clause's own reason, one whose wrapped row
+would read another chunk's presence.
 
-WHAT IT DOES NOT CLAIM. No throughput claim (the box is shared and nothing here is
+What it does not claim. No throughput claim (the box is shared and nothing here is
 timed) and no dispatch claim (``fastpath.plan_fast_path`` still returns ``None`` on
 every branch). The launch SAVING is counted rather than timed: on this cell's one
 corpus row the array path runs ``1 + 3`` launches on this seam and the weld runs
@@ -95,10 +97,10 @@ except ImportError:
 
 import gate_provenance  # noqa: E402
 import probe_fused_kernel_bit_identity as probe  # noqa: E402
-# THE SHARED HARNESS, imported rather than restated: the word comparison, the
+# The shared harness, imported rather than restated: the word comparison, the
 # launch counter, the state list and the driver walk are one piece of machinery and
 # two copies of them are equal only until someone edits one. Both gates run in the
-# same round, so both bind the same bytes.
+# same campaign, so both bind the same bytes.
 import gate_cuda_offdiag_stencil_welds as stencil  # noqa: E402
 
 from meep_gpu import stepping  # noqa: E402
@@ -124,8 +126,9 @@ GUARD_OPTIONS: Tuple[str, ...] = ("--fmad=false",)
 POLARIZATION_SLOTS: Tuple[str, ...] = ("P", "P_prev")
 
 #: The corpus row's own boundaries: every axis wraps, and every axis the gate's layer
-#: rule resolves carries a layer. The composer refuses this division (the module
-#: docstring's DOMAIN); ``leg_refusal`` measures the weld refusing it by the same text.
+#: rule resolves carries a layer. The record's labels do not name its chunks along x
+#: (the module docstring's DOMAIN); the family's clause admits it where the presence
+#: words build, which ``wrapping_layers_interior_offdiag`` and ``leg_refusal`` measure.
 WRAPPING: Optional[Dict[str, str]] = None
 
 #: Every layered axis walled. On a 2-D grid z is one cell and carries no layer, so it
@@ -137,8 +140,10 @@ WALLED_3D: Dict[str, str] = {"x": "metallic", "y": "metallic", "z": "metallic"}
 #: axes swept are the ones that change what the WELD does: the row mask, the number
 #: of driving states, the sigma kind, which component the fused launch carries, and
 #: the fold's parity and termination. Every one is a division the composer can hand
-#: the weld (the module docstring's DOMAIN): a layered axis is walled, and a wrapping
-#: axis carries no layer (``bare``, the axes the layer rule in :func:`frame` skips).
+#: the weld (the module docstring's DOMAIN): a layered axis is walled, or a wrapping
+#: axis carries no layer (``bare``, the axes the layer rule in :func:`frame` skips), or
+#: the division is the corpus row's own with presence words that build on its record
+#: (``offdiag_dropped_on_x``, the x chunks whose off-diagonal arrays are deleted).
 SPECS: Tuple[Dict[str, Any], ...] = (
     {"label": "one_state_all_components", "cell": (1.6, 2.0, 0.0), "dimensions": 2,
      "symmetry": (("Y", 1),), "boundaries": WALLED_2D,
@@ -165,13 +170,13 @@ SPECS: Tuple[Dict[str, Any], ...] = (
     {"label": "three_d_fold", "cell": (1.2, 2.0, 1.2), "dimensions": 3,
      "symmetry": (("Y", 1),), "boundaries": WALLED_3D, "rows": "all", "states": 1,
      "driven": ("Ex", "Ey", "Ez"), "sigma_volume": False},
-    # The single-component weld ON A GRID THAT CARRIES ITS LAYER: a 2-D grid has no z
+    # The single-component weld on a grid that carries its layer: a 2-D grid has no z
     # layer, so ``one_state_one_component``'s Ez launch stores the drive everywhere and
     # the stored-E mutation is a structural null there; here it must be caught.
     {"label": "one_state_one_component_three_d", "cell": (1.2, 2.0, 1.2),
      "dimensions": 3, "symmetry": (("Y", 1),), "boundaries": WALLED_3D, "rows": "all",
      "states": 1, "driven": ("Ez",), "sigma_volume": False},
-    # THE FOLD'S PERIODIC TERMINATION, inside the domain: the folded y and the
+    # The fold's periodic termination, inside the domain: the folded y and the
     # non-folded z wrap and carry no layer, so the record names their chunks and the
     # kernel's periodic boundary code runs on both; x keeps the layer the fused Ex
     # needs for the stored-E mutation's arm.
@@ -179,6 +184,16 @@ SPECS: Tuple[Dict[str, Any], ...] = (
      "dimensions": 3, "symmetry": (("Y", 1),), "boundaries": {"x": "metallic"},
      "bare": ("y", "z"), "rows": "all", "states": 1, "driven": ("Ex", "Ey", "Ez"),
      "sigma_volume": False},
+    # The corpus row's own division: x wraps with a layer on both faces, so the stored
+    # row 0 belongs to the high x chunk and reads the low run's label. The off-diagonal
+    # arrays are deleted in both x layer chunks, as on absorbed_power_density, so the
+    # presence words are not all-kept, the kernel drops the term per chunk, and row 0
+    # reads its presence through the low chunk's code -- the same presence its own chunk
+    # has, which is why the family's clause admits the division.
+    {"label": "wrapping_layers_interior_offdiag", "cell": (1.6, 2.0, 0.0),
+     "dimensions": 2, "symmetry": (("Y", 1),), "boundaries": WRAPPING, "rows": "all",
+     "states": 1, "driven": ("Ex", "Ey", "Ez"), "sigma_volume": False,
+     "offdiag_dropped_on_x": "layers"},
 )
 
 REDUCED_LABELS: Tuple[str, ...] = (
@@ -228,8 +243,8 @@ def own_layer_absent(fields, pml, component: str) -> Optional[str]:
     component's OWN-axis layer, where it stores the accumulation and keeps the drive in
     ``f_w_<c>``. When the array path's region plan marks no cell for that form, reading
     the stored E back is the identity on the bits, so a mutation that drives the
-    recurrence from it cannot differ on this grid: a STRUCTURAL null (KERNELS.md
-    section 7.1), declared by the plan, never by the fixture's label.
+    recurrence from it cannot differ on this grid: a STRUCTURAL null (see
+    certification.md on declared nulls), declared by the plan, never by the fixture's label.
     """
     plan = stepping._region_plan(fields, pml)  # noqa: SLF001 - the array path's own plan
     if bool(np.asarray(plan.mask("constitutive", component, np)).any()):
@@ -237,6 +252,30 @@ def own_layer_absent(fields, pml, component: str) -> Optional[str]:
     return (f"no chunk of this grid carries {component}'s own layer (the array path's "
             f"region plan marks no constitutive cell for it), so the stored "
             f"{component} is the drive on every cell")
+
+
+def drop_offdiag_on_x_chunks(fields, pml, grid, built, which: str) -> List[int]:
+    """Zero every off-diagonal row on the x rows the ``which`` x chunks allocate.
+
+    ``which`` is ``"layers"`` (both x layer chunks: the lowest and the highest x
+    interval of the division the composition reads) or ``"high"`` (the highest alone).
+    A chunk whose allocated samples are all zero is one where MEEP deletes the array
+    (``ChunkLayout.offdiag_kept``), so the presence words then differ by chunk. Called on
+    the volumes BEFORE ``set_epsilon_volumes`` installs them, so nothing derived from the
+    installed rows predates the zeros. Returns the zeroed x rows.
+    """
+    from meep_gpu.cuda_kernels.arms import StepContext  # noqa: PLC0415
+
+    layout = StepContext(fields, pml, grid)._layout()  # noqa: SLF001 - the composer's own
+    lows = sorted({lo[0] for lo, _ in layout.boxes})
+    edges = {"layers": {lows[0], lows[-1]}, "high": {lows[-1]}}[which]
+    samples = layout.chunk_samples(0)
+    rows = sorted({int(r) for k, (lo, _hi) in enumerate(layout.boxes) if lo[0] in edges
+                   for r in np.flatnonzero(samples[k])})
+    for partners in built.values():
+        for volume in partners.values():
+            volume[rows, :, :] = 0.0
+    return rows
 
 
 def build(spec: Dict[str, Any], value_class: str, rng):
@@ -251,6 +290,8 @@ def build(spec: Dict[str, Any], value_class: str, rng):
     built = {row: {partner: cp.asarray(
         rng.uniform(-0.25, 0.25, shape).astype(np.float32))
         for partner in partners} for row, partners in rows.items()} or None
+    if built and spec.get("offdiag_dropped_on_x"):
+        drop_offdiag_on_x_chunks(fields, pml, grid, built, spec["offdiag_dropped_on_x"])
     fields.set_epsilon_volumes(
         {n: cp.full(shape, v, cp.float32) for n, v in zip(names, values)},
         {n: cp.full(shape, np.float32(1.0 / v), cp.float32)
@@ -285,7 +326,7 @@ def build(spec: Dict[str, Any], value_class: str, rng):
             source = rng.normal(0.0, 0.37, size=shape).astype(np.float32)
         array[...] = cp.asarray(np.ascontiguousarray(
             np.asarray(source, dtype=np.float32)))
-    # THE RECURRENCE STATE IS SEEDED TOO. A zero P and P_prev make the recurrence's
+    # The recurrence state is seeded too. A zero P and P_prev make the recurrence's
     # first two terms exactly zero whatever the coefficients are, so a mis-paired
     # c_now/c_prev would only show from step three -- and a leg that seeded them
     # zero would be reporting a pass for the two steps it could not distinguish.
@@ -347,7 +388,7 @@ def run_case(spec: Dict[str, Any], value_class: str, steps: int, *,
              kernel: Optional[Any] = None, rotate: bool = True,
              rotate_before: bool = False, threads: int = 256, repeat: int = 0,
              label_suffix: str = "") -> Dict[str, Any]:
-    """Step two engines side by side and compare per COMPLETE DRIVER STEP."""
+    """Step two engines side by side and compare per complete driver step."""
     from meep_gpu.cuda_kernels import (  # noqa: PLC0415
         dispersive_offdiag_fused_polarization_pair as weld,
     )
@@ -373,7 +414,7 @@ def run_case(spec: Dict[str, Any], value_class: str, steps: int, *,
                 for name in STEP_PASSES:
                     if name == "update_E":
                         if rotate_before:
-                            # THE HAZARD, REBUILT. Rotating BEFORE the launch is the
+                            # The hazard, rebuilt. Rotating BEFORE the launch is the
                             # state a per-component split would have produced by the
                             # time the second component's launch read P[x].
                             target = weld.fused_component(subject)
@@ -401,7 +442,7 @@ def run_case(spec: Dict[str, Any], value_class: str, steps: int, *,
     final = frozen(subject)
     must_move = (list(seeded) if value_class == "uniform"
                  else list(stencil.BAND_MUST_MOVE))
-    # AN AUXILIARY WHOSE FORM NO CHUNK OF THIS GRID CARRIES DOES NOT MOVE, BY CONTRACT:
+    # An auxiliary whose form no chunk of this grid carries does not move, by contract:
     # MEEP writes f_w only on the cells whose chunk carries the component's own layer
     # and fu only on those that carry its dsigu layer, and on these 2-D fixtures no
     # chunk carries a z layer. Read off the array path's own region plan, and
@@ -433,7 +474,7 @@ def run_case(spec: Dict[str, Any], value_class: str, steps: int, *,
         "launch_counts": {"memo_named": named, "memo_total": total,
                           "fused_reports": expected_fused,
                           "tail_reports": expected_tail},
-        # THE COUNT IS TWO-SIDED: the memo proxy must see exactly the fused launches
+        # The count is two-sided: the memo proxy must see exactly the fused launches
         # plus the tail launches, and the fused kernel must appear exactly once per
         # step. An engine that never launched the weld would be byte-identical to
         # the oracle BY CONSTRUCTION.
@@ -509,7 +550,7 @@ SOURCE_MUTATIONS: Tuple[Tuple[str, Callable[[str], str], str, str], ...] = (
      "carry in one launch"),
 )
 
-#: Per-fixture STRUCTURAL NULLS of a source mutation (KERNELS.md section 7.1): name -> a
+#: Per-fixture STRUCTURAL NULLS of a source mutation (certification.md): name -> a
 #: predicate ``(fields, pml, target)`` giving the reason an arm cannot differ on that
 #: fixture's grid, or None. Declared by structure, never by label. A declared arm still
 #: RUNS and must come back identical; one that diverges fails the scoreboard, and the
@@ -665,6 +706,7 @@ def leg_refusal() -> Dict[str, Any]:
     """The configurations this weld refuses BY NAME, and the partition it rests on."""
     from meep_gpu.cuda_kernels import (  # noqa: PLC0415
         dispersive_offdiag_fused_polarization_pair as weld,
+        dispersive_offdiag_update_e as offdiag_e,
         fused_polarization_pair as diagonal,
     )
     from meep_gpu.cuda_kernels.arms import StepContext  # noqa: PLC0415
@@ -679,22 +721,33 @@ def leg_refusal() -> Dict[str, Any]:
         fields, pml, grid, ())
     cases.append({"case": "admits its own cell", "covered": covered, "want": True,
                   "reason": why})
-    # THE DIVISION DISPATCH NEVER HANDS IT, measured from both sides: the corpus row's
-    # wrapping axes with their layers, everything else the admitted fixture's. The
-    # composer refuses the update_E arm and this product by the clause it asks of both
-    # (``StepContext.chunk_division_refusal`` with the off-diagonal axes), so the weld
-    # must refuse by exactly that text -- a predicate that admitted here, or refused
-    # for another reason, would certify a domain the composer does not share.
-    wrapping = dict(base, label="refusal_wrapping", boundaries=WRAPPING)
-    w_fields, w_grid, w_pml = build(wrapping, "uniform", case_rng("refusal_wrapping"))
-    covered, why = weld.covers_dispersive_offdiag_fused_polarization_pair(
-        w_fields, w_pml, w_grid, ())
-    composer = StepContext(w_fields, w_pml, w_grid).chunk_division_refusal(
-        CHUNK_AXES_OFFDIAG)
-    cases.append({"case": "refuses the wrapping division with the composer's reason",
-                  "covered": covered, "want": False, "reason": why,
-                  "composer_reason": composer,
-                  "reason_is_the_composer_s": composer is not None and why == composer})
+    # The corpus row's division, measured from both sides of the family's clause: its
+    # wrapping axes with their layers, everything else the admitted fixture's. The arm
+    # table's general clause refuses it (the record's labels do not name the chunk the
+    # wrapped row 0 belongs to); the family's clause, which the composer asks of the
+    # update_E arm and of this product, admits it while its presence words build, and
+    # refuses it by its own text when the wrapped row would read another chunk's
+    # presence (the high x chunk deletes the arrays, the low one keeps them). A
+    # predicate that disagreed with the clause either way would certify a domain the
+    # composer does not share.
+    for label, drop, want in (("admits the corpus row's wrapping division, whose "
+                               "presence words build", None, True),
+                              ("refuses a wrapping division whose wrapped row reads "
+                               "another chunk's presence, with the family's reason",
+                               "high", False)):
+        wrapping = dict(base, label="refusal_wrapping", boundaries=WRAPPING,
+                        offdiag_dropped_on_x=drop)
+        w_fields, w_grid, w_pml = build(wrapping, "uniform", case_rng("refusal_wrapping"))
+        covered, why = weld.covers_dispersive_offdiag_fused_polarization_pair(
+            w_fields, w_pml, w_grid, ())
+        context = StepContext(w_fields, w_pml, w_grid)
+        general = context.chunk_division_refusal(CHUNK_AXES_OFFDIAG)
+        family = offdiag_e.dispersive_offdiag_division_refusal(context)
+        agrees = (general is not None
+                  and (family is None if want else (family is not None and why == family)))
+        cases.append({"case": label, "covered": covered, "want": want, "reason": why,
+                      "general_clause": general, "family_clause": family,
+                      "reason_is_the_family_clause_s": agrees})
     cases.append({"case": "the DIAGONAL E->P pair refuses the same row",
                   "covered": diagonal.covers_fused_polarization_pair(
                       fields, pml, grid, ())[0], "want": False})
@@ -716,7 +769,8 @@ def leg_refusal() -> Dict[str, Any]:
                   "want": False, "reason": why})
     return {"cases": cases,
             "passed": all(c["covered"] == c["want"]
-                          and c.get("reason_is_the_composer_s", True) for c in cases)}
+                          and c.get("reason_is_the_family_clause_s", True)
+                          for c in cases)}
 
 
 def save(results: Dict[str, Any], path: str) -> None:
@@ -744,6 +798,7 @@ def _warm_memo(specs: Sequence[Dict[str, Any]]) -> None:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
+    import neutral_ids  # noqa: PLC0415
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--out", required=True)
     parser.add_argument("--steps", type=int, default=STEPS)
@@ -760,8 +815,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     results: Dict[str, Any] = {
         "gate": "cuda_dispersive_offdiag_polarization_pair",
         "started_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "host": os.uname().nodename,
-        "argv": list(argv if argv is not None else sys.argv[1:]),
+        "host": neutral_ids.machine_id(),
+        "argv": neutral_ids.argv(argv if argv is not None else sys.argv[1:]),
         "question": ("does ONE launch of "
                      "dispersive_offdiag_fused_polarization_pair_pml_real, plus the "
                      "certified ADE launches for the components it did not carry, "

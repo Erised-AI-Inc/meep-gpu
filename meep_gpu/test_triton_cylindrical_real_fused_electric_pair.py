@@ -256,7 +256,7 @@ def test_the_axis_rules_are_the_D_sides_and_both_halves_are_present():
 
 
 def test_the_twins_share_the_curl_half_and_take_the_root_pairs_constitutive_halves():
-    """THE WHOLE TRANSCRIPTION CLAIM, as a mechanical comparison rather than a review.
+    """The whole transcription claim, as a mechanical comparison rather than a review.
 
     The two twins carry the SAME curl half (``cyl_pml_curl_step``'s body, both
     ``BACKWARD`` arms) up to the seam, and each one's wall clear and constitutive half
@@ -363,7 +363,7 @@ def test_an_electric_source_that_publishes_no_deposit_index_is_REFUSED():
 
 
 def test_the_flag_at_False_would_cost_the_whole_cell(monkeypatch):
-    """MEASURED, not asserted: with the flag off, an electric deposit is refused."""
+    """Measured, not asserted: with the flag off, an electric deposit is refused."""
     fields, pml = build()
     monkeypatch.setattr(product, "CARRIES_DEPOSIT_REPAIR", False)
     reasons = product.cylindrical_real_fused_electric_pair_coverage(
@@ -539,7 +539,7 @@ def test_the_composer_routes_this_product_and_the_driver_seam_released_it():
     ``_install_fused_pair``, taking both slots only when ``_pair_may_absorb`` finds
     the arm table has already given them to the arms this kernel implements.
 
-    WIRING WAS NOT RELEASING, and this is the file where that sentence ended. It
+    Wiring was not releasing, and this is the file where that sentence ended. It
     was named ``..._and_dispatch_still_refuses_it`` for as long as the label sat
     outside ``fastpath.RELEASED_FUSED_ARMS``; on 2026-09-11
     ``dispatch_fused_route_2026-09-11_realarms`` drove it through the driver's own
@@ -550,7 +550,7 @@ def test_the_composer_routes_this_product_and_the_driver_seam_released_it():
     keep the old name and the old assertion, which is what makes the two states
     legible per file.
 
-    THE PARTITION IS STILL EXACTLY ONE OF TWO, in the other direction: the label
+    The partition is still exactly one of two, in the other direction: the label
     is in ``ARM_CERTIFICATION`` (its ledger entry was cut from this campaign's
     fleet artifact by ``seed_triton_welds.py``) and out of
     ``PENDING_DEVICE_GATE_ARMS``. Both are asserted rather than one, because a

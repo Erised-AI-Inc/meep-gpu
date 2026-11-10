@@ -417,7 +417,7 @@ def test_a_scaled_source_publishing_no_deposit_table_is_still_refused(product):
 
 
 def test_the_drivers_conductive_deposit_moves_only_its_own_cells():
-    """THE TRIPWIRE UNDER THE LIFT, re-measured on the deposit that replaced the replay.
+    """The tripwire under the lift, re-measured on the deposit that replaced the replay.
 
     The lifted clause is a claim about a file this module does not own: that on a
     conductive run the driver changes a component ONLY at a source's own cells, so a
@@ -581,17 +581,17 @@ def test_a_lossless_component_binds_its_own_target_as_the_placeholder(product):
 # ---------------------------------------------------------------------------
 
 def test_the_composer_routes_this_product_and_the_driver_seam_released_it():
-    """ROUTED 2026-09-02 by the installer wave, RELEASED 2026-09-11 — both halves.
+    """ROUTED 2026-09-02 by the installer change, RELEASED 2026-09-11 — both halves.
 
     This test replaces the deferral it used to make. Until 2026-09-02 it asserted
     that ``launch.py`` and ``fastpath.py`` named this module NOWHERE, which was the
-    seam that kept a certified-but-unrouted product deferred. The wave routed it:
+    seam that kept a certified-but-unrouted product deferred. The 2026-09-02 change routed it:
     ``launch.CERTIFIED_FUSED_PRODUCTS`` holds its row and
     ``_install_certified_fused_products`` builds it through the shared
     ``_install_fused_pair``, taking both slots only when ``_pair_may_absorb`` finds
     the arm table has already given them to the arms this kernel implements.
 
-    WIRING WAS NOT RELEASING, and this is the file where that sentence ended. It
+    Wiring was not releasing, and this is the file where that sentence ended. It
     was named ``..._and_dispatch_still_refuses_it`` for as long as the label sat
     outside ``fastpath.RELEASED_FUSED_ARMS``; on 2026-09-11
     ``dispatch_fused_route_2026-09-11_realarms`` drove it through the driver's own
@@ -603,7 +603,7 @@ def test_the_composer_routes_this_product_and_the_driver_seam_released_it():
     driven keep the old name
     and the old assertion, which is what makes the two states legible per file.
 
-    THE PARTITION IS STILL EXACTLY ONE OF TWO, in the other direction: the label
+    The partition is still exactly one of two, in the other direction: the label
     is in ``ARM_CERTIFICATION`` (its ledger entry was cut from this campaign's
     fleet artifact by ``seed_triton_welds.py``) and out of
     ``PENDING_DEVICE_GATE_ARMS``. Both are asserted rather than one, because a

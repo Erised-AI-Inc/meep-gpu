@@ -17,8 +17,8 @@ already certified and neither is re-derived here:
   device function (IMPORTED, not copied, so the two modules cannot drift) and
   the B-family three-row ``zero_metal_B`` block included.
 
-SO THIS KERNEL IS ``folded_fused_curl_constitutive_B``, CHARACTER FOR CHARACTER,
-PLUS THE PASS ``folded_beta_pml_curl_step`` ADDS TO ``pml_curl_step_folded``,
+So this kernel is ``folded_fused_curl_constitutive_B``, character for character,
+plus the pass ``folded_beta_pml_curl_step`` adds to ``pml_curl_step_folded``,
 after the three curl forms and before the stores — MEEP's order (the pass runs after
 every component's curl, step_db.cpp:161-175), the array path's
 (``stepping._apply_folded_increment``) and K3a's own placement::
@@ -31,14 +31,14 @@ every component's curl, step_db.cpp:161-175), the array path's
         v1, n1 = fold_ladder(v1, n1, q1, si_z, si_x, du1)
 
 Real storage is MEEP's implicit-i trick: the SAME sign convention as
-the electric twin (the ±i lives only in complex storage; MEASURED on
+the electric twin (the ±i lives only in complex storage; measured on
 ``special_kz.beta_curl_coefficients``, whose ``magnetic=`` flag changes no byte
 on the real path). A reader must be able to diff this body against the two
 shipped sources and see nothing else moved; the gate's transcription leg asserts
 exactly that.
 
 ===========================================================================
-WHY THIS CELL EXISTS, AND WHAT IT IS WORTH
+Why this cell exists, and what it is worth
 ===========================================================================
 
 ONE corpus row, TWO seam-instances — the electric twin serves the other.
@@ -63,7 +63,7 @@ verbatim — the body is ``folded_fused_curl_constitutive_B`` plus the insert,
 nothing removed.
 
 ===========================================================================
-THE FIVE PASSES IN THE SEAM
+The five passes in the seam
 ===========================================================================
 
 ``driver.step`` runs five passes between the two halves (driver.py:3281-3289)::
@@ -148,8 +148,8 @@ CURL_SUB_STEP = "step_B"
 CONSTITUTIVE_SIDE = "H"
 
 #: The driver passes ONE launch of this plan performs, in driver order
-#: (driver.py:3281-3289). Declared, never inferred from the slot name. THE
-#: INJECTION IS NOT ONE OF THE FIVE: it is carried by the deposit-repair bracket
+#: (driver.py:3281-3289). Declared, never inferred from the slot name. The
+#: injection is not one of the five: it is carried by the deposit-repair bracket
 #: around the launch, not by the launch.
 REPLACES: Tuple[str, ...] = ("step_B", "fill_B", "zero_metal_B",
                              "fill_folded_far_ghosts_B", "update_H")
@@ -192,7 +192,7 @@ DEVICE_STATUS: str = (
     "absorbs on its HIGH face only; the FIRST device run is what found it, and "
     "the catchable far-side rebilling was added in its place). 3/3 host "
     "mutations caught, 5/5 refusals, 4/4 no-device legs. "
-    "|| WHAT THE RUN DID NOT ESTABLISH: nothing is TIMED here and no throughput "
+    "|| What the run did not establish: nothing is TIMED here and no throughput "
     "claim is admissible; and the product is NOT WIRED, so nothing in a default "
     "run reaches this plan. This module has no fingerprints.json entry -- the "
     "gate artifact's own source_sha256 map is the binding, and the fusion matrix "
@@ -553,17 +553,17 @@ if triton is not None:
         #     (prod over the axes at `last` of mirror_parity)
         #         * (near ? mirror_parity : 1) * v_m(the fully back-substituted cell)
         #
-        # independent of the order the array path applies its axes in — MEASURED
+        # independent of the order the array path applies its axes in — measured
         # against the array path's own three passes over nine configurations,
         # results/metal_folded_far_carry_2026-08-20/ownership.json, zero differing
         # words. So ONE lane, the one at that back-substituted cell, owns every
         # ghost the fills leave, and no lane reads a word another lane writes.
         #
-        # THE PARITY IS +PHASE ON A SHIFT-0 COMPONENT AND -PHASE ON A SHIFT-1 ONE
+        # The parity is +phase on a shift-0 component and -phase on a shift-1 one
         # (fields.mirror_parity :117 is `phase * (1 - 2 * iyee)`), so the near carry
         # takes `PH?` and the far carry `-PH?`, and +-1.0 is exact in float32.
         #
-        # THE COEFFICIENT INDEX MOVES ONLY FOR THE NEAR HALF. update_H indexes
+        # The coefficient index moves only for the near half. update_H indexes
         # component m on axis m (stepping.H_CONSTITUTIVE_TERMS :226); the near fill
         # images along that same axis, so its destination reads kps/kms at index 0
         # rather than reusing the source lane's at index 2. The far fill images
@@ -571,7 +571,7 @@ if triton is not None:
         # coefficient index as the lane that owns it and reuses that lane's pair —
         # a reload there would reload the identical word.
         #
-        # THE NEAR SOURCE INDEX IS THE LITERAL 2, as it is in
+        # The near source index is the literal 2, as it is in
         # symmetry.mirror_ghost_fill (`base + 2 * stride`), rather than the named
         # MIRROR_SOURCE_INDEX: a jit body that closes over a module-level Python int
         # is a Triton-version question this file has no way to measure without a
@@ -593,8 +593,8 @@ if triton is not None:
         # The per-axis source lane, destination offset and parity, once. Each is
         # read only under a mask its own axis's constexpr gates, so an axis that
         # carries no fill contributes no lane and no load.
-        # EVERY CARRY MASK IS ANDED WITH THE COMPONENT'S OWN OWNERSHIP MASK, and
-        # that is a DEFECT THE DEVICE GATE FOUND rather than a precaution
+        # Every carry mask is anded with the component's own ownership mask, and
+        # that is a defect the device gate found rather than a precaution
         # (results/run_farcarry2/, 2026-08-20: one word of Hx at (i=0, j=ny-1) and
         # one of Hy at (i=nx-1, j=0), 1-2 ULP, on the two-folded-axis rows alone).
         #
@@ -621,7 +621,7 @@ if triton is not None:
         df_y = (ny - 1 - ry) * nz
         df_z = (nz - 1 - rz)
 
-        # THE THREE-TERM GUARDS ARE PARENTHESISED, AND THAT IS A MEASURED PLATFORM
+        # The three-term guards are parenthesised, and that is a measured platform
         # FACT rather than a style choice: Triton 3.1.0's frontend refuses a chained
         # boolean outright — "chained boolean operators (A or B or C) are not
         # supported; use parentheses to split the chain" — and it refuses at COMPILE
@@ -764,7 +764,7 @@ def folded_beta_fused_magnetic_pair_coverage(fields: Any, pml: Any,
         return Coverage(False,
                         tuple(dict.fromkeys(reasons + ["fields carries no grid"])))
 
-    # THE SOURCE SEAM, and on this cell it is the clause that decides everything.
+    # The source seam, and on this cell it is the clause that decides everything.
     # The one corpus row declares TWO magnetic sources, injected BETWEEN the two
     # halves (driver.py:3283-3284); CARRIES_DEPOSIT_REPAIR is what lets the repair
     # carry them, with `repairable`'s fold clauses live. An ELECTRIC source is
@@ -787,7 +787,7 @@ def folded_beta_fused_magnetic_pair_coverage(fields: Any, pml: Any,
     reasons.extend(code_reasons)
 
     if codes is not None:
-        # THE FAR CARRY'S OWN CONDITIONS, transcribed from
+        # The far carry's own conditions, transcribed from
         # folded_fused_magnetic_pair_coverage — the same kernel geometry, the same
         # ownership move, the same row checks.
         shape = tuple(getattr(grid, "shape", ()))
@@ -832,7 +832,7 @@ def folded_beta_fused_magnetic_pair_coverage(fields: Any, pml: Any,
                     f"plane IS the near fill's read plane "
                     f"(cell {MIRROR_SOURCE_INDEX})")
 
-        # THE NEAR FILL IMAGES STORED CELL 2 FROM THAT CELL'S OWN LANE.
+        # The near fill images stored cell 2 from that cell's own lane.
         if len(shape) == 3:
             for axis, code in enumerate(codes):
                 if (int(code) in MIRROR_CODES
@@ -842,7 +842,7 @@ def folded_beta_fused_magnetic_pair_coverage(fields: Any, pml: Any,
                         f"the near fill images stored cell {MIRROR_SOURCE_INDEX} and "
                         f"this kernel images it from that cell's own lane")
 
-        # THE WALL CLEAR AND THE FILL MUST NOT MEET.
+        # The wall clear and the fill must not meet.
         walls = zero_metal_axes(grid)
         for axis, code in enumerate(codes):
             if int(code) in MIRROR_CODES and bool(walls[axis]):
@@ -880,7 +880,7 @@ class FoldedBetaFusedMagneticPairPlan:
     ``chunk_bounds`` is the chunk record, required, and ONE record serves both
     halves, as in ``launch.FusedPairPlan``.
 
-    ``h_state`` IS THE ``Fields`` THE H SIDE STARTS FROM, or ``None``, exactly as in
+    ``h_state`` is the ``Fields`` the H side starts from, or ``None``, exactly as in
     ``launch.FusedPairPlan``: :meth:`run` passes ``start_h = 1`` while
     ``h_state.h_separated`` is still false and sets the flag after the first launch
     that has programs (an empty grid, the warm pass, starts nothing). ``None`` (the
@@ -916,7 +916,7 @@ class FoldedBetaFusedMagneticPairPlan:
         self.bc = tuple(int(value) for value in bc)
         self.zero_metal = tuple(bool(value) for value in zero_metal)
         self.phases = tuple(int(value) for value in phases)
-        # DERIVED FROM `bc`, NEVER TAKEN AS AN ARGUMENT. The kernel branches its
+        # Derived from `bc`, never taken as an argument. The kernel branches its
         # curl half on the four codes and its two carries on these booleans; if
         # they could be passed independently they could disagree, and a kernel that
         # masked the top plane on one axis set and imaged the far ghost on another

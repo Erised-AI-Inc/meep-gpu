@@ -1,19 +1,19 @@
-"""THE BYTE GATE for the Metal chi2/chi3 (Pade) ``update_E`` family.
+"""The byte gate for the Metal chi2/chi3 (Pade) ``update_E`` family.
 
 The kernel steps the array path's forms: the four corners left to right, ``Dsqr``'s
-``0.0625`` term and the addition after it in software binary64 rounded once (ruling
-R7: soft-fp64, ``stepping._nonlinear_dsqr``), and the constitutive form per structure
+``0.0625`` term and the addition after it in software binary64 rounded once
+(``stepping._nonlinear_dsqr``; docs/design/floating-point.md), and the constitutive form per structure
 chunk from the chunk record every plan here binds (``layer_record``, the one-rank
 division the reference ``Fields`` steps with). The reference runs with the host's FPU
 in the flush policy, the only one the executor runs (:func:`flushed_host`).
 
-WHAT IT CERTIFIES: that the shipped kernel reproduces ``stepping.update_E``
-(stepping.py:954, the ``if nonlinear:`` branch at :999-1000) WORD FOR WORD as
+What it certifies: that the shipped kernel reproduces ``stepping.update_E``
+(stepping.py:954, the ``if nonlinear:`` branch at :999-1000) word for word as
 uint32, over the configuration space the family's predicate admits, and that the
 transcription choices which decide those words are byte-VISIBLE rather than
 merely believed — each one carried as an armed mutation that must be CAUGHT.
 
-WHAT IT DOES NOT CERTIFY, stated rather than papered over:
+What it does not certify, stated rather than papered over:
 
 * **it is behavioural, not generated-code evidence.** ``torch.mps.compile_shader``
   exposes no AIR, no GPU ISA and no optimisation report (``device.py:46-62``), so
@@ -24,8 +24,8 @@ WHAT IT DOES NOT CERTIFY, stated rather than papered over:
   ``gate_metal_whole_step.py``. A stale mirror, a seam and an accumulating
   auxiliary are all invisible to a single-launch gate by construction — that is
   precisely why the off-diagonal family's source-alias defect was byte-identical
-  for one sub-step and 19,620 words wrong over two. THE CENSUS LEG IS THE ONE
-  EXCEPTION and is multi-step deliberately, because band entry is a RUN fact;
+  for one sub-step and 19,620 words wrong over two. The census leg is the one
+  exception and is multi-step deliberately, because band entry is a RUN fact;
 * **it runs under the FLUSH policy and nothing else is offerable.** Metal flushes
   subnormals and exposes no lever, so every claim here rides on the CHECKED
   subnormal-free precondition;
@@ -48,21 +48,21 @@ THE LEGS:
    mutation carries the boundary set it is ARMED on; on the complement it is run
    as a PREDICTED NULL and required NOT to fire, so "this defect cannot show under
    a periodic ghost" is a measurement rather than an excuse. The previous package
-   forms are must-catch mutations here (KERNELS.md §7.1): the paired corners
+   forms are must-catch mutations here (docs/development/certification.md): the paired corners
    (``four_corner_pair_association``), the two-step accumulation
    (``previous_two_step_accumulation``) and the float32 ``Dsqr``
-   (``dsqr_in_float32``, armed on the ``dsqr_band`` class); the §7.2 B battery of the
+   (``dsqr_in_float32``, armed on the ``dsqr_band`` class); the per-chunk form battery of the
    per-chunk tail rides with them, two of its entries planted in the RECORD rather
    than the source.
 4. ``ceiling`` — the plan-time magnitude clause at 1e29, pinned in both
    directions: a configuration under it is admitted AND byte-identical, one over
-   it is REFUSED BY NAME. Both sides carry a non-vacuity check on the MEASURED
+   it is refused by name. Both sides carry a non-vacuity check on the measured
    per-cell magnitude, because a nominal chi says nothing about the product the
    kernel forms.
 5. ``census`` — the subnormal precondition, over a REAL multi-step array-path run,
    covering the un-storable INTERMEDIATES and not only what was stored. Reported
    as a WINDOW ``[first_step, last_step]``. A case that reaches the band is
-   REFUSED BY NAME and its comparisons are withheld. Carries the firing control
+   refused by name and its comparisons are withheld. Carries the firing control
    ``preconditions`` requires, because a precondition never demonstrated to fire
    is decorative.
 6. ``dsqr`` — the binary64 helper alone, launched on its band (``gs*gs`` normal,
@@ -176,7 +176,7 @@ class flushed_host:
 class Tally:
     """Words compared and words disagreeing, for the artifact's headline.
 
-    THE COUNT THIS GATE REPORTS IS WORDS, NOT ROWS. A row count says how many
+    The count this gate reports is words, not rows. A row count says how many
     configurations ran; it says nothing about how much of each state was actually
     looked at, and two gates quoting "78" can mean quantities three orders of
     magnitude apart. Every comparison this class mediates is uint32 equality on the
@@ -221,7 +221,7 @@ def build(boundaries: Any, components: Sequence[str], scalar: bool,
           chi3_magnitude: float = 0.023) -> Tuple[Any, Any]:
     """A real ``Fields``/``PML`` pair, seeded in a named value class.
 
-    ZERO INIT IS A FIXED POINT of this sub-step, so every class fills the volumes
+    Zero init is a fixed point of this sub-step, so every class fills the volumes
     with values that actually move state; ``assert_moved`` is what turns that from
     an intention into a check.
     """
@@ -282,7 +282,7 @@ def build(boundaries: Any, components: Sequence[str], scalar: bool,
     else:
         fields.set_nonlinear_volumes({c: chi(chi2_magnitude) for c in components},
                                      {c: chi(chi3_magnitude) for c in components})
-    # A SEEDED STATE IS A MID-RUN ONE: H was started from B long ago
+    # A seeded state is a mid-run one: H was started from B long ago
     # (stepping.separate_h_from_b), so the reference's update_H does not start it.
     fields.h_separated = True
     return fields, PML(grid=grid, thickness=tuple((2, 2) for _ in range(3)))
@@ -291,10 +291,10 @@ def build(boundaries: Any, components: Sequence[str], scalar: bool,
 def build_at_magnitude(boundaries: Any, components: Sequence[str],
                        target: float, order: int, seed: int = 17
                        ) -> Tuple[Any, Any]:
-    """A pair whose MEASURED per-cell ``|chi| * |chi1inv|^order`` is exactly ``target``.
+    """A pair whose measured per-cell ``|chi| * |chi1inv|^order`` is exactly ``target``.
 
-    THE CEILING LEG CANNOT USE A NOMINAL CHI, and that is not a stylistic
-    preference — it is the trap the previous round fell into. A composition row
+    The ceiling leg cannot use a nominal chi, and that is not a stylistic
+    preference — it is the trap an earlier composition row fell into. A composition row
     built at ``chi3 = 1e30`` with ``chi1inv = 1/3`` forms ``1e30 * (1/3)^3 =
     3.7e28``, which is UNDER the 1e29 ceiling: the row meant to exercise a refusal
     exercised an admission instead, and only a sweep that recomputed the product
@@ -376,7 +376,7 @@ def drive_one_cycle(fields: Any, pml: Any) -> None:
     family would be used in, and dropping the passes because they are believed
     inert would make it a statement about a shorter step instead.
 
-    THE CENSUS NEEDS THIS AND THE IDENTITY LEG MUST NOT USE IT. Repeating
+    The census needs this and the identity leg must not use it. Repeating
     ``update_E`` alone with D held fixed does not evolve the system: ``src`` depends
     only on D and epsilon, so ``f_w`` is constant after the first call and E
     accumulates a fixed increment. A window taken over that would sweep a state the
@@ -412,7 +412,7 @@ def nonlinear_intermediates(fields: Any, pml: Any) -> Dict[str, Any]:
         c3  = (dsqr * chi3) * (chi1inv * chi1inv * chi1inv)
         u   = ((1 + c2) + 2*c3) / ((1 + 2*c2) + 3*c3)
 
-    THIS IS THE LEG THE FAMILY EXISTS TO HAVE. ``preconditions``' own docstring
+    This is the leg the family exists to have. ``preconditions``' own docstring
     names chi2/chi3 as the one queued family that reaches the subnormal band BY
     CONSTRUCTION rather than by decay — it multiplies field by field by field, so
     ``E^3`` at ``E ~ 1e-13`` lands at 1e-39, inside the band — and a census that
@@ -608,7 +608,7 @@ ALL_BOUNDARIES = ("periodic", "metallic", "mixed")
 
 #: (label, old, new, must_catch, armed_on, scalar_arm, value_class, why).
 #:
-#: ``value_class`` IS PART OF THE ARMING AND THAT WAS MEASURED, NOT DESIGNED IN.
+#: ``value_class`` is part of the arming and that was measured, not designed in.
 #: A defect must be planted where it can be SEEN, and for this family that is not
 #: the same seeding for every defect. The four-corner sum reaches the answer only
 #: through ``u = num/den``, and at a physical ``chi3`` with unit-amplitude fields
@@ -621,14 +621,14 @@ ALL_BOUNDARIES = ("periodic", "metallic", "mixed")
 #: recorded rather than hidden — it is a real statement about how much of this
 #: kernel a byte gate at physical amplitudes can resolve.
 #:
-#: ``armed_on`` IS NOT A CONVENIENCE AND IT IS NOT AN EXCUSE. A defect that lives
+#: ``armed_on`` is not a convenience and it is not an excuse. A defect that lives
 #: in the metallic ghost rule cannot alter a single word under an all-periodic
 #: boundary, because the periodic spelling rewrites the INDEX and leaves the
 #: validity flags at their initialised ``true`` — the mutated ternary is then
 #: provably dead. Scoping such a mutation to the boundaries where it can fire and
 #: reporting ``CAUGHT 2/2`` would be honest; running it on the third and reporting
 #: ``CAUGHT 2/3`` would be misleading in the other direction. So this gate does
-#: BOTH: the armed set must catch, and the complement is RUN AS A PREDICTED NULL
+#: BOTH: the armed set must catch, and the complement is run as a predicted null
 #: and required NOT to fire. If a complement case does fire, the exclusion reason
 #: was wrong and the gate says so.
 #:
@@ -648,7 +648,7 @@ MUTATIONS: Tuple[Tuple[str, str, str, Any, Tuple[str, ...], bool, str], ...] = (
      "+ ((uvz ? g0[i * nyz + j * nzi + uk] : 0.0f) "
      "+ ((uvz && dvx) ? g0[di * nyz + j * nzi + uk] : 0.0f));", True,
      ALL_BOUNDARIES, False, "large_u",
-     "THE PACKAGE'S PREVIOUS ASSOCIATION, put back (KERNELS.md 7.1): the near pair "
+     "THE PACKAGE'S PREVIOUS ASSOCIATION, put back (an inverted grouping): the near pair "
      "(g[i] + g[i-s1]) plus the far pair (g[i+s] + g[i+(s-s1)]), where MEEP and "
      "stepping._nonlinear_transverse_sums add the four corners left to right, "
      "((g[i] + g[i+s]) + g[i-s1]) + g[i+(s-s1)] (step_generic.cpp:646-648). "
@@ -680,7 +680,7 @@ MUTATIONS: Tuple[Tuple[str, str, str, Any, Tuple[str, ...], bool, str], ...] = (
      "                              true), true);",
      "    return own + 0.0625f * transverse;", True,
      ALL_BOUNDARIES, False, "dsqr_band",
-     "THE PACKAGE'S PREVIOUS Dsqr, put back (ruling R7 replaced it): the scale and "
+     "THE PACKAGE'S PREVIOUS Dsqr, put back (software binary64 replaced it): the scale and "
      "the addition in float32, where MEEP's 0.0625 is a double literal and "
      "stepping._nonlinear_dsqr forms both in binary64 and rounds once. The two "
      "forms differ only where 0.0625 * t lies below float32's smallest normal, so "
@@ -724,8 +724,8 @@ MUTATIONS: Tuple[Tuple[str, str, str, Any, Tuple[str, ...], bool, str], ...] = (
      "SYMMETRIC in the two sums — so a mispairing that swapped them wholesale "
      "would cancel; this one perturbs a single corner and does not"),
 
-    # ---- ARMED THIS ROUND: the structural choices the module calls load-bearing
-    # ---- and the previous cut left unmeasured.
+    # ---- added after an earlier version: the structural choices the module calls
+    # ---- load-bearing, which that earlier version of this gate left unmeasured.
     ("shifts_same_direction",
      "float sum_20 = ((g0[ii] + (uvz ? g0[i * nyz + j * nzi + uk] : 0.0f)) "
      "+ (dvx ? g0[di * nyz + j * nzi + k] : 0.0f)) "
@@ -738,7 +738,7 @@ MUTATIONS: Tuple[Tuple[str, str, str, Any, Tuple[str, ...], bool, str], ...] = (
      "two shifts genuinely go in OPPOSITE directions — half a cell DOWN the "
      "partner's axis, then the formed pair half a cell UP the component's own — "
      "and taking both the same way round 'survives every scalar test'. The module "
-     "docstring calls this choice load-bearing (point 5); before this round nothing "
+     "docstring calls this choice load-bearing (point 5); before this mutation nothing "
      "measured it"),
     ("corner_drops_partner_flag",
      "((uvz && dvy) ? g1[i * nyz + dj * nzi + uk] : 0.0f)",
@@ -788,12 +788,12 @@ MUTATIONS: Tuple[Tuple[str, str, str, Any, Tuple[str, ...], bool, str], ...] = (
      "in the signature, where a mispairing is invisible to the compiler. Armed on "
      "the SCALAR arm, which is the only arm that reads the buffer"),
 
-    # ---- THE PER-CHUNK TAIL (KERNELS.md 7.1 and the 7.2 B battery) -----------
+    # ---- the per-chunk tail (inverted groupings and the form battery) --------
     ("previous_two_step_accumulation",
      "if (dw2) { a2 = f2[ii] + ((kp_2 * src2) - (km_2 * prev2)); }",
      "if (dw2) { a2 = (f2[ii] + kp_2 * src2) - km_2 * prev2; }", True,
      ALL_BOUNDARIES, False, "random",
-     "THE PACKAGE'S PREVIOUS ACCUMULATION, put back (KERNELS.md 7.1): "
+     "THE PACKAGE'S PREVIOUS ACCUMULATION, put back (an inverted grouping): "
      "((f + kps*src) - kms*prev), where MEEP's step_update_EDHB and "
      "stepping._apply_constitutive_pml form the right-hand side first, "
      "f + ((kps*src) - (kms*prev))"),
@@ -802,14 +802,14 @@ MUTATIONS: Tuple[Tuple[str, str, str, Any, Tuple[str, ...], bool, str], ...] = (
      "const bool dw0 = true, dw1 = true, dw2 = true;", True,
      ALL_BOUNDARIES, False, "random",
      "the per-chunk select removed: every cell takes the accumulation and touches "
-     "f_w, the whole-grid form the kernel stepped before the record (7.2 b1). On a "
+     "f_w, the whole-grid form the kernel stepped before the record (form battery). On a "
      "plain cell the array path stores src itself and leaves f_w alone"),
     ("predicate_on_coefficient_identity",
      "const bool dw0 = in_h_x, dw1 = in_h_y, dw2 = in_h_z;",
      "const bool dw0 = (km_0 != 1.0f), dw1 = (km_1 != 1.0f), dw2 = (km_2 != 1.0f);",
      True, ALL_BOUNDARIES, False, "random",
      "the form keyed on the coefficient (kms != 1) instead of chunk membership "
-     "(7.2 b2): a cell inside its layer's chunk whose sigma is 0 (kps = kms = 1 "
+     "(form battery): a cell inside its layer's chunk whose sigma is 0 (kps = kms = 1 "
      "there) takes the output select instead of the accumulation"),
     ("dsig_flag_on_the_wrong_axis",
      "const bool dw0 = in_h_x, dw1 = in_h_y, dw2 = in_h_z;",
@@ -821,7 +821,7 @@ MUTATIONS: Tuple[Tuple[str, str, str, Any, Tuple[str, ...], bool, str], ...] = (
     ("aux_stored_on_a_plain_cell",
      "if (dw2) { w2[ii] = src2; }", "w2[ii] = src2;", True,
      ALL_BOUNDARIES, False, "random",
-     "f_w written outside its layer's chunks (7.2 b6): the auxiliary contract "
+     "f_w written outside its layer's chunks (form battery): the auxiliary contract "
      "leaves it untouched there, and the watched f_w volumes compare every cell"),
     ("plain_cell_as_unit_coefficients",
      "    float a2 = src2;\n"
@@ -830,14 +830,14 @@ MUTATIONS: Tuple[Tuple[str, str, str, Any, Tuple[str, ...], bool, str], ...] = (
      "    if (dw2) { a2 = f2[ii] + ((kp_2 * src2) - (km_2 * prev2)); }", True,
      ALL_BOUNDARIES, False, "signed_zero",
      "the plain constitutive spelled as the accumulation with kps = 1, kms = 0 and "
-     "zeroed inputs instead of the output select (7.2 b8, C4). It differs only on a "
+     "zeroed inputs instead of the output select (form battery). It differs only on a "
      "-0 source: MEEP stores -0, the accumulation +0, so it is ARMED ON signed_zero, "
      "whose half-zero D lanes plant -0 on plain cells"),
     # ---- NULL CONTROLS -----------------------------------------------------
     ("aux_load_unconditional",
      "float prev2 = dw2 ? w2[ii] : 0.0f;", "float prev2 = w2[ii];", False,
      ALL_BOUNDARIES, False, "random",
-     "DECLARED NULL (7.2): the auxiliary load made unconditional while its store "
+     "DECLARED NULL (form battery): the auxiliary load made unconditional while its store "
      "stays guarded. prev2 is read only inside the guarded accumulation, so no word "
      "changes; the guard is pinned by the module test that reads the tail's lines"),
     ("dsqr_add_operands_commuted",
@@ -960,7 +960,7 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
     }
     kit.save(payload, out)
 
-    # THE SUB-LATTICE SWAP IS A HOST DEFECT AND NO SOURCE NEEDLE CAN REACH IT.
+    # The sub-lattice swap is a host defect and no source needle can reach it.
     # The kernel takes coefficient POINTERS and never asks which Yee lattice they
     # came from, so binding the INTEGER tables where the E side wants the
     # HALF-INTEGER ones (stepping.py:1015) is a half-cell absorber error that
@@ -1004,7 +1004,7 @@ def leg_mutations(payload: Dict[str, Any], out: str) -> None:
     payload["mutation_totals"]["must_catch_entries"] += 1
     kit.save(payload, out)
 
-    # THE RECORD MUTATIONS (KERNELS.md 7.2 b3, b4): planted in the chunk record the
+    # The record mutations (the form battery's record rows): planted in the chunk record the
     # plan binds rather than in the source, because the kernel reads bounds and
     # cannot see which division they describe.
     for label, mutate, why in RECORD_MUTATIONS:
@@ -1064,10 +1064,10 @@ def _low_bound_off_by_one(record: Any) -> Any:
 RECORD_MUTATIONS: Tuple[Tuple[str, Any, str], ...] = (
     ("record_lattices_swapped", _swap_lattices,
      "the integer-lattice runs bound where update_E reads the half-integer ones "
-     "(7.2 b4): an E component sits half a cell off on its own axis, so the "
+     "(form battery): an E component sits half a cell off on its own axis, so the "
      "boundary plane of every layer moves by one cell"),
     ("record_bound_off_by_one", _low_bound_off_by_one,
-     "a1 + 1 on the half-integer x line (7.2 b3): the first interior plane takes "
+     "a1 + 1 on the half-integer x line (form battery): the first interior plane takes "
      "the accumulation"),
 )
 
@@ -1079,7 +1079,7 @@ RECORD_MUTATIONS: Tuple[Tuple[str, Any, str], ...] = (
 def leg_ceiling(payload: Dict[str, Any], out: str) -> None:
     """The 1e29 clause, pinned in BOTH directions and non-vacuously.
 
-    THE SCIENCE IS NOT RE-DERIVED HERE and the 20,000-step census is NOT re-run.
+    The science is not re-derived here and the 20,000-step census is NOT re-run.
     That measurement — five real lifted rows, 218,841,786 state words — established
     that the Pade tree DOES reach the subnormal band and that the band is PROVABLY
     INVISIBLE, because it cannot propagate past the ``1 + ...`` additions, with the
@@ -1087,8 +1087,8 @@ def leg_ceiling(payload: Dict[str, Any], out: str) -> None:
     CLAUSE built on that result: the constant, the admission below it, the refusal
     above it, and the by-name reason the refusal carries.
 
-    NON-VACUITY IS THE POINT OF THE LEG, not a decoration on it. The previous
-    round's composition row for this clause was VACUOUS and nobody noticed by
+    Non-vacuity is the point of the leg, not a decoration on it. An earlier
+    composition row for this clause was VACUOUS and nobody noticed by
     reading it: ``chi3 = 1e30`` with ``chi1inv = 1/3`` forms ``3.7e28``, UNDER the
     ceiling, so the row that was supposed to demonstrate a refusal demonstrated an
     admission. Both sides here are therefore measured through the family's OWN
@@ -1108,7 +1108,7 @@ def leg_ceiling(payload: Dict[str, Any], out: str) -> None:
         f"chi3 * |chi1inv|^3 = 1e31 and the clause sits two decades under it; a "
         f"change to this constant is a change to what the family refuses and must "
         f"be re-measured, not re-pinned")
-    # ONE CONSTANT, TWO HOMES — pinned because they can drift apart silently.
+    # One constant, two homes — pinned because they can drift apart silently.
     # preconditions.NONLINEAR_INTERMEDIATE_BOUND is the shared bound written for
     # this family before it existed; the family carries its own because its clause
     # is PER-CELL (max_i |chi_i| * |chi1inv_i|^p) while the shared helper takes a
@@ -1167,8 +1167,8 @@ def leg_ceiling(payload: Dict[str, Any], out: str) -> None:
         measured = measured_magnitude(fields, "Ez", order)
         assert measured > ceiling, (
             f"VACUOUS refusal case: {label} measured {measured:.3e}, which is NOT "
-            f"above the {ceiling:.0e} ceiling. This is exactly the trap the "
-            f"previous round's composition row fell into — a nominal chi says "
+            f"above the {ceiling:.0e} ceiling. This is exactly the trap an "
+            f"earlier composition row fell into — a nominal chi says "
             f"nothing about the product the clause reads")
         verdict = nonlinear.nonlinear_constitutive_coverage(fields, pml,
                                                             Residency())
@@ -1201,7 +1201,7 @@ def leg_ceiling(payload: Dict[str, Any], out: str) -> None:
         payload["legs"]["ceiling"] = rows
         kit.save(payload, out)
         kit.log(f"[ceiling] {label} above  measured={measured:.3e} "
-                f"covered=False REFUSED BY NAME")
+                f"covered=False refused by name")
 
 
 # ---------------------------------------------------------------------------
@@ -1209,9 +1209,9 @@ def leg_ceiling(payload: Dict[str, Any], out: str) -> None:
 # ---------------------------------------------------------------------------
 
 def leg_census(payload: Dict[str, Any], out: str) -> None:
-    """The precondition every other leg leans on, AS A NUMBER AND AS A WINDOW.
+    """The precondition every other leg leans on, as a number and as a window.
 
-    THREE THINGS THE PREVIOUS CUT DID NOT DO, each of which it needed to:
+    Three things an earlier version of this leg did not do, each of which it needed to:
 
     1. **it censused only what was STORED.** E and f_w cannot reach the band on a
        physical fill; the values that can are the ones the Pade body forms and
@@ -1227,7 +1227,7 @@ def leg_census(payload: Dict[str, Any], out: str) -> None:
        says so in as many words — so the scaled control at the end is required to
        put the window in the band.
 
-    A case that reaches the band is REFUSED BY NAME: a coverage refusal, not a
+    A case that reaches the band is refused by name: a coverage refusal, not a
     failure, with its comparisons withheld from the certified total.
     """
     rows: List[Dict[str, Any]] = []
@@ -1306,7 +1306,7 @@ def leg_census(payload: Dict[str, Any], out: str) -> None:
             try:
                 preconditions.assert_clean_or_refuse(window, f"nonlinear/{name}")
             except AssertionError as exc:
-                # A COVERAGE REFUSAL, NOT A FAILURE. Metal flushes and has no
+                # A coverage refusal, not a failure. Metal flushes and has no
                 # lever, so a case that reaches the band is one this family cannot
                 # claim byte-identity for. Its comparisons are withheld.
                 row["refused"] = str(exc)
@@ -1314,20 +1314,20 @@ def leg_census(payload: Dict[str, Any], out: str) -> None:
                 TALLY.withheld += report["observed_words"]
                 payload["legs"]["census"] = rows
                 kit.save(payload, out)
-                kit.log(f"[census] REFUSED BY NAME: {name} — band reached over "
+                kit.log(f"[census] refused by name: {name} — band reached over "
                         f"steps [{first_fired}, {last_fired}]")
 
     kit.assert_census_floor(zero_population, "negative zero words reaching the "
                                              "Pade numerator")
     payload["census_refused"] = refused
 
-    # ---- THE FIRING CONTROL, AS A MEASURED LADDER --------------------------
+    # ---- the firing control, as a measured ladder --------------------------
     # Without this the empty windows above prove only that the physical band is
     # clean, which was never in doubt.
     #
-    # THE SCALE IS MEASURED, NOT ASSUMED, AND THE FIRST ATTEMPT AT IT WAS WRONG.
+    # The scale is measured, not assumed, and the first attempt at it was wrong.
     # ``preconditions``' docstring motivates the intermediate hook with "E^3 with
-    # E ~ 1e-13 lands at 1e-39", and a control built at 1e-13 DID NOT FIRE — 0 of
+    # E ~ 1e-13 lands at 1e-39", and a control built at 1e-13 did not fire — 0 of
     # 414,720 words. The figure is right about a cube of the field and wrong about
     # THIS tree, which forms ``c3 = (Dsqr * chi3) * chi1inv^3`` — a SQUARE of D
     # carrying two small coefficients, not a cube of E. At D ~ 1e-13 that is
@@ -1385,7 +1385,7 @@ def leg_census(payload: Dict[str, Any], out: str) -> None:
                  "coefficients"),
     }
     kit.save(payload, out)
-    # The control must fire THROUGH AN INTERMEDIATE, which is the whole claim
+    # The control must fire through an intermediate, which is the whole claim
     # about this family: its subnormal exposure is the un-storable products. A
     # control that only put an OPERAND in the band would demonstrate the census
     # works on inputs and say nothing about the tree.

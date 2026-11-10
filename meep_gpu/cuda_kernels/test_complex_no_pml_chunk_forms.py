@@ -1,7 +1,7 @@
 """The CUDA complex no-absorber lifters transcribe the array path's forms, read off their
 text.
 
-WHAT THIS FILE SETTLES, ON A HOST WITH NO DEVICE. Three products lift the complex
+What this file settles, on a host with no device. Three products lift the complex
 no-absorber curl (``complex_no_pml_kernels``, MEEP's left-to-right stencil with its
 partner-presence forms and the D curl's Bloch connection) into one launch each:
 
@@ -13,7 +13,7 @@ partner-presence forms and the D curl's Bloch connection) into one launch each:
   off-diagonal ``update_E`` (MEEP's double row per part, per-chunk presence, two
   connection tables), written to scratch and rotated in.
 
-Each is LAUNCHED THROUGH ITS OWN LAUNCHER, loaded with NumPy wearing CuPy's name, whose
+Each is launched through its own launcher, loaded with NumPy wearing CuPy's name, whose
 compiled kernel is replaced by ``test_complex_chunk_forms``' interpreter, which EXECUTES
 the emitted device text in float32 NumPy -- its helpers too, from their own text -- so the
 launcher's argument order and its record, connection and presence bindings are exercised
@@ -62,7 +62,7 @@ THREE_SLOT_PASSES = D_TO_E_PASSES + ("update_P",)
 STATE = ("Bx", "By", "Bz", "Dx", "Dy", "Dz", "Ex", "Ey", "Ez", "Hx", "Hy", "Hz")
 
 #: name -> (cell, dimensions, boundaries, k_point, conductive, poles, uniform sigma).
-#: NO CASE CARRIES A WALL: the D -> E pair and the three-slot weld built on it refuse a
+#: No case carries a wall: the D -> E pair and the three-slot weld built on it refuse a
 #: walled run by name (``covers_no_pml_complex_fused_electric_pair``'s wall clause), so a
 #: wall here would compare a launch the predicate never makes; the off-diagonal weld,
 #: which carries ``zero_metal_D``, takes walled cases below.
@@ -402,11 +402,11 @@ def test_the_two_dimensional_cases_reach_the_one_partner_forms():
 
 #: defect -> (product, case, old text, new text)
 DEFECTS: Dict[str, Tuple[str, str, str, str]] = {
-    # KERNELS.md section 7.1, inverted: the previous package grouping of the bracket.
+    # An inverted grouping mutation: the previous package grouping of the bracket.
     "pair_stencil_regrouped": (
         "pair", "np_bloch3d", "cf_sub(cf_add(cf_sub(sf, f1), f2), ss)",
         "cf_add(cf_sub(sf, f1), cf_sub(f2, ss))"),
-    # Section 7.2 (C5): the full bracket over an absent partner.
+    # The per-chunk form battery (partner presence): the full bracket over an absent partner.
     "pair_presence_ignored": (
         "pair", "np_edge2d_pole", "    if (pr1 && pr2) return", "    if (1) return"),
     # The window read without its Bloch connection: MEEP's not-owned word on plane 0 of

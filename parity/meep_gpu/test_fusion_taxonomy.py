@@ -14,9 +14,11 @@ What each test pins, and what would break it:
 - The three builders' argument-free default censuses are the STANDING ones: each
   exists, each carries the m = 0 complex cylindrical fact that separates it from the
   superseded record it replaced (measured on ``examples:dipole_in_vacuum_cyl_off_axis.py``,
-  the one row the 2026-09-03 and 2026-09-04 censuses disagree on), and the CUDA one
-  is the census whose recorded subject manifest this tree hashes to -- read with the
-  boards' own row rule and the CUDA board's own :func:`subject_pin`.
+  the one row the 2026-09-03 and 2026-09-04 censuses disagree on), and each board's
+  default is the census whose recorded subject manifest this tree hashes to -- read with
+  the boards' own row rule, and checked with the function each builder calls before it
+  prices anything (the CUDA board's own :func:`subject_pin`; ``census_subject.subject_pin``
+  for the Metal and Triton boards).
 
 The builders are read as TEXT for their defaults rather than imported: importing the
 Metal board pulls ``meep_gpu.metal_kernels`` (and torch) at module load, which the
@@ -178,13 +180,13 @@ def test_the_dispatch_keys_are_the_ones_the_three_boards_publish():
                  "build_cuda_fusion_matrix.py"):
         text = (_HERE / name).read_text(encoding="utf-8")
         assert "dispatch_agreement.dispatch_agreement(" in text, name
-    # AND THE LITERAL CANNOT COME BACK. The Metal board is the one that carried it.
+    # And the literal cannot come back. The Metal board is the one that carried it.
     metal = (_HERE / "build_fusion_matrix.py").read_text(encoding="utf-8")
     assert '"served_by_a_fused_product_in_dispatch": 0,' not in metal
 
 
 def test_no_board_reads_its_dispatch_measurement_before_it_is_measured():
-    """THE DEFECT THIS FILE'S OWN FIRST VERSION SHIPPED, and why it stayed green.
+    """The defect this file's own first version shipped, and why it stayed green.
 
     The repair that replaced the Metal board's hardcoded dispatch 0 put
     ``dispatch["served_in_dispatch"]`` into the ``result`` dict literal — which is built
@@ -268,7 +270,7 @@ def test_a_dispatch_headline_read_from_the_measurement_agrees_and_names_its_path
 
 
 def test_the_hardcoded_metal_zero_is_refused_by_name():
-    """THE EXACT SHAPE THE 2026-09-11 METAL BOARD CARRIED, armed as a regression.
+    """The exact shape the 2026-09-11 Metal board carried, armed as a regression.
 
     A literal 0 at the top level beside a measured 176 two levels down. Before FLOOR 8
     this cut cleanly and `headline_agreement` reported `agree: true`, because every
@@ -343,7 +345,7 @@ def test_a_measurement_block_with_no_total_is_refused():
 
 def test_a_zero_dispatch_total_still_has_to_agree():
     """A backend that genuinely dispatches nothing is not exempt: 0 must be the
-    MEASURED 0, not a literal that happens to match today."""
+    measured 0, not a literal that happens to match today."""
     measured = {"served_in_dispatch": 0, "why_zero": "no product reaches the seam"}
     result = {"headline": {"served_in_dispatch": 0},
               "served_by_a_fused_product_in_dispatch": 0}
@@ -454,3 +456,24 @@ def test_the_standing_cuda_census_is_the_one_this_tree_hashes_to():
     pin = board.subject_pin(record)
     assert pin["agrees_with_census"] is True
     assert {r["subject_manifest_sha256"] for r in record} == {pin["manifest_sha256"]}
+
+
+@pytest.mark.parametrize("builder, package", [
+    ("build_fusion_matrix.py", "metal_kernels"),
+    ("build_triton_fusion_matrix.py", "triton_kernels"),
+], ids=["metal", "triton"])
+def test_the_standing_census_is_the_one_this_tree_hashes_to(builder, package):
+    """The Metal and Triton boards refuse a census cut against another tree
+    (``census_subject.subject_pin``, called first in each builder's ``main``, over the rows
+    :func:`_rows` reads), so an argument-free cut writes a board only when its default is the
+    record cut on these bytes. The builders are not imported (see the module docstring)."""
+    census = _default_census(builder, "CENSUS")
+    if not (census / "examples.jsonl").is_file():
+        pytest.skip(f"{census.name} is not in this checkout")
+    import census_subject  # noqa: PLC0415 - light import
+    try:
+        pin = census_subject.subject_pin(_rows(census).values(), api_root=_HERE.parents[1],
+                                         package=package, census=census.name)
+    except SystemExit as refusal:
+        pytest.fail(str(refusal))
+    assert pin["agrees_with_census"] is True

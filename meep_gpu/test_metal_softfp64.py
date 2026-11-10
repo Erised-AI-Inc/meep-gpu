@@ -18,7 +18,7 @@ Three legs, so a disagreement names the side that moved:
   produced a tie cannot certify the tie rule), and each planted defect in the MSL (and a
   representative set in the transcription) must be caught.
 
-The operand classes. The six of the off-diagonal row's measurement (the R7 ruling's
+The operand classes. The six of the off-diagonal row's measurement (the soft-fp64 decision's
 evidence, ``r1 = widen(a) + 2**k * widen(t1)``, ``r2 = r1 + 2**k * widen(t2)``,
 ``out = narrow(r2)``, terms present at random), each run with ``k = -2`` (MEEP's 0.25) and
 ``k = -4`` (the ``|D|^2`` 0.0625):
@@ -32,7 +32,7 @@ evidence, ``r1 = widen(a) + 2**k * widen(t1)``, ``r2 = r1 + 2**k * widen(t2)``,
   subnormal    operands and results in the float32 subnormal band
 
 plus ``band``: ``r`` exactly ``2**-126 * (1 - 2**-25)`` from NORMAL float32 operands, the
-bottom of phase-0 item P0-d1's band, where gradual underflow rounds up to ``2**-126`` and
+bottom of the cross-ISA flush band, where gradual underflow rounds up to ``2**-126`` and
 the flush policy (tininess before rounding) gives ``+-0``. And three classes for the
 single operations (widen, add, sub, scale, narrow, and the deposit
 ``narrow(sub(widen(w), x))``):
@@ -41,7 +41,7 @@ single operations (widen, add, sub, scale, narrow, and the deposit
                infinities and NaNs (signalling and quiet), extreme exponents
   deposit      stored words of every class against ``real(A)`` doubles over the whole
                binary64 range (subnormals included), with planted float32 midpoints
-  band         ``w - x`` and ``narrow(x)`` inside and around P0-d1's band
+  band         ``w - x`` and ``narrow(x)`` inside and around that band
 
 The deposit's reference is :func:`meep_gpu.host_writes._rounded_difference`, the array
 path's own door, so the helper is pinned to the statement it replaces.
@@ -466,7 +466,7 @@ def run_class(kind: str, name: str, policy: str, triples: int, *,
     ``transcription``; ``library`` None compares the transcription itself with the host.
     Returns per-output differing counts, the word count and the seconds taken.
 
-    THE OPERANDS ARE ALWAYS BUILT WITH THE HOST KEEPING. A class built under flush would
+    The operands are always built with the host keeping. A class built under flush would
     lose its own subnormals in the arithmetic that constructs them (``mant * 2**-1074``
     is a product, and the flushing FPU returns zero), and the subnormal legs would then
     certify nothing; only the reference statement runs in the mode under test.
@@ -812,7 +812,7 @@ def test_each_planted_defect_in_the_msl_is_caught_on_the_device(mutant):
 
 
 # ---------------------------------------------------------------------------
-# THE DEPOSIT DOOR (step M11): Residency.subtract_double_index
+# The deposit door (step M11): Residency.subtract_double_index
 # ---------------------------------------------------------------------------
 #
 # ``host_writes.subtract_double`` hands a held deposit to the residency that owns the

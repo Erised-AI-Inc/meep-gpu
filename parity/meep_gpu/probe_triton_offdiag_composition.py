@@ -9,7 +9,7 @@ kernel — installed by monkeypatch, production dispatch untouched,
 reproduce the array-path driver EXACTLY after every step, for a STATED number
 of steps, sources, PML and metal zeroing included?
 
-THIS PROBE IS THE PARTIAL-UNLOCK MEASUREMENT, and it differs from the
+This probe is the partial-unlock measurement, and it differs from the
 nonlinear probe's narrowing in exactly the way the coverage split differs. A
 chi2/chi3 run is refused at EVERY sub-step by ``coverage._grid_reasons``; an
 off-diagonal run is refused at ONE — ``constitutive_coverage(side="E")``'s
@@ -21,7 +21,7 @@ their ENGINE builders (``plan_pml_curl``, ``plan_constitutive("H")``) — which
 must return real plans, today, on the engine's own offdiag objects — and only
 ``update_E`` comes from the new family's engine builder. Before each case the
 probe asserts the exact split: the three certified predicates hold NO refusal,
-the certified E predicate refuses FOR THE OFFDIAG CLAUSE AND NOTHING ELSE (the
+the certified E predicate refuses for the offdiag clause and nothing else (the
 disjointness seam), and the new predicate admits. The byte-identical
 composition over whole steps is then the evidence the wiring change needs to
 give ``plan_step`` its offdiag update_E branch — this kernel is the LAST
@@ -35,7 +35,7 @@ route ``from_meep``'s epsilon_offdiag ingest uses, from_meep.py:1125-1126):
    geometry (cell 1.1x1.3x1.5 at resolution 10 -> 11x13x15, 4-cell PML all
    axes, the case's own three CW point sources) with the uniform full oracle
    tensor, at LOUD seeded amplitude, 16 complete steps. REAL f32 storage —
-   the oracle itself runs complex; Phase A's arm is the real-storage one, so
+   the oracle itself runs complex; the arm under test is the real-storage one, so
    this is the oracle's GEOMETRY, not its storage, and the artifact says so.
 2. ``metallic_tensor``  — the same geometry with all-metallic walls: the
    wall-coupling mask live on every component's transverse axes through whole
@@ -142,7 +142,7 @@ AUX_STATE = ("fu_Bx", "fu_By", "fu_Bz", "fu_Dx", "fu_Dy", "fu_Dz",
 PRIMARY_NAMES = ("Bx", "By", "Bz", "Dx", "Dy", "Dz")
 
 #: test_tensor_epsilon._CASE's geometry and sources (the 'pml' oracle variant's
-#: cell/resolution/PML; storage here is Phase A's real f32, recorded per case).
+#: cell/resolution/PML; storage here is the arm's real f32, recorded per case).
 MARQUEE_CELL = (1.1, 1.3, 1.5)
 MARQUEE_RESOLUTION = 10.0
 MARQUEE_PML_CELLS = 4  # 0.4 length units at resolution 10, matching mp.PML(0.4)
@@ -446,7 +446,7 @@ def run_case(cp, case: Dict[str, Any],
             "steps": steps,
             "step_budget_note": "bit-identity is claimed for exactly this "
                                 "many steps and no further",
-            "storage_note": "real f32 storage (Phase A's arm); the marquee "
+            "storage_note": "real f32 storage (the arm under test); the marquee "
                             "geometry is test_tensor_epsilon._CASE's, whose "
                             "CPU-MEEP oracle itself runs complex",
             "per_step": [],
@@ -807,7 +807,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                               "reason": "subnormal policy: "
                                         + "; ".join(residual)}
         save(payload, args.out)
-        log(f"SUBNORMAL POLICY FAILURE AT CLOSE: {residual}")
+        log(f"Subnormal policy failure at close: {residual}")
         return 1
 
     ran = payload["cases"]

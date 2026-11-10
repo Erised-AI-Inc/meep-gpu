@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # SPDX-License-Identifier: GPL-2.0-or-later
 """The bit-parity coverage board: per kernel table, how many modules have direct parity
-with the aligned array path at each level, and per array-path family, identity with MEEP.
+with the array path at each level, and per array-path family, identity with MEEP.
 
     python parity/meep_gpu/build_parity_board.py manifest
     python parity/meep_gpu/build_parity_board.py outcomes --junit A.xml [B.xml ...] \\
@@ -13,13 +13,14 @@ It is the bit-parity counterpart of the fusion boards (``build_fusion_matrix.py`
 ``build_cuda_fusion_matrix.py``, ``build_triton_fusion_matrix.py``). It reads, and never
 edits, the tree.
 
-ROWS. Every module of the three kernel tables' step lists
-(``results/bit_parity_0_10/design/KERNELS.md`` section 8, with ``DESIGN.md`` D27's moves),
+Rows. Every module of the three kernel tables' step lists
+(the order in which the modules took MEEP's operation order and, where they carry an
+absorber, the per-chunk PML forms, each module after those it depends on),
 held as data in ``parity_board_rows.json``, plus one row per array-path family judged
 against MEEP. A row whose file is absent from the tree is refused by name; a module of a
 table directory that no step list names is listed by name.
 
-COLUMNS, each derived only from records in the tree, never typed:
+Columns, each derived only from records in the tree, never typed:
 
 (a) **B select landed**: the device text the module's builder EMITS
     (:mod:`parity_board_emit`: the CUDA source ``cp.RawKernel`` is handed, the Metal MSL
@@ -40,8 +41,8 @@ COLUMNS, each derived only from records in the tree, never typed:
     v1 witness, and its cells say so.
 (c) **Host word-identical to the array path**: the outcomes of the module's own test
     files in a recorded run (``outcomes.json``, whose subject manifest must equal the
-    tree's), and whether any of their ids is listed in
-    ``tools/ci/pending_certification.txt`` in a block that names a kernel lane. A
+    tree's), and whether any of their ids is listed in ``tools/ci/pending_certification.txt``
+    in a block that names a kernel lane (a ``K<table><step>`` token; see :func:`pending_blocks`). A
     module's test files are those of its table (``cuda_kernels/test_*.py``,
     ``test_triton_*.py``, ``test_metal_*.py``) whose name names it, and those that
     reference it in code and name it in their docstring (:func:`test_files_by_module`).
@@ -55,7 +56,7 @@ COLUMNS, each derived only from records in the tree, never typed:
     for any purpose is (an upper bound).
     Identical: (a) and (b) are not gaps (a level above them: a module that still spells
     the 0.9.2 grouping, or steps a PML form without the record, is not word-identical to
-    the aligned array path whatever its tests say), at least one test passed, no id is
+    the array path whatever its tests say), at least one test passed, no id is
     listed under a kernel lane, and every failure is listed in a block that names none (a
     record waiting on the certification round). Refused: no test file, no recorded run,
     or no test passed.
@@ -63,10 +64,12 @@ COLUMNS, each derived only from records in the tree, never typed:
     ``meep_gpu/<table>_kernels/fingerprints.json`` that pins the module's file -- with a
     PASS status, a live run (``fastpath.live_capabilities``), the module's pinned bytes
     equal to the tree's, the live array-path oracle in its ``array_path_oracle`` leaf,
-    and a run whose recorded subnormal policy covers the baseline. Refused: no entry pins
-    the module's file (``driver_dispatch`` is the route record, not a module weld).
+    and a live run that covers the baseline (:func:`run_baselines`: the policies its
+    ``certified_policies`` names, the evidence dispatch admits a caller's policy on,
+    else the policy its record names). Refused: no entry pins the module's file
+    (``driver_dispatch`` is the route record, not a module weld).
 (d-dev) **Development evidence, NOT certification**: an integrator's re-run of a
-    lane's device legs, recorded in ``parity_board/dev_evidence.json`` by
+    module's device legs, recorded in ``parity_board/dev_evidence.json`` by
     ``record_dev_evidence.py``, per subnormal baseline: words compared and words
     differing. Counted only while the record's subject -- the module file's bytes, the
     digest of its emitted device text and the array-path oracle -- is the live one, so
@@ -76,10 +79,10 @@ COLUMNS, each derived only from records in the tree, never typed:
     its hardware (a capability key and a host). The live oracle is computed here
     (``array_path_oracle.run``: NumPy, no MEEP, well under a second).
 
-The subnormal baselines are owner ruling R13: keep and flush on the NVIDIA tables and on
-the array path, flush only on Metal.
+Subnormal baselines: both wherever the hardware supports both, so keep and flush on the
+NVIDIA tables and the array path, flush only on Metal (its GPU flushes, with no switch).
 
-ARRAY PATH AGAINST MEEP, per family: the Tier A/C records of
+Array path against MEEP, per family: the Tier A/C records of
 ``parity/meep_gpu/fixtures/meep_identity/meep_identity.json``, per subnormal set. A case
 exercises a family by its capsule's construction log (the predicates are data in the rows
 file). Identical: the set was minted on the live array-path oracle, and every exercising
@@ -87,10 +90,10 @@ case's Tier C stored and reader words and its Tier A digests are equal, with bot
 flips caught. Refused: no minted set for the baseline, a set minted on another array path,
 or no minted case exercising the family.
 
-EVERY COUNT IS N / D. D is the rows a column applies to and that are measured; refused
+Every count is N / D. D is the rows a column applies to and that are measured; refused
 rows are counted, and named, beside it -- never as a gap and never as a pass.
 
-THE SUBJECT. ``outcomes`` refuses unless the tree it is handed hashes, after the run, to
+The subject. ``outcomes`` refuses unless the tree it is handed hashes, after the run, to
 the manifest taken before it (``--manifest-before``). ``build`` refuses an outcomes record
 whose manifest differs from the tree's: "the outcomes subject and the working tree
 disagree". The board records the manifest of everything it read, and ``check`` refuses a
@@ -155,7 +158,7 @@ LEDGERS = {"cuda": "meep_gpu/cuda_kernels/fingerprints.json",
            "metal": "meep_gpu/metal_kernels/fingerprints.json"}
 TABLES = ("cuda", "triton", "metal")
 TABLE_NAMES = {"cuda": "CUDA", "triton": "Triton", "metal": "Metal"}
-#: Owner ruling R13: which subnormal baselines each table is certified under.
+#: Which subnormal baselines each table is certified under (both where the hardware has both).
 BASELINES = {"cuda": ("keep", "flush"), "triton": ("keep", "flush"), "metal": ("flush",),
              "array_path": ("keep", "flush")}
 #: The test-file prefix of each table's module tests.
@@ -859,7 +862,7 @@ def levels_gate(cells: Mapping[str, Mapping[str, Any]], host: Dict[str, Any],
                 kind: str) -> Dict[str, Any]:
     """(c) is a level above (a) and (b): a module whose own text still spells the 0.9.2
     grouping, or steps a PML form without reading the chunk record, is not word-identical
-    to the aligned array path, whatever its tests say (a test that passes there checks a
+    to the array path, whatever its tests say (a test that passes there checks a
     refusal, a structure, or a case the grouping does not reach). Such a module is a gap
     in (c), named by the column that holds it back; its test counts are kept."""
     held = [name for name in ("b_select", "a_form")
@@ -898,6 +901,28 @@ def live_runs(entry: Mapping[str, Any]) -> List[str]:
         return []
     return sorted(key for key, run in runs.items()
                   if isinstance(run, Mapping) and run.get("bound_sha256") == current)
+
+
+#: The run leaf naming the policies a run's evidence certifies:
+#: ``fastpath.CERTIFIED_POLICIES``, restated so ``check`` and ``manifest`` import
+#: nothing; the test asserts the two equal.
+CERTIFIED_POLICIES = "certified_policies"
+
+
+def run_baselines(run: Mapping[str, Any]) -> Optional[Set[str]]:
+    """The baselines one ledger run covers, or None if it covers none.
+
+    The policies its ``certified_policies`` names when it carries that leaf: the bind
+    writes it from the released runs of each policy, and it is what dispatch reads to
+    admit a caller's policy on an arm (``fastpath.policy_evidence_reasons``). A Triton
+    run is gated under keep and its flush twin's verdict is bound there, so its own
+    ``subnormal_policy`` names keep alone. A run without the leaf is read by the policy
+    its record names (:func:`policy_baselines`).
+    """
+    evidence = run.get(CERTIFIED_POLICIES)
+    if isinstance(evidence, Mapping) and evidence:
+        return {str(name) for name in evidence}
+    return policy_baselines(run.get("subnormal_policy"))
 
 
 def policy_baselines(text: Any) -> Optional[Set[str]]:
@@ -968,8 +993,7 @@ def device_columns(root: Path, table: str, row: Mapping[str, Any], ledger: Mappi
                     (oracle["fixture_set"], oracle["fingerprint_sha256"]):
                 why_d.append(f"records array path {leaf.get('fixture_set')} "
                              f"{str(leaf.get('fingerprint_sha256'))[:16]}")
-            covering = [k for k in runs
-                        if baseline in (policy_baselines(entry["runs"][k].get("subnormal_policy")) or set())]
+            covering = [k for k in runs if baseline in (run_baselines(entry["runs"][k]) or set())]
             if runs and not covering:
                 why_d.append(f"no live run under {baseline}")
             if why_d:
@@ -1444,7 +1468,7 @@ def build_board(root: Path, outcomes_path: Optional[Path] = None,
         "baselines": {k: list(v) for k, v in BASELINES.items()},
         "dev_evidence": {"file": DEV_EVIDENCE_FILE, "records": len(evidence),
                          "unavailable": evidence_unavailable,
-                         "about": ("Development evidence: integrators re-run a lane's device "
+                         "about": ("Development evidence: integrators re-run a module's device "
                                    "legs at integration and record the words compared. It "
                                    "is NOT certification, and columns (d) and (e) never "
                                    "read it.")},
@@ -1517,15 +1541,15 @@ def render_markdown(board: Mapping[str, Any]) -> str:
                      + (f"; {outcomes['note']}" if outcomes.get("note") else "") + ".")
     lines += ["", "Each count is N / D: D is the rows the column applies to and could "
               "measure; refused rows are counted beside it, never as a gap and never as a "
-              "pass. Baselines (owner ruling R13): keep and flush on CUDA, Triton and the "
-              "array path; flush only on Metal.", "",
+              "pass. Baselines: keep and flush on CUDA, Triton and the array path; flush "
+              "only on Metal, whose GPU flushes natively.", "",
               "Columns (a) and (b) read the device text each module's builder EMITS "
               "(`parity_board_emit.py`: the CUDA source `cp.RawKernel` is handed, the Metal "
               "MSL after template splicing, the Triton `@jit` program with its helpers "
               "inlined), with no device. A module with no emit route is read off its own "
               "source text instead, and its cell says so.", "",
-              "Column (d-dev) is DEVELOPMENT EVIDENCE, NOT CERTIFICATION: an integrator's "
-              "re-run of a lane's device legs (`record_dev_evidence.py`), counted only while "
+              "Column (d-dev) is development evidence, not certification: an integrator's "
+              "re-run of a module's device legs (`record_dev_evidence.py`), counted only while "
               "its subject (the module's bytes, its emitted text, the array path) is the "
               "live one. Columns (d) and (e) never read it.", ""]
     lines += ["## Summary", ""]
@@ -1543,7 +1567,7 @@ def render_markdown(board: Mapping[str, Any]) -> str:
         for column in ("device_identical", "dev_evidence", "certified"):
             for baseline in ("keep", "flush"):
                 name = f"{column}:{baseline}"
-                cells.append(_fraction(summary[name]) if name in summary else "n/a (R13)")
+                cells.append(_fraction(summary[name]) if name in summary else "n/a (flush only)")
         lines.append(f"| {TABLE_NAMES[table]} | {info['rows']} | " + " | ".join(cells) + " |")
     lines += ["", "Witness of (a) and (b), per table (rows with a device form): "
               + "; ".join(f"{TABLE_NAMES[t]} " + ", ".join(

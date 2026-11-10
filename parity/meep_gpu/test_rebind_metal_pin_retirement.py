@@ -2,7 +2,7 @@
 
 ``rebind_metal_welds.py`` keeps each entry's curated pin set, so an entry that pins a file
 deleted from the package can never rebind: no fresh artifact records a file that is gone,
-and the tool skips the entry with "artifact does not record" in every round.
+and the tool skips the entry with "artifact does not record" in every certification round.
 ``RETIRED_PINS`` names each such path. These tests pin the rule: the table names exactly
 the deleted expansion-refusal module, and only the three welds that pinned it carry it; a
 rebind drops a retired pin from both digest maps and reports ``RETIRED-PIN``; a retired
@@ -53,7 +53,7 @@ IDLE = "metal_idle_device_gate"
 
 
 # ---------------------------------------------------------------------------
-# THE TABLE AND THE SHIPPED LEDGER
+# The table and the shipped ledger
 # ---------------------------------------------------------------------------
 
 
@@ -74,7 +74,7 @@ def test_only_the_three_named_welds_pin_a_retired_file():
 
 
 # ---------------------------------------------------------------------------
-# THE RULE, THROUGH main(), ON A TEMPORARY REPOSITORY ROOT
+# The rule, through main(), on a temporary repository root
 # ---------------------------------------------------------------------------
 
 

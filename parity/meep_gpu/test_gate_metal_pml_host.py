@@ -10,8 +10,9 @@ what keeps the device legs meaningful between device runs:
   each axis and lattice carries in-run and out-of-run rows;
 * **every source mutation lands**: each needle is present in the source it is armed
   on, so no leg can be disarmed by a re-spelled kernel. The two grouping mutations are
-  the INVERTED ones (KERNELS.md §7.1): the shipped form is MEEP's grouping, so each
-  plants the package's previous grouping and must be caught.
+  the INVERTED ones (docs/development/certification.md#inverted-grouping-mutations):
+  the shipped form is MEEP's grouping, so each plants the package's previous grouping
+  and must be caught.
 
 The gate sets its subnormal policy in the environment when it is imported, so every
 check runs it in a child process with torch made unimportable: the host legs are

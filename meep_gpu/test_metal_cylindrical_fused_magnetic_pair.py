@@ -1,17 +1,17 @@
 """The CYLINDRICAL COMPLEX fused magnetic Metal pair, as claims a laptop can check.
 
-WHAT THIS SUITE OWNS AND WHAT IT DELIBERATELY DOES NOT. The BYTES are the device
+What this suite owns and what it deliberately does not. The BYTES are the device
 gate's — ``parity/meep_gpu/gate_metal_cylindrical_fused_magnetic_pair.py`` steps two
 engines side by side for twelve complete steps and compares uint32 words, and no
 assertion here duplicates that. What lives here is everything true about the family
 WITHOUT a device: what the emitted source says, which configurations the predicate
-refuses and by what name, that the arm is registered UNWIRED, and the two
+refuses and by what name, that the arm is registered unwired, and the two
 BYTE-INVISIBLE CHOICES a byte gate structurally cannot hold.
 
-THE FOUR CLAIMS THIS SUITE MAKES THAT THE GATE CANNOT.
+The four claims this suite makes that the gate cannot.
 
 1. **The product is invisible to ``plan_step``** — a property of the TABLE, and the
-   whole reason this family may land beside the wired tree without touching it.
+   whole reason this family may land beside the wired families without touching it.
 2. **The wall table on a Dcyl grid can only ever name z**, so the emitted mask is a
    single line and the r and phi clears are never emitted. That is what makes the
    gate's wall mutations reachable and its r/phi ones absent-by-design rather than
@@ -24,9 +24,9 @@ THE FOUR CLAIMS THIS SUITE MAKES THAT THE GATE CANNOT.
    order and the ``t0`` grouping are both what the array path computes and both
    produce identical bytes through this kernel — measured, 0 differing words — so a
    byte gate CANNOT hold them and saying it does would be the artifact overclaim the
-   BFAST tranche names. They are held here instead.
+   BFAST suite names. They are held here instead.
 
-NO EXPANSION ARM IS ASSERTED HERE, because none remains: the expansion licence, its
+No expansion arm is asserted here, because none remains: the expansion licence, its
 probe artifacts and the arm argument are deleted on all three tables, so every
 complex product has one emitted form. The device gate holds the bytes.
 """
@@ -78,8 +78,8 @@ def test_replaces_is_the_driver_order_and_is_declared_not_inferred():
 
 
 def test_the_arm_is_registered_unwired_and_plan_step_cannot_select_it():
-    """THE WHOLE COMPOSITION STORY. This product spans three slots and ``plan_step``
-    assigns at most one arm per slot, so it registers UNWIRED: enumerable by the
+    """The whole composition story. This product spans three slots and ``plan_step``
+    assigns at most one arm per slot, so it registers unwired: enumerable by the
     disjointness sweep, invisible to ``arms.arms_for``, unreachable from a run."""
     from meep_gpu.metal_kernels import arms
 
@@ -120,7 +120,7 @@ def test_the_signature_binds_thirty_one_of_thirty_one_with_zero_headroom():
 
 
 def test_the_two_refuted_signatures_are_over_the_ceiling_by_arithmetic():
-    """Whether they FAIL TO COMPILE is the gate's measurement; that they are over
+    """Whether they fail to compile is the gate's measurement; that they are over
     the ceiling at all is arithmetic and belongs here."""
     assert family.SEPARATE_SCALAR_BINDINGS == 39 > device.MAX_BUFFER_BINDINGS
     assert family.OVER_CEILING_BINDINGS == 32 > device.MAX_BUFFER_BINDINGS
@@ -156,7 +156,7 @@ def test_only_the_z_wall_clear_is_ever_emitted():
     ``pair[1] == METALLIC and pair[0] != AXIS`` and r's pair is ``(AXIS, METALLIC)``),
     so the emitted mask is Bz's row and nothing else.
 
-    THE ABSENCE IS THE POINT. A byte gate cannot assert that a line is missing, and
+    The absence is the point. A byte gate cannot assert that a line is missing, and
     a wall mutation armed on the r or phi row would rewrite text the emitter never
     emits and report UNCAUGHT while measuring nothing."""
     zero = templates.COMPLEX_ZERO
@@ -183,7 +183,7 @@ def test_an_r_or_phi_wall_is_refused_by_the_emitter_by_name(axis):
 
 
 def test_the_wall_clear_is_imported_from_the_twin_not_respelled():
-    """ONE HOME FOR THE B-SIDE WALL TABLE. The diagonal (Bx on x, By on y, Bz on z)
+    """One home for the B-side wall table. The diagonal (Bx on x, By on y, Bz on z)
     is the exact complement of the D side's, and a second spelling here is a second
     place for the two to drift."""
     text = pathlib.Path(family.__file__).read_text(encoding="utf-8")
@@ -206,7 +206,7 @@ def test_the_curl_half_is_the_certified_body_verbatim_around_the_wall_clear():
 
 def test_the_constitutive_half_is_the_twins_lift_and_differs_only_in_the_seam():
     """``update_H`` carries NO cylindrical branch — measured by the cylindrical
-    tranche at 480/480 rows, 0 differing words — so the constitutive half of this
+    family's certification at 480/480 rows, 0 differing words — so the constitutive half of this
     pair IS the complex twin's, lift and all."""
     text = source()
     certified = twin.certified_constitutive_body().splitlines()
@@ -334,7 +334,7 @@ def test_an_undeclared_source_list_is_refused_ignorance_is_not_an_empty_set():
 
 
 def test_a_magnetic_source_is_refused_by_name_and_an_electric_one_is_not():
-    """THE POLARITY IS THE WHOLE POINT. A magnetic source is injected BETWEEN the
+    """The polarity is the whole point. A magnetic source is injected BETWEEN the
     halves; an electric one is injected in the D/E seam and does not disqualify the
     pair — and on this family the electric case is every one of the sixteen corpus
     rows."""
@@ -400,7 +400,7 @@ def test_real_storage_is_refused():
 
 
 def test_the_predicate_inherits_both_halves_rather_than_restating_them():
-    """A configuration either half refuses is refused here WITH THAT HALF'S REASONS,
+    """A configuration either half refuses is refused here with that half's reasons,
     prefixed so a reader can tell which side said it."""
     fields, pml = _fixture(m=0, complex_storage=False)
     verdict = family.cylindrical_fused_magnetic_pair_coverage(fields, pml, ())

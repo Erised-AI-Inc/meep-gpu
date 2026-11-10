@@ -1,27 +1,27 @@
 """Is ``--fmad=false`` load-bearing for the complex family? Measured, per kernel.
 
-WHY THIS EXISTS. Every certified hand-CUDA slice carries ``--fmad=false`` as
+Why this exists. Every certified hand-CUDA slice carries ``--fmad=false`` as
 CORRECTNESS rather than tuning, and every one of their gates shows it by running a
 GUARD CONTROL: the same cases compiled with no options, which must DIVERGE. On the
 complex family that control came back 36/36 IDENTICAL on the device
 (``results/cuda_complex_2026-08-19/smoke/``), and an identical control is either a
 gate that cannot see or a source the flag has nothing to do to.
 
-THE DISCRIMINATING EXPERIMENT, and it is a byte question rather than an output
+The discriminating experiment, and it is a byte question rather than an output
 question: compile each of the four kernels with the flag and without it, and
-compare the IMAGE NVRTC RETURNS. Two images that are bit-identical
+compare the image NVRTC returns. Two images that are bit-identical
 cannot produce different words, so the flag is provably inert for that source; two
 that differ and still produce the same words would be a much weaker claim, and one
 this probe would show instead of hiding.
 
-WHAT THE IMAGE IS, sniffed rather than assumed: CuPy asks NVRTC for a CUBIN when
+What the image is, sniffed rather than assumed: CuPy asks NVRTC for a CUBIN when
 the device arch is compilable and for PTX otherwise
 (``_get_arch_for_options_for_nvrtc``), so this records which it got. A CUBIN is the
 stronger comparison -- it is what actually runs -- and the instruction counts below
 are only meaningful on the PTX form, which is why they are reported as zero rather
 than as evidence when the image is binary.
 
-THE HYPOTHESIS IT TESTS, stated so a refutation is possible. The emitter has one
+The hypothesis it tests, stated so a refutation is possible. The emitter has one
 part-wise body: each real coefficient times a part is one product, each sum
 its own rounding, as MEEP's contraction-off build computes them. That body is full
 of a ``mul`` feeding an ``add`` -- the curl's ``f*kms - curl``, the constitutive
@@ -77,7 +77,7 @@ def image_kind(raw: bytes) -> str:
 def image_for(source: str, options) -> bytes:
     """The image NVRTC returns for this source under these options.
 
-    THE CALL GOES THROUGH ``compile_using_nvrtc`` AND NOT THROUGH ``RawKernel``,
+    The call goes through ``compile_using_nvrtc`` and not through ``RawKernel``,
     deliberately: that is the function the float32 subnormal policy's strip seam
     wraps (subnormal_policy.py:866), so the options this probe hands in are the
     options the policy has already filtered -- the same tuple the gate's kernels
@@ -99,6 +99,7 @@ def image_for(source: str, options) -> bytes:
 
 
 def main(argv=None) -> int:
+    import neutral_ids  # noqa: PLC0415
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", required=True)
     parser.add_argument("--subnormal-policy", default=None,
@@ -110,7 +111,7 @@ def main(argv=None) -> int:
     results: Dict[str, Any] = {
         "probe": "cuda_complex_fmad",
         "started_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "host": os.uname().nodename,
+        "host": neutral_ids.machine_id(),
         "environment": probe.device_info(),
         "emitter_corpus_digest": complex_emitter.corpus_digest(),
         "rows": [],

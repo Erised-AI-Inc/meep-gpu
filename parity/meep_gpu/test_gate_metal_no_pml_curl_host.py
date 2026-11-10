@@ -12,8 +12,9 @@ and it is what keeps the device legs meaningful between device runs:
   ``chunk_map.chunk_bounds_record(ChunkLayout.one_rank(grid, None))``;
 * **every source mutation lands**: each needle is present exactly once in the source
   it is armed on, the grouping mutation plants the package's previous pairwise bracket
-  (KERNELS.md §7.1), and each absent-partner row has a declared-null twin on a grid
-  where the planted arm never runs. The same for the fused pair's plain family.
+  (docs/development/certification.md#inverted-grouping-mutations), and each
+  absent-partner row has a declared-null twin on a grid where the planted arm never
+  runs. The same for the fused pair's plain family.
 
 Each check runs the gate in a child process with torch made unimportable: the host
 legs are torch-free, and the gates' own environment defaults stay out of this session.

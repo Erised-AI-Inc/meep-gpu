@@ -1,6 +1,6 @@
 """The PML ``step_D`` welded into OFF-DIAGONAL ``update_E`` — one launch, scratch output.
 
-THIS IS THE CELL THE 2026-08-20 ROUND REFUSED, BUILT A DIFFERENT WAY.
+This is the cell the 2026-08-20 device measurement refused, built a different way.
 
     ceiling 8  (of 16 rows)  D->E  PML -> off-diagonal
 
@@ -20,12 +20,12 @@ half writes ``D_new``/``fu_new`` into LAUNCH-LOCAL SCRATCH, so ``Dx``/``fu_Dx``/
 its own cell's displacement from a register and RE-DERIVES each of its at most
 twelve foreign taps from that pre-launch state through the same inlined
 :func:`_step_cell`; and :class:`OffdiagFusedElectricPairPlan` rotates the D/fu
-references after the launch returns. NOTHING WRITTEN IS EVER READ, so there is no
+references after the launch returns. Nothing written is ever read, so there is no
 cross-program hazard left for a block schedule to expose — which is what the
 gate's S2 leg (identical at every block size, where the 2026-08-20 subject went
 from 4384 differing words at BLOCK=64 to 0 at BLOCK=1024) is there to measure.
 
-WHAT ONE LAUNCH REPLACES. Three driver call sites, in driver order:
+What one launch replaces. Three driver call sites, in driver order:
 ``step_D`` (driver.py:3302), ``zero_metal_D`` (:3310) and ``update_E`` (:3313).
 ``fill_symmetry_bc_D`` and ``fill_folded_far_ghosts_D`` are REFUSED rather than
 carried — this family is unfolded, both passes are no-ops on every row it serves,
@@ -33,7 +33,7 @@ and the folded family that does carry the first of them is
 ``folded_offdiag_fused_electric_pair``. The separate composition is two whole-grid
 launches plus an array-path wall pass.
 
-THE SEAM ARITHMETIC IS A CLOSED FORM, MEASURED BEFORE IT WAS BUILT. On this
+The seam arithmetic is a closed form, measured before it was built. On this
 family the form degenerates all the way to ``clear ? +0 : v``, because the eight
 corpus rows this cell reaches declare ``zero_metal_D`` as their ONLY live in-seam
 pass (measured per row off the census in
@@ -43,12 +43,12 @@ general form — near mirror redirect, far reflect row, the clear inside the far
 parity and outside the near one — was measured byte-identical to the driver's
 pass order over ten fixtures and two complete steps in
 ``results/metal_scratch_weld_closed_form_2026-09-01/probe.json``; that is another
-backend's artifact and certifies nothing here, but it is why this lane built the
-degenerate case first and the folded one second.
+backend's artifact and certifies nothing here, but it is why the degenerate case was
+built first and the folded one second.
 
-WHY THE DEPOSIT REPAIR IS REFUSED BY NAME, AND WHY THAT IS NOT MERELY UNWIRED.
+Why the deposit repair is refused by name, and why that is not merely unwired.
 :data:`CARRIES_DEPOSIT_REPAIR` is False. ``deposit_repair`` inverts a
-constitutive recurrence AT THE DEPOSIT CELL: it recomputes ``E[c]`` from the
+constitutive recurrence at the deposit cell: it recomputes ``E[c]`` from the
 injected ``D[c]``. That inversion is POINTWISE, and this constitutive half is
 not — a deposit at cell ``c`` moves the off-diagonal coupling of up to four
 cells (``c`` itself, ``c`` shifted up the partner's axis, ``c`` shifted down the
@@ -65,7 +65,7 @@ callers are the gate (``parity/meep_gpu/gate_triton_offdiag_stencil_welds.py``),
 the probe (``parity/meep_gpu/probe_triton_offdiag_scratch_weld.py``) and the
 laptop tests.
 
-THE CHUNK FORMS. Both halves read the chunk record ``cb`` the plan binds
+The chunk forms. Both halves read the chunk record ``cb`` the plan binds
 (``launch.chunk_bounds_for`` on the engine route): the curl half is the root curl's
 own body (the record's presence word and each target's dsigu membership pick its
 form), evaluated at every recomputed neighbour with that neighbour's coordinates,
@@ -205,7 +205,7 @@ if triton is not None:  # pragma: no cover - device code, certified by the gate
                    BCX: tl.constexpr, BCY: tl.constexpr, BCZ: tl.constexpr):
         """``kernels.pml_curl_step`` at ONE named cell, returning instead of storing.
 
-        THE BODY BELOW THE TWO INDEX LINES IS THE CERTIFIED CURL'S OWN, byte for
+        The body below the two index lines is the certified curl's own, byte for
         byte between its decode anchor (``i = plane // ny``) and its store anchor
         (``tl.store(u0 + idx``). ``offdiag_scratch_weld.certified_tail`` and
         ``.lifted_tail`` cut both at those anchors and the probe's transcription
@@ -344,7 +344,7 @@ if triton is not None:  # pragma: no cover - device code, certified by the gate
     def _seam_resolve(v0, v1, v2, i, j, k,
                       ZM_X: tl.constexpr, ZM_Y: tl.constexpr,
                       ZM_Z: tl.constexpr):
-        """THE CLOSED FORM: every in-seam pass this family carries, per cell.
+        """The closed form: every in-seam pass this family carries, per cell.
 
         One pass survives here — ``stepping.zero_metal_D``, which writes an exact
         zero into stored cell 0 of every component whose Yee shift on that
@@ -491,7 +491,7 @@ if triton is not None:  # pragma: no cover - device code, certified by the gate
         # Wall-plane predicates for the coupling mask (face 0 only).
         at_x, at_y, at_z = i == 0, j == 0, k == 0
 
-        # ============ THE SCRATCH WELD: step_D and the in-seam wall pass ========
+        # ============ The scratch weld: step_D and the in-seam wall pass ========
         # Nothing written below is read. The constitutive half re-derives every
         # foreign tap from PRE-LAUNCH state through the same `_step_cell`, and
         # the plan rotates the buffers after the launch returns.
@@ -770,7 +770,7 @@ def offdiag_fused_electric_pair_coverage(fields: Any, pml: Any,
        allocation rather than assumed: the six volumes must exist, because the
        plan twins them.
 
-    ``sources`` MUST BE DECLARED for the same reason every fused predicate in
+    ``sources`` must be declared for the same reason every fused predicate in
     this package requires it: ``Fields`` does not hold the source list, and
     inferring "no electric source" from not knowing is how a predicate
     over-covers.
@@ -831,7 +831,7 @@ def explain_offdiag_fused_electric_pair(fields: Any, pml: Any,
 class OffdiagFusedElectricPairPlan(ScratchWeldPairPlan):
     """One allocation-free launch for ``step_D``, ``zero_metal_D`` and ``update_E``.
 
-    THE SIX ROTATING VOLUMES ARE RESOLVED PER LAUNCH, never cached: the plan owns
+    The six rotating volumes are resolved per launch, never cached: the plan owns
     a twin of each, reads the engine's CURRENT attribute immediately before the
     launch to decide which of the pair is live, and moves the engine's references
     only after the launch returns. A pointer captured at plan time would be one

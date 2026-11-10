@@ -1,10 +1,10 @@
-"""Cylindrical-coordinates (MEEP Dcyl) tests — the P1 ladder of
-the design notes (fdtd-cylindrical-plan).
+"""Cylindrical-coordinates (MEEP Dcyl) tests: CPU-MEEP oracles at m = 0, 1 and 2,
+the near-axis rules, absorbers, flux, refusals, and MEEP's per-chunk loops.
 
 Built test-first, one increment at a time: each test lands alongside the engine
 piece it pins, so the tree stays green throughout the port. The MEEP facts each
 test transcribes are cited at the formula (step_db.cpp line numbers from the
-tree the plan was read against).
+MEEP source tree these tests were written against).
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ _HAS_MEEP = importlib.util.find_spec("meep") is not None
 _M0_CASE = {
     "r": 2.0, "z": 4.0, "resolution": 10, "until": 3.0,
     "frequency": 1.0, "fwidth": 0.5, "center": (0.75, 0.0, -0.55),
-    # Transmitted-flux oracle (P3): a z-normal plane reaching from the axis out
+    # Transmitted-flux oracle: a z-normal plane reaching from the axis out
     # to r=1.2, decimation pinned to 1 on both sides — MEEP's automatic factor
     # is a *sampling* choice, and on a run this short the two Riemann sums
     # legitimately differ (measured 1.36-1.41x with MEEP left on automatic).
@@ -144,7 +144,7 @@ def _rel(a, b):
 
 @pytest.mark.skipif(not _HAS_MEEP, reason="CPU MEEP is not installed")
 def test_cylindrical_m0_matches_cpu_meep(cylindrical_m0_oracle):
-    """The m=0 cylindrical stepper reproduces CPU MEEP — the P1 exit measurement.
+    """The m=0 cylindrical stepper reproduces CPU MEEP — the first cylindrical oracle.
 
     An off-axis Ez point source in vacuum with MEEP's default metallic walls (a
     Dcyl run has no k_point machinery; z terminates PEC, r_max likewise, the axis
@@ -206,7 +206,7 @@ def test_cylindrical_m1_matches_cpu_meep(cylindrical_m0_oracle):
 
 @pytest.mark.skipif(not _HAS_MEEP, reason="CPU MEEP is not installed")
 def test_cylindrical_m2_matches_cpu_meep(cylindrical_m0_oracle):
-    """|m| > 1 — the near-axis zeroing hack — reproduces CPU MEEP, VERSION-AWARE.
+    """|m| > 1 — the near-axis zeroing hack — reproduces CPU MEEP, version-aware.
 
     At |m| > 1 MEEP's default ``zero_fields_near_cylorigin`` holds field rows
     within |m| pixels of the axis at zero (its own stability hack,
@@ -297,7 +297,7 @@ def test_accurate_fields_near_cylorigin_matches_cpu_meep_and_is_not_the_default(
     which ``Grid`` REFUSES above rather than warning about, because a cylindrical
     instability is a smooth growing mode and not a crash.
 
-    WHY THIS IS MEASURED AND NOT READ. The read-only MEEP checkout available here is
+    Why this is measured and not read. The read-only MEEP checkout available here is
     v1.31.0-31-g0fdfd587, which predates upstream #3164 ("Fix bug in
     zero_fields_near_cylorigin for |m| >= 2", 593a4b42, first released in 1.33.0) — and
     in that tree BOTH branches zero only Dp/Dz on the D side and Br on the B side. The
@@ -431,7 +431,7 @@ def test_cylindrical_pml_matches_cpu_meep(cylindrical_m0_oracle, m):
 
 @pytest.mark.skipif(not _HAS_MEEP, reason="CPU MEEP is not installed")
 def test_cylindrical_m0_real_fields_match_cpu_meep(cylindrical_m0_oracle):
-    """m=0 runs in REAL float32 storage and still lands on MEEP — P3.
+    """m=0 runs in REAL float32 storage and still lands on MEEP.
 
     MEEP's own storage rule (simulation.py:2517-2522, fields.cpp:824): real
     fields unless force_complex_fields, or cylindrical with m != 0. Every m=0
@@ -471,7 +471,7 @@ def test_cylindrical_nonzero_m_refuses_real_fields_by_name():
     ("a_ep1_", 1, "Ey", ("er", "ep", "ez", "hr", "hp", "hz")),
 ])
 def test_cylindrical_axis_sources_match_cpu_meep(cylindrical_m0_oracle, tag, m, component, live):
-    """Sources placed AT r=0 inject what MEEP injects — the P3 axis-source pin.
+    """Sources placed AT r=0 inject what MEEP injects — the axis-source pin.
 
     The rule under test is MEEP's little_owned_corner (vec.cpp:432-436): in Dcyl
     with the r origin at 0, an integer-r component's owned corner claws back
@@ -498,7 +498,7 @@ def test_cylindrical_axis_sources_match_cpu_meep(cylindrical_m0_oracle, tag, m, 
 @pytest.mark.skipif(not _HAS_MEEP, reason="CPU MEEP is not installed")
 @pytest.mark.parametrize("m", [0, 1])
 def test_cylindrical_flux_matches_cpu_meep(cylindrical_m0_oracle, m):
-    """Transmitted flux through a z-normal plane matches MEEP's ``add_flux`` — P3.
+    """Transmitted flux through a z-normal plane matches MEEP's ``add_flux``.
 
     The cylindrical area element: MEEP weights every flux sample by the
     circumference of its own ring — loop_in_chunks.cpp:505-515 sets
@@ -594,7 +594,7 @@ def test_cylindrical_grid_declares_meeps_dcyl_conventions():
 
 @pytest.mark.skipif(not _HAS_MEEP, reason="CPU MEEP is not installed")
 def test_cylindrical_script_lifts_through_run_on_gpu():
-    """A whole cylindrical MEEP script — geometry, PML, flux — lifts as written. P4.
+    """A whole cylindrical MEEP script — geometry, PML, flux — lifts as written.
 
     The corpus-facing exit test: ``run_on_gpu`` on a Dcyl script with a
     dielectric ring (eps=4, MEEP's own subpixel smoothing), an m=1 off-axis

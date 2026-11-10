@@ -1,13 +1,13 @@
 """Byte-identity gate for the E->P FUSED pair: ``update_E`` -> ``update_P`` welded.
 
-WHAT IS UNDER TEST, and it is a claim about the WELD, which no verdict on either
+What is under test, and it is a claim about the WELD, which no verdict on either
 half establishes:
 
 * ``fused_polarization_pair.run_fused_polarization_pair`` -- THREE per-component
   launches with the host rotation between them -- reproduces the driver's own
   seam, ``stepping.update_E`` immediately followed by ``stepping.update_P``
   (driver.py:3313/:3315), byte for byte over EVERY array the seam reads or
-  writes, THE POLE VOLUMES INCLUDED. Two arms, gated separately:
+  writes, the pole volumes included. Two arms, gated separately:
   ``--arm pml`` (dispersive update_E under an active layer x PML ADE) and
   ``--arm no_pml`` (the stored-E arm x layerless ADE).
 * the same weld reproduces the SEPARATELY CERTIFIED kernels it replaces --
@@ -23,7 +23,7 @@ half establishes:
   launches on the certified route. A gate that never proved the fused kernels
   ran would certify the certified kernels twice.
 
-THE SEAM NULL AND ITS CONTROL, the pair this gate exists to arm. The weld's one
+The seam null and its control, the pair this gate exists to arm. The weld's one
 arithmetic claim is that the register hand-off ``float w = src_<axis>;`` IS the
 certified drive load ``float w = dsigw ? drive_w[idx] : drive_e[idx];`` (MEEP's
 ``w`` per chunk):
@@ -40,7 +40,7 @@ certified drive load ``float w = dsigw ? drive_w[idx] : drive_e[idx];`` (MEEP's
   DIVERGE; a leg whose control cannot fail has not shown that handing the RIGHT
   register across the seam is what produced the pass.
 
-THE ROTATION LEGS. ``update_P``'s three buffers rotate per component on the
+The rotation legs. ``update_P``'s three buffers rotate per component on the
 host, and the weld transcribes that rotation between its own launches. The
 defect that "still computes" -- a launcher that cached the views and so advanced
 one buffer twice while freezing another -- is armed THREE ways
@@ -49,7 +49,7 @@ one buffer twice while freezing another -- is armed THREE ways
 with ``launcher_copy_NULL`` -- the same copy WITHOUT the defect -- required
 UNCAUGHT so the copy is shown equivalent before the defect is blamed.
 
-FIXTURE TRAPS CARRIED FORWARD from the campaign log, each a floor here: the pole
+Fixture traps found on earlier gate campaigns, each a floor here: the pole
 volumes are IN the byte comparison and are seeded NON-ZERO (zero poles are a
 fixed point of the subtraction chain); ``pole_subtraction_bites`` refuses a case
 whose chain does not bite; ``oracle_moved`` refuses a fixed-point case; the
@@ -168,10 +168,10 @@ def _mutate_wrong_drive_register(source: str) -> Tuple[str, int]:
 
 
 def _mutate_reload_drive_from_global(source: str) -> Tuple[str, int]:
-    """THE SEAM NULL: the register becomes a reload of the word the E half just
+    """The seam null: the register becomes a reload of the word the E half just
     stored -- MEEP's ``w = f_w ? f_w : f`` per chunk on the PML arm (f_w on the
-    cells whose chunk carries the layer, E elsewhere), E on the layerless arm. MUST
-    BE UNCAUGHT -- this is what shows the register IS the certified load rather
+    cells whose chunk carries the layer, E elsewhere), E on the layerless arm. Must
+    be uncaught -- this is what shows the register IS the certified load rather
     than a number that happens to be close."""
     sites = 0
     out = source
@@ -335,7 +335,7 @@ HOST_MUTATIONS: Dict[str, Dict[str, Any]] = {
 
 
 # ---------------------------------------------------------------------------
-# THE FIXTURE (the sibling gate's, borrowed whole) AND THE SNAPSHOT
+# The fixture (the sibling gate's, borrowed whole) and the snapshot
 # ---------------------------------------------------------------------------
 
 def build_case(xp, spec, courant, arity, rng):
@@ -384,7 +384,7 @@ def advance_sources(fields) -> None:
 
 
 # ---------------------------------------------------------------------------
-# THE THREE ROUTES THROUGH THE SEAM
+# The three routes through the seam
 # ---------------------------------------------------------------------------
 
 def seam_oracle(fields, layer) -> None:
@@ -504,7 +504,7 @@ def _weld_local_loop(fields, layer, arm: str, defect: Optional[str],
                      tables: Optional[Dict[str, Any]] = None) -> int:
     """The shipped ``run_fused_polarization_pair`` loop, copied, with one defect.
 
-    THE COPY IS THE INSTRUMENT: a defect cannot be armed inside the shipped
+    The copy is the instrument: a defect cannot be armed inside the shipped
     launcher without editing it -- the shipped path re-resolves every pointer per
     launch and refuses aliased bindings -- so the loop is restated here and
     ``launcher_copy_NULL`` (defect=None) is required UNCAUGHT to show the copy
@@ -723,7 +723,7 @@ def one_case(spec: Dict[str, Any], arm: str, arity: Tuple[int, int, int],
 
 
 # ---------------------------------------------------------------------------
-# THE SWEEP AND THE MUTATION BATTERIES
+# The sweep and the mutation batteries
 # ---------------------------------------------------------------------------
 
 def case_product(arm: str, product: str):
@@ -868,7 +868,7 @@ def summarize(results: Dict[str, Any]) -> Dict[str, Any]:
         reasons.append(f"multi-step divergence on {len(scored) - len(multi_ok)} "
                        f"of {len(scored)} cases")
 
-    # THE LAUNCH ACCOUNTING, on every scored case, from BOTH counts.
+    # The launch accounting, on every scored case, from BOTH counts.
     for case in scored:
         counts = case["weld_launches"]
         if counts["reported"] != 3 or counts["counted"] != 3:
@@ -944,7 +944,7 @@ def summarize(results: Dict[str, Any]) -> Dict[str, Any]:
     guard_control = {
         "scored_at_inexact_courant": len(control),
         "diverged": len(control_diverged),
-        "reading": ("NOT MEASURED on this run" if not control else
+        "reading": ("Not measured on this run" if not control else
                     "the contraction guard is load-bearing on this weld"
                     if control_diverged else
                     "MEASURED DECORATIVE on these cases"),
@@ -1070,6 +1070,7 @@ def save(results: Dict[str, Any], out_path: str) -> None:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
+    import neutral_ids  # noqa: PLC0415
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--arm", choices=ARMS, required=True)
     parser.add_argument("--product", choices=("full", "reduced"), default="full")
@@ -1086,8 +1087,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "gate": "cuda_fused_polarization_pair",
         "arm": args.arm,
         "started_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "host": os.uname().nodename,
-        "argv": list(argv if argv is not None else sys.argv[1:]),
+        "host": neutral_ids.machine_id(),
+        "argv": neutral_ids.argv(argv if argv is not None else sys.argv[1:]),
         "product": args.product,
         "question": ("do three per-component fused launches with the host "
                      "rotation between them reproduce update_E -> update_P byte "

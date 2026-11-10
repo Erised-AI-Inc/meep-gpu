@@ -1,64 +1,36 @@
 Dispatch-preference timing record -- cuda table
-record_sha256 cff4bdae8f80a981247c30fe96383306748c4fab91b18833aafa4108a018f470
-recorded_utc 2026-09-21T15:44:08Z (the newest admitted row)
-cut by parity/meep_gpu/cut_timing_record.py from results/fused_timing_2026-09-20_restrict/cuda, results/fused_timing_2026-09-20_restrict_licensed/cuda, results/fused_timing_sweep_2026-09-20_restrict/cuda
-route dffe30aba77a:linear:1-per-step:restricted -- deposit_repair dffe30aba77aa4b78fbe98efea570c57c8bc14185b190792c23b710a13966850; restriction counters recorded on 14 of 14 bracketed rows
-emitters compared: fused_pairs 4385f67eda59, fused_polarization_pair b58c47173cbb
+record_sha256 9d01b428a9552f244e9aa980f5aa7bd8b2c70d0464a6ec0143c68626f8cf52d0
+recorded_utc 2026-10-27T17:48:03Z (the newest admitted row)
+cut by parity/meep_gpu/cut_timing_record.py from results/timing_rows_rtx3090/fused/fused__8.6__cuda__absorber_1d__drive__p1__3bf8bfe106/lab10__2026-10-27T11_39_15Z.rows.jsonl, results/timing_rows_rtx3090/fused/fused__8.6__cuda__bfast_1d__drive__p1__bcb038ab67/lab10__2026-10-27T11_42_15Z.rows.jsonl, results/timing_rows_rtx3090/fused/fused__8.6__cuda__bloch_2d__drive__p1__b12eb008da/lab10__2026-10-27T11_45_12Z.rows.jsonl, results/timing_rows_rtx3090/fused/fused__8.6__cuda__complex_1d__drive__p1__01c7db84e7/lab10__2026-10-27T11_48_16Z.rows.jsonl, results/timing_rows_rtx3090/fused/fused__8.6__cuda__complex_3d__drive__p1__41c814c6df/lab10__2026-10-27T11_51_09Z.rows.jsonl, results/timing_rows_rtx3090/fused/fused__8.6__cuda__complex_3d_thinline__drive__p1__122d061cfd/lab10__2026-10-27T11_54_06Z.rows.jsonl, results/timing_rows_rtx3090/fused/fused__8.6__cuda__complex_beta_2d__drive__p1__ef9153ab5a/lab10__2026-10-27T11_57_01Z.rows.jsonl, results/timing_rows_rtx3090/fused/fused__8.6__cuda__complex_no_pml_3d__drive__p1__ad27f89220/lab10__2026-10-27T12_00_03Z.rows.jsonl, results/timing_rows_rtx3090/fused/fused__8.6__cuda__complex_nobloch_2d__drive__p1__b5d9f29c32/lab10__2026-10-27T12_03_00Z.rows.jsonl, results/timing_rows_rtx3090/fused/fused__8.6__cuda__conductive_2d__drive__p1__2a41764ed5/lab10__2026-10-27T12_06_01Z.rows.jsonl, results/timing_rows_rtx3090/fused/fused__8.6__cuda__cylindrical__drive__p1__5e36f4993e/lab10__2026-10-27T12_08_59Z.rows.jsonl, results/timing_rows_rtx3090/fused/fused__8.6__cuda__cylindrical_m0_complex__drive__p1__901dedfd8d/lab10__2026-10-27T12_11_59Z.rows.jsonl, results/timing_rows_rtx3090/fused/fused__8.6__cuda__cylindrical_m1__drive__p1__bcd2e7f830/lab10__2026-10-27T12_14_58Z.rows.jsonl, results/timing_rows_rtx3090/fused/fused__8.6__cuda__cylindrical_m2__drive__p1__2c1df9b4b0/lab10__2026-10-27T12_17_55Z.rows.jsonl, results/timing_rows_rtx3090/fused/fused__8.6__cuda__cylindrical_m3__drive__p1__565d46d300/lab10__2026-10-27T12_20_54Z.rows.jsonl, results/timing_rows_rtx3090/fused/fused__8.6__cuda__cylindrical_mneg1__drive__p1__bd3043153c/lab10__2026-10-27T12_23_51Z.rows.jsonl, results/timing_rows_rtx3090/fused/fused__8.6__cuda__dispersive5_2d__drive__p1__c3320170e5/lab10__2026-10-27T12_26_57Z.rows.jsonl, results/timing_rows_rtx3090/fused/fused__8.6__cuda__dispersive6_2d__drive__p1__001be234ac/lab10__2026-10-27T12_30_03Z.rows.jsonl, results/timing_rows_rtx3090/fused/fused__8.6__cuda__dispersive_2d__drive__p1__3201f192d8/lab10__2026-10-27T12_33_08Z.rows.jsonl, results/timing_rows_rtx3090/fused/fused__8.6__cuda__folded_2d__drive__p1__5b8384d768/lab10__2026-10-27T12_36_08Z.rows.jsonl, results/timing_rows_rtx3090/fused/fused__8.6__cuda__folded_complex_2d__drive__p1__24d41c493d/lab10__2026-10-27T12_39_10Z.rows.jsonl, results/timing_rows_rtx3090/fused/fused__8.6__cuda__folded_complex_3d__drive__p1__6219fd111a/lab10__2026-10-27T12_42_10Z.rows.jsonl, results/timing_rows_rtx3090/fused/fused__8.6__cuda__folded_complex_beta_bloch_2d__drive__p1__94f09a39af/lab10__2026-10-27T12_45_09Z.rows.jsonl, results/timing_rows_rtx3090/fused/fused__8.6__cuda__folded_complex_nobloch_offdiag_2d__drive__p1__8df682805e/lab10__2026-10-27T12_48_06Z.rows.jsonl, results/timing_rows_rtx3090/fused/fused__8.6__cuda__folded_complex_offdiag_2d__drive__p1__80a59a3e8e/lab10__2026-10-27T12_51_06Z.rows.jsonl, results/timing_rows_rtx3090/fused/fused__8.6__cuda__folded_complex_offdiag_hz_2d__drive__p1__742ebc20b7/lab10__2026-10-27T12_54_11Z.rows.jsonl, results/timing_rows_rtx3090/fused/fused__8.6__cuda__folded_dispersive_2d__drive__p1__71fdd114cb/lab10__2026-10-27T12_57_16Z.rows.jsonl, results/timing_rows_rtx3090/fused/fused__8.6__cuda__folded_offdiag_magnetic_2d__drive__p1__640ad5f2ff/lab10__2026-10-27T13_00_18Z.rows.jsonl, results/timing_rows_rtx3090/fused/fused__8.6__cuda__folded_special_kz_2d__drive__p1__4853c15d87/lab10__2026-10-27T13_03_17Z.rows.jsonl, results/timing_rows_rtx3090/fused/fused__8.6__cuda__magnetic_seam_2d__drive__p1__1a7c6981c4/lab10__2026-10-27T13_06_14Z.rows.jsonl, results/timing_rows_rtx3090/fused/fused__8.6__cuda__magnetic_seam_2d__res130__p1__467e058a90/lab10__2026-10-27T15_53_29Z.rows.jsonl, results/timing_rows_rtx3090/fused/fused__8.6__cuda__magnetic_seam_2d__res130__p2__fe2364260c/lab10__2026-10-27T17_20_26Z.rows.jsonl, results/timing_rows_rtx3090/fused/fused__8.6__cuda__magnetic_seam_2d__res200__p1__2fa3bf28c2/lab10__2026-10-27T16_07_50Z.rows.jsonl, results/timing_rows_rtx3090/fused/fused__8.6__cuda__magnetic_seam_2d__res200__p2__00cafe8e15/lab10__2026-10-27T17_05_58Z.rows.jsonl, results/timing_rows_rtx3090/fused/fused__8.6__cuda__magnetic_seam_2d__res20__p1__2827874c64/lab10__2026-10-27T15_25_43Z.rows.jsonl, results/timing_rows_rtx3090/fused/fused__8.6__cuda__magnetic_seam_2d__res20__p2__87a2dab3f6/lab10__2026-10-27T17_48_35Z.rows.jsonl, results/timing_rows_rtx3090/fused/fused__8.6__cuda__magnetic_seam_2d__res300__p1__f61eb5a5e6/lab10__2026-10-27T16_22_44Z.rows.jsonl, results/timing_rows_rtx3090/fused/fused__8.6__cuda__magnetic_seam_2d__res300__p2__c7919435eb/lab10__2026-10-27T16_51_09Z.rows.jsonl, results/timing_rows_rtx3090/fused/fused__8.6__cuda__magnetic_seam_2d__res60__p1__b1d0b6624c/lab10__2026-10-27T15_39_24Z.rows.jsonl, results/timing_rows_rtx3090/fused/fused__8.6__cuda__magnetic_seam_2d__res60__p2__49fea36ac9/lab10__2026-10-27T17_34_44Z.rows.jsonl, results/timing_rows_rtx3090/fused/fused__8.6__cuda__offdiag_2d__drive__p1__724824a739/lab10__2026-10-27T13_09_11Z.rows.jsonl, results/timing_rows_rtx3090/fused/fused__8.6__cuda__offdiag_magnetic_2d__drive__p1__35f33b1405/lab10__2026-10-27T13_12_10Z.rows.jsonl, results/timing_rows_rtx3090/fused/fused__8.6__cuda__pml_1d__drive__p1__787fe32960/lab10__2026-10-27T13_15_11Z.rows.jsonl, results/timing_rows_rtx3090/fused/fused__8.6__cuda__pml_2d__drive__p1__98b2422176/lab10__2026-10-27T13_18_08Z.rows.jsonl, results/timing_rows_rtx3090/fused/fused__8.6__cuda__pml_2d__res130__p1__a3b2bfc9e0/lab10__2026-10-27T15_56_19Z.rows.jsonl, results/timing_rows_rtx3090/fused/fused__8.6__cuda__pml_2d__res130__p2__29a811e0c4/lab10__2026-10-27T17_17_32Z.rows.jsonl, results/timing_rows_rtx3090/fused/fused__8.6__cuda__pml_2d__res200__p1__7b8c71d6a6/lab10__2026-10-27T16_10_46Z.rows.jsonl, results/timing_rows_rtx3090/fused/fused__8.6__cuda__pml_2d__res200__p2__cf49d00d25/lab10__2026-10-27T17_02_56Z.rows.jsonl, results/timing_rows_rtx3090/fused/fused__8.6__cuda__pml_2d__res20__p1__7f276679a9/lab10__2026-10-27T15_28_25Z.rows.jsonl, results/timing_rows_rtx3090/fused/fused__8.6__cuda__pml_2d__res20__p2__b0238f15cd/lab10__2026-10-27T17_45_48Z.rows.jsonl, results/timing_rows_rtx3090/fused/fused__8.6__cuda__pml_2d__res300__p1__9553eeb272/lab10__2026-10-27T16_25_54Z.rows.jsonl, results/timing_rows_rtx3090/fused/fused__8.6__cuda__pml_2d__res300__p2__364a08dede/lab10__2026-10-27T16_47_57Z.rows.jsonl, results/timing_rows_rtx3090/fused/fused__8.6__cuda__pml_2d__res60__p1__cb204efd21/lab10__2026-10-27T15_42_11Z.rows.jsonl, results/timing_rows_rtx3090/fused/fused__8.6__cuda__pml_2d__res60__p2__3dc5143f6f/lab10__2026-10-27T17_31_52Z.rows.jsonl, results/timing_rows_rtx3090/fused/fused__8.6__cuda__pml_3d__drive__p1__857730e012/lab10__2026-10-27T13_21_08Z.rows.jsonl, results/timing_rows_rtx3090/fused/fused__8.6__cuda__pml_3d_diagonal__drive__p1__24daf8b1dd/lab10__2026-10-27T13_24_06Z.rows.jsonl, results/timing_rows_rtx3090/fused/fused__8.6__cuda__special_kz_2d__drive__p1__14388b3cfe/lab10__2026-10-27T13_27_04Z.rows.jsonl
+card: NVIDIA GeForce RTX 3090 (architecture 8.6)
+route a5e49dfa6ca7:linear:1-per-step:restricted -- deposit_repair a5e49dfa6ca7f82054d1beb5967e6a12cb9feae6f4bfa0587ce10ca62b9bdd21; restriction counters recorded on 25 of 25 bracketed rows
+emitters compared: fused_pairs e51c13f13765, fused_polarization_pair da6b6e502157
+gate: the between-pass gate (2026-10-16): the admitted rows of one case, grid shape, repair program and timing instrument (window count and the probe floor its target sets) are its passes; two or more enter only when the spread of their fused and of their baseline rates, (max - min) / median, is at most 5 % on each leg, else every row of the point is left out by name; a point timed once has no between-pass spread and is not struck by it
 the barrier cannot cover: a product's own device text comes from a per-product module (cuda_kernels/fused_electric_pair.py, the triton_kernels/ emitters, the Metal kernel sources) and no timing row pins one: this record cannot say which per-product kernel text it timed
 
-rows: read 65, duplicate lines 0, baseline legs 0, admitted 14, left out 51; admitted without an after-probe 0; rows-times-products not attributed 14
-keys: measured 2, unmeasured 8 (minimum 2 rows a key)
+rows: read 57, duplicate lines 0, baseline legs 0, admitted 27, left out 30; admitted without an after-probe 0; rows-times-products not attributed 25
+keys: measured 4, unmeasured 8 (minimum 2 rows a key)
 
 MEASURED
-  VETO  cuda:fused electric pair|real|2|0|bracketed|24000-24000  0.409x (best row 0.416, least margin +0.553), fused 0.840 against 0.344 ms/step over cuda:PML+cuda:ordinary, 2 rows
-  VETO  cuda:fused magnetic pair|real|2|0|bracketed|24000-24000  0.439x (best row 0.448, least margin +0.515), fused 0.778 against 0.342 ms/step over cuda:PML+cuda:ordinary, 2 rows
+  VETO  cuda:fused electric pair|real|2|0|bracketed|24000-2400000  0.606x (best row 0.893, least margin +0.045), fused 0.556 against 0.343 ms/step over cuda:PML+cuda:ordinary, 7 rows
+  keep  cuda:fused electric pair|real|2|0|bracketed|5400000-5400000  0.963x (best row 0.967, least margin -0.138), fused 1.068 against 1.029 ms/step over cuda:PML+cuda:ordinary, 2 rows
+  VETO  cuda:fused magnetic pair|real|2|0|bracketed|24000-2400000  0.601x (best row 0.932, least margin +0.028), fused 0.536 against 0.325 ms/step over cuda:PML+cuda:ordinary, 10 rows
+  keep  cuda:fused magnetic pair|real|2|0|bracketed|5400000-5400000  0.971x (best row 0.983, least margin -0.206), fused 1.060 against 1.030 ms/step over cuda:PML+cuda:ordinary, 2 rows
 
 UNMEASURED
-  cuda:fused electric pair|real|1|0|bracketed|640-640  no size in it carries 2 rows, so none can set a band edge: 640 (1 row); best row 0.418x
-  cuda:fused electric pair|real|2|0|bracketed|1014001-2399999  the verdict changes between 1,014,000 and 2,400,000 cells and no row lies between them
-  cuda:fused electric pair|real|2|0|bracketed|2400000-5400000  no size in it carries 2 rows, so none can set a band edge: 2,400,000 (1 row); 5,400,000 (1 row); best row 1.027x
-  cuda:fused electric pair|real|2|0|bracketed|24001-1014000  no size in it carries 2 rows, so none can set a band edge: 216,000 (1 row); 1,014,000 (1 row); best row 0.644x
-  cuda:fused electric pair|real|3|0|bracketed|64000-64000  no size in it carries 2 rows, so none can set a band edge: 64,000 (1 row); best row 0.411x
-  cuda:fused magnetic pair|real|2|0|bracketed|1014001-2399999  the verdict changes between 1,014,000 and 2,400,000 cells and no row lies between them
-  cuda:fused magnetic pair|real|2|0|bracketed|2400000-5400000  no size in it carries 2 rows, so none can set a band edge: 2,400,000 (1 row); 5,400,000 (1 row); best row 1.027x
-  cuda:fused magnetic pair|real|2|0|bracketed|24001-1014000  no size in it carries 2 rows, so none can set a band edge: 216,000 (1 row); 1,014,000 (1 row); best row 0.680x
+  cuda:fused electric pair|real|1|0|bracketed|640-640  no size in it carries 2 rows, so none can set a band edge: 640 (1 row); best row 0.444x
+  cuda:fused electric pair|real|2|0|bracketed|2400001-5399999  the verdict changes between 2,400,000 and 5,400,000 cells and no row lies between them
+  cuda:fused electric pair|real|2|0|bracketed|9760-23999  no size in it carries 2 rows, so none can set a band edge: 9,760 (1 row); best row 0.541x
+  cuda:fused electric pair|real|3|0|bracketed|64000-64000  no size in it carries 2 rows, so none can set a band edge: 64,000 (1 row); best row 0.497x
+  cuda:fused magnetic pair|real|2|0|bracketed|2400001-5399999  the verdict changes between 2,400,000 and 5,400,000 cells and no row lies between them
+  cuda:fused magnetic pair|real|2|0|bracketed|9760-23999  no size in it carries 2 rows, so none can set a band edge: 9,760 (1 row); best row 0.736x
+  cuda:fused magnetic pair|real|2|0|clean|24000-24000  no size in it carries 2 rows, so none can set a band edge: 24,000 (1 row); best row 0.989x
+  cuda:fused magnetic pair|real|3|0|clean|110592-110592  no size in it carries 2 rows, so none can set a band edge: 110,592 (1 row); best row 0.975x
 
 LEFT OUT, BY REASON
-    25  floor failed: singles_are_the_same_table
-     3  floor failed: singles_are_the_same_table, spread_within_gate
-     5  the plan's slots were served by ['cuda', 'triton'], not by the 'cuda' table alone
-    18  verdict SKIP-NOT-THIS-LEG
+     2  between-pass spread over the 2 passes of this case, grid shape and instrument: baseline 0.0855 > 0.05 (between-pass gate)
+    28  floor failed: singles_are_the_same_table
 
-PREVIEW -- served_in_dispatch_preferred as it WOULD read if this record were in force on its own route. Nothing consults the record yet, no board reports this number, and the join below is this tool's, not a board's
-  board results/fusion_matrix_cuda_2026-09-20_restrict/fusion_matrix_cuda.json
-  joined from the census's per-product predicate blocks (covered_modulo_backend); the board lists no per-instance rows, so slot arbitration between products is NOT applied and the displaced arms are taken from the record
-  served_in_dispatch 352 / 597; instances in a vetoed band 0; served_in_dispatch_preferred (PREVIEW) 352 / 597
-  of 352 joined seam-instances 189 carry the bracket; the record vetoes 0, clears 0, and has no record for the rest:
-      74  bracketed: class_not_in_record
-      43  bracketed: key_unmeasured
-      81  bracketed: outside_the_measured_bands
-     154  clean: class_not_in_record
-  product: dispatching on the board / joined / bracketed / vetoed / not vetoed / no record
-  cuda:BFAST fused electric pair: 1 / 1 / 1 / 0 / 0 / 1
-  cuda:BFAST fused magnetic pair: 1 / 1 / 0 / 0 / 0 / 1
-  cuda:complex beta fused electric pair: 4 / 4 / 4 / 0 / 0 / 4
-  cuda:complex beta fused magnetic pair: 4 / 4 / 1 / 0 / 0 / 4
-  cuda:complex fused electric pair: 17 / 17 / 16 / 0 / 0 / 17
-  cuda:complex fused magnetic pair: 17 / 17 / 4 / 0 / 0 / 17
-  cuda:complex no-absorber three-slot weld: 8 / 8 / 0 / 0 / 0 / 8
-  cuda:conductive fused electric pair: 1 / 1 / 1 / 0 / 0 / 1
-  cuda:cylindrical fused electric pair: 18 / 18 / 18 / 0 / 0 / 18
-  cuda:cylindrical fused magnetic pair: 18 / 18 / 0 / 0 / 0 / 18
-  cuda:cylindrical real fused electric pair: 3 / 3 / 3 / 0 / 0 / 3
-  cuda:cylindrical real fused magnetic pair: 3 / 3 / 0 / 0 / 0 / 3
-  cuda:folded complex fused electric pair: 2 / 2 / 2 / 0 / 0 / 2
-  cuda:folded complex fused magnetic pair: 5 / 5 / 1 / 0 / 0 / 5
-  cuda:folded complex off-diagonal stencil weld: 1 / 1 / 0 / 0 / 0 / 1
-  cuda:folded off-diagonal stencil weld: 9 / 9 / 0 / 0 / 0 / 9
-  cuda:fused electric pair: 82 / 82 / 78 / 0 / 0 / 82
-  cuda:fused magnetic pair: 127 / 127 / 48 / 0 / 0 / 127
-  cuda:no-absorber three-slot dispersive weld: 4 / 4 / 2 / 0 / 0 / 4
-  cuda:off-diagonal stencil weld: 9 / 9 / 0 / 0 / 0 / 9
-  cuda:special_kz fused electric pair: 2 / 2 / 2 / 0 / 0 / 2
-  cuda:special_kz fused magnetic pair: 2 / 2 / 1 / 0 / 0 / 2
-  cuda:three-slot dispersive weld: 14 / 14 / 7 / 0 / 0 / 14
+MISSING FROM THE RELEASE: 0 released (product, case) pair(s) this record does not account for
+
+ROW KEYS WITHOUT A VALID MEASURED ROW: 0 of the catalog's and the store's cuda keys on 8.6

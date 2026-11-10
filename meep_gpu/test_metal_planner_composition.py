@@ -1,13 +1,13 @@
 """The Metal composer, as a test that cannot go stale.
 
-WHAT THIS PINS THAT THE FAMILY SUITES CANNOT. Each family suite checks ONE
+What this pins that the family suites cannot. Each family suite checks ONE
 predicate against configurations that family cares about. Composition is the
 question nobody's own suite asks: given a configuration, do TWO products claim the
 same sub-step, and if so does the composer refuse rather than pick? A tree of eight
 certified families in which any two co-admit is a tree that dispatches by import
 order, and no family suite can see that.
 
-THREE THINGS ARE HELD HERE:
+Three things are held here:
 
 1. **The matrix** — every configuration in ``metal_composition_matrix.MATRIX``,
    each with the EXACT ``selected`` dict the composer produces and the slots it
@@ -23,12 +23,12 @@ THREE THINGS ARE HELD HERE:
 3. **The table's completeness** — that the arm table is populated by import and
    that reading it without ``ensure_registered`` is the defect it looks like.
 
-WHY THE MATRIX LIVES UNDER ``parity/`` AND THE ASSERTIONS LIVE HERE. The
+Why the matrix lives under ``parity/`` and the assertions live here. The
 configurations are also the whole-step gate's cases, and a configuration list that
 exists twice is a configuration list that diverges. The gate imports the same
 module.
 
-THE ENVIRONMENT IS A PRECONDITION, not a convenience. On MPS the float32 subnormal
+The environment is a precondition, not a convenience. On MPS the float32 subnormal
 flush is native and has no lever, so the resolved default ``keep`` makes EVERY
 Metal predicate refuse by name and the whole matrix would collapse to "nothing
 admits anything" — which would pass a naive disjointness check while measuring
@@ -96,7 +96,7 @@ def test_every_slot_resolves_to_at_most_one_product(label, build, expected,
     """``selected`` names the slot's ONE admitter; anything else is unselected.
 
     A slot absent from ``selected`` and carrying an "admit this configuration"
-    reason had TWO OR MORE admitters and failed closed. Any slot that becomes
+    reason had two or more admitters and failed closed. Any slot that becomes
     ambiguous without being declared here — or stops being ambiguous while declared
     — is a predicate defect and fails.
     """
@@ -133,17 +133,17 @@ def test_every_wired_arm_wins_at_least_one_configuration():
 @pytest.mark.parametrize("label,family", sorted(matrix.UNCARRIED.items()),
                          ids=sorted(matrix.UNCARRIED))
 def test_a_family_this_backend_does_not_carry_selects_nothing(label, family):
-    """THE OTHER HALF OF THE NON-VACUITY FLOOR, and the half that catches a WRONG
+    """The other half of the non-vacuity floor, and the half that catches a WRONG
     ANSWER rather than a missed opportunity.
 
     :func:`test_every_wired_arm_wins_at_least_one_configuration` fails when an arm
-    fires nowhere. This fails when an arm fires WHERE NO PRODUCT EXISTS — a
+    fires nowhere. This fails when an arm fires where no product exists — a
     cylindrical, nonlinear, folded-beta or folded-BFAST configuration quietly
     admitted by some arm whose clause list forgot to ask. That arm would step a
     recurrence this backend does not implement, and every downstream number would
     report it as coverage.
 
-    ONLY THE FOUR ARITHMETIC SLOTS ARE CHECKED. A seam fill copies
+    Only the four arithmetic slots are checked. A seam fill copies
     ``phase * field[2]`` and reads no beta term, no BFAST term, no pole and no
     nonlinearity, so a fill still composing on such a row is the CORRECT scoped
     answer — the matrix pins exactly that for the folded beta and BFAST rows — and
@@ -187,9 +187,9 @@ def test_the_planted_double_admits_name_both_claimants(base, claimants):
     predicates are disjoint only through that coupling — not through an inverted
     clause — and the composer must refuse rather than pick.
 
-    THE SECOND ROW IS THE SAME COUPLING ONE LEVEL UP. ``folded`` refuses an
+    The second row is the same coupling one level up. ``folded`` refuses an
     off-diagonal row on ``update_E`` because its constitutive body is element-wise,
-    and ``folded offdiag`` requires a LIVE ROW SLOT because its plan builder raises
+    and ``folded offdiag`` requires a live row slot because its plan builder raises
     without one. Requiring the FLAG there instead would look tidier and would hand
     the builder a configuration it raises on, so the residual is carried and
     measured rather than papered over.
@@ -209,7 +209,7 @@ def test_the_reachable_mirror_of_the_planted_case_has_no_ambiguity(base):
     """Flag True with every row slot dead: no arm admits, and no ambiguity.
 
     On the FOLDED half the two arms decline differently and that is the point:
-    ``folded`` REFUSES BY NAME on the flag, while ``folded offdiag`` is GATED OUT
+    ``folded`` refuses by name on the flag, while ``folded offdiag`` is GATED OUT
     (its gate asks for a live slot), so it contributes no reason at all. Either way
     ``update_E`` falls to the array path, which is always correct.
     """
@@ -232,7 +232,7 @@ def test_the_table_carries_every_certified_family_over_all_driver_slots():
     as a subset, because a slot appearing without a family behind it is how a
     ``NO_ARM_REASONS`` entry silently stops being consulted.
 
-    THE TWO SEAM SLOTS NOW CARRY TWO ARMS, and that pair is pinned by name because it
+    The two seam slots now carry two arms, and that pair is pinned by name because it
     is the one place in the package where two arms invert on STORAGE alone:
     ``folded`` needs real float32 (where the fold's parity is an exact sign flip) and
     ``folded_complex`` needs complex64 (where it is a full complex product with zero
@@ -281,8 +281,8 @@ def test_the_registry_module_names_every_module_that_registers_an_arm():
 
     modules = {spec.coverage.__module__.rsplit(".", 1)[-1]
                for spec in arms.registered()}
-    # `launch` registers the two tranche-1 products through closures defined in
-    # `launch`; the rest name their own module.
+    # `launch` registers the first Metal certification's two products through closures
+    # defined in `launch`; the rest name their own module.
     assert modules <= set(registry.FAMILY_MODULES) | {"launch", "coverage"}, modules
 
 
@@ -364,7 +364,7 @@ class _RaisingProxy:
 def test_an_attribute_that_raises_on_access_never_escapes_plan_step(attribute):
     """``plan_step`` NEVER RAISES. A raising predicate is a refusal, by name.
 
-    THIS FOUND A REAL DEFECT on ``polarizations``. Every arm's predicate was
+    This found a real defect on ``polarizations``. Every arm's predicate was
     already inside the fail-closed try/except, but ``live_sub_steps`` — which
     ``plan_step`` calls AFTER the arm loop, to compute the residency verdict — read
     four attributes bare and sat outside it. A ``fields.polarizations`` that raised
@@ -473,7 +473,7 @@ def test_a_bfast_run_composes_on_all_four_slots():
 def test_a_complex_beta_run_composes_a_WHOLE_step_on_this_family():
     """The asymmetry is closed, as a claim rather than a comment.
 
-    THIS TEST USED TO PIN THE GAP. Until 2026-08-19 the complex beta curls composed
+    This test used to pin the gap. Until 2026-08-19 the complex beta curls composed
     and both constitutive slots were refused BY NAME — the sentence "no
     complex-storage constitutive product admits an UNFOLDED beta run" was the thing
     asserted, so a reader could tell the gap from ``reasons`` without reading two
@@ -481,7 +481,7 @@ def test_a_complex_beta_run_composes_a_WHOLE_step_on_this_family():
     real restatement now, delegating to ``complex_fields``' certified body, and the
     pin follows: all four sub-steps compose, and every one of them on THIS family.
 
-    THE FAMILY CHECK IS THE POINT, not the count. "Four slots filled" would also
+    The family check is the point, not the count. "Four slots filled" would also
     pass if another family had started admitting a beta run, which is precisely the
     over-covering dispatch every beta clause exists to prevent.
     """
@@ -570,7 +570,7 @@ def test_an_undeclared_source_list_refuses_the_residency_verdict():
 def test_an_array_path_sub_step_must_be_declared_synced():
     """A mirror held across a host write is stale, and the verdict says so.
 
-    THE SUBSTRATE MOVED ON 2026-08-19 AND THAT IS THE WHOLE NOTE. This used to be
+    The substrate moved on 2026-08-19 and that is the whole note. This used to be
     the complex beta row, which left BOTH constitutive slots on the array path while
     its curls stayed device-resident. That row is now fully resident — ``special_kz``
     gained its complex constitutive companion — so it can no longer measure the

@@ -1,6 +1,6 @@
 """Complex folded tensor-row ``update_E`` with the active-PML stored-E tail.
 
-**THE ROW IS MEEP'S DOUBLE ROW, PER PART, IN SOFTWARE BINARY64 (ruling R7).** MEEP
+**The row is MEEP's double row, per part, in software binary64.** MEEP
 steps the two parts of a complex field separately with the same real coefficients
 (``DOCMP``, update_eh.cpp:149), so each part's row is :mod:`.offdiag_update_e`'s:
 ``widen(gs*us)`` per part, each live term's float32 pair sum per part wall-masked and
@@ -8,7 +8,7 @@ added as ``scale_pow2(widen(sum), -2)`` where the cell's chunk keeps the term, o
 rounding per part (``stepping._offdiagonal_terms``, ``_rounded_row``). Presence is the
 real family's 27-bit words (:func:`.offdiag_update_e.presence_block`), bound last.
 
-**THE BLOCH CONNECTION IS THE ARRAY PATH'S.** On a phased periodic axis the shifted
+**The Bloch connection is the array path's.** On a phased periodic axis the shifted
 reads are plain wraps and the connection lands on the SAME-INDEX operand's plane 0
 (``stepping._bloch_ghost_operand``): the partner pair's own word ``g[i]`` on the
 partner axis's plane 0 takes ``eikna`` (the word above the window), and the formed
@@ -18,7 +18,7 @@ per-part negation, or the unfused ``complex<realnum>(phase) * word``
 (:func:`.complex_fields.connection`). The far product is the plain up-shift of the
 unconnected product.
 
-**THE PML TAIL IS THE ARRAY PATH'S PER-CHUNK SELECT**, KM5's complex constitutive
+**The PML tail is the array path's per-chunk select**, the Metal table's complex constitutive
 tail (:mod:`.complex_fields`) character for character: the chunk record binds last
 and, on a cell whose chunk carries the component's own (``dsigw``) layer, ``prev`` is
 read before ``f_w`` is written and ``E = E + ((kps*src) - (kms*prev))`` per part;

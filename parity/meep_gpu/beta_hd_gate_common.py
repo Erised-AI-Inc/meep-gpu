@@ -1,14 +1,14 @@
 """Shared machinery for the two CUDA ``grid.beta`` H->D one-launch product gates.
 
-THE TWO GATES THAT IMPORT THIS are ``gate_special_kz_fused_hd_pair.py`` (REAL float32
+The two gates that import this are ``gate_special_kz_fused_hd_pair.py`` (REAL float32
 storage) and ``gate_complex_beta_fused_hd_pair.py`` (complex64 storage). Both certify
 the SAME SHAPE -- one launch in the ``update_H`` slot that computes the certified
 magnetic constitutive at the thread's own cell AND at every backward neighbour the
 curl taps, into launch-local WRITE-ONLY scratch, then runs the certified beta ``step_D``
 body with its twelve magnetic reads redirected, with ``D``/``fu_D`` stepped in place,
 and rotates the ``H``/``f_w_H`` bindings against the scratch afterwards -- over two
-storage classes whose arithmetic differs in exactly the places
-``lanes/cyl_round/cupy_probe/FINDINGS.md`` measured.
+storage classes whose arithmetic differs in exactly the places a CuPy probe
+measured on one RTX A6000 (2026-09-06/07): the complex64 multiply and divide spellings.
 
 Everything that does not depend on the storage class lives here ONCE: the five
 arrangements, the lock-step driver walk, the launch counters, the purity/race ledger,
@@ -19,24 +19,24 @@ wiring rows patched in-process), the compiler leg, the corpus lift (parent and c
 and the runner. A second transcription of a launch counter is a second place for a
 counter to stop counting.
 
-WHAT A FAMILY SUPPLIES is an :class:`Adapter`: the module, the fixtures, how to seed a
+What a family supplies is an :class:`Adapter`: the module, the fixtures, how to seed a
 volume of its storage, the certified single-slot launchers and the released
 neighbouring pairs it is measured against, the armed mutations with their null
 controls, and the three host legs whose text is the family's own (transcription,
 refusal, spelling).
 
-WHAT BOTH FAMILIES ADD THAT NO OTHER H->D SEAM HAS is the BETA PARTNER. The beta term
+What both families add that no other H->D seam has is the beta partner. The beta term
 consumes the SAME-CELL magnetic snapshot (stepping.py:437), which the array path takes
 AFTER ``update_H``; welded, that snapshot must be this launch's own register. It is a
 site no sibling H->D gate has, and ``beta_partner_reads_stale_h`` is the mutation that
 arms it -- one per family, in that family's own spelling.
 
-THE EVIDENCE STANDARD is the brief's: bit identity as uint32 WORDS per COMPLETE driver
+The evidence standard is bit identity as uint32 WORDS per COMPLETE driver
 step against the array path (never ``allclose``; ``-0.0 == 0.0`` lies), every zero
 beside a control that moves words, every count as N of D with D named, nothing
 unmeasured credited.
 
-POSITIONAL CLAUSES ARE RECORDED, NOT ASSERTED. Three released gates failed on the day
+Positional clauses are recorded, not asserted. Three released gates failed on the day
 the composer tables were wired because they asserted where a product sits in
 ``fused_pairs`` rather than what it DOES there. The arbitration leg here asserts the
 substantive claims -- refused BY NAME, the refusal names ``INSTALLABLE = False``, the
@@ -83,7 +83,7 @@ import gate_provenance  # noqa: E402
 import hd_seam_restore  # noqa: E402
 import probe_fused_kernel_bit_identity as probe  # noqa: E402
 
-# THE SIBLING GATES, imported for the machinery every scratch-output weld gate on this
+# The sibling gates, imported for the machinery every scratch-output weld gate on this
 # track shares. ONE copy of a launch counter, of a word comparator, of a policy
 # installer, of a driver capture.
 import cylindrical_hd_gate_common as cyl  # noqa: E402
@@ -192,7 +192,7 @@ class Adapter:
     def build(self, spec: Mapping[str, Any], value_class: str, rng):
         """``(fields, grid, pml, dtdx, plant)`` on the device, seeded for this class.
 
-        A BETA GRID IS 2-D BY CONSTRUCTION AND THE BUILDER CHECKS IT. ``grid.beta`` is
+        A beta grid is 2-D by construction and the builder checks it. ``grid.beta`` is
         MEEP's out-of-plane 2-D wavevector: ``Grid._resolve_beta`` refuses it outside
         an effective-2-D Cartesian grid, so every fixture has ``nz == 1`` and a
         nonzero ``beta``, and a fixture whose beta silently failed to materialise
@@ -226,7 +226,7 @@ class Adapter:
         fields = Fields(grid=grid, force_complex_fields=self.complex_storage)
         fields.enable_field_storage()
         fields.enable_pml_storage()
-        # THREE DISTINCT VOLUMES, never one -- binding a single volume for all three
+        # Three distinct volumes, never one -- binding a single volume for all three
         # components is a defect a fixture that handed one array to all three could
         # not see. ``update_E`` consumes them; the weld binds none, and that is
         # exactly why they must be right: an update_E that stepped a different
@@ -472,7 +472,7 @@ def make_arrangement(adapter: Adapter, mode: str, fields, grid, pml, dtdx: float
     elif mode == "composition_today":
         magnetic, electric, run_magnetic, run_electric = adapter.released_pairs(
             fields, grid, pml, dtdx)
-        # EACH PAIR LAUNCHES AT THE POSITION OF ITS OWN FIRST REPLACED PASS and every
+        # Each pair launches at the position of its own first replaced pass and every
         # pass it names is skipped; everything else runs on the array path in the
         # driver's own order. Written as a walk rather than as two slices because a
         # released pair's REPLACES is not necessarily contiguous.
@@ -583,7 +583,7 @@ def drive(adapter: Adapter, spec: Mapping[str, Any], value_class: str, steps: in
     final = frozen(engines[modes[-1]].fields)
     array_final = frozen(engines[modes[0]].fields)
     must_move = STATE_NAMES if value_class != "subnormal_band" else BAND_MUST_MOVE
-    # THE AUXILIARY CONTRACT (bit_parity_0_10 KERNELS.md section 1, C2): ``fu_*`` and
+    # The auxiliary contract: ``fu_*`` and
     # ``f_w_*`` are read and written only on the cells whose chunk carries their form,
     # so on a 2-D beta grid the array path never steps the ones whose axis is the
     # invariant z (fu_Bx, fu_Dx, f_w_Hz, f_w_Ez). The floor exempts exactly the
@@ -641,7 +641,7 @@ def leg_driver_order(adapter: Adapter) -> Dict[str, Any]:
     except ValueError:
         start = -1
     adjacent = start >= 0 and order[start:start + len(span)] == span
-    # THE SEAM'S ONE PASS, read off driver.py: since entry 25 it is the magnetic
+    # The seam's one pass, read off driver.py: since 1.0 it is the magnetic
     # f_minus_p restore (writes B alone, where H is stored), not an electric withdraw.
     seam = hd_seam_restore.driver_seam_facts()
     record = {
@@ -690,19 +690,19 @@ _CONSTANT_GHOST_CODES: Tuple[str, ...] = ("BC_METALLIC", "BC_MIRROR_PERIODIC")
 
 
 def leg_ghost_observability(adapter: Adapter) -> Dict[str, Any]:
-    """Does any GHOST BOUNDARY VALUE reach ``step_D``'s output?
+    """Does any ghost boundary value reach ``step_D``'s output?
 
-    THE ANSWER IS NO, AND IT IS DERIVED FROM THE EMITTED TEXT rather than tabulated.
+    The answer is no, and it is derived from the emitted text rather than tabulated.
     Each redirected tap shifts along one axis, and on the ``ia == 0`` plane of that
     axis the certified helper returns a CONSTANT -- an exact zero it never reaches the
     recompute for -- under every non-periodic boundary code. The ownership mask's own
     ``if (bc_A == CODE && coord == 0) curl = ZERO;`` lines say which (block, plane)
-    pairs are zeroed. On the D side the two sets coincide exactly, FOR BOTH CODES,
+    pairs are zeroed. On the D side the two sets coincide exactly, for both codes,
     which is why an edit to what a ghost SERVES moves no byte -- a fact this gate
     derives once rather than rediscovering per mutation, and the reason the ghost
     mutation on this seam is a recorded NULL while its PERIODIC sibling is armed.
 
-    BOTH CODES ARE DERIVED AND NOT JUST THE METALLIC ONE. A leg that covered only
+    Both codes are derived and not just the metallic one. A leg that covered only
     ``BC_METALLIC`` would license a null for half of what the ghost mutation edits,
     and the mirror half would be an unexplained uncaught defect. Measured on this
     kit's first mutation smoke (2026-09-07), where exactly that gap showed up as a
@@ -764,7 +764,7 @@ def leg_purity_ledger(adapter: Adapter,
                       specs: Sequence[Mapping[str, Any]]) -> Dict[str, Any]:
     """Of the curl's valid foreign taps, how many land on a cell ``update_H`` MOVED?
 
-    THIS IS THE MEASUREMENT THAT MAKES THE IDENTITY RESULT MEAN ANYTHING. If the
+    This is the measurement that makes the identity result mean anything. If the
     recomputed value equalled the stored one almost everywhere, the identity legs
     would be consistent with an IN-PLACE weld too and would license nothing about the
     design. Measured on the ARRAY PATH: ``update_H`` is run on a copy of the seeded
@@ -840,10 +840,10 @@ def leg_launch_structure(adapter: Adapter, spec: Mapping[str, Any],
                          steps: int) -> Dict[str, Any]:
     """Launches per step at the seam and over the whole step, every arrangement.
 
-    TWO INDEPENDENT COUNTERS: each arrangement's own tally and a wrapper around the
+    Two independent counters: each arrangement's own tally and a wrapper around the
     shipped compile memo, which sees every launch through every shipped route.
 
-    THE HONEST NUMBER IS REPORTED WHETHER OR NOT IT FLATTERS THE WELD.
+    The honest number is reported whether or not it flatters the weld.
     """
     out: Dict[str, Any] = {"spec": spec["label"], "steps": steps, "modes": {}}
     for mode in MODES + ("weld_composed",):
@@ -956,7 +956,7 @@ def build_driver(adapter: Adapter, spec: Mapping[str, Any], *,
                         symmetry=[{"direction": axis, "phase": phase}
                                   for axis, phase in spec["symmetry"]],
                         prefer_gpu=True, gpu_id=0, **adapter.driver_kwargs(spec))
-    # THE ABSORBER GOES ON X AND Y ONLY, and that is forced rather than tidy: a beta
+    # The absorber goes on X and Y only, and that is forced rather than tidy: a beta
     # run is ``dimensions=2``, whose z axis is TRANSLATIONALLY INVARIANT, and
     # ``PML.__init__`` REFUSES a layer there by name -- an invariant axis has no face
     # to absorb at, and the one cell that stands for it would be entirely inside the
@@ -1025,7 +1025,7 @@ def leg_sync(adapter: Adapter, spec: Mapping[str, Any], steps: int) -> Dict[str,
     answered the ``update_H_synchronize`` consult would advance the electric state
     inside a window nothing can undo.
 
-    THIS LEG IS THE CITATION FOR THE COMPOSER REFUSAL and carries its own null control.
+    This leg is the citation for the composer refusal and carries its own null control.
     """
     from meep_gpu.driver import FdtdDriver  # noqa: PLC0415
 
@@ -1080,12 +1080,12 @@ def leg_withdraw(adapter: Adapter, spec: Mapping[str, Any],
                  steps: int) -> Dict[str, Any]:
     """The seam's one pass on a device: :func:`hd_seam_restore.seam_restore_leg`.
 
-    Since entry 25 what stands between the two consults is the magnetic ``f_minus_p``
+    Since 1.0 what stands between the two consults is the magnetic ``f_minus_p``
     restore, not an electric withdraw. The driver carries an integrated electric AND an
     integrated magnetic source (:meth:`Adapter.seam_sources`); the weld is
     force-installed, stepped in lockstep with its own array-path reference and required
     identical, and the weld with the restore moved before the launch and with no
-    magnetic ``f_minus_p`` must each diverge. THE SEED IS NOT SCALED HERE: the
+    magnetic ``f_minus_p`` must each diverge. The seed is not scaled here: the
     ``f_minus_p`` words are the sources' amplitude, which a scaled state would swallow.
     """
     def install(driver: Any) -> Mapping[str, Any]:
@@ -1112,11 +1112,11 @@ def leg_withdraw(adapter: Adapter, spec: Mapping[str, Any],
 def wired_in_process(adapter: Adapter):
     """Context manager: the product's rows in ``fused_pairs``, then removed.
 
-    NOTHING ON DISK CHANGES. The rows ``wiring.patch`` would add are installed in the
+    Nothing on disk changes. The rows ``wiring.patch`` would add are installed in the
     live dicts, the composer is asked, and the rows are removed -- so the composer can
     be asked what it does WITH this product in its tables on a tree where it is not.
-    IDEMPOTENT ON A WIRED TREE: a row already present is left alone and left in place,
-    which is what makes this leg survive the wiring round rather than invert with it.
+    Idempotent on a wired tree: a row already present is left alone and left in place,
+    which is what makes this leg survive the wiring change rather than invert with it.
     """
     from meep_gpu.cuda_kernels import fused_pairs  # noqa: PLC0415
 
@@ -1162,9 +1162,9 @@ def ask_the_composer(adapter: Adapter, fields, grid, pml, sources=()) -> Dict[st
 def leg_arbitration(adapter: Adapter, spec: Mapping[str, Any]) -> Dict[str, Any]:
     """The COMPOSER, asked twice: AS SHIPPED and WITH the wiring rows patched in.
 
-    THE POSITIONAL CLAUSES ARE RECORDED, NOT ASSERTED. Whether this product is present
+    The positional clauses are recorded, not asserted. Whether this product is present
     in ``FUSED_PRODUCTS`` on disk, and whether the in-process rows had to be added and
-    were removed, are facts about a table that a wiring round INVERTS -- three released
+    were removed, are facts about a table that a wiring change INVERTS -- three released
     gates failed on exactly that. What is ASSERTED is what the composer DOES: the
     product is refused BY NAME, the refusal names ``INSTALLABLE = False``, the
     selection is unchanged by the wiring, this product holds no slot, and both
@@ -1185,7 +1185,7 @@ def leg_arbitration(adapter: Adapter, spec: Mapping[str, Any]) -> Dict[str, Any]
         "spec": spec["label"],
         "as_shipped": shipped,
         "with_the_wiring_rows_patched_in_process": wired,
-        # --- RECORDED, NOT ASSERTED: positional facts a wiring round inverts.
+        # --- recorded, not asserted: positional facts a wiring change inverts.
         "positional": {
             "product_row_had_to_be_added_in_process": added["product_row_added_in_process"],
             "arm_row_had_to_be_added_in_process": added["arm_row_added_in_process"],
@@ -1197,7 +1197,7 @@ def leg_arbitration(adapter: Adapter, spec: Mapping[str, Any]) -> Dict[str, Any]
                 and shipped["this_product_holds_no_slot"]),
             "why_recorded_rather_than_asserted": (
                 "these describe WHERE the product sits in the composer's tables, "
-                "which the wiring round changes by design. Three gates failed on "
+                "which the wiring change makes by design. Three gates failed on "
                 "clauses of exactly this shape. The substantive claims are below"),
         },
         # --- ASSERTED: what the composer DOES.
@@ -1237,7 +1237,7 @@ def leg_arbitration(adapter: Adapter, spec: Mapping[str, Any]) -> Dict[str, Any]
 def mutation_needles_resolve(adapter: Adapter) -> Dict[str, Any]:
     """Does every armed needle -- and the byte-neutral one -- match EXACTLY ONCE?
 
-    A HOST CHECK RUN BEFORE ANY DEVICE LEG, because a needle that matches zero times
+    A host check run before any device leg, because a needle that matches zero times
     is a mutation that silently compiles the SHIPPED source and reports the defect as
     uncaught, and a needle that matches twice edits a site nobody chose. Both cost a
     dead campaign leg; both are cheap to catch here. Reported per needle with its site
@@ -1332,7 +1332,7 @@ def leg_mutation(adapter: Adapter, specs: Sequence[Mapping[str, Any]],
                                or entry.get("predicted_null_under_this_policy")],
             "held": [entry["name"] for entry in results
                      if entry.get("prediction_held")],
-            # A PREDICTED NULL THAT BIT IS NOT A DEFECT IN THE PRODUCT and is not
+            # A predicted null that bit is not a defect in the product and is not
             # reported as one: it is the STRONGER outcome (a race twin that fired, a
             # policy-conditional defect that reached further than the prior finding
             # said). Reported separately from a prediction that was supposed to bite
@@ -1503,8 +1503,9 @@ def lift_basis(adapter: Adapter, results: Path) -> Tuple[List[dict], Dict[str, A
     DERIVED from the board's own ``h_to_d_seam.instances`` -- the arms the census chose
     for each row -- never from a list here. The MODULE a tests row lives in is the
     CENSUS's fact and is joined from its ``tests*.jsonl``; a tests row with no module
-    in either record is REFUSED BY NAME rather than guessed at.
+    in either record is refused by name rather than guessed at.
     """
+    import neutral_ids  # noqa: PLC0415
     board = results / BOARD / "fusion_matrix_cuda.json"
     if not board.is_file():
         raise SystemExit(f"the lift leg needs {board}")
@@ -1536,7 +1537,7 @@ def lift_basis(adapter: Adapter, results: Path) -> Tuple[List[dict], Dict[str, A
             "cell": list(adapter.cell_arms),
             "module": modules.get(label),
             "replay_case": replay_case.get(label, row),
-            "interpreter": sys.executable,
+            "interpreter": neutral_ids.path(sys.executable),
             "bucket": record.get("bucket"),
             "withdraw_in_seam": bool(record.get("withdraw_in_seam")),
             "integrated_electric_sources":
@@ -1570,14 +1571,14 @@ def child_progress(adapter: Adapter, message: str) -> None:
 def drive_lifted_row(adapter: Adapter, driver: Any, steps: int) -> Dict[str, Any]:
     """One lifted corpus row, driven through the driver's own consult order.
 
-    ONE DRIVER, CAPTURED AND RESTORED, rather than two engines: a lifted row carries
+    One driver, captured and restored, rather than two engines: a lifted row carries
     its own sources, monitors and material. Per complete step the state is captured,
     each dispatched arrangement runs one ``FdtdDriver.step`` from that state and is
     captured and rolled back, the ARRAY path then runs the same step, and the run
     continues from the ARRAY result -- so the reference is never a subject's own
     output.
 
-    THREE ARRANGEMENTS, NOT TWO, and the third is what makes a divergence
+    Three arrangements, not two, and the third is what makes a divergence
     ATTRIBUTABLE: if the weld and the CERTIFIED SINGLES agree with each other and both
     differ from the array path, the finding is about the certified halves and not
     about the weld.
@@ -1705,7 +1706,7 @@ def lift_child(adapter: Adapter, leg: str, target: str, cases: Sequence[str],
                import_meep: bool, block_key: str) -> int:
     """One corpus row, lifted in its OWN interpreter and driven. ALWAYS writes.
 
-    THE POLICY IS INSTALLED HERE, before the child's first compile, and stamped before
+    The policy is installed here, before the child's first compile, and stamped before
     and after the drive: a child that inherited only a cache directory would compile
     under whatever policy the parent left installed in ITS process, which is not this
     process.
@@ -1801,7 +1802,7 @@ def leg_lift(adapter: Adapter, gate_file: str, out_dir: Path, steps: int,
     if only:
         wanted = set(only)
         rows = [row for row in rows if row["label"] in wanted]
-    # THE CORPUS PATH IS THE CENSUS'S, and it is REFUSED rather than guessed at. A
+    # The corpus path is the census's, and it is REFUSED rather than guessed at. A
     # child handed a bare script NAME resolves it against its own cwd and dies with a
     # FileNotFoundError that the parent records as a right-shaped row measuring
     # nothing. ``census.EXAMPLES_DIR``/``TESTS_DIR`` read ``MEEP_GPU_CORPUS_ROOT``.
@@ -1815,7 +1816,7 @@ def leg_lift(adapter: Adapter, gate_file: str, out_dir: Path, steps: int,
     lift_dir = out_dir / "lift"
     lift_dir.mkdir(parents=True, exist_ok=True)
     progress_path = lift_dir / "steps.progress.log"
-    # THE CHILDREN'S WORKING DIRECTORY IS NOT EVIDENCE AND STAYS OUTSIDE THE ARTIFACT:
+    # The children's working directory is not evidence and stays outside the artifact:
     # a corpus script writes whatever it likes there, and a file inside the artifact
     # that the manifest rule cannot hash is a file the record cannot pin. The corpus's
     # DATA files are symlinked in, because several scripts read one beside themselves.
@@ -1855,8 +1856,8 @@ def leg_lift(adapter: Adapter, gate_file: str, out_dir: Path, steps: int,
                            "payload": json.loads(out_json.read_text(encoding="utf-8")),
                            "resumed": True})
             continue
-        # A withdraw_in_seam row is LIFTED AND ASKED like any other: the flag was cut on
-        # the driver before f_minus_p, and since entry 25 no engine source stands a
+        # A withdraw_in_seam row is lifted and asked like any other: the flag was cut on
+        # the driver before f_minus_p, and since 1.0 no engine source stands a
         # withdraw (hd_seam_restore.lift_withdraw_accounting scores the refusals).
         if target is None:
             driven.append({**row, "error": "no module for this row in the census"})
@@ -1883,10 +1884,10 @@ def leg_lift(adapter: Adapter, gate_file: str, out_dir: Path, steps: int,
         environment.update(child_env or {})
         started = time.perf_counter()
         try:
-            # ENCODING AND ERRORS ARE EXPLICIT, and both are load-bearing. ``text=True``
+            # Encoding and errors are explicit, and both are load-bearing. ``text=True``
             # alone decodes with the interpreter's LOCALE encoding -- ASCII under
             # C/POSIX -- and a corpus test that prints one non-ASCII character raises
-            # UnicodeDecodeError IN THE PARENT, killing the whole leg after the child
+            # UnicodeDecodeError in the parent, killing the whole leg after the child
             # has already measured correctly.
             completed = subprocess.run(command, cwd=str(workdir), env=environment,
                                        capture_output=True, encoding="utf-8",
@@ -1976,10 +1977,11 @@ def run_campaign(adapter: Adapter, args, gate_file: str, family_name: str,
                  block_key: str, licences_what: str) -> int:
     """Every leg, in order, with the artifact rewritten after each one.
 
-    THE AUTHORITATIVE FIELD IS ``canonical_verdict.released``. A leg that did not run
+    The authoritative field is ``canonical_verdict.released``. A leg that did not run
     is a reason to withhold, not a clause to omit: the released flag requires every
     requested leg to have produced a verdict.
     """
+    import neutral_ids  # noqa: PLC0415
     started = time.perf_counter()
     legs = tuple(args.legs.split(",")) if args.legs else ALL_LEGS
     family = adapter.family
@@ -1987,7 +1989,7 @@ def run_campaign(adapter: Adapter, args, gate_file: str, family_name: str,
         "gate": gate_file, "family": family_name, "seam": withdraw_hoist.SEAM,
         "cell": list(adapter.cell_arms), "board": BOARD, "census": CENSUS,
         "started_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "argv": list(sys.argv[1:]), "legs_requested": list(legs), "steps": args.steps,
+        "argv": neutral_ids.argv(sys.argv[1:]), "legs_requested": list(legs), "steps": args.steps,
         "runtime_reasons": runtime_reasons(),
     }
     if cp is None or args.no_device:

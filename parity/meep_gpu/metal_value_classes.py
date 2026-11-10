@@ -1,6 +1,6 @@
 """The float32 VALUE CLASSES the Metal fused-product gates seed and score.
 
-WHY THIS MODULE EXISTS, and it is a gap in the record rather than a refactor.
+Why this module exists, and it is a gap in the record rather than a refactor.
 Every Metal fused-product gate seeds one value class — a physical-band
 ``standard_normal * 0.37`` — and then reports ``reference_subnormals: 0`` and
 ``subnormal_free: true`` under policy ``flush`` on every case it runs. Read from
@@ -9,7 +9,7 @@ whether the flush policy was exercised and found harmless, or whether the band
 was never entered so the policy was never asked anything. Every Triton and CUDA
 gate in this tree carries a second value class; the Metal fused half did not.
 
-WHAT THIS MODULE SUPPLIES, and what it deliberately does not. It supplies the two
+What this module supplies, and what it deliberately does not. It supplies the two
 things that are a property of the BACKEND rather than of any one family:
 
 * :func:`pm_zero_lattice` — the +-0 lattice, and :func:`zero_sign_census`, the
@@ -23,7 +23,7 @@ case matrix, or any verdict. Those are the family's claim; a kit that supplied
 them would let a family inherit a claim it never made (``metal_gate_kit`` states
 the same boundary and this module keeps it).
 
-THE MEASUREMENT THIS MODULE IS BUILT ON, taken on this host rather than recalled.
+The measurement this module is built on, taken on this host rather than recalled.
 On the fused magnetic pair (``wall_xyz_3d``, four complete driver steps, the
 shipped kernel against the array-path oracle, uint32 word compare):
 
@@ -46,7 +46,7 @@ and it is a real second comparison: the state moves, and the reference output
 carries both signs of zero, so a uint32 compare there is discriminating a sign a
 float compare would call equal.
 
-RULE 4 OF THE FIVE PAID-FOR TRAPS, RESTATED FOR THIS FILE: a zero state is a fixed
+Rule 4 of the five paid-for traps, restated for this file: a zero state is a fixed
 point of some seams and not of others. :func:`pm_zero_lattice` is therefore never
 exempt from a floor — it swaps the MOVEMENT floor for the SIGN floor, and a gate
 that finds neither must fail rather than report a vacuous pass.
@@ -155,7 +155,7 @@ def pm_zero_lattice_complex(shape: Sequence[int]) -> np.ndarray:
 def zero_sign_census(arrays: Iterable[Any]) -> Dict[str, int]:
     """How many ``+0.0`` and ``-0.0`` WORDS a state holds, by uint32 bit pattern.
 
-    THE FLOOR THE LATTICE CLASS ANSWERS TO. ``0.0 == -0.0`` in float, so a value
+    The floor the lattice class answers to. ``0.0 == -0.0`` in float, so a value
     class made of zeros is only worth comparing if the comparison can see the sign
     — and this gate family compares uint32 words, which can. Requiring BOTH counts
     nonzero in the REFERENCE OUTPUT is what turns "we also ran a zero case" into a
@@ -187,7 +187,7 @@ def census_ladder(build_at_scale: Any, step_once: Any, census_of: Any,
                   budget: int = 4, log: Any = None) -> Dict[str, Any]:
     """Walk ONE family's oracle down the exponent range and score the census.
 
-    THE FAMILY SUPPLIES THE THREE THINGS THAT ARE ITS OWN and this function
+    The family supplies the three things that are its own and this function
     supplies nothing but the ladder:
 
     * ``build_at_scale(scale)`` -> whatever ``step_once`` takes. The gate's own

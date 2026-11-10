@@ -1,6 +1,6 @@
 """Laptop contracts for the SCRATCH-OUTPUT off-diagonal D/E weld (unfolded).
 
-WHAT THIS SUITE IS FOR. The device gate
+What this suite is for. The device gate
 (``parity/meep_gpu/gate_triton_offdiag_stencil_welds.py``) is what certifies the
 bytes; this suite is the merge bar, and it holds the things that would otherwise
 only be true on a machine nobody runs on the way in: the predicate's refusals BY
@@ -504,11 +504,11 @@ def test_launch_and_fastpath_route_and_certify_this_module():
     """ROUTED SINCE 2026-09-15, and asserted where the routing lives.
 
     This test pinned the opposite — no mention in ``launch.py`` or ``fastpath.py``,
-    because a product that appeared in ``plan_step`` without its own dispatch round
+    because a product that appeared in ``plan_step`` without its own dispatch campaign
     would be served by a path nothing measured — until the shared plan base gained
     a ``warm`` that never rotates. The names are now asserted PRESENT in the three
     places that route, import and certify the product, under the label the release
-    is keyed by; the dispatch round is the route campaign that drives that label.
+    is keyed by; the route campaign is what drives that label.
     """
     from . import fastpath
     from .triton_kernels import launch
@@ -578,7 +578,7 @@ def _shipped_plan_on_this_host(product, monkeypatch, kernel):
 
 
 def test_warm_launches_once_on_an_empty_grid_and_rotates_nothing(product, monkeypatch):
-    """THE MECHANISM THE ROUTING RESTS ON, through ``fastpath.warm_plan``.
+    """The mechanism the routing rests on, through ``fastpath.warm_plan``.
 
     The warm must launch once at grid ``(0,)``, count nothing, restore the grid,
     and leave every rotating reference — the engine's and the plan's twin table —
@@ -612,7 +612,7 @@ def test_warm_launches_once_on_an_empty_grid_and_rotates_nothing(product, monkey
 
 
 def test_the_empty_grid_fallback_is_the_path_warm_replaces(product, monkeypatch):
-    """THE ARMED NULL: the path ``warm_plan`` took before ``warm`` existed.
+    """The armed null: the path ``warm_plan`` took before ``warm`` existed.
 
     ``_warm_with_empty_grid`` empties ``_grid`` and calls ``run``, and on this plan
     that launches nothing, COUNTS a launch and ROTATES — the engine's D volumes

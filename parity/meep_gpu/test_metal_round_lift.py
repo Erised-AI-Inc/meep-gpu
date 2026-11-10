@@ -1,4 +1,4 @@
-"""The Metal round's side of the lift legs: the per-cell preflight, the MEEP corpus, and
+"""The Metal certification round's side of the lift legs: the per-cell preflight, the MEEP corpus, and
 the exit code of ``all``.
 
 ``rounds/1.0/metal_round.py`` is in no gate's closure, so everything here moves no gate.
@@ -6,8 +6,8 @@ Host-only checks (no MEEP, no GPU):
 
 * which fleet gates launch lift children, read off the source: exactly nine on this tree,
   and the one that reads their four inputs in process (the complex gate);
-* the per-cell preflight child, run for real against synthetic gates and stand-in
-  ``meep``/``gdspy`` modules: rows per gate, an absent input named, a gate whose basis
+* the per-cell preflight child, run for real against synthetic gates and a stand-in
+  ``gdstk`` module: rows per gate, an absent input named, a gate whose basis
   cannot be computed named, a row the host cannot lift reported and not stopped for,
   an in-process reader's inputs checked;
 * ``metal_round.main`` driven through ``preflight`` with its probes answered here: it
@@ -108,12 +108,12 @@ PRODUCT = common.Product("census_x", "seam_x")
 '''
 
 
-def _checkout(tmp_path: Path, libgdsii: bool = False) -> SimpleNamespace:
+def _checkout(tmp_path: Path, gdstk: bool = False) -> SimpleNamespace:
     """A checkout with a direct gate (two rows, one from the gdsii lift record), a gate on
     a stand-in tail kit, a gate that names a census and lifts nothing, a gate whose
     import needs torch, a lifting gate that names no census, the real ``lift_host``,
-    stand-in ``meep`` and ``gdspy`` at the checkout root, and the records the gates
-    read."""
+    a stand-in ``gdstk`` at the checkout root (importable when ``gdstk``, else raising
+    ImportError), and the records the gates read."""
     repo = tmp_path / "repo"
     harness = repo / "parity" / "meep_gpu"
     harness.mkdir(parents=True)
@@ -128,9 +128,9 @@ def _checkout(tmp_path: Path, libgdsii: bool = False) -> SimpleNamespace:
         "def lift_basis(results):\n    return [], {}\n", encoding="utf-8")
     (harness / "gate_metal_unnamed.py").write_text(
         "def lift_basis(results):\n    return [], {}\n", encoding="utf-8")
-    (repo / "meep.py").write_text(f"def with_libGDSII():\n    return {libgdsii!r}\n",
-                                  encoding="utf-8")
-    (repo / "gdspy.py").write_text("", encoding="utf-8")
+    (repo / "gdstk.py").write_text(
+        "" if gdstk else "raise ImportError('gdstk is absent from this stand-in host')\n",
+        encoding="utf-8")
     results = tmp_path / "results"
     for rel, rows in (("census_x/examples.jsonl",
                        [{"row": "plain.py", "lift_record": STOCK, "interpreter": "/x/py"},
@@ -167,7 +167,7 @@ def test_the_cell_preflight_runs_each_lifting_gates_own_basis(tmp_path, monkeypa
     assert "gate_metal_tail: 1 lift rows, 0 of them unlifted on this host" in notes
     [unlifted] = [n for n in notes if "UNLIFTED ON THIS HOST" in n]
     assert unlifted.startswith("gate_metal_direct: examples:coupler.py: UNLIFTED ON THIS HOST")
-    assert "meep.with_libGDSII() is False" in unlifted
+    assert "gdstk is absent from this stand-in host" in unlifted
     # A gate that names the census and lifts in process has its inputs checked, and no
     # basis computed.
     assert ("gate_metal_names_a_census: its four lift inputs are present (it reads them "
@@ -191,7 +191,7 @@ def test_the_cell_preflight_runs_each_lifting_gates_own_basis(tmp_path, monkeypa
 
 
 def test_a_host_with_every_need_lifts_every_row(tmp_path, monkeypatch):
-    checkout = _checkout(tmp_path, libgdsii=True)
+    checkout = _checkout(tmp_path, gdstk=True)
     monkeypatch.setattr(metal_round, "resolve_corpus", lambda *a, **k: {
         "root": None, "record": None, "problems": [], "notes": []})
     rnd = _round(tmp_path, checkout)
@@ -372,8 +372,10 @@ def test_the_preflight_goes_on_past_unlifted_rows_and_stops_for_an_absent_input(
     absent = _cells(missing=["census_x/tests_param_matched.jsonl"])
     rc, log = _drive(tmp_path, monkeypatch, absent, python)("absent")
     assert rc == 3, log
+    # The round's log is written neutrally: the results directory under its root's label.
     assert (f"FAIL lift: gate_metal_lifting: lift input(s) absent under "
-            f"{tmp_path / 'results'}: census_x/tests_param_matched.jsonl") in log
+            f"{metal_round.N.path(str(tmp_path / 'results'))}: "
+            f"census_x/tests_param_matched.jsonl") in log
 
 
 def test_the_preflight_stops_for_a_corpus_that_does_not_match_its_record(
